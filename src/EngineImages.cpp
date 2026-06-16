@@ -2409,8 +2409,9 @@ EngineBase* EngineCbx::CreateFromFile(const char* path, const char* password, Mu
     constexpr i64 kMaxEagerLoadSize = 32 * 1024 * 1024;
     i64 fileSize = file::GetSize(openPath);
     bool eagerLoad = fileSize > 0 && fileSize < kMaxEagerLoadSize;
+    ArchiveLoadMode loadMode = eagerLoad ? ArchiveLoadMode::Eager : ArchiveLoadMode::Lazy;
 
-    if (!archive->Open(openPath, eagerLoad, hintKind, gArchiveProgressCb)) {
+    if (!archive->Open(openPath, loadMode, hintKind, gArchiveProgressCb)) {
         delete archive;
         return nullptr;
     }

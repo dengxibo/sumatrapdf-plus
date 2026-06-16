@@ -94,6 +94,10 @@ struct StyleRule {
     Unit textIndentUnit = inherit;
     AlignAttr textAlign = AlignAttr::NotFound;
 
+    WCHAR* fontFamily = nullptr;
+    float fontSize = -1;
+    Unit fontSizeUnit = inherit;
+
     StyleRule() = default;
 
     void Merge(StyleRule& source);
@@ -185,13 +189,15 @@ class HtmlFormatter {
     float CurrLineDx();
     float CurrLineDy();
     float NewLineX() const;
+    virtual float ListIndentDx() const { return 15.f * listDepth; }
+    virtual float ExtraParagraphDy();
     void LayoutLeftStartingAt(float offX);
     void JustifyLineBoth();
     void JustifyCurrLine(AlignAttr align);
     bool FlushCurrLine(bool isParagraphBreak);
     void UpdateLinkBboxes(HtmlPage* page);
 
-    bool EmitImage(const ByteSlice* img);
+    bool EmitImage(const ByteSlice* img, const SizeF* maxSize = nullptr, bool center = false);
     void EmitHr();
     void EmitTextRun(const char* s, const char* end);
     void EmitElasticSpace();
@@ -212,10 +218,17 @@ class HtmlFormatter {
     void ParseStyleSheet(const char* data, size_t len);
     StyleRule* FindStyleRule(HtmlTag tag, const char* clazz, size_t clazzLen);
     StyleRule ComputeStyleRule(HtmlToken* t);
+    void ApplyStyleRule(const StyleRule& rule);
 
     void AppendInstr(const DrawInstr& di);
     bool IsCurrLineEmpty();
     virtual bool IgnoreText();
+    virtual void OnParserProgress() {}
+    virtual bool BeforeTextRun(const char* s, size_t sLen) {
+        (void)s;
+        (void)sLen;
+        return true;
+    }
 
     void DumpLineDebugInfo();
 
@@ -229,6 +242,14 @@ class HtmlFormatter {
     float defaultFontSize = 0;
     Arena* textAllocator = nullptr;
     mui::ITextRender* textMeasure = nullptr;
+    mui::TextRenderMethod textRenderMethod = mui::TextRenderMethod::GdiplusQuick;
+
+    // Re-create GDI Graphics and textMeasure on the current thread.
+    // Call this when the formatter is transferred to a different thread
+    // (GDI+ Graphics objects must be created/destroyed on the same thread).
+public:
+    void RecreateGfxForCurrentThread();
+protected:
 
     // style stack of the current line
     Vec<DrawStyle> styleStack;
@@ -285,7 +306,7 @@ class HtmlFormatter {
 };
 
 void DrawHtmlPage(Graphics* g, mui::ITextRender* textDraw, Vec<DrawInstr>* drawInstructions, float offX, float offY,
-                  bool showBbox, Color textColor, bool* abortCookie = nullptr);
+                  bool showBbox, Color textColor, bool* abortCookie = nullptr, Color linkColor = Color((ARGB)0));
 
 mui::TextRenderMethod GetTextRenderMethod();
 void SetTextRenderMethod(mui::TextRenderMethod method);

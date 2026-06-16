@@ -260,10 +260,12 @@ bool HuffDicDecompressor::DecodeOne(u32 code, StrBuilder& dst) {
 bool HuffDicDecompressor::Decompress(u8* src, size_t srcSize, StrBuilder& dst) {
     u32 bitsConsumed = 0;
     u32 bits = 0;
+    u32 loopCount = 0;
 
     BitReader br(src, srcSize);
 
     for (;;) {
+        loopCount++;
         if (bitsConsumed > br.BitsLeft()) {
             logf("not enough data\n");
             return false;
@@ -467,6 +469,7 @@ MobiDoc::MobiDoc(const char* filePath) {
 MobiDoc::~MobiDoc() {
     free(fileName);
     free(images);
+    free(kf8FragInsertPos);
     delete huffDic;
     delete doc;
     delete pdbReader;
@@ -545,6 +548,18 @@ bool MobiDoc::ParseHeader() {
         str::Free(v);
     }
     textEncoding = mobiHdr.textEncoding;
+    mobiFormatVersion = mobiHdr.mobiFormatVersion;
+    // NCX (table of contents) index record. MOBI header offset 0xE4 (the
+    // record-relative 0xF4 used by KindleUnpack). (u32)-1 means "no NCX".
+    if ((u32)mobiHdr.indxRec != (u32)-1 && mobiHdr.indxRec != 0) {
+        ncxIndexRec = (u32)mobiHdr.indxRec;
+    }
+    if (mobiHdr.hdrLen >= 236 && mobiDataLen >= 240) {
+        const u8* mobiBase = firstRecData + kPalmDocHeaderLen;
+        ByteOrderDecoder kd(mobiBase + 232, 8, ByteOrderDecoder::BigEndian);
+        kf8SkelIdx = kd.UInt32();
+        kf8FragIdx = kd.UInt32();
+    }
 
     if (pdbReader->GetRecordCount() > mobiHdr.imageFirstRec) {
         imageFirstRec = mobiHdr.imageFirstRec;
@@ -767,6 +782,22 @@ ByteSlice* MobiDoc::GetImage(size_t imgRecIndex) const {
     return &images[imgRecIndex];
 }
 
+// KF8/AZW3 images use src="kindle:embed:XXXX" where XXXX is a base-32 resource index
+// into the dense list of image records (skipping FLIS/FDST/etc.).
+ByteSlice* MobiDoc::GetImageByResourceIndex(size_t resourceIndex) const {
+    size_t seen = 0;
+    for (size_t i = 0; i < imagesCount; i++) {
+        if (images[i].empty()) {
+            continue;
+        }
+        if (seen == resourceIndex) {
+            return &images[i];
+        }
+        seen++;
+    }
+    return nullptr;
+}
+
 ByteSlice* MobiDoc::GetCoverImage() {
     if (!coverImageRec || coverImageRec < imageFirstRec) {
         return nullptr;
@@ -856,6 +887,105 @@ bool MobiDoc::LoadDocRecordIntoBuffer(size_t recNo, StrBuilder& strOut) {
     return false;
 }
 
+// Parallel decompression of the MOBI/KF8 text records.
+//
+// The text records are independently compressed (PalmDoc or HUFF/CDIC), and
+// both PdbReader::GetRecord() and the decompressors only read shared, immutable
+// state (the record table, the file bytes, the Huff dictionary/cache tables).
+// So we can decompress a disjoint, contiguous range of records on each worker
+// thread into its own buffer, then concatenate the buffers in record order to
+// reproduce the exact same byte stream the serial loop would have produced.
+struct MobiDecompressChunk {
+    MobiDoc* doc = nullptr;
+    size_t firstRec = 0; // inclusive, 1-based record number
+    size_t lastRec = 0;  // inclusive
+    StrBuilder* out = nullptr;
+    size_t nFailed = 0;
+};
+
+static DWORD WINAPI MobiDecompressChunkThread(void* arg) {
+    auto* c = (MobiDecompressChunk*)arg;
+    for (size_t i = c->firstRec; i <= c->lastRec; i++) {
+        if (!c->doc->LoadDocRecordIntoBuffer(i, *c->out)) {
+            c->nFailed++;
+        }
+    }
+    return 0;
+}
+
+// decompress all docRecCount records into *doc, using multiple threads when the
+// book is large enough to benefit. Returns the number of records that failed.
+size_t MobiDoc::DecompressRecords() {
+    size_t nFailed = 0;
+
+    size_t nThreads = 1;
+    SYSTEM_INFO si{};
+    GetSystemInfo(&si);
+    if (si.dwNumberOfProcessors > 1) {
+        nThreads = si.dwNumberOfProcessors;
+    }
+    if (nThreads > 8) {
+        nThreads = 8;
+    }
+    // threading overhead isn't worth it for small books
+    const size_t kMinRecsForParallel = 64;
+    if (nThreads > docRecCount / 32) {
+        nThreads = docRecCount / 32;
+    }
+    if (docRecCount < kMinRecsForParallel || nThreads <= 1) {
+        for (size_t i = 1; i <= docRecCount; i++) {
+            if (!LoadDocRecordIntoBuffer(i, *doc)) {
+                nFailed++;
+            }
+        }
+        return nFailed;
+    }
+
+    Vec<MobiDecompressChunk*> chunks;
+    HANDLE threads[8]{};
+    size_t nLaunched = 0;
+    size_t perChunk = docRecCount / nThreads;
+    // approximate per-chunk output size to minimize reallocs
+    size_t capHint = (docUncompressedSize / nThreads) + 64 * 1024;
+    size_t recStart = 1;
+    for (size_t t = 0; t < nThreads; t++) {
+        size_t recEnd = (t == nThreads - 1) ? docRecCount : (recStart + perChunk - 1);
+        auto* c = new MobiDecompressChunk();
+        c->doc = this;
+        c->firstRec = recStart;
+        c->lastRec = recEnd;
+        c->out = new StrBuilder(capHint);
+        chunks.Append(c);
+        recStart = recEnd + 1;
+    }
+
+    for (size_t t = 0; t < chunks.size(); t++) {
+        HANDLE h = CreateThread(nullptr, 0, MobiDecompressChunkThread, chunks[t], 0, nullptr);
+        if (h) {
+            threads[nLaunched++] = h;
+        } else {
+            // couldn't spawn: decompress this chunk inline
+            MobiDecompressChunkThread(chunks[t]);
+        }
+    }
+    if (nLaunched > 0) {
+        WaitForMultipleObjects((DWORD)nLaunched, threads, TRUE, INFINITE);
+        for (size_t t = 0; t < nLaunched; t++) {
+            CloseHandle(threads[t]);
+        }
+    }
+
+    // concatenate in record order, exactly reproducing the serial output
+    for (size_t t = 0; t < chunks.size(); t++) {
+        MobiDecompressChunk* c = chunks[t];
+        doc->Append(*c->out);
+        nFailed += c->nFailed;
+        delete c->out;
+        delete c;
+    }
+    return nFailed;
+}
+
 bool MobiDoc::LoadForPdbReader(PdbReader* pdbReader) {
     this->pdbReader = pdbReader;
     if (!ParseHeader()) {
@@ -864,12 +994,11 @@ bool MobiDoc::LoadForPdbReader(PdbReader* pdbReader) {
 
     ReportIf(doc != nullptr);
     doc = new StrBuilder(docUncompressedSize);
-    size_t nFailed = 0;
-    for (size_t i = 1; i <= docRecCount; i++) {
-        if (!LoadDocRecordIntoBuffer(i, *doc)) {
-            nFailed++;
-        }
-    }
+    DWORD t0 = GetTickCount();
+    size_t nFailed = DecompressRecords();
+    DWORD t1 = GetTickCount();
+    logf("MobiDoc::LoadForPdbReader: decompressed %zu records (%zu bytes) in %u ms\n", docRecCount, doc->size(),
+         t1 - t0);
 
     // TODO: this is a heuristic for https://github.com/sumatrapdfreader/sumatrapdf/issues/1314
     // It has 29 records that fail to decompress because infinite recursion
@@ -893,7 +1022,178 @@ bool MobiDoc::LoadForPdbReader(PdbReader* pdbReader) {
             doc->Append(docUtf8);
         }
     }
+    BuildKf8FragmentTable();
     return true;
+}
+
+static bool ReadIndxStartCount(const u8* data, size_t len, u32* start, u32* count) {
+    if (!data || len < 28 || memcmp(data, "INDX", 4) != 0) {
+        return false;
+    }
+    ByteOrderDecoder d(data + 4, 24, ByteOrderDecoder::BigEndian);
+    d.UInt32(); // len
+    d.UInt32(); // nul1
+    d.UInt32(); // type
+    d.UInt32(); // gen
+    *start = d.UInt32();
+    *count = d.UInt32();
+    return true;
+}
+
+static int ParseKindleBase32(const char* s, size_t len) {
+    if (!s || 0 == len) {
+        return -1;
+    }
+    int result = 0;
+    for (size_t i = 0; i < len; i++) {
+        char c = s[i];
+        int v = -1;
+        if (c >= '0' && c <= '9') {
+            v = c - '0';
+        } else if (c >= 'A' && c <= 'V') {
+            v = c - 'A' + 10;
+        } else if (c >= 'a' && c <= 'v') {
+            v = c - 'a' + 10;
+        }
+        if (v < 0) {
+            return -1;
+        }
+        result = result * 32 + v;
+    }
+    return result;
+}
+
+static bool AppendKf8FragPos(MobiDoc* doc, i32 pos) {
+    size_t newCount = doc->kf8FragInsertPosCount + 1;
+    i32* newBuf = (i32*)realloc(doc->kf8FragInsertPos, newCount * sizeof(i32));
+    if (!newBuf) {
+        return false;
+    }
+    doc->kf8FragInsertPos = newBuf;
+    doc->kf8FragInsertPos[doc->kf8FragInsertPosCount++] = pos;
+    return true;
+}
+
+static size_t ParseKf8FragmentTableAt(MobiDoc* doc, u32 baseIdx) {
+    if (!doc->pdbReader || baseIdx == (u32)-1 || 0 == baseIdx) {
+        return 0;
+    }
+    if (baseIdx >= doc->pdbReader->GetRecordCount()) {
+        return 0;
+    }
+
+    free(doc->kf8FragInsertPos);
+    doc->kf8FragInsertPos = nullptr;
+    doc->kf8FragInsertPosCount = 0;
+
+    auto headerRec = doc->pdbReader->GetRecord(baseIdx);
+    const u8* headerData = headerRec.data();
+    size_t headerLen = headerRec.size();
+    u32 idxStart = 0, sectionCount = 0;
+    if (!ReadIndxStartCount(headerData, headerLen, &idxStart, &sectionCount)) {
+        return 0;
+    }
+
+    for (u32 section = 1; section <= sectionCount; section++) {
+        size_t recNo = baseIdx + section;
+        if (recNo >= doc->pdbReader->GetRecordCount()) {
+            break;
+        }
+        auto dataRec = doc->pdbReader->GetRecord(recNo);
+        const u8* recData = dataRec.data();
+        size_t recLen = dataRec.size();
+        u32 idxt = 0, ecnt = 0;
+        if (!ReadIndxStartCount(recData, recLen, &idxt, &ecnt)) {
+            continue;
+        }
+        if (idxt + 4 + ecnt * 2 > recLen) {
+            continue;
+        }
+        for (u32 j = 0; j < ecnt; j++) {
+            size_t posOff = idxt + 4 + j * 2;
+            u16 sp = ((u16)recData[posOff] << 8) | recData[posOff + 1];
+            u16 ep = 0;
+            if (j + 1 < ecnt) {
+                size_t endOff = idxt + 4 + (j + 1) * 2;
+                ep = ((u16)recData[endOff] << 8) | recData[endOff + 1];
+            } else {
+                ep = (u16)idxt;
+            }
+            if (sp >= recLen || ep > recLen || ep <= sp) {
+                continue;
+            }
+            u8 tlen = recData[sp];
+            if (0 == tlen || sp + 1 + tlen > ep) {
+                continue;
+            }
+            char ident[32]{};
+            size_t copyLen = std::min((size_t)tlen, sizeof(ident) - 1);
+            memcpy(ident, recData + sp + 1, copyLen);
+            if (!AppendKf8FragPos(doc, atoi(ident))) {
+                return doc->kf8FragInsertPosCount;
+            }
+        }
+    }
+
+    return doc->kf8FragInsertPosCount;
+}
+
+bool MobiDoc::BuildKf8FragmentTable() {
+    if (kf8FragInsertPosCount > 0) {
+        return true;
+    }
+    if (mobiFormatVersion < 8 || !pdbReader) {
+        return false;
+    }
+
+    u32 bestIdx = 0;
+    size_t bestCount = 0;
+    const u32 candidates[2] = {kf8FragIdx, kf8SkelIdx};
+    for (int i = 0; i < 2; i++) {
+        u32 idx = candidates[i];
+        if (idx == (u32)-1 || 0 == idx) {
+            continue;
+        }
+        size_t n = ParseKf8FragmentTableAt(this, idx);
+        if (n > bestCount) {
+            bestCount = n;
+            bestIdx = idx;
+        }
+    }
+    if (0 == bestIdx) {
+        return false;
+    }
+    kf8FragIdxUsed = bestIdx;
+    ParseKf8FragmentTableAt(this, bestIdx);
+    return kf8FragInsertPosCount > 0;
+}
+
+int MobiDoc::ResolveKindlePos(const char* url) const {
+    if (!str::StartsWith(url, "kindle:pos:fid:")) {
+        return -1;
+    }
+    const char* fid = url + 15;
+    const char* offMarker = str::Find(fid, ":off:");
+    if (!offMarker) {
+        return -1;
+    }
+    size_t fidLen = (size_t)(offMarker - fid);
+    const char* off = offMarker + 5;
+    size_t offLen = str::Len(off);
+
+    int row = ParseKindleBase32(fid, fidLen);
+    int offVal = ParseKindleBase32(off, offLen);
+    if (row < 0 || offVal < 0) {
+        return -1;
+    }
+    if ((size_t)row >= kf8FragInsertPosCount) {
+        return -1;
+    }
+    i64 pos = (i64)kf8FragInsertPos[row] + offVal;
+    if (pos < 0) {
+        return -1;
+    }
+    return (int)pos;
 }
 
 // don't free the result
@@ -939,6 +1239,378 @@ static const GumboNode* FindMobiTocReference(const GumboNode* node) {
     return nullptr;
 }
 
+// ---------------------------------------------------------------------------
+// MOBI/KF8 NCX (table of contents) index parsing.
+//
+// Some AZW3/MOBI books (e.g. 资治通鉴) store their ToC only in the NCX index
+// records, with no inline <a> anchors in the HTML. The NCX is a chain of INDX
+// records: a header INDX (with a TAGX tag-definition block), N "entry" INDX
+// records, then a few CNCX records holding the label strings. Each entry packs
+// its tags using control bytes; for the ToC we care about:
+//   tag 1  = pos (filepos, MOBI7)         tag 4  = hlvl (depth)
+//   tag 3  = noffs (label offset in CNCX) tag 6  = pos_fid (KF8 fid + offset)
+//   tag 21 = parent  22 = first child  23 = last child
+// Reference: KindleUnpack (mobi_index.py / mobi_ncx.py).
+// ---------------------------------------------------------------------------
+static u32 NcxBE32(const u8* p) {
+    return ((u32)p[0] << 24) | ((u32)p[1] << 16) | ((u32)p[2] << 8) | (u32)p[3];
+}
+static u16 NcxBE16(const u8* p) {
+    return (u16)(((u16)p[0] << 8) | (u16)p[1]);
+}
+
+// big-endian, 7 bits per byte, high bit marks the final byte
+static u32 NcxReadVarWidth(const u8* data, size_t len, size_t& offset) {
+    u32 value = 0;
+    while (offset < len) {
+        u8 b = data[offset++];
+        value = (value << 7) | (b & 0x7f);
+        if (b & 0x80) {
+            break;
+        }
+    }
+    return value;
+}
+
+static int NcxCountSetBits(u32 v) {
+    int c = 0;
+    while (v) {
+        c += (int)(v & 1);
+        v >>= 1;
+    }
+    return c;
+}
+
+struct NcxTagx {
+    u8 tag;
+    u8 numValues;
+    u8 mask;
+    u8 endFlag;
+};
+
+struct NcxIndxHeader {
+    u32 hdrLen;
+    u32 idxt;
+    u32 count;
+    u32 nctoc;
+};
+
+static bool NcxReadIndxHeader(const u8* data, size_t len, NcxIndxHeader* h) {
+    if (!data || len < 0x38 || memcmp(data, "INDX", 4) != 0) {
+        return false;
+    }
+    h->hdrLen = NcxBE32(data + 0x04);
+    h->idxt = NcxBE32(data + 0x14);
+    h->count = NcxBE32(data + 0x18);
+    h->nctoc = NcxBE32(data + 0x34);
+    return true;
+}
+
+// returns controlByteCount, fills tagsOut from the TAGX block at 'start'
+static int NcxReadTagx(const u8* data, size_t len, size_t start, Vec<NcxTagx>& tagsOut) {
+    if (start + 12 > len || memcmp(data + start, "TAGX", 4) != 0) {
+        return 0;
+    }
+    u32 firstEntryOffset = NcxBE32(data + start + 4);
+    u32 controlByteCount = NcxBE32(data + start + 8);
+    for (size_t i = 12; i + 4 <= firstEntryOffset && start + i + 4 <= len; i += 4) {
+        NcxTagx t;
+        t.tag = data[start + i];
+        t.numValues = data[start + i + 1];
+        t.mask = data[start + i + 2];
+        t.endFlag = data[start + i + 3];
+        tagsOut.Append(t);
+    }
+    return (int)controlByteCount;
+}
+
+struct NcxEntry {
+    int pos = -1;
+    int noffs = -1;
+    int hlvl = -1;
+    u32 posFid = 0;
+    u32 posOff = 0;
+    bool hasPosFid = false;
+    int parent = -1;
+    int child1 = -1;
+    int childn = -1;
+};
+
+static void NcxStoreTag(NcxEntry& e, u8 tag, const u32* vals, int nv) {
+    if (nv < 1) {
+        return;
+    }
+    switch (tag) {
+        case 1:
+            e.pos = (int)vals[0];
+            break;
+        case 3:
+            e.noffs = (int)vals[0];
+            break;
+        case 4:
+            e.hlvl = (int)vals[0];
+            break;
+        case 6:
+            e.posFid = vals[0];
+            if (nv >= 2) {
+                e.posOff = vals[1];
+            }
+            e.hasPosFid = true;
+            break;
+        case 21:
+            e.parent = (int)vals[0];
+            break;
+        case 22:
+            e.child1 = (int)vals[0];
+            break;
+        case 23:
+            e.childn = (int)vals[0];
+            break;
+    }
+}
+
+// decode one index entry's tag values (port of KindleUnpack getTagMap)
+static void NcxParseEntryTags(int controlByteCount, const Vec<NcxTagx>& tags, const u8* data, size_t dataLen,
+                              size_t startPos, NcxEntry& e) {
+    struct Pending {
+        u8 tag;
+        int valueCount;
+        int valueBytes;
+        u8 valuesPerEntry;
+    };
+    Pending pend[48];
+    int npend = 0;
+    int controlByteIndex = 0;
+    size_t dataStart = startPos + (size_t)controlByteCount;
+    for (int ti = 0; ti < tags.Size(); ti++) {
+        const NcxTagx& t = tags[ti];
+        if (t.endFlag == 0x01) {
+            controlByteIndex++;
+            continue;
+        }
+        size_t cbPos = startPos + (size_t)controlByteIndex;
+        if (cbPos >= dataLen) {
+            break;
+        }
+        u32 value = (u32)data[cbPos] & t.mask;
+        if (value == 0) {
+            continue;
+        }
+        if (value == t.mask) {
+            if (NcxCountSetBits(t.mask) > 1) {
+                u32 vb = NcxReadVarWidth(data, dataLen, dataStart);
+                if (npend < 48) {
+                    pend[npend++] = {t.tag, -1, (int)vb, t.numValues};
+                }
+            } else {
+                if (npend < 48) {
+                    pend[npend++] = {t.tag, 1, -1, t.numValues};
+                }
+            }
+        } else {
+            u32 mask = t.mask;
+            while ((mask & 1) == 0) {
+                mask >>= 1;
+                value >>= 1;
+            }
+            if (npend < 48) {
+                pend[npend++] = {t.tag, (int)value, -1, t.numValues};
+            }
+        }
+    }
+    for (int pi = 0; pi < npend; pi++) {
+        Pending& p = pend[pi];
+        u32 vals[8];
+        int nv = 0;
+        if (p.valueCount != -1) {
+            for (int i = 0; i < p.valueCount; i++) {
+                for (int k = 0; k < p.valuesPerEntry; k++) {
+                    u32 v = NcxReadVarWidth(data, dataLen, dataStart);
+                    if (nv < 8) {
+                        vals[nv++] = v;
+                    }
+                }
+            }
+        } else {
+            int total = 0;
+            while (total < p.valueBytes) {
+                size_t before = dataStart;
+                u32 v = NcxReadVarWidth(data, dataLen, dataStart);
+                total += (int)(dataStart - before);
+                if (nv < 8) {
+                    vals[nv++] = v;
+                }
+                if (dataStart <= before) {
+                    break;
+                }
+            }
+        }
+        NcxStoreTag(e, p.tag, vals, nv);
+    }
+}
+
+static void NcxEncodeBase32(u32 value, int width, char* out, size_t outSize) {
+    static const char* kDigits = "0123456789ABCDEFGHIJKLMNOPQRSTUV";
+    char tmp[16];
+    int n = 0;
+    if (value == 0) {
+        tmp[n++] = '0';
+    }
+    while (value > 0 && n < 16) {
+        tmp[n++] = kDigits[value % 32];
+        value /= 32;
+    }
+    size_t oi = 0;
+    for (int i = n; i < width && oi + 1 < outSize; i++) {
+        out[oi++] = '0';
+    }
+    for (int i = n - 1; i >= 0 && oi + 1 < outSize; i--) {
+        out[oi++] = tmp[i];
+    }
+    out[oi] = 0;
+}
+
+// returns a heap-allocated UTF-8 label (caller frees), or nullptr
+static char* NcxLookupLabel(const Vec<ByteSlice>& cncx, u32 noffs, int textEncoding) {
+    u32 recIdx = noffs >> 16;
+    u32 off = noffs & 0xffff;
+    if ((int)recIdx >= cncx.Size()) {
+        return nullptr;
+    }
+    const u8* d = cncx[(size_t)recIdx].data();
+    size_t len = cncx[(size_t)recIdx].size();
+    if (!d || off >= len) {
+        return nullptr;
+    }
+    size_t p = off;
+    u32 slen = NcxReadVarWidth(d, len, p);
+    if (slen == 0 || p + slen > len) {
+        if (p >= len) {
+            return nullptr;
+        }
+        slen = (u32)(len - p);
+    }
+    char* raw = (char*)malloc((size_t)slen + 1);
+    if (!raw) {
+        return nullptr;
+    }
+    memcpy(raw, d + p, slen);
+    raw[slen] = 0;
+    if (textEncoding != CP_UTF8) {
+        TempStr u = strconv::ToMultiByteTemp(raw, textEncoding, CP_UTF8);
+        char* res = str::Dup(u ? u : raw);
+        free(raw);
+        return res;
+    }
+    return raw;
+}
+
+bool MobiDoc::ParseNcxToc(EbookTocVisitor* visitor) {
+    if (!pdbReader || ncxIndexRec == (u32)-1 || ncxIndexRec == 0) {
+        return false;
+    }
+    size_t recCount = pdbReader->GetRecordCount();
+    if (ncxIndexRec >= recCount) {
+        return false;
+    }
+
+    // 1. header INDX record: index count, TAGX (tag definitions), CNCX count
+    ByteSlice mainRec = pdbReader->GetRecord(ncxIndexRec);
+    const u8* mdata = mainRec.data();
+    size_t mlen = mainRec.size();
+    NcxIndxHeader mh;
+    if (!NcxReadIndxHeader(mdata, mlen, &mh)) {
+        return false;
+    }
+    Vec<NcxTagx> tags;
+    int controlByteCount = NcxReadTagx(mdata, mlen, mh.hdrLen, tags);
+    if (controlByteCount <= 0 || tags.Size() == 0) {
+        return false;
+    }
+
+    // 2. CNCX label records follow the entry records
+    Vec<ByteSlice> cncx;
+    u32 cncxStart = ncxIndexRec + mh.count + 1;
+    for (u32 j = 0; j < mh.nctoc; j++) {
+        size_t rn = (size_t)cncxStart + j;
+        if (rn >= recCount) {
+            break;
+        }
+        cncx.Append(pdbReader->GetRecord(rn));
+    }
+
+    // 3. entry records: ncxIndexRec+1 .. ncxIndexRec+count
+    Vec<NcxEntry> entries;
+    const u32 kMaxEntries = 50000;
+    for (u32 i = 1; i <= mh.count; i++) {
+        size_t rn = (size_t)ncxIndexRec + i;
+        if (rn >= recCount) {
+            break;
+        }
+        ByteSlice rec = pdbReader->GetRecord(rn);
+        const u8* rd = rec.data();
+        size_t rlen = rec.size();
+        NcxIndxHeader eh;
+        if (!NcxReadIndxHeader(rd, rlen, &eh)) {
+            continue;
+        }
+        size_t idxtPos = eh.idxt;
+        u32 entryCount = eh.count;
+        if (idxtPos + 4 + (size_t)entryCount * 2 > rlen) {
+            continue;
+        }
+        for (u32 j = 0; j < entryCount && entries.Size() < (int)kMaxEntries; j++) {
+            u16 startOff = NcxBE16(rd + idxtPos + 4 + (size_t)j * 2);
+            u16 endOff;
+            if (j + 1 < entryCount) {
+                endOff = NcxBE16(rd + idxtPos + 4 + (size_t)(j + 1) * 2);
+            } else {
+                endOff = (u16)idxtPos;
+            }
+            if (startOff >= rlen || endOff > rlen || endOff <= startOff) {
+                continue;
+            }
+            u8 textLen = rd[startOff];
+            size_t tagStart = (size_t)startOff + 1 + textLen;
+            if (tagStart > rlen) {
+                continue;
+            }
+            NcxEntry e;
+            NcxParseEntryTags(controlByteCount, tags, rd, rlen, tagStart, e);
+            entries.Append(e);
+        }
+    }
+
+    if (entries.Size() == 0) {
+        return false;
+    }
+
+    // 4. emit ToC items in order; build hierarchy from hlvl (depth)
+    int emitted = 0;
+    for (int i = 0; i < entries.Size(); i++) {
+        NcxEntry& e = entries[i];
+        char* label = nullptr;
+        if (e.noffs >= 0) {
+            label = NcxLookupLabel(cncx, (u32)e.noffs, textEncoding);
+        }
+        char link[80];
+        link[0] = 0;
+        if (e.hasPosFid) {
+            char fidStr[16], offStr[24];
+            NcxEncodeBase32(e.posFid, 4, fidStr, sizeof(fidStr));
+            NcxEncodeBase32(e.posOff, 10, offStr, sizeof(offStr));
+            snprintf(link, sizeof(link), "kindle:pos:fid:%s:off:%s", fidStr, offStr);
+        }
+        int level = (e.hlvl >= 0) ? e.hlvl + 1 : 1;
+        const char* name = label ? label : "";
+        visitor->Visit(name, link[0] ? link : nullptr, level);
+        emitted++;
+        free(label);
+    }
+
+    return emitted > 0;
+}
+
 bool MobiDoc::HasToc() {
     if (docTocIndex != kInvalidSize) {
         return docTocIndex < doc->size();
@@ -946,8 +1618,17 @@ bool MobiDoc::HasToc() {
     docTocIndex = doc->size(); // no ToC
 
     // search for <reference type="toc" filepos="N"/>
+    // The <guide>/<reference> element lives in the document <head> at the very
+    // start, so only parse an early window. Gumbo-parsing the whole (potentially
+    // ~18MB) document here used to add ~1s to the load, blocking the first paint
+    // (HasToc runs synchronously on the UI thread while rebuilding the menu/toolbar).
     GumboOptions opts = GumboMakeOptions();
-    GumboOutput* output = gumbo_parse_with_options(&opts, doc->Get(), doc->size());
+    size_t refParseLen = doc->size();
+    const size_t kMaxTocRefParseLen = 256 * 1024; // 256 KB
+    if (refParseLen > kMaxTocRefParseLen) {
+        refParseLen = kMaxTocRefParseLen;
+    }
+    GumboOutput* output = gumbo_parse_with_options(&opts, doc->Get(), refParseLen);
     if (!output) {
         return false;
     }
@@ -962,6 +1643,37 @@ bool MobiDoc::HasToc() {
         }
     }
     gumbo_destroy_output(&opts, output);
+
+    // AZW3/MOBI files often lack <reference type="toc">; fall back to the
+    // visible "目录" heading (HTML text node), not metadata substrings.
+    if (docTocIndex >= doc->size()) {
+        const char* html = doc->Get();
+        size_t htmlLen = doc->size();
+        const char kTocTitleUtf8[] = "\xe7\x9b\xae\xe5\xbd\x95"; // 目录
+        size_t needleLen = sizeof(kTocTitleUtf8) - 1;
+        size_t searchLimit = htmlLen;
+        if (searchLimit > 200000) {
+            searchLimit = 200000;
+        }
+        for (size_t i = 500; i + needleLen <= searchLimit; i++) {
+            if (memcmp(html + i, kTocTitleUtf8, needleLen) != 0) {
+                continue;
+            }
+            if (i > 0 && html[i - 1] == '>' && i + needleLen < htmlLen && html[i + needleLen] == '<') {
+                docTocIndex = i;
+                break;
+            }
+        }
+        if (docTocIndex >= doc->size()) {
+            for (size_t i = 500; i + needleLen <= searchLimit; i++) {
+                if (memcmp(html + i, kTocTitleUtf8, needleLen) == 0) {
+                    docTocIndex = i;
+                    break;
+                }
+            }
+        }
+    }
+
     return docTocIndex < doc->size();
 }
 
@@ -986,6 +1698,7 @@ struct MobiTocWalker {
     EbookTocVisitor* visitor = nullptr;
     int itemLevel = 0;
     bool stopped = false;
+    int visitedCount = 0; // number of ToC items actually emitted
 
     void Walk(const GumboNode* node);
     void WalkChildren(const GumboVector* children);
@@ -1021,6 +1734,7 @@ void MobiTocWalker::Walk(const GumboNode* node) {
             StrBuilder text;
             AppendDeepText(node, text);
             if (!text.IsEmpty()) {
+                visitedCount++;
                 visitor->Visit(text.LendData(), attr->value, itemLevel);
             }
         }
@@ -1038,7 +1752,7 @@ void MobiTocWalker::Walk(const GumboNode* node) {
 
 bool MobiDoc::ParseToc(EbookTocVisitor* visitor) {
     if (!HasToc()) {
-        return false;
+        return ParseNcxToc(visitor);
     }
 
     // there doesn't seem to be a standard for Mobi ToCs, so we try to
@@ -1046,9 +1760,18 @@ bool MobiDoc::ParseToc(EbookTocVisitor* visitor) {
     GumboOptions opts = GumboMakeOptions();
     const char* tocStart = doc->Get() + docTocIndex;
     size_t tocLen = doc->size() - docTocIndex;
+    // The ToC always sits at the very start of this region and is delimited by an
+    // <mbp:pagebreak> shortly after. Parsing the whole (potentially ~18MB) rest of
+    // the document just to find nothing is extremely slow, so bound the parse: a
+    // real ToC is tiny and well within this limit, and the walker stops at the
+    // first pagebreak anyway.
+    const size_t kMaxTocParseLen = 2 * 1024 * 1024; // 2 MB
+    if (tocLen > kMaxTocParseLen) {
+        tocLen = kMaxTocParseLen;
+    }
     GumboOutput* output = gumbo_parse_with_options(&opts, tocStart, tocLen);
     if (!output) {
-        return false;
+        return ParseNcxToc(visitor);
     }
 
     MobiTocWalker walker;
@@ -1056,7 +1779,12 @@ bool MobiDoc::ParseToc(EbookTocVisitor* visitor) {
     walker.Walk(output->document);
 
     gumbo_destroy_output(&opts, output);
-    return true;
+
+    if (walker.visitedCount > 0) {
+        return true;
+    }
+    // inline HTML had no usable ToC anchors: fall back to the NCX index
+    return ParseNcxToc(visitor);
 }
 
 bool MobiDoc::IsSupportedFileType(Kind kind) {

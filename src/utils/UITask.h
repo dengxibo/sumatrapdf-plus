@@ -14,5 +14,7 @@ void DrainQueue();
 
 void Post(const Func0& fn, Kind kind = nullptr);
 void PostOptimized(const Func0& fn, Kind kind = nullptr);
+// Run fn on the UI thread; blocks the calling thread until done.
+void Invoke(const Func0& fn, Kind kind = nullptr);
 
 } // namespace uitask

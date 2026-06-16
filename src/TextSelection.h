@@ -26,6 +26,9 @@ struct TextSelection {
     void SelectUpTo(int pageNo, int glyphIx);
     void SelectUpTo(int pageNo, double x, double y);
     void SelectWordAt(int pageNo, double x, double y);
+    int GlyphIndexAt(int pageNo, double x, double y);
+    void SelectGlyphRange(int pageNo, int startGlyph, int endGlyph);
+    char* ExtractWordAt(int pageNo, double x, double y);
     void CopySelection(TextSelection* orig);
     WCHAR* ExtractText(const char* lineSep);
     void Reset();
@@ -36,4 +39,5 @@ struct TextSelection {
 };
 
 uint distSq(int x, int y);
+bool isCjkWordChar(WCHAR c);
 bool isWordChar(WCHAR c);

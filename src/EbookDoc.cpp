@@ -45,7 +45,10 @@ static uint GetCodepageFromPI(const char* xmlPI) {
         const char* namePart;
         uint codePage;
     } static encodings[] = {
-        {"UTF", CP_UTF8}, {"utf", CP_UTF8}, {"1252", 1252}, {"1251", 1251},
+        {"UTF", CP_UTF8},
+        {"utf", CP_UTF8},
+        {"1252", 1252},
+        {"1251", 1251},
         // TODO: any other commonly used codepages?
     };
     for (size_t i = 0; i < dimof(encodings); i++) {
@@ -252,7 +255,10 @@ const char* EPUB_ENC_NS = "http://www.w3.org/2001/04/xmlenc#";
 EpubDoc::EpubDoc(const char* fileName) {
     this->fileName.SetCopy(fileName);
     InitializeCriticalSection(&zipAccess);
-    archive = OpenArchiveFromFile(fileName, /*eagerLoad=*/true, gArchiveProgressCb);
+    // EPUB images are loaded on demand (see GetImageData), so skip
+    // inflating them at open time — large image-heavy books open much
+    // faster this way.
+    archive = OpenArchiveFromFile(fileName, ArchiveLoadMode::EagerSkipImages, gArchiveProgressCb);
 }
 
 EpubDoc::EpubDoc(IStream* stream) {
@@ -811,7 +817,7 @@ static ByteSlice takeFileData(MultiFormatArchive* archive, size_t fileId) {
 }
 
 static ByteSlice loadFromFile(Fb2Doc* doc) {
-    MultiFormatArchive* archive = OpenArchiveFromFile(doc->fileName, /*eagerLoad=*/true, gArchiveProgressCb);
+    MultiFormatArchive* archive = OpenArchiveFromFile(doc->fileName, ArchiveLoadMode::Eager, gArchiveProgressCb);
     if (!archive) {
         return file::ReadFile(doc->fileName);
     }

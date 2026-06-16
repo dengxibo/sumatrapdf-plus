@@ -10,6 +10,7 @@ void CreateTabbar(MainWindow*);
 WindowTab* AddTabToWindow(MainWindow* win, WindowTab* tab);
 void TabsOnCloseWindow(MainWindow*);
 void TabsOnChangedDoc(MainWindow*);
+void UpdateTabTitle(WindowTab* tab);
 void TabsSelect(MainWindow* win, int tabIndex);
 void TabsOnCtrlTab(MainWindow* win, bool reverse);
 // also shows/hides the tabbar when necessary

@@ -60,6 +60,9 @@ struct ChmModel : DocController {
     void CopySelection() const;
     LRESULT PassUIMsg(UINT msg, WPARAM wp, LPARAM lp) const;
 
+    bool UsesNativeHtmlWindow() const;
+    void ReloadCurrentPageForThemeChange();
+
     // for HtmlWindowCallback (called through htmlWindowCb)
     bool OnBeforeNavigate(const char* url, bool newWindow);
     void OnDocumentComplete(const char* url);

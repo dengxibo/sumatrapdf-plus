@@ -100,7 +100,7 @@ struct IPageDestination : KindBase {
 };
 
 static inline char* PageDestGetName(IPageDestination* dest) {
-    return dest->GetName2();
+    return dest ? dest->GetName2() : nullptr;
 }
 
 static inline char* PageDestGetValue(IPageDestination* dest) {
@@ -527,8 +527,11 @@ class EngineBase {
   protected:
     virtual ~EngineBase();
 
+    void EnsurePagesTextSize();
+
     // cached text, one entry per page (lazily allocated)
     PageText* pagesText = nullptr;
+    int pagesTextSize = 0;
     CRITICAL_SECTION textCacheLock;
 };
 

@@ -10,6 +10,7 @@ bool HasThumbnail(FileState* fs);
 void SetThumbnail(FileState* fs, RenderedBitmap* bmp);
 void SaveThumbnail(FileState* fs);
 void RemoveThumbnail(FileState* fs);
+void InvalidateLoadedThumbnails();
 
 TempStr GetThumbnailCacheDirTemp();
 char* GetThumbnailPathTemp(const char* filePath);

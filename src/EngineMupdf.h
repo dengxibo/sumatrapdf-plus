@@ -123,9 +123,21 @@ class EngineMupdf : public EngineBase {
     StrVec* pageLabels = nullptr;
 
     TocTree* tocTree = nullptr;
+    bool tocTreeStale = false;
 
     // password used to decrypt the document (needed for re-encryption/decryption)
     char* pdfPassword = nullptr;
+
+    // reflowable (EPUB etc.) progressive open
+    float reflowLayoutW = 612.f;
+    float reflowLayoutH = 792.f;
+    volatile LONG reflowableLoadingInProgress = 0;
+    volatile LONG reflowableLoadAbort = 0;
+    volatile LONG reflowChaptersCounted = 0;
+    // set while the UI/render thread needs exclusive docLock access
+    volatile LONG reflowUiWantsDocLock = 0;
+    // 0-based global page index at the start of each chapter (built during background load)
+    Vec<int> reflowChapterStartPage;
 
     // used to track "dirty" state of annotations. not perfect because if we add and delete
     // the same annotation, we should be back to 0
@@ -145,6 +157,8 @@ class EngineMupdf : public EngineBase {
     fz_matrix viewctm(int pageNo, float zoom, int rotation);
     fz_matrix viewctm(fz_page* page, float zoom, int rotation) const;
     TocItem* BuildTocTree(TocItem* parent, fz_outline* outline, int& idCounter, bool isAttachment);
+    int OutlinePageNoForItem(fz_link* link, fz_outline* outline);
+    void InvalidateTocTree();
     TempStr ExtractFontListTemp();
 
     ByteSlice LoadStreamFromPDFFile(const char* filePath);

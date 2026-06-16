@@ -23,6 +23,10 @@ EBookUI* GetEBookUI() {
     return nullptr;
 }
 
+bool IsDarkThemeSelected() {
+    return false;
+}
+
 VOID PdfFilter::CleanUp() {
     logf("PdfFilter::Cleanup()\n");
     if (m_pdfEngine) {

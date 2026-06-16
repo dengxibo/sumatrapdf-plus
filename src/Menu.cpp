@@ -47,6 +47,7 @@
 
 #include "utils/Log.h"
 
+
 struct BuildMenuCtx {
     WindowTab* tab = nullptr;
     bool isCbx = false;
@@ -79,9 +80,6 @@ struct MenuOwnerDrawInfo {
 constexpr UINT kMenuSeparatorID = (UINT)-13;
 
 static bool gAddCrashMeMenu = false;
-static bool ShowDebugMenu() {
-    return gIsDebugBuild || gIsPreReleaseBuild;
-}
 
 // note: IDM_VIEW_SINGLE_PAGE - IDM_VIEW_CONTINUOUS and also
 //       CmdZoomFIT_PAGE - CmdZoomCUSTOM must be in a continuous range!
@@ -583,56 +581,15 @@ static MenuDef menuDefHelp[] = {
 };
 //] ACCESSKEY_GROUP Help Menu
 
-//[ ACCESSKEY_GROUP Debug Menu
-static MenuDef menuDefDebug[] = {
-    {
-        "Show links",
-        CmdToggleLinks,
-    },
-    {
-        "Download symbols",
-        CmdDebugDownloadSymbols,
-    },
-    {
-        "Test app",
-        CmdDebugTestApp,
-    },
-    {
-        "Show notification",
-        CmdDebugShowNotif,
-    },
-    {
-        nullptr,
-        0,
-    },
-};
-//] ACCESSKEY_GROUP Debug Menu
-
 //[ ACCESSKEY_GROUP Context Menu (Selection)
 static MenuDef menuDefSelection[] = {
     {
-        _TRN("&Translate With Google"),
-        CmdTranslateSelectionWithGoogle,
+        _TRN("Ask &Doubao"),
+        CmdAnalyzeSelectionWithDoubao,
     },
     {
-        _TRN("Translate with &DeepL"),
-        CmdTranslateSelectionWithDeepL,
-    },
-    {
-        _TRN("Search With &Google"),
-        CmdSearchSelectionWithGoogle,
-    },
-    {
-        _TRN("Search With &Bing"),
-        CmdSearchSelectionWithBing,
-    },
-    {
-        _TRN("Search with &Wikipedia"),
-        CmdSearchSelectionWithWikipedia,
-    },
-    {
-        _TRN("Search with &Google Scholar"),
-        CmdSearchSelectionWithGoogleScholar,
+        kMenuSeparator,
+        0,
     },
     {
         _TRN("Select &All"),
@@ -648,32 +605,16 @@ static MenuDef menuDefSelection[] = {
 //[ ACCESSKEY_GROUP Menu (Selection)
 static MenuDef menuDefMainSelection[] = {
     {
+        _TRN("Ask &Doubao"),
+        CmdAnalyzeSelectionWithDoubao,
+    },
+    {
+        kMenuSeparator,
+        0,
+    },
+    {
         _TRN("&Copy To Clipboard"),
         CmdCopySelection,
-    },
-    {
-        _TRN("&Translate With Google"),
-        CmdTranslateSelectionWithGoogle,
-    },
-    {
-        _TRN("Translate with &DeepL"),
-        CmdTranslateSelectionWithDeepL,
-    },
-    {
-        _TRN("&Search With Google"),
-        CmdSearchSelectionWithGoogle,
-    },
-    {
-        _TRN("Search With &Bing"),
-        CmdSearchSelectionWithBing,
-    },
-    {
-        _TRN("Search with &Wikipedia"),
-        CmdSearchSelectionWithWikipedia,
-    },
-    {
-        _TRN("Search with &Google Scholar"),
-        CmdSearchSelectionWithGoogleScholar,
     },
     {
         _TRN("Select &All"),
@@ -719,10 +660,6 @@ static MenuDef menuDefMenubar[] = {
     {
         _TRN("&Help"),
         (UINT_PTR)menuDefHelp,
-    },
-    {
-        "Debug",
-        (UINT_PTR)menuDefDebug,
     },
     {
         nullptr,
@@ -889,16 +826,20 @@ static MenuDef menuDefDocumentOperations[] = {
 //[ ACCESSKEY_GROUP Context Menu (Main)
 static MenuDef menuDefContext[] = {
     {
+        _TRN("Ask &Doubao"),
+        CmdAnalyzeSelectionWithDoubao,
+    },
+    {
+        kMenuSeparator,
+        0,
+    },
+    {
         _TRN("&Copy Selection"),
         CmdCopySelection,
     },
     {
         _TRN("Create Annotation From Selection"),
         (UINT_PTR)menuDefCreateAnnotFromSelection,
-    },
-    {
-        _TRN("S&election"),
-        (UINT_PTR)menuDefSelection,
     },
     {
         _TRN("Copy &Link Address"),
@@ -1054,12 +995,7 @@ static UINT_PTR disableIfDirectoryOrBrokenPDF[] = {
 
 UINT_PTR disableIfNoSelection[] = {
     CmdCopySelection,
-    CmdTranslateSelectionWithDeepL,
-    CmdTranslateSelectionWithGoogle,
-    CmdSearchSelectionWithWikipedia,
-    CmdSearchSelectionWithGoogleScholar,
-    CmdSearchSelectionWithBing,
-    CmdSearchSelectionWithGoogle,
+    CmdAnalyzeSelectionWithDoubao,
     CmdCreateAnnotHighlight,
     CmdCreateAnnotSquiggly,
     CmdCreateAnnotStrikeOut,
@@ -1085,12 +1021,7 @@ static UINT_PTR menusNoTranslate[] = {
 
 UINT_PTR removeIfNoInternetPerms[] = {
     CmdCheckUpdate,
-    CmdTranslateSelectionWithGoogle,
-    CmdTranslateSelectionWithDeepL,
-    CmdSearchSelectionWithGoogle,
-    CmdSearchSelectionWithBing,
-    CmdSearchSelectionWithWikipedia,
-    CmdSearchSelectionWithGoogleScholar,
+    CmdAnalyzeSelectionWithDoubao,
     CmdHelpVisitWebsite,
     CmdHelpOpenManualOnWebsite,
     CmdHelpOpenKeyboardShortcuts,
@@ -1116,13 +1047,7 @@ UINT_PTR removeIfNoPrefsPerms[] = {
 };
 
 UINT_PTR removeIfNoCopyPerms[] = {
-    // TODO: probably those are covered by menuDefSelection
-    CmdTranslateSelectionWithGoogle,
-    CmdTranslateSelectionWithDeepL,
-    CmdSearchSelectionWithGoogle,
-    CmdSearchSelectionWithBing,
-    CmdSearchSelectionWithWikipedia,
-    CmdSearchSelectionWithGoogleScholar,
+    CmdAnalyzeSelectionWithDoubao,
     CmdSelectAll,
 
     CmdCopySelection,
@@ -1325,12 +1250,6 @@ static void AppendThemesToMenu(HMENU m) {
     AppendCommandsToMenu(m, cmds, true);
 }
 
-static void AppendSelectionHandlersToMenu(HMENU m, bool isEnabled) {
-    Vec<CustomCommand*> cmds;
-    GetCommandsWithOrigId(cmds, CmdSelectionHandler);
-    AppendCommandsToMenu(m, cmds, isEnabled);
-}
-
 static void AppendExternalViewersToMenu(HMENU menuFile, const char* filePath) {
     if (!CanAccessDisk() || (filePath && !file::Exists(filePath))) {
         return;
@@ -1518,13 +1437,7 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, int cmdId) {
 HMENU BuildMenuFromDef(MenuDef* menuDef, HMENU menu, BuildMenuCtx* ctx) {
     ReportIf(!menu);
 
-    bool isDebugMenu = menuDef == menuDefDebug;
     int i = 0;
-
-    // insert before built-in selection handlers
-    if (menuDef == menuDefSelection) {
-        AppendSelectionHandlersToMenu(menu, ctx ? ctx->hasSelection : false);
-    }
 
     if (menuDef == menuDefThemes) {
         AppendThemesToMenu(menu);
@@ -1553,10 +1466,6 @@ HMENU BuildMenuFromDef(MenuDef* menuDef, HMENU menu, BuildMenuCtx* ctx) {
             addExternalViewersNext = true;
         }
 
-        if (menuDef == menuDefMainSelection && cmdId == CmdTranslateSelectionWithGoogle) {
-            AppendSelectionHandlersToMenu(menu, true);
-        }
-
         MenuDef* subMenuDef = (MenuDef*)md.idOrSubmenu;
         // hacky but works: small number is command id, large is submenu (a pointer)
         bool isSubMenu = md.idOrSubmenu > CmdLast + 10000;
@@ -1573,13 +1482,11 @@ HMENU BuildMenuFromDef(MenuDef* menuDef, HMENU menu, BuildMenuCtx* ctx) {
             removeMenu |= !ctx->isCursorOnPage && (subMenuDef == menuDefCreateAnnotUnderCursor);
             removeMenu |= !ctx->hasSelection && (subMenuDef == menuDefCreateAnnotFromSelection);
         }
-        removeMenu |= ((subMenuDef == menuDefDebug) && !ShowDebugMenu());
         if (removeMenu) {
             continue;
         }
 
-        bool noTranslate = isDebugMenu || cmdIdInList(menusNoTranslate);
-        noTranslate |= (subMenuDef == menuDefDebug);
+        bool noTranslate = cmdIdInList(menusNoTranslate);
         const char* title = md.title;
         if (!noTranslate) {
             title = trans::GetTranslation(md.title);

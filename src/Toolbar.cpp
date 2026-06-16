@@ -35,6 +35,7 @@ extern "C" {
 #include "Menu.h"
 #include "SearchAndDDE.h"
 #include "Toolbar.h"
+
 #include "Translations.h"
 #include "SvgIcons.h"
 #include "SumatraConfig.h"
@@ -45,12 +46,14 @@ extern "C" {
 
 #include "utils/Log.h"
 
+
 // https://docs.microsoft.com/en-us/windows/win32/controls/toolbar-control-reference
 
 static int kButtonSpacingX = 4;
 
-// distance between label and edit field
 constexpr int kTextPaddingRight = 6;
+// padding after the find separator line to "Find:"
+constexpr int kFindLabelPadAfterSep = 8;
 
 struct ToolbarButtonInfo {
     /* index in the toolbar bitmap (-1 for separators) */
@@ -68,20 +71,26 @@ constexpr int WarningMsgId = (int)CmdLast + 17;
 static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::Open, CmdOpenFile, _TRN("Open")},
     {TbIcon::Print, CmdPrint, _TRN("Print")},
+    {TbIcon::None, 0, nullptr},          // separator
     {TbIcon::None, PageInfoId, nullptr}, // text box for page number + show current page / no of pages
     {TbIcon::PagePrev, CmdGoToPrevPage, _TRN("Previous Page")},
     {TbIcon::PageNext, CmdGoToNextPage, _TRN("Next Page")},
     {TbIcon::None, 0, nullptr}, // separator
+    {TbIcon::Bookmark, CmdToggleBookmarks, _TRN("Show &Bookmarks")},
     {TbIcon::LayoutContinuous, CmdZoomFitWidthAndContinuous, _TRN("Fit Width and Show Pages Continuously")},
     {TbIcon::LayoutSinglePage, CmdZoomFitPageAndSinglePage, _TRN("Fit a Single Page")},
     {TbIcon::RotateLeft, CmdRotateLeft, _TRN("Rotate &Left")},
     {TbIcon::RotateRight, CmdRotateRight, _TRN("Rotate &Right")},
     {TbIcon::ZoomOut, CmdZoomOut, _TRN("Zoom Out")},
     {TbIcon::ZoomIn, CmdZoomIn, _TRN("Zoom In")},
+    {TbIcon::None, 0, nullptr}, // separator before find
     {TbIcon::None, CmdFindFirst, nullptr},
     {TbIcon::SearchPrev, CmdFindPrev, _TRN("Find Previous")},
     {TbIcon::SearchNext, CmdFindNext, _TRN("Find Next")},
     {TbIcon::MatchCase, CmdFindToggleMatchCase, _TRN("Toggle Match Case")},
+    {TbIcon::None, 0, nullptr}, // separator
+    {TbIcon::Dictionary, CmdToggleDoubleClickWordLookup, _TRN("Toggle Double-Click Word Lookup")},
+    {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
 };
 // unicode chars: https://www.compart.com/en/unicode/U+25BC
 
@@ -147,6 +156,52 @@ void SetToolbarButtonCheckedState(MainWindow* win, int cmdId, bool isChecked) {
     }
 }
 
+static void UpdateThemeToolbarButton(MainWindow* win) {
+    int buttons[4];
+    int n = GetToolbarButtonsByID(CmdToggleLightDarkTheme, buttons);
+    if (n == 0) {
+        return;
+    }
+    bool isDark = ThemeUsesDarkChrome();
+    // show current theme: moon = dark, sun = light
+    TbIcon icon = isDark ? TbIcon::ThemeMoon : TbIcon::ThemeSun;
+    const char* tip = isDark ? _TRN("&Dark Theme") : _TRN("&Light Theme");
+    TempStr tipTranslated = (TempStr)trans::GetTranslation(tip);
+
+    TBBUTTONINFOW bi{};
+    bi.cbSize = sizeof(bi);
+    bi.dwMask = TBIF_IMAGE | TBIF_TEXT | TBIF_BYINDEX;
+    bi.iImage = (int)icon;
+    bi.pszText = ToWStrTemp(tipTranslated);
+    for (int i = 0; i < n; i++) {
+        SendMessageW(win->hwndToolbar, TB_SETBUTTONINFO, buttons[i], (LPARAM)&bi);
+    }
+}
+
+void UpdateDoubleClickWordLookupToolbarButton(MainWindow* win) {
+    int buttons[4];
+    int n = GetToolbarButtonsByID(CmdToggleDoubleClickWordLookup, buttons);
+    if (n == 0) {
+        return;
+    }
+    bool enabled = gGlobalPrefs->enableDoubleClickWordLookup;
+    // show current state: normal icon = on, slashed icon = off
+    TbIcon icon = enabled ? TbIcon::Dictionary : TbIcon::DictionaryOff;
+    const char* tip =
+        enabled ? _TRN("Double-Click Word Lookup (enabled)") : _TRN("Double-Click Word Lookup (disabled)");
+    TempStr tipTranslated = (TempStr)trans::GetTranslation(tip);
+
+    TBBUTTONINFOW bi{};
+    bi.cbSize = sizeof(bi);
+    bi.dwMask = TBIF_IMAGE | TBIF_TEXT | TBIF_BYINDEX;
+    bi.iImage = (int)icon;
+    bi.pszText = ToWStrTemp(tipTranslated);
+    for (int i = 0; i < n; i++) {
+        SendMessageW(win->hwndToolbar, TB_SETBUTTONINFOW, buttons[i], (LPARAM)&bi);
+    }
+    InvalidateRect(win->hwndToolbar, nullptr, FALSE);
+}
+
 static void TbSetButtonDx(HWND hwndToolbar, int cmd, int dx) {
     TBBUTTONINFOW bi{};
     bi.cbSize = sizeof(bi);
@@ -173,12 +228,16 @@ static bool IsCmdAvailable(MainWindow* win, int cmdId) {
         case CmdRotateLeft:
         case CmdRotateRight:
             return NeedsRotateUI(win);
+        case CmdToggleBookmarks:
+            return true;
         case CmdFindFirst:
         case CmdFindNext:
         case CmdFindPrev:
         case CmdFindToggleMatchCase:
             return NeedsFindUI(win);
         case PageInfoId:
+            return true;
+        case CmdToggleLightDarkTheme:
             return true;
     }
     auto ctx = NewBuildMenuCtx(win->CurrentTab(), Point{0, 0});
@@ -198,6 +257,10 @@ static bool IsCmdEnabled(MainWindow* win, int cmdId) {
         case CmdPrevTabSmart:
             return SettingsUseTabs();
         case PageInfoId:
+            return true;
+        case CmdToggleBookmarks:
+            return win->IsDocLoaded() && win->ctrl && win->ctrl->HasToc();
+        case CmdToggleLightDarkTheme:
             return true;
     }
 
@@ -220,7 +283,7 @@ static bool IsCmdEnabled(MainWindow* win, int cmdId) {
 
     // If no file open, only enable open button
     if (!win->IsDocLoaded()) {
-        return CmdOpenFile == cmdId;
+        return CmdOpenFile == cmdId || CmdToggleLightDarkTheme == cmdId;
     }
 
     switch (cmdId) {
@@ -296,7 +359,7 @@ void UpdateToolbarButtonsToolTipsForWindow(MainWindow* win) {
         WPARAM buttonId = (WPARAM)i;
         TbSetButtonInfoById(hwnd, buttonId, &binfo);
     }
-    // TODO: need an explicit tooltip window https://chatgpt.com/c/18fb77c8-761c-4314-a1ac-e55b93edfeef
+    UpdateThemeToolbarButton(win);
 #if 0
     if (gCustomToolbarButtons) {
         int n = gCustomToolbarButtons->Size();
@@ -327,7 +390,7 @@ void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility) {
     for (int i = 0; i < n; i++) {
         auto& tb = GetToolbarButtonInfoByIdx(i);
         int cmdId = tb.cmdId;
-        if (setButtonsVisibility && cmdId != WarningMsgId) {
+        if (setButtonsVisibility && cmdId != WarningMsgId && cmdId != 0) {
             bool hide = !IsCmdAvailable(win, cmdId);
             UpdateToolbarButtonStateByIdx(hwnd, i, hide, TBSTATE_HIDDEN);
         }
@@ -340,8 +403,11 @@ void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility) {
 
     // Find labels may have to be repositioned if some
     // toolbar buttons were shown/hidden
-    if (setButtonsVisibility && NeedsFindUI(win)) {
-        UpdateToolbarFindText(win);
+    if (setButtonsVisibility) {
+        SendMessageW(hwnd, TB_AUTOSIZE, 0, 0);
+        if (NeedsFindUI(win)) {
+            UpdateToolbarFindText(win);
+        }
     }
 
     // update dirty (unsaved annotations) flag and tooltip on each tab
@@ -430,6 +496,232 @@ void UpdateFindbox(MainWindow* win) {
     }
 }
 
+static void ConfigureToolbarColors(HWND hwndToolbar) {
+    if (!hwndToolbar) {
+        return;
+    }
+    // disable themed toolbar rendering so NM_CUSTOMDRAW can override button highlights
+    SetWindowTheme(hwndToolbar, L"", L"");
+}
+
+static void DrawToolbarSeparatorLine(HDC hdc, const RECT& rc, COLORREF lineCol) {
+    HPEN pen = CreatePen(PS_SOLID, 1, lineCol);
+    HGDIOBJ oldPen = SelectObject(hdc, pen);
+    int x = rc.left + (rc.right - rc.left) / 2;
+    int padY = (rc.bottom - rc.top) / 4;
+    if (padY < 4) {
+        padY = 4;
+    }
+    MoveToEx(hdc, x, rc.top + padY, nullptr);
+    LineTo(hdc, x, rc.bottom - padY);
+    SelectObject(hdc, oldPen);
+    DeleteObject(pen);
+}
+
+static bool IsToolbarSeparatorAtIndex(HWND hwnd, int idx, TBBUTTON* outTb) {
+    if (idx < 0) {
+        return false;
+    }
+    TBBUTTON tb{};
+    if (!SendMessageW(hwnd, TB_GETBUTTON, idx, (LPARAM)&tb)) {
+        return false;
+    }
+    if ((tb.fsStyle & BTNS_SEP) == 0) {
+        return false;
+    }
+    if (outTb) {
+        *outTb = tb;
+    }
+    return true;
+}
+
+static bool TryGetToolbarSeparatorItem(HWND hwnd, DWORD spec, int* outIdx, TBBUTTON* outTb) {
+    int btnCount = (int)SendMessageW(hwnd, TB_BUTTONCOUNT, 0, 0);
+    if ((int)spec < btnCount && IsToolbarSeparatorAtIndex(hwnd, (int)spec, outTb)) {
+        *outIdx = (int)spec;
+        return true;
+    }
+    TBBUTTONINFOW tbi{};
+    tbi.cbSize = sizeof(tbi);
+    tbi.dwMask = TBIF_STYLE | TBIF_COMMAND;
+    LRESULT idx = SendMessageW(hwnd, TB_GETBUTTONINFO, spec, (LPARAM)&tbi);
+    if (idx >= 0 && (tbi.fsStyle & BTNS_SEP)) {
+        *outIdx = (int)idx;
+        if (outTb) {
+            SendMessageW(hwnd, TB_GETBUTTON, (int)idx, (LPARAM)outTb);
+        }
+        return true;
+    }
+    return false;
+}
+
+static bool IsRealToolbarSeparatorIdx(int idx) {
+    if (idx < 0 || idx >= kButtonsCount) {
+        return false;
+    }
+    const ToolbarButtonInfo& bi = gToolbarButtons[idx];
+    return bi.bmpIndex == TbIcon::None && bi.cmdId == 0;
+}
+
+static int FindBeforeFindSeparatorIdx() {
+    for (int i = 1; i < kButtonsCount; i++) {
+        if (gToolbarButtons[i].cmdId != CmdFindFirst) {
+            continue;
+        }
+        const ToolbarButtonInfo& prev = gToolbarButtons[i - 1];
+        if (SkipBuiltInButton(prev) && prev.cmdId == 0) {
+            return i - 1;
+        }
+    }
+    return -1;
+}
+
+static bool IsToolbarButtonHidden(HWND hwnd, int idx) {
+    TBBUTTONINFOW bi{};
+    bi.cbSize = sizeof(bi);
+    bi.dwMask = TBIF_STATE;
+    SendMessageW(hwnd, TB_GETBUTTONINFOW, idx, (LPARAM)&bi);
+    return (bi.fsState & TBSTATE_HIDDEN) != 0;
+}
+
+static bool GetVisibleNeighborItemRect(HWND hwnd, int startIdx, int delta, RECT* rc) {
+    int count = (int)SendMessageW(hwnd, TB_BUTTONCOUNT, 0, 0);
+    for (int j = startIdx; j >= 0 && j < count; j += delta) {
+        if (IsToolbarButtonHidden(hwnd, j)) {
+            continue;
+        }
+        if (SendMessageW(hwnd, TB_GETITEMRECT, j, (LPARAM)rc)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool GetToolbarSeparatorLineRect(HWND hwnd, int sepIdx, RECT* outRc) {
+    RECT rcSep{};
+    if (SendMessageW(hwnd, TB_GETITEMRECT, sepIdx, (LPARAM)&rcSep)) {
+        int width = rcSep.right - rcSep.left;
+        if (width > 0) {
+            *outRc = rcSep;
+            return true;
+        }
+    }
+    RECT rcPrev{}, rcNext{};
+    if (!GetVisibleNeighborItemRect(hwnd, sepIdx - 1, -1, &rcPrev)) {
+        return false;
+    }
+    if (!GetVisibleNeighborItemRect(hwnd, sepIdx + 1, 1, &rcNext)) {
+        return false;
+    }
+    int x = (rcPrev.right + rcNext.left) / 2;
+    outRc->left = x;
+    outRc->right = x + 1;
+    outRc->top = rcPrev.top;
+    outRc->bottom = rcPrev.bottom;
+    return true;
+}
+
+static void PaintToolbarSeparatorsInHdc(HWND hwnd, HDC hdc) {
+    int count = (int)SendMessageW(hwnd, TB_BUTTONCOUNT, 0, 0);
+    if (count <= 0) {
+        return;
+    }
+    COLORREF bgCol = ThemeControlBackgroundColor();
+    COLORREF lineCol = ThemeUsesDarkChrome() ? AccentColor(bgCol, 55) : AccentColor(bgCol, 40);
+    for (int i = 0; i < count; i++) {
+        if (!IsRealToolbarSeparatorIdx(i)) {
+            continue;
+        }
+        RECT rc{};
+        if (!GetToolbarSeparatorLineRect(hwnd, i, &rc)) {
+            continue;
+        }
+        DrawToolbarSeparatorLine(hdc, rc, lineCol);
+    }
+}
+
+// suppress default white/light-blue pressed and checked fills; use theme colors instead
+static LRESULT PrepaintToolbarItem(NMTBCUSTOMDRAW* custDraw) {
+    UINT itemState = custDraw->nmcd.uItemState;
+    COLORREF bgCol = ThemeControlBackgroundColor();
+    COLORREF txtCol = ThemeWindowTextColor();
+    if (itemState & CDIS_DISABLED) {
+        txtCol = ThemeWindowTextDisabledColor();
+    }
+    custDraw->clrText = txtCol;
+    custDraw->clrTextHighlight = txtCol;
+    custDraw->clrBtnFace = bgCol;
+    custDraw->clrBtnHighlight = bgCol;
+    custDraw->clrHighlightHotTrack = bgCol;
+    custDraw->nStringBkMode = TRANSPARENT;
+    custDraw->nHLStringBkMode = TRANSPARENT;
+
+    bool isSelected = (itemState & CDIS_SELECTED) != 0;
+    bool isHot = (itemState & CDIS_HOT) != 0;
+
+    custDraw->nmcd.uItemState &= ~(CDIS_CHECKED | CDIS_SELECTED);
+
+    COLORREF fillCol = bgCol;
+    if (!isSelected && isHot) {
+        fillCol = ThemeUsesDarkChrome() ? AccentColor(bgCol, 18) : AccentColor(bgCol, -10);
+    }
+
+    HBRUSH br = CreateSolidBrush(fillCol);
+    FillRect(custDraw->nmcd.hdc, &custDraw->nmcd.rc, br);
+    DeleteObject(br);
+
+    return TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND;
+}
+
+static LRESULT PrepaintToolbarSeparatorItem(NMTBCUSTOMDRAW* custDraw) {
+    COLORREF bgCol = ThemeControlBackgroundColor();
+    HBRUSH br = CreateSolidBrush(bgCol);
+    FillRect(custDraw->nmcd.hdc, &custDraw->nmcd.rc, br);
+    DeleteObject(br);
+    return TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND;
+}
+
+constexpr UINT_PTR kToolbarNotifySubclassId = 1;
+
+// installed after darkmodelib so toolbar NM_CUSTOMDRAW uses theme colors, not white press chrome
+static LRESULT CALLBACK ToolbarNotifyWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass,
+                                             DWORD_PTR dwRefData) {
+    if (WM_NOTIFY == uMsg) {
+        NMHDR* hdr = (NMHDR*)lParam;
+        auto win = FindMainWindowByHwnd(hWnd);
+        if (!win && hdr->hwndFrom) {
+            win = FindMainWindowByHwnd(hdr->hwndFrom);
+        }
+        if (win && hdr->code == NM_CUSTOMDRAW && hdr->hwndFrom == win->hwndToolbar) {
+            NMTBCUSTOMDRAW* custDraw = (NMTBCUSTOMDRAW*)hdr;
+            switch (custDraw->nmcd.dwDrawStage) {
+                case CDDS_PREPAINT: {
+                    HBRUSH brush = CreateSolidBrush(ThemeControlBackgroundColor());
+                    FillRect(custDraw->nmcd.hdc, &custDraw->nmcd.rc, brush);
+                    DeleteObject(brush);
+                    return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
+                }
+                case CDDS_ITEMPREPAINT: {
+                    DWORD spec = custDraw->nmcd.dwItemSpec;
+                    int idx = -1;
+                    TBBUTTON tb{};
+                    if (TryGetToolbarSeparatorItem(win->hwndToolbar, spec, &idx, &tb)) {
+                        return PrepaintToolbarSeparatorItem(custDraw);
+                    }
+                    return PrepaintToolbarItem(custDraw);
+                }
+                case CDDS_POSTPAINT:
+                    PaintToolbarSeparatorsInHdc(win->hwndToolbar, custDraw->nmcd.hdc);
+                    return CDRF_DODEFAULT;
+            }
+        }
+    }
+    if (WM_NCDESTROY == uMsg) {
+        RemoveWindowSubclass(hWnd, ToolbarNotifyWndProc, uIdSubclass);
+    }
+    return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+}
+
 LRESULT CALLBACK ReBarWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass,
                               DWORD_PTR dwRefData) {
     if (WM_ERASEBKGND == uMsg && ThemeColorizeControls()) {
@@ -443,41 +735,6 @@ LRESULT CALLBACK ReBarWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
         FillRect(hdc, &rect, bgBrush);
         DeleteObject(bgBrush);
         return 1;
-    }
-    if (WM_NOTIFY == uMsg) {
-        auto win = FindMainWindowByHwnd(hWnd);
-        NMHDR* hdr = (NMHDR*)lParam;
-        HWND chwnd = hdr->hwndFrom;
-        if (hdr->code == NM_CUSTOMDRAW) {
-            if (win && win->hwndToolbar == chwnd) {
-                NMTBCUSTOMDRAW* custDraw = (NMTBCUSTOMDRAW*)hdr;
-                switch (custDraw->nmcd.dwDrawStage) {
-                    case CDDS_PREPAINT:
-                        return CDRF_NOTIFYITEMDRAW;
-
-                    case CDDS_ITEMPREPAINT: {
-                        auto col = ThemeWindowTextColor();
-                        // col = RGB(255, 0, 0);
-                        // SetTextColor(custDraw->nmcd.hdc, col);
-                        UINT itemState = custDraw->nmcd.uItemState;
-                        if (itemState & CDIS_DISABLED) {
-                            // TODO: this doesn't work
-                            col = ThemeWindowTextDisabledColor();
-                            // col = RGB(255, 0, 0);
-                            custDraw->clrText = col;
-                        } else if (false && itemState & CDIS_SELECTED) {
-                            custDraw->clrText = RGB(0, 255, 0);
-                        } else if (false && itemState & CDIS_GRAYED) {
-                            custDraw->clrText = RGB(0, 0, 255);
-                        } else {
-                            custDraw->clrText = col;
-                        }
-                        return CDRF_DODEFAULT;
-                        // return CDRF_NEWFONT;
-                    }
-                }
-            }
-        }
     }
     // allow window dragging from empty rebar area (main toolbar)
     if (WM_LBUTTONDOWN == uMsg) {
@@ -667,6 +924,85 @@ static LRESULT CALLBACK WndProcEditSearch(HWND hwnd, UINT msg, WPARAM wp, LPARAM
     return ret;
 }
 
+static int FindLabelXAfterToolbarAnchor(HWND hwndToolbar, HWND hwndFrame, const RECT& anchorR, const RECT& findSlotR) {
+    int labelPad = DpiScale(hwndFrame, kFindLabelPadAfterSep);
+    int minSepDx = DpiScale(hwndFrame, 6);
+    int sepDx = findSlotR.left - anchorR.right;
+    if (sepDx < minSepDx) {
+        sepDx = minSepDx;
+    }
+    return anchorR.right + sepDx + labelPad;
+}
+
+
+static bool LayoutToolbarFindControls(MainWindow* win, Size size, int findDy, int minFindBoxDx) {
+    int labelPad = DpiScale(win->hwndFrame, kFindLabelPadAfterSep);
+    int edgePadding = GetSystemMetrics(SM_CXEDGE);
+    int sepIdx = FindBeforeFindSeparatorIdx();
+
+    RECT anchorR{}, findSlotR{}, searchPrevR{};
+    TbGetRectById(win->hwndToolbar, CmdZoomIn, &anchorR);
+    TbGetRectById(win->hwndToolbar, CmdFindFirst, &findSlotR);
+    TbGetRectById(win->hwndToolbar, CmdFindPrev, &searchPrevR);
+    if (searchPrevR.left <= anchorR.right || searchPrevR.left <= findSlotR.left) {
+        return false;
+    }
+
+    RECT sepRc{};
+    int sepRight = findSlotR.left;
+    if (sepIdx >= 0 && GetToolbarSeparatorLineRect(win->hwndToolbar, sepIdx, &sepRc)) {
+        sepRight = sepRc.right;
+    }
+    int currX = FindLabelXAfterToolbarAnchor(win->hwndToolbar, win->hwndFrame, anchorR, findSlotR);
+
+    int findBoxDx = searchPrevR.left - currX - size.dx - edgePadding * 2;
+    if (findBoxDx < minFindBoxDx) {
+        findBoxDx = minFindBoxDx;
+    }
+
+    int slotOffset = currX - findSlotR.left;
+    if (slotOffset < 0) {
+        slotOffset = labelPad;
+    }
+    int findAreaDx = slotOffset + size.dx + findBoxDx + edgePadding;
+    TbSetButtonDx(win->hwndToolbar, CmdFindFirst, findAreaDx);
+    SendMessageW(win->hwndToolbar, TB_AUTOSIZE, 0, 0);
+    UpdateWindow(win->hwndToolbar);
+
+    TbGetRectById(win->hwndToolbar, CmdZoomIn, &anchorR);
+    TbGetRectById(win->hwndToolbar, CmdFindFirst, &findSlotR);
+    TbGetRectById(win->hwndToolbar, CmdFindPrev, &searchPrevR);
+    if (searchPrevR.left <= anchorR.right || searchPrevR.left <= findSlotR.left) {
+        return false;
+    }
+    if (sepIdx >= 0 && GetToolbarSeparatorLineRect(win->hwndToolbar, sepIdx, &sepRc)) {
+        sepRight = sepRc.right;
+    }
+    currX = FindLabelXAfterToolbarAnchor(win->hwndToolbar, win->hwndFrame, anchorR, findSlotR);
+    findBoxDx = searchPrevR.left - currX - size.dx - edgePadding * 2;
+    if (findBoxDx < minFindBoxDx) {
+        findBoxDx = minFindBoxDx;
+    }
+    if (searchPrevR.left <= currX + (int)size.dx) {
+        return false;
+    }
+
+    int currY = (findSlotR.bottom + findSlotR.top - findDy) / 2;
+    int x = currX;
+    int y = (findDy - size.dy + 1) / 2 + currY;
+    MoveWindow(win->hwndFindLabel, x, y, size.dx, size.dy, TRUE);
+    x = currX + size.dx;
+    MoveWindow(win->hwndFindBg, x, currY, findBoxDx, findDy, FALSE);
+    x = currX + size.dx + edgePadding;
+    y = (findDy - size.dy + 1) / 2 + currY;
+    MoveWindow(win->hwndFindEdit, x, y, findBoxDx - 2 * edgePadding, size.dy, FALSE);
+    UpdateWindow(win->hwndFindLabel);
+    UpdateWindow(win->hwndFindBg);
+    UpdateWindow(win->hwndFindEdit);
+
+    return true;
+}
+
 void UpdateToolbarFindText(MainWindow* win) {
     if (!win->hwndToolbar) {
         return;
@@ -688,34 +1024,31 @@ void UpdateToolbarFindText(MainWindow* win) {
     const char* text = _TRA("Find:");
     HwndSetText(win->hwndFindLabel, text);
 
-    Rect findWndRect = WindowRect(win->hwndFindBg);
+    SendMessageW(win->hwndToolbar, TB_AUTOSIZE, 0, 0);
+    UpdateWindow(win->hwndToolbar);
 
-    RECT r{};
-    TbGetRectById(win->hwndToolbar, CmdZoomIn, &r);
-    int currX = r.right + DpiScale(win->hwndToolbar, 10);
-    int currY = (r.bottom - findWndRect.dy) / 2;
+    Rect findWndRect = WindowRect(win->hwndFindBg);
+    int findDy = findWndRect.dy;
+    int minFindBoxDx = findWndRect.dx;
+    if (minFindBoxDx <= 0) {
+        minFindBoxDx = HwndMeasureText(win->hwndFrame, "this is a story of my", nullptr).dx;
+    }
 
     Size size = HwndMeasureText(win->hwndFindLabel, text);
     size.dx += DpiScale(win->hwndFrame, kTextPaddingRight);
     size.dx += DpiScale(win->hwndFrame, kButtonSpacingX);
 
-    int padding = GetSystemMetrics(SM_CXEDGE);
-    int x = currX;
-    int y = (findWndRect.dy - size.dy + 1) / 2 + currY;
-    MoveWindow(win->hwndFindLabel, x, y, size.dx, size.dy, TRUE);
-    x = currX + size.dx;
-    y = currY;
-    MoveWindow(win->hwndFindBg, x, y, findWndRect.dx, findWndRect.dy, FALSE);
-    x = currX + size.dx + padding;
-    y = (findWndRect.dy - size.dy + 1) / 2 + currY;
-    int dx = findWndRect.dx - 2 * padding;
-    MoveWindow(win->hwndFindEdit, x, y, dx, size.dy, FALSE);
+    if (!LayoutToolbarFindControls(win, size, findDy, minFindBoxDx)) {
+        SendMessageW(win->hwndToolbar, TB_AUTOSIZE, 0, 0);
+        UpdateWindow(win->hwndToolbar);
+        LayoutToolbarFindControls(win, size, findDy, minFindBoxDx);
+    }
 
-    dx = size.dx + findWndRect.dx + 12;
-    TbSetButtonDx(win->hwndToolbar, CmdFindFirst, dx);
+    InvalidateRect(win->hwndToolbar, nullptr, FALSE);
 }
 
 void UpdateToolbarState(MainWindow* win) {
+    UpdateDoubleClickWordLookupToolbarButton(win);
     if (!win->IsDocLoaded()) {
         return;
     }
@@ -733,6 +1066,7 @@ void UpdateToolbarState(MainWindow* win) {
             win->CurrentTab()->prevZoomVirtual = kInvalidZoom;
         }
     }
+    SetToolbarButtonCheckedState(win, CmdToggleBookmarks, win->tocVisible);
 }
 
 static void CreateFindBox(MainWindow* win, HFONT hfont, int iconDy) {
@@ -927,8 +1261,18 @@ void UpdateToolbarPageText(MainWindow* win, int pageCount, bool updateOnly) {
     bi.dwMask = TBIF_SIZE;
     SendMessageW(win->hwndToolbar, TB_GETBUTTONINFO, PageInfoId, (LPARAM)&bi);
     size2.dx += size.dx + pageWndRect.dx + 12;
+    int oldPageSlotDx = bi.cx;
+    bool pageSlotResized = false;
     if (bi.cx != size2.dx || !updateOnly) {
         TbSetButtonDx(win->hwndToolbar, PageInfoId, size2.dx);
+        pageSlotResized = (oldPageSlotDx != size2.dx);
+    }
+    if (pageSlotResized) {
+        SendMessageW(win->hwndToolbar, TB_AUTOSIZE, 0, 0);
+        UpdateWindow(win->hwndToolbar);
+        if (NeedsFindUI(win)) {
+            UpdateToolbarFindText(win);
+        }
     }
     InvalidateRect(win->hwndToolbar, nullptr, TRUE);
 }
@@ -973,19 +1317,6 @@ static void CreatePageBox(MainWindow* win, HFONT font, int iconDy) {
     win->hwndPageEdit = page;
     win->hwndPageBg = pageBg;
     win->hwndPageTotal = total;
-}
-
-void LogBitmapInfo(HBITMAP hbmp) {
-    BITMAP bmpInfo;
-    GetObject(hbmp, sizeof(BITMAP), &bmpInfo);
-    logf("dx: %d, dy: %d, stride: %d, bitsPerPixel: %d\n", (int)bmpInfo.bmWidth, (int)bmpInfo.bmHeight,
-         (int)bmpInfo.bmWidthBytes, (int)bmpInfo.bmBitsPixel);
-    u8* bits = (u8*)bmpInfo.bmBits;
-    u8* d;
-    for (int y = 0; y < 5; y++) {
-        d = bits + (size_t)bmpInfo.bmWidthBytes * y;
-        logf("y: %d, d: 0x%p\n", y, d);
-    }
 }
 
 static void BlitPixmap(u8* dstSamples, ptrdiff_t dstStride, fz_pixmap* src, int dstX, int dstY, COLORREF bgCol) {
@@ -1112,6 +1443,9 @@ static int SetToolbarIconsImageList(MainWindow* win) {
 
 void UpdateToolbarAfterThemeChange(MainWindow* win) {
     SetToolbarIconsImageList(win);
+    ConfigureToolbarColors(win->hwndToolbar);
+    UpdateThemeToolbarButton(win);
+    UpdateDoubleClickWordLookupToolbarButton(win);
     HwndScheduleRepaint(win->hwndToolbar);
 }
 
@@ -1124,7 +1458,7 @@ void CreateToolbar(MainWindow* win) {
     HWND hwndParent = win->hwndFrame;
 
     DWORD style = WS_CHILD | WS_CLIPCHILDREN | RBS_VARHEIGHT;
-    if (IsCurrentThemeDefault()) {
+    if (!ThemeUsesDarkChrome()) {
         style |= WS_BORDER | RBS_BANDBORDERS;
     }
     style |= CCS_NODIVIDER | CCS_NOPARENTALIGN | WS_VISIBLE;
@@ -1140,9 +1474,7 @@ void CreateToolbar(MainWindow* win) {
     rbi.fMask = 0;
     rbi.himl = (HIMAGELIST) nullptr;
     SendMessageW(win->hwndReBar, RB_SETBARINFO, 0, (LPARAM)&rbi);
-    if (!IsCurrentThemeDefault()) {
-        SendMessageW(win->hwndReBar, RB_SETBKCOLOR, 0, ThemeControlBackgroundColor());
-    }
+    SendMessageW(win->hwndReBar, RB_SETBKCOLOR, 0, ThemeControlBackgroundColor());
 
     style = WS_CHILD | WS_CLIPSIBLINGS | TBSTYLE_TOOLTIPS | TBSTYLE_FLAT;
     style |= TBSTYLE_LIST | CCS_NODIVIDER | CCS_NOPARENTALIGN;
@@ -1154,16 +1486,14 @@ void CreateToolbar(MainWindow* win) {
     win->hwndToolbar = hwndToolbar;
     SendMessageW(hwndToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
 
-    if (!UseDarkModeLib() || !DarkMode::isEnabled()) {
-        if (!IsCurrentThemeDefault()) {
-            // without this custom draw code doesn't work
-            SetWindowTheme(hwndToolbar, L"", L"");
-        }
-    }
+    // always disable themed toolbar rendering; custom draw handles button states
+    SetWindowTheme(hwndToolbar, L"", L"");
+    ConfigureToolbarColors(hwndToolbar);
 
     if (UseDarkModeLib()) {
         DarkMode::setWindowNotifyCustomDrawSubclass(win->hwndReBar);
     }
+    SetWindowSubclass(win->hwndReBar, ToolbarNotifyWndProc, kToolbarNotifySubclassId, 0);
 
     int iconSize = SetToolbarIconsImageList(win);
 
@@ -1244,7 +1574,7 @@ void CreateToolbar(MainWindow* win) {
     rbBand.cbSize = sizeof(REBARBANDINFOW);
     rbBand.fMask = RBBIM_STYLE | RBBIM_CHILD | RBBIM_CHILDSIZE;
     rbBand.fStyle = RBBS_FIXEDSIZE;
-    if (theme::IsAppThemed() && IsCurrentThemeDefault()) {
+    if (theme::IsAppThemed() && !ThemeUsesDarkChrome()) {
         rbBand.fStyle |= RBBS_CHILDEDGE;
     }
     rbBand.hbmBack = nullptr;
@@ -1262,11 +1592,7 @@ void CreateToolbar(MainWindow* win) {
     int newSize = (defFontSize * gGlobalPrefs->toolbarSize) / kDefaultIconSize;
     int maxFontSize = iconSize - yPad * 2 - 2; // -2 determined empirically
     if (newSize > maxFontSize) {
-        logfa("CreateToolbar: setting toolbar font size to %d (scaled was %d, default size: %d)\n", maxFontSize,
-              newSize, defFontSize);
         newSize = maxFontSize;
-    } else {
-        logfa("CreateToolbar: setting toolbar font size to %d (default size: %d)\n", newSize, defFontSize);
     }
     auto font = GetDefaultGuiFontOfSize(newSize);
     HwndSetFont(hwndToolbar, font);
@@ -1276,6 +1602,8 @@ void CreateToolbar(MainWindow* win) {
 
     UpdateToolbarPageText(win, -1);
     UpdateToolbarFindText(win);
+    UpdateThemeToolbarButton(win);
+    UpdateDoubleClickWordLookupToolbarButton(win);
 }
 
 void ReCreateToolbar(MainWindow* win) {
@@ -1545,7 +1873,7 @@ void CreateMenuBarRebar(MainWindow* win) {
     SendMessageW(win->hwndMenuToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
 
     if (!UseDarkModeLib() || !DarkMode::isEnabled()) {
-        if (!IsCurrentThemeDefault()) {
+        if (ThemeUsesDarkChrome()) {
             SetWindowTheme(win->hwndMenuToolbar, L"", L"");
         }
     }

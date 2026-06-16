@@ -227,7 +227,7 @@ static void PaintScrollbar(OverlayScrollbar* sb) {
 
     bool thick = IsThick(sb);
     // non-default themes define exact colors, so draw thick scrollbar fully opaque
-    BYTE alpha = thick ? (IsCurrentThemeDefault() ? kAlphaThick : 255) : kAlphaThin;
+    BYTE alpha = thick ? (ThemeUsesDarkChrome() ? 255 : kAlphaThick) : kAlphaThin;
 
     auto premultiply = [](COLORREF c, BYTE a) -> DWORD {
         BYTE r = (BYTE)MulDiv(GetRValue(c), a, 255);

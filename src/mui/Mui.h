@@ -34,6 +34,7 @@ CachedFont* GetCachedFont(const WCHAR* name, float sizePt, FontStyle style);
 
 Graphics* AllocGraphicsForMeasureText();
 void FreeGraphicsForMeasureText(Graphics* gfx);
+void FreeGraphicsForMeasureTextAnyThread(Graphics* gfx);
 
 } // namespace mui
 

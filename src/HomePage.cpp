@@ -54,9 +54,7 @@ You can [toggle toolbar](CmdToggleToolbar) with (Key/CmdToggleToolbar).
 You can [edit PDF annotations](Help/Editing-annotations).
 )";
 
-constexpr const char* sumatraPromos = R"(Try [Edna](https://edna.arslexis.io): a note taking web app for power users.
-Try [MarkLexis](https://marklexis.arslexis.io): a bookmarking web application.
-)";
+constexpr const char* sumatraPromos = "";
 
 // TODO: leaks if set
 const char* promoFromServer = nullptr;
@@ -807,6 +805,12 @@ LRESULT CALLBACK WndProcAbout(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 constexpr const WCHAR* kAboutClassName = L"SUMATRA_PDF_ABOUT";
 
+void CloseAboutWindow() {
+    if (gHwndAbout) {
+        DestroyWindow(gHwndAbout);
+    }
+}
+
 void ShowAboutWindow(MainWindow* win) {
     if (gHwndAbout) {
         SetActiveWindow(gHwndAbout);
@@ -1199,12 +1203,7 @@ void LayoutHomePage(HomePageLayout& l) {
             }
             RenderedBitmap* thumbImg = LoadThumbnail(fs);
             if (thumbImg) {
-                Size szThumb = thumbImg->GetSize();
-                if (szThumb.dx != kThumbnailDx || szThumb.dy != kThumbnailDy) {
-                    rcPage.dy = szThumb.dy * kThumbnailDx / szThumb.dx;
-                    rcPage.y += kThumbnailDy - rcPage.dy;
-                }
-                thumb.szThumb = szThumb;
+                thumb.szThumb = thumbImg->GetSize();
             }
             thumb.rcPage = rcPage;
             int iconSpace = DpiScale(hdc, 20);
@@ -1272,6 +1271,108 @@ static void GetFileStateIcon(FileState* fs) {
     fs->iconIdx = sfi.iIcon;
 }
 
+constexpr int kThumbCornerRadius = 10;
+
+static void FillRoundedRect(HDC hdc, const Rect& rc, int radius, COLORREF col) {
+    HRGN rgn = CreateRoundRectRgn(rc.x, rc.y, rc.x + rc.dx, rc.y + rc.dy, radius, radius);
+    HBRUSH br = CreateSolidBrush(col);
+    FillRgn(hdc, rgn, br);
+    DeleteObject(br);
+    DeleteObject(rgn);
+}
+
+static void DrawRoundedRectBorder(HDC hdc, const Rect& rc, int radius, HPEN pen) {
+    SelectObject(hdc, pen);
+    SelectObject(hdc, GetStockBrush(NULL_BRUSH));
+    RoundRect(hdc, rc.x, rc.y, rc.x + rc.dx, rc.y + rc.dy, radius, radius);
+}
+
+static void DrawThumbnailCardShadow(HDC hdc, const Rect& page, int radius) {
+    COLORREF bg = ThemeMainWindowBackgroundColor();
+    int offX = DpiScale(hdc, 2);
+    int offY = DpiScale(hdc, 3);
+    Rect sh = page;
+    sh.Offset(offX, offY);
+    FillRoundedRect(hdc, sh, radius, AccentColor(bg, 22));
+    sh = page;
+    sh.Offset(offX / 2, offY / 2 + DpiScale(hdc, 1));
+    FillRoundedRect(hdc, sh, radius, AccentColor(bg, 12));
+}
+
+// thumbnails that failed to render often come back as a uniform near-black bitmap
+static bool IsThumbnailMostlyBlank(RenderedBitmap* bmp) {
+    if (!bmp || !bmp->IsValid()) {
+        return true;
+    }
+    BitmapPixels* pixels = GetBitmapPixels(bmp->GetBitmap());
+    if (!pixels || !pixels->pixels) {
+        if (pixels) {
+            free(pixels);
+        }
+        return false;
+    }
+
+    Size sz = pixels->size;
+    int step = 12;
+    float maxLightness = 0;
+    for (int y = 0; y < sz.dy; y += step) {
+        for (int x = 0; x < sz.dx; x += step) {
+            COLORREF c = GetPixel(pixels, x, y);
+            float lightness = GetLightness(c);
+            if (lightness > maxLightness) {
+                maxLightness = lightness;
+            }
+        }
+    }
+    if (!pixels->hdc) {
+        free(pixels);
+    } else {
+        FinalizeBitmapPixels(pixels);
+    }
+    return maxLightness < 0.08f;
+}
+
+static void DrawThumbnailPlaceholder(HDC hdc, FileState* fs, const Rect& page) {
+    SHFILEINFO sfi{};
+    WCHAR* pathW = ToWStrTemp(fs->filePath);
+    DWORD flags = SHGFI_ICON | SHGFI_LARGEICON;
+    HIMAGELIST himl = (HIMAGELIST)SHGetFileInfoW(pathW, 0, &sfi, sizeof(sfi), flags);
+    if (!himl || !sfi.hIcon) {
+        return;
+    }
+    int drawDx = DpiScale(hdc, 48);
+    int drawDy = DpiScale(hdc, 48);
+    int x = page.x + (page.dx - drawDx) / 2;
+    int y = page.y + (page.dy - drawDy) / 2;
+    DrawIconEx(hdc, x, y, sfi.hIcon, drawDx, drawDy, 0, nullptr, DI_NORMAL);
+    DestroyIcon(sfi.hIcon);
+}
+
+static void DrawThumbnailCard(HDC hdc, const Rect& page, FileState* fs, RenderedBitmap* thumbImg, HPEN borderPen) {
+    DrawThumbnailCardShadow(hdc, page, kThumbCornerRadius);
+
+    bool showPlaceholder = !thumbImg || IsThumbnailMostlyBlank(thumbImg);
+    if (showPlaceholder) {
+        FillRoundedRect(hdc, page, kThumbCornerRadius, ThemeThumbnailBackgroundColor());
+    }
+
+    {
+        int savedDC = SaveDC(hdc);
+        HRGN clip = CreateRoundRectRgn(page.x, page.y, page.x + page.dx, page.y + page.dy, kThumbCornerRadius,
+                                       kThumbCornerRadius);
+        ExtSelectClipRgn(hdc, clip, RGN_AND);
+        if (showPlaceholder) {
+            DrawThumbnailPlaceholder(hdc, fs, page);
+        } else {
+            thumbImg->Blit(hdc, page);
+        }
+        RestoreDC(hdc, savedDC);
+        DeleteObject(clip);
+    }
+
+    DrawRoundedRectBorder(hdc, page, kThumbCornerRadius, borderPen);
+}
+
 static void DrawHomePageLayout(HomePageLayout& l) {
     bool isRtl = IsUIRtl();
     auto hdc = l.hdc;
@@ -1313,7 +1414,7 @@ static void DrawHomePageLayout(HomePageLayout& l) {
     }
     HFONT fontText = CreateSimpleFont(hdc, "MS Shell Dlg", 14);
 
-    AutoDeletePen penThumbBorder(CreatePen(PS_SOLID, kThumbsBorderDx, color));
+    AutoDeletePen penThumbBorder(CreatePen(PS_SOLID, kThumbsBorderDx, ThemeThumbnailBorderColor()));
     color = ThemeWindowLinkColor();
     AutoDeletePen penLinkLine(CreatePen(PS_SOLID, 1, color));
 
@@ -1323,7 +1424,6 @@ static void DrawHomePageLayout(HomePageLayout& l) {
     SetTextColor(hdc, color);
 
     l.freqRead->Paint(hdc);
-    SelectObject(hdc, GetStockBrush(NULL_BRUSH));
 
     // clip thumbnails to the middle area
     {
@@ -1338,17 +1438,7 @@ static void DrawHomePageLayout(HomePageLayout& l) {
         const Rect& page = thumb.rcPage;
 
         RenderedBitmap* thumbImg = LoadThumbnail(fs);
-        if (thumbImg) {
-            int savedDC = SaveDC(hdc);
-            HRGN clip = CreateRoundRectRgn(page.x, page.y, page.x + page.dx, page.y + page.dy, 10, 10);
-            ExtSelectClipRgn(hdc, clip, RGN_AND);
-            // note: we used to invert bitmaps in dark theme but that doesn't
-            // make sense for thumbnails
-            thumbImg->Blit(hdc, page);
-            RestoreDC(hdc, savedDC);
-            DeleteObject(clip);
-        }
-        RoundRect(hdc, page.x, page.y, page.x + page.dx, page.y + page.dy, 10, 10);
+        DrawThumbnailCard(hdc, page, fs, thumbImg, penThumbBorder);
 
         const Rect& rect = thumb.rcText;
         char* path = fs->filePath;

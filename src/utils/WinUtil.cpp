@@ -998,6 +998,441 @@ bool LaunchBrowser(const char* url) {
     return LaunchFileShell(url, nullptr, "open");
 }
 
+constexpr int kBrowserReuseMax = 8;
+
+static char* gBrowserReuseKeys[kBrowserReuseMax];
+static HWND gBrowserReuseHwnds[kBrowserReuseMax];
+
+static bool IsBrowserTopLevelWindow(HWND hwnd) {
+    if (!hwnd || !IsWindow(hwnd) || !IsWindowVisible(hwnd)) {
+        return false;
+    }
+    WCHAR cls[64]{};
+    if (!GetClassNameW(hwnd, cls, dimof(cls))) {
+        return false;
+    }
+    return str::Eq(cls, L"Chrome_WidgetWin_1") || str::Eq(cls, L"MozillaWindowClass");
+}
+
+static TempStr BrowserReuseKeyFromUrlTemp(const char* url) {
+    if (!url) {
+        return nullptr;
+    }
+    const char* end = url + str::Len(url);
+    const char* q = str::FindChar(url, '?');
+    const char* h = str::FindChar(url, '#');
+    if (q && q < end) {
+        end = q;
+    } else if (h && h < end) {
+        end = h;
+    }
+    return str::DupTemp(url, end - url);
+}
+
+static TempStr HostFromUrlTemp(const char* url) {
+    const char* start = str::Find(url, "://");
+    start = start ? start + 3 : url;
+    const char* end = start;
+    while (*end && *end != '/' && *end != '?' && *end != '#') {
+        end++;
+    }
+    TempStr host = str::DupTemp(start, end - start);
+    if (str::StartsWith(host, "www.")) {
+        return host + 4;
+    }
+    return host;
+}
+
+static HWND FindStoredBrowserHwnd(const char* key) {
+    if (!key) {
+        return nullptr;
+    }
+    for (int i = 0; i < kBrowserReuseMax; i++) {
+        if (gBrowserReuseKeys[i] && str::Eq(gBrowserReuseKeys[i], key) && IsBrowserTopLevelWindow(gBrowserReuseHwnds[i])) {
+            return gBrowserReuseHwnds[i];
+        }
+    }
+    return nullptr;
+}
+
+static bool BrowserWindowTitleMatchesHost(HWND hwnd, const char* host) {
+    if (!hwnd || !host) {
+        return false;
+    }
+    WCHAR title[512]{};
+    GetWindowTextW(hwnd, title, dimof(title));
+    return str::FindI(ToUtf8Temp(title), host) != nullptr;
+}
+
+static bool BrowserWindowMatchesService(HWND hwnd, const char* reuseKey, const char* host) {
+    if (BrowserWindowTitleMatchesHost(hwnd, host)) {
+        return true;
+    }
+    WCHAR title[512]{};
+    GetWindowTextW(hwnd, title, dimof(title));
+    TempStr titleA = ToUtf8Temp(title);
+    if (str::Find(reuseKey, "doubao.com")) {
+        return str::Find(titleA, "豆包") != nullptr || str::FindI(titleA, "doubao") != nullptr;
+    }
+    return false;
+}
+
+struct FindBrowserByServiceCtx {
+    const char* reuseKey = nullptr;
+    const char* host = nullptr;
+    HWND hwnd = nullptr;
+};
+
+static BOOL CALLBACK FindBrowserByServiceEnumProc(HWND hwnd, LPARAM lParam) {
+    auto* ctx = (FindBrowserByServiceCtx*)lParam;
+    if (!IsBrowserTopLevelWindow(hwnd)) {
+        return TRUE;
+    }
+    if (BrowserWindowMatchesService(hwnd, ctx->reuseKey, ctx->host)) {
+        ctx->hwnd = hwnd;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static HWND FindBrowserWindowForService(const char* reuseKey, const char* host) {
+    FindBrowserByServiceCtx ctx{reuseKey, host, nullptr};
+    EnumWindows(FindBrowserByServiceEnumProc, (LPARAM)&ctx);
+    return ctx.hwnd;
+}
+
+static void StoreBrowserReuseHwnd(const char* key, HWND hwnd) {
+    if (!key || !IsBrowserTopLevelWindow(hwnd)) {
+        return;
+    }
+    int freeSlot = -1;
+    for (int i = 0; i < kBrowserReuseMax; i++) {
+        if (gBrowserReuseKeys[i] && str::Eq(gBrowserReuseKeys[i], key)) {
+            gBrowserReuseHwnds[i] = hwnd;
+            return;
+        }
+        if (!gBrowserReuseKeys[i] && freeSlot < 0) {
+            freeSlot = i;
+        }
+    }
+    if (freeSlot < 0) {
+        freeSlot = 0;
+        str::FreePtr(&gBrowserReuseKeys[freeSlot]);
+    }
+    gBrowserReuseKeys[freeSlot] = str::Dup(key);
+    gBrowserReuseHwnds[freeSlot] = hwnd;
+}
+
+static void SendKey(UINT vk, bool down) {
+    INPUT ip{};
+    ip.type = INPUT_KEYBOARD;
+    ip.ki.wVk = (WORD)vk;
+    ip.ki.dwFlags = down ? 0 : KEYEVENTF_KEYUP;
+    SendInput(1, &ip, sizeof(INPUT));
+}
+
+static void SendCtrlKey(UINT vk) {
+    SendKey(VK_CONTROL, true);
+    SendKey(vk, true);
+    SendKey(vk, false);
+    SendKey(VK_CONTROL, false);
+}
+
+static TempStr GetClipboardTextTemp() {
+    if (!IsClipboardFormatAvailable(CF_UNICODETEXT)) {
+        return nullptr;
+    }
+    if (!OpenClipboard(nullptr)) {
+        return nullptr;
+    }
+    HANDLE h = GetClipboardData(CF_UNICODETEXT);
+    if (!h) {
+        CloseClipboard();
+        return nullptr;
+    }
+    WCHAR* w = (WCHAR*)GlobalLock(h);
+    TempStr res = ToUtf8Temp(w);
+    GlobalUnlock(h);
+    CloseClipboard();
+    return res;
+}
+
+static bool NavigateBrowserWindowToUrl(HWND hwnd, const char* url) {
+    if (!hwnd || !url) {
+        return false;
+    }
+
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid) {
+        AllowSetForegroundWindow(pid);
+    }
+
+    if (IsIconic(hwnd)) {
+        ShowWindow(hwnd, SW_RESTORE);
+    }
+    SetForegroundWindow(hwnd);
+    Sleep(80);
+
+    TempStr prevClipboard = GetClipboardTextTemp();
+    bool copied = CopyTextToClipboard(url);
+    if (!copied) {
+        return false;
+    }
+
+    SendCtrlKey('L');
+    Sleep(50);
+    SendCtrlKey('V');
+    Sleep(50);
+    SendKey(VK_RETURN, true);
+    SendKey(VK_RETURN, false);
+
+    if (prevClipboard) {
+        CopyTextToClipboard(prevClipboard);
+    }
+    return true;
+}
+
+static bool FocusBrowserWindow(HWND hwnd) {
+    if (!hwnd) {
+        return false;
+    }
+
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid) {
+        AllowSetForegroundWindow(pid);
+    }
+
+    if (IsIconic(hwnd)) {
+        ShowWindow(hwnd, SW_RESTORE);
+    }
+    SetForegroundWindow(hwnd);
+    return true;
+}
+
+static void SendMouseClickScreen(int x, int y) {
+    int screenW = GetSystemMetrics(SM_CXSCREEN);
+    int screenH = GetSystemMetrics(SM_CYSCREEN);
+    if (screenW <= 1 || screenH <= 1) {
+        return;
+    }
+
+    INPUT inputs[3]{};
+    inputs[0].type = INPUT_MOUSE;
+    inputs[0].mi.dx = (LONG)((x * 65535.0) / (screenW - 1));
+    inputs[0].mi.dy = (LONG)((y * 65535.0) / (screenH - 1));
+    inputs[0].mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE;
+    inputs[1].type = INPUT_MOUSE;
+    inputs[1].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+    inputs[2].type = INPUT_MOUSE;
+    inputs[2].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+    SendInput(3, inputs, sizeof(INPUT));
+}
+
+static void ClickBrowserWindowChatInput(HWND hwnd) {
+    RECT wr;
+    if (!GetWindowRect(hwnd, &wr)) {
+        return;
+    }
+    int x = (wr.left + wr.right) / 2;
+    int y = wr.bottom - DpiScale(hwnd, 90);
+    SendMouseClickScreen(x, y);
+}
+
+bool PasteClipboardToBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) {
+    if (!browserHwnd) {
+        return false;
+    }
+    if (!FocusBrowserWindow(browserHwnd)) {
+        return false;
+    }
+    if (delayBeforePasteMs > 0) {
+        Sleep((DWORD)delayBeforePasteMs);
+    }
+    ClickBrowserWindowChatInput(browserHwnd);
+    Sleep(80);
+    SendCtrlKey('V');
+    return true;
+}
+
+bool PasteAndSubmitBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) {
+    if (!PasteClipboardToBrowserChatInput(browserHwnd, delayBeforePasteMs)) {
+        return false;
+    }
+    Sleep(120);
+    SendKey(VK_RETURN, true);
+    SendKey(VK_RETURN, false);
+    return true;
+}
+
+static bool BrowserTitleLooksLoading(const char* titleA) {
+    if (!titleA || !*titleA) {
+        return true;
+    }
+    if (str::FindI(titleA, "loading")) {
+        return true;
+    }
+    if (str::Find(titleA, "加载")) {
+        return true;
+    }
+    return false;
+}
+
+static bool WaitForBrowserChatReady(HWND hwnd, const char* reuseKey, const char* host, int timeoutMs) {
+    if (!hwnd) {
+        return false;
+    }
+
+    int elapsed = 0;
+    const int interval = 150;
+    int stableCount = 0;
+    AutoFreeStr lastTitle;
+
+    while (elapsed < timeoutMs) {
+        if (!IsBrowserTopLevelWindow(hwnd)) {
+            stableCount = 0;
+            lastTitle.Set(nullptr);
+            Sleep(interval);
+            elapsed += interval;
+            continue;
+        }
+        if (!BrowserWindowMatchesService(hwnd, reuseKey, host)) {
+            stableCount = 0;
+            lastTitle.Set(nullptr);
+            Sleep(interval);
+            elapsed += interval;
+            continue;
+        }
+
+        WCHAR titleW[512]{};
+        GetWindowTextW(hwnd, titleW, dimof(titleW));
+        TempStr titleA = ToUtf8Temp(titleW);
+        if (BrowserTitleLooksLoading(titleA)) {
+            stableCount = 0;
+            lastTitle.Set(nullptr);
+            Sleep(interval);
+            elapsed += interval;
+            continue;
+        }
+
+        if (lastTitle && str::Eq(lastTitle, titleA)) {
+            stableCount++;
+            if (stableCount >= 3) {
+                if (reuseKey && str::Find(reuseKey, "doubao.com")) {
+                    Sleep(600);
+                }
+                return true;
+            }
+        } else {
+            lastTitle.Set(str::Dup(titleA));
+            stableCount = 1;
+        }
+        Sleep(interval);
+        elapsed += interval;
+    }
+
+    return IsBrowserTopLevelWindow(hwnd) && BrowserWindowMatchesService(hwnd, reuseKey, host);
+}
+
+bool PasteAndSubmitBrowserChatInputWhenReady(HWND browserHwnd, const char* url, bool waitForPageReady) {
+    if (!browserHwnd || str::IsEmpty(url)) {
+        return false;
+    }
+    TempStr reuseKey = BrowserReuseKeyFromUrlTemp(url);
+    TempStr host = HostFromUrlTemp(url);
+    if (waitForPageReady) {
+        WaitForBrowserChatReady(browserHwnd, reuseKey, host, 15000);
+    }
+    int delayMs = waitForPageReady ? 400 : 150;
+    return PasteAndSubmitBrowserChatInput(browserHwnd, delayMs);
+}
+
+static HWND FindBrowserWindowAfterLaunch(const char* reuseKey, const char* host) {
+    HWND hwnd = FindBrowserWindowForService(reuseKey, host);
+    if (hwnd) {
+        return hwnd;
+    }
+    hwnd = GetForegroundWindow();
+    if (IsBrowserTopLevelWindow(hwnd)) {
+        return hwnd;
+    }
+    HWND top = hwnd;
+    while (top) {
+        HWND parent = GetParent(top);
+        if (!parent) {
+            break;
+        }
+        top = parent;
+    }
+    if (IsBrowserTopLevelWindow(top)) {
+        return top;
+    }
+    return nullptr;
+}
+
+static HWND PollForBrowserWindowAfterLaunch(const char* reuseKey, const char* host, int timeoutMs) {
+    int elapsed = 0;
+    const int interval = 100;
+    while (elapsed <= timeoutMs) {
+        HWND hwnd = FindBrowserWindowAfterLaunch(reuseKey, host);
+        if (hwnd) {
+            return hwnd;
+        }
+        Sleep(interval);
+        elapsed += interval;
+    }
+    return nullptr;
+}
+
+bool LaunchBrowserWithReuse(const char* url, bool navigateOnReuse, bool* reusedOut, HWND* browserHwndOut) {
+    if (reusedOut) {
+        *reusedOut = false;
+    }
+    if (browserHwndOut) {
+        *browserHwndOut = nullptr;
+    }
+    if (str::IsEmpty(url)) {
+        return false;
+    }
+
+    TempStr reuseKey = BrowserReuseKeyFromUrlTemp(url);
+    TempStr host = HostFromUrlTemp(url);
+    HWND hwnd = FindBrowserWindowForService(reuseKey, host);
+    if (!hwnd) {
+        hwnd = FindStoredBrowserHwnd(reuseKey);
+        if (hwnd && !BrowserWindowMatchesService(hwnd, reuseKey, host)) {
+            hwnd = nullptr;
+        }
+    }
+    if (hwnd) {
+        bool ok = navigateOnReuse ? NavigateBrowserWindowToUrl(hwnd, url) : FocusBrowserWindow(hwnd);
+        if (ok) {
+            StoreBrowserReuseHwnd(reuseKey, hwnd);
+            if (reusedOut) {
+                *reusedOut = true;
+            }
+            if (browserHwndOut) {
+                *browserHwndOut = hwnd;
+            }
+            return true;
+        }
+    }
+
+    if (!LaunchFileShell(url, nullptr, "open")) {
+        return false;
+    }
+
+    hwnd = PollForBrowserWindowAfterLaunch(reuseKey, host, 12000);
+    if (hwnd) {
+        StoreBrowserReuseHwnd(reuseKey, hwnd);
+    }
+    if (browserHwndOut) {
+        *browserHwndOut = hwnd;
+    }
+    return true;
+}
+
 void OpenPathInDefaultFileManager(const char* path) {
     if (!path || !*path) {
         return;
@@ -2982,7 +3417,6 @@ void TbGetRectById(HWND hwnd, int buttonId, RECT* r) {
         logf("TbGetRect: hwnd=0x%p, buttonId: %d pos: (%d, %d) size: (%d, %d)\n", hwnd, buttonId, r->left, r->top,
              RectDx(*r), RectDy(*r));
         LogLastError();
-        ReportIf(res == 0);
     }
 }
 
@@ -2994,7 +3428,6 @@ void TbGetRectByIdx(HWND hwnd, int buttonIdx, RECT* rc) {
     if (res == 0) {
         logf("TbGetRectByIdx: hwnd=0x%p, buttonId: %d\n", hwnd, buttonIdx);
         LogLastError();
-        ReportIf(res == 0);
     }
 }
 

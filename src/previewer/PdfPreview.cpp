@@ -28,6 +28,10 @@ EBookUI* GetEBookUI() {
     return nullptr;
 }
 
+bool IsDarkThemeSelected() {
+    return false;
+}
+
 IFACEMETHODIMP PdfPreview::GetThumbnail(uint cx, HBITMAP* phbmp, WTS_ALPHATYPE* pdwAlpha) {
     EngineBase* engine = GetEngine();
     if (!engine) {

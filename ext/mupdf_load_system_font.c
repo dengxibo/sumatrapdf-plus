@@ -142,6 +142,11 @@ static struct {
     {"DINPro", "SegoeUI"},
     {"ACaslonPro-Regular", "Georgia"},
     {"ACaslonPro-Italic", "Georgia-Italic"},
+    {"Literata", "Georgia"},
+    {"Literata-Regular", "Georgia"},
+    {"Literata-Italic", "Georgia-Italic"},
+    {"Literata-Bold", "Georgia-Bold"},
+    {"Literata-BoldItalic", "Georgia-BoldItalic"},
     // Liberation Sans (Linux metrically compatible with Arial) fallbacks
     {"LiberationSans", "ArialMT"},
     {"LiberationSans-Bold", "Arial-BoldMT"},
@@ -854,11 +859,316 @@ Exit:
     return font;
 }
 
+static int is_css_generic_family(const char* fontname) {
+    return !strcmp(fontname, "serif") || !strcmp(fontname, "sans-serif") || !strcmp(fontname, "monospace");
+}
+
+static int fontname_has_style_suffix(const char* fontname) {
+    return str_ends_with(fontname, "Regular") || str_ends_with(fontname, "Bold") || str_ends_with(fontname, "Italic") ||
+           str_ends_with(fontname, "BoldItalic");
+}
+
+static fz_font* load_windows_font_by_name_and_style(fz_context* ctx, const char* fontname, int bold, int italic) {
+    char styled[MAX_FACENAME * 2];
+
+    if (is_css_generic_family(fontname) || fontname_has_style_suffix(fontname)) {
+        return NULL;
+    }
+
+    fz_strlcpy(styled, fontname, sizeof(styled));
+    if (!bold && !italic) {
+        fz_strlcat(styled, "Regular", sizeof(styled));
+    } else if (bold && italic) {
+        fz_strlcat(styled, "BoldItalic", sizeof(styled));
+    } else if (bold) {
+        fz_strlcat(styled, "Bold", sizeof(styled));
+    } else {
+        fz_strlcat(styled, "Italic", sizeof(styled));
+    }
+    remove_spaces(styled);
+    return load_windows_font_by_name(ctx, styled);
+}
+
+static int get_exe_dir_w(WCHAR* dir, size_t dircap);
+static int try_font_path_w(fz_context* ctx, const char* display_name, const WCHAR* base, const WCHAR* suffix, int index,
+                           int use_glyph_bbox, fz_font** out);
+
+static fz_font* load_literata_font_file(fz_context* ctx, const char* fontname, int bold, int italic) {
+    WCHAR exeDir[MAX_PATH];
+    WCHAR pathW[MAX_PATH];
+    char pathUtf8[MAX_PATH * 3];
+    const WCHAR* fileName;
+    const WCHAR* exeFileName;
+
+    if (_stricmp(fontname, "Literata") != 0) {
+        return NULL;
+    }
+
+    if (bold && italic) {
+        fileName = L"\\Fonts\\Literata-BoldItalic.ttf";
+        exeFileName = L"\\fonts\\Literata-BoldItalic.ttf";
+    } else if (bold) {
+        fileName = L"\\Fonts\\Literata-Bold.ttf";
+        exeFileName = L"\\fonts\\Literata-Bold.ttf";
+    } else if (italic) {
+        fileName = L"\\Fonts\\Literata-Italic.ttf";
+        exeFileName = L"\\fonts\\Literata-Italic.ttf";
+    } else {
+        fileName = L"\\Fonts\\Literata-Regular.ttf";
+        exeFileName = L"\\fonts\\Literata-Regular.ttf";
+    }
+
+    if (get_exe_dir_w(exeDir, nelem(exeDir))) {
+        fz_font* font = NULL;
+        if (try_font_path_w(ctx, fontname, exeDir, exeFileName, 0, 1, &font)) {
+            return font;
+        }
+    }
+
+    UINT cch = GetWindowsDirectoryW(pathW, nelem(pathW) - (UINT)wcslen(fileName) - 1);
+    if (cch == 0 || cch >= nelem(pathW) - wcslen(fileName) - 1) {
+        return NULL;
+    }
+    wcscat_s(pathW, nelem(pathW), fileName);
+    if (GetFileAttributesW(pathW) == INVALID_FILE_ATTRIBUTES) {
+        return NULL;
+    }
+    if (!WideCharToMultiByte(CP_UTF8, 0, pathW, -1, pathUtf8, sizeof(pathUtf8), NULL, NULL)) {
+        return NULL;
+    }
+    return fz_new_font_from_file(ctx, fontname, pathUtf8, 0, 1);
+}
+
+static void normalize_font_name_key(const char* src, char* dst, size_t dstcap) {
+    size_t j = 0;
+    if (!src || !dst || dstcap < 2) {
+        return;
+    }
+    dst[0] = '\0';
+    for (size_t i = 0; src[i] && j + 1 < dstcap; i++) {
+        char c = src[i];
+        if (c == ' ' || c == '-') {
+            continue;
+        }
+        if (c >= 'A' && c <= 'Z') {
+            c = (char)(c + 32);
+        }
+        dst[j++] = c;
+    }
+    dst[j] = '\0';
+}
+
+static int is_source_han_serif_sc_request(const char* fontname) {
+    if (!fontname) {
+        return 0;
+    }
+    if (streq(fontname, "\xe6\x80\x9d\xe6\xba\x90\xe5\xae\x8b\xe4\xbd\x93")) {
+        return 1; // 思源宋体
+    }
+    char norm[128];
+    norm[0] = '\0';
+    normalize_font_name_key(fontname, norm, sizeof norm);
+    static const char* kNames[] = {
+        "sourcehanserifsc", "sourcehanserifscregular", "sourcehanserifcn",      "sourcehanserifcnregular",
+        "sourcehanserif",   "notoserifcjksc",          "notoserifcjkscregular", NULL,
+    };
+    for (int i = 0; kNames[i]; i++) {
+        if (streq(norm, kNames[i])) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int han_ordering_for_language(int language) {
+    if (language == FZ_LANG_ja) {
+        return FZ_ADOBE_JAPAN;
+    }
+    if (language == FZ_LANG_ko) {
+        return FZ_ADOBE_KOREA;
+    }
+    if (language == FZ_LANG_zh_Hant) {
+        return FZ_ADOBE_CNS;
+    }
+    return FZ_ADOBE_GB;
+}
+
+static int get_exe_dir_w(WCHAR* dir, size_t dircap) {
+    if (!dir || dircap < 2) {
+        return 0;
+    }
+    if (!GetModuleFileNameW(NULL, dir, (DWORD)dircap)) {
+        return 0;
+    }
+    WCHAR* slash = wcsrchr(dir, L'\\');
+    if (!slash) {
+        return 0;
+    }
+    *slash = L'\0';
+    return 1;
+}
+
+static int wide_to_utf8(const WCHAR* w, char* dst, size_t dstcap) {
+    if (!w || !dst || dstcap < 2) {
+        return 0;
+    }
+    return WideCharToMultiByte(CP_UTF8, 0, w, -1, dst, (int)dstcap, NULL, NULL) > 0;
+}
+
+static int source_han_serif_ttc_index(int ordering) {
+    switch (ordering) {
+        case FZ_ADOBE_JAPAN:
+            return 0;
+        case FZ_ADOBE_KOREA:
+            return 1;
+        case FZ_ADOBE_CNS:
+            return 3;
+        case FZ_ADOBE_GB:
+        default:
+            return 2;
+    }
+}
+
+static fz_font* try_source_han_serif_file(fz_context* ctx, const char* display_name, const char* path, int ttc_index,
+                                          int ordering) {
+    fz_font* font = NULL;
+
+    fz_var(font);
+    fz_try(ctx) {
+        font = fz_new_font_from_file(ctx, display_name, path, ttc_index, 0);
+        if (font) {
+            font->flags.cjk = 1;
+            font->flags.cjk_lang = ordering;
+        }
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        font = NULL;
+    }
+    return font;
+}
+
+static fz_font* try_font_file(fz_context* ctx, const char* display_name, const char* path, int index,
+                              int use_glyph_bbox) {
+    fz_font* font = NULL;
+
+    fz_var(font);
+    fz_try(ctx) {
+        font = fz_new_font_from_file(ctx, display_name, path, index, use_glyph_bbox);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        font = NULL;
+    }
+    return font;
+}
+
+static int try_font_path_w(fz_context* ctx, const char* display_name, const WCHAR* base, const WCHAR* suffix, int index,
+                           int use_glyph_bbox, fz_font** out) {
+    WCHAR pathW[MAX_PATH];
+    char pathUtf8[MAX_PATH * 3];
+
+    if (!base || !suffix || !out) {
+        return 0;
+    }
+    if (lstrlenW(base) + lstrlenW(suffix) >= MAX_PATH) {
+        return 0;
+    }
+    wcscpy_s(pathW, nelem(pathW), base);
+    wcscat_s(pathW, nelem(pathW), suffix);
+    if (GetFileAttributesW(pathW) == INVALID_FILE_ATTRIBUTES) {
+        return 0;
+    }
+    if (!wide_to_utf8(pathW, pathUtf8, sizeof pathUtf8)) {
+        return 0;
+    }
+    *out = try_font_file(ctx, display_name, pathUtf8, index, use_glyph_bbox);
+    return *out != NULL;
+}
+
+static int try_source_han_serif_path_w(fz_context* ctx, const char* display_name, const WCHAR* base,
+                                       const WCHAR* suffix, int ttc_index, int ordering, fz_font** out) {
+    WCHAR pathW[MAX_PATH];
+    char pathUtf8[MAX_PATH * 3];
+
+    if (!base || !suffix || !out) {
+        return 0;
+    }
+    if (lstrlenW(base) + lstrlenW(suffix) >= MAX_PATH) {
+        return 0;
+    }
+    wcscpy_s(pathW, nelem(pathW), base);
+    wcscat_s(pathW, nelem(pathW), suffix);
+    if (GetFileAttributesW(pathW) == INVALID_FILE_ATTRIBUTES) {
+        return 0;
+    }
+    if (!wide_to_utf8(pathW, pathUtf8, sizeof pathUtf8)) {
+        return 0;
+    }
+    *out = try_source_han_serif_file(ctx, display_name, pathUtf8, ttc_index, ordering);
+    return *out != NULL;
+}
+
+static fz_font* load_bundled_source_han_serif(fz_context* ctx, const char* display_name, int ordering) {
+    WCHAR exeDir[MAX_PATH];
+    WCHAR winDir[MAX_PATH];
+    fz_font* font = NULL;
+    int ttc_index = source_han_serif_ttc_index(ordering);
+    static const WCHAR* kExeFontFiles[] = {
+        L"\\fonts\\SourceHanSerif-Regular.ttc",
+        L"\\fonts\\SourceHanSerifSC-Regular.otf",
+        L"\\fonts\\SOURCEHANSERIFSC-REGULAR.OTF",
+        NULL,
+    };
+    static const int kExeFontIndices[] = {-1, 0, 0};
+    static const WCHAR* kDevTtcPaths[] = {
+        L"\\..\\mupdf\\resources\\fonts\\han\\SourceHanSerif-Regular.ttc",
+        L"\\..\\..\\mupdf\\resources\\fonts\\han\\SourceHanSerif-Regular.ttc",
+        NULL,
+    };
+    static const WCHAR* kWinOtfNames[] = {
+        L"\\Fonts\\SourceHanSerifSC-Regular.otf",
+        L"\\Fonts\\SOURCEHANSERIFSC-REGULAR.OTF",
+        NULL,
+    };
+
+    if (get_exe_dir_w(exeDir, nelem(exeDir))) {
+        for (int i = 0; kExeFontFiles[i]; i++) {
+            int index = kExeFontIndices[i] < 0 ? ttc_index : kExeFontIndices[i];
+            if (try_source_han_serif_path_w(ctx, display_name, exeDir, kExeFontFiles[i], index, ordering, &font)) {
+                return font;
+            }
+        }
+        for (int i = 0; kDevTtcPaths[i]; i++) {
+            if (try_source_han_serif_path_w(ctx, display_name, exeDir, kDevTtcPaths[i], ttc_index, ordering, &font)) {
+                return font;
+            }
+        }
+    }
+
+    if (GetWindowsDirectoryW(winDir, nelem(winDir))) {
+        for (int i = 0; kWinOtfNames[i]; i++) {
+            if (try_source_han_serif_path_w(ctx, display_name, winDir, kWinOtfNames[i], 0, ordering, &font)) {
+                return font;
+            }
+        }
+    }
+
+    return NULL;
+}
+
 static fz_font* load_windows_font(fz_context* ctx, const char* fontname, int bold, int italic,
                                   int needs_exact_metrics) {
     fz_font* font;
     const char* clean_name = pdf_clean_font_name(fontname);
     int is_base_14 = clean_name != fontname;
+
+    if (!bold && !italic && is_source_han_serif_sc_request(fontname)) {
+        font = load_bundled_source_han_serif(ctx, fontname, FZ_ADOBE_GB);
+        if (font) {
+            return font;
+        }
+    }
 
     /* metrics for Times-Roman don't match those of Windows' Times-Roman */
     /* https://code.google.com/p/sumatrapdf/issues/detail?id=2173 */
@@ -883,6 +1193,12 @@ static fz_font* load_windows_font(fz_context* ctx, const char* fontname, int bol
 
         if (clean_name != fontname && !strncmp(clean_name, "Times-", 6)) return NULL;
     }
+
+    font = load_literata_font_file(ctx, fontname, bold, italic);
+    if (font) return font;
+
+    font = load_windows_font_by_name_and_style(ctx, fontname, bold, italic);
+    if (font) return font;
 
     font = load_windows_font_by_name(ctx, fontname);
     if (!font) return NULL;
@@ -1006,10 +1322,23 @@ static fz_font* load_windows_fallback_font(fz_context* ctx, int script, int lang
         } break;
         case UCDN_SCRIPT_HAN:
         case UCDN_SCRIPT_BOPOMOFO: {
-            font_name = "MicrosoftYaHei";
-            if (bold) {
-                font_name = "MicrosoftYaHei-Bold";
+            int ordering = han_ordering_for_language(language);
+            font = load_bundled_source_han_serif(ctx, "Source Han Serif", ordering);
+            if (font) {
+                return font;
             }
+            static const char* han_fonts[] = {
+                "NSimSun",
+                "SimSun",
+                NULL,
+            };
+            for (int i = 0; han_fonts[i]; i++) {
+                font = load_windows_font_by_name(ctx, han_fonts[i]);
+                if (font) {
+                    return font;
+                }
+            }
+            return NULL;
         } break;
         case UCDN_SCRIPT_HIRAGANA:
         case UCDN_SCRIPT_KATAKANA: {

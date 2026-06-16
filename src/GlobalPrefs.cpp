@@ -19,6 +19,7 @@ GlobalPrefs* gGlobalPrefs = nullptr;
 FileState* NewFileState(const char* filePath) {
     FileState* fs = (FileState*)DeserializeStruct(&gFileStateInfo, nullptr);
     SetFileStatePath(fs, filePath);
+    fs->thumbnailDarkTheme = false;
     return fs;
 }
 

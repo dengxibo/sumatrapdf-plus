@@ -648,6 +648,36 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
 
+        case WM_LBUTTONDBLCLK: {
+            tabHighlighted = tabUnderMouse;
+            if (tabUnderMouse < 0 || !canClose) {
+                return 0;
+            }
+            if (GetCapture() == hwnd) {
+                ReleaseCapture();
+            }
+            if (overClose) {
+                tabBeingClosed = tabUnderMouse;
+                return 0;
+            }
+            if (tabUnderMouse != GetSelected()) {
+                bool stopChange = TriggerSelectionChanging(this);
+                if (stopChange) {
+                    return 0;
+                }
+                SetSelected(tabUnderMouse);
+                TriggerSelectionChanged(this);
+            }
+            tabBeingClosed = tabUnderMouse;
+            TriggerTabClosed(this, tabBeingClosed);
+            if (!FindMainWindowByHwnd(hwnd)) {
+                return 0;
+            }
+            HwndScheduleRepaint(hwnd);
+            tabBeingClosed = -1;
+            return 0;
+        }
+
         case WM_LBUTTONUP: {
             bool isDragging = (GetCapture() == hwnd);
             if (isDragging) {
@@ -720,7 +750,7 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         case WM_ERASEBKGND: {
             // just paint with the background color to avoid flickering, we will paint the tabs in WM_PAINT
-            if (!IsCurrentThemeDefault()) {
+            if (ThemeUsesDarkChrome()) {
                 HDC hdc = (HDC)wp;
                 RECT rc = ClientRECT(hwnd);
                 HBRUSH hbr = CreateSolidBrush(ThemeControlBackgroundColor());
@@ -858,7 +888,14 @@ UINT_PTR TabsCtrl::RemoveTab(int idx) {
     if (idx < selectedTab) {
         SetSelected(selectedTab - 1);
     } else if (idx == selectedTab) {
-        SetSelected(0);
+        int nTabs = TabCount();
+        if (nTabs > 0) {
+            int newSelected = idx;
+            if (newSelected >= nTabs) {
+                newSelected = nTabs - 1;
+            }
+            SetSelected(newSelected);
+        }
     }
     LayoutTabs();
     TabsCtrlUpdateAfterChangingTabsCount(this);

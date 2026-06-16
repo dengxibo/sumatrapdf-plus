@@ -2,7 +2,7 @@
    License: GPLv3 */
 
 // engines which render flowed ebook formats into fixed pages through the EngineBase API
-// (pages are mostly layed out the same as for a "B Format" paperback: 5.12" x 7.8")
+// flowed ebook pages use A5 dimensions (420pt x 595pt), matching the MuPDF engine
 
 #include "utils/BaseUtil.h"
 #include "utils/ScopedWin.h"
@@ -26,13 +26,67 @@
 #include "FzImgReader.h"
 #include "EngineBase.h"
 #include "EngineAll.h"
+#include "SumatraConfig.h"
 #include "EbookBase.h"
+#include "EbookTypography.h"
 #include "PalmDbReader.h"
 #include "EbookDoc.h"
 #include "HtmlFormatter.h"
 #include "EbookFormatter.h"
+#include "Settings.h"
+#include "Theme.h"
+#include "utils/ThreadUtil.h"
 
 #include "utils/Log.h"
+
+void NotifyEngineDisplayReady(EngineBase* engine);
+
+static thread_local bool gCreateEngineForThumbnail = false;
+
+void SetCreateEngineForThumbnail(bool value) {
+    gCreateEngineForThumbnail = value;
+}
+
+bool IsCreateEngineForThumbnail() {
+    return gCreateEngineForThumbnail;
+}
+
+static Vec<HtmlPage*>* FormatFirstHtmlPage(HtmlFormatter& formatter) {
+    auto* result = new Vec<HtmlPage*>();
+    HtmlPage* page = formatter.Next(false);
+    if (page) {
+        result->Append(page);
+    }
+    return result;
+}
+
+static Vec<HtmlPage*>* FormatInitialHtmlPages(HtmlFormatter* formatter, int maxPages) {
+    auto* result = new Vec<HtmlPage*>();
+    for (int i = 0; i < maxPages; i++) {
+        HtmlPage* page = formatter->Next(false);
+        if (!page) {
+            break;
+        }
+        result->Append(page);
+        if (result->size() >= 1) {
+            break;
+        }
+    }
+    return result;
+}
+void NotifyEbookPagesLoadingProgress(const char* filePath, bool reloadToc);
+
+// pages formatted per batch before yielding during background MOBI pagination
+static const int kEbookFormatBatchPages = 16;
+// let the UI render the first page(s) before the background formatter starts
+// hammering the CPU (mirrors the EPUB/MuPDF reflowable loader)
+static const DWORD kEbookBackgroundDelayMs = 50;
+// minimum gap between "more pages available" notifications. Each notification
+// triggers a full O(pageCount) relayout on the UI thread, so we throttle by
+// time (not page count) to keep the cost bounded on very large books.
+static const DWORD kEbookNotifyIntervalMs = 200;
+
+extern EBookUI* GetEBookUI();
 
 Kind kindEngineEpub = "engineEpub";
 Kind kindEngineFb2 = "engineFb2";
@@ -45,21 +99,119 @@ Kind kindEngineTxt = "engineTxt";
 static AutoFreeStr gDefaultFontName;
 static float gDefaultFontSize = 10.f;
 
-static const WCHAR* GetDefaultFontName() {
+static float layoutLatinMobiDxPt = 540.F;
+static float layoutLatinMobiDyPt = 760.F;
+static float layoutCjkMobiDxPt = 600.F;
+static float layoutCjkMobiDyPt = 820.F;
+static float layoutLegacyMobiDxPt = 560.F;
+static float layoutLegacyMobiDyPt = 680.F;
+
+static bool IsReaderStyledMobiPath(const char* filePath) {
+    if (str::IsEmpty(filePath)) {
+        return false;
+    }
+    const char* ext = path::GetExtTemp(filePath);
+    return str::EqI(ext, ".mobi") || str::EqI(ext, ".azw") || str::EqI(ext, ".azw3");
+}
+
+static void CountHtmlLetters(const char* s, size_t len, int* cjkOut, int* latinOut) {
+    int cjk = 0;
+    int latin = 0;
+    bool inTag = false;
+    if (!s) {
+        *cjkOut = 0;
+        *latinOut = 0;
+        return;
+    }
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c == '<') {
+            inTag = true;
+            continue;
+        }
+        if (c == '>') {
+            inTag = false;
+            continue;
+        }
+        if (inTag) {
+            continue;
+        }
+        if (c < 0x80) {
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
+                latin++;
+            }
+            continue;
+        }
+        if ((c & 0xE0) == 0xC0) {
+            i += 1;
+        } else if ((c & 0xF0) == 0xE0 && i + 2 < len) {
+            unsigned char c1 = (unsigned char)s[i + 1];
+            unsigned char c2 = (unsigned char)s[i + 2];
+            uint cp = ((uint)(c & 0x0F) << 12) | ((uint)(c1 & 0x3F) << 6) | (uint)(c2 & 0x3F);
+            if ((cp >= 0x2E80 && cp <= 0x9FFF) || (cp >= 0xF900 && cp <= 0xFAFF)) {
+                cjk++;
+            }
+            i += 2;
+        } else if ((c & 0xF8) == 0xF0) {
+            i += 3;
+        }
+        if (cjk + latin >= 600) {
+            break;
+        }
+    }
+    *cjkOut = cjk;
+    *latinOut = latin;
+}
+
+static EbookTypographyKind ClassifyHtmlLetters(int cjk, int latin) {
+    if (cjk >= 12 && latin >= 12 && cjk <= latin * 6 && latin <= cjk * 6) {
+        return EbookTypographyKind::Bilingual;
+    }
+    if (cjk >= 8 && cjk * 2 >= latin) {
+        return EbookTypographyKind::Cjk;
+    }
+    if (latin >= 40 && latin > cjk * 3) {
+        return EbookTypographyKind::Latin;
+    }
+    return cjk >= latin ? EbookTypographyKind::Cjk : EbookTypographyKind::Latin;
+}
+
+static EbookTypographyKind DetectHtmlTypographyKind(const ByteSlice& html) {
+    size_t n = html.size();
+    if (n > 384 * 1024) {
+        n = 384 * 1024;
+    }
+    int cjk = 0;
+    int latin = 0;
+    CountHtmlLetters((const char*)html.data(), n, &cjk, &latin);
+    return ClassifyHtmlLetters(cjk, latin);
+}
+
+static void SetupHtmlFormatterFont(HtmlFormatterArgs& args, const char* /*filePath*/,
+                                   EbookTypographyKind typographyKind = EbookTypographyKind::Latin) {
+    SetEbookTypographyKind(typographyKind);
     char* s = gDefaultFontName.Get();
     if (s) {
-        return ToWStrTemp(s);
+        args.SetFontName(ToWStrTemp(s));
+    } else if (typographyKind == EbookTypographyKind::Cjk || typographyKind == EbookTypographyKind::Bilingual) {
+        args.SetFontName(L"Source Han Serif SC");
+    } else {
+        args.SetFontName(L"Literata");
     }
-    return L"Georgia";
 }
 
 static float GetDefaultFontSize() {
     // fonts are scaled at higher DPI settings,
     // undo this here for (mostly) consistent results
-    if (gDefaultFontSize == 0) {
-        gDefaultFontSize = 10;
+    float size = gDefaultFontSize;
+    if (size == 0) {
+        size = 11.f;
     }
-    return gDefaultFontSize * 96.0f / (float)DpiGetForHwnd(HWND_DESKTOP);
+    auto eBookUI = GetEBookUI();
+    if (eBookUI && eBookUI->fontSize > 6 && eBookUI->fontSize < 30) {
+        size = eBookUI->fontSize;
+    }
+    return size * 96.0f / (float)DpiGetForHwnd(HWND_DESKTOP);
 }
 
 void SetDefaultEbookFont(const char* name, float size) {
@@ -67,7 +219,7 @@ void SetDefaultEbookFont(const char* name, float size) {
     if (str::Eq(name, "default")) {
         // "default" is used for mupdf engine to indicate
         // we should use the font as given in css
-        name = "Georgia";
+        name = "Source Han Serif SC";
     }
     gDefaultFontName.SetCopy(name);
     // use a somewhat smaller size than in the EbookUI, since fit page/width
@@ -128,6 +280,64 @@ class EngineEbook : public EngineBase {
 
     bool BenchLoadPage(int pageNo) override;
 
+    bool IsEbookProgressiveLoadingInProgress() const {
+        return InterlockedCompareExchange(&ebookLoadingInProgress, 0, 0) != 0;
+    }
+
+    int GetFormattedPageCount() {
+        if (!pages) {
+            return 0;
+        }
+        ScopedCritSec scope(&pagesAccess);
+        return (int)pages->size();
+    }
+
+    bool IsTocFilePosFormatted(int filePos, const char* htmlStart, size_t htmlLen) const {
+        if (filePos < 0 || !htmlStart || htmlLen == 0) {
+            return false;
+        }
+        if (!IsEbookProgressiveLoadingInProgress()) {
+            return true;
+        }
+        ScopedCritSec scope(&pagesAccess);
+        if (!pages || pages->size() == 0) {
+            return false;
+        }
+        int nFormatted = (int)pages->size();
+        // which formatted page covers this filePos (same logic as GetNamedDestAtFilePos)
+        int targetPage = nFormatted;
+        for (int i = 1; i < nFormatted; i++) {
+            if (pages->at(i)->reparseIdx > filePos) {
+                targetPage = i;
+                break;
+            }
+        }
+        // earlier pages are fully formatted
+        if (targetPage < nFormatted) {
+            return true;
+        }
+        // on the last formatted page: reachable only if the formatter has passed filePos
+        const char* htmlEnd = htmlStart + htmlLen;
+        int maxOff = pages->at(nFormatted - 1)->reparseIdx;
+        for (int i = 0; i < nFormatted; i++) {
+            HtmlPage* page = pages->at(i);
+            for (DrawInstr& instr : page->instructions) {
+                if (instr.type != DrawInstrType::String && instr.type != DrawInstrType::RtlString) {
+                    continue;
+                }
+                const char* s = instr.str.s;
+                if (!s || s < htmlStart || s >= htmlEnd) {
+                    continue;
+                }
+                int end = (int)(s - htmlStart) + (int)instr.str.len;
+                if (end > maxOff) {
+                    maxOff = end;
+                }
+            }
+        }
+        return filePos <= maxOff;
+    }
+
   protected:
     Vec<HtmlPage*>* pages = nullptr;
     Vec<PageAnchor> anchors;
@@ -137,19 +347,32 @@ class EngineEbook : public EngineBase {
     // needed so that memory allocated by ResolveHtmlEntities isn't leaked
     Arena* allocator = nullptr;
     // TODO: still needed?
-    CRITICAL_SECTION pagesAccess;
+    mutable CRITICAL_SECTION pagesAccess;
     // page dimensions can vary between filetypes
     RectF pageRect;
     float pageBorder;
+    EbookTypographyKind typographyKind = EbookTypographyKind::Latin;
+    bool readerStyleMobi = false;
 
     void GetTransform(Matrix& m, float zoom, int rotation);
     bool ExtractPageAnchors();
     TempStr ExtractFontListTemp();
+    void ConfigureMobiReaderStyle(const char* filePath, const ByteSlice& html);
 
     virtual IPageElement* CreatePageLink(DrawInstr* link, Rect rect, int pageNo);
 
     Vec<DrawInstr>* GetHtmlPage(int pageNo);
     HtmlPage* GetHtmlPage2(int pageNo);
+
+    mutable volatile LONG ebookLoadingInProgress = 0;
+    mutable volatile LONG ebookLoadAbort = 0;
+    HtmlFormatter* pendingFormatter = nullptr;
+    // running state for incremental ExtractPageAnchors(): the last "page_marker"
+    // base anchor seen so far. Persisted across calls so progressive loading
+    // only scans newly formatted pages instead of rescanning everything.
+    DrawInstr* lastBaseAnchor = nullptr;
+
+    void AbortEbookLoading();
 };
 
 static IPageElement* NewEbookLink(DrawInstr* link, Rect rect, IPageDestination* dest, int pageNo = 0,
@@ -194,15 +417,72 @@ static TocItem* newEbookTocItem(TocItem* parent, const char* title, IPageDestina
 
 EngineEbook::EngineEbook() {
     pageCount = 0;
-    // "B Format" paperback
-    pageRect = RectF(0, 0, 5.12f * GetFileDPI(), 7.8f * GetFileDPI());
-    pageBorder = 0.4f * GetFileDPI();
+    // 560pt x 680pt - wider desktop page, closer to DaoKe-style readers
+    float dpi = GetFileDPI();
+    float w = 560.f * dpi / 72.f;
+    float h = 680.f * dpi / 72.f;
+    auto eBookUI = GetEBookUI();
+    if (eBookUI) {
+        if (eBookUI->layoutDx > 0) {
+            w = eBookUI->layoutDx * dpi / 72.f;
+        }
+        if (eBookUI->layoutDy > 0) {
+            h = eBookUI->layoutDy * dpi / 72.f;
+        }
+    }
+    pageRect = RectF(0, 0, w, h);
+    pageBorder = 0.2f * dpi;
     preferredLayout = preferredLayout = PageLayout(PageLayout::Type::Single);
     InitializeCriticalSection(&pagesAccess);
     allocator = ArenaNew();
 }
 
+void EngineEbook::ConfigureMobiReaderStyle(const char* filePath, const ByteSlice& html) {
+    readerStyleMobi = IsReaderStyledMobiPath(filePath);
+    if (!readerStyleMobi) {
+        typographyKind = EbookTypographyKind::Latin;
+        SetEbookTypographyKind(typographyKind);
+        return;
+    }
+
+    typographyKind = DetectHtmlTypographyKind(html);
+    SetEbookTypographyKind(typographyKind);
+
+    float dpi = GetFileDPI();
+    float w = layoutLatinMobiDxPt;
+    float h = layoutLatinMobiDyPt;
+    if (typographyKind == EbookTypographyKind::Cjk || typographyKind == EbookTypographyKind::Bilingual) {
+        w = layoutCjkMobiDxPt;
+        h = layoutCjkMobiDyPt;
+    }
+
+    auto eBookUI = GetEBookUI();
+    if (eBookUI) {
+        if (eBookUI->layoutDx > 100 && eBookUI->layoutDx != layoutLegacyMobiDxPt) {
+            w = eBookUI->layoutDx;
+        }
+        if (eBookUI->layoutDy > 100 && eBookUI->layoutDy != layoutLegacyMobiDyPt) {
+            h = eBookUI->layoutDy;
+        }
+    }
+
+    pageRect = RectF(0, 0, w * dpi / 72.f, h * dpi / 72.f);
+}
+
+void EngineEbook::AbortEbookLoading() {
+    InterlockedExchange(&ebookLoadAbort, 1);
+    while (InterlockedCompareExchange(&ebookLoadingInProgress, 0, 0) != 0) {
+        Sleep(10);
+    }
+    EnterCriticalSection(&pagesAccess);
+    delete pendingFormatter;
+    pendingFormatter = nullptr;
+    LeaveCriticalSection(&pagesAccess);
+}
+
 EngineEbook::~EngineEbook() {
+    AbortEbookLoading();
+
     EnterCriticalSection(&pagesAccess);
 
     if (pages) {
@@ -259,16 +539,24 @@ void EngineEbook::GetTransform(Matrix& m, float zoom, int rotation) {
 }
 
 Vec<DrawInstr>* EngineEbook::GetHtmlPage(int pageNo) {
-    ReportIf(pageNo < 1 || PageCount() < pageNo);
-    if (pageNo < 1 || PageCount() < pageNo) {
+    if (pageNo < 1 || !pages) {
+        return nullptr;
+    }
+    ScopedCritSec scope(&pagesAccess);
+    int n = (int)pages->size();
+    if (pageNo > n) {
         return nullptr;
     }
     return &pages->at(pageNo - 1)->instructions;
 }
 
 HtmlPage* EngineEbook::GetHtmlPage2(int pageNo) {
-    ReportIf(pageNo < 1 || PageCount() < pageNo);
-    if (pageNo < 1 || PageCount() < pageNo) {
+    if (pageNo < 1 || !pages) {
+        return nullptr;
+    }
+    ScopedCritSec scope(&pagesAccess);
+    int n = (int)pages->size();
+    if (pageNo > n) {
         return nullptr;
     }
     return pages->at(pageNo - 1);
@@ -277,13 +565,18 @@ HtmlPage* EngineEbook::GetHtmlPage2(int pageNo) {
 bool EngineEbook::ExtractPageAnchors() {
     ScopedCritSec scope(&pagesAccess);
 
-    DrawInstr* baseAnchor = nullptr;
-    for (int pageNo = 1; pageNo <= pageCount; pageNo++) {
-        Vec<DrawInstr>* pageInstrs = GetHtmlPage(pageNo);
-        if (!pageInstrs) {
-            return false;
-        }
+    if (!pages) {
+        return false;
+    }
 
+    // Incremental, append-only extraction. The pages vector only grows during
+    // progressive (MOBI/AZW3) loading, so we resume from the first page that
+    // hasn't been scanned yet. This keeps the total cost across all calls O(n)
+    // instead of the O(n^2) of rescanning every page on each batch (which used
+    // to freeze the UI on huge books because pagesAccess is held throughout).
+    int n = (int)pages->size();
+    for (int pageNo = (int)baseAnchors.size() + 1; pageNo <= n; pageNo++) {
+        Vec<DrawInstr>* pageInstrs = &pages->at(pageNo - 1)->instructions;
         for (size_t k = 0; k < pageInstrs->size(); k++) {
             DrawInstr* i = &pageInstrs->at(k);
             if (DrawInstrType::Anchor != i->type) {
@@ -291,10 +584,10 @@ bool EngineEbook::ExtractPageAnchors() {
             }
             anchors.Append(PageAnchor(i, pageNo));
             if (k < 2 && str::StartsWith(i->str.s + i->str.len, "\" page_marker />")) {
-                baseAnchor = i;
+                lastBaseAnchor = i;
             }
         }
-        baseAnchors.Append(baseAnchor);
+        baseAnchors.Append(lastBaseAnchor);
     }
 
     ReportIf(baseAnchors.size() != pages->size());
@@ -333,8 +626,28 @@ RenderedBitmap* EngineEbook::RenderPage(RenderPageArgs& args) {
     Graphics g(hDC);
     mui::InitGraphicsMode(&g);
 
-    Color white(0xFF, 0xFF, 0xFF);
-    SolidBrush tmpBrush(white);
+    bool darkTheme = IsDarkThemeSelected();
+    COLORREF bgCol;
+    COLORREF textCol;
+    if (readerStyleMobi && darkTheme) {
+        bgCol = RgbToCOLORREF(0x000000);
+        textCol = RgbToCOLORREF(0xE6E1D8);
+    } else if (readerStyleMobi) {
+        bgCol = RgbToCOLORREF(0xF7F3E8);
+        textCol = RgbToCOLORREF(0x565047);
+    } else if (darkTheme) {
+        bgCol = RgbToCOLORREF(0x000000);
+        textCol = RgbToCOLORREF(0xF9FAFB);
+    } else {
+        textCol = ThemePageRenderColors(bgCol);
+    }
+    Color pageBg = GdiRgbFromCOLORREF(bgCol);
+    Color pageText = GdiRgbFromCOLORREF(textCol);
+    Color pageLink = darkTheme ? Color(0xFF, 0x8F, 0xBC, 0xE6) : Color(0xFF, 0x31, 0x5F, 0x9C);
+    if (!readerStyleMobi && !darkTheme) {
+        pageLink = Color(0xFF, 0x00, 0x33, 0xCC);
+    }
+    SolidBrush tmpBrush(pageBg);
     Gdiplus::Rect screenR(ToGdipRect(screen));
     screenR.Inflate(1, 1);
     g.FillRectangle(&tmpBrush, screenR);
@@ -352,9 +665,16 @@ RenderedBitmap* EngineEbook::RenderPage(RenderPageArgs& args) {
 
     ScopedCritSec scope(&pagesAccess);
 
+    Vec<DrawInstr>* pageInstrs = GetHtmlPage(pageNo);
+    if (!pageInstrs) {
+        DeleteDC(hDC);
+        DeleteObject(hbmp);
+        CloseHandle(hMap);
+        return nullptr;
+    }
     mui::ITextRender* textDraw = mui::TextRenderGdiplus::Create(&g);
-    DrawHtmlPage(&g, textDraw, GetHtmlPage(pageNo), pageBorder, pageBorder, false, Color((ARGB)Color::Black),
-                 cookie ? &cookie->abort : nullptr);
+    DrawHtmlPage(&g, textDraw, pageInstrs, pageBorder, pageBorder, false, pageText, cookie ? &cookie->abort : nullptr,
+                 pageLink);
     delete textDraw;
     DeleteDC(hDC);
 
@@ -548,11 +868,18 @@ PageTextUtf8 EngineEbook::ExtractPageTextUtf8(int pageNo) {
 
 IPageElement* EngineEbook::CreatePageLink(DrawInstr* link, Rect rect, int pageNo) {
     char* url = strconv::FromHtmlUtf8Temp(link->str.s, link->str.len);
-    if (url::IsAbsolute(url)) {
+    // KF8/AZW3 internal links use kindle:pos:... which contains ':' but aren't web URLs
+    if (url::IsAbsolute(url) && !str::StartsWith(url, "kindle:pos:")) {
         return NewEbookLink(link, rect, nullptr, pageNo);
     }
 
-    DrawInstr* baseAnchor = baseAnchors.at(pageNo - 1);
+    // baseAnchors is mutated by ExtractPageAnchors() on the background load
+    // thread during progressive loading; lock so we read a consistent view.
+    ScopedCritSec scope(&pagesAccess);
+    DrawInstr* baseAnchor = nullptr;
+    if (baseAnchors.isValidIndex(pageNo - 1)) {
+        baseAnchor = baseAnchors.at(pageNo - 1);
+    }
     if (baseAnchor) {
         char* basePath = str::DupTemp(baseAnchor->str.s, baseAnchor->str.len);
         TempStr relPath = ResolveHtmlEntitiesTemp(link->str.s, link->str.len);
@@ -569,6 +896,9 @@ IPageElement* EngineEbook::CreatePageLink(DrawInstr* link, Rect rect, int pageNo
 
 Vec<IPageElement*> EngineEbook::GetElements(int pageNo) {
     HtmlPage* pi = GetHtmlPage2(pageNo);
+    if (!pi) {
+        return Vec<IPageElement*>();
+    }
     if (pi->gotElements) {
         return pi->elements;
     }
@@ -612,6 +942,9 @@ RenderedBitmap* EngineEbook::GetImageForPageElement(IPageElement* iel) {
     int pageNo = el->pageNo;
     int idx = el->imageID;
     Vec<DrawInstr>* pageInstrs = GetHtmlPage(pageNo);
+    if (!pageInstrs || !pageInstrs->isValidIndex(idx)) {
+        return nullptr;
+    }
     auto&& i = pageInstrs->at(idx);
     ReportIf(i.type != DrawInstrType::Image);
     return getImageFromData(i.GetImage());
@@ -630,6 +963,12 @@ IPageElement* EngineEbook::GetElementAtPos(int pageNo, PointF pt) {
 }
 
 IPageDestination* EngineEbook::GetNamedDest(const char* name) {
+    // anchors/baseAnchors grow on the background load thread during progressive
+    // loading; lock so concurrent appends (and possible reallocations) don't
+    // corrupt the iteration below. CRITICAL_SECTION is recursive, so callers
+    // that already hold pagesAccess (e.g. CreatePageLink) remain safe.
+    ScopedCritSec scope(&pagesAccess);
+
     const char* id = name;
     if (str::FindChar(id, '#')) {
         id = str::FindChar(id, '#') + 1;
@@ -761,11 +1100,25 @@ class EbookTocBuilder : public EbookTocVisitor {
     void SetIsIndex(bool value) { isIndex = value; }
 };
 
+static void SetEbookTocScrollName(PageDestination* pd, const char* url) {
+    if (!pd || !url || !*url) {
+        return;
+    }
+    str::Free(pd->name);
+    pd->name = str::Dup(url);
+}
+
+static IPageDestination* NewDeferredEbookTocDest(const char* url) {
+    auto* pd = static_cast<PageDestination*>(NewSimpleDest(0, RectF()));
+    SetEbookTocScrollName(pd, url);
+    return pd;
+}
+
 void EbookTocBuilder::Visit(const char* name, const char* url, int level) {
     IPageDestination* dest;
     if (!url) {
         dest = nullptr;
-    } else if (url::IsAbsolute(url)) {
+    } else if (url::IsAbsolute(url) && !str::StartsWith(url, "kindle:pos:")) {
         dest = NewSimpleDest(0, RectF(), 0.f, url);
     } else {
         dest = engine->GetNamedDest(url);
@@ -774,10 +1127,21 @@ void EbookTocBuilder::Visit(const char* name, const char* url, int level) {
             url::DecodeInPlace(decodedUrl);
             dest = engine->GetNamedDest(decodedUrl);
         }
+        // TOC is often built before all anchors/pages exist (progressive MOBI load).
+        // Keep the raw link so GoToTocLink can resolve it at click time.
+        if (!dest) {
+            dest = NewDeferredEbookTocDest(url);
+        }
     }
 
     // TODO: send parent to newEbookTocItem
     TocItem* item = newEbookTocItem(nullptr, name, dest);
+    if (dest && url && dest->GetKind() == kindDestinationScrollTo) {
+        auto* pd = static_cast<PageDestination*>(dest);
+        if (!pd->name) {
+            SetEbookTocScrollName(pd, url);
+        }
+    }
     item->id = ++idCounter;
     if (isIndex) {
         item->pageNo = 0;
@@ -882,10 +1246,17 @@ bool EngineEpub::FinishLoading() {
     args.htmlStr = doc->GetHtmlData();
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
-    args.SetFontName(GetDefaultFontName());
+    SetupHtmlFormatterFont(args, FilePath(), EbookTypographyKind::Latin);
     args.fontSize = GetDefaultFontSize();
     args.textAllocator = allocator;
     args.textRenderMethod = mui::TextRenderMethod::GdiplusQuick;
+
+    if (IsCreateEngineForThumbnail()) {
+        EpubFormatter formatter(&args, doc);
+        pages = FormatFirstHtmlPage(formatter);
+        pageCount = (int)pages->size();
+        return pageCount > 0;
+    }
 
     pages = EpubFormatter(&args, doc).FormatAllPages(false);
 
@@ -1027,13 +1398,20 @@ bool EngineFb2::FinishLoading() {
     args.htmlStr = doc->GetXmlData();
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
-    args.SetFontName(GetDefaultFontName());
+    SetupHtmlFormatterFont(args, FilePath(), EbookTypographyKind::Latin);
     args.fontSize = GetDefaultFontSize();
     args.textAllocator = allocator;
     args.textRenderMethod = mui::TextRenderMethod::GdiplusQuick;
 
     if (doc->IsZipped()) {
         str::ReplaceWithCopy(&defaultExt, ".fb2z");
+    }
+
+    if (IsCreateEngineForThumbnail()) {
+        Fb2Formatter formatter(&args, doc);
+        pages = FormatFirstHtmlPage(formatter);
+        pageCount = (int)pages->size();
+        return pageCount > 0;
     }
 
     pages = Fb2Formatter(&args, doc).FormatAllPages(false);
@@ -1091,6 +1469,26 @@ EngineBase* CreateEngineFb2FromStream(IStream* stream) {
 
 #include "MobiDoc.h"
 
+bool EngineEbookIsProgressiveLoadingInProgress(EngineBase* engine) {
+    if (!engine || engine->kind != kindEngineMobi) {
+        return false;
+    }
+    return static_cast<EngineEbook*>(engine)->IsEbookProgressiveLoadingInProgress();
+}
+
+bool EngineIsProgressiveEbookLoading(EngineBase* engine) {
+    return EngineMupdfIsReflowableLoadingInProgress(engine) || EngineEbookIsProgressiveLoadingInProgress(engine);
+}
+
+int EngineEbookGetFormattedPageCount(EngineBase* engine) {
+    if (!engine || engine->kind != kindEngineMobi) {
+        return engine ? engine->PageCount() : 0;
+    }
+    return static_cast<EngineEbook*>(engine)->GetFormattedPageCount();
+}
+
+static int ParseMobiNumericFilePos(const char* name);
+
 class EngineMobi : public EngineEbook {
   public:
     EngineMobi() : EngineEbook() {
@@ -1098,6 +1496,9 @@ class EngineMobi : public EngineEbook {
         str::ReplaceWithCopy(&defaultExt, ".mobi");
     }
     ~EngineMobi() override {
+        // ~EngineEbook runs after this body; wait for the load thread and
+        // destroy the formatter before deleting doc (formatter reads doc HTML).
+        AbortEbookLoading();
         delete tocTree;
         delete doc;
     }
@@ -1119,12 +1520,29 @@ class EngineMobi : public EngineEbook {
     IPageDestination* GetNamedDest(const char* name) override;
     TocTree* GetToc() override;
 
+    int ParseTocUrlFilePos(const char* url) {
+        if (!doc || !url || !*url) {
+            return -1;
+        }
+        if (str::StartsWith(url, "kindle:pos:")) {
+            return doc->ResolveKindlePos(url);
+        }
+        return ParseMobiNumericFilePos(url);
+    }
+
+    ByteSlice GetDocHtmlData() const { return doc ? doc->GetHtmlData() : ByteSlice(); }
+
     static EngineBase* CreateFromFile(const char* fileName);
     static EngineBase* CreateFromStream(IStream* stream);
+    static void FinishFormatAsync(EngineMobi* e);
 
   protected:
     MobiDoc* doc = nullptr;
     TocTree* tocTree = nullptr;
+    bool tocTreeStale = false;
+    bool tocTreeBuilt = false;
+
+    IPageDestination* GetNamedDestAtFilePos(int filePos);
 
     bool Load(const char* fileName);
     bool Load(IStream* stream);
@@ -1147,53 +1565,224 @@ bool EngineMobi::FinishLoading() {
         return false;
     }
 
+    ByteSlice htmlData = doc->GetHtmlData();
+    ConfigureMobiReaderStyle(FilePath(), htmlData);
+
     HtmlFormatterArgs args;
-    args.htmlStr = doc->GetHtmlData();
+    args.htmlStr = htmlData;
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
-    args.SetFontName(GetDefaultFontName());
+    SetupHtmlFormatterFont(args, FilePath(), typographyKind);
     args.fontSize = GetDefaultFontSize();
     args.textAllocator = allocator;
     args.textRenderMethod = mui::TextRenderMethod::GdiplusQuick;
 
-    pages = MobiFormatter(&args, doc).FormatAllPages();
-    // must set pageCount before ExtractPageAnchors
-    pageCount = (int)pages->size();
-    if (!ExtractPageAnchors()) {
-        return false;
-    }
-    return pageCount > 0;
-}
+    pages = new Vec<HtmlPage*>();
+    pendingFormatter = new MobiFormatter(&args, doc, typographyKind, readerStyleMobi);
 
-IPageDestination* EngineMobi::GetNamedDest(const char* name) {
-    int filePos = atoi(name);
-    if (filePos < 0 || 0 == filePos && *name != '0') {
-        return nullptr;
+    if (IsCreateEngineForThumbnail()) {
+        delete pages;
+        pages = FormatInitialHtmlPages(pendingFormatter, kEbookInitialPages);
+        delete pendingFormatter;
+        pendingFormatter = nullptr;
+        pageCount = (int)pages->size();
+        return pageCount > 0;
     }
-    int pageNo;
-    for (pageNo = 1; pageNo < PageCount(); pageNo++) {
-        if (pages->at(pageNo)->reparseIdx > filePos) {
-            break;
+
+    for (int i = 0; i < kEbookInitialPages; i++) {
+        HtmlPage* page = pendingFormatter->Next(false);
+        if (!page) {
+            delete pendingFormatter;
+            pendingFormatter = nullptr;
+            {
+                ScopedCritSec scope(&pagesAccess);
+                pageCount = (int)pages->size();
+            }
+            if (pageCount <= 0) {
+                return false;
+            }
+            if (!ExtractPageAnchors()) {
+                return false;
+            }
+            logf("EngineMobi::FinishLoading: generated %d initial pages (all content)\n", pageCount);
+            return true;
+        }
+        {
+            ScopedCritSec scope(&pagesAccess);
+            pages->Append(page);
+            pageCount = (int)pages->size();
         }
     }
-    ReportIf(pageNo < 1 || pageNo > PageCount());
+    logf("EngineMobi::FinishLoading: generated %d initial pages, starting async formatting\n", pageCount);
+    ReportIf(pageCount <= 0);
 
+    ExtractPageAnchors();
+
+    InterlockedExchange(&ebookLoadAbort, 0);
+    InterlockedExchange(&ebookLoadingInProgress, 1);
+    NotifyEngineDisplayReady(this);
+
+    // Run remaining page formatting on a separate thread so the load thread
+    // can return and the UI stays responsive. The formatter's GDI Graphics
+    // are re-created on the async thread via RecreateGfxForCurrentThread().
+    auto fn = MkFunc0<EngineMobi>(FinishFormatAsync, this);
+    RunAsync(fn, "MobiFormatAsync");
+    return true;
+}
+
+void EngineMobi::FinishFormatAsync(EngineMobi* e) {
+    AtomicIntInc(&gDangerousThreadCount);
+    defer {
+        AtomicIntDec(&gDangerousThreadCount);
+    };
+
+    // let the UI thread render the first page(s) before the background formatter
+    // starts contending for CPU, exactly like the EPUB (MuPDF) reflowable loader
+    Sleep(kEbookBackgroundDelayMs);
+
+    DWORD t0 = GetTickCount();
+    // copy the path: e->FilePath() returns engine-owned memory that we only
+    // touch while the engine is alive, but a private copy avoids any surprises
+    // if loading is aborted while we notify the UI.
+    AutoFreeStr path(str::Dup(e->FilePath()));
+    HtmlFormatter* formatter = e->pendingFormatter;
+    if (!formatter) {
+        InterlockedExchange(&e->ebookLoadingInProgress, 0);
+        return;
+    }
+
+    // Re-create GDI Graphics on this thread since the formatter was created
+    // on a different thread (the load thread) and GDI+ objects have thread affinity.
+    formatter->RecreateGfxForCurrentThread();
+
+    int batchCount = 0;
+    long long _dbgIter = 0;
+    DWORD lastNotify = GetTickCount();
+    for (;;) {
+        if (InterlockedCompareExchange(&e->ebookLoadAbort, 0, 0) != 0) {
+            break;
+        }
+        HtmlPage* page = formatter->Next(false);
+        if (!page) {
+            break;
+        }
+        {
+            ScopedCritSec scope(&e->pagesAccess);
+            e->pages->Append(page);
+            e->pageCount = (int)e->pages->size();
+        }
+        if (++batchCount >= kEbookFormatBatchPages) {
+            batchCount = 0;
+            // incremental: only scans the pages added since the last call
+            e->ExtractPageAnchors();
+            // throttle UI relayouts by wall-clock time so the notification
+            // count (and thus total relayout work) stays bounded regardless
+            // of how many pages the book has
+            DWORD now = GetTickCount();
+            if (path && (now - lastNotify) >= kEbookNotifyIntervalMs) {
+                lastNotify = now;
+                NotifyEbookPagesLoadingProgress(path, false);
+            }
+            Sleep(0);
+        }
+    }
+
+    delete formatter;
+    e->pendingFormatter = nullptr;
+
+    bool aborted = InterlockedCompareExchange(&e->ebookLoadAbort, 0, 0) != 0;
+    if (!aborted) {
+        e->ExtractPageAnchors();
+        // Mark stale but keep alive until UI calls ClearTocBox + reloads via GetToc.
+        e->tocTreeStale = true;
+    }
+
+    if (path && !aborted) {
+        NotifyEbookPagesLoadingProgress(path, true);
+    }
+    DWORD t1 = GetTickCount();
+    logf("EngineMobi::FinishFormatAsync: formatted %d pages in %u ms\n", e->pageCount, t1 - t0);
+    InterlockedExchange(&e->ebookLoadingInProgress, 0);
+}
+
+static int ParseMobiNumericFilePos(const char* name) {
+    if (!name || !*name) {
+        return -1;
+    }
+    if (str::StartsWith(name, "filepos:")) {
+        name += 8;
+    }
+    if (*name < '0' || *name > '9') {
+        return -1;
+    }
+    const char* p = name;
+    while (*p >= '0' && *p <= '9') {
+        p++;
+    }
+    if (*p != '\0' && *p != '#') {
+        return -1;
+    }
+    return atoi(name);
+}
+
+int EngineEbookParseTocLinkFilePos(EngineBase* engine, IPageDestination* dest) {
+    if (!engine || engine->kind != kindEngineMobi || !dest) {
+        return -1;
+    }
+    if (dest->GetKind() != kindDestinationScrollTo) {
+        return -1;
+    }
+    char* name = PageDestGetName(dest);
+    if (!name || !*name) {
+        return -1;
+    }
+    auto* mobi = static_cast<EngineMobi*>(engine);
+    return mobi->ParseTocUrlFilePos(name);
+}
+
+bool EngineEbookIsTocFilePosReachable(EngineBase* engine, int filePos) {
+    if (!engine || engine->kind != kindEngineMobi || filePos < 0) {
+        return true;
+    }
+    auto* ee = static_cast<EngineEbook*>(engine);
+    if (!ee->IsEbookProgressiveLoadingInProgress()) {
+        return true;
+    }
+    auto* mobi = static_cast<EngineMobi*>(engine);
+    ByteSlice html = mobi->GetDocHtmlData();
+    return ee->IsTocFilePosFormatted(filePos, (const char*)html.data(), html.size());
+}
+
+IPageDestination* EngineMobi::GetNamedDestAtFilePos(int filePos) {
+    if (filePos < 0 || !doc) {
+        return nullptr;
+    }
     ByteSlice htmlData = doc->GetHtmlData();
     size_t htmlLen = htmlData.size();
     const char* start = (const char*)htmlData.data();
-    if ((size_t)filePos > htmlLen) {
+    if (!start || (size_t)filePos > htmlLen) {
         return nullptr;
     }
 
     ScopedCritSec scope(&pagesAccess);
-    Vec<DrawInstr>* pageInstrs = GetHtmlPage(pageNo);
-    // link to the bottom of the page, if filePos points
-    // beyond the last visible DrawInstr of a page
+    if (!pages || pages->size() == 0) {
+        return nullptr;
+    }
+    int nPages = (int)pages->size();
+    int pageNo = nPages;
+    for (int i = 1; i < nPages; i++) {
+        if (pages->at(i)->reparseIdx > filePos) {
+            pageNo = i;
+            break;
+        }
+    }
+
+    HtmlPage* page = pages->at(pageNo - 1);
     float currY = (float)pageRect.dy;
-    for (DrawInstr& i : *pageInstrs) {
-        if ((DrawInstrType::String == i.type || DrawInstrType::RtlString == i.type) && i.str.s >= start &&
-            i.str.s <= start + htmlLen && i.str.s - start >= filePos) {
-            currY = i.bbox.y;
+    for (DrawInstr& instr : page->instructions) {
+        if ((DrawInstrType::String == instr.type || DrawInstrType::RtlString == instr.type) && instr.str.s >= start &&
+            instr.str.s <= start + htmlLen && instr.str.s - start >= filePos) {
+            currY = instr.bbox.y;
             break;
         }
     }
@@ -1202,10 +1791,36 @@ IPageDestination* EngineMobi::GetNamedDest(const char* name) {
     return NewSimpleDest(pageNo, rect);
 }
 
+IPageDestination* EngineMobi::GetNamedDest(const char* name) {
+    if (!name || !*name) {
+        return nullptr;
+    }
+    if (str::StartsWith(name, "kindle:pos:")) {
+        int filePos = doc->ResolveKindlePos(name);
+        if (filePos < 0) {
+            return nullptr;
+        }
+        return GetNamedDestAtFilePos(filePos);
+    }
+    int filePos = ParseMobiNumericFilePos(name);
+    if (filePos >= 0) {
+        return GetNamedDestAtFilePos(filePos);
+    }
+    return EngineEbook::GetNamedDest(name);
+}
+
 TocTree* EngineMobi::GetToc() {
-    if (tocTree) {
+    // ParseToc() gumbo-parses up to the whole (potentially huge) document, so it
+    // must not run on every call. Cache the result of a build attempt - including
+    // a null result while the book is still loading - and only rebuild when the
+    // tree is explicitly marked stale (e.g. after async formatting completes).
+    if (tocTreeBuilt && !tocTreeStale) {
         return tocTree;
     }
+    delete tocTree;
+    tocTree = nullptr;
+    tocTreeStale = false;
+    tocTreeBuilt = true;
     EbookTocBuilder builder(this);
     doc->ParseToc(&builder);
     TocItem* root = builder.GetRoot();
@@ -1294,7 +1909,7 @@ bool EnginePdb::Load(const char* fileName) {
     args.htmlStr = doc->GetHtmlData();
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
-    args.SetFontName(GetDefaultFontName());
+    SetupHtmlFormatterFont(args, FilePath(), EbookTypographyKind::Latin);
     args.fontSize = GetDefaultFontSize();
     args.textAllocator = allocator;
     args.textRenderMethod = mui::TextRenderMethod::GdiplusQuick;
@@ -1650,7 +2265,7 @@ bool EngineChm::Load(const char* fileName) {
     args.htmlStr = dataCache->GetHtmlData();
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
-    args.SetFontName(GetDefaultFontName());
+    SetupHtmlFormatterFont(args, FilePath(), EbookTypographyKind::Latin);
     args.fontSize = GetDefaultFontSize();
     args.textAllocator = allocator;
     args.textRenderMethod = mui::TextRenderMethod::GdiplusQuick;
@@ -1791,10 +2406,17 @@ bool EngineHtml::Load(const char* fileName) {
     args.htmlStr = doc->GetHtmlData();
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
-    args.SetFontName(GetDefaultFontName());
+    SetupHtmlFormatterFont(args, FilePath(), EbookTypographyKind::Latin);
     args.fontSize = GetDefaultFontSize();
     args.textAllocator = allocator;
     args.textRenderMethod = mui::TextRenderMethod::Gdiplus;
+
+    if (IsCreateEngineForThumbnail()) {
+        HtmlFileFormatter formatter(&args, doc);
+        pages = FormatFirstHtmlPage(formatter);
+        pageCount = (int)pages->size();
+        return pageCount > 0;
+    }
 
     pages = HtmlFileFormatter(&args, doc).FormatAllPages(false);
     // must set pageCount before ExtractPageAnchors
@@ -1909,10 +2531,17 @@ bool EngineTxt::Load(const char* fileName) {
     args.htmlStr = doc->GetHtmlData();
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
-    args.SetFontName(GetDefaultFontName());
+    SetupHtmlFormatterFont(args, FilePath(), EbookTypographyKind::Latin);
     args.fontSize = GetDefaultFontSize();
     args.textAllocator = allocator;
     args.textRenderMethod = mui::TextRenderMethod::Gdiplus;
+
+    if (IsCreateEngineForThumbnail()) {
+        TxtFormatter formatter(&args);
+        pages = FormatFirstHtmlPage(formatter);
+        pageCount = (int)pages->size();
+        return pageCount > 0;
+    }
 
     pages = TxtFormatter(&args).FormatAllPages(false);
     // must set pageCount before ExtractPageAnchors

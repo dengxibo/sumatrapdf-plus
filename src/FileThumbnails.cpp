@@ -18,6 +18,12 @@
 
 #include "utils/Log.h"
 
+static bool IsThumbnailStale(const char* filePath, const char* thumbPath) {
+    FILETIME bmpTime = file::GetModificationTime(thumbPath);
+    FILETIME fileTime = file::GetModificationTime(filePath);
+    return FileTimeDiffInSecs(fileTime, bmpTime) > 0;
+}
+
 char* GetThumbnailPathTemp(const char* filePath) {
     // create a fingerprint of a (normalized) path for the file name
     // I'd have liked to also include the file's last modification time
@@ -64,10 +70,18 @@ void DeleteThumbnailForFile(const char* filePath) {
 
 RenderedBitmap* LoadThumbnail(FileState* fs) {
     if (fs->thumbnail) {
-        return fs->thumbnail;
+        TempStr currentPath = GetThumbnailPathTemp(fs->filePath);
+        if (currentPath && !IsThumbnailStale(fs->filePath, currentPath)) {
+            return fs->thumbnail;
+        }
+        delete fs->thumbnail;
+        fs->thumbnail = nullptr;
     }
     TempStr bmpPath = GetThumbnailPathTemp(fs->filePath);
     if (!bmpPath) {
+        return nullptr;
+    }
+    if (IsThumbnailStale(fs->filePath, bmpPath)) {
         return nullptr;
     }
 
@@ -91,10 +105,7 @@ bool HasThumbnail(FileState* fs) {
     if (!bmpPath) {
         return true;
     }
-    FILETIME bmpTime = file::GetModificationTime(bmpPath);
-    FILETIME fileTime = file::GetModificationTime(fs->filePath);
-    // delete the thumbnail if the file is newer than the thumbnail
-    if (FileTimeDiffInSecs(fileTime, bmpTime) > 0) {
+    if (IsThumbnailStale(fs->filePath, bmpPath)) {
         delete fs->thumbnail;
         fs->thumbnail = nullptr;
     }
@@ -144,10 +155,17 @@ void RemoveThumbnail(FileState* fs) {
         return;
     }
 
-    char* bmpPath = GetThumbnailPathTemp(fs->filePath);
-    if (bmpPath) {
-        file::Delete(bmpPath);
-    }
+    DeleteThumbnailForFile(fs->filePath);
     delete fs->thumbnail;
     fs->thumbnail = nullptr;
+}
+
+void InvalidateLoadedThumbnails() {
+    if (!gFileHistory.states) {
+        return;
+    }
+    for (FileState* fs : *gFileHistory.states) {
+        delete fs->thumbnail;
+        fs->thumbnail = nullptr;
+    }
 }

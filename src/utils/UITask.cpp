@@ -6,8 +6,6 @@
 #include "utils/WinUtil.h"
 #include "utils/UITask.h"
 
-#include "utils/Log.h"
-
 namespace uitask {
 
 static HWND gTaskDispatchHwnd = nullptr;
@@ -20,14 +18,7 @@ static LRESULT CALLBACK WndProcTaskDispatch(HWND hwnd, UINT msg, WPARAM wp, LPAR
     if (gExecuteTaskMessage == msg) {
         Kind kind = (Kind)wp;
         auto func = (Func0*)lp;
-        bool shouldLog = (kind != nullptr) && !str::Eq(kind, "RenderFinished");
-        if (shouldLog) {
-            logf("uitask::WndProcTaskDispatch: will execute '%s', func 0x%p\n", kind, (void*)func);
-        }
         func->Call();
-        if (shouldLog) {
-            logf("uitask::WndProcTaskDispatch: did execute, will delete func 0x%p\n", (void*)func);
-        }
         delete func;
         return 0;
     }
@@ -53,7 +44,7 @@ void Initialize() {
     gTaskDispatchHwnd = CreateWindowExW(0, cls, title, style, 0, 0, 0, 0, HWND_MESSAGE, nullptr, m, nullptr);
 }
 
-void DrainQueue() {
+static void DrainQueueAll() {
     ReportIf(!gTaskDispatchHwnd);
     MSG msg;
     UINT wmExecTask = gExecuteTaskMessage;
@@ -62,8 +53,19 @@ void DrainQueue() {
     }
 }
 
+void DrainQueue() {
+    ReportIf(!gTaskDispatchHwnd);
+    MSG msg;
+    UINT wmExecTask = gExecuteTaskMessage;
+    // Process one task per message-loop turn so long chains (e.g. progressive
+    // page-layout batches) yield back to user input and painting between steps.
+    if (PeekMessage(&msg, gTaskDispatchHwnd, wmExecTask, wmExecTask, PM_REMOVE)) {
+        DispatchMessage(&msg);
+    }
+}
+
 void Destroy() {
-    DrainQueue();
+    DrainQueueAll();
     DestroyWindow(gTaskDispatchHwnd);
     gTaskDispatchHwnd = nullptr;
 }
@@ -85,6 +87,15 @@ void PostOptimized(const Func0& f, Kind kind) {
         return;
     }
     Post(f, kind);
+} // NOLINT
+
+void Invoke(const Func0& f, Kind kind) {
+    if (IsMainUIThread()) {
+        f.Call();
+        return;
+    }
+    auto func = new Func0(f);
+    SendMessageW(gTaskDispatchHwnd, gExecuteTaskMessage, (WPARAM)kind, (LPARAM)func);
 } // NOLINT
 
 } // namespace uitask

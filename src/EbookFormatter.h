@@ -3,19 +3,41 @@
 
 /* formatting extensions for Mobi */
 
+#include "EbookTypography.h"
+
 struct MobiDoc;
 
 class MobiFormatter : public HtmlFormatter {
     // accessor to images (and other format-specific data)
     // it can be nullptr (enables testing by feeding raw html)
     MobiDoc* doc;
+    EbookTypographyKind typographyKind = EbookTypographyKind::Latin;
+    bool readerStyle = false;
 
+    size_t tocStartIdx = (size_t)-1;
+    bool inTocRegion = false;
+    bool inToc = false;
+    bool tocPageBreakDone = false;
+    bool sawColophonPhone = false;
+    bool pendingMu = false;
+    int blockquoteDepth = 0;
+
+    bool InTocLikeRegion() const { return inToc || (sawColophonPhone && !tocPageBreakDone); }
+
+    void UpdateTocState();
+    void StartTocPage();
+    void OnParserProgress() override;
+    bool BeforeTextRun(const char* s, size_t sLen) override;
+    void HandleTagBlockquote(HtmlToken* t);
     void HandleSpacing_Mobi(HtmlToken* t);
+    SizeF MaxImageSize(HtmlToken* t);
     void HandleTagImg(HtmlToken* t) override;
     void HandleHtmlTag(HtmlToken* t) override;
+    float ListIndentDx() const override;
+    float ExtraParagraphDy() override;
 
   public:
-    MobiFormatter(HtmlFormatterArgs* args, MobiDoc* doc);
+    MobiFormatter(HtmlFormatterArgs* args, MobiDoc* doc, EbookTypographyKind typographyKind, bool readerStyle);
 };
 
 /* formatting extensions for EPUB */

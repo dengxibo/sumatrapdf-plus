@@ -95,6 +95,7 @@ struct DisplayModel : DocController {
     void SetViewPortSize(Size size) override;
 
     // table of contents
+    bool HasToc() override;
     TocTree* GetToc() override;
     void ScrollTo(int pageNo, RectF rect, float zoom) override;
     bool HandleLink(IPageDestination*, ILinkHandler*) override;
@@ -111,6 +112,7 @@ struct DisplayModel : DocController {
 
     // common shortcuts
     bool ValidPageNo(int pageNo) const override;
+    void PreparePageNavigation(int pageNo) override;
     bool GoToNextPage() override;
     bool GoToPrevPage(bool toBottom = false) override;
     bool GoToFirstPage() override;
@@ -201,6 +203,8 @@ struct DisplayModel : DocController {
     bool InPresentation() const;
 
     void BuildPagesInfo();
+    void EnsurePagesInfoForPage(int pageNo);
+    void OnMorePagesAvailable(bool updateUi = true, bool growAll = false);
     float ZoomRealFromVirtualForPage(float zoomVirtual, int pageNo) const;
     SizeF PageSizeAfterRotation(int pageNo, bool fitToContent = false) const;
     void ChangeStartPage(int startPage);
@@ -213,17 +217,23 @@ struct DisplayModel : DocController {
     void GoToPage(int pageNo, int scrollY, bool addNavPt = false, int scrollX = -1);
     bool GoToPrevPage(int scrollY);
     int GetPageNextToPoint(Point pt) const;
+    void TryApplyPendingRestoreScroll();
+    bool ShouldSkipTocSelectionUpdate() const;
 
     EngineBase* engine = nullptr;
 
-    /* an array of PageInfo, len of array is pageCount */
+    /* an array of PageInfo, len of array is pagesInfoCount */
     PageInfo* pagesInfo = nullptr;
+    int pagesInfoCount = 0;
 
     DisplayMode displayMode{DisplayMode::Automatic};
     /* In non-continuous mode is the first page from a file that we're
        displaying.
        No meaning in continuous mode. */
     int startPage = 1;
+    // saved scroll target while reflowable docs are still loading pages
+    ScrollState pendingRestoreScroll;
+    bool hasPendingRestoreScroll = false;
 
     /* size of virtual canvas containing all rendered pages. */
     Size canvasSize;
@@ -263,6 +273,7 @@ struct DisplayModel : DocController {
 
     /* allow resizing a window without triggering a new rendering (needed for window destruction) */
     bool pauseRendering = false;
+    bool suppressTocSelectionUpdate = false;
 
     void RenderFinished(PageRenderRequest* req);
     void RenderFinishedAsync(PageRenderRequest* req);

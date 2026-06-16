@@ -35,6 +35,21 @@ bool gConserveMemory = false;
 
 static DWORD WINAPI RenderCacheThread(LPVOID data);
 
+static bool ShouldUpdateBitmapColors(EngineBase* engine) {
+    if (!engine || engine->IsImageCollection()) {
+        return false;
+    }
+    if (engine->kind == kindEngineDjVu) {
+        return true;
+    }
+    if (engine->kind != kindEngineMupdf) {
+        return false;
+    }
+    // MuPDF-based EPUB pages should keep their own CSS-driven colors.
+    // Bitmap recoloring is still needed for PDF/XPS pages.
+    return str::EqI(engine->defaultExt, ".pdf") || str::EqI(engine->defaultExt, ".xps");
+}
+
 bool gShowTileLayout = false;
 int gMaxRenderThreads = 8;
 
@@ -816,7 +831,7 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
         req.errorCode = bmp ? 0 : 1;
 
         if (bmp) {
-            if (!engine->IsImageCollection()) {
+            if (ShouldUpdateBitmapColors(engine)) {
                 UpdateBitmapColors(bmp->GetBitmap(), cache->textColor, cache->backgroundColor);
             }
             cache->Add(req, bmp);

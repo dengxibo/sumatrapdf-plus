@@ -76,9 +76,11 @@ struct FixedPageUI {
 struct EBookUI {
     // font size, default 8.0
     float fontSize;
-    // default is 420
+    // page width in pt for flowed ebooks. 0 means automatic reader-style
+    // width
     float layoutDx;
-    // default is 595
+    // page height in pt for flowed ebooks. 0 means automatic reader-style
+    // height
     float layoutDy;
     // if true, we ignore ebook's CSS
     bool ignoreDocumentCSS;
@@ -359,6 +361,8 @@ struct FileState {
     Vec<int>* tocState;
     // thumbnails are saved as PNG files in sumatrapdfcache directory
     RenderedBitmap* thumbnail;
+    // runtime-only: whether thumbnail was generated for dark theme
+    bool thumbnailDarkTheme;
     // temporary value needed for FileHistory::cmpOpenCount
     size_t index;
     //
@@ -464,6 +468,12 @@ struct GlobalPrefs {
     char* customColors;
     // if true, we show the toolbar at the top of the window
     bool showToolbar;
+    // directory containing SumatraDict.* dictionary files. If empty,
+    // {exedir}/dict is used
+    char* offlineDictionaryPath;
+    // if true, double-clicking a word looks it up in the offline
+    // dictionary
+    bool enableDoubleClickWordLookup;
     // if true, we show the Favorites sidebar
     bool showFavorites;
     // if true, we show table of contents (Bookmarks) sidebar if it's
@@ -890,9 +900,11 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, reuseInstance), SettingType::Bool, true},
     {offsetof(GlobalPrefs, showMenubar), SettingType::Bool, true},
     {offsetof(GlobalPrefs, showMenubarWithTabs), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, showTips), SettingType::Bool, true},
+    {offsetof(GlobalPrefs, showTips), SettingType::Bool, false},
     {offsetof(GlobalPrefs, customColors), SettingType::String, 0},
     {offsetof(GlobalPrefs, showToolbar), SettingType::Bool, true},
+    {offsetof(GlobalPrefs, offlineDictionaryPath), SettingType::String, 0},
+    {offsetof(GlobalPrefs, enableDoubleClickWordLookup), SettingType::Bool, true},
     {offsetof(GlobalPrefs, showFavorites), SettingType::Bool, false},
     {offsetof(GlobalPrefs, showToc), SettingType::Bool, true},
     {offsetof(GlobalPrefs, showLinks), SettingType::Bool, false},
@@ -961,17 +973,17 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment, (intptr_t)"Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 90, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 92, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0ReloadMo"
     "difiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSession\0ReuseInstance\0ShowMenubar\0ShowMe"
-    "nubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0ShowFavorites\0ShowToc\0ShowLinks\0ShowStartPage\0SidebarDx\0S"
-    "crollbars\0ScrollbarInSinglePage\0SmoothScroll\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme"
-    "\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0UIFontSize\0DisableAntiAlias\0UseSysColors\0UseTabs\0TabsMru\0Zo"
-    "omLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalVie"
-    "wers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0"
-    "\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0FileStates\0SessionData\0ReopenOnce\0Time"
-    "OfLastUpdateCheck\0OpenCountWeek\0PropWinPos\0\0"};
+    "nubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0OfflineDictionaryPath\0EnableDoubleClickWordLookup\0ShowFavori"
+    "tes\0ShowToc\0ShowLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0FastScrollOver"
+    "Scrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0UIFontSize\0"
+    "DisableAntiAlias\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBook"
+    "UI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0Sele"
+    "ctionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0W"
+    "indowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0OpenCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)""},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)""},

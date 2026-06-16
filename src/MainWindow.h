@@ -134,6 +134,7 @@ struct MainWindow {
     // state related to table of contents (PDF bookmarks etc.)
     HWND hwndTocBox = nullptr;
     UINT_PTR tocBoxSubclassId = 0;
+    UINT_PTR tocTreeSubclassId = 0;
 
     LabelWithCloseWnd* tocLabelWithClose = nullptr;
     Edit* tocFilterEdit = nullptr;

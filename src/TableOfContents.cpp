@@ -173,40 +173,48 @@ static void RelayoutTocItem(LPNMTVCUSTOMDRAW ntvcd) {
 #endif
 
 struct GoToTocLinkData {
-    TocItem* tocItem;
-    WindowTab* tab;
-    DocController* ctrl;
+    WindowTab* tab = nullptr;
+    DocController* ctrl = nullptr;
+    Kind destKind = nullptr;
+    int pageNo = 0;
+    char* url = nullptr;
+    char* mobiScrollName = nullptr;
+    char* mupdfUri = nullptr;
+    float mupdfDestX = DEST_USE_DEFAULT;
+    float mupdfDestY = DEST_USE_DEFAULT;
+    int mupdfReflowOutlineChapter = -1;
 };
 
-static void GoToTocLink(GoToTocLinkData* d) {
-    AutoDelete delData(d);
-
-    auto tab = d->tab;
-    auto tocItem = d->tocItem;
-    auto ctrl = d->ctrl;
-
-    // validate tab before dereferencing — it may have been freed
-    // while this task was queued (e.g. user closed the tab/window)
-    if (!IsWindowTabValid(tab)) {
+static void FreeGoToTocLinkData(GoToTocLinkData* d) {
+    if (!d) {
         return;
     }
-    MainWindow* win = tab->win;
-    // tocItem is invalid if the DocController has been replaced
-    if (!IsMainWindowValid(win) || win->CurrentTab() != tab || tab->ctrl != ctrl) {
-        return;
-    }
+    str::Free(d->url);
+    str::Free(d->mobiScrollName);
+    str::Free(d->mupdfUri);
+}
 
-    // make sure that the tree item that the user selected
-    // isn't unselected in UpdateTocSelection right again
-    win->tocKeepSelection = true;
-    int pageNo = tocItem->pageNo;
+static void CaptureGoToTocLinkData(GoToTocLinkData* data, TocItem* tocItem) {
+    data->pageNo = tocItem->pageNo;
     IPageDestination* dest = tocItem->GetPageDestination();
-    if (dest) {
-        ctrl->HandleLink(dest, win->linkHandler);
-    } else if (pageNo) {
-        ctrl->GoToPage(pageNo, true);
+    if (!dest) {
+        return;
     }
-    win->tocKeepSelection = false;
+    data->destKind = dest->GetKind();
+    if (dest->GetKind() == kindDestinationMupdf) {
+        EngineMupdfSnapshotOutlineLink(dest, &data->mupdfUri, &data->mupdfReflowOutlineChapter, &data->mupdfDestX,
+                                       &data->mupdfDestY);
+    } else if (dest->GetKind() == kindDestinationScrollTo) {
+        char* name = PageDestGetName(dest);
+        if (name && *name) {
+            data->mobiScrollName = str::Dup(name);
+        }
+    } else if (dest->GetKind() == kindDestinationLaunchURL) {
+        auto* urlDest = (PageDestinationURL*)dest;
+        if (urlDest->url) {
+            data->url = str::Dup(urlDest->url);
+        }
+    }
 }
 
 static bool IsScrollToLink(IPageDestination* link) {
@@ -217,19 +225,177 @@ static bool IsScrollToLink(IPageDestination* link) {
     return kind == kindDestinationScrollTo;
 }
 
+static bool IsTocInternalPageItem(TocItem* tocItem, DocController* ctrl = nullptr) {
+    if (!tocItem) {
+        return false;
+    }
+    if (tocItem->pageNo > 0) {
+        return true;
+    }
+    IPageDestination* dest = tocItem->GetPageDestination();
+    if (!dest) {
+        return false;
+    }
+    if (dest->GetKind() == kindDestinationMupdf) {
+        return true;
+    }
+    if (ctrl && dest->GetKind() == kindDestinationScrollTo) {
+        DisplayModel* dm = ctrl->AsFixed();
+        EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+        if (engine && engine->kind == kindEngineMobi && PageDestGetName(dest)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool IsMobiEbookTocItemReachable(DocController* ctrl, TocItem* tocItem, EngineBase* engine) {
+    if (!ctrl || !tocItem || !engine || engine->kind != kindEngineMobi) {
+        return true;
+    }
+    if (!EngineIsProgressiveEbookLoading(engine)) {
+        if (tocItem->pageNo > 0) {
+            return ctrl->ValidPageNo(tocItem->pageNo);
+        }
+        return true;
+    }
+    IPageDestination* dest = tocItem->GetPageDestination();
+    int filePos = EngineEbookParseTocLinkFilePos(engine, dest);
+    if (filePos >= 0) {
+        return EngineEbookIsTocFilePosReachable(engine, filePos);
+    }
+    if (tocItem->pageNo > 0) {
+        return tocItem->pageNo <= EngineEbookGetFormattedPageCount(engine);
+    }
+    if (dest && dest->GetKind() == kindDestinationScrollTo && PageDestGetName(dest)) {
+        return true;
+    }
+    return false;
+}
+
+static bool IsTocPageReachable(DocController* ctrl, TocItem* tocItem) {
+    if (!ctrl || !tocItem) {
+        return true;
+    }
+    DisplayModel* dm = ctrl->AsFixed();
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (engine && engine->kind == kindEngineMobi) {
+        // OnTocCustomDraw calls this while painting; never dereference dest here.
+        return IsMobiEbookTocItemReachable(ctrl, tocItem, engine);
+    }
+    IPageDestination* dest = tocItem->GetPageDestination();
+    if (engine && EngineIsProgressiveEbookLoading(engine) && dest &&
+        dest->GetKind() == kindDestinationMupdf) {
+        return EngineMupdfIsOutlineDestReachable(engine, dest);
+    }
+    if (tocItem->pageNo <= 0) {
+        if (engine && dest && dest->GetKind() == kindDestinationMupdf && IsTocInternalPageItem(tocItem)) {
+            int pageNo = EngineMupdfFastOutlinePageNo(engine, dest);
+            if (pageNo > 0) {
+                if (EngineIsProgressiveEbookLoading(engine)) {
+                    return pageNo <= engine->PageCount();
+                }
+                return ctrl->ValidPageNo(pageNo);
+            }
+            if (EngineIsProgressiveEbookLoading(engine)) {
+                return false;
+            }
+            pageNo = EngineMupdfResolveLinkPageNo(engine, dest);
+            return pageNo > 0 && ctrl->ValidPageNo(pageNo);
+        }
+        return true;
+    }
+    if (engine && EngineIsProgressiveEbookLoading(engine)) {
+        return tocItem->pageNo <= engine->PageCount();
+    }
+    return ctrl->ValidPageNo(tocItem->pageNo);
+}
+
+static void GoToTocLink(GoToTocLinkData* d) {
+    AutoDelete delData(d);
+    defer {
+        FreeGoToTocLinkData(d);
+    };
+
+    auto tab = d->tab;
+    auto ctrl = d->ctrl;
+
+    // validate tab before dereferencing — it may have been freed
+    // while this task was queued (e.g. user closed the tab/window)
+    if (!IsWindowTabValid(tab)) {
+        return;
+    }
+    MainWindow* win = tab->win;
+    if (!IsMainWindowValid(win) || win->CurrentTab() != tab || tab->ctrl != ctrl) {
+        return;
+    }
+
+    win->tocKeepSelection = true;
+    defer {
+        win->tocKeepSelection = false;
+    };
+
+    DisplayModel* dm = ctrl->AsFixed();
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    int navPage = d->pageNo;
+
+    if (d->destKind == kindDestinationMupdf && d->mupdfUri && engine) {
+        bool loaded = !EngineIsProgressiveEbookLoading(engine);
+        bool hasFragment = str::FindChar(d->mupdfUri, '#') != nullptr;
+        // Large reflowed EPUBs (e.g. 白话资治通鉴): after load, fz_resolve_link_dest is
+        // unreliable for file-only links; use cached pageNo. Fragment links (e.g. 萤火虫童书
+        // with many entries in one HTML file) must resolve the URI to scroll to the anchor.
+        if (loaded && navPage > 0 && !hasFragment) {
+            ctrl->PreparePageNavigation(navPage);
+            if (ctrl->ValidPageNo(navPage)) {
+                if (d->mupdfDestX != DEST_USE_DEFAULT || d->mupdfDestY != DEST_USE_DEFAULT) {
+                    float x = d->mupdfDestX != DEST_USE_DEFAULT ? d->mupdfDestX : 0.f;
+                    float y = d->mupdfDestY != DEST_USE_DEFAULT ? d->mupdfDestY : 0.f;
+                    ctrl->ScrollTo(navPage, RectF(x, y, 0, 0), 0);
+                } else {
+                    ctrl->GoToPage(navPage, true);
+                }
+                return;
+            }
+        }
+        EngineMupdfNavigateUri(engine, d->mupdfUri, d->mupdfReflowOutlineChapter, d->mupdfDestX, d->mupdfDestY,
+                               win->linkHandler);
+        return;
+    }
+
+    if (dm && navPage > 0) {
+        ctrl->PreparePageNavigation(navPage);
+    }
+
+    if (d->mobiScrollName && engine && engine->kind == kindEngineMobi) {
+        IPageDestination* resolvedDest = engine->GetNamedDest(d->mobiScrollName);
+        if (resolvedDest) {
+            ctrl->HandleLink(resolvedDest, win->linkHandler);
+            delete resolvedDest;
+        }
+    } else if (d->url) {
+        win->linkHandler->LaunchURL(d->url);
+    } else if (navPage > 0) {
+        ctrl->GoToPage(navPage, true);
+    }
+}
+
 static void GoToTocTreeItem(MainWindow* win, TreeItem ti, bool allowExternal) {
     if (!ti) {
         return;
     }
     TocItem* tocItem = (TocItem*)ti;
-    bool validPage = (tocItem->pageNo > 0);
+    bool isInternalPage = IsTocInternalPageItem(tocItem, win->ctrl);
     bool isScroll = IsScrollToLink(tocItem->GetPageDestination());
-    if (validPage || (allowExternal || isScroll)) {
+    if (isInternalPage && !IsTocPageReachable(win->ctrl, tocItem)) {
+        return;
+    }
+    if (isInternalPage || (allowExternal || isScroll)) {
         // delay changing the page until the tree messages have been handled
         auto data = new GoToTocLinkData;
         data->ctrl = win->ctrl;
-        data->tocItem = tocItem;
         data->tab = win->CurrentTab();
+        CaptureGoToTocLinkData(data, tocItem);
         auto fn = MkFunc0<GoToTocLinkData>(GoToTocLink, data);
         uitask::Post(fn, "TaskGoToTocTreeItem");
     }
@@ -244,6 +410,11 @@ void ClearTocBox(MainWindow* win) {
     // EN_CHANGE synchronously which calls ApplyTocFilter() re-entrantly
     // and we need it to bail out early
     win->tocLoaded = false;
+
+    WindowTab* tab = win->CurrentTab();
+    if (tab) {
+        tab->currToc = nullptr;
+    }
 
     win->tocTreeView->Clear();
 
@@ -301,11 +472,28 @@ void visitTree(VistorForPageNoData* d, TreeItemVisitorData* vd) {
     }
 }
 
+static bool IsKnownTocTreeModel(MainWindow* win, TreeModel* tm) {
+    if (!win || !tm) {
+        return false;
+    }
+    WindowTab* tab = win->CurrentTab();
+    if (tab && tab->currToc && tm == tab->currToc) {
+        return true;
+    }
+    if (win->tocFilteredTree && tm == win->tocFilteredTree) {
+        return true;
+    }
+    return false;
+}
+
 // find the closest item in tree view to a given page number
 static TocItem* TreeItemForPageNo(TreeView* treeView, int pageNo) {
+    if (!treeView) {
+        return nullptr;
+    }
     TreeModel* tm = treeView->treeModel;
     if (!tm) {
-        return 0;
+        return nullptr;
     }
     VistorForPageNoData d;
     d.pageNo = pageNo;
@@ -345,6 +533,19 @@ void UpdateTocSelection(MainWindow* win, int currPageNo) {
     }
 
     auto treeView = win->tocTreeView;
+    if (!treeView || !treeView->treeModel) {
+        return;
+    }
+    if (!IsKnownTocTreeModel(win, treeView->treeModel)) {
+        treeView->treeModel = nullptr;
+        return;
+    }
+    WindowTab* tab = win->CurrentTab();
+    DisplayModel* dm = tab && tab->ctrl ? tab->ctrl->AsFixed() : nullptr;
+    if (dm && dm->ShouldSkipTocSelectionUpdate()) {
+        return;
+    }
+
     auto item = TreeItemForPageNo(treeView, currPageNo);
     // only select the items that are visible i.e. are top nodes or
     // children of expanded node
@@ -710,12 +911,16 @@ void LoadTocTree(MainWindow* win) {
         return;
     }
 
-    win->tocLoaded = true;
-
     // clear filter when loading new toc
     // null out currToc first so that SetText("") callback doesn't use stale pointer
-    delete win->tocFilteredTree;
-    win->tocFilteredTree = nullptr;
+    if (win->tocFilteredTree) {
+        TreeView* tv = win->tocTreeView;
+        if (tv && tv->treeModel == win->tocFilteredTree) {
+            tv->treeModel = nullptr;
+        }
+        delete win->tocFilteredTree;
+        win->tocFilteredTree = nullptr;
+    }
     tab->currToc = nullptr;
     if (win->tocFilterEdit) {
         win->tocFilterEdit->SetText("");
@@ -726,6 +931,7 @@ void LoadTocTree(MainWindow* win) {
         return;
     }
 
+    win->tocLoaded = true;
     tab->currToc = tocTree;
 
     // consider a ToC tree right-to-left if a more than half of the
@@ -872,7 +1078,7 @@ static void DrawTocItemHighlight(TreeView::CustomDrawEvent* ev, MainWindow* win)
 
     // draw highlight background rectangles
     COLORREF highlightCol;
-    if (IsCurrentThemeDefault()) {
+    if (!ThemeUsesDarkChrome()) {
         highlightCol = RGB(255, 255, 0);
     } else {
         highlightCol = AccentColor(bgCol, 40);
@@ -936,7 +1142,17 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
             return;
         }
         LRESULT res = 0;
-        if (tocItem->color != kColorUnset) {
+        bool knownTree = win && IsKnownTocTreeModel(win, ev->treeView->treeModel);
+        if (!knownTree || !win || win->isBeingClosed || !win->tocLoaded) {
+            ev->result = CDRF_DODEFAULT;
+            return;
+        }
+        if (win->ctrl && IsTocInternalPageItem(tocItem, win->ctrl) &&
+            !IsTocPageReachable(win->ctrl, tocItem)) {
+            tvcd->clrText = ThemeWindowTextDisabledColor();
+            tvcd->clrTextBk = IsSpecialColor(ev->treeView->bgColor) ? ThemeControlBackgroundColor()
+                                                                     : ev->treeView->bgColor;
+        } else if (tocItem->color != kColorUnset) {
             tvcd->clrText = tocItem->color;
         }
         if (tocItem->fontFlags != 0) {
@@ -951,7 +1167,8 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
     }
 
     if (cd->dwDrawStage == CDDS_ITEMPOSTPAINT) {
-        if (filterActive && win) {
+        if (filterActive && win && win->tocLoaded && !win->isBeingClosed &&
+            IsKnownTocTreeModel(win, ev->treeView->treeModel)) {
             DrawTocItemHighlight(ev, win);
         }
         ev->result = CDRF_DODEFAULT;
@@ -1080,6 +1297,25 @@ static void LayoutTocContainer(MainWindow* win) {
     MoveWindow(treeView->hwnd, 0, y, rc.dx, dy, TRUE);
 }
 
+static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId,
+                                       DWORD_PTR data) {
+    MainWindow* win = (MainWindow*)data;
+    if (msg == WM_SETCURSOR && LOWORD(lp) == HTCLIENT && win && win->ctrl && win->tocTreeView) {
+        POINT pt;
+        GetCursorPos(&pt);
+        ScreenToClient(hwnd, &pt);
+        TreeItem ti = win->tocTreeView->GetItemAt(pt.x, pt.y);
+        if (ti != TreeModel::kNullItem) {
+            TocItem* tocItem = (TocItem*)ti;
+            if (IsTocInternalPageItem(tocItem, win->ctrl) && !IsTocPageReachable(win->ctrl, tocItem)) {
+                SetCursorCached(IDC_ARROW);
+                return TRUE;
+            }
+        }
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
 static LRESULT CALLBACK WndProcTocBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR data) {
     MainWindow* win = FindMainWindowByHwnd(hwnd);
     if (!win) {
@@ -1116,9 +1352,20 @@ static void SubclassToc(MainWindow* win) {
         BOOL ok = SetWindowSubclass(hwndTocBox, WndProcTocBox, win->tocBoxSubclassId, (DWORD_PTR)win);
         ReportIf(!ok);
     }
+
+    HWND hwndTree = win->tocTreeView ? win->tocTreeView->hwnd : nullptr;
+    if (hwndTree && win->tocTreeSubclassId == 0) {
+        win->tocTreeSubclassId = NextSubclassId();
+        BOOL ok = SetWindowSubclass(hwndTree, WndProcTocTree, win->tocTreeSubclassId, (DWORD_PTR)win);
+        ReportIf(!ok);
+    }
 }
 
 void UnsubclassToc(MainWindow* win) {
+    if (win->tocTreeSubclassId != 0 && win->tocTreeView) {
+        RemoveWindowSubclass(win->tocTreeView->hwnd, WndProcTocTree, win->tocTreeSubclassId);
+        win->tocTreeSubclassId = 0;
+    }
     if (win->tocBoxSubclassId != 0) {
         RemoveWindowSubclass(win->hwndTocBox, WndProcTocBox, win->tocBoxSubclassId);
         win->tocBoxSubclassId = 0;
@@ -1215,11 +1462,15 @@ static void ApplyTocFilter(MainWindow* win, const char* filter) {
     if (!tab || !tab->currToc) {
         return;
     }
-    // free previous filtered tree
-    delete win->tocFilteredTree;
-    win->tocFilteredTree = nullptr;
-
     TreeView* treeView = win->tocTreeView;
+    // free previous filtered tree; clear treeModel first if it still references it
+    if (win->tocFilteredTree) {
+        if (treeView && treeView->treeModel == win->tocFilteredTree) {
+            treeView->treeModel = nullptr;
+        }
+        delete win->tocFilteredTree;
+        win->tocFilteredTree = nullptr;
+    }
     TocTree* origTree = tab->currToc;
 
     if (!filter || str::Len(filter) == 0) {

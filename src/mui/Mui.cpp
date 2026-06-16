@@ -197,6 +197,33 @@ HFONT CachedFont::GetHFont() {
     return hFont;
 }
 
+static const WCHAR* gCjkFallbackFonts[] = {
+    L"Source Han Serif SC", L"思源宋体", L"NSimSun", L"SimSun", L"宋体", nullptr,
+};
+
+static Font* CreateFontWithFallback(const WCHAR* name, float sizePt, FontStyle style) {
+    Font* font = new Font(name, sizePt, style);
+    if (font->GetLastStatus() == Status::Ok) {
+        return font;
+    }
+    delete font;
+
+    for (int i = 0; gCjkFallbackFonts[i]; i++) {
+        font = new Font(gCjkFallbackFonts[i], sizePt, style);
+        if (font->GetLastStatus() == Status::Ok) {
+            return font;
+        }
+        delete font;
+    }
+
+    font = new Font(L"Times New Roman", sizePt, style);
+    if (font->GetLastStatus() == Status::Ok) {
+        return font;
+    }
+    delete font;
+    return nullptr;
+}
+
 // convenience function: given cached style, get a Font object matching the font
 // properties.
 // Caller should not delete the font - it's cached for performance and deleted at exit
@@ -209,18 +236,12 @@ CachedFont* GetCachedFont(const WCHAR* name, float sizePt, FontStyle style) {
         }
     }
 
-    Font* font = new Font(name, sizePt, style);
-    if (font->GetLastStatus() != Status::Ok) {
-        delete font;
-        font = new Font(L"Times New Roman", sizePt, style);
-        if (font->GetLastStatus() != Status::Ok) {
-            // if no font is available, return the last successfully created one
-            delete font;
-            if (gFontsCache) {
-                return &gFontsCache->cf;
-            }
-            return nullptr;
+    Font* font = CreateFontWithFallback(name, sizePt, style);
+    if (!font) {
+        if (gFontsCache) {
+            return &gFontsCache->cf;
         }
+        return nullptr;
     }
 
     FontListItem* item = new FontListItem(name, sizePt, style, font, nullptr);
@@ -255,8 +276,19 @@ Graphics* AllocGraphicsForMeasureText() {
             return ce.gfx;
         }
     }
-    // We shouldn't get here - indicates ref counting problem
-    ReportIf(true);
+    // evict entries owned by threads that have exited (e.g. finished thumbnail/load threads)
+    for (size_t i = 1; i < gGraphicsCache->size() - 1; i++) {
+        GraphicsCacheEntry& e = gGraphicsCache->at(i);
+        HANDLE th = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, e.threadId);
+        if (!th) {
+            delete e.gfx;
+            delete e.bmp;
+            gGraphicsCache->RemoveAt(i);
+            return ce.gfx;
+        }
+        CloseHandle(th);
+    }
+    // entries are tiny; allow growth instead of tripping ReportIf when many load threads overlap
     return ce.gfx;
 }
 
@@ -273,6 +305,19 @@ void FreeGraphicsForMeasureText(Graphics* gfx) {
         }
     }
     ReportIf(true);
+}
+
+void FreeGraphicsForMeasureTextAnyThread(Graphics* gfx) {
+    ScopedMuiCritSec muiCs;
+
+    for (GraphicsCacheEntry& e : *gGraphicsCache) {
+        if (e.gfx == gfx) {
+            e.refCount--;
+            return;
+        }
+    }
+    // not in cache, just delete
+    delete gfx;
 }
 
 } // namespace mui

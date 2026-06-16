@@ -18,8 +18,13 @@ enum class TbIcon {
     MatchCase,
     MatchCase2,
     Save,
+    Bookmark,
     RotateLeft,
     RotateRight,
+    ThemeSun,
+    ThemeMoon,
+    Dictionary,
+    DictionaryOff,
     kMax
 };
 

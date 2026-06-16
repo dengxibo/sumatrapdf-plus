@@ -77,7 +77,7 @@ struct DocController {
     virtual void SetViewPortSize(Size size) = 0;
 
     // table of contents
-    bool HasToc() {
+    virtual bool HasToc() {
         auto* tree = GetToc();
         return tree != nullptr;
     }
@@ -95,6 +95,9 @@ struct DocController {
     virtual bool HasPageLabels() const { return false; }
     virtual TempStr GetPageLabeTemp(int pageNo) const { return str::FormatTemp("%d", pageNo); }
     virtual int GetPageByLabel(const char* label) const { return atoi(label); }
+
+    // grow layout state for reflowable docs still loading in the background
+    virtual void PreparePageNavigation(int pageNo) {}
 
     // common shortcuts
     virtual bool ValidPageNo(int pageNo) const { return 1 <= pageNo && pageNo <= PageCount(); }

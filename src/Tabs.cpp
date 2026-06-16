@@ -38,7 +38,7 @@
 
 #include "utils/Log.h"
 
-static void UpdateTabTitle(WindowTab* tab) {
+void UpdateTabTitle(WindowTab* tab) {
     if (!tab) {
         return;
     }
@@ -96,9 +96,13 @@ void RemoveTab(WindowTab* tab) {
     MainWindow* win = tab->win;
     win->tabSelectionHistory->Remove(tab);
     int idx = win->GetTabIdx(tab);
+    int selectedIdx = win->tabsCtrl ? win->tabsCtrl->GetSelected() : -1;
+    // Must decide before tabsCtrl->RemoveTab(): RemoveTab() changes the selected
+    // tab (often to index 0), so comparing against CurrentTab() afterwards falsely
+    // reports that a non-first tab wasn't the current tab.
+    bool closedCurrentTab = (tab == win->CurrentTab()) || (idx >= 0 && idx == selectedIdx);
     WindowTab* tab2 = win->tabsCtrl->RemoveTab<WindowTab*>(idx);
     ReportIf(tab != tab2);
-    bool closedCurrentTab = (tab == win->CurrentTab());
     if (closedCurrentTab) {
         win->ctrl = nullptr;
         win->currentTabTemp = nullptr;
@@ -223,6 +227,10 @@ void TabsSelect(MainWindow* win, int tabIndex) {
     TabsCtrl* tabsCtrl = win->tabsCtrl;
     int currIdx = tabsCtrl->GetSelected();
     if (tabIndex == currIdx) {
+        WindowTab* tab = tabs[tabIndex];
+        if (tab && !tab->IsAboutTab() && !tab->ctrl) {
+            LoadModelIntoTab(tab);
+        }
         return;
     }
 

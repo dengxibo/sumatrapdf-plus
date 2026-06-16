@@ -30,6 +30,7 @@ bool UseDarkModeLib() {
 
 /*
 preserve those translations:
+_TRN("System")
 _TRN("Dark")
 _TRN("Darker")
 _TRN("Light")
@@ -38,31 +39,28 @@ _TRN("Light")
 constexpr COLORREF kColBlack = 0x000000;
 constexpr COLORREF kColWhite = 0xFFFFFF;
 constexpr COLORREF kRedColor = RgbToCOLORREF(0xff0000);
+// warm eye-care palette for light mode (paper-like, less glare than pure white)
+constexpr COLORREF kColEyeCareWindowBg = RgbToCOLORREF(0xebe6da);
+constexpr COLORREF kColEyeCareControlBg = RgbToCOLORREF(0xf5f1e8);
+constexpr COLORREF kColEyeCarePageBg = RgbToCOLORREF(0xf7f3e8);
+constexpr COLORREF kColEyeCareText = RgbToCOLORREF(0x333333);
 
 static const char* themesTxt = R"(Themes [
     [
         Name = Light
-        TextColor = #000000
-        BackgroundColor = #f2f2f2
-        ControlBackgroundColor = #ffffff
+        TextColor = #333333
+        BackgroundColor = #ebe6da
+        ControlBackgroundColor = #f5f1e8
         LinkColor = #0020a0
         ColorizeControls = false
     ]
     [
-        Name = Dark from 3.5
-        TextColor = #bac9d0
-        BackgroundColor = #263238
-        ControlBackgroundColor = #263238
-        LinkColor = #8aa3b0
-        ColorizeControls = true
-    ]
-    [
-        Name = Darker
-        TextColor = #c3c3c6
-        BackgroundColor = #2d2d30
-        ControlBackgroundColor = #2d2d30
-        LinkColor = #9999a0
-        ColorizeControls = true
+        Name = System
+        TextColor = #333333
+        BackgroundColor = #ebe6da
+        ControlBackgroundColor = #f5f1e8
+        LinkColor = #0020a0
+        ColorizeControls = false
     ]
     [
         Name = Dark
@@ -70,70 +68,6 @@ static const char* themesTxt = R"(Themes [
         BackgroundColor = #000000
         ControlBackgroundColor = #000000
         LinkColor = #6B7280
-        ColorizeControls = true
-    ]
-    [
-        Name = Dark background Bright text
-        TextColor = #ffffff
-        BackgroundColor = #2d2d30
-        ControlBackgroundColor = #2d2d30
-        LinkColor = #9999a0
-        ColorizeControls = true
-    ]
-    [
-        Name = Solarized Light
-        TextColor = #212323
-        BackgroundColor = #fdf6e3
-        ControlBackgroundColor = #eee8d5
-        LinkColor = #9999a0
-        ColorizeControls = true
-    ]
-    [
-        Name = Solarized Dark
-        TextColor = #839496
-        BackgroundColor = #002b36
-        ControlBackgroundColor = #073642
-        LinkColor = #268bd2
-        ColorizeControls = true
-    ]
-    [
-        Name = Dracula
-        TextColor = #f8f8f2
-        BackgroundColor = #282a36
-        ControlBackgroundColor = #44475a
-        LinkColor = #8be9fd
-        ColorizeControls = true
-    ]
-    [
-        Name = Nebula
-        TextColor = #CBE3E7
-        BackgroundColor = #100E23
-        ControlBackgroundColor = #1E1C31
-        LinkColor = #91DDFF
-        ColorizeControls = true
-    ]
-    [
-        Name = Greeny
-        TextColor = #FDD085
-        BackgroundColor = #4F6232
-        ControlBackgroundColor = #1E3304
-        LinkColor = #A2E53B
-        ColorizeControls = true
-    ]
-    [
-        Name = Choco
-        TextColor = #D7AD62
-        BackgroundColor = #2A1104
-        ControlBackgroundColor = #172736
-        LinkColor = #E8CD12
-        ColorizeControls = true
-    ]
-    [
-        Name = Purpy
-        TextColor = #E2C3C3
-        BackgroundColor = #20222A
-        ControlBackgroundColor = #1E0126
-        LinkColor = #EFF0B8
         ColorizeControls = true
     ]
 ]
@@ -150,10 +84,33 @@ static int gThemeCount;
 static int gCurrThemeIndex = 0;
 static Theme* gCurrentTheme = nullptr;
 static Theme* gThemeLight = nullptr;
+static Theme* gThemeDark = nullptr;
 static Themes* gParsedThemes = nullptr;
+static bool gLastSystemDark = false;
 
 bool IsCurrentThemeDefault() {
     return gCurrThemeIndex == 0;
+}
+
+static bool IsSystemTheme() {
+    return gCurrThemeIndex == 1;
+}
+
+static Theme* GetResolvedTheme() {
+    if (IsSystemTheme()) {
+        if (gThemeLight && gThemeDark) {
+            return DarkMode::isDarkModeReg() ? gThemeDark : gThemeLight;
+        }
+    }
+    return gCurrentTheme;
+}
+
+bool ThemeUsesDarkChrome() {
+    return gThemeDark && (GetResolvedTheme() == gThemeDark);
+}
+
+bool IsDarkThemeSelected() {
+    return ThemeUsesDarkChrome();
 }
 
 void FreeThemes() {
@@ -172,16 +129,13 @@ void CreateThemeCommands() {
         gThemes->Append(theme);
     }
 
-    for (Theme* theme : *gGlobalPrefs->themes) {
-        gThemes->Append(theme);
-    }
-
     gThemeCount = gThemes->Size();
     if (gCurrThemeIndex >= gThemeCount) {
         gCurrThemeIndex = 0;
     }
     gCurrentTheme = gThemes->At(gCurrThemeIndex);
     gThemeLight = gThemes->At(0);
+    gThemeDark = gThemes->At(2);
 
     CustomCommand* cmd;
     for (int i = 0; i < gThemeCount; i++) {
@@ -197,6 +151,7 @@ void CreateThemeCommands() {
         }
     }
     gCurrSetThemeCmdId = gFirstSetThemeCmdId + gCurrThemeIndex;
+    gLastSystemDark = DarkMode::isDarkModeReg();
 }
 
 void SetThemeByIndex(int themeIdx) {
@@ -204,20 +159,22 @@ void SetThemeByIndex(int themeIdx) {
     if (themeIdx >= gThemeCount) {
         themeIdx = 0;
     }
-    bool themeChanged = (gCurrThemeIndex != themeIdx);
+    bool selectingSystem = (themeIdx == 1);
+    bool systemDark = selectingSystem ? DarkMode::isDarkModeReg() : false;
+    bool themeChanged = (gCurrThemeIndex != themeIdx) || (selectingSystem && (gLastSystemDark != systemDark));
     gCurrThemeIndex = themeIdx;
     gCurrSetThemeCmdId = gFirstSetThemeCmdId + themeIdx;
     gCurrentTheme = gThemes->At(gCurrThemeIndex);
+    gLastSystemDark = systemDark;
     str::ReplaceWithCopy(&gGlobalPrefs->theme, gCurrentTheme->name);
     if (UseDarkModeLib()) {
-        // TODO: we should apply themes to every theme other than 0
-        // but in Solarized Light in Find dialog's input field text is invisible i.e. black
-        // UINT mode = themeIdx == 0 ? kModeClassic : kModeDark;
-        const bool isDarkCol = DarkMode::isColorDark(ThemeWindowControlBackgroundColor());
-        const UINT mode = static_cast<UINT>(isDarkCol         ? DarkMode::DarkModeType::dark
-                                            : (themeIdx == 0) ? DarkMode::DarkModeType::classic
-                                                              : DarkMode::DarkModeType::light);
-        DarkMode::setDarkModeConfigEx(mode);
+        if (IsSystemTheme()) {
+            DarkMode::setDarkModeConfig();
+        } else {
+            const UINT mode = static_cast<UINT>(ThemeUsesDarkChrome() ? DarkMode::DarkModeType::dark
+                                                                      : DarkMode::DarkModeType::classic);
+            DarkMode::setDarkModeConfigEx(mode);
+        }
         DarkMode::setDefaultColors(false);
 
         DarkMode::setBackgroundColor(ThemeWindowBackgroundColor());
@@ -250,19 +207,49 @@ void SetThemeByIndex(int themeIdx) {
 };
 
 void SelectNextTheme() {
-    int newIdx = (gCurrThemeIndex + 1) % gThemeCount;
+    int newIdx = (gCurrThemeIndex + 1) % 3;
+    SetThemeByIndex(newIdx);
+}
+
+void ToggleLightDarkTheme() {
+    int newIdx;
+    if (IsSystemTheme()) {
+        newIdx = ThemeUsesDarkChrome() ? 0 : 2;
+    } else if (ThemeUsesDarkChrome()) {
+        newIdx = 0;
+    } else {
+        newIdx = 2;
+    }
     SetThemeByIndex(newIdx);
 }
 
 // not case sensitive
 static int GetThemeByName(const char* name) {
-    for (int i = 0; i < gThemeCount; i++) {
-        Theme* theme = gThemes->At(i);
-        if (str::EqI(theme->name, name)) {
-            return i;
-        }
+    if (!name) {
+        return -1;
     }
-    return -1;
+    if (str::EqI(name, "Light")) {
+        return 0;
+    }
+    if (str::EqI(name, "System")) {
+        return 1;
+    }
+    if (str::EqI(name, "Dark")) {
+        return 2;
+    }
+    if (str::FindI(name, "system")) {
+        return 1;
+    }
+    if (str::FindI(name, "light")) {
+        return 0;
+    }
+    if (str::FindI(name, "dark")) {
+        return 2;
+    }
+    if (str::IsEmpty(name)) {
+        return -1;
+    }
+    return 2;
 }
 
 // this is the default aggressive yellow that we suppress
@@ -275,7 +262,7 @@ static bool IsDefaultMainWinColor(ParsedColor* col) {
 void SetTheme(const char* name) {
     int idx = GetThemeByName(name);
     if (idx < 0) {
-        // invalid name, reset to light theme
+        // invalid or empty name, reset to light theme
         str::ReplaceWithCopy(&gGlobalPrefs->theme, gThemeLight->name);
         idx = 0;
     }
@@ -289,7 +276,7 @@ void SetCurrentThemeFromSettings() {
     bool isDefault = IsDefaultMainWinColor(bgParsed);
     if (isDefault) {
         gThemeLight->colorizeControls = false;
-        gThemeLight->controlBackgroundColorParsed.col = kColWhite;
+        gThemeLight->controlBackgroundColorParsed.col = kColEyeCareControlBg;
     } else {
         gThemeLight->colorizeControls = true;
         gThemeLight->controlBackgroundColorParsed.col = bgParsed->col;
@@ -331,6 +318,7 @@ COLORREF ThemeDocumentColors(COLORREF& bg) {
 COLORREF ThemePageRenderColors(COLORREF& bg) {
     COLORREF text = kColBlack;
     bg = kColWhite;
+    bool invertColors = gGlobalPrefs->fixedPageUI.invertColors || ThemeUsesDarkChrome();
 
     ParsedColor* parsedCol;
     parsedCol = GetPrefsColor(gGlobalPrefs->fixedPageUI.textColor);
@@ -343,7 +331,11 @@ COLORREF ThemePageRenderColors(COLORREF& bg) {
         bg = parsedCol->col;
     }
 
-    if (!gGlobalPrefs->fixedPageUI.invertColors) {
+    if (!invertColors) {
+        if (!ThemeUsesDarkChrome() && text == kColBlack && bg == kColWhite) {
+            text = kColEyeCareText;
+            bg = kColEyeCarePageBg;
+        }
         return text;
     }
 
@@ -355,7 +347,7 @@ COLORREF ThemePageRenderColors(COLORREF& bg) {
     }
 
     // default colors
-    if (gCurrentTheme == gThemeLight) {
+    if (!ThemeUsesDarkChrome()) {
         std::swap(text, bg);
         return text;
     }
@@ -373,13 +365,31 @@ COLORREF ThemePageRenderColors(COLORREF& bg) {
 
 COLORREF ThemeControlBackgroundColor() {
     // note: we can change it in ThemeUpdateAfterLoadSettings()
-    auto col = GetThemeCol(gCurrentTheme->controlBackgroundColor, kRedColor);
+    Theme* theme = GetResolvedTheme();
+    auto col = GetThemeCol(theme->controlBackgroundColor, kRedColor);
     return col;
 }
 
+COLORREF ThemeThumbnailBackgroundColor() {
+    if (ThemeUsesDarkChrome()) {
+        return AccentColor(ThemeControlBackgroundColor(), 18);
+    }
+    // white card on the gray page background
+    return ThemeControlBackgroundColor();
+}
+
+COLORREF ThemeThumbnailBorderColor() {
+    if (ThemeUsesDarkChrome()) {
+        return AccentColor(ThemeThumbnailBackgroundColor(), 35);
+    }
+    // border slightly darker than the page background
+    return AccentColor(ThemeMainWindowBackgroundColor(), -25);
+}
+
 COLORREF ThemeMainWindowBackgroundColor() {
-    COLORREF bgColor = GetThemeCol(gCurrentTheme->backgroundColor, kRedColor);
-    if (gCurrThemeIndex == 0) {
+    Theme* theme = GetResolvedTheme();
+    COLORREF bgColor = GetThemeCol(theme->backgroundColor, kRedColor);
+    if (!ThemeUsesDarkChrome()) {
         // Special behavior for light theme.
         ParsedColor* bgParsed = GetPrefsColor(gGlobalPrefs->mainWindowBackground);
         if (!IsDefaultMainWinColor(bgParsed)) {
@@ -390,12 +400,14 @@ COLORREF ThemeMainWindowBackgroundColor() {
 }
 
 COLORREF ThemeWindowBackgroundColor() {
-    auto col = GetThemeCol(gCurrentTheme->backgroundColor, kRedColor);
+    Theme* theme = GetResolvedTheme();
+    auto col = GetThemeCol(theme->backgroundColor, kRedColor);
     return col;
 }
 
 COLORREF ThemeWindowTextColor() {
-    auto col = GetThemeCol(gCurrentTheme->textColor, kRedColor);
+    Theme* theme = GetResolvedTheme();
+    auto col = GetThemeCol(theme->textColor, kRedColor);
     return col;
 }
 
@@ -411,12 +423,14 @@ COLORREF ThemeWindowTextDisabledColor() {
 }
 
 COLORREF ThemeWindowControlBackgroundColor() {
-    auto col = GetThemeCol(gCurrentTheme->controlBackgroundColor, kRedColor);
+    Theme* theme = GetResolvedTheme();
+    auto col = GetThemeCol(theme->controlBackgroundColor, kRedColor);
     return col;
 }
 
 COLORREF ThemeWindowLinkColor() {
-    auto col = GetThemeCol(gCurrentTheme->linkColor, kRedColor);
+    Theme* theme = GetResolvedTheme();
+    auto col = GetThemeCol(theme->linkColor, kRedColor);
     return col;
 }
 
@@ -430,7 +444,7 @@ COLORREF ThemeNotificationsTextColor() {
 }
 
 COLORREF ThemeNotificationsHighlightColor() {
-    if (gCurrentTheme->colorizeControls) {
+    if (GetResolvedTheme()->colorizeControls) {
         auto col = ThemeWindowBackgroundColor();
         return AccentColor(col, 20);
     }
@@ -438,7 +452,7 @@ COLORREF ThemeNotificationsHighlightColor() {
 }
 
 COLORREF ThemeNotificationsHighlightTextColor() {
-    if (gCurrentTheme->colorizeControls) {
+    if (GetResolvedTheme()->colorizeControls) {
         auto col = ThemeWindowTextColor();
         return AccentColor(col, 20);
     }
@@ -450,7 +464,7 @@ COLORREF ThemeNotificationsProgressColor() {
 }
 
 bool ThemeColorizeControls() {
-    if (gCurrentTheme->colorizeControls) {
+    if (GetResolvedTheme()->colorizeControls) {
         return true;
     }
     return !IsMenuFontSizeDefault();

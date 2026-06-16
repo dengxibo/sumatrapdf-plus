@@ -42,6 +42,7 @@
 #include "TextSearch.h"
 #include "Notifications.h"
 #include "SumatraPDF.h"
+#include "Toolbar.h"
 #include "MainWindow.h"
 #include "WindowTab.h"
 #include "UpdateCheck.h"
@@ -335,6 +336,7 @@ static MainWindow* LoadOnStartup(const char* filePath, const Flags& flags, bool 
     return win;
 }
 
+
 void SetTabState(WindowTab* tab, TabState* state) {
     if (!tab || !tab->ctrl) {
         return;
@@ -352,7 +354,8 @@ void SetTabState(WindowTab* tab, TabState* state) {
         state->scrollPos = {-1, -1};
     } else {
         int nPages = ctrl->PageCount();
-        if (state->pageNo > nPages) {
+        EngineBase* engine = tab->GetEngine();
+        if (!EngineIsProgressiveEbookLoading(engine) && state->pageNo > nPages) {
             state->pageNo = nPages;
             state->scrollPos = {-1, -1};
         }
@@ -590,6 +593,7 @@ static int RunMessageLoop() {
         }
         TranslateMessage(&msg);
         DispatchMessage(&msg);
+        uitask::DrainQueue();
         ResetTempAllocator();
     }
 
@@ -1037,7 +1041,12 @@ static void LayoutAndFocusOnStartup(MainWindow* win) {
     if (!win || !IsWindow(win->hwndFrame)) {
         return;
     }
+    // Position find controls only after rebar/toolbar geometry is final (issue #5456).
+    win->lastLayoutState = {};
     RelayoutWindow(win);
+    if (win->hwndToolbar) {
+        ToolbarUpdateStateForWindow(win, true);
+    }
     win->Focus();
 }
 
@@ -1675,18 +1684,18 @@ ContinueOpenWindow:
         for (SessionData* data : *gInitialSessionData) {
             // create window hidden to avoid flashing the about page
             win = CreateAndShowMainWindow(data, false);
+            int selectedTabIdx = data->tabIndex - 1;
             for (TabState* state : *data->tabStates) {
                 if (str::IsEmpty(state->filePath)) {
                     logf("WinMain: skipping RestoreTabOnStartup() because state->filePath is empty\n");
                     continue;
                 }
-                RestoreTabOnStartup(win, state, gGlobalPrefs->lazyLoading);
+                // always create tab shells first; load only the selected tab below
+                RestoreTabOnStartup(win, state, true);
             }
-            TabsSelect(win, data->tabIndex - 1);
-            if (gGlobalPrefs->lazyLoading) {
-                // trigger loading of the document
-                ReloadDocument(win, false);
-            }
+            // selects the session tab and loads it if still a shell (TabsSelect also
+            // handles the case where the last restored tab is already selected)
+            TabsSelect(win, selectedTabIdx);
             ShowMainWindow(win, data->windowState);
         }
     }

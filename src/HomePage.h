@@ -11,6 +11,7 @@ constexpr const char* kRightTextFont = "Arial Black";
 constexpr int kRightTextFontSize = 14;
 
 void ShowAboutWindow(MainWindow*);
+void CloseAboutWindow();
 
 void DrawAboutPage(MainWindow* win, HDC hdc);
 

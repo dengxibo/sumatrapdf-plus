@@ -333,9 +333,31 @@ EngineBase::EngineBase() {
     arena = ArenaNew();
 }
 
+void EngineBase::EnsurePagesTextSize() {
+    if (pageCount <= 0) {
+        return;
+    }
+    if (!pagesText) {
+        pagesText = AllocArray<PageText>(pageCount);
+        pagesTextSize = pageCount;
+        return;
+    }
+    if (pagesTextSize >= pageCount) {
+        return;
+    }
+    int oldSize = pagesTextSize;
+    pagesText = (PageText*)realloc(pagesText, pageCount * sizeof(PageText));
+    if (!pagesText) {
+        pagesTextSize = 0;
+        return;
+    }
+    memset(&pagesText[oldSize], 0, (pageCount - oldSize) * sizeof(PageText));
+    pagesTextSize = pageCount;
+}
+
 EngineBase::~EngineBase() {
     if (pagesText) {
-        for (int i = 0; i < pageCount; i++) {
+        for (int i = 0; i < pagesTextSize; i++) {
             PageText* pt = &pagesText[i];
             free(pt->coords);
             free(pt->text);
@@ -353,7 +375,8 @@ bool EngineBase::HasTextForPage(int pageNo) {
         return false;
     }
     ScopedCritSec scope(&textCacheLock);
-    if (!pagesText) {
+    EnsurePagesTextSize();
+    if (!pagesText || pageNo > pagesTextSize) {
         return false;
     }
     PageText* pt = &pagesText[pageNo - 1];
@@ -373,8 +396,15 @@ const WCHAR* EngineBase::GetTextForPage(int pageNo, int* lenOut, Rect** coordsOu
     }
 
     ScopedCritSec scope(&textCacheLock);
-    if (!pagesText) {
-        pagesText = AllocArray<PageText>(pageCount);
+    EnsurePagesTextSize();
+    if (!pagesText || pageNo > pagesTextSize) {
+        if (lenOut) {
+            *lenOut = 0;
+        }
+        if (coordsOut) {
+            *coordsOut = nullptr;
+        }
+        return L"";
     }
     PageText* pt = &pagesText[pageNo - 1];
 

@@ -58,6 +58,9 @@
 #include "DisplayModel.h"
 #include "GlobalPrefs.h"
 #include "SumatraPDF.h"
+
+void NotifyEbookPagesLoadingProgress(const char* filePath, bool reloadToc);
+
 #include "PdfSync.h"
 #include "ProgressUpdateUI.h"
 #include "TextSelection.h"
@@ -68,6 +71,7 @@
 #include "MainWindow.h"
 
 #include "utils/Log.h"
+
 
 // if true, we pre-render the pages right before and after the visible pages
 bool gPredictiveRender = true;
@@ -101,7 +105,13 @@ int DisplayModel::PageCount() const {
     if (!engine) {
         return 0;
     }
-    return engine->PageCount();
+    int n = engine->PageCount();
+    // during progressive ebook loading the engine may know about more pages
+    // than DisplayModel has layout info for yet
+    if (pagesInfo) {
+        n = std::min(n, pagesInfoCount);
+    }
+    return n;
 }
 
 TempStr DisplayModel::GetPropertyTemp(const char* name) {
@@ -114,6 +124,16 @@ void DisplayModel::GoToPage(int pageNo, bool addNavPoint) {
 
 DisplayMode DisplayModel::GetDisplayMode() const {
     return displayMode;
+}
+
+bool DisplayModel::HasToc() {
+    if (!engine) {
+        return false;
+    }
+    if (engine->kind == kindEngineMupdf) {
+        return EngineMupdfHasOutline(engine);
+    }
+    return GetToc() != nullptr;
 }
 
 TocTree* DisplayModel::GetToc() {
@@ -149,7 +169,15 @@ bool DisplayModel::ValidPageNo(int pageNo) const {
     if (!engine) {
         return false;
     }
-    return 1 <= pageNo && pageNo <= engine->PageCount();
+    int maxPage = engine->PageCount();
+    if (pagesInfo) {
+        maxPage = std::min(maxPage, pagesInfoCount);
+    }
+    return 1 <= pageNo && pageNo <= maxPage;
+}
+
+void DisplayModel::PreparePageNavigation(int pageNo) {
+    EnsurePagesInfoForPage(pageNo);
 }
 
 bool DisplayModel::GoToPrevPage(bool toBottom) {
@@ -249,13 +277,21 @@ void DisplayModel::RenderFinishedAsync(PageRenderRequest* req) {
 }
 
 void DisplayModel::RenderFinished(PageRenderRequest* req) {
+    PageInfo* pageInfo = GetPageInfo(req->pageNo);
     if (req->errorCode != 0) {
-        PageInfo* pageInfo = GetPageInfo(req->pageNo);
         if (pageInfo) {
+            if (EngineIsProgressiveEbookLoading(engine)) {
+                // docLock contention can fail rendering transiently during background load
+                RepaintDisplay();
+                return;
+            }
             pageInfo->failedToRender = true;
         }
         RepaintDisplay();
         return;
+    }
+    if (pageInfo) {
+        pageInfo->failedToRender = false;
     }
     if (PageVisibleNearby(req->pageNo)) {
         RepaintDisplay();
@@ -275,7 +311,12 @@ void DisplayModel::GetDisplayState(FileState* fs) {
     str::ReplaceWithCopy(&fs->displayMode, DisplayModeToString(inPresentation ? presDisplayMode : GetDisplayMode()));
     ZoomToString(&fs->zoom, inPresentation ? presZoomVirtual : zoomVirtual, fs);
 
-    ScrollState ss = GetScrollState();
+    ScrollState ss;
+    if (hasPendingRestoreScroll) {
+        ss = pendingRestoreScroll;
+    } else {
+        ss = GetScrollState();
+    }
     fs->pageNo = ss.page;
     fs->scrollPos = PointF();
     if (!inPresentation) {
@@ -401,6 +442,9 @@ PageInfo* DisplayModel::GetPageInfo(int pageNo) const {
         return nullptr;
     }
     ReportIf(!pagesInfo);
+    if (!pagesInfo || pageNo > pagesInfoCount) {
+        return nullptr;
+    }
     PageInfo* pi = &(pagesInfo[pageNo - 1]);
     return pi;
 }
@@ -411,6 +455,10 @@ void DisplayModel::SetInitialViewSettings(DisplayMode newDisplayMode, int newSta
     dpiFactor = 1.0f * screenDPI / engine->GetFileDPI();
     if (ValidPageNo(newStartPage)) {
         startPage = newStartPage;
+    } else if (EngineIsProgressiveEbookLoading(engine) && newStartPage >= 1) {
+        pendingRestoreScroll = ScrollState(newStartPage, -1, -1);
+        hasPendingRestoreScroll = true;
+        startPage = 1;
     }
 
     displayMode = newDisplayMode;
@@ -439,13 +487,23 @@ void DisplayModel::SetInitialViewSettings(DisplayMode newDisplayMode, int newSta
         }
     }
     displayR2L = layout.r2l;
+    if (newStartPage == 1) {
+        this->viewPort = Rect();
+    }
     BuildPagesInfo();
 }
 
 void DisplayModel::BuildPagesInfo() {
     ReportIf(pagesInfo);
-    int pageCount = PageCount();
+    int pageCount = engine->PageCount();
+    // while reflowable ebooks load pages in the background, only lay out the
+    // pages available now so the first screen can appear without waiting for the
+    // full chapter count (OnMorePagesAvailable grows pagesInfo later)
+    if (EngineIsProgressiveEbookLoading(engine)) {
+        pageCount = std::min(pageCount, kEbookInitialPages);
+    }
     pagesInfo = AllocArray<PageInfo>(pageCount);
+    pagesInfoCount = pageCount;
     // +1 so we can index by pageNo (1-based)
     log("DisplayModel::BuildPagesInfo started\n");
     auto timeStart = TimeGet();
@@ -479,6 +537,155 @@ void DisplayModel::BuildPagesInfo() {
         }
     }
     // in non-continuous mode, GetPageInfo() will lazily load page sizes on demand
+}
+
+void DisplayModel::EnsurePagesInfoForPage(int pageNo) {
+    if (!engine || pageNo < 1 || !pagesInfo) {
+        return;
+    }
+    int enginePageCount = engine->PageCount();
+    if (pageNo > enginePageCount || pageNo <= pagesInfoCount) {
+        return;
+    }
+
+    int growTo = pageNo;
+    PageInfo* newPagesInfo = (PageInfo*)realloc(pagesInfo, growTo * sizeof(PageInfo));
+    if (!newPagesInfo) {
+        return;
+    }
+    pagesInfo = newPagesInfo;
+
+    bool isCont = IsContinuous(displayMode);
+    int columns = ColumnsFromDisplayMode(displayMode);
+    int newStartPage = startPage;
+    if (IsBookView(displayMode) && newStartPage == 1 && columns > 1) {
+        newStartPage--;
+    }
+
+    int oldCount = pagesInfoCount;
+    for (int p = oldCount + 1; p <= growTo; p++) {
+        PageInfo* pageInfo = &pagesInfo[p - 1];
+        memset(pageInfo, 0, sizeof(PageInfo));
+        pageInfo->visibleRatio = 0.0;
+        pageInfo->isShown = false;
+        if (isCont) {
+            pageInfo->isShown = true;
+        } else if (newStartPage <= p && p < newStartPage + columns) {
+            pageInfo->isShown = true;
+        }
+    }
+    pagesInfoCount = growTo;
+
+    if (isCont) {
+        for (int p = oldCount + 1; p <= growTo; p++) {
+            GetPageInfo(p);
+        }
+    }
+
+    Relayout(zoomVirtual, rotation);
+    RecalcVisibleParts();
+    RenderVisibleParts();
+    cb->UpdateScrollbars(canvasSize);
+}
+
+void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
+    if (!engine || !pagesInfo) {
+        return;
+    }
+    int enginePageCount = engine->PageCount();
+    if (EngineIsProgressiveEbookLoading(engine)) {
+        int formatted = EngineEbookGetFormattedPageCount(engine);
+        if (formatted < enginePageCount) {
+            enginePageCount = formatted;
+        }
+    }
+    if (enginePageCount <= pagesInfoCount) {
+        return;
+    }
+
+    int oldCount = pagesInfoCount;
+    int growTo = enginePageCount;
+    const int kGrowBatch = 128;
+    if (!growAll && !updateUi) {
+        // background tab: sync all pages silently in one step (no Notify chain)
+        growTo = enginePageCount;
+    } else if (!growAll && enginePageCount - oldCount > kGrowBatch) {
+        growTo = oldCount + kGrowBatch;
+    }
+
+    PageInfo* newPagesInfo = (PageInfo*)realloc(pagesInfo, growTo * sizeof(PageInfo));
+    if (!newPagesInfo) {
+        return;
+    }
+    pagesInfo = newPagesInfo;
+
+    bool isCont = IsContinuous(displayMode);
+    int columns = ColumnsFromDisplayMode(displayMode);
+    int newStartPage = startPage;
+    if (IsBookView(displayMode) && newStartPage == 1 && columns > 1) {
+        newStartPage--;
+    }
+
+    for (int pageNo = oldCount + 1; pageNo <= growTo; pageNo++) {
+        PageInfo* pageInfo = &pagesInfo[pageNo - 1];
+        memset(pageInfo, 0, sizeof(PageInfo));
+        pageInfo->visibleRatio = 0.0;
+        pageInfo->isShown = false;
+        if (isCont) {
+            pageInfo->isShown = true;
+        } else if (newStartPage <= pageNo && pageNo < newStartPage + columns) {
+            pageInfo->isShown = true;
+        }
+    }
+    pagesInfoCount = growTo;
+
+    if (updateUi && isCont) {
+        for (int pageNo = oldCount + 1; pageNo <= growTo; pageNo++) {
+            GetPageInfo(pageNo);
+        }
+    }
+
+    if (updateUi) {
+        Relayout(zoomVirtual, rotation);
+        RecalcVisibleParts();
+        RenderVisibleParts();
+        cb->UpdateScrollbars(canvasSize);
+        TryApplyPendingRestoreScroll();
+    }
+
+    // Background reflow/page formatting posts real progress notifications.
+    // Don't recursively post more UI progress tasks from the UI thread here:
+    // long documents can otherwise create a large chain of UITask objects while
+    // relayout/render work is also reallocating page metadata.
+}
+
+bool DisplayModel::ShouldSkipTocSelectionUpdate() const {
+    if (suppressTocSelectionUpdate || hasPendingRestoreScroll) {
+        return true;
+    }
+    if (!engine) {
+        return false;
+    }
+    if (EngineIsProgressiveEbookLoading(engine)) {
+        return true;
+    }
+    if (pagesInfo && pagesInfoCount < engine->PageCount()) {
+        return true;
+    }
+    return false;
+}
+
+void DisplayModel::TryApplyPendingRestoreScroll() {
+    if (!hasPendingRestoreScroll || !ValidPageNo(pendingRestoreScroll.page)) {
+        return;
+    }
+    ScrollState state = pendingRestoreScroll;
+    hasPendingRestoreScroll = false;
+    suppressTocSelectionUpdate = true;
+    defer {
+        suppressTocSelectionUpdate = false;
+    };
+    SetScrollState(state);
 }
 
 // TODO: a better name e.g. ShouldShow() to better distinguish between
@@ -660,7 +867,13 @@ int DisplayModel::CurrentPageNo() const {
     if (kInvalidPageNo == mostVisiblePage) {
         PageInfo* pageInfo = GetPageInfo(1);
         if (pageInfo && viewPort.y > pageInfo->pos.y + pageInfo->pos.dy) {
-            mostVisiblePage = PageCount();
+            // During progressive loading PageCount() is only the initial batch
+            // (kEbookInitialPages), not the document end — stay at startPage.
+            if (EngineIsProgressiveEbookLoading(engine) && pagesInfoCount < engine->PageCount()) {
+                mostVisiblePage = startPage;
+            } else {
+                mostVisiblePage = PageCount();
+            }
         } else {
             mostVisiblePage = 1;
         }
@@ -689,8 +902,11 @@ void DisplayModel::CalcZoomReal(float newZoomVirtual) {
                 }
             }
         }
-        ReportIf(minZoom == (float)HUGE_VAL);
-        zoomReal = minZoom;
+        if (minZoom == (float)HUGE_VAL) {
+            zoomReal = 0;
+        } else {
+            zoomReal = minZoom;
+        }
     } else if (kZoomFitContent == newZoomVirtual) {
         float newZoom = ZoomRealFromVirtualForPage(newZoomVirtual, CurrentPageNo());
         // limit zooming in to 800% on almost empty pages
@@ -721,6 +937,9 @@ float DisplayModel::GetZoomReal(int pageNo) const {
     DisplayMode mode = GetDisplayMode();
     if (IsContinuous(mode)) {
         PageInfo* pageInfo = GetPageInfo(pageNo);
+        if (!pageInfo) {
+            return ZoomRealFromVirtualForPage(zoomVirtual, pageNo);
+        }
         return pageInfo->zoomReal;
     }
     if (IsSingle(mode)) {
@@ -947,6 +1166,9 @@ RestartLayout:
 }
 
 void DisplayModel::ChangeStartPage(int newStartPage) {
+    if (!pagesInfo) {
+        return;
+    }
     ReportIf(!ValidPageNo(newStartPage));
     ReportIf(IsContinuous(GetDisplayMode()));
 
@@ -979,11 +1201,14 @@ void DisplayModel::RecalcVisibleParts() const {
         return;
     }
 
-    for (int pageNo = 1; pageNo <= PageCount(); ++pageNo) {
+    for (int pageNo = 1; pageNo <= pagesInfoCount; ++pageNo) {
         if (!pagesInfo[pageNo - 1].isShown) {
             continue;
         }
         PageInfo* pageInfo = GetPageInfo(pageNo);
+        if (!pageInfo) {
+            continue;
+        }
 
         Rect pageRect = pageInfo->pos;
         Rect visiblePart = pageRect.Intersect(viewPort);
@@ -1055,21 +1280,12 @@ static float getZoomSafe(DisplayModel* dm, int pageNo, const PageInfo* pageInfo)
     if (zoom > 0) {
         return zoom;
     }
-    const char* name = dm->GetFilePath();
-    logf(
-        "getZoomSafe: invalid zoom in doc: %s\npageNo: %d\npageInfo->zoomReal\n%.2f\ndm->zoomReal: %.2f\n"
-        "dm->zoomVirtual: %.2f\n",
-        name, pageNo, zoom, pageInfo->zoomReal, dm->zoomReal, dm->zoomVirtual);
-    ReportDebugIf(true);
-
     if (dm->zoomReal > 0) {
         return dm->zoomReal;
     }
-
     if (dm->zoomVirtual > 0) {
         return dm->zoomVirtual;
     }
-    // hail mary, return 100%
     return 1.f;
 }
 
@@ -1183,11 +1399,18 @@ bool DisplayModel::IsOverText(Point pt) {
 }
 
 void DisplayModel::RenderVisibleParts() {
+    if (!pagesInfo) {
+        return;
+    }
+
     int firstVisiblePage = 0;
     int lastVisiblePage = 0;
 
     for (int pageNo = 1; pageNo <= PageCount(); ++pageNo) {
         PageInfo* pageInfo = GetPageInfo(pageNo);
+        if (!pageInfo) {
+            continue;
+        }
         if (pageInfo->visibleRatio > 0.0) {
             ReportIf(!pagesInfo[pageNo - 1].isShown);
             if (0 == firstVisiblePage) {
@@ -1240,9 +1463,15 @@ void DisplayModel::RenderVisibleParts() {
 void DisplayModel::SetViewPortSize(Size newViewPortSize) {
     ScrollState ss;
 
-    bool isDocReady = ValidPageNo(startPage) && zoomReal != 0;
+    bool isDocReady = pagesInfo && ValidPageNo(startPage) && zoomReal > 0;
     if (isDocReady) {
         ss = GetScrollState();
+        if (EngineIsProgressiveEbookLoading(engine) && startPage == 1 && !hasPendingRestoreScroll &&
+            ss.page > pagesInfoCount) {
+            ss.page = 1;
+            ss.x = -1;
+            ss.y = -1;
+        }
     }
 
     totalViewPortSize = newViewPortSize;
@@ -1293,6 +1522,14 @@ Point DisplayModel::GetContentStart(int pageNo) const {
 
 // TODO: what's GoToPage supposed to do for Facing at 400% zoom?
 void DisplayModel::GoToPage(int pageNo, int scrollY, bool addNavPt, int scrollX) {
+    if (!pagesInfo) {
+        if (EngineIsProgressiveEbookLoading(engine) && pageNo >= 1) {
+            pendingRestoreScroll = ScrollState(pageNo, scrollX >= 0 ? scrollX : -1, scrollY >= 0 ? scrollY : -1);
+            hasPendingRestoreScroll = true;
+        }
+        return;
+    }
+    EnsurePagesInfoForPage(pageNo);
     if (!ValidPageNo(pageNo)) {
         logf("DisplayModel::GoToPage: invalid pageNo: %d, nPages: %d\n", pageNo, engine->PageCount());
         ReportIf(true);
@@ -1913,6 +2150,10 @@ ScrollState DisplayModel::GetScrollState() {
              pageInfo->pageOnScreen.y);
     }
 
+    if (pageInfo->zoomReal <= 0) {
+        return state;
+    }
+
     Rect screen(Point(), viewPort.Size());
     Rect pageVis = pageInfo->pageOnScreen.Intersect(screen);
     state.page = GetPageNextToPoint(pageVis.TL());
@@ -1938,6 +2179,18 @@ void DisplayModel::SetScrollState(const ScrollState& state) {
     if (gLogScrollState) {
         logf("SetScrollState: page: %d, pos: %d,%d\n", state.page, (int)state.x, (int)state.y);
     }
+    if (!ValidPageNo(state.page)) {
+        if (EngineIsProgressiveEbookLoading(engine) && state.page >= 1) {
+            pendingRestoreScroll = state;
+            hasPendingRestoreScroll = true;
+            if (ValidPageNo(1)) {
+                GoToPage(1, false);
+            }
+            return;
+        }
+        return;
+    }
+    hasPendingRestoreScroll = false;
     // must have both GoToPage() calls
     GoToPage(state.page, false);
     // Bail out, if the page wasn't scrolled
@@ -2055,6 +2308,10 @@ void DisplayModel::ScrollToLink(IPageDestination* dest) {
 #endif
 
 void DisplayModel::ScrollTo(int pageNo, RectF rect, float zoom) {
+    EnsurePagesInfoForPage(pageNo);
+    if (!ValidPageNo(pageNo)) {
+        return;
+    }
     Point scroll(-1, 0);
     // use per-page zoom which may differ from global zoomReal
     // when pages have varying sizes in fit-width/fit-page mode

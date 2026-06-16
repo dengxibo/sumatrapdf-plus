@@ -237,6 +237,10 @@ static SeqStrings gCommandNames =
     "CmdSetScreenshotHotkey\0"
     "CmdToggleReuseInstance\0"
     "CmdToggleChmUI\0"
+    "CmdSearchSelectionWithYoudaoDict\0"
+    "CmdToggleLightDarkTheme\0"
+    "CmdAnalyzeSelectionWithDoubao\0"
+    "CmdToggleDoubleClickWordLookup\0"
     "CmdNone\0"
     "\0";
 
@@ -464,6 +468,10 @@ static i32 gCommandIds[] = {
     CmdSetScreenshotHotkey,
     CmdToggleReuseInstance,
     CmdToggleChmUI,
+    CmdSearchSelectionWithYoudaoDict,
+    CmdToggleLightDarkTheme,
+    CmdAnalyzeSelectionWithDoubao,
+    CmdToggleDoubleClickWordLookup,
     CmdNone,
 };
 
@@ -691,6 +699,10 @@ SeqStrings gCommandDescriptions =
     "Set Screenshot Hotkey\0"
     "Toggle Reuse Instance\0"
     "Toggle CHM UI\0"
+    "Search Selection with Youdao Dictionary\0"
+    "Toggle light/dark theme\0"
+    "Ask Doubao\0"
+    "Toggle Double-Click Word Lookup\0"
     "Do nothing\0"
     "\0";
 // clang-format on

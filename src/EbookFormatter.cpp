@@ -16,15 +16,82 @@
 #include "DocController.h"
 #include "EngineBase.h"
 #include "EbookBase.h"
+#include "EbookTypography.h"
 #include "EbookDoc.h"
 #include "PalmDbReader.h"
 #include "MobiDoc.h"
 #include "HtmlFormatter.h"
 #include "EbookFormatter.h"
+#include "utils/Log.h"
 
 /* Mobi-specific formatting methods */
 
-MobiFormatter::MobiFormatter(HtmlFormatterArgs* args, MobiDoc* doc) : HtmlFormatter(args), doc(doc) {
+static bool TextContainsUtf8(const char* s, size_t sLen, const char* needle) {
+    char* buf = str::DupTemp(s, sLen);
+    return buf && strstr(buf, needle);
+}
+
+// kindle:embed:000H?mime=image/jpeg (KF8/AZW3)
+static bool ParseKindleEmbedResourceIndex(const char* s, size_t sLen, size_t* indexOut) {
+    const char* prefix = "kindle:embed:";
+    size_t prefixLen = 13;
+    if (sLen < prefixLen + 1 || !str::EqN(s, prefix, prefixLen)) {
+        return false;
+    }
+    const char* p = s + prefixLen;
+    size_t rem = sLen - prefixLen;
+    size_t n = 0;
+    while (n < rem) {
+        char c = p[n];
+        if (c == '?' || c == '"' || c == '\'' || c == ' ' || c == '\t') {
+            break;
+        }
+        bool isDigit = c >= '0' && c <= '9';
+        bool isUpper = c >= 'A' && c <= 'V';
+        bool isLower = c >= 'a' && c <= 'v';
+        if (!isDigit && !isUpper && !isLower) {
+            break;
+        }
+        n++;
+    }
+    if (0 == n) {
+        return false;
+    }
+    u64 val = 0;
+    for (size_t i = 0; i < n; i++) {
+        char c = p[i];
+        int d = -1;
+        if (c >= '0' && c <= '9') {
+            d = c - '0';
+        } else if (c >= 'A' && c <= 'V') {
+            d = c - 'A' + 10;
+        } else if (c >= 'a' && c <= 'v') {
+            d = c - 'a' + 10;
+        } else {
+            return false;
+        }
+        val = val * 32 + (u64)d;
+    }
+    *indexOut = (size_t)val;
+    return true;
+}
+
+MobiFormatter::MobiFormatter(HtmlFormatterArgs* args, MobiDoc* doc, EbookTypographyKind typographyKind,
+                             bool readerStyle)
+    : HtmlFormatter(args), doc(doc), typographyKind(typographyKind), readerStyle(readerStyle) {
+    // MOBI/AZW3 reads better left-aligned; justify widens CJK lines awkwardly
+    styleStack.Last().align = AlignAttr::Left;
+    nextPageStyle.align = AlignAttr::Left;
+    if (readerStyle) {
+        if (typographyKind == EbookTypographyKind::Cjk) {
+            lineSpacing *= 1.14f;
+        } else if (typographyKind == EbookTypographyKind::Bilingual) {
+            lineSpacing *= 1.1f;
+        } else {
+            lineSpacing *= 1.04f;
+        }
+    }
+
     bool fromBeginning = (0 == args->reparseIdx);
     if (!doc || !fromBeginning) {
         return;
@@ -41,6 +108,147 @@ MobiFormatter::MobiFormatter(HtmlFormatterArgs* args, MobiDoc* doc) : HtmlFormat
     if (currLineInstr.size() > 0) {
         ForceNewPage();
     }
+}
+
+void MobiFormatter::UpdateTocState() {
+    if (!doc) {
+        return;
+    }
+    if (tocStartIdx == (size_t)-1) {
+        if (doc->HasToc()) {
+            tocStartIdx = doc->GetTocFilePos();
+        } else {
+            tocStartIdx = (size_t)-2;
+        }
+    }
+    if (tocStartIdx != (size_t)-1 && tocStartIdx != (size_t)-2 && currReparseIdx >= (ptrdiff_t)tocStartIdx) {
+        inTocRegion = true;
+    }
+}
+
+static bool IsTrimmedUtf8(const char* s, size_t sLen, const char* utf8) {
+    char* buf = str::DupTemp(s, sLen);
+    str::TrimWSInPlace(buf, str::TrimOpt::Both);
+    return str::Eq(buf, utf8);
+}
+
+static bool IsTocTitleText(const char* s, size_t sLen) {
+    if (IsTrimmedUtf8(s, sLen, "\xe7\x9b\xae\xe5\xbd\x95")) {
+        return true;
+    }
+    char* buf = str::DupTemp(s, sLen);
+    str::TrimWSInPlace(buf, str::TrimOpt::Both);
+    WCHAR* w = ToWStrTemp(buf);
+    return w && str::Eq(w, L"目录");
+}
+
+static bool IsDecorativeLineText(const char* s, size_t sLen) {
+    if (sLen < 3) {
+        return false;
+    }
+    WCHAR* w = ToWStrTemp(s, sLen);
+    if (!w) {
+        return false;
+    }
+    size_t n = 0;
+    for (const WCHAR* p = w; *p; p++) {
+        WCHAR c = *p;
+        if (c == L'-' || c == L'_' || c == L'=' || c == L'~' || c == L'·' || c == L'—' || c == L'─' || c == L'━' ||
+            c == L' ' || c == L'\t') {
+            n++;
+            continue;
+        }
+        return false;
+    }
+    return n >= 3;
+}
+
+void MobiFormatter::StartTocPage() {
+    if (tocPageBreakDone) {
+        return;
+    }
+    FlushCurrLine(true);
+    UpdateLinkBboxes(currPage);
+    pagesToSend.Append(currPage);
+    EmitNewPage();
+    currX = NewLineX();
+    currLineTopPadding = 0.f;
+    tocPageBreakDone = true;
+    inToc = true;
+    blockquoteDepth = 0;
+    listDepth = 0;
+}
+
+bool MobiFormatter::BeforeTextRun(const char* s, size_t sLen) {
+    UpdateTocState();
+    if (InTocLikeRegion() && IsDecorativeLineText(s, sLen)) {
+        return false;
+    }
+    if (!tocPageBreakDone) {
+        bool isPhone = TextContainsUtf8(s, sLen, "\xe5\xae\xa2\xe6\x9c\x8d"); // 客服
+        bool isTocTitle = IsTocTitleText(s, sLen);
+        if (isPhone || TextContainsUtf8(s, sLen, "\xe5\xae\xa2\xe6\x9c\x8d\xe7\x94\xb5\xe8\xae\xb1")) {
+            sawColophonPhone = true;
+        }
+        if (IsTrimmedUtf8(s, sLen, "\xe7\x9b\xae")) { // 目
+            if (sawColophonPhone || inTocRegion) {
+                StartTocPage();
+            }
+            pendingMu = true;
+        } else if (pendingMu && IsTrimmedUtf8(s, sLen, "\xe5\xbd\x95")) { // 录
+            pendingMu = false;
+            if (!tocPageBreakDone) {
+                StartTocPage();
+            }
+        } else {
+            pendingMu = false;
+        }
+        if (isTocTitle) {
+            StartTocPage();
+        }
+    }
+    return true;
+}
+
+void MobiFormatter::OnParserProgress() {
+    UpdateTocState();
+}
+
+float MobiFormatter::ListIndentDx() const {
+    float em = defaultFontSize > 0 ? defaultFontSize : 12.f;
+    if (inToc) {
+        return (float)blockquoteDepth * em * 1.25f;
+    }
+    return (float)listDepth * em * 0.75f + (float)blockquoteDepth * em * 0.5f;
+}
+
+float MobiFormatter::ExtraParagraphDy() {
+    float em = defaultFontSize > 0 ? defaultFontSize : 12.f;
+    if (inToc) {
+        return 0.08f * em;
+    }
+    if (readerStyle) {
+        if (typographyKind == EbookTypographyKind::Cjk) {
+            return 0.08f * em;
+        }
+        if (typographyKind == EbookTypographyKind::Bilingual) {
+            return 0.1f * em;
+        }
+        return 0.12f * em;
+    }
+    // metadata/colophon pages use many short <p> tags; keep gaps tight
+    return 0.15f * em;
+}
+
+void MobiFormatter::HandleTagBlockquote(HtmlToken* t) {
+    if (t->IsStartTag()) {
+        FlushCurrLine(true);
+        blockquoteDepth++;
+    } else if (t->IsEndTag() && blockquoteDepth > 0) {
+        FlushCurrLine(true);
+        blockquoteDepth--;
+    }
+    currX = NewLineX();
 }
 
 // parses size in the form "1em" or "3pt". To interpret ems we need emInPoints
@@ -72,7 +280,7 @@ void MobiFormatter::HandleSpacing_Mobi(HtmlToken* t) {
     // the first line of the paragrap is indented by 1em and there's
     // 3pt top padding (the same seems to apply for <blockquote>)
     AttrInfo* attr = t->GetAttrByName("width");
-    if (attr) {
+    if (attr && !inToc) {
         float lineIndent = ParseSizeAsPixels(attr->val, attr->valLen, CurrFont()->GetSize());
         // there are files with negative width which produces partially invisible
         // text, so don't allow that
@@ -88,6 +296,36 @@ void MobiFormatter::HandleSpacing_Mobi(HtmlToken* t) {
     }
 }
 
+static bool ClassAttrContains(const char* val, size_t valLen, const char* needle) {
+    char* buf = str::DupTemp(val, valLen);
+    return buf && strstr(buf, needle);
+}
+
+static bool IsInlineMobiImage(HtmlToken* t) {
+    AttrInfo* attr = t->GetAttrByName("class");
+    if (attr && ClassAttrContains(attr->val, attr->valLen, "inline")) {
+        return true;
+    }
+    // Classic MOBI embeds small in-text images via recindex; KF8 chapter art uses kindle:embed
+    return t->GetAttrByName("recindex") != nullptr;
+}
+
+SizeF MobiFormatter::MaxImageSize(HtmlToken* t) {
+    float em = CurrFont()->GetSize();
+    if (em <= 0) {
+        em = 12.f;
+    }
+    if (IsInlineMobiImage(t)) {
+        // KF8 heading icons (class="inline1") and classic MOBI recindex images sit beside text
+        return {2.5f * em, 2.f * em};
+    }
+    if (readerStyle) {
+        return {pageDx * 0.84f, pageDy * 0.55f};
+    }
+    // Block illustrations (e.g. 700x1027 chapter art): well below full page
+    return {pageDx * 0.38f, pageDy * 0.22f};
+}
+
 // mobi format has image tags in the form:
 // <img recindex="0000n" alt=""/>
 // where recindex is the record number of pdb record
@@ -99,13 +337,27 @@ void MobiFormatter::HandleTagImg(HtmlToken* t) {
         return;
     }
     bool needAlt = true;
+    ByteSlice* img = nullptr;
     AttrInfo* attr = t->GetAttrByName("recindex");
     if (attr) {
         int n;
         if (str::Parse(attr->val, attr->valLen, "%d", &n)) {
-            ByteSlice* img = doc->GetImage(n);
-            needAlt = !img || !EmitImage(img);
+            img = doc->GetImage(n);
         }
+    }
+    if (!img) {
+        attr = t->GetAttrByName("src");
+        if (attr) {
+            size_t resourceIndex = 0;
+            if (ParseKindleEmbedResourceIndex(attr->val, attr->valLen, &resourceIndex)) {
+                img = doc->GetImageByResourceIndex(resourceIndex);
+            }
+        }
+    }
+    if (img) {
+        SizeF maxSize = MaxImageSize(t);
+        bool center = !IsInlineMobiImage(t);
+        needAlt = !EmitImage(img, &maxSize, center);
     }
     if (needAlt && (attr = t->GetAttrByName("alt")) != nullptr) {
         HandleText(attr->val, attr->valLen);
@@ -114,11 +366,39 @@ void MobiFormatter::HandleTagImg(HtmlToken* t) {
 
 void MobiFormatter::HandleHtmlTag(HtmlToken* t) {
     ReportIf(!t->IsTag());
+    UpdateTocState();
 
-    if (Tag_P == t->tag || Tag_Blockquote == t->tag) {
+    if (Tag_Blockquote == t->tag) {
+        UpdateTagNesting(t);
+        HandleTagBlockquote(t);
+        HandleSpacing_Mobi(t);
+    } else if (Tag_P == t->tag) {
+        if (!tocPageBreakDone && t->IsStartTag()) {
+            AttrInfo* attr = t->GetAttrByName("align");
+            if (attr && FindAlignAttr(attr->val, attr->valLen) == AlignAttr::Center) {
+                if (sawColophonPhone || inTocRegion) {
+                    StartTocPage();
+                }
+            }
+        }
         HtmlFormatter::HandleHtmlTag(t);
         HandleSpacing_Mobi(t);
+    } else if (Tag_Center == t->tag) {
+        if (!tocPageBreakDone && t->IsStartTag() && (sawColophonPhone || inTocRegion)) {
+            StartTocPage();
+        }
+        HtmlFormatter::HandleHtmlTag(t);
+    } else if (Tag_H1 == t->tag || Tag_H2 == t->tag || Tag_H3 == t->tag) {
+        UpdateTagNesting(t);
+        HandleTagHx(t);
+        if (inToc && t->IsStartTag()) {
+            CurrStyle()->align = AlignAttr::Center;
+        }
     } else if (Tag_Mbp_Pagebreak == t->tag) {
+        inToc = false;
+        inTocRegion = false;
+        sawColophonPhone = false;
+        pendingMu = false;
         ForceNewPage();
     } else if (Tag_A == t->tag) {
         HandleAnchorAttr(t);
@@ -127,10 +407,12 @@ void MobiFormatter::HandleHtmlTag(HtmlToken* t) {
             HandleTagA(t);
         }
     } else if (Tag_Hr == t->tag) {
-        // imitating Kindle: hr is proceeded by an empty line
-        FlushCurrLine(false);
-        EmitEmptyLine(lineSpacing);
-        EmitHr();
+        if (!InTocLikeRegion()) {
+            // imitating Kindle: hr is proceeded by an empty line
+            FlushCurrLine(false);
+            EmitEmptyLine(lineSpacing);
+            EmitHr();
+        }
     } else {
         HtmlFormatter::HandleHtmlTag(t);
     }

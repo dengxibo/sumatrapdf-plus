@@ -551,7 +551,7 @@ void RegisterSettingsForFileChanges() {
 
 void UnregisterSettingsForFileChanges() {
     FileWatcherUnsubscribe(gWatchedSettingsFile);
-    // TODO: memleak of gWatchedSettingsFile
+    gWatchedSettingsFile = nullptr;
 }
 
 constexpr int kMinFontSize = 9;
@@ -598,12 +598,16 @@ HFONT GetAppTreeFont() {
     if (gTreeFont) {
         return gTreeFont;
     }
+    bool userTreeFontSize = gGlobalPrefs->treeFontSize >= kMinFontSize;
     int fntSize = gGlobalPrefs->treeFontSize;
     if (fntSize < kMinFontSize) {
         fntSize = gGlobalPrefs->uIFontSize;
     }
     if (fntSize < kMinFontSize) {
         fntSize = GetSizeOfDefaultGuiFont();
+        if (!userTreeFontSize) {
+            fntSize += 2;
+        }
     }
     char* fntNameUser = gGlobalPrefs->treeFontName;
     gTreeFont = GetUserGuiFont(fntNameUser, fntSize);

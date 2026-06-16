@@ -7,6 +7,8 @@ struct PasswordUI;
 struct FileArgs;
 struct AnnotCreateArgs;
 
+#include "EbookTypography.h"
+
 /* EngineDjVu.cpp */
 void CleanupEngineDjVu();
 bool IsEngineDjVuSupportedFileType(Kind kind);
@@ -27,6 +29,15 @@ EngineBase* CreateEngineTxtFromFile(const char* fileName);
 
 void SetDefaultEbookFont(const char* name, float size);
 void EngineEbookCleanup();
+bool EngineEbookIsProgressiveLoadingInProgress(EngineBase* engine);
+int EngineEbookGetFormattedPageCount(EngineBase* engine);
+int EngineEbookParseTocLinkFilePos(EngineBase* engine, IPageDestination* dest);
+bool EngineEbookIsTocFilePosReachable(EngineBase* engine, int filePos);
+
+void SetCreateEngineForThumbnail(bool value);
+bool IsCreateEngineForThumbnail();
+
+constexpr int kEbookInitialPages = 1;
 
 /* EngineImages.cpp */
 
@@ -60,6 +71,15 @@ void EngineMupdfGetAnnotations(EngineBase*, Vec<Annotation*>&);
 bool EngineMupdfHasUnsavedAnnotations(EngineBase*);
 bool EngineMupdfSupportsAnnotations(EngineBase*);
 bool EngineMupdfIsEncrypted(EngineBase* engine);
+bool EngineMupdfIsReflowableLoadingInProgress(EngineBase* engine);
+bool EngineIsProgressiveEbookLoading(EngineBase* engine);
+int EngineMupdfFastOutlinePageNo(EngineBase* engine, IPageDestination* dest);
+int EngineMupdfResolveLinkPageNo(EngineBase* engine, IPageDestination* dest);
+bool EngineMupdfIsOutlineDestReachable(EngineBase* engine, IPageDestination* dest);
+bool EngineMupdfSnapshotOutlineLink(IPageDestination* dest, char** uriOut, int* reflowChOut, float* xOut, float* yOut);
+void EngineMupdfNavigateUri(EngineBase* engine, const char* uri, int reflowOutlineChapter, float destX, float destY,
+                              ILinkHandler* lh);
+bool EngineMupdfHasOutline(EngineBase* engine);
 const char* EngineMupdfGetPassword(EngineBase* engine);
 bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErrorCb& showErrorFunc);
 Annotation* EngineMupdfGetAnnotationAtPos(EngineBase*, int pageNo, PointF pos, Annotation*);

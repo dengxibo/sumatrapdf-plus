@@ -60,7 +60,18 @@ MultiFormatArchive::~MultiFormatArchive() {
     ArenaDelete(allocator_);
 }
 
-bool MultiFormatArchive::ParseEntries(struct archive* a, bool eagerLoad, const ArchiveExtractProgressCb& cbProgress) {
+// Heuristic used by ArchiveLoadMode::EagerSkipImages to decide which
+// entries to defer. Matches by extension (the archive layer doesn't know
+// EPUB media-types). False positives are harmless: a deferred entry is
+// just loaded on demand later via GetFileDataById.
+static bool IsImageEntryName(const char* name) {
+    return str::EndsWithI(name, ".jpg") || str::EndsWithI(name, ".jpeg") || str::EndsWithI(name, ".png") ||
+           str::EndsWithI(name, ".gif") || str::EndsWithI(name, ".bmp") || str::EndsWithI(name, ".webp") ||
+           str::EndsWithI(name, ".tif") || str::EndsWithI(name, ".tiff") || str::EndsWithI(name, ".svg");
+}
+
+bool MultiFormatArchive::ParseEntries(struct archive* a, ArchiveLoadMode loadMode,
+                                      const ArchiveExtractProgressCb& cbProgress) {
     struct archive_entry* entry;
     size_t fileId = 0;
     ArchiveExtractProgress prog{};
@@ -83,7 +94,11 @@ bool MultiFormatArchive::ParseEntries(struct archive* a, bool eagerLoad, const A
         i->data = nullptr;
         fileInfos_.Append(i);
 
-        if (eagerLoad) {
+        bool decompressNow = loadMode == ArchiveLoadMode::Eager;
+        if (loadMode == ArchiveLoadMode::EagerSkipImages) {
+            decompressNow = !IsImageEntryName(name);
+        }
+        if (decompressNow) {
             size_t size = i->fileSizeUncompressed;
             if (size > 0) {
                 i->data = AllocArray<char>(size + ZERO_PADDING_COUNT);
@@ -119,7 +134,7 @@ bool MultiFormatArchive::ParseEntries(struct archive* a, bool eagerLoad, const A
 // unfortunately libarchive's rar support is weak
 static bool gUnrarFirst = true;
 
-bool MultiFormatArchive::Open(const char* path, bool eagerLoad, Kind hintKind,
+bool MultiFormatArchive::Open(const char* path, ArchiveLoadMode loadMode, Kind hintKind,
                               const ArchiveExtractProgressCb& cbProgress) {
     if (!path) {
         return false;
@@ -139,28 +154,33 @@ bool MultiFormatArchive::Open(const char* path, bool eagerLoad, Kind hintKind,
     // tar archives can't seek, so we have to eager-load even when the
     // caller didn't ask for it.
     if (kind == kindFileTar) {
-        eagerLoad = true;
+        loadMode = ArchiveLoadMode::Eager;
     }
+
+    // unrar.dll can't defer individual entries the way libarchive can, so
+    // EagerSkipImages degrades to a plain eager load for rar (EPUB is never
+    // rar, so this never matters in practice).
+    bool eagerUnrar = loadMode != ArchiveLoadMode::Lazy;
 
     bool isRar = kind == kindFileRar;
     bool ok = false;
     if (gUnrarFirst && isRar) {
-        ok = OpenUnrarFallback(path, eagerLoad, cbProgress);
+        ok = OpenUnrarFallback(path, eagerUnrar, cbProgress);
         format = MultiFormatArchive::Format::Rar;
     }
     if (!ok) {
-        ok = OpenArchive(path, eagerLoad, cbProgress);
+        ok = OpenArchive(path, loadMode, cbProgress);
     }
     if (!ok && !gUnrarFirst && isRar) {
         // libarchive can open rar files but then fail to read them — fall
         // back to unrar.dll.
-        ok = OpenUnrarFallback(path, eagerLoad, cbProgress);
+        ok = OpenUnrarFallback(path, eagerUnrar, cbProgress);
         format = MultiFormatArchive::Format::Rar;
     }
     if (!ok) {
         return false;
     }
-    if (eagerLoad) {
+    if (loadMode == ArchiveLoadMode::Eager) {
         // Discard the paths so LoadFileDataByIdLibarchive / LoadFileDataByIdUnarrDll
         // can't re-open the archive to fetch a missing entry. Entries whose
         // decompression failed above have failed=true and data=nullptr, and
@@ -213,7 +233,7 @@ bool MultiFormatArchive::Open(IStream* stream) {
     // progress reporting on this path.
     ArchiveExtractProgressCb emptyCb;
     format = FormatFromArchive(a);
-    bool ok = ParseEntries(a, /*eagerLoad=*/true, emptyCb);
+    bool ok = ParseEntries(a, ArchiveLoadMode::Eager, emptyCb);
     if (archive_read_has_encrypted_entries(a) > 0) {
         isEncrypted = true;
     }
@@ -222,7 +242,8 @@ bool MultiFormatArchive::Open(IStream* stream) {
     return ok;
 }
 
-bool MultiFormatArchive::OpenArchive(const char* path, bool eagerLoad, const ArchiveExtractProgressCb& cbProgress) {
+bool MultiFormatArchive::OpenArchive(const char* path, ArchiveLoadMode loadMode,
+                                     const ArchiveExtractProgressCb& cbProgress) {
     struct archive* a = archive_read_new();
     archive_read_support_format_all(a);
     archive_read_support_filter_all(a);
@@ -234,7 +255,7 @@ bool MultiFormatArchive::OpenArchive(const char* path, bool eagerLoad, const Arc
         return false;
     }
     archivePath_ = str::Dup(path);
-    bool ok = ParseEntries(a, eagerLoad, cbProgress);
+    bool ok = ParseEntries(a, loadMode, cbProgress);
     if (ok) {
         format = FormatFromArchive(a);
     }
@@ -418,9 +439,10 @@ const char* MultiFormatArchive::GetComment() {
 
 ///// format specific handling /////
 
-MultiFormatArchive* OpenArchiveFromFile(const char* path, bool eagerLoad, const ArchiveExtractProgressCb& cbProgress) {
+MultiFormatArchive* OpenArchiveFromFile(const char* path, ArchiveLoadMode loadMode,
+                                        const ArchiveExtractProgressCb& cbProgress) {
     auto* archive = new MultiFormatArchive();
-    if (!archive->Open(path, eagerLoad, nullptr, cbProgress)) {
+    if (!archive->Open(path, loadMode, nullptr, cbProgress)) {
         delete archive;
         return nullptr;
     }

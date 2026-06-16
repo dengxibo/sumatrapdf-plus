@@ -232,7 +232,11 @@ enum {
     CmdSetScreenshotHotkey = 421,
     CmdToggleReuseInstance = 422,
     CmdToggleChmUI = 423,
-    CmdNone = 424,
+    CmdSearchSelectionWithYoudaoDict = 424,
+    CmdToggleLightDarkTheme = 425,
+    CmdAnalyzeSelectionWithDoubao = 426,
+    CmdToggleDoubleClickWordLookup = 427,
+    CmdNone = 428,
 
     /* range for file history */
     CmdFileHistoryFirst,

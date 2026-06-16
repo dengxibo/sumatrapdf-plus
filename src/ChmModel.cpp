@@ -18,8 +18,102 @@
 #include "ChmFile.h"
 #include "GlobalPrefs.h"
 #include "ChmModel.h"
+#include "Theme.h"
+#include "utils/GuessFileType.h"
 
 #include "utils/Log.h"
+
+static const char* gChmDarkCss = R"(<style type="text/css" id="sumatrapdf-chm-dark">
+html {
+  color-scheme: dark;
+  background-color: #000000 !important;
+}
+body {
+  background-color: #000000 !important;
+  color: #e8eaed !important;
+}
+table, td, th, tr, div, p, li, span, font, pre, dt, dd {
+  color: #e8eaed !important;
+}
+td, th, tr, table {
+  background-color: #000000 !important;
+}
+a, a:link, a:visited, a:hover, a:active {
+  color: #93c5fd !important;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: #f9fafb !important;
+}
+hr {
+  border-color: #374151 !important;
+}
+</style>
+)";
+
+static const char* gChmLightEyeCareCss = R"(<style type="text/css" id="sumatrapdf-chm-light">
+html, body {
+  background-color: #f7f3e8 !important;
+  color: #333333 !important;
+}
+</style>
+)";
+
+static bool ChmUrlLooksLikeHtml(const char* url) {
+    if (!url) {
+        return false;
+    }
+    Kind kind = GuessFileTypeFromName(url);
+    return kind == kindFileHTML;
+}
+
+static bool ChmDataLooksLikeHtml(const ByteSlice& data) {
+    if (data.empty()) {
+        return false;
+    }
+    const char* s = (const char*)data.data();
+    size_t n = data.size();
+    while (n > 0 && str::IsWs(*s)) {
+        s++;
+        n--;
+    }
+    if (n < 5) {
+        return false;
+    }
+    return str::StartsWithI(s, "<html") || str::StartsWithI(s, "<!doc") || str::StartsWith(s, "<HTML") ||
+           str::StartsWith(s, "<!DOC");
+}
+
+static TempStr ChmInjectCssTemp(const ByteSlice& html, const char* css) {
+    const char* s = (const char*)html.data();
+    size_t n = html.size();
+    const char* headPos = str::FindI(s, "<head");
+    if (headPos) {
+        const char* headEnd = str::Find(headPos, ">");
+        if (headEnd && headEnd < s + n) {
+            headEnd++;
+            size_t prefixLen = (size_t)(headEnd - s);
+            return str::FormatTemp("%.*s%s%.*s", (int)prefixLen, s, css, (int)(n - prefixLen), headEnd);
+        }
+    }
+    const char* htmlPos = str::FindI(s, "<html");
+    if (htmlPos) {
+        const char* htmlEnd = str::Find(htmlPos, ">");
+        if (htmlEnd && htmlEnd < s + n) {
+            htmlEnd++;
+            size_t prefixLen = (size_t)(htmlEnd - s);
+            return str::FormatTemp("%.*s%s%.*s", (int)prefixLen, s, css, (int)(n - prefixLen), htmlEnd);
+        }
+    }
+    return str::FormatTemp("%s%.*s", css, (int)n, s);
+}
+
+static TempStr ChmInjectDarkCssTemp(const ByteSlice& html) {
+    return ChmInjectCssTemp(html, gChmDarkCss);
+}
+
+static TempStr ChmInjectLightEyeCareCssTemp(const ByteSlice& html) {
+    return ChmInjectCssTemp(html, gChmLightEyeCareCss);
+}
 
 static IPageDestination* NewChmNamedDest(const char* url, int pageNo) {
     if (!url) {
@@ -164,6 +258,17 @@ void ChmModel::CopySelection() const {
     if (htmlWindow) {
         htmlWindow->CopySelection();
     }
+}
+
+bool ChmModel::UsesNativeHtmlWindow() const {
+    return htmlWindow != nullptr;
+}
+
+void ChmModel::ReloadCurrentPageForThemeChange() {
+    if (!htmlWindow || !ValidPageNo(currentPageNo)) {
+        return;
+    }
+    DisplayPage(pages.At(currentPageNo - 1));
 }
 
 static bool gSendingHtmlWindowMsg = false;
@@ -469,7 +574,19 @@ ByteSlice ChmModel::GetDataForUrl(const char* url) {
         }
         urlDataCache.Append(e);
     }
-    return e->data;
+    ByteSlice data = e->data;
+    if (ChmUrlLooksLikeHtml(plainUrl) || ChmDataLooksLikeHtml(data)) {
+        TempStr modified = nullptr;
+        if (ThemeUsesDarkChrome()) {
+            modified = ChmInjectDarkCssTemp(data);
+        } else {
+            modified = ChmInjectLightEyeCareCssTemp(data);
+        }
+        if (modified) {
+            return {(u8*)modified, str::Len(modified)};
+        }
+    }
+    return data;
 }
 
 void ChmModel::DownloadData(const char* url, const ByteSlice& data) {

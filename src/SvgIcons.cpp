@@ -105,6 +105,14 @@ static const char* gIconSave =
   <polyline points="4 8 10 8 10 4" />
 </svg>)";
 
+// sidebar toggle icon - custom
+static const char* gIconBookmark =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <rect x="3" y="4" width="18" height="16" rx="2" />
+  <path d="M8 4v16" />
+</svg>)";
+
 // https://github.com/tabler/tabler-icons/blob/master/icons/rotate-2.svg - modified
 static const char* gIconRotateLeft =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -129,6 +137,44 @@ static const char* gIconRotateRight =
   <circle cx="11" cy="19.94" r="0.15"/>
 </svg>)";
 
+// https://github.com/tabler/tabler-icons/blob/master/icons/sun.svg
+static const char* gIconThemeSun =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <circle cx="12" cy="12" r="4" />
+  <path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7" />
+</svg>)";
+
+// https://github.com/tabler/tabler-icons/blob/master/icons/moon.svg - scaled down to match sun icon
+static const char* gIconThemeMoon =
+    R"MOON(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <g transform="translate(12 12) scale(0.85) translate(-12 -12)">
+    <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+  </g>
+</svg>)MOON";
+
+// word lookup: magnifying glass with Aa
+static const char* gIconDictionary =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <circle cx="10" cy="10" r="7.5" />
+  <path d="M 15.3 15.3 L 20.5 20.5" />
+  <text x="10" y="12" text-anchor="middle" font-size="9.5" font-weight="bold" font-family="Georgia, serif" fill="currentColor" stroke="none">Aa</text>
+</svg>)";
+
+// word lookup disabled: same icon with diagonal slash
+static const char* gIconDictionaryOff =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <circle cx="10" cy="10" r="7.5" />
+  <path d="M 15.3 15.3 L 20.5 20.5" />
+  <text x="10" y="12" text-anchor="middle" font-size="9.5" font-weight="bold" font-family="Georgia, serif" fill="currentColor" stroke="none">Aa</text>
+  <line x1="6" y1="18" x2="18" y2="6" />
+</svg>)";
+
+
+
 // must match order in enum class TbIcon
 // clang-format off
 static const char* gIcons[] = {
@@ -145,8 +191,13 @@ static const char* gIcons[] = {
     gIconMatchCase,
     gIconMatchCase,  // TODO: remove this, is for compatiblity with bitmap icons
     gIconSave,
+    gIconBookmark,
     gIconRotateLeft,
     gIconRotateRight,
+    gIconThemeSun,
+    gIconThemeMoon,
+    gIconDictionary,
+    gIconDictionaryOff,
 };
 // clang-format on
 

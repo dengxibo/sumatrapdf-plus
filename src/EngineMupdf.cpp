@@ -17,6 +17,7 @@ extern "C" {
 #include "utils/WinUtil.h"
 #include "utils/ZipUtil.h"
 #include "utils/Timer.h"
+#include "utils/ThreadUtil.h"
 
 #include "wingui/UIModels.h"
 
@@ -30,12 +31,29 @@ extern "C" {
 #include "EbookDoc.h"
 #include "SumatraConfig.h"
 #include "Settings.h"
+#include "DisplayModel.h"
 
 #include "utils/Log.h"
 
-// A5
-static float layoutA5DxPt = 420.F;
-static float layoutA5DyPt = 595.F;
+void NotifyEbookPagesLoadingProgress(const char* filePath, bool reloadToc);
+
+static const DWORD kReflowBackgroundDelayMs = 50;
+static const int kReflowChaptersPerYield = 4;
+static const int kReflowNotifyEveryNChapters = 16;
+static const int kReflowInitialPages = 8;
+
+// called from FinishLoading on the load thread; posts UI work to show the
+// document as soon as the engine has initial pages (before full page count).
+void NotifyEngineDisplayReady(EngineBase* engine);
+
+// default flowed-ebook page sizes. EPUB uses reader-style virtual pages;
+// other reflowable formats keep the legacy fallback unless configured.
+static float layoutLatinEpubDxPt = 540.F;
+static float layoutLatinEpubDyPt = 760.F;
+static float layoutCjkEpubDxPt = 600.F;
+static float layoutCjkEpubDyPt = 820.F;
+static float layoutA5DxPt = 560.F;
+static float layoutA5DyPt = 680.F;
 
 // A4
 static float layoutA4DxPt = 595.F;
@@ -88,6 +106,8 @@ static char* FzGetURL(fz_link* link, fz_outline* outline) {
 struct PageDestinationMupdf : IPageDestination {
     fz_outline* outline = nullptr;
     fz_link* link = nullptr;
+    // EPUB outlines keep page.chapter=-1; resolved once from URI spine match
+    int reflowOutlineChapter = -1;
 
     char* value = nullptr;
     char* name = nullptr;
@@ -176,8 +196,106 @@ static int FzGetPageNo(fz_context* ctx, fz_document* doc, fz_link* link, fz_outl
     return pageNo;
 }
 
-static IPageDestination* NewPageDestinationMupdf(fz_context* ctx, fz_document* doc, fz_link* link,
-                                                 fz_outline* outline) {
+// EPUB NCX/nav outlines have page.chapter=-1; match URI (without #fragment) to spine
+// chapter index. epub_resolve_link does not layout HTML when there is no fragment.
+static int EpubUriChapterIndexNoLayout(fz_context* ctx, fz_document* doc, const char* uri) {
+    if (!uri || !*uri) {
+        return -1;
+    }
+    TempStr base = str::DupTemp(uri);
+    char* hash = str::FindChar(base, '#');
+    if (hash) {
+        *hash = '\0';
+    }
+    int chapter = -1;
+    fz_var(chapter);
+    fz_try(ctx) {
+        fz_link_dest dest = fz_resolve_link_dest(ctx, doc, base);
+        chapter = dest.loc.chapter;
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        chapter = -1;
+    }
+    return chapter;
+}
+
+static int ReflowOutlineChapterIndex(PageDestinationMupdf* link) {
+    if (!link) {
+        return -1;
+    }
+    if (link->outline && link->outline->page.chapter >= 0) {
+        return link->outline->page.chapter;
+    }
+    return link->reflowOutlineChapter;
+}
+
+static int ResolveMupdfLinkPageNo1(EngineMupdf* e, const char* uri, fz_link_dest* ldestOut);
+
+static int ReflowPageNoFromChapter(EngineMupdf* e, int ch, int pageInChapter) {
+    if (!e || ch < 0) {
+        return 0;
+    }
+    if (pageInChapter < 0) {
+        pageInChapter = 0;
+    }
+    int chaptersCounted = (int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0);
+    if (ch >= chaptersCounted) {
+        return 0;
+    }
+    ScopedCritSec scope(&e->pagesLock);
+    if (ch < e->reflowChapterStartPage.Size()) {
+        return e->reflowChapterStartPage[ch] + pageInChapter + 1;
+    }
+    return 0;
+}
+
+// for reflowable docs, use outline->page (chapter+index) with cached chapter
+// page counts instead of fz_resolve_link, which lays out HTML per bookmark
+static int FastReflowableOutlinePageNo(EngineMupdf* e, fz_context* ctx, fz_document* doc, fz_outline* outline) {
+    if (!outline || outline->page.chapter < 0) {
+        return -1;
+    }
+    int ch = outline->page.chapter;
+    int pageInChapter = outline->page.page;
+    if (pageInChapter < 0) {
+        pageInChapter = 0;
+    }
+    if (e) {
+        ScopedCritSec scope(&e->pagesLock);
+        if (ch < e->reflowChapterStartPage.Size()) {
+            return e->reflowChapterStartPage[ch] + pageInChapter + 1;
+        }
+    }
+    int pageNo = -1;
+    fz_var(pageNo);
+    fz_try(ctx) {
+        pageNo = fz_page_number_from_location(ctx, doc, outline->page);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        pageNo = -1;
+    }
+    if (pageNo < 0) {
+        return -1;
+    }
+    return pageNo + 1;
+}
+
+static int OutlinePageNo(EngineMupdf* e, fz_context* ctx, fz_document* doc, pdf_document* pdfdoc, fz_link* link,
+                         fz_outline* outline) {
+    if (!pdfdoc && outline) {
+        int pageNo = FastReflowableOutlinePageNo(e, ctx, doc, outline);
+        if (pageNo > 0) {
+            return pageNo;
+        }
+        return 0;
+    }
+    return FzGetPageNo(ctx, doc, link, outline);
+}
+
+static IPageDestination* NewPageDestinationMupdf(EngineMupdf* e, fz_context* ctx, fz_document* doc, fz_link* link,
+                                                 fz_outline* outline, int pageNoHint = 0) {
     ReportIf(link && outline);
     ReportIf(!link && !outline);
     char* uri = FzGetURL(link, outline);
@@ -223,13 +341,22 @@ static IPageDestination* NewPageDestinationMupdf(fz_context* ctx, fz_document* d
 
     auto dest = new PageDestinationMupdf(link, outline);
     dest->rect = FzGetRectF(link, outline);
-    dest->pageNo = FzGetPageNo(ctx, doc, link, outline);
+    if (e && !pdf_specifics(ctx, doc)) {
+        dest->reflowOutlineChapter = EpubUriChapterIndexNoLayout(ctx, doc, uri);
+    }
+    if (pageNoHint > 0) {
+        dest->pageNo = pageNoHint;
+    } else if (e && InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) != 0) {
+        dest->pageNo = 0;
+    } else {
+        dest->pageNo = OutlinePageNo(e, ctx, doc, pdf_specifics(ctx, doc), link, outline);
+    }
     return dest;
 }
 
-static PageElementDestination* NewLinkDestination(int srcPageNo, fz_context* ctx, fz_document* doc, fz_link* link,
-                                                  fz_outline* outline) {
-    auto dest = NewPageDestinationMupdf(ctx, doc, link, outline);
+static PageElementDestination* NewLinkDestination(int srcPageNo, EngineMupdf* e, fz_context* ctx, fz_document* doc,
+                                                  fz_link* link, fz_outline* outline) {
+    auto dest = NewPageDestinationMupdf(e, ctx, doc, link, outline);
     auto res = new PageElementDestination(dest);
     res->pageNo = srcPageNo;
     res->rect = dest->rect;
@@ -1862,6 +1989,11 @@ fz_context* EngineMupdf::Ctx() const {
 }
 
 EngineMupdf::~EngineMupdf() {
+    InterlockedExchange(&reflowableLoadAbort, 1);
+    while (InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0) {
+        Sleep(10);
+    }
+
     EnterCriticalSection(&pagesLock);
 
     ReleaseAllPerThreadContexts(this);
@@ -2031,6 +2163,56 @@ ByteSlice LoadEmbeddedPDFFile(const char* filePath) {
     return res;
 }
 
+static TempStr TxtBytesToUtf8Temp(const char* data, size_t len) {
+    if (!data || len == 0) {
+        return str::DupTemp("");
+    }
+
+    if (len >= 3 && str::StartsWith(data, UTF8_BOM)) {
+        const u8* tmp = (const u8*)(data + 3);
+        const u8* end = (const u8*)data + len;
+        if (isLegalUTF8String(&tmp, end)) {
+            return str::DupTemp(data + 3, len - 3);
+        }
+    }
+
+    if (len >= 2 && str::StartsWith(data, UTF16_BOM)) {
+        int cch = (int)((len - 2) / sizeof(WCHAR));
+        return ToUtf8Temp((const WCHAR*)(data + 2), cch);
+    }
+
+    if (len >= 2 && str::StartsWith(data, UTF16BE_BOM)) {
+        int cch = (int)((len - 2) / sizeof(WCHAR));
+        char* tmp = (char*)str::DupTemp(data + 2, len - 2);
+        for (int i = 0; i < cch; i++) {
+            int idx = i * 2;
+            std::swap(tmp[idx], tmp[idx + 1]);
+        }
+        return ToUtf8Temp((const WCHAR*)tmp, cch);
+    }
+
+    size_t sampleLen = len;
+    if (sampleLen > 256 * 1024) {
+        sampleLen = 256 * 1024;
+    }
+    uint codePage = GuessTextCodepage(data, sampleLen, CP_UTF8);
+
+    if (codePage == CP_UTF8) {
+        const u8* tmp = (const u8*)data;
+        const u8* end = tmp + len;
+        if (isLegalUTF8String(&tmp, end)) {
+            return str::DupTemp(data, len);
+        }
+        codePage = CP_ACP;
+    }
+
+    TempWStr ws = strconv::StrCPToWStrTemp(data, codePage, (int)len);
+    if (!ws) {
+        return str::DupTemp(data, len);
+    }
+    return ToUtf8Temp(ws, str::Len(ws));
+}
+
 static ByteSlice TxtFileToHTML(const char* path) {
     ByteSlice fd = file::ReadFileWithAllocator(path, GetTempAllocator());
     if (fd.empty()) {
@@ -2042,11 +2224,11 @@ static ByteSlice TxtFileToHTML(const char* path) {
         InterlockedDecrement(&gAllowAllocFailure);
     };
 
-    TempStr data = (TempStr)fd.data();
-    data = str::ReplaceTemp(data, "&", "&amp;");
+    TempStr data = TxtBytesToUtf8Temp((const char*)fd.data(), fd.size());
     if (!data) {
         return {};
     }
+    data = str::ReplaceTemp(data, "&", "&amp;");
     data = str::ReplaceTemp(data, ">", "&gt;");
     if (!data) {
         return {};
@@ -2060,8 +2242,9 @@ static ByteSlice TxtFileToHTML(const char* path) {
     d.Append(R"(<html>
     <head>
 <style>
-    body {
-        color: 0xff0000;
+    html, body {
+        background-color: #f7f3e8;
+        color: #333333;
     }
     pre {
         white-space: pre-wrap;
@@ -2226,6 +2409,306 @@ bool EngineMupdf::Load(IStream* stream, const char* nameHint, PasswordUI* pwdUI)
 // TODO: allow setting per
 extern EBookUI* GetEBookUI();
 
+static EbookTypographyKind gEbookTypographyKind = EbookTypographyKind::Cjk;
+
+void SetEbookTypographyKind(EbookTypographyKind kind) {
+    gEbookTypographyKind = kind;
+}
+
+EbookTypographyKind GetEbookTypographyKind() {
+    return gEbookTypographyKind;
+}
+
+bool EbookUsesCjkTypography() {
+    return gEbookTypographyKind == EbookTypographyKind::Cjk || gEbookTypographyKind == EbookTypographyKind::Bilingual;
+}
+
+static bool IsCjkLangTag(const char* lang) {
+    if (str::IsEmpty(lang)) {
+        return false;
+    }
+    return str::StartsWith(lang, "zh") || str::StartsWith(lang, "ja") || str::StartsWith(lang, "ko") ||
+           str::EqI(lang, "chi") || str::EqI(lang, "zho");
+}
+
+static bool IsLatinLangTag(const char* lang) {
+    if (str::IsEmpty(lang)) {
+        return false;
+    }
+    return str::StartsWith(lang, "en") || str::StartsWith(lang, "de") || str::StartsWith(lang, "fr") ||
+           str::StartsWith(lang, "es") || str::StartsWith(lang, "it") || str::StartsWith(lang, "pt") ||
+           str::StartsWith(lang, "nl") || str::StartsWith(lang, "sv") || str::StartsWith(lang, "ru");
+}
+
+static TempStr ExtractNextLanguageFromOpf(const char** cursor, const char* xmlEnd) {
+    const char* markers[] = {"<dc:language", "<opf:language", "<language"};
+    const char* best = nullptr;
+    size_t bestOff = (size_t)-1;
+    for (const char* marker : markers) {
+        const char* p = *cursor;
+        if (p < xmlEnd && (p = str::Find(p, marker))) {
+            if (!best || (size_t)(p - *cursor) < bestOff) {
+                best = p;
+                bestOff = (size_t)(p - *cursor);
+            }
+        }
+    }
+    if (!best) {
+        return nullptr;
+    }
+    const char* gt = (const char*)memchr(best, '>', xmlEnd - best);
+    if (!gt) {
+        return nullptr;
+    }
+    const char* val = gt + 1;
+    const char* lt = (const char*)memchr(val, '<', xmlEnd - val);
+    if (!lt || lt <= val) {
+        return nullptr;
+    }
+    while (val < lt && str::IsWs(*val)) {
+        val++;
+    }
+    const char* valEnd = lt;
+    while (valEnd > val && str::IsWs(*(valEnd - 1))) {
+        valEnd--;
+    }
+    if (valEnd <= val) {
+        return nullptr;
+    }
+    *cursor = lt;
+    return str::DupTemp(val, valEnd - val);
+}
+
+static EbookTypographyKind ClassifyOpfLanguages(const char* xml, size_t xmlLen) {
+    bool hasCjk = false;
+    bool hasLatin = false;
+    const char* cursor = xml;
+    const char* xmlEnd = xml + xmlLen;
+    for (;;) {
+        TempStr lang = ExtractNextLanguageFromOpf(&cursor, xmlEnd);
+        if (!lang) {
+            break;
+        }
+        if (IsCjkLangTag(lang)) {
+            hasCjk = true;
+        }
+        if (IsLatinLangTag(lang)) {
+            hasLatin = true;
+        }
+    }
+    if (hasCjk && hasLatin) {
+        return EbookTypographyKind::Bilingual;
+    }
+    if (hasCjk) {
+        return EbookTypographyKind::Cjk;
+    }
+    if (hasLatin) {
+        return EbookTypographyKind::Latin;
+    }
+    return EbookTypographyKind::Cjk;
+}
+
+static TempStr GetEpubOpfPath(MultiFormatArchive* arch) {
+    auto* fi = arch->GetFileDataByName("META-INF/container.xml");
+    if (!fi || !fi->data) {
+        return nullptr;
+    }
+    const char* xml = fi->data;
+    const char* key = "full-path=\"";
+    char quote = '"';
+    const char* p = strstr(xml, key);
+    if (!p) {
+        key = "full-path='";
+        p = strstr(xml, key);
+        quote = '\'';
+    }
+    if (!p) {
+        return nullptr;
+    }
+    p += strlen(key);
+    const char* end = strchr(p, quote);
+    if (!end) {
+        return nullptr;
+    }
+    TempStr path = str::DupTemp(p, end - p);
+    url::DecodeInPlace(path);
+    return path;
+}
+
+static void Utf8CountLetters(const char* s, size_t len, int* cjkOut, int* latinOut) {
+    int cjk = 0;
+    int latin = 0;
+    if (!s || len == 0) {
+        *cjkOut = 0;
+        *latinOut = 0;
+        return;
+    }
+    size_t i = 0;
+    while (i < len && s[i]) {
+        int rune = 0;
+        int n = fz_chartorune(&rune, s + i);
+        if (n <= 0) {
+            break;
+        }
+        if ((rune >= 0x4E00 && rune <= 0x9FFF) || (rune >= 0x3400 && rune <= 0x4DBF)) {
+            cjk++;
+        } else if ((rune >= 'A' && rune <= 'Z') || (rune >= 'a' && rune <= 'z')) {
+            latin++;
+        }
+        i += (size_t)n;
+        if (cjk + latin >= 400) {
+            break;
+        }
+    }
+    *cjkOut = cjk;
+    *latinOut = latin;
+}
+
+static bool PathHintsBilingual(const char* path) {
+    if (str::IsEmpty(path)) {
+        return false;
+    }
+    static const char* hints[] = {
+        "\xe5\x8f\x8c\xe8\xaf\xad", // 双语
+        "\xe8\x8b\xb1\xe6\xb1\x89", // 英汉
+        "\xe6\xb1\x89\xe8\x8b\xb1", // 汉英
+        "\xe4\xb8\xad\xe8\x8b\xb1", // 中英
+        "\xe5\xaf\xb9\xe7\x85\xa7", // 对照
+        "bilingual",
+        "Bilingual",
+        nullptr,
+    };
+    for (const char** h = hints; *h; h++) {
+        if (str::Find(path, *h)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static EbookTypographyKind NormalizeTypographyKind(EbookTypographyKind kind) {
+    return kind;
+}
+
+static EbookTypographyKind ClassifyLetterCounts(int cjk, int latin, EbookTypographyKind opfHint) {
+    if (cjk >= 12 && latin >= 12 && cjk <= latin * 6 && latin <= cjk * 6) {
+        return EbookTypographyKind::Bilingual;
+    }
+    if (opfHint == EbookTypographyKind::Latin) {
+        // OPF says English; ignore short CJK runs in nav/TOC (common in Oxford volumes).
+        if (cjk >= 12 && latin >= 12) {
+            return EbookTypographyKind::Bilingual;
+        }
+        return EbookTypographyKind::Latin;
+    }
+    if (cjk >= 8 && cjk * 2 >= latin) {
+        return EbookTypographyKind::Cjk;
+    }
+    if (latin >= 40 && latin > cjk * 3) {
+        return EbookTypographyKind::Latin;
+    }
+    return cjk >= latin ? EbookTypographyKind::Cjk : EbookTypographyKind::Latin;
+}
+
+static EbookTypographyKind EpubArchiveDetectTypography(const char* path) {
+    ArchiveExtractProgressCb emptyCb;
+    MultiFormatArchive* arch = OpenArchiveFromFile(path, ArchiveLoadMode::Lazy, emptyCb);
+    if (!arch) {
+        return EbookTypographyKind::Cjk;
+    }
+    AutoDelete<MultiFormatArchive> scoped(arch);
+
+    if (PathHintsBilingual(path)) {
+        return EbookTypographyKind::Bilingual;
+    }
+
+    EbookTypographyKind opfHint = EbookTypographyKind::Cjk;
+    TempStr opfPath = GetEpubOpfPath(arch);
+    if (opfPath) {
+        auto* opfFi = arch->GetFileDataByName(opfPath);
+        if (opfFi && opfFi->data) {
+            opfHint = ClassifyOpfLanguages(opfFi->data, opfFi->fileSizeUncompressed);
+            if (opfHint == EbookTypographyKind::Bilingual) {
+                return EbookTypographyKind::Bilingual;
+            }
+            if (opfHint == EbookTypographyKind::Cjk) {
+                return EbookTypographyKind::Cjk;
+            }
+        }
+    }
+
+    for (auto* fi : arch->GetFileInfos()) {
+        if (!fi || !fi->name || fi->isDir) {
+            continue;
+        }
+        if (!str::EndsWithI(fi->name, ".html") && !str::EndsWithI(fi->name, ".xhtml") &&
+            !str::EndsWithI(fi->name, ".htm")) {
+            continue;
+        }
+        if (str::StartsWith(fi->name, "META-INF/")) {
+            continue;
+        }
+        auto* htmlFi = arch->GetFileDataById(fi->fileId);
+        if (!htmlFi || !htmlFi->data || htmlFi->fileSizeUncompressed < 64) {
+            continue;
+        }
+        size_t n = htmlFi->fileSizeUncompressed;
+        if (n > 8192) {
+            n = 8192;
+        }
+        int cjk = 0;
+        int latin = 0;
+        Utf8CountLetters(htmlFi->data, n, &cjk, &latin);
+        return ClassifyLetterCounts(cjk, latin, opfHint);
+    }
+
+    return opfHint == EbookTypographyKind::Cjk ? EbookTypographyKind::Cjk : EbookTypographyKind::Latin;
+}
+
+EbookTypographyKind DetectEbookTypographyKind(const char* filePath, const char* nameHint) {
+    const char* path = filePath;
+    if (str::IsEmpty(path)) {
+        path = nameHint;
+    }
+    if (str::IsEmpty(path)) {
+        return EbookTypographyKind::Latin;
+    }
+
+    if (PathHintsBilingual(path)) {
+        return NormalizeTypographyKind(EbookTypographyKind::Bilingual);
+    }
+
+    if (str::EndsWithI(path, ".epub")) {
+        return NormalizeTypographyKind(EpubArchiveDetectTypography(path));
+    }
+
+    int cjk = 0;
+    int latin = 0;
+    Utf8CountLetters(path, str::Len(path), &cjk, &latin);
+    if (cjk + latin >= 4) {
+        return NormalizeTypographyKind(ClassifyLetterCounts(cjk, latin, EbookTypographyKind::Cjk));
+    }
+
+    if (file::Exists(path)) {
+        ByteSlice data = file::ReadFile(path);
+        if (!data.empty()) {
+            size_t n = data.size();
+            if (n > 8192) {
+                n = 8192;
+            }
+            Utf8CountLetters((const char*)data.data(), n, &cjk, &latin);
+            data.Free();
+            return NormalizeTypographyKind(ClassifyLetterCounts(cjk, latin, EbookTypographyKind::Cjk));
+        }
+    }
+
+    return EbookTypographyKind::Latin;
+}
+
+bool EbookNeedsCjkTypography(const char* filePath, const char* nameHint) {
+    return DetectEbookTypographyKind(filePath, nameHint) == EbookTypographyKind::Cjk;
+}
+
 // stm is either freed or retained via _doc
 bool EngineMupdf::LoadFromStream(fz_stream* stm, const char* nameHint, PasswordUI* pwdUI) {
     if (!stm) {
@@ -2245,10 +2728,23 @@ bool EngineMupdf::LoadFromStream(fz_stream* stm, const char* nameHint, PasswordU
     }
 #endif
 
+    bool isEpub = str::EndsWithI(nameHint, ".epub");
+    EbookTypographyKind typographyKind =
+        isEpub ? DetectEbookTypographyKind(FilePath(), nameHint) : EbookTypographyKind::Latin;
+    SetEbookTypographyKind(typographyKind);
+
     float ldx = layoutA5DxPt;
     float ldy = layoutA5DyPt;
     float lfontDy = layoutFontEm;
-    if (!str::EndsWithI(nameHint, ".epub")) {
+    if (isEpub) {
+        if (typographyKind == EbookTypographyKind::Cjk || typographyKind == EbookTypographyKind::Bilingual) {
+            ldx = layoutCjkEpubDxPt;
+            ldy = layoutCjkEpubDyPt;
+        } else {
+            ldx = layoutLatinEpubDxPt;
+            ldy = layoutLatinEpubDyPt;
+        }
+    } else {
         lfontDy = 8.f;
     }
 
@@ -2257,17 +2753,459 @@ bool EngineMupdf::LoadFromStream(fz_stream* stm, const char* nameHint, PasswordU
         if (eBookUI->fontSize > 6 && eBookUI->fontSize < 30) {
             lfontDy = eBookUI->fontSize;
         }
-        if (eBookUI->layoutDx > 100) {
+        if (eBookUI->layoutDx > 100 && eBookUI->layoutDx != 560) {
             ldx = eBookUI->layoutDx;
         }
-        if (eBookUI->layoutDy > 100) {
+        if (eBookUI->layoutDy > 100 && eBookUI->layoutDy != 680) {
             ldy = eBookUI->layoutDy;
-        }
-        if (eBookUI->customCSS) {
-            fz_set_user_css(ctx, eBookUI->customCSS);
         }
         bool useDocCss = !eBookUI->ignoreDocumentCSS;
         fz_set_use_document_css(ctx, useDocCss);
+
+        // EPUB files ship with their own CSS (e.g. calibre stylesheets) - don't override
+        // fonts or paragraph layout. Other formats get CJK fallbacks only when needed.
+        bool darkTheme = IsDarkThemeSelected();
+
+        // All ebooks: Literata primary; CJK glyphs fall back to songti via load_windows_fallback_font.
+        static const char* kEpubFontCss = R"(html, body,
+p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,
+section, article, main, header, footer,
+.calibre,
+.calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
+.calibre11, .calibre12, .calibre13, .calibre14, .calibre15, .calibre16, .calibre17, .calibre18, .calibre19, .calibre20,
+.calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
+.calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
+  font-family: Literata, Georgia, Charter, "Palatino Linotype", "Times New Roman", "Source Han Serif SC", "思源宋体", "NSimSun", "SimSun", "宋体", serif !important;
+}
+)";
+        static const char* kEpubSharedCss = R"(body {
+  line-height: 1.52;
+}
+p {
+  line-height: 1.52;
+  margin-top: 0.42em;
+  margin-bottom: 0.42em;
+}
+li, blockquote {
+  line-height: 1.5;
+}
+em, i, cite, dfn, var, .italic {
+  font-family: Literata, Georgia, Charter, "Palatino Linotype", "Times New Roman", serif !important;
+  font-style: italic !important;
+}
+a, a:link, a:visited, a:hover, a:active,
+p a, .calibre_2 a, .calibre_3 a, .sgc-toc-level a {
+  text-decoration: none !important;
+  color: #0033cc;
+}
+.sgc-toc-level {
+  text-align: left;
+  text-indent: 0;
+  line-height: 1.45;
+}
+)";
+        static const char* kFallbackFontCss =
+            R"(html, body, p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div {
+  font-family: Literata, Georgia, Charter, "Palatino Linotype", "Times New Roman", "Source Han Serif SC", "思源宋体", "NSimSun", "SimSun", "宋体", serif !important;
+  line-height: 1.45 !important;
+}
+p {
+  margin: 0.35em 0;
+}
+)";
+        // Ebook dark-mode color remaps (light palette -> readable on #000000):
+        //   #0033cc / #03c / blue  ->  #93c5fd  (links, TOC, footnotes)
+        //   #000000 / #000         ->  #e8eaed  (body text, via body rule)
+        static const char* kDarkCss = R"(html {
+  color-scheme: dark;
+  background-color: #000000 !important;
+  color: #e8eaed !important;
+}
+body, p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,
+section, article, main, header, footer, pre,
+.calibre,
+.calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
+.calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
+.calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
+  background-color: transparent !important;
+  color: #e8eaed !important;
+}
+body {
+  background-color: #000000 !important;
+}
+a, a:link, a:visited, a:hover, a:active,
+.footnote-link, .noteref, .note-ref,
+.calibre_2 a, .calibre_3 a, .calibre_2 a span, .calibre_3 a span,
+.sgc-toc-level a, .sgc-toc-level a span,
+p a, sup a, li a {
+  color: #93c5fd !important;
+  text-decoration: none !important;
+}
+)";
+
+        static const char* kEpubReaderLatinFontCss = R"(html, body,
+p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,
+section, article, main, header, footer,
+.calibre,
+.calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
+.calibre11, .calibre12, .calibre13, .calibre14, .calibre15, .calibre16, .calibre17, .calibre18, .calibre19, .calibre20,
+.calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
+.calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
+  font-family: Literata, Georgia, Charter, "Palatino Linotype", "Times New Roman", "Source Han Serif SC", "思源宋体", "Source Han Serif", "Noto Serif CJK SC", "NSimSun", "SimSun", "宋体", serif !important;
+}
+)";
+        static const char* kEpubReaderCjkFontCss = R"(html, body,
+p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,
+section, article, main, header, footer,
+.calibre,
+.calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
+.calibre11, .calibre12, .calibre13, .calibre14, .calibre15, .calibre16, .calibre17, .calibre18, .calibre19, .calibre20,
+.calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
+.calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
+  font-family: "Source Han Serif SC", "思源宋体", "Source Han Serif", "Noto Serif CJK SC", Literata, Georgia, "NSimSun", "SimSun", "宋体", serif !important;
+}
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Source Han Serif SC", "思源宋体", "Source Han Serif", "Noto Serif CJK SC", "NSimSun", "SimSun", "宋体", Literata, Georgia, serif !important;
+}
+)";
+        static const char* kEpubReaderBaseCss = R"(html {
+  color-scheme: light;
+}
+body {
+  text-align: left;
+  line-height: 1.54;
+  margin: 0;
+}
+p {
+  line-height: 1.52 !important;
+  margin-top: 0.42em !important;
+  margin-bottom: 0.42em !important;
+}
+p, li, blockquote, td, th, span, div, body,
+section, article, main,
+.calibre,
+.calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
+.calibre11, .calibre12, .calibre13, .calibre14, .calibre15, .calibre16, .calibre17, .calibre18, .calibre19, .calibre20,
+.calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
+.calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
+  font-weight: 400 !important;
+}
+.noindent-bodycontent-1-fangsong,
+.bodycontent-1-fangsong,
+.bodycontent-2-fangsong,
+.bodycontent-1-fangsong-top,
+.noindent-bodycontent-1-fangsong-top,
+.bodycontent-1-top,
+.noindent-bodycontent-1-top,
+.bodycontent-1-fangsong-top1,
+.bodycontent-2-fangsong-top,
+.hang-bodycontent-1-fangsong,
+.noindent-bodycontent,
+.bodycontent,
+.songti,
+span.songti {
+  font-weight: 400 !important;
+}
+strong, b {
+  font-weight: 700 !important;
+}
+li, blockquote {
+  line-height: 1.5;
+}
+blockquote {
+  margin: 0.8em 1.5em;
+}
+h1, h2 {
+  text-align: center;
+  line-height: 1.25;
+  margin-top: 1.1em;
+  margin-bottom: 0.8em;
+}
+h3, h4, h5, h6 {
+  line-height: 1.3;
+  margin-top: 0.9em;
+  margin-bottom: 0.55em;
+}
+em, i, cite, dfn, var, .italic {
+  font-family: Literata, Georgia, Charter, "Palatino Linotype", "Times New Roman", serif !important;
+  font-style: italic !important;
+}
+img, svg {
+  max-width: 100%;
+  height: auto;
+}
+img, p img, div img, figure img {
+  display: inline;
+  margin: 0.8em 0 !important;
+  vertical-align: middle;
+}
+figure, div.figure, div.fig, div.image, div.images, div.picture, div.pic, div.illustration, div.illus,
+p.figure, p.fig, p.image, p.images, p.picture, p.pic, p.illustration, p.illus {
+  display: block;
+  width: 100% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  text-align: center !important;
+  text-indent: 0 !important;
+  clear: both;
+}
+figure p, div.figure p, div.fig p, div.image p, div.images p, div.picture p, div.pic p, div.illustration p, div.illus p {
+  display: block !important;
+  max-width: 92% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  text-align: center !important;
+  text-indent: 0 !important;
+}
+figcaption, caption, p.caption, div.caption, span.caption,
+.figcaption, .figure-caption, .image-caption, .picture-caption, .pic-caption, .caption {
+  font-size: 0.88em;
+  line-height: 1.35;
+  text-align: center !important;
+  text-indent: 0 !important;
+  opacity: 0.82;
+}
+div.kindle-cn-bodycontent-div-alone100,
+div.kindle-cn-bodycontent-div-alone100a {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 1.1em auto !important;
+  text-align: center !important;
+  text-indent: 0 !important;
+  clear: both;
+}
+img.kindle-cn-bodycontent-image-alone100,
+img.kindle-cn-bodycontent-image-alone100-withnote,
+img.kindle-cn-bodycontent-image-alone80,
+img.kindle-cn-bodycontent-image-alone80-withnote,
+img.kindle-cn-bodycontent-image-alone70,
+img.kindle-cn-bodycontent-image-alone70-withnote,
+img.kindle-cn-bodycontent-image-alone60,
+img.kindle-cn-bodycontent-image-alone60-withnote,
+img.kindle-cn-bodycontent-image-alone50,
+img.kindle-cn-bodycontent-image-alone50-withnote,
+img.kindle-cn-bodycontent-image-alone45,
+img.kindle-cn-bodycontent-image-alone45-withnote,
+img.kindle-cn-bodycontent-image-alone40,
+img.kindle-cn-bodycontent-image-alone40-withnote,
+img.kindle-cn-bodycontent-image-alone30,
+img.kindle-cn-bodycontent-image-alone30-withnote,
+img.kindle-cn-bodycontent-image-alone20,
+img.kindle-cn-bodycontent-image-alone20-withnote {
+  display: inline !important;
+  margin: 0.8em auto !important;
+}
+p.kindle-cn-picture-txt-withmanycharactors,
+p.kindle-cn-picture-txt-withfewcharactors {
+  display: block !important;
+  max-width: 84% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  text-indent: 0 !important;
+  text-align: center !important;
+  font-size: 0.88em;
+  line-height: 1.35;
+  opacity: 0.82;
+}
+div.chatu_img, div.chatu-img {
+  display: block !important;
+  width: 100% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  text-align: center !important;
+  text-indent: 0 !important;
+}
+p.biaozhu, p.tuzhu, p.tuzhu-c, p.tuzhu-c1 {
+  display: block !important;
+  max-width: 84% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  text-align: center !important;
+  text-indent: 0 !important;
+  font-size: 0.88em;
+  line-height: 1.35;
+  opacity: 0.82;
+}
+table {
+  border-collapse: collapse;
+  max-width: 100%;
+}
+td, th {
+  line-height: 1.42;
+  vertical-align: top;
+}
+a, a:link, a:visited, a:hover, a:active,
+p a, .calibre_2 a, .calibre_3 a, .sgc-toc-level a {
+  text-decoration: none !important;
+}
+.sgc-toc-level {
+  text-align: left;
+  text-indent: 0;
+  line-height: 1.45;
+}
+)";
+        static const char* kEpubReaderLatinCss = R"(body {
+  line-height: 1.52;
+}
+p {
+  line-height: 1.52 !important;
+  margin-top: 0.42em !important;
+  margin-bottom: 0.42em !important;
+}
+li, blockquote {
+  line-height: 1.5;
+}
+)";
+        static const char* kEpubReaderCjkCss = R"(body {
+  line-height: 1.68;
+}
+p {
+  line-height: 1.68 !important;
+  margin-top: 0.24em !important;
+  margin-bottom: 0.24em !important;
+}
+li, blockquote {
+  line-height: 1.62;
+}
+h1, h2 {
+  line-height: 1.35;
+}
+)";
+        static const char* kEpubReaderMixedCss = R"(body {
+  line-height: 1.62;
+}
+p {
+  line-height: 1.62 !important;
+  margin-top: 0.32em !important;
+  margin-bottom: 0.32em !important;
+}
+li, blockquote {
+  line-height: 1.56;
+}
+)";
+        static const char* kEpubReaderLightCss = R"(html {
+  background-color: #f7f3e8 !important;
+  color: #565047 !important;
+}
+body, p, span, blockquote, li, td, th, div,
+section, article, main, header, footer, pre, table,
+.calibre,
+.calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
+.calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
+.calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
+  background-color: transparent !important;
+  color: #565047 !important;
+}
+.noindent-bodycontent-1-fangsong,
+.bodycontent-1-fangsong,
+.bodycontent-2-fangsong,
+.bodycontent-1-fangsong-top,
+.noindent-bodycontent-1-fangsong-top,
+.bodycontent-1-top,
+.noindent-bodycontent-1-top,
+.bodycontent-1-fangsong-top1,
+.bodycontent-2-fangsong-top,
+.hang-bodycontent-1-fangsong,
+.noindent-bodycontent,
+.bodycontent,
+.songti,
+span.songti {
+  background-color: transparent !important;
+  color: #565047 !important;
+  font-weight: 400 !important;
+}
+p {
+  color: #565047 !important;
+}
+h1, h2, h3, h4, h5, h6,
+.title, .chapter, .chapter-title, .sgc-toc-title {
+  color: #3f3a34 !important;
+}
+body, pre, table, td, th {
+  background-color: #f7f3e8 !important;
+}
+a, a:link, a:visited, a:hover, a:active,
+p a, sup a, li a {
+  color: #315f9c !important;
+}
+figcaption, caption, p.caption, div.caption, span.caption,
+.figcaption, .figure-caption, .image-caption, .picture-caption, .pic-caption, .caption {
+  color: #68625a !important;
+}
+)";
+        static const char* kEpubReaderDarkCss = R"(html {
+  color-scheme: dark;
+  background-color: #000000 !important;
+  color: #e6e1d8 !important;
+}
+body, p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,
+section, article, main, header, footer, pre, table, td, th,
+.calibre,
+.calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
+.calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
+.calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
+  background-color: transparent !important;
+  color: #e6e1d8 !important;
+}
+body {
+  background-color: #000000 !important;
+}
+a, a:link, a:visited, a:hover, a:active,
+.footnote-link, .noteref, .note-ref,
+.calibre_2 a, .calibre_3 a, .calibre_2 a span, .calibre_3 a span,
+.sgc-toc-level a, .sgc-toc-level a span,
+p a, sup a, li a {
+  color: #8fbce6 !important;
+  text-decoration: none !important;
+}
+figcaption, caption, p.caption, div.caption, span.caption,
+.figcaption, .figure-caption, .image-caption, .picture-caption, .pic-caption, .caption {
+  color: #b8b1a6 !important;
+}
+)";
+
+        TempStr ebookCss = nullptr;
+        if (isEpub) {
+            const char* fontCss =
+                typographyKind == EbookTypographyKind::Cjk ? kEpubReaderCjkFontCss : kEpubReaderLatinFontCss;
+            const char* rhythmCss = kEpubReaderLatinCss;
+            if (typographyKind == EbookTypographyKind::Cjk) {
+                rhythmCss = kEpubReaderCjkCss;
+            } else if (typographyKind == EbookTypographyKind::Bilingual) {
+                rhythmCss = kEpubReaderMixedCss;
+            }
+            ebookCss = str::JoinTemp(fontCss, "\n", kEpubReaderBaseCss);
+            ebookCss = str::JoinTemp(ebookCss, "\n", rhythmCss);
+        }
+        if (darkTheme) {
+            const char* darkCss = isEpub ? kEpubReaderDarkCss : kDarkCss;
+            ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", darkCss) : str::DupTemp(darkCss);
+        } else {
+            static const char* kLightEyeCareCss = R"(html {
+  background-color: #f7f3e8 !important;
+}
+body {
+  background-color: #f7f3e8 !important;
+  color: #333333;
+}
+pre {
+  background-color: #f7f3e8 !important;
+  color: #333333;
+}
+)";
+            const char* lightCss = isEpub ? kEpubReaderLightCss : kLightEyeCareCss;
+            ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", lightCss) : str::DupTemp(lightCss);
+        }
+        if (!isEpub) {
+            ebookCss = ebookCss ? str::JoinTemp(kFallbackFontCss, "\n", ebookCss) : str::DupTemp(kFallbackFontCss);
+        }
+        if (eBookUI->customCSS) {
+            ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", eBookUI->customCSS) : str::DupTemp(eBookUI->customCSS);
+        }
+        if (ebookCss) {
+            fz_set_user_css(ctx, ebookCss);
+        }
     }
 
     float dx, dy, fontDy;
@@ -2282,6 +3220,8 @@ bool EngineMupdf::LoadFromStream(fz_stream* stm, const char* nameHint, PasswordU
         dy = DpiScale(ldy, displayDPI);
         fontDy = DpiScale(lfontDy, displayDPI);
         fz_layout_document(ctx, _doc, dx, dy, fontDy);
+        reflowLayoutW = dx;
+        reflowLayoutH = dy;
     }
     fz_always(ctx) {
         fz_drop_stream(ctx, stm);
@@ -2429,40 +3369,43 @@ static bool IsLinearizedFile(EngineMupdf* e) {
     return isLinear;
 }
 
+static RectF LoadNonPdfPageMediabox(EngineMupdf* e, int pageIdx) {
+    auto ctx = e->Ctx();
+    fz_rect mbox{};
+    fz_page* page = nullptr;
+    fz_var(page);
+    fz_var(mbox);
+    fz_try(ctx) {
+        page = fz_load_page(ctx, e->_doc, pageIdx);
+        mbox = fz_bound_page(ctx, page);
+    }
+    fz_always(ctx) {
+        fz_drop_page(ctx, page);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        mbox = {};
+    }
+    if (fz_is_empty_rect(mbox)) {
+        fz_warn(ctx, "cannot find page size for page %d", pageIdx);
+        mbox.x0 = 0;
+        mbox.y0 = 0;
+        mbox.x1 = e->reflowLayoutW;
+        mbox.y1 = e->reflowLayoutH;
+    }
+    return ToRectF(mbox);
+}
+
 static void FinishNonPDFLoading(EngineMupdf* e) {
     ScopedCritSec scope(&e->docLock);
 
-    auto ctx = e->Ctx();
     for (int i = 0; i < e->pageCount; i++) {
-        fz_rect mbox{};
-        fz_matrix page_ctm{};
-        fz_page* page = nullptr;
-        fz_var(page);
-        fz_var(mbox);
-        fz_try(ctx) {
-            page = nullptr;
-            page = fz_load_page(ctx, e->_doc, i);
-            mbox = fz_bound_page(ctx, page);
-        }
-        fz_always(ctx) {
-            fz_drop_page(ctx, page);
-        }
-        fz_catch(ctx) {
-            fz_report_error(ctx);
-            mbox = {};
-        }
-        if (fz_is_empty_rect(mbox)) {
-            fz_warn(ctx, "cannot find page size for page %d", i);
-            mbox.x0 = 0;
-            mbox.y0 = 0;
-            mbox.x1 = 612;
-            mbox.y1 = 792;
-        }
         FzPageInfo* pageInfo = e->pages.at(i);
-        pageInfo->mediabox = ToRectF(mbox);
+        pageInfo->mediabox = LoadNonPdfPageMediabox(e, i);
         pageInfo->pageNo = i + 1;
     }
 
+    auto ctx = e->Ctx();
     fz_try(ctx) {
         e->outline = fz_load_outline(ctx, e->_doc);
     }
@@ -2476,9 +3419,180 @@ static void FinishNonPDFLoading(EngineMupdf* e) {
     }
 }
 
+static void GrowReflowPageCountLocked(EngineMupdf* e, int newCount) {
+    if (newCount <= e->pageCount) {
+        return;
+    }
+    for (int i = e->pageCount; i < newCount; i++) {
+        auto pi = New<FzPageInfo>(e->arena);
+        pi->pageNo = i + 1;
+        pi->mediabox = RectF(0, 0, e->reflowLayoutW, e->reflowLayoutH);
+        e->pages.Append(pi);
+    }
+    e->pageCount = newCount;
+}
+
+static void GrowReflowPageCount(EngineMupdf* e, int newCount) {
+    for (int i = 0; i < 100; i++) {
+        if (TryEnterCriticalSection(&e->pagesLock)) {
+            defer {
+                LeaveCriticalSection(&e->pagesLock);
+            };
+            GrowReflowPageCountLocked(e, newCount);
+            return;
+        }
+        Sleep(1);
+    }
+    ScopedCritSec scope(&e->pagesLock);
+    GrowReflowPageCountLocked(e, newCount);
+}
+
+static void AppendReflowChapterStartPage(EngineMupdf* e, int chapterStartPage, int chaptersCounted) {
+    for (int i = 0; i < 100; i++) {
+        if (TryEnterCriticalSection(&e->pagesLock)) {
+            defer {
+                LeaveCriticalSection(&e->pagesLock);
+            };
+            e->reflowChapterStartPage.Append(chapterStartPage);
+            InterlockedExchange(&e->reflowChaptersCounted, chaptersCounted);
+            return;
+        }
+        Sleep(1);
+    }
+    ScopedCritSec scope(&e->pagesLock);
+    e->reflowChapterStartPage.Append(chapterStartPage);
+    InterlockedExchange(&e->reflowChaptersCounted, chaptersCounted);
+}
+
+static void WaitForReflowUiDocLock(EngineMupdf* e) {
+    while (InterlockedCompareExchange(&e->reflowUiWantsDocLock, 0, 0) != 0) {
+        Sleep(1);
+    }
+}
+
+static void FinishReflowableLoadAsync(EngineMupdf* e) {
+    AtomicIntInc(&gDangerousThreadCount);
+    defer {
+        AtomicIntDec(&gDangerousThreadCount);
+    };
+
+    // let the UI thread render the first pages before heavy background work
+    Sleep(kReflowBackgroundDelayMs);
+
+    auto ctx = e->Ctx();
+    AutoFreeStr path(str::Dup(e->FilePath()));
+    int numChapters = 0;
+
+    {
+        WaitForReflowUiDocLock(e);
+        ScopedCritSec scope(&e->docLock);
+        fz_try(ctx) {
+            numChapters = fz_count_chapters(ctx, e->_doc);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+            numChapters = 0;
+        }
+    }
+
+    if (numChapters <= 0) {
+        InterlockedExchange(&e->reflowableLoadingInProgress, 0);
+        return;
+    }
+
+    int totalPages = 0;
+    {
+        ScopedCritSec scope(&e->pagesLock);
+        e->reflowChapterStartPage.Reset();
+        InterlockedExchange(&e->reflowChaptersCounted, 0);
+    }
+    for (int ch = 0; ch < numChapters; ch++) {
+        if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+            InterlockedExchange(&e->reflowableLoadingInProgress, 0);
+            return;
+        }
+        int chapterPages = 0;
+        {
+            WaitForReflowUiDocLock(e);
+            ScopedCritSec scope(&e->docLock);
+            fz_try(ctx) {
+                chapterPages = fz_count_chapter_pages(ctx, e->_doc, ch);
+            }
+            fz_catch(ctx) {
+                fz_report_error(ctx);
+                chapterPages = 0;
+            }
+        }
+        if (chapterPages <= 0) {
+            continue;
+        }
+        totalPages += chapterPages;
+
+        if (totalPages > e->pageCount) {
+            GrowReflowPageCount(e, totalPages);
+        }
+        AppendReflowChapterStartPage(e, totalPages - chapterPages, ch + 1);
+        if (path && (((ch + 1) % kReflowNotifyEveryNChapters) == 0 || ch + 1 == numChapters)) {
+            NotifyEbookPagesLoadingProgress(path, false);
+        }
+        if (((ch + 1) % kReflowChaptersPerYield) == 0) {
+            Sleep(0);
+        }
+    }
+
+    if (totalPages > 0 && totalPages < e->pageCount) {
+        ScopedCritSec scope(&e->pagesLock);
+        e->pageCount = totalPages;
+    }
+
+    InterlockedExchange(&e->reflowableLoadingInProgress, 0);
+    e->InvalidateTocTree();
+    if (path) {
+        NotifyEbookPagesLoadingProgress(path, true);
+    }
+}
+
 bool EngineMupdf::FinishLoading() {
     auto ctx = Ctx();
     pdfdoc = pdf_specifics(ctx, _doc);
+
+    preferredLayout = GetPreferredLayout(ctx, _doc);
+    allowsPrinting = fz_has_permission(ctx, _doc, FZ_PERMISSION_PRINT);
+    allowsCopyingText = fz_has_permission(ctx, _doc, FZ_PERMISSION_COPY);
+
+    bool isReflowable = fz_is_document_reflowable(ctx, _doc);
+
+    if (!pdfdoc && isReflowable) {
+        {
+            ScopedCritSec scope(&docLock);
+            fz_try(ctx) {
+                outline = fz_load_outline(ctx, _doc);
+            }
+            fz_catch(ctx) {
+                fz_report_error(ctx);
+                outline = nullptr;
+            }
+        }
+
+        pageCount = kReflowInitialPages;
+        for (int i = 0; i < kReflowInitialPages; i++) {
+            auto pi = New<FzPageInfo>(arena);
+            pi->pageNo = i + 1;
+            pi->mediabox = RectF(0, 0, reflowLayoutW, reflowLayoutH);
+            pages.Append(pi);
+        }
+
+        InterlockedExchange(&reflowableLoadAbort, 0);
+        InterlockedExchange(&reflowableLoadingInProgress, 1);
+
+        // show the first pages on the UI thread before background chapter counting,
+        // which contends on MuPDF locks with fz_load_page during initial render
+        NotifyEngineDisplayReady(this);
+
+        auto fn = MkFunc0<EngineMupdf>(FinishReflowableLoadAsync, this);
+        RunAsync(fn, "MupdfReflowLoad");
+        return true;
+    }
 
     pageCount = 0;
     fz_var(pageCount);
@@ -2494,10 +3608,6 @@ bool EngineMupdf::FinishLoading() {
         fz_warn(ctx, "document has no pages");
         return false;
     }
-
-    preferredLayout = GetPreferredLayout(ctx, _doc);
-    allowsPrinting = fz_has_permission(ctx, _doc, FZ_PERMISSION_PRINT);
-    allowsCopyingText = fz_has_permission(ctx, _doc, FZ_PERMISSION_COPY);
 
     for (int i = 0; i < pageCount; i++) {
         auto pi = New<FzPageInfo>(arena);
@@ -2636,6 +3746,40 @@ static NO_INLINE IPageDestination* DestFromAttachment(EngineMupdf* engine, fz_ou
     return dest;
 }
 
+int EngineMupdf::OutlinePageNoForItem(fz_link* link, fz_outline* ol) {
+    auto ctx = Ctx();
+    if (!pdfdoc && ol) {
+        int ch = ol->page.chapter;
+        if (ch < 0) {
+            ch = EpubUriChapterIndexNoLayout(ctx, _doc, ol->uri);
+        }
+        int pageInChapter = ol->page.page >= 0 ? ol->page.page : 0;
+        int pageNo = ReflowPageNoFromChapter(this, ch, pageInChapter);
+        if (pageNo > 0) {
+            return pageNo;
+        }
+        if (InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0) {
+            return 0;
+        }
+        pageNo = FastReflowableOutlinePageNo(this, ctx, _doc, ol);
+        if (pageNo > 0) {
+            return pageNo;
+        }
+        if (ol->uri) {
+            return ResolveMupdfLinkPageNo1(this, ol->uri, nullptr);
+        }
+        return 0;
+    }
+    return FzGetPageNo(ctx, _doc, link, ol);
+}
+
+void EngineMupdf::InvalidateTocTree() {
+    // Mark stale but keep alive until UI calls ClearTocBox + reloads via GetToc.
+    // Deleting here (on the background load thread) races with TOC clicks that
+    // still reference TocItems owned by this tree.
+    tocTreeStale = true;
+}
+
 TocItem* EngineMupdf::BuildTocTree(TocItem* parent, fz_outline* outline, int& idCounter, bool isAttachment) {
     TocItem* root = nullptr;
     TocItem* curr = nullptr;
@@ -2655,13 +3799,13 @@ TocItem* EngineMupdf::BuildTocTree(TocItem* parent, fz_outline* outline, int& id
             name = str::Dup("");
         }
 
-        int pageNo = FzGetPageNo(ctx, _doc, nullptr, outline);
+        int pageNo = OutlinePageNoForItem(nullptr, outline);
 
         IPageDestination* dest = nullptr;
         if (isAttachment) {
             dest = DestFromAttachment(this, outline);
         } else {
-            dest = NewPageDestinationMupdf(ctx, _doc, nullptr, outline);
+            dest = NewPageDestinationMupdf(this, ctx, _doc, nullptr, outline, pageNo);
         }
         TocItem* item = NewTocItemWithDestination(parent, name, dest);
 
@@ -2670,7 +3814,13 @@ TocItem* EngineMupdf::BuildTocTree(TocItem* parent, fz_outline* outline, int& id
         item->id = ++idCounter;
         item->fontFlags = 0; // TODO: had outline->flags; but mupdf changed outline
         item->pageNo = pageNo;
-        ReportIf(!isAttachment && !item->PageNumbersMatch());
+        if (!isAttachment && InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) == 0) {
+            int destPageNo = PageDestGetPageNo(dest);
+            if (pageNo <= 0 && destPageNo > 0) {
+                item->pageNo = destPageNo;
+            }
+            ReportIf(!item->PageNumbersMatch());
+        }
 
         // TODO: had outline->n_color and outline->color but mupdf changed outline
         /*
@@ -2702,9 +3852,12 @@ TocItem* EngineMupdf::BuildTocTree(TocItem* parent, fz_outline* outline, int& id
 
 // TODO: maybe build in FinishLoading
 TocTree* EngineMupdf::GetToc() {
-    if (tocTree) {
+    if (tocTree && !tocTreeStale) {
         return tocTree;
     }
+    delete tocTree;
+    tocTree = nullptr;
+    tocTreeStale = false;
     if (outline == nullptr && attachments == nullptr) {
         return nullptr;
     }
@@ -2946,10 +4099,16 @@ FzPageInfo* EngineMupdf::GetFzPageInfoCanFail(int pageNo) {
     if (!TryEnterCriticalSection(&pagesLock)) {
         return nullptr;
     }
-    if (TryEnterCriticalSection(&docLock)) {
-        // CRITICAL_SECTION locking is recursive
+    if (pageNo >= 1 && pageNo <= pageCount) {
+        FzPageInfo* pageInfo = pages[pageNo - 1];
+        if (pageInfo && (pageInfo->fullyLoaded || pageInfo->retainedLinks || pageInfo->links.Size() > 0)) {
+            res = pageInfo;
+        }
+    }
+    if (!res) {
+        // GetFzPageInfo uses pagesLock + renderLock only; docLock is not required
+        // and was blocking cursor hit-testing during background reflow counting.
         res = GetFzPageInfo(pageNo, true);
-        LeaveCriticalSection(&docLock);
     }
     LeaveCriticalSection(&pagesLock);
     return res;
@@ -2989,6 +4148,8 @@ fz_stext_page* fz_new_stext_page_from_page2(fz_context* ctx, fz_page* page, cons
 // so that we don't have to re-do fz_new_stext_page_from_page() when doing search
 FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* cookie) {
     auto ctx = Ctx();
+    bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
+
     // TODO: minimize time spent under pagesLock when fully loading
     ScopedCritSec scope(&pagesLock);
 
@@ -3003,9 +4164,18 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
     }
 
     // page-running operations on this specific page run under per-page lock.
-    // pagesLock (held above) serializes concurrent fz_load_page on _doc.
     ScopedCritSec ctxScope(&renderLock);
     if (!pageInfo->page) {
+        if (reflowLoading) {
+            InterlockedExchange(&reflowUiWantsDocLock, 1);
+            defer {
+                InterlockedExchange(&reflowUiWantsDocLock, 0);
+            };
+            EnterCriticalSection(&docLock);
+            defer {
+                LeaveCriticalSection(&docLock);
+            };
+        }
         fz_try(ctx) {
             pageInfo->page = fz_load_page(ctx, _doc, pageIdx);
         }
@@ -3016,7 +4186,7 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
 
     fz_page* page = pageInfo->page;
     if (!page) {
-        return nullptr;
+        return pageInfo;
     }
 
     // build annotations info on first access
@@ -3038,6 +4208,27 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
         RebuildCommentsFromAnnotations(ctx, pageInfo);
     }
 
+    if (loadQuick && !pageInfo->fullyLoaded && !pageInfo->retainedLinks) {
+        fz_link* link = nullptr;
+        fz_var(link);
+        fz_try(ctx) {
+            link = fz_load_links(ctx, page);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+        }
+        link = FixupPageLinks(link);
+        pageInfo->retainedLinks = link;
+        while (link) {
+            auto pel = NewLinkDestination(pageNo, this, ctx, _doc, link, nullptr);
+            pageInfo->links.Append(pel);
+            link = link->next;
+        }
+        if (pageInfo->links.Size() > 0) {
+            pageInfo->elementsNeedRebuilding = true;
+        }
+    }
+
     if (loadQuick || pageInfo->fullyLoaded) {
         return pageInfo;
     }
@@ -3056,13 +4247,15 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
         fz_report_error(ctx);
     }
 
-    fz_link* link = fz_load_links(ctx, page);
-    link = FixupPageLinks(link); // TOOD: is this necessary?
-    pageInfo->retainedLinks = link;
-    while (link) {
-        auto pel = NewLinkDestination(pageNo, ctx, _doc, link, nullptr);
-        pageInfo->links.Append(pel);
-        link = link->next;
+    if (!pageInfo->retainedLinks) {
+        fz_link* link = fz_load_links(ctx, page);
+        link = FixupPageLinks(link); // TOOD: is this necessary?
+        pageInfo->retainedLinks = link;
+        while (link) {
+            auto pel = NewLinkDestination(pageNo, this, ctx, _doc, link, nullptr);
+            pageInfo->links.Append(pel);
+            link = link->next;
+        }
     }
 
     if (!stext) {
@@ -3340,7 +4533,8 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
 // don't delete the result
 IPageElement* EngineMupdf::GetElementAtPos(int pageNo, PointF pt) {
     FzPageInfo* pageInfo = GetFzPageInfoCanFail(pageNo);
-    return FzGetElementAtPos(pageInfo, pt);
+    IPageElement* el = FzGetElementAtPos(pageInfo, pt);
+    return el;
 }
 
 // TOOD: optimize by returning reference or pointer so that
@@ -3355,27 +4549,26 @@ Vec<IPageElement*> EngineMupdf::GetElements(int pageNo) {
     return pageInfo->allElements;
 }
 
-void HandleLinkMupdf(EngineMupdf* e, IPageDestination* dest, ILinkHandler* linkHandler) {
-    ReportIf(kindDestinationMupdf != dest->GetKind());
-    PageDestinationMupdf* link = (PageDestinationMupdf*)dest;
-    ReportIf(!(link->outline || link->link));
-    const char* uri = link->outline ? link->outline->uri : nullptr;
-    if (!link->outline) {
-        uri = link->link->uri;
+// returns 1-based page number, or 0 if unresolved
+static int ResolveMupdfLinkPageNo1(EngineMupdf* e, const char* uri, fz_link_dest* ldestOut) {
+    if (!e || !uri) {
+        return 0;
     }
-    if (!uri) {
-        return;
+    // docLock only: must not take pagesLock before docLock (background reflow counting
+    // uses docLock then pagesLock). fz_resolve_link_dest touches the same epub document
+    // as fz_count_chapter_pages and must not run concurrently with it.
+    // Use try-lock during progressive load so bookmark clicks don't freeze the UI.
+    bool reflowLoading = InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) != 0;
+    if (reflowLoading) {
+        InterlockedExchange(&e->reflowUiWantsDocLock, 1);
+        defer {
+            InterlockedExchange(&e->reflowUiWantsDocLock, 0);
+        };
     }
-    if (IsExternalLink(uri)) {
-        linkHandler->LaunchURL(uri);
-        return;
-    }
-
-    // those locks must be taken in this order
-    // we need to lock pagesLock because it might
-    // be taken below
-    ScopedCritSec csPages(&e->pagesLock);
-    ScopedCritSec cs(&e->docLock);
+    EnterCriticalSection(&e->docLock);
+    defer {
+        LeaveCriticalSection(&e->docLock);
+    };
 
     int pageNo = -1;
     fz_link_dest ldest{};
@@ -3387,11 +4580,59 @@ void HandleLinkMupdf(EngineMupdf* e, IPageDestination* dest, ILinkHandler* linkH
     }
     fz_catch(ctx) {
         fz_report_error(ctx);
-        logfa("HandleLinkMupdf: fz_resolve_link() for '%s' failed\n", uri);
+        pageNo = -1;
     }
     if (pageNo < 0) {
-        // TODO: more?
-        // ReportIf(true);
+        return 0;
+    }
+    if (ldestOut) {
+        *ldestOut = ldest;
+    }
+    return pageNo + 1;
+}
+
+static const char* MupdfDestUri(PageDestinationMupdf* link) {
+    const char* uri = link->outline ? link->outline->uri : nullptr;
+    if (!link->outline) {
+        uri = link->link ? link->link->uri : nullptr;
+    }
+    return uri;
+}
+
+void HandleLinkMupdf(EngineMupdf* e, IPageDestination* dest, ILinkHandler* linkHandler) {
+    ReportIf(kindDestinationMupdf != dest->GetKind());
+    PageDestinationMupdf* link = (PageDestinationMupdf*)dest;
+    ReportIf(!(link->outline || link->link));
+    const char* uri = MupdfDestUri(link);
+    if (!uri) {
+        return;
+    }
+    if (IsExternalLink(uri)) {
+        linkHandler->LaunchURL(uri);
+        return;
+    }
+
+    fz_link_dest ldest{};
+    int pageNo1 = 0;
+    if (InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) != 0) {
+        pageNo1 = EngineMupdfFastOutlinePageNo(e, dest);
+        if (pageNo1 <= 0) {
+            return;
+        }
+        if (link->outline) {
+            ldest.x = link->outline->x;
+            ldest.y = link->outline->y;
+        }
+    } else {
+        pageNo1 = ResolveMupdfLinkPageNo1(e, uri, &ldest);
+        if (pageNo1 <= 0) {
+            return;
+        }
+    }
+
+    auto ctrl = linkHandler->GetDocController();
+    ctrl->PreparePageNavigation(pageNo1);
+    if (!ctrl->ValidPageNo(pageNo1)) {
         return;
     }
 
@@ -3404,8 +4645,7 @@ void HandleLinkMupdf(EngineMupdf* e, IPageDestination* dest, ILinkHandler* linkH
     float h = isnan(ldest.h) ? DEST_USE_DEFAULT : ldest.h;
 
     RectF r(x, y, w, h);
-    auto ctrl = linkHandler->GetDocController();
-    ctrl->ScrollTo(pageNo + 1, r, zoom);
+    ctrl->ScrollTo(pageNo1, r, zoom);
 }
 
 bool EngineMupdf::HandleLink(IPageDestination* dest, ILinkHandler* linkHandler) {
@@ -4018,7 +5258,7 @@ void EngineMupdf::GetProperties(StrVec& keyValOut) {
     const char* path = FilePath();
     if (path && str::EndsWithI(path, ".epub")) {
         ArchiveExtractProgressCb emptyCb;
-        MultiFormatArchive* zip = OpenArchiveFromFile(path, /*eagerLoad=*/false, emptyCb);
+        MultiFormatArchive* zip = OpenArchiveFromFile(path, ArchiveLoadMode::Lazy, emptyCb);
         if (zip) {
             StrBuilder filesStr;
             auto& fileInfos = zip->GetFileInfos();
@@ -4108,6 +5348,161 @@ bool EngineMupdfIsEncrypted(EngineBase* engine) {
         return false;
     }
     return epdf->pdfdoc->crypt != nullptr;
+}
+
+bool EngineMupdfIsReflowableLoadingInProgress(EngineBase* engine) {
+    EngineMupdf* epdf = AsEngineMupdf(engine);
+    if (!epdf) {
+        return false;
+    }
+    return InterlockedCompareExchange(&epdf->reflowableLoadingInProgress, 0, 0) != 0;
+}
+
+int EngineMupdfFastOutlinePageNo(EngineBase* engine, IPageDestination* dest) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !dest || dest->GetKind() != kindDestinationMupdf) {
+        return 0;
+    }
+    PageDestinationMupdf* link = (PageDestinationMupdf*)dest;
+    int ch = ReflowOutlineChapterIndex(link);
+    int pageInChapter = 0;
+    if (link->outline && link->outline->page.page >= 0) {
+        pageInChapter = link->outline->page.page;
+    }
+    int pageNo = ReflowPageNoFromChapter(e, ch, pageInChapter);
+    return pageNo > 0 ? pageNo : 0;
+}
+
+int EngineMupdfResolveLinkPageNo(EngineBase* engine, IPageDestination* dest) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !dest || dest->GetKind() != kindDestinationMupdf) {
+        return 0;
+    }
+    PageDestinationMupdf* link = (PageDestinationMupdf*)dest;
+    const char* uri = MupdfDestUri(link);
+    if (!uri || IsExternalLink(uri)) {
+        return 0;
+    }
+    return ResolveMupdfLinkPageNo1(e, uri, nullptr);
+}
+
+bool EngineMupdfIsOutlineDestReachable(EngineBase* engine, IPageDestination* dest) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !dest || dest->GetKind() != kindDestinationMupdf) {
+        return true;
+    }
+    if (!EngineMupdfIsReflowableLoadingInProgress(engine)) {
+        return true;
+    }
+    PageDestinationMupdf* link = (PageDestinationMupdf*)dest;
+    int ch = ReflowOutlineChapterIndex(link);
+    if (ch < 0) {
+        return false;
+    }
+    int chaptersCounted = (int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0);
+    return ch < chaptersCounted;
+}
+
+bool EngineMupdfSnapshotOutlineLink(IPageDestination* dest, char** uriOut, int* reflowChOut, float* xOut, float* yOut) {
+    if (!dest || dest->GetKind() != kindDestinationMupdf || !uriOut) {
+        return false;
+    }
+    PageDestinationMupdf* link = (PageDestinationMupdf*)dest;
+    const char* uri = nullptr;
+    if (link->outline) {
+        uri = link->outline->uri;
+        if (xOut) {
+            *xOut = link->outline->x;
+        }
+        if (yOut) {
+            *yOut = link->outline->y;
+        }
+    } else if (link->link) {
+        uri = link->link->uri;
+        if (xOut) {
+            *xOut = DEST_USE_DEFAULT;
+        }
+        if (yOut) {
+            *yOut = DEST_USE_DEFAULT;
+        }
+    }
+    if (str::IsEmpty(uri)) {
+        return false;
+    }
+    *uriOut = str::Dup(uri);
+    if (reflowChOut) {
+        *reflowChOut = link->reflowOutlineChapter;
+    }
+    return true;
+}
+
+void EngineMupdfNavigateUri(EngineBase* engine, const char* uri, int reflowOutlineChapter, float destX, float destY,
+                            ILinkHandler* lh) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || str::IsEmpty(uri) || !lh) {
+        return;
+    }
+    if (IsExternalLink(uri)) {
+        lh->LaunchURL(uri);
+        return;
+    }
+
+    fz_link_dest ldest{};
+    int pageNo1 = 0;
+    bool reflowLoading = InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) != 0;
+    if (reflowLoading) {
+        // During background reflow, fz_resolve_link_dest lays out HTML and races with
+        // chapter counting on the same document — use cached chapter page offsets only.
+        int ch = reflowOutlineChapter;
+        if (ch < 0) {
+            ScopedCritSec scope(&e->docLock);
+            ch = EpubUriChapterIndexNoLayout(e->Ctx(), e->_doc, uri);
+        }
+        pageNo1 = ReflowPageNoFromChapter(e, ch, 0);
+        if (pageNo1 <= 0) {
+            return;
+        }
+        if (destX != DEST_USE_DEFAULT) {
+            ldest.x = destX;
+        }
+        if (destY != DEST_USE_DEFAULT) {
+            ldest.y = destY;
+        }
+    } else {
+        pageNo1 = ResolveMupdfLinkPageNo1(e, uri, &ldest);
+        if (pageNo1 <= 0) {
+            return;
+        }
+    }
+
+    auto ctrl = lh->GetDocController();
+    if (!ctrl) {
+        return;
+    }
+    ctrl->PreparePageNavigation(pageNo1);
+    if (!ctrl->ValidPageNo(pageNo1)) {
+        return;
+    }
+
+    float x = isnan(ldest.x) ? 0.f : ldest.x;
+    float y = isnan(ldest.y) ? 0.f : ldest.y;
+    float zoom = isnan(ldest.zoom) ? 0.f : ldest.zoom;
+    zoom = zoom / 100;
+    float w = isnan(ldest.w) ? DEST_USE_DEFAULT : ldest.w;
+    float h = isnan(ldest.h) ? DEST_USE_DEFAULT : ldest.h;
+    RectF r(x, y, w, h);
+    ctrl->ScrollTo(pageNo1, r, zoom);
+}
+
+bool EngineMupdfHasOutline(EngineBase* engine) {
+    EngineMupdf* epdf = AsEngineMupdf(engine);
+    if (!epdf) {
+        return false;
+    }
+    if (epdf->tocTree) {
+        return true;
+    }
+    return epdf->outline != nullptr || epdf->attachments != nullptr;
 }
 
 const char* EngineMupdfGetPassword(EngineBase* engine) {
@@ -4264,7 +5659,7 @@ EngineBase* CreateEngineMupdfFromFile(const char* path, Kind kind, int displayDP
         return nullptr;
     }
     if (kind == kindFileFb2z) {
-        AutoDelete archive = OpenArchiveFromFile(path, /*eagerLoad=*/true, gArchiveProgressCb);
+        AutoDelete archive = OpenArchiveFromFile(path, ArchiveLoadMode::Eager, gArchiveProgressCb);
         if (!archive) {
             return nullptr;
         }

@@ -87,6 +87,11 @@ HANDLE LaunchProcessInDir(const char* cmdLine, const char* currDir = nullptr, DW
 bool CreateProcessHelper(const char* exe, const char* args);
 bool LaunchFileShell(const char* path, const char* params = nullptr, const char* verb = nullptr, bool hidden = false);
 bool LaunchBrowser(const char* url);
+bool LaunchBrowserWithReuse(const char* url, bool navigateOnReuse = true, bool* reusedOut = nullptr,
+                            HWND* browserHwndOut = nullptr);
+bool PasteClipboardToBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs = 150);
+bool PasteAndSubmitBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs = 150);
+bool PasteAndSubmitBrowserChatInputWhenReady(HWND browserHwnd, const char* url, bool waitForPageReady);
 void OpenPathInDefaultFileManager(const char* path);
 void PaintCheckerboard(HDC hdc, int x, int y, int w, int h);
 

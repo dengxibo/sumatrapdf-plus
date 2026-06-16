@@ -201,14 +201,16 @@ bool MainWindow::IsCurrentTabAbout() const {
     return nullptr == CurrentTab() || CurrentTab()->IsAboutTab();
 }
 
-bool MainWindow::IsDocLoaded() const {
-    bool isLoaded = (ctrl != nullptr);
-    bool isTabLoaded = (CurrentTab() && CurrentTab()->ctrl != nullptr);
-    if (isLoaded != isTabLoaded) {
-        logfa("MainWindow::IsDocLoaded(): isLoaded: %d, isTabLoaded: %d\n", (int)isLoaded, (int)isTabLoaded);
-        ReportIf(!gPluginMode);
+static bool CtrlMatchesCurrentTab(const MainWindow* win) {
+    if (!win || !win->ctrl) {
+        return false;
     }
-    return isLoaded;
+    WindowTab* tab = win->CurrentTab();
+    return tab && tab->ctrl == win->ctrl;
+}
+
+bool MainWindow::IsDocLoaded() const {
+    return CtrlMatchesCurrentTab(this);
 }
 
 WindowTab* MainWindow::CurrentTab() const {
@@ -269,11 +271,17 @@ Vec<WindowTab*> MainWindow::Tabs() const {
 }
 
 DisplayModel* MainWindow::AsFixed() const {
-    return ctrl ? ctrl->AsFixed() : nullptr;
+    if (!CtrlMatchesCurrentTab(this)) {
+        return nullptr;
+    }
+    return ctrl->AsFixed();
 }
 
 ChmModel* MainWindow::AsChm() const {
-    return ctrl ? ctrl->AsChm() : nullptr;
+    if (!CtrlMatchesCurrentTab(this)) {
+        return nullptr;
+    }
+    return ctrl->AsChm();
 }
 
 // Notify both display model and double-buffer (if they exist)
@@ -476,7 +484,6 @@ void LinkHandler::GotoLink(IPageDestination* dest) {
         return;
     }
 
-    logf("LinkHandler::GotoLink: unhandled kind %s\n", kind);
     ReportIf(true);
 }
 

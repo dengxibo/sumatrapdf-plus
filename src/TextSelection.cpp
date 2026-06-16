@@ -15,8 +15,12 @@ uint distSq(int x, int y) {
     return x * x + y * y;
 }
 // underscore is mainly used for programming and is thus considered a word character
+bool isCjkWordChar(WCHAR c) {
+    return (c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3400 && c <= 0x4DBF);
+}
+
 bool isWordChar(WCHAR c) {
-    return IsCharAlphaNumeric(c) || c == '_';
+    return IsCharAlphaNumeric(c) || c == '_' || isCjkWordChar(c);
 }
 
 static bool isDigit(WCHAR c) {
@@ -45,6 +49,9 @@ static int FindClosestGlyph(TextSelection* ts, int pageNo, double x, double y) {
     int textLen;
     Rect* coords;
     ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!coords || textLen <= 0) {
+        return 0;
+    }
     PointF pt = PointF(x, y);
 
     unsigned int maxDist = UINT_MAX;
@@ -78,6 +85,12 @@ static int FindClosestGlyph(TextSelection* ts, int pageNo, double x, double y) {
         return 0;
     }
     ReportIf(result < 0 || result >= textLen);
+
+    // click is inside this glyph's bbox: return it directly (needed for CJK where
+    // each character is one glyph; the right-half rule below would select the next char)
+    if (coords[result].Contains(pti)) {
+        return result;
+    }
 
     // the result indexes the first glyph to be selected in a forward selection
     RectF bbox = ts->engine->Transform(ToRectF(coords[result]), pageNo, 1.0, 0);
@@ -155,6 +168,9 @@ bool TextSelection::IsOverGlyph(int pageNo, double x, double y) {
     int textLen;
     Rect* coords;
     engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!coords || textLen <= 0) {
+        return false;
+    }
 
     int glyphIx = FindClosestGlyph(this, pageNo, x, y);
     Point pt = ToPoint(PointF(x, y));
@@ -331,8 +347,53 @@ void TextSelection::SelectWordAt(int pageNo, double x, double y) {
             wordStart = maybeNumberStart;
         }
     }
+
+    int clickGlyph = FindClosestGlyph(this, pageNo, x, y);
+    if (wordEnd > wordStart && clickGlyph >= wordStart && clickGlyph < wordEnd && isCjkWordChar(text[clickGlyph]) &&
+        !isAllDigits) {
+        wordStart = clickGlyph;
+        wordEnd = clickGlyph + 1;
+    }
     StartAt(pageNo, wordStart);
     SelectUpTo(pageNo, wordEnd);
+}
+
+int TextSelection::GlyphIndexAt(int pageNo, double x, double y) {
+    return FindClosestGlyph(this, pageNo, x, y);
+}
+
+void TextSelection::SelectGlyphRange(int pageNo, int startGlyph, int endGlyph) {
+    if (startGlyph < 0 || endGlyph <= startGlyph) {
+        return;
+    }
+    StartAt(pageNo, startGlyph);
+    SelectUpTo(pageNo, endGlyph);
+}
+
+char* TextSelection::ExtractWordAt(int pageNo, double x, double y) {
+    int i = FindClosestGlyph(this, pageNo, x, y);
+    int textLen;
+    const WCHAR* text = engine->GetTextForPage(pageNo, &textLen);
+    if (!text || textLen <= 0 || i < 0 || i > textLen) {
+        return nullptr;
+    }
+
+    for (; i > 0; i--) {
+        if (!isWordChar(text[i - 1])) {
+            break;
+        }
+    }
+    int wordStart = i;
+    for (; i < textLen; i++) {
+        if (!isWordChar(text[i])) {
+            break;
+        }
+    }
+    int wordEnd = i;
+    if (wordEnd <= wordStart) {
+        return nullptr;
+    }
+    return ToUtf8(text + wordStart, wordEnd - wordStart);
 }
 
 void TextSelection::CopySelection(TextSelection* orig) {

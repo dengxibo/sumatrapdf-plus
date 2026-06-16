@@ -85,6 +85,22 @@ RectF MeasureTextStandard(Graphics* g, Font* f, const WCHAR* s, int len) {
     return RectF{bbox};
 }
 
+static bool IsCjkFontName(const WCHAR* faceName) {
+    if (!faceName) {
+        return false;
+    }
+    static const WCHAR* names[] = {
+        L"Microsoft YaHei", L"SimSun", L"SimHei", L"KaiTi", L"FangSong", L"Microsoft JhengHei",
+        L"PMingLiU",         L"MingLiU", L"Malgun Gothic", L"MS Gothic", L"MS Mincho", L"Yu Gothic",
+    };
+    for (const WCHAR* n : names) {
+        if (str::EqI(faceName, n)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 RectF MeasureTextQuick(Graphics* g, Font* f, const WCHAR* s, int len) {
     ReportIf(0 >= len);
 
@@ -99,7 +115,7 @@ RectF MeasureTextQuick(Graphics* g, Font* f, const WCHAR* s, int len) {
         Status ok = f->GetLogFontW(g, &lfw);
         bool isItalicOrMonospace = Ok != ok || lfw.lfItalic || str::Eq(lfw.lfFaceName, L"Courier New") ||
                                    str::Find(lfw.lfFaceName, L"Consol") || str::EndsWith(lfw.lfFaceName, L"Mono") ||
-                                   str::EndsWith(lfw.lfFaceName, L"Typewriter");
+                                   str::EndsWith(lfw.lfFaceName, L"Typewriter") || IsCjkFontName(lfw.lfFaceName);
         fontCache.Append(f);
         fixCache.Append(isItalicOrMonospace);
         idx = (int)fontCache.size() - 1;
@@ -153,13 +169,23 @@ RectF MeasureText(Graphics* g, Font* f, const WCHAR* s, size_t len, TextMeasureA
 // a smarter approach is possible, but this usually only does 3 MeasureText
 // calls, so it's not that bad
 size_t StringLenForWidth(Graphics* g, Font* f, const WCHAR* s, size_t len, float dx, TextMeasureAlgorithm algo) {
+    if (len == 0 || dx <= 0) {
+        return 0;
+    }
     auto r = MeasureText(g, f, s, len, algo);
     if (r.dx <= dx) {
         return len;
     }
+    if (r.dx <= 0) {
+        return 0;
+    }
     // make the best guess of the length that fits
     size_t n = (size_t)((dx / r.dx) * (float)len);
-    ReportIf((0 == n) || (n > len));
+    if (n == 0) {
+        n = 1;
+    } else if (n > len) {
+        n = len;
+    }
     r = MeasureText(g, f, s, n, algo);
     // find the length len of s that fits within dx iff width of len+1 exceeds dx
     int dir = 1; // increasing length
@@ -168,6 +194,9 @@ size_t StringLenForWidth(Graphics* g, Font* f, const WCHAR* s, size_t len, float
     }
     for (;;) {
         n += dir;
+        if (n == 0 || n > len) {
+            break;
+        }
         r = MeasureText(g, f, s, n, algo);
         if (1 == dir) {
             // if advancing length, we know that previous string did fit, so if
@@ -183,6 +212,7 @@ size_t StringLenForWidth(Graphics* g, Font* f, const WCHAR* s, size_t len, float
             }
         }
     }
+    return 0;
 }
 
 // TODO: not quite sure why spaceDx1 != spaceDx2, using spaceDx2 because

@@ -413,7 +413,7 @@ Kind GuessFileTypeFromContent(const char* path) {
     auto res = GuessFileTypeFromContent(d);
     if (res == kindFileZip) {
         ArchiveExtractProgressCb emptyCb;
-        MultiFormatArchive* archive = OpenArchiveFromFile(path, /*eagerLoad=*/false, emptyCb);
+        MultiFormatArchive* archive = OpenArchiveFromFile(path, ArchiveLoadMode::Lazy, emptyCb);
         if (archive) {
             if (IsXpsArchive(archive)) {
                 res = kindFileXps;

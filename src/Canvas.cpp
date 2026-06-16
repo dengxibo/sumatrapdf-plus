@@ -52,6 +52,7 @@
 #include "uia/Provider.h"
 #include "SearchAndDDE.h"
 #include "Selection.h"
+#include "WordLookup.h"
 #include "HomePage.h"
 #include "Tabs.h"
 #include "Toolbar.h"
@@ -1352,13 +1353,23 @@ static void OnMouseLeftButtonDblClk(MainWindow* win, int x, int y, WPARAM key) {
 
     int elementPageNo = -1;
     IPageElement* pageEl = dm->GetElementAtPos(mousePos, &elementPageNo);
-    if (isOverText) {
+    if (isOverText && gGlobalPrefs->enableDoubleClickWordLookup) {
         int pageNo = dm->GetPageNoByPoint(mousePos);
         if (win->ctrl->ValidPageNo(pageNo)) {
             PointF pt = dm->CvtFromScreen(mousePos, pageNo);
+            if (ShowChineseWordLookupAt(win, dm->textSelection, dm->GetEngine(), pageNo, pt, mousePos)) {
+                UpdateTextSelection(win, false);
+                ScheduleRepaint(win, 0);
+                return;
+            }
             dm->textSelection->SelectWordAt(pageNo, pt.x, pt.y);
             UpdateTextSelection(win, false);
             ScheduleRepaint(win, 0);
+            bool isTextOnly = false;
+            TempStr selWord = GetSelectedTextTemp(win->CurrentTab(), "\r\n", isTextOnly);
+            if (isTextOnly && selWord) {
+                ShowWordLookup(win, selWord, mousePos);
+            }
         }
         return;
     }
@@ -1500,7 +1511,7 @@ static void PaintPageFrameAndShadow(HDC hdc, Rect& bounds, Rect& pageRect, bool 
 
     // Draw frame
     ScopedGdiObj<HPEN> pe(CreatePen(PS_SOLID, 1, presentation ? TRANSPARENT : COL_PAGE_FRAME));
-    AutoDeleteBrush brush = CreateSolidBrush(gCurrentTheme->window.backgroundColor);
+    AutoDeleteBrush brush = CreateSolidBrush(ThemeMainWindowBackgroundColor());
     SelectObject(hdc, pe);
     SelectObject(hdc, brush);
     Rectangle(hdc, frame.x, frame.y, frame.x + frame.dx, frame.y + frame.dy);
@@ -1665,7 +1676,8 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
     // (without frame and shadow)
     bool paintOnBlackWithoutShadow = win->presentation || isImage;
     bool isEbook = engine->kind == kindEngineMupdf && !str::EqI(engine->defaultExt, ".pdf");
-    bool isPdf = engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".pdf");
+    bool isPdf =
+        (engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".pdf")) || engine->kind == kindEngineDjVu;
     COLORREF colDocBg;
     COLORREF colDocTxt = ThemeDocumentColors(colDocBg);
     if (isImage) {
@@ -2604,6 +2616,7 @@ static LRESULT WndProcCanvasFixedPageUI(MainWindow* win, HWND hwnd, UINT msg, WP
             return 0;
 
         case WM_LBUTTONDOWN:
+            CloseWordLookup();
             OnMouseLeftButtonDown(win, x, y, wp);
             return 0;
 
@@ -2626,6 +2639,7 @@ static LRESULT WndProcCanvasFixedPageUI(MainWindow* win, HWND hwnd, UINT msg, WP
             return 0;
 
         case WM_RBUTTONDOWN:
+            CloseWordLookup();
             OnMouseRightButtonDown(win, x, y);
             return 0;
 
@@ -2638,17 +2652,21 @@ static LRESULT WndProcCanvasFixedPageUI(MainWindow* win, HWND hwnd, UINT msg, WP
             return 0;
 
         case WM_VSCROLL:
+            CloseWordLookup();
             OnVScroll(win, wp);
             return 0;
 
         case WM_HSCROLL:
+            CloseWordLookup();
             OnHScroll(win, wp);
             return 0;
 
         case WM_MOUSEWHEEL:
+            CloseWordLookup();
             return CanvasOnMouseWheel(win, msg, wp, lp);
 
         case WM_MOUSEHWHEEL:
+            CloseWordLookup();
             return CanvasOnMouseHWheel(win, msg, wp, lp);
 
         case WM_SETCURSOR:
@@ -3331,6 +3349,7 @@ LRESULT CALLBACK WndProcCanvas(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         case WM_SIZE:
             if (!IsIconic(win->hwndFrame)) {
+                CloseWordLookup();
                 if (gRedrawLog) {
                     RECT rc;
                     GetClientRect(hwnd, &rc);
@@ -3374,7 +3393,7 @@ LRESULT CALLBACK WndProcCanvas(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         default:
             // TODO: achieve this split through subclassing or different window classes
-            if (win->AsFixed()) {
+            if (win->IsDocLoaded() && win->AsFixed()) {
                 HomePageDestroySearch(win);
                 return WndProcCanvasFixedPageUI(win, hwnd, msg, wp, lp);
             }

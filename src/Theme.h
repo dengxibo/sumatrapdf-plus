@@ -4,12 +4,15 @@ License: GPLv3 */
 void SetTheme(const char* name);
 void SetCurrentThemeFromSettings();
 void SelectNextTheme();
+void ToggleLightDarkTheme();
 void CreateThemeCommands();
 
 COLORREF ThemeDocumentColors(COLORREF&);
 COLORREF ThemePageRenderColors(COLORREF&);
 COLORREF ThemeMainWindowBackgroundColor();
 COLORREF ThemeControlBackgroundColor();
+COLORREF ThemeThumbnailBackgroundColor();
+COLORREF ThemeThumbnailBorderColor();
 COLORREF ThemeWindowBackgroundColor();
 COLORREF ThemeWindowTextColor();
 COLORREF ThemeWindowTextDisabledColor();
@@ -21,6 +24,7 @@ COLORREF ThemeNotificationsHighlightColor();
 COLORREF ThemeNotificationsHighlightTextColor();
 COLORREF ThemeNotificationsProgressColor();
 bool ThemeColorizeControls();
+bool ThemeUsesDarkChrome();
 bool IsCurrentThemeDefault();
 COLORREF AccentColor(COLORREF col, int light, int dark = 0);
 void FreeThemes();

@@ -11,6 +11,21 @@ class MultiFormatArchive;
 struct ArchiveExtractProgress;
 using ArchiveExtractProgressCb = Func1<ArchiveExtractProgress*>;
 
+// Controls how much an archive decompresses at Open() time.
+enum class ArchiveLoadMode {
+    // Don't decompress anything now; re-open the archive to fetch each
+    // entry on demand. Cheapest open, but every fetch re-reads the file.
+    Lazy,
+    // Decompress every entry now and then close the archive so no later
+    // re-open ever happens.
+    Eager,
+    // Decompress every non-image entry now but defer image entries, which
+    // are loaded on demand (the archive path is kept so images can be
+    // re-opened later). Used by EPUB so opening a large, image-heavy book
+    // doesn't pay to inflate megabytes of images that may never be viewed.
+    EagerSkipImages,
+};
+
 // Thread-local progress callback honored by archive opens. Callers set
 // it before triggering a load that may open archives (e.g. cbx / epub /
 // fb2z); cleared afterwards. Archive openers pass it straight through to
@@ -52,12 +67,12 @@ class MultiFormatArchive {
     // hintKind is the result of a prior GuessFileTypeFromContent() done
     // by the caller. When non-null we skip the internal 2 KiB sniff and
     // use it to drive rar-first vs. libarchive routing.
-    // eagerLoad = true: decompress every entry at open time and close
-    //   the archive so no re-open will ever happen.
+    // loadMode controls how much is decompressed at open time (see
+    // ArchiveLoadMode).
     // cbProgress fires after each entry is processed (see
     // ArchiveExtractProgress). Pass a default-constructed Func1 to skip
     // notifications.
-    bool Open(const char* path, bool eagerLoad, Kind hintKind, const ArchiveExtractProgressCb& cbProgress);
+    bool Open(const char* path, ArchiveLoadMode loadMode, Kind hintKind, const ArchiveExtractProgressCb& cbProgress);
     bool Open(IStream* stream);
 
     Vec<FileInfo*> const& GetFileInfos();
@@ -100,8 +115,8 @@ class MultiFormatArchive {
     // only set when we loaded file infos using unrar.dll fallback
     const char* rarFilePath_ = nullptr;
 
-    bool OpenArchive(const char* path, bool eagerLoad, const ArchiveExtractProgressCb& cbProgress);
-    bool ParseEntries(struct archive* a, bool eagerLoad, const ArchiveExtractProgressCb& cbProgress);
+    bool OpenArchive(const char* path, ArchiveLoadMode loadMode, const ArchiveExtractProgressCb& cbProgress);
+    bool ParseEntries(struct archive* a, ArchiveLoadMode loadMode, const ArchiveExtractProgressCb& cbProgress);
 
     bool OpenUnrarFallback(const char* rarPathUtf, bool eagerLoad, const ArchiveExtractProgressCb& cbProgress);
     // Populate fileInfos_[fileId]->data via the respective backend; set
@@ -128,13 +143,14 @@ struct ArchiveExtractProgress {
 // content sniff and routes it through unrar.dll; everything else goes
 // through libarchive.
 //
-// eagerLoad: if true, every file is decompressed during Open() and the
-// archive is then closed. GetFileDataById for a file that failed to
+// loadMode controls how much is decompressed during Open() (see
+// ArchiveLoadMode). For Eager, GetFileDataById for a file that failed to
 // decompress returns FileInfo with data=nullptr and never re-opens the
 // file; use FileInfo::failed to tell "not yet loaded" from "failed".
 // cbProgress fires once per entry (see ArchiveExtractProgress); pass a
 // default-constructed Func1 to skip notifications.
-MultiFormatArchive* OpenArchiveFromFile(const char* path, bool eagerLoad, const ArchiveExtractProgressCb& cbProgress);
+MultiFormatArchive* OpenArchiveFromFile(const char* path, ArchiveLoadMode loadMode,
+                                        const ArchiveExtractProgressCb& cbProgress);
 
 // Open from an IStream. libarchive auto-detects the container (zip/rar/
 // 7z/tar/etc.). Always eager-loads (can't re-open a stream); no progress

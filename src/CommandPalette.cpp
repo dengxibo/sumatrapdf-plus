@@ -603,6 +603,10 @@ static const char* UpdateCommandNameTemp(MainWindow* win, int cmdId, const char*
             isToggle = true;
             newIsOn = !gGlobalPrefs->showTips;
         } break;
+        case CmdToggleDoubleClickWordLookup: {
+            isToggle = true;
+            newIsOn = !gGlobalPrefs->enableDoubleClickWordLookup;
+        } break;
         case CmdToggleReuseInstance: {
             isToggle = true;
             newIsOn = !gGlobalPrefs->reuseInstance;
@@ -1317,7 +1321,7 @@ void DrawMaybeHighlightedText(DrawMaybeHighlightedTextArgs& args) {
     // draw highlight background rectangles for matches
     {
         COLORREF highlightCol;
-        if (IsCurrentThemeDefault()) {
+        if (!ThemeUsesDarkChrome()) {
             highlightCol = RGB(255, 255, 0); // yellow for default theme
         } else {
             highlightCol = AccentColor(colBg, 40);
@@ -1347,7 +1351,7 @@ void CommandPaletteWnd::DrawListBoxItem(ListBox::DrawItemEvent* ev) {
     COLORREF colBg = IsSpecialColor(lb->bgColor) ? GetSysColor(COLOR_WINDOW) : lb->bgColor;
     COLORREF colText = IsSpecialColor(lb->textColor) ? GetSysColor(COLOR_WINDOWTEXT) : lb->textColor;
     if (ev->selected) {
-        if (false && IsCurrentThemeDefault()) {
+        if (false && !ThemeUsesDarkChrome()) {
             colBg = GetSysColor(COLOR_HIGHLIGHT);
             colText = GetSysColor(COLOR_HIGHLIGHTTEXT);
         } else {
