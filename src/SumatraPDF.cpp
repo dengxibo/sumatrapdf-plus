@@ -6480,20 +6480,18 @@ static TempStr BuildDoubaoPromptTemp(const char* selection, DoubaoPromptKind kin
     };
     switch (kind) {
         case DoubaoPromptKind::Word:
-            return str::FormatTemp(
-                "请查一下这个单词，给出音标、读音、释义、例句和助记：\n"
-                "%s",
-                trimmed);
+            return str::FormatTemp("%s\n%s",
+                                   _TRA("Please look up this word and give phonetic transcription, "
+                                        "pronunciation, definition, examples, and mnemonics:"),
+                                   trimmed);
         case DoubaoPromptKind::Chinese:
-            return str::FormatTemp(
-                "请解释一下下面这段中文是什么意思：\n"
-                "%s",
-                trimmed);
+            return str::FormatTemp("%s\n%s",
+                                   _TRA("Please explain what the following Chinese text means:"), trimmed);
         case DoubaoPromptKind::Sentence:
-            return str::FormatTemp(
-                "请翻译这个句子，并分析句法结构和重点难点单词：\n"
-                "%s",
-                trimmed);
+            return str::FormatTemp("%s\n%s",
+                                   _TRA("Please translate this sentence and analyze its syntax and difficult "
+                                        "vocabulary:"),
+                                   trimmed);
     }
     return str::FormatTemp("%s", trimmed);
 }

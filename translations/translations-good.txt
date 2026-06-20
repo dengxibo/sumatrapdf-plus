@@ -6205,6 +6205,444 @@ tw:套用調整大小
 uk:Застосувати зміну розміру
 uz:O'lchamni o'zgartirishni qo'llash
 vn:Áp dụng Thay đổi Kích thước
+:Ask &Doubao
+af:Vra &Doubao
+am:Հարցնել &Doubao-ին
+ar:اسأل &Doubao
+az:&Doubao-ya sor
+bg:Попитай &Doubao
+bn:&Doubao-কে জিজ্ঞাসা করুন
+br:Perguntar ao &Doubao
+bs:Pitaj &Doubao
+by:Запытаць &Doubao
+ca:Pregunta a &Doubao
+ca-xv:Pregunta a &Doubao
+cn:问问豆包(&D)
+co:Dì &Doubao
+cy:Gofyn i &Doubao
+cz:Zeptat se &Doubao
+de:&Doubao fragen
+dk:Spørg &Doubao
+el:Ρώτησε το &Doubao
+es:Preguntar a &Doubao
+et:Küsi &Doubao-lt
+eu:Galdetu &Doubao-ri
+fa:از &Doubao بپرس
+fi:Kysy &Doubaolta
+fo:Spyr &Doubao
+fr:Demander à &Doubao
+fy-nl:Freeg &Doubao
+ga:Fiafraigh de &Doubao
+gl:Preguntar a &Doubao
+he:שאל את &Doubao
+hi:&Doubao से पूछें
+hr:Pitaj &Doubao
+hu:Kérdezd meg a &Doubao-t
+id:Tanya &Doubao
+it:Chiedi a &Doubao
+ja:&Doubaoに質問
+jv:Takon &Doubao
+ka:ჰკითხე &Doubao-ს
+kr:&Doubao에 질문
+ku:Ji &Doubao bipirse
+kw:Govyn &Doubao
+lt:Klausk &Doubao
+lv:Jautā &Doubao
+mk:Прашај го &Doubao
+ml:&Doubao-യോട് ചോദിക്കുക
+mm:&Doubao ကို မေးပါ
+my:Tanya &Doubao
+ne:&Doubao लाई सोध्नुहोस्
+nl:Vraag &Doubao
+nn:Spør &Doubao
+no:Spør &Doubao
+pa:&Doubao ਨੂੰ ਪੁੱਛੋ
+pl:Zapytaj &Doubao
+pt:Perguntar ao &Doubao
+ro:Întreabă &Doubao
+ru:Спросить &Doubao
+sat:&Doubao ᱠᱩᱠᱷᱟ ᱢᱮ
+si:&Doubao අහන්න
+sk:Opýtať sa &Doubao
+sl:Vprašaj &Doubao
+sn:Bvunza &Doubao
+sp-rs:Pitaj &Doubao
+sq:Pyet &Doubao
+sr-rs:Питај &Doubao
+sv:Fråga &Doubao
+ta:&Doubao-வை கேள்
+th:ถาม &Doubao
+tl:Tanungin si &Doubao
+tr:&Doubao'ya sor
+tw:問問豆包(&D)
+uk:Запитати &Doubao
+uz:&Doubao-dan so'rang
+vn:Hỏi &Doubao
+:Ask Doubao
+af:Vra Doubao
+am:Հարցնել Doubao-ին
+ar:اسأل Doubao
+az:Doubao-ya sor
+bg:Попитай Doubao
+bn:Doubao-কে জিজ্ঞাসা করুন
+br:Perguntar ao Doubao
+bs:Pitaj Doubao
+by:Запытаць Doubao
+ca:Pregunta a Doubao
+ca-xv:Pregunta a Doubao
+cn:问问豆包
+co:Dì Doubao
+cy:Gofyn i Doubao
+cz:Zeptat se Doubao
+de:Doubao fragen
+dk:Spørg Doubao
+el:Ρώτησε το Doubao
+es:Preguntar a Doubao
+et:Küsi Doubao-lt
+eu:Galdetu Doubao-ri
+fa:از Doubao بپرس
+fi:Kysy Doubaolta
+fo:Spyr Doubao
+fr:Demander à Doubao
+fy-nl:Freeg Doubao
+ga:Fiafraigh de Doubao
+gl:Preguntar a Doubao
+he:שאל את Doubao
+hi:Doubao से पूछें
+hr:Pitaj Doubao
+hu:Kérdezd meg a Doubao-t
+id:Tanya Doubao
+it:Chiedi a Doubao
+ja:Doubaoに質問
+jv:Takon Doubao
+ka:ჰკითხე Doubao-ს
+kr:Doubao에 질문
+ku:Ji Doubao bipirse
+kw:Govyn Doubao
+lt:Klausk Doubao
+lv:Jautā Doubao
+mk:Прашај го Doubao
+ml:Doubao-യോട് ചോദിക്കുക
+mm:Doubao ကို မေးပါ
+my:Tanya Doubao
+ne:Doubao लाई सोध्नुहोस्
+nl:Vraag Doubao
+nn:Spør Doubao
+no:Spør Doubao
+pa:Doubao ਨੂੰ ਪੁੱਛੋ
+pl:Zapytaj Doubao
+pt:Perguntar ao Doubao
+ro:Întreabă Doubao
+ru:Спросить Doubao
+sat:Doubao ᱠᱩᱠᱷᱟ ᱢᱮ
+si:Doubao අහන්න
+sk:Opýtať sa Doubao
+sl:Vprašaj Doubao
+sn:Bvunza Doubao
+sp-rs:Pitaj Doubao
+sq:Pyet Doubao
+sr-rs:Питај Doubao
+sv:Fråga Doubao
+ta:Doubao-வை கேள்
+th:ถาม Doubao
+tl:Tanungin si Doubao
+tr:Doubao'ya sor
+tw:問問豆包
+uk:Запитати Doubao
+uz:Doubao-dan so'rang
+vn:Hỏi Doubao
+:Question sent to Doubao.
+af:Vraag na Doubao gestuur.
+am:Հարցն ուղարկվել է Doubao-ին:
+ar:تم إرسال السؤال إلى Doubao.
+az:Sual Doubao-ya göndərildi.
+bg:Въпросът е изпратен към Doubao.
+bn:Doubao-তে প্রশ্ন পাঠানো হয়েছে।
+br:Pergunta enviada ao Doubao.
+bs:Pitanje poslano Doubao-u.
+by:Пытанне адправлена ў Doubao.
+ca:Pregunta enviada a Doubao.
+ca-xv:Pregunta enviada a Doubao.
+cn:已发送到豆包。
+co:Domanda mandata à Doubao.
+cy:Anfonwyd cwestiwn at Doubao.
+cz:Otázka odeslána do Doubao.
+de:Frage an Doubao gesendet.
+dk:Spørgsmål sendt til Doubao.
+el:Η ερώτηση στάλθηκε στο Doubao.
+es:Pregunta enviada a Doubao.
+et:Küsimus saadeti Doubao-sse.
+eu:Galdera Doubao-ra bidali da.
+fa:سؤال به Doubao ارسال شد.
+fi:Kysymys lähetetty Doubaolle.
+fo:Spurningur sendur til Doubao.
+fr:Question envoyée à Doubao.
+fy-nl:Frage nei Doubao stuurd.
+ga:Ceist seolta chuig Doubao.
+gl:Pregunta enviada a Doubao.
+he:השאלה נשלחה ל-Doubao.
+hi:Doubao को प्रश्न भेजा गया।
+hr:Pitanje poslano Doubao-u.
+hu:Kérdés elküldve a Doubao-nak.
+id:Pertanyaan dikirim ke Doubao.
+it:Domanda inviata a Doubao.
+ja:Doubaoに質問を送信しました。
+jv:Pitakon dikirim menyang Doubao.
+ka:კითხვა გაგზავნილია Doubao-ში.
+kr:Doubao에 질문을 보냈습니다.
+ku:Pirs ji Doubao re hat şandin.
+kw:Govyn danfonys dhe Doubao.
+lt:Klausimas išsiųstas Doubao.
+lv:Jautājums nosūtīts Doubao.
+mk:Прашањето е испратено до Doubao.
+ml:Doubao-യിലേക്ക് ചോദ്യം അയച്ചു.
+mm:Doubao သို့ မေးခွန်း ပို့ပြီးပါပြီ။
+my:Soalan dihantar ke Doubao.
+ne:Doubao मा प्रश्न पठाइयो।
+nl:Vraag verzonden naar Doubao.
+nn:Spørsmål sendt til Doubao.
+no:Spørsmål sendt til Doubao.
+pa:Doubao ਨੂੰ ਸਵਾਲ ਭੇਜਿਆ ਗਿਆ।
+pl:Pytanie wysłano do Doubao.
+pt:Pergunta enviada ao Doubao.
+ro:Întrebare trimisă către Doubao.
+ru:Вопрос отправлен в Doubao.
+sat:Doubao ᱨᱮ ᱠᱩᱠᱷᱟ ᱞᱟᱹᱜᱤᱫ ᱟ
+si:Doubao වෙත ප්‍රශ්නය යවන ලදී.
+sk:Otázka odoslaná do Doubao.
+sl:Vprašanje poslano Doubao.
+sn:Mubvunzo watumirwa kuDoubao.
+sp-rs:Pitanje poslato Doubao-u.
+sq:Pyetja u dërgua te Doubao.
+sr-rs:Питање послато Doubao-у.
+sv:Fråga skickad till Doubao.
+ta:Doubao-க்கு கேள்வி அனுப்பப்பட்டது.
+th:ส่งคำถามไปยัง Doubao แล้ว
+tl:Naipadala ang tanong sa Doubao.
+tr:Soru Doubao'ya gönderildi.
+tw:已傳送到豆包。
+uk:Запитання надіслано до Doubao.
+uz:Savol Doubao-ga yuborildi.
+vn:Đã gửi câu hỏi tới Doubao.
+:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+af:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+am:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+ar:ابحث عن هذه الكلمة وأعطِ النطق والمعنى والأمثلة وطرق الحفظ:
+az:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+bg:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+bn:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+br:Pesquise esta palavra e dê transcrição, pronúncia, significado, exemplos e mnemônicos:
+bs:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+by:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+ca:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+ca-xv:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+cn:请查一下这个单词，给出音标、读音、释义、例句和助记：
+co:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+cy:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+cz:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+de:Bitte nachschlagen: Lautschrift, Aussprache, Bedeutung, Beispiele und Merkhilfe für dieses Wort:
+dk:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+el:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+es:Busca esta palabra y da transcripción fonética, pronunciación, significado, ejemplos y mnemotecnia:
+et:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+eu:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+fa:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+fi:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+fo:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+fr:Veuillez chercher ce mot et donner la phonétique, la prononciation, le sens, des exemples et une aide-mémoire :
+fy-nl:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+ga:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+gl:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+he:חפש את המילה הזו ותן תעתיק, הגייה, משמעות, דוגמאות ועזרי זיכרון:
+hi:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+hr:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+hu:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+id:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+it:Cerca questa parola e fornisci fonetica, pronuncia, significato, esempi e mnemonici:
+ja:この単語を調べて、発音記号、読み方、意味、例文、覚え方を教えてください：
+jv:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+ka:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+kr:이 단어를 찾아 발음 기호, 발음, 뜻, 예문, 암기법을 알려 주세요:
+ku:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+kw:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+lt:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+lv:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+mk:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+ml:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+mm:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+my:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+ne:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+nl:Zoek dit woord op en geef uitspraak, betekenis, voorbeelden en ezelsbruggetjes:
+nn:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+no:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+pa:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+pl:Sprawdź to słowo: transkrypcja, wymowa, znaczenie, przykłady i wskazówki:
+pt:Pesquise esta palavra e dê transcrição, pronúncia, significado, exemplos e mnemônicos:
+ro:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+ru:Найдите это слово: транскрипция, произношение, значение, примеры и подсказки для запоминания:
+sat:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+si:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+sk:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+sl:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+sn:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+sp-rs:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+sq:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+sr-rs:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+sv:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+ta:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+th:ช่วยค้นหาคำนี้ พร้อมสัญลักษณ์การออกเสียง การอ่าน ความหมาย ตัวอย่าง และเทคนิคจำ:
+tl:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+tr:Bu kelimeyi ara ve ses bilgisi, telaffuz, anlam, örnekler ve akılda tutma ipuçları ver:
+tw:請查一下這個單字，給出音標、讀音、釋義、例句和助記：
+uk:Знайдіть це слово: транскрипція, вимова, значення, приклади та підказки:
+uz:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
+vn:Hãy tra từ này và cho phiên âm, cách đọc, nghĩa, ví dụ và mẹo ghi nhớ:
+:Please explain what the following Chinese text means:
+af:Please explain what the following Chinese text means:
+am:Please explain what the following Chinese text means:
+ar:اشرح معنى النص الصيني التالي:
+az:Please explain what the following Chinese text means:
+bg:Please explain what the following Chinese text means:
+bn:Please explain what the following Chinese text means:
+br:Explique o que significa o seguinte texto em chinês:
+bs:Please explain what the following Chinese text means:
+by:Please explain what the following Chinese text means:
+ca:Please explain what the following Chinese text means:
+ca-xv:Please explain what the following Chinese text means:
+cn:请解释一下下面这段中文是什么意思：
+co:Please explain what the following Chinese text means:
+cy:Please explain what the following Chinese text means:
+cz:Please explain what the following Chinese text means:
+de:Bitte erklären Sie, was der folgende chinesische Text bedeutet:
+dk:Please explain what the following Chinese text means:
+el:Please explain what the following Chinese text means:
+es:Explique qué significa el siguiente texto en chino:
+et:Please explain what the following Chinese text means:
+eu:Please explain what the following Chinese text means:
+fa:Please explain what the following Chinese text means:
+fi:Please explain what the following Chinese text means:
+fo:Please explain what the following Chinese text means:
+fr:Veuillez expliquer ce que signifie le texte chinois suivant :
+fy-nl:Please explain what the following Chinese text means:
+ga:Please explain what the following Chinese text means:
+gl:Please explain what the following Chinese text means:
+he:הסבר מה משמעות הטקסט הסיני הבא:
+hi:Please explain what the following Chinese text means:
+hr:Please explain what the following Chinese text means:
+hu:Please explain what the following Chinese text means:
+id:Please explain what the following Chinese text means:
+it:Spiega cosa significa il seguente testo cinese:
+ja:次の中国語の意味を説明してください：
+jv:Please explain what the following Chinese text means:
+ka:Please explain what the following Chinese text means:
+kr:아래 중국어가 무슨 뜻인지 설명해 주세요:
+ku:Please explain what the following Chinese text means:
+kw:Please explain what the following Chinese text means:
+lt:Please explain what the following Chinese text means:
+lv:Please explain what the following Chinese text means:
+mk:Please explain what the following Chinese text means:
+ml:Please explain what the following Chinese text means:
+mm:Please explain what the following Chinese text means:
+my:Please explain what the following Chinese text means:
+ne:Please explain what the following Chinese text means:
+nl:Leg uit wat de volgende Chinese tekst betekent:
+nn:Please explain what the following Chinese text means:
+no:Please explain what the following Chinese text means:
+pa:Please explain what the following Chinese text means:
+pl:Wyjaśnij, co oznacza poniższy tekst po chińsku:
+pt:Explique o que significa o seguinte texto em chinês:
+ro:Please explain what the following Chinese text means:
+ru:Объясните, что означает следующий китайский текст:
+sat:Please explain what the following Chinese text means:
+si:Please explain what the following Chinese text means:
+sk:Please explain what the following Chinese text means:
+sl:Please explain what the following Chinese text means:
+sn:Please explain what the following Chinese text means:
+sp-rs:Please explain what the following Chinese text means:
+sq:Please explain what the following Chinese text means:
+sr-rs:Please explain what the following Chinese text means:
+sv:Please explain what the following Chinese text means:
+ta:Please explain what the following Chinese text means:
+th:โปรดอธิบายว่าข้อความภาษาจีนต่อไปนี้หมายความว่าอะไร:
+tl:Please explain what the following Chinese text means:
+tr:Aşağıdaki Çince metnin ne anlama geldiğini açıkla:
+tw:請解釋一下下面這段中文是什麼意思：
+uk:Поясніть, що означає наведений китайський текст:
+uz:Please explain what the following Chinese text means:
+vn:Hãy giải thích đoạn tiếng Trung sau nghĩa là gì:
+:Please translate this sentence and analyze its syntax and difficult vocabulary:
+af:Please translate this sentence and analyze its syntax and difficult vocabulary:
+am:Please translate this sentence and analyze its syntax and difficult vocabulary:
+ar:ترجم هذه الجملة وحلّل تركيبها والمفردات الصعبة:
+az:Please translate this sentence and analyze its syntax and difficult vocabulary:
+bg:Please translate this sentence and analyze its syntax and difficult vocabulary:
+bn:Please translate this sentence and analyze its syntax and difficult vocabulary:
+br:Traduza esta frase e analise a sintaxe e vocabulário difícil:
+bs:Please translate this sentence and analyze its syntax and difficult vocabulary:
+by:Please translate this sentence and analyze its syntax and difficult vocabulary:
+ca:Please translate this sentence and analyze its syntax and difficult vocabulary:
+ca-xv:Please translate this sentence and analyze its syntax and difficult vocabulary:
+cn:请翻译这个句子，并分析句法结构和重点难点单词：
+co:Please translate this sentence and analyze its syntax and difficult vocabulary:
+cy:Please translate this sentence and analyze its syntax and difficult vocabulary:
+cz:Please translate this sentence and analyze its syntax and difficult vocabulary:
+de:Bitte übersetzen Sie diesen Satz und analysieren Sie Syntax und schwierige Wörter:
+dk:Please translate this sentence and analyze its syntax and difficult vocabulary:
+el:Please translate this sentence and analyze its syntax and difficult vocabulary:
+es:Traduce esta oración y analiza la sintaxis y el vocabulario difícil:
+et:Please translate this sentence and analyze its syntax and difficult vocabulary:
+eu:Please translate this sentence and analyze its syntax and difficult vocabulary:
+fa:Please translate this sentence and analyze its syntax and difficult vocabulary:
+fi:Please translate this sentence and analyze its syntax and difficult vocabulary:
+fo:Please translate this sentence and analyze its syntax and difficult vocabulary:
+fr:Veuillez traduire cette phrase et analyser la syntaxe et le vocabulaire difficile :
+fy-nl:Please translate this sentence and analyze its syntax and difficult vocabulary:
+ga:Please translate this sentence and analyze its syntax and difficult vocabulary:
+gl:Please translate this sentence and analyze its syntax and difficult vocabulary:
+he:תרגם את המשפט ונתח את המבנה התחבירי והמילים הקשות:
+hi:Please translate this sentence and analyze its syntax and difficult vocabulary:
+hr:Please translate this sentence and analyze its syntax and difficult vocabulary:
+hu:Please translate this sentence and analyze its syntax and difficult vocabulary:
+id:Please translate this sentence and analyze its syntax and difficult vocabulary:
+it:Traduci questa frase e analizza sintassi e vocaboli difficili:
+ja:この文を翻訳し、文法構造と重要な語彙を分析してください：
+jv:Please translate this sentence and analyze its syntax and difficult vocabulary:
+ka:Please translate this sentence and analyze its syntax and difficult vocabulary:
+kr:이 문장을 번역하고 문법 구조와 중요/어려운 단어를 분석해 주세요:
+ku:Please translate this sentence and analyze its syntax and difficult vocabulary:
+kw:Please translate this sentence and analyze its syntax and difficult vocabulary:
+lt:Please translate this sentence and analyze its syntax and difficult vocabulary:
+lv:Please translate this sentence and analyze its syntax and difficult vocabulary:
+mk:Please translate this sentence and analyze its syntax and difficult vocabulary:
+ml:Please translate this sentence and analyze its syntax and difficult vocabulary:
+mm:Please translate this sentence and analyze its syntax and difficult vocabulary:
+my:Please translate this sentence and analyze its syntax and difficult vocabulary:
+ne:Please translate this sentence and analyze its syntax and difficult vocabulary:
+nl:Vertaal deze zin en analyseer de syntaxis en moeilijke woorden:
+nn:Please translate this sentence and analyze its syntax and difficult vocabulary:
+no:Please translate this sentence and analyze its syntax and difficult vocabulary:
+pa:Please translate this sentence and analyze its syntax and difficult vocabulary:
+pl:Przetłumacz to zdanie i przeanalizuj składnię oraz trudne słowa:
+pt:Traduza esta frase e analise a sintaxe e vocabulário difícil:
+ro:Please translate this sentence and analyze its syntax and difficult vocabulary:
+ru:Переведите это предложение и разберите синтаксис и сложные слова:
+sat:Please translate this sentence and analyze its syntax and difficult vocabulary:
+si:Please translate this sentence and analyze its syntax and difficult vocabulary:
+sk:Please translate this sentence and analyze its syntax and difficult vocabulary:
+sl:Please translate this sentence and analyze its syntax and difficult vocabulary:
+sn:Please translate this sentence and analyze its syntax and difficult vocabulary:
+sp-rs:Please translate this sentence and analyze its syntax and difficult vocabulary:
+sq:Please translate this sentence and analyze its syntax and difficult vocabulary:
+sr-rs:Please translate this sentence and analyze its syntax and difficult vocabulary:
+sv:Please translate this sentence and analyze its syntax and difficult vocabulary:
+ta:Please translate this sentence and analyze its syntax and difficult vocabulary:
+th:แปลประโยคนี้และวิเคราะห์โครงสร้างไวยากรณ์และคำศัพท์สำคัญ:
+tl:Please translate this sentence and analyze its syntax and difficult vocabulary:
+tr:Bu cümleyi çevir ve sözdizimi ile zor kelimeleri analiz et:
+tw:請翻譯這個句子，並分析句法結構和重點難點單字：
+uk:Перекладіть це речення та проаналізуйте синтаксис і складні слова:
+uz:Please translate this sentence and analyze its syntax and difficult vocabulary:
+vn:Hãy dịch câu này và phân tích cấu trúc ngữ pháp cùng từ khó:
 :Are you sure you want to uninstall SumatraPDF?
 af:Is jy seker jy wil SumatraPDF oninstalleer?
 am:Համոզվա՞ծ եք, որ ցանկանում եք ջնջել SumatraPDF-ը:
@@ -43800,6 +44238,517 @@ tw:切換區分大小寫
 uk:Перемкнути врахування регістру
 uz:Katta-kichik harflarni yoqish/o'chirish
 vn:Bật/tắt phân biệt chữ hoa/thường
+:Toggle Double-Click Word Lookup
+af:Wissel dubbelklik-woordopsoek
+am:Միացնել/անջատել կրկնակի սեղմումով բառային որոնում
+ar:تبديل البحث عن الكلمات بالنقر المزدوج
+az:Cüt kliklə söz axtarışını aç/bağla
+bg:Превключване на търсене на думи с двойно щракване
+bn:ডাবল-ক্লিক শব্দ অনুসন্ধান টগল করুন
+br:Ativar/Desativar pesquisa por duplo clique
+bs:Uključi/isključi pretragu riječi dvostrukim klikom
+by:Пераключыць пошук слова двойчым пстрыканнем
+ca:Commuta la cerca de paraules amb doble clic
+ca-xv:Commuta cerca de paraules amb doble clic
+cn:开启/关闭双击查词
+co:Attivà o disattivà a ricerca di parolle cun doppiu cliccu
+cy:Toglo chwilio geiriau trwy glicio dwbl
+cz:Přepnout vyhledávání slov dvojitým kliknutím
+de:Doppelklick-Wortsuche ein/aus
+dk:Slå opslag ved dobbeltklik til/fra
+el:Εναλλαγή αναζήτησης λέξης με διπλό κλικ
+es:Alternar búsqueda de palabras con doble clic
+et:Lülita topeltklõpsuga sõnaotsing
+eu:Txandakatu hitz bilaketa klik bikoitzarekin
+fa:تغییر وضعیت جستجوی واژه با دوبار کلیک
+fi:Vaihda sanan haku kaksoisnapsautuksella
+fo:Skifta orðaleiting við tveyfalt klikk
+fr:Activer/Désactiver la recherche par double-clic
+fy-nl:Dûbelklik-wurdsyk wikselje
+ga:Scoránaigh cuardach focal le déchliceáil
+gl:Alternar busca de palabras con doble clic
+he:החלף חיפוש מילים בלחיצה כפולה
+hi:डबल-क्लिक शब्द खोज टॉगल करें
+hr:Uključi/isključi pretraživanje riječi dvostrukim klikom
+hu:Dupla kattintásos szókeresés kapcsolása
+id:Alihkan pencarian kata klik ganda
+it:Attiva/Disattiva ricerca parole con doppio clic
+ja:ダブルクリック辞書検索の切り替え
+jv:Ubah panelusuran tembung klik ganda
+ka:ორმაგი დაწკაპუნებით სიტყვის ძებნის ჩართვა/გამორთვა
+kr:더블클릭 단어 찾기 켜기/끄기
+ku:Lêgerîna peyvê bi du car klîk bike/vemirîne
+kw:Kestolya hwilas gerow gans klik dewblek
+lt:Perjungti žodžio paiešką dvigubu spustelėjimu
+lv:Pārslēgt vārdu meklēšanu ar dubultklikšķi
+mk:Вклучи/исклучи пребарување на збор со двоен клик
+ml:ഇരട്ടക്ലിക്ക് വാക്ക് തിരയൽ മാറ്റുക
+mm:စကားလုံး နှစ်ချက်နှိပ်ရှာဖွေမှု ပြောင်းလဲပါ
+my:စကားလုံး နှစ်ချက်နှိပ်ရှာဖွေမှု ဖွင့်/ပိ
+ne:डबल-क्लिक शब्द खोज टगल गर्नुहोस्
+nl:Dubbelklik woordopzoeking in/uit
+nn:Slå av/på oppslag ved dobbeltklikk
+no:Slå av/på oppslag ved dobbeltklikk
+pa:ਡਬਲ-ਕਲਿਕ ਸ਼ਬਦ ਖੋਜ ਟੌਗਲ ਕਰੋ
+pl:Przełącz wyszukiwanie słów dwuklikiem
+pt:Alternar pesquisa de palavras com duplo clique
+ro:Comută căutarea cuvintelor prin dublu clic
+ru:Вкл./выкл. поиск слова двойным щелчком
+sat:ᱵᱟᱲᱟᱭ ᱠᱞᱤᱠ ᱟᱹᱨᱩ ᱥᱮᱸᱫᱽᱟ ᱟᱹᱨᱩ
+si:දෙවරක් ක්ලික් කර වචන සෙවීම සක්‍රීය/අක්‍රීය කරන්න
+sk:Prepnúť vyhľadávanie slov dvojitým kliknutím
+sl:Preklopi iskanje besed z dvojnim klikom
+sn:Shandura kutsvaga mazwi nekukanda kaviri
+sp-rs:Uključi/isključi pretragu reči dvostrukim klikom
+sq:Aktivizo/Çaktivizo kërkimin e fjalëve me klikim të dyfishtë
+sr-rs:Укључи/искључи претрагу речи двоструким кликом
+sv:Växla orduppslag med dubbelklick
+ta:இரட்டை கிளிக் சொல் தேடலை மாற்று
+th:สลับการค้นหาคำด้วยดับเบิลคลิก
+tl:I-toggle ang paghahanap ng salita sa double-click
+tr:Çift tıklama sözcük aramayı aç/kapat
+tw:開啟/關閉雙擊查詞
+uk:Увімк./вимк. пошук слова подвійним клацанням
+uz:Ikki marta bosib so‘z qidirishni yoqish/o‘chirish
+vn:Bật/tắt tra từ bằng nhấp đúp
+:Toggle &Light/Dark Theme
+af:Wissel lig/donker tema
+am:Միացնել/անջատել բաց/մուգ թեմա
+ar:تبديل السمة الفاتحة/الداكنة
+az:Açıq/tünd mövzunu dəyiş
+bg:Превключване на светла/тъмна тема
+bn:হালকা/গাঢ় থিম টগল করুন
+br:Ativar/Desativar tema claro/escuro
+bs:Uključi/isključi svijetlu/tamnu temu
+by:Пераключыць светлую/цёмную тэму
+ca:Commuta el tema clar/fosc
+ca-xv:Commuta tema clar/fosc
+cn:切换亮/暗主题
+co:Attivà o disattivà u tema chjaru/scuru
+cy:Toglo thema golau/tywyll
+cz:Přepnout světlý/tmavý motiv
+de:Hell/Dunkel umschalten
+dk:Skift lyst/mørkt tema
+el:Εναλλαγή φωτεινού/σκοτεινού θέματος
+es:Alternar tema claro/oscuro
+et:Lülita hele/tume teema
+eu:Txandakatu gaia argia/iluna
+fa:تغییر پوسته روشن/تیره
+fi:Vaihda vaalea/tumma teema
+fo:Skifta ljóst/myrt tema
+fr:Activer/Désactiver thème clair/sombre
+fy-nl:Ljocht/donker tema wikselje
+ga:Scoránaigh téama geal/dorcha
+gl:Alternar tema claro/escuro
+he:החלף ערכת נושא בהירה/כהה
+hi:हल्का/गहरा थीम टॉगल करें
+hr:Uključi/isključi svijetlu/tamnu temu
+hu:Világos/sötét téma kapcsolása
+id:Alihkan tema terang/gelap
+it:Commuta tema chiaro/scuro
+ja:ライト/ダークテーマの切り替え
+jv:Ganti tema terang/peteng
+ka:ღია/მუქი თემის ჩართვა/გამორთვა
+kr:밝/어두 테마 전환
+ku:Rûkara ron/a tarî biguherîne
+kw:Kestolya tewlen golow/tewl
+lt:Perjungti šviesią/tamsią temą
+lv:Pārslēgt gaišu/tumšu tēmu
+mk:Вклучи/исклучи светла/темна тема
+ml:തിളക്കമുള്ള/ഇരുണ്ട തീം മാറ്റുക
+mm:အလင်း/အမှောင် အပြင်အဆင် ပြောင်းလဲပါ
+my:အလင်း/အမှောင် အပြင်အဆင် ဖွင့်/ပိ
+ne:उज्यालो/गाढा थिम टगल गर्नुहोस्
+nl:Licht/donker thema wisselen
+nn:Slå av/på lyst/mørkt tema
+no:Slå av/på lyst/mørkt tema
+pa:ਹਲਕਾ/ਗੂੜ੍ਹਾ ਥੀਮ ਟੌਗਲ ਕਰੋ
+pl:Przełącz jasny/ciemny motyw
+pt:Alternar tema claro/escuro
+ro:Comută tema deschisă/întunecată
+ru:Переключить светлую/тёмную тему
+sat:ᱞᱟᱹᱜᱤᱡ/ᱧᱩᱛ ᱛᱷᱤᱢ ᱴᱚᱜᱚᱞ ᱢᱮ
+si:දිවා/අඳුරු තේමාව සක්‍රීය/අක්‍රීය කරන්න
+sk:Prepnúť svetlý/tmavý motív
+sl:Preklopi svetlo/temno temo
+sn:Shandura dingindira rakanaka/rima
+sp-rs:Uključi/isključi svetlu/tamnu temu
+sq:Aktivizo/Çaktivizo temën e çelët/të errët
+sr-rs:Укључи/искључи светлу/тамну тему
+sv:Växla ljust/mörkt tema
+ta:வெளிர/இருள் தீமை மாற்று
+th:สลับธีมสว่าง/มืด
+tl:I-toggle ang light/dark theme
+tr:Açık/koyu temayı aç/kapat
+tw:切換亮/暗主題
+uk:Перемкнути світлу/темну тему
+uz:Yorug‘/qorong‘i mavzuni almashtirish
+vn:Bật/tắt giao diện sáng/tối
+:&Dark Theme
+af:Donker tema
+am:Մուգ թեմա
+ar:السمة الداكنة
+az:Tünd mövzu
+bg:Тъмна тема
+bn:গাঢ় থিম
+br:Tema escuro
+bs:Tamna tema
+by:Цёмная тэма
+ca:Tema fosc
+ca-xv:Tema fosc
+cn:暗色主题
+co:Tema scuru
+cy:Thema tywyll
+cz:Tmavý motiv
+de:Dunkles Design
+dk:Mørkt tema
+el:Σκοτεινό θέμα
+es:Tema oscuro
+et:Tume teema
+eu:Gai iluna
+fa:پوسته تیره
+fi:Tumma teema
+fo:Myrkt tema
+fr:Thème sombre
+fy-nl:Donker tema
+ga:Téama dorcha
+gl:Tema escuro
+he:ערכת נושא כהה
+hi:गहरा थीम
+hr:Tamna tema
+hu:Sötét téma
+id:Tema gelap
+it:Tema scuro
+ja:ダークテーマ
+jv:Tema peteng
+ka:მუქი თემა
+kr:어두운 테마
+ku:Rûkara tarî
+kw:Tewlen tewl
+lt:Tamsi tema
+lv:Tumša tēma
+mk:Темна тема
+ml:ഇരുണ്ട തീം
+mm:အမှောင် အပြင်အဆင်
+my:အမှောင် အပြင်အဆင်
+ne:गाढा थिम
+nl:Donker thema
+nn:Mørkt tema
+no:Mørkt tema
+pa:ਗੂੜ੍ਹਾ ਥੀਮ
+pl:Ciemny motyw
+pt:Tema escuro
+ro:Temă întunecată
+ru:Тёмная тема
+sat:ᱧᱩᱛ ᱛᱷᱤᱢ
+si:අඳුරු තේමාව
+sk:Tmavý motív
+sl:Temna tema
+sn:Dingindira rima
+sp-rs:Tamna tema
+sq:Temë e errët
+sr-rs:Тамна тема
+sv:Mörkt tema
+ta:இருள் தீம்
+th:ธีมมืด
+tl:Madilim na tema
+tr:Koyu tema
+tw:暗色主題
+uk:Темна тема
+uz:Qorong‘i mavzu
+vn:Giao diện tối
+:&Light Theme
+af:Lig tema
+am:Բաց թեմա
+ar:السمة الفاتحة
+az:Açıq mövzu
+bg:Светла тема
+bn:হালকা থিম
+br:Tema claro
+bs:Svijetla tema
+by:Светлая тэма
+ca:Tema clar
+ca-xv:Tema clar
+cn:亮色主题
+co:Tema chjaru
+cy:Thema golau
+cz:Světlý motiv
+de:Helles Design
+dk:Lyst tema
+el:Φωτεινό θέμα
+es:Tema claro
+et:Hele teema
+eu:Gai argia
+fa:پوسته روشن
+fi:Vaalea teema
+fo:Ljóst tema
+fr:Thème clair
+fy-nl:Ljocht tema
+ga:Téama geal
+gl:Tema claro
+he:ערכת נושא בהירה
+hi:हल्का थीम
+hr:Svijetla tema
+hu:Világos téma
+id:Tema terang
+it:Tema chiaro
+ja:ライトテーマ
+jv:Tema terang
+ka:ღია თემა
+kr:밝은 테마
+ku:Rûkara ron
+kw:Tewlen golow
+lt:Šviesi tema
+lv:Gaiša tēma
+mk:Светла тема
+ml:തിളക്കമുള്ള തീം
+mm:အလင်း အပြင်အဆင်
+my:အလင်း အပြင်အဆင်
+ne:उज्यालो थिम
+nl:Licht thema
+nn:Lyst tema
+no:Lyst tema
+pa:ਹਲਕਾ ਥੀਮ
+pl:Jasny motyw
+pt:Tema claro
+ro:Temă deschisă
+ru:Светлая тема
+sat:ᱞᱟᱹᱜᱤᱡ ᱛᱷᱤᱢ
+si:දිවා තේමාව
+sk:Svetlý motív
+sl:Svetla tema
+sn:Dingindira rakanaka
+sp-rs:Svetla tema
+sq:Temë e çelët
+sr-rs:Светла тема
+sv:Ljust tema
+ta:வெளிர் தீம்
+th:ธีมสว่าง
+tl:Maliwanag na tema
+tr:Açık tema
+tw:亮色主題
+uk:Світла тема
+uz:Yorug‘ mavzu
+vn:Giao diện sáng
+:Double-Click Word Lookup (enabled)
+af:Dubbelklik-woordopsoek (aan)
+am:Կրկնակի սեղմումով բառային որոնում (միաց.)
+ar:البحث بالنقر المزدوج (مفعّل)
+az:Cüt kliklə söz axtarışı (aktiv)
+bg:Търсене с двойно щракване (вкл.)
+bn:ডাবল-ক্লিক শব্দ অনুসন্ধান (চালু)
+br:Pesquisa por duplo clique (ativada)
+bs:Pretraga dvostrukim klikom (uključeno)
+by:Пошук двойчым пстрыканнем (укл.)
+ca:Cerca per doble clic (activada)
+ca-xv:Cerca doble clic (activada)
+cn:双击查词（已开启）
+co:Ricerca doppiu cliccu (attivata)
+cy:Chwilio geiriau dwbl (wedi'i droi ymlaen)
+cz:Vyhledávání dvojitým kliknutím (zap.)
+de:Doppelklick-Wortsuche (ein)
+dk:Opslag ved dobbeltklik (til)
+el:Αναζήτηση διπλού κλικ (ενεργή)
+es:Búsqueda con doble clic (activada)
+et:Topeltklõpsuga otsing (sees)
+eu:Klik bikoitzeko bilaketa (aktibatuta)
+fa:جستجوی دوبار کلیک (فعال)
+fi:Kaksoisnapsautuksen haku (päällä)
+fo:Orðaleiting við tveyfalt klikk (kveikt)
+fr:Recherche par double-clic (activée)
+fy-nl:Dûbelklik-wurdsyk (oan)
+ga:Cuardach déchliceála (cumasaithe)
+gl:Busca con doble clic (activada)
+he:חיפוש בלחיצה כפולה (פעיל)
+hi:डबल-क्लिक शब्द खोज (चालू)
+hr:Pretraživanje dvostrukim klikom (uključeno)
+hu:Dupla kattintásos keresés (be)
+id:Pencarian klik ganda (aktif)
+it:Ricerca con doppio clic (attiva)
+ja:ダブルクリック辞書検索（オン）
+jv:Panelusuran klik ganda (urip)
+ka:ორმაგი დაწკაპუნების ძებნა (ჩართ.)
+kr:더블클릭 단어 찾기 (켜짐)
+ku:Lêgerîna du car klîk (vekirî)
+kw:Hwilas gerow klik dewblek (byw)
+lt:Paieška dvigubu spustelėjimu (įj.)
+lv:Meklēšana ar dubultklikšķi (iesl.)
+mk:Пребарување со двоен клик (вкл.)
+ml:ഇരട്ടക്ലിക്ക് തിരയൽ (ഓൺ)
+mm:နှစ်ချက်နှိပ်ရှာဖွေမှု (ဖွင့်)
+my:နှစ်ချက်နှိပ်ရှာဖွေမှု (ဖွင့်)
+ne:डबल-क्लिक शब्द खोज (सक्रिय)
+nl:Dubbelklik woordopzoeking (aan)
+nn:Oppslag ved dobbeltklikk (på)
+no:Oppslag ved dobbeltklikk (på)
+pa:ਡਬਲ-ਕਲਿਕ ਸ਼ਬਦ ਖੋਜ (ਚਾਲੂ)
+pl:Wyszukiwanie dwuklikiem (włączone)
+pt:Pesquisa com duplo clique (ativada)
+ro:Căutare prin dublu clic (activată)
+ru:Поиск двойным щелчком (вкл.)
+sat:ᱵᱟᱲᱟᱭ ᱠᱞᱤᱠ ᱟᱹᱨᱩ (ᱪalu)
+si:දෙවරක් ක්ලික් සෙවීම (සක්‍රීය)
+sk:Vyhľadávanie dvojitým kliknutím (zap.)
+sl:Iskanje z dvojnim klikom (vklop.)
+sn:Kutsvaga nekukanda kaviri (zvakavhura)
+sp-rs:Pretraga dvostrukim klikom (uključeno)
+sq:Kërkim me klikim të dyfishtë (aktiv)
+sr-rs:Претрага двоструким кликом (укл.)
+sv:Orduppslag med dubbelklick (på)
+ta:இரட்டை கிளிக் தேடல் (இயக்க.)
+th:ค้นหาคำด้วยดับเบิลคลิก (เปิด)
+tl:Paghahanap sa double-click (naka-on)
+tr:Çift tıklama arama (açık)
+tw:雙擊查詞（已開啟）
+uk:Пошук подвійним клацанням (увімк.)
+uz:Ikki marta bosib qidirish (yoq.)
+vn:Tra từ nhấp đúp (bật)
+:Double-Click Word Lookup (disabled)
+af:Dubbelklik-woordopsoek (af)
+am:Կրկնակի սեղմումով բառային որոնում (անջ.)
+ar:البحث بالنقر المزدوج (معطّل)
+az:Cüt kliklə söz axtarışı (deaktiv)
+bg:Търсене с двойно щракване (изкл.)
+bn:ডাবল-ক্লিক শব্দ অনুসন্ধান (বন্ধ)
+br:Pesquisa por duplo clique (desativada)
+bs:Pretraga dvostrukim klikom (isključeno)
+by:Пошук двойчым пстрыканнем (выкл.)
+ca:Cerca per doble clic (desactivada)
+ca-xv:Cerca doble clic (desactivada)
+cn:双击查词（已关闭）
+co:Ricerca doppiu cliccu (disattivata)
+cy:Chwilio geiriau dwbl (wedi'i droi i ffwrdd)
+cz:Vyhledávání dvojitým kliknutím (vyp.)
+de:Doppelklick-Wortsuche (aus)
+dk:Opslag ved dobbeltklik (fra)
+el:Αναζήτηση διπλού κλικ (ανενεργή)
+es:Búsqueda con doble clic (desactivada)
+et:Topeltklõpsuga otsing (väljas)
+eu:Klik bikoitzeko bilaketa (desaktibatuta)
+fa:جستجوی دوبار کلیک (غیرفعال)
+fi:Kaksoisnapsautuksen haku (pois)
+fo:Orðaleiting við tveyfalt klikk (sløkt)
+fr:Recherche par double-clic (désactivée)
+fy-nl:Dûbelklik-wurdsyk (út)
+ga:Cuardach déchliceála (díchumasaithe)
+gl:Busca con doble clic (desactivada)
+he:חיפוש בלחיצה כפולה (כבוי)
+hi:डबल-क्लिक शब्द खोज (बंद)
+hr:Pretraživanje dvostrukim klikom (isključeno)
+hu:Dupla kattintásos keresés (ki)
+id:Pencarian klik ganda (nonaktif)
+it:Ricerca con doppio clic (disattiva)
+ja:ダブルクリック辞書検索（オフ）
+jv:Panelusuran klik ganda (mati)
+ka:ორმაგი დაწკაპუნების ძებნა (გამ.)
+kr:더블클릭 단어 찾기 (꺼짐)
+ku:Lêgerîna du car klîk (girtî)
+kw:Hwilas gerow klik dewblek (marow)
+lt:Paieška dvigubu spustelėjimu (išj.)
+lv:Meklēšana ar dubultklikšķi (izsl.)
+mk:Пребарување со двоен клик (искл.)
+ml:ഇരട്ടക്ലിക്ക് തിരയൽ (ഓഫ്)
+mm:နှစ်ချက်နှိပ်ရှာဖွေမှု (ပိ)
+my:နှစ်ချက်နှိပ်ရှာဖွေမှု (ပိ)
+ne:डबल-क्लिक शब्द खोज (निष्क्रिय)
+nl:Dubbelklik woordopzoeking (uit)
+nn:Oppslag ved dobbeltklikk (av)
+no:Oppslag ved dobbeltklikk (av)
+pa:ਡਬਲ-ਕਲਿਕ ਸ਼ਬਦ ਖੋਜ (ਬੰਦ)
+pl:Wyszukiwanie dwuklikiem (wyłączone)
+pt:Pesquisa com duplo clique (desativada)
+ro:Căutare prin dublu clic (dezactivată)
+ru:Поиск двойным щелчком (выкл.)
+sat:ᱵᱟᱲᱟᱭ ᱠᱞᱤᱠ ᱟᱹᱨᱩ (band)
+si:දෙවරක් ක්ලික් සෙවීම (අක්‍රීය)
+sk:Vyhľadávanie dvojitým kliknutím (vyp.)
+sl:Iskanje z dvojnim klikom (izklop.)
+sn:Kutsvaga nekukanda kaviri (zvakavharwa)
+sp-rs:Pretraga dvostrukim klikom (isključeno)
+sq:Kërkim me klikim të dyfishtë (joaktiv)
+sr-rs:Претрага двоструким кlikом (искл.)
+sv:Orduppslag med dubbelklick (av)
+ta:இரட்டை கிளிக் தேடல் (அண.)
+th:ค้นหาคำด้วยดับเบิลคลิก (ปิด)
+tl:Paghahanap sa double-click (naka-off)
+tr:Çift tıklama arama (kapalı)
+tw:雙擊查詞（已關閉）
+uk:Пошук подвійним клацанням (вимк.)
+uz:Ikki marta bosib qidirish (o‘ch.)
+vn:Tra từ nhấp đúp (tắt)
+:Toggle light/dark theme
+af:Wissel lig/donker tema
+am:Միացնել/անջատել բաց/մուգ թեմա
+ar:تبديل السمة الفاتحة/الداكنة
+az:Açıq/tünd mövzunu dəyiş
+bg:Превключване на светла/тъмна тема
+bn:হালকা/গাঢ় থিম টগল করুন
+br:Ativar/Desativar tema claro/escuro
+bs:Uključi/isključi svijetlu/tamnu temu
+by:Пераключыць светлую/цёмную тэму
+ca:Commuta el tema clar/fosc
+ca-xv:Commuta tema clar/fosc
+cn:切换亮/暗主题
+co:Attivà o disattivà u tema chjaru/scuru
+cy:Toglo thema golau/tywyll
+cz:Přepnout světlý/tmavý motiv
+de:Hell/Dunkel umschalten
+dk:Skift lyst/mørkt tema
+el:Εναλλαγή φωτεινού/σκοτεινού θέματος
+es:Alternar tema claro/oscuro
+et:Lülita hele/tume teema
+eu:Txandakatu gaia argia/iluna
+fa:تغییر پوسته روشن/تیره
+fi:Vaihda vaalea/tumma teema
+fo:Skifta ljóst/myrt tema
+fr:Activer/Désactiver thème clair/sombre
+fy-nl:Ljocht/donker tema wikselje
+ga:Scoránaigh téama geal/dorcha
+gl:Alternar tema claro/escuro
+he:החלף ערכת נושא בהירה/כהה
+hi:हल्का/गहरा थीम टॉगल करें
+hr:Uključi/isključi svijetlu/tamnu temu
+hu:Világos/sötét téma kapcsolása
+id:Alihkan tema terang/gelap
+it:Commuta tema chiaro/scuro
+ja:ライト/ダークテーマの切り替え
+jv:Ganti tema terang/peteng
+ka:ღია/მუქი თემის ჩართვა/გამორთვა
+kr:밝/어두 테마 전환
+ku:Rûkara ron/a tarî biguherîne
+kw:Kestolya tewlen golow/tewl
+lt:Perjungti šviesią/tamsią temą
+lv:Pārslēgt gaišu/tumšu tēmu
+mk:Вклучи/исклучи светла/темна тема
+ml:തിളക്കമുള്ള/ഇരുണ്ട തീം മാറ്റുക
+mm:အလင်း/အမှောင် အပြင်အဆင် ပြောင်းလဲပါ
+my:အလင်း/အမှောင် အပြင်အဆင် ဖွင့်/ပိ
+ne:उज्यालो/गाढा थिम टगल गर्नुहोस्
+nl:Licht/donker thema wisselen
+nn:Slå av/på lyst/mørkt tema
+no:Slå av/på lyst/mørkt tema
+pa:ਹਲਕਾ/ਗੂੜ੍ਹਾ ਥੀਮ ਟੌਗਲ ਕਰੋ
+pl:Przełącz jasny/ciemny motyw
+pt:Alternar tema claro/escuro
+ro:Comută tema deschisă/întunecată
+ru:Переключить светлую/тёмную тему
+sat:ᱞᱟᱹᱜᱤᱡ/ᱧᱩᱛ ᱛᱷᱤᱢ ᱴᱚᱜᱚᱞ ᱢᱮ
+si:දිවා/අඳුරු තේමාව සක්‍රීය/අක්‍රීය කරන්න
+sk:Prepnúť svetlý/tmavý motív
+sl:Preklopi svetlo/temno temo
+sn:Shandura dingindira rakanaka/rima
+sp-rs:Uključi/isključi svetlu/tamnu temu
+sq:Aktivizo/Çaktivizo temën e çelët/të errët
+sr-rs:Укључи/искључи светлу/тамну тему
+sv:Växla ljust/mörkt tema
+ta:வெளிர/இருள் தீமை மாற்று
+th:สลับธีมสว่าง/มืด
+tl:I-toggle ang light/dark theme
+tr:Açık/koyu temayı aç/kapat
+tw:切換亮/暗主題
+uk:Перемкнути світлу/темну тему
+uz:Yorug‘/qorong‘i mavzuni almashtirish
+vn:Bật/tắt giao diện sáng/tối
 :Toggle Menu Bar
 af:Wissel Kieslysbalk
 am:Ցանկի վահանակի միացում/անջատում

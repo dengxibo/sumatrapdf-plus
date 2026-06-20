@@ -367,6 +367,7 @@ void UpdateToolbarButtonsToolTipsForWindow(MainWindow* win) {
         TbSetButtonInfoById(hwnd, buttonId, &binfo);
     }
     UpdateThemeToolbarButton(win);
+    UpdateDoubleClickWordLookupToolbarButton(win);
 #if 0
     if (gCustomToolbarButtons) {
         int n = gCustomToolbarButtons->Size();
@@ -1257,6 +1258,11 @@ void UpdateToolbarPageText(MainWindow* win, int pageCount, bool updateOnly) {
     }
     size2.dx += padX;
     size2.dx += DpiScale(win->hwndFrame, kButtonSpacingX);
+
+    if (win->ctrl && pageCount > 0 && win->ctrl->ValidPageNo(win->ctrl->CurrentPageNo())) {
+        TempStr label = win->ctrl->GetPageLabeTemp(win->ctrl->CurrentPageNo());
+        HwndSetText(win->hwndPageEdit, label);
+    }
 
     int padding = GetSystemMetrics(SM_CXEDGE);
     int x = currX - 1;

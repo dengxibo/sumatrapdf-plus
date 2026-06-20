@@ -1779,6 +1779,37 @@ int CmpPageLabelInfo(const void* a, const void* b) {
     return ((PageLabelInfo*)a)->startAt - ((PageLabelInfo*)b)->startAt;
 }
 
+// Some PDFs (often scanned ebooks) assign a separate PageLabels entry to
+// almost every page with only a custom prefix and no numbering style (/S).
+// These aren't meaningful page numbers and break the toolbar display.
+static bool IsPerPagePrefixOnlyLabels(const Vec<PageLabelInfo>& data, int pageCount) {
+    size_t n = data.size();
+    if (n < 16 || pageCount <= 0 || (int)n < pageCount / 4) {
+        return false;
+    }
+    int prefixOnly = 0;
+    for (size_t i = 0; i < n; i++) {
+        const PageLabelInfo& pli = data.at(i);
+        if ((!pli.type || !*pli.type) && pli.prefix) {
+            prefixOnly++;
+        }
+    }
+    return prefixOnly * 4 >= (int)n * 3;
+}
+
+static bool PageLabelsContainInternalPdgNames(StrVec* labels, int pageCount) {
+    int n = labels->Size();
+    int samples = std::min(n, pageCount);
+    samples = std::min(samples, 32);
+    for (int i = 0; i < samples; i++) {
+        const char* label = labels->At(i);
+        if (label && str::ContainsI(label, ".pdg")) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static TempStr FormatPageLabelTemp(const char* type, int pageNo, const char* prefix) {
     if (str::Eq(type, "D")) {
         return str::FormatTemp("%s%d", prefix, pageNo);
@@ -1888,6 +1919,9 @@ static StrVec* BuildPageLabelVec(fz_context* ctx, pdf_obj* root, int pageCount) 
         // this is the default case, no need for special treatment
         return nullptr;
     }
+    if (IsPerPagePrefixOnlyLabels(data, pageCount)) {
+        return nullptr;
+    }
 
     StrVec* labels = new StrVec();
     for (int i = 0; i < pageCount; i++) {
@@ -1916,6 +1950,10 @@ static StrVec* BuildPageLabelVec(fz_context* ctx, pdf_obj* root, int pageCount) 
     }
 
     EnsureLabelsUnique(labels);
+    if (PageLabelsContainInternalPdgNames(labels, pageCount)) {
+        delete labels;
+        return nullptr;
+    }
     return labels;
 }
 struct PageTreeStackItem {
@@ -5947,6 +5985,9 @@ TempStr EngineMupdf::GetPageLabeTemp(int pageNo) const {
     }
 
     char* res = pageLabels->At(pageNo - 1);
+    if (str::IsEmpty(res) || str::ContainsI(res, ".pdg")) {
+        return EngineBase::GetPageLabeTemp(pageNo);
+    }
     return res;
 }
 
