@@ -18,7 +18,10 @@
 #include "GlobalPrefs.h"
 #include "SumatraPDF.h"
 #include "MainWindow.h"
+#include "DocController.h"
 #include "EngineBase.h"
+#include "EngineAll.h"
+#include "DisplayModel.h"
 #include "TextSelection.h"
 #include "Theme.h"
 #include "Translations.h"
@@ -28,8 +31,6 @@
 #include "DarkModeSubclass.h"
 
 #include "utils/Log.h"
-
-#include <cstdio>
 
 #include <algorithm>
 
@@ -385,6 +386,28 @@ void CloseWordLookup() {
     ScheduleDeleteWordLookupWnd();
 }
 
+void RefreshWordLookupTheme() {
+    WordLookupWnd* wnd = gWordLookupWnd;
+    if (!wnd || !wnd->hwnd) {
+        return;
+    }
+    HWND popupHwnd = wnd->hwnd;
+    COLORREF colTxt = LookupTextColor();
+    COLORREF colBg = LookupCardBg();
+    wnd->SetColors(colTxt, colBg);
+    if (UseDarkModeLib()) {
+        if (ThemeUsesDarkChrome()) {
+            DarkMode::setDarkWndSafe(popupHwnd);
+        } else {
+            DarkMode::removeWindowCtlColorSubclass(popupHwnd);
+            DarkMode::setDarkTitleBarEx(popupHwnd, true);
+        }
+    }
+    wnd->UpdateChrome();
+    uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN;
+    RedrawWindow(popupHwnd, nullptr, nullptr, flags);
+}
+
 static bool IsAudioReady(const DictSense* sense) {
     return HasAudioMeta(sense);
 }
@@ -732,16 +755,13 @@ static void AddIrregularPluralFallbacks(StrVec& candidates, const char* word) {
         AppendLookupCandidate(candidates, base);
     }
     static const char* kIrregularPlurals[][2] = {
-            {"children", "child"},   {"feet", "foot"},         {"teeth", "tooth"},
-            {"geese", "goose"},      {"mice", "mouse"},        {"oxen", "ox"},
-            {"people", "person"},    {"leaves", "leaf"},       {"lives", "life"},
-            {"loaves", "loaf"},      {"knives", "knife"},      {"wives", "wife"},
-            {"wolves", "wolf"},      {"halves", "half"},       {"calves", "calf"},
-            {"shelves", "shelf"},    {"thieves", "thief"},     {"selves", "self"},
-            {"criteria", "criterion"}, {"phenomena", "phenomenon"}, {"bacteria", "bacterium"},
-            {"fungi", "fungus"},     {"cacti", "cactus"},      {"foci", "focus"},
-            {"alumni", "alumnus"},   {"syllabi", "syllabus"},  {"nuclei", "nucleus"},
-            {"stimuli", "stimulus"},
+        {"children", "child"},     {"feet", "foot"},        {"teeth", "tooth"},        {"geese", "goose"},
+        {"mice", "mouse"},         {"oxen", "ox"},          {"people", "person"},      {"leaves", "leaf"},
+        {"lives", "life"},         {"loaves", "loaf"},      {"knives", "knife"},       {"wives", "wife"},
+        {"wolves", "wolf"},        {"halves", "half"},      {"calves", "calf"},        {"shelves", "shelf"},
+        {"thieves", "thief"},      {"selves", "self"},      {"criteria", "criterion"}, {"phenomena", "phenomenon"},
+        {"bacteria", "bacterium"}, {"fungi", "fungus"},     {"cacti", "cactus"},       {"foci", "focus"},
+        {"alumni", "alumnus"},     {"syllabi", "syllabus"}, {"nuclei", "nucleus"},     {"stimuli", "stimulus"},
     };
     for (size_t i = 0; i < dimof(kIrregularPlurals); i++) {
         if (str::Eq(word, kIrregularPlurals[i][0])) {
@@ -752,53 +772,41 @@ static void AddIrregularPluralFallbacks(StrVec& candidates, const char* word) {
 
 static void AddIrregularVerbFallbacks(StrVec& candidates, const char* word) {
     static const char* kIrregularVerbs[][2] = {
-            {"arisen", "arise"},     {"arose", "arise"},       {"awoken", "awake"},
-            {"awoke", "awake"},      {"beaten", "beat"},       {"became", "become"},
-            {"been", "be"},          {"begun", "begin"},       {"began", "begin"},
-            {"bent", "bend"},        {"bidden", "bid"},        {"bitten", "bite"},
-            {"blown", "blow"},       {"blew", "blow"},         {"broken", "break"},
-            {"brought", "bring"},    {"built", "build"},       {"bought", "buy"},
-            {"caught", "catch"},     {"chosen", "choose"},     {"chose", "choose"},
-            {"came", "come"},        {"dealt", "deal"},        {"dug", "dig"},
-            {"done", "do"},          {"did", "do"},            {"drawn", "draw"},
-            {"drew", "draw"},        {"dreamt", "dream"},      {"driven", "drive"},
-            {"drove", "drive"},      {"drunk", "drink"},       {"drank", "drink"},
-            {"eaten", "eat"},        {"ate", "eat"},           {"fallen", "fall"},
-            {"fell", "fall"},        {"fed", "feed"},          {"felt", "feel"},
-            {"fought", "fight"},     {"flown", "fly"},         {"flew", "fly"},
-            {"forbidden", "forbid"}, {"forgotten", "forget"},  {"forgot", "forget"},
-            {"forgiven", "forgive"},{"froze", "freeze"},      {"frozen", "freeze"},
-            {"given", "give"},       {"gave", "give"},         {"gone", "go"},
-            {"went", "go"},          {"grown", "grow"},        {"grew", "grow"},
-            {"had", "have"},         {"heard", "hear"},        {"held", "hold"},
-            {"hidden", "hide"},      {"hid", "hide"},          {"kept", "keep"},
-            {"knelt", "kneel"},      {"known", "know"},        {"knew", "know"},
-            {"laid", "lay"},         {"led", "lead"},          {"leant", "lean"},
-            {"leapt", "leap"},       {"learnt", "learn"},      {"lent", "lend"},
-            {"lost", "lose"},        {"made", "make"},         {"meant", "mean"},
-            {"met", "meet"},         {"mistaken", "mistake"},  {"mistook", "mistake"},
-            {"paid", "pay"},         {"proven", "prove"},      {"ridden", "ride"},
-            {"rode", "ride"},        {"risen", "rise"},        {"rang", "ring"},
-            {"rung", "ring"},        {"ran", "run"},           {"said", "say"},
-            {"seen", "see"},         {"saw", "see"},           {"sold", "sell"},
-            {"sent", "send"},        {"sewn", "sew"},          {"shaken", "shake"},
-            {"shook", "shake"},      {"shaven", "shave"},      {"shone", "shine"},
-            {"shown", "show"},       {"shrank", "shrink"},     {"shrunk", "shrink"},
-            {"slept", "sleep"},      {"slid", "slide"},        {"slung", "sling"},
-            {"smelt", "smell"},      {"sought", "seek"},       {"spoken", "speak"},
-            {"spent", "spend"},      {"spilt", "spill"},       {"spoilt", "spoil"},
-            {"sprung", "spring"},    {"stood", "stand"},       {"stolen", "steal"},
-            {"stole", "steal"},      {"stuck", "stick"},       {"stung", "sting"},
-            {"struck", "strike"},    {"strung", "string"},     {"striven", "strive"},
-            {"strove", "strive"},    {"sworn", "swear"},       {"swore", "swear"},
-            {"swept", "sweep"},      {"swollen", "swell"},     {"swam", "swim"},
-            {"swum", "swim"},        {"swung", "swing"},       {"taken", "take"},
-            {"took", "take"},        {"taught", "teach"},      {"told", "tell"},
-            {"thought", "think"},    {"threw", "throw"},       {"thrown", "throw"},
-            {"torn", "tear"},        {"trod", "tread"},        {"understood", "understand"},
-            {"woken", "wake"},       {"woke", "wake"},         {"worn", "wear"},
-            {"wove", "weave"},       {"woven", "weave"},       {"won", "win"},
-            {"written", "write"},    {"wrote", "write"},
+        {"arisen", "arise"},  {"arose", "arise"},      {"awoken", "awake"},     {"awoke", "awake"},
+        {"beaten", "beat"},   {"became", "become"},    {"been", "be"},          {"begun", "begin"},
+        {"began", "begin"},   {"bent", "bend"},        {"bidden", "bid"},       {"bitten", "bite"},
+        {"blown", "blow"},    {"blew", "blow"},        {"broken", "break"},     {"brought", "bring"},
+        {"built", "build"},   {"bought", "buy"},       {"caught", "catch"},     {"chosen", "choose"},
+        {"chose", "choose"},  {"came", "come"},        {"dealt", "deal"},       {"dug", "dig"},
+        {"done", "do"},       {"did", "do"},           {"drawn", "draw"},       {"drew", "draw"},
+        {"dreamt", "dream"},  {"driven", "drive"},     {"drove", "drive"},      {"drunk", "drink"},
+        {"drank", "drink"},   {"eaten", "eat"},        {"ate", "eat"},          {"fallen", "fall"},
+        {"fell", "fall"},     {"fed", "feed"},         {"felt", "feel"},        {"fought", "fight"},
+        {"flown", "fly"},     {"flew", "fly"},         {"forbidden", "forbid"}, {"forgotten", "forget"},
+        {"forgot", "forget"}, {"forgiven", "forgive"}, {"froze", "freeze"},     {"frozen", "freeze"},
+        {"given", "give"},    {"gave", "give"},        {"gone", "go"},          {"went", "go"},
+        {"grown", "grow"},    {"grew", "grow"},        {"had", "have"},         {"heard", "hear"},
+        {"held", "hold"},     {"hidden", "hide"},      {"hid", "hide"},         {"kept", "keep"},
+        {"knelt", "kneel"},   {"known", "know"},       {"knew", "know"},        {"laid", "lay"},
+        {"led", "lead"},      {"leant", "lean"},       {"leapt", "leap"},       {"learnt", "learn"},
+        {"lent", "lend"},     {"lost", "lose"},        {"made", "make"},        {"meant", "mean"},
+        {"met", "meet"},      {"mistaken", "mistake"}, {"mistook", "mistake"},  {"paid", "pay"},
+        {"proven", "prove"},  {"ridden", "ride"},      {"rode", "ride"},        {"risen", "rise"},
+        {"rang", "ring"},     {"rung", "ring"},        {"ran", "run"},          {"said", "say"},
+        {"seen", "see"},      {"saw", "see"},          {"sold", "sell"},        {"sent", "send"},
+        {"sewn", "sew"},      {"shaken", "shake"},     {"shook", "shake"},      {"shaven", "shave"},
+        {"shone", "shine"},   {"shown", "show"},       {"shrank", "shrink"},    {"shrunk", "shrink"},
+        {"slept", "sleep"},   {"slid", "slide"},       {"slung", "sling"},      {"smelt", "smell"},
+        {"sought", "seek"},   {"spoken", "speak"},     {"spent", "spend"},      {"spilt", "spill"},
+        {"spoilt", "spoil"},  {"sprung", "spring"},    {"stood", "stand"},      {"stolen", "steal"},
+        {"stole", "steal"},   {"stuck", "stick"},      {"stung", "sting"},      {"struck", "strike"},
+        {"strung", "string"}, {"striven", "strive"},   {"strove", "strive"},    {"sworn", "swear"},
+        {"swore", "swear"},   {"swept", "sweep"},      {"swollen", "swell"},    {"swam", "swim"},
+        {"swum", "swim"},     {"swung", "swing"},      {"taken", "take"},       {"took", "take"},
+        {"taught", "teach"},  {"told", "tell"},        {"thought", "think"},    {"threw", "throw"},
+        {"thrown", "throw"},  {"torn", "tear"},        {"trod", "tread"},       {"understood", "understand"},
+        {"woken", "wake"},    {"woke", "wake"},        {"worn", "wear"},        {"wove", "weave"},
+        {"woven", "weave"},   {"won", "win"},          {"written", "write"},    {"wrote", "write"},
     };
     for (size_t i = 0; i < dimof(kIrregularVerbs); i++) {
         if (str::Eq(word, kIrregularVerbs[i][0])) {
@@ -1410,9 +1418,9 @@ static void DrawLookupSpeakerIcon(HWND hwnd, HDC dc, const Rect& rc, bool audioR
             float h;
         };
         static const WaveSpec kWaves[] = {
-                {15.f, 9.f, 4.f, 6.f},
-                {17.f, 7.f, 5.f, 10.f},
-                {18.5f, 5.5f, 6.5f, 12.f},
+            {15.f, 9.f, 4.f, 6.f},
+            {17.f, 7.f, 5.f, 10.f},
+            {18.5f, 5.5f, 6.5f, 12.f},
         };
         int waveCount = 2;
         if (playing) {
@@ -1490,11 +1498,13 @@ static int CalcLookupWindowDy(WordLookupWnd* wnd) {
     }
 
     if (wnd->isLoading) {
-        dy += CalcTextDy(hdc, wnd->font, _TRA("Looking up..."), contentDx, DT_WORDBREAK | DT_EDITCONTROL) +
+        TempStr lookingUpText = LookingUpTextTemp(2);
+        dy += CalcTextDy(hdc, wnd->font, lookingUpText, contentDx, DT_WORDBREAK | DT_EDITCONTROL) +
               DpiScale(hwnd, 4);
     } else if (!sense) {
-        dy += CalcTextDy(hdc, wnd->font, _TRA("No definition found."), contentDx, DT_WORDBREAK | DT_EDITCONTROL) +
-              lineDy;
+        TempStr noDefText = str::FormatTemp(_TRA("No definition for \"%s\"."), wnd->queryWord);
+        dy +=
+            CalcTextDy(hdc, wnd->font, noDefText, contentDx, DT_WORDBREAK | DT_EDITCONTROL) + lineDy;
     } else {
         char* defs = BuildDefinitionsText(sense);
         dy += CalcTextDy(hdc, wnd->font, defs, contentDx, DT_WORDBREAK | DT_EDITCONTROL) + lineDy;
@@ -1761,8 +1771,8 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
     int titleRowDy = showSpeaker ? std::max(titleLineDy, iconSz) : titleLineDy;
     int titleRight = showSpeaker ? topRight - iconSz - DpiScale(hwnd, 8) : topRight;
     RECT titleR{x, y, titleRight, y + titleRowDy};
-    int titleDy = DrawLookupText(dc, titleFont, title, &titleR, LookupTextColor(),
-                                 DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    int titleDy =
+        DrawLookupText(dc, titleFont, title, &titleR, LookupTextColor(), DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     SIZE titleSz{};
     HFONT oldTitleFont = (HFONT)SelectObject(dc, titleFont ? titleFont : font);
     const char* titleForMeasure = title ? title : "";
@@ -1810,7 +1820,7 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
         lookingUpText = LookingUpTextTemp(dotPhase);
         statusText = lookingUpText;
     } else if (!sense) {
-        statusText = _TRA("No definition found.");
+        statusText = str::FormatTemp(_TRA("No definition for \"%s\"."), queryWord);
     }
     if (statusText && y < bottom) {
         RECT r{x, y, right, bottom};
@@ -2031,6 +2041,148 @@ static void FetchWordLookupAsync(FetchLookupData* d) {
     uitask::Post(uiFn, "WordLookupResult");
 }
 
+// stext / DrawInstr bboxes use line or em-box height; shrink selection chrome only.
+static void TightenWordLookupHighlightBox(RectF* r, int charCount) {
+    if (!r || r->dy <= 1.f || charCount <= 0) {
+        return;
+    }
+    float targetDy = r->dy;
+    if (r->dx > 0.f) {
+        float avgW = r->dx / (float)charCount;
+        float capDy = avgW * 1.1f;
+        if (capDy >= 2.f && capDy < targetDy) {
+            targetDy = capDy;
+        }
+    }
+    float insetDy = r->dy * 0.18f;
+    if (insetDy >= 1.f) {
+        float fromInset = r->dy - 2.f * insetDy;
+        if (fromInset < targetDy) {
+            targetDy = fromInset;
+        }
+    }
+    if (targetDy >= r->dy - 0.5f) {
+        return;
+    }
+    float pad = (r->dy - targetDy) * 0.5f;
+    r->y += pad;
+    r->dy = targetDy;
+}
+
+static RectF WordLookupHighlightFromCoords(const Rect* coords, int start, int end) {
+    Rect bbox;
+    bool any = false;
+    for (int i = start; i < end; i++) {
+        const Rect& c = coords[i];
+        if (!c.x && !c.dx) {
+            continue;
+        }
+        bbox = any ? bbox.Union(c) : c;
+        any = true;
+    }
+    if (!any) {
+        return RectF();
+    }
+    return ToRectF(bbox);
+}
+
+bool ShowEbookWordLookupAt(MainWindow* win, DisplayModel* dm, int pageNo, PointF pagePt, Point screenPos) {
+    if (!win || !dm) {
+        return false;
+    }
+    TextSelection* ts = dm->textSelection;
+    EngineBase* engine = dm->GetEngine();
+    if (!ts || !engine || !EngineIsFixedLayoutEbook(engine)) {
+        return false;
+    }
+    if (!AnyOfflineDictionaryLoaded()) {
+        return false;
+    }
+
+    EbookTextHit hit;
+    if (!EngineEbookHitTestText(engine, pageNo, pagePt, &hit)) {
+        return false;
+    }
+
+    TempWStr run = EngineEbookGetRunTextTemp(engine, pageNo, hit.instrIndex);
+    int runLen = run ? str::Leni(run) : 0;
+    if (!run || runLen <= 0 || hit.charIndex < 0 || hit.charIndex >= runLen) {
+        return false;
+    }
+
+    WCHAR clickChar = run[hit.charIndex];
+    char* matchedWord = nullptr;
+    int matchStart = hit.charIndex;
+    int matchEnd = hit.charIndex + 1;
+
+    if (isCjkWordChar(clickChar) && LoadOfflineDictionaryZh()) {
+        int winStart = hit.charIndex;
+        int winEnd = hit.charIndex + 1;
+        int lookback = 0;
+        while (winStart > 0 && (winEnd - winStart) < kMaxChineseLookupWindowChars &&
+               lookback < kMaxChineseLookupLookbackChars) {
+            winStart--;
+            lookback++;
+        }
+        while (winEnd < runLen && (winEnd - winStart) < kMaxChineseLookupWindowChars) {
+            winEnd++;
+        }
+        int winLen = winEnd - winStart;
+        int clickOff = hit.charIndex - winStart;
+        for (int len = winLen; len >= 1; len--) {
+            for (int start = 0; start <= winLen - len; start++) {
+                if (start > clickOff || clickOff >= start + len) {
+                    continue;
+                }
+                TempStr candidate = ToUtf8(run + winStart + start, len);
+                if (FindDictIndexEntryIn(&gOfflineDictZh, candidate)) {
+                    matchedWord = str::Dup(candidate);
+                    matchStart = winStart + start;
+                    matchEnd = winStart + start + len;
+                    len = 0;
+                    break;
+                }
+            }
+        }
+        if (!matchedWord) {
+            matchedWord = ToUtf8(run + hit.charIndex, 1);
+            matchStart = hit.charIndex;
+            matchEnd = hit.charIndex + 1;
+        }
+    } else if (isNonCjkWordChar(clickChar)) {
+        int ws = hit.charIndex;
+        int we = hit.charIndex + 1;
+        while (ws > 0 && isNonCjkWordChar(run[ws - 1])) {
+            ws--;
+        }
+        while (we < runLen && isNonCjkWordChar(run[we])) {
+            we++;
+        }
+        matchedWord = ToUtf8(run + ws, we - ws);
+        matchStart = ws;
+        matchEnd = we;
+    } else {
+        matchedWord = ToUtf8(run + hit.charIndex, 1);
+    }
+
+    if (!matchedWord || !IsLookupWord(matchedWord)) {
+        str::Free(matchedWord);
+        return false;
+    }
+
+    RectF hlBox = hit.bbox;
+    if (!EngineEbookGetCharRangeBbox(engine, pageNo, hit.instrIndex, matchStart, matchEnd, &hlBox)) {
+        hlBox = hit.bbox;
+    }
+    TightenWordLookupHighlightBox(&hlBox, matchEnd - matchStart);
+    ts->SelectPageBbox(pageNo, hlBox);
+
+    Point anchor = dm->CvtToScreen(pageNo, PointF(hlBox.x + hlBox.dx * 0.5f, hlBox.y + hlBox.dy));
+    ShowWordLookup(win, matchedWord, anchor);
+    str::Free(matchedWord);
+    return true;
+}
+
 bool ShowChineseWordLookupAt(MainWindow* win, TextSelection* ts, EngineBase* engine, int pageNo, PointF pagePt,
                              Point screenPos) {
     if (!win || !ts || !engine) {
@@ -2099,7 +2251,21 @@ bool ShowChineseWordLookupAt(MainWindow* win, TextSelection* ts, EngineBase* eng
         matchEnd = clickGlyph + 1;
     }
 
-    ts->SelectGlyphRange(pageNo, matchStart, matchEnd);
+    int matchLen = matchEnd - matchStart;
+    Rect* coords = nullptr;
+    int coordsLen = 0;
+    engine->GetTextForPage(pageNo, &coordsLen, &coords);
+    if (coords && matchStart >= 0 && matchEnd <= coordsLen && matchLen > 0) {
+        RectF hlBox = WordLookupHighlightFromCoords(coords, matchStart, matchEnd);
+        if (hlBox.dx > 0.f && hlBox.dy > 0.f) {
+            TightenWordLookupHighlightBox(&hlBox, matchLen);
+            ts->SelectPageBbox(pageNo, hlBox);
+        } else {
+            ts->SelectGlyphRange(pageNo, matchStart, matchEnd);
+        }
+    } else {
+        ts->SelectGlyphRange(pageNo, matchStart, matchEnd);
+    }
     ShowWordLookup(win, matchedWord, screenPos);
     str::Free(matchedWord);
     return true;

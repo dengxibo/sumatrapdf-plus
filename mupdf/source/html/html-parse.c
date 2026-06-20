@@ -1248,6 +1248,12 @@ static void gen2_image_common(fz_context *ctx, struct genstate *g, fz_html_box *
 	fz_html_box *img_block_box;
 	fz_html_box *img_inline_box;
 
+	if (display == DIS_NONE)
+	{
+		fz_drop_image(ctx, img);
+		return;
+	}
+
 	if (display == DIS_INLINE || display == DIS_INLINE_BLOCK)
 	{
 		root_box = find_inline_context(ctx, g, root_box);
@@ -1268,10 +1274,35 @@ static void gen2_image_common(fz_context *ctx, struct genstate *g, fz_html_box *
 	}
 }
 
+static int html_has_class_token(const char *class_att, const char *token)
+{
+	const char *p;
+	size_t n;
+
+	if (!class_att || !token || !token[0])
+		return 0;
+	n = strlen(token);
+	for (p = class_att; *p; )
+	{
+		while (*p == ' ' || *p == '\t')
+			p++;
+		if (!strncmp(p, token, n) && (p[n] == 0 || p[n] == ' ' || p[n] == '\t'))
+			return 1;
+		while (*p && *p != ' ' && *p != '\t')
+			p++;
+	}
+	return 0;
+}
+
 static void gen2_image_html(fz_context *ctx, struct genstate *g, fz_html_box *root_box, fz_xml *node, int display, fz_css_style *style)
 {
 	const char *src = fz_xml_att(node, "src");
-	if (src)
+	const char *cls = fz_xml_att(node, "class");
+
+	if (html_has_class_token(cls, "squeeze-amzn"))
+		return;
+
+	if (src && display != DIS_NONE)
 	{
 		fz_css_style local_style = *style;
 		fz_image *img;
@@ -1297,6 +1328,8 @@ static void gen2_image_html(fz_context *ctx, struct genstate *g, fz_html_box *ro
 
 static void gen2_image_fb2(fz_context *ctx, struct genstate *g, fz_html_box *root_box, fz_xml *node, int display, fz_css_style *style)
 {
+	if (display == DIS_NONE)
+		return;
 	const char *src = fz_xml_att(node, "l:href");
 	if (!src)
 		src = fz_xml_att(node, "xlink:href");
@@ -1309,6 +1342,8 @@ static void gen2_image_fb2(fz_context *ctx, struct genstate *g, fz_html_box *roo
 
 static void gen2_image_svg(fz_context *ctx, struct genstate *g, fz_html_box *root_box, fz_xml *node, int display, fz_css_style *style)
 {
+	if (display == DIS_NONE)
+		return;
 	fz_image *img = load_svg_image(ctx, g->zip, g->base_uri, g->xml, node);
 	gen2_image_common(ctx, g, root_box, node, img, display, style);
 }
@@ -1542,6 +1577,71 @@ static void gen2_children(fz_context *ctx, struct genstate *g, fz_html_box *root
 	}
 }
 
+/* Some EPUB producers omit semicolons between declarations, e.g.
+   "margin-bottom: 0pt   font-family: STKai". fz_parse_css rejects the
+   whole ruleset; patch the common case so layout keeps the stylesheet. */
+static char *
+css_fixup_missing_semicolons(fz_context *ctx, const char *src)
+{
+	static const char *props[] = {
+		"font-family", "font-size", "font-weight", "font-style",
+		"line-height", "text-align", "text-indent", "text-decoration",
+		"margin-top", "margin-bottom", "margin-left", "margin-right",
+		"padding-top", "padding-bottom", "padding-left", "padding-right",
+		"border-top", "border-bottom", "border-left", "border-right",
+		NULL
+	};
+	size_t n = strlen(src);
+	char *out = fz_malloc(ctx, n * 2 + 1);
+	size_t o = 0;
+	const char *p = src;
+
+	while (*p)
+	{
+		const char *s;
+		const char *prev;
+		int need_semi = 0;
+
+		if (p > src && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n'))
+		{
+			s = p;
+			while (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n')
+				s++;
+			for (int i = 0; props[i]; i++)
+			{
+				size_t plen = strlen(props[i]);
+				if (!strncmp(s, props[i], plen) && s[plen] == ':')
+				{
+					prev = p - 1;
+					while (prev >= src && (*prev == ' ' || *prev == '\t' || *prev == '\r' || *prev == '\n'))
+						prev--;
+					if (prev >= src && *prev != '{' && *prev != ';' && *prev != ':')
+						need_semi = 1;
+					break;
+				}
+			}
+		}
+		if (need_semi)
+			out[o++] = ';';
+		out[o++] = *p++;
+	}
+	out[o] = 0;
+	return out;
+}
+
+static void
+html_parse_css_fixed(fz_context *ctx, fz_css *css, const char *source, const char *file)
+{
+	char *fixed = css_fixup_missing_semicolons(ctx, source);
+
+	fz_try(ctx)
+		fz_parse_css(ctx, css, fixed, file);
+	fz_always(ctx)
+		fz_free(ctx, fixed);
+	fz_catch(ctx)
+		fz_rethrow(ctx);
+}
+
 static void
 html_load_css_link(fz_context *ctx, fz_html_font_set *set, fz_archive *zip, const char *base_uri, fz_css *css, fz_xml *root, const char *href)
 {
@@ -1563,7 +1663,7 @@ html_load_css_link(fz_context *ctx, fz_html_font_set *set, fz_archive *zip, cons
 	fz_try(ctx)
 	{
 		buf = fz_read_archive_entry(ctx, zip, path);
-		fz_parse_css(ctx, css, fz_string_from_buffer(ctx, buf), path);
+		html_parse_css_fixed(ctx, css, fz_string_from_buffer(ctx, buf), path);
 		fz_add_css_font_faces(ctx, set, zip, css_base_uri, css);
 	}
 	fz_always(ctx)
@@ -1606,7 +1706,7 @@ html_load_css(fz_context *ctx, fz_html_font_set *set, fz_archive *zip, const cha
 			char *s = fz_new_text_from_xml(ctx, node);
 			fz_try(ctx)
 			{
-				fz_parse_css(ctx, css, s, "<style>");
+				html_parse_css_fixed(ctx, css, s, "<style>");
 				fz_add_css_font_faces(ctx, set, zip, base_uri, css);
 			}
 			fz_always(ctx)
@@ -1633,7 +1733,7 @@ fb2_load_css(fz_context *ctx, fz_html_font_set *set, fz_archive *zip, const char
 		char *s = fz_new_text_from_xml(ctx, stylesheet);
 		fz_try(ctx)
 		{
-			fz_parse_css(ctx, css, s, "<stylesheet>");
+			html_parse_css_fixed(ctx, css, s, "<stylesheet>");
 			fz_add_css_font_faces(ctx, set, zip, base_uri, css);
 		}
 		fz_catch(ctx)

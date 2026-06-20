@@ -1,11 +1,10 @@
 import { join } from "node:path";
-import { detectVisualStudio2026, runLogged } from "./util";
+import { detectVisualStudio2026, runLogged, copyDistributionFonts } from "./util";
 import { clearDirPreserveSettings } from "./clean";
 
 let clean = false;
 
 let t = `/t:SumatraPDF`;
-t = `/t:SumatraPDF-dll`;
 
 async function main() {
   const timeStart = performance.now();
@@ -24,7 +23,7 @@ async function main() {
   const p = `/p:Configuration=Debug;Platform=x64`;
   await runLogged(msbuildPath, [sln, t, p, `/m`]);
 
-  // const outDir = join("out", "dbg64");
+  copyDistributionFonts(join("out", "dbg64"));
   // await runLogged(resolve(join(outDir, "test_util.exe")), [], outDir);
 
   const elapsed = ((performance.now() - timeStart) / 1000).toFixed(1);

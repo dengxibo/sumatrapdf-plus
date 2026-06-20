@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, dirname, extname } from "node:path";
 
 const msBuildRelPath = String.raw`MSBuild\Current\Bin\MSBuild.exe`;
@@ -77,6 +77,13 @@ function findTool(vsRoot: string, relPath: string): string {
   const p = join(vsRoot, relPath);
   if (existsSync(p)) {
     return p;
+  }
+  const llvmX64RelPath = relPath.replace(String.raw`VC\Tools\Llvm\bin`, String.raw`VC\Tools\Llvm\x64\bin`);
+  if (llvmX64RelPath !== relPath) {
+    const p2 = join(vsRoot, llvmX64RelPath);
+    if (existsSync(p2)) {
+      return p2;
+    }
   }
   return "";
 }
@@ -209,5 +216,31 @@ export function copyFileNormalized(dst: string, src: string): void {
     writeFileSync(dst, normalizeNewlines(data));
   } else {
     copyFileSync(src, dst);
+  }
+}
+
+const kDistributionFontExts = new Set([".ttf", ".otf", ".ttc"]);
+
+export function copyDistributionFonts(outDir: string): void {
+  const fontsDst = join(outDir, "fonts");
+  mkdirSync(fontsDst, { recursive: true });
+
+  const fontsSrc = join("fonts");
+  if (existsSync(fontsSrc)) {
+    for (const name of readdirSync(fontsSrc)) {
+      const ext = extname(name).toLowerCase();
+      if (!kDistributionFontExts.has(ext)) {
+        continue;
+      }
+      copyFileNormalized(join(fontsDst, name), join(fontsSrc, name));
+    }
+  }
+
+  const sourceHanDst = join(fontsDst, "SourceHanSerif-Regular.ttc");
+  if (!existsSync(sourceHanDst)) {
+    const sourceHanSrc = join("mupdf", "resources", "fonts", "han", "SourceHanSerif-Regular.ttc");
+    if (existsSync(sourceHanSrc)) {
+      copyFileNormalized(sourceHanDst, sourceHanSrc);
+    }
   }
 }

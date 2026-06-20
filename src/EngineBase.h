@@ -77,6 +77,15 @@ struct PageTextUtf8 {
 
 void FreePageTextUtf8(PageTextUtf8*);
 
+// Layout-time character hit result (page coordinates, same space as PageMediabox).
+struct EbookTextHit {
+    RectF bbox{};
+    int instrIndex = -1;
+    int charIndex = 0;
+    int charLen = 1;
+    bool dirRtl = false;
+};
+
 // a link destination
 struct IPageDestination : KindBase {
     // page the destination points to (-1 for external destinations such as URLs)
@@ -449,6 +458,9 @@ class EngineBase {
     // by EngineBase and remain valid for the lifetime of the engine.
     bool HasTextForPage(int pageNo);
     const WCHAR* GetTextForPage(int pageNo, int* lenOut = nullptr, Rect** coordsOut = nullptr);
+
+    // EPUB/MOBI progressive open: defer heavy text extraction until background load finishes.
+    virtual bool IsProgressiveEbookLoading() { return false; }
     // pages where clipping doesn't help are rendered in larger tiles
     virtual bool HasClipOptimizations(int pageNo) = 0;
 

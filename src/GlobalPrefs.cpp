@@ -20,6 +20,8 @@ FileState* NewFileState(const char* filePath) {
     FileState* fs = (FileState*)DeserializeStruct(&gFileStateInfo, nullptr);
     SetFileStatePath(fs, filePath);
     fs->thumbnailDarkTheme = false;
+    fs->thumbnailBlankKnown = false;
+    fs->thumbnailIsBlank = false;
     return fs;
 }
 

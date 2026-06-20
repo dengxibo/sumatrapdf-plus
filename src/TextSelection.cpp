@@ -23,6 +23,10 @@ bool isWordChar(WCHAR c) {
     return IsCharAlphaNumeric(c) || c == '_' || isCjkWordChar(c);
 }
 
+bool isNonCjkWordChar(WCHAR c) {
+    return isWordChar(c) && (unsigned short)c < 0x2E80;
+}
+
 static bool isDigit(WCHAR c) {
     return c >= '0' && c <= '9';
 }
@@ -40,6 +44,31 @@ void TextSelection::Reset() {
     result.pages = nullptr;
     free(result.rects);
     result.rects = nullptr;
+}
+
+static bool IsSelectableWhitespace(WCHAR c) {
+    return str::IsWs(c);
+}
+
+// returns the glyph index under (x,y), or -1 if the click is not inside any glyph bbox
+static int GlyphIndexUnderPoint(TextSelection* ts, int pageNo, double x, double y) {
+    int textLen;
+    Rect* coords;
+    ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!coords || textLen <= 0) {
+        return -1;
+    }
+    Point pt = ToPoint(PointF(x, y));
+    for (int i = 0; i < textLen; i++) {
+        Rect& coord = coords[i];
+        if (!coord.dx && !coord.dy) {
+            continue;
+        }
+        if (coord.Contains(pt)) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 // returns the index of the glyph closest to the right of the given coordinates
@@ -165,24 +194,16 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
 }
 
 bool TextSelection::IsOverGlyph(int pageNo, double x, double y) {
+    int glyphIx = GlyphIndexUnderPoint(this, pageNo, x, y);
+    if (glyphIx < 0) {
+        return false;
+    }
     int textLen;
-    Rect* coords;
-    engine->GetTextForPage(pageNo, &textLen, &coords);
-    if (!coords || textLen <= 0) {
+    const WCHAR* text = engine->GetTextForPage(pageNo, &textLen);
+    if (!text || glyphIx >= textLen) {
         return false;
     }
-
-    int glyphIx = FindClosestGlyph(this, pageNo, x, y);
-    Point pt = ToPoint(PointF(x, y));
-    // when over the right half of a glyph, FindClosestGlyph returns the
-    // index of the next glyph, in which case glyphIx must be decremented
-    if (glyphIx == textLen || !coords[glyphIx].Contains(pt)) {
-        glyphIx--;
-    }
-    if (-1 == glyphIx) {
-        return false;
-    }
-    return coords[glyphIx].Contains(pt);
+    return !IsSelectableWhitespace(text[glyphIx]);
 }
 
 void TextSelection::StartAt(int pageNo, int glyphIx) {
@@ -277,10 +298,24 @@ static int ExtendForwardAcrossCommaGroups(const WCHAR* text, int textLen, int cu
 }
 
 void TextSelection::SelectWordAt(int pageNo, double x, double y) {
-    int i = FindClosestGlyph(this, pageNo, x, y);
+    int glyphIx = GlyphIndexUnderPoint(this, pageNo, x, y);
     int textLen;
     const WCHAR* text = engine->GetTextForPage(pageNo, &textLen);
+    if (!text || textLen <= 0 || glyphIx < 0 || glyphIx >= textLen) {
+        return;
+    }
 
+    WCHAR clickChar = text[glyphIx];
+    if (IsSelectableWhitespace(clickChar)) {
+        return;
+    }
+    if (!isWordChar(clickChar)) {
+        StartAt(pageNo, glyphIx);
+        SelectUpTo(pageNo, glyphIx + 1);
+        return;
+    }
+
+    int i = glyphIx;
     bool isAllDigits = true;
     WCHAR c = 0;
     for (; i > 0; i--) {
@@ -348,7 +383,7 @@ void TextSelection::SelectWordAt(int pageNo, double x, double y) {
         }
     }
 
-    int clickGlyph = FindClosestGlyph(this, pageNo, x, y);
+    int clickGlyph = glyphIx;
     if (wordEnd > wordStart && clickGlyph >= wordStart && clickGlyph < wordEnd && isCjkWordChar(text[clickGlyph]) &&
         !isAllDigits) {
         wordStart = clickGlyph;
@@ -356,6 +391,25 @@ void TextSelection::SelectWordAt(int pageNo, double x, double y) {
     }
     StartAt(pageNo, wordStart);
     SelectUpTo(pageNo, wordEnd);
+}
+
+void TextSelection::SelectPageBbox(int pageNo, RectF bbox) {
+    Reset();
+    startPage = pageNo;
+    endPage = pageNo;
+    startGlyph = 0;
+    endGlyph = 1;
+
+    result.cap = 64;
+    result.pages = (int*)malloc(sizeof(int) * result.cap);
+    result.rects = (Rect*)malloc(sizeof(Rect) * result.cap);
+    if (!result.pages || !result.rects) {
+        Reset();
+        return;
+    }
+    result.pages[0] = pageNo;
+    result.rects[0] = bbox.Round();
+    result.len = 1;
 }
 
 int TextSelection::GlyphIndexAt(int pageNo, double x, double y) {
@@ -371,13 +425,20 @@ void TextSelection::SelectGlyphRange(int pageNo, int startGlyph, int endGlyph) {
 }
 
 char* TextSelection::ExtractWordAt(int pageNo, double x, double y) {
-    int i = FindClosestGlyph(this, pageNo, x, y);
+    int glyphIx = GlyphIndexUnderPoint(this, pageNo, x, y);
     int textLen;
     const WCHAR* text = engine->GetTextForPage(pageNo, &textLen);
-    if (!text || textLen <= 0 || i < 0 || i > textLen) {
+    if (!text || textLen <= 0 || glyphIx < 0 || glyphIx >= textLen) {
+        return nullptr;
+    }
+    if (IsSelectableWhitespace(text[glyphIx])) {
         return nullptr;
     }
 
+    int i = glyphIx;
+    if (!isWordChar(text[glyphIx])) {
+        return ToUtf8(text + glyphIx, 1);
+    }
     for (; i > 0; i--) {
         if (!isWordChar(text[i - 1])) {
             break;

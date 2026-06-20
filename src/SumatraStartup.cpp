@@ -295,6 +295,9 @@ static void MaybeStartSearch(MainWindow* win, const char* searchTerm) {
 static MainWindow* LoadOnStartup(const char* filePath, const Flags& flags, bool isFirstWin) {
     LoadArgs args(filePath, nullptr);
     args.showWin = !(flags.printDialog && flags.exitWhenDone) && !gPluginMode;
+    if (!flags.inNewWindow) {
+        SetUserOpenActivateExisting(args);
+    }
     MainWindow* win = LoadDocument(&args);
     if (!win) {
         return win;
@@ -768,7 +771,7 @@ static bool LoadLibmupdf() {
         flags |= TDF_RTL_LAYOUT;
     }
     dialogConfig.cbSize = sizeof(TASKDIALOGCONFIG);
-    dialogConfig.pszWindowTitle = L"SumatraPDF";
+    dialogConfig.pszWindowTitle = ToWStrTemp(kAppName);
     dialogConfig.pszMainInstruction = L"Failed to load libmupdf.dll";
     dialogConfig.pszContent = ToWStrTemp(msg);
     dialogConfig.nDefaultButton = IDOK;
@@ -946,8 +949,9 @@ static void ShowNoAdminErrorMessage() {
     DWORD flags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW | TDF_ENABLE_HYPERLINKS;
     dialogConfig.cbSize = sizeof(TASKDIALOGCONFIG);
     dialogConfig.cxWidth = 340;
-    dialogConfig.pszWindowTitle = L"SumatraPDF";
-    dialogConfig.pszMainInstruction = L"SumatraPDF is running as admin and cannot open files from a non-admin process";
+    dialogConfig.pszWindowTitle = ToWStrTemp(kAppName);
+    dialogConfig.pszMainInstruction =
+        L"Sumatra PDF Plus is running as admin and cannot open files from a non-admin process";
     ;
     dialogConfig.pszContent =
         LR"(<a href="https://github.com/sumatrapdfreader/sumatrapdf/discussions/2316">Read more about this error</a>)";

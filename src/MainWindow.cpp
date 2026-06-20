@@ -33,6 +33,7 @@
 #include "OverlayScrollbar.h"
 #include "SumatraPDF.h"
 #include "MainWindow.h"
+#include "HomePage.h"
 #include "WindowTab.h"
 #include "TableOfContents.h"
 #include "resource.h"
@@ -297,6 +298,7 @@ void MainWindow::UpdateCanvasSize() {
     // about the change of the canvas size
     delete buffer;
     buffer = new DoubleBuffer(hwndCanvas, canvasRc);
+    HomePageInvalidateScrollCache(this);
 
     if (IsDocLoaded()) {
         // the display model needs to know the full size (including scroll bars)
@@ -480,11 +482,19 @@ void LinkHandler::GotoLink(IPageDestination* dest) {
         return;
     }
 
-    if (kindDestinationLaunchURL == kind) {
-        return;
+    // EPUB/DjVu links normally go through DocController::HandleLink; CHM and legacy
+    // paths may call GotoLink directly with these kinds.
+    if (kindDestinationMupdf == kind || kindDestinationDjVu == kind) {
+        DocController* ctrl = win->ctrl;
+        DisplayModel* dm = ctrl ? ctrl->AsFixed() : nullptr;
+        EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+        if (engine && (engine->kind == kindEngineMupdf || engine->kind == kindEngineDjVu)) {
+            ctrl->HandleLink(dest, this);
+            return;
+        }
     }
 
-    ReportIf(true);
+    logf("LinkHandler::GotoLink: unhandled destination kind '%s'\n", kind);
 }
 
 void LinkHandler::ScrollTo(IPageDestination* dest) {

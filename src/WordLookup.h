@@ -4,8 +4,11 @@
 struct MainWindow;
 class EngineBase;
 struct TextSelection;
+struct DisplayModel;
 
 bool ShowChineseWordLookupAt(MainWindow* win, TextSelection* ts, EngineBase* engine, int pageNo, PointF pagePt,
                              Point screenPos);
+bool ShowEbookWordLookupAt(MainWindow* win, DisplayModel* dm, int pageNo, PointF pagePt, Point screenPos);
 void ShowWordLookup(MainWindow* win, const char* word, Point screenPos);
 void CloseWordLookup();
+void RefreshWordLookupTheme();

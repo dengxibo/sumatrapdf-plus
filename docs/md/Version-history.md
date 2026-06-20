@@ -4,6 +4,9 @@
 
 Available in [pre-release](https://www.sumatrapdfreader.org/prerelease) builds.
 
+- add `CmdToggleLightDarkTheme` (`Toggle Light/Dark Theme` in `Ctrl + k` [command palette](Command-Palette.md)) and toolbar button to switch between light and dark theme
+- add `CmdToggleDoubleClickWordLookup` (`Toggle Double-Click Word Lookup` in `Ctrl + k` [command palette](Command-Palette.md)) and toolbar button to enable or disable offline dictionary lookup on double-click; default is enabled (`EnableDoubleClickWordLookup` advanced setting)
+- add `CmdEbookFontSizeDecrease` and `CmdEbookFontSizeIncrease` toolbar buttons to change reflowable ebook font size and reload the document
 - add cmd-line tools `SumatraPDF <tool> <args>`. Tools: draw, convert, audit, bake, clean, create, extract, info, merge, pages, poster, recolor, show, trim, grep, trace
 - add `CmdPdShowInfo` (`Show PDF Info` in `Ctrl + k` [command palette](Command-Palette.md))
 - add `CmdDocumentShowOutline` (`Show Document Outline` in `Ctrl + k` [command palette](Command-Palette.md))
@@ -14,6 +17,8 @@ Available in [pre-release](https://www.sumatrapdfreader.org/prerelease) builds.
 - add `CmdToggleTips` (`Toggle Tips` in `Ctrl + k` [command palette](Command-Palette.md)) to toggle `ShowTips` advanced setting
 - add `CmdToggleReuseInstance` (`Toggle Reuse Instance` in `Ctrl + k` [command palette](Command-Palette.md)) to toggle `ReuseInstance` advanced setting
 - add `CmdToggleChmUI` (`Toggle CHM UI` in `Ctrl + k` [command palette](Command-Palette.md)) to toggle dedicated CHM UI for CHM documents
+- add `CmdAnalyzeSelectionWithDoubao` (`Ask Doubao` in selection context menu and `Ctrl + k` [command palette](Command-Palette.md)) to copy selected text to the clipboard and open [Doubao](https://www.doubao.com/chat/)
+- remove hover dictionary lookup; double-click an English word to look it up offline with local `SumatraDict.*` files; dictionary files default to `{exedir}/dict` (override with `OfflineDictionaryPath`)
 - add `CmdSetTabColor` (`Set Tab Color`) to set a custom color for a document's tab, available from tab right-click context menu
 - add `CmdPdfCompress` (`Compress PDF` in `Ctrl + k` [command palette](Command-Palette.md)) to compress a PDF file
 - add `CmdPdfDecompress` (`Decompress PDF` in `Ctrl + k` [command palette](Command-Palette.md)) to decompress a PDF file

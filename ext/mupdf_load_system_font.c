@@ -166,17 +166,20 @@ static struct {
     // Founder FangSong font fallback
     {"FZFangSong-Z02", "FangSong"},
     {"FZFangSong-Z02S", "FangSong"},
-    // Chinese Kai (regular script) font fallbacks
+    // Chinese Kai (regular script) font fallbacks — map publisher/device names to Windows KaiTi
     {"MKai PRC", "KaiTi"},
     {"MKaiPRC-Regular", "KaiTi"},
     {"MKaiPRC", "KaiTi"},
     {"STKaiti", "KaiTi"},
     {"STKaiti-Regular", "KaiTi"},
     {"STKai", "KaiTi"},
+    {"STKai-Regular", "KaiTi"},
     {"Kai", "KaiTi"},
     {"Kaiti_GB2312", "KaiTi"},
     {"Kaiti SC", "KaiTi"},
     {"Kaiti TC", "KaiTi"},
+    {"KaiTi", "KaiTi"},
+    {"楷体", "KaiTi"},
 };
 
 static win_fonts g_win_fonts = {0};
@@ -225,6 +228,10 @@ static int streqi(const char* s1, const char* s2) {
     }
     return 0;
 }
+
+static void normalize_font_name_key(const char* src, char* dst, size_t dstcap);
+static int is_source_han_serif_sc_request(const char* fontname);
+static fz_font* load_bundled_source_han_serif(fz_context* ctx, const char* display_name, int ordering);
 
 static inline USHORT BEtoHs(USHORT x) {
     BYTE* data = (BYTE*)&x;
@@ -755,6 +762,14 @@ static fz_font* load_windows_font_by_name(fz_context* ctx, const char* orig_name
         return NULL;
     }
 
+    if (is_source_han_serif_sc_request(orig_name)) {
+        fz_font* bundled = load_bundled_source_han_serif(ctx, orig_name, FZ_ADOBE_GB);
+        if (bundled) {
+            return bundled;
+        }
+        /* fall through to system SimSun / 宋体 if bundled font is unavailable */
+    }
+
     EnterCriticalSection(&cs_fonts);
     if (g_win_fonts.len == 0) {
         fz_try(ctx) {
@@ -965,12 +980,18 @@ static int is_source_han_serif_sc_request(const char* fontname) {
     if (streq(fontname, "\xe6\x80\x9d\xe6\xba\x90\xe5\xae\x8b\xe4\xbd\x93")) {
         return 1; // 思源宋体
     }
+    if (streq(fontname, "\xe5\xae\x8b\xe4\xbd\x93")) {
+        return 1; // 宋体
+    }
     char norm[128];
     norm[0] = '\0';
     normalize_font_name_key(fontname, norm, sizeof norm);
     static const char* kNames[] = {
         "sourcehanserifsc", "sourcehanserifscregular", "sourcehanserifcn",      "sourcehanserifcnregular",
-        "sourcehanserif",   "notoserifcjksc",          "notoserifcjkscregular", NULL,
+        "sourcehanserif",   "notoserifcjksc",          "notoserifcjkscregular",
+        /* Windows / publisher songti names -> bundled Source Han Serif SC (matches MOBI/GDI+ path) */
+        "simsun", "nsimsun", "stsong", "stsongti", "stsonglight", "songti", "songtisc", "songtitc",
+        NULL,
     };
     for (int i = 0; kNames[i]; i++) {
         if (streq(norm, kNames[i])) {
@@ -1115,12 +1136,12 @@ static fz_font* load_bundled_source_han_serif(fz_context* ctx, const char* displ
     fz_font* font = NULL;
     int ttc_index = source_han_serif_ttc_index(ordering);
     static const WCHAR* kExeFontFiles[] = {
-        L"\\fonts\\SourceHanSerif-Regular.ttc",
         L"\\fonts\\SourceHanSerifSC-Regular.otf",
         L"\\fonts\\SOURCEHANSERIFSC-REGULAR.OTF",
+        L"\\fonts\\SourceHanSerif-Regular.ttc",
         NULL,
     };
-    static const int kExeFontIndices[] = {-1, 0, 0};
+    static const int kExeFontIndices[] = {0, 0, -1};
     static const WCHAR* kDevTtcPaths[] = {
         L"\\..\\mupdf\\resources\\fonts\\han\\SourceHanSerif-Regular.ttc",
         L"\\..\\..\\mupdf\\resources\\fonts\\han\\SourceHanSerif-Regular.ttc",
@@ -1222,7 +1243,10 @@ static fz_font* load_windows_cjk_font(fz_context* ctx, const char* fontname, int
                     font = load_windows_font_by_name(ctx, "MingLiU");
                     break;
                 case FZ_ADOBE_GB:
-                    font = load_windows_font_by_name(ctx, "SimSun");
+                    font = load_bundled_source_han_serif(ctx, "Source Han Serif", FZ_ADOBE_GB);
+                    if (!font) {
+                        font = load_windows_font_by_name(ctx, "SimSun");
+                    }
                     break;
                 case FZ_ADOBE_JAPAN:
                     font = load_windows_font_by_name(ctx, "MS-Mincho");

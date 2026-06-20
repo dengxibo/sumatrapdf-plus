@@ -21,6 +21,7 @@ class MobiFormatter : public HtmlFormatter {
     bool sawColophonPhone = false;
     bool pendingMu = false;
     int blockquoteDepth = 0;
+    bool injectedExthCover = false;
 
     bool InTocLikeRegion() const { return inToc || (sawColophonPhone && !tocPageBreakDone); }
 

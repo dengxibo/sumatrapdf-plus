@@ -154,26 +154,24 @@ static const char* gIconThemeMoon =
   </g>
 </svg>)MOON";
 
-// word lookup: magnifying glass with Aa
+// Translate-style word lookup: corner swap arrows + Latin a + hiragana (Tabler language-hiragana, scaled)
 static const char* gIconDictionary =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"DICT(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
-  <circle cx="10" cy="10" r="7.5" />
-  <path d="M 15.3 15.3 L 20.5 20.5" />
-  <text x="10" y="12" text-anchor="middle" font-size="9.5" font-weight="bold" font-family="Georgia, serif" fill="currentColor" stroke="none">Aa</text>
-</svg>)";
-
-// word lookup disabled: same icon with diagonal slash
-static const char* gIconDictionaryOff =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
-  <circle cx="10" cy="10" r="7.5" />
-  <path d="M 15.3 15.3 L 20.5 20.5" />
-  <text x="10" y="12" text-anchor="middle" font-size="9.5" font-weight="bold" font-family="Georgia, serif" fill="currentColor" stroke="none">Aa</text>
-  <line x1="6" y1="18" x2="18" y2="6" />
-</svg>)";
-
-
+  <path d="M9 4.5a4.5 4.5 0 0 0 -4.5 4.5" />
+  <path d="M4.5 9l1.25 0" />
+  <path d="M4.5 9l0 -1.25" />
+  <path d="M15 19.5a4.5 4.5 0 0 0 4.5 -4.5" />
+  <path d="M19.5 15l-1.25 0" />
+  <path d="M19.5 15l0 1.25" />
+  <path d="M4 19v-5a2 2 0 1 1 4 0v5" />
+  <path d="M4 16h4" />
+  <g transform="translate(9.5 0) scale(0.88)">
+    <path d="M4 5h7" />
+    <path d="M7 4c0 4.846 0 7 .5 8" />
+    <path d="M10 8.5c0 2.286 -2 4.5 -3.5 4.5s-2.5 -1.135 -2.5 -2c0 -2 1 -3 3 -3s5 .57 5 2.857c0 1.524 -.667 2.571 -2 3.143" />
+  </g>
+</svg>)DICT";
 
 // must match order in enum class TbIcon
 // clang-format off
@@ -197,7 +195,6 @@ static const char* gIcons[] = {
     gIconThemeSun,
     gIconThemeMoon,
     gIconDictionary,
-    gIconDictionaryOff,
 };
 // clang-format on
 

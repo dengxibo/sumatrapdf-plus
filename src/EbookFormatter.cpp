@@ -76,6 +76,8 @@ static bool ParseKindleEmbedResourceIndex(const char* s, size_t sLen, size_t* in
     return true;
 }
 
+static bool MobiHtmlHasEarlyCoverImage(ByteSlice html);
+
 MobiFormatter::MobiFormatter(HtmlFormatterArgs* args, MobiDoc* doc, EbookTypographyKind typographyKind,
                              bool readerStyle)
     : HtmlFormatter(args), doc(doc), typographyKind(typographyKind), readerStyle(readerStyle) {
@@ -101,11 +103,16 @@ MobiFormatter::MobiFormatter(HtmlFormatterArgs* args, MobiDoc* doc, EbookTypogra
     if (!img) {
         return;
     }
+    if (MobiHtmlHasEarlyCoverImage(doc->GetHtmlData())) {
+        return;
+    }
 
-    // TODO: vertically center the cover image?
-    EmitImage(img);
+    // Scale metadata cover to fill most of the page (EXTH cover is often a low-res thumbnail).
+    SizeF coverMax{pageDx * 0.7f, pageDy * 0.7f};
+    EmitImage(img, &coverMax, true);
     // only add a new page if the image isn't broken
     if (currLineInstr.size() > 0) {
+        injectedExthCover = true;
         ForceNewPage();
     }
 }
@@ -301,13 +308,86 @@ static bool ClassAttrContains(const char* val, size_t valLen, const char* needle
     return buf && strstr(buf, needle);
 }
 
-static bool IsInlineMobiImage(HtmlToken* t) {
+static bool MobiHtmlHasEarlyCoverImage(ByteSlice html) {
+    if (html.empty()) {
+        return false;
+    }
+    size_t scanLen = std::min(html.size(), (size_t)8192);
+    char* buf = str::DupTemp((const char*)html.data(), scanLen);
+    if (!buf) {
+        return false;
+    }
+    char* pageBreak = strstr(buf, "mbp:pagebreak");
+    if (pageBreak) {
+        *pageBreak = 0;
+    }
+    if (!strstr(buf, "<img") && !strstr(buf, "<IMG")) {
+        return false;
+    }
+    return strstr(buf, "recindex") || strstr(buf, "kindle:embed");
+}
+
+static ByteSlice* MobiImageFromToken(MobiDoc* doc, HtmlToken* t) {
+    if (!doc || !t) {
+        return nullptr;
+    }
+    AttrInfo* attr = t->GetAttrByName("recindex");
+    if (attr) {
+        int n;
+        if (str::Parse(attr->val, attr->valLen, "%d", &n)) {
+            return doc->GetImage(n);
+        }
+    }
+    attr = t->GetAttrByName("src");
+    if (attr) {
+        size_t resourceIndex = 0;
+        if (ParseKindleEmbedResourceIndex(attr->val, attr->valLen, &resourceIndex)) {
+            return doc->GetImageByResourceIndex(resourceIndex);
+        }
+    }
+    return nullptr;
+}
+
+static bool IsInlineMobiImage(HtmlToken* t, MobiDoc* doc) {
     AttrInfo* attr = t->GetAttrByName("class");
     if (attr && ClassAttrContains(attr->val, attr->valLen, "inline")) {
         return true;
     }
     // Classic MOBI embeds small in-text images via recindex; KF8 chapter art uses kindle:embed
-    return t->GetAttrByName("recindex") != nullptr;
+    if (t->GetAttrByName("recindex") == nullptr) {
+        return false;
+    }
+    // Some MOBI books use recindex for full-size illustrations with explicit dimensions
+    int w = 0, h = 0;
+    attr = t->GetAttrByName("width");
+    if (attr) {
+        str::Parse(attr->val, attr->valLen, "%d", &w);
+    }
+    attr = t->GetAttrByName("height");
+    if (attr) {
+        str::Parse(attr->val, attr->valLen, "%d", &h);
+    }
+    if (w > 64 || h > 64) {
+        return false;
+    }
+    ByteSlice* img = MobiImageFromToken(doc, t);
+    if (img) {
+        Size imgSize = ImageSizeFromData(*img);
+        if (imgSize.dx > 64 || imgSize.dy > 64) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool IsEarlyMobiCoverImage(HtmlToken* t, MobiDoc* doc, ptrdiff_t reparseIdx) {
+    if (!t || !t->IsStartTag() || reparseIdx < 0 || reparseIdx > 4096) {
+        return false;
+    }
+    if (IsInlineMobiImage(t, doc)) {
+        return false;
+    }
+    return MobiImageFromToken(doc, t) != nullptr;
 }
 
 SizeF MobiFormatter::MaxImageSize(HtmlToken* t) {
@@ -315,9 +395,12 @@ SizeF MobiFormatter::MaxImageSize(HtmlToken* t) {
     if (em <= 0) {
         em = 12.f;
     }
-    if (IsInlineMobiImage(t)) {
+    if (IsInlineMobiImage(t, doc)) {
         // KF8 heading icons (class="inline1") and classic MOBI recindex images sit beside text
         return {2.5f * em, 2.f * em};
+    }
+    if (IsEarlyMobiCoverImage(t, doc, currReparseIdx)) {
+        return {pageDx * 0.7f, pageDy * 0.7f};
     }
     if (readerStyle) {
         return {pageDx * 0.84f, pageDy * 0.55f};
@@ -333,33 +416,22 @@ SizeF MobiFormatter::MaxImageSize(HtmlToken* t) {
 // global record)
 void MobiFormatter::HandleTagImg(HtmlToken* t) {
     // we allow formatting raw html which can't require doc
-    if (!doc) {
+    if (!doc || !t->IsStartTag()) {
+        return;
+    }
+    if (injectedExthCover && IsEarlyMobiCoverImage(t, doc, currReparseIdx)) {
+        injectedExthCover = false;
         return;
     }
     bool needAlt = true;
-    ByteSlice* img = nullptr;
-    AttrInfo* attr = t->GetAttrByName("recindex");
-    if (attr) {
-        int n;
-        if (str::Parse(attr->val, attr->valLen, "%d", &n)) {
-            img = doc->GetImage(n);
-        }
-    }
-    if (!img) {
-        attr = t->GetAttrByName("src");
-        if (attr) {
-            size_t resourceIndex = 0;
-            if (ParseKindleEmbedResourceIndex(attr->val, attr->valLen, &resourceIndex)) {
-                img = doc->GetImageByResourceIndex(resourceIndex);
-            }
-        }
-    }
+    ByteSlice* img = MobiImageFromToken(doc, t);
     if (img) {
         SizeF maxSize = MaxImageSize(t);
-        bool center = !IsInlineMobiImage(t);
+        bool center = !IsInlineMobiImage(t, doc);
         needAlt = !EmitImage(img, &maxSize, center);
     }
-    if (needAlt && (attr = t->GetAttrByName("alt")) != nullptr) {
+    AttrInfo* attr = t->GetAttrByName("alt");
+    if (needAlt && attr != nullptr) {
         HandleText(attr->val, attr->valLen);
     }
 }
@@ -413,6 +485,8 @@ void MobiFormatter::HandleHtmlTag(HtmlToken* t) {
             EmitEmptyLine(lineSpacing);
             EmitHr();
         }
+    } else if (Tag_Image == t->tag) {
+        HandleTagImg(t);
     } else {
         HtmlFormatter::HandleHtmlTag(t);
     }
@@ -431,7 +505,7 @@ void EpubFormatter::HandleTagImg(HtmlToken* t) {
         TempStr src = str::DupTemp(attr->val, attr->valLen);
         url::DecodeInPlace(src);
         ByteSlice* img = epubDoc->GetImageData(src, pagePath);
-        needAlt = !img || !EmitImage(img);
+        needAlt = !img || !EmitImage(img, nullptr, true);
     }
     if (needAlt && (attr = t->GetAttrByName("alt")) != nullptr) {
         HandleText(attr->val, attr->valLen);
@@ -495,7 +569,7 @@ void EpubFormatter::HandleTagSvgImage(HtmlToken* t) {
     url::DecodeInPlace(src);
     ByteSlice* img = epubDoc->GetImageData(src, pagePath);
     if (img) {
-        EmitImage(img);
+        EmitImage(img, nullptr, true);
     }
 }
 

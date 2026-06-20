@@ -46,7 +46,6 @@ extern "C" {
 
 #include "utils/Log.h"
 
-
 // https://docs.microsoft.com/en-us/windows/win32/controls/toolbar-control-reference
 
 static int kButtonSpacingX = 4;
@@ -90,6 +89,7 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::MatchCase, CmdFindToggleMatchCase, _TRN("Toggle Match Case")},
     {TbIcon::None, 0, nullptr}, // separator
     {TbIcon::Dictionary, CmdToggleDoubleClickWordLookup, _TRN("Toggle Double-Click Word Lookup")},
+    {TbIcon::None, 0, nullptr}, // separator before theme
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
 };
 // unicode chars: https://www.compart.com/en/unicode/U+25BC
@@ -149,10 +149,18 @@ static int GetToolbarButtonsByID(int cmdId, int (&buttons)[4]) {
 void SetToolbarButtonCheckedState(MainWindow* win, int cmdId, bool isChecked) {
     int buttons[4];
     int n = GetToolbarButtonsByID(cmdId, buttons);
-    if (n == 0) return;
+    if (n == 0) {
+        return;
+    }
     for (int i = 0; i < n; i++) {
         int idx = buttons[i];
         UpdateToolbarButtonStateByIdx(win->hwndToolbar, idx, isChecked, TBSTATE_CHECKED);
+        RECT rc{};
+        if (SendMessageW(win->hwndToolbar, TB_GETITEMRECT, idx, (LPARAM)&rc)) {
+            // BTNS_CHECK auto-toggles before WM_COMMAND, so state may already match isChecked;
+            // always redraw so custom-draw styling updates while the mouse is still over the button.
+            RedrawWindow(win->hwndToolbar, &rc, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+        }
     }
 }
 
@@ -163,19 +171,18 @@ static void UpdateThemeToolbarButton(MainWindow* win) {
         return;
     }
     bool isDark = ThemeUsesDarkChrome();
-    // show current theme: moon = dark, sun = light
-    TbIcon icon = isDark ? TbIcon::ThemeMoon : TbIcon::ThemeSun;
+    SetToolbarButtonCheckedState(win, CmdToggleLightDarkTheme, isDark);
     const char* tip = isDark ? _TRN("&Dark Theme") : _TRN("&Light Theme");
     TempStr tipTranslated = (TempStr)trans::GetTranslation(tip);
 
     TBBUTTONINFOW bi{};
     bi.cbSize = sizeof(bi);
-    bi.dwMask = TBIF_IMAGE | TBIF_TEXT | TBIF_BYINDEX;
-    bi.iImage = (int)icon;
+    bi.dwMask = TBIF_TEXT | TBIF_BYINDEX;
     bi.pszText = ToWStrTemp(tipTranslated);
     for (int i = 0; i < n; i++) {
-        SendMessageW(win->hwndToolbar, TB_SETBUTTONINFO, buttons[i], (LPARAM)&bi);
+        SendMessageW(win->hwndToolbar, TB_SETBUTTONINFOW, buttons[i], (LPARAM)&bi);
     }
+    InvalidateRect(win->hwndToolbar, nullptr, FALSE);
 }
 
 void UpdateDoubleClickWordLookupToolbarButton(MainWindow* win) {
@@ -185,16 +192,14 @@ void UpdateDoubleClickWordLookupToolbarButton(MainWindow* win) {
         return;
     }
     bool enabled = gGlobalPrefs->enableDoubleClickWordLookup;
-    // show current state: normal icon = on, slashed icon = off
-    TbIcon icon = enabled ? TbIcon::Dictionary : TbIcon::DictionaryOff;
+    SetToolbarButtonCheckedState(win, CmdToggleDoubleClickWordLookup, enabled);
     const char* tip =
         enabled ? _TRN("Double-Click Word Lookup (enabled)") : _TRN("Double-Click Word Lookup (disabled)");
     TempStr tipTranslated = (TempStr)trans::GetTranslation(tip);
 
     TBBUTTONINFOW bi{};
     bi.cbSize = sizeof(bi);
-    bi.dwMask = TBIF_IMAGE | TBIF_TEXT | TBIF_BYINDEX;
-    bi.iImage = (int)icon;
+    bi.dwMask = TBIF_TEXT | TBIF_BYINDEX;
     bi.pszText = ToWStrTemp(tipTranslated);
     for (int i = 0; i < n; i++) {
         SendMessageW(win->hwndToolbar, TB_SETBUTTONINFOW, buttons[i], (LPARAM)&bi);
@@ -321,7 +326,9 @@ static TBBUTTON TbButtonFromButtonInfo(const ToolbarButtonInfo& bi, bool noTrans
     b.iBitmap = (int)bi.bmpIndex;
     b.fsState = TBSTATE_ENABLED;
     b.fsStyle = BTNS_BUTTON;
-    if (bi.cmdId == CmdFindToggleMatchCase) {
+    if (bi.cmdId == CmdFindToggleMatchCase || bi.cmdId == CmdToggleDoubleClickWordLookup ||
+        bi.cmdId == CmdToggleLightDarkTheme || bi.cmdId == CmdToggleBookmarks ||
+        bi.cmdId == CmdZoomFitWidthAndContinuous || bi.cmdId == CmdZoomFitPageAndSinglePage) {
         b.fsStyle = BTNS_CHECK;
     }
     if (bi.bmpIndex == TbIcon::Text) {
@@ -661,14 +668,39 @@ static LRESULT PrepaintToolbarItem(NMTBCUSTOMDRAW* custDraw) {
 
     custDraw->nmcd.uItemState &= ~(CDIS_CHECKED | CDIS_SELECTED);
 
+    HWND hwndToolbar = custDraw->nmcd.hdr.hwndFrom;
+    int idx = (int)custDraw->nmcd.dwItemSpec;
+    TBBUTTONINFOW tbi{};
+    tbi.cbSize = sizeof(tbi);
+    tbi.dwMask = TBIF_STATE;
+    SendMessageW(hwndToolbar, TB_GETBUTTONINFOW, idx, (LPARAM)&tbi);
+    bool isChecked = (tbi.fsState & TBSTATE_CHECKED) != 0;
+
     COLORREF fillCol = bgCol;
-    if (!isSelected && isHot) {
-        fillCol = ThemeUsesDarkChrome() ? AccentColor(bgCol, 18) : AccentColor(bgCol, -10);
+    if (isChecked) {
+        if (ThemeUsesDarkChrome()) {
+            fillCol = AccentColor(bgCol, 12, 52);
+        } else {
+            fillCol = AccentColor(bgCol, 24);
+        }
+    } else if (!isSelected && isHot) {
+        if (ThemeUsesDarkChrome()) {
+            fillCol = AccentColor(bgCol, 10, 22);
+        } else {
+            fillCol = AccentColor(bgCol, -10);
+        }
     }
 
     HBRUSH br = CreateSolidBrush(fillCol);
     FillRect(custDraw->nmcd.hdc, &custDraw->nmcd.rc, br);
     DeleteObject(br);
+
+    if (isChecked) {
+        COLORREF borderCol = ThemeUsesDarkChrome() ? AccentColor(bgCol, 40, 72) : AccentColor(bgCol, 38);
+        HBRUSH borderBr = CreateSolidBrush(borderCol);
+        FrameRect(custDraw->nmcd.hdc, &custDraw->nmcd.rc, borderBr);
+        DeleteObject(borderBr);
+    }
 
     return TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND;
 }
@@ -933,7 +965,6 @@ static int FindLabelXAfterToolbarAnchor(HWND hwndToolbar, HWND hwndFrame, const 
     }
     return anchorR.right + sepDx + labelPad;
 }
-
 
 static bool LayoutToolbarFindControls(MainWindow* win, Size size, int findDy, int minFindBoxDx) {
     int labelPad = DpiScale(win->hwndFrame, kFindLabelPadAfterSep);

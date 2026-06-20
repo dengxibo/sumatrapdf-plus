@@ -24,7 +24,6 @@ enum class TbIcon {
     ThemeSun,
     ThemeMoon,
     Dictionary,
-    DictionaryOff,
     kMax
 };
 

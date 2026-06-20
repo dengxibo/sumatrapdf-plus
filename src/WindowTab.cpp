@@ -55,10 +55,14 @@ WindowTab::~WindowTab() {
         AsChm()->RemoveParentHwnd();
     }
     delete selectionOnPage;
-    // technically we only need to clear ctrl == gMostRecentlyOpenedDoc
-    // but gMostRecentlyOpenedDoc is only for dde commands
-    // so doesn't need to be kept for long
-    gMostRecentlyOpenedDoc = nullptr;
+    // Only clear gMostRecentlyOpenedDoc if it actually points to THIS tab's
+    // controller. Otherwise we'd null out a reference owned by another tab
+    // (or set by an async load that completed after this tab was closed),
+    // leaving a dangling pointer in gMostRecentlyOpenedDoc that crashes
+    // FindMainWindowByFile -> GetFilePath on the next OpenFile.
+    if (gMostRecentlyOpenedDoc == ctrl) {
+        gMostRecentlyOpenedDoc = nullptr;
+    }
     delete ctrl;
     str::FreePtr(&filePath);
     str::FreePtr(&frameTitle);

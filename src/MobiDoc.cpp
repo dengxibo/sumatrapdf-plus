@@ -1600,6 +1600,8 @@ bool MobiDoc::ParseNcxToc(EbookTocVisitor* visitor) {
             NcxEncodeBase32(e.posFid, 4, fidStr, sizeof(fidStr));
             NcxEncodeBase32(e.posOff, 10, offStr, sizeof(offStr));
             snprintf(link, sizeof(link), "kindle:pos:fid:%s:off:%s", fidStr, offStr);
+        } else if (e.pos >= 0) {
+            snprintf(link, sizeof(link), "%d", e.pos);
         }
         int level = (e.hlvl >= 0) ? e.hlvl + 1 : 1;
         const char* name = label ? label : "";
@@ -1697,7 +1699,6 @@ static void AppendDeepText(const GumboNode* node, StrBuilder& sb) {
 struct MobiTocWalker {
     EbookTocVisitor* visitor = nullptr;
     int itemLevel = 0;
-    bool stopped = false;
     int visitedCount = 0; // number of ToC items actually emitted
 
     void Walk(const GumboNode* node);
@@ -1705,13 +1706,13 @@ struct MobiTocWalker {
 };
 
 void MobiTocWalker::WalkChildren(const GumboVector* children) {
-    for (unsigned int i = 0; i < children->length && !stopped; i++) {
+    for (unsigned int i = 0; i < children->length; i++) {
         Walk((const GumboNode*)children->data[i]);
     }
 }
 
 void MobiTocWalker::Walk(const GumboNode* node) {
-    if (stopped || !node) {
+    if (!node) {
         return;
     }
     if (node->type == GUMBO_NODE_DOCUMENT) {
@@ -1719,10 +1720,6 @@ void MobiTocWalker::Walk(const GumboNode* node) {
         return;
     }
     if (node->type != GUMBO_NODE_ELEMENT) {
-        return;
-    }
-    if (GumboTagNameIs(node, "mbp:pagebreak")) {
-        stopped = true;
         return;
     }
     if (GumboTagNameIs(node, "a")) {

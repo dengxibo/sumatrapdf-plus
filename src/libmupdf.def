@@ -58,6 +58,7 @@ EXPORTS
 	fz_run_page_widgets
 	fz_register_document_handlers
 	fz_count_chapters
+	fz_count_chapter_pages
 	fz_transform_page
 	fz_load_chapter_page
 	fz_run_page_contents
@@ -75,6 +76,7 @@ EXPORTS
 	fz_new_pdfocr_writer_with_output
 	fz_new_pdfocr_writer
 	fz_is_point_inside_rect
+	fz_is_document_reflowable
 	fz_quad_from_rect
 	fz_do_try
 	fz_do_always

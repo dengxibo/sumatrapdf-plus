@@ -85,6 +85,10 @@ CmdToggleUseTabs,,Toggle Use Tabs,"Toggle UseTabs setting, only affects new wind
 CmdToggleTabsMru,,Toggle Tabs MRU Order,"Toggle TabsMru setting: Ctrl+Tab switches tabs in most recently used order, ver 3.7+"
 CmdToggleFrequentlyRead,,Toggle Frequently Read,ver 3.5+
 CmdSelectNextTheme,,Select Next Theme,ver 3.5+
+CmdToggleLightDarkTheme,,Toggle Light/Dark Theme,Toolbar button and command palette, ver 3.7+
+CmdToggleDoubleClickWordLookup,,Toggle Double-Click Word Lookup,"Toolbar button and command palette; toggles EnableDoubleClickWordLookup advanced setting, ver 3.7+"
+CmdEbookFontSizeDecrease,,Ebook Font Size: Decrease,"Toolbar button and command palette; decreases reflowable ebook font size and reloads the document, ver 3.7+"
+CmdEbookFontSizeIncrease,,Ebook Font Size: Increase,"Toolbar button and command palette; increases reflowable ebook font size and reloads the document, ver 3.7+"
 CmdToggleLinks,,Toggle Show Links,"Toggle drawing blue rectangle around links, ver 3.6+"
 ```
 
@@ -239,6 +243,7 @@ CmdSearchSelectionWithBing,,Search Selection with Bing,
 CmdSearchSelectionWithGoogle,,Search Selection with Google,
 CmdSearchSelectionWithWikipedia,,Search Selection with Wikipedia,ver 3.6+
 CmdSearchSelectionWithGoogleScholar,,Search Selection with Google Scholar,ver 3.6+
+CmdAnalyzeSelectionWithDoubao,,Ask Doubao,Selection context menu; copies text and opens Doubao web chat, ver 3.7+
 CmdSendByEmail,,Send Document By Email...,
 CmdInvokeInverseSearch,,Invoke Inverse Search,ver 3.6+
 
@@ -288,6 +293,7 @@ CmdToggleScrollbarInSinglePage,,Toggle Scrollbar In Single Page,"Toggle Scrollba
 CmdToggleLazyLoading,,Toggle Lazy Loading,"Toggle LazyLoading advanced setting, ver 3.7+"
 CmdToggleEscToExit,,Toggle Esc to Exit,"Toggle EscToExit advanced setting, ver 3.7+"
 CmdToggleTips,,Toggle Tips,"Toggle ShowTips advanced setting, ver 3.7+"
+CmdToggleDoubleClickWordLookup,,Toggle Double-Click Word Lookup,"Toggle EnableDoubleClickWordLookup advanced setting, ver 3.7+"
 CmdToggleReuseInstance,,Toggle Reuse Instance,"Toggle ReuseInstance advanced setting, ver 3.7+"
 CmdToggleWindowsPreviewer,,Register / Un-register Windows Previewer,"Only available when SumatraPDF is installed. Registers or un-registers the PDF preview handler for Windows Explorer preview pane, ver 3.7+"
 CmdToggleWindowsSearchFilter,,Register / Un-register Windows Search Filter,"Only available when SumatraPDF is installed. Registers or un-registers the PDF search filter for Windows Search indexing, ver 3.7+"

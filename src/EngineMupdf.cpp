@@ -38,7 +38,7 @@ extern "C" {
 void NotifyEbookPagesLoadingProgress(const char* filePath, bool reloadToc);
 
 static const DWORD kReflowBackgroundDelayMs = 50;
-static const int kReflowChaptersPerYield = 4;
+static const int kReflowChaptersPerYield = 1;
 static const int kReflowNotifyEveryNChapters = 16;
 static const int kReflowInitialPages = 8;
 
@@ -342,7 +342,14 @@ static IPageDestination* NewPageDestinationMupdf(EngineMupdf* e, fz_context* ctx
     auto dest = new PageDestinationMupdf(link, outline);
     dest->rect = FzGetRectF(link, outline);
     if (e && !pdf_specifics(ctx, doc)) {
-        dest->reflowOutlineChapter = EpubUriChapterIndexNoLayout(ctx, doc, uri);
+        if (outline && outline->page.chapter >= 0) {
+            dest->reflowOutlineChapter = outline->page.chapter;
+        } else {
+            // Match URI (without #fragment) to spine chapter for progressive TOC.
+            // epub_resolve_link_dest does not layout HTML when there is no fragment.
+            // Callers must hold docLock during progressive reflow (GetToc does).
+            dest->reflowOutlineChapter = EpubUriChapterIndexNoLayout(ctx, doc, uri);
+        }
     }
     if (pageNoHint > 0) {
         dest->pageNo = pageNoHint;
@@ -728,6 +735,13 @@ static void AddChar(fz_stext_line* line, fz_stext_char* c, WStrBuilder& s, Vec<R
     WCHAR prev = s.LastChar();
     if (!str::IsWs(prev)) {
         s.AppendChar(L' ');
+        // MuPDF quads for whitespace can span paragraph indents; shrink the hit
+        // target so clicking blank margin doesn't select following text.
+        constexpr int kMaxSpaceHitW = 4;
+        if (r.dx > kMaxSpaceHitW) {
+            r.x = r.BR().x - kMaxSpaceHitW;
+            r.dx = kMaxSpaceHitW;
+        }
         rects.Append(r);
     }
 }
@@ -1510,6 +1524,94 @@ static fz_image* FzFindImageAtIdx(fz_context* ctx, FzPageInfo* pageInfo, int idx
     }
     fz_drop_stext_page(ctx, stext);
     return nullptr;
+}
+
+// Some EPUBs (e.g. bundled 棚车少年) ship with placeholder chapter-1 hrefs like
+// "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" while chapter 2+ links are valid partNNNN.xhtml#aNNN.
+static bool IsPlaceholderEpubHref(const char* uri) {
+    if (!uri || !*uri) {
+        return false;
+    }
+    size_t n = str::Len(uri);
+    if (n < 8) {
+        return false;
+    }
+    char c = uri[0];
+    if (c != 'X' && c != 'x') {
+        return false;
+    }
+    for (size_t i = 1; i < n; i++) {
+        char ch = uri[i];
+        if (ch != c && ch != (char)(c ^ 0x20)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool IsEpubPartFragmentHref(const char* uri) {
+    return uri && str::StartsWith(uri, "part") && str::FindChar(uri, '#');
+}
+
+static char* DeriveChapter1HrefFromChapter2(const char* ch2uri) {
+    if (!IsEpubPartFragmentHref(ch2uri)) {
+        return nullptr;
+    }
+    const char* hash = str::FindChar(ch2uri, '#');
+    if (!hash || hash[1] != 'a') {
+        return nullptr;
+    }
+    int partNum = atoi(ch2uri + 4);
+    int idNum = atoi(hash + 2);
+    if (partNum <= 0 || idNum < 2) {
+        return nullptr;
+    }
+    char buf[64];
+    snprintf(buf, sizeof(buf), "part%04d.xhtml#a%03d", partNum - 1, idNum - 2);
+    return str::Dup(buf);
+}
+
+static void HealPlaceholderEpubPageLinks(EngineMupdf* e, fz_context* ctx, fz_document* doc,
+                                         Vec<PageElementDestination*>& links) {
+    if (!e || !ctx || !doc) {
+        return;
+    }
+    int n = (int)links.Size();
+    for (int i = 0; i < n; i++) {
+        PageElementDestination* pel = links.at(i);
+        if (!pel || !pel->dest || pel->dest->GetKind() != kindDestinationMupdf) {
+            continue;
+        }
+        auto* pd = (PageDestinationMupdf*)pel->dest;
+        if (!pd->link || pd->value) {
+            continue;
+        }
+        char* uri = pd->link->uri;
+        if (!IsPlaceholderEpubHref(uri)) {
+            continue;
+        }
+        for (int j = i + 1; j < n; j++) {
+            PageElementDestination* pel2 = links.at(j);
+            if (!pel2 || !pel2->dest || pel2->dest->GetKind() != kindDestinationMupdf) {
+                continue;
+            }
+            auto* pd2 = (PageDestinationMupdf*)pel2->dest;
+            if (!pd2->link) {
+                continue;
+            }
+            char* uri2 = pd2->link->uri;
+            if (!IsEpubPartFragmentHref(uri2)) {
+                continue;
+            }
+            char* healed = DeriveChapter1HrefFromChapter2(uri2);
+            if (!healed) {
+                continue;
+            }
+            pd->value = healed;
+            pd->reflowOutlineChapter = EpubUriChapterIndexNoLayout(ctx, doc, healed);
+            break;
+        }
+    }
 }
 
 static fz_link* FixupPageLinks(fz_link* root) {
@@ -2790,7 +2892,6 @@ li, blockquote {
   line-height: 1.5;
 }
 em, i, cite, dfn, var, .italic {
-  font-family: Literata, Georgia, Charter, "Palatino Linotype", "Times New Roman", serif !important;
   font-style: italic !important;
 }
 a, a:link, a:visited, a:hover, a:active,
@@ -2843,29 +2944,16 @@ p a, sup a, li a {
 }
 )";
 
-        static const char* kEpubReaderLatinFontCss = R"(html, body,
-p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,
-section, article, main, header, footer,
-.calibre,
-.calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
-.calibre11, .calibre12, .calibre13, .calibre14, .calibre15, .calibre16, .calibre17, .calibre18, .calibre19, .calibre20,
-.calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
-.calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
+        static const char* kEpubReaderLatinFontCss =
+            R"(/* Default body face only; book CSS (e.g. STKai for 书虫) keeps priority on styled elements. */
+html, body {
   font-family: Literata, Georgia, Charter, "Palatino Linotype", "Times New Roman", "Source Han Serif SC", "思源宋体", "Source Han Serif", "Noto Serif CJK SC", "NSimSun", "SimSun", "宋体", serif !important;
 }
 )";
-        static const char* kEpubReaderCjkFontCss = R"(html, body,
-p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,
-section, article, main, header, footer,
-.calibre,
-.calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
-.calibre11, .calibre12, .calibre13, .calibre14, .calibre15, .calibre16, .calibre17, .calibre18, .calibre19, .calibre20,
-.calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
-.calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
+        static const char* kEpubReaderCjkFontCss =
+            R"(/* Default body face only; book CSS (e.g. STKai / MKai PRC) keeps priority on styled elements. */
+html, body {
   font-family: "Source Han Serif SC", "思源宋体", "Source Han Serif", "Noto Serif CJK SC", Literata, Georgia, "NSimSun", "SimSun", "宋体", serif !important;
-}
-h1, h2, h3, h4, h5, h6 {
-  font-family: "Source Han Serif SC", "思源宋体", "Source Han Serif", "Noto Serif CJK SC", "NSimSun", "SimSun", "宋体", Literata, Georgia, serif !important;
 }
 )";
         static const char* kEpubReaderBaseCss = R"(html {
@@ -2927,17 +3015,133 @@ h3, h4, h5, h6 {
   margin-bottom: 0.55em;
 }
 em, i, cite, dfn, var, .italic {
-  font-family: Literata, Georgia, Charter, "Palatino Linotype", "Times New Roman", serif !important;
   font-style: italic !important;
 }
 img, svg {
   max-width: 100%;
   height: auto;
 }
+/* Calibre titlepage.xhtml: SVG jacket should fill the page width. */
+body > div > svg {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  margin: 0 auto !important;
+}
 img, p img, div img, figure img {
   display: inline;
   margin: 0.8em 0 !important;
   vertical-align: middle;
+}
+/* Penguin trade EPUBs use portrait_xsmall (28% in the print stylesheet) for
+   inline figures. Bump the screen size and keep caption width matched so the
+   label aligns with the image. */
+.portrait_xsmall, .landscape_xsmall {
+  width: 50% !important;
+}
+.portrait_xsmall + .caption, .landscape_xsmall + .caption {
+  width: 50% !important;
+}
+.portrait_small, .landscape_small {
+  width: 65% !important;
+}
+.portrait_small + .caption, .landscape_small + .caption {
+  width: 65% !important;
+}
+/* Penguin part/chapter dividers are full-page PNGs in .image_full; book CSS uses
+   height:99vh and flex centering, which mupdf ignores, collapsing the wrapper. */
+.image_full, .image_full_caption, .image_full_landscape, .image_full_caption_landscape {
+  width: 100% !important;
+  height: auto !important;
+  margin: 0 auto !important;
+  padding: 0 !important;
+  text-align: center !important;
+}
+.image_full img, .image_full_caption img, .image_full_landscape img, .image_full_caption_landscape img {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  margin: 0 auto !important;
+  display: block !important;
+}
+/* Chinese trade EPUBs (e.g. ibook.178) use <p class="center"><img/></p> for cover.xhtml
+   with a low-res thumbnail JPEG; mupdf renders at intrinsic size without width:100%.
+   Do not use :only-child here - mupdf's implementation is broken for single elements. */
+body > p.center {
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  text-align: center !important;
+  text-indent: 0 !important;
+}
+body > p.center img {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  display: block !important;
+  margin: 0 auto !important;
+}
+/* cnepub.com EPUBs stack img.cover + title/intro in coverpage.html without page breaks. */
+img.cover {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  margin: 0 auto !important;
+}
+img.cover + h1 {
+  page-break-before: always !important;
+}
+/* Calibre+cnepub hybrids inject <body><img class="cover"/> before a <div>; pure cnepub
+   wraps img.cover inside <div> instead. Hide the redundant direct-child copy. */
+body > img.cover {
+  display: none !important;
+}
+body > img.cover + div > h1 {
+  page-break-before: auto !important;
+}
+/* Calibre duplicate jacket page: sole body.calibre content is 封面 + jacket img. */
+body.calibre div.calibre1 > p.calibre2:only-of-type > img.calibre3 {
+  display: none !important;
+}
+body.calibre div.calibre1 > p.calibre2:only-of-type {
+  display: none !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+figure img, div.figure img, div.fig img, div.image img, div.images img, div.picture img, div.pic img, div.illustration img, div.illus img,
+p.figure img, p.fig img, p.image img, p.images img, p.picture img, p.pic img, p.illustration img, p.illus img {
+  display: inline !important;
+  margin: 0.8em 0 !important;
+  vertical-align: middle;
+}
+/* HiResonator/KF8 dual-image EPUBs ship .squeeze-epub + .squeeze-amzn pairs.
+   The book CSS hides .squeeze-amzn, but the div.image img rule above wins on
+   specificity; hide the Kindle-only copy explicitly. */
+.squeeze-amzn,
+img.squeeze-amzn,
+div.image img.squeeze-amzn, div.figure img.squeeze-amzn, div.fig img.squeeze-amzn,
+figure img.squeeze-amzn, div.images img.squeeze-amzn, div.picture img.squeeze-amzn {
+  display: none !important;
+}
+/* Book CSS uses inline-block .squeeze wrappers centered via text-align on the
+   parent; mupdf treats inline-block as block, so use auto margins instead. */
+.squeeze {
+  margin-left: auto !important;
+  margin-right: auto !important;
+  text-align: center !important;
+}
+div.image img.squeeze-epub,
+div.image1 img.squeeze-epub {
+  display: block !important;
+  margin-top: 0.8em !important;
+  margin-bottom: 0.8em !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
 }
 figure, div.figure, div.fig, div.image, div.images, div.picture, div.pic, div.illustration, div.illus,
 p.figure, p.fig, p.image, p.images, p.picture, p.pic, p.illustration, p.illus {
@@ -3470,6 +3674,95 @@ static void WaitForReflowUiDocLock(EngineMupdf* e) {
     }
 }
 
+static bool MupdfNeedsDocLock(EngineMupdf* engine, bool reflowLoading) {
+    // Reflowable EPUB/FB2/HTML share one fz_archive stream across per-thread cloned
+    // contexts; concurrent zip reads corrupt the heap (load_html_image/read_zip_entry).
+    // Serialize for the whole document lifetime, not only during progressive reflow.
+    (void)reflowLoading;
+    return engine && !engine->pdfdoc;
+}
+
+static bool MupdfNeedsRenderLock(EngineMupdf* engine, bool reflowLoading) {
+    // Reflowable docs rely on docLock alone; PDF uses renderLock for display-list replay.
+    (void)reflowLoading;
+    if (!engine || !engine->pdfdoc) {
+        return false;
+    }
+    return true;
+}
+
+// Acquire docLock during progressive reflow without deadlock: only advertise
+// reflowUiWantsDocLock while waiting. Setting wants before EnterCriticalSection
+// blocked the UI on docLock while the background thread spun in WaitForReflowUiDocLock.
+static void AcquireReflowUiDocLock(EngineMupdf* e) {
+    if (InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) == 0) {
+        EnterCriticalSection(&e->docLock);
+        return;
+    }
+    for (;;) {
+        if (TryEnterCriticalSection(&e->docLock)) {
+            InterlockedExchange(&e->reflowUiWantsDocLock, 0);
+            return;
+        }
+        InterlockedExchange(&e->reflowUiWantsDocLock, 1);
+        Sleep(0);
+    }
+}
+
+static void ReleaseReflowUiDocLock(EngineMupdf* e) {
+    LeaveCriticalSection(&e->docLock);
+    InterlockedExchange(&e->reflowUiWantsDocLock, 0);
+}
+
+// During progressive EPUB reflow the UI/render thread and MupdfReflowLoad both
+// touch the same fz_document via per-thread cloned contexts. docLock must cover
+// every mupdf call that reads/writes document state (not just fz_load_page).
+struct ReflowUiDocLock {
+    EngineMupdf* e = nullptr;
+    bool active = false;
+
+    ReflowUiDocLock(EngineMupdf* engine, bool reflowLoading) {
+        if (!MupdfNeedsDocLock(engine, reflowLoading)) {
+            return;
+        }
+        e = engine;
+        active = true;
+        AcquireReflowUiDocLock(e);
+    }
+
+    ~ReflowUiDocLock() {
+        if (!active) {
+            return;
+        }
+        ReleaseReflowUiDocLock(e);
+    }
+};
+
+// During progressive reflow, ReflowUiDocLock already serializes mupdf document
+// access with background chapter counting. Skip renderLock then, or threads
+// deadlock (GetFzPageInfo holds docLock then renderLock while a render worker
+// waits on docLock).
+struct ReflowRenderLock {
+    EngineMupdf* e = nullptr;
+    bool active = false;
+
+    ReflowRenderLock(EngineMupdf* engine, bool reflowLoading) {
+        if (!MupdfNeedsRenderLock(engine, reflowLoading)) {
+            return;
+        }
+        e = engine;
+        active = true;
+        EnterCriticalSection(&e->renderLock);
+    }
+
+    ~ReflowRenderLock() {
+        if (!active) {
+            return;
+        }
+        LeaveCriticalSection(&e->renderLock);
+    }
+};
+
 static void FinishReflowableLoadAsync(EngineMupdf* e) {
     AtomicIntInc(&gDangerousThreadCount);
     defer {
@@ -3496,6 +3789,11 @@ static void FinishReflowableLoadAsync(EngineMupdf* e) {
     }
 
     if (numChapters <= 0) {
+        {
+            WaitForReflowUiDocLock(e);
+            ScopedCritSec scope(&e->docLock);
+            ReleasePerThreadContext(e);
+        }
         InterlockedExchange(&e->reflowableLoadingInProgress, 0);
         return;
     }
@@ -3508,6 +3806,11 @@ static void FinishReflowableLoadAsync(EngineMupdf* e) {
     }
     for (int ch = 0; ch < numChapters; ch++) {
         if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+            {
+                WaitForReflowUiDocLock(e);
+                ScopedCritSec scope(&e->docLock);
+                ReleasePerThreadContext(e);
+            }
             InterlockedExchange(&e->reflowableLoadingInProgress, 0);
             return;
         }
@@ -3545,11 +3848,21 @@ static void FinishReflowableLoadAsync(EngineMupdf* e) {
         e->pageCount = totalPages;
     }
 
+    {
+        WaitForReflowUiDocLock(e);
+        ScopedCritSec scope(&e->docLock);
+        ReleasePerThreadContext(e);
+    }
+
     InterlockedExchange(&e->reflowableLoadingInProgress, 0);
     e->InvalidateTocTree();
     if (path) {
         NotifyEbookPagesLoadingProgress(path, true);
     }
+}
+
+bool EngineMupdf::IsProgressiveEbookLoading() {
+    return InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
 }
 
 bool EngineMupdf::FinishLoading() {
@@ -3583,11 +3896,18 @@ bool EngineMupdf::FinishLoading() {
         }
 
         InterlockedExchange(&reflowableLoadAbort, 0);
+        // Block TOC outline page resolution before the UI is notified; each resolved
+        // bookmark can lay out every spine chapter via fz_page_number_from_location.
         InterlockedExchange(&reflowableLoadingInProgress, 1);
 
         // show the first pages on the UI thread before background chapter counting,
         // which contends on MuPDF locks with fz_load_page during initial render
         NotifyEngineDisplayReady(this);
+
+        if (IsCreateEngineForThumbnail()) {
+            InterlockedExchange(&reflowableLoadingInProgress, 0);
+            return true;
+        }
 
         auto fn = MkFunc0<EngineMupdf>(FinishReflowableLoadAsync, this);
         RunAsync(fn, "MupdfReflowLoad");
@@ -3864,21 +4184,36 @@ TocTree* EngineMupdf::GetToc() {
 
     int idCounter = 0;
 
-    ScopedCritSec cs(&docLock);
-
     TocItem* root = nullptr;
     TocItem* att = nullptr;
-    if (outline) {
-        root = BuildTocTree(nullptr, outline, idCounter, false);
-    }
-    if (!attachments) {
-        goto MakeTree;
-    }
-    att = BuildTocTree(nullptr, attachments, idCounter, true);
-    if (root) {
-        root->AddSiblingAtEnd(att);
+    if (pdfdoc) {
+        ScopedCritSec cs(&docLock);
+        if (outline) {
+            root = BuildTocTree(nullptr, outline, idCounter, false);
+        }
+        if (!attachments) {
+            goto MakeTree;
+        }
+        att = BuildTocTree(nullptr, attachments, idCounter, true);
+        if (root) {
+            root->AddSiblingAtEnd(att);
+        } else {
+            root = att;
+        }
     } else {
-        root = att;
+        ReflowUiDocLock docGuard(this, false);
+        if (outline) {
+            root = BuildTocTree(nullptr, outline, idCounter, false);
+        }
+        if (!attachments) {
+            goto MakeTree;
+        }
+        att = BuildTocTree(nullptr, attachments, idCounter, true);
+        if (root) {
+            root->AddSiblingAtEnd(att);
+        } else {
+            root = att;
+        }
     }
 MakeTree:
     if (!root) {
@@ -4092,27 +4427,19 @@ static void RebuildCommentsFromAnnotations(fz_context* ctx, FzPageInfo* pageInfo
 // https://github.com/sumatrapdfreader/sumatrapdf/issues/4145
 // https://github.com/sumatrapdfreader/sumatrapdf/issues/4187
 FzPageInfo* EngineMupdf::GetFzPageInfoCanFail(int pageNo) {
-#if 0
-    return GetFzPageInfo(pageNo, true);
-#else
     FzPageInfo* res = nullptr;
     if (!TryEnterCriticalSection(&pagesLock)) {
         return nullptr;
     }
     if (pageNo >= 1 && pageNo <= pageCount) {
         FzPageInfo* pageInfo = pages[pageNo - 1];
-        if (pageInfo && (pageInfo->fullyLoaded || pageInfo->retainedLinks || pageInfo->links.Size() > 0)) {
+        if (pageInfo &&
+            (pageInfo->fullyLoaded || pageInfo->retainedLinks || pageInfo->links.Size() > 0 || pageInfo->page)) {
             res = pageInfo;
         }
     }
-    if (!res) {
-        // GetFzPageInfo uses pagesLock + renderLock only; docLock is not required
-        // and was blocking cursor hit-testing during background reflow counting.
-        res = GetFzPageInfo(pageNo, true);
-    }
     LeaveCriticalSection(&pagesLock);
     return res;
-#endif
 }
 
 /* SumatraPDF */
@@ -4151,33 +4478,26 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
     bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
 
     // TODO: minimize time spent under pagesLock when fully loading
-    ScopedCritSec scope(&pagesLock);
+    FzPageInfo* pageInfo = nullptr;
+    {
+        ScopedCritSec scope(&pagesLock);
+        ReportIf(pageNo < 1 || pageNo > pageCount);
+        if (pageNo < 1 || pageNo > pageCount) {
+            return nullptr;
+        }
+        pageInfo = pages[pageNo - 1];
+        if (!pageInfo) {
+            return nullptr;
+        }
+    }
 
-    ReportIf(pageNo < 1 || pageNo > pageCount);
-    if (pageNo < 1 || pageNo > pageCount) {
-        return nullptr;
-    }
-    int pageIdx = pageNo - 1;
-    FzPageInfo* pageInfo = pages[pageIdx];
-    if (!pageInfo) {
-        return nullptr;
-    }
+    ReflowUiDocLock docGuard(this, reflowLoading);
+    ReflowRenderLock renderGuard(this, reflowLoading);
 
     // page-running operations on this specific page run under per-page lock.
-    ScopedCritSec ctxScope(&renderLock);
     if (!pageInfo->page) {
-        if (reflowLoading) {
-            InterlockedExchange(&reflowUiWantsDocLock, 1);
-            defer {
-                InterlockedExchange(&reflowUiWantsDocLock, 0);
-            };
-            EnterCriticalSection(&docLock);
-            defer {
-                LeaveCriticalSection(&docLock);
-            };
-        }
         fz_try(ctx) {
-            pageInfo->page = fz_load_page(ctx, _doc, pageIdx);
+            pageInfo->page = fz_load_page(ctx, _doc, pageNo - 1);
         }
         fz_catch(ctx) {
             fz_report_error(ctx);
@@ -4224,6 +4544,7 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
             pageInfo->links.Append(pel);
             link = link->next;
         }
+        HealPlaceholderEpubPageLinks(this, ctx, _doc, pageInfo->links);
         if (pageInfo->links.Size() > 0) {
             pageInfo->elementsNeedRebuilding = true;
         }
@@ -4256,6 +4577,7 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
             pageInfo->links.Append(pel);
             link = link->next;
         }
+        HealPlaceholderEpubPageLinks(this, ctx, _doc, pageInfo->links);
     }
 
     if (!stext) {
@@ -4269,9 +4591,15 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
 }
 
 RectF EngineMupdf::PageMediabox(int pageNo) {
+    ScopedCritSec scope(&pagesLock);
     ReportIf(pageNo < 1 || pageNo > pageCount);
-    if (pageNo < 1 || pageNo > pageCount) return {};
+    if (pageNo < 1 || pageNo > pageCount) {
+        return {};
+    }
     FzPageInfo* pi = pages[pageNo - 1];
+    if (!pi) {
+        return {};
+    }
     return pi->mediabox;
 }
 
@@ -4312,9 +4640,10 @@ RectF EngineMupdf::PageContentBox(int pageNo, RenderTarget target) {
 
     fz_rect pagerect;
     fz_display_list* keptList = nullptr;
+    bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
     {
-        // Hold per-page lock briefly: page bounds + (re-)acquire cached display list.
-        ScopedCritSec scope(&renderLock);
+        ReflowUiDocLock docGuard(this, reflowLoading);
+        ReflowRenderLock renderGuard(this, reflowLoading);
         pagerect = fz_bound_page(ctx, pageInfo->page);
         keptList = GetOrBuildPageDisplayList(pageInfo, ctx);
     }
@@ -4322,11 +4651,14 @@ RectF EngineMupdf::PageContentBox(int pageNo, RenderTarget target) {
         return mediabox;
     }
 
-    // Lock-free: bbox-device run on a display list is concurrency-safe.
+    // Lock-free when reflow is done; during progressive reflow replay still hits
+    // the shared fz_store (image decode) and must not run alongside chapter counting.
     fz_cookie fzcookie{};
     fz_rect rect = fz_empty_rect;
     fz_device* dev = nullptr;
     fz_var(dev);
+    ReflowUiDocLock replayGuard(this, reflowLoading);
+    ReflowRenderLock replayRenderGuard(this, reflowLoading);
     fz_try(ctx) {
         dev = fz_new_bbox_device(ctx, &rect);
         fz_run_display_list(ctx, keptList, dev, fz_identity, pagerect, &fzcookie);
@@ -4355,10 +4687,7 @@ RectF EngineMupdf::Transform(const RectF& rect, int pageNo, float zoom, int rota
         if (!name) {
             name = "";
         }
-        logf("doc: %s, pageNo: %d, zoom: %.2f\n", name, pageNo, zoom);
-    }
-    ReportIf(zoom <= 0);
-    if (zoom <= 0) {
+        logf("EngineMupdf::Transform: doc: %s, pageNo: %d, zoom: %.2f\n", name, pageNo, zoom);
         zoom = 1;
     }
     fz_matrix ctm = viewctm(pageNo, zoom, rotation);
@@ -4408,10 +4737,11 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     fz_matrix ctm;
     fz_irect ibounds;
     fz_display_list* keptList = nullptr;
+    bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
 
     {
-        // Hold per-page lock while we touch the page (bounds, optional list build).
-        ScopedCritSec cs(&renderLock);
+        ReflowUiDocLock docGuard(this, reflowLoading);
+        ReflowRenderLock renderGuard(this, reflowLoading);
 
         if (pageRect) {
             pRect = ToFzRect(*pageRect);
@@ -4440,8 +4770,10 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
         // Display-list replay still decodes shared images (JBIG2 etc.) under
         // the hood, and mupdf's image store races on concurrent decode of the
         // same image -- crashes seen in template_image_compose_opt with use-
-        // after-free. Hold renderLock to serialize.
-        ScopedCritSec rls(&renderLock);
+        // after-free. Hold renderLock to serialize; during progressive EPUB
+        // reflow docLock alone serializes (see ReflowRenderLock).
+        ReflowUiDocLock replayGuard(this, reflowLoading);
+        ReflowRenderLock replayRenderGuard(this, reflowLoading);
         fz_try(ctx) {
             pix = fz_new_pixmap_with_bbox(ctx, csRgb, ibounds, nullptr, 1);
             fz_clear_pixmap_with_value(ctx, pix, 0xff);
@@ -4470,7 +4802,8 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     // Fallback: Print or hideAnnotations (each needs different content/usage,
     // not what the cached display list captured), or display-list construction
     // failed. Run the page directly under per-page lock.
-    ScopedCritSec cs(&renderLock);
+    ReflowUiDocLock docGuard(this, reflowLoading);
+    ReflowRenderLock renderGuard(this, reflowLoading);
 
     const char* usage = "View";
     switch (args.target) {
@@ -4559,15 +4892,17 @@ static int ResolveMupdfLinkPageNo1(EngineMupdf* e, const char* uri, fz_link_dest
     // as fz_count_chapter_pages and must not run concurrently with it.
     // Use try-lock during progressive load so bookmark clicks don't freeze the UI.
     bool reflowLoading = InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) != 0;
-    if (reflowLoading) {
-        InterlockedExchange(&e->reflowUiWantsDocLock, 1);
-        defer {
-            InterlockedExchange(&e->reflowUiWantsDocLock, 0);
-        };
+    if (e->pdfdoc) {
+        EnterCriticalSection(&e->docLock);
+    } else {
+        AcquireReflowUiDocLock(e);
     }
-    EnterCriticalSection(&e->docLock);
     defer {
-        LeaveCriticalSection(&e->docLock);
+        if (e->pdfdoc) {
+            LeaveCriticalSection(&e->docLock);
+        } else {
+            ReleaseReflowUiDocLock(e);
+        }
     };
 
     int pageNo = -1;
@@ -4592,6 +4927,9 @@ static int ResolveMupdfLinkPageNo1(EngineMupdf* e, const char* uri, fz_link_dest
 }
 
 static const char* MupdfDestUri(PageDestinationMupdf* link) {
+    if (link->value && *link->value) {
+        return link->value;
+    }
     const char* uri = link->outline ? link->outline->uri : nullptr;
     if (!link->outline) {
         uri = link->link ? link->link->uri : nullptr;
@@ -4616,6 +4954,9 @@ void HandleLinkMupdf(EngineMupdf* e, IPageDestination* dest, ILinkHandler* linkH
     int pageNo1 = 0;
     if (InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) != 0) {
         pageNo1 = EngineMupdfFastOutlinePageNo(e, dest);
+        if (pageNo1 <= 0 && uri && !IsPlaceholderEpubHref(uri)) {
+            pageNo1 = ResolveMupdfLinkPageNo1(e, uri, &ldest);
+        }
         if (pageNo1 <= 0) {
             return;
         }
@@ -4696,6 +5037,8 @@ fz_matrix EngineMupdf::viewctm(fz_page* page, float zoom, int rotation) const {
 
 RenderedBitmap* EngineMupdf::GetPageImage(int pageNo, RectF rect, int imageIdx) {
     auto ctx = Ctx();
+    bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
+    ReflowUiDocLock docGuard(this, reflowLoading);
 
     FzPageInfo* pageInfo = GetFzPageInfo(pageNo, false);
     if (!pageInfo->page) {
@@ -4710,8 +5053,6 @@ RenderedBitmap* EngineMupdf::GetPageImage(int pageNo, RectF rect, int imageIdx) 
     if (outOfBounds || badRect) {
         return nullptr;
     }
-
-    ScopedCritSec scope(&docLock);
 
     fz_image* image = FzFindImageAtIdx(ctx, pageInfo, imageIdx);
     ReportIf(!image);
@@ -4750,14 +5091,15 @@ RenderedBitmap* EngineMupdf::GetPageImage(int pageNo, RectF rect, int imageIdx) 
 
 PageText EngineMupdf::ExtractPageText(int pageNo) {
     auto ctx = Ctx();
+    bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
+
+    ReflowUiDocLock docGuard(this, reflowLoading);
+    ReflowRenderLock renderGuard(this, reflowLoading);
 
     FzPageInfo* pageInfo = GetFzPageInfo(pageNo, true);
     if (!pageInfo) {
         return {};
     }
-
-    // page-running operation: serialize on per-page lock instead of global docLock
-    ScopedCritSec scope(&renderLock);
 
     fz_stext_page* stext = nullptr;
     fz_var(stext);
@@ -4782,13 +5124,15 @@ PageText EngineMupdf::ExtractPageText(int pageNo) {
 
 PageTextUtf8 EngineMupdf::ExtractPageTextUtf8(int pageNo) {
     auto ctx = Ctx();
+    bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
+
+    ReflowUiDocLock docGuard(this, reflowLoading);
+    ReflowRenderLock renderGuard(this, reflowLoading);
 
     FzPageInfo* pageInfo = GetFzPageInfo(pageNo, true);
     if (!pageInfo) {
         return {};
     }
-
-    ScopedCritSec scope(&renderLock);
 
     fz_stext_page* stext = nullptr;
     fz_var(stext);

@@ -68,6 +68,8 @@ class EngineMupdf : public EngineBase {
 
     bool BenchLoadPage(int pageNo) override;
 
+    bool IsProgressiveEbookLoading() override;
+
     Vec<IPageElement*> GetElements(int pageNo) override;
     IPageElement* GetElementAtPos(int pageNo, PointF pt) override;
     bool HandleLink(IPageDestination*, ILinkHandler*) override;

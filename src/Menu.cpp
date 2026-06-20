@@ -1788,7 +1788,7 @@ void OnAboutContextMenu(MainWindow* win, int x, int y) {
 
     if (CmdOpenSelectedDocument == cmd) {
         LoadArgs args(path, win);
-        args.activateExisting = !IsCtrlPressed();
+        SetUserOpenActivateExisting(args);
         LoadDocument(&args);
         return;
     }

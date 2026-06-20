@@ -105,6 +105,9 @@ static float layoutCjkMobiDxPt = 600.F;
 static float layoutCjkMobiDyPt = 820.F;
 static float layoutLegacyMobiDxPt = 560.F;
 static float layoutLegacyMobiDyPt = 680.F;
+// MOBI/AZW HtmlFormatter default is 10pt; MuPDF EPUB uses layoutFontEm (11pt). Scale MOBI
+// body text up so it matches EPUB readability without changing the EPUB engine path.
+static const float kMobiReaderFontScale = 1.12f;
 
 static bool IsReaderStyledMobiPath(const char* filePath) {
     if (str::IsEmpty(filePath)) {
@@ -266,19 +269,20 @@ class EngineEbook : public EngineBase {
 
     Vec<IPageElement*> GetElements(int pageNo) override;
     IPageElement* GetElementAtPos(int pageNo, PointF pt) override;
-    bool HandleLink(IPageDestination* dest, ILinkHandler* linkHandler) override {
-        ReportIf(!dest || !linkHandler);
-        if (!dest || !linkHandler) {
-            return false;
-        }
-        linkHandler->GotoLink(dest);
-        return true;
-    }
+    bool HandleLink(IPageDestination* dest, ILinkHandler* linkHandler) override;
 
     IPageDestination* GetNamedDest(const char* name) override;
     RenderedBitmap* GetImageForPageElement(IPageElement* el) override;
 
     bool BenchLoadPage(int pageNo) override;
+
+    bool IsProgressiveEbookLoading() override {
+        return IsEbookProgressiveLoadingInProgress();
+    }
+
+    bool HitTestText(int pageNo, PointF pagePt, EbookTextHit* hitOut);
+    TempWStr GetRunTextTemp(int pageNo, int instrIndex);
+    bool GetCharRangeBbox(int pageNo, int instrIndex, int charStart, int charEnd, RectF* out);
 
     bool IsEbookProgressiveLoadingInProgress() const {
         return InterlockedCompareExchange(&ebookLoadingInProgress, 0, 0) != 0;
@@ -305,10 +309,11 @@ class EngineEbook : public EngineBase {
         }
         int nFormatted = (int)pages->size();
         // which formatted page covers this filePos (same logic as GetNamedDestAtFilePos)
-        int targetPage = nFormatted;
-        for (int i = 1; i < nFormatted; i++) {
-            if (pages->at(i)->reparseIdx > filePos) {
-                targetPage = i;
+        int targetPage = 1;
+        for (int i = 0; i < nFormatted; i++) {
+            if (pages->at(i)->reparseIdx <= filePos) {
+                targetPage = i + 1;
+            } else {
                 break;
             }
         }
@@ -358,11 +363,14 @@ class EngineEbook : public EngineBase {
     bool ExtractPageAnchors();
     TempStr ExtractFontListTemp();
     void ConfigureMobiReaderStyle(const char* filePath, const ByteSlice& html);
+    void InvalidateAllPageElements();
 
     virtual IPageElement* CreatePageLink(DrawInstr* link, Rect rect, int pageNo);
 
     Vec<DrawInstr>* GetHtmlPage(int pageNo);
+    Vec<DrawInstr>* GetHtmlPageNoLock(int pageNo);
     HtmlPage* GetHtmlPage2(int pageNo);
+    HtmlPage* GetHtmlPage2NoLock(int pageNo);
 
     mutable volatile LONG ebookLoadingInProgress = 0;
     mutable volatile LONG ebookLoadAbort = 0;
@@ -378,12 +386,13 @@ class EngineEbook : public EngineBase {
 static IPageElement* NewEbookLink(DrawInstr* link, Rect rect, IPageDestination* dest, int pageNo = 0,
                                   bool showUrl = false) {
     if (!dest) {
-        // TODO: this doesn't make sense
-        dest = new PageDestination();
-        dest->kind = kindDestinationLaunchURL;
-        // TODO: not sure about this
-        // dest->value = str::Dup(res->value);
-        dest->rect = ToRectF(rect);
+        auto* pd = new PageDestination();
+        pd->kind = kindDestinationLaunchURL;
+        pd->rect = ToRectF(rect);
+        // Keep the raw href/filepos so MOBI links can be resolved at click time.
+        pd->value = str::Dup(link->str.s, link->str.len);
+        pd->name = str::Dup(link->str.s, link->str.len);
+        dest = pd;
     }
 
     auto res = new PageElementDestination(dest);
@@ -538,11 +547,10 @@ void EngineEbook::GetTransform(Matrix& m, float zoom, int rotation) {
     GetBaseTransform(m, ToGdipRectF(pageRect), zoom, rotation);
 }
 
-Vec<DrawInstr>* EngineEbook::GetHtmlPage(int pageNo) {
+Vec<DrawInstr>* EngineEbook::GetHtmlPageNoLock(int pageNo) {
     if (pageNo < 1 || !pages) {
         return nullptr;
     }
-    ScopedCritSec scope(&pagesAccess);
     int n = (int)pages->size();
     if (pageNo > n) {
         return nullptr;
@@ -550,16 +558,25 @@ Vec<DrawInstr>* EngineEbook::GetHtmlPage(int pageNo) {
     return &pages->at(pageNo - 1)->instructions;
 }
 
-HtmlPage* EngineEbook::GetHtmlPage2(int pageNo) {
+Vec<DrawInstr>* EngineEbook::GetHtmlPage(int pageNo) {
+    ScopedCritSec scope(&pagesAccess);
+    return GetHtmlPageNoLock(pageNo);
+}
+
+HtmlPage* EngineEbook::GetHtmlPage2NoLock(int pageNo) {
     if (pageNo < 1 || !pages) {
         return nullptr;
     }
-    ScopedCritSec scope(&pagesAccess);
     int n = (int)pages->size();
     if (pageNo > n) {
         return nullptr;
     }
     return pages->at(pageNo - 1);
+}
+
+HtmlPage* EngineEbook::GetHtmlPage2(int pageNo) {
+    ScopedCritSec scope(&pagesAccess);
+    return GetHtmlPage2NoLock(pageNo);
 }
 
 bool EngineEbook::ExtractPageAnchors() {
@@ -665,7 +682,7 @@ RenderedBitmap* EngineEbook::RenderPage(RenderPageArgs& args) {
 
     ScopedCritSec scope(&pagesAccess);
 
-    Vec<DrawInstr>* pageInstrs = GetHtmlPage(pageNo);
+    Vec<DrawInstr>* pageInstrs = GetHtmlPageNoLock(pageNo);
     if (!pageInstrs) {
         DeleteDC(hDC);
         DeleteObject(hbmp);
@@ -687,10 +704,414 @@ RenderedBitmap* EngineEbook::RenderPage(RenderPageArgs& args) {
     return new RenderedBitmap(hbmp, screen.Size(), hMap);
 }
 
+static RectF GetInstrBboxF(DrawInstr& instr, float border) {
+    RectF bbox = instr.bbox;
+    bbox.Offset(border, border);
+    return bbox;
+}
+
+static bool IsValidCharRelX(const float* charRelX, int charRelXLen, size_t strLen) {
+    if (!charRelX || charRelXLen <= 0 || (size_t)charRelXLen != strLen) {
+        return false;
+    }
+    if (charRelX[strLen] <= charRelX[0]) {
+        return false;
+    }
+    for (size_t k = 0; k < strLen; k++) {
+        if (charRelX[k + 1] <= charRelX[k]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int WcharLenForDrawInstr(const DrawInstr& di) {
+    WCHAR* buf = ToWStrTemp(di.str.s, di.str.len);
+    int n = str::Leni(buf);
+    n -= str::RemoveCharsInPlace(buf, L"\xad");
+    return n;
+}
+
+static int CharIndexFromLocalX(const DrawInstr& di, float localX, int wlen, bool rtl) {
+    if (wlen <= 0) {
+        return 0;
+    }
+    if (localX < 0.f) {
+        return 0;
+    }
+    if (IsValidCharRelX(di.charRelX, di.charRelXLen, (size_t)wlen)) {
+        if (!rtl) {
+            for (int k = 0; k < wlen; k++) {
+                if (localX < di.charRelX[k + 1]) {
+                    return k;
+                }
+            }
+            return wlen - 1;
+        }
+        float xr = di.bbox.dx - localX;
+        for (int k = 0; k < wlen; k++) {
+            if (xr < di.charRelX[k + 1]) {
+                return k;
+            }
+        }
+        return wlen - 1;
+    }
+    if (di.bbox.dx <= 0.f) {
+        return 0;
+    }
+    int k = (int)((localX / di.bbox.dx) * (float)wlen);
+    if (k >= wlen) {
+        k = wlen - 1;
+    }
+    if (k < 0) {
+        k = 0;
+    }
+    return k;
+}
+
+static bool IsLatinLetter(WCHAR c) {
+    return (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z');
+}
+
+static int LatinStartInRun(const WCHAR* run, int wlen) {
+    for (int k = 0; k < wlen; k++) {
+        if (IsLatinLetter(run[k])) {
+            return k;
+        }
+    }
+    return wlen;
+}
+
+// Latin in a mixed run is drawn with DrawString from charRelX[latinStart] to bbox.dx;
+// per-char charRelX cells can be narrower than the ink, so map clicks in that tail
+// proportionally across the drawn span instead of using compressed charRelX cells.
+static int CharIndexFromLocalXMixed(const DrawInstr& di, float localX, int wlen, bool rtl, const WCHAR* run) {
+    int idx = CharIndexFromLocalX(di, localX, wlen, rtl);
+    if (rtl || !IsValidCharRelX(di.charRelX, di.charRelXLen, (size_t)wlen)) {
+        return idx;
+    }
+    int latinStart = LatinStartInRun(run, wlen);
+    if (latinStart >= wlen) {
+        return idx;
+    }
+    float latinX0 = di.charRelX[latinStart];
+    if (localX < latinX0) {
+        return idx;
+    }
+    float span = di.bbox.dx - latinX0;
+    if (span <= 0.f) {
+        return idx;
+    }
+    float xIn = localX - latinX0;
+    if (xIn >= span) {
+        return wlen - 1;
+    }
+    int latinCount = wlen - latinStart;
+    if (latinCount <= 0) {
+        return idx;
+    }
+    int sub = (int)((xIn / span) * (float)latinCount);
+    if (sub >= latinCount) {
+        sub = latinCount - 1;
+    }
+    if (sub < 0) {
+        sub = 0;
+    }
+    return latinStart + sub;
+}
+
+static bool RangeIsNonCjkLatin(const WCHAR* run, int start, int end) {
+    if (end <= start) {
+        return false;
+    }
+    for (int i = start; i < end; i++) {
+        WCHAR c = run[i];
+        if (!((IsCharAlphaNumeric(c) || c == L'_') && (unsigned short)c < 0x2E80)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static RectF LatinRangeBBoxFromInstr(const DrawInstr& di, int latinStart, int wlen, int charStart, int charEnd,
+                                     float border) {
+    RectF rb = GetInstrBboxF(const_cast<DrawInstr&>(di), border);
+    float latinX0 = di.charRelX[latinStart];
+    float span = di.bbox.dx - latinX0;
+    if (span <= 0.f) {
+        span = di.charRelX[wlen] - latinX0;
+    }
+    int latinCount = wlen - latinStart;
+    if (latinCount <= 0 || span <= 0.f) {
+        return rb;
+    }
+    float f0 = (float)(charStart - latinStart) / (float)latinCount;
+    float f1 = (float)(charEnd - latinStart) / (float)latinCount;
+    if (f0 < 0.f) {
+        f0 = 0.f;
+    }
+    if (f1 > 1.f) {
+        f1 = 1.f;
+    }
+    if (f1 < f0) {
+        f1 = f0;
+    }
+    float x0 = rb.x + latinX0 + span * f0;
+    float dx = span * (f1 - f0);
+    if (dx < 1.f) {
+        dx = 1.f;
+    }
+    return RectF(x0, rb.y, dx, rb.dy);
+}
+
+static RectF CharBBoxFromInstr(const DrawInstr& di, int charIdx, int wlen, float border, bool rtl) {
+    RectF rb = GetInstrBboxF(const_cast<DrawInstr&>(di), border);
+    if (wlen <= 0 || charIdx < 0) {
+        return rb;
+    }
+    if (charIdx >= wlen) {
+        charIdx = wlen - 1;
+    }
+    if (IsValidCharRelX(di.charRelX, di.charRelXLen, (size_t)wlen)) {
+        float x0;
+        float x1;
+        if (!rtl) {
+            x0 = rb.x + di.charRelX[charIdx];
+            x1 = rb.x + di.charRelX[charIdx + 1];
+        } else {
+            x1 = rb.x + rb.dx - di.charRelX[charIdx];
+            x0 = rb.x + rb.dx - di.charRelX[charIdx + 1];
+        }
+        if (x1 - x0 < 1.f) {
+            x1 = x0 + 1.f;
+        }
+        return RectF(x0, rb.y, x1 - x0, rb.dy);
+    }
+    float cw = wlen > 0 ? rb.dx / (float)wlen : rb.dx;
+    if (cw < 1.f) {
+        cw = 1.f;
+    }
+    float x = rtl ? rb.x + (float)(wlen - charIdx - 1) * cw : rb.x + (float)charIdx * cw;
+    return RectF(x, rb.y, cw, rb.dy);
+}
+
+static float LocalXInDrawInstr(float pagePtX, float pageBorder, float instrBboxX) {
+    // The GDI+ per-glyph renderer draws glyph k at the float origin
+    // (pageBorder + instrBboxX) + charRelX[k]; match it exactly (no int trunc)
+    // so hit-test, highlight and on-screen glyphs share one coordinate origin.
+    float drawOriginX = pageBorder + instrBboxX;
+    return pagePtX - drawOriginX;
+}
+
+static uint DistSqPointToRectF(PointF pt, const RectF& r) {
+    float dx = 0.f;
+    float dy = 0.f;
+    if (pt.x < r.x) {
+        dx = r.x - pt.x;
+    } else if (pt.x > r.x + r.dx) {
+        dx = pt.x - (r.x + r.dx);
+    }
+    if (pt.y < r.y) {
+        dy = r.y - pt.y;
+    } else if (pt.y > r.y + r.dy) {
+        dy = pt.y - (r.y + r.dy);
+    }
+    return (uint)(dx * dx + dy * dy);
+}
+
+bool EngineEbook::HitTestText(int pageNo, PointF pagePt, EbookTextHit* hitOut) {
+    if (!hitOut) {
+        return false;
+    }
+    *hitOut = {};
+
+    ScopedCritSec scope(&pagesAccess);
+    Vec<DrawInstr>* pageInstrs = GetHtmlPageNoLock(pageNo);
+    if (!pageInstrs) {
+        return false;
+    }
+
+    int bestIdx = -1;
+    int bestChar = 0;
+    uint bestDist = UINT_MAX;
+    RectF bestBox;
+
+    size_t n = pageInstrs->size();
+    for (size_t i = 0; i < n; i++) {
+        DrawInstr& di = pageInstrs->at(i);
+        if (di.type != DrawInstrType::String && di.type != DrawInstrType::RtlString) {
+            continue;
+        }
+        RectF runBox = GetInstrBboxF(di, pageBorder);
+        if (!runBox.Contains(pagePt)) {
+            continue;
+        }
+        bool rtl = di.type == DrawInstrType::RtlString;
+        int wlen = WcharLenForDrawInstr(di);
+        if (wlen <= 0) {
+            continue;
+        }
+        float localX = LocalXInDrawInstr(pagePt.x, pageBorder, di.bbox.x);
+        WCHAR* run = ToWStrTemp(di.str.s, di.str.len);
+        str::RemoveCharsInPlace(run, L"\xad");
+        int charIdx = CharIndexFromLocalXMixed(di, localX, wlen, rtl, run);
+        RectF charBox = CharBBoxFromInstr(di, charIdx, wlen, pageBorder, rtl);
+        uint dist = DistSqPointToRectF(pagePt, charBox);
+        if (dist < bestDist) {
+            bestDist = dist;
+            bestIdx = (int)i;
+            bestChar = charIdx;
+            bestBox = charBox;
+        }
+    }
+
+    if (bestIdx < 0) {
+        return false;
+    }
+
+    DrawInstr& di = pageInstrs->at((size_t)bestIdx);
+    hitOut->instrIndex = bestIdx;
+    hitOut->charIndex = bestChar;
+    hitOut->charLen = 1;
+    hitOut->dirRtl = di.type == DrawInstrType::RtlString;
+    hitOut->bbox = bestBox;
+    return true;
+}
+
+TempWStr EngineEbook::GetRunTextTemp(int pageNo, int instrIndex) {
+    ScopedCritSec scope(&pagesAccess);
+    Vec<DrawInstr>* pageInstrs = GetHtmlPageNoLock(pageNo);
+    if (!pageInstrs || !pageInstrs->isValidIndex(instrIndex)) {
+        return nullptr;
+    }
+    DrawInstr& di = pageInstrs->at(instrIndex);
+    if (di.type != DrawInstrType::String && di.type != DrawInstrType::RtlString) {
+        return nullptr;
+    }
+    WCHAR* buf = ToWStrTemp(di.str.s, di.str.len);
+    str::RemoveCharsInPlace(buf, L"\xad");
+    return buf;
+}
+
+bool EngineEbook::GetCharRangeBbox(int pageNo, int instrIndex, int charStart, int charEnd, RectF* out) {
+    if (!out || charEnd <= charStart) {
+        return false;
+    }
+    ScopedCritSec scope(&pagesAccess);
+    Vec<DrawInstr>* pageInstrs = GetHtmlPageNoLock(pageNo);
+    if (!pageInstrs || !pageInstrs->isValidIndex(instrIndex)) {
+        return false;
+    }
+    DrawInstr& di = pageInstrs->at(instrIndex);
+    if (di.type != DrawInstrType::String && di.type != DrawInstrType::RtlString) {
+        return false;
+    }
+    bool rtl = di.type == DrawInstrType::RtlString;
+    int wlen = WcharLenForDrawInstr(di);
+    if (charStart < 0) {
+        charStart = 0;
+    }
+    if (charEnd > wlen) {
+        charEnd = wlen;
+    }
+    WCHAR* run = ToWStrTemp(di.str.s, di.str.len);
+    str::RemoveCharsInPlace(run, L"\xad");
+    if (IsValidCharRelX(di.charRelX, di.charRelXLen, (size_t)wlen) && RangeIsNonCjkLatin(run, charStart, charEnd)) {
+        int latinStart = LatinStartInRun(run, wlen);
+        if (charStart >= latinStart) {
+            *out = LatinRangeBBoxFromInstr(di, latinStart, wlen, charStart, charEnd, pageBorder);
+            return true;
+        }
+    }
+    RectF u;
+    bool any = false;
+    for (int i = charStart; i < charEnd; i++) {
+        RectF b = CharBBoxFromInstr(di, i, wlen, pageBorder, rtl);
+        u = any ? u.Union(b) : b;
+        any = true;
+    }
+    if (!any) {
+        return false;
+    }
+    *out = u;
+    return true;
+}
+
+bool EngineIsFixedLayoutEbook(EngineBase* engine) {
+    if (!engine) {
+        return false;
+    }
+    Kind k = engine->kind;
+    return k == kindEngineEpub || k == kindEngineMobi || k == kindEngineFb2 || k == kindEnginePdb ||
+           k == kindEngineHtml || k == kindEngineTxt;
+}
+
+bool EngineEbookHitTestText(EngineBase* engine, int pageNo, PointF pagePt, EbookTextHit* hitOut) {
+    if (!EngineIsFixedLayoutEbook(engine)) {
+        return false;
+    }
+    return static_cast<EngineEbook*>(engine)->HitTestText(pageNo, pagePt, hitOut);
+}
+
+TempWStr EngineEbookGetRunTextTemp(EngineBase* engine, int pageNo, int instrIndex) {
+    if (!EngineIsFixedLayoutEbook(engine) || instrIndex < 0) {
+        return nullptr;
+    }
+    return static_cast<EngineEbook*>(engine)->GetRunTextTemp(pageNo, instrIndex);
+}
+
+bool EngineEbookGetCharRangeBbox(EngineBase* engine, int pageNo, int instrIndex, int charStart, int charEnd,
+                                 RectF* out) {
+    if (!EngineIsFixedLayoutEbook(engine)) {
+        return false;
+    }
+    return static_cast<EngineEbook*>(engine)->GetCharRangeBbox(pageNo, instrIndex, charStart, charEnd, out);
+}
+
 static Rect GetInstrBbox(DrawInstr& instr, float pageBorder) {
     RectF bbox(instr.bbox.x, instr.bbox.y, instr.bbox.dx, instr.bbox.dy);
     bbox.Offset(pageBorder, pageBorder);
     return bbox.Round();
+}
+
+static void AppendStringCoords(Vec<Rect>& coords, Rect bbox, size_t strLen, bool rtl, const float* charRelX,
+                               int charRelXLen) {
+    bool useRelX = IsValidCharRelX(charRelX, charRelXLen, strLen);
+    if (!rtl) {
+        for (size_t k = 0; k < strLen; k++) {
+            int x;
+            int w;
+            if (useRelX) {
+                x = (int)(bbox.x + charRelX[k] + 0.5f);
+                w = (int)(charRelX[k + 1] - charRelX[k] + 0.5f);
+            } else {
+                double cwidth = 1.0 * bbox.dx / strLen;
+                x = (int)(bbox.x + k * cwidth);
+                w = (int)cwidth;
+            }
+            if (w < 1) {
+                w = 1;
+            }
+            coords.Append(Rect(x, bbox.y, w, bbox.dy));
+        }
+    } else {
+        for (size_t k = 0; k < strLen; k++) {
+            int x;
+            int w;
+            if (useRelX) {
+                w = (int)(charRelX[k + 1] - charRelX[k] + 0.5f);
+                x = (int)(bbox.x + bbox.dx - charRelX[k + 1] + 0.5f);
+            } else {
+                double cwidth = 1.0 * bbox.dx / strLen;
+                w = (int)cwidth;
+                x = (int)(bbox.x + (strLen - k - 1) * cwidth);
+            }
+            if (w < 1) {
+                w = 1;
+            }
+            coords.Append(Rect(x, bbox.y, w, bbox.dy));
+        }
+    }
 }
 
 PageText EngineEbook::ExtractPageText(int pageNo) {
@@ -706,7 +1127,10 @@ PageText EngineEbook::ExtractPageText(int pageNo) {
     Vec<Rect> coords;
     bool insertSpace = false;
 
-    Vec<DrawInstr>* pageInstrs = GetHtmlPage(pageNo);
+    Vec<DrawInstr>* pageInstrs = GetHtmlPageNoLock(pageNo);
+    if (!pageInstrs) {
+        return {};
+    }
     for (DrawInstr& i : *pageInstrs) {
         Rect bbox = GetInstrBbox(i, pageBorder);
         switch (i.type) {
@@ -720,7 +1144,12 @@ PageText EngineEbook::ExtractPageText(int pageNo) {
                     int swidth = bbox.x - coords.Last().BR().x;
                     if (swidth > 0) {
                         content.AppendChar(' ');
-                        coords.Append(Rect(bbox.x - swidth, bbox.y, swidth, bbox.dy));
+                        int hitW = swidth;
+                        constexpr int kMaxSpaceHitW = 4;
+                        if (hitW > kMaxSpaceHitW) {
+                            hitW = kMaxSpaceHitW;
+                        }
+                        coords.Append(Rect(bbox.x - hitW, bbox.y, hitW, bbox.dy));
                     }
                 }
                 insertSpace = false;
@@ -728,10 +1157,7 @@ PageText EngineEbook::ExtractPageText(int pageNo) {
                     AutoFreeWStr s(strconv::FromHtmlUtf8(i.str.s, i.str.len));
                     content.Append(s);
                     size_t len = str::Len(s);
-                    double cwidth = 1.0 * bbox.dx / len;
-                    for (size_t k = 0; k < len; k++) {
-                        coords.Append(Rect((int)(bbox.x + k * cwidth), bbox.y, (int)cwidth, bbox.dy));
-                    }
+                    AppendStringCoords(coords, bbox, len, false, i.charRelX, i.charRelXLen);
                 }
                 break;
             case DrawInstrType::RtlString:
@@ -744,7 +1170,12 @@ PageText EngineEbook::ExtractPageText(int pageNo) {
                     int swidth = coords.Last().x - bbox.BR().x;
                     if (swidth > 0) {
                         content.AppendChar(' ');
-                        coords.Append(Rect(bbox.BR().x, bbox.y, swidth, bbox.dy));
+                        int hitW = swidth;
+                        constexpr int kMaxSpaceHitW = 4;
+                        if (hitW > kMaxSpaceHitW) {
+                            hitW = kMaxSpaceHitW;
+                        }
+                        coords.Append(Rect(bbox.BR().x, bbox.y, hitW, bbox.dy));
                     }
                 }
                 insertSpace = false;
@@ -752,10 +1183,7 @@ PageText EngineEbook::ExtractPageText(int pageNo) {
                     AutoFreeWStr s(strconv::FromHtmlUtf8(i.str.s, i.str.len));
                     content.Append(s);
                     size_t len = str::Len(s);
-                    double cwidth = 1.0 * bbox.dx / len;
-                    for (size_t k = 0; k < len; k++) {
-                        coords.Append(Rect((int)(bbox.x + (len - k - 1) * cwidth), bbox.y, (int)cwidth, bbox.dy));
-                    }
+                    AppendStringCoords(coords, bbox, len, true, i.charRelX, i.charRelXLen);
                 }
                 break;
             case DrawInstrType::ElasticSpace:
@@ -790,7 +1218,10 @@ PageTextUtf8 EngineEbook::ExtractPageTextUtf8(int pageNo) {
     Vec<Rect> coords;
     bool insertSpace = false;
 
-    Vec<DrawInstr>* pageInstrs = GetHtmlPage(pageNo);
+    Vec<DrawInstr>* pageInstrs = GetHtmlPageNoLock(pageNo);
+    if (!pageInstrs) {
+        return {};
+    }
     for (DrawInstr& i : *pageInstrs) {
         Rect bbox = GetInstrBbox(i, pageBorder);
         switch (i.type) {
@@ -804,7 +1235,12 @@ PageTextUtf8 EngineEbook::ExtractPageTextUtf8(int pageNo) {
                     int swidth = bbox.x - coords.Last().BR().x;
                     if (swidth > 0) {
                         content.AppendChar(' ');
-                        coords.Append(Rect(bbox.x - swidth, bbox.y, swidth, bbox.dy));
+                        int hitW = swidth;
+                        constexpr int kMaxSpaceHitW = 4;
+                        if (hitW > kMaxSpaceHitW) {
+                            hitW = kMaxSpaceHitW;
+                        }
+                        coords.Append(Rect(bbox.x - hitW, bbox.y, hitW, bbox.dy));
                     }
                 }
                 insertSpace = false;
@@ -830,7 +1266,12 @@ PageTextUtf8 EngineEbook::ExtractPageTextUtf8(int pageNo) {
                     int swidth = coords.Last().x - bbox.BR().x;
                     if (swidth > 0) {
                         content.AppendChar(' ');
-                        coords.Append(Rect(bbox.BR().x, bbox.y, swidth, bbox.dy));
+                        int hitW = swidth;
+                        constexpr int kMaxSpaceHitW = 4;
+                        if (hitW > kMaxSpaceHitW) {
+                            hitW = kMaxSpaceHitW;
+                        }
+                        coords.Append(Rect(bbox.BR().x, bbox.y, hitW, bbox.dy));
                     }
                 }
                 insertSpace = false;
@@ -866,11 +1307,57 @@ PageTextUtf8 EngineEbook::ExtractPageTextUtf8(int pageNo) {
     return res;
 }
 
+static void SetEbookTocScrollName(PageDestination* pd, const char* url) {
+    if (!pd || !url || !*url) {
+        return;
+    }
+    str::Free(pd->name);
+    pd->name = str::Dup(url);
+}
+
+static IPageDestination* NewDeferredEbookTocDest(const char* url) {
+    auto* pd = static_cast<PageDestination*>(NewSimpleDest(0, RectF()));
+    SetEbookTocScrollName(pd, url);
+    return pd;
+}
+
+static bool IsExternalEbookUrl(const char* url) {
+    return url::IsAbsolute(url) && !str::StartsWith(url, "kindle:pos:") && !str::StartsWith(url, "filepos:");
+}
+
+static bool IsMobiInternalLinkUrl(const char* url) {
+    if (!url || !*url) {
+        return false;
+    }
+    if (str::StartsWith(url, "kindle:pos:") || str::StartsWith(url, "filepos:")) {
+        return true;
+    }
+    if (*url >= '0' && *url <= '9') {
+        return true;
+    }
+    return !url::IsAbsolute(url);
+}
+
 IPageElement* EngineEbook::CreatePageLink(DrawInstr* link, Rect rect, int pageNo) {
     char* url = strconv::FromHtmlUtf8Temp(link->str.s, link->str.len);
-    // KF8/AZW3 internal links use kindle:pos:... which contains ':' but aren't web URLs
-    if (url::IsAbsolute(url) && !str::StartsWith(url, "kindle:pos:")) {
-        return NewEbookLink(link, rect, nullptr, pageNo);
+    if (!url) {
+        return nullptr;
+    }
+
+    // MOBI7 filepos digits / filepos:... / KF8 kindle:pos:... must not be treated as web URLs.
+    if (kind == kindEngineMobi && IsMobiInternalLinkUrl(url)) {
+        char* urlOwned = str::Dup(link->str.s, link->str.len);
+        if (!urlOwned) {
+            return nullptr;
+        }
+        IPageDestination* dest = NewDeferredEbookTocDest(urlOwned);
+        str::Free(urlOwned);
+        return NewEbookLink(link, rect, dest, pageNo);
+    }
+
+    if (IsExternalEbookUrl(url)) {
+        IPageDestination* extDest = NewSimpleDest(0, RectF(), 0.f, url);
+        return NewEbookLink(link, rect, extDest, pageNo);
     }
 
     // baseAnchors is mutated by ExtractPageAnchors() on the background load
@@ -880,14 +1367,27 @@ IPageElement* EngineEbook::CreatePageLink(DrawInstr* link, Rect rect, int pageNo
     if (baseAnchors.isValidIndex(pageNo - 1)) {
         baseAnchor = baseAnchors.at(pageNo - 1);
     }
+    char* urlOwned = nullptr;
     if (baseAnchor) {
         char* basePath = str::DupTemp(baseAnchor->str.s, baseAnchor->str.len);
         TempStr relPath = ResolveHtmlEntitiesTemp(link->str.s, link->str.len);
         AutoFreeStr absPath = NormalizeURL(relPath, basePath);
-        url = str::DupTemp(absPath.Get());
+        urlOwned = str::Dup(absPath.Get());
+    } else {
+        urlOwned = str::Dup(link->str.s, link->str.len);
+    }
+    if (!urlOwned) {
+        return nullptr;
     }
 
-    IPageDestination* dest = GetNamedDest(url);
+    IPageDestination* dest = nullptr;
+    if (kind == kindEngineMobi && IsMobiInternalLinkUrl(urlOwned)) {
+        // Resolve at click time so progressive formatting and filepos/kindle:pos mapping stay current.
+        dest = NewDeferredEbookTocDest(urlOwned);
+    } else {
+        dest = GetNamedDest(urlOwned);
+    }
+    str::Free(urlOwned);
     if (!dest) {
         return nullptr;
     }
@@ -898,6 +1398,27 @@ Vec<IPageElement*> EngineEbook::GetElements(int pageNo) {
     HtmlPage* pi = GetHtmlPage2(pageNo);
     if (!pi) {
         return Vec<IPageElement*>();
+    }
+    if (pi->gotElements && kind == kindEngineMobi) {
+        for (IPageElement* el : pi->elements) {
+            if (!el->Is(kindPageElementDest)) {
+                continue;
+            }
+            IPageDestination* d = el->AsLink();
+            if (!d || d->GetKind() != kindDestinationLaunchURL) {
+                continue;
+            }
+            char* v = PageDestGetValue(d);
+            char* n = PageDestGetName(d);
+            if ((!v || !*v) && (!n || !*n)) {
+                for (IPageElement* e : pi->elements) {
+                    delete e;
+                }
+                pi->elements.Reset();
+                pi->gotElements = false;
+                break;
+            }
+        }
     }
     if (pi->gotElements) {
         return pi->elements;
@@ -1026,30 +1547,25 @@ TempStr EngineEbook::ExtractFontListTemp() {
     StrVec fonts;
 
     for (int pageNo = 1; pageNo <= PageCount(); pageNo++) {
-        Vec<DrawInstr>* pageInstrs = GetHtmlPage(pageNo);
+        Vec<DrawInstr>* pageInstrs = GetHtmlPageNoLock(pageNo);
         if (!pageInstrs) {
             continue;
         }
 
         for (DrawInstr& i : *pageInstrs) {
-            if (DrawInstrType::SetFont != i.type || seenFonts.Contains(i.font)) {
+            if (DrawInstrType::SetFont != i.type || !i.font || seenFonts.Contains(i.font)) {
                 continue;
             }
             seenFonts.Append(i.font);
 
-            FontFamily family;
-            if (!i.font->font) {
-                // TODO: handle gdi
-                ReportIf(!i.font->GetHFont());
-                continue;
-            }
-            Status ok = i.font->font->GetFamily(&family);
-            if (ok != Ok) {
-                continue;
-            }
-            WCHAR fontNameW[LF_FACESIZE];
-            ok = family.GetFamilyName(fontNameW);
-            if (ok != Ok) {
+            // Use CachedFont::name (plain WCHAR string) instead of accessing
+            // the Gdiplus::Font object. GDI+ Font objects have thread affinity:
+            // they are created on the formatter thread, but this function can
+            // be called from GetFontsThread (another background thread) via
+            // GetPropertyTemp(kPropFontList). Calling font->GetFamily() from
+            // the wrong thread crashes Gdiplus with 0xC0000005.
+            const WCHAR* fontNameW = i.font->GetName();
+            if (!fontNameW || !*fontNameW) {
                 continue;
             }
             char* fontName = ToUtf8Temp(fontNameW);
@@ -1100,25 +1616,61 @@ class EbookTocBuilder : public EbookTocVisitor {
     void SetIsIndex(bool value) { isIndex = value; }
 };
 
-static void SetEbookTocScrollName(PageDestination* pd, const char* url) {
-    if (!pd || !url || !*url) {
+void EngineEbook::InvalidateAllPageElements() {
+    ScopedCritSec scope(&pagesAccess);
+    if (!pages) {
         return;
     }
-    str::Free(pd->name);
-    pd->name = str::Dup(url);
+    for (HtmlPage* page : *pages) {
+        if (!page || !page->gotElements) {
+            continue;
+        }
+        for (IPageElement* el : page->elements) {
+            delete el;
+        }
+        page->elements.Reset();
+        page->gotElements = false;
+    }
 }
 
-static IPageDestination* NewDeferredEbookTocDest(const char* url) {
-    auto* pd = static_cast<PageDestination*>(NewSimpleDest(0, RectF()));
-    SetEbookTocScrollName(pd, url);
-    return pd;
+bool EngineEbook::HandleLink(IPageDestination* dest, ILinkHandler* linkHandler) {
+    ReportIf(!dest || !linkHandler);
+    if (!dest || !linkHandler) {
+        return false;
+    }
+
+    Kind destKind = dest->GetKind();
+    int destPage = PageDestGetPageNo(dest);
+    char* url = PageDestGetName(dest);
+    if (!url || !*url) {
+        url = PageDestGetValue(dest);
+    }
+
+    if (kind == kindEngineMobi && url && *url && IsMobiInternalLinkUrl(url) &&
+        (destPage <= 0 || destKind == kindDestinationLaunchURL)) {
+        IPageDestination* resolved = GetNamedDest(url);
+        if (resolved && PageDestGetPageNo(resolved) > 0) {
+            linkHandler->GotoLink(resolved);
+            delete resolved;
+            return true;
+        }
+    } else if (destKind == kindDestinationScrollTo && destPage <= 0 && url && *url) {
+        IPageDestination* resolved = GetNamedDest(url);
+        if (resolved) {
+            linkHandler->GotoLink(resolved);
+            delete resolved;
+            return true;
+        }
+    }
+    linkHandler->GotoLink(dest);
+    return true;
 }
 
 void EbookTocBuilder::Visit(const char* name, const char* url, int level) {
     IPageDestination* dest;
     if (!url) {
         dest = nullptr;
-    } else if (url::IsAbsolute(url) && !str::StartsWith(url, "kindle:pos:")) {
+    } else if (IsExternalEbookUrl(url)) {
         dest = NewSimpleDest(0, RectF(), 0.f, url);
     } else {
         dest = engine->GetNamedDest(url);
@@ -1477,7 +2029,7 @@ bool EngineEbookIsProgressiveLoadingInProgress(EngineBase* engine) {
 }
 
 bool EngineIsProgressiveEbookLoading(EngineBase* engine) {
-    return EngineMupdfIsReflowableLoadingInProgress(engine) || EngineEbookIsProgressiveLoadingInProgress(engine);
+    return engine && engine->IsProgressiveEbookLoading();
 }
 
 int EngineEbookGetFormattedPageCount(EngineBase* engine) {
@@ -1573,7 +2125,7 @@ bool EngineMobi::FinishLoading() {
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
     SetupHtmlFormatterFont(args, FilePath(), typographyKind);
-    args.fontSize = GetDefaultFontSize();
+    args.fontSize = GetDefaultFontSize() * kMobiReaderFontScale;
     args.textAllocator = allocator;
     args.textRenderMethod = mui::TextRenderMethod::GdiplusQuick;
 
@@ -1647,9 +2199,12 @@ void EngineMobi::FinishFormatAsync(EngineMobi* e) {
     AutoFreeStr path(str::Dup(e->FilePath()));
     HtmlFormatter* formatter = e->pendingFormatter;
     if (!formatter) {
+        logf("FinishFormatAsync: pendingFormatter is null for '%s', aborting (engine destroyed during Sleep?)\n",
+             path.Get() ? path.Get() : "(null)");
         InterlockedExchange(&e->ebookLoadingInProgress, 0);
         return;
     }
+    logf("FinishFormatAsync: starting for '%s'\n", path.Get() ? path.Get() : "(null)");
 
     // Re-create GDI Graphics on this thread since the formatter was created
     // on a different thread (the load thread) and GDI+ objects have thread affinity.
@@ -1658,12 +2213,16 @@ void EngineMobi::FinishFormatAsync(EngineMobi* e) {
     int batchCount = 0;
     long long _dbgIter = 0;
     DWORD lastNotify = GetTickCount();
+    bool exitedByAbort = false;
+    bool exitedByNullPage = false;
     for (;;) {
         if (InterlockedCompareExchange(&e->ebookLoadAbort, 0, 0) != 0) {
+            exitedByAbort = true;
             break;
         }
         HtmlPage* page = formatter->Next(false);
         if (!page) {
+            exitedByNullPage = true;
             break;
         }
         {
@@ -1675,6 +2234,7 @@ void EngineMobi::FinishFormatAsync(EngineMobi* e) {
             batchCount = 0;
             // incremental: only scans the pages added since the last call
             e->ExtractPageAnchors();
+            e->InvalidateAllPageElements();
             // throttle UI relayouts by wall-clock time so the notification
             // count (and thus total relayout work) stays bounded regardless
             // of how many pages the book has
@@ -1691,6 +2251,8 @@ void EngineMobi::FinishFormatAsync(EngineMobi* e) {
     e->pendingFormatter = nullptr;
 
     bool aborted = InterlockedCompareExchange(&e->ebookLoadAbort, 0, 0) != 0;
+    logf("FinishFormatAsync: loop exited for '%s' - abort:%d nullPage:%d abortedFlag:%d pages:%d\n",
+         path.Get() ? path.Get() : "(null)", (int)exitedByAbort, (int)exitedByNullPage, (int)aborted, e->pageCount);
     if (!aborted) {
         e->ExtractPageAnchors();
         // Mark stale but keep alive until UI calls ClearTocBox + reloads via GetToc.
@@ -1702,6 +2264,7 @@ void EngineMobi::FinishFormatAsync(EngineMobi* e) {
     }
     DWORD t1 = GetTickCount();
     logf("EngineMobi::FinishFormatAsync: formatted %d pages in %u ms\n", e->pageCount, t1 - t0);
+    e->InvalidateAllPageElements();
     InterlockedExchange(&e->ebookLoadingInProgress, 0);
 }
 
@@ -1753,6 +2316,23 @@ bool EngineEbookIsTocFilePosReachable(EngineBase* engine, int filePos) {
     return ee->IsTocFilePosFormatted(filePos, (const char*)html.data(), html.size());
 }
 
+// Map a MOBI/KF8 HTML byte offset to a 1-based formatted page number.
+static int MobiPageNoForFilePos(const Vec<HtmlPage*>* pages, int filePos) {
+    if (!pages || pages->size() == 0) {
+        return 0;
+    }
+    int pageNo = 1;
+    int nPages = (int)pages->size();
+    for (int i = 0; i < nPages; i++) {
+        if (pages->at(i)->reparseIdx <= filePos) {
+            pageNo = i + 1;
+        } else {
+            break;
+        }
+    }
+    return pageNo;
+}
+
 IPageDestination* EngineMobi::GetNamedDestAtFilePos(int filePos) {
     if (filePos < 0 || !doc) {
         return nullptr;
@@ -1768,13 +2348,9 @@ IPageDestination* EngineMobi::GetNamedDestAtFilePos(int filePos) {
     if (!pages || pages->size() == 0) {
         return nullptr;
     }
-    int nPages = (int)pages->size();
-    int pageNo = nPages;
-    for (int i = 1; i < nPages; i++) {
-        if (pages->at(i)->reparseIdx > filePos) {
-            pageNo = i;
-            break;
-        }
+    int pageNo = MobiPageNoForFilePos(pages, filePos);
+    if (pageNo <= 0) {
+        return nullptr;
     }
 
     HtmlPage* page = pages->at(pageNo - 1);
@@ -1795,14 +2371,15 @@ IPageDestination* EngineMobi::GetNamedDest(const char* name) {
     if (!name || !*name) {
         return nullptr;
     }
+    int filePos = -1;
     if (str::StartsWith(name, "kindle:pos:")) {
-        int filePos = doc->ResolveKindlePos(name);
+        filePos = doc->ResolveKindlePos(name);
         if (filePos < 0) {
             return nullptr;
         }
         return GetNamedDestAtFilePos(filePos);
     }
-    int filePos = ParseMobiNumericFilePos(name);
+    filePos = ParseMobiNumericFilePos(name);
     if (filePos >= 0) {
         return GetNamedDestAtFilePos(filePos);
     }

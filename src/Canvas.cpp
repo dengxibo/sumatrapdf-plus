@@ -1287,6 +1287,7 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
             args.showWin = true;
             args.noPlaceWindow = true;
             args.forceReuse = false;
+            args.activateExisting = false;
             MainWindow* newWin = LoadDocument(&args);
             if (newWin && newWin->IsDocLoaded()) {
                 newWin->linkHandler->ScrollTo(dest);
@@ -1295,7 +1296,6 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
         }
 
         win->ctrl->HandleLink(dest, win->linkHandler);
-        // win->linkHandler->GotoLink(dest);
         return;
     }
 
@@ -1357,6 +1357,11 @@ static void OnMouseLeftButtonDblClk(MainWindow* win, int x, int y, WPARAM key) {
         int pageNo = dm->GetPageNoByPoint(mousePos);
         if (win->ctrl->ValidPageNo(pageNo)) {
             PointF pt = dm->CvtFromScreen(mousePos, pageNo);
+            if (EngineIsFixedLayoutEbook(dm->GetEngine()) && ShowEbookWordLookupAt(win, dm, pageNo, pt, mousePos)) {
+                UpdateTextSelection(win, false);
+                ScheduleRepaint(win, 0);
+                return;
+            }
             if (ShowChineseWordLookupAt(win, dm->textSelection, dm->GetEngine(), pageNo, pt, mousePos)) {
                 UpdateTextSelection(win, false);
                 ScheduleRepaint(win, 0);
@@ -2857,6 +2862,15 @@ static void OnTimer(MainWindow* win, HWND hwnd, WPARAM timerId) {
             }
             break;
 
+        case HOME_SCROLL_TIMER_ID:
+            if (win->IsCurrentTabAbout()) {
+                HomePageOnScrollTimer(win);
+            } else {
+                KillTimer(hwnd, HOME_SCROLL_TIMER_ID);
+                win->homePageScrollTimer = 0;
+            }
+            break;
+
         case kHideCursorTimerID:
             // logf("got kHideCursorTimerID\n");
             KillTimer(hwnd, kHideCursorTimerID);
@@ -2946,6 +2960,7 @@ static void OnDropFiles(MainWindow* win, HDROP hDrop, bool dragFinish) {
     for (char* path : files) {
         // The first dropped document may override the current window
         LoadArgs args(path, win);
+        SetUserOpenActivateExisting(args);
         if (isShift && !win) {
             win = CreateAndShowMainWindow(nullptr);
             args.win = win;
@@ -3100,6 +3115,7 @@ static void DownloadAndOpenUrl(DownloadAndOpenUrlData* data) {
             }
             if (win) {
                 LoadArgs args(path, win);
+                SetUserOpenActivateExisting(args);
                 StartLoadDocument(&args);
             }
             free(path);

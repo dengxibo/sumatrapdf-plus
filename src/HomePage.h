@@ -28,5 +28,7 @@ void DrawHomePage(MainWindow* win, HDC hdc);
 void PickAnotherRandomPromotion();
 void HomePageOnVScroll(MainWindow* win, WPARAM wp);
 void HomePageOnMouseWheel(MainWindow* win, int delta);
+void HomePageOnScrollTimer(MainWindow* win);
+void HomePageInvalidateScrollCache(MainWindow* win);
 void HomePageFocusSearch(MainWindow* win);
 void HomePageDestroySearch(MainWindow* win);

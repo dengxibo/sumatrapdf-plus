@@ -28,6 +28,11 @@ EngineBase* CreateEngineHtmlFromFile(const char* fileName);
 EngineBase* CreateEngineTxtFromFile(const char* fileName);
 
 void SetDefaultEbookFont(const char* name, float size);
+bool EngineIsFixedLayoutEbook(EngineBase* engine);
+bool EngineEbookHitTestText(EngineBase* engine, int pageNo, PointF pagePt, EbookTextHit* hitOut);
+TempWStr EngineEbookGetRunTextTemp(EngineBase* engine, int pageNo, int instrIndex);
+bool EngineEbookGetCharRangeBbox(EngineBase* engine, int pageNo, int instrIndex, int charStart, int charEnd,
+                                 RectF* out);
 void EngineEbookCleanup();
 bool EngineEbookIsProgressiveLoadingInProgress(EngineBase* engine);
 int EngineEbookGetFormattedPageCount(EngineBase* engine);
@@ -78,7 +83,7 @@ int EngineMupdfResolveLinkPageNo(EngineBase* engine, IPageDestination* dest);
 bool EngineMupdfIsOutlineDestReachable(EngineBase* engine, IPageDestination* dest);
 bool EngineMupdfSnapshotOutlineLink(IPageDestination* dest, char** uriOut, int* reflowChOut, float* xOut, float* yOut);
 void EngineMupdfNavigateUri(EngineBase* engine, const char* uri, int reflowOutlineChapter, float destX, float destY,
-                              ILinkHandler* lh);
+                            ILinkHandler* lh);
 bool EngineMupdfHasOutline(EngineBase* engine);
 const char* EngineMupdfGetPassword(EngineBase* engine);
 bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErrorCb& showErrorFunc);

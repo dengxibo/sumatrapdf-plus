@@ -826,7 +826,7 @@ void ShowAboutWindow(MainWindow* win) {
         ReportIf(!gAtomAbout);
     }
 
-    TempWStr title = ToWStrTemp(_TRA("About SumatraPDF"));
+    TempWStr title = ToWStrTemp(_TRA("About Sumatra PDF Plus"));
     DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
     int x = CW_USEDEFAULT;
     int y = CW_USEDEFAULT;
@@ -908,9 +908,13 @@ struct HomePageLayout {
     VirtWndText* openDoc = nullptr;
     VirtWndText* hideShowFreqRead = nullptr;
     Vec<ThumbnailLayout> thumbnails; // info for each thumbnail
+    Vec<FileState*> fileStates;      // filtered list, not owned
     int totalContentDy = 0;          // total height of all thumbnail rows
     int thumbsVisibleDy = 0;         // visible height for thumbnails area
-    Rect rcThumbsArea;               // clip rect for thumbnails
+    int thumbsStartX = 0;
+    int thumbsTopY = 0; // y of row 0 before scroll offset
+    int thumbsCols = 0;
+    Rect rcThumbsArea; // clip rect for thumbnails
 
     // search filter
     StrVec filterWords;
@@ -1028,6 +1032,7 @@ void LayoutHomePage(HomePageLayout& l) {
         }
         fileStates.Append(fs);
     }
+    l.fileStates = fileStates;
 
     bool isRtl = IsUIRtl();
     HFONT fontText = CreateSimpleFont(hdc, "MS Shell Dlg", 14);
@@ -1163,6 +1168,9 @@ void LayoutHomePage(HomePageLayout& l) {
     // --- Step 3: middle area for thumbnails ---
     // thumbnails start directly after headerBottomY (which includes kSearchThumbnailsGapY)
     int thumbsTopY = headerBottomY;
+    l.thumbsStartX = thumbsStartX;
+    l.thumbsTopY = thumbsTopY;
+    l.thumbsCols = thumbsColsForLayout;
     int thumbsBottomY = rc.dy - tipHeight - kThumbsMiddleMargin;
     int thumbsVisibleDy = std::max(0, thumbsBottomY - thumbsTopY);
 
@@ -1175,6 +1183,8 @@ void LayoutHomePage(HomePageLayout& l) {
 
     int scrollY = win->homePageScrollY;
     int maxScrollY = std::max(0, thumbsContentDy - thumbsVisibleDy);
+    win->homePageMaxScrollY = maxScrollY;
+    win->homePageThumbsVisibleDy = thumbsVisibleDy;
     if (scrollY > maxScrollY) {
         scrollY = maxScrollY;
         win->homePageScrollY = scrollY;
@@ -1348,10 +1358,20 @@ static void DrawThumbnailPlaceholder(HDC hdc, FileState* fs, const Rect& page) {
     DestroyIcon(sfi.hIcon);
 }
 
-static void DrawThumbnailCard(HDC hdc, const Rect& page, FileState* fs, RenderedBitmap* thumbImg, HPEN borderPen) {
-    DrawThumbnailCardShadow(hdc, page, kThumbCornerRadius);
+static void DrawThumbnailCard(HDC hdc, const Rect& page, FileState* fs, RenderedBitmap* thumbImg, HPEN borderPen,
+                              bool fastDraw = false) {
+    if (!fastDraw) {
+        DrawThumbnailCardShadow(hdc, page, kThumbCornerRadius);
+    }
 
-    bool showPlaceholder = !thumbImg || IsThumbnailMostlyBlank(thumbImg);
+    bool showPlaceholder = !thumbImg;
+    if (thumbImg) {
+        if (!fs->thumbnailBlankKnown) {
+            fs->thumbnailIsBlank = IsThumbnailMostlyBlank(thumbImg);
+            fs->thumbnailBlankKnown = true;
+        }
+        showPlaceholder = fs->thumbnailIsBlank;
+    }
     if (showPlaceholder) {
         FillRoundedRect(hdc, page, kThumbCornerRadius, ThemeThumbnailBackgroundColor());
     }
@@ -1516,6 +1536,293 @@ static void DrawHomePageLayout(HomePageLayout& l) {
     }
 }
 
+void HomePageInvalidateScrollCache(MainWindow* win) {
+    if (win->homePageScrollTimer) {
+        KillTimer(win->hwndCanvas, HOME_SCROLL_TIMER_ID);
+        win->homePageScrollTimer = 0;
+    }
+    win->homePageBlitScrollReady = false;
+    win->homePageScrollTargetY = win->homePageScrollY;
+}
+
+static bool HomePageIsThumbFileLink(MainWindow* win, const char* target) {
+    if (!target) {
+        return false;
+    }
+    for (FileState* fs : win->homePageFileStates) {
+        if (str::Eq(target, fs->filePath)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void HomePageUpdateOverlayScrollPos(MainWindow* win, int pos) {
+    if (win->overlayScrollV && win->homePageMaxScrollY > 0) {
+        SCROLLINFO si{};
+        si.cbSize = sizeof(si);
+        si.fMask = SIF_POS;
+        si.nPos = pos;
+        OverlayScrollbarSetInfo(win->overlayScrollV, &si, TRUE);
+    }
+}
+
+static void HomePageOffsetThumbLinks(MainWindow* win, int dy) {
+    const Rect& ta = win->homePageThumbsArea;
+    for (int i = win->staticLinks.Size() - 1; i >= 0; i--) {
+        StaticLink* sl = win->staticLinks[i];
+        if (!HomePageIsThumbFileLink(win, sl->target)) {
+            continue;
+        }
+        sl->rect.Offset(0, dy);
+        if (sl->rect.Intersect(ta).IsEmpty()) {
+            delete sl;
+            win->staticLinks.RemoveAt(i);
+        }
+    }
+}
+
+static void HomePageUpdateScrollCache(MainWindow* win, HomePageLayout& l) {
+    win->homePageThumbsArea = l.rcThumbsArea;
+    win->homePageThumbsStartX = l.thumbsStartX;
+    win->homePageThumbsTopY = l.thumbsTopY;
+    win->homePageThumbsCols = l.thumbsCols;
+    win->homePagePaintScrollY = win->homePageScrollY;
+    win->homePageScrollTargetY = win->homePageScrollY;
+    win->homePageBlitScrollReady = true;
+
+    win->homePageFileStates.Reset();
+    for (FileState* fs : l.fileStates) {
+        win->homePageFileStates.Append(fs);
+    }
+    win->homePageFilterWords.Reset();
+    for (int i = 0; i < l.filterWords.Size(); i++) {
+        win->homePageFilterWords.Append(l.filterWords.At(i));
+    }
+    win->homePageHighlighted.Reset();
+}
+
+static void HomePageRemoveThumbLinks(MainWindow* win) {
+    for (int i = win->staticLinks.Size() - 1; i >= 0; i--) {
+        StaticLink* sl = win->staticLinks[i];
+        if (HomePageIsThumbFileLink(win, sl->target)) {
+            delete sl;
+            win->staticLinks.RemoveAt(i);
+        }
+    }
+}
+
+static Rect HomePageThumbPageRect(MainWindow* win, int idx, int scrollY) {
+    int cols = win->homePageThumbsCols;
+    int row = idx / cols;
+    int col = idx % cols;
+    int rowDy = kThumbnailDy + DpiScale(win->hwndCanvas, 58);
+    int colDx = kThumbnailDx + DpiScale(win->hwndCanvas, 38);
+    Rect rcPage(win->homePageThumbsStartX + col * colDx, win->homePageThumbsTopY - scrollY + row * rowDy, kThumbnailDx,
+                kThumbnailDy);
+    if (IsUIRtl()) {
+        rcPage.x = win->canvasRc.dx - rcPage.x - rcPage.dx;
+    }
+    return rcPage;
+}
+
+static void HomePageRebuildThumbLinks(MainWindow* win, int scrollY) {
+    HomePageRemoveThumbLinks(win);
+    const Rect& ta = win->homePageThumbsArea;
+    for (int idx = 0; idx < win->homePageFileStates.Size(); idx++) {
+        FileState* fs = win->homePageFileStates[idx];
+        Rect rcPage = HomePageThumbPageRect(win, idx, scrollY);
+        int iconSpace = DpiScale(win->hwndCanvas, 20);
+        Rect rcText(rcPage.x + iconSpace, rcPage.y + rcPage.dy + 3, rcPage.dx - iconSpace, iconSpace);
+        if (IsUIRtl()) {
+            rcText.x -= iconSpace;
+        }
+        Rect slRect = rcText.Union(rcPage).Intersect(ta);
+        if (!slRect.IsEmpty()) {
+            auto sl = new StaticLink(slRect, fs->filePath, fs->filePath);
+            win->staticLinks.Append(sl);
+        }
+    }
+}
+
+static void HomePageDrawThumbnailAt(MainWindow* win, HDC hdc, FileState* fs, int idx, int scrollY, HPEN borderPen,
+                                    bool fastDraw) {
+    Rect rcPage = HomePageThumbPageRect(win, idx, scrollY);
+    RenderedBitmap* thumbImg = LoadThumbnail(fs);
+    DrawThumbnailCard(hdc, rcPage, fs, thumbImg, borderPen, fastDraw);
+
+    int iconSpace = DpiScale(hdc, 20);
+    Rect rcText(rcPage.x + iconSpace, rcPage.y + rcPage.dy + 3, rcPage.dx - iconSpace, iconSpace);
+    if (IsUIRtl()) {
+        rcText.x -= iconSpace;
+    }
+
+    HFONT fontText = CreateSimpleFont(hdc, "MS Shell Dlg", 14);
+    char* path = fs->filePath;
+    TempStr fileName = path::GetBaseNameTemp(path);
+    UINT fmt = DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX | (IsUIRtl() ? DT_RIGHT : DT_LEFT);
+    auto backgroundColor = ThemeMainWindowBackgroundColor();
+
+    SelectObject(hdc, fontText);
+    {
+        RECT rcTextWin = {rcText.x, rcText.y, rcText.x + rcText.dx, rcText.y + rcText.dy};
+        DrawMaybeHighlightedTextArgs hlArgs(win->homePageFilterWords, win->homePageHighlighted);
+        hlArgs.hdc = hdc;
+        hlArgs.rc = rcTextWin;
+        hlArgs.text = fileName;
+        hlArgs.colBg = backgroundColor;
+        hlArgs.isRtl = IsUIRtl();
+        hlArgs.drawFmt = fmt;
+        DrawMaybeHighlightedText(hlArgs);
+    }
+
+    GetFileStateIcon(fs);
+    int x = IsUIRtl() ? rcPage.x + rcPage.dx - DpiScale(hdc, 16) : rcPage.x;
+    ImageList_Draw(fs->himl, fs->iconIdx, hdc, x, rcText.y, ILD_TRANSPARENT);
+}
+
+static void HomePageDrawThumbsInRect(MainWindow* win, HDC hdc, const Rect& clipRect, int scrollY, bool fastDraw) {
+    if (win->homePageFileStates.Size() == 0 || clipRect.IsEmpty()) {
+        return;
+    }
+
+    AutoDeletePen penThumbBorder(CreatePen(PS_SOLID, kThumbsBorderDx, ThemeThumbnailBorderColor()));
+    SelectObject(hdc, penThumbBorder);
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, ThemeWindowTextColor());
+
+    HRGN clip = CreateRectRgn(clipRect.x, clipRect.y, clipRect.x + clipRect.dx, clipRect.y + clipRect.dy);
+    SelectClipRgn(hdc, clip);
+    DeleteObject(clip);
+
+    for (int idx = 0; idx < win->homePageFileStates.Size(); idx++) {
+        Rect rcPage = HomePageThumbPageRect(win, idx, scrollY);
+        if (rcPage.Intersect(clipRect).IsEmpty()) {
+            continue;
+        }
+        HomePageDrawThumbnailAt(win, hdc, win->homePageFileStates[idx], idx, scrollY, penThumbBorder, fastDraw);
+    }
+
+    SelectClipRgn(hdc, nullptr);
+}
+
+static void HomePageFlushThumbsToScreen(MainWindow* win, HDC bufDC, HDC screenHdc) {
+    const Rect& ta = win->homePageThumbsArea;
+    if (!ta.IsEmpty()) {
+        BitBlt(screenHdc, ta.x, ta.y, ta.dx, ta.dy, bufDC, ta.x, ta.y, SRCCOPY);
+    } else {
+        win->buffer->Flush(screenHdc);
+    }
+}
+
+static bool HomePageTryBlitScroll(MainWindow* win, int scrollBy, bool fastDraw) {
+    if (!win->buffer || !win->homePageBlitScrollReady || scrollBy == 0) {
+        return false;
+    }
+
+    const Rect& ta = win->homePageThumbsArea;
+    if (ta.IsEmpty() || ta.dy <= 0) {
+        return false;
+    }
+
+    int prevScrollY = win->homePageScrollY - scrollBy;
+    if (win->homePagePaintScrollY != prevScrollY) {
+        return false;
+    }
+
+    int absScroll = scrollBy < 0 ? -scrollBy : scrollBy;
+    if (absScroll >= ta.dy) {
+        return false;
+    }
+
+    HDC hdc = win->buffer->GetDC();
+    COLORREF bgCol = ThemeMainWindowBackgroundColor();
+    Rect exposed;
+
+    if (scrollBy > 0) {
+        int copyDy = ta.dy - scrollBy;
+        BitBlt(hdc, ta.x, ta.y, ta.dx, copyDy, hdc, ta.x, ta.y + scrollBy, SRCCOPY);
+        exposed = {ta.x, ta.y + copyDy, ta.dx, scrollBy};
+    } else {
+        int scrollUp = -scrollBy;
+        int copyDy = ta.dy - scrollUp;
+        BitBlt(hdc, ta.x, ta.y + scrollUp, ta.dx, copyDy, hdc, ta.x, ta.y, SRCCOPY);
+        exposed = {ta.x, ta.y, ta.dx, scrollUp};
+    }
+
+    FillRect(hdc, exposed, bgCol);
+    HomePageDrawThumbsInRect(win, hdc, exposed, win->homePageScrollY, fastDraw);
+
+    HDC screenHdc = GetDC(win->hwndCanvas);
+    HomePageFlushThumbsToScreen(win, hdc, screenHdc);
+    ReleaseDC(win->hwndCanvas, screenHdc);
+
+    win->homePagePaintScrollY = win->homePageScrollY;
+    if (fastDraw) {
+        HomePageOffsetThumbLinks(win, -scrollBy);
+    } else {
+        HomePageRebuildThumbLinks(win, win->homePageScrollY);
+    }
+    return true;
+}
+
+static void HomePageEnsureScrollTimer(MainWindow* win) {
+    if (win->homePageScrollTimer) {
+        return;
+    }
+    win->homePageScrollTimer = SetTimer(win->hwndCanvas, HOME_SCROLL_TIMER_ID, HOME_SCROLL_TIMER_MS, nullptr);
+}
+
+static bool HomePageApplyScrollStep(MainWindow* win, bool fastDraw) {
+    int target = win->homePageScrollTargetY;
+    int current = win->homePagePaintScrollY;
+    int remaining = target - current;
+    if (remaining == 0) {
+        return false;
+    }
+
+    const Rect& ta = win->homePageThumbsArea;
+    int maxStep = DpiScale(win->hwndCanvas, 96);
+    if (ta.dy > 0) {
+        maxStep = std::max(maxStep, ta.dy / 4);
+    }
+
+    int scrollBy = remaining;
+    if (abs(remaining) > maxStep) {
+        scrollBy = remaining > 0 ? maxStep : -maxStep;
+    }
+
+    win->homePageScrollY = current + scrollBy;
+    if (HomePageTryBlitScroll(win, scrollBy, fastDraw)) {
+        HomePageUpdateOverlayScrollPos(win, win->homePageScrollY);
+        return win->homePageScrollY != target;
+    }
+
+    win->homePageScrollY = target;
+    HomePageInvalidateScrollCache(win);
+    InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+    return false;
+}
+
+void HomePageOnScrollTimer(MainWindow* win) {
+    win->homePageScrollTimer = 0;
+    if (HomePageApplyScrollStep(win, true)) {
+        HomePageEnsureScrollTimer(win);
+        return;
+    }
+    HomePageRebuildThumbLinks(win, win->homePageScrollY);
+}
+
+static void HomePageScrollToTarget(MainWindow* win, int targetY) {
+    win->homePageScrollTargetY = targetY;
+    HomePageUpdateOverlayScrollPos(win, targetY);
+    if (HomePageApplyScrollStep(win, true)) {
+        HomePageEnsureScrollTimer(win);
+    } else if (win->homePageScrollY == targetY) {
+        HomePageRebuildThumbLinks(win, win->homePageScrollY);
+    }
+}
+
 void DrawHomePage(MainWindow* win, HDC hdc) {
     HWND hwnd = win->hwndFrame;
     DeleteVecMembers(win->staticLinks);
@@ -1528,6 +1835,8 @@ void DrawHomePage(MainWindow* win, HDC hdc) {
     LayoutHomePage(l);
 
     DrawHomePageLayout(l);
+
+    HomePageUpdateScrollCache(win, l);
 
     // update overlay scrollbar for home page if thumbnails overflow visible area
     bool showScrollbarV = ScrollbarsUseOverlay() && l.totalContentDy > l.thumbsVisibleDy;
@@ -1591,28 +1900,62 @@ void HomePageOnVScroll(MainWindow* win, WPARAM wp) {
     if (newScrollY < 0) {
         newScrollY = 0;
     }
-    if (newScrollY != win->homePageScrollY) {
-        win->homePageScrollY = newScrollY;
-        InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+    if (win->homePageMaxScrollY > 0 && newScrollY > win->homePageMaxScrollY) {
+        newScrollY = win->homePageMaxScrollY;
     }
+    if (newScrollY == win->homePageScrollTargetY) {
+        return;
+    }
+    HomePageScrollToTarget(win, newScrollY);
 }
 
 void HomePageOnMouseWheel(MainWindow* win, int delta) {
-    Rect rc = ClientRect(win->hwndCanvas);
-    HDC hdc = GetDC(win->hwndCanvas);
-    int thumbsRowDy = kThumbnailDy + kThumbsSpaceBetweenY;
-    ReleaseDC(win->hwndCanvas, hdc);
+    if (delta == 0) {
+        return;
+    }
 
-    int scrollBy = thumbsRowDy / 3;
-    if (delta > 0) {
-        scrollBy = -scrollBy;
+    win->wheelAccumDelta += delta;
+
+    ULONG ulScrollLines = 3;
+    SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, &ulScrollLines, 0);
+    if (ulScrollLines == 0) {
+        return;
     }
-    int newScrollY = win->homePageScrollY + scrollBy;
-    if (newScrollY < 0) {
-        newScrollY = 0;
+
+    int scrollBy = 0;
+    if (ulScrollLines == (ULONG)-1) {
+        int pageDy = win->homePageThumbsVisibleDy;
+        if (pageDy <= 0) {
+            return;
+        }
+        scrollBy = -MulDiv(pageDy, win->wheelAccumDelta, WHEEL_DELTA);
+        if (scrollBy != 0) {
+            win->wheelAccumDelta += MulDiv(WHEEL_DELTA, scrollBy, pageDy);
+        }
+    } else {
+        int linePx = DpiScale(win->hwndCanvas, 16);
+        int pxPerNotch = (int)ulScrollLines * linePx;
+        scrollBy = -MulDiv(pxPerNotch, win->wheelAccumDelta, WHEEL_DELTA);
+        if (scrollBy != 0) {
+            win->wheelAccumDelta += MulDiv(WHEEL_DELTA, scrollBy, pxPerNotch);
+        }
     }
-    if (newScrollY != win->homePageScrollY) {
-        win->homePageScrollY = newScrollY;
-        InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+
+    if (scrollBy == 0) {
+        return;
     }
+
+    int newTarget = win->homePageScrollTargetY + scrollBy;
+    if (newTarget < 0) {
+        newTarget = 0;
+        win->wheelAccumDelta = 0;
+    }
+    if (win->homePageMaxScrollY > 0 && newTarget > win->homePageMaxScrollY) {
+        newTarget = win->homePageMaxScrollY;
+        win->wheelAccumDelta = 0;
+    }
+    if (newTarget == win->homePageScrollTargetY) {
+        return;
+    }
+    HomePageScrollToTarget(win, newTarget);
 }

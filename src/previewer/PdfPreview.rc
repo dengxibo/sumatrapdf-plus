@@ -19,7 +19,7 @@ BEGIN
       VALUE "FileVersion",      VER_RESOURCE_STR
       VALUE "LegalCopyright",   kCopyrightStr
       VALUE "OriginalFilename", "PdfPreview.dll"
-      VALUE "ProductName",      "SumatraPDF"
+      VALUE "ProductName",      kAppName
       VALUE "ProductVersion",   VER_RESOURCE_STR
     END
   END

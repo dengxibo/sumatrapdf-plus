@@ -107,8 +107,7 @@ static void OnMouseLeftButtonUpAbout(MainWindow* win, int x, int y, WPARAM) {
         auto path = url;
         ReportIf(!path);
         LoadArgs args(path, win);
-        // ctrl forces always opening
-        args.activateExisting = !IsCtrlPressed();
+        SetUserOpenActivateExisting(args);
         StartLoadDocument(&args);
     }
     // HwndSetFocus(win->hwndFrame);
@@ -165,6 +164,8 @@ LRESULT WndProcCanvasAbout(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, LPAR
         case WM_COMMAND:
             if (HIWORD(wp) == EN_CHANGE && (HWND)lp == win->hwndHomeSearch) {
                 win->homePageScrollY = 0;
+                win->homePageScrollTargetY = 0;
+                HomePageInvalidateScrollCache(win);
                 InvalidateRect(win->hwndCanvas, nullptr, FALSE);
                 return 0;
             }

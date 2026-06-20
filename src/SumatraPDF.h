@@ -33,6 +33,9 @@ constexpr int kHideCursorDelayInMs = 3000;
 #define AUTO_RELOAD_TIMER_ID 5
 #define AUTO_RELOAD_DELAY_IN_MS 100
 
+#define HOME_SCROLL_TIMER_ID 7
+#define HOME_SCROLL_TIMER_MS 16
+
 // permissions that can be revoked through sumatrapdfrestrict.ini or the -restrict command line flag
 enum class Perm : uint {
     // enables Update checks, crash report submitting and hyperlinks
@@ -205,6 +208,9 @@ struct LoadArgs {
 };
 
 struct PasswordUI;
+
+// User-initiated open: focus an already-open tab unless Ctrl is held.
+void SetUserOpenActivateExisting(LoadArgs& args);
 
 MainWindow* LoadDocument(LoadArgs* args);
 MainWindow* LoadDocumentFinish(LoadArgs* args);

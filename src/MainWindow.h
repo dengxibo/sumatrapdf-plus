@@ -220,6 +220,19 @@ struct MainWindow {
 
     // home page thumbnail scrolling
     int homePageScrollY = 0;
+    int homePageScrollTargetY = 0;
+    int homePageMaxScrollY = 0;
+    int homePageThumbsVisibleDy = 0;
+    Rect homePageThumbsArea;
+    int homePageThumbsStartX = 0;
+    int homePageThumbsTopY = 0;
+    int homePageThumbsCols = 0;
+    int homePagePaintScrollY = 0;
+    bool homePageBlitScrollReady = false;
+    Vec<FileState*> homePageFileStates;
+    StrVec homePageFilterWords;
+    Vec<u8> homePageHighlighted;
+    UINT_PTR homePageScrollTimer = 0;
 
     // home page search filter
     HWND hwndHomeSearch = nullptr;

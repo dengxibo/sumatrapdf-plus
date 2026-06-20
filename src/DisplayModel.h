@@ -141,6 +141,7 @@ struct DisplayModel : DocController {
     /* current rotation selected by user */
     int GetRotation() const;
     float GetZoomReal(int pageNo) const;
+    float GetZoomSafe(int pageNo) const;
     void Relayout(float zoomVirtual, int rotation);
 
     Rect GetViewPort() const;

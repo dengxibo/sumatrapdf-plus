@@ -38,9 +38,15 @@ using Gdiplus::StringFormatFlagsDirectionRightToLeft;
 
 namespace mui {
 
+// Match HtmlFormatter::IsCjkChar — used to split mixed runs for rendering.
+static bool IsCjkDrawChar(WCHAR c) {
+    return (c >= 0x2E80 && c <= 0xA4CF) || (c >= 0xAC00 && c <= 0xD7AF) || (c >= 0xF900 && c <= 0xFAFF);
+}
+
 TextRenderGdi* TextRenderGdi::Create(Graphics* gfx) {
     TextRenderGdi* res = new TextRenderGdi();
     res->gfx = gfx;
+    res->method = TextRenderMethod::Gdi;
     // default to red to make mistakes stand out
     res->SetTextColor(Color(0xff, 0xff, 0x0, 0x0));
     res->CreateHdcForTextMeasure(); // could do lazily, but that's more things to track, so not
@@ -124,6 +130,108 @@ RectF TextRenderGdi::Measure(const WCHAR* s, size_t sLen) {
     GetTextExtentPoint32W(hdcForTextMeasure, s, (int)sLen, &txtSize);
     RectF res(0.0f, 0.0f, (float)txtSize.cx, (float)txtSize.cy);
     return res;
+}
+
+// Cumulative charRelX must use the same per-char integer advances as ExtTextOut(lpDx).
+// Rounding float metrics per char avoids drift that grows toward the end of long lines.
+static void CharRelXRoundForGdi(float* rel, int wlen) {
+    if (wlen <= 0) {
+        return;
+    }
+    Vec<float> raw;
+    raw.AppendBlanks(wlen + 1);
+    for (int k = 0; k <= wlen; k++) {
+        raw[k] = rel[k];
+    }
+    int total = (int)(raw[wlen] + 0.5f);
+    int sum = 0;
+    rel[0] = 0.f;
+    for (int k = 0; k < wlen - 1; k++) {
+        int adv = (int)(raw[k + 1] - raw[k] + 0.5f);
+        if (adv < 1) {
+            adv = 1;
+        }
+        sum += adv;
+        rel[k + 1] = (float)sum;
+    }
+    rel[wlen] = (float)total;
+    if (rel[wlen] <= rel[wlen - 1]) {
+        rel[wlen] = rel[wlen - 1] + 1.f;
+    }
+}
+
+bool TextRenderGdi::MeasureCharRelX(const WCHAR* s, int wlen, float* rel) {
+    if (!hdcForTextMeasure || !s || wlen <= 0 || !rel) {
+        return false;
+    }
+    rel[0] = 0.f;
+    Vec<int> advances;
+    advances.AppendBlanks(wlen);
+    SIZE sz{};
+    if (!GetTextExtentExPointW(hdcForTextMeasure, s, wlen, 0, nullptr, advances.els, &sz)) {
+        return false;
+    }
+    for (int k = 0; k < wlen; k++) {
+        rel[k + 1] = rel[k] + (float)advances.at(k);
+    }
+    if (rel[wlen] <= 0.f) {
+        return false;
+    }
+    CharRelXRoundForGdi(rel, wlen);
+    for (int k = 1; k <= wlen; k++) {
+        if (rel[k] <= rel[k - 1]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void TextRenderGdi::DrawWithCharRelX(const WCHAR* s, int sLen, RectF bb, const float* rel, bool isRtl) {
+    ReportIf(!hdcGfxLocked);
+    if (!s || sLen <= 0 || !rel) {
+        Draw(s, (size_t)sLen, bb, isRtl);
+        return;
+    }
+    int y = (int)bb.y;
+    uint opts = ETO_OPAQUE;
+    if (isRtl) {
+        opts = opts | ETO_RTLREADING;
+        // Fallback: per-char with explicit advances (RTL mixed runs are rare).
+        for (int k = 0; k < sLen; k++) {
+            int adv = (int)(rel[k + 1] - rel[k]);
+            if (adv < 1) {
+                adv = 1;
+            }
+            int x = (int)(bb.x + rel[k]);
+            ExtTextOutW(hdcGfxLocked, x, y, opts, nullptr, s + k, 1, &adv);
+        }
+        return;
+    }
+    int k = 0;
+    while (k < sLen) {
+        int adv = (int)(rel[k + 1] - rel[k]);
+        if (adv < 1) {
+            adv = 1;
+        }
+        int x = (int)(bb.x + rel[k]);
+        if (IsCjkDrawChar(s[k])) {
+            ExtTextOutW(hdcGfxLocked, x, y, opts, nullptr, s + k, 1, &adv);
+            k++;
+        } else {
+            int start = k;
+            while (k < sLen && !IsCjkDrawChar(s[k])) {
+                k++;
+            }
+            int n = k - start;
+            int* dxArr = AllocArray<int>(GetTempAllocator(), n);
+            for (int i = 0; i < n; i++) {
+                int a = (int)(rel[start + i + 1] - rel[start + i]);
+                dxArr[i] = a < 1 ? 1 : a;
+            }
+            x = (int)(bb.x + rel[start]);
+            ExtTextOutW(hdcGfxLocked, x, y, opts, nullptr, s + start, n, dxArr);
+        }
+    }
 }
 
 RectF TextRenderGdi::Measure(const char* s, size_t sLen) {
@@ -298,8 +406,10 @@ TextRenderGdiplus* TextRenderGdiplus::Create(Graphics* gfx, TextMeasureAlgorithm
     res->currFont = nullptr;
     if (nullptr == measureAlgo) {
         res->measureAlgo = MeasureTextAccurate;
+        res->method = TextRenderMethod::Gdiplus;
     } else {
         res->measureAlgo = measureAlgo;
+        res->method = TextRenderMethod::GdiplusQuick;
     }
     // default to red to make mistakes stand out
     res->SetTextColor(Color(0xff, 0xff, 0x0, 0x0));
@@ -358,6 +468,41 @@ void TextRenderGdiplus::Draw(const char* s, size_t sLen, const RectF bb, bool is
     Draw(buf, strLen, bb, isRtl);
 }
 
+void TextRenderGdiplus::DrawWithCharRelX(const WCHAR* s, int sLen, RectF bb, const float* rel, int relLen, bool isRtl) {
+    if (!s || sLen <= 0 || !rel || relLen != sLen || !currFont) {
+        Draw(s, (size_t)sLen, bb, isRtl);
+        return;
+    }
+    if (isRtl) {
+        StringFormat sf(StringFormat::GenericTypographic());
+        sf.SetFormatFlags(sf.GetFormatFlags() | StringFormatFlagsDirectionRightToLeft);
+        for (int k = 0; k < sLen; k++) {
+            float x = bb.x + bb.dx - rel[k + 1];
+            Gdiplus::PointF pos(x, bb.y);
+            gfx->DrawString(s + k, 1, currFont->font, pos, &sf, textColorBrush);
+        }
+        return;
+    }
+    StringFormat sf(StringFormat::GenericTypographic());
+    int k = 0;
+    while (k < sLen) {
+        if (IsCjkDrawChar(s[k])) {
+            float x = bb.x + rel[k];
+            Gdiplus::PointF pos(x, bb.y);
+            gfx->DrawString(s + k, 1, currFont->font, pos, &sf, textColorBrush);
+            k++;
+        } else {
+            int start = k;
+            while (k < sLen && !IsCjkDrawChar(s[k])) {
+                k++;
+            }
+            float x = bb.x + rel[start];
+            Gdiplus::PointF pos(x, bb.y);
+            gfx->DrawString(s + start, k - start, currFont->font, pos, nullptr, textColorBrush);
+        }
+    }
+}
+
 void TextRenderHdc::Lock() {
     int dx = bmi.bmiHeader.biWidth;
     int dy = bmi.bmiHeader.biHeight;
@@ -399,6 +544,7 @@ TextRenderHdc* TextRenderHdc::Create(Graphics* gfx, int dx, int dy) {
     SelectObject(res->hdc, res->bmp);
 
     // default to red to make mistakes stand out
+    res->method = TextRenderMethod::Hdc;
     res->SetTextColor(Color(0xff, 0xff, 0x0, 0x0));
     return res;
 }

@@ -34,6 +34,22 @@ TextSearch::~TextSearch() {
     Clear();
 }
 
+void TextSearch::SyncPageCount() {
+    int count = engine->PageCount();
+    if (count <= 0) {
+        return;
+    }
+    if (count == nPages) {
+        return;
+    }
+    int oldCount = nPages;
+    nPages = count;
+    pagesToSkip.SetSize(nPages);
+    for (int i = oldCount; i < nPages; i++) {
+        pagesToSkip[i] = false;
+    }
+}
+
 void TextSearch::Clear() {
     str::FreePtr(&findText);
     str::FreePtr(&anchor);
@@ -309,6 +325,8 @@ bool TextSearch::FindStartingAtPage(int pageNo) {
     if (str::IsEmpty(findText)) {
         return false;
     }
+
+    SyncPageCount();
 
     int next = forward ? 1 : -1;
     while ((1 <= pageNo) && (pageNo <= nPages) && !WasCanceled(progressCb)) {

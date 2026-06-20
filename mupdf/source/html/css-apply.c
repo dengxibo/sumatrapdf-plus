@@ -412,8 +412,24 @@ static int count_siblings_before(fz_xml* target) {
 
 static int count_siblings_after(fz_xml* node) {
     int count = 0;
-    for (; node; node = fz_xml_next(node))
-        if (fz_xml_tag(node) != NULL) ++count;
+    if (!node) {
+        return 0;
+    }
+    for (; node; node = fz_xml_next(node)) {
+        if (fz_xml_tag(node) != NULL) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+static int count_element_siblings_after(fz_xml* target) {
+    int count = 0;
+    for (fz_xml* node = fz_xml_next(target); node; node = fz_xml_next(node)) {
+        if (fz_xml_tag(node) != NULL) {
+            ++count;
+        }
+    }
     return count;
 }
 
@@ -421,16 +437,46 @@ static int count_siblings_of_type_before(fz_xml* target) {
     const char* tag = fz_xml_tag(target);
     fz_xml* node;
     int count = 0;
-    for (node = fz_xml_down(fz_xml_up(target)); node && node != target; node = fz_xml_next(node))
-        if (fz_xml_is_tag(node, tag)) ++count;
+    if (!tag) {
+        return 0;
+    }
+    for (node = fz_xml_down(fz_xml_up(target)); node && node != target; node = fz_xml_next(node)) {
+        if (fz_xml_is_tag(node, tag)) {
+            ++count;
+        }
+    }
     return count;
 }
 
 static int count_siblings_of_type_after(fz_xml* node) {
-    const char* tag = fz_xml_tag(node);
+    const char* tag;
     int count = 0;
-    for (; node; node = fz_xml_next(node))
-        if (fz_xml_is_tag(node, tag)) ++count;
+    if (!node) {
+        return 0;
+    }
+    tag = fz_xml_tag(node);
+    if (!tag) {
+        return 0;
+    }
+    for (; node; node = fz_xml_next(node)) {
+        if (fz_xml_is_tag(node, tag)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+static int count_element_siblings_of_type_after(fz_xml* target) {
+    const char* tag = fz_xml_tag(target);
+    int count = 0;
+    if (!tag) {
+        return 0;
+    }
+    for (fz_xml* node = fz_xml_next(target); node; node = fz_xml_next(node)) {
+        if (fz_xml_is_tag(node, tag)) {
+            ++count;
+        }
+    }
     return count;
 }
 
@@ -439,7 +485,7 @@ static int match_nth_child(fz_xml* target, int a, int b) {
 }
 
 static int match_nth_last_child(fz_xml* target, int a, int b) {
-    return match_nth(count_siblings_after(target) + 1, a, b);
+    return match_nth(count_element_siblings_after(target) + 1, a, b);
 }
 
 static int match_nth_of_type(fz_xml* target, int a, int b) {
@@ -447,7 +493,7 @@ static int match_nth_of_type(fz_xml* target, int a, int b) {
 }
 
 static int match_nth_last_of_type(fz_xml* target, int a, int b) {
-    return match_nth(count_siblings_of_type_after(target) + 1, a, b);
+    return match_nth(count_element_siblings_of_type_after(target) + 1, a, b);
 }
 
 static int match_an_plus_b_microsyntax(fz_xml* node, const char* val, int (*callback)(fz_xml* node, int a, int b)) {
@@ -485,16 +531,16 @@ static int match_pseudo_condition(fz_xml* node, const char* key, const char* val
     if (!strcmp(key, "root")) return fz_xml_up(node) == NULL;
 
     if (!strcmp(key, "first-child")) return count_siblings_before(node) == 0;
-    if (!strcmp(key, "last-child")) return count_siblings_after(node) == 0;
-    if (!strcmp(key, "only-child")) return count_siblings_before(node) == 0 && count_siblings_after(node) == 0;
+    if (!strcmp(key, "last-child")) return count_element_siblings_after(node) == 0;
+    if (!strcmp(key, "only-child")) return count_siblings_before(node) == 0 && count_element_siblings_after(node) == 0;
     if (!strcmp(key, "nth-child") && val != NULL) return match_an_plus_b_microsyntax(node, val, match_nth_child);
     if (!strcmp(key, "nth-last-child") && val != NULL)
         return match_an_plus_b_microsyntax(node, val, match_nth_last_child);
 
     if (!strcmp(key, "first-of-type")) return count_siblings_of_type_before(node) == 0;
-    if (!strcmp(key, "last-of-type")) return count_siblings_of_type_after(node) == 0;
+    if (!strcmp(key, "last-of-type")) return count_element_siblings_of_type_after(node) == 0;
     if (!strcmp(key, "only-of-type"))
-        return count_siblings_of_type_before(node) == 0 && count_siblings_of_type_after(node) == 0;
+        return count_siblings_of_type_before(node) == 0 && count_element_siblings_of_type_after(node) == 0;
     if (!strcmp(key, "nth-of-type") && val != NULL) return match_an_plus_b_microsyntax(node, val, match_nth_of_type);
     if (!strcmp(key, "nth-last-of-type") && val != NULL)
         return match_an_plus_b_microsyntax(node, val, match_nth_last_of_type);
@@ -927,10 +973,10 @@ void fz_add_css_font_face(fz_context* ctx, fz_html_font_set* set, fz_archive* zi
     if (!src) return;
 
     /* Some EPUBs reference device-only fonts from Sony readers, e.g.
-	 * res:///opt/sony/ebook/FONT/tt0011m_.ttf.
+     * res:///opt/sony/ebook/FONT/tt0011m_.ttf.
      * These are not archive entries
-	 * and are not valid local files on Windows, so skip them instead of
-	 *
+     * and are not valid local files on Windows, so skip them instead of
+     *
      * repeatedly warning while laying out pages. */
     if (!strncmp(src, "res://", 6)) return;
 

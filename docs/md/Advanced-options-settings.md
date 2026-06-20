@@ -102,7 +102,7 @@ ShowMenubar = true
 ShowMenubarWithTabs = false
 
 ; if true, we show tips on the home page (introduced in version 3.7)
-ShowTips = true
+ShowTips = false
 
 ; up to 13 custom colors for the background color picker, separated by space
 ; (e.g. '#ff0000 #00ff00 #0000ff') (introduced in version 3.7)
@@ -110,6 +110,14 @@ CustomColors =
 
 ; if true, we show the toolbar at the top of the window
 ShowToolbar = true
+
+; directory containing SumatraDict.* dictionary files. If empty, {exedir}/dict
+; is used (introduced in version 3.7)
+OfflineDictionaryPath =
+
+; if true, double-clicking a word looks it up in the offline dictionary
+; (introduced in version 3.7)
+EnableDoubleClickWordLookup = true
 
 ; if true, we show the Favorites sidebar
 ShowFavorites = false
@@ -237,10 +245,10 @@ EBookUI [
     ; font size, default 8.0
     FontSize = 0
 
-    ; default is 420
+    ; page width in pt for flowed ebooks. 0 means automatic reader-style width
     LayoutDx = 0
 
-    ; default is 595
+    ; page height in pt for flowed ebooks. 0 means automatic reader-style height
     LayoutDy = 0
 
     ; if true, we ignore ebook's CSS

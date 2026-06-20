@@ -91,6 +91,11 @@ class TextRenderGdi : public ITextRender {
     void DrawTransparent(const char* s, size_t sLen, RectF bb, bool isRtl);
     void DrawTransparent(const WCHAR* s, size_t sLen, RectF bb, bool isRtl);
 
+    // Per-char cumulative x matching ExtTextOut layout (same HDC as Measure()).
+    bool MeasureCharRelX(const WCHAR* s, int wlen, float* rel);
+    // Draw using layout-time advances so glyphs match charRelX hit-test coords.
+    void DrawWithCharRelX(const WCHAR* s, int sLen, RectF bb, const float* rel, bool isRtl);
+
     ~TextRenderGdi() override;
 };
 
@@ -123,6 +128,10 @@ class TextRenderGdiplus : public ITextRender {
 
     void Draw(const char* s, size_t sLen, RectF bb, bool isRtl) override;
     void Draw(const WCHAR* s, size_t sLen, RectF bb, bool isRtl) override;
+
+    // Draw each glyph at its layout-time x (bb.x + rel[k]) so on-screen glyph
+    // positions exactly match hit-test / highlight coordinates.
+    void DrawWithCharRelX(const WCHAR* s, int sLen, RectF bb, const float* rel, int relLen, bool isRtl);
 
     ~TextRenderGdiplus() override;
 };

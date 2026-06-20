@@ -10,11 +10,51 @@
 #include "utils/Timer.h"
 
 #include "EbookBase.h"
+#include "EbookTypography.h"
 #include "FzImgReader.h"
 
 #include "HtmlFormatter.h"
 
 #include "utils/Log.h"
+
+static bool HasLatinLetters(const WCHAR* s, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        WCHAR c = s[i];
+        if ((c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z')) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool IsPureLatinRun(const WCHAR* s, size_t len) {
+    if (!HasLatinLetters(s, len)) {
+        return false;
+    }
+    for (size_t i = 0; i < len; i++) {
+        WCHAR c = s[i];
+        if ((c >= 0x2E80 && c <= 0xA4CF) || (c >= 0xAC00 && c <= 0xD7AF) || (c >= 0xF900 && c <= 0xFAFF)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// MeasureTextQuick shrinks Latin width; pure-Latin runs are drawn with DrawString
+// (natural width). Expand bbox only for those runs so the next element is not placed too early.
+static void ExpandBboxForPureLatinDraw(Graphics* g, mui::CachedFont* font, mui::TextRenderMethod method,
+                                       const WCHAR* s, size_t len, RectF& bbox) {
+    if (method != mui::TextRenderMethod::GdiplusQuick && method != mui::TextRenderMethod::Gdiplus) {
+        return;
+    }
+    if (!IsPureLatinRun(s, len)) {
+        return;
+    }
+    float stdDx = MeasureTextStandard(g, font->font, s, (int)len).dx;
+    if (stdDx > bbox.dx) {
+        bbox.dx = stdDx;
+    }
+}
 
 /*
 Given size of a page, we format html into a set of pages. We handle only a small
@@ -111,25 +151,32 @@ DrawInstr DrawInstr::Anchor(const char* s, size_t len, RectF bbox) {
 }
 
 static TempWStr MapGenericFontFamily(const char* name, size_t len) {
+    EbookTypographyKind kind = GetEbookTypographyKind();
+    bool cjkPrimary = kind == EbookTypographyKind::Cjk || kind == EbookTypographyKind::Bilingual;
+
+    if (str::EqN(name, "SimSun", len) || str::EqN(name, "NSimSun", len) ||
+        str::EqN(name, "\xe5\xae\x8b\xe4\xbd\x93", len) || str::EqN(name, "STSong", len) ||
+        str::EqN(name, "STSongti", len) || str::EqN(name, "Songti SC", len) || str::EqN(name, "Songti TC", len)) {
+        return (TempWStr)L"Source Han Serif SC";
+    }
     if (str::EqN(name, "serif", len)) {
-        return (TempWStr)L"Literata";
+        return cjkPrimary ? (TempWStr)L"Source Han Serif SC" : (TempWStr)L"Literata";
     }
     if (str::EqN(name, "Literata", len)) {
         return (TempWStr)L"Literata";
     }
-    if (str::EqN(name, "Source Han Serif SC", len) || str::EqN(name, "\xe6\x80\x9d\xe6\xba\x90\xe5\xae\x8b\xe4\xbd\x93", len)) {
+    if (str::EqN(name, "Source Han Serif SC", len) ||
+        str::EqN(name, "\xe6\x80\x9d\xe6\xba\x90\xe5\xae\x8b\xe4\xbd\x93", len)) {
         return (TempWStr)L"Source Han Serif SC";
     }
     if (str::EqN(name, "sans-serif", len)) {
-        return (TempWStr)L"Literata";
+        return cjkPrimary ? (TempWStr)L"Source Han Serif SC" : (TempWStr)L"Literata";
     }
     if (str::EqN(name, "monospace", len)) {
         return (TempWStr)L"Courier New";
     }
-    if (str::EqN(name, "SimSun", len) || str::EqN(name, "\xe5\xae\x8b\xe4\xbd\x93", len)) {
-        return (TempWStr)L"SimSun";
-    }
-    if (str::EqN(name, "Microsoft YaHei", len) || str::EqN(name, "\xe5\xbe\xae\xe8\xbd\xaf\xe9\x9b\x85\xe9\xbb\x91", len)) {
+    if (str::EqN(name, "Microsoft YaHei", len) ||
+        str::EqN(name, "\xe5\xbe\xae\xe8\xbd\xaf\xe9\x9b\x85\xe9\xbb\x91", len)) {
         return (TempWStr)L"Microsoft YaHei";
     }
     if (str::EqN(name, "SimHei", len) || str::EqN(name, "\xe9\xbb\x91\xe4\xbd\x93", len)) {
@@ -309,6 +356,77 @@ void HtmlFormatter::AppendInstr(const DrawInstr& di) {
     }
 }
 
+void HtmlFormatter::AppendStringInstr(const char* s, size_t utf8Len, RectF bbox, bool rtl, const WCHAR* wbuf,
+                                      size_t wlen) {
+    DrawInstr di = DrawInstr::Str(s, utf8Len, bbox, rtl);
+    if (textAllocator && wbuf && wlen > 0 && wlen <= 8192 && textMeasure && CurrFont()) {
+        WCHAR measureBuf[8192];
+        size_t measureLen = 0;
+        for (size_t k = 0; k < wlen && measureLen < 8192; k++) {
+            if (wbuf[k] != L'\xad') {
+                measureBuf[measureLen++] = wbuf[k];
+            }
+        }
+        measureBuf[measureLen] = 0;
+        if (measureLen == 0) {
+            AppendInstr(di);
+            return;
+        }
+        float* rel = AllocArray<float>(textAllocator, measureLen + 1);
+        if (rel) {
+            textMeasure->SetFont(CurrFont());
+            bool ok = false;
+            if (!rtl && textRenderMethod == mui::TextRenderMethod::Gdi) {
+                auto* gdi = static_cast<mui::TextRenderGdi*>(textMeasure);
+                ok = gdi->MeasureCharRelX(measureBuf, (int)measureLen, rel);
+            }
+            if (!ok) {
+                rel[0] = 0.f;
+                mui::CachedFont* font = CurrFont();
+                // charRelX must match GDI+ DrawString layout (MeasureString), not the
+                // MeasureTextQuick shrink heuristic used for line-width estimates.
+                bool useStdPrefix =
+                    textRenderMethod == mui::TextRenderMethod::GdiplusQuick ||
+                    textRenderMethod == mui::TextRenderMethod::Gdiplus;
+                for (size_t k = 1; k <= measureLen; k++) {
+                    if (useStdPrefix) {
+                        rel[k] = MeasureTextStandard(gfx, font->font, measureBuf, (int)k).dx;
+                    } else {
+                        rel[k] = textMeasure->Measure(measureBuf, k).dx;
+                    }
+                    if (rel[k] <= rel[k - 1]) {
+                        ok = false;
+                        break;
+                    }
+                    if (k == measureLen) {
+                        ok = rel[measureLen] > 0.f;
+                    }
+                }
+                // GDI+ MeasureString bakes a constant left padding into cumulative
+                // widths. Estimate it as (isolated 2nd-char width) - (2nd-char
+                // increment in the prefix measure), which equals P regardless of
+                // whether the first two glyphs differ in width.
+                if (ok && measureLen >= 2) {
+                    float inc1 = rel[2] - rel[1];
+                    float iso1 = useStdPrefix ? MeasureTextStandard(gfx, font->font, measureBuf + 1, 1).dx
+                                              : textMeasure->Measure(measureBuf + 1, 1).dx;
+                    float pad = iso1 - inc1;
+                    if (pad > 0.f && pad < rel[1]) {
+                        for (size_t k = 1; k <= measureLen; k++) {
+                            rel[k] -= pad;
+                        }
+                    }
+                }
+            }
+            if (ok && rel[measureLen] > 0.f) {
+                di.charRelX = rel;
+                di.charRelXLen = (int)measureLen;
+            }
+        }
+    }
+    AppendInstr(di);
+}
+
 void HtmlFormatter::SetFont(const WCHAR* fontName, FontStyle fs, float fontSize) {
     if (fontSize < 0) {
         fontSize = CurrFont()->GetSize();
@@ -477,9 +595,18 @@ void HtmlFormatter::LayoutLeftStartingAt(float offX) {
         }
     }
 
-    // center a single image
-    if (instrCount == 1 && DrawInstrType::Image == lastInstr->type) {
-        lastInstr->bbox.x = (pageDx - lastInstr->bbox.dx) / 2.f;
+    // center a single image (ignoring spaces and anchors)
+    if (lastInstr && DrawInstrType::Image == lastInstr->type) {
+        bool onlyImageAndSpaces = true;
+        for (DrawInstr& i : currLineInstr) {
+            if (DrawInstrType::String == i.type || DrawInstrType::RtlString == i.type) {
+                onlyImageAndSpaces = false;
+                break;
+            }
+        }
+        if (onlyImageAndSpaces) {
+            lastInstr->bbox.x = (pageDx - lastInstr->bbox.dx) / 2.f;
+        }
     }
 }
 
@@ -751,7 +878,7 @@ bool HtmlFormatter::EmitImage(const ByteSlice* img, const SizeF* maxSize, bool c
     SizeF newSize((float)imgSize.dx, (float)imgSize.dy);
     if (maxSize && maxSize->dx > 0 && maxSize->dy > 0) {
         float scale = std::min(maxSize->dx / newSize.dx, maxSize->dy / newSize.dy);
-        if (scale < 1.f) {
+        if (scale != 1.f) {
             newSize.dx *= scale;
             newSize.dy *= scale;
         }
@@ -914,6 +1041,7 @@ void HtmlFormatter::EmitTextRun(const char* s, const char* end) {
         }
         textMeasure->SetFont(CurrFont());
         RectF bbox = textMeasure->Measure(buf, strLen);
+        ExpandBboxForPureLatinDraw(gfx, CurrFont(), textRenderMethod, buf, strLen, bbox);
         float remDx = pageDx - currX;
         if (remDx <= 0) {
             if (!IsCurrLineEmpty()) {
@@ -923,13 +1051,14 @@ void HtmlFormatter::EmitTextRun(const char* s, const char* end) {
             currX = NewLineX();
             remDx = pageDx - currX;
             if (remDx <= 0) {
-                bbox = ToGdipRectF(textMeasure->Measure(buf, 1));
+                bbox = textMeasure->Measure(buf, 1);
+                ExpandBboxForPureLatinDraw(gfx, CurrFont(), textRenderMethod, buf, 1, bbox);
                 char* utf8Part = strconv::WStrToUtf8(buf, 1, textAllocator);
                 size_t utf8Len = str::Len(utf8Part);
                 if (utf8Len == 0) {
                     break;
                 }
-                AppendInstr(DrawInstr::Str(s, utf8Len, bbox, dirRtl));
+                AppendStringInstr(s, utf8Len, bbox, dirRtl, buf, 1);
                 currX += bbox.dx;
                 s += utf8Len;
                 continue;
@@ -937,7 +1066,7 @@ void HtmlFormatter::EmitTextRun(const char* s, const char* end) {
             continue;
         }
         if (bbox.dx <= remDx) {
-            AppendInstr(DrawInstr::Str(s, end - s, bbox, dirRtl));
+            AppendStringInstr(s, end - s, bbox, dirRtl, buf, strLen);
             currX += bbox.dx;
             break;
         }
@@ -976,7 +1105,8 @@ void HtmlFormatter::EmitTextRun(const char* s, const char* end) {
         }
 
         textMeasure->SetFont(CurrFont());
-        bbox = ToGdipRectF(textMeasure->Measure(buf, lenThatFits));
+        bbox = textMeasure->Measure(buf, lenThatFits);
+        ExpandBboxForPureLatinDraw(gfx, CurrFont(), textRenderMethod, buf, lenThatFits, bbox);
         if (bbox.dx > remDx) {
             if (currX != NewLineX()) {
                 FlushCurrLine(false);
@@ -990,7 +1120,8 @@ void HtmlFormatter::EmitTextRun(const char* s, const char* end) {
                     lenThatFits = 1;
                     break;
                 }
-                bbox = ToGdipRectF(textMeasure->Measure(buf, lenThatFits));
+                bbox = textMeasure->Measure(buf, lenThatFits);
+                ExpandBboxForPureLatinDraw(gfx, CurrFont(), textRenderMethod, buf, lenThatFits, bbox);
             }
         }
         char* utf8Part = strconv::WStrToUtf8(buf, lenThatFits, textAllocator);
@@ -998,7 +1129,7 @@ void HtmlFormatter::EmitTextRun(const char* s, const char* end) {
         if (utf8Len == 0) {
             break;
         }
-        AppendInstr(DrawInstr::Str(s, utf8Len, bbox, dirRtl));
+        AppendStringInstr(s, utf8Len, bbox, dirRtl, buf, lenThatFits);
         currX += bbox.dx;
         s += utf8Len;
     }
@@ -1632,6 +1763,32 @@ Vec<HtmlPage*>* HtmlFormatter::FormatAllPages(bool skipEmptyPages) {
 // mouse is over a link. There's a slight complication here: we only get explicit information about
 // strings, not about the whitespace and we should underline the whitespace as well. Also the text
 // should be underlined at a baseline
+static bool DrawInstrHasCharRelX(const DrawInstr& di, int strLen) {
+    if (!di.charRelX || di.charRelXLen <= 0 || di.charRelXLen != strLen) {
+        return false;
+    }
+    if (di.charRelX[strLen] <= di.charRelX[0]) {
+        return false;
+    }
+    for (int k = 0; k < strLen; k++) {
+        if (di.charRelX[k + 1] <= di.charRelX[k]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Per-glyph drawing (DrawWithCharRelX) is needed for CJK cell alignment only.
+// Latin text must use whole-run Draw(); per-glyph GenericTypographic breaks narrow letters.
+static bool RunNeedsPerGlyphDraw(const WCHAR* s, size_t len) {
+    for (size_t k = 0; k < len; k++) {
+        if (IsCjkChar(s[k])) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void DrawHtmlPage(Graphics* g, mui::ITextRender* textDraw, Vec<DrawInstr>* drawInstructions, float offX, float offY,
                   bool showBbox, Color textColor, bool* abortCookie, Color linkColor) {
     if (linkColor.GetValue() == 0) {
@@ -1665,7 +1822,19 @@ void DrawHtmlPage(Graphics* g, mui::ITextRender* textDraw, Vec<DrawInstr>* drawI
             // soft hyphens should not be displayed
             strLen -= str::RemoveCharsInPlace(buf, L"\xad");
             textDraw->SetTextColor(linkDepth > 0 ? linkColor : textColor);
-            textDraw->Draw(buf, strLen, ToGdipRectF(bbox), DrawInstrType::RtlString == i.type);
+            bool isRtl = DrawInstrType::RtlString == i.type;
+            mui::TextRenderMethod m = textDraw->method;
+            bool useRelDraw = DrawInstrHasCharRelX(i, (int)strLen) && RunNeedsPerGlyphDraw(buf, strLen);
+            if (m == mui::TextRenderMethod::Gdi && useRelDraw) {
+                static_cast<mui::TextRenderGdi*>(textDraw)->DrawWithCharRelX(buf, (int)strLen, ToGdipRectF(bbox),
+                                                                               i.charRelX, isRtl);
+            } else if ((m == mui::TextRenderMethod::Gdiplus || m == mui::TextRenderMethod::GdiplusQuick) &&
+                       useRelDraw) {
+                static_cast<mui::TextRenderGdiplus*>(textDraw)->DrawWithCharRelX(
+                    buf, (int)strLen, ToGdipRectF(bbox), i.charRelX, i.charRelXLen, isRtl);
+            } else {
+                textDraw->Draw(buf, strLen, ToGdipRectF(bbox), isRtl);
+            }
         } else if (DrawInstrType::SetFont == i.type) {
             textDraw->SetFont(i.font);
         }

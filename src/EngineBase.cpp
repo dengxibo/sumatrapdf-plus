@@ -334,25 +334,31 @@ EngineBase::EngineBase() {
 }
 
 void EngineBase::EnsurePagesTextSize() {
-    if (pageCount <= 0) {
+    // Snapshot pageCount into a local: during progressive ebook loading the
+    // background formatter mutates pageCount without holding textCacheLock.
+    // Reading the member multiple times could see a larger value between
+    // realloc and memset, causing memset to write past the end of the buffer
+    // and corrupt the heap (manifesting as a crash in free() during teardown).
+    int n = pageCount;
+    if (n <= 0) {
         return;
     }
     if (!pagesText) {
-        pagesText = AllocArray<PageText>(pageCount);
-        pagesTextSize = pageCount;
+        pagesText = AllocArray<PageText>(n);
+        pagesTextSize = n;
         return;
     }
-    if (pagesTextSize >= pageCount) {
+    if (pagesTextSize >= n) {
         return;
     }
     int oldSize = pagesTextSize;
-    pagesText = (PageText*)realloc(pagesText, pageCount * sizeof(PageText));
+    pagesText = (PageText*)realloc(pagesText, (size_t)n * sizeof(PageText));
     if (!pagesText) {
         pagesTextSize = 0;
         return;
     }
-    memset(&pagesText[oldSize], 0, (pageCount - oldSize) * sizeof(PageText));
-    pagesTextSize = pageCount;
+    memset(&pagesText[oldSize], 0, (size_t)(n - oldSize) * sizeof(PageText));
+    pagesTextSize = n;
 }
 
 EngineBase::~EngineBase() {
@@ -370,12 +376,10 @@ EngineBase::~EngineBase() {
 }
 
 bool EngineBase::HasTextForPage(int pageNo) {
-    ReportIf(pageNo < 1 || pageNo > pageCount);
     if (pageNo < 1 || pageNo > pageCount) {
         return false;
     }
     ScopedCritSec scope(&textCacheLock);
-    EnsurePagesTextSize();
     if (!pagesText || pageNo > pagesTextSize) {
         return false;
     }
@@ -384,8 +388,7 @@ bool EngineBase::HasTextForPage(int pageNo) {
 }
 
 const WCHAR* EngineBase::GetTextForPage(int pageNo, int* lenOut, Rect** coordsOut) {
-    ReportIf(pageNo < 1 || pageNo > pageCount);
-    if (pageNo < 1 || pageNo > pageCount) {
+    auto emptyResult = [&]() {
         if (lenOut) {
             *lenOut = 0;
         }
@@ -393,18 +396,35 @@ const WCHAR* EngineBase::GetTextForPage(int pageNo, int* lenOut, Rect** coordsOu
             *coordsOut = nullptr;
         }
         return L"";
+    };
+
+    if (pageNo < 1 || pageNo > pageCount) {
+        return emptyResult();
     }
 
     ScopedCritSec scope(&textCacheLock);
+    if (pagesText && pageNo <= pagesTextSize) {
+        PageText* pt = &pagesText[pageNo - 1];
+        if (pt->text) {
+            if (lenOut) {
+                *lenOut = pt->len;
+            }
+            if (coordsOut) {
+                *coordsOut = pt->coords;
+            }
+            return pt->text;
+        }
+    }
+
+    // During progressive ebook load, skip pages not reflowed/formatted yet.
+    // On-demand extraction for ready pages is OK (RenderCache skips prefetch during load).
+    if (IsProgressiveEbookLoading() && (pageNo < 1 || pageNo > pageCount)) {
+        return emptyResult();
+    }
+
     EnsurePagesTextSize();
     if (!pagesText || pageNo > pagesTextSize) {
-        if (lenOut) {
-            *lenOut = 0;
-        }
-        if (coordsOut) {
-            *coordsOut = nullptr;
-        }
-        return L"";
+        return emptyResult();
     }
     PageText* pt = &pagesText[pageNo - 1];
 

@@ -6,10 +6,11 @@
 #include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
 #include "utils/FileUtil.h"
+#include "Version.h"
 
 constexpr const WCHAR* kPipeName = L"\\\\.\\pipe\\LOCAL\\ArsLexis-Logger";
 
-const char* gLogAppName = "SumatraPDF";
+const char* gLogAppName = kAppName;
 
 Mutex gLogMutex;
 

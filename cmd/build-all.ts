@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { detectVisualStudio2026, runLogged } from "./util";
+import { detectVisualStudio2026, runLogged, copyDistributionFonts } from "./util";
 import { clearDirPreserveSettings } from "./clean";
 
 let clean = false;
@@ -21,6 +21,8 @@ async function main() {
   // const t = `/t:SumatraPDF;test_util`;
   const p = `/p:Configuration=Release;Platform=x64`;
   await runLogged(msbuildPath, [sln, t, p, `/m`]);
+
+  copyDistributionFonts(join("out", "rel64"));
 
   // const outDir = join("out", "dbg64");
   // await runLogged(resolve(join(outDir, "test_util.exe")), [], outDir);

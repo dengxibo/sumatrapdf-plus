@@ -151,6 +151,7 @@ void GraphicsCacheEntry::Free() const {
 
 void Initialize() {
     InitializeCriticalSection(&gMuiCs);
+    InstallBundledReaderFonts();
     gGraphicsCache = new Vec<GraphicsCacheEntry>();
     // allocate the first entry in gGraphicsCache for UI thread, ref count
     // ensures it stays alive forever
@@ -201,23 +202,56 @@ static const WCHAR* gCjkFallbackFonts[] = {
     L"Source Han Serif SC", L"思源宋体", L"NSimSun", L"SimSun", L"宋体", nullptr,
 };
 
-static Font* CreateFontWithFallback(const WCHAR* name, float sizePt, FontStyle style) {
-    Font* font = new Font(name, sizePt, style);
-    if (font->GetLastStatus() == Status::Ok) {
+static bool IsResolvedFontAcceptable(const WCHAR* requested, Gdiplus::Font* font) {
+    if (!requested || !font) {
+        return false;
+    }
+    LOGFONTW lf{};
+    Gdiplus::Bitmap bmp(1, 1);
+    Gdiplus::Graphics g(&bmp);
+    if (font->GetLogFontW(&g, &lf) != Gdiplus::Status::Ok) {
+        return false;
+    }
+    if (str::EqI(lf.lfFaceName, L"Microsoft Sans Serif")) {
+        return false;
+    }
+    if (str::EqI(requested, L"Source Han Serif SC") || str::EqI(requested, L"思源宋体")) {
+        return str::EqI(lf.lfFaceName, L"Source Han Serif SC") || str::EqI(lf.lfFaceName, L"思源宋体") ||
+               str::EqI(lf.lfFaceName, L"SimSun") || str::EqI(lf.lfFaceName, L"NSimSun") ||
+               str::EqI(lf.lfFaceName, L"宋体");
+    }
+    if (str::EqI(requested, L"Literata")) {
+        return str::Find(lf.lfFaceName, L"Literata") != nullptr;
+    }
+    return true;
+}
+
+static Gdiplus::Font* CreateFontWithFallback(const WCHAR* name, float sizePt, Gdiplus::FontStyle style) {
+    Gdiplus::Font* font = TryCreateBundledFont(name, sizePt, style);
+    if (font) {
+        return font;
+    }
+
+    font = new Gdiplus::Font(name, sizePt, style);
+    if (font->GetLastStatus() == Gdiplus::Status::Ok && IsResolvedFontAcceptable(name, font)) {
         return font;
     }
     delete font;
 
     for (int i = 0; gCjkFallbackFonts[i]; i++) {
-        font = new Font(gCjkFallbackFonts[i], sizePt, style);
-        if (font->GetLastStatus() == Status::Ok) {
+        font = TryCreateBundledFont(gCjkFallbackFonts[i], sizePt, style);
+        if (font) {
+            return font;
+        }
+        font = new Gdiplus::Font(gCjkFallbackFonts[i], sizePt, style);
+        if (font->GetLastStatus() == Gdiplus::Status::Ok && IsResolvedFontAcceptable(gCjkFallbackFonts[i], font)) {
             return font;
         }
         delete font;
     }
 
-    font = new Font(L"Times New Roman", sizePt, style);
-    if (font->GetLastStatus() == Status::Ok) {
+    font = new Gdiplus::Font(L"Times New Roman", sizePt, style);
+    if (font->GetLastStatus() == Gdiplus::Status::Ok) {
         return font;
     }
     delete font;

@@ -74,7 +74,7 @@ struct FixedPageUI {
 
 // customization options for eBookUI
 struct EBookUI {
-    // font size, default 8.0
+    // font size in pt; 0 means automatic (11 pt)
     float fontSize;
     // page width in pt for flowed ebooks. 0 means automatic reader-style
     // width
@@ -363,6 +363,9 @@ struct FileState {
     RenderedBitmap* thumbnail;
     // runtime-only: whether thumbnail was generated for dark theme
     bool thumbnailDarkTheme;
+    // runtime-only: cached result of IsThumbnailMostlyBlank (home page paint)
+    bool thumbnailBlankKnown;
+    bool thumbnailIsBlank;
     // temporary value needed for FileHistory::cmpOpenCount
     size_t index;
     //

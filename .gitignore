@@ -32,6 +32,17 @@ nul
 docs/scratch.txt
 bin/zopflipng.exe
 
+# local debug / scratch (not part of GPL source distribution)
+.dbg/
+debug-*.md
+debug-*.txt
+debug-*.json
+build-smoke.log
+vc140.pdb
+invented.json
+codex
+node
+
 docs-www/
 *.pdf
 *.cbr

@@ -535,8 +535,35 @@ void CreateTabbar(MainWindow* win) {
     win->tabSelectionHistory = new Vec<WindowTab*>();
 }
 
+static void SyncTabFromWindow(MainWindow* win, WindowTab* tab) {
+    if (!win || !tab) {
+        return;
+    }
+    win->UpdateCanvasSize();
+    tab->canvasRc = win->canvasRc;
+    if (PM_DISABLED == win->presentation) {
+        tab->showToc = win->tocVisible;
+    } else if (PM_ENABLED == win->presentation) {
+        tab->showTocPresentation = win->tocVisible;
+    }
+}
+
+static bool ShouldSkipVerifyWindowTab(MainWindow* win, WindowTab* tab) {
+    if (!win || !tab) {
+        return true;
+    }
+    if (win->ctrl == tab->ctrl) {
+        return false;
+    }
+    // Transient during CloseDocumentInCurrentTab / async load handoff.
+    return !win->ctrl || !tab->ctrl;
+}
+
 // verifies that WindowTab state is consistent with MainWindow state
 static NO_INLINE void VerifyWindowTab(MainWindow* win, WindowTab* tdata) {
+    if (ShouldSkipVerifyWindowTab(win, tdata)) {
+        return;
+    }
     ReportIf(tdata->ctrl != win->ctrl);
 #if 0
     // disabling this check. best I can tell, external apps can change window
@@ -581,6 +608,8 @@ void SaveCurrentWindowTab(MainWindow* win) {
         TocTree* tocTree = tab->ctrl->GetToc();
         UpdateTocExpansionState(tab->tocState, win->tocTreeView, tocTree);
     }
+    // Live window state is authoritative; persist it on the tab before verify/switch.
+    SyncTabFromWindow(win, tab);
     VerifyWindowTab(win, tab);
 
     // update the selection history
@@ -643,8 +672,8 @@ void TabsOnChangedDoc(MainWindow* win) {
     int selectedIdx = win->tabsCtrl->GetSelected();
     if (tabIdx != selectedIdx) {
         logf("TabsonChangeDoc: tabIdx (%d) != selectedIdx (%d)\n", tabIdx, selectedIdx);
-        ReportDebugIf(tabIdx != selectedIdx);
     }
+    SyncTabFromWindow(win, tab);
     VerifyWindowTab(win, tab);
     UpdateTabTitle(tab);
 }

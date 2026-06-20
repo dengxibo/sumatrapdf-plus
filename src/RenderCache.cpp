@@ -299,7 +299,7 @@ static bool IsTileVisible(DisplayModel* dm, int pageNo, TilePosition tile, float
         return false;
     }
     int rotation = dm->GetRotation();
-    float zoom = dm->GetZoomReal(pageNo);
+    float zoom = dm->GetZoomSafe(pageNo);
     Rect r = pageInfo->pageOnScreen;
     Rect tileOnScreen = GetTileOnScreen(engine, pageNo, rotation, zoom, tile, r);
     // consider nearby tiles visible depending on the fuzz factor
@@ -412,7 +412,7 @@ void RenderCache::Invalidate(DisplayModel* dm, int pageNo, RectF rect) {
 USHORT RenderCache::GetTileRes(DisplayModel* dm, int pageNo) const {
     auto engine = dm->GetEngine();
     RectF mediabox = engine->PageMediabox(pageNo);
-    float zoom = dm->GetZoomReal(pageNo);
+    float zoom = dm->GetZoomSafe(pageNo);
     float zoomVirt = dm->GetZoomVirtual();
     Rect viewPort = dm->GetViewPort();
     int rotation = dm->GetRotation();
@@ -511,7 +511,7 @@ void RenderCache::RequestRendering(DisplayModel* dm, int pageNo, TilePosition ti
     }
 
     int rotation = NormalizeRotation(dm->GetRotation());
-    float zoom = dm->GetZoomReal(pageNo);
+    float zoom = dm->GetZoomSafe(pageNo);
 
     for (int i = 0; i < nRenderThreads; i++) {
         auto* cr = curReqs[i];
@@ -810,7 +810,7 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
         // make sure that we have extracted page text for
         // all rendered pages to allow text selection and
         // searching without any further delays
-        if (!engine->HasTextForPage(req.pageNo)) {
+        if (!engine->IsProgressiveEbookLoading() && !engine->HasTextForPage(req.pageNo)) {
             engine->GetTextForPage(req.pageNo);
         }
         RenderPageArgs args(req.pageNo, req.zoom, req.rotation, &req.pageRect, RenderTarget::View, &req.abortCookie);
@@ -851,7 +851,7 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
 //       (this is the only place that knows about Tiles, though)
 int RenderCache::PaintTile(HDC hdc, Rect bounds, DisplayModel* dm, int pageNo, TilePosition tile, Rect tileOnScreen,
                            bool renderMissing, bool* renderOutOfDateCue, bool* renderedReplacement) {
-    float zoom = dm->GetZoomReal(pageNo);
+    float zoom = dm->GetZoomSafe(pageNo);
     BitmapCacheEntry* entry = Find(dm, pageNo, dm->GetRotation(), zoom, &tile);
     int renderDelay = 0;
 
@@ -946,7 +946,7 @@ int RenderCache::Paint(HDC hdc, Rect bounds, DisplayModel* dm, int pageNo, PageI
 
     if (!dm->ShouldCacheRendering(pageNo)) {
         int rotation = dm->GetRotation();
-        float zoom = dm->GetZoomReal(pageNo);
+        float zoom = dm->GetZoomSafe(pageNo);
         bounds = pi->pageOnScreen.Intersect(bounds);
 
         RectF area = ToRectF(bounds);
@@ -962,7 +962,7 @@ int RenderCache::Paint(HDC hdc, Rect bounds, DisplayModel* dm, int pageNo, PageI
     }
 
     int rotation = dm->GetRotation();
-    float zoom = dm->GetZoomReal(pageNo);
+    float zoom = dm->GetZoomSafe(pageNo);
     USHORT targetRes = GetTileRes(dm, pageNo);
     USHORT maxRes = GetMaxTileRes(dm, pageNo, rotation);
     if (maxRes < targetRes) {

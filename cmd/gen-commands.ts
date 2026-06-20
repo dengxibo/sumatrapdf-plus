@@ -46,7 +46,7 @@ export const commands = [
     "CmdSearchSelectionWithWikipedia", "Search Selection with Wikipedia",
     "CmdSearchSelectionWithGoogleScholar", "Search Selection with Google Scholar",
     "CmdSelectAll", "Select All",
-    "CmdNewWindow", "Open New SumatraPDF Window",
+    "CmdNewWindow", "Open New Sumatra PDF Plus Window",
     "CmdDuplicateInNewWindow", "Open Current Document In New Window",
     "CmdDuplicateInNewTab", "Open Current Document In New Tab",
     "CmdCopyImage", "Copy Image",
@@ -133,7 +133,7 @@ export const commands = [
     "CmdHelpOpenManualOnWebsite", "Help: Manual On Website",
     "CmdHelpOpenKeyboardShortcuts", "Help: Keyboard Shortcuts",
     "CmdHelpVisitWebsite", "Help: SumatraPDF Website",
-    "CmdHelpAbout", "Help: About SumatraPDF",
+    "CmdHelpAbout", "Help: About Sumatra PDF Plus",
     "CmdMoveFrameFocus", "Move Frame Focus",
     "CmdFavoriteAdd", "Add Favorite",
     "CmdFavoriteDel", "Delete Favorite",
@@ -227,6 +227,10 @@ export const commands = [
     "CmdSetScreenshotHotkey", "Set Screenshot Hotkey",
     "CmdToggleReuseInstance", "Toggle Reuse Instance",
     "CmdToggleChmUI", "Toggle CHM UI",
+    "CmdSearchSelectionWithYoudaoDict", "Search Selection with Youdao Dictionary",
+    "CmdToggleLightDarkTheme", "Toggle light/dark theme",
+    "CmdAnalyzeSelectionWithDoubao", "Ask Doubao",
+    "CmdToggleDoubleClickWordLookup", "Toggle Double-Click Word Lookup",
     "CmdNone", "Do nothing",
 ];
 

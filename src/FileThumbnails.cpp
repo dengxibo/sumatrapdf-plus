@@ -76,6 +76,8 @@ RenderedBitmap* LoadThumbnail(FileState* fs) {
         }
         delete fs->thumbnail;
         fs->thumbnail = nullptr;
+        fs->thumbnailBlankKnown = false;
+        fs->thumbnailIsBlank = false;
     }
     TempStr bmpPath = GetThumbnailPathTemp(fs->filePath);
     if (!bmpPath) {
@@ -167,5 +169,7 @@ void InvalidateLoadedThumbnails() {
     for (FileState* fs : *gFileHistory.states) {
         delete fs->thumbnail;
         fs->thumbnail = nullptr;
+        fs->thumbnailBlankKnown = false;
+        fs->thumbnailIsBlank = false;
     }
 }

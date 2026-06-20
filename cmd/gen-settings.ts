@@ -153,8 +153,8 @@ function isComment(f: Field): boolean {
 
 const ebookUI: Field[] = [
   mkField("FontSize", Float, 0, "font size, default 8.0"),
-  mkField("LayoutDx", Float, 0, "default is 420"),
-  mkField("LayoutDy", Float, 0, "default is 595"),
+  mkField("LayoutDx", Float, 0, "page width in pt for flowed ebooks. 0 means automatic reader-style width"),
+  mkField("LayoutDy", Float, 0, "page height in pt for flowed ebooks. 0 means automatic reader-style height"),
   mkField("IgnoreDocumentCSS", Bool, false, "if true, we ignore ebook's CSS"),
   mkField("CustomCSS", Str, null, "custom CSS. Might need to set IgnoreDocumentCSS = true"),
   setVersion(
@@ -566,6 +566,7 @@ const fileSettings: Field[] = [
       "thumbnails are saved as PNG files in sumatrapdfcache directory",
     ),
   ),
+  notSaved(mkField("ThumbnailDarkTheme", Bool, false, "runtime-only: whether thumbnail was generated for dark theme")),
   notSaved(
     mkField("Index", { name: "", ctype: "size_t" }, "0", "temporary value needed for FileHistory::cmpOpenCount"),
   ),
@@ -717,9 +718,27 @@ const globalPrefs: Field[] = [
     mkField("ShowMenubarWithTabs", Bool, false, "if true, show the menu bar when using tabs (useTabs = true)"),
     "3.7",
   ),
-  setVersion(mkField("ShowTips", Bool, true, "if true, we show tips on the home page"), "3.7"),
+  setVersion(mkField("ShowTips", Bool, false, "if true, we show tips on the home page"), "3.7"),
   setVersion(mkField("CustomColors", Str, null, "up to 13 custom colors for the background color picker, separated by space (e.g. '#ff0000 #00ff00 #0000ff')"), "3.7"),
   mkField("ShowToolbar", Bool, true, "if true, we show the toolbar at the top of the window"),
+  setVersion(
+    mkField(
+      "OfflineDictionaryPath",
+      Str,
+      null,
+      "directory containing SumatraDict.* dictionary files. If empty, {exedir}/dict is used",
+    ),
+    "3.7",
+  ),
+  setVersion(
+    mkField(
+      "EnableDoubleClickWordLookup",
+      Bool,
+      true,
+      "if true, double-clicking a word looks it up in the offline dictionary",
+    ),
+    "3.7",
+  ),
   mkField("ShowFavorites", Bool, false, "if true, we show the Favorites sidebar"),
   mkField(
     "ShowToc",

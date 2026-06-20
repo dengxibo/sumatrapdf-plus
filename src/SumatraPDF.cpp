@@ -107,8 +107,7 @@ using Gdiplus::SolidBrush;
 
 constexpr const char* kRestrictionsFileName = "sumatrapdfrestrict.ini";
 
-constexpr const char* kSumatraWindowTitle = "SumatraPDF";
-constexpr const WCHAR* kSumatraWindowTitleW = L"SumatraPDF";
+#define kSumatraWindowTitle kAppName
 
 // used to show it in debug, but is not very useful,
 // so always disable
@@ -515,6 +514,8 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
             if (!win->tocVisible) {
                 tab->showToc = true;
                 SetSidebarVisibility(win, true, gGlobalPrefs->showFavorites);
+            } else if (!tab->showToc) {
+                tab->showToc = true;
             }
             if (win->tocLoaded) {
                 ClearTocBox(win);
@@ -559,9 +560,14 @@ MainWindow* FindMainWindowByFile(const char* file, bool focusTab) {
         return nullptr;
     }
     if (gMostRecentlyOpenedDoc != nullptr) {
-        auto lastPath = gMostRecentlyOpenedDoc->GetFilePath();
-        if (path::IsSame(lastPath, file)) {
-            tab = FindTabByController(gMostRecentlyOpenedDoc);
+        tab = FindTabByController(gMostRecentlyOpenedDoc);
+        if (tab) {
+            auto lastPath = gMostRecentlyOpenedDoc->GetFilePath();
+            if (!path::IsSame(lastPath, file)) {
+                tab = nullptr;
+            }
+        } else {
+            gMostRecentlyOpenedDoc = nullptr;
         }
     }
     if (!tab) {
@@ -574,6 +580,10 @@ MainWindow* FindMainWindowByFile(const char* file, bool focusTab) {
         SelectTabInWindow(tab);
     }
     return tab->win;
+}
+
+void SetUserOpenActivateExisting(LoadArgs& args) {
+    args.activateExisting = !IsCtrlPressed();
 }
 
 // Find the first window that has been produced from <file>
@@ -1516,6 +1526,9 @@ static void SafeDeleteDocController(MainWindow* win, DocController*& ctrl) {
             t->ctrl = nullptr;
         }
     }
+    if (gMostRecentlyOpenedDoc == ctrl) {
+        gMostRecentlyOpenedDoc = nullptr;
+    }
     delete ctrl;
     ctrl = nullptr;
 }
@@ -1582,8 +1595,10 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         }
         if (win->presentation) {
             showToc = tab->showTocPresentation;
-        } else {
+        } else if (win->ctrl && str::Eq(path, win->ctrl->GetFilePath())) {
             // Preserve per-tab sidebar visibility across reloads (e.g. theme change).
+            showToc = tab->showToc;
+        } else {
             showToc = fs->showToc;
         }
         ParsedColor* bgParsed = GetPrefsColor(fs->bgCol);
@@ -1972,7 +1987,7 @@ static MainWindow* CreateMainWindow() {
     windowPos.x += (nShift * 15); // TODO: DPI scale
 
     const WCHAR* clsName = FRAME_CLASS_NAME;
-    const WCHAR* title = kSumatraWindowTitleW;
+    const WCHAR* title = ToWStrTemp(kAppName);
     DWORD style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
     int x = windowPos.x;
     int y = windowPos.y;
@@ -2280,6 +2295,7 @@ void UpdateAfterThemeChange() {
         }
     }
     UpdateDocumentColors();
+    RefreshWordLookupTheme();
 }
 
 static void RenameFileInHistory(const char* oldPath, const char* newPath) {
@@ -2678,6 +2694,8 @@ static void PrepareLoadingTab(MainWindow* win, LoadArgs* args) {
         tab->SetFilePath(fullPath);
         win->currentTabTemp = AddTabToWindow(win, tab);
         win->ctrl = nullptr;
+        // Hide sidebar left over from the previous tab while the new doc loads.
+        SetSidebarVisibility(win, false, gGlobalPrefs->showFavorites);
     } else if (win->CurrentTab()) {
         win->CurrentTab()->SetFilePath(fullPath);
         TabsOnChangedDoc(win);
@@ -2774,6 +2792,11 @@ static void FinishAsyncDocumentLoad(LoadDocumentAsyncData* d) {
         tab = win->CurrentTab();
     }
     int tabIdx = tab ? win->GetTabIdx(tab) : -1;
+    if (tabIdx < 0) {
+        // The tab was closed while the document was loading on a background
+        // thread. d->targetTab is now a dangling pointer; must not deref it.
+        tab = nullptr;
+    }
     int selectedIdx = win->tabsCtrl ? win->tabsCtrl->GetSelected() : -1;
     // win->ctrl can still reference targetTab between a tab click and LoadModelIntoTab
     bool isForegroundTab = (tabIdx >= 0 && tabIdx == selectedIdx) || (tab && win->ctrl && win->ctrl == tab->ctrl);
@@ -2784,6 +2807,10 @@ static void FinishAsyncDocumentLoad(LoadDocumentAsyncData* d) {
         LoadDocumentFinish(args);
     } else if (tab && args->ctrl) {
         AttachDocumentToBackgroundTab(args, tab);
+    } else if (args->ctrl) {
+        // Tab was closed during load: destroy the orphaned controller to avoid a leak.
+        SafeDeleteDocController(win, args->ctrl);
+        args->ctrl = nullptr;
     }
 }
 
@@ -2834,7 +2861,7 @@ void NotifyEngineDisplayReady(EngineBase* engine) {
     task->engine = engine;
     task->d = gCurrentAsyncLoad;
     auto fn = MkFunc0<EarlyEngineDisplayTask>(EarlyEngineDisplayUI, task);
-    uitask::Invoke(fn, "EarlyEngineDisplay");
+    uitask::Post(fn, "EarlyEngineDisplay");
 }
 
 static void LoadDocumentAsyncFinish(LoadDocumentAsyncData* d) {
@@ -3504,6 +3531,8 @@ static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool 
     RemoveNotificationsForGroup(win->hwndCanvas, kNotifPageInfo);
     RemoveNotificationsForGroup(win->hwndCanvas, kNotifCursorPos);
     RemoveNotificationsForGroup(win->hwndCanvas, kNotifZoom);
+
+    CloseWordLookup();
 
     // TODO: this can cause a mouse capture to stick around when called from LoadModelIntoTab (cf. OnSelectionStop)
     win->mouseAction = MouseAction::None;
@@ -4543,6 +4572,7 @@ void DuplicateTabInNewWindow(WindowTab* tab) {
     LoadArgs args(path, newWin);
     args.showWin = true;
     args.noPlaceWindow = true;
+    args.activateExisting = false;
     LoadDocument(&args);
 }
 
@@ -4587,6 +4617,7 @@ static void DuplicateInNewTab(MainWindow* win) {
     args.showWin = true;
     args.noPlaceWindow = true;
     args.forceReuse = false; // Force creation of new tab instead of reusing current
+    args.activateExisting = false;
     LoadDocument(&args);
 }
 
@@ -4700,6 +4731,7 @@ static void OpenFile(MainWindow* win) {
     GetFilesFromGetOpenFileName(&ofn, files);
     for (char* path : files) {
         LoadArgs args(path, win);
+        SetUserOpenActivateExisting(args);
         LoadDocument(&args);
     }
 }
@@ -6757,6 +6789,7 @@ void ReopenLastClosedFile(MainWindow* win) {
         return;
     }
     LoadArgs args(path, win);
+    SetUserOpenActivateExisting(args);
     LoadDocument(&args);
 }
 
@@ -7164,6 +7197,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             FileState* state = gFileHistory.Get(idx);
             if (state) {
                 LoadArgs args(state->filePath, win);
+                SetUserOpenActivateExisting(args);
                 LoadDocument(&args);
             }
             return 0;

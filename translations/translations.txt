@@ -3919,7 +3919,7 @@ sat:@ ᱴᱮᱵᱠᱚ
 sk:@ Karty
 sr-rs:@ Картице
 tw:@ 索引標籤
-:About SumatraPDF
+:About Sumatra PDF Plus
 af:Omtrent SumatraPDF
 am:SumatraPDF-ի մասին
 ar:حول SumatraPDF
@@ -3931,7 +3931,7 @@ bs:O SumatraPDF
 by:Аб SumatraPDF
 ca-xv:Quant al SumatraPDF
 ca:Quant al SumatraPDF
-cn:关于 SumatraPDF
+cn:关于 Sumatra PDF Plus
 co:Apprupositu di SumatraPDF
 cy:Ynghylch SumatraPDF
 cz:O programu SumatraPDF
@@ -4672,6 +4672,12 @@ nl:Wijzig Formaat Toepassen
 pl:Zastosuj zmianę rozmiaru
 sat:ᱫᱩᱦᱲᱟᱹ ᱢᱟᱯ ᱮᱢᱪᱷᱚᱭ ᱢᱮ
 sk:Použiť zmenu veľkosti
+:Ask &Doubao
+cn:问问豆包(&D)
+:Ask Doubao
+cn:问问豆包
+:Question sent to Doubao.
+cn:已发送到豆包。
 :Are you sure you want to uninstall SumatraPDF?
 af:Is jy seker jy wil SumatraPDF oninstalleer?
 am:Համոզվա՞ծ եք, որ ցանկանում եք ջնջել SumatraPDF-ը:
@@ -13406,10 +13412,10 @@ tw:前往頁
 uk:Перейти на сторінку
 uz:Betga o'tish
 vn:Nhảy đến trang
-:Help: About SumatraPDF
+:Help: About Sumatra PDF Plus
 am:Օգնություն՝ SumatraPDF-ի մասին
 br:Ajuda: Sobre o SumatraPDF
-cn:帮助: 关于 SumatraPDF
+cn:帮助: 关于 Sumatra PDF Plus
 co:Aiutu : Apprupositu di SumatraPDF
 de:Hilfe: Über SumatraPDF
 el:Βοήθεια: Σχετικά με το SumatraPDF
@@ -15016,6 +15022,79 @@ tr:Yükleniyor %s ...
 tw:正在載入 %s ...
 uk:Завантаження %s
 uz:%s yuklanmoqda...
+:Looking up
+af:Opsoek
+am:በመፈለግ ላይ
+ar:جاري البحث
+az:Axtarılır
+bg:Търсене
+bn:অনুসন্ধান করা হচ্ছে
+br:O klask
+bs:Pretraga
+by:Пошук
+ca-xv:Buscant
+ca:Buscant
+cn:正在查询
+co:Circata
+cy:Chwilio
+cz:Hledání
+de:Suche
+dk:Søger
+el:Αναζήτηση
+es:Buscando
+et:Otsimine
+eu:Bilatzen
+fa:جستجو
+fi:Haetaan
+fo:Leitar
+fr:Recherche
+fy-nl:Sykje
+ga:Ag cuardach
+gl:Buscando
+he:מחפש
+hi:खोज रहा है
+hr:Pretraživanje
+hu:Keresés
+id:Mencari
+it:Ricerca
+ja:検索中
+jv:Njajal
+ka:ძიება
+kr:조회 중
+ku:Lêgerîn
+kw:Ow hwithra
+lt:Paieška
+lv:Meklē
+mk:Пребарување
+ml:തിരയുന്നു
+mm:ရှာနေ
+my:Mencari
+ne:खोज्दै
+nl:Zoeken
+nn:Søkjer
+no:Søker
+pa:ਖੋਜ ਜਾਰੀ
+pl:Wyszukiwanie
+pt:Procurando
+ro:Căutare
+ru:Поиск
+sat:ᱯᱟᱱᱛᱮᱭᱟᱹ
+si:සොයමින්
+sk:Vyhľadávanie
+sl:Iskanje
+sn:Kutsvaka
+sp-rs:Pretraga
+sq:Po kërkon
+sr-rs:Претрага
+sv:Söker
+ta:தேடுகிறது
+th:กำลังค้นหา
+tl:Hinahanap
+tr:Aranıyor
+tw:正在查詢
+uk:Пошук
+uz:Qidirilmoqda
+vn:Đang tìm
 :MB
 af:MB
 am:ՄԲ
@@ -15658,6 +15737,79 @@ sv:Nej
 tr:Hayır
 tw:否
 uz:Yo‘q
+:No definition for "%s".
+af:Geen definisie vir "%s".
+am:ለ"%s" ምንም ትርጉም አልተገኘም።
+ar:لا يوجد تعريف لـ "%s".
+az:"%s" üçün tərif yoxdur.
+bg:Няма дефиниция за "%s".
+bn:"%s" এর কোনো সংজ্ঞা নেই।
+br:N'eus termenadur ebet evit "%s".
+bs:Nema definicije za "%s".
+by:Няма вызначэння для "%s".
+ca-xv:No hi ha definició per a "%s".
+ca:No hi ha definició per a "%s".
+cn:未找到"%s"的释义。
+co:Nisciuna definizione per "%s".
+cy:Dim diffiniad ar gyfer "%s".
+cz:Žádná definice pro "%s".
+de:Keine Definition für "%s".
+dk:Ingen definition af "%s".
+el:Δεν υπάρχει ορισμός για το "%s".
+es:No hay definición para "%s".
+et:"%s" jaoks pole määratlust.
+eu:Ez dago definiziorik "%s"(r)entzat.
+fa:تعریفی برای "%s" یافت نشد.
+fi:Ei määritelmää kohteelle "%s".
+fo:Eingin skilgreining fyri "%s".
+fr:Aucune définition pour « %s ».
+fy-nl:Gjin definysje foar "%s".
+ga:Níl aon sainmhíniú do "%s".
+gl:Non hai definición para "%s".
+he:אין הגדרה עבור "%s".
+hi:"%s" के लिए कोई परिभाषा नहीं।
+hr:Nema definicije za "%s".
+hu:Nincs definíció a(z) "%s" számára.
+id:Tidak ada definisi untuk "%s".
+it:Nessuna definizione per "%s".
+ja:「%s」の定義が見つかりません。
+jv:Ora ana definisi kanggo "%s".
+ka:"%s"-ისთვის განმარტება არ არსებობს.
+kr:"%s"에 대한 정의가 없습니다.
+ku:Pênaseya "%s" tune.
+kw:Ny dhifeynyans rag "%s".
+lt:Nėra apibrėžimo "%s".
+lv:Nav definīcijas "%s".
+mk:Нема дефиниција за "%s".
+ml:"%s"-ന് നിർവചനം ഇല്ല.
+mm:"%s" အတွက် အဓိပ္ပာယ်ဖွင့်ဆိုချက် မရှိပါ။
+my:Tiada definisi untuk "%s".
+ne:"%s" को लागि कुनै परिभाषा छैन।
+nl:Geen definitie voor "%s".
+nn:Ingen definisjon for "%s".
+no:Ingen definisjon for "%s".
+pa:"%s" ਲਈ ਕੋਈ ਪਰਿਭਾਸ਼ਾ ਨਹੀਂ।
+pl:Brak definicji dla "%s".
+pt:Sem definição para "%s".
+ro:Nicio definiție pentru "%s".
+ru:Нет определения для "%s".
+sat:"%s" ᱞᱟᱹᱜᱤᱫ ᱢᱮᱱᱮᱛ ᱵᱟᱹᱱᱩᱜᱼᱟ᱾
+si:"%s" සඳහා අර්ථ දැක්වීමක් නැත.
+sk:Žiadna definícia pre "%s".
+sl:Ni definicije za "%s".
+sn:Hakuna tsananguro ye "%s".
+sp-rs:Nema definicije za "%s".
+sq:Nuk ka përkufizim për "%s".
+sr-rs:Нема дефиниције за "%s".
+sv:Ingen definition för "%s".
+ta:"%s"-க்கு வரையறை இல்லை.
+th:ไม่มีคำนิยามสำหรับ "%s"
+tl:Walang kahulugan para sa "%s".
+tr:"%s" için tanım yok.
+tw:未找到「%s」的釋義。
+uk:Немає визначення для "%s".
+uz:"%s" uchun ta'rif yo'q.
+vn:Không có định nghĩa cho "%s".
 :No matches were found
 am:Ոչինչ չի գտնվել
 ar:لا توجد متطابقات
@@ -16757,10 +16909,10 @@ tl:Buksan sa bagong Window
 tr:Yeni Pencerede Aç
 tw:在新視窗中開啟
 uz:Yangi oynada ochish
-:Open New SumatraPDF Window
+:Open New Sumatra PDF Plus Window
 am:Բացել նոր SumatraPDF պատուհանը
 br:Abrir Nova Janela do SumatraPDF
-cn:打开新的 SumatraPDF 窗口
+cn:打开新的 Sumatra PDF Plus 窗口
 co:Apre una finestra nova di SumatraPDF
 de:Neues SumatraPDF-Fenster öffnen
 el:Άνοιγμα νέου παραθύρου SumatraPDF
@@ -20997,6 +21149,19 @@ nl:Zoek Selectie met Bing
 pl:Szukaj zaznaczenia za pomocą Bing
 sk:Vyhľadať vybrané na Bingu
 tw:使用 Bing 搜尋選取內容
+:Search Selection with Baidu
+am:Որոնել ընտրումը Baidu-ի միջոցով
+br:Procurar Seleção com Baidu
+cn:使用百度搜索所选内容
+co:Ricerca di a selezzione cù Baidu
+de:Auswahl mit Baidu suchen
+el:Αναζήτηση επιλογής με το Baidu
+it:Cerca selezione con Baidu
+ja:選択範囲を Baidu で検索
+nl:Zoek Selectie met Baidu
+pl:Szukaj zaznaczenia za pomocą Baidu
+sk:Vyhľadať vybrané na Baidu
+tw:使用百度搜尋選取內容
 :Search Selection with Google
 am:Որոնման ընտրումը Google-ում
 br:Procurar Seleção com Google
@@ -21092,6 +21257,62 @@ tw:使用 Bing 搜尋(&B)
 uk:Пошук за допомогою &Bing
 uz:&Bing bilan qidirish
 vn:Tìm Kiếm Với &Bing
+:Search With &Baidu
+am:Որոնել &Baidu-ով
+ar:بحث في &Baidu
+az:&Baidu-də axtar
+bg:Потърси с &Baidu
+br:Procurar com o &Baidu
+by:Шукаць у &Baidu
+ca-xv:Cerca amb el &Baidu
+ca:Cerca amb el &Baidu
+cn:百度搜索(&B)
+co:Circà cù &Baidu
+cy:Chwilio gyda &Baidu
+cz:Vyhledat &Baidu
+de:Mit &Baidu suchen
+dk:Søg med &Baidu
+el:Αναζήτηση με Baidu
+es:Buscar con &Baidu
+et:Otsi &Baidu-ga
+eu:Bilatu &Baidu-rekin
+fa:جستجو در &بایدو
+fi:Haku &Baidun avulla
+fo:Leita Við &Baidu
+fr:Rechercher avec &Baidu
+ga:Cuardaigh le &Baidu
+gl:Buscar con &Baidu
+he:חפש באמצעות Baidu
+hi:&Baidu में ढूंढें
+hr:Pretraži sa &Baidu-om
+hu:Keresés &Baidu-val
+id:Cari menggunakan &Baidu
+it:Cerca con &Baidu
+ja:Baidu で検索(&B)
+kr:Baidu로 검색(&B)
+kw:Hwilas Gans &Baidu
+lt:Ieškoti su &Baidu
+lv:Meklēt ar Baidu
+my:Cari Dengan &Baidu
+nl:Zoeken met &Baidu
+no:Søk med &Baidu
+pl:Szukaj za pomocą &Baidu
+pt:Pesquisar com &Baidu
+ro:Caută cu &Baidu
+ru:Найти в &Baidu
+sat:&ᱵᱟᱭᱰᱩ(Baidu) ᱥᱟᱶᱛᱮ ᱥᱮᱸᱫᱽᱨᱟᱭ ᱢᱮ
+sk:Vyhľadávanie pomocou &Baidu
+sl:Išči z &Baidu
+sr-rs:Претражи помоћу Baidu-а (&Б)
+sv:Sök med &Baidu
+ta:&Baidu உடன் தேடுக
+th:ค้นหาด้วย &​Baidu
+tl:Maghanap Gamit ang &Baidu
+tr:&Baidu İle Ara
+tw:使用百度搜尋(&B)
+uk:Пошук за допомогою &Baidu
+uz:&Baidu bilan qidirish
+vn:Tìm Kiếm Với &Baidu
 :Search With &Google
 am:Որոնել &Google-ով
 ar:بحث في &Google
@@ -24484,6 +24705,19 @@ nl:Vertaal Selectie Met Google
 pl:Przetłumacz zaznaczenie za pomocą Google
 sk:Preložiť výber pomocou Google
 tw:以 Google 翻譯選取內容
+:Translate Selection with Baidu
+am:Թարգմանել ընտրվածը Baidu-ով
+br:Traduzir a Seleção com o Baidu
+cn:使用百度翻译所选内容
+co:Traduce a selezzione cù Baidu
+de:Auswahl mit Baidu übersetzen
+el:Επιλογή μετάφρασης με το Baidu
+it:Traduci selezione con Baidu
+ja:選択範囲を Baidu で翻訳
+nl:Vertaal Selectie Met Baidu
+pl:Przetłumacz zaznaczenie za pomocą Baidu
+sk:Preložiť výber pomocou Baidu
+tw:以百度翻譯選取內容
 :Translate with &DeepL
 am:Թարգմանել &DeepL-ով
 ar:ترجمة في &DeepL
@@ -24540,6 +24774,62 @@ tw:使用 DeepL 翻譯(&D)
 uk:Перекласти за допомогою &DeepL
 uz:&DeepL bilan tarjima qilish
 vn:Dịch với &DeepL
+:Translate with &Baidu
+am:Թարգմանել &Baidu-ով
+ar:ترجمة في &Baidu
+az:&Baidu ilə tərcümə et
+bg:Превод с &Baidu
+br:Traduzir com o &Baidu
+by:Перакласці ў &Baidu
+ca-xv:Tradueix amb el &Baidu
+ca:Tradueix amb el &Baidu
+cn:使用百度翻译(&B)
+co:Traduce cù &Baidu
+cy:Cyfieithu gyda &Baidu
+cz:Přeložit s &Baidu
+de:Mit &Baidu übersetzen
+dk:Oversæt med &Baidu
+el:Μετάφραση με Baidu
+es:Traducir con &Baidu
+et:Tõlgi &Baidu-ga
+eu:Itzuli &Baidu-rekin
+fa:ترجمه با &بایدو
+fi:Käännä &Baidu avulla
+fo:Týða við &Baidu
+fr:Traduire avec &Baidu
+ga:Aistrigh le &Baidu é
+gl:Traducir con &Baidu
+he:תרגם באמצעות Baidu
+hi:&Baidu से अनुवाद करें
+hr:Prevedi sa &Baidu
+hu:Fordítsd le a Baidu-val
+id:Terjemahkan dengan &Baidu
+it:Traduci con &Baidu
+ja:Baidu で翻訳(&B)
+kr:Baidu로 번역(&B)
+kw:Treylya gans &Baidu
+lt:Versti su &Baidu
+lv:Tulkot ar &Baidu
+my:Terjemah dengan &Baidu
+nl:Vertalen met &Baidu
+no:Oversett med &Baidu
+pl:Tłumacz za pomocą &Baidu
+pt:Traduzir com &Baidu
+ro:Traduce cu &Baidu
+ru:П&еревести в Baidu
+sat:&ᱵᱟᱭᱰᱩ(Baidu) ᱥᱟᱶᱛᱮ ᱛᱚᱨᱡᱚᱢᱟᱭ ᱢᱮ
+sk:Preložiť pomocou &Baidu
+sl:Prevedi z &Baidu
+sr-rs:Преведи помоћу Baidu-а (&Б)
+sv:Översätt med &Baidu
+ta:&Baidu உடன் மொழிபெயர்த்திடுக
+th:แปลด้วย &​Baidu
+tl:I-Translate gamit ang &Baidu
+tr:&Baidu İle Çevir
+tw:使用百度翻譯(&B)
+uk:Перекласти за допомогою &Baidu
+uz:&Baidu bilan tarjima qilish
+vn:Dịch với &Baidu
 :Un-register Windows Previewer
 br:Remover o registro do Pré-Visualizador do Windows
 cn:解除注册 Windows 预览器

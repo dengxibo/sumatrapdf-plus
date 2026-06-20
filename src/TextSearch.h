@@ -47,6 +47,9 @@ struct TextSearch : public TextSelection {
     void Clear();
     void Reset();
 
+    // keep in sync with engine page count (progressive ebook loading grows pages after ctor)
+    void SyncPageCount();
+
     const WCHAR* pageText = nullptr;
     int findIndex = 0;
 

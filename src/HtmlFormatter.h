@@ -60,6 +60,12 @@ struct DrawInstr {
     };
     RectF bbox{}; // common to most instructions
 
+    // Per-character cumulative x within bbox.dx for String/RtlString (layout-time
+    // measurement on the formatter thread). charRelX[k] is the x offset of wchar k;
+    // charRelX[charRelXLen] == bbox.dx. Allocated from the formatter arena.
+    float* charRelX = nullptr;
+    int charRelXLen = 0;
+
     DrawInstr() = default;
 
     explicit DrawInstr(DrawInstrType t, RectF bbox = {}) : type(t), bbox(bbox) {}
@@ -221,6 +227,7 @@ class HtmlFormatter {
     void ApplyStyleRule(const StyleRule& rule);
 
     void AppendInstr(const DrawInstr& di);
+    void AppendStringInstr(const char* s, size_t utf8Len, RectF bbox, bool rtl, const WCHAR* wbuf, size_t wlen);
     bool IsCurrLineEmpty();
     virtual bool IgnoreText();
     virtual void OnParserProgress() {}
@@ -247,10 +254,10 @@ class HtmlFormatter {
     // Re-create GDI Graphics and textMeasure on the current thread.
     // Call this when the formatter is transferred to a different thread
     // (GDI+ Graphics objects must be created/destroyed on the same thread).
-public:
+  public:
     void RecreateGfxForCurrentThread();
-protected:
 
+  protected:
     // style stack of the current line
     Vec<DrawStyle> styleStack;
     // style for the start of the next page
