@@ -41,16 +41,6 @@
 
 void NotifyEngineDisplayReady(EngineBase* engine);
 
-static thread_local bool gCreateEngineForThumbnail = false;
-
-void SetCreateEngineForThumbnail(bool value) {
-    gCreateEngineForThumbnail = value;
-}
-
-bool IsCreateEngineForThumbnail() {
-    return gCreateEngineForThumbnail;
-}
-
 static Vec<HtmlPage*>* FormatFirstHtmlPage(HtmlFormatter& formatter) {
     auto* result = new Vec<HtmlPage*>();
     HtmlPage* page = formatter.Next(false);

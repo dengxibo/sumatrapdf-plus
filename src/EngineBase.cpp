@@ -14,6 +14,16 @@
 
 #include "utils/Log.h"
 
+static thread_local bool gCreateEngineForThumbnail = false;
+
+void SetCreateEngineForThumbnail(bool value) {
+    gCreateEngineForThumbnail = value;
+}
+
+bool IsCreateEngineForThumbnail() {
+    return gCreateEngineForThumbnail;
+}
+
 Kind kindPageElementDest = "dest";
 Kind kindPageElementImage = "image";
 Kind kindPageElementComment = "comment";
