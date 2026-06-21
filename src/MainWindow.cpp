@@ -35,6 +35,7 @@
 #include "MainWindow.h"
 #include "FindBar.h"
 #include "HomePage.h"
+#include "FindWindow.h"
 #include "WindowTab.h"
 #include "TableOfContents.h"
 #include "resource.h"
@@ -139,6 +140,8 @@ MainWindow::~MainWindow() {
     }
 
     DeleteFindBar(this);
+    DeleteFindWindow(this);
+    DeleteFindWindow(this);
 
     // stop the find-bar match-count background thread before we're freed
     // (it reads our fields; a pending CountEndTask closes the handle later)

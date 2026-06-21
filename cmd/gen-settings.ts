@@ -746,6 +746,15 @@ const globalPrefs: Field[] = [
   mkField("ShowToolbar", Bool, true, "if true, we show the toolbar at the top of the window"),
   setVersion(
     mkField(
+      "SearchUIFloating",
+      Bool,
+      false,
+      "if true, the find UI is a floating, movable window with a results list instead of the compact toolbar overlay",
+    ),
+    "3.7",
+  ),
+  setVersion(
+    mkField(
       "OfflineDictionaryPath",
       Str,
       null,

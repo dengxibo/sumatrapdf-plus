@@ -114,6 +114,10 @@ CustomColors =
 ; if true, we show the toolbar at the top of the window
 ShowToolbar = true
 
+; if true, the find UI is a floating, movable window with a results list instead
+; of the compact toolbar overlay (introduced in version 3.7)
+SearchUIFloating = false
+
 ; directory containing SumatraDict.* dictionary files. If empty, {exedir}/dict
 ; is used (introduced in version 3.7)
 OfflineDictionaryPath =

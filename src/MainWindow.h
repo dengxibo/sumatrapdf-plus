@@ -15,6 +15,8 @@ struct TabsCtrl;
 struct TocTree;
 struct SelectionToolbar;
 struct FindBarWnd;
+struct FindWindowWnd;
+struct FindWindowWnd;
 
 // factor by how large the non-maximized caption should be in relation to the tabbar
 #define kCaptionTabBarDyFactor 1.0f
@@ -127,6 +129,7 @@ struct MainWindow {
     HWND hwndMenuToolbar = nullptr;
     HWND hwndFindEdit = nullptr;
     FindBarWnd* findBar = nullptr;
+    FindWindowWnd* findWindow = nullptr;
     // Kept for compatibility with toolbar theming code; the floating bar owns
     // the actual edit control.
     HWND hwndFindLabel = nullptr;
