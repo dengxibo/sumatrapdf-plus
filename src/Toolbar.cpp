@@ -504,13 +504,10 @@ void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility) {
         }
     }
 
-    // Find labels may have to be repositioned if some
-    // toolbar buttons were shown/hidden
+    // reposition the floating find bar over the search icon (and hide it if the
+    // current document doesn't support find) when toolbar buttons change
     if (setButtonsVisibility) {
-        SendMessageW(hwnd, TB_AUTOSIZE, 0, 0);
-        if (NeedsFindUI(win)) {
-            UpdateToolbarFindText(win);
-        }
+        UpdateToolbarFindText(win);
     }
 
     // update dirty (unsaved annotations) flag and tooltip on each tab
