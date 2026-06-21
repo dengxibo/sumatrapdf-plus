@@ -2548,6 +2548,7 @@ void UpdateAfterThemeChange() {
         // height; RelayoutFrame must run so the canvas moves with the toolbar.
         win->lastLayoutState = {};
         RelayoutFrame(win);
+        RecreateFindBar(win);
         if (UseDarkModeLib()) {
             if (ThemeUsesDarkChrome()) {
                 DarkMode::setDarkTitleBarEx(win->hwndFrame, true);
