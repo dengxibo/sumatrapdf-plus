@@ -42,8 +42,8 @@ static bool IsPureLatinRun(const WCHAR* s, size_t len) {
 
 // MeasureTextQuick shrinks Latin width; pure-Latin runs are drawn with DrawString
 // (natural width). Expand bbox only for those runs so the next element is not placed too early.
-static void ExpandBboxForPureLatinDraw(Graphics* g, mui::CachedFont* font, mui::TextRenderMethod method,
-                                       const WCHAR* s, size_t len, RectF& bbox) {
+static void ExpandBboxForPureLatinDraw(Graphics* g, mui::CachedFont* font, mui::TextRenderMethod method, const WCHAR* s,
+                                       size_t len, RectF& bbox) {
     if (method != mui::TextRenderMethod::GdiplusQuick && method != mui::TextRenderMethod::Gdiplus) {
         return;
     }
@@ -385,9 +385,8 @@ void HtmlFormatter::AppendStringInstr(const char* s, size_t utf8Len, RectF bbox,
                 mui::CachedFont* font = CurrFont();
                 // charRelX must match GDI+ DrawString layout (MeasureString), not the
                 // MeasureTextQuick shrink heuristic used for line-width estimates.
-                bool useStdPrefix =
-                    textRenderMethod == mui::TextRenderMethod::GdiplusQuick ||
-                    textRenderMethod == mui::TextRenderMethod::Gdiplus;
+                bool useStdPrefix = textRenderMethod == mui::TextRenderMethod::GdiplusQuick ||
+                                    textRenderMethod == mui::TextRenderMethod::Gdiplus;
                 for (size_t k = 1; k <= measureLen; k++) {
                     if (useStdPrefix) {
                         rel[k] = MeasureTextStandard(gfx, font->font, measureBuf, (int)k).dx;
@@ -1827,11 +1826,11 @@ void DrawHtmlPage(Graphics* g, mui::ITextRender* textDraw, Vec<DrawInstr>* drawI
             bool useRelDraw = DrawInstrHasCharRelX(i, (int)strLen) && RunNeedsPerGlyphDraw(buf, strLen);
             if (m == mui::TextRenderMethod::Gdi && useRelDraw) {
                 static_cast<mui::TextRenderGdi*>(textDraw)->DrawWithCharRelX(buf, (int)strLen, ToGdipRectF(bbox),
-                                                                               i.charRelX, isRtl);
+                                                                             i.charRelX, isRtl);
             } else if ((m == mui::TextRenderMethod::Gdiplus || m == mui::TextRenderMethod::GdiplusQuick) &&
                        useRelDraw) {
-                static_cast<mui::TextRenderGdiplus*>(textDraw)->DrawWithCharRelX(
-                    buf, (int)strLen, ToGdipRectF(bbox), i.charRelX, i.charRelXLen, isRtl);
+                static_cast<mui::TextRenderGdiplus*>(textDraw)->DrawWithCharRelX(buf, (int)strLen, ToGdipRectF(bbox),
+                                                                                 i.charRelX, i.charRelXLen, isRtl);
             } else {
                 textDraw->Draw(buf, strLen, ToGdipRectF(bbox), isRtl);
             }

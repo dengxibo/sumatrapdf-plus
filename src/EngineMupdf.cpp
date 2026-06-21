@@ -31,6 +31,7 @@ extern "C" {
 #include "EbookDoc.h"
 #include "SumatraConfig.h"
 #include "Settings.h"
+#include "Theme.h"
 #include "DisplayModel.h"
 
 #include "utils/Log.h"
@@ -60,6 +61,74 @@ static float layoutA4DxPt = 595.F;
 static float layoutA4DyPt = 842.F;
 
 static float layoutFontEm = 11.F;
+
+static TempStr BuildEbookDarkCss(bool isEpub) {
+    COLORREF bgCol;
+    ThemePageRenderColors(bgCol);
+    TempStr bgHex = str::FormatTemp("#%02x%02x%02x", GetRValue(bgCol), GetGValue(bgCol), GetBValue(bgCol));
+    COLORREF linkCol = ThemeWindowLinkColor();
+    TempStr linkHex = str::FormatTemp("#%02x%02x%02x", GetRValue(linkCol), GetGValue(linkCol), GetBValue(linkCol));
+    if (isEpub) {
+        return str::FormatTemp(R"(html {
+  color-scheme: dark;
+  background-color: %s !important;
+  color: #e6e1d8 !important;
+}
+body, p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,
+section, article, main, header, footer, pre, table, td, th,
+.calibre,
+.calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
+.calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
+.calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
+  background-color: transparent !important;
+  color: #e6e1d8 !important;
+}
+body {
+  background-color: %s !important;
+}
+a, a:link, a:visited, a:hover, a:active,
+.footnote-link, .noteref, .note-ref,
+.calibre_2 a, .calibre_3 a, .calibre_2 a span, .calibre_3 a span,
+.sgc-toc-level a, .sgc-toc-level a span,
+p a, sup a, li a {
+  color: %s !important;
+  text-decoration: none !important;
+}
+figcaption, caption, p.caption, div.caption, span.caption,
+.figcaption, .figure-caption, .image-caption, .picture-caption, .pic-caption, .caption {
+  color: #b8b1a6 !important;
+}
+)",
+                               bgHex, bgHex, linkHex);
+    }
+    return str::FormatTemp(R"(html {
+  color-scheme: dark;
+  background-color: %s !important;
+  color: #e8eaed !important;
+}
+body, p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,
+section, article, main, header, footer, pre,
+.calibre,
+.calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
+.calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
+.calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
+  background-color: transparent !important;
+  color: #e8eaed !important;
+}
+body {
+  background-color: %s !important;
+}
+a, a:link, a:visited, a:hover, a:active,
+.footnote-link, .noteref, .note-ref,
+.calibre_2 a, .calibre_3 a, .calibre_2 a span, .calibre_3 a span,
+.sgc-toc-level a, .sgc-toc-level a span,
+p a, sup a, li a {
+  color: %s !important;
+  text-decoration: none !important;
+}
+)",
+                           bgHex, bgHex, linkHex);
+}
 
 // in mupdf_load_system_font.c
 extern "C" void install_load_windows_font_funcs(fz_context* ctx);
@@ -2952,36 +3021,9 @@ p {
   margin: 0.35em 0;
 }
 )";
-        // Ebook dark-mode color remaps (light palette -> readable on #000000):
+        // Ebook dark-mode color remaps (light palette -> readable on dark page bg):
         //   #0033cc / #03c / blue  ->  #93c5fd  (links, TOC, footnotes)
         //   #000000 / #000         ->  #e8eaed  (body text, via body rule)
-        static const char* kDarkCss = R"(html {
-  color-scheme: dark;
-  background-color: #000000 !important;
-  color: #e8eaed !important;
-}
-body, p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,
-section, article, main, header, footer, pre,
-.calibre,
-.calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
-.calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
-.calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
-  background-color: transparent !important;
-  color: #e8eaed !important;
-}
-body {
-  background-color: #000000 !important;
-}
-a, a:link, a:visited, a:hover, a:active,
-.footnote-link, .noteref, .note-ref,
-.calibre_2 a, .calibre_3 a, .calibre_2 a span, .calibre_3 a span,
-.sgc-toc-level a, .sgc-toc-level a span,
-p a, sup a, li a {
-  color: #93c5fd !important;
-  text-decoration: none !important;
-}
-)";
-
         static const char* kEpubReaderLatinFontCss =
             R"(/* Default body face only; book CSS (e.g. STKai for 书虫) keeps priority on styled elements. */
 html, body {
@@ -3376,36 +3418,6 @@ figcaption, caption, p.caption, div.caption, span.caption,
   color: #68625a !important;
 }
 )";
-        static const char* kEpubReaderDarkCss = R"(html {
-  color-scheme: dark;
-  background-color: #000000 !important;
-  color: #e6e1d8 !important;
-}
-body, p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,
-section, article, main, header, footer, pre, table, td, th,
-.calibre,
-.calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
-.calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
-.calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
-  background-color: transparent !important;
-  color: #e6e1d8 !important;
-}
-body {
-  background-color: #000000 !important;
-}
-a, a:link, a:visited, a:hover, a:active,
-.footnote-link, .noteref, .note-ref,
-.calibre_2 a, .calibre_3 a, .calibre_2 a span, .calibre_3 a span,
-.sgc-toc-level a, .sgc-toc-level a span,
-p a, sup a, li a {
-  color: #8fbce6 !important;
-  text-decoration: none !important;
-}
-figcaption, caption, p.caption, div.caption, span.caption,
-.figcaption, .figure-caption, .image-caption, .picture-caption, .pic-caption, .caption {
-  color: #b8b1a6 !important;
-}
-)";
 
         TempStr ebookCss = nullptr;
         if (isEpub) {
@@ -3421,7 +3433,7 @@ figcaption, caption, p.caption, div.caption, span.caption,
             ebookCss = str::JoinTemp(ebookCss, "\n", rhythmCss);
         }
         if (darkTheme) {
-            const char* darkCss = isEpub ? kEpubReaderDarkCss : kDarkCss;
+            TempStr darkCss = BuildEbookDarkCss(isEpub);
             ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", darkCss) : str::DupTemp(darkCss);
         } else {
             static const char* kLightEyeCareCss = R"(html {

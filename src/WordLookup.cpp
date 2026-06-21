@@ -224,7 +224,7 @@ static const char* AbbreviateFl(const char* fl) {
 
 static COLORREF LookupCardBg() {
     if (ThemeUsesDarkChrome()) {
-        return RGB(28, 29, 31);
+        return ThemeWindowBackgroundColor();
     }
     COLORREF contentBg;
     ThemePageRenderColors(contentBg);
@@ -233,37 +233,48 @@ static COLORREF LookupCardBg() {
 
 static COLORREF LookupBorderColor() {
     if (ThemeUsesDarkChrome()) {
-        return RGB(67, 68, 72);
+        return AccentColor(ThemeWindowControlBackgroundColor(), 35);
     }
     return AccentColor(LookupCardBg(), 8);
 }
 
 static COLORREF LookupSeparatorColor() {
     if (ThemeUsesDarkChrome()) {
-        return RGB(52, 53, 57);
+        return AccentColor(ThemeWindowControlBackgroundColor(), 20);
     }
     return AccentColor(LookupCardBg(), 5);
 }
 
 static COLORREF LookupTextColor() {
-    return ThemeUsesDarkChrome() ? RGB(229, 226, 218) : RGB(27, 29, 33);
+    if (ThemeUsesDarkChrome()) {
+        COLORREF col = ThemeReadingTextColor();
+        int dim = ThemeUsesBlackChrome() ? -22 : -14;
+        return AdjustLightness2(col, dim);
+    }
+    return RGB(27, 29, 33);
 }
 
 static COLORREF LookupMutedTextColor() {
-    return ThemeUsesDarkChrome() ? RGB(166, 161, 151) : RGB(92, 96, 104);
+    if (ThemeUsesDarkChrome()) {
+        return ThemeReadingTextDisabledColor();
+    }
+    return RGB(92, 96, 104);
 }
 
 static COLORREF LookupAccentColor() {
-    return ThemeUsesDarkChrome() ? RGB(121, 169, 218) : RGB(38, 108, 184);
+    return ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : RGB(38, 108, 184);
 }
 
 static COLORREF LookupHoverBgColor(COLORREF bg) {
-    return ThemeUsesDarkChrome() ? RGB(42, 47, 54) : AccentColor(bg, 10);
+    if (ThemeUsesDarkChrome()) {
+        return AccentColor(ThemeWindowControlBackgroundColor(), 15);
+    }
+    return AccentColor(bg, 10);
 }
 
 static COLORREF LookupSpeakerHoverBgColor() {
     if (ThemeUsesDarkChrome()) {
-        return RGB(48, 53, 61);
+        return AccentColor(ThemeWindowControlBackgroundColor(), 22);
     }
     return AccentColor(LookupCardBg(), 22);
 }
@@ -284,7 +295,10 @@ static TempStr LookingUpTextTemp(int dotPhase) {
 }
 
 static COLORREF LookupCloseHoverBgColor(COLORREF bg) {
-    return ThemeUsesDarkChrome() ? RGB(53, 54, 58) : AccentColor(bg, 15);
+    if (ThemeUsesDarkChrome()) {
+        return AccentColor(ThemeWindowControlBackgroundColor(), 18);
+    }
+    return AccentColor(bg, 15);
 }
 
 static Rect LookupCardRect(HWND hwnd) {
@@ -395,13 +409,11 @@ void RefreshWordLookupTheme() {
     COLORREF colTxt = LookupTextColor();
     COLORREF colBg = LookupCardBg();
     wnd->SetColors(colTxt, colBg);
-    if (UseDarkModeLib()) {
-        if (ThemeUsesDarkChrome()) {
-            DarkMode::setDarkWndSafe(popupHwnd);
-        } else {
-            DarkMode::removeWindowCtlColorSubclass(popupHwnd);
-            DarkMode::setDarkTitleBarEx(popupHwnd, true);
-        }
+    if (UseDarkModeLib() && ThemeUsesDarkChrome()) {
+        DarkMode::removeWindowCtlColorSubclass(popupHwnd);
+    } else if (UseDarkModeLib()) {
+        DarkMode::removeWindowCtlColorSubclass(popupHwnd);
+        DarkMode::setDarkTitleBarEx(popupHwnd, true);
     }
     wnd->UpdateChrome();
     uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN;
@@ -1281,17 +1293,17 @@ static void ClearLookupTabRects(WordLookupWnd* wnd) {
 
 static COLORREF LookupTabBgColor(bool selected, bool hover) {
     if (selected) {
-        return ThemeUsesDarkChrome() ? RGB(48, 54, 61) : RGB(168, 182, 198);
+        return ThemeUsesDarkChrome() ? AccentColor(ThemeWindowControlBackgroundColor(), 25) : RGB(168, 182, 198);
     }
     if (hover) {
         return LookupHoverBgColor(LookupCardBg());
     }
-    return ThemeUsesDarkChrome() ? RGB(34, 35, 38) : AccentColor(LookupCardBg(), 4);
+    return ThemeUsesDarkChrome() ? ThemeWindowBackgroundColor() : AccentColor(LookupCardBg(), 4);
 }
 
 static COLORREF LookupTabBorderColor(bool selected) {
     if (selected) {
-        return ThemeUsesDarkChrome() ? RGB(67, 82, 101) : RGB(148, 162, 178);
+        return ThemeUsesDarkChrome() ? AccentColor(ThemeWindowLinkColor(), -20) : RGB(148, 162, 178);
     }
     return LookupSeparatorColor();
 }
@@ -1499,12 +1511,10 @@ static int CalcLookupWindowDy(WordLookupWnd* wnd) {
 
     if (wnd->isLoading) {
         TempStr lookingUpText = LookingUpTextTemp(2);
-        dy += CalcTextDy(hdc, wnd->font, lookingUpText, contentDx, DT_WORDBREAK | DT_EDITCONTROL) +
-              DpiScale(hwnd, 4);
+        dy += CalcTextDy(hdc, wnd->font, lookingUpText, contentDx, DT_WORDBREAK | DT_EDITCONTROL) + DpiScale(hwnd, 4);
     } else if (!sense) {
         TempStr noDefText = str::FormatTemp(_TRA("No definition for \"%s\"."), wnd->queryWord);
-        dy +=
-            CalcTextDy(hdc, wnd->font, noDefText, contentDx, DT_WORDBREAK | DT_EDITCONTROL) + lineDy;
+        dy += CalcTextDy(hdc, wnd->font, noDefText, contentDx, DT_WORDBREAK | DT_EDITCONTROL) + lineDy;
     } else {
         char* defs = BuildDefinitionsText(sense);
         dy += CalcTextDy(hdc, wnd->font, defs, contentDx, DT_WORDBREAK | DT_EDITCONTROL) + lineDy;
@@ -1719,8 +1729,9 @@ bool WordLookupWnd::Create(MainWindow* winIn, const char* word, Point screenPos)
 
     anchorPos = screenPos;
     SetLoading(word);
-    if (UseDarkModeLib()) {
-        DarkMode::setDarkWndSafe(hwnd);
+    if (UseDarkModeLib() && ThemeUsesDarkChrome()) {
+        DarkMode::removeWindowCtlColorSubclass(hwnd);
+        DarkMode::removeWindowEraseBgSubclass(hwnd);
     }
     visibility = Visibility::Visible;
     ShowWindow(hwnd, SW_SHOWNOACTIVATE);
@@ -1735,7 +1746,7 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
     Rect card = LookupCardRect(hwnd);
     int radius = DpiScale(hwnd, kCornerRadius);
 
-    COLORREF outerBg = ThemeMainWindowBackgroundColor();
+    COLORREF outerBg = ThemeWindowBackgroundColor();
     HBRUSH outerBr = CreateSolidBrush(outerBg);
     FillRect(dc, &ps->rcPaint, outerBr);
     DeleteObject(outerBr);

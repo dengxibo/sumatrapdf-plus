@@ -204,7 +204,7 @@ void TabsCtrl::Paint(HDC hdc, const RECT& rc) {
     gfx.SetTextRenderingHint(TextRenderingHintClearTypeGridFit);
     gfx.SetPageUnit(UnitPixel);
 
-    SolidBrush br(GdipCol(ThemeControlBackgroundColor()));
+    SolidBrush br(GdipCol(ThemeChromeBackgroundColor()));
 
     Font f(hdc, GetFont());
 
@@ -225,11 +225,22 @@ void TabsCtrl::Paint(HDC hdc, const RECT& rc) {
     Gdiplus::RectF rTxt;
 
     COLORREF textColor = ThemeWindowTextColor();
-    COLORREF tabBgSelected = ThemeControlBackgroundColor();
+    COLORREF tabBaseBg = ThemeChromeBackgroundColor();
+    COLORREF tabBgSelected = tabBaseBg;
     COLORREF tabBgHighlight;
     COLORREF tabBgBackground;
-    tabBgBackground = AccentColor(tabBgSelected, 25);
-    tabBgHighlight = AccentColor(tabBgSelected, 35);
+    if (ThemeUsesBlackChrome()) {
+        tabBgBackground = tabBaseBg;
+        tabBgHighlight = AccentColor(tabBaseBg, 14, 20);
+        tabBgSelected = AccentColor(tabBaseBg, 28, 44);
+    } else if (ThemeUsesDarkChrome()) {
+        tabBgBackground = tabBaseBg;
+        tabBgHighlight = AccentColor(tabBaseBg, 4, 8);
+        tabBgSelected = AccentColor(tabBaseBg, 6, 14);
+    } else {
+        tabBgBackground = AccentColor(tabBaseBg, 25);
+        tabBgHighlight = AccentColor(tabBaseBg, 35);
+    }
 
     COLORREF tabBgCol;
     for (int i = 0; i < n; i++) {
@@ -260,6 +271,13 @@ void TabsCtrl::Paint(HDC hdc, const RECT& rc) {
         br.SetColor(GdipCol(tabBgCol));
         gr = ToGdipRect(ti->r);
         gfx.FillRectangle(&br, gr);
+
+        if (isSelected && ThemeUsesBlackChrome()) {
+            gfx.SetCompositingMode(Gdiplus::CompositingModeSourceOver);
+            Pen pen(GdiRgbFromCOLORREF(AccentColor(tabBaseBg, 22, 38)), 1.0f);
+            float y = (float)(ti->r.y + ti->r.dy - 1);
+            gfx.DrawLine(&pen, (float)ti->r.x + 2, y, (float)(ti->r.x + ti->r.dx - 2), y);
+        }
 
         // debug: paint close hit area in light green
         if (false && ti->canClose && (i == tabUnderMouse)) {
@@ -753,7 +771,7 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (ThemeUsesDarkChrome()) {
                 HDC hdc = (HDC)wp;
                 RECT rc = ClientRECT(hwnd);
-                HBRUSH hbr = CreateSolidBrush(ThemeControlBackgroundColor());
+                HBRUSH hbr = CreateSolidBrush(ThemeChromeBackgroundColor());
                 FillRect(hdc, &rc, hbr);
                 DeleteObject(hbr);
             }

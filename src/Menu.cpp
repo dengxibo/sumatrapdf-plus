@@ -47,7 +47,6 @@
 
 #include "utils/Log.h"
 
-
 struct BuildMenuCtx {
     WindowTab* tab = nullptr;
     bool isCbx = false;
@@ -2152,7 +2151,7 @@ void FreeMenuOwnerDrawInfoData(HMENU hmenu) {
         }
     };
 }
-#if 1
+#if 0
 void MarkMenuOwnerDraw(HMENU, bool) {
     // our painting isn't good enough so disable for now
     // rely on darkmodelib for menu theming, which only does light / dark theme from os
@@ -2162,9 +2161,21 @@ void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar) {
     // darkmodelib handles the menu bar via setWindowMenuBarSubclass
     // but doesn't handle popup/context menus, so we owner-draw those
     if (isMenuBar && UseDarkModeLib() && DarkMode::isEnabled()) {
+        if (!ThemeUsesDarkChrome() && !ThemeColorizeControls()) {
+            return;
+        }
+        int n = GetMenuItemCount(hmenu);
+        MENUITEMINFOW mii{};
+        mii.cbSize = sizeof(MENUITEMINFOW);
+        for (int i = 0; i < n; i++) {
+            mii.fMask = MIIM_SUBMENU;
+            if (GetMenuItemInfoW(hmenu, (uint)i, TRUE, &mii) && mii.hSubMenu) {
+                MarkMenuOwnerDraw(mii.hSubMenu, false);
+            }
+        }
         return;
     }
-    if (!ThemeColorizeControls()) {
+    if (!ThemeUsesDarkChrome() && !ThemeColorizeControls()) {
         return;
     }
 
@@ -2338,11 +2349,10 @@ void MenuCustomDrawItem(HWND hwnd, DRAWITEMSTRUCT* dis) {
     if (isDisabled) {
         txtCol = ThemeWindowTextDisabledColor();
         if (isSelected) {
-            // subtle highlight for disabled selected items
-            bgCol = AccentColor(bgCol, 10);
+            bgCol = ThemeUsesDarkChrome() ? ThemeWindowControlBackgroundColor() : AccentColor(bgCol, 10);
         }
     } else if (isSelected) {
-        bgCol = AccentColor(bgCol, 40);
+        bgCol = ThemeUsesDarkChrome() ? ThemeWindowControlBackgroundColor() : AccentColor(bgCol, 40);
     }
 
     RECT rc = dis->rcItem;

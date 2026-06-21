@@ -23,6 +23,7 @@
 #include "GlobalPrefs.h"
 #include "SumatraPDF.h"
 #include "MainWindow.h"
+#include "Theme.h"
 #include "WindowTab.h"
 #include "resource.h"
 #include "Commands.h"
@@ -862,6 +863,18 @@ static LRESULT CALLBACK WndProcFavBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     LRESULT res = TryReflectMessages(hwnd, msg, wp, lp);
     if (res) {
         return res;
+    }
+
+    if (msg == WM_ERASEBKGND) {
+        HDC hdc = (HDC)wp;
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        COLORREF bgCol;
+        ThemeDocumentColors(bgCol);
+        HBRUSH br = CreateSolidBrush(bgCol);
+        FillRect(hdc, &rc, br);
+        DeleteObject(br);
+        return 1;
     }
 
     TreeView* treeView = win->favTreeView;

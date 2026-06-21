@@ -26,6 +26,33 @@
 static const char* gChmDarkCss = R"(<style type="text/css" id="sumatrapdf-chm-dark">
 html {
   color-scheme: dark;
+  background-color: #282A36 !important;
+}
+body {
+  background-color: #282A36 !important;
+  color: #F8F8F2 !important;
+}
+table, td, th, tr, div, p, li, span, font, pre, dt, dd {
+  color: #F8F8F2 !important;
+}
+td, th, tr, table {
+  background-color: #282A36 !important;
+}
+a, a:link, a:visited, a:hover, a:active {
+  color: #BD93F9 !important;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: #F8F8F2 !important;
+}
+hr {
+  border-color: #44475A !important;
+}
+</style>
+)";
+
+static const char* gChmBlackCss = R"(<style type="text/css" id="sumatrapdf-chm-black">
+html {
+  color-scheme: dark;
   background-color: #000000 !important;
 }
 body {
@@ -49,7 +76,6 @@ hr {
 }
 </style>
 )";
-
 static const char* gChmLightEyeCareCss = R"(<style type="text/css" id="sumatrapdf-chm-light">
 html, body {
   background-color: #f7f3e8 !important;
@@ -108,7 +134,7 @@ static TempStr ChmInjectCssTemp(const ByteSlice& html, const char* css) {
 }
 
 static TempStr ChmInjectDarkCssTemp(const ByteSlice& html) {
-    return ChmInjectCssTemp(html, gChmDarkCss);
+    return ChmInjectCssTemp(html, ThemeUsesBlackChrome() ? gChmBlackCss : gChmDarkCss);
 }
 
 static TempStr ChmInjectLightEyeCareCssTemp(const ByteSlice& html) {

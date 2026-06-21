@@ -832,7 +832,7 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
 
         if (bmp) {
             if (ShouldUpdateBitmapColors(engine)) {
-                UpdateBitmapColors(bmp->GetBitmap(), cache->textColor, cache->backgroundColor);
+                UpdateBitmapColors(bmp->GetBitmap(), cache->textColor, cache->backgroundColor, cache->linkColor);
             }
             cache->Add(req, bmp);
             req.bmp = nullptr; // ownership transferred to cache

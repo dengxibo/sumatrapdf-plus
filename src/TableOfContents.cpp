@@ -48,6 +48,20 @@
 #define WM_APP_REPAINT_TOC (WM_APP + 1)
 #endif
 
+static COLORREF SidebarBackgroundColor(COLORREF wndBgColor) {
+    if (ThemeUsesDarkChrome()) {
+        COLORREF bg;
+        ThemePageRenderColors(bg);
+        return bg;
+    }
+    if (!IsSpecialColor(wndBgColor)) {
+        return wndBgColor;
+    }
+    COLORREF bg;
+    ThemeDocumentColors(bg);
+    return bg;
+}
+
 static void LayoutTocContainer(MainWindow* win);
 
 // set tooltip for this item but only if the text isn't fully shown
@@ -284,8 +298,7 @@ static bool IsTocPageReachable(DocController* ctrl, TocItem* tocItem) {
         return IsMobiEbookTocItemReachable(ctrl, tocItem, engine);
     }
     IPageDestination* dest = tocItem->GetPageDestination();
-    if (engine && EngineIsProgressiveEbookLoading(engine) && dest &&
-        dest->GetKind() == kindDestinationMupdf) {
+    if (engine && EngineIsProgressiveEbookLoading(engine) && dest && dest->GetKind() == kindDestinationMupdf) {
         return EngineMupdfIsOutlineDestReachable(engine, dest);
     }
     if (tocItem->pageNo <= 0) {
@@ -975,6 +988,98 @@ static bool HasTocFilter(MainWindow* win) {
     return filter && str::Len(filter) > 0;
 }
 
+static COLORREF TocSelectionBgColor() {
+    return AccentColor(ThemeWindowControlBackgroundColor(), 25);
+}
+
+static COLORREF TocSelectionBorderColor() {
+    return AccentColor(ThemeWindowLinkColor(), -20);
+}
+
+static void GetTocItemRowRect(HWND hwnd, HTREEITEM hItem, NMCUSTOMDRAW* cd, RECT& rcRow) {
+    if (!TreeView_GetItemRect(hwnd, hItem, &rcRow, FALSE)) {
+        rcRow = cd->rc;
+    }
+}
+
+static void DrawTocSelectionFill(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem) {
+    RECT rcRow;
+    GetTocItemRowRect(hwnd, hItem, cd, rcRow);
+    HBRUSH br = CreateSolidBrush(TocSelectionBgColor());
+    FillRect(cd->hdc, &rcRow, br);
+    DeleteObject(br);
+}
+
+static void DrawTocSelectionFrame(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem) {
+    RECT rcRow;
+    GetTocItemRowRect(hwnd, hItem, cd, rcRow);
+    RECT rcFrame = rcRow;
+    InflateRect(&rcFrame, 1, 0);
+    COLORREF borderCol = TocSelectionBorderColor();
+    HPEN pen = CreatePen(PS_SOLID, 1, borderCol);
+    HPEN oldPen = (HPEN)SelectObject(cd->hdc, pen);
+    HGDIOBJ oldBr = SelectObject(cd->hdc, GetStockObject(HOLLOW_BRUSH));
+    Rectangle(cd->hdc, rcFrame.left, rcFrame.top, rcFrame.right, rcFrame.bottom);
+    SelectObject(cd->hdc, oldBr);
+    SelectObject(cd->hdc, oldPen);
+    DeleteObject(pen);
+
+    // Cover inactive-selection blue caps on the full row left/right edges.
+    HPEN edgePen = CreatePen(PS_SOLID, 2, borderCol);
+    oldPen = (HPEN)SelectObject(cd->hdc, edgePen);
+    MoveToEx(cd->hdc, rcRow.left, rcRow.top, nullptr);
+    LineTo(cd->hdc, rcRow.left, rcRow.bottom);
+    MoveToEx(cd->hdc, rcRow.right - 1, rcRow.top, nullptr);
+    LineTo(cd->hdc, rcRow.right - 1, rcRow.bottom);
+    SelectObject(cd->hdc, oldPen);
+    DeleteObject(edgePen);
+}
+
+static COLORREF TocItemTextColor(TocItem* tocItem, MainWindow* win, TreeView* treeView) {
+    if (win->ctrl && IsTocInternalPageItem(tocItem, win->ctrl) && !IsTocPageReachable(win->ctrl, tocItem)) {
+        return ThemeReadingTextDisabledColor();
+    }
+    if (tocItem->color != kColorUnset) {
+        return tocItem->color;
+    }
+    if (ThemeUsesDarkChrome()) {
+        return ThemeReadingTextColor();
+    }
+    return IsSpecialColor(treeView->textColor) ? GetSysColor(COLOR_WINDOWTEXT) : treeView->textColor;
+}
+
+static void SetTocItemDrawColors(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, TocItem* tocItem, MainWindow* win) {
+    NMCUSTOMDRAW* cd = &tvcd->nmcd;
+    bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+    bool hasFocus = (GetFocus() == treeView->hwnd);
+    COLORREF bgCol = SidebarBackgroundColor(treeView->bgColor);
+
+    if (isSelected) {
+        if (ThemeUsesDarkChrome()) {
+            tvcd->clrText = TocItemTextColor(tocItem, win, treeView);
+            tvcd->clrTextBk = TocSelectionBgColor();
+            return;
+        }
+        if (hasFocus) {
+            tvcd->clrText = GetSysColor(COLOR_HIGHLIGHTTEXT);
+            tvcd->clrTextBk = GetSysColor(COLOR_HIGHLIGHT);
+        } else {
+            tvcd->clrTextBk = GetSysColor(COLOR_BTNFACE);
+        }
+        return;
+    }
+    tvcd->clrTextBk = bgCol;
+    if (win->ctrl && IsTocInternalPageItem(tocItem, win->ctrl) && !IsTocPageReachable(win->ctrl, tocItem)) {
+        tvcd->clrText = ThemeReadingTextDisabledColor();
+    } else if (tocItem->color != kColorUnset) {
+        tvcd->clrText = tocItem->color;
+    } else if (ThemeUsesDarkChrome()) {
+        tvcd->clrText = ThemeReadingTextColor();
+    } else {
+        tvcd->clrText = IsSpecialColor(treeView->textColor) ? GetSysColor(COLOR_WINDOWTEXT) : treeView->textColor;
+    }
+}
+
 static void DrawTocItemHighlight(TreeView::CustomDrawEvent* ev, MainWindow* win) {
     TocItem* tocItem = (TocItem*)ev->treeItem;
     if (!tocItem || !tocItem->title) {
@@ -1068,9 +1173,13 @@ static void DrawTocItemHighlight(TreeView::CustomDrawEvent* ev, MainWindow* win)
     bool hasFocus = (GetFocus() == tv->hwnd);
     COLORREF bgCol;
     if (isSelected) {
-        bgCol = GetSysColor(hasFocus ? COLOR_HIGHLIGHT : COLOR_BTNFACE);
+        if (ThemeUsesDarkChrome()) {
+            bgCol = TocSelectionBgColor();
+        } else {
+            bgCol = GetSysColor(hasFocus ? COLOR_HIGHLIGHT : COLOR_BTNFACE);
+        }
     } else {
-        bgCol = IsSpecialColor(tv->bgColor) ? GetSysColor(COLOR_WINDOW) : tv->bgColor;
+        bgCol = SidebarBackgroundColor(tv->bgColor);
     }
     HBRUSH hbrBg = CreateSolidBrush(bgCol);
     FillRect(hdc, &labelRect, hbrBg);
@@ -1090,13 +1199,9 @@ static void DrawTocItemHighlight(TreeView::CustomDrawEvent* ev, MainWindow* win)
     DeleteObject(hbrHighlight);
 
     // draw the text on top
-    COLORREF txtCol;
-    if (isSelected && hasFocus) {
+    COLORREF txtCol = TocItemTextColor(tocItem, win, tv);
+    if (isSelected && hasFocus && !ThemeUsesDarkChrome()) {
         txtCol = GetSysColor(COLOR_HIGHLIGHTTEXT);
-    } else if (tocItem->color != kColorUnset) {
-        txtCol = tocItem->color;
-    } else {
-        txtCol = IsSpecialColor(tv->textColor) ? GetSysColor(COLOR_WINDOWTEXT) : tv->textColor;
     }
     COLORREF oldTxtCol = SetTextColor(hdc, txtCol);
     int oldBkMode = SetBkMode(hdc, TRANSPARENT);
@@ -1147,19 +1252,19 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
             ev->result = CDRF_DODEFAULT;
             return;
         }
-        if (win->ctrl && IsTocInternalPageItem(tocItem, win->ctrl) &&
-            !IsTocPageReachable(win->ctrl, tocItem)) {
-            tvcd->clrText = ThemeWindowTextDisabledColor();
-            tvcd->clrTextBk = IsSpecialColor(ev->treeView->bgColor) ? ThemeControlBackgroundColor()
-                                                                     : ev->treeView->bgColor;
-        } else if (tocItem->color != kColorUnset) {
-            tvcd->clrText = tocItem->color;
+        SetTocItemDrawColors(tvcd, ev->treeView, tocItem, win);
+        bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+        HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
+        if (ThemeUsesDarkChrome() && isSelected) {
+            DrawTocSelectionFill(cd, ev->treeView->hwnd, hItem);
         }
         if (tocItem->fontFlags != 0) {
             UpdateFont(cd->hdc, tocItem->fontFlags);
             res = CDRF_NEWFONT;
         }
-        if (filterActive) {
+        if (ThemeUsesDarkChrome() && isSelected) {
+            res |= CDRF_NOTIFYPOSTPAINT;
+        } else if (filterActive) {
             res |= CDRF_NOTIFYPOSTPAINT;
         }
         ev->result = res;
@@ -1167,6 +1272,12 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
     }
 
     if (cd->dwDrawStage == CDDS_ITEMPOSTPAINT) {
+        bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+        if (ThemeUsesDarkChrome() && isSelected && win && win->tocLoaded && !win->isBeingClosed &&
+            IsKnownTocTreeModel(win, ev->treeView->treeModel)) {
+            HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
+            DrawTocSelectionFrame(cd, ev->treeView->hwnd, hItem);
+        }
         if (filterActive && win && win->tocLoaded && !win->isBeingClosed &&
             IsKnownTocTreeModel(win, ev->treeView->treeModel)) {
             DrawTocItemHighlight(ev, win);
@@ -1297,8 +1408,7 @@ static void LayoutTocContainer(MainWindow* win) {
     MoveWindow(treeView->hwnd, 0, y, rc.dx, dy, TRUE);
 }
 
-static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId,
-                                       DWORD_PTR data) {
+static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR data) {
     MainWindow* win = (MainWindow*)data;
     if (msg == WM_SETCURSOR && LOWORD(lp) == HTCLIENT && win && win->ctrl && win->tocTreeView) {
         POINT pt;
@@ -1320,6 +1430,18 @@ static LRESULT CALLBACK WndProcTocBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
     MainWindow* win = FindMainWindowByHwnd(hwnd);
     if (!win) {
         return DefSubclassProc(hwnd, msg, wp, lp);
+    }
+
+    if (msg == WM_ERASEBKGND) {
+        HDC hdc = (HDC)wp;
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        COLORREF bgCol;
+        ThemeDocumentColors(bgCol);
+        HBRUSH br = CreateSolidBrush(bgCol);
+        FillRect(hdc, &rc, br);
+        DeleteObject(br);
+        return 1;
     }
 
     LRESULT res = 0;

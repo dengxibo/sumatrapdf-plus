@@ -30,11 +30,29 @@ bool UseDarkModeLib() {
 
 /*
 preserve those translations:
-_TRN("System")
-_TRN("Dark")
-_TRN("Darker")
-_TRN("Light")
+_TRN("Set theme 'Light'")
+_TRN("Set theme 'System'")
+_TRN("Set theme 'Dark-Dracula'")
+_TRN("Set theme 'Dark-Black'")
 */
+
+static const char* SetThemeMenuLabel(int themeIdx) {
+    switch (themeIdx) {
+        case 0:
+            return _TRA("Set theme 'Light'");
+        case 1:
+            return _TRA("Set theme 'System'");
+        case 2:
+            return _TRA("Set theme 'Dark-Dracula'");
+        case 3:
+            return _TRA("Set theme 'Dark-Black'");
+        default:
+            return _TRA("Set theme 'Light'");
+    }
+}
+
+constexpr const char* kThemeDarkDracula = "Dark-Dracula";
+constexpr const char* kThemeDarkBlack = "Dark-Black";
 
 constexpr COLORREF kColBlack = 0x000000;
 constexpr COLORREF kColWhite = 0xFFFFFF;
@@ -44,6 +62,7 @@ constexpr COLORREF kColEyeCareWindowBg = RgbToCOLORREF(0xebe6da);
 constexpr COLORREF kColEyeCareControlBg = RgbToCOLORREF(0xf5f1e8);
 constexpr COLORREF kColEyeCarePageBg = RgbToCOLORREF(0xf7f3e8);
 constexpr COLORREF kColEyeCareText = RgbToCOLORREF(0x333333);
+constexpr COLORREF kColReadingText = RgbToCOLORREF(0xe6e1d8);
 
 static const char* themesTxt = R"(Themes [
     [
@@ -63,11 +82,19 @@ static const char* themesTxt = R"(Themes [
         ColorizeControls = false
     ]
     [
-        Name = Dark
-        TextColor = #F9FAFB
+        Name = Dark-Dracula
+        TextColor = #F8F8F2
+        BackgroundColor = #282A36
+        ControlBackgroundColor = #21222C
+        LinkColor = #BD93F9
+        ColorizeControls = true
+    ]
+    [
+        Name = Dark-Black
+        TextColor = #EDEDED
         BackgroundColor = #000000
-        ControlBackgroundColor = #000000
-        LinkColor = #6B7280
+        ControlBackgroundColor = #050505
+        LinkColor = #7AA2F7
         ColorizeControls = true
     ]
 ]
@@ -85,6 +112,7 @@ static int gCurrThemeIndex = 0;
 static Theme* gCurrentTheme = nullptr;
 static Theme* gThemeLight = nullptr;
 static Theme* gThemeDark = nullptr;
+static Theme* gThemeBlack = nullptr;
 static Themes* gParsedThemes = nullptr;
 static bool gLastSystemDark = false;
 
@@ -96,17 +124,71 @@ static bool IsSystemTheme() {
     return gCurrThemeIndex == 1;
 }
 
+static int DarkThemeIndexFromPrefs() {
+    if (gGlobalPrefs &&
+        (str::EqI(gGlobalPrefs->lastDarkTheme, "Black") || str::EqI(gGlobalPrefs->lastDarkTheme, "dark-black") ||
+         str::EqI(gGlobalPrefs->lastDarkTheme, kThemeDarkBlack))) {
+        return 3;
+    }
+    return 2;
+}
+
+static void UpdateLastDarkThemePref(int themeIdx) {
+    if (!gGlobalPrefs || (themeIdx != 2 && themeIdx != 3)) {
+        return;
+    }
+    const char* name = themeIdx == 3 ? kThemeDarkBlack : kThemeDarkDracula;
+    if (!str::EqI(gGlobalPrefs->lastDarkTheme, name)) {
+        str::ReplaceWithCopy(&gGlobalPrefs->lastDarkTheme, name);
+    }
+}
+
+static void MigrateThemePrefName(char** pref) {
+    if (!pref || !*pref) {
+        return;
+    }
+    if (str::EqI(*pref, "Dark") || str::EqI(*pref, "dark-dracula")) {
+        str::ReplaceWithCopy(pref, kThemeDarkDracula);
+    } else if (str::EqI(*pref, "Black") || str::EqI(*pref, "dark-black")) {
+        str::ReplaceWithCopy(pref, kThemeDarkBlack);
+    }
+}
+
+static int GetPreferredDarkThemeIndex() {
+    return DarkThemeIndexFromPrefs();
+}
+
+static Theme* GetPreferredDarkTheme() {
+    if (gThemes && gThemeCount > 3) {
+        return gThemes->At(GetPreferredDarkThemeIndex());
+    }
+    return gThemeDark;
+}
+
+static int GetResolvedThemeIndex() {
+    if (IsSystemTheme()) {
+        return DarkMode::isDarkModeReg() ? GetPreferredDarkThemeIndex() : 0;
+    }
+    return gCurrThemeIndex;
+}
+
 static Theme* GetResolvedTheme() {
     if (IsSystemTheme()) {
         if (gThemeLight && gThemeDark) {
-            return DarkMode::isDarkModeReg() ? gThemeDark : gThemeLight;
+            return DarkMode::isDarkModeReg() ? GetPreferredDarkTheme() : gThemeLight;
         }
     }
     return gCurrentTheme;
 }
 
 bool ThemeUsesDarkChrome() {
-    return gThemeDark && (GetResolvedTheme() == gThemeDark);
+    Theme* theme = GetResolvedTheme();
+    return theme && (theme == gThemeDark || theme == gThemeBlack);
+}
+
+bool ThemeUsesBlackChrome() {
+    Theme* theme = GetResolvedTheme();
+    return theme && theme == gThemeBlack;
 }
 
 bool IsDarkThemeSelected() {
@@ -136,6 +218,7 @@ void CreateThemeCommands() {
     gCurrentTheme = gThemes->At(gCurrThemeIndex);
     gThemeLight = gThemes->At(0);
     gThemeDark = gThemes->At(2);
+    gThemeBlack = gThemes->At(3);
 
     CustomCommand* cmd;
     for (int i = 0; i < gThemeCount; i++) {
@@ -143,7 +226,7 @@ void CreateThemeCommands() {
         const char* themeName = theme->name;
         auto args = NewStringArg(kCmdArgTheme, themeName);
         cmd = CreateCustomCommand(themeName, CmdSetTheme, args);
-        cmd->name = str::Format(_TRA("Set theme '%s'"), themeName);
+        cmd->name = str::Dup(SetThemeMenuLabel(i));
         if (i == 0) {
             gFirstSetThemeCmdId = cmd->id;
         } else if (i == gThemeCount - 1) {
@@ -154,18 +237,37 @@ void CreateThemeCommands() {
     gLastSystemDark = DarkMode::isDarkModeReg();
 }
 
+void UpdateThemeCommandLabels() {
+    if (gFirstSetThemeCmdId <= 0 || gLastSetThemeCmdId < gFirstSetThemeCmdId) {
+        return;
+    }
+    for (int cmdId = gFirstSetThemeCmdId; cmdId <= gLastSetThemeCmdId; cmdId++) {
+        CustomCommand* cmd = FindCustomCommand(cmdId);
+        if (!cmd) {
+            continue;
+        }
+        int themeIdx = cmdId - gFirstSetThemeCmdId;
+        str::Free(cmd->name);
+        cmd->name = str::Dup(SetThemeMenuLabel(themeIdx));
+    }
+}
+
 void SetThemeByIndex(int themeIdx) {
     ReportIf((themeIdx < 0) || (themeIdx >= gThemeCount));
     if (themeIdx >= gThemeCount) {
         themeIdx = 0;
     }
+    int prevThemeIdx = gCurrThemeIndex;
+    int prevResolvedThemeIdx = GetResolvedThemeIndex();
     bool selectingSystem = (themeIdx == 1);
     bool systemDark = selectingSystem ? DarkMode::isDarkModeReg() : false;
-    bool themeChanged = (gCurrThemeIndex != themeIdx) || (selectingSystem && (gLastSystemDark != systemDark));
     gCurrThemeIndex = themeIdx;
     gCurrSetThemeCmdId = gFirstSetThemeCmdId + themeIdx;
     gCurrentTheme = gThemes->At(gCurrThemeIndex);
+    UpdateLastDarkThemePref(themeIdx);
     gLastSystemDark = systemDark;
+    int resolvedThemeIdx = GetResolvedThemeIndex();
+    bool themeChanged = (prevResolvedThemeIdx != resolvedThemeIdx) || (prevThemeIdx != themeIdx);
     str::ReplaceWithCopy(&gGlobalPrefs->theme, gCurrentTheme->name);
     if (UseDarkModeLib()) {
         if (IsSystemTheme()) {
@@ -178,10 +280,11 @@ void SetThemeByIndex(int themeIdx) {
         DarkMode::setDefaultColors(false);
 
         DarkMode::setBackgroundColor(ThemeWindowBackgroundColor());
-        DarkMode::setCtrlBackgroundColor(ThemeWindowControlBackgroundColor());
-        COLORREF ctrlBg = ThemeWindowControlBackgroundColor();
+        COLORREF chromeBg = ThemeChromeBackgroundColor();
+        DarkMode::setCtrlBackgroundColor(chromeBg);
+        COLORREF ctrlBg = chromeBg;
         COLORREF hotBg = AccentColor(ctrlBg, 20);
-        COLORREF edgeCol = AccentColor(ctrlBg, 40);
+        COLORREF edgeCol = ThemeUsesDarkChrome() ? AccentColor(ThemeWindowLinkColor(), -20) : AccentColor(ctrlBg, 40);
         DarkMode::setHotBackgroundColor(hotBg);
         DarkMode::setTextColor(ThemeWindowTextColor());
         DarkMode::setDisabledTextColor(ThemeWindowTextDisabledColor());
@@ -190,8 +293,14 @@ void SetThemeByIndex(int themeIdx) {
         DarkMode::setEdgeColor(edgeCol);
         DarkMode::updateThemeBrushesAndPens();
 
-        DarkMode::setViewTextColor(ThemeWindowTextColor());
-        DarkMode::setViewBackgroundColor(ThemeWindowControlBackgroundColor());
+        DarkMode::setViewTextColor(ThemeUsesDarkChrome() ? ThemeReadingTextColor() : ThemeWindowTextColor());
+        if (ThemeUsesDarkChrome()) {
+            COLORREF viewBg;
+            ThemePageRenderColors(viewBg);
+            DarkMode::setViewBackgroundColor(viewBg);
+        } else {
+            DarkMode::setViewBackgroundColor(ThemeWindowControlBackgroundColor());
+        }
         DarkMode::calculateTreeViewStyle();
 
         if (themeChanged) {
@@ -207,18 +316,18 @@ void SetThemeByIndex(int themeIdx) {
 };
 
 void SelectNextTheme() {
-    int newIdx = (gCurrThemeIndex + 1) % 3;
+    int newIdx = (gCurrThemeIndex + 1) % gThemeCount;
     SetThemeByIndex(newIdx);
 }
 
 void ToggleLightDarkTheme() {
     int newIdx;
     if (IsSystemTheme()) {
-        newIdx = ThemeUsesDarkChrome() ? 0 : 2;
+        newIdx = ThemeUsesDarkChrome() ? 0 : GetPreferredDarkThemeIndex();
     } else if (ThemeUsesDarkChrome()) {
         newIdx = 0;
     } else {
-        newIdx = 2;
+        newIdx = GetPreferredDarkThemeIndex();
     }
     SetThemeByIndex(newIdx);
 }
@@ -234,14 +343,23 @@ static int GetThemeByName(const char* name) {
     if (str::EqI(name, "System")) {
         return 1;
     }
-    if (str::EqI(name, "Dark")) {
+    if (str::EqI(name, "Dark") || str::EqI(name, "dark-dracula") || str::EqI(name, kThemeDarkDracula)) {
         return 2;
+    }
+    if (str::EqI(name, "Black") || str::EqI(name, "dark-black") || str::EqI(name, kThemeDarkBlack)) {
+        return 3;
     }
     if (str::FindI(name, "system")) {
         return 1;
     }
     if (str::FindI(name, "light")) {
         return 0;
+    }
+    if (str::FindI(name, "dark-black") || str::FindI(name, "black") || str::FindI(name, "oled")) {
+        return 3;
+    }
+    if (str::FindI(name, "dracula") || str::FindI(name, "dark-dracula")) {
+        return 2;
     }
     if (str::FindI(name, "dark")) {
         return 2;
@@ -271,7 +389,12 @@ void SetTheme(const char* name) {
 
 // call after loading settings
 void SetCurrentThemeFromSettings() {
+    MigrateThemePrefName(&gGlobalPrefs->theme);
+    MigrateThemePrefName(&gGlobalPrefs->lastDarkTheme);
     SetTheme(gGlobalPrefs->theme);
+    if (gCurrThemeIndex == 2 || gCurrThemeIndex == 3) {
+        UpdateLastDarkThemePref(gCurrThemeIndex);
+    }
     ParsedColor* bgParsed = GetPrefsColor(gGlobalPrefs->mainWindowBackground);
     bool isDefault = IsDefaultMainWinColor(bgParsed);
     if (isDefault) {
@@ -298,6 +421,10 @@ COLORREF AccentColor(COLORREF col, int light, int dark) {
 // canvas/window background color around the document pages
 // not affected by FixedPageUI.TextColor/BackgroundColor (those affect page rendering)
 COLORREF ThemeDocumentColors(COLORREF& bg) {
+    if (ThemeUsesDarkChrome()) {
+        return ThemePageRenderColors(bg);
+    }
+
     bg = ThemeMainWindowBackgroundColor();
 
     if (!gGlobalPrefs->fixedPageUI.invertColors) {
@@ -307,7 +434,7 @@ COLORREF ThemeDocumentColors(COLORREF& bg) {
     COLORREF text = ThemeWindowTextColor();
     bg = ThemeMainWindowBackgroundColor();
 
-    if (gCurrThemeIndex < 3) {
+    if (GetResolvedThemeIndex() != 3) {
         bg = AccentColor(bg, 8);
     }
     return text;
@@ -354,10 +481,10 @@ COLORREF ThemePageRenderColors(COLORREF& bg) {
 
     // if we're inverting in non-default themes, the colors
     // should match the colors of the window
-    text = ThemeWindowTextColor();
+    text = ThemeReadingTextColor();
     bg = ThemeMainWindowBackgroundColor();
 
-    if (gCurrThemeIndex < 3) {
+    if (GetResolvedThemeIndex() != 3) {
         bg = AccentColor(bg, 8);
     }
     return text;
@@ -368,6 +495,16 @@ COLORREF ThemeControlBackgroundColor() {
     Theme* theme = GetResolvedTheme();
     auto col = GetThemeCol(theme->controlBackgroundColor, kRedColor);
     return col;
+}
+
+// toolbar, tabs, custom caption - match reading area in dark themes
+COLORREF ThemeChromeBackgroundColor() {
+    if (ThemeUsesDarkChrome()) {
+        COLORREF bg;
+        ThemeDocumentColors(bg);
+        return bg;
+    }
+    return ThemeControlBackgroundColor();
 }
 
 COLORREF ThemeThumbnailBackgroundColor() {
@@ -411,11 +548,28 @@ COLORREF ThemeWindowTextColor() {
     return col;
 }
 
+COLORREF ThemeReadingTextColor() {
+    if (!ThemeUsesDarkChrome()) {
+        return ThemeWindowTextColor();
+    }
+    return kColReadingText;
+}
+
 COLORREF ThemeWindowTextDisabledColor() {
     // blend text color halfway toward background so disabled text
     // is visible but clearly muted on both light and dark themes
     COLORREF txt = ThemeWindowTextColor();
     COLORREF bg = ThemeMainWindowBackgroundColor();
+    u8 r = (u8)((GetRValue(txt) + GetRValue(bg)) / 2);
+    u8 g = (u8)((GetGValue(txt) + GetGValue(bg)) / 2);
+    u8 b = (u8)((GetBValue(txt) + GetBValue(bg)) / 2);
+    return RGB(r, g, b);
+}
+
+COLORREF ThemeReadingTextDisabledColor() {
+    COLORREF txt = ThemeReadingTextColor();
+    COLORREF bg;
+    ThemeDocumentColors(bg);
     u8 r = (u8)((GetRValue(txt) + GetRValue(bg)) / 2);
     u8 g = (u8)((GetGValue(txt) + GetGValue(bg)) / 2);
     u8 b = (u8)((GetBValue(txt) + GetBValue(bg)) / 2);

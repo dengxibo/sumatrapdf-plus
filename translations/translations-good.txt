@@ -39493,79 +39493,298 @@ tw:設定主題
 uk:Встановити тему
 uz:Mavzuni o'rnatish
 vn:Đặt chủ đề
-:Set theme '%s'
-af:Stel tema '%s' in
-am:Սահմանել '%s' ձևավորումը
-ar:تعيين السمة '%s'
-az:Temanı '%s' olaraq təyin et
-bg:Задаване на тема '%s'
-bn:থিম '%s' সেট করুন
-br:Definir tema '%s'
-bs:Postavi temu '%s'
-by:Усталяваць тэму '%s'
-ca:Estableix el tema '%s'
-ca-xv:Estableix el tema «%s»
-cn:设置为 '%s' 主题
-co:Definisce u tema « %s »
-cy:Gosod thema '%s'
-cz:Nastavit motiv '%s'
-de:Design '%s' festlegen
-dk:Indstil tema '%s'
-el:Ορισμός θέματος '%s'
-es:Establecer tema '%s'
-et:Määra teema '%s'
-eu:'%s' gaia ezarri
-fa:تنظیم پوسته '%s'
-fi:Aseta teema '%s'
-fo:Set tema '%s'
-fr:Définir le thème '%s'
-fy-nl:Tema '%s' ynstelle
-ga:Socraigh téama '%s'
-gl:Establecer tema '%s'
-he:הגדר ערכת נושא '%s'
-hi:थीम '%s' सेट करें
-hr:Postavi temu '%s'
-hu:Téma beállítása: '%s'
-id:Atur tema '%s'
-it:Imposta tema '%s'
-ja:配色テーマ '%s'
-jv:Setel tema '%s'
-ka:თემის დაყენება '%s'
-kr:테마 '%s' 설정
-ku:Dirba '%s' saz bike
-kw:Settya tema '%s'
-lt:Nustatyti temą '%s'
-lv:Iestatīt tēmu '%s'
-mk:Постави тема '%s'
-ml:തീം '%s' സജ്ജമാക്കുക
-mm:အပြင်အဆင် '%s' သတ်မှတ်ရန်
-my:အပြင်အဆင် '%s' သတ်မှတ်ရန်
-ne:थिम '%s' सेट गर्नुहोस्
-nl:Stel thema '%s' in
-nn:Vel tema '%s'
-no:Angi tema '%s'
-pa:ਥੀਮ '%s' ਸੈੱਟ ਕਰੋ
-pl:Ustaw motyw '%s'
-pt:Definir tema '%s'
-ro:Setează tema '%s'
-ru:Установить тему '%s'
-sat:ᱛᱷᱤᱢ '%s' ᱥᱮᱴ ᱢᱮ
-si:තේමාව '%s' සකසන්න
-sk:Nastaviť motív '%s'
-sl:Nastavi temo '%s'
-sn:Isa dingindira '%s'
-sp-rs:Postavi temu '%s'
-sq:Vendos temën '%s'
-sr-rs:Postavi temu '%s'
-sv:Ange tema '%s'
-ta:தீம் '%s' அமை
-th:ตั้งค่าธีม '%s'
-tl:Itakda ang tema '%s'
-tr:'%s' temasını ayarla
-tw:設定成 '%s' 主題
-uk:Встановити тему '%s'
-uz:'%s' mavzusini o'rnatish
-vn:Đặt giao diện '%s'
+:Set theme 'Light'
+af:Stel tema 'Light' in
+am:Սահմանել 'Light' ձևավորումը
+ar:تعيين السمة 'Light'
+az:Temanı 'Light' olaraq təyin et
+bg:Задаване на тема 'Light'
+bn:থিম 'Light' সেট করুন
+br:Definir tema 'Light'
+bs:Postavi temu 'Light'
+by:Усталяваць тэму 'Light'
+ca:Estableix el tema 'Light'
+ca-xv:Estableix el tema «Light»
+cn:设置为 'Light' 主题
+co:Definisce u tema « Light »
+cy:Gosod thema 'Light'
+cz:Nastavit motiv 'Light'
+de:Design 'Light' festlegen
+dk:Indstil tema 'Light'
+el:Ορισμός θέματος 'Light'
+es:Establecer tema 'Light'
+et:Määra teema 'Light'
+eu:'Light' gaia ezarri
+fa:تنظیم پوسته 'Light'
+fi:Aseta teema 'Light'
+fo:Set tema 'Light'
+fr:Définir le thème 'Light'
+fy-nl:Tema 'Light' ynstelle
+ga:Socraigh téama 'Light'
+gl:Establecer tema 'Light'
+he:הגדר ערכת נושא 'Light'
+hi:थीम 'Light' सेट करें
+hr:Postavi temu 'Light'
+hu:Téma beállítása: 'Light'
+id:Atur tema 'Light'
+it:Imposta tema 'Light'
+ja:配色テーマ 'Light'
+jv:Setel tema 'Light'
+ka:თემის დაყენება 'Light'
+kr:테마 'Light' 설정
+ku:Dirba 'Light' saz bike
+kw:Settya tema 'Light'
+lt:Nustatyti temą 'Light'
+lv:Iestatīt tēmu 'Light'
+mk:Постави тема 'Light'
+ml:തീം 'Light' സജ്ജമാക്കുക
+mm:အပြင်အဆင် 'Light' သတ်မှတ်ရန်
+my:အပြင်အဆင် 'Light' သတ်မှတ်ရန်
+ne:थिम 'Light' सेट गर्नुहोस्
+nl:Stel thema 'Light' in
+nn:Vel tema 'Light'
+no:Angi tema 'Light'
+pa:ਥੀਮ 'Light' ਸੈੱਟ ਕਰੋ
+pl:Ustaw motyw 'Light'
+pt:Definir tema 'Light'
+ro:Setează tema 'Light'
+ru:Установить тему 'Light'
+sat:ᱛᱷᱤᱢ 'Light' ᱥᱮᱴ ᱢᱮ
+si:තේමාව 'Light' සකසන්න
+sk:Nastaviť motív 'Light'
+sl:Nastavi temo 'Light'
+sn:Isa dingindira 'Light'
+sp-rs:Postavi temu 'Light'
+sq:Vendos temën 'Light'
+sr-rs:Postavi temu 'Light'
+sv:Ange tema 'Light'
+ta:தீம் 'Light' அமை
+th:ตั้งค่าธีม 'Light'
+tl:Itakda ang tema 'Light'
+tr:'Light' temasını ayarla
+tw:設定成 'Light' 主題
+uk:Встановити тему 'Light'
+uz:'Light' mavzusini o'rnatish
+vn:Đặt giao diện 'Light'
+:Set theme 'System'
+af:Stel tema 'System' in
+am:Սահմանել 'System' ձևավորումը
+ar:تعيين السمة 'System'
+az:Temanı 'System' olaraq təyin et
+bg:Задаване на тема 'System'
+bn:থিম 'System' সেট করুন
+br:Definir tema 'System'
+bs:Postavi temu 'System'
+by:Усталяваць тэму 'System'
+ca:Estableix el tema 'System'
+ca-xv:Estableix el tema «System»
+cn:设置为 'System' 主题
+co:Definisce u tema « System »
+cy:Gosod thema 'System'
+cz:Nastavit motiv 'System'
+de:Design 'System' festlegen
+dk:Indstil tema 'System'
+el:Ορισμός θέματος 'System'
+es:Establecer tema 'System'
+et:Määra teema 'System'
+eu:'System' gaia ezarri
+fa:تنظیم پوسته 'System'
+fi:Aseta teema 'System'
+fo:Set tema 'System'
+fr:Définir le thème 'System'
+fy-nl:Tema 'System' ynstelle
+ga:Socraigh téama 'System'
+gl:Establecer tema 'System'
+he:הגדר ערכת נושא 'System'
+hi:थीम 'System' सेट करें
+hr:Postavi temu 'System'
+hu:Téma beállítása: 'System'
+id:Atur tema 'System'
+it:Imposta tema 'System'
+ja:配色テーマ 'System'
+jv:Setel tema 'System'
+ka:თემის დაყენება 'System'
+kr:테마 'System' 설정
+ku:Dirba 'System' saz bike
+kw:Settya tema 'System'
+lt:Nustatyti temą 'System'
+lv:Iestatīt tēmu 'System'
+mk:Постави тема 'System'
+ml:തീം 'System' സജ്ജമാക്കുക
+mm:အပြင်အဆင် 'System' သတ်မှတ်ရန်
+my:အပြင်အဆင် 'System' သတ်မှတ်ရန်
+ne:थिम 'System' सेट गर्नुहोस्
+nl:Stel thema 'System' in
+nn:Vel tema 'System'
+no:Angi tema 'System'
+pa:ਥੀਮ 'System' ਸੈੱਟ ਕਰੋ
+pl:Ustaw motyw 'System'
+pt:Definir tema 'System'
+ro:Setează tema 'System'
+ru:Установить тему 'System'
+sat:ᱛᱷᱤᱢ 'System' ᱥᱮᱴ ᱢᱮ
+si:තේමාව 'System' සකසන්න
+sk:Nastaviť motív 'System'
+sl:Nastavi temo 'System'
+sn:Isa dingindira 'System'
+sp-rs:Postavi temu 'System'
+sq:Vendos temën 'System'
+sr-rs:Postavi temu 'System'
+sv:Ange tema 'System'
+ta:தீம் 'System' அமை
+th:ตั้งค่าธีม 'System'
+tl:Itakda ang tema 'System'
+tr:'System' temasını ayarla
+tw:設定成 'System' 主題
+uk:Встановити тему 'System'
+uz:'System' mavzusini o'rnatish
+vn:Đặt giao diện 'System'
+:Set theme 'Dark-Dracula'
+af:Stel tema 'Dark-Dracula' in
+am:Սահմանել 'Dark-Dracula' ձևավորումը
+ar:تعيين السمة 'Dark-Dracula'
+az:Temanı 'Dark-Dracula' olaraq təyin et
+bg:Задаване на тема 'Dark-Dracula'
+bn:থিম 'Dark-Dracula' সেট করুন
+br:Definir tema 'Dark-Dracula'
+bs:Postavi temu 'Dark-Dracula'
+by:Усталяваць тэму 'Dark-Dracula'
+ca:Estableix el tema 'Dark-Dracula'
+ca-xv:Estableix el tema «Dark-Dracula»
+cn:设置为 'Dark-Dracula' 主题
+co:Definisce u tema « Dark-Dracula »
+cy:Gosod thema 'Dark-Dracula'
+cz:Nastavit motiv 'Dark-Dracula'
+de:Design 'Dark-Dracula' festlegen
+dk:Indstil tema 'Dark-Dracula'
+el:Ορισμός θέματος 'Dark-Dracula'
+es:Establecer tema 'Dark-Dracula'
+et:Määra teema 'Dark-Dracula'
+eu:'Dark-Dracula' gaia ezarri
+fa:تنظیم پوسته 'Dark-Dracula'
+fi:Aseta teema 'Dark-Dracula'
+fo:Set tema 'Dark-Dracula'
+fr:Définir le thème 'Dark-Dracula'
+fy-nl:Tema 'Dark-Dracula' ynstelle
+ga:Socraigh téama 'Dark-Dracula'
+gl:Establecer tema 'Dark-Dracula'
+he:הגדר ערכת נושא 'Dark-Dracula'
+hi:थीम 'Dark-Dracula' सेट करें
+hr:Postavi temu 'Dark-Dracula'
+hu:Téma beállítása: 'Dark-Dracula'
+id:Atur tema 'Dark-Dracula'
+it:Imposta tema 'Dark-Dracula'
+ja:配色テーマ 'Dark-Dracula'
+jv:Setel tema 'Dark-Dracula'
+ka:თემის დაყენება 'Dark-Dracula'
+kr:테마 'Dark-Dracula' 설정
+ku:Dirba 'Dark-Dracula' saz bike
+kw:Settya tema 'Dark-Dracula'
+lt:Nustatyti temą 'Dark-Dracula'
+lv:Iestatīt tēmu 'Dark-Dracula'
+mk:Постави тема 'Dark-Dracula'
+ml:തീം 'Dark-Dracula' സജ്ജമാക്കുക
+mm:အပြင်အဆင် 'Dark-Dracula' သတ်မှတ်ရန်
+my:အပြင်အဆင် 'Dark-Dracula' သတ်မှတ်ရန်
+ne:थिम 'Dark-Dracula' सेट गर्नुहोस्
+nl:Stel thema 'Dark-Dracula' in
+nn:Vel tema 'Dark-Dracula'
+no:Angi tema 'Dark-Dracula'
+pa:ਥੀਮ 'Dark-Dracula' ਸੈੱਟ ਕਰੋ
+pl:Ustaw motyw 'Dark-Dracula'
+pt:Definir tema 'Dark-Dracula'
+ro:Setează tema 'Dark-Dracula'
+ru:Установить тему 'Dark-Dracula'
+sat:ᱛᱷᱤᱢ 'Dark-Dracula' ᱥᱮᱴ ᱢᱮ
+si:තේමාව 'Dark-Dracula' සකසන්න
+sk:Nastaviť motív 'Dark-Dracula'
+sl:Nastavi temo 'Dark-Dracula'
+sn:Isa dingindira 'Dark-Dracula'
+sp-rs:Postavi temu 'Dark-Dracula'
+sq:Vendos temën 'Dark-Dracula'
+sr-rs:Postavi temu 'Dark-Dracula'
+sv:Ange tema 'Dark-Dracula'
+ta:தீம் 'Dark-Dracula' அமை
+th:ตั้งค่าธีม 'Dark-Dracula'
+tl:Itakda ang tema 'Dark-Dracula'
+tr:'Dark-Dracula' temasını ayarla
+tw:設定成 'Dark-Dracula' 主題
+uk:Встановити тему 'Dark-Dracula'
+uz:'Dark-Dracula' mavzusini o'rnatish
+vn:Đặt giao diện 'Dark-Dracula'
+:Set theme 'Dark-Black'
+af:Stel tema 'Dark-Black' in
+am:Սահմանել 'Dark-Black' ձևավորումը
+ar:تعيين السمة 'Dark-Black'
+az:Temanı 'Dark-Black' olaraq təyin et
+bg:Задаване на тема 'Dark-Black'
+bn:থিম 'Dark-Black' সেট করুন
+br:Definir tema 'Dark-Black'
+bs:Postavi temu 'Dark-Black'
+by:Усталяваць тэму 'Dark-Black'
+ca:Estableix el tema 'Dark-Black'
+ca-xv:Estableix el tema «Dark-Black»
+cn:设置为 'Dark-Black' 主题
+co:Definisce u tema « Dark-Black »
+cy:Gosod thema 'Dark-Black'
+cz:Nastavit motiv 'Dark-Black'
+de:Design 'Dark-Black' festlegen
+dk:Indstil tema 'Dark-Black'
+el:Ορισμός θέματος 'Dark-Black'
+es:Establecer tema 'Dark-Black'
+et:Määra teema 'Dark-Black'
+eu:'Dark-Black' gaia ezarri
+fa:تنظیم پوسته 'Dark-Black'
+fi:Aseta teema 'Dark-Black'
+fo:Set tema 'Dark-Black'
+fr:Définir le thème 'Dark-Black'
+fy-nl:Tema 'Dark-Black' ynstelle
+ga:Socraigh téama 'Dark-Black'
+gl:Establecer tema 'Dark-Black'
+he:הגדר ערכת נושא 'Dark-Black'
+hi:थीम 'Dark-Black' सेट करें
+hr:Postavi temu 'Dark-Black'
+hu:Téma beállítása: 'Dark-Black'
+id:Atur tema 'Dark-Black'
+it:Imposta tema 'Dark-Black'
+ja:配色テーマ 'Dark-Black'
+jv:Setel tema 'Dark-Black'
+ka:თემის დაყენება 'Dark-Black'
+kr:테마 'Dark-Black' 설정
+ku:Dirba 'Dark-Black' saz bike
+kw:Settya tema 'Dark-Black'
+lt:Nustatyti temą 'Dark-Black'
+lv:Iestatīt tēmu 'Dark-Black'
+mk:Постави тема 'Dark-Black'
+ml:തീം 'Dark-Black' സജ്ജമാക്കുക
+mm:အပြင်အဆင် 'Dark-Black' သတ်မှတ်ရန်
+my:အပြင်အဆင် 'Dark-Black' သတ်မှတ်ရန်
+ne:थिम 'Dark-Black' सेट गर्नुहोस्
+nl:Stel thema 'Dark-Black' in
+nn:Vel tema 'Dark-Black'
+no:Angi tema 'Dark-Black'
+pa:ਥੀਮ 'Dark-Black' ਸੈੱਟ ਕਰੋ
+pl:Ustaw motyw 'Dark-Black'
+pt:Definir tema 'Dark-Black'
+ro:Setează tema 'Dark-Black'
+ru:Установить тему 'Dark-Black'
+sat:ᱛᱷᱤᱢ 'Dark-Black' ᱥᱮᱴ ᱢᱮ
+si:තේමාව 'Dark-Black' සකසන්න
+sk:Nastaviť motív 'Dark-Black'
+sl:Nastavi temo 'Dark-Black'
+sn:Isa dingindira 'Dark-Black'
+sp-rs:Postavi temu 'Dark-Black'
+sq:Vendos temën 'Dark-Black'
+sr-rs:Postavi temu 'Dark-Black'
+sv:Ange tema 'Dark-Black'
+ta:தீம் 'Dark-Black' அமை
+th:ตั้งค่าธีม 'Dark-Black'
+tl:Itakda ang tema 'Dark-Black'
+tr:'Dark-Black' temasını ayarla
+tw:設定成 'Dark-Black' 主題
+uk:Встановити тему 'Dark-Black'
+uz:'Dark-Black' mavzusini o'rnatish
+vn:Đặt giao diện 'Dark-Black'
 :Show &Bookmarks
 af:Wys boekmerke
 am:Ցուցադրել &Էջանիշերը

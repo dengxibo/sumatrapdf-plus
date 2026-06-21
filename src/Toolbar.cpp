@@ -634,7 +634,7 @@ static void PaintToolbarSeparatorsInHdc(HWND hwnd, HDC hdc) {
     if (count <= 0) {
         return;
     }
-    COLORREF bgCol = ThemeControlBackgroundColor();
+    COLORREF bgCol = ThemeChromeBackgroundColor();
     COLORREF lineCol = ThemeUsesDarkChrome() ? AccentColor(bgCol, 55) : AccentColor(bgCol, 40);
     for (int i = 0; i < count; i++) {
         if (!IsRealToolbarSeparatorIdx(i)) {
@@ -651,7 +651,7 @@ static void PaintToolbarSeparatorsInHdc(HWND hwnd, HDC hdc) {
 // suppress default white/light-blue pressed and checked fills; use theme colors instead
 static LRESULT PrepaintToolbarItem(NMTBCUSTOMDRAW* custDraw) {
     UINT itemState = custDraw->nmcd.uItemState;
-    COLORREF bgCol = ThemeControlBackgroundColor();
+    COLORREF bgCol = ThemeChromeBackgroundColor();
     COLORREF txtCol = ThemeWindowTextColor();
     if (itemState & CDIS_DISABLED) {
         txtCol = ThemeWindowTextDisabledColor();
@@ -679,27 +679,47 @@ static LRESULT PrepaintToolbarItem(NMTBCUSTOMDRAW* custDraw) {
 
     COLORREF fillCol = bgCol;
     if (isChecked) {
-        if (ThemeUsesDarkChrome()) {
-            fillCol = AccentColor(bgCol, 12, 52);
+        if (ThemeUsesBlackChrome()) {
+            fillCol = AccentColor(bgCol, 20, 42);
+        } else if (ThemeUsesDarkChrome()) {
+            fillCol = AccentColor(bgCol, 8, 28);
         } else {
             fillCol = AccentColor(bgCol, 24);
         }
-    } else if (!isSelected && isHot) {
-        if (ThemeUsesDarkChrome()) {
-            fillCol = AccentColor(bgCol, 10, 22);
+    } else if (isSelected) {
+        if (ThemeUsesBlackChrome()) {
+            fillCol = AccentColor(bgCol, 16, 36);
+        } else if (ThemeUsesDarkChrome()) {
+            fillCol = AccentColor(bgCol, 6, 14);
+        }
+    } else if (isHot) {
+        if (ThemeUsesBlackChrome()) {
+            fillCol = AccentColor(bgCol, 12, 28);
+        } else if (ThemeUsesDarkChrome()) {
+            fillCol = AccentColor(bgCol, 6, 14);
         } else {
             fillCol = AccentColor(bgCol, -10);
         }
     }
 
+    RECT fillRc = custDraw->nmcd.rc;
+    if (fillCol != bgCol) {
+        fillRc.top += 2;
+    }
+
     HBRUSH br = CreateSolidBrush(fillCol);
-    FillRect(custDraw->nmcd.hdc, &custDraw->nmcd.rc, br);
+    FillRect(custDraw->nmcd.hdc, &fillRc, br);
     DeleteObject(br);
 
     if (isChecked) {
-        COLORREF borderCol = ThemeUsesDarkChrome() ? AccentColor(bgCol, 40, 72) : AccentColor(bgCol, 38);
+        COLORREF borderCol;
+        if (ThemeUsesBlackChrome()) {
+            borderCol = AccentColor(bgCol, 28, 52);
+        } else {
+            borderCol = ThemeUsesDarkChrome() ? AccentColor(bgCol, 24, 38) : AccentColor(bgCol, 38);
+        }
         HBRUSH borderBr = CreateSolidBrush(borderCol);
-        FrameRect(custDraw->nmcd.hdc, &custDraw->nmcd.rc, borderBr);
+        FrameRect(custDraw->nmcd.hdc, &fillRc, borderBr);
         DeleteObject(borderBr);
     }
 
@@ -707,7 +727,7 @@ static LRESULT PrepaintToolbarItem(NMTBCUSTOMDRAW* custDraw) {
 }
 
 static LRESULT PrepaintToolbarSeparatorItem(NMTBCUSTOMDRAW* custDraw) {
-    COLORREF bgCol = ThemeControlBackgroundColor();
+    COLORREF bgCol = ThemeChromeBackgroundColor();
     HBRUSH br = CreateSolidBrush(bgCol);
     FillRect(custDraw->nmcd.hdc, &custDraw->nmcd.rc, br);
     DeleteObject(br);
@@ -729,7 +749,7 @@ static LRESULT CALLBACK ToolbarNotifyWndProc(HWND hWnd, UINT uMsg, WPARAM wParam
             NMTBCUSTOMDRAW* custDraw = (NMTBCUSTOMDRAW*)hdr;
             switch (custDraw->nmcd.dwDrawStage) {
                 case CDDS_PREPAINT: {
-                    HBRUSH brush = CreateSolidBrush(ThemeControlBackgroundColor());
+                    HBRUSH brush = CreateSolidBrush(ThemeChromeBackgroundColor());
                     FillRect(custDraw->nmcd.hdc, &custDraw->nmcd.rc, brush);
                     DeleteObject(brush);
                     return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
@@ -762,7 +782,7 @@ LRESULT CALLBACK ReBarWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
         RECT rect;
         GetClientRect(hWnd, &rect);
         SetTextColor(hdc, ThemeWindowTextColor());
-        COLORREF bgCol = ThemeControlBackgroundColor();
+        COLORREF bgCol = ThemeChromeBackgroundColor();
         SetBkColor(hdc, bgCol);
         auto bgBrush = CreateSolidBrush(bgCol);
         FillRect(hdc, &rect, bgBrush);
@@ -801,7 +821,7 @@ static LRESULT CALLBACK WndProcEditBg(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         HDC hdc = GetDC(hwnd);
         RECT rc;
         GetClientRect(hwnd, &rc);
-        COLORREF bgCol2 = ThemeControlBackgroundColor();
+        COLORREF bgCol2 = ThemeChromeBackgroundColor();
         COLORREF col = AccentColor(bgCol2, 40);
         HBRUSH br = CreateSolidBrush(col);
         FrameRect(hdc, &rc, br);
@@ -1424,7 +1444,7 @@ static HBITMAP BuildIconsBitmap(int dx, int dy) {
     }
 
     COLORREF fgCol = ThemeWindowTextColor();
-    COLORREF bgCol = ThemeControlBackgroundColor();
+    COLORREF bgCol = ThemeChromeBackgroundColor();
     for (int i = 0; i < nIcons; i++) {
         const char* svgData = GetSvgIcon((TbIcon)i);
         TempStr strokeCol = SerializeColorTemp(fgCol);
@@ -1511,7 +1531,7 @@ void CreateToolbar(MainWindow* win) {
     rbi.fMask = 0;
     rbi.himl = (HIMAGELIST) nullptr;
     SendMessageW(win->hwndReBar, RB_SETBARINFO, 0, (LPARAM)&rbi);
-    SendMessageW(win->hwndReBar, RB_SETBKCOLOR, 0, ThemeControlBackgroundColor());
+    SendMessageW(win->hwndReBar, RB_SETBKCOLOR, 0, ThemeChromeBackgroundColor());
 
     style = WS_CHILD | WS_CLIPSIBLINGS | TBSTYLE_TOOLTIPS | TBSTYLE_FLAT;
     style |= TBSTYLE_LIST | CCS_NODIVIDER | CCS_NOPARENTALIGN;
@@ -1667,7 +1687,7 @@ static LRESULT CALLBACK MenuBarReBarWndProc(HWND hWnd, UINT uMsg, WPARAM wParam,
         HDC hdc = (HDC)wParam;
         RECT rect;
         GetClientRect(hWnd, &rect);
-        COLORREF bgCol = ThemeControlBackgroundColor();
+        COLORREF bgCol = ThemeChromeBackgroundColor();
         auto bgBrush = CreateSolidBrush(bgCol);
         FillRect(hdc, &rect, bgBrush);
         DeleteObject(bgBrush);
@@ -1895,7 +1915,7 @@ void CreateMenuBarRebar(MainWindow* win) {
     REBARINFO rbi{};
     rbi.cbSize = sizeof(REBARINFO);
     SendMessageW(win->hwndMenuReBar, RB_SETBARINFO, 0, (LPARAM)&rbi);
-    SendMessageW(win->hwndMenuReBar, RB_SETBKCOLOR, 0, ThemeControlBackgroundColor());
+    SendMessageW(win->hwndMenuReBar, RB_SETBKCOLOR, 0, ThemeChromeBackgroundColor());
 
     style = WS_CHILD | WS_CLIPSIBLINGS | TBSTYLE_FLAT | TBSTYLE_LIST;
     style |= CCS_NODIVIDER | CCS_NOPARENTALIGN;
@@ -2011,6 +2031,7 @@ bool HandleMenuBarCommand(MainWindow* win, int cmdId) {
         gMenuBarPopupNav.currentFlags = 0;
         gMenuBarPopupNav.nextMenuIdx = menuIdx;
 
+        MarkMenuOwnerDraw(subMenu, false);
         HHOOK hook = SetWindowsHookExW(WH_MSGFILTER, MenuBarMsgFilterHook, nullptr, GetCurrentThreadId());
         TrackPopupMenu(subMenu, flags, btnRect.left, btnRect.bottom, 0, win->hwndFrame, nullptr);
         if (hook) {

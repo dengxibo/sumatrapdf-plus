@@ -2038,7 +2038,7 @@ static MainWindow* CreateMainWindow() {
     win->menu = BuildMenu(win);
     // menu bar is shown later, after SetTabsInTitlebar decides the mode:
     // if tabsInTitlebar, we use a rebar menu bar; otherwise native SetMenu
-    win->brControlBgColor = CreateSolidBrush(ThemeControlBackgroundColor());
+    win->brControlBgColor = CreateSolidBrush(ThemeChromeBackgroundColor());
 
     // suppress painting during window setup to avoid white flash with dark themes
     SendMessageW(win->hwndFrame, WM_SETREDRAW, FALSE, 0);
@@ -2110,6 +2110,7 @@ static MainWindow* CreateMainWindow() {
         // this will only happen with themes
         // could custom paint instead of using DarkMode
         // DarkMode::setDarkTooltips(win->infotip->hwnd, (int)DarkMode::ToolTipsType::tooltip);
+        UpdateControlsColors(win);
     }
 
     // re-enable painting now that dark mode is configured
@@ -2225,7 +2226,7 @@ void DeleteMainWindow(MainWindow* win) {
 }
 
 static COLORREF DwmFrameBorderColorForCurrentTheme() {
-    return ThemeUsesDarkChrome() ? ThemeControlBackgroundColor() : (COLORREF)DWMWA_COLOR_DEFAULT;
+    return ThemeUsesDarkChrome() ? ThemeChromeBackgroundColor() : (COLORREF)DWMWA_COLOR_DEFAULT;
 }
 
 static void UpdateWindowFrameBorderColor(MainWindow* win) {
@@ -2251,11 +2252,11 @@ static bool ShouldReloadForThemeChange(WindowTab* tab) {
 
 void UpdateAfterThemeChange() {
     InvalidateLoadedThumbnails();
+    UpdateDocumentColors();
     for (auto win : gWindows) {
         DeleteObject(win->brControlBgColor);
-        win->brControlBgColor = CreateSolidBrush(ThemeControlBackgroundColor());
+        win->brControlBgColor = CreateSolidBrush(ThemeChromeBackgroundColor());
 
-        UpdateControlsColors(win);
         RebuildMenuBarForWindow(win);
         // TODO: probably leaking toolbar image list
         UpdateToolbarAfterThemeChange(win);
@@ -2266,10 +2267,8 @@ void UpdateAfterThemeChange() {
             DarkMode::setWindowMenuBarSubclass(win->hwndFrame);
             // DarkMode::setDarkTooltips(win->infotip->hwnd, (int)DarkMode::ToolTipsType::tooltip);
         }
+        UpdateControlsColors(win);
         UpdateWindowFrameBorderColor(win);
-        // TODO: this only rerenders canvas, not frame, even with
-        // includingNonClientArea == true.
-        MainWindowRerender(win, true);
         uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN;
         RedrawWindow(win->hwndFrame, nullptr, nullptr, flags);
 
@@ -2294,7 +2293,6 @@ void UpdateAfterThemeChange() {
             }
         }
     }
-    UpdateDocumentColors();
     RefreshWordLookupTheme();
 }
 
@@ -2920,11 +2918,12 @@ static void UpdateLoadingNotifUI(ExtractProgressUITask* task) {
         return;
     }
     const char* basename = path::GetBaseNameTemp(task->path);
+    TempStr loading = str::FormatTemp(_TRA("Loading %s ..."), basename);
     TempStr msg;
     if (task->nTotal > 0) {
-        msg = str::FormatTemp(_TRA("Loading %s %d of %d"), basename, task->nDecoded, task->nTotal);
+        msg = str::FormatTemp("%s (%d/%d)", loading, task->nDecoded, task->nTotal);
     } else {
-        msg = str::FormatTemp(_TRA("Loading %s %d"), basename, task->nDecoded);
+        msg = str::FormatTemp("%s (%d)", loading, task->nDecoded);
     }
     NotificationUpdateMessage(task->wnd, msg);
 }
@@ -2977,9 +2976,9 @@ static void UpdateCopyNotifUI(CopyProgressUITask* task) {
     TempStr msg;
     if (task->bytesTotal > 0) {
         TempStr total = str::FormatSizeShortTemp(task->bytesTotal, nullptr);
-        msg = str::FormatTemp(_TRA("Copying %s: %s / %s"), basename, copied, total);
+        msg = str::FormatTemp("Copying %s: %s / %s", basename, copied, total);
     } else {
-        msg = str::FormatTemp(_TRA("Copying %s: %s"), basename, copied);
+        msg = str::FormatTemp("Copying %s: %s", basename, copied);
     }
     NotificationUpdateMessage(task->wnd, msg);
 }
@@ -3402,13 +3401,30 @@ static void RerenderFixedPage() {
 void UpdateDocumentColors() {
     COLORREF bg;
     COLORREF text = ThemePageRenderColors(bg);
+    COLORREF link = ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : 0;
 
-    if ((text == gRenderCache->textColor) && (bg == gRenderCache->backgroundColor)) {
+    if ((text == gRenderCache->textColor) && (bg == gRenderCache->backgroundColor) &&
+        (link == gRenderCache->linkColor)) {
         return; // colors didn't change
+    }
+
+    // Cached bitmaps are either recolored (PDF) or baked (ebooks). Marking them
+    // out-of-date is not enough because RequestRendering() skips pages that
+    // still Exist() in the cache, so stale tiles keep showing until scrolled.
+    for (MainWindow* win : gWindows) {
+        for (WindowTab* tab : win->Tabs()) {
+            DisplayModel* dm = tab->AsFixed();
+            if (!dm) {
+                continue;
+            }
+            gRenderCache->CancelRendering(dm);
+            gRenderCache->FreeForDisplayModel(dm);
+        }
     }
 
     gRenderCache->textColor = text;
     gRenderCache->backgroundColor = bg;
+    gRenderCache->linkColor = link;
     RerenderEverything();
 }
 
@@ -5135,6 +5151,7 @@ void SetCurrentLanguageAndRefreshUI(const char* langCode) {
         return;
     }
     SetCurrentLang(langCode);
+    UpdateThemeCommandLabels();
 
     for (MainWindow* win : gWindows) {
         RebuildMenuBarForWindow(win);
@@ -6485,8 +6502,7 @@ static TempStr BuildDoubaoPromptTemp(const char* selection, DoubaoPromptKind kin
                                         "pronunciation, definition, examples, and mnemonics:"),
                                    trimmed);
         case DoubaoPromptKind::Chinese:
-            return str::FormatTemp("%s\n%s",
-                                   _TRA("Please explain what the following Chinese text means:"), trimmed);
+            return str::FormatTemp("%s\n%s", _TRA("Please explain what the following Chinese text means:"), trimmed);
         case DoubaoPromptKind::Sentence:
             return str::FormatTemp("%s\n%s",
                                    _TRA("Please translate this sentence and analyze its syntax and difficult "
@@ -8718,7 +8734,7 @@ static void DrawCaptionMenuSeparator(MainWindow* win, HDC hdc) {
     if (!sysBtn.visible || !menuBtn.visible) {
         return;
     }
-    COLORREF sepCol = AccentColor(ThemeControlBackgroundColor(), 40);
+    COLORREF sepCol = AccentColor(ThemeChromeBackgroundColor(), 40);
     int x = sysBtn.rect.x + sysBtn.rect.dx;
     int pad = sysBtn.rect.dy / 4;
     int y1 = sysBtn.rect.y + pad;
@@ -8756,7 +8772,7 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
     gfx.SetSmoothingMode(Gdiplus::SmoothingModeNone);
 
     if (isSysButton) {
-        COLORREF bgc = ThemeControlBackgroundColor();
+        COLORREF bgc = ThemeChromeBackgroundColor();
         SolidBrush bgBrNormal(GdiRgbFromCOLORREF(bgc));
         gfx.FillRectangle(&bgBrNormal, rButton.x, rButton.y, rButton.dx, rButton.dy);
 
@@ -8822,7 +8838,7 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
             } break;
         }
     } else if (button == CB_MENU) {
-        COLORREF bgc = ThemeControlBackgroundColor();
+        COLORREF bgc = ThemeChromeBackgroundColor();
         SolidBrush bgBrMenu(GdiRgbFromCOLORREF(bgc));
         gfx.FillRectangle(&bgBrMenu, rButton.x, rButton.y, rButton.dx, rButton.dy);
 
@@ -8852,7 +8868,7 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
         gfx.DrawLine(&p, x1, y0 + gap, x2, y0 + gap);
         gfx.DrawLine(&p, x1, y0 + 2.0f * gap, x2, y0 + 2.0f * gap);
     } else if (button == CB_SYSTEM_MENU) {
-        SolidBrush bgBrSys(GdiRgbFromCOLORREF(ThemeControlBackgroundColor()));
+        SolidBrush bgBrSys(GdiRgbFromCOLORREF(ThemeChromeBackgroundColor()));
         gfx.FillRectangle(&bgBrSys, rButton.x, rButton.y, rButton.dx, rButton.dy);
         int xIcon = GetSystemMetrics(SM_CXSMICON);
         int yIcon = GetSystemMetrics(SM_CYSMICON);
@@ -8880,7 +8896,7 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
                 Rect wr = WindowRect(hwnd);
                 // window DC is in window coordinates (origin at top-left of window)
                 RECT rc = {0, 0, wr.dx, 1};
-                HBRUSH br = CreateSolidBrush(ThemeControlBackgroundColor());
+                HBRUSH br = CreateSolidBrush(ThemeChromeBackgroundColor());
                 FillRect(hdc, &rc, br);
                 DeleteObject(br);
                 ReleaseDC(hwnd, hdc);
@@ -8903,7 +8919,7 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             DoubleBuffer buffer(hwnd, captionArea);
             HDC memDC = buffer.GetDC();
             {
-                HBRUSH brCap = CreateSolidBrush(ThemeControlBackgroundColor());
+                HBRUSH brCap = CreateSolidBrush(ThemeChromeBackgroundColor());
                 RECT rcFill = ToRECT(captionArea);
                 FillRect(memDC, &rcFill, brCap);
                 DeleteObject(brCap);
@@ -8919,7 +8935,7 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             {
                 RECT rcCaption = ToRECT(captionArea);
                 ExcludeClipRect(hdc, rcCaption.left, rcCaption.top, rcCaption.right, rcCaption.bottom);
-                HBRUSH brBorder = CreateSolidBrush(ThemeControlBackgroundColor());
+                HBRUSH brBorder = CreateSolidBrush(ThemeChromeBackgroundColor());
                 FillRect(hdc, &ps.rcPaint, brBorder);
                 DeleteObject(brBorder);
             }
@@ -9185,9 +9201,9 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         case WM_INITMENUPOPUP:
             // apply dark mode to popup menu window
             if (UseDarkModeLib() && DarkMode::isEnabled()) {
-                HWND hMenu = FindWindow(UNDOCUMENTED_MENU_CLASS_NAME, nullptr);
-                if (hMenu) {
-                    DarkMode::setDarkTitleBarEx(hMenu, false);
+                HWND hMenuWnd = FindWindow(UNDOCUMENTED_MENU_CLASS_NAME, nullptr);
+                if (hMenuWnd) {
+                    DarkMode::setDarkTitleBarEx(hMenuWnd, false);
                 }
             }
             if (gMenuAccelPressed) {
@@ -9285,6 +9301,9 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
             if (win) {
                 UpdateAppMenu(win, (HMENU)wp);
             }
+            if (ThemeColorizeControls() || ThemeUsesDarkChrome()) {
+                MarkMenuOwnerDraw((HMENU)wp, false);
+            }
             break;
 
         case WM_HOTKEY:
@@ -9298,14 +9317,14 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
             return FrameOnCommand(win, hwnd, msg, wp, lp);
 
         case WM_MEASUREITEM:
-            if (ThemeColorizeControls()) {
+            if (ThemeColorizeControls() || ThemeUsesDarkChrome()) {
                 MenuCustomDrawMesureItem(hwnd, (MEASUREITEMSTRUCT*)lp);
                 return TRUE;
             }
             break;
 
         case WM_DRAWITEM:
-            if (ThemeColorizeControls()) {
+            if (ThemeColorizeControls() || ThemeUsesDarkChrome()) {
                 MenuCustomDrawItem(hwnd, (DRAWITEMSTRUCT*)lp);
                 return TRUE;
             }
@@ -9519,7 +9538,7 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
                 DeleteObject(br);
                 if (!win->captionRect.IsEmpty()) {
                     RECT rcCaption = ToRECT(win->captionRect);
-                    HBRUSH brCaption = CreateSolidBrush(ThemeControlBackgroundColor());
+                    HBRUSH brCaption = CreateSolidBrush(ThemeChromeBackgroundColor());
                     FillRect(hdc, &rcCaption, brCaption);
                     DeleteObject(brCaption);
                 }

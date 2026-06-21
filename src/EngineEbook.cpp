@@ -266,9 +266,7 @@ class EngineEbook : public EngineBase {
 
     bool BenchLoadPage(int pageNo) override;
 
-    bool IsProgressiveEbookLoading() override {
-        return IsEbookProgressiveLoadingInProgress();
-    }
+    bool IsProgressiveEbookLoading() override { return IsEbookProgressiveLoadingInProgress(); }
 
     bool HitTestText(int pageNo, PointF pagePt, EbookTextHit* hitOut);
     TempWStr GetRunTextTemp(int pageNo, int instrIndex);
@@ -637,20 +635,17 @@ RenderedBitmap* EngineEbook::RenderPage(RenderPageArgs& args) {
     COLORREF bgCol;
     COLORREF textCol;
     if (readerStyleMobi && darkTheme) {
-        bgCol = RgbToCOLORREF(0x000000);
+        ThemePageRenderColors(bgCol);
         textCol = RgbToCOLORREF(0xE6E1D8);
     } else if (readerStyleMobi) {
         bgCol = RgbToCOLORREF(0xF7F3E8);
         textCol = RgbToCOLORREF(0x565047);
-    } else if (darkTheme) {
-        bgCol = RgbToCOLORREF(0x000000);
-        textCol = RgbToCOLORREF(0xF9FAFB);
     } else {
         textCol = ThemePageRenderColors(bgCol);
     }
     Color pageBg = GdiRgbFromCOLORREF(bgCol);
     Color pageText = GdiRgbFromCOLORREF(textCol);
-    Color pageLink = darkTheme ? Color(0xFF, 0x8F, 0xBC, 0xE6) : Color(0xFF, 0x31, 0x5F, 0x9C);
+    Color pageLink = darkTheme ? GdiRgbFromCOLORREF(ThemeWindowLinkColor()) : Color(0xFF, 0x31, 0x5F, 0x9C);
     if (!readerStyleMobi && !darkTheme) {
         pageLink = Color(0xFF, 0x00, 0x33, 0xCC);
     }

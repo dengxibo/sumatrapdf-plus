@@ -339,7 +339,6 @@ static MainWindow* LoadOnStartup(const char* filePath, const Flags& flags, bool 
     return win;
 }
 
-
 void SetTabState(WindowTab* tab, TabState* state) {
     if (!tab || !tab->ctrl) {
         return;
@@ -1562,6 +1561,7 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
     gCrashOnOpen = flags.crashOnOpen;
 
     gRenderCache->textColor = ThemePageRenderColors(gRenderCache->backgroundColor);
+    gRenderCache->linkColor = ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : 0;
     // logfa("retrieved doc colors in WinMain: 0x%x 0x%x\n", gRenderCache->textColor, gRenderCache->backgroundColor);
 
     gIsStartup = true;

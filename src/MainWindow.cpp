@@ -729,8 +729,9 @@ bool HasOpenedDocuments(MainWindow* win) {
 }
 
 void UpdateControlsColors(MainWindow* win) {
-    COLORREF bgCol = ThemeControlBackgroundColor();
-    COLORREF txtCol = ThemeWindowTextColor();
+    COLORREF bgCol;
+    ThemeDocumentColors(bgCol);
+    COLORREF txtCol = ThemeUsesDarkChrome() ? ThemeReadingTextColor() : ThemeWindowTextColor();
 
     // logfa("retrieved doc colors in tree control: 0x%x 0x%x\n", treeTxtCol, treeBgCol);
 
@@ -745,6 +746,10 @@ void UpdateControlsColors(MainWindow* win) {
             win->tocFilterEdit->SetColors(txtCol, bgCol);
         }
         win->sidebarSplitter->SetColors(kColorNoChange, splitterCol);
+        InvalidateRect(tocTreeView->hwnd, nullptr, TRUE);
+        if (win->hwndTocBox) {
+            InvalidateRect(win->hwndTocBox, nullptr, TRUE);
+        }
     }
 
     auto favTreeView = win->favTreeView;
@@ -752,6 +757,10 @@ void UpdateControlsColors(MainWindow* win) {
         favTreeView->SetColors(txtCol, bgCol);
         win->favLabelWithClose->SetColors(txtCol, bgCol);
         win->favSplitter->SetColors(kColorNoChange, splitterCol);
+        InvalidateRect(favTreeView->hwnd, nullptr, TRUE);
+        if (win->hwndFavBox) {
+            InvalidateRect(win->hwndFavBox, nullptr, TRUE);
+        }
     }
 }
 

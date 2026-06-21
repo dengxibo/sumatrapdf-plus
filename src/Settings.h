@@ -74,7 +74,7 @@ struct FixedPageUI {
 
 // customization options for eBookUI
 struct EBookUI {
-    // font size in pt; 0 means automatic (11 pt)
+    // font size, default 8.0
     float fontSize;
     // page width in pt for flowed ebooks. 0 means automatic reader-style
     // width
@@ -363,8 +363,9 @@ struct FileState {
     RenderedBitmap* thumbnail;
     // runtime-only: whether thumbnail was generated for dark theme
     bool thumbnailDarkTheme;
-    // runtime-only: cached result of IsThumbnailMostlyBlank (home page paint)
+    // runtime-only: cached result of IsThumbnailMostlyBlank
     bool thumbnailBlankKnown;
+    // runtime-only: whether thumbnail is mostly blank
     bool thumbnailIsBlank;
     // temporary value needed for FileHistory::cmpOpenCount
     size_t index;
@@ -507,6 +508,8 @@ struct GlobalPrefs {
     int tabWidth;
     // the name of the theme to use
     char* theme;
+    // the dark theme to use when toggling from light mode
+    char* lastDarkTheme;
     // if both favorites and bookmarks parts of sidebar are visible, this
     // is the height of bookmarks (table of contents) part
     int tocDy;
@@ -920,6 +923,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, preventSleepInFullscreen), SettingType::Bool, true},
     {offsetof(GlobalPrefs, tabWidth), SettingType::Int, 300},
     {offsetof(GlobalPrefs, theme), SettingType::String, (intptr_t)""},
+    {offsetof(GlobalPrefs, lastDarkTheme), SettingType::String, (intptr_t)"Dark-Dracula"},
     {offsetof(GlobalPrefs, tocDy), SettingType::Int, 0},
     {offsetof(GlobalPrefs, toolbarSize), SettingType::Int, 18},
     {offsetof(GlobalPrefs, treeFontName), SettingType::String, (intptr_t)"automatic"},
@@ -976,17 +980,18 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment, (intptr_t)"Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 92, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 93, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0ReloadMo"
     "difiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSession\0ReuseInstance\0ShowMenubar\0ShowMe"
     "nubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0OfflineDictionaryPath\0EnableDoubleClickWordLookup\0ShowFavori"
     "tes\0ShowToc\0ShowLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0FastScrollOver"
-    "Scrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0UIFontSize\0"
-    "DisableAntiAlias\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBook"
-    "UI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0Sele"
-    "ctionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0W"
-    "indowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0OpenCountWeek\0PropWinPos\0\0"};
+    "Scrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSiz"
+    "e\0UIFontSize\0DisableAntiAlias\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBook"
+    "UI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Ful"
+    "lscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip"
+    "\0WindowState\0WindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0OpenCountWeek\0PropWinPos\0"
+    "\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)""},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)""},

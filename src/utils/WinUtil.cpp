@@ -1048,7 +1048,8 @@ static HWND FindStoredBrowserHwnd(const char* key) {
         return nullptr;
     }
     for (int i = 0; i < kBrowserReuseMax; i++) {
-        if (gBrowserReuseKeys[i] && str::Eq(gBrowserReuseKeys[i], key) && IsBrowserTopLevelWindow(gBrowserReuseHwnds[i])) {
+        if (gBrowserReuseKeys[i] && str::Eq(gBrowserReuseKeys[i], key) &&
+            IsBrowserTopLevelWindow(gBrowserReuseHwnds[i])) {
             return gBrowserReuseHwnds[i];
         }
     }
@@ -2701,10 +2702,37 @@ BitmapPixels* GetBitmapPixels(HBITMAP hbmp) {
     return res;
 }
 
-void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor) {
-    if ((textColor & 0xFFFFFF) == WIN_COL_BLACK && (bgColor & 0xFFFFFF) == WIN_COL_WHITE) {
+void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLORREF linkColor) {
+    if ((textColor & 0xFFFFFF) == WIN_COL_BLACK && (bgColor & 0xFFFFFF) == WIN_COL_WHITE && !linkColor) {
         return;
     }
+
+    byte linkR = 0, linkG = 0, linkB = 0;
+    bool recolorLinks = linkColor != 0;
+    if (recolorLinks) {
+        UnpackColor(linkColor, linkR, linkG, linkB);
+    }
+
+    auto isLikelyLinkPixel = [](u8 r, u8 g, u8 b) -> bool {
+        int maxRG = r > g ? r : g;
+        if (b < maxRG + 25) {
+            return false;
+        }
+        if (b < 72) {
+            return false;
+        }
+        int lum = (int(r) + g + b) / 3;
+        if (lum > 230) {
+            return false;
+        }
+        return true;
+    };
+
+    auto setLinkPixel = [&](u8* px) {
+        px[0] = linkB;
+        px[1] = linkG;
+        px[2] = linkR;
+    };
 
     // color order in DIB is blue-green-red-alpha
     byte rt, gt, bt;
@@ -2724,9 +2752,14 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor) {
         size.dx * 4 == info.dsBm.bmWidthBytes) {
         int bmpBytes = size.dx * size.dy * 4;
         u8* bmpData = (u8*)info.dsBm.bmBits;
-        for (int i = 0; i < bmpBytes; i++) {
-            int k = i % 4;
-            bmpData[i] = (u8)(base[k] + mul255(bmpData[i], diff[k]));
+        for (int i = 0; i < bmpBytes; i += 4) {
+            if (recolorLinks && isLikelyLinkPixel(bmpData[i + 2], bmpData[i + 1], bmpData[i])) {
+                setLinkPixel(&bmpData[i]);
+                continue;
+            }
+            for (int k = 0; k < 4; k++) {
+                bmpData[i + k] = (u8)(base[k] + mul255(bmpData[i + k], diff[k]));
+            }
         }
         return;
     }
@@ -2736,11 +2769,16 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor) {
         info.dsBm.bmWidthBytes >= size.dx * 3) {
         u8* bmpData = (u8*)info.dsBm.bmBits;
         for (int y = 0; y < size.dy; y++) {
-            for (int x = 0; x < size.dx * 3; x++) {
-                int k = x % 3;
-                bmpData[x] = (u8)(base[k] + mul255(bmpData[x], diff[k]));
+            for (int x = 0; x < size.dx; x++) {
+                u8* px = bmpData + y * info.dsBm.bmWidthBytes + x * 3;
+                if (recolorLinks && isLikelyLinkPixel(px[2], px[1], px[0])) {
+                    setLinkPixel(px);
+                    continue;
+                }
+                for (int k = 0; k < 3; k++) {
+                    px[k] = (u8)(base[k] + mul255(px[k], diff[k]));
+                }
             }
-            bmpData += info.dsBm.bmWidthBytes;
         }
         return;
     }
@@ -2753,6 +2791,15 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor) {
         DeleteObject(SelectObject(hDC, hbmp));
         uint num = GetDIBColorTable(hDC, 0, dimof(palette), palette);
         for (uint i = 0; i < num; i++) {
+            u8 r = palette[i].rgbRed;
+            u8 g = palette[i].rgbGreen;
+            u8 b = palette[i].rgbBlue;
+            if (recolorLinks && isLikelyLinkPixel(r, g, b)) {
+                palette[i].rgbRed = linkR;
+                palette[i].rgbGreen = linkG;
+                palette[i].rgbBlue = linkB;
+                continue;
+            }
             palette[i].rgbRed = (u8)(base[2] + mul255(palette[i].rgbRed, diff[2]));
             palette[i].rgbGreen = (u8)(base[1] + mul255(palette[i].rgbGreen, diff[1]));
             palette[i].rgbBlue = (u8)(base[0] + mul255(palette[i].rgbBlue, diff[0]));
@@ -2778,9 +2825,14 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor) {
     ReportIf(!bmpData);
 
     if (GetDIBits(hDC, hbmp, 0, size.dy, bmpData, &bmi, DIB_RGB_COLORS)) {
-        for (int i = 0; i < bmpBytes; i++) {
-            int k = i % 4;
-            bmpData[i] = (u8)(base[k] + mul255(bmpData[i], diff[k]));
+        for (int i = 0; i < bmpBytes; i += 4) {
+            if (recolorLinks && isLikelyLinkPixel(bmpData[i + 2], bmpData[i + 1], bmpData[i])) {
+                setLinkPixel(&bmpData[i]);
+                continue;
+            }
+            for (int k = 0; k < 4; k++) {
+                bmpData[i + k] = (u8)(base[k] + mul255(bmpData[i + k], diff[k]));
+            }
         }
         SetDIBits(hDC, hbmp, 0, size.dy, bmpData, &bmi, DIB_RGB_COLORS);
     }

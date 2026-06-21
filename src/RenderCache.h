@@ -117,6 +117,7 @@ struct RenderCache {
 
     COLORREF textColor = 0;
     COLORREF backgroundColor = 0;
+    COLORREF linkColor = 0;
 
     /* Interface for page rendering thread */
     HANDLE startRendering = nullptr; // semaphore, signaled once per queued request

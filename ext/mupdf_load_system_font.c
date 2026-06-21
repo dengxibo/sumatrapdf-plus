@@ -987,10 +987,22 @@ static int is_source_han_serif_sc_request(const char* fontname) {
     norm[0] = '\0';
     normalize_font_name_key(fontname, norm, sizeof norm);
     static const char* kNames[] = {
-        "sourcehanserifsc", "sourcehanserifscregular", "sourcehanserifcn",      "sourcehanserifcnregular",
-        "sourcehanserif",   "notoserifcjksc",          "notoserifcjkscregular",
+        "sourcehanserifsc",
+        "sourcehanserifscregular",
+        "sourcehanserifcn",
+        "sourcehanserifcnregular",
+        "sourcehanserif",
+        "notoserifcjksc",
+        "notoserifcjkscregular",
         /* Windows / publisher songti names -> bundled Source Han Serif SC (matches MOBI/GDI+ path) */
-        "simsun", "nsimsun", "stsong", "stsongti", "stsonglight", "songti", "songtisc", "songtitc",
+        "simsun",
+        "nsimsun",
+        "stsong",
+        "stsongti",
+        "stsonglight",
+        "songti",
+        "songtisc",
+        "songtitc",
         NULL,
     };
     for (int i = 0; kNames[i]; i++) {

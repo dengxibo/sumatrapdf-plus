@@ -170,7 +170,7 @@ static bool LookupDecodeAudioToPcm(const u8* data, size_t size, const char* ext,
         MF_OBJECT_TYPE objType = MF_OBJECT_INVALID;
         IUnknown* sourceUnk = nullptr;
         hr = resolver->CreateObjectFromByteStream(byteStream, urlW, MF_RESOLUTION_MEDIASOURCE, nullptr, &objType,
-                                                 &sourceUnk);
+                                                  &sourceUnk);
         resolver->Release();
         if (SUCCEEDED(hr) && sourceUnk) {
             IMFMediaSource* mediaSource = nullptr;
