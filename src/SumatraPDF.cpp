@@ -87,6 +87,7 @@
 #include "Tabs.h"
 #include "Toolbar.h"
 #include "FindBar.h"
+#include "FindWindow.h"
 #include "WordLookup.h"
 #include "Translations.h"
 #include "uia/Provider.h"
@@ -2549,6 +2550,7 @@ void UpdateAfterThemeChange() {
         win->lastLayoutState = {};
         RelayoutFrame(win);
         RecreateFindBar(win);
+        UpdateFindWindowTheme(win);
         if (UseDarkModeLib()) {
             if (ThemeUsesDarkChrome()) {
                 DarkMode::setDarkTitleBarEx(win->hwndFrame, true);
