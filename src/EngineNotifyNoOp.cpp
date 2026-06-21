@@ -24,3 +24,7 @@ COLORREF ThemePageRenderColors(COLORREF& bg) {
     bg = WIN_COL_WHITE;
     return WIN_COL_BLACK;
 }
+
+COLORREF ThemeWindowLinkColor() {
+    return RgbToCOLORREF(0x0020a0);
+}
