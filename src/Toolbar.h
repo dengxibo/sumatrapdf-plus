@@ -16,6 +16,8 @@ bool ShouldShowToolbar(MainWindow*);
 void ShowOrHideToolbar(MainWindow*);
 void UpdateToolbarState(MainWindow*);
 void UpdateToolbarAfterThemeChange(MainWindow*);
+HIMAGELIST BuildStdToolbarImageList(int dx);
+Rect GetToolbarButtonScreenRect(MainWindow*, int cmdId);
 void UpdateDoubleClickWordLookupToolbarButton(MainWindow*);
 void UpdatePdfDocumentColorModeToolbarButton(MainWindow*);
 bool NeedsDocumentColorModeUI(MainWindow* win);

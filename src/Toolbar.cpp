@@ -35,6 +35,7 @@ extern "C" {
 #include "Menu.h"
 #include "SearchAndDDE.h"
 #include "Toolbar.h"
+#include "FindBar.h"
 #include "TextToSpeech.h"
 
 #include "Translations.h"
@@ -88,10 +89,7 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::ZoomOut, CmdZoomOut, _TRN("Zoom Out")},
     {TbIcon::ZoomIn, CmdZoomIn, _TRN("Zoom In")},
     {TbIcon::None, 0, nullptr}, // separator before find
-    {TbIcon::None, CmdFindFirst, nullptr},
-    {TbIcon::SearchPrev, CmdFindPrev, _TRN("Find Previous")},
-    {TbIcon::SearchNext, CmdFindNext, _TRN("Find Next")},
-    {TbIcon::MatchCase, CmdFindToggleMatchCase, _TRN("Toggle Match Case")},
+    {TbIcon::Search, CmdFindFirst, _TRN("Find")},
     {TbIcon::Dictionary, CmdToggleDoubleClickWordLookup, _TRN("Toggle Double-Click Word Lookup")},
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
     {TbIcon::DocColorAuto, CmdSetPdfDocumentColorModeAuto,
@@ -1015,6 +1013,7 @@ static LRESULT CALLBACK WndProcToolbar(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
     return CallWindowProc(DefWndProcToolbar, hwnd, msg, wp, lp);
 }
 
+#if 0
 static WNDPROC DefWndProcEditSearch = nullptr;
 static LRESULT CALLBACK WndProcEditSearch(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     MainWindow* win = FindMainWindowByHwnd(hwnd);
@@ -1176,48 +1175,10 @@ static bool LayoutToolbarFindControls(MainWindow* win, Size size, int findDy, in
     return true;
 }
 
+#endif
+
 void UpdateToolbarFindText(MainWindow* win) {
-    if (!win->hwndToolbar) {
-        return;
-    }
-    if (!IsWindowVisible(win->hwndFrame)) {
-        HwndSetVisibility(win->hwndFindLabel, false);
-        HwndSetVisibility(win->hwndFindBg, false);
-        HwndSetVisibility(win->hwndFindEdit, false);
-        return;
-    }
-    bool showUI = NeedsFindUI(win);
-    HwndSetVisibility(win->hwndFindLabel, showUI);
-    HwndSetVisibility(win->hwndFindBg, showUI);
-    HwndSetVisibility(win->hwndFindEdit, showUI);
-    if (!showUI) {
-        return;
-    }
-
-    const char* text = _TRA("Find:");
-    HwndSetText(win->hwndFindLabel, text);
-
-    SendMessageW(win->hwndToolbar, TB_AUTOSIZE, 0, 0);
-    UpdateWindow(win->hwndToolbar);
-
-    Rect findWndRect = WindowRect(win->hwndFindBg);
-    int findDy = findWndRect.dy;
-    int minFindBoxDx = findWndRect.dx;
-    if (minFindBoxDx <= 0) {
-        minFindBoxDx = HwndMeasureText(win->hwndFrame, "this is a story of my", nullptr).dx;
-    }
-
-    Size size = HwndMeasureText(win->hwndFindLabel, text);
-    size.dx += DpiScale(win->hwndFrame, kTextPaddingRight);
-    size.dx += DpiScale(win->hwndFrame, kButtonSpacingX);
-
-    if (!LayoutToolbarFindControls(win, size, findDy, minFindBoxDx)) {
-        SendMessageW(win->hwndToolbar, TB_AUTOSIZE, 0, 0);
-        UpdateWindow(win->hwndToolbar);
-        LayoutToolbarFindControls(win, size, findDy, minFindBoxDx);
-    }
-
-    InvalidateRect(win->hwndToolbar, nullptr, FALSE);
+    FindBarReposition(win);
 }
 
 void UpdateToolbarState(MainWindow* win) {
@@ -1243,6 +1204,7 @@ void UpdateToolbarState(MainWindow* win) {
     SetToolbarButtonCheckedState(win, CmdToggleBookmarks, win->tocVisible);
 }
 
+#if 0
 static void CreateFindBox(MainWindow* win, HFONT hfont, int iconDy) {
     bool isRtl = IsUIRtl();
     int findBoxDx = HwndMeasureText(win->hwndFrame, "this is a story of my", hfont).dx;
@@ -1290,6 +1252,7 @@ static void CreateFindBox(MainWindow* win, HFONT hfont, int iconDy) {
     win->hwndFindEdit = find;
     win->hwndFindBg = findBg;
 }
+#endif
 
 static WNDPROC DefWndProcPageBox = nullptr;
 static LRESULT CALLBACK WndProcPageBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -1472,6 +1435,9 @@ static void CreatePageBox(MainWindow* win, HFONT font, int iconDy) {
 
     HWND pageBg =
         CreateWindowExW(exStyle, WC_STATICW, L"", style, 0, 1, dx, dy, hwndToolbar, (HMENU) nullptr, h, nullptr);
+    if (!DefWndProcEditBg) {
+        DefWndProcEditBg = (WNDPROC)GetWindowLongPtr(pageBg, GWLP_WNDPROC);
+    }
     SetWindowLongPtr(pageBg, GWLP_WNDPROC, (LONG_PTR)WndProcEditBg);
     HWND label = CreateWindowExW(0, WC_STATICW, L"", style, 0, 1, 0, 0, hwndToolbar, (HMENU) nullptr, h, nullptr);
     HWND total = CreateWindowExW(0, WC_STATICW, L"", style, 0, 1, 0, 0, hwndToolbar, (HMENU) nullptr, h, nullptr);
@@ -1587,6 +1553,24 @@ static HBITMAP BuildIconsBitmap(int dx, int dy) {
 
     fz_drop_context_windows(ctx);
     return hbmp;
+}
+
+HIMAGELIST BuildStdToolbarImageList(int dx) {
+    HIMAGELIST himl = ImageList_Create(dx, dx, ILC_COLOR32, (int)TbIcon::kMax, 0);
+    HBITMAP hbmp = BuildIconsBitmap(dx, dx);
+    ImageList_Add(himl, hbmp, nullptr);
+    DeleteObject(hbmp);
+    return himl;
+}
+
+Rect GetToolbarButtonScreenRect(MainWindow* win, int cmdId) {
+    RECT r{};
+    if (!win->hwndToolbar) {
+        return {};
+    }
+    TbGetRectById(win->hwndToolbar, cmdId, &r);
+    MapWindowPoints(win->hwndToolbar, HWND_DESKTOP, (POINT*)&r, 2);
+    return Rect{r.left, r.top, r.right - r.left, r.bottom - r.top};
 }
 
 constexpr int kDefaultIconSize = 18;
@@ -1798,7 +1782,10 @@ void CreateToolbar(MainWindow* win) {
     HwndSetFont(hwndToolbar, font);
 
     CreatePageBox(win, font, iconSize);
-    CreateFindBox(win, font, iconSize);
+    if (!DefWndProcToolbar) {
+        DefWndProcToolbar = (WNDPROC)GetWindowLongPtr(win->hwndToolbar, GWLP_WNDPROC);
+    }
+    SetWindowLongPtr(win->hwndToolbar, GWLP_WNDPROC, (LONG_PTR)WndProcToolbar);
 
     UpdateToolbarPageText(win, -1);
     UpdateToolbarFindText(win);
@@ -1815,9 +1802,6 @@ void ReCreateToolbar(MainWindow* win) {
         HwndDestroyWindowSafe(&win->hwndPageEdit);
         HwndDestroyWindowSafe(&win->hwndPageBg);
         HwndDestroyWindowSafe(&win->hwndPageTotal);
-        HwndDestroyWindowSafe(&win->hwndFindLabel);
-        HwndDestroyWindowSafe(&win->hwndFindEdit);
-        HwndDestroyWindowSafe(&win->hwndFindBg);
         HwndDestroyWindowSafe(&win->hwndToolbar);
         HwndDestroyWindowSafe(&win->hwndReBar);
     }

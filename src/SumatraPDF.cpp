@@ -86,6 +86,7 @@
 #include "TableOfContents.h"
 #include "Tabs.h"
 #include "Toolbar.h"
+#include "FindBar.h"
 #include "WordLookup.h"
 #include "Translations.h"
 #include "uia/Provider.h"
@@ -2094,6 +2095,7 @@ static MainWindow* CreateMainWindow() {
 
     CreateTabbar(win);
     CreateToolbar(win);
+    win->findBar = CreateFindBar(win);
     CreateSidebar(win);
     UpdateFindbox(win);
     if (CanAccessDisk() && !gPluginMode) {

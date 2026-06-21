@@ -33,6 +33,7 @@
 #include "OverlayScrollbar.h"
 #include "SumatraPDF.h"
 #include "MainWindow.h"
+#include "FindBar.h"
 #include "HomePage.h"
 #include "WindowTab.h"
 #include "TableOfContents.h"
@@ -112,6 +113,7 @@ void CreateMovePatternLazy(MainWindow* win) {
 }
 
 MainWindow::~MainWindow() {
+    DeleteFindBar(this);
     KillTimer(hwndCanvas, kSmoothScrollTimerID);
     FinishStressTest(this);
 
