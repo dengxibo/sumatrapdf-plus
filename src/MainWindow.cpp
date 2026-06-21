@@ -113,7 +113,6 @@ void CreateMovePatternLazy(MainWindow* win) {
 }
 
 MainWindow::~MainWindow() {
-    DeleteFindBar(this);
     KillTimer(hwndCanvas, kSmoothScrollTimerID);
     FinishStressTest(this);
 
@@ -138,6 +137,17 @@ MainWindow::~MainWindow() {
         }
         uiaProvider->Release();
     }
+
+    DeleteFindBar(this);
+
+    // stop the find-bar match-count background thread before we're freed
+    // (it reads our fields; a pending CountEndTask closes the handle later)
+    if (findCountThread) {
+        InterlockedIncrement(&findCountEpoch);
+        WaitForSingleObject(findCountThread, INFINITE);
+        findCountThread = nullptr;
+    }
+    str::FreePtr(&findCountText);
 
     delete linkHandler;
     delete buffer;
