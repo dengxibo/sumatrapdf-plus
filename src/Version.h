@@ -55,3 +55,7 @@
 #define kPublisherStr      "Krzysztof Kowalczyk"
 
 #define kAppName        "Sumatra PDF Plus"
+
+#define kPlusRepoURL    "https://github.com/dengxibo/sumatrapdf-plus"
+#define kPlusIssuesURL  "https://github.com/dengxibo/sumatrapdf-plus/issues"
+#define kPlusReadmeURL  "https://github.com/dengxibo/sumatrapdf-plus/blob/main/readme.txt"

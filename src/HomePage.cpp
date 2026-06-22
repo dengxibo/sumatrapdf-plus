@@ -344,14 +344,18 @@ struct AboutLayoutInfoEl {
 };
 
 static AboutLayoutInfoEl gAboutLayoutInfo[] = {
-    {"website", "SumatraPDF website", kWebsiteURL},
-    {"manual", "SumatraPDF manual", kManualURL},
-    {"forums", "SumatraPDF forums", "https://github.com/sumatrapdfreader/sumatrapdf/discussions"},
+    {"note", "Community fork; not affiliated with sumatrapdfreader.org", nullptr},
+    {"Plus source", "Sumatra PDF Plus on GitHub", kPlusRepoURL},
+    {"Plus issues", "Report bugs (this fork only)", kPlusIssuesURL},
+    {"Plus guide", "User guide (readme.txt)", kPlusReadmeURL},
+    {"official site", "SumatraPDF website (upstream)", kWebsiteURL},
+    {"official manual", "SumatraPDF manual (upstream)", kManualURL},
+    {"official forums", "SumatraPDF forums (upstream)",
+     "https://github.com/sumatrapdfreader/sumatrapdf/discussions"},
     {"programming", "The Programmers", "https://github.com/sumatrapdfreader/sumatrapdf/blob/master/AUTHORS"},
     {"licenses", "Various Open Source", "https://github.com/sumatrapdfreader/sumatrapdf/blob/master/AUTHORS"},
 #if defined(GIT_COMMIT_ID_STR)
-    {"last change", "git commit " GIT_COMMIT_ID_STR,
-     "https://github.com/sumatrapdfreader/sumatrapdf/commit/" GIT_COMMIT_ID_STR},
+    {"last change", "git commit " GIT_COMMIT_ID_STR, kPlusRepoURL "/commit/" GIT_COMMIT_ID_STR},
 #endif
 #if defined(PRE_RELEASE_VER)
     {"a note", "Pre-release version, for testing only!", nullptr},

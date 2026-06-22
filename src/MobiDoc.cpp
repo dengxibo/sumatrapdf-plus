@@ -1334,6 +1334,7 @@ struct NcxEntry {
     int parent = -1;
     int child1 = -1;
     int childn = -1;
+    char* entryName = nullptr;
 };
 
 static void NcxStoreTag(NcxEntry& e, u8 tag, const u32* vals, int nv) {
@@ -1471,38 +1472,127 @@ static void NcxEncodeBase32(u32 value, int width, char* out, size_t outSize) {
 }
 
 // returns a heap-allocated UTF-8 label (caller frees), or nullptr
-static char* NcxLookupLabel(const Vec<ByteSlice>& cncx, u32 noffs, int textEncoding) {
-    u32 recIdx = noffs >> 16;
-    u32 off = noffs & 0xffff;
-    if ((int)recIdx >= cncx.Size()) {
+static char* NcxLabelBytesToUtf8(const char* raw, size_t slen, int textEncoding) {
+    if (!raw || slen == 0) {
         return nullptr;
     }
-    const u8* d = cncx[(size_t)recIdx].data();
-    size_t len = cncx[(size_t)recIdx].size();
-    if (!d || off >= len) {
+    char* tmp = (char*)malloc(slen + 1);
+    if (!tmp) {
         return nullptr;
     }
-    size_t p = off;
-    u32 slen = NcxReadVarWidth(d, len, p);
-    if (slen == 0 || p + slen > len) {
-        if (p >= len) {
-            return nullptr;
-        }
-        slen = (u32)(len - p);
+    memcpy(tmp, raw, slen);
+    tmp[slen] = 0;
+    const u8* utf8Check = (const u8*)tmp;
+    if (isLegalUTF8String(&utf8Check, utf8Check + slen)) {
+        return tmp;
     }
-    char* raw = (char*)malloc((size_t)slen + 1);
-    if (!raw) {
-        return nullptr;
-    }
-    memcpy(raw, d + p, slen);
-    raw[slen] = 0;
     if (textEncoding != CP_UTF8) {
-        TempStr u = strconv::ToMultiByteTemp(raw, textEncoding, CP_UTF8);
-        char* res = str::Dup(u ? u : raw);
-        free(raw);
-        return res;
+        TempStr u = strconv::ToMultiByteTemp(tmp, textEncoding, CP_UTF8);
+        if (u) {
+            free(tmp);
+            return str::Dup(u);
+        }
     }
-    return raw;
+    TempStr u = strconv::UnknownToUtf8Temp(tmp, slen);
+    free(tmp);
+    return u ? str::Dup(u) : nullptr;
+}
+
+struct NcxCtocMap {
+    Vec<u32> keys;
+    Vec<char*> labels;
+};
+
+static void NcxFreeCtocMap(NcxCtocMap& map) {
+    for (char* label : map.labels) {
+        free(label);
+    }
+    map.keys.Reset();
+    map.labels.Reset();
+}
+
+// Build the CNCX string table the same way as KindleUnpack readCTOC(): keys are byte
+// offsets into a virtual CNCX blob (each record adds 0x10000 to the key space).
+static void NcxBuildCtocMap(const Vec<ByteSlice>& cncx, int textEncoding, NcxCtocMap& out) {
+    u32 recOff = 0;
+    for (int ri = 0; ri < cncx.Size(); ri++) {
+        const u8* d = cncx[(size_t)ri].data();
+        size_t len = cncx[(size_t)ri].size();
+        if (!d || len == 0) {
+            recOff += 0x10000;
+            continue;
+        }
+        size_t offset = 0;
+        while (offset < len) {
+            if (d[offset] == 0) {
+                break;
+            }
+            u32 key = recOff + (u32)offset;
+            size_t p = offset;
+            u32 slen = NcxReadVarWidth(d, len, p);
+            if (slen == 0 || p + slen > len) {
+                break;
+            }
+            char* label = NcxLabelBytesToUtf8((const char*)(d + p), slen, textEncoding);
+            if (label) {
+                out.keys.Append(key);
+                out.labels.Append(label);
+            }
+            offset = p + slen;
+        }
+        recOff += 0x10000;
+    }
+}
+
+static char* NcxLookupCtocLabel(const NcxCtocMap& map, u32 noffs) {
+    for (int i = 0; i < map.keys.Size(); i++) {
+        if (map.keys[i] == noffs) {
+            return str::Dup(map.labels[i]);
+        }
+    }
+    return nullptr;
+}
+
+static bool NcxEntryLabelLooksValid(const char* label) {
+    if (!label || !*label) {
+        return false;
+    }
+    int suspicious = 0;
+    int len = 0;
+    for (const u8* p = (const u8*)label; *p; p++, len++) {
+        if (*p == '?') {
+            suspicious++;
+        }
+    }
+    if (len == 0) {
+        return false;
+    }
+    if (suspicious == len) {
+        return false;
+    }
+    return suspicious * 3 <= len * 2;
+}
+
+static void NcxFreeEntries(Vec<NcxEntry>& entries) {
+    for (NcxEntry& e : entries) {
+        free(e.entryName);
+        e.entryName = nullptr;
+    }
+    entries.Reset();
+}
+
+struct NcxTocItem {
+    char* label = nullptr;
+    char link[80]{};
+    int level = 1;
+};
+
+static void NcxFreeTocItems(Vec<NcxTocItem>& items) {
+    for (NcxTocItem& item : items) {
+        free(item.label);
+        item.label = nullptr;
+    }
+    items.Reset();
 }
 
 bool MobiDoc::ParseNcxToc(EbookTocVisitor* visitor) {
@@ -1538,6 +1628,9 @@ bool MobiDoc::ParseNcxToc(EbookTocVisitor* visitor) {
         }
         cncx.Append(pdbReader->GetRecord(rn));
     }
+
+    NcxCtocMap ctocMap;
+    NcxBuildCtocMap(cncx, textEncoding, ctocMap);
 
     // 3. entry records: ncxIndexRec+1 .. ncxIndexRec+count
     Vec<NcxEntry> entries;
@@ -1576,41 +1669,70 @@ bool MobiDoc::ParseNcxToc(EbookTocVisitor* visitor) {
                 continue;
             }
             NcxEntry e;
+            if (textLen > 0) {
+                // INDX entry names are UTF-8 in practice (KindleUnpack decodes them as utf-8).
+                e.entryName = NcxLabelBytesToUtf8((const char*)(rd + startOff + 1), textLen, CP_UTF8);
+                if (!e.entryName) {
+                    e.entryName = NcxLabelBytesToUtf8((const char*)(rd + startOff + 1), textLen, textEncoding);
+                }
+            }
             NcxParseEntryTags(controlByteCount, tags, rd, rlen, tagStart, e);
             entries.Append(e);
         }
     }
 
     if (entries.Size() == 0) {
+        NcxFreeCtocMap(ctocMap);
         return false;
     }
 
-    // 4. emit ToC items in order; build hierarchy from hlvl (depth)
-    int emitted = 0;
+    // 4. build ToC items; validate labels before emitting
+    Vec<NcxTocItem> items;
+    int validLabels = 0;
     for (int i = 0; i < entries.Size(); i++) {
         NcxEntry& e = entries[i];
         char* label = nullptr;
         if (e.noffs >= 0) {
-            label = NcxLookupLabel(cncx, (u32)e.noffs, textEncoding);
+            label = NcxLookupCtocLabel(ctocMap, (u32)e.noffs);
         }
-        char link[80];
-        link[0] = 0;
+        if (!label && e.entryName) {
+            label = str::Dup(e.entryName);
+        }
+        if (!label) {
+            label = str::Dup("");
+        }
+        if (NcxEntryLabelLooksValid(label)) {
+            validLabels++;
+        }
+
+        NcxTocItem item;
+        item.label = label;
+        item.level = (e.hlvl >= 0) ? e.hlvl + 1 : 1;
+        item.link[0] = 0;
         if (e.hasPosFid) {
             char fidStr[16], offStr[24];
             NcxEncodeBase32(e.posFid, 4, fidStr, sizeof(fidStr));
             NcxEncodeBase32(e.posOff, 10, offStr, sizeof(offStr));
-            snprintf(link, sizeof(link), "kindle:pos:fid:%s:off:%s", fidStr, offStr);
+            snprintf(item.link, sizeof(item.link), "kindle:pos:fid:%s:off:%s", fidStr, offStr);
         } else if (e.pos >= 0) {
-            snprintf(link, sizeof(link), "%d", e.pos);
+            snprintf(item.link, sizeof(item.link), "%d", e.pos);
         }
-        int level = (e.hlvl >= 0) ? e.hlvl + 1 : 1;
-        const char* name = label ? label : "";
-        visitor->Visit(name, link[0] ? link : nullptr, level);
-        emitted++;
-        free(label);
+        items.Append(item);
     }
 
-    return emitted > 0;
+    NcxFreeEntries(entries);
+    NcxFreeCtocMap(ctocMap);
+
+    if (validLabels < items.Size() / 2) {
+        NcxFreeTocItems(items);
+        return false;
+    }
+
+    for (NcxTocItem& item : items) {
+        visitor->Visit(item.label, item.link[0] ? item.link : nullptr, item.level);
+    }
+    NcxFreeTocItems(items);
+    return true;
 }
 
 bool MobiDoc::HasToc() {
@@ -1700,19 +1822,20 @@ struct MobiTocWalker {
     EbookTocVisitor* visitor = nullptr;
     int itemLevel = 0;
     int visitedCount = 0; // number of ToC items actually emitted
+    bool done = false;      // stop at the first page break after the ToC block
 
     void Walk(const GumboNode* node);
     void WalkChildren(const GumboVector* children);
 };
 
 void MobiTocWalker::WalkChildren(const GumboVector* children) {
-    for (unsigned int i = 0; i < children->length; i++) {
+    for (unsigned int i = 0; i < children->length && !done; i++) {
         Walk((const GumboNode*)children->data[i]);
     }
 }
 
 void MobiTocWalker::Walk(const GumboNode* node) {
-    if (!node) {
+    if (!node || done) {
         return;
     }
     if (node->type == GUMBO_NODE_DOCUMENT) {
@@ -1720,6 +1843,10 @@ void MobiTocWalker::Walk(const GumboNode* node) {
         return;
     }
     if (node->type != GUMBO_NODE_ELEMENT) {
+        return;
+    }
+    if (GumboTagNameIs(node, "mbp:pagebreak") || GumboTagNameIs(node, "pagebreak")) {
+        done = true;
         return;
     }
     if (GumboTagNameIs(node, "a")) {
@@ -1747,28 +1874,22 @@ void MobiTocWalker::Walk(const GumboNode* node) {
     }
 }
 
-bool MobiDoc::ParseToc(EbookTocVisitor* visitor) {
-    if (!HasToc()) {
-        return ParseNcxToc(visitor);
+static bool ParseInlineHtmlToc(MobiDoc* mb, EbookTocVisitor* visitor) {
+    if (!mb->HasToc()) {
+        return false;
     }
 
-    // there doesn't seem to be a standard for Mobi ToCs, so we try to
-    // determine the author's intentions by looking at commonly used tags
     GumboOptions opts = GumboMakeOptions();
-    const char* tocStart = doc->Get() + docTocIndex;
-    size_t tocLen = doc->size() - docTocIndex;
-    // The ToC always sits at the very start of this region and is delimited by an
-    // <mbp:pagebreak> shortly after. Parsing the whole (potentially ~18MB) rest of
-    // the document just to find nothing is extremely slow, so bound the parse: a
-    // real ToC is tiny and well within this limit, and the walker stops at the
-    // first pagebreak anyway.
+    size_t tocIndex = mb->GetTocFilePos();
+    const char* tocStart = mb->doc->Get() + tocIndex;
+    size_t tocLen = mb->doc->size() - tocIndex;
     const size_t kMaxTocParseLen = 2 * 1024 * 1024; // 2 MB
     if (tocLen > kMaxTocParseLen) {
         tocLen = kMaxTocParseLen;
     }
     GumboOutput* output = gumbo_parse_with_options(&opts, tocStart, tocLen);
     if (!output) {
-        return ParseNcxToc(visitor);
+        return false;
     }
 
     MobiTocWalker walker;
@@ -1776,12 +1897,22 @@ bool MobiDoc::ParseToc(EbookTocVisitor* visitor) {
     walker.Walk(output->document);
 
     gumbo_destroy_output(&opts, output);
+    return walker.visitedCount > 0;
+}
 
-    if (walker.visitedCount > 0) {
+bool MobiDoc::ParseToc(EbookTocVisitor* visitor) {
+    // Prefer NCX when available; fall back to inline HTML when NCX labels look corrupt.
+    if (ncxIndexRec != (u32)-1 && ncxIndexRec != 0) {
+        if (ParseNcxToc(visitor)) {
+            return true;
+        }
+    }
+
+    if (ParseInlineHtmlToc(this, visitor)) {
         return true;
     }
-    // inline HTML had no usable ToC anchors: fall back to the NCX index
-    return ParseNcxToc(visitor);
+
+    return false;
 }
 
 bool MobiDoc::IsSupportedFileType(Kind kind) {
