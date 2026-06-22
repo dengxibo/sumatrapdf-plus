@@ -249,7 +249,8 @@ enum {
     CmdReadAloudFromTopPage = 438,
     CmdReadAloudFromCursor = 439,
     CmdReadAloudSelection = 440,
-    CmdNone = 441,
+    CmdFindToggleMatchWholeWord = 441,
+    CmdNone = 442,
 
     /* range for file history */
     CmdFileHistoryFirst,

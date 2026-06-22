@@ -1330,6 +1330,32 @@ again3:
     }
 }
 
+// returns true if the command only makes sense when a document is open
+// https://github.com/sumatrapdfreader/sumatrapdf/issues/5657
+bool CmdRequiresDocument(int cmdId) {
+    if (cmdIdInList(disableIfNoDocument)) {
+        return true;
+    }
+    if (cmdId >= CmdZoomFirst && cmdId <= CmdZoomLast) {
+        return true;
+    }
+    switch (cmdId) {
+        case CmdPrint:
+        case CmdFindNext:
+        case CmdFindPrev:
+        case CmdFindNextSel:
+        case CmdFindPrevSel:
+        case CmdFindToggleMatchCase:
+        case CmdFindToggleMatchWholeWord:
+        case CmdZoomIn:
+        case CmdZoomOut:
+        case CmdZoomFitWidthAndContinuous:
+        case CmdZoomFitPageAndSinglePage:
+            return true;
+    }
+    return false;
+}
+
 // returns [remove, disable] state of the command
 std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
     bool remove = false;

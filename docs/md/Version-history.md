@@ -150,6 +150,7 @@ Available in [pre-release](https://www.sumatrapdfreader.org/prerelease) builds.
 - fix Edit Annotations window not restoring to the correct monitor in multi-monitor setups
 - use `GetFileAttributesEx` instead of opening files for change detection on network drives, avoiding Windows Defender re-scans
 - fix toolbar page number misalignment when `PrinterAccess` is revoked in `sumatrapdfrestrict.ini`
+- add a **Match whole word** toggle to the Find bar (next to **Match Case**) so a search only matches complete words (fixes #4295)
 
 ## 3.6.1 (2026-04-06)
 

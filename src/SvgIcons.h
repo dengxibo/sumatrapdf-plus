@@ -38,6 +38,7 @@ enum class TbIcon {
     Close,
     ArrowsDiagonal,
     ArrowsDiagonalMinimize,
+    MatchWholeWord,
     kMax
 };
 

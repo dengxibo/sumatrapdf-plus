@@ -299,6 +299,7 @@ static bool IsCmdAvailable(MainWindow* win, int cmdId) {
         case CmdFindNext:
         case CmdFindPrev:
         case CmdFindToggleMatchCase:
+        case CmdFindToggleMatchWholeWord:
             return NeedsFindUI(win);
         case PageInfoId:
             return true;
@@ -402,7 +403,8 @@ static TBBUTTON TbButtonFromButtonInfo(const ToolbarButtonInfo& bi, bool noTrans
     if (bi.cmdId == CmdReadAloud) {
         b.fsStyle |= BTNS_DROPDOWN;
     }
-    if (bi.cmdId == CmdFindToggleMatchCase || bi.cmdId == CmdToggleDoubleClickWordLookup ||
+    if (bi.cmdId == CmdFindToggleMatchCase || bi.cmdId == CmdFindToggleMatchWholeWord ||
+        bi.cmdId == CmdToggleDoubleClickWordLookup ||
         bi.cmdId == CmdToggleLightDarkTheme || bi.cmdId == CmdToggleBookmarks ||
         bi.cmdId == CmdZoomFitWidthAndContinuous || bi.cmdId == CmdZoomFitPageAndSinglePage ||
         bi.cmdId == CmdSetPdfDocumentColorModeAuto || bi.cmdId == CmdSetPdfDocumentColorModeBlack ||
