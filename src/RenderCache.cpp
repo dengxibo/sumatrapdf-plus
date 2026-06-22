@@ -16,6 +16,8 @@
 #include "GlobalPrefs.h"
 #include "RenderCache.h"
 #include "TextSelection.h"
+#include "Theme.h"
+#include "PdfDarkMode.h"
 
 #include "utils/Log.h"
 
@@ -45,9 +47,34 @@ static bool ShouldUpdateBitmapColors(EngineBase* engine) {
     if (engine->kind != kindEngineMupdf) {
         return false;
     }
+    if (str::EqI(engine->defaultExt, ".pdf") && ThemeUsesDarkChrome()) {
+        if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
+            return false;
+        }
+        if (PdfDarkModeUsesObjectLevel()) {
+            return false;
+        }
+        return true;
+    }
     // MuPDF-based EPUB pages should keep their own CSS-driven colors.
     // Bitmap recoloring is still needed for PDF/XPS pages.
     return str::EqI(engine->defaultExt, ".pdf") || str::EqI(engine->defaultExt, ".xps");
+}
+
+static bool ShouldPreservePdfImagesInDarkMode(EngineBase* engine) {
+    if (!ThemeUsesDarkChrome()) {
+        return false;
+    }
+    if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Black) {
+        return false;
+    }
+    if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
+        return false;
+    }
+    if (!GetPreservePdfImagesInDarkMode()) {
+        return false;
+    }
+    return ShouldUpdateBitmapColors(engine);
 }
 
 bool gShowTileLayout = false;
@@ -832,7 +859,19 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
 
         if (bmp) {
             if (ShouldUpdateBitmapColors(engine)) {
-                UpdateBitmapColors(bmp->GetBitmap(), cache->textColor, cache->backgroundColor, cache->linkColor);
+                bool preserve = ShouldPreservePdfImagesInDarkMode(engine);
+                Vec<Rect> skipRects;
+                Vec<Rect>* skipRectsPtr = nullptr;
+                if (preserve) {
+                    Size bmpSize = bmp->GetSize();
+                    engine->GetBitmapRecolorSkipRects(req.pageNo, req.zoom, req.rotation, req.pageRect, bmpSize,
+                                                      skipRects);
+                    if (skipRects.Size() > 0) {
+                        skipRectsPtr = &skipRects;
+                    }
+                }
+                UpdateBitmapColors(bmp->GetBitmap(), cache->textColor, cache->backgroundColor, cache->linkColor,
+                                   skipRectsPtr);
             }
             cache->Add(req, bmp);
             req.bmp = nullptr; // ownership transferred to cache

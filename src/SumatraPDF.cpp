@@ -96,6 +96,7 @@
 #include "RegistryPreview.h"
 #include "RegistrySearchFilter.h"
 #include "Theme.h"
+#include "PdfDarkMode.h"
 #include "DarkModeSubclass.h"
 
 #include "utils/Log.h"
@@ -252,8 +253,13 @@ void SetCurrentLang(const char* langCode) {
     if (!langCode) {
         return;
     }
-    str::ReplaceWithCopy(&gGlobalPrefs->uiLanguage, langCode);
-    trans::SetCurrentLangByCode(langCode);
+    const char* canonical = trans::ValidateLangCode(langCode);
+    if (!canonical) {
+        logf("SetCurrentLang: unknown lang code: '%s'\n", langCode);
+        return;
+    }
+    str::ReplaceWithCopy(&gGlobalPrefs->uiLanguage, canonical);
+    trans::SetCurrentLangByCode(canonical);
 }
 
 #define DEFAULT_FILE_PERCEIVED_TYPES "audio,video,webpage"
@@ -844,45 +850,6 @@ static bool IsMenubarVisible() {
     return gGlobalPrefs->showMenubar;
 }
 
-static bool MenuBarButtonsNeedRebuild(HMENU oldMenu, HMENU newMenu) {
-    int oldCount = oldMenu ? GetMenuItemCount(oldMenu) : 0;
-    int newCount = newMenu ? GetMenuItemCount(newMenu) : 0;
-    if (oldCount != newCount) {
-        return true;
-    }
-    MENUITEMINFOW oldMii{};
-    oldMii.cbSize = sizeof(MENUITEMINFOW);
-    oldMii.fMask = MIIM_SUBMENU | MIIM_STRING;
-    MENUITEMINFOW newMii = oldMii;
-    for (int i = 0; i < newCount; i++) {
-        oldMii.dwTypeData = nullptr;
-        oldMii.cch = 0;
-        newMii.dwTypeData = nullptr;
-        newMii.cch = 0;
-        GetMenuItemInfoW(oldMenu, i, TRUE, &oldMii);
-        GetMenuItemInfoW(newMenu, i, TRUE, &newMii);
-        if (!!oldMii.hSubMenu != !!newMii.hSubMenu || oldMii.cch != newMii.cch) {
-            return true;
-        }
-        if (oldMii.cch == 0) {
-            continue;
-        }
-
-        oldMii.cch++;
-        newMii.cch++;
-        AutoFreeWStr oldName(AllocArray<WCHAR>(oldMii.cch));
-        AutoFreeWStr newName(AllocArray<WCHAR>(newMii.cch));
-        oldMii.dwTypeData = oldName;
-        newMii.dwTypeData = newName;
-        GetMenuItemInfoW(oldMenu, i, TRUE, &oldMii);
-        GetMenuItemInfoW(newMenu, i, TRUE, &newMii);
-        if (!str::Eq(oldName, newName)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 void RebuildMenuBarForWindow(MainWindow* win) {
     HMENU oldMenu = win->menu;
     win->menu = BuildMenu(win);
@@ -890,9 +857,7 @@ void RebuildMenuBarForWindow(MainWindow* win) {
         if (win->tabsInTitlebar) {
             // use rebar menu bar instead of native menu when tabs are in titlebar
             if (IsShowingMenuBarRebar(win)) {
-                if (MenuBarButtonsNeedRebuild(oldMenu, win->menu)) {
-                    RebuildMenuBarButtons(win);
-                }
+                RebuildMenuBarButtons(win);
             }
         } else {
             SetMenu(win->hwndFrame, win->menu);
@@ -3454,11 +3419,25 @@ void UpdateDocumentColors() {
     COLORREF bg;
     COLORREF text = ThemePageRenderColors(bg);
     COLORREF link = ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : 0;
+    static bool s_lastPreservePdfImagesInDarkMode = false;
+    static int s_lastPreservePdfImagesMinSize = -1;
+    static int s_lastPdfDarkModeRenderer = -1;
+    static int s_lastPdfDocumentColorMode = -1;
+    bool preservePdfImages = ThemeUsesDarkChrome() && GetPreservePdfImagesInDarkMode();
+    int preserveMinSize = preservePdfImages ? GetPreservePdfImagesMinSize() : 0;
+    int pdfDarkModeRenderer = (int)GetPdfDarkModeRenderer();
+    int pdfDocumentColorMode = (int)GetPdfDocumentColorMode();
 
     if ((text == gRenderCache->textColor) && (bg == gRenderCache->backgroundColor) &&
-        (link == gRenderCache->linkColor)) {
+        (link == gRenderCache->linkColor) && preservePdfImages == s_lastPreservePdfImagesInDarkMode &&
+        preserveMinSize == s_lastPreservePdfImagesMinSize && pdfDarkModeRenderer == s_lastPdfDarkModeRenderer &&
+        pdfDocumentColorMode == s_lastPdfDocumentColorMode) {
         return; // colors didn't change
     }
+    s_lastPreservePdfImagesInDarkMode = preservePdfImages;
+    s_lastPreservePdfImagesMinSize = preserveMinSize;
+    s_lastPdfDarkModeRenderer = pdfDarkModeRenderer;
+    s_lastPdfDocumentColorMode = pdfDocumentColorMode;
 
     // Cached bitmaps are either recolored (PDF) or baked (ebooks). Marking them
     // out-of-date is not enough because RequestRendering() skips pages that
@@ -3469,6 +3448,7 @@ void UpdateDocumentColors() {
             if (!dm) {
                 continue;
             }
+            EngineMupdfInvalidateDarkMode(dm->GetEngine());
             gRenderCache->CancelRendering(dm);
             gRenderCache->FreeForDisplayModel(dm);
         }
@@ -5199,7 +5179,12 @@ void RelayoutWindow(MainWindow* win) {
 }
 
 void SetCurrentLanguageAndRefreshUI(const char* langCode) {
-    if (!langCode || str::Eq(langCode, trans::GetCurrentLangCode())) {
+    if (!langCode) {
+        return;
+    }
+    langCode = trans::ValidateLangCode(langCode);
+    if (!langCode) {
+        logf("SetCurrentLanguageAndRefreshUI: unknown lang code\n");
         return;
     }
     SetCurrentLang(langCode);
@@ -8218,6 +8203,13 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             break;
         }
 
+        case CmdTogglePreservePdfImages: {
+            SetPreservePdfImagesInDarkMode(!GetPreservePdfImagesInDarkMode());
+            UpdateDocumentColors();
+            UpdateControlsColors(win);
+            break;
+        }
+
         case CmdToggleAntiAlias: {
             gGlobalPrefs->disableAntiAlias ^= true;
             for (auto* w : gWindows) {
@@ -8432,6 +8424,22 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         case CmdToggleLightDarkTheme:
             ToggleLightDarkTheme();
             SaveSettings();
+            break;
+
+        case CmdSetPdfDocumentColorModeAuto:
+        case CmdSetPdfDocumentColorModeBlack:
+        case CmdSetPdfDocumentColorModeLight:
+            if (NeedsPdfDocumentColorModeUI(win)) {
+                PdfDocumentColorMode mode = PdfDocumentColorMode::Auto;
+                if (cmdId == CmdSetPdfDocumentColorModeBlack) {
+                    mode = PdfDocumentColorMode::Black;
+                } else if (cmdId == CmdSetPdfDocumentColorModeLight) {
+                    mode = PdfDocumentColorMode::Light;
+                }
+                SetPdfDocumentColorMode(mode);
+                UpdateDocumentColors();
+                UpdatePdfDocumentColorModeToolbarButton(win);
+            }
             break;
 
         case CmdToggleDoubleClickWordLookup:

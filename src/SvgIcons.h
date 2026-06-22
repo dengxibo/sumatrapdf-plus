@@ -23,6 +23,8 @@ enum class TbIcon {
     RotateRight,
     ThemeSun,
     ThemeMoon,
+    DocColorAuto,
+    DocColorBlack,
     Dictionary,
     kMax
 };

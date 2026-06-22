@@ -206,6 +206,7 @@ bool LoadSettings() {
     } else {
         // guess the ui language on first start
         str::ReplaceWithCopy(&gprefs->uiLanguage, trans::DetectUserLang());
+        SetCurrentLang(gprefs->uiLanguage);
     }
 
     gprefs->lastPrefUpdate = file::GetModificationTime(settingsPath);

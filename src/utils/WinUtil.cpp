@@ -2702,8 +2702,8 @@ BitmapPixels* GetBitmapPixels(HBITMAP hbmp) {
     return res;
 }
 
-void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLORREF linkColor) {
-    if ((textColor & 0xFFFFFF) == WIN_COL_BLACK && (bgColor & 0xFFFFFF) == WIN_COL_WHITE && !linkColor) {
+void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLORREF linkColor, Vec<Rect>* skipRects) {
+    if ((textColor & 0xFFFFFF) == WIN_COL_BLACK && (bgColor & 0xFFFFFF) == WIN_COL_WHITE && !linkColor && !skipRects) {
         return;
     }
 
@@ -2747,13 +2747,33 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLO
     ReportIf(ret < sizeof(info.dsBm));
     Size size(info.dsBm.bmWidth, info.dsBm.bmHeight);
 
+    auto skipPixel = [&](int x, int y) -> bool {
+        if (!skipRects) {
+            return false;
+        }
+        for (Rect& sr : *skipRects) {
+            if (sr.Contains(x, y)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
     // for mapped 32-bit DI bitmaps: directly access the pixel data
     if (ret >= sizeof(info.dsBm) && info.dsBm.bmBits && 32 == info.dsBm.bmBitsPixel &&
         size.dx * 4 == info.dsBm.bmWidthBytes) {
         int bmpBytes = size.dx * size.dy * 4;
         u8* bmpData = (u8*)info.dsBm.bmBits;
         for (int i = 0; i < bmpBytes; i += 4) {
-            if (recolorLinks && isLikelyLinkPixel(bmpData[i + 2], bmpData[i + 1], bmpData[i])) {
+            int x = (i / 4) % size.dx;
+            int y = (i / 4) / size.dx;
+            u8 b = bmpData[i];
+            u8 g = bmpData[i + 1];
+            u8 r = bmpData[i + 2];
+            if (skipPixel(x, y)) {
+                continue;
+            }
+            if (recolorLinks && isLikelyLinkPixel(r, g, b)) {
                 setLinkPixel(&bmpData[i]);
                 continue;
             }
@@ -2771,7 +2791,13 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLO
         for (int y = 0; y < size.dy; y++) {
             for (int x = 0; x < size.dx; x++) {
                 u8* px = bmpData + y * info.dsBm.bmWidthBytes + x * 3;
-                if (recolorLinks && isLikelyLinkPixel(px[2], px[1], px[0])) {
+                u8 b = px[0];
+                u8 g = px[1];
+                u8 r = px[2];
+                if (skipPixel(x, y)) {
+                    continue;
+                }
+                if (recolorLinks && isLikelyLinkPixel(r, g, b)) {
                     setLinkPixel(px);
                     continue;
                 }
@@ -2826,7 +2852,15 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLO
 
     if (GetDIBits(hDC, hbmp, 0, size.dy, bmpData, &bmi, DIB_RGB_COLORS)) {
         for (int i = 0; i < bmpBytes; i += 4) {
-            if (recolorLinks && isLikelyLinkPixel(bmpData[i + 2], bmpData[i + 1], bmpData[i])) {
+            int x = (i / 4) % size.dx;
+            int y = (i / 4) / size.dx;
+            u8 b = bmpData[i];
+            u8 g = bmpData[i + 1];
+            u8 r = bmpData[i + 2];
+            if (skipPixel(x, y)) {
+                continue;
+            }
+            if (recolorLinks && isLikelyLinkPixel(r, g, b)) {
                 setLinkPixel(&bmpData[i]);
                 continue;
             }

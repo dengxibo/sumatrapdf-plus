@@ -535,6 +535,10 @@ RenderedBitmap* EngineBase::GetImageForPageElement(IPageElement*) {
     return nullptr;
 }
 
+void EngineBase::GetBitmapRecolorSkipRects(int, float, int, const RectF&, Size, Vec<Rect>& skipRects) {
+    skipRects.Clear();
+}
+
 void EngineBase::SetFilePath(const char* s) {
     fileNameBase = s ? StrDup(arena, Str((char*)s)) : Str();
 }

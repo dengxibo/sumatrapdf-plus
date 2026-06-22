@@ -869,8 +869,7 @@ static LRESULT CALLBACK WndProcFavBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         HDC hdc = (HDC)wp;
         RECT rc;
         GetClientRect(hwnd, &rc);
-        COLORREF bgCol;
-        ThemeDocumentColors(bgCol);
+        COLORREF bgCol = ThemeSidebarBackgroundColor();
         HBRUSH br = CreateSolidBrush(bgCol);
         FillRect(hdc, &rc, br);
         DeleteObject(br);

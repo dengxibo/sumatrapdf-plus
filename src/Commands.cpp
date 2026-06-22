@@ -241,6 +241,10 @@ static SeqStrings gCommandNames =
     "CmdToggleLightDarkTheme\0"
     "CmdAnalyzeSelectionWithDoubao\0"
     "CmdToggleDoubleClickWordLookup\0"
+    "CmdTogglePreservePdfImages\0"
+    "CmdSetPdfDocumentColorModeAuto\0"
+    "CmdSetPdfDocumentColorModeBlack\0"
+    "CmdSetPdfDocumentColorModeLight\0"
     "CmdNone\0"
     "\0";
 
@@ -472,6 +476,10 @@ static i32 gCommandIds[] = {
     CmdToggleLightDarkTheme,
     CmdAnalyzeSelectionWithDoubao,
     CmdToggleDoubleClickWordLookup,
+    CmdTogglePreservePdfImages,
+    CmdSetPdfDocumentColorModeAuto,
+    CmdSetPdfDocumentColorModeBlack,
+    CmdSetPdfDocumentColorModeLight,
     CmdNone,
 };
 
@@ -703,6 +711,10 @@ SeqStrings gCommandDescriptions =
     "Toggle light/dark theme\0"
     "Ask Doubao\0"
     "Toggle Double-Click Word Lookup\0"
+    "Toggle Preserve PDF Image Colors in Dark Mode\0"
+    "Set PDF Document Color Mode: Auto\0"
+    "Set PDF Document Color Mode: Black\0"
+    "Set PDF Document Color Mode: Light\0"
     "Do nothing\0"
     "\0";
 // clang-format on

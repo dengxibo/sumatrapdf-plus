@@ -10,6 +10,8 @@ void UpdateThemeCommandLabels();
 
 COLORREF ThemeDocumentColors(COLORREF&);
 COLORREF ThemePageRenderColors(COLORREF&);
+void ThemeSidebarColors(COLORREF& bg, COLORREF& text);
+COLORREF ThemeSidebarBackgroundColor();
 COLORREF ThemeMainWindowBackgroundColor();
 COLORREF ThemeControlBackgroundColor();
 COLORREF ThemeChromeBackgroundColor();

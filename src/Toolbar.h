@@ -17,6 +17,8 @@ void ShowOrHideToolbar(MainWindow*);
 void UpdateToolbarState(MainWindow*);
 void UpdateToolbarAfterThemeChange(MainWindow*);
 void UpdateDoubleClickWordLookupToolbarButton(MainWindow*);
+void UpdatePdfDocumentColorModeToolbarButton(MainWindow*);
+bool NeedsPdfDocumentColorModeUI(MainWindow* win);
 
 void CreateMenuBarRebar(MainWindow*);
 void DestroyMenuBarRebar(MainWindow*);

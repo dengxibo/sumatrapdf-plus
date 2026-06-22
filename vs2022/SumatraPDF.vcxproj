@@ -1117,6 +1117,8 @@
     <ClInclude Include="..\src\OverlayScrollbar.h" />
     <ClInclude Include="..\src\PalmDbReader.h" />
     <ClInclude Include="..\src\PdfCreator.h" />
+    <ClInclude Include="..\src\PdfDarkMode.h" />
+    <ClInclude Include="..\src\PdfDarkModeInternal.h" />
     <ClInclude Include="..\src\PdfSync.h" />
     <ClInclude Include="..\src\PdfTools.h" />
     <ClInclude Include="..\src\Print.h" />
@@ -1225,6 +1227,10 @@
     <ClCompile Include="..\src\OverlayScrollbar.cpp" />
     <ClCompile Include="..\src\PalmDbReader.cpp" />
     <ClCompile Include="..\src\PdfCreator.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeAnalysis.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeCache.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeColor.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeDevice.cpp" />
     <ClCompile Include="..\src\PdfSync.cpp" />
     <ClCompile Include="..\src\PdfTools.cpp" />
     <ClCompile Include="..\src\Print.cpp" />

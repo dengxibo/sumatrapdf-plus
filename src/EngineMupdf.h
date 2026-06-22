@@ -2,11 +2,13 @@
    License: GPLv3 */
 
 struct Annotation;
+struct DarkModePageAnalysis;
 
 struct FitzPageImageInfo {
     fz_rect rect = fz_unit_rect;
     fz_matrix transform;
     IPageElement* imageElement = nullptr;
+    fz_image* image = nullptr;
     ~FitzPageImageInfo() { delete imageElement; }
 };
 
@@ -42,6 +44,10 @@ struct FzPageInfo {
     // races inside mupdf's image store on concurrent decode. So renderLock
     // is engine-wide, not per-page.
     fz_display_list* displayList = nullptr;
+
+    // object-level PDF dark mode page analysis (immutable after build)
+    DarkModePageAnalysis* darkModeAnalysis = nullptr;
+    u32 darkModeAnalysisHash = 0;
 };
 
 class EngineMupdf : public EngineBase {
@@ -75,6 +81,9 @@ class EngineMupdf : public EngineBase {
     bool HandleLink(IPageDestination*, ILinkHandler*) override;
 
     RenderedBitmap* GetImageForPageElement(IPageElement*) override;
+
+    void GetBitmapRecolorSkipRects(int pageNo, float zoom, int rotation, const RectF& renderPageRect, Size bmpSize,
+                                   Vec<Rect>& skipRects) override;
 
     IPageDestination* GetNamedDest(const char* name) override;
     TocTree* GetToc() override;

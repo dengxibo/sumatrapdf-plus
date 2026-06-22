@@ -529,6 +529,10 @@ class EngineBase {
 
     virtual RenderedBitmap* GetImageForPageElement(IPageElement*);
 
+    // bitmap pixel coordinates relative to RenderPage output; skip recoloring there
+    virtual void GetBitmapRecolorSkipRects(int pageNo, float zoom, int rotation, const RectF& renderPageRect,
+                                           Size bmpSize, Vec<Rect>& skipRects);
+
     // returns false if didn't perform action (temporary until we move
     // all code there)
     virtual bool HandleLink(IPageDestination*, ILinkHandler*);

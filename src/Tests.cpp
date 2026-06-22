@@ -14,6 +14,51 @@
 #include "EngineAll.h"
 #include "GlobalPrefs.h"
 #include "Flags.h"
+#include "Theme.h"
+#include "PdfDarkMode.h"
+
+static void PrintBitmapLuminanceStats(RenderedBitmap* bmp, Vec<Rect>* skipRects) {
+    Size size = bmp->GetSize();
+    int stepX = std::max(1, size.dx / 64);
+    int stepY = std::max(1, size.dy / 64);
+    BitmapPixels* px = GetBitmapPixels(bmp->GetBitmap());
+    if (!px) {
+        printf("  luminance stats unavailable\n");
+        return;
+    }
+    u64 sumAll = 0, sumText = 0;
+    int nAll = 0, nText = 0;
+    auto inSkip = [&](int x, int y) -> bool {
+        if (!skipRects) {
+            return false;
+        }
+        for (Rect& sr : *skipRects) {
+            if (sr.Contains(x, y)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    for (int y = 0; y < size.dy; y += stepY) {
+        for (int x = 0; x < size.dx; x += stepX) {
+            COLORREF c = GetPixel(px, x, y);
+            byte r, g, b;
+            UnpackColor(c, r, g, b);
+            int lum = (int)r + g + b;
+            sumAll += lum;
+            nAll++;
+            if (!inSkip(x, y)) {
+                sumText += lum;
+                nText++;
+            }
+        }
+    }
+    FinalizeBitmapPixels(px);
+    double avgAll = nAll ? (double)sumAll / (3.0 * nAll) : 0.0;
+    double avgText = nText ? (double)sumText / (3.0 * nText) : 0.0;
+    printf("  luminance avg(all)=%.1f avg(non-skip)=%.1f skipRects=%d\n", avgAll, avgText,
+           skipRects ? skipRects->Size() : 0);
+}
 
 void TestRenderPage(const Flags& i) {
     if (i.showConsole) {
@@ -29,6 +74,11 @@ void TestRenderPage(const Flags& i) {
         printf("no file provided\n");
         return;
     }
+
+    SetTheme("Black");
+    SetPdfDocumentColorMode(PdfDocumentColorMode::Auto);
+    (void)PdfDarkModeBuildPalette();
+
     float zoom = kZoomActualSize;
     if (i.startZoom != kInvalidZoom) {
         zoom = i.startZoom;
@@ -50,6 +100,25 @@ void TestRenderPage(const Flags& i) {
         auto bmp = engine->RenderPage(args);
         if (bmp == nullptr) {
             printf("failed to render page\n");
+        } else if (engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".pdf") && ThemeUsesDarkChrome() &&
+                   GetPdfDocumentColorMode() != PdfDocumentColorMode::Light && !PdfDarkModeUsesObjectLevel()) {
+            COLORREF bgCol;
+            COLORREF textCol = ThemePageRenderColors(bgCol);
+            COLORREF linkCol = ThemeWindowLinkColor();
+            Vec<Rect> skipRects;
+            Vec<Rect>* skipRectsPtr = nullptr;
+            if (GetPreservePdfImagesInDarkMode()) {
+                Size bmpSize = bmp->GetSize();
+                RectF pageRect = engine->PageMediabox(pageNo);
+                engine->GetBitmapRecolorSkipRects(pageNo, zoom, 0, pageRect, bmpSize, skipRects);
+                if (skipRects.Size() > 0) {
+                    skipRectsPtr = &skipRects;
+                }
+            }
+            UpdateBitmapColors(bmp->GetBitmap(), textCol, bgCol, linkCol, skipRectsPtr);
+            PrintBitmapLuminanceStats(bmp, skipRectsPtr);
+        } else if (bmp) {
+            PrintBitmapLuminanceStats(bmp, nullptr);
         }
         delete bmp;
         SafeEngineRelease(&engine);

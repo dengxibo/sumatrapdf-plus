@@ -154,6 +154,36 @@ static const char* gIconThemeMoon =
   </g>
 </svg>)MOON";
 
+// magic wand: auto document color mode
+static const char* gIconDocColorAuto =
+    R"DOCAUTO(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M4.25 19.75L15.6 8.4" />
+  <path d="M13.9 6.7L17.3 10.1" />
+  <path d="M17.5 2.8V5.2" />
+  <path d="M17.5 8V10.4" />
+  <path d="M13.7 6.6H16.1" />
+  <path d="M18.9 6.6H21.3" />
+  <path d="M8.1 3.5V5.1" />
+  <path d="M7.3 4.3H8.9" />
+  <path d="M20 14.2V15.8" />
+  <path d="M19.2 15H20.8" />
+</svg>)DOCAUTO";
+
+// sun-off: black document color mode (full invert, distinct from theme moon)
+static const char* gIconDocColorBlack =
+    R"DOCBLACK(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <g transform="translate(12 12) scale(0.85) translate(-12 -12)">
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 3v2" />
+    <path d="M12 19v2" />
+    <path d="M3 12h2" />
+    <path d="M19 12h2" />
+    <path d="M4.5 4.5l15 15" />
+  </g>
+</svg>)DOCBLACK";
+
 // Translate-style word lookup: corner swap arrows + Latin a + hiragana (Tabler language-hiragana, scaled)
 static const char* gIconDictionary =
     R"DICT(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -194,6 +224,8 @@ static const char* gIcons[] = {
     gIconRotateRight,
     gIconThemeSun,
     gIconThemeMoon,
+    gIconDocColorAuto,
+    gIconDocColorBlack,
     gIconDictionary,
 };
 // clang-format on

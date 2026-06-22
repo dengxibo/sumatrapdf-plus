@@ -92,6 +92,7 @@ ByteSlice EngineMupdfLoadAttachment(EngineBase*, int attachmentNo);
 ByteSlice EngineMupdfLoadAnnotAttachment(EngineBase*, int objNum);
 TempStr EngineMupdfGetPdfInfo(const char* path);
 TempStr EngineMupdfGetPdfOutline(const char* path);
+void EngineMupdfInvalidateDarkMode(EngineBase* engine);
 
 /* EnginePs.cpp */
 

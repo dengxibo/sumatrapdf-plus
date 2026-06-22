@@ -730,8 +730,8 @@ bool HasOpenedDocuments(MainWindow* win) {
 
 void UpdateControlsColors(MainWindow* win) {
     COLORREF bgCol;
-    ThemeDocumentColors(bgCol);
-    COLORREF txtCol = ThemeUsesDarkChrome() ? ThemeReadingTextColor() : ThemeWindowTextColor();
+    COLORREF txtCol;
+    ThemeSidebarColors(bgCol, txtCol);
 
     // logfa("retrieved doc colors in tree control: 0x%x 0x%x\n", treeTxtCol, treeBgCol);
 

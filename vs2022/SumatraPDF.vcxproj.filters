@@ -222,6 +222,12 @@
     <ClInclude Include="..\src\PdfCreator.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\PdfDarkMode.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\PdfDarkModeInternal.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\PdfSync.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -540,6 +546,18 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\PdfCreator.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\PdfDarkModeAnalysis.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\PdfDarkModeCache.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\PdfDarkModeColor.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\PdfDarkModeDevice.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\PdfSync.cpp">

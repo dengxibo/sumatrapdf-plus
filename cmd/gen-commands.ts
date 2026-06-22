@@ -231,6 +231,10 @@ export const commands = [
     "CmdToggleLightDarkTheme", "Toggle light/dark theme",
     "CmdAnalyzeSelectionWithDoubao", "Ask Doubao",
     "CmdToggleDoubleClickWordLookup", "Toggle Double-Click Word Lookup",
+    "CmdTogglePreservePdfImages", "Toggle Preserve PDF Image Colors in Dark Mode",
+    "CmdSetPdfDocumentColorModeAuto", "Set PDF Document Color Mode: Auto",
+    "CmdSetPdfDocumentColorModeBlack", "Set PDF Document Color Mode: Black",
+    "CmdSetPdfDocumentColorModeLight", "Set PDF Document Color Mode: Light",
     "CmdNone", "Do nothing",
 ];
 

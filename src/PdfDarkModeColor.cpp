@@ -1,0 +1,321 @@
+/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
+   License: GPLv3 */
+
+extern "C" {
+#include <mupdf/fitz.h>
+}
+
+#include "utils/BaseUtil.h"
+
+#include "Theme.h"
+#include "Translations.h"
+
+#include "PdfDarkModeInternal.h"
+
+// Hardcoded PDF dark mode defaults (not persisted in settings file).
+static constexpr int kPreservePdfImagesMinSize = 72;
+static constexpr PdfDarkModeRenderer kPdfDarkModeRenderer = PdfDarkModeRenderer::LegacyBitmapPostProcess;
+
+static PdfDocumentColorMode gPdfDocumentColorMode = PdfDocumentColorMode::Auto;
+static bool gPreservePdfImagesInDarkMode = true;
+
+static float ColorChannel01(byte v) {
+    return v / 255.f;
+}
+
+bool GetPreservePdfImagesInDarkMode() {
+    return gPreservePdfImagesInDarkMode;
+}
+
+void SetPreservePdfImagesInDarkMode(bool preserve) {
+    gPreservePdfImagesInDarkMode = preserve;
+}
+
+int GetPreservePdfImagesMinSize() {
+    return kPreservePdfImagesMinSize;
+}
+
+PdfDarkModeRenderer GetPdfDarkModeRenderer() {
+    return kPdfDarkModeRenderer;
+}
+
+PdfDocumentColorMode GetPdfDocumentColorMode() {
+    return gPdfDocumentColorMode;
+}
+
+void SetPdfDocumentColorMode(PdfDocumentColorMode mode) {
+    if (mode < PdfDocumentColorMode::Auto || mode > PdfDocumentColorMode::Light) {
+        mode = PdfDocumentColorMode::Auto;
+    }
+    gPdfDocumentColorMode = mode;
+}
+
+const char* PdfDocumentColorModeDescription(PdfDocumentColorMode mode) {
+    switch (mode) {
+        case PdfDocumentColorMode::Black:
+            return _TRN("Document Color Mode: Black (full dark)");
+        case PdfDocumentColorMode::Light:
+            return _TRN("Document Color Mode: Light (original colors)");
+        case PdfDocumentColorMode::Auto:
+        default:
+            return _TRN("Document Color Mode: Auto (smart dark mode)");
+    }
+}
+
+bool PdfDarkModeUsesObjectLevel() {
+    if (!ThemeUsesDarkChrome()) {
+        return false;
+    }
+    if (GetPdfDocumentColorMode() != PdfDocumentColorMode::Auto) {
+        return false;
+    }
+    return GetPdfDarkModeRenderer() == PdfDarkModeRenderer::ObjectLevelDevice;
+}
+
+DarkModeOptions PdfDarkModeCurrentOptions() {
+    DarkModeOptions opts;
+    opts.preserveImagePaperSoftening = 0.85f;
+    return opts;
+}
+
+u32 PdfDarkModeComputeOptionsHash() {
+    auto mix = [](u32 h, u32 v) -> u32 { return h * 31 + v; };
+    u32 h = 0;
+    h = mix(h, (u32)GetPdfDarkModeRenderer());
+    h = mix(h, (u32)GetPdfDocumentColorMode());
+    h = mix(h, (u32)GetPreservePdfImagesInDarkMode());
+    h = mix(h, (u32)GetPreservePdfImagesMinSize());
+    COLORREF bg;
+    COLORREF text = ThemePageRenderColors(bg);
+    h = mix(h, (u32)text);
+    h = mix(h, (u32)bg);
+    if (ThemeUsesDarkChrome()) {
+        h = mix(h, (u32)ThemeWindowLinkColor());
+    }
+    DarkModeOptions opts = PdfDarkModeCurrentOptions();
+    h = mix(h, *(u32*)&opts.scanImageCoverageThreshold);
+    h = mix(h, (u32)opts.maxTextOpsForScanPage);
+    h = mix(h, (u32)opts.maxVectorOpsForScanPage);
+    h = mix(h, *(u32*)&opts.preserveImagePaperSoftening);
+    h = mix(h, *(u32*)&opts.lightFillChromaThreshold);
+    h = mix(h, *(u32*)&opts.lightFillLuminanceThreshold);
+    return h;
+}
+
+DarkModePalette PdfDarkModeBuildPalette() {
+    COLORREF bgCol;
+    COLORREF textCol = ThemePageRenderColors(bgCol);
+    byte tr, tg, tb, br, bg, bb, lr, lg, lb;
+    UnpackColor(textCol, tr, tg, tb);
+    UnpackColor(bgCol, br, bg, bb);
+    COLORREF linkCol = ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : textCol;
+    UnpackColor(linkCol, lr, lg, lb);
+
+    DarkModePalette p;
+    p.textR = ColorChannel01(tr);
+    p.textG = ColorChannel01(tg);
+    p.textB = ColorChannel01(tb);
+    p.bgR = ColorChannel01(br);
+    p.bgG = ColorChannel01(bg);
+    p.bgB = ColorChannel01(bb);
+    p.linkR = ColorChannel01(lr);
+    p.linkG = ColorChannel01(lg);
+    p.linkB = ColorChannel01(lb);
+    p.diffR = p.bgR - p.textR;
+    p.diffG = p.bgG - p.textG;
+    p.diffB = p.bgB - p.textB;
+    return p;
+}
+
+static bool IsLikelyLinkRgb(float r, float g, float b) {
+    int ri = (int)(r * 255.f + 0.5f);
+    int gi = (int)(g * 255.f + 0.5f);
+    int bi = (int)(b * 255.f + 0.5f);
+    int maxRG = ri > gi ? ri : gi;
+    if (bi < maxRG + 25) {
+        return false;
+    }
+    if (bi < 72) {
+        return false;
+    }
+    int lum = (ri + gi + bi) / 3;
+    if (lum > 230) {
+        return false;
+    }
+    return true;
+}
+
+static float SmoothStep(float edge0, float edge1, float x) {
+    if (edge0 == edge1) {
+        return x >= edge1 ? 1.f : 0.f;
+    }
+    float t = (x - edge0) / (edge1 - edge0);
+    if (t <= 0.f) {
+        return 0.f;
+    }
+    if (t >= 1.f) {
+        return 1.f;
+    }
+    return t * t * (3.f - 2.f * t);
+}
+
+void ApplyAdaptiveDocumentDarkMode(float r, float g, float b, const DarkModePalette& palette, float* outR, float* outG,
+                                   float* outB) {
+    float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+    float chroma = maxC - minC;
+
+    const float lowChroma = 0.08f;
+    const float paperLum = 0.62f;
+    const float inkLum = 0.28f;
+
+    if (chroma < lowChroma) {
+        float paperW = 1.f - SmoothStep(inkLum, paperLum, lum);
+        float inkW = SmoothStep(inkLum, paperLum, lum);
+        float nr = palette.bgR * paperW + palette.textR * inkW;
+        float ng = palette.bgG * paperW + palette.textG * inkW;
+        float nb = palette.bgB * paperW + palette.textB * inkW;
+        float grayW = 1.f - chroma / lowChroma;
+        *outR = nr * grayW + r * (1.f - grayW);
+        *outG = ng * grayW + g * (1.f - grayW);
+        *outB = nb * grayW + b * (1.f - grayW);
+        return;
+    }
+
+    float h = 0.f;
+    float delta = maxC - minC;
+    if (delta > 0.0001f) {
+        if (maxC == r) {
+            h = fmodf((g - b) / delta, 6.f);
+        } else if (maxC == g) {
+            h = (b - r) / delta + 2.f;
+        } else {
+            h = (r - g) / delta + 4.f;
+        }
+        h /= 6.f;
+        if (h < 0.f) {
+            h += 1.f;
+        }
+    }
+
+    float cappedV = lum;
+    const float maxBright = 0.82f;
+    if (cappedV > maxBright) {
+        cappedV = maxBright;
+    }
+    const float minBright = 0.12f;
+    if (cappedV < minBright) {
+        cappedV = minBright;
+    }
+
+    float s = maxC > 0.f ? delta / maxC : 0.f;
+    float c = cappedV * s;
+    float x = c * (1.f - fabsf(fmodf(h * 6.f, 2.f) - 1.f));
+    float m = cappedV - c;
+    float rr = 0.f, gg = 0.f, bb = 0.f;
+    int hi = (int)(h * 6.f);
+    switch (hi % 6) {
+        case 0:
+            rr = c;
+            gg = x;
+            break;
+        case 1:
+            rr = x;
+            gg = c;
+            break;
+        case 2:
+            gg = c;
+            bb = x;
+            break;
+        case 3:
+            gg = x;
+            bb = c;
+            break;
+        case 4:
+            rr = x;
+            bb = c;
+            break;
+        default:
+            rr = c;
+            bb = x;
+            break;
+    }
+    *outR = rr + m;
+    *outG = gg + m;
+    *outB = bb + m;
+}
+
+void MapRgbToDarkTheme(float r, float g, float b, const DarkModePalette& palette, float* outRgb) {
+    outRgb[0] = palette.textR + r * palette.diffR;
+    outRgb[1] = palette.textG + g * palette.diffG;
+    outRgb[2] = palette.textB + b * palette.diffB;
+}
+
+void MapColorToDarkTheme(fz_context* ctx, fz_colorspace* cs, const float* color, fz_color_params colorParams,
+                         const DarkModePalette& palette, float* outRgb) {
+    float rgb[FZ_MAX_COLORS] = {};
+    fz_colorspace* ds = fz_device_rgb(ctx);
+    fz_convert_color(ctx, cs, color, ds, rgb, cs, colorParams);
+    if (ThemeUsesDarkChrome() && IsLikelyLinkRgb(rgb[0], rgb[1], rgb[2])) {
+        outRgb[0] = palette.linkR;
+        outRgb[1] = palette.linkG;
+        outRgb[2] = palette.linkB;
+        return;
+    }
+    MapRgbToDarkTheme(rgb[0], rgb[1], rgb[2], palette, outRgb);
+}
+
+void MapFillColorToDarkTheme(fz_context* ctx, fz_colorspace* cs, const float* color, fz_color_params colorParams,
+                             const DarkModePalette& palette, float* outRgb) {
+    float rgb[FZ_MAX_COLORS] = {};
+    fz_colorspace* ds = fz_device_rgb(ctx);
+    fz_convert_color(ctx, cs, color, ds, rgb, cs, colorParams);
+    MapRgbFillToDarkTheme(rgb[0], rgb[1], rgb[2], palette, outRgb);
+}
+
+void MapRgbFillToDarkTheme(float r, float g, float b, const DarkModePalette& palette, float* outRgb) {
+    float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+    float chroma = maxC - minC;
+    DarkModeOptions opts = PdfDarkModeCurrentOptions();
+    if (GetPdfDocumentColorMode() != PdfDocumentColorMode::Auto &&
+        lum >= opts.lightFillLuminanceThreshold && chroma >= opts.lightFillChromaThreshold) {
+        ApplyAdaptiveDocumentDarkMode(r, g, b, palette, &outRgb[0], &outRgb[1], &outRgb[2]);
+        return;
+    }
+    MapRgbToDarkTheme(r, g, b, palette, outRgb);
+}
+
+void ApplyPreserveImagePaperSoftening(float r, float g, float b, const DarkModePalette& palette, float strength,
+                                      float* outR, float* outG, float* outB) {
+    if (strength <= 0.f) {
+        *outR = r;
+        *outG = g;
+        *outB = b;
+        return;
+    }
+
+    float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+    float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    float chroma = maxC - minC;
+
+    const float lowChroma = 0.10f;
+    float paperW = 0.f;
+    if (chroma < lowChroma) {
+        paperW = 1.f - SmoothStep(0.22f, 0.58f, lum);
+    } else {
+        float chromaFactor = 1.f - chroma / 0.45f;
+        if (chromaFactor < 0.f) {
+            chromaFactor = 0.f;
+        }
+        paperW = (1.f - SmoothStep(0.62f, 0.94f, lum)) * chromaFactor;
+    }
+    paperW *= strength;
+
+    *outR = r + (palette.bgR - r) * paperW;
+    *outG = g + (palette.bgG - g) * paperW;
+    *outB = b + (palette.bgB - b) * paperW;
+}

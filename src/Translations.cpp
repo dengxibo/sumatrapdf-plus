@@ -76,6 +76,12 @@ static void ParseTranslationsTxt(const StrSpan& d, const char* langCode) {
 
     StrVec lines;
     Split(&lines, d.CStr(), "\n", true);
+    for (char* l : lines) {
+        int n = str::Leni(l);
+        if (n > 0 && l[n - 1] == '\r') {
+            l[n - 1] = 0;
+        }
+    }
     int nStrings = 0;
     for (char* l : lines) {
         if (l[0] == ':') {
@@ -135,6 +141,10 @@ const char* GetTranslation(const char* s) {
         return s;
     }
     auto c = gTranslationCache;
+    if (!c) {
+        logf("GetTranslation: no translation cache for lang '%s'\n", gCurrLangCode ? gCurrLangCode : "?");
+        return s;
+    }
     int n = c->Size();
     ReportDebugIf(n % 2 != 0);
     n = n / 2;
@@ -157,7 +167,7 @@ const char* GetTranslation(const char* s) {
             return tr;
         }
     }
-    ReportDebugIf(true);
+    logf("Didn't find translation for '%s'\n", s);
     return s;
 }
 
@@ -169,18 +179,50 @@ const char* GetCurrentLangCode() {
     return gCurrLangCode;
 }
 
+// maps common ISO/legacy aliases to gLangCodes values
+static const char* gLangAliases =
+    "zh-CN\0cn\0"
+    "zh-Hans\0cn\0"
+    "zh-SG\0cn\0"
+    "zh-TW\0tw\0"
+    "zh-Hant\0tw\0"
+    "zh-HK\0tw\0"
+    "ko\0kr\0"
+    "vi\0vn\0"
+    "cs\0cz\0"
+    "be\0by\0"
+    "hy\0am\0";
+
+static const char* CanonicalLangCode(const char* langCode) {
+    if (!langCode) {
+        return nullptr;
+    }
+    int idx = seqstrings::StrToIdx(gLangCodes, langCode);
+    if (idx >= 0) {
+        return seqstrings::IdxToStr(gLangCodes, idx);
+    }
+    idx = seqstrings::StrToIdx(gLangAliases, langCode);
+    if (idx >= 0 && idx % 2 == 0) {
+        return seqstrings::IdxToStr(gLangAliases, idx + 1);
+    }
+    return nullptr;
+}
+
 void SetCurrentLangByCode(const char* langCode) {
-    if (str::Eq(langCode, gCurrLangCode)) {
+    langCode = CanonicalLangCode(langCode);
+    if (!langCode) {
+        logf("SetCurrentLangByCode: unknown lang code\n");
+        langCode = "en";
+    }
+    if (str::Eq(langCode, gCurrLangCode) && gTranslationCache) {
         return;
     }
 
     int idx = seqstrings::StrToIdx(gLangCodes, langCode);
+    ReportIf(idx < 0);
     if (idx < 0) {
-        logf("SetCurrentLangByCode: unknown lang code: '%s'\n", langCode);
-        // set to English
         idx = 0;
     }
-    ReportDebugIf(-1 == idx);
     gCurrLangIdx = idx;
     gCurrLangCode = GetLangCodeByIdx(idx);
     if (idx == 0 && !gIsDebugBuild) {
@@ -192,37 +234,36 @@ void SetCurrentLangByCode(const char* langCode) {
     bool lok = LockDataResource(IDR_TRANSLATIONS, &ldr);
     if (!lok) {
         logf("SetCurrentLangByCode: LockDataResource(IDR_TRANSLATIONS) failed\n");
+        FreeTranslations();
         return;
     }
     lzma::SimpleArchive archive;
     lok = lzma::ParseSimpleArchive(ldr.data, (size_t)ldr.dataSize, &archive);
     if (!lok) {
         logf("SetCurrentLangByCode: ParseSimpleArchive failed\n");
+        FreeTranslations();
         return;
     }
     int fileIdx = lzma::GetIdxFromName(&archive, "translations-good.txt");
     if (fileIdx < 0) {
         logf("SetCurrentLangByCode: translations-good.txt not found in archive\n");
+        FreeTranslations();
         return;
     }
     u8* data = lzma::GetFileDataByIdx(&archive, fileIdx, nullptr);
     if (!data) {
         logf("SetCurrentLangByCode: GetFileDataByIdx failed\n");
+        FreeTranslations();
         return;
     }
     int dataSize = (int)(archive.files[fileIdx].uncompressedSize);
     StrSpan d = {(char*)data, dataSize};
-    ParseTranslationsTxt(d, langCode);
+    ParseTranslationsTxt(d, gCurrLangCode);
     free(data);
 }
 
 const char* ValidateLangCode(const char* langCode) {
-    if (!langCode) return nullptr;
-    int idx = seqstrings::StrToIdx(gLangCodes, langCode);
-    if (idx < 0) {
-        return nullptr;
-    }
-    return GetLangCodeByIdx(idx);
+    return CanonicalLangCode(langCode);
 }
 
 const char* GetLangCodeByIdx(int idx) {

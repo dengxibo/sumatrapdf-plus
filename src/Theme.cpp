@@ -10,6 +10,7 @@ License: GPLv3 */
 #include "DisplayMode.h"
 #include "Theme.h"
 #include "GlobalPrefs.h"
+#include "PdfDarkMode.h"
 #include "Translations.h"
 #include "Toolbar.h"
 #include "DarkModeSubclass.h"
@@ -422,6 +423,13 @@ COLORREF AccentColor(COLORREF col, int light, int dark) {
 // not affected by FixedPageUI.TextColor/BackgroundColor (those affect page rendering)
 COLORREF ThemeDocumentColors(COLORREF& bg) {
     if (ThemeUsesDarkChrome()) {
+        if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
+            bg = ThemeMainWindowBackgroundColor();
+            if (GetResolvedThemeIndex() != 3) {
+                bg = AccentColor(bg, 8);
+            }
+            return ThemeReadingTextColor();
+        }
         return ThemePageRenderColors(bg);
     }
 
@@ -446,6 +454,9 @@ COLORREF ThemePageRenderColors(COLORREF& bg) {
     COLORREF text = kColBlack;
     bg = kColWhite;
     bool invertColors = gGlobalPrefs->fixedPageUI.invertColors || ThemeUsesDarkChrome();
+    if (ThemeUsesDarkChrome() && GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
+        invertColors = false;
+    }
 
     ParsedColor* parsedCol;
     parsedCol = GetPrefsColor(gGlobalPrefs->fixedPageUI.textColor);
@@ -488,6 +499,25 @@ COLORREF ThemePageRenderColors(COLORREF& bg) {
         bg = AccentColor(bg, 8);
     }
     return text;
+}
+
+void ThemeSidebarColors(COLORREF& bg, COLORREF& text) {
+    if (ThemeUsesDarkChrome()) {
+        bg = ThemeMainWindowBackgroundColor();
+        if (GetResolvedThemeIndex() != 3) {
+            bg = AccentColor(bg, 8);
+        }
+        text = ThemeReadingTextColor();
+        return;
+    }
+    bg = ThemeControlBackgroundColor();
+    text = ThemeWindowTextColor();
+}
+
+COLORREF ThemeSidebarBackgroundColor() {
+    COLORREF bg, text;
+    ThemeSidebarColors(bg, text);
+    return bg;
 }
 
 COLORREF ThemeControlBackgroundColor() {

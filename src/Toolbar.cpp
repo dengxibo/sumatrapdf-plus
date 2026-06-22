@@ -40,6 +40,7 @@ extern "C" {
 #include "SvgIcons.h"
 #include "SumatraConfig.h"
 #include "Theme.h"
+#include "PdfDarkMode.h"
 #include "DarkModeSubclass.h"
 #include "wingui/Layout.h"
 #include "wingui/WinGui.h"
@@ -91,6 +92,9 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::Dictionary, CmdToggleDoubleClickWordLookup, _TRN("Toggle Double-Click Word Lookup")},
     {TbIcon::None, 0, nullptr}, // separator before theme
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
+    {TbIcon::DocColorAuto, CmdSetPdfDocumentColorModeAuto, _TRN("Document Color Mode: Auto (smart dark mode)")},
+    {TbIcon::ThemeSun, CmdSetPdfDocumentColorModeLight, _TRN("Document Color Mode: Light (original colors)")},
+    {TbIcon::DocColorBlack, CmdSetPdfDocumentColorModeBlack, _TRN("Document Color Mode: Black (full dark)")},
 };
 // unicode chars: https://www.compart.com/en/unicode/U+25BC
 
@@ -185,6 +189,50 @@ static void UpdateThemeToolbarButton(MainWindow* win) {
     InvalidateRect(win->hwndToolbar, nullptr, FALSE);
 }
 
+static bool IsPdfDocumentTab(WindowTab* tab) {
+    if (!tab) {
+        return false;
+    }
+    EngineBase* engine = tab->GetEngine();
+    if (!engine) {
+        return false;
+    }
+    return engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".pdf");
+}
+
+bool NeedsPdfDocumentColorModeUI(MainWindow* win) {
+    if (!ThemeUsesDarkChrome()) {
+        return false;
+    }
+    if (!win || !win->IsDocLoaded()) {
+        return false;
+    }
+    return IsPdfDocumentTab(win->CurrentTab());
+}
+
+void UpdatePdfDocumentColorModeToolbarButton(MainWindow* win) {
+    static const int kPdfDocumentColorModeCmds[] = {
+        CmdSetPdfDocumentColorModeAuto,
+        CmdSetPdfDocumentColorModeBlack,
+        CmdSetPdfDocumentColorModeLight,
+    };
+    bool show = NeedsPdfDocumentColorModeUI(win);
+    for (int cmdId : kPdfDocumentColorModeCmds) {
+        int buttons[4];
+        int n = GetToolbarButtonsByID(cmdId, buttons);
+        for (int i = 0; i < n; i++) {
+            UpdateToolbarButtonStateByIdx(win->hwndToolbar, buttons[i], !show, TBSTATE_HIDDEN);
+        }
+    }
+    if (!show) {
+        return;
+    }
+    PdfDocumentColorMode mode = GetPdfDocumentColorMode();
+    SetToolbarButtonCheckedState(win, CmdSetPdfDocumentColorModeAuto, mode == PdfDocumentColorMode::Auto);
+    SetToolbarButtonCheckedState(win, CmdSetPdfDocumentColorModeBlack, mode == PdfDocumentColorMode::Black);
+    SetToolbarButtonCheckedState(win, CmdSetPdfDocumentColorModeLight, mode == PdfDocumentColorMode::Light);
+}
+
 void UpdateDoubleClickWordLookupToolbarButton(MainWindow* win) {
     int buttons[4];
     int n = GetToolbarButtonsByID(CmdToggleDoubleClickWordLookup, buttons);
@@ -244,6 +292,10 @@ static bool IsCmdAvailable(MainWindow* win, int cmdId) {
             return true;
         case CmdToggleLightDarkTheme:
             return true;
+        case CmdSetPdfDocumentColorModeAuto:
+        case CmdSetPdfDocumentColorModeBlack:
+        case CmdSetPdfDocumentColorModeLight:
+            return NeedsPdfDocumentColorModeUI(win);
     }
     auto ctx = NewBuildMenuCtx(win->CurrentTab(), Point{0, 0});
     AutoRun delCtx(DeleteBuildMenuCtx, ctx);
@@ -267,6 +319,10 @@ static bool IsCmdEnabled(MainWindow* win, int cmdId) {
             return win->IsDocLoaded() && win->ctrl && win->ctrl->HasToc();
         case CmdToggleLightDarkTheme:
             return true;
+        case CmdSetPdfDocumentColorModeAuto:
+        case CmdSetPdfDocumentColorModeBlack:
+        case CmdSetPdfDocumentColorModeLight:
+            return NeedsPdfDocumentColorModeUI(win);
     }
 
     auto [remove, disable] = GetCommandIdState(ctx, cmdId);
@@ -328,7 +384,9 @@ static TBBUTTON TbButtonFromButtonInfo(const ToolbarButtonInfo& bi, bool noTrans
     b.fsStyle = BTNS_BUTTON;
     if (bi.cmdId == CmdFindToggleMatchCase || bi.cmdId == CmdToggleDoubleClickWordLookup ||
         bi.cmdId == CmdToggleLightDarkTheme || bi.cmdId == CmdToggleBookmarks ||
-        bi.cmdId == CmdZoomFitWidthAndContinuous || bi.cmdId == CmdZoomFitPageAndSinglePage) {
+        bi.cmdId == CmdZoomFitWidthAndContinuous || bi.cmdId == CmdZoomFitPageAndSinglePage ||
+        bi.cmdId == CmdSetPdfDocumentColorModeAuto || bi.cmdId == CmdSetPdfDocumentColorModeBlack ||
+        bi.cmdId == CmdSetPdfDocumentColorModeLight) {
         b.fsStyle = BTNS_CHECK;
     }
     if (bi.bmpIndex == TbIcon::Text) {
@@ -367,6 +425,7 @@ void UpdateToolbarButtonsToolTipsForWindow(MainWindow* win) {
         TbSetButtonInfoById(hwnd, buttonId, &binfo);
     }
     UpdateThemeToolbarButton(win);
+    UpdatePdfDocumentColorModeToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
 #if 0
     if (gCustomToolbarButtons) {
@@ -1100,6 +1159,7 @@ void UpdateToolbarFindText(MainWindow* win) {
 }
 
 void UpdateToolbarState(MainWindow* win) {
+    UpdatePdfDocumentColorModeToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
     if (!win->IsDocLoaded()) {
         return;
@@ -1502,6 +1562,7 @@ void UpdateToolbarAfterThemeChange(MainWindow* win) {
     SetToolbarIconsImageList(win);
     ConfigureToolbarColors(win->hwndToolbar);
     UpdateThemeToolbarButton(win);
+    UpdatePdfDocumentColorModeToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
     HwndScheduleRepaint(win->hwndToolbar);
 }
@@ -1660,6 +1721,7 @@ void CreateToolbar(MainWindow* win) {
     UpdateToolbarPageText(win, -1);
     UpdateToolbarFindText(win);
     UpdateThemeToolbarButton(win);
+    UpdatePdfDocumentColorModeToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
 }
 

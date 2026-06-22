@@ -50,8 +50,8 @@
 
 static COLORREF SidebarBackgroundColor(COLORREF wndBgColor) {
     if (ThemeUsesDarkChrome()) {
-        COLORREF bg;
-        ThemePageRenderColors(bg);
+        COLORREF bg, text;
+        ThemeSidebarColors(bg, text);
         return bg;
     }
     if (!IsSpecialColor(wndBgColor)) {
@@ -1436,8 +1436,8 @@ static LRESULT CALLBACK WndProcTocBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         HDC hdc = (HDC)wp;
         RECT rc;
         GetClientRect(hwnd, &rc);
-        COLORREF bgCol;
-        ThemeDocumentColors(bgCol);
+        TreeView* tv = win->tocTreeView;
+        COLORREF bgCol = SidebarBackgroundColor(tv ? tv->bgColor : kColorUnset);
         HBRUSH br = CreateSolidBrush(bgCol);
         FillRect(hdc, &rc, br);
         DeleteObject(br);

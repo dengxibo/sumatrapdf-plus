@@ -236,7 +236,11 @@ enum {
     CmdToggleLightDarkTheme = 425,
     CmdAnalyzeSelectionWithDoubao = 426,
     CmdToggleDoubleClickWordLookup = 427,
-    CmdNone = 428,
+    CmdTogglePreservePdfImages = 428,
+    CmdSetPdfDocumentColorModeAuto = 429,
+    CmdSetPdfDocumentColorModeBlack = 430,
+    CmdSetPdfDocumentColorModeLight = 431,
+    CmdNone = 432,
 
     /* range for file history */
     CmdFileHistoryFirst,
