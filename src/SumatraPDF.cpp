@@ -484,7 +484,11 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
     task->path = nullptr;
     delete task;
     WindowTab* tab = FindTabByFile(path);
-    if (!tab || !tab->win || !tab->ctrl || !IsMainWindowValid(tab->win)) {
+    if (!tab || !IsWindowTabValid(tab) || !tab->win || !tab->ctrl || !IsMainWindowValid(tab->win) ||
+        tab->win->isBeingClosed) {
+        return;
+    }
+    if (tab->win->GetTabIdx(tab) < 0) {
         return;
     }
     DisplayModel* dm = tab->ctrl->AsFixed();
@@ -1413,6 +1417,9 @@ DocController* CreateControllerForEngineOrFile(EngineBase* engine, const char* p
 }
 
 static void SetFrameTitleForTab(WindowTab* tab, bool needRefresh) {
+    if (!tab || !IsWindowTabValid(tab)) {
+        return;
+    }
     const char* titlePath = tab->filePath;
     if (!gGlobalPrefs->fullPathInTitle) {
         titlePath = path::GetBaseNameTemp(titlePath);
@@ -1445,6 +1452,9 @@ static void SetFrameTitleForTab(WindowTab* tab, bool needRefresh) {
 }
 
 static void UpdateUiForCurrentTab(MainWindow* win) {
+    if (!IsMainWindowValid(win) || win->isBeingClosed) {
+        return;
+    }
     // hide the scrollbars before any other relayouting (for assertion in MainWindow::GetViewPortSize)
     if (!win->AsFixed()) {
         if (!ScrollbarsAreHidden() && !ScrollbarsUseOverlay()) {
@@ -1468,7 +1478,9 @@ static void UpdateUiForCurrentTab(MainWindow* win) {
 
     UpdateFindbox(win);
 
-    HwndSetText(win->hwndFrame, win->CurrentTab()->frameTitle);
+    WindowTab* tab = win->CurrentTab();
+    const char* title = (tab && tab->frameTitle) ? tab->frameTitle : kSumatraWindowTitle;
+    HwndSetText(win->hwndFrame, title);
 
     bool onlyNumbers = !win->ctrl || !win->ctrl->HasPageLabels();
     SetWindowStyle(win->hwndPageEdit, ES_NUMBER, onlyNumbers);
@@ -1552,7 +1564,10 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         return;
     }
     WindowTab* tab = win->CurrentTab();
-    ReportIf(!tab);
+    if (!tab || !IsWindowTabValid(tab)) {
+        SafeDeleteDocController(win, ctrl);
+        return;
+    }
 
     // Never load settings from a preexisting state if the user doesn't wish to
     // (unless we're just refreshing the document, i.e. only if state && !state->useDefaultState)
@@ -2474,6 +2489,16 @@ static void AttachDocumentToBackgroundTab(LoadArgs* args, WindowTab* tab) {
     const char* fullPath = args->FilePath();
     DocController* ctrl = args->ctrl;
     ReportIf(!tab || !ctrl);
+    if (!tab || !ctrl || !IsWindowTabValid(tab) || !IsMainWindowValid(win) || win->isBeingClosed) {
+        SafeDeleteDocController(win, ctrl);
+        args->ctrl = nullptr;
+        return;
+    }
+    if (win->GetTabIdx(tab) < 0) {
+        SafeDeleteDocController(win, ctrl);
+        args->ctrl = nullptr;
+        return;
+    }
 
     tab->SetFilePath(fullPath);
     SafeDeleteDocController(win, tab->ctrl);
@@ -2569,10 +2594,16 @@ MainWindow* LoadDocumentFinish(LoadArgs* args) {
 
         // logf("LoadDocument: !forceReuse, created win->CurrentTab() at 0x%p\n", win->CurrentTab());
     } else {
-        win->CurrentTab()->SetFilePath(fullPath);
+        WindowTab* reuseTab = win->CurrentTab();
+        if (!reuseTab || !IsWindowTabValid(reuseTab)) {
+            SafeDeleteDocController(win, args->ctrl);
+            args->ctrl = nullptr;
+            return nullptr;
+        }
+        reuseTab->SetFilePath(fullPath);
 #if 0
         auto path = ToUtf8Temp(fullPath);
-        logf("LoadDocument: forceReuse, set win->CurrentTab() (0x%p) filePath to '%s'\n", win->CurrentTab(), path.Get());
+        logf("LoadDocument: forceReuse, set win->CurrentTab() (0x%p) filePath to '%s'\n", reuseTab, path.Get());
 #endif
     }
 
@@ -2597,6 +2628,9 @@ MainWindow* LoadDocumentFinish(LoadArgs* args) {
     }
 
     auto currTab = win->CurrentTab();
+    if (!currTab || !IsWindowTabValid(currTab)) {
+        return win;
+    }
     const char* path = currTab->filePath;
 #if 0
     int nPages = 0;
@@ -2694,6 +2728,14 @@ static void PrepareLoadingTab(MainWindow* win, LoadArgs* args) {
         win->ctrl = nullptr;
         // Hide sidebar left over from the previous tab while the new doc loads.
         SetSidebarVisibility(win, false, gGlobalPrefs->showFavorites);
+    } else if (!win->CurrentTab() && win->tabsCtrl) {
+        // No-tabs mode can start from an empty window (TabCount()==0). Create a
+        // shell tab before the async load so CurrentTab() and targetTab stay valid.
+        WindowTab* tab = new WindowTab(win);
+        tab->SetFilePath(fullPath);
+        win->currentTabTemp = AddTabToWindow(win, tab);
+        win->ctrl = nullptr;
+        SetSidebarVisibility(win, false, gGlobalPrefs->showFavorites);
     } else if (win->CurrentTab()) {
         win->CurrentTab()->SetFilePath(fullPath);
         TabsOnChangedDoc(win);
@@ -2785,6 +2827,13 @@ struct EarlyEngineDisplayTask {
 static void FinishAsyncDocumentLoad(LoadDocumentAsyncData* d) {
     auto args = d->args;
     MainWindow* win = args->win;
+    if (!IsMainWindowValid(win) || win->isBeingClosed) {
+        if (args->ctrl) {
+            SafeDeleteDocController(win, args->ctrl);
+            args->ctrl = nullptr;
+        }
+        return;
+    }
     WindowTab* tab = d->targetTab;
     if (!tab) {
         tab = win->CurrentTab();
@@ -2797,7 +2846,10 @@ static void FinishAsyncDocumentLoad(LoadDocumentAsyncData* d) {
     }
     int selectedIdx = win->tabsCtrl ? win->tabsCtrl->GetSelected() : -1;
     // win->ctrl can still reference targetTab between a tab click and LoadModelIntoTab
-    bool isForegroundTab = (tabIdx >= 0 && tabIdx == selectedIdx) || (tab && win->ctrl && win->ctrl == tab->ctrl);
+    bool isForegroundTab = !SettingsUseTabs();
+    if (!isForegroundTab) {
+        isForegroundTab = (tabIdx >= 0 && tabIdx == selectedIdx) || (tab && win->ctrl && win->ctrl == tab->ctrl);
+    }
 
     args->activateExisting = false;
     if (isForegroundTab) {
