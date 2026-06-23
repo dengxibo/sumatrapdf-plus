@@ -32,6 +32,7 @@
 #include "WindowTab.h"
 #include "resource.h"
 #include "Commands.h"
+#include "CommandAvailability.h"
 #include "ExternalViewers.h"
 #include "Favorites.h"
 #include "FileThumbnails.h"
@@ -1358,6 +1359,43 @@ bool CmdRequiresDocument(int cmdId) {
 
 // returns [remove, disable] state of the command
 std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
+    AppCommandCtx appCtx;
+    if (ctx && ctx->tab && ctx->tab->win) {
+        appCtx = NewAppCommandCtx(ctx->tab->win);
+        appCtx.hasSelection = ctx->hasSelection;
+        appCtx.supportsAnnots = ctx->supportsAnnotations || ctx->supportsEbookAnnotations;
+        appCtx.annotationUnderCursor = ctx->annotationUnderCursor;
+        appCtx.hasUnsavedAnnotations = ctx->hasUnsavedAnnotations;
+        appCtx.isCursorOnPage = ctx->isCursorOnPage;
+        appCtx.canSendEmail = ctx->canSendEmail;
+        appCtx.isPdf = ctx->isPdf;
+        appCtx.isPdfEncrypted = ctx->isPdfEncrypted;
+        appCtx.hasToc = ctx->hasToc;
+        appCtx.pageCount = ctx->pageCount;
+        appCtx.isCbx = ctx->isCbx;
+        appCtx.isImageCollection = ctx->isImageCollection;
+    }
+    CommandVisibility visibility = GetCommandVisibility((int)cmdId, appCtx, CommandSurface::Menu);
+    bool centralizedRemove = CommandShouldRemove(visibility);
+    bool centralizedDisable = CommandShouldDisable(visibility);
+    if (!gGlobalPrefs->enableAskAI && cmdId == CmdAnalyzeSelectionWithDoubao) {
+        centralizedRemove = true;
+    }
+    if (ctx && ctx->supportsEbookAnnotations) {
+        if (cmdId == CmdDeleteAnnotation && ctx->ebookAnnotationUnderCursor) {
+            centralizedDisable = false;
+        }
+        bool isEbookAnnotationCommand =
+            cmdId == CmdEditAnnotations || cmdId == CmdDeleteAnnotation || cmdId == CmdShowAnnotations ||
+            cmdId == CmdHideAnnotations || cmdId == CmdToggleShowAnnotations ||
+            cmdId == (UINT_PTR)menuDefCreateAnnotFromSelection || cmdId == (UINT_PTR)menuDefCreateAnnotUnderCursor;
+        if (isEbookAnnotationCommand) {
+            centralizedRemove = false;
+        }
+    }
+    return {centralizedRemove, centralizedDisable};
+
+#if 0
     bool remove = false;
     bool disable = false;
     if (!HasPermission(Perm::InternetAccess)) {
@@ -1456,6 +1494,7 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
     }
 
     return {remove, disable};
+#endif
 }
 
 HMENU BuildMenuFromDef(MenuDef* menuDef, HMENU menu, BuildMenuCtx* ctx) {

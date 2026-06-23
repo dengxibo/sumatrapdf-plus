@@ -24,6 +24,7 @@
 #include "WindowTab.h"
 #include "SumatraConfig.h"
 #include "Commands.h"
+#include "CommandAvailability.h"
 #include "CommandPalette.h"
 #include "Accelerators.h"
 #include "SumatraPDF.h"
@@ -186,17 +187,6 @@ static bool IsCmdInList(i32 cmdId, i32* ids) {
     return false;
 }
 
-// a must end with sentinel value of 0
-static bool IsCmdInMenuList(i32 cmdId, UINT_PTR* a) {
-    UINT_PTR id = (UINT_PTR)cmdId;
-    for (int i = 0; a[i]; i++) {
-        if (a[i] == id) {
-            return true;
-        }
-    }
-    return false;
-}
-
 struct ItemDataCP {
     i32 cmdId = 0;
     WindowTab* tab = nullptr;
@@ -294,6 +284,36 @@ static const char* SkipWS(const char* s) {
 }
 
 static bool AllowCommand(const CommandPaletteBuildCtx& ctx, i32 cmdId) {
+    AppCommandCtx appCtx;
+    appCtx.filePath = ctx.filePath;
+    appCtx.isDocLoaded = ctx.isDocLoaded;
+    appCtx.supportsAnnots = ctx.supportsAnnots;
+    appCtx.hasSelection = ctx.hasSelection;
+    appCtx.isChm = ctx.isChm;
+    appCtx.canSendEmail = ctx.canSendEmail;
+    appCtx.annotationUnderCursor = ctx.annotationUnderCursor;
+    appCtx.hasUnsavedAnnotations = ctx.hasUnsavedAnnotations;
+    appCtx.isCursorOnPage = ctx.isCursorOnPage;
+    appCtx.cursorOnLinkTarget = ctx.cursorOnLinkTarget;
+    appCtx.cursorOnComment = ctx.cursorOnComment;
+    appCtx.cursorOnImage = ctx.cursorOnImage;
+    appCtx.hasToc = ctx.hasToc;
+    appCtx.allowToggleMenuBar = ctx.allowToggleMenuBar;
+    appCtx.canCloseOtherTabs = ctx.canCloseOtherTabs;
+    appCtx.canCloseTabsToRight = ctx.canCloseTabsToRight;
+    appCtx.canCloseTabsToLeft = ctx.canCloseTabsToLeft;
+    appCtx.isPdf = ctx.isPdf;
+    appCtx.isPdfEncrypted = ctx.isPdfEncrypted;
+    appCtx.pageCount = ctx.pageCount;
+    appCtx.isSinglePage = ctx.isSinglePage;
+    appCtx.hasDocTabs = ctx.hasDocTabs;
+    appCtx.engineKind = ctx.engineKind;
+    appCtx.isSpeaking = ctx.isSpeaking;
+    appCtx.canContinueReadAloud = ctx.canContinueReadAloud;
+    CommandVisibility visibility = GetCommandVisibility(cmdId, appCtx, CommandSurface::Palette);
+    return CommandShouldShow(visibility);
+
+#if 0
     if (cmdId <= CmdFirst) {
         return false;
     }
@@ -500,6 +520,7 @@ static bool AllowCommand(const CommandPaletteBuildCtx& ctx, i32 cmdId) {
         return ctx.hasToc;
     }
     return true;
+#endif
 }
 
 static TempStr ConvertPathForDisplayTemp(const char* s) {

@@ -31,6 +31,7 @@
 #include "Menu.h"
 #include "TableOfContents.h"
 #include "Tabs.h"
+#include "FindBar.h"
 #include "SumatraDialogs.h"
 #include "FileHistory.h"
 #include "Theme.h"

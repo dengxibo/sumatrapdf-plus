@@ -565,6 +565,9 @@ WindowState = 1
 ; default position (x, y) and size (width, height) of the window
 WindowPos = 0 0 0 0
 
+; position/size of the floating find window (see SearchUIFloating)
+SearchUIWindowPos = 0 0 0 0
+
 ; information about opened files (in most recently used order)
 FileStates [
   [

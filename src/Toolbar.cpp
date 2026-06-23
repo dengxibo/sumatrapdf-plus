@@ -404,11 +404,10 @@ static TBBUTTON TbButtonFromButtonInfo(const ToolbarButtonInfo& bi, bool noTrans
         b.fsStyle |= BTNS_DROPDOWN;
     }
     if (bi.cmdId == CmdFindToggleMatchCase || bi.cmdId == CmdFindToggleMatchWholeWord ||
-        bi.cmdId == CmdToggleDoubleClickWordLookup ||
-        bi.cmdId == CmdToggleLightDarkTheme || bi.cmdId == CmdToggleBookmarks ||
-        bi.cmdId == CmdZoomFitWidthAndContinuous || bi.cmdId == CmdZoomFitPageAndSinglePage ||
-        bi.cmdId == CmdSetPdfDocumentColorModeAuto || bi.cmdId == CmdSetPdfDocumentColorModeBlack ||
-        bi.cmdId == CmdSetPdfDocumentColorModeLight) {
+        bi.cmdId == CmdToggleDoubleClickWordLookup || bi.cmdId == CmdToggleLightDarkTheme ||
+        bi.cmdId == CmdToggleBookmarks || bi.cmdId == CmdZoomFitWidthAndContinuous ||
+        bi.cmdId == CmdZoomFitPageAndSinglePage || bi.cmdId == CmdSetPdfDocumentColorModeAuto ||
+        bi.cmdId == CmdSetPdfDocumentColorModeBlack || bi.cmdId == CmdSetPdfDocumentColorModeLight) {
         b.fsStyle = BTNS_CHECK;
     }
     if (bi.bmpIndex == TbIcon::Text) {
@@ -659,7 +658,7 @@ static COLORREF ToolbarButtonFillColor(COLORREF bgCol, bool isChecked, bool isSe
     return bgCol;
 }
 
-static int FindBeforeFindSeparatorIdx() {
+[[maybe_unused]] static int FindBeforeFindSeparatorIdx() {
     for (int i = 1; i < kButtonsCount; i++) {
         if (gToolbarButtons[i].cmdId != CmdFindFirst) {
             continue;
@@ -693,7 +692,7 @@ static bool GetVisibleNeighborItemRect(HWND hwnd, int startIdx, int delta, RECT*
     return false;
 }
 
-static bool GetToolbarSeparatorLineRect(HWND hwnd, int sepIdx, RECT* outRc) {
+[[maybe_unused]] static bool GetToolbarSeparatorLineRect(HWND hwnd, int sepIdx, RECT* outRc) {
     RECT rcSep{};
     if (SendMessageW(hwnd, TB_GETITEMRECT, sepIdx, (LPARAM)&rcSep)) {
         int width = rcSep.right - rcSep.left;

@@ -299,6 +299,16 @@ static const char* gIconClose =
 </svg>)";
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/pin.svg
+static const char* gIconPin =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M15 4.5l4.5 4.5" />
+  <path d="M14.5 9.5l-5 5" />
+  <path d="M16 3l5 5l-4 1l-4 4l-1 4l-5 -5l4 -1l4 -4z" />
+  <path d="M9 15l-4.5 4.5" />
+  <path d="M14 18l-3 3" />
+</svg>)";
+
 // tabler arrows-diagonal: expand the compact find bar into a floating window
 static const char* gIconArrowsDiagonal =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -353,6 +363,7 @@ static const char* gIcons[] = {
     gIconHomeList,
     gIconHomeThumbnails,
     gIconClose,
+    gIconPin,
     gIconArrowsDiagonal,
     gIconArrowsDiagonalMinimize,
     gIconMatchWholeWord,

@@ -1106,6 +1106,10 @@ const globalPrefs: Field[] = [
     "default position (x, y) and size (width, height) of the window",
   ),
 
+  setStructName(
+    mkCompactStruct("SearchUIWindowPos", windowPos, "position/size of the floating find window (see SearchUIFloating)"),
+    "Rect",
+  ),
   mkArray("FileStates", fileSettings, "information about opened files (in most recently used order)"),
   setVersion(mkArray("SessionData", sessionData, "state of the last session, usage depends on RestoreSession"), "3.1"),
 

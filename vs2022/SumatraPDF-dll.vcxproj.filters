@@ -144,6 +144,9 @@
     <ClInclude Include="..\src\ChmModel.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\CommandAvailability.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\CommandPalette.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -487,6 +490,9 @@
     </ClCompile>
     <ClCompile Include="..\src\ChmModel.cpp">
       <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\CommandAvailability.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\src\CommandPalette.cpp">
       <Filter>src</Filter>
