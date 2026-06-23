@@ -54,6 +54,7 @@
     <ClCompile Include="..\src\EngineEbook.cpp" />
     <ClCompile Include="..\src\EngineImages.cpp" />
     <ClCompile Include="..\src\EngineMupdf.cpp" />
+    <ClCompile Include="..\src\EngineNotifyNoOp.cpp" />
     <ClCompile Include="..\src\FzImgReader.cpp" />
     <ClCompile Include="..\src\GumboHelpers.cpp" />
     <ClCompile Include="..\src\HtmlFormatter.cpp" />
@@ -61,6 +62,7 @@
     <ClCompile Include="..\src\MobiDoc.cpp" />
     <ClCompile Include="..\src\PalmDbReader.cpp" />
     <ClCompile Include="..\src\PdfCreator.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeNoOp.cpp" />
     <ClCompile Include="..\src\RegistryPreview.cpp" />
     <ClCompile Include="..\src\SumatraConfig.cpp" />
     <ClCompile Include="..\src\mui\Mui.cpp">

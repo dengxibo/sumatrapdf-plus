@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -1162,7 +1162,6 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <ClInclude Include="..\src\UpdateCheck.h" />
     <ClInclude Include="..\src\Version.h" />
     <ClInclude Include="..\src\WindowTab.h" />
-    <ClInclude Include="..\src\WordLookup.h" />
     <ClInclude Include="..\src\mui\Mui.h" />
     <ClInclude Include="..\src\mui\TextRender.h" />
     <ClInclude Include="..\src\resource.h" />
@@ -1304,8 +1303,6 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <ClCompile Include="..\src\Uninstaller.cpp" />
     <ClCompile Include="..\src\UpdateCheck.cpp" />
     <ClCompile Include="..\src\WindowTab.cpp" />
-    <ClCompile Include="..\src\LookupAudio.cpp" />
-    <ClCompile Include="..\src\WordLookup.cpp" />
     <ClCompile Include="..\src\mui\Mui.cpp" />
     <ClCompile Include="..\src\mui\TextRender.cpp" />
     <ClCompile Include="..\src\regress\Regress.cpp">
@@ -1605,6 +1602,8 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <None Include="..\cmd\gen-docs.ts" />
     <None Include="..\cmd\gen-flags.ts" />
     <None Include="..\cmd\gen-settings.ts" />
+    <None Include="..\cmd\import-oaldpex-dict.ts" />
+    <None Include="..\cmd\import-xdhy7-dict.ts" />
     <None Include="..\cmd\markdown-it.min.js" />
     <None Include="..\cmd\package.json" />
     <None Include="..\cmd\pdb-sizes.ts" />
@@ -1620,6 +1619,9 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <None Include="..\cmd\tsconfig.json" />
     <None Include="..\cmd\util.ts" />
     <None Include="..\cmd\wc.ts" />
+    <None Include="..\debug-azw3-open-hang.md" />
+    <None Include="..\debug-collegiate.txt" />
+    <None Include="..\debug-pron.txt" />
     <None Include="..\docs\gen_docs.search.html" />
     <None Include="..\docs\manual.tmpl.html" />
     <None Include="..\docs\md\Accessibility-and-Text-to-Speech.md" />
@@ -1700,6 +1702,7 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <None Include="..\premake5.files.lua" />
     <None Include="..\premake5.lua" />
     <None Include="..\readme.md" />
+    <None Include="..\readme.txt" />
     <None Include="..\sumlog.txt" />
   </ItemGroup>
   <ItemGroup>

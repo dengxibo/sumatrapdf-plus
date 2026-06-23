@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include=".github">
@@ -222,12 +222,6 @@
     <ClInclude Include="..\src\PdfCreator.h">
       <Filter>src</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\PdfDarkMode.h">
-      <Filter>src</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\PdfDarkModeInternal.h">
-      <Filter>src</Filter>
-    </ClInclude>
     <ClInclude Include="..\src\PdfSync.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -313,9 +307,6 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\WindowTab.h">
-      <Filter>src</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\WordLookup.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\mui\Mui.h">
@@ -548,18 +539,6 @@
     <ClCompile Include="..\src\PdfCreator.cpp">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\PdfDarkModeAnalysis.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\PdfDarkModeCache.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\PdfDarkModeColor.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\PdfDarkModeDevice.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\PdfSync.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -663,12 +642,6 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\WindowTab.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\LookupAudio.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\WordLookup.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\mui\Mui.cpp">
@@ -908,6 +881,12 @@
     <None Include="..\cmd\gen-settings.ts">
       <Filter>cmd</Filter>
     </None>
+    <None Include="..\cmd\import-oaldpex-dict.ts">
+      <Filter>cmd</Filter>
+    </None>
+    <None Include="..\cmd\import-xdhy7-dict.ts">
+      <Filter>cmd</Filter>
+    </None>
     <None Include="..\cmd\markdown-it.min.js">
       <Filter>cmd</Filter>
     </None>
@@ -953,6 +932,9 @@
     <None Include="..\cmd\wc.ts">
       <Filter>cmd</Filter>
     </None>
+    <None Include="..\debug-azw3-open-hang.md" />
+    <None Include="..\debug-collegiate.txt" />
+    <None Include="..\debug-pron.txt" />
     <None Include="..\docs\gen_docs.search.html">
       <Filter>docs</Filter>
     </None>
@@ -1187,6 +1169,7 @@
     <None Include="..\premake5.files.lua" />
     <None Include="..\premake5.lua" />
     <None Include="..\readme.md" />
+    <None Include="..\readme.txt" />
     <None Include="..\sumlog.txt" />
   </ItemGroup>
   <ItemGroup>
