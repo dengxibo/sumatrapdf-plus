@@ -998,6 +998,20 @@ bool LaunchBrowser(const char* url) {
     return LaunchFileShell(url, nullptr, "open");
 }
 
+static BrowserChatUiTaskRunner gBrowserChatUiTaskRunner = nullptr;
+
+void SetBrowserChatUiTaskRunner(BrowserChatUiTaskRunner runner) {
+    gBrowserChatUiTaskRunner = runner;
+}
+
+void RunBrowserChatUiTask(BrowserChatUiTaskFn fn, void* ctx) {
+    if (gBrowserChatUiTaskRunner) {
+        gBrowserChatUiTaskRunner(fn, ctx);
+        return;
+    }
+    fn(ctx);
+}
+
 constexpr int kBrowserReuseMax = 8;
 
 static char* gBrowserReuseKeys[kBrowserReuseMax];
@@ -1136,31 +1150,13 @@ static void SendKey(UINT vk, bool down) {
 }
 
 static void SendCtrlKey(UINT vk) {
-    INPUT inputs[4]{};
-    inputs[0].type = INPUT_KEYBOARD;
-    inputs[0].ki.wVk = VK_CONTROL;
-    inputs[1].type = INPUT_KEYBOARD;
-    inputs[1].ki.wVk = (WORD)vk;
-    inputs[2].type = INPUT_KEYBOARD;
-    inputs[2].ki.wVk = (WORD)vk;
-    inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
-    inputs[3].type = INPUT_KEYBOARD;
-    inputs[3].ki.wVk = VK_CONTROL;
-    inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
-    SendInput(4, inputs, sizeof(INPUT));
-}
-
-static void SendKeystrokesWithThreadAttach(HWND browserHwnd, void (*sendFn)()) {
-    if (!sendFn) {
-        return;
-    }
-    DWORD browserTid = GetWindowThreadProcessId(browserHwnd, nullptr);
-    DWORD ourTid = GetCurrentThreadId();
-    bool attached = browserTid && browserTid != ourTid && AttachThreadInput(ourTid, browserTid, TRUE) != 0;
-    sendFn();
-    if (attached) {
-        AttachThreadInput(ourTid, browserTid, FALSE);
-    }
+    SendKey(VK_LCONTROL, true);
+    Sleep(30);
+    SendKey(vk, true);
+    Sleep(30);
+    SendKey(vk, false);
+    Sleep(30);
+    SendKey(VK_LCONTROL, false);
 }
 
 static void SendPasteKeystrokes() {
@@ -1175,6 +1171,12 @@ static void SendSubmitKeystrokes() {
     inputs[1].ki.wVk = VK_RETURN;
     inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
     SendInput(2, inputs, sizeof(INPUT));
+}
+
+static void DismissBrowserChromeFocusBeforePaste() {
+    SendKey(VK_ESCAPE, true);
+    SendKey(VK_ESCAPE, false);
+    Sleep(80);
 }
 
 static void SwitchToThisWindow(HWND hwnd) {
@@ -1335,55 +1337,89 @@ static void ClickBrowserWindowClientAt(HWND hwnd, int offsetPercentXFromLeft, in
     SendMouseClickScreen(x, y);
 }
 
-static void ClickBrowserChatInputTarget(HWND hwnd, bool deepSeekNewChat) {
-    if (deepSeekNewChat) {
+// DeepSeek empty chat centers the input; Doubao (including cold start) uses the bottom bar.
+static void ClickBrowserChatInputTarget(HWND hwnd, bool useCenteredInput) {
+    if (useCenteredInput) {
         ClickBrowserWindowClientAt(hwnd, 58, 54);
     } else {
         ClickBrowserWindowChatInput(hwnd);
     }
 }
 
-static bool PasteClipboardToBrowserChatInputAt(HWND browserHwnd, int delayBeforePasteMs, bool deepSeekNewChat,
-                                               bool firstLaunch) {
+static void SubmitBrowserChatInput(HWND browserHwnd) {
+    FocusBrowserWindowForSubmit(browserHwnd);
+    Sleep(80);
+    SendSubmitKeystrokes();
+}
+
+struct AiChatPasteUiCtx {
+    HWND browserHwnd;
+    bool useCenteredInput;
+    bool dismissChromeFocus;
+    bool submit;
+};
+
+static void ExecuteBrowserChatPasteSubmit(HWND browserHwnd, bool useCenteredInput, bool dismissChromeFocus,
+                                          bool submit) {
     if (!browserHwnd) {
-        return false;
+        return;
     }
-    if (!FocusBrowserWindow(browserHwnd)) {
+    FocusBrowserWindowForSubmit(browserHwnd);
+    if (dismissChromeFocus) {
+        DismissBrowserChromeFocusBeforePaste();
+    }
+    ClickBrowserChatInputTarget(browserHwnd, useCenteredInput);
+    Sleep(250);
+    FocusBrowserWindowForSubmit(browserHwnd);
+    SendPasteKeystrokes();
+    if (submit) {
+        Sleep(400);
+        SubmitBrowserChatInput(browserHwnd);
+    }
+}
+
+static void AiChatPasteSubmitUiTask(void* param) {
+    auto* ctx = (AiChatPasteUiCtx*)param;
+    if (!ctx) {
+        return;
+    }
+    ExecuteBrowserChatPasteSubmit(ctx->browserHwnd, ctx->useCenteredInput, ctx->dismissChromeFocus, ctx->submit);
+    free(ctx);
+}
+
+static void RunAiChatPasteSubmitOnUiThread(HWND browserHwnd, bool useCenteredInput, bool dismissChromeFocus,
+                                           bool submit) {
+    auto* ctx = (AiChatPasteUiCtx*)calloc(1, sizeof(AiChatPasteUiCtx));
+    if (!ctx) {
+        return;
+    }
+    ctx->browserHwnd = browserHwnd;
+    ctx->dismissChromeFocus = dismissChromeFocus;
+    ctx->useCenteredInput = useCenteredInput;
+    ctx->submit = submit;
+    RunBrowserChatUiTask(AiChatPasteSubmitUiTask, ctx);
+}
+
+bool PasteClipboardToBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) {
+    if (!browserHwnd) {
         return false;
     }
     if (delayBeforePasteMs > 0) {
         Sleep((DWORD)delayBeforePasteMs);
     }
-    ClickBrowserChatInputTarget(browserHwnd, deepSeekNewChat);
-    if (firstLaunch) {
-        Sleep(120);
-        ClickBrowserChatInputTarget(browserHwnd, deepSeekNewChat);
-    }
-    Sleep(100);
-    SendKeystrokesWithThreadAttach(browserHwnd, SendPasteKeystrokes);
+    RunAiChatPasteSubmitOnUiThread(browserHwnd, false, false, false);
     return true;
-}
-
-static bool PasteAndSubmitBrowserChatInputAt(HWND browserHwnd, int delayBeforePasteMs, bool deepSeekNewChat,
-                                             bool firstLaunch) {
-    if (!PasteClipboardToBrowserChatInputAt(browserHwnd, delayBeforePasteMs, deepSeekNewChat, firstLaunch)) {
-        return false;
-    }
-    Sleep(firstLaunch ? 500 : 150);
-    if (firstLaunch) {
-        FocusBrowserWindowForSubmit(browserHwnd);
-        Sleep(150);
-    }
-    SendKeystrokesWithThreadAttach(browserHwnd, SendSubmitKeystrokes);
-    return true;
-}
-
-bool PasteClipboardToBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) {
-    return PasteClipboardToBrowserChatInputAt(browserHwnd, delayBeforePasteMs, false, false);
 }
 
 bool PasteAndSubmitBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) {
-    return PasteAndSubmitBrowserChatInputAt(browserHwnd, delayBeforePasteMs, false, false);
+    if (!browserHwnd) {
+        return false;
+    }
+    if (delayBeforePasteMs > 0) {
+        Sleep((DWORD)delayBeforePasteMs);
+    }
+    RunAiChatPasteSubmitOnUiThread(browserHwnd, false, false, true);
+    return true;
 }
 
 static bool BrowserTitleLooksLoading(const char* titleA) {
@@ -1394,6 +1430,22 @@ static bool BrowserTitleLooksLoading(const char* titleA) {
         return true;
     }
     if (str::Find(titleA, "加载")) {
+        return true;
+    }
+    return false;
+}
+
+static bool BrowserTitleLooksLikeInactiveChat(const char* titleA) {
+    if (!titleA || !*titleA) {
+        return true;
+    }
+    if (str::FindI(titleA, "new tab")) {
+        return true;
+    }
+    if (str::Find(titleA, "新建标签") || str::Find(titleA, "新标签页")) {
+        return true;
+    }
+    if (str::EqI(titleA, "Microsoft Edge") || str::EqI(titleA, "Google Chrome")) {
         return true;
     }
     return false;
@@ -1457,19 +1509,44 @@ static bool WaitForBrowserChatReady(HWND hwnd, const char* reuseKey, const char*
     return IsBrowserTopLevelWindow(hwnd) && BrowserWindowMatchesService(hwnd, reuseKey, host);
 }
 
-bool PasteAndSubmitBrowserChatInputWhenReady(HWND browserHwnd, const char* url, bool waitForPageReady) {
-    if (!browserHwnd || str::IsEmpty(url)) {
-        return false;
+static HWND FindBrowserWindowAfterLaunch(const char* reuseKey, const char* host);
+static HWND PollForBrowserWindowAfterLaunch(const char* reuseKey, const char* host, int timeoutMs);
+
+static HWND WaitForBrowserChatPageReady(HWND browserHwnd, const char* url) {
+    if (str::IsEmpty(url)) {
+        return nullptr;
     }
     TempStr reuseKey = BrowserReuseKeyFromUrlTemp(url);
     TempStr host = HostFromUrlTemp(url);
-    if (waitForPageReady) {
-        WaitForBrowserChatReady(browserHwnd, reuseKey, host, 15000);
+    if (!browserHwnd || !IsBrowserTopLevelWindow(browserHwnd)) {
+        browserHwnd = PollForBrowserWindowAfterLaunch(reuseKey, host, 20000);
     }
-    bool firstLaunch = waitForPageReady;
-    bool deepSeekNewChat = firstLaunch && str::Find(url, "deepseek.com");
-    int delayMs = firstLaunch ? 600 : 150;
-    return PasteAndSubmitBrowserChatInputAt(browserHwnd, delayMs, deepSeekNewChat, firstLaunch);
+    if (!browserHwnd) {
+        return nullptr;
+    }
+    WaitForBrowserChatReady(browserHwnd, reuseKey, host, 20000);
+    Sleep(1000);
+    return browserHwnd;
+}
+
+bool PasteAndSubmitBrowserChatInputWhenReady(HWND browserHwnd, const char* url, bool waitForPageReady,
+                                             bool dismissChromeFocus) {
+    if (str::IsEmpty(url)) {
+        return false;
+    }
+    if (waitForPageReady) {
+        browserHwnd = WaitForBrowserChatPageReady(browserHwnd, url);
+    } else if (!browserHwnd || !IsBrowserTopLevelWindow(browserHwnd)) {
+        TempStr reuseKey = BrowserReuseKeyFromUrlTemp(url);
+        TempStr host = HostFromUrlTemp(url);
+        browserHwnd = PollForBrowserWindowAfterLaunch(reuseKey, host, 5000);
+    }
+    if (!browserHwnd) {
+        return false;
+    }
+    bool useCenteredInput = waitForPageReady && str::Find(url, "deepseek.com");
+    RunAiChatPasteSubmitOnUiThread(browserHwnd, useCenteredInput, dismissChromeFocus, true);
+    return true;
 }
 
 static const char* kDoubaoChatUrl = "https://www.doubao.com/chat/";
@@ -1485,20 +1562,73 @@ static const char* AiChatServiceUrl(AiChatService service) {
     return nullptr;
 }
 
-bool PasteAndSubmitAiChatWhenReady(AiChatService service, HWND browserHwnd, bool waitForPageReady) {
-    const char* url = AiChatServiceUrl(service);
-    if (!browserHwnd || !url) {
-        return false;
-    }
-    return PasteAndSubmitBrowserChatInputWhenReady(browserHwnd, url, waitForPageReady);
-}
-
-bool LaunchAiChatBrowser(AiChatService service, bool* reusedOut, HWND* browserHwndOut) {
+bool PasteAndSubmitAiChatWhenReady(AiChatService service, HWND browserHwnd, bool waitForPageReady,
+                                   bool dismissChromeFocus) {
     const char* url = AiChatServiceUrl(service);
     if (!url) {
         return false;
     }
-    return LaunchBrowserWithReuse(url, false, reusedOut, browserHwndOut);
+    return PasteAndSubmitBrowserChatInputWhenReady(browserHwnd, url, waitForPageReady, dismissChromeFocus);
+}
+
+struct AiChatPromptThreadCtx {
+    AiChatService service;
+    char* prompt;
+};
+
+static DWORD WINAPI AiChatPromptThreadProc(LPVOID param) {
+    auto* ctx = (AiChatPromptThreadCtx*)param;
+    if (!ctx) {
+        return 0;
+    }
+    defer {
+        str::Free(ctx->prompt);
+        free(ctx);
+    };
+
+    bool reused = false;
+    bool navigated = false;
+    HWND browser = nullptr;
+    if (!LaunchAiChatBrowser(ctx->service, &reused, &browser, &navigated)) {
+        return 0;
+    }
+    if (!CopyTextToClipboard(ctx->prompt)) {
+        return 0;
+    }
+    PasteAndSubmitAiChatWhenReady(ctx->service, browser, !reused, navigated);
+    return 0;
+}
+
+void LaunchAiChatWithPromptAsync(AiChatService service, const char* prompt) {
+    if (str::IsEmpty(prompt)) {
+        return;
+    }
+    CopyTextToClipboard(prompt);
+    auto* ctx = (AiChatPromptThreadCtx*)calloc(1, sizeof(AiChatPromptThreadCtx));
+    if (!ctx) {
+        return;
+    }
+    ctx->service = service;
+    ctx->prompt = str::Dup(prompt);
+    if (!ctx->prompt) {
+        free(ctx);
+        return;
+    }
+    HANDLE thread = CreateThread(nullptr, 0, AiChatPromptThreadProc, ctx, 0, nullptr);
+    if (thread) {
+        CloseHandle(thread);
+    } else {
+        str::Free(ctx->prompt);
+        free(ctx);
+    }
+}
+
+bool LaunchAiChatBrowser(AiChatService service, bool* reusedOut, HWND* browserHwndOut, bool* navigatedOut) {
+    const char* url = AiChatServiceUrl(service);
+    if (!url) {
+        return false;
+    }
+    return LaunchBrowserWithReuse(url, false, reusedOut, browserHwndOut, navigatedOut);
 }
 
 static HWND FindBrowserWindowAfterLaunch(const char* reuseKey, const char* host) {
@@ -1538,9 +1668,13 @@ static HWND PollForBrowserWindowAfterLaunch(const char* reuseKey, const char* ho
     return nullptr;
 }
 
-bool LaunchBrowserWithReuse(const char* url, bool navigateOnReuse, bool* reusedOut, HWND* browserHwndOut) {
+bool LaunchBrowserWithReuse(const char* url, bool navigateOnReuse, bool* reusedOut, HWND* browserHwndOut,
+                            bool* navigatedOut) {
     if (reusedOut) {
         *reusedOut = false;
+    }
+    if (navigatedOut) {
+        *navigatedOut = false;
     }
     if (browserHwndOut) {
         *browserHwndOut = nullptr;
@@ -1559,11 +1693,27 @@ bool LaunchBrowserWithReuse(const char* url, bool navigateOnReuse, bool* reusedO
         }
     }
     if (hwnd) {
-        bool ok = navigateOnReuse ? NavigateBrowserWindowToUrl(hwnd, url) : FocusBrowserWindow(hwnd);
+        WCHAR titleW[512]{};
+        GetWindowTextW(hwnd, titleW, dimof(titleW));
+        TempStr titleA = ToUtf8Temp(titleW);
+        bool onChatPage =
+            BrowserWindowMatchesService(hwnd, reuseKey, host) && !BrowserTitleLooksLikeInactiveChat(titleA);
+        bool ok = false;
+        bool reused = false;
+        if (onChatPage && !navigateOnReuse) {
+            ok = FocusBrowserWindow(hwnd);
+            reused = ok;
+        } else {
+            ok = NavigateBrowserWindowToUrl(hwnd, url);
+            reused = false;
+            if (navigatedOut && ok) {
+                *navigatedOut = true;
+            }
+        }
         if (ok) {
             StoreBrowserReuseHwnd(reuseKey, hwnd);
             if (reusedOut) {
-                *reusedOut = true;
+                *reusedOut = reused;
             }
             if (browserHwndOut) {
                 *browserHwndOut = hwnd;

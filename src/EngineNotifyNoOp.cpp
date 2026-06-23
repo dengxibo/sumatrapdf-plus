@@ -28,3 +28,7 @@ COLORREF ThemePageRenderColors(COLORREF& bg) {
 COLORREF ThemeWindowLinkColor() {
     return RgbToCOLORREF(0x0020a0);
 }
+
+bool ThemeUsesDarkChrome() {
+    return false;
+}

@@ -784,6 +784,7 @@ function sumatrapdf_files()
     "PdfTools.*",
     "Print.*",
     "ProgressUpdateUI.*",
+    "LookupAudio.*",
     "RegistryInstaller.*",
     "RegistryPreview.*",
     "RegistrySearchFilter.*",
@@ -821,6 +822,7 @@ function sumatrapdf_files()
     "Version.h",
     "VirtWnd.*",
     "WindowTab.*",
+    "WordLookup.*",
   })
   filter { "configurations:Debug or DebugFull" }
   files_in_dir("src", {
@@ -844,6 +846,21 @@ function sumatrapdf_files()
     "Archive.*",
   })
   filter {}
+end
+
+function pdf_darkmode_files()
+  files_in_dir("src", {
+    "PdfDarkMode.h",
+    "PdfDarkModeInternal.h",
+    "PdfDarkModeAnalysis.cpp",
+    "PdfDarkModeCache.cpp",
+    "PdfDarkModeColor.cpp",
+    "PdfDarkModeDevice.cpp",
+  })
+end
+
+function pdf_darkmode_noop_files()
+  files { "src/PdfDarkModeNoOp.cpp" }
 end
 
 function uia_files()

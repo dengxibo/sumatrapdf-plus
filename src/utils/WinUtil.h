@@ -88,18 +88,27 @@ bool CreateProcessHelper(const char* exe, const char* args);
 bool LaunchFileShell(const char* path, const char* params = nullptr, const char* verb = nullptr, bool hidden = false);
 bool LaunchBrowser(const char* url);
 bool LaunchBrowserWithReuse(const char* url, bool navigateOnReuse = true, bool* reusedOut = nullptr,
-                            HWND* browserHwndOut = nullptr);
+                            HWND* browserHwndOut = nullptr, bool* navigatedOut = nullptr);
 bool PasteClipboardToBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs = 150);
 bool PasteAndSubmitBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs = 150);
-bool PasteAndSubmitBrowserChatInputWhenReady(HWND browserHwnd, const char* url, bool waitForPageReady);
+bool PasteAndSubmitBrowserChatInputWhenReady(HWND browserHwnd, const char* url, bool waitForPageReady,
+                                             bool dismissChromeFocus = false);
+
+typedef void (*BrowserChatUiTaskFn)(void* ctx);
+typedef void (*BrowserChatUiTaskRunner)(BrowserChatUiTaskFn fn, void* ctx);
+void SetBrowserChatUiTaskRunner(BrowserChatUiTaskRunner runner);
+void RunBrowserChatUiTask(BrowserChatUiTaskFn fn, void* ctx);
 
 enum class AiChatService {
     Doubao,
     DeepSeek,
 };
 
-bool LaunchAiChatBrowser(AiChatService service, bool* reusedOut = nullptr, HWND* browserHwndOut = nullptr);
-bool PasteAndSubmitAiChatWhenReady(AiChatService service, HWND browserHwnd, bool waitForPageReady);
+bool LaunchAiChatBrowser(AiChatService service, bool* reusedOut = nullptr, HWND* browserHwndOut = nullptr,
+                         bool* navigatedOut = nullptr);
+bool PasteAndSubmitAiChatWhenReady(AiChatService service, HWND browserHwnd, bool waitForPageReady,
+                                   bool dismissChromeFocus = false);
+void LaunchAiChatWithPromptAsync(AiChatService service, const char* prompt);
 void OpenPathInDefaultFileManager(const char* path);
 void PaintCheckerboard(HDC hdc, int x, int y, int w, int h);
 

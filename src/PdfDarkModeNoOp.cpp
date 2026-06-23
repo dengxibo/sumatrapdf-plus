@@ -13,10 +13,6 @@ extern "C" {
 // Stub implementations for binaries that compile EngineMupdf.cpp but not
 // PdfDarkMode*.cpp / Theme.cpp (PdfFilter, PdfPreview, etc.).
 
-bool ThemeUsesDarkChrome() {
-    return false;
-}
-
 bool PdfDarkModeUsesObjectLevel() {
     return false;
 }
@@ -54,4 +50,24 @@ void PdfDarkModeInvalidatePage(fz_context* ctx, FzPageInfo* pageInfo) {
 
 int GetPreservePdfImagesMinSize() {
     return 72;
+}
+
+bool GetPreservePdfImagesInDarkMode() {
+    return true;
+}
+
+void SetPreservePdfImagesInDarkMode(bool preserve) {
+    (void)preserve;
+}
+
+PdfDarkModeRenderer GetPdfDarkModeRenderer() {
+    return PdfDarkModeRenderer::LegacyBitmapPostProcess;
+}
+
+PdfDocumentColorMode GetPdfDocumentColorMode() {
+    return PdfDocumentColorMode::Auto;
+}
+
+void SetPdfDocumentColorMode(PdfDocumentColorMode mode) {
+    (void)mode;
 }

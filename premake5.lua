@@ -895,6 +895,7 @@ workspace "SumatraPDF"
     uia_files()
     engines_files()
     sumatrapdf_files()
+    pdf_darkmode_files()
 
     debugdir(".")
 
@@ -958,6 +959,7 @@ workspace "SumatraPDF"
     uia_files()
     engines_files()
     sumatrapdf_files()
+    pdf_darkmode_noop_files()
 
     webview_conf()
 

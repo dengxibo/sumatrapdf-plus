@@ -6579,20 +6579,12 @@ static void AnalyzeSelectionWithDoubao(WindowTab* tab) {
 
     DoubaoPromptKind kind = ClassifyDoubaoSelection(selText);
     TempStr prompt = BuildDoubaoPromptTemp(selText, kind);
-    if (!prompt || !CopyTextToClipboard(prompt)) {
+    if (!prompt) {
         return;
     }
 
-    bool reused = false;
-    HWND browser = nullptr;
     AiChatService service = ActiveAiChatService();
-    if (!LaunchAiChatBrowser(service, &reused, &browser)) {
-        return;
-    }
-
-    if (browser) {
-        PasteAndSubmitAiChatWhenReady(service, browser, !reused);
-    }
+    LaunchAiChatWithPromptAsync(service, prompt);
 
     NotificationCreateArgs args;
     args.hwndParent = tab->win->hwndCanvas;

@@ -1261,6 +1261,27 @@ static void LogCommandLine() {
     logf("'%s'\n  ver %s\n", s, UPDATE_CHECK_VERA);
 }
 
+struct BrowserChatUiTaskWrap {
+    BrowserChatUiTaskFn fn;
+    void* ctx;
+};
+
+static void BrowserChatUiTaskTrampoline(BrowserChatUiTaskWrap* w) {
+    w->fn(w->ctx);
+    free(w);
+}
+
+static void InvokeBrowserChatUiTask(BrowserChatUiTaskFn fn, void* ctx) {
+    auto* w = (BrowserChatUiTaskWrap*)malloc(sizeof(BrowserChatUiTaskWrap));
+    if (!w) {
+        fn(ctx);
+        return;
+    }
+    w->fn = fn;
+    w->ctx = ctx;
+    uitask::Invoke(MkFunc0(BrowserChatUiTaskTrampoline, w), "AiChatPasteSubmit");
+}
+
 int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
     int exitCode = 1; // by default it's error
     int nWithDde = 0;
@@ -1304,6 +1325,8 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
     ScopedGdiPlus gdiPlus(true);
     mui::Initialize();
     uitask::Initialize();
+
+    SetBrowserChatUiTaskRunner(InvokeBrowserChatUiTask);
 
     if (!IsDebuggerPresent()) {
         // VSCode shows both debugger output and console out which doubles the logging

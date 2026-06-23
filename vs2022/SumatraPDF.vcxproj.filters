@@ -201,6 +201,9 @@
     <ClInclude Include="..\src\Installer.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\LookupAudio.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\MainWindow.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -220,6 +223,12 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\PdfCreator.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\PdfDarkMode.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\PdfDarkModeInternal.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\PdfSync.h">
@@ -307,6 +316,9 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\WindowTab.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\WordLookup.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\mui\Mui.h">
@@ -518,6 +530,9 @@
     <ClCompile Include="..\src\InstallerCommon.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\LookupAudio.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\MainWindow.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -537,6 +552,18 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\PdfCreator.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\PdfDarkModeAnalysis.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\PdfDarkModeCache.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\PdfDarkModeColor.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\PdfDarkModeDevice.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\PdfSync.cpp">
@@ -642,6 +669,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\WindowTab.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\WordLookup.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\mui\Mui.cpp">
