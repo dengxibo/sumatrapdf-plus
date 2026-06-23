@@ -426,6 +426,15 @@ const annotations: Field[] = [
     ),
     "3.4",
   ),
+  setVersion(
+    mkField(
+      "SelectionToolbar",
+      Bool,
+      true,
+      "if true, a small toolbar with annotation actions (highlight, underline etc.) and Ask AI pops up after selecting text in PDF documents that support annotations. Set to false to disable it",
+    ),
+    "3.7",
+  ),
 ];
 
 const favorite: Field[] = [

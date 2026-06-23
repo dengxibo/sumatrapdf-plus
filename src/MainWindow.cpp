@@ -39,6 +39,7 @@
 #include "resource.h"
 #include "Commands.h"
 #include "Selection.h"
+#include "SelectionToolbar.h"
 #include "Flags.h"
 #include "StressTesting.h"
 #include "Translations.h"
@@ -155,6 +156,8 @@ MainWindow::~MainWindow() {
     // cbHandler is passed into DocController and must be deleted afterwards
     // (all controllers should have been deleted prior to MainWindow, though)
     delete cbHandler;
+
+    DeleteSelectionToolbar(this);
 
     delete frameRateWnd;
     delete infotip;

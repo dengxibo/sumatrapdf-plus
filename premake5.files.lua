@@ -794,6 +794,8 @@ function sumatrapdf_files()
     "OverlayScrollbar.*",
     "Screenshot.*",
     "Selection.*",
+    "SelectionToolbar.*",
+    "FloatingPopupStyle.*",
     "Settings.h",
     "SettingsStructs.*",
     "SimpleBrowserWindow.*",

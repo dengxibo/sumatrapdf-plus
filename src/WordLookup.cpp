@@ -26,6 +26,7 @@
 #include "Theme.h"
 #include "Translations.h"
 #include "LookupAudio.h"
+#include "FloatingPopupStyle.h"
 #include "WordLookup.h"
 
 #include "DarkModeSubclass.h"
@@ -37,7 +38,6 @@
 struct OfflineDictionary;
 
 constexpr int kPopupDx = 340;
-constexpr int kCornerRadius = 16;
 constexpr int kCardPad = 20;
 constexpr int kCardPadTop = 12;
 constexpr int kCardPadBottom = 14;
@@ -140,10 +140,6 @@ static WordLookupWnd* gWordLookupWnd = nullptr;
 static void StopCurrentLookupAudio(bool clearSpeakerAnim = true);
 static void PositionWordLookup(WordLookupWnd* wnd, Point screenPos);
 
-static Gdiplus::Color GdipColor(COLORREF col, BYTE alpha = 255) {
-    return Gdiplus::Color(alpha, GetRValue(col), GetGValue(col), GetBValue(col));
-}
-
 static HFONT CreateBoldFontFrom(HFONT base) {
     if (!base) {
         return nullptr;
@@ -222,67 +218,11 @@ static const char* AbbreviateFl(const char* fl) {
     return fl;
 }
 
-static COLORREF LookupCardBg() {
-    if (ThemeUsesDarkChrome()) {
-        return ThemeWindowBackgroundColor();
-    }
-    COLORREF contentBg;
-    ThemePageRenderColors(contentBg);
-    return AccentColor(contentBg, 12);
-}
-
-static COLORREF LookupBorderColor() {
-    if (ThemeUsesDarkChrome()) {
-        return AccentColor(ThemeWindowControlBackgroundColor(), 35);
-    }
-    return AccentColor(LookupCardBg(), 8);
-}
-
-static COLORREF LookupSeparatorColor() {
-    if (ThemeUsesDarkChrome()) {
-        return AccentColor(ThemeWindowControlBackgroundColor(), 20);
-    }
-    return AccentColor(LookupCardBg(), 5);
-}
-
-static COLORREF LookupTextColor() {
-    if (ThemeUsesDarkChrome()) {
-        COLORREF col = ThemeReadingTextColor();
-        int dim = ThemeUsesBlackChrome() ? -22 : -14;
-        return AdjustLightness2(col, dim);
-    }
-    return RGB(27, 29, 33);
-}
-
-static COLORREF LookupMutedTextColor() {
-    if (ThemeUsesDarkChrome()) {
-        return ThemeReadingTextDisabledColor();
-    }
-    return RGB(92, 96, 104);
-}
-
-static COLORREF LookupAccentColor() {
-    return ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : RGB(38, 108, 184);
-}
-
-static COLORREF LookupHoverBgColor(COLORREF bg) {
-    if (ThemeUsesDarkChrome()) {
-        return AccentColor(ThemeWindowControlBackgroundColor(), 15);
-    }
-    return AccentColor(bg, 10);
-}
-
 static COLORREF LookupSpeakerHoverBgColor() {
     if (ThemeUsesDarkChrome()) {
         return AccentColor(ThemeWindowControlBackgroundColor(), 22);
     }
-    return AccentColor(LookupCardBg(), 22);
-}
-
-static COLORREF BlendLookupColors(COLORREF from, COLORREF to, float t) {
-    auto blend = [&](int a, int b) { return (int)(a * (1.f - t) + b * t); };
-    return RGB(blend(GetRValue(from), GetRValue(to)), blend(GetGValue(from), GetGValue(to)),
-               blend(GetBValue(from), GetBValue(to)));
+    return AccentColor(FloatingPopupBg(), 22);
 }
 
 static bool HasAudioMeta(const DictSense* sense) {
@@ -292,13 +232,6 @@ static bool HasAudioMeta(const DictSense* sense) {
 static TempStr LookingUpTextTemp(int dotPhase) {
     int dots = (dotPhase % 3) + 1;
     return str::FormatTemp("%s%.*s", _TRA("Looking up"), dots, "...");
-}
-
-static COLORREF LookupCloseHoverBgColor(COLORREF bg) {
-    if (ThemeUsesDarkChrome()) {
-        return AccentColor(ThemeWindowControlBackgroundColor(), 18);
-    }
-    return AccentColor(bg, 15);
 }
 
 static Rect LookupCardRect(HWND hwnd) {
@@ -312,47 +245,11 @@ static Rect LookupCardRect(HWND hwnd) {
     return card;
 }
 
-static void FillRoundedRectLookup(HDC hdc, const Rect& rc, int radius, COLORREF col) {
-    Gdiplus::Graphics g(hdc);
-    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-    Gdiplus::SolidBrush br(GdipColor(col));
-    Gdiplus::GraphicsPath path;
-    int d = radius;
-    path.AddArc(rc.x, rc.y, d, d, 180, 90);
-    path.AddArc(rc.x + rc.dx - d - 1, rc.y, d, d, 270, 90);
-    path.AddArc(rc.x + rc.dx - d - 1, rc.y + rc.dy - d - 1, d, d, 0, 90);
-    path.AddArc(rc.x, rc.y + rc.dy - d - 1, d, d, 90, 90);
-    path.CloseFigure();
-    g.FillPath(&br, &path);
-}
-
-static void StrokeRoundedRectLookup(HDC hdc, const Rect& rc, int radius, COLORREF col) {
-    Gdiplus::Graphics g(hdc);
-    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-    Gdiplus::Pen pen(GdipColor(col), 1);
-    Gdiplus::GraphicsPath path;
-    int d = radius;
-    path.AddArc(rc.x, rc.y, d, d, 180, 90);
-    path.AddArc(rc.x + rc.dx - d - 1, rc.y, d, d, 270, 90);
-    path.AddArc(rc.x + rc.dx - d - 1, rc.y + rc.dy - d - 1, d, d, 0, 90);
-    path.AddArc(rc.x, rc.y + rc.dy - d - 1, d, d, 90, 90);
-    path.CloseFigure();
-    g.DrawPath(&pen, &path);
-}
-
 static void UpdateLookupWindowRgn(WordLookupWnd* wnd) {
     if (!wnd || !wnd->hwnd) {
         return;
     }
-    HWND hwnd = wnd->hwnd;
-    Rect card = LookupCardRect(hwnd);
-    int radius = DpiScale(hwnd, kCornerRadius);
-
-    HRGN rgn = CreateRoundRectRgn(card.x, card.y, card.x + card.dx + 1, card.y + card.dy + 1, radius, radius);
-
-    if (!SetWindowRgn(hwnd, rgn, TRUE)) {
-        DeleteObject(rgn);
-    }
+    UpdateFloatingPopupWindowRgn(wnd->hwnd, kFloatingPopupCornerRadius);
 }
 
 WordLookupWnd::~WordLookupWnd() {
@@ -406,8 +303,8 @@ void RefreshWordLookupTheme() {
         return;
     }
     HWND popupHwnd = wnd->hwnd;
-    COLORREF colTxt = LookupTextColor();
-    COLORREF colBg = LookupCardBg();
+    COLORREF colTxt = FloatingPopupTextColor();
+    COLORREF colBg = FloatingPopupBg();
     wnd->SetColors(colTxt, colBg);
     if (UseDarkModeLib() && ThemeUsesDarkChrome()) {
         DarkMode::removeWindowCtlColorSubclass(popupHwnd);
@@ -1296,23 +1193,23 @@ static COLORREF LookupTabBgColor(bool selected, bool hover) {
         return ThemeUsesDarkChrome() ? AccentColor(ThemeWindowControlBackgroundColor(), 25) : RGB(168, 182, 198);
     }
     if (hover) {
-        return LookupHoverBgColor(LookupCardBg());
+        return FloatingPopupHoverBg(FloatingPopupBg());
     }
-    return ThemeUsesDarkChrome() ? ThemeWindowBackgroundColor() : AccentColor(LookupCardBg(), 4);
+    return ThemeUsesDarkChrome() ? ThemeWindowBackgroundColor() : AccentColor(FloatingPopupBg(), 4);
 }
 
 static COLORREF LookupTabBorderColor(bool selected) {
     if (selected) {
         return ThemeUsesDarkChrome() ? AccentColor(ThemeWindowLinkColor(), -20) : RGB(148, 162, 178);
     }
-    return LookupSeparatorColor();
+    return FloatingPopupSeparatorColor();
 }
 
 static COLORREF LookupTabTextColor(bool selected) {
     if (selected) {
-        return ThemeUsesDarkChrome() ? LookupAccentColor() : RGB(48, 62, 80);
+        return ThemeUsesDarkChrome() ? FloatingPopupAccentColor() : RGB(48, 62, 80);
     }
-    return LookupMutedTextColor();
+    return FloatingPopupMutedTextColor();
 }
 
 static int DrawLookupTabs(HWND hwnd, HDC dc, WordLookupWnd* wnd, int x, int y, int right) {
@@ -1346,8 +1243,8 @@ static int DrawLookupTabs(HWND hwnd, HDC dc, WordLookupWnd* wnd, int x, int y, i
         Rect tabRc(currX, y, tabDx, tabDy);
         bool selected = i == wnd->currTab;
         bool hover = i == wnd->tabHover;
-        FillRoundedRectLookup(dc, tabRc, radius, LookupTabBgColor(selected, hover));
-        StrokeRoundedRectLookup(dc, tabRc, radius, LookupTabBorderColor(selected));
+        FillFloatingPopupRoundedRect(dc, tabRc, radius, LookupTabBgColor(selected, hover));
+        StrokeFloatingPopupRoundedRect(dc, tabRc, radius, LookupTabBorderColor(selected));
 
         RECT textR{tabRc.x + padX, tabRc.y, tabRc.x + tabRc.dx - padX, tabRc.y + tabRc.dy};
         COLORREF textCol = LookupTabTextColor(selected);
@@ -1386,15 +1283,19 @@ static void EnsureSpeakerAnimTimer(WordLookupWnd* wnd) {
     SetTimer(wnd->hwnd, kSpeakerHoverTimerId, kSpeakerHoverTimerMs, nullptr);
 }
 
+static Gdiplus::Color LookupGdipColor(COLORREF col, BYTE alpha = 255) {
+    return Gdiplus::Color(alpha, GetRValue(col), GetGValue(col), GetBValue(col));
+}
+
 static void DrawLookupSpeakerIcon(HWND hwnd, HDC dc, const Rect& rc, bool audioReady, float hoverT, bool playing,
                                   int waveTick) {
-    COLORREF col = audioReady ? LookupAccentColor() : LookupMutedTextColor();
+    COLORREF col = audioReady ? FloatingPopupAccentColor() : FloatingPopupMutedTextColor();
     Gdiplus::Graphics g(dc);
     g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
     g.SetPageUnit(Gdiplus::UnitPixel);
     if (hoverT > 0.f) {
-        COLORREF bgCol = BlendLookupColors(LookupCardBg(), LookupSpeakerHoverBgColor(), hoverT);
-        Gdiplus::SolidBrush br(GdipColor(bgCol));
+        COLORREF bgCol = BlendFloatingPopupColors(FloatingPopupBg(), LookupSpeakerHoverBgColor(), hoverT);
+        Gdiplus::SolidBrush br(LookupGdipColor(bgCol));
         g.FillEllipse(&br, (Gdiplus::REAL)rc.x, (Gdiplus::REAL)rc.y, (Gdiplus::REAL)(rc.dx - 1),
                       (Gdiplus::REAL)(rc.dy - 1));
     }
@@ -1403,7 +1304,7 @@ static void DrawLookupSpeakerIcon(HWND hwnd, HDC dc, const Rect& rc, bool audioR
     ir.SubLR(pad, pad);
     ir.SubTB(pad, pad);
     Gdiplus::REAL penW = (Gdiplus::REAL)DpiScale(hwnd, 1) * 1.5f;
-    Gdiplus::Pen pen(GdipColor(col), penW);
+    Gdiplus::Pen pen(LookupGdipColor(col), penW);
     pen.SetStartCap(Gdiplus::LineCapRound);
     pen.SetEndCap(Gdiplus::LineCapRound);
     pen.SetLineJoin(Gdiplus::LineJoinRound);
@@ -1701,20 +1602,20 @@ bool WordLookupWnd::Create(MainWindow* winIn, const char* word, Point screenPos)
     win = winIn;
     font = CreateScaledFontFrom(GetAppFont(), 132);
     if (font) {
-        fontOwned = true;
+        fontOwned = font != GetAppFont();
     } else {
         font = GetAppFont();
     }
     headwordFont = CreateScaledFontFrom(GetAppBiggerFont(), 115);
     if (headwordFont) {
-        headwordFontOwned = true;
+        headwordFontOwned = headwordFont != GetAppBiggerFont();
     } else {
         headwordFont = GetAppBiggerFont();
     }
     posFont = CreateBoldFontFrom(font);
 
-    COLORREF colTxt = LookupTextColor();
-    COLORREF colBg = LookupCardBg();
+    COLORREF colTxt = FloatingPopupTextColor();
+    COLORREF colBg = FloatingPopupBg();
     CreateCustomArgs args;
     args.visible = false;
     args.style = WS_POPUP;
@@ -1741,20 +1642,20 @@ bool WordLookupWnd::Create(MainWindow* winIn, const char* word, Point screenPos)
 void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
     DoubleBuffer buffer(hwnd, ToRect(ps->rcPaint));
     HDC dc = buffer.GetDC();
-    COLORREF colBg = LookupCardBg();
-    COLORREF borderCol = LookupBorderColor();
+    COLORREF colBg = FloatingPopupBg();
+    COLORREF borderCol = FloatingPopupBorderColor();
     Rect card = LookupCardRect(hwnd);
-    int radius = DpiScale(hwnd, kCornerRadius);
+    int radius = DpiScale(hwnd, kFloatingPopupCornerRadius);
 
     COLORREF outerBg = ThemeWindowBackgroundColor();
     HBRUSH outerBr = CreateSolidBrush(outerBg);
     FillRect(dc, &ps->rcPaint, outerBr);
     DeleteObject(outerBr);
 
-    FillRoundedRectLookup(dc, card, radius, colBg);
+    FillFloatingPopupRoundedRect(dc, card, radius, colBg);
     Gdiplus::Graphics borderG(dc);
     borderG.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-    Gdiplus::Pen borderPen(GdipColor(borderCol), 1);
+    Gdiplus::Pen borderPen(LookupGdipColor(borderCol), 1);
     Gdiplus::GraphicsPath borderPath;
     borderPath.AddArc(card.x, card.y, radius, radius, 180, 90);
     borderPath.AddArc(card.x + card.dx - radius - 1, card.y, radius, radius, 270, 90);
@@ -1782,8 +1683,8 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
     int titleRowDy = showSpeaker ? std::max(titleLineDy, iconSz) : titleLineDy;
     int titleRight = showSpeaker ? topRight - iconSz - DpiScale(hwnd, 8) : topRight;
     RECT titleR{x, y, titleRight, y + titleRowDy};
-    int titleDy =
-        DrawLookupText(dc, titleFont, title, &titleR, LookupTextColor(), DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    int titleDy = DrawLookupText(dc, titleFont, title, &titleR, FloatingPopupTextColor(),
+                                 DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     SIZE titleSz{};
     HFONT oldTitleFont = (HFONT)SelectObject(dc, titleFont ? titleFont : font);
     const char* titleForMeasure = title ? title : "";
@@ -1808,8 +1709,9 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
     TempStr phoneticLine = LookupPhoneticLineTemp(sense, title ? title : "");
     if (phoneticLine && LookupTabCount(this) == 0 && y < bottom) {
         RECT r{x, y, right, bottom};
-        y += DrawLookupText(dc, font, phoneticLine, &r, LookupMutedTextColor(), DT_SINGLELINE | DT_END_ELLIPSIS) +
-             DpiScale(hwnd, 4);
+        y +=
+            DrawLookupText(dc, font, phoneticLine, &r, FloatingPopupMutedTextColor(), DT_SINGLELINE | DT_END_ELLIPSIS) +
+            DpiScale(hwnd, 4);
     }
 
     int tabsDy = DrawLookupTabs(hwnd, dc, this, x, y, right);
@@ -1819,7 +1721,7 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
 
     if (sense && sense->fl && y < bottom && LookupTabCount(this) == 0) {
         RECT r{x, y, right, bottom};
-        y += DrawLookupText(dc, posFont ? posFont : font, AbbreviateFl(sense->fl), &r, LookupAccentColor(),
+        y += DrawLookupText(dc, posFont ? posFont : font, AbbreviateFl(sense->fl), &r, FloatingPopupAccentColor(),
                             DT_SINGLELINE | DT_END_ELLIPSIS) +
              DpiScale(hwnd, 8);
     }
@@ -1835,18 +1737,18 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
     }
     if (statusText && y < bottom) {
         RECT r{x, y, right, bottom};
-        DrawLookupText(dc, font, statusText, &r, LookupMutedTextColor(), DT_WORDBREAK | DT_EDITCONTROL);
+        DrawLookupText(dc, font, statusText, &r, FloatingPopupMutedTextColor(), DT_WORDBREAK | DT_EDITCONTROL);
     } else if (sense && y < bottom) {
         char* defs = BuildDefinitionsText(sense);
         if (defs) {
             RECT r{x, y, right, bottom};
-            y += DrawLookupText(dc, font, defs, &r, LookupTextColor(), DT_WORDBREAK | DT_EDITCONTROL);
+            y += DrawLookupText(dc, font, defs, &r, FloatingPopupTextColor(), DT_WORDBREAK | DT_EDITCONTROL);
             str::Free(defs);
         }
         char* example = BuildExampleText(sense);
         if (example && y + DpiScale(hwnd, 28) < bottom) {
             y += DpiScale(hwnd, 11);
-            HPEN sepPen = CreatePen(PS_SOLID, 1, LookupSeparatorColor());
+            HPEN sepPen = CreatePen(PS_SOLID, 1, FloatingPopupSeparatorColor());
             HGDIOBJ oldSep = SelectObject(dc, sepPen);
             MoveToEx(dc, x, y, nullptr);
             LineTo(dc, right, y);
@@ -1855,7 +1757,7 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
             y += DpiScale(hwnd, 12);
 
             RECT r{x, y, right, bottom};
-            DrawLookupText(dc, font, example, &r, LookupMutedTextColor(), DT_WORDBREAK | DT_EDITCONTROL);
+            DrawLookupText(dc, font, example, &r, FloatingPopupMutedTextColor(), DT_WORDBREAK | DT_EDITCONTROL);
         }
         str::Free(example);
     }
@@ -1864,9 +1766,9 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
     cbArgs.hdc = dc;
     cbArgs.r = closeBtnPos;
     cbArgs.isHover = closeBtnHover;
-    cbArgs.colX = LookupMutedTextColor();
-    cbArgs.colXHover = LookupTextColor();
-    cbArgs.colHoverBg = LookupCloseHoverBgColor(colBg);
+    cbArgs.colX = FloatingPopupMutedTextColor();
+    cbArgs.colXHover = FloatingPopupTextColor();
+    cbArgs.colHoverBg = FloatingPopupCloseHoverBg(colBg);
     DrawCloseButton(cbArgs);
 
     buffer.Flush(hdc);

@@ -3681,6 +3681,10 @@ HICON HwndSetIcon(HWND hwnd, HICON icon) {
         return nullptr;
     }
     HICON res = (HICON)SendMessageW(hwnd, WM_SETICON, ICON_BIG, (LPARAM)icon);
+    // also set the small icon, otherwise the title bar and taskbar button
+    // fall back to the generic application icon for windows whose class
+    // doesn't register a small icon (e.g. the annotation editor)
+    SendMessageW(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)icon);
     return res;
 }
 

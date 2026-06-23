@@ -50443,3 +50443,18 @@ tw:↑ ↓ 進行導覽
 uk:↑ ↓ для навігації
 uz:Navigatsiya qilish uchun ↑ ↓
 vn:↑ ↓ để điều hướng
+:Highlight
+cn:高亮
+tw:螢光標示
+:Squiggly
+cn:波浪线
+tw:波浪線
+:Strike Out
+cn:删除线
+tw:刪除線
+:Underline
+cn:下划线
+tw:底線
+:Copy
+cn:复制
+tw:複製

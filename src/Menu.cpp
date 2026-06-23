@@ -1350,7 +1350,7 @@ again3:
 }
 
 // returns [remove, disable] state of the command
-std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, int cmdId) {
+std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
     bool remove = false;
     bool disable = false;
     if (!HasPermission(Perm::InternetAccess)) {
@@ -1476,7 +1476,7 @@ HMENU BuildMenuFromDef(MenuDef* menuDef, HMENU menu, BuildMenuCtx* ctx) {
             continue;
         }
 
-        auto [removeMenu, disableMenu] = GetCommandIdState(ctx, cmdId);
+        auto [removeMenu, disableMenu] = GetCommandIdState(ctx, md.idOrSubmenu);
         if (ctx) {
             removeMenu |= !ctx->isCursorOnPage && (subMenuDef == menuDefCreateAnnotUnderCursor);
             removeMenu |= !ctx->hasSelection && (subMenuDef == menuDefCreateAnnotFromSelection);

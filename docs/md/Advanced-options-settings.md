@@ -349,6 +349,12 @@ Annotations [
     ; default author for created annotations, use (none) to not add an author at
     ; all. If not set will use Windows user name (introduced in version 3.4)
     DefaultAuthor = 
+
+    ; if true, a small toolbar with annotation actions (highlight, underline
+    ; etc.) and Ask AI pops up after selecting text in PDF documents that
+    ; support annotations. Set to false to disable it (introduced in version
+    ; 3.7)
+    SelectionToolbar = true
 ]
 
 ; list of additional external viewers for various file types. See docs for more information (https://www.sumatrapdfreader.org/docs/Customize-external-viewers)

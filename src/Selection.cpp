@@ -27,6 +27,7 @@
 #include "MainWindow.h"
 #include "WindowTab.h"
 #include "Selection.h"
+#include "SelectionToolbar.h"
 #include "Toolbar.h"
 #include "Translations.h"
 #include "uia/Provider.h"
@@ -95,6 +96,7 @@ Vec<SelectionOnPage>* SelectionOnPage::FromTextSelect(TextSel* textSel) {
 }
 
 void DeleteOldSelectionInfo(MainWindow* win, bool alsoTextSel) {
+    HideSelectionToolbar(win);
     win->showSelection = false;
     win->selectionMeasure = SizeF();
     WindowTab* tab = win->CurrentTab();
@@ -427,4 +429,10 @@ void OnSelectionStop(MainWindow* win, int x, int y, bool aborted) {
         win->showSelection = win->CurrentTab()->selectionOnPage != nullptr;
     }
     ScheduleRepaint(win, 0);
+
+    // show the floating annotation/Ask AI toolbar for a finished text selection
+    // (the function self-guards: only PDF text selections that support annotations)
+    if (!aborted) {
+        ShowSelectionToolbar(win);
+    }
 }

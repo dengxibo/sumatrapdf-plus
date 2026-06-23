@@ -6437,9 +6437,19 @@ void EngineMupdfGetAnnotations(EngineBase* engine, Vec<Annotation*>& annotsOut) 
     if (!e->pdfdoc) {
         return;
     }
-    ScopedCritSec scope(&e->pagesLock);
+    // IMPORTANT: do NOT hold pagesLock across this loop. GetFzPageInfo() acquires
+    // renderLock (and, while holding it, resolves link destinations that re-take
+    // pagesLock). If we held pagesLock here we'd have order pagesLock->renderLock
+    // while a concurrent render thread holds renderLock and wants pagesLock,
+    // which deadlocks (seen after save->reload->reopen of the annotation editor
+    // on large PDFs). GetFzPageInfo() does its own per-page locking and
+    // pi->annotations is stable once built, so no outer lock is needed.
     for (int i = 1; i <= e->pageCount; i++) {
-        FzPageInfo* pi = e->GetFzPageInfo(i, false);
+        // use the quick load path: enumerating annotations only needs the page
+        // and its annotation list, not full text extraction / image collection.
+        // Using the full load here froze the UI on the first open of the
+        // annotation editor for large documents (every page got fully loaded).
+        FzPageInfo* pi = e->GetFzPageInfo(i, true);
         if (!pi) {
             continue;
         }

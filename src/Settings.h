@@ -164,6 +164,10 @@ struct Annotations {
     // default author for created annotations, use (none) to not add an
     // author at all. If not set will use Windows user name
     char* defaultAuthor;
+    // if true, a small toolbar with annotation actions (highlight,
+    // underline etc.) and Ask AI pops up after selecting text in PDF
+    // documents that support annotations. Set to false to disable it
+    bool selectionToolbar;
 };
 
 // list of additional external viewers for various file types. See [docs
@@ -705,11 +709,12 @@ static const FieldInfo gAnnotationsFields[] = {
     {offsetof(Annotations, textIconColor), SettingType::Color, (intptr_t)""},
     {offsetof(Annotations, textIconType), SettingType::String, (intptr_t)""},
     {offsetof(Annotations, defaultAuthor), SettingType::String, (intptr_t)""},
+    {offsetof(Annotations, selectionToolbar), SettingType::Bool, true},
 };
 static const StructInfo gAnnotationsInfo = {
-    sizeof(Annotations), 12, gAnnotationsFields,
+    sizeof(Annotations), 13, gAnnotationsFields,
     "HighlightColor\0UnderlineColor\0SquigglyColor\0StrikeOutColor\0FreeTextColor\0FreeTextBackgroundColor\0FreeTextOpa"
-    "city\0FreeTextSize\0FreeTextBorderWidth\0TextIconColor\0TextIconType\0DefaultAuthor"};
+    "city\0FreeTextSize\0FreeTextBorderWidth\0TextIconColor\0TextIconType\0DefaultAuthor\0SelectionToolbar"};
 
 static const FieldInfo gExternalViewerFields[] = {
     {offsetof(ExternalViewer, commandLine), SettingType::String, 0},

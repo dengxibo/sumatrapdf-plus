@@ -13,6 +13,7 @@ struct Tooltip;
 struct TreeView;
 struct TabsCtrl;
 struct TocTree;
+struct SelectionToolbar;
 
 // factor by how large the non-maximized caption should be in relation to the tabbar
 #define kCaptionTabBarDyFactor 1.0f
@@ -308,6 +309,10 @@ struct MainWindow {
     TouchState touchState;
 
     FrameRateWnd* frameRateWnd = nullptr;
+
+    // small floating toolbar shown after a text selection in PDF documents
+    // that support annotations (controlled by Annotations.SelectionToolbar)
+    SelectionToolbar* selectionToolbar = nullptr;
 
     // set at the beginning of CloseWindow() to prevent
     // processing commands while closing (e.g. reentrancy
