@@ -260,7 +260,9 @@ const fixedPageUI: Field[] = [
       "SelectionColor",
       Color,
       mkRGB(0xf5, 0xfc, 0x0c),
-      "color value for the text selection rectangle (also used to highlight found text)",
+      "color value for the text selection rectangle (also used to highlight found text). " +
+        "Use an #aarrggbb value to control opacity: a smaller alpha (e.g. #40ffff00) makes the " +
+        "selection more transparent so the selected text stays crisp; #rrggbb uses the default opacity",
     ),
     "2.4",
   ),

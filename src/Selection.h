@@ -57,7 +57,7 @@ void NormalizeNearbyHighlightHeights(Vec<RectF>& rects);
 
 void DeleteOldSelectionInfo(MainWindow* win, bool alsoTextSel = false);
 void PaintTransparentRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF selectionColor,
-                                u8 alpha = kSelectionDefaultAlpha, int margin = 0);
+                                u8 alpha = kSelectionDefaultAlpha, int pad = 2);
 
 // Text selection / highlight: multiply blend with page pixels (MuPDF/Acrobat-style).
 void PaintMultiplyRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color);

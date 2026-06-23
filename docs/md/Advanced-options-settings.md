@@ -245,7 +245,9 @@ FixedPageUI [
     BackgroundColor = #ffffff
 
     ; color value for the text selection rectangle (also used to highlight found
-    ; text) (introduced in version 2.4)
+    ; text). Use an #aarrggbb value to control opacity: a smaller alpha (e.g.
+    ; #40ffff00) makes the selection more transparent so the selected text stays
+    ; crisp; #rrggbb uses the default opacity (introduced in version 2.4)
     SelectionColor = #f5fc0c
 
     ; top, right, bottom and left margin (in that order) between window and
