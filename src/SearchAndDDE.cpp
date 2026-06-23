@@ -1027,6 +1027,9 @@ void PaintAllFindMatches(MainWindow* win, HDC hdc) {
     if (!gShowAllMatches || !win->IsDocLoaded() || !win->AsFixed()) {
         return;
     }
+    if (!IsFindUIVisible(win)) {
+        return;
+    }
     if (!win->hwndFindEdit || HwndGetTextLen(win->hwndFindEdit) == 0) {
         return;
     }
