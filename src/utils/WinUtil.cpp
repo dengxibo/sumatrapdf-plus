@@ -1136,10 +1136,75 @@ static void SendKey(UINT vk, bool down) {
 }
 
 static void SendCtrlKey(UINT vk) {
-    SendKey(VK_CONTROL, true);
-    SendKey(vk, true);
-    SendKey(vk, false);
-    SendKey(VK_CONTROL, false);
+    INPUT inputs[4]{};
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = VK_CONTROL;
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].ki.wVk = (WORD)vk;
+    inputs[2].type = INPUT_KEYBOARD;
+    inputs[2].ki.wVk = (WORD)vk;
+    inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
+    inputs[3].type = INPUT_KEYBOARD;
+    inputs[3].ki.wVk = VK_CONTROL;
+    inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+    SendInput(4, inputs, sizeof(INPUT));
+}
+
+static void SendKeystrokesWithThreadAttach(HWND browserHwnd, void (*sendFn)()) {
+    if (!sendFn) {
+        return;
+    }
+    DWORD browserTid = GetWindowThreadProcessId(browserHwnd, nullptr);
+    DWORD ourTid = GetCurrentThreadId();
+    bool attached = browserTid && browserTid != ourTid && AttachThreadInput(ourTid, browserTid, TRUE) != 0;
+    sendFn();
+    if (attached) {
+        AttachThreadInput(ourTid, browserTid, FALSE);
+    }
+}
+
+static void SendPasteKeystrokes() {
+    SendCtrlKey('V');
+}
+
+static void SendSubmitKeystrokes() {
+    INPUT inputs[2]{};
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = VK_RETURN;
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].ki.wVk = VK_RETURN;
+    inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    SendInput(2, inputs, sizeof(INPUT));
+}
+
+static void SwitchToThisWindow(HWND hwnd) {
+    using Fn = void(WINAPI*)(HWND, BOOL);
+    static Fn fn = (Fn)GetProcAddress(GetModuleHandleW(L"user32"), "SwitchToThisWindow");
+    if (fn) {
+        fn(hwnd, TRUE);
+    }
+}
+
+static void FocusBrowserWindowForSubmit(HWND hwnd) {
+    if (!hwnd) {
+        return;
+    }
+    DWORD pid = 0;
+    DWORD browserTid = GetWindowThreadProcessId(hwnd, &pid);
+    if (pid) {
+        AllowSetForegroundWindow(pid);
+    }
+    if (IsIconic(hwnd)) {
+        ShowWindow(hwnd, SW_RESTORE);
+    }
+    DWORD ourTid = GetCurrentThreadId();
+    bool attached = browserTid && browserTid != ourTid && AttachThreadInput(ourTid, browserTid, TRUE) != 0;
+    SwitchToThisWindow(hwnd);
+    BringWindowToTop(hwnd);
+    SetForegroundWindow(hwnd);
+    if (attached) {
+        AttachThreadInput(ourTid, browserTid, FALSE);
+    }
 }
 
 static TempStr GetClipboardTextTemp() {
@@ -1270,7 +1335,16 @@ static void ClickBrowserWindowClientAt(HWND hwnd, int offsetPercentXFromLeft, in
     SendMouseClickScreen(x, y);
 }
 
-static bool PasteClipboardToBrowserChatInputAt(HWND browserHwnd, int delayBeforePasteMs, bool deepSeekNewChat) {
+static void ClickBrowserChatInputTarget(HWND hwnd, bool deepSeekNewChat) {
+    if (deepSeekNewChat) {
+        ClickBrowserWindowClientAt(hwnd, 58, 54);
+    } else {
+        ClickBrowserWindowChatInput(hwnd);
+    }
+}
+
+static bool PasteClipboardToBrowserChatInputAt(HWND browserHwnd, int delayBeforePasteMs, bool deepSeekNewChat,
+                                               bool firstLaunch) {
     if (!browserHwnd) {
         return false;
     }
@@ -1280,32 +1354,36 @@ static bool PasteClipboardToBrowserChatInputAt(HWND browserHwnd, int delayBefore
     if (delayBeforePasteMs > 0) {
         Sleep((DWORD)delayBeforePasteMs);
     }
-    if (deepSeekNewChat) {
-        ClickBrowserWindowClientAt(browserHwnd, 58, 54);
-    } else {
-        ClickBrowserWindowChatInput(browserHwnd);
+    ClickBrowserChatInputTarget(browserHwnd, deepSeekNewChat);
+    if (firstLaunch) {
+        Sleep(120);
+        ClickBrowserChatInputTarget(browserHwnd, deepSeekNewChat);
     }
-    Sleep(80);
-    SendCtrlKey('V');
+    Sleep(100);
+    SendKeystrokesWithThreadAttach(browserHwnd, SendPasteKeystrokes);
+    return true;
+}
+
+static bool PasteAndSubmitBrowserChatInputAt(HWND browserHwnd, int delayBeforePasteMs, bool deepSeekNewChat,
+                                             bool firstLaunch) {
+    if (!PasteClipboardToBrowserChatInputAt(browserHwnd, delayBeforePasteMs, deepSeekNewChat, firstLaunch)) {
+        return false;
+    }
+    Sleep(firstLaunch ? 500 : 150);
+    if (firstLaunch) {
+        FocusBrowserWindowForSubmit(browserHwnd);
+        Sleep(150);
+    }
+    SendKeystrokesWithThreadAttach(browserHwnd, SendSubmitKeystrokes);
     return true;
 }
 
 bool PasteClipboardToBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) {
-    return PasteClipboardToBrowserChatInputAt(browserHwnd, delayBeforePasteMs, false);
-}
-
-static bool PasteAndSubmitBrowserChatInputAt(HWND browserHwnd, int delayBeforePasteMs, bool deepSeekNewChat) {
-    if (!PasteClipboardToBrowserChatInputAt(browserHwnd, delayBeforePasteMs, deepSeekNewChat)) {
-        return false;
-    }
-    Sleep(120);
-    SendKey(VK_RETURN, true);
-    SendKey(VK_RETURN, false);
-    return true;
+    return PasteClipboardToBrowserChatInputAt(browserHwnd, delayBeforePasteMs, false, false);
 }
 
 bool PasteAndSubmitBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) {
-    return PasteAndSubmitBrowserChatInputAt(browserHwnd, delayBeforePasteMs, false);
+    return PasteAndSubmitBrowserChatInputAt(browserHwnd, delayBeforePasteMs, false, false);
 }
 
 static bool BrowserTitleLooksLoading(const char* titleA) {
@@ -1363,6 +1441,8 @@ static bool WaitForBrowserChatReady(HWND hwnd, const char* reuseKey, const char*
             if (stableCount >= 3) {
                 if (reuseKey && str::Find(reuseKey, "doubao.com")) {
                     Sleep(600);
+                } else if (reuseKey && str::Find(reuseKey, "deepseek.com")) {
+                    Sleep(400);
                 }
                 return true;
             }
@@ -1386,9 +1466,10 @@ bool PasteAndSubmitBrowserChatInputWhenReady(HWND browserHwnd, const char* url, 
     if (waitForPageReady) {
         WaitForBrowserChatReady(browserHwnd, reuseKey, host, 15000);
     }
-    bool deepSeekNewChat = waitForPageReady && str::Find(url, "deepseek.com");
-    int delayMs = waitForPageReady ? (deepSeekNewChat ? 500 : 400) : 150;
-    return PasteAndSubmitBrowserChatInputAt(browserHwnd, delayMs, deepSeekNewChat);
+    bool firstLaunch = waitForPageReady;
+    bool deepSeekNewChat = firstLaunch && str::Find(url, "deepseek.com");
+    int delayMs = firstLaunch ? 600 : 150;
+    return PasteAndSubmitBrowserChatInputAt(browserHwnd, delayMs, deepSeekNewChat, firstLaunch);
 }
 
 static const char* kDoubaoChatUrl = "https://www.doubao.com/chat/";
@@ -1497,6 +1578,11 @@ bool LaunchBrowserWithReuse(const char* url, bool navigateOnReuse, bool* reusedO
 
     hwnd = PollForBrowserWindowAfterLaunch(reuseKey, host, 12000);
     if (hwnd) {
+        DWORD pid = 0;
+        GetWindowThreadProcessId(hwnd, &pid);
+        if (pid) {
+            AllowSetForegroundWindow(pid);
+        }
         StoreBrowserReuseHwnd(reuseKey, hwnd);
     }
     if (browserHwndOut) {

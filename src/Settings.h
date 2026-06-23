@@ -478,12 +478,9 @@ struct GlobalPrefs {
     // if true, double-clicking a word looks it up in the offline
     // dictionary
     bool enableDoubleClickWordLookup;
-    // if true, Ask AI opens Doubao (豆包) chat at
-    // https://www.doubao.com/chat/
-    bool aiChatDoubaoEnabled;
-    // if true, Ask AI opens DeepSeek chat at https://chat.deepseek.com/
-    // (used when Doubao is disabled)
-    bool aiChatDeepSeekEnabled;
+    // if true, Ask AI opens DeepSeek chat instead of Doubao (豆包); default
+    // is Doubao at https://www.doubao.com/chat/
+    bool aiChatUseDeepSeekInsteadOfDoubao;
     // if true, we show the Favorites sidebar
     bool showFavorites;
     // if true, we show table of contents (Bookmarks) sidebar if it's
@@ -917,8 +914,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, showToolbar), SettingType::Bool, true},
     {offsetof(GlobalPrefs, offlineDictionaryPath), SettingType::String, 0},
     {offsetof(GlobalPrefs, enableDoubleClickWordLookup), SettingType::Bool, true},
-    {offsetof(GlobalPrefs, aiChatDoubaoEnabled), SettingType::Bool, true},
-    {offsetof(GlobalPrefs, aiChatDeepSeekEnabled), SettingType::Bool, false},
+    {offsetof(GlobalPrefs, aiChatUseDeepSeekInsteadOfDoubao), SettingType::Bool, false},
     {offsetof(GlobalPrefs, showFavorites), SettingType::Bool, false},
     {offsetof(GlobalPrefs, showToc), SettingType::Bool, true},
     {offsetof(GlobalPrefs, showLinks), SettingType::Bool, false},
@@ -988,18 +984,18 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment, (intptr_t)"Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 95, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 94, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0ReloadMo"
     "difiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSession\0ReuseInstance\0ShowMenubar\0ShowMe"
-    "nubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0OfflineDictionaryPath\0EnableDoubleClickWordLookup\0AiChatDoub"
-    "aoEnabled\0AiChatDeepSeekEnabled\0ShowFavorites\0ShowToc\0ShowLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0Scrollb"
-    "arInSinglePage\0SmoothScroll\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme\0T"
-    "ocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0UIFontSize\0DisableAntiAlias\0UseSysColors\0UseTabs\0TabsMru\0ZoomL"
-    "evels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewer"
-    "s\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0\0"
-    "DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLa"
-    "stUpdateCheck\0OpenCountWeek\0PropWinPos\0\0"};
+    "nubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0OfflineDictionaryPath\0EnableDoubleClickWordLookup\0AiChatUseD"
+    "eepSeekInsteadOfDoubao\0ShowFavorites\0ShowToc\0ShowLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSingle"
+    "Page\0SmoothScroll\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme\0TocDy\0Tool"
+    "barSize\0TreeFontName\0TreeFontSize\0UIFontSize\0DisableAntiAlias\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0Zoo"
+    "mIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0Forwa"
+    "rdSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0\0DefaultPas"
+    "swords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCh"
+    "eck\0OpenCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)""},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)""},

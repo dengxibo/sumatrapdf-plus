@@ -119,13 +119,9 @@ OfflineDictionaryPath =
 ; (introduced in version 3.7)
 EnableDoubleClickWordLookup = true
 
-; if true, Ask AI opens Doubao (豆包) chat at https://www.doubao.com/chat/
-; (introduced in version 3.7)
-AiChatDoubaoEnabled = true
-
-; if true, Ask AI opens DeepSeek chat at https://chat.deepseek.com/ (used when
-; Doubao is disabled) (introduced in version 3.7)
-AiChatDeepSeekEnabled = false
+; if true, Ask AI opens DeepSeek chat instead of Doubao (豆包); default is Doubao
+; at https://www.doubao.com/chat/ (introduced in version 3.7)
+AiChatUseDeepSeekInsteadOfDoubao = false
 
 ; if true, we show the Favorites sidebar
 ShowFavorites = false

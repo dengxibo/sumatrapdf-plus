@@ -6549,15 +6549,11 @@ static TempStr BuildDoubaoPromptTemp(const char* selection, DoubaoPromptKind kin
     return str::FormatTemp("%s", trimmed);
 }
 
-bool IsAiChatEnabled() {
-    return gGlobalPrefs && (gGlobalPrefs->aiChatDoubaoEnabled || gGlobalPrefs->aiChatDeepSeekEnabled);
-}
-
 static AiChatService ActiveAiChatService() {
-    if (gGlobalPrefs && gGlobalPrefs->aiChatDoubaoEnabled) {
-        return AiChatService::Doubao;
+    if (gGlobalPrefs && gGlobalPrefs->aiChatUseDeepSeekInsteadOfDoubao) {
+        return AiChatService::DeepSeek;
     }
-    return AiChatService::DeepSeek;
+    return AiChatService::Doubao;
 }
 
 static void AnalyzeSelectionWithDoubao(WindowTab* tab) {
@@ -6584,10 +6580,6 @@ static void AnalyzeSelectionWithDoubao(WindowTab* tab) {
     DoubaoPromptKind kind = ClassifyDoubaoSelection(selText);
     TempStr prompt = BuildDoubaoPromptTemp(selText, kind);
     if (!prompt || !CopyTextToClipboard(prompt)) {
-        return;
-    }
-
-    if (!IsAiChatEnabled()) {
         return;
     }
 

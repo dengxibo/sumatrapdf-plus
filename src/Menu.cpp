@@ -1376,9 +1376,6 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, int cmdId) {
     if (!HasPermission(Perm::CopySelection)) {
         remove |= cmdIdInList(removeIfNoCopyPerms);
     }
-    if (cmdId == CmdAnalyzeSelectionWithDoubao && !IsAiChatEnabled()) {
-        remove = true;
-    }
     if ((cmdId == CmdCheckUpdate) && gIsStoreBuild) {
         remove = true;
     }

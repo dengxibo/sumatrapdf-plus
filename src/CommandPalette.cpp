@@ -463,9 +463,6 @@ static bool AllowCommand(const CommandPaletteBuildCtx& ctx, i32 cmdId) {
     if (!HasPermission(Perm::CopySelection)) {
         remove |= IsCmdInMenuList(cmdId, removeIfNoCopyPerms);
     }
-    if (cmdId == CmdAnalyzeSelectionWithDoubao && !IsAiChatEnabled()) {
-        return false;
-    }
     if (remove) {
         return false;
     }

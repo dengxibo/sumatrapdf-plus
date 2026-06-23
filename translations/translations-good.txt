@@ -6205,225 +6205,225 @@ tw:套用調整大小
 uk:Застосувати зміну розміру
 uz:O'lchamni o'zgartirishni qo'llash
 vn:Áp dụng Thay đổi Kích thước
-:Ask &Doubao
-af:Vra &Doubao
-am:Հարցնել &Doubao-ին
-ar:اسأل &Doubao
-az:&Doubao-ya sor
-bg:Попитай &Doubao
-bn:&Doubao-কে জিজ্ঞাসা করুন
-br:Perguntar ao &Doubao
-bs:Pitaj &Doubao
-by:Запытаць &Doubao
-ca:Pregunta a &Doubao
-ca-xv:Pregunta a &Doubao
-cn:问问豆包(&D)
-co:Dì &Doubao
-cy:Gofyn i &Doubao
-cz:Zeptat se &Doubao
-de:&Doubao fragen
-dk:Spørg &Doubao
-el:Ρώτησε το &Doubao
-es:Preguntar a &Doubao
-et:Küsi &Doubao-lt
-eu:Galdetu &Doubao-ri
-fa:از &Doubao بپرس
-fi:Kysy &Doubaolta
-fo:Spyr &Doubao
-fr:Demander à &Doubao
-fy-nl:Freeg &Doubao
-ga:Fiafraigh de &Doubao
-gl:Preguntar a &Doubao
-he:שאל את &Doubao
-hi:&Doubao से पूछें
-hr:Pitaj &Doubao
-hu:Kérdezd meg a &Doubao-t
-id:Tanya &Doubao
-it:Chiedi a &Doubao
-ja:&Doubaoに質問
-jv:Takon &Doubao
-ka:ჰკითხე &Doubao-ს
-kr:&Doubao에 질문
-ku:Ji &Doubao bipirse
-kw:Govyn &Doubao
-lt:Klausk &Doubao
-lv:Jautā &Doubao
-mk:Прашај го &Doubao
-ml:&Doubao-യോട് ചോദിക്കുക
-mm:&Doubao ကို မေးပါ
-my:Tanya &Doubao
-ne:&Doubao लाई सोध्नुहोस्
-nl:Vraag &Doubao
-nn:Spør &Doubao
-no:Spør &Doubao
-pa:&Doubao ਨੂੰ ਪੁੱਛੋ
-pl:Zapytaj &Doubao
-pt:Perguntar ao &Doubao
-ro:Întreabă &Doubao
-ru:Спросить &Doubao
-sat:&Doubao ᱠᱩᱠᱷᱟ ᱢᱮ
-si:&Doubao අහන්න
-sk:Opýtať sa &Doubao
-sl:Vprašaj &Doubao
-sn:Bvunza &Doubao
-sp-rs:Pitaj &Doubao
-sq:Pyet &Doubao
-sr-rs:Питај &Doubao
-sv:Fråga &Doubao
-ta:&Doubao-வை கேள்
-th:ถาม &Doubao
-tl:Tanungin si &Doubao
-tr:&Doubao'ya sor
-tw:問問豆包(&D)
-uk:Запитати &Doubao
-uz:&Doubao-dan so'rang
-vn:Hỏi &Doubao
-:Ask Doubao
-af:Vra Doubao
-am:Հարցնել Doubao-ին
-ar:اسأل Doubao
-az:Doubao-ya sor
-bg:Попитай Doubao
-bn:Doubao-কে জিজ্ঞাসা করুন
-br:Perguntar ao Doubao
-bs:Pitaj Doubao
-by:Запытаць Doubao
-ca:Pregunta a Doubao
-ca-xv:Pregunta a Doubao
-cn:问问豆包
-co:Dì Doubao
-cy:Gofyn i Doubao
-cz:Zeptat se Doubao
-de:Doubao fragen
-dk:Spørg Doubao
-el:Ρώτησε το Doubao
-es:Preguntar a Doubao
-et:Küsi Doubao-lt
-eu:Galdetu Doubao-ri
-fa:از Doubao بپرس
-fi:Kysy Doubaolta
-fo:Spyr Doubao
-fr:Demander à Doubao
-fy-nl:Freeg Doubao
-ga:Fiafraigh de Doubao
-gl:Preguntar a Doubao
-he:שאל את Doubao
-hi:Doubao से पूछें
-hr:Pitaj Doubao
-hu:Kérdezd meg a Doubao-t
-id:Tanya Doubao
-it:Chiedi a Doubao
-ja:Doubaoに質問
-jv:Takon Doubao
-ka:ჰკითხე Doubao-ს
-kr:Doubao에 질문
-ku:Ji Doubao bipirse
-kw:Govyn Doubao
-lt:Klausk Doubao
-lv:Jautā Doubao
-mk:Прашај го Doubao
-ml:Doubao-യോട് ചോദിക്കുക
-mm:Doubao ကို မေးပါ
-my:Tanya Doubao
-ne:Doubao लाई सोध्नुहोस्
-nl:Vraag Doubao
-nn:Spør Doubao
-no:Spør Doubao
-pa:Doubao ਨੂੰ ਪੁੱਛੋ
-pl:Zapytaj Doubao
-pt:Perguntar ao Doubao
-ro:Întreabă Doubao
-ru:Спросить Doubao
-sat:Doubao ᱠᱩᱠᱷᱟ ᱢᱮ
-si:Doubao අහන්න
-sk:Opýtať sa Doubao
-sl:Vprašaj Doubao
-sn:Bvunza Doubao
-sp-rs:Pitaj Doubao
-sq:Pyet Doubao
-sr-rs:Питај Doubao
-sv:Fråga Doubao
-ta:Doubao-வை கேள்
-th:ถาม Doubao
-tl:Tanungin si Doubao
-tr:Doubao'ya sor
-tw:問問豆包
-uk:Запитати Doubao
-uz:Doubao-dan so'rang
-vn:Hỏi Doubao
-:Question sent to Doubao.
-af:Vraag na Doubao gestuur.
-am:Հարցն ուղարկվել է Doubao-ին:
-ar:تم إرسال السؤال إلى Doubao.
-az:Sual Doubao-ya göndərildi.
-bg:Въпросът е изпратен към Doubao.
-bn:Doubao-তে প্রশ্ন পাঠানো হয়েছে।
-br:Pergunta enviada ao Doubao.
-bs:Pitanje poslano Doubao-u.
-by:Пытанне адправлена ў Doubao.
-ca:Pregunta enviada a Doubao.
-ca-xv:Pregunta enviada a Doubao.
-cn:已发送到豆包。
-co:Domanda mandata à Doubao.
-cy:Anfonwyd cwestiwn at Doubao.
-cz:Otázka odeslána do Doubao.
-de:Frage an Doubao gesendet.
-dk:Spørgsmål sendt til Doubao.
-el:Η ερώτηση στάλθηκε στο Doubao.
-es:Pregunta enviada a Doubao.
-et:Küsimus saadeti Doubao-sse.
-eu:Galdera Doubao-ra bidali da.
-fa:سؤال به Doubao ارسال شد.
-fi:Kysymys lähetetty Doubaolle.
-fo:Spurningur sendur til Doubao.
-fr:Question envoyée à Doubao.
-fy-nl:Frage nei Doubao stuurd.
-ga:Ceist seolta chuig Doubao.
-gl:Pregunta enviada a Doubao.
-he:השאלה נשלחה ל-Doubao.
-hi:Doubao को प्रश्न भेजा गया।
-hr:Pitanje poslano Doubao-u.
-hu:Kérdés elküldve a Doubao-nak.
-id:Pertanyaan dikirim ke Doubao.
-it:Domanda inviata a Doubao.
-ja:Doubaoに質問を送信しました。
-jv:Pitakon dikirim menyang Doubao.
-ka:კითხვა გაგზავნილია Doubao-ში.
-kr:Doubao에 질문을 보냈습니다.
-ku:Pirs ji Doubao re hat şandin.
-kw:Govyn danfonys dhe Doubao.
-lt:Klausimas išsiųstas Doubao.
-lv:Jautājums nosūtīts Doubao.
-mk:Прашањето е испратено до Doubao.
-ml:Doubao-യിലേക്ക് ചോദ്യം അയച്ചു.
-mm:Doubao သို့ မေးခွန်း ပို့ပြီးပါပြီ။
-my:Soalan dihantar ke Doubao.
-ne:Doubao मा प्रश्न पठाइयो।
-nl:Vraag verzonden naar Doubao.
-nn:Spørsmål sendt til Doubao.
-no:Spørsmål sendt til Doubao.
-pa:Doubao ਨੂੰ ਸਵਾਲ ਭੇਜਿਆ ਗਿਆ।
-pl:Pytanie wysłano do Doubao.
-pt:Pergunta enviada ao Doubao.
-ro:Întrebare trimisă către Doubao.
-ru:Вопрос отправлен в Doubao.
-sat:Doubao ᱨᱮ ᱠᱩᱠᱷᱟ ᱞᱟᱹᱜᱤᱫ ᱟ
-si:Doubao වෙත ප්‍රශ්නය යවන ලදී.
-sk:Otázka odoslaná do Doubao.
-sl:Vprašanje poslano Doubao.
-sn:Mubvunzo watumirwa kuDoubao.
-sp-rs:Pitanje poslato Doubao-u.
-sq:Pyetja u dërgua te Doubao.
-sr-rs:Питање послато Doubao-у.
-sv:Fråga skickad till Doubao.
-ta:Doubao-க்கு கேள்வி அனுப்பப்பட்டது.
-th:ส่งคำถามไปยัง Doubao แล้ว
-tl:Naipadala ang tanong sa Doubao.
-tr:Soru Doubao'ya gönderildi.
-tw:已傳送到豆包。
-uk:Запитання надіслано до Doubao.
-uz:Savol Doubao-ga yuborildi.
-vn:Đã gửi câu hỏi tới Doubao.
+:Ask &AI
+af:Vra &AI
+am:Հարցնել &AI-ին
+ar:اسأل &AI
+az:&AI-ya sor
+bg:Попитай &AI
+bn:&AI-কে জিজ্ঞাসা করুন
+br:Perguntar ao &AI
+bs:Pitaj &AI
+by:Запытаць &AI
+ca:Pregunta a &AI
+ca-xv:Pregunta a &AI
+cn:问问 AI(&A)
+co:Dì &AI
+cy:Gofyn i &AI
+cz:Zeptat se &AI
+de:&AI fragen
+dk:Spørg &AI
+el:Ρώτησε το &AI
+es:Preguntar a &AI
+et:Küsi &AI-lt
+eu:Galdetu &AI-ri
+fa:از &AI بپرس
+fi:Kysy &AIlta
+fo:Spyr &AI
+fr:Demander à &AI
+fy-nl:Freeg &AI
+ga:Fiafraigh de &AI
+gl:Preguntar a &AI
+he:שאל את &AI
+hi:&AI से पूछें
+hr:Pitaj &AI
+hu:Kérdezd meg a &AI-t
+id:Tanya &AI
+it:Chiedi a &AI
+ja:&AIに質問
+jv:Takon &AI
+ka:ჰკითხე &AI-ს
+kr:&AI에 질문
+ku:Ji &AI bipirse
+kw:Govyn &AI
+lt:Klausk &AI
+lv:Jautā &AI
+mk:Прашај го &AI
+ml:&AI-യോട് ചോദിക്കുക
+mm:&AI ကို မေးပါ
+my:Tanya &AI
+ne:&AI लाई सोध्नुहोस्
+nl:Vraag &AI
+nn:Spør &AI
+no:Spør &AI
+pa:&AI ਨੂੰ ਪੁੱਛੋ
+pl:Zapytaj &AI
+pt:Perguntar ao &AI
+ro:Întreabă &AI
+ru:Спросить &AI
+sat:&AI ᱠᱩᱠᱷᱟ ᱢᱮ
+si:&AI අහන්න
+sk:Opýtať sa &AI
+sl:Vprašaj &AI
+sn:Bvunza &AI
+sp-rs:Pitaj &AI
+sq:Pyet &AI
+sr-rs:Питај &AI
+sv:Fråga &AI
+ta:&AI-வை கேள்
+th:ถาม &AI
+tl:Tanungin si &AI
+tr:&AI'ya sor
+tw:問問 AI(&A)
+uk:Запитати &AI
+uz:&AI-dan so'rang
+vn:Hỏi &AI
+:Ask AI
+af:Vra AI
+am:Հարցնել AI-ին
+ar:اسأل AI
+az:AI-ya sor
+bg:Попитай AI
+bn:AI-কে জিজ্ঞাসা করুন
+br:Perguntar ao AI
+bs:Pitaj AI
+by:Запытаць AI
+ca:Pregunta a AI
+ca-xv:Pregunta a AI
+cn:问问 AI
+co:Dì AI
+cy:Gofyn i AI
+cz:Zeptat se AI
+de:AI fragen
+dk:Spørg AI
+el:Ρώτησε το AI
+es:Preguntar a AI
+et:Küsi AI-lt
+eu:Galdetu AI-ri
+fa:از AI بپرس
+fi:Kysy AIlta
+fo:Spyr AI
+fr:Demander à AI
+fy-nl:Freeg AI
+ga:Fiafraigh de AI
+gl:Preguntar a AI
+he:שאל את AI
+hi:AI से पूछें
+hr:Pitaj AI
+hu:Kérdezd meg a AI-t
+id:Tanya AI
+it:Chiedi a AI
+ja:AIに質問
+jv:Takon AI
+ka:ჰკითხე AI-ს
+kr:AI에 질문
+ku:Ji AI bipirse
+kw:Govyn AI
+lt:Klausk AI
+lv:Jautā AI
+mk:Прашај го AI
+ml:AI-യോട് ചോദിക്കുക
+mm:AI ကို မေးပါ
+my:Tanya AI
+ne:AI लाई सोध्नुहोस्
+nl:Vraag AI
+nn:Spør AI
+no:Spør AI
+pa:AI ਨੂੰ ਪੁੱਛੋ
+pl:Zapytaj AI
+pt:Perguntar ao AI
+ro:Întreabă AI
+ru:Спросить AI
+sat:AI ᱠᱩᱠᱷᱟ ᱢᱮ
+si:AI අහන්න
+sk:Opýtať sa AI
+sl:Vprašaj AI
+sn:Bvunza AI
+sp-rs:Pitaj AI
+sq:Pyet AI
+sr-rs:Питај AI
+sv:Fråga AI
+ta:AI-வை கேள்
+th:ถาม AI
+tl:Tanungin si AI
+tr:AI'ya sor
+tw:問問 AI
+uk:Запитати AI
+uz:AI-dan so'rang
+vn:Hỏi AI
+:Question sent to AI.
+af:Vraag na AI gestuur.
+am:Հարցն ուղարկվել է AI-ին:
+ar:تم إرسال السؤال إلى AI.
+az:Sual AI-ya göndərildi.
+bg:Въпросът е изпратен към AI.
+bn:AI-তে প্রশ্ন পাঠানো হয়েছে।
+br:Pergunta enviada ao AI.
+bs:Pitanje poslano AI-u.
+by:Пытанне адправлена ў AI.
+ca:Pregunta enviada a AI.
+ca-xv:Pregunta enviada a AI.
+cn:已发送到 AI。
+co:Domanda mandata à AI.
+cy:Anfonwyd cwestiwn at AI.
+cz:Otázka odeslána do AI.
+de:Frage an AI gesendet.
+dk:Spørgsmål sendt til AI.
+el:Η ερώτηση στάλθηκε στο AI.
+es:Pregunta enviada a AI.
+et:Küsimus saadeti AI-sse.
+eu:Galdera AI-ra bidali da.
+fa:سؤال به AI ارسال شد.
+fi:Kysymys lähetetty AIlle.
+fo:Spurningur sendur til AI.
+fr:Question envoyée à AI.
+fy-nl:Frage nei AI stuurd.
+ga:Ceist seolta chuig AI.
+gl:Pregunta enviada a AI.
+he:השאלה נשלחה ל-AI.
+hi:AI को प्रश्न भेजा गया।
+hr:Pitanje poslano AI-u.
+hu:Kérdés elküldve a AI-nak.
+id:Pertanyaan dikirim ke AI.
+it:Domanda inviata a AI.
+ja:AIに質問を送信しました。
+jv:Pitakon dikirim menyang AI.
+ka:კითხვა გაგზავნილია AI-ში.
+kr:AI에 질문을 보냈습니다.
+ku:Pirs ji AI re hat şandin.
+kw:Govyn danfonys dhe AI.
+lt:Klausimas išsiųstas AI.
+lv:Jautājums nosūtīts AI.
+mk:Прашањето е испратено до AI.
+ml:AI-യിലേക്ക് ചോദ്യം അയച്ചു.
+mm:AI သို့ မေးခွန်း ပို့ပြီးပါပြီ။
+my:Soalan dihantar ke AI.
+ne:AI मा प्रश्न पठाइयो।
+nl:Vraag verzonden naar AI.
+nn:Spørsmål sendt til AI.
+no:Spørsmål sendt til AI.
+pa:AI ਨੂੰ ਸਵਾਲ ਭੇਜਿਆ ਗਿਆ।
+pl:Pytanie wysłano do AI.
+pt:Pergunta enviada ao AI.
+ro:Întrebare trimisă către AI.
+ru:Вопрос отправлен в AI.
+sat:AI ᱨᱮ ᱠᱩᱠᱷᱟ ᱞᱟᱹᱜᱤᱫ ᱟ
+si:AI වෙත ප්‍රශ්නය යවන ලදී.
+sk:Otázka odoslaná do AI.
+sl:Vprašanje poslano AI.
+sn:Mubvunzo watumirwa kuAI.
+sp-rs:Pitanje poslato AI-u.
+sq:Pyetja u dërgua te AI.
+sr-rs:Питање послато AI-у.
+sv:Fråga skickad till AI.
+ta:AI-க்கு கேள்வி அனுப்பப்பட்டது.
+th:ส่งคำถามไปยัง AI แล้ว
+tl:Naipadala ang tanong sa AI.
+tr:Soru AI'ya gönderildi.
+tw:已傳送到 AI。
+uk:Запитання надіслано до AI.
+uz:Savol AI-ga yuborildi.
+vn:Đã gửi câu hỏi tới AI.
 :Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
 af:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:
 am:Please look up this word and give phonetic transcription, pronunciation, definition, examples, and mnemonics:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate multilingual translations for Ask Doubao UI and prompts."""
+"""Generate multilingual translations for Ask AI UI and prompts."""
 
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ af am ar az bg bn br bs by ca ca-xv cn co cy cz de dk el es et eu fa fi fo fr fy
 """.split()
 
 UI_KEYS = [
-    "Ask &Doubao",
-    "Ask Doubao",
-    "Question sent to Doubao.",
+    "Ask &AI",
+    "Ask AI",
+    "Question sent to AI.",
 ]
 
 PROMPT_KEYS = [
@@ -192,6 +192,26 @@ EN_PROMPT_CHINESE = PROMPT_KEYS[1]
 EN_PROMPT_SENTENCE = PROMPT_KEYS[2]
 
 
+def ui_doubao_to_ai(text: str, lang: str) -> str:
+    if lang == "cn":
+        if "问问" in text:
+            return "问问 AI(&A)" if "(&" in text else "问问 AI"
+        if "已发送" in text:
+            return "已发送到 AI。"
+    if lang == "tw":
+        if "問問" in text:
+            return "問問 AI(&A)" if "(&" in text else "問問 AI"
+        if "已傳送" in text:
+            return "已傳送到 AI。"
+    out = text.replace("&Doubao", "&AI").replace("Doubao", "AI")
+    return out.replace("豆包", "AI").replace("(&D)", "(&A)")
+
+
+ASK_AI_MENU = {lang: ui_doubao_to_ai(v, lang) for lang, v in ASK_DOUBAO_MENU.items()}
+ASK_AI = {lang: ui_doubao_to_ai(v, lang) for lang, v in ASK_DOUBAO.items()}
+QUESTION_SENT_AI = {lang: ui_doubao_to_ai(v, lang) for lang, v in QUESTION_SENT.items()}
+
+
 def fill_prompt(base: dict[str, str], english: str) -> dict[str, str]:
     out: dict[str, str] = {}
     for lang in LANGS:
@@ -200,9 +220,9 @@ def fill_prompt(base: dict[str, str], english: str) -> dict[str, str]:
 
 
 BLOCKS = {
-    UI_KEYS[0]: ASK_DOUBAO_MENU,
-    UI_KEYS[1]: ASK_DOUBAO,
-    UI_KEYS[2]: QUESTION_SENT,
+    UI_KEYS[0]: ASK_AI_MENU,
+    UI_KEYS[1]: ASK_AI,
+    UI_KEYS[2]: QUESTION_SENT_AI,
     PROMPT_KEYS[0]: fill_prompt(PROMPT_WORD, EN_PROMPT_WORD),
     PROMPT_KEYS[1]: fill_prompt(PROMPT_CHINESE, EN_PROMPT_CHINESE),
     PROMPT_KEYS[2]: fill_prompt(PROMPT_SENTENCE, EN_PROMPT_SENTENCE),
@@ -224,23 +244,28 @@ def replace_or_insert(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
     new_section = "\n".join(format_block(k, BLOCKS[k]) for k in ALL_KEYS) + "\n"
 
-    if ":Ask &Doubao" in text:
+    if ":Ask &AI" in text:
+        start = text.index(":Ask &AI")
+    elif ":Ask &Doubao" in text:
         start = text.index(":Ask &Doubao")
-        end_key = ":Are you sure you want to uninstall SumatraPDF?"
-        end = text.index(end_key, start)
-        text = text[:start] + new_section + text[end:]
     else:
         end_key = ":Are you sure you want to uninstall SumatraPDF?"
         end = text.index(end_key)
         text = text[:end] + new_section + text[end:]
+        path.write_text(text, encoding="utf-8", newline="\n")
+        return
 
-    path.write_text(text, encoding="utf-8")
+    end_key = ":Are you sure you want to uninstall SumatraPDF?"
+    end = text.index(end_key, start)
+    text = text[:start] + new_section + text[end:]
+
+    path.write_text(text, encoding="utf-8", newline="\n")
 
 
 def main() -> None:
     replace_or_insert(GOOD)
     replace_or_insert(TXT)
-    print(f"Updated Doubao translations: {len(LANGS)} langs x {len(ALL_KEYS)} strings")
+    print(f"Updated Ask AI translations: {len(LANGS)} langs x {len(ALL_KEYS)} strings")
 
 
 if __name__ == "__main__":

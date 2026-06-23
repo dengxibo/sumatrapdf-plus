@@ -743,19 +743,10 @@ const globalPrefs: Field[] = [
   ),
   setVersion(
     mkField(
-      "AiChatDoubaoEnabled",
-      Bool,
-      true,
-      "if true, Ask AI opens Doubao (豆包) chat at https://www.doubao.com/chat/",
-    ),
-    "3.7",
-  ),
-  setVersion(
-    mkField(
-      "AiChatDeepSeekEnabled",
+      "AiChatUseDeepSeekInsteadOfDoubao",
       Bool,
       false,
-      "if true, Ask AI opens DeepSeek chat at https://chat.deepseek.com/ (used when Doubao is disabled)",
+      "if true, Ask AI opens DeepSeek chat instead of Doubao (豆包); default is Doubao at https://www.doubao.com/chat/",
     ),
     "3.7",
   ),
