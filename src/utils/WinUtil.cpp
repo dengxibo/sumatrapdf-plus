@@ -1075,6 +1075,9 @@ static bool BrowserWindowMatchesService(HWND hwnd, const char* reuseKey, const c
     if (str::Find(reuseKey, "doubao.com")) {
         return str::Find(titleA, "豆包") != nullptr || str::FindI(titleA, "doubao") != nullptr;
     }
+    if (str::Find(reuseKey, "deepseek.com")) {
+        return str::FindI(titleA, "deepseek") != nullptr;
+    }
     return false;
 }
 
@@ -1241,7 +1244,33 @@ static void ClickBrowserWindowChatInput(HWND hwnd) {
     SendMouseClickScreen(x, y);
 }
 
-bool PasteClipboardToBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) {
+// DeepSeek "new chat" puts the input in the middle of the page; ongoing chats pin it to the bottom.
+static void ClickBrowserWindowClientAt(HWND hwnd, int offsetPercentXFromLeft, int offsetPercentYFromTop) {
+    RECT cr;
+    if (!GetClientRect(hwnd, &cr)) {
+        return;
+    }
+    POINT topLeft = {cr.left, cr.top};
+    POINT bottomRight = {cr.right, cr.bottom};
+    ClientToScreen(hwnd, &topLeft);
+    ClientToScreen(hwnd, &bottomRight);
+    int w = bottomRight.x - topLeft.x;
+    int h = bottomRight.y - topLeft.y;
+    if (w <= 0 || h <= 0) {
+        return;
+    }
+    if (offsetPercentXFromLeft <= 0 || offsetPercentXFromLeft > 100) {
+        offsetPercentXFromLeft = 50;
+    }
+    if (offsetPercentYFromTop <= 0 || offsetPercentYFromTop > 100) {
+        offsetPercentYFromTop = 50;
+    }
+    int x = topLeft.x + w * offsetPercentXFromLeft / 100;
+    int y = topLeft.y + h * offsetPercentYFromTop / 100;
+    SendMouseClickScreen(x, y);
+}
+
+static bool PasteClipboardToBrowserChatInputAt(HWND browserHwnd, int delayBeforePasteMs, bool deepSeekNewChat) {
     if (!browserHwnd) {
         return false;
     }
@@ -1251,20 +1280,32 @@ bool PasteClipboardToBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) 
     if (delayBeforePasteMs > 0) {
         Sleep((DWORD)delayBeforePasteMs);
     }
-    ClickBrowserWindowChatInput(browserHwnd);
+    if (deepSeekNewChat) {
+        ClickBrowserWindowClientAt(browserHwnd, 58, 54);
+    } else {
+        ClickBrowserWindowChatInput(browserHwnd);
+    }
     Sleep(80);
     SendCtrlKey('V');
     return true;
 }
 
-bool PasteAndSubmitBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) {
-    if (!PasteClipboardToBrowserChatInput(browserHwnd, delayBeforePasteMs)) {
+bool PasteClipboardToBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) {
+    return PasteClipboardToBrowserChatInputAt(browserHwnd, delayBeforePasteMs, false);
+}
+
+static bool PasteAndSubmitBrowserChatInputAt(HWND browserHwnd, int delayBeforePasteMs, bool deepSeekNewChat) {
+    if (!PasteClipboardToBrowserChatInputAt(browserHwnd, delayBeforePasteMs, deepSeekNewChat)) {
         return false;
     }
     Sleep(120);
     SendKey(VK_RETURN, true);
     SendKey(VK_RETURN, false);
     return true;
+}
+
+bool PasteAndSubmitBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) {
+    return PasteAndSubmitBrowserChatInputAt(browserHwnd, delayBeforePasteMs, false);
 }
 
 static bool BrowserTitleLooksLoading(const char* titleA) {
@@ -1345,8 +1386,38 @@ bool PasteAndSubmitBrowserChatInputWhenReady(HWND browserHwnd, const char* url, 
     if (waitForPageReady) {
         WaitForBrowserChatReady(browserHwnd, reuseKey, host, 15000);
     }
-    int delayMs = waitForPageReady ? 400 : 150;
-    return PasteAndSubmitBrowserChatInput(browserHwnd, delayMs);
+    bool deepSeekNewChat = waitForPageReady && str::Find(url, "deepseek.com");
+    int delayMs = waitForPageReady ? (deepSeekNewChat ? 500 : 400) : 150;
+    return PasteAndSubmitBrowserChatInputAt(browserHwnd, delayMs, deepSeekNewChat);
+}
+
+static const char* kDoubaoChatUrl = "https://www.doubao.com/chat/";
+static const char* kDeepSeekChatUrl = "https://chat.deepseek.com/";
+
+static const char* AiChatServiceUrl(AiChatService service) {
+    switch (service) {
+        case AiChatService::Doubao:
+            return kDoubaoChatUrl;
+        case AiChatService::DeepSeek:
+            return kDeepSeekChatUrl;
+    }
+    return nullptr;
+}
+
+bool PasteAndSubmitAiChatWhenReady(AiChatService service, HWND browserHwnd, bool waitForPageReady) {
+    const char* url = AiChatServiceUrl(service);
+    if (!browserHwnd || !url) {
+        return false;
+    }
+    return PasteAndSubmitBrowserChatInputWhenReady(browserHwnd, url, waitForPageReady);
+}
+
+bool LaunchAiChatBrowser(AiChatService service, bool* reusedOut, HWND* browserHwndOut) {
+    const char* url = AiChatServiceUrl(service);
+    if (!url) {
+        return false;
+    }
+    return LaunchBrowserWithReuse(url, false, reusedOut, browserHwndOut);
 }
 
 static HWND FindBrowserWindowAfterLaunch(const char* reuseKey, const char* host) {

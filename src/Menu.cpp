@@ -583,7 +583,7 @@ static MenuDef menuDefHelp[] = {
 //[ ACCESSKEY_GROUP Context Menu (Selection)
 static MenuDef menuDefSelection[] = {
     {
-        _TRN("Ask &Doubao"),
+        _TRN("Ask &AI"),
         CmdAnalyzeSelectionWithDoubao,
     },
     {
@@ -604,7 +604,7 @@ static MenuDef menuDefSelection[] = {
 //[ ACCESSKEY_GROUP Menu (Selection)
 static MenuDef menuDefMainSelection[] = {
     {
-        _TRN("Ask &Doubao"),
+        _TRN("Ask &AI"),
         CmdAnalyzeSelectionWithDoubao,
     },
     {
@@ -825,7 +825,7 @@ static MenuDef menuDefDocumentOperations[] = {
 //[ ACCESSKEY_GROUP Context Menu (Main)
 static MenuDef menuDefContext[] = {
     {
-        _TRN("Ask &Doubao"),
+        _TRN("Ask &AI"),
         CmdAnalyzeSelectionWithDoubao,
     },
     {
@@ -1375,6 +1375,9 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, int cmdId) {
     }
     if (!HasPermission(Perm::CopySelection)) {
         remove |= cmdIdInList(removeIfNoCopyPerms);
+    }
+    if (cmdId == CmdAnalyzeSelectionWithDoubao && !IsAiChatEnabled()) {
+        remove = true;
     }
     if ((cmdId == CmdCheckUpdate) && gIsStoreBuild) {
         remove = true;

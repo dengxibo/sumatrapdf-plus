@@ -709,7 +709,7 @@ SeqStrings gCommandDescriptions =
     "Toggle CHM UI\0"
     "Search Selection with Youdao Dictionary\0"
     "Toggle light/dark theme\0"
-    "Ask Doubao\0"
+    "Ask AI\0"
     "Toggle Double-Click Word Lookup\0"
     "Toggle Preserve PDF Image Colors in Dark Mode\0"
     "Set PDF Document Color Mode: Auto\0"

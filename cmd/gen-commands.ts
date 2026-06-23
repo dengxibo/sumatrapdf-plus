@@ -229,7 +229,7 @@ export const commands = [
     "CmdToggleChmUI", "Toggle CHM UI",
     "CmdSearchSelectionWithYoudaoDict", "Search Selection with Youdao Dictionary",
     "CmdToggleLightDarkTheme", "Toggle light/dark theme",
-    "CmdAnalyzeSelectionWithDoubao", "Ask Doubao",
+    "CmdAnalyzeSelectionWithDoubao", "Ask AI",
     "CmdToggleDoubleClickWordLookup", "Toggle Double-Click Word Lookup",
     "CmdTogglePreservePdfImages", "Toggle Preserve PDF Image Colors in Dark Mode",
     "CmdSetPdfDocumentColorModeAuto", "Set PDF Document Color Mode: Auto",

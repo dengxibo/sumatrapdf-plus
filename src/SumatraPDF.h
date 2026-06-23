@@ -122,6 +122,7 @@ bool SettingsRememberOpenedFiles();
 void InitializePolicies(bool restrict);
 void RestrictPolicies(Perm revokePermission);
 bool HasPermission(Perm permission);
+bool IsAiChatEnabled();
 bool CanAccessDisk();
 bool AnnotationsAreDisabled();
 bool IsUIRtl();

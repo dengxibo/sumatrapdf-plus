@@ -6549,6 +6549,17 @@ static TempStr BuildDoubaoPromptTemp(const char* selection, DoubaoPromptKind kin
     return str::FormatTemp("%s", trimmed);
 }
 
+bool IsAiChatEnabled() {
+    return gGlobalPrefs && (gGlobalPrefs->aiChatDoubaoEnabled || gGlobalPrefs->aiChatDeepSeekEnabled);
+}
+
+static AiChatService ActiveAiChatService() {
+    if (gGlobalPrefs && gGlobalPrefs->aiChatDoubaoEnabled) {
+        return AiChatService::Doubao;
+    }
+    return AiChatService::DeepSeek;
+}
+
 static void AnalyzeSelectionWithDoubao(WindowTab* tab) {
     if (!tab || !tab->win || !HasPermission(Perm::InternetAccess) || !HasPermission(Perm::CopySelection)) {
         return;
@@ -6576,20 +6587,24 @@ static void AnalyzeSelectionWithDoubao(WindowTab* tab) {
         return;
     }
 
-    constexpr const char* kDoubaoUrl = "https://www.doubao.com/chat/";
+    if (!IsAiChatEnabled()) {
+        return;
+    }
+
     bool reused = false;
     HWND browser = nullptr;
-    if (!LaunchBrowserWithReuse(kDoubaoUrl, false, &reused, &browser)) {
+    AiChatService service = ActiveAiChatService();
+    if (!LaunchAiChatBrowser(service, &reused, &browser)) {
         return;
     }
 
     if (browser) {
-        PasteAndSubmitBrowserChatInputWhenReady(browser, kDoubaoUrl, !reused);
+        PasteAndSubmitAiChatWhenReady(service, browser, !reused);
     }
 
     NotificationCreateArgs args;
     args.hwndParent = tab->win->hwndCanvas;
-    args.msg = _TRA("Question sent to Doubao.");
+    args.msg = _TRA("Question sent to AI.");
     args.timeoutMs = 5000;
     ShowNotification(args);
 }

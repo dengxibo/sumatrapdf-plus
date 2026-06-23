@@ -92,6 +92,14 @@ bool LaunchBrowserWithReuse(const char* url, bool navigateOnReuse = true, bool* 
 bool PasteClipboardToBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs = 150);
 bool PasteAndSubmitBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs = 150);
 bool PasteAndSubmitBrowserChatInputWhenReady(HWND browserHwnd, const char* url, bool waitForPageReady);
+
+enum class AiChatService {
+    Doubao,
+    DeepSeek,
+};
+
+bool LaunchAiChatBrowser(AiChatService service, bool* reusedOut = nullptr, HWND* browserHwndOut = nullptr);
+bool PasteAndSubmitAiChatWhenReady(AiChatService service, HWND browserHwnd, bool waitForPageReady);
 void OpenPathInDefaultFileManager(const char* path);
 void PaintCheckerboard(HDC hdc, int x, int y, int w, int h);
 
