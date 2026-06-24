@@ -382,10 +382,18 @@ static void PdfDarkModeAssignPolicies(DarkModePageAnalysis* analysis, const Dark
             } else if (img.pageCoverage >= kMaxPreserveImagePageCoverage && !preserveArt) {
                 img.policy = DarkImagePolicy::AdaptiveDocument;
             }
-            if (isPureScan && img.pageCoverage >= options.minScanDominantCoverage && !preserveArt) {
+            if (isPureScan && img.pageCoverage >= options.minScanDominantCoverage && !preserveArt &&
+                !PdfDarkModeIsFirstPageFullBleedCover(analysis->pageNumber, img.pageCoverage)) {
                 img.analysis.kind = DarkImageKind::FullPageScan;
                 img.analysis.confidence = 0.88f;
                 img.policy = DarkImagePolicy::AdaptiveDocument;
+            }
+            if (PdfDarkModeIsFirstPageFullBleedCover(analysis->pageNumber, img.pageCoverage) &&
+                PdfDarkModeImageMeetsPreserveMinSize(img) &&
+                !PdfDarkModeIsDecorativeStripImage(img.pageBounds, analysis->pageBounds)) {
+                img.analysis.kind = DarkImageKind::Photo;
+                img.analysis.confidence = 0.85f;
+                img.policy = DarkImagePolicy::Preserve;
             }
         }
     }

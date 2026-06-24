@@ -500,6 +500,7 @@ Retry:
         *procId = GetCurrentProcessId();
         UnmapViewOfFile(procId);
         *hMutex = hMap;
+        gInstanceMutex = hMap;
         return nullptr;
     }
 
@@ -1838,6 +1839,7 @@ ContinueOpenWindow:
 
     exitCode = RunMessageLoop();
     SafeCloseHandle(&hMutex);
+    gInstanceMutex = nullptr;
     CleanUpThumbnailCache();
 
 Exit:

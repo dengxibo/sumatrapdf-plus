@@ -824,7 +824,7 @@ static LRESULT CALLBACK ToolbarNotifyWndProc(HWND hWnd, UINT uMsg, WPARAM wParam
                 }
                 case CDDS_POSTPAINT:
                     PaintToolbarSeparatorsInHdc(win->hwndToolbar, custDraw->nmcd.hdc);
-                    return CDRF_DODEFAULT;
+                    return CDRF_SKIPDEFAULT;
             }
         }
     }
@@ -1558,12 +1558,35 @@ static int SetToolbarIconsImageList(MainWindow* win) {
     return iconSize;
 }
 
+static void SyncToolbarRebarChrome(MainWindow* win) {
+    if (!win->hwndReBar) {
+        return;
+    }
+    SendMessageW(win->hwndReBar, RB_SETBKCOLOR, 0, ThemeChromeBackgroundColor());
+    LONG style = GetWindowLong(win->hwndReBar, GWL_STYLE);
+    bool wantBorders = !ThemeUsesDarkChrome();
+    bool hasBorders = (style & (WS_BORDER | RBS_BANDBORDERS)) != 0;
+    if (wantBorders != hasBorders) {
+        if (wantBorders) {
+            style |= WS_BORDER | RBS_BANDBORDERS;
+        } else {
+            style &= ~(WS_BORDER | RBS_BANDBORDERS);
+        }
+        SetWindowLong(win->hwndReBar, GWL_STYLE, style);
+        SetWindowPos(win->hwndReBar, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+    }
+}
+
 void UpdateToolbarAfterThemeChange(MainWindow* win) {
+    SyncToolbarRebarChrome(win);
     SetToolbarIconsImageList(win);
     ConfigureToolbarColors(win->hwndToolbar);
     UpdateThemeToolbarButton(win);
     UpdatePdfDocumentColorModeToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
+    if (win->hwndReBar) {
+        InvalidateRect(win->hwndReBar, nullptr, TRUE);
+    }
     HwndScheduleRepaint(win->hwndToolbar);
 }
 

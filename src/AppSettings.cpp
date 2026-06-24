@@ -41,6 +41,7 @@
 // workaround for OnMenuExit
 // if this flag is set, CloseWindow will not save prefs before closing the window.
 bool gDontSaveSettings = false;
+HANDLE gInstanceMutex = nullptr;
 
 // SumatraPDF.cpp
 extern void RememberDefaultWindowPosition(MainWindow* win);

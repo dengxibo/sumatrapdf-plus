@@ -61,6 +61,10 @@ static DarkImageFeatures BrightFilmStillFeatures() {
 }
 
 void PdfDarkModeImageClassifier_UnitTests() {
+    utassert(PdfDarkModeIsFirstPageFullBleedCover(1, 0.88f));
+    utassert(!PdfDarkModeIsFirstPageFullBleedCover(2, 0.88f));
+    utassert(!PdfDarkModeIsFirstPageFullBleedCover(1, 0.50f));
+
     float confidence = 0.f;
 
     DarkImageKind kind = PdfDarkModeClassifyImageFeatures(PhotoLikeFeatures(), 0.22f, false, &confidence);

@@ -703,7 +703,9 @@ void SetTabsInTitlebar(MainWindow* win, bool inTitleBar) {
     win->tabsInTitlebar = inTitleBar;
     win->tabsCtrl->inTitleBar = inTitleBar;
     if (inTitleBar) {
-        RelayoutCaption(win);
+        SyncMenuBarForTabsInTitlebar(win);
+    } else {
+        SyncMainWindowForNoTabsInTitlebar(win);
     }
     uint flags = SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOSIZE | SWP_NOMOVE;
     SetWindowPos(win->hwndFrame, nullptr, 0, 0, 0, 0, flags);

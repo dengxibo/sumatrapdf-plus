@@ -88,6 +88,11 @@ struct DarkModeOptions {
 // Full-bleed backgrounds / scans at or above this threshold are recolored with the page.
 static constexpr float kMaxPreserveImagePageCoverage = 0.75f;
 
+// Auto dark mode keeps page-1 full-bleed embedded images at original brightness (covers, etc.).
+inline bool PdfDarkModeIsFirstPageFullBleedCover(int pageNo, float pageCoverage) {
+    return pageNo == 1 && pageCoverage >= kMaxPreserveImagePageCoverage;
+}
+
 struct DarkModePalette {
     float textR = 0.f, textG = 0.f, textB = 0.f;
     float bgR = 1.f, bgG = 1.f, bgB = 1.f;

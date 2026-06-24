@@ -10,6 +10,7 @@ enum {
 };
 
 extern bool gDontSaveSettings;
+extern HANDLE gInstanceMutex;
 
 extern Vec<SessionData*>* gInitialSessionData;
 

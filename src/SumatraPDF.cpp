@@ -151,6 +151,8 @@ bool gRedrawLog = false;
 
 static void RelayoutFrame(MainWindow* win, bool updateToolbars = true, int sidebarDx = -1);
 static void UpdateOverlayScrollbarPositions(MainWindow* win);
+static void BeginFrameRedrawSuppression(MainWindow* win);
+static void EndFrameRedrawSuppression(MainWindow* win);
 
 static const char* HwndName(HWND hwnd) {
     WCHAR cls[64]{};
@@ -194,8 +196,6 @@ static const char* gNextPrevDir = nullptr;
 static StrVec gNextPrevDirCache; // cached files in gNextPrevDir
 
 static void CloseDocumentInCurrentTab(MainWindow*, bool keepUIEnabled, bool deleteModel);
-static void TransitionToNoTabs();
-static void TransitionToTabs();
 static void SyncNativeMenuBar(MainWindow* win);
 static void UpdateMainWindowNativeChrome(MainWindow* win);
 void DeleteManualBrowserWindow();
@@ -204,6 +204,7 @@ static void OnFavSplitterMove(Splitter::MoveEvent*);
 static void CloseAuxiliaryTopLevelWindows();
 static void ExitProcessAfterShutdown();
 static void TerminateApplication();
+static void RestartApplication();
 
 EBookUI* GetEBookUI() {
     if (!gGlobalPrefs) return nullptr;
@@ -2247,7 +2248,12 @@ static void UpdateMainWindowNativeChrome(MainWindow* win) {
     if (ThemeUsesEyeCareChrome()) {
         dwm::SetWindowCaptionColors(win->hwndFrame, ThemeChromeBackgroundColor(), ThemeWindowTextColor());
         SyncNativeMenuBar(win);
-    } else if (!ThemeUsesDarkChrome()) {
+    } else if (ThemeUsesDarkChrome()) {
+        if (UseDarkModeLib()) {
+            DarkMode::setDarkTitleBarEx(win->hwndFrame, true);
+        }
+        SyncNativeMenuBar(win);
+    } else {
         dwm::ResetWindowCaptionColors(win->hwndFrame);
         SyncNativeMenuBar(win);
     }
@@ -2258,6 +2264,67 @@ static void UpdateMainWindowNativeChrome(MainWindow* win) {
 
 static void UpdateWindowFrameBorderColor(MainWindow* win) {
     dwm::SetWindowBorderColor(win->hwndFrame, DwmFrameBorderColorForCurrentTheme());
+}
+
+void SyncMainWindowForNoTabsInTitlebar(MainWindow* win) {
+    if (!win || win->tabsInTitlebar || win->isFullScreen || win->presentation) {
+        return;
+    }
+    win->captionRect = {};
+    for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
+        win->captionBtn[i].visible = false;
+    }
+    win->lastLayoutState = {};
+
+    BeginFrameRedrawSuppression(win);
+    uint swpFlags = SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOSIZE | SWP_NOMOVE;
+    // Restore the standard non-client title bar before repositioning child windows.
+    // Without this, ClientRect still reflects the custom-caption layout and the menu
+    // bar ends up where the toolbar used to be.
+    SetWindowPos(win->hwndFrame, nullptr, 0, 0, 0, 0, swpFlags);
+
+    DestroyMenuBarRebar(win);
+    if (UseDarkModeLib()) {
+        if (ThemeUsesDarkChrome()) {
+            DarkMode::setDarkTitleBarEx(win->hwndFrame, true);
+        } else {
+            DarkMode::setDarkTitleBarEx(win->hwndFrame, false);
+            DarkMode::removeWindowMenuBarSubclass(win->hwndFrame);
+        }
+        DarkMode::setChildCtrlsTheme(win->hwndFrame);
+    }
+    dwm::SetWindowRoundedCorners(win->hwndFrame, true);
+    UpdateMainWindowNativeChrome(win);
+    UpdateTabWidth(win);
+    ShowOrHideToolbar(win);
+
+    if (ThemeUsesEyeCareChrome()) {
+        dwm::SetWindowCaptionColors(win->hwndFrame, ThemeChromeBackgroundColor(), ThemeWindowTextColor());
+    } else if (!ThemeUsesDarkChrome()) {
+        dwm::ResetWindowCaptionColors(win->hwndFrame);
+    }
+    UpdateWindowFrameBorderColor(win);
+
+    SetWindowPos(win->hwndFrame, nullptr, 0, 0, 0, 0, swpFlags);
+    EndFrameRedrawSuppression(win);
+}
+
+void SyncMenuBarForTabsInTitlebar(MainWindow* win) {
+    if (!win || !win->tabsInTitlebar || win->isFullScreen || win->presentation) {
+        return;
+    }
+    SetMenu(win->hwndFrame, nullptr);
+    DestroyMenuBarRebar(win);
+    if (IsMenubarVisible()) {
+        CreateMenuBarRebar(win);
+    }
+    if (ThemeUsesEyeCareChrome()) {
+        dwm::ResetWindowCaptionColors(win->hwndFrame);
+    }
+    UpdateWindowFrameBorderColor(win);
+    RelayoutCaption(win);
+    RelayoutFrame(win);
+    ShowMenuBarRebar(win);
 }
 
 void InvalidateLoadedThumbnails();
@@ -2294,8 +2361,13 @@ void UpdateAfterThemeChange() {
                 DarkMode::setDarkScrollBar(win->hwndCanvas);
                 DarkMode::setWindowMenuBarSubclass(win->hwndFrame);
                 // DarkMode::setDarkTooltips(win->infotip->hwnd, (int)DarkMode::ToolTipsType::tooltip);
-            } else if (!win->tabsInTitlebar) {
-                dwm::ResetWindowCaptionColors(win->hwndFrame);
+            } else {
+                DarkMode::setDarkTitleBarEx(win->hwndFrame, false);
+                DarkMode::setChildCtrlsTheme(win->hwndFrame);
+                DarkMode::removeWindowMenuBarSubclass(win->hwndFrame);
+                if (!win->tabsInTitlebar) {
+                    dwm::ResetWindowCaptionColors(win->hwndFrame);
+                }
             }
         }
         UpdateMainWindowNativeChrome(win);
@@ -3559,6 +3631,21 @@ static void TerminateApplication() {
         }
     }
     ::ExitProcess(0);
+}
+
+static void RestartApplication() {
+    if (gPluginMode) {
+        return;
+    }
+    SaveSettings();
+    gDontSaveSettings = true;
+    CloseAuxiliaryTopLevelWindows();
+    TempStr exePath = GetSelfExePathTemp();
+    if (gInstanceMutex) {
+        SafeCloseHandle(&gInstanceMutex);
+    }
+    LaunchProcessWithCmdLine(exePath, "");
+    TerminateApplication();
 }
 
 static void OnMenuExit() {
@@ -5012,7 +5099,7 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
     // Tabbar and toolbar at the top
     if (!win->presentation && !win->isFullScreen) {
         if (win->tabsInTitlebar) {
-            bool showingMenuBar = IsShowingMenuBarRebar(win);
+            bool showingMenuBar = IsMenubarVisible() && IsShowingMenuBarRebar(win);
             // Add a visible gap above the caption for window dragging.
             // Skip when menu bar is showing (it goes all the way to the top).
             if (!IsZoomed(win->hwndFrame) && !showingMenuBar) {
@@ -5049,7 +5136,8 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
             rc.dy -= tabHeight;
         }
     }
-    bool showMenuRebar = IsShowingMenuBarRebar(win) && (!win->tabsInTitlebar || win->isFullScreen);
+    bool showMenuRebar =
+            IsMenubarVisible() && IsShowingMenuBarRebar(win) && (!win->tabsInTitlebar || win->isFullScreen);
     if (showMenuRebar) {
         // menu bar rebar in client area (non-titlebar case, or fullscreen where there's no titlebar)
         int menuBarDy = (int)SendMessageW(win->hwndMenuReBar, RB_GETBARHEIGHT, 0, 0) + 1;
@@ -5152,6 +5240,9 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
     }
     if (updateToolbars && win->isToolbarVisible) {
         RedrawWindow(win->hwndReBar, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
+    }
+    if (updateToolbars && IsShowingMenuBarRebar(win) && !win->tabsInTitlebar) {
+        RedrawWindow(win->hwndMenuReBar, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
     }
     if (updateToolbars && win->tabsInTitlebar && !win->isFullScreen) {
         RECT r = ToRECT(win->captionRect);
@@ -5400,18 +5491,13 @@ static void ShowOptionsDialog(HWND hwnd) {
     UpdateDocumentColors();
 
     if (gGlobalPrefs->useTabs != useTabsBefore) {
-        if (gGlobalPrefs->useTabs) {
-            uitask::Post(MkFunc0Void(TransitionToTabs));
-        } else {
-            uitask::Post(MkFunc0Void(TransitionToNoTabs));
-        }
-    } else if (!SettingsUseTabs()) {
+        SaveSettings();
+        RestartApplication();
+        return;
+    }
+    if (!SettingsUseTabs()) {
         for (MainWindow* w : gWindows) {
             SetTabsInTitlebar(w, false);
-            UpdateMainWindowNativeChrome(w);
-            UpdateTabWidth(w);
-            ShowOrHideToolbar(w);
-            w->RedrawAllIncludingNonClient();
         }
     }
     SaveSettings();
@@ -6752,132 +6838,6 @@ void ShowLogFileSmart() {
     LaunchFileIfExists(path);
 }
 
-// collect file paths from all windows, closing all but the last
-// returns the surviving window (with no documents)
-static MainWindow* CollectPathsAndCloseWindows(StrVec& paths) {
-    for (MainWindow* w : gWindows) {
-        for (WindowTab* tab : w->Tabs()) {
-            if (tab->IsAboutTab() || !tab->filePath) {
-                continue;
-            }
-            paths.Append(tab->filePath);
-        }
-    }
-
-    SaveSettings();
-
-    // close all windows except the last; use quitIfLast=false to keep it alive
-    Vec<MainWindow*> toClose(gWindows);
-    for (MainWindow* w : toClose) {
-        if (!CanCloseWindow(w)) {
-            continue;
-        }
-        CloseWindow(w, false, false);
-    }
-
-    // the last window survives as an empty/about window
-    if (gWindows.size() > 0) {
-        return gWindows.at(0);
-    }
-    return nullptr;
-}
-
-static void TransitionToNoTabs() {
-    StrVec paths;
-
-    if (paths.Size() == 0) {
-        // check before collecting - if no files, just relayout
-        bool hasFiles = false;
-        for (MainWindow* w : gWindows) {
-            for (WindowTab* tab : w->Tabs()) {
-                if (!tab->IsAboutTab() && tab->filePath) {
-                    hasFiles = true;
-                    break;
-                }
-            }
-            if (hasFiles) {
-                break;
-            }
-        }
-        if (!hasFiles) {
-            for (MainWindow* w : gWindows) {
-                SetTabsInTitlebar(w, false);
-                UpdateMainWindowNativeChrome(w);
-                ShowOrHideToolbar(w);
-                w->RedrawAllIncludingNonClient();
-            }
-            return;
-        }
-    }
-
-    MainWindow* surviving = CollectPathsAndCloseWindows(paths);
-
-    // re-open each file in its own window, reuse the surviving window for the first file
-    for (int i = 0; i < paths.Size(); i++) {
-        const char* path = paths.At(i);
-        MainWindow* win;
-        if (i == 0 && surviving) {
-            win = surviving;
-            SetTabsInTitlebar(win, false);
-            UpdateMainWindowNativeChrome(win);
-        } else {
-            win = CreateAndShowMainWindow(nullptr);
-            if (!win) {
-                continue;
-            }
-        }
-        LoadArgs args(path, win);
-        args.showWin = true;
-        args.forceReuse = true;
-        LoadDocument(&args);
-    }
-}
-
-static void TransitionToTabs() {
-    StrVec paths;
-
-    // check if any files are open
-    bool hasFiles = false;
-    for (MainWindow* w : gWindows) {
-        for (WindowTab* tab : w->Tabs()) {
-            if (!tab->IsAboutTab() && tab->filePath) {
-                hasFiles = true;
-                break;
-            }
-        }
-        if (hasFiles) {
-            break;
-        }
-    }
-    if (!hasFiles) {
-        for (MainWindow* w : gWindows) {
-            SetTabsInTitlebar(w, true);
-            ShowOrHideToolbar(w);
-            w->RedrawAllIncludingNonClient();
-        }
-        return;
-    }
-
-    MainWindow* surviving = CollectPathsAndCloseWindows(paths);
-
-    // open all files as tabs in the surviving window
-    MainWindow* win = surviving;
-    if (!win) {
-        win = CreateAndShowMainWindow(nullptr);
-        if (!win) {
-            return;
-        }
-    }
-    SetTabsInTitlebar(win, true);
-    for (int i = 0; i < paths.Size(); i++) {
-        const char* path = paths.At(i);
-        LoadArgs args(path, win);
-        args.showWin = true;
-        args.forceReuse = (i == 0);
-        LoadDocument(&args);
-    }
-}
-
 struct ListPrintersResult {
     HWND hwndParent;
     char* text;
@@ -7642,11 +7602,8 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
 
         case CmdToggleUseTabs:
             gGlobalPrefs->useTabs = !gGlobalPrefs->useTabs;
-            if (gGlobalPrefs->useTabs) {
-                uitask::Post(MkFunc0Void(TransitionToTabs));
-            } else {
-                uitask::Post(MkFunc0Void(TransitionToNoTabs));
-            }
+            SaveSettings();
+            RestartApplication();
             break;
 
         case CmdToggleTabsMru:
@@ -8721,7 +8678,7 @@ void RelayoutCaption(MainWindow* win) {
     }
     Rect rc = win->captionRect;
     bool maximized = IsZoomed(win->hwndFrame);
-    bool showingMenuBar = IsShowingMenuBarRebar(win);
+    bool showingMenuBar = IsMenubarVisible() && IsShowingMenuBarRebar(win);
     int tabHeight = GetTabbarHeight(win->hwndFrame);
 
     if (showingMenuBar) {
