@@ -130,7 +130,7 @@ static bool PdfDarkModeStatsLookLikePhoto(const PdfDarkModeImageSampleStats& sta
     }
 
     bool isPhoto = stats.significantBuckets >= 16 || stats.satRatio >= 0.18f || stats.lumVar >= 0.014f;
-    if (stats.highLumRatio > 0.58f && stats.satRatio < 0.20f) {
+    if (stats.highLumRatio > 0.58f && stats.satRatio < 0.18f) {
         isPhoto = false;
     }
     if (stats.significantBuckets <= 12 && stats.lumVar < 0.012f && stats.highLumRatio > 0.45f) {
@@ -238,8 +238,7 @@ bool PdfDarkModeImageLooksLikeDarkArtwork(fz_context* ctx, fz_image* image, floa
     return PdfDarkModeStatsLookLikeDarkArtwork(PdfDarkModeSampleImageStats(ctx, image), pageCoverage);
 }
 
-bool PdfDarkModeImageShouldPreserveInLegacy(fz_context* ctx, fz_image* image, float pageCoverage, int devW,
-                                            int devH) {
+bool PdfDarkModeImageShouldPreserveInLegacy(fz_context* ctx, fz_image* image, float pageCoverage, int devW, int devH) {
     if (!ctx || !image) {
         return false;
     }
@@ -262,8 +261,7 @@ bool PdfDarkModeImageShouldPreserveInLegacy(fz_context* ctx, fz_image* image, fl
     return false;
 }
 
-bool PdfDarkModeImageIsConfirmedArtwork(fz_context* ctx, fz_image* image, float pageCoverage, int devW,
-                                               int devH) {
+bool PdfDarkModeImageIsConfirmedArtwork(fz_context* ctx, fz_image* image, float pageCoverage, int devW, int devH) {
     if (!ctx || !image) {
         return false;
     }

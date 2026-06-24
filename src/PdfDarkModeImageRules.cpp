@@ -13,7 +13,7 @@ static int PdfDarkModeFeatureColorBuckets(const DarkImageFeatures& f) {
 bool PdfDarkModeFeaturesLookLikePhoto(const DarkImageFeatures& f) {
     int buckets = PdfDarkModeFeatureColorBuckets(f);
     bool isPhoto = buckets >= 16 || f.saturatedPixelRatio >= 0.18f || f.luminanceVariance >= 0.014f;
-    if (f.highLuminanceRatio > 0.58f && f.saturatedPixelRatio < 0.20f) {
+    if (f.highLuminanceRatio > 0.58f && f.saturatedPixelRatio < 0.18f) {
         isPhoto = false;
     }
     if (buckets <= 12 && f.luminanceVariance < 0.012f && f.highLuminanceRatio > 0.45f) {
