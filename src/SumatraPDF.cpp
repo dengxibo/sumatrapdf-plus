@@ -194,6 +194,8 @@ static const char* gNextPrevDir = nullptr;
 static StrVec gNextPrevDirCache; // cached files in gNextPrevDir
 
 static void CloseDocumentInCurrentTab(MainWindow*, bool keepUIEnabled, bool deleteModel);
+static void TransitionToNoTabs();
+static void TransitionToTabs();
 void DeleteManualBrowserWindow();
 static void OnSidebarSplitterMove(Splitter::MoveEvent*);
 static void OnFavSplitterMove(Splitter::MoveEvent*);
@@ -3111,7 +3113,9 @@ void StartLoadDocument(LoadArgs* argsIn) {
 
     bool willCreateNewTab = SettingsUseTabs() && !args->forceReuse;
     PrepareLoadingTab(win, args);
-    if (willCreateNewTab && win->tabsCtrl) {
+    if (win->CurrentTab()) {
+        args->forceReuse = true;
+    } else if (willCreateNewTab && win->tabsCtrl) {
         args->forceReuse = true;
     }
 
@@ -5333,6 +5337,8 @@ static void ShowOptionsDialog(HWND hwnd) {
         return;
     }
 
+    bool useTabsBefore = gGlobalPrefs->useTabs;
+
     if (IDOK != Dialog_Settings(hwnd, gGlobalPrefs)) {
         return;
     }
@@ -5343,10 +5349,24 @@ static void ShowOptionsDialog(HWND hwnd) {
     }
     UpdateDocumentColors();
 
-    // note: ideally we would also update state for useTabs changes but that's complicated since
-    // to do it right we would have to convert tabs to windows. When moving no tabs -> tabs,
-    // there's no problem. When moving tabs -> no tabs, a half solution would be to only
-    // call SetTabsInTitlebar() for windows that have only one tab, but that's somewhat inconsistent
+    if (gGlobalPrefs->useTabs != useTabsBefore) {
+        if (gGlobalPrefs->useTabs) {
+            uitask::Post(MkFunc0Void(TransitionToTabs));
+        } else {
+            uitask::Post(MkFunc0Void(TransitionToNoTabs));
+        }
+    } else if (!SettingsUseTabs()) {
+        for (MainWindow* w : gWindows) {
+            DestroyMenuBarRebar(w);
+            SetTabsInTitlebar(w, false);
+            if (IsMenubarVisible()) {
+                SetMenu(w->hwndFrame, w->menu);
+            }
+            UpdateTabWidth(w);
+            ShowOrHideToolbar(w);
+            w->RedrawAllIncludingNonClient();
+        }
+    }
     SaveSettings();
 }
 
@@ -9530,7 +9550,9 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
                 ExitProcessAfterShutdown();
                 return 0;
             }
-            OnMenuExit();
+            if (CanCloseWindow(win)) {
+                CloseWindow(win, true, false);
+            }
             return 0;
         }
 

@@ -1738,6 +1738,23 @@ static fz_device* FzNewImageCollectDevice(fz_context* ctx, Vec<FitzPageImageInfo
     return &dev->super;
 }
 
+static bool PdfShouldCollectContentImages() {
+    if (!ThemeUsesDarkChrome()) {
+        return false;
+    }
+    if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
+        return false;
+    }
+    if (!GetPreservePdfImagesInDarkMode()) {
+        return false;
+    }
+    // Smart dark (object-level) builds its own analysis from the display list.
+    if (PdfDarkModeUsesObjectLevel() && GetPdfDocumentColorMode() == PdfDocumentColorMode::Auto) {
+        return false;
+    }
+    return true;
+}
+
 static void FzCollectImagesFromPageContent(fz_context* ctx, int pageNo, FzPageInfo* pageInfo, fz_page* page,
                                            fz_cookie* cookie) {
     fz_device* dev = nullptr;
@@ -4902,8 +4919,9 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
 
     FzLinkifyPageText(pageInfo, stext);
     FzFindImagePositions(ctx, pageNo, pageInfo->images, stext);
-    if (pdfdoc) {
+    if (pdfdoc && PdfShouldCollectContentImages()) {
         FzCollectImagesFromPageContent(ctx, pageNo, pageInfo, page, cookie);
+        pageInfo->contentImagesCollected = true;
     }
     pageInfo->darkLegacySkipHash = 0;
     fz_drop_stext_page(ctx, stext);
@@ -5126,7 +5144,16 @@ void EngineMupdf::GetBitmapRecolorSkipRects(int pageNo, float zoom, int rotation
         return;
     }
     FzPageInfo* pageInfo = GetFzPageInfo(pageNo, false);
-    if (!pageInfo || !pageInfo->page || pageInfo->images.Size() == 0) {
+    if (!pageInfo || !pageInfo->page) {
+        return;
+    }
+    if (PdfShouldCollectContentImages() && !pageInfo->contentImagesCollected) {
+        fz_context* ctx = Ctx();
+        FzCollectImagesFromPageContent(ctx, pageNo, pageInfo, pageInfo->page, nullptr);
+        pageInfo->contentImagesCollected = true;
+        pageInfo->darkLegacySkipHash = 0;
+    }
+    if (pageInfo->images.Size() == 0) {
         return;
     }
 

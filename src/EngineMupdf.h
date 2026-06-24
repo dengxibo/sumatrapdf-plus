@@ -50,6 +50,9 @@ struct FzPageInfo {
     DarkModePageAnalysis* darkModeAnalysis = nullptr;
     u32 darkModeAnalysisHash = 0;
 
+    // True after FzCollectImagesFromPageContent (legacy dark-mode preserve only).
+    bool contentImagesCollected = false;
+
     // Cached Legacy dark-mode preserve regions in page device pixels (absolute).
     u32 darkLegacySkipHash = 0;
     float darkLegacySkipZoom = 0.f;

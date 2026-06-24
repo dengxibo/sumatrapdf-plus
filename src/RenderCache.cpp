@@ -37,6 +37,30 @@ bool gConserveMemory = false;
 
 static DWORD WINAPI RenderCacheThread(LPVOID data);
 
+static bool FixedPageUiUsesCustomRenderColors() {
+    if (!gGlobalPrefs) {
+        return false;
+    }
+    ParsedColor* textCol = GetPrefsColor(gGlobalPrefs->fixedPageUI.textColor);
+    if (textCol->parsedOk && (textCol->col & 0xFFFFFF) != (WIN_COL_BLACK & 0xFFFFFF)) {
+        return true;
+    }
+    ParsedColor* bgCol = GetPrefsColor(gGlobalPrefs->fixedPageUI.backgroundColor);
+    if (bgCol->parsedOk && (bgCol->col & 0xFFFFFF) != (WIN_COL_WHITE & 0xFFFFFF)) {
+        return true;
+    }
+    return false;
+}
+
+static bool LightFixedPageNeedsBitmapRecolor() {
+    // Light-White: original PDF colors, no post-render pass (unless custom fixedPageUI colors).
+    if (ThemeUsesOriginalPageColors()) {
+        return FixedPageUiUsesCustomRenderColors();
+    }
+    // Light-Warm: eye-care page remap.
+    return true;
+}
+
 static bool ShouldUpdateBitmapColors(EngineBase* engine, const DarkModeProfile* profile) {
     if (profile) {
         return DarkModeProfileUsesLegacyPostProcess(profile);
@@ -59,6 +83,9 @@ static bool ShouldUpdateBitmapColorsLegacy(EngineBase* engine) {
         return false;
     }
     if (engine->kind == kindEngineDjVu) {
+        if (!ThemeUsesDarkChrome()) {
+            return LightFixedPageNeedsBitmapRecolor();
+        }
         return true;
     }
     if (engine->kind != kindEngineMupdf) {
@@ -73,7 +100,12 @@ static bool ShouldUpdateBitmapColorsLegacy(EngineBase* engine) {
         }
         return true;
     }
-    return str::EqI(engine->defaultExt, ".pdf") || str::EqI(engine->defaultExt, ".xps");
+    if (str::EqI(engine->defaultExt, ".pdf") || str::EqI(engine->defaultExt, ".xps")) {
+        if (!ThemeUsesDarkChrome()) {
+            return LightFixedPageNeedsBitmapRecolor();
+        }
+    }
+    return false;
 }
 
 static bool ShouldPreservePdfImagesLegacy(EngineBase* engine) {
@@ -880,12 +912,6 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
         ReportIf(req.abortCookie != nullptr);
         EngineBase* engine = req.dm->GetEngine();
 
-        // make sure that we have extracted page text for
-        // all rendered pages to allow text selection and
-        // searching without any further delays
-        if (!engine->IsProgressiveEbookLoading() && !engine->HasTextForPage(req.pageNo)) {
-            engine->GetTextForPage(req.pageNo);
-        }
         RenderPageArgs args(req.pageNo, req.zoom, req.rotation, &req.pageRect, RenderTarget::View, &req.abortCookie);
         DarkModeProfile darkProfile;
         BuildViewDarkModeProfile(engine, &darkProfile);

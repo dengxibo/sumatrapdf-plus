@@ -78,12 +78,15 @@ static void ShowTabBar(MainWindow* win, bool show) {
 
 void UpdateTabWidth(MainWindow* win) {
     int nTabs = (int)win->TabCount();
-    bool showSingleTab = SettingsUseTabs() || win->tabsInTitlebar;
-    bool showTabs = (nTabs > 1) || (showSingleTab && (nTabs > 0));
     int tabWidth = gGlobalPrefs->tabWidth;
     if (win->tabsCtrl) {
         win->tabsCtrl->tabDefaultDx = tabWidth;
     }
+    if (!SettingsUseTabs()) {
+        ShowTabBar(win, false);
+        return;
+    }
+    bool showTabs = (nTabs > 1) || (nTabs > 0);
     if (!showTabs) {
         ShowTabBar(win, false);
         return;
