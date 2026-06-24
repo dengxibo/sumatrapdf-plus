@@ -3457,6 +3457,7 @@ void UpdateDocumentColors() {
     gRenderCache->textColor = text;
     gRenderCache->backgroundColor = bg;
     gRenderCache->linkColor = link;
+    gRenderCache->darkModeEpoch++;
     RerenderEverything();
 }
 

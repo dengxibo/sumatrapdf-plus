@@ -857,6 +857,14 @@ function pdf_darkmode_files()
     "PdfDarkModeAnalysis.cpp",
     "PdfDarkModeCache.cpp",
     "PdfDarkModeColor.cpp",
+    "PdfDarkModeOklab.cpp",
+    "PdfDarkModeImageStats.cpp",
+    "PdfDarkModeImageClassifier.cpp",
+    "PdfDarkModeImageRules.cpp",
+    "PdfDarkModeImageBgBlend.cpp",
+    "PdfDarkModeScanProcess.cpp",
+    "PdfDarkModeEngineCache.cpp",
+    "PdfDarkModeProfile.cpp",
     "PdfDarkModeDevice.cpp",
   })
 end
@@ -1371,6 +1379,10 @@ function test_util_files()
     --"StressTesting.*",
     "SumatraConfig.*",
     "SumatraUnitTests.cpp",
+    "PdfDarkMode.h",
+    "PdfDarkModeOklab.cpp",
+    "PdfDarkModeImageRules.cpp",
+    "PdfDarkModeImageBgBlend.cpp",
     "tools/test_util.cpp"
   })
 end

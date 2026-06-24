@@ -17,6 +17,28 @@ bool PdfDarkModeUsesObjectLevel() {
     return false;
 }
 
+bool DarkModeProfileUsesObjectLevel(const DarkModeProfile* profile) {
+    (void)profile;
+    return false;
+}
+
+bool DarkModeProfileUsesLegacyPostProcess(const DarkModeProfile* profile) {
+    (void)profile;
+    return false;
+}
+
+void BuildViewDarkModeProfile(EngineBase* engine, DarkModeProfile* profile) {
+    (void)engine;
+    if (profile) {
+        *profile = DarkModeProfile{};
+    }
+}
+
+u32 PdfDarkModeComputeProfileHash(const DarkModeProfile* profile) {
+    (void)profile;
+    return 0;
+}
+
 u32 PdfDarkModeComputeOptionsHash() {
     return 0;
 }
@@ -25,21 +47,40 @@ DarkModePalette PdfDarkModeBuildPalette() {
     return DarkModePalette{};
 }
 
+DarkModeEngineCache* PdfDarkModeEngineCacheCreate() {
+    return nullptr;
+}
+
+void PdfDarkModeEngineCacheFree(fz_context* ctx, DarkModeEngineCache* cache) {
+    (void)ctx;
+    (void)cache;
+}
+
+void PdfDarkModeEngineCacheClear(fz_context* ctx, DarkModeEngineCache* cache) {
+    (void)ctx;
+    (void)cache;
+}
+
 DarkModePageAnalysis* PdfDarkModeGetOrBuildAnalysis(fz_context* ctx, FzPageInfo* pageInfo, fz_display_list* list,
-                                                    u32 optionsHash) {
+                                                    u32 optionsHash, DarkModeEngineCache* engineCache) {
     (void)ctx;
     (void)pageInfo;
     (void)list;
     (void)optionsHash;
+    (void)engineCache;
     return nullptr;
 }
 
 fz_device* PdfDarkModeWrapDevice(fz_context* ctx, fz_device* inner, DarkModePageAnalysis* analysis,
-                                 const DarkModePalette* palette, DarkModeReplayState* replayState) {
+                                 const DarkModePalette* palette, DarkModeReplayState* replayState,
+                                 DarkModeEngineCache* engineCache, u32 profileHash, bool debugOverlay) {
     (void)ctx;
     (void)analysis;
     (void)palette;
     (void)replayState;
+    (void)engineCache;
+    (void)profileHash;
+    (void)debugOverlay;
     return inner;
 }
 

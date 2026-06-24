@@ -107,10 +107,18 @@ static void dm_transform_pixmap_rgb(fz_context* ctx, fz_pixmap* pix, const DarkM
     }
 }
 
-static void dm_soften_preserve_pixel(float r, float g, float b, const DarkModePalette& palette, float* outR,
-                                     float* outG, float* outB) {
-    ApplyPreserveImagePaperSoftening(r, g, b, palette, PdfDarkModeCurrentOptions().preserveImagePaperSoftening, outR,
-                                     outG, outB);
+static void dm_preserve_pixel(float r, float g, float b, const DarkModePalette& palette, float* outR, float* outG,
+                              float* outB) {
+    float cr = r, cg = g, cb = b;
+    PdfDarkModeCompressPhotoHighlights(r, g, b, &cr, &cg, &cb);
+    float softening = PdfDarkModeCurrentOptions().preserveImagePaperSoftening;
+    if (softening > 0.f) {
+        ApplyPreserveImagePaperSoftening(cr, cg, cb, palette, softening, outR, outG, outB);
+    } else {
+        *outR = cr;
+        *outG = cg;
+        *outB = cb;
+    }
 }
 
 static void dm_theme_recolor_pixel(float r, float g, float b, const DarkModePalette& palette, float* outR,
@@ -161,7 +169,7 @@ static bool dm_irect_equal(fz_irect a, fz_irect b) {
 }
 
 static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, DarkImagePolicy policy,
-                                            const DarkModePalette& palette) {
+                                            const DarkImageAnalysis* imgAnalysis, const DarkModePalette& palette) {
     fz_pixmap* src = nullptr;
     fz_pixmap* processed = nullptr;
     fz_image* result = nullptr;
@@ -171,9 +179,17 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
     fz_try(ctx) {
         src = fz_get_pixmap_from_image(ctx, srcImage, nullptr, nullptr, nullptr, nullptr);
         if (policy == DarkImagePolicy::Preserve) {
-            processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_soften_preserve_pixel);
+            processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_preserve_pixel);
         } else if (policy == DarkImagePolicy::AdaptiveDocument) {
-            processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_adaptive_pixel);
+            if (imgAnalysis && imgAnalysis->kind == DarkImageKind::FullPageScan) {
+                processed = PdfDarkModeProcessScanPixmap(ctx, src, *imgAnalysis, palette);
+            }
+            if (!processed && imgAnalysis && PdfDarkModeShouldBlendLightBackground(*imgAnalysis)) {
+                processed = PdfDarkModeProcessLightBackgroundPixmap(ctx, src, *imgAnalysis, palette);
+            }
+            if (!processed) {
+                processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_adaptive_pixel);
+            }
         } else {
             processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_theme_recolor_pixel);
         }
@@ -244,20 +260,28 @@ static fz_image* dm_build_processed_shade(fz_context* ctx, fz_shade* shade, fz_m
     return result;
 }
 
-fz_image* PdfDarkModeGetCachedImage(fz_context* ctx, DarkModePageAnalysis* analysis, int occurrenceIndex,
-                                    fz_image* srcImage, DarkImagePolicy policy, const DarkModePalette& palette) {
+fz_image* PdfDarkModeGetCachedImage(fz_context* ctx, DarkModeEngineCache* engineCache, DarkModePageAnalysis* analysis,
+                                    int occurrenceIndex, fz_image* srcImage, DarkImagePolicy policy,
+                                    const DarkModePalette& palette, u32 profileHash) {
     if (!analysis || !srcImage) {
         return nullptr;
     }
-    if (policy == DarkImagePolicy::Preserve) {
-        if (PdfDarkModeCurrentOptions().preserveImagePaperSoftening <= 0.f) {
-            return nullptr;
-        }
-    } else if (policy != DarkImagePolicy::AdaptiveDocument) {
+    if (policy != DarkImagePolicy::Preserve && policy != DarkImagePolicy::AdaptiveDocument) {
         return nullptr;
     }
     if (occurrenceIndex < 0 || occurrenceIndex >= analysis->images.Size()) {
         return nullptr;
+    }
+
+    const DarkImageAnalysis* imgAnalysis = &analysis->images[occurrenceIndex].analysis;
+    DarkImageKind kind = imgAnalysis->kind;
+
+    if (engineCache) {
+        fz_image* engineHit =
+            PdfDarkModeEngineCacheLookupProcessed(ctx, engineCache, srcImage, profileHash, policy, kind);
+        if (engineHit) {
+            return engineHit;
+        }
     }
 
     DarkModeProcessCache* cache = PdfDarkModeEnsureProcessCache(analysis);
@@ -270,11 +294,14 @@ fz_image* PdfDarkModeGetCachedImage(fz_context* ctx, DarkModePageAnalysis* analy
         return fz_keep_image(ctx, cached);
     }
 
-    fz_image* built = dm_build_processed_image(ctx, srcImage, policy, palette);
+    fz_image* built = dm_build_processed_image(ctx, srcImage, policy, imgAnalysis, palette);
     if (!built) {
         return nullptr;
     }
     cache->processedImages[occurrenceIndex] = built;
+    if (engineCache) {
+        PdfDarkModeEngineCacheStoreProcessed(ctx, engineCache, srcImage, profileHash, policy, kind, built);
+    }
     return fz_keep_image(ctx, built);
 }
 

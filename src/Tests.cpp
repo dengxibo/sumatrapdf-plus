@@ -97,17 +97,25 @@ void TestRenderPage(const Flags& i) {
             continue;
         }
         RenderPageArgs args(pageNo, zoom, 0);
+        DarkModeProfile darkProfile;
+        BuildViewDarkModeProfile(engine, &darkProfile);
+        if (darkProfile.mode != PageColorMode::Normal) {
+            args.darkProfile = &darkProfile;
+        }
         auto bmp = engine->RenderPage(args);
         if (bmp == nullptr) {
             printf("failed to render page\n");
-        } else if (engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".pdf") && ThemeUsesDarkChrome() &&
-                   GetPdfDocumentColorMode() != PdfDocumentColorMode::Light && !PdfDarkModeUsesObjectLevel()) {
-            COLORREF bgCol;
-            COLORREF textCol = ThemePageRenderColors(bgCol);
-            COLORREF linkCol = ThemeWindowLinkColor();
+        } else if (DarkModeProfileUsesLegacyPostProcess(args.darkProfile) ||
+                   (engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".pdf") && ThemeUsesDarkChrome() &&
+                    GetPdfDocumentColorMode() != PdfDocumentColorMode::Light && !PdfDarkModeUsesObjectLevel())) {
+            COLORREF bgCol = args.darkProfile ? args.darkProfile->pageBackground : 0;
+            COLORREF textCol = args.darkProfile ? args.darkProfile->foreground : ThemePageRenderColors(bgCol);
+            COLORREF linkCol = args.darkProfile ? args.darkProfile->linkColor : ThemeWindowLinkColor();
             Vec<Rect> skipRects;
             Vec<Rect>* skipRectsPtr = nullptr;
-            if (GetPreservePdfImagesInDarkMode()) {
+            bool preserve = args.darkProfile ? (args.darkProfile->mode == PageColorMode::PreserveImages)
+                                             : GetPreservePdfImagesInDarkMode();
+            if (preserve) {
                 Size bmpSize = bmp->GetSize();
                 RectF pageRect = engine->PageMediabox(pageNo);
                 engine->GetBitmapRecolorSkipRects(pageNo, zoom, 0, pageRect, bmpSize, skipRects);

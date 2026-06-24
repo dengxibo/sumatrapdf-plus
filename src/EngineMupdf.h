@@ -3,6 +3,7 @@
 
 struct Annotation;
 struct DarkModePageAnalysis;
+struct DarkModeEngineCache;
 
 struct FitzPageImageInfo {
     fz_rect rect = fz_unit_rect;
@@ -48,6 +49,13 @@ struct FzPageInfo {
     // object-level PDF dark mode page analysis (immutable after build)
     DarkModePageAnalysis* darkModeAnalysis = nullptr;
     u32 darkModeAnalysisHash = 0;
+
+    // Cached Legacy dark-mode preserve regions in page device pixels (absolute).
+    u32 darkLegacySkipHash = 0;
+    float darkLegacySkipZoom = 0.f;
+    int darkLegacySkipRotation = 0;
+    float darkLegacyArtworkPageBottom = 0.f;
+    Vec<Rect> darkLegacySkipDevAbs;
 };
 
 class EngineMupdf : public EngineBase {
@@ -153,6 +161,9 @@ class EngineMupdf : public EngineBase {
     // used to track "dirty" state of annotations. not perfect because if we add and delete
     // the same annotation, we should be back to 0
     bool modifiedAnnotations = false;
+
+    // Smart Dark Mode engine-level image caches (Phase 6).
+    DarkModeEngineCache* darkModeEngineCache = nullptr;
 
     bool Load(const char* filePath, PasswordUI* pwdUI = nullptr);
     bool Load(IStream* stream, const char* nameHint, PasswordUI* pwdUI = nullptr);

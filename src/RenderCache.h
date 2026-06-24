@@ -49,6 +49,7 @@ struct BitmapCacheEntry {
     // owned by the BitmapCacheEntry
     RenderedBitmap* bitmap = nullptr;
     bool outOfDate = false;
+    u32 darkModeEpoch = 0;
     int refs = 1;
 
     BitmapCacheEntry(DisplayModel* dm, int pageNo, int rotation, float zoom, TilePosition tile,
@@ -118,6 +119,7 @@ struct RenderCache {
     COLORREF textColor = 0;
     COLORREF backgroundColor = 0;
     COLORREF linkColor = 0;
+    u32 darkModeEpoch = 0;
 
     /* Interface for page rendering thread */
     HANDLE startRendering = nullptr; // semaphore, signaled once per queued request

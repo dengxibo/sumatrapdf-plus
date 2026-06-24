@@ -117,6 +117,7 @@
     <ClCompile Include="..\src\Flags.cpp" />
     <ClCompile Include="..\src\SumatraConfig.cpp" />
     <ClCompile Include="..\src\SumatraUnitTests.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeOklab.cpp" />
     <ClCompile Include="..\src\common\arena.cpp">
       <Filter>common</Filter>
     </ClCompile>
@@ -257,6 +258,12 @@
     </ClCompile>
     <ClCompile Include="..\src\utils\tests\SquareTreeParser_ut.cpp">
       <Filter>utils\tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\utils\tests\PdfDarkModeOklab_ut.cpp">
+      <Filter>src\utils\tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\utils\tests\PdfDarkModeImageClassifier_ut.cpp">
+      <Filter>src\utils\tests</Filter>
     </ClCompile>
     <ClCompile Include="..\src\utils\tests\StrFormat_ut.cpp">
       <Filter>utils\tests</Filter>

@@ -25,6 +25,8 @@ extern void SquareTreeTest();
 extern void StrFormatTest();
 extern void StrTest();
 extern void TrivialHtmlParser_UnitTests();
+extern void PdfDarkModeOklab_UnitTests();
+extern void PdfDarkModeImageClassifier_UnitTests();
 extern void VecTest();
 extern void WinUtilTest();
 extern void StrFormatTest();
@@ -58,6 +60,8 @@ int main(int, char**) {
     StrTest();
     StrVecTest();
     TrivialHtmlParser_UnitTests();
+    PdfDarkModeOklab_UnitTests();
+    PdfDarkModeImageClassifier_UnitTests();
     VecTest();
     WinUtilTest();
     SumatraPDF_UnitTests();

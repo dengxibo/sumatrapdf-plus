@@ -37,7 +37,24 @@ bool gConserveMemory = false;
 
 static DWORD WINAPI RenderCacheThread(LPVOID data);
 
-static bool ShouldUpdateBitmapColors(EngineBase* engine) {
+static bool ShouldUpdateBitmapColors(EngineBase* engine, const DarkModeProfile* profile) {
+    if (profile) {
+        return DarkModeProfileUsesLegacyPostProcess(profile);
+    }
+    if (!engine || engine->IsImageCollection()) {
+        return false;
+    }
+    if (engine->kind == kindEngineDjVu) {
+        return ThemeUsesDarkChrome();
+    }
+    return false;
+}
+
+static bool ShouldPreservePdfImagesInDarkMode(const DarkModeProfile* profile) {
+    return profile && profile->mode == PageColorMode::PreserveImages && profile->preservePdfImages;
+}
+
+static bool ShouldUpdateBitmapColorsLegacy(EngineBase* engine) {
     if (!engine || engine->IsImageCollection()) {
         return false;
     }
@@ -56,12 +73,10 @@ static bool ShouldUpdateBitmapColors(EngineBase* engine) {
         }
         return true;
     }
-    // MuPDF-based EPUB pages should keep their own CSS-driven colors.
-    // Bitmap recoloring is still needed for PDF/XPS pages.
     return str::EqI(engine->defaultExt, ".pdf") || str::EqI(engine->defaultExt, ".xps");
 }
 
-static bool ShouldPreservePdfImagesInDarkMode(EngineBase* engine) {
+static bool ShouldPreservePdfImagesLegacy(EngineBase* engine) {
     if (!ThemeUsesDarkChrome()) {
         return false;
     }
@@ -74,7 +89,36 @@ static bool ShouldPreservePdfImagesInDarkMode(EngineBase* engine) {
     if (!GetPreservePdfImagesInDarkMode()) {
         return false;
     }
-    return ShouldUpdateBitmapColors(engine);
+    return ShouldUpdateBitmapColorsLegacy(engine);
+}
+
+// Several preserved regions in one tile → keep the largest artwork, drop layout ornaments.
+static void FinalizeTileSkipRects(Vec<Rect>& skipRects, Size bmpSize) {
+    if (skipRects.Size() <= 1 || bmpSize.dx <= 0 || bmpSize.dy <= 0) {
+        return;
+    }
+    i64 totalArea = (i64)bmpSize.dx * bmpSize.dy;
+    if (totalArea <= 0) {
+        return;
+    }
+    i64 skipArea = 0;
+    for (Rect& r : skipRects) {
+        skipArea += (i64)r.dx * r.dy;
+    }
+    if (skipRects.Size() > 1 && skipArea * 100 > totalArea * 40) {
+        int bestIdx = 0;
+        i64 bestArea = 0;
+        for (int i = 0; i < skipRects.Size(); i++) {
+            i64 a = (i64)skipRects.at(i).dx * skipRects.at(i).dy;
+            if (a > bestArea) {
+                bestArea = a;
+                bestIdx = i;
+            }
+        }
+        Rect keep = skipRects.at(bestIdx);
+        skipRects.Clear();
+        skipRects.Append(keep);
+    }
 }
 
 bool gShowTileLayout = false;
@@ -161,7 +205,8 @@ BitmapCacheEntry* RenderCache::Find(DisplayModel* dm, int pageNo, int rotation, 
     for (int i = 0; i < cacheCount; i++) {
         BitmapCacheEntry* e = cache[i];
         if ((dm == e->dm) && (pageNo == e->pageNo) && (rotation == e->rotation) &&
-            (kInvalidZoom == zoom || zoom == e->zoom) && (!tile || e->tile == *tile)) {
+            (kInvalidZoom == zoom || zoom == e->zoom) && (!tile || e->tile == *tile) &&
+            (e->darkModeEpoch == darkModeEpoch)) {
             e->refs++;
             ReportIf(i != e->cacheIdx);
             return e;
@@ -277,6 +322,7 @@ void RenderCache::Add(PageRenderRequest& req, RenderedBitmap* bmp) {
 
     // Copy the PageRenderRequest as it will be reused
     auto entry = new BitmapCacheEntry(req.dm, req.pageNo, req.rotation, req.zoom, req.tile, bmp);
+    entry->darkModeEpoch = darkModeEpoch;
     entry->cacheIdx = cacheCount;
     cache[cacheCount] = entry;
     cacheCount++;
@@ -841,6 +887,11 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
             engine->GetTextForPage(req.pageNo);
         }
         RenderPageArgs args(req.pageNo, req.zoom, req.rotation, &req.pageRect, RenderTarget::View, &req.abortCookie);
+        DarkModeProfile darkProfile;
+        BuildViewDarkModeProfile(engine, &darkProfile);
+        if (darkProfile.mode != PageColorMode::Normal) {
+            args.darkProfile = &darkProfile;
+        }
         auto timeStart = TimeGet();
         bmp = engine->RenderPage(args);
         if (req.abort) {
@@ -858,20 +909,34 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
         req.errorCode = bmp ? 0 : 1;
 
         if (bmp) {
-            if (ShouldUpdateBitmapColors(engine)) {
-                bool preserve = ShouldPreservePdfImagesInDarkMode(engine);
+            const DarkModeProfile* profile = args.darkProfile;
+            bool legacyPost = false;
+            if (engine->kind == kindEngineDjVu && ThemeUsesDarkChrome()) {
+                legacyPost = true;
+                profile = nullptr;
+            } else if (profile) {
+                legacyPost = ShouldUpdateBitmapColors(engine, profile);
+            } else {
+                legacyPost = ShouldUpdateBitmapColorsLegacy(engine);
+            }
+            if (legacyPost) {
+                bool preserve =
+                    profile ? ShouldPreservePdfImagesInDarkMode(profile) : ShouldPreservePdfImagesLegacy(engine);
                 Vec<Rect> skipRects;
                 Vec<Rect>* skipRectsPtr = nullptr;
                 if (preserve) {
                     Size bmpSize = bmp->GetSize();
                     engine->GetBitmapRecolorSkipRects(req.pageNo, req.zoom, req.rotation, req.pageRect, bmpSize,
                                                       skipRects);
+                    FinalizeTileSkipRects(skipRects, bmpSize);
                     if (skipRects.Size() > 0) {
                         skipRectsPtr = &skipRects;
                     }
                 }
-                UpdateBitmapColors(bmp->GetBitmap(), cache->textColor, cache->backgroundColor, cache->linkColor,
-                                   skipRectsPtr);
+                COLORREF textCol = profile ? profile->foreground : cache->textColor;
+                COLORREF bgCol = profile ? profile->pageBackground : cache->backgroundColor;
+                COLORREF linkCol = profile ? profile->linkColor : cache->linkColor;
+                UpdateBitmapColors(bmp->GetBitmap(), textCol, bgCol, linkCol, skipRectsPtr);
             }
             cache->Add(req, bmp);
             req.bmp = nullptr; // ownership transferred to cache
@@ -896,10 +961,15 @@ int RenderCache::PaintTile(HDC hdc, Rect bounds, DisplayModel* dm, int pageNo, T
 
     if (!entry) {
         if (!isRemoteSession) {
-            if (renderedReplacement) {
-                *renderedReplacement = true;
+            BitmapCacheEntry* stale = Find(dm, pageNo, dm->GetRotation(), kInvalidZoom, &tile);
+            if (stale && stale->darkModeEpoch == darkModeEpoch) {
+                entry = stale;
+                if (renderedReplacement) {
+                    *renderedReplacement = true;
+                }
+            } else if (stale) {
+                DropCacheEntry(stale);
             }
-            entry = Find(dm, pageNo, dm->GetRotation(), kInvalidZoom, &tile);
         }
         renderDelay = GetRenderDelay(dm, pageNo, tile);
         if (renderMissing && RENDER_DELAY_UNDEFINED == renderDelay && !IsRenderQueueFull()) {

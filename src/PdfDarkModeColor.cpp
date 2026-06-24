@@ -14,13 +14,22 @@ extern "C" {
 
 // Hardcoded PDF dark mode defaults (not persisted in settings file).
 static constexpr int kPreservePdfImagesMinSize = 72;
+// Object-level Smart Dark is opt-in until image/color heuristics are ready (Phase 2+).
 static constexpr PdfDarkModeRenderer kPdfDarkModeRenderer = PdfDarkModeRenderer::LegacyBitmapPostProcess;
 
 static PdfDocumentColorMode gPdfDocumentColorMode = PdfDocumentColorMode::Auto;
 static bool gPreservePdfImagesInDarkMode = true;
 
-static float ColorChannel01(byte v) {
-    return v / 255.f;
+static int gShadeForwardCount = 0;
+
+void PdfDarkModeRecordShadeForward() {
+    gShadeForwardCount++;
+}
+
+int PdfDarkModeTakeShadeForwardCount() {
+    int n = gShadeForwardCount;
+    gShadeForwardCount = 0;
+    return n;
 }
 
 bool GetPreservePdfImagesInDarkMode() {
@@ -72,59 +81,48 @@ bool PdfDarkModeUsesObjectLevel() {
     return GetPdfDarkModeRenderer() == PdfDarkModeRenderer::ObjectLevelDevice;
 }
 
+void PdfDarkModeClearPixmapToThemeBackground(fz_context* ctx, fz_pixmap* pix, const DarkModePalette& palette) {
+    if (!pix || !pix->samples) {
+        return;
+    }
+    byte rb = (byte)(palette.bgR * 255.f + 0.5f);
+    byte gb = (byte)(palette.bgG * 255.f + 0.5f);
+    byte bb = (byte)(palette.bgB * 255.f + 0.5f);
+    int w = pix->w;
+    int h = pix->h;
+    int n = pix->n;
+    for (int y = 0; y < h; y++) {
+        unsigned char* row = pix->samples + (size_t)y * pix->stride;
+        for (int x = 0; x < w; x++) {
+            unsigned char* p = row + x * n;
+            p[0] = rb;
+            p[1] = gb;
+            p[2] = bb;
+            if (pix->alpha && n >= 4) {
+                p[3] = 255;
+            }
+        }
+    }
+}
+
 DarkModeOptions PdfDarkModeCurrentOptions() {
     DarkModeOptions opts;
-    opts.preserveImagePaperSoftening = 0.85f;
+    if (PdfDarkModeUsesObjectLevel()) {
+        opts.preserveImagePaperSoftening = 0.75f;
+    }
     return opts;
 }
 
 u32 PdfDarkModeComputeOptionsHash() {
-    auto mix = [](u32 h, u32 v) -> u32 { return h * 31 + v; };
-    u32 h = 0;
-    h = mix(h, (u32)GetPdfDarkModeRenderer());
-    h = mix(h, (u32)GetPdfDocumentColorMode());
-    h = mix(h, (u32)GetPreservePdfImagesInDarkMode());
-    h = mix(h, (u32)GetPreservePdfImagesMinSize());
-    COLORREF bg;
-    COLORREF text = ThemePageRenderColors(bg);
-    h = mix(h, (u32)text);
-    h = mix(h, (u32)bg);
-    if (ThemeUsesDarkChrome()) {
-        h = mix(h, (u32)ThemeWindowLinkColor());
-    }
-    DarkModeOptions opts = PdfDarkModeCurrentOptions();
-    h = mix(h, *(u32*)&opts.scanImageCoverageThreshold);
-    h = mix(h, (u32)opts.maxTextOpsForScanPage);
-    h = mix(h, (u32)opts.maxVectorOpsForScanPage);
-    h = mix(h, *(u32*)&opts.preserveImagePaperSoftening);
-    h = mix(h, *(u32*)&opts.lightFillChromaThreshold);
-    h = mix(h, *(u32*)&opts.lightFillLuminanceThreshold);
-    return h;
+    DarkModeProfile profile;
+    BuildViewDarkModeProfile(nullptr, &profile);
+    return profile.hash;
 }
 
 DarkModePalette PdfDarkModeBuildPalette() {
-    COLORREF bgCol;
-    COLORREF textCol = ThemePageRenderColors(bgCol);
-    byte tr, tg, tb, br, bg, bb, lr, lg, lb;
-    UnpackColor(textCol, tr, tg, tb);
-    UnpackColor(bgCol, br, bg, bb);
-    COLORREF linkCol = ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : textCol;
-    UnpackColor(linkCol, lr, lg, lb);
-
-    DarkModePalette p;
-    p.textR = ColorChannel01(tr);
-    p.textG = ColorChannel01(tg);
-    p.textB = ColorChannel01(tb);
-    p.bgR = ColorChannel01(br);
-    p.bgG = ColorChannel01(bg);
-    p.bgB = ColorChannel01(bb);
-    p.linkR = ColorChannel01(lr);
-    p.linkG = ColorChannel01(lg);
-    p.linkB = ColorChannel01(lb);
-    p.diffR = p.bgR - p.textR;
-    p.diffG = p.bgG - p.textG;
-    p.diffB = p.bgB - p.textB;
-    return p;
+    DarkModeProfile profile;
+    BuildViewDarkModeProfile(nullptr, &profile);
+    return profile.palette;
 }
 
 static bool IsLikelyLinkRgb(float r, float g, float b) {
@@ -171,11 +169,12 @@ void ApplyAdaptiveDocumentDarkMode(float r, float g, float b, const DarkModePale
     const float inkLum = 0.28f;
 
     if (chroma < lowChroma) {
-        float paperW = 1.f - SmoothStep(inkLum, paperLum, lum);
-        float inkW = SmoothStep(inkLum, paperLum, lum);
-        float nr = palette.bgR * paperW + palette.textR * inkW;
-        float ng = palette.bgG * paperW + palette.textG * inkW;
-        float nb = palette.bgB * paperW + palette.textB * inkW;
+        // Low luminance = ink -> theme text; high luminance = paper -> theme background.
+        float inkW = 1.f - SmoothStep(inkLum, paperLum, lum);
+        float paperW = SmoothStep(inkLum, paperLum, lum);
+        float nr = palette.textR * inkW + palette.bgR * paperW;
+        float ng = palette.textG * inkW + palette.bgG * paperW;
+        float nb = palette.textB * inkW + palette.bgB * paperW;
         float grayW = 1.f - chroma / lowChroma;
         *outR = nr * grayW + r * (1.f - grayW);
         *outG = ng * grayW + g * (1.f - grayW);
@@ -247,6 +246,10 @@ void ApplyAdaptiveDocumentDarkMode(float r, float g, float b, const DarkModePale
 }
 
 void MapRgbToDarkTheme(float r, float g, float b, const DarkModePalette& palette, float* outRgb) {
+    if (PdfDarkModeUsesObjectLevel()) {
+        MapRgbToDarkThemeOklab(r, g, b, palette, outRgb);
+        return;
+    }
     outRgb[0] = palette.textR + r * palette.diffR;
     outRgb[1] = palette.textG + g * palette.diffG;
     outRgb[2] = palette.textB + b * palette.diffB;
@@ -280,8 +283,8 @@ void MapRgbFillToDarkTheme(float r, float g, float b, const DarkModePalette& pal
     float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
     float chroma = maxC - minC;
     DarkModeOptions opts = PdfDarkModeCurrentOptions();
-    if (GetPdfDocumentColorMode() != PdfDocumentColorMode::Auto &&
-        lum >= opts.lightFillLuminanceThreshold && chroma >= opts.lightFillChromaThreshold) {
+    if (GetPdfDocumentColorMode() != PdfDocumentColorMode::Auto && lum >= opts.lightFillLuminanceThreshold &&
+        chroma >= opts.lightFillChromaThreshold) {
         ApplyAdaptiveDocumentDarkMode(r, g, b, palette, &outRgb[0], &outRgb[1], &outRgb[2]);
         return;
     }
@@ -305,17 +308,53 @@ void ApplyPreserveImagePaperSoftening(float r, float g, float b, const DarkModeP
     const float lowChroma = 0.10f;
     float paperW = 0.f;
     if (chroma < lowChroma) {
-        paperW = 1.f - SmoothStep(0.22f, 0.58f, lum);
+        // Only soften near-white paper; never pull ink pixels toward the background.
+        paperW = SmoothStep(0.72f, 0.94f, lum);
     } else {
         float chromaFactor = 1.f - chroma / 0.45f;
         if (chromaFactor < 0.f) {
             chromaFactor = 0.f;
         }
-        paperW = (1.f - SmoothStep(0.62f, 0.94f, lum)) * chromaFactor;
+        paperW = SmoothStep(0.72f, 0.94f, lum) * chromaFactor;
     }
     paperW *= strength;
 
     *outR = r + (palette.bgR - r) * paperW;
     *outG = g + (palette.bgG - g) * paperW;
     *outB = b + (palette.bgB - b) * paperW;
+}
+
+bool PdfDarkModeIsDecorativeStripImage(const RectF& imgRect, const RectF& pageBounds) {
+    if (imgRect.IsEmpty() || pageBounds.IsEmpty()) {
+        return false;
+    }
+    float w = imgRect.dx;
+    float h = imgRect.dy;
+    if (w <= 0.f || h <= 0.f) {
+        return false;
+    }
+    float pageW = pageBounds.dx;
+    float pageH = pageBounds.dy;
+    if (pageW <= 0.f || pageH <= 0.f) {
+        return false;
+    }
+
+    float wFrac = w / pageW;
+    float hFrac = h / pageH;
+    float minDim = w < h ? w : h;
+    float maxDim = w > h ? w : h;
+    float aspect = minDim / maxDim;
+
+    // Tall narrow or wide shallow strips (spiral margins, side shadows).
+    if (aspect < 0.22f) {
+        return true;
+    }
+    // Edge-aligned column/row spanning a substantial part of the page.
+    if (wFrac < 0.20f && hFrac > 0.30f) {
+        return true;
+    }
+    if (hFrac < 0.20f && wFrac > 0.30f) {
+        return true;
+    }
+    return false;
 }

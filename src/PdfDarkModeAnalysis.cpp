@@ -21,6 +21,7 @@ typedef struct {
     fz_device super;
     DarkModePageAnalysis* analysis;
     DarkModeOptions options;
+    DarkModeEngineCache* engineCache;
     int top;
     fz_rect stack[DM_ANALYSIS_STACK_SIZE];
     int textOps;
@@ -85,6 +86,13 @@ static void dm_analysis_record_image(fz_context* ctx, fz_device* dev, fz_image* 
     info.isImageMask = isMask;
     info.hasAlpha = image && image->mask;
     info.pageCoverage = coverage;
+    if (image) {
+        info.analysis = PdfDarkModeAnalyzeImageCached(ctx, image, coverage, d->analysis->isScannedPage, d->engineCache);
+        info.looksLikePhoto = info.analysis.kind == DarkImageKind::Photo ||
+                              info.analysis.kind == DarkImageKind::Unknown;
+    } else {
+        info.looksLikePhoto = false;
+    }
     d->analysis->images.Append(info);
 }
 
@@ -258,7 +266,7 @@ static void dm_analysis_drop_device(fz_context* ctx, fz_device* dev) {
 }
 
 static fz_device* PdfDarkModeNewAnalysisDevice(fz_context* ctx, DarkModePageAnalysis* analysis,
-                                               const DarkModeOptions& options) {
+                                               const DarkModeOptions& options, DarkModeEngineCache* engineCache) {
     pdf_dark_mode_analysis_device* d = fz_new_derived_device(ctx, pdf_dark_mode_analysis_device);
     d->super.fill_path = dm_analysis_fill_path;
     d->super.stroke_path = dm_analysis_stroke_path;
@@ -282,6 +290,7 @@ static fz_device* PdfDarkModeNewAnalysisDevice(fz_context* ctx, DarkModePageAnal
     d->super.drop_device = dm_analysis_drop_device;
     d->analysis = analysis;
     d->options = options;
+    d->engineCache = engineCache;
     d->top = 0;
     d->textOps = 0;
     d->vectorOps = 0;
@@ -306,43 +315,78 @@ static bool PdfDarkModeIsPureScanPage(bool isScanned, int textOps, int vectorOps
     return textOps <= 2 && vectorOps <= 2;
 }
 
-static bool PdfDarkModeShouldPreserveImage(const ImageOccurrenceInfo& img, bool isPureScan, int vectorOps) {
-    if (!PdfDarkModeImageMeetsPreserveMinSize(img)) {
+static bool PdfDarkModeDetectScanPage(DarkModePageAnalysis* analysis, int textOps, int vectorOps, float maxCoverage,
+                                      const DarkModeOptions& options) {
+    if (maxCoverage < options.scanImageCoverageThreshold) {
         return false;
     }
-    if (isPureScan) {
-        return GetPreservePdfImagesInDarkMode();
+    if (textOps > options.maxTextOpsForScanPage || vectorOps > options.maxVectorOpsForScanPage) {
+        return false;
     }
-    if (GetPreservePdfImagesInDarkMode()) {
-        return true;
+
+    float dominantCoverage = 0.f;
+    RectF dominantBounds;
+    int imageOps = 0;
+    for (const ImageOccurrenceInfo& img : analysis->images) {
+        if (img.isImageMask) {
+            continue;
+        }
+        imageOps++;
+        if (img.pageCoverage > dominantCoverage) {
+            dominantCoverage = img.pageCoverage;
+            dominantBounds = img.pageBounds;
+        }
     }
-    // Auto: preserve substantial embedded photos on composed pages.
-    const float minPhotoCoverage = 0.08f;
-    if (img.pageCoverage >= minPhotoCoverage) {
-        return true;
+    if (imageOps <= 0) {
+        return false;
     }
-    if (vectorOps > 0 && img.pageCoverage >= 0.05f) {
-        return true;
+    if (dominantCoverage < options.minScanDominantCoverage && maxCoverage < 0.92f) {
+        return false;
     }
-    return false;
+    if (!analysis->pageBounds.IsEmpty() && !dominantBounds.IsEmpty()) {
+        float pageAsp = analysis->pageBounds.dx / analysis->pageBounds.dy;
+        float imgAsp = dominantBounds.dx / dominantBounds.dy;
+        if (pageAsp > 0.f && imgAsp > 0.f) {
+            float skew = pageAsp > imgAsp ? pageAsp / imgAsp : imgAsp / pageAsp;
+            if (skew > options.maxScanAspectSkew) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 static void PdfDarkModeAssignPolicies(DarkModePageAnalysis* analysis, const DarkModeOptions& options, int textOps,
                                       int vectorOps, float maxCoverage) {
-    bool isScanned = maxCoverage >= options.scanImageCoverageThreshold && textOps <= options.maxTextOpsForScanPage &&
-                     vectorOps <= options.maxVectorOpsForScanPage;
+    bool isScanned = PdfDarkModeDetectScanPage(analysis, textOps, vectorOps, maxCoverage, options);
     analysis->isScannedPage = isScanned;
     bool isPureScan = PdfDarkModeIsPureScanPage(isScanned, textOps, vectorOps);
 
     for (ImageOccurrenceInfo& img : analysis->images) {
-        if (img.isImageMask) {
-            img.policy = DarkImagePolicy::ThemeRecolor;
-        } else if (PdfDarkModeShouldPreserveImage(img, isPureScan, vectorOps)) {
-            img.policy = DarkImagePolicy::Preserve;
-        } else if (isPureScan) {
-            img.policy = DarkImagePolicy::AdaptiveDocument;
-        } else {
-            img.policy = DarkImagePolicy::AdaptiveDocument;
+        if (!img.isImageMask) {
+            float conf = img.analysis.confidence;
+            img.analysis.kind =
+                PdfDarkModeClassifyImageFeatures(img.analysis.features, img.pageCoverage, isScanned, &conf);
+            img.analysis.confidence = conf;
+        }
+        img.policy = PdfDarkModePolicyForImageKind(img.analysis.kind, img.isImageMask);
+        if (!img.isImageMask) {
+            bool preserveArt = PdfDarkModeShouldPreserveImageFeatures(img.analysis.features, img.pageCoverage);
+            if (preserveArt) {
+                img.analysis.kind = DarkImageKind::Photo;
+                img.policy = DarkImagePolicy::Preserve;
+            }
+            if (!PdfDarkModeImageMeetsPreserveMinSize(img) ||
+                PdfDarkModeIsDecorativeStripImage(img.pageBounds, analysis->pageBounds)) {
+                img.policy = DarkImagePolicy::AdaptiveDocument;
+            } else if (img.pageCoverage >= kMaxPreserveImagePageCoverage && !preserveArt) {
+                img.policy = DarkImagePolicy::AdaptiveDocument;
+            }
+            if (isPureScan && img.pageCoverage >= options.minScanDominantCoverage && !preserveArt) {
+                img.analysis.kind = DarkImageKind::FullPageScan;
+                img.analysis.confidence = 0.88f;
+                img.policy = DarkImagePolicy::AdaptiveDocument;
+            }
         }
     }
 }
@@ -364,10 +408,13 @@ void PdfDarkModeInvalidatePage(fz_context* ctx, FzPageInfo* pageInfo) {
         pageInfo->darkModeAnalysis = nullptr;
     }
     pageInfo->darkModeAnalysisHash = 0;
+    pageInfo->darkLegacySkipHash = 0;
+    pageInfo->darkLegacyArtworkPageBottom = 0.f;
+    pageInfo->darkLegacySkipDevAbs.Clear();
 }
 
 DarkModePageAnalysis* PdfDarkModeGetOrBuildAnalysis(fz_context* ctx, FzPageInfo* pageInfo, fz_display_list* list,
-                                                    u32 optionsHash) {
+                                                    u32 optionsHash, DarkModeEngineCache* engineCache) {
     if (pageInfo->darkModeAnalysis && pageInfo->darkModeAnalysisHash == optionsHash) {
         return pageInfo->darkModeAnalysis;
     }
@@ -389,7 +436,7 @@ DarkModePageAnalysis* PdfDarkModeGetOrBuildAnalysis(fz_context* ctx, FzPageInfo*
     pdf_dark_mode_analysis_device* ad = nullptr;
     fz_var(dev);
     fz_try(ctx) {
-        dev = PdfDarkModeNewAnalysisDevice(ctx, analysis, options);
+        dev = PdfDarkModeNewAnalysisDevice(ctx, analysis, options, engineCache);
         ad = (pdf_dark_mode_analysis_device*)dev;
         fz_run_display_list(ctx, list, dev, fz_identity, pageRect, nullptr);
         fz_close_device(ctx, dev);

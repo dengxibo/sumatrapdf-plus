@@ -361,6 +361,8 @@ struct VisitTocTreeData {
 
 using VisitTocTreeCb = Func1<VisitTocTreeData*>;
 
+struct DarkModeProfile;
+
 // a helper that allows for rendering interruptions in an engine-agnostic way
 class AbortCookie {
   public:
@@ -379,6 +381,8 @@ struct RenderPageArgs {
     RectF* pageRect = nullptr;
     RenderTarget target = RenderTarget::View;
     AbortCookie** cookie_out = nullptr;
+    // When non-null, EngineMupdf may apply object-level Smart Dark rendering (View only).
+    const DarkModeProfile* darkProfile = nullptr;
 
     RenderPageArgs(int pageNo, float zoom, int rotation, RectF* pageRect = nullptr,
                    RenderTarget target = RenderTarget::View, AbortCookie** cookie_out = nullptr);

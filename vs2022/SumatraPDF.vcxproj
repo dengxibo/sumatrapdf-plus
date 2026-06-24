@@ -1235,6 +1235,14 @@
     <ClCompile Include="..\src\PdfDarkModeAnalysis.cpp" />
     <ClCompile Include="..\src\PdfDarkModeCache.cpp" />
     <ClCompile Include="..\src\PdfDarkModeColor.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeOklab.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeImageStats.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeImageClassifier.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeImageRules.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeImageBgBlend.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeScanProcess.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeEngineCache.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeProfile.cpp" />
     <ClCompile Include="..\src\PdfDarkModeDevice.cpp" />
     <ClCompile Include="..\src\PdfSync.cpp" />
     <ClCompile Include="..\src\PdfTools.cpp" />
