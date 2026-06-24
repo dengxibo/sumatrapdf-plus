@@ -204,6 +204,28 @@ void SetWindowRoundedCorners(HWND hwnd, bool rounded) {
     SetWindowBorderColor(hwnd, borderColor);
 }
 
+static void RefreshTitleBarNc(HWND hwnd) {
+    if (!hwnd) {
+        return;
+    }
+    const bool isActive = (hwnd == GetActiveWindow()) && (hwnd == GetForegroundWindow());
+    SendMessageW(hwnd, WM_NCACTIVATE, (WPARAM)!isActive, 0);
+    SendMessageW(hwnd, WM_NCACTIVATE, (WPARAM)isActive, 0);
+}
+
+void SetWindowCaptionColors(HWND hwnd, COLORREF captionBg, COLORREF captionText) {
+    SetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &captionBg, sizeof(captionBg));
+    SetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, &captionText, sizeof(captionText));
+    RefreshTitleBarNc(hwnd);
+}
+
+void ResetWindowCaptionColors(HWND hwnd) {
+    COLORREF def = DWMWA_COLOR_DEFAULT;
+    SetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &def, sizeof(def));
+    SetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, &def, sizeof(def));
+    RefreshTitleBarNc(hwnd);
+}
+
 }; // namespace dwm
 
 static const char* dllsToPreload =

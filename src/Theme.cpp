@@ -243,6 +243,10 @@ bool ThemeUsesOriginalPageColors() {
     return gThemeLightWhite && theme == gThemeLightWhite;
 }
 
+bool ThemeUsesEyeCareChrome() {
+    return !ThemeUsesDarkChrome() && !ThemeUsesOriginalPageColors();
+}
+
 bool IsDarkThemeSelected() {
     return ThemeUsesDarkChrome();
 }

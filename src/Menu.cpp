@@ -2522,6 +2522,21 @@ void ToggleMenuBar(MainWindow* win, bool showTemporarily) {
         return;
     }
 
+    if (ThemeUsesEyeCareChrome()) {
+        bool isShowing = IsShowingMenuBarRebar(win);
+        if (isShowing) {
+            DestroyMenuBarRebar(win);
+            gGlobalPrefs->showMenubar = false;
+        } else {
+            SetMenu(hwnd, nullptr);
+            CreateMenuBarRebar(win);
+            gGlobalPrefs->showMenubar = true;
+        }
+        RelayoutWindow(win);
+        ShowMenuBarRebar(win);
+        return;
+    }
+
     bool hideMenu = GetMenu(hwnd) != nullptr;
     SetMenu(hwnd, hideMenu ? nullptr : win->menu);
     gGlobalPrefs->showMenubar = !hideMenu;

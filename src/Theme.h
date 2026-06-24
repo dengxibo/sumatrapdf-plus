@@ -33,6 +33,7 @@ bool ThemeColorizeControls();
 bool ThemeUsesDarkChrome();
 bool ThemeUsesBlackChrome();
 bool ThemeUsesOriginalPageColors();
+bool ThemeUsesEyeCareChrome();
 bool IsCurrentThemeDefault();
 COLORREF AccentColor(COLORREF col, int light, int dark = 0);
 void FreeThemes();

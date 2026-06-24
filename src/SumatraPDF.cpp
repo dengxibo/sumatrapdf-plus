@@ -196,6 +196,8 @@ static StrVec gNextPrevDirCache; // cached files in gNextPrevDir
 static void CloseDocumentInCurrentTab(MainWindow*, bool keepUIEnabled, bool deleteModel);
 static void TransitionToNoTabs();
 static void TransitionToTabs();
+static void SyncNativeMenuBar(MainWindow* win);
+static void UpdateMainWindowNativeChrome(MainWindow* win);
 void DeleteManualBrowserWindow();
 static void OnSidebarSplitterMove(Splitter::MoveEvent*);
 static void OnFavSplitterMove(Splitter::MoveEvent*);
@@ -862,7 +864,7 @@ void RebuildMenuBarForWindow(MainWindow* win) {
                 RebuildMenuBarButtons(win);
             }
         } else {
-            SetMenu(win->hwndFrame, win->menu);
+            SyncNativeMenuBar(win);
         }
     }
     FreeMenuOwnerDrawInfoData(oldMenu);
@@ -2075,9 +2077,11 @@ static MainWindow* CreateMainWindow() {
         if (win->tabsInTitlebar) {
             CreateMenuBarRebar(win);
         } else {
-            SetMenu(win->hwndFrame, win->menu);
+            SyncNativeMenuBar(win);
         }
     }
+
+    UpdateMainWindowNativeChrome(win);
 
     // TODO: this is hackish. in general we should divorce
     // layout re-calculations from MainWindow and creation of windows
@@ -2208,7 +2212,48 @@ void DeleteMainWindow(MainWindow* win) {
 }
 
 static COLORREF DwmFrameBorderColorForCurrentTheme() {
-    return ThemeUsesDarkChrome() ? ThemeChromeBackgroundColor() : (COLORREF)DWMWA_COLOR_DEFAULT;
+    if (ThemeUsesDarkChrome() || ThemeUsesEyeCareChrome()) {
+        return ThemeChromeBackgroundColor();
+    }
+    return (COLORREF)DWMWA_COLOR_DEFAULT;
+}
+
+static void SyncNativeMenuBar(MainWindow* win) {
+    if (!win || !win->menu || win->presentation || win->isFullScreen || win->tabsInTitlebar) {
+        return;
+    }
+    if (!IsMenubarVisible()) {
+        SetMenu(win->hwndFrame, nullptr);
+        DestroyMenuBarRebar(win);
+        return;
+    }
+    if (ThemeUsesEyeCareChrome()) {
+        SetMenu(win->hwndFrame, nullptr);
+        if (IsShowingMenuBarRebar(win)) {
+            RebuildMenuBarButtons(win);
+        } else {
+            CreateMenuBarRebar(win);
+        }
+    } else {
+        DestroyMenuBarRebar(win);
+        SetMenu(win->hwndFrame, win->menu);
+    }
+}
+
+static void UpdateMainWindowNativeChrome(MainWindow* win) {
+    if (!win || win->isFullScreen || win->presentation || win->tabsInTitlebar) {
+        return;
+    }
+    if (ThemeUsesEyeCareChrome()) {
+        dwm::SetWindowCaptionColors(win->hwndFrame, ThemeChromeBackgroundColor(), ThemeWindowTextColor());
+        SyncNativeMenuBar(win);
+    } else if (!ThemeUsesDarkChrome()) {
+        dwm::ResetWindowCaptionColors(win->hwndFrame);
+        SyncNativeMenuBar(win);
+    }
+    UpdateWindowFrameBorderColor(win);
+    RelayoutFrame(win);
+    ShowMenuBarRebar(win);
 }
 
 static void UpdateWindowFrameBorderColor(MainWindow* win) {
@@ -2243,12 +2288,17 @@ void UpdateAfterThemeChange() {
         // TODO: probably leaking toolbar image list
         UpdateToolbarAfterThemeChange(win);
         if (UseDarkModeLib()) {
-            DarkMode::setDarkTitleBarEx(win->hwndFrame, true);
-            DarkMode::setChildCtrlsTheme(win->hwndFrame);
-            DarkMode::setDarkScrollBar(win->hwndCanvas);
-            DarkMode::setWindowMenuBarSubclass(win->hwndFrame);
-            // DarkMode::setDarkTooltips(win->infotip->hwnd, (int)DarkMode::ToolTipsType::tooltip);
+            if (ThemeUsesDarkChrome()) {
+                DarkMode::setDarkTitleBarEx(win->hwndFrame, true);
+                DarkMode::setChildCtrlsTheme(win->hwndFrame);
+                DarkMode::setDarkScrollBar(win->hwndCanvas);
+                DarkMode::setWindowMenuBarSubclass(win->hwndFrame);
+                // DarkMode::setDarkTooltips(win->infotip->hwnd, (int)DarkMode::ToolTipsType::tooltip);
+            } else if (!win->tabsInTitlebar) {
+                dwm::ResetWindowCaptionColors(win->hwndFrame);
+            }
         }
+        UpdateMainWindowNativeChrome(win);
         UpdateControlsColors(win);
         UpdateWindowFrameBorderColor(win);
         uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN;
@@ -5357,11 +5407,8 @@ static void ShowOptionsDialog(HWND hwnd) {
         }
     } else if (!SettingsUseTabs()) {
         for (MainWindow* w : gWindows) {
-            DestroyMenuBarRebar(w);
             SetTabsInTitlebar(w, false);
-            if (IsMenubarVisible()) {
-                SetMenu(w->hwndFrame, w->menu);
-            }
+            UpdateMainWindowNativeChrome(w);
             UpdateTabWidth(w);
             ShowOrHideToolbar(w);
             w->RedrawAllIncludingNonClient();
@@ -5761,7 +5808,7 @@ void ExitFullScreen(MainWindow* win) {
         if (win->tabsInTitlebar) {
             CreateMenuBarRebar(win);
         } else {
-            SetMenu(win->hwndFrame, win->menu);
+            SyncNativeMenuBar(win);
         }
     }
 
@@ -6754,11 +6801,8 @@ static void TransitionToNoTabs() {
         }
         if (!hasFiles) {
             for (MainWindow* w : gWindows) {
-                DestroyMenuBarRebar(w);
                 SetTabsInTitlebar(w, false);
-                if (IsMenubarVisible()) {
-                    SetMenu(w->hwndFrame, w->menu);
-                }
+                UpdateMainWindowNativeChrome(w);
                 ShowOrHideToolbar(w);
                 w->RedrawAllIncludingNonClient();
             }
@@ -6774,8 +6818,8 @@ static void TransitionToNoTabs() {
         MainWindow* win;
         if (i == 0 && surviving) {
             win = surviving;
-            DestroyMenuBarRebar(win);
             SetTabsInTitlebar(win, false);
+            UpdateMainWindowNativeChrome(win);
         } else {
             win = CreateAndShowMainWindow(nullptr);
             if (!win) {

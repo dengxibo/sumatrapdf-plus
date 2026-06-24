@@ -166,6 +166,8 @@ HRESULT GetWindowAttribute(HWND hwnd, DWORD dwAttribute, void* pvAttribute, DWOR
 HRESULT SetWindowAttribute(HWND hwnd, DWORD dwAttribute, void* pvAttribute, DWORD cbAttribute);
 void SetWindowBorderColor(HWND hwnd, COLORREF color);
 void SetWindowRoundedCorners(HWND hwnd, bool rounded);
+void SetWindowCaptionColors(HWND hwnd, COLORREF captionBg, COLORREF captionText);
+void ResetWindowCaptionColors(HWND hwnd);
 
 }; // namespace dwm
 
