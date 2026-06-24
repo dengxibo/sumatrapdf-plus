@@ -151,6 +151,7 @@ bool gRedrawLog = false;
 
 static void RelayoutFrame(MainWindow* win, bool updateToolbars = true, int sidebarDx = -1);
 static void UpdateOverlayScrollbarPositions(MainWindow* win);
+static void SyncCanvasScrollBarTheme(MainWindow* win);
 static void BeginFrameRedrawSuppression(MainWindow* win);
 static void EndFrameRedrawSuppression(MainWindow* win);
 
@@ -2091,7 +2092,7 @@ static MainWindow* CreateMainWindow() {
         DarkMode::setDarkTitleBarEx(win->hwndFrame, true);
         DarkMode::setChildCtrlsSubclassAndTheme(win->hwndFrame);
         DarkMode::removeTabCtrlSubclass(win->tabsCtrl->hwnd);
-        DarkMode::setDarkScrollBar(win->hwndCanvas);
+        SyncCanvasScrollBarTheme(win);
         DarkMode::setWindowMenuBarSubclass(win->hwndFrame);
         // TODO: this over-rides the font in the control
         // this will only happen with themes
@@ -2344,6 +2345,27 @@ static bool ShouldReloadForThemeChange(WindowTab* tab) {
     return !str::EqI(engine->defaultExt, ".pdf");
 }
 
+static void SyncCanvasScrollBarTheme(MainWindow* win) {
+    if (!win || !win->hwndCanvas) {
+        return;
+    }
+    if (UseDarkModeLib()) {
+        if (ThemeUsesDarkChrome()) {
+            DarkMode::setDarkScrollBar(win->hwndCanvas);
+        } else {
+            SetWindowTheme(win->hwndCanvas, nullptr, nullptr);
+            SendMessageW(win->hwndCanvas, WM_THEMECHANGED, 0, 0);
+            RedrawWindow(win->hwndCanvas, nullptr, nullptr, RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW);
+        }
+    }
+    if (win->overlayScrollV) {
+        InvalidateRect(win->overlayScrollV->hwnd, nullptr, TRUE);
+    }
+    if (win->overlayScrollH) {
+        InvalidateRect(win->overlayScrollH->hwnd, nullptr, TRUE);
+    }
+}
+
 void UpdateAfterThemeChange() {
     InvalidateLoadedThumbnails();
     UpdateDocumentColors();
@@ -2358,7 +2380,6 @@ void UpdateAfterThemeChange() {
             if (ThemeUsesDarkChrome()) {
                 DarkMode::setDarkTitleBarEx(win->hwndFrame, true);
                 DarkMode::setChildCtrlsTheme(win->hwndFrame);
-                DarkMode::setDarkScrollBar(win->hwndCanvas);
                 DarkMode::setWindowMenuBarSubclass(win->hwndFrame);
                 // DarkMode::setDarkTooltips(win->infotip->hwnd, (int)DarkMode::ToolTipsType::tooltip);
             } else {
@@ -2369,6 +2390,7 @@ void UpdateAfterThemeChange() {
                     dwm::ResetWindowCaptionColors(win->hwndFrame);
                 }
             }
+            SyncCanvasScrollBarTheme(win);
         }
         UpdateMainWindowNativeChrome(win);
         UpdateControlsColors(win);
