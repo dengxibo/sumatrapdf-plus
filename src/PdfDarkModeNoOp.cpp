@@ -112,3 +112,43 @@ PdfDocumentColorMode GetPdfDocumentColorMode() {
 void SetPdfDocumentColorMode(PdfDocumentColorMode mode) {
     (void)mode;
 }
+
+bool PdfDarkModeIsDecorativeStripImage(const RectF& imgRect, const RectF& pageBounds) {
+    (void)imgRect;
+    (void)pageBounds;
+    return false;
+}
+
+bool PdfDarkModeImageLooksLikeDarkArtwork(fz_context* ctx, fz_image* image, float pageCoverage) {
+    (void)ctx;
+    (void)image;
+    (void)pageCoverage;
+    return false;
+}
+
+RectF PdfDarkModeClampImagePageRect(const RectF& imgPage, int imageW, int imageH) {
+    (void)imageW;
+    (void)imageH;
+    return imgPage;
+}
+
+RectF PdfDarkModeCapUnknownImagePageRect(const RectF& imgPage, float pageHeight) {
+    (void)pageHeight;
+    return imgPage;
+}
+
+bool PdfDarkModeShouldPreserveEmbeddedImageRect(fz_context* ctx, fz_image* image, float pageCoverage, int devW,
+                                                int devH) {
+    (void)ctx;
+    (void)image;
+    (void)pageCoverage;
+    (void)devW;
+    (void)devH;
+    return false;
+}
+
+void PdfDarkModeClearPixmapToThemeBackground(fz_context* ctx, fz_pixmap* pix, const DarkModePalette& palette) {
+    (void)ctx;
+    (void)pix;
+    (void)palette;
+}

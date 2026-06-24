@@ -32,3 +32,7 @@ COLORREF ThemeWindowLinkColor() {
 bool ThemeUsesDarkChrome() {
     return false;
 }
+
+bool ThemeUsesOriginalPageColors() {
+    return false;
+}
