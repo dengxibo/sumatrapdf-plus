@@ -151,6 +151,8 @@ Available in [pre-release](https://www.sumatrapdfreader.org/prerelease) builds.
 - use `GetFileAttributesEx` instead of opening files for change detection on network drives, avoiding Windows Defender re-scans
 - fix toolbar page number misalignment when `PrinterAccess` is revoked in `sumatrapdfrestrict.ini`
 - add a **Match whole word** toggle to the Find bar (next to **Match Case**) so a search only matches complete words (fixes #4295)
+- find-as-you-type now waits briefly after typing stops; pressing Enter searches immediately (fixes #4626)
+- highlight the current search match with `FixedPageUI.SelectionColor` and other matches with a secondary orange color (fixes #5740)
 
 ## 3.6.1 (2026-04-06)
 
