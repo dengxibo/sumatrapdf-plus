@@ -803,11 +803,15 @@ const globalPrefs: Field[] = [
   mkField("TabWidth", Int, 300, "maximum width of a single tab"),
   setDoc(
     setVersion(mkField("Theme", Str, "", "the name of the theme to use"), "3.5"),
-    "Valid themes: Light, System, Dark-Dracula, Dark-Black",
+    "Valid themes: Light-Warm, Light-White, System, Dark-Dracula, Dark-Black",
   ),
   setDoc(
     setVersion(mkField("LastDarkTheme", Str, "Dark-Dracula", "the dark theme to use when toggling from light mode"), "3.7"),
     "Valid dark themes: Dark-Dracula, Dark-Black",
+  ),
+  setDoc(
+    setVersion(mkField("LastLightTheme", Str, "Light-Warm", "the light theme to use when toggling from dark mode"), "3.7"),
+    "Valid light themes: Light-Warm, Light-White",
   ),
   mkField(
     "TocDy",

@@ -39493,79 +39493,152 @@ tw:設定主題
 uk:Встановити тему
 uz:Mavzuni o'rnatish
 vn:Đặt chủ đề
-:Set theme 'Light'
-af:Stel tema 'Light' in
-am:Սահմանել 'Light' ձևավորումը
-ar:تعيين السمة 'Light'
-az:Temanı 'Light' olaraq təyin et
-bg:Задаване на тема 'Light'
-bn:থিম 'Light' সেট করুন
-br:Definir tema 'Light'
-bs:Postavi temu 'Light'
-by:Усталяваць тэму 'Light'
-ca:Estableix el tema 'Light'
-ca-xv:Estableix el tema «Light»
-cn:设置为 'Light' 主题
-co:Definisce u tema « Light »
-cy:Gosod thema 'Light'
-cz:Nastavit motiv 'Light'
-de:Design 'Light' festlegen
-dk:Indstil tema 'Light'
-el:Ορισμός θέματος 'Light'
-es:Establecer tema 'Light'
-et:Määra teema 'Light'
-eu:'Light' gaia ezarri
-fa:تنظیم پوسته 'Light'
-fi:Aseta teema 'Light'
-fo:Set tema 'Light'
-fr:Définir le thème 'Light'
-fy-nl:Tema 'Light' ynstelle
-ga:Socraigh téama 'Light'
-gl:Establecer tema 'Light'
-he:הגדר ערכת נושא 'Light'
-hi:थीम 'Light' सेट करें
-hr:Postavi temu 'Light'
-hu:Téma beállítása: 'Light'
-id:Atur tema 'Light'
-it:Imposta tema 'Light'
-ja:配色テーマ 'Light'
-jv:Setel tema 'Light'
-ka:თემის დაყენება 'Light'
-kr:테마 'Light' 설정
-ku:Dirba 'Light' saz bike
-kw:Settya tema 'Light'
-lt:Nustatyti temą 'Light'
-lv:Iestatīt tēmu 'Light'
-mk:Постави тема 'Light'
-ml:തീം 'Light' സജ്ജമാക്കുക
-mm:အပြင်အဆင် 'Light' သတ်မှတ်ရန်
-my:အပြင်အဆင် 'Light' သတ်မှတ်ရန်
-ne:थिम 'Light' सेट गर्नुहोस्
-nl:Stel thema 'Light' in
-nn:Vel tema 'Light'
-no:Angi tema 'Light'
-pa:ਥੀਮ 'Light' ਸੈੱਟ ਕਰੋ
-pl:Ustaw motyw 'Light'
-pt:Definir tema 'Light'
-ro:Setează tema 'Light'
-ru:Установить тему 'Light'
-sat:ᱛᱷᱤᱢ 'Light' ᱥᱮᱴ ᱢᱮ
-si:තේමාව 'Light' සකසන්න
-sk:Nastaviť motív 'Light'
-sl:Nastavi temo 'Light'
-sn:Isa dingindira 'Light'
-sp-rs:Postavi temu 'Light'
-sq:Vendos temën 'Light'
-sr-rs:Postavi temu 'Light'
-sv:Ange tema 'Light'
-ta:தீம் 'Light' அமை
-th:ตั้งค่าธีม 'Light'
-tl:Itakda ang tema 'Light'
-tr:'Light' temasını ayarla
-tw:設定成 'Light' 主題
-uk:Встановити тему 'Light'
-uz:'Light' mavzusini o'rnatish
-vn:Đặt giao diện 'Light'
+:Set theme 'Light-Warm'
+af:Stel tema 'Light-Warm' in
+am:Սահմանել 'Light-Warm' ձևավորումը
+ar:تعيين السمة 'Light-Warm'
+az:Temanı 'Light-Warm' olaraq təyin et
+bg:Задаване на тема 'Light-Warm'
+bn:থিম 'Light-Warm' সেট করুন
+br:Definir tema 'Light-Warm'
+bs:Postavi temu 'Light-Warm'
+by:Усталяваць тэму 'Light-Warm'
+ca:Estableix el tema 'Light-Warm'
+ca-xv:Estableix el tema «Light-Warm»
+cn:设置为 'Light-Warm' 主题
+co:Definisce u tema « Light-Warm »
+cy:Gosod thema 'Light-Warm'
+cz:Nastavit motiv 'Light-Warm'
+de:Design 'Light-Warm' festlegen
+dk:Indstil tema 'Light-Warm'
+el:Ορισμός θέματος 'Light-Warm'
+es:Establecer tema 'Light-Warm'
+et:Määra teema 'Light-Warm'
+eu:'Light-Warm' gaia ezarri
+fa:تنظیم پوسته 'Light-Warm'
+fi:Aseta teema 'Light-Warm'
+fo:Set tema 'Light-Warm'
+fr:Définir le thème 'Light-Warm'
+fy-nl:Tema 'Light-Warm' ynstelle
+ga:Socraigh téama 'Light-Warm'
+gl:Establecer tema 'Light-Warm'
+he:הגדר ערכת נושא 'Light-Warm'
+hi:थीम 'Light-Warm' सेट करें
+hr:Postavi temu 'Light-Warm'
+hu:Téma beállítása: 'Light-Warm'
+id:Atur tema 'Light-Warm'
+it:Imposta tema 'Light-Warm'
+ja:配色テーマ 'Light-Warm'
+jv:Setel tema 'Light-Warm'
+ka:თემის დაყენება 'Light-Warm'
+kr:테마 'Light-Warm' 설정
+ku:Dirba 'Light-Warm' saz bike
+kw:Settya tema 'Light-Warm'
+lt:Nustatyti temą 'Light-Warm'
+lv:Iestatīt tēmu 'Light-Warm'
+mk:Постави тема 'Light-Warm'
+ml:തീം 'Light-Warm' സജ്ജമാക്കുക
+mm:အပြင်အဆင် 'Light-Warm' သတ်မှတ်ရန်
+my:အပြင်အဆင် 'Light-Warm' သတ်မှတ်ရန်
+ne:थिम 'Light-Warm' सेट गर्नुहोस्
+nl:Stel thema 'Light-Warm' in
+nn:Vel tema 'Light-Warm'
+no:Angi tema 'Light-Warm'
+pa:ਥੀਮ 'Light-Warm' ਸੈੱਟ ਕਰੋ
+pl:Ustaw motyw 'Light-Warm'
+pt:Definir tema 'Light-Warm'
+ro:Setează tema 'Light-Warm'
+ru:Установить тему 'Light-Warm'
+sat:ᱛᱷᱤᱢ 'Light-Warm' ᱥᱮᱴ ᱢᱮ
+si:තේමාව 'Light-Warm' සකසන්න
+sk:Nastaviť motív 'Light-Warm'
+sl:Nastavi temo 'Light-Warm'
+sn:Isa dingindira 'Light-Warm'
+sp-rs:Postavi temu 'Light-Warm'
+sq:Vendos temën 'Light-Warm'
+sr-rs:Postavi temu 'Light-Warm'
+sv:Ange tema 'Light-Warm'
+ta:தீம் 'Light-Warm' அமை
+th:ตั้งค่าธีม 'Light-Warm'
+tl:Itakda ang tema 'Light-Warm'
+tr:'Light-Warm' temasını ayarla
+tw:設定成 'Light-Warm' 主題
+uk:Встановити тему 'Light-Warm'
+uz:'Light-Warm' mavzusini o'rnatish
+vn:Đặt giao diện 'Light-Warm'
+:Set theme 'Light-White'
+af:Stel tema 'Light-White' in
+am:Սահմանել 'Light-White' ձևավորումը
+ar:تعيين السمة 'Light-White'
+az:Temanı 'Light-White' olaraq təyin et
+bg:Задаване на тема 'Light-White'
+bn:থিম 'Light-White' সেট করুন
+br:Definir tema 'Light-White'
+bs:Postavi temu 'Light-White'
+by:Усталяваць тэму 'Light-White'
+ca:Estableix el tema 'Light-White'
+ca-xv:Estableix el tema «Light-White»
+cn:设置为 'Light-White' 主题
+co:Definisce u tema « Light-White »
+cy:Gosod thema 'Light-White'
+cz:Nastavit motiv 'Light-White'
+de:Design 'Light-White' festlegen
+dk:Indstil tema 'Light-White'
+el:Ορισμός θέματος 'Light-White'
+es:Establecer tema 'Light-White'
+et:Määra teema 'Light-White'
+eu:'Light-White' gaia ezarri
+fa:تنظیم پوسته 'Light-White'
+fi:Aseta teema 'Light-White'
+fo:Set tema 'Light-White'
+fr:Définir le thème 'Light-White'
+fy-nl:Tema 'Light-White' ynstelle
+ga:Socraigh téama 'Light-White'
+gl:Establecer tema 'Light-White'
+he:הגדר ערכת נושא 'Light-White'
+hi:थीम 'Light-White' सेट करें
+hr:Postavi temu 'Light-White'
+hu:Téma beállítása: 'Light-White'
+id:Atur tema 'Light-White'
+it:Imposta tema 'Light-White'
+ja:配色テーマ 'Light-White'
+jv:Setel tema 'Light-White'
+ka:თემის დაყენება 'Light-White'
+kr:테마 'Light-White' 설정
+ku:Dirba 'Light-White' saz bike
+kw:Settya tema 'Light-White'
+lt:Nustatyti temą 'Light-White'
+lv:Iestatīt tēmu 'Light-White'
+mk:Постави тема 'Light-White'
+ml:തീം 'Light-White' സജ്ജമാക്കുക
+mm:အပြင်အဆင် 'Light-White' သတ်မှတ်ရန်
+my:အပြင်အဆင် 'Light-White' သတ်မှတ်ရန်
+ne:थिम 'Light-White' सेट गर्नुहोस्
+nl:Stel thema 'Light-White' in
+nn:Vel tema 'Light-White'
+no:Angi tema 'Light-White'
+pa:ਥੀਮ 'Light-White' ਸੈੱਟ ਕਰੋ
+pl:Ustaw motyw 'Light-White'
+pt:Definir tema 'Light-White'
+ro:Setează tema 'Light-White'
+ru:Установить тему 'Light-White'
+sat:ᱛᱷᱤᱢ 'Light-White' ᱥᱮᱴ ᱢᱮ
+si:තේමාව 'Light-White' සකසන්න
+sk:Nastaviť motív 'Light-White'
+sl:Nastavi temo 'Light-White'
+sn:Isa dingindira 'Light-White'
+sp-rs:Postavi temu 'Light-White'
+sq:Vendos temën 'Light-White'
+sr-rs:Postavi temu 'Light-White'
+sv:Ange tema 'Light-White'
+ta:தீம் 'Light-White' அமை
+th:ตั้งค่าธีม 'Light-White'
+tl:Itakda ang tema 'Light-White'
+tr:'Light-White' temasını ayarla
+tw:設定成 'Light-White' 主題
+uk:Встановити тему 'Light-White'
+uz:'Light-White' mavzusini o'rnatish
+vn:Đặt giao diện 'Light-White'
 :Set theme 'System'
 af:Stel tema 'System' in
 am:Սահմանել 'System' ձևավորումը
@@ -39785,6 +39858,7 @@ tw:設定成 'Dark-Black' 主題
 uk:Встановити тему 'Dark-Black'
 uz:'Dark-Black' mavzusini o'rnatish
 vn:Đặt giao diện 'Dark-Black'
+
 :Show &Bookmarks
 af:Wys boekmerke
 am:Ցուցադրել &Էջանիշերը

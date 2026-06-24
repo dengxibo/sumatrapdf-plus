@@ -605,7 +605,7 @@ ByteSlice ChmModel::GetDataForUrl(const char* url) {
         TempStr modified = nullptr;
         if (ThemeUsesDarkChrome()) {
             modified = ChmInjectDarkCssTemp(data);
-        } else {
+        } else if (!ThemeUsesOriginalPageColors()) {
             modified = ChmInjectLightEyeCareCssTemp(data);
         }
         if (modified) {

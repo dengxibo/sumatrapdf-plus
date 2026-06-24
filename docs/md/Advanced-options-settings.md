@@ -163,12 +163,15 @@ PreventSleepInFullscreen = true
 ; maximum width of a single tab
 TabWidth = 300
 
-; Valid themes: Light, System, Dark-Dracula, Dark-Black (introduced in version
-; 3.5)
+; Valid themes: Light-Warm, Light-White, System, Dark-Dracula, Dark-Black
+; (introduced in version 3.5)
 Theme = 
 
 ; Valid dark themes: Dark-Dracula, Dark-Black (introduced in version 3.7)
 LastDarkTheme = Dark-Dracula
+
+; Valid light themes: Light-Warm, Light-White (introduced in version 3.7)
+LastLightTheme = Light-Warm
 
 ; if both favorites and bookmarks parts of sidebar are visible, this is the
 ; height of bookmarks (table of contents) part

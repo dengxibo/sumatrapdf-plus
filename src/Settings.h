@@ -517,6 +517,8 @@ struct GlobalPrefs {
     char* theme;
     // the dark theme to use when toggling from light mode
     char* lastDarkTheme;
+    // the light theme to use when toggling from dark mode
+    char* lastLightTheme;
     // if both favorites and bookmarks parts of sidebar are visible, this
     // is the height of bookmarks (table of contents) part
     int tocDy;
@@ -933,6 +935,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, tabWidth), SettingType::Int, 300},
     {offsetof(GlobalPrefs, theme), SettingType::String, (intptr_t)""},
     {offsetof(GlobalPrefs, lastDarkTheme), SettingType::String, (intptr_t)"Dark-Dracula"},
+    {offsetof(GlobalPrefs, lastLightTheme), SettingType::String, (intptr_t)"Light-Warm"},
     {offsetof(GlobalPrefs, tocDy), SettingType::Int, 0},
     {offsetof(GlobalPrefs, toolbarSize), SettingType::Int, 18},
     {offsetof(GlobalPrefs, treeFontName), SettingType::String, (intptr_t)"automatic"},
@@ -989,18 +992,18 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment, (intptr_t)"Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 94, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 95, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0ReloadMo"
     "difiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSession\0ReuseInstance\0ShowMenubar\0ShowMe"
     "nubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0OfflineDictionaryPath\0EnableDoubleClickWordLookup\0AiChatUseD"
     "eepSeekInsteadOfDoubao\0ShowFavorites\0ShowToc\0ShowLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSingle"
-    "Page\0SmoothScroll\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme\0TocDy\0Tool"
-    "barSize\0TreeFontName\0TreeFontSize\0UIFontSize\0DisableAntiAlias\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0Zoo"
-    "mIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0Forwa"
-    "rdSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0\0DefaultPas"
-    "swords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCh"
-    "eck\0OpenCountWeek\0PropWinPos\0\0"};
+    "Page\0SmoothScroll\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme\0LastLightTh"
+    "eme\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0UIFontSize\0DisableAntiAlias\0UseSysColors\0UseTabs\0TabsMru"
+    "\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0Externa"
+    "lViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroup"
+    "s\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0FileStates\0SessionData\0ReopenOnce\0T"
+    "imeOfLastUpdateCheck\0OpenCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)""},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)""},

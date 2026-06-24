@@ -3701,7 +3701,7 @@ figcaption, caption, p.caption, div.caption, span.caption,
         if (darkTheme) {
             TempStr darkCss = BuildEbookDarkCss(isEpub);
             ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", darkCss) : str::DupTemp(darkCss);
-        } else {
+        } else if (!ThemeUsesOriginalPageColors()) {
             static const char* kLightEyeCareCss = R"(html {
   background-color: #f7f3e8 !important;
 }

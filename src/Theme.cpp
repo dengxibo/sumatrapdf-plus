@@ -31,7 +31,8 @@ bool UseDarkModeLib() {
 
 /*
 preserve those translations:
-_TRN("Set theme 'Light'")
+_TRN("Set theme 'Light-Warm'")
+_TRN("Set theme 'Light-White'")
 _TRN("Set theme 'System'")
 _TRN("Set theme 'Dark-Dracula'")
 _TRN("Set theme 'Dark-Black'")
@@ -40,20 +41,29 @@ _TRN("Set theme 'Dark-Black'")
 static const char* SetThemeMenuLabel(int themeIdx) {
     switch (themeIdx) {
         case 0:
-            return _TRA("Set theme 'Light'");
+            return _TRA("Set theme 'Light-Warm'");
         case 1:
-            return _TRA("Set theme 'System'");
+            return _TRA("Set theme 'Light-White'");
         case 2:
-            return _TRA("Set theme 'Dark-Dracula'");
+            return _TRA("Set theme 'System'");
         case 3:
+            return _TRA("Set theme 'Dark-Dracula'");
+        case 4:
             return _TRA("Set theme 'Dark-Black'");
         default:
-            return _TRA("Set theme 'Light'");
+            return _TRA("Set theme 'Light-Warm'");
     }
 }
 
+constexpr const char* kThemeLightWarm = "Light-Warm";
+constexpr const char* kThemeLightWhite = "Light-White";
 constexpr const char* kThemeDarkDracula = "Dark-Dracula";
 constexpr const char* kThemeDarkBlack = "Dark-Black";
+static constexpr int kThemeIdxLightWarm = 0;
+static constexpr int kThemeIdxLightWhite = 1;
+static constexpr int kThemeIdxSystem = 2;
+static constexpr int kThemeIdxDarkDracula = 3;
+static constexpr int kThemeIdxDarkBlack = 4;
 
 constexpr COLORREF kColBlack = 0x000000;
 constexpr COLORREF kColWhite = 0xFFFFFF;
@@ -67,10 +77,18 @@ constexpr COLORREF kColReadingText = RgbToCOLORREF(0xe6e1d8);
 
 static const char* themesTxt = R"(Themes [
     [
-        Name = Light
+        Name = Light-Warm
         TextColor = #333333
         BackgroundColor = #ebe6da
         ControlBackgroundColor = #f5f1e8
+        LinkColor = #0020a0
+        ColorizeControls = false
+    ]
+    [
+        Name = Light-White
+        TextColor = #000000
+        BackgroundColor = #f5f5f5
+        ControlBackgroundColor = #ffffff
         LinkColor = #0020a0
         ColorizeControls = false
     ]
@@ -112,6 +130,7 @@ static int gThemeCount;
 static int gCurrThemeIndex = 0;
 static Theme* gCurrentTheme = nullptr;
 static Theme* gThemeLight = nullptr;
+static Theme* gThemeLightWhite = nullptr;
 static Theme* gThemeDark = nullptr;
 static Theme* gThemeBlack = nullptr;
 static Themes* gParsedThemes = nullptr;
@@ -122,23 +141,23 @@ bool IsCurrentThemeDefault() {
 }
 
 static bool IsSystemTheme() {
-    return gCurrThemeIndex == 1;
+    return gCurrThemeIndex == kThemeIdxSystem;
 }
 
 static int DarkThemeIndexFromPrefs() {
     if (gGlobalPrefs &&
         (str::EqI(gGlobalPrefs->lastDarkTheme, "Black") || str::EqI(gGlobalPrefs->lastDarkTheme, "dark-black") ||
          str::EqI(gGlobalPrefs->lastDarkTheme, kThemeDarkBlack))) {
-        return 3;
+        return kThemeIdxDarkBlack;
     }
-    return 2;
+    return kThemeIdxDarkDracula;
 }
 
 static void UpdateLastDarkThemePref(int themeIdx) {
-    if (!gGlobalPrefs || (themeIdx != 2 && themeIdx != 3)) {
+    if (!gGlobalPrefs || (themeIdx != kThemeIdxDarkDracula && themeIdx != kThemeIdxDarkBlack)) {
         return;
     }
-    const char* name = themeIdx == 3 ? kThemeDarkBlack : kThemeDarkDracula;
+    const char* name = themeIdx == kThemeIdxDarkBlack ? kThemeDarkBlack : kThemeDarkDracula;
     if (!str::EqI(gGlobalPrefs->lastDarkTheme, name)) {
         str::ReplaceWithCopy(&gGlobalPrefs->lastDarkTheme, name);
     }
@@ -148,7 +167,11 @@ static void MigrateThemePrefName(char** pref) {
     if (!pref || !*pref) {
         return;
     }
-    if (str::EqI(*pref, "Dark") || str::EqI(*pref, "dark-dracula")) {
+    if (str::EqI(*pref, "Light")) {
+        str::ReplaceWithCopy(pref, kThemeLightWarm);
+    } else if (str::EqI(*pref, "Original")) {
+        str::ReplaceWithCopy(pref, kThemeLightWhite);
+    } else if (str::EqI(*pref, "Dark") || str::EqI(*pref, "dark-dracula")) {
         str::ReplaceWithCopy(pref, kThemeDarkDracula);
     } else if (str::EqI(*pref, "Black") || str::EqI(*pref, "dark-black")) {
         str::ReplaceWithCopy(pref, kThemeDarkBlack);
@@ -159,8 +182,31 @@ static int GetPreferredDarkThemeIndex() {
     return DarkThemeIndexFromPrefs();
 }
 
+static int LightThemeIndexFromPrefs() {
+    if (gGlobalPrefs &&
+        (str::EqI(gGlobalPrefs->lastLightTheme, kThemeLightWhite) ||
+         str::EqI(gGlobalPrefs->lastLightTheme, "Original") || str::EqI(gGlobalPrefs->lastLightTheme, "Light-White"))) {
+        return kThemeIdxLightWhite;
+    }
+    return kThemeIdxLightWarm;
+}
+
+static void UpdateLastLightThemePref(int themeIdx) {
+    if (!gGlobalPrefs || (themeIdx != kThemeIdxLightWarm && themeIdx != kThemeIdxLightWhite)) {
+        return;
+    }
+    const char* name = themeIdx == kThemeIdxLightWhite ? kThemeLightWhite : kThemeLightWarm;
+    if (!str::EqI(gGlobalPrefs->lastLightTheme, name)) {
+        str::ReplaceWithCopy(&gGlobalPrefs->lastLightTheme, name);
+    }
+}
+
+static int GetPreferredLightThemeIndex() {
+    return LightThemeIndexFromPrefs();
+}
+
 static Theme* GetPreferredDarkTheme() {
-    if (gThemes && gThemeCount > 3) {
+    if (gThemes && gThemeCount > kThemeIdxDarkBlack) {
         return gThemes->At(GetPreferredDarkThemeIndex());
     }
     return gThemeDark;
@@ -168,7 +214,7 @@ static Theme* GetPreferredDarkTheme() {
 
 static int GetResolvedThemeIndex() {
     if (IsSystemTheme()) {
-        return DarkMode::isDarkModeReg() ? GetPreferredDarkThemeIndex() : 0;
+        return DarkMode::isDarkModeReg() ? GetPreferredDarkThemeIndex() : kThemeIdxLightWarm;
     }
     return gCurrThemeIndex;
 }
@@ -190,6 +236,11 @@ bool ThemeUsesDarkChrome() {
 bool ThemeUsesBlackChrome() {
     Theme* theme = GetResolvedTheme();
     return theme && theme == gThemeBlack;
+}
+
+bool ThemeUsesOriginalPageColors() {
+    Theme* theme = GetResolvedTheme();
+    return gThemeLightWhite && theme == gThemeLightWhite;
 }
 
 bool IsDarkThemeSelected() {
@@ -217,9 +268,10 @@ void CreateThemeCommands() {
         gCurrThemeIndex = 0;
     }
     gCurrentTheme = gThemes->At(gCurrThemeIndex);
-    gThemeLight = gThemes->At(0);
-    gThemeDark = gThemes->At(2);
-    gThemeBlack = gThemes->At(3);
+    gThemeLight = gThemes->At(kThemeIdxLightWarm);
+    gThemeLightWhite = gThemes->At(kThemeIdxLightWhite);
+    gThemeDark = gThemes->At(kThemeIdxDarkDracula);
+    gThemeBlack = gThemes->At(kThemeIdxDarkBlack);
 
     CustomCommand* cmd;
     for (int i = 0; i < gThemeCount; i++) {
@@ -260,12 +312,13 @@ void SetThemeByIndex(int themeIdx) {
     }
     int prevThemeIdx = gCurrThemeIndex;
     int prevResolvedThemeIdx = GetResolvedThemeIndex();
-    bool selectingSystem = (themeIdx == 1);
+    bool selectingSystem = (themeIdx == kThemeIdxSystem);
     bool systemDark = selectingSystem ? DarkMode::isDarkModeReg() : false;
     gCurrThemeIndex = themeIdx;
     gCurrSetThemeCmdId = gFirstSetThemeCmdId + themeIdx;
     gCurrentTheme = gThemes->At(gCurrThemeIndex);
     UpdateLastDarkThemePref(themeIdx);
+    UpdateLastLightThemePref(themeIdx);
     gLastSystemDark = systemDark;
     int resolvedThemeIdx = GetResolvedThemeIndex();
     bool themeChanged = (prevResolvedThemeIdx != resolvedThemeIdx) || (prevThemeIdx != themeIdx);
@@ -324,10 +377,11 @@ void SelectNextTheme() {
 void ToggleLightDarkTheme() {
     int newIdx;
     if (IsSystemTheme()) {
-        newIdx = ThemeUsesDarkChrome() ? 0 : GetPreferredDarkThemeIndex();
+        newIdx = ThemeUsesDarkChrome() ? GetPreferredLightThemeIndex() : GetPreferredDarkThemeIndex();
     } else if (ThemeUsesDarkChrome()) {
-        newIdx = 0;
+        newIdx = GetPreferredLightThemeIndex();
     } else {
+        UpdateLastLightThemePref(gCurrThemeIndex);
         newIdx = GetPreferredDarkThemeIndex();
     }
     SetThemeByIndex(newIdx);
@@ -338,37 +392,46 @@ static int GetThemeByName(const char* name) {
     if (!name) {
         return -1;
     }
-    if (str::EqI(name, "Light")) {
-        return 0;
+    if (str::EqI(name, kThemeLightWarm) || str::EqI(name, "Light")) {
+        return kThemeIdxLightWarm;
+    }
+    if (str::EqI(name, kThemeLightWhite) || str::EqI(name, "Original")) {
+        return kThemeIdxLightWhite;
     }
     if (str::EqI(name, "System")) {
-        return 1;
+        return kThemeIdxSystem;
     }
     if (str::EqI(name, "Dark") || str::EqI(name, "dark-dracula") || str::EqI(name, kThemeDarkDracula)) {
-        return 2;
+        return kThemeIdxDarkDracula;
     }
     if (str::EqI(name, "Black") || str::EqI(name, "dark-black") || str::EqI(name, kThemeDarkBlack)) {
-        return 3;
+        return kThemeIdxDarkBlack;
     }
     if (str::FindI(name, "system")) {
-        return 1;
+        return kThemeIdxSystem;
     }
-    if (str::FindI(name, "light")) {
-        return 0;
+    if (str::FindI(name, "light-white") || str::FindI(name, "white")) {
+        return kThemeIdxLightWhite;
+    }
+    if (str::FindI(name, "light-warm") || str::FindI(name, "warm")) {
+        return kThemeIdxLightWarm;
     }
     if (str::FindI(name, "dark-black") || str::FindI(name, "black") || str::FindI(name, "oled")) {
-        return 3;
+        return kThemeIdxDarkBlack;
     }
     if (str::FindI(name, "dracula") || str::FindI(name, "dark-dracula")) {
-        return 2;
+        return kThemeIdxDarkDracula;
     }
     if (str::FindI(name, "dark")) {
-        return 2;
+        return kThemeIdxDarkDracula;
+    }
+    if (str::FindI(name, "light")) {
+        return kThemeIdxLightWarm;
     }
     if (str::IsEmpty(name)) {
         return -1;
     }
-    return 2;
+    return kThemeIdxDarkDracula;
 }
 
 // this is the default aggressive yellow that we suppress
@@ -392,9 +455,13 @@ void SetTheme(const char* name) {
 void SetCurrentThemeFromSettings() {
     MigrateThemePrefName(&gGlobalPrefs->theme);
     MigrateThemePrefName(&gGlobalPrefs->lastDarkTheme);
+    MigrateThemePrefName(&gGlobalPrefs->lastLightTheme);
     SetTheme(gGlobalPrefs->theme);
-    if (gCurrThemeIndex == 2 || gCurrThemeIndex == 3) {
+    if (gCurrThemeIndex == kThemeIdxDarkDracula || gCurrThemeIndex == kThemeIdxDarkBlack) {
         UpdateLastDarkThemePref(gCurrThemeIndex);
+    }
+    if (gCurrThemeIndex == kThemeIdxLightWarm || gCurrThemeIndex == kThemeIdxLightWhite) {
+        UpdateLastLightThemePref(gCurrThemeIndex);
     }
     ParsedColor* bgParsed = GetPrefsColor(gGlobalPrefs->mainWindowBackground);
     bool isDefault = IsDefaultMainWinColor(bgParsed);
@@ -425,7 +492,7 @@ COLORREF ThemeDocumentColors(COLORREF& bg) {
     if (ThemeUsesDarkChrome()) {
         if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
             bg = ThemeMainWindowBackgroundColor();
-            if (GetResolvedThemeIndex() != 3) {
+            if (GetResolvedThemeIndex() != kThemeIdxDarkBlack) {
                 bg = AccentColor(bg, 8);
             }
             return ThemeReadingTextColor();
@@ -442,7 +509,7 @@ COLORREF ThemeDocumentColors(COLORREF& bg) {
     COLORREF text = ThemeWindowTextColor();
     bg = ThemeMainWindowBackgroundColor();
 
-    if (GetResolvedThemeIndex() != 3) {
+    if (GetResolvedThemeIndex() != kThemeIdxDarkBlack) {
         bg = AccentColor(bg, 8);
     }
     return text;
@@ -470,7 +537,7 @@ COLORREF ThemePageRenderColors(COLORREF& bg) {
     }
 
     if (!invertColors) {
-        if (!ThemeUsesDarkChrome() && text == kColBlack && bg == kColWhite) {
+        if (!ThemeUsesDarkChrome() && !ThemeUsesOriginalPageColors() && text == kColBlack && bg == kColWhite) {
             text = kColEyeCareText;
             bg = kColEyeCarePageBg;
         }
@@ -495,7 +562,7 @@ COLORREF ThemePageRenderColors(COLORREF& bg) {
     text = ThemeReadingTextColor();
     bg = ThemeMainWindowBackgroundColor();
 
-    if (GetResolvedThemeIndex() != 3) {
+    if (GetResolvedThemeIndex() != kThemeIdxDarkBlack) {
         bg = AccentColor(bg, 8);
     }
     return text;
@@ -504,7 +571,7 @@ COLORREF ThemePageRenderColors(COLORREF& bg) {
 void ThemeSidebarColors(COLORREF& bg, COLORREF& text) {
     if (ThemeUsesDarkChrome()) {
         bg = ThemeMainWindowBackgroundColor();
-        if (GetResolvedThemeIndex() != 3) {
+        if (GetResolvedThemeIndex() != kThemeIdxDarkBlack) {
             bg = AccentColor(bg, 8);
         }
         text = ThemeReadingTextColor();

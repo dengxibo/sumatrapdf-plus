@@ -22423,20 +22423,34 @@ pl:Ustaw motyw
 ru:Установить тему
 sk:Nastaviť motív
 tw:設定主題
-:Set theme 'Light'
-am:Սահմանել 'Light' ձևավորումը
-br:Definir tema 'Light'
-cn:设置为 'Light' 主题
-co:Definisce u tema « Light »
-de:Design 'Light' festlegen
-el:Ορισμός θέματος 'Light'
-it:Imposta tema 'Light'
-ja:配色テーマ 'Light'
-nl:Stel thema 'Light' in
-pl:Ustaw motyw 'Light'
-ru:Установить тему 'Light'
-sk:Nastaviť motív 'Light'
-tw:設定成 'Light' 主題
+:Set theme 'Light-Warm'
+am:Սահմանել 'Light-Warm' ձևավորումը
+br:Definir tema 'Light-Warm'
+cn:设置为 'Light-Warm' 主题
+co:Definisce u tema « Light-Warm »
+de:Design 'Light-Warm' festlegen
+el:Ορισμός θέματος 'Light-Warm'
+it:Imposta tema 'Light-Warm'
+ja:配色テーマ 'Light-Warm'
+nl:Stel thema 'Light-Warm' in
+pl:Ustaw motyw 'Light-Warm'
+ru:Установить тему 'Light-Warm'
+sk:Nastaviť motív 'Light-Warm'
+tw:設定成 'Light-Warm' 主題
+:Set theme 'Light-White'
+am:Սահմանել 'Light-White' ձևավորումը
+br:Definir tema 'Light-White'
+cn:设置为 'Light-White' 主题
+co:Definisce u tema « Light-White »
+de:Design 'Light-White' festlegen
+el:Ορισμός θέματος 'Light-White'
+it:Imposta tema 'Light-White'
+ja:配色テーマ 'Light-White'
+nl:Stel thema 'Light-White' in
+pl:Ustaw motyw 'Light-White'
+ru:Установить тему 'Light-White'
+sk:Nastaviť motív 'Light-White'
+tw:設定成 'Light-White' 主題
 :Set theme 'System'
 am:Սահմանել 'System' ձևավորումը
 br:Definir tema 'System'
@@ -22479,6 +22493,7 @@ pl:Ustaw motyw 'Dark-Black'
 ru:Установить тему 'Dark-Black'
 sk:Nastaviť motív 'Dark-Black'
 tw:設定成 'Dark-Black' 主題
+
 :Show &Bookmarks
 am:Ցուցադրել &Էջանիշերը
 ar:اظهار &قوائم العناوين
