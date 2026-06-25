@@ -13,7 +13,7 @@ Because SumatraPDF is licensed under **GNU GPLv3**, modified binaries must be ac
 ## Main changes vs upstream SumatraPDF
 
 1. **Chinese EPUB/MOBI layout and TOC** — improved mixed text/image layout; fixes for incorrect or broken table-of-contents navigation.
-2. **Faster opening of large ebooks** — loading performance for big EPUB/MOBI files.
+2. **Faster opening of large ebooks** — loading performance for big EPUB/MOBI/AZW files.
 3. **Session-restore crash fix** — when “reopen files from last session” is enabled, launching by double-clicking a file no longer crashes.
 4. **Offline dictionary lookup** — double-click a word in the document; optional English–Chinese and Chinese dictionaries via a `dict` folder next to the exe.
 5. **Dark mode** — light/dark theme toggle with UI polish (toolbar, word-lookup popup follows theme, etc.).
