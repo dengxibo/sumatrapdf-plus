@@ -8601,11 +8601,39 @@ static int CaptionButtonAt(MainWindow* win, Point pt) {
     return -1;
 }
 
+constexpr int kCaptionButtonHoverAccent = 8;
+constexpr int kCaptionButtonPushedAccent = 12;
+
+static bool CaptionButtonsActive(MainWindow* win) {
+    return !win->captionBtn[CB_MINIMIZE].inactive;
+}
+
+static COLORREF CaptionSysButtonHotBg(COLORREF chromeBg) {
+    return AccentColor(chromeBg, kCaptionButtonHoverAccent);
+}
+
+static COLORREF CaptionSysButtonPushedBg(COLORREF chromeBg) {
+    return AccentColor(chromeBg, kCaptionButtonPushedAccent);
+}
+
+static COLORREF CaptionCloseHotBg() {
+    return RGB(0xC4, 0x2B, 0x1C);
+}
+
+static COLORREF CaptionClosePushedBg() {
+    return RGB(0xA0, 0x22, 0x14);
+}
+
+static Color CaptionInactiveIconColor(COLORREF chromeBg, COLORREF textCol) {
+    auto mix = [](int fg, int bg) { return (fg * 42 + bg * 58) / 100; };
+    return Color(mix(GetRValue(textCol), GetRValue(chromeBg)), mix(GetGValue(textCol), GetGValue(chromeBg)),
+                 mix(GetBValue(textCol), GetBValue(chromeBg)));
+}
+
 static void RepaintButton(HWND hwnd, int btnIdx, MainWindow* win) {
-    if (false) {
+    if (win->captionBtn[btnIdx].visible) {
         RECT rc = ToRECT(win->captionBtn[btnIdx].rect);
         InvalidateRect(hwnd, &rc, FALSE);
-        UpdateWindow(hwnd);
     } else {
         InvalidateRect(hwnd, nullptr, FALSE);
     }
@@ -8937,22 +8965,20 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
         bool isPushed = (stateId == CBS_PUSHED);
         bool isInactive = (stateId == CBS_INACTIVE);
 
-        if (isHot || isPushed) {
-            Color bgCol;
+        if (!isInactive && (isHot || isPushed)) {
+            COLORREF hotBgCol;
             if (isClose) {
-                bgCol = isPushed ? Color(200, 196, 43, 28) : Color(255, 196, 43, 28);
+                hotBgCol = isPushed ? CaptionClosePushedBg() : CaptionCloseHotBg();
             } else {
-                COLORREF hotBg = bgc;
-                hotBg = isPushed ? AccentColor(bgc, 40) : AccentColor(bgc, 20);
-                bgCol = GdiRgbFromCOLORREF(hotBg);
+                hotBgCol = isPushed ? CaptionSysButtonPushedBg(bgc) : CaptionSysButtonHotBg(bgc);
             }
-            SolidBrush bgBr(bgCol);
+            SolidBrush bgBr(GdiRgbFromCOLORREF(hotBgCol));
             gfx.FillRectangle(&bgBr, rButton.x, rButton.y, rButton.dx, rButton.dy);
         }
 
         Color iconCol;
         if (isInactive) {
-            iconCol = Color(153, 153, 153);
+            iconCol = CaptionInactiveIconColor(bgc, ThemeWindowTextColor());
         } else if (isClose && (isHot || isPushed)) {
             iconCol = Color(255, 255, 255);
         } else {
@@ -8971,15 +8997,22 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
         }
         bool isHot = (stateId == CBS_HOT) || win->isMenuOpen;
         bool isPushed = (stateId == CBS_PUSHED) || win->isMenuOpen;
-        if (isHot || isPushed) {
-            COLORREF hotBg = isPushed ? AccentColor(bgc, 40) : AccentColor(bgc, 20);
+        bool isInactive = (stateId == CBS_INACTIVE);
+        if (!isInactive && (isHot || isPushed)) {
+            COLORREF hotBg = isPushed ? CaptionSysButtonPushedBg(bgc) : CaptionSysButtonHotBg(bgc);
             SolidBrush hotBr(GdiRgbFromCOLORREF(hotBg));
             gfx.FillRectangle(&hotBr, rButton.x, rButton.y, rButton.dx, rButton.dy);
         }
 
         // Tabler menu-2 proportions (24x24 viewBox), 1px stroke to match toolbar icons
         COLORREF tc = ThemeWindowTextColor();
-        Pen p(Color(GetRValue(tc), GetGValue(tc), GetBValue(tc)), 1.0f);
+        Color menuIconCol;
+        if (isInactive) {
+            menuIconCol = CaptionInactiveIconColor(bgc, tc);
+        } else {
+            menuIconCol = Color(GetRValue(tc), GetGValue(tc), GetBValue(tc));
+        }
+        Pen p(menuIconCol, 1.0f);
         p.SetLineCap(Gdiplus::LineCapRound, Gdiplus::LineCapRound, Gdiplus::DashCapRound);
         float iconScale = (float)rc.dy * 0.55f / 24.0f;
         float cx = (float)rc.x + (float)rc.dx / 2.0f;
@@ -9072,6 +9105,10 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         case WM_NCACTIVATE:
             for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
                 win->captionBtn[i].inactive = wp == FALSE;
+                if (wp == FALSE) {
+                    win->captionBtn[i].highlighted = false;
+                    win->captionBtn[i].pressed = false;
+                }
             }
             if (!IsIconic(hwnd)) {
                 RECT rc = ToRECT(win->captionRect);
@@ -9207,7 +9244,7 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
 
         case WM_NCMOUSEMOVE: {
             int btnIdx = IsZoomed(hwnd) ? CB_RESTORE : CB_MAXIMIZE;
-            if (wp == HTMAXBUTTON) {
+            if (wp == HTMAXBUTTON && CaptionButtonsActive(win)) {
                 if (!win->captionBtn[btnIdx].highlighted) {
                     win->captionBtn[btnIdx].highlighted = true;
                     RepaintButton(hwnd, btnIdx, win);
@@ -9227,14 +9264,15 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         case WM_MOUSEMOVE: {
             Point ptm{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
             int btnIdx = CaptionButtonAt(win, ptm);
+            bool allowHover = CaptionButtonsActive(win);
             for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
-                bool shouldHighlight = (i == btnIdx);
+                bool shouldHighlight = allowHover && (i == btnIdx);
                 if (win->captionBtn[i].highlighted != shouldHighlight) {
                     win->captionBtn[i].highlighted = shouldHighlight;
                     RepaintButton(hwnd, i, win);
                 }
             }
-            if (btnIdx >= 0) {
+            if (btnIdx >= 0 && allowHover) {
                 TrackMouseLeave(hwnd);
             }
         } break;
@@ -9246,7 +9284,7 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         case WM_LBUTTONDOWN: {
             Point ptd{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
             int btnIdx = CaptionButtonAt(win, ptd);
-            if (btnIdx >= 0) {
+            if (btnIdx >= 0 && CaptionButtonsActive(win)) {
                 win->captionBtn[btnIdx].pressed = true;
                 RepaintButton(hwnd, btnIdx, win);
                 SetCapture(hwnd);
