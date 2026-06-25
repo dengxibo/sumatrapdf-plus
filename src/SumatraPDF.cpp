@@ -8846,6 +8846,63 @@ static void DrawCaptionMenuSeparator(MainWindow* win, HDC hdc) {
     DeleteObject(pen);
 }
 
+constexpr int kCaptionIconSizeDip = 10;
+constexpr int kCaptionIconStrokeDip = 1;
+constexpr int kCaptionRestoreOverlapDip = 3;
+
+static float CaptionIconPenWidth(HWND hwnd) {
+    int w = DpiScale(hwnd, kCaptionIconStrokeDip);
+    if (w < 1) {
+        w = 1;
+    }
+    return (float)w;
+}
+
+// Win11-inspired caption glyphs; icon box is fixed in DIP, centered in the button rect.
+static void DrawCaptionSysButtonGlyph(Graphics& gfx, HWND hwnd, int button, Rect rc, Color iconCol) {
+    float penW = CaptionIconPenWidth(hwnd);
+    int iconSz = DpiScale(hwnd, kCaptionIconSizeDip);
+    float ix = (float)rc.x + ((float)rc.dx - iconSz) / 2.f;
+    float iy = (float)rc.y + ((float)rc.dy - iconSz) / 2.f;
+    float ie = ix + (float)iconSz;
+    float ib = iy + (float)iconSz;
+    float inset = penW / 2.f;
+
+    Pen pen(iconCol, penW);
+    pen.SetLineCap(Gdiplus::LineCapFlat, Gdiplus::LineCapFlat, Gdiplus::DashCapFlat);
+
+    switch (button) {
+        case CB_CLOSE: {
+            gfx.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+            pen.SetLineCap(Gdiplus::LineCapRound, Gdiplus::LineCapRound, Gdiplus::DashCapFlat);
+            float pad = penW;
+            gfx.DrawLine(&pen, ix + pad, iy + pad, ie - pad, ib - pad);
+            gfx.DrawLine(&pen, ie - pad, iy + pad, ix + pad, ib - pad);
+            gfx.SetSmoothingMode(Gdiplus::SmoothingModeNone);
+        } break;
+        case CB_MAXIMIZE:
+            gfx.DrawRectangle(&pen, ix + inset, iy + inset, (float)iconSz - penW, (float)iconSz - penW);
+            break;
+        case CB_MINIMIZE: {
+            float lineY = ib - penW;
+            gfx.DrawLine(&pen, ix, lineY, ie, lineY);
+        } break;
+        case CB_RESTORE: {
+            float gap = (float)DpiScale(hwnd, kCaptionRestoreOverlapDip);
+            float inner = (float)iconSz - gap;
+            // back window (top-right)
+            gfx.DrawLine(&pen, ix + gap, iy + inset, ie - inset, iy + inset);
+            gfx.DrawLine(&pen, ie - inset, iy + inset, ie - inset, iy + inner - inset);
+            gfx.DrawLine(&pen, ix + gap, iy + inner - inset, ie - inset, iy + inner - inset);
+            // front window (bottom-left)
+            gfx.DrawLine(&pen, ix + inset, iy + gap, ix + inner - inset, iy + gap);
+            gfx.DrawLine(&pen, ix + inset, iy + gap, ix + inset, ib - inset);
+            gfx.DrawLine(&pen, ix + inset, ib - inset, ix + inner - inset, ib - inset);
+            gfx.DrawLine(&pen, ix + inner - inset, iy + gap, ix + inner - inset, ib - inset);
+        } break;
+    }
+}
+
 static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
     int button = bi->id;
     if (!bi->visible) {
@@ -8903,39 +8960,7 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
             iconCol = Color(GetRValue(tc), GetGValue(tc), GetBValue(tc));
         }
 
-        int iconSz = rc.dy * 10 / 30;
-        if (iconSz < 6) {
-            iconSz = 6;
-        }
-        iconSz = iconSz & ~1;
-        int ix = rc.x + (rc.dx - iconSz) / 2;
-        int iy = rc.y + (rc.dy - iconSz) / 2;
-
-        Pen pen(iconCol, 1.0f);
-
-        switch (button) {
-            case CB_CLOSE:
-                gfx.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-                gfx.DrawLine(&pen, ix, iy, ix + iconSz, iy + iconSz);
-                gfx.DrawLine(&pen, ix + iconSz, iy, ix, iy + iconSz);
-                break;
-            case CB_MAXIMIZE:
-                gfx.DrawRectangle(&pen, ix, iy, iconSz, iconSz);
-                break;
-            case CB_MINIMIZE: {
-                int midY = iy + iconSz / 2;
-                gfx.DrawLine(&pen, ix, midY, ix + iconSz, midY);
-            } break;
-            case CB_RESTORE: {
-                int off = iconSz / 3;
-                int sz = iconSz - off;
-                gfx.DrawRectangle(&pen, ix, iy + off, sz, sz);
-                gfx.DrawLine(&pen, ix + off, iy, ix + iconSz, iy);
-                gfx.DrawLine(&pen, ix + iconSz, iy, ix + iconSz, iy + sz);
-                gfx.DrawLine(&pen, ix + sz, iy + off, ix + iconSz, iy + off);
-                gfx.DrawLine(&pen, ix + off, iy, ix + off, iy + off);
-            } break;
-        }
+        DrawCaptionSysButtonGlyph(gfx, win->hwndFrame, button, rc, iconCol);
     } else if (button == CB_MENU) {
         COLORREF bgc = ThemeChromeBackgroundColor();
         SolidBrush bgBrMenu(GdiRgbFromCOLORREF(bgc));
