@@ -738,7 +738,7 @@ void UpdateControlsColors(MainWindow* win) {
 
     // logfa("retrieved doc colors in tree control: 0x%x 0x%x\n", treeTxtCol, treeBgCol);
 
-    COLORREF splitterCol = ThemeControlBackgroundColor();
+    COLORREF splitterCol = ThemeUsesDarkChrome() ? ThemeSidebarBackgroundColor() : ThemeControlBackgroundColor();
 
     {
         auto tocTreeView = win->tocTreeView;

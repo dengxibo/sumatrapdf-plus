@@ -197,7 +197,11 @@ LRESULT Splitter::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
     }
 
     if (WM_PAINT == msg) {
-        OnSplitterPaint(hwnd, AccentColor(bgColor, 30));
+        COLORREF col = bgColor;
+        if (!ThemeUsesDarkChrome()) {
+            col = AccentColor(bgColor, 30);
+        }
+        OnSplitterPaint(hwnd, col);
         return 0;
     }
 

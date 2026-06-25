@@ -165,6 +165,7 @@ HRESULT ExtendFrameIntoClientArea(HWND hwnd, const MARGINS* pMarInset);
 HRESULT GetWindowAttribute(HWND hwnd, DWORD dwAttribute, void* pvAttribute, DWORD cbAttribute);
 HRESULT SetWindowAttribute(HWND hwnd, DWORD dwAttribute, void* pvAttribute, DWORD cbAttribute);
 void SetWindowBorderColor(HWND hwnd, COLORREF color);
+void SetWindowCornerPreference(HWND hwnd, bool rounded);
 void SetWindowRoundedCorners(HWND hwnd, bool rounded);
 void SetWindowCaptionColors(HWND hwnd, COLORREF captionBg, COLORREF captionText);
 void ResetWindowCaptionColors(HWND hwnd);

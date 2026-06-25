@@ -2264,7 +2264,19 @@ static void UpdateMainWindowNativeChrome(MainWindow* win) {
 }
 
 static void UpdateWindowFrameBorderColor(MainWindow* win) {
-    dwm::SetWindowBorderColor(win->hwndFrame, DwmFrameBorderColorForCurrentTheme());
+    if (!win || !win->hwndFrame) {
+        return;
+    }
+    // maximized windows can't be edge-resized; hiding the DWM border avoids a bright
+    // 1px seam above the taskbar (especially visible on dark themes).
+    COLORREF borderCol = DwmFrameBorderColorForCurrentTheme();
+    if (IsZoomed(win->hwndFrame) || win->isFullScreen || win->presentation) {
+        borderCol = (COLORREF)DWMWA_COLOR_NONE;
+    } else {
+        // COLOR_NONE (used while maximized) can leave bottom corners square after restore.
+        dwm::SetWindowCornerPreference(win->hwndFrame, true);
+    }
+    dwm::SetWindowBorderColor(win->hwndFrame, borderCol);
 }
 
 void SyncMainWindowForNoTabsInTitlebar(MainWindow* win) {
@@ -5102,7 +5114,9 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
         // (WM_NCCALCSIZE keeps 1px NC to prevent DWM transparent flash)
         rc.y += kFrameBorderSize - 1;
         rc.dx -= 2 * kFrameBorderSize;
-        rc.dy -= kFrameBorderSize + (kFrameBorderSize - 1);
+        // bottom resize is handled via WM_NCCALCSIZE NC band + WM_NCHITTEST; don't
+        // inset content here or WM_PAINT fills opaque chrome over DWM rounded corners.
+        rc.dy -= kFrameBorderSize - 1;
     }
 
     // hide overlay scrollbars before relayout so they don't appear at
@@ -5330,6 +5344,7 @@ static void UpdateOverlayScrollbarPositions(MainWindow* win) {
 }
 
 static void FrameOnSize(MainWindow* win, int, int) {
+    UpdateWindowFrameBorderColor(win);
     RelayoutFrame(win);
 
     if (win->presentation || win->isFullScreen) {
@@ -8630,6 +8645,23 @@ static Color CaptionInactiveIconColor(COLORREF chromeBg, COLORREF textCol) {
                  mix(GetBValue(textCol), GetBValue(chromeBg)));
 }
 
+static Color CaptionSysButtonIconColor(COLORREF chromeBg, COLORREF textCol) {
+    // Win11 caption glyphs are softer than chrome text.
+    auto blend = [](int fg, int bg, int fgPct) { return (fg * fgPct + bg * (100 - fgPct)) / 100; };
+    if (ThemeUsesDarkChrome()) {
+        constexpr int kFgPct = 88;
+        return Color(blend(GetRValue(textCol), GetRValue(chromeBg), kFgPct),
+                     blend(GetGValue(textCol), GetGValue(chromeBg), kFgPct),
+                     blend(GetBValue(textCol), GetBValue(chromeBg), kFgPct));
+    }
+    // Light chrome: native buttons are ~54% grey ink, not title-text black.
+    constexpr int kBlackPct = 54;
+    int r = GetRValue(chromeBg) * (100 - kBlackPct) / 100;
+    int g = GetGValue(chromeBg) * (100 - kBlackPct) / 100;
+    int b = GetBValue(chromeBg) * (100 - kBlackPct) / 100;
+    return Color(r, g, b);
+}
+
 static void RepaintButton(HWND hwnd, int btnIdx, MainWindow* win) {
     if (win->captionBtn[btnIdx].visible) {
         RECT rc = ToRECT(win->captionBtn[btnIdx].rect);
@@ -8874,61 +8906,80 @@ static void DrawCaptionMenuSeparator(MainWindow* win, HDC hdc) {
     DeleteObject(pen);
 }
 
-constexpr int kCaptionIconSizeDip = 10;
-constexpr int kCaptionIconStrokeDip = 1;
-constexpr int kCaptionRestoreOverlapDip = 3;
+constexpr int kCaptionChromeGlyphDip = 10;
 
-static float CaptionIconPenWidth(HWND hwnd) {
-    int w = DpiScale(hwnd, kCaptionIconStrokeDip);
-    if (w < 1) {
-        w = 1;
+// Cached HFONT for Chrome caption glyphs (Segoe Fluent Icons / Segoe MDL2 Assets).
+struct CaptionChromeFontCache {
+    int pxHeight = 0;
+    HFONT hFont = nullptr;
+
+    HFONT Get(HWND hwnd) {
+        int h = DpiScale(hwnd, kCaptionChromeGlyphDip);
+        if (hFont && pxHeight == h) {
+            return hFont;
+        }
+        if (hFont) {
+            DeleteObject(hFont);
+            hFont = nullptr;
+        }
+        pxHeight = h;
+
+        const WCHAR* names[] = {L"Segoe Fluent Icons", L"Segoe MDL2 Assets"};
+        for (const WCHAR* name : names) {
+            LOGFONTW lf{};
+            lf.lfHeight = -h;
+            lf.lfWeight = FW_NORMAL;
+            lf.lfCharSet = DEFAULT_CHARSET;
+            lf.lfQuality = ANTIALIASED_QUALITY;
+            wcscpy_s(lf.lfFaceName, name);
+            HFONT hf = CreateFontIndirectW(&lf);
+            if (hf) {
+                hFont = hf;
+                return hFont;
+            }
+        }
+        return nullptr;
     }
-    return (float)w;
+};
+
+static CaptionChromeFontCache gCaptionChromeFont;
+
+static WCHAR CaptionChromeGlyph(int button) {
+    switch (button) {
+        case CB_MINIMIZE:
+            return L'\xE921';
+        case CB_MAXIMIZE:
+            return L'\xE922';
+        case CB_RESTORE:
+            return L'\xE923';
+        case CB_CLOSE:
+            return L'\xE8BB';
+    }
+    return 0;
 }
 
-// Win11-inspired caption glyphs; icon box is fixed in DIP, centered in the button rect.
-static void DrawCaptionSysButtonGlyph(Graphics& gfx, HWND hwnd, int button, Rect rc, Color iconCol) {
-    float penW = CaptionIconPenWidth(hwnd);
-    int iconSz = DpiScale(hwnd, kCaptionIconSizeDip);
-    float ix = (float)rc.x + ((float)rc.dx - iconSz) / 2.f;
-    float iy = (float)rc.y + ((float)rc.dy - iconSz) / 2.f;
-    float ie = ix + (float)iconSz;
-    float ib = iy + (float)iconSz;
-    float inset = penW / 2.f;
-
-    Pen pen(iconCol, penW);
-    pen.SetLineCap(Gdiplus::LineCapFlat, Gdiplus::LineCapFlat, Gdiplus::DashCapFlat);
-
-    switch (button) {
-        case CB_CLOSE: {
-            gfx.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-            pen.SetLineCap(Gdiplus::LineCapRound, Gdiplus::LineCapRound, Gdiplus::DashCapFlat);
-            float pad = penW;
-            gfx.DrawLine(&pen, ix + pad, iy + pad, ie - pad, ib - pad);
-            gfx.DrawLine(&pen, ie - pad, iy + pad, ix + pad, ib - pad);
-            gfx.SetSmoothingMode(Gdiplus::SmoothingModeNone);
-        } break;
-        case CB_MAXIMIZE:
-            gfx.DrawRectangle(&pen, ix + inset, iy + inset, (float)iconSz - penW, (float)iconSz - penW);
-            break;
-        case CB_MINIMIZE: {
-            float lineY = ib - penW;
-            gfx.DrawLine(&pen, ix, lineY, ie, lineY);
-        } break;
-        case CB_RESTORE: {
-            float gap = (float)DpiScale(hwnd, kCaptionRestoreOverlapDip);
-            float inner = (float)iconSz - gap;
-            // back window (top-right)
-            gfx.DrawLine(&pen, ix + gap, iy + inset, ie - inset, iy + inset);
-            gfx.DrawLine(&pen, ie - inset, iy + inset, ie - inset, iy + inner - inset);
-            gfx.DrawLine(&pen, ix + gap, iy + inner - inset, ie - inset, iy + inner - inset);
-            // front window (bottom-left)
-            gfx.DrawLine(&pen, ix + inset, iy + gap, ix + inner - inset, iy + gap);
-            gfx.DrawLine(&pen, ix + inset, iy + gap, ix + inset, ib - inset);
-            gfx.DrawLine(&pen, ix + inset, ib - inset, ix + inner - inset, ib - inset);
-            gfx.DrawLine(&pen, ix + inner - inset, iy + gap, ix + inner - inset, ib - inset);
-        } break;
+static void DrawCaptionSysButtonGlyph(HDC hdc, HWND hwnd, int button, Rect rc, COLORREF iconCol) {
+    WCHAR glyph = CaptionChromeGlyph(button);
+    if (!glyph) {
+        return;
     }
+
+    HFONT hf = gCaptionChromeFont.Get(hwnd);
+    if (!hf) {
+        return;
+    }
+
+    WCHAR s[2] = {glyph, 0};
+    HFONT oldFont = (HFONT)SelectObject(hdc, hf);
+    int oldBk = SetBkMode(hdc, TRANSPARENT);
+    COLORREF oldTx = SetTextColor(hdc, iconCol);
+
+    RECT tr = ToRECT(rc);
+    DrawTextW(hdc, s, 1, &tr, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+
+    SetTextColor(hdc, oldTx);
+    SetBkMode(hdc, oldBk);
+    SelectObject(hdc, oldFont);
 }
 
 static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
@@ -8957,24 +9008,10 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
 
     if (isSysButton) {
         COLORREF bgc = ThemeChromeBackgroundColor();
-        SolidBrush bgBrNormal(GdiRgbFromCOLORREF(bgc));
-        gfx.FillRectangle(&bgBrNormal, rButton.x, rButton.y, rButton.dx, rButton.dy);
-
         bool isClose = (button == CB_CLOSE);
         bool isHot = (stateId == CBS_HOT);
         bool isPushed = (stateId == CBS_PUSHED);
         bool isInactive = (stateId == CBS_INACTIVE);
-
-        if (!isInactive && (isHot || isPushed)) {
-            COLORREF hotBgCol;
-            if (isClose) {
-                hotBgCol = isPushed ? CaptionClosePushedBg() : CaptionCloseHotBg();
-            } else {
-                hotBgCol = isPushed ? CaptionSysButtonPushedBg(bgc) : CaptionSysButtonHotBg(bgc);
-            }
-            SolidBrush bgBr(GdiRgbFromCOLORREF(hotBgCol));
-            gfx.FillRectangle(&bgBr, rButton.x, rButton.y, rButton.dx, rButton.dy);
-        }
 
         Color iconCol;
         if (isInactive) {
@@ -8982,11 +9019,29 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
         } else if (isClose && (isHot || isPushed)) {
             iconCol = Color(255, 255, 255);
         } else {
-            COLORREF tc = ThemeWindowTextColor();
-            iconCol = Color(GetRValue(tc), GetGValue(tc), GetBValue(tc));
+            iconCol = CaptionSysButtonIconColor(bgc, ThemeWindowTextColor());
+        }
+        COLORREF iconColRef = RGB(iconCol.GetR(), iconCol.GetG(), iconCol.GetB());
+
+        {
+            Graphics gfxBg(hdc);
+            gfxBg.SetSmoothingMode(Gdiplus::SmoothingModeNone);
+            SolidBrush bgBrNormal(GdiRgbFromCOLORREF(bgc));
+            gfxBg.FillRectangle(&bgBrNormal, rButton.x, rButton.y, rButton.dx, rButton.dy);
+
+            if (!isInactive && (isHot || isPushed)) {
+                COLORREF hotBgCol;
+                if (isClose) {
+                    hotBgCol = isPushed ? CaptionClosePushedBg() : CaptionCloseHotBg();
+                } else {
+                    hotBgCol = isPushed ? CaptionSysButtonPushedBg(bgc) : CaptionSysButtonHotBg(bgc);
+                }
+                SolidBrush bgBr(GdiRgbFromCOLORREF(hotBgCol));
+                gfxBg.FillRectangle(&bgBr, rButton.x, rButton.y, rButton.dx, rButton.dy);
+            }
         }
 
-        DrawCaptionSysButtonGlyph(gfx, win->hwndFrame, button, rc, iconCol);
+        DrawCaptionSysButtonGlyph(hdc, win->hwndFrame, button, rc, iconColRef);
     } else if (button == CB_MENU) {
         COLORREF bgc = ThemeChromeBackgroundColor();
         SolidBrush bgBrMenu(GdiRgbFromCOLORREF(bgc));
@@ -9038,6 +9093,23 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
 
 static WCHAR gMenuAccelPressed = 0;
 
+// Win11 corner radius is ~8 DIP; leave these client pixels unpainted so DWM
+// rounded corners show through (custom caption fills chrome elsewhere).
+static void ExcludeClientBottomCornerClip(HDC hdc, HWND hwnd) {
+    if (IsZoomed(hwnd)) {
+        return;
+    }
+    RECT cr;
+    GetClientRect(hwnd, &cr);
+    int r = DpiScale(hwnd, 8);
+    if (r < 1) {
+        r = 1;
+    }
+    ExcludeClipRect(hdc, cr.left, cr.bottom - 1, cr.right, cr.bottom);
+    ExcludeClipRect(hdc, cr.left, cr.bottom - r, cr.left + r, cr.bottom);
+    ExcludeClipRect(hdc, cr.right - r, cr.bottom - r, cr.right, cr.bottom);
+}
+
 static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, bool* callDef, MainWindow* win) {
     switch (msg) {
         case WM_SETTINGCHANGE:
@@ -9047,14 +9119,18 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             break;
 
         case WM_NCPAINT: {
-            // paint the 1px NC strip at top with the correct color
+            // paint the 1px NC strips at top/bottom with the correct color
             HDC hdc = GetWindowDC(hwnd);
             if (hdc) {
                 Rect wr = WindowRect(hwnd);
                 // window DC is in window coordinates (origin at top-left of window)
-                RECT rc = {0, 0, wr.dx, 1};
                 HBRUSH br = CreateSolidBrush(ThemeChromeBackgroundColor());
-                FillRect(hdc, &rc, br);
+                RECT rcTop = {0, 0, wr.dx, 1};
+                FillRect(hdc, &rcTop, br);
+                if (!IsZoomed(hwnd)) {
+                    RECT rcBottom = {0, wr.dy - 1, wr.dx, wr.dy};
+                    FillRect(hdc, &rcBottom, br);
+                }
                 DeleteObject(br);
                 ReleaseDC(hwnd, hdc);
             }
@@ -9092,6 +9168,7 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             {
                 RECT rcCaption = ToRECT(captionArea);
                 ExcludeClipRect(hdc, rcCaption.left, rcCaption.top, rcCaption.right, rcCaption.bottom);
+                ExcludeClientBottomCornerClip(hdc, hwnd);
                 HBRUSH brBorder = CreateSolidBrush(ThemeChromeBackgroundColor());
                 FillRect(hdc, &ps.rcPaint, brBorder);
                 DeleteObject(brBorder);
@@ -9143,11 +9220,12 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
                 r->top += frameY;
                 r->right -= frameX;
                 r->bottom -= frameY;
-                r->bottom -= NON_CLIENT_BAND;
             } else if (!isFullScreen) {
                 // keep 1px non-client area at top so DWM preserves content
                 // during resize (returning 0 makes DWM clear the surface)
                 r->top += 1;
+                // bottom NC band lets DWM draw rounded corners above the taskbar edge
+                r->bottom -= NON_CLIENT_BAND;
             }
             *callDef = false;
             return 0;
