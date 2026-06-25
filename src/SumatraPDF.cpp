@@ -9431,6 +9431,20 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
             // do nothing
             goto InitMouseWheelInfo;
 
+        case WM_DPICHANGED:
+            if (win) {
+                RECT* prc = (RECT*)lp;
+                SetWindowPos(hwnd, nullptr, prc->left, prc->top, prc->right - prc->left, prc->bottom - prc->top,
+                             SWP_NOZORDER | SWP_NOACTIVATE);
+                win->lastLayoutState = {};
+                RelayoutFrame(win);
+                if (win->tabsInTitlebar && !win->captionRect.IsEmpty()) {
+                    RECT r = ToRECT(win->captionRect);
+                    RedrawWindow(hwnd, &r, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
+                }
+            }
+            return 0;
+
         case WM_SIZE:
             if (win && SIZE_MINIMIZED != wp) {
                 RememberDefaultWindowPosition(win);
