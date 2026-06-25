@@ -1,26 +1,71 @@
 # Sumatra PDF Plus
 
-**Unofficial fork** of [SumatraPDF](https://github.com/sumatrapdfreader/sumatrapdf).  
-Not affiliated with [sumatrapdfreader.org](https://www.sumatrapdfreader.org/).
+**Unofficial fork** of [SumatraPDF](https://github.com/sumatrapdfreader/sumatrapdf) · **非官方**社区增强版  
+Not affiliated with [sumatrapdfreader.org](https://www.sumatrapdfreader.org/) · 与官方站点无关
 
-This repository publishes **source code** for **Sumatra PDF Plus**, a Windows build derived from SumatraPDF.  
-Because SumatraPDF is licensed under **GNU GPLv3**, modified binaries must be accompanied by corresponding source under the same license. This repo satisfies that requirement.
+A Windows document reader (PDF, EPUB, MOBI, and more) with improvements for Chinese ebooks, offline lookup, themes, and smart PDF dark mode.  
+Windows 下的 PDF / 电子书阅读器，针对中文 EPUB/MOBI、离线查词、主题与 PDF 智能暗黑模式等做了增强。
 
-- User guide (Chinese): [readme.txt](readme.txt)
-- Upstream project: https://github.com/sumatrapdfreader/sumatrapdf
-- License: [COPYING](COPYING) (GPLv3) + [AUTHORS](AUTHORS)
+- **Repository / 本仓库：** source code for GPLv3 compliance · 满足 GPLv3 源码随同分发要求  
+- **User guide (Chinese) / 中文详细说明：** [readme.txt](readme.txt)  
+- **Upstream / 上游项目：** [https://github.com/sumatrapdfreader/sumatrapdf](https://github.com/sumatrapdfreader/sumatrapdf)  
+- **License / 许可：** [COPYING](COPYING) (GPLv3) + [AUTHORS](AUTHORS)
 
-## Main changes vs upstream SumatraPDF
+---
 
-1. **Chinese EPUB/MOBI layout and TOC** — improved mixed text/image layout; fixes for incorrect or broken table-of-contents navigation.
-2. **Faster opening of large ebooks** — loading performance for big EPUB/MOBI/AZW files.
-3. **Session-restore crash fix** — when “reopen files from last session” is enabled, launching by double-clicking a file no longer crashes.
-4. **Offline dictionary lookup** — double-click a word in the document; optional English–Chinese and Chinese dictionaries via a `dict` folder next to the exe.
-5. **Dark mode** — light/dark theme toggle with UI polish (toolbar, word-lookup popup follows theme, etc.).
+## Features · 主要特性
 
-Product display name: **Sumatra PDF Plus** (`kAppName` in `src/Version.h`). The executable filename is still `SumatraPDF.exe`.
 
-## Build (Windows)
+|                                                                                                                     |                                               |
+| ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| **Chinese EPUB/MOBI** — improved mixed text/image layout; fixes for broken table-of-contents navigation             | **中文 EPUB/MOBI** — 优化图文混排；修复目录跳转错误            |
+| **Faster large ebooks** — quicker loading for big EPUB/MOBI/AZW files                                                   | **大文件加速** — 大型 EPUB/MOBI/AZW 打开更快                 |
+| **Session-restore fix** — double-clicking a file no longer crashes when “reopen last session” is enabled            | **会话恢复修复** — 开启“恢复上次会话”后，双击打开文件不再崩溃           |
+| **Offline dictionary** — double-click a word; place `.idx`/`.dat` files in `{exe}\dict\`                            | **离线查词** — 双击词语查词；词典放在 `{exe}\dict\`          |
+| **Light / dark themes** — toolbar toggle; Light-Warm (eye-care) and Light-White (neutral) UI themes                 | **亮/暗主题** — 工具栏切换；暖色护眼与中性浅色 UI                |
+| **Smart PDF dark mode** — preserve photos and color pages while darkening text; toolbar modes: Auto / Black / Light | **PDF 智能暗黑** — 保留图片与彩色页，文字反色；工具栏：自动 / 全黑 / 原色 |
+| **Selection toolbar** — highlight, underline, strike out, Ask AI on PDF text selection                              | **划词工具栏** — PDF 选中文字后可高亮、下划线、删除线、Ask AI       |
+| **UI polish** — Windows 11–style caption, refined toolbar spacing, theme-aware chrome                               | **界面优化** — Win11 风格标题栏、工具栏间距与主题配色             |
+
+
+Product name: **Sumatra PDF Plus** (`kAppName` in `src/Version.h`). Executable is still `SumatraPDF.exe`.  
+显示名称：**Sumatra PDF Plus**，可执行文件名仍为 `SumatraPDF.exe`。
+
+**Supported formats / 常见格式：** PDF, EPUB, MOBI, AZW/AZW3, FB2, CHM, CBZ/CBR, DjVu, XPS, and more.
+
+---
+
+## Quick start · 快速开始
+
+1. Extract the full folder to any path (avoid special characters in the path).
+  解压整个文件夹到任意目录（路径尽量不要含特殊符号）。
+2. Run `SumatraPDF.exe`. Keep the `fonts` folder beside the exe.
+  双击 `SumatraPDF.exe` 运行；不要只复制 exe，请保留同目录的`fonts` 文件夹。
+3. Use the toolbar to toggle light/dark theme and word lookup.
+  可通过工具栏切换亮/暗主题和查词开关。
+
+---
+
+## Offline dictionary · 离线查词
+
+Dictionary **code** is in this repo;   
+查词**功能代码**在本仓库；
+
+1. Create `{exe}\dict\` next to the executable.
+  在 exe 同目录建立 `dict` 文件夹。
+2. Add dictionary files, for example:
+  放入词典文件，例如：
+  - `SumatraDict.idx` / `SumatraDict.dat /` `SumatraDictAudio.dat`— English–Chinese · 英汉
+  - `SumatraDictZh.idx` / `SumatraDictZh.dat` — Chinese dictionary · 汉语
+3. Enable the dictionary button on the toolbar, then double-click a word in the document.
+  打开工具栏「查词」按钮，在正文中双击词语即可。
+
+Override the dictionary folder with the `OfflineDictionaryPath` advanced setting.  
+可用高级设置 `OfflineDictionaryPath` 指定其他词典目录。
+
+---
+
+## Build · 编译 (Windows)
 
 Requirements: Visual Studio 2022 build tools, [Bun](https://bun.sh).
 
@@ -29,30 +74,34 @@ bun ./cmd/build.ts          # debug → out/dbg64/SumatraPDF.exe
 bun ./cmd/build-all.ts      # release → out/rel64/
 ```
 
-See [AGENTS.md](AGENTS.md) for contributor notes.
-
-Optional bundled fonts: place `.ttf` / `.otf` / `.ttc` under [fonts/](fonts/) (see [fonts/README.txt](fonts/README.txt)).
-
-## Dictionary data
-
-Dictionary **code** is in this repo (`src/WordLookup.cpp`, etc.). Dictionary **data files** (`.idx` / `.dat`) are not included due to size and licensing; users supply their own under `{exe}\dict\`.
-
-## Disclaimer
-
-Sumatra PDF Plus is a community modification for testing and personal use. Bug reports and pull requests are welcome on this repository only — not on the official SumatraPDF issue tracker.
+See [AGENTS.md](AGENTS.md) for contributor notes.  
+贡献者说明见 [AGENTS.md](AGENTS.md)。
 
 ---
 
-## Upstream SumatraPDF (original readme)
+## Feedback · 反馈
 
-[![Build](https://github.com/sumatrapdfreader/sumatrapdf/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/sumatrapdfreader/sumatrapdf/actions/workflows/build.yml)
+Bug reports and pull requests are welcome **on this repository only** — not on the official SumatraPDF issue tracker.  
+欢迎在本仓库提交 Issue 和 PR，请勿发到官方 SumatraPDF 项目。
 
-SumatraPDF is a multi-format (PDF, EPUB, MOBI, CBZ, CBR, FB2, CHM, XPS, DjVu) reader
-for Windows under (A)GPLv3 license, with some code under BSD license (see
-AUTHORS).
+When reporting problems, please include the file type, book title (if ebook), and steps to reproduce.  
+反馈问题时请说明文件类型、书名（电子书）和复现步骤。
 
-More Information:
+---
 
-* [Website](https://www.sumatrapdfreader.org/free-pdf-reader)
-* [Manual](https://www.sumatrapdfreader.org/manual)
-* [Developer Information](https://www.sumatrapdfreader.org/docs/Contribute-to-SumatraPDF)
+## Disclaimer · 免责声明
+
+Sumatra PDF Plus is a community modification for testing and personal use.  
+Sumatra PDF Plus 为基于 GPLv3 的社区修改版，供测试与个人使用。
+
+---
+
+## Upstream SumatraPDF
+
+[Build](https://github.com/sumatrapdfreader/sumatrapdf/actions/workflows/build.yml)
+
+SumatraPDF is a multi-format reader for Windows under (A)GPLv3, with some code under BSD license (see [AUTHORS](AUTHORS)).
+
+- [Website](https://www.sumatrapdfreader.org/free-pdf-reader)
+- [Manual](https://www.sumatrapdfreader.org/manual)
+- [Developer Information](https://www.sumatrapdfreader.org/docs/Contribute-to-SumatraPDF)
