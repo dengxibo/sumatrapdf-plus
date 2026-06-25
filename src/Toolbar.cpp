@@ -88,9 +88,7 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::SearchPrev, CmdFindPrev, _TRN("Find Previous")},
     {TbIcon::SearchNext, CmdFindNext, _TRN("Find Next")},
     {TbIcon::MatchCase, CmdFindToggleMatchCase, _TRN("Toggle Match Case")},
-    {TbIcon::None, 0, nullptr}, // separator
     {TbIcon::Dictionary, CmdToggleDoubleClickWordLookup, _TRN("Toggle Double-Click Word Lookup")},
-    {TbIcon::None, 0, nullptr}, // separator before theme
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
     {TbIcon::DocColorAuto, CmdSetPdfDocumentColorModeAuto, _TRN("Document Color Mode: Auto (smart dark mode)")},
     {TbIcon::ThemeSun, CmdSetPdfDocumentColorModeLight, _TRN("Document Color Mode: Light (original colors)")},
@@ -569,6 +567,30 @@ static void ConfigureToolbarColors(HWND hwndToolbar) {
     }
     // disable themed toolbar rendering so NM_CUSTOMDRAW can override button highlights
     SetWindowTheme(hwndToolbar, L"", L"");
+    // hide BTNS_SEP vertical rules by making groove colors match chrome background
+    COLORREF bgCol = ThemeChromeBackgroundColor();
+    COLORSCHEME cs{};
+    cs.dwSize = sizeof(COLORSCHEME);
+    cs.clrBtnHighlight = bgCol;
+    cs.clrBtnShadow = bgCol;
+    SendMessageW(hwndToolbar, TB_SETCOLORSCHEME, 0, (LPARAM)&cs);
+}
+
+static bool IsToolbarSeparatorAtIndex(HWND hwnd, int idx, TBBUTTON* outTb) {
+    if (idx < 0) {
+        return false;
+    }
+    TBBUTTON tb{};
+    if (!SendMessageW(hwnd, TB_GETBUTTON, idx, (LPARAM)&tb)) {
+        return false;
+    }
+    if ((tb.fsStyle & BTNS_SEP) == 0) {
+        return false;
+    }
+    if (outTb) {
+        *outTb = tb;
+    }
+    return true;
 }
 
 static COLORREF ToolbarButtonFillColor(COLORREF bgCol, bool isChecked, bool isSelected, bool isHot) {
@@ -598,111 +620,6 @@ static COLORREF ToolbarButtonFillColor(COLORREF bgCol, bool isChecked, bool isSe
         return AccentColor(bgCol, -10);
     }
     return bgCol;
-}
-
-static bool ToolbarButtonIndexIsHot(HWND hwnd, int idx) {
-    POINT pt{};
-    if (!GetCursorPos(&pt)) {
-        return false;
-    }
-    MapWindowPoints(nullptr, hwnd, &pt, 1);
-    int hitIdx = (int)SendMessageW(hwnd, TB_HITTEST, 0, (LPARAM)&pt);
-    return hitIdx == idx;
-}
-
-static COLORREF ToolbarSeparatorLineColor(COLORREF bgCol) {
-    if (!ThemeUsesDarkChrome()) {
-        return AccentColor(bgCol, 14);
-    }
-    // chrome bg can be pure black; lifting bg by ~20 only yields RGB(20,20,20).
-    // blend window text toward chrome bg so the line is actually visible.
-    COLORREF txt = ThemeWindowTextColor();
-    int txtPct = ThemeUsesBlackChrome() ? 46 : 38;
-    u8 r = (u8)((GetRValue(txt) * txtPct + GetRValue(bgCol) * (100 - txtPct)) / 100);
-    u8 g = (u8)((GetGValue(txt) * txtPct + GetGValue(bgCol) * (100 - txtPct)) / 100);
-    u8 b = (u8)((GetBValue(txt) * txtPct + GetBValue(bgCol) * (100 - txtPct)) / 100);
-    return RGB(r, g, b);
-}
-
-static void DrawToolbarSeparatorLine(HDC hdc, const RECT& rc, COLORREF bgCol) {
-    int x = rc.left + (rc.right - rc.left) / 2;
-    int padY = (rc.bottom - rc.top) / 4;
-    if (padY < 4) {
-        padY = 4;
-    }
-    int y0 = rc.top + padY;
-    int y1 = rc.bottom - padY;
-
-    if (ThemeUsesDarkChrome()) {
-        COLORREF lineCol = ToolbarSeparatorLineColor(bgCol);
-        HPEN pen = CreatePen(PS_SOLID, 1, lineCol);
-        HGDIOBJ oldPen = SelectObject(hdc, pen);
-        MoveToEx(hdc, x, y0, nullptr);
-        LineTo(hdc, x, y1);
-        SelectObject(hdc, oldPen);
-        DeleteObject(pen);
-        return;
-    }
-
-    // light/eye-care: etched inset groove (shadow + highlight), like native flat toolbar
-    COLORREF shadowCol = ToolbarSeparatorLineColor(bgCol);
-    COLORREF lightCol = AccentColor(bgCol, -7);
-    HPEN penShadow = CreatePen(PS_SOLID, 1, shadowCol);
-    HPEN penLight = CreatePen(PS_SOLID, 1, lightCol);
-    HGDIOBJ oldPen = SelectObject(hdc, penShadow);
-    MoveToEx(hdc, x, y0, nullptr);
-    LineTo(hdc, x, y1);
-    SelectObject(hdc, penLight);
-    MoveToEx(hdc, x + 1, y0, nullptr);
-    LineTo(hdc, x + 1, y1);
-    SelectObject(hdc, oldPen);
-    DeleteObject(penShadow);
-    DeleteObject(penLight);
-}
-
-static bool IsToolbarSeparatorAtIndex(HWND hwnd, int idx, TBBUTTON* outTb) {
-    if (idx < 0) {
-        return false;
-    }
-    TBBUTTON tb{};
-    if (!SendMessageW(hwnd, TB_GETBUTTON, idx, (LPARAM)&tb)) {
-        return false;
-    }
-    if ((tb.fsStyle & BTNS_SEP) == 0) {
-        return false;
-    }
-    if (outTb) {
-        *outTb = tb;
-    }
-    return true;
-}
-
-static bool TryGetToolbarSeparatorItem(HWND hwnd, DWORD spec, int* outIdx, TBBUTTON* outTb) {
-    int btnCount = (int)SendMessageW(hwnd, TB_BUTTONCOUNT, 0, 0);
-    if ((int)spec < btnCount && IsToolbarSeparatorAtIndex(hwnd, (int)spec, outTb)) {
-        *outIdx = (int)spec;
-        return true;
-    }
-    TBBUTTONINFOW tbi{};
-    tbi.cbSize = sizeof(tbi);
-    tbi.dwMask = TBIF_STYLE | TBIF_COMMAND;
-    LRESULT idx = SendMessageW(hwnd, TB_GETBUTTONINFO, spec, (LPARAM)&tbi);
-    if (idx >= 0 && (tbi.fsStyle & BTNS_SEP)) {
-        *outIdx = (int)idx;
-        if (outTb) {
-            SendMessageW(hwnd, TB_GETBUTTON, (int)idx, (LPARAM)outTb);
-        }
-        return true;
-    }
-    return false;
-}
-
-static bool IsRealToolbarSeparatorIdx(int idx) {
-    if (idx < 0 || idx >= kButtonsCount) {
-        return false;
-    }
-    const ToolbarButtonInfo& bi = gToolbarButtons[idx];
-    return bi.bmpIndex == TbIcon::None && bi.cmdId == 0;
 }
 
 static int FindBeforeFindSeparatorIdx() {
@@ -763,77 +680,6 @@ static bool GetToolbarSeparatorLineRect(HWND hwnd, int sepIdx, RECT* outRc) {
     return true;
 }
 
-static COLORREF ToolbarNeighborButtonFillColor(HWND hwnd, int idx, COLORREF bgCol) {
-    if (idx < 0 || IsToolbarButtonHidden(hwnd, idx) || IsToolbarSeparatorAtIndex(hwnd, idx, nullptr)) {
-        return bgCol;
-    }
-    TBBUTTONINFOW tbi{};
-    tbi.cbSize = sizeof(tbi);
-    tbi.dwMask = TBIF_BYINDEX | TBIF_STATE;
-    if (!SendMessageW(hwnd, TB_GETBUTTONINFOW, idx, (LPARAM)&tbi)) {
-        return bgCol;
-    }
-    bool isChecked = (tbi.fsState & TBSTATE_CHECKED) != 0;
-    bool isHot = ToolbarButtonIndexIsHot(hwnd, idx);
-    return ToolbarButtonFillColor(bgCol, isChecked, false, isHot);
-}
-
-static COLORREF ToolbarSeparatorFillColor(HWND hwnd, int sepIdx, COLORREF bgCol) {
-    COLORREF fillCol = bgCol;
-    COLORREF prevCol = ToolbarNeighborButtonFillColor(hwnd, sepIdx - 1, bgCol);
-    COLORREF nextCol = ToolbarNeighborButtonFillColor(hwnd, sepIdx + 1, bgCol);
-    if (prevCol != bgCol) {
-        fillCol = prevCol;
-    }
-    if (nextCol != bgCol) {
-        fillCol = nextCol;
-    }
-    return fillCol;
-}
-
-static bool GetToolbarSeparatorSlotRect(HWND hwnd, int sepIdx, RECT* outRc) {
-    RECT rcSep{};
-    if (SendMessageW(hwnd, TB_GETITEMRECT, sepIdx, (LPARAM)&rcSep)) {
-        if (rcSep.right > rcSep.left) {
-            *outRc = rcSep;
-            return true;
-        }
-    }
-    return GetToolbarSeparatorLineRect(hwnd, sepIdx, outRc);
-}
-
-static void PaintToolbarSeparatorsInHdc(HWND hwnd, HDC hdc) {
-    int count = (int)SendMessageW(hwnd, TB_BUTTONCOUNT, 0, 0);
-    if (count <= 0) {
-        return;
-    }
-    COLORREF bgCol = ThemeChromeBackgroundColor();
-    for (int i = 0; i < count; i++) {
-        if (!IsRealToolbarSeparatorIdx(i)) {
-            continue;
-        }
-        if (ThemeUsesDarkChrome()) {
-            RECT slotRc{};
-            if (!GetToolbarSeparatorSlotRect(hwnd, i, &slotRc)) {
-                continue;
-            }
-            COLORREF fillCol = ToolbarSeparatorFillColor(hwnd, i, bgCol);
-            HBRUSH br = CreateSolidBrush(fillCol);
-            FillRect(hdc, &slotRc, br);
-            DeleteObject(br);
-            if (fillCol != bgCol) {
-                // neighbors are highlighted; skip the line to avoid a stripe between gray blocks
-                continue;
-            }
-        }
-        RECT lineRc{};
-        if (!GetToolbarSeparatorLineRect(hwnd, i, &lineRc)) {
-            continue;
-        }
-        DrawToolbarSeparatorLine(hdc, lineRc, bgCol);
-    }
-}
-
 // suppress default white/light-blue pressed and checked fills; use theme colors instead
 static LRESULT PrepaintToolbarItem(NMTBCUSTOMDRAW* custDraw) {
     UINT itemState = custDraw->nmcd.uItemState;
@@ -890,15 +736,51 @@ static LRESULT PrepaintToolbarItem(NMTBCUSTOMDRAW* custDraw) {
 }
 
 static LRESULT PrepaintToolbarSeparatorItem(NMTBCUSTOMDRAW* custDraw) {
-    if (ThemeUsesDarkChrome()) {
-        // slot fill and line are drawn together in POSTPAINT once neighbor button states are known
-        return TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND | CDRF_SKIPDEFAULT;
-    }
     COLORREF bgCol = ThemeChromeBackgroundColor();
     HBRUSH br = CreateSolidBrush(bgCol);
     FillRect(custDraw->nmcd.hdc, &custDraw->nmcd.rc, br);
     DeleteObject(br);
-    return TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND | CDRF_SKIPDEFAULT;
+
+    custDraw->hpenLines = (HPEN)GetStockObject(NULL_PEN);
+    custDraw->hbrLines = (HBRUSH)GetStockObject(NULL_BRUSH);
+    custDraw->clrBtnFace = bgCol;
+    custDraw->clrBtnHighlight = bgCol;
+
+    return TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND | TBCDRF_NOEDGES | CDRF_SKIPDEFAULT | CDRF_NOTIFYPOSTPAINT;
+}
+
+static void PostpaintToolbarSeparatorItem(NMTBCUSTOMDRAW* custDraw) {
+    // light mode still draws BTNS_SEP grooves after ITEMPREPAINT; overpaint in POSTPAINT
+    COLORREF bgCol = ThemeChromeBackgroundColor();
+    HBRUSH br = CreateSolidBrush(bgCol);
+    FillRect(custDraw->nmcd.hdc, &custDraw->nmcd.rc, br);
+    DeleteObject(br);
+}
+
+static void PaintToolbarSeparatorBackgrounds(HWND hwnd, HDC hdc) {
+    int count = (int)SendMessageW(hwnd, TB_BUTTONCOUNT, 0, 0);
+    if (count <= 0) {
+        return;
+    }
+    COLORREF bgCol = ThemeChromeBackgroundColor();
+    HBRUSH br = CreateSolidBrush(bgCol);
+    for (int i = 0; i < count; i++) {
+        if (!IsToolbarSeparatorAtIndex(hwnd, i, nullptr)) {
+            continue;
+        }
+        RECT rc{};
+        if (SendMessageW(hwnd, TB_GETITEMRECT, i, (LPARAM)&rc)) {
+            FillRect(hdc, &rc, br);
+        }
+    }
+    DeleteObject(br);
+}
+
+static bool IsToolbarSeparatorDrawIndex(MainWindow* win, int idx) {
+    if (idx >= 0 && idx < kButtonsCount && SkipBuiltInButton(gToolbarButtons[idx])) {
+        return true;
+    }
+    return IsToolbarSeparatorAtIndex(win->hwndToolbar, idx, nullptr);
 }
 
 constexpr UINT_PTR kToolbarNotifySubclassId = 1;
@@ -922,17 +804,23 @@ static LRESULT CALLBACK ToolbarNotifyWndProc(HWND hWnd, UINT uMsg, WPARAM wParam
                     return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
                 }
                 case CDDS_ITEMPREPAINT: {
-                    DWORD spec = custDraw->nmcd.dwItemSpec;
-                    int idx = -1;
-                    TBBUTTON tb{};
-                    if (TryGetToolbarSeparatorItem(win->hwndToolbar, spec, &idx, &tb)) {
+                    int idx = (int)custDraw->nmcd.dwItemSpec;
+                    if (IsToolbarSeparatorDrawIndex(win, idx)) {
                         return PrepaintToolbarSeparatorItem(custDraw);
                     }
                     return PrepaintToolbarItem(custDraw);
                 }
+                case CDDS_ITEMPOSTPAINT: {
+                    int idx = (int)custDraw->nmcd.dwItemSpec;
+                    if (IsToolbarSeparatorDrawIndex(win, idx)) {
+                        PostpaintToolbarSeparatorItem(custDraw);
+                        return CDRF_SKIPDEFAULT;
+                    }
+                    break;
+                }
                 case CDDS_POSTPAINT:
-                    PaintToolbarSeparatorsInHdc(win->hwndToolbar, custDraw->nmcd.hdc);
-                    return CDRF_SKIPDEFAULT;
+                    PaintToolbarSeparatorBackgrounds(win->hwndToolbar, custDraw->nmcd.hdc);
+                    break;
             }
         }
     }
@@ -1854,6 +1742,8 @@ void CreateToolbar(MainWindow* win) {
     UpdateThemeToolbarButton(win);
     UpdatePdfDocumentColorModeToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
+    ConfigureToolbarColors(hwndToolbar);
+    InvalidateRect(hwndToolbar, nullptr, TRUE);
 }
 
 void ReCreateToolbar(MainWindow* win) {
