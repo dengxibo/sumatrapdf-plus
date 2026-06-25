@@ -5159,7 +5159,7 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
         }
     }
     bool showMenuRebar =
-            IsMenubarVisible() && IsShowingMenuBarRebar(win) && (!win->tabsInTitlebar || win->isFullScreen);
+        IsMenubarVisible() && IsShowingMenuBarRebar(win) && (!win->tabsInTitlebar || win->isFullScreen);
     if (showMenuRebar) {
         // menu bar rebar in client area (non-titlebar case, or fullscreen where there's no titlebar)
         int menuBarDy = (int)SendMessageW(win->hwndMenuReBar, RB_GETBARHEIGHT, 0, 0) + 1;
@@ -8692,7 +8692,34 @@ static void HandleCaptionClick(MainWindow* win, int btnIdx) {
     }
 }
 
-constexpr int kTabsButtonGapX = 32;
+constexpr int kCaptionButtonWidthDip = 46;
+constexpr int kTabsButtonGapDip = 32;
+
+static int CaptionSysButtonWidth(HWND hwnd) {
+    return DpiScale(hwnd, kCaptionButtonWidthDip);
+}
+
+static void LayoutCaptionSysButtons(MainWindow* win, Rect& rc, int btnY, int btnDy, bool maximized) {
+    int btnDx = CaptionSysButtonWidth(win->hwndFrame);
+
+    int x = rc.x + rc.dx - btnDx;
+    win->captionBtn[CB_CLOSE].rect = {x, btnY, btnDx, btnDy};
+    win->captionBtn[CB_CLOSE].visible = true;
+    rc.dx -= btnDx;
+
+    x = rc.x + rc.dx - btnDx;
+    win->captionBtn[CB_RESTORE].rect = {x, btnY, btnDx, btnDy};
+    win->captionBtn[CB_RESTORE].visible = maximized;
+
+    win->captionBtn[CB_MAXIMIZE].rect = {x, btnY, btnDx, btnDy};
+    win->captionBtn[CB_MAXIMIZE].visible = !maximized;
+    rc.dx -= btnDx;
+
+    x = rc.x + rc.dx - btnDx;
+    win->captionBtn[CB_MINIMIZE].rect = {x, btnY, btnDx, btnDy};
+    win->captionBtn[CB_MINIMIZE].visible = true;
+    rc.dx -= btnDx;
+}
 
 void RelayoutCaption(MainWindow* win) {
     for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
@@ -8715,30 +8742,14 @@ void RelayoutCaption(MainWindow* win) {
         int row1Y = rc.y;
         int row2Y = rc.y + menuBarDy;
 
-        // window buttons match menu bar size: dy = menuBarDy, dx = menuBarDy
         int btnDy = menuBarDy;
-        int btnDx = menuBarDy;
+        LayoutCaptionSysButtons(win, rc, row1Y, btnDy, maximized);
 
-        win->captionBtn[CB_CLOSE].rect = {rc.x + rc.dx - btnDx, row1Y, btnDx, btnDy};
-        win->captionBtn[CB_CLOSE].visible = true;
-        rc.dx -= btnDx;
-
-        win->captionBtn[CB_RESTORE].rect = {rc.x + rc.dx - btnDx, row1Y, btnDx, btnDy};
-        win->captionBtn[CB_RESTORE].visible = maximized;
-
-        win->captionBtn[CB_MAXIMIZE].rect = {rc.x + rc.dx - btnDx, row1Y, btnDx, btnDy};
-        win->captionBtn[CB_MAXIMIZE].visible = !maximized;
-        rc.dx -= btnDx;
-
-        win->captionBtn[CB_MINIMIZE].rect = {rc.x + rc.dx - btnDx, row1Y, btnDx, btnDy};
-        win->captionBtn[CB_MINIMIZE].visible = true;
-        rc.dx -= btnDx;
-
-        // Row 1 left: system menu (sized to match window buttons)
-        win->captionBtn[CB_SYSTEM_MENU].rect = {rc.x, row1Y, btnDx, btnDy};
+        // Row 1 left: system menu (square, matches menu bar row height)
+        win->captionBtn[CB_SYSTEM_MENU].rect = {rc.x, row1Y, menuBarDy, menuBarDy};
         win->captionBtn[CB_SYSTEM_MENU].visible = true;
-        int row1X = rc.x + btnDx;
-        int row1Dx = rc.dx - btnDx;
+        int row1X = rc.x + menuBarDy;
+        int row1Dx = rc.dx - menuBarDy;
 
         // CB_MENU hidden when menu bar rebar is showing
         win->captionBtn[CB_MENU].rect = {row1X, row1Y, menuBarDy, menuBarDy};
@@ -8782,22 +8793,7 @@ void RelayoutCaption(MainWindow* win) {
     } else {
         // Single-row layout (original)
         int btnDy = rc.y + rc.dy;
-        int btnDx = btnDy;
-
-        win->captionBtn[CB_CLOSE].rect = {rc.x + rc.dx - btnDx, 0, btnDx, btnDy};
-        win->captionBtn[CB_CLOSE].visible = true;
-        rc.dx -= btnDx;
-
-        win->captionBtn[CB_RESTORE].rect = {rc.x + rc.dx - btnDx, 0, btnDx, btnDy};
-        win->captionBtn[CB_RESTORE].visible = maximized;
-
-        win->captionBtn[CB_MAXIMIZE].rect = {rc.x + rc.dx - btnDx, 0, btnDx, btnDy};
-        win->captionBtn[CB_MAXIMIZE].visible = !maximized;
-        rc.dx -= btnDx;
-
-        win->captionBtn[CB_MINIMIZE].rect = {rc.x + rc.dx - btnDx, 0, btnDx, btnDy};
-        win->captionBtn[CB_MINIMIZE].visible = true;
-        rc.dx -= btnDx;
+        LayoutCaptionSysButtons(win, rc, 0, btnDy, maximized);
 
         // tabs fill the full caption height (rc.dy)
         int tabDy = rc.dy;
@@ -8814,7 +8810,7 @@ void RelayoutCaption(MainWindow* win) {
         rc.dx -= tabDy;
 
         // leave a gap between the tab bar and the minimize button
-        rc.dx -= kTabsButtonGapX;
+        rc.dx -= DpiScale(win->hwndFrame, kTabsButtonGapDip);
 
         DeferWinPosHelper dh;
         dh.SetWindowPos(win->tabsCtrl->hwnd, nullptr, rc.x, rc.y, rc.dx, tabDy, SWP_NOZORDER);
