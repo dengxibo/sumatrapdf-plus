@@ -74,6 +74,7 @@
 #include "Print.h"
 #include "SearchAndDDE.h"
 #include "Selection.h"
+#include "SelectionToolbar.h"
 #include "Screenshot.h"
 #include "ImageSaveCropResize.h"
 #include "StressTesting.h"
@@ -96,6 +97,7 @@
 #include "RegistryPreview.h"
 #include "RegistrySearchFilter.h"
 #include "Theme.h"
+#include "CaptionGlyphs.h"
 #include "PdfDarkMode.h"
 #include "DarkModeSubclass.h"
 
@@ -5377,6 +5379,7 @@ void SetCurrentLanguageAndRefreshUI(const char* langCode) {
         RebuildMenuBarForWindow(win);
         UpdateToolbarSidebarText(win);
         UpdateWindowRtlLayout(win);
+        HideSelectionToolbar(win);
     }
 
     SaveSettings();
@@ -8096,6 +8099,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             AnalyzeSelectionWithDoubao(tab);
             break;
 
+        case CmdLookupSelection:
+            LookupSelectionInTab(win, tab);
+            break;
+
         case CmdCopySelection:
             CopySelectionInTabToClipboard(tab);
             break;
@@ -8908,78 +8915,18 @@ static void DrawCaptionMenuSeparator(MainWindow* win, HDC hdc) {
 
 constexpr int kCaptionChromeGlyphDip = 10;
 
-// Cached HFONT for Chrome caption glyphs (Segoe Fluent Icons / Segoe MDL2 Assets).
-struct CaptionChromeFontCache {
-    int pxHeight = 0;
-    HFONT hFont = nullptr;
-
-    HFONT Get(HWND hwnd) {
-        int h = DpiScale(hwnd, kCaptionChromeGlyphDip);
-        if (hFont && pxHeight == h) {
-            return hFont;
-        }
-        if (hFont) {
-            DeleteObject(hFont);
-            hFont = nullptr;
-        }
-        pxHeight = h;
-
-        const WCHAR* names[] = {L"Segoe Fluent Icons", L"Segoe MDL2 Assets"};
-        for (const WCHAR* name : names) {
-            LOGFONTW lf{};
-            lf.lfHeight = -h;
-            lf.lfWeight = FW_NORMAL;
-            lf.lfCharSet = DEFAULT_CHARSET;
-            lf.lfQuality = ANTIALIASED_QUALITY;
-            wcscpy_s(lf.lfFaceName, name);
-            HFONT hf = CreateFontIndirectW(&lf);
-            if (hf) {
-                hFont = hf;
-                return hFont;
-            }
-        }
-        return nullptr;
-    }
-};
-
-static CaptionChromeFontCache gCaptionChromeFont;
-
-static WCHAR CaptionChromeGlyph(int button) {
+static CaptionSysButtonKind CaptionSysButtonKindFromId(int button) {
     switch (button) {
         case CB_MINIMIZE:
-            return L'\xE921';
+            return CaptionSysButtonKind::Minimize;
         case CB_MAXIMIZE:
-            return L'\xE922';
+            return CaptionSysButtonKind::Maximize;
         case CB_RESTORE:
-            return L'\xE923';
+            return CaptionSysButtonKind::Restore;
         case CB_CLOSE:
-            return L'\xE8BB';
+            return CaptionSysButtonKind::Close;
     }
-    return 0;
-}
-
-static void DrawCaptionSysButtonGlyph(HDC hdc, HWND hwnd, int button, Rect rc, COLORREF iconCol) {
-    WCHAR glyph = CaptionChromeGlyph(button);
-    if (!glyph) {
-        return;
-    }
-
-    HFONT hf = gCaptionChromeFont.Get(hwnd);
-    if (!hf) {
-        return;
-    }
-
-    WCHAR s[2] = {glyph, 0};
-    HFONT oldFont = (HFONT)SelectObject(hdc, hf);
-    int oldBk = SetBkMode(hdc, TRANSPARENT);
-    COLORREF oldTx = SetTextColor(hdc, iconCol);
-
-    RECT tr = ToRECT(rc);
-    DrawTextW(hdc, s, 1, &tr, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
-
-    SetTextColor(hdc, oldTx);
-    SetBkMode(hdc, oldBk);
-    SelectObject(hdc, oldFont);
+    return CaptionSysButtonKind::Close;
 }
 
 static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
@@ -9041,7 +8988,8 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
             }
         }
 
-        DrawCaptionSysButtonGlyph(hdc, win->hwndFrame, button, rc, iconColRef);
+        int iconPx = DpiScale(win->hwndFrame, kCaptionChromeGlyphDip);
+        DrawCaptionSysButtonGlyph(hdc, CaptionSysButtonKindFromId(button), rc, iconColRef, iconPx);
     } else if (button == CB_MENU) {
         COLORREF bgc = ThemeChromeBackgroundColor();
         SolidBrush bgBrMenu(GdiRgbFromCOLORREF(bgc));

@@ -235,6 +235,7 @@ export const commands = [
     "CmdSetPdfDocumentColorModeAuto", "Set PDF Document Color Mode: Auto",
     "CmdSetPdfDocumentColorModeBlack", "Set PDF Document Color Mode: Black",
     "CmdSetPdfDocumentColorModeLight", "Set PDF Document Color Mode: Light",
+    "CmdLookupSelection", "Look Up Selection",
     "CmdNone", "Do nothing",
 ];
 

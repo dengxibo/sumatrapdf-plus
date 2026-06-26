@@ -18,6 +18,7 @@
     <ClInclude Include="..\src\Commands.h" />
     <ClInclude Include="..\src\DisplayMode.h" />
     <ClInclude Include="..\src\Flags.h" />
+    <ClInclude Include="..\src\PdfDarkMode.h" />
     <ClInclude Include="..\src\SumatraConfig.h" />
     <ClInclude Include="..\src\utils\BaseUtil.h">
       <Filter>utils</Filter>
@@ -115,9 +116,10 @@
     <ClCompile Include="..\src\CrashHandlerNoOp.cpp" />
     <ClCompile Include="..\src\DisplayMode.cpp" />
     <ClCompile Include="..\src\Flags.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeImageRules.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeOklab.cpp" />
     <ClCompile Include="..\src\SumatraConfig.cpp" />
     <ClCompile Include="..\src\SumatraUnitTests.cpp" />
-    <ClCompile Include="..\src\PdfDarkModeOklab.cpp" />
     <ClCompile Include="..\src\common\arena.cpp">
       <Filter>common</Filter>
     </ClCompile>
@@ -250,6 +252,12 @@
     <ClCompile Include="..\src\utils\tests\JsonParser_ut.cpp">
       <Filter>utils\tests</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\utils\tests\PdfDarkModeImageClassifier_ut.cpp">
+      <Filter>utils\tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\utils\tests\PdfDarkModeOklab_ut.cpp">
+      <Filter>utils\tests</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\utils\tests\SettingsUtil_ut.cpp">
       <Filter>utils\tests</Filter>
     </ClCompile>
@@ -258,12 +266,6 @@
     </ClCompile>
     <ClCompile Include="..\src\utils\tests\SquareTreeParser_ut.cpp">
       <Filter>utils\tests</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\utils\tests\PdfDarkModeOklab_ut.cpp">
-      <Filter>src\utils\tests</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\utils\tests\PdfDarkModeImageClassifier_ut.cpp">
-      <Filter>src\utils\tests</Filter>
     </ClCompile>
     <ClCompile Include="..\src\utils\tests\StrFormat_ut.cpp">
       <Filter>utils\tests</Filter>

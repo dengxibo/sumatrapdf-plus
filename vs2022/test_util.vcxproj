@@ -873,6 +873,7 @@
     <ClInclude Include="..\src\Commands.h" />
     <ClInclude Include="..\src\DisplayMode.h" />
     <ClInclude Include="..\src\Flags.h" />
+    <ClInclude Include="..\src\PdfDarkMode.h" />
     <ClInclude Include="..\src\SumatraConfig.h" />
     <ClInclude Include="..\src\utils\BaseUtil.h" />
     <ClInclude Include="..\src\utils\BitManip.h" />
@@ -910,10 +911,10 @@
     <ClCompile Include="..\src\CrashHandlerNoOp.cpp" />
     <ClCompile Include="..\src\DisplayMode.cpp" />
     <ClCompile Include="..\src\Flags.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeImageRules.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeOklab.cpp" />
     <ClCompile Include="..\src\SumatraConfig.cpp" />
     <ClCompile Include="..\src\SumatraUnitTests.cpp" />
-    <ClCompile Include="..\src\PdfDarkModeOklab.cpp" />
-    <ClCompile Include="..\src\PdfDarkModeImageRules.cpp" />
     <ClCompile Include="..\src\common\arena.cpp" />
     <ClCompile Include="..\src\common\base.cpp" />
     <ClCompile Include="..\src\common\dir_scan.cpp" />
@@ -960,11 +961,11 @@
     <ClCompile Include="..\src\utils\tests\HtmlPrettyPrint_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\HtmlPullParser_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\JsonParser_ut.cpp" />
+    <ClCompile Include="..\src\utils\tests\PdfDarkModeImageClassifier_ut.cpp" />
+    <ClCompile Include="..\src\utils\tests\PdfDarkModeOklab_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\SettingsUtil_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\SimpleLog_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\SquareTreeParser_ut.cpp" />
-    <ClCompile Include="..\src\utils\tests\PdfDarkModeOklab_ut.cpp" />
-    <ClCompile Include="..\src\utils\tests\PdfDarkModeImageClassifier_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\StrFormat_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\StrUtil_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\StrVec_ut.cpp" />

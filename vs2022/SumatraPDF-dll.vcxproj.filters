@@ -120,6 +120,9 @@
     <ClInclude Include="..\src\Canvas.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\CaptionGlyphs.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\ChmFile.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -434,6 +437,9 @@
     <ClCompile Include="..\src\CanvasAboutUI.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\CaptionGlyphs.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\ChmFile.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -738,6 +744,12 @@
       <Filter>src\utils\tests</Filter>
     </ClCompile>
     <ClCompile Include="..\src\utils\tests\JsonParser_ut.cpp">
+      <Filter>src\utils\tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\utils\tests\PdfDarkModeImageClassifier_ut.cpp">
+      <Filter>src\utils\tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\utils\tests\PdfDarkModeOklab_ut.cpp">
       <Filter>src\utils\tests</Filter>
     </ClCompile>
     <ClCompile Include="..\src\utils\tests\SettingsUtil_ut.cpp">

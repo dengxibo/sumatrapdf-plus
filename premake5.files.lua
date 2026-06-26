@@ -795,6 +795,7 @@ function sumatrapdf_files()
     "Screenshot.*",
     "Selection.*",
     "SelectionToolbar.*",
+    "CaptionGlyphs.*",
     "FloatingPopupStyle.*",
     "Settings.h",
     "SettingsStructs.*",
@@ -1382,7 +1383,6 @@ function test_util_files()
     "PdfDarkMode.h",
     "PdfDarkModeOklab.cpp",
     "PdfDarkModeImageRules.cpp",
-    "PdfDarkModeImageBgBlend.cpp",
     "tools/test_util.cpp"
   })
 end

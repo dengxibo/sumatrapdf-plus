@@ -120,6 +120,9 @@
     <ClInclude Include="..\src\Canvas.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\CaptionGlyphs.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\ChmFile.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -440,6 +443,9 @@
     <ClCompile Include="..\src\CanvasAboutUI.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\CaptionGlyphs.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\ChmFile.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -572,10 +578,13 @@
     <ClCompile Include="..\src\PdfDarkModeColor.cpp">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\PdfDarkModeOklab.cpp">
+    <ClCompile Include="..\src\PdfDarkModeDevice.cpp">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\PdfDarkModeImageStats.cpp">
+    <ClCompile Include="..\src\PdfDarkModeEngineCache.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\PdfDarkModeImageBgBlend.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\PdfDarkModeImageClassifier.cpp">
@@ -584,19 +593,16 @@
     <ClCompile Include="..\src\PdfDarkModeImageRules.cpp">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\PdfDarkModeImageBgBlend.cpp">
+    <ClCompile Include="..\src\PdfDarkModeImageStats.cpp">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\PdfDarkModeScanProcess.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\PdfDarkModeEngineCache.cpp">
+    <ClCompile Include="..\src\PdfDarkModeOklab.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\PdfDarkModeProfile.cpp">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\PdfDarkModeDevice.cpp">
+    <ClCompile Include="..\src\PdfDarkModeScanProcess.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\PdfSync.cpp">
@@ -774,6 +780,12 @@
       <Filter>src\utils\tests</Filter>
     </ClCompile>
     <ClCompile Include="..\src\utils\tests\JsonParser_ut.cpp">
+      <Filter>src\utils\tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\utils\tests\PdfDarkModeImageClassifier_ut.cpp">
+      <Filter>src\utils\tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\utils\tests\PdfDarkModeOklab_ut.cpp">
       <Filter>src\utils\tests</Filter>
     </ClCompile>
     <ClCompile Include="..\src\utils\tests\SettingsUtil_ut.cpp">

@@ -36,6 +36,7 @@
 #include "Favorites.h"
 #include "FileThumbnails.h"
 #include "Selection.h"
+#include "WordLookup.h"
 #include "Tabs.h"
 #include "HomePage.h"
 #include "Translations.h"
@@ -587,6 +588,10 @@ static MenuDef menuDefSelection[] = {
         CmdAnalyzeSelectionWithDoubao,
     },
     {
+        _TRN("Look Up &Selection"),
+        CmdLookupSelection,
+    },
+    {
         kMenuSeparator,
         0,
     },
@@ -606,6 +611,10 @@ static MenuDef menuDefMainSelection[] = {
     {
         _TRN("Ask &AI"),
         CmdAnalyzeSelectionWithDoubao,
+    },
+    {
+        _TRN("Look Up &Selection"),
+        CmdLookupSelection,
     },
     {
         kMenuSeparator,
@@ -829,6 +838,10 @@ static MenuDef menuDefContext[] = {
         CmdAnalyzeSelectionWithDoubao,
     },
     {
+        _TRN("Look Up &Selection"),
+        CmdLookupSelection,
+    },
+    {
         kMenuSeparator,
         0,
     },
@@ -995,6 +1008,7 @@ static UINT_PTR disableIfDirectoryOrBrokenPDF[] = {
 UINT_PTR disableIfNoSelection[] = {
     CmdCopySelection,
     CmdAnalyzeSelectionWithDoubao,
+    CmdLookupSelection,
     CmdCreateAnnotHighlight,
     CmdCreateAnnotSquiggly,
     CmdCreateAnnotStrikeOut,
@@ -1047,6 +1061,7 @@ UINT_PTR removeIfNoPrefsPerms[] = {
 
 UINT_PTR removeIfNoCopyPerms[] = {
     CmdAnalyzeSelectionWithDoubao,
+    CmdLookupSelection,
     CmdSelectAll,
 
     CmdCopySelection,
@@ -1387,8 +1402,9 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
     {
         int idFirst = CmdOpenWithKnownExternalViewerFirst + 1;
         int idLast = CmdOpenWithKnownExternalViewerLast;
-        if (cmdId >= idFirst && cmdId <= idLast) {
-            remove = !CanViewWithKnownExternalViewer(ctx->tab, cmdId);
+        int cmd = (int)cmdId;
+        if (cmd >= idFirst && cmd <= idLast) {
+            remove = !CanViewWithKnownExternalViewer(ctx->tab, cmd);
             return {remove, disable};
         }
     }
@@ -1400,6 +1416,9 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
     remove |= !ctx->canSendEmail && (cmdId == CmdSendByEmail);
 
     disable |= (!ctx->hasSelection && cmdIdInList(disableIfNoSelection));
+    if (cmdId == CmdLookupSelection) {
+        disable |= !ctx->hasSelection || !CanLookupSelectionInTab(ctx->tab);
+    }
     disable |= (!ctx->annotationUnderCursor && (cmdId == CmdDeleteAnnotation));
     disable |= !ctx->hasUnsavedAnnotations && (cmdId == CmdSaveAnnotations);
 
@@ -1651,7 +1670,11 @@ static bool IsFileCloseMenuEnabled() {
 static void SetMenuStateForSelection(WindowTab* tab, HMENU menu) {
     bool isTextSelected = tab && tab->win && tab->win->showSelection && tab->selectionOnPage;
     for (int id : disableIfNoSelection) {
-        MenuSetEnabled(menu, id, isTextSelected);
+        if (id == CmdLookupSelection) {
+            MenuSetEnabled(menu, id, isTextSelected && CanLookupSelectionInTab(tab));
+        } else {
+            MenuSetEnabled(menu, id, isTextSelected);
+        }
     }
     auto curr = gFirstCustomCommand;
     while (curr) {

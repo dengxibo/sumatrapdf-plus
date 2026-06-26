@@ -27,6 +27,9 @@
 #include "Translations.h"
 #include "LookupAudio.h"
 #include "FloatingPopupStyle.h"
+#include "Selection.h"
+#include "SelectionToolbar.h"
+#include "WindowTab.h"
 #include "WordLookup.h"
 
 #include "DarkModeSubclass.h"
@@ -295,6 +298,11 @@ static void ScheduleDeleteWordLookupWnd() {
 
 void CloseWordLookup() {
     ScheduleDeleteWordLookupWnd();
+}
+
+bool IsWordLookupVisible() {
+    WordLookupWnd* wnd = gWordLookupWnd;
+    return wnd && wnd->hwnd && IsWindowVisible(wnd->hwnd);
 }
 
 void RefreshWordLookupTheme() {
@@ -600,6 +608,10 @@ static bool AnyOfflineDictionaryLoaded() {
     bool en = LoadOfflineDictionary();
     bool zh = LoadOfflineDictionaryZh();
     return en || zh;
+}
+
+bool IsOfflineDictionaryAvailable() {
+    return AnyOfflineDictionaryLoaded();
 }
 
 static int CompareDictWord(const char* a, const char* b) {
@@ -1898,6 +1910,170 @@ static bool IsLookupWord(const char* word) {
     return IsEnglishLookupWord(word) || IsChineseLookupWord(word);
 }
 
+constexpr int kMaxSelectionLookupBytes = 64;
+constexpr int kMaxSelectionLookupChineseChars = 24;
+
+static bool IsLookupSelectionText(const char* word) {
+    if (IsChineseLookupWord(word)) {
+        return true;
+    }
+    if (str::IsEmpty(word)) {
+        return false;
+    }
+    bool hasLetter = false;
+    for (const char* p = word; *p; p++) {
+        char c = *p;
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+            hasLetter = true;
+            continue;
+        }
+        if (c == '\'' || c == '-' || c == ' ') {
+            continue;
+        }
+        return false;
+    }
+    return hasLetter;
+}
+
+static TempStr NormalizeSelectionForLookupTemp(const char* text) {
+    if (str::IsEmpty(text)) {
+        return nullptr;
+    }
+    char* copy = str::Dup(text);
+    str::TrimWSInPlace(copy, str::TrimOpt::Both);
+    char* w = copy;
+    char* r = copy;
+    bool lastWasSpace = false;
+    while (*w) {
+        char c = *w++;
+        if (c == '\r' || c == '\n' || c == '\t') {
+            c = ' ';
+        }
+        if (c == ' ') {
+            if (lastWasSpace || r == copy) {
+                continue;
+            }
+            lastWasSpace = true;
+        } else {
+            lastWasSpace = false;
+        }
+        *r++ = c;
+    }
+    *r = 0;
+    if (r > copy && r[-1] == ' ') {
+        r[-1] = 0;
+    }
+
+    if (IsChineseLookupWord(copy)) {
+        int nChars = 0;
+        char* p = copy;
+        while (*p) {
+            unsigned char c = (unsigned char)*p;
+            int len = 1;
+            if ((c & 0xE0) == 0xC0) {
+                len = 2;
+            } else if ((c & 0xF0) == 0xE0) {
+                len = 3;
+            } else if ((c & 0xF8) == 0xF0) {
+                len = 4;
+            }
+            if (nChars >= kMaxSelectionLookupChineseChars) {
+                *p = 0;
+                break;
+            }
+            p += len;
+            nChars++;
+        }
+    } else if (str::Len(copy) > (size_t)kMaxSelectionLookupBytes) {
+        copy[kMaxSelectionLookupBytes] = 0;
+    }
+    if (str::IsEmpty(copy)) {
+        str::Free(copy);
+        return nullptr;
+    }
+    return copy;
+}
+
+static bool GetSelectionLookupAnchor(MainWindow* win, Point& out) {
+    DisplayModel* dm = win ? win->AsFixed() : nullptr;
+    if (!dm) {
+        return false;
+    }
+    WindowTab* tab = win->CurrentTab();
+    if (!tab || !tab->selectionOnPage) {
+        return false;
+    }
+    Rect canvas = win->canvasRc;
+    Rect bounds;
+    bool first = true;
+    for (SelectionOnPage& sel : *tab->selectionOnPage) {
+        Rect r = sel.GetRect(dm).Intersect(canvas);
+        if (r.IsEmpty()) {
+            continue;
+        }
+        if (first) {
+            bounds = r;
+            first = false;
+        } else {
+            bounds = bounds.Union(r);
+        }
+    }
+    if (first) {
+        return false;
+    }
+    out = Point(bounds.x + bounds.dx / 2, bounds.y + bounds.dy / 2);
+    return true;
+}
+
+static TempStr GetLookupSelectionTextTemp(WindowTab* tab) {
+    if (!tab || !HasPermission(Perm::CopySelection)) {
+        return nullptr;
+    }
+    bool isTextOnly = false;
+    TempStr selText = GetSelectedTextTemp(tab, "\n", isTextOnly);
+    if (!selText || !isTextOnly) {
+        return nullptr;
+    }
+    return NormalizeSelectionForLookupTemp(selText);
+}
+
+bool CanLookupSelectionInTab(WindowTab* tab) {
+    if (!IsOfflineDictionaryAvailable()) {
+        return false;
+    }
+    TempStr text = GetLookupSelectionTextTemp(tab);
+    if (!text) {
+        return false;
+    }
+    defer {
+        str::Free(text);
+    };
+    return IsLookupSelectionText(text);
+}
+
+bool LookupSelectionInTab(MainWindow* win, WindowTab* tab) {
+    if (!win || !tab) {
+        return false;
+    }
+    TempStr text = GetLookupSelectionTextTemp(tab);
+    if (!text || !IsLookupSelectionText(text)) {
+        str::Free(text);
+        return false;
+    }
+    Point anchor{};
+    if (!GetSelectionLookupAnchor(win, anchor)) {
+        POINT pt{};
+        GetCursorPos(&pt);
+        if (win->hwndCanvas) {
+            MapWindowPoints(HWND_DESKTOP, win->hwndCanvas, &pt, 1);
+        }
+        anchor = Point(pt.x, pt.y);
+    }
+    ShowWordLookup(win, text, anchor);
+    str::Free(text);
+    return true;
+}
+
 struct LookupFinishData {
     LookupResult* result = nullptr;
     WordLookupWnd* wnd = nullptr;
@@ -2216,4 +2392,5 @@ void ShowWordLookup(MainWindow* win, const char* word, Point screenPos) {
     fetchData->wnd = wnd;
     auto fn = MkFunc0<FetchLookupData>(FetchWordLookupAsync, fetchData);
     RunAsync(fn, "WordLookupFetch");
+    HideSelectionToolbar(win);
 }

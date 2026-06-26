@@ -1083,6 +1083,7 @@
     <ClInclude Include="..\src\AppSettings.h" />
     <ClInclude Include="..\src\AppTools.h" />
     <ClInclude Include="..\src\Canvas.h" />
+    <ClInclude Include="..\src\CaptionGlyphs.h" />
     <ClInclude Include="..\src\ChmFile.h" />
     <ClInclude Include="..\src\ChmModel.h" />
     <ClInclude Include="..\src\CommandPalette.h" />
@@ -1191,6 +1192,7 @@
     <ClCompile Include="..\src\AppTools.cpp" />
     <ClCompile Include="..\src\Canvas.cpp" />
     <ClCompile Include="..\src\CanvasAboutUI.cpp" />
+    <ClCompile Include="..\src\CaptionGlyphs.cpp" />
     <ClCompile Include="..\src\ChmFile.cpp" />
     <ClCompile Include="..\src\ChmModel.cpp" />
     <ClCompile Include="..\src\CommandPalette.cpp" />
@@ -1235,15 +1237,15 @@
     <ClCompile Include="..\src\PdfDarkModeAnalysis.cpp" />
     <ClCompile Include="..\src\PdfDarkModeCache.cpp" />
     <ClCompile Include="..\src\PdfDarkModeColor.cpp" />
-    <ClCompile Include="..\src\PdfDarkModeOklab.cpp" />
-    <ClCompile Include="..\src\PdfDarkModeImageStats.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeDevice.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeEngineCache.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeImageBgBlend.cpp" />
     <ClCompile Include="..\src\PdfDarkModeImageClassifier.cpp" />
     <ClCompile Include="..\src\PdfDarkModeImageRules.cpp" />
-    <ClCompile Include="..\src\PdfDarkModeImageBgBlend.cpp" />
-    <ClCompile Include="..\src\PdfDarkModeScanProcess.cpp" />
-    <ClCompile Include="..\src\PdfDarkModeEngineCache.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeImageStats.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeOklab.cpp" />
     <ClCompile Include="..\src\PdfDarkModeProfile.cpp" />
-    <ClCompile Include="..\src\PdfDarkModeDevice.cpp" />
+    <ClCompile Include="..\src\PdfDarkModeScanProcess.cpp" />
     <ClCompile Include="..\src\PdfSync.cpp" />
     <ClCompile Include="..\src\PdfTools.cpp" />
     <ClCompile Include="..\src\Print.cpp" />
@@ -1456,6 +1458,26 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseAnalyze x64_asan|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\src\utils\tests\JsonParser_ut.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release x64_asan|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseAnalyze|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseAnalyze|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseAnalyze|ARM64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseAnalyze x64_asan|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\src\utils\tests\PdfDarkModeImageClassifier_ut.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release x64_asan|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseAnalyze|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseAnalyze|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseAnalyze|ARM64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseAnalyze x64_asan|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\src\utils\tests\PdfDarkModeOklab_ut.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>

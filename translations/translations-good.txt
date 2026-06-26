@@ -50532,3 +50532,149 @@ tw:底線
 :Copy
 cn:复制
 tw:複製
+:Look Up
+af:Soek op
+am:ፍለጋ
+ar:بحث
+az:Axtar
+bg:Търсене
+bn:খুঁজুন
+br:Consultar
+bs:Traži
+by:Пошук
+ca:Cerca
+ca-xv:Cerca
+cn:查词
+co:Circà
+cy:Chwilio
+cz:Vyhledat
+de:Nachschlagen
+dk:Slå op
+el:Αναζήτηση
+es:Buscar
+et:Otsi
+eu:Bilatu
+fa:جستجو
+fi:Hae
+fo:Leita
+fr:Rechercher
+fy-nl:Sykje
+ga:Cuardaigh
+gl:Buscar
+he:חיפוש
+hi:खोजें
+hr:Traži
+hu:Keresés
+id:Cari
+it:Cerca
+ja:辞書
+jv:Golek
+ka:ძებნა
+kr:찾기
+ku:Lêgerîn
+kw:Hwilas
+lt:Ieškoti
+lv:Meklēt
+mk:Пребарај
+ml:തിരയുക
+mm:ရှာပါ
+my:ရှာပါ
+ne:खोज
+nl:Opzoeken
+nn:Slå opp
+no:Slå opp
+pa:ਖੋਜੋ
+pl:Szukaj
+pt:Consultar
+ro:Caută
+ru:Искать
+sat:ᱥᱮᱸᱫᱽ
+si:සොයන්න
+sk:Hľadať
+sl:Išči
+sn:Tsvaga
+sp-rs:Traži
+sq:Kërko
+sr-rs:Тражи
+sv:Slå upp
+ta:தேடு
+th:ค้นหา
+tl:Hanapin
+tr:Ara
+tw:查詞
+uk:Шукати
+uz:Qidirish
+vn:Tra từ
+:Look Up Selection
+af:Soek seleksie op
+am:የተመረጠውን ፍለጋ
+ar:بحث عن التحديد
+az:Seçilmiş axtar
+bg:Търсене на избраното
+bn:নির্বাচিত অংশ খুঁজুন
+br:Consultar seleção
+bs:Traži izbor
+by:Пошук вылучанага
+ca:Cerca la selecció
+ca-xv:Cerca selecció
+cn:查词选中内容
+co:Circà a selezzione
+cy:Chwilio'r dewis
+cz:Vyhledat výběr
+de:Auswahl nachschlagen
+dk:Slå markering op
+el:Αναζήτηση επιλογής
+es:Buscar selección
+et:Otsi valikut
+eu:Bilatu hautapena
+fa:جستجوی انتخاب
+fi:Hae valinta
+fo:Leita val
+fr:Rechercher la sélection
+fy-nl:Seleksje sykje
+ga:Cuardaigh an roghnú
+gl:Buscar selección
+he:חפש בחירה
+hi:चयन खोजें
+hr:Traži odabrano
+hu:Kijelölés keresése
+id:Cari pilihan
+it:Cerca selezione
+ja:選択語句を辞書検索
+jv:Golek pilihan
+ka:არჩეულის ძებნა
+kr:선택어 찾기
+ku:Hilbijartinê bigere
+kw:Hwilas dewisyans
+lt:Ieškoti pažymėto
+lv:Meklēt atlasi
+mk:Пребарај избор
+ml:തിരഞ്ഞെടുത്തത് തിരയുക
+mm:ရွေးချယ်ထားသည်ကို ရှာပါ
+my:ရွေးချယ်ထားသည်ကို ရှာပါ
+ne:चयन खोज
+nl:Selectie opzoeken
+nn:Slå opp val
+no:Slå opp valg
+pa:ਚੋਣ ਖੋਜੋ
+pl:Wyszukaj zaznaczenie
+pt:Consultar seleção
+ro:Caută selecția
+ru:Искать выделение
+sat:ᱵᱟᱛᱟᱣ ᱥᱮᱸᱫᱽ
+si:තේරීම සොයන්න
+sk:Vyhľadať výber
+sl:Išči izbor
+sn:Tsvaga sarudzwa
+sp-rs:Traži izbor
+sq:Kërko përzgjedhjen
+sr-rs:Тражи избор
+sv:Slå upp markering
+ta:தேர்வைத் தேடு
+th:ค้นหาที่เลือก
+tl:Hanapin ang napili
+tr:Seçimi ara
+tw:查詞選取內容
+uk:Шукати виділене
+uz:Tanlovni qidirish
+vn:Tra nội dung đã chọn

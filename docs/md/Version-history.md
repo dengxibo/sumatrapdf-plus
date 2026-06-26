@@ -5,6 +5,7 @@
 Available in [pre-release](https://www.sumatrapdfreader.org/prerelease) builds.
 
 - add a floating selection toolbar: after selecting text in a PDF that supports annotations, a small toolbar appears near the selection with one-click `Highlight`, `Underline`, `Squiggly`, `Strike Out` and `Ask AI` actions. Disable it with `Annotations.SelectionToolbar = false` in advanced settings
+- add `CmdLookupSelection` (`Look Up Selection` in selection context menu and `Ctrl + k` [command palette](Command-Palette.md)) to look up the selected text with offline dictionaries; the selection toolbar shows `Ask AI`, `Look Up`, `Copy`, then annotation actions when supported
 - add **Light-White** theme (renamed from Original): neutral light UI with PDF and fixed-layout documents shown in their original colors (no eye-care yellow tint); **Light-Warm** theme (renamed from Light) still uses eye-care colors for document content
 - PDF smart dark mode options (`PreservePdfImagesInDarkMode`, `PreservePdfImagesMinSize`, `PdfDarkModeRenderer`, `PdfDocumentColorMode`, etc.) are built into the program and are not written to the settings file; toolbar and command-palette toggles apply for the current session only
 - add `CmdTogglePreservePdfImages` (`Toggle Preserve PDF Image Colors in Dark Mode` in `Ctrl + k` [command palette](Command-Palette.md))
