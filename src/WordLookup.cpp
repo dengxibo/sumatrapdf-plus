@@ -1394,11 +1394,9 @@ static int CalcLookupWindowDy(WordLookupWnd* wnd) {
     HFONT titleFont = LookupTitleFont(wnd);
 
     dy += CalcLookupTitleRowDy(hwnd, hdc, wnd, titleFont, sense);
-    if (LookupTabCount(wnd) == 0) {
-        TempStr phoneticLine = LookupPhoneticLineTemp(sense, wnd->queryWord);
-        if (phoneticLine) {
-            dy += CalcTextDy(hdc, wnd->font, phoneticLine, contentDx, DT_SINGLELINE) + DpiScale(hwnd, 4);
-        }
+    TempStr phoneticLine = LookupPhoneticLineTemp(sense, wnd->queryWord);
+    if (phoneticLine) {
+        dy += CalcTextDy(hdc, wnd->font, phoneticLine, contentDx, DT_SINGLELINE) + DpiScale(hwnd, 4);
     }
     int tabsDy = CalcLookupTabsDy(hwnd, hdc, wnd);
     if (tabsDy > 0) {
@@ -1707,7 +1705,7 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
     y += std::max(std::max(titleDy, titleRowDy), titleLineDy) + DpiScale(hwnd, 2);
 
     TempStr phoneticLine = LookupPhoneticLineTemp(sense, title ? title : "");
-    if (phoneticLine && LookupTabCount(this) == 0 && y < bottom) {
+    if (phoneticLine && y < bottom) {
         RECT r{x, y, right, bottom};
         y +=
             DrawLookupText(dc, font, phoneticLine, &r, FloatingPopupMutedTextColor(), DT_SINGLELINE | DT_END_ELLIPSIS) +
