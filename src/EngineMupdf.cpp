@@ -5202,22 +5202,6 @@ void EngineMupdf::GetBitmapRecolorSkipRects(int pageNo, float zoom, int rotation
     }
 }
 
-static float CadMinLineWidthForZoom(float zoom) {
-    float z = zoom;
-    if (z < 0.20f) {
-        z = 0.20f;
-    }
-    // Inverse to zoom: stronger hairline floor when zoomed out, relaxed when zoomed in.
-    float minLw = 0.11f + 0.30f / z;
-    if (minLw > 0.54f) {
-        minLw = 0.54f;
-    }
-    if (minLw < 0.12f) {
-        minLw = 0.12f;
-    }
-    return minLw;
-}
-
 bool EngineMupdf::CadEnhanceActive() const {
     if (!pdfdoc) {
         return false;
@@ -5305,10 +5289,7 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     auto zoom = args.zoom;
     auto rotation = args.rotation;
 
-    float savedMinLineWidth = fz_graphics_min_line_width(ctx);
-    if (CadEnhanceActive()) {
-        fz_set_graphics_min_line_width(ctx, CadMinLineWidthForZoom(zoom));
-    }
+    CadMinLineWidthScope cadMinLineWidth(ctx, zoom, CadEnhanceActive());
 
     // The "View" rendering (no Print, no hideAnnotations) is what
     // fz_new_display_list_from_page produces; safe to cache and re-run lock-free.
@@ -5371,7 +5352,6 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
             bitmap = NewRenderedFzPixmap(ctx, pix);
         }
         fz_always(ctx) {
-            fz_set_graphics_min_line_width(ctx, savedMinLineWidth);
             if (dev) {
                 fz_drop_device(ctx, dev);
             }
@@ -5419,7 +5399,6 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
             fz_close_device(ctx, dev);
         }
         fz_always(ctx) {
-            fz_set_graphics_min_line_width(ctx, savedMinLineWidth);
             if (dev) {
                 fz_drop_device(ctx, dev);
             }
@@ -5441,7 +5420,6 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
             bitmap = NewRenderedFzPixmap(ctx, pix);
         }
         fz_always(ctx) {
-            fz_set_graphics_min_line_width(ctx, savedMinLineWidth);
             fz_drop_pixmap(ctx, pix);
         }
         fz_catch(ctx) {

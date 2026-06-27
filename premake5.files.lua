@@ -875,7 +875,7 @@ function pdf_darkmode_files()
 end
 
 function pdf_darkmode_noop_files()
-  files { "src/PdfDarkModeNoOp.cpp" }
+  files { "src/PdfDarkModeNoOp.cpp", "src/PdfCadEnhanceNoOp.cpp" }
 end
 
 function uia_files()
@@ -1423,6 +1423,7 @@ function pdf_preview_files()
     "PalmDbReader.*",
     "PdfCreator.*",
     "PdfDarkModeNoOp.cpp",
+    "PdfCadEnhanceNoOp.cpp",
     "RegistryPreview.*",
     "SumatraConfig.*",
     "utils/Log.*",
@@ -1453,6 +1454,7 @@ function search_filter_files()
     "MUPDF_Exports.cpp",
     "PalmDbReader.*",
     "PdfDarkModeNoOp.cpp",
+    "PdfCadEnhanceNoOp.cpp",
     "RegistrySearchFilter.*",
     "utils/Log.*",
   })

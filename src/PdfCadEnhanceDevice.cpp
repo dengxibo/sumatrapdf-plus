@@ -314,3 +314,35 @@ fz_device* PdfCadEnhanceWrapDevice(fz_context* ctx, fz_device* inner) {
 
     return &d->super;
 }
+
+static float CadMinLineWidthForZoom(float zoom) {
+    float z = zoom;
+    if (z < 0.20f) {
+        z = 0.20f;
+    }
+    // Inverse to zoom: stronger hairline floor when zoomed out, relaxed when zoomed in.
+    float minLw = 0.11f + 0.30f / z;
+    if (minLw > 0.54f) {
+        minLw = 0.54f;
+    }
+    if (minLw < 0.12f) {
+        minLw = 0.12f;
+    }
+    return minLw;
+}
+
+CadMinLineWidthScope::CadMinLineWidthScope(fz_context* ctxIn, float zoom, bool activeIn) {
+    if (!activeIn) {
+        return;
+    }
+    ctx = ctxIn;
+    active = true;
+    saved = fz_graphics_min_line_width(ctx);
+    fz_set_graphics_min_line_width(ctx, CadMinLineWidthForZoom(zoom));
+}
+
+CadMinLineWidthScope::~CadMinLineWidthScope() {
+    if (active && ctx) {
+        fz_set_graphics_min_line_width(ctx, saved);
+    }
+}
