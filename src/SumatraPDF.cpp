@@ -2382,14 +2382,13 @@ static void SyncCanvasScrollBarTheme(MainWindow* win) {
 
 void UpdateAfterThemeChange() {
     InvalidateLoadedThumbnails();
+    UpdateDocumentColors();
     for (auto win : gWindows) {
         DeleteObject(win->brControlBgColor);
         win->brControlBgColor = CreateSolidBrush(ThemeChromeBackgroundColor());
 
         RebuildMenuBarForWindow(win);
         // TODO: probably leaking toolbar image list
-        // Show PDF document color mode buttons before cache invalidation so they
-        // stay clickable while a slow first dark-mode render is aborted/rerun.
         UpdateToolbarAfterThemeChange(win);
         if (UseDarkModeLib()) {
             if (ThemeUsesDarkChrome()) {
@@ -2410,6 +2409,8 @@ void UpdateAfterThemeChange() {
         UpdateMainWindowNativeChrome(win);
         UpdateControlsColors(win);
         UpdateWindowFrameBorderColor(win);
+        uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN;
+        RedrawWindow(win->hwndFrame, nullptr, nullptr, flags);
 
         WindowTab* currentTab = win->CurrentTab();
         for (WindowTab* tab : win->Tabs()) {
@@ -2431,11 +2432,6 @@ void UpdateAfterThemeChange() {
                 tab->reloadOnFocus = true;
             }
         }
-    }
-    UpdateDocumentColors();
-    for (auto win : gWindows) {
-        uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN;
-        RedrawWindow(win->hwndFrame, nullptr, nullptr, flags);
     }
     RefreshWordLookupTheme();
 }

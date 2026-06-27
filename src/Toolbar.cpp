@@ -220,6 +220,12 @@ void UpdatePdfDocumentColorModeToolbarButton(MainWindow* win) {
         int n = GetToolbarButtonsByID(cmdId, buttons);
         for (int i = 0; i < n; i++) {
             UpdateToolbarButtonStateByIdx(win->hwndToolbar, buttons[i], !show, TBSTATE_HIDDEN);
+            if (show) {
+                // ToolbarUpdateStateForWindow disables these while in light mode; unhide alone
+                // leaves TBSTATE_ENABLED cleared so clicks are ignored until something else
+                // re-enables them (e.g. a delayed ToolbarUpdateStateForWindow).
+                UpdateToolbarButtonStateByIdx(win->hwndToolbar, buttons[i], true, TBSTATE_ENABLED);
+            }
         }
     }
     if (!show) {
