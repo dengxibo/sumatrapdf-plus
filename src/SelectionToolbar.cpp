@@ -52,7 +52,9 @@ struct SelectionToolbar {
 
 static void InitButtons(SelectionToolbar* tb, MainWindow* win) {
     int i = 0;
-    tb->buttons[i++] = {CmdAnalyzeSelectionWithDoubao, "Ask AI", true, {}};
+    if (gGlobalPrefs->enableAskAI) {
+        tb->buttons[i++] = {CmdAnalyzeSelectionWithDoubao, "Ask AI", true, {}};
+    }
     bool lookupEnabled = CanLookupSelectionInTab(win->CurrentTab());
     tb->buttons[i++] = {CmdLookupSelection, "Look Up", lookupEnabled, {}};
     tb->buttons[i++] = {CmdCopySelection, "Copy", true, {}};

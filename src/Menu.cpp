@@ -1371,6 +1371,9 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
     if (!HasPermission(Perm::InternetAccess)) {
         remove |= cmdIdInList(removeIfNoInternetPerms);
     }
+    if (!gGlobalPrefs->enableAskAI && cmdId == CmdAnalyzeSelectionWithDoubao) {
+        remove = true;
+    }
     if (!HasPermission(Perm::FullscreenAccess)) {
         remove |= cmdIdInList(removeIfNoFullscreenPerms);
     }

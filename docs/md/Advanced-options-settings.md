@@ -123,6 +123,10 @@ EnableDoubleClickWordLookup = true
 ; at https://www.doubao.com/chat/ (introduced in version 3.7)
 AiChatUseDeepSeekInsteadOfDoubao = false
 
+; if false, hide Ask AI (online chat) in the selection toolbar, context menu,
+; and command palette (introduced in version 3.7)
+EnableAskAI = true
+
 ; if true, we show the Favorites sidebar
 ShowFavorites = false
 

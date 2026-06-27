@@ -485,6 +485,9 @@ struct GlobalPrefs {
     // if true, Ask AI opens DeepSeek chat instead of Doubao (豆包); default
     // is Doubao at https://www.doubao.com/chat/
     bool aiChatUseDeepSeekInsteadOfDoubao;
+    // if false, hide Ask AI (online chat) in the selection toolbar,
+    // context menu, and command palette
+    bool enableAskAI;
     // if true, we show the Favorites sidebar
     bool showFavorites;
     // if true, we show table of contents (Bookmarks) sidebar if it's
@@ -924,6 +927,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, offlineDictionaryPath), SettingType::String, 0},
     {offsetof(GlobalPrefs, enableDoubleClickWordLookup), SettingType::Bool, true},
     {offsetof(GlobalPrefs, aiChatUseDeepSeekInsteadOfDoubao), SettingType::Bool, false},
+    {offsetof(GlobalPrefs, enableAskAI), SettingType::Bool, true},
     {offsetof(GlobalPrefs, showFavorites), SettingType::Bool, false},
     {offsetof(GlobalPrefs, showToc), SettingType::Bool, true},
     {offsetof(GlobalPrefs, showLinks), SettingType::Bool, false},
@@ -995,18 +999,18 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment, (intptr_t)"Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 96, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 97, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0ReloadMo"
     "difiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSession\0ReuseInstance\0ShowMenubar\0ShowMe"
     "nubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0OfflineDictionaryPath\0EnableDoubleClickWordLookup\0AiChatUseD"
-    "eepSeekInsteadOfDoubao\0ShowFavorites\0ShowToc\0ShowLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSingle"
-    "Page\0SmoothScroll\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme\0LastLightTh"
-    "eme\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0UseS"
-    "ysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI"
-    "\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Short"
-    "cuts\0\0Themes\0\0TabGroups\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0FileStates\0"
-    "SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0OpenCountWeek\0PropWinPos\0\0"};
+    "eepSeekInsteadOfDoubao\0EnableAskAI\0ShowFavorites\0ShowToc\0ShowLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0Scro"
+    "llbarInSinglePage\0SmoothScroll\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme"
+    "\0LastLightTheme\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0UIFontSize\0DisableAntiAlias\0EngineeringDrawing"
+    "Enhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0Ima"
+    "geUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHand"
+    "lers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos"
+    "\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0OpenCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)""},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)""},

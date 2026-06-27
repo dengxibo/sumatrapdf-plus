@@ -6752,7 +6752,8 @@ static AiChatService ActiveAiChatService() {
 }
 
 static void AnalyzeSelectionWithDoubao(WindowTab* tab) {
-    if (!tab || !tab->win || !HasPermission(Perm::InternetAccess) || !HasPermission(Perm::CopySelection)) {
+    if (!tab || !tab->win || !gGlobalPrefs->enableAskAI || !HasPermission(Perm::InternetAccess) ||
+        !HasPermission(Perm::CopySelection)) {
         return;
     }
 

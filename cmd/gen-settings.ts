@@ -759,6 +759,15 @@ const globalPrefs: Field[] = [
     ),
     "3.7",
   ),
+  setVersion(
+    mkField(
+      "EnableAskAI",
+      Bool,
+      true,
+      "if false, hide Ask AI (online chat) in the selection toolbar, context menu, and command palette",
+    ),
+    "3.7",
+  ),
   mkField("ShowFavorites", Bool, false, "if true, we show the Favorites sidebar"),
   mkField(
     "ShowToc",

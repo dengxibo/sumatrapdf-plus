@@ -4,6 +4,7 @@
 
 Available in [pre-release](https://www.sumatrapdfreader.org/prerelease) builds.
 
+- add `EnableAskAI` advanced setting (default true); set to false to hide Ask AI in the selection toolbar, context menu, and command palette
 - add a floating selection toolbar: after selecting text in a PDF that supports annotations, a small toolbar appears near the selection with one-click `Highlight`, `Underline`, `Squiggly`, `Strike Out` and `Ask AI` actions. Disable it with `Annotations.SelectionToolbar = false` in advanced settings
 - add `CmdLookupSelection` (`Look Up Selection` in selection context menu and `Ctrl + k` [command palette](Command-Palette.md)) to look up the selected text with offline dictionaries; the selection toolbar shows `Ask AI`, `Look Up`, `Copy`, then annotation actions when supported
 - add **Light-White** theme (renamed from Original): neutral light UI with PDF and fixed-layout documents shown in their original colors (no eye-care yellow tint); **Light-Warm** theme (renamed from Light) still uses eye-care colors for document content
