@@ -2382,13 +2382,14 @@ static void SyncCanvasScrollBarTheme(MainWindow* win) {
 
 void UpdateAfterThemeChange() {
     InvalidateLoadedThumbnails();
-    UpdateDocumentColors();
     for (auto win : gWindows) {
         DeleteObject(win->brControlBgColor);
         win->brControlBgColor = CreateSolidBrush(ThemeChromeBackgroundColor());
 
         RebuildMenuBarForWindow(win);
         // TODO: probably leaking toolbar image list
+        // Show PDF document color mode buttons before cache invalidation so they
+        // stay clickable while a slow first dark-mode render is aborted/rerun.
         UpdateToolbarAfterThemeChange(win);
         if (UseDarkModeLib()) {
             if (ThemeUsesDarkChrome()) {
@@ -2409,8 +2410,6 @@ void UpdateAfterThemeChange() {
         UpdateMainWindowNativeChrome(win);
         UpdateControlsColors(win);
         UpdateWindowFrameBorderColor(win);
-        uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN;
-        RedrawWindow(win->hwndFrame, nullptr, nullptr, flags);
 
         WindowTab* currentTab = win->CurrentTab();
         for (WindowTab* tab : win->Tabs()) {
@@ -2432,6 +2431,11 @@ void UpdateAfterThemeChange() {
                 tab->reloadOnFocus = true;
             }
         }
+    }
+    UpdateDocumentColors();
+    for (auto win : gWindows) {
+        uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN;
+        RedrawWindow(win->hwndFrame, nullptr, nullptr, flags);
     }
     RefreshWordLookupTheme();
 }
@@ -3601,6 +3605,11 @@ void UpdateDocumentColors() {
     s_lastPdfDarkModeRenderer = pdfDarkModeRenderer;
     s_lastPdfDocumentColorMode = pdfDocumentColorMode;
 
+    gRenderCache->textColor = text;
+    gRenderCache->backgroundColor = bg;
+    gRenderCache->linkColor = link;
+    gRenderCache->darkModeEpoch++;
+
     // Cached bitmaps are either recolored (PDF) or baked (ebooks). Marking them
     // out-of-date is not enough because RequestRendering() skips pages that
     // still Exist() in the cache, so stale tiles keep showing until scrolled.
@@ -3616,10 +3625,6 @@ void UpdateDocumentColors() {
         }
     }
 
-    gRenderCache->textColor = text;
-    gRenderCache->backgroundColor = bg;
-    gRenderCache->linkColor = link;
-    gRenderCache->darkModeEpoch++;
     RerenderEverything();
 }
 
@@ -8285,6 +8290,15 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             }
             RerenderFixedPage();
             SaveSettings();
+            break;
+        }
+
+        case CmdToggleEngineeringDrawingEnhance: {
+            DisplayModel* fixedDm = win->AsFixed();
+            if (fixedDm) {
+                EngineMupdfToggleCadEnhance(fixedDm->GetEngine());
+                RerenderFixedPage();
+            }
             break;
         }
 

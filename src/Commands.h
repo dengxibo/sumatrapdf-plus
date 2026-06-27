@@ -241,7 +241,8 @@ enum {
     CmdSetPdfDocumentColorModeBlack = 430,
     CmdSetPdfDocumentColorModeLight = 431,
     CmdLookupSelection = 432,
-    CmdNone = 433,
+    CmdToggleEngineeringDrawingEnhance = 433,
+    CmdNone = 434,
 
     /* range for file history */
     CmdFileHistoryFirst,

@@ -34,6 +34,8 @@ extern "C" {
 #include "Theme.h"
 #include "PdfDarkMode.h"
 #include "PdfDarkModeInternal.h"
+#include "PdfCadDetect.h"
+#include "PdfCadEnhanceDevice.h"
 #include "DisplayModel.h"
 #include "GlobalPrefs.h"
 
@@ -147,6 +149,13 @@ EngineMupdf* AsEngineMupdf(EngineBase* engine) {
         return nullptr;
     }
     return (EngineMupdf*)engine;
+}
+
+void EngineMupdfToggleCadEnhance(EngineBase* engine) {
+    EngineMupdf* epdf = AsEngineMupdf(engine);
+    if (epdf) {
+        epdf->ToggleCadEnhanceOverride();
+    }
 }
 
 void EngineMupdfInvalidateDarkMode(EngineBase* engine) {
@@ -2580,6 +2589,7 @@ EngineBase* EngineMupdf::Clone() {
     delete pwdUI;
 
     clone->disableAntiAlias = disableAntiAlias;
+    clone->cadEnhanceOverride = cadEnhanceOverride;
 
     if (!decryptionKey.s && pdfdoc && pdfdoc->crypt) {
         clone->decryptionKey = Str();
@@ -4385,6 +4395,8 @@ bool EngineMupdf::FinishLoading() {
     // TODO: support javascript
     ReportIf(pdf_js_supported(ctx, pdfdoc));
 
+    RunCadDetection();
+
     return true;
 }
 
@@ -5119,8 +5131,7 @@ static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageIn
                 continue;
             }
             // Wide bboxes often span a layout column; only preserve if clearly a dark painting.
-            if (imgOnPage.dx > pageBounds.dx * 0.44f &&
-                !PdfDarkModeImageLooksLikeDarkArtwork(ctx, image, coverage)) {
+            if (imgOnPage.dx > pageBounds.dx * 0.44f && !PdfDarkModeImageLooksLikeDarkArtwork(ctx, image, coverage)) {
                 fz_drop_image(ctx, image);
                 continue;
             }
@@ -5167,8 +5178,7 @@ void EngineMupdf::GetBitmapRecolorSkipRects(int pageNo, float zoom, int rotation
     }
 
     // Text/layout tiles below the artwork band always recolor uniformly.
-    if (pageInfo->darkLegacyArtworkPageBottom > 0.f &&
-        renderPageRect.y >= pageInfo->darkLegacyArtworkPageBottom) {
+    if (pageInfo->darkLegacyArtworkPageBottom > 0.f && renderPageRect.y >= pageInfo->darkLegacyArtworkPageBottom) {
         return;
     }
 
@@ -5190,6 +5200,79 @@ void EngineMupdf::GetBitmapRecolorSkipRects(int pageNo, float zoom, int rotation
             skipRects.Append(local);
         }
     }
+}
+
+static float CadMinLineWidthForZoom(float zoom) {
+    float z = zoom;
+    if (z < 0.20f) {
+        z = 0.20f;
+    }
+    // Inverse to zoom: stronger hairline floor when zoomed out, relaxed when zoomed in.
+    float minLw = 0.11f + 0.30f / z;
+    if (minLw > 0.54f) {
+        minLw = 0.54f;
+    }
+    if (minLw < 0.12f) {
+        minLw = 0.12f;
+    }
+    return minLw;
+}
+
+bool EngineMupdf::CadEnhanceActive() const {
+    if (!pdfdoc) {
+        return false;
+    }
+    CadDetectResult detect;
+    detect.enable = cadDetectEnable;
+    detect.score = cadDetectScore;
+    return CadEnhanceEnabledForEngine(detect, cadEnhanceOverride);
+}
+
+void EngineMupdf::RunCadDetection() {
+    if (!pdfdoc || cadDetectDone) {
+        return;
+    }
+    CadDetectResult res = DetectCadPdf(Ctx(), pdfdoc);
+    cadDetectEnable = res.enable;
+    cadDetectScore = res.score;
+    cadDetectDone = true;
+    if (cadDetectEnable) {
+        logfa("CAD enhance detect: score=%d reason=%s\n", cadDetectScore, CadEnhanceReasonName(res.reason));
+    }
+}
+
+void EngineMupdf::ToggleCadEnhanceOverride() {
+    switch (cadEnhanceOverride) {
+        case CadEnhanceOverride::Unset:
+            cadEnhanceOverride = CadEnhanceActive() ? CadEnhanceOverride::ForceOff : CadEnhanceOverride::ForceOn;
+            break;
+        case CadEnhanceOverride::ForceOn:
+            cadEnhanceOverride = CadEnhanceOverride::ForceOff;
+            break;
+        case CadEnhanceOverride::ForceOff:
+            cadEnhanceOverride = CadEnhanceOverride::ForceOn;
+            break;
+    }
+}
+
+static fz_device* WrapViewRenderDevice(fz_context* ctx, EngineMupdf* engine, fz_device* baseDev,
+                                       const DarkModeProfile* darkProfile, FzPageInfo* pageInfo,
+                                       fz_display_list* keptList, DarkModeReplayState* replayState) {
+    fz_device* renderDev = baseDev;
+    if (darkProfile && DarkModeProfileUsesObjectLevel(darkProfile) && engine->pdfdoc && keptList) {
+        u32 optionsHash = darkProfile->hash;
+        const DarkModePalette& palette = darkProfile->palette;
+        DarkModePageAnalysis* analysis =
+            PdfDarkModeGetOrBuildAnalysis(ctx, pageInfo, keptList, optionsHash, engine->darkModeEngineCache);
+        if (analysis) {
+            renderDev = PdfDarkModeWrapDevice(ctx, renderDev, analysis, &palette, replayState,
+                                              engine->darkModeEngineCache, optionsHash, darkProfile->debugOverlay);
+        }
+    }
+    if (engine->CadEnhanceActive()) {
+        renderDev = PdfCadEnhanceWrapDevice(ctx, renderDev);
+    }
+    return renderDev;
 }
 
 RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
@@ -5221,6 +5304,11 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     auto pageRect = args.pageRect;
     auto zoom = args.zoom;
     auto rotation = args.rotation;
+
+    float savedMinLineWidth = fz_graphics_min_line_width(ctx);
+    if (CadEnhanceActive()) {
+        fz_set_graphics_min_line_width(ctx, CadMinLineWidthForZoom(zoom));
+    }
 
     // The "View" rendering (no Print, no hideAnnotations) is what
     // fz_new_display_list_from_page produces; safe to cache and re-run lock-free.
@@ -5276,24 +5364,14 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                 fz_clear_pixmap_with_value(ctx, pix, 0xff);
             }
             fz_device* baseDev = fz_new_draw_device(ctx, ctm, pix);
-            fz_device* renderDev = baseDev;
             DarkModeReplayState replayState{};
-            if (DarkModeProfileUsesObjectLevel(darkProfile) && pdfdoc && args.target == RenderTarget::View) {
-                u32 optionsHash = darkProfile->hash;
-                const DarkModePalette& palette = darkProfile->palette;
-                DarkModePageAnalysis* analysis =
-                    PdfDarkModeGetOrBuildAnalysis(ctx, pageInfo, keptList, optionsHash, darkModeEngineCache);
-                if (analysis) {
-                    renderDev = PdfDarkModeWrapDevice(ctx, baseDev, analysis, &palette, &replayState,
-                                                      darkModeEngineCache, optionsHash, darkProfile->debugOverlay);
-                }
-            }
-            dev = renderDev;
+            dev = WrapViewRenderDevice(ctx, this, baseDev, darkProfile, pageInfo, keptList, &replayState);
             fz_run_display_list(ctx, keptList, dev, fz_identity, pRect, fzcookie);
             fz_close_device(ctx, dev);
             bitmap = NewRenderedFzPixmap(ctx, pix);
         }
         fz_always(ctx) {
+            fz_set_graphics_min_line_width(ctx, savedMinLineWidth);
             if (dev) {
                 fz_drop_device(ctx, dev);
             }
@@ -5341,6 +5419,7 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
             fz_close_device(ctx, dev);
         }
         fz_always(ctx) {
+            fz_set_graphics_min_line_width(ctx, savedMinLineWidth);
             if (dev) {
                 fz_drop_device(ctx, dev);
             }
@@ -5362,6 +5441,7 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
             bitmap = NewRenderedFzPixmap(ctx, pix);
         }
         fz_always(ctx) {
+            fz_set_graphics_min_line_width(ctx, savedMinLineWidth);
             fz_drop_pixmap(ctx, pix);
         }
         fz_catch(ctx) {

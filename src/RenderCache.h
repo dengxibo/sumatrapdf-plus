@@ -77,6 +77,7 @@ struct PageRenderRequest {
     RectF pageRect; // calculated from TilePosition
     bool abort = false;
     AbortCookie* abortCookie = nullptr;
+    u32 darkModeEpoch = 0;
     DWORD timestamp = 0;
 
     // set by render thread before calling renderFinishedCb

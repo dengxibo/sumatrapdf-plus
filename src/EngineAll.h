@@ -94,6 +94,7 @@ TempStr EngineMupdfGetPdfInfo(const char* path);
 TempStr EngineMupdfGetPdfOutline(const char* path);
 void EngineMupdfInvalidateDarkMode(EngineBase* engine);
 bool EngineSupportsSmartDarkMode(EngineBase* engine);
+void EngineMupdfToggleCadEnhance(EngineBase* engine);
 
 /* EnginePs.cpp */
 

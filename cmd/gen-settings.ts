@@ -838,6 +838,14 @@ const globalPrefs: Field[] = [
   ),
   setExpert(
     mkField(
+      "EngineeringDrawingEnhance",
+      Str,
+      "auto",
+      "CAD/engineering PDF line display: off, auto (detect), or on",
+    ),
+  ),
+  setExpert(
+    mkField(
       "UseSysColors",
       Bool,
       false,

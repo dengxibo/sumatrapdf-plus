@@ -196,6 +196,9 @@ UIFontSize = 0
 ; version 3.6)
 DisableAntiAlias = false
 
+; CAD/engineering PDF line display: off, auto (detect), or on
+EngineeringDrawingEnhance = auto
+
 ; if true, we use Windows system colors for background/text color. Over-rides
 ; other settings
 UseSysColors = false

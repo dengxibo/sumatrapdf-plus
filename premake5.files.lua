@@ -867,6 +867,10 @@ function pdf_darkmode_files()
     "PdfDarkModeEngineCache.cpp",
     "PdfDarkModeProfile.cpp",
     "PdfDarkModeDevice.cpp",
+    "PdfCadDetect.cpp",
+    "PdfCadDetect.h",
+    "PdfCadEnhanceDevice.cpp",
+    "PdfCadEnhanceDevice.h",
   })
 end
 

@@ -246,6 +246,7 @@ static SeqStrings gCommandNames =
     "CmdSetPdfDocumentColorModeBlack\0"
     "CmdSetPdfDocumentColorModeLight\0"
     "CmdLookupSelection\0"
+    "CmdToggleEngineeringDrawingEnhance\0"
     "CmdNone\0"
     "\0";
 
@@ -482,6 +483,7 @@ static i32 gCommandIds[] = {
     CmdSetPdfDocumentColorModeBlack,
     CmdSetPdfDocumentColorModeLight,
     CmdLookupSelection,
+    CmdToggleEngineeringDrawingEnhance,
     CmdNone,
 };
 
@@ -718,6 +720,7 @@ SeqStrings gCommandDescriptions =
     "Set PDF Document Color Mode: Black\0"
     "Set PDF Document Color Mode: Light\0"
     "Look Up Selection\0"
+    "Toggle Engineering Drawing Line Enhance\0"
     "Do nothing\0"
     "\0";
 // clang-format on

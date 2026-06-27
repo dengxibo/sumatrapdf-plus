@@ -1,6 +1,8 @@
 /* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
+#include "PdfCadDetect.h"
+
 struct Annotation;
 struct DarkModePageAnalysis;
 struct DarkModeEngineCache;
@@ -167,6 +169,16 @@ class EngineMupdf : public EngineBase {
 
     // Smart Dark Mode engine-level image caches (Phase 6).
     DarkModeEngineCache* darkModeEngineCache = nullptr;
+
+    // CAD/engineering drawing display (PdfCadDetect).
+    bool cadDetectEnable = false;
+    int cadDetectScore = 0;
+    CadEnhanceOverride cadEnhanceOverride = CadEnhanceOverride::Unset;
+    bool cadDetectDone = false;
+
+    bool CadEnhanceActive() const;
+    void RunCadDetection();
+    void ToggleCadEnhanceOverride();
 
     bool Load(const char* filePath, PasswordUI* pwdUI = nullptr);
     bool Load(IStream* stream, const char* nameHint, PasswordUI* pwdUI = nullptr);

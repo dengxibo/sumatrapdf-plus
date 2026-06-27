@@ -783,6 +783,7 @@ bool RenderCache::GetNextRequest(PageRenderRequest* req, int threadIdx) {
     ReportIf(requestCount > MAX_PAGE_REQUESTS);
     requestCount--;
     *req = requests[requestCount];
+    req->darkModeEpoch = darkModeEpoch;
     curReqs[threadIdx] = req;
     ReportIf(requestCount < 0);
     ReportIf(req->abort);
@@ -801,31 +802,16 @@ bool RenderCache::ClearCurrentRequest(int threadIdx) {
     return isQueueEmpty;
 }
 
-/* Wait until rendering of a page beloging to <dm> has finished. */
-/* TODO: this might take some time, would be good to show a dialog to let the
-   user know he has to wait until we finish */
+// Abort queued and in-flight renders for <dm>. Does not block the UI thread;
+// the render thread drops stale results when abort is set or darkModeEpoch changes.
 void RenderCache::CancelRendering(DisplayModel* dm) {
     ClearQueueForDisplayModel(dm);
 
-    for (;;) {
-        EnterCriticalSection(&requestAccess);
-        bool found = false;
-        for (int i = 0; i < nRenderThreads; i++) {
-            if (curReqs[i] && curReqs[i]->dm == dm) {
-                AbortCurrentRequest(i);
-                found = true;
-            }
+    ScopedCritSec scope(&requestAccess);
+    for (int i = 0; i < nRenderThreads; i++) {
+        if (curReqs[i] && curReqs[i]->dm == dm) {
+            AbortCurrentRequest(i);
         }
-        if (!found) {
-            // to be on the safe side
-            ClearQueueForDisplayModel(dm);
-            LeaveCriticalSection(&requestAccess);
-            return;
-        }
-        LeaveCriticalSection(&requestAccess);
-
-        /* TODO: busy loop is not good, but I don't have a better idea */
-        Sleep(50);
     }
 }
 
@@ -920,8 +906,7 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
         }
         auto timeStart = TimeGet();
         bmp = engine->RenderPage(args);
-        if (req.abort) {
-            // aborted - do nothing, discard result
+        if (req.abort || req.darkModeEpoch != cache->darkModeEpoch) {
             delete bmp;
             continue;
         }
@@ -935,6 +920,10 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
         req.errorCode = bmp ? 0 : 1;
 
         if (bmp) {
+            if (req.abort || req.darkModeEpoch != cache->darkModeEpoch) {
+                delete bmp;
+                continue;
+            }
             const DarkModeProfile* profile = args.darkProfile;
             bool legacyPost = false;
             if (engine->kind == kindEngineDjVu && ThemeUsesDarkChrome()) {
