@@ -13,7 +13,9 @@ LANGS = """
 af am ar az bg bn br bs by ca ca-xv cn co cy cz de dk el es et eu fa fi fo fr fy-nl ga gl he hi hr hu id it ja jv ka kr ku kw lt lv mk ml mm my ne nl nn no pa pl pt ro ru sat si sk sl sn sp-rs sq sr-rs sv ta th tl tr tw uk uz vn
 """.split()
 
-KEYS = ["Look Up", "Look Up Selection"]
+KEYS = ["Look Up", "Look Up &Selection"]
+# Legacy key removed when regenerating translations.
+KEYS_TO_REMOVE = ["Look Up Selection", *KEYS]
 
 # fmt: off
 LOOK_UP = {
@@ -36,7 +38,7 @@ LOOK_UP_SELECTION = {
     "af": "Soek seleksie op", "am": "የተመረጠውን ፍለጋ", "ar": "بحث عن التحديد", "az": "Seçilmiş axtar",
     "bg": "Търсене на избраното", "bn": "নির্বাচিত অংশ খুঁজুন", "br": "Consultar seleção",
     "bs": "Traži izbor", "by": "Пошук вылучанага", "ca": "Cerca la selecció", "ca-xv": "Cerca selecció",
-    "cn": "查词选中内容", "co": "Circà a selezzione", "cy": "Chwilio'r dewis", "cz": "Vyhledat výběr",
+    "cn": "查词选中内容(&S)", "co": "Circà a selezzione", "cy": "Chwilio'r dewis", "cz": "Vyhledat výběr",
     "de": "Auswahl nachschlagen", "dk": "Slå markering op", "el": "Αναζήτηση επιλογής",
     "es": "Buscar selección", "et": "Otsi valikut", "eu": "Bilatu hautapena", "fa": "جستجوی انتخاب",
     "fi": "Hae valinta", "fo": "Leita val", "fr": "Rechercher la sélection", "fy-nl": "Seleksje sykje",
@@ -50,7 +52,7 @@ LOOK_UP_SELECTION = {
     "ro": "Caută selecția", "ru": "Искать выделение", "sat": "ᱵᱟᱛᱟᱣ ᱥᱮᱸᱫᱽ", "si": "තේරීම සොයන්න",
     "sk": "Vyhľadať výber", "sl": "Išči izbor", "sn": "Tsvaga sarudzwa", "sp-rs": "Traži izbor",
     "sq": "Kërko përzgjedhjen", "sr-rs": "Тражи избор", "sv": "Slå upp markering", "ta": "தேர்வைத் தேடு",
-    "th": "ค้นหาที่เลือก", "tl": "Hanapin ang napili", "tr": "Seçimi ara", "tw": "查詞選取內容",
+    "th": "ค้นหาที่เลือก", "tl": "Hanapin ang napili", "tr": "Seçimi ara", "tw": "查詞選取內容(&S)",
     "uk": "Шукати виділене", "uz": "Tanlovni qidirish", "vn": "Tra nội dung đã chọn",
 }
 # fmt: on
@@ -68,7 +70,7 @@ def format_block(key: str, trans: dict[str, str]) -> str:
 
 def append_blocks(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
-    for key in KEYS:
+    for key in KEYS_TO_REMOVE:
         marker = f":{key}\n"
         if marker in text:
             start = text.index(marker)

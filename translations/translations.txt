@@ -28011,7 +28011,7 @@ tw:查詞
 uk:Шукати
 uz:Qidirish
 vn:Tra từ
-:Look Up Selection
+:Look Up &Selection
 af:Soek seleksie op
 am:የተመረጠውን ፍለጋ
 ar:بحث عن التحديد
@@ -28023,7 +28023,7 @@ bs:Traži izbor
 by:Пошук вылучанага
 ca:Cerca la selecció
 ca-xv:Cerca selecció
-cn:查词选中内容
+cn:查词选中内容(&S)
 co:Circà a selezzione
 cy:Chwilio'r dewis
 cz:Vyhledat výběr
@@ -28080,7 +28080,7 @@ ta:தேர்வைத் தேடு
 th:ค้นหาที่เลือก
 tl:Hanapin ang napili
 tr:Seçimi ara
-tw:查詞選取內容
+tw:查詞選取內容(&S)
 uk:Шукати виділене
 uz:Tanlovni qidirish
 vn:Tra nội dung đã chọn
