@@ -97,7 +97,7 @@ struct DocController {
     virtual int GetPageByLabel(const char* label) const { return atoi(label); }
 
     // grow layout state for reflowable docs still loading in the background
-    virtual void PreparePageNavigation(int pageNo) {}
+    virtual void PreparePageNavigation(__unused int pageNo) {}
 
     // common shortcuts
     virtual bool ValidPageNo(int pageNo) const { return 1 <= pageNo && pageNo <= PageCount(); }

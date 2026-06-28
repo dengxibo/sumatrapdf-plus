@@ -713,7 +713,7 @@ static bool IsValidCharRelX(const float* charRelX, int charRelXLen, size_t strLe
 static int WcharLenForDrawInstr(const DrawInstr& di) {
     WCHAR* buf = ToWStrTemp(di.str.s, di.str.len);
     int n = str::Leni(buf);
-    n -= str::RemoveCharsInPlace(buf, L"\xad");
+    n -= (int)str::RemoveCharsInPlace(buf, L"\xad");
     return n;
 }
 
