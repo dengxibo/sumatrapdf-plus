@@ -815,6 +815,37 @@ void RenderCache::CancelRendering(DisplayModel* dm) {
     }
 }
 
+void RenderCache::WaitForRenderingComplete(DisplayModel* dm) {
+    if (!dm) {
+        return;
+    }
+    CancelRendering(dm);
+
+    const DWORD timeoutMs = 10000;
+    DWORD start = GetTickCount();
+    for (;;) {
+        bool busy = false;
+        {
+            ScopedCritSec scope(&requestAccess);
+            for (int i = 0; i < nRenderThreads; i++) {
+                if (curReqs[i] && curReqs[i]->dm == dm) {
+                    busy = true;
+                    break;
+                }
+            }
+        }
+        if (!busy) {
+            return;
+        }
+        if (GetTickCount() - start > timeoutMs) {
+            logf("WaitForRenderingComplete: timed out for dm 0x%p\n", dm);
+            CancelRendering(dm);
+            return;
+        }
+        Sleep(1);
+    }
+}
+
 void RenderCache::ClearQueueForDisplayModel(DisplayModel* dm, int pageNo, TilePosition* tile) {
     ScopedCritSec scope(&requestAccess);
     int reqCount = requestCount;

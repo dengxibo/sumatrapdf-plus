@@ -135,6 +135,9 @@ struct RenderCache {
     void Render(DisplayModel* dm, int pageNo, int rotation, float zoom, RectF pageRect,
                 const Func1<PageRenderRequest*>& callback);
     void CancelRendering(DisplayModel* dm);
+    // Block until no render thread is actively rendering <dm>. Call after
+    // CancelRendering before destroying the DisplayModel or its engine.
+    void WaitForRenderingComplete(DisplayModel* dm);
     bool Exists(DisplayModel* dm, int pageNo, int rotation, float zoom = kInvalidZoom, TilePosition* tile = nullptr);
     void FreeForDisplayModel(DisplayModel* dm);
     void KeepForDisplayModel(DisplayModel* oldDm, DisplayModel* newDm);

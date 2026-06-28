@@ -1512,6 +1512,10 @@ void DisplayModel::SetViewPortSize(Size newViewPortSize) {
     }
 
     totalViewPortSize = newViewPortSize;
+    if (!IsValidZoom(zoomVirtual)) {
+        cb->UpdateScrollbars(canvasSize);
+        return;
+    }
     Relayout(zoomVirtual, rotation);
 
     if (isDocReady) {

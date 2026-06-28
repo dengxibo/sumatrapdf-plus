@@ -1074,6 +1074,7 @@ void ControllerCallbackHandler::RequestRendering(int pageNo) {
 
 void ControllerCallbackHandler::CleanUp(DisplayModel* dm) {
     gRenderCache->CancelRendering(dm);
+    gRenderCache->WaitForRenderingComplete(dm);
     gRenderCache->FreeForDisplayModel(dm);
 }
 
@@ -1666,7 +1667,6 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     } else {
         fs = nullptr;
     }
-    SafeDeleteDocController(win, prevCtrl);
 
     if (fs) {
         ReportIf(!win->IsDocLoaded());
@@ -1685,13 +1685,15 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         tab->tocState = *fs->tocState;
     }
 
-    // DisplayModel needs a valid zoom value before any relayout
-    // caused by showing/hiding UI elements happends
+    // Relayout before tearing down prevCtrl so WM_PAINT during document swap
+    // never calls SetViewPortSize with an invalid zoom.
     if (win->AsFixed()) {
         win->AsFixed()->Relayout(zoomVirtual, rotation);
     } else if (win && win->ctrl && win->IsDocLoaded()) {
         win->ctrl->SetZoomVirtual(zoomVirtual, nullptr);
     }
+
+    SafeDeleteDocController(win, prevCtrl);
 
 #if defined(ENABLE_REDRAW_ON_RELOAD)
     // TODO: why is this needed?
@@ -4119,6 +4121,9 @@ void CloseTab(WindowTab* tab, bool quitIfLast) {
     bool canClose = MaybeSaveAnnotations(tab);
     if (!canClose) {
         return;
+    }
+    if (DisplayModel* dm = tab->AsFixed()) {
+        dm->pauseRendering = true;
     }
     // MaybeSaveAnnotations() can show a dialog that pumps messages.
     // During message pumping, the window might be destroyed
