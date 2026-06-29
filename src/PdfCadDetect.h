@@ -8,6 +8,7 @@ enum class CadEnhanceReason {
     Pdfe,
     Metadata,
     Heuristic,
+    RasterImage,
     Manual,
 };
 
@@ -27,6 +28,10 @@ struct CadDetectResult {
     bool enable = false;
     CadEnhanceReason reason = CadEnhanceReason::None;
     int score = 0;
+    // True when pages are dominated by a single embedded image (screenshot CAD).
+    bool rasterDominant = false;
+    // True for WPS-style exports: dense hairline vector strokes, tiny text matrix.
+    bool hairlineVector = false;
 };
 
 struct fz_context;

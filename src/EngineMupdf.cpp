@@ -2590,6 +2590,11 @@ EngineBase* EngineMupdf::Clone() {
 
     clone->disableAntiAlias = disableAntiAlias;
     clone->cadEnhanceOverride = cadEnhanceOverride;
+    clone->cadDetectEnable = cadDetectEnable;
+    clone->cadDetectScore = cadDetectScore;
+    clone->cadRasterDominant = cadRasterDominant;
+    clone->cadHairlineVector = cadHairlineVector;
+    clone->cadDetectDone = cadDetectDone;
 
     if (!decryptionKey.s && pdfdoc && pdfdoc->crypt) {
         clone->decryptionKey = Str();
@@ -5212,6 +5217,10 @@ bool EngineMupdf::CadEnhanceActive() const {
     return CadEnhanceEnabledForEngine(detect, cadEnhanceOverride);
 }
 
+bool EngineMupdf::CadEnhanceUseHairlineBoost() const {
+    return cadHairlineVector;
+}
+
 void EngineMupdf::RunCadDetection() {
     if (!pdfdoc || cadDetectDone) {
         return;
@@ -5219,9 +5228,15 @@ void EngineMupdf::RunCadDetection() {
     CadDetectResult res = DetectCadPdf(Ctx(), pdfdoc);
     cadDetectEnable = res.enable;
     cadDetectScore = res.score;
+    cadRasterDominant = res.rasterDominant;
+    cadHairlineVector = res.hairlineVector;
     cadDetectDone = true;
     if (cadDetectEnable) {
-        logfa("CAD enhance detect: score=%d reason=%s\n", cadDetectScore, CadEnhanceReasonName(res.reason));
+        logfa("CAD enhance detect: score=%d reason=%s raster=%d hairline=%d\n", cadDetectScore,
+              CadEnhanceReasonName(res.reason), (int)cadRasterDominant, (int)cadHairlineVector);
+    } else if (cadDetectScore >= 30) {
+        logfa("CAD enhance not enabled: score=%d hairline=%d (auto threshold 60, or metadata+45)\n", cadDetectScore,
+              (int)cadHairlineVector);
     }
 }
 
@@ -5241,7 +5256,7 @@ void EngineMupdf::ToggleCadEnhanceOverride() {
 
 static fz_device* WrapViewRenderDevice(fz_context* ctx, EngineMupdf* engine, fz_device* baseDev,
                                        const DarkModeProfile* darkProfile, FzPageInfo* pageInfo,
-                                       fz_display_list* keptList, DarkModeReplayState* replayState) {
+                                       fz_display_list* keptList, DarkModeReplayState* replayState, float zoom) {
     fz_device* renderDev = baseDev;
     if (darkProfile && DarkModeProfileUsesObjectLevel(darkProfile) && engine->pdfdoc && keptList) {
         u32 optionsHash = darkProfile->hash;
@@ -5254,7 +5269,10 @@ static fz_device* WrapViewRenderDevice(fz_context* ctx, EngineMupdf* engine, fz_
         }
     }
     if (engine->CadEnhanceActive()) {
-        renderDev = PdfCadEnhanceWrapDevice(ctx, renderDev);
+        CadEnhanceRenderOpts opts{};
+        opts.zoom = zoom;
+        opts.hairlineVector = engine->CadEnhanceUseHairlineBoost();
+        renderDev = PdfCadEnhanceWrapDevice(ctx, renderDev, opts);
     }
     return renderDev;
 }
@@ -5289,7 +5307,7 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     auto zoom = args.zoom;
     auto rotation = args.rotation;
 
-    CadMinLineWidthScope cadMinLineWidth(ctx, zoom, CadEnhanceActive());
+    CadMinLineWidthScope cadMinLineWidth(ctx, zoom, CadEnhanceActive(), CadEnhanceUseHairlineBoost());
 
     // The "View" rendering (no Print, no hideAnnotations) is what
     // fz_new_display_list_from_page produces; safe to cache and re-run lock-free.
@@ -5346,9 +5364,13 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
             }
             fz_device* baseDev = fz_new_draw_device(ctx, ctm, pix);
             DarkModeReplayState replayState{};
-            dev = WrapViewRenderDevice(ctx, this, baseDev, darkProfile, pageInfo, keptList, &replayState);
+            dev = WrapViewRenderDevice(ctx, this, baseDev, darkProfile, pageInfo, keptList, &replayState, zoom);
             fz_run_display_list(ctx, keptList, dev, fz_identity, pRect, fzcookie);
             fz_close_device(ctx, dev);
+            if (CadEnhanceActive() && cadRasterDominant && pix &&
+                !(darkProfile && DarkModeProfileUsesObjectLevel(darkProfile))) {
+                PdfCadEnhancePixmap(ctx, pix, zoom, true);
+            }
             bitmap = NewRenderedFzPixmap(ctx, pix);
         }
         fz_always(ctx) {
@@ -5395,8 +5417,11 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
             } else {
                 pdf_run_page_with_usage(ctx, pdfpage, dev, fz_identity, usage, fzcookie);
             }
-            bitmap = NewRenderedFzPixmap(ctx, pix);
             fz_close_device(ctx, dev);
+            if (CadEnhanceActive() && cadRasterDominant && pix) {
+                PdfCadEnhancePixmap(ctx, pix, zoom, true);
+            }
+            bitmap = NewRenderedFzPixmap(ctx, pix);
         }
         fz_always(ctx) {
             if (dev) {
@@ -5417,6 +5442,9 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
             fz_run_page_contents(ctx, page, dev, fz_identity, NULL);
             fz_close_device(ctx, dev);
             fz_drop_device(ctx, dev);
+            if (CadEnhanceActive() && cadRasterDominant && pix) {
+                PdfCadEnhancePixmap(ctx, pix, zoom, true);
+            }
             bitmap = NewRenderedFzPixmap(ctx, pix);
         }
         fz_always(ctx) {

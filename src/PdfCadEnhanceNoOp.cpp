@@ -35,15 +35,25 @@ CadDetectResult DetectCadPdf(fz_context* ctx, pdf_document* doc) {
     return CadDetectResult{};
 }
 
-fz_device* PdfCadEnhanceWrapDevice(fz_context* ctx, fz_device* inner) {
+fz_device* PdfCadEnhanceWrapDevice(fz_context* ctx, fz_device* inner, const CadEnhanceRenderOpts& opts) {
     (void)ctx;
+    (void)inner;
+    (void)opts;
     return inner;
 }
 
-CadMinLineWidthScope::CadMinLineWidthScope(fz_context* ctx, float zoom, bool active) {
+CadMinLineWidthScope::CadMinLineWidthScope(fz_context* ctx, float zoom, bool active, bool hairlineDoc) {
     (void)ctx;
     (void)zoom;
     (void)active;
+    (void)hairlineDoc;
 }
 
 CadMinLineWidthScope::~CadMinLineWidthScope() {}
+
+void PdfCadEnhancePixmap(fz_context* ctx, fz_pixmap* pix, float zoom, bool rasterDominant) {
+    (void)ctx;
+    (void)pix;
+    (void)zoom;
+    (void)rasterDominant;
+}

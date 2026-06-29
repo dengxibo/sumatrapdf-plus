@@ -32,6 +32,8 @@ const char* CadEnhanceReasonName(CadEnhanceReason reason) {
             return "metadata";
         case CadEnhanceReason::Heuristic:
             return "heuristic";
+        case CadEnhanceReason::RasterImage:
+            return "raster-image";
         case CadEnhanceReason::Manual:
             return "manual";
         default:
@@ -81,6 +83,7 @@ static const char* kMetadataStrong[] = {
 
 static const char* kMetadataWeak[] = {
     "cad", "dwg", "plot", "engineering", "layout", "draft", "mechanical", "architect",
+    "screenshot", "screen capture", "snipaste", "截图", "wps",
 };
 
 static const char* kMetadataBlacklist[] = {
@@ -392,7 +395,8 @@ static void AnalyzePage(fz_context* ctx, pdf_document* doc, int pageNo, cad_anal
     }
 }
 
-static int ScoreHeuristic(fz_context* ctx, pdf_document* doc, int pageCount, float maxPageSide) {
+static int ScoreHeuristic(fz_context* ctx, pdf_document* doc, int pageCount, float maxPageSide,
+                          bool* rasterDominantOut, bool* hairlineVectorOut) {
     cad_analysis_device stats{};
     stats.pageArea = maxPageSide * maxPageSide;
     int pages = pageCount > 2 ? 2 : pageCount;
@@ -438,7 +442,26 @@ static int ScoreHeuristic(fz_context* ctx, pdf_document* doc, int pageCount, flo
     if (stats.textOps > 500 && strokeFillRatio < 0.5f) {
         score -= 30;
     }
-    if (stats.maxImageCoverage > 0.5f) {
+
+    // Hairline vector exports (e.g. WPS "print to PDF" from a CAD screenshot):
+    // dense 0.05pt strokes, almost no embedded bitmap.
+    bool hairlineCad =
+        stats.maxImageCoverage < 0.05f && stats.strokes >= 40 && thinRatio > 0.25f && strokeFillRatio > 0.55f;
+    if (hairlineCad) {
+        score += 35;
+        if (hairlineVectorOut) {
+            *hairlineVectorOut = true;
+        }
+    }
+
+    // Screenshot / raster CAD: one large image per page, almost no vector content.
+    bool rasterCad = stats.maxImageCoverage >= 0.80f && stats.strokes + stats.fills < 50 && stats.textOps < 200;
+    if (rasterCad) {
+        score += 55;
+        if (rasterDominantOut) {
+            *rasterDominantOut = true;
+        }
+    } else if (stats.maxImageCoverage > 0.5f) {
         score -= 40;
     }
 
@@ -496,8 +519,22 @@ CadDetectResult DetectCadPdf(fz_context* ctx, pdf_document* doc) {
         }
     }
 
-    int heuristicScore = ScoreHeuristic(ctx, doc, pageCount, maxPageSide);
+    bool rasterDominant = false;
+    bool hairlineVector = false;
+    int heuristicScore = ScoreHeuristic(ctx, doc, pageCount, maxPageSide, &rasterDominant, &hairlineVector);
     res.score = heuristicScore + metadataScore;
+    res.rasterDominant = rasterDominant;
+    res.hairlineVector = hairlineVector;
+    if (rasterDominant && res.score >= 45) {
+        res.enable = true;
+        res.reason = CadEnhanceReason::RasterImage;
+        return res;
+    }
+    if (hairlineVector && res.score >= 45) {
+        res.enable = true;
+        res.reason = CadEnhanceReason::Heuristic;
+        return res;
+    }
     if (strongMetadata == false && metadataScore > 0 && res.score >= 45) {
         res.enable = true;
         res.reason = CadEnhanceReason::Heuristic;

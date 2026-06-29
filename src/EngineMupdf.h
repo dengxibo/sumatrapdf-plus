@@ -173,10 +173,13 @@ class EngineMupdf : public EngineBase {
     // CAD/engineering drawing display (PdfCadDetect).
     bool cadDetectEnable = false;
     int cadDetectScore = 0;
+    bool cadRasterDominant = false;
+    bool cadHairlineVector = false;
     CadEnhanceOverride cadEnhanceOverride = CadEnhanceOverride::Unset;
     bool cadDetectDone = false;
 
     bool CadEnhanceActive() const;
+    bool CadEnhanceUseHairlineBoost() const;
     void RunCadDetection();
     void ToggleCadEnhanceOverride();
 

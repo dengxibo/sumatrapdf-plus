@@ -12,6 +12,7 @@ extern "C" {
 typedef struct {
     fz_device super;
     fz_device* inner;
+    CadEnhanceRenderOpts opts;
 } pdf_cad_enhance_device;
 
 static bool CadIsNeutralGray(float r, float g, float b, float* outLum) {
@@ -30,6 +31,24 @@ static bool CadIsNeutralGray(float r, float g, float b, float* outLum) {
 
 static float CadMatrixExpansion(fz_matrix ctm) {
     return sqrtf(ctm.a * ctm.a + ctm.b * ctm.b);
+}
+
+// WPS and similar tools export CAD labels with a tiny text matrix (~0.05).
+static fz_matrix CadEmboldenTinyTextMatrix(fz_matrix ctm, bool hairlineDoc) {
+    float expansion = CadMatrixExpansion(ctm);
+    if (!hairlineDoc || expansion >= 0.22f) {
+        return ctm;
+    }
+    float boost;
+    if (expansion <= 0.08f) {
+        boost = 1.55f;
+    } else {
+        boost = 1.f + (0.22f - expansion) * 2.5f;
+        if (boost > 1.55f) {
+            boost = 1.55f;
+        }
+    }
+    return fz_concat(ctm, fz_scale(boost, boost));
 }
 
 // Stronger when zoomed out (small CTM expansion), none when zoomed in.
@@ -127,6 +146,7 @@ static void cad_fill_text(fz_context* ctx, fz_device* dev, const fz_text* text, 
     pdf_cad_enhance_device* d = (pdf_cad_enhance_device*)dev;
     float mapped[FZ_MAX_COLORS] = {};
     CadMapColor(ctx, colorspace, color, color_params, ctm, mapped);
+    ctm = CadEmboldenTinyTextMatrix(ctm, d->opts.hairlineVector);
     fz_fill_text(ctx, d->inner, text, ctm, fz_device_rgb(ctx), mapped, alpha, color_params);
 }
 
@@ -136,6 +156,7 @@ static void cad_stroke_text(fz_context* ctx, fz_device* dev, const fz_text* text
     pdf_cad_enhance_device* d = (pdf_cad_enhance_device*)dev;
     float mapped[FZ_MAX_COLORS] = {};
     CadMapColor(ctx, colorspace, color, color_params, ctm, mapped);
+    ctm = CadEmboldenTinyTextMatrix(ctm, d->opts.hairlineVector);
     fz_stroke_text(ctx, d->inner, text, stroke, ctm, fz_device_rgb(ctx), mapped, alpha, color_params);
 }
 
@@ -277,9 +298,10 @@ static void cad_ignore_text(fz_context* ctx, fz_device* dev, const fz_text* text
     fz_ignore_text(ctx, d->inner, text, ctm);
 }
 
-fz_device* PdfCadEnhanceWrapDevice(fz_context* ctx, fz_device* inner) {
+fz_device* PdfCadEnhanceWrapDevice(fz_context* ctx, fz_device* inner, const CadEnhanceRenderOpts& opts) {
     pdf_cad_enhance_device* d = fz_new_derived_device(ctx, pdf_cad_enhance_device);
     d->inner = inner;
+    d->opts = opts;
 
     d->super.close_device = cad_forward_close;
     d->super.drop_device = cad_forward_drop;
@@ -315,30 +337,93 @@ fz_device* PdfCadEnhanceWrapDevice(fz_context* ctx, fz_device* inner) {
     return &d->super;
 }
 
-static float CadMinLineWidthForZoom(float zoom) {
+static unsigned char CadClampByte(float v) {
+    if (v <= 0.f) {
+        return 0;
+    }
+    if (v >= 255.f) {
+        return 255;
+    }
+    return (unsigned char)(v + 0.5f);
+}
+
+void PdfCadEnhancePixmap(fz_context* ctx, fz_pixmap* pix, float zoom, bool rasterDominant) {
+    (void)ctx;
+    if (!pix || pix->n < 3 || !rasterDominant) {
+        return;
+    }
+
+    float expansion = zoom > 0.01f ? 1.f / zoom : 1.f;
+    float blend = CadEnhanceBlendForExpansion(expansion);
+    if (rasterDominant) {
+        if (blend < 0.55f) {
+            blend = 0.55f;
+        }
+    }
+
+    unsigned char* s = pix->samples;
+    int n = pix->n;
+    int n1 = pix->n - pix->alpha;
+    for (int y = 0; y < pix->h; y++) {
+        for (int x = 0; x < pix->w; x++) {
+            float fr = s[0] / 255.f;
+            float fg = s[1] / 255.f;
+            float fb = s[2] / 255.f;
+            if (fr > 0.96f && fg > 0.96f && fb > 0.96f) {
+                s += n;
+                continue;
+            }
+
+            float outR, outG, outB;
+            CadAcrobatGrayRgb(fr, fg, fb, &outR, &outG, &outB);
+            CadBlendRgb(fr, fg, fb, outR, outG, outB, blend, &outR, &outG, &outB);
+
+            float lum = 0.2126f * outR + 0.7152f * outG + 0.0722f * outB;
+            float maxC = outR > outG ? (outR > outB ? outR : outB) : (outG > outB ? outG : outB);
+            float minC = outR < outG ? (outR < outB ? outR : outB) : (outG < outB ? outG : outB);
+            if (lum > 0.40f && lum < 0.90f && maxC - minC < 0.15f) {
+                float factor = 1.f - 0.28f * blend * (lum - 0.40f) / 0.50f;
+                outR *= factor;
+                outG *= factor;
+                outB *= factor;
+            }
+
+            for (int k = 0; k < n1; k++) {
+                float c = k == 0 ? outR : (k == 1 ? outG : outB);
+                s[k] = CadClampByte(c * 255.f);
+            }
+            s += n;
+        }
+        s += pix->stride - pix->w * n;
+    }
+}
+
+static float CadMinLineWidthForZoom(float zoom, bool hairlineDoc) {
     float z = zoom;
     if (z < 0.20f) {
         z = 0.20f;
     }
-    // Inverse to zoom: stronger hairline floor when zoomed out, relaxed when zoomed in.
-    float minLw = 0.11f + 0.30f / z;
-    if (minLw > 0.54f) {
-        minLw = 0.54f;
+    // Device pixels. Hairline CAD needs a modest floor; avoid double-boosting with stroke rewrites.
+    float minLw = hairlineDoc ? (0.50f + 0.55f / z) : (0.14f + 0.38f / z);
+    float maxLw = hairlineDoc ? 1.25f : 0.62f;
+    float minFloor = hairlineDoc ? 0.50f : 0.14f;
+    if (minLw > maxLw) {
+        minLw = maxLw;
     }
-    if (minLw < 0.12f) {
-        minLw = 0.12f;
+    if (minLw < minFloor) {
+        minLw = minFloor;
     }
     return minLw;
 }
 
-CadMinLineWidthScope::CadMinLineWidthScope(fz_context* ctxIn, float zoom, bool activeIn) {
+CadMinLineWidthScope::CadMinLineWidthScope(fz_context* ctxIn, float zoom, bool activeIn, bool hairlineDoc) {
     if (!activeIn) {
         return;
     }
     ctx = ctxIn;
     active = true;
     saved = fz_graphics_min_line_width(ctx);
-    fz_set_graphics_min_line_width(ctx, CadMinLineWidthForZoom(zoom));
+    fz_set_graphics_min_line_width(ctx, CadMinLineWidthForZoom(zoom, hairlineDoc));
 }
 
 CadMinLineWidthScope::~CadMinLineWidthScope() {
