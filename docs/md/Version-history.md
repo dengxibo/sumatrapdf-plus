@@ -70,6 +70,9 @@ Available in [pre-release](https://www.sumatrapdfreader.org/prerelease) builds.
 - support encrypted .cbz, .cbr files
 - you can drag&drop images from PDF documents to other applications (web apps, image editors, file explorer etc.)
 - pen/stylus input now works for text selection on Windows tablets
+- add **Read Aloud (TTS)** with word-by-word highlight synced to speech; start from top of page, cursor, or selection; pause, continue, and stop from toolbar and **Read Aloud (TTS)** menu. **Configure natural voices via [NaturalVoiceSAPIAdapter](Read-Aloud-TTS.md#voice-setup)** — default Windows SAPI voices sound robotic without it
+- add `CmdReadAloud`, `CmdPauseReadAloud`, `CmdContinueReadAloud`, `CmdStopReadAloud`, `CmdReadAloudFromTopPage`, and `CmdReadAloudSelection` commands; voice picker under **Read Aloud (TTS) → Voice**; advanced setting `ReadAloudVoiceId`
+- add **Read Aloud (TTS) → Speed** submenu with preset speaking rates (0.5×, 0.75×, 1.0×, 1.25×, 1.5×, 2.0×); advanced setting `ReadAloudSpeakingRate`
 - fix Edit Annotations window not restoring to the correct monitor in multi-monitor setups
 - use `GetFileAttributesEx` instead of opening files for change detection on network drives, avoiding Windows Defender re-scans
 - fix toolbar page number misalignment when `PrinterAccess` is revoked in `sumatrapdfrestrict.ini`

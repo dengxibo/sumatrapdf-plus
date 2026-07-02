@@ -28,6 +28,8 @@
 
 [Editing annotations](Editing-annotations.md)
 
+[Read Aloud (TTS)](Read-Aloud-TTS.md)
+
 [LaTeX integration](LaTeX-integration.md)
 
 [DDE Commands](DDE-Commands.md)

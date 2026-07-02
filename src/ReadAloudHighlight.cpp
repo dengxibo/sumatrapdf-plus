@@ -328,6 +328,9 @@ static bool ReadAloudCollectDocumentRaw(Vec<ReadAloudRawByte>& raw, EngineBase* 
         } else {
             ReadAloudAppendPageUtf8(raw, engine, page);
         }
+        // Keep SAPI/WinRT event queues drained while extracting many pages so that
+        // a mid-read restart can purge and start speaking again without hanging.
+        TtsProcessEvents();
     }
     return raw.size() > 0;
 }
@@ -539,7 +542,7 @@ static bool ReadAloudGetGlyphAtCursor(DisplayModel* dm, Point screenPt, int* pag
     }
 
     PointF pt = dm->CvtFromScreen(screenPt, pageNo);
-    dm->textSelection->StartAt(pageNo, pt.x, pt.y);
+    int glyph = dm->textSelection->GlyphIndexAt(pageNo, pt.x, pt.y);
 
     int textLen = 0;
     Rect* coords = nullptr;
@@ -550,7 +553,6 @@ static bool ReadAloudGetGlyphAtCursor(DisplayModel* dm, Point screenPt, int* pag
 
     // Same adjustment as TextSelection::IsOverGlyph: FindClosestGlyph can return
     // the index after the glyph under the cursor when clicking its right half.
-    int glyph = dm->textSelection->startGlyph;
     Point pti = ToPoint(pt);
     if (glyph == textLen || (glyph >= 0 && glyph < textLen && !coords[glyph].Contains(pti))) {
         glyph--;
@@ -979,13 +981,21 @@ static bool ReadAloudIsWordRectFullyVisibleInViewport(MainWindow* win, const Rec
     return true;
 }
 
+static bool ReadAloudSourceTabIsCurrentTab(MainWindow* win) {
+    if (!win) {
+        return false;
+    }
+    WindowTab* tab = GetReadAloudSourceTab();
+    return tab && tab->win == win && win->CurrentTab() == tab;
+}
+
 void ReadAloudOnUserViewChanged(MainWindow* win) {
     if (!win || win->readAloudScrollFromCode || !TtsIsSpeaking()) {
         return;
     }
 
     WindowTab* tab = GetReadAloudSourceTab();
-    if (!tab || tab->win != win || !tab->readAloudAutoScroll) {
+    if (!tab || tab->win != win || win->CurrentTab() != tab || !tab->readAloudAutoScroll) {
         return;
     }
 
@@ -1002,7 +1012,7 @@ void ReadAloudUpdateAutoScroll(MainWindow* win) {
     }
 
     WindowTab* tab = GetReadAloudSourceTab();
-    if (!tab || tab->win != win || !tab->readAloudAutoScroll) {
+    if (!tab || tab->win != win || win->CurrentTab() != tab || !tab->readAloudAutoScroll) {
         return;
     }
 
@@ -1062,7 +1072,7 @@ void PaintReadAloudHighlight(MainWindow* win, HDC hdc) {
     }
 
     WindowTab* tab = GetReadAloudSourceTab();
-    if (!tab || tab->win != win) {
+    if (!ReadAloudSourceTabIsCurrentTab(win)) {
         ReadAloudPaintLogOnce(1, "ReadAloud: PaintHighlight: no matching source tab");
         return;
     }

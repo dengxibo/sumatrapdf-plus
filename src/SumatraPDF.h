@@ -145,8 +145,10 @@ constexpr UINT CmdTtsMenuReadSelection = 0x7202;
 constexpr UINT CmdTtsMenuPauseReading = 0x7203;
 constexpr UINT CmdTtsMenuReadFromCursor = 0x7204;
 constexpr UINT CmdTtsMenuStopReading = 0x7205;
+constexpr UINT CmdTtsSpeedFirst = 0x7300;
+constexpr UINT CmdTtsSpeedLast = 0x7305;
 
-void RebuildReadAloudMenu(MainWindow* win, HMENU menu, bool includeCursorItem = false, bool canReadFromCursor = false);
+void RebuildReadAloudMenu(MainWindow* win, HMENU menu, bool useContextMenuCursorPoint = false);
 bool HandleReadAloudMenuCommand(MainWindow* win, int cmdId);
 void SetReadAloudAppSubmenu(HMENU menu);
 bool IsReadAloudAppSubmenu(HMENU menu);

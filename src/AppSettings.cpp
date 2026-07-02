@@ -64,6 +64,19 @@ static bool ApplyReadAloudVoiceFromSettings() {
     return false;
 }
 
+static void ApplyReadAloudSpeakingRateFromSettings() {
+    if (!gGlobalPrefs) {
+        return;
+    }
+
+    float rate = gGlobalPrefs->readAloudSpeakingRate;
+    if (rate <= 0) {
+        rate = 1.0f;
+        gGlobalPrefs->readAloudSpeakingRate = rate;
+    }
+    TtsSetSpeakingRate(rate);
+}
+
 // SumatraPDF.cpp
 extern void RememberDefaultWindowPosition(MainWindow* win);
 
@@ -329,6 +342,7 @@ bool LoadSettings() {
     }
 
     bool readAloudVoiceCleared = ApplyReadAloudVoiceFromSettings();
+    ApplyReadAloudSpeakingRateFromSettings();
 
     if (!file::Exists(settingsPath)) {
         SaveSettings();

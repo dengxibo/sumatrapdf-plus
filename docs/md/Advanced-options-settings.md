@@ -504,6 +504,10 @@ TabGroups [
 ; voice id or SAPI token id) (introduced in version 3.7)
 ReadAloudVoiceId =
 
+; speaking rate multiplier for Read Aloud text-to-speech; 1.0 is normal speed
+; (introduced in version 3.7)
+ReadAloudSpeakingRate = 1
+
 ; a whitespace separated list of passwords to try when opening a password
 ; protected document (passwords containing spaces must be quoted) (introduced in
 ; version 2.4)

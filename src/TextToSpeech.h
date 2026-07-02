@@ -30,3 +30,6 @@ void TtsFreeVoices(Vec<TtsVoiceInfo>& voices);
 
 bool TtsSetVoiceById(const char* voiceId);
 const char* TtsGetVoiceId();
+
+bool TtsSetSpeakingRate(float rate);
+float TtsGetSpeakingRate();

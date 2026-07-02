@@ -288,6 +288,14 @@ struct MainWindow {
     int contextMenuHighlightPageNo = 0;
     Point contextMenuPt{};
     bool contextMenuPtValid = false;
+    // last canvas position where the mouse was over document text (for read-aloud menu)
+    Point readAloudLastTextPt{};
+    bool readAloudLastTextPtValid = false;
+    // last left-click on document text (preferred start for menubar/toolbar read-aloud)
+    Point readAloudLastClickTextPt{};
+    bool readAloudLastClickTextPtValid = false;
+    // true when the read-aloud menu was opened from the document context menu
+    bool readAloudMenuFromContext = false;
     HBRUSH brControlBgColor = nullptr;
 
     DocControllerCallback* cbHandler = nullptr;

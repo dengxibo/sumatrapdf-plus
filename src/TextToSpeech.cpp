@@ -49,6 +49,7 @@ static bool gTtsChunkFinished = false;
 static WCHAR* gTtsSpokenText = nullptr;
 
 static char* gTtsVoiceId = nullptr;
+static float gTtsSpeakingRate = 1.0f;
 
 static HWND gTtsNotifyHwnd = nullptr;
 static UINT gTtsNotifyMsg = 0;
@@ -202,6 +203,26 @@ static void SapiSetNotify() {
     eventSource->Release();
 }
 
+static void SapiApplySpeakingRate() {
+    if (!gSapiVoice) {
+        return;
+    }
+
+    float rate = gTtsSpeakingRate;
+    if (rate <= 0) {
+        rate = 1.0f;
+    }
+
+    long sapiRate = (long)((rate - 1.0f) * 10.0f + (rate >= 1.0f ? 0.5f : -0.5f));
+    if (sapiRate < -10) {
+        sapiRate = -10;
+    }
+    if (sapiRate > 10) {
+        sapiRate = 10;
+    }
+    gSapiVoice->SetRate(sapiRate);
+}
+
 static bool SapiInit() {
     if (gSapiVoice) {
         return true;
@@ -235,6 +256,7 @@ static bool SapiInit() {
     }
 
     SapiSetNotify();
+    SapiApplySpeakingRate();
     return true;
 }
 
@@ -384,7 +406,8 @@ static void SapiProcessEvents() {
     ULONG fetched = 0;
 
     while (eventSource->GetEvents(1, &eventItem, &fetched) == S_OK && fetched > 0) {
-        if (eventItem.eEventId == SPEI_END_INPUT_STREAM && eventItem.ulStreamNum == gSapiStreamNum) {
+        if (eventItem.eEventId == SPEI_END_INPUT_STREAM && gSapiStreamNum != 0 &&
+            eventItem.ulStreamNum == gSapiStreamNum) {
             gTtsActive = false;
             gSapiStreamNum = 0;
             gTtsChunkFinished = true;
@@ -560,6 +583,8 @@ static void WinTtsStopPlayback() {
     InterlockedExchange(&gWinWaveDone, 0);
 }
 
+static void WinTtsApplySpeakingRate();
+
 static bool WinTtsInit() {
     if (gWinSynth) {
         return true;
@@ -666,8 +691,34 @@ static bool WinTtsInit() {
         synth2->Release();
     }
 
+    WinTtsApplySpeakingRate();
     gWinInitFailed = false;
     return true;
+}
+
+static void WinTtsApplySpeakingRate() {
+    if (!gWinSynth) {
+        return;
+    }
+
+    float rate = gTtsSpeakingRate;
+    if (rate <= 0) {
+        rate = 1.0f;
+    }
+
+    WMSS::ISpeechSynthesizer2* synth2 = nullptr;
+    if (SUCCEEDED(gWinSynth->QueryInterface(IID_PPV_ARGS(&synth2))) && synth2) {
+        WMSS::ISpeechSynthesizerOptions* options = nullptr;
+        if (SUCCEEDED(synth2->get_Options(&options)) && options) {
+            WMSS::ISpeechSynthesizerOptions2* options2 = nullptr;
+            if (SUCCEEDED(options->QueryInterface(IID_PPV_ARGS(&options2))) && options2) {
+                options2->put_SpeakingRate(rate);
+                options2->Release();
+            }
+            options->Release();
+        }
+        synth2->Release();
+    }
 }
 
 static void WinTtsRelease() {
@@ -1328,6 +1379,24 @@ bool TtsSetVoiceById(const char* voiceId) {
 
 const char* TtsGetVoiceId() {
     return gTtsVoiceId ? gTtsVoiceId : "";
+}
+
+bool TtsSetSpeakingRate(float rate) {
+    if (rate <= 0) {
+        rate = 1.0f;
+    }
+    gTtsSpeakingRate = rate;
+
+    if (gTtsBackend == TtsBackend::WinRt) {
+        WinTtsApplySpeakingRate();
+    } else if (gTtsBackend == TtsBackend::Sapi) {
+        SapiApplySpeakingRate();
+    }
+    return true;
+}
+
+float TtsGetSpeakingRate() {
+    return gTtsSpeakingRate > 0 ? gTtsSpeakingRate : 1.0f;
 }
 
 void TtsFreeVoices(Vec<TtsVoiceInfo>& voices) {

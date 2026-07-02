@@ -24,6 +24,7 @@
 #include "Theme.h"
 #include "FloatingPopupStyle.h"
 #include "WordLookup.h"
+#include "SumatraPDF.h"
 #include "SelectionToolbar.h"
 
 #define kSelectionToolbarClassName L"SumatraSelectionToolbar"
@@ -46,7 +47,7 @@ struct SelectionToolbar {
     bool trackingMouse = false;
     Size size;
     Rect lastPlaced; // last screen rect we moved the window to (avoids redundant SetWindowPos)
-    SelectionToolbarButton buttons[7];
+    SelectionToolbarButton buttons[8];
     int nButtons = 0;
 };
 
@@ -57,6 +58,7 @@ static void InitButtons(SelectionToolbar* tb, MainWindow* win) {
     }
     bool lookupEnabled = CanLookupSelectionInTab(win->CurrentTab());
     tb->buttons[i++] = {CmdLookupSelection, "Look Up", lookupEnabled, {}};
+    tb->buttons[i++] = {CmdReadAloudSelection, "Read Aloud", HasPermission(Perm::CopySelection), {}};
     tb->buttons[i++] = {CmdCopySelection, "Copy", true, {}};
 
     DisplayModel* dm = win->AsFixed();

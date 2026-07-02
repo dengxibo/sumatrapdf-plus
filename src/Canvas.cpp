@@ -958,6 +958,11 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
     }
     win->dragPrevPos = pos;
 
+    if (ReadAloudCanReadFromCursor(dm, pos)) {
+        win->readAloudLastTextPt = pos;
+        win->readAloudLastTextPtValid = true;
+    }
+
     if (cursorPosNotif) {
         UpdateCursorPositionHelper(win, pos, cursorPosNotif);
     }
@@ -1100,6 +1105,13 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     DisplayModel* dm = win->AsFixed();
     ReportIf(!dm);
     Point pt{x, y};
+
+    if (ReadAloudCanReadFromCursor(dm, pt)) {
+        win->readAloudLastClickTextPt = pt;
+        win->readAloudLastClickTextPtValid = true;
+        win->readAloudLastTextPt = pt;
+        win->readAloudLastTextPtValid = true;
+    }
 
     WindowTab* tab = win->CurrentTab();
     Annotation* annot = dm->GetAnnotationAtPos(pt, tab->selectedAnnotation);
@@ -2924,8 +2936,9 @@ static void OnTimer(MainWindow* win, HWND hwnd, WPARAM timerId) {
             break;
         }
 
-        case READ_ALOUD_HIGHLIGHT_TIMER_ID:
-            if (GetReadAloudSourceTab()) {
+        case READ_ALOUD_HIGHLIGHT_TIMER_ID: {
+            WindowTab* raTab = GetReadAloudSourceTab();
+            if (raTab && raTab->win == win && win->CurrentTab() == raTab) {
                 TtsProcessEvents();
                 ReadAloudUpdateAutoScroll(win);
                 InvalidateRect(hwnd, nullptr, FALSE);
@@ -2933,6 +2946,7 @@ static void OnTimer(MainWindow* win, HWND hwnd, WPARAM timerId) {
                 ReadAloudHighlightTimerStop(win);
             }
             break;
+        }
 
         case kSmoothScrollTimerID:
             DisplayModel* dm = win->AsFixed();

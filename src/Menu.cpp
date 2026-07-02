@@ -1919,9 +1919,14 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
 
     win->contextMenuPt = cursorPos;
     win->contextMenuPtValid = ReadAloudCanReadFromCursor(dm, cursorPos);
+    win->readAloudMenuFromContext = true;
+    if (win->contextMenuPtValid) {
+        win->readAloudLastTextPt = cursorPos;
+        win->readAloudLastTextPtValid = true;
+    }
     HMENU readAloudCtxMenu = GetReadAloudContextSubmenu();
     if (readAloudCtxMenu) {
-        RebuildReadAloudMenu(win, readAloudCtxMenu, true, win->contextMenuPtValid);
+        RebuildReadAloudMenu(win, readAloudCtxMenu, true);
     }
 
     HMENU popup = BuildMenuFromDef(menuDefContext, CreatePopupMenu(), ctx);
@@ -2543,9 +2548,9 @@ void UpdateAppMenu(MainWindow* win, HMENU m) {
     } else if (id == menuDefZoom[0].idOrSubmenu) {
         BuildMenuZoom(m);
     } else if (IsReadAloudAppSubmenu(m)) {
-        RebuildReadAloudMenu(win, m, false, false);
+        RebuildReadAloudMenu(win, m, false);
     } else if (IsReadAloudContextSubmenu(m)) {
-        RebuildReadAloudMenu(win, m, true, win->contextMenuPtValid);
+        RebuildReadAloudMenu(win, m, true);
     }
     MenuUpdateStateForWindow(win);
     MarkMenuOwnerDraw(win->menu, true);
