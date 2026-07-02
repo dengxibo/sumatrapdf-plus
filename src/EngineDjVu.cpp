@@ -844,6 +844,23 @@ bool EngineDjVu::SaveFileAs(const char* dstPath) {
     return file::Copy(dstPath, srcPath, false);
 }
 
+static Rect DjVuSelectionCharRect(int x, int w, const Rect& wordRect) {
+    int fs = w;
+    if (fs < 1) {
+        fs = 1;
+    }
+    int estFs = wordRect.dy * 2 / 3;
+    if (estFs > fs) {
+        fs = estFs;
+    }
+    int bandH = (int)(fs * 1.0f + 0.5f);
+    if (bandH < 1) {
+        bandH = 1;
+    }
+    int y = wordRect.y + (wordRect.dy - bandH) / 2;
+    return Rect(x, y, w, bandH);
+}
+
 static void AppendNewline(WStrBuilder& extracted, Vec<Rect>& coords, const WCHAR* lineSep) {
     if (extracted.size() > 0 && ' ' == extracted.Last()) {
         extracted.RemoveLast();
@@ -894,8 +911,13 @@ bool EngineDjVu::ExtractPageText(miniexp_t item, WStrBuilder& extracted, Vec<Rec
         if (value) {
             size_t len = str::Len(value);
             // TODO: split the rectangle into individual parts per glyph
+            int charW = len > 0 ? rect.dx / (int)len : rect.dx;
+            if (charW < 1) {
+                charW = 1;
+            }
             for (size_t i = 0; i < len; i++) {
-                coords.Append(Rect(rect.x, rect.y, rect.dx, rect.dy));
+                int cx = rect.x + (int)(i * charW);
+                coords.Append(DjVuSelectionCharRect(cx, charW, rect));
             }
             extracted.Append(value);
         }
@@ -1021,8 +1043,13 @@ bool EngineDjVu::ExtractPageTextUtf8(miniexp_t item, StrBuilder& extracted, Vec<
         if (content) {
             size_t len = str::Len(content);
             // TODO: split the rectangle into individual parts per glyph
+            int charW = len > 0 ? rect.dx / (int)len : rect.dx;
+            if (charW < 1) {
+                charW = 1;
+            }
             for (size_t i = 0; i < len; i++) {
-                coords.Append(Rect(rect.x, rect.y, rect.dx, rect.dy));
+                int cx = rect.x + (int)(i * charW);
+                coords.Append(DjVuSelectionCharRect(cx, charW, rect));
             }
             extracted.Append(content);
         }

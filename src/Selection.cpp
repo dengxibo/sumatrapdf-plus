@@ -32,6 +32,146 @@
 #include "Translations.h"
 #include "uia/Provider.h"
 
+static bool HighlightSameTextLine(const RectF& a, const RectF& b) {
+    float lineH = std::max(a.dy, b.dy);
+    if (lineH < 1.0f) {
+        lineH = 1.0f;
+    }
+    float centerA = a.y + a.dy * 0.5f;
+    float centerB = b.y + b.dy * 0.5f;
+    return std::abs(centerA - centerB) < lineH * 0.45f;
+}
+
+RectF ScaleHighlightBandRect(RectF r, float bandRatio) {
+    if (r.IsEmpty() || bandRatio <= 0) {
+        return r;
+    }
+
+    float scale = bandRatio / kHighlightBandBaseRatio;
+    float centerY = r.y + r.dy * 0.5f;
+    float newDy = r.dy * scale;
+    if (newDy < 1.0f) {
+        newDy = 1.0f;
+    }
+    r.y = centerY - newDy * 0.5f;
+    r.dy = newDy;
+    return r;
+}
+
+RectF MergeHighlightLineRect(RectF a, RectF b) {
+    if (a.IsEmpty()) {
+        return b;
+    }
+    if (b.IsEmpty()) {
+        return a;
+    }
+
+    float x0 = std::min(a.x, b.x);
+    float x1 = std::max(a.x + a.dx, b.x + b.dx);
+    float bandDy = std::max(a.dy, b.dy);
+    float centerY = (a.y + a.dy * 0.5f + b.y + b.dy * 0.5f) * 0.5f;
+    return RectF(x0, centerY - bandDy * 0.5f, x1 - x0, bandDy);
+}
+
+Rect BuildHighlightLineRect(Rect* c0, Rect* cEnd) {
+    int x0 = INT_MAX;
+    int x1 = INT_MIN;
+    int lineDy = 0;
+    double centerSum = 0;
+    int n = 0;
+
+    for (Rect* c = c0; c < cEnd; c++) {
+        if (!c->x && !c->dx) {
+            continue;
+        }
+        x0 = std::min(x0, c->x);
+        x1 = std::max(x1, c->BR().x);
+        if (c->dy >= 3) {
+            lineDy = std::max(lineDy, c->dy);
+        }
+        centerSum += c->y + c->dy * 0.5;
+        n++;
+    }
+
+    if (n == 0) {
+        return Rect();
+    }
+
+    if (lineDy == 0) {
+        for (Rect* c = c0; c < cEnd; c++) {
+            if (!c->x && !c->dx) {
+                continue;
+            }
+            lineDy = std::max(lineDy, c->dy);
+        }
+    }
+
+    int y = (int)(centerSum / n - lineDy * 0.5 + 0.5);
+    return Rect(x0, y, x1 - x0, lineDy);
+}
+
+void NormalizeHighlightLineHeights(Vec<RectF>& rects) {
+    for (size_t i = 0; i < rects.size(); i++) {
+        if (rects[i].IsEmpty()) {
+            continue;
+        }
+
+        float targetDy = rects[i].dy;
+        for (size_t j = 0; j < rects.size(); j++) {
+            if (j == i || rects[j].IsEmpty()) {
+                continue;
+            }
+            if (HighlightSameTextLine(rects[i], rects[j])) {
+                targetDy = std::min(targetDy, rects[j].dy);
+            }
+        }
+
+        for (size_t j = 0; j < rects.size(); j++) {
+            if (rects[j].IsEmpty()) {
+                continue;
+            }
+            if (!HighlightSameTextLine(rects[i], rects[j])) {
+                continue;
+            }
+            float center = rects[j].y + rects[j].dy * 0.5f;
+            rects[j].dy = targetDy;
+            rects[j].y = center - targetDy * 0.5f;
+        }
+    }
+}
+
+void NormalizeHighlightUniformHeight(Vec<RectF>& rects) {
+    NormalizeNearbyHighlightHeights(rects);
+}
+
+void NormalizeNearbyHighlightHeights(Vec<RectF>& rects) {
+    for (size_t i = 0; i + 1 < rects.size(); i++) {
+        RectF& a = rects[i];
+        RectF& b = rects[i + 1];
+        if (a.IsEmpty() || b.IsEmpty()) {
+            continue;
+        }
+
+        float lo = std::min(a.dy, b.dy);
+        float hi = std::max(a.dy, b.dy);
+        if (lo < 1.0f || hi < 1.0f) {
+            continue;
+        }
+        // Only pair lines with similar font size (e.g. English title + Chinese subtitle).
+        if (lo / hi < 0.55f) {
+            continue;
+        }
+
+        float target = (a.dy + b.dy) * 0.5f;
+        float centerA = a.y + a.dy * 0.5f;
+        float centerB = b.y + b.dy * 0.5f;
+        a.dy = target;
+        a.y = centerA - target * 0.5f;
+        b.dy = target;
+        b.y = centerB - target * 0.5f;
+    }
+}
+
 SelectionOnPage::SelectionOnPage(int pageNo, const RectF* const rect) {
     this->pageNo = pageNo;
     if (rect) {
@@ -137,6 +277,11 @@ void PaintTransparentRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORR
     }
 }
 
+COLORREF GetSelectionHighlightColor() {
+    ParsedColor* parsedCol = GetPrefsColor(gGlobalPrefs->fixedPageUI.selectionColor);
+    return parsedCol->col;
+}
+
 void PaintSelection(MainWindow* win, HDC hdc) {
     ReportIf(!win->AsFixed());
 
@@ -173,13 +318,42 @@ void PaintSelection(MainWindow* win, HDC hdc) {
             return;
         }
 
-        for (SelectionOnPage& sel : *win->CurrentTab()->selectionOnPage) {
-            rects.Append(sel.GetRect(win->AsFixed()));
+        DisplayModel* dm = win->AsFixed();
+        bool tightenRects = dm->textSelection->result.len > 0;
+        if (tightenRects) {
+            int pageCount = dm->GetEngine()->PageCount();
+            for (int pageNo = 1; pageNo <= pageCount; pageNo++) {
+                Vec<RectF> pageRects;
+                for (SelectionOnPage& sel : *win->CurrentTab()->selectionOnPage) {
+                    if (sel.pageNo != pageNo) {
+                        continue;
+                    }
+                    PageInfo* pageInfo = dm->GetPageInfo(sel.pageNo);
+                    if (!pageInfo || pageInfo->visibleRatio <= 0.0) {
+                        continue;
+                    }
+                    pageRects.Append(sel.rect);
+                }
+                if (pageRects.size() == 0) {
+                    continue;
+                }
+                NormalizeNearbyHighlightHeights(pageRects);
+                for (RectF& rf : pageRects) {
+                    rf = ScaleHighlightBandRect(rf, kSelectionHighlightBandRatio);
+                    Rect sr = dm->CvtToScreen(pageNo, rf);
+                    if (!sr.IsEmpty()) {
+                        rects.Append(sr);
+                    }
+                }
+            }
+        } else {
+            for (SelectionOnPage& sel : *win->CurrentTab()->selectionOnPage) {
+                rects.Append(sel.GetRect(dm));
+            }
         }
     }
 
-    ParsedColor* parsedCol = GetPrefsColor(gGlobalPrefs->fixedPageUI.selectionColor);
-    PaintTransparentRectangles(hdc, win->canvasRc, rects, parsedCol->col);
+    PaintTransparentRectangles(hdc, win->canvasRc, rects, GetSelectionHighlightColor());
 }
 
 void UpdateTextSelection(MainWindow* win, bool select) {

@@ -35,6 +35,7 @@ extern "C" {
 #include "Menu.h"
 #include "SearchAndDDE.h"
 #include "Toolbar.h"
+#include "TextToSpeech.h"
 
 #include "Translations.h"
 #include "SvgIcons.h"
@@ -76,6 +77,8 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::PagePrev, CmdGoToPrevPage, _TRN("Previous Page")},
     {TbIcon::PageNext, CmdGoToNextPage, _TRN("Next Page")},
     {TbIcon::None, 0, nullptr}, // separator
+    {TbIcon::Speak, CmdReadAloud, _TRN("Read Aloud")},
+    {TbIcon::None, 0, nullptr}, // separator
     {TbIcon::Bookmark, CmdToggleBookmarks, _TRN("Show &Bookmarks")},
     {TbIcon::LayoutContinuous, CmdZoomFitWidthAndContinuous, _TRN("Fit Width and Show Pages Continuously")},
     {TbIcon::LayoutSinglePage, CmdZoomFitPageAndSinglePage, _TRN("Fit a Single Page")},
@@ -116,6 +119,14 @@ static void UpdateToolbarButtonStateByIdx(HWND hwnd, int idx, bool set, BYTE fla
     bi.dwMask = TBIF_BYINDEX | TBIF_STATE;
     SendMessageW(hwnd, TB_GETBUTTONINFOW, idx, (LPARAM)&bi);
     bi.fsState = set ? bi.fsState | flag : bi.fsState & ~flag;
+    SendMessageW(hwnd, TB_SETBUTTONINFOW, idx, (LPARAM)&bi);
+}
+
+static void SetToolbarButtonImageByIdx(HWND hwnd, int idx, TbIcon icon) {
+    TBBUTTONINFOW bi{};
+    bi.cbSize = sizeof(bi);
+    bi.dwMask = TBIF_BYINDEX | TBIF_IMAGE;
+    bi.iImage = (int)icon;
     SendMessageW(hwnd, TB_SETBUTTONINFOW, idx, (LPARAM)&bi);
 }
 
@@ -386,6 +397,9 @@ static TBBUTTON TbButtonFromButtonInfo(const ToolbarButtonInfo& bi, bool noTrans
     b.iBitmap = (int)bi.bmpIndex;
     b.fsState = TBSTATE_ENABLED;
     b.fsStyle = BTNS_BUTTON;
+    if (bi.cmdId == CmdReadAloud) {
+        b.fsStyle |= BTNS_DROPDOWN;
+    }
     if (bi.cmdId == CmdFindToggleMatchCase || bi.cmdId == CmdToggleDoubleClickWordLookup ||
         bi.cmdId == CmdToggleLightDarkTheme || bi.cmdId == CmdToggleBookmarks ||
         bi.cmdId == CmdZoomFitWidthAndContinuous || bi.cmdId == CmdZoomFitPageAndSinglePage ||
@@ -470,6 +484,22 @@ void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility) {
         }
         bool isEnabled = IsCmdEnabled(win, cmdId);
         UpdateToolbarButtonStateByIdx(hwnd, i, isEnabled, TBSTATE_ENABLED);
+
+        if (cmdId == CmdReadAloud || cmdId == CmdPauseReadAloud) {
+            bool speaking = TtsIsSpeaking();
+            SetToolbarButtonImageByIdx(hwnd, i, speaking ? TbIcon::PauseSpeaking : TbIcon::Speak);
+            const char* tip = _TRA("Read Aloud");
+            if (speaking) {
+                tip = _TRA("Pause Reading");
+            } else if (CanContinueReadAloud(win->CurrentTab())) {
+                tip = _TRA("Continue Reading");
+            }
+            TBBUTTONINFOW tbi{};
+            tbi.cbSize = sizeof(tbi);
+            tbi.dwMask = TBIF_BYINDEX | TBIF_TEXT;
+            tbi.pszText = (WCHAR*)ToWStrTemp(tip);
+            SendMessageW(hwnd, TB_SETBUTTONINFO, i, (LPARAM)&tbi);
+        }
     }
 
     // Find labels may have to be repositioned if some
@@ -738,7 +768,21 @@ static LRESULT PrepaintToolbarItem(NMTBCUSTOMDRAW* custDraw) {
         DeleteObject(borderBr);
     }
 
-    return TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND;
+    LRESULT ret = TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND;
+    return ret;
+}
+
+static bool IsToolbarDropdownButtonAtIndex(HWND hwnd, int idx) {
+    TBBUTTONINFOW tbi{};
+    tbi.cbSize = sizeof(tbi);
+    tbi.dwMask = TBIF_STYLE | TBIF_STATE;
+    if (SendMessageW(hwnd, TB_GETBUTTONINFOW, idx, (LPARAM)&tbi) == -1) {
+        return false;
+    }
+    if (tbi.fsState & TBSTATE_HIDDEN) {
+        return false;
+    }
+    return (tbi.fsStyle & BTNS_DROPDOWN) != 0;
 }
 
 static LRESULT PrepaintToolbarSeparatorItem(NMTBCUSTOMDRAW* custDraw) {
@@ -814,6 +858,12 @@ static LRESULT CALLBACK ToolbarNotifyWndProc(HWND hWnd, UINT uMsg, WPARAM wParam
                     if (IsToolbarSeparatorDrawIndex(win, idx)) {
                         return PrepaintToolbarSeparatorItem(custDraw);
                     }
+                    if (IsToolbarDropdownButtonAtIndex(win->hwndToolbar, idx)) {
+                        if (UseDarkModeLib() && DarkMode::isEnabled()) {
+                            return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+                        }
+                        return CDRF_DODEFAULT;
+                    }
                     return PrepaintToolbarItem(custDraw);
                 }
                 case CDDS_ITEMPOSTPAINT: {
@@ -821,6 +871,12 @@ static LRESULT CALLBACK ToolbarNotifyWndProc(HWND hWnd, UINT uMsg, WPARAM wParam
                     if (IsToolbarSeparatorDrawIndex(win, idx)) {
                         PostpaintToolbarSeparatorItem(custDraw);
                         return CDRF_SKIPDEFAULT;
+                    }
+                    if (IsToolbarDropdownButtonAtIndex(win->hwndToolbar, idx)) {
+                        if (UseDarkModeLib() && DarkMode::isEnabled()) {
+                            return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+                        }
+                        return CDRF_DODEFAULT;
                     }
                     break;
                 }
@@ -1653,7 +1709,7 @@ void CreateToolbar(MainWindow* win) {
     TbSetMetrics(hwndToolbar, &tbMetrics);
 
     LRESULT exstyle = SendMessageW(hwndToolbar, TB_GETEXTENDEDSTYLE, 0, 0);
-    exstyle |= TBSTYLE_EX_MIXEDBUTTONS;
+    exstyle |= TBSTYLE_EX_MIXEDBUTTONS | TBSTYLE_EX_DRAWDDARROWS;
     SendMessageW(hwndToolbar, TB_SETEXTENDEDSTYLE, 0, exstyle);
 
     TBBUTTON tbButtons[kButtonsCount];
@@ -1704,6 +1760,7 @@ void CreateToolbar(MainWindow* win) {
     }
     SendMessageW(hwndToolbar, TB_ADDBUTTONS, gCustomButtonsCount, (LPARAM)buttons);
     SendMessageW(hwndToolbar, TB_SETBUTTONSIZE, 0, MAKELONG(iconSize, iconSize));
+    SendMessageW(hwndToolbar, TB_AUTOSIZE, 0, 0);
 
     RECT rc;
     LRESULT res = SendMessageW(hwndToolbar, TB_GETITEMRECT, 0, (LPARAM)&rc);

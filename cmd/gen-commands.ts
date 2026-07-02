@@ -237,6 +237,12 @@ export const commands = [
     "CmdSetPdfDocumentColorModeLight", "Set PDF Document Color Mode: Light",
     "CmdLookupSelection", "Look Up Selection",
     "CmdToggleEngineeringDrawingEnhance", "Toggle Engineering Drawing Line Enhance",
+    "CmdReadAloud", "Read Aloud",
+    "CmdPauseReadAloud", "Pause Reading",
+    "CmdContinueReadAloud", "Continue Reading",
+    "CmdStopReadAloud", "Stop Reading",
+    "CmdReadAloudFromTopPage", "Start Reading From Top",
+    "CmdReadAloudSelection", "Start Reading Selection",
     "CmdNone", "Do nothing",
 ];
 

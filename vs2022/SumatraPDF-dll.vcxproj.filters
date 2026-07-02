@@ -243,6 +243,9 @@
     <ClInclude Include="..\src\ProgressUpdateUI.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\ReadAloudHighlight.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\RegistryPreview.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -301,6 +304,9 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\TextSelection.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\TextToSpeech.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\Theme.h">
@@ -581,6 +587,9 @@
     <ClCompile Include="..\src\Print.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\ReadAloudHighlight.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\RegistryInstaller.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -657,6 +666,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\TextSelection.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\TextToSpeech.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\Theme.cpp">

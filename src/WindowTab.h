@@ -5,6 +5,8 @@ struct SelectionOnPage;
 struct WatchedFile;
 struct EditAnnotationsWindow;
 struct MainWindow;
+struct StrBuilder;
+struct ReadAloudHighlightMap;
 
 /* Data related to a single document loaded into a tab/window */
 /* (none of these depend on MainWindow, so that a WindowTab could
@@ -64,6 +66,25 @@ struct WindowTab {
 
     // TODO: arguably a hack
     bool ignoreNextAutoReload = false;
+
+    // read aloud: cleaned text that was being read and the utf8 offset
+    // within it where the user stopped reading; enables "Continue reading"
+    char* readAloudText = nullptr;
+    int readAloudResumePos = -1;
+    ReadAloudHighlightMap* readAloudHighlight = nullptr;
+    int readAloudHighlightBase = 0;
+    int readAloudChunkStart = 0;
+    int readAloudChunkEnd = 0;
+    int readAloudBuiltEndPage = 0;
+    bool readAloudAutoScroll = false;
+
+    enum ReadAloudScope {
+        ReadAloudScopeSmart = 1,
+        ReadAloudScopeViewport = 2,
+        ReadAloudScopeSelection = 3,
+        ReadAloudScopeCursor = 4,
+    };
+    int readAloudScope = 0;
 
     WindowTab(MainWindow* win);
     ~WindowTab();

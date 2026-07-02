@@ -499,6 +499,11 @@ TabGroups [
   ]
 ]
 
+; voice id for Read Aloud text-to-speech; empty or unset means system default.
+; Voice ids match those used internally by the Read Aloud Voice menu (WinRT
+; voice id or SAPI token id) (introduced in version 3.7)
+ReadAloudVoiceId =
+
 ; a whitespace separated list of passwords to try when opening a password
 ; protected document (passwords containing spaces must be quoted) (introduced in
 ; version 2.4)

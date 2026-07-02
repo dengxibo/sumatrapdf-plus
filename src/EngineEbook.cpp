@@ -1059,6 +1059,23 @@ static Rect GetInstrBbox(DrawInstr& instr, float pageBorder) {
     return bbox.Round();
 }
 
+static Rect EbookSelectionCharRect(int x, int w, const Rect& bbox) {
+    int fs = w;
+    if (fs < 1) {
+        fs = 1;
+    }
+    int estFs = bbox.dy * 2 / 3;
+    if (estFs > fs) {
+        fs = estFs;
+    }
+    int bandH = (int)(fs * 1.0f + 0.5f);
+    if (bandH < 1) {
+        bandH = 1;
+    }
+    int y = bbox.y + (bbox.dy - bandH) / 2;
+    return Rect(x, y, w, bandH);
+}
+
 static void AppendStringCoords(Vec<Rect>& coords, Rect bbox, size_t strLen, bool rtl, const float* charRelX,
                                int charRelXLen) {
     bool useRelX = IsValidCharRelX(charRelX, charRelXLen, strLen);
@@ -1077,7 +1094,7 @@ static void AppendStringCoords(Vec<Rect>& coords, Rect bbox, size_t strLen, bool
             if (w < 1) {
                 w = 1;
             }
-            coords.Append(Rect(x, bbox.y, w, bbox.dy));
+            coords.Append(EbookSelectionCharRect(x, w, bbox));
         }
     } else {
         for (size_t k = 0; k < strLen; k++) {
@@ -1094,7 +1111,7 @@ static void AppendStringCoords(Vec<Rect>& coords, Rect bbox, size_t strLen, bool
             if (w < 1) {
                 w = 1;
             }
-            coords.Append(Rect(x, bbox.y, w, bbox.dy));
+            coords.Append(EbookSelectionCharRect(x, w, bbox));
         }
     }
 }
@@ -1134,7 +1151,7 @@ PageText EngineEbook::ExtractPageText(int pageNo) {
                         if (hitW > kMaxSpaceHitW) {
                             hitW = kMaxSpaceHitW;
                         }
-                        coords.Append(Rect(bbox.x - hitW, bbox.y, hitW, bbox.dy));
+                        coords.Append(EbookSelectionCharRect(bbox.x - hitW, hitW, bbox));
                     }
                 }
                 insertSpace = false;
@@ -1160,7 +1177,7 @@ PageText EngineEbook::ExtractPageText(int pageNo) {
                         if (hitW > kMaxSpaceHitW) {
                             hitW = kMaxSpaceHitW;
                         }
-                        coords.Append(Rect(bbox.BR().x, bbox.y, hitW, bbox.dy));
+                        coords.Append(EbookSelectionCharRect(bbox.BR().x, hitW, bbox));
                     }
                 }
                 insertSpace = false;
@@ -1225,7 +1242,7 @@ PageTextUtf8 EngineEbook::ExtractPageTextUtf8(int pageNo) {
                         if (hitW > kMaxSpaceHitW) {
                             hitW = kMaxSpaceHitW;
                         }
-                        coords.Append(Rect(bbox.x - hitW, bbox.y, hitW, bbox.dy));
+                        coords.Append(EbookSelectionCharRect(bbox.x - hitW, hitW, bbox));
                     }
                 }
                 insertSpace = false;
@@ -1236,7 +1253,8 @@ PageTextUtf8 EngineEbook::ExtractPageTextUtf8(int pageNo) {
                     if (len > 0) {
                         double cwidth = 1.0 * bbox.dx / (double)len;
                         for (size_t k = 0; k < len; k++) {
-                            coords.Append(Rect((int)(bbox.x + (double)k * cwidth), bbox.y, (int)cwidth, bbox.dy));
+                            coords.Append(
+                                EbookSelectionCharRect((int)(bbox.x + (double)k * cwidth), (int)cwidth, bbox));
                         }
                     }
                 }
@@ -1256,7 +1274,7 @@ PageTextUtf8 EngineEbook::ExtractPageTextUtf8(int pageNo) {
                         if (hitW > kMaxSpaceHitW) {
                             hitW = kMaxSpaceHitW;
                         }
-                        coords.Append(Rect(bbox.BR().x, bbox.y, hitW, bbox.dy));
+                        coords.Append(EbookSelectionCharRect(bbox.BR().x, hitW, bbox));
                     }
                 }
                 insertSpace = false;
@@ -1267,8 +1285,8 @@ PageTextUtf8 EngineEbook::ExtractPageTextUtf8(int pageNo) {
                     if (len > 0) {
                         double cwidth = 1.0 * bbox.dx / (double)len;
                         for (size_t k = 0; k < len; k++) {
-                            coords.Append(
-                                Rect((int)(bbox.x + (double)(len - k - 1) * cwidth), bbox.y, (int)cwidth, bbox.dy));
+                            coords.Append(EbookSelectionCharRect(
+                                (int)(bbox.x + (double)(len - k - 1) * cwidth), (int)cwidth, bbox));
                         }
                     }
                 }

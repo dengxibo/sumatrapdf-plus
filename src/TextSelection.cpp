@@ -10,6 +10,7 @@
 #include "DocController.h"
 #include "EngineBase.h"
 #include "TextSelection.h"
+#include "Selection.h"
 
 uint distSq(int x, int y) {
     return x * x + y * y;
@@ -148,10 +149,18 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
         for (; c < end && !c->x && !c->dx; c++) {
             // no-op
         }
+        if (c >= end) {
+            break;
+        }
 
-        Rect bbox, *c0 = c;
+        Rect* c0 = c;
         for (; c < end && (c->x || c->dx); c++) {
-            bbox = bbox.Union(*c);
+            // no-op
+        }
+
+        Rect bbox = BuildHighlightLineRect(c0, c);
+        if (bbox.IsEmpty()) {
+            continue;
         }
         bbox = bbox.Intersect(mediabox);
         // skip text that's completely outside a page's mediabox

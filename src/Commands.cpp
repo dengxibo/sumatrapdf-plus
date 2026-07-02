@@ -247,6 +247,12 @@ static SeqStrings gCommandNames =
     "CmdSetPdfDocumentColorModeLight\0"
     "CmdLookupSelection\0"
     "CmdToggleEngineeringDrawingEnhance\0"
+    "CmdReadAloud\0"
+    "CmdPauseReadAloud\0"
+    "CmdContinueReadAloud\0"
+    "CmdStopReadAloud\0"
+    "CmdReadAloudFromTopPage\0"
+    "CmdReadAloudSelection\0"
     "CmdNone\0"
     "\0";
 
@@ -484,6 +490,12 @@ static i32 gCommandIds[] = {
     CmdSetPdfDocumentColorModeLight,
     CmdLookupSelection,
     CmdToggleEngineeringDrawingEnhance,
+    CmdReadAloud,
+    CmdPauseReadAloud,
+    CmdContinueReadAloud,
+    CmdStopReadAloud,
+    CmdReadAloudFromTopPage,
+    CmdReadAloudSelection,
     CmdNone,
 };
 
@@ -721,6 +733,12 @@ SeqStrings gCommandDescriptions =
     "Set PDF Document Color Mode: Light\0"
     "Look Up Selection\0"
     "Toggle Engineering Drawing Line Enhance\0"
+    "Read Aloud\0"
+    "Pause Reading\0"
+    "Continue Reading\0"
+    "Stop Reading\0"
+    "Start Reading From Top\0"
+    "Start Reading Selection\0"
     "Do nothing\0"
     "\0";
 // clang-format on

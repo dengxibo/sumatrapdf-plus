@@ -286,6 +286,8 @@ struct MainWindow {
     // highlight rectangle for element under cursor during context menu (in page coordinates)
     RectF contextMenuHighlightRect{};
     int contextMenuHighlightPageNo = 0;
+    Point contextMenuPt{};
+    bool contextMenuPtValid = false;
     HBRUSH brControlBgColor = nullptr;
 
     DocControllerCallback* cbHandler = nullptr;
@@ -293,6 +295,9 @@ struct MainWindow {
     // The target y offset for smooth scrolling.
     // We use a timer to gradually scroll there.
     int scrollTargetY = 0;
+
+    // suppress Read Aloud user-scroll detection during programmatic follow scrolling
+    mutable bool readAloudScrollFromCode = false;
 
     /* when doing a forward search, the result location is highlighted with
      * rectangular marks in the document. These variables indicate the position of the markers
@@ -309,6 +314,7 @@ struct MainWindow {
     TouchState touchState;
 
     FrameRateWnd* frameRateWnd = nullptr;
+
 
     // small floating toolbar shown after a text selection in PDF documents
     // that support annotations (controlled by Annotations.SelectionToolbar)

@@ -242,7 +242,13 @@ enum {
     CmdSetPdfDocumentColorModeLight = 431,
     CmdLookupSelection = 432,
     CmdToggleEngineeringDrawingEnhance = 433,
-    CmdNone = 434,
+    CmdReadAloud = 434,
+    CmdPauseReadAloud = 435,
+    CmdContinueReadAloud = 436,
+    CmdStopReadAloud = 437,
+    CmdReadAloudFromTopPage = 438,
+    CmdReadAloudSelection = 439,
+    CmdNone = 440,
 
     /* range for file history */
     CmdFileHistoryFirst,

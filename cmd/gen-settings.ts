@@ -944,6 +944,18 @@ const globalPrefs: Field[] = [
   mkEmptyLine(),
   setVersion(mkArray("TabGroups", tabGroup, "saved groups of tabs"), "3.7"),
   mkEmptyLine(),
+  setVersion(
+    setExpert(
+      mkField(
+        "ReadAloudVoiceId",
+        Str,
+        null,
+        "voice id for Read Aloud text-to-speech; empty or unset means system default. Voice ids match those used internally by the Read Aloud Voice menu (WinRT voice id or SAPI token id)",
+      ),
+    ),
+    "3.7",
+  ),
+  mkEmptyLine(),
 
   mkComment("You're not expected to change those manually"),
   setDoc(

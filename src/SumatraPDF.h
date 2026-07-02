@@ -33,6 +33,9 @@ constexpr int kHideCursorDelayInMs = 3000;
 #define AUTO_RELOAD_TIMER_ID 5
 #define AUTO_RELOAD_DELAY_IN_MS 100
 
+#define READ_ALOUD_HIGHLIGHT_TIMER_ID 8
+#define READ_ALOUD_HIGHLIGHT_DELAY_IN_MS 80
+
 #define HOME_SCROLL_TIMER_ID 7
 #define HOME_SCROLL_TIMER_MS 16
 
@@ -129,6 +132,27 @@ bool SumatraLaunchBrowser(const char* url);
 bool OpenFileExternally(const char* path);
 void CloseCurrentTab(MainWindow* win, bool quitIfLast);
 void CloseTab(WindowTab* tab, bool quitIfLast);
+// true if read aloud was paused and can be resumed in this tab
+bool CanContinueReadAloud(WindowTab* tab);
+WindowTab* GetReadAloudSourceTab();
+
+constexpr UINT CmdTtsVoiceDefault = 0x7100;
+constexpr UINT CmdTtsVoiceFirst = 0x7101;
+constexpr UINT CmdTtsVoiceLast = 0x71ff;
+constexpr UINT CmdTtsMenuReadCurrentPage = 0x7200;
+constexpr UINT CmdTtsMenuContinueReading = 0x7201;
+constexpr UINT CmdTtsMenuReadSelection = 0x7202;
+constexpr UINT CmdTtsMenuPauseReading = 0x7203;
+constexpr UINT CmdTtsMenuReadFromCursor = 0x7204;
+constexpr UINT CmdTtsMenuStopReading = 0x7205;
+
+void RebuildReadAloudMenu(MainWindow* win, HMENU menu, bool includeCursorItem = false, bool canReadFromCursor = false);
+bool HandleReadAloudMenuCommand(MainWindow* win, int cmdId);
+void SetReadAloudAppSubmenu(HMENU menu);
+bool IsReadAloudAppSubmenu(HMENU menu);
+void SetReadAloudContextSubmenu(HMENU menu);
+bool IsReadAloudContextSubmenu(HMENU menu);
+HMENU GetReadAloudContextSubmenu();
 bool CanCloseWindow(MainWindow* win);
 void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose);
 void SetSidebarVisibility(MainWindow* win, bool tocVisible, bool showFavorites, bool relayout = true);

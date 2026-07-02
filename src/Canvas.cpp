@@ -52,6 +52,8 @@
 #include "uia/Provider.h"
 #include "SearchAndDDE.h"
 #include "Selection.h"
+#include "ReadAloudHighlight.h"
+#include "TextToSpeech.h"
 #include "SelectionToolbar.h"
 #include "WordLookup.h"
 #include "HomePage.h"
@@ -565,6 +567,7 @@ static void OnVScroll(MainWindow* win, WPARAM wp) {
             SetTimer(win->hwndCanvas, kSmoothScrollTimerID, USER_TIMER_MINIMUM, nullptr);
         } else {
             win->AsFixed()->ScrollYTo(si.nPos);
+            ReadAloudOnUserViewChanged(win);
         }
     }
 }
@@ -621,6 +624,7 @@ static void OnHScroll(MainWindow* win, WPARAM wp) {
     // scroll the window and update it
     if (si.nPos != currPos || msg == SB_THUMBTRACK) {
         win->AsFixed()->ScrollXTo(si.nPos);
+        ReadAloudOnUserViewChanged(win);
     }
 }
 
@@ -1317,8 +1321,10 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
         /* in presentation mode, change pages on left/right-clicks */
         if ((key & MK_SHIFT)) {
             tab->ctrl->GoToPrevPage();
+            ReadAloudOnUserViewChanged(win);
         } else {
             tab->ctrl->GoToNextPage();
+            ReadAloudOnUserViewChanged(win);
         }
         return;
     }
@@ -1464,8 +1470,10 @@ static void OnMouseRightButtonUp(MainWindow* win, int x, int y, WPARAM key) {
             OnWindowContextMenu(win, x, y);
         } else if ((key & MK_SHIFT)) {
             win->ctrl->GoToNextPage();
+            ReadAloudOnUserViewChanged(win);
         } else {
             win->ctrl->GoToPrevPage();
+            ReadAloudOnUserViewChanged(win);
         }
     }
     /* return from white/black screens in presentation mode */
@@ -1895,6 +1903,8 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
     // scrolling/zooming; hides itself when the selection is gone or off-screen
     UpdateSelectionToolbarPosition(win);
 
+    PaintReadAloudHighlight(win, hdc);
+
     if (win->fwdSearchMark.show) {
         PaintForwardSearchMark(win, hdc);
     }
@@ -2233,6 +2243,7 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
                 dm->ScrollXBy(scrollBy);
             } else {
                 dm->ScrollYBy(scrollBy, true);
+                ReadAloudOnUserViewChanged(win);
             }
             return 0;
         }
@@ -2315,6 +2326,7 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
     // logf("  flip page: delta: %d, accumDelta: %d\n", (int)delta, (int)win->wheelAccumDelta);
     if (delta > 0) {
         win->ctrl->GoToPrevPage(true);
+        ReadAloudOnUserViewChanged(win);
     } else {
         win->ctrl->GoToNextPage();
     }
@@ -2443,9 +2455,11 @@ static LRESULT OnGesture(MainWindow* win, UINT msg, WPARAM wp, LPARAM lp) {
                         int x = dm->canvasSize.dx - dm->viewPort.dx;
                         // logf("x: %d\n");
                         dm->ScrollXTo(x);
+                        ReadAloudOnUserViewChanged(win);
                     } else if (deltaX > 0) {
                         win->ctrl->GoToNextPage();
                         dm->ScrollXTo(0);
+                        ReadAloudOnUserViewChanged(win);
                     }
                     // When we switch pages prevent further pan movement
                     // caused by the inertia
@@ -2910,6 +2924,16 @@ static void OnTimer(MainWindow* win, HWND hwnd, WPARAM timerId) {
             break;
         }
 
+        case READ_ALOUD_HIGHLIGHT_TIMER_ID:
+            if (GetReadAloudSourceTab()) {
+                TtsProcessEvents();
+                ReadAloudUpdateAutoScroll(win);
+                InvalidateRect(hwnd, nullptr, FALSE);
+            } else {
+                ReadAloudHighlightTimerStop(win);
+            }
+            break;
+
         case kSmoothScrollTimerID:
             DisplayModel* dm = win->AsFixed();
             // window might have been closed while the timer was running
@@ -2931,6 +2955,7 @@ static void OnTimer(MainWindow* win, HWND hwnd, WPARAM timerId) {
                 // Round away from zero
                 int dy = step < 0 ? (int)floor(step) : (int)ceil(step);
                 dm->ScrollYTo(current + dy);
+                ReadAloudOnUserViewChanged(win);
             }
             break;
     }

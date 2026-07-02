@@ -826,6 +826,8 @@ function sumatrapdf_files()
     "VirtWnd.*",
     "WindowTab.*",
     "WordLookup.*",
+    "TextToSpeech.*",
+    "ReadAloudHighlight.*",
   })
   filter { "configurations:Debug or DebugFull" }
   files_in_dir("src", {

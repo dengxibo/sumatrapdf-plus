@@ -26,6 +26,8 @@ enum class TbIcon {
     DocColorAuto,
     DocColorBlack,
     Dictionary,
+    Speak,
+    PauseSpeaking,
     kMax
 };
 

@@ -100,6 +100,8 @@
 #include "CaptionGlyphs.h"
 #include "PdfDarkMode.h"
 #include "DarkModeSubclass.h"
+#include "TextToSpeech.h"
+#include "ReadAloudHighlight.h"
 
 #include "utils/Log.h"
 
@@ -199,6 +201,16 @@ static const char* gNextPrevDir = nullptr;
 static StrVec gNextPrevDirCache; // cached files in gNextPrevDir
 
 static void CloseDocumentInCurrentTab(MainWindow*, bool keepUIEnabled, bool deleteModel);
+static void ReadAloudClearSourceTab();
+static void ReadAloudContinueInTab(WindowTab* tab);
+static void ReadAloudFromViewportTopInTab(WindowTab* tab);
+static void ReadAloudInTab(WindowTab* tab);
+static void ReadAloudSelectionInTab(WindowTab* tab);
+static void ReadAloudStopRememberPos();
+static void ReadAloudPlaybackStop();
+static void ResetReadAloudStateForTab(WindowTab* tab);
+static void StopReadAloudIfSourceTab(WindowTab* tab);
+static void StopReadAloudIfSourceWindow(MainWindow* win);
 static void SyncNativeMenuBar(MainWindow* win);
 static void UpdateMainWindowNativeChrome(MainWindow* win);
 void DeleteManualBrowserWindow();
@@ -3746,6 +3758,7 @@ static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool 
     WindowTab* currentTab = win->CurrentTab();
     if (currentTab) {
         currentTab->selectedAnnotation = nullptr;
+        ResetReadAloudStateForTab(currentTab);
     }
     if (deleteModel) {
         if (currentTab) {
@@ -4133,6 +4146,9 @@ void CloseTab(WindowTab* tab, bool quitIfLast) {
         return;
     }
 
+    // Stop eventual TTS reading
+    StopReadAloudIfSourceTab(tab);
+
     int tabCount = win->TabCount();
     if (tabCount == 1 || (tabCount == 0 && quitIfLast)) {
         if (CanCloseWindow(win)) {
@@ -4258,6 +4274,9 @@ void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose) {
     if (win->presentation) {
         ExitFullScreen(win);
     }
+
+    // Stop eventual TTS reading
+    StopReadAloudIfSourceWindow(win);
 
     bool canCloseWindow = true;
     for (auto& tab : win->Tabs()) {
@@ -7311,6 +7330,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         return 0;
     }
 
+    if (win && HandleReadAloudMenuCommand(win, cmdId)) {
+        return 0;
+    }
+
     if (CanAccessDisk()) {
         // check if the menuId belongs to an entry in the list of
         // recently opened files and load the referenced file if it does
@@ -7656,6 +7679,64 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         case CmdToggleTabsMru:
             gGlobalPrefs->tabsMru = !gGlobalPrefs->tabsMru;
             break;
+
+        case CmdReadAloud: {
+            if (!tab) {
+                break;
+            }
+
+            bool isSpeaking = TtsIsSpeaking();
+            bool canContinue = CanContinueReadAloud(tab);
+
+            if (isSpeaking) {
+                ReadAloudStopRememberPos();
+                ToolbarUpdateStateForWindow(win, true);
+            } else if (canContinue) {
+                ReadAloudContinueInTab(tab);
+            } else {
+                ReadAloudInTab(tab);
+            }
+            break;
+        }
+
+        case CmdPauseReadAloud: {
+            ReadAloudStopRememberPos();
+            ToolbarUpdateStateForWindow(win, true);
+            break;
+        }
+
+        case CmdContinueReadAloud: {
+            if (!TtsIsSpeaking()) {
+                ReadAloudContinueInTab(tab);
+            }
+            break;
+        }
+
+        case CmdStopReadAloud:
+            ReadAloudPlaybackStop();
+            break;
+
+        case CmdReadAloudFromTopPage: {
+            if (!tab) {
+                break;
+            }
+            if (TtsIsSpeaking()) {
+                TtsStop();
+            }
+            ReadAloudFromViewportTopInTab(tab);
+            break;
+        }
+
+        case CmdReadAloudSelection: {
+            if (!tab) {
+                break;
+            }
+            if (TtsIsSpeaking()) {
+                TtsStop();
+            }
+            ReadAloudSelectionInTab(tab);
+            break;
+        }
 
         case CmdSaveAnnotations: {
             SaveAnnotationsToExistingFile(tab);
@@ -9438,6 +9519,911 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
 
 HWND gLastActiveFrameHwnd = nullptr;
 
+static constexpr UINT WM_TTS_EVENT = WM_APP + 0x421;
+
+static WindowTab* gReadAloudSourceTab = nullptr;
+static WindowTab* gReadAloudSessionTab = nullptr;
+static HMENU gReadAloudAppSubmenu = nullptr;
+static HMENU gReadAloudContextSubmenu = nullptr;
+
+void SetReadAloudAppSubmenu(HMENU menu) {
+    gReadAloudAppSubmenu = menu;
+}
+
+bool IsReadAloudAppSubmenu(HMENU menu) {
+    return menu && menu == gReadAloudAppSubmenu;
+}
+
+void SetReadAloudContextSubmenu(HMENU menu) {
+    gReadAloudContextSubmenu = menu;
+}
+
+bool IsReadAloudContextSubmenu(HMENU menu) {
+    return menu && menu == gReadAloudContextSubmenu;
+}
+
+HMENU GetReadAloudContextSubmenu() {
+    return gReadAloudContextSubmenu;
+}
+
+static void ReadAloudShowNotif(WindowTab* tab, const char* msg);
+
+static void ReadAloudSaveVoicePref(const char* voiceId) {
+    if (!gGlobalPrefs) {
+        return;
+    }
+    str::ReplaceWithCopy(&gGlobalPrefs->readAloudVoiceId, voiceId ? voiceId : "");
+    SaveSettings();
+}
+
+// WinRT speech synthesis is too slow for whole-document requests; speak in chunks.
+static constexpr int kReadAloudMaxChunkLen = 1024;
+
+static int ReadAloudFindChunkEnd(const char* text, int start, int maxLen) {
+    int textLen = str::Leni(text);
+    if (start >= textLen) {
+        return textLen;
+    }
+
+    int end = start + maxLen;
+    if (end >= textLen) {
+        return textLen;
+    }
+
+    while (end > start && text[end] != ' ') {
+        end--;
+    }
+    if (end <= start) {
+        end = start + maxLen;
+        if (end > textLen) {
+            end = textLen;
+        }
+    }
+    return end;
+}
+
+static bool ReadAloudHasMoreDocumentPages(WindowTab* tab) {
+    if (!tab || tab->readAloudBuiltEndPage <= 0) {
+        return false;
+    }
+    DisplayModel* dm = tab->AsFixed();
+    if (!dm) {
+        return false;
+    }
+    return tab->readAloudBuiltEndPage < dm->PageCount();
+}
+
+static bool ReadAloudEnsureDocumentTextExtended(WindowTab* tab) {
+    if (!tab || tab->readAloudBuiltEndPage <= 0) {
+        return false;
+    }
+    DisplayModel* dm = tab->AsFixed();
+    if (!dm) {
+        return false;
+    }
+
+    int pageCount = dm->PageCount();
+    if (tab->readAloudBuiltEndPage >= pageCount) {
+        return false;
+    }
+
+    int textLen = str::Leni(tab->readAloudText);
+    int remaining = textLen - tab->readAloudChunkEnd;
+    if (remaining >= kReadAloudMaxChunkLen * 2) {
+        return false;
+    }
+
+    int nextStart = tab->readAloudBuiltEndPage + 1;
+    int nextEnd = nextStart + kReadAloudBuildPagesPerBatch - 1;
+    if (nextEnd > pageCount) {
+        nextEnd = pageCount;
+    }
+
+    if (!tab->readAloudHighlight) {
+        tab->readAloudHighlight = new ReadAloudHighlightMap{};
+    }
+
+    logf("ReadAloud: EnsureDocumentTextExtended: pages %d..%d (builtEnd=%d pageCount=%d remaining=%d)\n", nextStart,
+         nextEnd, tab->readAloudBuiltEndPage, pageCount, remaining);
+    if (!ReadAloudHighlightAppendDocumentPages(dm, nextStart, nextEnd, tab->readAloudHighlight, &tab->readAloudText)) {
+        logf("ReadAloud: EnsureDocumentTextExtended: append failed\n");
+        return false;
+    }
+
+    tab->readAloudBuiltEndPage = nextEnd;
+    return true;
+}
+
+static bool ReadAloudHasMoreChunks(WindowTab* tab) {
+    if (!tab || str::IsEmpty(tab->readAloudText)) {
+        return ReadAloudHasMoreDocumentPages(tab);
+    }
+    if (tab->readAloudChunkEnd < str::Leni(tab->readAloudText)) {
+        return true;
+    }
+    return ReadAloudHasMoreDocumentPages(tab);
+}
+
+static void ReadAloudFinishSession(WindowTab* tab, MainWindow* win) {
+    if (!tab) {
+        return;
+    }
+
+    logf("ReadAloud: FinishSession\n");
+    if (TtsIsSpeaking()) {
+        TtsStop();
+    }
+    if (tab->win) {
+        ReadAloudHighlightTimerStop(tab->win);
+        InvalidateRect(tab->win->hwndCanvas, nullptr, FALSE);
+    }
+    str::FreePtr(&tab->readAloudText);
+    tab->readAloudResumePos = -1;
+    tab->readAloudChunkStart = 0;
+    tab->readAloudChunkEnd = 0;
+    tab->readAloudBuiltEndPage = 0;
+    if (tab->readAloudHighlight) {
+        ReadAloudHighlightFree(tab->readAloudHighlight);
+        delete tab->readAloudHighlight;
+        tab->readAloudHighlight = nullptr;
+    }
+    tab->readAloudHighlightBase = 0;
+    tab->readAloudAutoScroll = false;
+    tab->readAloudScope = 0;
+    ReadAloudClearSourceTab();
+    if (gReadAloudSessionTab == tab) {
+        gReadAloudSessionTab = nullptr;
+    }
+    if (win) {
+        ToolbarUpdateStateForWindow(win, true);
+    }
+}
+
+static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
+    if (!tab) {
+        return false;
+    }
+
+    ReadAloudEnsureDocumentTextExtended(tab);
+
+    if (str::IsEmpty(tab->readAloudText)) {
+        if (!ReadAloudEnsureDocumentTextExtended(tab) || str::IsEmpty(tab->readAloudText)) {
+            return false;
+        }
+    }
+
+    int start = tab->readAloudChunkEnd;
+    int textLen = str::Leni(tab->readAloudText);
+    if (start >= textLen) {
+        if (ReadAloudEnsureDocumentTextExtended(tab)) {
+            textLen = str::Leni(tab->readAloudText);
+        }
+        if (start >= textLen) {
+            return false;
+        }
+    }
+
+    int end = ReadAloudFindChunkEnd(tab->readAloudText, start, kReadAloudMaxChunkLen);
+    if (start >= end) {
+        return false;
+    }
+
+    int chunkLen = end - start;
+    TempStr chunk = str::DupTemp(tab->readAloudText + start, (size_t)chunkLen);
+    logf("ReadAloud: SpeakChunk: %d..%d of %d (mapBase=%d)\n", start, end, textLen, tab->readAloudHighlightBase);
+
+    if (!TtsSpeakUtf8(chunk)) {
+        logf("ReadAloud: SpeakChunk: TtsSpeakUtf8 failed\n");
+        ReadAloudShowNotif(tab, errMsg);
+        return false;
+    }
+
+    tab->readAloudChunkStart = start;
+    tab->readAloudChunkEnd = end;
+    ToolbarUpdateStateForWindow(tab->win, true);
+    InvalidateRect(tab->win->hwndCanvas, nullptr, FALSE);
+    return true;
+}
+
+// Text cleanup for speech
+static bool IsReadAloudLowerAscii(char c) {
+    return c >= 'a' && c <= 'z';
+}
+
+static bool IsReadAloudLineBreak(char c) {
+    return c == '\r' || c == '\n';
+}
+
+static bool IsReadAloudHorizontalSpace(char c) {
+    return c == ' ' || c == '\t';
+}
+
+static bool ReadAloudAppendChar(char** dst, size_t* len, size_t* cap, char c) {
+    if (!dst || !len || !cap) {
+        return false;
+    }
+
+    if (*len + 1 >= *cap) {
+        size_t newCap = (*cap == 0) ? 256 : (*cap * 2);
+        char* newDst = (char*)realloc(*dst, newCap);
+        if (!newDst) {
+            free(*dst);
+            *dst = nullptr;
+            *len = 0;
+            *cap = 0;
+            return false;
+        }
+
+        *dst = newDst;
+        *cap = newCap;
+    }
+
+    (*dst)[*len] = c;
+    (*len)++;
+    (*dst)[*len] = 0;
+    return true;
+}
+
+static TempStr CleanReadAloudTextTemp(const char* text) {
+    if (str::IsEmpty(text)) {
+        return nullptr;
+    }
+
+    char* out = nullptr;
+    size_t outLen = 0;
+    size_t outCap = 0;
+
+    const char* s = text;
+    bool lastWasSpace = false;
+
+    while (*s) {
+        char c = *s;
+
+        // Remove likely soft hyphenation caused by PDF line wrapping:
+        // "cap-\nturing" -> "capturing"
+        //
+        // Conservative rule: only join lowercase ASCII on both sides.
+        // This avoids damaging many intentional hyphen cases.
+        if (c == '-' && IsReadAloudLineBreak(s[1])) {
+            const char* after = s + 1;
+
+            while (IsReadAloudLineBreak(*after)) {
+                after++;
+            }
+
+            bool prevIsLower = s > text && IsReadAloudLowerAscii(s[-1]);
+            bool nextIsLower = IsReadAloudLowerAscii(*after);
+
+            if (prevIsLower && nextIsLower) {
+                s = after;
+                lastWasSpace = false;
+                continue;
+            }
+        }
+
+        // Convert extracted visual line breaks into spaces.
+        if (IsReadAloudLineBreak(c)) {
+            int lineBreaks = 0;
+
+            while (IsReadAloudLineBreak(*s)) {
+                if (*s == '\n') {
+                    lineBreaks++;
+                }
+                s++;
+            }
+
+            while (IsReadAloudHorizontalSpace(*s)) {
+                s++;
+            }
+
+            bool joinLine = false;
+            if (lineBreaks == 1 && outLen > 0) {
+                joinLine = ReadAloudShouldJoinAtWrappedLine(out, (int)outLen, s);
+            }
+
+            if (!joinLine && !lastWasSpace && outLen > 0) {
+                if (!ReadAloudAppendChar(&out, &outLen, &outCap, ' ')) {
+                    return nullptr;
+                }
+                lastWasSpace = true;
+            } else if (joinLine) {
+                lastWasSpace = false;
+            }
+
+            // Keep a slightly stronger pause for paragraph breaks.
+            if (lineBreaks >= 2) {
+                if (!ReadAloudAppendChar(&out, &outLen, &outCap, ' ')) {
+                    return nullptr;
+                }
+            }
+
+            continue;
+        }
+
+        // Collapse spaces and tabs.
+        if (IsReadAloudHorizontalSpace(c)) {
+            if (!lastWasSpace && outLen > 0) {
+                if (!ReadAloudAppendChar(&out, &outLen, &outCap, ' ')) {
+                    return nullptr;
+                }
+                lastWasSpace = true;
+            }
+
+            s++;
+            continue;
+        }
+
+        if (!ReadAloudAppendChar(&out, &outLen, &outCap, c)) {
+            return nullptr;
+        }
+
+        lastWasSpace = false;
+        s++;
+    }
+
+    TempStr res = str::DupTemp(out);
+    free(out);
+    return res;
+}
+
+// Read-aloud lifetime and commands
+static void ReadAloudSetSourceTab(WindowTab* tab) {
+    gReadAloudSourceTab = tab;
+}
+
+static void ReadAloudClearSourceTab() {
+    gReadAloudSourceTab = nullptr;
+}
+
+static void StopReadAloudIfSourceTab(WindowTab* tab) {
+    if (!tab || gReadAloudSourceTab != tab) {
+        return;
+    }
+
+    if (TtsIsSpeaking()) {
+        TtsStop();
+    }
+
+    if (tab->win) {
+        ReadAloudHighlightTimerStop(tab->win);
+        InvalidateRect(tab->win->hwndCanvas, nullptr, FALSE);
+    }
+    ReadAloudClearSourceTab();
+}
+
+static void StopReadAloudIfSourceWindow(MainWindow* win) {
+    if (!win || !gReadAloudSourceTab || gReadAloudSourceTab->win != win) {
+        return;
+    }
+
+    if (TtsIsSpeaking()) {
+        TtsStop();
+    }
+
+    ReadAloudClearSourceTab();
+}
+
+// reset "Continue reading" state, called when its document goes away
+static void ResetReadAloudStateForTab(WindowTab* tab) {
+    if (!tab) {
+        return;
+    }
+    StopReadAloudIfSourceTab(tab);
+    str::FreePtr(&tab->readAloudText);
+    tab->readAloudResumePos = -1;
+    if (tab->win) {
+        ReadAloudHighlightTimerStop(tab->win);
+    }
+    if (tab->readAloudHighlight) {
+        ReadAloudHighlightFree(tab->readAloudHighlight);
+        delete tab->readAloudHighlight;
+        tab->readAloudHighlight = nullptr;
+    }
+    tab->readAloudHighlightBase = 0;
+    tab->readAloudChunkStart = 0;
+    tab->readAloudChunkEnd = 0;
+    tab->readAloudBuiltEndPage = 0;
+    tab->readAloudAutoScroll = false;
+    tab->readAloudScope = 0;
+    if (gReadAloudSessionTab == tab) {
+        gReadAloudSessionTab = nullptr;
+    }
+}
+
+
+// stop reading and remember where we stopped so that "Continue reading"
+// can pick up from there
+static void ReadAloudStopRememberPos() {
+    // drain pending word-boundary events for an accurate position
+    TtsProcessEvents();
+    WindowTab* tab = gReadAloudSourceTab;
+    if (tab && TtsIsSpeaking()) {
+        int pos = TtsGetSpokenPosUtf8();
+        if (pos >= 0) {
+            int absPos = tab->readAloudHighlightBase + tab->readAloudChunkStart + pos;
+            int maxPos = tab->readAloudHighlightBase + str::Leni(tab->readAloudText);
+            if (absPos > 0 && absPos < maxPos) {
+                tab->readAloudResumePos = absPos;
+            }
+        }
+    }
+    TtsStop();
+    ReadAloudClearSourceTab();
+    if (tab && tab->win) {
+        ReadAloudHighlightTimerStop(tab->win);
+        InvalidateRect(tab->win->hwndCanvas, nullptr, FALSE);
+    }
+}
+
+static void ReadAloudPlaybackStop() {
+    WindowTab* tab = gReadAloudSessionTab;
+    if (!tab) {
+        tab = GetReadAloudSourceTab();
+    }
+    if (!tab) {
+        return;
+    }
+    if (TtsIsSpeaking()) {
+        TtsStop();
+    }
+    ReadAloudFinishSession(tab, tab->win);
+}
+
+static void ReadAloudShowNotif(WindowTab* tab, const char* msg) {
+    NotificationCreateArgs args;
+    args.hwndParent = tab->win->hwndCanvas;
+    args.msg = msg;
+    args.timeoutMs = 2000;
+    ShowNotification(args);
+}
+
+// remembers cleaned text on the tab and starts speaking it in TTS-sized chunks
+static void ReadAloudStartText(WindowTab* tab, const char* cleaned, ReadAloudHighlightMap* newMap, int highlightBase,
+                               const char* errMsg) {
+    if (str::IsEmpty(cleaned)) {
+        logf("ReadAloud: StartText: empty cleaned text\n");
+        ReadAloudShowNotif(tab, errMsg);
+        return;
+    }
+
+    int cleanedLen = str::Leni(cleaned);
+    int mapLen = newMap ? newMap->len : -1;
+    logf("ReadAloud: StartText: cleanedLen=%d mapLen=%d highlightBase=%d\n", cleanedLen, mapLen, highlightBase);
+
+    if (newMap) {
+        if (!tab->readAloudHighlight) {
+            tab->readAloudHighlight = new ReadAloudHighlightMap{};
+        }
+        ReadAloudHighlightFree(tab->readAloudHighlight);
+        if (newMap->len > 0 && newMap->locs) {
+            *tab->readAloudHighlight = *newMap;
+            newMap->locs = nullptr;
+            newMap->len = 0;
+            newMap->cap = 0;
+        } else {
+            logf("ReadAloud: StartText: highlight map empty (len=%d locs=%p)\n", newMap->len, newMap->locs);
+        }
+    } else if (highlightBase == 0 && tab->readAloudHighlight) {
+        ReadAloudHighlightFree(tab->readAloudHighlight);
+        delete tab->readAloudHighlight;
+        tab->readAloudHighlight = nullptr;
+    }
+
+    str::ReplaceWithCopy(&tab->readAloudText, cleaned);
+    tab->readAloudHighlightBase = highlightBase;
+    tab->readAloudChunkStart = 0;
+    tab->readAloudChunkEnd = 0;
+    tab->readAloudResumePos = -1;
+    tab->readAloudAutoScroll = true;
+    gReadAloudSessionTab = tab;
+    ReadAloudSetSourceTab(tab);
+    ReadAloudHighlightTimerStart(tab->win);
+
+    if (!ReadAloudSpeakChunk(tab, errMsg)) {
+        ReadAloudFinishSession(tab, tab->win);
+        return;
+    }
+    logf("ReadAloud: StartText: started speaking\n");
+}
+
+static void ReadAloudStartFromViewportTop(WindowTab* tab, const char* errMsg) {
+    logf("ReadAloud: StartFromViewportTop\n");
+    DisplayModel* dm = tab->AsFixed();
+    if (!dm) {
+        logf("ReadAloud: StartFromViewportTop: not a fixed-layout document\n");
+        ReadAloudShowNotif(tab, errMsg);
+        return;
+    }
+
+    int startPage = 0;
+    int startGlyph = 0;
+    if (!ReadAloudGetViewportStart(dm, &startPage, &startGlyph)) {
+        logf("ReadAloud: StartFromViewportTop: GetViewportStart failed\n");
+        ReadAloudShowNotif(tab, errMsg);
+        return;
+    }
+
+    StrBuilder cleaned;
+    ReadAloudHighlightMap map{};
+    int pageCount = dm->PageCount();
+    int endPage = startPage + kReadAloudBuildPagesPerBatch - 1;
+    if (endPage > pageCount) {
+        endPage = pageCount;
+    }
+    if (!ReadAloudHighlightBuildFromDocument(dm, startPage, startGlyph, endPage, &map, cleaned)) {
+        logf("ReadAloud: StartFromViewportTop: BuildFromDocument failed (page=%d glyph=%d endPage=%d)\n", startPage,
+             startGlyph, endPage);
+        ReadAloudShowNotif(tab, errMsg);
+        return;
+    }
+
+    tab->readAloudBuiltEndPage = endPage;
+
+    ReadAloudStartText(tab, cleaned.Get(), &map, 0, errMsg);
+}
+
+static void ReadAloudStartFromSelection(WindowTab* tab, const char* errMsg) {
+    DisplayModel* dm = tab->AsFixed();
+    if (!dm || dm->textSelection->result.len <= 0) {
+        ReadAloudShowNotif(tab, errMsg);
+        return;
+    }
+
+    StrBuilder cleaned;
+    ReadAloudHighlightMap map{};
+    if (!ReadAloudHighlightBuildFromTextSelection(dm->textSelection, &map, cleaned)) {
+        bool isTextOnlySelection = false;
+        TempStr text = GetSelectedTextTemp(tab, "\r\n", isTextOnlySelection);
+        TempStr cleanedStr = CleanReadAloudTextTemp(text);
+        tab->readAloudBuiltEndPage = 0;
+        ReadAloudStartText(tab, cleanedStr, nullptr, 0, errMsg);
+        return;
+    }
+
+    tab->readAloudBuiltEndPage = 0;
+    ReadAloudStartText(tab, cleaned.Get(), &map, 0, errMsg);
+}
+
+static void ReadAloudInTab(WindowTab* tab) {
+    if (!tab || !tab->win) {
+        logf("ReadAloud: InTab: null tab or window\n");
+        return;
+    }
+
+    if (!HasPermission(Perm::CopySelection)) {
+        logf("ReadAloud: InTab: CopySelection permission denied\n");
+        ReadAloudShowNotif(tab, _TRA("Copying text is not allowed"));
+        return;
+    }
+
+    if (TtsIsSpeaking()) {
+        TtsStop();
+    }
+
+    bool isTextOnlySelection = false;
+    TempStr text = GetSelectedTextTemp(tab, "\r\n", isTextOnlySelection);
+
+    if (!str::IsEmpty(text) && isTextOnlySelection) {
+        logf("ReadAloud: InTab: using selection path (len=%d)\n", str::Leni(text));
+        tab->readAloudScope = WindowTab::ReadAloudScopeSmart;
+        ReadAloudStartFromSelection(tab, _TRA("No text available to read aloud"));
+    } else {
+        logf("ReadAloud: InTab: using viewport-top path (hasSelection=%d isTextOnly=%d)\n", !str::IsEmpty(text),
+             isTextOnlySelection);
+        tab->readAloudScope = WindowTab::ReadAloudScopeSmart;
+        ReadAloudStartFromViewportTop(tab, _TRA("No text available to read aloud"));
+    }
+}
+
+static void ReadAloudStartFromCursor(WindowTab* tab, Point screenPt, const char* errMsg) {
+    logf("ReadAloud: StartFromCursor\n");
+    DisplayModel* dm = tab->AsFixed();
+    if (!dm) {
+        logf("ReadAloud: StartFromCursor: not a fixed-layout document\n");
+        ReadAloudShowNotif(tab, errMsg);
+        return;
+    }
+
+    int startPage = 0;
+    int startGlyph = 0;
+    if (!ReadAloudGetCursorStart(dm, screenPt, &startPage, &startGlyph)) {
+        logf("ReadAloud: StartFromCursor: GetCursorStart failed\n");
+        ReadAloudShowNotif(tab, errMsg);
+        return;
+    }
+
+    StrBuilder cleaned;
+    ReadAloudHighlightMap map{};
+    int pageCount = dm->PageCount();
+    int endPage = startPage + kReadAloudBuildPagesPerBatch - 1;
+    if (endPage > pageCount) {
+        endPage = pageCount;
+    }
+    if (!ReadAloudHighlightBuildFromDocument(dm, startPage, startGlyph, endPage, &map, cleaned)) {
+        logf("ReadAloud: StartFromCursor: BuildFromDocument failed (page=%d glyph=%d endPage=%d)\n", startPage,
+             startGlyph, endPage);
+        ReadAloudShowNotif(tab, errMsg);
+        return;
+    }
+
+    tab->readAloudBuiltEndPage = endPage;
+    ReadAloudStartText(tab, cleaned.Get(), &map, 0, errMsg);
+}
+
+static void ReadAloudFromCursorInTab(WindowTab* tab, Point screenPt) {
+    if (!tab || !tab->win) {
+        logf("ReadAloud: FromCursorInTab: null tab or window\n");
+        return;
+    }
+
+    if (!HasPermission(Perm::CopySelection)) {
+        logf("ReadAloud: FromCursorInTab: CopySelection permission denied\n");
+        return;
+    }
+
+    tab->readAloudScope = WindowTab::ReadAloudScopeCursor;
+    ReadAloudStartFromCursor(tab, screenPt, _TRA("No text available to read aloud"));
+}
+
+static void ReadAloudFromViewportTopInTab(WindowTab* tab) {
+    if (!tab || !tab->win) {
+        logf("ReadAloud: FromViewportTopInTab: null tab or window\n");
+        return;
+    }
+
+    if (!HasPermission(Perm::CopySelection)) {
+        logf("ReadAloud: FromViewportTopInTab: CopySelection permission denied\n");
+        return;
+    }
+
+    tab->readAloudScope = WindowTab::ReadAloudScopeViewport;
+    ReadAloudStartFromViewportTop(tab, _TRA("No text available to read aloud"));
+}
+
+static void ReadAloudSelectionInTab(WindowTab* tab) {
+    if (!tab || !tab->win) {
+        return;
+    }
+
+    if (!HasPermission(Perm::CopySelection)) {
+        return;
+    }
+
+    tab->readAloudScope = WindowTab::ReadAloudScopeSelection;
+    ReadAloudStartFromSelection(tab, _TRA("No text available to read aloud"));
+}
+
+bool CanContinueReadAloud(WindowTab* tab) {
+    if (!tab || str::IsEmpty(tab->readAloudText)) {
+        return false;
+    }
+    int pos = tab->readAloudResumePos;
+    int maxPos = tab->readAloudHighlightBase + str::Leni(tab->readAloudText);
+    return pos > 0 && pos < maxPos;
+}
+
+static void ReadAloudContinueInTab(WindowTab* tab) {
+    if (!CanContinueReadAloud(tab) || !tab->win) {
+        return;
+    }
+
+    int resumeInText = tab->readAloudResumePos - tab->readAloudHighlightBase;
+    tab->readAloudChunkEnd = resumeInText;
+    tab->readAloudChunkStart = resumeInText;
+    tab->readAloudResumePos = -1;
+    tab->readAloudAutoScroll = true;
+    ReadAloudSetSourceTab(tab);
+    ReadAloudHighlightTimerStart(tab->win);
+
+    if (!ReadAloudSpeakChunk(tab, _TRA("No text available to read aloud"))) {
+        ReadAloudFinishSession(tab, tab->win);
+        return;
+    }
+}
+
+WindowTab* GetReadAloudSourceTab() {
+    return gReadAloudSourceTab;
+}
+
+// Voice selection menu
+static TempStr TtsLangIdToLocaleNameTemp(const char* lang) {
+    if (str::IsEmpty(lang)) {
+        return str::DupTemp("unknown");
+    }
+
+    // Windows.Media.SpeechSynthesis voices report a locale name like "en-US",
+    // SAPI voices a hex language id like "409"
+    if (str::FindChar(lang, '-')) {
+        return str::DupTemp(lang);
+    }
+
+    char* end = nullptr;
+    unsigned long langId = strtoul(lang, &end, 16);
+    if (end == lang || langId == 0) {
+        return str::DupTemp(lang);
+    }
+
+    WCHAR localeName[LOCALE_NAME_MAX_LENGTH] = {};
+    int len = LCIDToLocaleName((LCID)langId, localeName, dimof(localeName), 0);
+    if (len <= 0) {
+        return str::DupTemp(lang);
+    }
+
+    return ToUtf8Temp(localeName);
+}
+
+static void BuildReadAloudVoiceMenuItems(HMENU voiceMenu) {
+    if (!voiceMenu) {
+        return;
+    }
+
+    const char* currentVoiceId = TtsGetVoiceId();
+
+    UINT defaultFlags = MF_STRING;
+    if (str::IsEmpty(currentVoiceId)) {
+        defaultFlags |= MF_CHECKED;
+    }
+
+    AppendMenuW(voiceMenu, defaultFlags, CmdTtsVoiceDefault, ToWStrTemp(_TRA("System default")));
+    AppendMenuW(voiceMenu, MF_SEPARATOR, 0, nullptr);
+
+    Vec<TtsVoiceInfo> voices = TtsGetVoices();
+
+    const char* lastLang = nullptr;
+
+    UINT cmd = CmdTtsVoiceFirst;
+    for (TtsVoiceInfo& voice : voices) {
+        if (cmd > CmdTtsVoiceLast) {
+            break;
+        }
+
+        const char* lang = str::IsEmpty(voice.lang) ? "" : voice.lang;
+
+        if (lastLang && !str::EqI(lastLang, lang)) {
+            AppendMenuW(voiceMenu, MF_SEPARATOR, 0, nullptr);
+        }
+
+        UINT flags = MF_STRING;
+        if (str::Eq(voice.id, currentVoiceId)) {
+            flags |= MF_CHECKED;
+        }
+
+        TempStr localeName = TtsLangIdToLocaleNameTemp(voice.lang);
+        TempStr label = str::FormatTemp("%s - %s", voice.name, localeName);
+        AppendMenuW(voiceMenu, flags, cmd, ToWStrTemp(label));
+
+        lastLang = lang;
+        cmd++;
+    }
+
+    TtsFreeVoices(voices);
+    RemoveBadMenuSeparators(voiceMenu);
+}
+
+static void BuildReadAloudMenuItems(HMENU menu, MainWindow* win, bool includeCursorItem, bool canReadFromCursor) {
+    WindowTab* currTab = win ? win->CurrentTab() : nullptr;
+    bool isSpeaking = TtsIsSpeaking();
+    bool canContinue = CanContinueReadAloud(currTab);
+    bool hasSelection =
+        currTab && win->showSelection && currTab->selectionOnPage && currTab->selectionOnPage->size() > 0;
+
+    if (isSpeaking) {
+        AppendMenuW(menu, MF_STRING, CmdTtsMenuPauseReading, ToWStrTemp(_TRA("Pause Reading")));
+        AppendMenuW(menu, MF_STRING, CmdTtsMenuStopReading, ToWStrTemp(_TRA("Stop Reading")));
+        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    } else if (canContinue) {
+        AppendMenuW(menu, MF_STRING, CmdTtsMenuContinueReading, ToWStrTemp(_TRA("Continue Reading")));
+        AppendMenuW(menu, MF_STRING, CmdTtsMenuStopReading, ToWStrTemp(_TRA("Stop Reading")));
+        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    }
+    AppendMenuW(menu, MF_STRING, CmdTtsMenuReadCurrentPage, ToWStrTemp(_TRA("Start Reading From Top")));
+    if (includeCursorItem) {
+        AppendMenuW(menu, canReadFromCursor ? MF_STRING : MF_STRING | MF_GRAYED, CmdTtsMenuReadFromCursor,
+                    ToWStrTemp(_TRA("Start Reading From Cursor Position")));
+    }
+    AppendMenuW(menu, hasSelection ? MF_STRING : MF_STRING | MF_GRAYED, CmdTtsMenuReadSelection,
+                ToWStrTemp(_TRA("Start Reading Selection")));
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+
+    HMENU voiceMenu = CreatePopupMenu();
+    if (voiceMenu) {
+        BuildReadAloudVoiceMenuItems(voiceMenu);
+        AppendMenuW(menu, MF_POPUP | MF_STRING, (UINT_PTR)voiceMenu, ToWStrTemp(_TRA("Voice")));
+    }
+}
+
+void RebuildReadAloudMenu(MainWindow* win, HMENU menu, bool includeCursorItem, bool canReadFromCursor) {
+    if (!menu || !win) {
+        return;
+    }
+    MenuEmpty(menu);
+    BuildReadAloudMenuItems(menu, win, includeCursorItem, canReadFromCursor);
+    RemoveBadMenuSeparators(menu);
+}
+
+static void HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
+    if (!win || selected == 0) {
+        return;
+    }
+
+    WindowTab* currTab = win->CurrentTab();
+
+    if (selected == CmdTtsMenuPauseReading) {
+        ReadAloudStopRememberPos();
+        ToolbarUpdateStateForWindow(win, true);
+    } else if (selected == CmdTtsMenuStopReading) {
+        ReadAloudPlaybackStop();
+    } else if (selected == CmdTtsMenuReadCurrentPage) {
+        if (currTab) {
+            TtsStop();
+            ReadAloudFinishSession(currTab, win);
+            ReadAloudFromViewportTopInTab(currTab);
+        }
+    } else if (selected == CmdTtsMenuReadFromCursor) {
+        if (currTab && win->contextMenuPtValid) {
+            TtsStop();
+            ReadAloudFinishSession(currTab, win);
+            ReadAloudFromCursorInTab(currTab, win->contextMenuPt);
+        }
+    } else if (selected == CmdTtsMenuContinueReading) {
+        if (TtsIsSpeaking()) {
+            TtsStop();
+        }
+        ReadAloudContinueInTab(currTab);
+    } else if (selected == CmdTtsMenuReadSelection) {
+        if (TtsIsSpeaking()) {
+            TtsStop();
+        }
+        ReadAloudFinishSession(currTab, win);
+        ReadAloudSelectionInTab(currTab);
+    } else if (selected == CmdTtsVoiceDefault) {
+        if (TtsSetVoiceById("")) {
+            ReadAloudSaveVoicePref("");
+        }
+    } else if (selected >= CmdTtsVoiceFirst && selected <= CmdTtsVoiceLast) {
+        Vec<TtsVoiceInfo> voices = TtsGetVoices();
+        int voiceIndex = (int)(selected - CmdTtsVoiceFirst);
+        if (voiceIndex >= 0 && voiceIndex < voices.Size()) {
+            if (TtsSetVoiceById(voices[voiceIndex].id)) {
+                ReadAloudSaveVoicePref(voices[voiceIndex].id);
+            }
+        }
+        TtsFreeVoices(voices);
+    }
+}
+
+bool HandleReadAloudMenuCommand(MainWindow* win, int cmdId) {
+    if (cmdId == CmdTtsVoiceDefault || (cmdId >= CmdTtsMenuReadCurrentPage && cmdId <= CmdTtsMenuStopReading) ||
+        (cmdId >= CmdTtsVoiceFirst && cmdId <= CmdTtsVoiceLast)) {
+        HandleReadAloudMenuSelection(win, (UINT)cmdId);
+        return true;
+    }
+    return false;
+}
+
+static void ShowTtsVoiceMenu(MainWindow* win, NMTOOLBARW* nmtb) {
+    if (!win || !nmtb || nmtb->iItem != CmdReadAloud) {
+        return;
+    }
+
+    RECT rc{};
+    SendMessageW(nmtb->hdr.hwndFrom, TB_GETRECT, CmdReadAloud, (LPARAM)&rc);
+    MapWindowPoints(nmtb->hdr.hwndFrom, HWND_DESKTOP, (POINT*)&rc, 2);
+
+    HMENU menu = CreatePopupMenu();
+    if (!menu) {
+        return;
+    }
+
+    BuildReadAloudMenuItems(menu, win, false, false);
+
+    UINT selected = (UINT)TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, rc.left, rc.bottom, 0,
+                                         win->hwndFrame, nullptr);
+
+    HandleReadAloudMenuSelection(win, selected);
+    DestroyMenu(menu);
+}
+
 LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     MainWindow* win = FindMainWindowByHwnd(hwnd);
 
@@ -9470,7 +10456,7 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
 
     switch (msg) {
         case WM_CREATE:
-            // do nothing
+            TtsSetNotifyWindow(hwnd, WM_TTS_EVENT, 0, 0);
             goto InitMouseWheelInfo;
 
         case WM_DPICHANGED:
@@ -9530,6 +10516,15 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
                 return 0;
             }
             break;
+
+        case WM_NOTIFY: {
+            NMHDR* hdr = (NMHDR*)lp;
+            if (win && hdr && hdr->hwndFrom == win->hwndToolbar && hdr->code == TBN_DROPDOWN) {
+                ShowTtsVoiceMenu(win, (NMTOOLBARW*)lp);
+                return TBDDRET_DEFAULT;
+            }
+            break;
+        }
 
         case WM_COMMAND:
             return FrameOnCommand(win, hwnd, msg, wp, lp);
@@ -9737,6 +10732,30 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
                 OnStressTestTimer(win, (int)wp);
             }
             break;
+
+        case WM_TTS_EVENT:
+            TtsProcessEvents();
+
+            if (TtsIsSpeaking() && gReadAloudSourceTab && gReadAloudSourceTab->win) {
+                InvalidateRect(gReadAloudSourceTab->win->hwndCanvas, nullptr, FALSE);
+            }
+
+            if (TtsConsumeChunkFinished() && gReadAloudSourceTab) {
+                WindowTab* raTab = gReadAloudSourceTab;
+                if (ReadAloudHasMoreChunks(raTab)) {
+                    if (!ReadAloudSpeakChunk(raTab, _TRA("No text available to read aloud"))) {
+                        ReadAloudFinishSession(raTab, win);
+                    }
+                } else if (ReadAloudEnsureDocumentTextExtended(raTab) && ReadAloudHasMoreChunks(raTab)) {
+                    if (!ReadAloudSpeakChunk(raTab, _TRA("No text available to read aloud"))) {
+                        ReadAloudFinishSession(raTab, win);
+                    }
+                } else {
+                    ReadAloudFinishSession(raTab, win);
+                }
+            }
+
+            return 0;
 
         case WM_MOUSEACTIVATE:
             if (win && win->presentation && hwnd != GetForegroundWindow()) {

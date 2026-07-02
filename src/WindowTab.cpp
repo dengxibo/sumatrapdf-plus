@@ -20,6 +20,7 @@
 #include "MainWindow.h"
 #include "WindowTab.h"
 #include "Selection.h"
+#include "ReadAloudHighlight.h"
 #include "Translations.h"
 #include "EditAnnotations.h"
 
@@ -66,6 +67,11 @@ WindowTab::~WindowTab() {
     delete ctrl;
     str::FreePtr(&filePath);
     str::FreePtr(&frameTitle);
+    str::FreePtr(&readAloudText);
+    if (readAloudHighlight) {
+        ReadAloudHighlightFree(readAloudHighlight);
+        delete readAloudHighlight;
+    }
 }
 
 bool WindowTab::IsDocLoaded() const {
@@ -119,6 +125,10 @@ void WindowTab::MoveDocBy(int dx, int dy) const {
     }
     if (0 != dy) {
         dm->ScrollYBy(dy, false);
+    }
+
+    if (win && !win->readAloudScrollFromCode) {
+        ReadAloudOnUserViewChanged(win);
     }
 }
 

@@ -5,6 +5,11 @@
 #define SMOOTHSCROLL_DELAY_IN_MS 20
 #define SMOOTHSCROLL_SLOW_DOWN_FACTOR 10
 
+struct DisplayModel;
+struct MainWindow;
+struct WindowTab;
+struct TextSel;
+
 /* Represents selected area on given page */
 struct SelectionOnPage {
     explicit SelectionOnPage(int pageNo = 0, const RectF* const rect = nullptr);
@@ -22,9 +27,35 @@ struct SelectionOnPage {
     static Vec<SelectionOnPage>* FromTextSelect(TextSel* textSel);
 };
 
+// Highlight band height as a fraction of font size (engine stores coords at kHighlightBandBaseRatio).
+constexpr float kHighlightBandBaseRatio = 1.0f;
+constexpr float kSelectionHighlightBandRatio = 1.10f;
+constexpr float kReadAloudHighlightBandRatio = 0.80f;
+constexpr u8 kSelectionHighlightAlpha = 0x5f;
+
+COLORREF GetSelectionHighlightColor();
+
+// Scale a highlight rect to the given band ratio (page coordinates).
+RectF ScaleHighlightBandRect(RectF r, float bandRatio);
+
+// Merge two highlight rects on the same line (horizontal span, uniform band height).
+RectF MergeHighlightLineRect(RectF a, RectF b);
+
+// Build one highlight rect for a run of glyph boxes on the same line.
+Rect BuildHighlightLineRect(Rect* c0, Rect* cEnd);
+
+// Align highlight band height for rects on the same text line (page coordinates).
+void NormalizeHighlightLineHeights(Vec<RectF>& rects);
+
+// Use one band height for every highlight rect in a selection (page coordinates).
+void NormalizeHighlightUniformHeight(Vec<RectF>& rects);
+
+// Match band height only between consecutive lines with similar font size.
+void NormalizeNearbyHighlightHeights(Vec<RectF>& rects);
+
 void DeleteOldSelectionInfo(MainWindow* win, bool alsoTextSel = false);
-void PaintTransparentRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF selectionColor, u8 alpha = 0x5f,
-                                int margin = 1);
+void PaintTransparentRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF selectionColor,
+                                u8 alpha = kSelectionHighlightAlpha, int margin = 1);
 void PaintSelection(MainWindow* win, HDC hdc);
 void UpdateTextSelection(MainWindow* win, bool select = true);
 void CopySelectionToClipboard(MainWindow* win);

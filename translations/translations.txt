@@ -28084,3 +28084,1609 @@ tw:查詞選取內容(&S)
 uk:Шукати виділене
 uz:Tanlovni qidirish
 vn:Tra nội dung đã chọn
+:Read Aloud
+af:Lees hardop
+am:Բարձրաձայն կարդալ
+ar:القراءة بصوت
+az:Səsli oxu
+bg:Четене на глас
+bn:জোরে পড়ুন
+br:Ler em voz alta
+bs:Čitaj naglas
+by:Чытаць уголас
+ca:Lectura en veu alta
+ca-xv:Lectura en veu alta
+cn:朗读
+co:Leghje à voce alta
+cy:Darllen yn uchel
+cz:Přečíst nahlas
+de:Vorlesen
+dk:Læs højt
+el:Ανάγνωση φωνητικά
+es:Leer en voz alta
+et:Loe valjult
+eu:Ozen irakurri
+fa:خواندن با صدا
+fi:Lue ääneen
+fo:Les upp
+fr:Lecture à voix haute
+fy-nl:Hardop lêze
+ga:Léigh os ard
+gl:Ler en voz alta
+he:קריאה בקול
+hi:ज़ोर से पढ़ें
+hr:Čitaj naglas
+hu:Felolvasás
+id:Baca dengan suara
+it:Leggi ad alta voce
+ja:読み上げ
+jv:Waca kanthi swara
+ka:ხმამაღლა წაკითხვა
+kr:소리 내어 읽기
+ku:Bi dengî bixwîne
+kw:Redya yn uhel
+lt:Skaityti garsiai
+lv:Lasīt skaļi
+mk:Читај наглас
+ml:ശബ്ദമുള്ള വായന
+mm:အသံထွက်ဖတ်ပါ
+my:Baca dengan suara
+ne:जोरले पढ्नुहोस्
+nl:Voorlezen
+nn:Les høgt
+no:Les høyt
+pa:ਉੱਚੀ ਆਵਾਜ਼ ਵਿੱਚ ਪੜ੍ਹੋ
+pl:Czytaj na głos
+pt:Ler em voz alta
+ro:Citește cu voce tare
+ru:Читать вслух
+sat:ᱡᱚᱨ ᱛᱮ ᱯᱟᱲᱦᱟᱣ
+si:හඬ නගා කියවන්න
+sk:Prečítať nahlas
+sl:Glasno branje
+sn:Verenga nezwi
+sp-rs:Čitaj naglas
+sq:Lexo me zë të lartë
+sr-rs:Читај наглас
+sv:Läs upp
+ta:சத்தமாக படிக்க
+th:อ่านออกเสียง
+tl:Basahin nang malakas
+tr:Sesli oku
+tw:朗讀
+uk:Читати вголос
+uz:Ovozli o'qish
+vn:Đọc to
+:Pause Reading
+af:Lees hardop pouseer
+am:Դադարեցնել կարդալը
+ar:إيقاف القراءة مؤقتًا
+az:Oxumağı dayandır
+bg:Пауза на четенето
+bn:পড়া বিরতি
+br:Pausar leitura
+bs:Pauziraj čitanje
+by:Прыпыніць чытанне
+ca:Pausa la lectura
+ca-xv:Pausa la lectura
+cn:暂停朗读
+co:Pausa a leghje
+cy:Oedi darllen
+cz:Pozastavit čtení
+de:Lesen pausieren
+dk:Pause læsning
+el:Παύση ανάγνωσης
+es:Pausar lectura
+et:Peata lugemine
+eu:Irakurketa pausatu
+fa:توقف موقت خواندن
+fi:Keskeytä lukeminen
+fo:Steðga lesing
+fr:Mettre la lecture en pause
+fy-nl:Lêzen pauzearje
+ga:Cuir sos ar an léitheoireacht
+gl:Pausar lectura
+he:השהיית קריאה
+hi:पढ़ना रोकें
+hr:Pauziraj čitanje
+hu:Olvasás szüneteltetése
+id:Jeda pembacaan
+it:Metti in pausa la lettura
+ja:読み上げを一時停止
+jv:Ngasah maca
+ka:წაკითხვის паузა
+kr:읽기 일시 정지
+ku:Xwendinê rawestîne
+kw:Omdheg redya
+lt:Pristabdyti skaitymą
+lv:Pauzēt lasīšanu
+mk:Паузирај читање
+ml:വായന നിർത്തുക
+mm:ဖတ်ခြင်း ခဏရပ်ပါ
+my:Jeda bacaan
+ne:पढ्न रोक्नुहोस्
+nl:Lezen pauzeren
+nn:Pause lesing
+no:Pause lesing
+pa:ਪੜ੍ਹਨਾ ਰੋਕੋ
+pl:Wstrzymaj czytanie
+pt:Pausar leitura
+ro:Pauzează citirea
+ru:Приостановить чтение
+sat:ᱯᱟᱲᱦᱟᱣ ᱛᱷᱟᱹᱜ
+si:කියවීම නවත්වන්න
+sk:Pozastaviť čítanie
+sl:Premor branja
+sn:Misa kuverenga
+sp-rs:Pauziraj čitanje
+sq:Ndalo leximin
+sr-rs:Паузирај читање
+sv:Pausa uppläsning
+ta:படிப்பை இடைநிறுத்து
+th:หยุดอ่านชั่วคราว
+tl:I-pause ang pagbabasa
+tr:Okumayı duraklat
+tw:暫停朗讀
+uk:Призупинити читання
+uz:O'qishni pauza qilish
+vn:Tạm dừng đọc
+:Continue Reading
+af:Gaan voort met lees
+am:Շարունակել կարդալը
+ar:متابعة القراءة
+az:Oxumağa davam et
+bg:Продължи четенето
+bn:পড়া চালিয়ে যান
+br:Continuar leitura
+bs:Nastavi čitanje
+by:Працягнуць чытанне
+ca:Continua la lectura
+ca-xv:Continua la lectura
+cn:继续朗读
+co:Cuntinuà a leghje
+cy:Parhau i ddarllen
+cz:Pokračovat ve čtení
+de:Lesen fortsetzen
+dk:Fortsæt læsning
+el:Συνέχεια ανάγνωσης
+es:Continuar lectura
+et:Jätka lugemist
+eu:Jarraitu irakurtzen
+fa:ادامه خواندن
+fi:Jatka lukemista
+fo:Halda á fram at lesa
+fr:Reprendre la lecture
+fy-nl:Trochgean mei lêzen
+ga:Lean ar aghaidh ag léamh
+gl:Continuar lectura
+he:המשך קריאה
+hi:पढ़ना जारी रखें
+hr:Nastavi čitanje
+hu:Olvasás folytatása
+id:Lanjutkan pembacaan
+it:Continua la lettura
+ja:読み上げを再開
+jv:Terusake maca
+ka:წაკითხვის გაგრძელება
+kr:읽기 계속
+ku:Xwendinê bidomîne
+kw:Pesya redya
+lt:Tęsti skaitymą
+lv:Turpināt lasīšanu
+mk:Продолжи читање
+ml:വായന തുടരുക
+mm:ဖတ်ခြင်း ဆက်လုပ်ပါ
+my:Sambung bacaan
+ne:पढ्न जारी राख्नुहोस्
+nl:Lezen hervatten
+nn:Hald fram lesing
+no:Fortsett lesing
+pa:ਪੜ੍ਹਨਾ ਜਾਰੀ ਰੱਖੋ
+pl:Kontynuuj czytanie
+pt:Continuar leitura
+ro:Continuă citirea
+ru:Продолжить чтение
+sat:ᱯᱟᱲᱦᱟᱣ ᱜᱟᱹᱜᱤ
+si:කියවීම දිගටම
+sk:Pokračovať v čítaní
+sl:Nadaljuj branje
+sn:Enderera kuverenga
+sp-rs:Nastavi čitanje
+sq:Vazhdo leximin
+sr-rs:Настави читање
+sv:Fortsätt läsa upp
+ta:படிப்பை தொடர
+th:อ่านต่อ
+tl:Ipagpatuloy ang pagbabasa
+tr:Okumaya devam et
+tw:繼續朗讀
+uk:Продовжити читання
+uz:O'qishni davom ettirish
+vn:Tiếp tục đọc
+:Stop Reading
+af:Stop lees
+am:Դադարեցնել կարդալը
+ar:إيقاف القراءة
+az:Oxumağı dayandır
+bg:Спри четенето
+bn:পড়া বন্ধ করুন
+br:Parar leitura
+bs:Zaustavi čitanje
+by:Спыніць чытанне
+ca:Atura la lectura
+ca-xv:Atura la lectura
+cn:停止朗读
+co:Fermà a leghje
+cy:Stopio darllen
+cz:Zastavit čtení
+de:Lesen beenden
+dk:Stop læsning
+el:Διακοπή ανάγνωσης
+es:Detener lectura
+et:Lõpeta lugemine
+eu:Gelditu irakurketa
+fa:توقف خواندن
+fi:Lopeta lukeminen
+fo:Steðga lesing
+fr:Arrêter la lecture
+fy-nl:Lêzen stopje
+ga:Stop an léitheoireacht
+gl:Deter lectura
+he:עצירת קריאה
+hi:पढ़ना बंद करें
+hr:Zaustavi čitanje
+hu:Olvasás leállítása
+id:Hentikan pembacaan
+it:Interrompi la lettura
+ja:読み上げを停止
+jv:Mungkasi maca
+ka:წაკითხვის შეწყვეტა
+kr:읽기 중지
+ku:Xwendinê sekinîne
+kw:Hedhi redya
+lt:Sustabdyti skaitymą
+lv:Apturēt lasīšanu
+mk:Запри читање
+ml:വായന നിർത്തുക
+mm:ဖတ်ခြင်း ရပ်ပါ
+my:Hentikan bacaan
+ne:पढ्न बन्द गर्नुहोस्
+nl:Lezen stoppen
+nn:Stopp lesing
+no:Stopp lesing
+pa:ਪੜ੍ਹਨਾ ਬੰਦ ਕਰੋ
+pl:Zatrzymaj czytanie
+pt:Parar leitura
+ro:Oprește citirea
+ru:Остановить чтение
+sat:ᱯᱟᱲᱦᱟᱣ ᱵᱚᱸᱫ
+si:කියවීම නවත්වන්න
+sk:Zastaviť čítanie
+sl:Ustavi branje
+sn:Mira kuverenga
+sp-rs:Zaustavi čitanje
+sq:Ndalo leximin
+sr-rs:Заустави читање
+sv:Stoppa uppläsning
+ta:படிப்பை நிறுத்து
+th:หยุดอ่าน
+tl:Itigil ang pagbabasa
+tr:Okumayı durdur
+tw:停止朗讀
+uk:Зупинити читання
+uz:O'qishni to'xtatish
+vn:Dừng đọc
+:Start Reading From Top
+af:Begin lees van bo
+am:Սկսել կարդալ վերևից
+ar:بدء القراءة من الأعلى
+az:Yuxarıdan oxumağa başla
+bg:Започни четене отгоре
+bn:উপর থেকে পড়া শুরু করুন
+br:Começar leitura do topo
+bs:Počni čitanje od vrha
+by:Пачаць чытанне зверху
+ca:Comença a llegir des de dalt
+ca-xv:Comença a llegir des de dalt
+cn:从页首开始朗读
+co:Cumincià à leghje da u principiu
+cy:Dechrau darllen o'r brig
+cz:Začít číst od začátku
+de:Von oben vorlesen
+dk:Start læsning fra top
+el:Έναρξη ανάγνωσης από την κορυφή
+es:Empezar a leer desde arriba
+et:Alusta lugemist ülevalt
+eu:Goitik irakurtzen hasi
+fa:شروع خواندن از بالا
+fi:Aloita lukeminen ylhäältä
+fo:Byrja at lesa frá topps
+fr:Commencer la lecture depuis le haut
+fy-nl:Begjin boppe te lêzen
+ga:Tosaigh ag léamh ó bharr
+gl:Comezar a ler dende arriba
+he:התחל קריאה מלמעלה
+hi:ऊपर से पढ़ना शुरू करें
+hr:Počni čitati od vrha
+hu:Olvasás indítása felülről
+id:Mulai membaca dari atas
+it:Inizia a leggere dall'inizio
+ja:先頭から読み上げ
+jv:Wiwiti maca saka ndhuwur
+ka:წაკითხვა ზემოდან
+kr:맨 위에서 읽기 시작
+ku:Ji jorê dest pê bike
+kw:Dalleth redya a'n penn
+lt:Pradėti skaityti nuo viršaus
+lv:Sākt lasīt no augšas
+mk:Почни читање од врвот
+ml:മുകളിൽ നിന്ന് വായന ആരംഭിക്കുക
+mm:ထိပ်မှ ဖတ်ခြင်း စတင်ပါ
+my:Mula baca dari atas
+ne:माथिबाट पढ्न सुरु गर्नुहोस्
+nl:Van boven beginnen met lezen
+nn:Start lesing frå toppen
+no:Start lesing fra toppen
+pa:ਉੱਪਰੋਂ ਪੜ੍ਹਨਾ ਸ਼ੁਰੂ ਕਰੋ
+pl:Zacznij czytać od góry
+pt:Começar a ler do topo
+ro:Începe citirea de sus
+ru:Начать чтение с начала
+sat:ᱪᱮᱛᱟᱣ ᱠᱷᱚᱱ ᱯᱟᱲᱦᱟᱣ ᱮᱛᱚᱜ
+si:ඉහළින් කියවීම ආරම්භ කරන්න
+sk:Začať čítať od začiatku
+sl:Začni brati od vrha
+sn:Tanga kuverenga kubva pamusoro
+sp-rs:Počni čitanje od vrha
+sq:Fillo leximin nga lart
+sr-rs:Почни читање од врха
+sv:Börja läsa upp från toppen
+ta:மேலிருந்து படிக்க தொடங்கு
+th:เริ่มอ่านจากด้านบน
+tl:Simulan ang pagbabasa mula sa itaas
+tr:Yukarıdan okumaya başla
+tw:從頁首開始朗讀
+uk:Почати читати зверху
+uz:Yuqoridan o'qishni boshlash
+vn:Bắt đầu đọc từ đầu
+:Start Reading Selection
+af:Lees seleksie
+am:Կարդալ ընտրվածը
+ar:قراءة التحديد
+az:Seçimi oxu
+bg:Прочети избраното
+bn:নির্বাচিত অংশ পড়ুন
+br:Ler seleção
+bs:Pročitaj odabir
+by:Прачытай вылучанае
+ca:Llegeix la selecció
+ca-xv:Llegeix la selecció
+cn:朗读选中内容
+co:Leghje a selezzione
+cy:Darllen y dewis
+cz:Přečíst výběr
+de:Auswahl vorlesen
+dk:Læs markering
+el:Ανάγνωση επιλογής
+es:Leer selección
+et:Loe valikut
+eu:Hautapena irakurri
+fa:خواندن انتخاب
+fi:Lue valinta
+fo:Les val
+fr:Lire la sélection
+fy-nl:Seleksje lêze
+ga:Léigh an roghnú
+gl:Ler selección
+he:קרא את הבחירה
+hi:चयन पढ़ें
+hr:Pročitaj odabir
+hu:Kijelölés felolvasása
+id:Baca pilihan
+it:Leggi selezione
+ja:選択範囲を読み上げ
+jv:Waca pilihan
+ka:არჩეულის წაკითხვა
+kr:선택 영역 읽기
+ku:Hilbijartinê bixwîne
+kw:Redya dewis
+lt:Skaityti pažymėtą
+lv:Lasīt atlasi
+mk:Прочитај избор
+ml:തിരഞ്ഞെടുത്തത് വായിക്കുക
+mm:ရွေးချယ်ထားသည်ကို ဖတ်ပါ
+my:Baca pilihan
+ne:चयन पढ्नुहोस्
+nl:Selectie voorlezen
+nn:Les utval
+no:Les utvalg
+pa:ਚੋਣ ਪੜ੍ਹੋ
+pl:Czytaj zaznaczenie
+pt:Ler seleção
+ro:Citește selecția
+ru:Читать выделенное
+sat:ᱵᱟᱪᱷᱟᱣ ᱯᱟᱲᱦᱟᱣ
+si:තෝරාගත් කියවන්න
+sk:Prečítať výber
+sl:Preberi izbor
+sn:Verenga sarudzo
+sp-rs:Pročitaj izbor
+sq:Lexo përzgjedhjen
+sr-rs:Прочитај избор
+sv:Läs markering
+ta:தேர்வை படி
+th:อ่านส่วนที่เลือก
+tl:Basahin ang pinili
+tr:Seçimi oku
+tw:朗讀選取內容
+uk:Читати виділене
+uz:Tanlovni o'qish
+vn:Đọc phần chọn
+:Start Reading From Cursor Position
+af:Begin lees vanaf cursor
+am:Սկսել կարդալ կursor-ից
+ar:بدء القراءة من المؤشر
+az:Kursor mövqeyindən oxumağa başla
+bg:Започни четене от курсора
+bn:কার্সার থেকে পড়া শুরু করুন
+br:Começar leitura do cursor
+bs:Počni čitanje od kursora
+by:Пачаць чытанне з курсора
+ca:Comença a llegir des del cursor
+ca-xv:Comença a llegir des del cursor
+cn:从光标处开始朗读
+co:Cumincià à leghje da u cursore
+cy:Dechrau darllen o'r cyrnol
+cz:Začít číst od kurzoru
+de:Ab Cursor vorlesen
+dk:Start læsning fra markør
+el:Έναρξη ανάγνωσης από τον δρομέα
+es:Empezar a leer desde el cursor
+et:Alusta lugemist kursorist
+eu:Kurtsorearen posiziotik hasi
+fa:شروع خواندن از مکان‌نما
+fi:Aloita lukeminen kohdistimesta
+fo:Byrja at lesa frá markaranum
+fr:Commencer la lecture depuis le curseur
+fy-nl:Begjin fanôf kursor te lêzen
+ga:Tosaigh ag léamh ón gcúrsóir
+gl:Comezar a ler dende o cursor
+he:התחל קריאה ממיקום הסמן
+hi:कर्सर से पढ़ना शुरू करें
+hr:Počni čitati od kursora
+hu:Olvasás indítása a kurzortól
+id:Mulai membaca dari kursor
+it:Inizia a leggere dal cursore
+ja:カーソル位置から読み上げ
+jv:Wiwiti maca saka kursor
+ka:წაკითხვა კურსორიდან
+kr:커서 위치에서 읽기 시작
+ku:Ji cihê nîşanê dest pê bike
+kw:Dalleth redya a'n kursor
+lt:Pradėti skaityti nuo žymeklio
+lv:Sākt lasīt no kursora
+mk:Почни читање од курсорот
+ml:കഴ്സർ സ്ഥാനത്ത് നിന്ന് വായന ആരംഭിക്കുക
+mm:ကursor နေရာမှ ဖတ်ခြင်း စတင်ပါ
+my:Mula baca dari kursor
+ne:कर्सरबाट पढ्न सुरु गर्नुहोस्
+nl:Van cursor beginnen met lezen
+nn:Start lesing frå markør
+no:Start lesing fra markør
+pa:ਕਰਸਰ ਤੋਂ ਪੜ੍ਹਨਾ ਸ਼ੁਰੂ ਕਰੋ
+pl:Zacznij czytać od kursora
+pt:Começar a ler do cursor
+ro:Începe citirea de la cursor
+ru:Начать чтение с курсора
+sat:ᱠᱩᱨᱥᱚᱨ ᱠᱷᱚᱱ ᱯᱟᱲᱦᱟᱣ
+si:කර්සරයෙන් කියවීම ආරම්භ කරන්න
+sk:Začať čítať od kurzora
+sl:Začni brati od kazalca
+sn:Tanga kuverenga kubva pakursor
+sp-rs:Počni čitanje od kursora
+sq:Fillo leximin nga kursori
+sr-rs:Почни читање од курсора
+sv:Börja läsa upp från markören
+ta:கர்சரிலிருந்து படிக்க தொடங்கு
+th:เริ่มอ่านจากตำแหน่งเคอร์เซอร์
+tl:Simulan ang pagbabasa mula sa cursor
+tr:İmleçten okumaya başla
+tw:從游標處開始朗讀
+uk:Почати читати з курсора
+uz:Kursordan o'qishni boshlash
+vn:Bắt đầu đọc từ con trỏ
+:Read Aloud (TTS)
+af:Lees hardop (TTS)
+am:Բարձրաձայն կարդալ (TTS)
+ar:القراءة بصوت (TTS)
+az:Səsli oxu (TTS)
+bg:Четене на глас (TTS)
+bn:জোরে পড়ুন (TTS)
+br:Ler em voz alta (TTS)
+bs:Čitaj naglas (TTS)
+by:Чытаць уголас (TTS)
+ca:Lectura en veu alta (TTS)
+ca-xv:Lectura en veu alta (TTS)
+cn:朗读 (TTS)
+co:Leghje à voce alta (TTS)
+cy:Darllen yn uchel (TTS)
+cz:Přečíst nahlas (TTS)
+de:Vorlesen (TTS)
+dk:Læs højt (TTS)
+el:Ανάγνωση φωνητικά (TTS)
+es:Leer en voz alta (TTS)
+et:Loe valjult (TTS)
+eu:Ozen irakurri (TTS)
+fa:خواندن با صدا (TTS)
+fi:Lue ääneen (TTS)
+fo:Les upp (TTS)
+fr:Lecture à voix haute (TTS)
+fy-nl:Hardop lêze (TTS)
+ga:Léigh os ard (TTS)
+gl:Ler en voz alta (TTS)
+he:קריאה בקול (TTS)
+hi:ज़ोर से पढ़ें (TTS)
+hr:Čitaj naglas (TTS)
+hu:Felolvasás (TTS)
+id:Baca dengan suara (TTS)
+it:Leggi ad alta voce (TTS)
+ja:読み上げ (TTS)
+jv:Waca kanthi swara (TTS)
+ka:ხმამაღლა წაკითხვა (TTS)
+kr:소리 내어 읽기 (TTS)
+ku:Bi dengî bixwîne (TTS)
+kw:Redya yn uhel (TTS)
+lt:Skaityti garsiai (TTS)
+lv:Lasīt skaļi (TTS)
+mk:Читај наглас (TTS)
+ml:ശബ്ദമുള്ള വായന (TTS)
+mm:အသံထွက်ဖတ်ပါ (TTS)
+my:Baca dengan suara (TTS)
+ne:जोरले पढ्नुहोस् (TTS)
+nl:Voorlezen (TTS)
+nn:Les høgt (TTS)
+no:Les høyt (TTS)
+pa:ਉੱਚੀ ਆਵਾਜ਼ ਵਿੱਚ ਪੜ੍ਹੋ (TTS)
+pl:Czytaj na głos (TTS)
+pt:Ler em voz alta (TTS)
+ro:Citește cu voce tare (TTS)
+ru:Читать вслух (TTS)
+sat:ᱡᱚᱨ ᱛᱮ ᱯᱟᱲᱦᱟᱣ (TTS)
+si:හඬ නගා කියවන්න (TTS)
+sk:Prečítať nahlas (TTS)
+sl:Glasno branje (TTS)
+sn:Verenga nezwi (TTS)
+sp-rs:Čitaj naglas (TTS)
+sq:Lexo me zë të lartë (TTS)
+sr-rs:Читај наглас (TTS)
+sv:Läs upp (TTS)
+ta:சத்தமாக படிக்க (TTS)
+th:อ่านออกเสียง (TTS)
+tl:Basahin nang malakas (TTS)
+tr:Sesli oku (TTS)
+tw:朗讀 (TTS)
+uk:Читати вголос (TTS)
+uz:Ovozli o'qish (TTS)
+vn:Đọc to (TTS)
+:Voice
+af:Stem
+am:Ձայն
+ar:الصوت
+az:Səs
+bg:Глас
+bn:কণ্ঠ
+br:Voz
+bs:Glas
+by:Голас
+ca:Veu
+ca-xv:Veu
+cn:语音
+co:Voce
+cy:Llais
+cz:Hlas
+de:Stimme
+dk:Stemme
+el:Φωνή
+es:Voz
+et:Hääl
+eu:Ahotsa
+fa:صدا
+fi:Ääni
+fo:Rødd
+fr:Voix
+fy-nl:Stim
+ga:Guth
+gl:Voz
+he:קול
+hi:आवाज़
+hr:Glas
+hu:Hang
+id:Suara
+it:Voce
+ja:音声
+jv:Swara
+ka:ხმა
+kr:음성
+ku:Deng
+kw:Leuv
+lt:Balsas
+lv:Balss
+mk:Глас
+ml:ശബ്ദം
+mm:အသံ
+my:Suara
+ne:आवाज
+nl:Stem
+nn:Stemme
+no:Stemme
+pa:ਆਵਾਜ਼
+pl:Głos
+pt:Voz
+ro:Voce
+ru:Голос
+sat:ᱥᱟᱲᱮ
+si:හඬ
+sk:Hlas
+sl:Glas
+sn:Izwi
+sp-rs:Glas
+sq:Zëri
+sr-rs:Глас
+sv:Röst
+ta:குரல்
+th:เสียง
+tl:Boses
+tr:Ses
+tw:語音
+uk:Голос
+uz:Ovoz
+vn:Giọng
+:System default
+af:Stelsel verstek
+am:Համակարգի լռելյայն
+ar:الافتراضي للنظام
+az:Sistem standartı
+bg:Системно по подразбиране
+bn:সিস্টেম ডিফল্ট
+br:Padrão do sistema
+bs:Sistemski zadano
+by:Сістэмнае па змаўчанні
+ca:Per defecte del sistema
+ca-xv:Per defecte del sistema
+cn:系统默认
+co:Predefinitu di u sistema
+cy:Rhagosodiad y system
+cz:Výchozí systémový
+de:Systemstandard
+dk:Systemstandard
+el:Προεπιλογή συστήματος
+es:Predeterminado del sistema
+et:Süsteemi vaikimisi
+eu:Sistemaren lehenetsia
+fa:پیش‌فرض سیستم
+fi:Järjestelmän oletus
+fo:Sjálvsett
+fr:Par défaut du système
+fy-nl:Systeemstandert
+ga:Réamhshocrú an chórais
+gl:Predeterminado do sistema
+he:ברירת מחדל של המערכת
+hi:सिस्टम डिफ़ॉल्ट
+hr:Sistemski zadano
+hu:Rendszer alapértelmezett
+id:Default sistem
+it:Predefinito di sistema
+ja:システムの既定
+jv:Default sistem
+ka:სისტემის ნაგულისხმევი
+kr:시스템 기본값
+ku:Defaulta pergala
+kw:Defowt an system
+lt:Sistemos numatytasis
+lv:Sistēmas noklusējums
+mk:Системски стандард
+ml:സിസ്റ്റം ഡിഫോൾട്ട്
+mm:စနစ် ပုံသေ
+my:Lalai sistem
+ne:प्रणाली पूर्वनिर्धारित
+nl:Systeemstandaard
+nn:Systemstandard
+no:Systemstandard
+pa:ਸਿਸਟਮ ਡਿਫ਼ਾਲਟ
+pl:Domyślny systemowy
+pt:Predefinição do sistema
+ro:Implicit sistem
+ru:Системный по умолчанию
+sat:ᱥᱤᱥᱴᱟᱢ ᱰᱤᱯᱷᱚᱞᱴ
+si:පද්ධති පෙරනිමිය
+sk:Systémové predvolené
+sl:Sistemsko privzeto
+sn:Default yesystem
+sp-rs:Sistemski podrazumevano
+sq:Parazgjedhja e sistemit
+sr-rs:Системски подразумевано
+sv:Systemstandard
+ta:கணினி இயல்புநிலை
+th:ค่าเริ่มต้นของระบบ
+tl:Default ng system
+tr:Sistem varsayılanı
+tw:系統預設
+uk:Системний за замовчуванням
+uz:Tizim standarti
+vn:Mặc định hệ thống
+:No text available to read aloud
+af:Geen teks beskikbaar om hardop te lees nie
+am:Կարդալու տեքստ չկա
+ar:لا يوجد نص للقراءة بصوت
+az:Oxumaq üçün mətn yoxdur
+bg:Няма текст за четене на глас
+bn:পড়ার জন্য কোনো টেক্সট নেই
+br:Nenhum texto disponível para leitura
+bs:Nema teksta za čitanje
+by:Няма тэксту для чытання
+ca:No hi ha text per llegir en veu alta
+ca-xv:No hi ha text per llegir en veu alta
+cn:没有可朗读的文本
+co:Nisun testu dispunibule per leghje
+cy:Dim testun i'w ddarllen
+cz:Není k dispozici text ke čtení
+de:Kein Text zum Vorlesen verfügbar
+dk:Ingen tekst at læse højt
+el:Δεν υπάρχει κείμενο για ανάγνωση
+es:No hay texto disponible para leer
+et:Lugemiseks pole teksti
+eu:Ez dago irakurtzeko testurik
+fa:متنی برای خواندن موجود نیست
+fi:Ei luettavaa tekstiä
+fo:Eingin tekstur at lesa
+fr:Aucun texte à lire
+fy-nl:Gjin tekst om te lêzen
+ga:Níl aon téacs le léamh
+gl:Non hai texto dispoñible para ler
+he:אין טקסט לקריאה
+hi:पढ़ने के लिए कोई पाठ नहीं
+hr:Nema teksta za čitanje
+hu:Nincs felolvasható szöveg
+id:Tidak ada teks untuk dibaca
+it:Nessun testo da leggere
+ja:読み上げるテキストがありません
+jv:Ora ana teks kanggo diwaca
+ka:წასაკითხი ტექსტი არ არის
+kr:읽을 텍스트가 없습니다
+ku:Nivîs ji bo xwendinê tune
+kw:Nyns eus testen dhe redya
+lt:Nėra teksto skaitymui
+lv:Nav teksta lasīšanai
+mk:Нема текст за читање
+ml:വായിക്കാൻ ടെക്സ്റ്റ് ഇല്ല
+mm:ဖတ်ရန် စာသား မရှိပါ
+my:Tiada teks untuk dibaca
+ne:पढ्नका लागि पाठ छैन
+nl:Geen tekst om voor te lezen
+nn:Ingen tekst å lese
+no:Ingen tekst å lese
+pa:ਪੜ੍ਹਨ ਲਈ ਟੈਕਸਟ ਨਹੀਂ
+pl:Brak tekstu do odczytania
+pt:Nenhum texto disponível para leitura
+ro:Nu există text de citit
+ru:Нет текста для чтения
+sat:ᱯᱟᱲᱦᱟᱣ ᱞᱟᱹᱜᱤᱫ ᱚᱱᱟ ᱵᱟᱹᱱᱤ
+si:කියවීමට පෙළ නැත
+sk:Nie je k dispozícii text na čítanie
+sl:Ni besedila za branje
+sn:Hapana zvinyorwa zvekufanira kuverengwa
+sp-rs:Nema teksta za čitanje
+sq:Nuk ka tekst për të lexuar
+sr-rs:Нема текста за читање
+sv:Ingen text att läsa upp
+ta:படிக்க உரை இல்லை
+th:ไม่มีข้อความให้อ่าน
+tl:Walang tekstong mababasa
+tr:Okunacak metin yok
+tw:沒有可朗讀的文字
+uk:Немає тексту для читання
+uz:O'qish uchun matn yo'q
+vn:Không có văn bản để đọc
+:Selection
+af:Seleksie
+am:Ընտրություն
+ar:التحديد
+az:Seçim
+bg:Избор
+bn:নির্বাচন
+br:Seleção
+bs:Odabir
+by:Вылучэнне
+ca:Selecció
+ca-xv:Selecció
+cn:选中内容
+co:Selezzione
+cy:Dewis
+cz:Výběr
+de:Auswahl
+dk:Markering
+el:Επιλογή
+es:Selección
+et:Valik
+eu:Hautapena
+fa:انتخاب
+fi:Valinta
+fo:Val
+fr:Sélection
+fy-nl:Seleksje
+ga:Roghnú
+gl:Selección
+he:בחירה
+hi:चयन
+hr:Odabir
+hu:Kijelölés
+id:Pilihan
+it:Selezione
+ja:選択範囲
+jv:Pilihan
+ka:არჩევა
+kr:선택
+ku:Hilbijartin
+kw:Dewis
+lt:Pažymėjimas
+lv:Atlase
+mk:Избор
+ml:തിരഞ്ഞെടുപ്പ്
+mm:ရွေးချယ်မှု
+my:Pilihan
+ne:चयन
+nl:Selectie
+nn:Utval
+no:Utvalg
+pa:ਚੋਣ
+pl:Zaznaczenie
+pt:Seleção
+ro:Selecție
+ru:Выделение
+sat:ᱵᱟᱪᱷᱟᱣ
+si:තෝරාගැනීම
+sk:Výber
+sl:Izbor
+sn:Sarudzo
+sp-rs:Izbor
+sq:Përzgjedhja
+sr-rs:Избор
+sv:Markering
+ta:தேர்வு
+th:การเลือก
+tl:Pinili
+tr:Seçim
+tw:選取內容
+uk:Виділення
+uz:Tanlov
+vn:Lựa chọn
+:From top
+af:Van bo
+am:Վերևից
+ar:من الأعلى
+az:Yuxarıdan
+bg:Отгоре
+bn:উপর থেকে
+br:Do topo
+bs:Od vrha
+by:Зверху
+ca:Des de dalt
+ca-xv:Des de dalt
+cn:从页首
+co:Da u principiu
+cy:O'r brig
+cz:Od začátku
+de:Von oben
+dk:Fra top
+el:Από την κορυφή
+es:Desde arriba
+et:Ülevalt
+eu:Goitik
+fa:از بالا
+fi:Ylhäältä
+fo:Frá topps
+fr:Depuis le haut
+fy-nl:Fan boppe
+ga:Ó bharr
+gl:Dende arriba
+he:מלמעלה
+hi:ऊपर से
+hr:Od vrha
+hu:Felülről
+id:Dari atas
+it:Dall'inizio
+ja:先頭から
+jv:Saka ndhuwur
+ka:ზემოდან
+kr:맨 위에서
+ku:Ji jorê
+kw:A'n penn
+lt:Nuo viršaus
+lv:No augšas
+mk:Од врвот
+ml:മുകളിൽ നിന്ന്
+mm:ထိပ်မှ
+my:Dari atas
+ne:माथिबाट
+nl:Van boven
+nn:Frå toppen
+no:Fra toppen
+pa:ਉੱਪਰੋਂ
+pl:Od góry
+pt:Do topo
+ro:De sus
+ru:С начала
+sat:ᱪᱮᱛᱟᱣ ᱠᱷᱚᱱ
+si:ඉහළින්
+sk:Od začiatku
+sl:Od vrha
+sn:Kubva pamusoro
+sp-rs:Od vrha
+sq:Nga lart
+sr-rs:Од врха
+sv:Från toppen
+ta:மேலிருந்து
+th:จากด้านบน
+tl:Mula sa itaas
+tr:Yukarıdan
+tw:從頁首
+uk:Зверху
+uz:Yuqoridan
+vn:Từ đầu
+:From cursor
+af:Vanaf cursor
+am:Կursor-ից
+ar:من المؤشر
+az:Kursordan
+bg:От курсора
+bn:কার্সার থেকে
+br:Do cursor
+bs:Od kursora
+by:З курсора
+ca:Des del cursor
+ca-xv:Des del cursor
+cn:从光标
+co:Da u cursore
+cy:O'r cyrnol
+cz:Od kurzoru
+de:Ab Cursor
+dk:Fra markør
+el:Από τον δρομέα
+es:Desde el cursor
+et:Kursorist
+eu:Kurtsorearen posiziotik
+fa:از مکان‌نما
+fi:Kohdistimesta
+fo:Frá markaranum
+fr:Depuis le curseur
+fy-nl:Fan kursor
+ga:Ón gcúrsóir
+gl:Dende o cursor
+he:מהסמן
+hi:कर्सर से
+hr:Od kursora
+hu:Kurzortól
+id:Dari kursor
+it:Dal cursore
+ja:カーソルから
+jv:Saka kursor
+ka:კურსორიდან
+kr:커서에서
+ku:Ji nîşanê
+kw:A'n kursor
+lt:Nuo žymeklio
+lv:No kursora
+mk:Од курсорот
+ml:കഴ്സറിൽ നിന്ന്
+mm:ကursor မှ
+my:Dari kursor
+ne:कर्सरबाट
+nl:Van cursor
+nn:Frå markør
+no:Fra markør
+pa:ਕਰਸਰ ਤੋਂ
+pl:Od kursora
+pt:Do cursor
+ro:De la cursor
+ru:С курсора
+sat:ᱠᱩᱨᱥᱚᱨ ᱠᱷᱚᱱ
+si:කර්සරයෙන්
+sk:Od kurzora
+sl:Od kazalca
+sn:Kubva pakursor
+sp-rs:Od kursora
+sq:Nga kursori
+sr-rs:Од курсора
+sv:Från markören
+ta:கர்சரிலிருந்து
+th:จากเคอร์เซอร์
+tl:Mula sa cursor
+tr:İmleçten
+tw:從游標
+uk:З курсора
+uz:Kursordan
+vn:Từ con trỏ
+:Smart start
+af:Slim begin
+am:Խելացի սկիզբ
+ar:بدء ذكي
+az:Ağıllı başlanğıc
+bg:Интелигентно начало
+bn:স্মার্ট শুরু
+br:Início inteligente
+bs:Pametan početak
+by:Разумны пачатак
+ca:Inici intel·ligent
+ca-xv:Inici intel·ligent
+cn:智能开始
+co:Principiu intelligente
+cy:Dechrau smart
+cz:Chytrý start
+de:Intelligenter Start
+dk:Smart start
+el:Έξυπνη έναρξη
+es:Inicio inteligente
+et:Nutikas algus
+eu:Hasiera adimentsua
+fa:شروع هوشمند
+fi:Älykäs aloitus
+fo:Smart byrjan
+fr:Démarrage intelligent
+fy-nl:Smart start
+ga:Tús cliste
+gl:Inicio intelixente
+he:התחלה חכמה
+hi:स्मार्ट शुरुआत
+hr:Pametan početak
+hu:Okos indítás
+id:Mulai cerdas
+it:Avvio intelligente
+ja:スマート開始
+jv:Wiwitan pinter
+ka:ჭკვიანი დაწყება
+kr:스마트 시작
+ku:Destpêka jîr
+kw:Dalleth smart
+lt:Protingas pradžia
+lv:Vieds sākums
+mk:Паметен почеток
+ml:സ്മാർട്ട് ആരംഭം
+mm:Smart start
+my:Mula pintar
+ne:स्मार्ट सुरुवात
+nl:Slimme start
+nn:Smart start
+no:Smart start
+pa:ਸਮਾਰਟ ਸ਼ੁਰੂ
+pl:Inteligentny start
+pt:Início inteligente
+ro:Pornire inteligentă
+ru:Умный старт
+sat:Smart start
+si:Smart start
+sk:Inteligentný štart
+sl:Pameten začetek
+sn:Smart start
+sp-rs:Pametan početak
+sq:Fillim inteligjent
+sr-rs:Паметан почетак
+sv:Smart start
+ta:ஸ்மார்ட் தொடக்கம்
+th:เริ่มอัจฉริยะ
+tl:Smart start
+tr:Akıllı başlangıç
+tw:智慧開始
+uk:Розумний старт
+uz:Aqlli boshlash
+vn:Bắt đầu thông minh
+:document
+af:dokument
+am:փաստաթուղթ
+ar:مستند
+az:sənəd
+bg:документ
+bn:নথি
+br:documento
+bs:dokument
+by:дакумент
+ca:document
+ca-xv:document
+cn:文档
+co:documentu
+cy:dogfen
+cz:dokument
+de:Dokument
+dk:dokument
+el:έγγραφο
+es:documento
+et:dokument
+eu:dokumentua
+fa:سند
+fi:asiakirja
+fo:skjal
+fr:document
+fy-nl:dokumint
+ga:doiciméad
+gl:documento
+he:מסמך
+hi:दस्तावेज़
+hr:dokument
+hu:dokumentum
+id:dokumen
+it:documento
+ja:ドキュメント
+jv:dokumen
+ka:დოკუმენტი
+kr:문서
+ku:belge
+kw:dokument
+lt:dokumentas
+lv:dokuments
+mk:документ
+ml:പ്രമാണം
+mm:စာရွက်
+my:dokumen
+ne:कागजात
+nl:document
+nn:dokument
+no:dokument
+pa:ਦਸਤਾਵੇਜ਼
+pl:dokument
+pt:documento
+ro:document
+ru:документ
+sat:ᱫᱚᱞᱤ
+si:ලේඛනය
+sk:dokument
+sl:dokument
+sn:gwaro
+sp-rs:dokument
+sq:dokument
+sr-rs:документ
+sv:dokument
+ta:ஆவணம்
+th:เอกสาร
+tl:dokumento
+tr:belge
+tw:文件
+uk:документ
+uz:hujjat
+vn:tài liệu
+:Reading · %s · page %d of %d · %s
+af:Lees · %s · bladsy %d van %d · %s
+am:Կարդում · %s · էջ %d/%d · %s
+ar:قراءة · %s · صفحة %d من %d · %s
+az:Oxunur · %s · səhifə %d/%d · %s
+bg:Четене · %s · страница %d от %d · %s
+bn:পড়ছে · %s · পৃষ্ঠা %d/%d · %s
+br:Lendo · %s · página %d de %d · %s
+bs:Čitanje · %s · stranica %d od %d · %s
+by:Чытанне · %s · старонка %d з %d · %s
+ca:Llegint · %s · pàgina %d de %d · %s
+ca-xv:Llegint · %s · pàgina %d de %d · %s
+cn:朗读 · %s · 第 %d/%d 页 · %s
+co:Leghje · %s · pagina %d di %d · %s
+cy:Yn darllen · %s · tudalen %d o %d · %s
+cz:Čtení · %s · strana %d z %d · %s
+de:Vorlesen · %s · Seite %d von %d · %s
+dk:Læser · %s · side %d af %d · %s
+el:Ανάγνωση · %s · σελίδα %d από %d · %s
+es:Leyendo · %s · página %d de %d · %s
+et:Loetakse · %s · leht %d/%d · %s
+eu:Irakurtzen · %s · %d/%d orria · %s
+fa:در حال خواندن · %s · صفحه %d از %d · %s
+fi:Luetaan · %s · sivu %d/%d · %s
+fo:Lesur · %s · síða %d av %d · %s
+fr:Lecture · %s · page %d sur %d · %s
+fy-nl:Lêzen · %s · side %d fan %d · %s
+ga:Ag léamh · %s · leathanach %d as %d · %s
+gl:Lendo · %s · páxina %d de %d · %s
+he:קורא · %s · עמוד %d מתוך %d · %s
+hi:पढ़ रहा है · %s · पृष्ठ %d/%d · %s
+hr:Čitanje · %s · stranica %d od %d · %s
+hu:Olvasás · %s · %d/%d. oldal · %s
+id:Membaca · %s · halaman %d dari %d · %s
+it:Lettura · %s · pagina %d di %d · %s
+ja:読み上げ中 · %s · %d/%d ページ · %s
+jv:Maca · %s · kaca %d saka %d · %s
+ka:კითხვა · %s · გვერდი %d/%d · %s
+kr:읽는 중 · %s · %d/%d 페이지 · %s
+ku:Tê xwendin · %s · rûpel %d ji %d · %s
+kw:Ow redya · %s · folen %d a %d · %s
+lt:Skaitoma · %s · puslapis %d iš %d · %s
+lv:Lasīšana · %s · lapa %d no %d · %s
+mk:Читање · %s · страница %d од %d · %s
+ml:വായിക്കുന്നു · %s · പേജ് %d/%d · %s
+mm:ဖတ်နေသည် · %s · စာမျက်နှာ %d/%d · %s
+my:Membaca · %s · halaman %d/%d · %s
+ne:पढ्दै · %s · पृष्ठ %d/%d · %s
+nl:Voorlezen · %s · pagina %d van %d · %s
+nn:Les · %s · side %d av %d · %s
+no:Leser · %s · side %d av %d · %s
+pa:ਪੜ੍ਹ ਰਿਹਾ ਹੈ · %s · ਸਫ਼ਾ %d/%d · %s
+pl:Czytanie · %s · strona %d z %d · %s
+pt:A ler · %s · página %d de %d · %s
+ro:Citire · %s · pagina %d din %d · %s
+ru:Чтение · %s · страница %d из %d · %s
+sat:ᱯᱟᱲᱦᱟᱣ · %s · ᱥᱟᱦᱤᱱ %d/%d · %s
+si:කියවමින් · %s · පිටු %d/%d · %s
+sk:Čítanie · %s · strana %d z %d · %s
+sl:Branje · %s · stran %d od %d · %s
+sn:Kuverenga · %s · peji %d ye %d · %s
+sp-rs:Čitanje · %s · stranica %d od %d · %s
+sq:Duke lexuar · %s · faqja %d nga %d · %s
+sr-rs:Читање · %s · страница %d од %d · %s
+sv:Läser upp · %s · sida %d av %d · %s
+ta:படிக்கிறது · %s · பக்கம் %d/%d · %s
+th:กำลังอ่าน · %s · หน้า %d/%d · %s
+tl:Nagbabasa · %s · pahina %d ng %d · %s
+tr:Okunuyor · %s · sayfa %d/%d · %s
+tw:朗讀 · %s · 第 %d/%d 頁 · %s
+uk:Читання · %s · сторінка %d з %d · %s
+uz:O'qilmoqda · %s · %d/%d bet · %s
+vn:Đang đọc · %s · trang %d/%d · %s
+:Reading · %s · %s
+af:Lees · %s · %s
+am:Կարդում · %s · %s
+ar:قراءة · %s · %s
+az:Oxunur · %s · %s
+bg:Четене · %s · %s
+bn:পড়ছে · %s · %s
+br:Lendo · %s · %s
+bs:Čitanje · %s · %s
+by:Чытанне · %s · %s
+ca:Llegint · %s · %s
+ca-xv:Llegint · %s · %s
+cn:朗读 · %s · %s
+co:Leghje · %s · %s
+cy:Yn darllen · %s · %s
+cz:Čtení · %s · %s
+de:Vorlesen · %s · %s
+dk:Læser · %s · %s
+el:Ανάγνωση · %s · %s
+es:Leyendo · %s · %s
+et:Loetakse · %s · %s
+eu:Irakurtzen · %s · %s
+fa:در حال خواندن · %s · %s
+fi:Luetaan · %s · %s
+fo:Lesur · %s · %s
+fr:Lecture · %s · %s
+fy-nl:Lêzen · %s · %s
+ga:Ag léamh · %s · %s
+gl:Lendo · %s · %s
+he:קורא · %s · %s
+hi:पढ़ रहा है · %s · %s
+hr:Čitanje · %s · %s
+hu:Olvasás · %s · %s
+id:Membaca · %s · %s
+it:Lettura · %s · %s
+ja:読み上げ中 · %s · %s
+jv:Maca · %s · %s
+ka:კითხვა · %s · %s
+kr:읽는 중 · %s · %s
+ku:Tê xwendin · %s · %s
+kw:Ow redya · %s · %s
+lt:Skaitoma · %s · %s
+lv:Lasīšana · %s · %s
+mk:Читање · %s · %s
+ml:വായിക്കുന്നു · %s · %s
+mm:ဖတ်နေသည် · %s · %s
+my:Membaca · %s · %s
+ne:पढ्दै · %s · %s
+nl:Voorlezen · %s · %s
+nn:Les · %s · %s
+no:Leser · %s · %s
+pa:ਪੜ੍ਹ ਰਿਹਾ ਹੈ · %s · %s
+pl:Czytanie · %s · %s
+pt:A ler · %s · %s
+ro:Citire · %s · %s
+ru:Чтение · %s · %s
+sat:ᱯᱟᱲᱦᱟᱣ · %s · %s
+si:කියවමින් · %s · %s
+sk:Čítanie · %s · %s
+sl:Branje · %s · %s
+sn:Kuverenga · %s · %s
+sp-rs:Čitanje · %s · %s
+sq:Duke lexuar · %s · %s
+sr-rs:Читање · %s · %s
+sv:Läser upp · %s · %s
+ta:படிக்கிறது · %s · %s
+th:กำลังอ่าน · %s · %s
+tl:Nagbabasa · %s · %s
+tr:Okunuyor · %s · %s
+tw:朗讀 · %s · %s
+uk:Читання · %s · %s
+uz:O'qilmoqda · %s · %s
+vn:Đang đọc · %s · %s
+:Resume
+af:Hervat
+am:Շարունակել
+ar:استئناف
+az:Davam et
+bg:Продължи
+bn:পুনরায় শুরু
+br:Retomar
+bs:Nastavi
+by:Узнавіць
+ca:Reprendre
+ca-xv:Reprendre
+cn:继续
+co:Riprende
+cy:Ail-ddechrau
+cz:Pokračovat
+de:Fortsetzen
+dk:Genoptag
+el:Συνέχεια
+es:Reanudar
+et:Jätka
+eu:Berrekin
+fa:ادامه
+fi:Jatka
+fo:Halda á fram
+fr:Reprendre
+fy-nl:Fertsette
+ga:Atosaigh
+gl:Retomar
+he:המשך
+hi:फिर शुरू
+hr:Nastavi
+hu:Folytatás
+id:Lanjutkan
+it:Riprendi
+ja:再開
+jv:Terusake
+ka:გაგრძელება
+kr:재개
+ku:Bidomîne
+kw:Pesya
+lt:Tęsti
+lv:Turpināt
+mk:Продолжи
+ml:തുടരുക
+mm:ဆက်လုပ်ပါ
+my:Sambung
+ne:पुनः सुरु
+nl:Hervatten
+nn:Hald fram
+no:Fortsett
+pa:ਮੁੜ ਸ਼ੁਰੂ
+pl:Wznów
+pt:Retomar
+ro:Reia
+ru:Продолжить
+sat:ᱜᱟᱹᱜᱤ
+si:නැවත
+sk:Pokračovať
+sl:Nadaljuj
+sn:Enderera
+sp-rs:Nastavi
+sq:Vazhdo
+sr-rs:Настави
+sv:Fortsätt
+ta:தொடர
+th:ดำเนินต่อ
+tl:Ipagpatuloy
+tr:Devam et
+tw:繼續
+uk:Продовжити
+uz:Davom etish
+vn:Tiếp tục
+:Pause
+af:Pouseer
+am:Դադար
+ar:إيقاف مؤقت
+az:Fasilə
+bg:Пауза
+bn:বিরতি
+br:Pausar
+bs:Pauza
+by:Паўза
+ca:Pausa
+ca-xv:Pausa
+cn:暂停
+co:Pausa
+cy:Oedi
+cz:Pauza
+de:Pause
+dk:Pause
+el:Παύση
+es:Pausa
+et:Paus
+eu:Pausa
+fa:مکث
+fi:Tauko
+fo:Steðga
+fr:Pause
+fy-nl:Pauze
+ga:Sos
+gl:Pausa
+he:השהה
+hi:रोकें
+hr:Pauza
+hu:Szünet
+id:Jeda
+it:Pausa
+ja:一時停止
+jv:Ngasah
+ka:პაუზა
+kr:일시 정지
+ku:Rawestîne
+kw:Omdheg
+lt:Pauzė
+lv:Pauze
+mk:Пауза
+ml:നിർത്തുക
+mm:ခဏရပ်
+my:Jeda
+ne:रोक
+nl:Pauze
+nn:Pause
+no:Pause
+pa:ਰੋਕੋ
+pl:Pauza
+pt:Pausar
+ro:Pauză
+ru:Пауза
+sat:ᱛᱷᱟᱹᱜ
+si:නවත්වන්න
+sk:Pauza
+sl:Premor
+sn:Misa
+sp-rs:Pauza
+sq:Pauzë
+sr-rs:Пауза
+sv:Paus
+ta:இடைநிறுத்து
+th:หยุดชั่วคราว
+tl:I-pause
+tr:Duraklat
+tw:暫停
+uk:Пауза
+uz:Pauza
+vn:Tạm dừng
+:Stop
+af:Stop
+am:Դադարեցնել
+ar:إيقاف
+az:Dayandır
+bg:Спри
+bn:বন্ধ
+br:Parar
+bs:Zaustavi
+by:Спыніць
+ca:Atura
+ca-xv:Atura
+cn:停止
+co:Ferma
+cy:Stopio
+cz:Zastavit
+de:Stopp
+dk:Stop
+el:Διακοπή
+es:Detener
+et:Lõpeta
+eu:Gelditu
+fa:توقف
+fi:Lopeta
+fo:Steðga
+fr:Arrêter
+fy-nl:Stopje
+ga:Stop
+gl:Deter
+he:עצור
+hi:बंद
+hr:Zaustavi
+hu:Leállítás
+id:Hentikan
+it:Interrompi
+ja:停止
+jv:Mungkasi
+ka:შეწყვეტა
+kr:중지
+ku:Sekinîne
+kw:Hedhi
+lt:Sustabdyti
+lv:Apturēt
+mk:Запри
+ml:നിർത്തുക
+mm:ရပ်
+my:Hentikan
+ne:बन्द
+nl:Stoppen
+nn:Stopp
+no:Stopp
+pa:ਬੰਦ
+pl:Zatrzymaj
+pt:Parar
+ro:Oprește
+ru:Стоп
+sat:ᱵᱚᱸᱫ
+si:නවත්වන්න
+sk:Zastaviť
+sl:Ustavi
+sn:Mira
+sp-rs:Zaustavi
+sq:Ndalo
+sr-rs:Заустави
+sv:Stopp
+ta:நிறுத்து
+th:หยุด
+tl:Itigil
+tr:Durdur
+tw:停止
+uk:Зупинити
+uz:To'xtatish
+vn:Dừng
+:Copying text is not allowed
+af:Kopieer teks is nie toegelaat nie
+am:Տեքստի պատճենումն արգելված է
+ar:نسخ النص غير مسموح
+az:Mətni kopyalamağa icazə verilmir
+bg:Копирането на текст не е разрешено
+bn:টেক্সট কপি অনুমোদিত নয়
+br:Copiar texto não é permitido
+bs:Kopiranje teksta nije dozvoljeno
+by:Капіраванне тэксту забаронена
+ca:No es permet copiar text
+ca-xv:No es permet copiar text
+cn:不允许复制文本
+co:A copia di u testu ùn hè micca permessa
+cy:Ni chaniateir copïo testun
+cz:Kopírování textu není povoleno
+de:Text kopieren ist nicht erlaubt
+dk:Kopiering af tekst er ikke tilladt
+el:Η αντιγραφή κειμένου δεν επιτρέπεται
+es:No se permite copiar texto
+et:Teksti kopeerimine pole lubatud
+eu:Testua kopiatzea ez da onartzen
+fa:کپی متن مجاز نیست
+fi:Tekstin kopiointi ei ole sallittu
+fo:Tað er ikki loyvt at avrita tekst
+fr:La copie de texte n'est pas autorisée
+fy-nl:Kopiearje fan tekst is net tastien
+ga:Ní cheadaítear cóipeáil téacs
+gl:Non se permite copiar texto
+he:העתקת טקסט אינה מותרת
+hi:पाठ कॉपी करने की अनुमति नहीं
+hr:Kopiranje teksta nije dopušteno
+hu:A szöveg másolása nem engedélyezett
+id:Menyalin teks tidak diizinkan
+it:La copia del testo non è consentita
+ja:テキストのコピーは許可されていません
+jv:Nyalin teks ora diidini
+ka:ტექსტის კოპირება აკრძალულია
+kr:텍스트 복사가 허용되지 않습니다
+ku:Kopîkirina nivîsê ne destûr e
+kw:Ny aller kopi testen
+lt:Teksto kopijavimas neleidžiamas
+lv:Teksta kopēšana nav atļauta
+mk:Копирање текст не е дозволено
+ml:ടെക്സ്റ്റ് പകർപ്പ് അനുവദനീയമല്ല
+mm:စာသား ကူးယူခွင့် မရှိပါ
+my:Menyalin teks tidak dibenarkan
+ne:पाठ प्रतिलिपि अनुमति छैन
+nl:Tekst kopiëren is niet toegestaan
+nn:Kopiering av tekst er ikkje tillatt
+no:Kopiering av tekst er ikke tillatt
+pa:ਟੈਕਸਟ ਕਾਪੀ ਕਰਨ ਦੀ ਇਜਾਜ਼ਤ ਨਹੀਂ
+pl:Kopiowanie tekstu jest niedozwolone
+pt:Copiar texto não é permitido
+ro:Copierea textului nu este permisă
+ru:Копирование текста запрещено
+sat:ᱚᱱᱟ ᱱᱚᱠᱚᱞ ᱵᱟᱭ ᱦᱩᱭ
+si:පෙළ පිටපත් කිරීම අවසර නැත
+sk:Kopírovanie textu nie je povolené
+sl:Kopiranje besedila ni dovoljeno
+sn:Kukopa zvinyorwa hazvibvumirwi
+sp-rs:Kopiranje teksta nije dozvoljeno
+sq:Kopjimi i tekstit nuk lejohet
+sr-rs:Копирање текста није дозвољено
+sv:Kopiering av text är inte tillåtet
+ta:உரை நகலெடுப்பு அனுமதிக்கப்படவில்லை
+th:ไม่อนุญาตให้คัดลอกข้อความ
+tl:Hindi pinapayagan ang pagkopya ng teksto
+tr:Metin kopyalamaya izin verilmiyor
+tw:不允許複製文字
+uk:Копіювання тексту заборонено
+uz:Matn nusxalashga ruxsat berilmaydi
+vn:Không được phép sao chép văn bản

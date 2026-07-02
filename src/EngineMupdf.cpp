@@ -812,9 +812,33 @@ static inline int WcharsPerRune(int rune) {
     return 1;
 }
 
-static void AddChar(fz_stext_line* line, fz_stext_char* c, WStrBuilder& s, Vec<Rect>& rects) {
+static Rect SelectionRectFromChar(fz_stext_char* c) {
     fz_rect bbox = fz_rect_from_quad(c->quad);
     Rect r = ToRectF(bbox).Round();
+    float fs = c->size;
+    if (fs <= 0.01f || r.IsEmpty()) {
+        return r;
+    }
+
+    // Neutral glyph band; selection/read-aloud apply their own ratios when painting.
+    float bandH = fs * 1.0f;
+    if (bandH < 1.0f) {
+        bandH = 1.0f;
+    }
+
+    float centerY = (float)r.y + (float)r.dy * 0.5f;
+    int y = (int)(centerY - bandH * 0.5f + 0.5f);
+    int h = (int)(bandH + 0.5f);
+    if (h < 1) {
+        h = 1;
+    }
+    r.y = y;
+    r.dy = h;
+    return r;
+}
+
+static void AddChar(fz_stext_line* line, fz_stext_char* c, WStrBuilder& s, Vec<Rect>& rects) {
+    Rect r = SelectionRectFromChar(c);
 
     int n = WcharsPerRune(c->c);
     if (n == 2) {
@@ -875,8 +899,7 @@ static void AddLineSep(WStrBuilder& s, Vec<Rect>& rects, const WCHAR* lineSep, s
 // UTF-8 variant: append `c` as up to 4 UTF-8 bytes to `s` and the same
 // rect `r` for each byte, so rects.size() == s.size() holds.
 static void AddCharUtf8(fz_stext_line*, fz_stext_char* c, StrBuilder& s, Vec<Rect>& rects) {
-    fz_rect bbox = fz_rect_from_quad(c->quad);
-    Rect r = ToRectF(bbox).Round();
+    Rect r = SelectionRectFromChar(c);
 
     int rune = c->c;
     bool isWhitespace = rune > 0 && rune <= 0x7f && str::IsWs((WCHAR)rune);
