@@ -77,8 +77,6 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::PagePrev, CmdGoToPrevPage, _TRN("Previous Page")},
     {TbIcon::PageNext, CmdGoToNextPage, _TRN("Next Page")},
     {TbIcon::None, 0, nullptr}, // separator
-    {TbIcon::Speak, CmdReadAloud, _TRN("Read Aloud")},
-    {TbIcon::None, 0, nullptr}, // separator
     {TbIcon::Bookmark, CmdToggleBookmarks, _TRN("Show &Bookmarks")},
     {TbIcon::LayoutContinuous, CmdZoomFitWidthAndContinuous, _TRN("Fit Width and Show Pages Continuously")},
     {TbIcon::LayoutSinglePage, CmdZoomFitPageAndSinglePage, _TRN("Fit a Single Page")},
@@ -93,6 +91,7 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::MatchCase, CmdFindToggleMatchCase, _TRN("Toggle Match Case")},
     {TbIcon::Dictionary, CmdToggleDoubleClickWordLookup, _TRN("Toggle Double-Click Word Lookup")},
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
+    {TbIcon::Speak, CmdReadAloud, _TRN("Read Aloud")},
     {TbIcon::DocColorAuto, CmdSetPdfDocumentColorModeAuto, _TRN("Document Color Mode: Auto (smart dark mode)")},
     {TbIcon::ThemeSun, CmdSetPdfDocumentColorModeLight, _TRN("Document Color Mode: Light (original colors)")},
     {TbIcon::DocColorBlack, CmdSetPdfDocumentColorModeBlack, _TRN("Document Color Mode: Black (full dark)")},
