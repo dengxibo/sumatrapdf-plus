@@ -50678,6 +50678,152 @@ tw:查詞選取內容(&S)
 uk:Шукати виділене
 uz:Tanlovni qidirish
 vn:Tra nội dung đã chọn
+:Extremely slow (0.25×)
+af:Uiterste stadig (0.25×)
+am:Գերազանց դանդաղ (0.25×)
+ar:بطيء للغاية (0.25×)
+az:Son dərəcə yavaş (0.25×)
+bg:Изключително бавно (0.25×)
+bn:অত্যন্ত ধীর (0.25×)
+br:Extremamente lento (0.25×)
+bs:Izuzetno sporo (0.25×)
+by:Вельмі павольна (0.25×)
+ca:Extremadament lent (0.25×)
+ca-xv:Extremadament lent (0.25×)
+cn:超慢 (0.25×)
+co:Estremamente lentu (0.25×)
+cy:Araf dros ben (0.25×)
+cz:Extrémně pomalu (0.25×)
+de:Extrem langsam (0.25×)
+dk:Ekstremt langsom (0.25×)
+el:Εξαιρετικά αργά (0.25×)
+es:Extremadamente lento (0.25×)
+et:Äärmiselt aeglane (0.25×)
+eu:Gehiegizko motela (0.25×)
+fa:بسیار آهسته (0.25×)
+fi:Erittäin hidas (0.25×)
+fo:Serstakliga seint (0.25×)
+fr:Extrêmement lent (0.25×)
+fy-nl:Uterst stadich (0.25×)
+ga:An-mhall go háirithe (0.25×)
+gl:Extremadamente lento (0.25×)
+he:איטי במיוחד (0.25×)
+hi:अत्यंत धीमा (0.25×)
+hr:Izuzetno sporo (0.25×)
+hu:Rendkívül lassú (0.25×)
+id:Sangat lambat (0.25×)
+it:Estremamente lento (0.25×)
+ja:非常に遅い (0.25×)
+jv:Banget banget alon (0.25×)
+ka:უკიდურესად ნელი (0.25×)
+kr:극도로 느리게 (0.25×)
+ku:Pir pir hêdî (0.25×)
+kw:Solabrys pur (0.25×)
+lt:Itin lėtai (0.25×)
+lv:Ārkārtīgi lēni (0.25×)
+mk:Екстремно бавно (0.25×)
+ml:അത്യന്തം മന്ദം (0.25×)
+mm:အလွန်အမင်း နှေး (0.25×)
+my:Sangat-sangat perlahan (0.25×)
+ne:अत्यन्त बिस्तारै (0.25×)
+nl:Extreem langzaam (0.25×)
+nn:Ekstremt sakte (0.25×)
+no:Ekstremt langsom (0.25×)
+pa:ਬਹੁਤ ਹੀ ਹੌਲੀ (0.25×)
+pl:Ekstremalnie wolno (0.25×)
+pt:Extremamente lento (0.25×)
+ro:Extrem de lent (0.25×)
+ru:Крайне медленно (0.25×)
+sat:Extremely slow (0.25×)
+si:Extremely slow (0.25×)
+sk:Extrémne pomaly (0.25×)
+sl:Izjemno počasi (0.25×)
+sn:Extremely slow (0.25×)
+sp-rs:Izuzetno sporo (0.25×)
+sq:Shumë shumë ngadalë (0.25×)
+sr-rs:Izuzetno sporo (0.25×)
+sv:Extremt långsam (0.25×)
+ta:மிகவும் மிகவும் மெதுவாக (0.25×)
+th:ช้ามากที่สุด (0.25×)
+tl:Napakabagal na bagal (0.25×)
+tr:Aşırı yavaş (0.25×)
+tw:超慢 (0.25×)
+uk:Надзвичайно повільно (0.25×)
+uz:Juda sekin (0.25×)
+vn:Cực chậm (0.25×)
+:Speaking rate: %.2f×
+af:Spreek tempo: %.2f×
+am:Արագություն՝ %.2f×
+ar:السرعة: %.2f×
+az:Sürət: %.2f×
+bg:Скорост: %.2f×
+bn:গতি: %.2f×
+br:Velocidade: %.2f×
+bs:Brzina: %.2f×
+by:Хуткасць: %.2f×
+ca:Velocitat: %.2f×
+ca-xv:Velocitat: %.2f×
+cn:语速：%.2f×
+co:Velocità: %.2f×
+cy:Cyflymder: %.2f×
+cz:Rychlost: %.2f×
+de:Sprechgeschwindigkeit: %.2f×
+dk:Hastighed: %.2f×
+el:Ταχύτητα: %.2f×
+es:Velocidad: %.2f×
+et:Kiirus: %.2f×
+eu:Abiadura: %.2f×
+fa:سرعت: %.2f×
+fi:Nopeus: %.2f×
+fo:Hasti: %.2f×
+fr:Vitesse: %.2f×
+fy-nl:Faas: %.2f×
+ga:Luas: %.2f×
+gl:Velocidade: %.2f×
+he:מהירות: %.2f×
+hi:गति: %.2f×
+hr:Brzina: %.2f×
+hu:Sebesség: %.2f×
+id:Kecepatan: %.2f×
+it:Velocità: %.2f×
+ja:速度: %.2f×
+jv:Kacepetan: %.2f×
+ka:სიჩქარე: %.2f×
+kr:속도: %.2f×
+ku:Lezîn: %.2f×
+kw:Sppyd: %.2f×
+lt:Greitis: %.2f×
+lv:Ātrums: %.2f×
+mk:Брзина: %.2f×
+ml:വേഗത: %.2f×
+mm:မြန်နှုန်း: %.2f×
+my:Kelajuan: %.2f×
+ne:गति: %.2f×
+nl:Snelheid: %.2f×
+nn:Fart: %.2f×
+no:Hastighet: %.2f×
+pa:ਰਫ਼ਤਾਰ: %.2f×
+pl:Szybkość: %.2f×
+pt:Velocidade: %.2f×
+ro:Viteză: %.2f×
+ru:Скорость: %.2f×
+sat:Speaking rate: %.2f×
+si:Speaking rate: %.2f×
+sk:Rýchlosť: %.2f×
+sl:Hitrost: %.2f×
+sn:Speaking rate: %.2f×
+sp-rs:Brzina: %.2f×
+sq:Shpejtësia: %.2f×
+sr-rs:Brzina: %.2f×
+sv:Hastighet: %.2f×
+ta:வேகம்: %.2f×
+th:ความเร็ว: %.2f×
+tl:Bilis: %.2f×
+tr:Hız: %.2f×
+tw:語速：%.2f×
+uk:Швидкість: %.2f×
+uz:Tezlik: %.2f×
+vn:Tốc độ: %.2f×
 :Read Aloud
 af:Lees hardop
 am:Բարձրաձայն կարդալ
@@ -52357,6 +52503,79 @@ tw:語速
 uk:Швидкість
 uz:Tezlik
 vn:Tốc độ
+:Slowest (0.25×)
+af:Stadigste (0.25×)
+am:Ամենադանդաղ (0.25×)
+ar:الأبطأ (0.25×)
+az:Ən yavaş (0.25×)
+bg:Най-бавно (0.25×)
+bn:সবচেয়ে ধীর (0.25×)
+br:Mais lento (0.25×)
+bs:Najsporije (0.25×)
+by:Найпавольней (0.25×)
+ca:El més lent (0.25×)
+ca-xv:El més lent (0.25×)
+cn:超慢 (0.25×)
+co:U più lentu (0.25×)
+cy:Arafaf (0.25×)
+cz:Nejpomaleji (0.25×)
+de:Am langsamsten (0.25×)
+dk:Langsomst (0.25×)
+el:Πιο αργά (0.25×)
+es:Más lento (0.25×)
+et:Aeglasem (0.25×)
+eu:Motelen (0.25×)
+fa:آهسته‌ترین (0.25×)
+fi:Hitain (0.25×)
+fo:Seinst (0.25×)
+fr:Le plus lent (0.25×)
+fy-nl:Stadichst (0.25×)
+ga:Is moille (0.25×)
+gl:O máis lento (0.25×)
+he:הכי איטי (0.25×)
+hi:सबसे धीमा (0.25×)
+hr:Najsporije (0.25×)
+hu:Leglassabb (0.25×)
+id:Paling lambat (0.25×)
+it:Più lento (0.25×)
+ja:最遅 (0.25×)
+jv:Paling alon (0.25×)
+ka:ყველაზე ნელი (0.25×)
+kr:가장 느리게 (0.25×)
+ku:Herî hêdî (0.25×)
+kw:Solabrysaf (0.25×)
+lt:Lėčiausiai (0.25×)
+lv:Vislēnāk (0.25×)
+mk:Најбавно (0.25×)
+ml:ഏറ്റവും മന്ദം (0.25×)
+mm:အနှေးဆုံး (0.25×)
+my:Paling perlahan (0.25×)
+ne:सबैभन्दा बिस्तारै (0.25×)
+nl:Langzaamst (0.25×)
+nn:Saktast (0.25×)
+no:Langsomst (0.25×)
+pa:ਸਭ ਤੋਂ ਹੌਲੀ (0.25×)
+pl:Najwolniej (0.25×)
+pt:Mais lento (0.25×)
+ro:Cel mai lent (0.25×)
+ru:Максимально медленно (0.25×)
+sat:Slowest (0.25×)
+si:Slowest (0.25×)
+sk:Najpomalšie (0.25×)
+sl:Najpočasneje (0.25×)
+sn:Slowest (0.25×)
+sp-rs:Najsporije (0.25×)
+sq:Më ngadalë (0.25×)
+sr-rs:Najsporije (0.25×)
+sv:Långsammast (0.25×)
+ta:மிகக் குறைந்த வேகம் (0.25×)
+th:ช้าที่สุด (0.25×)
+tl:Pinakabagal (0.25×)
+tr:En yavaş (0.25×)
+tw:超慢 (0.25×)
+uk:Найповільніше (0.25×)
+uz:Eng sekin (0.25×)
+vn:Chậm nhất (0.25×)
 :Very slow (0.5×)
 af:Baie stadig (0.5×)
 am:Շատ դանդաղ (0.5×)

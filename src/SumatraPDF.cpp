@@ -9604,7 +9604,7 @@ static void ReadAloudSaveVoicePref(const char* voiceId) {
     ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
 }
 
-static constexpr float kReadAloudSpeedPresets[] = {0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f};
+static constexpr float kReadAloudSpeedPresets[] = {0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f};
 
 static bool ReadAloudSpeakingRatesEqual(float a, float b) {
     float diff = a - b;
@@ -9617,16 +9617,18 @@ static bool ReadAloudSpeakingRatesEqual(float a, float b) {
 static const char* ReadAloudSpeedPresetLabel(int index) {
     switch (index) {
         case 0:
-            return _TRA("Very slow (0.5×)");
+            return _TRA("Slowest (0.25×)");
         case 1:
-            return _TRA("Slow (0.75×)");
+            return _TRA("Very slow (0.5×)");
         case 2:
-            return _TRA("Normal (1.0×)");
+            return _TRA("Slow (0.75×)");
         case 3:
-            return _TRA("Fast (1.25×)");
+            return _TRA("Normal (1.0×)");
         case 4:
-            return _TRA("Faster (1.5×)");
+            return _TRA("Fast (1.25×)");
         case 5:
+            return _TRA("Faster (1.5×)");
+        case 6:
             return _TRA("Fastest (2.0×)");
         default:
             return "";

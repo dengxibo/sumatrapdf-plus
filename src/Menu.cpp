@@ -46,6 +46,7 @@
 #include "ImageSaveCropResize.h"
 #include "Menu.h"
 #include "ReadAloudHighlight.h"
+#include "TextToSpeech.h"
 
 #include "utils/Log.h"
 
@@ -853,12 +854,12 @@ static MenuDef menuDefDocumentOperations[] = {
 //[ ACCESSKEY_GROUP Context Menu (Main)
 static MenuDef menuDefContext[] = {
     {
-        _TRN("Ask &AI"),
-        CmdAnalyzeSelectionWithDoubao,
+        _TRN("Start Reading From Cursor Position"),
+        CmdReadAloudFromCursor,
     },
     {
-        _TRN("Look Up &Selection"),
-        CmdLookupSelection,
+        _TRN("Stop Reading"),
+        CmdStopReadAloud,
     },
     {
         kMenuSeparator,
@@ -867,10 +868,6 @@ static MenuDef menuDefContext[] = {
     {
         _TRN("&Copy Selection"),
         CmdCopySelection,
-    },
-    {
-        _TRN("Start Reading From Cursor Position"),
-        CmdReadAloudFromCursor,
     },
     {
         _TRN("Create Annotation From Selection"),
@@ -1984,6 +1981,7 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
     SetMenuStateForSelection(tab, popup);
 
     MenuSetEnabled(popup, CmdReadAloudFromCursor, win->contextMenuPtValid);
+    MenuSetEnabled(popup, CmdStopReadAloud, TtsIsSpeaking() || CanContinueReadAloud(tab));
 
     MenuUpdatePrintItem(win, popup, true);
     MenuSetEnabled(popup, CmdToggleBookmarks, win->ctrl->HasToc());
