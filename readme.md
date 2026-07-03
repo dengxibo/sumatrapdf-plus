@@ -24,6 +24,7 @@ Windows 下的 PDF / 电子书阅读器，针对中文 EPUB/MOBI、离线查词�
 | **Offline dictionary** — double-click a word; place `.idx`/`.dat` files in `{exe}\dict\`                            | **离线查词** — 双击词语查词；词典放在 `{exe}\dict\`          |
 | **Light / dark themes** — toolbar toggle; Light-Warm (eye-care) and Light-White (neutral) UI themes                 | **亮/暗主题** — 工具栏切换；暖色护眼与中性浅色 UI                |
 | **Smart PDF dark mode** — preserve photos and color pages while darkening text; toolbar modes: Auto / Black / Light | **PDF 智能暗黑** — 保留图片与彩色页，文字反色；工具栏：自动 / 全黑 / 原色 |
+| **Read Aloud (TTS)** — Windows text-to-speech with word-by-word highlight; start from top, cursor, or selection; pause/continue; voice and speed presets (0.25×–2.0×) | **朗读 (TTS)** — Windows 语音朗读，逐词高亮；从页首/光标/选中开始；暂停/继续；可选语音与语速（0.25×–2.0×） |
 | **Selection toolbar** — highlight, underline, strike out, Ask AI on PDF text selection                              | **划词工具栏** — PDF 选中文字后可高亮、下划线、删除线、Ask AI       |
 | **UI polish** — Windows 11–style caption, refined toolbar spacing, theme-aware chrome                               | **界面优化** — Win11 风格标题栏、工具栏间距与主题配色             |
 
@@ -43,6 +44,33 @@ Product name: **Sumatra PDF Plus** (`kAppName` in `src/Version.h`). Executable i
   双击 `SumatraPDF.exe` 运行；不要只复制 exe，请保留同目录的`fonts` 文件夹。
 3. Use the toolbar to toggle light/dark theme and word lookup.
   可通过工具栏切换亮/暗主题和查词开关。
+4. Click the **speaker** icon (after word lookup) or open **Read Aloud (TTS)** in the menu bar to read aloud.
+  点击工具栏**喇叭**图标（在查词按钮后），或菜单栏 **Read Aloud (TTS)** 开始朗读。
+
+---
+
+## Read Aloud (TTS) · 朗读
+
+Read documents aloud with **word-by-word highlighting** synced to speech. Works on PDF, EPUB, MOBI, and other formats with extractable text.  
+**逐词高亮**跟随朗读进度，支持 PDF、EPUB、MOBI 等可提取文本的格式。
+
+**How to use / 使用方法**
+
+- **Toolbar / 工具栏** — speaker icon after word lookup; click to start/pause/continue; dropdown for voice, speed, and start options  
+  查词按钮后的**喇叭**；单击开始/暂停/继续；下拉菜单可选语音、语速与起始方式
+- **Menu bar / 菜单栏** — **Read Aloud (TTS)** → start from top, cursor, or selection; **Voice** and **Speed** submenus  
+  **Read Aloud (TTS)** → 从页首/光标/选中开始；**Voice** 选语音、**Speed** 选调速
+- **Right-click / 右键** — **Start Reading From Cursor Position**; **Pause Reading** / **Continue Reading** while active  
+  **从光标处开始朗读**；朗读中可**暂停朗读** / **继续朗读**
+- **Speed presets / 语速** — 0.25×, 0.5×, 0.75×, 1.0×, 1.25×, 1.5×, 2.0×
+
+**Natural voices / 自然语音**
+
+Default Windows SAPI voices (e.g. Huihui, Kangkang, Yaoyao) sound robotic. For natural speech, install **[NaturalVoiceSAPIAdapter](https://github.com/gexgd0419/NaturalVoiceSAPIAdapter)** and configure local Narrator voices or Edge online voices — see [docs/md/Read-Aloud-TTS.md](docs/md/Read-Aloud-TTS.md).  
+系统默认 SAPI 语音（如慧慧、康康、瑶瑶）较机械。自然语音需安装 **[NaturalVoiceSAPIAdapter](https://github.com/gexgd0419/NaturalVoiceSAPIAdapter)**，详见 [docs/md/Read-Aloud-TTS.md](docs/md/Read-Aloud-TTS.md)。
+
+Advanced settings: `ReadAloudVoiceId`, `ReadAloudSpeakingRate`.  
+高级设置：`ReadAloudVoiceId`（语音）、`ReadAloudSpeakingRate`（语速）。
 
 ---
 
