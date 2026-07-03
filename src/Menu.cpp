@@ -850,19 +850,6 @@ static MenuDef menuDefDocumentOperations[] = {
 };
 //] ACCESSKEY_GROUP Context Menu (Document)
 
-//[ ACCESSKEY_GROUP Context Menu (Read Aloud)
-static MenuDef menuDefContextReadAloud[] = {
-    {
-        _TRN("Start Reading From Top"),
-        CmdReadAloud,
-    },
-    {
-        nullptr,
-        0,
-    },
-};
-//] ACCESSKEY_GROUP Context Menu (Read Aloud)
-
 //[ ACCESSKEY_GROUP Context Menu (Main)
 static MenuDef menuDefContext[] = {
     {
@@ -882,8 +869,8 @@ static MenuDef menuDefContext[] = {
         CmdCopySelection,
     },
     {
-        _TRN("Read Aloud (TTS)"),
-        (UINT_PTR)menuDefContextReadAloud,
+        _TRN("Start Reading From Cursor Position"),
+        CmdReadAloudFromCursor,
     },
     {
         _TRN("Create Annotation From Selection"),
@@ -1558,9 +1545,6 @@ HMENU BuildMenuFromDef(MenuDef* menuDef, HMENU menu, BuildMenuCtx* ctx) {
             if (subMenuDef == menuDefReadAloud) {
                 SetReadAloudAppSubmenu(subMenu);
             }
-            if (subMenuDef == menuDefContextReadAloud) {
-                SetReadAloudContextSubmenu(subMenu);
-            }
             TempWStr ws = ToWStrTemp(title);
             AppendMenuW(menu, flags, (UINT_PTR)subMenu, ws);
         } else {
@@ -1924,10 +1908,6 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
         win->readAloudLastTextPt = cursorPos;
         win->readAloudLastTextPtValid = true;
     }
-    HMENU readAloudCtxMenu = GetReadAloudContextSubmenu();
-    if (readAloudCtxMenu) {
-        RebuildReadAloudMenu(win, readAloudCtxMenu, true);
-    }
 
     HMENU popup = BuildMenuFromDef(menuDefContext, CreatePopupMenu(), ctx);
 
@@ -2002,6 +1982,8 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
         MenuRemove(popup, CmdToggleFullscreen);
     }
     SetMenuStateForSelection(tab, popup);
+
+    MenuSetEnabled(popup, CmdReadAloudFromCursor, win->contextMenuPtValid);
 
     MenuUpdatePrintItem(win, popup, true);
     MenuSetEnabled(popup, CmdToggleBookmarks, win->ctrl->HasToc());
@@ -2335,6 +2317,23 @@ static int GetMenuCheckMarkCx(HWND hwnd) {
     return cx;
 }
 
+static void DrawMenuCheckMark(HDC hdc, const RECT& rcItem, int cxCheckMark) {
+    RECT rcCheck = rcItem;
+    rcCheck.right = rcCheck.left + cxCheckMark;
+
+    int prevBk = SetBkMode(hdc, TRANSPARENT);
+    defer {
+        SetBkMode(hdc, prevBk);
+    };
+
+    HFONT font = GetAppMenuFont();
+    ScopedSelectFont restoreFont(hdc, font);
+
+    // Same check glyph style as standard menus (Segoe UI check mark).
+    WCHAR check[] = L"\u2713";
+    DrawTextW(hdc, check, 1, &rcCheck, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+}
+
 constexpr int kMenuPaddingY = 4;
 constexpr int kMenuPaddingX = 8;
 
@@ -2510,15 +2509,8 @@ void MenuCustomDrawItem(HWND hwnd, DRAWITEMSTRUCT* dis) {
             return;
         }
 
-        // draw a checkmark
-        AutoDeletePen pen(CreatePen(PS_SOLID, 2, txtCol));
-        ScopedSelectPen restorePen(hdc, pen);
-        POINT points[3];
-        int offX = DpiScale(hwnd, 6); // 6 is chosen experimentally
-        points[0] = {rc.left + offX, rc.top + (rcDy / 2)};
-        points[1] = {rc.left + (cxCheckMark / 2), rc.bottom - (padY * 3)};
-        points[2] = {rc.left + cxCheckMark - offX, rc.top + (padY * 3)};
-        Polyline(hdc, points, dimof(points));
+        // Same system check bitmap as non-owner-draw menus (light mode).
+        DrawMenuCheckMark(hdc, rc, cxCheckMark);
     }
 }
 
@@ -2549,8 +2541,6 @@ void UpdateAppMenu(MainWindow* win, HMENU m) {
         BuildMenuZoom(m);
     } else if (IsReadAloudAppSubmenu(m)) {
         RebuildReadAloudMenu(win, m, false);
-    } else if (IsReadAloudContextSubmenu(m)) {
-        RebuildReadAloudMenu(win, m, true);
     }
     MenuUpdateStateForWindow(win);
     MarkMenuOwnerDraw(win->menu, true);

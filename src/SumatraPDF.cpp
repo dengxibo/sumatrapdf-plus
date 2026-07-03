@@ -204,8 +204,10 @@ static void CloseDocumentInCurrentTab(MainWindow*, bool keepUIEnabled, bool dele
 static void ReadAloudClearSourceTab();
 static void ReadAloudContinueInTab(WindowTab* tab);
 static void ReadAloudFromViewportTopInTab(WindowTab* tab);
+static void ReadAloudFromCursorInTab(WindowTab* tab, Point screenPt);
 static void ReadAloudInTab(WindowTab* tab);
 static void ReadAloudSelectionInTab(WindowTab* tab);
+static bool ReadAloudResolveReadFromCursorPoint(MainWindow* win, Point* ptOut);
 static void ReadAloudStopRememberPos();
 static void ReadAloudPlaybackStop();
 static void ReadAloudPrepareRestart(WindowTab* tab, MainWindow* win);
@@ -7755,6 +7757,18 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             break;
         }
 
+        case CmdReadAloudFromCursor: {
+            if (!tab) {
+                break;
+            }
+            Point readPt;
+            if (ReadAloudResolveReadFromCursorPoint(win, &readPt)) {
+                ReadAloudPrepareRestart(tab, win);
+                ReadAloudFromCursorInTab(tab, readPt);
+            }
+            break;
+        }
+
         case CmdSaveAnnotations: {
             SaveAnnotationsToExistingFile(tab);
             break;
@@ -9541,7 +9555,6 @@ static constexpr UINT WM_TTS_EVENT = WM_APP + 0x421;
 static WindowTab* gReadAloudSourceTab = nullptr;
 static WindowTab* gReadAloudSessionTab = nullptr;
 static HMENU gReadAloudAppSubmenu = nullptr;
-static HMENU gReadAloudContextSubmenu = nullptr;
 
 void SetReadAloudAppSubmenu(HMENU menu) {
     gReadAloudAppSubmenu = menu;
@@ -9549,18 +9562,6 @@ void SetReadAloudAppSubmenu(HMENU menu) {
 
 bool IsReadAloudAppSubmenu(HMENU menu) {
     return menu && menu == gReadAloudAppSubmenu;
-}
-
-void SetReadAloudContextSubmenu(HMENU menu) {
-    gReadAloudContextSubmenu = menu;
-}
-
-bool IsReadAloudContextSubmenu(HMENU menu) {
-    return menu && menu == gReadAloudContextSubmenu;
-}
-
-HMENU GetReadAloudContextSubmenu() {
-    return gReadAloudContextSubmenu;
 }
 
 static void ReadAloudShowNotif(WindowTab* tab, const char* msg);
@@ -10641,11 +10642,13 @@ static void ShowTtsVoiceMenu(MainWindow* win, NMTOOLBARW* nmtb) {
     }
 
     BuildReadAloudMenuItems(menu, win, false);
+    MarkMenuOwnerDraw(menu, false);
 
     UINT selected = (UINT)TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, rc.left, rc.bottom, 0,
                                          win->hwndFrame, nullptr);
 
     HandleReadAloudMenuSelection(win, selected);
+    FreeMenuOwnerDrawInfoData(menu);
     DestroyMenu(menu);
 }
 

@@ -242,6 +242,7 @@ export const commands = [
     "CmdContinueReadAloud", "Continue Reading",
     "CmdStopReadAloud", "Stop Reading",
     "CmdReadAloudFromTopPage", "Start Reading From Top",
+    "CmdReadAloudFromCursor", "Start Reading From Cursor Position",
     "CmdReadAloudSelection", "Start Reading Selection",
     "CmdNone", "Do nothing",
 ];

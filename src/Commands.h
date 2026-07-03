@@ -247,8 +247,9 @@ enum {
     CmdContinueReadAloud = 436,
     CmdStopReadAloud = 437,
     CmdReadAloudFromTopPage = 438,
-    CmdReadAloudSelection = 439,
-    CmdNone = 440,
+    CmdReadAloudFromCursor = 439,
+    CmdReadAloudSelection = 440,
+    CmdNone = 441,
 
     /* range for file history */
     CmdFileHistoryFirst,

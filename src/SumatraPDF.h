@@ -152,9 +152,6 @@ void RebuildReadAloudMenu(MainWindow* win, HMENU menu, bool useContextMenuCursor
 bool HandleReadAloudMenuCommand(MainWindow* win, int cmdId);
 void SetReadAloudAppSubmenu(HMENU menu);
 bool IsReadAloudAppSubmenu(HMENU menu);
-void SetReadAloudContextSubmenu(HMENU menu);
-bool IsReadAloudContextSubmenu(HMENU menu);
-HMENU GetReadAloudContextSubmenu();
 bool CanCloseWindow(MainWindow* win);
 void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose);
 void SetSidebarVisibility(MainWindow* win, bool tocVisible, bool showFavorites, bool relayout = true);

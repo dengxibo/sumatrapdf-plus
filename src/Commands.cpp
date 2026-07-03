@@ -252,6 +252,7 @@ static SeqStrings gCommandNames =
     "CmdContinueReadAloud\0"
     "CmdStopReadAloud\0"
     "CmdReadAloudFromTopPage\0"
+    "CmdReadAloudFromCursor\0"
     "CmdReadAloudSelection\0"
     "CmdNone\0"
     "\0";
@@ -495,6 +496,7 @@ static i32 gCommandIds[] = {
     CmdContinueReadAloud,
     CmdStopReadAloud,
     CmdReadAloudFromTopPage,
+    CmdReadAloudFromCursor,
     CmdReadAloudSelection,
     CmdNone,
 };
@@ -738,6 +740,7 @@ SeqStrings gCommandDescriptions =
     "Continue Reading\0"
     "Stop Reading\0"
     "Start Reading From Top\0"
+    "Start Reading From Cursor Position\0"
     "Start Reading Selection\0"
     "Do nothing\0"
     "\0";
