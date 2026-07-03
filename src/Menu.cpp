@@ -858,8 +858,8 @@ static MenuDef menuDefContext[] = {
         CmdReadAloudFromCursor,
     },
     {
-        _TRN("Stop Reading"),
-        CmdStopReadAloud,
+        _TRN("Pause Reading"),
+        CmdPauseReadAloud,
     },
     {
         kMenuSeparator,
@@ -1981,7 +1981,22 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
     SetMenuStateForSelection(tab, popup);
 
     MenuSetEnabled(popup, CmdReadAloudFromCursor, win->contextMenuPtValid);
-    MenuSetEnabled(popup, CmdStopReadAloud, TtsIsSpeaking() || CanContinueReadAloud(tab));
+
+    bool isSpeaking = TtsIsSpeaking();
+    bool canContinue = CanContinueReadAloud(tab);
+    if (isSpeaking) {
+        ModifyMenuW(popup, CmdPauseReadAloud, MF_BYCOMMAND | MF_STRING, (UINT_PTR)CmdPauseReadAloud,
+                    ToWStrTemp(_TRA("Pause Reading")));
+        MenuSetEnabled(popup, CmdPauseReadAloud, true);
+    } else if (canContinue) {
+        ModifyMenuW(popup, CmdPauseReadAloud, MF_BYCOMMAND | MF_STRING, (UINT_PTR)CmdContinueReadAloud,
+                    ToWStrTemp(_TRA("Continue Reading")));
+        MenuSetEnabled(popup, CmdContinueReadAloud, true);
+    } else {
+        ModifyMenuW(popup, CmdPauseReadAloud, MF_BYCOMMAND | MF_STRING, (UINT_PTR)CmdPauseReadAloud,
+                    ToWStrTemp(_TRA("Pause Reading")));
+        MenuSetEnabled(popup, CmdPauseReadAloud, false);
+    }
 
     MenuUpdatePrintItem(win, popup, true);
     MenuSetEnabled(popup, CmdToggleBookmarks, win->ctrl->HasToc());
