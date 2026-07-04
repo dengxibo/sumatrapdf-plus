@@ -1413,6 +1413,18 @@ static void OnMouseLeftButtonDblClk(MainWindow* win, int x, int y, WPARAM key) {
         // select an image that could be copied to the clipboard
         Rect rc = dm->CvtToScreen(elementPageNo, pageEl->GetRect());
 
+        // an image covering (almost) the whole page is likely a scanned page or
+        // a background; treat it like empty area i.e. toggle read-aloud
+        Rect rcPage = dm->CvtToScreen(elementPageNo, dm->GetEngine()->PageMediabox(elementPageNo));
+        i64 imgArea = (i64)rc.dx * (i64)rc.dy;
+        i64 pageArea = (i64)rcPage.dx * (i64)rcPage.dy;
+        if (pageArea > 0 && imgArea * 100 >= pageArea * 85) {
+            if (isLeft && !isOverText && !win->presentation) {
+                ReadAloudToggleAtPoint(win, mousePos);
+            }
+            return;
+        }
+
         DeleteOldSelectionInfo(win, true);
         win->CurrentTab()->selectionOnPage = SelectionOnPage::FromRectangle(dm, rc);
         win->showSelection = win->CurrentTab()->selectionOnPage != nullptr;
