@@ -2380,6 +2380,100 @@ static void InstallFitzErrorCallbacks(EngineMupdf* engine, fz_context* ctx) {
     fz_set_error_callback(ctx, fz_print_cb, (void*)engine);
 }
 
+// MuPDF expands subareas covering >=90% of an image to the full bitmap, forcing a
+// full-resolution decode of huge scans even for partial tiles. Clip edges only.
+static void SumatraImageDecode(void* arg, int w, int h, int l2factor, fz_irect* subarea) {
+    (void)arg;
+    (void)l2factor;
+    if (subarea->x0 <= w / 100) {
+        subarea->x0 = 0;
+    }
+    if (subarea->y0 <= h / 100) {
+        subarea->y0 = 0;
+    }
+    if (subarea->x1 >= w * 99 / 100) {
+        subarea->x1 = w;
+    }
+    if (subarea->y1 >= h * 99 / 100) {
+        subarea->y1 = h;
+    }
+}
+
+static void InstallFitzImageTuning(fz_context* ctx) {
+    fz_tune_image_decode(ctx, SumatraImageDecode, nullptr);
+}
+
+static constexpr int kLargeImageSideThreshold = 2048;
+// Cap device-pixel side length when decoding huge embedded images on first paint.
+static constexpr int kMaxOnDemandDecodeSide = 2048;
+
+static int PdfXObjectImageMaxSide(fz_context* ctx, pdf_obj* xobj) {
+    if (!pdf_is_stream(ctx, xobj)) {
+        return 0;
+    }
+    pdf_obj* subtype = pdf_dict_get(ctx, xobj, PDF_NAME(Subtype));
+    if (!pdf_name_eq(ctx, subtype, PDF_NAME(Image))) {
+        return 0;
+    }
+    int w = pdf_to_int(ctx, pdf_dict_get(ctx, xobj, PDF_NAME(Width)));
+    int h = pdf_to_int(ctx, pdf_dict_get(ctx, xobj, PDF_NAME(Height)));
+    return std::max(w, h);
+}
+
+static int PdfResourcesMaxImageSide(fz_context* ctx, pdf_obj* resources, int depth) {
+    if (!resources || depth > 4) {
+        return 0;
+    }
+    pdf_obj* xobjects = pdf_dict_get(ctx, resources, PDF_NAME(XObject));
+    if (!pdf_is_dict(ctx, xobjects)) {
+        return 0;
+    }
+    int maxSide = 0;
+    int n = pdf_dict_len(ctx, xobjects);
+    for (int i = 0; i < n; i++) {
+        pdf_obj* xobj = pdf_dict_get_val(ctx, xobjects, i);
+        int side = PdfXObjectImageMaxSide(ctx, xobj);
+        if (side > maxSide) {
+            maxSide = side;
+        }
+        pdf_obj* subRes = pdf_dict_get(ctx, xobj, PDF_NAME(Resources));
+        if (pdf_is_dict(ctx, subRes)) {
+            side = PdfResourcesMaxImageSide(ctx, subRes, depth + 1);
+            if (side > maxSide) {
+                maxSide = side;
+            }
+        }
+    }
+    return maxSide;
+}
+
+static void DetectLargeEmbeddedImages(EngineMupdf* e, fz_context* ctx, pdf_document* doc) {
+    e->largeEmbeddedImages = false;
+    e->largeImageMaxSide = 0;
+    if (!doc) {
+        return;
+    }
+    int pageCount = pdf_count_pages(ctx, doc);
+    int samplePages = pageCount > 3 ? 3 : pageCount;
+    int maxSide = 0;
+    for (int i = 0; i < samplePages; i++) {
+        pdf_obj* pageObj = pdf_lookup_page_obj(ctx, doc, i);
+        if (!pageObj) {
+            continue;
+        }
+        pdf_obj* resources = pdf_dict_get(ctx, pageObj, PDF_NAME(Resources));
+        int side = PdfResourcesMaxImageSide(ctx, resources, 0);
+        if (side > maxSide) {
+            maxSide = side;
+        }
+    }
+    e->largeImageMaxSide = maxSide;
+    e->largeEmbeddedImages = maxSide >= kLargeImageSideThreshold;
+    if (e->largeEmbeddedImages) {
+        logf("Large embedded images detected (max side %d px), using on-demand subsampled decode\n", maxSide);
+    }
+}
+
 struct ContextThreadID {
     EngineMupdf* engine = nullptr;
     fz_context* ctx = nullptr;
@@ -2489,6 +2583,7 @@ EngineMupdf::EngineMupdf() {
     fz_locks_ctx.unlock = fz_unlock_context_cs;
     _ctx = fz_new_context(nullptr, &fz_locks_ctx, FZ_STORE_DEFAULT);
     InstallFitzErrorCallbacks(this, _ctx);
+    InstallFitzImageTuning(_ctx);
 
     install_load_windows_font_funcs(_ctx);
     fz_register_document_handlers(_ctx);
@@ -4423,6 +4518,7 @@ bool EngineMupdf::FinishLoading() {
     // TODO: support javascript
     ReportIf(pdf_js_supported(ctx, pdfdoc));
 
+    DetectLargeEmbeddedImages(this, ctx, pdfdoc);
     RunCadDetection();
 
     return true;
@@ -4953,7 +5049,8 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
 
     fz_stext_page* stext = nullptr;
     fz_var(stext);
-    fz_stext_options opts = NewTextPageOptions(FZ_STEXT_PRESERVE_IMAGES);
+    int stextFlags = largeEmbeddedImages ? 0 : FZ_STEXT_PRESERVE_IMAGES;
+    fz_stext_options opts = NewTextPageOptions(stextFlags);
     fz_try(ctx) {
         stext = fz_new_stext_page_from_page2(ctx, page, &opts, cookie);
     }
@@ -4978,10 +5075,12 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
     }
 
     FzLinkifyPageText(pageInfo, stext);
-    FzFindImagePositions(ctx, pageNo, pageInfo->images, stext);
-    if (pdfdoc && PdfShouldCollectContentImages()) {
-        FzCollectImagesFromPageContent(ctx, pageNo, pageInfo, page, cookie);
-        pageInfo->contentImagesCollected = true;
+    if (!largeEmbeddedImages) {
+        FzFindImagePositions(ctx, pageNo, pageInfo->images, stext);
+        if (pdfdoc && PdfShouldCollectContentImages()) {
+            FzCollectImagesFromPageContent(ctx, pageNo, pageInfo, page, cookie);
+            pageInfo->contentImagesCollected = true;
+        }
     }
     pageInfo->darkLegacySkipHash = 0;
     fz_drop_stext_page(ctx, stext);
@@ -5025,6 +5124,10 @@ static fz_display_list* GetOrBuildPageDisplayList(FzPageInfo* pi, fz_context* ct
 
 RectF EngineMupdf::PageContentBox(int pageNo, RenderTarget target) {
     auto ctx = Ctx();
+
+    if (pdfdoc && (largeEmbeddedImages || cadRasterDominant)) {
+        return PageMediabox(pageNo);
+    }
 
     FzPageInfo* pageInfo = GetFzPageInfo(pageNo, false);
     if (!pageInfo) {
@@ -5268,6 +5371,15 @@ void EngineMupdf::RunCadDetection() {
     if (!pdfdoc || cadDetectDone) {
         return;
     }
+    // Skip expensive page-content analysis when metadata already shows huge
+    // embedded bitmaps (typical scanned books).
+    if (largeEmbeddedImages) {
+        cadRasterDominant = true;
+        cadDetectScore = 55;
+        cadDetectDone = true;
+        logfa("Large-image PDF: skipping CAD heuristic analysis\n");
+        return;
+    }
     CadDetectResult res = DetectCadPdf(Ctx(), pdfdoc);
     cadDetectEnable = res.enable;
     cadDetectScore = res.score;
@@ -5332,7 +5444,8 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
         fzcookie = (fz_cookie*)cookie->GetData();
     }
 
-    FzPageInfo* pageInfo = GetFzPageInfo(pageNo, false, fzcookie);
+    // View rendering only needs fz_load_page; defer stext/image extraction.
+    FzPageInfo* pageInfo = GetFzPageInfo(pageNo, true, fzcookie);
     if (!pageInfo || !pageInfo->page) {
         return nullptr;
     }
@@ -5380,6 +5493,17 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
         }
     }
 
+    float decodeZoom = zoom;
+    fz_irect renderBounds = ibounds;
+    if (largeEmbeddedImages && keptList) {
+        int side = std::max(renderBounds.x1 - renderBounds.x0, renderBounds.y1 - renderBounds.y0);
+        if (side > kMaxOnDemandDecodeSide) {
+            decodeZoom = zoom * ((float)kMaxOnDemandDecodeSide / (float)side);
+            fz_matrix decodeCtm = viewctm(page, decodeZoom, rotation);
+            renderBounds = fz_round_rect(fz_transform_rect(pRect, decodeCtm));
+        }
+    }
+
     fz_colorspace* csRgb = fz_device_rgb(ctx);
     fz_pixmap* pix = nullptr;
     fz_device* dev = nullptr;
@@ -5398,18 +5522,29 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
         ReflowUiDocLock replayGuard(this, reflowLoading);
         ReflowRenderLock replayRenderGuard(this, reflowLoading);
         fz_try(ctx) {
-            pix = fz_new_pixmap_with_bbox(ctx, csRgb, ibounds, nullptr, 1);
+            fz_matrix renderCtm = viewctm(page, decodeZoom, rotation);
+            pix = fz_new_pixmap_with_bbox(ctx, csRgb, renderBounds, nullptr, 1);
             const DarkModeProfile* darkProfile = args.darkProfile;
             if (DarkModeProfileUsesObjectLevel(darkProfile)) {
                 PdfDarkModeClearPixmapToThemeBackground(ctx, pix, darkProfile->palette);
             } else {
                 fz_clear_pixmap_with_value(ctx, pix, 0xff);
             }
-            fz_device* baseDev = fz_new_draw_device(ctx, ctm, pix);
+            fz_device* baseDev = fz_new_draw_device(ctx, renderCtm, pix);
             DarkModeReplayState replayState{};
-            dev = WrapViewRenderDevice(ctx, this, baseDev, darkProfile, pageInfo, keptList, &replayState, zoom);
+            dev = WrapViewRenderDevice(ctx, this, baseDev, darkProfile, pageInfo, keptList, &replayState, decodeZoom);
             fz_run_display_list(ctx, keptList, dev, fz_identity, pRect, fzcookie);
             fz_close_device(ctx, dev);
+            dev = nullptr;
+            if (renderBounds.x0 != ibounds.x0 || renderBounds.y0 != ibounds.y0 ||
+                renderBounds.x1 != ibounds.x1 || renderBounds.y1 != ibounds.y1) {
+                float sw = (float)(ibounds.x1 - ibounds.x0);
+                float sh = (float)(ibounds.y1 - ibounds.y0);
+                fz_pixmap* scaled =
+                    fz_scale_pixmap(ctx, pix, 0, 0, sw, sh, nullptr);
+                fz_drop_pixmap(ctx, pix);
+                pix = scaled;
+            }
             if (CadEnhanceActive() && cadRasterDominant && pix &&
                 !(darkProfile && DarkModeProfileUsesObjectLevel(darkProfile))) {
                 PdfCadEnhancePixmap(ctx, pix, zoom, true);

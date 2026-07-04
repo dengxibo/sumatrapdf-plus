@@ -181,6 +181,11 @@ class EngineMupdf : public EngineBase {
     CadEnhanceOverride cadEnhanceOverride = CadEnhanceOverride::Unset;
     bool cadDetectDone = false;
 
+    // Set when PDF XObject metadata shows embedded images above kLargeImageSideThreshold
+    // (detected without decoding). Enables on-demand subsampled decode at view time.
+    bool largeEmbeddedImages = false;
+    int largeImageMaxSide = 0;
+
     bool CadEnhanceActive() const;
     bool CadEnhanceUseHairlineBoost() const;
     void RunCadDetection();
