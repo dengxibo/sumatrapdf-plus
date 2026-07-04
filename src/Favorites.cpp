@@ -23,6 +23,7 @@
 #include "GlobalPrefs.h"
 #include "SumatraPDF.h"
 #include "MainWindow.h"
+#include "DisplayModel.h"
 #include "Theme.h"
 #include "WindowTab.h"
 #include "resource.h"
@@ -33,6 +34,7 @@
 #include "Menu.h"
 #include "SumatraDialogs.h"
 #include "Tabs.h"
+#include "TableOfContents.h"
 #include "Translations.h"
 #include "Accelerators.h"
 
@@ -665,27 +667,6 @@ void UpdateFavoritesTreeForAllWindows() {
     }
 }
 
-static TocItem* TocItemForPageNo(TocItem* item, int pageNo) {
-    TocItem* currItem = nullptr;
-
-    for (; item; item = item->next) {
-        if (1 <= item->pageNo && item->pageNo <= pageNo) {
-            currItem = item;
-        }
-        if (item->pageNo >= pageNo) {
-            break;
-        }
-
-        // find any child item closer to the specified page
-        TocItem* subItem = TocItemForPageNo(item->child, pageNo);
-        if (subItem) {
-            currItem = subItem;
-        }
-    }
-
-    return currItem;
-}
-
 void AddFavoriteWithLabelAndName(MainWindow* win, int pageNo, const char* pageLabel, const char* nameIn) {
     AutoFreeStr name = str::Dup(nameIn);
     bool shouldAdd = Dialog_AddFavorite(win->hwndFrame, pageLabel, name);
@@ -721,7 +702,12 @@ static void AddFavoriteForPage(MainWindow* win, int pageNo) {
         // use the current ToC heading as default name
         auto* docTree = ctrl->GetToc();
         TocItem* root = docTree->root;
-        TocItem* item = TocItemForPageNo(root, pageNo);
+        EngineBase* engine = nullptr;
+        DisplayModel* dm = ctrl->AsFixed();
+        if (dm) {
+            engine = dm->GetEngine();
+        }
+        TocItem* item = root && root->child ? TocItemBestMatchForPage(root->child, pageNo, engine) : nullptr;
         if (item) {
             name = item->title;
         }

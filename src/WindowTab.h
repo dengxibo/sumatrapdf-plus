@@ -77,6 +77,9 @@ struct WindowTab {
     int readAloudChunkEnd = 0;
     int readAloudBuiltEndPage = 0;
     bool readAloudAutoScroll = false;
+    bool readAloudAutoScrollHold = false;
+    int readAloudAutoScrollHoldPageNo = -1;
+    float readAloudAutoScrollHoldLineY = -1.f;
 
     enum ReadAloudScope {
         ReadAloudScopeSmart = 1,

@@ -38,6 +38,7 @@ bool EngineEbookIsProgressiveLoadingInProgress(EngineBase* engine);
 int EngineEbookGetFormattedPageCount(EngineBase* engine);
 int EngineEbookParseTocLinkFilePos(EngineBase* engine, IPageDestination* dest);
 bool EngineEbookIsTocFilePosReachable(EngineBase* engine, int filePos);
+int EngineEbookPageNoForTocFilePos(EngineBase* engine, int filePos);
 
 void SetCreateEngineForThumbnail(bool value);
 bool IsCreateEngineForThumbnail();

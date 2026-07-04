@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -150,13 +151,33 @@ SPEED_BY_LANG: dict[str, tuple[str, ...]] = {
 VOICE_GROUP_KEYS = [
     "Online voices",
     "Online multilingual voices",
-    "Local smart bilingual (Chinese + English)",
+    "Local smart bilingual (English + Chinese)",
     "Local smart bilingual settings...",
-    "Online smart bilingual (Chinese + English)",
+    "Online smart bilingual (English + Chinese)",
     "Online smart bilingual settings...",
     "Chinese voice",
     "English voice",
 ]
+
+BILINGUAL_MENU_KEYS = [
+    "Local smart bilingual (English + Chinese)",
+]
+
+# langs with hand-authored English-first bilingual labels (skip auto swap)
+BILINGUAL_SWAP_SKIP_LANGS = {"cn", "tw"}
+
+
+def swap_paren_langs(s: str) -> str:
+    """Swap 'A + B' inside (...) or （...） to 'B + A'."""
+
+    def repl(m: re.Match[str]) -> str:
+        open_p, inner, close_p = m.group(1), m.group(2), m.group(3)
+        parts = re.split(r"\s*(?:\+|＋)\s*", inner, maxsplit=1)
+        if len(parts) != 2:
+            return m.group(0)
+        return f"{open_p}{parts[1]} + {parts[0]}{close_p}"
+
+    return re.sub(r"([(\（])([^)）]+)([)\）])", repl, s)
 
 # lang -> (online voices, online multilingual, smart bilingual, smart settings, chinese voice, english voice)
 VOICE_GROUP_BY_LANG: dict[str, tuple[str, str, str, str, str, str]] = {
@@ -174,9 +195,9 @@ VOICE_GROUP_BY_LANG: dict[str, tuple[str, str, str, str, str, str]] = {
     "cn": (
         "在线语音",
         "在线多语言语音",
-        "本地智能双语（中文 + 英文）",
+        "本地智能双语（英文 + 中文）",
         "本地智能双语设置...",
-        "在线智能双语（中文 + 英文）",
+        "在线智能双语（英文 + 中文）",
         "在线智能双语设置...",
         "中文语音",
         "英文语音",
@@ -224,11 +245,11 @@ VOICE_GROUP_BY_LANG: dict[str, tuple[str, str, str, str, str, str]] = {
     "pt": ("Vozes online", "Vozes multilingues online", "Bilingue inteligente (chinês + inglês)"),
     "ro": ("Voci online", "Voci multilingve online", "Bilingv inteligent (chineză + engleză)"),
     "ru": ("Онлайн-голоса", "Многоязычные онлайн-голоса", "Локальный умный двуязычный (китайский + английский)"),
-    "sat": ("Online voices", "Online multilingual voices", "Local smart bilingual (Chinese + English)"),
+    "sat": ("Online voices", "Online multilingual voices", "Local smart bilingual (English + Chinese)"),
     "si": ("මාර්ගගත හඬ", "මාර්ගගත බහුභාෂා හඬ", "ස්මාර්ට් ද්විභාෂා (චීන + ඉංග්‍රීසි)"),
     "sk": ("Online hlasy", "Online viacjazyčné hlasy", "Inteligentný dvojjazyčný (čínština + angličtina)"),
     "sl": ("Spletni glasovi", "Večjezični spletni glasovi", "Pametno dvojezično (kitajščina + angleščina)"),
-    "sn": ("Online voices", "Online multilingual voices", "Local smart bilingual (Chinese + English)"),
+    "sn": ("Online voices", "Online multilingual voices", "Local smart bilingual (English + Chinese)"),
     "sp-rs": ("Online glasovi", "Online višejezični glasovi", "Pametni dvojezični (kineski + engleski)"),
     "sq": ("Zëra online", "Zëra shumëgjuhësh online", "Dygjuhësh inteligjent (kinezisht + anglisht)"),
     "sr-rs": ("Онлајн гласови", "Онлајн вишејезични гласови", "Паметни двојезични (кинески + енглески)"),
@@ -237,7 +258,7 @@ VOICE_GROUP_BY_LANG: dict[str, tuple[str, str, str, str, str, str]] = {
     "th": ("เสียงออนไลน์", "เสียงหลายภาษาออนไลน์", "สองภาษาอัจฉริยะ (จีน + อังกฤษ)"),
     "tl": ("Mga online na boses", "Mga online na multilingguwal na boses", "Matalinong bilingguwal (Tsino + Ingles)"),
     "tr": ("Çevrimiçi sesler", "Çevrimiçi çok dilli sesler", "Akıllı iki dilli (Çince + İngilizce)"),
-    "tw": ("線上語音", "線上多語言語音", "本地智慧雙語（中文 + 英文）"),
+    "tw": ("線上語音", "線上多語言語音", "本地智慧雙語（英文 + 中文）"),
     "uk": ("Онлайн-голоси", "Багатомовні онлайн-голоси", "Розумний двомовний (китайська + англійська)"),
     "uz": ("Onlayn ovozlar", "Onlayn ko'p tilli ovozlar", "Aqlli ikki tilli (xitoy + ingliz)"),
     "vn": ("Giọng trực tuyến", "Giọng đa ngôn ngữ trực tuyến", "Song ngữ thông minh (Trung + Anh)"),
@@ -385,14 +406,14 @@ ONLINE_VOICE_SETTINGS_BY_LANG: dict[str, str] = {
 }
 
 ONLINE_SMART_MENU_BY_LANG: dict[str, tuple[str, str]] = {
-    "cn": ("在线智能双语（中文 + 英文）", "在线智能双语设置..."),
-    "tw": ("線上智慧雙語（中文 + 英文）", "線上智慧雙語設定..."),
-    "ja": ("オンラインスマートバイリンガル（中国語 + 英語）", "オンラインスマートバイリンガル設定..."),
-    "kr": ("온라인 스마트 이중 언어 (중국어 + 영어)", "온라인 스마트 이중 언어 설정..."),
-    "de": ("Online intelligent zweisprachig (Chinesisch + Englisch)", "Online intelligente Zweisprachigkeit – Einstellungen..."),
-    "fr": ("Bilingue intelligent en ligne (chinois + anglais)", "Paramètres bilingue intelligent en ligne..."),
-    "es": ("Bilingüe inteligente en línea (chino + inglés)", "Configuración bilingüe inteligente en línea..."),
-    "ru": ("Онлайн умный двуязычный (китайский + английский)", "Настройки онлайн умного двуязычного режима..."),
+    "cn": ("在线智能双语（英文 + 中文）", "在线智能双语设置..."),
+    "tw": ("線上智慧雙語（英文 + 中文）", "線上智慧雙語設定..."),
+    "ja": ("オンラインスマートバイリンガル（英語 + 中国語）", "オンラインスマートバイリンガル設定..."),
+    "kr": ("온라인 스마트 이중 언어 (영어 + 중국어)", "온라인 스마트 이중 언어 설정..."),
+    "de": ("Online intelligent zweisprachig (Englisch + Chinesisch)", "Online intelligente Zweisprachigkeit – Einstellungen..."),
+    "fr": ("Bilingue intelligent en ligne (anglais + chinois)", "Paramètres bilingue intelligent en ligne..."),
+    "es": ("Bilingüe inteligente en línea (inglés + chino)", "Configuración bilingüe inteligente en línea..."),
+    "ru": ("Онлайн умный двуязычный (английский + китайский)", "Настройки онлайн умного двуязычного режима..."),
 }
 
 for lang in LANGS:
@@ -401,19 +422,19 @@ for lang in LANGS:
         settings = VOICE_SETTINGS_BY_LANG.get(lang, "Local smart bilingual settings...")
         section = VOICE_SECTION_BY_LANG.get(lang, ("Chinese voice", "English voice"))
         online = ONLINE_SMART_MENU_BY_LANG.get(
-            lang, ("Online smart bilingual (Chinese + English)", "Online smart bilingual settings...")
+            lang, ("Online smart bilingual (English + Chinese)", "Online smart bilingual settings...")
         )
         vals = vals[:2] + (vals[2], settings, online[0], online[1]) + section
     elif len(vals) == 5:
         settings = VOICE_SETTINGS_BY_LANG.get(lang, "Local smart bilingual settings...")
         online = ONLINE_SMART_MENU_BY_LANG.get(
-            lang, ("Online smart bilingual (Chinese + English)", "Online smart bilingual settings...")
+            lang, ("Online smart bilingual (English + Chinese)", "Online smart bilingual settings...")
         )
         vals = vals[:2] + (vals[2], settings, online[0], online[1]) + vals[3:]
     elif len(vals) == 6:
         # online voices, online multi, local smart, local settings, chinese, english
         online = ONLINE_SMART_MENU_BY_LANG.get(
-            lang, ("Online smart bilingual (Chinese + English)", "Online smart bilingual settings...")
+            lang, ("Online smart bilingual (English + Chinese)", "Online smart bilingual settings...")
         )
         vals = vals[:4] + online + vals[4:]
     # len == 8: already complete
@@ -421,6 +442,15 @@ for lang in LANGS:
         raise ValueError(f"{lang}: expected {len(VOICE_GROUP_KEYS)} voice group values, got {len(vals)}")
     for key, val in zip(VOICE_GROUP_KEYS, vals, strict=True):
         PHRASES[lang][key] = val
+
+for lang in LANGS:
+    if lang in BILINGUAL_SWAP_SKIP_LANGS:
+        continue
+    for key in BILINGUAL_MENU_KEYS:
+        val = PHRASES[lang][key]
+        if val == key:
+            continue
+        PHRASES[lang][key] = swap_paren_langs(val)
 
 for lang in LANGS:
     if lang in VOICE_SETTINGS_BY_LANG:

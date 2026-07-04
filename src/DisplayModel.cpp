@@ -673,10 +673,12 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
         ApplyPagesUiUpdate(this);
     }
 
-    // Background reflow/page formatting posts real progress notifications.
-    // Don't recursively post more UI progress tasks from the UI thread here:
-    // long documents can otherwise create a large chain of UITask objects while
-    // relayout/render work is also reallocating page metadata.
+    // Grow pagesInfo in batches so Relayout stays incremental on huge reflowed
+    // EPUBs (8000+ pages). Background load posts chapter-count notifications;
+    // post another UI task when we still lag the engine page count.
+    if (updateUi && engine->FilePath() && pagesInfoCount < engine->PageCount()) {
+        NotifyEbookPagesLoadingProgress(engine->FilePath(), false);
+    }
 }
 
 bool DisplayModel::ShouldSkipTocSelectionUpdate() const {

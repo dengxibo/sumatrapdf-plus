@@ -539,7 +539,6 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
     // it must not wait for layout batches, otherwise TOC never loads because
     // reloadToc is only true on the first notify while layout is still batched.
     if (reloadToc && !EngineIsProgressiveEbookLoading(engine) && isForeground) {
-        dm->OnMorePagesAvailable(true, true);
         pageCount = dm->PageCount();
         UpdateToolbarPageText(win, pageCount);
         bool wantToc = tab->showToc || DefaultShowTocForPath(path);
@@ -3460,7 +3459,7 @@ void LoadModelIntoTab(WindowTab* tab) {
 
     DisplayModel* dm = tab->ctrl ? tab->ctrl->AsFixed() : nullptr;
     if (dm && dm->pagesInfo) {
-        dm->OnMorePagesAvailable(true, true);
+        dm->OnMorePagesAvailable(true, false);
         UpdateToolbarPageText(win, dm->PageCount());
     }
 
@@ -9859,9 +9858,9 @@ static float ReadAloudClampSpeakingRate(float rate) {
 
 // Center the label+combo rows in the dialog; keep OK/Cancel right-aligned from the RC.
 static void LayoutReadAloudSmartVoiceRows(HWND hDlg) {
-    HWND hwndLabels[2] = {GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH_LABEL),
-                          GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN_LABEL)};
-    HWND hwndCombos[2] = {GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH), GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN)};
+    HWND hwndLabels[2] = {GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN_LABEL),
+                          GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH_LABEL)};
+    HWND hwndCombos[2] = {GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN), GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH)};
     if (!hwndLabels[0] || !hwndLabels[1] || !hwndCombos[0] || !hwndCombos[1]) {
         return;
     }
@@ -9964,7 +9963,7 @@ static INT_PTR CALLBACK Dialog_ReadAloudSmartVoices_Proc(HWND hDlg, UINT msg, WP
 
             LayoutReadAloudSmartVoiceRows(hDlg);
             CenterDialog(hDlg);
-            HwndSetFocus(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH));
+            HwndSetFocus(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN));
             return FALSE;
 
         case WM_COMMAND:
@@ -10414,6 +10413,9 @@ static void ReadAloudFinishSession(WindowTab* tab, MainWindow* win) {
     }
     tab->readAloudHighlightBase = 0;
     tab->readAloudAutoScroll = false;
+    tab->readAloudAutoScrollHold = false;
+    tab->readAloudAutoScrollHoldPageNo = -1;
+    tab->readAloudAutoScrollHoldLineY = -1.f;
     tab->readAloudScope = 0;
     ReadAloudClearSourceTab();
     if (gReadAloudSessionTab == tab) {
@@ -10720,6 +10722,9 @@ static void ResetReadAloudStateForTab(WindowTab* tab) {
     tab->readAloudChunkEnd = 0;
     tab->readAloudBuiltEndPage = 0;
     tab->readAloudAutoScroll = false;
+    tab->readAloudAutoScrollHold = false;
+    tab->readAloudAutoScrollHoldPageNo = -1;
+    tab->readAloudAutoScrollHoldLineY = -1.f;
     tab->readAloudScope = 0;
     if (gReadAloudSessionTab == tab) {
         gReadAloudSessionTab = nullptr;
@@ -10810,6 +10815,9 @@ static void ReadAloudStartText(WindowTab* tab, const char* cleaned, ReadAloudHig
     tab->readAloudChunkEnd = 0;
     tab->readAloudResumePos = -1;
     tab->readAloudAutoScroll = true;
+    tab->readAloudAutoScrollHold = true;
+    tab->readAloudAutoScrollHoldPageNo = -1;
+    tab->readAloudAutoScrollHoldLineY = -1.f;
     gReadAloudSessionTab = tab;
     ReadAloudSetSourceTab(tab);
     ReadAloudHighlightTimerStart(tab->win);
@@ -11015,6 +11023,9 @@ static void ReadAloudContinueInTab(WindowTab* tab) {
     tab->readAloudChunkStart = resumeInText;
     tab->readAloudResumePos = -1;
     tab->readAloudAutoScroll = true;
+    tab->readAloudAutoScrollHold = true;
+    tab->readAloudAutoScrollHoldPageNo = -1;
+    tab->readAloudAutoScrollHoldLineY = -1.f;
     ReadAloudSetSourceTab(tab);
     ReadAloudHighlightTimerStart(tab->win);
 
@@ -11185,7 +11196,7 @@ static void BuildReadAloudVoiceMenuItems(HMENU voiceMenu) {
             smartFlags |= MF_CHECKED;
         }
         AppendMenuW(voiceMenu, smartFlags, CmdTtsVoiceSmartBilingual,
-                    ToWStrTemp(_TRA("Local smart bilingual (Chinese + English)")));
+                    ToWStrTemp(_TRA("Local smart bilingual (English + Chinese)")));
         AppendMenuW(voiceMenu, MF_STRING, CmdTtsSmartBilingualSettings,
                     ToWStrTemp(_TRA("Local smart bilingual settings...")));
     }
@@ -11197,7 +11208,7 @@ static void BuildReadAloudVoiceMenuItems(HMENU voiceMenu) {
             smartFlags |= MF_CHECKED;
         }
         AppendMenuW(voiceMenu, smartFlags, CmdTtsVoiceSmartOnlineBilingual,
-                    ToWStrTemp(_TRA("Online smart bilingual (Chinese + English)")));
+                    ToWStrTemp(_TRA("Online smart bilingual (English + Chinese)")));
         AppendMenuW(voiceMenu, MF_STRING, CmdTtsSmartOnlineBilingualSettings,
                     ToWStrTemp(_TRA("Online smart bilingual settings...")));
     }
@@ -11252,8 +11263,8 @@ static void BuildReadAloudSpeedMenuItems(HMENU speedMenu) {
                                       ReadAloudSpeedPresetShortLabel(ReadAloudSpeedPresetIndex(zhRate)));
     TempStr enTitle = str::FormatTemp("%s (%s)", _TRA("English voice"),
                                       ReadAloudSpeedPresetShortLabel(ReadAloudSpeedPresetIndex(enRate)));
-    AppendMenuW(speedMenu, MF_POPUP | MF_STRING, (UINT_PTR)zhMenu, ToWStrTemp(zhTitle));
     AppendMenuW(speedMenu, MF_POPUP | MF_STRING, (UINT_PTR)enMenu, ToWStrTemp(enTitle));
+    AppendMenuW(speedMenu, MF_POPUP | MF_STRING, (UINT_PTR)zhMenu, ToWStrTemp(zhTitle));
 }
 
 static bool ReadAloudIsPointOnCanvas(MainWindow* win, Point pt) {

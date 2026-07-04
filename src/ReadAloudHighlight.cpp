@@ -13,12 +13,14 @@
 #include "DocController.h"
 #include "EngineBase.h"
 #include "DisplayModel.h"
+#include "DisplayMode.h"
 #include "TextSelection.h"
 
 #include "utils/Log.h"
 #include "TextToSpeech.h"
 #include "WindowTab.h"
 #include "MainWindow.h"
+#include "Canvas.h"
 #include "Selection.h"
 #include "SumatraPDF.h"
 #include "ReadAloudHighlight.h"
@@ -1008,20 +1010,56 @@ static bool ReadAloudGetCurrentWordAbsRange(WindowTab* tab, int* startAbsOut, in
     return true;
 }
 
-static bool ReadAloudGetCurrentWordScreenRect(MainWindow* win, Rect* rectOut) {
-    if (!rectOut || !win) {
+// Reading-band layout: follow target is 5% from the top (page turn and same-page scroll).
+// Reading progresses downward, so lines above 78% are intentional context — only
+// scroll when the anchor drops below 78%.
+static constexpr float kReadAloudOuterBottomRatio = 0.78f;
+static constexpr float kReadAloudTargetRatio = 0.05f;
+
+static bool ReadAloudCollectAnchorPageRect(WindowTab* tab, int wordStartAbs, int wordEndAbs, int* pageNoOut,
+                                           RectF* pageRectOut) {
+    if (!tab || !pageNoOut || !pageRectOut || !tab->readAloudHighlight) {
         return false;
     }
 
-    *rectOut = Rect();
-
-    WindowTab* tab = GetReadAloudSourceTab();
-    if (!tab || tab->win != win) {
+    ReadAloudHighlightMap* map = tab->readAloudHighlight;
+    if (wordStartAbs < 0 || wordStartAbs >= map->len) {
         return false;
     }
 
-    DisplayModel* dm = tab->AsFixed();
-    if (!dm) {
+    int pageNo = map->locs[wordStartAbs].pageNo;
+    if (pageNo <= 0) {
+        return false;
+    }
+
+    Vec<RectF> lineRects;
+    for (int i = wordStartAbs; i < wordEndAbs; i++) {
+        ReadAloudByteLoc& loc = map->locs[i];
+        if (loc.pageNo != pageNo || !ReadAloudByteLocHasRect(loc)) {
+            continue;
+        }
+        RectF rf = ToRectF(ReadAloudByteLocToRect(loc));
+        rf = ScaleHighlightBandRect(rf, kReadAloudHighlightBandRatio);
+        ReadAloudAppendLineRect(lineRects, rf);
+    }
+
+    if (lineRects.size() == 0) {
+        return false;
+    }
+
+    RectF anchor = lineRects[0];
+    for (size_t i = 1; i < lineRects.size(); i++) {
+        anchor = anchor.Union(lineRects[i]);
+    }
+
+    *pageNoOut = pageNo;
+    *pageRectOut = anchor;
+    return true;
+}
+
+static bool ReadAloudGetCurrentAnchor(WindowTab* tab, DisplayModel* dm, int* pageNoOut, RectF* pageRectOut,
+                                      Rect* screenRectOut) {
+    if (!tab || !dm || !pageNoOut || !pageRectOut || !screenRectOut) {
         return false;
     }
 
@@ -1031,49 +1069,168 @@ static bool ReadAloudGetCurrentWordScreenRect(MainWindow* win, Rect* rectOut) {
         return false;
     }
 
-    Vec<Rect> screenRects;
-    if (!ReadAloudCollectWordHighlightScreenRects(win, tab, dm, wordStartAbs, wordEndAbs, screenRects)) {
+    int pageNo = 0;
+    RectF pageRect;
+    if (!ReadAloudCollectAnchorPageRect(tab, wordStartAbs, wordEndAbs, &pageNo, &pageRect)) {
         return false;
     }
 
-    Rect unionRect = screenRects[0];
-    for (size_t i = 1; i < screenRects.size(); i++) {
-        unionRect = unionRect.Union(screenRects[i]);
+    dm->EnsurePagesInfoForPage(pageNo);
+    dm->PreparePageNavigation(pageNo);
+    Rect screenRect = dm->CvtToScreen(pageNo, pageRect);
+    if (screenRect.IsEmpty()) {
+        return false;
     }
-    *rectOut = unionRect;
+
+    *pageNoOut = pageNo;
+    *pageRectOut = pageRect;
+    *screenRectOut = screenRect;
     return true;
 }
 
-static bool ReadAloudIsWordRectVisibleInViewport(MainWindow* win, const Rect& wordRect) {
-    if (!win) {
-        return false;
+static int ReadAloudScrollYForAnchorAtRatio(DisplayModel* dm, int pageNo, const RectF& anchorPageRect, float ratio) {
+    if (!dm || pageNo <= 0 || anchorPageRect.IsEmpty()) {
+        return 0;
     }
-    return !wordRect.Intersect(win->canvasRc).IsEmpty();
+
+    dm->EnsurePagesInfoForPage(pageNo);
+    PageInfo* pi = dm->GetPageInfo(pageNo);
+    if (!pi) {
+        return 0;
+    }
+
+    float zoom = dm->GetZoomReal(pageNo);
+    if (zoom <= 0) {
+        zoom = 1.f;
+    }
+    RectF tr = dm->GetEngine()->Transform(anchorPageRect, pageNo, zoom, dm->GetRotation());
+    int centerY = (int)(tr.y + tr.dy / 2);
+    int targetY = (int)(dm->GetViewPort().dy * ratio);
+    return std::max(0, centerY - targetY);
 }
 
-static bool ReadAloudIsWordRectFullyVisibleInViewport(MainWindow* win, const Rect& wordRect, int margin) {
-    if (!win) {
-        return false;
+static int ReadAloudClampViewY(DisplayModel* dm, int viewY) {
+    if (!dm) {
+        return 0;
     }
-    Rect canvas = win->canvasRc;
-    if (wordRect.x < margin || wordRect.y < margin) {
-        return false;
+    int maxY = dm->canvasSize.dy - dm->GetViewPort().dy;
+    if (maxY < 0) {
+        maxY = 0;
     }
-    if (wordRect.x + wordRect.dx > canvas.dx - margin) {
-        return false;
-    }
-    if (wordRect.y + wordRect.dy > canvas.dy - margin) {
-        return false;
-    }
-    return true;
+    return limitValue(viewY, 0, maxY);
 }
 
-static bool ReadAloudSourceTabIsCurrentTab(MainWindow* win) {
-    if (!win) {
+static int ReadAloudTargetViewYForPage(DisplayModel* dm, int pageNo, const RectF& pageRect, float ratio) {
+    int scrollY = ReadAloudScrollYForAnchorAtRatio(dm, pageNo, pageRect, ratio);
+    dm->EnsurePagesInfoForPage(pageNo);
+    PageInfo* pi = dm->GetPageInfo(pageNo);
+    if (!pi) {
+        return dm->yOffset();
+    }
+    if (IsContinuous(dm->GetDisplayMode())) {
+        return ReadAloudClampViewY(dm, pi->pos.y - dm->windowMargin.top + scrollY);
+    }
+    return ReadAloudClampViewY(dm, scrollY);
+}
+
+static void ReadAloudAnimateViewYTo(MainWindow* win, DisplayModel* dm, int targetViewY) {
+    if (!win || !dm || !win->hwndCanvas) {
+        return;
+    }
+
+    targetViewY = ReadAloudClampViewY(dm, targetViewY);
+    int current = dm->yOffset();
+    if (current == targetViewY) {
+        return;
+    }
+
+    constexpr int kMinAnimateDeltaPx = 12;
+    if (std::abs(targetViewY - current) < kMinAnimateDeltaPx) {
+        win->readAloudScrollFromCode = true;
+        dm->ScrollYTo(targetViewY);
+        win->readAloudScrollFromCode = false;
+        return;
+    }
+
+    win->scrollTargetY = targetViewY;
+    win->readAloudScrollFromCode = true;
+    SetTimer(win->hwndCanvas, kSmoothScrollTimerID, USER_TIMER_MINIMUM, nullptr);
+}
+
+static void ReadAloudScrollScreenAnchorToRatio(MainWindow* win, DisplayModel* dm, const Rect& anchorScreen,
+                                               float ratio) {
+    if (!win || !dm || anchorScreen.IsEmpty()) {
+        return;
+    }
+
+    Size viewPort = dm->GetViewPort().Size();
+    if (viewPort.dy <= 0) {
+        return;
+    }
+
+    float centerY = anchorScreen.y + anchorScreen.dy / 2.0f;
+    int targetY = (int)(viewPort.dy * ratio);
+    int sy = (int)(centerY - targetY);
+    if (sy != 0) {
+        ReadAloudAnimateViewYTo(win, dm, dm->yOffset() + sy);
+    }
+}
+
+static float ReadAloudAnchorLineCenterY(const RectF& pageRect) {
+    return pageRect.y + pageRect.dy / 2.0f;
+}
+
+static bool ReadAloudIsSameAnchorLine(int pageNo, const RectF& pageRect, int holdPageNo, float holdLineY) {
+    if (holdPageNo <= 0 || holdLineY < 0) {
         return false;
     }
-    WindowTab* tab = GetReadAloudSourceTab();
-    return tab && tab->win == win && win->CurrentTab() == tab;
+    if (pageNo != holdPageNo) {
+        return false;
+    }
+    float centerY = ReadAloudAnchorLineCenterY(pageRect);
+    float tolerance = std::max(pageRect.dy * 0.75f, 8.f);
+    return std::abs(centerY - holdLineY) <= tolerance;
+}
+
+static bool ReadAloudAnchorNeedsViewSync(const Rect& anchorScreen, Size viewSize) {
+    if (anchorScreen.IsEmpty() || viewSize.dx <= 0 || viewSize.dy <= 0) {
+        return false;
+    }
+
+    float centerY = anchorScreen.y + anchorScreen.dy / 2.0f;
+    float ratio = centerY / viewSize.dy;
+    return ratio > kReadAloudOuterBottomRatio;
+}
+
+static bool ReadAloudAnchorVisibleInCanvas(MainWindow* win, const Rect& anchorScreen) {
+    if (!win || anchorScreen.IsEmpty()) {
+        return false;
+    }
+    return !anchorScreen.Intersect(win->canvasRc).IsEmpty();
+}
+
+static void ReadAloudSyncViewToAnchor(MainWindow* win, WindowTab* tab, DisplayModel* dm, int pageNo,
+                                      const RectF& pageRect, const Rect& anchorScreen) {
+    DisplayMode mode = dm->GetDisplayMode();
+    bool anchorOnScreen = ReadAloudAnchorVisibleInCanvas(win, anchorScreen);
+
+    if (!IsContinuous(mode) && !dm->PageVisible(pageNo)) {
+        win->readAloudScrollFromCode = true;
+        defer {
+            win->readAloudScrollFromCode = false;
+        };
+        int scrollY = ReadAloudScrollYForAnchorAtRatio(dm, pageNo, pageRect, kReadAloudTargetRatio);
+        dm->GoToPage(pageNo, scrollY, false);
+        return;
+    }
+
+    if (anchorOnScreen) {
+        ReadAloudScrollScreenAnchorToRatio(win, dm, anchorScreen, kReadAloudTargetRatio);
+        return;
+    }
+
+    int targetViewY = ReadAloudTargetViewYForPage(dm, pageNo, pageRect, kReadAloudTargetRatio);
+    ReadAloudAnimateViewYTo(win, dm, targetViewY);
 }
 
 void ReadAloudOnUserViewChanged(MainWindow* win) {
@@ -1086,8 +1243,16 @@ void ReadAloudOnUserViewChanged(MainWindow* win) {
         return;
     }
 
-    Rect wordRect;
-    if (!ReadAloudGetCurrentWordScreenRect(win, &wordRect) || !ReadAloudIsWordRectVisibleInViewport(win, wordRect)) {
+    DisplayModel* dm = tab->AsFixed();
+    if (!dm) {
+        return;
+    }
+
+    int pageNo = 0;
+    RectF pageRect;
+    Rect anchorScreen;
+    if (!ReadAloudGetCurrentAnchor(tab, dm, &pageNo, &pageRect, &anchorScreen) ||
+        !ReadAloudAnchorVisibleInCanvas(win, anchorScreen)) {
         tab->readAloudAutoScroll = false;
         logf("ReadAloud: auto-scroll disabled (user scrolled away from highlight)\n");
     }
@@ -1103,50 +1268,53 @@ void ReadAloudUpdateAutoScroll(MainWindow* win) {
         return;
     }
 
-    Rect wordRect;
-    if (!ReadAloudGetCurrentWordScreenRect(win, &wordRect)) {
+    DisplayModel* dm = tab->AsFixed();
+    if (!dm) {
         return;
     }
 
-    int margin = DpiScale(win->hwndCanvas, 48);
-    if (ReadAloudIsWordRectFullyVisibleInViewport(win, wordRect, margin)) {
+    int pageNo = 0;
+    RectF pageRect;
+    Rect anchorScreen;
+    if (!ReadAloudGetCurrentAnchor(tab, dm, &pageNo, &pageRect, &anchorScreen)) {
         return;
     }
 
-    Rect canvas = win->canvasRc;
+    Size viewSize = dm->GetViewPort().Size();
 
-    int dx = 0;
-    int dy = 0;
-    if (wordRect.y < margin) {
-        dy = wordRect.y - margin;
-    } else if (wordRect.y + wordRect.dy > canvas.dy - margin) {
-        dy = wordRect.y + wordRect.dy - (canvas.dy - margin);
-    }
-    if (wordRect.x < margin) {
-        dx = wordRect.x - margin;
-    } else if (wordRect.x + wordRect.dx > canvas.dx - margin) {
-        dx = wordRect.x + wordRect.dx - (canvas.dx - margin);
+    // After start/resume, keep the view stable on the first visible line. TTS advances
+    // spokenPos within a word immediately, so word-index comparisons are unreliable here.
+    if (tab->readAloudAutoScrollHold) {
+        float lineY = ReadAloudAnchorLineCenterY(pageRect);
+        if (tab->readAloudAutoScrollHoldPageNo < 0) {
+            if (!ReadAloudAnchorVisibleInCanvas(win, anchorScreen)) {
+                tab->readAloudAutoScrollHold = false;
+            } else {
+                tab->readAloudAutoScrollHoldPageNo = pageNo;
+                tab->readAloudAutoScrollHoldLineY = lineY;
+                return;
+            }
+        } else if (ReadAloudIsSameAnchorLine(pageNo, pageRect, tab->readAloudAutoScrollHoldPageNo,
+                                             tab->readAloudAutoScrollHoldLineY)) {
+            return;
+        } else {
+            tab->readAloudAutoScrollHold = false;
+        }
     }
 
-    if (dx == 0 && dy == 0) {
+    if (!ReadAloudAnchorNeedsViewSync(anchorScreen, viewSize)) {
         return;
     }
 
-    int maxStep = std::max(canvas.dy / 4, DpiScale(win->hwndCanvas, 120));
-    if (dx > maxStep) {
-        dx = maxStep;
-    } else if (dx < -maxStep) {
-        dx = -maxStep;
-    }
-    if (dy > maxStep) {
-        dy = maxStep;
-    } else if (dy < -maxStep) {
-        dy = -maxStep;
-    }
+    ReadAloudSyncViewToAnchor(win, tab, dm, pageNo, pageRect, anchorScreen);
+}
 
-    win->readAloudScrollFromCode = true;
-    win->MoveDocBy(dx, dy);
-    win->readAloudScrollFromCode = false;
+static bool ReadAloudSourceTabIsCurrentTab(MainWindow* win) {
+    if (!win) {
+        return false;
+    }
+    WindowTab* tab = GetReadAloudSourceTab();
+    return tab && tab->win == win && win->CurrentTab() == tab;
 }
 
 void PaintReadAloudHighlight(MainWindow* win, HDC hdc) {

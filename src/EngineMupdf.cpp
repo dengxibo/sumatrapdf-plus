@@ -4442,22 +4442,37 @@ static NO_INLINE IPageDestination* DestFromAttachment(EngineMupdf* engine, fz_ou
 int EngineMupdf::OutlinePageNoForItem(fz_link* link, fz_outline* ol) {
     auto ctx = Ctx();
     if (!pdfdoc && ol) {
+        bool loading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
+        const char* uri = ol->uri;
+
         int ch = ol->page.chapter;
-        if (ch < 0) {
-            ch = EpubUriChapterIndexNoLayout(ctx, _doc, ol->uri);
+        if (ch < 0 && uri) {
+            ch = EpubUriChapterIndexNoLayout(ctx, _doc, uri);
         }
         int pageInChapter = ol->page.page >= 0 ? ol->page.page : 0;
         int pageNo = ReflowPageNoFromChapter(this, ch, pageInChapter);
         if (pageNo > 0) {
             return pageNo;
         }
-        if (InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0) {
-            return 0;
-        }
+
         pageNo = FastReflowableOutlinePageNo(this, ctx, _doc, ol);
         if (pageNo > 0) {
             return pageNo;
         }
+
+        if (loading || bulkBuildingToc) {
+            return 0;
+        }
+
+        // Many EPUBs (e.g. repackaged anthologies) put multiple TOC entries in one spine
+        // HTML file with #fragment anchors. The chapter-start cache cannot distinguish them.
+        if (uri && str::FindChar(uri, '#')) {
+            pageNo = ResolveMupdfLinkPageNo1(this, uri, nullptr);
+            if (pageNo > 0) {
+                return pageNo;
+            }
+        }
+
         if (ol->uri) {
             return ResolveMupdfLinkPageNo1(this, ol->uri, nullptr);
         }
@@ -4556,6 +4571,11 @@ TocTree* EngineMupdf::GetToc() {
     }
 
     int idCounter = 0;
+
+    bulkBuildingToc = true;
+    defer {
+        bulkBuildingToc = false;
+    };
 
     TocItem* root = nullptr;
     TocItem* att = nullptr;

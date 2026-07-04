@@ -455,34 +455,90 @@ void ToggleTocBox(MainWindow* win) {
     }
 }
 
-struct VistorForPageNoData {
-    int pageNo = -1;
-
-    TocItem* bestMatch = nullptr;
-    int bestMatchPageNo = 0;
-    int nItems = 0;
-};
-
-void visitTree(VistorForPageNoData* d, TreeItemVisitorData* vd) {
-    auto tocItem = (TocItem*)vd->item;
-    if (!tocItem) {
-        return;
+static int TocItemPageNoForMatch(TocItem* item, EngineBase* engine) {
+    if (!item) {
+        return 0;
     }
-    if (!d->bestMatch) {
-        // if nothing else matches, match the root node
-        d->bestMatch = tocItem;
+    if (item->pageNo > 0) {
+        return item->pageNo;
     }
-    ++d->nItems;
-    int page = tocItem->pageNo;
-    if ((page <= d->pageNo) && (page >= d->bestMatchPageNo) && (page >= 1)) {
-        d->bestMatch = tocItem;
-        d->bestMatchPageNo = page;
-        if (d->pageNo == d->bestMatchPageNo) {
-            // we can stop earlier if we found the exact match
-            vd->stopTraversal = true;
-            return;
+    if (!engine) {
+        return 0;
+    }
+
+    IPageDestination* dest = item->GetPageDestination();
+    if (!dest) {
+        return 0;
+    }
+
+    if (engine->kind == kindEngineMobi) {
+        int filePos = EngineEbookParseTocLinkFilePos(engine, dest);
+        if (filePos >= 0) {
+            return EngineEbookPageNoForTocFilePos(engine, filePos);
         }
     }
+
+    Kind destKind = dest->GetKind();
+    if (destKind == kindDestinationMupdf) {
+        int pageNo = EngineMupdfFastOutlinePageNo(engine, dest);
+        if (pageNo > 0) {
+            return pageNo;
+        }
+        if (!EngineIsProgressiveEbookLoading(engine)) {
+            return EngineMupdfResolveLinkPageNo(engine, dest);
+        }
+        return 0;
+    }
+
+    if (destKind == kindDestinationScrollTo) {
+        char* name = PageDestGetName(dest);
+        if (name) {
+            IPageDestination* resolved = engine->GetNamedDest(name);
+            if (resolved) {
+                int pageNo = PageDestGetPageNo(resolved);
+                delete resolved;
+                return pageNo;
+            }
+        }
+    }
+
+    return 0;
+}
+
+int CountTocItems(TocItem* item) {
+    int n = 0;
+    for (; item; item = item->next) {
+        n++;
+        n += CountTocItems(item->child);
+    }
+    return n;
+}
+
+// Pick the deepest TOC entry whose page is <= pageNo. Among siblings with the same
+// page (common when EPUB fragments fail to resolve), keep the earliest entry so we
+// do not jump ahead to a later chapter while still reading earlier content.
+TocItem* TocItemBestMatchForPage(TocItem* item, int pageNo, EngineBase* engine) {
+    TocItem* currItem = nullptr;
+
+    for (; item; item = item->next) {
+        int itemPage = TocItemPageNoForMatch(item, engine);
+        if (1 <= itemPage && itemPage <= pageNo) {
+            int currPage = currItem ? TocItemPageNoForMatch(currItem, engine) : 0;
+            if (!currItem || itemPage > currPage) {
+                currItem = item;
+            }
+        }
+        if (itemPage > pageNo) {
+            break;
+        }
+
+        TocItem* subItem = TocItemBestMatchForPage(item->child, pageNo, engine);
+        if (subItem) {
+            currItem = subItem;
+        }
+    }
+
+    return currItem;
 }
 
 static bool IsKnownTocTreeModel(MainWindow* win, TreeModel* tm) {
@@ -508,16 +564,22 @@ static TocItem* TreeItemForPageNo(TreeView* treeView, int pageNo) {
     if (!tm) {
         return nullptr;
     }
-    VistorForPageNoData d;
-    d.pageNo = pageNo;
-    auto fn = MkFunc1<VistorForPageNoData, TreeItemVisitorData*>(visitTree, &d);
-    VisitTreeModelItems(tm, fn);
+    TocItem* root = (TocItem*)tm->Root();
+    if (!root || !root->child) {
+        return nullptr;
+    }
     // if there's only one item, we want to unselect it so that it can
     // be selected by the user
-    if (d.nItems < 2) {
-        return 0;
+    if (CountTocItems(root->child) < 2) {
+        return nullptr;
     }
-    return d.bestMatch;
+    MainWindow* win = FindMainWindowByHwnd(treeView->hwnd);
+    EngineBase* engine = nullptr;
+    if (win && win->ctrl) {
+        DisplayModel* dm = win->ctrl->AsFixed();
+        engine = dm ? dm->GetEngine() : nullptr;
+    }
+    return TocItemBestMatchForPage(root->child, pageNo, engine);
 }
 
 // TODO: I can't use TreeItem->IsExpanded() because it's not in sync with

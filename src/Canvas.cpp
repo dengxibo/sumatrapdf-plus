@@ -399,6 +399,8 @@ constexpr int kResizeHandleSize = 8;
 // Each step, we scroll the needed delta times this factor.
 // Therefore, a higher factor makes smooth scrolling faster.
 static const double gSmoothScrollingFactor = 0.2;
+// Read-aloud follow uses a slower factor so the view eases instead of snapping.
+static const double kReadAloudSmoothScrollFactor = 0.2;
 
 // these can be global, as the mouse wheel can't affect more than one window at once
 static int gDeltaPerLine = 0;
@@ -2975,18 +2977,25 @@ static void OnTimer(MainWindow* win, HWND hwnd, WPARAM timerId) {
             int current = dm->yOffset();
             int target = win->scrollTargetY;
             int delta = target - current;
+            bool readAloudScroll = win->readAloudScrollFromCode;
 
             if (delta == 0) {
                 KillTimer(hwnd, kSmoothScrollTimerID);
+                if (readAloudScroll) {
+                    win->readAloudScrollFromCode = false;
+                }
             } else {
                 // logf("Smooth scrolling from %d to %d (delta %d)\n", current, target, delta);
 
-                double step = delta * gSmoothScrollingFactor;
+                double factor = readAloudScroll ? kReadAloudSmoothScrollFactor : gSmoothScrollingFactor;
+                double step = delta * factor;
 
                 // Round away from zero
                 int dy = step < 0 ? (int)floor(step) : (int)ceil(step);
                 dm->ScrollYTo(current + dy);
-                ReadAloudOnUserViewChanged(win);
+                if (!readAloudScroll) {
+                    ReadAloudOnUserViewChanged(win);
+                }
             }
             break;
     }

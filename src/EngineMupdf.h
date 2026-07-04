@@ -148,6 +148,9 @@ class EngineMupdf : public EngineBase {
 
     TocTree* tocTree = nullptr;
     bool tocTreeStale = false;
+    // True while GetToc() is building the tree on the UI thread. Skips per-entry
+    // fz_resolve_link_dest calls that would layout HTML for every bookmark.
+    bool bulkBuildingToc = false;
 
     // password used to decrypt the document (needed for re-encryption/decryption)
     char* pdfPassword = nullptr;

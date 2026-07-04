@@ -2319,6 +2319,20 @@ bool EngineEbookIsTocFilePosReachable(EngineBase* engine, int filePos) {
     return ee->IsTocFilePosFormatted(filePos, (const char*)html.data(), html.size());
 }
 
+int EngineEbookPageNoForTocFilePos(EngineBase* engine, int filePos) {
+    if (!engine || engine->kind != kindEngineMobi || filePos < 0) {
+        return 0;
+    }
+    TempStr url = str::FormatTemp("%d", filePos);
+    IPageDestination* dest = engine->GetNamedDest(url);
+    if (!dest) {
+        return 0;
+    }
+    int pageNo = PageDestGetPageNo(dest);
+    delete dest;
+    return pageNo;
+}
+
 // Map a MOBI/KF8 HTML byte offset to a 1-based formatted page number.
 static int MobiPageNoForFilePos(const Vec<HtmlPage*>* pages, int filePos) {
     if (!pages || pages->size() == 0) {
