@@ -151,8 +151,11 @@ constexpr UINT CmdTtsVoiceSmartBilingual = 0x7206;
 constexpr UINT CmdTtsSmartBilingualSettings = 0x7207;
 constexpr UINT CmdTtsVoiceSmartOnlineBilingual = 0x7208;
 constexpr UINT CmdTtsSmartOnlineBilingualSettings = 0x7209;
-constexpr UINT CmdTtsSpeedFirst = 0x7300;
-constexpr UINT CmdTtsSpeedLast = 0x7306;
+// Global speed menu: separate Chinese / English rates
+constexpr UINT CmdTtsSpeedZhFirst = 0x7310;
+constexpr UINT CmdTtsSpeedZhLast = 0x7316;
+constexpr UINT CmdTtsSpeedEnFirst = 0x7320;
+constexpr UINT CmdTtsSpeedEnLast = 0x7326;
 
 // pseudo voice ids stored in prefs: smart bilingual modes pick a Chinese or
 // English voice per text chunk instead of using a single fixed voice

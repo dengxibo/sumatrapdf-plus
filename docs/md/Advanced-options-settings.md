@@ -504,9 +504,17 @@ TabGroups [
 ; voice id or SAPI token id) (introduced in version 3.7)
 ReadAloudVoiceId =
 
-; speaking rate multiplier for Read Aloud text-to-speech; 1.0 is normal speed
-; (introduced in version 3.7)
+; legacy single speaking rate; kept for migration, prefer
+; ReadAloudSpeakingRateZh/En (introduced in version 3.7)
 ReadAloudSpeakingRate = 1
+
+; speaking rate for Chinese text in Read Aloud; 1.0 is normal speed (introduced
+; in version 3.7)
+ReadAloudSpeakingRateZh = 1
+
+; speaking rate for English text in Read Aloud; 1.0 is normal speed (introduced
+; in version 3.7)
+ReadAloudSpeakingRateEn = 1
 
 ; voice id of the Chinese voice used by local smart bilingual Read Aloud; empty
 ; or unset means auto-pick best local Chinese voice (introduced in version 3.7)

@@ -75,12 +75,26 @@ static void ApplyReadAloudSpeakingRateFromSettings() {
         return;
     }
 
-    float rate = gGlobalPrefs->readAloudSpeakingRate;
-    if (rate <= 0) {
-        rate = 1.0f;
-        gGlobalPrefs->readAloudSpeakingRate = rate;
+    // Migrate legacy single rate into per-language rates when both are still default.
+    float legacy = gGlobalPrefs->readAloudSpeakingRate;
+    float zh = gGlobalPrefs->readAloudSpeakingRateZh;
+    float en = gGlobalPrefs->readAloudSpeakingRateEn;
+    if (legacy > 0 && legacy != 1.0f && zh == 1.0f && en == 1.0f) {
+        gGlobalPrefs->readAloudSpeakingRateZh = legacy;
+        gGlobalPrefs->readAloudSpeakingRateEn = legacy;
+        zh = legacy;
+        en = legacy;
     }
-    TtsSetSpeakingRate(rate);
+    if (zh <= 0) {
+        zh = 1.0f;
+        gGlobalPrefs->readAloudSpeakingRateZh = zh;
+    }
+    if (en <= 0) {
+        en = 1.0f;
+        gGlobalPrefs->readAloudSpeakingRateEn = en;
+    }
+    // Start with Chinese rate; speak-chunk logic switches per language.
+    TtsSetSpeakingRate(zh);
 }
 
 // SumatraPDF.cpp

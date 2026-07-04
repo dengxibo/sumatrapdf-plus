@@ -961,7 +961,29 @@ const globalPrefs: Field[] = [
         "ReadAloudSpeakingRate",
         Float,
         1.0,
-        "speaking rate multiplier for Read Aloud text-to-speech; 1.0 is normal speed",
+        "legacy single speaking rate; kept for migration, prefer ReadAloudSpeakingRateZh/En",
+      ),
+    ),
+    "3.7",
+  ),
+  setVersion(
+    setExpert(
+      mkField(
+        "ReadAloudSpeakingRateZh",
+        Float,
+        1.0,
+        "speaking rate for Chinese text in Read Aloud; 1.0 is normal speed",
+      ),
+    ),
+    "3.7",
+  ),
+  setVersion(
+    setExpert(
+      mkField(
+        "ReadAloudSpeakingRateEn",
+        Float,
+        1.0,
+        "speaking rate for English text in Read Aloud; 1.0 is normal speed",
       ),
     ),
     "3.7",
