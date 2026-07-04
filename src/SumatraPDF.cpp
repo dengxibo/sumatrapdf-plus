@@ -10219,6 +10219,31 @@ static void ReadAloudInTab(WindowTab* tab) {
     }
 }
 
+static void ReadAloudStartFromPageGlyph(WindowTab* tab, int startPage, int startGlyph, const char* errMsg) {
+    DisplayModel* dm = tab->AsFixed();
+    if (!dm) {
+        ReadAloudShowNotif(tab, errMsg);
+        return;
+    }
+
+    StrBuilder cleaned;
+    ReadAloudHighlightMap map{};
+    int pageCount = dm->PageCount();
+    int endPage = startPage + kReadAloudBuildPagesPerBatch - 1;
+    if (endPage > pageCount) {
+        endPage = pageCount;
+    }
+    if (!ReadAloudHighlightBuildFromDocument(dm, startPage, startGlyph, endPage, &map, cleaned)) {
+        logf("ReadAloud: StartFromPageGlyph: BuildFromDocument failed (page=%d glyph=%d endPage=%d)\n", startPage,
+             startGlyph, endPage);
+        ReadAloudShowNotif(tab, errMsg);
+        return;
+    }
+
+    tab->readAloudBuiltEndPage = endPage;
+    ReadAloudStartText(tab, cleaned.Get(), &map, 0, errMsg);
+}
+
 static void ReadAloudStartFromCursor(WindowTab* tab, Point screenPt, const char* errMsg) {
     logf("ReadAloud: StartFromCursor\n");
     DisplayModel* dm = tab->AsFixed();
@@ -10236,22 +10261,7 @@ static void ReadAloudStartFromCursor(WindowTab* tab, Point screenPt, const char*
         return;
     }
 
-    StrBuilder cleaned;
-    ReadAloudHighlightMap map{};
-    int pageCount = dm->PageCount();
-    int endPage = startPage + kReadAloudBuildPagesPerBatch - 1;
-    if (endPage > pageCount) {
-        endPage = pageCount;
-    }
-    if (!ReadAloudHighlightBuildFromDocument(dm, startPage, startGlyph, endPage, &map, cleaned)) {
-        logf("ReadAloud: StartFromCursor: BuildFromDocument failed (page=%d glyph=%d endPage=%d)\n", startPage,
-             startGlyph, endPage);
-        ReadAloudShowNotif(tab, errMsg);
-        return;
-    }
-
-    tab->readAloudBuiltEndPage = endPage;
-    ReadAloudStartText(tab, cleaned.Get(), &map, 0, errMsg);
+    ReadAloudStartFromPageGlyph(tab, startPage, startGlyph, errMsg);
 }
 
 static void ReadAloudFromCursorInTab(WindowTab* tab, Point screenPt) {
@@ -10327,6 +10337,46 @@ static void ReadAloudContinueInTab(WindowTab* tab) {
 
 WindowTab* GetReadAloudSourceTab() {
     return gReadAloudSourceTab;
+}
+
+// toggle read-aloud from a double-click on an empty spot of the canvas:
+// speaking => pause, paused => continue, otherwise start reading from the
+// first text line at or below the clicked point
+void ReadAloudToggleAtPoint(MainWindow* win, Point screenPt) {
+    if (!win) {
+        return;
+    }
+    WindowTab* tab = win->CurrentTab();
+    if (!tab) {
+        return;
+    }
+
+    if (TtsIsSpeaking()) {
+        ReadAloudStopRememberPos();
+        ToolbarUpdateStateForWindow(win, true);
+        return;
+    }
+    if (CanContinueReadAloud(tab)) {
+        ReadAloudContinueInTab(tab);
+        return;
+    }
+
+    if (!HasPermission(Perm::CopySelection)) {
+        ReadAloudShowNotif(tab, _TRA("Copying text is not allowed"));
+        return;
+    }
+
+    DisplayModel* dm = win->AsFixed();
+    int startPage = 0;
+    int startGlyph = 0;
+    if (!dm || !ReadAloudGetStartBelowPoint(dm, screenPt, &startPage, &startGlyph)) {
+        ReadAloudShowNotif(tab, _TRA("No text available to read aloud"));
+        return;
+    }
+
+    ReadAloudPrepareRestart(tab, win);
+    tab->readAloudScope = WindowTab::ReadAloudScopeCursor;
+    ReadAloudStartFromPageGlyph(tab, startPage, startGlyph, _TRA("No text available to read aloud"));
 }
 
 // Voice selection menu

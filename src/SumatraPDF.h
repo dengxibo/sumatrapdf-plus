@@ -135,6 +135,8 @@ void CloseTab(WindowTab* tab, bool quitIfLast);
 // true if read aloud was paused and can be resumed in this tab
 bool CanContinueReadAloud(WindowTab* tab);
 WindowTab* GetReadAloudSourceTab();
+// double-click on empty canvas area: pause / continue / start reading below the point
+void ReadAloudToggleAtPoint(MainWindow* win, Point screenPt);
 
 constexpr UINT CmdTtsVoiceDefault = 0x7100;
 constexpr UINT CmdTtsVoiceFirst = 0x7101;

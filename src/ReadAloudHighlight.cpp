@@ -321,7 +321,7 @@ static void ReadAloudAppendPageGlyphs(Vec<ReadAloudRawByte>& raw, EngineBase* en
                                       int endGlyph);
 
 static bool ReadAloudCollectDocumentRaw(Vec<ReadAloudRawByte>& raw, EngineBase* engine, int startPage, int startGlyph,
-                                          int endPage) {
+                                        int endPage) {
     for (int page = startPage; page <= endPage; page++) {
         if (page == startPage && startGlyph > 0) {
             ReadAloudAppendPageGlyphs(raw, engine, page, startGlyph, -1);
@@ -521,6 +521,93 @@ bool ReadAloudGetViewportStart(DisplayModel* dm, int* startPageOut, int* startGl
     *startPageOut = firstVisiblePage;
     *startGlyphOut = 0;
     return true;
+}
+
+// find the first text line at or below screenPt in reading order, so that
+// read-aloud can start from a click on an empty spot of the page
+bool ReadAloudGetStartBelowPoint(DisplayModel* dm, Point screenPt, int* startPageOut, int* startGlyphOut) {
+    if (!dm || !startPageOut || !startGlyphOut) {
+        return false;
+    }
+
+    *startPageOut = 0;
+    *startGlyphOut = 0;
+
+    EngineBase* engine = dm->GetEngine();
+    if (!engine) {
+        return false;
+    }
+
+    int pageCount = dm->PageCount();
+    int firstPage = dm->GetPageNoByPoint(screenPt);
+    if (!dm->ValidPageNo(firstPage)) {
+        // clicked between/outside pages: fall back to the first visible page
+        firstPage = 0;
+        for (int pageNo = 1; pageNo <= pageCount; pageNo++) {
+            PageInfo* pageInfo = dm->GetPageInfo(pageNo);
+            if (pageInfo && pageInfo->visibleRatio > 0.0) {
+                firstPage = pageNo;
+                break;
+            }
+        }
+        if (firstPage == 0) {
+            return false;
+        }
+    }
+
+    int scanEnd = firstPage + 8;
+    if (scanEnd > pageCount) {
+        scanEnd = pageCount;
+    }
+
+    for (int pageNo = firstPage; pageNo <= scanEnd; pageNo++) {
+        int textLen = 0;
+        Rect* coords = nullptr;
+        const WCHAR* text = engine->GetTextForPage(pageNo, &textLen, &coords);
+        if (!text || textLen <= 0) {
+            continue;
+        }
+
+        int g = 0;
+        while (g < textLen) {
+            while (g < textLen && IsLineBreakGlyph(text, coords, g, textLen)) {
+                g++;
+            }
+            if (g >= textLen) {
+                break;
+            }
+
+            int lineStart = g;
+            while (g < textLen && !IsLineBreakGlyph(text, coords, g, textLen)) {
+                g++;
+            }
+
+            Rect lineBbox;
+            for (int i = lineStart; i < g; i++) {
+                Rect r = coords[i];
+                if (r.x || r.dx) {
+                    lineBbox = lineBbox.IsEmpty() ? r : lineBbox.Union(r);
+                }
+            }
+            if (lineBbox.IsEmpty()) {
+                continue;
+            }
+
+            Rect screenLine = dm->CvtToScreen(pageNo, ToRectF(lineBbox));
+            // on the clicked page take the first line whose bottom edge is at or
+            // below the click; on later pages take the first line
+            if (pageNo > firstPage || screenLine.y + screenLine.dy >= screenPt.y) {
+                logf("ReadAloud: GetStartBelowPoint: page %d glyph %d for click (%d,%d)\n", pageNo, lineStart,
+                     screenPt.x, screenPt.y);
+                *startPageOut = pageNo;
+                *startGlyphOut = lineStart;
+                return true;
+            }
+        }
+    }
+
+    logf("ReadAloud: GetStartBelowPoint: no text below click (%d,%d)\n", screenPt.x, screenPt.y);
+    return false;
 }
 
 static bool ReadAloudGetGlyphAtCursor(DisplayModel* dm, Point screenPt, int* pageOut, int* glyphOut) {

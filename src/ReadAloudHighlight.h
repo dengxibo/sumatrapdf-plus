@@ -36,6 +36,8 @@ bool ReadAloudCanReadFromCursor(DisplayModel* dm, Point screenPt);
 
 bool ReadAloudGetCursorStart(DisplayModel* dm, Point screenPt, int* startPageOut, int* startGlyphOut);
 
+bool ReadAloudGetStartBelowPoint(DisplayModel* dm, Point screenPt, int* startPageOut, int* startGlyphOut);
+
 bool ReadAloudHighlightBuildFromDocument(DisplayModel* dm, int startPage, int startGlyph, int endPageInclusive,
                                          ReadAloudHighlightMap* map, StrBuilder& cleanedOut);
 

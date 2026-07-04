@@ -36,25 +36,16 @@
 
 static const char* kNotifUpdateCheckInProgress = "notifUpdateCheckInProgress";
 
-// certificate on www.sumatrapdfreader.org is not supported by win7 and win8.1
-// (doesn't have the ciphers they understand) so we have a backup on backblaze
+// Sumatra PDF Plus: update info and downloads are hosted on GitHub.
+// update-check.txt lives in the repo root; releases are published as GitHub Releases.
+// jsDelivr mirrors the raw file and serves as a backup (more reliable in some regions).
 
 // clang-format off
-#if defined(PRE_RELEASE_VER) || defined(DEBUG)
-constexpr const char* kUpdateInfoURL = "https://www.sumatrapdfreader.org/updatecheck-pre-release.txt";
-constexpr const char* kUpdateInfoURL2 = "https://kjk-files.s3.us-west-001.backblazeb2.com/software/sumatrapdf/sumpdf-prerelease-update.txt";
-#else
-constexpr const char* kUpdateInfoURL = "https://www.sumatrapdfreader.org/update-check-rel.txt";
-// Note: I don't have backup for this
-constexpr const char* kUpdateInfoURL2 = "https://www.sumatrapdfreader.org/update-check-rel.txt";
-#endif
+constexpr const char* kUpdateInfoURL = "https://raw.githubusercontent.com/dengxibo/sumatrapdf-plus/main/update-check.txt";
+constexpr const char* kUpdateInfoURL2 = "https://cdn.jsdelivr.net/gh/dengxibo/sumatrapdf-plus@main/update-check.txt";
 
 #ifndef kWebisteDownloadPageURL
-#if defined(PRE_RELEASE_VER)
-#define kWebisteDownloadPageURL "https://www.sumatrapdfreader.org/prerelease"
-#else
-#define kWebisteDownloadPageURL "https://www.sumatrapdfreader.org/download-free-pdf-viewer"
-#endif
+#define kWebisteDownloadPageURL "https://github.com/dengxibo/sumatrapdf-plus/releases/latest"
 #endif
 // clang-format on
 
@@ -408,7 +399,7 @@ static HRESULT CALLBACK TaskDialogHyperlinkCallback(HWND hwnd, UINT msg, WPARAM 
     return S_OK;
 }
 
-constexpr const char* kExpectedDlHost = "https://www.sumatrapdfreader.org/";
+constexpr const char* kExpectedDlHost = "https://github.com/dengxibo/sumatrapdf-plus/";
 
 static void NotifySuspiciousUpdate(HWND hwndParent, const char* dlURL) {
     logf("NotifySuspiciousUpdate: suspicious download url '%s'\n", dlURL);

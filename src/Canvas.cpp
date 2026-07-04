@@ -1399,6 +1399,11 @@ static void OnMouseLeftButtonDblClk(MainWindow* win, int x, int y, WPARAM key) {
     }
 
     if (!pageEl) {
+        // double-click on empty area toggles read-aloud: speaking => pause,
+        // paused => continue, otherwise start reading from the first line below the click
+        if (isLeft && !isOverText && !win->presentation) {
+            ReadAloudToggleAtPoint(win, mousePos);
+        }
         return;
     }
     if (pageEl->Is(kindPageElementDest)) {

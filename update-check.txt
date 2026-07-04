@@ -1,0 +1,3 @@
+[SumatraPDF]
+Latest: 3.7
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/v3.7/SumatraPDF-64.exe
