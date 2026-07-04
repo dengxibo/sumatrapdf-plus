@@ -530,17 +530,12 @@ USHORT RenderCache::GetTileRes(DisplayModel* dm, int pageNo) const {
     // to maxTileSize (but remains smaller)
     float factorAvg = sqrtf(factorW * factorH);
 
-    i64 pagePixels = (i64)pixelbox.dx * pixelbox.dy;
-    bool largePage = pagePixels > 8LL * 1000 * 1000 || pixelbox.dx > 4096 || pixelbox.dy > 4096;
-
     // use larger tiles when fitting page or width or when a page is smaller
     // than the visible canvas width/height or when rendering pages
     // without clipping optimizations
-    if (!largePage && (zoomVirt == kZoomFitPage || zoomVirt == kZoomFitWidth || pixelbox.dx <= viewPort.dx ||
-                       pixelbox.dy < viewPort.dy || !engine->HasClipOptimizations(pageNo))) {
+    if (zoomVirt == kZoomFitPage || zoomVirt == kZoomFitWidth || pixelbox.dx <= viewPort.dx ||
+        pixelbox.dy < viewPort.dy || !engine->HasClipOptimizations(pageNo)) {
         factorAvg /= 2.0;
-    } else if (largePage) {
-        factorAvg = std::max(factorAvg, sqrtf(factorW * factorH));
     }
 
     USHORT res = 0;
