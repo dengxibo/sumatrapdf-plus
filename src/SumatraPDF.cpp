@@ -9594,15 +9594,17 @@ static TtsVoiceGroup GetTtsVoiceGroup(const char* name) {
     return TtsVoiceGroup::LocalLegacy;
 }
 
-//--- smart bilingual mode: pick a local Chinese or English voice per chunk
+//--- smart bilingual modes: pick a Chinese or English voice per chunk (local or online)
 
-static bool IsSmartBilingualVoicePref() {
-    return gGlobalPrefs && str::Eq(gGlobalPrefs->readAloudVoiceId, kTtsSmartBilingualVoiceId);
-}
+enum class SmartBilingualKind {
+    Local,
+    Online,
+};
 
 static char* gSmartBilingualZhVoiceId = nullptr;
 static char* gSmartBilingualEnVoiceId = nullptr;
 static bool gSmartBilingualResolveAttempted = false;
+static SmartBilingualKind gSmartBilingualResolvedKind = SmartBilingualKind::Local;
 
 static void InvalidateSmartBilingualVoiceCache() {
     str::FreePtr(&gSmartBilingualZhVoiceId);
@@ -9610,9 +9612,58 @@ static void InvalidateSmartBilingualVoiceCache() {
     gSmartBilingualResolveAttempted = false;
 }
 
+static bool TryGetSmartBilingualKind(const char* voiceId, SmartBilingualKind* out) {
+    if (str::Eq(voiceId, kTtsSmartBilingualVoiceId)) {
+        if (out) {
+            *out = SmartBilingualKind::Local;
+        }
+        return true;
+    }
+    if (str::Eq(voiceId, kTtsSmartOnlineBilingualVoiceId)) {
+        if (out) {
+            *out = SmartBilingualKind::Online;
+        }
+        return true;
+    }
+    return false;
+}
+
+static bool IsSmartBilingualVoicePref() {
+    return gGlobalPrefs && TryGetSmartBilingualKind(gGlobalPrefs->readAloudVoiceId, nullptr);
+}
+
+static bool IsSmartBilingualKindActive(SmartBilingualKind kind) {
+    SmartBilingualKind active;
+    return gGlobalPrefs && TryGetSmartBilingualKind(gGlobalPrefs->readAloudVoiceId, &active) && active == kind;
+}
+
+static char** SmartBilingualZhPref(SmartBilingualKind kind) {
+    if (!gGlobalPrefs) {
+        return nullptr;
+    }
+    return kind == SmartBilingualKind::Online ? &gGlobalPrefs->readAloudSmartOnlineVoiceZh
+                                              : &gGlobalPrefs->readAloudSmartVoiceZh;
+}
+
+static char** SmartBilingualEnPref(SmartBilingualKind kind) {
+    if (!gGlobalPrefs) {
+        return nullptr;
+    }
+    return kind == SmartBilingualKind::Online ? &gGlobalPrefs->readAloudSmartOnlineVoiceEn
+                                              : &gGlobalPrefs->readAloudSmartVoiceEn;
+}
+
 static bool IsLocalTtsVoice(const TtsVoiceInfo& voice) {
     TtsVoiceGroup group = GetTtsVoiceGroup(voice.name);
     return group == TtsVoiceGroup::LocalNatural || group == TtsVoiceGroup::LocalLegacy;
+}
+
+static bool IsOnlineTtsVoice(const TtsVoiceInfo& voice) {
+    return GetTtsVoiceGroup(voice.name) == TtsVoiceGroup::Online;
+}
+
+static bool IsSmartBilingualVoiceMatch(const TtsVoiceInfo& voice, SmartBilingualKind kind) {
+    return kind == SmartBilingualKind::Online ? IsOnlineTtsVoice(voice) : IsLocalTtsVoice(voice);
 }
 
 static bool VoiceLangStartsWith(const TtsVoiceInfo& voice, const char* prefix) {
@@ -9621,30 +9672,32 @@ static bool VoiceLangStartsWith(const TtsVoiceInfo& voice, const char* prefix) {
 }
 
 // loads zh/en voice ids from settings; returns true if at least one is configured
-static bool ResolveSmartBilingualVoices() {
-    if (gSmartBilingualResolveAttempted) {
+static bool ResolveSmartBilingualVoices(SmartBilingualKind kind) {
+    if (gSmartBilingualResolveAttempted && gSmartBilingualResolvedKind == kind) {
         return gSmartBilingualZhVoiceId || gSmartBilingualEnVoiceId;
     }
+    InvalidateSmartBilingualVoiceCache();
     gSmartBilingualResolveAttempted = true;
+    gSmartBilingualResolvedKind = kind;
 
-    if (gGlobalPrefs) {
-        if (!str::IsEmpty(gGlobalPrefs->readAloudSmartVoiceZh)) {
-            gSmartBilingualZhVoiceId = str::Dup(gGlobalPrefs->readAloudSmartVoiceZh);
-        }
-        if (!str::IsEmpty(gGlobalPrefs->readAloudSmartVoiceEn)) {
-            gSmartBilingualEnVoiceId = str::Dup(gGlobalPrefs->readAloudSmartVoiceEn);
-        }
+    char** zhPref = SmartBilingualZhPref(kind);
+    char** enPref = SmartBilingualEnPref(kind);
+    if (zhPref && !str::IsEmpty(*zhPref)) {
+        gSmartBilingualZhVoiceId = str::Dup(*zhPref);
+    }
+    if (enPref && !str::IsEmpty(*enPref)) {
+        gSmartBilingualEnVoiceId = str::Dup(*enPref);
     }
 
     return gSmartBilingualZhVoiceId || gSmartBilingualEnVoiceId;
 }
 
-static bool TtsSmartBilingualAvailable() {
+static bool TtsSmartBilingualAvailable(SmartBilingualKind kind) {
     Vec<TtsVoiceInfo> voices = TtsGetVoices();
     bool haveZh = false;
     bool haveEn = false;
     for (TtsVoiceInfo& voice : voices) {
-        if (!IsLocalTtsVoice(voice)) {
+        if (!IsSmartBilingualVoiceMatch(voice, kind)) {
             continue;
         }
         if (VoiceLangStartsWith(voice, "zh")) {
@@ -9657,28 +9710,30 @@ static bool TtsSmartBilingualAvailable() {
     return haveZh || haveEn;
 }
 
-// fills empty zh/en prefs with the first local voice for each language
-static void AutoFillSmartBilingualVoicePrefsIfEmpty() {
-    if (!gGlobalPrefs) {
+// fills empty zh/en prefs with the first matching voice for each language
+static void AutoFillSmartBilingualVoicePrefsIfEmpty(SmartBilingualKind kind) {
+    char** zhPref = SmartBilingualZhPref(kind);
+    char** enPref = SmartBilingualEnPref(kind);
+    if (!zhPref || !enPref) {
         return;
     }
 
-    bool needZh = str::IsEmpty(gGlobalPrefs->readAloudSmartVoiceZh);
-    bool needEn = str::IsEmpty(gGlobalPrefs->readAloudSmartVoiceEn);
+    bool needZh = str::IsEmpty(*zhPref);
+    bool needEn = str::IsEmpty(*enPref);
     if (!needZh && !needEn) {
         return;
     }
 
     Vec<TtsVoiceInfo> voices = TtsGetVoices();
     for (TtsVoiceInfo& voice : voices) {
-        if (!IsLocalTtsVoice(voice)) {
+        if (!IsSmartBilingualVoiceMatch(voice, kind)) {
             continue;
         }
         if (needZh && VoiceLangStartsWith(voice, "zh")) {
-            str::ReplaceWithCopy(&gGlobalPrefs->readAloudSmartVoiceZh, voice.id);
+            str::ReplaceWithCopy(zhPref, voice.id);
             needZh = false;
         } else if (needEn && VoiceLangStartsWith(voice, "en")) {
-            str::ReplaceWithCopy(&gGlobalPrefs->readAloudSmartVoiceEn, voice.id);
+            str::ReplaceWithCopy(enPref, voice.id);
             needEn = false;
         }
         if (!needZh && !needEn) {
@@ -9688,12 +9743,12 @@ static void AutoFillSmartBilingualVoicePrefsIfEmpty() {
     TtsFreeVoices(voices);
 }
 
-static void ReadAloudSaveSmartBilingualVoice(bool isZh, const char* voiceId) {
-    if (!gGlobalPrefs || str::IsEmpty(voiceId)) {
+static void ReadAloudSaveSmartBilingualVoice(SmartBilingualKind kind, bool isZh, const char* voiceId) {
+    char** pref = isZh ? SmartBilingualZhPref(kind) : SmartBilingualEnPref(kind);
+    if (!pref || str::IsEmpty(voiceId)) {
         return;
     }
 
-    char** pref = isZh ? &gGlobalPrefs->readAloudSmartVoiceZh : &gGlobalPrefs->readAloudSmartVoiceEn;
     if (str::Eq(*pref, voiceId)) {
         return;
     }
@@ -9702,13 +9757,14 @@ static void ReadAloudSaveSmartBilingualVoice(bool isZh, const char* voiceId) {
     InvalidateSmartBilingualVoiceCache();
     SaveSettings();
 
-    if (IsSmartBilingualVoicePref()) {
+    if (IsSmartBilingualKindActive(kind)) {
         ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
     }
 }
 
 struct Dialog_ReadAloudSmartVoices_Data {
     Vec<char*> ownedVoiceIds;
+    SmartBilingualKind kind = SmartBilingualKind::Local;
 };
 
 static void FreeReadAloudSmartVoiceComboIds(Dialog_ReadAloudSmartVoices_Data* data) {
@@ -9723,7 +9779,7 @@ static void FreeReadAloudSmartVoiceComboIds(Dialog_ReadAloudSmartVoices_Data* da
 
 static void FillReadAloudSmartVoiceCombo(HWND combo, Vec<TtsVoiceInfo>& voices, const char* langPrefix,
                                          const char* selectedId, Dialog_ReadAloudSmartVoices_Data* data) {
-    if (!combo) {
+    if (!combo || !data) {
         return;
     }
     SendMessageW(combo, CB_RESETCONTENT, 0, 0);
@@ -9734,7 +9790,7 @@ static void FillReadAloudSmartVoiceCombo(HWND combo, Vec<TtsVoiceInfo>& voices, 
     HFONT hOld = hFont && hdc ? (HFONT)SelectObject(hdc, hFont) : nullptr;
 
     for (TtsVoiceInfo& voice : voices) {
-        if (!IsLocalTtsVoice(voice)) {
+        if (!IsSmartBilingualVoiceMatch(voice, data->kind)) {
             continue;
         }
         if (!VoiceLangStartsWith(voice, langPrefix)) {
@@ -9874,7 +9930,8 @@ static INT_PTR CALLBACK Dialog_ReadAloudSmartVoices_Proc(HWND hDlg, UINT msg, WP
                 DarkMode::setDarkWndSafe(hDlg);
             }
 
-            HwndSetText(hDlg, _TRA("Local smart bilingual settings"));
+            HwndSetText(hDlg, data->kind == SmartBilingualKind::Online ? _TRA("Online smart bilingual settings")
+                                                                       : _TRA("Local smart bilingual settings"));
             HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SMART_ZH_LABEL, _TRA("Chinese voice"));
             HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SMART_EN_LABEL, _TRA("English voice"));
             HwndSetDlgItemText(hDlg, IDOK, _TRA("OK"));
@@ -9882,8 +9939,10 @@ static INT_PTR CALLBACK Dialog_ReadAloudSmartVoices_Proc(HWND hDlg, UINT msg, WP
 
             {
                 Vec<TtsVoiceInfo> voices = TtsGetVoices();
-                const char* zhSel = gGlobalPrefs ? gGlobalPrefs->readAloudSmartVoiceZh : nullptr;
-                const char* enSel = gGlobalPrefs ? gGlobalPrefs->readAloudSmartVoiceEn : nullptr;
+                char** zhPref = SmartBilingualZhPref(data->kind);
+                char** enPref = SmartBilingualEnPref(data->kind);
+                const char* zhSel = zhPref ? *zhPref : nullptr;
+                const char* enSel = enPref ? *enPref : nullptr;
                 FillReadAloudSmartVoiceCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH), voices, "zh", zhSel, data);
                 FillReadAloudSmartVoiceCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN), voices, "en", enSel, data);
                 TtsFreeVoices(voices);
@@ -9899,9 +9958,9 @@ static INT_PTR CALLBACK Dialog_ReadAloudSmartVoices_Proc(HWND hDlg, UINT msg, WP
                 case IDOK:
                     data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
                     ReadAloudSaveSmartBilingualVoice(
-                        true, ReadAloudSmartVoiceIdFromCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH)));
+                        data->kind, true, ReadAloudSmartVoiceIdFromCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH)));
                     ReadAloudSaveSmartBilingualVoice(
-                        false, ReadAloudSmartVoiceIdFromCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN)));
+                        data->kind, false, ReadAloudSmartVoiceIdFromCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN)));
                     EndDialog(hDlg, IDOK);
                     return TRUE;
 
@@ -9915,12 +9974,13 @@ static INT_PTR CALLBACK Dialog_ReadAloudSmartVoices_Proc(HWND hDlg, UINT msg, WP
     return FALSE;
 }
 
-static void ShowReadAloudSmartVoiceDialog(MainWindow* win) {
+static void ShowReadAloudSmartVoiceDialog(MainWindow* win, SmartBilingualKind kind) {
     if (!win) {
         return;
     }
 
     Dialog_ReadAloudSmartVoices_Data data;
+    data.kind = kind;
     CreateAppDialogBox(IDD_DIALOG_READ_ALOUD_SMART_VOICES, win->hwndFrame, Dialog_ReadAloudSmartVoices_Proc,
                        (LPARAM)&data);
     FreeReadAloudSmartVoiceComboIds(&data);
@@ -9932,8 +9992,16 @@ enum class ReadAloudLang {
     En,
 };
 
+static bool ResolveActiveSmartBilingualVoices() {
+    SmartBilingualKind kind;
+    if (!gGlobalPrefs || !TryGetSmartBilingualKind(gGlobalPrefs->readAloudVoiceId, &kind)) {
+        return false;
+    }
+    return ResolveSmartBilingualVoices(kind);
+}
+
 static const char* ReadAloudSmartVoiceForLang(ReadAloudLang lang) {
-    if (!ResolveSmartBilingualVoices()) {
+    if (!ResolveActiveSmartBilingualVoices()) {
         return nullptr;
     }
     if (lang == ReadAloudLang::Zh) {
@@ -9946,7 +10014,7 @@ static const char* ReadAloudSmartVoiceForLang(ReadAloudLang lang) {
 }
 
 static bool ReadAloudSmartBilingualHasBothVoices() {
-    return ResolveSmartBilingualVoices() && gSmartBilingualZhVoiceId && gSmartBilingualEnVoiceId;
+    return ResolveActiveSmartBilingualVoices() && gSmartBilingualZhVoiceId && gSmartBilingualEnVoiceId;
 }
 
 static bool ReadAloudIsCjkCp(char32_t cp) {
@@ -10115,10 +10183,11 @@ static void ReadAloudSaveVoicePref(const char* voiceId) {
         return;
     }
 
-    if (str::Eq(newVoiceId, kTtsSmartBilingualVoiceId)) {
-        AutoFillSmartBilingualVoicePrefsIfEmpty();
+    SmartBilingualKind smartKind;
+    if (TryGetSmartBilingualKind(newVoiceId, &smartKind)) {
+        AutoFillSmartBilingualVoicePrefsIfEmpty(smartKind);
         InvalidateSmartBilingualVoiceCache();
-        if (!ResolveSmartBilingualVoices()) {
+        if (!ResolveSmartBilingualVoices(smartKind)) {
             return;
         }
     } else if (!TtsSetVoiceById(voiceId)) {
@@ -10320,7 +10389,7 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
     }
 
     int end;
-    if (IsSmartBilingualVoicePref() && ResolveSmartBilingualVoices()) {
+    if (IsSmartBilingualVoicePref() && ResolveActiveSmartBilingualVoices()) {
         if (ReadAloudSmartBilingualHasBothVoices()) {
             ReadAloudLang lang = ReadAloudLang::Unknown;
             end = ReadAloudFindBilingualChunkEnd(tab->readAloudText, start, kReadAloudMaxChunkLen, &lang);
@@ -11024,7 +11093,8 @@ static void BuildReadAloudVoiceMenuItems(HMENU voiceMenu) {
     if (gGlobalPrefs && gGlobalPrefs->readAloudVoiceId) {
         currentVoiceId = gGlobalPrefs->readAloudVoiceId;
     }
-    bool isSmartBilingual = str::Eq(currentVoiceId, kTtsSmartBilingualVoiceId);
+    SmartBilingualKind activeSmartKind;
+    bool isSmartBilingual = TryGetSmartBilingualKind(currentVoiceId, &activeSmartKind);
 
     UINT defaultFlags = MF_STRING;
     if (str::IsEmpty(currentVoiceId)) {
@@ -11034,9 +11104,9 @@ static void BuildReadAloudVoiceMenuItems(HMENU voiceMenu) {
     AppendMenuW(voiceMenu, defaultFlags, CmdTtsVoiceDefault, ToWStrTemp(_TRA("System default")));
 
     Vec<TtsVoiceInfo> voices = TtsGetVoices();
-    if (TtsSmartBilingualAvailable()) {
+    if (TtsSmartBilingualAvailable(SmartBilingualKind::Local)) {
         UINT smartFlags = MF_STRING;
-        if (isSmartBilingual) {
+        if (isSmartBilingual && activeSmartKind == SmartBilingualKind::Local) {
             smartFlags |= MF_CHECKED;
         }
         AppendMenuW(voiceMenu, smartFlags, CmdTtsVoiceSmartBilingual,
@@ -11046,8 +11116,20 @@ static void BuildReadAloudVoiceMenuItems(HMENU voiceMenu) {
     }
     AppendMenuW(voiceMenu, MF_SEPARATOR, 0, nullptr);
 
-    // local voices are selected via local smart bilingual settings; only online voices listed here
-    AppendTtsVoiceSubmenu(voiceMenu, voices, TtsVoiceGroup::Online, currentVoiceId, _TRA("Online voices"));
+    if (TtsSmartBilingualAvailable(SmartBilingualKind::Online)) {
+        UINT smartFlags = MF_STRING;
+        if (isSmartBilingual && activeSmartKind == SmartBilingualKind::Online) {
+            smartFlags |= MF_CHECKED;
+        }
+        AppendMenuW(voiceMenu, smartFlags, CmdTtsVoiceSmartOnlineBilingual,
+                    ToWStrTemp(_TRA("Online smart bilingual (Chinese + English)")));
+        AppendMenuW(voiceMenu, MF_STRING, CmdTtsSmartOnlineBilingualSettings,
+                    ToWStrTemp(_TRA("Online smart bilingual settings...")));
+    }
+    AppendMenuW(voiceMenu, MF_SEPARATOR, 0, nullptr);
+
+    // individual online voices are chosen via online smart bilingual settings;
+    // multilingual voices remain listed for direct selection
     AppendTtsVoiceSubmenu(voiceMenu, voices, TtsVoiceGroup::OnlineMultilingual, currentVoiceId,
                           _TRA("Online multilingual voices"));
 
@@ -11258,7 +11340,11 @@ static bool HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
     } else if (selected == CmdTtsVoiceSmartBilingual) {
         ReadAloudSaveVoicePref(kTtsSmartBilingualVoiceId);
     } else if (selected == CmdTtsSmartBilingualSettings) {
-        ShowReadAloudSmartVoiceDialog(win);
+        ShowReadAloudSmartVoiceDialog(win, SmartBilingualKind::Local);
+    } else if (selected == CmdTtsVoiceSmartOnlineBilingual) {
+        ReadAloudSaveVoicePref(kTtsSmartOnlineBilingualVoiceId);
+    } else if (selected == CmdTtsSmartOnlineBilingualSettings) {
+        ShowReadAloudSmartVoiceDialog(win, SmartBilingualKind::Online);
     } else if (selected >= CmdTtsVoiceFirst && selected <= CmdTtsVoiceLast) {
         Vec<TtsVoiceInfo> voices = TtsGetVoices();
         int voiceIndex = (int)(selected - CmdTtsVoiceFirst);
@@ -11303,6 +11389,7 @@ static void ShowReadAloudPopupMenuAt(MainWindow* win, int x, int y) {
 
 bool HandleReadAloudMenuCommand(MainWindow* win, int cmdId) {
     if (cmdId == CmdTtsVoiceDefault || cmdId == CmdTtsVoiceSmartBilingual || cmdId == CmdTtsSmartBilingualSettings ||
+        cmdId == CmdTtsVoiceSmartOnlineBilingual || cmdId == CmdTtsSmartOnlineBilingualSettings ||
         (cmdId >= CmdTtsMenuReadCurrentPage && cmdId <= CmdTtsMenuStopReading) ||
         (cmdId >= CmdTtsVoiceFirst && cmdId <= CmdTtsVoiceLast) ||
         (cmdId >= CmdTtsSpeedFirst && cmdId <= CmdTtsSpeedLast)) {

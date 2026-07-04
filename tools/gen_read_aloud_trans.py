@@ -152,6 +152,8 @@ VOICE_GROUP_KEYS = [
     "Online multilingual voices",
     "Local smart bilingual (Chinese + English)",
     "Local smart bilingual settings...",
+    "Online smart bilingual (Chinese + English)",
+    "Online smart bilingual settings...",
     "Chinese voice",
     "English voice",
 ]
@@ -169,7 +171,16 @@ VOICE_GROUP_BY_LANG: dict[str, tuple[str, str, str, str, str, str]] = {
     "by": ("Анлайн-галасы", "Анлайн шматмоўныя галасы", "Разумны двухмоўны (кітайская + англійская)", "Налады разумнага двухмоўнага", "Кітайскі голас", "Англійскі голас"),
     "ca": ("Veus en línia", "Veus multilingües en línia", "Bilingüe intel·ligent (xinès + anglès)", "Configuració bilingüe intel·ligent", "Veu xinesa", "Veu anglesa"),
     "ca-xv": ("Veus en línia", "Veus multilingües en línia", "Bilingüe intel·ligent (xinès + anglès)", "Configuració bilingüe intel·ligent", "Veu xinesa", "Veu anglesa"),
-    "cn": ("在线语音", "在线多语言语音", "本地智能双语（中文 + 英文）", "本地智能双语设置...", "中文语音", "英文语音"),
+    "cn": (
+        "在线语音",
+        "在线多语言语音",
+        "本地智能双语（中文 + 英文）",
+        "本地智能双语设置...",
+        "在线智能双语（中文 + 英文）",
+        "在线智能双语设置...",
+        "中文语音",
+        "英文语音",
+    ),
     "co": ("Voce in linea", "Voce multilingue in linea", "Bilingue intelligente (cinese + inglese)"),
     "cy": ("Lleisiau ar-lein", "Lleisiau amlieithog ar-lein", "Dwyieithog clyfar (Tsieinëeg + Saesneg)"),
     "cz": ("Online hlasy", "Online vícejazyčné hlasy", "Chytrý dvojjazyčný (čínština + angličtina)"),
@@ -233,8 +244,9 @@ VOICE_GROUP_BY_LANG: dict[str, tuple[str, str, str, str, str, str]] = {
 }
 
 DIALOG_TITLE_KEY = "Local smart bilingual settings"
+ONLINE_DIALOG_TITLE_KEY = "Online smart bilingual settings"
 
-ALL_KEYS = KEYS + SPEED_KEYS + VOICE_GROUP_KEYS + [DIALOG_TITLE_KEY]
+ALL_KEYS = KEYS + SPEED_KEYS + VOICE_GROUP_KEYS + [DIALOG_TITLE_KEY, ONLINE_DIALOG_TITLE_KEY]
 
 # Each tuple: lang code followed by translations in KEYS order.
 # fmt: off
@@ -361,15 +373,50 @@ VOICE_SETTINGS_BY_LANG: dict[str, str] = {
     "ru": "Настройки локального умного двуязычного режима",
 }
 
+ONLINE_VOICE_SETTINGS_BY_LANG: dict[str, str] = {
+    "cn": "在线智能双语设置",
+    "tw": "線上智慧雙語設定",
+    "ja": "オンラインスマートバイリンガル設定",
+    "kr": "온라인 스마트 이중 언어 설정",
+    "de": "Online intelligente Zweisprachigkeit – Einstellungen",
+    "fr": "Paramètres bilingue intelligent en ligne",
+    "es": "Configuración bilingüe inteligente en línea",
+    "ru": "Настройки онлайн умного двуязычного режима",
+}
+
+ONLINE_SMART_MENU_BY_LANG: dict[str, tuple[str, str]] = {
+    "cn": ("在线智能双语（中文 + 英文）", "在线智能双语设置..."),
+    "tw": ("線上智慧雙語（中文 + 英文）", "線上智慧雙語設定..."),
+    "ja": ("オンラインスマートバイリンガル（中国語 + 英語）", "オンラインスマートバイリンガル設定..."),
+    "kr": ("온라인 스마트 이중 언어 (중국어 + 영어)", "온라인 스마트 이중 언어 설정..."),
+    "de": ("Online intelligent zweisprachig (Chinesisch + Englisch)", "Online intelligente Zweisprachigkeit – Einstellungen..."),
+    "fr": ("Bilingue intelligent en ligne (chinois + anglais)", "Paramètres bilingue intelligent en ligne..."),
+    "es": ("Bilingüe inteligente en línea (chino + inglés)", "Configuración bilingüe inteligente en línea..."),
+    "ru": ("Онлайн умный двуязычный (китайский + английский)", "Настройки онлайн умного двуязычного режима..."),
+}
+
 for lang in LANGS:
     vals = VOICE_GROUP_BY_LANG[lang]
     if len(vals) == 3:
         settings = VOICE_SETTINGS_BY_LANG.get(lang, "Local smart bilingual settings...")
         section = VOICE_SECTION_BY_LANG.get(lang, ("Chinese voice", "English voice"))
-        vals = vals + (settings,) + section
+        online = ONLINE_SMART_MENU_BY_LANG.get(
+            lang, ("Online smart bilingual (Chinese + English)", "Online smart bilingual settings...")
+        )
+        vals = vals[:2] + (vals[2], settings, online[0], online[1]) + section
     elif len(vals) == 5:
         settings = VOICE_SETTINGS_BY_LANG.get(lang, "Local smart bilingual settings...")
-        vals = vals[:3] + (settings,) + vals[3:]
+        online = ONLINE_SMART_MENU_BY_LANG.get(
+            lang, ("Online smart bilingual (Chinese + English)", "Online smart bilingual settings...")
+        )
+        vals = vals[:2] + (vals[2], settings, online[0], online[1]) + vals[3:]
+    elif len(vals) == 6:
+        # online voices, online multi, local smart, local settings, chinese, english
+        online = ONLINE_SMART_MENU_BY_LANG.get(
+            lang, ("Online smart bilingual (Chinese + English)", "Online smart bilingual settings...")
+        )
+        vals = vals[:4] + online + vals[4:]
+    # len == 8: already complete
     if len(vals) != len(VOICE_GROUP_KEYS):
         raise ValueError(f"{lang}: expected {len(VOICE_GROUP_KEYS)} voice group values, got {len(vals)}")
     for key, val in zip(VOICE_GROUP_KEYS, vals, strict=True):
@@ -381,6 +428,12 @@ for lang in LANGS:
     else:
         menu = PHRASES[lang]["Local smart bilingual settings..."]
         PHRASES[lang][DIALOG_TITLE_KEY] = menu.removesuffix("...")
+
+    if lang in ONLINE_VOICE_SETTINGS_BY_LANG:
+        PHRASES[lang][ONLINE_DIALOG_TITLE_KEY] = ONLINE_VOICE_SETTINGS_BY_LANG[lang]
+    else:
+        menu = PHRASES[lang]["Online smart bilingual settings..."]
+        PHRASES[lang][ONLINE_DIALOG_TITLE_KEY] = menu.removesuffix("...")
 
 
 def format_block(key: str) -> str:

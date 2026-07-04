@@ -55,7 +55,7 @@ static bool ApplyReadAloudVoiceFromSettings() {
         return false;
     }
 
-    if (str::Eq(voiceId, kTtsSmartBilingualVoiceId)) {
+    if (str::Eq(voiceId, kTtsSmartBilingualVoiceId) || str::Eq(voiceId, kTtsSmartOnlineBilingualVoiceId)) {
         // pseudo voice: actual voices are picked per chunk while speaking
         TtsSetVoiceById("");
         return false;

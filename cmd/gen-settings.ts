@@ -972,7 +972,7 @@ const globalPrefs: Field[] = [
         "ReadAloudSmartVoiceZh",
         Str,
         null,
-        "voice id of the Chinese voice used by the smart bilingual Read Aloud mode; empty or unset means auto-pick best local Chinese voice",
+        "voice id of the Chinese voice used by local smart bilingual Read Aloud; empty or unset means auto-pick best local Chinese voice",
       ),
     ),
     "3.7",
@@ -983,7 +983,29 @@ const globalPrefs: Field[] = [
         "ReadAloudSmartVoiceEn",
         Str,
         null,
-        "voice id of the English voice used by the smart bilingual Read Aloud mode; empty or unset means auto-pick best local English voice",
+        "voice id of the English voice used by local smart bilingual Read Aloud; empty or unset means auto-pick best local English voice",
+      ),
+    ),
+    "3.7",
+  ),
+  setVersion(
+    setExpert(
+      mkField(
+        "ReadAloudSmartOnlineVoiceZh",
+        Str,
+        null,
+        "voice id of the Chinese voice used by online smart bilingual Read Aloud; empty or unset means auto-pick best online Chinese voice",
+      ),
+    ),
+    "3.7",
+  ),
+  setVersion(
+    setExpert(
+      mkField(
+        "ReadAloudSmartOnlineVoiceEn",
+        Str,
+        null,
+        "voice id of the English voice used by online smart bilingual Read Aloud; empty or unset means auto-pick best online English voice",
       ),
     ),
     "3.7",

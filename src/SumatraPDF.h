@@ -149,12 +149,15 @@ constexpr UINT CmdTtsMenuReadFromCursor = 0x7204;
 constexpr UINT CmdTtsMenuStopReading = 0x7205;
 constexpr UINT CmdTtsVoiceSmartBilingual = 0x7206;
 constexpr UINT CmdTtsSmartBilingualSettings = 0x7207;
+constexpr UINT CmdTtsVoiceSmartOnlineBilingual = 0x7208;
+constexpr UINT CmdTtsSmartOnlineBilingualSettings = 0x7209;
 constexpr UINT CmdTtsSpeedFirst = 0x7300;
 constexpr UINT CmdTtsSpeedLast = 0x7306;
 
-// pseudo voice id stored in prefs: smart bilingual mode picks a local Chinese or
+// pseudo voice ids stored in prefs: smart bilingual modes pick a Chinese or
 // English voice per text chunk instead of using a single fixed voice
 constexpr const char* kTtsSmartBilingualVoiceId = "smart:zh-en";
+constexpr const char* kTtsSmartOnlineBilingualVoiceId = "smart-online:zh-en";
 
 void RebuildReadAloudMenu(MainWindow* win, HMENU menu, bool useContextMenuCursorPoint = false);
 bool HandleReadAloudMenuCommand(MainWindow* win, int cmdId);

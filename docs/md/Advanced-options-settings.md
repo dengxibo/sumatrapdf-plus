@@ -508,15 +508,21 @@ ReadAloudVoiceId =
 ; (introduced in version 3.7)
 ReadAloudSpeakingRate = 1
 
-; voice id of the Chinese voice used by the smart bilingual Read Aloud mode;
-; empty or unset means auto-pick best local Chinese voice (introduced in version
-; 3.7)
+; voice id of the Chinese voice used by local smart bilingual Read Aloud; empty
+; or unset means auto-pick best local Chinese voice (introduced in version 3.7)
 ReadAloudSmartVoiceZh =
 
-; voice id of the English voice used by the smart bilingual Read Aloud mode;
-; empty or unset means auto-pick best local English voice (introduced in version
-; 3.7)
+; voice id of the English voice used by local smart bilingual Read Aloud; empty
+; or unset means auto-pick best local English voice (introduced in version 3.7)
 ReadAloudSmartVoiceEn =
+
+; voice id of the Chinese voice used by online smart bilingual Read Aloud; empty
+; or unset means auto-pick best online Chinese voice (introduced in version 3.7)
+ReadAloudSmartOnlineVoiceZh =
+
+; voice id of the English voice used by online smart bilingual Read Aloud; empty
+; or unset means auto-pick best online English voice (introduced in version 3.7)
+ReadAloudSmartOnlineVoiceEn =
 
 ; a whitespace separated list of passwords to try when opening a password
 ; protected document (passwords containing spaces must be quoted) (introduced in
