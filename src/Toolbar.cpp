@@ -91,10 +91,10 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::MatchCase, CmdFindToggleMatchCase, _TRN("Toggle Match Case")},
     {TbIcon::Dictionary, CmdToggleDoubleClickWordLookup, _TRN("Toggle Double-Click Word Lookup")},
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
-    {TbIcon::Speak, CmdReadAloud, _TRN("Read Aloud")},
     {TbIcon::DocColorAuto, CmdSetPdfDocumentColorModeAuto, _TRN("Document Color Mode: Auto (smart dark mode)")},
     {TbIcon::ThemeSun, CmdSetPdfDocumentColorModeLight, _TRN("Document Color Mode: Light (original colors)")},
     {TbIcon::DocColorBlack, CmdSetPdfDocumentColorModeBlack, _TRN("Document Color Mode: Black (full dark)")},
+    {TbIcon::Speak, CmdReadAloud, _TRN("Read Aloud")},
 };
 // unicode chars: https://www.compart.com/en/unicode/U+25BC
 
