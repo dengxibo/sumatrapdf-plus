@@ -453,9 +453,9 @@ static bool IsDictPackagePresent(const char* dir) {
     if (str::IsEmpty(dir)) {
         return false;
     }
+    // English lookup needs idx + dat only; SumatraDictAudio.dat is optional (pronunciation).
     return file::Exists(path::JoinTemp(dir, "SumatraDict.idx")) &&
-           file::Exists(path::JoinTemp(dir, "SumatraDict.dat")) &&
-           file::Exists(path::JoinTemp(dir, "SumatraDictAudio.dat"));
+           file::Exists(path::JoinTemp(dir, "SumatraDict.dat"));
 }
 
 static bool IsDictPackagePresentZh(const char* dir) {
@@ -565,7 +565,10 @@ static bool LoadOfflineDictionaryIndex(OfflineDictionary* dict, const char* dict
     dict->dir = str::Dup(dictDir);
     dict->dataPath = path::Join(nullptr, dictDir, dataName);
     if (audioName) {
-        dict->audioPath = path::Join(nullptr, dictDir, audioName);
+        TempStr audioPath = path::JoinTemp(dictDir, audioName);
+        if (file::Exists(audioPath)) {
+            dict->audioPath = path::Join(nullptr, dictDir, audioName);
+        }
     }
     dict->loaded = true;
     return true;
@@ -1128,7 +1131,8 @@ static LookupResult* FetchWordLookup(const char* word) {
     }
     res->senses = ParseDictEntry(entryData, &res->nSenses);
     if (res->senses && res->nSenses > 0) {
-        bool hasAudio = hit.dict != &gOfflineDictZh && hit.entry->audioSize > 0 && !str::IsEmpty(hit.entry->audioExt);
+        bool hasAudio = hit.dict != &gOfflineDictZh && hit.dict->audioPath && hit.entry->audioSize > 0 &&
+                        !str::IsEmpty(hit.entry->audioExt);
         if (hasAudio) {
             res->audioDict = hit.dict;
             res->audioOffset = hit.entry->audioOffset;

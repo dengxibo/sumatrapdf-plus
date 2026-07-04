@@ -3279,6 +3279,7 @@ bool EngineMupdf::LoadFromStream(fz_stream* stm, const char* nameHint, PasswordU
     }
 
     auto eBookUI = GetEBookUI();
+    TempStr ebookCss = nullptr;
     if (eBookUI) {
         if (eBookUI->fontSize > 6 && eBookUI->fontSize < 30) {
             lfontDy = eBookUI->fontSize;
@@ -3430,11 +3431,12 @@ body > div > svg {
   height: auto !important;
   margin: 0 auto !important;
 }
-img, p img, div img, figure img {
+img, div img, figure img {
   display: inline;
   margin: 0.8em 0 !important;
   vertical-align: middle;
 }
+/* p img omitted: Oxford Bookworm comic panels (p.picture > a > img) must stay block-level. */
 /* Penguin trade EPUBs use portrait_xsmall (28% in the print stylesheet) for
    inline figures. Bump the screen size and keep caption width matched so the
    label aligns with the image. */
@@ -3514,8 +3516,8 @@ body.calibre div.calibre1 > p.calibre2:only-of-type {
   padding: 0 !important;
   overflow: hidden !important;
 }
-figure img, div.figure img, div.fig img, div.image img, div.images img, div.picture img, div.pic img, div.illustration img, div.illus img,
-p.figure img, p.fig img, p.image img, p.images img, p.picture img, p.pic img, p.illustration img, p.illus img {
+figure img, div.figure img, div.fig img, div.image img, div.images img, div.pic img, div.illustration img, div.illus img,
+p.figure img, p.fig img, p.image img, p.images img, p.pic img, p.illustration img, p.illus img {
   display: inline !important;
   margin: 0.8em 0 !important;
   vertical-align: middle;
@@ -3740,7 +3742,6 @@ figcaption, caption, p.caption, div.caption, span.caption,
 }
 )";
 
-        TempStr ebookCss = nullptr;
         if (isEpub) {
             const char* fontCss =
                 typographyKind == EbookTypographyKind::Cjk ? kEpubReaderCjkFontCss : kEpubReaderLatinFontCss;
@@ -3778,9 +3779,49 @@ pre {
         if (eBookUI->customCSS) {
             ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", eBookUI->customCSS) : str::DupTemp(eBookUI->customCSS);
         }
-        if (ebookCss) {
-            fz_set_user_css(ctx, ebookCss);
+    }
+    // Calibre / Oxford Bookworms comic strips: each JPEG is one full page of panels.
+    // Fit page height only works when one image fills one reflow page; MuPDF ignores
+    // max-height but honors height in pt. page-break-after forces one panel per page.
+    if (isEpub) {
+        float panelH = ldy - 16.f;
+        if (panelH < 400.f) {
+            panelH = 400.f;
         }
+        TempStr comicCss = str::FormatTemp(R"(/* Sumatra: comic panels - one per reflow page, fill page height */
+p.picture, p.picture1 {
+  display: block !important;
+  page-break-after: always !important;
+  page-break-inside: avoid !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  text-align: center !important;
+}
+p.picture + p.picture, p.picture1 + p.picture1,
+p.picture + p.picture1, p.picture1 + p.picture {
+  page-break-before: always !important;
+}
+p.picture > a, p.picture1 > a {
+  display: block !important;
+  width: 100%% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+p.picture img, p.picture1 img,
+p.picture > a > img, p.picture1 > a > img,
+p.picture img.calibre1, p.picture1 img.calibre1 {
+  display: block !important;
+  width: auto !important;
+  max-width: 100%% !important;
+  height: %.0fpt !important;
+  margin: 0 auto !important;
+}
+)",
+                                         panelH);
+        ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", comicCss) : comicCss;
+    }
+    if (ebookCss) {
+        fz_set_user_css(ctx, ebookCss);
     }
 
     float dx, dy, fontDy;
