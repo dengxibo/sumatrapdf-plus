@@ -46,7 +46,8 @@ struct SelectionToolbar {
     int pressedIndex = -1;
     bool trackingMouse = false;
     Size size;
-    Rect lastPlaced; // last screen rect we moved the window to (avoids redundant SetWindowPos)
+    Rect lastPlaced;    // last screen rect we moved the window to (avoids redundant SetWindowPos)
+    Rect lastSelBounds; // last canvas-space selection bounds used for placement
     SelectionToolbarButton buttons[8];
     int nButtons = 0;
 };
@@ -382,6 +383,7 @@ void ShowSelectionToolbar(MainWindow* win) {
     tb->tab = win->CurrentTab();
     tb->hotIndex = -1;
     tb->pressedIndex = -1;
+    tb->lastSelBounds = sel;
     InitButtons(tb, win);
     LayoutToolbar(tb);
     PositionToolbar(tb, sel);
@@ -409,10 +411,21 @@ void UpdateSelectionToolbarPosition(MainWindow* win) {
         HideSelectionToolbar(win);
         return;
     }
+    // Canvas is repainted often during read-aloud highlight updates. Skip all
+    // toolbar work when the selection has not moved, otherwise SetWindowRgn /
+    // ScheduleRepaint makes the floating bar jitter.
+    if (sel == tb->lastSelBounds) {
+        return;
+    }
+    tb->lastSelBounds = sel;
+
+    Rect prevPlaced = tb->lastPlaced;
     InitButtons(tb, win);
     LayoutToolbar(tb);
     PositionToolbar(tb, sel);
-    HwndScheduleRepaint(tb->hwnd);
+    if (tb->lastPlaced != prevPlaced) {
+        HwndScheduleRepaint(tb->hwnd);
+    }
 }
 
 void HideSelectionToolbar(MainWindow* win) {
@@ -427,6 +440,7 @@ void HideSelectionToolbar(MainWindow* win) {
     tb->pressedIndex = -1;
     tb->tab = nullptr;
     tb->lastPlaced = Rect();
+    tb->lastSelBounds = Rect();
 }
 
 void DeleteSelectionToolbar(MainWindow* win) {

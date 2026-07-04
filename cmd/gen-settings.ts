@@ -966,6 +966,28 @@ const globalPrefs: Field[] = [
     ),
     "3.7",
   ),
+  setVersion(
+    setExpert(
+      mkField(
+        "ReadAloudSmartVoiceZh",
+        Str,
+        null,
+        "voice id of the Chinese voice used by the smart bilingual Read Aloud mode; empty or unset means auto-pick best local Chinese voice",
+      ),
+    ),
+    "3.7",
+  ),
+  setVersion(
+    setExpert(
+      mkField(
+        "ReadAloudSmartVoiceEn",
+        Str,
+        null,
+        "voice id of the English voice used by the smart bilingual Read Aloud mode; empty or unset means auto-pick best local English voice",
+      ),
+    ),
+    "3.7",
+  ),
   mkEmptyLine(),
 
   mkComment("You're not expected to change those manually"),

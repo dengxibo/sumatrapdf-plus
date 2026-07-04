@@ -147,7 +147,94 @@ SPEED_BY_LANG: dict[str, tuple[str, ...]] = {
     "vn": speed_row("Tốc độ", "Chậm nhất", "Rất chậm", "Chậm", "Bình thường", "Nhanh", "Nhanh hơn", "Nhanh nhất"),
 }
 
-ALL_KEYS = KEYS + SPEED_KEYS
+VOICE_GROUP_KEYS = [
+    "Online voices",
+    "Online multilingual voices",
+    "Local smart bilingual (Chinese + English)",
+    "Local smart bilingual settings...",
+    "Chinese voice",
+    "English voice",
+]
+
+# lang -> (online voices, online multilingual, smart bilingual, smart settings, chinese voice, english voice)
+VOICE_GROUP_BY_LANG: dict[str, tuple[str, str, str, str, str, str]] = {
+    "af": ("Aanlyn stemme", "Aanlyn veeltalige stemme", "Slim tweetalig (Chinees + Engels)", "Slim tweetalig instellings", "Chinese stem", "Engelse stem"),
+    "am": ("Առցանց ձայներ", "Առցանց բազմալեզու ձայներ", "Խելացի երկլեզու (չինարեն + անգլերեն)", "Խելացի երկլեզու կարգավորում", "Չինական ձայ", "Անգլերեն ձայ"),
+    "ar": ("أصوات عبر الإنترنت", "أصوات متعددة اللغات عبر الإنترنت", "ثنائي اللغة الذكي (صيني + إنجليزي)", "إعدادات ثنائي اللغة الذكي", "صوت صيني", "صوت إنجليزي"),
+    "az": ("Onlayn səslər", "Onlayn çoxdilli səslər", "Ağıllı ikidilli (Çin + İngilis)", "Ağıllı ikidilli parametrlər", "Çin səsi", "İngilis səsi"),
+    "bg": ("Онлайн гласове", "Онлайн многоезични гласове", "Интелигентен двуезичен (китайски + английски)", "Настройки на интелигентен двуезичен", "Китайски глас", "Английски глас"),
+    "bn": ("অনলাইন কণ্ঠ", "অনলাইন বহুভাষিক কণ্ঠ", "স্মার্ট দ্বিভাষিক (চীনা + ইংরেজি)", "স্মার্ট দ্বিভাষিক সেটিংস", "চীনা কণ্ঠ", "ইংরেজি কণ্ঠ"),
+    "br": ("Vozes online", "Vozes multilíngues online", "Bilíngue inteligente (chinês + inglês)", "Configurações bilíngues inteligentes", "Voz chinesa", "Voz inglesa"),
+    "bs": ("Online glasovi", "Online višejezični glasovi", "Pametni dvojezični (kineski + engleski)", "Pametne dvojezične postavke", "Kineski glas", "Engleski glas"),
+    "by": ("Анлайн-галасы", "Анлайн шматмоўныя галасы", "Разумны двухмоўны (кітайская + англійская)", "Налады разумнага двухмоўнага", "Кітайскі голас", "Англійскі голас"),
+    "ca": ("Veus en línia", "Veus multilingües en línia", "Bilingüe intel·ligent (xinès + anglès)", "Configuració bilingüe intel·ligent", "Veu xinesa", "Veu anglesa"),
+    "ca-xv": ("Veus en línia", "Veus multilingües en línia", "Bilingüe intel·ligent (xinès + anglès)", "Configuració bilingüe intel·ligent", "Veu xinesa", "Veu anglesa"),
+    "cn": ("在线语音", "在线多语言语音", "本地智能双语（中文 + 英文）", "本地智能双语设置...", "中文语音", "英文语音"),
+    "co": ("Voce in linea", "Voce multilingue in linea", "Bilingue intelligente (cinese + inglese)"),
+    "cy": ("Lleisiau ar-lein", "Lleisiau amlieithog ar-lein", "Dwyieithog clyfar (Tsieinëeg + Saesneg)"),
+    "cz": ("Online hlasy", "Online vícejazyčné hlasy", "Chytrý dvojjazyčný (čínština + angličtina)"),
+    "de": ("Online-Stimmen", "Mehrsprachige Online-Stimmen", "Lokal intelligent zweisprachig (Chinesisch + Englisch)"),
+    "dk": ("Onlinestemmer", "Flersprogede onlinestemmer", "Smart tosproget (kinesisk + engelsk)"),
+    "el": ("Φωνές στο διαδίκτυο", "Πολύγλωσσες φωνές στο διαδίκτυο", "Έξυπνο δίγλωσσο (Κινεζικά + Αγγλικά)"),
+    "es": ("Voces en línea", "Voces multilingües en línea", "Bilingüe inteligente local (chino + inglés)"),
+    "et": ("Veebihääled", "Mitmekeelsed veebihääled", "Nutikas kakskeelne (hiina + inglise)"),
+    "eu": ("Lineako ahotsak", "Lineako ahots eleaniztunak", "Elebidun adimentsua (txinera + ingelesa)"),
+    "fa": ("صداهای آنلاین", "صداهای چندزبانه آنلاین", "دوزبانه هوشمند (چینی + انگلیسی)"),
+    "fi": ("Verkkoäänet", "Monikieliset verkkoäänet", "Älykäs kaksikielinen (kiina + englanti)"),
+    "fo": ("Røddir á netinum", "Fleirmæltar røddir á netinum", "Snildur tvímæltur (kinesiskt + enskt)"),
+    "fr": ("Voix en ligne", "Voix multilingues en ligne", "Bilingue intelligent local (chinois + anglais)"),
+    "fy-nl": ("Online stimmen", "Online meartalige stimmen", "Tûk twatalich (Sineesk + Ingelsk)"),
+    "ga": ("Guthanna ar líne", "Guthanna ilteangacha ar líne", "Dátheangach cliste (Sínis + Béarla)"),
+    "gl": ("Voces en liña", "Voces multilingües en liña", "Bilingüe intelixente (chinés + inglés)"),
+    "he": ("קולות מקוונים", "קולות רב-לשוניים מקוונים", "דו-לשוני חכם (סינית + אנגלית)"),
+    "hi": ("ऑनलाइन आवाज़ें", "ऑनलाइन बहुभाषी आवाज़ें", "स्मार्ट द्विभाषी (चीनी + अंग्रेज़ी)"),
+    "hr": ("Online glasovi", "Online višejezični glasovi", "Pametni dvojezični (kineski + engleski)"),
+    "hu": ("Online hangok", "Online többnyelvű hangok", "Intelligens kétnyelvű (kínai + angol)"),
+    "id": ("Suara online", "Suara multibahasa online", "Dwibahasa cerdas (Mandarin + Inggris)"),
+    "it": ("Voci online", "Voci multilingue online", "Bilingue intelligente (cinese + inglese)"),
+    "ja": ("オンライン音声", "オンライン多言語音声", "ローカルスマートバイリンガル（中国語 + 英語）"),
+    "jv": ("Swara online", "Swara multibasa online", "Dwibasa pinter (Cina + Inggris)"),
+    "ka": ("ონლაინ ხმები", "ონლაინ მრავალენოვანი ხმები", "ჭკვიანი ორენოვანი (ჩინური + ინგლისური)"),
+    "kr": ("온라인 음성", "온라인 다국어 음성", "로컬 스마트 이중 언어 (중국어 + 영어)"),
+    "ku": ("Dengên serhêl", "Dengên pirzimanî yên serhêl", "Duzimanî ya jîr (Çînî + Îngilîzî)"),
+    "kw": ("Levow warlinen", "Levow lieskyethek warlinen", "Diwyethek smart (Chinek + Sowsnek)"),
+    "lt": ("Internetiniai balsai", "Daugiakalbiai internetiniai balsai", "Išmanus dvikalbis (kinų + anglų)"),
+    "lv": ("Tiešsaistes balsis", "Daudzvalodu tiešsaistes balsis", "Vieds divvalodu (ķīniešu + angļu)"),
+    "mk": ("Онлајн гласови", "Онлајн повеќејазични гласови", "Паметен двојазичен (кинески + англиски)"),
+    "ml": ("ഓൺലൈൻ ശബ്ദങ്ങൾ", "ഓൺലൈൻ ബഹുഭാഷാ ശബ്ദങ്ങൾ", "സ്മാർട്ട് ദ്വിഭാഷ (ചൈനീസ് + ഇംഗ്ലീഷ്)"),
+    "mm": ("အွန်လိုင်း အသံများ", "အွန်လိုင်း ဘာသာစုံ အသံများ", "စမတ် နှစ်ဘာသာ (တရုတ် + အင်္ဂလိပ်)"),
+    "my": ("Suara dalam talian", "Suara pelbagai bahasa dalam talian", "Dwibahasa pintar (Cina + Inggeris)"),
+    "ne": ("अनलाइन आवाजहरू", "अनलाइन बहुभाषी आवाजहरू", "स्मार्ट द्विभाषी (चिनियाँ + अंग्रेजी)"),
+    "nl": ("Online stemmen", "Online meertalige stemmen", "Slim tweetalig (Chinees + Engels)"),
+    "nn": ("Nettstemmer", "Fleirspråklege nettstemmer", "Smart tospråkleg (kinesisk + engelsk)"),
+    "no": ("Nettstemmer", "Flerspråklige nettstemmer", "Smart tospråklig (kinesisk + engelsk)"),
+    "pa": ("ਆਨਲਾਈਨ ਆਵਾਜ਼ਾਂ", "ਆਨਲਾਈਨ ਬਹੁ-ਭਾਸ਼ਾਈ ਆਵਾਜ਼ਾਂ", "ਸਮਾਰਟ ਦੋਭਾਸ਼ੀ (ਚੀਨੀ + ਅੰਗਰੇਜ਼ੀ)"),
+    "pl": ("Głosy online", "Wielojęzyczne głosy online", "Inteligentny dwujęzyczny (chiński + angielski)"),
+    "pt": ("Vozes online", "Vozes multilingues online", "Bilingue inteligente (chinês + inglês)"),
+    "ro": ("Voci online", "Voci multilingve online", "Bilingv inteligent (chineză + engleză)"),
+    "ru": ("Онлайн-голоса", "Многоязычные онлайн-голоса", "Локальный умный двуязычный (китайский + английский)"),
+    "sat": ("Online voices", "Online multilingual voices", "Local smart bilingual (Chinese + English)"),
+    "si": ("මාර්ගගත හඬ", "මාර්ගගත බහුභාෂා හඬ", "ස්මාර්ට් ද්විභාෂා (චීන + ඉංග්‍රීසි)"),
+    "sk": ("Online hlasy", "Online viacjazyčné hlasy", "Inteligentný dvojjazyčný (čínština + angličtina)"),
+    "sl": ("Spletni glasovi", "Večjezični spletni glasovi", "Pametno dvojezično (kitajščina + angleščina)"),
+    "sn": ("Online voices", "Online multilingual voices", "Local smart bilingual (Chinese + English)"),
+    "sp-rs": ("Online glasovi", "Online višejezični glasovi", "Pametni dvojezični (kineski + engleski)"),
+    "sq": ("Zëra online", "Zëra shumëgjuhësh online", "Dygjuhësh inteligjent (kinezisht + anglisht)"),
+    "sr-rs": ("Онлајн гласови", "Онлајн вишејезични гласови", "Паметни двојезични (кинески + енглески)"),
+    "sv": ("Onlineröster", "Flerspråkiga onlineröster", "Smart tvåspråkig (kinesiska + engelska)"),
+    "ta": ("ஆன்லைன் குரல்கள்", "ஆன்லைன் பன்மொழி குரல்கள்", "ஸ்மார்ட் இருமொழி (சீனம் + ஆங்கிலம்)"),
+    "th": ("เสียงออนไลน์", "เสียงหลายภาษาออนไลน์", "สองภาษาอัจฉริยะ (จีน + อังกฤษ)"),
+    "tl": ("Mga online na boses", "Mga online na multilingguwal na boses", "Matalinong bilingguwal (Tsino + Ingles)"),
+    "tr": ("Çevrimiçi sesler", "Çevrimiçi çok dilli sesler", "Akıllı iki dilli (Çince + İngilizce)"),
+    "tw": ("線上語音", "線上多語言語音", "本地智慧雙語（中文 + 英文）"),
+    "uk": ("Онлайн-голоси", "Багатомовні онлайн-голоси", "Розумний двомовний (китайська + англійська)"),
+    "uz": ("Onlayn ovozlar", "Onlayn ko'p tilli ovozlar", "Aqlli ikki tilli (xitoy + ingliz)"),
+    "vn": ("Giọng trực tuyến", "Giọng đa ngôn ngữ trực tuyến", "Song ngữ thông minh (Trung + Anh)"),
+}
+
+DIALOG_TITLE_KEY = "Local smart bilingual settings"
+
+ALL_KEYS = KEYS + SPEED_KEYS + VOICE_GROUP_KEYS + [DIALOG_TITLE_KEY]
 
 # Each tuple: lang code followed by translations in KEYS order.
 # fmt: off
@@ -246,6 +333,54 @@ for lang in LANGS:
         raise ValueError(f"{lang}: expected {len(SPEED_KEYS)} speed values, got {len(speed_vals)}")
     for key, val in zip(SPEED_KEYS, speed_vals, strict=True):
         PHRASES[lang][key] = val
+
+if set(VOICE_GROUP_BY_LANG) != set(LANGS):
+    missing = set(LANGS) - set(VOICE_GROUP_BY_LANG)
+    extra = set(VOICE_GROUP_BY_LANG) - set(LANGS)
+    raise ValueError(f"voice groups missing langs: {sorted(missing)} extra: {sorted(extra)}")
+
+VOICE_SECTION_BY_LANG: dict[str, tuple[str, str]] = {
+    "cn": ("中文语音", "英文语音"),
+    "tw": ("中文語音", "英文語音"),
+    "ja": ("中国語音声", "英語音声"),
+    "kr": ("중국어 음성", "영어 음성"),
+    "de": ("Chinesische Stimme", "Englische Stimme"),
+    "fr": ("Voix chinoise", "Voix anglaise"),
+    "es": ("Voz china", "Voz inglesa"),
+    "ru": ("Китайский голос", "Английский голос"),
+}
+
+VOICE_SETTINGS_BY_LANG: dict[str, str] = {
+    "cn": "本地智能双语设置",
+    "tw": "本地智慧雙語設定",
+    "ja": "ローカルスマートバイリンガル設定",
+    "kr": "로컬 스마트 이중 언어 설정",
+    "de": "Lokale intelligente Zweisprachigkeit – Einstellungen",
+    "fr": "Paramètres bilingue intelligent local",
+    "es": "Configuración bilingüe inteligente local",
+    "ru": "Настройки локального умного двуязычного режима",
+}
+
+for lang in LANGS:
+    vals = VOICE_GROUP_BY_LANG[lang]
+    if len(vals) == 3:
+        settings = VOICE_SETTINGS_BY_LANG.get(lang, "Local smart bilingual settings...")
+        section = VOICE_SECTION_BY_LANG.get(lang, ("Chinese voice", "English voice"))
+        vals = vals + (settings,) + section
+    elif len(vals) == 5:
+        settings = VOICE_SETTINGS_BY_LANG.get(lang, "Local smart bilingual settings...")
+        vals = vals[:3] + (settings,) + vals[3:]
+    if len(vals) != len(VOICE_GROUP_KEYS):
+        raise ValueError(f"{lang}: expected {len(VOICE_GROUP_KEYS)} voice group values, got {len(vals)}")
+    for key, val in zip(VOICE_GROUP_KEYS, vals, strict=True):
+        PHRASES[lang][key] = val
+
+for lang in LANGS:
+    if lang in VOICE_SETTINGS_BY_LANG:
+        PHRASES[lang][DIALOG_TITLE_KEY] = VOICE_SETTINGS_BY_LANG[lang]
+    else:
+        menu = PHRASES[lang]["Local smart bilingual settings..."]
+        PHRASES[lang][DIALOG_TITLE_KEY] = menu.removesuffix("...")
 
 
 def format_block(key: str) -> str:

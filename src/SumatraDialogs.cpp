@@ -149,7 +149,7 @@ DLGTEMPLATE* GetRtLDlgTemplate(int dlgId) {
 }
 
 // creates a dialog box that dynamically gets a right-to-left layout if needed
-static INT_PTR CreateDialogBox(int dlgId, HWND parent, DLGPROC DlgProc, LPARAM data) {
+INT_PTR CreateAppDialogBox(int dlgId, HWND parent, DLGPROC DlgProc, LPARAM data) {
     bool isRtl = IsUIRtl();
     bool isDefaultFont = IsAppFontSizeDefault();
     if (!isRtl && isDefaultFont) {
@@ -258,7 +258,7 @@ char* Dialog_GetPassword(HWND hwndParent, const char* fileName, bool* rememberPa
     data.remember = rememberPassword;
     data.showPassword = showPassword;
 
-    INT_PTR res = CreateDialogBox(IDD_DIALOG_GET_PASSWORD, hwndParent, Dialog_GetPassword_Proc, (LPARAM)&data);
+    INT_PTR res = CreateAppDialogBox(IDD_DIALOG_GET_PASSWORD, hwndParent, Dialog_GetPassword_Proc, (LPARAM)&data);
     if (IDOK != res) {
         free(data.pwdOut);
         return nullptr;
@@ -343,7 +343,7 @@ char* Dialog_GoToPage(HWND hwnd, const char* currentPageLabel, int pageCount, bo
     data.onlyNumeric = onlyNumeric;
     data.newPageLabel = nullptr;
 
-    CreateDialogBox(IDD_DIALOG_GOTO_PAGE, hwnd, Dialog_GoToPage_Proc, (LPARAM)&data);
+    CreateAppDialogBox(IDD_DIALOG_GOTO_PAGE, hwnd, Dialog_GoToPage_Proc, (LPARAM)&data);
     return str::Dup(data.newPageLabel);
 }
 
@@ -420,7 +420,7 @@ char* Dialog_Find(HWND hwnd, const char* previousSearch, bool* matchCase) {
     Dialog_Find_Data data;
     data.searchTerm = str::DupTemp(previousSearch);
     data.matchCase = matchCase ? *matchCase : false;
-    INT_PTR res = CreateDialogBox(IDD_DIALOG_FIND, hwnd, Dialog_Find_Proc, (LPARAM)&data);
+    INT_PTR res = CreateAppDialogBox(IDD_DIALOG_FIND, hwnd, Dialog_Find_Proc, (LPARAM)&data);
     if (res != IDOK) {
         return nullptr;
     }
@@ -547,7 +547,7 @@ const char* Dialog_ChangeLanguge(HWND hwnd, const char* currLangCode) {
     Dialog_ChangeLanguage_Data data;
     data.langCode = currLangCode;
 
-    INT_PTR res = CreateDialogBox(IDD_DIALOG_CHANGE_LANGUAGE, hwnd, Dialog_ChangeLanguage_Proc, (LPARAM)&data);
+    INT_PTR res = CreateAppDialogBox(IDD_DIALOG_CHANGE_LANGUAGE, hwnd, Dialog_ChangeLanguage_Proc, (LPARAM)&data);
     delete gLangListMap;
     gLangListMap = nullptr;
     if (IDCANCEL == res) {
@@ -729,7 +729,7 @@ bool Dialog_CustomZoom(HWND hwnd, bool forChm, float* currZoomInOut) {
     Dialog_CustomZoom_Data data;
     data.forChm = forChm;
     data.zoomArg = *currZoomInOut;
-    INT_PTR res = CreateDialogBox(IDD_DIALOG_CUSTOM_ZOOM, hwnd, Dialog_CustomZoom_Proc, (LPARAM)&data);
+    INT_PTR res = CreateAppDialogBox(IDD_DIALOG_CUSTOM_ZOOM, hwnd, Dialog_CustomZoom_Proc, (LPARAM)&data);
     if (res == IDCANCEL) {
         return false;
     }
@@ -785,7 +785,7 @@ static INT_PTR CALLBACK Dialog_ChangeScrollbar_Proc(HWND hDlg, UINT msg, WPARAM 
 }
 
 bool Dialog_ChangeScrollbar(HWND hwnd) {
-    INT_PTR res = CreateDialogBox(IDD_DIALOG_CHANGE_SCROLLBAR, hwnd, Dialog_ChangeScrollbar_Proc, 0);
+    INT_PTR res = CreateAppDialogBox(IDD_DIALOG_CHANGE_SCROLLBAR, hwnd, Dialog_ChangeScrollbar_Proc, 0);
     return res == IDOK;
 }
 
@@ -951,7 +951,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
 }
 
 INT_PTR Dialog_Settings(HWND hwnd, GlobalPrefs* prefs) {
-    return CreateDialogBox(IDD_DIALOG_SETTINGS, hwnd, Dialog_Settings_Proc, (LPARAM)prefs);
+    return CreateAppDialogBox(IDD_DIALOG_SETTINGS, hwnd, Dialog_Settings_Proc, (LPARAM)prefs);
 }
 
 #ifndef ID_APPLY_NOW
@@ -1571,7 +1571,7 @@ bool Dialog_ChangeBackgroundColor(HWND hwnd, COLORREF currentColor, bool isCheck
     data.showRadioButtons = true;
     data.allFilesLabel = allFilesLabel;
 
-    INT_PTR res = CreateDialogBox(IDD_DIALOG_CHANGE_BG_COLOR, hwnd, Dialog_ChangeBgColor_Proc, (LPARAM)&data);
+    INT_PTR res = CreateAppDialogBox(IDD_DIALOG_CHANGE_BG_COLOR, hwnd, Dialog_ChangeBgColor_Proc, (LPARAM)&data);
     if (res != IDOK) {
         return false;
     }
@@ -1592,7 +1592,7 @@ bool Dialog_SetTabColor(HWND hwnd, COLORREF currentColor, bool isUnset, COLORREF
     data.title = _TRA("Set Tab Color");
     data.showRadioButtons = false;
 
-    INT_PTR res = CreateDialogBox(IDD_DIALOG_CHANGE_BG_COLOR, hwnd, Dialog_ChangeBgColor_Proc, (LPARAM)&data);
+    INT_PTR res = CreateAppDialogBox(IDD_DIALOG_CHANGE_BG_COLOR, hwnd, Dialog_ChangeBgColor_Proc, (LPARAM)&data);
     if (res != IDOK) {
         return false;
     }
@@ -1607,7 +1607,7 @@ bool Dialog_AddFavorite(HWND hwnd, const char* pageNo, AutoFreeStr& favName) {
     data.pageNo = str::Dup(pageNo);
     data.favName = str::Dup(favName);
 
-    INT_PTR res = CreateDialogBox(IDD_DIALOG_FAV_ADD, hwnd, Dialog_AddFav_Proc, (LPARAM)&data);
+    INT_PTR res = CreateAppDialogBox(IDD_DIALOG_FAV_ADD, hwnd, Dialog_AddFav_Proc, (LPARAM)&data);
     if (IDCANCEL == res) {
         return false;
     }

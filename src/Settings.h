@@ -596,6 +596,12 @@ struct GlobalPrefs {
     // speaking rate multiplier for Read Aloud text-to-speech; 1.0 is
     // normal speed
     float readAloudSpeakingRate;
+    // voice id of the Chinese voice used by the smart bilingual Read Aloud
+    // mode; empty or unset means auto-pick best local Chinese voice
+    char* readAloudSmartVoiceZh;
+    // voice id of the English voice used by the smart bilingual Read Aloud
+    // mode; empty or unset means auto-pick best local English voice
+    char* readAloudSmartVoiceEn;
     // passwords to try when opening a password protected document
     Vec<char*>* defaultPasswords;
     // ISO code of the current UI language
@@ -907,7 +913,7 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-3.html"},
     {(size_t)-1, SettingType::Comment, 0},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0},
@@ -992,6 +998,8 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment, 0},
     {offsetof(GlobalPrefs, readAloudVoiceId), SettingType::String, 0},
     {offsetof(GlobalPrefs, readAloudSpeakingRate), SettingType::Float, (intptr_t)"1"},
+    {offsetof(GlobalPrefs, readAloudSmartVoiceZh), SettingType::String, 0},
+    {offsetof(GlobalPrefs, readAloudSmartVoiceEn), SettingType::String, 0},
     {(size_t)-1, SettingType::Comment, 0},
     {(size_t)-1, SettingType::Comment, (intptr_t)"You're not expected to change those manually"},
     {offsetof(GlobalPrefs, defaultPasswords), SettingType::StringArray, 0},
@@ -1009,7 +1017,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment, (intptr_t)"Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 100, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 102, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0ReloadMo"
     "difiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSession\0ReuseInstance\0ShowMenubar\0ShowMe"
@@ -1019,9 +1027,9 @@ static const StructInfo gGlobalPrefsInfo = {
     "\0LastLightTheme\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0UIFontSize\0DisableAntiAlias\0EngineeringDrawing"
     "Enhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0Ima"
     "geUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHand"
-    "lers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0\0\0DefaultPasswords\0UiLangu"
-    "age\0VersionToSkip\0WindowState\0WindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0OpenCountW"
-    "eek\0PropWinPos\0\0"};
+    "lers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAloudSmartVoiceZh\0ReadAl"
+    "oudSmartVoiceEn\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0FileStates\0SessionData"
+    "\0ReopenOnce\0TimeOfLastUpdateCheck\0OpenCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)""},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)""},

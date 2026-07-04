@@ -28230,6 +28230,371 @@ tw:語速：%.2f×
 uk:Швидкість: %.2f×
 uz:Tezlik: %.2f×
 vn:Tốc độ: %.2f×
+:Smart bilingual settings
+af:Slim tweetalig instellings
+am:Խելացի երկլեզու կարգավորում
+ar:إعدادات ثنائي اللغة الذكي
+az:Ağıllı ikidilli parametrlər
+bg:Настройки на интелигентен двуезичен
+bn:স্মার্ট দ্বিভাষিক সেটিংস
+br:Configurações bilíngues inteligentes
+bs:Pametne dvojezične postavke
+by:Налады разумнага двухмоўнага
+ca:Configuració bilingüe intel·ligent
+ca-xv:Configuració bilingüe intel·ligent
+cn:智能双语设置
+co:Smart bilingual settings
+cy:Smart bilingual settings
+cz:Smart bilingual settings
+de:Intelligente Zweisprachigkeit – Einstellungen
+dk:Smart bilingual settings
+el:Smart bilingual settings
+es:Configuración bilingüe inteligente
+et:Smart bilingual settings
+eu:Smart bilingual settings
+fa:Smart bilingual settings
+fi:Smart bilingual settings
+fo:Smart bilingual settings
+fr:Paramètres bilingue intelligent
+fy-nl:Smart bilingual settings
+ga:Smart bilingual settings
+gl:Smart bilingual settings
+he:Smart bilingual settings
+hi:Smart bilingual settings
+hr:Smart bilingual settings
+hu:Smart bilingual settings
+id:Smart bilingual settings
+it:Smart bilingual settings
+ja:スマートバイリンガル設定
+jv:Smart bilingual settings
+ka:Smart bilingual settings
+kr:스마트 이중 언어 설정
+ku:Smart bilingual settings
+kw:Smart bilingual settings
+lt:Smart bilingual settings
+lv:Smart bilingual settings
+mk:Smart bilingual settings
+ml:Smart bilingual settings
+mm:Smart bilingual settings
+my:Smart bilingual settings
+ne:Smart bilingual settings
+nl:Smart bilingual settings
+nn:Smart bilingual settings
+no:Smart bilingual settings
+pa:Smart bilingual settings
+pl:Smart bilingual settings
+pt:Smart bilingual settings
+ro:Smart bilingual settings
+ru:Настройки умного двуязычного режима
+sat:Smart bilingual settings
+si:Smart bilingual settings
+sk:Smart bilingual settings
+sl:Smart bilingual settings
+sn:Smart bilingual settings
+sp-rs:Smart bilingual settings
+sq:Smart bilingual settings
+sr-rs:Smart bilingual settings
+sv:Smart bilingual settings
+ta:Smart bilingual settings
+th:Smart bilingual settings
+tl:Smart bilingual settings
+tr:Smart bilingual settings
+tw:智慧雙語設定
+uk:Smart bilingual settings
+uz:Smart bilingual settings
+vn:Smart bilingual settings
+:Chinese:
+af:Chinese stem
+am:Չինական ձայ
+ar:صوت صيني
+az:Çin səsi
+bg:Китайски глас
+bn:চীনা কণ্ঠ
+br:Voz chinesa
+bs:Kineski glas
+by:Кітайскі голас
+ca:Veu xinesa
+ca-xv:Veu xinesa
+cn:中文语音
+co:Chinese:
+cy:Chinese:
+cz:Chinese:
+de:Chinesische Stimme
+dk:Chinese:
+el:Chinese:
+es:Voz china
+et:Chinese:
+eu:Chinese:
+fa:Chinese:
+fi:Chinese:
+fo:Chinese:
+fr:Voix chinoise
+fy-nl:Chinese:
+ga:Chinese:
+gl:Chinese:
+he:Chinese:
+hi:Chinese:
+hr:Chinese:
+hu:Chinese:
+id:Chinese:
+it:Chinese:
+ja:中国語音声
+jv:Chinese:
+ka:Chinese:
+kr:중국어 음성
+ku:Chinese:
+kw:Chinese:
+lt:Chinese:
+lv:Chinese:
+mk:Chinese:
+ml:Chinese:
+mm:Chinese:
+my:Chinese:
+ne:Chinese:
+nl:Chinese:
+nn:Chinese:
+no:Chinese:
+pa:Chinese:
+pl:Chinese:
+pt:Chinese:
+ro:Chinese:
+ru:Китайский голос
+sat:Chinese:
+si:Chinese:
+sk:Chinese:
+sl:Chinese:
+sn:Chinese:
+sp-rs:Chinese:
+sq:Chinese:
+sr-rs:Chinese:
+sv:Chinese:
+ta:Chinese:
+th:Chinese:
+tl:Chinese:
+tr:Chinese:
+tw:中文：
+uk:Chinese:
+uz:Chinese:
+vn:Chinese:
+:English:
+af:Engelse stem
+am:Անգլերեն ձայ
+ar:صوت إنجليزي
+az:İngilis səsi
+bg:Английски глас
+bn:ইংরেজি কণ্ঠ
+br:Voz inglesa
+bs:Engleski glas
+by:Англійскі голас
+ca:Veu anglesa
+ca-xv:Veu anglesa
+cn:英文语音
+co:English:
+cy:English:
+cz:English:
+de:Englische Stimme
+dk:English:
+el:English:
+es:Voz inglesa
+et:English:
+eu:English:
+fa:English:
+fi:English:
+fo:English:
+fr:Voix anglaise
+fy-nl:English:
+ga:English:
+gl:English:
+he:English:
+hi:English:
+hr:English:
+hu:English:
+id:English:
+it:English:
+ja:英語音声
+jv:English:
+ka:English:
+kr:영어 음성
+ku:English:
+kw:English:
+lt:English:
+lv:English:
+mk:English:
+ml:English:
+mm:English:
+my:English:
+ne:English:
+nl:English:
+nn:English:
+no:English:
+pa:English:
+pl:English:
+pt:English:
+ro:English:
+ru:Английский голос
+sat:English:
+si:English:
+sk:English:
+sl:English:
+sn:English:
+sp-rs:English:
+sq:English:
+sr-rs:English:
+sv:English:
+ta:English:
+th:English:
+tl:English:
+tr:English:
+tw:英文：
+uk:English:
+uz:English:
+vn:English:
+:Smart bilingual (Chinese + English)
+af:Slim tweetalig (Chinees + Engels)
+am:Խելացի երկլեզու (չինարեն + անգլերեն)
+ar:ثنائي اللغة الذكي (صيني + إنجليزي)
+az:Ağıllı ikidilli (Çin + İngilis)
+bg:Интелигентен двуезичен (китайски + английски)
+bn:স্মার্ট দ্বিভাষিক (চীনা + ইংরেজি)
+br:Bilíngue inteligente (chinês + inglês)
+bs:Pametni dvojezični (kineski + engleski)
+by:Разумны двухмоўны (кітайская + англійская)
+ca:Bilingüe intel·ligent (xinès + anglès)
+ca-xv:Bilingüe intel·ligent (xinès + anglès)
+cn:智能双语（中文 + 英文）
+co:Bilingue intelligente (cinese + inglese)
+cy:Dwyieithog clyfar (Tsieinëeg + Saesneg)
+cz:Chytrý dvojjazyčný (čínština + angličtina)
+de:Intelligent zweisprachig (Chinesisch + Englisch)
+dk:Smart tosproget (kinesisk + engelsk)
+el:Έξυπνο δίγλωσσο (Κινεζικά + Αγγλικά)
+es:Bilingüe inteligente (chino + inglés)
+et:Nutikas kakskeelne (hiina + inglise)
+eu:Elebidun adimentsua (txinera + ingelesa)
+fa:دوزبانه هوشمند (چینی + انگلیسی)
+fi:Älykäs kaksikielinen (kiina + englanti)
+fo:Snildur tvímæltur (kinesiskt + enskt)
+fr:Bilingue intelligent (chinois + anglais)
+fy-nl:Tûk twatalich (Sineesk + Ingelsk)
+ga:Dátheangach cliste (Sínis + Béarla)
+gl:Bilingüe intelixente (chinés + inglés)
+he:דו-לשוני חכם (סינית + אנגלית)
+hi:स्मार्ट द्विभाषी (चीनी + अंग्रेज़ी)
+hr:Pametni dvojezični (kineski + engleski)
+hu:Intelligens kétnyelvű (kínai + angol)
+id:Dwibahasa cerdas (Mandarin + Inggris)
+it:Bilingue intelligente (cinese + inglese)
+ja:スマートバイリンガル（中国語 + 英語）
+jv:Dwibasa pinter (Cina + Inggris)
+ka:ჭკვიანი ორენოვანი (ჩინური + ინგლისური)
+kr:스마트 이중 언어 (중국어 + 영어)
+ku:Duzimanî ya jîr (Çînî + Îngilîzî)
+kw:Diwyethek smart (Chinek + Sowsnek)
+lt:Išmanus dvikalbis (kinų + anglų)
+lv:Vieds divvalodu (ķīniešu + angļu)
+mk:Паметен двојазичен (кинески + англиски)
+ml:സ്മാർട്ട് ദ്വിഭാഷ (ചൈനീസ് + ഇംഗ്ലീഷ്)
+mm:စမတ် နှစ်ဘာသာ (တရုတ် + အင်္ဂလိပ်)
+my:Dwibahasa pintar (Cina + Inggeris)
+ne:स्मार्ट द्विभाषी (चिनियाँ + अंग्रेजी)
+nl:Slim tweetalig (Chinees + Engels)
+nn:Smart tospråkleg (kinesisk + engelsk)
+no:Smart tospråklig (kinesisk + engelsk)
+pa:ਸਮਾਰਟ ਦੋਭਾਸ਼ੀ (ਚੀਨੀ + ਅੰਗਰੇਜ਼ੀ)
+pl:Inteligentny dwujęzyczny (chiński + angielski)
+pt:Bilingue inteligente (chinês + inglês)
+ro:Bilingv inteligent (chineză + engleză)
+ru:Умный двуязычный (китайский + английский)
+sat:Smart bilingual (Chinese + English)
+si:ස්මාර්ට් ද්විභාෂා (චීන + ඉංග්‍රීසි)
+sk:Inteligentný dvojjazyčný (čínština + angličtina)
+sl:Pametno dvojezično (kitajščina + angleščina)
+sn:Smart bilingual (Chinese + English)
+sp-rs:Pametni dvojezični (kineski + engleski)
+sq:Dygjuhësh inteligjent (kinezisht + anglisht)
+sr-rs:Паметни двојезични (кинески + енглески)
+sv:Smart tvåspråkig (kinesiska + engelska)
+ta:ஸ்மார்ட் இருமொழி (சீனம் + ஆங்கிலம்)
+th:สองภาษาอัจฉริยะ (จีน + อังกฤษ)
+tl:Matalinong bilingguwal (Tsino + Ingles)
+tr:Akıllı iki dilli (Çince + İngilizce)
+tw:智慧雙語（中文 + 英文）
+uk:Розумний двомовний (китайська + англійська)
+uz:Aqlli ikki tilli (xitoy + ingliz)
+vn:Song ngữ thông minh (Trung + Anh)
+:Smart bilingual settings...
+af:Slim tweetalig instellings
+am:Խելացի երկլեզու կարգավորում
+ar:إعدادات ثنائي اللغة الذكي
+az:Ağıllı ikidilli parametrlər
+bg:Настройки на интелигентен двуезичен
+bn:স্মার্ট দ্বিভাষিক সেটিংস
+br:Configurações bilíngues inteligentes
+bs:Pametne dvojezične postavke
+by:Налады разумнага двухмоўнага
+ca:Configuració bilingüe intel·ligent
+ca-xv:Configuració bilingüe intel·ligent
+cn:智能双语设置...
+co:Smart bilingual settings...
+cy:Smart bilingual settings...
+cz:Smart bilingual settings...
+de:Intelligente Zweisprachigkeit – Einstellungen
+dk:Smart bilingual settings...
+el:Smart bilingual settings...
+es:Configuración bilingüe inteligente
+et:Smart bilingual settings...
+eu:Smart bilingual settings...
+fa:Smart bilingual settings...
+fi:Smart bilingual settings...
+fo:Smart bilingual settings...
+fr:Paramètres bilingue intelligent
+fy-nl:Smart bilingual settings...
+ga:Smart bilingual settings...
+gl:Smart bilingual settings...
+he:Smart bilingual settings...
+hi:Smart bilingual settings...
+hr:Smart bilingual settings...
+hu:Smart bilingual settings...
+id:Smart bilingual settings...
+it:Smart bilingual settings...
+ja:スマートバイリンガル設定
+jv:Smart bilingual settings...
+ka:Smart bilingual settings...
+kr:스마트 이중 언어 설정
+ku:Smart bilingual settings...
+kw:Smart bilingual settings...
+lt:Smart bilingual settings...
+lv:Smart bilingual settings...
+mk:Smart bilingual settings...
+ml:Smart bilingual settings...
+mm:Smart bilingual settings...
+my:Smart bilingual settings...
+ne:Smart bilingual settings...
+nl:Smart bilingual settings...
+nn:Smart bilingual settings...
+no:Smart bilingual settings...
+pa:Smart bilingual settings...
+pl:Smart bilingual settings...
+pt:Smart bilingual settings...
+ro:Smart bilingual settings...
+ru:Настройки умного двуязычного режима
+sat:Smart bilingual settings...
+si:Smart bilingual settings...
+sk:Smart bilingual settings...
+sl:Smart bilingual settings...
+sn:Smart bilingual settings...
+sp-rs:Smart bilingual settings...
+sq:Smart bilingual settings...
+sr-rs:Smart bilingual settings...
+sv:Smart bilingual settings...
+ta:Smart bilingual settings...
+th:Smart bilingual settings...
+tl:Smart bilingual settings...
+tr:Smart bilingual settings...
+tw:智慧雙語設定
+uk:Smart bilingual settings...
+uz:Smart bilingual settings...
+vn:Smart bilingual settings...
 :Read Aloud
 af:Lees hardop
 am:Բարձրաձայն կարդալ
@@ -30420,3 +30785,514 @@ tw:最快 (2.0×)
 uk:Максимальна (2.0×)
 uz:Eng tez (2.0×)
 vn:Nhanh nhất (2.0×)
+:Online voices
+af:Aanlyn stemme
+am:Առցանց ձայներ
+ar:أصوات عبر الإنترنت
+az:Onlayn səslər
+bg:Онлайн гласове
+bn:অনলাইন কণ্ঠ
+br:Vozes online
+bs:Online glasovi
+by:Анлайн-галасы
+ca:Veus en línia
+ca-xv:Veus en línia
+cn:在线语音
+co:Voce in linea
+cy:Lleisiau ar-lein
+cz:Online hlasy
+de:Online-Stimmen
+dk:Onlinestemmer
+el:Φωνές στο διαδίκτυο
+es:Voces en línea
+et:Veebihääled
+eu:Lineako ahotsak
+fa:صداهای آنلاین
+fi:Verkkoäänet
+fo:Røddir á netinum
+fr:Voix en ligne
+fy-nl:Online stimmen
+ga:Guthanna ar líne
+gl:Voces en liña
+he:קולות מקוונים
+hi:ऑनलाइन आवाज़ें
+hr:Online glasovi
+hu:Online hangok
+id:Suara online
+it:Voci online
+ja:オンライン音声
+jv:Swara online
+ka:ონლაინ ხმები
+kr:온라인 음성
+ku:Dengên serhêl
+kw:Levow warlinen
+lt:Internetiniai balsai
+lv:Tiešsaistes balsis
+mk:Онлајн гласови
+ml:ഓൺലൈൻ ശബ്ദങ്ങൾ
+mm:အွန်လိုင်း အသံများ
+my:Suara dalam talian
+ne:अनलाइन आवाजहरू
+nl:Online stemmen
+nn:Nettstemmer
+no:Nettstemmer
+pa:ਆਨਲਾਈਨ ਆਵਾਜ਼ਾਂ
+pl:Głosy online
+pt:Vozes online
+ro:Voci online
+ru:Онлайн-голоса
+sat:Online voices
+si:මාර්ගගත හඬ
+sk:Online hlasy
+sl:Spletni glasovi
+sn:Online voices
+sp-rs:Online glasovi
+sq:Zëra online
+sr-rs:Онлајн гласови
+sv:Onlineröster
+ta:ஆன்லைன் குரல்கள்
+th:เสียงออนไลน์
+tl:Mga online na boses
+tr:Çevrimiçi sesler
+tw:線上語音
+uk:Онлайн-голоси
+uz:Onlayn ovozlar
+vn:Giọng trực tuyến
+:Online multilingual voices
+af:Aanlyn veeltalige stemme
+am:Առցանց բազմալեզու ձայներ
+ar:أصوات متعددة اللغات عبر الإنترنت
+az:Onlayn çoxdilli səslər
+bg:Онлайн многоезични гласове
+bn:অনলাইন বহুভাষিক কণ্ঠ
+br:Vozes multilíngues online
+bs:Online višejezični glasovi
+by:Анлайн шматмоўныя галасы
+ca:Veus multilingües en línia
+ca-xv:Veus multilingües en línia
+cn:在线多语言语音
+co:Voce multilingue in linea
+cy:Lleisiau amlieithog ar-lein
+cz:Online vícejazyčné hlasy
+de:Mehrsprachige Online-Stimmen
+dk:Flersprogede onlinestemmer
+el:Πολύγλωσσες φωνές στο διαδίκτυο
+es:Voces multilingües en línea
+et:Mitmekeelsed veebihääled
+eu:Lineako ahots eleaniztunak
+fa:صداهای چندزبانه آنلاین
+fi:Monikieliset verkkoäänet
+fo:Fleirmæltar røddir á netinum
+fr:Voix multilingues en ligne
+fy-nl:Online meartalige stimmen
+ga:Guthanna ilteangacha ar líne
+gl:Voces multilingües en liña
+he:קולות רב-לשוניים מקוונים
+hi:ऑनलाइन बहुभाषी आवाज़ें
+hr:Online višejezični glasovi
+hu:Online többnyelvű hangok
+id:Suara multibahasa online
+it:Voci multilingue online
+ja:オンライン多言語音声
+jv:Swara multibasa online
+ka:ონლაინ მრავალენოვანი ხმები
+kr:온라인 다국어 음성
+ku:Dengên pirzimanî yên serhêl
+kw:Levow lieskyethek warlinen
+lt:Daugiakalbiai internetiniai balsai
+lv:Daudzvalodu tiešsaistes balsis
+mk:Онлајн повеќејазични гласови
+ml:ഓൺലൈൻ ബഹുഭാഷാ ശബ്ദങ്ങൾ
+mm:အွန်လိုင်း ဘာသာစုံ အသံများ
+my:Suara pelbagai bahasa dalam talian
+ne:अनलाइन बहुभाषी आवाजहरू
+nl:Online meertalige stemmen
+nn:Fleirspråklege nettstemmer
+no:Flerspråklige nettstemmer
+pa:ਆਨਲਾਈਨ ਬਹੁ-ਭਾਸ਼ਾਈ ਆਵਾਜ਼ਾਂ
+pl:Wielojęzyczne głosy online
+pt:Vozes multilingues online
+ro:Voci multilingve online
+ru:Многоязычные онлайн-голоса
+sat:Online multilingual voices
+si:මාර්ගගත බහුභාෂා හඬ
+sk:Online viacjazyčné hlasy
+sl:Večjezični spletni glasovi
+sn:Online multilingual voices
+sp-rs:Online višejezični glasovi
+sq:Zëra shumëgjuhësh online
+sr-rs:Онлајн вишејезични гласови
+sv:Flerspråkiga onlineröster
+ta:ஆன்லைன் பன்மொழி குரல்கள்
+th:เสียงหลายภาษาออนไลน์
+tl:Mga online na multilingguwal na boses
+tr:Çevrimiçi çok dilli sesler
+tw:線上多語言語音
+uk:Багатомовні онлайн-голоси
+uz:Onlayn ko'p tilli ovozlar
+vn:Giọng đa ngôn ngữ trực tuyến
+:Local smart bilingual (Chinese + English)
+af:Slim tweetalig (Chinees + Engels)
+am:Խելացի երկլեզու (չինարեն + անգլերեն)
+ar:ثنائي اللغة الذكي (صيني + إنجليزي)
+az:Ağıllı ikidilli (Çin + İngilis)
+bg:Интелигентен двуезичен (китайски + английски)
+bn:স্মার্ট দ্বিভাষিক (চীনা + ইংরেজি)
+br:Bilíngue inteligente (chinês + inglês)
+bs:Pametni dvojezični (kineski + engleski)
+by:Разумны двухмоўны (кітайская + англійская)
+ca:Bilingüe intel·ligent (xinès + anglès)
+ca-xv:Bilingüe intel·ligent (xinès + anglès)
+cn:本地智能双语（中文 + 英文）
+co:Bilingue intelligente (cinese + inglese)
+cy:Dwyieithog clyfar (Tsieinëeg + Saesneg)
+cz:Chytrý dvojjazyčný (čínština + angličtina)
+de:Lokal intelligent zweisprachig (Chinesisch + Englisch)
+dk:Smart tosproget (kinesisk + engelsk)
+el:Έξυπνο δίγλωσσο (Κινεζικά + Αγγλικά)
+es:Bilingüe inteligente local (chino + inglés)
+et:Nutikas kakskeelne (hiina + inglise)
+eu:Elebidun adimentsua (txinera + ingelesa)
+fa:دوزبانه هوشمند (چینی + انگلیسی)
+fi:Älykäs kaksikielinen (kiina + englanti)
+fo:Snildur tvímæltur (kinesiskt + enskt)
+fr:Bilingue intelligent local (chinois + anglais)
+fy-nl:Tûk twatalich (Sineesk + Ingelsk)
+ga:Dátheangach cliste (Sínis + Béarla)
+gl:Bilingüe intelixente (chinés + inglés)
+he:דו-לשוני חכם (סינית + אנגלית)
+hi:स्मार्ट द्विभाषी (चीनी + अंग्रेज़ी)
+hr:Pametni dvojezični (kineski + engleski)
+hu:Intelligens kétnyelvű (kínai + angol)
+id:Dwibahasa cerdas (Mandarin + Inggris)
+it:Bilingue intelligente (cinese + inglese)
+ja:ローカルスマートバイリンガル（中国語 + 英語）
+jv:Dwibasa pinter (Cina + Inggris)
+ka:ჭკვიანი ორენოვანი (ჩინური + ინგლისური)
+kr:로컬 스마트 이중 언어 (중국어 + 영어)
+ku:Duzimanî ya jîr (Çînî + Îngilîzî)
+kw:Diwyethek smart (Chinek + Sowsnek)
+lt:Išmanus dvikalbis (kinų + anglų)
+lv:Vieds divvalodu (ķīniešu + angļu)
+mk:Паметен двојазичен (кинески + англиски)
+ml:സ്മാർട്ട് ദ്വിഭാഷ (ചൈനീസ് + ഇംഗ്ലീഷ്)
+mm:စမတ် နှစ်ဘာသာ (တရုတ် + အင်္ဂလိပ်)
+my:Dwibahasa pintar (Cina + Inggeris)
+ne:स्मार्ट द्विभाषी (चिनियाँ + अंग्रेजी)
+nl:Slim tweetalig (Chinees + Engels)
+nn:Smart tospråkleg (kinesisk + engelsk)
+no:Smart tospråklig (kinesisk + engelsk)
+pa:ਸਮਾਰਟ ਦੋਭਾਸ਼ੀ (ਚੀਨੀ + ਅੰਗਰੇਜ਼ੀ)
+pl:Inteligentny dwujęzyczny (chiński + angielski)
+pt:Bilingue inteligente (chinês + inglês)
+ro:Bilingv inteligent (chineză + engleză)
+ru:Локальный умный двуязычный (китайский + английский)
+sat:Local smart bilingual (Chinese + English)
+si:ස්මාර්ට් ද්විභාෂා (චීන + ඉංග්‍රීසි)
+sk:Inteligentný dvojjazyčný (čínština + angličtina)
+sl:Pametno dvojezično (kitajščina + angleščina)
+sn:Local smart bilingual (Chinese + English)
+sp-rs:Pametni dvojezični (kineski + engleski)
+sq:Dygjuhësh inteligjent (kinezisht + anglisht)
+sr-rs:Паметни двојезични (кинески + енглески)
+sv:Smart tvåspråkig (kinesiska + engelska)
+ta:ஸ்மார்ட் இருமொழி (சீனம் + ஆங்கிலம்)
+th:สองภาษาอัจฉริยะ (จีน + อังกฤษ)
+tl:Matalinong bilingguwal (Tsino + Ingles)
+tr:Akıllı iki dilli (Çince + İngilizce)
+tw:本地智慧雙語（中文 + 英文）
+uk:Розумний двомовний (китайська + англійська)
+uz:Aqlli ikki tilli (xitoy + ingliz)
+vn:Song ngữ thông minh (Trung + Anh)
+:Local smart bilingual settings...
+af:Slim tweetalig instellings
+am:Խելացի երկլեզու կարգավորում
+ar:إعدادات ثنائي اللغة الذكي
+az:Ağıllı ikidilli parametrlər
+bg:Настройки на интелигентен двуезичен
+bn:স্মার্ট দ্বিভাষিক সেটিংস
+br:Configurações bilíngues inteligentes
+bs:Pametne dvojezične postavke
+by:Налады разумнага двухмоўнага
+ca:Configuració bilingüe intel·ligent
+ca-xv:Configuració bilingüe intel·ligent
+cn:本地智能双语设置...
+co:Local smart bilingual settings...
+cy:Local smart bilingual settings...
+cz:Local smart bilingual settings...
+de:Lokale intelligente Zweisprachigkeit – Einstellungen
+dk:Local smart bilingual settings...
+el:Local smart bilingual settings...
+es:Configuración bilingüe inteligente local
+et:Local smart bilingual settings...
+eu:Local smart bilingual settings...
+fa:Local smart bilingual settings...
+fi:Local smart bilingual settings...
+fo:Local smart bilingual settings...
+fr:Paramètres bilingue intelligent local
+fy-nl:Local smart bilingual settings...
+ga:Local smart bilingual settings...
+gl:Local smart bilingual settings...
+he:Local smart bilingual settings...
+hi:Local smart bilingual settings...
+hr:Local smart bilingual settings...
+hu:Local smart bilingual settings...
+id:Local smart bilingual settings...
+it:Local smart bilingual settings...
+ja:ローカルスマートバイリンガル設定
+jv:Local smart bilingual settings...
+ka:Local smart bilingual settings...
+kr:로컬 스마트 이중 언어 설정
+ku:Local smart bilingual settings...
+kw:Local smart bilingual settings...
+lt:Local smart bilingual settings...
+lv:Local smart bilingual settings...
+mk:Local smart bilingual settings...
+ml:Local smart bilingual settings...
+mm:Local smart bilingual settings...
+my:Local smart bilingual settings...
+ne:Local smart bilingual settings...
+nl:Local smart bilingual settings...
+nn:Local smart bilingual settings...
+no:Local smart bilingual settings...
+pa:Local smart bilingual settings...
+pl:Local smart bilingual settings...
+pt:Local smart bilingual settings...
+ro:Local smart bilingual settings...
+ru:Настройки локального умного двуязычного режима
+sat:Local smart bilingual settings...
+si:Local smart bilingual settings...
+sk:Local smart bilingual settings...
+sl:Local smart bilingual settings...
+sn:Local smart bilingual settings...
+sp-rs:Local smart bilingual settings...
+sq:Local smart bilingual settings...
+sr-rs:Local smart bilingual settings...
+sv:Local smart bilingual settings...
+ta:Local smart bilingual settings...
+th:Local smart bilingual settings...
+tl:Local smart bilingual settings...
+tr:Local smart bilingual settings...
+tw:本地智慧雙語設定
+uk:Local smart bilingual settings...
+uz:Local smart bilingual settings...
+vn:Local smart bilingual settings...
+:Chinese voice
+af:Chinese stem
+am:Չինական ձայ
+ar:صوت صيني
+az:Çin səsi
+bg:Китайски глас
+bn:চীনা কণ্ঠ
+br:Voz chinesa
+bs:Kineski glas
+by:Кітайскі голас
+ca:Veu xinesa
+ca-xv:Veu xinesa
+cn:中文语音
+co:Chinese voice
+cy:Chinese voice
+cz:Chinese voice
+de:Chinesische Stimme
+dk:Chinese voice
+el:Chinese voice
+es:Voz china
+et:Chinese voice
+eu:Chinese voice
+fa:Chinese voice
+fi:Chinese voice
+fo:Chinese voice
+fr:Voix chinoise
+fy-nl:Chinese voice
+ga:Chinese voice
+gl:Chinese voice
+he:Chinese voice
+hi:Chinese voice
+hr:Chinese voice
+hu:Chinese voice
+id:Chinese voice
+it:Chinese voice
+ja:中国語音声
+jv:Chinese voice
+ka:Chinese voice
+kr:중국어 음성
+ku:Chinese voice
+kw:Chinese voice
+lt:Chinese voice
+lv:Chinese voice
+mk:Chinese voice
+ml:Chinese voice
+mm:Chinese voice
+my:Chinese voice
+ne:Chinese voice
+nl:Chinese voice
+nn:Chinese voice
+no:Chinese voice
+pa:Chinese voice
+pl:Chinese voice
+pt:Chinese voice
+ro:Chinese voice
+ru:Китайский голос
+sat:Chinese voice
+si:Chinese voice
+sk:Chinese voice
+sl:Chinese voice
+sn:Chinese voice
+sp-rs:Chinese voice
+sq:Chinese voice
+sr-rs:Chinese voice
+sv:Chinese voice
+ta:Chinese voice
+th:Chinese voice
+tl:Chinese voice
+tr:Chinese voice
+tw:中文語音
+uk:Chinese voice
+uz:Chinese voice
+vn:Chinese voice
+:English voice
+af:Engelse stem
+am:Անգլերեն ձայ
+ar:صوت إنجليزي
+az:İngilis səsi
+bg:Английски глас
+bn:ইংরেজি কণ্ঠ
+br:Voz inglesa
+bs:Engleski glas
+by:Англійскі голас
+ca:Veu anglesa
+ca-xv:Veu anglesa
+cn:英文语音
+co:English voice
+cy:English voice
+cz:English voice
+de:Englische Stimme
+dk:English voice
+el:English voice
+es:Voz inglesa
+et:English voice
+eu:English voice
+fa:English voice
+fi:English voice
+fo:English voice
+fr:Voix anglaise
+fy-nl:English voice
+ga:English voice
+gl:English voice
+he:English voice
+hi:English voice
+hr:English voice
+hu:English voice
+id:English voice
+it:English voice
+ja:英語音声
+jv:English voice
+ka:English voice
+kr:영어 음성
+ku:English voice
+kw:English voice
+lt:English voice
+lv:English voice
+mk:English voice
+ml:English voice
+mm:English voice
+my:English voice
+ne:English voice
+nl:English voice
+nn:English voice
+no:English voice
+pa:English voice
+pl:English voice
+pt:English voice
+ro:English voice
+ru:Английский голос
+sat:English voice
+si:English voice
+sk:English voice
+sl:English voice
+sn:English voice
+sp-rs:English voice
+sq:English voice
+sr-rs:English voice
+sv:English voice
+ta:English voice
+th:English voice
+tl:English voice
+tr:English voice
+tw:英文語音
+uk:English voice
+uz:English voice
+vn:English voice
+:Local smart bilingual settings
+af:Slim tweetalig instellings
+am:Խելացի երկլեզու կարգավորում
+ar:إعدادات ثنائي اللغة الذكي
+az:Ağıllı ikidilli parametrlər
+bg:Настройки на интелигентен двуезичен
+bn:স্মার্ট দ্বিভাষিক সেটিংস
+br:Configurações bilíngues inteligentes
+bs:Pametne dvojezične postavke
+by:Налады разумнага двухмоўнага
+ca:Configuració bilingüe intel·ligent
+ca-xv:Configuració bilingüe intel·ligent
+cn:本地智能双语设置
+co:Local smart bilingual settings
+cy:Local smart bilingual settings
+cz:Local smart bilingual settings
+de:Lokale intelligente Zweisprachigkeit – Einstellungen
+dk:Local smart bilingual settings
+el:Local smart bilingual settings
+es:Configuración bilingüe inteligente local
+et:Local smart bilingual settings
+eu:Local smart bilingual settings
+fa:Local smart bilingual settings
+fi:Local smart bilingual settings
+fo:Local smart bilingual settings
+fr:Paramètres bilingue intelligent local
+fy-nl:Local smart bilingual settings
+ga:Local smart bilingual settings
+gl:Local smart bilingual settings
+he:Local smart bilingual settings
+hi:Local smart bilingual settings
+hr:Local smart bilingual settings
+hu:Local smart bilingual settings
+id:Local smart bilingual settings
+it:Local smart bilingual settings
+ja:ローカルスマートバイリンガル設定
+jv:Local smart bilingual settings
+ka:Local smart bilingual settings
+kr:로컬 스마트 이중 언어 설정
+ku:Local smart bilingual settings
+kw:Local smart bilingual settings
+lt:Local smart bilingual settings
+lv:Local smart bilingual settings
+mk:Local smart bilingual settings
+ml:Local smart bilingual settings
+mm:Local smart bilingual settings
+my:Local smart bilingual settings
+ne:Local smart bilingual settings
+nl:Local smart bilingual settings
+nn:Local smart bilingual settings
+no:Local smart bilingual settings
+pa:Local smart bilingual settings
+pl:Local smart bilingual settings
+pt:Local smart bilingual settings
+ro:Local smart bilingual settings
+ru:Настройки локального умного двуязычного режима
+sat:Local smart bilingual settings
+si:Local smart bilingual settings
+sk:Local smart bilingual settings
+sl:Local smart bilingual settings
+sn:Local smart bilingual settings
+sp-rs:Local smart bilingual settings
+sq:Local smart bilingual settings
+sr-rs:Local smart bilingual settings
+sv:Local smart bilingual settings
+ta:Local smart bilingual settings
+th:Local smart bilingual settings
+tl:Local smart bilingual settings
+tr:Local smart bilingual settings
+tw:本地智慧雙語設定
+uk:Local smart bilingual settings
+uz:Local smart bilingual settings
+vn:Local smart bilingual settings

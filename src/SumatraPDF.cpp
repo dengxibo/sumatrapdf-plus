@@ -9568,6 +9568,525 @@ static void ReadAloudShowNotif(WindowTab* tab, const char* msg);
 
 static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg);
 static void ReadAloudSaveVoicePref(const char* voiceId);
+static void ReadAloudRestartSpeakingFromCurrentPosition(WindowTab* tab);
+static TempStr TtsLangIdToLocaleNameTemp(const char* lang);
+
+// voices are grouped by how they sound and whether they need internet:
+// local natural (best, offline), local legacy (robotic SAPI "Desktop" voices),
+// online and online multilingual (both need internet)
+enum class TtsVoiceGroup {
+    LocalNatural,
+    LocalLegacy,
+    Online,
+    OnlineMultilingual,
+};
+
+static TtsVoiceGroup GetTtsVoiceGroup(const char* name) {
+    if (str::ContainsI(name, "Multilingual")) {
+        return TtsVoiceGroup::OnlineMultilingual;
+    }
+    if (str::ContainsI(name, "Online")) {
+        return TtsVoiceGroup::Online;
+    }
+    if (str::ContainsI(name, "Natural")) {
+        return TtsVoiceGroup::LocalNatural;
+    }
+    return TtsVoiceGroup::LocalLegacy;
+}
+
+//--- smart bilingual mode: pick a local Chinese or English voice per chunk
+
+static bool IsSmartBilingualVoicePref() {
+    return gGlobalPrefs && str::Eq(gGlobalPrefs->readAloudVoiceId, kTtsSmartBilingualVoiceId);
+}
+
+static char* gSmartBilingualZhVoiceId = nullptr;
+static char* gSmartBilingualEnVoiceId = nullptr;
+static bool gSmartBilingualResolveAttempted = false;
+
+static void InvalidateSmartBilingualVoiceCache() {
+    str::FreePtr(&gSmartBilingualZhVoiceId);
+    str::FreePtr(&gSmartBilingualEnVoiceId);
+    gSmartBilingualResolveAttempted = false;
+}
+
+static bool IsLocalTtsVoice(const TtsVoiceInfo& voice) {
+    TtsVoiceGroup group = GetTtsVoiceGroup(voice.name);
+    return group == TtsVoiceGroup::LocalNatural || group == TtsVoiceGroup::LocalLegacy;
+}
+
+static bool VoiceLangStartsWith(const TtsVoiceInfo& voice, const char* prefix) {
+    TempStr locale = TtsLangIdToLocaleNameTemp(voice.lang);
+    return str::StartsWithI(locale, prefix);
+}
+
+// loads zh/en voice ids from settings; returns true if at least one is configured
+static bool ResolveSmartBilingualVoices() {
+    if (gSmartBilingualResolveAttempted) {
+        return gSmartBilingualZhVoiceId || gSmartBilingualEnVoiceId;
+    }
+    gSmartBilingualResolveAttempted = true;
+
+    if (gGlobalPrefs) {
+        if (!str::IsEmpty(gGlobalPrefs->readAloudSmartVoiceZh)) {
+            gSmartBilingualZhVoiceId = str::Dup(gGlobalPrefs->readAloudSmartVoiceZh);
+        }
+        if (!str::IsEmpty(gGlobalPrefs->readAloudSmartVoiceEn)) {
+            gSmartBilingualEnVoiceId = str::Dup(gGlobalPrefs->readAloudSmartVoiceEn);
+        }
+    }
+
+    return gSmartBilingualZhVoiceId || gSmartBilingualEnVoiceId;
+}
+
+static bool TtsSmartBilingualAvailable() {
+    Vec<TtsVoiceInfo> voices = TtsGetVoices();
+    bool haveZh = false;
+    bool haveEn = false;
+    for (TtsVoiceInfo& voice : voices) {
+        if (!IsLocalTtsVoice(voice)) {
+            continue;
+        }
+        if (VoiceLangStartsWith(voice, "zh")) {
+            haveZh = true;
+        } else if (VoiceLangStartsWith(voice, "en")) {
+            haveEn = true;
+        }
+    }
+    TtsFreeVoices(voices);
+    return haveZh || haveEn;
+}
+
+// fills empty zh/en prefs with the first local voice for each language
+static void AutoFillSmartBilingualVoicePrefsIfEmpty() {
+    if (!gGlobalPrefs) {
+        return;
+    }
+
+    bool needZh = str::IsEmpty(gGlobalPrefs->readAloudSmartVoiceZh);
+    bool needEn = str::IsEmpty(gGlobalPrefs->readAloudSmartVoiceEn);
+    if (!needZh && !needEn) {
+        return;
+    }
+
+    Vec<TtsVoiceInfo> voices = TtsGetVoices();
+    for (TtsVoiceInfo& voice : voices) {
+        if (!IsLocalTtsVoice(voice)) {
+            continue;
+        }
+        if (needZh && VoiceLangStartsWith(voice, "zh")) {
+            str::ReplaceWithCopy(&gGlobalPrefs->readAloudSmartVoiceZh, voice.id);
+            needZh = false;
+        } else if (needEn && VoiceLangStartsWith(voice, "en")) {
+            str::ReplaceWithCopy(&gGlobalPrefs->readAloudSmartVoiceEn, voice.id);
+            needEn = false;
+        }
+        if (!needZh && !needEn) {
+            break;
+        }
+    }
+    TtsFreeVoices(voices);
+}
+
+static void ReadAloudSaveSmartBilingualVoice(bool isZh, const char* voiceId) {
+    if (!gGlobalPrefs || str::IsEmpty(voiceId)) {
+        return;
+    }
+
+    char** pref = isZh ? &gGlobalPrefs->readAloudSmartVoiceZh : &gGlobalPrefs->readAloudSmartVoiceEn;
+    if (str::Eq(*pref, voiceId)) {
+        return;
+    }
+
+    str::ReplaceWithCopy(pref, voiceId);
+    InvalidateSmartBilingualVoiceCache();
+    SaveSettings();
+
+    if (IsSmartBilingualVoicePref()) {
+        ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
+    }
+}
+
+struct Dialog_ReadAloudSmartVoices_Data {
+    Vec<char*> ownedVoiceIds;
+};
+
+static void FreeReadAloudSmartVoiceComboIds(Dialog_ReadAloudSmartVoices_Data* data) {
+    if (!data) {
+        return;
+    }
+    for (char* id : data->ownedVoiceIds) {
+        str::Free(id);
+    }
+    data->ownedVoiceIds.Reset();
+}
+
+static void FillReadAloudSmartVoiceCombo(HWND combo, Vec<TtsVoiceInfo>& voices, const char* langPrefix,
+                                         const char* selectedId, Dialog_ReadAloudSmartVoices_Data* data) {
+    if (!combo) {
+        return;
+    }
+    SendMessageW(combo, CB_RESETCONTENT, 0, 0);
+
+    int maxDropWidth = 0;
+    HDC hdc = GetDC(combo);
+    HFONT hFont = (HFONT)SendMessageW(combo, WM_GETFONT, 0, 0);
+    HFONT hOld = hFont && hdc ? (HFONT)SelectObject(hdc, hFont) : nullptr;
+
+    for (TtsVoiceInfo& voice : voices) {
+        if (!IsLocalTtsVoice(voice)) {
+            continue;
+        }
+        if (!VoiceLangStartsWith(voice, langPrefix)) {
+            continue;
+        }
+
+        TempStr detail = str::FormatTemp("%s - %s", voice.name, TtsLangIdToLocaleNameTemp(voice.lang));
+        int idx = (int)SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)ToWStrTemp(detail));
+        if (idx < 0) {
+            continue;
+        }
+
+        if (hdc) {
+            WCHAR* wdetail = ToWStrTemp(detail);
+            SIZE sz{};
+            GetTextExtentPoint32W(hdc, wdetail, (int)str::Len(wdetail), &sz);
+            if ((int)sz.cx + DpiScale(combo, 24) > maxDropWidth) {
+                maxDropWidth = (int)sz.cx + DpiScale(combo, 24);
+            }
+        }
+
+        char* id = str::Dup(voice.id);
+        data->ownedVoiceIds.Append(id);
+        SendMessageW(combo, CB_SETITEMDATA, idx, (LPARAM)id);
+        if (str::Eq(voice.id, selectedId)) {
+            SendMessageW(combo, CB_SETCURSEL, idx, 0);
+        }
+    }
+
+    if (hOld && hdc) {
+        SelectObject(hdc, hOld);
+    }
+    if (hdc) {
+        ReleaseDC(combo, hdc);
+    }
+
+    if (maxDropWidth > 0) {
+        SendMessageW(combo, CB_SETDROPPEDWIDTH, maxDropWidth, 0);
+    }
+}
+
+static const char* ReadAloudSmartVoiceIdFromCombo(HWND combo) {
+    if (!combo) {
+        return nullptr;
+    }
+    int idx = (int)SendMessageW(combo, CB_GETCURSEL, 0, 0);
+    if (idx < 0) {
+        return nullptr;
+    }
+    return (const char*)SendMessageW(combo, CB_GETITEMDATA, idx, 0);
+}
+
+// Center the label+combo rows in the dialog; keep OK/Cancel right-aligned from the RC.
+static void LayoutReadAloudSmartVoiceRows(HWND hDlg) {
+    HWND hwndLabels[2] = {GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH_LABEL),
+                          GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN_LABEL)};
+    HWND hwndCombos[2] = {GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH), GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN)};
+    if (!hwndLabels[0] || !hwndLabels[1] || !hwndCombos[0] || !hwndCombos[1]) {
+        return;
+    }
+
+    RECT rcClient{};
+    GetClientRect(hDlg, &rcClient);
+    int clientW = rcClient.right - rcClient.left;
+
+    int labelW = 0;
+    HDC hdc = GetDC(hDlg);
+    HFONT hFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
+    HFONT hOld = hFont && hdc ? (HFONT)SelectObject(hdc, hFont) : nullptr;
+    for (HWND hwndLabel : hwndLabels) {
+        TempWStr text = HwndGetTextWTemp(hwndLabel);
+        if (!text || !hdc) {
+            continue;
+        }
+        SIZE sz{};
+        GetTextExtentPoint32W(hdc, text, (int)str::Len(text), &sz);
+        if ((int)sz.cx > labelW) {
+            labelW = (int)sz.cx;
+        }
+    }
+    if (hOld && hdc) {
+        SelectObject(hdc, hOld);
+    }
+    if (hdc) {
+        ReleaseDC(hDlg, hdc);
+    }
+
+    labelW += DpiScale(hDlg, 4);
+    int gap = DpiScale(hDlg, 6);
+
+    RECT rcCombo{};
+    GetWindowRect(hwndCombos[0], &rcCombo);
+    MapWindowPoints(nullptr, hDlg, (POINT*)&rcCombo, 2);
+    int comboW = rcCombo.right - rcCombo.left;
+
+    int blockW = labelW + gap + comboW;
+    int left = (clientW - blockW) / 2;
+    int minMargin = DpiScale(hDlg, 8);
+    if (left < minMargin) {
+        left = minMargin;
+    }
+
+    for (int i = 0; i < 2; i++) {
+        RECT rcC{};
+        GetWindowRect(hwndCombos[i], &rcC);
+        MapWindowPoints(nullptr, hDlg, (POINT*)&rcC, 2);
+
+        // Align label to the closed combo field (not the dropdown list height).
+        int comboY = rcC.top;
+        int comboH = rcC.bottom - rcC.top;
+        COMBOBOXINFO cbi{};
+        cbi.cbSize = sizeof(cbi);
+        if (GetComboBoxInfo(hwndCombos[i], &cbi)) {
+            RECT rcItem = cbi.rcItem;
+            MapWindowPoints(hwndCombos[i], hDlg, (POINT*)&rcItem, 2);
+            comboY = rcItem.top;
+            comboH = rcItem.bottom - rcItem.top;
+        }
+
+        // Same top/height as the combo, with SS_CENTERIMAGE so text sits on the midline.
+        LONG_PTR style = GetWindowLongPtr(hwndLabels[i], GWL_STYLE);
+        SetWindowLongPtr(hwndLabels[i], GWL_STYLE, style | SS_RIGHT | SS_CENTERIMAGE);
+        SetWindowPos(hwndLabels[i], nullptr, left, comboY, labelW, comboH, SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(hwndCombos[i], nullptr, left + labelW + gap, rcC.top, comboW, rcC.bottom - rcC.top,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+}
+
+static INT_PTR CALLBACK Dialog_ReadAloudSmartVoices_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
+    Dialog_ReadAloudSmartVoices_Data* data = nullptr;
+
+    switch (msg) {
+        case WM_INITDIALOG:
+            data = (Dialog_ReadAloudSmartVoices_Data*)lp;
+            SetWindowLongPtr(hDlg, GWLP_USERDATA, (LONG_PTR)data);
+            if (UseDarkModeLib()) {
+                DarkMode::setDarkWndSafe(hDlg);
+            }
+
+            HwndSetText(hDlg, _TRA("Local smart bilingual settings"));
+            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SMART_ZH_LABEL, _TRA("Chinese voice"));
+            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SMART_EN_LABEL, _TRA("English voice"));
+            HwndSetDlgItemText(hDlg, IDOK, _TRA("OK"));
+            HwndSetDlgItemText(hDlg, IDCANCEL, _TRA("Cancel"));
+
+            {
+                Vec<TtsVoiceInfo> voices = TtsGetVoices();
+                const char* zhSel = gGlobalPrefs ? gGlobalPrefs->readAloudSmartVoiceZh : nullptr;
+                const char* enSel = gGlobalPrefs ? gGlobalPrefs->readAloudSmartVoiceEn : nullptr;
+                FillReadAloudSmartVoiceCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH), voices, "zh", zhSel, data);
+                FillReadAloudSmartVoiceCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN), voices, "en", enSel, data);
+                TtsFreeVoices(voices);
+            }
+
+            LayoutReadAloudSmartVoiceRows(hDlg);
+            CenterDialog(hDlg);
+            HwndSetFocus(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH));
+            return FALSE;
+
+        case WM_COMMAND:
+            switch (LOWORD(wp)) {
+                case IDOK:
+                    data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
+                    ReadAloudSaveSmartBilingualVoice(
+                        true, ReadAloudSmartVoiceIdFromCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH)));
+                    ReadAloudSaveSmartBilingualVoice(
+                        false, ReadAloudSmartVoiceIdFromCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN)));
+                    EndDialog(hDlg, IDOK);
+                    return TRUE;
+
+                case IDCANCEL:
+                    EndDialog(hDlg, IDCANCEL);
+                    return TRUE;
+            }
+            break;
+    }
+
+    return FALSE;
+}
+
+static void ShowReadAloudSmartVoiceDialog(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+
+    Dialog_ReadAloudSmartVoices_Data data;
+    CreateAppDialogBox(IDD_DIALOG_READ_ALOUD_SMART_VOICES, win->hwndFrame, Dialog_ReadAloudSmartVoices_Proc,
+                       (LPARAM)&data);
+    FreeReadAloudSmartVoiceComboIds(&data);
+}
+
+enum class ReadAloudLang {
+    Unknown,
+    Zh,
+    En,
+};
+
+static const char* ReadAloudSmartVoiceForLang(ReadAloudLang lang) {
+    if (!ResolveSmartBilingualVoices()) {
+        return nullptr;
+    }
+    if (lang == ReadAloudLang::Zh) {
+        return gSmartBilingualZhVoiceId ? gSmartBilingualZhVoiceId : gSmartBilingualEnVoiceId;
+    }
+    if (lang == ReadAloudLang::En) {
+        return gSmartBilingualEnVoiceId ? gSmartBilingualEnVoiceId : gSmartBilingualZhVoiceId;
+    }
+    return gSmartBilingualZhVoiceId ? gSmartBilingualZhVoiceId : gSmartBilingualEnVoiceId;
+}
+
+static bool ReadAloudSmartBilingualHasBothVoices() {
+    return ResolveSmartBilingualVoices() && gSmartBilingualZhVoiceId && gSmartBilingualEnVoiceId;
+}
+
+static bool ReadAloudIsCjkCp(char32_t cp) {
+    // CJK ideographs, radicals, kana, CJK punctuation, fullwidth forms
+    return (cp >= 0x2E80 && cp <= 0x9FFF) || (cp >= 0xF900 && cp <= 0xFAFF) || (cp >= 0xFF00 && cp <= 0xFF60) ||
+           (cp >= 0x3000 && cp <= 0x303F);
+}
+
+static bool ReadAloudIsLatinLetterCp(char32_t cp) {
+    return (cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z') || (cp >= 0xC0 && cp <= 0x24F);
+}
+
+// a short English run inside Chinese text (e.g. "App", "Windows 11") is spoken by
+// the Chinese voice; only switch voices for this many consecutive English words
+static constexpr int kReadAloudMinEnWordsToSwitch = 5;
+
+// counts consecutive latin words starting at p until a CJK char, end of text or cap;
+// returns false via *hitCjk if the run ends because of a CJK char
+static int ReadAloudCountLatinWordsAhead(const char* p, int maxWords, bool* hitCjkOut) {
+    int words = 0;
+    bool inWord = false;
+    bool hitCjk = false;
+    while (*p) {
+        char32_t cp = 0;
+        if (!ReadAloudDecodeUtf8One(p, &cp)) {
+            break;
+        }
+        if (ReadAloudIsCjkCp(cp)) {
+            hitCjk = true;
+            break;
+        }
+        if (ReadAloudIsLatinLetterCp(cp)) {
+            if (!inWord) {
+                inWord = true;
+                words++;
+                if (words > maxWords) {
+                    break;
+                }
+            }
+        } else {
+            inWord = false;
+        }
+    }
+    if (hitCjkOut) {
+        *hitCjkOut = hitCjk;
+    }
+    return words;
+}
+
+// finds where the chunk starting at `start` should end so that it can be spoken by a
+// single voice, and which language that is. respects maxLen (cut at codepoint boundary,
+// preferring a space for latin text)
+static int ReadAloudFindBilingualChunkEnd(const char* text, int start, int maxLen, ReadAloudLang* langOut) {
+    int textLen = str::Leni(text);
+    *langOut = ReadAloudLang::Unknown;
+    if (start >= textLen) {
+        return textLen;
+    }
+
+    ReadAloudLang lang = ReadAloudLang::Unknown;
+    const char* base = text;
+    const char* p = text + start;
+    const char* chunkEnd = nullptr; // set when the language changes
+
+    while (*p) {
+        const char* cpStart = p;
+        if ((int)(cpStart - base) - start >= maxLen) {
+            chunkEnd = cpStart;
+            break;
+        }
+
+        char32_t cp = 0;
+        if (!ReadAloudDecodeUtf8One(p, &cp)) {
+            break;
+        }
+
+        bool isCjk = ReadAloudIsCjkCp(cp);
+        bool isLatin = !isCjk && ReadAloudIsLatinLetterCp(cp);
+        if (!isCjk && !isLatin) {
+            continue; // neutral: digits, spaces, punctuation follow the surrounding language
+        }
+
+        if (lang == ReadAloudLang::Unknown) {
+            lang = isCjk ? ReadAloudLang::Zh : ReadAloudLang::En;
+            continue;
+        }
+
+        if (lang == ReadAloudLang::Zh && isLatin) {
+            // switch only for a long English run; short runs stay with the Chinese voice
+            bool hitCjk = false;
+            int words = ReadAloudCountLatinWordsAhead(cpStart, kReadAloudMinEnWordsToSwitch, &hitCjk);
+            if (words >= kReadAloudMinEnWordsToSwitch) {
+                chunkEnd = cpStart;
+                break;
+            }
+            // absorb the short run: skip past it so we don't re-count for every letter
+            const char* q = cpStart;
+            char32_t cp2 = 0;
+            while (*q) {
+                const char* qPrev = q;
+                if (!ReadAloudDecodeUtf8One(q, &cp2)) {
+                    break;
+                }
+                if (ReadAloudIsCjkCp(cp2)) {
+                    q = qPrev;
+                    break;
+                }
+            }
+            p = q;
+            continue;
+        }
+
+        if (lang == ReadAloudLang::En && isCjk) {
+            chunkEnd = cpStart;
+            break;
+        }
+    }
+
+    int end;
+    if (chunkEnd) {
+        end = (int)(chunkEnd - base);
+    } else {
+        end = textLen;
+    }
+
+    // when cut by maxLen mid-text, prefer to break at a space (helps latin text;
+    // Chinese has no spaces so the codepoint boundary cut above is the best we can do)
+    if (end < textLen && end - start >= maxLen) {
+        int spaceEnd = end;
+        while (spaceEnd > start && text[spaceEnd] != ' ') {
+            spaceEnd--;
+        }
+        if (spaceEnd > start) {
+            end = spaceEnd;
+        }
+    }
+
+    *langOut = lang;
+    return end;
+}
 
 static void ReadAloudRestartSpeakingFromCurrentPosition(WindowTab* tab) {
     if (!tab || !TtsIsSpeaking() || str::IsEmpty(tab->readAloudText)) {
@@ -9591,14 +10110,22 @@ static void ReadAloudSaveVoicePref(const char* voiceId) {
     }
 
     const char* newVoiceId = voiceId ? voiceId : "";
-    if (str::Eq(TtsGetVoiceId(), newVoiceId)) {
-        return;
-    }
-    if (!TtsSetVoiceById(voiceId)) {
+    const char* curPref = gGlobalPrefs->readAloudVoiceId ? gGlobalPrefs->readAloudVoiceId : "";
+    if (str::Eq(curPref, newVoiceId)) {
         return;
     }
 
-    str::ReplaceWithCopy(&gGlobalPrefs->readAloudVoiceId, voiceId ? voiceId : "");
+    if (str::Eq(newVoiceId, kTtsSmartBilingualVoiceId)) {
+        AutoFillSmartBilingualVoicePrefsIfEmpty();
+        InvalidateSmartBilingualVoiceCache();
+        if (!ResolveSmartBilingualVoices()) {
+            return;
+        }
+    } else if (!TtsSetVoiceById(voiceId)) {
+        return;
+    }
+
+    str::ReplaceWithCopy(&gGlobalPrefs->readAloudVoiceId, newVoiceId);
     SaveSettings();
 
     ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
@@ -9792,7 +10319,25 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
         }
     }
 
-    int end = ReadAloudFindChunkEnd(tab->readAloudText, start, kReadAloudMaxChunkLen);
+    int end;
+    if (IsSmartBilingualVoicePref() && ResolveSmartBilingualVoices()) {
+        if (ReadAloudSmartBilingualHasBothVoices()) {
+            ReadAloudLang lang = ReadAloudLang::Unknown;
+            end = ReadAloudFindBilingualChunkEnd(tab->readAloudText, start, kReadAloudMaxChunkLen, &lang);
+            const char* wantVoice = ReadAloudSmartVoiceForLang(lang);
+            if (wantVoice && !str::EqI(TtsGetVoiceId(), wantVoice)) {
+                TtsSetVoiceById(wantVoice);
+            }
+        } else {
+            end = ReadAloudFindChunkEnd(tab->readAloudText, start, kReadAloudMaxChunkLen);
+            const char* wantVoice = ReadAloudSmartVoiceForLang(ReadAloudLang::Unknown);
+            if (wantVoice && !str::EqI(TtsGetVoiceId(), wantVoice)) {
+                TtsSetVoiceById(wantVoice);
+            }
+        }
+    } else {
+        end = ReadAloudFindChunkEnd(tab->readAloudText, start, kReadAloudMaxChunkLen);
+    }
     if (start >= end) {
         return false;
     }
@@ -10406,12 +10951,80 @@ static TempStr TtsLangIdToLocaleNameTemp(const char* lang) {
     return ToUtf8Temp(localeName);
 }
 
+// appends voices of the given group, separated by language; command ids encode the
+// index into the TtsGetVoices() vector so display order doesn't matter for selection.
+// returns the number of items added, sets containsCurrent if the current voice is in this group
+static int AppendTtsVoiceGroupItems(HMENU menu, Vec<TtsVoiceInfo>& voices, TtsVoiceGroup group,
+                                    const char* currentVoiceId, bool* containsCurrent) {
+    const char* lastLang = nullptr;
+    int nAdded = 0;
+    int idx = -1;
+    for (TtsVoiceInfo& voice : voices) {
+        idx++;
+        UINT cmd = CmdTtsVoiceFirst + (UINT)idx;
+        if (cmd > CmdTtsVoiceLast) {
+            break;
+        }
+        if (GetTtsVoiceGroup(voice.name) != group) {
+            continue;
+        }
+
+        const char* lang = str::IsEmpty(voice.lang) ? "" : voice.lang;
+        if (lastLang && !str::EqI(lastLang, lang)) {
+            AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        }
+
+        UINT flags = MF_STRING;
+        if (str::Eq(voice.id, currentVoiceId)) {
+            flags |= MF_CHECKED;
+            if (containsCurrent) {
+                *containsCurrent = true;
+            }
+        }
+
+        TempStr localeName = TtsLangIdToLocaleNameTemp(voice.lang);
+        TempStr label = str::FormatTemp("%s - %s", voice.name, localeName);
+        AppendMenuW(menu, flags, cmd, ToWStrTemp(label));
+
+        lastLang = lang;
+        nAdded++;
+    }
+    return nAdded;
+}
+
+// appends an "online voices" style submenu; checked when the current voice is inside
+static void AppendTtsVoiceSubmenu(HMENU voiceMenu, Vec<TtsVoiceInfo>& voices, TtsVoiceGroup group,
+                                  const char* currentVoiceId, const char* title) {
+    HMENU sub = CreatePopupMenu();
+    if (!sub) {
+        return;
+    }
+    bool containsCurrent = false;
+    int n = AppendTtsVoiceGroupItems(sub, voices, group, currentVoiceId, &containsCurrent);
+    if (n == 0) {
+        DestroyMenu(sub);
+        return;
+    }
+    RemoveBadMenuSeparators(sub);
+    UINT flags = MF_POPUP | MF_STRING;
+    if (containsCurrent) {
+        flags |= MF_CHECKED;
+    }
+    AppendMenuW(voiceMenu, flags, (UINT_PTR)sub, ToWStrTemp(title));
+}
+
 static void BuildReadAloudVoiceMenuItems(HMENU voiceMenu) {
     if (!voiceMenu) {
         return;
     }
 
+    // the saved pref, not the engine voice: in smart bilingual mode the engine
+    // voice changes per chunk but the menu should show the smart mode as selected
     const char* currentVoiceId = TtsGetVoiceId();
+    if (gGlobalPrefs && gGlobalPrefs->readAloudVoiceId) {
+        currentVoiceId = gGlobalPrefs->readAloudVoiceId;
+    }
+    bool isSmartBilingual = str::Eq(currentVoiceId, kTtsSmartBilingualVoiceId);
 
     UINT defaultFlags = MF_STRING;
     if (str::IsEmpty(currentVoiceId)) {
@@ -10419,36 +11032,24 @@ static void BuildReadAloudVoiceMenuItems(HMENU voiceMenu) {
     }
 
     AppendMenuW(voiceMenu, defaultFlags, CmdTtsVoiceDefault, ToWStrTemp(_TRA("System default")));
-    AppendMenuW(voiceMenu, MF_SEPARATOR, 0, nullptr);
 
     Vec<TtsVoiceInfo> voices = TtsGetVoices();
-
-    const char* lastLang = nullptr;
-
-    UINT cmd = CmdTtsVoiceFirst;
-    for (TtsVoiceInfo& voice : voices) {
-        if (cmd > CmdTtsVoiceLast) {
-            break;
+    if (TtsSmartBilingualAvailable()) {
+        UINT smartFlags = MF_STRING;
+        if (isSmartBilingual) {
+            smartFlags |= MF_CHECKED;
         }
-
-        const char* lang = str::IsEmpty(voice.lang) ? "" : voice.lang;
-
-        if (lastLang && !str::EqI(lastLang, lang)) {
-            AppendMenuW(voiceMenu, MF_SEPARATOR, 0, nullptr);
-        }
-
-        UINT flags = MF_STRING;
-        if (str::Eq(voice.id, currentVoiceId)) {
-            flags |= MF_CHECKED;
-        }
-
-        TempStr localeName = TtsLangIdToLocaleNameTemp(voice.lang);
-        TempStr label = str::FormatTemp("%s - %s", voice.name, localeName);
-        AppendMenuW(voiceMenu, flags, cmd, ToWStrTemp(label));
-
-        lastLang = lang;
-        cmd++;
+        AppendMenuW(voiceMenu, smartFlags, CmdTtsVoiceSmartBilingual,
+                    ToWStrTemp(_TRA("Local smart bilingual (Chinese + English)")));
+        AppendMenuW(voiceMenu, MF_STRING, CmdTtsSmartBilingualSettings,
+                    ToWStrTemp(_TRA("Local smart bilingual settings...")));
     }
+    AppendMenuW(voiceMenu, MF_SEPARATOR, 0, nullptr);
+
+    // local voices are selected via local smart bilingual settings; only online voices listed here
+    AppendTtsVoiceSubmenu(voiceMenu, voices, TtsVoiceGroup::Online, currentVoiceId, _TRA("Online voices"));
+    AppendTtsVoiceSubmenu(voiceMenu, voices, TtsVoiceGroup::OnlineMultilingual, currentVoiceId,
+                          _TRA("Online multilingual voices"));
 
     TtsFreeVoices(voices);
     RemoveBadMenuSeparators(voiceMenu);
@@ -10617,9 +11218,9 @@ void RebuildReadAloudMenu(MainWindow* win, HMENU menu, bool useContextMenuCursor
     RemoveBadMenuSeparators(menu);
 }
 
-static void HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
+static bool HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
     if (!win || selected == 0) {
-        return;
+        return false;
     }
 
     WindowTab* currTab = win->CurrentTab();
@@ -10654,6 +11255,10 @@ static void HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
         }
     } else if (selected == CmdTtsVoiceDefault) {
         ReadAloudSaveVoicePref("");
+    } else if (selected == CmdTtsVoiceSmartBilingual) {
+        ReadAloudSaveVoicePref(kTtsSmartBilingualVoiceId);
+    } else if (selected == CmdTtsSmartBilingualSettings) {
+        ShowReadAloudSmartVoiceDialog(win);
     } else if (selected >= CmdTtsVoiceFirst && selected <= CmdTtsVoiceLast) {
         Vec<TtsVoiceInfo> voices = TtsGetVoices();
         int voiceIndex = (int)(selected - CmdTtsVoiceFirst);
@@ -10667,10 +11272,38 @@ static void HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
             ReadAloudSaveSpeakingRatePref(kReadAloudSpeedPresets[speedIndex]);
         }
     }
+    return false;
+}
+
+static void ShowReadAloudPopupMenuAt(MainWindow* win, int x, int y) {
+    if (!win) {
+        return;
+    }
+
+    HMENU menu = CreatePopupMenu();
+    if (!menu) {
+        return;
+    }
+
+    BuildReadAloudMenuItems(menu, win, false);
+    MarkMenuOwnerDraw(menu, false);
+
+    SetForegroundWindow(win->hwndFrame);
+    UINT selected =
+        (UINT)TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, x, y, 0, win->hwndFrame, nullptr);
+
+    FreeMenuOwnerDrawInfoData(menu);
+    DestroyMenu(menu);
+
+    if (selected == 0) {
+        return;
+    }
+    HandleReadAloudMenuSelection(win, selected);
 }
 
 bool HandleReadAloudMenuCommand(MainWindow* win, int cmdId) {
-    if (cmdId == CmdTtsVoiceDefault || (cmdId >= CmdTtsMenuReadCurrentPage && cmdId <= CmdTtsMenuStopReading) ||
+    if (cmdId == CmdTtsVoiceDefault || cmdId == CmdTtsVoiceSmartBilingual || cmdId == CmdTtsSmartBilingualSettings ||
+        (cmdId >= CmdTtsMenuReadCurrentPage && cmdId <= CmdTtsMenuStopReading) ||
         (cmdId >= CmdTtsVoiceFirst && cmdId <= CmdTtsVoiceLast) ||
         (cmdId >= CmdTtsSpeedFirst && cmdId <= CmdTtsSpeedLast)) {
         HandleReadAloudMenuSelection(win, (UINT)cmdId);
@@ -10688,20 +11321,7 @@ static void ShowTtsVoiceMenu(MainWindow* win, NMTOOLBARW* nmtb) {
     SendMessageW(nmtb->hdr.hwndFrom, TB_GETRECT, CmdReadAloud, (LPARAM)&rc);
     MapWindowPoints(nmtb->hdr.hwndFrom, HWND_DESKTOP, (POINT*)&rc, 2);
 
-    HMENU menu = CreatePopupMenu();
-    if (!menu) {
-        return;
-    }
-
-    BuildReadAloudMenuItems(menu, win, false);
-    MarkMenuOwnerDraw(menu, false);
-
-    UINT selected = (UINT)TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, rc.left, rc.bottom, 0,
-                                         win->hwndFrame, nullptr);
-
-    HandleReadAloudMenuSelection(win, selected);
-    FreeMenuOwnerDrawInfoData(menu);
-    DestroyMenu(menu);
+    ShowReadAloudPopupMenuAt(win, rc.left, rc.bottom);
 }
 
 LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {

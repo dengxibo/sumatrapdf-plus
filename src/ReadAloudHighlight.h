@@ -46,6 +46,9 @@ bool ReadAloudHighlightAppendDocumentPages(DisplayModel* dm, int startPage, int 
 
 bool ReadAloudShouldJoinAtWrappedLine(const char* beforeEnd, int beforeLen, const char* afterStart);
 
+// decodes one utf8 codepoint, advancing s; returns false at end of string
+bool ReadAloudDecodeUtf8One(const char*& s, char32_t* cpOut);
+
 void ReadAloudHighlightTimerStart(MainWindow* win);
 void ReadAloudHighlightTimerStop(MainWindow* win);
 

@@ -44,7 +44,7 @@ static bool ReadAloudIsCjkForLineJoin(char32_t cp) {
     return (cp >= 0x2E80 && cp <= 0xA4CF) || (cp >= 0xAC00 && cp <= 0xD7AF) || (cp >= 0xF900 && cp <= 0xFAFF);
 }
 
-static bool ReadAloudDecodeUtf8One(const char*& s, char32_t* cpOut) {
+bool ReadAloudDecodeUtf8One(const char*& s, char32_t* cpOut) {
     if (!s || !*s || !cpOut) {
         return false;
     }
