@@ -2380,6 +2380,30 @@ static void InstallFitzErrorCallbacks(EngineMupdf* engine, fz_context* ctx) {
     fz_set_error_callback(ctx, fz_print_cb, (void*)engine);
 }
 
+// MuPDF's default expands subareas covering >=90% of an image to the full bitmap,
+// which forces a full-resolution decode of huge embedded scans even when only a
+// tile is being painted. Keep edge clipping but never widen a partial subarea.
+static void SumatraImageDecode(void* arg, int w, int h, int l2factor, fz_irect* subarea) {
+    (void)arg;
+    (void)l2factor;
+    if (subarea->x0 <= w / 100) {
+        subarea->x0 = 0;
+    }
+    if (subarea->y0 <= h / 100) {
+        subarea->y0 = 0;
+    }
+    if (subarea->x1 >= w * 99 / 100) {
+        subarea->x1 = w;
+    }
+    if (subarea->y1 >= h * 99 / 100) {
+        subarea->y1 = h;
+    }
+}
+
+static void InstallFitzImageTuning(fz_context* ctx) {
+    fz_tune_image_decode(ctx, SumatraImageDecode, nullptr);
+}
+
 struct ContextThreadID {
     EngineMupdf* engine = nullptr;
     fz_context* ctx = nullptr;
@@ -2489,6 +2513,7 @@ EngineMupdf::EngineMupdf() {
     fz_locks_ctx.unlock = fz_unlock_context_cs;
     _ctx = fz_new_context(nullptr, &fz_locks_ctx, FZ_STORE_DEFAULT);
     InstallFitzErrorCallbacks(this, _ctx);
+    InstallFitzImageTuning(_ctx);
 
     install_load_windows_font_funcs(_ctx);
     fz_register_document_handlers(_ctx);
@@ -5026,6 +5051,12 @@ static fz_display_list* GetOrBuildPageDisplayList(FzPageInfo* pi, fz_context* ct
 RectF EngineMupdf::PageContentBox(int pageNo, RenderTarget target) {
     auto ctx = Ctx();
 
+    // Raster-dominant PDFs (full-page scans) rarely need a bbox walk; the
+    // display-list replay decodes every embedded image at full resolution.
+    if (pdfdoc && cadRasterDominant) {
+        return PageMediabox(pageNo);
+    }
+
     FzPageInfo* pageInfo = GetFzPageInfo(pageNo, false);
     if (!pageInfo) {
         // maybe should return a dummy size. not sure how this
@@ -5332,7 +5363,8 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
         fzcookie = (fz_cookie*)cookie->GetData();
     }
 
-    FzPageInfo* pageInfo = GetFzPageInfo(pageNo, false, fzcookie);
+    // View rendering only needs fz_load_page; skip stext/image extraction here.
+    FzPageInfo* pageInfo = GetFzPageInfo(pageNo, true, fzcookie);
     if (!pageInfo || !pageInfo->page) {
         return nullptr;
     }
