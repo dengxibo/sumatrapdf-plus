@@ -794,63 +794,6 @@ static MenuDef menuDefContextImage[] = {
 };
 //] ACCESSKEY_GROUP Context Menu (Image)
 
-//[ ACCESSKEY_GROUP Context Menu (Document )
-static MenuDef menuDefDocumentOperations[] = {
-    {
-        _TRN("P&roperties"),
-        CmdProperties,
-    },
-    {
-        _TRN("Show PDF Info"),
-        CmdPdShowInfo,
-    },
-    {
-        _TRN("Show Document Outline"),
-        CmdDocumentShowOutline,
-    },
-    {
-        _TRN("Extract Pages From PDF"),
-        CmdPdfExtractPages,
-    },
-    {
-        _TRN("Encrypt PDF"),
-        CmdPdfEncrypt,
-    },
-    {
-        _TRN("Decrypt PDF"),
-        CmdPdfDecrypt,
-    },
-    {
-        _TRN("Compress PDF"),
-        CmdPdfCompress,
-    },
-    {
-        _TRN("Decompress PDF"),
-        CmdPdfDecompress,
-    },
-    {
-        _TRN("Delete Pages From PDF"),
-        CmdPdfDeletePages,
-    },
-    {
-        _TRN("Bake PDF"),
-        CmdPdfBake,
-    },
-    {
-        _TRN("Extract Text From Document"),
-        CmdDocumentExtractText,
-    },
-    {
-        _TRN("Show in &folder"),
-        CmdShowInFolder,
-    },
-    {
-        nullptr,
-        0,
-    },
-};
-//] ACCESSKEY_GROUP Context Menu (Document)
-
 //[ ACCESSKEY_GROUP Context Menu (Main)
 static MenuDef menuDefContext[] = {
     {
@@ -913,10 +856,6 @@ static MenuDef menuDefContext[] = {
     {
         kMenuSeparator,
         kMenuSeparatorID,
-    },
-    {
-        _TRN("Document"),
-        (UINT_PTR)menuDefDocumentOperations,
     },
     {
         _TRN("Edit Annotations"),
