@@ -615,6 +615,7 @@ void fz_debug_html(fz_context *ctx, fz_html_box *box);
 fz_html *fz_store_html(fz_context *ctx, fz_html *html, void *doc, int chapter);
 fz_html *fz_find_html(fz_context *ctx, void *doc, int chapter);
 void fz_purge_stored_html(fz_context *ctx, void *doc);
+void fz_purge_stored_html_chapter(fz_context *ctx, void *doc, int chapter);
 
 void fz_restartable_layout_html(fz_context *ctx, fz_html_tree *tree, float start_x, float start_y, float page_w, float page_h, float em, fz_html_restarter *restart);
 

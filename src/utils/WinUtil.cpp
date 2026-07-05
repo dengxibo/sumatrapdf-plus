@@ -2558,11 +2558,22 @@ HDC DoubleBuffer::GetDC() const {
     return hdcCanvas;
 }
 
-void DoubleBuffer::Flush(HDC hdc) const {
+void DoubleBuffer::Flush(HDC hdc, RECT* rcPaint) const {
     ReportIf(hdc == hdcBuffer);
-    if (hdcBuffer) {
-        BitBlt(hdc, rect.x, rect.y, rect.dx, rect.dy, hdcBuffer, 0, 0, SRCCOPY);
+    if (!hdcBuffer) {
+        return;
     }
+    if (!rcPaint) {
+        BitBlt(hdc, rect.x, rect.y, rect.dx, rect.dy, hdcBuffer, 0, 0, SRCCOPY);
+        return;
+    }
+    RECT dest = *rcPaint;
+    if (dest.left >= dest.right || dest.top >= dest.bottom) {
+        return;
+    }
+    int w = dest.right - dest.left;
+    int h = dest.bottom - dest.top;
+    BitBlt(hdc, dest.left, dest.top, w, h, hdcBuffer, dest.left, dest.top, SRCCOPY);
 }
 
 DeferWinPosHelper::DeferWinPosHelper() : hdwp(::BeginDeferWindowPos(32)) {}

@@ -1527,7 +1527,7 @@ static void OnMouseRightButtonDblClick(MainWindow* win, int x, int y, WPARAM key
 #ifdef DRAW_PAGE_SHADOWS
 #define BORDER_SIZE 1
 #define SHADOW_OFFSET 4
-static void PaintPageFrameAndShadow(HDC hdc, Rect& bounds, Rect& pageRect, bool presentation) {
+static void PaintPageFrameAndShadow(HDC hdc, Rect& bounds, Rect& pageRect, bool presentation, COLORREF colDocBg) {
     // Frame info
     Rect frame = bounds;
     frame.Inflate(BORDER_SIZE, BORDER_SIZE);
@@ -1562,12 +1562,9 @@ static void PaintPageFrameAndShadow(HDC hdc, Rect& bounds, Rect& pageRect, bool 
     Rectangle(hdc, frame.x, frame.y, frame.x + frame.dx, frame.y + frame.dy);
 }
 #else
-static void PaintPageFrameAndShadow(HDC hdc, Rect& bounds, Rect&, bool) {
+static void PaintPageFrameAndShadow(HDC hdc, Rect& bounds, Rect&, bool, COLORREF colDocBg) {
     AutoDeletePen pen(CreatePen(PS_NULL, 0, 0));
-    COLORREF bgCol;
-    ThemeDocumentColors(bgCol);
-    // use canvas background color, not page rendering color
-    AutoDeleteBrush brush(CreateSolidBrush(bgCol));
+    AutoDeleteBrush brush(CreateSolidBrush(colDocBg));
     ScopedSelectPen restorePen(hdc, pen);
     ScopedSelectObject restoreBrush(hdc, brush);
     Rectangle(hdc, bounds.x, bounds.y, bounds.x + bounds.dx + 1, bounds.y + bounds.dy + 1);
@@ -1721,6 +1718,9 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
     // (without frame and shadow)
     bool paintOnBlackWithoutShadow = win->presentation || isImage;
     bool isEbook = engine->kind == kindEngineMupdf && !str::EqI(engine->defaultExt, ".pdf");
+    bool isReflowableEbook = isEbook || engine->kind == kindEngineMobi || engine->kind == kindEngineEpub ||
+                             engine->kind == kindEngineFb2 || engine->kind == kindEnginePdb ||
+                             engine->kind == kindEngineHtml || engine->kind == kindEngineTxt;
     bool isPdf =
         (engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".pdf")) || engine->kind == kindEngineDjVu;
     COLORREF colDocBg;
@@ -1738,10 +1738,19 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
         if (bgOverride->parsedOk) {
             colDocBg = bgOverride->col;
         }
-    } else if (isEbook) {
-        ParsedColor* bgOverride = GetPrefsColor(gGlobalPrefs->eBookUI.windowBgCol);
-        if (bgOverride->parsedOk) {
-            colDocBg = bgOverride->col;
+    } else if (isReflowableEbook) {
+        if (engine->kind == kindEngineMobi) {
+            // Match EngineEbook::RenderPage so canvas margins do not contrast with tiles.
+            if (IsDarkThemeSelected()) {
+                ThemePageRenderColors(colDocBg);
+            } else {
+                colDocBg = RgbToCOLORREF(0xF7F3E8);
+            }
+        } else {
+            ParsedColor* bgOverride = GetPrefsColor(gGlobalPrefs->eBookUI.windowBgCol);
+            if (bgOverride->parsedOk) {
+                colDocBg = bgOverride->col;
+            }
         }
     } else if (isPdf) {
         ParsedColor* bgOverride = GetPrefsColor(gGlobalPrefs->fixedPageUI.windowBgCol);
@@ -1770,14 +1779,20 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
         }
     };
 
-    if (paintOnBlackWithoutShadow) {
-        paintBgOrCheckerboard(colDocBg, rcArea);
-    } else if (colDocBg == kColorUnset) {
-        paintBgOrCheckerboard(colDocBg, rcArea);
-    } else if (0 == nGCols) {
-        AutoDeleteBrush brush = CreateSolidBrush(colDocBg);
-        FillRect(hdc, rcArea, brush);
+    // Always clear the full back-buffer first. The buffer is shared across tabs
+    // and Flush() only blits ps.rcPaint to the screen; partial DrawDocument
+    // updates used to leave a previous PDF page-frame row at a different Y than
+    // the current EPUB layout when Flush copied the whole buffer.
+    Rect canvas = win->canvasRc;
+    if (!canvas.IsEmpty()) {
+        RECT fullRc = ToRECT(canvas);
+        paintBgOrCheckerboard(colDocBg, &fullRc);
     } else {
+        paintBgOrCheckerboard(colDocBg, rcArea);
+    }
+    shouldPaint = true;
+
+    if (!paintOnBlackWithoutShadow && colDocBg != kColorUnset && nGCols > 0) {
         COLORREF colors[3];
         colors[0] = ParseColor(gcols->at(0), WIN_COL_WHITE);
         if (nGCols == 1) {
@@ -1837,12 +1852,18 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
 
     bool rendering = false;
     Rect screen(Point(), dm->GetViewPort().Size());
+    int firstFrameY = -1;
+    int visiblePageCount = 0;
 
     bool isRtl = IsUIRtl();
     for (int pageNo = 1; pageNo <= dm->PageCount(); ++pageNo) {
         PageInfo* pi = dm->GetPageInfo(pageNo);
         if (!pi || 0.0F == pi->visibleRatio) {
             continue;
+        }
+        visiblePageCount++;
+        if (firstFrameY < 0) {
+            firstFrameY = pi->pageOnScreen.y;
         }
         ReportIf(!pi->isShown);
         if (!pi->isShown) {
@@ -1851,10 +1872,12 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
 
         Rect bounds = pi->pageOnScreen.Intersect(screen);
         // don't paint the frame background for images
-        if (!dm->GetEngine()->IsImageCollection()) {
+        // Reflowable ebooks paint edge-to-edge; a PDF-style page frame leaves a bright
+        // row when theme/tiles disagree (e.g. MOBI dark tiles under light margins).
+        if (!isReflowableEbook) {
             Rect r = pi->pageOnScreen;
             auto presMode = win->presentation;
-            PaintPageFrameAndShadow(hdc, bounds, r, presMode);
+            PaintPageFrameAndShadow(hdc, bounds, r, presMode, colDocBg);
         }
 
         // check if this page is known to have failed rendering
@@ -1961,7 +1984,7 @@ static void OnPaintDocument(MainWindow* win) {
         default:
             bool shouldPaint = DrawDocument(win, win->buffer->GetDC(), &ps.rcPaint);
             if (!gNoFlickerRender || shouldPaint) {
-                win->buffer->Flush(hdc);
+                win->buffer->Flush(hdc, &ps.rcPaint);
             }
     }
 

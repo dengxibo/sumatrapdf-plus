@@ -202,7 +202,6 @@ static StrVec gNextPrevDirCache; // cached files in gNextPrevDir
 
 static void CloseDocumentInCurrentTab(MainWindow*, bool keepUIEnabled, bool deleteModel);
 static void ReadAloudClearSourceTab();
-static void ReadAloudContinueInTab(WindowTab* tab);
 static void ReadAloudFromViewportTopInTab(WindowTab* tab);
 static void ReadAloudFromCursorInTab(WindowTab* tab, Point screenPt);
 static void ReadAloudInTab(WindowTab* tab);
@@ -2372,19 +2371,62 @@ void SyncMenuBarForTabsInTitlebar(MainWindow* win) {
 
 void InvalidateLoadedThumbnails();
 
+static void RerenderEverything();
+
+static bool IsReflowableEbookEngine(EngineBase* engine) {
+    if (!engine) {
+        return false;
+    }
+    if (engine->kind == kindEngineMupdf) {
+        return !str::EqI(engine->defaultExt, ".pdf");
+    }
+    return engine->kind == kindEngineMobi || engine->kind == kindEngineEpub || engine->kind == kindEngineFb2 ||
+           engine->kind == kindEnginePdb || engine->kind == kindEngineHtml || engine->kind == kindEngineTxt;
+}
+
 static bool ShouldReloadForThemeChange(WindowTab* tab) {
     if (!tab || !tab->IsDocLoaded() || tab->IsAboutTab()) {
         return false;
     }
+    return IsReflowableEbookEngine(tab->GetEngine());
+}
 
-    EngineBase* engine = tab->GetEngine();
-    if (!engine || engine->kind != kindEngineMupdf) {
-        return false;
+static bool IsReflowableMupdfForTheme(EngineBase* engine) {
+    return engine && engine->kind == kindEngineMupdf && !str::EqI(engine->defaultExt, ".pdf");
+}
+
+static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
+    if (!win || !tab || !tab->IsDocLoaded() || tab->IsAboutTab()) {
+        return;
+    }
+    DisplayModel* dm = tab->AsFixed();
+    if (!dm) {
+        ReloadDocument(win, false);
+        return;
     }
 
-    // EPUB/text/HTML documents pick up the dark/light stylesheet only when the
-    // engine is created, so a theme change needs a reload for them.
-    return !str::EqI(engine->defaultExt, ".pdf");
+    EngineBase* engine = tab->GetEngine();
+    if (IsReflowableMupdfForTheme(engine)) {
+        if (!EngineMupdfRelayoutForThemeChange(engine)) {
+            logfa("ApplyThemeChangeToTab: in-place EPUB theme relayout failed, skipping document reload\n");
+        }
+        tab->reloadOnFocus = false;
+        return;
+    }
+
+    if (IsReflowableEbookEngine(engine)) {
+        // MOBI and other ebook engines bake theme colors at RenderPage time.
+        // Drop stale tiles so switching back does not show old-theme content
+        // under a frame painted with the new theme.
+        gRenderCache->CancelRendering(dm);
+        gRenderCache->FreeForDisplayModel(dm);
+        if (tab != win->CurrentTab()) {
+            tab->reloadOnFocus = true;
+        }
+        return;
+    }
+
+    ReloadDocument(win, false);
 }
 
 static void SyncCanvasScrollBarTheme(MainWindow* win) {
@@ -2410,7 +2452,31 @@ static void SyncCanvasScrollBarTheme(MainWindow* win) {
 
 void UpdateAfterThemeChange() {
     InvalidateLoadedThumbnails();
-    UpdateDocumentColors();
+    UpdateDocumentColors(false);
+
+    // Apply EPUB/CSS updates before chrome work so page rerender can start ASAP.
+    for (auto win : gWindows) {
+        WindowTab* currentTab = win->CurrentTab();
+        for (WindowTab* tab : win->Tabs()) {
+            ChmModel* chm = tab->AsChm();
+            if (chm && chm->UsesNativeHtmlWindow() && tab->IsDocLoaded() && !tab->IsAboutTab()) {
+                if (tab == currentTab) {
+                    chm->ReloadCurrentPageForThemeChange();
+                } else {
+                    tab->reloadOnFocus = true;
+                }
+                continue;
+            }
+            if (!ShouldReloadForThemeChange(tab)) {
+                continue;
+            }
+            // In-place EPUB CSS update is cheap; apply to every loaded tab so
+            // switching back does not paint stale tiles from the old theme.
+            ApplyThemeChangeToTab(win, tab);
+        }
+    }
+    RerenderEverything();
+
     for (auto win : gWindows) {
         DeleteObject(win->brControlBgColor);
         win->brControlBgColor = CreateSolidBrush(ThemeChromeBackgroundColor());
@@ -2418,6 +2484,10 @@ void UpdateAfterThemeChange() {
         RebuildMenuBarForWindow(win);
         // TODO: probably leaking toolbar image list
         UpdateToolbarAfterThemeChange(win);
+        // Rebar border style changes with dark/light chrome and alters toolbar
+        // height; RelayoutFrame must run so the canvas moves with the toolbar.
+        win->lastLayoutState = {};
+        RelayoutFrame(win);
         if (UseDarkModeLib()) {
             if (ThemeUsesDarkChrome()) {
                 DarkMode::setDarkTitleBarEx(win->hwndFrame, true);
@@ -2437,29 +2507,8 @@ void UpdateAfterThemeChange() {
         UpdateMainWindowNativeChrome(win);
         UpdateControlsColors(win);
         UpdateWindowFrameBorderColor(win);
-        uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN;
+        uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN;
         RedrawWindow(win->hwndFrame, nullptr, nullptr, flags);
-
-        WindowTab* currentTab = win->CurrentTab();
-        for (WindowTab* tab : win->Tabs()) {
-            ChmModel* chm = tab->AsChm();
-            if (chm && chm->UsesNativeHtmlWindow() && tab->IsDocLoaded() && !tab->IsAboutTab()) {
-                if (tab == currentTab) {
-                    chm->ReloadCurrentPageForThemeChange();
-                } else {
-                    tab->reloadOnFocus = true;
-                }
-                continue;
-            }
-            if (!ShouldReloadForThemeChange(tab)) {
-                continue;
-            }
-            if (tab == currentTab) {
-                ReloadDocument(win, false);
-            } else {
-                tab->reloadOnFocus = true;
-            }
-        }
     }
     RefreshWordLookupTheme();
 }
@@ -3416,6 +3465,28 @@ MainWindow* LoadDocument(LoadArgs* args) {
     return LoadDocumentFinish(args);
 }
 
+// Recreate the shared canvas back-buffer and paint synchronously after a tab
+// switch so stale pixels from the previous tab cannot bleed through.
+static void RepaintCanvasAfterTabSwitch(MainWindow* win) {
+    if (!IsMainWindowValid(win) || !win->hwndCanvas) {
+        return;
+    }
+    win->UpdateCanvasSize();
+    DisplayModel* dm = win->AsFixed();
+    if (dm) {
+        gRenderCache->CancelRendering(dm);
+        EngineBase* engine = dm->GetEngine();
+        if (engine && IsReflowableEbookEngine(engine)) {
+            gRenderCache->FreeForDisplayModel(dm);
+            dm->RepaintDisplay();
+        } else {
+            gRenderCache->KeepForDisplayModel(dm, dm);
+        }
+    }
+    InvalidateRect(win->hwndCanvas, nullptr, TRUE);
+    UpdateWindow(win->hwndCanvas);
+}
+
 // Loads document data into the MainWindow.
 void LoadModelIntoTab(WindowTab* tab) {
     if (!tab) {
@@ -3444,6 +3515,26 @@ void LoadModelIntoTab(WindowTab* tab) {
 
     win->currentTabTemp = tab;
     win->ctrl = tab->ctrl;
+
+    bool rerenderAfterTheme = false;
+    if (!tab->IsAboutTab() && tab->ctrl && tab->reloadOnFocus) {
+        tab->reloadOnFocus = false;
+        if (ShouldReloadForThemeChange(tab)) {
+            ApplyThemeChangeToTab(win, tab);
+            rerenderAfterTheme = true;
+        } else {
+            ReloadDocument(win, true);
+        }
+    }
+
+    DisplayModel* dmAfterTheme = tab->AsFixed();
+    if (dmAfterTheme && IsReflowableEbookEngine(tab->GetEngine()) &&
+        tab->lastDarkModeEpoch != gRenderCache->darkModeEpoch) {
+        gRenderCache->CancelRendering(dmAfterTheme);
+        gRenderCache->FreeForDisplayModel(dmAfterTheme);
+        tab->lastDarkModeEpoch = gRenderCache->darkModeEpoch;
+        rerenderAfterTheme = true;
+    }
 
     if (win->AsChm()) {
         win->AsChm()->SetParentHwnd(win->hwndCanvas);
@@ -3498,16 +3589,22 @@ void LoadModelIntoTab(WindowTab* tab) {
     if (tab->IsAboutTab()) {
         DeleteVecMembers(win->staticLinks);
         InvalidateRect(win->hwndCanvas, nullptr, TRUE);
-    } else if (!tab->IsAboutTab()) {
-        if (!tab->ctrl) {
-            ReloadDocument(win, false);
-        } else if (tab->reloadOnFocus) {
-            tab->reloadOnFocus = false;
-            ReloadDocument(win, true);
+        UpdateWindow(win->hwndCanvas);
+    } else if (!tab->ctrl) {
+        ReloadDocument(win, false);
+        RepaintCanvasAfterTabSwitch(win);
+    } else if (rerenderAfterTheme) {
+        DisplayModel* themeDm = tab->AsFixed();
+        if (themeDm) {
+            gRenderCache->FreeForDisplayModel(themeDm);
         }
+        RepaintCanvasAfterTabSwitch(win);
+    } else {
+        RepaintCanvasAfterTabSwitch(win);
     }
-    InvalidateRect(win->hwndCanvas, nullptr, FALSE);
-    UpdateWindow(win->hwndCanvas);
+    if (tab->AsFixed()) {
+        tab->lastDarkModeEpoch = gRenderCache->darkModeEpoch;
+    }
 }
 
 enum class MeasurementUnit {
@@ -3605,7 +3702,7 @@ static void RerenderFixedPage() {
     }
 }
 
-void UpdateDocumentColors() {
+void UpdateDocumentColors(bool rerender) {
     COLORREF bg;
     COLORREF text = ThemePageRenderColors(bg);
     COLORREF link = ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : 0;
@@ -3649,7 +3746,9 @@ void UpdateDocumentColors() {
         }
     }
 
-    RerenderEverything();
+    if (rerender) {
+        RerenderEverything();
+    }
 }
 
 void UpdateFixedPageScrollbarsVisibility() {
@@ -3772,8 +3871,10 @@ static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool 
     if (!unloadingTab) {
         unloadingTab = win->CurrentTab();
     }
-    win->ctrl = nullptr;
     if (unloadingTab) {
+        if (DisplayModel* unloadDm = unloadingTab->AsFixed()) {
+            gRenderCache->CancelRendering(unloadDm);
+        }
         unloadingTab->selectedAnnotation = nullptr;
         if (deleteModel) {
             ResetReadAloudStateForTab(unloadingTab);
@@ -3782,6 +3883,7 @@ static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool 
             ReadAloudStopRememberPos();
         }
     }
+    win->ctrl = nullptr;
     if (deleteModel) {
         if (unloadingTab) {
             SafeDeleteDocController(win, unloadingTab->ctrl);
@@ -11013,7 +11115,13 @@ bool CanContinueReadAloud(WindowTab* tab) {
     return pos > 0 && pos < maxPos;
 }
 
-static void ReadAloudContinueInTab(WindowTab* tab) {
+void ReadAloudPauseRememberPos() {
+    if (TtsIsSpeaking()) {
+        ReadAloudStopRememberPos();
+    }
+}
+
+void ReadAloudContinueInTab(WindowTab* tab) {
     if (!CanContinueReadAloud(tab) || !tab->win) {
         return;
     }

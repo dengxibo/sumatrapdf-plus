@@ -29,8 +29,14 @@
 #include "FloatingPopupStyle.h"
 #include "Selection.h"
 #include "SelectionToolbar.h"
+#include "TextToSpeech.h"
+#include "Toolbar.h"
 #include "WindowTab.h"
 #include "WordLookup.h"
+
+// Experimental: pause read-aloud when opening word lookup, resume on close.
+// Set to false (or revert WordLookup.cpp + SumatraPDF.h/cpp exports) to disable.
+static const bool kWordLookupResumeReadAloud = true;
 
 #include "DarkModeSubclass.h"
 
@@ -126,6 +132,8 @@ struct WordLookupWnd : Wnd {
     Rect tabRects[kMaxLookupTabs];
     bool closeBtnHover = false;
     bool speakerBtnHover = false;
+    bool resumeReadAloudOnClose = false;
+    WindowTab* readAloudTab = nullptr;
     float speakerHoverAnim = 0.f;
     bool speakerPlaying = false;
     int speakerWaveTick = 0;
@@ -142,6 +150,25 @@ struct WordLookupWnd : Wnd {
 static WordLookupWnd* gWordLookupWnd = nullptr;
 static void StopCurrentLookupAudio(bool clearSpeakerAnim = true);
 static void PositionWordLookup(WordLookupWnd* wnd, Point screenPos);
+
+static bool LookupShouldResumeReadAloud(const WordLookupWnd* wnd) {
+    return kWordLookupResumeReadAloud && wnd && wnd->resumeReadAloudOnClose;
+}
+
+static void WordLookupResumeReadAloudIfNeeded(WordLookupWnd* wnd) {
+    if (!LookupShouldResumeReadAloud(wnd)) {
+        return;
+    }
+    WindowTab* tab = wnd->readAloudTab;
+    wnd->resumeReadAloudOnClose = false;
+    wnd->readAloudTab = nullptr;
+    if (tab && CanContinueReadAloud(tab)) {
+        ReadAloudContinueInTab(tab);
+        if (tab->win) {
+            ToolbarUpdateStateForWindow(tab->win, true);
+        }
+    }
+}
 
 static HFONT CreateBoldFontFrom(HFONT base) {
     if (!base) {
@@ -285,6 +312,7 @@ static void SafeDeleteWordLookupWnd() {
     }
     WordLookupWnd* wnd = gWordLookupWnd;
     gWordLookupWnd = nullptr;
+    WordLookupResumeReadAloudIfNeeded(wnd);
     delete wnd;
 }
 
@@ -454,8 +482,7 @@ static bool IsDictPackagePresent(const char* dir) {
         return false;
     }
     // English lookup needs idx + dat only; SumatraDictAudio.dat is optional (pronunciation).
-    return file::Exists(path::JoinTemp(dir, "SumatraDict.idx")) &&
-           file::Exists(path::JoinTemp(dir, "SumatraDict.dat"));
+    return file::Exists(path::JoinTemp(dir, "SumatraDict.idx")) && file::Exists(path::JoinTemp(dir, "SumatraDict.dat"));
 }
 
 static bool IsDictPackagePresentZh(const char* dir) {
@@ -2376,6 +2403,16 @@ void ShowWordLookup(MainWindow* win, const char* word, Point screenPos) {
         return;
     }
 
+    WindowTab* tab = win->CurrentTab();
+    bool shouldResumeOnClose = false;
+    if (kWordLookupResumeReadAloud && tab && TtsIsSpeaking() && GetReadAloudSourceTab() == tab) {
+        ReadAloudPauseRememberPos();
+        shouldResumeOnClose = CanContinueReadAloud(tab);
+        if (shouldResumeOnClose) {
+            ToolbarUpdateStateForWindow(win, true);
+        }
+    }
+
     CloseWordLookup();
 
     Point screenPt = screenPos;
@@ -2389,6 +2426,11 @@ void ShowWordLookup(MainWindow* win, const char* word, Point screenPos) {
         gWordLookupWnd = nullptr;
         delete wnd;
         return;
+    }
+
+    if (shouldResumeOnClose) {
+        wnd->resumeReadAloudOnClose = true;
+        wnd->readAloudTab = tab;
     }
 
     auto* fetchData = new FetchLookupData();

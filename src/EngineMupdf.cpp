@@ -6,6 +6,8 @@ extern "C" {
 #include <mupdf/pdf.h>
 #include <mupdf/helpers/pkcs7-windows.h>
 #include "../mupdf/source/fitz/color-imp.h"
+void fz_purge_stored_html(fz_context* ctx, void* doc);
+void fz_purge_stored_html_chapter(fz_context* ctx, void* doc, int chapter);
 }
 
 #include "utils/BaseUtil.h"
@@ -358,6 +360,47 @@ static int ReflowPageNoFromChapter(EngineMupdf* e, int ch, int pageInChapter) {
         return e->reflowChapterStartPage[ch] + pageInChapter + 1;
     }
     return 0;
+}
+
+static int ReflowChapterIndexForPageNo(EngineMupdf* e, int pageNo1) {
+    if (!e || pageNo1 < 1) {
+        return -1;
+    }
+    int pageIdx = pageNo1 - 1;
+    int chapter = -1;
+    {
+        ScopedCritSec scope(&e->pagesLock);
+        int n = e->reflowChapterStartPage.Size();
+        if (n > 0) {
+            int lo = 0;
+            int hi = n - 1;
+            int ans = 0;
+            while (lo <= hi) {
+                int mid = (lo + hi) / 2;
+                if (e->reflowChapterStartPage[mid] <= pageIdx) {
+                    ans = mid;
+                    lo = mid + 1;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+            chapter = ans;
+        }
+    }
+    if (chapter >= 0) {
+        return chapter;
+    }
+
+    fz_context* ctx = e->_ctx;
+    fz_location loc = fz_make_location(-1, 0);
+    fz_try(ctx) {
+        loc = fz_location_from_page_number(ctx, e->_doc, pageIdx);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        return -1;
+    }
+    return loc.chapter;
 }
 
 // for reflowable docs, use outline->page (chapter+index) with cached chapter
@@ -2449,7 +2492,6 @@ void ReleasePerThreadContext(EngineMupdf* engine) {
     }
 }
 
-// Release all per-thread contexts for a given engine (called from destructor)
 static void ReleaseAllPerThreadContexts(EngineMupdf* engine) {
     Vec<fz_context*> ctxsToDrop;
     {
@@ -3240,59 +3282,14 @@ bool EbookNeedsCjkTypography(const char* filePath, const char* nameHint) {
 }
 
 // stm is either freed or retained via _doc
-bool EngineMupdf::LoadFromStream(fz_stream* stm, const char* nameHint, PasswordUI* pwdUI) {
-    if (!stm) {
-        return false;
-    }
-    auto ctx = Ctx();
+static void GetMupdfReflowLayoutPt(const char* nameHint, float* ldxPtOut, float* ldyPtOut, float* lfontDyPtOut);
 
-#if 0
-    /* a heuristic. a layout page size for .epub is A5 but that makes a font size too
-       large for non-epub files like .txt or .xml, so for those use larger A4 */
-    float ldx = layoutA4DxPt;
-    float ldy = layoutA4DyPt;
-    const char* ext = path::GetExtTemp(nameHint);
-    if (str::EqI(ext, ".epub")) {
-        ldx = layoutA5DxPt;
-        ldy = layoutA5DyPt;
-    }
-#endif
-
+static TempStr BuildMupdfReflowUserCss(const char* nameHint, float ldx, float ldy, float lfontDy) {
     bool isEpub = str::EndsWithI(nameHint, ".epub");
-    EbookTypographyKind typographyKind =
-        isEpub ? DetectEbookTypographyKind(FilePath(), nameHint) : EbookTypographyKind::Latin;
-    SetEbookTypographyKind(typographyKind);
-
-    float ldx = layoutA5DxPt;
-    float ldy = layoutA5DyPt;
-    float lfontDy = layoutFontEm;
-    if (isEpub) {
-        if (typographyKind == EbookTypographyKind::Cjk || typographyKind == EbookTypographyKind::Bilingual) {
-            ldx = layoutCjkEpubDxPt;
-            ldy = layoutCjkEpubDyPt;
-        } else {
-            ldx = layoutLatinEpubDxPt;
-            ldy = layoutLatinEpubDyPt;
-        }
-    } else {
-        lfontDy = 8.f;
-    }
-
-    auto eBookUI = GetEBookUI();
+    EbookTypographyKind typographyKind = GetEbookTypographyKind();
     TempStr ebookCss = nullptr;
+    auto eBookUI = GetEBookUI();
     if (eBookUI) {
-        if (eBookUI->fontSize > 6 && eBookUI->fontSize < 30) {
-            lfontDy = eBookUI->fontSize;
-        }
-        if (eBookUI->layoutDx > 100 && eBookUI->layoutDx != 560) {
-            ldx = eBookUI->layoutDx;
-        }
-        if (eBookUI->layoutDy > 100 && eBookUI->layoutDy != 680) {
-            ldy = eBookUI->layoutDy;
-        }
-        bool useDocCss = !eBookUI->ignoreDocumentCSS;
-        fz_set_use_document_css(ctx, useDocCss);
-
         // EPUB files ship with their own CSS (e.g. calibre stylesheets) - don't override
         // fonts or paragraph layout. Other formats get CJK fallbacks only when needed.
         bool darkTheme = IsDarkThemeSelected();
@@ -3817,25 +3814,96 @@ p.picture img.calibre1, p.picture1 img.calibre1 {
   margin: 0 auto !important;
 }
 )",
-                                         panelH);
+                                           panelH);
         ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", comicCss) : comicCss;
     }
+    return ebookCss;
+}
+
+static void ApplyMupdfReflowUserCssAndLayout(fz_context* ctx, fz_document* doc, const char* nameHint, int displayDPI,
+                                             float ldx, float ldy, float lfontDy, float* dxOut, float* dyOut) {
+    auto eBookUI = GetEBookUI();
+    if (eBookUI) {
+        fz_set_use_document_css(ctx, !eBookUI->ignoreDocumentCSS);
+    }
+    TempStr ebookCss = BuildMupdfReflowUserCss(nameHint, ldx, ldy, lfontDy);
     if (ebookCss) {
         fz_set_user_css(ctx, ebookCss);
     }
+    float dx = DpiScale(ldx, displayDPI);
+    float dy = DpiScale(ldy, displayDPI);
+    float fontDy = DpiScale(lfontDy, displayDPI);
+    fz_layout_document(ctx, doc, dx, dy, fontDy);
+    if (dxOut) {
+        *dxOut = dx;
+    }
+    if (dyOut) {
+        *dyOut = dy;
+    }
+}
 
-    float dx, dy, fontDy;
+// Theme toggles only user CSS colors; page breaks stay the same. Do not call
+// fz_count_pages or fz_layout_document here -- chapters relayout lazily when rendered.
+static void ApplyMupdfThemeCssOnly(fz_context* ctx, const char* nameHint, float ldxPt, float ldyPt, float lfontDyPt) {
+    auto eBookUI = GetEBookUI();
+    if (eBookUI) {
+        fz_set_use_document_css(ctx, !eBookUI->ignoreDocumentCSS);
+    }
+    TempStr ebookCss = BuildMupdfReflowUserCss(nameHint, ldxPt, ldyPt, lfontDyPt);
+    if (ebookCss) {
+        fz_set_user_css(ctx, ebookCss);
+    }
+}
+
+bool EngineMupdf::LoadFromStream(fz_stream* stm, const char* nameHint, PasswordUI* pwdUI) {
+    if (!stm) {
+        return false;
+    }
+    auto ctx = Ctx();
+
+#if 0
+    /* a heuristic. a layout page size for .epub is A5 but that makes a font size too
+       large for non-epub files like .txt or .xml, so for those use larger A4 */
+    float ldx = layoutA4DxPt;
+    float ldy = layoutA4DyPt;
+    const char* ext = path::GetExtTemp(nameHint);
+    if (str::EqI(ext, ".epub")) {
+        ldx = layoutA5DxPt;
+        ldy = layoutA5DyPt;
+    }
+#endif
+
+    bool isEpub = str::EndsWithI(nameHint, ".epub");
+    EbookTypographyKind typographyKind =
+        isEpub ? DetectEbookTypographyKind(FilePath(), nameHint) : EbookTypographyKind::Latin;
+    SetEbookTypographyKind(typographyKind);
+
+    float ldx = layoutA5DxPt;
+    float ldy = layoutA5DyPt;
+    float lfontDy = layoutFontEm;
+    if (isEpub) {
+        if (typographyKind == EbookTypographyKind::Cjk || typographyKind == EbookTypographyKind::Bilingual) {
+            ldx = layoutCjkEpubDxPt;
+            ldy = layoutCjkEpubDyPt;
+        } else {
+            ldx = layoutLatinEpubDxPt;
+            ldy = layoutLatinEpubDyPt;
+        }
+    } else {
+        lfontDy = 8.f;
+    }
+
+    float ldxPt, ldyPt, lfontDyPt;
+    GetMupdfReflowLayoutPt(nameHint, &ldxPt, &ldyPt, &lfontDyPt);
+
+    float dx, dy;
     _doc = nullptr;
     fz_var(dx);
     fz_var(dy);
-    fz_var(fontDy);
     fz_try(ctx) {
         _doc = fz_open_document_with_stream(ctx, nameHint, stm);
         pdfdoc = pdf_specifics(ctx, _doc);
-        dx = DpiScale(ldx, displayDPI);
-        dy = DpiScale(ldy, displayDPI);
-        fontDy = DpiScale(lfontDy, displayDPI);
-        fz_layout_document(ctx, _doc, dx, dy, fontDy);
+        ApplyMupdfReflowUserCssAndLayout(ctx, _doc, nameHint, displayDPI, ldxPt, ldyPt, lfontDyPt, &dx, &dy);
         reflowLayoutW = dx;
         reflowLayoutH = dy;
     }
@@ -4061,6 +4129,102 @@ static void GrowReflowPageCount(EngineMupdf* e, int newCount) {
     }
     ScopedCritSec scope(&e->pagesLock);
     GrowReflowPageCountLocked(e, newCount);
+}
+
+static void GetMupdfReflowLayoutPt(const char* nameHint, float* ldxPtOut, float* ldyPtOut, float* lfontDyPtOut) {
+    bool isEpub = str::EndsWithI(nameHint, ".epub");
+    EbookTypographyKind typographyKind = GetEbookTypographyKind();
+    float ldx = layoutA5DxPt;
+    float ldy = layoutA5DyPt;
+    float lfontDy = layoutFontEm;
+    if (isEpub) {
+        if (typographyKind == EbookTypographyKind::Cjk || typographyKind == EbookTypographyKind::Bilingual) {
+            ldx = layoutCjkEpubDxPt;
+            ldy = layoutCjkEpubDyPt;
+        } else {
+            ldx = layoutLatinEpubDxPt;
+            ldy = layoutLatinEpubDyPt;
+        }
+    } else {
+        lfontDy = 8.f;
+    }
+    auto eBookUI = GetEBookUI();
+    if (eBookUI) {
+        if (eBookUI->fontSize > 6 && eBookUI->fontSize < 30) {
+            lfontDy = eBookUI->fontSize;
+        }
+        if (eBookUI->layoutDx > 100 && eBookUI->layoutDx != 560) {
+            ldx = eBookUI->layoutDx;
+        }
+        if (eBookUI->layoutDy > 100 && eBookUI->layoutDy != 680) {
+            ldy = eBookUI->layoutDy;
+        }
+    }
+    *ldxPtOut = ldx;
+    *ldyPtOut = ldy;
+    *lfontDyPtOut = lfontDy;
+}
+
+static void DropSingleFzPageCache(fz_context* ctx, FzPageInfo* pi) {
+    if (!pi) {
+        return;
+    }
+    DeleteVecMembers(pi->links);
+    DeleteVecMembers(pi->autoLinks);
+    DeleteVecMembers(pi->comments);
+    for (FitzPageImageInfo* img : pi->images) {
+        if (img && img->image) {
+            fz_drop_image(ctx, img->image);
+            img->image = nullptr;
+        }
+    }
+    DeleteVecMembers(pi->images);
+    if (pi->retainedLinks) {
+        fz_drop_link(ctx, pi->retainedLinks);
+        pi->retainedLinks = nullptr;
+    }
+    if (pi->displayList) {
+        fz_drop_display_list(ctx, pi->displayList);
+        pi->displayList = nullptr;
+    }
+    PdfDarkModeInvalidatePage(ctx, pi);
+    if (pi->page) {
+        fz_drop_page(ctx, pi->page);
+        pi->page = nullptr;
+    }
+    pi->elementsNeedRebuilding = true;
+}
+
+static void AcquireReflowUiDocLock(EngineMupdf* e);
+static void ReleaseReflowUiDocLock(EngineMupdf* e);
+
+bool EngineMupdfRelayoutForThemeChange(EngineBase* engine) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !e->_doc || e->pdfdoc) {
+        return false;
+    }
+
+    const char* nameHint = engine->FilePath();
+    if (str::IsEmpty(nameHint)) {
+        return false;
+    }
+
+    float ldxPt, ldyPt, lfontDyPt;
+    GetMupdfReflowLayoutPt(nameHint, &ldxPt, &ldyPt, &lfontDyPt);
+
+    fz_context* ctx = e->_ctx;
+    bool ok = false;
+    AcquireReflowUiDocLock(e);
+    fz_try(ctx) {
+        ApplyMupdfThemeCssOnly(ctx, nameHint, ldxPt, ldyPt, lfontDyPt);
+        e->reflowThemeCssEpoch++;
+        ok = true;
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    ReleaseReflowUiDocLock(e);
+    return ok;
 }
 
 static void AppendReflowChapterStartPage(EngineMupdf* e, int chapterStartPage, int chaptersCounted) {
@@ -4927,6 +5091,20 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
 
     ReflowUiDocLock docGuard(this, reflowLoading);
     ReflowRenderLock renderGuard(this, reflowLoading);
+
+    if (!pdfdoc && pageInfo->reflowThemeCssEpoch != reflowThemeCssEpoch) {
+        fz_try(ctx) {
+            int chapter = ReflowChapterIndexForPageNo(this, pageNo);
+            if (chapter >= 0) {
+                fz_purge_stored_html_chapter(ctx, _doc, chapter);
+            }
+            DropSingleFzPageCache(ctx, pageInfo);
+            pageInfo->reflowThemeCssEpoch = reflowThemeCssEpoch;
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+        }
+    }
 
     // page-running operations on this specific page run under per-page lock.
     if (!pageInfo->page) {

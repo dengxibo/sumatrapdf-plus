@@ -134,6 +134,8 @@ void CloseCurrentTab(MainWindow* win, bool quitIfLast);
 void CloseTab(WindowTab* tab, bool quitIfLast);
 // true if read aloud was paused and can be resumed in this tab
 bool CanContinueReadAloud(WindowTab* tab);
+void ReadAloudPauseRememberPos();
+void ReadAloudContinueInTab(WindowTab* tab);
 WindowTab* GetReadAloudSourceTab();
 // double-click on empty canvas area: pause / continue / start reading below the point
 void ReadAloudToggleAtPoint(MainWindow* win, Point screenPt);
@@ -173,7 +175,7 @@ void RememberFavTreeExpansionState(MainWindow* win);
 void LayoutTreeContainer(LabelWithCloseWnd* l, HWND hwndTree);
 void AdvanceFocus(MainWindow* win);
 void SetCurrentLanguageAndRefreshUI(const char* langCode);
-void UpdateDocumentColors();
+void UpdateDocumentColors(bool rerender = true);
 void UpdateFixedPageScrollbarsVisibility();
 
 // scrollbar mode values: "windows\0smart\0overlay\0hidden\0"

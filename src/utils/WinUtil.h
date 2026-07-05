@@ -244,7 +244,7 @@ struct DoubleBuffer {
     ~DoubleBuffer();
 
     HDC GetDC() const;
-    void Flush(HDC hdc) const;
+    void Flush(HDC hdc, RECT* rcPaint = nullptr) const;
 };
 
 class DeferWinPosHelper {

@@ -1620,17 +1620,15 @@ static void SyncToolbarRebarChrome(MainWindow* win) {
         return;
     }
     SendMessageW(win->hwndReBar, RB_SETBKCOLOR, 0, ThemeChromeBackgroundColor());
+    // Keep borderless like the menu rebar: WS_BORDER draws a visible 1px line
+    // below the toolbar when layout is correct after theme/tab switches.
     LONG style = GetWindowLong(win->hwndReBar, GWL_STYLE);
-    bool wantBorders = !ThemeUsesDarkChrome();
-    bool hasBorders = (style & (WS_BORDER | RBS_BANDBORDERS)) != 0;
-    if (wantBorders != hasBorders) {
-        if (wantBorders) {
-            style |= WS_BORDER | RBS_BANDBORDERS;
-        } else {
-            style &= ~(WS_BORDER | RBS_BANDBORDERS);
-        }
+    bool hadBorders = (style & (WS_BORDER | RBS_BANDBORDERS)) != 0;
+    if (hadBorders) {
+        style &= ~(WS_BORDER | RBS_BANDBORDERS);
         SetWindowLong(win->hwndReBar, GWL_STYLE, style);
         SetWindowPos(win->hwndReBar, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+        SendMessageW(win->hwndToolbar, TB_AUTOSIZE, 0, 0);
     }
 }
 
@@ -1656,9 +1654,7 @@ void CreateToolbar(MainWindow* win) {
     HWND hwndParent = win->hwndFrame;
 
     DWORD style = WS_CHILD | WS_CLIPCHILDREN | RBS_VARHEIGHT;
-    if (!ThemeUsesDarkChrome()) {
-        style |= WS_BORDER | RBS_BANDBORDERS;
-    }
+    // no WS_BORDER (avoids 1px line) and no RBS_BANDBORDERS (avoids gray band separators)
     style |= CCS_NODIVIDER | CCS_NOPARENTALIGN | WS_VISIBLE;
     DWORD exStyle = WS_EX_TOOLWINDOW;
     if (isRtl) exStyle |= WS_EX_LAYOUTRTL;

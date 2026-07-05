@@ -279,6 +279,16 @@ static bool IsDisplayModelValid(DisplayModel* dm) {
     return false;
 }
 
+static bool IsDisplayModelCurrentTab(DisplayModel* dm) {
+    for (MainWindow* win : gWindows) {
+        WindowTab* tab = win->CurrentTab();
+        if (tab && tab->AsFixed() == dm) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void RenderFinishedOnUIThread(PageRenderRequest* req) {
     if (!IsDisplayModelValid(req->dm)) {
         delete req;
@@ -303,18 +313,22 @@ void DisplayModel::RenderFinished(PageRenderRequest* req) {
         if (pageInfo) {
             if (EngineIsProgressiveEbookLoading(engine)) {
                 // docLock contention can fail rendering transiently during background load
-                RepaintDisplay();
+                if (IsDisplayModelCurrentTab(this)) {
+                    RepaintDisplay();
+                }
                 return;
             }
             pageInfo->failedToRender = true;
         }
-        RepaintDisplay();
+        if (IsDisplayModelCurrentTab(this)) {
+            RepaintDisplay();
+        }
         return;
     }
     if (pageInfo) {
         pageInfo->failedToRender = false;
     }
-    if (PageVisibleNearby(req->pageNo)) {
+    if (PageVisibleNearby(req->pageNo) && IsDisplayModelCurrentTab(this)) {
         RepaintDisplay();
     }
 }
@@ -1579,7 +1593,10 @@ void DisplayModel::GoToPage(int pageNo, int scrollY, bool addNavPt, int scrollX)
             pendingRestoreScroll = ScrollState(pageNo, scrollX >= 0 ? scrollX : -1, scrollY >= 0 ? scrollY : -1);
             hasPendingRestoreScroll = true;
             if (ValidPageNo(1)) {
-                GoToPage(1, 0, false, scrollX);
+                ScrollState cur = GetScrollState();
+                if (!ValidPageNo(cur.page) || cur.page <= 1) {
+                    GoToPage(1, 0, false, scrollX);
+                }
             }
         }
         return;
@@ -2214,7 +2231,8 @@ void DisplayModel::SetScrollState(const ScrollState& state) {
         if (EngineIsProgressiveEbookLoading(engine) && state.page >= 1) {
             pendingRestoreScroll = state;
             hasPendingRestoreScroll = true;
-            if (ValidPageNo(1)) {
+            ScrollState cur = GetScrollState();
+            if ((!ValidPageNo(cur.page) || cur.page <= 1) && ValidPageNo(1)) {
                 GoToPage(1, false);
             }
             return;

@@ -32,6 +32,7 @@ struct WindowTab {
     Rect canvasRc;
     // whether to auto-reload the document when the tab is selected
     bool reloadOnFocus = false;
+    u32 lastDarkModeEpoch = 0;
     // FileWatcher token for unsubscribing
     WatchedFile* watcher = nullptr;
     // list of rectangles of the last rectangular, text or image selection

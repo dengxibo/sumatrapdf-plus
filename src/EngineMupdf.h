@@ -61,6 +61,9 @@ struct FzPageInfo {
     int darkLegacySkipRotation = 0;
     float darkLegacyArtworkPageBottom = 0.f;
     Vec<Rect> darkLegacySkipDevAbs;
+
+    // Last reflow theme CSS epoch this page was loaded under (EPUB etc.).
+    u32 reflowThemeCssEpoch = 0;
 };
 
 class EngineMupdf : public EngineBase {
@@ -165,6 +168,8 @@ class EngineMupdf : public EngineBase {
     volatile LONG reflowUiWantsDocLock = 0;
     // 0-based global page index at the start of each chapter (built during background load)
     Vec<int> reflowChapterStartPage;
+    // Bumped on theme toggle; pages/chapters restyle lazily when rendered.
+    u32 reflowThemeCssEpoch = 1;
 
     // used to track "dirty" state of annotations. not perfect because if we add and delete
     // the same annotation, we should be back to 0
