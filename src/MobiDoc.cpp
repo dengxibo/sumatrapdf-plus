@@ -1553,24 +1553,248 @@ static char* NcxLookupCtocLabel(const NcxCtocMap& map, u32 noffs) {
     return nullptr;
 }
 
+static bool MobiIsCjkCodepoint(u32 cp) {
+    return (cp >= 0x2E80 && cp <= 0x9FFF) || (cp >= 0xF900 && cp <= 0xFAFF) || (cp >= 0xFF00 && cp <= 0xFF60) ||
+           (cp >= 0x3000 && cp <= 0x303F);
+}
+
+static bool MobiUtf8Codepoint(const u8* p, int n, u32* cpOut) {
+    if (n == 1) {
+        *cpOut = *p;
+        return true;
+    }
+    if (n == 2) {
+        *cpOut = ((p[0] & 0x1F) << 6) | (p[1] & 0x3F);
+        return true;
+    }
+    if (n == 3) {
+        *cpOut = ((p[0] & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
+        return true;
+    }
+    if (n == 4) {
+        *cpOut = ((p[0] & 0x07) << 18) | ((p[1] & 0x3F) << 12) | ((p[2] & 0x3F) << 6) | (p[3] & 0x3F);
+        return true;
+    }
+    return false;
+}
+
+static void MobiStripInlineHtmlInPlace(char* s) {
+    char* r = s;
+    char* w = s;
+    while (*r) {
+        if (*r == '<') {
+            while (*r && *r != '>') {
+                r++;
+            }
+            if (*r == '>') {
+                r++;
+            }
+            continue;
+        }
+        *w++ = *r++;
+    }
+    *w = 0;
+}
+
+static bool MobiParagraphIsOnlyWhitespace(const char* s) {
+    const u8* p = (const u8*)s;
+    while (*p) {
+        if (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') {
+            p++;
+            continue;
+        }
+        if (p[0] == 0xE3 && p[1] == 0x80 && p[2] == 0x80) {
+            p += 3;
+            continue;
+        }
+        return false;
+    }
+    return true;
+}
+
+static bool MobiTitleTextLooksValid(const char* text) {
+    if (!text || !*text) {
+        return false;
+    }
+    size_t byteLen = str::Len(text);
+    if (byteLen < 2 || byteLen > 100) {
+        return false;
+    }
+    int cjk = 0;
+    int qmark = 0;
+    int runes = 0;
+    const u8* p = (const u8*)text;
+    while (*p) {
+        int n = utf8RuneLen(p);
+        if (!isLegalUTF8Sequence(p, (const u8*)text + byteLen)) {
+            return false;
+        }
+        u32 cp = 0;
+        MobiUtf8Codepoint(p, n, &cp);
+        if (n == 1 && cp == '?') {
+            qmark++;
+        } else if (MobiIsCjkCodepoint(cp)) {
+            cjk++;
+        }
+        runes++;
+        p += n;
+    }
+    if (qmark > 0) {
+        return false;
+    }
+    if (cjk >= 2) {
+        return true;
+    }
+    return runes >= 4;
+}
+
+static const char* MobiFindParagraphOpen(const char* html, const char* htmlEnd) {
+    const char* p = html;
+    while (p < htmlEnd) {
+        const char* tag = str::Find(p, "<p");
+        if (!tag || tag + 2 >= htmlEnd) {
+            return nullptr;
+        }
+        if (tag > html && tag[-1] != '<') {
+            p = tag + 2;
+            continue;
+        }
+        char tagNext = tag[2];
+        if (tagNext != '>' && tagNext != ' ' && tagNext != '\t' && tagNext != '\r' && tagNext != '\n') {
+            p = tag + 2;
+            continue;
+        }
+        return tag;
+    }
+    return nullptr;
+}
+
+static const char* MobiFindLastPagebreakBefore(const char* docStart, const char* filePos) {
+    const char* best = nullptr;
+    const char* p = docStart;
+    while (p < filePos) {
+        const char* pb = str::Find(p, "<mbp:pagebreak");
+        if (!pb || pb >= filePos) {
+            pb = str::Find(p, "<pagebreak");
+        }
+        if (!pb || pb >= filePos) {
+            break;
+        }
+        best = pb;
+        p = pb + 1;
+    }
+    return best;
+}
+
+static char* MobiExtractFirstParagraphText(const char* html, const char* htmlEnd) {
+    const char* p = html;
+    while (p < htmlEnd) {
+        const char* tag = MobiFindParagraphOpen(p, htmlEnd);
+        if (!tag) {
+            break;
+        }
+        const char* gt = (const char*)memchr(tag, '>', htmlEnd - tag);
+        if (!gt) {
+            break;
+        }
+        gt++;
+        const char* close = str::Find(gt, "</p>");
+        if (!close || close >= htmlEnd) {
+            break;
+        }
+        size_t len = (size_t)(close - gt);
+        if (len > 0 && len < 256) {
+            char* tmp = (char*)malloc(len + 1);
+            if (!tmp) {
+                return nullptr;
+            }
+            memcpy(tmp, gt, len);
+            tmp[len] = 0;
+            MobiStripInlineHtmlInPlace(tmp);
+            str::TrimWSInPlace(tmp, str::TrimOpt::Both);
+            if (!MobiParagraphIsOnlyWhitespace(tmp) && MobiTitleTextLooksValid(tmp)) {
+                return tmp;
+            }
+            free(tmp);
+        }
+        p = close + 4;
+    }
+    return nullptr;
+}
+
+static char* MobiExtractTitleAtFilePos(MobiDoc* mb, int filePos) {
+    if (!mb || !mb->doc || filePos < 0) {
+        return nullptr;
+    }
+    size_t docSize = mb->doc->size();
+    if ((size_t)filePos >= docSize) {
+        return nullptr;
+    }
+
+    const char* docStart = mb->doc->Get();
+    const char* html = docStart + filePos;
+    const size_t kBackScan = 4096;
+    const char* backStart = docStart;
+    if ((size_t)filePos > kBackScan) {
+        backStart = docStart + filePos - kBackScan;
+    }
+
+    size_t remain = docSize - (size_t)filePos;
+    const size_t kMaxScan = 16384;
+    if (remain > kMaxScan) {
+        remain = kMaxScan;
+    }
+    const char* htmlEnd = html + remain;
+
+    const char* scanFrom = html;
+    const char* pb = MobiFindLastPagebreakBefore(backStart, html);
+    if (pb) {
+        scanFrom = pb;
+    }
+
+    char* title = MobiExtractFirstParagraphText(scanFrom, htmlEnd);
+    if (title) {
+        return title;
+    }
+    if (scanFrom != html) {
+        return MobiExtractFirstParagraphText(html, htmlEnd);
+    }
+    return nullptr;
+}
+
 static bool NcxEntryLabelLooksValid(const char* label) {
     if (!label || !*label) {
         return false;
     }
     int suspicious = 0;
-    int len = 0;
-    for (const u8* p = (const u8*)label; *p; p++, len++) {
-        if (*p == '?') {
+    int cjk = 0;
+    int runes = 0;
+    const u8* p = (const u8*)label;
+    while (*p) {
+        int n = utf8RuneLen(p);
+        if (n == 1 && *p == '?') {
             suspicious++;
+        } else if (n >= 3) {
+            u32 cp = 0;
+            MobiUtf8Codepoint(p, n, &cp);
+            if (MobiIsCjkCodepoint(cp)) {
+                cjk++;
+            }
         }
+        runes++;
+        p += n;
     }
-    if (len == 0) {
+    if (runes == 0) {
         return false;
     }
-    if (suspicious == len) {
+    if (suspicious == runes) {
         return false;
     }
-    return suspicious * 3 <= len * 2;
+    // CNCX placeholders: '?' with no recovered CJK (digits/punctuation only).
+    if (suspicious > 0 && cjk == 0) {
+        return false;
+    }
+    return suspicious * 3 <= runes * 2;
 }
 
 static void NcxFreeEntries(Vec<NcxEntry>& entries) {
@@ -1701,6 +1925,15 @@ bool MobiDoc::ParseNcxToc(EbookTocVisitor* visitor) {
         if (!label) {
             label = str::Dup("");
         }
+        if (!NcxEntryLabelLooksValid(label) && e.pos >= 0) {
+            char* alt = MobiExtractTitleAtFilePos(this, e.pos);
+            if (alt && NcxEntryLabelLooksValid(alt)) {
+                free(label);
+                label = alt;
+            } else {
+                free(alt);
+            }
+        }
         if (NcxEntryLabelLooksValid(label)) {
             validLabels++;
         }
@@ -1822,7 +2055,7 @@ struct MobiTocWalker {
     EbookTocVisitor* visitor = nullptr;
     int itemLevel = 0;
     int visitedCount = 0; // number of ToC items actually emitted
-    bool done = false;      // stop at the first page break after the ToC block
+    bool done = false;    // stop at the first page break after the ToC block
 
     void Walk(const GumboNode* node);
     void WalkChildren(const GumboVector* children);
