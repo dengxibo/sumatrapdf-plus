@@ -116,6 +116,11 @@ EXPORTS
 
 	WebPDecodeBGRAInto
 	WebPGetInfo
+
+; EngineMupdf exports (also required by PdfFilter/PdfPreview)
+
+	fz_location_from_page_number
+	fz_purge_stored_html_chapter
 """
 
 def main():
