@@ -20,7 +20,8 @@ void NotifyEngineDisplayReady(EngineBase* engine) {
     (void)engine;
 }
 
-COLORREF ThemePageRenderColors(COLORREF& bg) {
+COLORREF ThemePageRenderColors(COLORREF& bg, bool respectPdfDocColorMode) {
+    (void)respectPdfDocColorMode;
     bg = WIN_COL_WHITE;
     return WIN_COL_BLACK;
 }

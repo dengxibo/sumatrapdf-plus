@@ -9,7 +9,7 @@ void CreateThemeCommands();
 void UpdateThemeCommandLabels();
 
 COLORREF ThemeDocumentColors(COLORREF&);
-COLORREF ThemePageRenderColors(COLORREF&);
+COLORREF ThemePageRenderColors(COLORREF&, bool respectPdfDocColorMode = true);
 void ThemeSidebarColors(COLORREF& bg, COLORREF& text);
 COLORREF ThemeSidebarBackgroundColor();
 COLORREF ThemeMainWindowBackgroundColor();

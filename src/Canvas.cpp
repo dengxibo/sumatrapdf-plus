@@ -1742,7 +1742,7 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
         if (engine->kind == kindEngineMobi) {
             // Match EngineEbook::RenderPage so canvas margins do not contrast with tiles.
             if (IsDarkThemeSelected()) {
-                ThemePageRenderColors(colDocBg);
+                ThemePageRenderColors(colDocBg, false);
             } else {
                 colDocBg = RgbToCOLORREF(0xF7F3E8);
             }

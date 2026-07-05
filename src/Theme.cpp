@@ -521,11 +521,12 @@ COLORREF ThemeDocumentColors(COLORREF& bg) {
 
 // colors for page bitmap recoloring (render cache)
 // TextColor substitutes black, BackgroundColor substitutes white in rendered pages
-COLORREF ThemePageRenderColors(COLORREF& bg) {
+COLORREF ThemePageRenderColors(COLORREF& bg, bool respectPdfDocColorMode) {
     COLORREF text = kColBlack;
     bg = kColWhite;
     bool invertColors = gGlobalPrefs->fixedPageUI.invertColors || ThemeUsesDarkChrome();
-    if (ThemeUsesDarkChrome() && GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
+    if (respectPdfDocColorMode && ThemeUsesDarkChrome() &&
+        GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
         invertColors = false;
     }
 

@@ -71,7 +71,7 @@ static float layoutFontEm = 11.F;
 
 static TempStr BuildEbookDarkCss(bool isEpub) {
     COLORREF bgCol;
-    ThemePageRenderColors(bgCol);
+    ThemePageRenderColors(bgCol, false);
     TempStr bgHex = str::FormatTemp("#%02x%02x%02x", GetRValue(bgCol), GetGValue(bgCol), GetBValue(bgCol));
     COLORREF linkCol = ThemeWindowLinkColor();
     TempStr linkHex = str::FormatTemp("#%02x%02x%02x", GetRValue(linkCol), GetGValue(linkCol), GetBValue(linkCol));
@@ -5812,17 +5812,19 @@ void HandleLinkMupdf(EngineMupdf* e, IPageDestination* dest, ILinkHandler* linkH
     fz_link_dest ldest{};
     int pageNo1 = 0;
     if (InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) != 0) {
-        pageNo1 = EngineMupdfFastOutlinePageNo(e, dest);
-        if (pageNo1 <= 0 && uri && !IsPlaceholderEpubHref(uri)) {
-            pageNo1 = ResolveMupdfLinkPageNo1(e, uri, &ldest);
-        }
-        if (pageNo1 <= 0) {
+        // Same fast path as sidebar TOC: never call fz_resolve_link_dest during
+        // background chapter counting (built-in EPUB links would freeze the UI).
+        if (!EngineMupdfIsOutlineDestReachable(e, dest)) {
             return;
         }
+        float destX = DEST_USE_DEFAULT;
+        float destY = DEST_USE_DEFAULT;
         if (link->outline) {
-            ldest.x = link->outline->x;
-            ldest.y = link->outline->y;
+            destX = link->outline->x;
+            destY = link->outline->y;
         }
+        EngineMupdfNavigateUri(e, uri, ReflowOutlineChapterIndex(link), destX, destY, linkHandler);
+        return;
     } else {
         pageNo1 = ResolveMupdfLinkPageNo1(e, uri, &ldest);
         if (pageNo1 <= 0) {

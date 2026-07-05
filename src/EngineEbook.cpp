@@ -635,13 +635,13 @@ RenderedBitmap* EngineEbook::RenderPage(RenderPageArgs& args) {
     COLORREF bgCol;
     COLORREF textCol;
     if (readerStyleMobi && darkTheme) {
-        ThemePageRenderColors(bgCol);
+        ThemePageRenderColors(bgCol, false);
         textCol = RgbToCOLORREF(0xE6E1D8);
     } else if (readerStyleMobi) {
         bgCol = RgbToCOLORREF(0xF7F3E8);
         textCol = RgbToCOLORREF(0x565047);
     } else {
-        textCol = ThemePageRenderColors(bgCol);
+        textCol = ThemePageRenderColors(bgCol, false);
     }
     Color pageBg = GdiRgbFromCOLORREF(bgCol);
     Color pageText = GdiRgbFromCOLORREF(textCol);
