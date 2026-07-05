@@ -287,6 +287,49 @@ static bool IsMobiEbookTocItemReachable(DocController* ctrl, TocItem* tocItem, E
     return false;
 }
 
+bool IsInternalPageLinkReachable(DocController* ctrl, IPageDestination* dest) {
+    if (!ctrl || !dest) {
+        return true;
+    }
+    Kind kind = dest->GetKind();
+    if (kind == kindDestinationLaunchURL || kind == kindDestinationLaunchFile) {
+        return true;
+    }
+    DisplayModel* dm = ctrl->AsFixed();
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (!engine || !EngineIsProgressiveEbookLoading(engine)) {
+        return true;
+    }
+    if (kind == kindDestinationMupdf) {
+        return EngineMupdfIsOutlineDestReachable(engine, dest);
+    }
+    if (engine->kind == kindEngineMobi) {
+        if (kind == kindDestinationScrollTo && PageDestGetName(dest)) {
+            return true;
+        }
+        int filePos = EngineEbookParseTocLinkFilePos(engine, dest);
+        if (filePos >= 0) {
+            return EngineEbookIsTocFilePosReachable(engine, filePos);
+        }
+        int pageNo = PageDestGetPageNo(dest);
+        if (pageNo > 0) {
+            return pageNo <= EngineEbookGetFormattedPageCount(engine);
+        }
+    }
+    int pageNo = PageDestGetPageNo(dest);
+    if (pageNo > 0) {
+        return ctrl->ValidPageNo(pageNo);
+    }
+    return true;
+}
+
+bool IsPageElementLinkReachable(DocController* ctrl, IPageElement* el) {
+    if (!ctrl || !el || !el->Is(kindPageElementDest)) {
+        return true;
+    }
+    return IsInternalPageLinkReachable(ctrl, ((PageElementDestination*)el)->dest);
+}
+
 static bool IsTocPageReachable(DocController* ctrl, TocItem* tocItem) {
     if (!ctrl || !tocItem) {
         return true;
@@ -298,8 +341,8 @@ static bool IsTocPageReachable(DocController* ctrl, TocItem* tocItem) {
         return IsMobiEbookTocItemReachable(ctrl, tocItem, engine);
     }
     IPageDestination* dest = tocItem->GetPageDestination();
-    if (engine && EngineIsProgressiveEbookLoading(engine) && dest && dest->GetKind() == kindDestinationMupdf) {
-        return EngineMupdfIsOutlineDestReachable(engine, dest);
+    if (dest && dest->GetKind() == kindDestinationMupdf && engine && EngineIsProgressiveEbookLoading(engine)) {
+        return IsInternalPageLinkReachable(ctrl, dest);
     }
     if (tocItem->pageNo <= 0) {
         if (engine && dest && dest->GetKind() == kindDestinationMupdf && IsTocInternalPageItem(tocItem)) {

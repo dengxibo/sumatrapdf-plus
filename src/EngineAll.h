@@ -40,6 +40,10 @@ int EngineEbookParseTocLinkFilePos(EngineBase* engine, IPageDestination* dest);
 bool EngineEbookIsTocFilePosReachable(EngineBase* engine, int filePos);
 int EngineEbookPageNoForTocFilePos(EngineBase* engine, int filePos);
 
+struct DocController;
+bool IsInternalPageLinkReachable(DocController* ctrl, IPageDestination* dest);
+bool IsPageElementLinkReachable(DocController* ctrl, IPageElement* el);
+
 void SetCreateEngineForThumbnail(bool value);
 bool IsCreateEngineForThumbnail();
 

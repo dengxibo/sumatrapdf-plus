@@ -1146,7 +1146,7 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
         ReportIf(win->linkOnLastButtonDown);
         IPageElement* pageEl = dm->GetElementAtPos(pt, nullptr);
         if (pageEl) {
-            if (pageEl->Is(kindPageElementDest)) {
+            if (pageEl->Is(kindPageElementDest) && IsPageElementLinkReachable(win->ctrl, pageEl)) {
                 win->linkOnLastButtonDown = pageEl;
             }
         }
@@ -1286,6 +1286,9 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
     if (link && link->GetRect().Contains(ptPage)) {
         /* follow an active link */
         IPageDestination* dest = link->AsLink();
+        if (dest && !IsInternalPageLinkReachable(win->ctrl, dest)) {
+            return;
+        }
         // highlight the clicked link (as a reminder of the last action once the user returns)
         Kind kind = nullptr;
         if (dest) {
@@ -1409,6 +1412,9 @@ static void OnMouseLeftButtonDblClk(MainWindow* win, int x, int y, WPARAM key) {
         return;
     }
     if (pageEl->Is(kindPageElementDest)) {
+        if (!IsPageElementLinkReachable(win->ctrl, pageEl)) {
+            return;
+        }
         // speed up navigation in a file where navigation links are in a fixed position
         OnMouseLeftButtonDown(win, x, y, key);
     } else if (pageEl->Is(kindPageElementImage)) {
@@ -1572,6 +1578,45 @@ static void PaintPageFrameAndShadow(HDC hdc, Rect& bounds, Rect&, bool, COLORREF
 #endif
 
 /* debug code to visualize links (can block while rendering) */
+static void PaintUnreachablePageLinks(MainWindow* win, HDC hdc, DisplayModel* dm) {
+    if (!win || !win->ctrl || !dm) {
+        return;
+    }
+    EngineBase* engine = dm->GetEngine();
+    if (!engine || !EngineIsProgressiveEbookLoading(engine)) {
+        return;
+    }
+
+    Rect viewPortRect(Point(), dm->GetViewPort().Size());
+    COLORREF disabledCol = ThemeReadingTextDisabledColor();
+    Gdiplus::Graphics gs(hdc);
+    Gdiplus::SolidBrush brush(
+        Gdiplus::Color(160, GetRValue(disabledCol), GetGValue(disabledCol), GetBValue(disabledCol)));
+
+    for (int pageNo = 1; pageNo <= dm->PageCount(); pageNo++) {
+        PageInfo* pi = dm->GetPageInfo(pageNo);
+        if (!pi || !pi->isShown || pi->visibleRatio == 0.0) {
+            continue;
+        }
+        Vec<IPageElement*> els = engine->GetElements(pageNo);
+        for (IPageElement* el : els) {
+            if (!el || !el->Is(kindPageElementDest)) {
+                continue;
+            }
+            if (IsPageElementLinkReachable(win->ctrl, el)) {
+                continue;
+            }
+            Rect rect = dm->CvtToScreen(pageNo, el->GetRect());
+            Rect isect = viewPortRect.Intersect(rect);
+            if (isect.IsEmpty()) {
+                continue;
+            }
+            gs.FillRectangle(&brush, (Gdiplus::REAL)isect.x, (Gdiplus::REAL)isect.y, (Gdiplus::REAL)isect.dx,
+                             (Gdiplus::REAL)isect.dy);
+        }
+    }
+}
+
 static void DebugShowLinks(DisplayModel* dm, HDC hdc) {
     if (!gGlobalPrefs->showLinks) {
         return;
@@ -1964,6 +2009,7 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
     }
 
     if (!rendering) {
+        PaintUnreachablePageLinks(win, hdc, dm);
         DebugShowLinks(dm, hdc);
     }
     return shouldPaint;
@@ -2052,8 +2098,9 @@ static LRESULT OnSetCursorMouseNone(MainWindow* win, HWND hwnd) {
     win->ShowToolTip(text, rc, true);
 
     bool isLink = pageEl->Is(kindPageElementDest);
+    bool linkReachable = !isLink || IsPageElementLinkReachable(win->ctrl, pageEl);
 
-    if (isLink) {
+    if (isLink && linkReachable) {
         SetCursorCached(IDC_HAND);
     } else {
         SetTextOrArrorCursor(dm, pt);

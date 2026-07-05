@@ -1010,11 +1010,11 @@ static bool ReadAloudGetCurrentWordAbsRange(WindowTab* tab, int* startAbsOut, in
     return true;
 }
 
-// Reading-band layout: follow target is 5% from the top (page turn and same-page scroll).
+// Reading-band layout: follow target is 10% from the top (page turn and same-page scroll).
 // Reading progresses downward, so lines above 78% are intentional context — only
 // scroll when the anchor drops below 78%.
 static constexpr float kReadAloudOuterBottomRatio = 0.78f;
-static constexpr float kReadAloudTargetRatio = 0.05f;
+static constexpr float kReadAloudTargetRatio = 0.10f;
 
 static bool ReadAloudCollectAnchorPageRect(WindowTab* tab, int wordStartAbs, int wordEndAbs, int* pageNoOut,
                                            RectF* pageRectOut) {

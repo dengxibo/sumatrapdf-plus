@@ -558,6 +558,9 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
     if (win->tocLoaded && win->tocVisible && win->tocTreeView && EngineIsProgressiveEbookLoading(engine)) {
         InvalidateRect(win->tocTreeView->hwnd, nullptr, FALSE);
     }
+    if (isForeground && EngineIsProgressiveEbookLoading(engine)) {
+        ScheduleRepaint(win, 0);
+    }
 }
 
 void NotifyEbookPagesLoadingProgress(const char* filePath, bool reloadToc) {
