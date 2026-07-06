@@ -475,6 +475,36 @@ MobiDoc::~MobiDoc() {
     delete pdbReader;
 }
 
+// Infer the start of the post-text record range from the first JPEG, walking
+// back over RESC/padding metadata records. Using docRecCount alone can point
+// at KF8/BOUND records in dual-version files (e.g. angry-king.mobi).
+static size_t InferImageFirstRec(PdbReader* pdbReader, size_t docRecCount) {
+    size_t recCount = pdbReader->GetRecordCount();
+    size_t firstJpeg = 0;
+    for (size_t i = 1; i < recCount; i++) {
+        auto rec = pdbReader->GetRecord(i);
+        if (GuessFileTypeFromContent(rec) != nullptr) {
+            firstJpeg = i;
+            break;
+        }
+    }
+    if (0 == firstJpeg) {
+        return 0;
+    }
+    size_t imageRec = firstJpeg;
+    while (imageRec > 1 && imageRec > docRecCount) {
+        auto prev = pdbReader->GetRecord(imageRec - 1);
+        if (prev.Size() <= 4) {
+            break;
+        }
+        if (GuessFileTypeFromContent(prev) != nullptr) {
+            break;
+        }
+        imageRec--;
+    }
+    return imageRec;
+}
+
 bool MobiDoc::ParseHeader() {
     ReportIf(!pdbReader);
     if (!pdbReader) {
@@ -561,12 +591,16 @@ bool MobiDoc::ParseHeader() {
         kf8FragIdx = kd.UInt32();
     }
 
-    if (pdbReader->GetRecordCount() > mobiHdr.imageFirstRec) {
+    if (0 != mobiHdr.imageFirstRec && (u32)-1 != mobiHdr.imageFirstRec &&
+        pdbReader->GetRecordCount() > mobiHdr.imageFirstRec) {
         imageFirstRec = mobiHdr.imageFirstRec;
-        if (0 == imageFirstRec) {
-            // I don't think this should ever happen but I've seen it
-            imagesCount = 0;
-        } else {
+        imagesCount = pdbReader->GetRecordCount() - imageFirstRec;
+    } else if (0 == mobiHdr.imageFirstRec || (u32)-1 == mobiHdr.imageFirstRec) {
+        // Some picture books leave imageFirstRec at 0; recindex still references
+        // PDB records as imageFirstRec + recindex - 1.
+        size_t inferred = InferImageFirstRec(pdbReader, docRecCount);
+        if (inferred > 0 && inferred < pdbReader->GetRecordCount()) {
+            imageFirstRec = inferred;
             imagesCount = pdbReader->GetRecordCount() - imageFirstRec;
         }
     }
@@ -767,19 +801,51 @@ void MobiDoc::LoadImages() {
     }
 }
 
-// imgRecIndex corresponds to recindex attribute of <img> tag
-// as far as I can tell, this means: it starts at 1
-// returns nullptr if there is no image (e.g. it's not a format we
-// recognize)
-ByteSlice* MobiDoc::GetImage(size_t imgRecIndex) const {
-    if ((imgRecIndex > imagesCount) || (imgRecIndex < 1)) {
+// imgRecIndex corresponds to recindex attribute of <img> tag.
+// PDB record = imageFirstRec + imgRecIndex - 1 (1-based index into the
+// post-text record range).
+ByteSlice* MobiDoc::GetImage(size_t imgRecIndex) {
+    if (!pdbReader || 0 == imageFirstRec || imgRecIndex < 1) {
         return nullptr;
     }
-    --imgRecIndex;
-    if (images[imgRecIndex].empty()) {
+    size_t pdbRec = imageFirstRec + imgRecIndex - 1;
+    if (pdbRec >= pdbReader->GetRecordCount()) {
         return nullptr;
     }
-    return &images[imgRecIndex];
+    size_t slot = imgRecIndex - 1;
+    if (!images || slot >= imagesCount) {
+        return nullptr;
+    }
+    if (!images[slot].empty()) {
+        return &images[slot];
+    }
+    auto rec = pdbReader->GetRecord(pdbRec);
+    if (rec.Size() < 4 || IsEofRecord(rec) || KnownNonImageRec(rec) || !KnownImageFormat(rec)) {
+        return nullptr;
+    }
+    images[slot] = rec;
+    return &images[slot];
+}
+
+ByteSlice* MobiDoc::GetPdbRecordImage(size_t pdbRecNo) {
+    if (!pdbReader || pdbRecNo >= pdbReader->GetRecordCount()) {
+        return nullptr;
+    }
+    auto rec = pdbReader->GetRecord(pdbRecNo);
+    if (rec.Size() < 4 || IsEofRecord(rec) || !KnownImageFormat(rec)) {
+        return nullptr;
+    }
+    if (imageFirstRec > 0 && pdbRecNo >= imageFirstRec && images) {
+        size_t slot = pdbRecNo - imageFirstRec;
+        if (slot < imagesCount) {
+            if (images[slot].empty()) {
+                images[slot] = rec;
+            }
+            return &images[slot];
+        }
+    }
+    pdbImageFallback = rec;
+    return &pdbImageFallback;
 }
 
 // KF8/AZW3 images use src="kindle:embed:XXXX" where XXXX is a base-32 resource index

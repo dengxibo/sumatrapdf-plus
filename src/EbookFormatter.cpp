@@ -334,8 +334,12 @@ static ByteSlice* MobiImageFromToken(MobiDoc* doc, HtmlToken* t) {
     AttrInfo* attr = t->GetAttrByName("recindex");
     if (attr) {
         int n;
-        if (str::Parse(attr->val, attr->valLen, "%d", &n)) {
-            return doc->GetImage(n);
+        if (str::Parse(attr->val, attr->valLen, "%d", &n) && n > 0) {
+            ByteSlice* img = doc->GetImage((size_t)n);
+            if (img) {
+                return img;
+            }
+            return doc->GetPdbRecordImage((size_t)n);
         }
     }
     attr = t->GetAttrByName("src");
@@ -380,8 +384,12 @@ static bool IsInlineMobiImage(HtmlToken* t, MobiDoc* doc) {
     return true;
 }
 
+static bool IsOpenHtmlTag(HtmlToken* t) {
+    return t && (t->IsStartTag() || t->IsEmptyElementEndTag());
+}
+
 static bool IsEarlyMobiCoverImage(HtmlToken* t, MobiDoc* doc, ptrdiff_t reparseIdx) {
-    if (!t || !t->IsStartTag() || reparseIdx < 0 || reparseIdx > 4096) {
+    if (!IsOpenHtmlTag(t) || reparseIdx < 0 || reparseIdx > 4096) {
         return false;
     }
     if (IsInlineMobiImage(t, doc)) {
@@ -398,6 +406,15 @@ SizeF MobiFormatter::MaxImageSize(HtmlToken* t) {
     if (IsInlineMobiImage(t, doc)) {
         // KF8 heading icons (class="inline1") and classic MOBI recindex images sit beside text
         return {2.5f * em, 2.f * em};
+    }
+    if (t && t->GetAttrByName("recindex") && doc) {
+        ByteSlice* img = MobiImageFromToken(doc, t);
+        if (img) {
+            Size imgSize = ImageSizeFromData(*img);
+            if (imgSize.dx >= 200 && imgSize.dy >= 200) {
+                return {pageDx * 0.92f, pageDy * 0.88f};
+            }
+        }
     }
     if (IsEarlyMobiCoverImage(t, doc, currReparseIdx)) {
         return {pageDx * 0.7f, pageDy * 0.7f};
@@ -416,7 +433,7 @@ SizeF MobiFormatter::MaxImageSize(HtmlToken* t) {
 // global record)
 void MobiFormatter::HandleTagImg(HtmlToken* t) {
     // we allow formatting raw html which can't require doc
-    if (!doc || !t->IsStartTag()) {
+    if (!doc || t->IsEndTag()) {
         return;
     }
     if (injectedExthCover && IsEarlyMobiCoverImage(t, doc, currReparseIdx)) {
