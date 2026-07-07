@@ -75,6 +75,9 @@ NoHomeTab = false
 ; count. If false, shows most recently opened first
 HomePageSortByFrequentlyRead = false
 
+; Valid values: thumbnails, list (introduced in version 3.7)
+HomePageViewMode = thumbnails
+
 ; if true, a document will be reloaded automatically whenever it's changed
 ; (currently doesn't work for documents shown in the ebook UI) (introduced in
 ; version 2.5)
@@ -119,8 +122,11 @@ OfflineDictionaryPath =
 ; (introduced in version 3.7)
 EnableDoubleClickWordLookup = true
 
-; if true, Ask AI opens DeepSeek chat instead of Doubao (豆包); default is Doubao
-; at https://www.doubao.com/chat/ (introduced in version 3.7)
+; Valid values: doubao, deepseek, chatgpt (introduced in version 3.7)
+AiChatProvider = doubao
+
+; deprecated: use AiChatProvider instead; if true and AiChatProvider is not in
+; settings, migrates to deepseek (introduced in version 3.7)
 AiChatUseDeepSeekInsteadOfDoubao = false
 
 ; if false, hide Ask AI (online chat) in the selection toolbar, context menu,

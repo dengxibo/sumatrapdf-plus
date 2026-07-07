@@ -6896,8 +6896,15 @@ static TempStr BuildDoubaoPromptTemp(const char* selection, DoubaoPromptKind kin
 }
 
 static AiChatService ActiveAiChatService() {
-    if (gGlobalPrefs && gGlobalPrefs->aiChatUseDeepSeekInsteadOfDoubao) {
+    if (!gGlobalPrefs) {
+        return AiChatService::Doubao;
+    }
+    const char* p = gGlobalPrefs->aiChatProvider;
+    if (str::EqI(p, "deepseek")) {
         return AiChatService::DeepSeek;
+    }
+    if (str::EqI(p, "chatgpt")) {
+        return AiChatService::ChatGPT;
     }
     return AiChatService::Doubao;
 }

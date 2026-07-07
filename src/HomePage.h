@@ -20,6 +20,8 @@ TempStr GetStaticLinkAtTemp(Vec<StaticLink*>& linkInfo, int x, int y, StaticLink
 constexpr const char* kLinkOpenFile = "<File,Open>";
 constexpr const char* kLinkShowList = "<View,ShowList>";
 constexpr const char* kLinkHideList = "<View,HideList>";
+constexpr const char* kLinkHomePageListView = "<View,HomePageList>";
+constexpr const char* kLinkHomePageThumbView = "<View,HomePageThumbs>";
 constexpr const char* kLinkNextTip = "<NextTip>";
 
 void SetPromoString(const char*);

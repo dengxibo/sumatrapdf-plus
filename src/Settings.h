@@ -450,6 +450,9 @@ struct GlobalPrefs {
     // if true implements pre-3.6 behavior of showing opened files by
     // frequently used count. If false, shows most recently opened first
     bool homePageSortByFrequentlyRead;
+    // home page file list layout: thumbnails (grid with previews) or list
+    // (filename and path)
+    char* homePageViewMode;
     // if true, a document will be reloaded automatically whenever it's
     // changed (currently doesn't work for documents shown in the ebook UI)
     bool reloadModifiedDocuments;
@@ -482,8 +485,10 @@ struct GlobalPrefs {
     // if true, double-clicking a word looks it up in the offline
     // dictionary
     bool enableDoubleClickWordLookup;
-    // if true, Ask AI opens DeepSeek chat instead of Doubao (豆包); default
-    // is Doubao at https://www.doubao.com/chat/
+    // Ask AI provider: doubao (豆包), deepseek, or chatgpt
+    char* aiChatProvider;
+    // deprecated: use AiChatProvider instead; if true and AiChatProvider
+    // is not in settings, migrates to deepseek
     bool aiChatUseDeepSeekInsteadOfDoubao;
     // if false, hide Ask AI (online chat) in the selection toolbar,
     // context menu, and command palette
@@ -940,6 +945,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, mainWindowBackground), SettingType::Color, (intptr_t)"#80fff200"},
     {offsetof(GlobalPrefs, noHomeTab), SettingType::Bool, false},
     {offsetof(GlobalPrefs, homePageSortByFrequentlyRead), SettingType::Bool, false},
+    {offsetof(GlobalPrefs, homePageViewMode), SettingType::String, (intptr_t)"thumbnails"},
     {offsetof(GlobalPrefs, reloadModifiedDocuments), SettingType::Bool, true},
     {offsetof(GlobalPrefs, rememberOpenedFiles), SettingType::Bool, true},
     {offsetof(GlobalPrefs, rememberStatePerDocument), SettingType::Bool, true},
@@ -952,6 +958,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, showToolbar), SettingType::Bool, true},
     {offsetof(GlobalPrefs, offlineDictionaryPath), SettingType::String, 0},
     {offsetof(GlobalPrefs, enableDoubleClickWordLookup), SettingType::Bool, true},
+    {offsetof(GlobalPrefs, aiChatProvider), SettingType::String, (intptr_t)"doubao"},
     {offsetof(GlobalPrefs, aiChatUseDeepSeekInsteadOfDoubao), SettingType::Bool, false},
     {offsetof(GlobalPrefs, enableAskAI), SettingType::Bool, true},
     {offsetof(GlobalPrefs, showFavorites), SettingType::Bool, false},
@@ -1035,20 +1042,21 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment, (intptr_t)"Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 107, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 109, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
-    "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0ReloadMo"
-    "difiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSession\0ReuseInstance\0ShowMenubar\0ShowMe"
-    "nubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0OfflineDictionaryPath\0EnableDoubleClickWordLookup\0AiChatUseD"
-    "eepSeekInsteadOfDoubao\0EnableAskAI\0ShowFavorites\0ShowToc\0ShowLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0Scro"
-    "llbarInSinglePage\0SmoothScroll\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme"
-    "\0LastLightTheme\0PdfDocumentColorMode\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0UIFontSize\0DisableAntiAli"
-    "as\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI"
-    "\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fulls"
-    "creen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAlo"
-    "udSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoice"
-    "Zh\0ReadAloudSmartOnlineVoiceEn\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0FileStat"
-    "es\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0OpenCountWeek\0PropWinPos\0\0"};
+    "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0HomePage"
+    "ViewMode\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSession\0ReuseInstance\0S"
+    "howMenubar\0ShowMenubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0OfflineDictionaryPath\0EnableDoubleClickWord"
+    "Lookup\0AiChatProvider\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAskAI\0ShowFavorites\0ShowToc\0ShowLinks\0ShowStar"
+    "tPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0FastScrollOverScrollbar\0PreventSleepInFullscre"
+    "en\0TabWidth\0Theme\0LastDarkTheme\0LastLightTheme\0PdfDocumentColorMode\0TocDy\0ToolbarSize\0TreeFontName\0TreeFo"
+    "ntSize\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomI"
+    "ncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0Forward"
+    "Search\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoice"
+    "Id\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmart"
+    "VoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSmartOnlineVoiceEn\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip"
+    "\0WindowState\0WindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0OpenCountWeek\0PropWinPos\0"
+    "\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)""},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)""},

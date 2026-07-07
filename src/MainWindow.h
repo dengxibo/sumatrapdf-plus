@@ -228,6 +228,8 @@ struct MainWindow {
     int homePageThumbsStartX = 0;
     int homePageThumbsTopY = 0;
     int homePageThumbsCols = 0;
+    int homePageRowDy = 0;
+    bool homePageListView = false;
     int homePagePaintScrollY = 0;
     bool homePageBlitScrollReady = false;
     Vec<FileState*> homePageFileStates;
@@ -322,7 +324,6 @@ struct MainWindow {
     TouchState touchState;
 
     FrameRateWnd* frameRateWnd = nullptr;
-
 
     // small floating toolbar shown after a text selection in PDF documents
     // that support annotations (controlled by Annotations.SelectionToolbar)

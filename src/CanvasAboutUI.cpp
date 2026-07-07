@@ -26,6 +26,7 @@
 #include "HomePage.h"
 #include "Translations.h"
 #include "Theme.h"
+#include "AppSettings.h"
 
 #include "utils/Log.h"
 
@@ -91,6 +92,20 @@ static void OnMouseLeftButtonUpAbout(MainWindow* win, int x, int y, WPARAM) {
         win->RedrawAll(true);
     } else if (str::Eq(url, kLinkShowList)) {
         gGlobalPrefs->showStartPage = true;
+        win->RedrawAll(true);
+    } else if (str::Eq(url, kLinkHomePageListView)) {
+        str::ReplaceWithCopy(&gGlobalPrefs->homePageViewMode, "list");
+        win->homePageScrollY = 0;
+        win->homePageScrollTargetY = 0;
+        HomePageInvalidateScrollCache(win);
+        SaveSettings();
+        win->RedrawAll(true);
+    } else if (str::Eq(url, kLinkHomePageThumbView)) {
+        str::ReplaceWithCopy(&gGlobalPrefs->homePageViewMode, "thumbnails");
+        win->homePageScrollY = 0;
+        win->homePageScrollTargetY = 0;
+        HomePageInvalidateScrollCache(win);
+        SaveSettings();
         win->RedrawAll(true);
     } else if (str::Eq(url, kLinkNextTip)) {
         PickAnotherRandomPromotion();

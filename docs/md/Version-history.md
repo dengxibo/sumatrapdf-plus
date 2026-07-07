@@ -1,15 +1,26 @@
 # Version history
 
+## 3.7.4 (2026-07-07)
+
+- add `AiChatProvider` advanced setting (`doubao`, `deepseek`, or `chatgpt`) to choose Ask AI backend; default is `doubao`; `AiChatUseDeepSeekInsteadOfDoubao` is deprecated
+- add home page list view (`HomePageViewMode = list`) showing full filename and directory path; toggle via link next to the header
+- persist `PdfDocumentColorMode` advanced setting (auto, black, light) across sessions
+- in PDF auto (smart dark mode), remove special-case that kept page 1 full-bleed covers at original brightness; first page now follows the same dark-mode rules as other pages
+- refine read-aloud bilingual voice switching for short embedded English sentences ending in punctuation
+
 **next: 3.7**
 
 Available in [pre-release](https://www.sumatrapdfreader.org/prerelease) builds.
 
+- add `AiChatProvider` advanced setting (`doubao`, `deepseek`, or `chatgpt`) to choose Ask AI backend; `AiChatUseDeepSeekInsteadOfDoubao` is deprecated (migrates to `deepseek` when `AiChatProvider` is absent from settings)
 - add `EnableAskAI` advanced setting (default true); set to false to hide Ask AI in the selection toolbar, context menu, and command palette
 - add a floating selection toolbar: after selecting text in a PDF that supports annotations, a small toolbar appears near the selection with one-click `Highlight`, `Underline`, `Squiggly`, `Strike Out` and `Ask AI` actions. Disable it with `Annotations.SelectionToolbar = false` in advanced settings
 - add `CmdLookupSelection` (`Look Up Selection` in selection context menu and `Ctrl + k` [command palette](Command-Palette.md)) to look up the selected text with offline dictionaries; the selection toolbar shows `Ask AI`, `Look Up`, `Copy`, then annotation actions when supported
 - add **Light-White** theme (renamed from Original): neutral light UI with PDF and fixed-layout documents shown in their original colors (no eye-care yellow tint); **Light-Warm** theme (renamed from Light) still uses eye-care colors for document content
 - PDF smart dark mode options (`PreservePdfImagesInDarkMode`, `PreservePdfImagesMinSize`, `PdfDarkModeRenderer`, etc.) are built into the program and are not written to the settings file; toolbar and command-palette toggles apply for the current session only
 - persist `PdfDocumentColorMode` advanced setting (auto, black, light) across sessions; toolbar and command-palette choices are remembered on restart
+- add home page list view (`HomePageViewMode = list`) showing full filename and directory path; toggle via link next to the header
+- in PDF auto (smart dark mode), remove special-case that kept page 1 full-bleed covers at original brightness; first page now follows the same dark-mode rules as other pages
 - add `CmdTogglePreservePdfImages` (`Toggle Preserve PDF Image Colors in Dark Mode` in `Ctrl + k` [command palette](Command-Palette.md))
 - add `CmdToggleLightDarkTheme` (`Toggle Light/Dark Theme` in `Ctrl + k` [command palette](Command-Palette.md)) and toolbar button to switch between light and dark theme
 - add `CmdSetPdfDocumentColorModeAuto`, `CmdSetPdfDocumentColorModeBlack`, and `CmdSetPdfDocumentColorModeLight` toolbar buttons (visible for PDF in dark theme) to set PDF document rendering: auto (smart dark mode), black (full dark), light (original colors)

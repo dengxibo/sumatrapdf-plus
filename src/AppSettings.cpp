@@ -97,6 +97,28 @@ static void ApplyReadAloudSpeakingRateFromSettings() {
     TtsSetSpeakingRate(zh);
 }
 
+static bool IsValidAiChatProvider(const char* provider) {
+    return str::EqI(provider, "doubao") || str::EqI(provider, "deepseek") || str::EqI(provider, "chatgpt");
+}
+
+static void MigrateAiChatProvider(const char* settingsRaw) {
+    if (!gGlobalPrefs) {
+        return;
+    }
+    if (!IsValidAiChatProvider(gGlobalPrefs->aiChatProvider)) {
+        str::ReplaceWithCopy(&gGlobalPrefs->aiChatProvider, "doubao");
+    }
+    if (!gGlobalPrefs->aiChatUseDeepSeekInsteadOfDoubao) {
+        return;
+    }
+    if (settingsRaw && str::Find(settingsRaw, "AiChatProvider")) {
+        gGlobalPrefs->aiChatUseDeepSeekInsteadOfDoubao = false;
+        return;
+    }
+    str::ReplaceWithCopy(&gGlobalPrefs->aiChatProvider, "deepseek");
+    gGlobalPrefs->aiChatUseDeepSeekInsteadOfDoubao = false;
+}
+
 // SumatraPDF.cpp
 extern void RememberDefaultWindowPosition(MainWindow* win);
 
@@ -247,14 +269,19 @@ bool LoadSettings() {
 
     GlobalPrefs* gprefs = nullptr;
     TempStr settingsPath = GetSettingsPathTemp();
+    AutoFreeStr settingsRaw;
     {
         ByteSlice prefsData = file::ReadFile(settingsPath);
+        if (prefsData.size() > 0) {
+            settingsRaw.Set(str::Dup(prefsData));
+        }
 
-        gGlobalPrefs = NewGlobalPrefs(prefsData);
+        gGlobalPrefs = NewGlobalPrefs(settingsRaw.Get());
         ReportIf(!gGlobalPrefs);
         gprefs = gGlobalPrefs;
         prefsData.Free();
     }
+    MigrateAiChatProvider(settingsRaw.Get());
 
     if (trans::ValidateLangCode(gprefs->uiLanguage)) {
         SetCurrentLang(gprefs->uiLanguage);

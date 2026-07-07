@@ -102,6 +102,7 @@ void RunBrowserChatUiTask(BrowserChatUiTaskFn fn, void* ctx);
 enum class AiChatService {
     Doubao,
     DeepSeek,
+    ChatGPT,
 };
 
 bool LaunchAiChatBrowser(AiChatService service, bool* reusedOut = nullptr, HWND* browserHwndOut = nullptr,

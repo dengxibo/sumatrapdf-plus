@@ -25477,6 +25477,79 @@ tw:列出印表機
 uk:Список принтерів
 uz:Printerlar ro'yxati
 vn:Danh sách máy in
+:List view
+af:Lysaansig
+am:የዝርዝር እይታ
+ar:عرض القائمة
+az:Siyahı görünüşü
+bg:Изглед списък
+bn:তালিকা দৃশ্য
+br:Visualização em lista
+bs:Prikaz liste
+by:Спіс
+ca:Vista de llista
+ca-xv:Vista de llista
+cn:列表视图
+co:Vista di lista
+cy:Golwg rhestr
+cz:Zobrazení seznamu
+de:Listenansicht
+dk:Listevisning
+el:Προβολή λίστας
+es:Vista de lista
+et:Loendivaade
+eu:Zerrenda-ikuspegia
+fa:نمای فهرست
+fi:Luettelonäkymä
+fo:Listuvísing
+fr:Vue liste
+fy-nl:Listbyld
+ga:Amharc liosta
+gl:Vista de lista
+he:תצוגת רשימה
+hi:सूची दृश्य
+hr:Prikaz popisa
+hu:Listanézet
+id:Tampilan daftar
+it:Vista elenco
+ja:リスト表示
+jv:Tampilan dhaptar
+ka:სიის ხედი
+kr:목록 보기
+ku:پیشاندانی لیست
+kw:Gwel rol
+lt:Sąrašo rodinys
+lv:Saraksta skats
+mk:Приказ на листа
+ml:പട്ടിക കാഴ്ച
+mm:စာရင်းမြင်ကွင်း
+my:Paparan senarai
+ne:सूची दृश्य
+nl:Lijstweergave
+nn:Listevisning
+no:Listevisning
+pa:ਸੂਚੀ ਦ੍ਰਿਸ਼
+pl:Widok listy
+pt:Vista em lista
+ro:Vizualizare listă
+ru:Вид списка
+sat:ᱞᱤᱥᱴ ᱧᱮᱞ
+si:ලැයිස්තු දසුන
+sk:Zobrazenie zoznamu
+sl:Pogled seznama
+sn:Maonero elist
+sp-rs:Prikaz liste
+sq:Pamje liste
+sr-rs:Приказ листе
+sv:Listvy
+ta:பட்டியல் காட்சி
+th:มุมมองรายการ
+tl:Tanawin ng listahan
+tr:Liste görünümü
+tw:清單檢視
+uk:Подання списком
+uz:Ro'yxat ko'rinishi
+vn:Hiển thị danh sách
 :Loading %s ...
 af:Laai %s ...
 am:%s-ի բեռնում...
@@ -43582,6 +43655,79 @@ tw:此文件使用未支援的功能 (%s) ，並可能無法正確的繪製。
 uk:Даний документ використовує можливості, що не підтримуються (%s) і тому може відображатися з помилками
 uz:Ushbu ho'jjat qo'llanmaydigan imkoniyatlarni (%s) ishlatmoqda va to'g'ri render qilinmasligi mo'mkin
 vn:Tài liệu này có vài tính năng không được hỗ trợ (%s) và không được dựng chính xác
+:Thumbnail view
+af:Duimnaelskyaansig
+am:የአነስተኛ ምስል እይታ
+ar:عرض الصور المصغرة
+az:Kiçik şəkil görünüşü
+bg:Изглед с миниатюри
+bn:থাম্বনেইল দৃশ্য
+br:Visualização em miniaturas
+bs:Prikaz sličica
+by:Мініяцюры
+ca:Vista de miniatures
+ca-xv:Vista de miniatures
+cn:缩略图视图
+co:Vista di miniature
+cy:Golwg mân-luniau
+cz:Zobrazení miniatur
+de:Miniaturansicht
+dk:Miniaturevisning
+el:Προβολή μικρογραφιών
+es:Vista de miniaturas
+et:Pisipiltide vaade
+eu:Koadro txiki-ikuspegia
+fa:نمای بندانگشتی
+fi:Pikkukuvanäkymä
+fo:Smámyndavísing
+fr:Vue vignettes
+fy-nl:Foarbyldbyld
+ga:Amharc mionsamhlacha
+gl:Vista en miniaturas
+he:תצוגת תמונות ממוזערות
+hi:थंबनेल दृश्य
+hr:Prikaz sličica
+hu:Bélyegképnézet
+id:Tampilan miniatur
+it:Vista miniature
+ja:サムネイル表示
+jv:Tampilan gambar cilik
+ka:მინიატურების ხედი
+kr:썸네일 보기
+ku:پیشاندانی وێنۆچکە
+kw:Gwel brynten
+lt:Miniatiūrų rodinys
+lv:Sīktēlu skats
+mk:Приказ на сликички
+ml:ലഘുചിത്ര കാഴ്ച
+mm:ပုံသေးမြင်ကွင်း
+my:Paparan lakaran kenit
+ne:थम्बनेल दृश्य
+nl:Miniatuurweergave
+nn:Miniaturevisning
+no:Miniatyrvisning
+pa:ਥੰਮਨੇਲ ਦ੍ਰਿਸ਼
+pl:Widok miniatur
+pt:Vista em miniaturas
+ro:Vizualizare miniaturi
+ru:Вид эскизов
+sat:ᱴᱷᱟᱢᱱᱮᱞ ᱧᱮᱞ
+si:සිඟිති රූප දසුන
+sk:Zobrazenie miniatúr
+sl:Pogled sličic
+sn:Maonero thumbnail
+sp-rs:Prikaz sličica
+sq:Pamje miniaturash
+sr-rs:Приказ сличица
+sv:Miniatyrvy
+ta:சிறுபடக் காட்சி
+th:มุมมองภาพขนาดย่อ
+tl:Tanawin ng thumbnail
+tr:Küçük resim görünümü
+tw:縮圖檢視
+uk:Подання ескізів
+uz:Eskiz ko'rinishi
+vn:Hiển thị hình thu nhỏ
 :Title:
 af:Titel:
 am:Անունը.

@@ -84,14 +84,8 @@ struct DarkModeOptions {
     float lightFillLuminanceThreshold = 0.45f;
 };
 
-// Embedded photos below this page fraction are preserved in Legacy skip-rect mode.
 // Full-bleed backgrounds / scans at or above this threshold are recolored with the page.
 static constexpr float kMaxPreserveImagePageCoverage = 0.75f;
-
-// Auto dark mode keeps page-1 full-bleed embedded images at original brightness (covers, etc.).
-inline bool PdfDarkModeIsFirstPageFullBleedCover(int pageNo, float pageCoverage) {
-    return pageNo == 1 && pageCoverage >= kMaxPreserveImagePageCoverage;
-}
 
 struct DarkModePalette {
     float textR = 0.f, textG = 0.f, textB = 0.f;

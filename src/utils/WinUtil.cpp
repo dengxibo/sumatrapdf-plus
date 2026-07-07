@@ -1092,6 +1092,9 @@ static bool BrowserWindowMatchesService(HWND hwnd, const char* reuseKey, const c
     if (str::Find(reuseKey, "deepseek.com")) {
         return str::FindI(titleA, "deepseek") != nullptr;
     }
+    if (str::Find(reuseKey, "chatgpt.com") || str::Find(reuseKey, "openai.com")) {
+        return str::FindI(titleA, "chatgpt") != nullptr || str::FindI(titleA, "openai") != nullptr;
+    }
     return false;
 }
 
@@ -1337,10 +1340,64 @@ static void ClickBrowserWindowClientAt(HWND hwnd, int offsetPercentXFromLeft, in
     SendMouseClickScreen(x, y);
 }
 
+static bool IsChatGptUrl(const char* url) {
+    return url && (str::Find(url, "chatgpt.com") || str::Find(url, "openai.com"));
+}
+
+// ChatGPT home/new-chat shows a centered "Ask anything" box; ongoing chats use the bottom bar.
+static bool BrowserTitleLooksLikeChatGptHome(const char* titleA) {
+    if (!titleA || !*titleA) {
+        return true;
+    }
+    if (str::EqI(titleA, "ChatGPT")) {
+        return true;
+    }
+    if (str::StartsWithI(titleA, "ChatGPT and ")) {
+        return true;
+    }
+    if (str::StartsWithI(titleA, "ChatGPT - ")) {
+        const char* suffix = titleA + 10;
+        if (str::FindI(suffix, "Microsoft Edge") || str::FindI(suffix, "Google Chrome") ||
+            str::FindI(suffix, "Brave") || str::FindI(suffix, "Firefox") || str::EqI(suffix, "Personal")) {
+            return true;
+        }
+    }
+    if (str::EndsWithI(titleA, " - ChatGPT")) {
+        return false;
+    }
+    if (str::FindI(titleA, "ChatGPT")) {
+        return false;
+    }
+    return true;
+}
+
+static bool ShouldUseCenteredChatInput(const char* url, HWND hwnd, bool waitForPageReady) {
+    if (str::Find(url, "deepseek.com")) {
+        return waitForPageReady;
+    }
+    if (!IsChatGptUrl(url)) {
+        return false;
+    }
+    if (waitForPageReady) {
+        return true;
+    }
+    if (!hwnd) {
+        return true;
+    }
+    WCHAR titleW[512]{};
+    GetWindowTextW(hwnd, titleW, dimof(titleW));
+    return BrowserTitleLooksLikeChatGptHome(ToUtf8Temp(titleW));
+}
+
 // DeepSeek empty chat centers the input; Doubao (including cold start) uses the bottom bar.
-static void ClickBrowserChatInputTarget(HWND hwnd, bool useCenteredInput) {
+static void ClickBrowserChatInputTarget(HWND hwnd, bool useCenteredInput, const char* url) {
     if (useCenteredInput) {
-        ClickBrowserWindowClientAt(hwnd, 58, 54);
+        if (url && (str::Find(url, "chatgpt.com") || str::Find(url, "openai.com"))) {
+            // ChatGPT home/new chat: input is centered in the main pane (right of sidebar).
+            ClickBrowserWindowClientAt(hwnd, 55, 58);
+        } else {
+            ClickBrowserWindowClientAt(hwnd, 58, 54);
+        }
     } else {
         ClickBrowserWindowChatInput(hwnd);
     }
@@ -1357,10 +1414,11 @@ struct AiChatPasteUiCtx {
     bool useCenteredInput;
     bool dismissChromeFocus;
     bool submit;
+    char* url;
 };
 
-static void ExecuteBrowserChatPasteSubmit(HWND browserHwnd, bool useCenteredInput, bool dismissChromeFocus,
-                                          bool submit) {
+static void ExecuteBrowserChatPasteSubmit(HWND browserHwnd, bool useCenteredInput, bool dismissChromeFocus, bool submit,
+                                          const char* url) {
     if (!browserHwnd) {
         return;
     }
@@ -1368,12 +1426,12 @@ static void ExecuteBrowserChatPasteSubmit(HWND browserHwnd, bool useCenteredInpu
     if (dismissChromeFocus) {
         DismissBrowserChromeFocusBeforePaste();
     }
-    ClickBrowserChatInputTarget(browserHwnd, useCenteredInput);
-    Sleep(250);
+    ClickBrowserChatInputTarget(browserHwnd, useCenteredInput, url);
+    Sleep(IsChatGptUrl(url) ? 600 : 250);
     FocusBrowserWindowForSubmit(browserHwnd);
     SendPasteKeystrokes();
     if (submit) {
-        Sleep(400);
+        Sleep(IsChatGptUrl(url) ? 800 : 400);
         SubmitBrowserChatInput(browserHwnd);
     }
 }
@@ -1383,12 +1441,14 @@ static void AiChatPasteSubmitUiTask(void* param) {
     if (!ctx) {
         return;
     }
-    ExecuteBrowserChatPasteSubmit(ctx->browserHwnd, ctx->useCenteredInput, ctx->dismissChromeFocus, ctx->submit);
+    ExecuteBrowserChatPasteSubmit(ctx->browserHwnd, ctx->useCenteredInput, ctx->dismissChromeFocus, ctx->submit,
+                                  ctx->url);
+    str::Free(ctx->url);
     free(ctx);
 }
 
 static void RunAiChatPasteSubmitOnUiThread(HWND browserHwnd, bool useCenteredInput, bool dismissChromeFocus,
-                                           bool submit) {
+                                           bool submit, const char* url) {
     auto* ctx = (AiChatPasteUiCtx*)calloc(1, sizeof(AiChatPasteUiCtx));
     if (!ctx) {
         return;
@@ -1397,6 +1457,7 @@ static void RunAiChatPasteSubmitOnUiThread(HWND browserHwnd, bool useCenteredInp
     ctx->dismissChromeFocus = dismissChromeFocus;
     ctx->useCenteredInput = useCenteredInput;
     ctx->submit = submit;
+    ctx->url = str::Dup(url);
     RunBrowserChatUiTask(AiChatPasteSubmitUiTask, ctx);
 }
 
@@ -1407,7 +1468,7 @@ bool PasteClipboardToBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) 
     if (delayBeforePasteMs > 0) {
         Sleep((DWORD)delayBeforePasteMs);
     }
-    RunAiChatPasteSubmitOnUiThread(browserHwnd, false, false, false);
+    RunAiChatPasteSubmitOnUiThread(browserHwnd, false, false, false, nullptr);
     return true;
 }
 
@@ -1418,7 +1479,7 @@ bool PasteAndSubmitBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) {
     if (delayBeforePasteMs > 0) {
         Sleep((DWORD)delayBeforePasteMs);
     }
-    RunAiChatPasteSubmitOnUiThread(browserHwnd, false, false, true);
+    RunAiChatPasteSubmitOnUiThread(browserHwnd, false, false, true, nullptr);
     return true;
 }
 
@@ -1487,6 +1548,13 @@ static bool WaitForBrowserChatReady(HWND hwnd, const char* reuseKey, const char*
             elapsed += interval;
             continue;
         }
+        if (BrowserTitleLooksLikeInactiveChat(titleA)) {
+            stableCount = 0;
+            lastTitle.Set(nullptr);
+            Sleep(interval);
+            elapsed += interval;
+            continue;
+        }
 
         if (lastTitle && str::Eq(lastTitle, titleA)) {
             stableCount++;
@@ -1495,6 +1563,8 @@ static bool WaitForBrowserChatReady(HWND hwnd, const char* reuseKey, const char*
                     Sleep(600);
                 } else if (reuseKey && str::Find(reuseKey, "deepseek.com")) {
                     Sleep(400);
+                } else if (reuseKey && (str::Find(reuseKey, "chatgpt.com") || str::Find(reuseKey, "openai.com"))) {
+                    Sleep(1200);
                 }
                 return true;
             }
@@ -1509,23 +1579,30 @@ static bool WaitForBrowserChatReady(HWND hwnd, const char* reuseKey, const char*
     return IsBrowserTopLevelWindow(hwnd) && BrowserWindowMatchesService(hwnd, reuseKey, host);
 }
 
-static HWND FindBrowserWindowAfterLaunch(const char* reuseKey, const char* host);
 static HWND PollForBrowserWindowAfterLaunch(const char* reuseKey, const char* host, int timeoutMs);
 
-static HWND WaitForBrowserChatPageReady(HWND browserHwnd, const char* url) {
+static HWND WaitForBrowserChatPageReady(HWND browserHwnd, const char* url, bool alreadyNavigated) {
     if (str::IsEmpty(url)) {
         return nullptr;
     }
     TempStr reuseKey = BrowserReuseKeyFromUrlTemp(url);
     TempStr host = HostFromUrlTemp(url);
-    if (!browserHwnd || !IsBrowserTopLevelWindow(browserHwnd)) {
-        browserHwnd = PollForBrowserWindowAfterLaunch(reuseKey, host, 20000);
+    if (!browserHwnd || !IsBrowserTopLevelWindow(browserHwnd) ||
+        !BrowserWindowMatchesService(browserHwnd, reuseKey, host)) {
+        browserHwnd = PollForBrowserWindowAfterLaunch(reuseKey, host, 30000);
     }
     if (!browserHwnd) {
         return nullptr;
     }
-    WaitForBrowserChatReady(browserHwnd, reuseKey, host, 20000);
-    Sleep(1000);
+    if (IsChatGptUrl(url) && !alreadyNavigated) {
+        NavigateBrowserWindowToUrl(browserHwnd, url);
+        Sleep(800);
+    }
+    if (!WaitForBrowserChatReady(browserHwnd, reuseKey, host, 30000)) {
+        return nullptr;
+    }
+    // Edge tab-group titles stabilize before the ChatGPT SPA input is interactive.
+    Sleep(IsChatGptUrl(url) ? 3500 : 1000);
     return browserHwnd;
 }
 
@@ -1534,23 +1611,33 @@ bool PasteAndSubmitBrowserChatInputWhenReady(HWND browserHwnd, const char* url, 
     if (str::IsEmpty(url)) {
         return false;
     }
+    TempStr reuseKey = BrowserReuseKeyFromUrlTemp(url);
+    TempStr host = HostFromUrlTemp(url);
     if (waitForPageReady) {
-        browserHwnd = WaitForBrowserChatPageReady(browserHwnd, url);
+        browserHwnd = WaitForBrowserChatPageReady(browserHwnd, url, dismissChromeFocus);
+    } else if (IsChatGptUrl(url)) {
+        if (!browserHwnd || !IsBrowserTopLevelWindow(browserHwnd)) {
+            browserHwnd = PollForBrowserWindowAfterLaunch(reuseKey, host, 5000);
+        }
+        if (browserHwnd) {
+            WaitForBrowserChatReady(browserHwnd, reuseKey, host, 8000);
+            Sleep(800);
+        }
     } else if (!browserHwnd || !IsBrowserTopLevelWindow(browserHwnd)) {
-        TempStr reuseKey = BrowserReuseKeyFromUrlTemp(url);
-        TempStr host = HostFromUrlTemp(url);
         browserHwnd = PollForBrowserWindowAfterLaunch(reuseKey, host, 5000);
     }
     if (!browserHwnd) {
         return false;
     }
-    bool useCenteredInput = waitForPageReady && str::Find(url, "deepseek.com");
-    RunAiChatPasteSubmitOnUiThread(browserHwnd, useCenteredInput, dismissChromeFocus, true);
+    bool useCenteredInput = ShouldUseCenteredChatInput(url, browserHwnd, waitForPageReady);
+    bool dismissChrome = dismissChromeFocus;
+    RunAiChatPasteSubmitOnUiThread(browserHwnd, useCenteredInput, dismissChrome, true, url);
     return true;
 }
 
 static const char* kDoubaoChatUrl = "https://www.doubao.com/chat/";
 static const char* kDeepSeekChatUrl = "https://chat.deepseek.com/";
+static const char* kChatGptUrl = "https://chatgpt.com/";
 
 static const char* AiChatServiceUrl(AiChatService service) {
     switch (service) {
@@ -1558,6 +1645,8 @@ static const char* AiChatServiceUrl(AiChatService service) {
             return kDoubaoChatUrl;
         case AiChatService::DeepSeek:
             return kDeepSeekChatUrl;
+        case AiChatService::ChatGPT:
+            return kChatGptUrl;
     }
     return nullptr;
 }
@@ -1631,34 +1720,11 @@ bool LaunchAiChatBrowser(AiChatService service, bool* reusedOut, HWND* browserHw
     return LaunchBrowserWithReuse(url, false, reusedOut, browserHwndOut, navigatedOut);
 }
 
-static HWND FindBrowserWindowAfterLaunch(const char* reuseKey, const char* host) {
-    HWND hwnd = FindBrowserWindowForService(reuseKey, host);
-    if (hwnd) {
-        return hwnd;
-    }
-    hwnd = GetForegroundWindow();
-    if (IsBrowserTopLevelWindow(hwnd)) {
-        return hwnd;
-    }
-    HWND top = hwnd;
-    while (top) {
-        HWND parent = GetParent(top);
-        if (!parent) {
-            break;
-        }
-        top = parent;
-    }
-    if (IsBrowserTopLevelWindow(top)) {
-        return top;
-    }
-    return nullptr;
-}
-
 static HWND PollForBrowserWindowAfterLaunch(const char* reuseKey, const char* host, int timeoutMs) {
     int elapsed = 0;
     const int interval = 100;
     while (elapsed <= timeoutMs) {
-        HWND hwnd = FindBrowserWindowAfterLaunch(reuseKey, host);
+        HWND hwnd = FindBrowserWindowForService(reuseKey, host);
         if (hwnd) {
             return hwnd;
         }
@@ -1686,11 +1752,10 @@ bool LaunchBrowserWithReuse(const char* url, bool navigateOnReuse, bool* reusedO
     TempStr reuseKey = BrowserReuseKeyFromUrlTemp(url);
     TempStr host = HostFromUrlTemp(url);
     HWND hwnd = FindBrowserWindowForService(reuseKey, host);
+    HWND storedHwnd = nullptr;
     if (!hwnd) {
-        hwnd = FindStoredBrowserHwnd(reuseKey);
-        if (hwnd && !BrowserWindowMatchesService(hwnd, reuseKey, host)) {
-            hwnd = nullptr;
-        }
+        storedHwnd = FindStoredBrowserHwnd(reuseKey);
+        hwnd = storedHwnd;
     }
     if (hwnd) {
         WCHAR titleW[512]{};
@@ -1720,14 +1785,20 @@ bool LaunchBrowserWithReuse(const char* url, bool navigateOnReuse, bool* reusedO
             }
             return true;
         }
+        if (storedHwnd) {
+            hwnd = nullptr;
+        }
     }
 
     if (!LaunchFileShell(url, nullptr, "open")) {
         return false;
     }
 
-    hwnd = PollForBrowserWindowAfterLaunch(reuseKey, host, 12000);
-    if (hwnd) {
+    hwnd = PollForBrowserWindowAfterLaunch(reuseKey, host, 30000);
+    if (!hwnd) {
+        return false;
+    }
+    {
         DWORD pid = 0;
         GetWindowThreadProcessId(hwnd, &pid);
         if (pid) {

@@ -685,6 +685,18 @@ const globalPrefs: Field[] = [
     false,
     "if true implements pre-3.6 behavior of showing opened files by frequently used count. If false, shows most recently opened first",
   ),
+  setDoc(
+    setVersion(
+      mkField(
+        "HomePageViewMode",
+        Str,
+        "thumbnails",
+        "home page file list layout: thumbnails (grid with previews) or list (filename and path)",
+      ),
+      "3.7",
+    ),
+    "Valid values: thumbnails, list",
+  ),
   setVersion(
     setExpert(
       mkField(
@@ -750,12 +762,24 @@ const globalPrefs: Field[] = [
     ),
     "3.7",
   ),
+  setDoc(
+    setVersion(
+      mkField(
+        "AiChatProvider",
+        Str,
+        "doubao",
+        "Ask AI provider: doubao (豆包), deepseek, or chatgpt",
+      ),
+      "3.7",
+    ),
+    "Valid values: doubao, deepseek, chatgpt",
+  ),
   setVersion(
     mkField(
       "AiChatUseDeepSeekInsteadOfDoubao",
       Bool,
       false,
-      "if true, Ask AI opens DeepSeek chat instead of Doubao (豆包); default is Doubao at https://www.doubao.com/chat/",
+      "deprecated: use AiChatProvider instead; if true and AiChatProvider is not in settings, migrates to deepseek",
     ),
     "3.7",
   ),

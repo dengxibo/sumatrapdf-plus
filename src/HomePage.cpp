@@ -350,8 +350,7 @@ static AboutLayoutInfoEl gAboutLayoutInfo[] = {
     {"Plus guide", "User guide (readme.txt)", kPlusReadmeURL},
     {"official site", "SumatraPDF website (upstream)", kWebsiteURL},
     {"official manual", "SumatraPDF manual (upstream)", kManualURL},
-    {"official forums", "SumatraPDF forums (upstream)",
-     "https://github.com/sumatrapdfreader/sumatrapdf/discussions"},
+    {"official forums", "SumatraPDF forums (upstream)", "https://github.com/sumatrapdfreader/sumatrapdf/discussions"},
     {"programming", "The Programmers", "https://github.com/sumatrapdfreader/sumatrapdf/blob/master/AUTHORS"},
     {"licenses", "Various Open Source", "https://github.com/sumatrapdfreader/sumatrapdf/blob/master/AUTHORS"},
 #if defined(GIT_COMMIT_ID_STR)
@@ -888,10 +887,36 @@ constexpr int kThumbsBorderDx = 1;
 #define kThumbsSpaceBetweenY DpiScale(hdc, 58)
 #define kThumbsBottomBoxDy DpiScale(hdc, 50)
 
+static int HomePageListRowDy(HWND hwnd) {
+    return DpiScale(hwnd, 52);
+}
+
+static int HomePageListRowSpacing(HWND hwnd) {
+    return DpiScale(hwnd, 4);
+}
+
+static int HomePageListIconDx(HWND hwnd) {
+    return DpiScale(hwnd, 16);
+}
+
+static int HomePageListIconTextGap(HWND hwnd) {
+    return DpiScale(hwnd, 8);
+}
+
+static bool HomePageUsesListView() {
+    return gGlobalPrefs && str::EqI(gGlobalPrefs->homePageViewMode, "list");
+}
+
+static COLORREF HomePageMutedTextColor() {
+    return AccentColor(ThemeWindowTextColor(), ThemeUsesDarkChrome() ? 60 : -50);
+}
+
 struct ThumbnailLayout {
     Rect rcPage;
     Size szThumb;
     Rect rcText;
+    Rect rcPath;
+    Rect rcRow;
     FileState* fs = nullptr; // info needed to draw the thumbnail
     StaticLink* sl = nullptr;
 };
@@ -910,6 +935,7 @@ struct HomePageLayout {
     HIMAGELIST himlOpen = nullptr;
     VirtWndText* freqRead = nullptr;
     VirtWndText* openDoc = nullptr;
+    VirtWndText* viewModeToggle = nullptr;
     VirtWndText* hideShowFreqRead = nullptr;
     Vec<ThumbnailLayout> thumbnails; // info for each thumbnail
     Vec<FileState*> fileStates;      // filtered list, not owned
@@ -935,6 +961,7 @@ struct HomePageLayout {
 HomePageLayout::~HomePageLayout() {
     delete freqRead;
     delete openDoc;
+    delete viewModeToggle;
 }
 
 constexpr int kOpenDocumentYShift = 7;
@@ -1025,12 +1052,13 @@ void LayoutHomePage(HomePageLayout& l) {
     if (hasFilter) {
         SplitFilterToWords(searchQuery, l.filterWords);
     }
+    bool listView = HomePageUsesListView();
     Vec<FileState*> fileStates;
     for (int i = 0; i < allFileStates.Size(); i++) {
         FileState* fs = allFileStates.at(i);
         if (hasFilter) {
             TempStr baseName = path::GetBaseNameTemp(fs->filePath);
-            if (!FilterMatches(baseName, l.filterWords)) {
+            if (!FilterMatches(baseName, l.filterWords) && !(listView && FilterMatches(fs->filePath, l.filterWords))) {
                 continue;
             }
         }
@@ -1111,11 +1139,28 @@ void LayoutHomePage(HomePageLayout& l) {
     }
     openDoc->SetBounds(rcOpenDoc);
 
-    rcOpenDoc = rcOpenDoc.Union(rcIconOpen);
-    rcOpenDoc.Inflate(10, 10);
+    Rect rcOpenDocLink = rcOpenDoc.Union(rcIconOpen);
+    rcOpenDocLink.Inflate(10, 10);
     l.openDoc = openDoc;
-    auto sl = new StaticLink(rcOpenDoc, kLinkOpenFile);
+    auto sl = new StaticLink(rcOpenDocLink, kLinkOpenFile);
     win->staticLinks.Append(sl);
+
+    const char* viewTxt = listView ? _TRA("Thumbnail view") : _TRA("List view");
+    VirtWndText* viewToggle = new VirtWndText(hwnd, viewTxt, fontText);
+    viewToggle->isRtl = isRtl;
+    viewToggle->withUnderline = true;
+    txtSize = viewToggle->GetIdealSize(true);
+    int viewToggleSpacing = DpiScale(hdc, 16);
+    Rect rcViewToggle(rcOpenDocLink.x + rcOpenDocLink.dx + viewToggleSpacing, rcOpenDoc.y, txtSize.dx, txtSize.dy);
+    if (isRtl) {
+        rcViewToggle.x = rcOpenDocLink.x - viewToggleSpacing - rcViewToggle.dx;
+    }
+    viewToggle->SetBounds(rcViewToggle);
+    l.viewModeToggle = viewToggle;
+    Rect rcViewToggleLink = rcViewToggle;
+    rcViewToggleLink.Inflate(10, 10);
+    auto slView = new StaticLink(rcViewToggleLink, listView ? kLinkHomePageThumbView : kLinkHomePageListView);
+    win->staticLinks.Append(slView);
 
     int headerBottomY = rcHdr.y + rcHdr.dy;
 
@@ -1181,59 +1226,111 @@ void LayoutHomePage(HomePageLayout& l) {
     l.rcThumbsArea = {0, thumbsTopY, rc.dx, thumbsVisibleDy};
 
     int nFiles = fileStates.Size();
-    int thumbsCols = thumbsColsForLayout;
-    int thumbsRows = (nFiles + thumbsCols - 1) / thumbsCols;
-    int thumbsContentDy = thumbsRows * (kThumbnailDy + kThumbsSpaceBetweenY) - kThumbsSpaceBetweenY;
+    int contentDy = 0;
+    int rowDy = 0;
+    int listContentWidth = rc.dx - kThumbsMarginLeft - kThumbsMarginRight;
+    if (listView) {
+        rowDy = HomePageListRowDy(hwnd) + HomePageListRowSpacing(hwnd);
+        contentDy = nFiles > 0 ? nFiles * rowDy - HomePageListRowSpacing(hwnd) : 0;
+        l.thumbsCols = 1;
 
-    int scrollY = win->homePageScrollY;
-    int maxScrollY = std::max(0, thumbsContentDy - thumbsVisibleDy);
-    win->homePageMaxScrollY = maxScrollY;
-    win->homePageThumbsVisibleDy = thumbsVisibleDy;
-    if (scrollY > maxScrollY) {
-        scrollY = maxScrollY;
-        win->homePageScrollY = scrollY;
-    }
-    l.totalContentDy = thumbsContentDy;
-    l.thumbsVisibleDy = thumbsVisibleDy;
+        int scrollY = win->homePageScrollY;
+        int maxScrollY = std::max(0, contentDy - thumbsVisibleDy);
+        win->homePageMaxScrollY = maxScrollY;
+        win->homePageThumbsVisibleDy = thumbsVisibleDy;
+        if (scrollY > maxScrollY) {
+            scrollY = maxScrollY;
+            win->homePageScrollY = scrollY;
+        }
+        l.totalContentDy = contentDy;
+        l.thumbsVisibleDy = thumbsVisibleDy;
 
-    Point ptOff(thumbsStartX, thumbsTopY - scrollY);
+        int textX = thumbsStartX + HomePageListIconDx(hwnd) + HomePageListIconTextGap(hwnd);
+        int textDx = listContentWidth - HomePageListIconDx(hwnd) - HomePageListIconTextGap(hwnd);
+        if (isRtl) {
+            textX = rc.dx - thumbsStartX - listContentWidth + HomePageListIconDx(hwnd) + HomePageListIconTextGap(hwnd);
+        }
+        int nameDy = DpiScale(hdc, 18);
+        int pathDy = DpiScale(hdc, 16);
+        for (int idx = 0; idx < nFiles; idx++) {
+            ThumbnailLayout& item = *l.thumbnails.AppendBlanks(1);
+            FileState* fs = fileStates.at(idx);
+            item.fs = fs;
 
-    for (int row = 0; row < thumbsRows; row++) {
-        for (int col = 0; col < thumbsCols; col++) {
-            if (row * thumbsCols + col >= nFiles) {
-                // no more files to display
-                thumbsRows = col > 0 ? row + 1 : row;
-                break;
-            }
-            int idx = row * thumbsCols + col;
-            ThumbnailLayout& thumb = *l.thumbnails.AppendBlanks(1);
-            FileState* fs = fileStates.at(row * thumbsCols + col);
-            thumb.fs = fs;
-
-            Rect rcPage(ptOff.x + col * (kThumbnailDx + kThumbsSpaceBetweenX),
-                        ptOff.y + row * (kThumbnailDy + kThumbsSpaceBetweenY), kThumbnailDx, kThumbnailDy);
+            int y = thumbsTopY - scrollY + idx * rowDy;
+            Rect rcRow(thumbsStartX, y, listContentWidth, HomePageListRowDy(hwnd));
             if (isRtl) {
-                rcPage.x = rc.dx - rcPage.x - rcPage.dx;
+                rcRow.x = rc.dx - thumbsStartX - rcRow.dx;
             }
-            RenderedBitmap* thumbImg = LoadThumbnail(fs);
-            if (thumbImg) {
-                thumb.szThumb = thumbImg->GetSize();
-            }
-            thumb.rcPage = rcPage;
-            int iconSpace = DpiScale(hdc, 20);
-            Rect rcText(rcPage.x + iconSpace, rcPage.y + rcPage.dy + 3, rcPage.dx - iconSpace, iconSpace);
-            if (isRtl) {
-                rcText.x -= iconSpace;
-            }
-            thumb.rcText = rcText;
-            char* path = fs->filePath;
-            Rect slRect = rcText.Union(rcPage).Intersect(l.rcThumbsArea);
+            item.rcRow = rcRow;
+            item.rcPage = rcRow;
+            Rect rcName(textX, y + DpiScale(hdc, 4), textDx, nameDy);
+            Rect rcPath(textX, rcName.y + rcName.dy, textDx, pathDy);
+            item.rcText = rcName;
+            item.rcPath = rcPath;
+
+            Rect slRect = rcRow.Intersect(l.rcThumbsArea);
             if (!slRect.IsEmpty()) {
-                thumb.sl = new StaticLink(slRect, path, path);
-                win->staticLinks.Append(thumb.sl);
+                item.sl = new StaticLink(slRect, fs->filePath, fs->filePath);
+                win->staticLinks.Append(item.sl);
+            }
+        }
+    } else {
+        int thumbsCols = thumbsColsForLayout;
+        int thumbsRows = (nFiles + thumbsCols - 1) / thumbsCols;
+        contentDy = thumbsRows * (kThumbnailDy + kThumbsSpaceBetweenY) - kThumbsSpaceBetweenY;
+        rowDy = kThumbnailDy + kThumbsSpaceBetweenY;
+
+        int scrollY = win->homePageScrollY;
+        int maxScrollY = std::max(0, contentDy - thumbsVisibleDy);
+        win->homePageMaxScrollY = maxScrollY;
+        win->homePageThumbsVisibleDy = thumbsVisibleDy;
+        if (scrollY > maxScrollY) {
+            scrollY = maxScrollY;
+            win->homePageScrollY = scrollY;
+        }
+        l.totalContentDy = contentDy;
+        l.thumbsVisibleDy = thumbsVisibleDy;
+
+        Point ptOff(thumbsStartX, thumbsTopY - scrollY);
+
+        for (int row = 0; row < thumbsRows; row++) {
+            for (int col = 0; col < thumbsCols; col++) {
+                if (row * thumbsCols + col >= nFiles) {
+                    thumbsRows = col > 0 ? row + 1 : row;
+                    break;
+                }
+                ThumbnailLayout& thumb = *l.thumbnails.AppendBlanks(1);
+                FileState* fs = fileStates.at(row * thumbsCols + col);
+                thumb.fs = fs;
+
+                Rect rcPage(ptOff.x + col * (kThumbnailDx + kThumbsSpaceBetweenX),
+                            ptOff.y + row * (kThumbnailDy + kThumbsSpaceBetweenY), kThumbnailDx, kThumbnailDy);
+                if (isRtl) {
+                    rcPage.x = rc.dx - rcPage.x - rcPage.dx;
+                }
+                RenderedBitmap* thumbImg = LoadThumbnail(fs);
+                if (thumbImg) {
+                    thumb.szThumb = thumbImg->GetSize();
+                }
+                thumb.rcPage = rcPage;
+                int iconSpace = DpiScale(hdc, 20);
+                Rect rcText(rcPage.x + iconSpace, rcPage.y + rcPage.dy + 3, rcPage.dx - iconSpace, iconSpace);
+                if (isRtl) {
+                    rcText.x -= iconSpace;
+                }
+                thumb.rcText = rcText;
+                char* path = fs->filePath;
+                Rect slRect = rcText.Union(rcPage).Intersect(l.rcThumbsArea);
+                if (!slRect.IsEmpty()) {
+                    thumb.sl = new StaticLink(slRect, path, path);
+                    win->staticLinks.Append(thumb.sl);
+                }
             }
         }
     }
+    win->homePageListView = listView;
+    win->homePageRowDy = rowDy;
 
     // layout tip at the bottom
     if (tip) {
@@ -1397,6 +1494,51 @@ static void DrawThumbnailCard(HDC hdc, const Rect& page, FileState* fs, Rendered
     DrawRoundedRectBorder(hdc, page, kThumbCornerRadius, borderPen);
 }
 
+static void DrawListItemRow(HWND hwnd, HDC hdc, const ThumbnailLayout& item, StrVec& filterWords, Vec<u8>& highlighted,
+                            bool isRtl, COLORREF backgroundColor) {
+    FileState* fs = item.fs;
+    if (!fs) {
+        return;
+    }
+
+    HFONT fontName = CreateSimpleFont(hdc, "MS Shell Dlg", 14);
+    HFONT fontPath = CreateSimpleFont(hdc, "MS Shell Dlg", 12);
+    char* path = fs->filePath;
+    TempStr fileName = path::GetBaseNameTemp(path);
+    TempStr dirPath = path::GetDirTemp(path);
+    UINT fmt = DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX | (isRtl ? DT_RIGHT : DT_LEFT);
+
+    GetFileStateIcon(fs);
+    const Rect& rcRow = item.rcRow;
+    int iconDx = HomePageListIconDx(hwnd);
+    int iconY = rcRow.y + (rcRow.dy - iconDx) / 2;
+    int iconX = isRtl ? rcRow.x + rcRow.dx - iconDx : rcRow.x;
+    ImageList_Draw(fs->himl, fs->iconIdx, hdc, iconX, iconY, ILD_TRANSPARENT);
+
+    SelectObject(hdc, fontName);
+    SetTextColor(hdc, ThemeWindowTextColor());
+    {
+        const Rect& rect = item.rcText;
+        RECT rcText = {rect.x, rect.y, rect.x + rect.dx, rect.y + rect.dy};
+        DrawMaybeHighlightedTextArgs hlArgs(filterWords, highlighted);
+        hlArgs.hdc = hdc;
+        hlArgs.rc = rcText;
+        hlArgs.text = fileName;
+        hlArgs.colBg = backgroundColor;
+        hlArgs.isRtl = isRtl;
+        hlArgs.drawFmt = fmt;
+        DrawMaybeHighlightedText(hlArgs);
+    }
+
+    SelectObject(hdc, fontPath);
+    SetTextColor(hdc, HomePageMutedTextColor());
+    {
+        const Rect& rect = item.rcPath;
+        RECT rcPathWin = {rect.x, rect.y, rect.x + rect.dx, rect.y + rect.dy};
+        HdcDrawText(hdc, dirPath, &rcPathWin, fmt, fontPath);
+    }
+}
+
 static void DrawHomePageLayout(HomePageLayout& l) {
     bool isRtl = IsUIRtl();
     auto hdc = l.hdc;
@@ -1449,7 +1591,7 @@ static void DrawHomePageLayout(HomePageLayout& l) {
 
     l.freqRead->Paint(hdc);
 
-    // clip thumbnails to the middle area
+    // clip file list to the middle area
     {
         const Rect& ta = l.rcThumbsArea;
         HRGN thumbsClip = CreateRectRgn(ta.x, ta.y, ta.x + ta.dx, ta.y + ta.dy);
@@ -1457,34 +1599,41 @@ static void DrawHomePageLayout(HomePageLayout& l) {
         DeleteObject(thumbsClip);
     }
 
-    for (const ThumbnailLayout& thumb : l.thumbnails) {
-        FileState* fs = thumb.fs;
-        const Rect& page = thumb.rcPage;
-
-        RenderedBitmap* thumbImg = LoadThumbnail(fs);
-        DrawThumbnailCard(hdc, page, fs, thumbImg, penThumbBorder);
-
-        const Rect& rect = thumb.rcText;
-        char* path = fs->filePath;
-        TempStr fileName = path::GetBaseNameTemp(path);
-        UINT fmt = DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX | (isRtl ? DT_RIGHT : DT_LEFT);
-
-        SelectObject(hdc, fontText);
-        {
-            RECT rcText = {rect.x, rect.y, rect.x + rect.dx, rect.y + rect.dy};
-            DrawMaybeHighlightedTextArgs hlArgs(l.filterWords, l.highlighted);
-            hlArgs.hdc = hdc;
-            hlArgs.rc = rcText;
-            hlArgs.text = fileName;
-            hlArgs.colBg = backgroundColor;
-            hlArgs.isRtl = isRtl;
-            hlArgs.drawFmt = fmt;
-            DrawMaybeHighlightedText(hlArgs);
+    bool listView = HomePageUsesListView();
+    if (listView) {
+        for (const ThumbnailLayout& item : l.thumbnails) {
+            DrawListItemRow(l.win->hwndCanvas, hdc, item, l.filterWords, l.highlighted, isRtl, backgroundColor);
         }
+    } else {
+        for (const ThumbnailLayout& thumb : l.thumbnails) {
+            FileState* fs = thumb.fs;
+            const Rect& page = thumb.rcPage;
 
-        GetFileStateIcon(fs);
-        int x = isRtl ? page.x + page.dx - DpiScale(hdc, 16) : page.x;
-        ImageList_Draw(fs->himl, fs->iconIdx, hdc, x, rect.y, ILD_TRANSPARENT);
+            RenderedBitmap* thumbImg = LoadThumbnail(fs);
+            DrawThumbnailCard(hdc, page, fs, thumbImg, penThumbBorder);
+
+            const Rect& rect = thumb.rcText;
+            char* path = fs->filePath;
+            TempStr fileName = path::GetBaseNameTemp(path);
+            UINT fmt = DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX | (isRtl ? DT_RIGHT : DT_LEFT);
+
+            SelectObject(hdc, fontText);
+            {
+                RECT rcText = {rect.x, rect.y, rect.x + rect.dx, rect.y + rect.dy};
+                DrawMaybeHighlightedTextArgs hlArgs(l.filterWords, l.highlighted);
+                hlArgs.hdc = hdc;
+                hlArgs.rc = rcText;
+                hlArgs.text = fileName;
+                hlArgs.colBg = backgroundColor;
+                hlArgs.isRtl = isRtl;
+                hlArgs.drawFmt = fmt;
+                DrawMaybeHighlightedText(hlArgs);
+            }
+
+            GetFileStateIcon(fs);
+            int x = isRtl ? page.x + page.dx - DpiScale(hdc, 16) : page.x;
+            ImageList_Draw(fs->himl, fs->iconIdx, hdc, x, rect.y, ILD_TRANSPARENT);
+        }
     }
 
     // restore full clip region
@@ -1500,6 +1649,9 @@ static void DrawHomePageLayout(HomePageLayout& l) {
     ImageList_Draw(l.himlOpen, openIconIdx, hdc, x, y, ILD_NORMAL);
 
     l.openDoc->Paint(hdc);
+    if (l.viewModeToggle) {
+        l.viewModeToggle->Paint(hdc);
+    }
 
     if (false) {
         Rect rcFreqRead = DrawHideFrequentlyReadLink(win->hwndCanvas, hdc, _TRA("Hide frequently read"));
@@ -1616,7 +1768,21 @@ static void HomePageRemoveThumbLinks(MainWindow* win) {
     }
 }
 
-static Rect HomePageThumbPageRect(MainWindow* win, int idx, int scrollY) {
+static Rect HomePageItemRect(MainWindow* win, int idx, int scrollY) {
+    if (win->homePageListView) {
+        int rowDy = win->homePageRowDy;
+        if (rowDy <= 0) {
+            rowDy = HomePageListRowDy(win->hwndCanvas) + HomePageListRowSpacing(win->hwndCanvas);
+        }
+        int y = win->homePageThumbsTopY - scrollY + idx * rowDy;
+        int listContentWidth = win->canvasRc.dx - DpiScale(win->hwndCanvas, 40) - DpiScale(win->hwndCanvas, 40);
+        Rect rcRow(win->homePageThumbsStartX, y, listContentWidth, HomePageListRowDy(win->hwndCanvas));
+        if (IsUIRtl()) {
+            rcRow.x = win->canvasRc.dx - win->homePageThumbsStartX - rcRow.dx;
+        }
+        return rcRow;
+    }
+
     int cols = win->homePageThumbsCols;
     int row = idx / cols;
     int col = idx % cols;
@@ -1630,18 +1796,23 @@ static Rect HomePageThumbPageRect(MainWindow* win, int idx, int scrollY) {
     return rcPage;
 }
 
-static void HomePageRebuildThumbLinks(MainWindow* win, int scrollY) {
+static void HomePageRebuildItemLinks(MainWindow* win, int scrollY) {
     HomePageRemoveThumbLinks(win);
     const Rect& ta = win->homePageThumbsArea;
     for (int idx = 0; idx < win->homePageFileStates.Size(); idx++) {
         FileState* fs = win->homePageFileStates[idx];
-        Rect rcPage = HomePageThumbPageRect(win, idx, scrollY);
-        int iconSpace = DpiScale(win->hwndCanvas, 20);
-        Rect rcText(rcPage.x + iconSpace, rcPage.y + rcPage.dy + 3, rcPage.dx - iconSpace, iconSpace);
-        if (IsUIRtl()) {
-            rcText.x -= iconSpace;
+        Rect rcItem = HomePageItemRect(win, idx, scrollY);
+        Rect slRect;
+        if (win->homePageListView) {
+            slRect = rcItem.Intersect(ta);
+        } else {
+            int iconSpace = DpiScale(win->hwndCanvas, 20);
+            Rect rcText(rcItem.x + iconSpace, rcItem.y + rcItem.dy + 3, rcItem.dx - iconSpace, iconSpace);
+            if (IsUIRtl()) {
+                rcText.x -= iconSpace;
+            }
+            slRect = rcText.Union(rcItem).Intersect(ta);
         }
-        Rect slRect = rcText.Union(rcPage).Intersect(ta);
         if (!slRect.IsEmpty()) {
             auto sl = new StaticLink(slRect, fs->filePath, fs->filePath);
             win->staticLinks.Append(sl);
@@ -1649,9 +1820,28 @@ static void HomePageRebuildThumbLinks(MainWindow* win, int scrollY) {
     }
 }
 
+static void HomePageDrawListItemAt(MainWindow* win, HDC hdc, FileState* fs, int idx, int scrollY) {
+    ThumbnailLayout item;
+    item.fs = fs;
+    item.rcRow = HomePageItemRect(win, idx, scrollY);
+
+    int textX = item.rcRow.x + HomePageListIconDx(win->hwndCanvas) + HomePageListIconTextGap(win->hwndCanvas);
+    int textDx = item.rcRow.dx - HomePageListIconDx(win->hwndCanvas) - HomePageListIconTextGap(win->hwndCanvas);
+    if (IsUIRtl()) {
+        textX = item.rcRow.x + HomePageListIconDx(win->hwndCanvas) + HomePageListIconTextGap(win->hwndCanvas);
+    }
+    int nameDy = DpiScale(hdc, 18);
+    int pathDy = DpiScale(hdc, 16);
+    item.rcText = {textX, item.rcRow.y + DpiScale(hdc, 4), textDx, nameDy};
+    item.rcPath = {textX, item.rcText.y + item.rcText.dy, textDx, pathDy};
+
+    DrawListItemRow(win->hwndCanvas, hdc, item, win->homePageFilterWords, win->homePageHighlighted, IsUIRtl(),
+                    ThemeMainWindowBackgroundColor());
+}
+
 static void HomePageDrawThumbnailAt(MainWindow* win, HDC hdc, FileState* fs, int idx, int scrollY, HPEN borderPen,
                                     bool fastDraw) {
-    Rect rcPage = HomePageThumbPageRect(win, idx, scrollY);
+    Rect rcPage = HomePageItemRect(win, idx, scrollY);
     RenderedBitmap* thumbImg = LoadThumbnail(fs);
     DrawThumbnailCard(hdc, rcPage, fs, thumbImg, borderPen, fastDraw);
 
@@ -1685,13 +1875,11 @@ static void HomePageDrawThumbnailAt(MainWindow* win, HDC hdc, FileState* fs, int
     ImageList_Draw(fs->himl, fs->iconIdx, hdc, x, rcText.y, ILD_TRANSPARENT);
 }
 
-static void HomePageDrawThumbsInRect(MainWindow* win, HDC hdc, const Rect& clipRect, int scrollY, bool fastDraw) {
+static void HomePageDrawItemsInRect(MainWindow* win, HDC hdc, const Rect& clipRect, int scrollY, bool fastDraw) {
     if (win->homePageFileStates.Size() == 0 || clipRect.IsEmpty()) {
         return;
     }
 
-    AutoDeletePen penThumbBorder(CreatePen(PS_SOLID, kThumbsBorderDx, ThemeThumbnailBorderColor()));
-    SelectObject(hdc, penThumbBorder);
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, ThemeWindowTextColor());
 
@@ -1699,12 +1887,24 @@ static void HomePageDrawThumbsInRect(MainWindow* win, HDC hdc, const Rect& clipR
     SelectClipRgn(hdc, clip);
     DeleteObject(clip);
 
-    for (int idx = 0; idx < win->homePageFileStates.Size(); idx++) {
-        Rect rcPage = HomePageThumbPageRect(win, idx, scrollY);
-        if (rcPage.Intersect(clipRect).IsEmpty()) {
-            continue;
+    if (win->homePageListView) {
+        for (int idx = 0; idx < win->homePageFileStates.Size(); idx++) {
+            Rect rcItem = HomePageItemRect(win, idx, scrollY);
+            if (rcItem.Intersect(clipRect).IsEmpty()) {
+                continue;
+            }
+            HomePageDrawListItemAt(win, hdc, win->homePageFileStates[idx], idx, scrollY);
         }
-        HomePageDrawThumbnailAt(win, hdc, win->homePageFileStates[idx], idx, scrollY, penThumbBorder, fastDraw);
+    } else {
+        AutoDeletePen penThumbBorder(CreatePen(PS_SOLID, kThumbsBorderDx, ThemeThumbnailBorderColor()));
+        SelectObject(hdc, penThumbBorder);
+        for (int idx = 0; idx < win->homePageFileStates.Size(); idx++) {
+            Rect rcPage = HomePageItemRect(win, idx, scrollY);
+            if (rcPage.Intersect(clipRect).IsEmpty()) {
+                continue;
+            }
+            HomePageDrawThumbnailAt(win, hdc, win->homePageFileStates[idx], idx, scrollY, penThumbBorder, fastDraw);
+        }
     }
 
     SelectClipRgn(hdc, nullptr);
@@ -1755,7 +1955,7 @@ static bool HomePageTryBlitScroll(MainWindow* win, int scrollBy, bool fastDraw) 
     }
 
     FillRect(hdc, exposed, bgCol);
-    HomePageDrawThumbsInRect(win, hdc, exposed, win->homePageScrollY, fastDraw);
+    HomePageDrawItemsInRect(win, hdc, exposed, win->homePageScrollY, fastDraw);
 
     HDC screenHdc = GetDC(win->hwndCanvas);
     HomePageFlushThumbsToScreen(win, hdc, screenHdc);
@@ -1765,7 +1965,7 @@ static bool HomePageTryBlitScroll(MainWindow* win, int scrollBy, bool fastDraw) 
     if (fastDraw) {
         HomePageOffsetThumbLinks(win, -scrollBy);
     } else {
-        HomePageRebuildThumbLinks(win, win->homePageScrollY);
+        HomePageRebuildItemLinks(win, win->homePageScrollY);
     }
     return true;
 }
@@ -1814,7 +2014,7 @@ void HomePageOnScrollTimer(MainWindow* win) {
         HomePageEnsureScrollTimer(win);
         return;
     }
-    HomePageRebuildThumbLinks(win, win->homePageScrollY);
+    HomePageRebuildItemLinks(win, win->homePageScrollY);
 }
 
 static void HomePageScrollToTarget(MainWindow* win, int targetY) {
@@ -1823,7 +2023,7 @@ static void HomePageScrollToTarget(MainWindow* win, int targetY) {
     if (HomePageApplyScrollStep(win, true)) {
         HomePageEnsureScrollTimer(win);
     } else if (win->homePageScrollY == targetY) {
-        HomePageRebuildThumbLinks(win, win->homePageScrollY);
+        HomePageRebuildItemLinks(win, win->homePageScrollY);
     }
 }
 
@@ -1865,10 +2065,12 @@ void DrawHomePage(MainWindow* win, HDC hdc) {
 
 void HomePageOnVScroll(MainWindow* win, WPARAM wp) {
     USHORT msg = LOWORD(wp);
-    HDC hdc = GetDC(win->hwndCanvas);
-    int lineDy = kThumbnailDy + kThumbsSpaceBetweenY;
+    int lineDy = win->homePageRowDy;
+    if (lineDy <= 0) {
+        lineDy = win->homePageListView ? HomePageListRowDy(win->hwndCanvas) + HomePageListRowSpacing(win->hwndCanvas)
+                                       : kThumbnailDy + DpiScale(win->hwndCanvas, 58);
+    }
     int pageDy = lineDy * 3;
-    ReleaseDC(win->hwndCanvas, hdc);
 
     int newScrollY = win->homePageScrollY;
     switch (msg) {

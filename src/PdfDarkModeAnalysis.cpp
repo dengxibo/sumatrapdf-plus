@@ -88,8 +88,8 @@ static void dm_analysis_record_image(fz_context* ctx, fz_device* dev, fz_image* 
     info.pageCoverage = coverage;
     if (image) {
         info.analysis = PdfDarkModeAnalyzeImageCached(ctx, image, coverage, d->analysis->isScannedPage, d->engineCache);
-        info.looksLikePhoto = info.analysis.kind == DarkImageKind::Photo ||
-                              info.analysis.kind == DarkImageKind::Unknown;
+        info.looksLikePhoto =
+            info.analysis.kind == DarkImageKind::Photo || info.analysis.kind == DarkImageKind::Unknown;
     } else {
         info.looksLikePhoto = false;
     }
@@ -382,18 +382,10 @@ static void PdfDarkModeAssignPolicies(DarkModePageAnalysis* analysis, const Dark
             } else if (img.pageCoverage >= kMaxPreserveImagePageCoverage && !preserveArt) {
                 img.policy = DarkImagePolicy::AdaptiveDocument;
             }
-            if (isPureScan && img.pageCoverage >= options.minScanDominantCoverage && !preserveArt &&
-                !PdfDarkModeIsFirstPageFullBleedCover(analysis->pageNumber, img.pageCoverage)) {
+            if (isPureScan && img.pageCoverage >= options.minScanDominantCoverage && !preserveArt) {
                 img.analysis.kind = DarkImageKind::FullPageScan;
                 img.analysis.confidence = 0.88f;
                 img.policy = DarkImagePolicy::AdaptiveDocument;
-            }
-            if (PdfDarkModeIsFirstPageFullBleedCover(analysis->pageNumber, img.pageCoverage) &&
-                PdfDarkModeImageMeetsPreserveMinSize(img) &&
-                !PdfDarkModeIsDecorativeStripImage(img.pageBounds, analysis->pageBounds)) {
-                img.analysis.kind = DarkImageKind::Photo;
-                img.analysis.confidence = 0.85f;
-                img.policy = DarkImagePolicy::Preserve;
             }
         }
     }

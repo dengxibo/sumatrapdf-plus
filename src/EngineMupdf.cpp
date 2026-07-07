@@ -5330,8 +5330,8 @@ static u32 DarkLegacySkipHash(FzPageInfo* pageInfo, float zoom, int rotation) {
     return h;
 }
 
-static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageInfo, int pageNo, float zoom,
-                                         int rotation, u32 hash) {
+static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageInfo, float zoom, int rotation,
+                                         u32 hash) {
     pageInfo->darkLegacySkipDevAbs.Clear();
     pageInfo->darkLegacyArtworkPageBottom = 0.f;
     pageInfo->darkLegacySkipHash = hash;
@@ -5367,14 +5367,13 @@ static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageIn
         }
         RectF imgOnPage = imgPage.Intersect(pageBounds);
         float coverage = (imgOnPage.dx * imgOnPage.dy) / pageArea;
-        bool firstPageCover = PdfDarkModeIsFirstPageFullBleedCover(pageNo, coverage);
-        if (coverage >= kMaxPreserveImagePageCoverage && !firstPageCover) {
+        if (coverage >= kMaxPreserveImagePageCoverage) {
             if (image) {
                 fz_drop_image(ctx, image);
             }
             continue;
         }
-        if (!firstPageCover && PdfDarkModeIsDecorativeStripImage(imgOnPage, pageBounds)) {
+        if (PdfDarkModeIsDecorativeStripImage(imgOnPage, pageBounds)) {
             if (image) {
                 fz_drop_image(ctx, image);
             }
@@ -5392,16 +5391,14 @@ static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageIn
         if (!image) {
             continue;
         }
-        if (!firstPageCover) {
-            if (!PdfDarkModeShouldPreserveEmbeddedImageRect(ctx, image, coverage, fullDx, fullDy)) {
-                fz_drop_image(ctx, image);
-                continue;
-            }
-            // Wide bboxes often span a layout column; only preserve if clearly a dark painting.
-            if (imgOnPage.dx > pageBounds.dx * 0.44f && !PdfDarkModeImageLooksLikeDarkArtwork(ctx, image, coverage)) {
-                fz_drop_image(ctx, image);
-                continue;
-            }
+        if (!PdfDarkModeShouldPreserveEmbeddedImageRect(ctx, image, coverage, fullDx, fullDy)) {
+            fz_drop_image(ctx, image);
+            continue;
+        }
+        // Wide bboxes often span a layout column; only preserve if clearly a dark painting.
+        if (imgOnPage.dx > pageBounds.dx * 0.44f && !PdfDarkModeImageLooksLikeDarkArtwork(ctx, image, coverage)) {
+            fz_drop_image(ctx, image);
+            continue;
         }
         fz_irect dev = fz_round_rect(fz_transform_rect(ToFzRect(imgOnPage), ctm));
         Rect r(dev.x0, dev.y0, dev.x1 - dev.x0, dev.y1 - dev.y0);
@@ -5441,7 +5438,7 @@ void EngineMupdf::GetBitmapRecolorSkipRects(int pageNo, float zoom, int rotation
     u32 hash = DarkLegacySkipHash(pageInfo, zoom, rotation);
     if (pageInfo->darkLegacySkipHash != hash || pageInfo->darkLegacySkipZoom != zoom ||
         pageInfo->darkLegacySkipRotation != rotation) {
-        BuildPageDarkLegacySkipRects(this, pageInfo, pageNo, zoom, rotation, hash);
+        BuildPageDarkLegacySkipRects(this, pageInfo, zoom, rotation, hash);
     }
 
     // Text/layout tiles below the artwork band always recolor uniformly.
