@@ -522,6 +522,9 @@ struct GlobalPrefs {
     char* lastDarkTheme;
     // the light theme to use when toggling from dark mode
     char* lastLightTheme;
+    // PDF document color mode in dark theme: auto (smart dark mode), black
+    // (full dark), or light (original colors)
+    char* pdfDocumentColorMode;
     // if both favorites and bookmarks parts of sidebar are visible, this
     // is the height of bookmarks (table of contents) part
     int tocDy;
@@ -965,6 +968,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, theme), SettingType::String, (intptr_t)""},
     {offsetof(GlobalPrefs, lastDarkTheme), SettingType::String, (intptr_t)"Dark-Dracula"},
     {offsetof(GlobalPrefs, lastLightTheme), SettingType::String, (intptr_t)"Light-Warm"},
+    {offsetof(GlobalPrefs, pdfDocumentColorMode), SettingType::String, (intptr_t)"auto"},
     {offsetof(GlobalPrefs, tocDy), SettingType::Int, 0},
     {offsetof(GlobalPrefs, toolbarSize), SettingType::Int, 18},
     {offsetof(GlobalPrefs, treeFontName), SettingType::String, (intptr_t)"automatic"},
@@ -1031,20 +1035,20 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment, (intptr_t)"Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 106, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 107, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0ReloadMo"
     "difiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSession\0ReuseInstance\0ShowMenubar\0ShowMe"
     "nubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0OfflineDictionaryPath\0EnableDoubleClickWordLookup\0AiChatUseD"
     "eepSeekInsteadOfDoubao\0EnableAskAI\0ShowFavorites\0ShowToc\0ShowLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0Scro"
     "llbarInSinglePage\0SmoothScroll\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme"
-    "\0LastLightTheme\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0UIFontSize\0DisableAntiAlias\0EngineeringDrawing"
-    "Enhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0Ima"
-    "geUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHand"
-    "lers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh\0Read"
-    "AloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSmartOnli"
-    "neVoiceEn\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0FileStates\0SessionData\0Reope"
-    "nOnce\0TimeOfLastUpdateCheck\0OpenCountWeek\0PropWinPos\0\0"};
+    "\0LastLightTheme\0PdfDocumentColorMode\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0UIFontSize\0DisableAntiAli"
+    "as\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI"
+    "\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fulls"
+    "creen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAlo"
+    "udSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoice"
+    "Zh\0ReadAloudSmartOnlineVoiceEn\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0FileStat"
+    "es\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0OpenCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)""},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)""},

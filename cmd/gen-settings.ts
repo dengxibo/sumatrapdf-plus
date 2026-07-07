@@ -822,6 +822,18 @@ const globalPrefs: Field[] = [
     setVersion(mkField("LastLightTheme", Str, "Light-Warm", "the light theme to use when toggling from dark mode"), "3.7"),
     "Valid light themes: Light-Warm, Light-White",
   ),
+  setDoc(
+    setVersion(
+      mkField(
+        "PdfDocumentColorMode",
+        Str,
+        "auto",
+        "PDF document color mode in dark theme: auto (smart dark mode), black (full dark), or light (original colors)",
+      ),
+      "3.7",
+    ),
+    "Valid values: auto, black, light",
+  ),
   mkField(
     "TocDy",
     Int,

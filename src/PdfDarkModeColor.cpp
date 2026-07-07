@@ -7,6 +7,8 @@ extern "C" {
 
 #include "utils/BaseUtil.h"
 
+#include "Settings.h"
+#include "GlobalPrefs.h"
 #include "Theme.h"
 #include "Translations.h"
 
@@ -17,8 +19,32 @@ static constexpr int kPreservePdfImagesMinSize = 72;
 // Object-level Smart Dark is opt-in until image/color heuristics are ready (Phase 2+).
 static constexpr PdfDarkModeRenderer kPdfDarkModeRenderer = PdfDarkModeRenderer::LegacyBitmapPostProcess;
 
-static PdfDocumentColorMode gPdfDocumentColorMode = PdfDocumentColorMode::Auto;
 static bool gPreservePdfImagesInDarkMode = true;
+
+static PdfDocumentColorMode PdfDocumentColorModeFromString(const char* v) {
+    if (!v || !*v || str::EqI(v, "auto")) {
+        return PdfDocumentColorMode::Auto;
+    }
+    if (str::EqI(v, "black")) {
+        return PdfDocumentColorMode::Black;
+    }
+    if (str::EqI(v, "light")) {
+        return PdfDocumentColorMode::Light;
+    }
+    return PdfDocumentColorMode::Auto;
+}
+
+static const char* PdfDocumentColorModeToString(PdfDocumentColorMode mode) {
+    switch (mode) {
+        case PdfDocumentColorMode::Black:
+            return "black";
+        case PdfDocumentColorMode::Light:
+            return "light";
+        case PdfDocumentColorMode::Auto:
+        default:
+            return "auto";
+    }
+}
 
 static int gShadeForwardCount = 0;
 
@@ -49,14 +75,23 @@ PdfDarkModeRenderer GetPdfDarkModeRenderer() {
 }
 
 PdfDocumentColorMode GetPdfDocumentColorMode() {
-    return gPdfDocumentColorMode;
+    if (!gGlobalPrefs || !gGlobalPrefs->pdfDocumentColorMode) {
+        return PdfDocumentColorMode::Auto;
+    }
+    return PdfDocumentColorModeFromString(gGlobalPrefs->pdfDocumentColorMode);
 }
 
 void SetPdfDocumentColorMode(PdfDocumentColorMode mode) {
     if (mode < PdfDocumentColorMode::Auto || mode > PdfDocumentColorMode::Light) {
         mode = PdfDocumentColorMode::Auto;
     }
-    gPdfDocumentColorMode = mode;
+    if (!gGlobalPrefs) {
+        return;
+    }
+    const char* name = PdfDocumentColorModeToString(mode);
+    if (!str::EqI(gGlobalPrefs->pdfDocumentColorMode, name)) {
+        str::ReplaceWithCopy(&gGlobalPrefs->pdfDocumentColorMode, name);
+    }
 }
 
 const char* PdfDocumentColorModeDescription(PdfDocumentColorMode mode) {

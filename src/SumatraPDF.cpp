@@ -8736,6 +8736,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                 SetPdfDocumentColorMode(mode);
                 UpdateDocumentColors();
                 UpdatePdfDocumentColorModeToolbarButton(win);
+                SaveSettings();
             }
             break;
 
@@ -10211,41 +10212,72 @@ static bool ReadAloudIsLatinLetterCp(char32_t cp) {
     return (cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z') || (cp >= 0xC0 && cp <= 0x24F);
 }
 
-// a short English run inside Chinese text (e.g. "App", "Windows 11") is spoken by
-// the Chinese voice; only switch voices for this many consecutive English words
+// Short English runs embedded in Chinese (e.g. "App", "Windows 11") use the Chinese
+// voice; switch to English only for a long run or a complete short sentence.
 static constexpr int kReadAloudMinEnWordsToSwitch = 5;
 
-// counts consecutive latin words starting at p until a CJK char, end of text or cap;
-// returns false via *hitCjk if the run ends because of a CJK char
-static int ReadAloudCountLatinWordsAhead(const char* p, int maxWords, bool* hitCjkOut) {
+static bool ReadAloudIsSentenceEndCp(char32_t cp) {
+    return cp == '.' || cp == '!' || cp == '?';
+}
+
+struct ReadAloudLatinRunInfo {
     int words = 0;
-    bool inWord = false;
     bool hitCjk = false;
+    bool hasSentenceEnd = false;
+};
+
+// Scans a consecutive Latin run from p until CJK or end of text.
+static ReadAloudLatinRunInfo ReadAloudAnalyzeLatinRun(const char* p) {
+    ReadAloudLatinRunInfo info;
+    bool inWord = false;
     while (*p) {
         char32_t cp = 0;
         if (!ReadAloudDecodeUtf8One(p, &cp)) {
             break;
         }
         if (ReadAloudIsCjkCp(cp)) {
-            hitCjk = true;
+            info.hitCjk = true;
             break;
         }
         if (ReadAloudIsLatinLetterCp(cp)) {
             if (!inWord) {
                 inWord = true;
-                words++;
-                if (words > maxWords) {
-                    break;
-                }
+                info.words++;
             }
         } else {
             inWord = false;
+            if (ReadAloudIsSentenceEndCp(cp)) {
+                info.hasSentenceEnd = true;
+            }
         }
     }
-    if (hitCjkOut) {
-        *hitCjkOut = hitCjk;
+    return info;
+}
+
+// English-primary text (no CJK ahead) always uses the English voice. Embedded runs
+// switch only for a long passage or a multi-word sentence ending in . ! ?
+static bool ReadAloudLatinRunWarrantsEnglishVoice(const ReadAloudLatinRunInfo& info) {
+    if (!info.hitCjk) {
+        return true;
     }
-    return words;
+    if (info.words >= kReadAloudMinEnWordsToSwitch) {
+        return true;
+    }
+    return info.hasSentenceEnd && info.words >= 2;
+}
+
+static const char* ReadAloudSkipLatinRun(const char* p) {
+    char32_t cp = 0;
+    while (*p) {
+        const char* prev = p;
+        if (!ReadAloudDecodeUtf8One(p, &cp)) {
+            break;
+        }
+        if (ReadAloudIsCjkCp(cp)) {
+            return prev;
+        }
+    }
+    return p;
 }
 
 // finds where the chunk starting at `start` should end so that it can be spoken by a
@@ -10282,32 +10314,23 @@ static int ReadAloudFindBilingualChunkEnd(const char* text, int start, int maxLe
         }
 
         if (lang == ReadAloudLang::Unknown) {
-            lang = isCjk ? ReadAloudLang::Zh : ReadAloudLang::En;
+            if (isCjk) {
+                lang = ReadAloudLang::Zh;
+            } else {
+                ReadAloudLatinRunInfo run = ReadAloudAnalyzeLatinRun(cpStart);
+                lang = ReadAloudLatinRunWarrantsEnglishVoice(run) ? ReadAloudLang::En : ReadAloudLang::Zh;
+            }
             continue;
         }
 
         if (lang == ReadAloudLang::Zh && isLatin) {
-            // switch only for a long English run; short runs stay with the Chinese voice
-            bool hitCjk = false;
-            int words = ReadAloudCountLatinWordsAhead(cpStart, kReadAloudMinEnWordsToSwitch, &hitCjk);
-            if (words >= kReadAloudMinEnWordsToSwitch) {
+            ReadAloudLatinRunInfo run = ReadAloudAnalyzeLatinRun(cpStart);
+            if (ReadAloudLatinRunWarrantsEnglishVoice(run)) {
                 chunkEnd = cpStart;
                 break;
             }
             // absorb the short run: skip past it so we don't re-count for every letter
-            const char* q = cpStart;
-            char32_t cp2 = 0;
-            while (*q) {
-                const char* qPrev = q;
-                if (!ReadAloudDecodeUtf8One(q, &cp2)) {
-                    break;
-                }
-                if (ReadAloudIsCjkCp(cp2)) {
-                    q = qPrev;
-                    break;
-                }
-            }
-            p = q;
+            p = ReadAloudSkipLatinRun(cpStart);
             continue;
         }
 
