@@ -7,6 +7,7 @@
 - persist `PdfDocumentColorMode` advanced setting (auto, black, light) across sessions
 - in PDF auto (smart dark mode), remove special-case that kept page 1 full-bleed covers at original brightness; first page now follows the same dark-mode rules as other pages
 - refine read-aloud bilingual voice switching for short embedded English sentences ending in punctuation
+- automatic update check runs on startup when enabled, including the first launch (no longer requires a prior manual check)
 
 **next: 3.7**
 

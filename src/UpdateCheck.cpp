@@ -195,13 +195,6 @@ static bool ShouldCheckForUpdate(UpdateCheck updateCheckType) {
         return false;
     }
 
-    // don't check for updates at the first start, so that privacy
-    // sensitive users can disable the update check in time
-    FILETIME never{};
-    if (FileTimeEq(gGlobalPrefs->timeOfLastUpdateCheck, never)) {
-        return false;
-    }
-
     // only check if at least a day passed since last check
     FILETIME currentTimeFt;
     GetSystemTimeAsFileTime(&currentTimeFt);
