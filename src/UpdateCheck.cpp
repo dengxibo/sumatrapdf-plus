@@ -38,11 +38,11 @@ static const char* kNotifUpdateCheckInProgress = "notifUpdateCheckInProgress";
 
 // Sumatra PDF Plus: update info and downloads are hosted on GitHub.
 // update-check.txt lives in the repo root; releases are published as GitHub Releases.
-// jsDelivr mirrors the raw file and serves as a backup (more reliable in some regions).
+// jsDelivr mirrors the raw file (faster in some regions); raw GitHub is the backup.
 
 // clang-format off
-constexpr const char* kUpdateInfoURL = "https://raw.githubusercontent.com/dengxibo/sumatrapdf-plus/main/update-check.txt";
-constexpr const char* kUpdateInfoURL2 = "https://cdn.jsdelivr.net/gh/dengxibo/sumatrapdf-plus@main/update-check.txt";
+constexpr const char* kUpdateInfoURL = "https://cdn.jsdelivr.net/gh/dengxibo/sumatrapdf-plus@main/update-check.txt";
+constexpr const char* kUpdateInfoURL2 = "https://raw.githubusercontent.com/dengxibo/sumatrapdf-plus/main/update-check.txt";
 
 #ifndef kWebisteDownloadPageURL
 #define kWebisteDownloadPageURL "https://github.com/dengxibo/sumatrapdf-plus/releases/latest"
@@ -174,13 +174,13 @@ static bool ShouldCheckForUpdate(UpdateCheck updateCheckType) {
     }
 #endif
 
+    if (updateCheckType == UpdateCheck::UserInitiated) {
+        return true;
+    }
+
     if (!HasPermission(Perm::InternetAccess)) {
         logf("CheckForUpdate: skipping because no internet access\n");
         return false;
-    }
-
-    if (updateCheckType == UpdateCheck::UserInitiated) {
-        return true;
     }
 
     // don't check if the timestamp or version to skip can't be updated
@@ -494,6 +494,9 @@ static DWORD MaybeStartUpdateDownload(HWND hwndParent, HttpRsp* rsp, UpdateCheck
             auto wnd = GetNotificationForGroup(hwndForNotif, kNotifUpdateCheckInProgress);
             if (wnd) {
                 NotificationUpdateMessage(wnd, _TRA("You have the latest version."), 5 * 1000, true);
+            } else {
+                RemoveNotificationsForGroup(hwndForNotif, kNotifUpdateCheckInProgress);
+                MessageBoxWarning(hwndParent, _TRA("You have the latest version."), _TRA("SumatraPDF Update"));
             }
         }
         delete updateInfo;
@@ -622,6 +625,10 @@ static void UpdateCheckAsync(UpdateCheckAsyncData* data) {
 // of the user and therefore will show less UI
 void StartAsyncUpdateCheck(MainWindow* win, UpdateCheck updateCheckType) {
     if (!ShouldCheckForUpdate(updateCheckType)) {
+        if (UpdateCheck::UserInitiated == updateCheckType) {
+            MessageBoxWarning(win->hwndFrame, _TRA("An update check is already in progress."),
+                              _TRA("SumatraPDF Update"));
+        }
         return;
     }
 

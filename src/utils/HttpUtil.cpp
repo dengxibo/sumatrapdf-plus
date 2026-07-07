@@ -54,6 +54,13 @@ bool HttpGet(const char* urlA, HttpRsp* rspOut) {
         goto Error;
     }
 
+    {
+        unsigned int timeoutMs = 15 * 1000;
+        InternetSetOptionW(hReq, INTERNET_OPTION_CONNECT_TIMEOUT, &timeoutMs, sizeof(timeoutMs));
+        InternetSetOptionW(hReq, INTERNET_OPTION_SEND_TIMEOUT, &timeoutMs, sizeof(timeoutMs));
+        InternetSetOptionW(hReq, INTERNET_OPTION_RECEIVE_TIMEOUT, &timeoutMs, sizeof(timeoutMs));
+    }
+
     infoLevel = HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER;
     if (!HttpQueryInfoW(hReq, infoLevel, &rspOut->httpStatusCode, &headerBuffSize, nullptr)) {
         logf("HttpGet: HttpQueryInfoW failed\n");
