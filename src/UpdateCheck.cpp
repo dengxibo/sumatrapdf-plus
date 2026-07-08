@@ -38,11 +38,12 @@ static const char* kNotifUpdateCheckInProgress = "notifUpdateCheckInProgress";
 
 // Sumatra PDF Plus: update info and downloads are hosted on GitHub.
 // update-check.txt lives in the repo root; releases are published as GitHub Releases.
-// jsDelivr mirrors the raw file (faster in some regions); raw GitHub is the backup.
+// GitHub raw updates immediately when main changes; jsDelivr can lag behind on @main.
+// We fetch both and use whichever reports the highest Latest version.
 
 // clang-format off
-constexpr const char* kUpdateInfoURL = "https://cdn.jsdelivr.net/gh/dengxibo/sumatrapdf-plus@main/update-check.txt";
-constexpr const char* kUpdateInfoURL2 = "https://raw.githubusercontent.com/dengxibo/sumatrapdf-plus/main/update-check.txt";
+constexpr const char* kUpdateInfoURL = "https://raw.githubusercontent.com/dengxibo/sumatrapdf-plus/main/update-check.txt";
+constexpr const char* kUpdateInfoURL2 = "https://cdn.jsdelivr.net/gh/dengxibo/sumatrapdf-plus@main/update-check.txt";
 
 #ifndef kWebisteDownloadPageURL
 #define kWebisteDownloadPageURL "https://github.com/dengxibo/sumatrapdf-plus/releases/latest"
@@ -590,6 +591,15 @@ static void UpdateCheckFinish(UpdateCheckAsyncData* data) {
         return;
     }
     HWND hwnd = win->hwndFrame;
+    if (!rsp) {
+        if (updateCheckType == UpdateCheck::UserInitiated) {
+            RemoveNotificationsForGroup(win->hwndCanvas, kNotifUpdateCheckInProgress);
+            TempStr msg = str::FormatTemp(_TRA("Can't connect to the Internet (error %#x)."),
+                                          ERROR_INTERNET_CANNOT_CONNECT);
+            MessageBoxWarning(hwnd, msg, _TRA("SumatraPDF Update"));
+        }
+        return;
+    }
     DWORD err = MaybeStartUpdateDownload(hwnd, rsp, updateCheckType);
     if ((err != 0) && (updateCheckType == UpdateCheck::UserInitiated)) {
         RemoveNotificationsForGroup(win->hwndCanvas, kNotifUpdateCheckInProgress);
@@ -599,23 +609,44 @@ static void UpdateCheckFinish(UpdateCheckAsyncData* data) {
     }
 }
 
+static HttpRsp* FetchUpdateCheckResponse(UpdateCheck updateCheckType) {
+    const char* urls[2] = {kUpdateInfoURL, kUpdateInfoURL2};
+    HttpRsp* bestRsp = nullptr;
+    UpdateInfo* bestInfo = nullptr;
+
+    for (const char* baseURL : urls) {
+        StrBuilder url;
+        BuildUpdateURL(url, baseURL, updateCheckType);
+        char* uri = url.Get();
+        HttpRsp* rsp = new HttpRsp;
+        rsp->url.SetCopy(uri);
+        if (!HttpGet(uri, rsp) || rsp->httpStatusCode != 200 || rsp->data.size() == 0) {
+            delete rsp;
+            continue;
+        }
+        UpdateInfo* info = ParseUpdateInfo(rsp->data.Get());
+        if (!info) {
+            logf("FetchUpdateCheckResponse: ParseUpdateInfo failed for '%s'\n", baseURL);
+            delete rsp;
+            continue;
+        }
+        if (!bestInfo || CompareProgramVersion(info->latestVer, bestInfo->latestVer) > 0) {
+            delete bestInfo;
+            delete bestRsp;
+            bestInfo = info;
+            bestRsp = rsp;
+        } else {
+            delete info;
+            delete rsp;
+        }
+    }
+    delete bestInfo;
+    return bestRsp;
+}
+
 static void UpdateCheckAsync(UpdateCheckAsyncData* data) {
     auto updateCheckType = data->updateCheckType;
-    StrBuilder url;
-    BuildUpdateURL(url, kUpdateInfoURL, updateCheckType);
-    char* uri = url.Get();
-    HttpRsp* rsp = new HttpRsp;
-    rsp->url.SetCopy(uri);
-    bool ok = HttpGet(uri, rsp);
-    if (!ok) {
-        delete rsp;
-        BuildUpdateURL(url, kUpdateInfoURL2, updateCheckType);
-        uri = url.Get();
-        rsp = new HttpRsp;
-        rsp->url.SetCopy(uri);
-        HttpGet(uri, rsp);
-    }
-    data->rsp = rsp;
+    data->rsp = FetchUpdateCheckResponse(updateCheckType);
     auto fn = MkFunc0<UpdateCheckAsyncData>(UpdateCheckFinish, data);
     uitask::Post(fn, "TaskUpdateCheckFinish");
 }
