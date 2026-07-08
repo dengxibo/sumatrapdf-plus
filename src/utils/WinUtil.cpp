@@ -1304,44 +1304,112 @@ static void SendMouseClickScreen(int x, int y) {
     SendInput(3, inputs, sizeof(INPUT));
 }
 
-static void ClickBrowserWindowChatInput(HWND hwnd) {
-    RECT wr;
-    if (!GetWindowRect(hwnd, &wr)) {
-        return;
+static int BrowserMainPaneSidebarDx(HWND hwnd, int clientW) {
+    int sidebar = DpiScale(hwnd, 260);
+    int minSidebar = DpiScale(hwnd, 200);
+    if (sidebar < minSidebar) {
+        sidebar = minSidebar;
     }
-    int x = (wr.left + wr.right) / 2;
-    int y = wr.bottom - DpiScale(hwnd, 90);
-    SendMouseClickScreen(x, y);
+    int sidebarPercent = clientW * 18 / 100;
+    if (sidebar < sidebarPercent) {
+        sidebar = sidebarPercent;
+    }
+    if (sidebar > clientW / 2) {
+        sidebar = clientW / 2;
+    }
+    return sidebar;
 }
 
-// DeepSeek "new chat" puts the input in the middle of the page; ongoing chats pin it to the bottom.
-static void ClickBrowserWindowClientAt(HWND hwnd, int offsetPercentXFromLeft, int offsetPercentYFromTop) {
+static bool BrowserClientScreenRect(HWND hwnd, POINT* topLeft, int* w, int* h) {
     RECT cr;
     if (!GetClientRect(hwnd, &cr)) {
-        return;
+        return false;
     }
-    POINT topLeft = {cr.left, cr.top};
+    *topLeft = {cr.left, cr.top};
     POINT bottomRight = {cr.right, cr.bottom};
-    ClientToScreen(hwnd, &topLeft);
+    ClientToScreen(hwnd, topLeft);
     ClientToScreen(hwnd, &bottomRight);
-    int w = bottomRight.x - topLeft.x;
-    int h = bottomRight.y - topLeft.y;
-    if (w <= 0 || h <= 0) {
+    *w = bottomRight.x - topLeft->x;
+    *h = bottomRight.y - topLeft->y;
+    return *w > 0 && *h > 0;
+}
+
+static void ClickBrowserMainPaneAt(HWND hwnd, int yPercent, const char* logTag, bool doubleClick) {
+    POINT topLeft;
+    int w = 0;
+    int h = 0;
+    if (!BrowserClientScreenRect(hwnd, &topLeft, &w, &h)) {
         return;
     }
-    if (offsetPercentXFromLeft <= 0 || offsetPercentXFromLeft > 100) {
-        offsetPercentXFromLeft = 50;
+    int sidebar = BrowserMainPaneSidebarDx(hwnd, w);
+    int mainW = w - sidebar;
+    if (mainW <= 0) {
+        return;
     }
-    if (offsetPercentYFromTop <= 0 || offsetPercentYFromTop > 100) {
-        offsetPercentYFromTop = 50;
+    int x = topLeft.x + sidebar + mainW / 2;
+    int y = topLeft.y + h * yPercent / 100;
+    logf("ClickBrowserMainPaneAt(%s): client %dx%d sidebar %d click (%d,%d)\n", logTag, w, h, sidebar, x, y);
+    SendMouseClickScreen(x, y);
+    if (doubleClick) {
+        Sleep(80);
+        SendMouseClickScreen(x, y);
     }
-    int x = topLeft.x + w * offsetPercentXFromLeft / 100;
-    int y = topLeft.y + h * offsetPercentYFromTop / 100;
+}
+
+static void ClickBrowserBottomMainPaneInput(HWND hwnd, const char* logTag) {
+    POINT topLeft;
+    int w = 0;
+    int h = 0;
+    if (!BrowserClientScreenRect(hwnd, &topLeft, &w, &h)) {
+        return;
+    }
+    int sidebar = BrowserMainPaneSidebarDx(hwnd, w);
+    int mainW = w - sidebar;
+    if (mainW <= 0) {
+        return;
+    }
+    int x = topLeft.x + sidebar + mainW / 2;
+    int y = topLeft.y + h - DpiScale(hwnd, 90);
+    logf("ClickBrowserBottomMainPaneInput(%s): client %dx%d sidebar %d click (%d,%d)\n", logTag, w, h, sidebar, x,
+         y);
+    SendMouseClickScreen(x, y);
+    Sleep(80);
     SendMouseClickScreen(x, y);
 }
 
 static bool IsChatGptUrl(const char* url) {
     return url && (str::Find(url, "chatgpt.com") || str::Find(url, "openai.com"));
+}
+
+static bool IsDeepSeekUrl(const char* url) {
+    return url && str::Find(url, "deepseek.com");
+}
+
+static bool IsDoubaoUrl(const char* url) {
+    return url && str::Find(url, "doubao.com");
+}
+
+// DeepSeek empty chat centers the input; Doubao (including cold start) uses the bottom bar.
+static void ClickBrowserChatInputTarget(HWND hwnd, bool useCenteredInput, const char* url) {
+    if (useCenteredInput) {
+        if (IsChatGptUrl(url)) {
+            ClickBrowserMainPaneAt(hwnd, 51, "ChatGPT", true);
+        } else if (IsDeepSeekUrl(url)) {
+            ClickBrowserMainPaneAt(hwnd, 52, "DeepSeek", true);
+        } else {
+            ClickBrowserMainPaneAt(hwnd, 54, "centered", true);
+        }
+    } else {
+        const char* tag = "bottom";
+        if (IsDoubaoUrl(url)) {
+            tag = "Doubao";
+        } else if (IsDeepSeekUrl(url)) {
+            tag = "DeepSeek";
+        } else if (IsChatGptUrl(url)) {
+            tag = "ChatGPT";
+        }
+        ClickBrowserBottomMainPaneInput(hwnd, tag);
+    }
 }
 
 // ChatGPT home/new-chat shows a centered "Ask anything" box; ongoing chats use the bottom bar.
@@ -1389,20 +1457,6 @@ static bool ShouldUseCenteredChatInput(const char* url, HWND hwnd, bool waitForP
     return BrowserTitleLooksLikeChatGptHome(ToUtf8Temp(titleW));
 }
 
-// DeepSeek empty chat centers the input; Doubao (including cold start) uses the bottom bar.
-static void ClickBrowserChatInputTarget(HWND hwnd, bool useCenteredInput, const char* url) {
-    if (useCenteredInput) {
-        if (url && (str::Find(url, "chatgpt.com") || str::Find(url, "openai.com"))) {
-            // ChatGPT home/new chat: input is centered in the main pane (right of sidebar).
-            ClickBrowserWindowClientAt(hwnd, 55, 58);
-        } else {
-            ClickBrowserWindowClientAt(hwnd, 58, 54);
-        }
-    } else {
-        ClickBrowserWindowChatInput(hwnd);
-    }
-}
-
 static void SubmitBrowserChatInput(HWND browserHwnd) {
     FocusBrowserWindowForSubmit(browserHwnd);
     Sleep(80);
@@ -1427,7 +1481,7 @@ static void ExecuteBrowserChatPasteSubmit(HWND browserHwnd, bool useCenteredInpu
         DismissBrowserChromeFocusBeforePaste();
     }
     ClickBrowserChatInputTarget(browserHwnd, useCenteredInput, url);
-    Sleep(IsChatGptUrl(url) ? 600 : 250);
+    Sleep(IsChatGptUrl(url) ? 700 : 250);
     FocusBrowserWindowForSubmit(browserHwnd);
     SendPasteKeystrokes();
     if (submit) {

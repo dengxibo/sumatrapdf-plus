@@ -1,5 +1,9 @@
 # Version history
 
+## 3.7.5 (2026-07-08)
+
+- fix Ask AI paste missing the input box for ChatGPT, DeepSeek, and Doubao on Edge and other layouts: click in the main content pane (sidebar-aware) instead of the full window center
+
 ## 3.7.4 (2026-07-07)
 
 - add `AiChatProvider` advanced setting (`doubao`, `deepseek`, or `chatgpt`) to choose Ask AI backend; default is `doubao`; `AiChatUseDeepSeekInsteadOfDoubao` is deprecated
