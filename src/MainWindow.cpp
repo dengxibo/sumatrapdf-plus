@@ -93,6 +93,10 @@ StaticLink::~StaticLink() {
 
 MainWindow::MainWindow(HWND hwnd) {
     hwndFrame = hwnd;
+    frameDpi = DpiGetForHwnd(hwnd);
+    // #region agent log
+    DbgLogDpi("C", "MainWindow.cpp:ctor", "after_ctor_dpi", hwnd, frameDpi, 0, 0, 0);
+    // #endregion
     linkHandler = new LinkHandler(this);
     cbHandler = CreateControllerCallbackHandler(this);
 }

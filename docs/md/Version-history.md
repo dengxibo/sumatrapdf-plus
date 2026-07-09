@@ -19,6 +19,7 @@
 Available in [pre-release](https://www.sumatrapdfreader.org/prerelease) builds.
 
 - fix update check reporting "already latest" when a newer version is on GitHub: fetch update-check.txt from both GitHub raw and jsDelivr and use the highest Latest version (jsDelivr @main can lag behind)
+- fix multi-monitor DPI: recreate UI fonts per monitor DPI (via SystemParametersInfoForDpi), refresh on first show and when moving between displays with different scale (issue #8)
 
 - add `AiChatProvider` advanced setting (`doubao`, `deepseek`, or `chatgpt`) to choose Ask AI backend; `AiChatUseDeepSeekInsteadOfDoubao` is deprecated (migrates to `deepseek` when `AiChatProvider` is absent from settings)
 - add `EnableAskAI` advanced setting (default true); set to false to hide Ask AI in the selection toolbar, context menu, and command palette

@@ -2076,7 +2076,7 @@ void CreateMenuBarRebar(MainWindow* win) {
         }
     }
 
-    HFONT font = GetAppMenuFont();
+    HFONT font = GetAppMenuFontForHwnd(win->hwndFrame);
     HwndSetFont(win->hwndMenuToolbar, font);
 
     LRESULT tbExStyle = SendMessageW(win->hwndMenuToolbar, TB_GETEXTENDEDSTYLE, 0, 0);

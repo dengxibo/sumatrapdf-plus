@@ -1992,6 +1992,8 @@ static void UpdateToolbarSidebarText(MainWindow* win) {
 }
 
 static void UpdateWindowFrameBorderColor(MainWindow* win);
+static void OnMainWindowDpiChanged(MainWindow* win, HWND hwnd, const RECT* suggestedRect, int explicitDpi = 0,
+                                   bool force = false);
 
 static MainWindow* CreateMainWindow() {
     Rect windowPos = gGlobalPrefs->windowPos;
@@ -2066,7 +2068,7 @@ static MainWindow* CreateMainWindow() {
 
     Tooltip::CreateArgs args;
     args.parent = win->hwndCanvas;
-    args.font = GetAppFont();
+    args.font = GetAppFontForHwnd(win->hwndFrame);
     args.isRtl = IsUIRtl();
 
     win->infotip = new Tooltip();
@@ -2169,6 +2171,22 @@ void ShowMainWindow(MainWindow* win, int windowState) {
     RedrawWindow(win->hwndFrame, nullptr, nullptr,
                  RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME | RDW_UPDATENOW);
     HwndEnsureVisible(win->hwndFrame);
+
+    // Process any WM_DPICHANGED posted by the first ShowWindow before we
+    // apply our own DPI refresh (GetDpiForWindow can still be stale).
+    MSG msg;
+    while (PeekMessageW(&msg, win->hwndFrame, WM_DPICHANGED, WM_DPICHANGED, PM_REMOVE | PM_NOYIELD)) {
+        DispatchMessageW(&msg);
+    }
+
+    // #region agent log
+    DbgLogDpi("E", "SumatraPDF.cpp:ShowMainWindow", "before_apply", win->hwndFrame, win->frameDpi, 0, 0, 0);
+    // #endregion
+    OnMainWindowDpiChanged(win, win->hwndFrame, nullptr, 0, true);
+    // #region agent log
+    DbgLogDpi("E", "SumatraPDF.cpp:ShowMainWindow", "after_apply", win->hwndFrame, win->frameDpi, 0,
+              GetSizeOfDefaultGuiFontForDpi(win->frameDpi), 0);
+    // #endregion
 
     if (gWindows.Size() == 1 && (true || IsDebuggerPresent())) {
         HwndToForeground(win->hwndFrame);
@@ -11670,6 +11688,119 @@ static void ShowTtsVoiceMenu(MainWindow* win, NMTOOLBARW* nmtb) {
     ShowReadAloudPopupMenuAt(win, rc.left, rc.bottom);
 }
 
+static void ApplyDpiFontsToSidebar(MainWindow* win) {
+    HFONT menuFont = GetAppMenuFontForHwnd(win->hwndFrame);
+    HFONT treeFont = GetAppTreeFontForHwnd(win->hwndFrame);
+    HFONT labelFont = GetAppSidebarLabelFontForHwnd(win->hwndFrame);
+    if (win->tocTreeView && win->tocTreeView->hwnd) {
+        HwndSetTreeFont(win->tocTreeView->hwnd, treeFont);
+    }
+    if (win->favTreeView && win->favTreeView->hwnd) {
+        HwndSetTreeFont(win->favTreeView->hwnd, treeFont);
+    }
+    // #region agent log
+    LOGFONTW lf{};
+    int fontPx = 0;
+    int itemH = 0;
+    if (treeFont && GetObjectW(treeFont, sizeof(lf), &lf) == sizeof(lf)) {
+        fontPx = (int)std::abs(lf.lfHeight);
+    }
+    if (win->tocTreeView && win->tocTreeView->hwnd) {
+        itemH = (int)SendMessageW(win->tocTreeView->hwnd, TVM_GETITEMHEIGHT, 0, 0);
+    }
+    DbgLogDpi("F", "SumatraPDF.cpp:ApplyDpiFontsToSidebar", "tree_font", win->hwndFrame, win->frameDpi, 0, fontPx,
+              itemH);
+    DbgLogFontHandle("H4", "SumatraPDF.cpp:ApplyDpiFontsToSidebar", "menu_font", menuFont, win->frameDpi);
+    DbgLogFontHandle("H4", "SumatraPDF.cpp:ApplyDpiFontsToSidebar", "tree_font_handle", treeFont, win->frameDpi);
+    if (win->tocTreeView && win->tocTreeView->hwnd) {
+        DbgLogFontMetrics("H4", "SumatraPDF.cpp:ApplyDpiFontsToSidebar", "toc_tree", win->tocTreeView->hwnd);
+    }
+    // #endregion
+    if (win->tocLabelWithClose) {
+        win->tocLabelWithClose->SetFont(labelFont);
+        win->tocLabelWithClose->Layout();
+    }
+    if (win->favLabelWithClose) {
+        win->favLabelWithClose->SetFont(labelFont);
+        win->favLabelWithClose->Layout();
+    }
+    if (win->tocFilterEdit) {
+        win->tocFilterEdit->SetFont(menuFont);
+    }
+    if (win->hwndHomeSearch) {
+        HwndSetFont(win->hwndHomeSearch, menuFont);
+    }
+}
+
+static void OnMainWindowDpiChanged(MainWindow* win, HWND hwnd, const RECT* suggestedRect, int explicitDpi,
+                                   bool force) {
+    int dpi;
+    if (explicitDpi > 0) {
+        dpi = RoundUp(explicitDpi, 4);
+        // WM_DPICHANGED can report a stale lower DPI while the window is already
+        // on a higher-DPI monitor (see debug log: explicitDpi=96, hwndMonDpi=120).
+        int hwndMonDpi = DpiGetForMonitorOfHwnd(hwnd);
+        if (hwndMonDpi > 0) {
+            hwndMonDpi = RoundUp(hwndMonDpi, 4);
+            if (dpi < hwndMonDpi) {
+                dpi = hwndMonDpi;
+            }
+        }
+    } else {
+        dpi = DpiGet(hwnd);
+    }
+    // #region agent log
+    int fontSizeBefore = GetSizeOfDefaultGuiFontForDpi(dpi);
+    bool earlyReturn = !force && dpi == win->frameDpi && !suggestedRect;
+    DbgLogDpi("C", "SumatraPDF.cpp:OnMainWindowDpiChanged", earlyReturn ? "early_return" : "apply", hwnd,
+              win->frameDpi, explicitDpi, fontSizeBefore, earlyReturn ? 1 : 0);
+    // #endregion
+    if (!force && dpi == win->frameDpi && !suggestedRect) {
+        return;
+    }
+    win->frameDpi = dpi;
+    logf("OnMainWindowDpiChanged: dpi=%d\n", dpi);
+
+    if (suggestedRect) {
+        SetWindowPos(hwnd, nullptr, suggestedRect->left, suggestedRect->top, suggestedRect->right - suggestedRect->left,
+                     suggestedRect->bottom - suggestedRect->top, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    InvalidateUiFonts();
+    HideSelectionToolbar(win);
+
+    bool menuRebarVisible = IsShowingMenuBarRebar(win);
+    if (menuRebarVisible) {
+        DestroyMenuBarRebar(win);
+    }
+
+    ReCreateToolbar(win);
+
+    if (menuRebarVisible && IsMenubarVisible()) {
+        CreateMenuBarRebar(win);
+        ShowMenuBarRebar(win);
+    }
+
+    if (win->tabsCtrl) {
+        win->tabsCtrl->SetFont(GetAppFontForHwnd(hwnd));
+        win->tabsCtrl->LayoutTabs();
+    }
+
+    ApplyDpiFontsToSidebar(win);
+    UpdateOverlayScrollbarPositions(win);
+
+    win->lastLayoutState = {};
+    RelayoutCaption(win);
+    RelayoutFrame(win);
+
+    if (win->tabsInTitlebar && !win->captionRect.IsEmpty()) {
+        RECT r = ToRECT(win->captionRect);
+        RedrawWindow(hwnd, &r, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
+    }
+
+    win->RedrawAll(true);
+}
+
 LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     MainWindow* win = FindMainWindowByHwnd(hwnd);
 
@@ -11707,17 +11838,19 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
 
         case WM_DPICHANGED:
             if (win) {
-                RECT* prc = (RECT*)lp;
-                SetWindowPos(hwnd, nullptr, prc->left, prc->top, prc->right - prc->left, prc->bottom - prc->top,
-                             SWP_NOZORDER | SWP_NOACTIVATE);
-                win->lastLayoutState = {};
-                RelayoutFrame(win);
-                if (win->tabsInTitlebar && !win->captionRect.IsEmpty()) {
-                    RECT r = ToRECT(win->captionRect);
-                    RedrawWindow(hwnd, &r, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
-                }
+                int dpi = LOWORD(wp);
+                // #region agent log
+                DbgLogDpi("A", "SumatraPDF.cpp:WM_DPICHANGED", "received", hwnd, win->frameDpi, dpi, 0, 0);
+                // #endregion
+                OnMainWindowDpiChanged(win, hwnd, (RECT*)lp, dpi);
             }
             return 0;
+
+        case WM_DISPLAYCHANGE:
+            if (win) {
+                OnMainWindowDpiChanged(win, hwnd, nullptr);
+            }
+            break;
 
         case WM_SIZE:
             if (win && SIZE_MINIMIZED != wp) {

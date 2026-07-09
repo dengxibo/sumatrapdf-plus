@@ -191,7 +191,10 @@ HFONT CreateSimpleFont(HDC hdc, const char* fontName, int fontSize);
 HFONT GetDefaultGuiFont(bool bold = false, bool italic = false);
 HFONT GetDefaultGuiFontOfSize(int size);
 HFONT GetUserGuiFont(const char* fontName, int size);
+HFONT GetUserGuiFontForDpi(const char* fontName, int size, int dpi);
 int GetSizeOfDefaultGuiFont();
+int GetSizeOfDefaultGuiFontForDpi(int dpi);
+bool GetNonClientMetricsForDpi(int dpi, NONCLIENTMETRICS* ncm);
 void DeleteCreatedFonts();
 
 IStream* CreateStreamFromData(const ByteSlice&);
@@ -359,6 +362,7 @@ void HwndScheduleRepaint(HWND hwnd);
 
 HFONT HwndGetFont(HWND);
 void HwndSetFont(HWND, HFONT);
+void HwndSetTreeFont(HWND hwndTree, HFONT font);
 
 void HwndPositionToTheRightOf(HWND hwnd, HWND hwndRelative);
 void HwndPositionInCenterOf(HWND hwnd, HWND hwndRelative);

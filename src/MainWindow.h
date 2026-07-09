@@ -265,6 +265,9 @@ struct MainWindow {
     };
     LayoutState lastLayoutState;
 
+    // last known DPI of hwndFrame; used to refresh UI after display topology changes
+    int frameDpi = 0;
+
     int currPageNo = 0; // cached value, needed to determine when to auto-update the ToC selection
 
     // overlay scrollbars (used when scrollbars mode is "smart" or "overlay")

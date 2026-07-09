@@ -95,10 +95,13 @@ typedef UINT(WINAPI* Sig_GetDpiForWindow)(HWND);
 typedef HANDLE(WINAPI* Sig_GetThreadDpiAwarenessContext)(void);
 typedef int(WINAPI* Sig_GetAwarenessFromDpiAwarenessContext)(HANDLE);
 typedef HANDLE(WINAPI* Sig_SetThreadDpiAwarenessContext)(HANDLE);
+typedef BOOL(WINAPI* Sig_SystemParametersInfoForDpi)(UINT uiAction, UINT uiParam, PVOID pvParam, UINT fWinIni,
+                                                     UINT dpi);
 extern Sig_GetDpiForWindow DynGetDpiForWindow;
 extern Sig_GetThreadDpiAwarenessContext DynGetThreadDpiAwarenessContext;
 extern Sig_GetAwarenessFromDpiAwarenessContext DynGetAwarenessFromDpiAwarenessContext;
 extern Sig_SetThreadDpiAwarenessContext DynSetThreadDpiAwarenessContext;
+extern Sig_SystemParametersInfoForDpi DynSystemParametersInfoForDpi;
 
 // uxtheme.dll
 #define UXTHEME_API_LIST(V)                  \

@@ -69,6 +69,9 @@ HWND TreeView::Create(const CreateArgs& args) {
     if (DynSetWindowTheme) {
         DynSetWindowTheme(hwnd, L"Explorer", nullptr);
     }
+    if (args.font) {
+        HwndSetTreeFont(hwnd, args.font);
+    }
 
     TreeView_SetUnicodeFormat(hwnd, true);
 

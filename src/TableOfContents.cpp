@@ -1076,12 +1076,28 @@ void LoadTocTree(MainWindow* win) {
 
 // TODO: use https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-getobject?redirectedfrom=MSDN
 // to get LOGFONT from existing font and then create a derived font
-static void UpdateFont(HDC hdc, int fontFlags) {
-    // TODO: this is a bit hacky, in that we use default font
-    // and not the font from TreeCtrl. But in this case they are the same
+static void UpdateFont(MainWindow* win, HDC hdc, int fontFlags) {
+    if (!win) {
+        return;
+    }
+    HFONT hfont = GetAppMenuFontForHwnd(win->hwndFrame);
     bool italic = bit::IsSet(fontFlags, fontBitItalic);
     bool bold = bit::IsSet(fontFlags, fontBitBold);
-    HFONT hfont = GetDefaultGuiFont(bold, italic);
+    if (bold || italic) {
+        LOGFONTW lf{};
+        if (GetObjectW(hfont, sizeof(lf), &lf) == sizeof(lf)) {
+            if (bold) {
+                lf.lfWeight = FW_BOLD;
+            }
+            if (italic) {
+                lf.lfItalic = TRUE;
+            }
+            HFONT derived = CreateFontIndirectW(&lf);
+            if (derived) {
+                hfont = derived;
+            }
+        }
+    }
     SelectObject(hdc, hfont);
 }
 
@@ -1364,7 +1380,7 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
             DrawTocSelectionFill(cd, ev->treeView->hwnd, hItem);
         }
         if (tocItem->fontFlags != 0) {
-            UpdateFont(cd->hdc, tocItem->fontFlags);
+            UpdateFont(win, cd->hdc, tocItem->fontFlags);
             res = CDRF_NEWFONT;
         }
         if (ThemeUsesDarkChrome() && isSelected) {
@@ -1764,7 +1780,7 @@ void CreateToc(MainWindow* win) {
         args.cmdId = IDC_TOC_LABEL_WITH_CLOSE;
         args.isRtl = IsUIRtl();
         // TODO: use the same font size as in GetTreeFont()?
-        args.font = GetDefaultGuiFont(true, false);
+        args.font = GetAppSidebarLabelFontForHwnd(win->hwndFrame);
         l->Create(args);
     }
     win->tocLabelWithClose = l;
@@ -1777,7 +1793,7 @@ void CreateToc(MainWindow* win) {
         eargs.parent = win->hwndTocBox;
         eargs.withBorder = false;
         eargs.cueText = _TRA("Search Bookmarks");
-        eargs.font = GetDefaultGuiFont(false, false);
+        eargs.font = GetAppMenuFontForHwnd(win->hwndFrame);
         filterEdit->Create(eargs);
     }
     win->tocFilterEdit = filterEdit;
@@ -1787,7 +1803,7 @@ void CreateToc(MainWindow* win) {
     auto treeView = new TreeView();
     TreeView::CreateArgs args;
     args.parent = win->hwndTocBox;
-    args.font = GetAppTreeFont();
+    args.font = GetAppTreeFontForHwnd(win->hwndFrame);
     args.fullRowSelect = true;
     args.exStyle = 0;
     args.isRtl = IsUIRtl();

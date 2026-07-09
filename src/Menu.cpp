@@ -2260,7 +2260,7 @@ void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar) {
 static int GetMenuCheckMarkCx(HWND hwnd) {
     int cx = DpiScale(hwnd, GetSystemMetrics(SM_CXMENUCHECK));
     if (!IsMenuFontSizeDefault()) {
-        cx = GetAppMenuFontSize();
+        cx = GetAppMenuFontSizeForHwnd(hwnd);
         // this applies scaling for default values on my win 11 i.e.:
         // font size is 12, menu checkmark is 15
         cx = (cx * 15) / 12;
@@ -2269,7 +2269,7 @@ static int GetMenuCheckMarkCx(HWND hwnd) {
     return cx;
 }
 
-static void DrawMenuCheckMark(HDC hdc, const RECT& rcItem, int cxCheckMark) {
+static void DrawMenuCheckMark(HWND hwnd, HDC hdc, const RECT& rcItem, int cxCheckMark) {
     RECT rcCheck = rcItem;
     rcCheck.right = rcCheck.left + cxCheckMark;
 
@@ -2278,7 +2278,7 @@ static void DrawMenuCheckMark(HDC hdc, const RECT& rcItem, int cxCheckMark) {
         SetBkMode(hdc, prevBk);
     };
 
-    HFONT font = GetAppMenuFont();
+    HFONT font = GetAppMenuFontForHwnd(hwnd);
     ScopedSelectFont restoreFont(hdc, font);
 
     // Same check glyph style as standard menus (Segoe UI check mark).
@@ -2303,7 +2303,7 @@ void MenuCustomDrawMesureItem(HWND hwnd, MEASUREITEMSTRUCT* mis) {
     }
 
     auto text = modi && modi->text ? modi->text : "Dummy";
-    HFONT font = GetAppMenuFont();
+    HFONT font = GetAppMenuFontForHwnd(hwnd);
     char* shortcutText = nullptr;
     char* menuText = ParseMenuTextTemp(text, &shortcutText);
 
@@ -2371,7 +2371,7 @@ void MenuCustomDrawItem(HWND hwnd, DRAWITEMSTRUCT* dis) {
     bool isRadioCheck = bit::IsMaskSet(modi->fType, (uint)MFT_RADIOCHECK);
 
     auto hdc = dis->hDC;
-    HFONT font = GetAppMenuFont();
+    HFONT font = GetAppMenuFontForHwnd(hwnd);
     ScopedSelectFont restoreFont(hdc, font);
 
     COLORREF bgCol = ThemeMainWindowBackgroundColor();
@@ -2462,7 +2462,7 @@ void MenuCustomDrawItem(HWND hwnd, DRAWITEMSTRUCT* dis) {
         }
 
         // Same system check bitmap as non-owner-draw menus (light mode).
-        DrawMenuCheckMark(hdc, rc, cxCheckMark);
+        DrawMenuCheckMark(hwnd, hdc, rc, cxCheckMark);
     }
 }
 

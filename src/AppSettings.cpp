@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
+#include "utils/Dpi.h"
 #include "utils/FileUtil.h"
 #include "utils/FileWatcher.h"
 #include "utils/UITask.h"
@@ -124,17 +125,60 @@ extern void RememberDefaultWindowPosition(MainWindow* win);
 
 static WatchedFile* gWatchedSettingsFile = nullptr;
 
-static HFONT gAppFont = nullptr;
-static HFONT gBiggerAppFont = nullptr;
-static HFONT gAppMenuFont = nullptr;
-static HFONT gTreeFont = nullptr;
+struct UiFontsAtDpi {
+    int dpi = 0;
+    HFONT appFont = nullptr;
+    HFONT menuFont = nullptr;
+    HFONT treeFont = nullptr;
+    HFONT biggerFont = nullptr;
+};
+
+static Vec<UiFontsAtDpi> gFontsAtDpi;
+
+static UiFontsAtDpi* FindFontsAtDpi(int dpi) {
+    for (size_t i = 0; i < gFontsAtDpi.size(); i++) {
+        if (gFontsAtDpi[i].dpi == dpi) {
+            return &gFontsAtDpi[i];
+        }
+    }
+    return nullptr;
+}
+
+static HWND GetDefaultUiFontHwnd() {
+    HWND fg = GetForegroundWindow();
+    if (fg) {
+        MainWindow* win = FindMainWindowByHwnd(fg);
+        if (win) {
+            return win->hwndFrame;
+        }
+    }
+    if (gWindows.size() > 0) {
+        return gWindows.at(0)->hwndFrame;
+    }
+    return nullptr;
+}
+
+static int UiFontDpiForHwnd(HWND hwnd) {
+    if (hwnd) {
+        return DpiGet(hwnd);
+    }
+    return 96;
+}
 
 // TODO: if font sizes change, would need to re-layout the app
 static void ResetCachedFonts() {
-    gAppFont = nullptr;
-    gBiggerAppFont = nullptr;
-    gAppMenuFont = nullptr;
-    gTreeFont = nullptr;
+    InvalidateUiFonts();
+}
+
+void InvalidateUiFonts() {
+    for (size_t i = 0; i < gFontsAtDpi.size(); i++) {
+        if (gFontsAtDpi[i].menuFont) {
+            DeleteFont(gFontsAtDpi[i].menuFont);
+            gFontsAtDpi[i].menuFont = nullptr;
+        }
+    }
+    gFontsAtDpi.Reset();
+    DeleteCreatedFonts();
 }
 
 // number of weeks past since 2011-01-01
@@ -647,18 +691,43 @@ constexpr int kMinFontSize = 9;
 int GetAppFontSize() {
     auto fntSize = gGlobalPrefs->uIFontSize;
     if (fntSize < kMinFontSize) {
-        fntSize = GetSizeOfDefaultGuiFont();
+        fntSize = GetSizeOfDefaultGuiFontForDpi(UiFontDpiForHwnd(GetDefaultUiFontHwnd()));
     }
     return fntSize;
 }
 
-HFONT GetAppFont() {
-    if (gAppFont) {
-        return gAppFont;
+static int GetAppFontSizeForDpi(int dpi) {
+    auto fntSize = gGlobalPrefs->uIFontSize;
+    if (fntSize < kMinFontSize) {
+        fntSize = GetSizeOfDefaultGuiFontForDpi(dpi);
     }
-    auto fntSize = GetAppFontSize();
-    gAppFont = GetUserGuiFont("auto", fntSize);
-    return gAppFont;
+    return fntSize;
+}
+
+HFONT GetAppFontForDpi(int dpi) {
+    UiFontsAtDpi* fonts = FindFontsAtDpi(dpi);
+    if (fonts && fonts->appFont) {
+        return fonts->appFont;
+    }
+    int fntSize = GetAppFontSizeForDpi(dpi);
+    HFONT font = GetUserGuiFontForDpi("auto", fntSize, dpi);
+    if (!fonts) {
+        UiFontsAtDpi entry{};
+        entry.dpi = dpi;
+        entry.appFont = font;
+        gFontsAtDpi.Append(entry);
+    } else {
+        fonts->appFont = font;
+    }
+    return font;
+}
+
+HFONT GetAppFontForHwnd(HWND hwnd) {
+    return GetAppFontForDpi(UiFontDpiForHwnd(hwnd));
+}
+
+HFONT GetAppFont() {
+    return GetAppFontForHwnd(GetDefaultUiFontHwnd());
 }
 
 constexpr int kMinBiggerFontSize = 14;
@@ -666,25 +735,89 @@ constexpr int kMinBiggerFontSize = 14;
 // if user provided font size, we use that
 // otherwise we return 1.4x of default font size but no smaller than 16
 // on my laptop on high dpi default font size is 12
-HFONT GetAppBiggerFont() {
-    if (gBiggerAppFont) {
-        return gBiggerAppFont;
+HFONT GetAppBiggerFontForDpi(int dpi) {
+    UiFontsAtDpi* fonts = FindFontsAtDpi(dpi);
+    if (fonts && fonts->biggerFont) {
+        return fonts->biggerFont;
     }
     int fntSize = gGlobalPrefs->uIFontSize;
     if (fntSize < kMinFontSize) {
-        fntSize = GetSizeOfDefaultGuiFont();
+        fntSize = GetSizeOfDefaultGuiFontForDpi(dpi);
         fntSize = (fntSize * 12) / 10;
         if (fntSize < kMinBiggerFontSize) {
             fntSize = kMinBiggerFontSize;
         }
     }
-    gBiggerAppFont = GetDefaultGuiFontOfSize(fntSize);
-    return gBiggerAppFont;
+    HFONT font = GetDefaultGuiFontOfSize(fntSize);
+    if (!fonts) {
+        UiFontsAtDpi entry{};
+        entry.dpi = dpi;
+        entry.biggerFont = font;
+        gFontsAtDpi.Append(entry);
+    } else {
+        fonts->biggerFont = font;
+    }
+    return font;
 }
 
-HFONT GetAppTreeFont() {
-    if (gTreeFont) {
-        return gTreeFont;
+HFONT GetAppBiggerFontForHwnd(HWND hwnd) {
+    return GetAppBiggerFontForDpi(UiFontDpiForHwnd(hwnd));
+}
+
+HFONT GetAppBiggerFont() {
+    return GetAppBiggerFontForHwnd(GetDefaultUiFontHwnd());
+}
+
+int GetAppMenuFontSizeForDpi(int dpi) {
+    if (gGlobalPrefs->uIFontSize >= kMinFontSize) {
+        return gGlobalPrefs->uIFontSize;
+    }
+    NONCLIENTMETRICS ncm{};
+    if (GetNonClientMetricsForDpi(dpi, &ncm)) {
+        return (int)std::abs(ncm.lfMenuFont.lfHeight);
+    }
+    return GetSizeOfDefaultGuiFontForDpi(dpi);
+}
+
+int GetAppMenuFontSizeForHwnd(HWND hwnd) {
+    return GetAppMenuFontSizeForDpi(UiFontDpiForHwnd(hwnd));
+}
+
+int GetAppMenuFontSize() {
+    return GetAppMenuFontSizeForHwnd(GetDefaultUiFontHwnd());
+}
+
+HFONT GetAppMenuFontForDpi(int dpi) {
+    UiFontsAtDpi* fonts = FindFontsAtDpi(dpi);
+    if (fonts && fonts->menuFont) {
+        return fonts->menuFont;
+    }
+    NONCLIENTMETRICS ncm{};
+    if (!GetNonClientMetricsForDpi(dpi, &ncm)) {
+        return GetAppFontForDpi(dpi);
+    }
+    int fntSize = GetAppMenuFontSizeForDpi(dpi);
+    ncm.lfMenuFont.lfHeight = -fntSize;
+    HFONT font = CreateFontIndirectW(&ncm.lfMenuFont);
+    if (!fonts) {
+        UiFontsAtDpi entry{};
+        entry.dpi = dpi;
+        entry.menuFont = font;
+        gFontsAtDpi.Append(entry);
+    } else {
+        fonts->menuFont = font;
+    }
+    return font;
+}
+
+HFONT GetAppMenuFontForHwnd(HWND hwnd) {
+    return GetAppMenuFontForDpi(UiFontDpiForHwnd(hwnd));
+}
+
+HFONT GetAppTreeFontForDpi(int dpi) {
+    UiFontsAtDpi* fonts = FindFontsAtDpi(dpi);
+    if (fonts && fonts->treeFont) {
+        return fonts->treeFont;
     }
     bool userTreeFontSize = gGlobalPrefs->treeFontSize >= kMinFontSize;
     int fntSize = gGlobalPrefs->treeFontSize;
@@ -692,38 +825,56 @@ HFONT GetAppTreeFont() {
         fntSize = gGlobalPrefs->uIFontSize;
     }
     if (fntSize < kMinFontSize) {
-        fntSize = GetSizeOfDefaultGuiFont();
+        fntSize = GetAppMenuFontSizeForDpi(dpi);
         if (!userTreeFontSize) {
             fntSize += 2;
         }
     }
     char* fntNameUser = gGlobalPrefs->treeFontName;
-    gTreeFont = GetUserGuiFont(fntNameUser, fntSize);
-    return gTreeFont;
+    HFONT font = nullptr;
+    if (fntNameUser && !str::EqI(fntNameUser, "automatic") && !str::EqI(fntNameUser, "auto")) {
+        font = GetUserGuiFontForDpi(fntNameUser, fntSize, dpi);
+    } else {
+        NONCLIENTMETRICS ncm{};
+        if (!GetNonClientMetricsForDpi(dpi, &ncm)) {
+            font = GetUserGuiFont(nullptr, fntSize);
+        } else {
+            ncm.lfMenuFont.lfHeight = -fntSize;
+            font = CreateFontIndirectW(&ncm.lfMenuFont);
+        }
+    }
+    if (!fonts) {
+        UiFontsAtDpi entry{};
+        entry.dpi = dpi;
+        entry.treeFont = font;
+        gFontsAtDpi.Append(entry);
+    } else {
+        fonts->treeFont = font;
+    }
+    return font;
 }
 
-int GetAppMenuFontSize() {
-    NONCLIENTMETRICS ncm{};
-    ncm.cbSize = sizeof(ncm);
-    SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0);
-    int fntSize = std::abs(ncm.lfMenuFont.lfHeight);
-    if (gGlobalPrefs->uIFontSize >= kMinFontSize) {
-        fntSize = gGlobalPrefs->uIFontSize;
+HFONT GetAppTreeFontForHwnd(HWND hwnd) {
+    return GetAppTreeFontForDpi(UiFontDpiForHwnd(hwnd));
+}
+
+HFONT GetAppTreeFont() {
+    return GetAppTreeFontForHwnd(GetDefaultUiFontHwnd());
+}
+
+HFONT GetAppSidebarLabelFontForHwnd(HWND hwnd) {
+    HFONT menuFont = GetAppMenuFontForHwnd(hwnd);
+    LOGFONTW lf{};
+    if (!menuFont || GetObjectW(menuFont, sizeof(lf), &lf) != sizeof(lf)) {
+        return menuFont;
     }
-    return fntSize;
+    lf.lfWeight = FW_BOLD;
+    HFONT font = CreateFontIndirectW(&lf);
+    return font ? font : menuFont;
 }
 
 HFONT GetAppMenuFont() {
-    if (gAppMenuFont) {
-        return gAppMenuFont;
-    }
-    NONCLIENTMETRICS ncm{};
-    ncm.cbSize = sizeof(ncm);
-    SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0);
-    int fntSize = GetAppMenuFontSize();
-    ncm.lfMenuFont.lfHeight = -fntSize;
-    gAppMenuFont = CreateFontIndirectW(&ncm.lfMenuFont);
-    return gAppMenuFont;
+    return GetAppMenuFontForHwnd(GetDefaultUiFontHwnd());
 }
 
 bool IsMenuFontSizeDefault() {

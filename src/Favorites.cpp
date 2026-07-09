@@ -892,7 +892,7 @@ void CreateFavorites(MainWindow* win) {
         args.parent = win->hwndFavBox;
         args.cmdId = IDC_FAV_LABEL_WITH_CLOSE;
         // TODO: use the same font size as in GetTreeFont()?
-        args.font = GetDefaultGuiFont(true, false);
+        args.font = GetAppFontForHwnd(win->hwndFrame);
         args.isRtl = IsUIRtl();
         l->Create(args);
     }
@@ -904,7 +904,7 @@ void CreateFavorites(MainWindow* win) {
     auto treeView = new TreeView();
     TreeView::CreateArgs args;
     args.parent = win->hwndFavBox;
-    args.font = GetAppTreeFont();
+    args.font = GetAppTreeFontForHwnd(win->hwndFrame);
     args.fullRowSelect = true;
     args.exStyle = 0;
     args.isRtl = IsUIRtl();

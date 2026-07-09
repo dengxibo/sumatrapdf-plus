@@ -51,7 +51,7 @@ void UpdateTabTitle(WindowTab* tab) {
 
 int GetTabbarHeight(HWND hwnd, float factor) {
     int tabDy = DpiScale(hwnd, kTabBarDy);
-    HFONT hfont = GetAppFont();
+    HFONT hfont = GetAppFontForHwnd(hwnd);
     int fontDyWithPadding = FontDyPx(hwnd, hfont) + DpiScale(hwnd, 2);
     if (fontDyWithPadding > tabDy) {
         tabDy = fontDyWithPadding;
@@ -522,7 +522,11 @@ void CreateTabbar(MainWindow* win) {
     TabsCtrl::CreateArgs args;
     args.parent = win->hwndFrame;
     args.withToolTips = true;
-    args.font = GetAppFont();
+    args.font = GetAppFontForHwnd(win->hwndFrame);
+    // #region agent log
+    DbgLogDpi("D", "Tabs.cpp:CreateTabbar", "tab_font", win->hwndFrame, win->frameDpi, 0,
+              GetSizeOfDefaultGuiFontForDpi(DpiGet(win->hwndFrame)), 0);
+    // #endregion
     int tabWidth = gGlobalPrefs->tabWidth;
     args.tabDefaultDx = tabWidth;
     args.isRtl = IsUIRtl();
