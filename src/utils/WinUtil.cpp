@@ -1435,7 +1435,16 @@ static bool BrowserTitleLooksLikeChatGptHome(const char* titleA) {
     if (str::FindI(titleA, "ChatGPT")) {
         return false;
     }
-    return true;
+    return false;
+}
+
+static bool BrowserWindowOnChatGptHomePage(HWND hwnd) {
+    if (!hwnd) {
+        return false;
+    }
+    WCHAR titleW[512]{};
+    GetWindowTextW(hwnd, titleW, dimof(titleW));
+    return BrowserTitleLooksLikeChatGptHome(ToUtf8Temp(titleW));
 }
 
 static bool ShouldUseCenteredChatInput(const char* url, HWND hwnd, bool waitForPageReady) {
@@ -1451,9 +1460,7 @@ static bool ShouldUseCenteredChatInput(const char* url, HWND hwnd, bool waitForP
     if (!hwnd) {
         return true;
     }
-    WCHAR titleW[512]{};
-    GetWindowTextW(hwnd, titleW, dimof(titleW));
-    return BrowserTitleLooksLikeChatGptHome(ToUtf8Temp(titleW));
+    return BrowserWindowOnChatGptHomePage(hwnd);
 }
 
 static void SubmitBrowserChatInput(HWND browserHwnd) {
@@ -1467,11 +1474,12 @@ struct AiChatPasteUiCtx {
     bool useCenteredInput;
     bool dismissChromeFocus;
     bool submit;
+    bool inputReady;
     char* url;
 };
 
 static void ExecuteBrowserChatPasteSubmit(HWND browserHwnd, bool useCenteredInput, bool dismissChromeFocus, bool submit,
-                                          const char* url) {
+                                          const char* url, bool inputReady) {
     if (!browserHwnd) {
         return;
     }
@@ -1480,7 +1488,11 @@ static void ExecuteBrowserChatPasteSubmit(HWND browserHwnd, bool useCenteredInpu
         DismissBrowserChromeFocusBeforePaste();
     }
     ClickBrowserChatInputTarget(browserHwnd, useCenteredInput, url);
-    Sleep(IsChatGptUrl(url) ? 700 : 250);
+    if (inputReady) {
+        Sleep(IsChatGptUrl(url) ? 200 : 120);
+    } else {
+        Sleep(IsChatGptUrl(url) ? 700 : 250);
+    }
     FocusBrowserWindowForSubmit(browserHwnd);
     SendPasteKeystrokes();
     if (submit) {
@@ -1495,13 +1507,13 @@ static void AiChatPasteSubmitUiTask(void* param) {
         return;
     }
     ExecuteBrowserChatPasteSubmit(ctx->browserHwnd, ctx->useCenteredInput, ctx->dismissChromeFocus, ctx->submit,
-                                  ctx->url);
+                                  ctx->url, ctx->inputReady);
     str::Free(ctx->url);
     free(ctx);
 }
 
 static void RunAiChatPasteSubmitOnUiThread(HWND browserHwnd, bool useCenteredInput, bool dismissChromeFocus,
-                                           bool submit, const char* url) {
+                                           bool submit, const char* url, bool inputReady) {
     auto* ctx = (AiChatPasteUiCtx*)calloc(1, sizeof(AiChatPasteUiCtx));
     if (!ctx) {
         return;
@@ -1510,6 +1522,7 @@ static void RunAiChatPasteSubmitOnUiThread(HWND browserHwnd, bool useCenteredInp
     ctx->dismissChromeFocus = dismissChromeFocus;
     ctx->useCenteredInput = useCenteredInput;
     ctx->submit = submit;
+    ctx->inputReady = inputReady;
     ctx->url = str::Dup(url);
     RunBrowserChatUiTask(AiChatPasteSubmitUiTask, ctx);
 }
@@ -1521,7 +1534,7 @@ bool PasteClipboardToBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) 
     if (delayBeforePasteMs > 0) {
         Sleep((DWORD)delayBeforePasteMs);
     }
-    RunAiChatPasteSubmitOnUiThread(browserHwnd, false, false, false, nullptr);
+    RunAiChatPasteSubmitOnUiThread(browserHwnd, false, false, false, nullptr, true);
     return true;
 }
 
@@ -1532,7 +1545,7 @@ bool PasteAndSubmitBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) {
     if (delayBeforePasteMs > 0) {
         Sleep((DWORD)delayBeforePasteMs);
     }
-    RunAiChatPasteSubmitOnUiThread(browserHwnd, false, false, true, nullptr);
+    RunAiChatPasteSubmitOnUiThread(browserHwnd, false, false, true, nullptr, true);
     return true;
 }
 
@@ -1565,7 +1578,82 @@ static bool BrowserTitleLooksLikeInactiveChat(const char* titleA) {
     return false;
 }
 
-static bool WaitForBrowserChatReady(HWND hwnd, const char* reuseKey, const char* host, int timeoutMs) {
+// Active tab is another site in a browser window we previously used for ChatGPT.
+static bool BrowserTitleLooksLikeForeignBrowserTab(const char* titleA) {
+    if (!titleA || !*titleA) {
+        return false;
+    }
+    if (BrowserTitleLooksLikeInactiveChat(titleA)) {
+        return true;
+    }
+    // Edge/Chrome append " - Profile - Browser" to normal site tabs, not to ChatGPT chats.
+    if ((str::FindI(titleA, "Microsoft Edge") || str::FindI(titleA, "Google Chrome") ||
+         str::FindI(titleA, "Mozilla Firefox") || str::FindI(titleA, "Brave")) &&
+        !str::FindI(titleA, "ChatGPT") && !str::FindI(titleA, "OpenAI")) {
+        return true;
+    }
+    static const char* siteMarkers[] = {
+        "MSN",           "msn.com", "ifeng.com", "ifeng",     "凤凰",     "Sina",    "新浪",       "Baidu", "百度",
+        "Google Search", "YouTube", "Wikipedia", "BBC",       "CNN",      "Reuters", "Fox News",   "Yahoo", "Reddit",
+        "Twitter",       "X.com",   "Facebook",  "Instagram", "LinkedIn", "Bing",    "DuckDuckGo", nullptr,
+    };
+    for (int i = 0; siteMarkers[i]; i++) {
+        if (str::FindI(titleA, siteMarkers[i])) {
+            return true;
+        }
+    }
+    if (str::FindI(titleA, ".com") || str::FindI(titleA, ".net") || str::FindI(titleA, ".cn")) {
+        return true;
+    }
+    // News headlines are usually much longer than ChatGPT conversation titles.
+    if (str::Len(titleA) > 72) {
+        return true;
+    }
+    return false;
+}
+
+static bool BrowserWindowOnChatGptPage(HWND hwnd, const char* reuseKey, const char* host, const char* titleA) {
+    if (!hwnd || BrowserTitleLooksLikeInactiveChat(titleA) || BrowserTitleLooksLoading(titleA)) {
+        return false;
+    }
+    if (BrowserWindowMatchesService(hwnd, reuseKey, host)) {
+        return true;
+    }
+    // Ongoing chats often use the conversation title only (no "ChatGPT" in the window title).
+    if (FindStoredBrowserHwnd(reuseKey) != hwnd) {
+        return false;
+    }
+    return !BrowserTitleLooksLikeForeignBrowserTab(titleA);
+}
+
+static bool BrowserWindowReadyForChat(const char* url, HWND hwnd, const char* reuseKey, const char* host,
+                                      const char* titleA) {
+    if (!IsBrowserTopLevelWindow(hwnd)) {
+        return false;
+    }
+    if (IsChatGptUrl(url)) {
+        return BrowserWindowOnChatGptPage(hwnd, reuseKey, host, titleA);
+    }
+    if (!BrowserWindowMatchesService(hwnd, reuseKey, host)) {
+        return false;
+    }
+    return !BrowserTitleLooksLoading(titleA) && !BrowserTitleLooksLikeInactiveChat(titleA);
+}
+
+static int BrowserChatReadySettleMs(const char* url, const char* reuseKey) {
+    if (reuseKey && str::Find(reuseKey, "doubao.com")) {
+        return 600;
+    }
+    if (reuseKey && str::Find(reuseKey, "deepseek.com")) {
+        return 400;
+    }
+    if (IsChatGptUrl(url)) {
+        return 400;
+    }
+    return 0;
+}
+
+static bool WaitForBrowserChatReady(HWND hwnd, const char* url, const char* reuseKey, const char* host, int timeoutMs) {
     if (!hwnd) {
         return false;
     }
@@ -1583,25 +1671,11 @@ static bool WaitForBrowserChatReady(HWND hwnd, const char* reuseKey, const char*
             elapsed += interval;
             continue;
         }
-        if (!BrowserWindowMatchesService(hwnd, reuseKey, host)) {
-            stableCount = 0;
-            lastTitle.Set(nullptr);
-            Sleep(interval);
-            elapsed += interval;
-            continue;
-        }
 
         WCHAR titleW[512]{};
         GetWindowTextW(hwnd, titleW, dimof(titleW));
         TempStr titleA = ToUtf8Temp(titleW);
-        if (BrowserTitleLooksLoading(titleA)) {
-            stableCount = 0;
-            lastTitle.Set(nullptr);
-            Sleep(interval);
-            elapsed += interval;
-            continue;
-        }
-        if (BrowserTitleLooksLikeInactiveChat(titleA)) {
+        if (!BrowserWindowReadyForChat(url, hwnd, reuseKey, host, titleA)) {
             stableCount = 0;
             lastTitle.Set(nullptr);
             Sleep(interval);
@@ -1611,13 +1685,10 @@ static bool WaitForBrowserChatReady(HWND hwnd, const char* reuseKey, const char*
 
         if (lastTitle && str::Eq(lastTitle, titleA)) {
             stableCount++;
-            if (stableCount >= 3) {
-                if (reuseKey && str::Find(reuseKey, "doubao.com")) {
-                    Sleep(600);
-                } else if (reuseKey && str::Find(reuseKey, "deepseek.com")) {
-                    Sleep(400);
-                } else if (reuseKey && (str::Find(reuseKey, "chatgpt.com") || str::Find(reuseKey, "openai.com"))) {
-                    Sleep(1200);
+            if (stableCount >= 2) {
+                int settleMs = BrowserChatReadySettleMs(url, reuseKey);
+                if (settleMs > 0) {
+                    Sleep(settleMs);
                 }
                 return true;
             }
@@ -1629,7 +1700,12 @@ static bool WaitForBrowserChatReady(HWND hwnd, const char* reuseKey, const char*
         elapsed += interval;
     }
 
-    return IsBrowserTopLevelWindow(hwnd) && BrowserWindowMatchesService(hwnd, reuseKey, host);
+    if (!IsBrowserTopLevelWindow(hwnd)) {
+        return false;
+    }
+    WCHAR titleW[512]{};
+    GetWindowTextW(hwnd, titleW, dimof(titleW));
+    return BrowserWindowReadyForChat(url, hwnd, reuseKey, host, ToUtf8Temp(titleW));
 }
 
 static HWND PollForBrowserWindowAfterLaunch(const char* reuseKey, const char* host, int timeoutMs);
@@ -1648,14 +1724,19 @@ static HWND WaitForBrowserChatPageReady(HWND browserHwnd, const char* url, bool 
         return nullptr;
     }
     if (IsChatGptUrl(url) && !alreadyNavigated) {
-        NavigateBrowserWindowToUrl(browserHwnd, url);
-        Sleep(800);
+        WCHAR titleW[512]{};
+        GetWindowTextW(browserHwnd, titleW, dimof(titleW));
+        TempStr titleA = ToUtf8Temp(titleW);
+        if (BrowserTitleLooksLikeInactiveChat(titleA) || BrowserTitleLooksLoading(titleA)) {
+            NavigateBrowserWindowToUrl(browserHwnd, url);
+            Sleep(800);
+        }
     }
-    if (!WaitForBrowserChatReady(browserHwnd, reuseKey, host, 30000)) {
+    if (!WaitForBrowserChatReady(browserHwnd, url, reuseKey, host, 30000)) {
         return nullptr;
     }
     // Edge tab-group titles stabilize before the ChatGPT SPA input is interactive.
-    Sleep(IsChatGptUrl(url) ? 3500 : 1000);
+    Sleep(IsChatGptUrl(url) ? 2500 : 1000);
     return browserHwnd;
 }
 
@@ -1671,10 +1752,12 @@ bool PasteAndSubmitBrowserChatInputWhenReady(HWND browserHwnd, const char* url, 
     } else if (IsChatGptUrl(url)) {
         if (!browserHwnd || !IsBrowserTopLevelWindow(browserHwnd)) {
             browserHwnd = PollForBrowserWindowAfterLaunch(reuseKey, host, 5000);
-        }
-        if (browserHwnd) {
-            WaitForBrowserChatReady(browserHwnd, reuseKey, host, 8000);
-            Sleep(800);
+            if (browserHwnd) {
+                WaitForBrowserChatReady(browserHwnd, url, reuseKey, host, 8000);
+            }
+        } else if (BrowserWindowOnChatGptHomePage(browserHwnd)) {
+            // Reused empty home/new-chat: centered input is not ready for the ongoing-chat fast path.
+            WaitForBrowserChatReady(browserHwnd, url, reuseKey, host, 3000);
         }
     } else if (!browserHwnd || !IsBrowserTopLevelWindow(browserHwnd)) {
         browserHwnd = PollForBrowserWindowAfterLaunch(reuseKey, host, 5000);
@@ -1682,9 +1765,11 @@ bool PasteAndSubmitBrowserChatInputWhenReady(HWND browserHwnd, const char* url, 
     if (!browserHwnd) {
         return false;
     }
+    bool onChatGptHome = IsChatGptUrl(url) && BrowserWindowOnChatGptHomePage(browserHwnd);
+    bool inputReady = !waitForPageReady && IsBrowserTopLevelWindow(browserHwnd) && !onChatGptHome;
     bool useCenteredInput = ShouldUseCenteredChatInput(url, browserHwnd, waitForPageReady);
     bool dismissChrome = dismissChromeFocus;
-    RunAiChatPasteSubmitOnUiThread(browserHwnd, useCenteredInput, dismissChrome, true, url);
+    RunAiChatPasteSubmitOnUiThread(browserHwnd, useCenteredInput, dismissChrome, true, url, inputReady);
     return true;
 }
 
@@ -1814,8 +1899,13 @@ bool LaunchBrowserWithReuse(const char* url, bool navigateOnReuse, bool* reusedO
         WCHAR titleW[512]{};
         GetWindowTextW(hwnd, titleW, dimof(titleW));
         TempStr titleA = ToUtf8Temp(titleW);
-        bool onChatPage =
-            BrowserWindowMatchesService(hwnd, reuseKey, host) && !BrowserTitleLooksLikeInactiveChat(titleA);
+        bool onChatPage = false;
+        if (IsChatGptUrl(url)) {
+            onChatPage = BrowserWindowOnChatGptPage(hwnd, reuseKey, host, titleA);
+        } else {
+            onChatPage =
+                BrowserWindowMatchesService(hwnd, reuseKey, host) && !BrowserTitleLooksLikeInactiveChat(titleA);
+        }
         bool ok = false;
         bool reused = false;
         if (onChatPage && !navigateOnReuse) {

@@ -1,5 +1,13 @@
 # Version history
 
+## 3.7.7 (2026-07-10)
+
+- show download speed and downloaded/total size during in-app update download
+- fix Ask AI with ChatGPT: continue in the same conversation instead of starting a new chat each time
+- fix Ask AI with ChatGPT: paste into an empty new-chat page when reusing an already-open ChatGPT tab
+- fix Ask AI with ChatGPT: do not treat MSN, news, and other non-ChatGPT tabs as ChatGPT when reusing the browser window
+- improve Ask AI with ChatGPT: faster paste when continuing an ongoing conversation
+
 ## 3.7.6 (2026-07-09)
 
 - fix multi-monitor DPI scaling for bookmark sidebar, toolbar, menu bar, tabs, and TOC search when moving the window between displays with different scale factors
