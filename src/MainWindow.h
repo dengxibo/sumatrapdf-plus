@@ -267,6 +267,8 @@ struct MainWindow {
 
     // last known DPI of hwndFrame; used to refresh UI after display topology changes
     int frameDpi = 0;
+    int tocSidebarDpi = 0;
+    int favSidebarDpi = 0;
 
     int currPageNo = 0; // cached value, needed to determine when to auto-update the ToC selection
 

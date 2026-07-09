@@ -94,9 +94,6 @@ StaticLink::~StaticLink() {
 MainWindow::MainWindow(HWND hwnd) {
     hwndFrame = hwnd;
     frameDpi = DpiGetForHwnd(hwnd);
-    // #region agent log
-    DbgLogDpi("C", "MainWindow.cpp:ctor", "after_ctor_dpi", hwnd, frameDpi, 0, 0, 0);
-    // #endregion
     linkHandler = new LinkHandler(this);
     cbHandler = CreateControllerCallbackHandler(this);
 }
@@ -753,9 +750,9 @@ void UpdateControlsColors(MainWindow* win) {
             win->tocFilterEdit->SetColors(txtCol, bgCol);
         }
         win->sidebarSplitter->SetColors(kColorNoChange, splitterCol);
-        InvalidateRect(tocTreeView->hwnd, nullptr, TRUE);
+        InvalidateRect(tocTreeView->hwnd, nullptr, FALSE);
         if (win->hwndTocBox) {
-            InvalidateRect(win->hwndTocBox, nullptr, TRUE);
+            InvalidateRect(win->hwndTocBox, nullptr, FALSE);
         }
     }
 
@@ -764,9 +761,9 @@ void UpdateControlsColors(MainWindow* win) {
         favTreeView->SetColors(txtCol, bgCol);
         win->favLabelWithClose->SetColors(txtCol, bgCol);
         win->favSplitter->SetColors(kColorNoChange, splitterCol);
-        InvalidateRect(favTreeView->hwnd, nullptr, TRUE);
+        InvalidateRect(favTreeView->hwnd, nullptr, FALSE);
         if (win->hwndFavBox) {
-            InvalidateRect(win->hwndFavBox, nullptr, TRUE);
+            InvalidateRect(win->hwndFavBox, nullptr, FALSE);
         }
     }
 }

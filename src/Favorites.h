@@ -25,6 +25,7 @@ void AddFavoriteForCurrentPage(MainWindow* win);
 void DelFavorite(const char* filePath, int pageNo);
 void RebuildFavMenu(MainWindow* win, HMENU menu);
 void CreateFavorites(MainWindow* win);
+void ReCreateFavTreeView(MainWindow*, HFONT font, int dpi);
 void ToggleFavorites(MainWindow* win);
 void PopulateFavTreeIfNeeded(MainWindow* win);
 void GoToFavoriteByMenuId(MainWindow* win, int cmdId);

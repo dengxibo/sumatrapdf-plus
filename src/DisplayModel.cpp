@@ -97,6 +97,28 @@ static void ApplyPagesUiUpdate(DisplayModel* dm) {
     dm->TryApplyPendingRestoreScroll();
 }
 
+static const DWORD kProgressRelayoutIntervalMs = 250;
+static DWORD gLastProgressRelayoutMs = 0;
+static DWORD gLastProgressChainMs = 0;
+
+static bool ShouldThrottleProgressUiUpdate(DisplayModel* dm, int enginePageCount) {
+    if (!dm || !EngineIsProgressiveEbookLoading(dm->engine)) {
+        return false;
+    }
+    if (dm->pagesInfoCount < 256) {
+        return false;
+    }
+    if (dm->pagesInfoCount >= enginePageCount) {
+        return false;
+    }
+    DWORD now = GetTickCount();
+    if (gLastProgressRelayoutMs == 0 || now - gLastProgressRelayoutMs >= kProgressRelayoutIntervalMs) {
+        gLastProgressRelayoutMs = now;
+        return false;
+    }
+    return true;
+}
+
 static int ColumnsFromDisplayMode(DisplayMode displayMode) {
     if (!IsSingle(displayMode)) {
         return 2;
@@ -684,14 +706,20 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
     }
 
     if (updateUi) {
-        ApplyPagesUiUpdate(this);
+        if (!ShouldThrottleProgressUiUpdate(this, enginePageCount)) {
+            ApplyPagesUiUpdate(this);
+        }
     }
 
     // Grow pagesInfo in batches so Relayout stays incremental on huge reflowed
-    // EPUBs (8000+ pages). Background load posts chapter-count notifications;
-    // post another UI task when we still lag the engine page count.
+    // EPUBs (8000+ pages). Throttle chained UI tasks so the message loop stays
+    // responsive while background loading continues.
     if (updateUi && engine->FilePath() && pagesInfoCount < engine->PageCount()) {
-        NotifyEbookPagesLoadingProgress(engine->FilePath(), false);
+        DWORD now = GetTickCount();
+        if (gLastProgressChainMs == 0 || now - gLastProgressChainMs >= kProgressRelayoutIntervalMs) {
+            gLastProgressChainMs = now;
+            NotifyEbookPagesLoadingProgress(engine->FilePath(), false);
+        }
     }
 }
 

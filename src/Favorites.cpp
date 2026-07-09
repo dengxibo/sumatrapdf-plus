@@ -880,6 +880,58 @@ static LRESULT CALLBACK WndProcFavBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 // in TableOfContents.cpp
 extern void TocTreeKeyDown2(TreeView::KeyDownEvent*);
 
+static void InitFavTreeViewHandlers(TreeView* treeView) {
+    auto fn = MkFunc1Void(FavTreeContextMenu);
+    treeView->onContextMenu = fn;
+    treeView->onSelectionChanged = MkFunc1Void(FavTreeSelectionChanged);
+    treeView->onKeyDown = MkFunc1Void(TocTreeKeyDown2);
+    treeView->onClick = MkFunc1Void(FavTreeItemClicked);
+}
+
+void ReCreateFavTreeView(MainWindow* win, HFONT font, int dpi) {
+    if (!win || !win->hwndFavBox || !win->favTreeView) {
+        return;
+    }
+
+    TreeView* oldTreeView = win->favTreeView;
+    bool hadFocus = GetFocus() == oldTreeView->hwnd;
+    bool hadModel = oldTreeView->treeModel != nullptr;
+    RememberFavTreeExpansionState(win);
+
+    TreeModel* oldModel = oldTreeView->treeModel;
+    oldTreeView->treeModel = nullptr;
+    delete oldTreeView;
+    delete oldModel;
+    win->favTreeView = nullptr;
+
+    auto treeView = new TreeView();
+    TreeView::CreateArgs args;
+    args.parent = win->hwndFavBox;
+    args.font = font;
+    args.fullRowSelect = true;
+    args.exStyle = 0;
+    args.isRtl = IsUIRtl();
+    InitFavTreeViewHandlers(treeView);
+
+    treeView->Create(args);
+    ReportIf(!treeView->hwnd);
+    win->favTreeView = treeView;
+
+    if (hadModel) {
+        TreeModel* newModel = BuildFavTreeModel(win);
+        treeView->SetTreeModel(newModel);
+    }
+    if (font) {
+        HwndSetTreeFontForDpi(treeView->hwnd, font, dpi);
+    }
+
+    UpdateControlsColors(win);
+    LayoutTreeContainer(win->favLabelWithClose, treeView->hwnd);
+    if (hadFocus) {
+        SetFocus(treeView->hwnd);
+    }
+}
+
 void CreateFavorites(MainWindow* win) {
     HMODULE h = GetModuleHandleW(nullptr);
     int dx = gGlobalPrefs->sidebarDx;
@@ -909,11 +961,8 @@ void CreateFavorites(MainWindow* win) {
     args.exStyle = 0;
     args.isRtl = IsUIRtl();
 
-    auto fn = MkFunc1Void(FavTreeContextMenu);
-    treeView->onContextMenu = fn;
-    treeView->onSelectionChanged = MkFunc1Void(FavTreeSelectionChanged);
-    treeView->onKeyDown = MkFunc1Void(TocTreeKeyDown2);
-    treeView->onClick = MkFunc1Void(FavTreeItemClicked);
+    InitFavTreeViewHandlers(treeView);
+
     // treeView->onChar = TocTreeCharHandler;
     // treeView->onMouseWheel = TocTreeMouseWheelHandler;
 

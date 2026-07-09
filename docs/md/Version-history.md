@@ -1,5 +1,13 @@
 # Version history
 
+## 3.7.6 (2026-07-09)
+
+- fix multi-monitor DPI scaling for bookmark sidebar, toolbar, menu bar, tabs, and TOC search when moving the window between displays with different scale factors
+- fix bookmark sidebar tree font on cross-monitor moves: recreate tree views and apply per-monitor menu fonts via SystemParametersInfoForDpi
+- fix original window toolbar fonts becoming oversized after dragging a tab out to a new window
+- apply UI DPI refresh immediately during cross-monitor drag (trust WM_DPICHANGED wParam) instead of waiting until mouse release
+- improve progressive ebook loading performance for large documents (throttle relayout and sidebar invalidation during page counting)
+
 ## 3.7.5 (2026-07-08)
 
 - fix Ask AI paste missing the input box for ChatGPT, DeepSeek, and Doubao on Edge and other layouts: click in the main content pane (sidebar-aware) instead of the full window center

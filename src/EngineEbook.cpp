@@ -312,21 +312,27 @@ class EngineEbook : public EngineBase {
         // on the last formatted page: reachable only if the formatter has passed filePos
         const char* htmlEnd = htmlStart + htmlLen;
         int maxOff = pages->at(nFormatted - 1)->reparseIdx;
-        for (int i = 0; i < nFormatted; i++) {
-            HtmlPage* page = pages->at(i);
-            for (DrawInstr& instr : page->instructions) {
-                if (instr.type != DrawInstrType::String && instr.type != DrawInstrType::RtlString) {
-                    continue;
-                }
-                const char* s = instr.str.s;
-                if (!s || s < htmlStart || s >= htmlEnd) {
-                    continue;
-                }
-                int end = (int)(s - htmlStart) + (int)instr.str.len;
-                if (end > maxOff) {
-                    maxOff = end;
+        if (tocReachCacheNFormatted != nFormatted) {
+            for (int i = 0; i < nFormatted; i++) {
+                HtmlPage* page = pages->at(i);
+                for (DrawInstr& instr : page->instructions) {
+                    if (instr.type != DrawInstrType::String && instr.type != DrawInstrType::RtlString) {
+                        continue;
+                    }
+                    const char* s = instr.str.s;
+                    if (!s || s < htmlStart || s >= htmlEnd) {
+                        continue;
+                    }
+                    int end = (int)(s - htmlStart) + (int)instr.str.len;
+                    if (end > maxOff) {
+                        maxOff = end;
+                    }
                 }
             }
+            tocReachCacheNFormatted = nFormatted;
+            tocReachCacheMaxOff = maxOff;
+        } else {
+            maxOff = tocReachCacheMaxOff;
         }
         return filePos <= maxOff;
     }
@@ -346,6 +352,8 @@ class EngineEbook : public EngineBase {
     float pageBorder;
     EbookTypographyKind typographyKind = EbookTypographyKind::Latin;
     bool readerStyleMobi = false;
+    mutable int tocReachCacheNFormatted = -1;
+    mutable int tocReachCacheMaxOff = 0;
 
     void GetTransform(Matrix& m, float zoom, int rotation);
     bool ExtractPageAnchors();

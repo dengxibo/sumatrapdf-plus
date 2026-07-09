@@ -2,6 +2,8 @@
    License: GPLv3 */
 
 void CreateToc(MainWindow*);
+void ReCreateTocFilterEdit(MainWindow*, HFONT font);
+void ReCreateTocTreeView(MainWindow*, HFONT font, int dpi);
 void ClearTocBox(MainWindow*);
 void ToggleTocBox(MainWindow*);
 void LoadTocTree(MainWindow*);

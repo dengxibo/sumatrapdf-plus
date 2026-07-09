@@ -363,6 +363,7 @@ void HwndScheduleRepaint(HWND hwnd);
 HFONT HwndGetFont(HWND);
 void HwndSetFont(HWND, HFONT);
 void HwndSetTreeFont(HWND hwndTree, HFONT font);
+void HwndSetTreeFontForDpi(HWND hwndTree, HFONT font, int dpi);
 
 void HwndPositionToTheRightOf(HWND hwnd, HWND hwndRelative);
 void HwndPositionInCenterOf(HWND hwnd, HWND hwndRelative);

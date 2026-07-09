@@ -1370,8 +1370,7 @@ static void ClickBrowserBottomMainPaneInput(HWND hwnd, const char* logTag) {
     }
     int x = topLeft.x + sidebar + mainW / 2;
     int y = topLeft.y + h - DpiScale(hwnd, 90);
-    logf("ClickBrowserBottomMainPaneInput(%s): client %dx%d sidebar %d click (%d,%d)\n", logTag, w, h, sidebar, x,
-         y);
+    logf("ClickBrowserBottomMainPaneInput(%s): client %dx%d sidebar %d click (%d,%d)\n", logTag, w, h, sidebar, x, y);
     SendMouseClickScreen(x, y);
     Sleep(80);
     SendMouseClickScreen(x, y);
@@ -2491,8 +2490,8 @@ static HFONT gMenuFont = nullptr;
 static CreatedFontInfo* FindCreatedFont(const char* name, int size, u16 flags, u16 weightOffset, u16 dpi) {
     CreatedFontInfo* curr = gFonts;
     while (curr) {
-        if (curr->size == (u16)size && curr->flags == flags && curr->weightOffset == weightOffset &&
-            curr->dpi == dpi && str::Eq(curr->name, name)) {
+        if (curr->size == (u16)size && curr->flags == flags && curr->weightOffset == weightOffset && curr->dpi == dpi &&
+            str::Eq(curr->name, name)) {
             name = name ? name : "";
             /* logf("FindCreatedFont: found font '%s', size: %d, flags: %x, weightOffset: %d\n", name, (int)size,
                  (int)flags, (int)weightOffset); */
@@ -3913,9 +3912,12 @@ void HwndSetFont(HWND hwnd, HFONT font) {
     SetWindowFont(hwnd, font, TRUE);
 }
 
-void HwndSetTreeFont(HWND hwndTree, HFONT font) {
+void HwndSetTreeFontForDpi(HWND hwndTree, HFONT font, int dpi) {
     if (!hwndTree || !font) {
         return;
+    }
+    if (dpi <= 0) {
+        dpi = DpiGet(hwndTree);
     }
     HwndSetFont(hwndTree, font);
     ScopedGetDC dc(hwndTree);
@@ -3927,12 +3929,12 @@ void HwndSetTreeFont(HWND hwndTree, HFONT font) {
     if (!GetTextMetricsW(dc, &tm)) {
         return;
     }
-    int itemH = tm.tmHeight + tm.tmExternalLeading + DpiScale(hwndTree, 4);
+    int itemH = tm.tmHeight + tm.tmExternalLeading + MulDiv(4, dpi, 96);
     SendMessageW(hwndTree, TVM_SETITEMHEIGHT, (WPARAM)itemH, 0);
-    // #region agent log
-    int gotH = (int)SendMessageW(hwndTree, TVM_GETITEMHEIGHT, 0, 0);
-    DbgLogDpi("H1", "WinUtil.cpp:HwndSetTreeFont", "item_height", hwndTree, 0, itemH, tm.tmHeight, gotH);
-    // #endregion
+}
+
+void HwndSetTreeFont(HWND hwndTree, HFONT font) {
+    HwndSetTreeFontForDpi(hwndTree, font, DpiGet(hwndTree));
 }
 
 HFONT HwndGetFont(HWND hwnd) {

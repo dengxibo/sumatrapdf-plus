@@ -523,10 +523,6 @@ void CreateTabbar(MainWindow* win) {
     args.parent = win->hwndFrame;
     args.withToolTips = true;
     args.font = GetAppFontForHwnd(win->hwndFrame);
-    // #region agent log
-    DbgLogDpi("D", "Tabs.cpp:CreateTabbar", "tab_font", win->hwndFrame, win->frameDpi, 0,
-              GetSizeOfDefaultGuiFontForDpi(DpiGet(win->hwndFrame)), 0);
-    // #endregion
     int tabWidth = gGlobalPrefs->tabWidth;
     args.tabDefaultDx = tabWidth;
     args.isRtl = IsUIRtl();

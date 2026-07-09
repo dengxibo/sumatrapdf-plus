@@ -22,7 +22,6 @@ Per-Monitor DPI Aware:
 */
 
 #include <shellscalingapi.h>
-#include <stdio.h>
 
 typedef HRESULT(WINAPI* Sig_GetDpiForMonitor)(HMONITOR, MONITOR_DPI_TYPE, UINT*, UINT*);
 
@@ -82,108 +81,6 @@ int DpiGetForMonitorOfHwnd(HWND hwnd) {
     ReportIf(dpiX < 72);
     return (int)dpiX;
 }
-
-// #region agent log
-static int DbgWndDpi(HWND hwnd) {
-    if (!hwnd || !DynGetDpiForWindow) {
-        return 0;
-    }
-    uint dpi = DynGetDpiForWindow(hwnd);
-    return dpi > 0 ? (int)dpi : 0;
-}
-
-void DbgLogDpi(const char* hypothesisId, const char* location, const char* message, HWND hwnd, int frameDpi,
-               int explicitDpi, int fontSize, int earlyReturn) {
-    int monDpi = DpiGetForMonitorAtWindowCenter(hwnd);
-    int hwndMonDpi = DpiGetForMonitorOfHwnd(hwnd);
-    int wndDpi = DbgWndDpi(hwnd);
-    int chosenDpi = DpiGet(hwnd);
-    RECT rc{};
-    GetWindowRect(hwnd, &rc);
-    FILE* f = fopen("C:\\src\\sumatrapdf\\debug-524fb4.log", "a");
-    if (!f) {
-        return;
-    }
-    fprintf(f,
-            "{\"sessionId\":\"524fb4\",\"hypothesisId\":\"%s\",\"location\":\"%s\",\"message\":\"%s\","
-            "\"data\":{\"hwnd\":\"%p\",\"wndDpi\":%d,\"monDpi\":%d,\"hwndMonDpi\":%d,\"chosenDpi\":%d,"
-            "\"frameDpi\":%d,\"explicitDpi\":%d,\"fontSize\":%d,\"earlyReturn\":%d,\"rect\":[%d,%d,%d,%d]},"
-            "\"timestamp\":%llu}\n",
-            hypothesisId, location, message, hwnd, wndDpi, monDpi, hwndMonDpi, chosenDpi, frameDpi, explicitDpi,
-            fontSize, earlyReturn, rc.left, rc.top, rc.right, rc.bottom, (unsigned long long)GetTickCount64());
-    fclose(f);
-}
-
-void DbgLogFontMetrics(const char* hypothesisId, const char* location, const char* message, HWND hwnd) {
-    if (!hwnd) {
-        return;
-    }
-    HFONT font = GetWindowFont(hwnd);
-    LOGFONTW lf{};
-    int lfH = 0;
-    int lfW = 0;
-    int lfQ = 0;
-    char faceA[64]{};
-    if (font && GetObjectW(font, sizeof(lf), &lf) == sizeof(lf)) {
-        lfH = (int)std::abs(lf.lfHeight);
-        lfW = (int)lf.lfWeight;
-        lfQ = (int)lf.lfQuality;
-        WideCharToMultiByte(CP_UTF8, 0, lf.lfFaceName, -1, faceA, dimof(faceA), nullptr, nullptr);
-    }
-    int tmH = 0;
-    ScopedGetDC dc(hwnd);
-    if (dc && font) {
-        ScopedSelectFont sel(dc, font);
-        TEXTMETRICW tm{};
-        if (GetTextMetricsW(dc, &tm)) {
-            tmH = tm.tmHeight;
-        }
-    }
-    int wndDpi = 0;
-    if (DynGetDpiForWindow) {
-        uint dpi = DynGetDpiForWindow(hwnd);
-        if (dpi > 0) {
-            wndDpi = (int)dpi;
-        }
-    }
-    FILE* f = fopen("C:\\src\\sumatrapdf\\debug-524fb4.log", "a");
-    if (!f) {
-        return;
-    }
-    fprintf(f,
-            "{\"sessionId\":\"524fb4\",\"hypothesisId\":\"%s\",\"location\":\"%s\",\"message\":\"%s\","
-            "\"data\":{\"hwnd\":\"%p\",\"wndDpi\":%d,\"lfHeight\":%d,\"lfWeight\":%d,\"lfQuality\":%d,"
-            "\"face\":\"%s\",\"tmHeight\":%d},\"timestamp\":%llu}\n",
-            hypothesisId, location, message, hwnd, wndDpi, lfH, lfW, lfQ, faceA, tmH,
-            (unsigned long long)GetTickCount64());
-    fclose(f);
-}
-
-void DbgLogFontHandle(const char* hypothesisId, const char* location, const char* message, HFONT font, int wndDpi) {
-    LOGFONTW lf{};
-    int lfH = 0;
-    int lfW = 0;
-    int lfQ = 0;
-    char faceA[64]{};
-    if (font && GetObjectW(font, sizeof(lf), &lf) == sizeof(lf)) {
-        lfH = (int)std::abs(lf.lfHeight);
-        lfW = (int)lf.lfWeight;
-        lfQ = (int)lf.lfQuality;
-        WideCharToMultiByte(CP_UTF8, 0, lf.lfFaceName, -1, faceA, dimof(faceA), nullptr, nullptr);
-    }
-    FILE* f = fopen("C:\\src\\sumatrapdf\\debug-524fb4.log", "a");
-    if (!f) {
-        return;
-    }
-    fprintf(f,
-            "{\"sessionId\":\"524fb4\",\"hypothesisId\":\"%s\",\"location\":\"%s\",\"message\":\"%s\","
-            "\"data\":{\"hwnd\":null,\"wndDpi\":%d,\"lfHeight\":%d,\"lfWeight\":%d,\"lfQuality\":%d,"
-            "\"face\":\"%s\",\"tmHeight\":0},\"timestamp\":%llu}\n",
-            hypothesisId, location, message, wndDpi, lfH, lfW, lfQ, faceA,
-            (unsigned long long)GetTickCount64());
-    fclose(f);
-}
-// #endregion
 
 // get uncached dpi
 int DpiGetForHwnd(HWND hwnd) {

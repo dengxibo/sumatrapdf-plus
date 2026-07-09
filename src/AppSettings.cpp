@@ -862,8 +862,8 @@ HFONT GetAppTreeFont() {
     return GetAppTreeFontForHwnd(GetDefaultUiFontHwnd());
 }
 
-HFONT GetAppSidebarLabelFontForHwnd(HWND hwnd) {
-    HFONT menuFont = GetAppMenuFontForHwnd(hwnd);
+HFONT GetAppSidebarLabelFontForDpi(int dpi) {
+    HFONT menuFont = GetAppMenuFontForDpi(dpi);
     LOGFONTW lf{};
     if (!menuFont || GetObjectW(menuFont, sizeof(lf), &lf) != sizeof(lf)) {
         return menuFont;
@@ -871,6 +871,10 @@ HFONT GetAppSidebarLabelFontForHwnd(HWND hwnd) {
     lf.lfWeight = FW_BOLD;
     HFONT font = CreateFontIndirectW(&lf);
     return font ? font : menuFont;
+}
+
+HFONT GetAppSidebarLabelFontForHwnd(HWND hwnd) {
+    return GetAppSidebarLabelFontForDpi(UiFontDpiForHwnd(hwnd));
 }
 
 HFONT GetAppMenuFont() {

@@ -1076,11 +1076,16 @@ void LoadTocTree(MainWindow* win) {
 
 // TODO: use https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-getobject?redirectedfrom=MSDN
 // to get LOGFONT from existing font and then create a derived font
-static void UpdateFont(MainWindow* win, HDC hdc, int fontFlags) {
+static void UpdateFont(MainWindow* win, HWND hwndTree, HDC hdc, int fontFlags) {
     if (!win) {
         return;
     }
-    HFONT hfont = GetAppMenuFontForHwnd(win->hwndFrame);
+    int dpi = DpiGetForMonitorOfHwnd(hwndTree);
+    if (dpi <= 0) {
+        dpi = win->frameDpi > 0 ? win->frameDpi : DpiGet(win->hwndFrame);
+    }
+    dpi = RoundUp(dpi, 4);
+    HFONT hfont = GetAppMenuFontForDpi(dpi);
     bool italic = bit::IsSet(fontFlags, fontBitItalic);
     bool bold = bit::IsSet(fontFlags, fontBitBold);
     if (bold || italic) {
@@ -1380,7 +1385,7 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
             DrawTocSelectionFill(cd, ev->treeView->hwnd, hItem);
         }
         if (tocItem->fontFlags != 0) {
-            UpdateFont(win, cd->hdc, tocItem->fontFlags);
+            UpdateFont(win, ev->treeView->hwnd, cd->hdc, tocItem->fontFlags);
             res = CDRF_NEWFONT;
         }
         if (ThemeUsesDarkChrome() && isSelected) {
@@ -1615,6 +1620,71 @@ void UnsubclassToc(MainWindow* win) {
     }
 }
 
+static void InitTocTreeViewHandlers(TreeView* treeView) {
+    auto fn = MkFunc1Void(TocContextMenu);
+    treeView->onContextMenu = fn;
+    treeView->onSelectionChanged = MkFunc1Void(TocTreeSelectionChanged);
+    treeView->onKeyDown = MkFunc1Void(TocTreeKeyDown2);
+    treeView->onGetTooltip = MkFunc1Void(TocCustomizeTooltip);
+}
+
+void ReCreateTocTreeView(MainWindow* win, HFONT font, int dpi) {
+    if (!win || !win->hwndTocBox || !win->tocTreeView) {
+        return;
+    }
+
+    TreeView* oldTreeView = win->tocTreeView;
+    TreeModel* model = oldTreeView->treeModel;
+    TreeItem selected = model ? oldTreeView->GetSelection() : TreeModel::kNullItem;
+    bool hadFocus = GetFocus() == oldTreeView->hwnd;
+
+    WindowTab* tab = win->CurrentTab();
+    if (model && tab && tab->currToc && model == tab->currToc) {
+        UpdateTocExpansionState(tab->tocState, oldTreeView, tab->currToc);
+        SetInitialExpandState(tab->currToc->root, tab->tocState);
+    }
+
+    if (win->tocTreeSubclassId != 0) {
+        RemoveWindowSubclass(oldTreeView->hwnd, WndProcTocTree, win->tocTreeSubclassId);
+        win->tocTreeSubclassId = 0;
+    }
+
+    oldTreeView->treeModel = nullptr;
+    delete oldTreeView;
+    win->tocTreeView = nullptr;
+
+    auto treeView = new TreeView();
+    TreeView::CreateArgs args;
+    args.parent = win->hwndTocBox;
+    args.font = font;
+    args.fullRowSelect = true;
+    args.exStyle = 0;
+    args.isRtl = IsUIRtl();
+    InitTocTreeViewHandlers(treeView);
+
+    treeView->Create(args);
+    ReportIf(!treeView->hwnd);
+    win->tocTreeView = treeView;
+
+    if (model && IsKnownTocTreeModel(win, model)) {
+        treeView->SetTreeModel(model);
+        treeView->onCustomDraw = MkFunc1Void(OnTocCustomDraw);
+        if (selected != TreeModel::kNullItem) {
+            treeView->SelectItem(selected);
+        }
+    }
+    if (font) {
+        HwndSetTreeFontForDpi(treeView->hwnd, font, dpi);
+    }
+
+    SubclassToc(win);
+    UpdateControlsColors(win);
+    LayoutTocContainer(win);
+    if (hadFocus) {
+        SetFocus(treeView->hwnd);
+    }
+}
+
 // TODO: restore
 #if 0
 void TocTreeMouseWheelHandler(MouseWheelEvent* ev) {
@@ -1766,6 +1836,53 @@ static LRESULT CALLBACK WndProcTocFilterEdit(HWND hwnd, UINT msg, WPARAM wp, LPA
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
 
+static void InitTocFilterEdit(MainWindow* win, Edit* filterEdit) {
+    filterEdit->onTextChanged = MkFunc0(OnTocFilterTextChanged, win);
+    SetWindowSubclass(filterEdit->hwnd, WndProcTocFilterEdit, NextSubclassId(), (DWORD_PTR)win);
+}
+
+static Edit* CreateTocFilterEdit(MainWindow* win, HFONT font, const char* text) {
+    auto filterEdit = new Edit();
+    Edit::CreateArgs eargs;
+    eargs.parent = win->hwndTocBox;
+    eargs.withBorder = false;
+    eargs.cueText = _TRA("Search Bookmarks");
+    eargs.font = font;
+    eargs.text = text;
+    filterEdit->Create(eargs);
+    InitTocFilterEdit(win, filterEdit);
+    return filterEdit;
+}
+
+void ReCreateTocFilterEdit(MainWindow* win, HFONT font) {
+    if (!win || !win->hwndTocBox || !win->tocFilterEdit) {
+        return;
+    }
+
+    Edit* oldEdit = win->tocFilterEdit;
+    AutoFreeStr text(str::Dup(oldEdit->GetTextTemp()));
+    DWORD selStart = 0;
+    DWORD selEnd = 0;
+    SendMessageW(oldEdit->hwnd, EM_GETSEL, (WPARAM)&selStart, (LPARAM)&selEnd);
+    bool hadFocus = GetFocus() == oldEdit->hwnd;
+
+    delete oldEdit;
+    win->tocFilterEdit = nullptr;
+
+    Edit* filterEdit = CreateTocFilterEdit(win, font, text);
+    win->tocFilterEdit = filterEdit;
+    if (font) {
+        HwndSetFont(filterEdit->hwnd, font);
+    }
+    filterEdit->SetSelection((int)selStart, (int)selEnd);
+
+    UpdateControlsColors(win);
+    LayoutTocContainer(win);
+    if (hadFocus) {
+        SetFocus(filterEdit->hwnd);
+    }
+}
+
 void CreateToc(MainWindow* win) {
     HMODULE hmod = GetModuleHandle(nullptr);
     int dx = gGlobalPrefs->sidebarDx;
@@ -1787,18 +1904,8 @@ void CreateToc(MainWindow* win) {
     l->SetPaddingXY(2, 2);
     // label is set in UpdateToolbarSidebarText()
 
-    auto filterEdit = new Edit();
-    {
-        Edit::CreateArgs eargs;
-        eargs.parent = win->hwndTocBox;
-        eargs.withBorder = false;
-        eargs.cueText = _TRA("Search Bookmarks");
-        eargs.font = GetAppMenuFontForHwnd(win->hwndFrame);
-        filterEdit->Create(eargs);
-    }
+    auto filterEdit = CreateTocFilterEdit(win, GetAppTreeFontForHwnd(win->hwndFrame), nullptr);
     win->tocFilterEdit = filterEdit;
-    filterEdit->onTextChanged = MkFunc0(OnTocFilterTextChanged, win);
-    SetWindowSubclass(filterEdit->hwnd, WndProcTocFilterEdit, NextSubclassId(), (DWORD_PTR)win);
 
     auto treeView = new TreeView();
     TreeView::CreateArgs args;
@@ -1808,11 +1915,8 @@ void CreateToc(MainWindow* win) {
     args.exStyle = 0;
     args.isRtl = IsUIRtl();
 
-    auto fn = MkFunc1Void(TocContextMenu);
-    treeView->onContextMenu = fn;
-    treeView->onSelectionChanged = MkFunc1Void(TocTreeSelectionChanged);
-    treeView->onKeyDown = MkFunc1Void(TocTreeKeyDown2);
-    treeView->onGetTooltip = MkFunc1Void(TocCustomizeTooltip);
+    InitTocTreeViewHandlers(treeView);
+
     // treeView->onClick = TocTreeClick; // TODO: maybe not necessary
     // treeView->onChar = TocTreeCharHandler;
     // treeView->onMouseWheel = TocTreeMouseWheelHandler;
