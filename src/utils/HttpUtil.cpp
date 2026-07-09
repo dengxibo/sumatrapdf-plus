@@ -152,6 +152,16 @@ bool HttpGetToFile(const char* urlA, const char* destFilePath, const Func1<HttpP
         goto Exit;
     }
 
+    {
+        DWORD contentLength = 0;
+        DWORD contentLengthSize = sizeof(contentLength);
+        if (HttpQueryInfoW(hReq, HTTP_QUERY_CONTENT_LENGTH | HTTP_QUERY_FLAG_NUMBER, &contentLength, &contentLengthSize,
+                           nullptr) &&
+            contentLength > 0) {
+            progress.nTotal = (i64)contentLength;
+        }
+    }
+
     for (;;) {
         if (!InternetReadFile(hReq, buf, kBufSize, &dwRead)) {
             goto Exit;

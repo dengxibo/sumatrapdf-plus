@@ -14,6 +14,7 @@
 #include "wingui/WinGui.h"
 #include "wingui/WebView.h"
 
+#include "utils/Timer.h"
 #include "Settings.h"
 #include "GlobalPrefs.h"
 #include "AppTools.h"
@@ -308,7 +309,85 @@ static void NotifyUserOfUpdate(UpdateInfo* updateInfo) {
 struct UpdateProgressData {
     HWND hwndForNotif = nullptr;
     i64 nDownloaded = 0;
+    i64 nTotal = -1;
+    LARGE_INTEGER lastSpeedTime{};
+    i64 lastSpeedDownloaded = 0;
+    i64 speedBytesPerSec = 0;
+    bool lastSpeedTimeSet = false;
 };
+
+static TempStr FormatSizeShortTransLocal(i64 size) {
+    const char* sizeUnits[3] = {
+        _TRA("GB"),
+        _TRA("MB"),
+        _TRA("KB"),
+    };
+    return str::FormatSizeShortTemp(size, sizeUnits);
+}
+
+static TempStr FormatDownloadSpeedTemp(i64 bytesPerSec) {
+    if (bytesPerSec <= 0) {
+        return (TempStr) "";
+    }
+    TempStr s = FormatSizeShortTransLocal(bytesPerSec);
+    return str::FormatTemp("%s/s", s);
+}
+
+static TempStr FormatUpdateDownloadProgressTemp(UpdateProgressData* data) {
+    TempStr downloaded = FormatSizeShortTransLocal(data->nDownloaded);
+    TempStr speed = FormatDownloadSpeedTemp(data->speedBytesPerSec);
+    if (data->nTotal > 0) {
+        TempStr total = FormatSizeShortTransLocal(data->nTotal);
+        if (speed) {
+            return str::FormatTemp(_TRA("Downloading update: %s, %s / %s"), speed, downloaded, total);
+        }
+        return str::FormatTemp(_TRA("Downloading update: %s / %s"), downloaded, total);
+    }
+    if (speed) {
+        return str::FormatTemp(_TRA("Downloading update: %s, %s"), speed, downloaded);
+    }
+    return str::FormatTemp(_TRA("Downloading update: %s"), downloaded);
+}
+
+static void UpdateDownloadProgressNotif(UpdateProgressData* data) {
+    TempStr msg = FormatUpdateDownloadProgressTemp(data);
+    logf("UpdateDownloadProgressNotif: %s\n", msg);
+    auto wnd = GetNotificationForGroup(data->hwndForNotif, kNotifUpdateCheckInProgress);
+    if (wnd) {
+        NotificationUpdateMessage(wnd, msg, 0, true);
+    } else {
+        logf("UpdateDownloadProgressNotif: no wnd\n");
+    }
+    delete data;
+}
+
+static void UpdateProgressCb(UpdateProgressData* data, HttpProgress* progress) {
+    if (!data->lastSpeedTimeSet) {
+        data->lastSpeedTime = TimeGet();
+        data->lastSpeedDownloaded = progress->nDownloaded;
+        data->lastSpeedTimeSet = true;
+    }
+
+    data->nDownloaded = progress->nDownloaded;
+    if (progress->nTotal > 0) {
+        data->nTotal = progress->nTotal;
+    }
+
+    LARGE_INTEGER now = TimeGet();
+    double elapsedMs = TimeSinceInMs(data->lastSpeedTime);
+    if (elapsedMs >= 250) {
+        i64 delta = progress->nDownloaded - data->lastSpeedDownloaded;
+        if (delta > 0) {
+            data->speedBytesPerSec = (i64)((double)delta * 1000.0 / elapsedMs);
+        }
+        data->lastSpeedTime = now;
+        data->lastSpeedDownloaded = progress->nDownloaded;
+    }
+
+    auto fnData = new UpdateProgressData(*data);
+    auto fn = MkFunc0<UpdateProgressData>(UpdateDownloadProgressNotif, fnData);
+    uitask::Post(fn, nullptr);
+}
 
 struct DownloadUpdateAsyncData {
     HWND hwndForNotif = nullptr;
@@ -328,28 +407,6 @@ static void DownloadUpdateFinish(DownloadUpdateAsyncData* data) {
     delete updateInfo;
     gUpdateCheckInProgress = false;
     delete data;
-}
-
-static void UpdateDownloadProgressNotif(UpdateProgressData* data) {
-    TempStr size = FormatFileSizeTransTemp(data->nDownloaded);
-    logf("UpdateDownloadProgressNotif: %s\n", size);
-    auto wnd = GetNotificationForGroup(data->hwndForNotif, kNotifUpdateCheckInProgress);
-    if (wnd) {
-        TempStr msg = str::FormatTemp("Downloading update: %s\n", size);
-        NotificationUpdateMessage(wnd, msg, 0, true);
-    } else {
-        logf("UpdateDownloadProgressNotif: no wnd\n");
-    }
-    delete data;
-}
-
-static void UpdateProgressCb(UpdateProgressData* data, HttpProgress* progress) {
-    logf("UpdateProgressCb: n: %d\n", (int)progress->nDownloaded);
-    auto fnData = new UpdateProgressData;
-    fnData->hwndForNotif = data->hwndForNotif;
-    fnData->nDownloaded = progress->nDownloaded;
-    auto fn = MkFunc0<UpdateProgressData>(UpdateDownloadProgressNotif, fnData);
-    uitask::Post(fn, nullptr);
 }
 
 static void DownloadUpdateAsync(DownloadUpdateAsyncData* data) {
@@ -594,8 +651,8 @@ static void UpdateCheckFinish(UpdateCheckAsyncData* data) {
     if (!rsp) {
         if (updateCheckType == UpdateCheck::UserInitiated) {
             RemoveNotificationsForGroup(win->hwndCanvas, kNotifUpdateCheckInProgress);
-            TempStr msg = str::FormatTemp(_TRA("Can't connect to the Internet (error %#x)."),
-                                          ERROR_INTERNET_CANNOT_CONNECT);
+            TempStr msg =
+                str::FormatTemp(_TRA("Can't connect to the Internet (error %#x)."), ERROR_INTERNET_CANNOT_CONNECT);
             MessageBoxWarning(hwnd, msg, _TRA("SumatraPDF Update"));
         }
         return;

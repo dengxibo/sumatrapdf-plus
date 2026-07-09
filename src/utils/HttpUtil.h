@@ -11,7 +11,8 @@ struct HttpRsp {
 };
 
 struct HttpProgress {
-    i64 nDownloaded;
+    i64 nDownloaded = 0;
+    i64 nTotal = -1; // -1 if unknown (e.g. chunked transfer)
 };
 
 bool IsHttpRspOk(const HttpRsp*);
