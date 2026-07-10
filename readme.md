@@ -6,6 +6,10 @@ Not affiliated with [sumatrapdfreader.org](https://www.sumatrapdfreader.org/) ·
 A Windows document reader (PDF, EPUB, MOBI, and more) with improvements for Chinese ebooks, offline lookup, themes, and smart PDF dark mode.  
 Windows 下的 PDF / 电子书阅读器，针对中文 EPUB/MOBI、离线查词、主题与 PDF 智能暗黑模式等做了增强。
 
+> **Multi-monitor DPI (solved here) / 双屏 DPI 适配（本版已解决）**  
+> Upstream Sumatra PDF has long struggled with UI scaling when the window moves between displays with different scale factors (e.g. 100% laptop + 125% external monitor): bookmark sidebar, toolbar, menu bar, tabs, and TOC search could show wrong font sizes until restart. **Sumatra PDF Plus fixes this** — fonts follow each monitor’s DPI during drag and after tab detach. See [v3.7.6 release notes](https://github.com/dengxibo/sumatrapdf-plus/releases/tag/v3.7.6).  
+> 原版 Sumatra PDF 在双屏、不同缩放比例（如笔记本 100% + 外屏 125%）之间拖动窗口时，书签侧栏、工具栏、菜单栏、标签栏、目录搜索框等字号长期错乱，往往只能重启才能恢复。**本 fork 已修复**：跨屏拖动过程中即时按各显示器 DPI 刷新 UI 字号，并修复标签拖出新窗口后原窗口工具栏字体异常变大的问题。详见 [v3.7.6 发行说明](https://github.com/dengxibo/sumatrapdf-plus/releases/tag/v3.7.6)。
+
 - **Repository / 本仓库：** source code for GPLv3 compliance · 满足 GPLv3 源码随同分发要求  
 - **User guide (Chinese) / 中文详细说明：** [readme.txt](readme.txt)  
 - **Upstream / 上游项目：** [https://github.com/sumatrapdfreader/sumatrapdf](https://github.com/sumatrapdfreader/sumatrapdf)  
@@ -18,6 +22,7 @@ Windows 下的 PDF / 电子书阅读器，针对中文 EPUB/MOBI、离线查词�
 
 |                                                                                                                     |                                               |
 | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| **Multi-monitor DPI** — per-monitor UI fonts; correct sidebar, toolbar, menu, tabs, and TOC search when dragging between 100%/125%/150% displays; fixes tab-detach toolbar glitch | **双屏 DPI** — 按显示器 DPI 刷新 UI 字号；跨屏拖动时书签、工具栏、菜单、标签、目录搜索字号正确；修复拖标签分窗后工具栏字体异常 |
 | **Chinese EPUB/MOBI** — improved mixed text/image layout; fixes for broken table-of-contents navigation             | **中文 EPUB/MOBI** — 优化图文混排；修复目录跳转错误            |
 | **Faster large ebooks** — quicker loading for big EPUB/MOBI/AZW files                                                   | **大文件加速** — 大型 EPUB/MOBI/AZW 打开更快                 |
 | **Session-restore fix** — double-clicking a file no longer crashes when “reopen last session” is enabled            | **会话恢复修复** — 开启“恢复上次会话”后，双击打开文件不再崩溃           |

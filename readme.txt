@@ -10,6 +10,12 @@
 
   ※ 非 sumatrapdfreader.org 官方版本，基于 SumatraPDF (GPLv3) 的社区修改版。
 
+【双屏 DPI 适配】
+  原版 Sumatra PDF 在双屏、不同缩放比例之间拖动窗口时，书签侧栏、
+  工具栏、菜单栏、标签栏等字号长期容易错乱。本版本已修复：跨屏拖动
+  过程中即时按各显示器 DPI 刷新 UI，并修复标签拖出新窗口后原窗口
+  工具栏字体异常变大的问题。
+
 【支持的格式（常见）】
   PDF、EPUB、MOBI、AZW / AZW3、FB2、CHM、CBZ/CBR、DjVu 等
 
