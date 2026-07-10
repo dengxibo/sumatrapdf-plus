@@ -52,6 +52,7 @@ static void SafeDeleteTabsCtrl(TabsCtrl* tabsCtrl) {
     delete tabsCtrl;
 }
 #include "Theme.h"
+#include "DarkModeSubclass.h"
 #include "Canvas.h"
 
 #include "utils/Log.h"
@@ -732,6 +733,16 @@ bool HasOpenedDocuments(MainWindow* win) {
     return false;
 }
 
+static void SyncSidebarTreeViewTheme(HWND hwnd) {
+    if (!hwnd || !UseDarkModeLib()) {
+        return;
+    }
+    // Sidebar tree views are nested under hwndTocBox/hwndFavBox, so frame-level
+    // dark-mode setup does not reach them. Re-apply the current tree theme when
+    // TOC/favorites content or colors are updated (e.g. first LoadTocTree).
+    DarkMode::setTreeViewWindowThemeEx(hwnd, true);
+}
+
 void UpdateControlsColors(MainWindow* win) {
     COLORREF bgCol;
     COLORREF txtCol;
@@ -749,6 +760,7 @@ void UpdateControlsColors(MainWindow* win) {
         if (win->tocFilterEdit) {
             win->tocFilterEdit->SetColors(txtCol, bgCol);
         }
+        SyncSidebarTreeViewTheme(tocTreeView->hwnd);
         win->sidebarSplitter->SetColors(kColorNoChange, splitterCol);
         InvalidateRect(tocTreeView->hwnd, nullptr, FALSE);
         if (win->hwndTocBox) {
@@ -760,6 +772,7 @@ void UpdateControlsColors(MainWindow* win) {
     if (favTreeView) {
         favTreeView->SetColors(txtCol, bgCol);
         win->favLabelWithClose->SetColors(txtCol, bgCol);
+        SyncSidebarTreeViewTheme(favTreeView->hwnd);
         win->favSplitter->SetColors(kColorNoChange, splitterCol);
         InvalidateRect(favTreeView->hwnd, nullptr, FALSE);
         if (win->hwndFavBox) {
