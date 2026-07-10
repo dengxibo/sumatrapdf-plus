@@ -1,5 +1,10 @@
 # Version history
 
+## 3.7.8 (2026-07-10)
+
+- fix dark-mode TOC sidebar scrollbar staying white until theme is toggled
+- fix TOC scrollbar mouse capture getting stuck when the tree reloads during progressive ebook loading
+
 ## 3.7.7 (2026-07-10)
 
 - show download speed and downloaded/total size during in-app update download
