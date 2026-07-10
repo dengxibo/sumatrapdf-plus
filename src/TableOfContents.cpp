@@ -1649,6 +1649,10 @@ void ReCreateTocTreeView(MainWindow* win, HFONT font, int dpi) {
         win->tocTreeSubclassId = 0;
     }
 
+    if (GetCapture() == oldTreeView->hwnd) {
+        SendMessageW(oldTreeView->hwnd, WM_CANCELMODE, 0, 0);
+    }
+
     oldTreeView->treeModel = nullptr;
     delete oldTreeView;
     win->tocTreeView = nullptr;

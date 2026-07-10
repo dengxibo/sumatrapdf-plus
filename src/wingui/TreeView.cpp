@@ -269,10 +269,27 @@ void TreeView::CollapseAll() {
     ResumeRedraw();
 }
 
+// TreeView_DeleteAllItems during scrollbar thumb tracking leaves mouse capture
+// stuck and breaks menu clicks until the user activates the control again.
+static void CancelInProgressInteraction(HWND hwnd) {
+    if (!hwnd) {
+        return;
+    }
+    HWND cap = GetCapture();
+    if (!cap) {
+        return;
+    }
+    if (cap != hwnd && !IsChild(hwnd, cap)) {
+        return;
+    }
+    SendMessageW(cap, WM_CANCELMODE, 0, 0);
+}
+
 void TreeView::Clear() {
     treeModel = nullptr;
 
     HWND hwnd = this->hwnd;
+    CancelInProgressInteraction(hwnd);
     ::SendMessageW(hwnd, WM_SETREDRAW, FALSE, 0);
     TreeView_DeleteAllItems(hwnd);
     SendMessageW(hwnd, WM_SETREDRAW, TRUE, 0);
@@ -392,6 +409,7 @@ static void PopulateTree(TreeView* treeView, TreeModel* tm) {
 void TreeView::SetTreeModel(TreeModel* tm) {
     ReportIf(!tm);
 
+    CancelInProgressInteraction(hwnd);
     SuspendRedraw();
 
     TreeView_DeleteAllItems(hwnd);
