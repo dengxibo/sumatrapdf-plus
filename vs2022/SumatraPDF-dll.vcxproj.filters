@@ -159,6 +159,12 @@
     <ClInclude Include="..\src\EditAnnotations.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\EditEbookAnnotations.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\EbookAnnotations.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\EngineAll.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -477,6 +483,12 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\EditAnnotations.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\EditEbookAnnotations.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\EbookAnnotations.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\EngineBase.cpp">
