@@ -97,12 +97,12 @@ void SetPdfDocumentColorMode(PdfDocumentColorMode mode) {
 const char* PdfDocumentColorModeDescription(PdfDocumentColorMode mode) {
     switch (mode) {
         case PdfDocumentColorMode::Black:
-            return _TRN("Document Color Mode: Black (full dark)");
+            return _TRN("Document Color Mode: Match theme (follow current theme colors)");
         case PdfDocumentColorMode::Light:
-            return _TRN("Document Color Mode: Light (original colors)");
+            return _TRN("Document Color Mode: Original (document colors unchanged)");
         case PdfDocumentColorMode::Auto:
         default:
-            return _TRN("Document Color Mode: Auto (smart dark mode)");
+            return _TRN("Document Color Mode: Smart (adapt colors intelligently)");
     }
 }
 

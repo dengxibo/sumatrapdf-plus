@@ -22,6 +22,7 @@ void RefreshEditAnnotationsWindowsTheme();
 void DockOpenEditAnnotationsWindows(MainWindow* win);
 void CloseEditAnnotationsWindowsForDpiMove(MainWindow* win);
 void ReopenEditAnnotationsWindowsAfterDpiMove(MainWindow* win);
+bool PdfAnnotationsExportNotes(WindowTab* tab, HWND hwndParent);
 void PaintPdfMarkupOverlayPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pageNo);
 void ClearPdfMarkupOverlayForPage(WindowTab* tab, int pageNo);
 void RemovePdfMarkupOverlayAnnot(WindowTab* tab, Annotation* annot);

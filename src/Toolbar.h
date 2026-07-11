@@ -18,6 +18,7 @@ void UpdateToolbarState(MainWindow*);
 void UpdateToolbarAfterThemeChange(MainWindow*);
 void UpdateDoubleClickWordLookupToolbarButton(MainWindow*);
 void UpdatePdfDocumentColorModeToolbarButton(MainWindow*);
+bool NeedsDocumentColorModeUI(MainWindow* win);
 bool NeedsPdfDocumentColorModeUI(MainWindow* win);
 
 void CreateMenuBarRebar(MainWindow*);

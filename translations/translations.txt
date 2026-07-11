@@ -25549,225 +25549,444 @@ tw:切換文件色彩模式
 uk:Перемкнути колірний режим документа
 uz:Hujjat rang rejimini almashtirish
 vn:Chuyển chế độ màu tài liệu
-:Document Color Mode: Auto (smart dark mode)
-af:Dokumentkleurmodus: Outo (slim donker modus)
-am:Փաստաթղթի գունային ռեժիմ՝ ավտո (խելացի մուգ)
-ar:وضع ألوان المستند: تلقائي (الوضع الداكن الذكي)
-az:Sənəd rəng rejimi: Avtomatik (ağıllı qaranlıq rejimi)
-bg:Цветов режим на документа: Автоматичен (интелигентен тъмен режим)
-bn:ডকুমেন্ট রঙ মোড: স্বয়ং (স্মার্ট ডার্ক মোড)
-br:Modo de cor do documento: Automático (modo escuro inteligente)
-bs:Način boja dokumenta: Automatski (pametan tamni način)
-by:Рэжым колеру дакумента: Аўта (разумны цёмны рэжым)
-ca:Mode de color del document: Automàtic (mode fosc intel·ligent)
-ca-xv:Mode de color del document: Automàtic (mode fosc intel·ligent)
-cn:文档颜色模式：自动（智能深色模式）
-co:Modu di culore di u documentu: Automaticu (modu scuru intelligente)
-cy:Modd lliw dogfen: Awtomatig (modd tywyll clyfar)
-cz:Barevný režim dokumentu: Automatický (chytrý tmavý režim)
-de:Dokumentfarbmodus: Auto (intelligenter Dunkelmodus)
-dk:Dokumentfarvetilstand: Auto (smart mørk tilstand)
-el:Λειτουργία χρώματος εγγράφου: Αυτόματη (έξυπνη σκοτεινή λειτουργία)
-es:Modo de color del documento: Automático (modo oscuro inteligente)
-et:Dokumendi värvirežiim: Auto (nutikas tume režiim)
-eu:Dokumentuaren kolore modua: Automatikoa (modu ilun adimentsua)
-fa:حالت رنگ سند: خودکار (حالت تیره هوشمند)
-fi:Asiakirjan väritila: Automaattinen (älykäs tumma tila)
-fo:Litmóti í skjali: Sjálvvirkandi (kløkt myrkt móti)
-fr:Mode couleur du document : Auto (mode sombre intelligent)
-fy-nl:Dokumintkleurmodus: Automatysk (smart donker modus)
-ga:Mód dath an doiciméid: Uathoibríoch (mód dorcha cliste)
-gl:Modo de cor do documento: Automático (modo escuro intelixente)
-he:מצב צבע מסמך: אוטומטי (מצב כהה חכם)
-hi:दस्तावेज़ रंग मोड: ऑटो (स्मार्ट डार्क मोड)
-hr:Način boja dokumenta: Automatski (pametan tamni način)
-hu:Dokumentumszín-mód: Automatikus (okos sötét mód)
-id:Mode warna dokumen: Otomatis (mode gelap cerdas)
-it:Modalità colore documento: Auto (modalità scura intelligente)
-ja:ドキュメントのカラーモード：自動（スマートダークモード）
-jv:Mode warna dokumen: Otomatis (mode peteng pinter)
-ka:დოკუმენტის ფერის რეჟიმი: ავტო (ჭკვიანი მუქი რეჟიმი)
-kr:문서 색상 모드: 자동(스마트 다크 모드)
-ku:Moda rengê belgeyê: Otomatîk (moda tarî ya jîr)
-kw:Mod liw an dastelhyans: Emauto (mod tewl synsi)
-lt:Dokumento spalvų režimas: Automatinis (protingas tamsus režimas)
-lv:Dokumenta krāsu režīms: Automātisks (gudrs tumšais režīms)
-mk:Режим на боја на документ: Автоматски (паметен темен режим)
-ml:ഡോക്യുമെന്റ് നിറ മോഡ്: ഓട്ടോ (സ്മാർട്ട് ഡാർക്ക് മോഡ്)
-mm:စာရွက်စာတမ်း အရောင်မုဒ်: အလိုအလျောက် (စမတ် အမှောင်မုဒ်)
-my:Mod warna dokumen: Auto (mod gelap pintar)
-ne:कागजात रङ मोड: स्वचालित (स्मार्ट गाढा मोड)
-nl:Documentkleurmodus: Automatisch (slimme donkere modus)
-nn:Dokumentfargemodus: Auto (smart mørk modus)
-no:Dokumentfargemodus: Auto (smart mørk modus)
-pa:ਦਸਤਾਵੇਜ਼ ਰੰਗ ਮੋਡ: ਆਟੋ (ਸਮਾਰਟ ਡਾਰਕ ਮੋਡ)
-pl:Tryb koloru dokumentu: Auto (inteligentny tryb ciemny)
-pt:Modo de cor do documento: Automático (modo escuro inteligente)
-ro:Mod culoare document: Auto (mod întunecat inteligent)
-ru:Цветовой режим документа: Авто (умный тёмный режим)
-sat:ᱫᱚᱞᱤᱞ ᱨᱚᱝ mod: ᱟᱹᱴᱚ (ᱥᱢᱟᱨᱴ ᱧᱩᱛ mod)
-si:ලේඛන වර්ණ ප්‍රකාරය: ස්වයං (ස්මාර්ට් අඳුරු ප්‍රකාරය)
-sk:Farebný režim dokumentu: Automatický (inteligentný tmavý režim)
-sl:Barvni način dokumenta: Samodejno (pameten temni način)
-sn:Maitiro emavara edokumenti: Otomatiki (modi rima rakanaka)
-sp-rs:Režim boja dokumenta: Automatski (pametan tamni režim)
-sq:Modaliteti i ngjyrës së dokumentit: Auto (modalitet i errët inteligjent)
-sr-rs:Режим боје документа: Аутоматски (паметан тамни режим)
-sv:Dokumentfärgläge: Auto (smart mörkt läge)
-ta:ஆவண நிற முறை: தானியங்கி (ஸ்மார்ட் இருள் முறை)
-th:โหมดสีเอกสาร: อัตโนมัติ (โหมดมืดอัจฉริยะ)
-tl:Color mode ng dokumento: Auto (smart dark mode)
-tr:Belge renk modu: Otomatik (akıllı karanlık mod)
-tw:文件色彩模式：自動（智慧深色模式）
-uk:Колірний режим документа: Авто (розумний темний режим)
-uz:Hujjat rang rejimi: Avto (aqlli qorong‘i rejim)
-vn:Chế độ màu tài liệu: Tự động (chế độ tối thông minh)
-:Document Color Mode: Black (full dark)
-af:Dokumentkleurmodus: Swart (vol donker)
-am:Փաստաթղթի գունային ռեժիմ՝ սև (լիովին մուգ)
-ar:وضع ألوان المستند: أسود (داكن بالكامل)
-az:Sənəd rəng rejimi: Qara (tam qaranlıq)
-bg:Цветов режим на документа: Черен (пълен тъмен режим)
-bn:ডকুমেন্ট রঙ মোড: কালো (সম্পূর্ণ ডার্ক)
-br:Modo de cor do documento: Preto (escuro total)
-bs:Način boja dokumenta: Crni (potpuno tamni način)
-by:Рэжым колеру дакумента: Чорны (поўны цёмны рэжым)
-ca:Mode de color del document: Negre (fosc complet)
-ca-xv:Mode de color del document: Negre (fosc complet)
-cn:文档颜色模式：黑色（完全深色）
-co:Modu di culore di u documentu: Neru (scuru cumpletu)
-cy:Modd lliw dogfen: Du (tywyll llawn)
-cz:Barevný režim dokumentu: Černý (plně tmavý režim)
-de:Dokumentfarbmodus: Schwarz (vollständig dunkel)
-dk:Dokumentfarvetilstand: Sort (fuld mørk)
-el:Λειτουργία χρώματος εγγράφου: Μαύρη (πλήρως σκοτεινή)
-es:Modo de color del documento: Negro (oscuro total)
-et:Dokumendi värvirežiim: Must (täielik tume)
-eu:Dokumentuaren kolore modua: Beltza (ilun osoa)
-fa:حالت رنگ سند: سیاه (تیره کامل)
-fi:Asiakirjan väritila: Musta (täysin tumma)
-fo:Litmóti í skjali: Svart (fullt myrkt)
-fr:Mode couleur du document : Noir (sombre complet)
-fy-nl:Dokumintkleurmodus: Swart (folslein donker)
-ga:Mód dath an doiciméid: Dubh (dorcha iomlán)
-gl:Modo de cor do documento: Negro (escuro total)
-he:מצב צבע מסמך: שחור (כהה מלא)
-hi:दस्तावेज़ रंग मोड: काला (पूर्ण डार्क)
-hr:Način boja dokumenta: Crni (potpuno tamni način)
-hu:Dokumentumszín-mód: Fekete (teljes sötét)
-id:Mode warna dokumen: Hitam (gelap penuh)
-it:Modalità colore documento: Nero (scuro completo)
-ja:ドキュメントのカラーモード：黒（完全ダーク）
-jv:Mode warna dokumen: Ireng (peteng penuh)
-ka:დოკუმენტის ფერის რეჟიმი: შავი (სრული მუქი)
-kr:문서 색상 모드: 검정(완전 다크)
-ku:Moda rengê belgeyê: Reş (tarîya tevahî)
-kw:Mod liw an dastelhyans: Du (tewl leun)
-lt:Dokumento spalvų režimas: Juodas (visiškai tamsus)
-lv:Dokumenta krāsu režīms: Melns (pilnīgi tumšs)
-mk:Режим на боја на документ: Црн (целосно темен)
-ml:ഡോക്യുമെന്റ് നിറ മോഡ്: കറுப்ப് (പൂർണ്ണ ഡാർക്ക്)
-mm:စာရွက်စာတမ်း အရောင်မုဒ်: အနက် (အမှောင်ပြည့်)
-my:Mod warna dokumen: Hitam (gelap penuh)
-ne:कागजात रङ मोड: कालो (पूर्ण गाढा)
-nl:Documentkleurmodus: Zwart (volledig donker)
-nn:Dokumentfargemodus: Svart (full mørk)
-no:Dokumentfargemodus: Svart (full mørk)
-pa:ਦਸਤਾਵੇਜ਼ ਰੰਗ ਮੋਡ: ਕਾਲਾ (ਪੂਰਾ ਡਾਰਕ)
-pl:Tryb koloru dokumentu: Czarny (pełny tryb ciemny)
-pt:Modo de cor do documento: Preto (escuro total)
-ro:Mod culoare document: Negru (întunecat complet)
-ru:Цветовой режим документа: Чёрный (полностью тёмный)
-sat:ᱫᱚᱞᱤᱞ ᱨᱚᱝ mod: ᱠᱟᱹᱞᱤ (ᱯᱩᱨᱟᱹ ᱧᱩᱛ)
-si:ලේඛන වර්ණ ප්‍රකාරය: කala (සම්පූර්ණ අඳුරු)
-sk:Farebný režim dokumentu: Čierny (plne tmavý režim)
-sl:Barvni način dokumenta: Črn (popolnoma temen)
-sn:Maitiro emavara edokumenti: Nhema (rima zvizere)
-sp-rs:Režim boja dokumenta: Crni (potpuno tamni režim)
-sq:Modaliteti i ngjyrës së dokumentit: I zi (i errët plotësisht)
-sr-rs:Режим боје документа: Црни (потпуно тамни режим)
-sv:Dokumentfärgläge: Svart (helt mörkt)
-ta:ஆவண நிற முறை: கருப்பு (முழு இருள்)
-th:โหมดสีเอกสาร: ดำ (มืดเต็มรูปแบบ)
-tl:Color mode ng dokumento: Itim (buong dark)
-tr:Belge renk modu: Siyah (tam karanlık)
-tw:文件色彩模式：黑色（完全深色）
-uk:Колірний режим документа: Чорний (повністю темний)
-uz:Hujjat rang rejimi: Qora (to‘liq qorong‘i)
-vn:Chế độ màu tài liệu: Đen (tối hoàn toàn)
-:Document Color Mode: Light (original colors)
-af:Dokumentkleurmodus: Lig (originele kleure)
-am:Փաստաթղթի գունային ռեժիմ՝ բաց (բնօրինակ գույներ)
-ar:وضع ألوان المستند: فاتح (الألوان الأصلية)
-az:Sənəd rəng rejimi: Açıq (orijinal rənglər)
-bg:Цветов режим на документа: Светъл (оригинални цветове)
-bn:ডকুমেন্ট রঙ মোড: হালকা (মূল রঙ)
-br:Modo de cor do documento: Claro (cores originais)
-bs:Način boja dokumenta: Svijetli (originalne boje)
-by:Рэжым колеру дакумента: Светлы (аўрыгінальныя колеры)
-ca:Mode de color del document: Clar (colors originals)
-ca-xv:Mode de color del document: Clar (colors originals)
-cn:文档颜色模式：浅色（原始颜色）
-co:Modu di culore di u documentu: Chjaru (colori originali)
-cy:Modd lliw dogfen: Golau (lliwiau gwreiddiol)
-cz:Barevný režim dokumentu: Světlý (původní barvy)
-de:Dokumentfarbmodus: Hell (Originalfarben)
-dk:Dokumentfarvetilstand: Lys (originale farver)
-el:Λειτουργία χρώματος εγγράφου: Φωτεινή (αρχικά χρώματα)
-es:Modo de color del documento: Claro (colores originales)
-et:Dokumendi värvirežiim: Hele (algvärvid)
-eu:Dokumentuaren kolore modua: Argia (jatorrizko koloreak)
-fa:حالت رنگ سند: روشن (رنگ‌های اصلی)
-fi:Asiakirjan väritila: Vaalea (alkuperäiset värit)
-fo:Litmóti í skjali: Ljóst (upprunalegir litir)
-fr:Mode couleur du document : Clair (couleurs originales)
-fy-nl:Dokumintkleurmodus: Ljocht (orizinele kleuren)
-ga:Mód dath an doiciméid: Geal (dathanna bunaidh)
-gl:Modo de cor do documento: Claro (cores orixinais)
-he:מצב צבע מסמך: בהיר (צבעים מקוריים)
-hi:दस्तावेज़ रंग मोड: हल्का (मूल रंग)
-hr:Način boja dokumenta: Svijetli (izvorne boje)
-hu:Dokumentumszín-mód: Világos (eredeti színek)
-id:Mode warna dokumen: Terang (warna asli)
-it:Modalità colore documento: Chiaro (colori originali)
-ja:ドキュメントのカラーモード：ライト（元の色）
-jv:Mode warna dokumen: Terang (warna asli)
-ka:დოკუმენტის ფერის რეჟიმი: ღია (ორიგინალური ფერები)
-kr:문서 색상 모드: 밝음(원본 색상)
-ku:Moda rengê belgeyê: Ron (rengên orîjînal)
-kw:Mod liw an dastelhyans: Golow (liwori gwreyth)
-lt:Dokumento spalvų režimas: Šviesus (originalios spalvos)
-lv:Dokumenta krāsu režīms: Gaišs (sākotnējās krāsas)
-mk:Режим на боја на документ: Светол (оригинални бои)
-ml:ഡോക്യുമെന്റ് നിറ മോഡ്: ലൈറ്റ് (യഥാർത്ഥ നിറങ്ങൾ)
-mm:စာရွက်စာတမ်း အရောင်မုဒ်: အလင်း (မူရင်းအရောင်များ)
-my:Mod warna dokumen: Terang (warna asal)
-ne:कागजात रङ मोड: उज्यालो (मूल रङ)
-nl:Documentkleurmodus: Licht (originele kleuren)
-nn:Dokumentfargemodus: Lys (originale fargar)
-no:Dokumentfargemodus: Lys (originale farger)
-pa:ਦਸਤਾਵੇਜ਼ ਰੰਗ ਮੋਡ: ਹਲਕਾ (ਮੂਲ ਰੰਗ)
-pl:Tryb koloru dokumentu: Jasny (oryginalne kolory)
-pt:Modo de cor do documento: Claro (cores originais)
-ro:Mod culoare document: Deschis (culori originale)
-ru:Цветовой режим документа: Светлый (исходные цвета)
-sat:ᱫᱚᱞᱤᱞ ᱨᱚᱝ mod: ᱞᱟᱹᱜᱤᱡ (ᱯᱩᱨᱟᱹ ᱨᱚᱝ)
-si:ලේඛන වර්ණ ප්‍රකාරය: දිවා (මුල් වර්ණ)
-sk:Farebný režim dokumentu: Svetlý (pôvodné farby)
-sl:Barvni način dokumenta: Svetlo (izvirne barve)
-sn:Maitiro emavara edokumenti: Chena (mavara ekutanga)
-sp-rs:Režim boja dokumenta: Svetli (originalne boje)
-sq:Modaliteti i ngjyrës së dokumentit: I çelët (ngjyrat origjinale)
-sr-rs:Режим боје документа: Светли (оригиналне боје)
-sv:Dokumentfärgläge: Ljust (originalfärger)
-ta:ஆவண நிற முறை: வெளிர் (அசல் நிறங்கள்)
-th:โหมดสีเอกสาร: สว่าง (สีต้นฉบับ)
-tl:Color mode ng dokumento: Maliwanag (orihinal na kulay)
-tr:Belge renk modu: Açık (orijinal renkler)
-tw:文件色彩模式：淺色（原始色彩）
-uk:Колірний режим документа: Світлий (оригінальні кольори)
-uz:Hujjat rang rejimi: Yorug‘ (asl ranglar)
-vn:Chế độ màu tài liệu: Sáng (màu gốc)
+:Document Color Mode: Smart (adapt colors intelligently)
+af:Dokumentkleurmodus: Slim (pas kleure intelligent aan)
+am:Փաստաթղթի գունային ռեժիմ՝ խելացի (գույները խելացի հարմարեցնել)
+ar:وضع ألوان المستند: ذكي (تكييف الألوان بذكاء)
+az:Sənəd rəng rejimi: Ağıllı (rəngləri ağıllı uyğunlaşdır)
+bg:Цветов режим на документа: Умен (интелигентно адаптиране на цветовете)
+bn:ডকুমেন্ট রঙ মোড: স্মার্ট (রঙ বুদ্ধিমত্তার সাথে মানিয়ে নেওয়া)
+br:Modo de cor do documento: Inteligente (adaptar cores com inteligência)
+bs:Način boja dokumenta: Pametan (inteligentno prilagođavanje boja)
+by:Рэжым колеру дакумента: Разумны (разумнае прыстасаванне колераў)
+ca:Mode de color del document: Intel·ligent (adapta els colors amb intel·ligència)
+ca-xv:Mode de color del document: Intel·ligent (adapta els colors amb intel·ligència)
+cn:文档颜色模式：智能（智能适配颜色）
+co:Modu di culore di u documentu: Intelligente (adattà i colori in modu intelligente)
+cy:Modd lliw dogfen: Clyfar (addasu lliwiau yn glyfar)
+cz:Barevný režim dokumentu: Chytrý (inteligentní úprava barev)
+de:Dokumentfarbmodus: Smart (Farben intelligent anpassen)
+dk:Dokumentfarvetilstand: Smart (tilpas farver intelligent)
+el:Λειτουργία χρώματος εγγράφου: Έξυπνη (έξυπνη προσαρμογή χρωμάτων)
+es:Modo de color del documento: Inteligente (adaptar colores con inteligencia)
+et:Dokumendi värvirežiim: Nutikas (värvide nutikas kohandamine)
+eu:Dokumentuaren kolore modua: Adimentsua (koloreak adimentsuz egokitzea)
+fa:حالت رنگ سند: هوشمند (تطبیق هوشمند رنگ‌ها)
+fi:Asiakirjan väritila: Älykäs (säädä värit älykkäästi)
+fo:Litmóti í skjali: Kløkt (tilpassa litir kløkt)
+fr:Mode couleur du document : Intelligent (adapter les couleurs intelligemment)
+fy-nl:Dokumintkleurmodus: Smart (kleuren smart oanpasse)
+ga:Mód dath an doiciméid: Cliste (oiriúnú dathanna go cliste)
+gl:Modo de cor do documento: Intelixente (adaptar cores con intelixencia)
+he:מצב צבע מסמך: חכם (התאמת צבעים בחוכמה)
+hi:दस्तावेज़ रंग मोड: स्मार्ट (रंगों को बुद्धिमत्ता से अनुकूलित करें)
+hr:Način boja dokumenta: Pametan (inteligentno prilagođavanje boja)
+hu:Dokumentumszín-mód: Okos (színek intelligens igazítása)
+id:Mode warna dokumen: Cerdas (sesuaikan warna secara cerdas)
+it:Modalità colore documento: Smart (adatta i colori in modo intelligente)
+ja:ドキュメントのカラーモード：スマート（色を智能的に調整）
+jv:Mode warna dokumen: Pinter (ngatur warna kanthi pinter)
+ka:დოკუმენტის ფერის რეჟიმი: ჭკვიანი (ფერების ჭკვიანად მორგება)
+kr:문서 색상 모드: 스마트(색상을 지능적으로 조정)
+ku:Moda rengê belgeyê: Jîr (rengan bi jîrane lihevanî bike)
+kw:Mod liw an dastelhyans: Synsi (kewera liwis yn synsi)
+lt:Dokumento spalvų režimas: Protingas (protingai pritaikyti spalvas)
+lv:Dokumenta krāsu režīms: Gudrs (gudri pielāgot krāsas)
+mk:Режим на боја на документ: Паметен (паметно прилагодување на бои)
+ml:ഡോക്യുമെന്റ് നിറ മോഡ്: സ്മാർട്ട് (നിറങ്ങൾ ബുദ്ധിപൂർവ്വം ക്രമീകരിക്കുക)
+mm:စာရွက်စာတမ်း အရောင်မုဒ်: စမတ် (အရောင်များကို ဉာဏ်ရည်ဖြင့် ညှိ)
+my:Mod warna dokumen: Pintar (laras warna secara pintar)
+ne:कागजात रङ मोड: स्मार्ट (रङहरू बुद्धिपूर्वक मिलाउनुहोस्)
+nl:Documentkleurmodus: Slim (kleuren intelligent aanpassen)
+nn:Dokumentfargemodus: Smart (tilpass fargar intelligent)
+no:Dokumentfargemodus: Smart (tilpass farger intelligent)
+pa:ਦਸਤਾਵੇਜ਼ ਰੰਗ ਮੋਡ: ਸਮਾਰਟ (ਰੰਗਾਂ ਨੂੰ ਸਮਾਰਟ ਢੰਗ ਨਾਲ ਅਨੁਕੂਲ ਬਣਾਓ)
+pl:Tryb koloru dokumentu: Smart (inteligentnie dostosuj kolory)
+pt:Modo de cor do documento: Inteligente (adaptar cores com inteligência)
+ro:Mod culoare document: Inteligent (adaptează culorile inteligent)
+ru:Цветовой режим документа: Умный (интеллектуальная подстройка цветов)
+sat:ᱫᱚᱞᱤᱞ ᱨᱚᱝ mod: ᱥᱢᱟᱨᱴ (ᱨᱚᱝ ᱵᱩᱫᱽᱫᱤᱭᱟᱹᱜ ᱥᱟᱯᱷᱟᱭ)
+si:ලේඛන වර්ණ ප්‍රකාරය: ස්මාර්ට් (වර්ණ බුද්ධිමත් ලෙස සකසන්න)
+sk:Farebný režim dokumentu: Smart (inteligentne prispôsobiť farby)
+sl:Barvni način dokumenta: Pametno (barve pametno prilagodi)
+sn:Maitiro emavara edokumenti: Smart (gadzirisa mavara nehungwaru)
+sp-rs:Režim boja dokumenta: Pametan (inteligentno prilagođavanje boja)
+sq:Modaliteti i ngjyrës së dokumentit: Smart (përshtat ngjyrat në mënyrë inteligjente)
+sr-rs:Режим боје документа: Паметан (паметно прилагођавање боја)
+sv:Dokumentfärgläge: Smart (anpassa färger intelligent)
+ta:ஆவண நிற முறை: ஸ்மார்ட் (நிறங்களை புத்திசாலித்தனமாக மாற்றியமை)
+th:โหมดสีเอกสาร: สมาร์ท (ปรับสีอย่างชาญฉลาด)
+tl:Color mode ng dokumento: Smart (iayon ang mga kulay nang matalino)
+tr:Belge renk modu: Akıllı (renkleri akıllıca uyarla)
+tw:文件色彩模式：智慧（智慧調整色彩）
+uk:Колірний режим документа: Розумний (розумне підлаштування кольорів)
+uz:Hujjat rang rejimi: Aqlli (ranglarni aqllona moslashtirish)
+vn:Chế độ màu tài liệu: Thông minh (điều chỉnh màu một cách thông minh)
+:Document Color Mode: Match theme (follow current theme colors)
+af:Dokumentkleurmodus: Volg tema (volg huidige temakleure)
+am:Փաստաթղթի գունային ռեժիմ՝ համապատասխանել թեմային (հետևել ընթացիկ թեմայի գույներին)
+ar:وضع ألوان المستند: مطابقة السمة (اتباع ألوان السمة الحالية)
+az:Sənəd rəng rejimi: Temaya uyğun (cari tema rənglərinə uy)
+bg:Цветов режим на документа: Съответствие на темата (следване на текущите цветове на темата)
+bn:ডকুমেন্ট রঙ মোড: থিম মিল (বর্তমান থিমের রঙ অনুসরণ)
+br:Modo de cor do documento: Seguir tema (seguir cores do tema atual)
+bs:Način boja dokumenta: Prati temu (prati boje trenutne teme)
+by:Рэжым колеру дакумента: Пад тему (следуючы колерам бягучай темы)
+ca:Mode de color del document: Segueix el tema (segueix els colors del tema actual)
+ca-xv:Mode de color del document: Segueix el tema (segueix els colors del tema actual)
+cn:文档颜色模式：跟随主题（按当前主题着色）
+co:Modu di culore di u documentu: Segue u tema (seguì i colori di u tema attuale)
+cy:Modd lliw dogfen: Cyfateb thema (dilyn lliwiau'r thema gyfredol)
+cz:Barevný režim dokumentu: Podle motivu (barvy podle aktuálního motivu)
+de:Dokumentfarbmodus: Theme folgen (Farben des aktuellen Themes)
+dk:Dokumentfarvetilstand: Følg tema (følg aktuelle temafarver)
+el:Λειτουργία χρώματος εγγράφου: Ακολούθηση θέματος (χρώματα τρέχοντος θέματος)
+es:Modo de color del documento: Seguir tema (seguir colores del tema actual)
+et:Dokumendi värvirežiim: Järgi teemat (järgi praeguse teema värve)
+eu:Dokumentuaren kolore modua: Jarraitu gaia (unean gaiko koloreak)
+fa:حالت رنگ سند: مطابق پوسته (پیروی از رنگ‌های پوسته فعلی)
+fi:Asiakirjan väritila: Seuraa teemaa (noudata nykyisen teeman värejä)
+fo:Litmóti í skjali: Fylg tema (fylg núverandi temulitum)
+fr:Mode couleur du document : Suivre le thème (couleurs du thème actuel)
+fy-nl:Dokumintkleurmodus: Folgje tema (kleuren fan aktuele tema)
+ga:Mód dath an doiciméid: Meaitseáil téama (dathanna an téama reatha)
+gl:Modo de cor do documento: Seguir tema (seguir cores do tema actual)
+he:מצב צבע מסמך: התאמה לערכת נושא (עקוב אחר צבעי ערכת הנושא)
+hi:दस्तावेज़ रंग मोड: थीम मिलान (वर्तमान थीम के रंग अपनाएँ)
+hr:Način boja dokumenta: Prati temu (prati boje trenutne teme)
+hu:Dokumentumszín-mód: Téma követése (aktuális téma színei)
+id:Mode warna dokumen: Sesuai tema (ikuti warna tema saat ini)
+it:Modalità colore documento: Segui tema (colori del tema corrente)
+ja:ドキュメントのカラーモード：テーマに合わせる（現在のテーマ色に従う）
+jv:Mode warna dokumen: Ngetut tema (ngetut warna tema saiki)
+ka:დოკუმენტის ფერის რეჟიმი: თემის მიხედვით (მიჰყვე მიმდინარე თემის ფერებს)
+kr:문서 색상 모드: 테마 따름(현재 테마 색상 적용)
+ku:Moda rengê belgeyê: Li gor temayê (rengên temaya niha bişopîne)
+kw:Mod liw an dastelhyans: Herens an them (heul liwis an them a-lemmyn)
+lt:Dokumento spalvų režimas: Pagal temą (laikytis dabartinės temos spalvų)
+lv:Dokumenta krāsu režīms: Pēc tēmas (sekot pašreizējās tēmas krāsām)
+mk:Режим на боја на документ: Според тема (следење на боите на тековната тема)
+ml:ഡോക്യുമെന്റ് നിറ മോഡ്: തീം പിന്തുടരുക (നിലവിലെ തീം നിറങ്ങൾ)
+mm:စာရွက်စာတမ်း အရောင်မုဒ်: အပြင်အမူ လိုက်နာ (လက်ရှိ အပြင်အမူ အရောင်များ)
+my:Mod warna dokumen: Ikut tema (ikut warna tema semasa)
+ne:कागजात रङ मोड: थिम अनुसार (हालको थिमका रङहरू)
+nl:Documentkleurmodus: Thema volgen (kleuren van huidige thema)
+nn:Dokumentfargemodus: Følg tema (følg gjeldande temafargar)
+no:Dokumentfargemodus: Følg tema (følg gjeldende temafarger)
+pa:ਦਸਤਾਵੇਜ਼ ਰੰਗ ਮੋਡ: ਥੀਮ ਅਨੁਸਾਰ (ਮੌਜੂਦਾ ਥੀਮ ਦੇ ਰੰਗ)
+pl:Tryb koloru dokumentu: Zgodnie z motywem (kolory bieżącego motywu)
+pt:Modo de cor do documento: Seguir tema (seguir cores do tema atual)
+ro:Mod culoare document: Potrivire temă (urmează culorile temei curente)
+ru:Цветовой режим документа: Как в теме (цвета текущей темы)
+sat:ᱫᱚᱞᱤᱞ ᱨᱚᱝ mod: ᱛᱤᱢ ᱞᱮᱠᱷᱟ (ᱱᱤᱛᱤᱞ ᱛᱤᱢ ᱨᱚᱝ)
+si:ලේඛන වර්ණ ප්‍රකාරය: තේමාව අනුගමනය (වත්මන් තේමා වර්ණ)
+sk:Farebný režim dokumentu: Podľa motívu (farby aktuálneho motívu)
+sl:Barvni način dokumenta: Po temi (barve trenutne teme)
+sn:Maitiro emavara edokumenti: Teama inotevera (mavara etheme yazvino)
+sp-rs:Režim boja dokumenta: Prati temu (prati boje trenutne teme)
+sq:Modaliteti i ngjyrës së dokumentit: Përputh me temën (ndiq ngjyrat e temës aktuale)
+sr-rs:Режим боје документа: По теми (прати боје тренутне теме)
+sv:Dokumentfärgläge: Följ tema (följ aktuella temafärger)
+ta:ஆவண நிற முறை: தீம் பொருந்த (தற்போதைய தீம் நிறங்கள்)
+th:โหมดสีเอกสาร: ตามธีม (ใช้สีของธีมปัจจุบัน)
+tl:Color mode ng dokumento: Sunod sa tema (sundin ang kulay ng kasalukuyang tema)
+tr:Belge renk modu: Temaya uy (geçerli tema renklerini uygula)
+tw:文件色彩模式：跟隨主題（依目前主題著色）
+uk:Колірний режим документа: Як у темі (кольори поточної теми)
+uz:Hujjat rang rejimi: Mavzuga mos (joriy mavzu ranglari)
+vn:Chế độ màu tài liệu: Theo giao diện (theo màu giao diện hiện tại)
+:Document Color Mode: Original (document colors unchanged)
+af:Dokumentkleurmodus: Origineel (dokumentkleure onveranderd)
+am:Փաստաթղթի գունային ռեժիմ՝ բնօրինակ (փաստաթղթի գույներն անփոփոխ)
+ar:وضع ألوان المستند: أصلي (ألوان المستند دون تغيير)
+az:Sənəd rəng rejimi: Orijinal (sənəd rəngləri dəyişməz)
+bg:Цветов режим на документа: Оригинален (цветовете на документа непроменени)
+bn:ডকুমেন্ট রঙ মোড: মূল (ডকুমেন্টের রঙ অপরিবর্তিত)
+br:Modo de cor do documento: Original (cores do documento inalteradas)
+bs:Način boja dokumenta: Originalni (boje dokumenta nepromijenjene)
+by:Рэжым колеру дакумента: Арыгінал (колеры дакумента без змен)
+ca:Mode de color del document: Original (colors del document sense canvis)
+ca-xv:Mode de color del document: Original (colors del document sense canvis)
+cn:文档颜色模式：原版（保持文档原始颜色）
+co:Modu di culore di u documentu: Originale (colori di u documentu senza mudifiche)
+cy:Modd lliw dogfen: Gwreiddiol (lliwiau'r ddogfen heb eu newid)
+cz:Barevný režim dokumentu: Původní (barvy dokumentu beze změny)
+de:Dokumentfarbmodus: Original (Dokumentfarben unverändert)
+dk:Dokumentfarvetilstand: Original (dokumentfarver uændrede)
+el:Λειτουργία χρώματος εγγράφου: Πρωτότυπη (χρώματα εγγράφου αμετάβλητα)
+es:Modo de color del documento: Original (colores del documento sin cambios)
+et:Dokumendi värvirežiim: Algne (dokumendi värvid muutmata)
+eu:Dokumentuaren kolore modua: Jatorrizkoa (dokumentuaren koloreak aldatu gabe)
+fa:حالت رنگ سند: اصلی (رنگ‌های سند بدون تغییر)
+fi:Asiakirjan väritila: Alkuperäinen (asiakirjan värit muuttumattomina)
+fo:Litmóti í skjali: Upprunalegt (litir í skjali óbroyttir)
+fr:Mode couleur du document : Original (couleurs du document inchangées)
+fy-nl:Dokumintkleurmodus: Origenel (dokumintkleuren ûnferoare)
+ga:Mód dath an doiciméid: Bunaidh (dathanna an doiciméid gan athrú)
+gl:Modo de cor do documento: Orixinal (cores do documento sen cambios)
+he:מצב צבע מסמך: מקורי (צבעי המסמך ללא שינוי)
+hi:दस्तावेज़ रंग मोड: मूल (दस्तावेज़ के रंग अपरिवर्तित)
+hr:Način boja dokumenta: Izvorni (boje dokumenta nepromijenjene)
+hu:Dokumentumszín-mód: Eredeti (dokumentum színek változatlanul)
+id:Mode warna dokumen: Asli (warna dokumen tidak berubah)
+it:Modalità colore documento: Originale (colori del documento invariati)
+ja:ドキュメントのカラーモード：オリジナル（ドキュメントの色をそのまま表示）
+jv:Mode warna dokumen: Asli (warna dokumen ora owah)
+ka:დოკუმენტის ფერის რეჟიმი: ორიგინალი (დოკუმენტის ფერები უცვლელი)
+kr:문서 색상 모드: 원본(문서 색상 그대로)
+ku:Moda rengê belgeyê: Resen (rengên belgeyê bê guhartin)
+kw:Mod liw an dastelhyans: Oris (liwis an dastelhyans heb chanj)
+lt:Dokumento spalvų režimas: Originalus (dokumento spalvos nekeičiamos)
+lv:Dokumenta krāsu režīms: Oriģināls (dokumenta krāsas nemainītas)
+mk:Режим на боја на документ: Оригинален (боите на документот непроменети)
+ml:ഡോക്യുമെന്റ് നിറ മോഡ്: യഥാർത്ഥ (ഡോക്യുമെന്റ് നിറങ്ങൾ മാറ്റമില്ല)
+mm:စာရွက်စာတမ်း အရောင်မုဒ်: မူရင်း (စာရွက်စာတမ်း အရောင်များ မပြောင်း)
+my:Mod warna dokumen: Asal (warna dokumen tidak berubah)
+ne:कागजात रङ मोड: मूल (कागजातका रङहरू अपरिवर्तित)
+nl:Documentkleurmodus: Origineel (documentkleuren ongewijzigd)
+nn:Dokumentfargemodus: Original (dokumentfargar uendra)
+no:Dokumentfargemodus: Original (dokumentfarger uendret)
+pa:ਦਸਤਾਵੇਜ਼ ਰੰਗ ਮੋਡ: ਅਸਲ (ਦਸਤਾਵੇਜ਼ ਦੇ ਰੰਗ ਬਦਲੇ ਬਿਨਾਂ)
+pl:Tryb koloru dokumentu: Oryginalny (kolory dokumentu bez zmian)
+pt:Modo de cor do documento: Original (cores do documento inalteradas)
+ro:Mod culoare document: Original (culorile documentului neschimbate)
+ru:Цветовой режим документа: Оригинал (цвета документа без изменений)
+sat:ᱫᱚᱞᱤᱞ ᱨᱚᱝ mod: ᱢᱩᱞ (ᱫᱚᱞᱤᱞ ᱨᱚᱝ ᱵᱚᱫᱚᱞ ᱵᱟᱝ)
+si:ලේඛන වර්ණ ප්‍රකාරය: මුල් (ලේඛන වර්ණ නොවෙනස්)
+sk:Farebný režim dokumentu: Pôvodný (farby dokumentu nezmenené)
+sl:Barvni način dokumenta: Izvirno (barve dokumenta nespremenjene)
+sn:Maitiro emavara edokumenti: Chokutanga (mavara edokumenti asina kuchinja)
+sp-rs:Režim boja dokumenta: Originalni (boje dokumenta nepromenjene)
+sq:Modaliteti i ngjyrës së dokumentit: Origjinal (ngjyrat e dokumentit pa ndryshim)
+sr-rs:Режим боје документа: Оригинални (боје документа непромењене)
+sv:Dokumentfärgläge: Original (dokumentfärger oförändrade)
+ta:ஆவண நிற முறை: அசல் (ஆவண நிறங்கள் மாறாமல்)
+th:โหมดสีเอกสาร: ต้นฉบับ (สีเอกสารไม่เปลี่ยนแปลง)
+tl:Color mode ng dokumento: Orihinal (hindi binabago ang kulay ng dokumento)
+tr:Belge renk modu: Orijinal (belge renkleri değişmeden)
+tw:文件色彩模式：原版（保留文件原始色彩）
+uk:Колірний режим документа: Оригінал (кольори документа без змін)
+uz:Hujjat rang rejimi: Asl (hujjat ranglari o‘zgarmasdan)
+vn:Chế độ màu tài liệu: Gốc (màu tài liệu không đổi)
+:Set Document Color Mode: Smart
+af:Stel dokumentkleurmodus: Slim
+am:Փաստաթղթի գունային ռեժիմ՝ խելացի
+ar:تعيين وضع ألوان المستند: ذكي
+az:Sənəd rəng rejimini təyin et: Ağıllı
+bg:Задай цветов режим на документа: Умен
+bn:ডকুমেন্ট রঙ মোড সেট করুন: স্মার্ট
+br:Definir modo de cor do documento: Inteligente
+bs:Postavi način boja dokumenta: Pametan
+by:Усталяваць рэжым колеру дакумента: Разумны
+ca:Estableix mode de color del document: Intel·ligent
+ca-xv:Estableix mode de color del document: Intel·ligent
+cn:设置文档颜色模式：智能
+co:Impostà modu di culore di u documentu: Intelligente
+cy:Gosod modd lliw dogfen: Clyfar
+cz:Nastavit barevný režim dokumentu: Chytrý
+de:Dokumentfarbmodus: Smart
+dk:Indstil dokumentfarvetilstand: Smart
+el:Ορισμός λειτουργίας χρώματος εγγράφου: Έξυπνη
+es:Modo de color del documento: Inteligente
+et:Määra dokumendi värvirežiim: Nutikas
+eu:Ezarri dokumentuaren kolore modua: Adimentsua
+fa:تنظیم حالت رنگ سند: هوشمند
+fi:Aseta asiakirjan väritila: Älykäs
+fo:Set litmóti í skjali: Kløkt
+fr:Mode couleur du document : Intelligent
+fy-nl:Dokumintkleurmodus: Smart
+ga:Socraigh mód dath an doiciméid: Cliste
+gl:Modo de cor do documento: Intelixente
+he:הגדר מצב צבע מסמך: חכם
+hi:दस्तावेज़ रंग मोड सेट करें: स्मार्ट
+hr:Postavi način boja dokumenta: Pametan
+hu:Dokumentumszín-mód: Okos
+id:Mode warna dokumen: Cerdas
+it:Modalità colore documento: Smart
+ja:ドキュメントのカラーモード：スマート
+jv:Mode warna dokumen: Pinter
+ka:დოკუმენტის ფერის რეჟიმი: ჭკვიანი
+kr:문서 색상 모드: 스마트
+ku:Moda rengê belgeyê: Jîr
+kw:Set mod liw an dastelhyans: Synsi
+lt:Dokumento spalvų režimas: Protingas
+lv:Dokumenta krāsu režīms: Gudrs
+mk:Режим на боја на документ: Паметен
+ml:ഡോക്യുമെന്റ് നിറ മോഡ്: സ്മാർട്ട്
+mm:စာရွက်စာတမ်း အရောင်မုဒ်: စမတ်
+my:Mod warna dokumen: Pintar
+ne:कागजात रङ मोड: स्मार्ट
+nl:Documentkleurmodus: Slim
+nn:Dokumentfargemodus: Smart
+no:Dokumentfargemodus: Smart
+pa:ਦਸਤਾਵੇਜ਼ ਰੰਗ ਮੋਡ: ਸਮਾਰਟ
+pl:Tryb koloru dokumentu: Smart
+pt:Modo de cor do documento: Inteligente
+ro:Mod culoare document: Inteligent
+ru:Цветовой режим документа: Умный
+sat:ᱫᱚᱞᱤᱞ ᱨᱚᱝ mod: ᱥᱢᱟᱨᱴ
+si:ලේඛන වර්ණ ප්‍රකාරය: ස්මාර්ට්
+sk:Farebný režim dokumentu: Smart
+sl:Barvni način dokumenta: Pametno
+sn:Seta maitiro emavara edokumenti: Smart
+sp-rs:Režim boja dokumenta: Pametan
+sq:Modaliteti i ngjyrës së dokumentit: Smart
+sr-rs:Режим боје документа: Паметан
+sv:Dokumentfärgläge: Smart
+ta:ஆவண நிற முறை: ஸ்மார்ட்
+th:โหมดสีเอกสาร: สมาร์ท
+tl:Color mode ng dokumento: Smart
+tr:Belge renk modu: Akıllı
+tw:設定文件色彩模式：智慧
+uk:Колірний режим документа: Розумний
+uz:Hujjat rang rejimi: Aqlli
+vn:Chế độ màu tài liệu: Thông minh
+:Set Document Color Mode: Match Theme
+af:Stel dokumentkleurmodus: Volg tema
+am:Փաստաթղթի գունային ռեժիմ՝ համապատասխանել թեմային
+ar:تعيين وضع ألوان المستند: مطابقة السمة
+az:Sənəd rəng rejimini təyin et: Temaya uyğun
+bg:Задай цветов режим на документа: Съответствие на темата
+bn:ডকুমেন্ট রঙ মোড সেট করুন: থিম মিল
+br:Definir modo de cor do documento: Seguir tema
+bs:Postavi način boja dokumenta: Prati temu
+by:Усталяваць рэжым колеру дакумента: Пад тему
+ca:Estableix mode de color del document: Segueix el tema
+ca-xv:Estableix mode de color del document: Segueix el tema
+cn:设置文档颜色模式：跟随主题
+co:Impostà modu di culore di u documentu: Segue u tema
+cy:Gosod modd lliw dogfen: Cyfateb thema
+cz:Nastavit barevný režim dokumentu: Podle motivu
+de:Dokumentfarbmodus: Theme folgen
+dk:Indstil dokumentfarvetilstand: Følg tema
+el:Ορισμός λειτουργίας χρώματος εγγράφου: Ακολούθηση θέματος
+es:Modo de color del documento: Seguir tema
+et:Määra dokumendi värvirežiim: Järgi teemat
+eu:Ezarri dokumentuaren kolore modua: Jarraitu gaia
+fa:تنظیم حالت رنگ سند: مطابق پوسته
+fi:Aseta asiakirjan väritila: Seuraa teemaa
+fo:Set litmóti í skjali: Fylg tema
+fr:Mode couleur du document : Suivre le thème
+fy-nl:Dokumintkleurmodus: Folgje tema
+ga:Socraigh mód dath an doiciméid: Meaitseáil téama
+gl:Modo de cor do documento: Seguir tema
+he:הגדר מצב צבע מסמך: התאמה לערכת נושא
+hi:दस्तावेज़ रंग मोड सेट करें: थीम मिलान
+hr:Postavi način boja dokumenta: Prati temu
+hu:Dokumentumszín-mód: Téma követése
+id:Mode warna dokumen: Sesuai tema
+it:Modalità colore documento: Segui tema
+ja:ドキュメントのカラーモード：テーマに合わせる
+jv:Mode warna dokumen: Ngetut tema
+ka:დოკუმენტის ფერის რეჟიმი: თემის მიხედვით
+kr:문서 색상 모드: 테마 따름
+ku:Moda rengê belgeyê: Li gor temayê
+kw:Set mod liw an dastelhyans: Herens an them
+lt:Dokumento spalvų režimas: Pagal temą
+lv:Dokumenta krāsu režīms: Pēc tēmas
+mk:Режим на боја на документ: Според тема
+ml:ഡോക്യുമെന്റ് നിറ മോഡ്: തീം പിന്തുടരുക
+mm:စာရွက်စာတမ်း အရောင်မုဒ်: အပြင်အမူ လိုက်နာ
+my:Mod warna dokumen: Ikut tema
+ne:कागजात रङ मोड: थिम अनुसार
+nl:Documentkleurmodus: Thema volgen
+nn:Dokumentfargemodus: Følg tema
+no:Dokumentfargemodus: Følg tema
+pa:ਦਸਤਾਵੇਜ਼ ਰੰਗ ਮੋਡ: ਥੀਮ ਅਨੁਸਾਰ
+pl:Tryb koloru dokumentu: Zgodnie z motywem
+pt:Modo de cor do documento: Seguir tema
+ro:Mod culoare document: Potrivire temă
+ru:Цветовой режим документа: Как в теме
+sat:ᱫᱚᱞᱤᱞ ᱨᱚᱝ mod: ᱛᱤᱢ ᱞᱮᱠᱷᱟ
+si:ලේඛන වර්ණ ප්‍රකාරය: තේමාව අනුගමනය
+sk:Farebný režim dokumentu: Podľa motívu
+sl:Barvni način dokumenta: Po temi
+sn:Seta maitiro emavara edokumenti: Teama inotevera
+sp-rs:Režim boja dokumenta: Prati temu
+sq:Modaliteti i ngjyrës së dokumentit: Përputh me temën
+sr-rs:Режим боје документа: По теми
+sv:Dokumentfärgläge: Följ tema
+ta:ஆவண நிற முறை: தீம் பொருந்த
+th:โหมดสีเอกสาร: ตามธีม
+tl:Color mode ng dokumento: Sunod sa tema
+tr:Belge renk modu: Temaya uy
+tw:設定文件色彩模式：跟隨主題
+uk:Колірний режим документа: Як у темі
+uz:Hujjat rang rejimi: Mavzuga mos
+vn:Chế độ màu tài liệu: Theo giao diện
+:Set Document Color Mode: Original
+af:Stel dokumentkleurmodus: Origineel
+am:Փաստաթղթի գունային ռեժիմ՝ բնօրինակ
+ar:تعيين وضع ألوان المستند: أصلي
+az:Sənəd rəng rejimini təyin et: Orijinal
+bg:Задай цветов режим на документа: Оригинален
+bn:ডকুমেন্ট রঙ মোড সেট করুন: মূল
+br:Definir modo de cor do documento: Original
+bs:Postavi način boja dokumenta: Originalni
+by:Усталяваць рэжым колеру дакумента: Арыгінал
+ca:Estableix mode de color del document: Original
+ca-xv:Estableix mode de color del document: Original
+cn:设置文档颜色模式：原版
+co:Impostà modu di culore di u documentu: Originale
+cy:Gosod modd lliw dogfen: Gwreiddiol
+cz:Nastavit barevný režim dokumentu: Původní
+de:Dokumentfarbmodus: Original
+dk:Indstil dokumentfarvetilstand: Original
+el:Ορισμός λειτουργίας χρώματος εγγράφου: Πρωτότυπη
+es:Modo de color del documento: Original
+et:Määra dokumendi värvirežiim: Algne
+eu:Ezarri dokumentuaren kolore modua: Jatorrizkoa
+fa:تنظیم حالت رنگ سند: اصلی
+fi:Aseta asiakirjan väritila: Alkuperäinen
+fo:Set litmóti í skjali: Upprunalegt
+fr:Mode couleur du document : Original
+fy-nl:Dokumintkleurmodus: Origenel
+ga:Socraigh mód dath an doiciméid: Bunaidh
+gl:Modo de cor do documento: Orixinal
+he:הגדר מצב צבע מסמך: מקורי
+hi:दस्तावेज़ रंग मोड सेट करें: मूल
+hr:Postavi način boja dokumenta: Izvorni
+hu:Dokumentumszín-mód: Eredeti
+id:Mode warna dokumen: Asli
+it:Modalità colore documento: Originale
+ja:ドキュメントのカラーモード：オリジナル
+jv:Mode warna dokumen: Asli
+ka:დოკუმენტის ფერის რეჟიმი: ორიგინალი
+kr:문서 색상 모드: 원본
+ku:Moda rengê belgeyê: Resen
+kw:Set mod liw an dastelhyans: Oris
+lt:Dokumento spalvų režimas: Originalus
+lv:Dokumenta krāsu režīms: Oriģināls
+mk:Режим на боја на документ: Оригинален
+ml:ഡോക്യുമെന്റ് നിറ മോഡ്: യഥാർത്ഥ
+mm:စာရွက်စာတမ်း အရောင်မုဒ်: မူရင်း
+my:Mod warna dokumen: Asal
+ne:कागजात रङ मोड: मूल
+nl:Documentkleurmodus: Origineel
+nn:Dokumentfargemodus: Original
+no:Dokumentfargemodus: Original
+pa:ਦਸਤਾਵੇਜ਼ ਰੰਗ ਮੋਡ: ਅਸਲ
+pl:Tryb koloru dokumentu: Oryginalny
+pt:Modo de cor do documento: Original
+ro:Mod culoare document: Original
+ru:Цветовой режим документа: Оригинал
+sat:ᱫᱚᱞᱤᱞ ᱨᱚᱝ mod: ᱢᱩᱞ
+si:ලේඛන වර්ණ ප්‍රකාරය: මුල්
+sk:Farebný režim dokumentu: Pôvodný
+sl:Barvni način dokumenta: Izvirno
+sn:Seta maitiro emavara edokumenti: Chokutanga
+sp-rs:Režim boja dokumenta: Originalni
+sq:Modaliteti i ngjyrës së dokumentit: Origjinal
+sr-rs:Режим боје документа: Оригинални
+sv:Dokumentfärgläge: Original
+ta:ஆவண நிற முறை: அசல்
+th:โหมดสีเอกสาร: ต้นฉบับ
+tl:Color mode ng dokumento: Orihinal
+tr:Belge renk modu: Orijinal
+tw:設定文件色彩模式：原版
+uk:Колірний режим документа: Оригінал
+uz:Hujjat rang rejimi: Asl
+vn:Chế độ màu tài liệu: Gốc
 :Double-Click Word Lookup (enabled)
 af:Dubbelklik-woordopsoek (aan)
 am:Կրկնակի սեղմումով բառային որոնում (միաց.)
@@ -31661,3 +31880,308 @@ tw:線上智慧雙語設定
 uk:Online smart bilingual settings
 uz:Online smart bilingual settings
 vn:Online smart bilingual settings
+
+:search files (Ctrl + F)
+cn:搜索文件 (Ctrl + F)
+de:Dateien suchen (Strg + F)
+fr:Rechercher des fichiers (Ctrl + F)
+ja:ファイルを検索 (Ctrl + F)
+kr:파일 검색 (Ctrl + F)
+ru:Поиск файлов (Ctrl + F)
+tw:搜尋檔案 (Ctrl + F)
+:Tip: 
+cn:提示：
+de:Tipp: 
+fr:Astuce : 
+ja:ヒント：
+kr:팁: 
+ru:Подсказка: 
+tw:提示：
+:You can [customize scrollbar](CmdChangeScrollbar).
+cn:你可以[自定义滚动条](CmdChangeScrollbar)。
+de:Sie können die [Scrollleiste anpassen](CmdChangeScrollbar).
+fr:Vous pouvez [personnaliser la barre de défilement](CmdChangeScrollbar).
+ja:[スクロールバーをカスタマイズ](CmdChangeScrollbar)できます。
+kr:[스크롤바 사용자 지정](CmdChangeScrollbar)이 가능합니다.
+ru:Можно [настроить полосу прокрутки](CmdChangeScrollbar).
+tw:你可以[自訂捲軸](CmdChangeScrollbar)。
+:You can [customize keyboard shortcuts](Help/Customizing-keyboard-shortcuts).
+cn:你可以[自定义键盘快捷键](Help/Customizing-keyboard-shortcuts)。
+de:Sie können [Tastenkürzel anpassen](Help/Customizing-keyboard-shortcuts).
+fr:Vous pouvez [personnaliser les raccourcis clavier](Help/Customizing-keyboard-shortcuts).
+ja:[キーボードショートカットをカスタマイズ](Help/Customizing-keyboard-shortcuts)できます。
+kr:[키보드 단축키 사용자 지정](Help/Customizing-keyboard-shortcuts)이 가능합니다.
+ru:Можно [настроить сочетания клавиш](Help/Customizing-keyboard-shortcuts).
+tw:你可以[自訂鍵盤快速鍵](Help/Customizing-keyboard-shortcuts)。
+:You can [customize toolbar](Help/Customize-toolbar).
+cn:你可以[自定义工具栏](Help/Customize-toolbar)。
+de:Sie können die [Symbolleiste anpassen](Help/Customize-toolbar).
+fr:Vous pouvez [personnaliser la barre d'outils](Help/Customize-toolbar).
+ja:[ツールバーをカスタマイズ](Help/Customize-toolbar)できます。
+kr:[도구 모음 사용자 지정](Help/Customize-toolbar)이 가능합니다.
+ru:Можно [настроить панель инструментов](Help/Customize-toolbar).
+tw:你可以[自訂工具列](Help/Customize-toolbar)。
+:Press (Key/CmdCommandPalette) to open [command palette](CmdCommandPalette).
+cn:按 (Key/CmdCommandPalette) 打开[命令面板](CmdCommandPalette)。
+de:Drücken Sie (Key/CmdCommandPalette), um die [Befehlsliste](CmdCommandPalette) zu öffnen.
+fr:Appuyez sur (Key/CmdCommandPalette) pour ouvrir la [palette de commandes](CmdCommandPalette).
+ja:(Key/CmdCommandPalette) で[コマンドパレット](CmdCommandPalette)を開けます。
+kr:(Key/CmdCommandPalette)로 [명령 팔레트](CmdCommandPalette)를 엽니다.
+ru:Нажмите (Key/CmdCommandPalette), чтобы открыть [палитру команд](CmdCommandPalette).
+tw:按 (Key/CmdCommandPalette) 開啟[命令面板](CmdCommandPalette)。
+:To open file from history open [command palette](CmdCommandPalette) with (Key/CmdCommandPalette) and type `#`.
+cn:要从历史记录打开文件，请用 (Key/CmdCommandPalette) 打开[命令面板](CmdCommandPalette)并输入 `#`。
+de:Um eine Datei aus dem Verlauf zu öffnen, öffnen Sie die [Befehlsliste](CmdCommandPalette) mit (Key/CmdCommandPalette) und geben `#` ein.
+fr:Pour ouvrir un fichier depuis l'historique, ouvrez la [palette de commandes](CmdCommandPalette) avec (Key/CmdCommandPalette) et tapez `#`.
+ja:履歴からファイルを開くには (Key/CmdCommandPalette) で[コマンドパレット](CmdCommandPalette)を開き、`#` と入力します。
+kr:기록에서 파일을 열려면 (Key/CmdCommandPalette)로 [명령 팔레트](CmdCommandPalette)를 연 뒤 `#`를 입력하세요.
+ru:Чтобы открыть файл из истории, откройте [палитру команд](CmdCommandPalette) через (Key/CmdCommandPalette) и введите `#`.
+tw:要從歷史記錄開啟檔案，請用 (Key/CmdCommandPalette) 開啟[命令面板](CmdCommandPalette)並輸入 `#`。
+:You can [extract text from PDF file](Help/Tool-x-extract-text-from-pdf).
+cn:你可以[从 PDF 文件提取文本](Help/Tool-x-extract-text-from-pdf)。
+de:Sie können [Text aus PDF-Dateien extrahieren](Help/Tool-x-extract-text-from-pdf).
+fr:Vous pouvez [extraire le texte d'un PDF](Help/Tool-x-extract-text-from-pdf).
+ja:[PDF からテキストを抽出](Help/Tool-x-extract-text-from-pdf)できます。
+kr:[PDF에서 텍스트 추출](Help/Tool-x-extract-text-from-pdf)이 가능합니다.
+ru:Можно [извлечь текст из PDF](Help/Tool-x-extract-text-from-pdf).
+tw:你可以[從 PDF 檔案擷取文字](Help/Tool-x-extract-text-from-pdf)。
+:You can [toggle menu bar](CmdToggleMenuBar) with (Key/CmdToggleMenuBar).
+cn:你可以用 (Key/CmdToggleMenuBar) [切换菜单栏](CmdToggleMenuBar)。
+de:Mit (Key/CmdToggleMenuBar) können Sie die [Menüleiste ein-/ausblenden](CmdToggleMenuBar).
+fr:Vous pouvez [afficher/masquer la barre de menus](CmdToggleMenuBar) avec (Key/CmdToggleMenuBar).
+ja:(Key/CmdToggleMenuBar) で[メニューバーの表示を切り替え](CmdToggleMenuBar)できます。
+kr:(Key/CmdToggleMenuBar)로 [메뉴 모음 표시 전환](CmdToggleMenuBar)이 가능합니다.
+ru:Можно [переключить строку меню](CmdToggleMenuBar) с помощью (Key/CmdToggleMenuBar).
+tw:你可以用 (Key/CmdToggleMenuBar) [切換功能表列](CmdToggleMenuBar)。
+:You can [toggle toolbar](CmdToggleToolbar) with (Key/CmdToggleToolbar).
+cn:你可以用 (Key/CmdToggleToolbar) [切换工具栏](CmdToggleToolbar)。
+de:Mit (Key/CmdToggleToolbar) können Sie die [Symbolleiste ein-/ausblenden](CmdToggleToolbar).
+fr:Vous pouvez [afficher/masquer la barre d'outils](CmdToggleToolbar) avec (Key/CmdToggleToolbar).
+ja:(Key/CmdToggleToolbar) で[ツールバーの表示を切り替え](CmdToggleToolbar)できます。
+kr:(Key/CmdToggleToolbar)로 [도구 모음 표시 전환](CmdToggleToolbar)이 가능합니다.
+ru:Можно [переключить панель инструментов](CmdToggleToolbar) с помощью (Key/CmdToggleToolbar).
+tw:你可以用 (Key/CmdToggleToolbar) [切換工具列](CmdToggleToolbar)。
+:You can [edit PDF annotations](Help/Editing-annotations).
+cn:你可以[编辑 PDF 标注](Help/Editing-annotations)。
+de:Sie können [PDF-Anmerkungen bearbeiten](Help/Editing-annotations).
+fr:Vous pouvez [modifier les annotations PDF](Help/Editing-annotations).
+ja:[PDF 注釈を編集](Help/Editing-annotations)できます。
+kr:[PDF 주석 편집](Help/Editing-annotations)이 가능합니다.
+ru:Можно [редактировать аннотации PDF](Help/Editing-annotations).
+tw:你可以[編輯 PDF 註解](Help/Editing-annotations)。
+:note
+cn:说明
+de:Hinweis
+fr:Note
+ja:注記
+kr:참고
+ru:Примечание
+tw:說明
+:Community fork; not affiliated with sumatrapdfreader.org
+cn:社区分支；与 sumatrapdfreader.org 无关
+de:Community-Fork; nicht mit sumatrapdfreader.org verbunden
+fr:Fork communautaire ; non affilié à sumatrapdfreader.org
+ja:コミュニティ版；sumatrapdfreader.org とは無関係
+kr:커뮤니티 포크; sumatrapdfreader.org와 무관
+ru:Сообщественный форк; не связан с sumatrapdfreader.org
+tw:社群分支；與 sumatrapdfreader.org 無關
+:Plus source
+cn:Plus 源码
+de:Plus-Quellcode
+fr:Source Plus
+ja:Plus ソース
+kr:Plus 소스
+ru:Исходники Plus
+tw:Plus 原始碼
+:Sumatra PDF Plus on GitHub
+cn:GitHub 上的 Sumatra PDF Plus
+de:Sumatra PDF Plus auf GitHub
+fr:Sumatra PDF Plus sur GitHub
+ja:GitHub の Sumatra PDF Plus
+kr:GitHub의 Sumatra PDF Plus
+ru:Sumatra PDF Plus на GitHub
+tw:GitHub 上的 Sumatra PDF Plus
+:Plus issues
+cn:Plus 问题反馈
+de:Plus-Probleme
+fr:Problèmes Plus
+ja:Plus 問題報告
+kr:Plus 이슈
+ru:Проблемы Plus
+tw:Plus 問題回報
+:Report bugs (this fork only)
+cn:报告错误（仅限本分支）
+de:Fehler melden (nur dieser Fork)
+fr:Signaler des bugs (ce fork uniquement)
+ja:バグ報告（このフォークのみ）
+kr:버그 보고(이 포크만)
+ru:Сообщить об ошибках (только этот форк)
+tw:回報錯誤（僅限本分支）
+:Plus guide
+cn:Plus 指南
+de:Plus-Anleitung
+fr:Guide Plus
+ja:Plus ガイド
+kr:Plus 가이드
+ru:Руководство Plus
+tw:Plus 指南
+:User guide (readme.txt)
+cn:用户指南 (readme.txt)
+de:Benutzerhandbuch (readme.txt)
+fr:Guide utilisateur (readme.txt)
+ja:ユーザーガイド (readme.txt)
+kr:사용자 가이드 (readme.txt)
+ru:Руководство пользователя (readme.txt)
+tw:使用者指南 (readme.txt)
+:official site
+cn:官方网站
+de:Offizielle Website
+fr:Site officiel
+ja:公式サイト
+kr:공식 사이트
+ru:Официальный сайт
+tw:官方網站
+:SumatraPDF website (upstream)
+cn:SumatraPDF 网站（上游）
+de:SumatraPDF-Website (Upstream)
+fr:Site SumatraPDF (amont)
+ja:SumatraPDF サイト（上流）
+kr:SumatraPDF 웹사이트(업스트림)
+ru:Сайт SumatraPDF (upstream)
+tw:SumatraPDF 網站（上游）
+:official manual
+cn:官方手册
+de:Offizielles Handbuch
+fr:Manuel officiel
+ja:公式マニュアル
+kr:공식 매뉴얼
+ru:Официальное руководство
+tw:官方手冊
+:SumatraPDF manual (upstream)
+cn:SumatraPDF 手册（上游）
+de:SumatraPDF-Handbuch (Upstream)
+fr:Manuel SumatraPDF (amont)
+ja:SumatraPDF マニュアル（上流）
+kr:SumatraPDF 매뉴얼(업스트림)
+ru:Руководство SumatraPDF (upstream)
+tw:SumatraPDF 手冊（上游）
+:official forums
+cn:官方论坛
+de:Offizielle Foren
+fr:Forums officiels
+ja:公式フォーラム
+kr:공식 포럼
+ru:Официальные форумы
+tw:官方論壇
+:SumatraPDF forums (upstream)
+cn:SumatraPDF 论坛（上游）
+de:SumatraPDF-Foren (Upstream)
+fr:Forums SumatraPDF (amont)
+ja:SumatraPDF フォーラム（上流）
+kr:SumatraPDF 포럼(업스트림)
+ru:Форумы SumatraPDF (upstream)
+tw:SumatraPDF 論壇（上游）
+:programming
+cn:编程
+de:Programmierung
+fr:Programmation
+ja:プログラミング
+kr:프로그래밍
+ru:Программирование
+tw:程式設計
+:The Programmers
+cn:程序员
+de:Die Programmierer
+fr:Les programmeurs
+ja:プログラマー
+kr:프로그래머
+ru:Программисты
+tw:程式設計師
+:licenses
+cn:许可证
+de:Lizenzen
+fr:Licences
+ja:ライセンス
+kr:라이선스
+ru:Лицензии
+tw:授權
+:Various Open Source
+cn:多种开源许可
+de:Verschiedene Open Source
+fr:Divers open source
+ja:各種オープンソース
+kr:다양한 오픈 소스
+ru:Различные лицензии open source
+tw:多種開源授權
+:last change
+cn:最近更改
+de:Letzte Änderung
+fr:Dernière modification
+ja:最新の変更
+kr:최근 변경
+ru:Последнее изменение
+tw:最近變更
+:git commit
+cn:git 提交
+de:Git-Commit
+fr:commit git
+ja:git コミット
+kr:git 커밋
+ru:git-коммит
+tw:git 提交
+:a note
+cn:说明
+de:Hinweis
+fr:Note
+ja:注記
+kr:참고
+ru:Примечание
+tw:說明
+:Pre-release version, for testing only!
+cn:预发布版本，仅供测试！
+de:Vorabversion, nur zum Testen!
+fr:Version préliminaire, pour tests uniquement !
+ja:プレリリース版、テスト専用！
+kr:프리릴리스 버전, 테스트 전용!
+ru:Предварительная версия, только для тестирования!
+tw:預發行版本，僅供測試！
+:Debug version, for testing only!
+cn:调试版本，仅供测试！
+de:Debug-Version, nur zum Testen!
+fr:Version de débogage, pour tests uniquement !
+ja:デバッグ版、テスト専用！
+kr:디버그 버전, 테스트 전용!
+ru:Отладочная версия, только для тестирования!
+tw:偵錯版本，僅供測試！
+:Pre-release
+cn:预发布
+de:Vorabversion
+fr:Préversion
+ja:プレリリース
+kr:프리릴리스
+ru:Предрелиз
+tw:預發行
+:64-bit
+cn:64 位
+de:64-Bit
+fr:64 bits
+ja:64 ビット
+kr:64비트
+ru:64-bit
+tw:64 位元
+:32-bit
+cn:32 位
+de:32-Bit
+fr:32 bits
+ja:32 ビット
+kr:32비트
+ru:32-bit
+tw:32 位元
+:(dbg)
+cn:(调试)
+de:(dbg)
+fr:(dbg)
+ja:(dbg)
+kr:(dbg)
+ru:(dbg)
+tw:(偵錯)

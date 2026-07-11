@@ -1584,7 +1584,7 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
 
     gCrashOnOpen = flags.crashOnOpen;
 
-    gRenderCache->textColor = ThemePageRenderColors(gRenderCache->backgroundColor);
+    gRenderCache->textColor = ThemePageRenderColors(gRenderCache->backgroundColor, true);
     gRenderCache->linkColor = ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : 0;
     // logfa("retrieved doc colors in WinMain: 0x%x 0x%x\n", gRenderCache->textColor, gRenderCache->backgroundColor);
 

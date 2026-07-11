@@ -87,9 +87,9 @@ CmdToggleTabsMru,,Toggle Tabs MRU Order,"Toggle TabsMru setting: Ctrl+Tab switch
 CmdToggleFrequentlyRead,,Toggle Frequently Read,ver 3.5+
 CmdSelectNextTheme,,Select Next Theme,ver 3.5+
 CmdToggleLightDarkTheme,,Toggle Light/Dark Theme,Toolbar button and command palette, ver 3.7+
-CmdSetPdfDocumentColorModeAuto,,Set PDF Document Color Mode: Auto,"Toolbar button for PDF in dark theme; smart dark mode, ver 3.7+"
-CmdSetPdfDocumentColorModeBlack,,Set PDF Document Color Mode: Black,"Toolbar button for PDF in dark theme; full dark, ver 3.7+"
-CmdSetPdfDocumentColorModeLight,,Set PDF Document Color Mode: Light,"Toolbar button for PDF in dark theme; original colors, ver 3.7+"
+CmdSetPdfDocumentColorModeAuto,,Set Document Color Mode: Smart,"Toolbar button; smart color adaptation for any readable document, ver 3.7+"
+CmdSetPdfDocumentColorModeBlack,,Set Document Color Mode: Match Theme,"Toolbar button; follow current theme colors for document content, ver 3.7+"
+CmdSetPdfDocumentColorModeLight,,Set Document Color Mode: Original,"Toolbar button; original document colors unchanged, ver 3.7+"
 CmdToggleDoubleClickWordLookup,,Toggle Double-Click Word Lookup,"Toolbar button and command palette; toggles EnableDoubleClickWordLookup advanced setting, ver 3.7+"
 CmdEbookFontSizeDecrease,,Ebook Font Size: Decrease,"Toolbar button and command palette; decreases reflowable ebook font size and reloads the document, ver 3.7+"
 CmdEbookFontSizeIncrease,,Ebook Font Size: Increase,"Toolbar button and command palette; increases reflowable ebook font size and reloads the document, ver 3.7+"

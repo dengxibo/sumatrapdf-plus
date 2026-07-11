@@ -49,6 +49,21 @@ void UpdateTabTitle(WindowTab* tab) {
     win->tabsCtrl->SetTextAndTooltip(idx, title, tooltip);
 }
 
+void UpdateHomeTabTitles() {
+    for (MainWindow* win : gWindows) {
+        if (!win->tabsCtrl) {
+            continue;
+        }
+        int n = win->TabCount();
+        for (int i = 0; i < n; i++) {
+            WindowTab* tab = win->GetTab(i);
+            if (tab && tab->IsAboutTab()) {
+                win->tabsCtrl->SetTextAndTooltip(i, _TRA("Home"), nullptr);
+            }
+        }
+    }
+}
+
 int GetTabbarHeight(HWND hwnd, float factor) {
     int tabDy = DpiScale(hwnd, kTabBarDy);
     HFONT hfont = GetAppFontForHwnd(hwnd);
@@ -639,7 +654,7 @@ WindowTab* AddTabToWindow(MainWindow* win, WindowTab* tab) {
         homeTab->type = WindowTab::Type::About;
         homeTab->canvasRc = win->canvasRc;
         TabInfo* newTab = new TabInfo();
-        newTab->text = str::Dup("Home");
+        newTab->text = str::Dup(_TRA("Home"));
         newTab->tooltip = nullptr;
         newTab->isPinned = true;
         newTab->canClose = true;

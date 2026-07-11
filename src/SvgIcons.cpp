@@ -152,13 +152,17 @@ static const char* gIconPauseSpeaking =
   <path d="M18 5v14" />
 </svg>)";
 
-// https://github.com/tabler/tabler-icons/blob/master/icons/sun.svg
-static const char* gIconThemeSun =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+// original PDF colors: portrait page with text lines (matches layout icon style)
+static const char* gIconDocColorOriginal =
+    R"DOCORIG(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
-  <circle cx="12" cy="12" r="4" />
-  <path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7" />
-</svg>)";
+  <g transform="translate(12 12) scale(0.92) translate(-12 -12)">
+    <rect x="5" y="3" width="14" height="18" rx="2" />
+    <line x1="8" y1="8" x2="16" y2="8" />
+    <line x1="8" y1="12" x2="16" y2="12" />
+    <line x1="8" y1="16" x2="13" y2="16" />
+  </g>
+</svg>)DOCORIG";
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/moon.svg - scaled down to match sun icon
 static const char* gIconThemeMoon =
@@ -169,7 +173,7 @@ static const char* gIconThemeMoon =
   </g>
 </svg>)MOON";
 
-// magic wand: auto document color mode
+// magic wand: smart document color mode
 static const char* gIconDocColorAuto =
     R"DOCAUTO(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
@@ -185,19 +189,15 @@ static const char* gIconDocColorAuto =
   <path d="M19.2 15H20.8" />
 </svg>)DOCAUTO";
 
-// sun-off: black document color mode (full invert, distinct from theme moon)
-static const char* gIconDocColorBlack =
-    R"DOCBLACK(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+// T-shirt (theme): match document colors to the current theme; stroke style after iconfont garment glyph
+static const char* gIconDocColorFollowTheme =
+    R"DOCFOLLOW(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
-  <g transform="translate(12 12) scale(0.85) translate(-12 -12)">
-    <circle cx="12" cy="12" r="4" />
-    <path d="M12 3v2" />
-    <path d="M12 19v2" />
-    <path d="M3 12h2" />
-    <path d="M19 12h2" />
-    <path d="M4.5 4.5l15 15" />
+  <g transform="translate(12 12) scale(0.92) translate(-12 -12)">
+    <path d="M15 4l6 2v5h-3v8a1 1 0 0 1 -1 1h-10a1 1 0 0 1 -1 -1v-8h-3v-5l6 -2" />
+    <path d="M10.5 6.5c.6 -.6 1.1 -.9 1.5 -.9s.9 .3 1.5 .9" />
   </g>
-</svg>)DOCBLACK";
+</svg>)DOCFOLLOW";
 
 // Translate-style word lookup: corner swap arrows + Latin a + hiragana (Tabler language-hiragana, scaled)
 static const char* gIconDictionary =
@@ -237,10 +237,10 @@ static const char* gIcons[] = {
     gIconBookmark,
     gIconRotateLeft,
     gIconRotateRight,
-    gIconThemeSun,
+    gIconDocColorOriginal,
     gIconThemeMoon,
     gIconDocColorAuto,
-    gIconDocColorBlack,
+    gIconDocColorFollowTheme,
     gIconDictionary,
     gIconSpeak,
     gIconPauseSpeaking,

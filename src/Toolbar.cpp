@@ -91,9 +91,12 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::MatchCase, CmdFindToggleMatchCase, _TRN("Toggle Match Case")},
     {TbIcon::Dictionary, CmdToggleDoubleClickWordLookup, _TRN("Toggle Double-Click Word Lookup")},
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
-    {TbIcon::DocColorAuto, CmdSetPdfDocumentColorModeAuto, _TRN("Document Color Mode: Auto (smart dark mode)")},
-    {TbIcon::ThemeSun, CmdSetPdfDocumentColorModeLight, _TRN("Document Color Mode: Light (original colors)")},
-    {TbIcon::DocColorBlack, CmdSetPdfDocumentColorModeBlack, _TRN("Document Color Mode: Black (full dark)")},
+    {TbIcon::DocColorAuto, CmdSetPdfDocumentColorModeAuto,
+     _TRN("Document Color Mode: Smart (adapt colors intelligently)")},
+    {TbIcon::DocColorOriginal, CmdSetPdfDocumentColorModeLight,
+     _TRN("Document Color Mode: Original (document colors unchanged)")},
+    {TbIcon::DocColorFollowTheme, CmdSetPdfDocumentColorModeBlack,
+     _TRN("Document Color Mode: Match theme (follow current theme colors)")},
     {TbIcon::Speak, CmdReadAloud, _TRN("Read Aloud")},
 };
 // unicode chars: https://www.compart.com/en/unicode/U+25BC
@@ -197,25 +200,19 @@ static void UpdateThemeToolbarButton(MainWindow* win) {
     InvalidateRect(win->hwndToolbar, nullptr, FALSE);
 }
 
-static bool IsPdfDocumentTab(WindowTab* tab) {
-    if (!tab) {
-        return false;
-    }
-    EngineBase* engine = tab->GetEngine();
-    if (!engine) {
-        return false;
-    }
-    return engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".pdf");
-}
-
-bool NeedsPdfDocumentColorModeUI(MainWindow* win) {
-    if (!ThemeUsesDarkChrome()) {
-        return false;
-    }
+bool NeedsDocumentColorModeUI(MainWindow* win) {
     if (!win || !win->IsDocLoaded()) {
         return false;
     }
-    return IsPdfDocumentTab(win->CurrentTab());
+    WindowTab* tab = win->CurrentTab();
+    if (!tab || tab->IsAboutTab()) {
+        return false;
+    }
+    return true;
+}
+
+bool NeedsPdfDocumentColorModeUI(MainWindow* win) {
+    return NeedsDocumentColorModeUI(win);
 }
 
 void UpdatePdfDocumentColorModeToolbarButton(MainWindow* win) {
@@ -224,7 +221,7 @@ void UpdatePdfDocumentColorModeToolbarButton(MainWindow* win) {
         CmdSetPdfDocumentColorModeBlack,
         CmdSetPdfDocumentColorModeLight,
     };
-    bool show = NeedsPdfDocumentColorModeUI(win);
+    bool show = NeedsDocumentColorModeUI(win);
     for (int cmdId : kPdfDocumentColorModeCmds) {
         int buttons[4];
         int n = GetToolbarButtonsByID(cmdId, buttons);
@@ -309,7 +306,7 @@ static bool IsCmdAvailable(MainWindow* win, int cmdId) {
         case CmdSetPdfDocumentColorModeAuto:
         case CmdSetPdfDocumentColorModeBlack:
         case CmdSetPdfDocumentColorModeLight:
-            return NeedsPdfDocumentColorModeUI(win);
+            return NeedsDocumentColorModeUI(win);
     }
     auto ctx = NewBuildMenuCtx(win->CurrentTab(), Point{0, 0});
     AutoRun delCtx(DeleteBuildMenuCtx, ctx);
@@ -336,7 +333,7 @@ static bool IsCmdEnabled(MainWindow* win, int cmdId) {
         case CmdSetPdfDocumentColorModeAuto:
         case CmdSetPdfDocumentColorModeBlack:
         case CmdSetPdfDocumentColorModeLight:
-            return NeedsPdfDocumentColorModeUI(win);
+            return NeedsDocumentColorModeUI(win);
     }
 
     auto [remove, disable] = GetCommandIdState(ctx, cmdId);

@@ -493,30 +493,23 @@ COLORREF AccentColor(COLORREF col, int light, int dark) {
 // canvas/window background color around the document pages
 // not affected by FixedPageUI.TextColor/BackgroundColor (those affect page rendering)
 COLORREF ThemeDocumentColors(COLORREF& bg) {
-    if (ThemeUsesDarkChrome()) {
-        if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
-            bg = ThemeMainWindowBackgroundColor();
-            if (GetResolvedThemeIndex() != kThemeIdxDarkBlack) {
-                bg = AccentColor(bg, 8);
-            }
-            return ThemeReadingTextColor();
+    PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
+    if (docMode == PdfDocumentColorMode::Light) {
+        bg = ThemeMainWindowBackgroundColor();
+        if (ThemeUsesDarkChrome() && GetResolvedThemeIndex() != kThemeIdxDarkBlack) {
+            bg = AccentColor(bg, 8);
         }
-        return ThemePageRenderColors(bg);
+        return ThemeUsesDarkChrome() ? ThemeReadingTextColor() : ThemeWindowTextColor();
+    }
+    if (ThemeUsesDarkChrome()) {
+        return ThemePageRenderColors(bg, true);
     }
 
     bg = ThemeMainWindowBackgroundColor();
-
-    if (!gGlobalPrefs->fixedPageUI.invertColors) {
-        return ThemeWindowTextColor();
+    if (docMode == PdfDocumentColorMode::Black) {
+        return ThemePageRenderColors(bg, true);
     }
-
-    COLORREF text = ThemeWindowTextColor();
-    bg = ThemeMainWindowBackgroundColor();
-
-    if (GetResolvedThemeIndex() != kThemeIdxDarkBlack) {
-        bg = AccentColor(bg, 8);
-    }
-    return text;
+    return ThemeWindowTextColor();
 }
 
 // colors for page bitmap recoloring (render cache)
@@ -524,10 +517,24 @@ COLORREF ThemeDocumentColors(COLORREF& bg) {
 COLORREF ThemePageRenderColors(COLORREF& bg, bool respectPdfDocColorMode) {
     COLORREF text = kColBlack;
     bg = kColWhite;
-    bool invertColors = gGlobalPrefs->fixedPageUI.invertColors || ThemeUsesDarkChrome();
-    if (respectPdfDocColorMode && ThemeUsesDarkChrome() &&
-        GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
-        invertColors = false;
+
+    PdfDocumentColorMode docMode = respectPdfDocColorMode ? GetPdfDocumentColorMode() : PdfDocumentColorMode::Black;
+    bool invertColors = false;
+    if (respectPdfDocColorMode) {
+        switch (docMode) {
+            case PdfDocumentColorMode::Light:
+                invertColors = false;
+                break;
+            case PdfDocumentColorMode::Black:
+                invertColors = true;
+                break;
+            case PdfDocumentColorMode::Auto:
+            default:
+                invertColors = ThemeUsesDarkChrome();
+                break;
+        }
+    } else {
+        invertColors = gGlobalPrefs->fixedPageUI.invertColors || ThemeUsesDarkChrome();
     }
 
     ParsedColor* parsedCol;
@@ -542,7 +549,10 @@ COLORREF ThemePageRenderColors(COLORREF& bg, bool respectPdfDocColorMode) {
     }
 
     if (!invertColors) {
-        if (!ThemeUsesDarkChrome() && !ThemeUsesOriginalPageColors() && text == kColBlack && bg == kColWhite) {
+        bool allowEyeCare =
+            !ThemeUsesDarkChrome() && !ThemeUsesOriginalPageColors() && text == kColBlack && bg == kColWhite;
+        if (allowEyeCare && (!respectPdfDocColorMode || docMode == PdfDocumentColorMode::Auto ||
+                             docMode == PdfDocumentColorMode::Black)) {
             text = kColEyeCareText;
             bg = kColEyeCarePageBg;
         }
@@ -558,7 +568,8 @@ COLORREF ThemePageRenderColors(COLORREF& bg, bool respectPdfDocColorMode) {
 
     // default colors
     if (!ThemeUsesDarkChrome()) {
-        std::swap(text, bg);
+        text = kColEyeCareText;
+        bg = kColEyeCarePageBg;
         return text;
     }
 

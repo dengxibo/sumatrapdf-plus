@@ -52,13 +52,39 @@ static bool FixedPageUiUsesCustomRenderColors() {
     return false;
 }
 
-static bool LightFixedPageNeedsBitmapRecolor() {
-    // Light-White: original PDF colors, no post-render pass (unless custom fixedPageUI colors).
+static bool FixedPageEngineNeedsBitmapRecolor(EngineBase* engine) {
+    if (!engine || engine->IsImageCollection()) {
+        return false;
+    }
+    PdfDocumentColorMode mode = GetPdfDocumentColorMode();
+    if (mode == PdfDocumentColorMode::Light) {
+        return FixedPageUiUsesCustomRenderColors();
+    }
+    if (mode == PdfDocumentColorMode::Black) {
+        return true;
+    }
+    // Smart
+    if (ThemeUsesDarkChrome()) {
+        return true;
+    }
     if (ThemeUsesOriginalPageColors()) {
         return FixedPageUiUsesCustomRenderColors();
     }
-    // Light-Warm: eye-care page remap.
+    // Light-Warm Smart: eye-care remap with image preserve.
     return true;
+}
+
+static bool IsFixedPageRecolorEngine(EngineBase* engine) {
+    if (!engine || engine->IsImageCollection()) {
+        return false;
+    }
+    if (engine->kind == kindEngineDjVu) {
+        return true;
+    }
+    if (engine->kind != kindEngineMupdf) {
+        return false;
+    }
+    return str::EqI(engine->defaultExt, ".pdf") || str::EqI(engine->defaultExt, ".xps");
 }
 
 static bool ShouldUpdateBitmapColors(EngineBase* engine, const DarkModeProfile* profile) {
@@ -69,53 +95,30 @@ static bool ShouldUpdateBitmapColors(EngineBase* engine, const DarkModeProfile* 
         return false;
     }
     if (engine->kind == kindEngineDjVu) {
-        return ThemeUsesDarkChrome();
+        return FixedPageEngineNeedsBitmapRecolor(engine);
     }
     return false;
 }
 
-static bool ShouldPreservePdfImagesInDarkMode(const DarkModeProfile* profile) {
+static bool ShouldPreserveImagesInSmartMode(const DarkModeProfile* profile) {
     return profile && profile->mode == PageColorMode::PreserveImages && profile->preservePdfImages;
 }
 
 static bool ShouldUpdateBitmapColorsLegacy(EngineBase* engine) {
-    if (!engine || engine->IsImageCollection()) {
-        return false;
-    }
-    if (engine->kind == kindEngineDjVu) {
-        if (!ThemeUsesDarkChrome()) {
-            return LightFixedPageNeedsBitmapRecolor();
-        }
-        return true;
-    }
-    if (engine->kind != kindEngineMupdf) {
-        return false;
-    }
-    if (str::EqI(engine->defaultExt, ".pdf") && ThemeUsesDarkChrome()) {
-        if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
-            return false;
-        }
-        if (PdfDarkModeUsesObjectLevel()) {
-            return false;
-        }
-        return true;
-    }
-    if (str::EqI(engine->defaultExt, ".pdf") || str::EqI(engine->defaultExt, ".xps")) {
-        if (!ThemeUsesDarkChrome()) {
-            return LightFixedPageNeedsBitmapRecolor();
-        }
-    }
-    return false;
-}
-
-static bool ShouldPreservePdfImagesLegacy(EngineBase* engine) {
-    if (!ThemeUsesDarkChrome()) {
-        return false;
-    }
-    if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Black) {
+    if (!IsFixedPageRecolorEngine(engine)) {
         return false;
     }
     if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
+        return FixedPageUiUsesCustomRenderColors();
+    }
+    if (PdfDarkModeUsesObjectLevel() && GetPdfDocumentColorMode() == PdfDocumentColorMode::Auto) {
+        return false;
+    }
+    return FixedPageEngineNeedsBitmapRecolor(engine);
+}
+
+static bool ShouldPreserveImagesLegacy(EngineBase* engine) {
+    if (GetPdfDocumentColorMode() != PdfDocumentColorMode::Auto) {
         return false;
     }
     if (!GetPreservePdfImagesInDarkMode()) {
@@ -966,8 +969,7 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
                 legacyPost = ShouldUpdateBitmapColorsLegacy(engine);
             }
             if (legacyPost) {
-                bool preserve =
-                    profile ? ShouldPreservePdfImagesInDarkMode(profile) : ShouldPreservePdfImagesLegacy(engine);
+                bool preserve = profile ? ShouldPreserveImagesInSmartMode(profile) : ShouldPreserveImagesLegacy(engine);
                 Vec<Rect> skipRects;
                 Vec<Rect>* skipRectsPtr = nullptr;
                 if (preserve) {

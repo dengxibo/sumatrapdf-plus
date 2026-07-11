@@ -34,3 +34,4 @@ void HomePageOnScrollTimer(MainWindow* win);
 void HomePageInvalidateScrollCache(MainWindow* win);
 void HomePageFocusSearch(MainWindow* win);
 void HomePageDestroySearch(MainWindow* win);
+void HomePageOnLanguageChangedAll();

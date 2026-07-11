@@ -29,6 +29,7 @@
 #include "FileThumbnails.h"
 #include "HomePage.h"
 #include "Translations.h"
+#include "WindowTab.h"
 #include "Version.h"
 #include "Theme.h"
 #include "AppSettings.h"
@@ -43,16 +44,17 @@
 #endif
 #define ABOUT_LINE_SEP_SIZE 1
 
-constexpr const char* sumatraTips = R"(You can [customize scrollbar](CmdChangeScrollbar).
-You can [customize keyboard shortcuts](Help/Customizing-keyboard-shortcuts).
-You can [customize toolbar](Help/Customize-toolbar).
-Press (Key/CmdCommandPalette) to open [command palette](CmdCommandPalette).
-To open file from history open [command palette](CmdCommandPalette) with (Key/CmdCommandPalette) and type `#`.
-You can [extract text from PDF file](Help/Tool-x-extract-text-from-pdf).
-You can [toggle menu bar](CmdToggleMenuBar) with (Key/CmdToggleMenuBar).
-You can [toggle toolbar](CmdToggleToolbar) with (Key/CmdToggleToolbar).
-You can [edit PDF annotations](Help/Editing-annotations).
-)";
+static const char* const gSumatraTipKeys[] = {
+    _TRN("You can [customize scrollbar](CmdChangeScrollbar)."),
+    _TRN("You can [customize keyboard shortcuts](Help/Customizing-keyboard-shortcuts)."),
+    _TRN("You can [customize toolbar](Help/Customize-toolbar)."),
+    _TRN("Press (Key/CmdCommandPalette) to open [command palette](CmdCommandPalette)."),
+    _TRN("To open file from history open [command palette](CmdCommandPalette) with (Key/CmdCommandPalette) and type `#`."),
+    _TRN("You can [extract text from PDF file](Help/Tool-x-extract-text-from-pdf)."),
+    _TRN("You can [toggle menu bar](CmdToggleMenuBar) with (Key/CmdToggleMenuBar)."),
+    _TRN("You can [toggle toolbar](CmdToggleToolbar) with (Key/CmdToggleToolbar)."),
+    _TRN("You can [edit PDF annotations](Help/Editing-annotations)."),
+};
 
 constexpr const char* sumatraPromos = "";
 
@@ -287,11 +289,33 @@ static void PickRandomTipOrPromo() {
     }
 }
 
+static void ResetTipsParsed() {
+    if (gParsedTips) {
+        delete[] gParsedTips;
+        gParsedTips = nullptr;
+    }
+    gParsedTipCount = 0;
+    if (gParsedPromos) {
+        delete[] gParsedPromos;
+        gParsedPromos = nullptr;
+    }
+    gParsedPromoCount = 0;
+    gSelectedTipIdx = -1;
+}
+
 static void EnsureTipsParsed() {
     if (gParsedTips || gParsedPromos) {
         return;
     }
-    gParsedTipCount = ParseTipsFromString(sumatraTips, "Tip: ", gParsedTips);
+    const char* tipPrefix = _TRA("Tip: ");
+    int n = dimofi(gSumatraTipKeys);
+    gParsedTips = new ParsedTip[n];
+    for (int i = 0; i < n; i++) {
+        const char* translated = _TRA(gSumatraTipKeys[i]);
+        TempStr prefixed = str::FormatTemp("%s%s", tipPrefix, translated);
+        ParseTip(gParsedTips[i], prefixed);
+    }
+    gParsedTipCount = n;
     gParsedPromoCount = ParseTipsFromString(sumatraPromos, nullptr, gParsedPromos);
     PickRandomTipOrPromo();
 }
@@ -344,25 +368,41 @@ struct AboutLayoutInfoEl {
 };
 
 static AboutLayoutInfoEl gAboutLayoutInfo[] = {
-    {"note", "Community fork; not affiliated with sumatrapdfreader.org", nullptr},
-    {"Plus source", "Sumatra PDF Plus on GitHub", kPlusRepoURL},
-    {"Plus issues", "Report bugs (this fork only)", kPlusIssuesURL},
-    {"Plus guide", "User guide (readme.txt)", kPlusReadmeURL},
-    {"official site", "SumatraPDF website (upstream)", kWebsiteURL},
-    {"official manual", "SumatraPDF manual (upstream)", kManualURL},
-    {"official forums", "SumatraPDF forums (upstream)", "https://github.com/sumatrapdfreader/sumatrapdf/discussions"},
-    {"programming", "The Programmers", "https://github.com/sumatrapdfreader/sumatrapdf/blob/master/AUTHORS"},
-    {"licenses", "Various Open Source", "https://github.com/sumatrapdfreader/sumatrapdf/blob/master/AUTHORS"},
+    {_TRN("note"), _TRN("Community fork; not affiliated with sumatrapdfreader.org"), nullptr},
+    {_TRN("Plus source"), _TRN("Sumatra PDF Plus on GitHub"), kPlusRepoURL},
+    {_TRN("Plus issues"), _TRN("Report bugs (this fork only)"), kPlusIssuesURL},
+    {_TRN("Plus guide"), _TRN("User guide (readme.txt)"), kPlusReadmeURL},
+    {_TRN("official site"), _TRN("SumatraPDF website (upstream)"), kWebsiteURL},
+    {_TRN("official manual"), _TRN("SumatraPDF manual (upstream)"), kManualURL},
+    {_TRN("official forums"), _TRN("SumatraPDF forums (upstream)"),
+     "https://github.com/sumatrapdfreader/sumatrapdf/discussions"},
+    {_TRN("programming"), _TRN("The Programmers"), "https://github.com/sumatrapdfreader/sumatrapdf/blob/master/AUTHORS"},
+    {_TRN("licenses"), _TRN("Various Open Source"), "https://github.com/sumatrapdfreader/sumatrapdf/blob/master/AUTHORS"},
 #if defined(GIT_COMMIT_ID_STR)
-    {"last change", "git commit " GIT_COMMIT_ID_STR, kPlusRepoURL "/commit/" GIT_COMMIT_ID_STR},
+    {_TRN("last change"), _TRN("git commit"), kPlusRepoURL "/commit/" GIT_COMMIT_ID_STR},
 #endif
 #if defined(PRE_RELEASE_VER)
-    {"a note", "Pre-release version, for testing only!", nullptr},
+    {_TRN("a note"), _TRN("Pre-release version, for testing only!"), nullptr},
 #endif
 #ifdef DEBUG
-    {"a note", "Debug version, for testing only!", nullptr},
+    {_TRN("a note"), _TRN("Debug version, for testing only!"), nullptr},
 #endif
     {nullptr, nullptr, nullptr}};
+
+static TempStr AboutLeftTxtTemp(const AboutLayoutInfoEl* el) {
+    return str::DupTemp(_TRA(el->leftTxt));
+}
+
+static TempStr AboutRightTxtTemp(const AboutLayoutInfoEl* el) {
+    if (str::Eq(el->rightTxt, "git commit")) {
+#if defined(GIT_COMMIT_ID_STR)
+        return str::JoinTemp(_TRA("git commit"), " ", GIT_COMMIT_ID_STR);
+#else
+        return str::DupTemp(_TRA("git commit"));
+#endif
+    }
+    return str::DupTemp(_TRA(el->rightTxt));
+}
 
 static Vec<StaticLink*> gStaticLinks;
 
@@ -374,12 +414,12 @@ void SetPromoString(const char* s) {
 static TempStr GetAppVersionTemp() {
     TempStr s = str::DupTemp("v" CURR_VERSION_STRA);
     if (IsProcess64()) {
-        s = str::JoinTemp(s, " 64-bit");
+        s = str::JoinTemp(s, " ", _TRA("64-bit"));
     } else {
-        s = str::JoinTemp(s, " 32-bit");
+        s = str::JoinTemp(s, " ", _TRA("32-bit"));
     }
     if (gIsDebugBuild) {
-        s = str::JoinTemp(s, " (dbg)");
+        s = str::JoinTemp(s, " ", _TRA("(dbg)"));
     }
     return s;
 }
@@ -423,7 +463,7 @@ static void DrawSumatraVersion(HDC hdc, Rect rect) {
     HdcDrawText(hdc, ver, p, fmt, fontVersionTxt);
     p.y += DpiScale(hdc, 13);
     if (gIsPreReleaseBuild) {
-        HdcDrawText(hdc, "Pre-release", p, fmt);
+        HdcDrawText(hdc, _TRA("Pre-release"), p, fmt);
     }
 }
 
@@ -472,13 +512,15 @@ static Size CalcSumatraVersionSize(HDC hdc) {
     return sz;
 }
 
-static TempStr TrimGitTemp(char* s) {
+static TempStr TrimGitTemp(const char* s) {
     if (gitCommidId && str::EndsWith(s, gitCommidId)) {
-        auto sLen = str::Len(s);
-        auto gitLen = str::Len(gitCommidId);
-        s = str::DupTemp(s, sLen - gitLen - 7);
+        int len = (int)(str::Len(s) - str::Len(gitCommidId));
+        while (len > 0 && s[len - 1] == ' ') {
+            len--;
+        }
+        return str::DupTemp(s, len);
     }
-    return s;
+    return (TempStr)s;
 }
 
 /* Draws the about screen and remembers some state for hyperlinking.
@@ -533,8 +575,9 @@ static void DrawAbout(HWND hwnd, HDC hdc, Rect rect, Vec<StaticLink*>& staticLin
     SelectObject(hdc, fontLeftTxt);
     uint fmt = DT_LEFT | DT_NOCLIP;
     for (AboutLayoutInfoEl* el = gAboutLayoutInfo; el->leftTxt; el++) {
+        TempStr leftTxt = AboutLeftTxtTemp(el);
         auto& pos = el->leftPos;
-        HdcDrawText(hdc, el->leftTxt, pos, fmt);
+        HdcDrawText(hdc, leftTxt, pos, fmt);
     }
 
     /* render text on the right */
@@ -549,7 +592,7 @@ static void DrawAbout(HWND hwnd, HDC hdc, Rect rect, Vec<StaticLink*>& staticLin
             col = ThemeWindowTextColor();
         }
         SetTextColor(hdc, col);
-        char* s = (char*)el->rightTxt;
+        TempStr s = AboutRightTxtTemp(el);
         s = TrimGitTemp(s);
         auto& pos = el->rightPos;
         HdcDrawText(hdc, s, pos, fmt);
@@ -580,7 +623,8 @@ static void UpdateAboutLayoutInfo(HWND hwnd, HDC hdc, Rect* rect) {
     int leftDy = 0;
     uint fmt = DT_LEFT;
     for (AboutLayoutInfoEl* el = gAboutLayoutInfo; el->leftTxt; el++) {
-        Size txtSize = HdcMeasureText(hdc, el->leftTxt, fmt, fontLeftTxt);
+        TempStr leftTxt = AboutLeftTxtTemp(el);
+        Size txtSize = HdcMeasureText(hdc, leftTxt, fmt, fontLeftTxt);
         el->leftPos.dx = txtSize.dx;
         el->leftPos.dy = txtSize.dy;
 
@@ -598,7 +642,7 @@ static void UpdateAboutLayoutInfo(HWND hwnd, HDC hdc, Rect* rect) {
     int rightLargestDx = 0;
     int rightDy = 0;
     for (AboutLayoutInfoEl* el = gAboutLayoutInfo; el->leftTxt; el++) {
-        char* s = (char*)el->rightTxt;
+        TempStr s = AboutRightTxtTemp(el);
         s = TrimGitTemp(s);
         Size txtSize = HdcMeasureText(hdc, s, fmt, fontRightTxt);
         el->rightPos.dx = txtSize.dx;
@@ -1006,7 +1050,8 @@ static void EnsureHomeSearchCreated(MainWindow* win) {
         DefWndProcHomeSearch = (WNDPROC)GetWindowLongPtr(win->hwndHomeSearch, GWLP_WNDPROC);
     }
     SetWindowLongPtr(win->hwndHomeSearch, GWLP_WNDPROC, (LONG_PTR)WndProcHomeSearch);
-    Edit_SetCueBannerText(win->hwndHomeSearch, L"search files (Ctrl + F)");
+    TempWStr searchCue = ToWStrTemp(_TRA("search files (Ctrl + F)"));
+    Edit_SetCueBannerText(win->hwndHomeSearch, searchCue);
     // add left/right padding so text doesn't overlap the border
     int margin = DpiScale(win->hwndCanvas, 6);
     SendMessage(win->hwndHomeSearch, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(margin, margin));
@@ -1016,6 +1061,25 @@ void HomePageDestroySearch(MainWindow* win) {
     if (win->hwndHomeSearch) {
         DestroyWindow(win->hwndHomeSearch);
         win->hwndHomeSearch = nullptr;
+    }
+}
+
+void HomePageOnLanguageChangedAll() {
+    ResetTipsParsed();
+    if (gHwndAbout) {
+        HwndSetText(gHwndAbout, _TRA("About Sumatra PDF Plus"));
+        InvalidateRect(gHwndAbout, nullptr, TRUE);
+    }
+    for (MainWindow* win : gWindows) {
+        if (win->hwndHomeSearch) {
+            TempWStr cue = ToWStrTemp(_TRA("search files (Ctrl + F)"));
+            Edit_SetCueBannerText(win->hwndHomeSearch, cue);
+        }
+        HomePageInvalidateScrollCache(win);
+        WindowTab* tab = win->CurrentTab();
+        if (tab && tab->IsAboutTab()) {
+            win->RedrawAll(true);
+        }
     }
 }
 

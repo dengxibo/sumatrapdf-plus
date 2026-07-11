@@ -132,6 +132,7 @@ bool AnnotationCanBeResized(AnnotationType);
 bool AnnotationSupportsColor(AnnotationType);
 bool IsPdfTextMarkupAnnotation(AnnotationType);
 bool IsPdfTextMarkupAnnotation(Annotation* annot);
+TempStr MarkupTextTemp(Annotation* annot);
 Vec<RectF> GetQuadPointsAsRect(Annotation*);
 bool AnnotationSupportsBorder(AnnotationType);
 bool AnnotationSupportsInteriorColor(AnnotationType);

@@ -19,6 +19,7 @@
 #include "GlobalPrefs.h"
 #include "ChmModel.h"
 #include "Theme.h"
+#include "PdfDarkMode.h"
 #include "utils/GuessFileType.h"
 
 #include "utils/Log.h"
@@ -291,10 +292,17 @@ bool ChmModel::UsesNativeHtmlWindow() const {
 }
 
 void ChmModel::ReloadCurrentPageForThemeChange() {
+    ClearUrlDataCache();
     if (!htmlWindow || !ValidPageNo(currentPageNo)) {
         return;
     }
     DisplayPage(pages.At(currentPageNo - 1));
+}
+
+void ChmModel::ClearUrlDataCache() {
+    ScopedCritSec scope(&docAccess);
+    DeleteVecMembers(urlDataCache);
+    urlDataCache.Reset();
 }
 
 static bool gSendingHtmlWindowMsg = false;
@@ -603,10 +611,13 @@ ByteSlice ChmModel::GetDataForUrl(const char* url) {
     ByteSlice data = e->data;
     if (ChmUrlLooksLikeHtml(plainUrl) || ChmDataLooksLikeHtml(data)) {
         TempStr modified = nullptr;
-        if (ThemeUsesDarkChrome()) {
-            modified = ChmInjectDarkCssTemp(data);
-        } else if (!ThemeUsesOriginalPageColors()) {
-            modified = ChmInjectLightEyeCareCssTemp(data);
+        PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
+        if (docMode != PdfDocumentColorMode::Light) {
+            if (ThemeUsesDarkChrome()) {
+                modified = ChmInjectDarkCssTemp(data);
+            } else if (!ThemeUsesOriginalPageColors()) {
+                modified = ChmInjectLightEyeCareCssTemp(data);
+            }
         }
         if (modified) {
             return {(u8*)modified, str::Len(modified)};

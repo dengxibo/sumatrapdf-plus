@@ -71,7 +71,43 @@ u32 PdfDarkModeComputeProfileHash(const DarkModeProfile* profile) {
     h = mix(h, *(u32*)&profile->options.preserveImagePaperSoftening);
     h = mix(h, *(u32*)&profile->options.lightFillChromaThreshold);
     h = mix(h, *(u32*)&profile->options.lightFillLuminanceThreshold);
+    h = mix(h, (u32)GetPdfDocumentColorMode());
+    h = mix(h, ThemeUsesDarkChrome() ? 1 : 0);
+    h = mix(h, ThemeUsesOriginalPageColors() ? 1 : 0);
+    h = mix(h, ThemeUsesEyeCareChrome() ? 1 : 0);
     return h;
+}
+
+static bool IsFixedPageMupdfEngine(EngineBase* engine) {
+    if (!engine || engine->kind != kindEngineMupdf || engine->IsImageCollection()) {
+        return false;
+    }
+    return str::EqI(engine->defaultExt, ".pdf") || str::EqI(engine->defaultExt, ".xps");
+}
+
+static bool IsFixedPageDjVuEngine(EngineBase* engine) {
+    return engine && engine->kind == kindEngineDjVu;
+}
+
+static void ApplyDocumentColorModeToFixedPageProfile(EngineBase* engine, DarkModeProfile* profile) {
+    switch (GetPdfDocumentColorMode()) {
+        case PdfDocumentColorMode::Light:
+            profile->mode = PageColorMode::Normal;
+            break;
+        case PdfDocumentColorMode::Black:
+            profile->mode = PageColorMode::LegacyInvert;
+            break;
+        case PdfDocumentColorMode::Auto:
+        default:
+            if (EngineSupportsSmartDarkMode(engine) && PdfDarkModeUsesObjectLevel()) {
+                profile->mode = PageColorMode::SmartDark;
+            } else if (profile->preservePdfImages) {
+                profile->mode = PageColorMode::PreserveImages;
+            } else {
+                profile->mode = PageColorMode::LegacyInvert;
+            }
+            break;
+    }
 }
 
 void BuildViewDarkModeProfile(EngineBase* engine, DarkModeProfile* profile) {
@@ -82,45 +118,19 @@ void BuildViewDarkModeProfile(EngineBase* engine, DarkModeProfile* profile) {
     *profile = DarkModeProfile{};
 
     COLORREF bgCol;
-    COLORREF textCol = ThemePageRenderColors(bgCol);
+    COLORREF textCol = ThemePageRenderColors(bgCol, true);
     profile->foreground = textCol;
     profile->pageBackground = bgCol;
     profile->linkColor = ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : 0;
     profile->strength = 1.f;
-    profile->preservePdfImages = GetPreservePdfImagesInDarkMode();
+    profile->preservePdfImages =
+        GetPdfDocumentColorMode() == PdfDocumentColorMode::Auto && GetPreservePdfImagesInDarkMode();
     profile->preservePdfImagesMinSize = GetPreservePdfImagesMinSize();
     profile->options = PdfDarkModeCurrentOptions();
     profile->palette = BuildPaletteFromColors(textCol, bgCol, profile->linkColor);
 
-    if (!ThemeUsesDarkChrome()) {
-        if (gGlobalPrefs && gGlobalPrefs->fixedPageUI.invertColors) {
-            profile->mode = PageColorMode::LegacyInvert;
-        }
-        profile->hash = PdfDarkModeComputeProfileHash(profile);
-        return;
-    }
-
-    if (engine && str::EqI(engine->defaultExt, ".pdf")) {
-        switch (GetPdfDocumentColorMode()) {
-            case PdfDocumentColorMode::Light:
-                profile->mode = PageColorMode::Normal;
-                break;
-            case PdfDocumentColorMode::Black:
-                profile->mode = PageColorMode::LegacyInvert;
-                break;
-            case PdfDocumentColorMode::Auto:
-            default:
-                if (EngineSupportsSmartDarkMode(engine) && PdfDarkModeUsesObjectLevel()) {
-                    profile->mode = PageColorMode::SmartDark;
-                } else if (profile->preservePdfImages) {
-                    profile->mode = PageColorMode::PreserveImages;
-                } else {
-                    profile->mode = PageColorMode::LegacyInvert;
-                }
-                break;
-        }
-    } else if (engine && str::EqI(engine->defaultExt, ".xps")) {
-        profile->mode = PageColorMode::LegacyInvert;
+    if (IsFixedPageMupdfEngine(engine) || IsFixedPageDjVuEngine(engine)) {
+        ApplyDocumentColorModeToFixedPageProfile(engine, profile);
     }
 
     profile->hash = PdfDarkModeComputeProfileHash(profile);

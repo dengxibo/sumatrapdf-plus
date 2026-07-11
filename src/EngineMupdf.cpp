@@ -71,7 +71,7 @@ static float layoutFontEm = 11.F;
 
 static TempStr BuildEbookDarkCss(bool isEpub) {
     COLORREF bgCol;
-    ThemePageRenderColors(bgCol, false);
+    ThemePageRenderColors(bgCol, true);
     TempStr bgHex = str::FormatTemp("#%02x%02x%02x", GetRValue(bgCol), GetGValue(bgCol), GetBValue(bgCol));
     COLORREF linkCol = ThemeWindowLinkColor();
     TempStr linkHex = str::FormatTemp("#%02x%02x%02x", GetRValue(linkCol), GetGValue(linkCol), GetBValue(linkCol));
@@ -1858,10 +1858,10 @@ static fz_device* FzNewImageCollectDevice(fz_context* ctx, Vec<FitzPageImageInfo
 }
 
 static bool PdfShouldCollectContentImages() {
-    if (!ThemeUsesDarkChrome()) {
+    if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
         return false;
     }
-    if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
+    if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Black) {
         return false;
     }
     if (!GetPreservePdfImagesInDarkMode()) {
@@ -3337,6 +3337,10 @@ static TempStr BuildMupdfReflowUserCss(const char* nameHint, float ldx, float ld
         // EPUB files ship with their own CSS (e.g. calibre stylesheets) - don't override
         // fonts or paragraph layout. Other formats get CJK fallbacks only when needed.
         bool darkTheme = IsDarkThemeSelected();
+        PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
+        bool injectThemeColors = docMode != PdfDocumentColorMode::Light;
+        bool useEyeCareLightCss = injectThemeColors && !darkTheme && !ThemeUsesOriginalPageColors();
+        bool useDarkCss = injectThemeColors && darkTheme;
 
         // All ebooks: Literata primary; CJK glyphs fall back to songti via load_windows_fallback_font.
         static const char* kEpubFontCss = R"(html, body,
@@ -3795,10 +3799,10 @@ figcaption, caption, p.caption, div.caption, span.caption,
             ebookCss = str::JoinTemp(fontCss, "\n", kEpubReaderBaseCss);
             ebookCss = str::JoinTemp(ebookCss, "\n", rhythmCss);
         }
-        if (darkTheme) {
+        if (useDarkCss) {
             TempStr darkCss = BuildEbookDarkCss(isEpub);
             ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", darkCss) : str::DupTemp(darkCss);
-        } else if (!ThemeUsesOriginalPageColors()) {
+        } else if (useEyeCareLightCss) {
             static const char* kLightEyeCareCss = R"(html {
   background-color: #f7f3e8 !important;
 }

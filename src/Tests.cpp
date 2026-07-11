@@ -105,11 +105,9 @@ void TestRenderPage(const Flags& i) {
         auto bmp = engine->RenderPage(args);
         if (bmp == nullptr) {
             printf("failed to render page\n");
-        } else if (DarkModeProfileUsesLegacyPostProcess(args.darkProfile) ||
-                   (engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".pdf") && ThemeUsesDarkChrome() &&
-                    GetPdfDocumentColorMode() != PdfDocumentColorMode::Light && !PdfDarkModeUsesObjectLevel())) {
+        } else if (DarkModeProfileUsesLegacyPostProcess(args.darkProfile)) {
             COLORREF bgCol = args.darkProfile ? args.darkProfile->pageBackground : 0;
-            COLORREF textCol = args.darkProfile ? args.darkProfile->foreground : ThemePageRenderColors(bgCol);
+            COLORREF textCol = args.darkProfile ? args.darkProfile->foreground : ThemePageRenderColors(bgCol, true);
             COLORREF linkCol = args.darkProfile ? args.darkProfile->linkColor : ThemeWindowLinkColor();
             Vec<Rect> skipRects;
             Vec<Rect>* skipRectsPtr = nullptr;

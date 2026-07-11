@@ -62,6 +62,7 @@ struct ChmModel : DocController {
 
     bool UsesNativeHtmlWindow() const;
     void ReloadCurrentPageForThemeChange();
+    void ClearUrlDataCache();
 
     // for HtmlWindowCallback (called through htmlWindowCb)
     bool OnBeforeNavigate(const char* url, bool newWindow);

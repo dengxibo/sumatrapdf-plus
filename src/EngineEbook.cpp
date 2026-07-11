@@ -35,6 +35,7 @@
 #include "EbookFormatter.h"
 #include "Settings.h"
 #include "Theme.h"
+#include "PdfDarkMode.h"
 #include "utils/ThreadUtil.h"
 
 #include "utils/Log.h"
@@ -643,16 +644,26 @@ RenderedBitmap* EngineEbook::RenderPage(RenderPageArgs& args) {
     mui::InitGraphicsMode(&g);
 
     bool darkTheme = IsDarkThemeSelected();
+    PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
     COLORREF bgCol;
     COLORREF textCol;
-    if (readerStyleMobi && darkTheme) {
-        ThemePageRenderColors(bgCol, false);
+    if (docMode == PdfDocumentColorMode::Light) {
+        bgCol = RgbToCOLORREF(0xFFFFFF);
+        textCol = RgbToCOLORREF(0x000000);
+    } else if (readerStyleMobi && darkTheme) {
+        ThemePageRenderColors(bgCol, true);
         textCol = RgbToCOLORREF(0xE6E1D8);
     } else if (readerStyleMobi) {
-        bgCol = RgbToCOLORREF(0xF7F3E8);
-        textCol = RgbToCOLORREF(0x565047);
+        if (docMode == PdfDocumentColorMode::Black ||
+            (docMode == PdfDocumentColorMode::Auto && !ThemeUsesOriginalPageColors())) {
+            bgCol = RgbToCOLORREF(0xF7F3E8);
+            textCol = RgbToCOLORREF(0x565047);
+        } else {
+            bgCol = RgbToCOLORREF(0xFFFFFF);
+            textCol = RgbToCOLORREF(0x000000);
+        }
     } else {
-        textCol = ThemePageRenderColors(bgCol, false);
+        textCol = ThemePageRenderColors(bgCol, true);
     }
     Color pageBg = GdiRgbFromCOLORREF(bgCol);
     Color pageText = GdiRgbFromCOLORREF(textCol);

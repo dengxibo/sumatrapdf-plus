@@ -1062,6 +1062,46 @@ bool IsPdfTextMarkupAnnotation(Annotation* annot) {
     return annot && IsPdfTextMarkupAnnotation(annot->type);
 }
 
+TempStr MarkupTextTemp(Annotation* annot) {
+    if (!IsPdfTextMarkupAnnotation(annot)) {
+        return nullptr;
+    }
+    Vec<RectF> quads = GetQuadPointsAsRect(annot);
+    if (quads.empty()) {
+        return nullptr;
+    }
+    EngineMupdf* engine = annot->engine;
+    if (!engine) {
+        return nullptr;
+    }
+    PageTextUtf8 pt = engine->ExtractPageTextUtf8(annot->pageNo);
+    if (!pt.text || pt.len <= 0 || !pt.coords) {
+        FreePageTextUtf8(&pt);
+        return nullptr;
+    }
+    StrBuilder sb;
+    for (int i = 0; i < pt.len; i++) {
+        RectF cr = ToRectF(pt.coords[i]);
+        PointF center(cr.x + cr.dx / 2.f, cr.y + cr.dy / 2.f);
+        bool hit = false;
+        for (RectF& quad : quads) {
+            if (quad.Contains(center)) {
+                hit = true;
+                break;
+            }
+        }
+        if (hit) {
+            sb.AppendChar(pt.text[i]);
+        }
+    }
+    FreePageTextUtf8(&pt);
+    TempStr res = sb.Get();
+    if (str::IsEmptyOrWhiteSpace(res)) {
+        return nullptr;
+    }
+    return res;
+}
+
 Annotation* EngineMupdfCreateAnnotation(EngineBase* engine, int pageNo, PointF pos, AnnotCreateArgs* args) {
     static const float black[3] = {0, 0, 0};
 

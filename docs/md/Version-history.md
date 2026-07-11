@@ -1,5 +1,14 @@
 # Version history
 
+## 3.7.10 (2026-07-12)
+
+- unify document color mode (Smart / Original / Match theme) across all themes and readable formats (PDF, EPUB, MOBI, CHM, XPS, DjVu): toolbar buttons are always available when a document is open
+- Smart mode preserves embedded images in light and dark themes (fixes Light-Warm yellow tint on photos)
+- EPUB/MOBI/CHM respect document color mode for theme CSS injection; Original shows publisher colors
+- rename document color mode command and tooltip strings from "PDF Document Color Mode" to "Document Color Mode" (all languages)
+- add **Export Notes** in the PDF annotation editor to save all annotations as Markdown (page, excerpt, note, author, date), same format as EPUB/MOBI export
+- Home tab and Home page strings are translatable (search cue, tips, About dialog, version labels)
+
 ## 3.7.9 (2026-07-12)
 
 - add persistent annotations for EPUB and MOBI/AZW ebooks (highlight, underline, squiggly, strike-out, and text notes). Annotations are stored as per-book JSON sidecars in the SumatraPDF data directory and survive repagination; colors and markup style match PDF annotations (`Annotations.HighlightColor` etc.)

@@ -18,7 +18,7 @@ COLORREF FloatingPopupBg() {
         return ThemeWindowBackgroundColor();
     }
     COLORREF contentBg;
-    ThemePageRenderColors(contentBg);
+    ThemePageRenderColors(contentBg, true);
     return AccentColor(contentBg, 12);
 }
 

@@ -33,6 +33,7 @@
 
 #include "DisplayModel.h"
 #include "Theme.h"
+#include "PdfDarkMode.h"
 #include "GlobalPrefs.h"
 #include "RenderCache.h"
 #include "ProgressUpdateUI.h"
@@ -1795,10 +1796,16 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
     } else if (isReflowableEbook) {
         if (engine->kind == kindEngineMobi) {
             // Match EngineEbook::RenderPage so canvas margins do not contrast with tiles.
-            if (IsDarkThemeSelected()) {
-                ThemePageRenderColors(colDocBg, false);
-            } else {
+            PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
+            if (docMode == PdfDocumentColorMode::Light) {
+                colDocBg = RgbToCOLORREF(0xFFFFFF);
+            } else if (IsDarkThemeSelected()) {
+                ThemePageRenderColors(colDocBg, true);
+            } else if (docMode == PdfDocumentColorMode::Black ||
+                       (docMode == PdfDocumentColorMode::Auto && !ThemeUsesOriginalPageColors())) {
                 colDocBg = RgbToCOLORREF(0xF7F3E8);
+            } else {
+                colDocBg = RgbToCOLORREF(0xFFFFFF);
             }
         } else {
             ParsedColor* bgOverride = GetPrefsColor(gGlobalPrefs->eBookUI.windowBgCol);

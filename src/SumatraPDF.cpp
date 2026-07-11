@@ -3768,15 +3768,45 @@ static void RerenderFixedPage() {
     }
 }
 
+static void ApplyDocumentColorModeChangeToTab(MainWindow* win, WindowTab* tab) {
+    if (!win || !tab || !tab->IsDocLoaded() || tab->IsAboutTab()) {
+        return;
+    }
+    EngineBase* engine = tab->GetEngine();
+    if (IsReflowableMupdfForTheme(engine)) {
+        EngineMupdfRelayoutForThemeChange(engine);
+        tab->reloadOnFocus = false;
+        return;
+    }
+    ChmModel* chm = tab->AsChm();
+    if (chm && chm->UsesNativeHtmlWindow()) {
+        chm->ClearUrlDataCache();
+        if (tab == win->CurrentTab()) {
+            chm->ReloadCurrentPageForThemeChange();
+        } else {
+            tab->reloadOnFocus = true;
+        }
+    }
+}
+
+static void ApplyDocumentColorModeChangeToAllTabs() {
+    for (MainWindow* win : gWindows) {
+        for (WindowTab* tab : win->Tabs()) {
+            ApplyDocumentColorModeChangeToTab(win, tab);
+        }
+    }
+}
+
 void UpdateDocumentColors(bool rerender) {
     COLORREF bg;
-    COLORREF text = ThemePageRenderColors(bg);
+    COLORREF text = ThemePageRenderColors(bg, true);
     COLORREF link = ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : 0;
     static bool s_lastPreservePdfImagesInDarkMode = false;
     static int s_lastPreservePdfImagesMinSize = -1;
     static int s_lastPdfDarkModeRenderer = -1;
     static int s_lastPdfDocumentColorMode = -1;
-    bool preservePdfImages = ThemeUsesDarkChrome() && GetPreservePdfImagesInDarkMode();
+    bool preservePdfImages =
+        GetPdfDocumentColorMode() == PdfDocumentColorMode::Auto && GetPreservePdfImagesInDarkMode();
     int preserveMinSize = preservePdfImages ? GetPreservePdfImagesMinSize() : 0;
     int pdfDarkModeRenderer = (int)GetPdfDarkModeRenderer();
     int pdfDocumentColorMode = (int)GetPdfDocumentColorMode();
@@ -3796,6 +3826,8 @@ void UpdateDocumentColors(bool rerender) {
     gRenderCache->backgroundColor = bg;
     gRenderCache->linkColor = link;
     gRenderCache->darkModeEpoch++;
+
+    ApplyDocumentColorModeChangeToAllTabs();
 
     // Cached bitmaps are either recolored (PDF) or baked (ebooks). Marking them
     // out-of-date is not enough because RequestRendering() skips pages that
@@ -5596,6 +5628,9 @@ void SetCurrentLanguageAndRefreshUI(const char* langCode) {
         UpdateWindowRtlLayout(win);
         HideSelectionToolbar(win);
     }
+
+    UpdateHomeTabTitles();
+    HomePageOnLanguageChangedAll();
 
     SaveSettings();
 }
@@ -8600,8 +8635,14 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         }
 
         case CmdTogglePreservePdfImages: {
+            if (GetPdfDocumentColorMode() != PdfDocumentColorMode::Auto) {
+                SetPdfDocumentColorMode(PdfDocumentColorMode::Auto);
+            }
             SetPreservePdfImagesInDarkMode(!GetPreservePdfImagesInDarkMode());
-            UpdateDocumentColors();
+            UpdateDocumentColors(true);
+            for (MainWindow* w : gWindows) {
+                UpdatePdfDocumentColorModeToolbarButton(w);
+            }
             UpdateControlsColors(win);
             break;
         }
@@ -8875,7 +8916,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         case CmdSetPdfDocumentColorModeAuto:
         case CmdSetPdfDocumentColorModeBlack:
         case CmdSetPdfDocumentColorModeLight:
-            if (NeedsPdfDocumentColorModeUI(win)) {
+            if (NeedsDocumentColorModeUI(win)) {
                 PdfDocumentColorMode mode = PdfDocumentColorMode::Auto;
                 if (cmdId == CmdSetPdfDocumentColorModeBlack) {
                     mode = PdfDocumentColorMode::Black;
@@ -8883,8 +8924,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                     mode = PdfDocumentColorMode::Light;
                 }
                 SetPdfDocumentColorMode(mode);
-                UpdateDocumentColors();
-                UpdatePdfDocumentColorModeToolbarButton(win);
+                UpdateDocumentColors(true);
+                for (MainWindow* w : gWindows) {
+                    UpdatePdfDocumentColorModeToolbarButton(w);
+                }
                 SaveSettings();
             }
             break;

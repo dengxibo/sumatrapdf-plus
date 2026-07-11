@@ -218,6 +218,7 @@ struct EditAnnotationsWindow : Wnd {
     Button* buttonEmbedAttachment = nullptr;
 
     Button* buttonDelete = nullptr;
+    Button* buttonExport = nullptr;
 
     Button* buttonSaveToCurrentFile = nullptr;
     Button* buttonSaveToNewFile = nullptr;
@@ -546,6 +547,160 @@ static void RebuildAnnotationsListBox(EditAnnotationsWindow* ew) {
         ListBoxSetTopIndex(ew->listBox->hwnd, topIdx);
     }
     EnableSaveIfAnnotationsChanged(ew);
+    if (ew->buttonExport) {
+        ew->buttonExport->SetIsEnabled(n > 0);
+    }
+}
+
+struct PdfAnnotationSortItem {
+    Annotation* annotation = nullptr;
+    int pageNo = 0;
+    float sortY = 0.f;
+    float sortX = 0.f;
+};
+
+static void AppendUtcDateTime(StrBuilder& s, time_t secs) {
+    if (secs <= 0) {
+        return;
+    }
+    struct tm tm;
+    gmtime_s(&tm, &secs);
+    char buf[100];
+    strftime(buf, sizeof buf, "%Y-%m-%d %H:%M UTC", &tm);
+    s.Append(buf);
+}
+
+static void AppendMarkdownBlockquote(StrBuilder& out, const char* text) {
+    if (str::IsEmpty(text)) {
+        return;
+    }
+    const u8* p = (const u8*)text;
+    bool lineStart = true;
+    while (*p) {
+        u8 c = *p++;
+        if (lineStart) {
+            out.Append("> ");
+            lineStart = false;
+        }
+        if (c == '\r') {
+            continue;
+        }
+        if (c == '\n') {
+            out.AppendChar('\n');
+            lineStart = true;
+            continue;
+        }
+        out.AppendChar((char)c);
+    }
+    if (!lineStart) {
+        out.AppendChar('\n');
+    }
+}
+
+static bool BuildPdfAnnotationsExport(WindowTab* tab, StrBuilder& out) {
+    if (!tab || !EngineSupportsAnnotations(tab->GetEngine())) {
+        return false;
+    }
+    Vec<Annotation*> annotations;
+    EngineMupdfGetAnnotations(tab->GetEngine(), annotations);
+    if (annotations.empty()) {
+        return false;
+    }
+
+    Vec<PdfAnnotationSortItem> items;
+    for (Annotation* annotation : annotations) {
+        PdfAnnotationSortItem item;
+        item.annotation = annotation;
+        item.pageNo = PageNo(annotation);
+        RectF bounds = GetBounds(annotation);
+        item.sortY = bounds.y;
+        item.sortX = bounds.x;
+        items.Append(item);
+    }
+    std::sort(items.begin(), items.end(), [](const PdfAnnotationSortItem& a, const PdfAnnotationSortItem& b) {
+        if (a.pageNo != b.pageNo) {
+            return a.pageNo < b.pageNo;
+        }
+        if (a.sortY != b.sortY) {
+            return a.sortY < b.sortY;
+        }
+        return a.sortX < b.sortX;
+    });
+
+    out.AppendFmt("# %s\n\n", tab->GetTabTitle());
+    out.AppendFmt("%s: %s\n", _TRA("Source"), tab->filePath);
+    out.Append(_TRA("Exported:"));
+    out.Append(" ");
+    AppendUtcDateTime(out, time(nullptr));
+    out.Append("\n\n---\n\n");
+
+    for (const PdfAnnotationSortItem& item : items) {
+        Annotation* annotation = item.annotation;
+        TempStr typeName = AnnotationReadableNameTemp(Type(annotation));
+        out.AppendFmt("## %s %d — %s\n\n", _TRA("Page"), item.pageNo, typeName);
+
+        TempStr excerpt = MarkupTextTemp(annotation);
+        if (!str::IsEmpty(excerpt)) {
+            AppendMarkdownBlockquote(out, excerpt);
+            out.AppendChar('\n');
+        }
+
+        TempStr note = Contents(annotation);
+        if (!str::IsEmpty(note)) {
+            out.AppendFmt("**%s**\n\n", _TRA("Note:"));
+            out.Append(note);
+            out.Append("\n\n");
+        }
+
+        const char* author = Author(annotation);
+        if (!str::IsEmpty(author)) {
+            out.AppendFmt("%s: %s\n", _TRA("Author"), author);
+        }
+        time_t date = ModificationDate(annotation);
+        if (date > 0) {
+            out.Append(_TRA("Date:"));
+            out.Append(" ");
+            AppendUtcDateTime(out, date);
+            out.AppendChar('\n');
+        }
+        out.Append("\n---\n\n");
+    }
+    return true;
+}
+
+bool PdfAnnotationsExportNotes(WindowTab* tab, HWND hwndParent) {
+    if (!tab || !EngineSupportsAnnotations(tab->GetEngine())) {
+        return false;
+    }
+    StrBuilder out;
+    if (!BuildPdfAnnotationsExport(tab, out)) {
+        NotificationCreateArgs nargs;
+        nargs.hwndParent = hwndParent;
+        nargs.font = GetDefaultGuiFont();
+        nargs.timeoutMs = 4000;
+        nargs.msg = _TRA("No annotations to export.");
+        ShowNotification(nargs);
+        return false;
+    }
+
+    TempStr defaultPath =
+        path::JoinTemp(path::GetDirTemp(tab->filePath),
+                       str::JoinTemp(path::GetBaseNameTemp(path::GetPathNoExtTemp(tab->filePath)), "-notes.md"));
+    if (!SaveDataToFile(hwndParent, defaultPath, ByteSlice((const u8*)out.Get(), out.size()))) {
+        return false;
+    }
+
+    NotificationCreateArgs nargs;
+    nargs.hwndParent = hwndParent;
+    nargs.font = GetDefaultGuiFont();
+    nargs.timeoutMs = 5000;
+    nargs.msg = _TRA("Exported annotations.");
+    ShowNotification(nargs);
+    return true;
+}
+
+static void ExportClicked(EditAnnotationsWindow* ew) {
+    PdfAnnotationsExportNotes(ew->tab, ew->hwnd);
 }
 
 // TODO: this should be OnDestroy()
@@ -605,6 +760,7 @@ static void AdvanceFocus(EditAnnotationsWindow* ew, bool forward) {
     addIfVisible(ew->buttonSaveAttachment->hwnd);
     addIfVisible(ew->buttonEmbedAttachment->hwnd);
     addIfVisible(ew->buttonDelete->hwnd);
+    addIfVisible(ew->buttonExport->hwnd);
     addIfVisible(ew->buttonSaveToCurrentFile->hwnd);
     addIfVisible(ew->buttonSaveToNewFile->hwnd);
 
@@ -1712,6 +1868,24 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
 
         w->onClick = MkFunc0(ButtonDeleteHandler, ew);
         ew->buttonDelete = w;
+        vbox->AddChild(w);
+    }
+
+    {
+        Button::CreateArgs args;
+        args.parent = parent;
+        args.text = _TRA("Export Notes");
+        args.font = fnt;
+        args.isRtl = IsUIRtl();
+
+        auto w = new Button();
+        w->SetInsetsPt(8, 0, 0, 0);
+        HWND hwnd = w->Create(args);
+        ReportIf(!hwnd);
+
+        w->SetIsEnabled(false);
+        w->onClick = MkFunc0(ExportClicked, ew);
+        ew->buttonExport = w;
         vbox->AddChild(w);
     }
 

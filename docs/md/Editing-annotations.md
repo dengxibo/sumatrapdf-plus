@@ -66,7 +66,7 @@ All those commands will open annotation editor:
 
 Here we have a text annotation in the editor.
 
-You can delete annotations, change color, text and other attributes.
+You can delete annotations, change color, text and other attributes. Use **Export Notes** to save all annotations to a Markdown file (page, excerpt, note, author, and date).
 
 ## Select annotation from page in editor
 
