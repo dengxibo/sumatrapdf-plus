@@ -730,6 +730,20 @@ end
 files {
 }
 
+function md4c_files()
+  files_in_dir("ext/md4c/src", {
+    "md4c.c",
+    "md4c-html.c",
+    "entity.c",
+    "md4c.h",
+    "md4c-html.h",
+    "entity.h",
+  })
+  filter { "files:ext/md4c/**" }
+  disablewarnings { "4200", "4201", "4310" }
+  filter {}
+end
+
 function sumatrapdf_files()
   files_in_dir(".", {
     "*.md",
@@ -780,6 +794,9 @@ function sumatrapdf_files()
     "Installer.*",
     "InstallerCommon.cpp",
     "MainWindow.*",
+    "Md4cHtml.*",
+    "MdConvert.*",
+    "MdMermaid.*",
     "Menu.*",
     "Notifications.*",
     "PdfSync.*",

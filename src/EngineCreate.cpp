@@ -155,6 +155,8 @@ bool IsSupportedFileType(Kind kind, bool enableEngineEbooks) {
         return true;
     } else if (kind == kindFileTxt) {
         return true;
+    } else if (kind == kindFileMd) {
+        return true;
     }
     return false;
 }

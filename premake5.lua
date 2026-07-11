@@ -881,7 +881,7 @@ workspace "SumatraPDF"
     manifest("Off")
     defines { "LIBARCHIVE_STATIC" }
     includedirs { "src", "mupdf/include" }
-    includedirs { "ext/synctex", "ext/libdjvu", "ext/CHMLib", "ext/libarchive" }
+    includedirs { "ext/synctex", "ext/libdjvu", "ext/CHMLib", "ext/libarchive", "ext/md4c/src" }
 
     includedirs { "ext/darkmodelib/include" }
     defines { "_DARKMODELIB_NO_INI_CONFIG" }
@@ -895,6 +895,7 @@ workspace "SumatraPDF"
     uia_files()
     engines_files()
     sumatrapdf_files()
+    md4c_files()
     pdf_darkmode_files()
 
     debugdir(".")
@@ -946,7 +947,7 @@ workspace "SumatraPDF"
     manifest("Off")
     defines { "LIBARCHIVE_STATIC" }
     includedirs { "src", "mupdf/include" }
-    includedirs { "ext/synctex", "ext/libdjvu", "ext/CHMLib", "ext/libarchive" }
+    includedirs { "ext/synctex", "ext/libdjvu", "ext/CHMLib", "ext/libarchive", "ext/md4c/src" }
     includedirs { "ext/darkmodelib/include" }
 
     includedirs { "ext/darkmodelib/include" }
@@ -959,6 +960,7 @@ workspace "SumatraPDF"
     uia_files()
     engines_files()
     sumatrapdf_files()
+    md4c_files()
     pdf_darkmode_noop_files()
 
     webview_conf()

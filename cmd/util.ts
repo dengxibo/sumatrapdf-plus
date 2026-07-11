@@ -244,3 +244,14 @@ export function copyDistributionFonts(outDir: string): void {
     }
   }
 }
+
+export function copyMermaidAssets(outDir: string): void {
+  const src = join("ext", "mermaid", "mermaid.min.js");
+  if (!existsSync(src)) {
+    console.warn("skip mermaid assets: missing", src, "(run: bun cmd/fetch-mermaid.ts)");
+    return;
+  }
+  const dstDir = join(outDir, "mermaid");
+  mkdirSync(dstDir, { recursive: true });
+  copyFileNormalized(join(dstDir, "mermaid.min.js"), src);
+}

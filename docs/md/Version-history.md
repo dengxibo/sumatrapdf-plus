@@ -8,6 +8,9 @@
 - rename document color mode command and tooltip strings from "PDF Document Color Mode" to "Document Color Mode" (all languages)
 - add **Export Notes** in the PDF annotation editor to save all annotations as Markdown (page, excerpt, note, author, date), same format as EPUB/MOBI export
 - Home tab and Home page strings are translatable (search cue, tips, About dialog, version labels)
+- translate in-app update download progress ("Downloading update...") for all languages; show download notification during automatic update checks
+- add Markdown (.md, .markdown) reading via md4c (GitHub Flavored Markdown: tables, task lists, strikethrough, footnotes, admonitions) rendered through MuPDF reflow with readable typography; supports theme switching like other reflowable documents
+- render fenced ` ```mermaid ` ` blocks (erDiagram, flowcharts, sequence diagrams, etc.) to SVG offline via WebView2 when available
 
 ## 3.7.9 (2026-07-12)
 

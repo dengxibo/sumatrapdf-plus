@@ -39,6 +39,7 @@ extern Kind kindFileSvg;
 extern Kind kindFileHeic;
 extern Kind kindFileAvif;
 extern Kind kindFileTxt;
+extern Kind kindFileMd;
 
 extern Kind kindDirectory;
 

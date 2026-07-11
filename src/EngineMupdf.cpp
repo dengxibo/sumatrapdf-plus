@@ -27,6 +27,7 @@ void fz_purge_stored_html_chapter(fz_context* ctx, void* doc, int chapter);
 #include "DocProperties.h"
 #include "DocController.h"
 #include "EngineBase.h"
+#include "MdConvert.h"
 #include "EngineMupdf.h"
 #include "EngineAll.h"
 #include "EbookBase.h"
@@ -2779,56 +2780,6 @@ ByteSlice LoadEmbeddedPDFFile(const char* filePath) {
     return res;
 }
 
-static TempStr TxtBytesToUtf8Temp(const char* data, size_t len) {
-    if (!data || len == 0) {
-        return str::DupTemp("");
-    }
-
-    if (len >= 3 && str::StartsWith(data, UTF8_BOM)) {
-        const u8* tmp = (const u8*)(data + 3);
-        const u8* end = (const u8*)data + len;
-        if (isLegalUTF8String(&tmp, end)) {
-            return str::DupTemp(data + 3, len - 3);
-        }
-    }
-
-    if (len >= 2 && str::StartsWith(data, UTF16_BOM)) {
-        int cch = (int)((len - 2) / sizeof(WCHAR));
-        return ToUtf8Temp((const WCHAR*)(data + 2), cch);
-    }
-
-    if (len >= 2 && str::StartsWith(data, UTF16BE_BOM)) {
-        int cch = (int)((len - 2) / sizeof(WCHAR));
-        char* tmp = (char*)str::DupTemp(data + 2, len - 2);
-        for (int i = 0; i < cch; i++) {
-            int idx = i * 2;
-            std::swap(tmp[idx], tmp[idx + 1]);
-        }
-        return ToUtf8Temp((const WCHAR*)tmp, cch);
-    }
-
-    size_t sampleLen = len;
-    if (sampleLen > 256 * 1024) {
-        sampleLen = 256 * 1024;
-    }
-    uint codePage = GuessTextCodepage(data, sampleLen, CP_UTF8);
-
-    if (codePage == CP_UTF8) {
-        const u8* tmp = (const u8*)data;
-        const u8* end = tmp + len;
-        if (isLegalUTF8String(&tmp, end)) {
-            return str::DupTemp(data, len);
-        }
-        codePage = CP_ACP;
-    }
-
-    TempWStr ws = strconv::StrCPToWStrTemp(data, codePage, (int)len);
-    if (!ws) {
-        return str::DupTemp(data, len);
-    }
-    return ToUtf8Temp(ws, str::Len(ws));
-}
-
 static ByteSlice TxtFileToHTML(const char* path) {
     ByteSlice fd = file::ReadFileWithAllocator(path, GetTempAllocator());
     if (fd.empty()) {
@@ -2840,7 +2791,7 @@ static ByteSlice TxtFileToHTML(const char* path) {
         InterlockedDecrement(&gAllowAllocFailure);
     };
 
-    TempStr data = TxtBytesToUtf8Temp((const char*)fd.data(), fd.size());
+    TempStr data = strconv::UnknownToUtf8Temp((const char*)fd.data(), fd.size());
     if (!data) {
         return {};
     }
@@ -2908,6 +2859,22 @@ bool EngineMupdf::Load(const char* path, PasswordUI* pwdUI) {
     if (kind == kindFileTxt) {
         // synthesize a .html file from text file
         ByteSlice d = TxtFileToHTML(path);
+        if (d.empty()) {
+            return false;
+        }
+        fz_buffer* buf = fz_new_buffer_from_copied_data(ctx, (const u8*)d.data(), d.size());
+        fz_stream* file = fz_open_buffer(ctx, buf);
+        fz_drop_buffer(ctx, buf);
+        str::Free(d);
+        char* nameHint = str::JoinTemp(path, ".html");
+        if (!LoadFromStream(file, nameHint, pwdUI)) {
+            return false;
+        }
+        return FinishLoading();
+    }
+
+    if (kind == kindFileMd) {
+        ByteSlice d = MdFileToHTML(path);
         if (d.empty()) {
             return false;
         }
@@ -3328,7 +3295,134 @@ bool EbookNeedsCjkTypography(const char* filePath, const char* nameHint) {
 // stm is either freed or retained via _doc
 static void GetMupdfReflowLayoutPt(const char* nameHint, float* ldxPtOut, float* ldyPtOut, float* lfontDyPtOut);
 
-static TempStr BuildMupdfReflowUserCss(const char* nameHint, float ldx, float ldy, float lfontDy) {
+static bool IsMarkdownReflowDocument(const char* nameHint, const char* filePath) {
+    if (!str::IsEmpty(filePath)) {
+        TempStr ext = path::GetExtTemp(filePath);
+        if (str::EqI(ext, ".md") || str::EqI(ext, ".markdown")) {
+            return true;
+        }
+    }
+    return !str::IsEmpty(nameHint) && str::EndsWithI(nameHint, ".md.html");
+}
+
+static TempStr BuildMarkdownTableCss(bool darkTheme, bool eyeCareLight) {
+    if (darkTheme) {
+        return str::DupTemp(R"(table {
+  background-color: transparent !important;
+}
+thead th {
+  background-color: #21262d !important;
+  color: #e6edf3 !important;
+  font-weight: 600 !important;
+  border-width: 2px !important;
+}
+tbody td {
+  background-color: transparent !important;
+}
+)");
+    }
+    if (eyeCareLight) {
+        return str::DupTemp(R"(table {
+  background-color: transparent !important;
+}
+thead th {
+  background-color: #ebe3d5 !important;
+  color: #3f3a34 !important;
+  font-weight: 600 !important;
+  border-width: 2px !important;
+}
+tbody td {
+  background-color: transparent !important;
+}
+)");
+    }
+    return str::DupTemp(R"(table {
+  background-color: transparent !important;
+}
+thead th {
+  background-color: #f6f8fa !important;
+  color: #24292f !important;
+  font-weight: 600 !important;
+  border-width: 2px !important;
+}
+tbody td {
+  background-color: transparent !important;
+}
+)");
+}
+
+static TempStr BuildMarkdownCodeBlockCss(bool darkTheme, bool eyeCareLight) {
+    if (darkTheme) {
+        return str::DupTemp(R"(pre {
+  display: block !important;
+  background-color: #2d333b !important;
+  color: #e6edf3 !important;
+  border: none !important;
+  padding: 0.85em 1em !important;
+  border-radius: 6px !important;
+  line-height: 1.45 !important;
+  white-space: pre-wrap !important;
+}
+pre code {
+  background-color: transparent !important;
+  color: inherit !important;
+}
+:not(pre) > code {
+  background-color: #3d444d !important;
+  color: #e6edf3 !important;
+  padding: 0.15em 0.35em !important;
+  border-radius: 4px !important;
+}
+)");
+    }
+    if (eyeCareLight) {
+        return str::DupTemp(R"(pre {
+  display: block !important;
+  background-color: #ebe3d5 !important;
+  color: #3f3a34 !important;
+  border: none !important;
+  padding: 0.85em 1em !important;
+  border-radius: 6px !important;
+  line-height: 1.45 !important;
+  white-space: pre-wrap !important;
+}
+pre code {
+  background-color: transparent !important;
+  color: inherit !important;
+}
+:not(pre) > code {
+  background-color: #e0d8ca !important;
+  color: #3f3a34 !important;
+  padding: 0.15em 0.35em !important;
+  border-radius: 4px !important;
+}
+)");
+    }
+    return str::DupTemp(R"(pre {
+  display: block !important;
+  background-color: #f6f8fa !important;
+  color: #24292f !important;
+  border: none !important;
+  padding: 0.85em 1em !important;
+  border-radius: 6px !important;
+  line-height: 1.45 !important;
+  white-space: pre-wrap !important;
+}
+pre code {
+  background-color: transparent !important;
+  color: inherit !important;
+}
+:not(pre) > code {
+  background-color: #eff1f3 !important;
+  color: #24292f !important;
+  padding: 0.15em 0.35em !important;
+  border-radius: 4px !important;
+}
+)");
+}
+
+static TempStr BuildMupdfReflowUserCss(const char* nameHint, const char* filePath, float ldx, float ldy,
+                                       float lfontDy) {
     bool isEpub = str::EndsWithI(nameHint, ".epub");
     EbookTypographyKind typographyKind = GetEbookTypographyKind();
     TempStr ebookCss = nullptr;
@@ -3821,6 +3915,16 @@ pre {
         if (!isEpub) {
             ebookCss = ebookCss ? str::JoinTemp(kFallbackFontCss, "\n", ebookCss) : str::DupTemp(kFallbackFontCss);
         }
+        if (IsMarkdownReflowDocument(nameHint, filePath)) {
+            TempStr mdTableCss = BuildMarkdownTableCss(useDarkCss, useEyeCareLightCss);
+            if (mdTableCss) {
+                ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", mdTableCss) : mdTableCss;
+            }
+            TempStr mdCodeCss = BuildMarkdownCodeBlockCss(useDarkCss, useEyeCareLightCss);
+            if (mdCodeCss) {
+                ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", mdCodeCss) : mdCodeCss;
+            }
+        }
         if (eBookUI->customCSS) {
             ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", eBookUI->customCSS) : str::DupTemp(eBookUI->customCSS);
         }
@@ -3868,16 +3972,20 @@ p.picture img.calibre1, p.picture1 img.calibre1 {
     return ebookCss;
 }
 
-static void ApplyMupdfReflowUserCssAndLayout(fz_context* ctx, fz_document* doc, const char* nameHint, int displayDPI,
-                                             float ldx, float ldy, float lfontDy, float* dxOut, float* dyOut) {
+static void SetMupdfReflowUserCss(fz_context* ctx, const char* nameHint, const char* filePath, float ldx, float ldy,
+                                  float lfontDy) {
     auto eBookUI = GetEBookUI();
     if (eBookUI) {
         fz_set_use_document_css(ctx, !eBookUI->ignoreDocumentCSS);
     }
-    TempStr ebookCss = BuildMupdfReflowUserCss(nameHint, ldx, ldy, lfontDy);
+    TempStr ebookCss = BuildMupdfReflowUserCss(nameHint, filePath, ldx, ldy, lfontDy);
     if (ebookCss) {
         fz_set_user_css(ctx, ebookCss);
     }
+}
+
+static void LayoutMupdfReflowDocument(fz_context* ctx, fz_document* doc, int displayDPI, float ldx, float ldy,
+                                      float lfontDy, float* dxOut, float* dyOut) {
     float dx = DpiScale(ldx, displayDPI);
     float dy = DpiScale(ldy, displayDPI);
     float fontDy = DpiScale(lfontDy, displayDPI);
@@ -3892,15 +4000,9 @@ static void ApplyMupdfReflowUserCssAndLayout(fz_context* ctx, fz_document* doc, 
 
 // Theme toggles only user CSS colors; page breaks stay the same. Do not call
 // fz_count_pages or fz_layout_document here -- chapters relayout lazily when rendered.
-static void ApplyMupdfThemeCssOnly(fz_context* ctx, const char* nameHint, float ldxPt, float ldyPt, float lfontDyPt) {
-    auto eBookUI = GetEBookUI();
-    if (eBookUI) {
-        fz_set_use_document_css(ctx, !eBookUI->ignoreDocumentCSS);
-    }
-    TempStr ebookCss = BuildMupdfReflowUserCss(nameHint, ldxPt, ldyPt, lfontDyPt);
-    if (ebookCss) {
-        fz_set_user_css(ctx, ebookCss);
-    }
+static void ApplyMupdfThemeCssOnly(fz_context* ctx, const char* nameHint, const char* filePath, float ldxPt,
+                                   float ldyPt, float lfontDyPt) {
+    SetMupdfReflowUserCss(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
 }
 
 bool EngineMupdf::LoadFromStream(fz_stream* stm, const char* nameHint, PasswordUI* pwdUI) {
@@ -3922,8 +4024,7 @@ bool EngineMupdf::LoadFromStream(fz_stream* stm, const char* nameHint, PasswordU
 #endif
 
     bool isEpub = str::EndsWithI(nameHint, ".epub");
-    EbookTypographyKind typographyKind =
-        isEpub ? DetectEbookTypographyKind(FilePath(), nameHint) : EbookTypographyKind::Latin;
+    EbookTypographyKind typographyKind = DetectEbookTypographyKind(FilePath(), nameHint);
     SetEbookTypographyKind(typographyKind);
 
     float ldx = layoutA5DxPt;
@@ -3949,9 +4050,10 @@ bool EngineMupdf::LoadFromStream(fz_stream* stm, const char* nameHint, PasswordU
     fz_var(dx);
     fz_var(dy);
     fz_try(ctx) {
+        SetMupdfReflowUserCss(ctx, nameHint, FilePath(), ldxPt, ldyPt, lfontDyPt);
         _doc = fz_open_document_with_stream(ctx, nameHint, stm);
         pdfdoc = pdf_specifics(ctx, _doc);
-        ApplyMupdfReflowUserCssAndLayout(ctx, _doc, nameHint, displayDPI, ldxPt, ldyPt, lfontDyPt, &dx, &dy);
+        LayoutMupdfReflowDocument(ctx, _doc, displayDPI, ldxPt, ldyPt, lfontDyPt, &dx, &dy);
         reflowLayoutW = dx;
         reflowLayoutH = dy;
     }
@@ -4252,19 +4354,19 @@ bool EngineMupdfRelayoutForThemeChange(EngineBase* engine) {
         return false;
     }
 
-    const char* nameHint = engine->FilePath();
-    if (str::IsEmpty(nameHint)) {
+    const char* filePath = engine->FilePath();
+    if (str::IsEmpty(filePath)) {
         return false;
     }
 
     float ldxPt, ldyPt, lfontDyPt;
-    GetMupdfReflowLayoutPt(nameHint, &ldxPt, &ldyPt, &lfontDyPt);
+    GetMupdfReflowLayoutPt(filePath, &ldxPt, &ldyPt, &lfontDyPt);
 
     fz_context* ctx = e->_ctx;
     bool ok = false;
     AcquireReflowUiDocLock(e);
     fz_try(ctx) {
-        ApplyMupdfThemeCssOnly(ctx, nameHint, ldxPt, ldyPt, lfontDyPt);
+        ApplyMupdfThemeCssOnly(ctx, filePath, filePath, ldxPt, ldyPt, lfontDyPt);
         e->reflowThemeCssEpoch++;
         ok = true;
     }
@@ -6910,6 +7012,9 @@ bool IsEngineMupdfSupportedFileType(Kind kind) {
         return true;
     }
     if (kind == kindFileTxt) {
+        return true;
+    }
+    if (kind == kindFileMd) {
         return true;
     }
     if (kind == kindFilePalmDoc) {

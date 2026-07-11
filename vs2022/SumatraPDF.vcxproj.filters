@@ -28,6 +28,12 @@
     <Filter Include="ext\darkmodelib\src">
       <UniqueIdentifier>{3A2F0B1B-A690-E828-2FFE-2EDB9B5E1FE8}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ext\md4c">
+      <UniqueIdentifier>{AD1F1FD9-99EC-79E4-C205-688CAE31AF72}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ext\md4c\src">
+      <UniqueIdentifier>{44ECEC8D-304F-7C32-D9D4-B4E8C51648B5}</UniqueIdentifier>
+    </Filter>
     <Filter Include="ext\synctex">
       <UniqueIdentifier>{73E6124D-DF9B-8B42-6890-8519D4448246}</UniqueIdentifier>
     </Filter>
@@ -105,6 +111,15 @@
     <ClInclude Include="..\ext\darkmodelib\src\Version.h">
       <Filter>ext\darkmodelib\src</Filter>
     </ClInclude>
+    <ClInclude Include="..\ext\md4c\src\entity.h">
+      <Filter>ext\md4c\src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ext\md4c\src\md4c-html.h">
+      <Filter>ext\md4c\src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ext\md4c\src\md4c.h">
+      <Filter>ext\md4c\src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\Accelerators.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -150,6 +165,9 @@
     <ClInclude Include="..\src\DocProperties.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\EbookAnnotations.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\EbookDoc.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -157,6 +175,9 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\EditAnnotations.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\EditEbookAnnotations.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\EngineAll.h">
@@ -211,6 +232,15 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\MainWindow.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\Md4cHtml.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\MdConvert.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\MdMermaid.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\Menu.h">
@@ -431,6 +461,15 @@
     <ClCompile Include="..\ext\darkmodelib\src\DmlibWinApi.cpp">
       <Filter>ext\darkmodelib\src</Filter>
     </ClCompile>
+    <ClCompile Include="..\ext\md4c\src\entity.c">
+      <Filter>ext\md4c\src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ext\md4c\src\md4c-html.c">
+      <Filter>ext\md4c\src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ext\md4c\src\md4c.c">
+      <Filter>ext\md4c\src</Filter>
+    </ClCompile>
     <ClCompile Include="..\ext\synctex\synctex_parser.c">
       <Filter>ext\synctex</Filter>
     </ClCompile>
@@ -482,6 +521,9 @@
     <ClCompile Include="..\src\DocProperties.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\EbookAnnotations.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\EbookDoc.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -492,9 +534,6 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\EditEbookAnnotations.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\EbookAnnotations.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\EngineBase.cpp">
@@ -567,6 +606,15 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\MainWindow.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\Md4cHtml.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\MdConvert.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\MdMermaid.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\Menu.cpp">
@@ -921,6 +969,7 @@
       <Filter>.github\workflows</Filter>
     </None>
     <None Include="..\.gitignore" />
+    <None Include="..\.tmp_test_zh.md" />
     <None Include="..\SECURITY.md" />
     <None Include="..\agents.md" />
     <None Include="..\cmd\build-all.ts">
@@ -971,6 +1020,9 @@
     <None Include="..\cmd\diff.ts">
       <Filter>cmd</Filter>
     </None>
+    <None Include="..\cmd\fetch-mermaid.ts">
+      <Filter>cmd</Filter>
+    </None>
     <None Include="..\cmd\format.ts">
       <Filter>cmd</Filter>
     </None>
@@ -998,6 +1050,15 @@
     <None Include="..\cmd\markdown-it.min.js">
       <Filter>cmd</Filter>
     </None>
+    <None Include="..\cmd\migrate-doc-color-mode-translations.ts">
+      <Filter>cmd</Filter>
+    </None>
+    <None Include="..\cmd\migrate-home-i18n-translations.ts">
+      <Filter>cmd</Filter>
+    </None>
+    <None Include="..\cmd\migrate-update-download-translations.ts">
+      <Filter>cmd</Filter>
+    </None>
     <None Include="..\cmd\package.json">
       <Filter>cmd</Filter>
     </None>
@@ -1014,6 +1075,9 @@
       <Filter>cmd</Filter>
     </None>
     <None Include="..\cmd\sync-bug-files.ts">
+      <Filter>cmd</Filter>
+    </None>
+    <None Include="..\cmd\test-md-convert.ts">
       <Filter>cmd</Filter>
     </None>
     <None Include="..\cmd\test-plugin.ts">
@@ -1128,6 +1192,9 @@
       <Filter>docs\md</Filter>
     </None>
     <None Include="..\docs\md\Logview.md">
+      <Filter>docs\md</Filter>
+    </None>
+    <None Include="..\docs\md\Read-Aloud-TTS.md">
       <Filter>docs\md</Filter>
     </None>
     <None Include="..\docs\md\Reporting-printing-bugs.md">
@@ -1279,6 +1346,7 @@
     <None Include="..\readme.md" />
     <None Include="..\readme.txt" />
     <None Include="..\sumlog.txt" />
+    <None Include="..\update-check.txt" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\SumatraPDF.rc">

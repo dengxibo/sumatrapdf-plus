@@ -402,7 +402,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;DEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
       <MinimalRebuild>false</MinimalRebuild>
@@ -416,7 +416,7 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;DEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -441,7 +441,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;DEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
       <MinimalRebuild>false</MinimalRebuild>
@@ -455,7 +455,7 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;DEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_WIN64;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -480,7 +480,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;DEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
       <MinimalRebuild>false</MinimalRebuild>
@@ -494,7 +494,7 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;DEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -519,7 +519,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <PreprocessorDefinitions>ASAN_BUILD=1;WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;DEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
       <MinimalRebuild>false</MinimalRebuild>
@@ -533,7 +533,7 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>ASAN_BUILD=1;WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;DEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_WIN64;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -558,7 +558,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;DEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
       <MinimalRebuild>false</MinimalRebuild>
@@ -572,7 +572,7 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;DEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -597,7 +597,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;DEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
       <MinimalRebuild>false</MinimalRebuild>
@@ -611,7 +611,7 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;DEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_WIN64;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -636,7 +636,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;DEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
       <MinimalRebuild>false</MinimalRebuild>
@@ -650,7 +650,7 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;DEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -675,7 +675,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <PreprocessorDefinitions>ASAN_BUILD=1;WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;DEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
       <MinimalRebuild>false</MinimalRebuild>
@@ -689,7 +689,7 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>ASAN_BUILD=1;WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;DEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_WIN64;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -714,7 +714,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;NDEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>MinSpace</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -731,7 +731,7 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;NDEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -758,7 +758,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;NDEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>MinSpace</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -775,7 +775,7 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;NDEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_WIN64;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -802,7 +802,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;NDEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>MinSpace</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -819,7 +819,7 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;NDEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -846,7 +846,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <PreprocessorDefinitions>ASAN_BUILD=1;WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;NDEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>MinSpace</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -863,7 +863,7 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>ASAN_BUILD=1;WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;NDEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_WIN64;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -889,7 +889,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;28125;28252;28253;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;NDEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>MinSpace</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -906,7 +906,7 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;NDEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -934,7 +934,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;28125;28252;28253;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;NDEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>MinSpace</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -951,7 +951,7 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;NDEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_WIN64;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -979,7 +979,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;28125;28252;28253;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;NDEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>MinSpace</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -996,7 +996,7 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;NDEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -1024,7 +1024,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;28125;28252;28253;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <PreprocessorDefinitions>ASAN_BUILD=1;WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;NDEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>MinSpace</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -1041,7 +1041,7 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>ASAN_BUILD=1;WIN32;_WIN32;WINVER=0x0601;_WIN32_WINNT=0x0601;NTDDI_VERSION=0x06010000;_HAS_ITERATOR_DEBUGGING=0;NDEBUG;LIBARCHIVE_STATIC;_DARKMODELIB_NO_INI_CONFIG;_CRT_SECURE_NO_WARNINGS;DISABLE_DOCUMENT_RESTRICTIONS;_WIN64;_HAS_EXCEPTIONS=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\src;..\mupdf\include;..\ext\libdjvu;..\ext\CHMLib;..\ext\libarchive;..\ext\md4c\src;..\ext\darkmodelib\include;..\packages\Microsoft.Web.WebView2.1.0.992.28\build\native\include;..\ext\zlib;..\ext\synctex;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -1078,6 +1078,9 @@
     <ClInclude Include="..\ext\darkmodelib\src\StdAfx.h" />
     <ClInclude Include="..\ext\darkmodelib\src\UAHMenuBar.h" />
     <ClInclude Include="..\ext\darkmodelib\src\Version.h" />
+    <ClInclude Include="..\ext\md4c\src\entity.h" />
+    <ClInclude Include="..\ext\md4c\src\md4c-html.h" />
+    <ClInclude Include="..\ext\md4c\src\md4c.h" />
     <ClInclude Include="..\src\Accelerators.h" />
     <ClInclude Include="..\src\Annotation.h" />
     <ClInclude Include="..\src\AppSettings.h" />
@@ -1093,11 +1096,11 @@
     <ClInclude Include="..\src\DisplayModel.h" />
     <ClInclude Include="..\src\DocController.h" />
     <ClInclude Include="..\src\DocProperties.h" />
+    <ClInclude Include="..\src\EbookAnnotations.h" />
     <ClInclude Include="..\src\EbookDoc.h" />
     <ClInclude Include="..\src\EbookFormatter.h" />
     <ClInclude Include="..\src\EditAnnotations.h" />
     <ClInclude Include="..\src\EditEbookAnnotations.h" />
-    <ClInclude Include="..\src\EbookAnnotations.h" />
     <ClInclude Include="..\src\EngineAll.h" />
     <ClInclude Include="..\src\EngineBase.h" />
     <ClInclude Include="..\src\EngineMupdf.h" />
@@ -1116,6 +1119,9 @@
     <ClInclude Include="..\src\Installer.h" />
     <ClInclude Include="..\src\LookupAudio.h" />
     <ClInclude Include="..\src\MainWindow.h" />
+    <ClInclude Include="..\src\Md4cHtml.h" />
+    <ClInclude Include="..\src\MdConvert.h" />
+    <ClInclude Include="..\src\MdMermaid.h" />
     <ClInclude Include="..\src\Menu.h" />
     <ClInclude Include="..\src\MobiDoc.h" />
     <ClInclude Include="..\src\Notifications.h" />
@@ -1190,6 +1196,15 @@
     <ClCompile Include="..\ext\darkmodelib\src\DmlibSubclassControl.cpp" />
     <ClCompile Include="..\ext\darkmodelib\src\DmlibSubclassWindow.cpp" />
     <ClCompile Include="..\ext\darkmodelib\src\DmlibWinApi.cpp" />
+    <ClCompile Include="..\ext\md4c\src\entity.c">
+      <DisableSpecificWarnings>4200;4201;4310;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="..\ext\md4c\src\md4c-html.c">
+      <DisableSpecificWarnings>4200;4201;4310;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="..\ext\md4c\src\md4c.c">
+      <DisableSpecificWarnings>4200;4201;4310;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
     <ClCompile Include="..\ext\synctex\synctex_parser.c" />
     <ClCompile Include="..\ext\synctex\synctex_parser_utils.c" />
     <ClCompile Include="..\src\Accelerators.cpp" />
@@ -1207,11 +1222,11 @@
     <ClCompile Include="..\src\DisplayMode.cpp" />
     <ClCompile Include="..\src\DisplayModel.cpp" />
     <ClCompile Include="..\src\DocProperties.cpp" />
+    <ClCompile Include="..\src\EbookAnnotations.cpp" />
     <ClCompile Include="..\src\EbookDoc.cpp" />
     <ClCompile Include="..\src\EbookFormatter.cpp" />
     <ClCompile Include="..\src\EditAnnotations.cpp" />
     <ClCompile Include="..\src\EditEbookAnnotations.cpp" />
-    <ClCompile Include="..\src\EbookAnnotations.cpp" />
     <ClCompile Include="..\src\EngineBase.cpp" />
     <ClCompile Include="..\src\EngineCreate.cpp" />
     <ClCompile Include="..\src\EngineDjVu.cpp" />
@@ -1236,6 +1251,9 @@
     <ClCompile Include="..\src\InstallerCommon.cpp" />
     <ClCompile Include="..\src\LookupAudio.cpp" />
     <ClCompile Include="..\src\MainWindow.cpp" />
+    <ClCompile Include="..\src\Md4cHtml.c" />
+    <ClCompile Include="..\src\MdConvert.cpp" />
+    <ClCompile Include="..\src\MdMermaid.cpp" />
     <ClCompile Include="..\src\Menu.cpp" />
     <ClCompile Include="..\src\MobiDoc.cpp" />
     <ClCompile Include="..\src\Notifications.cpp" />
@@ -1617,6 +1635,7 @@
     <None Include="..\.github\workflows\codeql.yml" />
     <None Include="..\.github\workflows\daily.yml" />
     <None Include="..\.gitignore" />
+    <None Include="..\.tmp_test_zh.md" />
     <None Include="..\SECURITY.md" />
     <None Include="..\agents.md" />
     <None Include="..\cmd\build-all.ts" />
@@ -1635,6 +1654,7 @@
     <None Include="..\cmd\compress-docs-images.ts" />
     <None Include="..\cmd\cppcheck.ts" />
     <None Include="..\cmd\diff.ts" />
+    <None Include="..\cmd\fetch-mermaid.ts" />
     <None Include="..\cmd\format.ts" />
     <None Include="..\cmd\gen-commands.ts" />
     <None Include="..\cmd\gen-docs-website.ts" />
@@ -1644,12 +1664,16 @@
     <None Include="..\cmd\import-oaldpex-dict.ts" />
     <None Include="..\cmd\import-xdhy7-dict.ts" />
     <None Include="..\cmd\markdown-it.min.js" />
+    <None Include="..\cmd\migrate-doc-color-mode-translations.ts" />
+    <None Include="..\cmd\migrate-home-i18n-translations.ts" />
+    <None Include="..\cmd\migrate-update-download-translations.ts" />
     <None Include="..\cmd\package.json" />
     <None Include="..\cmd\pdb-sizes.ts" />
     <None Include="..\cmd\premake.ts" />
     <None Include="..\cmd\run-tests.ts" />
     <None Include="..\cmd\show-preview-reg.ts" />
     <None Include="..\cmd\sync-bug-files.ts" />
+    <None Include="..\cmd\test-md-convert.ts" />
     <None Include="..\cmd\test-plugin.ts" />
     <None Include="..\cmd\trans-dl.ts" />
     <None Include="..\cmd\trans-gen.ts" />
@@ -1690,6 +1714,7 @@
     <None Include="..\docs\md\Keyboard-shortcuts.md" />
     <None Include="..\docs\md\LaTeX-integration.md" />
     <None Include="..\docs\md\Logview.md" />
+    <None Include="..\docs\md\Read-Aloud-TTS.md" />
     <None Include="..\docs\md\Reporting-printing-bugs.md" />
     <None Include="..\docs\md\Scrolling-and-zooming.md" />
     <None Include="..\docs\md\Set-as-default-pdf-viewer.md" />
@@ -1743,6 +1768,7 @@
     <None Include="..\readme.md" />
     <None Include="..\readme.txt" />
     <None Include="..\sumlog.txt" />
+    <None Include="..\update-check.txt" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\SumatraPDF.rc" />

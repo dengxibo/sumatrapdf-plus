@@ -43,6 +43,7 @@ Kind kindFileMobi = "fileMobi";
 Kind kindFilePalmDoc = "filePalmDoc";
 Kind kindFileHTML = "fileHTML";
 Kind kindFileTxt = "fileTxt";
+Kind kindFileMd = "fileMd";
 Kind kindFileSvg = "fileSvg";
 Kind kindFileHeic = "fileHeic";
 Kind kindFileAvif = "fileAvif";
@@ -102,6 +103,8 @@ Kind kindFileAvif = "fileAvif";
     V(".html", kindFileHTML)      \
     V(".htm", kindFileHTML)       \
     V(".xhtml", kindFileHTML)     \
+    V(".md", kindFileMd)          \
+    V(".markdown", kindFileMd)    \
     V(".svg", kindFileSvg)        \
     V(".djvu", kindFileDjVu)      \
     V(".jp2", kindFileJp2)        \

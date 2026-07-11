@@ -334,20 +334,36 @@ static TempStr FormatDownloadSpeedTemp(i64 bytesPerSec) {
 }
 
 static TempStr FormatUpdateDownloadProgressTemp(UpdateProgressData* data) {
-    const char* label = _TRA("Download update");
+    const char* label = _TRA("Downloading update...");
     TempStr downloaded = FormatSizeShortTransLocal(data->nDownloaded);
     TempStr speed = FormatDownloadSpeedTemp(data->speedBytesPerSec);
     if (data->nTotal > 0) {
         TempStr total = FormatSizeShortTransLocal(data->nTotal);
         if (speed) {
-            return str::FormatTemp("%s: %s, %s / %s", label, speed, downloaded, total);
+            return str::FormatTemp("%s %s, %s / %s", label, speed, downloaded, total);
         }
-        return str::FormatTemp("%s: %s / %s", label, downloaded, total);
+        return str::FormatTemp("%s %s / %s", label, downloaded, total);
     }
     if (speed) {
-        return str::FormatTemp("%s: %s, %s", label, speed, downloaded);
+        return str::FormatTemp("%s %s, %s", label, speed, downloaded);
     }
-    return str::FormatTemp("%s: %s", label, downloaded);
+    return str::FormatTemp("%s %s", label, downloaded);
+}
+
+static void ShowUpdateDownloadingNotification(HWND hwndForNotif) {
+    const char* msg = _TRA("Downloading update...");
+    auto wnd = GetNotificationForGroup(hwndForNotif, kNotifUpdateCheckInProgress);
+    if (wnd) {
+        NotificationUpdateMessage(wnd, msg, 0, true);
+        return;
+    }
+    NotificationCreateArgs args;
+    args.hwndParent = hwndForNotif;
+    args.msg = msg;
+    args.warning = true;
+    args.timeoutMs = 0;
+    args.groupId = kNotifUpdateCheckInProgress;
+    ShowNotification(args);
 }
 
 static void UpdateDownloadProgressNotif(UpdateProgressData* data) {
@@ -582,6 +598,7 @@ static DWORD MaybeStartUpdateDownload(HWND hwndParent, HttpRsp* rsp, UpdateCheck
     // download the installer to make update feel instant to the user
     logf("ShowAutoUpdateDialog: starting to download '%s'\n", updateInfo->dlURL);
     gUpdateCheckInProgress = true;
+    ShowUpdateDownloadingNotification(hwndForNotif);
 
     auto fnData = new DownloadUpdateAsyncData;
     fnData->hwndForNotif = hwndForNotif;

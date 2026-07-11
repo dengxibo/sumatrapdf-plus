@@ -2426,6 +2426,14 @@ static bool IsReflowableMupdfForTheme(EngineBase* engine) {
     return engine && engine->kind == kindEngineMupdf && !str::EqI(engine->defaultExt, ".pdf");
 }
 
+static bool IsSyntheticMupdfHtmlDocument(EngineBase* engine) {
+    if (!IsReflowableMupdfForTheme(engine)) {
+        return false;
+    }
+    Kind kind = GuessFileTypeFromName(engine->FilePath());
+    return kind == kindFileMd || kind == kindFileTxt;
+}
+
 static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
     if (!win || !tab || !tab->IsDocLoaded() || tab->IsAboutTab()) {
         return;
@@ -2438,6 +2446,11 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
 
     EngineBase* engine = tab->GetEngine();
     if (IsReflowableMupdfForTheme(engine)) {
+        if (IsSyntheticMupdfHtmlDocument(engine)) {
+            ReloadDocument(win, false);
+            tab->reloadOnFocus = false;
+            return;
+        }
         if (!EngineMupdfRelayoutForThemeChange(engine)) {
             logfa("ApplyThemeChangeToTab: in-place EPUB theme relayout failed, skipping document reload\n");
         }
@@ -3774,6 +3787,11 @@ static void ApplyDocumentColorModeChangeToTab(MainWindow* win, WindowTab* tab) {
     }
     EngineBase* engine = tab->GetEngine();
     if (IsReflowableMupdfForTheme(engine)) {
+        if (IsSyntheticMupdfHtmlDocument(engine)) {
+            ReloadDocument(win, false);
+            tab->reloadOnFocus = false;
+            return;
+        }
         EngineMupdfRelayoutForThemeChange(engine);
         tab->reloadOnFocus = false;
         return;
@@ -5132,6 +5150,7 @@ static TempWStr GetFileFilterTemp() {
         {_TRA("PalmDoc documents"), "*.pdb;*.prc", true},
         {_TRA("Images"), "*.bmp;*.dib;*.gif;*.jpg;*.jpeg;*.jxr;*.png;*.tga;*.tif;*.tiff;*.webp;*.heic;*.avif", true},
         {_TRA("Text documents"), "*.txt;*.log;*.nfo;file_id.diz;read.me;*.tcr", true},
+        {_TRA("Markdown documents"), "*.md;*.markdown", true},
     };
     // Prepare the file filters (use \1 instead of \0 so that the
     // double-zero terminated string isn't cut by the string handling
