@@ -42,6 +42,7 @@
 #include "Translations.h"
 #include "Toolbar.h"
 #include "EditAnnotations.h"
+#include "EbookAnnotations.h"
 #include "Accelerators.h"
 #include "ImageSaveCropResize.h"
 #include "Menu.h"
@@ -56,7 +57,9 @@ struct BuildMenuCtx {
     bool isImageCollection = false;
     bool hasSelection = false;
     bool supportsAnnotations = false;
+    bool supportsEbookAnnotations = false;
     Annotation* annotationUnderCursor = nullptr;
+    EbookAnnotation* ebookAnnotationUnderCursor = nullptr;
     bool hasUnsavedAnnotations = false;
     bool isCursorOnPage = false;
     bool canSendEmail = false;
@@ -1177,6 +1180,7 @@ BuildMenuCtx* NewBuildMenuCtx(WindowTab* tab, Point pt) {
         ctx->isImageCollection = true;
     }
     ctx->supportsAnnotations = EngineSupportsAnnotations(engine) && !tab->win->isFullScreen;
+    ctx->supportsEbookAnnotations = EbookAnnotationsSupported(tab) && !tab->win->isFullScreen;
     ctx->hasUnsavedAnnotations = EngineHasUnsavedAnnotations(engine);
     ctx->canSendEmail = CanSendAsEmailAttachment(tab);
     ctx->isPdf = CouldBePDFDoc(tab);
@@ -1191,6 +1195,9 @@ BuildMenuCtx* NewBuildMenuCtx(WindowTab* tab, Point pt) {
             ctx->isCursorOnPage = true;
         }
         ctx->annotationUnderCursor = dm->GetAnnotationAtPos(pt, nullptr);
+    }
+    if (dm && ctx->supportsEbookAnnotations) {
+        ctx->ebookAnnotationUnderCursor = EbookAnnotationsGetAt(tab, dm, pt);
     }
     ctx->hasSelection = tab->win->showSelection && tab->selectionOnPage;
     ctx->hasToc = tab->ctrl && tab->ctrl->HasToc();
@@ -1374,14 +1381,25 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
     remove |= (ctx->tab && ctx->tab->AsChm() && cmdIdInList(removeIfChm));
     remove |= (!ctx->isCbx && (cmdId == CmdToggleMangaMode));
     remove |= (ctx->isImageCollection && (cmdId == CmdDocumentExtractText));
-    remove |= (!ctx->supportsAnnotations && cmdIdInList(removeIfAnnotsNotSupported));
+    bool isEbookAnnotationCommand =
+        ctx->supportsEbookAnnotations &&
+        (cmdId == CmdEditAnnotations || cmdId == CmdDeleteAnnotation || cmdId == CmdShowAnnotations ||
+         cmdId == CmdHideAnnotations || cmdId == CmdToggleShowAnnotations ||
+         cmdId == (UINT_PTR)menuDefCreateAnnotFromSelection || cmdId == (UINT_PTR)menuDefCreateAnnotUnderCursor);
+    remove |= (!ctx->supportsAnnotations && !isEbookAnnotationCommand && cmdIdInList(removeIfAnnotsNotSupported));
+    if (ctx->supportsEbookAnnotations && !ctx->supportsAnnotations) {
+        bool unsupportedUnderCursor = cmdId == CmdCreateAnnotFreeText || cmdId == CmdCreateAnnotStamp ||
+                                      cmdId == CmdCreateAnnotCaret || cmdId == CmdCreateAnnotSquare ||
+                                      cmdId == CmdCreateAnnotLine || cmdId == CmdCreateAnnotCircle;
+        remove |= unsupportedUnderCursor;
+    }
     remove |= !ctx->canSendEmail && (cmdId == CmdSendByEmail);
 
     disable |= (!ctx->hasSelection && cmdIdInList(disableIfNoSelection));
     if (cmdId == CmdLookupSelection) {
         disable |= !ctx->hasSelection || !CanLookupSelectionInTab(ctx->tab);
     }
-    disable |= (!ctx->annotationUnderCursor && (cmdId == CmdDeleteAnnotation));
+    disable |= (!ctx->annotationUnderCursor && !ctx->ebookAnnotationUnderCursor && (cmdId == CmdDeleteAnnotation));
     disable |= !ctx->hasUnsavedAnnotations && (cmdId == CmdSaveAnnotations);
 
     if (!ctx->isPdf) {
@@ -1950,6 +1968,9 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
         TempStr t = AnnotationReadableNameTemp(ctx->annotationUnderCursor->type);
         TempStr s = str::FormatTemp(_TRA("Edit %s Annotation"), t);
         MenuSetText(popup, CmdEditAnnotations, s);
+    } else if (ctx->ebookAnnotationUnderCursor) {
+        TempStr type = AnnotationReadableNameTemp(EbookAnnotationGetType(ctx->ebookAnnotationUnderCursor));
+        MenuSetText(popup, CmdEditAnnotations, str::FormatTemp(_TRA("Edit %s Annotation"), type));
     }
 
     const char* filePath = win->ctrl->GetFilePath();

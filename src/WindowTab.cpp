@@ -23,6 +23,8 @@
 #include "ReadAloudHighlight.h"
 #include "Translations.h"
 #include "EditAnnotations.h"
+#include "EbookAnnotations.h"
+#include "EditEbookAnnotations.h"
 
 #include "utils/Log.h"
 
@@ -51,6 +53,8 @@ WindowTab::~WindowTab() {
         hwndPDFOutline = nullptr;
     }
     CloseAndDeleteEditAnnotationsWindow(this);
+    CloseAndDeleteEditEbookAnnotationsWindow(this);
+    EbookAnnotationsFree(ebookAnnotations);
     FileWatcherUnsubscribe(watcher);
     if (AsChm()) {
         AsChm()->RemoveParentHwnd();

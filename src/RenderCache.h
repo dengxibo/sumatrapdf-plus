@@ -146,6 +146,7 @@ struct RenderCache {
     // request for the visible part of the page if nothing at all could be
     // painted, 0 if something has been painted and RENDER_DELAY_FAILED on failure
     int Paint(HDC hdc, Rect bounds, DisplayModel* dm, int pageNo, PageInfo* pi, bool* renderOutOfDateCue);
+    bool PageNeedsMarkupOverlay(DisplayModel* dm, int pageNo);
 
     bool ClearCurrentRequest(int threadIdx);
     bool GetNextRequest(PageRenderRequest* req, int threadIdx);

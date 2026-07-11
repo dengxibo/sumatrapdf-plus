@@ -84,6 +84,14 @@ To move an annotation on the page, left click with mouse and drag to new locatio
 
 To change default color for highlight annotation (created with keyboard shortcut `a`), use `Settings \ Advanced Options...` menu and change `Annotations` \ `HighlightColor` value. Default is yellow `#ffff00`).
 
+## EPUB / MOBI annotations
+
+You can also annotate EPUB and MOBI/AZW ebooks. Select text and use the same highlight / underline / squiggly / strike-out commands (or the selection toolbar). Ebook annotations are stored as sidecar JSON files under the SumatraPDF data directory (`Annotations`), not inside the book file, so they survive font-size and layout changes.
+
+Markup style and default colors match PDF annotations (`Annotations` \ `HighlightColor`, `UnderlineColor`, `SquigglyColor`, `StrikeOutColor`). Use `Edit Annotations` to list annotations, edit notes, change colors, or delete them. Selecting the same range and highlighting again toggles the annotation off.
+
+Annotation author is the reader (Windows user name, or `Annotations.DefaultAuthor` if set), not the book author. Use **Export Notes** in the annotation editor to save all annotations to a Markdown file (page, excerpt, note, author, and date).
+
 ## Missing features
 
 This is a first version of annotation editing. We don't yet support all annotation types and can't do everything that other PDF editing apps can do.

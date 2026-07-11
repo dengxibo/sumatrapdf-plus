@@ -182,6 +182,15 @@ Rect WindowRect(HWND hwnd) {
     return Rect(rc);
 }
 
+// Visible frame bounds (excludes DWM invisible resize/shadow border). Falls back to WindowRect.
+Rect WindowVisibleRect(HWND hwnd) {
+    RECT rc{};
+    if (SUCCEEDED(dwm::GetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &rc, sizeof(rc)))) {
+        return Rect(rc);
+    }
+    return WindowRect(hwnd);
+}
+
 Rect MapRectToWindow(Rect rect, HWND hwndFrom, HWND hwndTo) {
     RECT rc = ToRECT(rect);
     MapWindowPoints(hwndFrom, hwndTo, (LPPOINT)&rc, 2);
@@ -4064,6 +4073,63 @@ void HwndPositionToTheRightOf(HWND hwnd, HWND hwndRelative) {
     }
     Rect r = ShiftRectToWorkArea(rHwnd, hwndRelative, true);
     SetWindowPos(hwnd, nullptr, r.x, r.y, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
+}
+
+// Dock hwnd against the right of hwndRelative.
+// Maximized main window: overlay the right side (raised above the frame).
+// Otherwise: place flush outside to the right, clamped to the main window's monitor.
+void HwndDockToRightOf(HWND hwnd, HWND hwndRelative, int preferredWidth) {
+    if (!hwnd || !hwndRelative || !IsWindow(hwnd) || !IsWindow(hwndRelative)) {
+        return;
+    }
+
+    Rect frame = WindowRect(hwndRelative);
+    Rect annot = WindowRect(hwnd);
+    int minWidth = DpiScale(hwnd, 200);
+    int defaultWidth = DpiScale(hwnd, 460);
+    int width = preferredWidth > 0 ? preferredWidth : annot.dx;
+    if (width < minWidth) {
+        width = defaultWidth;
+    }
+
+    bool maximized = IsZoomed(hwndRelative) != FALSE;
+    Rect r;
+    if (maximized) {
+        width = std::min(width, std::max(minWidth, frame.dx));
+        r = {frame.x + frame.dx - width, frame.y, width, frame.dy};
+    } else {
+        // Use visible right edge so Win10/11 shadow borders do not push the window
+        // onto the next monitor; then clamp width to the main monitor work area.
+        Rect mainVis = WindowVisibleRect(hwndRelative);
+        Rect annotWin = WindowRect(hwnd);
+        Rect annotVis = WindowVisibleRect(hwnd);
+        int padL = annotVis.x - annotWin.x;
+        int padR = annotWin.Right() - annotVis.Right();
+
+        Rect work = GetWorkAreaRect(mainVis, hwndRelative);
+        int workRight = work.x + work.dx;
+        int visX = mainVis.Right();
+        int visWidth = width - padL - padR;
+        if (visWidth < minWidth) {
+            visWidth = minWidth;
+            width = visWidth + padL + padR;
+        }
+        if (visX + visWidth > workRight) {
+            visWidth = workRight - visX;
+        }
+        if (visWidth < minWidth) {
+            visWidth = minWidth;
+            visX = workRight - visWidth;
+        }
+        r = {visX - padL, frame.y, visWidth + padL + padR, frame.dy};
+    }
+
+    HWND insertAfter = maximized ? HWND_TOP : nullptr;
+    UINT flags = SWP_NOACTIVATE;
+    if (!maximized) {
+        flags |= SWP_NOZORDER;
+    }
+    SetWindowPos(hwnd, insertAfter, r.x, r.y, r.dx, r.dy, flags);
 }
 
 void HwndPositionInCenterOf(HWND hwnd, HWND hwndRelative) {

@@ -26,6 +26,7 @@
 #include "WordLookup.h"
 #include "SumatraPDF.h"
 #include "SelectionToolbar.h"
+#include "EbookAnnotations.h"
 
 #define kSelectionToolbarClassName L"SumatraSelectionToolbar"
 
@@ -65,6 +66,11 @@ static void InitButtons(SelectionToolbar* tb, MainWindow* win) {
     DisplayModel* dm = win->AsFixed();
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
     if (engine && EngineSupportsAnnotations(engine)) {
+        tb->buttons[i++] = {CmdCreateAnnotHighlight, "Highlight", true, {}};
+        tb->buttons[i++] = {CmdCreateAnnotUnderline, "Underline", true, {}};
+        tb->buttons[i++] = {CmdCreateAnnotSquiggly, "Squiggly", true, {}};
+        tb->buttons[i++] = {CmdCreateAnnotStrikeOut, "Strike Out", true, {}};
+    } else if (EbookAnnotationsSupported(win->CurrentTab())) {
         tb->buttons[i++] = {CmdCreateAnnotHighlight, "Highlight", true, {}};
         tb->buttons[i++] = {CmdCreateAnnotUnderline, "Underline", true, {}};
         tb->buttons[i++] = {CmdCreateAnnotSquiggly, "Squiggly", true, {}};

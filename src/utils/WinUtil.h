@@ -15,6 +15,8 @@ UINT_PTR NextSubclassId();
 RECT ClientRECT(HWND);
 Rect ClientRect(HWND);
 Rect WindowRect(HWND);
+// Visible frame bounds (excludes DWM invisible resize/shadow border). Falls back to WindowRect.
+Rect WindowVisibleRect(HWND);
 Rect MapRectToWindow(Rect, HWND hwndFrom, HWND hwndTo);
 
 void EditSelectAll(HWND);
@@ -366,6 +368,10 @@ void HwndSetTreeFont(HWND hwndTree, HFONT font);
 void HwndSetTreeFontForDpi(HWND hwndTree, HFONT font, int dpi);
 
 void HwndPositionToTheRightOf(HWND hwnd, HWND hwndRelative);
+// Dock hwnd against the right of hwndRelative.
+// Maximized main window: overlay the right side (raised above the frame).
+// Otherwise: place flush outside to the right, clamped to the main window's monitor.
+void HwndDockToRightOf(HWND hwnd, HWND hwndRelative, int preferredWidth = 0);
 void HwndPositionInCenterOf(HWND hwnd, HWND hwndRelative);
 void HwndSendCommand(HWND hwnd, int cmdId, LPARAM lp = 0);
 void HwndPostCommand(HWND hwnd, int cmdId, LPARAM lp = 0);

@@ -92,6 +92,8 @@
 #include "Version.h"
 #include "SumatraConfig.h"
 #include "EditAnnotations.h"
+#include "EbookAnnotations.h"
+#include "EditEbookAnnotations.h"
 #include "CommandPalette.h"
 #include "Installer.h"
 #include "RegistryPreview.h"
@@ -2540,6 +2542,8 @@ void UpdateAfterThemeChange() {
         RedrawWindow(win->hwndFrame, nullptr, nullptr, flags);
     }
     RefreshWordLookupTheme();
+    RefreshEditAnnotationsWindowsTheme();
+    RefreshEbookAnnotationsWindowsTheme();
 }
 
 static void RenameFileInHistory(const char* oldPath, const char* newPath) {
@@ -3715,6 +3719,39 @@ void MainWindowRerender(MainWindow* win, bool includeNonClientArea) {
     } else {
         win->RedrawAll(true);
     }
+}
+
+static void AddPdfMarkupOverlay(WindowTab* tab, int pageNo, Annotation* annot) {
+    if (!tab || !annot || pageNo <= 0 || !IsPdfTextMarkupAnnotation(annot)) {
+        return;
+    }
+    for (auto& entry : tab->pdfMarkupOverlays) {
+        if (entry.annot == annot) {
+            entry.pageNo = pageNo;
+            return;
+        }
+    }
+    tab->pdfMarkupOverlays.Append({pageNo, annot});
+}
+
+// Refresh a page in the background; optionally draw text markup as overlay until tiles catch up.
+void MainWindowRerenderAnnotationChange(MainWindow* win, int pageNo, Annotation* overlayAnnot) {
+    DisplayModel* dm = win->AsFixed();
+    WindowTab* tab = win->CurrentTab();
+    if (!dm || !tab) {
+        win->RedrawAll(true);
+        return;
+    }
+    if (pageNo > 0) {
+        AddPdfMarkupOverlay(tab, pageNo, overlayAnnot);
+        RectF bounds = overlayAnnot ? GetBounds(overlayAnnot) : dm->GetEngine()->PageMediabox(pageNo);
+        gRenderCache->CancelRendering(dm);
+        gRenderCache->Invalidate(dm, pageNo, bounds);
+    } else {
+        gRenderCache->CancelRendering(dm);
+    }
+    dm->RenderVisibleParts();
+    win->RedrawAll(true);
 }
 
 static void RerenderEverything() {
@@ -6452,6 +6489,7 @@ static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs*
         }
         SetQuadPointsAsRect(annot, rects);
         annot->bounds = GetBounds(annot);
+        MainWindowRerenderAnnotationChange(win, pageNo, IsPdfTextMarkupAnnotation(annot) ? annot : nullptr);
     }
     UpdateAnnotationsList(tab->editAnnotsWindow);
 
@@ -6460,7 +6498,6 @@ static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs*
         CopySelectionToClipboard(win);
     }
     DeleteOldSelectionInfo(win, true);
-    MainWindowRerender(win);
     ToolbarUpdateStateForWindow(win, true);
     return annot;
 }
@@ -7413,6 +7450,31 @@ static void SetAnnotCreateArgs(AnnotCreateArgs& args, CustomCommand* cmd) {
     if (col && col->parsedOk) {
         args.col = *col;
     }
+}
+
+static COLORREF GetEbookAnnotationColor(AnnotationType type, const AnnotCreateArgs& args, CustomCommand* cmd) {
+    if (cmd && cmd->id != cmd->origId && args.col.parsedOk) {
+        return args.col.col;
+    }
+    if (args.col.parsedOk) {
+        return args.col.col;
+    }
+    // Same default colors as PDF annotations (Annotations.* prefs).
+    AnnotCreateArgs prefsArgs{type};
+    SetAnnotCreateArgs(prefsArgs, nullptr);
+    if (prefsArgs.col.parsedOk) {
+        return prefsArgs.col.col;
+    }
+    if (type == AnnotationType::Underline) {
+        return RGB(0, 255, 0);
+    }
+    if (type == AnnotationType::Squiggly) {
+        return RGB(255, 0, 255);
+    }
+    if (type == AnnotationType::StrikeOut) {
+        return RGB(255, 0, 0);
+    }
+    return RGB(255, 255, 0);
 }
 
 static void PasteImageFromClipboard(MainWindow* win) {
@@ -8397,7 +8459,11 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                 if (engine) {
                     engine->hideAnnotations = tab->hideAnnotations;
                 }
+                tab->pdfMarkupOverlays.Reset();
                 MainWindowRerender(win);
+                if (DisplayModel* fixed = win->AsFixed()) {
+                    fixed->RenderVisibleParts();
+                }
             }
             break;
 
@@ -8408,7 +8474,11 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                 if (engine) {
                     engine->hideAnnotations = false;
                 }
+                tab->pdfMarkupOverlays.Reset();
                 MainWindowRerender(win);
+                if (DisplayModel* fixed = win->AsFixed()) {
+                    fixed->RenderVisibleParts();
+                }
             }
             break;
 
@@ -8419,7 +8489,11 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                 if (engine) {
                     engine->hideAnnotations = true;
                 }
+                tab->pdfMarkupOverlays.Reset();
                 MainWindowRerender(win);
+                if (DisplayModel* fixed = win->AsFixed()) {
+                    fixed->RenderVisibleParts();
+                }
             }
             break;
 
@@ -8648,6 +8722,16 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
 
         case CmdEditAnnotations: {
             if (!tab) return 0;
+            if (EbookAnnotationsSupported(tab) && dm) {
+                Point pt = HwndGetCursorPos(win->hwndCanvas);
+                if (lp != 0) {
+                    pt.x = GET_X_LPARAM(lp);
+                    pt.y = GET_Y_LPARAM(lp);
+                }
+                EbookAnnotation* annotation = EbookAnnotationsGetAt(tab, dm, pt);
+                ShowEditEbookAnnotationsWindow(tab, annotation);
+                return 0;
+            }
             Annotation* annot = nullptr;
             Point pt = HwndGetCursorPos(win->hwndCanvas);
             if (lp != 0) {
@@ -8666,6 +8750,14 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
 
         case CmdDeleteAnnotation: {
             if (!tab) return 0;
+            if (EbookAnnotationsSupported(tab) && dm) {
+                Point pt = HwndGetCursorPos(win->hwndCanvas);
+                if (EbookAnnotationsDeleteAt(tab, dm, pt)) {
+                    UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow);
+                    MainWindowRerender(win);
+                    return 0;
+                }
+            }
             Annotation* annot = tab->selectedAnnotation;
             if (!annot) annot = GetAnnotionUnderCursor(tab, nullptr);
             if (!annot) return 0;
@@ -8685,6 +8777,18 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             }
             AnnotCreateArgs args{annotType};
             SetAnnotCreateArgs(args, cmd);
+            if (EbookAnnotationsSupported(tab)) {
+                COLORREF color = GetEbookAnnotationColor(annotType, args, cmd);
+                EbookAnnotation* annotation = EbookAnnotationsCreateFromSelection(tab, annotType, color);
+                DeleteOldSelectionInfo(win, true);
+                UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow);
+                MainWindowRerender(win);
+                bool showEditor = cmd ? GetCommandBoolArg(cmd, kCmdArgOpenEdit, false) : IsShiftPressed();
+                if (annotation && showEditor) {
+                    ShowEditEbookAnnotationsWindow(tab, annotation, EditAnnotFocus::Edit);
+                }
+                return 0;
+            }
             lastCreatedAnnot = MakeAnnotationsFromSelection(tab, &args);
             if (cmd) {
                 // for custom commands must explicitly provide "openedit" argument
@@ -8712,18 +8816,29 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             if (!win || !tab || !dm) {
                 return 0;
             }
+            Point pt = HwndGetCursorPos(win->hwndCanvas);
+            if (lp != 0) {
+                pt.x = GET_X_LPARAM(lp);
+                pt.y = GET_Y_LPARAM(lp);
+            }
+            if (annotType == AnnotationType::Text && EbookAnnotationsSupported(tab)) {
+                AnnotCreateArgs args{annotType};
+                SetAnnotCreateArgs(args, cmd);
+                COLORREF color = GetEbookAnnotationColor(annotType, args, cmd);
+                EbookAnnotation* annotation = EbookAnnotationsCreateText(tab, dm, pt, color);
+                if (annotation) {
+                    UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow);
+                    MainWindowRerender(win);
+                    ShowEditEbookAnnotationsWindow(tab, annotation, EditAnnotFocus::Edit);
+                }
+                return 0;
+            }
             EngineBase* engine = dm->GetEngine();
             if (!engine) {
                 return 0;
             }
             if (!EngineSupportsAnnotations(engine)) {
                 return 0;
-            }
-            Point pt = HwndGetCursorPos(win->hwndCanvas);
-            if (lp != 0) {
-                // when sending from Menu.cpp mouse position is encoded as LPARAM
-                pt.x = GET_X_LPARAM(lp);
-                pt.y = GET_Y_LPARAM(lp);
             }
             int pageNoUnderCursor = dm->GetPageNoByPoint(pt);
             if (pageNoUnderCursor < 0) {
@@ -8817,7 +8932,6 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         case AnnotationType::Squiggly:
         case AnnotationType::StrikeOut:
         case AnnotationType::Underline: {
-            MainWindowRerender(win);
             ToolbarUpdateStateForWindow(win, false);
             return 0;
         }
@@ -11747,9 +11861,9 @@ static void ApplyTreeFontForDpi(HWND hwndTree, HFONT treeFont, int dpi) {
     if (!hwndTree) {
         return;
     }
-    if (DynSetWindowTheme) {
-        DynSetWindowTheme(hwndTree, L"Explorer", nullptr);
-    }
+    // Do not force the light "Explorer" theme here: that resets TOC/favorites
+    // scrollbars to white under dark chrome. RefreshSidebarDpiFonts re-applies
+    // the correct theme via UpdateControlsColors afterwards.
     HwndSetTreeFontForDpi(hwndTree, treeFont, dpi);
 }
 
@@ -11827,6 +11941,9 @@ static bool RefreshSidebarDpiFonts(MainWindow* win) {
     if (!ApplyDpiFontsToSidebar(win)) {
         return false;
     }
+    // ApplyDpiFontsToSidebar may recreate or restyle the tree; restore TOC/fav
+    // dark-mode scrollbar theme (same path as LoadTocTree / theme toggle).
+    UpdateControlsColors(win);
     RelayoutSidebarContainers(win);
     if (win->hwndTocBox && IsWindowVisible(win->hwndTocBox)) {
         RedrawWindow(win->hwndTocBox, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
@@ -11926,6 +12043,9 @@ static void ApplyMainWindowDpiMovePreview(MainWindow* win, HWND hwnd) {
     }
     ApplySidebarDpiMovePreview(win);
 
+    CloseEditAnnotationsWindowsForDpiMove(win);
+    CloseEbookAnnotationsWindowsForDpiMove(win);
+
     win->lastLayoutState = {};
     RelayoutCaption(win);
     RelayoutFrame(win);
@@ -11978,6 +12098,10 @@ static void ApplyMainWindowDpiChromeRefresh(MainWindow* win, HWND hwnd) {
     win->RedrawAll(true);
 
     RefreshOtherWindowsChromeAfterFontInvalidate(win);
+    CloseEditAnnotationsWindowsForDpiMove(win);
+    CloseEbookAnnotationsWindowsForDpiMove(win);
+    ReopenEditAnnotationsWindowsAfterDpiMove(win);
+    ReopenEbookAnnotationsWindowsAfterDpiMove(win);
 }
 
 static void OnMainWindowDpiChanged(MainWindow* win, HWND hwnd, const RECT* suggestedRect, int explicitDpi, bool force) {
@@ -12065,6 +12189,8 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
             if (win) {
                 win->deferDpiChromeRefresh = true;
                 win->dpiChromeRefreshPending = false;
+                CloseEditAnnotationsWindowsForDpiMove(win);
+                CloseEbookAnnotationsWindowsForDpiMove(win);
             }
             return 0;
 
@@ -12076,7 +12202,11 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
                     }
                 } else {
                     win->deferDpiChromeRefresh = false;
+                    ReopenEditAnnotationsWindowsAfterDpiMove(win);
+                    ReopenEbookAnnotationsWindowsAfterDpiMove(win);
                 }
+                DockOpenEditAnnotationsWindows(win);
+                DockOpenEbookAnnotationsWindows(win);
             }
             return 0;
 
@@ -12104,6 +12234,8 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
                 int dy = HIWORD(lp);
                 // dbglog::LogF("dx: %d, dy: %d", dx, dy);
                 FrameOnSize(win, dx, dy);
+                DockOpenEditAnnotationsWindows(win);
+                DockOpenEbookAnnotationsWindows(win);
             }
             break;
 
@@ -12114,6 +12246,8 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
             if (win) {
                 RememberDefaultWindowPosition(win);
                 UpdateOverlayScrollbarPositions(win);
+                DockOpenEditAnnotationsWindows(win);
+                DockOpenEbookAnnotationsWindows(win);
             }
             break;
 

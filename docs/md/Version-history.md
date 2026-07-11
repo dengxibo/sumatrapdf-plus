@@ -1,5 +1,14 @@
 # Version history
 
+## 3.7.9 (2026-07-12)
+
+- add persistent annotations for EPUB and MOBI/AZW ebooks (highlight, underline, squiggly, strike-out, and text notes). Annotations are stored as per-book JSON sidecars in the SumatraPDF data directory and survive repagination; colors and markup style match PDF annotations (`Annotations.HighlightColor` etc.)
+- add **Export Notes** in the ebook annotation editor to save all annotations as Markdown (page, excerpt, note, author, date)
+- ebook annotation author is the reader (Windows user name, or `Annotations.DefaultAuthor` if set), not the book author
+- fix PDF text markup (highlight/underline/etc.) sometimes appearing only after a long delay: draw an immediate overlay while tiles refresh
+- fix annotation editor docking and multi-monitor DPI (close/reopen on drag, width ratio vs main window, correct initial position for EPUB panel)
+- fix EPUB annotation window growing onto a second monitor or shrinking when switching list items
+
 ## 3.7.8 (2026-07-10)
 
 - fix dark-mode TOC sidebar scrollbar staying white until theme is toggled

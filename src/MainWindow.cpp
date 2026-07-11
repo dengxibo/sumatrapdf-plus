@@ -738,9 +738,16 @@ static void SyncSidebarTreeViewTheme(HWND hwnd) {
         return;
     }
     // Sidebar tree views are nested under hwndTocBox/hwndFavBox, so frame-level
-    // dark-mode setup does not reach them. Re-apply the current tree theme when
-    // TOC/favorites content or colors are updated (e.g. first LoadTocTree).
-    DarkMode::setTreeViewWindowThemeEx(hwnd, true);
+    // dark-mode setup does not reliably theme their scrollbars. Match canvas:
+    // key off ThemeUsesDarkChrome() and force DarkMode_Explorer when dark.
+    // setTreeViewWindowThemeEx alone follows view-bg lightness and can leave
+    // TreeViewStyle::classic (light scrollbars) even with dark chrome.
+    if (ThemeUsesDarkChrome()) {
+        DarkMode::setDarkThemeExperimental(hwnd);
+        DarkMode::setDarkScrollBar(hwnd);
+    } else {
+        DarkMode::setTreeViewWindowThemeEx(hwnd, true);
+    }
 }
 
 void UpdateControlsColors(MainWindow* win) {

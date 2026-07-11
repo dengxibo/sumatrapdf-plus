@@ -1365,6 +1365,8 @@ const sumatraFiles: FileGroup[] = [
       "DisplayModel.*",
       "DisplayMode.*",
       "EditAnnotations.*",
+      "EditEbookAnnotations.*",
+      "EbookAnnotations.*",
       "EngineDump.cpp",
       "ExternalViewers.*",
       "Favorites.*",

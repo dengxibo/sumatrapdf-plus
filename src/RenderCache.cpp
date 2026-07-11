@@ -997,6 +997,29 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
     return 0;
 }
 
+bool RenderCache::PageNeedsMarkupOverlay(DisplayModel* dm, int pageNo) {
+    ScopedCritSec scope(&cacheAccess);
+    int rotation = dm->GetRotation();
+    float zoom = dm->GetZoomSafe(pageNo);
+    USHORT targetRes = GetTileRes(dm, pageNo);
+
+    bool anyTargetTile = false;
+    for (int i = 0; i < cacheCount; i++) {
+        BitmapCacheEntry* e = cache[i];
+        if (e->dm != dm || e->pageNo != pageNo || e->rotation != rotation || e->tile.res != targetRes) {
+            continue;
+        }
+        if (e->zoom != zoom) {
+            continue;
+        }
+        anyTargetTile = true;
+        if (e->outOfDate) {
+            return true;
+        }
+    }
+    return !anyTargetTile;
+}
+
 // TODO: conceptually, RenderCache is not the right place for code that paints
 //       (this is the only place that knows about Tiles, though)
 int RenderCache::PaintTile(HDC hdc, Rect bounds, DisplayModel* dm, int pageNo, TilePosition tile, Rect tileOnScreen,

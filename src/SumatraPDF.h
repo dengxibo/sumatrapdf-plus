@@ -85,6 +85,7 @@ inline constexpr Perm operator~(Perm lhs) {
 
 struct Favorites;
 struct FileHistory;
+struct Annotation;
 struct MainWindow;
 struct NotificationWnd;
 struct RenderCache;
@@ -271,6 +272,7 @@ void RebuildMenuBarForWindow(MainWindow* win);
 void DeleteMainWindow(MainWindow* win);
 void SwitchToDisplayMode(MainWindow* win, DisplayMode displayMode, bool keepContinuous = false);
 void MainWindowRerender(MainWindow* win, bool includeNonClientArea = false);
+void MainWindowRerenderAnnotationChange(MainWindow* win, int pageNo, Annotation* overlayAnnot = nullptr);
 LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 void ShutdownCleanup();
 bool DocIsSupportedFileType(Kind);

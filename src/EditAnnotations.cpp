@@ -38,10 +38,89 @@ extern "C" {
 #include "Canvas.h"
 #include "Commands.h"
 #include "DarkModeSubclass.h"
+#include "EbookAnnotations.h"
+#include "Selection.h"
+#include "RenderCache.h"
 
 #include "utils/Log.h"
 
 #include "theme.h"
+
+extern RenderCache* gRenderCache;
+
+static void RerenderPdfAnnotationChange(WindowTab* tab, Annotation* overlayAnnot) {
+    if (!tab) {
+        return;
+    }
+    Annotation* annot = overlayAnnot ? overlayAnnot : tab->selectedAnnotation;
+    int pageNo = annot ? annot->pageNo : 0;
+    Annotation* overlay = nullptr;
+    if (overlayAnnot && IsPdfTextMarkupAnnotation(overlayAnnot)) {
+        overlay = overlayAnnot;
+    } else if (annot && IsPdfTextMarkupAnnotation(annot)) {
+        overlay = annot;
+    }
+    MainWindowRerenderAnnotationChange(tab->win, pageNo, overlay);
+}
+
+static COLORREF ColorRefFromPdfColor(PdfColor c) {
+    if (c == 0) {
+        return MkColor(0xff, 0xff, 0x00);
+    }
+    u8 r, g, b, a;
+    UnpackPdfColor(c, r, g, b, a);
+    return MkColor(r, g, b);
+}
+
+void RemovePdfMarkupOverlayAnnot(WindowTab* tab, Annotation* annot) {
+    if (!tab || !annot) {
+        return;
+    }
+    for (int i = tab->pdfMarkupOverlays.size() - 1; i >= 0; i--) {
+        if (tab->pdfMarkupOverlays.at(i).annot == annot) {
+            tab->pdfMarkupOverlays.RemoveAt(i);
+        }
+    }
+}
+
+void ClearPdfMarkupOverlayForPage(WindowTab* tab, int pageNo) {
+    if (!tab || pageNo <= 0) {
+        return;
+    }
+    for (int i = tab->pdfMarkupOverlays.size() - 1; i >= 0; i--) {
+        if (tab->pdfMarkupOverlays.at(i).pageNo == pageNo) {
+            tab->pdfMarkupOverlays.RemoveAt(i);
+        }
+    }
+}
+
+void PaintPdfMarkupOverlayPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pageNo) {
+    if (!tab || tab->hideAnnotations || !dm || !dm->PageVisible(pageNo) || tab->pdfMarkupOverlays.empty()) {
+        return;
+    }
+    for (auto& entry : tab->pdfMarkupOverlays) {
+        if (entry.pageNo != pageNo || !entry.annot || !IsPdfTextMarkupAnnotation(entry.annot)) {
+            continue;
+        }
+        Vec<RectF> pageRects = GetQuadPointsAsRect(entry.annot);
+        if (pageRects.empty()) {
+            RectF r = GetRect(entry.annot);
+            if (!r.IsEmpty()) {
+                pageRects.Append(r);
+            }
+        }
+        NormalizeNearbyHighlightHeights(pageRects);
+        Vec<Rect> screenRects;
+        for (RectF rect : pageRects) {
+            Rect screenRect = dm->CvtToScreen(pageNo, rect);
+            if (!screenRect.IsEmpty()) {
+                screenRects.Append(screenRect);
+            }
+        }
+        COLORREF color = ColorRefFromPdfColor(GetColor(entry.annot));
+        PaintTextMarkupOverlay(hdc, tab->win->canvasRc, entry.annot->type, color, screenRects);
+    }
+}
 
 constexpr int borderWidthMin = 0;
 constexpr int borderWidthMax = 12;
@@ -147,6 +226,7 @@ struct EditAnnotationsWindow : Wnd {
     Vec<Annotation*> annotations;
 
     bool skipGoToPage = false;
+    int dpi = 0;
 
     StrBuilder currTextColor;
     StrBuilder currCustomColor;
@@ -177,11 +257,13 @@ static Annotation* PickNewSelectedAnnotation(EditAnnotationsWindow* ew, int prev
 void DeleteAnnotationAndUpdateUI(WindowTab* tab, Annotation* annot) {
     EditAnnotationsWindow* ew = tab->editAnnotsWindow;
     Annotation* selectNext = nullptr;
+    int pageNo = annot ? annot->pageNo : 0;
     if (annot != tab->selectedAnnotation) {
         // preserve current selection if we're not deleting it
         selectNext = tab->selectedAnnotation;
     }
 
+    RemovePdfMarkupOverlayAnnot(tab, annot);
     DeleteAnnotation(annot);
     if (ew != nullptr) {
         // can be null if called from Menu.cpp and annotations window is not visible
@@ -197,6 +279,7 @@ void DeleteAnnotationAndUpdateUI(WindowTab* tab, Annotation* annot) {
 #endif
     }
     SetSelectedAnnotation(tab, selectNext);
+    MainWindowRerenderAnnotationChange(tab->win, pageNo, nullptr);
 }
 
 static void DeleteSelectedAnnotation(EditAnnotationsWindow* ew) {
@@ -316,6 +399,8 @@ EditAnnotationsWindow::~EditAnnotationsWindow() {
     auto cr = ClientRect(hwnd);
     tab->lastEditAnnotsWindowPos.dx = cr.dx;
     tab->lastEditAnnotsWindowPos.dy = cr.dy;
+    tab->lastEditAnnotsWindowDpi = dpi > 0 ? dpi : DpiGet(hwnd);
+    tab->lastEditAnnotsWindowMainWidth = WindowRect(tab->win->hwndFrame).dx;
 
     if (tab->selectedAnnotation != nullptr) {
         tab->selectedAnnotation = nullptr;
@@ -347,6 +432,96 @@ void NotifyAnnotationsChanged(EditAnnotationsWindow* ew) {
         return;
     }
     EnableSaveIfAnnotationsChanged(ew);
+}
+
+static void GetEditAnnotationsThemeColors(COLORREF& textOut, COLORREF& bgOut) {
+    textOut = ThemeWindowTextColor();
+    bgOut = ThemeWindowControlBackgroundColor();
+}
+
+struct EditAnnotThemeColors {
+    COLORREF text = 0;
+    COLORREF bg = 0;
+};
+
+static BOOL CALLBACK ApplyThemeColorsToChildWnd(HWND hwnd, LPARAM lparam) {
+    auto* colors = (EditAnnotThemeColors*)lparam;
+    Wnd* wnd = WndListFindByHwnd(hwnd);
+    if (wnd) {
+        wnd->SetColors(colors->text, colors->bg);
+    }
+    return TRUE;
+}
+
+static void ApplyEditAnnotationsWindowTheme(EditAnnotationsWindow* ew, bool installDarkMode) {
+    if (!ew || !ew->hwnd) {
+        return;
+    }
+    EditAnnotThemeColors colors;
+    GetEditAnnotationsThemeColors(colors.text, colors.bg);
+    ew->SetColors(colors.text, colors.bg);
+    EnumChildWindows(ew->hwnd, ApplyThemeColorsToChildWnd, (LPARAM)&colors);
+
+    if (UseDarkModeLib()) {
+        if (installDarkMode) {
+            DarkMode::setDarkWndNotifySafe(ew->hwnd);
+            DarkMode::setWindowEraseBgSubclass(ew->hwnd);
+        } else {
+            DarkMode::setDarkTitleBarEx(ew->hwnd, true);
+            DarkMode::setWindowCtlColorSubclass(ew->hwnd);
+            DarkMode::setChildCtrlsTheme(ew->hwnd);
+        }
+    }
+
+    uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN;
+    RedrawWindow(ew->hwnd, nullptr, nullptr, flags);
+}
+
+void RefreshEditAnnotationsWindowsTheme() {
+    for (MainWindow* win : gWindows) {
+        for (WindowTab* tab : win->Tabs()) {
+            if (tab->editAnnotsWindow) {
+                ApplyEditAnnotationsWindowTheme(tab->editAnnotsWindow, false);
+            }
+        }
+    }
+}
+
+void DockOpenEditAnnotationsWindows(MainWindow* win) {
+    if (!win || !win->hwndFrame) {
+        return;
+    }
+    for (WindowTab* tab : win->Tabs()) {
+        EditAnnotationsWindow* ew = tab->editAnnotsWindow;
+        if (ew && ew->hwnd && IsWindowVisible(ew->hwnd)) {
+            HwndDockToRightOf(ew->hwnd, win->hwndFrame);
+        }
+    }
+}
+
+void CloseEditAnnotationsWindowsForDpiMove(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    for (WindowTab* tab : win->Tabs()) {
+        if (tab->editAnnotsWindow) {
+            tab->reopenEditAnnotsAfterDpiMove = true;
+            CloseAndDeleteEditAnnotationsWindow(tab);
+        }
+    }
+}
+
+void ReopenEditAnnotationsWindowsAfterDpiMove(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    for (WindowTab* tab : win->Tabs()) {
+        if (!tab->reopenEditAnnotsAfterDpiMove) {
+            continue;
+        }
+        tab->reopenEditAnnotsAfterDpiMove = false;
+        ShowEditAnnotationsWindow(tab, nullptr);
+    }
 }
 
 static void RebuildAnnotationsListBox(EditAnnotationsWindow* ew) {
@@ -619,7 +794,7 @@ static void TextAlignmentSelectionChanged(EditAnnotationsWindow* ew) {
     int newQuadding = idx;
     SetQuadding(annot, newQuadding);
     EnableSaveIfAnnotationsChanged(ew);
-    MainWindowRerender(ew->tab->win);
+    RerenderPdfAnnotationChange(ew->tab, nullptr);
 }
 
 static void DoTextFont(EditAnnotationsWindow* ew, Annotation* annot) {
@@ -647,7 +822,7 @@ static void TextFontSelectionChanged(EditAnnotationsWindow* ew) {
     const char* font = seqstrings::IdxToStr(gFontNames, idx);
     SetDefaultAppearanceTextFont(annot, font);
     EnableSaveIfAnnotationsChanged(ew);
-    MainWindowRerender(ew->tab->win);
+    RerenderPdfAnnotationChange(ew->tab, nullptr);
 }
 
 static void DoTextSize(EditAnnotationsWindow* ew, Annotation* annot) {
@@ -676,7 +851,7 @@ static void TextFontSizeChanging(EditAnnotationsWindow* ew, Trackbar::PositionCh
     TempStr s = str::FormatTemp(_TRA("Text Size: %d"), fontSize);
     ew->staticTextSize->SetText(s);
     EnableSaveIfAnnotationsChanged(ew);
-    MainWindowRerender(ew->tab->win);
+    RerenderPdfAnnotationChange(ew->tab, nullptr);
 }
 
 static void DoTextColor(EditAnnotationsWindow* ew, Annotation* annot) {
@@ -699,7 +874,7 @@ static void TextColorSelectionChanged(EditAnnotationsWindow* ew) {
     auto col = GetDropDownColor(item);
     SetDefaultAppearanceTextColor(annot, col);
     EnableSaveIfAnnotationsChanged(ew);
-    MainWindowRerender(ew->tab->win);
+    RerenderPdfAnnotationChange(ew->tab, nullptr);
 }
 
 static void DoBorder(EditAnnotationsWindow* ew, Annotation* annot) {
@@ -725,7 +900,7 @@ static void BorderWidthChanging(EditAnnotationsWindow* ew, Trackbar::PositionCha
     TempStr s = str::FormatTemp(_TRA("Border: %d"), borderWidth);
     ew->staticBorder->SetText(s);
     EnableSaveIfAnnotationsChanged(ew);
-    MainWindowRerender(ew->tab->win);
+    RerenderPdfAnnotationChange(ew->tab, nullptr);
 }
 
 static void DoLineStartEnd(EditAnnotationsWindow* ew, Annotation* annot) {
@@ -756,7 +931,7 @@ static void LineStartSelectionChanged(EditAnnotationsWindow* ew) {
     }
     SetLineStartStyles(annot, start);
     EnableSaveIfAnnotationsChanged(ew);
-    MainWindowRerender(ew->tab->win);
+    RerenderPdfAnnotationChange(ew->tab, nullptr);
 }
 
 static void LineEndSelectionChanged(EditAnnotationsWindow* ew) {
@@ -770,7 +945,7 @@ static void LineEndSelectionChanged(EditAnnotationsWindow* ew) {
     }
     SetLineEndStyles(annot, end);
     EnableSaveIfAnnotationsChanged(ew);
-    MainWindowRerender(ew->tab->win);
+    RerenderPdfAnnotationChange(ew->tab, nullptr);
 }
 
 static void DoIcon(EditAnnotationsWindow* ew, Annotation* annot) {
@@ -812,7 +987,7 @@ static void IconSelectionChanged(EditAnnotationsWindow* ew) {
     auto item = ew->dropDownIcon->items.At(idx);
     SetIconName(annot, item);
     EnableSaveIfAnnotationsChanged(ew);
-    MainWindowRerender(ew->tab->win);
+    RerenderPdfAnnotationChange(ew->tab, nullptr);
 }
 
 static void DoColor(EditAnnotationsWindow* ew, Annotation* annot) {
@@ -842,7 +1017,7 @@ static void ColorSelectionChanged(EditAnnotationsWindow* ew) {
     auto col = GetDropDownColor(item);
     SetColor(annot, col);
     EnableSaveIfAnnotationsChanged(ew);
-    MainWindowRerender(ew->tab->win);
+    RerenderPdfAnnotationChange(ew->tab, nullptr);
 }
 
 static void DoInteriorColor(EditAnnotationsWindow* ew, Annotation* annot) {
@@ -865,7 +1040,7 @@ static void InteriorColorSelectionChanged(EditAnnotationsWindow* ew) {
     auto col = GetDropDownColor(item);
     SetInteriorColor(annot, col);
     EnableSaveIfAnnotationsChanged(ew);
-    MainWindowRerender(ew->tab->win);
+    RerenderPdfAnnotationChange(ew->tab, nullptr);
 }
 
 static void DoOpacity(EditAnnotationsWindow* ew, Annotation* annot) {
@@ -898,7 +1073,7 @@ static void OpacityChanging(EditAnnotationsWindow* ew, Trackbar::PositionChangin
     TempStr s = str::FormatTemp(_TRA("Opacity: %d"), opacity);
     ew->staticOpacity->SetText(s);
     EnableSaveIfAnnotationsChanged(ew);
-    MainWindowRerender(ew->tab->win);
+    RerenderPdfAnnotationChange(ew->tab, nullptr);
 }
 
 // TODO: maybe use ew->tab->selectedAnnotation instead of annot
@@ -1122,7 +1297,10 @@ static void ContentsChanged(EditAnnotationsWindow* ew) {
     gMainWindowRerenderTimer = SetTimer(win->hwndCanvas, 1, timeoutInMs, [](HWND, UINT, UINT_PTR, DWORD) {
         if (IsMainWindowValid(gMainWindowForRender)) {
             // logf("ContentsChanged: re-rendering MainWindow\n");
-            MainWindowRerender(gMainWindowForRender);
+            WindowTab* tab = gMainWindowForRender->CurrentTab();
+            if (tab) {
+                RerenderPdfAnnotationChange(tab, tab->selectedAnnotation);
+            }
         } else {
             // logf("ContentsChanged: NOT re-rendering MainWindow because is not valid anymore\n");
         }
@@ -1150,13 +1328,13 @@ void EditAnnotationsWindow::OnSize(UINT msg, UINT, SIZE size) {
     LayoutToSize(mainLayout, {dx, dy});
 }
 
-static Static* CreateStatic(HWND parent, const char* s = nullptr) {
+static Static* CreateStatic(HWND parent, HFONT font, const char* s = nullptr) {
     auto w = new Static();
     Static::CreateArgs args;
     args.parent = parent;
     args.text = s;
     args.isRtl = IsUIRtl();
-    args.font = GetAppFont();
+    args.font = font;
     HWND hwnd = w->Create(args);
     ReportIf(!hwnd);
     return w;
@@ -1167,7 +1345,8 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     auto vbox = new VBox();
     vbox->alignMain = MainAxisAlign::MainStart;
     vbox->alignCross = CrossAxisAlign::Stretch;
-    HFONT fnt = GetAppFont();
+    int dpi = ew->dpi > 0 ? ew->dpi : DpiGet(parent);
+    HFONT fnt = GetAppFontForDpi(dpi);
 
     {
         ListBox::CreateArgs args;
@@ -1186,13 +1365,13 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     }
 
     {
-        auto w = CreateStatic(parent);
+        auto w = CreateStatic(parent, fnt);
         ew->staticRect = w;
         vbox->AddChild(w);
     }
 
     {
-        auto w = CreateStatic(parent);
+        auto w = CreateStatic(parent, fnt);
         // WindowBaseLayout* l2 = (WindowBaseLayout*)l;
         // l2->SetInsetsPt(20, 0, 0, 0);
         ew->staticAuthor = w;
@@ -1200,19 +1379,19 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     }
 
     {
-        auto w = CreateStatic(parent);
+        auto w = CreateStatic(parent, fnt);
         ew->staticModificationDate = w;
         vbox->AddChild(w);
     }
 
     {
-        auto w = CreateStatic(parent);
+        auto w = CreateStatic(parent, fnt);
         ew->staticPopup = w;
         vbox->AddChild(w);
     }
 
     {
-        auto w = CreateStatic(parent, _TRA("Contents:"));
+        auto w = CreateStatic(parent, fnt, _TRA("Contents:"));
         ew->staticContents = w;
         w->SetInsetsPt(4, 0, 0, 0);
         vbox->AddChild(w);
@@ -1228,14 +1407,14 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
         auto w = new Edit();
         HWND hwnd = w->Create(args);
         ReportIf(!hwnd);
-        w->maxDx = 150;
+        w->maxDx = MulDiv(150, dpi, 96);
         w->onTextChanged = MkFunc0(ContentsChanged, ew);
         ew->editContents = w;
         vbox->AddChild(w);
     }
 
     {
-        auto w = CreateStatic(parent, _TRA("Text Alignment:"));
+        auto w = CreateStatic(parent, fnt, _TRA("Text Alignment:"));
         w->SetInsetsPt(8, 0, 0, 0);
         ew->staticTextAlignment = w;
         vbox->AddChild(w);
@@ -1258,7 +1437,7 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     }
 
     {
-        auto w = CreateStatic(parent, _TRA("Text Font:"));
+        auto w = CreateStatic(parent, fnt, _TRA("Text Font:"));
         w->SetInsetsPt(8, 0, 0, 0);
         ew->staticTextFont = w;
         vbox->AddChild(w);
@@ -1280,7 +1459,7 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     }
 
     {
-        auto w = CreateStatic(parent, _TRA("Text Size:"));
+        auto w = CreateStatic(parent, fnt, _TRA("Text Size:"));
         w->SetInsetsPt(8, 0, 0, 0);
         ew->staticTextSize = w;
         vbox->AddChild(w);
@@ -1305,7 +1484,7 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     }
 
     {
-        auto w = CreateStatic(parent, _TRA("Text Color:"));
+        auto w = CreateStatic(parent, fnt, _TRA("Text Color:"));
         ew->staticTextColor = w;
         vbox->AddChild(w);
     }
@@ -1327,7 +1506,7 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     }
 
     {
-        auto w = CreateStatic(parent, _TRA("Line Start:"));
+        auto w = CreateStatic(parent, fnt, _TRA("Line Start:"));
         w->SetInsetsPt(8, 0, 0, 0);
         ew->staticLineStart = w;
         vbox->AddChild(w);
@@ -1349,7 +1528,7 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     }
 
     {
-        auto w = CreateStatic(parent, _TRA("Line End:"));
+        auto w = CreateStatic(parent, fnt, _TRA("Line End:"));
         w->SetInsetsPt(8, 0, 0, 0);
         ew->staticLineEnd = w;
         vbox->AddChild(w);
@@ -1371,7 +1550,7 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     }
 
     {
-        auto w = CreateStatic(parent, _TRA("Icon:"));
+        auto w = CreateStatic(parent, fnt, _TRA("Icon:"));
         w->SetInsetsPt(8, 0, 0, 0);
         ew->staticIcon = w;
         vbox->AddChild(w);
@@ -1393,7 +1572,7 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     }
 
     {
-        auto w = CreateStatic(parent, "Border:");
+        auto w = CreateStatic(parent, fnt, "Border:");
         w->SetInsetsPt(8, 0, 0, 0);
         ew->staticBorder = w;
         vbox->AddChild(w);
@@ -1415,7 +1594,7 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     }
 
     {
-        auto w = CreateStatic(parent, _TRA("Color:"));
+        auto w = CreateStatic(parent, fnt, _TRA("Color:"));
         w->SetInsetsPt(8, 0, 0, 0);
         ew->staticColor = w;
         vbox->AddChild(w);
@@ -1437,7 +1616,7 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     }
 
     {
-        auto w = CreateStatic(parent, _TRA("Interior Color:"));
+        auto w = CreateStatic(parent, fnt, _TRA("Interior Color:"));
         w->SetInsetsPt(8, 0, 0, 0);
         ew->staticInteriorColor = w;
         vbox->AddChild(w);
@@ -1460,7 +1639,7 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     }
 
     {
-        auto w = CreateStatic(parent, _TRA("Opacity:"));
+        auto w = CreateStatic(parent, fnt, _TRA("Opacity:"));
         w->SetInsetsPt(8, 0, 0, 0);
         ew->staticOpacity = w;
         vbox->AddChild(w);
@@ -1616,6 +1795,7 @@ void ShowEditAnnotationsWindow(WindowTab* tab, Annotation* annot, EditAnnotFocus
     EditAnnotationsWindow* ew = tab->editAnnotsWindow;
     if (ew) {
         bool isNew = annot != ew->tab->win->annotationUnderCursor;
+        HwndDockToRightOf(ew->hwnd, tab->win->hwndFrame);
         HwndMakeVisible(ew->hwnd);
         SetForegroundWindow(ew->hwnd);
         if (ew->listBox && ew->listBox->model->ItemsCount() > 0) {
@@ -1632,21 +1812,21 @@ void ShowEditAnnotationsWindow(WindowTab* tab, Annotation* annot, EditAnnotFocus
     WCHAR* iconName = MAKEINTRESOURCEW(GetAppIconID());
     args.icon = LoadIconW(h, iconName);
     // mainWindow->isDialog = true;
-    if (UseDarkModeLib()) {
-        args.bgColor = DarkMode::isEnabled() ? ThemeWindowControlBackgroundColor() : MkGray(0xee);
-    } else {
-        args.bgColor = MkGray(0xee);
-    }
+    args.bgColor = ThemeWindowControlBackgroundColor();
 
     args.title = str::JoinTemp(_TRA("Annotations"), ": ", tab->GetTabTitle());
     args.visible = false;
-    args.font = GetAppFont();
+    HWND parentHwnd = tab->win->hwndFrame;
+    int parentDpi = tab->win->frameDpi > 0 ? tab->win->frameDpi : DpiGet(parentHwnd);
+    args.font = GetAppFontForDpi(parentDpi);
 
     // PositionCloseTo(w, args->hwndRelatedTo);
     // SIZE winSize = {w->initialSize.dx, w->initialSize.Height};
     // LimitWindowSizeToScreen(args->hwndRelatedTo, winSize);
     // w->initialSize = {winSize.cx, winSize.cy};
     ew->CreateCustom(args);
+    HwndDockToRightOf(ew->hwnd, tab->win->hwndFrame, MulDiv(520, parentDpi > 0 ? parentDpi : 96, 96));
+    ew->dpi = parentDpi > 0 ? parentDpi : DpiGet(ew->hwnd);
 
     CreateMainLayout(ew);
     ew->tab = tab;
@@ -1655,51 +1835,48 @@ void ShowEditAnnotationsWindow(WindowTab* tab, Annotation* annot, EditAnnotFocus
     UpdateAnnotationsList(ew);
 
     Rect lastPos = tab->lastEditAnnotsWindowPos;
-    // size our editor window to be the same height as main window
-    int minDy = lastPos.dy;
-    if (minDy == 0) {
-        minDy = 720;
-        // TODO: this is slightly less that wanted
+    // Prefer a remembered width proportional to the main window; height follows the main window when docked.
+    int mainWidth = WindowRect(tab->win->hwndFrame).dx;
+    int width;
+    if (lastPos.dx > 0 && tab->lastEditAnnotsWindowMainWidth > 0 && mainWidth > 0) {
+        width = MulDiv(lastPos.dx, mainWidth, tab->lastEditAnnotsWindowMainWidth);
+    } else if (lastPos.dx > 0 && tab->lastEditAnnotsWindowDpi > 0) {
+        width = MulDiv(lastPos.dx, ew->dpi, tab->lastEditAnnotsWindowDpi);
+    } else if (lastPos.dx > 0) {
+        width = lastPos.dx;
+    } else if (mainWidth > 0) {
+        width = MulDiv(mainWidth, 520, 1920);
+    } else {
+        width = MulDiv(520, ew->dpi, 96);
+    }
+    int height = WindowRect(tab->win->hwndFrame).dy;
+    if (height <= 0) {
+        height = MulDiv(720, ew->dpi, 96);
         HWND hwnd = tab->win->hwndCanvas;
         auto rc = ClientRect(hwnd);
         if (rc.dy > 0) {
-            minDy = rc.dy;
+            height = rc.dy;
         }
     }
 
     // if it's a tall window, up the number of items in list box
     // from 5 to 14
-    if (minDy > 1024) {
+    if (height > MulDiv(1024, ew->dpi, 96)) {
         ew->listBox->idealSizeLines = 14;
     }
 
-    if (lastPos.IsEmpty()) {
-        SIZE size = {520, minDy};
-        LimitEditAnnotationsClientSizeToScreen(ew->hwnd, tab->win->hwndFrame, size);
-        LayoutAndSizeToContent(ew->mainLayout, size.cx, size.cy, ew->hwnd);
-        HwndPositionToTheRightOf(ew->hwnd, tab->win->hwndFrame);
-    } else {
-        SIZE size = {lastPos.dx, minDy};
-        LimitEditAnnotationsClientSizeToScreen(ew->hwnd, tab->win->hwndFrame, size);
-        LayoutAndSizeToContent(ew->mainLayout, size.cx, size.cy, ew->hwnd);
-        // pass nullptr for hwnd so ShiftRectToWorkArea uses the saved rect
-        // to find the correct monitor (not the monitor the hwnd is currently on)
-        Rect r = WindowRect(ew->hwnd);
-        r.x = lastPos.x;
-        r.y = lastPos.y;
-        r = ShiftRectToWorkArea(r, nullptr, true);
-        SetWindowPos(ew->hwnd, nullptr, r.x, r.y, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
-    }
+    SIZE size = {width, height};
+    LimitEditAnnotationsClientSizeToScreen(ew->hwnd, tab->win->hwndFrame, size);
+    LayoutAndSizeToContent(ew->mainLayout, size.cx, size.cy, ew->hwnd);
+    HwndDockToRightOf(ew->hwnd, tab->win->hwndFrame, WindowRect(ew->hwnd).dx);
+
     if (!annot) annot = ew->tab->selectedAnnotation;
     ew->skipGoToPage = (annot != nullptr);
     if (annot) {
         bool isNew = annot != ew->tab->win->annotationUnderCursor;
         SetSelectedAnnotation(tab, annot, isNew, focus);
     }
-    if (UseDarkModeLib()) {
-        DarkMode::setDarkWndNotifySafe(ew->hwnd);
-        DarkMode::setWindowEraseBgSubclass(ew->hwnd);
-    }
+    ApplyEditAnnotationsWindowTheme(ew, true);
 
     // important to call this after hooking up onSize to ensure
     // first layout is triggered

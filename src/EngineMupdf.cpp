@@ -403,6 +403,50 @@ static int ReflowChapterIndexForPageNo(EngineMupdf* e, int pageNo1) {
     return loc.chapter;
 }
 
+bool EngineMupdfGetReflowPageChapter(EngineBase* engine, int pageNo, int* chapterOut, int* chapterStartPageOut) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !str::EqI(engine->defaultExt, ".epub") || pageNo < 1 || !chapterOut || !chapterStartPageOut) {
+        return false;
+    }
+
+    int pageIdx = pageNo - 1;
+    ScopedCritSec scope(&e->pagesLock);
+    int n = e->reflowChapterStartPage.Size();
+    if (n <= 0 || pageIdx < e->reflowChapterStartPage[0]) {
+        return false;
+    }
+    int lo = 0;
+    int hi = n - 1;
+    int chapter = 0;
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        if (e->reflowChapterStartPage[mid] <= pageIdx) {
+            chapter = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    *chapterOut = chapter;
+    *chapterStartPageOut = e->reflowChapterStartPage[chapter] + 1;
+    return true;
+}
+
+bool EngineMupdfGetReflowChapterPageRange(EngineBase* engine, int chapter, int* startPageOut, int* endPageOut) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !str::EqI(engine->defaultExt, ".epub") || chapter < 0 || !startPageOut || !endPageOut) {
+        return false;
+    }
+    ScopedCritSec scope(&e->pagesLock);
+    if (!e->reflowChapterStartPage.isValidIndex(chapter)) {
+        return false;
+    }
+    *startPageOut = e->reflowChapterStartPage[chapter] + 1;
+    *endPageOut =
+        e->reflowChapterStartPage.isValidIndex(chapter + 1) ? e->reflowChapterStartPage[chapter + 1] : e->pageCount;
+    return *endPageOut >= *startPageOut;
+}
+
 // for reflowable docs, use outline->page (chapter+index) with cached chapter
 // page counts instead of fz_resolve_link, which lays out HTML per bookmark
 static int FastReflowableOutlinePageNo(EngineMupdf* e, fz_context* ctx, fz_document* doc, fz_outline* outline) {

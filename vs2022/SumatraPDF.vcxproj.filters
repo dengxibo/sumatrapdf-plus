@@ -491,6 +491,12 @@
     <ClCompile Include="..\src\EditAnnotations.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\EditEbookAnnotations.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\EbookAnnotations.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\EngineBase.cpp">
       <Filter>src</Filter>
     </ClCompile>

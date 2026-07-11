@@ -42,6 +42,8 @@
 #include "WindowTab.h"
 #include "SumatraPDF.h"
 #include "EditAnnotations.h"
+#include "EbookAnnotations.h"
+#include "EditEbookAnnotations.h"
 #include "Notifications.h"
 #include "OverlayScrollbar.h"
 #include "MainWindow.h"
@@ -745,7 +747,7 @@ static bool StopDraggingAnnotation(MainWindow* win, int x, int y, bool aborted) 
         // logf(" new rect: x=%.2f, y=%.2f, dx=%.2f, dy=%.2f\n", r.x, r.y, r.dx, r.dy);
         SetRect(annot, r);
         NotifyAnnotationsChanged(win->CurrentTab()->editAnnotsWindow);
-        MainWindowRerender(win);
+        MainWindowRerenderAnnotationChange(win, annot->pageNo, IsPdfTextMarkupAnnotation(annot) ? annot : nullptr);
         ToolbarUpdateStateForWindow(win, true);
     }
     return true;
@@ -1077,7 +1079,7 @@ static bool StopAnnotationResize(MainWindow* win, int x, int y, bool aborted) {
     // The annotation has already been updated during mouse move,
     // just notify and update toolbar
     NotifyAnnotationsChanged(win->CurrentTab()->editAnnotsWindow);
-    MainWindowRerender(win);
+    MainWindowRerenderAnnotationChange(win, annot->pageNo, IsPdfTextMarkupAnnotation(annot) ? annot : nullptr);
     ToolbarUpdateStateForWindow(win, true);
 
     return true;
@@ -1276,6 +1278,13 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
     if (IsCtrlPressed() && win->annotationUnderCursor) {
         ShowEditAnnotationsWindow(tab, win->annotationUnderCursor);
         return;
+    }
+    if (IsCtrlPressed() && EbookAnnotationsSupported(tab)) {
+        EbookAnnotation* annotation = EbookAnnotationsGetAt(tab, dm, pt);
+        if (annotation) {
+            ShowEditEbookAnnotationsWindow(tab, annotation);
+            return;
+        }
     }
 
     if (win->annotationUnderCursor && (tab->selectedAnnotation || tab->editAnnotsWindow)) {
@@ -1961,6 +1970,12 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
             }
             SelectObject(hdc, hPrevFont);
             continue;
+        }
+
+        EbookAnnotationsPaintPage(win->CurrentTab(), hdc, dm, pageNo);
+        PaintPdfMarkupOverlayPage(win->CurrentTab(), hdc, dm, pageNo);
+        if (win->CurrentTab() && !gRenderCache->PageNeedsMarkupOverlay(dm, pageNo)) {
+            ClearPdfMarkupOverlayForPage(win->CurrentTab(), pageNo);
         }
 
         if (!renderOutOfDateCue) {

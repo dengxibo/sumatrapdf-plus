@@ -931,7 +931,7 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-3.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-8.html"},
     {(size_t)-1, SettingType::Comment, 0},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0},

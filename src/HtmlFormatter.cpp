@@ -359,6 +359,9 @@ void HtmlFormatter::AppendInstr(const DrawInstr& di) {
 void HtmlFormatter::AppendStringInstr(const char* s, size_t utf8Len, RectF bbox, bool rtl, const WCHAR* wbuf,
                                       size_t wlen) {
     DrawInstr di = DrawInstr::Str(s, utf8Len, bbox, rtl);
+    di.textOffset = textOffset;
+    di.textLen = (int)wlen;
+    textOffset += (int)wlen;
     if (textAllocator && wbuf && wlen > 0 && wlen <= 8192 && textMeasure && CurrFont()) {
         WCHAR measureBuf[8192];
         size_t measureLen = 0;

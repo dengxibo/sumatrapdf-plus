@@ -33,6 +33,10 @@ bool EngineEbookHitTestText(EngineBase* engine, int pageNo, PointF pagePt, Ebook
 TempWStr EngineEbookGetRunTextTemp(EngineBase* engine, int pageNo, int instrIndex);
 bool EngineEbookGetCharRangeBbox(EngineBase* engine, int pageNo, int instrIndex, int charStart, int charEnd,
                                  RectF* out);
+bool EngineEbookGetSourceOffset(EngineBase* engine, int pageNo, int glyphIndex, bool endBoundary, int* offsetOut);
+bool EngineEbookGetSourceRangeRects(EngineBase* engine, int pageNo, int sourceStart, int sourceEnd,
+                                    Vec<RectF>& rectsOut);
+int EngineEbookGetSourcePageNo(EngineBase* engine, int sourceOffset);
 void EngineEbookCleanup();
 bool EngineEbookIsProgressiveLoadingInProgress(EngineBase* engine);
 int EngineEbookGetFormattedPageCount(EngineBase* engine);
@@ -82,6 +86,8 @@ bool EngineMupdfHasUnsavedAnnotations(EngineBase*);
 bool EngineMupdfSupportsAnnotations(EngineBase*);
 bool EngineMupdfIsEncrypted(EngineBase* engine);
 bool EngineMupdfIsReflowableLoadingInProgress(EngineBase* engine);
+bool EngineMupdfGetReflowPageChapter(EngineBase* engine, int pageNo, int* chapterOut, int* chapterStartPageOut);
+bool EngineMupdfGetReflowChapterPageRange(EngineBase* engine, int chapter, int* startPageOut, int* endPageOut);
 bool EngineIsProgressiveEbookLoading(EngineBase* engine);
 int EngineMupdfFastOutlinePageNo(EngineBase* engine, IPageDestination* dest);
 int EngineMupdfResolveLinkPageNo(EngineBase* engine, IPageDestination* dest);

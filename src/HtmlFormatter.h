@@ -66,6 +66,11 @@ struct DrawInstr {
     float* charRelX = nullptr;
     int charRelXLen = 0;
 
+    // Stable range in the formatter's visible UTF-16 text stream. Unlike page
+    // and instruction indexes, this survives typography and viewport changes.
+    int textOffset = -1;
+    int textLen = 0;
+
     DrawInstr() = default;
 
     explicit DrawInstr(DrawInstrType t, RectF bbox = {}) : type(t), bbox(bbox) {}
@@ -301,6 +306,9 @@ class HtmlFormatter {
     // number of pages generated so far, approximate. Only used
     // for detection of cover image duplicates in mobi formatting
     int pageCount = 0;
+
+    // Position in the formatter's visible UTF-16 text stream.
+    int textOffset = 0;
 
   public:
     explicit HtmlFormatter(HtmlFormatterArgs* args);

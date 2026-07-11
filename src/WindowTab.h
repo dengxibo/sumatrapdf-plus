@@ -4,6 +4,8 @@
 struct SelectionOnPage;
 struct WatchedFile;
 struct EditAnnotationsWindow;
+struct EbookAnnotationsWindow;
+struct EbookAnnotations;
 struct MainWindow;
 struct StrBuilder;
 struct ReadAloudHighlightMap;
@@ -43,7 +45,15 @@ struct WindowTab {
     DisplayMode prevDisplayMode{DisplayMode::Automatic};
     TocTree* currToc = nullptr; // not owned by us
     EditAnnotationsWindow* editAnnotsWindow = nullptr;
+    EbookAnnotationsWindow* editEbookAnnotsWindow = nullptr;
     Rect lastEditAnnotsWindowPos = {};
+    // DPI used when lastEditAnnotsWindowPos client size was saved; 0 = legacy/unknown.
+    int lastEditAnnotsWindowDpi = 0;
+    // Main window frame width when lastEditAnnotsWindowPos client size was saved; 0 = legacy/unknown.
+    int lastEditAnnotsWindowMainWidth = 0;
+    // Recreate annotation windows after a cross-monitor DPI move (close during drag).
+    bool reopenEditAnnotsAfterDpiMove = false;
+    bool reopenEbookAnnotsAfterDpiMove = false;
 
     // TODO: terrible hack
     bool askedToSaveAnnotations = false;
@@ -54,6 +64,14 @@ struct WindowTab {
     bool didScrollToSelectedAnnotation = false; // only automatically scroll once
 
     bool hideAnnotations = false;
+    EbookAnnotations* ebookAnnotations = nullptr;
+
+    // PDF text markup drawn as overlay until page tiles catch up in the background.
+    struct PdfMarkupOverlayAnnot {
+        int pageNo = 0;
+        Annotation* annot = nullptr;
+    };
+    Vec<PdfMarkupOverlayAnnot> pdfMarkupOverlays;
 
     HWND hwndPDFInfo = nullptr;
     HWND hwndPDFOutline = nullptr;

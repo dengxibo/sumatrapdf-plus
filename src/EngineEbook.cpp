@@ -271,6 +271,9 @@ class EngineEbook : public EngineBase {
     bool HitTestText(int pageNo, PointF pagePt, EbookTextHit* hitOut);
     TempWStr GetRunTextTemp(int pageNo, int instrIndex);
     bool GetCharRangeBbox(int pageNo, int instrIndex, int charStart, int charEnd, RectF* out);
+    bool GetSourceOffset(int pageNo, int glyphIndex, bool endBoundary, int* offsetOut);
+    bool GetSourceRangeRects(int pageNo, int sourceStart, int sourceEnd, Vec<RectF>& rectsOut);
+    int GetSourcePageNo(int sourceOffset);
 
     bool IsEbookProgressiveLoadingInProgress() const {
         return InterlockedCompareExchange(&ebookLoadingInProgress, 0, 0) != 0;
@@ -986,16 +989,10 @@ TempWStr EngineEbook::GetRunTextTemp(int pageNo, int instrIndex) {
     return buf;
 }
 
-bool EngineEbook::GetCharRangeBbox(int pageNo, int instrIndex, int charStart, int charEnd, RectF* out) {
+static bool GetCharRangeBboxForInstr(DrawInstr& di, float pageBorder, int charStart, int charEnd, RectF* out) {
     if (!out || charEnd <= charStart) {
         return false;
     }
-    ScopedCritSec scope(&pagesAccess);
-    Vec<DrawInstr>* pageInstrs = GetHtmlPageNoLock(pageNo);
-    if (!pageInstrs || !pageInstrs->isValidIndex(instrIndex)) {
-        return false;
-    }
-    DrawInstr& di = pageInstrs->at(instrIndex);
     if (di.type != DrawInstrType::String && di.type != DrawInstrType::RtlString) {
         return false;
     }
@@ -1030,6 +1027,153 @@ bool EngineEbook::GetCharRangeBbox(int pageNo, int instrIndex, int charStart, in
     return true;
 }
 
+bool EngineEbook::GetCharRangeBbox(int pageNo, int instrIndex, int charStart, int charEnd, RectF* out) {
+    ScopedCritSec scope(&pagesAccess);
+    Vec<DrawInstr>* pageInstrs = GetHtmlPageNoLock(pageNo);
+    if (!pageInstrs || !pageInstrs->isValidIndex(instrIndex)) {
+        return false;
+    }
+    return GetCharRangeBboxForInstr(pageInstrs->at(instrIndex), pageBorder, charStart, charEnd, out);
+}
+
+bool EngineEbook::GetSourceOffset(int pageNo, int glyphIndex, bool endBoundary, int* offsetOut) {
+    if (!offsetOut) {
+        return false;
+    }
+    *offsetOut = -1;
+
+    int textLen = 0;
+    Rect* coords = nullptr;
+    GetTextForPage(pageNo, &textLen, &coords);
+    if (!coords || textLen <= 0) {
+        return false;
+    }
+
+    int glyph = endBoundary ? glyphIndex - 1 : glyphIndex;
+    if (glyph < 0) {
+        glyph = 0;
+    }
+    if (glyph >= textLen) {
+        glyph = textLen - 1;
+    }
+    int step = endBoundary ? -1 : 1;
+    while (glyph >= 0 && glyph < textLen && coords[glyph].IsEmpty()) {
+        glyph += step;
+    }
+    if (glyph < 0 || glyph >= textLen || coords[glyph].IsEmpty()) {
+        return false;
+    }
+
+    Rect& glyphRect = coords[glyph];
+    PointF pt((float)glyphRect.x + (float)glyphRect.dx / 2.f, (float)glyphRect.y + (float)glyphRect.dy / 2.f);
+    EbookTextHit hit;
+    if (!HitTestText(pageNo, pt, &hit)) {
+        return false;
+    }
+
+    ScopedCritSec scope(&pagesAccess);
+    Vec<DrawInstr>* pageInstrs = GetHtmlPageNoLock(pageNo);
+    if (!pageInstrs || !pageInstrs->isValidIndex(hit.instrIndex)) {
+        return false;
+    }
+    DrawInstr& di = pageInstrs->at(hit.instrIndex);
+    if (di.textOffset < 0 || di.textLen <= 0) {
+        return false;
+    }
+    int charBoundary = hit.charIndex + (endBoundary ? hit.charLen : 0);
+    if (charBoundary < 0) {
+        charBoundary = 0;
+    }
+    if (charBoundary > di.textLen) {
+        charBoundary = di.textLen;
+    }
+    *offsetOut = di.textOffset + charBoundary;
+    return true;
+}
+
+bool EngineEbook::GetSourceRangeRects(int pageNo, int sourceStart, int sourceEnd, Vec<RectF>& rectsOut) {
+    if (sourceStart < 0 || sourceEnd <= sourceStart) {
+        return false;
+    }
+    ScopedCritSec scope(&pagesAccess);
+    Vec<DrawInstr>* pageInstrs = GetHtmlPageNoLock(pageNo);
+    if (!pageInstrs) {
+        return false;
+    }
+    for (DrawInstr& di : *pageInstrs) {
+        if ((di.type != DrawInstrType::String && di.type != DrawInstrType::RtlString) || di.textOffset < 0 ||
+            di.textLen <= 0) {
+            continue;
+        }
+        int instrStart = di.textOffset;
+        int instrEnd = instrStart + di.textLen;
+        if (sourceEnd <= instrStart || sourceStart >= instrEnd) {
+            continue;
+        }
+
+        int charStart = sourceStart > instrStart ? sourceStart - instrStart : 0;
+        int charEnd = sourceEnd < instrEnd ? sourceEnd - instrStart : di.textLen;
+        RectF rect;
+        if (GetCharRangeBboxForInstr(di, pageBorder, charStart, charEnd, &rect)) {
+            rectsOut.Append(rect);
+        }
+    }
+    return !rectsOut.empty();
+}
+
+static bool GetPageSourceRange(Vec<DrawInstr>* pageInstrs, int* startOut, int* endOut) {
+    int start = INT_MAX;
+    int end = -1;
+    for (DrawInstr& di : *pageInstrs) {
+        if ((di.type != DrawInstrType::String && di.type != DrawInstrType::RtlString) || di.textOffset < 0 ||
+            di.textLen <= 0) {
+            continue;
+        }
+        start = std::min(start, di.textOffset);
+        end = std::max(end, di.textOffset + di.textLen);
+    }
+    if (end <= start) {
+        return false;
+    }
+    *startOut = start;
+    *endOut = end;
+    return true;
+}
+
+int EngineEbook::GetSourcePageNo(int sourceOffset) {
+    if (sourceOffset < 0) {
+        return 0;
+    }
+    ScopedCritSec scope(&pagesAccess);
+    int lo = 1;
+    int hi = PageCount();
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        Vec<DrawInstr>* pageInstrs = GetHtmlPageNoLock(mid);
+        int start = 0;
+        int end = 0;
+        if (!pageInstrs || !GetPageSourceRange(pageInstrs, &start, &end)) {
+            break;
+        }
+        if (sourceOffset < start) {
+            hi = mid - 1;
+        } else if (sourceOffset >= end) {
+            lo = mid + 1;
+        } else {
+            return mid;
+        }
+    }
+    for (int pageNo = 1; pageNo <= PageCount(); pageNo++) {
+        Vec<DrawInstr>* pageInstrs = GetHtmlPageNoLock(pageNo);
+        int start = 0;
+        int end = 0;
+        if (pageInstrs && GetPageSourceRange(pageInstrs, &start, &end) && sourceOffset >= start && sourceOffset < end) {
+            return pageNo;
+        }
+    }
+    return 0;
+}
+
 bool EngineIsFixedLayoutEbook(EngineBase* engine) {
     if (!engine) {
         return false;
@@ -1059,6 +1203,28 @@ bool EngineEbookGetCharRangeBbox(EngineBase* engine, int pageNo, int instrIndex,
         return false;
     }
     return static_cast<EngineEbook*>(engine)->GetCharRangeBbox(pageNo, instrIndex, charStart, charEnd, out);
+}
+
+bool EngineEbookGetSourceOffset(EngineBase* engine, int pageNo, int glyphIndex, bool endBoundary, int* offsetOut) {
+    if (!EngineIsFixedLayoutEbook(engine)) {
+        return false;
+    }
+    return static_cast<EngineEbook*>(engine)->GetSourceOffset(pageNo, glyphIndex, endBoundary, offsetOut);
+}
+
+bool EngineEbookGetSourceRangeRects(EngineBase* engine, int pageNo, int sourceStart, int sourceEnd,
+                                    Vec<RectF>& rectsOut) {
+    if (!EngineIsFixedLayoutEbook(engine)) {
+        return false;
+    }
+    return static_cast<EngineEbook*>(engine)->GetSourceRangeRects(pageNo, sourceStart, sourceEnd, rectsOut);
+}
+
+int EngineEbookGetSourcePageNo(EngineBase* engine, int sourceOffset) {
+    if (!EngineIsFixedLayoutEbook(engine)) {
+        return 0;
+    }
+    return static_cast<EngineEbook*>(engine)->GetSourcePageNo(sourceOffset);
 }
 
 static Rect GetInstrBbox(DrawInstr& instr, float pageBorder) {
@@ -1293,8 +1459,8 @@ PageTextUtf8 EngineEbook::ExtractPageTextUtf8(int pageNo) {
                     if (len > 0) {
                         double cwidth = 1.0 * bbox.dx / (double)len;
                         for (size_t k = 0; k < len; k++) {
-                            coords.Append(EbookSelectionCharRect(
-                                (int)(bbox.x + (double)(len - k - 1) * cwidth), (int)cwidth, bbox));
+                            coords.Append(EbookSelectionCharRect((int)(bbox.x + (double)(len - k - 1) * cwidth),
+                                                                 (int)cwidth, bbox));
                         }
                     }
                 }

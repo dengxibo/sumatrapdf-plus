@@ -1062,13 +1062,15 @@ void LoadTocTree(MainWindow* win) {
     HWND hwnd = treeView->hwnd;
     HwndSetRtl(hwnd, isRTL);
 
-    UpdateControlsColors(win);
     SetInitialExpandState(tocTree->root, tab->tocState);
     AutoExpandTopLevelItems(tocTree->root->child);
 
     treeView->SetTreeModel(tocTree);
 
     treeView->onCustomDraw = MkFunc1Void(OnTocCustomDraw);
+    // Apply dark scrollbar theme after the model is set. Scrollbars are created
+    // when content appears; theming before SetTreeModel leaves them light.
+    UpdateControlsColors(win);
     LayoutTocContainer(win);
     // uint fl = RDW_ERASE | RDW_FRAME | RDW_INVALIDATE | RDW_ALLCHILDREN;
     // RedrawWindow(hwnd, nullptr, nullptr, fl);

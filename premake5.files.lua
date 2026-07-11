@@ -766,6 +766,8 @@ function sumatrapdf_files()
     "DocController.h",
     "DocProperties.*",
     "EditAnnotations.*",
+    "EditEbookAnnotations.*",
+    "EbookAnnotations.*",
     "EngineDump.cpp",
     "ExternalViewers.*",
     "Favorites.*",
