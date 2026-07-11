@@ -269,6 +269,10 @@ struct MainWindow {
     int frameDpi = 0;
     int tocSidebarDpi = 0;
     int favSidebarDpi = 0;
+    bool tocDpiRecreatePending = false;
+    bool favDpiRecreatePending = false;
+    bool deferDpiChromeRefresh = false;
+    bool dpiChromeRefreshPending = false;
 
     int currPageNo = 0; // cached value, needed to determine when to auto-update the ToC selection
 

@@ -9308,6 +9308,18 @@ static void DrawCaptionButton(MainWindow* win, HDC hdc, ButtonInfo* bi) {
 
 static WCHAR gMenuAccelPressed = 0;
 
+static bool SetMaximizedClientRectToWorkArea(RECT* r) {
+    HMONITOR monitor = MonitorFromRect(r, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    if (!monitor || !GetMonitorInfoW(monitor, &mi)) {
+        return false;
+    }
+
+    *r = mi.rcWork;
+    return true;
+}
+
 // Win11 corner radius is ~8 DIP; leave these client pixels unpainted so DWM
 // rounded corners show through (custom caption fills chrome elsewhere).
 static void ExcludeClientBottomCornerClip(HDC hdc, HWND hwnd) {
@@ -9429,12 +9441,18 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             RECT* r = wp == TRUE ? &((NCCALCSIZE_PARAMS*)lp)->rgrc[0] : (RECT*)lp;
             bool isFullScreen = win->isFullScreen || win->presentation;
             if (IsZoomed(hwnd) && !isFullScreen) {
-                int frameX = GetSystemMetrics(SM_CXFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER);
-                int frameY = GetSystemMetrics(SM_CYFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER);
-                r->left += frameX;
-                r->top += frameY;
-                r->right -= frameX;
-                r->bottom -= frameY;
+                // The maximized outer frame extends beyond the work area. Global
+                // system metrics can still describe the old monitor during a
+                // cross-DPI move, leaving an unpainted row at the screen edge.
+                // The proposed rect identifies the destination monitor reliably.
+                if (!SetMaximizedClientRectToWorkArea(r)) {
+                    int frameX = GetSystemMetrics(SM_CXFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER);
+                    int frameY = GetSystemMetrics(SM_CYFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER);
+                    r->left += frameX;
+                    r->top += frameY;
+                    r->right -= frameX;
+                    r->bottom -= frameY;
+                }
             } else if (!isFullScreen) {
                 // keep 1px non-client area at top so DWM preserves content
                 // during resize (returning 0 makes DWM clear the surface)
@@ -9690,6 +9708,7 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
 HWND gLastActiveFrameHwnd = nullptr;
 
 static constexpr UINT WM_TTS_EVENT = WM_APP + 0x421;
+static constexpr UINT WM_MAIN_WINDOW_DPI_SETTLED = WM_APP + 0x422;
 
 static WindowTab* gReadAloudSourceTab = nullptr;
 static WindowTab* gReadAloudSessionTab = nullptr;
@@ -11740,8 +11759,8 @@ static bool ApplyDpiFontsToSidebar(MainWindow* win) {
     int frameDpi = win->frameDpi > 0 ? win->frameDpi : DpiGet(win->hwndFrame);
     HFONT homeSearchFont = GetAppMenuFontForDpi(frameDpi);
 
-    bool tocDpiNeedsApply = win->tocSidebarDpi <= 0 || win->tocSidebarDpi != tocDpi;
-    bool favDpiNeedsApply = win->favSidebarDpi <= 0 || win->favSidebarDpi != favDpi;
+    bool tocDpiNeedsApply = win->tocDpiRecreatePending || win->tocSidebarDpi <= 0 || win->tocSidebarDpi != tocDpi;
+    bool favDpiNeedsApply = win->favDpiRecreatePending || win->favSidebarDpi <= 0 || win->favSidebarDpi != favDpi;
     bool homeSearchNeedsApply = win->hwndHomeSearch && HwndGetFont(win->hwndHomeSearch) != homeSearchFont;
     if (!tocDpiNeedsApply && !favDpiNeedsApply && !homeSearchNeedsApply) {
         return false;
@@ -11752,8 +11771,8 @@ static bool ApplyDpiFontsToSidebar(MainWindow* win) {
     HFONT favTreeFont = GetAppTreeFontForDpi(favDpi);
     HFONT favLabelFont = GetAppSidebarLabelFontForDpi(favDpi);
 
-    bool tocDpiChanged = win->tocSidebarDpi > 0 && win->tocSidebarDpi != tocDpi;
-    bool favDpiChanged = win->favSidebarDpi > 0 && win->favSidebarDpi != favDpi;
+    bool tocDpiChanged = win->tocDpiRecreatePending || (win->tocSidebarDpi > 0 && win->tocSidebarDpi != tocDpi);
+    bool favDpiChanged = win->favDpiRecreatePending || (win->favSidebarDpi > 0 && win->favSidebarDpi != favDpi);
     bool didApply = false;
 
     if (tocDpiChanged && win->tocFilterEdit) {
@@ -11769,6 +11788,7 @@ static bool ApplyDpiFontsToSidebar(MainWindow* win) {
             didApply = true;
         }
         win->tocSidebarDpi = tocDpi;
+        win->tocDpiRecreatePending = false;
     }
     if (win->favTreeView && win->favTreeView->hwnd) {
         if (favDpiChanged) {
@@ -11779,6 +11799,7 @@ static bool ApplyDpiFontsToSidebar(MainWindow* win) {
             didApply = true;
         }
         win->favSidebarDpi = favDpi;
+        win->favDpiRecreatePending = false;
     }
     if (tocDpiNeedsApply && win->tocLabelWithClose) {
         win->tocLabelWithClose->SetFont(tocLabelFont);
@@ -11855,6 +11876,67 @@ static void RefreshOtherWindowsChromeAfterFontInvalidate(MainWindow* exceptWin) 
     }
 }
 
+static void ApplySidebarDpiMovePreview(MainWindow* win) {
+    int dpi = win->frameDpi > 0 ? win->frameDpi : DpiGet(win->hwndFrame);
+    HFONT treeFont = GetAppTreeFontForDpi(dpi);
+    HFONT labelFont = GetAppSidebarLabelFontForDpi(dpi);
+
+    if (win->tocTreeView && win->tocTreeView->hwnd) {
+        HwndSetTreeFontForDpi(win->tocTreeView->hwnd, treeFont, dpi);
+        win->tocDpiRecreatePending = true;
+    }
+    if (win->favTreeView && win->favTreeView->hwnd) {
+        HwndSetTreeFontForDpi(win->favTreeView->hwnd, treeFont, dpi);
+        win->favDpiRecreatePending = true;
+    }
+    if (win->tocLabelWithClose) {
+        win->tocLabelWithClose->SetFont(labelFont);
+        win->tocLabelWithClose->Layout();
+    }
+    if (win->favLabelWithClose) {
+        win->favLabelWithClose->SetFont(labelFont);
+        win->favLabelWithClose->Layout();
+    }
+    if (win->tocFilterEdit) {
+        win->tocFilterEdit->SetFont(treeFont);
+        HwndSetFont(win->tocFilterEdit->hwnd, treeFont);
+    }
+    if (win->hwndHomeSearch) {
+        HwndSetFont(win->hwndHomeSearch, GetAppMenuFontForDpi(dpi));
+    }
+    RelayoutSidebarContainers(win);
+}
+
+static void ApplyMainWindowDpiMovePreview(MainWindow* win, HWND hwnd) {
+    HideSelectionToolbar(win);
+
+    bool menuRebarVisible = IsShowingMenuBarRebar(win);
+    if (menuRebarVisible) {
+        DestroyMenuBarRebar(win);
+    }
+    ReCreateToolbar(win);
+    if (menuRebarVisible && IsMenubarVisible()) {
+        CreateMenuBarRebar(win);
+        ShowMenuBarRebar(win);
+    }
+
+    if (win->tabsCtrl) {
+        win->tabsCtrl->SetFont(GetAppFontForDpi(win->frameDpi));
+        win->tabsCtrl->LayoutTabs();
+    }
+    ApplySidebarDpiMovePreview(win);
+
+    win->lastLayoutState = {};
+    RelayoutCaption(win);
+    RelayoutFrame(win);
+    UpdateOverlayScrollbarPositions(win);
+
+    if (win->tabsInTitlebar && !win->captionRect.IsEmpty()) {
+        RECT r = ToRECT(win->captionRect);
+        RedrawWindow(hwnd, &r, nullptr, RDW_ERASE | RDW_INVALIDATE);
+    }
+}
+
 static void ApplyMainWindowDpiChromeRefresh(MainWindow* win, HWND hwnd) {
     if (!win || !hwnd) {
         return;
@@ -11906,6 +11988,7 @@ static void OnMainWindowDpiChanged(MainWindow* win, HWND hwnd, const RECT* sugge
     } else {
         dpi = DpiGet(hwnd);
     }
+    bool dpiChanged = dpi != win->frameDpi;
     if (suggestedRect) {
         SetWindowPos(hwnd, nullptr, suggestedRect->left, suggestedRect->top, suggestedRect->right - suggestedRect->left,
                      suggestedRect->bottom - suggestedRect->top, SWP_NOZORDER | SWP_NOACTIVATE);
@@ -11916,7 +11999,31 @@ static void OnMainWindowDpiChanged(MainWindow* win, HWND hwnd, const RECT* sugge
     }
     win->frameDpi = dpi;
     logf("OnMainWindowDpiChanged: dpi=%d\n", dpi);
+    if (win->deferDpiChromeRefresh && !force) {
+        win->dpiChromeRefreshPending = true;
+        if (dpiChanged) {
+            ApplyMainWindowDpiMovePreview(win, hwnd);
+        }
+        logf("OnMainWindowDpiChanged: applied move preview; deferred full refresh\n");
+        return;
+    }
     ApplyMainWindowDpiChromeRefresh(win, hwnd);
+}
+
+static void FinishDeferredMainWindowDpiRefresh(MainWindow* win, HWND hwnd) {
+    if (!win) {
+        return;
+    }
+    win->deferDpiChromeRefresh = false;
+    if (!win->dpiChromeRefreshPending) {
+        return;
+    }
+    win->dpiChromeRefreshPending = false;
+
+    // Keep the DPI chosen by Windows' last WM_DPICHANGED. Re-selecting a
+    // monitor here would introduce a second, app-specific crossing threshold.
+    int dpi = win->frameDpi > 0 ? win->frameDpi : DpiGet(hwnd);
+    OnMainWindowDpiChanged(win, hwnd, nullptr, dpi, true);
 }
 
 LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -11953,6 +12060,29 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
         case WM_CREATE:
             TtsSetNotifyWindow(hwnd, WM_TTS_EVENT, 0, 0);
             goto InitMouseWheelInfo;
+
+        case WM_ENTERSIZEMOVE:
+            if (win) {
+                win->deferDpiChromeRefresh = true;
+                win->dpiChromeRefreshPending = false;
+            }
+            return 0;
+
+        case WM_EXITSIZEMOVE:
+            if (win) {
+                if (win->dpiChromeRefreshPending) {
+                    if (!PostMessageW(hwnd, WM_MAIN_WINDOW_DPI_SETTLED, 0, 0)) {
+                        FinishDeferredMainWindowDpiRefresh(win, hwnd);
+                    }
+                } else {
+                    win->deferDpiChromeRefresh = false;
+                }
+            }
+            return 0;
+
+        case WM_MAIN_WINDOW_DPI_SETTLED:
+            FinishDeferredMainWindowDpiRefresh(win, hwnd);
+            return 0;
 
         case WM_DPICHANGED:
             if (win) {

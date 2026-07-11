@@ -334,19 +334,20 @@ static TempStr FormatDownloadSpeedTemp(i64 bytesPerSec) {
 }
 
 static TempStr FormatUpdateDownloadProgressTemp(UpdateProgressData* data) {
+    const char* label = _TRA("Download update");
     TempStr downloaded = FormatSizeShortTransLocal(data->nDownloaded);
     TempStr speed = FormatDownloadSpeedTemp(data->speedBytesPerSec);
     if (data->nTotal > 0) {
         TempStr total = FormatSizeShortTransLocal(data->nTotal);
         if (speed) {
-            return str::FormatTemp(_TRA("Downloading update: %s, %s / %s"), speed, downloaded, total);
+            return str::FormatTemp("%s: %s, %s / %s", label, speed, downloaded, total);
         }
-        return str::FormatTemp(_TRA("Downloading update: %s / %s"), downloaded, total);
+        return str::FormatTemp("%s: %s / %s", label, downloaded, total);
     }
     if (speed) {
-        return str::FormatTemp(_TRA("Downloading update: %s, %s"), speed, downloaded);
+        return str::FormatTemp("%s: %s, %s", label, speed, downloaded);
     }
-    return str::FormatTemp(_TRA("Downloading update: %s"), downloaded);
+    return str::FormatTemp("%s: %s", label, downloaded);
 }
 
 static void UpdateDownloadProgressNotif(UpdateProgressData* data) {
