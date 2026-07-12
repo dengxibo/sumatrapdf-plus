@@ -65,15 +65,6 @@ greet("SumatraPDF")
 | HR | yes | `---` |
 | 中文 | yes | UTF-8 text |
 
-## Mermaid ER diagram
-
-```mermaid
-erDiagram
-    CUSTOMER ||--o{ ORDER : places
-    ORDER ||--|{ LINE-ITEM : contains
-    PRODUCT ||--o{ LINE-ITEM : "ordered in"
-```
-
 ## Table alignment
 
 | Left | Center | Right |

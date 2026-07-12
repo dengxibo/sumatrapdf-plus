@@ -70,7 +70,7 @@ static bool FixedPageEngineNeedsBitmapRecolor(EngineBase* engine) {
     if (ThemeUsesOriginalPageColors()) {
         return FixedPageUiUsesCustomRenderColors();
     }
-    // Light-Warm Smart: eye-care remap with image preserve.
+    // Light-Warm Smart: uniform eye-care remap (no per-image preserve).
     return true;
 }
 
@@ -119,6 +119,9 @@ static bool ShouldUpdateBitmapColorsLegacy(EngineBase* engine) {
 
 static bool ShouldPreserveImagesLegacy(EngineBase* engine) {
     if (GetPdfDocumentColorMode() != PdfDocumentColorMode::Auto) {
+        return false;
+    }
+    if (!ThemeUsesDarkChrome()) {
         return false;
     }
     if (!GetPreservePdfImagesInDarkMode()) {

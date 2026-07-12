@@ -33,7 +33,9 @@ extern fz_document_handler xhtml_document_handler;
 extern fz_document_handler mobi_document_handler;
 extern fz_document_handler epub_document_handler;
 extern fz_document_handler txt_document_handler;
+#if FZ_ENABLE_OFFICE
 extern fz_document_handler office_document_handler;
+#endif /* FZ_ENABLE_OFFICE */
 extern fz_document_handler gz_document_handler;
 
 void fz_register_document_handlers(fz_context *ctx)

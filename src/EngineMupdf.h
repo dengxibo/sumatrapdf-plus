@@ -170,6 +170,10 @@ class EngineMupdf : public EngineBase {
     Vec<int> reflowChapterStartPage;
     // Bumped on theme toggle; pages/chapters restyle lazily when rendered.
     u32 reflowThemeCssEpoch = 1;
+    // Synthesized HTML for .md/.txt kept for fast theme reparse (styles are baked at parse time).
+    ByteSlice reflowHtmlSource;
+    // Set when single-chapter HTML reparse discards cached TocItem destinations.
+    bool reflowTocNeedsUiReload = false;
 
     // used to track "dirty" state of annotations. not perfect because if we add and delete
     // the same annotation, we should be back to 0
@@ -201,12 +205,13 @@ class EngineMupdf : public EngineBase {
 
     FzPageInfo* GetFzPageInfoCanFail(int pageNo);
     FzPageInfo* GetFzPageInfoFast(int pageNo);
-    FzPageInfo* GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* cookie = nullptr);
+    FzPageInfo* GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* cookie = nullptr, bool loadLinks = true);
     fz_matrix viewctm(int pageNo, float zoom, int rotation);
     fz_matrix viewctm(fz_page* page, float zoom, int rotation) const;
     TocItem* BuildTocTree(TocItem* parent, fz_outline* outline, int& idCounter, bool isAttachment);
     int OutlinePageNoForItem(fz_link* link, fz_outline* outline);
     void InvalidateTocTree();
+    void DiscardTocTree();
     TempStr ExtractFontListTemp();
 
     ByteSlice LoadStreamFromPDFFile(const char* filePath);

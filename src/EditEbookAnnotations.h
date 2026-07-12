@@ -15,3 +15,4 @@ void RefreshEbookAnnotationsWindowsTheme();
 void DockOpenEbookAnnotationsWindows(MainWindow* win);
 void CloseEbookAnnotationsWindowsForDpiMove(MainWindow* win);
 void ReopenEbookAnnotationsWindowsAfterDpiMove(MainWindow* win);
+bool IsEbookAnnotContentsEditFocused(HWND msgHwnd = nullptr);

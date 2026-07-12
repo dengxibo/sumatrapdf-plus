@@ -176,7 +176,7 @@ void RememberFavTreeExpansionState(MainWindow* win);
 void LayoutTreeContainer(LabelWithCloseWnd* l, HWND hwndTree);
 void AdvanceFocus(MainWindow* win);
 void SetCurrentLanguageAndRefreshUI(const char* langCode);
-void UpdateDocumentColors(bool rerender = true);
+void UpdateDocumentColors(bool rerender = true, bool updateReflowDocuments = true);
 void UpdateFixedPageScrollbarsVisibility();
 
 // scrollbar mode values: "windows\0smart\0overlay\0hidden\0"
@@ -237,6 +237,8 @@ struct LoadArgs {
 
     bool lazyLoad = false;
     bool async = false;
+    // When true, LoadDocument loads on the calling thread (needed for link navigation).
+    bool syncLoad = false;
     bool activateExisting = false;
 
     DocController* ctrl = nullptr;

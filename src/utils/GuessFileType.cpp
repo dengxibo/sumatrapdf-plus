@@ -374,8 +374,22 @@ static bool IsEpubArchive(MultiFormatArchive* archive) {
 }
 
 // check if a given file is a likely a .zip archive containing XPS
-// document
+// document (but not DOCX/XLSX/PPTX which also contain _rels/.rels)
+static bool IsOoxmlArchive(MultiFormatArchive* archive) {
+    auto* rels = archive->GetFileDataByName("_rels/.rels");
+    if (!rels || !rels->data) {
+        return false;
+    }
+    // OOXML word/spreadsheet/presentation documents share _rels/.rels with XPS.
+    return str::Find(rels->data, "officeDocument/2006/relationships/officeDocument") != nullptr ||
+           str::Find(rels->data, "spreadsheetml") != nullptr ||
+           str::Find(rels->data, "presentationml") != nullptr;
+}
+
 static bool IsXpsArchive(MultiFormatArchive* archive) {
+    if (IsOoxmlArchive(archive)) {
+        return false;
+    }
     bool res = archive->GetFileId("_rels/.rels") != (size_t)-1 ||
                archive->GetFileId("_rels/.rels/[0].piece") != (size_t)-1 ||
                archive->GetFileId("_rels/.rels/[0].last.piece") != (size_t)-1;

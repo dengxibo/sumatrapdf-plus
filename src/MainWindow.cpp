@@ -607,6 +607,7 @@ void LinkHandler::LaunchFile(const char* pathOrig, IPageDestination* remoteLink)
     // TODO: don't show window until it's certain that there was no error
     if (!newWin) {
         LoadArgs args(fullPath, win);
+        args.syncLoad = true;
         newWin = LoadDocument(&args);
         if (!newWin) {
             return;

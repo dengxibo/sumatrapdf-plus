@@ -1122,7 +1122,6 @@ const mupdf: LibDef = {
         "html-outline.c",
         "html-parse.c",
         "mobi.c",
-        "office.c",
         "story-writer.c",
         "txt.c",
         "xml-dom.c",

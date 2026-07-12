@@ -41,6 +41,10 @@ HWND ListBox::Create(const CreateArgs& args) {
     if (idealSizeLines < 0) {
         idealSizeLines = 0;
     }
+    itemHeightExtra = args.itemHeightExtra;
+    if (itemHeightExtra < 0) {
+        itemHeightExtra = 0;
+    }
     idealSize = {DpiScale(args.parent, 120), DpiScale(args.parent, 32)};
 
     // https://docs.microsoft.com/en-us/windows/win32/controls/list-box-styles
@@ -54,12 +58,14 @@ HWND ListBox::Create(const CreateArgs& args) {
     SizeToIdealSize(this);
 
     if (hwnd) {
+        Size sz = HwndMeasureText(hwnd, "Ag", font);
+        int itemHeight = sz.dy + DpiScale(hwnd, itemHeightExtra);
+        SendMessageW(hwnd, LB_SETITEMHEIGHT, 0, itemHeight);
+
         // For owner-draw, set item height manually since WM_MEASUREITEM
         // is sent during CreateWindowEx before we're registered in WndList.
         // We measure using our font, not LB_GETITEMHEIGHT (which has the wrong default).
         if (onDrawItem.IsValid()) {
-            Size sz = HwndMeasureText(hwnd, "Ag", font);
-            int itemHeight = sz.dy + DpiScale(hwnd, 4);
             SendMessageW(hwnd, LB_SETITEMHEIGHT, 0, itemHeight);
         }
         if (model != nullptr) {
@@ -165,7 +171,7 @@ LRESULT ListBox::OnMessageReflect(UINT msg, WPARAM wp, LPARAM lparam) {
         }
         MEASUREITEMSTRUCT* mis = (MEASUREITEMSTRUCT*)lparam;
         Size sz = HwndMeasureText(hwnd, "Ag", font);
-        mis->itemHeight = sz.dy + DpiScale(hwnd, 4);
+        mis->itemHeight = sz.dy + DpiScale(hwnd, itemHeightExtra);
         return TRUE;
     }
 

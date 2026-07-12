@@ -198,15 +198,24 @@ struct Static : Wnd {
         HFONT font = nullptr;
         const char* text = nullptr;
         bool isRtl = false;
+        bool wordWrap = false;
     };
 
     Static();
 
     Func0 onClick;
 
+    bool wordWrap = false;
+    // Optional width hint (pixels) used when layout constraints have no bounded width.
+    int layoutWidthHint = 0;
+
     HWND Create(const CreateArgs&);
 
     Size GetIdealSize() override;
+
+    int MinIntrinsicHeight(int width) override;
+    int MinIntrinsicWidth(int height) override;
+    Size Layout(Constraints bc) override;
 
     LRESULT OnMessageReflect(UINT msg, WPARAM wparam, LPARAM lparam) override;
     bool OnCommand(WPARAM wparam, LPARAM lparam) override;
@@ -326,6 +335,8 @@ struct ListBox : Wnd {
     struct CreateArgs {
         HWND parent = nullptr;
         int idealSizeLines = 0;
+        // Extra vertical padding added to each row (in DIPs, scaled by DPI).
+        int itemHeightExtra = 4;
         HFONT font = nullptr;
         bool isRtl = false;
     };
@@ -349,6 +360,7 @@ struct ListBox : Wnd {
 
     Size idealSize = {};
     int idealSizeLines = 0;
+    int itemHeightExtra = 4;
 
     ListBox();
     ~ListBox() override;

@@ -22,6 +22,7 @@ Rect MapRectToWindow(Rect, HWND hwndFrom, HWND hwndTo);
 void EditSelectAll(HWND);
 int EditIdealDy(HWND, bool hasBorder, int lines = 1);
 void EditImplementCtrlBack(HWND hwnd);
+bool EditDeleteChar(HWND hwnd, bool beforeCursor);
 
 void ListBox_AppendString_NoSort(HWND, const WCHAR*);
 int ListBoxGetTopIndex(HWND);
@@ -147,6 +148,7 @@ void DrawLine(HDC, const Rect&);
 
 void DrawCenteredText(HDC hdc, Rect r, const char* txt, bool isRTL = false);
 Size HwndMeasureText(HWND hwnd, const char* txt, HFONT font = nullptr);
+Size HwndMeasureTextWrapped(HWND hwnd, const char* txt, HFONT font, int maxDx);
 int FontDyPx(HWND hwnd, HFONT hfont);
 
 int HdcDrawText(HDC hdc, const char* s, RECT* r, uint format, HFONT font = nullptr);

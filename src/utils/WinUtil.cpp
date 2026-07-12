@@ -131,6 +131,40 @@ void EditImplementCtrlBack(HWND hwnd) {
     SendMessageW(hwnd, WM_CLEAR, 0, 0); // delete selected text
 }
 
+bool EditDeleteChar(HWND hwnd, bool beforeCursor) {
+    DWORD selection = Edit_GetSel(hwnd);
+    DWORD start = LOWORD(selection);
+    DWORD end = HIWORD(selection);
+    if (start == end) {
+        WCHAR* text = HwndGetTextWTemp(hwnd);
+        int textLen = (int)str::Len(text);
+        if (beforeCursor) {
+            if (start == 0) {
+                return true;
+            }
+            start--;
+            if (start > 0 && IS_LOW_SURROGATE(text[start]) && IS_HIGH_SURROGATE(text[start - 1])) {
+                start--;
+            } else if (start > 0 && text[start] == '\n' && text[start - 1] == '\r') {
+                start--;
+            }
+        } else {
+            if ((int)end >= textLen) {
+                return true;
+            }
+            end++;
+            if ((int)end < textLen && IS_HIGH_SURROGATE(text[end - 1]) && IS_LOW_SURROGATE(text[end])) {
+                end++;
+            } else if ((int)end < textLen && text[end - 1] == '\r' && text[end] == '\n') {
+                end++;
+            }
+        }
+        Edit_SetSel(hwnd, start, end);
+    }
+    SendMessageW(hwnd, EM_REPLACESEL, TRUE, (LPARAM)L"");
+    return true;
+}
+
 void ListBox_AppendString_NoSort(HWND hwnd, const WCHAR* txt) {
     ListBox_InsertString(hwnd, -1, txt);
 }
@@ -4335,6 +4369,28 @@ static Size HwndMeasureText(HWND hwnd, const WCHAR* txt, HFONT font) {
     int dx = RectDx(r);
     int dy = RectDy(r);
     return {dx, dy};
+}
+
+Size HwndMeasureTextWrapped(HWND hwnd, const char* txt, HFONT font, int maxDx) {
+    if (!txt || !*txt) {
+        return Size{};
+    }
+    if (maxDx <= 0) {
+        return HwndMeasureText(hwnd, txt, font);
+    }
+    AutoReleaseDC dc(hwnd);
+    if (font == nullptr) {
+        font = (HFONT)SendMessageW(hwnd, WM_GETFONT, 0, 0);
+    }
+    ScopedSelectFont prev(dc, font);
+    TempWStr sw = ToWStrTemp(txt);
+    RECT r{0, 0, maxDx, 0};
+    uint fmt = DT_CALCRECT | DT_LEFT | DT_NOPREFIX | DT_WORDBREAK | DT_EDITCONTROL;
+    if (HwndIsRtl(hwnd)) {
+        fmt |= DT_RTLREADING;
+    }
+    DrawTextExW(dc, sw, -1, &r, fmt, nullptr);
+    return {RectDx(r), RectDy(r)};
 }
 
 /* Return size of a text <txt> in a given <hwnd>, taking into account its font */

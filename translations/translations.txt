@@ -8053,6 +8053,21 @@ pl:Kopiuj cel z odnośnika
 ru:Скопировать ссылку
 sk:Kopírovať adresu odkazu
 tw:複製連結目標
+:Copy
+cn:复制
+tw:複製
+:Highlight
+cn:高亮
+tw:螢光標示
+:Squiggly
+cn:波浪线
+tw:波浪線
+:Strike Out
+cn:删除线
+tw:刪除線
+:Underline
+cn:下划线
+tw:底線
 :Copy Selection
 am:Պատճենել ընտրվածքը
 br:Copiar Seleção
@@ -11411,6 +11426,16 @@ it:Tempo esposizione:
 nl:Blootstelling Tijd:
 pl:Czas ekspozycji:
 sk:Čas expozície:
+:Export Notes
+cn:导出笔记
+tw:匯出筆記
+de:Anmerkungen exportieren
+es:Exportar notas
+fr:Exporter les notes
+it:Esporta note
+ja:ノートをエクスポート
+kr:노트 내보내기
+br:Exportar Notas
 :Extract Pages
 br:Extrair Páginas
 cn:提取页面

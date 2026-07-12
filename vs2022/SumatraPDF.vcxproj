@@ -1121,7 +1121,6 @@
     <ClInclude Include="..\src\MainWindow.h" />
     <ClInclude Include="..\src\Md4cHtml.h" />
     <ClInclude Include="..\src\MdConvert.h" />
-    <ClInclude Include="..\src\MdMermaid.h" />
     <ClInclude Include="..\src\Menu.h" />
     <ClInclude Include="..\src\MobiDoc.h" />
     <ClInclude Include="..\src\Notifications.h" />
@@ -1253,7 +1252,6 @@
     <ClCompile Include="..\src\MainWindow.cpp" />
     <ClCompile Include="..\src\Md4cHtml.c" />
     <ClCompile Include="..\src\MdConvert.cpp" />
-    <ClCompile Include="..\src\MdMermaid.cpp" />
     <ClCompile Include="..\src\Menu.cpp" />
     <ClCompile Include="..\src\MobiDoc.cpp" />
     <ClCompile Include="..\src\Notifications.cpp" />
@@ -1654,7 +1652,6 @@
     <None Include="..\cmd\compress-docs-images.ts" />
     <None Include="..\cmd\cppcheck.ts" />
     <None Include="..\cmd\diff.ts" />
-    <None Include="..\cmd\fetch-mermaid.ts" />
     <None Include="..\cmd\format.ts" />
     <None Include="..\cmd\gen-commands.ts" />
     <None Include="..\cmd\gen-docs-website.ts" />

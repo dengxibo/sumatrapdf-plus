@@ -240,9 +240,6 @@
     <ClInclude Include="..\src\MdConvert.h">
       <Filter>src</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\MdMermaid.h">
-      <Filter>src</Filter>
-    </ClInclude>
     <ClInclude Include="..\src\Menu.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -600,9 +597,6 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\MdConvert.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\MdMermaid.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\Menu.cpp">
@@ -973,9 +967,6 @@
       <Filter>cmd</Filter>
     </None>
     <None Include="..\cmd\diff.ts">
-      <Filter>cmd</Filter>
-    </None>
-    <None Include="..\cmd\fetch-mermaid.ts">
       <Filter>cmd</Filter>
     </None>
     <None Include="..\cmd\format.ts">

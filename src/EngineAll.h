@@ -105,6 +105,8 @@ TempStr EngineMupdfGetPdfInfo(const char* path);
 TempStr EngineMupdfGetPdfOutline(const char* path);
 void EngineMupdfInvalidateDarkMode(EngineBase* engine);
 bool EngineMupdfRelayoutForThemeChange(EngineBase* engine);
+bool EngineMupdfReflowTocNeedsUiReload(EngineBase* engine);
+void EngineMupdfClearReflowTocNeedsUiReload(EngineBase* engine);
 bool EngineSupportsSmartDarkMode(EngineBase* engine);
 void EngineMupdfToggleCadEnhance(EngineBase* engine);
 

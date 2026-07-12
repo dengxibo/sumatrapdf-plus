@@ -336,6 +336,11 @@ static bool IsTocPageReachable(DocController* ctrl, TocItem* tocItem) {
     }
     DisplayModel* dm = ctrl->AsFixed();
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (engine && engine->kind == kindEngineMupdf) {
+        if (EngineMupdfReflowTocNeedsUiReload(engine)) {
+            return true;
+        }
+    }
     if (engine && engine->kind == kindEngineMobi) {
         // OnTocCustomDraw calls this while painting; never dereference dest here.
         return IsMobiEbookTocItemReachable(ctrl, tocItem, engine);

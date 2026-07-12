@@ -268,6 +268,7 @@ LoadArgs* LoadArgs::Clone() {
     res->noSavePrefs = noSavePrefs;
     res->lazyLoad = lazyLoad;
     res->async = async;
+    res->syncLoad = syncLoad;
     res->activateExisting = activateExisting;
     res->tabState = tabState;
     return res;
@@ -2426,12 +2427,24 @@ static bool IsReflowableMupdfForTheme(EngineBase* engine) {
     return engine && engine->kind == kindEngineMupdf && !str::EqI(engine->defaultExt, ".pdf");
 }
 
-static bool IsSyntheticMupdfHtmlDocument(EngineBase* engine) {
-    if (!IsReflowableMupdfForTheme(engine)) {
-        return false;
+static void ReloadTocUiAfterReflowReparse(MainWindow* win, WindowTab* tab) {
+    EngineBase* engine = tab ? tab->GetEngine() : nullptr;
+    if (!EngineMupdfReflowTocNeedsUiReload(engine)) {
+        return;
     }
-    Kind kind = GuessFileTypeFromName(engine->FilePath());
-    return kind == kindFileMd || kind == kindFileTxt;
+    if (!win || tab != win->CurrentTab() || !win->tocVisible) {
+        return;
+    }
+    EngineMupdfClearReflowTocNeedsUiReload(engine);
+    if (win->tocLoaded) {
+        ClearTocBox(win);
+    }
+    if (tab->GetEngine() && tab->GetEngine()->HasToc()) {
+        LoadTocTree(win);
+        if (win->tocLoaded && win->ctrl) {
+            UpdateTocSelection(win, win->ctrl->CurrentPageNo());
+        }
+    }
 }
 
 static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
@@ -2446,14 +2459,13 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
 
     EngineBase* engine = tab->GetEngine();
     if (IsReflowableMupdfForTheme(engine)) {
-        if (IsSyntheticMupdfHtmlDocument(engine)) {
-            ReloadDocument(win, false);
-            tab->reloadOnFocus = false;
-            return;
-        }
         if (!EngineMupdfRelayoutForThemeChange(engine)) {
-            logfa("ApplyThemeChangeToTab: in-place EPUB theme relayout failed, skipping document reload\n");
+            logfa("ApplyThemeChangeToTab: in-place reflow theme CSS update failed\n");
         }
+        dm->OnMorePagesAvailable(tab == win->CurrentTab(), true);
+        ReloadTocUiAfterReflowReparse(win, tab);
+        gRenderCache->CancelRendering(dm);
+        gRenderCache->FreeForDisplayModel(dm);
         tab->reloadOnFocus = false;
         return;
     }
@@ -2496,7 +2508,9 @@ static void SyncCanvasScrollBarTheme(MainWindow* win) {
 
 void UpdateAfterThemeChange() {
     InvalidateLoadedThumbnails();
-    UpdateDocumentColors(false);
+    // Reflowable documents are updated below. Doing it here as well reparses
+    // synthesized Markdown/TXT HTML twice and briefly exposes stale links.
+    UpdateDocumentColors(false, false);
 
     // Apply EPUB/CSS updates before chrome work so page rerender can start ASAP.
     for (auto win : gWindows) {
@@ -3006,7 +3020,7 @@ static void PrepareLoadingTab(MainWindow* win, LoadArgs* args) {
 }
 
 static bool ShouldLoadDocumentAsync(const char* path, LoadArgs* args) {
-    if (args->lazyLoad) {
+    if (args->lazyLoad || args->syncLoad) {
         return false;
     }
     if (!gGlobalPrefs->chmUI.useFixedPageUI) {
@@ -3787,12 +3801,12 @@ static void ApplyDocumentColorModeChangeToTab(MainWindow* win, WindowTab* tab) {
     }
     EngineBase* engine = tab->GetEngine();
     if (IsReflowableMupdfForTheme(engine)) {
-        if (IsSyntheticMupdfHtmlDocument(engine)) {
-            ReloadDocument(win, false);
-            tab->reloadOnFocus = false;
-            return;
-        }
         EngineMupdfRelayoutForThemeChange(engine);
+        DisplayModel* dm = tab->AsFixed();
+        if (dm) {
+            dm->OnMorePagesAvailable(tab == win->CurrentTab(), true);
+        }
+        ReloadTocUiAfterReflowReparse(win, tab);
         tab->reloadOnFocus = false;
         return;
     }
@@ -3815,7 +3829,7 @@ static void ApplyDocumentColorModeChangeToAllTabs() {
     }
 }
 
-void UpdateDocumentColors(bool rerender) {
+void UpdateDocumentColors(bool rerender, bool updateReflowDocuments) {
     COLORREF bg;
     COLORREF text = ThemePageRenderColors(bg, true);
     COLORREF link = ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : 0;
@@ -3823,29 +3837,38 @@ void UpdateDocumentColors(bool rerender) {
     static int s_lastPreservePdfImagesMinSize = -1;
     static int s_lastPdfDarkModeRenderer = -1;
     static int s_lastPdfDocumentColorMode = -1;
-    bool preservePdfImages =
-        GetPdfDocumentColorMode() == PdfDocumentColorMode::Auto && GetPreservePdfImagesInDarkMode();
+    static bool s_lastThemeUsesDarkChrome = false;
+    static bool s_lastThemeUsesOriginalPageColors = false;
+    bool preservePdfImages = GetPdfDocumentColorMode() == PdfDocumentColorMode::Auto &&
+                             GetPreservePdfImagesInDarkMode() && ThemeUsesDarkChrome();
     int preserveMinSize = preservePdfImages ? GetPreservePdfImagesMinSize() : 0;
     int pdfDarkModeRenderer = (int)GetPdfDarkModeRenderer();
     int pdfDocumentColorMode = (int)GetPdfDocumentColorMode();
+    bool themeUsesDarkChrome = ThemeUsesDarkChrome();
+    bool themeUsesOriginalPageColors = ThemeUsesOriginalPageColors();
 
     if ((text == gRenderCache->textColor) && (bg == gRenderCache->backgroundColor) &&
         (link == gRenderCache->linkColor) && preservePdfImages == s_lastPreservePdfImagesInDarkMode &&
         preserveMinSize == s_lastPreservePdfImagesMinSize && pdfDarkModeRenderer == s_lastPdfDarkModeRenderer &&
-        pdfDocumentColorMode == s_lastPdfDocumentColorMode) {
+        pdfDocumentColorMode == s_lastPdfDocumentColorMode && themeUsesDarkChrome == s_lastThemeUsesDarkChrome &&
+        themeUsesOriginalPageColors == s_lastThemeUsesOriginalPageColors) {
         return; // colors didn't change
     }
     s_lastPreservePdfImagesInDarkMode = preservePdfImages;
     s_lastPreservePdfImagesMinSize = preserveMinSize;
     s_lastPdfDarkModeRenderer = pdfDarkModeRenderer;
     s_lastPdfDocumentColorMode = pdfDocumentColorMode;
+    s_lastThemeUsesDarkChrome = themeUsesDarkChrome;
+    s_lastThemeUsesOriginalPageColors = themeUsesOriginalPageColors;
 
     gRenderCache->textColor = text;
     gRenderCache->backgroundColor = bg;
     gRenderCache->linkColor = link;
     gRenderCache->darkModeEpoch++;
 
-    ApplyDocumentColorModeChangeToAllTabs();
+    if (updateReflowDocuments) {
+        ApplyDocumentColorModeChangeToAllTabs();
+    }
 
     // Cached bitmaps are either recolored (PDF) or baked (ebooks). Marking them
     // out-of-date is not enough because RequestRendering() skips pages that
@@ -6395,6 +6418,9 @@ static bool FrameOnKeydown(MainWindow* win, WPARAM key, LPARAM lp) {
         dm->RotateBy(-90);
         gIsDivideKeyDown = true;
     } else if (VK_DELETE == key && !isCtrl && !isShift) {
+        if (IsPdfAnnotContentsEditFocused() || IsEbookAnnotContentsEditFocused()) {
+            return false;
+        }
         WindowTab* tab = win->CurrentTab();
         if (tab && tab->selectedAnnotation) {
             DeleteAnnotationAndUpdateUI(tab, tab->selectedAnnotation);
@@ -7513,22 +7539,12 @@ static COLORREF GetEbookAnnotationColor(AnnotationType type, const AnnotCreateAr
     if (args.col.parsedOk) {
         return args.col.col;
     }
-    // Same default colors as PDF annotations (Annotations.* prefs).
     AnnotCreateArgs prefsArgs{type};
     SetAnnotCreateArgs(prefsArgs, nullptr);
     if (prefsArgs.col.parsedOk) {
         return prefsArgs.col.col;
     }
-    if (type == AnnotationType::Underline) {
-        return RGB(0, 255, 0);
-    }
-    if (type == AnnotationType::Squiggly) {
-        return RGB(255, 0, 255);
-    }
-    if (type == AnnotationType::StrikeOut) {
-        return RGB(255, 0, 0);
-    }
-    return RGB(255, 255, 0);
+    return GetDefaultAnnotationColor(type);
 }
 
 static void PasteImageFromClipboard(MainWindow* win) {

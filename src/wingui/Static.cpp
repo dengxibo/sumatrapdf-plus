@@ -28,11 +28,16 @@ Static::Static() {
 }
 
 HWND Static::Create(const CreateArgs& args) {
+    wordWrap = args.wordWrap;
     CreateControlArgs cargs;
     cargs.className = WC_STATICW;
     cargs.parent = args.parent;
     cargs.font = args.font;
-    cargs.style = WS_CHILD | WS_VISIBLE | SS_NOTIFY;
+    cargs.style = WS_CHILD | WS_VISIBLE | SS_NOTIFY | SS_LEFT;
+    if (wordWrap) {
+        // Match DrawText word-wrap metrics used in HwndMeasureTextWrapped().
+        cargs.style |= SS_EDITCONTROL;
+    }
     cargs.text = args.text;
     cargs.isRtl = args.isRtl;
 
@@ -42,11 +47,62 @@ HWND Static::Create(const CreateArgs& args) {
     return hwnd;
 }
 
+static int StaticMeasureWidth(HWND hwnd, const Constraints& bc, int hinset, bool wordWrap, int layoutWidthHint,
+                              int lastBoundsDx) {
+    int width = bc.max.dx;
+    if (width == Inf || width <= 0) {
+        width = bc.min.dx > 0 ? bc.min.dx : 0;
+    }
+    if (width <= 0 && layoutWidthHint > 0) {
+        width = layoutWidthHint - hinset;
+    }
+    if (width <= 0 && lastBoundsDx > hinset) {
+        width = lastBoundsDx - hinset;
+    }
+    if (width > 0 && wordWrap) {
+        // Static controls wrap slightly inside the client rect; measure conservatively.
+        width = std::max(1, width - DpiScale(hwnd, 4));
+    }
+    return width;
+}
+
+static Size StaticMeasureText(HWND hwnd, int maxDx, bool wordWrap) {
+    char* txt = HwndGetTextTemp(hwnd);
+    HFONT hfont = HwndGetFont(hwnd);
+    if (wordWrap && maxDx > 0) {
+        return HwndMeasureTextWrapped(hwnd, txt, hfont, maxDx);
+    }
+    return HwndMeasureText(hwnd, txt, hfont);
+}
+
 Size Static::GetIdealSize() {
     ReportIf(!hwnd);
-    char* txt = HwndGetTextTemp(hwnd);
-    HFONT hfont = GetWindowFont(hwnd);
-    return HwndMeasureText(hwnd, txt, hfont);
+    return StaticMeasureText(hwnd, 0, wordWrap);
+}
+
+int Static::MinIntrinsicHeight(int width) {
+    if (wordWrap && width > 0) {
+        width = std::max(1, width - DpiScale(hwnd, 4));
+    }
+    return StaticMeasureText(hwnd, width, wordWrap).dy;
+}
+
+int Static::MinIntrinsicWidth(int) {
+    return StaticMeasureText(hwnd, 0, wordWrap).dx;
+}
+
+Size Static::Layout(const Constraints bc) {
+    auto hinset = insets.left + insets.right;
+    auto vinset = insets.top + insets.bottom;
+    auto innerConstraints = bc.Inset(hinset, vinset);
+
+    int width = StaticMeasureWidth(hwnd, innerConstraints, hinset, wordWrap, layoutWidthHint, lastBounds.dx);
+    Size s = StaticMeasureText(hwnd, width, wordWrap);
+    childSize = innerConstraints.Constrain(s);
+    return Size{
+        childSize.dx + hinset,
+        childSize.dy + vinset,
+    };
 }
 
 bool Static::OnCommand(WPARAM wparam, LPARAM lparam) {

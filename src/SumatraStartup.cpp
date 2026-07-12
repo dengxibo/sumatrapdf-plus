@@ -72,6 +72,8 @@
 #include "Theme.h"
 #include "DarkModeSubclass.h"
 #include "CommandPalette.h"
+#include "EditAnnotations.h"
+#include "EditEbookAnnotations.h"
 
 #include "utils/Log.h"
 
@@ -528,6 +530,10 @@ Error:
 
 static HACCEL FindAcceleratorsForHwnd(HWND hwnd, HWND* hwndAccel) {
     HACCEL* accTables = GetAcceleratorTables();
+
+    if (IsPdfAnnotContentsEditFocused(hwnd) || IsEbookAnnotContentsEditFocused(hwnd)) {
+        return nullptr;
+    }
 
     HACCEL accTable = accTables[0];
     HACCEL editAccTable = accTables[1];

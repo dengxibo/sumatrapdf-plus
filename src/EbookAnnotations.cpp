@@ -28,6 +28,8 @@
 #include "TextSelection.h"
 #include "WindowTab.h"
 
+#include "EditAnnotations.h"
+
 #include "utils/Log.h"
 
 struct EbookAnnotation {
@@ -35,7 +37,7 @@ struct EbookAnnotation {
     int chapter = -1;
     int sourceStart = -1;
     int sourceEnd = -1;
-    COLORREF color = RGB(255, 255, 0);
+    COLORREF color = 0;
     char* exact = nullptr;
     char* prefix = nullptr;
     char* suffix = nullptr;
@@ -886,7 +888,13 @@ time_t EbookAnnotationGetModified(EbookAnnotation* annotation) {
 }
 
 COLORREF EbookAnnotationGetColor(EbookAnnotation* annotation) {
-    return annotation ? annotation->color : RGB(255, 184, 77);
+    if (!annotation) {
+        return GetDefaultAnnotationColor(AnnotationType::Highlight);
+    }
+    if (annotation->color == 0) {
+        return GetDefaultAnnotationColor(annotation->type);
+    }
+    return annotation->color;
 }
 
 bool EbookAnnotationSetNote(WindowTab* tab, EbookAnnotation* annotation, const char* note) {
@@ -1032,7 +1040,10 @@ static bool BuildEbookAnnotationsExport(WindowTab* tab, StrBuilder& out) {
 
         const char* author = EbookAnnotationGetAuthor(annotation);
         if (!str::IsEmpty(author)) {
-            out.AppendFmt("%s: %s\n", _TRA("Author"), author);
+            out.Append(_TRA("Author:"));
+            out.Append(" ");
+            out.Append(author);
+            out.Append("\n");
         }
         time_t date = EbookAnnotationGetModified(annotation);
         if (date <= 0) {

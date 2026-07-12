@@ -16,10 +16,12 @@ if (!existsSync(mdPath)) {
 const mdConvertSrc = readFileSync(join(root, "src/MdConvert.cpp"), "utf8");
 const cssChecks: [string, RegExp][] = [
   ["MdConvert table border", /th, td[\s\S]*border:\s*1px\s+solid\s+#808080/],
-  ["MdConvert table header", /thead th[\s\S]*background-color:\s*#f6f8fa[\s\S]*border-width:\s*2px/],
+  ["MdConvert table header", /thead th[\s\S]*background-color:\s*#f6f8fa/],
   ["MdConvert pre block", /pre[\s\S]*background-color:\s*#f6f8fa[\s\S]*border:\s*none/],
   ["MdConvert hr rule", /hr[\s\S]*border-top:\s*1px\s+solid\s+#808080/],
-  ["MdConvert inline code", /:not\(pre\) > code[\s\S]*background-color:\s*#eff1f3/],
+  ["MdConvert inline code", /p code, li code[\s\S]*background-color:\s*#eff1f3/],
+  ["MdConvert sans body font", /font-family:\s*sans-serif\s*!important/],
+  ["MdConvert mono code font", /font-family:\s*monospace\s*!important[\s\S]*font-style:\s*normal\s*!important/],
 ];
 let failed = 0;
 for (const [name, re] of cssChecks) {
@@ -37,7 +39,6 @@ const mdChecks: [string, RegExp][] = [
   ["sample fenced code", /```python/m],
   ["sample hr", /^---$/m],
   ["sample blockquote", /^> This is a blockquote/m],
-  ["sample mermaid", /```mermaid/m],
 ];
 for (const [name, re] of mdChecks) {
   if (!re.test(md)) {

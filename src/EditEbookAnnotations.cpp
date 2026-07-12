@@ -27,17 +27,10 @@
 
 #include "DarkModeSubclass.h"
 
-static const char* kEbookAnnotationColorNames = "Orange\0Yellow\0Green\0Blue\0Red\0Purple\0Pink\0";
-static const COLORREF kEbookAnnotationColors[] = {
-    RGB(255, 184, 77), RGB(255, 235, 59), RGB(76, 175, 80),  RGB(66, 133, 244),
-    RGB(239, 83, 80),  RGB(156, 39, 176), RGB(236, 64, 122),
-};
-
 struct EbookAnnotationsWindow : Wnd {
     WindowTab* tab = nullptr;
     LayoutBase* mainLayout = nullptr;
     ListBox* listBox = nullptr;
-    Static* staticText = nullptr;
     Static* staticAuthor = nullptr;
     Static* staticDate = nullptr;
     Static* staticContents = nullptr;
@@ -49,6 +42,7 @@ struct EbookAnnotationsWindow : Wnd {
     Vec<EbookAnnotation*> annotations;
     EbookAnnotation* selected = nullptr;
     bool updatingControls = false;
+    StrBuilder currCustomColor;
     int dpi = 0;
 
     void OnSize(UINT msg, UINT type, SIZE size) override;
@@ -66,6 +60,16 @@ static Static* CreateStatic(HWND parent, HFONT font, const char* text = nullptr)
     args.font = font;
     ReportIf(!control->Create(args));
     return control;
+}
+
+static void LayoutEbookAnnotationsToClient(EbookAnnotationsWindow* window) {
+    if (!window || !window->mainLayout || !window->hwnd) {
+        return;
+    }
+    Rect client = ClientRect(window->hwnd);
+    if (client.dx > 0 && client.dy > 0) {
+        LayoutToSize(window->mainLayout, {client.dx, client.dy});
+    }
 }
 
 static void GetEditAnnotationsThemeColors(COLORREF& textOut, COLORREF& bgOut) {
@@ -159,42 +163,24 @@ void ReopenEbookAnnotationsWindowsAfterDpiMove(MainWindow* win) {
     }
 }
 
-static int FindColorIndex(COLORREF color) {
-    for (int i = 0; i < (int)dimof(kEbookAnnotationColors); i++) {
-        if (kEbookAnnotationColors[i] == color) {
-            return i;
-        }
-    }
-    return -1;
-}
-
 static void FillColorDropDown(EbookAnnotationsWindow* window, COLORREF color) {
-    StrVec items;
-    const char* name = kEbookAnnotationColorNames;
-    while (name) {
-        items.Append(name);
-        seqstrings::Next(name);
-    }
-    int idx = FindColorIndex(color);
-    if (idx < 0) {
-        items.Append(SerializeColorTemp(color));
-        idx = items.Size() - 1;
-    }
-    window->dropDownColor->SetItems(items);
-    window->dropDownColor->SetCurrentSelection(idx);
+    FillAnnotationColorDropDown(window->dropDownColor, color, window->currCustomColor);
 }
 
 static COLORREF GetSelectedColor(EbookAnnotationsWindow* window) {
     int idx = window->dropDownColor->GetCurrentSelection();
-    if (idx >= 0 && idx < (int)dimof(kEbookAnnotationColors)) {
-        return kEbookAnnotationColors[idx];
+    if (idx < 0) {
+        AnnotationType type = AnnotationType::Highlight;
+        if (window->selected) {
+            type = EbookAnnotationGetType(window->selected);
+        }
+        return GetDefaultAnnotationColor(type);
     }
     const char* item = window->dropDownColor->items.At(idx);
-    return ParseColor(item, RGB(255, 184, 77));
+    return GetAnnotationColorFromDropDown(item);
 }
 
 static void HideAnnotationControls(EbookAnnotationsWindow* window) {
-    window->staticText->SetIsVisible(false);
     window->staticAuthor->SetIsVisible(false);
     window->staticDate->SetIsVisible(false);
     window->staticContents->SetIsVisible(false);
@@ -204,91 +190,145 @@ static void HideAnnotationControls(EbookAnnotationsWindow* window) {
     window->buttonDelete->SetIsVisible(false);
 }
 
+static void ClearAnnotationDetailControls(EbookAnnotationsWindow* window) {
+    if (!window) {
+        return;
+    }
+    window->selected = nullptr;
+    window->updatingControls = true;
+    if (window->staticAuthor) {
+        window->staticAuthor->SetText("");
+    }
+    if (window->staticDate) {
+        window->staticDate->SetText("");
+    }
+    if (window->editContents) {
+        window->editContents->SetText("");
+    }
+    window->updatingControls = false;
+    HideAnnotationControls(window);
+}
+
 static void UpdateExportButton(EbookAnnotationsWindow* window) {
     bool hasAnnotations = window->listBox && window->listBox->GetCount() > 0;
     window->buttonExport->SetIsEnabled(hasAnnotations);
 }
 
-// Keep the current client size when updating selection. LayoutAndSizeToContent()
-// would grow the window to fit long excerpt text (VBox min intrinsic width),
-// pushing the right edge onto the next monitor.
-static void RelayoutEbookAnnotationsWindow(EbookAnnotationsWindow* window) {
-    if (!window || !window->mainLayout || !window->hwnd) {
-        return;
+static bool IsEbookAnnotContentsEditActive(HWND msgHwnd, HWND editHwnd, HWND windowHwnd) {
+    if (!editHwnd) {
+        return false;
     }
-    Rect client = ClientRect(window->hwnd);
-    if (client.dx <= 0 || client.dy <= 0) {
-        return;
+    auto relatedToEdit = [&](HWND h) -> bool { return h && (h == editHwnd || ::IsChild(editHwnd, h)); };
+    if (relatedToEdit(msgHwnd) || relatedToEdit(::GetFocus())) {
+        return true;
     }
-    LayoutToSize(window->mainLayout, {client.dx, client.dy});
+    HWND focus = ::GetFocus();
+    if (focus && windowHwnd && ::IsChild(windowHwnd, focus)) {
+        TempStr cls = HwndGetClassName(focus);
+        if (str::EqI(cls, "Edit")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool IsEbookAnnotContentsEditFocused(HWND msgHwnd) {
+    for (MainWindow* win : gWindows) {
+        for (WindowTab* tab : win->Tabs()) {
+            EbookAnnotationsWindow* ew = tab->editEbookAnnotsWindow;
+            if (!ew || !ew->editContents) {
+                continue;
+            }
+            if (IsEbookAnnotContentsEditActive(msgHwnd, ew->editContents->hwnd, ew->hwnd)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 static void UpdateSelectedAnnotation(EbookAnnotationsWindow* window, EbookAnnotation* annotation,
                                      EditAnnotFocus focus = EditAnnotFocus::Default) {
     window->selected = annotation;
-    HideAnnotationControls(window);
-    if (annotation) {
-        int idx = window->annotations.Find(annotation);
-        if (idx < 0) {
-            window->selected = nullptr;
-            return;
-        }
-        window->updatingControls = true;
-        TempStr excerpt = ShortenStringUtf8Temp(EbookAnnotationGetText(annotation), 100);
-        window->staticText->SetText(excerpt);
-        TempStr note = str::ReplaceTemp(EbookAnnotationGetNote(annotation), "\r\n", "\n");
-        note = str::ReplaceTemp(note, "\n", "\r\n");
-        window->editContents->SetText(note);
-        FillColorDropDown(window, EbookAnnotationGetColor(annotation));
-
-        const char* author = EbookAnnotationGetAuthor(annotation);
-        if (!str::IsEmpty(author)) {
-            StrBuilder authorText;
-            authorText.AppendFmt("%s: %s", _TRA("Author"), author);
-            window->staticAuthor->SetText(authorText.Get());
-            window->staticAuthor->SetIsVisible(true);
-        }
-        time_t date = EbookAnnotationGetModified(annotation);
-        if (date <= 0) {
-            date = EbookAnnotationGetCreated(annotation);
-        }
-        if (date > 0) {
-            StrBuilder dateText;
-            dateText.Append(_TRA("Date:"));
-            dateText.Append(" ");
-            struct tm tm;
-            gmtime_s(&tm, &date);
-            char buf[100];
-            strftime(buf, sizeof buf, "%Y-%m-%d %H:%M UTC", &tm);
-            dateText.Append(buf);
-            window->staticDate->SetText(dateText.Get());
-            window->staticDate->SetIsVisible(true);
-        }
-
-        window->updatingControls = false;
-
-        window->staticText->SetIsVisible(true);
-        window->staticContents->SetIsVisible(true);
-        window->editContents->SetIsVisible(true);
-        window->staticColor->SetIsVisible(true);
-        window->dropDownColor->SetIsVisible(true);
-        window->buttonDelete->SetIsVisible(true);
-        window->listBox->SetCurrentSelection(idx);
-
-        int pageNo = EbookAnnotationGetPageNo(window->tab, annotation);
-        DisplayModel* dm = window->tab->AsFixed();
-        if (dm && dm->ValidPageNo(pageNo) && !dm->PageVisible(pageNo)) {
-            dm->GoToPage(pageNo, true);
-        }
-        if (focus == EditAnnotFocus::Edit || EbookAnnotationGetType(annotation) == AnnotationType::Text) {
-            HwndSetFocus(window->editContents->hwnd);
-            window->editContents->SelectAll();
-        } else {
-            HwndSetFocus(window->listBox->hwnd);
-        }
+    if (!annotation) {
+        ClearAnnotationDetailControls(window);
+        LayoutEbookAnnotationsToClient(window);
+        return;
     }
-    RelayoutEbookAnnotationsWindow(window);
-    MainWindowRerender(window->tab->win);
+
+    int idx = window->annotations.Find(annotation);
+    if (idx < 0) {
+        ClearAnnotationDetailControls(window);
+        LayoutEbookAnnotationsToClient(window);
+        return;
+    }
+
+    WindowTab* tab = window->tab;
+    window->updatingControls = true;
+
+    TempStr note = str::ReplaceTemp(EbookAnnotationGetNote(annotation), "\r\n", "\n");
+    note = str::ReplaceTemp(note, "\n", "\r\n");
+    if (!IsEbookAnnotContentsEditActive(window->editContents->hwnd, window->editContents->hwnd, window->hwnd)) {
+        window->editContents->SetText(note);
+    }
+    FillColorDropDown(window, EbookAnnotationGetColor(annotation));
+
+    const char* author = EbookAnnotationGetAuthor(annotation);
+    StrBuilder authorText;
+    authorText.Append(_TRA("Author:"));
+    authorText.Append(" ");
+    if (!str::IsEmpty(author)) {
+        authorText.Append(author);
+    }
+    window->staticAuthor->SetText(authorText.Get());
+    window->staticAuthor->SetIsVisible(true);
+
+    time_t date = EbookAnnotationGetModified(annotation);
+    if (date <= 0) {
+        date = EbookAnnotationGetCreated(annotation);
+    }
+    StrBuilder dateText;
+    dateText.Append(_TRA("Date:"));
+    dateText.Append(" ");
+    if (date > 0) {
+        struct tm tm;
+        gmtime_s(&tm, &date);
+        char buf[100];
+        strftime(buf, sizeof buf, "%Y-%m-%d %H:%M UTC", &tm);
+        dateText.Append(buf);
+    }
+    window->staticDate->SetText(dateText.Get());
+    window->staticDate->SetIsVisible(true);
+
+    window->staticContents->SetIsVisible(true);
+    window->editContents->SetIsVisible(true);
+    window->staticColor->SetIsVisible(true);
+    window->dropDownColor->SetIsVisible(true);
+    window->buttonDelete->SetIsVisible(true);
+    window->updatingControls = false;
+
+    if (window->listBox->GetCurrentSelection() != idx) {
+        window->listBox->SetCurrentSelection(idx);
+    }
+
+    LayoutEbookAnnotationsToClient(window);
+
+    if (focus == EditAnnotFocus::Edit || EbookAnnotationGetType(annotation) == AnnotationType::Text) {
+        HwndSetFocus(window->editContents->hwnd);
+        window->editContents->SelectAll();
+    } else {
+        HwndSetFocus(window->listBox->hwnd);
+    }
+
+    int pageNo = EbookAnnotationGetPageNo(tab, annotation);
+    DisplayModel* dm = tab->AsFixed();
+    if (dm && dm->ValidPageNo(pageNo) && !dm->PageVisible(pageNo)) {
+        dm->GoToPage(pageNo, true);
+        LayoutEbookAnnotationsToClient(window);
+    }
+    if (tab->win) {
+        MainWindowRerender(tab->win);
+    }
 }
 
 static void RebuildList(EbookAnnotationsWindow* window) {
@@ -302,32 +342,49 @@ static void RebuildList(EbookAnnotationsWindow* window) {
         int pageNo = EbookAnnotationGetPageNo(window->tab, annotation);
         text.AppendFmt(_TRA("page %d,"), pageNo);
         text.AppendFmt(" %s", AnnotationReadableNameTemp(EbookAnnotationGetType(annotation)));
-        const char* exact = EbookAnnotationGetText(annotation);
-        if (!str::IsEmpty(exact)) {
-            text.Append(" - ");
-            text.Append(ShortenStringUtf8Temp(exact, 48));
-        }
         model->strings.Append(text.Get());
     }
+    auto topIdx = ListBoxGetTopIndex(window->listBox->hwnd);
     window->listBox->SetModel(model);
+    topIdx = std::min(window->listBox->GetCount() - 1, topIdx);
+    if (topIdx >= 0) {
+        ListBoxSetTopIndex(window->listBox->hwnd, topIdx);
+    }
     int idx = window->annotations.Find(selected);
     if (idx >= 0) {
         window->listBox->SetCurrentSelection(idx);
     }
     UpdateExportButton(window);
+    LayoutEbookAnnotationsToClient(window);
 }
 
 void UpdateEbookAnnotationsList(EbookAnnotationsWindow* window) {
-    if (window) {
-        RebuildList(window);
+    if (!window) {
+        return;
     }
+    EbookAnnotation* selected = window->selected;
+    RebuildList(window);
+    if (selected && window->annotations.Find(selected) >= 0) {
+        UpdateSelectedAnnotation(window, selected);
+        return;
+    }
+    int idx = window->listBox->GetCurrentSelection();
+    if (window->annotations.isValidIndex(idx)) {
+        UpdateSelectedAnnotation(window, window->annotations.at(idx));
+        return;
+    }
+    ClearAnnotationDetailControls(window);
+    LayoutEbookAnnotationsToClient(window);
 }
 
 static void ListSelectionChanged(EbookAnnotationsWindow* window) {
     int idx = window->listBox->GetCurrentSelection();
-    if (window->annotations.isValidIndex(idx)) {
-        UpdateSelectedAnnotation(window, window->annotations.at(idx));
+    if (!window->annotations.isValidIndex(idx)) {
+        ClearAnnotationDetailControls(window);
+        LayoutEbookAnnotationsToClient(window);
+        return;
     }
+    UpdateSelectedAnnotation(window, window->annotations.at(idx));
 }
 
 static void ContentsChanged(EbookAnnotationsWindow* window) {
@@ -353,13 +410,31 @@ static void DeleteSelected(EbookAnnotationsWindow* window) {
         return;
     }
     EbookAnnotation* selected = window->selected;
-    window->selected = nullptr;
+    int deletedIdx = window->annotations.Find(selected);
     if (!EbookAnnotationsDelete(window->tab, selected)) {
-        window->selected = selected;
         return;
     }
+    window->selected = nullptr;
     RebuildList(window);
-    UpdateSelectedAnnotation(window, nullptr);
+
+    int count = window->listBox->GetCount();
+    if (count > 0) {
+        int idx = deletedIdx;
+        if (idx >= count) {
+            idx = count - 1;
+        }
+        if (idx < 0) {
+            idx = 0;
+        }
+        UpdateSelectedAnnotation(window, window->annotations.at(idx));
+    } else {
+        ClearAnnotationDetailControls(window);
+        LayoutEbookAnnotationsToClient(window);
+    }
+
+    if (window->tab->win) {
+        MainWindowRerender(window->tab->win);
+    }
 }
 
 static void DeleteClicked(EbookAnnotationsWindow* window) {
@@ -383,15 +458,35 @@ void EbookAnnotationsWindow::OnFocus() {
 }
 
 void EbookAnnotationsWindow::OnSize(UINT msg, UINT, SIZE size) {
-    if (msg == WM_SIZE && mainLayout) {
-        LayoutToSize(mainLayout, {(int)size.cx, (int)size.cy});
+    if (msg != WM_SIZE) {
+        return;
     }
+    if (!mainLayout) {
+        return;
+    }
+    int dx = (int)size.cx;
+    int dy = (int)size.cy;
+    if (dx == 0 || dy == 0) {
+        return;
+    }
+    InvalidateRect(hwnd, nullptr, false);
+    LayoutToSize(mainLayout, {dx, dy});
 }
 
 bool EbookAnnotationsWindow::PreTranslateMessage(MSG& msg) {
-    if (msg.message == WM_KEYDOWN && msg.wParam == VK_DELETE && ::GetFocus() != editContents->hwnd) {
-        DeleteSelected(this);
-        return true;
+    if (msg.message == WM_KEYDOWN) {
+        bool inContentsEdit =
+            IsEbookAnnotContentsEditActive(msg.hwnd, editContents ? editContents->hwnd : nullptr, hwnd);
+        if (inContentsEdit && (msg.wParam == VK_BACK || msg.wParam == VK_DELETE)) {
+            if (!IsCtrlPressed() && !IsAltPressed()) {
+                return EditDeleteChar(editContents->hwnd, msg.wParam == VK_BACK);
+            }
+            return false;
+        }
+        if (msg.wParam == VK_DELETE) {
+            DeleteSelected(this);
+            return true;
+        }
     }
     return false;
 }
@@ -416,50 +511,42 @@ static void CreateMainLayout(EbookAnnotationsWindow* window) {
 
     ListBox::CreateArgs listArgs;
     listArgs.parent = parent;
-    listArgs.idealSizeLines = 8;
+    listArgs.idealSizeLines = 5;
     listArgs.font = font;
     listArgs.isRtl = IsUIRtl();
     auto list = new ListBox();
+    list->SetInsetsPt(4, 0);
     list->Create(listArgs);
-    list->insets = DpiScaledInsets(parent, 4, 0);
-    list->idealSize = {MulDiv(120, dpi, 96), MulDiv(32, dpi, 96)};
     list->SetModel(new ListBoxModelStrings());
     list->onSelectionChanged = MkFunc0(ListSelectionChanged, window);
     window->listBox = list;
     vbox->AddChild(list);
 
-    window->staticText = CreateStatic(parent, font);
-    window->staticText->insets = DpiScaledInsets(parent, 6, 0, 0, 0);
-    vbox->AddChild(window->staticText);
-
     window->staticAuthor = CreateStatic(parent, font);
-    window->staticAuthor->insets = DpiScaledInsets(parent, 4, 0, 0, 0);
     vbox->AddChild(window->staticAuthor);
 
     window->staticDate = CreateStatic(parent, font);
-    window->staticDate->insets = DpiScaledInsets(parent, 2, 0, 0, 0);
     vbox->AddChild(window->staticDate);
 
     window->staticContents = CreateStatic(parent, font, _TRA("Contents:"));
-    window->staticContents->insets = DpiScaledInsets(parent, 8, 0, 0, 0);
+    window->staticContents->SetInsetsPt(4, 0, 0, 0);
     vbox->AddChild(window->staticContents);
 
     Edit::CreateArgs editArgs;
     editArgs.parent = parent;
     editArgs.isMultiLine = true;
-    editArgs.withBorder = true;
-    editArgs.idealSizeLines = 6;
+    editArgs.idealSizeLines = 5;
     editArgs.font = font;
     editArgs.isRtl = IsUIRtl();
     auto edit = new Edit();
     ReportIf(!edit->Create(editArgs));
-    edit->maxDx = MulDiv(180, dpi, 96);
+    edit->maxDx = MulDiv(150, dpi, 96);
     edit->onTextChanged = MkFunc0(ContentsChanged, window);
     window->editContents = edit;
     vbox->AddChild(edit);
 
     window->staticColor = CreateStatic(parent, font, _TRA("Color:"));
-    window->staticColor->insets = DpiScaledInsets(parent, 8, 0, 0, 0);
+    window->staticColor->SetInsetsPt(8, 0, 0, 0);
     vbox->AddChild(window->staticColor);
 
     DropDown::CreateArgs colorArgs;
@@ -467,8 +554,9 @@ static void CreateMainLayout(EbookAnnotationsWindow* window) {
     colorArgs.font = font;
     colorArgs.isRtl = IsUIRtl();
     auto color = new DropDown();
+    color->SetInsetsPt(4, 0, 0, 0);
     color->Create(colorArgs);
-    color->insets = DpiScaledInsets(parent, 4, 0, 0, 0);
+    color->SetItemsSeqStrings(GetPdfAnnotationColorNames());
     color->onSelectionChanged = MkFunc0(ColorSelectionChanged, window);
     window->dropDownColor = color;
     vbox->AddChild(color);
@@ -482,8 +570,8 @@ static void CreateMainLayout(EbookAnnotationsWindow* window) {
     buttonArgs.font = font;
     buttonArgs.isRtl = IsUIRtl();
     auto button = new Button();
+    button->SetInsetsPt(8, 0, 0, 0);
     ReportIf(!button->Create(buttonArgs));
-    button->insets = DpiScaledInsets(parent, 10, 0, 0, 0);
     button->onClick = MkFunc0(DeleteClicked, window);
     window->buttonDelete = button;
     vbox->AddChild(button);
@@ -494,8 +582,8 @@ static void CreateMainLayout(EbookAnnotationsWindow* window) {
     exportArgs.font = font;
     exportArgs.isRtl = IsUIRtl();
     auto exportButton = new Button();
+    exportButton->SetInsetsPt(8, 0, 0, 0);
     ReportIf(!exportButton->Create(exportArgs));
-    exportButton->insets = DpiScaledInsets(parent, 8, 0, 0, 0);
     exportButton->onClick = MkFunc0(ExportClicked, window);
     exportButton->SetIsEnabled(false);
     window->buttonExport = exportButton;

@@ -138,6 +138,8 @@ static struct {
     {"LucidaBright", "Georgia"},
     {"Handwriting", "SegoeScript"},
     {"Console", "Consolas"},
+    {"CourierNew", "CourierNewPSMT"},
+    {"SegoeUI", "SegoeUI"},
     {"FuturaStd-Bold", "SegoeUI-Bold"},
     {"DINPro", "SegoeUI"},
     {"ACaslonPro-Regular", "Georgia"},
@@ -1417,14 +1419,26 @@ static fz_font* load_windows_fallback_font(fz_context* ctx, int script, int lang
         case UCDN_SCRIPT_COMMON:
         case UCDN_SCRIPT_INHERITED:
         case UCDN_SCRIPT_UNKNOWN: {
-            font_name = "TimesNewRomanPSMT";
-            if (bold) {
-                font_name = "TimesNewRomanPS-BoldMT";
-                if (italic) {
-                    font_name = "TimesNewRomanPS-BoldItalicMT";
+            if (serif) {
+                font_name = "TimesNewRomanPSMT";
+                if (bold) {
+                    font_name = "TimesNewRomanPS-BoldMT";
+                    if (italic) {
+                        font_name = "TimesNewRomanPS-BoldItalicMT";
+                    }
+                } else if (italic) {
+                    font_name = "TimesNewRomanPS-ItalicMT";
                 }
-            } else if (italic) {
-                font_name = "TimesNewRomanPS-ItalicMT";
+            } else {
+                font_name = "SegoeUI";
+                if (bold) {
+                    font_name = "SegoeUI-Bold";
+                    if (italic) {
+                        font_name = "SegoeUI-BoldItalic";
+                    }
+                } else if (italic) {
+                    font_name = "SegoeUI-Italic";
+                }
             }
         } break;
     }

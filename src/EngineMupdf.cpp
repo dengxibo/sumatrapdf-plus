@@ -8,6 +8,7 @@ extern "C" {
 #include "../mupdf/source/fitz/color-imp.h"
 void fz_purge_stored_html(fz_context* ctx, void* doc);
 void fz_purge_stored_html_chapter(fz_context* ctx, void* doc, int chapter);
+void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, float w, float h, float em);
 }
 
 #include "utils/BaseUtil.h"
@@ -531,10 +532,34 @@ static IPageDestination* NewPageDestinationMupdf(EngineMupdf* e, fz_context* ctx
         return res;
     }
 
-    if (IsExternalUrl(uri)) {
+    if (IsExternalUrl(uri) || IsExternalLink(uri)) {
         auto res = new PageDestinationURL(uri);
         res->rect = FzGetRectF(link, outline);
         return res;
+    }
+
+    // Markdown/HTML: relative paths like other.md or ./pic.png (MuPDF has no base dir for stream docs).
+    if (e && uri && uri[0] != '#' && !pdf_specifics(ctx, doc)) {
+        TempStr pathPart = str::DupTemp(uri);
+        TempStr fragment = str::FindChar(pathPart, '#');
+        if (fragment) {
+            *fragment++ = '\0';
+        }
+        if (pathPart[0] && !IsExternalLink(pathPart)) {
+            TempStr fullPath = pathPart;
+            if (!path::IsAbsolute(pathPart)) {
+                TempStr dir = path::GetDirTemp(e->FilePath());
+                if (dir) {
+                    fullPath = path::JoinTemp(dir, pathPart);
+                }
+            }
+            fullPath = path::NormalizeTemp(fullPath);
+            if (file::Exists(fullPath)) {
+                auto res = new PageDestinationFile(fullPath, fragment);
+                res->rect = FzGetRectF(link, outline);
+                return res;
+            }
+        }
     }
 
     auto dest = new PageDestinationMupdf(link, outline);
@@ -1865,6 +1890,9 @@ static bool PdfShouldCollectContentImages() {
     if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Black) {
         return false;
     }
+    if (!ThemeUsesDarkChrome()) {
+        return false;
+    }
     if (!GetPreservePdfImagesInDarkMode()) {
         return false;
     }
@@ -2647,6 +2675,7 @@ EngineMupdf::~EngineMupdf() {
     str::Free(pdfPassword);
     delete pageLabels;
     delete tocTree;
+    reflowHtmlSource.Free();
 
     for (size_t i = 0; i < dimof(fz_locks); i++) {
         DeleteCriticalSection(&fz_locks[i]);
@@ -2840,12 +2869,27 @@ static ByteSlice PalmDocToHTML(const char* path) {
     return html.Clone();
 }
 
+static void KeepReflowHtmlSource(EngineMupdf* e, ByteSlice& html);
+
+static bool IsUnsupportedOfficeFilePath(const char* path) {
+    TempStr ext = path::GetExtTemp(path);
+    if (str::IsEmpty(ext)) {
+        return false;
+    }
+    return str::EqI(ext, ".docx") || str::EqI(ext, ".doc") || str::EqI(ext, ".wps") || str::EqI(ext, ".xlsx") ||
+           str::EqI(ext, ".xls") || str::EqI(ext, ".pptx") || str::EqI(ext, ".ppt");
+}
+
 bool EngineMupdf::Load(const char* path, PasswordUI* pwdUI) {
     bool ok;
     const char* pathA = path;
     auto ctx = Ctx();
     ReportIf(FilePath() || _doc || !ctx);
     SetFilePath(path);
+
+    if (IsUnsupportedOfficeFilePath(pathA)) {
+        return false;
+    }
 
     auto ext = path::GetExtTemp(path);
     str::ReplaceWithCopy(&defaultExt, ext);
@@ -2862,10 +2906,11 @@ bool EngineMupdf::Load(const char* path, PasswordUI* pwdUI) {
         if (d.empty()) {
             return false;
         }
-        fz_buffer* buf = fz_new_buffer_from_copied_data(ctx, (const u8*)d.data(), d.size());
+        KeepReflowHtmlSource(this, d);
+        fz_buffer* buf =
+            fz_new_buffer_from_copied_data(ctx, (const u8*)reflowHtmlSource.data(), reflowHtmlSource.size());
         fz_stream* file = fz_open_buffer(ctx, buf);
         fz_drop_buffer(ctx, buf);
-        str::Free(d);
         char* nameHint = str::JoinTemp(path, ".html");
         if (!LoadFromStream(file, nameHint, pwdUI)) {
             return false;
@@ -2878,10 +2923,11 @@ bool EngineMupdf::Load(const char* path, PasswordUI* pwdUI) {
         if (d.empty()) {
             return false;
         }
-        fz_buffer* buf = fz_new_buffer_from_copied_data(ctx, (const u8*)d.data(), d.size());
+        KeepReflowHtmlSource(this, d);
+        fz_buffer* buf =
+            fz_new_buffer_from_copied_data(ctx, (const u8*)reflowHtmlSource.data(), reflowHtmlSource.size());
         fz_stream* file = fz_open_buffer(ctx, buf);
         fz_drop_buffer(ctx, buf);
-        str::Free(d);
         char* nameHint = str::JoinTemp(path, ".html");
         if (!LoadFromStream(file, nameHint, pwdUI)) {
             return false;
@@ -2967,6 +3013,9 @@ bool EngineMupdf::Load(IStream* stream, const char* nameHint, PasswordUI* pwdUI)
     auto ctx = Ctx();
     ReportIf(FilePath() || _doc || !ctx);
     if (!ctx) {
+        return false;
+    }
+    if (IsUnsupportedOfficeFilePath(nameHint)) {
         return false;
     }
 
@@ -3296,13 +3345,26 @@ bool EbookNeedsCjkTypography(const char* filePath, const char* nameHint) {
 static void GetMupdfReflowLayoutPt(const char* nameHint, float* ldxPtOut, float* ldyPtOut, float* lfontDyPtOut);
 
 static bool IsMarkdownReflowDocument(const char* nameHint, const char* filePath) {
-    if (!str::IsEmpty(filePath)) {
-        TempStr ext = path::GetExtTemp(filePath);
+    auto isMdPath = [](const char* path) -> bool {
+        if (str::IsEmpty(path)) {
+            return false;
+        }
+        TempStr ext = path::GetExtTemp(path);
         if (str::EqI(ext, ".md") || str::EqI(ext, ".markdown")) {
             return true;
         }
+        return GuessFileTypeFromName(path) == kindFileMd;
+    };
+    if (isMdPath(filePath)) {
+        return true;
     }
-    return !str::IsEmpty(nameHint) && str::EndsWithI(nameHint, ".md.html");
+    if (!str::IsEmpty(nameHint)) {
+        if (str::EndsWithI(nameHint, ".md.html") || str::EndsWithI(nameHint, ".markdown.html")) {
+            return true;
+        }
+        return isMdPath(nameHint);
+    }
+    return false;
 }
 
 static TempStr BuildMarkdownTableCss(bool darkTheme, bool eyeCareLight) {
@@ -3314,7 +3376,6 @@ thead th {
   background-color: #21262d !important;
   color: #e6edf3 !important;
   font-weight: 600 !important;
-  border-width: 2px !important;
 }
 tbody td {
   background-color: transparent !important;
@@ -3329,7 +3390,6 @@ thead th {
   background-color: #ebe3d5 !important;
   color: #3f3a34 !important;
   font-weight: 600 !important;
-  border-width: 2px !important;
 }
 tbody td {
   background-color: transparent !important;
@@ -3343,7 +3403,6 @@ thead th {
   background-color: #f6f8fa !important;
   color: #24292f !important;
   font-weight: 600 !important;
-  border-width: 2px !important;
 }
 tbody td {
   background-color: transparent !important;
@@ -3351,9 +3410,108 @@ tbody td {
 )");
 }
 
+static TempStr BuildMarkdownTableCss(bool darkTheme, bool eyeCareLight);
+static TempStr BuildMarkdownCodeBlockCss(bool darkTheme, bool eyeCareLight);
+static TempStr BuildMarkdownFontCss();
+static TempStr BuildMarkdownUserCss(const char* nameHint, const char* filePath, float ldx, float ldy, float lfontDy);
+
+static TempStr BuildMarkdownFontCss() {
+    // MuPDF: use generic sans-serif/monospace (maps to Arial/Consolas on Windows). Universal
+    // selector overrides any ebook Literata rules; keep this block last in user CSS.
+    return str::DupTemp(R"(* {
+  font-family: sans-serif !important;
+}
+h1, h2, h3, h4, h5, h6, strong, th {
+  font-weight: 600 !important;
+}
+em, i, cite, dfn, var {
+  font-style: italic !important;
+}
+pre, code, kbd, samp, tt, pre *, code * {
+  font-family: monospace !important;
+  font-style: normal !important;
+  font-weight: normal !important;
+}
+)");
+}
+
+static const char* kMdInlineCodeCssLight =
+    R"(p code, li code, td code, th code, h1 code, h2 code, h3 code, h4 code, h5 code, h6 code, dt code, dd code, blockquote code {
+  background-color: #eff1f3 !important;
+  color: #24292f !important;
+  padding: 0.15em 0.35em !important;
+  border-radius: 4px !important;
+}
+)";
+
+static const char* kMdInlineCodeCssDark =
+    R"(p code, li code, td code, th code, h1 code, h2 code, h3 code, h4 code, h5 code, h6 code, dt code, dd code, blockquote code {
+  background-color: #3d444d !important;
+  color: #e6edf3 !important;
+  padding: 0.15em 0.35em !important;
+  border-radius: 4px !important;
+}
+)";
+
+static const char* kMdInlineCodeCssEyeCare =
+    R"(p code, li code, td code, th code, h1 code, h2 code, h3 code, h4 code, h5 code, h6 code, dt code, dd code, blockquote code {
+  background-color: #e0d8ca !important;
+  color: #3f3a34 !important;
+  padding: 0.15em 0.35em !important;
+  border-radius: 4px !important;
+}
+)";
+
+static TempStr BuildMarkdownUserCss(const char* nameHint, const char* filePath, float ldx, float ldy, float lfontDy) {
+    (void)nameHint;
+    (void)filePath;
+    (void)ldx;
+    (void)lfontDy;
+    (void)ldy;
+
+    bool darkTheme = IsDarkThemeSelected();
+    PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
+    bool injectThemeColors = docMode != PdfDocumentColorMode::Light;
+    bool useEyeCareLightCss = injectThemeColors && !darkTheme && !ThemeUsesOriginalPageColors();
+    bool useDarkCss = injectThemeColors && darkTheme;
+
+    TempStr css = nullptr;
+    if (useDarkCss) {
+        css = BuildEbookDarkCss(false);
+    } else if (useEyeCareLightCss) {
+        static const char* kLightEyeCareCss = R"(html {
+  background-color: #f7f3e8 !important;
+}
+body {
+  background-color: #f7f3e8 !important;
+  color: #333333;
+}
+pre {
+  background-color: #f7f3e8 !important;
+  color: #333333;
+}
+)";
+        css = str::DupTemp(kLightEyeCareCss);
+    }
+
+    TempStr mdTableCss = BuildMarkdownTableCss(useDarkCss, useEyeCareLightCss);
+    if (mdTableCss) {
+        css = css ? str::JoinTemp(css, "\n", mdTableCss) : mdTableCss;
+    }
+    TempStr mdCodeCss = BuildMarkdownCodeBlockCss(useDarkCss, useEyeCareLightCss);
+    if (mdCodeCss) {
+        css = css ? str::JoinTemp(css, "\n", mdCodeCss) : mdCodeCss;
+    }
+    TempStr mdFontCss = BuildMarkdownFontCss();
+    if (mdFontCss) {
+        css = css ? str::JoinTemp(css, "\n", mdFontCss) : mdFontCss;
+    }
+    return css;
+}
+
 static TempStr BuildMarkdownCodeBlockCss(bool darkTheme, bool eyeCareLight) {
     if (darkTheme) {
-        return str::DupTemp(R"(pre {
+        TempStr css = str::DupTemp(R"(pre {
   display: block !important;
   background-color: #2d333b !important;
   color: #e6edf3 !important;
@@ -3367,16 +3525,11 @@ pre code {
   background-color: transparent !important;
   color: inherit !important;
 }
-:not(pre) > code {
-  background-color: #3d444d !important;
-  color: #e6edf3 !important;
-  padding: 0.15em 0.35em !important;
-  border-radius: 4px !important;
-}
 )");
+        return str::JoinTemp(css, "\n", kMdInlineCodeCssDark);
     }
     if (eyeCareLight) {
-        return str::DupTemp(R"(pre {
+        TempStr css = str::DupTemp(R"(pre {
   display: block !important;
   background-color: #ebe3d5 !important;
   color: #3f3a34 !important;
@@ -3390,15 +3543,10 @@ pre code {
   background-color: transparent !important;
   color: inherit !important;
 }
-:not(pre) > code {
-  background-color: #e0d8ca !important;
-  color: #3f3a34 !important;
-  padding: 0.15em 0.35em !important;
-  border-radius: 4px !important;
-}
 )");
+        return str::JoinTemp(css, "\n", kMdInlineCodeCssEyeCare);
     }
-    return str::DupTemp(R"(pre {
+    TempStr css = str::DupTemp(R"(pre {
   display: block !important;
   background-color: #f6f8fa !important;
   color: #24292f !important;
@@ -3412,17 +3560,13 @@ pre code {
   background-color: transparent !important;
   color: inherit !important;
 }
-:not(pre) > code {
-  background-color: #eff1f3 !important;
-  color: #24292f !important;
-  padding: 0.15em 0.35em !important;
-  border-radius: 4px !important;
-}
 )");
+    return str::JoinTemp(css, "\n", kMdInlineCodeCssLight);
 }
 
 static TempStr BuildMupdfReflowUserCss(const char* nameHint, const char* filePath, float ldx, float ldy,
                                        float lfontDy) {
+    ReportIf(IsMarkdownReflowDocument(nameHint, filePath));
     bool isEpub = str::EndsWithI(nameHint, ".epub");
     EbookTypographyKind typographyKind = GetEbookTypographyKind();
     TempStr ebookCss = nullptr;
@@ -3915,16 +4059,6 @@ pre {
         if (!isEpub) {
             ebookCss = ebookCss ? str::JoinTemp(kFallbackFontCss, "\n", ebookCss) : str::DupTemp(kFallbackFontCss);
         }
-        if (IsMarkdownReflowDocument(nameHint, filePath)) {
-            TempStr mdTableCss = BuildMarkdownTableCss(useDarkCss, useEyeCareLightCss);
-            if (mdTableCss) {
-                ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", mdTableCss) : mdTableCss;
-            }
-            TempStr mdCodeCss = BuildMarkdownCodeBlockCss(useDarkCss, useEyeCareLightCss);
-            if (mdCodeCss) {
-                ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", mdCodeCss) : mdCodeCss;
-            }
-        }
         if (eBookUI->customCSS) {
             ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", eBookUI->customCSS) : str::DupTemp(eBookUI->customCSS);
         }
@@ -3974,6 +4108,14 @@ p.picture img.calibre1, p.picture1 img.calibre1 {
 
 static void SetMupdfReflowUserCss(fz_context* ctx, const char* nameHint, const char* filePath, float ldx, float ldy,
                                   float lfontDy) {
+    if (IsMarkdownReflowDocument(nameHint, filePath)) {
+        fz_set_use_document_css(ctx, true);
+        TempStr mdCss = BuildMarkdownUserCss(nameHint, filePath, ldx, ldy, lfontDy);
+        if (mdCss) {
+            fz_set_user_css(ctx, mdCss);
+        }
+        return;
+    }
     auto eBookUI = GetEBookUI();
     if (eBookUI) {
         fz_set_use_document_css(ctx, !eBookUI->ignoreDocumentCSS);
@@ -4007,6 +4149,9 @@ static void ApplyMupdfThemeCssOnly(fz_context* ctx, const char* nameHint, const 
 
 bool EngineMupdf::LoadFromStream(fz_stream* stm, const char* nameHint, PasswordUI* pwdUI) {
     if (!stm) {
+        return false;
+    }
+    if (IsUnsupportedOfficeFilePath(nameHint)) {
         return false;
     }
     auto ctx = Ctx();
@@ -4345,6 +4490,86 @@ static void DropSingleFzPageCache(fz_context* ctx, FzPageInfo* pi) {
     pi->elementsNeedRebuilding = true;
 }
 
+static void KeepReflowHtmlSource(EngineMupdf* e, ByteSlice& html) {
+    e->reflowHtmlSource.Free();
+    e->reflowHtmlSource = html;
+    html = ByteSlice();
+}
+
+static void DropAllReflowPageCaches(fz_context* ctx, EngineMupdf* e) {
+    ScopedCritSec scope(&e->pagesLock);
+    for (int i = 0; i < e->pageCount; i++) {
+        FzPageInfo* pi = e->pages[i];
+        if (!pi) {
+            continue;
+        }
+        DropSingleFzPageCache(ctx, pi);
+        pi->reflowThemeCssEpoch = 0;
+    }
+}
+
+static void RefreshSingleChapterReflowAfterReparse(EngineMupdf* e) {
+    fz_context* ctx = e->Ctx();
+    int newCount = 0;
+    fz_var(newCount);
+    fz_try(ctx) {
+        newCount = fz_count_pages(ctx, e->_doc);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        return;
+    }
+    if (newCount <= 0) {
+        return;
+    }
+    GrowReflowPageCount(e, newCount);
+    e->pageCount = newCount;
+    for (int i = 0; i < e->pageCount; i++) {
+        FzPageInfo* pi = e->pages[i];
+        if (pi) {
+            pi->mediabox = LoadNonPdfPageMediabox(e, i);
+            pi->pageNo = i + 1;
+        }
+    }
+    fz_drop_outline(ctx, e->outline);
+    e->outline = nullptr;
+    fz_try(ctx) {
+        e->outline = fz_load_outline(ctx, e->_doc);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    e->DiscardTocTree();
+    e->reflowTocNeedsUiReload = true;
+}
+
+static bool RelayoutSingleChapterReflowHtml(EngineMupdf* e, fz_context* ctx, const char* nameHint, const char* filePath,
+                                            float ldxPt, float ldyPt, float lfontDyPt) {
+    if (e->reflowHtmlSource.empty()) {
+        return false;
+    }
+    fz_buffer* buf = nullptr;
+    fz_var(buf);
+    bool ok = false;
+    fz_try(ctx) {
+        ApplyMupdfThemeCssOnly(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
+        buf = fz_new_buffer_from_copied_data(ctx, e->reflowHtmlSource.data(), e->reflowHtmlSource.size());
+        float em = DpiScale(lfontDyPt, e->displayDPI);
+        DropAllReflowPageCaches(ctx, e);
+        fz_htdoc_reparse_html(ctx, e->_doc, buf, e->reflowLayoutW, e->reflowLayoutH, em);
+        RefreshSingleChapterReflowAfterReparse(e);
+        e->reflowThemeCssEpoch++;
+        ok = true;
+    }
+    fz_always(ctx) {
+        fz_drop_buffer(ctx, buf);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    return ok;
+}
+
 static void AcquireReflowUiDocLock(EngineMupdf* e);
 static void ReleaseReflowUiDocLock(EngineMupdf* e);
 
@@ -4359,22 +4584,39 @@ bool EngineMupdfRelayoutForThemeChange(EngineBase* engine) {
         return false;
     }
 
+    TempStr nameHint = str::JoinTemp(filePath, ".html");
     float ldxPt, ldyPt, lfontDyPt;
-    GetMupdfReflowLayoutPt(filePath, &ldxPt, &ldyPt, &lfontDyPt);
+    GetMupdfReflowLayoutPt(nameHint, &ldxPt, &ldyPt, &lfontDyPt);
 
     fz_context* ctx = e->_ctx;
     bool ok = false;
     AcquireReflowUiDocLock(e);
     fz_try(ctx) {
-        ApplyMupdfThemeCssOnly(ctx, filePath, filePath, ldxPt, ldyPt, lfontDyPt);
-        e->reflowThemeCssEpoch++;
-        ok = true;
+        if (!e->reflowHtmlSource.empty()) {
+            ok = RelayoutSingleChapterReflowHtml(e, ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
+        } else {
+            ApplyMupdfThemeCssOnly(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
+            e->reflowThemeCssEpoch++;
+            ok = true;
+        }
     }
     fz_catch(ctx) {
         fz_report_error(ctx);
     }
     ReleaseReflowUiDocLock(e);
     return ok;
+}
+
+bool EngineMupdfReflowTocNeedsUiReload(EngineBase* engine) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    return e && e->reflowTocNeedsUiReload;
+}
+
+void EngineMupdfClearReflowTocNeedsUiReload(EngineBase* engine) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (e) {
+        e->reflowTocNeedsUiReload = false;
+    }
 }
 
 static void AppendReflowChapterStartPage(EngineMupdf* e, int chapterStartPage, int chaptersCounted) {
@@ -4843,6 +5085,12 @@ void EngineMupdf::InvalidateTocTree() {
     tocTreeStale = true;
 }
 
+void EngineMupdf::DiscardTocTree() {
+    delete tocTree;
+    tocTree = nullptr;
+    tocTreeStale = false;
+}
+
 TocItem* EngineMupdf::BuildTocTree(TocItem* parent, fz_outline* outline, int& idCounter, bool isAttachment) {
     TocItem* root = nullptr;
     TocItem* curr = nullptr;
@@ -5221,7 +5469,7 @@ fz_stext_page* fz_new_stext_page_from_page2(fz_context* ctx, fz_page* page, cons
 // (I don't think we read from network now).
 // Maybe: when loading fully, cache extracted text in FzPageInfo
 // so that we don't have to re-do fz_new_stext_page_from_page() when doing search
-FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* cookie) {
+FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* cookie, bool loadLinks) {
     auto ctx = Ctx();
     bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
 
@@ -5290,7 +5538,7 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
         RebuildCommentsFromAnnotations(ctx, pageInfo);
     }
 
-    if (loadQuick && !pageInfo->fullyLoaded && !pageInfo->retainedLinks) {
+    if (loadLinks && loadQuick && !pageInfo->fullyLoaded && !pageInfo->retainedLinks) {
         fz_link* link = nullptr;
         fz_var(link);
         fz_try(ctx) {
@@ -5872,8 +6120,22 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
 // don't delete the result
 IPageElement* EngineMupdf::GetElementAtPos(int pageNo, PointF pt) {
     FzPageInfo* pageInfo = GetFzPageInfoCanFail(pageNo);
-    IPageElement* el = FzGetElementAtPos(pageInfo, pt);
-    return el;
+    if (!pageInfo) {
+        // PDF: never block the UI thread loading pages for link/cursor hit-testing.
+        // GetFzPageInfoCanFail returns null when the page is not loaded yet or the
+        // render thread holds pagesLock; the old code returned immediately.
+        if (pdfdoc) {
+            return nullptr;
+        }
+        pageInfo = GetFzPageInfo(pageNo, true);
+    } else if (!pdfdoc && pageInfo->links.Size() == 0 && !pageInfo->retainedLinks) {
+        // HTML/Markdown/EPUB links come from fz_load_links; ensure they are extracted.
+        pageInfo = GetFzPageInfo(pageNo, true);
+    }
+    if (!pageInfo) {
+        return nullptr;
+    }
+    return FzGetElementAtPos(pageInfo, pt);
 }
 
 // TOOD: optimize by returning reference or pointer so that
@@ -6758,6 +7020,10 @@ bool EngineMupdfIsOutlineDestReachable(EngineBase* engine, IPageDestination* des
         return true;
     }
     PageDestinationMupdf* link = (PageDestinationMupdf*)dest;
+    const char* uri = MupdfDestUri(link);
+    if (uri && (IsExternalLink(uri) || IsExternalUrl(uri))) {
+        return true;
+    }
     int ch = ReflowOutlineChapterIndex(link);
     if (ch < 0) {
         return false;
@@ -7094,6 +7360,21 @@ EngineBase* CreateEngineMupdfFromData(const ByteSlice& data, const char* nameHin
 }
 
 // it's fast because we only collect pointers from FzPageInfo
+static bool PdfPageHasAnnotations(EngineMupdf* e, int pageNo) {
+    fz_context* ctx = e->Ctx();
+    bool has = false;
+    ScopedCritSec scope(&e->docLock);
+    fz_try(ctx) {
+        pdf_obj* pageref = pdf_lookup_page_obj(ctx, e->pdfdoc, pageNo - 1);
+        pdf_obj* annots = pdf_dict_get(ctx, pageref, PDF_NAME(Annots));
+        has = annots && pdf_array_len(ctx, annots) > 0;
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    return has;
+}
+
 void EngineMupdfGetAnnotations(EngineBase* engine, Vec<Annotation*>& annotsOut) {
     annotsOut.Clear();
 
@@ -7109,11 +7390,19 @@ void EngineMupdfGetAnnotations(EngineBase* engine, Vec<Annotation*>& annotsOut) 
     // on large PDFs). GetFzPageInfo() does its own per-page locking and
     // pi->annotations is stable once built, so no outer lock is needed.
     for (int i = 1; i <= e->pageCount; i++) {
-        // use the quick load path: enumerating annotations only needs the page
-        // and its annotation list, not full text extraction / image collection.
-        // Using the full load here froze the UI on the first open of the
-        // annotation editor for large documents (every page got fully loaded).
-        FzPageInfo* pi = e->GetFzPageInfo(i, true);
+        FzPageInfo* pi = e->GetFzPageInfoCanFail(i);
+        if (pi && pi->page) {
+            if (pi->annotations.Size() > 0) {
+                annotsOut.Append(pi->annotations);
+            }
+            continue;
+        }
+        if (!PdfPageHasAnnotations(e, i)) {
+            continue;
+        }
+        // Quick load only the page and its annotation list; skip link extraction
+        // and full text/image collection (see GetFzPageInfo(..., true, nullptr, false)).
+        pi = e->GetFzPageInfo(i, true, nullptr, false);
         if (!pi) {
             continue;
         }
@@ -7171,20 +7460,12 @@ ByteSlice EngineMupdfLoadAnnotAttachment(EngineBase* engine, int objNum) {
 }
 
 // if an elements fully obscures another, remove it from the list
-Annotation* EngineMupdfGetAnnotationAtPos(EngineBase* engine, int pageNo, PointF pos, Annotation* preferredAnnot) {
-    EngineMupdf* epdf = AsEngineMupdf(engine);
-    if (!epdf->pdfdoc) {
-        return nullptr;
-    }
-    FzPageInfo* pi = epdf->GetFzPageInfoCanFail(pageNo);
+static Annotation* PickAnnotationAtPos(FzPageInfo* pi, PointF pos, Annotation* preferredAnnot) {
     if (!pi) {
         return nullptr;
     }
-
-    ScopedCritSec cs(&epdf->docLock);
     Vec<Annotation*> els;
     for (auto& annot : pi->annotations) {
-        auto& atp = annot->type;
         RectF bounds = annot->bounds;
         if (!bounds.Contains(pos)) {
             continue;
@@ -7215,6 +7496,36 @@ Annotation* EngineMupdfGetAnnotationAtPos(EngineBase* engine, int pageNo, PointF
         }
     }
     return best;
+}
+
+Annotation* EngineMupdfGetAnnotationAtPos(EngineBase* engine, int pageNo, PointF pos, Annotation* preferredAnnot) {
+    EngineMupdf* epdf = AsEngineMupdf(engine);
+    if (!epdf->pdfdoc) {
+        return nullptr;
+    }
+    FzPageInfo* pi = epdf->GetFzPageInfoCanFail(pageNo);
+    if (pi) {
+        ScopedCritSec cs(&epdf->docLock);
+        Annotation* hit = PickAnnotationAtPos(pi, pos, preferredAnnot);
+        if (hit) {
+            return hit;
+        }
+        if (pi->page) {
+            return nullptr;
+        }
+    }
+    if (!PdfPageHasAnnotations(epdf, pageNo)) {
+        return nullptr;
+    }
+    // CanFail returns null while the render thread holds pagesLock or before the
+    // page is loaded. Load only the page + annotation list (no links / stext).
+    pi = epdf->GetFzPageInfo(pageNo, true, nullptr, false);
+    if (!pi) {
+        return nullptr;
+    }
+
+    ScopedCritSec cs(&epdf->docLock);
+    return PickAnnotationAtPos(pi, pos, preferredAnnot);
 }
 
 // Note: this code is compiled in release mode even if debug build so

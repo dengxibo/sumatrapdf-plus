@@ -1759,6 +1759,9 @@ nl:Help met Vertalen
 pl:Dodaj swoje tłumaczenie
 sk:Prispieť k prekladu programu
 tw:提供翻譯
+:Copy
+cn:复制
+tw:複製
 :Copy &Link Address
 am:Պատճենել &հղումը
 br:Copiar o &Endereço do Link
@@ -3057,6 +3060,12 @@ nl:Alle Uitvouwen
 pl:Rozwiń wszystko
 sk:Rozbaliť všetko
 tw:全部展開
+:Export Notes
+br:Exportar Notas
+cn:导出笔记
+de:Anmerkungen exportieren
+it:Esporta note
+tw:匯出筆記
 :Exposure Bias:
 br:Tendência da Exposição:
 cn:曝光偏差:
@@ -3859,6 +3868,9 @@ nl:'Eerder Weergegeven' verbergen
 pl:Ukryj ostatnio otwierane
 sk:Skryť často čítané dokumenty
 tw:隱藏經常開啟的檔案
+:Highlight
+cn:高亮
+tw:螢光標示
 :Hint: Use the F3 key for finding again
 am:Որոնումը կրկնելու համար օգտագործեք F3 կոճակը
 br:Dica: Use a tecla F3 pra achar de novo
@@ -7234,6 +7246,9 @@ nl:Vierkant
 pl:Kwadrat
 sk:Štvorec
 tw:矩形
+:Squiggly
+cn:波浪线
+tw:波浪線
 :Start Reading From Cursor Position
 am:Սկսել կարդալ կursor-ից
 br:Começar leitura do cursor
@@ -7306,6 +7321,9 @@ nl:Lezen stoppen
 pl:Zatrzymaj czytanie
 sk:Zastaviť čítanie
 tw:停止朗讀
+:Strike Out
+cn:删除线
+tw:刪除線
 :Subject:
 am:Ֆայլը.
 br:Assunto:
@@ -8016,6 +8034,9 @@ it:Annulla registrazione come filtro ricerca di WIndows
 nl:Deactiveer Windows Zoek Filter
 pl:Wyrejestruj filtr wyszukiwania Windows
 sk:Zrušiť registráciu Windows Search Filter
+:Underline
+cn:下划线
+tw:底線
 :Uninstall SumatraPDF
 am:Ջնջել SumatraPDF-ը
 br:Desinstalar o SumatraPDF

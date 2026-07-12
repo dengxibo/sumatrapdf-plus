@@ -7,7 +7,6 @@
 
 #include "MdConvert.h"
 #include "Md4cHtml.h"
-#include "MdMermaid.h"
 
 #include "utils/Log.h"
 
@@ -19,7 +18,7 @@ body {
   padding: 1.4em 2em 2.4em;
   line-height: 1.65;
   word-wrap: break-word;
-  font-family: Literata, Georgia, "Times New Roman", "Source Han Serif SC", "SimSun", serif;
+  font-family: sans-serif !important;
   background-color: #ffffff;
   color: #24292f;
 }
@@ -42,10 +41,11 @@ blockquote {
   border-left: 4px solid #d0d7de;
 }
 code, kbd, samp, pre {
-  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  font-family: monospace !important;
   font-size: 0.92em;
+  font-style: normal !important;
 }
-:not(pre) > code {
+p code, li code, td code, th code, h1 code, h2 code, h3 code, h4 code, h5 code, h6 code, dt code, dd code, blockquote code {
   padding: 0.15em 0.35em;
   border-radius: 4px;
   background-color: #eff1f3;
@@ -79,7 +79,6 @@ th, td {
 thead th {
   font-weight: 600;
   background-color: #f6f8fa;
-  border-width: 2px;
 }
 tbody td {
   background-color: transparent;
@@ -94,15 +93,6 @@ hr {
 a { color: #0969da; text-decoration: underline; }
 del { opacity: 0.75; }
 input[type="checkbox"] { margin-right: 0.35em; vertical-align: middle; }
-.mermaid-diagram {
-  margin: 0.85em 0;
-  text-align: center;
-  overflow-x: auto;
-}
-.mermaid-diagram svg {
-  max-width: 100%;
-  height: auto;
-}
 )";
 
 static TempStr EscapeHtmlTextTemp(const char* s) {
@@ -147,15 +137,6 @@ ByteSlice MdFileToHTML(const char* path) {
         Md4cFree(bodyHtml);
     };
 
-    size_t bodyOutLen = bodyLen;
-    char* bodyWithMermaid = MdReplaceMermaidBlocks(bodyHtml, bodyLen, &bodyOutLen);
-    if (!bodyWithMermaid) {
-        return {};
-    }
-    defer {
-        str::Free(bodyWithMermaid);
-    };
-
     TempStr title = path::GetBaseNameTemp(path::GetPathNoExtTemp(path));
     TempStr titleEsc = EscapeHtmlTextTemp(title);
     if (!titleEsc) {
@@ -173,7 +154,7 @@ ByteSlice MdFileToHTML(const char* path) {
         return {};
     }
     d.Append("\n</style>\n</head>\n<body>\n");
-    if (!d.Append(bodyWithMermaid, bodyOutLen)) {
+    if (!d.Append(bodyHtml, bodyLen)) {
         return {};
     }
     d.Append("\n</body>\n</html>\n");

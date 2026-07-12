@@ -72,6 +72,16 @@ static COLORREF ColorRefFromPdfColor(PdfColor c) {
     return MkColor(r, g, b);
 }
 
+COLORREF ColorRefFromPdfAnnotationColor(PdfColor c) {
+    return ColorRefFromPdfColor(c);
+}
+
+PdfColor PdfAnnotationColorFromColorRef(COLORREF c) {
+    u8 r, g, b;
+    UnpackColor(c, r, g, b);
+    return MkPdfColor(r, g, b, 0xff);
+}
+
 void RemovePdfMarkupOverlayAnnot(WindowTab* tab, Annotation* annot) {
     if (!tab || !annot) {
         return;
@@ -163,6 +173,10 @@ static AnnotationType gAnnotsIsColorBackground[] = {
     AnnotationType::FreeText,
 };
 // clang-format on
+
+const char* GetPdfAnnotationColorNames() {
+    return gColors;
+}
 
 const char* GetKnownColorName(PdfColor c) {
     int n = (int)dimof(gColorsValues);
@@ -786,24 +800,58 @@ static void AdvanceFocus(EditAnnotationsWindow* ew, bool forward) {
     HwndSetFocus(controls[next]);
 }
 
+static bool IsAnnotContentsEditActive(HWND msgHwnd, HWND editHwnd, HWND windowHwnd) {
+    if (!editHwnd) {
+        return false;
+    }
+    auto relatedToEdit = [&](HWND h) -> bool { return h && (h == editHwnd || ::IsChild(editHwnd, h)); };
+    if (relatedToEdit(msgHwnd) || relatedToEdit(::GetFocus())) {
+        return true;
+    }
+    HWND focus = ::GetFocus();
+    if (focus && windowHwnd && ::IsChild(windowHwnd, focus)) {
+        TempStr cls = HwndGetClassName(focus);
+        if (str::EqI(cls, "Edit")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool IsPdfAnnotContentsEditFocused(HWND msgHwnd) {
+    for (MainWindow* win : gWindows) {
+        for (WindowTab* tab : win->Tabs()) {
+            EditAnnotationsWindow* ew = tab->editAnnotsWindow;
+            if (!ew || !ew->editContents) {
+                continue;
+            }
+            if (IsAnnotContentsEditActive(msgHwnd, ew->editContents->hwnd, ew->hwnd)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 bool EditAnnotationsWindow::PreTranslateMessage(MSG& msg) {
     if (msg.message == WM_KEYDOWN) {
         int key = (int)msg.wParam;
+        bool inContentsEdit = IsAnnotContentsEditActive(msg.hwnd, editContents ? editContents->hwnd : nullptr, hwnd);
         if (key == VK_TAB) {
             bool forward = !IsShiftPressed();
             AdvanceFocus(this, forward);
             return true;
         }
+        if (inContentsEdit && (key == VK_BACK || key == VK_DELETE)) {
+            if (!IsCtrlPressed() && !IsAltPressed()) {
+                return EditDeleteChar(editContents->hwnd, key == VK_BACK);
+            }
+            return false;
+        }
         if (key == VK_DELETE) {
             if (IsCtrlPressed()) {
                 DeleteSelectedAnnotation(this);
                 return true;
-            }
-            // we don't want this to trigger in edit control
-            HWND focused = ::GetFocus();
-            TempStr cls = HwndGetClassName(focused);
-            if (str::EqI(cls, "Edit")) {
-                return false;
             }
             DeleteSelectedAnnotation(this);
             return true;
@@ -854,6 +902,45 @@ static PdfColor GetDropDownColor(const char* sv) {
     ParsedColor col;
     ParseColor(col, sv);
     return col.pdfCol;
+}
+
+COLORREF GetAnnotationColorFromDropDown(const char* item) {
+    return ColorRefFromPdfColor(GetDropDownColor(item));
+}
+
+void FillAnnotationColorDropDown(DropDown* w, COLORREF col, StrBuilder& customColor) {
+    DropDownFillColors(w, PdfAnnotationColorFromColorRef(col), customColor);
+}
+
+COLORREF GetDefaultAnnotationColor(AnnotationType type) {
+    auto& a = gGlobalPrefs->annotations;
+    ParsedColor* col = nullptr;
+    if (type == AnnotationType::Text) {
+        col = GetParsedColor(a.textIconColor, a.textIconColorParsed);
+    } else if (type == AnnotationType::Underline) {
+        col = GetParsedColor(a.underlineColor, a.underlineColorParsed);
+    } else if (type == AnnotationType::Highlight) {
+        col = GetParsedColor(a.highlightColor, a.highlightColorParsed);
+    } else if (type == AnnotationType::Squiggly) {
+        col = GetParsedColor(a.squigglyColor, a.squigglyColorParsed);
+    } else if (type == AnnotationType::StrikeOut) {
+        col = GetParsedColor(a.strikeOutColor, a.strikeOutColorParsed);
+    } else if (type == AnnotationType::FreeText) {
+        col = GetParsedColor(a.freeTextColor, a.freeTextColorParsed);
+    }
+    if (col && col->parsedOk) {
+        return col->col;
+    }
+    if (type == AnnotationType::Underline) {
+        return ParseColor("#00ff00");
+    }
+    if (type == AnnotationType::Squiggly) {
+        return ParseColor("#ff00ff");
+    }
+    if (type == AnnotationType::StrikeOut) {
+        return ParseColor("#ff0000");
+    }
+    return ParseColor("#ffff00");
 }
 
 // TODO: mupdf shows it in 1.6 but not 1.7. Why?
@@ -924,9 +1011,11 @@ static void DoContents(EditAnnotationsWindow* ew, Annotation* annot) {
     // don't replace if already is "\r\n"
     s = str::ReplaceTemp(s, "\r\n", "\n");
     s = str::ReplaceTemp(s, "\n", "\r\n");
-    ew->editContents->SetText(s);
     ew->staticContents->SetIsVisible(true);
     ew->editContents->SetIsVisible(true);
+    if (!IsAnnotContentsEditActive(ew->editContents->hwnd, ew->editContents->hwnd, ew->hwnd)) {
+        ew->editContents->SetText(s);
+    }
 }
 
 static void DoTextAlignment(EditAnnotationsWindow* ew, Annotation* annot) {
@@ -1282,11 +1371,12 @@ static void UpdateUIForSelectedAnnotation(EditAnnotationsWindow* ew, Annotation*
         }
     }
 
-    // TODO: get from client size
-    auto currBounds = ew->mainLayout->lastBounds;
-    int dx = currBounds.dx;
-    int dy = currBounds.dy;
-    LayoutAndSizeToContent(ew->mainLayout, dx, dy, ew->hwnd);
+    // Keep the current client size so wrapped static text (e.g. annotation excerpt)
+    // is measured at the correct width.
+    Rect client = ClientRect(ew->hwnd);
+    if (client.dx > 0 && client.dy > 0) {
+        LayoutToSize(ew->mainLayout, {client.dx, client.dy});
+    }
 
     if (!annot) {
         return;
@@ -1852,6 +1942,12 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     }
 
     {
+        // used to take all available space between the what's above and below
+        auto w = new Spacer(0, 0);
+        vbox->AddChild(w, 1);
+    }
+
+    {
         Button::CreateArgs args;
         args.parent = parent;
         args.text = _TRA("Delete Annotation");
@@ -1859,7 +1955,7 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
         args.isRtl = IsUIRtl();
 
         auto w = new Button();
-        w->SetInsetsPt(11, 0, 0, 0);
+        w->SetInsetsPt(8, 0, 0, 0);
         HWND hwnd = w->Create(args);
         ReportIf(!hwnd);
 
@@ -1890,12 +1986,6 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     }
 
     {
-        // used to take all available space between the what's above and below
-        auto w = new Spacer(0, 0);
-        vbox->AddChild(w, 1);
-    }
-
-    {
         Button::CreateArgs args;
         args.parent = parent;
         // TODO: maybe  file name e.g. "Save changes to foo.pdf"
@@ -1904,6 +1994,7 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
         args.isRtl = IsUIRtl();
 
         auto w = new Button();
+        w->SetInsetsPt(8, 0, 0, 0);
         HWND hwnd = w->Create(args);
         ReportIf(!hwnd);
 

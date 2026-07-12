@@ -1159,6 +1159,16 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     win->dragStart = pt;
     win->textDragPending = false;
 
+    if (win->linkOnLastButtonDown) {
+        StartMouseDrag(win, x, y);
+        return;
+    }
+
+    if (EbookAnnotationsSupported(tab) && EbookAnnotationsHitTest(tab, dm, pt)) {
+        StartMouseDrag(win, x, y);
+        return;
+    }
+
     // - without modifiers, clicking on text starts a text selection
     //   and clicking somewhere else starts a drag
     // - pressing Shift forces dragging
@@ -1276,11 +1286,7 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
         return;
     }
 
-    if (IsCtrlPressed() && win->annotationUnderCursor) {
-        ShowEditAnnotationsWindow(tab, win->annotationUnderCursor);
-        return;
-    }
-    if (IsCtrlPressed() && EbookAnnotationsSupported(tab)) {
+    if (EbookAnnotationsSupported(tab)) {
         EbookAnnotation* annotation = EbookAnnotationsGetAt(tab, dm, pt);
         if (annotation) {
             ShowEditEbookAnnotationsWindow(tab, annotation);
@@ -1288,8 +1294,15 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
         }
     }
 
-    if (win->annotationUnderCursor && (tab->selectedAnnotation || tab->editAnnotsWindow)) {
-        SetSelectedAnnotation(tab, win->annotationUnderCursor);
+    // Fresh hit-test at click time; annotationUnderCursor can be stale while the
+    // page is re-rendering after creating or editing an annotation.
+    Annotation* annotAtClick = dm->GetAnnotationAtPos(pt, tab->selectedAnnotation);
+    if (annotAtClick) {
+        if (tab->editAnnotsWindow) {
+            SetSelectedAnnotation(tab, annotAtClick);
+        } else {
+            ShowEditAnnotationsWindow(tab, annotAtClick);
+        }
         return;
     }
 
@@ -1320,6 +1333,7 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
             args.noPlaceWindow = true;
             args.forceReuse = false;
             args.activateExisting = false;
+            args.syncLoad = true;
             MainWindow* newWin = LoadDocument(&args);
             if (newWin && newWin->IsDocLoaded()) {
                 newWin->linkHandler->ScrollTo(dest);
@@ -2086,6 +2100,11 @@ static LRESULT OnSetCursorMouseNone(MainWindow* win, HWND hwnd) {
     WindowTab* tab = win->CurrentTab();
     Annotation* selected = tab->selectedAnnotation;
 
+    if (EbookAnnotationsSupported(tab) && EbookAnnotationsHitTest(tab, dm, pt)) {
+        SetCursorCached(IDC_HAND);
+        return TRUE;
+    }
+
     // Check if hovering over resize handle of selected annotation
     if (selected && AnnotationCanBeResized(selected->type)) {
         ResizeHandle handle = GetResizeHandleAt(win, pt, selected);
@@ -2096,7 +2115,7 @@ static LRESULT OnSetCursorMouseNone(MainWindow* win, HWND hwnd) {
     }
 
     Annotation* annot = dm->GetAnnotationAtPos(pt, selected);
-    if (annot && (selected || tab->editAnnotsWindow)) {
+    if (annot) {
         SetCursorCached(IDC_HAND);
         return TRUE;
     }

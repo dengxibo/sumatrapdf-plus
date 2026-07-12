@@ -612,6 +612,7 @@ void VBox::SetBounds(Rect bounds) {
     for (int i = 0; i < n; i++) {
         auto& v = children[i];
         if (IsCollapsed(v.layout)) {
+            SetBoundsForChild(i, v.layout, bounds.x, bounds.y, bounds.x, bounds.y);
             continue;
         }
         if (IsPacked(alignMain)) {

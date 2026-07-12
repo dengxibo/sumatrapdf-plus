@@ -477,8 +477,12 @@ Size Wnd::Layout(const Constraints bc) {
     auto vinset = insets.top + insets.bottom;
     auto innerConstraints = bc.Inset(hinset, vinset);
 
+    int width = innerConstraints.max.dx;
+    if (width == Inf || width <= 0) {
+        width = 0;
+    }
     int dx = MinIntrinsicWidth(0);
-    int dy = MinIntrinsicHeight(0);
+    int dy = MinIntrinsicHeight(width);
     childSize = innerConstraints.Constrain(Size{dx, dy});
     auto res = Size{
         childSize.dx + hinset,

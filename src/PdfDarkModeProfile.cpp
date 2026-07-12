@@ -123,8 +123,8 @@ void BuildViewDarkModeProfile(EngineBase* engine, DarkModeProfile* profile) {
     profile->pageBackground = bgCol;
     profile->linkColor = ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : 0;
     profile->strength = 1.f;
-    profile->preservePdfImages =
-        GetPdfDocumentColorMode() == PdfDocumentColorMode::Auto && GetPreservePdfImagesInDarkMode();
+    profile->preservePdfImages = GetPdfDocumentColorMode() == PdfDocumentColorMode::Auto &&
+                                 GetPreservePdfImagesInDarkMode() && ThemeUsesDarkChrome();
     profile->preservePdfImagesMinSize = GetPreservePdfImagesMinSize();
     profile->options = PdfDarkModeCurrentOptions();
     profile->palette = BuildPaletteFromColors(textCol, bgCol, profile->linkColor);

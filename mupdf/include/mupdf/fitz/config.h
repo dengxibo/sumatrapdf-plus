@@ -234,7 +234,7 @@
 #endif /* FZ_ENABLE_TXT */
 
 #ifndef FZ_ENABLE_OFFICE
-#define FZ_ENABLE_OFFICE 1
+#define FZ_ENABLE_OFFICE 0
 #endif /* FZ_ENABLE_OFFICE */
 
 #ifndef FZ_ENABLE_OCR_OUTPUT
