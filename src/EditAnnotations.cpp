@@ -454,6 +454,13 @@ static void GetEditAnnotationsThemeColors(COLORREF& textOut, COLORREF& bgOut) {
     bgOut = ThemeWindowControlBackgroundColor();
 }
 
+static COLORREF GetAnnotationContentsBackgroundColor() {
+    // A quiet filled surface makes the note area identifiable without the
+    // heavy, old-fashioned recessed frame used by native edit controls.
+    int contrast = ThemeUsesDarkChrome() ? 24 : 8;
+    return AccentColor(ThemeWindowControlBackgroundColor(), contrast);
+}
+
 struct EditAnnotThemeColors {
     COLORREF text = 0;
     COLORREF bg = 0;
@@ -476,6 +483,7 @@ static void ApplyEditAnnotationsWindowTheme(EditAnnotationsWindow* ew, bool inst
     GetEditAnnotationsThemeColors(colors.text, colors.bg);
     ew->SetColors(colors.text, colors.bg);
     EnumChildWindows(ew->hwnd, ApplyThemeColorsToChildWnd, (LPARAM)&colors);
+    ew->editContents->SetColors(colors.text, GetAnnotationContentsBackgroundColor());
 
     if (UseDarkModeLib()) {
         if (installDarkMode) {
@@ -551,6 +559,14 @@ static void RebuildAnnotationsListBox(EditAnnotationsWindow* ew) {
         s.AppendFmt(_TRA("page %d,"), annot->pageNo);
         TempStr name = AnnotationReadableNameTemp(annot->type);
         s.AppendFmt(" %s", name);
+        TempStr markedText = MarkupTextTemp(annot);
+        TempStr previewSource = markedText ? markedText : Contents(annot);
+        if (!str::IsEmptyOrWhiteSpace(previewSource)) {
+            TempStr preview = str::DupTemp(previewSource);
+            str::NormalizeWSInPlace(preview);
+            preview = ShortenStringUtf8Temp(preview, 48);
+            s.AppendFmt(" — %s", preview);
+        }
         model->strings.Append(s.Get());
     }
 
@@ -1647,6 +1663,7 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
         Edit::CreateArgs args;
         args.parent = parent;
         args.isMultiLine = true;
+        args.cueText = _TRA("Write a note…");
         args.idealSizeLines = 5;
         args.font = fnt;
         args.isRtl = IsUIRtl();
@@ -1654,6 +1671,7 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
         HWND hwnd = w->Create(args);
         ReportIf(!hwnd);
         w->maxDx = MulDiv(150, dpi, 96);
+        w->SetColors(ThemeWindowTextColor(), GetAnnotationContentsBackgroundColor());
         w->onTextChanged = MkFunc0(ContentsChanged, ew);
         ew->editContents = w;
         vbox->AddChild(w);

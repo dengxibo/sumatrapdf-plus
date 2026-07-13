@@ -31,7 +31,9 @@ struct SelectionOnPage {
 constexpr float kHighlightBandBaseRatio = 1.0f;
 constexpr float kSelectionHighlightBandRatio = 1.10f;
 constexpr float kReadAloudHighlightBandRatio = 0.80f;
-constexpr u8 kSelectionHighlightAlpha = 0x5f;
+// Default opacity when SelectionColor has no alpha (#rrggbb). Used by alpha overlays (e.g. search).
+constexpr u8 kSelectionDefaultAlpha = 0x5f;
+constexpr u8 kSelectionHighlightAlpha = kSelectionDefaultAlpha;
 
 COLORREF GetSelectionHighlightColor();
 
@@ -55,7 +57,10 @@ void NormalizeNearbyHighlightHeights(Vec<RectF>& rects);
 
 void DeleteOldSelectionInfo(MainWindow* win, bool alsoTextSel = false);
 void PaintTransparentRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF selectionColor,
-                                u8 alpha = kSelectionHighlightAlpha, int margin = 1);
+                                u8 alpha = kSelectionDefaultAlpha, int margin = 0);
+
+// Text selection / highlight: multiply blend with page pixels (MuPDF/Acrobat-style).
+void PaintMultiplyRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color);
 void PaintSelection(MainWindow* win, HDC hdc);
 void UpdateTextSelection(MainWindow* win, bool select = true);
 void CopySelectionToClipboard(MainWindow* win);

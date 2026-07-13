@@ -507,16 +507,33 @@ static int TocItemPageNoForMatch(TocItem* item, EngineBase* engine) {
     if (!item) {
         return 0;
     }
-    if (item->pageNo > 0) {
-        return item->pageNo;
-    }
     if (!engine) {
-        return 0;
+        return item->pageNo > 0 ? item->pageNo : 0;
     }
 
     IPageDestination* dest = item->GetPageDestination();
     if (!dest) {
-        return 0;
+        return item->pageNo > 0 ? item->pageNo : 0;
+    }
+
+    Kind destKind = dest->GetKind();
+    if (destKind == kindDestinationMupdf) {
+        // Prefer live resolution so fragment anchors stay accurate after reload and
+        // are not stuck on chapter-start pages cached during progressive load.
+        int pageNo = 0;
+        if (!EngineIsProgressiveEbookLoading(engine)) {
+            pageNo = EngineMupdfResolveLinkPageNo(engine, dest);
+        }
+        if (pageNo <= 0) {
+            pageNo = EngineMupdfFastOutlinePageNo(engine, dest);
+        }
+        if (pageNo > 0) {
+            return pageNo;
+        }
+    }
+
+    if (item->pageNo > 0) {
+        return item->pageNo;
     }
 
     if (engine->kind == kindEngineMobi) {
@@ -524,18 +541,6 @@ static int TocItemPageNoForMatch(TocItem* item, EngineBase* engine) {
         if (filePos >= 0) {
             return EngineEbookPageNoForTocFilePos(engine, filePos);
         }
-    }
-
-    Kind destKind = dest->GetKind();
-    if (destKind == kindDestinationMupdf) {
-        int pageNo = EngineMupdfFastOutlinePageNo(engine, dest);
-        if (pageNo > 0) {
-            return pageNo;
-        }
-        if (!EngineIsProgressiveEbookLoading(engine)) {
-            return EngineMupdfResolveLinkPageNo(engine, dest);
-        }
-        return 0;
     }
 
     if (destKind == kindDestinationScrollTo) {

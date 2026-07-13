@@ -8872,7 +8872,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                 COLORREF color = GetEbookAnnotationColor(annotType, args, cmd);
                 EbookAnnotation* annotation = EbookAnnotationsCreateFromSelection(tab, annotType, color);
                 DeleteOldSelectionInfo(win, true);
-                UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow);
+                UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, annotation);
                 MainWindowRerender(win);
                 bool showEditor = cmd ? GetCommandBoolArg(cmd, kCmdArgOpenEdit, false) : IsShiftPressed();
                 if (annotation && showEditor) {
@@ -8918,7 +8918,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                 COLORREF color = GetEbookAnnotationColor(annotType, args, cmd);
                 EbookAnnotation* annotation = EbookAnnotationsCreateText(tab, dm, pt, color);
                 if (annotation) {
-                    UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow);
+                    UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, annotation);
                     MainWindowRerender(win);
                     ShowEditEbookAnnotationsWindow(tab, annotation, EditAnnotFocus::Edit);
                 }

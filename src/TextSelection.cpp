@@ -9,8 +9,8 @@
 
 #include "DocController.h"
 #include "EngineBase.h"
-#include "TextSelection.h"
 #include "Selection.h"
+#include "TextSelection.h"
 
 uint distSq(int x, int y) {
     return x * x + y * y;
@@ -137,6 +137,26 @@ static int FindClosestGlyph(TextSelection* ts, int pageNo, double x, double y) {
     return result;
 }
 
+static void ComputeSelectionGlyphRange(const TextSelection* ts, int* fromPage, int* toPage, int* fromGlyph,
+                                       int* toGlyph) {
+    *fromPage = std::min(ts->startPage, ts->endPage);
+    *toPage = std::max(ts->startPage, ts->endPage);
+    *fromGlyph = (*fromPage == ts->endPage ? ts->endGlyph : ts->startGlyph);
+    *toGlyph = (*fromPage == ts->endPage ? ts->startGlyph : ts->endGlyph);
+    if (*fromPage == *toPage && *fromGlyph > *toGlyph) {
+        std::swap(*fromGlyph, *toGlyph);
+    }
+    // Dragging right-to-left: the start anchor on the right is inclusive, but the
+    // range uses an exclusive upper bound like forward selection.
+    if (*fromPage == *toPage && ts->startPage == ts->endPage && ts->startGlyph > ts->endGlyph) {
+        int textLen = 0;
+        ts->engine->GetTextForPage(*fromPage, &textLen);
+        if (*toGlyph == ts->startGlyph && ts->startGlyph < textLen) {
+            (*toGlyph)++;
+        }
+    }
+}
+
 static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length, StrVec* lines = nullptr) {
     int len;
     Rect* coords;
@@ -155,7 +175,7 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
 
         Rect* c0 = c;
         for (; c < end && (c->x || c->dx); c++) {
-            // no-op
+            // find the end of this visual line
         }
 
         Rect bbox = BuildHighlightLineRect(c0, c);
@@ -247,12 +267,8 @@ void TextSelection::SelectUpTo(int pageNo, int glyphIx) {
     }
 
     result.len = 0;
-    int fromPage = std::min(startPage, endPage), toPage = std::max(startPage, endPage);
-    int fromGlyph = (fromPage == endPage ? endGlyph : startGlyph);
-    int toGlyph = (fromPage == endPage ? startGlyph : endGlyph);
-    if (fromPage == toPage && fromGlyph > toGlyph) {
-        std::swap(fromGlyph, toGlyph);
-    }
+    int fromPage, toPage, fromGlyph, toGlyph;
+    ComputeSelectionGlyphRange(this, &fromPage, &toPage, &fromGlyph, &toGlyph);
 
     for (int page = fromPage; page <= toPage; page++) {
         int textLen;
@@ -493,11 +509,5 @@ WCHAR* TextSelection::ExtractText(const char* lineSep) {
 }
 
 void TextSelection::GetGlyphRange(int* fromPage, int* fromGlyph, int* toPage, int* toGlyph) const {
-    *fromPage = std::min(startPage, endPage);
-    *toPage = std::max(startPage, endPage);
-    *fromGlyph = (*fromPage == endPage ? endGlyph : startGlyph);
-    *toGlyph = (*fromPage == endPage ? startGlyph : endGlyph);
-    if (*fromPage == *toPage && *fromGlyph > *toGlyph) {
-        std::swap(*fromGlyph, *toGlyph);
-    }
+    ComputeSelectionGlyphRange(this, fromPage, toPage, fromGlyph, toGlyph);
 }

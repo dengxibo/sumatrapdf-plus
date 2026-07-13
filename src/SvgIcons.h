@@ -28,6 +28,8 @@ enum class TbIcon {
     Dictionary,
     Speak,
     PauseSpeaking,
+    NavigateBack,
+    NavigateForward,
     HomeList,
     HomeThumbnails,
     Close,

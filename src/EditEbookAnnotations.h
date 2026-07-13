@@ -10,7 +10,7 @@ enum class EditAnnotFocus;
 void ShowEditEbookAnnotationsWindow(WindowTab* tab, EbookAnnotation* annotation = nullptr);
 void ShowEditEbookAnnotationsWindow(WindowTab* tab, EbookAnnotation* annotation, EditAnnotFocus focus);
 bool CloseAndDeleteEditEbookAnnotationsWindow(WindowTab* tab);
-void UpdateEbookAnnotationsList(EbookAnnotationsWindow* window);
+void UpdateEbookAnnotationsList(EbookAnnotationsWindow* window, EbookAnnotation* preferredSelection = nullptr);
 void RefreshEbookAnnotationsWindowsTheme();
 void DockOpenEbookAnnotationsWindows(MainWindow* win);
 void CloseEbookAnnotationsWindowsForDpiMove(MainWindow* win);

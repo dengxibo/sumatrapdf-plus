@@ -277,6 +277,74 @@ void PaintTransparentRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORR
     }
 }
 
+static u8 MultiplyChannel(u8 backdrop, u8 highlight) {
+    return (u8)(((unsigned)backdrop * highlight + 127) / 255);
+}
+
+void PaintMultiplyRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color) {
+    Rect bounds;
+    Vec<Rect> clippedRects;
+    for (Rect rect : rects) {
+        rect = rect.Intersect(screenRc);
+        if (rect.IsEmpty()) {
+            continue;
+        }
+        bounds = bounds.IsEmpty() ? rect : bounds.Union(rect);
+        clippedRects.Append(rect);
+    }
+    if (bounds.IsEmpty()) {
+        return;
+    }
+
+    HBITMAP bitmap = CreateMemoryBitmap(bounds.Size());
+    HDC bitmapDc = CreateCompatibleDC(hdc);
+    if (!bitmap || !bitmapDc) {
+        DeleteObject(bitmap);
+        DeleteDC(bitmapDc);
+        return;
+    }
+    HGDIOBJ prevBitmap = SelectObject(bitmapDc, bitmap);
+    if (!BitBlt(bitmapDc, 0, 0, bounds.dx, bounds.dy, hdc, bounds.x, bounds.y, SRCCOPY)) {
+        SelectObject(bitmapDc, prevBitmap);
+        DeleteObject(bitmap);
+        DeleteDC(bitmapDc);
+        return;
+    }
+
+    DIBSECTION info{};
+    int infoSize = GetObject(bitmap, sizeof(info), &info);
+    if (infoSize < (int)sizeof(info.dsBm) || !info.dsBm.bmBits || info.dsBm.bmBitsPixel != 32) {
+        SelectObject(bitmapDc, prevBitmap);
+        DeleteObject(bitmap);
+        DeleteDC(bitmapDc);
+        return;
+    }
+
+    u8 hr, hg, hb;
+    UnpackColor(color, hr, hg, hb);
+    const u8 highlight[3] = {hb, hg, hr};
+
+    u8* pixels = (u8*)info.dsBm.bmBits;
+    for (Rect rect : clippedRects) {
+        int xStart = rect.x - bounds.x;
+        int yStart = rect.y - bounds.y;
+        for (int y = yStart; y < yStart + rect.dy; y++) {
+            u8* row = pixels + y * info.dsBm.bmWidthBytes;
+            for (int x = xStart; x < xStart + rect.dx; x++) {
+                u8* pixel = row + x * 4;
+                pixel[0] = MultiplyChannel(pixel[0], highlight[0]);
+                pixel[1] = MultiplyChannel(pixel[1], highlight[1]);
+                pixel[2] = MultiplyChannel(pixel[2], highlight[2]);
+            }
+        }
+    }
+
+    BitBlt(hdc, bounds.x, bounds.y, bounds.dx, bounds.dy, bitmapDc, 0, 0, SRCCOPY);
+    SelectObject(bitmapDc, prevBitmap);
+    DeleteObject(bitmap);
+    DeleteDC(bitmapDc);
+}
+
 COLORREF GetSelectionHighlightColor() {
     ParsedColor* parsedCol = GetPrefsColor(gGlobalPrefs->fixedPageUI.selectionColor);
     return parsedCol->col;
@@ -334,7 +402,7 @@ void PaintSelection(MainWindow* win, HDC hdc) {
                     }
                     pageRects.Append(sel.rect);
                 }
-                if (pageRects.size() == 0) {
+                if (pageRects.Size() == 0) {
                     continue;
                 }
                 NormalizeNearbyHighlightHeights(pageRects);
@@ -353,7 +421,7 @@ void PaintSelection(MainWindow* win, HDC hdc) {
         }
     }
 
-    PaintTransparentRectangles(hdc, win->canvasRc, rects, GetSelectionHighlightColor());
+    PaintMultiplyRectangles(hdc, win->canvasRc, rects, GetSelectionHighlightColor());
 }
 
 void UpdateTextSelection(MainWindow* win, bool select) {

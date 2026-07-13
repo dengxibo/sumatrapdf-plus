@@ -77,6 +77,12 @@ static void GetEditAnnotationsThemeColors(COLORREF& textOut, COLORREF& bgOut) {
     bgOut = ThemeWindowControlBackgroundColor();
 }
 
+static COLORREF GetAnnotationContentsBackgroundColor() {
+    // Keep the input surface distinct without the heavy native edit border.
+    int contrast = ThemeUsesDarkChrome() ? 24 : 8;
+    return AccentColor(ThemeWindowControlBackgroundColor(), contrast);
+}
+
 static void ApplyEbookAnnotationsWindowTheme(EbookAnnotationsWindow* window, bool installDarkMode) {
     if (!window || !window->hwnd) {
         return;
@@ -100,6 +106,7 @@ static void ApplyEbookAnnotationsWindowTheme(EbookAnnotationsWindow* window, boo
             return TRUE;
         },
         (LPARAM)&colors);
+    window->editContents->SetColors(text, GetAnnotationContentsBackgroundColor());
 
     if (UseDarkModeLib()) {
         if (installDarkMode) {
@@ -342,6 +349,13 @@ static void RebuildList(EbookAnnotationsWindow* window) {
         int pageNo = EbookAnnotationGetPageNo(window->tab, annotation);
         text.AppendFmt(_TRA("page %d,"), pageNo);
         text.AppendFmt(" %s", AnnotationReadableNameTemp(EbookAnnotationGetType(annotation)));
+        const char* annotationText = EbookAnnotationGetText(annotation);
+        if (!str::IsEmptyOrWhiteSpace(annotationText)) {
+            TempStr preview = str::DupTemp(annotationText);
+            str::NormalizeWSInPlace(preview);
+            preview = ShortenStringUtf8Temp(preview, 48);
+            text.AppendFmt(" — %s", preview);
+        }
         model->strings.Append(text.Get());
     }
     auto topIdx = ListBoxGetTopIndex(window->listBox->hwnd);
@@ -358,9 +372,14 @@ static void RebuildList(EbookAnnotationsWindow* window) {
     LayoutEbookAnnotationsToClient(window);
 }
 
-void UpdateEbookAnnotationsList(EbookAnnotationsWindow* window) {
+void UpdateEbookAnnotationsList(EbookAnnotationsWindow* window, EbookAnnotation* preferredSelection) {
     if (!window) {
         return;
+    }
+    if (preferredSelection) {
+        // Set this before rebuilding: changing the list model can synchronously
+        // notify its current selection. The new annotation must win that race.
+        window->selected = preferredSelection;
     }
     EbookAnnotation* selected = window->selected;
     RebuildList(window);
@@ -535,12 +554,14 @@ static void CreateMainLayout(EbookAnnotationsWindow* window) {
     Edit::CreateArgs editArgs;
     editArgs.parent = parent;
     editArgs.isMultiLine = true;
+    editArgs.cueText = _TRA("Write a note…");
     editArgs.idealSizeLines = 5;
     editArgs.font = font;
     editArgs.isRtl = IsUIRtl();
     auto edit = new Edit();
     ReportIf(!edit->Create(editArgs));
     edit->maxDx = MulDiv(150, dpi, 96);
+    edit->SetColors(ThemeWindowTextColor(), GetAnnotationContentsBackgroundColor());
     edit->onTextChanged = MkFunc0(ContentsChanged, window);
     window->editContents = edit;
     vbox->AddChild(edit);
@@ -637,6 +658,9 @@ void ShowEditEbookAnnotationsWindow(WindowTab* tab, EbookAnnotation* annotation,
         HwndDockToRightOf(window->hwnd, tab->win->hwndFrame);
         HwndMakeVisible(window->hwnd);
         SetForegroundWindow(window->hwnd);
+        if (annotation) {
+            window->selected = annotation;
+        }
         RebuildList(window);
         if (annotation) {
             UpdateSelectedAnnotation(window, annotation, focus);
@@ -674,6 +698,7 @@ void ShowEditEbookAnnotationsWindow(WindowTab* tab, EbookAnnotation* annotation,
     window->dpi = parentDpi > 0 ? parentDpi : DpiGet(window->hwnd);
     CreateMainLayout(window);
     tab->editEbookAnnotsWindow = window;
+    window->selected = annotation;
     RebuildList(window);
 
     Rect lastPos = tab->lastEditAnnotsWindowPos;

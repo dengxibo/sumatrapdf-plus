@@ -1372,6 +1372,5 @@ void PaintReadAloudHighlight(MainWindow* win, HDC hdc) {
         return;
     }
 
-    PaintTransparentRectangles(hdc, win->canvasRc, screenRects, GetSelectionHighlightColor(), kSelectionHighlightAlpha,
-                               0);
+    PaintMultiplyRectangles(hdc, win->canvasRc, screenRects, GetSelectionHighlightColor());
 }

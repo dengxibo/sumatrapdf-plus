@@ -933,18 +933,12 @@ static Rect SelectionRectFromChar(fz_stext_char* c) {
         return r;
     }
 
-    // Neutral glyph band; selection/read-aloud apply their own ratios when painting.
-    float bandH = fs * 1.0f;
-    if (bandH < 1.0f) {
-        bandH = 1.0f;
-    }
-
+    // MuPDF's reflow text quad includes the CSS line-height. Selection should
+    // follow the visible glyph band instead of filling the paragraph leading.
+    float bandH = std::max(fs, 1.0f);
     float centerY = (float)r.y + (float)r.dy * 0.5f;
     int y = (int)(centerY - bandH * 0.5f + 0.5f);
-    int h = (int)(bandH + 0.5f);
-    if (h < 1) {
-        h = 1;
-    }
+    int h = std::max((int)(bandH + 0.5f), 1);
     r.y = y;
     r.dy = h;
     return r;
@@ -4063,41 +4057,38 @@ pre {
             ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", eBookUI->customCSS) : str::DupTemp(eBookUI->customCSS);
         }
     }
-    // Calibre / Oxford Bookworms comic strips: each JPEG is one full page of panels.
-    // Fit page height only works when one image fills one reflow page; MuPDF ignores
-    // max-height but honors height in pt. page-break-after forces one panel per page.
+    // Oxford Bookworms comic strips wrap each full-page panel in a link. Fit those
+    // linked panels to a reflow page, but leave ordinary <p class="picture"><img>
+    // .../></p> alone: the exercises in the omnibus edition use that same class
+    // for tiny vocabulary pictures.
     if (isEpub) {
         float panelH = ldy - 16.f;
         if (panelH < 400.f) {
             panelH = 400.f;
         }
         TempStr comicCss = str::FormatTemp(R"(/* Sumatra: comic panels - one per reflow page, fill page height */
-p.picture, p.picture1 {
-  display: block !important;
-  page-break-after: always !important;
-  page-break-inside: avoid !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  text-align: center !important;
-}
-p.picture + p.picture, p.picture1 + p.picture1,
-p.picture + p.picture1, p.picture1 + p.picture {
-  page-break-before: always !important;
-}
 p.picture > a, p.picture1 > a {
   display: block !important;
+  page-break-before: always !important;
+  page-break-after: always !important;
+  page-break-inside: avoid !important;
   width: 100%% !important;
   margin: 0 !important;
   padding: 0 !important;
 }
-p.picture img, p.picture1 img,
-p.picture > a > img, p.picture1 > a > img,
-p.picture img.calibre1, p.picture1 img.calibre1 {
+p.picture > a > img, p.picture1 > a > img {
   display: block !important;
   width: auto !important;
   max-width: 100%% !important;
   height: %.0fpt !important;
   margin: 0 auto !important;
+}
+p.picture > img, p.picture1 > img {
+  display: inline !important;
+  width: auto !important;
+  max-width: 100%% !important;
+  height: auto !important;
+  margin: 0.8em 0 !important;
 }
 )",
                                            panelH);
@@ -4169,7 +4160,12 @@ bool EngineMupdf::LoadFromStream(fz_stream* stm, const char* nameHint, PasswordU
 #endif
 
     bool isEpub = str::EndsWithI(nameHint, ".epub");
-    EbookTypographyKind typographyKind = DetectEbookTypographyKind(FilePath(), nameHint);
+    // Typography detection opens the source file when its path itself does not
+    // provide a language hint. That is required for EPUB layout, but doing it
+    // for a PDF reads the entire file once before MuPDF opens it, which makes
+    // large PDFs noticeably slower to open.
+    EbookTypographyKind typographyKind =
+        isEpub ? DetectEbookTypographyKind(FilePath(), nameHint) : EbookTypographyKind::Latin;
     SetEbookTypographyKind(typographyKind);
 
     float ldx = layoutA5DxPt;
@@ -5976,9 +5972,13 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
 
     CadMinLineWidthScope cadMinLineWidth(ctx, zoom, CadEnhanceActive(), CadEnhanceUseHairlineBoost());
 
-    // The "View" rendering (no Print, no hideAnnotations) is what
-    // fz_new_display_list_from_page produces; safe to cache and re-run lock-free.
-    bool useCache = (args.target == RenderTarget::View) && !hideAnnotations;
+    // A display list is needed for the object-level Smart Dark renderer, which
+    // analyzes and then replays page operations. For normal, original, and
+    // legacy recolor modes it only adds an extra full page traversal before the
+    // first pixels can be displayed, so render the page directly as upstream
+    // does.
+    bool useCache =
+        (args.target == RenderTarget::View) && !hideAnnotations && DarkModeProfileUsesObjectLevel(args.darkProfile);
 
     fz_rect pRect;
     fz_matrix ctm;

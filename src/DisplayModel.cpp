@@ -730,10 +730,11 @@ bool DisplayModel::ShouldSkipTocSelectionUpdate() const {
     if (!engine) {
         return false;
     }
-    if (EngineIsProgressiveEbookLoading(engine)) {
-        return true;
-    }
-    if (pagesInfo && pagesInfoCount < engine->PageCount()) {
+    // Reflowable MuPDF documents expose stable page numbers for chapters that
+    // have already been counted, so keep the TOC following normal scrolling
+    // while the remaining chapters load in the background. Other progressive
+    // ebook engines still need the old guard until their page map is complete.
+    if (EngineIsProgressiveEbookLoading(engine) && engine->kind != kindEngineMupdf) {
         return true;
     }
     return false;
