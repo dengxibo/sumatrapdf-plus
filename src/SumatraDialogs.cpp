@@ -743,6 +743,142 @@ bool Dialog_CustomZoom(HWND hwnd, bool forChm, float* currZoomInOut) {
     return true;
 }
 
+struct Dialog_ReadAloudSpeed_Data {
+    float englishRate = 1.0f;
+    float chineseRate = 1.0f;
+    bool focusChinese = false;
+};
+
+static constexpr float kReadAloudSpeedMin = 0.25f;
+static constexpr float kReadAloudSpeedMax = 2.00f;
+static constexpr float kReadAloudSpeedStep = 0.05f;
+
+static float ClampReadAloudSpeed(float rate) {
+    if (rate < kReadAloudSpeedMin) {
+        return kReadAloudSpeedMin;
+    }
+    if (rate > kReadAloudSpeedMax) {
+        return kReadAloudSpeedMax;
+    }
+    return rate;
+}
+
+static void SetReadAloudSpeedEdit(HWND hDlg, int id, float rate) {
+    HwndSetDlgItemText(hDlg, id, str::FormatTemp("%.2f", ClampReadAloudSpeed(rate)));
+}
+
+static bool GetReadAloudSpeedEdit(HWND hDlg, int id, float* rateOut) {
+    TempStr s = HwndGetTextTemp(GetDlgItem(hDlg, id));
+    float rate = 0.0f;
+    if (!s || !str::Parse(s, "%f%$", &rate) || rate < kReadAloudSpeedMin || rate > kReadAloudSpeedMax) {
+        return false;
+    }
+    *rateOut = rate;
+    return true;
+}
+
+static void StepReadAloudSpeedEdit(HWND hDlg, int id, float delta) {
+    float rate = 1.0f;
+    GetReadAloudSpeedEdit(hDlg, id, &rate);
+    rate = ClampReadAloudSpeed(rate + delta);
+    SetReadAloudSpeedEdit(hDlg, id, rate);
+}
+
+static void ReadAloudSpeedApplyCurrentRates(HWND hDlg) {
+    float enRate = 1.0f;
+    float zhRate = 1.0f;
+    if (GetReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_EN, &enRate) &&
+        GetReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_ZH, &zhRate)) {
+        ReadAloudUpdateSpeakingRatesRealtime(zhRate, enRate);
+    }
+}
+
+static INT_PTR CALLBACK Dialog_ReadAloudSpeed_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
+    auto* data = (Dialog_ReadAloudSpeed_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
+    switch (msg) {
+        case WM_INITDIALOG:
+            data = (Dialog_ReadAloudSpeed_Data*)lp;
+            SetWindowLongPtr(hDlg, GWLP_USERDATA, (LONG_PTR)data);
+            if (UseDarkModeLib()) {
+                DarkMode::setDarkWndSafe(hDlg);
+            }
+            UpdateWindowCaptionTheme(hDlg);
+            HwndSetText(hDlg, _TRA("Read aloud speed"));
+            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SPEED_EN_LABEL, _TRA("English voice:"));
+            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SPEED_ZH_LABEL, _TRA("Chinese voice:"));
+            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SPEED_HINT, _TRA("0.25x - 2.00x; buttons change by 0.05x"));
+            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SPEED_EN, str::FormatTemp("%.2f", data->englishRate));
+            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SPEED_ZH, str::FormatTemp("%.2f", data->chineseRate));
+            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SPEED_RESET, _TRA("Reset to 1.00x"));
+            HwndSetDlgItemText(hDlg, IDOK, _TRA("OK"));
+            HwndSetDlgItemText(hDlg, IDCANCEL, _TRA("Cancel"));
+            CenterDialog(hDlg);
+            HwndSetFocus(GetDlgItem(hDlg, data->focusChinese ? IDC_READ_ALOUD_SPEED_ZH : IDC_READ_ALOUD_SPEED_EN));
+            return FALSE;
+
+        case WM_COMMAND:
+            switch (LOWORD(wp)) {
+                case IDC_READ_ALOUD_SPEED_EN_DECREASE:
+                    StepReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_EN, -kReadAloudSpeedStep);
+                    ReadAloudSpeedApplyCurrentRates(hDlg);
+                    return TRUE;
+                case IDC_READ_ALOUD_SPEED_EN_INCREASE:
+                    StepReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_EN, kReadAloudSpeedStep);
+                    ReadAloudSpeedApplyCurrentRates(hDlg);
+                    return TRUE;
+                case IDC_READ_ALOUD_SPEED_ZH_DECREASE:
+                    StepReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_ZH, -kReadAloudSpeedStep);
+                    ReadAloudSpeedApplyCurrentRates(hDlg);
+                    return TRUE;
+                case IDC_READ_ALOUD_SPEED_ZH_INCREASE:
+                    StepReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_ZH, kReadAloudSpeedStep);
+                    ReadAloudSpeedApplyCurrentRates(hDlg);
+                    return TRUE;
+                case IDC_READ_ALOUD_SPEED_RESET:
+                    SetReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_EN, 1.0f);
+                    SetReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_ZH, 1.0f);
+                    ReadAloudSpeedApplyCurrentRates(hDlg);
+                    return TRUE;
+                case IDC_READ_ALOUD_SPEED_EN:
+                case IDC_READ_ALOUD_SPEED_ZH:
+                    if (HIWORD(wp) == EN_CHANGE) {
+                        ReadAloudSpeedApplyCurrentRates(hDlg);
+                    }
+                    return TRUE;
+                case IDOK:
+                    if (!GetReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_EN, &data->englishRate) ||
+                        !GetReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_ZH, &data->chineseRate)) {
+                        MessageBoxW(hDlg, ToWStrTemp(_TRA("Enter a speed from 0.25x to 2.00x.")),
+                                    ToWStrTemp(_TRA("Read aloud speed")), MB_OK | MB_ICONWARNING);
+                        return TRUE;
+                    }
+                    EndDialog(hDlg, IDOK);
+                    return TRUE;
+                case IDCANCEL:
+                    EndDialog(hDlg, IDCANCEL);
+                    return TRUE;
+            }
+            break;
+    }
+    return FALSE;
+}
+
+bool Dialog_ReadAloudSpeed(HWND hwnd, float* englishRateInOut, float* chineseRateInOut, bool focusChinese) {
+    if (!englishRateInOut || !chineseRateInOut) {
+        return false;
+    }
+    Dialog_ReadAloudSpeed_Data data;
+    data.englishRate = ClampReadAloudSpeed(*englishRateInOut);
+    data.chineseRate = ClampReadAloudSpeed(*chineseRateInOut);
+    data.focusChinese = focusChinese;
+    if (CreateAppDialogBox(IDD_DIALOG_READ_ALOUD_SPEED, hwnd, Dialog_ReadAloudSpeed_Proc, (LPARAM)&data) != IDOK) {
+        return false;
+    }
+    *englishRateInOut = data.englishRate;
+    *chineseRateInOut = data.chineseRate;
+    return true;
+}
+
 static INT_PTR CALLBACK Dialog_ChangeScrollbar_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARAM) {
     switch (msg) {
         case WM_INITDIALOG: {

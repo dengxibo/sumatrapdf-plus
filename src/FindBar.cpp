@@ -391,7 +391,15 @@ static void PositionFindBar(FindBarWnd* bar) {
     MainWindow* win = bar->win;
     Rect btn = GetToolbarButtonScreenRect(win, CmdFindFirst);
     Rect fr = WindowRect(win->hwndFrame);
-    int cx = fr.x + fr.dx - bar->barDx;
+    // Align to the right edge of the client area, not the outer window rect:
+    // WindowRect includes the resize border and can sit slightly off-screen
+    // when the frame is maximized.
+    Rect frClient = ClientRect(win->hwndFrame);
+    POINT clientTopLeft{};
+    ClientToScreen(win->hwndFrame, &clientTopLeft);
+    frClient.x = clientTopLeft.x;
+    frClient.y = clientTopLeft.y;
+    int cx = frClient.x + frClient.dx - bar->barDx;
     int cy;
     if (btn.IsEmpty()) {
         cy = fr.y + bar->barDy;

@@ -615,9 +615,13 @@ static void CountPartialTask(CountPartialTaskData* d) {
     if (win->findCountEpoch != d->epoch) {
         return; // canceled or superseded; drop stale partial results
     }
-    // running count while the scan is in flight; ShowMatchCount switches this
-    // to "n / m" when the scan finishes
-    FindBarSetStatus(win, str::FormatTemp("%d...", d->nFoundSoFar));
+    // A plus sign means that the count is still growing. ShowMatchCount
+    // replaces it with the final "current / total" value when the scan ends.
+    if (d->nFoundSoFar > 0) {
+        FindBarSetStatus(win, str::FormatTemp("%d+", d->nFoundSoFar));
+    } else {
+        FindBarSetStatus(win, "");
+    }
     if (len(*d->matches) > 0) {
         if (d->firstBatch) {
             ClearFindMatches(win);
@@ -768,7 +772,7 @@ static void StartFindCount(MainWindow* win, const WCHAR* text, bool matchCase, b
         return;
     }
     win->findCountValid = false;
-    FindBarSetStatus(win, "..."); // counting; replaced with "n / m" when done
+    FindBarSetStatus(win, ""); // replaced with "current / total" when counting finishes
 
     if (win->findCountThread) {
         // a scan is in flight: cancel it and queue this request; the running

@@ -2033,7 +2033,10 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
 
     if (gShowAllMatches) {
         PaintAllFindMatches(win, hdc);
-    } else if (win->showSelection) {
+    }
+    // Search matches and the user's text selection are independent layers.
+    // The latter must still be painted when all find matches are visible.
+    if (win->showSelection) {
         PaintSelection(win, hdc);
     }
     // keep the floating selection toolbar aligned with the selection while

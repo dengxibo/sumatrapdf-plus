@@ -8,6 +8,7 @@ char* Dialog_Find(HWND hwnd, const char* previousSearch, bool* matchCase);
 char* Dialog_GetPassword(HWND hwnd, const char* fileName, bool* rememberPassword, bool* showPassword);
 const char* Dialog_ChangeLanguge(HWND hwnd, const char* currLangCode);
 bool Dialog_CustomZoom(HWND hwnd, bool forChm, float* currZoomInOut);
+bool Dialog_ReadAloudSpeed(HWND hwnd, float* englishRateInOut, float* chineseRateInOut, bool focusChinese);
 INT_PTR CreateAppDialogBox(int dlgId, HWND parent, DLGPROC dlgProc, LPARAM data);
 bool Dialog_ChangeScrollbar(HWND hwnd);
 INT_PTR Dialog_Settings(HWND hwnd, GlobalPrefs* prefs);

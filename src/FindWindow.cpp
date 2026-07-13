@@ -36,11 +36,24 @@
 
 #include "utils/Log.h"
 
-// match the frame's title bar to the current theme (dark caption in dark mode)
+// Match the frame's caption to the current theme, including Light-Warm.
 static void ApplyTitleBarTheme(HWND hwnd) {
-    if (UseDarkModeLib()) {
-        DarkMode::setDarkTitleBarEx(hwnd, true);
-    }
+    UpdateWindowCaptionTheme(hwnd);
+}
+
+static COLORREF FindWindowEditBackgroundColor() {
+    int contrast = ThemeUsesDarkChrome() ? 18 : 4;
+    return AccentColor(ThemeWindowControlBackgroundColor(), contrast);
+}
+
+static COLORREF BlendColor(COLORREF background, COLORREF foreground, int foregroundPercent) {
+    int backgroundPercent = 100 - foregroundPercent;
+    u8 br, bg, bb, fr, fg, fb;
+    UnpackColor(background, br, bg, bb);
+    UnpackColor(foreground, fr, fg, fb);
+    return MkColor((u8)((br * backgroundPercent + fr * foregroundPercent) / 100),
+                   (u8)((bg * backgroundPercent + fg * foregroundPercent) / 100),
+                   (u8)((bb * backgroundPercent + fb * foregroundPercent) / 100));
 }
 
 // command ids for the window's toolbar buttons (handled in OnCommand)
@@ -85,6 +98,7 @@ struct FindWindowWnd : Wnd {
     // list redraw is paused only while interactively *resizing* (a WM_SIZE
     // arrived during the size/move loop), not while merely moving the window
     bool listRedrawPaused = false;
+    bool editHasFocus = false;
 
     FindWindowWnd() = default;
     ~FindWindowWnd() override;
@@ -94,6 +108,7 @@ struct FindWindowWnd : Wnd {
     void SavePos();
     void RefreshResults(bool allowNavigation = true);
     void UpdateTheme();
+    void DrawEditUnderline();
 
     void OnTextChanged();
     void DrawResultItem(ListBox::DrawItemEvent* ev);
@@ -185,12 +200,15 @@ bool FindWindowWnd::Create(MainWindow* mainWin) {
         Edit::CreateArgs args;
         args.parent = hwnd;
         args.isMultiLine = false;
-        args.withBorder = true;
+        // A native client edge turns into a bright rectangular outline in dark
+        // themes. Keep the edit surface borderless and draw a restrained
+        // focus underline in the parent instead.
+        args.withBorder = false;
         args.cueText = _TRA("Find");
         args.isRtl = IsUIRtl();
         edit = new Edit();
         edit->maxDx = DpiScale(hwnd, 1000);
-        edit->SetColors(colTxt, colBg);
+        edit->SetColors(colTxt, FindWindowEditBackgroundColor());
         edit->Create(args);
         edit->onTextChanged = MkMethod0<FindWindowWnd, &FindWindowWnd::OnTextChanged>(this);
     }
@@ -313,6 +331,28 @@ void FindWindowWnd::Layout() {
     int listTop = pad + headerDy + pad;
     int listDy = std::max(0, rc.dy - listTop - pad);
     MoveWindow(results->hwnd, pad, listTop, contentDx, listDy, TRUE);
+}
+
+void FindWindowWnd::DrawEditUnderline() {
+    if (!edit || !edit->hwnd) {
+        return;
+    }
+    RECT r{};
+    GetWindowRect(edit->hwnd, &r);
+    MapWindowPoints(nullptr, hwnd, (LPPOINT)&r, 2);
+
+    COLORREF bg = ThemeWindowControlBackgroundColor();
+    COLORREF col =
+        editHasFocus ? BlendColor(bg, ThemeWindowLinkColor(), 28) : AccentColor(bg, ThemeUsesDarkChrome() ? 30 : 22);
+    HDC hdc = GetDC(hwnd);
+    HPEN pen = CreatePen(PS_SOLID, 1, col);
+    HGDIOBJ old = SelectObject(hdc, pen);
+    int y = r.bottom;
+    MoveToEx(hdc, r.left, y, nullptr);
+    LineTo(hdc, r.right, y);
+    SelectObject(hdc, old);
+    DeleteObject(pen);
+    ReleaseDC(hwnd, hdc);
 }
 
 void FindWindowWnd::RefreshResults(bool allowNavigation) {
@@ -570,7 +610,7 @@ void FindWindowWnd::UpdateTheme() {
     auto colTxt = ThemeWindowTextColor();
     SetColors(colTxt, colBg);
     if (edit) {
-        edit->SetColors(colTxt, colBg);
+        edit->SetColors(colTxt, FindWindowEditBackgroundColor());
     }
     if (status) {
         status->SetColors(colTxt, colBg);
@@ -597,6 +637,11 @@ void FindWindowWnd::OnTextChanged() {
 
 LRESULT FindWindowWnd::WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
+        case WM_PAINT: {
+            LRESULT res = WndProcDefault(h, msg, wp, lp);
+            DrawEditUnderline();
+            return res;
+        }
         case WM_ENTERSIZEMOVE:
             inSizeMove = true;
             break;
@@ -716,6 +761,11 @@ bool FindWindowWnd::PreTranslateMessage(MSG& msg) {
 }
 
 bool FindWindowWnd::OnCommand(WPARAM wparam, LPARAM) {
+    int notification = HIWORD(wparam);
+    if (notification == EN_SETFOCUS || notification == EN_KILLFOCUS) {
+        editHasFocus = notification == EN_SETFOCUS;
+        InvalidateRect(hwnd, nullptr, FALSE);
+    }
     int cmd = LOWORD(wparam);
     switch (cmd) {
         case CmdFindPrev:

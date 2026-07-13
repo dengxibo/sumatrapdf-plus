@@ -157,8 +157,10 @@ constexpr UINT CmdTtsSmartOnlineBilingualSettings = 0x7209;
 // Global speed menu: separate Chinese / English rates
 constexpr UINT CmdTtsSpeedZhFirst = 0x7310;
 constexpr UINT CmdTtsSpeedZhLast = 0x7316;
+constexpr UINT CmdTtsSpeedZhCustom = 0x7317;
 constexpr UINT CmdTtsSpeedEnFirst = 0x7320;
 constexpr UINT CmdTtsSpeedEnLast = 0x7326;
+constexpr UINT CmdTtsSpeedEnCustom = 0x7327;
 
 // pseudo voice ids stored in prefs: smart bilingual modes pick a Chinese or
 // English voice per text chunk instead of using a single fixed voice
@@ -169,6 +171,7 @@ void RebuildReadAloudMenu(MainWindow* win, HMENU menu, bool useContextMenuCursor
 bool HandleReadAloudMenuCommand(MainWindow* win, int cmdId);
 void SetReadAloudAppSubmenu(HMENU menu);
 bool IsReadAloudAppSubmenu(HMENU menu);
+void ReadAloudUpdateSpeakingRatesRealtime(float zhRate, float enRate);
 bool CanCloseWindow(MainWindow* win);
 void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose);
 void SetSidebarVisibility(MainWindow* win, bool tocVisible, bool showFavorites, bool relayout = true);

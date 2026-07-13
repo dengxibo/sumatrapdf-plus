@@ -10468,7 +10468,7 @@ static int ReadAloudSpeedPresetIndex(float rate) {
             return i;
         }
     }
-    return 3; // normal
+    return -1;
 }
 
 static const char* ReadAloudSpeedPresetShortLabel(int index) {
@@ -10477,6 +10477,14 @@ static const char* ReadAloudSpeedPresetShortLabel(int index) {
         return "1.0×";
     }
     return labels[index];
+}
+
+static TempStr ReadAloudSpeedLabel(float rate) {
+    int index = ReadAloudSpeedPresetIndex(rate);
+    if (index >= 0) {
+        return str::DupTemp(ReadAloudSpeedPresetShortLabel(index));
+    }
+    return str::FormatTemp("%.2f×", rate);
 }
 
 static bool ReadAloudIsCjkCp(char32_t cp) {
@@ -10909,23 +10917,52 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
 }
 
 // Global speed menu sets Chinese or English rate separately.
-static void ReadAloudSaveSpeakingRatePref(bool isZh, float rate) {
+static void ReadAloudSaveSpeakingRatesPrefs(float zhRate, float enRate) {
     if (!gGlobalPrefs) {
         return;
     }
-    rate = ReadAloudClampSpeakingRate(rate);
-    float* pref = isZh ? &gGlobalPrefs->readAloudSpeakingRateZh : &gGlobalPrefs->readAloudSpeakingRateEn;
-    if (ReadAloudSpeakingRatesEqual(*pref, rate)) {
+    zhRate = ReadAloudClampSpeakingRate(zhRate);
+    enRate = ReadAloudClampSpeakingRate(enRate);
+    if (ReadAloudSpeakingRatesEqual(gGlobalPrefs->readAloudSpeakingRateZh, zhRate) &&
+        ReadAloudSpeakingRatesEqual(gGlobalPrefs->readAloudSpeakingRateEn, enRate)) {
         return;
     }
-    *pref = rate;
+    gGlobalPrefs->readAloudSpeakingRateZh = zhRate;
+    gGlobalPrefs->readAloudSpeakingRateEn = enRate;
     // Keep legacy field in sync as a fallback average for older settings readers.
-    gGlobalPrefs->readAloudSpeakingRate = (ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateZh) +
-                                           ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateEn)) /
-                                          2.0f;
-    TtsSetSpeakingRate(rate);
+    gGlobalPrefs->readAloudSpeakingRate = (zhRate + enRate) / 2.0f;
+    ReadAloudApplyRateForLang(ReadAloudLangFromVoiceId(TtsGetVoiceId()));
     SaveSettings();
     ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
+}
+
+void ReadAloudUpdateSpeakingRatesRealtime(float zhRate, float enRate) {
+    if (!gGlobalPrefs) {
+        return;
+    }
+    zhRate = ReadAloudClampSpeakingRate(zhRate);
+    enRate = ReadAloudClampSpeakingRate(enRate);
+    if (ReadAloudSpeakingRatesEqual(gGlobalPrefs->readAloudSpeakingRateZh, zhRate) &&
+        ReadAloudSpeakingRatesEqual(gGlobalPrefs->readAloudSpeakingRateEn, enRate)) {
+        return;
+    }
+    gGlobalPrefs->readAloudSpeakingRateZh = zhRate;
+    gGlobalPrefs->readAloudSpeakingRateEn = enRate;
+    gGlobalPrefs->readAloudSpeakingRate = (zhRate + enRate) / 2.0f;
+    ReadAloudApplyRateForLang(ReadAloudLangFromVoiceId(TtsGetVoiceId()));
+    SaveSettings();
+    ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
+}
+
+static void ReadAloudSaveSpeakingRatePref(bool isZh, float rate) {
+    float zhRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateZh);
+    float enRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateEn);
+    if (isZh) {
+        zhRate = rate;
+    } else {
+        enRate = rate;
+    }
+    ReadAloudSaveSpeakingRatesPrefs(zhRate, enRate);
 }
 
 // Text cleanup for speech
@@ -11670,10 +11707,18 @@ static void BuildReadAloudSpeedMenuItems(HMENU speedMenu) {
     AppendReadAloudSpeedPresetItems(zhMenu, CmdTtsSpeedZhFirst, zhRate);
     AppendReadAloudSpeedPresetItems(enMenu, CmdTtsSpeedEnFirst, enRate);
 
-    TempStr zhTitle = str::FormatTemp("%s (%s)", _TRA("Chinese voice"),
-                                      ReadAloudSpeedPresetShortLabel(ReadAloudSpeedPresetIndex(zhRate)));
-    TempStr enTitle = str::FormatTemp("%s (%s)", _TRA("English voice"),
-                                      ReadAloudSpeedPresetShortLabel(ReadAloudSpeedPresetIndex(enRate)));
+    bool zhIsCustom = (ReadAloudSpeedPresetIndex(zhRate) < 0);
+    bool enIsCustom = (ReadAloudSpeedPresetIndex(enRate) < 0);
+
+    AppendMenuW(zhMenu, MF_SEPARATOR, 0, nullptr);
+    UINT zhCustomFlags = MF_STRING | (zhIsCustom ? MF_CHECKED : 0);
+    AppendMenuW(zhMenu, zhCustomFlags, CmdTtsSpeedZhCustom, ToWStrTemp(_TRA("Custom...")));
+    AppendMenuW(enMenu, MF_SEPARATOR, 0, nullptr);
+    UINT enCustomFlags = MF_STRING | (enIsCustom ? MF_CHECKED : 0);
+    AppendMenuW(enMenu, enCustomFlags, CmdTtsSpeedEnCustom, ToWStrTemp(_TRA("Custom...")));
+
+    TempStr zhTitle = str::FormatTemp("%s (%s)", _TRA("Chinese voice"), ReadAloudSpeedLabel(zhRate));
+    TempStr enTitle = str::FormatTemp("%s (%s)", _TRA("English voice"), ReadAloudSpeedLabel(enRate));
     AppendMenuW(speedMenu, MF_POPUP | MF_STRING, (UINT_PTR)enMenu, ToWStrTemp(enTitle));
     AppendMenuW(speedMenu, MF_POPUP | MF_STRING, (UINT_PTR)zhMenu, ToWStrTemp(zhTitle));
 }
@@ -11885,6 +11930,13 @@ static bool HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
         if (speedIndex >= 0 && speedIndex < (int)dimof(kReadAloudSpeedPresets)) {
             ReadAloudSaveSpeakingRatePref(false, kReadAloudSpeedPresets[speedIndex]);
         }
+    } else if (selected == CmdTtsSpeedZhCustom || selected == CmdTtsSpeedEnCustom) {
+        float zhRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateZh);
+        float enRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateEn);
+        bool focusChinese = selected == CmdTtsSpeedZhCustom;
+        if (Dialog_ReadAloudSpeed(win->hwndFrame, &enRate, &zhRate, focusChinese)) {
+            ReadAloudSaveSpeakingRatesPrefs(zhRate, enRate);
+        }
     }
     return false;
 }
@@ -11921,7 +11973,8 @@ bool HandleReadAloudMenuCommand(MainWindow* win, int cmdId) {
         (cmdId >= CmdTtsMenuReadCurrentPage && cmdId <= CmdTtsMenuStopReading) ||
         (cmdId >= CmdTtsVoiceFirst && cmdId <= CmdTtsVoiceLast) ||
         (cmdId >= CmdTtsSpeedZhFirst && cmdId <= CmdTtsSpeedZhLast) ||
-        (cmdId >= CmdTtsSpeedEnFirst && cmdId <= CmdTtsSpeedEnLast)) {
+        (cmdId >= CmdTtsSpeedEnFirst && cmdId <= CmdTtsSpeedEnLast) || cmdId == CmdTtsSpeedZhCustom ||
+        cmdId == CmdTtsSpeedEnCustom) {
         HandleReadAloudMenuSelection(win, (UINT)cmdId);
         return true;
     }

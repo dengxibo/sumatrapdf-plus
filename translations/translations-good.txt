@@ -829,6 +829,79 @@ it:(annotazioni non salvate)
 nl:(niet opgeslagen notaties)
 pl:(niezapisane adnotacje)
 sk:(neuložené anotácie)
+:0.25x - 2.00x; buttons change by 0.05x
+af:0.25x - 2.00x; buttons change by 0.05x
+am:0.25x - 2.00x; buttons change by 0.05x
+ar:0.25x - 2.00x; buttons change by 0.05x
+az:0.25x - 2.00x; buttons change by 0.05x
+bg:0.25x - 2.00x; buttons change by 0.05x
+bn:0.25x - 2.00x; buttons change by 0.05x
+br:0.25x - 2.00x; buttons change by 0.05x
+bs:0.25x - 2.00x; buttons change by 0.05x
+by:0.25x - 2.00x; buttons change by 0.05x
+ca:0.25x - 2.00x; buttons change by 0.05x
+ca-xv:0.25x - 2.00x; buttons change by 0.05x
+cn:0.25x - 2.00x；按钮每次调整 0.05x
+co:0.25x - 2.00x; buttons change by 0.05x
+cy:0.25x - 2.00x; buttons change by 0.05x
+cz:0.25x - 2.00x; buttons change by 0.05x
+de:0.25x - 2.00x; buttons change by 0.05x
+dk:0.25x - 2.00x; buttons change by 0.05x
+el:0.25x - 2.00x; buttons change by 0.05x
+es:0.25x - 2.00x; buttons change by 0.05x
+et:0.25x - 2.00x; buttons change by 0.05x
+eu:0.25x - 2.00x; buttons change by 0.05x
+fa:0.25x - 2.00x; buttons change by 0.05x
+fi:0.25x - 2.00x; buttons change by 0.05x
+fo:0.25x - 2.00x; buttons change by 0.05x
+fr:0.25x - 2.00x; buttons change by 0.05x
+fy-nl:0.25x - 2.00x; buttons change by 0.05x
+ga:0.25x - 2.00x; buttons change by 0.05x
+gl:0.25x - 2.00x; buttons change by 0.05x
+he:0.25x - 2.00x; buttons change by 0.05x
+hi:0.25x - 2.00x; buttons change by 0.05x
+hr:0.25x - 2.00x; buttons change by 0.05x
+hu:0.25x - 2.00x; buttons change by 0.05x
+id:0.25x - 2.00x; buttons change by 0.05x
+it:0.25x - 2.00x; buttons change by 0.05x
+ja:0.25x - 2.00x; buttons change by 0.05x
+jv:0.25x - 2.00x; buttons change by 0.05x
+ka:0.25x - 2.00x; buttons change by 0.05x
+kr:0.25x - 2.00x; buttons change by 0.05x
+ku:0.25x - 2.00x; buttons change by 0.05x
+kw:0.25x - 2.00x; buttons change by 0.05x
+lt:0.25x - 2.00x; buttons change by 0.05x
+lv:0.25x - 2.00x; buttons change by 0.05x
+mk:0.25x - 2.00x; buttons change by 0.05x
+ml:0.25x - 2.00x; buttons change by 0.05x
+mm:0.25x - 2.00x; buttons change by 0.05x
+my:0.25x - 2.00x; buttons change by 0.05x
+ne:0.25x - 2.00x; buttons change by 0.05x
+nl:0.25x - 2.00x; buttons change by 0.05x
+nn:0.25x - 2.00x; buttons change by 0.05x
+no:0.25x - 2.00x; buttons change by 0.05x
+pa:0.25x - 2.00x; buttons change by 0.05x
+pl:0.25x - 2.00x; buttons change by 0.05x
+pt:0.25x - 2.00x; buttons change by 0.05x
+ro:0.25x - 2.00x; buttons change by 0.05x
+ru:0.25x - 2.00x; buttons change by 0.05x
+sat:0.25x - 2.00x; buttons change by 0.05x
+si:0.25x - 2.00x; buttons change by 0.05x
+sk:0.25x - 2.00x; buttons change by 0.05x
+sl:0.25x - 2.00x; buttons change by 0.05x
+sn:0.25x - 2.00x; buttons change by 0.05x
+sp-rs:0.25x - 2.00x; buttons change by 0.05x
+sq:0.25x - 2.00x; buttons change by 0.05x
+sr-rs:0.25x - 2.00x; buttons change by 0.05x
+sv:0.25x - 2.00x; buttons change by 0.05x
+ta:0.25x - 2.00x; buttons change by 0.05x
+th:0.25x - 2.00x; buttons change by 0.05x
+tl:0.25x - 2.00x; buttons change by 0.05x
+tr:0.25x - 2.00x; buttons change by 0.05x
+tw:0.25x - 2.00x；按鈕每次調整 0.05x
+uk:0.25x - 2.00x; buttons change by 0.05x
+uz:0.25x - 2.00x; buttons change by 0.05x
+vn:0.25x - 2.00x; buttons change by 0.05x
 :32-bit
 cn:32 位
 de:32-Bit
@@ -1428,6 +1501,79 @@ nl:Chinese voice
 pl:Chinese voice
 sk:Chinese voice
 tw:中文語音
+:Chinese voice:
+af:Chinese voice:
+am:Chinese voice:
+ar:Chinese voice:
+az:Chinese voice:
+bg:Chinese voice:
+bn:Chinese voice:
+br:Chinese voice:
+bs:Chinese voice:
+by:Chinese voice:
+ca:Chinese voice:
+ca-xv:Chinese voice:
+cn:中文语音：
+co:Chinese voice:
+cy:Chinese voice:
+cz:Chinese voice:
+de:Chinese voice:
+dk:Chinese voice:
+el:Chinese voice:
+es:Chinese voice:
+et:Chinese voice:
+eu:Chinese voice:
+fa:Chinese voice:
+fi:Chinese voice:
+fo:Chinese voice:
+fr:Chinese voice:
+fy-nl:Chinese voice:
+ga:Chinese voice:
+gl:Chinese voice:
+he:Chinese voice:
+hi:Chinese voice:
+hr:Chinese voice:
+hu:Chinese voice:
+id:Chinese voice:
+it:Chinese voice:
+ja:Chinese voice:
+jv:Chinese voice:
+ka:Chinese voice:
+kr:Chinese voice:
+ku:Chinese voice:
+kw:Chinese voice:
+lt:Chinese voice:
+lv:Chinese voice:
+mk:Chinese voice:
+ml:Chinese voice:
+mm:Chinese voice:
+my:Chinese voice:
+ne:Chinese voice:
+nl:Chinese voice:
+nn:Chinese voice:
+no:Chinese voice:
+pa:Chinese voice:
+pl:Chinese voice:
+pt:Chinese voice:
+ro:Chinese voice:
+ru:Chinese voice:
+sat:Chinese voice:
+si:Chinese voice:
+sk:Chinese voice:
+sl:Chinese voice:
+sn:Chinese voice:
+sp-rs:Chinese voice:
+sq:Chinese voice:
+sr-rs:Chinese voice:
+sv:Chinese voice:
+ta:Chinese voice:
+th:Chinese voice:
+tl:Chinese voice:
+tr:Chinese voice:
+tw:中文語音：
+uk:Chinese voice:
+uz:Chinese voice:
+vn:Chinese voice:
 :Chinese:
 am:Չինական ձայ
 br:Voz chinesa
@@ -2365,6 +2511,79 @@ nl:Aangepaste &zoom...
 pl:&Własne powiększenie...
 sk:Vlastné &zväčšenie…
 tw:自訂縮放(&Z)...
+:Custom...
+af:Custom...
+am:Custom...
+ar:Custom...
+az:Custom...
+bg:Custom...
+bn:Custom...
+br:Custom...
+bs:Custom...
+by:Custom...
+ca:Custom...
+ca-xv:Custom...
+cn:自定义...
+co:Custom...
+cy:Custom...
+cz:Custom...
+de:Custom...
+dk:Custom...
+el:Custom...
+es:Custom...
+et:Custom...
+eu:Custom...
+fa:Custom...
+fi:Custom...
+fo:Custom...
+fr:Custom...
+fy-nl:Custom...
+ga:Custom...
+gl:Custom...
+he:Custom...
+hi:Custom...
+hr:Custom...
+hu:Custom...
+id:Custom...
+it:Custom...
+ja:Custom...
+jv:Custom...
+ka:Custom...
+kr:Custom...
+ku:Custom...
+kw:Custom...
+lt:Custom...
+lv:Custom...
+mk:Custom...
+ml:Custom...
+mm:Custom...
+my:Custom...
+ne:Custom...
+nl:Custom...
+nn:Custom...
+no:Custom...
+pa:Custom...
+pl:Custom...
+pt:Custom...
+ro:Custom...
+ru:Custom...
+sat:Custom...
+si:Custom...
+sk:Custom...
+sl:Custom...
+sn:Custom...
+sp-rs:Custom...
+sq:Custom...
+sr-rs:Custom...
+sv:Custom...
+ta:Custom...
+th:Custom...
+tl:Custom...
+tr:Custom...
+tw:自訂...
+uk:Custom...
+uz:Custom...
+vn:Custom...
 :Cycle Document Color Mode
 am:Փոխել փաստաթղթի գունային ռեժիմը
 br:Alternar modo de cor do documento
@@ -2922,6 +3141,79 @@ nl:English voice
 pl:English voice
 sk:English voice
 tw:英文語音
+:English voice:
+af:English voice:
+am:English voice:
+ar:English voice:
+az:English voice:
+bg:English voice:
+bn:English voice:
+br:English voice:
+bs:English voice:
+by:English voice:
+ca:English voice:
+ca-xv:English voice:
+cn:英文语音：
+co:English voice:
+cy:English voice:
+cz:English voice:
+de:English voice:
+dk:English voice:
+el:English voice:
+es:English voice:
+et:English voice:
+eu:English voice:
+fa:English voice:
+fi:English voice:
+fo:English voice:
+fr:English voice:
+fy-nl:English voice:
+ga:English voice:
+gl:English voice:
+he:English voice:
+hi:English voice:
+hr:English voice:
+hu:English voice:
+id:English voice:
+it:English voice:
+ja:English voice:
+jv:English voice:
+ka:English voice:
+kr:English voice:
+ku:English voice:
+kw:English voice:
+lt:English voice:
+lv:English voice:
+mk:English voice:
+ml:English voice:
+mm:English voice:
+my:English voice:
+ne:English voice:
+nl:English voice:
+nn:English voice:
+no:English voice:
+pa:English voice:
+pl:English voice:
+pt:English voice:
+ro:English voice:
+ru:English voice:
+sat:English voice:
+si:English voice:
+sk:English voice:
+sl:English voice:
+sn:English voice:
+sp-rs:English voice:
+sq:English voice:
+sr-rs:English voice:
+sv:English voice:
+ta:English voice:
+th:English voice:
+tl:English voice:
+tr:English voice:
+tw:英文語音：
+uk:English voice:
+uz:English voice:
+vn:English voice:
 :English:
 am:Անգլերեն ձայ
 br:Voz inglesa
@@ -2934,6 +3226,79 @@ nl:English:
 pl:English:
 sk:English:
 tw:英文：
+:Enter a speed from 0.25x to 2.00x.
+af:Enter a speed from 0.25x to 2.00x.
+am:Enter a speed from 0.25x to 2.00x.
+ar:Enter a speed from 0.25x to 2.00x.
+az:Enter a speed from 0.25x to 2.00x.
+bg:Enter a speed from 0.25x to 2.00x.
+bn:Enter a speed from 0.25x to 2.00x.
+br:Enter a speed from 0.25x to 2.00x.
+bs:Enter a speed from 0.25x to 2.00x.
+by:Enter a speed from 0.25x to 2.00x.
+ca:Enter a speed from 0.25x to 2.00x.
+ca-xv:Enter a speed from 0.25x to 2.00x.
+cn:请输入 0.25x 到 2.00x 之间的速度。
+co:Enter a speed from 0.25x to 2.00x.
+cy:Enter a speed from 0.25x to 2.00x.
+cz:Enter a speed from 0.25x to 2.00x.
+de:Enter a speed from 0.25x to 2.00x.
+dk:Enter a speed from 0.25x to 2.00x.
+el:Enter a speed from 0.25x to 2.00x.
+es:Enter a speed from 0.25x to 2.00x.
+et:Enter a speed from 0.25x to 2.00x.
+eu:Enter a speed from 0.25x to 2.00x.
+fa:Enter a speed from 0.25x to 2.00x.
+fi:Enter a speed from 0.25x to 2.00x.
+fo:Enter a speed from 0.25x to 2.00x.
+fr:Enter a speed from 0.25x to 2.00x.
+fy-nl:Enter a speed from 0.25x to 2.00x.
+ga:Enter a speed from 0.25x to 2.00x.
+gl:Enter a speed from 0.25x to 2.00x.
+he:Enter a speed from 0.25x to 2.00x.
+hi:Enter a speed from 0.25x to 2.00x.
+hr:Enter a speed from 0.25x to 2.00x.
+hu:Enter a speed from 0.25x to 2.00x.
+id:Enter a speed from 0.25x to 2.00x.
+it:Enter a speed from 0.25x to 2.00x.
+ja:Enter a speed from 0.25x to 2.00x.
+jv:Enter a speed from 0.25x to 2.00x.
+ka:Enter a speed from 0.25x to 2.00x.
+kr:Enter a speed from 0.25x to 2.00x.
+ku:Enter a speed from 0.25x to 2.00x.
+kw:Enter a speed from 0.25x to 2.00x.
+lt:Enter a speed from 0.25x to 2.00x.
+lv:Enter a speed from 0.25x to 2.00x.
+mk:Enter a speed from 0.25x to 2.00x.
+ml:Enter a speed from 0.25x to 2.00x.
+mm:Enter a speed from 0.25x to 2.00x.
+my:Enter a speed from 0.25x to 2.00x.
+ne:Enter a speed from 0.25x to 2.00x.
+nl:Enter a speed from 0.25x to 2.00x.
+nn:Enter a speed from 0.25x to 2.00x.
+no:Enter a speed from 0.25x to 2.00x.
+pa:Enter a speed from 0.25x to 2.00x.
+pl:Enter a speed from 0.25x to 2.00x.
+pt:Enter a speed from 0.25x to 2.00x.
+ro:Enter a speed from 0.25x to 2.00x.
+ru:Enter a speed from 0.25x to 2.00x.
+sat:Enter a speed from 0.25x to 2.00x.
+si:Enter a speed from 0.25x to 2.00x.
+sk:Enter a speed from 0.25x to 2.00x.
+sl:Enter a speed from 0.25x to 2.00x.
+sn:Enter a speed from 0.25x to 2.00x.
+sp-rs:Enter a speed from 0.25x to 2.00x.
+sq:Enter a speed from 0.25x to 2.00x.
+sr-rs:Enter a speed from 0.25x to 2.00x.
+sv:Enter a speed from 0.25x to 2.00x.
+ta:Enter a speed from 0.25x to 2.00x.
+th:Enter a speed from 0.25x to 2.00x.
+tl:Enter a speed from 0.25x to 2.00x.
+tr:Enter a speed from 0.25x to 2.00x.
+tw:請輸入 0.25x 到 2.00x 之間的速度。
+uk:Enter a speed from 0.25x to 2.00x.
+uz:Enter a speed from 0.25x to 2.00x.
+vn:Enter a speed from 0.25x to 2.00x.
 :Enter password
 am:Գրեք գաղտնաբառը
 br:Insira a senha
@@ -3651,6 +4016,18 @@ it:Lunghezza focale:
 nl:Brandpunt afstand:
 pl:Ogniskowa:
 sk:Ohnisková vzdialenosť:
+:Follow system theme
+am:Հետևել համակարգի ձևավորմանը
+br:Seguir tema do sistema
+cn:跟随系统主题
+co:Seguità u tema di u sistema
+de:Systemdesign übernehmen
+el:Ακολούθηση θέματος συστήματος
+it:Segui il tema di sistema
+nl:Systeemthema volgen
+pl:Użyj motywu systemowego
+sk:Použiť systémový motív
+tw:跟隨系統主題
 :Fonts:
 am:Տառատեսաներ.
 br:Fontes:
@@ -4256,29 +4633,151 @@ pl:Inteligentny dwujęzyczny (angielski + chiński)
 sk:Inteligentný dvojjazyčný (angličtina + čínština)
 tw:本地智慧雙語（英文 + 中文）
 :Local smart bilingual settings
+af:Local smart bilingual settings
 am:Խելացի երկլեզու կարգավորում
+ar:Local smart bilingual settings
+az:Local smart bilingual settings
+bg:Local smart bilingual settings
+bn:Local smart bilingual settings
 br:Configurações bilíngues inteligentes
+bs:Local smart bilingual settings
+by:Local smart bilingual settings
+ca:Local smart bilingual settings
+ca-xv:Local smart bilingual settings
 cn:本地智能双语设置
 co:Local smart bilingual settings
+cy:Local smart bilingual settings
+cz:Local smart bilingual settings
 de:Lokale intelligente Zweisprachigkeit – Einstellungen
+dk:Local smart bilingual settings
 el:Local smart bilingual settings
+es:Local smart bilingual settings
+et:Local smart bilingual settings
+eu:Local smart bilingual settings
+fa:Local smart bilingual settings
+fi:Local smart bilingual settings
+fo:Local smart bilingual settings
+fr:Local smart bilingual settings
+fy-nl:Local smart bilingual settings
+ga:Local smart bilingual settings
+gl:Local smart bilingual settings
+he:Local smart bilingual settings
+hi:Local smart bilingual settings
+hr:Local smart bilingual settings
+hu:Local smart bilingual settings
+id:Local smart bilingual settings
 it:Local smart bilingual settings
+ja:Local smart bilingual settings
+jv:Local smart bilingual settings
+ka:Local smart bilingual settings
+kr:Local smart bilingual settings
+ku:Local smart bilingual settings
+kw:Local smart bilingual settings
+lt:Local smart bilingual settings
+lv:Local smart bilingual settings
+mk:Local smart bilingual settings
+ml:Local smart bilingual settings
+mm:Local smart bilingual settings
+my:Local smart bilingual settings
+ne:Local smart bilingual settings
 nl:Local smart bilingual settings
+nn:Local smart bilingual settings
+no:Local smart bilingual settings
+pa:Local smart bilingual settings
 pl:Local smart bilingual settings
+pt:Local smart bilingual settings
+ro:Local smart bilingual settings
+ru:Local smart bilingual settings
+sat:Local smart bilingual settings
+si:Local smart bilingual settings
 sk:Local smart bilingual settings
+sl:Local smart bilingual settings
+sn:Local smart bilingual settings
+sp-rs:Local smart bilingual settings
+sq:Local smart bilingual settings
+sr-rs:Local smart bilingual settings
+sv:Local smart bilingual settings
+ta:Local smart bilingual settings
+th:Local smart bilingual settings
+tl:Local smart bilingual settings
+tr:Local smart bilingual settings
 tw:本地智慧雙語設定
+uk:Local smart bilingual settings
+uz:Local smart bilingual settings
+vn:Local smart bilingual settings
 :Local smart bilingual settings...
+af:Local smart bilingual settings...
 am:Խելացի երկլեզու կարգավորում
+ar:Local smart bilingual settings...
+az:Local smart bilingual settings...
+bg:Local smart bilingual settings...
+bn:Local smart bilingual settings...
 br:Configurações bilíngues inteligentes
+bs:Local smart bilingual settings...
+by:Local smart bilingual settings...
+ca:Local smart bilingual settings...
+ca-xv:Local smart bilingual settings...
 cn:本地智能双语设置...
 co:Local smart bilingual settings...
+cy:Local smart bilingual settings...
+cz:Local smart bilingual settings...
 de:Lokale intelligente Zweisprachigkeit – Einstellungen
+dk:Local smart bilingual settings...
 el:Local smart bilingual settings...
+es:Local smart bilingual settings...
+et:Local smart bilingual settings...
+eu:Local smart bilingual settings...
+fa:Local smart bilingual settings...
+fi:Local smart bilingual settings...
+fo:Local smart bilingual settings...
+fr:Local smart bilingual settings...
+fy-nl:Local smart bilingual settings...
+ga:Local smart bilingual settings...
+gl:Local smart bilingual settings...
+he:Local smart bilingual settings...
+hi:Local smart bilingual settings...
+hr:Local smart bilingual settings...
+hu:Local smart bilingual settings...
+id:Local smart bilingual settings...
 it:Local smart bilingual settings...
+ja:Local smart bilingual settings...
+jv:Local smart bilingual settings...
+ka:Local smart bilingual settings...
+kr:Local smart bilingual settings...
+ku:Local smart bilingual settings...
+kw:Local smart bilingual settings...
+lt:Local smart bilingual settings...
+lv:Local smart bilingual settings...
+mk:Local smart bilingual settings...
+ml:Local smart bilingual settings...
+mm:Local smart bilingual settings...
+my:Local smart bilingual settings...
+ne:Local smart bilingual settings...
 nl:Local smart bilingual settings...
+nn:Local smart bilingual settings...
+no:Local smart bilingual settings...
+pa:Local smart bilingual settings...
 pl:Local smart bilingual settings...
+pt:Local smart bilingual settings...
+ro:Local smart bilingual settings...
+ru:Local smart bilingual settings...
+sat:Local smart bilingual settings...
+si:Local smart bilingual settings...
 sk:Local smart bilingual settings...
+sl:Local smart bilingual settings...
+sn:Local smart bilingual settings...
+sp-rs:Local smart bilingual settings...
+sq:Local smart bilingual settings...
+sr-rs:Local smart bilingual settings...
+sv:Local smart bilingual settings...
+ta:Local smart bilingual settings...
+th:Local smart bilingual settings...
+tl:Local smart bilingual settings...
+tr:Local smart bilingual settings...
 tw:本地智慧雙語設定
+uk:Local smart bilingual settings...
+uz:Local smart bilingual settings...
+vn:Local smart bilingual settings...
 :Look Up
 am:ፍለጋ
 br:Consultar
@@ -4582,17 +5081,78 @@ pl:Brak informacji o synchronizacji w tej pozycji
 sk:Chýba informácia o synchronizácii
 tw:沒有同步資料於此位置
 :No text available to read aloud
+af:No text available to read aloud
 am:Կարդալու տեքստ չկա
+ar:No text available to read aloud
+az:No text available to read aloud
+bg:No text available to read aloud
+bn:No text available to read aloud
 br:Nenhum texto disponível para leitura
+bs:No text available to read aloud
+by:No text available to read aloud
+ca:No text available to read aloud
+ca-xv:No text available to read aloud
 cn:没有可朗读的文本
 co:Nisun testu dispunibule per leghje
+cy:No text available to read aloud
+cz:No text available to read aloud
 de:Kein Text zum Vorlesen verfügbar
+dk:No text available to read aloud
 el:Δεν υπάρχει κείμενο για ανάγνωση
+es:No text available to read aloud
+et:No text available to read aloud
+eu:No text available to read aloud
+fa:No text available to read aloud
+fi:No text available to read aloud
+fo:No text available to read aloud
+fr:No text available to read aloud
+fy-nl:No text available to read aloud
+ga:No text available to read aloud
+gl:No text available to read aloud
+he:No text available to read aloud
+hi:No text available to read aloud
+hr:No text available to read aloud
+hu:No text available to read aloud
+id:No text available to read aloud
 it:Nessun testo da leggere
+ja:No text available to read aloud
+jv:No text available to read aloud
+ka:No text available to read aloud
+kr:No text available to read aloud
+ku:No text available to read aloud
+kw:No text available to read aloud
+lt:No text available to read aloud
+lv:No text available to read aloud
+mk:No text available to read aloud
+ml:No text available to read aloud
+mm:No text available to read aloud
+my:No text available to read aloud
+ne:No text available to read aloud
 nl:Geen tekst om voor te lezen
+nn:No text available to read aloud
+no:No text available to read aloud
+pa:No text available to read aloud
 pl:Brak tekstu do odczytania
+pt:No text available to read aloud
+ro:No text available to read aloud
+ru:No text available to read aloud
+sat:No text available to read aloud
+si:No text available to read aloud
 sk:Nie je k dispozícii text na čítanie
+sl:No text available to read aloud
+sn:No text available to read aloud
+sp-rs:No text available to read aloud
+sq:No text available to read aloud
+sr-rs:No text available to read aloud
+sv:No text available to read aloud
+ta:No text available to read aloud
+th:No text available to read aloud
+tl:No text available to read aloud
+tr:No text available to read aloud
 tw:沒有可朗讀的文字
+uk:No text available to read aloud
+uz:No text available to read aloud
+vn:No text available to read aloud
 :Normal (1.0×)
 am:Նորմալ (1.0×)
 br:Normal (1.0×)
@@ -4662,29 +5222,151 @@ pl:Online smart bilingual (English + Chinese)
 sk:Online smart bilingual (English + Chinese)
 tw:線上智慧雙語（英文 + 中文）
 :Online smart bilingual settings
+af:Online smart bilingual settings
 am:Online smart bilingual settings
+ar:Online smart bilingual settings
+az:Online smart bilingual settings
+bg:Online smart bilingual settings
+bn:Online smart bilingual settings
 br:Online smart bilingual settings
+bs:Online smart bilingual settings
+by:Online smart bilingual settings
+ca:Online smart bilingual settings
+ca-xv:Online smart bilingual settings
 cn:在线智能双语设置
 co:Online smart bilingual settings
+cy:Online smart bilingual settings
+cz:Online smart bilingual settings
 de:Online intelligente Zweisprachigkeit – Einstellungen
+dk:Online smart bilingual settings
 el:Online smart bilingual settings
+es:Online smart bilingual settings
+et:Online smart bilingual settings
+eu:Online smart bilingual settings
+fa:Online smart bilingual settings
+fi:Online smart bilingual settings
+fo:Online smart bilingual settings
+fr:Online smart bilingual settings
+fy-nl:Online smart bilingual settings
+ga:Online smart bilingual settings
+gl:Online smart bilingual settings
+he:Online smart bilingual settings
+hi:Online smart bilingual settings
+hr:Online smart bilingual settings
+hu:Online smart bilingual settings
+id:Online smart bilingual settings
 it:Online smart bilingual settings
+ja:Online smart bilingual settings
+jv:Online smart bilingual settings
+ka:Online smart bilingual settings
+kr:Online smart bilingual settings
+ku:Online smart bilingual settings
+kw:Online smart bilingual settings
+lt:Online smart bilingual settings
+lv:Online smart bilingual settings
+mk:Online smart bilingual settings
+ml:Online smart bilingual settings
+mm:Online smart bilingual settings
+my:Online smart bilingual settings
+ne:Online smart bilingual settings
 nl:Online smart bilingual settings
+nn:Online smart bilingual settings
+no:Online smart bilingual settings
+pa:Online smart bilingual settings
 pl:Online smart bilingual settings
+pt:Online smart bilingual settings
+ro:Online smart bilingual settings
+ru:Online smart bilingual settings
+sat:Online smart bilingual settings
+si:Online smart bilingual settings
 sk:Online smart bilingual settings
+sl:Online smart bilingual settings
+sn:Online smart bilingual settings
+sp-rs:Online smart bilingual settings
+sq:Online smart bilingual settings
+sr-rs:Online smart bilingual settings
+sv:Online smart bilingual settings
+ta:Online smart bilingual settings
+th:Online smart bilingual settings
+tl:Online smart bilingual settings
+tr:Online smart bilingual settings
 tw:線上智慧雙語設定
+uk:Online smart bilingual settings
+uz:Online smart bilingual settings
+vn:Online smart bilingual settings
 :Online smart bilingual settings...
+af:Online smart bilingual settings...
 am:Online smart bilingual settings...
+ar:Online smart bilingual settings...
+az:Online smart bilingual settings...
+bg:Online smart bilingual settings...
+bn:Online smart bilingual settings...
 br:Online smart bilingual settings...
+bs:Online smart bilingual settings...
+by:Online smart bilingual settings...
+ca:Online smart bilingual settings...
+ca-xv:Online smart bilingual settings...
 cn:在线智能双语设置...
 co:Online smart bilingual settings...
+cy:Online smart bilingual settings...
+cz:Online smart bilingual settings...
 de:Online intelligente Zweisprachigkeit – Einstellungen...
+dk:Online smart bilingual settings...
 el:Online smart bilingual settings...
+es:Online smart bilingual settings...
+et:Online smart bilingual settings...
+eu:Online smart bilingual settings...
+fa:Online smart bilingual settings...
+fi:Online smart bilingual settings...
+fo:Online smart bilingual settings...
+fr:Online smart bilingual settings...
+fy-nl:Online smart bilingual settings...
+ga:Online smart bilingual settings...
+gl:Online smart bilingual settings...
+he:Online smart bilingual settings...
+hi:Online smart bilingual settings...
+hr:Online smart bilingual settings...
+hu:Online smart bilingual settings...
+id:Online smart bilingual settings...
 it:Online smart bilingual settings...
+ja:Online smart bilingual settings...
+jv:Online smart bilingual settings...
+ka:Online smart bilingual settings...
+kr:Online smart bilingual settings...
+ku:Online smart bilingual settings...
+kw:Online smart bilingual settings...
+lt:Online smart bilingual settings...
+lv:Online smart bilingual settings...
+mk:Online smart bilingual settings...
+ml:Online smart bilingual settings...
+mm:Online smart bilingual settings...
+my:Online smart bilingual settings...
+ne:Online smart bilingual settings...
 nl:Online smart bilingual settings...
+nn:Online smart bilingual settings...
+no:Online smart bilingual settings...
+pa:Online smart bilingual settings...
 pl:Online smart bilingual settings...
+pt:Online smart bilingual settings...
+ro:Online smart bilingual settings...
+ru:Online smart bilingual settings...
+sat:Online smart bilingual settings...
+si:Online smart bilingual settings...
 sk:Online smart bilingual settings...
+sl:Online smart bilingual settings...
+sn:Online smart bilingual settings...
+sp-rs:Online smart bilingual settings...
+sq:Online smart bilingual settings...
+sr-rs:Online smart bilingual settings...
+sv:Online smart bilingual settings...
+ta:Online smart bilingual settings...
+th:Online smart bilingual settings...
+tl:Online smart bilingual settings...
+tr:Online smart bilingual settings...
 tw:線上智慧雙語設定...
+uk:Online smart bilingual settings...
+uz:Online smart bilingual settings...
+vn:Online smart bilingual settings...
 :Online voices
 am:Առցանց ձայներ
 br:Vozes online
@@ -5783,6 +6465,79 @@ nl:Voorlezen (TTS)
 pl:Czytaj na głos (TTS)
 sk:Prečítať nahlas (TTS)
 tw:朗讀 (TTS)
+:Read aloud speed
+af:Read aloud speed
+am:Read aloud speed
+ar:Read aloud speed
+az:Read aloud speed
+bg:Read aloud speed
+bn:Read aloud speed
+br:Read aloud speed
+bs:Read aloud speed
+by:Read aloud speed
+ca:Read aloud speed
+ca-xv:Read aloud speed
+cn:朗读速度
+co:Read aloud speed
+cy:Read aloud speed
+cz:Read aloud speed
+de:Read aloud speed
+dk:Read aloud speed
+el:Read aloud speed
+es:Read aloud speed
+et:Read aloud speed
+eu:Read aloud speed
+fa:Read aloud speed
+fi:Read aloud speed
+fo:Read aloud speed
+fr:Read aloud speed
+fy-nl:Read aloud speed
+ga:Read aloud speed
+gl:Read aloud speed
+he:Read aloud speed
+hi:Read aloud speed
+hr:Read aloud speed
+hu:Read aloud speed
+id:Read aloud speed
+it:Read aloud speed
+ja:Read aloud speed
+jv:Read aloud speed
+ka:Read aloud speed
+kr:Read aloud speed
+ku:Read aloud speed
+kw:Read aloud speed
+lt:Read aloud speed
+lv:Read aloud speed
+mk:Read aloud speed
+ml:Read aloud speed
+mm:Read aloud speed
+my:Read aloud speed
+ne:Read aloud speed
+nl:Read aloud speed
+nn:Read aloud speed
+no:Read aloud speed
+pa:Read aloud speed
+pl:Read aloud speed
+pt:Read aloud speed
+ro:Read aloud speed
+ru:Read aloud speed
+sat:Read aloud speed
+si:Read aloud speed
+sk:Read aloud speed
+sl:Read aloud speed
+sn:Read aloud speed
+sp-rs:Read aloud speed
+sq:Read aloud speed
+sr-rs:Read aloud speed
+sv:Read aloud speed
+ta:Read aloud speed
+th:Read aloud speed
+tl:Read aloud speed
+tr:Read aloud speed
+tw:朗讀速度
+uk:Read aloud speed
+uz:Read aloud speed
+vn:Read aloud speed
 :Reading · %s · %s
 am:Կարդում · %s · %s
 br:Lendo · %s · %s
@@ -5979,6 +6734,79 @@ tw:重新開啟上次關閉的內容
 cn:报告错误（仅限本分支）
 de:Fehler melden (nur dieser Fork)
 tw:回報錯誤（僅限本分支）
+:Reset to 1.00x
+af:Reset to 1.00x
+am:Reset to 1.00x
+ar:Reset to 1.00x
+az:Reset to 1.00x
+bg:Reset to 1.00x
+bn:Reset to 1.00x
+br:Reset to 1.00x
+bs:Reset to 1.00x
+by:Reset to 1.00x
+ca:Reset to 1.00x
+ca-xv:Reset to 1.00x
+cn:重置为 1.00x
+co:Reset to 1.00x
+cy:Reset to 1.00x
+cz:Reset to 1.00x
+de:Reset to 1.00x
+dk:Reset to 1.00x
+el:Reset to 1.00x
+es:Reset to 1.00x
+et:Reset to 1.00x
+eu:Reset to 1.00x
+fa:Reset to 1.00x
+fi:Reset to 1.00x
+fo:Reset to 1.00x
+fr:Reset to 1.00x
+fy-nl:Reset to 1.00x
+ga:Reset to 1.00x
+gl:Reset to 1.00x
+he:Reset to 1.00x
+hi:Reset to 1.00x
+hr:Reset to 1.00x
+hu:Reset to 1.00x
+id:Reset to 1.00x
+it:Reset to 1.00x
+ja:Reset to 1.00x
+jv:Reset to 1.00x
+ka:Reset to 1.00x
+kr:Reset to 1.00x
+ku:Reset to 1.00x
+kw:Reset to 1.00x
+lt:Reset to 1.00x
+lv:Reset to 1.00x
+mk:Reset to 1.00x
+ml:Reset to 1.00x
+mm:Reset to 1.00x
+my:Reset to 1.00x
+ne:Reset to 1.00x
+nl:Reset to 1.00x
+nn:Reset to 1.00x
+no:Reset to 1.00x
+pa:Reset to 1.00x
+pl:Reset to 1.00x
+pt:Reset to 1.00x
+ro:Reset to 1.00x
+ru:Reset to 1.00x
+sat:Reset to 1.00x
+si:Reset to 1.00x
+sk:Reset to 1.00x
+sl:Reset to 1.00x
+sn:Reset to 1.00x
+sp-rs:Reset to 1.00x
+sq:Reset to 1.00x
+sr-rs:Reset to 1.00x
+sv:Reset to 1.00x
+ta:Reset to 1.00x
+th:Reset to 1.00x
+tl:Reset to 1.00x
+tr:Reset to 1.00x
+tw:重設為 1.00x
+uk:Reset to 1.00x
+uz:Reset to 1.00x
+vn:Reset to 1.00x
 :Resize
 br:Redimensionar
 cn:调整尺寸
@@ -6823,18 +7651,6 @@ nl:Stel thema 'Light-White' in
 pl:Ustaw motyw 'Light-White'
 sk:Nastaviť motív 'Light-White'
 tw:設定成 'Light-White' 主題
-:Follow system theme
-am:Հետևել համակարգի ձևավորմանը
-br:Seguir tema do sistema
-cn:跟随系统主题
-co:Seguità u tema di u sistema
-de:Systemdesign übernehmen
-el:Ακολούθηση θέματος συστήματος
-it:Segui il tema di sistema
-nl:Systeemthema volgen
-pl:Użyj motywu systemowego
-sk:Použiť systémový motív
-tw:跟隨系統主題
 :Show &Bookmarks
 am:Ցուցադրել &Էջանիշերը
 br:Mostrar &Favoritos
