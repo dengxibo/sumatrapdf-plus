@@ -22,6 +22,8 @@ constexpr const char* kLinkShowList = "<View,ShowList>";
 constexpr const char* kLinkHideList = "<View,HideList>";
 constexpr const char* kLinkHomePageListView = "<View,HomePageList>";
 constexpr const char* kLinkHomePageThumbView = "<View,HomePageThumbs>";
+constexpr const char* kLinkHomePageRemoveFile = "<View,HomePageRemove>";
+constexpr const char* kLinkHomePagePinFile = "<View,HomePagePin>";
 constexpr const char* kLinkNextTip = "<NextTip>";
 
 void SetPromoString(const char*);

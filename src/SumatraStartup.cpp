@@ -1827,7 +1827,7 @@ ContinueOpenWindow:
     //  \Documents is a good directory to use
     ChangeCurrDirToDocuments();
 
-    StartAsyncUpdateCheck(win, UpdateCheck::Automatic);
+    StartAutomaticUpdateChecks();
 
     if (IsDebuggerPresent()) {
         // helps when running from 10x under debugger

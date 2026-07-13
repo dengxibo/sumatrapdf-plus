@@ -549,7 +549,7 @@ DefaultPasswords =
 ; ISO code (langs.html) of the current UI language
 UiLanguage =
 
-; we won't ask again to update to this version
+; version for which the update prompt is temporarily snoozed
 VersionToSkip =
 
 ; default state of the window. 1 is normal, 2 is maximized, 3 is fullscreen, 4
@@ -702,6 +702,9 @@ ReopenOnce =
 
 ; data required to determine when SumatraPDF last checked for updates
 TimeOfLastUpdateCheck = 0 0
+
+; data required to defer the update prompt for VersionToSkip
+TimeOfUpdateCheckSnooze = 0 0
 
 ; value required to determine recency for the OpenCount value in FileStates
 OpenCountWeek = 0

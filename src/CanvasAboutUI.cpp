@@ -16,6 +16,7 @@
 #include "GlobalPrefs.h"
 #include "SumatraConfig.h"
 #include "FileHistory.h"
+#include "FileThumbnails.h"
 #include "Annotation.h"
 #include "SumatraPDF.h"
 #include "MainWindow.h"
@@ -77,6 +78,37 @@ static bool IsLink(const char* url) {
     return false;
 }
 
+static void RemoveHomePageFile(MainWindow* win, const char* path) {
+    FileState* fs = gFileHistory.FindByPath(path);
+    if (!fs) {
+        return;
+    }
+    TempStr filePath = str::DupTemp(fs->filePath);
+    if (!fs->favorites->IsEmpty()) {
+        gFileHistory.MarkFileInexistent(fs->filePath, true);
+    } else {
+        gFileHistory.Remove(fs);
+        DeleteFileState(fs);
+    }
+    DeleteThumbnailForFile(filePath);
+    SaveSettings();
+    win->DeleteToolTip();
+    HomePageInvalidateScrollCache(win);
+    win->RedrawAll(true);
+}
+
+static void ToggleHomePageFilePin(MainWindow* win, const char* path) {
+    FileState* fs = gFileHistory.FindByPath(path);
+    if (!fs) {
+        return;
+    }
+    fs->isPinned = !fs->isPinned;
+    SaveSettings();
+    win->DeleteToolTip();
+    HomePageInvalidateScrollCache(win);
+    win->RedrawAll(true);
+}
+
 static void OnMouseLeftButtonUpAbout(MainWindow* win, int x, int y, WPARAM) {
     char* url = GetStaticLinkAtTemp(win->staticLinks, x, y, nullptr);
     char* prevUrl = win->urlOnLastButtonDown;
@@ -107,6 +139,10 @@ static void OnMouseLeftButtonUpAbout(MainWindow* win, int x, int y, WPARAM) {
         HomePageInvalidateScrollCache(win);
         SaveSettings();
         win->RedrawAll(true);
+    } else if (str::StartsWith(url, kLinkHomePageRemoveFile)) {
+        RemoveHomePageFile(win, url + str::Len(kLinkHomePageRemoveFile));
+    } else if (str::StartsWith(url, kLinkHomePagePinFile)) {
+        ToggleHomePageFilePin(win, url + str::Len(kLinkHomePagePinFile));
     } else if (str::Eq(url, kLinkNextTip)) {
         PickAnotherRandomPromotion();
         win->RedrawAll(true);

@@ -6,6 +6,8 @@ enum class UpdateCheck {
     Automatic,     // an automatic, periodic check done at startup
 };
 
-void StartAsyncUpdateCheck(MainWindow* win, UpdateCheck updateCheckType);
-void StartInstallerAutoUpgrade(const char* installerPath);
+bool StartAsyncUpdateCheck(MainWindow* win, UpdateCheck updateCheckType);
+void StartAutomaticUpdateChecks();
+void RefreshAutomaticUpdateChecks();
+bool StartInstallerAutoUpgrade(const char* installerPath);
 void UpdateSelfTo(const char* path);

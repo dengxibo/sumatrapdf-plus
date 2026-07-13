@@ -3,6 +3,10 @@ the release notes, as we make them, to make the release process easier.
 
 Next version:
 
+* make release auto-update checks reliable on first launch and while the app remains open
+* ask before downloading an update; retry transient failures and defer a declined version for seven days
+* Plus 3.7.3 and Plus 3.7.4 users who have never checked manually must upgrade manually once
+
 3.6
 * add `ShowLinks` advanced setting and `Toggle Show Links` for command palette (`Ctrl + K`)
 * `-search` cmd-line arg now copies search term to find box so that F3 works

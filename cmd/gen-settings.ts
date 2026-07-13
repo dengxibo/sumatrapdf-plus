@@ -1085,7 +1085,7 @@ const globalPrefs: Field[] = [
     mkField("UiLanguage", Str, null, "ISO code of the current UI language"),
     "[ISO code](langs.html) of the current UI language",
   ),
-  mkField("VersionToSkip", Str, null, "we won't ask again to update to this version"),
+  mkField("VersionToSkip", Str, null, "version for which the update prompt is temporarily snoozed"),
   setDoc(
     mkField("WindowState", Int, 1, "default state of new windows (same as the last closed)"),
     "default state of the window. 1 is normal, 2 is maximized, " + "3 is fullscreen, 4 is minimized",
@@ -1115,6 +1115,13 @@ const globalPrefs: Field[] = [
   setDoc(
     setStructName(mkCompactStruct("TimeOfLastUpdateCheck", fileTime, "timestamp of the last update check"), "FILETIME"),
     "data required to determine when SumatraPDF last checked for updates",
+  ),
+  setDoc(
+    setStructName(
+      mkCompactStruct("TimeOfUpdateCheckSnooze", fileTime, "timestamp when an update version was snoozed"),
+      "FILETIME",
+    ),
+    "data required to defer the update prompt for VersionToSkip",
   ),
 
   setDoc(

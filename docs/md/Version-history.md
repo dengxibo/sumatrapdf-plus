@@ -1,5 +1,14 @@
 # Version history
 
+## next
+
+- make release auto-update reliable for first launch and long-running sessions: check daily while the app stays open,
+  record only successful checks, and retry transient failures with backoff
+- ask before downloading an update, then show progress and replace/relaunch the portable executable after one confirmation
+- defer a declined version for seven days while allowing a newer release to prompt immediately
+- users still on Plus 3.7.3, or on 3.7.4 without ever using **Check for Updates**, must upgrade manually once;
+  those releases cannot discover current Plus updates automatically
+
 ## 3.7.10 (2026-07-12)
 
 - unify document color mode (Smart / Original / Match theme) across all themes and readable formats (PDF, EPUB, MOBI, CHM, XPS, DjVu): toolbar buttons are always available when a document is open

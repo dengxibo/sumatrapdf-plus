@@ -5822,6 +5822,7 @@ static void ShowOptionsDialog(HWND hwnd) {
     }
 
     bool useTabsBefore = gGlobalPrefs->useTabs;
+    bool checkForUpdatesBefore = gGlobalPrefs->checkForUpdates;
 
     if (IDOK != Dialog_Settings(hwnd, gGlobalPrefs)) {
         return;
@@ -5832,6 +5833,9 @@ static void ShowOptionsDialog(HWND hwnd) {
         DeleteThumbnailCacheDirectory();
     }
     UpdateDocumentColors();
+    if (gGlobalPrefs->checkForUpdates != checkForUpdatesBefore) {
+        RefreshAutomaticUpdateChecks();
+    }
 
     if (gGlobalPrefs->useTabs != useTabsBefore) {
         SaveSettings();

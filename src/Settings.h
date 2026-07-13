@@ -624,7 +624,7 @@ struct GlobalPrefs {
     Vec<char*>* defaultPasswords;
     // ISO code of the current UI language
     char* uiLanguage;
-    // we won't ask again to update to this version
+    // version for which the update prompt is temporarily snoozed
     char* versionToSkip;
     // default state of new windows (same as the last closed)
     int windowState;
@@ -640,6 +640,8 @@ struct GlobalPrefs {
     Vec<char*>* reopenOnce;
     // timestamp of the last update check
     FILETIME timeOfLastUpdateCheck;
+    // timestamp when an update version was snoozed
+    FILETIME timeOfUpdateCheckSnooze;
     // week count since 2011-01-01 needed to "age" openCount values in file
     // history
     int openCountWeek;
@@ -923,6 +925,12 @@ static const FieldInfo gFILETIMEFields[] = {
 };
 static const StructInfo gFILETIMEInfo = {sizeof(FILETIME), 2, gFILETIMEFields, "DwHighDateTime\0DwLowDateTime"};
 
+static const FieldInfo gFILETIME_1_Fields[] = {
+    {offsetof(FILETIME, dwHighDateTime), SettingType::Int, 0},
+    {offsetof(FILETIME, dwLowDateTime), SettingType::Int, 0},
+};
+static const StructInfo gFILETIME_1_Info = {sizeof(FILETIME), 2, gFILETIME_1_Fields, "DwHighDateTime\0DwLowDateTime"};
+
 static const FieldInfo gPointFields[] = {
     {offsetof(Point, x), SettingType::Int, 0},
     {offsetof(Point, y), SettingType::Int, 0},
@@ -931,7 +939,7 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-8.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-10.html"},
     {(size_t)-1, SettingType::Comment, 0},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0},
@@ -1036,13 +1044,14 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, sessionData), SettingType::Array, (intptr_t)&gSessionDataInfo},
     {offsetof(GlobalPrefs, reopenOnce), SettingType::StringArray, 0},
     {offsetof(GlobalPrefs, timeOfLastUpdateCheck), SettingType::Compact, (intptr_t)&gFILETIMEInfo},
+    {offsetof(GlobalPrefs, timeOfUpdateCheckSnooze), SettingType::Compact, (intptr_t)&gFILETIME_1_Info},
     {offsetof(GlobalPrefs, openCountWeek), SettingType::Int, 0},
     {offsetof(GlobalPrefs, propWinPos), SettingType::Compact, (intptr_t)&gPointInfo},
     {(size_t)-1, SettingType::Comment, 0},
     {(size_t)-1, SettingType::Comment, (intptr_t)"Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 109, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 110, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0HomePage"
     "ViewMode\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSession\0ReuseInstance\0S"
@@ -1055,8 +1064,8 @@ static const StructInfo gGlobalPrefsInfo = {
     "Search\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoice"
     "Id\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmart"
     "VoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSmartOnlineVoiceEn\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip"
-    "\0WindowState\0WindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0OpenCountWeek\0PropWinPos\0"
-    "\0"};
+    "\0WindowState\0WindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfUpdateCheckSnooze\0Ope"
+    "nCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)""},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)""},

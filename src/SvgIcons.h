@@ -28,6 +28,10 @@ enum class TbIcon {
     Dictionary,
     Speak,
     PauseSpeaking,
+    HomeList,
+    HomeThumbnails,
+    Close,
+    Pin,
     kMax
 };
 

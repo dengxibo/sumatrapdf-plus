@@ -220,6 +220,46 @@ static const char* gIconDictionary =
   </g>
 </svg>)DICT";
 
+// https://github.com/tabler/tabler-icons/blob/master/icons/list.svg
+static const char* gIconHomeList =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <line x1="9" y1="6" x2="20" y2="6" />
+  <line x1="9" y1="12" x2="20" y2="12" />
+  <line x1="9" y1="18" x2="20" y2="18" />
+  <line x1="5" y1="6" x2="5" y2="6.01" />
+  <line x1="5" y1="12" x2="5" y2="12.01" />
+  <line x1="5" y1="18" x2="5" y2="18.01" />
+</svg>)";
+
+// https://github.com/tabler/tabler-icons/blob/master/icons/layout-grid.svg
+static const char* gIconHomeThumbnails =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <rect x="4" y="4" width="6" height="6" rx="1" />
+  <rect x="14" y="4" width="6" height="6" rx="1" />
+  <rect x="4" y="14" width="6" height="6" rx="1" />
+  <rect x="14" y="14" width="6" height="6" rx="1" />
+</svg>)";
+
+// https://github.com/tabler/tabler-icons/blob/master/icons/x.svg
+static const char* gIconClose =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <line x1="18" y1="6" x2="6" y2="18" />
+  <line x1="6" y1="6" x2="18" y2="18" />
+</svg>)";
+
+// https://github.com/tabler/tabler-icons/blob/master/icons/pin.svg
+static const char* gIconPin =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M15 4.5l4.5 4.5" />
+  <path d="M14.5 9.5l-5 5" />
+  <path d="M9 15l-4 4" />
+  <path d="M9.5 4l10.5 10.5l-5.5 .5l-4 4l-1 -4.5l-4.5 -1l4 -4z" />
+</svg>)";
+
 // must match order in enum class TbIcon
 // clang-format off
 static const char* gIcons[] = {
@@ -246,6 +286,10 @@ static const char* gIcons[] = {
     gIconDictionary,
     gIconSpeak,
     gIconPauseSpeaking,
+    gIconHomeList,
+    gIconHomeThumbnails,
+    gIconClose,
+    gIconPin,
 };
 // clang-format on
 

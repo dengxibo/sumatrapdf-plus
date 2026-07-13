@@ -18,6 +18,7 @@
 #include "GlobalPrefs.h"
 #include "Flags.h"
 #include "Commands.h"
+#include "UpdateCheckPolicy.h"
 
 #include <float.h>
 #include <math.h>
@@ -196,6 +197,53 @@ static void hexstrTest() {
     utassert(ok);
 }
 
+static FILETIME FileTimeFromSeconds(i64 seconds) {
+    ULARGE_INTEGER value{};
+    value.QuadPart = (u64)seconds * 10000000;
+    FILETIME result{};
+    result.dwLowDateTime = value.LowPart;
+    result.dwHighDateTime = value.HighPart;
+    return result;
+}
+
+static void UpdateCheckPolicyTest() {
+    utassert(updatecheck::CanStartUpdateCheck(false, false, false, false, true, true, true));
+    utassert(!updatecheck::CanStartUpdateCheck(false, false, false, false, true, true, false));
+    utassert(!updatecheck::CanStartUpdateCheck(false, true, false, false, true, true, true));
+    utassert(!updatecheck::CanStartUpdateCheck(false, false, true, false, true, true, true));
+    utassert(!updatecheck::CanStartUpdateCheck(false, false, false, true, true, true, true));
+    utassert(updatecheck::CanStartUpdateCheck(true, false, true, true, false, false, false));
+    utassert(!updatecheck::CanStartUpdateCheck(true, true, false, false, true, true, true));
+
+    FILETIME zero{};
+    FILETIME now = FileTimeFromSeconds(10 * updatecheck::kSecondsInDay);
+    utassert(0 == updatecheck::GetAutomaticCheckDelaySecs(now, zero, updatecheck::kSecondsInDay));
+
+    FILETIME hourAgo = FileTimeFromSeconds(10 * updatecheck::kSecondsInDay - updatecheck::kSecondsInHour);
+    utassert(23 * updatecheck::kSecondsInHour ==
+             updatecheck::GetAutomaticCheckDelaySecs(now, hourAgo, updatecheck::kSecondsInDay));
+
+    FILETIME dayAgo = FileTimeFromSeconds(9 * updatecheck::kSecondsInDay);
+    utassert(0 == updatecheck::GetAutomaticCheckDelaySecs(now, dayAgo, updatecheck::kSecondsInDay));
+
+    FILETIME future = FileTimeFromSeconds(11 * updatecheck::kSecondsInDay);
+    utassert(updatecheck::kSecondsInDay ==
+             updatecheck::GetAutomaticCheckDelaySecs(now, future, updatecheck::kSecondsInDay));
+
+    utassert(updatecheck::kSecondsInHour == updatecheck::GetRetryDelaySecs(0));
+    utassert(2 * updatecheck::kSecondsInHour == updatecheck::GetRetryDelaySecs(1));
+    utassert(4 * updatecheck::kSecondsInHour == updatecheck::GetRetryDelaySecs(2));
+    utassert(6 * updatecheck::kSecondsInHour == updatecheck::GetRetryDelaySecs(3));
+    utassert(6 * updatecheck::kSecondsInHour == updatecheck::GetRetryDelaySecs(99));
+
+    FILETIME sixDaysAgo = FileTimeFromSeconds(4 * updatecheck::kSecondsInDay);
+    FILETIME sevenDaysAgo = FileTimeFromSeconds(3 * updatecheck::kSecondsInDay);
+    utassert(updatecheck::ShouldSnoozeVersion("3.7.11", "3.7.11", sixDaysAgo, now));
+    utassert(!updatecheck::ShouldSnoozeVersion("3.7.11", "3.7.11", sevenDaysAgo, now));
+    utassert(!updatecheck::ShouldSnoozeVersion("3.7.12", "3.7.11", sixDaysAgo, now));
+    utassert(!updatecheck::ShouldSnoozeVersion("3.7.11", "3.7.11", zero, now));
+}
+
 static void assertSerializedColor(COLORREF c, const char* s) {
     TempStr s2 = SerializeColorTemp(c);
     utassert(str::Eq(s2, s));
@@ -300,4 +348,5 @@ void SumatraPDF_UnitTests() {
     ParseCommandLineTest();
     versioncheck_test();
     hexstrTest();
+    UpdateCheckPolicyTest();
 }
