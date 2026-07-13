@@ -1646,10 +1646,6 @@ it:Commento:
 nl:Commentaar:
 pl:Komentarz:
 sk:Komentár:
-:Community fork; not affiliated with sumatrapdfreader.org
-cn:社区分支；与 sumatrapdfreader.org 无关
-de:Community-Fork; nicht mit sumatrapdfreader.org verbunden
-tw:社群分支；與 sumatrapdfreader.org 無關
 :Compatibility
 am:Համատեղելիությունը
 br:Compatibilidade

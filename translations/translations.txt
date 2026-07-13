@@ -32052,14 +32052,6 @@ ja:注記
 kr:참고
 ru:Примечание
 tw:說明
-:Community fork; not affiliated with sumatrapdfreader.org
-cn:社区分支；与 sumatrapdfreader.org 无关
-de:Community-Fork; nicht mit sumatrapdfreader.org verbunden
-fr:Fork communautaire ; non affilié à sumatrapdfreader.org
-ja:コミュニティ版；sumatrapdfreader.org とは無関係
-kr:커뮤니티 포크; sumatrapdfreader.org와 무관
-ru:Сообщественный форк; не связан с sumatrapdfreader.org
-tw:社群分支；與 sumatrapdfreader.org 無關
 :Plus source
 cn:Plus 源码
 de:Plus-Quellcode

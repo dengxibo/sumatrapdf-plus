@@ -368,7 +368,6 @@ struct AboutLayoutInfoEl {
 };
 
 static AboutLayoutInfoEl gAboutLayoutInfo[] = {
-    {_TRN("note"), _TRN("Community fork; not affiliated with sumatrapdfreader.org"), nullptr},
     {_TRN("Plus source"), _TRN("Sumatra PDF Plus on GitHub"), kPlusRepoURL},
     {_TRN("Plus issues"), _TRN("Report bugs (this fork only)"), kPlusIssuesURL},
     {_TRN("Plus guide"), _TRN("User guide (readme.txt)"), kPlusReadmeURL},
