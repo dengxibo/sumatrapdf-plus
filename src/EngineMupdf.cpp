@@ -4596,6 +4596,12 @@ bool EngineMupdfRelayoutForThemeChange(EngineBase* engine) {
             ok = RelayoutSingleChapterReflowHtml(e, ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
         } else {
             ApplyMupdfThemeCssOnly(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
+            // EPUB HTML is cached per chapter while FzPageInfo owns page objects
+            // pointing at the parsed chapter. Invalidating pages lazily can leave
+            // adjacent pages on different CSS generations after a mode switch.
+            // Drop both cache layers together before any new rendering starts.
+            DropAllReflowPageCaches(ctx, e);
+            fz_purge_stored_html(ctx, e->_doc);
             e->reflowThemeCssEpoch++;
             ok = true;
         }

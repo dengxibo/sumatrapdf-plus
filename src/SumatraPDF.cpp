@@ -2459,13 +2459,13 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
 
     EngineBase* engine = tab->GetEngine();
     if (IsReflowableMupdfForTheme(engine)) {
+        gRenderCache->CancelRendering(dm);
+        gRenderCache->FreeForDisplayModel(dm);
         if (!EngineMupdfRelayoutForThemeChange(engine)) {
             logfa("ApplyThemeChangeToTab: in-place reflow theme CSS update failed\n");
         }
         dm->OnMorePagesAvailable(tab == win->CurrentTab(), true);
         ReloadTocUiAfterReflowReparse(win, tab);
-        gRenderCache->CancelRendering(dm);
-        gRenderCache->FreeForDisplayModel(dm);
         tab->reloadOnFocus = false;
         return;
     }
@@ -3866,13 +3866,11 @@ void UpdateDocumentColors(bool rerender, bool updateReflowDocuments) {
     gRenderCache->linkColor = link;
     gRenderCache->darkModeEpoch++;
 
-    if (updateReflowDocuments) {
-        ApplyDocumentColorModeChangeToAllTabs();
-    }
-
     // Cached bitmaps are either recolored (PDF) or baked (ebooks). Marking them
     // out-of-date is not enough because RequestRendering() skips pages that
     // still Exist() in the cache, so stale tiles keep showing until scrolled.
+    // Clear old work before changing EPUB CSS; otherwise OnMorePagesAvailable()
+    // queues new-theme renders which are immediately canceled here.
     for (MainWindow* win : gWindows) {
         for (WindowTab* tab : win->Tabs()) {
             DisplayModel* dm = tab->AsFixed();
@@ -3883,6 +3881,10 @@ void UpdateDocumentColors(bool rerender, bool updateReflowDocuments) {
             gRenderCache->CancelRendering(dm);
             gRenderCache->FreeForDisplayModel(dm);
         }
+    }
+
+    if (updateReflowDocuments) {
+        ApplyDocumentColorModeChangeToAllTabs();
     }
 
     if (rerender) {

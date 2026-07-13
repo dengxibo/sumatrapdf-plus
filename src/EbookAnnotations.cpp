@@ -21,6 +21,8 @@
 #include "EngineAll.h"
 #include "DisplayModel.h"
 #include "EbookAnnotations.h"
+#include "PdfDarkMode.h"
+#include "Theme.h"
 #include "Translations.h"
 #include "MainWindow.h"
 #include "Selection.h"
@@ -1091,15 +1093,46 @@ bool EbookAnnotationsExportNotes(WindowTab* tab, HWND hwndParent) {
     return true;
 }
 
+// PDF annotations are rendered into the page bitmap and therefore go through
+// UpdateBitmapColors() together with the page. EPUB annotations are painted as
+// an overlay, so apply the same affine color mapping before painting them.
+static COLORREF MapEbookAnnotationColor(COLORREF color) {
+    PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
+    bool pageUsesThemeColors =
+        docMode != PdfDocumentColorMode::Light && (ThemeUsesDarkChrome() || !ThemeUsesOriginalPageColors());
+    if (!pageUsesThemeColors) {
+        return color;
+    }
+
+    COLORREF bgColor;
+    COLORREF textColor = ThemePageRenderColors(bgColor, true);
+    u8 r, g, b;
+    u8 rt, gt, bt;
+    u8 rb, gb, bb;
+    UnpackColor(color, r, g, b);
+    UnpackColor(textColor, rt, gt, bt);
+    UnpackColor(bgColor, rb, gb, bb);
+
+    auto mapChannel = [](u8 value, u8 text, u8 background) -> u8 {
+        int x = value * ((int)background - (int)text) + 128;
+        x += x >> 8;
+        return (u8)(text + (x >> 8));
+    };
+    return RGB(mapChannel(r, rt, rb), mapChannel(g, gt, gb), mapChannel(b, bt, bb));
+}
+
 static void PaintEbookTextMarker(WindowTab* tab, HDC hdc, Rect anchor, COLORREF color) {
     int size = DpiScale(tab->win->hwndFrame, 14);
     Rect marker(anchor.x - size / 2, anchor.y - size / 2, size, size);
     u8 r, g, b;
     UnpackColor(color, r, g, b);
+    COLORREF borderColor = MapEbookAnnotationColor(RGB(45, 45, 45));
+    u8 borderR, borderG, borderB;
+    UnpackColor(borderColor, borderR, borderG, borderB);
     Gdiplus::Graphics graphics(hdc);
     graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
     Gdiplus::SolidBrush brush(Gdiplus::Color(230, r, g, b));
-    Gdiplus::Pen pen(Gdiplus::Color(210, 45, 45, 45), 1.f);
+    Gdiplus::Pen pen(Gdiplus::Color(210, borderR, borderG, borderB), 1.f);
     Gdiplus::Rect ellipse(marker.x, marker.y, marker.dx, marker.dy - size / 4);
     graphics.FillEllipse(&brush, ellipse);
     graphics.DrawEllipse(&pen, ellipse);
@@ -1114,14 +1147,93 @@ static void PaintEbookMarkup(WindowTab* tab, HDC hdc, Vec<Rect>& screenRects, Eb
         return;
     }
     if (annotation->type == AnnotationType::Text) {
-        PaintEbookTextMarker(tab, hdc, screenRects.at(0), annotation->color);
+        PaintEbookTextMarker(tab, hdc, screenRects.at(0), MapEbookAnnotationColor(annotation->color));
         return;
     }
     PaintTextMarkupOverlay(hdc, tab->win->canvasRc, annotation->type, annotation->color, screenRects);
 }
 
+static bool PaintTextHighlightMultiply(HDC hdc, Rect canvasRc, Vec<Rect>& screenRects, COLORREF color) {
+    Rect bounds;
+    Vec<Rect> clippedRects;
+    for (Rect rect : screenRects) {
+        rect = rect.Intersect(canvasRc);
+        if (rect.IsEmpty()) {
+            continue;
+        }
+        bounds = bounds.IsEmpty() ? rect : bounds.Union(rect);
+        clippedRects.Append(rect);
+    }
+    if (bounds.IsEmpty()) {
+        return true;
+    }
+
+    HBITMAP bitmap = CreateMemoryBitmap(bounds.Size());
+    HDC bitmapDc = CreateCompatibleDC(hdc);
+    if (!bitmap || !bitmapDc) {
+        DeleteObject(bitmap);
+        DeleteDC(bitmapDc);
+        return false;
+    }
+    HGDIOBJ prevBitmap = SelectObject(bitmapDc, bitmap);
+    if (!BitBlt(bitmapDc, 0, 0, bounds.dx, bounds.dy, hdc, bounds.x, bounds.y, SRCCOPY)) {
+        SelectObject(bitmapDc, prevBitmap);
+        DeleteObject(bitmap);
+        DeleteDC(bitmapDc);
+        return false;
+    }
+
+    DIBSECTION info{};
+    int infoSize = GetObject(bitmap, sizeof(info), &info);
+    if (infoSize < sizeof(info.dsBm) || !info.dsBm.bmBits || info.dsBm.bmBitsPixel != 32) {
+        SelectObject(bitmapDc, prevBitmap);
+        DeleteObject(bitmap);
+        DeleteDC(bitmapDc);
+        return false;
+    }
+
+    COLORREF themeBg;
+    COLORREF themeText = ThemePageRenderColors(themeBg, true);
+    if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light ||
+        (!ThemeUsesDarkChrome() && ThemeUsesOriginalPageColors())) {
+        themeText = WIN_COL_BLACK;
+    }
+    u8 hr, hg, hb;
+    u8 tr, tg, tb;
+    UnpackColor(color, hr, hg, hb);
+    UnpackColor(themeText, tr, tg, tb);
+    const u8 highlight[3] = {hb, hg, hr};
+    const u8 text[3] = {tb, tg, tr};
+
+    auto multiplyFromText = [](u8 value, u8 textValue, u8 highlightValue) -> u8 {
+        int x = ((int)value - (int)textValue) * highlightValue + 128;
+        x += x >> 8;
+        return (u8)(textValue + (x >> 8));
+    };
+
+    u8* pixels = (u8*)info.dsBm.bmBits;
+    for (Rect rect : clippedRects) {
+        int xStart = rect.x - bounds.x;
+        int yStart = rect.y - bounds.y;
+        for (int y = yStart; y < yStart + rect.dy; y++) {
+            for (int x = xStart; x < xStart + rect.dx; x++) {
+                u8* pixel = pixels + y * info.dsBm.bmWidthBytes + x * 4;
+                for (int channel = 0; channel < 3; channel++) {
+                    pixel[channel] = multiplyFromText(pixel[channel], text[channel], highlight[channel]);
+                }
+            }
+        }
+    }
+
+    bool ok = BitBlt(hdc, bounds.x, bounds.y, bounds.dx, bounds.dy, bitmapDc, 0, 0, SRCCOPY) != FALSE;
+    SelectObject(bitmapDc, prevBitmap);
+    DeleteObject(bitmap);
+    DeleteDC(bitmapDc);
+    return ok;
+}
+
 // Match MuPDF/Acrobat markup appearance (pdf-appearance.c):
-// highlight: translucent fill (PDF uses Multiply blend)
+// highlight: Multiply blend
 // underline: line at 1/7 of height from bottom, thickness h/16
 // strike-out: line at 3/7 of height from bottom, thickness h/16
 // squiggly: zigzag from baseline with amplitude h/7, step h/7, thickness h/16
@@ -1130,10 +1242,13 @@ void PaintTextMarkupOverlay(HDC hdc, Rect canvasRc, AnnotationType type, COLORRE
         return;
     }
     if (type == AnnotationType::Highlight) {
-        // Alpha approximates PDF Multiply highlight on a light page.
-        PaintTransparentRectangles(hdc, canvasRc, screenRects, color, 0x90, 0);
+        if (!PaintTextHighlightMultiply(hdc, canvasRc, screenRects, color)) {
+            PaintTransparentRectangles(hdc, canvasRc, screenRects, color, 0x90, 0);
+        }
         return;
     }
+
+    color = MapEbookAnnotationColor(color);
 
     u8 r, g, b;
     UnpackColor(color, r, g, b);
