@@ -835,6 +835,7 @@ void ShowProperties(HWND parent, DocController* ctrl) {
         DarkMode::setDarkWndSafe(hwnd);
         DarkMode::setWindowEraseBgSubclass(hwnd);
     }
+    UpdateWindowCaptionTheme(hwnd);
     ShowWindow(hwnd, SW_SHOW);
 
     // start background font loading

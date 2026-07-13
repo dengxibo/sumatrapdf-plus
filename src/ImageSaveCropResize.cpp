@@ -1861,5 +1861,6 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
         DarkMode::setDarkWndSafe(hwnd);
         DarkMode::setWindowEraseBgSubclass(hwnd);
     }
+    UpdateWindowCaptionTheme(hwnd);
     ShowWindow(hwnd, SW_SHOW);
 }

@@ -482,11 +482,11 @@ static void ApplyEditAnnotationsWindowTheme(EditAnnotationsWindow* ew, bool inst
             DarkMode::setDarkWndNotifySafe(ew->hwnd);
             DarkMode::setWindowEraseBgSubclass(ew->hwnd);
         } else {
-            DarkMode::setDarkTitleBarEx(ew->hwnd, true);
             DarkMode::setWindowCtlColorSubclass(ew->hwnd);
             DarkMode::setChildCtrlsTheme(ew->hwnd);
         }
     }
+    UpdateWindowCaptionTheme(ew->hwnd);
 
     uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN;
     RedrawWindow(ew->hwnd, nullptr, nullptr, flags);

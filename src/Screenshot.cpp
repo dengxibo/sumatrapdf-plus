@@ -20,6 +20,8 @@
 #include "GlobalPrefs.h"
 #include "AppSettings.h"
 #include "MainWindow.h"
+#include "Theme.h"
+#include "DarkModeSubclass.h"
 #include "Translations.h"
 
 extern Vec<MainWindow*> gWindows;
@@ -1451,5 +1453,10 @@ void ShowSetScreenshotHotkeyDialog(HWND hwndOwner) {
     gHotkeyDlgHwnd = hwnd;
     gKeyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc, h, 0);
 
+    if (UseDarkModeLib()) {
+        DarkMode::setDarkWndSafe(hwnd);
+        DarkMode::setWindowEraseBgSubclass(hwnd);
+    }
+    UpdateWindowCaptionTheme(hwnd);
     ShowWindow(hwnd, SW_SHOW);
 }

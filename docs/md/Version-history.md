@@ -3,7 +3,7 @@
 ## 3.7.10 (2026-07-12)
 
 - unify document color mode (Smart / Original / Match theme) across all themes and readable formats (PDF, EPUB, MOBI, CHM, XPS, DjVu): toolbar buttons are always available when a document is open
-- Smart mode preserves embedded images in light and dark themes (fixes Light-Warm yellow tint on photos)
+- Smart mode in **dark themes** preserves embedded images where object-level rendering is enabled; in **Light-Warm**, Smart applies uniform eye-care recolor to the whole page (choose Original for publisher colors)
 - EPUB/MOBI/CHM respect document color mode for theme CSS injection; Original shows publisher colors
 - rename document color mode command and tooltip strings from "PDF Document Color Mode" to "Document Color Mode" (all languages)
 - add **Export Notes** in the PDF annotation editor to save all annotations as Markdown (page, excerpt, note, author, date), same format as EPUB/MOBI export

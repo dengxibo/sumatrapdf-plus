@@ -3976,7 +3976,7 @@ li, blockquote {
 )";
         static const char* kEpubReaderLightCss = R"(html {
   background-color: #f7f3e8 !important;
-  color: #565047 !important;
+  color: #333333 !important;
 }
 body, p, span, blockquote, li, td, th, div,
 section, article, main, header, footer, pre, table,
@@ -3985,7 +3985,7 @@ section, article, main, header, footer, pre, table,
 .calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
 .calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
   background-color: transparent !important;
-  color: #565047 !important;
+  color: #333333 !important;
 }
 .noindent-bodycontent-1-fangsong,
 .bodycontent-1-fangsong,
@@ -4002,11 +4002,11 @@ section, article, main, header, footer, pre, table,
 .songti,
 span.songti {
   background-color: transparent !important;
-  color: #565047 !important;
+  color: #333333 !important;
   font-weight: 400 !important;
 }
 p {
-  color: #565047 !important;
+  color: #333333 !important;
 }
 h1, h2, h3, h4, h5, h6,
 .title, .chapter, .chapter-title, .sgc-toc-title {
@@ -5952,7 +5952,11 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
         fzcookie = (fz_cookie*)cookie->GetData();
     }
 
-    FzPageInfo* pageInfo = GetFzPageInfo(pageNo, false, fzcookie);
+    // Rendering a PDF doesn't need its structured-text page. In particular,
+    // eagerly extracting the hidden text layer here makes scanned OCR pages
+    // noticeably slower to appear. Text selection/search loads it on demand.
+    bool loadQuick = pdfdoc != nullptr;
+    FzPageInfo* pageInfo = GetFzPageInfo(pageNo, loadQuick, fzcookie);
     if (!pageInfo || !pageInfo->page) {
         return nullptr;
     }

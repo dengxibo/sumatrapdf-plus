@@ -346,8 +346,8 @@ void RefreshWordLookupTheme() {
         DarkMode::removeWindowCtlColorSubclass(popupHwnd);
     } else if (UseDarkModeLib()) {
         DarkMode::removeWindowCtlColorSubclass(popupHwnd);
-        DarkMode::setDarkTitleBarEx(popupHwnd, true);
     }
+    UpdateWindowCaptionTheme(popupHwnd);
     wnd->UpdateChrome();
     uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN;
     RedrawWindow(popupHwnd, nullptr, nullptr, flags);

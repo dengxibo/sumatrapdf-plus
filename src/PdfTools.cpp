@@ -276,6 +276,7 @@ void ShowPdfBakeDialog(MainWindow* win) {
         DarkMode::setDarkWndSafe(hwnd);
         DarkMode::setWindowEraseBgSubclass(hwnd);
     }
+    UpdateWindowCaptionTheme(hwnd);
     ShowWindow(hwnd, SW_SHOW);
 }
 
@@ -530,6 +531,7 @@ void ShowPdfExtractTextDialog(MainWindow* win) {
         DarkMode::setDarkWndSafe(hwnd);
         DarkMode::setWindowEraseBgSubclass(hwnd);
     }
+    UpdateWindowCaptionTheme(hwnd);
     ShowWindow(hwnd, SW_SHOW);
 }
 
@@ -724,6 +726,7 @@ void ShowPdfCompressDialog(MainWindow* win) {
         DarkMode::setDarkWndSafe(hwnd);
         DarkMode::setWindowEraseBgSubclass(hwnd);
     }
+    UpdateWindowCaptionTheme(hwnd);
     ShowWindow(hwnd, SW_SHOW);
 }
 
@@ -914,6 +917,7 @@ void ShowPdfDecompressDialog(MainWindow* win) {
         DarkMode::setDarkWndSafe(hwnd);
         DarkMode::setWindowEraseBgSubclass(hwnd);
     }
+    UpdateWindowCaptionTheme(hwnd);
     ShowWindow(hwnd, SW_SHOW);
 }
 
@@ -1341,6 +1345,7 @@ static void ShowPdfPageRangeDialog(MainWindow* win, bool isExtract) {
         DarkMode::setDarkWndSafe(hwnd);
         DarkMode::setWindowEraseBgSubclass(hwnd);
     }
+    UpdateWindowCaptionTheme(hwnd);
     ShowWindow(hwnd, SW_SHOW);
 }
 
@@ -1583,6 +1588,7 @@ void ShowPdfEncryptDialog(MainWindow* win) {
         DarkMode::setDarkWndSafe(hwnd);
         DarkMode::setWindowEraseBgSubclass(hwnd);
     }
+    UpdateWindowCaptionTheme(hwnd);
     ShowWindow(hwnd, SW_SHOW);
     SetFocus(dlg->hwndPasswordEdit);
 }
@@ -1793,5 +1799,6 @@ void ShowPdfDecryptDialog(MainWindow* win) {
         DarkMode::setDarkWndSafe(hwnd);
         DarkMode::setWindowEraseBgSubclass(hwnd);
     }
+    UpdateWindowCaptionTheme(hwnd);
     ShowWindow(hwnd, SW_SHOW);
 }

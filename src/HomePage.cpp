@@ -784,9 +784,7 @@ LRESULT CALLBACK WndProcAbout(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_CREATE:
             ReportIf(gHwndAbout);
-            if (UseDarkModeLib()) {
-                DarkMode::setDarkTitleBarEx(hwnd, true);
-            }
+            UpdateWindowCaptionTheme(hwnd);
             break;
 
         case WM_ERASEBKGND:

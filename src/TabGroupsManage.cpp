@@ -25,6 +25,7 @@
 #include "Translations.h"
 #include "SumatraConfig.h"
 #include "Theme.h"
+#include "DarkModeSubclass.h"
 #include "TabGroupsManage.h"
 
 constexpr const WCHAR* kTabGroupsWinClassName = L"SUMATRA_PDF_TAB_GROUPS";
@@ -506,6 +507,11 @@ static void ShowTabGroupsDialog(MainWindow* win, TabGroupDialogMode mode) {
     LayoutControls(d);
     CenterDialog(hwnd, win->hwndFrame);
     HwndEnsureVisible(hwnd);
+    if (UseDarkModeLib()) {
+        DarkMode::setDarkWndSafe(hwnd);
+        DarkMode::setWindowEraseBgSubclass(hwnd);
+    }
+    UpdateWindowCaptionTheme(hwnd);
     ShowWindow(hwnd, SW_SHOW);
 
     if (d->hwndEdit) {

@@ -6827,18 +6827,18 @@ nl:Stel thema 'Light-White' in
 pl:Ustaw motyw 'Light-White'
 sk:Nastaviť motív 'Light-White'
 tw:設定成 'Light-White' 主題
-:Set theme 'System'
-am:Սահմանել 'System' ձևավորումը
-br:Definir tema 'System'
-cn:设置为 'System' 主题
-co:Definisce u tema « System »
-de:Design 'System' festlegen
-el:Ορισμός θέματος 'System'
-it:Imposta tema 'System'
-nl:Stel thema 'System' in
-pl:Ustaw motyw 'System'
-sk:Nastaviť motív 'System'
-tw:設定成 'System' 主題
+:Follow system theme
+am:Հետևել համակարգի ձևավորմանը
+br:Seguir tema do sistema
+cn:跟随系统主题
+co:Seguità u tema di u sistema
+de:Systemdesign übernehmen
+el:Ακολούθηση θέματος συστήματος
+it:Segui il tema di sistema
+nl:Systeemthema volgen
+pl:Użyj motywu systemowego
+sk:Použiť systémový motív
+tw:跟隨系統主題
 :Show &Bookmarks
 am:Ցուցադրել &Էջանիշերը
 br:Mostrar &Favoritos

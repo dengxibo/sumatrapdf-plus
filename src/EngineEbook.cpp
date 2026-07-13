@@ -657,7 +657,7 @@ RenderedBitmap* EngineEbook::RenderPage(RenderPageArgs& args) {
         if (docMode == PdfDocumentColorMode::Black ||
             (docMode == PdfDocumentColorMode::Auto && !ThemeUsesOriginalPageColors())) {
             bgCol = RgbToCOLORREF(0xF7F3E8);
-            textCol = RgbToCOLORREF(0x565047);
+            textCol = RgbToCOLORREF(0x333333);
         } else {
             bgCol = RgbToCOLORREF(0xFFFFFF);
             textCol = RgbToCOLORREF(0x000000);

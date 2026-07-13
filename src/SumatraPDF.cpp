@@ -2568,6 +2568,15 @@ void UpdateAfterThemeChange() {
         uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN;
         RedrawWindow(win->hwndFrame, nullptr, nullptr, flags);
     }
+    EnumThreadWindows(
+        GetCurrentThreadId(),
+        [](HWND hwnd, LPARAM) -> BOOL {
+            if (GetWindowLongW(hwnd, GWL_STYLE) & WS_CAPTION) {
+                UpdateWindowCaptionTheme(hwnd);
+            }
+            return TRUE;
+        },
+        0);
     RefreshWordLookupTheme();
     RefreshEditAnnotationsWindowsTheme();
     RefreshEbookAnnotationsWindowsTheme();
@@ -10295,6 +10304,7 @@ static INT_PTR CALLBACK Dialog_ReadAloudSmartVoices_Proc(HWND hDlg, UINT msg, WP
             if (UseDarkModeLib()) {
                 DarkMode::setDarkWndSafe(hDlg);
             }
+            UpdateWindowCaptionTheme(hDlg);
 
             HwndSetText(hDlg, data->kind == SmartBilingualKind::Online ? _TRA("Online smart bilingual settings")
                                                                        : _TRA("Local smart bilingual settings"));
@@ -12368,14 +12378,14 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
             return FrameOnCommand(win, hwnd, msg, wp, lp);
 
         case WM_MEASUREITEM:
-            if (ThemeColorizeControls() || ThemeUsesDarkChrome()) {
+            if (ShouldOwnerDrawMenus()) {
                 MenuCustomDrawMesureItem(hwnd, (MEASUREITEMSTRUCT*)lp);
                 return TRUE;
             }
             break;
 
         case WM_DRAWITEM:
-            if (ThemeColorizeControls() || ThemeUsesDarkChrome()) {
+            if (ShouldOwnerDrawMenus()) {
                 MenuCustomDrawItem(hwnd, (DRAWITEMSTRUCT*)lp);
                 return TRUE;
             }

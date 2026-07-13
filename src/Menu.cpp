@@ -2187,6 +2187,11 @@ void FreeMenuOwnerDrawInfoData(HMENU hmenu) {
         }
     };
 }
+
+bool ShouldOwnerDrawMenus() {
+    return ThemeColorizeControls() || ThemeUsesDarkChrome() || ThemeUsesEyeCareChrome();
+}
+
 #if 0
 void MarkMenuOwnerDraw(HMENU, bool) {
     // our painting isn't good enough so disable for now
@@ -2197,7 +2202,7 @@ void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar) {
     // darkmodelib handles the menu bar via setWindowMenuBarSubclass
     // but doesn't handle popup/context menus, so we owner-draw those
     if (isMenuBar && UseDarkModeLib() && DarkMode::isEnabled()) {
-        if (!ThemeUsesDarkChrome() && !ThemeColorizeControls()) {
+        if (!ShouldOwnerDrawMenus()) {
             return;
         }
         int n = GetMenuItemCount(hmenu);
@@ -2211,14 +2216,14 @@ void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar) {
         }
         return;
     }
-    if (!ThemeUsesDarkChrome() && !ThemeColorizeControls()) {
+    if (!ShouldOwnerDrawMenus()) {
         return;
     }
 
     // https://stackoverflow.com/questions/30353644/cmenu-border-color-on-mfc
     static HBRUSH hbrBrush = nullptr;
     static COLORREF bgCol = (COLORREF)-1;
-    COLORREF col = ThemeMainWindowBackgroundColor();
+    COLORREF col = ThemeChromeBackgroundColor();
     if (!hbrBrush) {
         bgCol = col;
         hbrBrush = ::CreateSolidBrush(col);
@@ -2395,7 +2400,7 @@ void MenuCustomDrawItem(HWND hwnd, DRAWITEMSTRUCT* dis) {
     HFONT font = GetAppMenuFontForHwnd(hwnd);
     ScopedSelectFont restoreFont(hdc, font);
 
-    COLORREF bgCol = ThemeMainWindowBackgroundColor();
+    COLORREF bgCol = ThemeChromeBackgroundColor();
     COLORREF txtCol = ThemeWindowTextColor();
 
     bool isSelected = bit::IsMaskSet(dis->itemState, (uint)ODS_SELECTED);

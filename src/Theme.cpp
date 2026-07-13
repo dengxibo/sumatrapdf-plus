@@ -2,6 +2,7 @@
 License: GPLv3 */
 
 #include "utils/BaseUtil.h"
+#include "utils/WinDynCalls.h"
 #include "utils/WinUtil.h"
 
 #include "Settings.h"
@@ -33,7 +34,7 @@ bool UseDarkModeLib() {
 preserve those translations:
 _TRN("Set theme 'Light-Warm'")
 _TRN("Set theme 'Light-White'")
-_TRN("Set theme 'System'")
+_TRN("Follow system theme")
 _TRN("Set theme 'Dark-Dracula'")
 _TRN("Set theme 'Dark-Black'")
 */
@@ -45,11 +46,11 @@ static const char* SetThemeMenuLabel(int themeIdx) {
         case 1:
             return _TRA("Set theme 'Light-White'");
         case 2:
-            return _TRA("Set theme 'System'");
-        case 3:
             return _TRA("Set theme 'Dark-Dracula'");
-        case 4:
+        case 3:
             return _TRA("Set theme 'Dark-Black'");
+        case 4:
+            return _TRA("Follow system theme");
         default:
             return _TRA("Set theme 'Light-Warm'");
     }
@@ -61,9 +62,9 @@ constexpr const char* kThemeDarkDracula = "Dark-Dracula";
 constexpr const char* kThemeDarkBlack = "Dark-Black";
 static constexpr int kThemeIdxLightWarm = 0;
 static constexpr int kThemeIdxLightWhite = 1;
-static constexpr int kThemeIdxSystem = 2;
-static constexpr int kThemeIdxDarkDracula = 3;
-static constexpr int kThemeIdxDarkBlack = 4;
+static constexpr int kThemeIdxDarkDracula = 2;
+static constexpr int kThemeIdxDarkBlack = 3;
+static constexpr int kThemeIdxSystem = 4;
 
 constexpr COLORREF kColBlack = 0x000000;
 constexpr COLORREF kColWhite = 0xFFFFFF;
@@ -93,14 +94,6 @@ static const char* themesTxt = R"(Themes [
         ColorizeControls = false
     ]
     [
-        Name = System
-        TextColor = #333333
-        BackgroundColor = #ebe6da
-        ControlBackgroundColor = #f5f1e8
-        LinkColor = #0020a0
-        ColorizeControls = false
-    ]
-    [
         Name = Dark-Dracula
         TextColor = #F8F8F2
         BackgroundColor = #282A36
@@ -115,6 +108,14 @@ static const char* themesTxt = R"(Themes [
         ControlBackgroundColor = #050505
         LinkColor = #7AA2F7
         ColorizeControls = true
+    ]
+    [
+        Name = System
+        TextColor = #333333
+        BackgroundColor = #ebe6da
+        ControlBackgroundColor = #f5f1e8
+        LinkColor = #0020a0
+        ColorizeControls = false
     ]
 ]
 )";
@@ -245,6 +246,23 @@ bool ThemeUsesOriginalPageColors() {
 
 bool ThemeUsesEyeCareChrome() {
     return !ThemeUsesDarkChrome() && !ThemeUsesOriginalPageColors();
+}
+
+void UpdateWindowCaptionTheme(HWND hwnd) {
+    if (!hwnd) {
+        return;
+    }
+    if (ThemeUsesEyeCareChrome()) {
+        if (UseDarkModeLib()) {
+            DarkMode::setDarkTitleBarEx(hwnd, false);
+        }
+        dwm::SetWindowCaptionColors(hwnd, ThemeChromeBackgroundColor(), ThemeWindowTextColor());
+        return;
+    }
+    dwm::ResetWindowCaptionColors(hwnd);
+    if (UseDarkModeLib()) {
+        DarkMode::setDarkTitleBarEx(hwnd, ThemeUsesDarkChrome());
+    }
 }
 
 bool IsDarkThemeSelected() {

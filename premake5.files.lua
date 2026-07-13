@@ -1443,6 +1443,7 @@ function pdf_preview_files()
     "PdfCreator.*",
     "PdfDarkModeNoOp.cpp",
     "PdfCadEnhanceNoOp.cpp",
+    "MdConvertNoOp.cpp",
     "RegistryPreview.*",
     "SumatraConfig.*",
     "utils/Log.*",
@@ -1474,6 +1475,7 @@ function search_filter_files()
     "PalmDbReader.*",
     "PdfDarkModeNoOp.cpp",
     "PdfCadEnhanceNoOp.cpp",
+    "MdConvertNoOp.cpp",
     "RegistrySearchFilter.*",
     "utils/Log.*",
   })

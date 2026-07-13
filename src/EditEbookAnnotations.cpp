@@ -106,11 +106,11 @@ static void ApplyEbookAnnotationsWindowTheme(EbookAnnotationsWindow* window, boo
             DarkMode::setDarkWndNotifySafe(window->hwnd);
             DarkMode::setWindowEraseBgSubclass(window->hwnd);
         } else {
-            DarkMode::setDarkTitleBarEx(window->hwnd, true);
             DarkMode::setWindowCtlColorSubclass(window->hwnd);
             DarkMode::setChildCtrlsTheme(window->hwnd);
         }
     }
+    UpdateWindowCaptionTheme(window->hwnd);
 
     uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN;
     RedrawWindow(window->hwnd, nullptr, nullptr, flags);

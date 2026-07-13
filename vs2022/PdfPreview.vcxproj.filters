@@ -64,6 +64,7 @@
     <ClCompile Include="..\src\PdfCadEnhanceNoOp.cpp" />
     <ClCompile Include="..\src\PdfCreator.cpp" />
     <ClCompile Include="..\src\PdfDarkModeNoOp.cpp" />
+    <ClCompile Include="..\src\MdConvertNoOp.cpp" />
     <ClCompile Include="..\src\RegistryPreview.cpp" />
     <ClCompile Include="..\src\SumatraConfig.cpp" />
     <ClCompile Include="..\src\mui\Mui.cpp">

@@ -14,6 +14,7 @@ constexpr const char* kMenuSeparator = "-----";
 void FreeAllMenuDrawInfos();
 void FreeMenuOwnerDrawInfo(MenuOwnerDrawInfo*);
 void MarkMenuOwnerDraw(HMENU, bool isMenuBar = false);
+bool ShouldOwnerDrawMenus();
 void FreeMenuOwnerDrawInfoData(HMENU);
 void MenuCustomDrawMesureItem(HWND, MEASUREITEMSTRUCT*);
 void MenuCustomDrawItem(HWND, DRAWITEMSTRUCT*);

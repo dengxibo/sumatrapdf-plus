@@ -35,6 +35,7 @@ bool ThemeUsesBlackChrome();
 bool ThemeUsesOriginalPageColors();
 bool ThemeUsesEyeCareChrome();
 bool IsCurrentThemeDefault();
+void UpdateWindowCaptionTheme(HWND hwnd);
 COLORREF AccentColor(COLORREF col, int light, int dark = 0);
 void FreeThemes();
 bool UseDarkModeLib();
