@@ -161,7 +161,22 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
     int len;
     Rect* coords;
     const WCHAR* text = ts->engine->GetTextForPage(pageNo, &len, &coords);
-    ReportIf(len < glyph + length);
+    // Selection endpoints can go stale after a relayout (e.g. toggling dark/light
+    // theme re-flows an EPUB and changes a page's text length). Clamp the range
+    // instead of reading past the coords/text arrays (out-of-bounds in release).
+    if (!text || !coords || len <= 0) {
+        return;
+    }
+    glyph = limitValue(glyph, 0, len);
+    if (length < 0) {
+        length = 0;
+    }
+    if (glyph + length > len) {
+        length = len - glyph;
+    }
+    if (length <= 0) {
+        return;
+    }
     Rect mediabox = ts->engine->PageMediabox(pageNo).Round();
     Rect *c = &coords[glyph], *end = c + length;
     while (c < end) {

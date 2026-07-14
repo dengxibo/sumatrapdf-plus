@@ -154,6 +154,10 @@ class EngineMupdf : public EngineBase {
     // True while GetToc() is building the tree on the UI thread. Skips per-entry
     // fz_resolve_link_dest calls that would layout HTML for every bookmark.
     bool bulkBuildingToc = false;
+    // Serializes GetToc() tree building. The background reflow loader pre-builds
+    // the tree at completion (off the UI thread) so the UI only pays the Win32
+    // tree-insert cost; this lock prevents a racing UI GetToc() from double-building.
+    CRITICAL_SECTION tocBuildLock;
 
     // password used to decrypt the document (needed for re-encryption/decryption)
     char* pdfPassword = nullptr;
@@ -166,8 +170,20 @@ class EngineMupdf : public EngineBase {
     volatile LONG reflowChaptersCounted = 0;
     // set while the UI/render thread needs exclusive docLock access
     volatile LONG reflowUiWantsDocLock = 0;
+    // set while a UI-critical operation (theme change, annotation edit) runs;
+    // the background chapter loader fully pauses so it doesn't starve the UI
+    // thread's docLock acquisitions for the whole remaining load.
+    volatile LONG reflowUiPaused = 0;
     // 0-based global page index at the start of each chapter (built during background load)
     Vec<int> reflowChapterStartPage;
+    // Serializes chapter counting so the background loader and on-demand (TOC
+    // navigation) counting on the UI thread cooperate instead of corrupting
+    // reflowChapterStartPage. Held per-chapter, never across the whole loop.
+    CRITICAL_SECTION reflowCountLock;
+    // total pages of all counted chapters == global start page of the next chapter
+    int reflowPagesCounted = 0;
+    // fz_count_chapters() result, cached once counting starts (0 = not yet known)
+    int reflowNumChapters = 0;
     // Bumped on theme toggle; pages/chapters restyle lazily when rendered.
     u32 reflowThemeCssEpoch = 1;
     // Synthesized HTML for .md/.txt kept for fast theme reparse (styles are baked at parse time).

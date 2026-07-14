@@ -93,12 +93,19 @@ static int ColumnsFromDisplayMode(DisplayMode displayMode) {
     return 1;
 }
 
-// During progressive EPUB loading, only lay out newly added pages when possible
-// instead of re-walking thousands of pages on every batch update.
-static bool TryRelayoutAppendedPages(DisplayModel* dm, int firstNewPage) {
-    if (!dm->pagesInfo || firstNewPage <= 1) {
-        return false;
-    }
+// Extend the page layout for pages appended during progressive reflowable-EPUB
+// loading, resuming from dm->reflowLayoutValidUpto (the last page with valid
+// layout). Returns false if a full relayout is required instead.
+//
+// Resuming from the watermark (not from "pages added this batch") is what makes
+// this correct: throttled batches advance pagesInfoCount without laying out, and
+// because those batches never update reflowLayoutValidUpto, the next call here
+// picks up exactly at the first un-laid-out page, leaving no blank gaps.
+//
+// For reflowable EPUBs every page shares the viewport width, so appended pages
+// get the same x centering a full relayout would produce; a full relayout still
+// runs at load completion, correcting any drift.
+static bool LayoutAppendedReflowPages(DisplayModel* dm) {
     if (!EngineIsProgressiveEbookLoading(dm->engine)) {
         return false;
     }
@@ -106,39 +113,42 @@ static bool TryRelayoutAppendedPages(DisplayModel* dm, int firstNewPage) {
     if (!IsContinuous(mode) || IsBookView(mode) || ColumnsFromDisplayMode(mode) != 1) {
         return false;
     }
-
+    int validUpto = dm->reflowLayoutValidUpto;
     int nPages = dm->PageCount();
-    if (firstNewPage > nPages) {
-        return false;
+    if (validUpto < 1 || validUpto > nPages) {
+        return false; // no trustworthy baseline -> full relayout
+    }
+    if (validUpto == nPages) {
+        return true; // nothing new appended; keep existing layout
     }
 
-    int columnMaxWidth = 0;
-    for (int pageNo = 1; pageNo < firstNewPage; pageNo++) {
-        PageInfo* pi = dm->GetPageInfo(pageNo);
-        if (pi->isShown && pi->pos.dx > columnMaxWidth) {
-            columnMaxWidth = pi->pos.dx;
-        }
-    }
+    int columnMaxWidth = dm->reflowLayoutColumnWidth;
     if (columnMaxWidth <= 0) {
         return false;
     }
 
-    PageInfo* prev = dm->GetPageInfo(firstNewPage - 1);
+    PageInfo* prev = dm->GetPageInfo(validUpto);
     PageInfo* first = dm->GetPageInfo(1);
+    if (!prev || !first || (prev->isShown && prev->pos.dy == 0)) {
+        return false;
+    }
     int currPosY = prev->pos.y + prev->pos.dy + dm->pageSpacing.dy;
 
-    for (int pageNo = firstNewPage; pageNo <= nPages; pageNo++) {
-        PageInfo* pi = dm->GetPageInfo(pageNo);
+    for (int p = validUpto + 1; p <= nPages; p++) {
+        PageInfo* pi = dm->GetPageInfo(p);
+        if (!pi) {
+            return false;
+        }
         if (!pi->isShown) {
             continue;
         }
-        SizeF pageSize = dm->PageSizeAfterRotation(pageNo);
-        float zoom = dm->GetZoomReal(pageNo);
+        SizeF pageSize = dm->PageSizeAfterRotation(p);
+        float zoom = dm->GetZoomReal(p);
         Rect pos;
         pos.dx = (int)(pageSize.dx * zoom + 0.499);
         pos.dy = (int)(pageSize.dy * zoom + 0.499);
         if (pos.dx > columnMaxWidth) {
-            return false;
+            return false; // a wider page would change centering -> full relayout
         }
         pos.y = currPosY;
         pos.x = first->pos.x + (first->pos.dx - pos.dx) / 2;
@@ -149,16 +159,15 @@ static bool TryRelayoutAppendedPages(DisplayModel* dm, int firstNewPage) {
     int canvasDy = currPosY + dm->windowMargin.bottom - dm->pageSpacing.dy;
     int canvasDx = dm->canvasSize.dx;
     dm->canvasSize = Size(std::max(canvasDx, dm->viewPort.dx), std::max(canvasDy, dm->viewPort.dy));
+    dm->reflowLayoutValidUpto = nPages;
     return true;
 }
 
-static void ApplyPagesUiUpdate(DisplayModel* dm, int relayoutFromPage = 1) {
+static void ApplyPagesUiUpdate(DisplayModel* dm) {
     if (!dm || !dm->pagesInfo || !dm->cb) {
         return;
     }
-    if (relayoutFromPage > 1 && TryRelayoutAppendedPages(dm, relayoutFromPage)) {
-        // appended pages only
-    } else {
+    if (!LayoutAppendedReflowPages(dm)) {
         dm->Relayout(dm->zoomVirtual, dm->rotation);
     }
     dm->RecalcVisibleParts();
@@ -762,7 +771,7 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
     }
     if (enginePageCount <= pagesInfoCount) {
         if (updateUi && (growAll || PagesNeedLayoutSync(this))) {
-            ApplyPagesUiUpdate(this, 1);
+            ApplyPagesUiUpdate(this);
         }
         return;
     }
@@ -811,7 +820,7 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
 
     if (updateUi) {
         if (!ShouldThrottleProgressUiUpdate(this, enginePageCount)) {
-            ApplyPagesUiUpdate(this, oldCount + 1);
+            ApplyPagesUiUpdate(this);
         }
     }
 
@@ -1159,9 +1168,6 @@ void DisplayModel::Relayout(float newZoomVirtual, int newRotation) {
 
     bool needHScroll = false;
     bool needVScroll = false;
-    logf("DisplayModel::Relayout: totalViewPortSize=(%d,%d), zoomVirtual=%.2f, displayMode=%s, useOverlay=%d\n",
-         totalViewPortSize.dx, totalViewPortSize.dy, newZoomVirtual, DisplayModeToString(GetDisplayMode()),
-         (int)ScrollbarsUseOverlay());
     viewPort = Rect(viewPort.TL(), totalViewPortSize);
 
 RestartLayout:
@@ -1355,6 +1361,10 @@ RestartLayout:
         canvasDx = std::min(canvasDx, viewPort.dx);
     }
     canvasSize = Size(std::max(canvasDx, viewPort.dx), std::max(canvasDy, viewPort.dy));
+    // A full relayout positions every page, so the incremental reflow layout can
+    // safely resume appending after the last page (reusing this column width).
+    reflowLayoutValidUpto = PageCount();
+    reflowLayoutColumnWidth = columnMaxWidth[0];
 }
 
 void DisplayModel::ChangeStartPage(int newStartPage) {

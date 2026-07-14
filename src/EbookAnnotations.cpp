@@ -533,6 +533,9 @@ EbookAnnotation* EbookAnnotationsCreateFromSelection(WindowTab* tab, AnnotationT
     if (!annotations || !dm || !dm->textSelection || !tab->win->showSelection) {
         return nullptr;
     }
+    // Pause background reflow loading so this stays responsive during progressive
+    // EPUB load (no-op once loading has finished).
+    ReflowLoadingPauseScope reflowPause(dm->GetEngine());
 
     TextSelection* selection = dm->textSelection;
     int fromPage = 0, fromGlyph = 0, toPage = 0, toGlyph = 0;
@@ -663,6 +666,8 @@ EbookAnnotation* EbookAnnotationsCreateText(WindowTab* tab, DisplayModel* dm, Po
         return nullptr;
     }
     EngineBase* engine = dm->GetEngine();
+    // Pause background reflow loading so this stays responsive during progressive load.
+    ReflowLoadingPauseScope reflowPause(engine);
     PointF pagePoint = dm->CvtFromScreen(canvasPoint, pageNo);
     int glyph = FindGlyphAtPagePoint(engine, pageNo, pagePoint);
     if (glyph < 0) {
@@ -839,6 +844,8 @@ bool EbookAnnotationsHitTest(WindowTab* tab, DisplayModel* dm, Point canvasPoint
 
 bool EbookAnnotationsDeleteAt(WindowTab* tab, DisplayModel* dm, Point canvasPoint) {
     EbookAnnotations* annotations = EnsureEbookAnnotations(tab);
+    // Pause background reflow loading so this stays responsive during progressive load.
+    ReflowLoadingPauseScope reflowPause(dm ? dm->GetEngine() : nullptr);
     int idx = FindEbookAnnotationAt(tab, dm, canvasPoint);
     if (!annotations || idx < 0) {
         return false;

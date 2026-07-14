@@ -105,6 +105,19 @@ TempStr EngineMupdfGetPdfInfo(const char* path);
 TempStr EngineMupdfGetPdfOutline(const char* path);
 void EngineMupdfInvalidateDarkMode(EngineBase* engine);
 bool EngineMupdfRelayoutForThemeChange(EngineBase* engine);
+// Pause/resume the background reflow chapter loader so a UI-critical operation
+// (theme change, annotation edit) can access the document without being starved.
+// Safe to call when not loading (no-op). Use ReflowLoadingPauseScope for RAII.
+void EngineMupdfSetReflowLoadingPaused(EngineBase* engine, bool paused);
+struct ReflowLoadingPauseScope {
+    EngineBase* engine = nullptr;
+    explicit ReflowLoadingPauseScope(EngineBase* e) : engine(e) {
+        EngineMupdfSetReflowLoadingPaused(engine, true);
+    }
+    ~ReflowLoadingPauseScope() {
+        EngineMupdfSetReflowLoadingPaused(engine, false);
+    }
+};
 bool EngineMupdfReflowTocNeedsUiReload(EngineBase* engine);
 void EngineMupdfClearReflowTocNeedsUiReload(EngineBase* engine);
 bool EngineSupportsSmartDarkMode(EngineBase* engine);

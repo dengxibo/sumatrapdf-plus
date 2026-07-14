@@ -2592,6 +2592,8 @@ EngineMupdf::EngineMupdf() {
     InitializeCriticalSection(&pagesLock);
     InitializeCriticalSection(&renderLock);
     InitializeCriticalSection(&docLock);
+    InitializeCriticalSection(&reflowCountLock);
+    InitializeCriticalSection(&tocBuildLock);
 
     fz_locks_ctx.user = this;
     fz_locks_ctx.lock = fz_lock_context_cs;
@@ -2678,6 +2680,8 @@ EngineMupdf::~EngineMupdf() {
     DeleteCriticalSection(&pagesLock);
     DeleteCriticalSection(&renderLock);
     DeleteCriticalSection(&docLock);
+    DeleteCriticalSection(&reflowCountLock);
+    DeleteCriticalSection(&tocBuildLock);
 
     DeInitializeEngineMupdf();
 }
@@ -4616,6 +4620,14 @@ bool EngineMupdfRelayoutForThemeChange(EngineBase* engine) {
     return ok;
 }
 
+void EngineMupdfSetReflowLoadingPaused(EngineBase* engine, bool paused) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e) {
+        return;
+    }
+    InterlockedExchange(&e->reflowUiPaused, paused ? 1 : 0);
+}
+
 bool EngineMupdfReflowTocNeedsUiReload(EngineBase* engine) {
     EngineMupdf* e = AsEngineMupdf(engine);
     return e && e->reflowTocNeedsUiReload;
@@ -4740,57 +4752,65 @@ struct ReflowRenderLock {
     }
 };
 
-static void FinishReflowableLoadAsync(EngineMupdf* e) {
-    AtomicIntInc(&gDangerousThreadCount);
-    defer {
-        AtomicIntDec(&gDangerousThreadCount);
-    };
-
-    // let the UI thread render the first pages before heavy background work
-    Sleep(kReflowBackgroundDelayMs);
-
+// Count reflowable EPUB chapters up to (and including) targetChapter, resuming
+// from reflowChaptersCounted. targetChapter < 0 means "count all chapters".
+// The reflowCountLock is held only per-chapter, so the background loader and an
+// on-demand call from the UI thread (TOC navigation into an uncounted chapter)
+// cooperate: whichever thread grabs the lock counts the next chapter and both
+// advance the same shared reflowChaptersCounted, without double-counting or
+// corrupting reflowChapterStartPage. Returns total pages counted so far.
+static int CountReflowChaptersUpTo(EngineMupdf* e, int targetChapter, const char* notifyPath, bool isBackground) {
+    if (!e) {
+        return 0;
+    }
     auto ctx = e->Ctx();
-    AutoFreeStr path(str::Dup(e->FilePath()));
-    int numChapters = 0;
-
-    {
-        WaitForReflowUiDocLock(e);
-        ScopedCritSec scope(&e->docLock);
-        fz_try(ctx) {
-            numChapters = fz_count_chapters(ctx, e->_doc);
-        }
-        fz_catch(ctx) {
-            fz_report_error(ctx);
-            numChapters = 0;
-        }
-    }
-
-    if (numChapters <= 0) {
-        {
-            WaitForReflowUiDocLock(e);
-            ScopedCritSec scope(&e->docLock);
-            ReleasePerThreadContext(e);
-        }
-        InterlockedExchange(&e->reflowableLoadingInProgress, 0);
-        return;
-    }
-
-    int totalPages = 0;
-    {
-        ScopedCritSec scope(&e->pagesLock);
-        e->reflowChapterStartPage.Reset();
-        InterlockedExchange(&e->reflowChaptersCounted, 0);
-    }
-    for (int ch = 0; ch < numChapters; ch++) {
+    for (;;) {
         if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+            break;
+        }
+        // Fully step aside while the UI thread performs a docLock-heavy operation
+        // (theme change, annotation edit). Only the background loader pauses;
+        // on-demand counting on the UI thread (TOC navigation) must not wait on
+        // itself. Don't hold reflowCountLock while paused.
+        if (isBackground) {
+            while (InterlockedCompareExchange(&e->reflowUiPaused, 0, 0) != 0 &&
+                   InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) == 0) {
+                Sleep(1);
+            }
+            if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+                break;
+            }
+        }
+        ScopedCritSec countScope(&e->reflowCountLock);
+
+        if (e->reflowNumChapters == 0) {
+            int numChapters = 0;
             {
                 WaitForReflowUiDocLock(e);
                 ScopedCritSec scope(&e->docLock);
-                ReleasePerThreadContext(e);
+                fz_try(ctx) {
+                    numChapters = fz_count_chapters(ctx, e->_doc);
+                }
+                fz_catch(ctx) {
+                    fz_report_error(ctx);
+                    numChapters = 0;
+                }
             }
-            InterlockedExchange(&e->reflowableLoadingInProgress, 0);
-            return;
+            if (numChapters <= 0) {
+                break;
+            }
+            e->reflowNumChapters = numChapters;
         }
+
+        int target = targetChapter;
+        if (target < 0 || target >= e->reflowNumChapters) {
+            target = e->reflowNumChapters - 1;
+        }
+        int ch = (int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0);
+        if (ch > target) {
+            break;
+        }
+
         int chapterPages = 0;
         {
             WaitForReflowUiDocLock(e);
@@ -4803,26 +4823,60 @@ static void FinishReflowableLoadAsync(EngineMupdf* e) {
                 chapterPages = 0;
             }
         }
-        if (chapterPages <= 0) {
-            continue;
+        // Always record a start page per chapter (even empty ones) so
+        // reflowChapterStartPage[ch] stays aligned with the chapter index and
+        // counting can resume cleanly from reflowChaptersCounted.
+        int startPage = e->reflowPagesCounted;
+        AppendReflowChapterStartPage(e, startPage, ch + 1);
+        if (chapterPages > 0) {
+            e->reflowPagesCounted = startPage + chapterPages;
+            if (e->reflowPagesCounted > e->pageCount) {
+                GrowReflowPageCount(e, e->reflowPagesCounted);
+            }
         }
-        totalPages += chapterPages;
-
-        if (totalPages > e->pageCount) {
-            GrowReflowPageCount(e, totalPages);
-        }
-        AppendReflowChapterStartPage(e, totalPages - chapterPages, ch + 1);
-        if (path && (((ch + 1) % kReflowNotifyEveryNChapters) == 0 || ch + 1 == numChapters)) {
-            NotifyEbookPagesLoadingProgress(path, false);
+        if (notifyPath && (((ch + 1) % kReflowNotifyEveryNChapters) == 0 || ch >= target)) {
+            NotifyEbookPagesLoadingProgress(notifyPath, false);
         }
         if (((ch + 1) % kReflowChaptersPerYield) == 0) {
             Sleep(0);
         }
     }
+    return e->reflowPagesCounted;
+}
 
-    if (totalPages > 0 && totalPages < e->pageCount) {
+static void FinishReflowableLoadAsync(EngineMupdf* e) {
+    AtomicIntInc(&gDangerousThreadCount);
+    defer {
+        AtomicIntDec(&gDangerousThreadCount);
+    };
+
+    // let the UI thread render the first pages before heavy background work
+    Sleep(kReflowBackgroundDelayMs);
+
+    AutoFreeStr path(str::Dup(e->FilePath()));
+    int totalPages = CountReflowChaptersUpTo(e, -1, path, /*isBackground*/ true);
+
+    bool aborted = InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0;
+    if (!aborted && totalPages > 0 && totalPages < e->pageCount) {
         ScopedCritSec scope(&e->pagesLock);
         e->pageCount = totalPages;
+    }
+
+    // Mark loading complete before building the TOC so GetToc() resolves final
+    // page numbers exactly as the UI thread would (its per-item page-number
+    // fallbacks only run once loading is done).
+    InterlockedExchange(&e->reflowableLoadingInProgress, 0);
+
+    if (!aborted) {
+        e->InvalidateTocTree();
+        // Pre-build the TOC tree model here, on the background loader thread,
+        // while our per-thread fz_context is still alive. Huge multi-book EPUBs
+        // have thousands of outline entries and building the model costs ~200ms.
+        // Doing it off the UI thread (it only holds docLock, not the message loop)
+        // means the completion handler pays just the Win32 tree-insert cost,
+        // roughly halving the visible freeze at end of load. GetToc() caches the
+        // result, so the UI's LoadTocTree() returns it without rebuilding.
+        e->GetToc();
     }
 
     {
@@ -4831,9 +4885,7 @@ static void FinishReflowableLoadAsync(EngineMupdf* e) {
         ReleasePerThreadContext(e);
     }
 
-    InterlockedExchange(&e->reflowableLoadingInProgress, 0);
-    e->InvalidateTocTree();
-    if (path) {
+    if (!aborted && path) {
         NotifyEbookPagesLoadingProgress(path, true);
     }
 }
@@ -5172,6 +5224,14 @@ TocItem* EngineMupdf::BuildTocTree(TocItem* parent, fz_outline* outline, int& id
 
 // TODO: maybe build in FinishLoading
 TocTree* EngineMupdf::GetToc() {
+    if (tocTree && !tocTreeStale) {
+        return tocTree;
+    }
+    // Serialize building: the background reflow loader may pre-build the tree at
+    // load completion while the UI thread also asks for it. Without this a second
+    // caller would delete a tree the first is still building (use-after-free).
+    ScopedCritSec buildScope(&tocBuildLock);
+    // re-check after acquiring the lock: another thread may have just built it
     if (tocTree && !tocTreeStale) {
         return tocTree;
     }
@@ -7103,6 +7163,13 @@ void EngineMupdfNavigateUri(EngineBase* engine, const char* uri, int reflowOutli
         if (ch < 0) {
             ScopedCritSec scope(&e->docLock);
             ch = EpubUriChapterIndexNoLayout(e->Ctx(), e->_doc, uri);
+        }
+        // The target chapter may not be counted yet during background loading.
+        // Count up to it on demand so TOC clicks into not-yet-loaded chapters
+        // resolve to a real page instead of silently doing nothing.
+        int counted = (int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0);
+        if (ch >= 0 && ch >= counted) {
+            CountReflowChaptersUpTo(e, ch, e->FilePath(), /*isBackground*/ false);
         }
         pageNo1 = ReflowPageNoFromChapter(e, ch, 0);
         if (pageNo1 <= 0) {

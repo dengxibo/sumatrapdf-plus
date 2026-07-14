@@ -567,8 +567,8 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
     bool progressiveLoad = EngineIsProgressiveEbookLoading(engine);
     static DWORD gLastEbookProgressToolbarMs = 0;
     DWORD now = GetTickCount();
-    if (!progressiveLoad ||
-        gLastEbookProgressToolbarMs == 0 || now - gLastEbookProgressToolbarMs >= kEbookProgressToolbarIntervalMs) {
+    if (!progressiveLoad || gLastEbookProgressToolbarMs == 0 ||
+        now - gLastEbookProgressToolbarMs >= kEbookProgressToolbarIntervalMs) {
         gLastEbookProgressToolbarMs = now;
         int pageCount = dm->PageCount();
         UpdateToolbarPageText(win, pageCount);
@@ -2527,6 +2527,9 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
     }
 
     EngineBase* engine = tab->GetEngine();
+    // Pause background reflow loading so this operation isn't starved of docLock
+    // (no-op unless a reflowable EPUB is still progressively loading).
+    ReflowLoadingPauseScope reflowPause(engine);
     if (IsReflowableMupdfForTheme(engine)) {
         gRenderCache->CancelRendering(dm);
         gRenderCache->FreeForDisplayModel(dm);
@@ -3918,6 +3921,8 @@ static void ApplyDocumentColorModeChangeToTab(MainWindow* win, WindowTab* tab) {
     }
     EngineBase* engine = tab->GetEngine();
     if (IsReflowableMupdfForTheme(engine)) {
+        // Pause background reflow loading so this operation isn't starved of docLock.
+        ReflowLoadingPauseScope reflowPause(engine);
         EngineMupdfRelayoutForThemeChange(engine);
         DisplayModel* dm = tab->AsFixed();
         if (dm) {

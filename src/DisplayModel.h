@@ -228,6 +228,16 @@ struct DisplayModel : DocController {
     PageInfo* pagesInfo = nullptr;
     int pagesInfoCount = 0;
 
+    /* During progressive reflowable-EPUB loading, the number of leading pages
+       that already have valid layout. Lets ApplyPagesUiUpdate() extend the
+       layout only for newly appended pages instead of re-walking every page on
+       each batch (O(n^2) -> O(n) total). A full Relayout() resets this to
+       PageCount(). */
+    int reflowLayoutValidUpto = 0;
+    /* single-column width the last full Relayout() used for x-centering; the
+       incremental reflow layout reuses it (O(1)) instead of rescanning pages. */
+    int reflowLayoutColumnWidth = 0;
+
     DisplayMode displayMode{DisplayMode::Automatic};
     /* In non-continuous mode is the first page from a file that we're
        displaying.
