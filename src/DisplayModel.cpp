@@ -1055,6 +1055,9 @@ void DisplayModel::Relayout(float newZoomVirtual, int newRotation) {
 
     bool needHScroll = false;
     bool needVScroll = false;
+    logf("DisplayModel::Relayout: totalViewPortSize=(%d,%d), zoomVirtual=%.2f, displayMode=%s, useOverlay=%d\n",
+         totalViewPortSize.dx, totalViewPortSize.dy, newZoomVirtual, DisplayModeToString(GetDisplayMode()),
+         (int)ScrollbarsUseOverlay());
     viewPort = Rect(viewPort.TL(), totalViewPortSize);
 
 RestartLayout:
@@ -1556,6 +1559,13 @@ void DisplayModel::SetViewPortSize(Size newViewPortSize) {
         }
     }
 
+    logf("DisplayModel::SetViewPortSize: newViewPortSize=(%d,%d), displayMode=%s, isDocReady=%d\n",
+         newViewPortSize.dx, newViewPortSize.dy, DisplayModeToString(GetDisplayMode()), (int)isDocReady);
+    if (isDocReady) {
+        logf("  saved ss: page=%d, x=%.2f, y=%.2f, viewPort=(%d,%d,%d,%d)\n", ss.page, ss.x, ss.y, viewPort.x,
+             viewPort.y, viewPort.dx, viewPort.dy);
+    }
+
     totalViewPortSize = newViewPortSize;
     if (!IsValidZoom(zoomVirtual)) {
         cb->UpdateScrollbars(canvasSize);
@@ -1564,9 +1574,11 @@ void DisplayModel::SetViewPortSize(Size newViewPortSize) {
     Relayout(zoomVirtual, rotation);
 
     if (isDocReady) {
+        logf("  after Relayout viewPort=(%d,%d,%d,%d)\n", viewPort.x, viewPort.y, viewPort.dx, viewPort.dy);
         // when fitting to content, let GoToPage do the necessary scrolling
         if (zoomVirtual != kZoomFitContent) {
             SetScrollState(ss);
+            logf("  after SetScrollState viewPort=(%d,%d,%d,%d)\n", viewPort.x, viewPort.y, viewPort.dx, viewPort.dy);
         } else {
             GoToPage(ss.page, 0);
         }
@@ -2278,6 +2290,11 @@ void DisplayModel::SetScrollState(const ScrollState& state) {
 
     PointF newPtD(std::max(state.x, (double)0), std::max(state.y, (double)0));
     Point newPt = CvtToScreen(state.page, newPtD);
+    PageInfo* pageInfo = GetPageInfo(state.page);
+    logf("DisplayModel::SetScrollState: page=%d, x=%.2f, y=%.2f, displayMode=%s, newPt=(%d,%d), pageOnScreen=(%d,%d), viewPort=(%d,%d,%d,%d)\n",
+         state.page, state.x, state.y, DisplayModeToString(GetDisplayMode()), newPt.x, newPt.y,
+         pageInfo ? pageInfo->pageOnScreen.x : 0, pageInfo ? pageInfo->pageOnScreen.y : 0, viewPort.x, viewPort.y,
+         viewPort.dx, viewPort.dy);
 
     // Also show the margins, if this has been requested
     if (state.x < 0) {
@@ -2289,6 +2306,7 @@ void DisplayModel::SetScrollState(const ScrollState& state) {
         newPt.y = 0;
     }
     GoToPage(state.page, newPt.y, false, newPt.x);
+    logf("  after GoToPage viewPort=(%d,%d,%d,%d)\n", viewPort.x, viewPort.y, viewPort.dx, viewPort.dy);
 }
 
 // don't remember more than "enough" history entries (same number as Firefox uses)
