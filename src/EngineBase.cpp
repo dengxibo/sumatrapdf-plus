@@ -397,6 +397,21 @@ bool EngineBase::HasTextForPage(int pageNo) {
     return pt->text != nullptr;
 }
 
+void EngineBase::ClearTextCache() {
+    ScopedCritSec scope(&textCacheLock);
+    if (!pagesText) {
+        return;
+    }
+    for (int i = 0; i < pagesTextSize; i++) {
+        PageText* pt = &pagesText[i];
+        free(pt->coords);
+        free(pt->text);
+        pt->text = nullptr;
+        pt->coords = nullptr;
+        pt->len = 0;
+    }
+}
+
 const WCHAR* EngineBase::GetTextForPage(int pageNo, int* lenOut, Rect** coordsOut) {
     auto emptyResult = [&]() {
         if (lenOut) {

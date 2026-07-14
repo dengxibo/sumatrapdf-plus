@@ -9,6 +9,16 @@
 - users still on Plus 3.7.3, or on 3.7.4 without ever using **Check for Updates**, must upgrade manually once;
   those releases cannot discover current Plus updates automatically
 
+## 3.7.11 (2026-07-14)
+
+- replace the toolbar find UI with a Chrome-style floating find bar: compact bar docked near the toolbar, optional pinned floating results window with snippet list, match counter, **Match whole word** toggle, debounced find-as-you-type (Enter forces search), and independent find-match vs selection highlights
+- unify command visibility for toolbar and menu through `CommandAvailability`; fix hamburger menu on the Home tab (empty menu or dead clicks when no document is open)
+- add a pinned **Home** tab that stays when all documents are closed; **Ctrl+W** on Home-only closes the window
+- fix find bar and floating find window positioning on multi-monitor / mixed-DPI setups
+- improve EPUB progressive loading: incremental page layout, throttled toolbar updates during background pagination, faster theme/document-color-mode switches while loading
+- read-aloud: resync highlight after layout changes, dedicated highlight color, remove verbose diagnostic logging; speed/bilingual voice dialogs support all UI languages
+- fix text selection misalignment when switching themes in continuous view
+
 ## 3.7.10 (2026-07-12)
 
 - unify document color mode (Smart / Original / Match theme) across all themes and readable formats (PDF, EPUB, MOBI, CHM, XPS, DjVu): toolbar buttons are always available when a document is open

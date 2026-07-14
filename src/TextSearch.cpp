@@ -34,8 +34,16 @@ TextSearch::~TextSearch() {
     Clear();
 }
 
+void TextSearch::SetMaxPageCount(int max) {
+    maxPageCount = max;
+    SyncPageCount();
+}
+
 void TextSearch::SyncPageCount() {
     int count = engine->PageCount();
+    if (maxPageCount > 0 && maxPageCount < count) {
+        count = maxPageCount;
+    }
     if (count <= 0) {
         return;
     }

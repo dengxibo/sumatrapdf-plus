@@ -95,6 +95,8 @@ struct WindowTab {
     int readAloudChunkStart = 0;
     int readAloudChunkEnd = 0;
     int readAloudBuiltEndPage = 0;
+    int readAloudStartPage = 0;
+    int readAloudStartGlyph = 0;
     bool readAloudAutoScroll = false;
     bool readAloudAutoScrollHold = false;
     int readAloudAutoScrollHoldPageNo = -1;

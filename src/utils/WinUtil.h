@@ -18,6 +18,7 @@ Rect WindowRect(HWND);
 // Visible frame bounds (excludes DWM invisible resize/shadow border). Falls back to WindowRect.
 Rect WindowVisibleRect(HWND);
 Rect MapRectToWindow(Rect, HWND hwndFrom, HWND hwndTo);
+Rect MapLtrClientRectToScreen(HWND hwnd, Rect r);
 
 void EditSelectAll(HWND);
 int EditIdealDy(HWND, bool hasBorder, int lines = 1);
@@ -370,6 +371,10 @@ void HwndSetTreeFont(HWND hwndTree, HFONT font);
 void HwndSetTreeFontForDpi(HWND hwndTree, HFONT font, int dpi);
 
 void HwndPositionToTheRightOf(HWND hwnd, HWND hwndRelative);
+// Position an owned popup against the frame's visible right edge at y (screen
+// coords). Clamps to the frame monitor's work area so DPI/shadow mismatches
+// cannot push the popup off-screen.
+void PositionOwnedPopupAtFrameRight(HWND hwndPopup, HWND hwndFrame, int y);
 // Dock hwnd against the right of hwndRelative.
 // Maximized main window: overlay the right side (raised above the frame).
 // Otherwise: place flush outside to the right, clamped to the main window's monitor.

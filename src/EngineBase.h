@@ -462,6 +462,8 @@ class EngineBase {
     // by EngineBase and remain valid for the lifetime of the engine.
     bool HasTextForPage(int pageNo);
     const WCHAR* GetTextForPage(int pageNo, int* lenOut = nullptr, Rect** coordsOut = nullptr);
+    // Drop cached per-page text after reflow or theme changes.
+    void ClearTextCache();
 
     // EPUB/MOBI progressive open: defer heavy text extraction until background load finishes.
     virtual bool IsProgressiveEbookLoading() { return false; }

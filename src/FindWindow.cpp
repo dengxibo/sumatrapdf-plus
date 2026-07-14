@@ -41,11 +41,6 @@ static void ApplyTitleBarTheme(HWND hwnd) {
     UpdateWindowCaptionTheme(hwnd);
 }
 
-static COLORREF FindWindowEditBackgroundColor() {
-    int contrast = ThemeUsesDarkChrome() ? 18 : 4;
-    return AccentColor(ThemeWindowControlBackgroundColor(), contrast);
-}
-
 static COLORREF BlendColor(COLORREF background, COLORREF foreground, int foregroundPercent) {
     int backgroundPercent = 100 - foregroundPercent;
     u8 br, bg, bb, fr, fg, fb;
@@ -208,7 +203,7 @@ bool FindWindowWnd::Create(MainWindow* mainWin) {
         args.isRtl = IsUIRtl();
         edit = new Edit();
         edit->maxDx = DpiScale(hwnd, 1000);
-        edit->SetColors(colTxt, FindWindowEditBackgroundColor());
+        edit->SetColors(colTxt, ThemeFindEditBackgroundColor());
         edit->Create(args);
         edit->onTextChanged = MkMethod0<FindWindowWnd, &FindWindowWnd::OnTextChanged>(this);
     }
@@ -610,7 +605,7 @@ void FindWindowWnd::UpdateTheme() {
     auto colTxt = ThemeWindowTextColor();
     SetColors(colTxt, colBg);
     if (edit) {
-        edit->SetColors(colTxt, FindWindowEditBackgroundColor());
+        edit->SetColors(colTxt, ThemeFindEditBackgroundColor());
     }
     if (status) {
         status->SetColors(colTxt, colBg);
@@ -815,10 +810,18 @@ static void PositionFindWindow(FindWindowWnd* w) {
     Rect r = gGlobalPrefs->searchUIWindowPos;
     if (r.IsEmpty()) {
         // default: a reasonable size near the top-right of the frame
-        Rect fr = WindowRect(win->hwndFrame);
-        int dx = DpiScale(w->hwnd, 520);
-        int dy = DpiScale(w->hwnd, 360);
-        r = {fr.x + fr.dx - dx - DpiScale(w->hwnd, 40), fr.y + DpiScale(w->hwnd, 80), dx, dy};
+        int dpi = win->frameDpi > 0 ? win->frameDpi : DpiGetForMonitorOfHwnd(win->hwndFrame);
+        if (dpi <= 0) {
+            dpi = DpiGet(win->hwndFrame);
+        }
+        int dx = MulDiv(520, dpi, 96);
+        int dy = MulDiv(360, dpi, 96);
+        SetWindowPos(w->hwnd, nullptr, 0, 0, dx, dy, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        w->Layout();
+        Rect mainVis = WindowVisibleRect(win->hwndFrame);
+        int y = mainVis.y + MulDiv(80, dpi, 96);
+        PositionOwnedPopupAtFrameRight(w->hwnd, win->hwndFrame, y);
+        return;
     }
     r = ShiftRectToWorkArea(r, win->hwndFrame, true);
     SetWindowPos(w->hwnd, HWND_TOP, r.x, r.y, r.dx, r.dy, SWP_NOACTIVATE);

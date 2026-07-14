@@ -648,6 +648,14 @@ static Vec<FindMatch>* CloneMatchesRange(Vec<FindMatch>* matches, int from, int 
     return res;
 }
 
+static void ApplySearchPageLimit(TextSearch* ts, DisplayModel* dm, EngineBase* engine) {
+    if (dm && engine && EngineIsProgressiveEbookLoading(engine)) {
+        ts->SetMaxPageCount(dm->PageCount());
+    } else {
+        ts->SetMaxPageCount(0);
+    }
+}
+
 static void CountThread(CountThreadData* d) {
     MainWindow* win = d->win;
     EngineBase* engine = d->engine;
@@ -660,6 +668,7 @@ static void CountThread(CountThreadData* d) {
     bool capped = false; // scan stopped at kMaxFindCount matches
     {
         TextSearch ts(engine);
+        ApplySearchPageLimit(&ts, win->AsFixed(), engine);
         ts.SetMatchCase(d->matchCase);
         ts.SetMatchWholeWord(d->matchWholeWord);
         ts.SetDirection(TextSearch::Direction::Forward);
@@ -805,6 +814,12 @@ static void StartFindCount(MainWindow* win, const WCHAR* text, bool matchCase, b
 static void UpdateMatchCount(MainWindow* win, const WCHAR* text) {
     DisplayModel* dm = win->AsFixed();
     void* engine = dm ? (void*)dm->GetEngine() : nullptr;
+    if (dm && engine && EngineIsProgressiveEbookLoading((EngineBase*)engine)) {
+        // Full-document match counting forces on-demand reflow of every page
+        // and blocks the UI on large EPUBs still loading in the background.
+        ShowMatchCount(win);
+        return;
+    }
     bool wantSnippets = gGlobalPrefs->searchUIFloating && IsFindWindowVisible(win);
     bool wantMatchList = wantSnippets || gShowAllMatches;
     bool cacheHit = win->findCountValid && win->findCountText && str::Eq(win->findCountText, text) &&
@@ -916,6 +931,7 @@ static void FindThread(FindThreadData* ftd) {
     };
 
     TextSel* rect;
+    ApplySearchPageLimit(textSearch, dm, engine);
     textSearch->progressCb = MkFunc1<FindThreadData, ProgressUpdateData*>(UpdateSearchProgress, ftd);
     textSearch->SetDirection(ftd->direction);
     if (ftd->wasModified || !ctrl->ValidPageNo(textSearch->GetCurrentPageNo()) ||

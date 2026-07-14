@@ -231,6 +231,21 @@ Rect MapRectToWindow(Rect rect, HWND hwndFrom, HWND hwndTo) {
     return ToRect(rc);
 }
 
+Rect MapLtrClientRectToScreen(HWND hwnd, Rect r) {
+    RECT rc = ToRECT(r);
+    if (HwndIsRtl(hwnd)) {
+        RECT cr{};
+        GetClientRect(hwnd, &cr);
+        int w = cr.right;
+        int left = w - rc.right;
+        int right = w - rc.left;
+        rc.left = left;
+        rc.right = right;
+    }
+    MapWindowPoints(hwnd, nullptr, (POINT*)&rc, 2);
+    return ToRect(rc);
+}
+
 int MapWindowPoints(HWND hwndFrom, HWND hwndTo, Point* points, int nPoints) {
     ReportIf(nPoints > 64);
     POINT pnts[64];
@@ -2272,6 +2287,35 @@ Rect ShiftRectToWorkArea(Rect rect, HWND hwnd, bool bFully) {
     }
 
     return rect;
+}
+
+void PositionOwnedPopupAtFrameRight(HWND hwndPopup, HWND hwndFrame, int y) {
+    if (!hwndPopup || !hwndFrame || !IsWindow(hwndPopup) || !IsWindow(hwndFrame)) {
+        return;
+    }
+
+    Rect mainVis = WindowVisibleRect(hwndFrame);
+    Rect popWin = WindowRect(hwndPopup);
+    if (popWin.IsEmpty()) {
+        return;
+    }
+    Rect popVis = WindowVisibleRect(hwndPopup);
+    int padL = popVis.x - popWin.x;
+    int visWidth = popVis.dx > 0 ? popVis.dx : popWin.dx;
+
+    Rect work = GetWorkAreaRect(mainVis, hwndFrame);
+    int workRight = work.x + work.dx;
+    int visX = mainVis.x + mainVis.dx - visWidth;
+    if (visX + visWidth > workRight) {
+        visX = workRight - visWidth;
+    }
+    if (visX < work.x) {
+        visX = work.x;
+    }
+
+    Rect r{visX - padL, y, popWin.dx, popWin.dy};
+    r = ShiftRectToWorkArea(r, hwndFrame, true);
+    SetWindowPos(hwndPopup, HWND_TOP, r.x, r.y, 0, 0, SWP_NOACTIVATE | SWP_NOSIZE);
 }
 
 // Limits size to max available work area (screen size - taskbar)

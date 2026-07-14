@@ -36,6 +36,10 @@ constexpr u8 kSelectionDefaultAlpha = 0x5f;
 constexpr u8 kSelectionHighlightAlpha = kSelectionDefaultAlpha;
 
 COLORREF GetSelectionHighlightColor();
+// Read-aloud follow highlight: always yellow, independent of SelectionColor.
+inline COLORREF GetReadAloudHighlightColor() {
+    return RGB(255, 255, 0);
+}
 
 // Scale a highlight rect to the given band ratio (page coordinates).
 RectF ScaleHighlightBandRect(RectF r, float bandRatio);
@@ -63,6 +67,9 @@ void PaintTransparentRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORR
 void PaintMultiplyRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color);
 void PaintSelection(MainWindow* win, HDC hdc);
 void UpdateTextSelection(MainWindow* win, bool select = true);
+// Rebuild text selection after relayout (e.g. theme/document color change) by
+// re-searching the selected text near the original page.
+void RefreshTextSelectionAfterLayoutChange(WindowTab* tab, MainWindow* win = nullptr);
 void CopySelectionToClipboard(MainWindow* win);
 void OnSelectAll(MainWindow* win, bool textOnly = false);
 bool NeedsSelectionEdgeAutoscroll(MainWindow* win, int x, int y);

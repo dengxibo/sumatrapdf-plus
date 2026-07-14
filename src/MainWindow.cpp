@@ -222,7 +222,11 @@ bool MainWindow::HasDocsLoaded() const {
 }
 
 bool MainWindow::IsCurrentTabAbout() const {
-    return nullptr == CurrentTab() || CurrentTab()->IsAboutTab();
+    WindowTab* tab = CurrentTab();
+    if (!tab) {
+        return true;
+    }
+    return tab->IsAboutTab();
 }
 
 static bool CtrlMatchesCurrentTab(const MainWindow* win) {

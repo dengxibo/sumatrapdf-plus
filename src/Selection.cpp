@@ -21,6 +21,7 @@
 #include "DisplayModel.h"
 #include "TextSelection.h"
 #include "ProgressUpdateUI.h"
+#include "TextSearch.h"
 #include "Notifications.h"
 #include "SumatraConfig.h"
 #include "SumatraPDF.h"
@@ -28,6 +29,7 @@
 #include "WindowTab.h"
 #include "Selection.h"
 #include "SelectionToolbar.h"
+#include "EbookAnnotations.h"
 #include "Toolbar.h"
 #include "Translations.h"
 #include "uia/Provider.h"
@@ -419,6 +421,106 @@ void PaintSelection(MainWindow* win, HDC hdc) {
     }
 
     PaintMultiplyRectangles(hdc, win->canvasRc, rects, GetSelectionHighlightColor());
+}
+
+static constexpr int kMaxReselectTextChars = 2000;
+static constexpr int kReselectPageRadius = 3;
+
+static bool ReselectTextAfterLayoutChange(DisplayModel* dm, TextSelection* ts, int nearPage, const WCHAR* text) {
+    EngineBase* engine = dm->GetEngine();
+    if (!engine || str::IsEmpty(text)) {
+        return false;
+    }
+    if (!dm->ValidPageNo(nearPage)) {
+        nearPage = dm->FirstVisiblePageNo();
+    }
+    if (!dm->ValidPageNo(nearPage)) {
+        nearPage = 1;
+    }
+
+    int pageCount = dm->PageCount();
+    for (int delta = 0; delta <= kReselectPageRadius; delta++) {
+        int candidates[2] = {nearPage + delta, nearPage - delta};
+        int n = delta == 0 ? 1 : 2;
+        for (int i = 0; i < n; i++) {
+            int pageNo = candidates[i];
+            if (!dm->ValidPageNo(pageNo) || pageNo > pageCount) {
+                continue;
+            }
+            TextSearch search(engine);
+            TextSel* sel = search.FindFirst(pageNo, text);
+            if (sel && sel->len > 0) {
+                ts->Reset();
+                ts->CopySelection(&search);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void RefreshTextSelectionAfterLayoutChange(WindowTab* tab, MainWindow* win) {
+    if (!tab) {
+        return;
+    }
+    DisplayModel* dm = tab->AsFixed();
+    if (!dm) {
+        return;
+    }
+    TextSelection* ts = dm->textSelection;
+    if (!ts || ts->startPage < 0 || ts->startGlyph < 0 || ts->result.len == 0) {
+        return;
+    }
+
+    int nearPage = ts->startPage;
+    WCHAR* savedText = ts->ExtractText(" ");
+    if (str::IsEmpty(savedText)) {
+        str::Free(savedText);
+        if (win && win->CurrentTab() == tab) {
+            DeleteOldSelectionInfo(win, true);
+        }
+        return;
+    }
+    str::NormalizeWSInPlace(savedText);
+    if (str::Len(savedText) > kMaxReselectTextChars) {
+        str::Free(savedText);
+        if (win && win->CurrentTab() == tab) {
+            DeleteOldSelectionInfo(win, true);
+        }
+        return;
+    }
+
+    EbookAnnotationsInvalidateLayoutCaches(tab);
+
+    ts->Reset();
+    ts->startPage = ts->endPage = ts->startGlyph = ts->endGlyph = -1;
+
+    bool ok = ReselectTextAfterLayoutChange(dm, ts, nearPage, savedText);
+    str::Free(savedText);
+    if (!ok) {
+        if (win && win->CurrentTab() == tab) {
+            DeleteOldSelectionInfo(win, true);
+        }
+        return;
+    }
+
+    delete tab->selectionOnPage;
+    tab->selectionOnPage = SelectionOnPage::FromTextSelect(&ts->result);
+    if (!tab->selectionOnPage) {
+        if (win && win->CurrentTab() == tab) {
+            DeleteOldSelectionInfo(win, true);
+        }
+        return;
+    }
+
+    if (win && win->CurrentTab() == tab) {
+        win->showSelection = true;
+        UpdateSelectionToolbarPosition(win);
+        if (win->uiaProvider) {
+            win->uiaProvider->OnSelectionChanged();
+        }
+        ScheduleRepaint(win, 0);
+    }
 }
 
 void UpdateTextSelection(MainWindow* win, bool select) {

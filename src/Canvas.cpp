@@ -2934,7 +2934,7 @@ static void OnPaintError(MainWindow* win) {
     FillRect(hdc, &ps.rcPaint, bgBrush);
     // TODO: should this be "Error opening %s"?
     auto tab = win->CurrentTab();
-    const char* filePath = tab->filePath;
+    const char* filePath = tab ? tab->filePath : nullptr;
     if (filePath) {
         TempStr msg = str::FormatTemp(_TRA("Loading %s ..."), path::GetBaseNameTemp(filePath));
         SetTextColor(hdc, ThemeWindowTextColor());

@@ -162,6 +162,8 @@ static void UpdateOverlayScrollbarPositions(MainWindow* win);
 static void SyncCanvasScrollBarTheme(MainWindow* win);
 static void BeginFrameRedrawSuppression(MainWindow* win);
 static void EndFrameRedrawSuppression(MainWindow* win);
+static void ResyncReadAloudAfterLayoutChange(WindowTab* tab, MainWindow* win);
+static void ScheduleReadAloudResyncAfterLayoutChange(MainWindow* win, WindowTab* tab);
 
 static const char* HwndName(HWND hwnd) {
     WCHAR cls[64]{};
@@ -512,8 +514,28 @@ static DWORD gLastTocProgressInvalidateMs = 0;
 static DWORD gLastEbookProgressRepaintMs = 0;
 static const DWORD kTocProgressInvalidateIntervalMs = 300;
 static const DWORD kEbookProgressRepaintIntervalMs = 200;
+static const DWORD kEbookProgressToolbarIntervalMs = 800;
+
+static EbookPagesProgressTask* gPendingEbookProgress = nullptr;
+static bool gEbookProgressScheduled = false;
+
+static void EbookPagesProgressUI(EbookPagesProgressTask* task);
+
+static void PostPendingEbookProgress() {
+    if (!gPendingEbookProgress) {
+        return;
+    }
+    EbookPagesProgressTask* next = gPendingEbookProgress;
+    gPendingEbookProgress = nullptr;
+    gEbookProgressScheduled = true;
+    uitask::Post(MkFunc0<EbookPagesProgressTask>(EbookPagesProgressUI, next), "EbookPagesProgress");
+}
 
 static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
+    gEbookProgressScheduled = false;
+    defer {
+        PostPendingEbookProgress();
+    };
     if (!task || !task->path) {
         delete task;
         return;
@@ -541,15 +563,24 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
     }
     dm->TryApplyPendingRestoreScroll();
     MainWindow* win = tab->win;
-    int pageCount = dm->PageCount();
-    UpdateToolbarPageText(win, pageCount);
-    ToolbarUpdateStateForWindow(win, false);
     EngineBase* engine = dm->GetEngine();
+    bool progressiveLoad = EngineIsProgressiveEbookLoading(engine);
+    static DWORD gLastEbookProgressToolbarMs = 0;
+    DWORD now = GetTickCount();
+    if (!progressiveLoad ||
+        gLastEbookProgressToolbarMs == 0 || now - gLastEbookProgressToolbarMs >= kEbookProgressToolbarIntervalMs) {
+        gLastEbookProgressToolbarMs = now;
+        int pageCount = dm->PageCount();
+        UpdateToolbarPageText(win, pageCount);
+        if (!progressiveLoad) {
+            ToolbarUpdateStateForWindow(win, false);
+        }
+    }
     // reloadToc fires when background chapter counting finishes (InvalidateTocTree);
     // it must not wait for layout batches, otherwise TOC never loads because
     // reloadToc is only true on the first notify while layout is still batched.
     if (reloadToc && !EngineIsProgressiveEbookLoading(engine) && isForeground) {
-        pageCount = dm->PageCount();
+        int pageCount = dm->PageCount();
         UpdateToolbarPageText(win, pageCount);
         bool wantToc = tab->showToc || DefaultShowTocForPath(path);
         if (wantToc && win->ctrl && win->ctrl->HasToc()) {
@@ -567,7 +598,6 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
         }
     }
     if (win->tocLoaded && win->tocVisible && win->tocTreeView && EngineIsProgressiveEbookLoading(engine)) {
-        DWORD now = GetTickCount();
         if (gLastTocProgressInvalidateMs == 0 ||
             now - gLastTocProgressInvalidateMs >= kTocProgressInvalidateIntervalMs) {
             gLastTocProgressInvalidateMs = now;
@@ -575,7 +605,6 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
         }
     }
     if (isForeground && EngineIsProgressiveEbookLoading(engine)) {
-        DWORD now = GetTickCount();
         if (gLastEbookProgressRepaintMs == 0 || now - gLastEbookProgressRepaintMs >= kEbookProgressRepaintIntervalMs) {
             gLastEbookProgressRepaintMs = now;
             ScheduleRepaint(win, 0);
@@ -588,9 +617,21 @@ void NotifyEbookPagesLoadingProgress(const char* filePath, bool reloadToc) {
         return;
     }
 
+    if (gPendingEbookProgress) {
+        gPendingEbookProgress->reloadToc |= reloadToc;
+        return;
+    }
+    if (gEbookProgressScheduled) {
+        gPendingEbookProgress = new EbookPagesProgressTask;
+        gPendingEbookProgress->path = str::Dup(filePath);
+        gPendingEbookProgress->reloadToc = reloadToc;
+        return;
+    }
+
     EbookPagesProgressTask* task = new EbookPagesProgressTask;
     task->path = str::Dup(filePath);
     task->reloadToc = reloadToc;
+    gEbookProgressScheduled = true;
     auto fn = MkFunc0<EbookPagesProgressTask>(EbookPagesProgressUI, task);
     uitask::Post(fn, "EbookPagesProgress");
 }
@@ -2245,6 +2286,11 @@ MainWindow* CreateAndShowMainWindow(SessionData* data, bool showWin) {
     SetSidebarVisibility(win, false, gGlobalPrefs->showFavorites);
     ToolbarUpdateStateForWindow(win, true);
 
+    if (SettingsUseTabs() && !gGlobalPrefs->noHomeTab && win->TabCount() == 0) {
+        EnsureHomeTabForWindow(win);
+        TabsSelect(win, 0);
+    }
+
     if (showWin) {
         ShowMainWindow(win, windowState);
     }
@@ -2450,6 +2496,26 @@ static void ReloadTocUiAfterReflowReparse(MainWindow* win, WindowTab* tab) {
     }
 }
 
+// Theme toggles only user CSS colors; page breaks stay the same. During progressive
+// EPUB loading, avoid growAll=true relayout over thousands of pages on the UI thread.
+static void RefreshDisplayModelAfterThemeChange(DisplayModel* dm, bool updateUi) {
+    if (!dm || !dm->pagesInfo) {
+        return;
+    }
+    if (EngineIsProgressiveEbookLoading(dm->GetEngine())) {
+        if (!updateUi) {
+            return;
+        }
+        dm->RecalcVisibleParts();
+        dm->RenderVisibleParts();
+        if (dm->cb) {
+            dm->cb->UpdateScrollbars(dm->canvasSize);
+        }
+        return;
+    }
+    dm->OnMorePagesAvailablePreservingScroll(updateUi, true);
+}
+
 static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
     if (!win || !tab || !tab->IsDocLoaded() || tab->IsAboutTab()) {
         return;
@@ -2467,7 +2533,10 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
         if (!EngineMupdfRelayoutForThemeChange(engine)) {
             logfa("ApplyThemeChangeToTab: in-place reflow theme CSS update failed\n");
         }
-        dm->OnMorePagesAvailable(tab == win->CurrentTab(), true);
+        EbookAnnotationsInvalidateLayoutCaches(tab);
+        RefreshDisplayModelAfterThemeChange(dm, tab == win->CurrentTab());
+        RefreshTextSelectionAfterLayoutChange(tab, win);
+        ResyncReadAloudAfterLayoutChange(tab, win);
         ReloadTocUiAfterReflowReparse(win, tab);
         tab->reloadOnFocus = false;
         return;
@@ -2479,6 +2548,10 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
         // under a frame painted with the new theme.
         gRenderCache->CancelRendering(dm);
         gRenderCache->FreeForDisplayModel(dm);
+        EbookAnnotationsInvalidateLayoutCaches(tab);
+        RefreshDisplayModelAfterThemeChange(dm, tab == win->CurrentTab());
+        RefreshTextSelectionAfterLayoutChange(tab, win);
+        ResyncReadAloudAfterLayoutChange(tab, win);
         if (tab != win->CurrentTab()) {
             tab->reloadOnFocus = true;
         }
@@ -2549,6 +2622,16 @@ void UpdateAfterThemeChange() {
         // height; RelayoutFrame must run so the canvas moves with the toolbar.
         win->lastLayoutState = {};
         RelayoutFrame(win);
+        win->UpdateCanvasSize();
+        DisplayModel* dm = win->AsFixed();
+        if (dm && !EngineIsProgressiveEbookLoading(dm->GetEngine())) {
+            dm->OnMorePagesAvailablePreservingScroll(true, true);
+        } else if (dm) {
+            dm->RecalcVisibleParts();
+            if (dm->cb) {
+                dm->cb->UpdateScrollbars(dm->canvasSize);
+            }
+        }
         RecreateFindBar(win);
         UpdateFindWindowTheme(win);
         if (UseDarkModeLib()) {
@@ -2570,6 +2653,15 @@ void UpdateAfterThemeChange() {
         UpdateMainWindowNativeChrome(win);
         UpdateControlsColors(win);
         UpdateWindowFrameBorderColor(win);
+        WindowTab* currentTab = win->CurrentTab();
+        if (currentTab) {
+            ResyncReadAloudAfterLayoutChange(currentTab, win);
+        }
+        for (WindowTab* tab : win->Tabs()) {
+            if (tab != currentTab) {
+                ScheduleReadAloudResyncAfterLayoutChange(win, tab);
+            }
+        }
         uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN;
         RedrawWindow(win->hwndFrame, nullptr, nullptr, flags);
     }
@@ -3591,6 +3683,7 @@ void LoadModelIntoTab(WindowTab* tab) {
     win->ctrl = tab->ctrl;
 
     bool rerenderAfterTheme = false;
+    bool refreshSelectionAfterTheme = false;
     if (!tab->IsAboutTab() && tab->ctrl && tab->reloadOnFocus) {
         tab->reloadOnFocus = false;
         if (ShouldReloadForThemeChange(tab)) {
@@ -3606,8 +3699,10 @@ void LoadModelIntoTab(WindowTab* tab) {
         tab->lastDarkModeEpoch != gRenderCache->darkModeEpoch) {
         gRenderCache->CancelRendering(dmAfterTheme);
         gRenderCache->FreeForDisplayModel(dmAfterTheme);
+        EbookAnnotationsInvalidateLayoutCaches(tab);
         tab->lastDarkModeEpoch = gRenderCache->darkModeEpoch;
         rerenderAfterTheme = true;
+        refreshSelectionAfterTheme = true;
     }
 
     if (win->AsChm()) {
@@ -3624,8 +3719,16 @@ void LoadModelIntoTab(WindowTab* tab) {
 
     DisplayModel* dm = tab->ctrl ? tab->ctrl->AsFixed() : nullptr;
     if (dm && dm->pagesInfo) {
-        dm->OnMorePagesAvailable(true, false);
+        if (refreshSelectionAfterTheme) {
+            dm->OnMorePagesAvailablePreservingScroll(true, false);
+        } else {
+            dm->OnMorePagesAvailable(true, false);
+        }
         UpdateToolbarPageText(win, dm->PageCount());
+    }
+    if (refreshSelectionAfterTheme) {
+        RefreshTextSelectionAfterLayoutChange(tab, win);
+        ResyncReadAloudAfterLayoutChange(tab, win);
     }
 
     if (win->InPresentation()) {
@@ -3818,7 +3921,10 @@ static void ApplyDocumentColorModeChangeToTab(MainWindow* win, WindowTab* tab) {
         EngineMupdfRelayoutForThemeChange(engine);
         DisplayModel* dm = tab->AsFixed();
         if (dm) {
-            dm->OnMorePagesAvailable(tab == win->CurrentTab(), true);
+            EbookAnnotationsInvalidateLayoutCaches(tab);
+            RefreshDisplayModelAfterThemeChange(dm, tab == win->CurrentTab());
+            RefreshTextSelectionAfterLayoutChange(tab, win);
+            ResyncReadAloudAfterLayoutChange(tab, win);
         }
         ReloadTocUiAfterReflowReparse(win, tab);
         tab->reloadOnFocus = false;
@@ -4428,6 +4534,15 @@ void CloseTab(WindowTab* tab, bool quitIfLast) {
     // Stop eventual TTS reading
     StopReadAloudIfSourceTab(tab);
 
+    if (tab->IsAboutTab()) {
+        if (SettingsUseTabs() && !gGlobalPrefs->noHomeTab) {
+            if (!HasOpenedDocuments(win) && CanCloseWindow(win)) {
+                CloseWindow(win, quitIfLast, false);
+            }
+            return;
+        }
+    }
+
     int tabCount = win->TabCount();
     if (tabCount == 1 || (tabCount == 0 && quitIfLast)) {
         if (CanCloseWindow(win)) {
@@ -4455,35 +4570,25 @@ void CloseTab(WindowTab* tab, bool quitIfLast) {
         return;
     }
 
-    tabCount = win->TabCount();
-    WindowTab* lastTab = (tabCount == 1) ? win->GetTab(0) : nullptr;
-    if (lastTab && lastTab->type == WindowTab::Type::About) {
-        // showing only home page tab so remove it
-        // if there are other windows, close this one
-        if (gWindows.size() > 1) {
-            CloseWindow(win, false, false);
-        } else {
-            tab = win->GetTab(0);
-            // re-use quitIfLast logic
-            CloseTab(tab, quitIfLast);
-            return;
-        }
-    }
-
     SaveSettings();
 }
 
 // closes the current tab, selecting the next one
-// if there's only a single tab left, the window is closed if there
-// are other windows, else the Frequently Read page is displayed
+// if on the pinned home tab with no document tabs, closes the window
 void CloseCurrentTab(MainWindow* win, bool quitIfLast) {
     WindowTab* tab = win->CurrentTab();
     logf("CloseCurrentTab: tab: 0x%p win: 0x%p, hwndFrame: 0x%x, quitIfLast: %d\n", tab, win, win->hwndFrame,
          (int)quitIfLast);
+    if (tab && tab->IsAboutTab() && SettingsUseTabs() && !gGlobalPrefs->noHomeTab && !HasOpenedDocuments(win)) {
+        if (CanCloseWindow(win)) {
+            CloseWindow(win, true, false);
+        }
+        return;
+    }
     if (tab) {
         CloseTab(tab, quitIfLast);
     } else {
-        // Close tabless Frequently Read/About page
+        // Legacy tabless home page (tabs disabled or NoHomeTab).
         CloseWindow(win, true, false);
     }
 }
@@ -9091,15 +9196,16 @@ static HMENU GetUpdatedSystemMenu(HWND hwnd, bool changeDefaultItem) {
     return menu;
 }
 
+static void TrackCaptionPopupMenu(MainWindow* win, HMENU menu, Rect btnRect);
+
 void OpenSystemMenu(MainWindow* win) {
     Rect r = win->captionBtn[CB_SYSTEM_MENU].rect;
-    Rect rScreen = MapRectToWindow(r, win->hwndFrame, HWND_DESKTOP);
     HMENU systemMenu = GetUpdatedSystemMenu(win->hwndFrame, false);
-    uint flags = 0;
-    TrackPopupMenuEx(systemMenu, flags, rScreen.x, rScreen.y + rScreen.dy, win->hwndFrame, nullptr);
+    TrackCaptionPopupMenu(win, systemMenu, r);
 }
 
 static int CaptionButtonAt(MainWindow* win, Point pt) {
+    UnmirrorRtl(win->hwndFrame, pt);
     for (int i = CB_BTN_FIRST; i < CB_BTN_COUNT; i++) {
         if (win->captionBtn[i].visible && win->captionBtn[i].rect.Contains(pt)) {
             return i;
@@ -9173,41 +9279,52 @@ static void ClearAllHighlights(MainWindow* win) {
     }
 }
 
-static void MenuBarAsPopupMenu(MainWindow* win, int x, int y) {
-    int count = GetMenuItemCount(win->menu);
+static void TrackCaptionPopupMenu(MainWindow* win, HMENU menu, Rect btnRect) {
+    SetForegroundWindow(win->hwndFrame);
+
+    Rect anchor = MapLtrClientRectToScreen(win->hwndFrame, btnRect);
+    uint flags = TPM_LEFTALIGN | TPM_TOPALIGN | TPM_VERTICAL;
+    int x = anchor.x;
+    int y = anchor.y + anchor.dy;
+    if (IsUIRtl()) {
+        x = anchor.x + anchor.dx;
+        flags = TPM_RIGHTALIGN | TPM_TOPALIGN | TPM_VERTICAL | TPM_LAYOUTRTL;
+    }
+
+    // rcExclude must cover the activating control so the opening click doesn't
+    // dismiss the popup immediately (especially on mixed-DPI / PerMonitorV2).
+    Rect exclude = anchor;
+    exclude.Inflate(DpiScale(win->hwndFrame, 4), DpiScale(win->hwndFrame, 4));
+
+    TPMPARAMS tpm{};
+    tpm.cbSize = sizeof(TPMPARAMS);
+    tpm.rcExclude = ToRECT(exclude);
+
+    TrackPopupMenuEx(menu, flags, x, y, win->hwndFrame, &tpm);
+
+    // Win32 menu tracking requires this so the next menu can receive input.
+    PostMessageW(win->hwndFrame, WM_NULL, 0, 0);
+}
+
+static void MenuBarAsPopupMenu(MainWindow* win, Rect btnRect) {
+    if (!win->menu || GetMenuItemCount(win->menu) <= 0) {
+        RebuildMenuBarForWindow(win);
+    }
+    HMENU popup = BuildMenubarPopupMenu(win);
+    int count = GetMenuItemCount(popup);
     if (count <= 0) {
+        DestroyMenu(popup);
         return;
     }
-    HMENU popup = CreatePopupMenu();
 
-    MENUITEMINFO mii{};
-    mii.cbSize = sizeof(MENUITEMINFO);
-    mii.fMask = MIIM_SUBMENU | MIIM_STRING;
-    for (int i = 0; i < count; i++) {
-        mii.dwTypeData = nullptr;
-        GetMenuItemInfo(win->menu, i, TRUE, &mii);
-        if (!mii.hSubMenu || !mii.cch) {
-            continue;
-        }
-        mii.cch++;
-        AutoFreeWStr subMenuName(AllocArray<WCHAR>(mii.cch));
-        mii.dwTypeData = subMenuName;
-        GetMenuItemInfo(win->menu, i, TRUE, &mii);
-        AppendMenuW(popup, MF_POPUP | MF_STRING, (UINT_PTR)mii.hSubMenu, subMenuName);
-    }
-
-    if (IsUIRtl()) {
-        x += win->captionBtn[CB_MENU].rect.dx;
-    }
-
-    MarkMenuOwnerDraw(popup);
-    TrackPopupMenu(popup, TPM_LEFTALIGN, x, y, 0, win->hwndFrame, nullptr);
-    FreeMenuOwnerDrawInfoData(popup);
+    MarkMenuOwnerDraw(popup, false, true);
+    TrackCaptionPopupMenu(win, popup, btnRect);
 
     while (count > 0) {
         --count;
         RemoveMenu(popup, count, MF_BYPOSITION);
     }
+    FreeMenuOwnerDrawInfoData(popup, false);
     DestroyMenu(popup);
 }
 
@@ -9225,19 +9342,20 @@ static void HandleCaptionClick(MainWindow* win, int btnIdx) {
         case CB_CLOSE:
             PostMessageW(win->hwndFrame, WM_SYSCOMMAND, SC_CLOSE, 0);
             break;
-        case CB_MENU:
-            if (!KillTimer(win->hwndFrame, DO_NOT_REOPEN_MENU_TIMER_ID) && !win->isMenuOpen) {
+        case CB_MENU: {
+            BOOL hadTimer = KillTimer(win->hwndFrame, DO_NOT_REOPEN_MENU_TIMER_ID);
+            if (!hadTimer && !win->isMenuOpen) {
                 Rect r = win->captionBtn[CB_MENU].rect;
-                Rect rScreen = MapRectToWindow(r, win->hwndFrame, HWND_DESKTOP);
                 win->isMenuOpen = true;
                 RepaintButton(win->hwndFrame, CB_MENU, win);
-                MenuBarAsPopupMenu(win, rScreen.x, rScreen.y + rScreen.dy);
+                MenuBarAsPopupMenu(win, r);
                 win->isMenuOpen = false;
                 RepaintButton(win->hwndFrame, CB_MENU, win);
                 SetTimer(win->hwndFrame, DO_NOT_REOPEN_MENU_TIMER_ID, DO_NOT_REOPEN_MENU_DELAY_IN_MS, nullptr);
             }
             HwndSetFocus(win->hwndFrame);
             break;
+        }
         case CB_SYSTEM_MENU:
             OpenSystemMenu(win);
             break;
@@ -9655,6 +9773,14 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
                 *callDef = false;
                 return 0;
             }
+            if (wp == kHomeSearchDebounceTimerId) {
+                KillTimer(hwnd, kHomeSearchDebounceTimerId);
+                if (win->IsCurrentTabAbout()) {
+                    HomePageApplySearchFilter(win);
+                }
+                *callDef = false;
+                return 0;
+            }
             break;
 
         case WM_THEMECHANGED:
@@ -9935,15 +10061,6 @@ static constexpr UINT WM_MAIN_WINDOW_DPI_SETTLED = WM_APP + 0x422;
 
 static WindowTab* gReadAloudSourceTab = nullptr;
 static WindowTab* gReadAloudSessionTab = nullptr;
-static HMENU gReadAloudAppSubmenu = nullptr;
-
-void SetReadAloudAppSubmenu(HMENU menu) {
-    gReadAloudAppSubmenu = menu;
-}
-
-bool IsReadAloudAppSubmenu(HMENU menu) {
-    return menu && menu == gReadAloudAppSubmenu;
-}
 
 static void ReadAloudShowNotif(WindowTab* tab, const char* msg);
 
@@ -10487,22 +10604,34 @@ static TempStr ReadAloudSpeedLabel(float rate) {
     return str::FormatTemp("%.2f×", rate);
 }
 
-static bool ReadAloudIsCjkCp(char32_t cp) {
-    // CJK ideographs, radicals, kana, CJK punctuation, fullwidth forms
-    return (cp >= 0x2E80 && cp <= 0x9FFF) || (cp >= 0xF900 && cp <= 0xFAFF) || (cp >= 0xFF00 && cp <= 0xFF60) ||
-           (cp >= 0x3000 && cp <= 0x303F);
+static bool ReadAloudIsCjkPunctuationCp(char32_t cp) {
+    // CJK/fullwidth punctuation only — not letters; treat as neutral in bilingual chunking
+    return (cp >= 0x3000 && cp <= 0x303F) || (cp >= 0xFF00 && cp <= 0xFF0F) || (cp >= 0xFF1A && cp <= 0xFF20) ||
+           (cp >= 0xFF3B && cp <= 0xFF40) || (cp >= 0xFF5B && cp <= 0xFF65);
+}
+
+static bool ReadAloudIsCjkLetterCp(char32_t cp) {
+    if (ReadAloudIsCjkPunctuationCp(cp)) {
+        return false;
+    }
+    // Han, kana, hangul, compatibility ideographs, halfwidth katakana
+    return (cp >= 0x2E80 && cp <= 0x9FFF) || (cp >= 0xF900 && cp <= 0xFAFF) || (cp >= 0xAC00 && cp <= 0xD7AF) ||
+           (cp >= 0xFF66 && cp <= 0xFF9D);
 }
 
 static bool ReadAloudIsLatinLetterCp(char32_t cp) {
-    return (cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z') || (cp >= 0xC0 && cp <= 0x24F);
+    return (cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z') || (cp >= 0xC0 && cp <= 0x24F) ||
+           (cp >= 0xFF21 && cp <= 0xFF3A) || (cp >= 0xFF41 && cp <= 0xFF5A);
 }
 
 // Short English runs embedded in Chinese (e.g. "App", "Windows 11") use the Chinese
 // voice; switch to English only for a long run or a complete short sentence.
+// CJK/fullwidth punctuation in English text (，．？) stays neutral and does not
+// trigger a Chinese voice chunk.
 static constexpr int kReadAloudMinEnWordsToSwitch = 5;
 
 static bool ReadAloudIsSentenceEndCp(char32_t cp) {
-    return cp == '.' || cp == '!' || cp == '?';
+    return cp == '.' || cp == '!' || cp == '?' || cp == 0x3002 || cp == 0xFF0E || cp == 0xFF01 || cp == 0xFF1F;
 }
 
 struct ReadAloudLatinRunInfo {
@@ -10520,7 +10649,7 @@ static ReadAloudLatinRunInfo ReadAloudAnalyzeLatinRun(const char* p) {
         if (!ReadAloudDecodeUtf8One(p, &cp)) {
             break;
         }
-        if (ReadAloudIsCjkCp(cp)) {
+        if (ReadAloudIsCjkLetterCp(cp)) {
             info.hitCjk = true;
             break;
         }
@@ -10558,7 +10687,7 @@ static const char* ReadAloudSkipLatinRun(const char* p) {
         if (!ReadAloudDecodeUtf8One(p, &cp)) {
             break;
         }
-        if (ReadAloudIsCjkCp(cp)) {
+        if (ReadAloudIsCjkLetterCp(cp)) {
             return prev;
         }
     }
@@ -10592,10 +10721,10 @@ static int ReadAloudFindBilingualChunkEnd(const char* text, int start, int maxLe
             break;
         }
 
-        bool isCjk = ReadAloudIsCjkCp(cp);
-        bool isLatin = !isCjk && ReadAloudIsLatinLetterCp(cp);
+        bool isCjk = ReadAloudIsCjkLetterCp(cp);
+        bool isLatin = ReadAloudIsLatinLetterCp(cp);
         if (!isCjk && !isLatin) {
-            continue; // neutral: digits, spaces, punctuation follow the surrounding language
+            continue; // neutral: digits, spaces, latin/CJK punctuation follow surrounding language
         }
 
         if (lang == ReadAloudLang::Unknown) {
@@ -10783,10 +10912,7 @@ static bool ReadAloudEnsureDocumentTextExtended(WindowTab* tab) {
         tab->readAloudHighlight = new ReadAloudHighlightMap{};
     }
 
-    logf("ReadAloud: EnsureDocumentTextExtended: pages %d..%d (builtEnd=%d pageCount=%d remaining=%d)\n", nextStart,
-         nextEnd, tab->readAloudBuiltEndPage, pageCount, remaining);
     if (!ReadAloudHighlightAppendDocumentPages(dm, nextStart, nextEnd, tab->readAloudHighlight, &tab->readAloudText)) {
-        logf("ReadAloud: EnsureDocumentTextExtended: append failed\n");
         return false;
     }
 
@@ -10809,7 +10935,6 @@ static void ReadAloudFinishSession(WindowTab* tab, MainWindow* win) {
         return;
     }
 
-    logf("ReadAloud: FinishSession\n");
     if (tab->win) {
         ReadAloudHighlightTimerStop(tab->win);
         InvalidateRect(tab->win->hwndCanvas, nullptr, FALSE);
@@ -10819,6 +10944,8 @@ static void ReadAloudFinishSession(WindowTab* tab, MainWindow* win) {
     tab->readAloudChunkStart = 0;
     tab->readAloudChunkEnd = 0;
     tab->readAloudBuiltEndPage = 0;
+    tab->readAloudStartPage = 0;
+    tab->readAloudStartGlyph = 0;
     if (tab->readAloudHighlight) {
         ReadAloudHighlightFree(tab->readAloudHighlight);
         delete tab->readAloudHighlight;
@@ -10837,6 +10964,52 @@ static void ReadAloudFinishSession(WindowTab* tab, MainWindow* win) {
     if (win) {
         ToolbarUpdateStateForWindow(win, true);
     }
+}
+
+struct DeferredReadAloudResyncData {
+    MainWindow* win = nullptr;
+    WindowTab* tab = nullptr;
+};
+
+static void DeferredReadAloudResync(DeferredReadAloudResyncData* d) {
+    AutoDelete del(d);
+    if (!IsMainWindowValid(d->win) || !d->tab) {
+        return;
+    }
+    bool textRelocated = false;
+    if (!RefreshReadAloudHighlightAfterLayoutChange(d->tab, d->win, &textRelocated)) {
+        return;
+    }
+    if (textRelocated && TtsIsSpeaking() && GetReadAloudSourceTab() == d->tab) {
+        TtsStop();
+        TtsProcessEvents();
+        ReadAloudSpeakChunk(d->tab, _TRA("No text available to read aloud"));
+    }
+}
+
+static void ResyncReadAloudAfterLayoutChange(WindowTab* tab, MainWindow* win) {
+    if (!tab || str::IsEmpty(tab->readAloudText) || !tab->readAloudHighlight) {
+        return;
+    }
+    bool textRelocated = false;
+    if (!RefreshReadAloudHighlightAfterLayoutChange(tab, win, &textRelocated)) {
+        return;
+    }
+    if (textRelocated && TtsIsSpeaking() && GetReadAloudSourceTab() == tab) {
+        TtsStop();
+        TtsProcessEvents();
+        ReadAloudSpeakChunk(tab, _TRA("No text available to read aloud"));
+    }
+}
+
+static void ScheduleReadAloudResyncAfterLayoutChange(MainWindow* win, WindowTab* tab) {
+    if (!tab || str::IsEmpty(tab->readAloudText) || !tab->readAloudHighlight) {
+        return;
+    }
+    auto d = new DeferredReadAloudResyncData;
+    d->win = win;
+    d->tab = tab;
+    uitask::Post(MkFunc0<DeferredReadAloudResyncData>(DeferredReadAloudResync, d), "ResyncReadAloudAfterLayout");
 }
 
 static void ReadAloudPrepareRestart(WindowTab* tab, MainWindow* win) {
@@ -10901,10 +11074,8 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
 
     int chunkLen = end - start;
     TempStr chunk = str::DupTemp(tab->readAloudText + start, (size_t)chunkLen);
-    logf("ReadAloud: SpeakChunk: %d..%d of %d (mapBase=%d)\n", start, end, textLen, tab->readAloudHighlightBase);
 
     if (!TtsSpeakUtf8(chunk)) {
-        logf("ReadAloud: SpeakChunk: TtsSpeakUtf8 failed\n");
         ReadAloudShowNotif(tab, errMsg);
         return false;
     }
@@ -11163,6 +11334,8 @@ static void ResetReadAloudStateForTab(WindowTab* tab) {
     tab->readAloudChunkStart = 0;
     tab->readAloudChunkEnd = 0;
     tab->readAloudBuiltEndPage = 0;
+    tab->readAloudStartPage = 0;
+    tab->readAloudStartGlyph = 0;
     tab->readAloudAutoScroll = false;
     tab->readAloudAutoScrollHold = false;
     tab->readAloudAutoScrollHoldPageNo = -1;
@@ -11223,14 +11396,9 @@ static void ReadAloudShowNotif(WindowTab* tab, const char* msg) {
 static void ReadAloudStartText(WindowTab* tab, const char* cleaned, ReadAloudHighlightMap* newMap, int highlightBase,
                                const char* errMsg) {
     if (str::IsEmpty(cleaned)) {
-        logf("ReadAloud: StartText: empty cleaned text\n");
         ReadAloudShowNotif(tab, errMsg);
         return;
     }
-
-    int cleanedLen = str::Leni(cleaned);
-    int mapLen = newMap ? newMap->len : -1;
-    logf("ReadAloud: StartText: cleanedLen=%d mapLen=%d highlightBase=%d\n", cleanedLen, mapLen, highlightBase);
 
     if (newMap) {
         if (!tab->readAloudHighlight) {
@@ -11242,8 +11410,6 @@ static void ReadAloudStartText(WindowTab* tab, const char* cleaned, ReadAloudHig
             newMap->locs = nullptr;
             newMap->len = 0;
             newMap->cap = 0;
-        } else {
-            logf("ReadAloud: StartText: highlight map empty (len=%d locs=%p)\n", newMap->len, newMap->locs);
         }
     } else if (highlightBase == 0 && tab->readAloudHighlight) {
         ReadAloudHighlightFree(tab->readAloudHighlight);
@@ -11268,14 +11434,11 @@ static void ReadAloudStartText(WindowTab* tab, const char* cleaned, ReadAloudHig
         ReadAloudFinishSession(tab, tab->win);
         return;
     }
-    logf("ReadAloud: StartText: started speaking\n");
 }
 
 static void ReadAloudStartFromViewportTop(WindowTab* tab, const char* errMsg) {
-    logf("ReadAloud: StartFromViewportTop\n");
     DisplayModel* dm = tab->AsFixed();
     if (!dm) {
-        logf("ReadAloud: StartFromViewportTop: not a fixed-layout document\n");
         ReadAloudShowNotif(tab, errMsg);
         return;
     }
@@ -11283,7 +11446,6 @@ static void ReadAloudStartFromViewportTop(WindowTab* tab, const char* errMsg) {
     int startPage = 0;
     int startGlyph = 0;
     if (!ReadAloudGetViewportStart(dm, &startPage, &startGlyph)) {
-        logf("ReadAloud: StartFromViewportTop: GetViewportStart failed\n");
         ReadAloudShowNotif(tab, errMsg);
         return;
     }
@@ -11296,14 +11458,13 @@ static void ReadAloudStartFromViewportTop(WindowTab* tab, const char* errMsg) {
         endPage = pageCount;
     }
     if (!ReadAloudHighlightBuildFromDocument(dm, startPage, startGlyph, endPage, &map, cleaned)) {
-        logf("ReadAloud: StartFromViewportTop: BuildFromDocument failed (page=%d glyph=%d endPage=%d)\n", startPage,
-             startGlyph, endPage);
         ReadAloudShowNotif(tab, errMsg);
         return;
     }
 
     tab->readAloudBuiltEndPage = endPage;
-
+    tab->readAloudStartPage = startPage;
+    tab->readAloudStartGlyph = startGlyph;
     ReadAloudStartText(tab, cleaned.Get(), &map, 0, errMsg);
 }
 
@@ -11321,22 +11482,24 @@ static void ReadAloudStartFromSelection(WindowTab* tab, const char* errMsg) {
         TempStr text = GetSelectedTextTemp(tab, "\r\n", isTextOnlySelection);
         TempStr cleanedStr = CleanReadAloudTextTemp(text);
         tab->readAloudBuiltEndPage = 0;
+        tab->readAloudStartPage = 0;
+        tab->readAloudStartGlyph = 0;
         ReadAloudStartText(tab, cleanedStr, nullptr, 0, errMsg);
         return;
     }
 
     tab->readAloudBuiltEndPage = 0;
+    tab->readAloudStartPage = 0;
+    tab->readAloudStartGlyph = 0;
     ReadAloudStartText(tab, cleaned.Get(), &map, 0, errMsg);
 }
 
 static void ReadAloudInTab(WindowTab* tab) {
     if (!tab || !tab->win) {
-        logf("ReadAloud: InTab: null tab or window\n");
         return;
     }
 
     if (!HasPermission(Perm::CopySelection)) {
-        logf("ReadAloud: InTab: CopySelection permission denied\n");
         ReadAloudShowNotif(tab, _TRA("Copying text is not allowed"));
         return;
     }
@@ -11347,12 +11510,9 @@ static void ReadAloudInTab(WindowTab* tab) {
     TempStr text = GetSelectedTextTemp(tab, "\r\n", isTextOnlySelection);
 
     if (!str::IsEmpty(text) && isTextOnlySelection) {
-        logf("ReadAloud: InTab: using selection path (len=%d)\n", str::Leni(text));
         tab->readAloudScope = WindowTab::ReadAloudScopeSmart;
         ReadAloudStartFromSelection(tab, _TRA("No text available to read aloud"));
     } else {
-        logf("ReadAloud: InTab: using viewport-top path (hasSelection=%d isTextOnly=%d)\n", !str::IsEmpty(text),
-             isTextOnlySelection);
         tab->readAloudScope = WindowTab::ReadAloudScopeSmart;
         ReadAloudStartFromViewportTop(tab, _TRA("No text available to read aloud"));
     }
@@ -11373,21 +11533,19 @@ static void ReadAloudStartFromPageGlyph(WindowTab* tab, int startPage, int start
         endPage = pageCount;
     }
     if (!ReadAloudHighlightBuildFromDocument(dm, startPage, startGlyph, endPage, &map, cleaned)) {
-        logf("ReadAloud: StartFromPageGlyph: BuildFromDocument failed (page=%d glyph=%d endPage=%d)\n", startPage,
-             startGlyph, endPage);
         ReadAloudShowNotif(tab, errMsg);
         return;
     }
 
     tab->readAloudBuiltEndPage = endPage;
+    tab->readAloudStartPage = startPage;
+    tab->readAloudStartGlyph = startGlyph;
     ReadAloudStartText(tab, cleaned.Get(), &map, 0, errMsg);
 }
 
 static void ReadAloudStartFromCursor(WindowTab* tab, Point screenPt, const char* errMsg) {
-    logf("ReadAloud: StartFromCursor\n");
     DisplayModel* dm = tab->AsFixed();
     if (!dm) {
-        logf("ReadAloud: StartFromCursor: not a fixed-layout document\n");
         ReadAloudShowNotif(tab, errMsg);
         return;
     }
@@ -11395,7 +11553,6 @@ static void ReadAloudStartFromCursor(WindowTab* tab, Point screenPt, const char*
     int startPage = 0;
     int startGlyph = 0;
     if (!ReadAloudGetCursorStart(dm, screenPt, &startPage, &startGlyph)) {
-        logf("ReadAloud: StartFromCursor: GetCursorStart failed\n");
         ReadAloudShowNotif(tab, errMsg);
         return;
     }
@@ -11405,12 +11562,10 @@ static void ReadAloudStartFromCursor(WindowTab* tab, Point screenPt, const char*
 
 static void ReadAloudFromCursorInTab(WindowTab* tab, Point screenPt) {
     if (!tab || !tab->win) {
-        logf("ReadAloud: FromCursorInTab: null tab or window\n");
         return;
     }
 
     if (!HasPermission(Perm::CopySelection)) {
-        logf("ReadAloud: FromCursorInTab: CopySelection permission denied\n");
         return;
     }
 
@@ -11420,12 +11575,10 @@ static void ReadAloudFromCursorInTab(WindowTab* tab, Point screenPt) {
 
 static void ReadAloudFromViewportTopInTab(WindowTab* tab) {
     if (!tab || !tab->win) {
-        logf("ReadAloud: FromViewportTopInTab: null tab or window\n");
         return;
     }
 
     if (!HasPermission(Perm::CopySelection)) {
-        logf("ReadAloud: FromViewportTopInTab: CopySelection permission denied\n");
         return;
     }
 
@@ -12429,7 +12582,14 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
                 UpdateAppMenu(win, (HMENU)wp);
             }
             if (ThemeColorizeControls() || ThemeUsesDarkChrome()) {
-                MarkMenuOwnerDraw((HMENU)wp, false);
+                HMENU hPopup = (HMENU)wp;
+                MENUITEMINFOW mii{};
+                mii.cbSize = sizeof(mii);
+                mii.fMask = MIIM_FTYPE;
+                int n = GetMenuItemCount(hPopup);
+                if (n <= 0 || !GetMenuItemInfoW(hPopup, 0, TRUE, &mii) || !(mii.fType & MFT_OWNERDRAW)) {
+                    MarkMenuOwnerDraw(hPopup, false);
+                }
             }
             break;
 

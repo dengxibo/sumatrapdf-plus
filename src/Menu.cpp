@@ -1359,6 +1359,11 @@ bool CmdRequiresDocument(int cmdId) {
 
 // returns [remove, disable] state of the command
 std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
+    // MenuDef submenu templates (pointers) are not commands; don't filter them
+    // through command visibility (would drop the whole menubar on the home tab).
+    if (cmdId > (UINT_PTR)CmdLast + 10000) {
+        return {false, false};
+    }
     AppCommandCtx appCtx;
     if (ctx && ctx->tab && ctx->tab->win) {
         appCtx = NewAppCommandCtx(ctx->tab->win);
@@ -1560,9 +1565,6 @@ HMENU BuildMenuFromDef(MenuDef* menuDef, HMENU menu, BuildMenuCtx* ctx) {
             UINT flags = MF_POPUP | (disableMenu ? MF_DISABLED : MF_ENABLED);
             if (subMenuDef == menuDefFile) {
                 DynamicPartOfFileMenu(subMenu, ctx);
-            }
-            if (subMenuDef == menuDefReadAloud) {
-                SetReadAloudAppSubmenu(subMenu);
             }
             TempWStr ws = ToWStrTemp(title);
             AppendMenuW(menu, flags, (UINT_PTR)subMenu, ws);
@@ -2231,7 +2233,7 @@ static char* ParseMenuTextTemp(const char* sIn, char** shortcutOut) {
     return s;
 }
 
-void FreeMenuOwnerDrawInfoData(HMENU hmenu) {
+void FreeMenuOwnerDrawInfoData(HMENU hmenu, bool recurseSubmenus) {
     MENUITEMINFOW mii{};
     mii.cbSize = sizeof(MENUITEMINFOW);
 
@@ -2247,8 +2249,8 @@ void FreeMenuOwnerDrawInfoData(HMENU hmenu) {
             mii.fType &= ~MFT_OWNERDRAW;
             SetMenuItemInfoW(hmenu, (uint)i, TRUE /* by position */, &mii);
         }
-        if (mii.hSubMenu != nullptr) {
-            FreeMenuOwnerDrawInfoData(mii.hSubMenu);
+        if (recurseSubmenus && mii.hSubMenu != nullptr) {
+            FreeMenuOwnerDrawInfoData(mii.hSubMenu, true);
         }
     };
 }
@@ -2263,7 +2265,7 @@ void MarkMenuOwnerDraw(HMENU, bool) {
     // rely on darkmodelib for menu theming, which only does light / dark theme from os
 }
 #else
-void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar) {
+void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar, bool recurseSubmenus) {
     // darkmodelib handles the menu bar via setWindowMenuBarSubclass
     // but doesn't handle popup/context menus, so we owner-draw those
     if (isMenuBar && UseDarkModeLib() && DarkMode::isEnabled()) {
@@ -2275,8 +2277,8 @@ void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar) {
         mii.cbSize = sizeof(MENUITEMINFOW);
         for (int i = 0; i < n; i++) {
             mii.fMask = MIIM_SUBMENU;
-            if (GetMenuItemInfoW(hmenu, (uint)i, TRUE, &mii) && mii.hSubMenu) {
-                MarkMenuOwnerDraw(mii.hSubMenu, false);
+            if (GetMenuItemInfoW(hmenu, (uint)i, TRUE, &mii) && mii.hSubMenu && recurseSubmenus) {
+                MarkMenuOwnerDraw(mii.hSubMenu, false, true);
             }
         }
         return;
@@ -2305,7 +2307,10 @@ void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar) {
     mi.cbSize = sizeof(MENUINFO);
     GetMenuInfo(hmenu, &mi);
     mi.hbrBack = hbrBrush;
-    mi.fMask = MIM_BACKGROUND | MIM_STYLE | MIM_APPLYTOSUBMENUS;
+    mi.fMask = MIM_BACKGROUND | MIM_STYLE;
+    if (recurseSubmenus) {
+        mi.fMask |= MIM_APPLYTOSUBMENUS;
+    }
     SetMenuInfo(hmenu, &mi);
 
     WCHAR buf[1024];
@@ -2341,8 +2346,8 @@ void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar) {
         mii.dwItemData = (ULONG_PTR)modi;
         SetMenuItemInfoW(hmenu, (uint)i, TRUE /* by position */, &mii);
 
-        if (mii.hSubMenu != nullptr) {
-            MarkMenuOwnerDraw(mii.hSubMenu);
+        if (recurseSubmenus && mii.hSubMenu != nullptr) {
+            MarkMenuOwnerDraw(mii.hSubMenu, false, true);
         }
     }
 }
@@ -2385,6 +2390,11 @@ void MenuCustomDrawMesureItem(HWND hwnd, MEASUREITEMSTRUCT* mis) {
         return;
     }
     auto modi = (MenuOwnerDrawInfo*)mis->itemData;
+    if (!modi) {
+        mis->itemHeight = DpiScale(hwnd, 20);
+        mis->itemWidth = DpiScale(hwnd, 100);
+        return;
+    }
 
     bool isSeparator = bit::IsMaskSet(modi->fType, (uint)MFT_SEPARATOR);
     if (isSeparator) {
@@ -2568,6 +2578,35 @@ HMENU BuildMenu(MainWindow* win) {
     return mainMenu;
 }
 
+HMENU BuildMenubarPopupMenu(MainWindow* win) {
+    HMENU popup = CreatePopupMenu();
+    if (!win || !win->menu) {
+        return popup;
+    }
+    for (int i = 0; menuDefMenubar[i].title; i++) {
+        HMENU subMenu = GetSubMenu(win->menu, i);
+        if (!subMenu) {
+            continue;
+        }
+        const char* title = trans::GetTranslation(menuDefMenubar[i].title);
+        TempWStr ws = ToWStrTemp(title);
+        AppendMenuW(popup, MF_POPUP | MF_STRING, (UINT_PTR)subMenu, ws);
+    }
+    return popup;
+}
+
+static bool IsReadAloudMenubarSubmenu(MainWindow* win, HMENU m) {
+    if (!win || !win->menu || !m) {
+        return false;
+    }
+    for (int i = 0; menuDefMenubar[i].title; i++) {
+        if (menuDefMenubar[i].idOrSubmenu == (UINT_PTR)menuDefReadAloud) {
+            return GetSubMenu(win->menu, i) == m;
+        }
+    }
+    return false;
+}
+
 void UpdateAppMenu(MainWindow* win, HMENU m) {
     ReportIf(!win);
     if (!win) {
@@ -2582,11 +2621,10 @@ void UpdateAppMenu(MainWindow* win, HMENU m) {
         RebuildFavMenu(win, m);
     } else if (id == menuDefZoom[0].idOrSubmenu) {
         BuildMenuZoom(m);
-    } else if (IsReadAloudAppSubmenu(m)) {
+    } else if (IsReadAloudMenubarSubmenu(win, m)) {
         RebuildReadAloudMenu(win, m, false);
     }
     MenuUpdateStateForWindow(win);
-    MarkMenuOwnerDraw(win->menu, true);
 }
 
 // show/hide top-level menu bar. This doesn't persist across launches

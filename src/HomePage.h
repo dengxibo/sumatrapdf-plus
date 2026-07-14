@@ -36,4 +36,8 @@ void HomePageOnScrollTimer(MainWindow* win);
 void HomePageInvalidateScrollCache(MainWindow* win);
 void HomePageFocusSearch(MainWindow* win);
 void HomePageDestroySearch(MainWindow* win);
+void HomePageScheduleSearchFilter(MainWindow* win);
+void HomePageApplySearchFilter(MainWindow* win);
+
+#define kHomeSearchDebounceTimerId 0x102
 void HomePageOnLanguageChangedAll();

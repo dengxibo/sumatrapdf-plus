@@ -38,6 +38,16 @@
 constexpr int kFindBarCloseCmdId = (int)CmdLast + 50;
 constexpr int kFindBarPinCmdId = (int)CmdLast + 52;
 
+static COLORREF BlendColor(COLORREF background, COLORREF foreground, int foregroundPercent) {
+    int backgroundPercent = 100 - foregroundPercent;
+    u8 br, bg, bb, fr, fg, fb;
+    UnpackColor(background, br, bg, bb);
+    UnpackColor(foreground, fr, fg, fb);
+    return MkColor((u8)((br * backgroundPercent + fr * foregroundPercent) / 100),
+                   (u8)((bg * backgroundPercent + fg * foregroundPercent) / 100),
+                   (u8)((bb * backgroundPercent + fb * foregroundPercent) / 100));
+}
+
 struct FindBarWnd : Wnd {
     MainWindow* win = nullptr;
     Edit* edit = nullptr;
@@ -50,6 +60,7 @@ struct FindBarWnd : Wnd {
     // when set, programmatic edits to the text don't kick off a search
     // (used while restoring text during a theme-change recreate)
     bool suppressTextChanged = false;
+    bool editHasFocus = false;
 
     FindBarWnd() = default;
     ~FindBarWnd() override;
@@ -58,6 +69,7 @@ struct FindBarWnd : Wnd {
     void Layout();
 
     void OnTextChanged();
+    void DrawEditUnderline();
 
     LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) override;
     LRESULT OnNotify(int controlId, NMHDR* nmh) override;
@@ -132,12 +144,15 @@ bool FindBarWnd::Create(MainWindow* mainWin) {
         Edit::CreateArgs args;
         args.parent = hwnd;
         args.isMultiLine = false;
-        args.withBorder = true;
+        // A native client edge turns into a bright rectangular outline in dark
+        // themes. Keep the edit surface borderless and draw a restrained
+        // focus underline in the parent instead.
+        args.withBorder = false;
         args.cueText = _TRA("Find");
         args.isRtl = IsUIRtl();
         edit = new Edit();
         edit->maxDx = DpiScale(hwnd, 240);
-        edit->SetColors(colTxt, colBg);
+        edit->SetColors(colTxt, ThemeFindEditBackgroundColor());
         edit->Create(args);
         edit->onTextChanged = MkMethod0<FindBarWnd, &FindBarWnd::OnTextChanged>(this);
         win->hwndFindEdit = edit->hwnd;
@@ -207,11 +222,21 @@ bool FindBarWnd::Create(MainWindow* mainWin) {
     return true;
 }
 
+static int FrameDpiScale(MainWindow* win, int x) {
+    int dpi = win->frameDpi > 0 ? win->frameDpi : DpiGetForMonitorOfHwnd(win->hwndFrame);
+    if (dpi <= 0) {
+        dpi = DpiGet(win->hwndFrame);
+    }
+    return MulDiv(x, dpi, 96);
+}
+
 void FindBarWnd::Layout() {
-    int p = DpiScale(hwnd, 6);
-    int gap = DpiScale(hwnd, 4);
-    int editDx = DpiScale(hwnd, 220);
-    int statusDx = DpiScale(hwnd, 88);
+    // scale against the frame monitor's DPI: before first show the popup's own
+    // hwnd can still report the primary monitor DPI (see DpiGetForHwnd).
+    int p = FrameDpiScale(win, 6);
+    int gap = FrameDpiScale(win, 4);
+    int editDx = FrameDpiScale(win, 220);
+    int statusDx = FrameDpiScale(win, 88);
 
     int editDy = edit->GetIdealSize().dy;
 
@@ -239,7 +264,34 @@ void FindBarWnd::OnTextChanged() {
     OnFindBarTextChanged(win);
 }
 
+void FindBarWnd::DrawEditUnderline() {
+    if (!edit || !edit->hwnd) {
+        return;
+    }
+    RECT r{};
+    GetWindowRect(edit->hwnd, &r);
+    MapWindowPoints(nullptr, hwnd, (LPPOINT)&r, 2);
+
+    COLORREF bg = ThemeWindowControlBackgroundColor();
+    COLORREF col =
+        editHasFocus ? BlendColor(bg, ThemeWindowLinkColor(), 28) : AccentColor(bg, ThemeUsesDarkChrome() ? 30 : 22);
+    HDC hdc = GetDC(hwnd);
+    HPEN pen = CreatePen(PS_SOLID, 1, col);
+    HGDIOBJ old = SelectObject(hdc, pen);
+    int y = r.bottom;
+    MoveToEx(hdc, r.left, y, nullptr);
+    LineTo(hdc, r.right, y);
+    SelectObject(hdc, old);
+    DeleteObject(pen);
+    ReleaseDC(hwnd, hdc);
+}
+
 LRESULT FindBarWnd::WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == WM_PAINT) {
+        LRESULT res = WndProcDefault(h, msg, wp, lp);
+        DrawEditUnderline();
+        return res;
+    }
     if (msg == WM_ERASEBKGND) {
         HBRUSH br = BackgroundBrush();
         if (br) {
@@ -316,6 +368,11 @@ bool FindBarWnd::PreTranslateMessage(MSG& msg) {
 }
 
 bool FindBarWnd::OnCommand(WPARAM wparam, LPARAM) {
+    int notification = HIWORD(wparam);
+    if (notification == EN_SETFOCUS || notification == EN_KILLFOCUS) {
+        editHasFocus = notification == EN_SETFOCUS;
+        InvalidateRect(hwnd, nullptr, FALSE);
+    }
     int cmd = LOWORD(wparam);
     switch (cmd) {
         case CmdFindPrev:
@@ -389,26 +446,19 @@ void RecreateFindBar(MainWindow* win) {
 // is shown, else just below the frame top.
 static void PositionFindBar(FindBarWnd* bar) {
     MainWindow* win = bar->win;
+    bar->Layout();
+
     Rect btn = GetToolbarButtonScreenRect(win, CmdFindFirst);
-    Rect fr = WindowRect(win->hwndFrame);
-    // Align to the right edge of the client area, not the outer window rect:
-    // WindowRect includes the resize border and can sit slightly off-screen
-    // when the frame is maximized.
-    Rect frClient = ClientRect(win->hwndFrame);
-    POINT clientTopLeft{};
-    ClientToScreen(win->hwndFrame, &clientTopLeft);
-    frClient.x = clientTopLeft.x;
-    frClient.y = clientTopLeft.y;
-    int cx = frClient.x + frClient.dx - bar->barDx;
+    Rect barWin = WindowRect(bar->hwnd);
     int cy;
     if (btn.IsEmpty()) {
-        cy = fr.y + bar->barDy;
+        cy = WindowVisibleRect(win->hwndFrame).y + FrameDpiScale(win, 4);
     } else {
-        cy = btn.y + btn.dy / 2 - bar->barDy / 2;
+        cy = btn.y + btn.dy / 2 - barWin.dy / 2;
     }
-    Rect r{cx, cy, bar->barDx, bar->barDy};
-    r = ShiftRectToWorkArea(r, win->hwndFrame, true);
-    SetWindowPos(bar->hwnd, HWND_TOP, r.x, r.y, r.dx, r.dy, SWP_NOACTIVATE);
+    // Use the frame's visible right edge and the popup's actual outer size so
+    // mixed-DPI startup cannot leave the bar clipped off-screen.
+    PositionOwnedPopupAtFrameRight(bar->hwnd, win->hwndFrame, cy);
 }
 
 static void ShowCompactBar(MainWindow* win) {
@@ -425,6 +475,9 @@ static void ShowCompactBar(MainWindow* win) {
     FindBarSetMatchWholeWordChecked(win, win->findMatchWholeWord);
     PositionFindBar(bar);
     ShowWindow(bar->hwnd, SW_SHOW);
+    // After first show the popup picks up the frame monitor's DPI; reposition so
+    // the outer width matches what we clamp against.
+    PositionFindBar(bar);
     HwndSetFocus(win->hwndFindEdit);
     Edit_SetSel(win->hwndFindEdit, 0, -1);
 }

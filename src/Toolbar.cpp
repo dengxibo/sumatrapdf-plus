@@ -88,7 +88,6 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::RotateRight, CmdRotateRight, _TRN("Rotate &Right")},
     {TbIcon::ZoomOut, CmdZoomOut, _TRN("Zoom Out")},
     {TbIcon::ZoomIn, CmdZoomIn, _TRN("Zoom In")},
-    {TbIcon::None, 0, nullptr}, // separator before find
     {TbIcon::Search, CmdFindFirst, _TRN("Find")},
     {TbIcon::Dictionary, CmdToggleDoubleClickWordLookup, _TRN("Toggle Double-Click Word Lookup")},
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
@@ -216,19 +215,25 @@ bool NeedsPdfDocumentColorModeUI(MainWindow* win) {
     return NeedsDocumentColorModeUI(win);
 }
 
+// Keep toolbar button positions fixed on the home tab (tabs enabled).
+static bool KeepToolbarLayoutOnHomeTab(MainWindow* win) {
+    return win && SettingsUseTabs() && win->IsCurrentTabAbout();
+}
+
 void UpdatePdfDocumentColorModeToolbarButton(MainWindow* win) {
     static const int kPdfDocumentColorModeCmds[] = {
         CmdSetPdfDocumentColorModeAuto,
         CmdSetPdfDocumentColorModeBlack,
         CmdSetPdfDocumentColorModeLight,
     };
-    bool show = NeedsDocumentColorModeUI(win);
+    bool showForDoc = NeedsDocumentColorModeUI(win);
+    bool show = showForDoc || KeepToolbarLayoutOnHomeTab(win);
     for (int cmdId : kPdfDocumentColorModeCmds) {
         int buttons[4];
         int n = GetToolbarButtonsByID(cmdId, buttons);
         for (int i = 0; i < n; i++) {
             UpdateToolbarButtonStateByIdx(win->hwndToolbar, buttons[i], !show, TBSTATE_HIDDEN);
-            if (show) {
+            if (showForDoc) {
                 // ToolbarUpdateStateForWindow disables these while in light mode; unhide alone
                 // leaves TBSTATE_ENABLED cleared so clicks are ignored until something else
                 // re-enables them (e.g. a delayed ToolbarUpdateStateForWindow).
@@ -236,7 +241,7 @@ void UpdatePdfDocumentColorModeToolbarButton(MainWindow* win) {
             }
         }
     }
-    if (!show) {
+    if (!showForDoc) {
         return;
     }
     PdfDocumentColorMode mode = GetPdfDocumentColorMode();
@@ -286,6 +291,9 @@ static bool NeedsRotateUI(MainWindow* win) {
 // some commands are only avialble in certain contexts
 // we remove toolbar buttons for un-availalbe commands
 static bool IsCmdAvailable(MainWindow* win, int cmdId) {
+    if (KeepToolbarLayoutOnHomeTab(win)) {
+        return cmdId != WarningMsgId;
+    }
     switch (cmdId) {
         case CmdZoomFitWidthAndContinuous:
         case CmdZoomFitPageAndSinglePage:
@@ -1317,9 +1325,18 @@ void UpdateToolbarPageText(MainWindow* win, int pageCount, bool updateOnly) {
     // sumatrapdfrestrict.ini (issue #5563); fall back to CmdOpenFile in that case.
     RECT r{};
     int anchorCmd = HasPermission(Perm::PrinterAccess) ? CmdPrint : CmdOpenFile;
-    SendMessageW(win->hwndToolbar, TB_GETRECT, anchorCmd, (LPARAM)&r);
-    int currX = r.right + DpiScale(win->hwndFrame, 10);
-    int currY = (r.bottom - pageWndRect.dy) / 2;
+    BOOL gotAnchor = (BOOL)SendMessageW(win->hwndToolbar, TB_GETRECT, anchorCmd, (LPARAM)&r);
+    int currX;
+    int currY;
+    if (gotAnchor) {
+        currX = r.right + DpiScale(win->hwndFrame, 10);
+        currY = (r.bottom - pageWndRect.dy) / 2;
+    } else {
+        // anchor button is hidden (e.g. on the Home tab), so align to the left
+        // of the toolbar with a small margin
+        currX = DpiScale(win->hwndFrame, 6);
+        currY = 0;
+    }
 
     TempStr txt = nullptr;
     Size size2;
@@ -1341,8 +1358,12 @@ void UpdateToolbarPageText(MainWindow* win, int pageCount, bool updateOnly) {
     } else if (!pageCount) {
         // hack: https://github.com/sumatrapdfreader/sumatrapdf/issues/4475
         txt = (TempStr) " ";
-        minSize.dx = 0;
-        size2.dx = 0;
+        if (KeepToolbarLayoutOnHomeTab(win)) {
+            size2.dx = minSize.dx;
+        } else {
+            minSize.dx = 0;
+            size2.dx = 0;
+        }
     } else if (!win->ctrl || !win->ctrl->HasPageLabels()) {
         txt = str::FormatTemp(" / %d", pageCount);
         size2 = HwndMeasureText(win->hwndPageTotal, txt);
@@ -1365,6 +1386,8 @@ void UpdateToolbarPageText(MainWindow* win, int pageCount, bool updateOnly) {
     if (win->ctrl && pageCount > 0 && win->ctrl->ValidPageNo(win->ctrl->CurrentPageNo())) {
         TempStr label = win->ctrl->GetPageLabeTemp(win->ctrl->CurrentPageNo());
         HwndSetText(win->hwndPageEdit, label);
+    } else if (KeepToolbarLayoutOnHomeTab(win)) {
+        HwndSetText(win->hwndPageEdit, "");
     }
 
     int padding = GetSystemMetrics(SM_CXEDGE);
@@ -2008,12 +2031,14 @@ void RebuildMenuBarButtons(MainWindow* win) {
         mii.dwTypeData = name;
         GetMenuItemInfoW(menu, i, TRUE, &mii);
 
+        LRESULT strIdx = SendMessageW(hwndMb, TB_ADDSTRING, 0, (LPARAM)name.Get());
+
         TBBUTTON b{};
         b.iBitmap = I_IMAGENONE;
         b.idCommand = kMenuBarCmdFirst + i;
         b.fsState = TBSTATE_ENABLED;
         b.fsStyle = BTNS_AUTOSIZE | BTNS_SHOWTEXT;
-        b.iString = (INT_PTR)name.Get();
+        b.iString = (INT_PTR)strIdx;
         SendMessageW(hwndMb, TB_ADDBUTTONS, 1, (LPARAM)&b);
     }
 }
@@ -2147,11 +2172,17 @@ bool HandleMenuBarCommand(MainWindow* win, int cmdId) {
         }
 
         // get button rect in screen coordinates
-        RECT btnRect;
+        RECT btnRect{};
         int btnCmdId = kMenuBarCmdFirst + menuIdx;
         int btnIdx = (int)SendMessageW(win->hwndMenuToolbar, TB_COMMANDTOINDEX, btnCmdId, 0);
         SendMessageW(win->hwndMenuToolbar, TB_GETITEMRECT, btnIdx, (LPARAM)&btnRect);
-        MapWindowPoints(win->hwndMenuToolbar, HWND_DESKTOP, (POINT*)&btnRect, 2);
+        MapWindowPoints(win->hwndMenuToolbar, nullptr, (POINT*)&btnRect, 2);
+        Rect anchor = ToRect(btnRect);
+        Rect exclude = anchor;
+        exclude.Inflate(DpiScale(win->hwndFrame, 4), DpiScale(win->hwndFrame, 4));
+        TPMPARAMS tpm{};
+        tpm.cbSize = sizeof(TPMPARAMS);
+        tpm.rcExclude = ToRECT(exclude);
 
         gMenuBarPopupNav.win = win;
         gMenuBarPopupNav.rootMenu = subMenu;
@@ -2160,8 +2191,10 @@ bool HandleMenuBarCommand(MainWindow* win, int cmdId) {
         gMenuBarPopupNav.nextMenuIdx = menuIdx;
 
         MarkMenuOwnerDraw(subMenu, false);
+        SetForegroundWindow(win->hwndFrame);
         HHOOK hook = SetWindowsHookExW(WH_MSGFILTER, MenuBarMsgFilterHook, nullptr, GetCurrentThreadId());
-        TrackPopupMenu(subMenu, flags, btnRect.left, btnRect.bottom, 0, win->hwndFrame, nullptr);
+        TrackPopupMenuEx(subMenu, flags, anchor.x, anchor.y + anchor.dy, win->hwndFrame, &tpm);
+        PostMessageW(win->hwndFrame, WM_NULL, 0, 0);
         if (hook) {
             UnhookWindowsHookEx(hook);
         }

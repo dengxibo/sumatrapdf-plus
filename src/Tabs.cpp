@@ -39,6 +39,8 @@
 
 #include "utils/Log.h"
 
+WindowTab* EnsureHomeTabForWindow(MainWindow* win);
+
 void UpdateTabTitle(WindowTab* tab) {
     if (!tab) {
         return;
@@ -174,7 +176,13 @@ static void CloseWindowIfNoDocuments(MainWindow* win) {
             return;
         }
     }
-    // no tabs or only about tab
+    if (SettingsUseTabs() && !gGlobalPrefs->noHomeTab) {
+        WindowTab* home = EnsureHomeTabForWindow(win);
+        if (home) {
+            TabsSelect(win, win->GetTabIdx(home));
+        }
+        return;
+    }
     CloseWindow(win, true, false);
 }
 
@@ -641,6 +649,30 @@ void SaveCurrentWindowTab(MainWindow* win) {
     win->tabSelectionHistory->Append(tab);
 }
 
+WindowTab* EnsureHomeTabForWindow(MainWindow* win) {
+    if (!win || !win->tabsCtrl || !SettingsUseTabs() || gGlobalPrefs->noHomeTab) {
+        return nullptr;
+    }
+    for (auto& tab : win->Tabs()) {
+        if (tab->IsAboutTab()) {
+            return tab;
+        }
+    }
+    WindowTab* homeTab = new WindowTab(win);
+    homeTab->type = WindowTab::Type::About;
+    homeTab->canvasRc = win->canvasRc;
+    TabInfo* newTab = new TabInfo();
+    newTab->text = str::Dup(_TRA("Home"));
+    newTab->tooltip = nullptr;
+    newTab->isPinned = true;
+    newTab->canClose = false;
+    newTab->userData = (UINT_PTR)homeTab;
+    int insertedIdx = win->tabsCtrl->InsertTab(0, newTab);
+    ReportIf(insertedIdx != 0);
+    UpdateTabWidth(win);
+    return homeTab;
+}
+
 WindowTab* AddTabToWindow(MainWindow* win, WindowTab* tab) {
     ReportIf(!win);
     if (!win) {
@@ -663,7 +695,7 @@ WindowTab* AddTabToWindow(MainWindow* win, WindowTab* tab) {
         newTab->text = str::Dup(_TRA("Home"));
         newTab->tooltip = nullptr;
         newTab->isPinned = true;
-        newTab->canClose = true;
+        newTab->canClose = false;
         newTab->userData = (UINT_PTR)homeTab;
         int insertedIdx = tabs->InsertTab(idx, newTab);
         ReportIf(insertedIdx != 0);

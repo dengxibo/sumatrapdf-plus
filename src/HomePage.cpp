@@ -1095,6 +1095,23 @@ void HomePageFocusSearch(MainWindow* win) {
     HwndSetFocus(win->hwndHomeSearch);
 }
 
+constexpr UINT kHomeSearchDebounceMs = 120;
+
+void HomePageScheduleSearchFilter(MainWindow* win) {
+    if (!win->hwndFrame) {
+        return;
+    }
+    KillTimer(win->hwndFrame, kHomeSearchDebounceTimerId);
+    SetTimer(win->hwndFrame, kHomeSearchDebounceTimerId, kHomeSearchDebounceMs, nullptr);
+}
+
+void HomePageApplySearchFilter(MainWindow* win) {
+    win->homePageScrollY = 0;
+    win->homePageScrollTargetY = 0;
+    HomePageInvalidateScrollCache(win);
+    InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+}
+
 void PickAnotherRandomPromotion() {
     PickAnotherRandomTip();
 }

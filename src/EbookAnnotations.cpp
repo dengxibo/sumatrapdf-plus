@@ -83,6 +83,19 @@ void EbookAnnotationsFree(EbookAnnotations* annotations) {
     delete annotations;
 }
 
+void EbookAnnotationsInvalidateLayoutCaches(WindowTab* tab) {
+    if (!tab) {
+        return;
+    }
+    DisplayModel* dm = tab->AsFixed();
+    if (dm && dm->GetEngine()) {
+        dm->GetEngine()->ClearTextCache();
+    }
+    if (tab->ebookAnnotations) {
+        DeleteVecMembers(tab->ebookAnnotations->chapterCaches);
+    }
+}
+
 static TempStr GetEbookAnnotationsDirTemp() {
     return GetPathInAppDataDirTemp("Annotations");
 }

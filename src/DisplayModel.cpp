@@ -86,11 +86,81 @@ static bool PagesNeedLayoutSync(const DisplayModel* dm) {
     return pi && pi->pos.dy == 0;
 }
 
-static void ApplyPagesUiUpdate(DisplayModel* dm) {
+static int ColumnsFromDisplayMode(DisplayMode displayMode) {
+    if (!IsSingle(displayMode)) {
+        return 2;
+    }
+    return 1;
+}
+
+// During progressive EPUB loading, only lay out newly added pages when possible
+// instead of re-walking thousands of pages on every batch update.
+static bool TryRelayoutAppendedPages(DisplayModel* dm, int firstNewPage) {
+    if (!dm->pagesInfo || firstNewPage <= 1) {
+        return false;
+    }
+    if (!EngineIsProgressiveEbookLoading(dm->engine)) {
+        return false;
+    }
+    DisplayMode mode = dm->GetDisplayMode();
+    if (!IsContinuous(mode) || IsBookView(mode) || ColumnsFromDisplayMode(mode) != 1) {
+        return false;
+    }
+
+    int nPages = dm->PageCount();
+    if (firstNewPage > nPages) {
+        return false;
+    }
+
+    int columnMaxWidth = 0;
+    for (int pageNo = 1; pageNo < firstNewPage; pageNo++) {
+        PageInfo* pi = dm->GetPageInfo(pageNo);
+        if (pi->isShown && pi->pos.dx > columnMaxWidth) {
+            columnMaxWidth = pi->pos.dx;
+        }
+    }
+    if (columnMaxWidth <= 0) {
+        return false;
+    }
+
+    PageInfo* prev = dm->GetPageInfo(firstNewPage - 1);
+    PageInfo* first = dm->GetPageInfo(1);
+    int currPosY = prev->pos.y + prev->pos.dy + dm->pageSpacing.dy;
+
+    for (int pageNo = firstNewPage; pageNo <= nPages; pageNo++) {
+        PageInfo* pi = dm->GetPageInfo(pageNo);
+        if (!pi->isShown) {
+            continue;
+        }
+        SizeF pageSize = dm->PageSizeAfterRotation(pageNo);
+        float zoom = dm->GetZoomReal(pageNo);
+        Rect pos;
+        pos.dx = (int)(pageSize.dx * zoom + 0.499);
+        pos.dy = (int)(pageSize.dy * zoom + 0.499);
+        if (pos.dx > columnMaxWidth) {
+            return false;
+        }
+        pos.y = currPosY;
+        pos.x = first->pos.x + (first->pos.dx - pos.dx) / 2;
+        pi->pos = pos;
+        currPosY += pos.dy + dm->pageSpacing.dy;
+    }
+
+    int canvasDy = currPosY + dm->windowMargin.bottom - dm->pageSpacing.dy;
+    int canvasDx = dm->canvasSize.dx;
+    dm->canvasSize = Size(std::max(canvasDx, dm->viewPort.dx), std::max(canvasDy, dm->viewPort.dy));
+    return true;
+}
+
+static void ApplyPagesUiUpdate(DisplayModel* dm, int relayoutFromPage = 1) {
     if (!dm || !dm->pagesInfo || !dm->cb) {
         return;
     }
-    dm->Relayout(dm->zoomVirtual, dm->rotation);
+    if (relayoutFromPage > 1 && TryRelayoutAppendedPages(dm, relayoutFromPage)) {
+        // appended pages only
+    } else {
+        dm->Relayout(dm->zoomVirtual, dm->rotation);
+    }
     dm->RecalcVisibleParts();
     dm->RenderVisibleParts();
     dm->cb->UpdateScrollbars(dm->canvasSize);
@@ -98,6 +168,8 @@ static void ApplyPagesUiUpdate(DisplayModel* dm) {
 }
 
 static const DWORD kProgressRelayoutIntervalMs = 250;
+static const DWORD kProgressRelayoutIntervalLargeMs = 500;
+static const int kProgressRelayoutLargeThreshold = 512;
 static DWORD gLastProgressRelayoutMs = 0;
 static DWORD gLastProgressChainMs = 0;
 
@@ -108,22 +180,19 @@ static bool ShouldThrottleProgressUiUpdate(DisplayModel* dm, int enginePageCount
     if (dm->pagesInfoCount < 256) {
         return false;
     }
+    DWORD interval = kProgressRelayoutIntervalMs;
+    if (dm->pagesInfoCount >= kProgressRelayoutLargeThreshold) {
+        interval = kProgressRelayoutIntervalLargeMs;
+    }
     if (dm->pagesInfoCount >= enginePageCount) {
         return false;
     }
     DWORD now = GetTickCount();
-    if (gLastProgressRelayoutMs == 0 || now - gLastProgressRelayoutMs >= kProgressRelayoutIntervalMs) {
+    if (gLastProgressRelayoutMs == 0 || now - gLastProgressRelayoutMs >= interval) {
         gLastProgressRelayoutMs = now;
         return false;
     }
     return true;
-}
-
-static int ColumnsFromDisplayMode(DisplayMode displayMode) {
-    if (!IsSingle(displayMode)) {
-        return 2;
-    }
-    return 1;
 }
 
 ScrollState::ScrollState(int page, double x, double y) {
@@ -645,6 +714,41 @@ void DisplayModel::EnsurePagesInfoForPage(int pageNo) {
     cb->UpdateScrollbars(canvasSize);
 }
 
+void DisplayModel::OnMorePagesAvailablePreservingScroll(bool updateUi, bool growAll) {
+    Point savedViewport;
+    ScrollState ss;
+    bool restoreScroll = updateUi && pagesInfo && ValidPageNo(startPage) && zoomReal > 0;
+    bool isCont = IsContinuous(displayMode);
+    if (restoreScroll) {
+        savedViewport = viewPort.TL();
+        if (!isCont) {
+            ss = GetScrollState();
+        }
+    }
+    OnMorePagesAvailable(updateUi, growAll);
+    if (!restoreScroll) {
+        return;
+    }
+    // Continuous view keeps a canvas scroll offset. GetScrollState() often returns
+    // y=-1 for in-page positions, and SetScrollState() would snap to the page top.
+    if (isCont) {
+        viewPort.x = limitValue(savedViewport.x, 0, std::max(0, canvasSize.dx - viewPort.dx));
+        viewPort.y = limitValue(savedViewport.y, 0, std::max(0, canvasSize.dy - viewPort.dy));
+        RecalcVisibleParts();
+        RenderVisibleParts();
+        cb->UpdateScrollbars(canvasSize);
+        int pageNo = CurrentPageNo();
+        if (ValidPageNo(pageNo)) {
+            cb->PageNoChanged(this, pageNo);
+        }
+        RepaintDisplay();
+        return;
+    }
+    if (ValidPageNo(ss.page)) {
+        SetScrollState(ss);
+    }
+}
+
 void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
     if (!engine || !pagesInfo) {
         return;
@@ -658,7 +762,7 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
     }
     if (enginePageCount <= pagesInfoCount) {
         if (updateUi && (growAll || PagesNeedLayoutSync(this))) {
-            ApplyPagesUiUpdate(this);
+            ApplyPagesUiUpdate(this, 1);
         }
         return;
     }
@@ -707,7 +811,7 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
 
     if (updateUi) {
         if (!ShouldThrottleProgressUiUpdate(this, enginePageCount)) {
-            ApplyPagesUiUpdate(this);
+            ApplyPagesUiUpdate(this, oldCount + 1);
         }
     }
 
@@ -1559,13 +1663,6 @@ void DisplayModel::SetViewPortSize(Size newViewPortSize) {
         }
     }
 
-    logf("DisplayModel::SetViewPortSize: newViewPortSize=(%d,%d), displayMode=%s, isDocReady=%d\n",
-         newViewPortSize.dx, newViewPortSize.dy, DisplayModeToString(GetDisplayMode()), (int)isDocReady);
-    if (isDocReady) {
-        logf("  saved ss: page=%d, x=%.2f, y=%.2f, viewPort=(%d,%d,%d,%d)\n", ss.page, ss.x, ss.y, viewPort.x,
-             viewPort.y, viewPort.dx, viewPort.dy);
-    }
-
     totalViewPortSize = newViewPortSize;
     if (!IsValidZoom(zoomVirtual)) {
         cb->UpdateScrollbars(canvasSize);
@@ -1574,11 +1671,9 @@ void DisplayModel::SetViewPortSize(Size newViewPortSize) {
     Relayout(zoomVirtual, rotation);
 
     if (isDocReady) {
-        logf("  after Relayout viewPort=(%d,%d,%d,%d)\n", viewPort.x, viewPort.y, viewPort.dx, viewPort.dy);
         // when fitting to content, let GoToPage do the necessary scrolling
         if (zoomVirtual != kZoomFitContent) {
             SetScrollState(ss);
-            logf("  after SetScrollState viewPort=(%d,%d,%d,%d)\n", viewPort.x, viewPort.y, viewPort.dx, viewPort.dy);
         } else {
             GoToPage(ss.page, 0);
         }
@@ -2290,11 +2385,6 @@ void DisplayModel::SetScrollState(const ScrollState& state) {
 
     PointF newPtD(std::max(state.x, (double)0), std::max(state.y, (double)0));
     Point newPt = CvtToScreen(state.page, newPtD);
-    PageInfo* pageInfo = GetPageInfo(state.page);
-    logf("DisplayModel::SetScrollState: page=%d, x=%.2f, y=%.2f, displayMode=%s, newPt=(%d,%d), pageOnScreen=(%d,%d), viewPort=(%d,%d,%d,%d)\n",
-         state.page, state.x, state.y, DisplayModeToString(GetDisplayMode()), newPt.x, newPt.y,
-         pageInfo ? pageInfo->pageOnScreen.x : 0, pageInfo ? pageInfo->pageOnScreen.y : 0, viewPort.x, viewPort.y,
-         viewPort.dx, viewPort.dy);
 
     // Also show the margins, if this has been requested
     if (state.x < 0) {
@@ -2306,7 +2396,6 @@ void DisplayModel::SetScrollState(const ScrollState& state) {
         newPt.y = 0;
     }
     GoToPage(state.page, newPt.y, false, newPt.x);
-    logf("  after GoToPage viewPort=(%d,%d,%d,%d)\n", viewPort.x, viewPort.y, viewPort.dx, viewPort.dy);
 }
 
 // don't remember more than "enough" history entries (same number as Firefox uses)

@@ -28,4 +28,6 @@ int EbookAnnotationGetPageNo(WindowTab* tab, EbookAnnotation* annotation);
 bool EbookAnnotationsExportNotes(WindowTab* tab, HWND hwndParent);
 void EbookAnnotationsPaintPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pageNo);
 void PaintTextMarkupOverlay(HDC hdc, Rect canvasRc, AnnotationType type, COLORREF color, Vec<Rect>& screenRects);
+// Drop cached page/anchor maps after reflow or theme changes.
+void EbookAnnotationsInvalidateLayoutCaches(WindowTab* tab);
 void EbookAnnotationsFree(EbookAnnotations* annotations);

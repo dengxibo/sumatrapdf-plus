@@ -13,6 +13,8 @@ struct TextSearch : public TextSelection {
     void SetMatchCase(bool sensitive);
     void SetMatchWholeWord(bool wholeWord);
     void SetDirection(Direction direction);
+    // cap search range during progressive ebook loading (0 = use engine page count)
+    void SetMaxPageCount(int maxPageCount);
     void SetLastResult(TextSelection* sel);
     TextSel* FindFirst(int page, const WCHAR* text);
     TextSel* FindNext();
@@ -60,5 +62,6 @@ struct TextSearch : public TextSelection {
 
     WCHAR* lastText = nullptr;
     int nPages = 0;
+    int maxPageCount = 0;
     Vec<bool> pagesToSkip;
 };

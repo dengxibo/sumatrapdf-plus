@@ -77,10 +77,16 @@ static void GetEditAnnotationsThemeColors(COLORREF& textOut, COLORREF& bgOut) {
     bgOut = ThemeWindowControlBackgroundColor();
 }
 
-static COLORREF GetAnnotationContentsBackgroundColor() {
-    // Keep the input surface distinct without the heavy native edit border.
-    int contrast = ThemeUsesDarkChrome() ? 24 : 8;
-    return AccentColor(ThemeWindowControlBackgroundColor(), contrast);
+static void UpdateAnnotationContentsEditChrome(Edit* edit) {
+    if (!edit || !edit->hwnd) {
+        return;
+    }
+    bool recessed = ThemeUsesDarkChrome();
+    SetWindowExStyle(edit->hwnd, WS_EX_CLIENTEDGE, recessed);
+    SetWindowPos(edit->hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+    if (UseDarkModeLib() && !recessed) {
+        DarkMode::removeCustomBorderForListBoxOrEditCtrlSubclass(edit->hwnd);
+    }
 }
 
 static void ApplyEbookAnnotationsWindowTheme(EbookAnnotationsWindow* window, bool installDarkMode) {
@@ -106,7 +112,8 @@ static void ApplyEbookAnnotationsWindowTheme(EbookAnnotationsWindow* window, boo
             return TRUE;
         },
         (LPARAM)&colors);
-    window->editContents->SetColors(text, GetAnnotationContentsBackgroundColor());
+    window->editContents->SetColors(text, ThemeAnnotationContentsEditBackgroundColor());
+    UpdateAnnotationContentsEditChrome(window->editContents);
 
     if (UseDarkModeLib()) {
         if (installDarkMode) {
@@ -558,10 +565,11 @@ static void CreateMainLayout(EbookAnnotationsWindow* window) {
     editArgs.idealSizeLines = 5;
     editArgs.font = font;
     editArgs.isRtl = IsUIRtl();
+    editArgs.withBorder = ThemeUsesDarkChrome();
     auto edit = new Edit();
     ReportIf(!edit->Create(editArgs));
     edit->maxDx = MulDiv(150, dpi, 96);
-    edit->SetColors(ThemeWindowTextColor(), GetAnnotationContentsBackgroundColor());
+    edit->SetColors(ThemeWindowTextColor(), ThemeAnnotationContentsEditBackgroundColor());
     edit->onTextChanged = MkFunc0(ContentsChanged, window);
     window->editContents = edit;
     vbox->AddChild(edit);

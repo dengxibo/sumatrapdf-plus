@@ -23,6 +23,10 @@ COLORREF ThemeReadingTextColor();
 COLORREF ThemeWindowTextDisabledColor();
 COLORREF ThemeReadingTextDisabledColor();
 COLORREF ThemeWindowControlBackgroundColor();
+// slightly recessed background for find/search edit fields
+COLORREF ThemeFindEditBackgroundColor();
+// recessed background for annotation note edit fields
+COLORREF ThemeAnnotationContentsEditBackgroundColor();
 COLORREF ThemeWindowLinkColor();
 COLORREF ThemeNotificationsBackgroundColor();
 COLORREF ThemeNotificationsTextColor();

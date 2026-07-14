@@ -4586,20 +4586,27 @@ bool EngineMupdfRelayoutForThemeChange(EngineBase* engine) {
 
     fz_context* ctx = e->_ctx;
     bool ok = false;
+    bool loading = InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) != 0;
     AcquireReflowUiDocLock(e);
     fz_try(ctx) {
         if (!e->reflowHtmlSource.empty()) {
             ok = RelayoutSingleChapterReflowHtml(e, ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
         } else {
             ApplyMupdfThemeCssOnly(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
-            // EPUB HTML is cached per chapter while FzPageInfo owns page objects
-            // pointing at the parsed chapter. Invalidating pages lazily can leave
-            // adjacent pages on different CSS generations after a mode switch.
-            // Drop both cache layers together before any new rendering starts.
-            DropAllReflowPageCaches(ctx, e);
-            fz_purge_stored_html(ctx, e->_doc);
-            e->reflowThemeCssEpoch++;
-            ok = true;
+            if (loading) {
+                // Pages invalidate lazily in GetFzPageInfo when reflowThemeCssEpoch changes.
+                e->reflowThemeCssEpoch++;
+                ok = true;
+            } else {
+                // EPUB HTML is cached per chapter while FzPageInfo owns page objects
+                // pointing at the parsed chapter. Invalidating pages lazily can leave
+                // adjacent pages on different CSS generations after a mode switch.
+                // Drop both cache layers together before any new rendering starts.
+                DropAllReflowPageCaches(ctx, e);
+                fz_purge_stored_html(ctx, e->_doc);
+                e->reflowThemeCssEpoch++;
+                ok = true;
+            }
         }
     }
     fz_catch(ctx) {

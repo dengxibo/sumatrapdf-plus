@@ -713,6 +713,19 @@ COLORREF ThemeWindowControlBackgroundColor() {
     return col;
 }
 
+COLORREF ThemeFindEditBackgroundColor() {
+    int contrast = ThemeUsesDarkChrome() ? 18 : 4;
+    return AccentColor(ThemeWindowControlBackgroundColor(), contrast);
+}
+
+COLORREF ThemeAnnotationContentsEditBackgroundColor() {
+    if (ThemeUsesDarkChrome()) {
+        // Darker than the panel so the field reads as recessed/sunken.
+        return AccentColor(ThemeWindowControlBackgroundColor(), 0, -24);
+    }
+    return AccentColor(ThemeWindowControlBackgroundColor(), 8);
+}
+
 COLORREF ThemeWindowLinkColor() {
     Theme* theme = GetResolvedTheme();
     auto col = GetThemeCol(theme->linkColor, kRedColor);

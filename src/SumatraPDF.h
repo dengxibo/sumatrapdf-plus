@@ -169,8 +169,6 @@ constexpr const char* kTtsSmartOnlineBilingualVoiceId = "smart-online:zh-en";
 
 void RebuildReadAloudMenu(MainWindow* win, HMENU menu, bool useContextMenuCursorPoint = false);
 bool HandleReadAloudMenuCommand(MainWindow* win, int cmdId);
-void SetReadAloudAppSubmenu(HMENU menu);
-bool IsReadAloudAppSubmenu(HMENU menu);
 void ReadAloudUpdateSpeakingRatesRealtime(float zhRate, float enRate);
 bool CanCloseWindow(MainWindow* win);
 void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose);

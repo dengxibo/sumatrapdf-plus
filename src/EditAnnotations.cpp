@@ -454,11 +454,16 @@ static void GetEditAnnotationsThemeColors(COLORREF& textOut, COLORREF& bgOut) {
     bgOut = ThemeWindowControlBackgroundColor();
 }
 
-static COLORREF GetAnnotationContentsBackgroundColor() {
-    // A quiet filled surface makes the note area identifiable without the
-    // heavy, old-fashioned recessed frame used by native edit controls.
-    int contrast = ThemeUsesDarkChrome() ? 24 : 8;
-    return AccentColor(ThemeWindowControlBackgroundColor(), contrast);
+static void UpdateAnnotationContentsEditChrome(Edit* edit) {
+    if (!edit || !edit->hwnd) {
+        return;
+    }
+    bool recessed = ThemeUsesDarkChrome();
+    SetWindowExStyle(edit->hwnd, WS_EX_CLIENTEDGE, recessed);
+    SetWindowPos(edit->hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+    if (UseDarkModeLib() && !recessed) {
+        DarkMode::removeCustomBorderForListBoxOrEditCtrlSubclass(edit->hwnd);
+    }
 }
 
 struct EditAnnotThemeColors {
@@ -483,7 +488,8 @@ static void ApplyEditAnnotationsWindowTheme(EditAnnotationsWindow* ew, bool inst
     GetEditAnnotationsThemeColors(colors.text, colors.bg);
     ew->SetColors(colors.text, colors.bg);
     EnumChildWindows(ew->hwnd, ApplyThemeColorsToChildWnd, (LPARAM)&colors);
-    ew->editContents->SetColors(colors.text, GetAnnotationContentsBackgroundColor());
+    ew->editContents->SetColors(colors.text, ThemeAnnotationContentsEditBackgroundColor());
+    UpdateAnnotationContentsEditChrome(ew->editContents);
 
     if (UseDarkModeLib()) {
         if (installDarkMode) {
@@ -1667,11 +1673,12 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
         args.idealSizeLines = 5;
         args.font = fnt;
         args.isRtl = IsUIRtl();
+        args.withBorder = ThemeUsesDarkChrome();
         auto w = new Edit();
         HWND hwnd = w->Create(args);
         ReportIf(!hwnd);
         w->maxDx = MulDiv(150, dpi, 96);
-        w->SetColors(ThemeWindowTextColor(), GetAnnotationContentsBackgroundColor());
+        w->SetColors(ThemeWindowTextColor(), ThemeAnnotationContentsEditBackgroundColor());
         w->onTextChanged = MkFunc0(ContentsChanged, ew);
         ew->editContents = w;
         vbox->AddChild(w);

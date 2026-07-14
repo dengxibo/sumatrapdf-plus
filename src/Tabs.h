@@ -8,6 +8,7 @@ void LoadModelIntoTab(WindowTab*);
 
 void CreateTabbar(MainWindow*);
 WindowTab* AddTabToWindow(MainWindow* win, WindowTab* tab);
+WindowTab* EnsureHomeTabForWindow(MainWindow* win);
 void TabsOnCloseWindow(MainWindow*);
 void TabsOnChangedDoc(MainWindow*);
 void UpdateTabTitle(WindowTab* tab);
