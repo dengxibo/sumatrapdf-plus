@@ -9,6 +9,13 @@
 - users still on Plus 3.7.3, or on 3.7.4 without ever using **Check for Updates**, must upgrade manually once;
   those releases cannot discover current Plus updates automatically
 
+## 3.7.12 (2026-07-15)
+
+- fix EPUB progressive loading for large anthologies: cooperative background chapter counting so TOC navigation works before pagination finishes; incremental page layout during loading instead of relayouting every page on each batch
+- pause background EPUB pagination while switching themes or editing annotations so the UI stays responsive (no long spinner until load completes)
+- pre-build the TOC tree model on the background loader thread at end of load so the completion UI freeze is roughly halved on huge multi-book EPUBs
+- fix crash when toggling light/dark theme during EPUB load (stale text-selection indices after relayout)
+
 ## 3.7.11 (2026-07-14)
 
 - replace the toolbar find UI with a Chrome-style floating find bar: compact bar docked near the toolbar, optional pinned floating results window with snippet list, match counter, **Match whole word** toggle, debounced find-as-you-type (Enter forces search), and independent find-match vs selection highlights
