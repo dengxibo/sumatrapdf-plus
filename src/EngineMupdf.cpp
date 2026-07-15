@@ -4868,15 +4868,11 @@ static void FinishReflowableLoadAsync(EngineMupdf* e) {
     InterlockedExchange(&e->reflowableLoadingInProgress, 0);
 
     if (!aborted) {
+        // Mark stale only. Do NOT call GetToc() here: the UI TreeView still holds
+        // TocItem* from the current tree (tooltips, custom draw, clicks). Rebuilding
+        // on the background thread deletes that tree and causes use-after-free.
+        // LoadTocTree on the UI thread calls GetToc() after ClearTocBox.
         e->InvalidateTocTree();
-        // Pre-build the TOC tree model here, on the background loader thread,
-        // while our per-thread fz_context is still alive. Huge multi-book EPUBs
-        // have thousands of outline entries and building the model costs ~200ms.
-        // Doing it off the UI thread (it only holds docLock, not the message loop)
-        // means the completion handler pays just the Win32 tree-insert cost,
-        // roughly halving the visible freeze at end of load. GetToc() caches the
-        // result, so the UI's LoadTocTree() returns it without rebuilding.
-        e->GetToc();
     }
 
     {

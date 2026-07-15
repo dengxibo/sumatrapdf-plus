@@ -113,7 +113,7 @@ static inline char* PageDestGetName(IPageDestination* dest) {
 }
 
 static inline char* PageDestGetValue(IPageDestination* dest) {
-    return dest->GetValue2();
+    return dest ? dest->GetValue2() : nullptr;
 }
 
 static inline int PageDestGetPageNo(IPageDestination* dest) {

@@ -64,13 +64,21 @@ static COLORREF SidebarBackgroundColor(COLORREF wndBgColor) {
 
 static void LayoutTocContainer(MainWindow* win);
 
+static bool IsKnownTocTreeModel(MainWindow* win, TreeModel* tm);
+
 // set tooltip for this item but only if the text isn't fully shown
 // TODO: I might have lost something in translation
 static void TocCustomizeTooltip(TreeView::GetTooltipEvent* ev) {
     auto treeView = ev->treeView;
     auto tm = treeView->treeModel;
     auto ti = ev->treeItem;
-    auto nm = ev->info;
+    if (!treeView || !tm || !ti) {
+        return;
+    }
+    MainWindow* win = FindMainWindowByHwnd(treeView->hwnd);
+    if (!win || win->isBeingClosed || !win->tocLoaded || !IsKnownTocTreeModel(win, tm)) {
+        return;
+    }
     TocItem* tocItem = (TocItem*)ti;
     IPageDestination* link = tocItem->GetPageDestination();
     if (!link) {
@@ -119,6 +127,10 @@ static void TocCustomizeTooltip(TreeView::GetTooltipEvent* ev) {
         infotip.Append(path);
     }
 
+    auto nm = ev->info;
+    if (!nm) {
+        return;
+    }
     str::BufSet(nm->pszText, nm->cchTextMax, infotip.Get());
 }
 
