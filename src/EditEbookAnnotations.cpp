@@ -261,8 +261,20 @@ bool IsEbookAnnotContentsEditFocused(HWND msgHwnd) {
     return false;
 }
 
+static void FlushContentsFromEdit(EbookAnnotationsWindow* window) {
+    if (!window || !window->editContents || window->updatingControls || !window->selected) {
+        return;
+    }
+    TempStr note = window->editContents->GetTextTemp();
+    note = str::ReplaceTemp(note, "\r\n", "\n");
+    EbookAnnotationSetNote(window->tab, window->selected, note);
+}
+
 static void UpdateSelectedAnnotation(EbookAnnotationsWindow* window, EbookAnnotation* annotation,
                                      EditAnnotFocus focus = EditAnnotFocus::Default) {
+    if (window->selected != annotation) {
+        FlushContentsFromEdit(window);
+    }
     window->selected = annotation;
     if (!annotation) {
         ClearAnnotationDetailControls(window);
@@ -282,9 +294,7 @@ static void UpdateSelectedAnnotation(EbookAnnotationsWindow* window, EbookAnnota
 
     TempStr note = str::ReplaceTemp(EbookAnnotationGetNote(annotation), "\r\n", "\n");
     note = str::ReplaceTemp(note, "\n", "\r\n");
-    if (!IsEbookAnnotContentsEditActive(window->editContents->hwnd, window->editContents->hwnd, window->hwnd)) {
-        window->editContents->SetText(note);
-    }
+    window->editContents->SetText(note);
     FillColorDropDown(window, EbookAnnotationGetColor(annotation));
 
     const char* author = EbookAnnotationGetAuthor(annotation);
@@ -468,11 +478,13 @@ static void DeleteClicked(EbookAnnotationsWindow* window) {
 }
 
 static void ExportClicked(EbookAnnotationsWindow* window) {
+    FlushContentsFromEdit(window);
     EbookAnnotationsExportNotes(window->tab, window->hwnd);
 }
 
 static void OnClose(Wnd::CloseEvent* event) {
     auto window = (EbookAnnotationsWindow*)event->e->self;
+    FlushContentsFromEdit(window);
     HWND activate = window->tab->win->hwndFrame;
     window->tab->editEbookAnnotsWindow = nullptr;
     delete window;

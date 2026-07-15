@@ -170,7 +170,7 @@ Size Edit::GetIdealSize() {
 // https://docs.microsoft.com/en-us/windows/win32/controls/en-change
 bool Edit::OnCommand(WPARAM wparam, LPARAM lparam) {
     auto code = HIWORD(wparam);
-    if (code == EN_CHANGE && onTextChanged.IsValid()) {
+    if ((code == EN_CHANGE || code == EN_KILLFOCUS) && onTextChanged.IsValid()) {
         onTextChanged.Call();
         return true;
     }

@@ -241,6 +241,7 @@ struct EditAnnotationsWindow : Wnd {
     Vec<Annotation*> annotations;
 
     bool skipGoToPage = false;
+    bool updatingControls = false;
     int dpi = 0;
 
     StrBuilder currTextColor;
@@ -280,6 +281,9 @@ void DeleteAnnotationAndUpdateUI(WindowTab* tab, Annotation* annot) {
 
     RemovePdfMarkupOverlayAnnot(tab, annot);
     DeleteAnnotation(annot);
+    if (tab->selectedAnnotation == annot) {
+        tab->selectedAnnotation = nullptr;
+    }
     if (ew != nullptr) {
         // can be null if called from Menu.cpp and annotations window is not visible
         // ew->skipGoToPage = true;
@@ -735,13 +739,17 @@ bool PdfAnnotationsExportNotes(WindowTab* tab, HWND hwndParent) {
     return true;
 }
 
+static void FlushContentsFromEdit(EditAnnotationsWindow* ew);
+
 static void ExportClicked(EditAnnotationsWindow* ew) {
+    FlushContentsFromEdit(ew);
     PdfAnnotationsExportNotes(ew->tab, ew->hwnd);
 }
 
 // TODO: this should be OnDestroy()
 static void OnClose(Wnd::CloseEvent* ev) {
     auto w = (EditAnnotationsWindow*)ev->e->self;
+    FlushContentsFromEdit(w);
     HWND toActivate = w->tab->win->hwndFrame;
     w->tab->editAnnotsWindow = nullptr;
     delete w; // TODO: sketchy
@@ -755,6 +763,7 @@ void EditAnnotationsWindow::OnFocus() {
 extern bool SaveAnnotationsToMaybeNewPdfFile(WindowTab*);
 
 static void ButtonSaveToNewFileHandler(EditAnnotationsWindow* ew) {
+    FlushContentsFromEdit(ew);
     WindowTab* tab = ew->tab;
     bool ok = SaveAnnotationsToMaybeNewPdfFile(tab);
     if (!ok) {
@@ -765,6 +774,7 @@ static void ButtonSaveToNewFileHandler(EditAnnotationsWindow* ew) {
 extern bool SaveAnnotationsToExistingFile(WindowTab* tab);
 
 static void ButtonSaveToCurrentPDFHandler(EditAnnotationsWindow* ew) {
+    FlushContentsFromEdit(ew);
     SaveAnnotationsToExistingFile(ew->tab);
 }
 
@@ -1028,6 +1038,23 @@ static void DoPopup(EditAnnotationsWindow* ew, Annotation* annot) {
     ew->staticPopup->SetIsVisible(true);
 }
 
+static void FlushContentsFromEdit(EditAnnotationsWindow* ew) {
+    if (!ew || !ew->editContents || ew->updatingControls) {
+        return;
+    }
+    Annotation* a = ew->tab->selectedAnnotation;
+    if (!a || !a->engine || !a->pdfannot) {
+        return;
+    }
+    if (ew->annotations.Find(a) < 0) {
+        return;
+    }
+    auto txt = ew->editContents->GetTextTemp();
+    txt = str::ReplaceTemp(txt, "\r\n", "\n");
+    SetContents(a, txt);
+    EnableSaveIfAnnotationsChanged(ew);
+}
+
 static void DoContents(EditAnnotationsWindow* ew, Annotation* annot) {
     TempStr s = Contents(annot);
     // don't replace if already is "\r\n"
@@ -1035,9 +1062,9 @@ static void DoContents(EditAnnotationsWindow* ew, Annotation* annot) {
     s = str::ReplaceTemp(s, "\n", "\r\n");
     ew->staticContents->SetIsVisible(true);
     ew->editContents->SetIsVisible(true);
-    if (!IsAnnotContentsEditActive(ew->editContents->hwnd, ew->editContents->hwnd, ew->hwnd)) {
-        ew->editContents->SetText(s);
-    }
+    ew->updatingControls = true;
+    ew->editContents->SetText(s);
+    ew->updatingControls = false;
 }
 
 static void DoTextAlignment(EditAnnotationsWindow* ew, Annotation* annot) {
@@ -1493,6 +1520,9 @@ void SetSelectedAnnotation(WindowTab* tab, Annotation* annot, bool isNew, EditAn
         ToolbarUpdateStateForWindow(win, false);
         return;
     }
+    if (ew) {
+        FlushContentsFromEdit(ew);
+    }
     tab->selectedAnnotation = annot;
     tab->didScrollToSelectedAnnotation = false;
     // go to page with a given annotations before triggering repaint
@@ -1543,6 +1573,9 @@ static MainWindow* gMainWindowForRender = nullptr;
 
 // TODO: there seems to be a leak
 static void ContentsChanged(EditAnnotationsWindow* ew) {
+    if (ew->updatingControls) {
+        return;
+    }
     auto a = ew->tab->selectedAnnotation;
     // TODO: saw a crash when this was null
     ReportDebugIf(!a);

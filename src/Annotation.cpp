@@ -328,6 +328,9 @@ Vec<RectF> GetQuadPointsAsRect(Annotation* annot) {
 }
 
 TempStr Contents(Annotation* annot) {
+    if (!annot || !annot->engine || !annot->pdfannot) {
+        return nullptr;
+    }
     EngineMupdf* e = annot->engine;
     auto a = annot->pdfannot;
     auto ctx = e->Ctx();
@@ -346,7 +349,7 @@ TempStr Contents(Annotation* annot) {
 
 bool SetContents(Annotation* annot, const char* sv) {
     ReportIf(!annot);
-    if (!annot) {
+    if (!annot || !annot->engine || !annot->pdfannot) {
         return false;
     }
     EngineMupdf* e = annot->engine;
