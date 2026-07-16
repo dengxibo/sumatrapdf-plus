@@ -564,6 +564,9 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
     dm->TryApplyPendingRestoreScroll();
     MainWindow* win = tab->win;
     EngineBase* engine = dm->GetEngine();
+    if (engine && win->linkHandler) {
+        EngineMupdfTryCompletePendingReflowNav(engine, win->linkHandler);
+    }
     bool progressiveLoad = EngineIsProgressiveEbookLoading(engine);
     static DWORD gLastEbookProgressToolbarMs = 0;
     DWORD now = GetTickCount();

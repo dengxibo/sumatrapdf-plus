@@ -345,6 +345,9 @@ static int ReflowOutlineChapterIndex(PageDestinationMupdf* link) {
 }
 
 static int ResolveMupdfLinkPageNo1(EngineMupdf* e, const char* uri, fz_link_dest* ldestOut);
+static bool ResolveReflowLinkDuringProgressiveLoad(EngineMupdf* e, const char* uri, int reflowOutlineChapter,
+                                                   float destX, float destY, int* pageNo1Out, fz_link_dest* ldestOut);
+static void KickReflowNavCountAsync(EngineMupdf* e);
 
 static int ReflowPageNoFromChapter(EngineMupdf* e, int ch, int pageInChapter) {
     if (!e || ch < 0) {
@@ -2594,6 +2597,7 @@ EngineMupdf::EngineMupdf() {
     InitializeCriticalSection(&docLock);
     InitializeCriticalSection(&reflowCountLock);
     InitializeCriticalSection(&tocBuildLock);
+    InitializeCriticalSection(&pendingReflowNavLock);
 
     fz_locks_ctx.user = this;
     fz_locks_ctx.lock = fz_lock_context_cs;
@@ -2672,6 +2676,12 @@ EngineMupdf::~EngineMupdf() {
     delete pageLabels;
     delete tocTree;
     reflowHtmlSource.Free();
+    {
+        ScopedCritSec scope(&pendingReflowNavLock);
+        str::Free(pendingReflowNavUri);
+        pendingReflowNavUri = nullptr;
+        pendingReflowNavChapter = -1;
+    }
 
     for (size_t i = 0; i < dimof(fz_locks); i++) {
         DeleteCriticalSection(&fz_locks[i]);
@@ -2682,6 +2692,7 @@ EngineMupdf::~EngineMupdf() {
     DeleteCriticalSection(&docLock);
     DeleteCriticalSection(&reflowCountLock);
     DeleteCriticalSection(&tocBuildLock);
+    DeleteCriticalSection(&pendingReflowNavLock);
 
     DeInitializeEngineMupdf();
 }
@@ -4834,10 +4845,22 @@ static int CountReflowChaptersUpTo(EngineMupdf* e, int targetChapter, const char
                 GrowReflowPageCount(e, e->reflowPagesCounted);
             }
         }
-        if (notifyPath && (((ch + 1) % kReflowNotifyEveryNChapters) == 0 || ch >= target)) {
-            NotifyEbookPagesLoadingProgress(notifyPath, false);
+        if (notifyPath) {
+            bool navPending = false;
+            {
+                ScopedCritSec navScope(&e->pendingReflowNavLock);
+                navPending = e->pendingReflowNavUri != nullptr && e->pendingReflowNavChapter >= 0;
+            }
+            if (navPending || ((ch + 1) % kReflowNotifyEveryNChapters) == 0 || ch >= target) {
+                NotifyEbookPagesLoadingProgress(notifyPath, false);
+            }
         }
-        if (((ch + 1) % kReflowChaptersPerYield) == 0) {
+        bool navPendingYield = false;
+        {
+            ScopedCritSec navScope(&e->pendingReflowNavLock);
+            navPendingYield = e->pendingReflowNavUri != nullptr && e->pendingReflowNavChapter >= 0;
+        }
+        if (!navPendingYield && ((ch + 1) % kReflowChaptersPerYield) == 0) {
             Sleep(0);
         }
     }
@@ -5116,6 +5139,16 @@ int EngineMupdf::OutlinePageNoForItem(fz_link* link, fz_outline* ol) {
         }
 
         if (loading || bulkBuildingToc) {
+            if (!bulkBuildingToc && hasFragment && ch >= 0) {
+                int counted = (int)InterlockedCompareExchange(&reflowChaptersCounted, 0, 0);
+                if (ch < counted) {
+                    int resolved = 0;
+                    if (ResolveReflowLinkDuringProgressiveLoad(this, uri, ch, DEST_USE_DEFAULT, DEST_USE_DEFAULT,
+                                                               &resolved, nullptr)) {
+                        return resolved;
+                    }
+                }
+            }
             return pageNo > 0 ? pageNo : 0;
         }
 
@@ -7126,8 +7159,17 @@ bool EngineMupdfIsOutlineDestReachable(EngineBase* engine, IPageDestination* des
         return pageNo <= engine->PageCount();
     }
     int ch = ReflowOutlineChapterIndex(link);
+    if (ch < 0 && uri) {
+        ScopedCritSec scope(&e->docLock);
+        ch = EpubUriChapterIndexNoLayout(e->Ctx(), e->_doc, uri);
+    }
     if (ch < 0) {
         return false;
+    }
+    // Fragment anchors in one spine HTML file: allow click as soon as we know the
+    // chapter; navigation counts up to it on demand and resolves the anchor.
+    if (uri && str::FindChar(uri, '#')) {
+        return true;
     }
     int chaptersCounted = (int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0);
     return ch < chaptersCounted;
@@ -7166,6 +7208,216 @@ bool EngineMupdfSnapshotOutlineLink(IPageDestination* dest, char** uriOut, int* 
     return true;
 }
 
+// During progressive EPUB load, navigate using chapter offsets. Fragment links
+// need fz_resolve_link_dest after the target chapter is counted (its HTML is
+// already laid out by fz_count_chapter_pages); map via loc.chapter/page so the
+// result stays within pages counted so far.
+static void ClearPendingReflowNavLocked(EngineMupdf* e) {
+    if (!e) {
+        return;
+    }
+    str::Free(e->pendingReflowNavUri);
+    e->pendingReflowNavUri = nullptr;
+    e->pendingReflowNavChapter = -1;
+    e->pendingReflowNavDestX = DEST_USE_DEFAULT;
+    e->pendingReflowNavDestY = DEST_USE_DEFAULT;
+}
+
+static void QueuePendingReflowNav(EngineMupdf* e, const char* uri, int ch, float destX, float destY) {
+    if (!e || !uri || ch < 0) {
+        return;
+    }
+    ScopedCritSec scope(&e->pendingReflowNavLock);
+    str::Free(e->pendingReflowNavUri);
+    e->pendingReflowNavUri = str::Dup(uri);
+    e->pendingReflowNavChapter = ch;
+    e->pendingReflowNavDestX = destX;
+    e->pendingReflowNavDestY = destY;
+}
+
+static void ReflowNavCountAsync(EngineMupdf* e) {
+    if (!e) {
+        return;
+    }
+    AtomicIntInc(&gDangerousThreadCount);
+    defer {
+        AtomicIntDec(&gDangerousThreadCount);
+        InterlockedExchange(&e->reflowNavCountAsyncActive, 0);
+    };
+
+    AutoFreeStr path(str::Dup(e->FilePath()));
+    for (;;) {
+        if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0 ||
+            InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) == 0) {
+            break;
+        }
+        int target = -1;
+        {
+            ScopedCritSec scope(&e->pendingReflowNavLock);
+            if (!e->pendingReflowNavUri || e->pendingReflowNavChapter < 0) {
+                break;
+            }
+            target = e->pendingReflowNavChapter;
+        }
+        int counted = (int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0);
+        if (counted > target) {
+            break;
+        }
+        CountReflowChaptersUpTo(e, target, path, /*isBackground*/ true);
+        NotifyEbookPagesLoadingProgress(path, false);
+        counted = (int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0);
+        if (counted > target) {
+            break;
+        }
+    }
+}
+
+static void KickReflowNavCountAsync(EngineMupdf* e) {
+    if (!e || InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) == 0) {
+        return;
+    }
+    if (InterlockedCompareExchange(&e->reflowNavCountAsyncActive, 1, 0) != 0) {
+        return;
+    }
+    auto fn = MkFunc0<EngineMupdf>(ReflowNavCountAsync, e);
+    RunAsync(fn, "ReflowNavCount");
+}
+
+static void NavigateMupdfToResolvedDest(EngineBase* engine, int pageNo1, const fz_link_dest& ldest, ILinkHandler* lh) {
+    if (!engine || !lh || pageNo1 < 1) {
+        return;
+    }
+    auto ctrl = lh->GetDocController();
+    if (!ctrl) {
+        return;
+    }
+    ctrl->PreparePageNavigation(pageNo1);
+    if (pageNo1 > engine->PageCount()) {
+        return;
+    }
+    float x = isnan(ldest.x) ? 0.f : ldest.x;
+    float y = isnan(ldest.y) ? 0.f : ldest.y;
+    float zoom = isnan(ldest.zoom) ? 0.f : ldest.zoom;
+    zoom = zoom / 100;
+    float w = isnan(ldest.w) ? DEST_USE_DEFAULT : ldest.w;
+    float h = isnan(ldest.h) ? DEST_USE_DEFAULT : ldest.h;
+    RectF r(x, y, w, h);
+    ctrl->ScrollTo(pageNo1, r, zoom);
+}
+
+static bool ResolveReflowLinkDuringProgressiveLoad(EngineMupdf* e, const char* uri, int reflowOutlineChapter,
+                                                   float destX, float destY, int* pageNo1Out, fz_link_dest* ldestOut) {
+    if (!e || !uri || !pageNo1Out) {
+        return false;
+    }
+    int ch = reflowOutlineChapter;
+    if (ch < 0) {
+        ScopedCritSec scope(&e->docLock);
+        ch = EpubUriChapterIndexNoLayout(e->Ctx(), e->_doc, uri);
+    }
+    if (ch < 0) {
+        return false;
+    }
+    int counted = (int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0);
+    if (counted <= ch) {
+        QueuePendingReflowNav(e, uri, ch, destX, destY);
+        KickReflowNavCountAsync(e);
+        return false;
+    }
+
+    bool hasFragment = str::FindChar(uri, '#') != nullptr;
+    if (!hasFragment) {
+        int pageNo1 = ReflowPageNoFromChapter(e, ch, 0);
+        if (pageNo1 <= 0) {
+            return false;
+        }
+        *pageNo1Out = pageNo1;
+        if (ldestOut) {
+            *ldestOut = fz_make_link_dest_xyz(ch, 0, 0, 0, 0);
+        }
+        return true;
+    }
+
+    AcquireReflowUiDocLock(e);
+    defer {
+        ReleaseReflowUiDocLock(e);
+    };
+
+    fz_link_dest ldest = fz_make_link_dest_none();
+    auto ctx = e->Ctx();
+    fz_try(ctx) {
+        ldest = fz_resolve_link_dest(ctx, e->_doc, uri);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        ldest = fz_make_link_dest_none();
+    }
+
+    int pageInChapter = ldest.loc.page >= 0 ? ldest.loc.page : 0;
+    int resolveCh = ldest.loc.chapter >= 0 ? ldest.loc.chapter : ch;
+    int pageNo1 = ReflowPageNoFromChapter(e, resolveCh, pageInChapter);
+    if (pageNo1 <= 0) {
+        pageNo1 = ReflowPageNoFromChapter(e, ch, 0);
+    }
+    if (pageNo1 <= 0) {
+        return false;
+    }
+    *pageNo1Out = pageNo1;
+    if (ldestOut) {
+        *ldestOut = ldest;
+    }
+    return true;
+}
+
+bool EngineMupdfHasPendingReflowNav(EngineBase* engine) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e) {
+        return false;
+    }
+    ScopedCritSec scope(&e->pendingReflowNavLock);
+    return e->pendingReflowNavUri != nullptr && e->pendingReflowNavChapter >= 0;
+}
+
+bool EngineMupdfTryCompletePendingReflowNav(EngineBase* engine, ILinkHandler* lh) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !lh || InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) == 0) {
+        return false;
+    }
+    AutoFreeStr uri;
+    int ch = -1;
+    float destX = DEST_USE_DEFAULT;
+    float destY = DEST_USE_DEFAULT;
+    {
+        ScopedCritSec scope(&e->pendingReflowNavLock);
+        if (!e->pendingReflowNavUri || e->pendingReflowNavChapter < 0) {
+            return false;
+        }
+        int counted = (int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0);
+        if (counted <= e->pendingReflowNavChapter) {
+            return false;
+        }
+        uri.Set(str::Dup(e->pendingReflowNavUri));
+        ch = e->pendingReflowNavChapter;
+        destX = e->pendingReflowNavDestX;
+        destY = e->pendingReflowNavDestY;
+        ClearPendingReflowNavLocked(e);
+    }
+
+    int pageNo1 = 0;
+    fz_link_dest ldest{};
+    if (!ResolveReflowLinkDuringProgressiveLoad(e, uri, ch, destX, destY, &pageNo1, &ldest)) {
+        return false;
+    }
+    if (destX != DEST_USE_DEFAULT) {
+        ldest.x = destX;
+    }
+    if (destY != DEST_USE_DEFAULT) {
+        ldest.y = destY;
+    }
+    NavigateMupdfToResolvedDest(engine, pageNo1, ldest, lh);
+    return true;
+}
+
 void EngineMupdfNavigateUri(EngineBase* engine, const char* uri, int reflowOutlineChapter, float destX, float destY,
                             ILinkHandler* lh) {
     EngineMupdf* e = AsEngineMupdf(engine);
@@ -7181,22 +7433,10 @@ void EngineMupdfNavigateUri(EngineBase* engine, const char* uri, int reflowOutli
     int pageNo1 = 0;
     bool reflowLoading = InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) != 0;
     if (reflowLoading) {
-        // During background reflow, fz_resolve_link_dest lays out HTML and races with
-        // chapter counting on the same document — use cached chapter page offsets only.
-        int ch = reflowOutlineChapter;
-        if (ch < 0) {
-            ScopedCritSec scope(&e->docLock);
-            ch = EpubUriChapterIndexNoLayout(e->Ctx(), e->_doc, uri);
-        }
-        // The target chapter may not be counted yet during background loading.
-        // Count up to it on demand so TOC clicks into not-yet-loaded chapters
-        // resolve to a real page instead of silently doing nothing.
-        int counted = (int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0);
-        if (ch >= 0 && ch >= counted) {
-            CountReflowChaptersUpTo(e, ch, e->FilePath(), /*isBackground*/ false);
-        }
-        pageNo1 = ReflowPageNoFromChapter(e, ch, 0);
-        if (pageNo1 <= 0) {
+        if (!ResolveReflowLinkDuringProgressiveLoad(e, uri, reflowOutlineChapter, destX, destY, &pageNo1, &ldest)) {
+            if (EngineMupdfHasPendingReflowNav(e)) {
+                NotifyEbookPagesLoadingProgress(e->FilePath(), false);
+            }
             return;
         }
         if (destX != DEST_USE_DEFAULT) {
@@ -7205,6 +7445,8 @@ void EngineMupdfNavigateUri(EngineBase* engine, const char* uri, int reflowOutli
         if (destY != DEST_USE_DEFAULT) {
             ldest.y = destY;
         }
+        NavigateMupdfToResolvedDest(engine, pageNo1, ldest, lh);
+        return;
     } else {
         pageNo1 = ResolveMupdfLinkPageNo1(e, uri, &ldest);
         if (pageNo1 <= 0) {
@@ -7212,23 +7454,7 @@ void EngineMupdfNavigateUri(EngineBase* engine, const char* uri, int reflowOutli
         }
     }
 
-    auto ctrl = lh->GetDocController();
-    if (!ctrl) {
-        return;
-    }
-    ctrl->PreparePageNavigation(pageNo1);
-    if (pageNo1 < 1 || pageNo1 > engine->PageCount()) {
-        return;
-    }
-
-    float x = isnan(ldest.x) ? 0.f : ldest.x;
-    float y = isnan(ldest.y) ? 0.f : ldest.y;
-    float zoom = isnan(ldest.zoom) ? 0.f : ldest.zoom;
-    zoom = zoom / 100;
-    float w = isnan(ldest.w) ? DEST_USE_DEFAULT : ldest.w;
-    float h = isnan(ldest.h) ? DEST_USE_DEFAULT : ldest.h;
-    RectF r(x, y, w, h);
-    ctrl->ScrollTo(pageNo1, r, zoom);
+    NavigateMupdfToResolvedDest(engine, pageNo1, ldest, lh);
 }
 
 bool EngineMupdfHasOutline(EngineBase* engine) {

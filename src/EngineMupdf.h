@@ -191,6 +191,14 @@ class EngineMupdf : public EngineBase {
     // Set when single-chapter HTML reparse discards cached TocItem destinations.
     bool reflowTocNeedsUiReload = false;
 
+    // TOC navigation into a chapter that is not counted yet during progressive load.
+    CRITICAL_SECTION pendingReflowNavLock;
+    char* pendingReflowNavUri = nullptr;
+    int pendingReflowNavChapter = -1;
+    float pendingReflowNavDestX = DEST_USE_DEFAULT;
+    float pendingReflowNavDestY = DEST_USE_DEFAULT;
+    volatile LONG reflowNavCountAsyncActive = 0;
+
     // used to track "dirty" state of annotations. not perfect because if we add and delete
     // the same annotation, we should be back to 0
     bool modifiedAnnotations = false;

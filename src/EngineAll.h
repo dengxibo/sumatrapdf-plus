@@ -95,6 +95,8 @@ bool EngineMupdfIsOutlineDestReachable(EngineBase* engine, IPageDestination* des
 bool EngineMupdfSnapshotOutlineLink(IPageDestination* dest, char** uriOut, int* reflowChOut, float* xOut, float* yOut);
 void EngineMupdfNavigateUri(EngineBase* engine, const char* uri, int reflowOutlineChapter, float destX, float destY,
                             ILinkHandler* lh);
+bool EngineMupdfTryCompletePendingReflowNav(EngineBase* engine, ILinkHandler* lh);
+bool EngineMupdfHasPendingReflowNav(EngineBase* engine);
 bool EngineMupdfHasOutline(EngineBase* engine);
 const char* EngineMupdfGetPassword(EngineBase* engine);
 bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErrorCb& showErrorFunc);
