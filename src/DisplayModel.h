@@ -38,6 +38,10 @@ struct PageInfo {
 
     // set to true if rendering this page failed (e.g. corrupt image data)
     bool failedToRender = false;
+
+    // transient render failures (docLock contention, stale reflow layout) are
+    // retried a few times before failedToRender is latched
+    u8 renderFailCount = 0;
 };
 
 /* The current scroll state (needed for saving/restoring the scroll position) */
@@ -175,8 +179,10 @@ struct DisplayModel : DocController {
     void RotateBy(int rotation);
 
     char* GetTextInRegion(int pageNo, RectF region) const;
-    bool IsOverText(Point pt);
-    IPageElement* GetElementAtPos(Point pt, int* pageNoOut);
+    bool IsOverText(Point pt, bool loadText = false);
+    // eagerLoadLinks: only set for click/context-menu hit tests. The cursor path
+    // must stay false or fz_load_html_links walks the whole chapter per mouse move.
+    IPageElement* GetElementAtPos(Point pt, int* pageNoOut, bool eagerLoadLinks = false);
     Annotation* GetAnnotationAtPos(Point pt, Annotation*);
 
     int GetPageNoByPoint(Point pt) const;
@@ -237,6 +243,9 @@ struct DisplayModel : DocController {
     /* single-column width the last full Relayout() used for x-centering; the
        incremental reflow layout reuses it (O(1)) instead of rescanning pages. */
     int reflowLayoutColumnWidth = 0;
+    /* last page range updated by RecalcVisibleParts (continuous layout fast path) */
+    mutable int visibleScanFrom = 1;
+    mutable int visibleScanTo = 0;
 
     DisplayMode displayMode{DisplayMode::Automatic};
     /* In non-continuous mode is the first page from a file that we're

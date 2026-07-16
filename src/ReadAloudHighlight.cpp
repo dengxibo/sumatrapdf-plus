@@ -12,6 +12,7 @@
 #include "GlobalPrefs.h"
 #include "DocController.h"
 #include "EngineBase.h"
+#include "EngineAll.h"
 #include "DisplayModel.h"
 #include "DisplayMode.h"
 #include "TextSelection.h"
@@ -188,6 +189,18 @@ static void ReadAloudByteLocSetFromRect(ReadAloudByteLoc& loc, int pageNo, const
     loc.dy = r.dy;
 }
 
+static void ReadAloudByteLocSetChapter(ReadAloudByteLoc& loc, EngineBase* engine, int pageNo, int byteOff) {
+    loc.chapter = -1;
+    loc.byteOff = byteOff;
+    if (engine && engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".epub")) {
+        int ch = 0;
+        int startPage = 0;
+        if (EngineMupdfGetReflowPageChapter(engine, pageNo, &ch, &startPage)) {
+            loc.chapter = ch;
+        }
+    }
+}
+
 static bool ReadAloudByteLocHasRect(const ReadAloudByteLoc& loc) {
     return loc.pageNo > 0 && (loc.x || loc.dx);
 }
@@ -213,6 +226,7 @@ static void ReadAloudAppendPageUtf8(Vec<ReadAloudRawByte>& raw, EngineBase* engi
         if (r.x || r.dx) {
             ReadAloudByteLocSetFromRect(loc, pageNo, r);
         }
+        ReadAloudByteLocSetChapter(loc, engine, pageNo, i);
         ReadAloudHighlightAppendRaw(raw, pageText.text[i], loc);
     }
     FreePageTextUtf8(&pageText);
@@ -1410,7 +1424,7 @@ static bool ReadAloudReplaceHighlightMap(WindowTab* tab, ReadAloudHighlightMap* 
 }
 
 static bool ReadAloudRelocateTextAndMap(WindowTab* tab, ReadAloudHighlightMap* newMap, const char* rebuiltText,
-                                          int anchorAbs, bool* textRelocatedOut) {
+                                        int anchorAbs, bool* textRelocatedOut) {
     if (!tab || !newMap || str::IsEmpty(rebuiltText) || newMap->len != str::Leni(rebuiltText)) {
         return false;
     }
@@ -1497,7 +1511,7 @@ bool RefreshReadAloudHighlightAfterLayoutChange(WindowTab* tab, MainWindow* win,
         }
         if (startPage > 0) {
             ok = ReadAloudHighlightBuildFromDocument(dm, startPage, startGlyph, tab->readAloudBuiltEndPage, &newMap,
-                                                   cleaned);
+                                                     cleaned);
         }
     } else if (dm->textSelection && dm->textSelection->result.len > 0) {
         ok = ReadAloudHighlightBuildFromTextSelection(dm->textSelection, &newMap, cleaned);

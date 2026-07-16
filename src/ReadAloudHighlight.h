@@ -13,6 +13,9 @@ struct ReadAloudByteLoc {
     int y = 0;
     int dx = 0;
     int dy = 0;
+    // EPUB reflow: stable anchor across theme/layout changes
+    int chapter = -1;
+    int byteOff = -1;
 };
 
 struct ReadAloudHighlightMap {

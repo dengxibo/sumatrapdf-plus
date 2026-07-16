@@ -8,6 +8,7 @@
 #include "utils/FileUtil.h"
 #include "utils/GdiPlusUtil.h"
 #include "utils/UITask.h"
+#include "utils/Timer.h"
 #include "utils/WinUtil.h"
 
 #include "wingui/UIModels.h"
@@ -26,6 +27,7 @@
 #include "Annotation.h"
 #include "SumatraPDF.h"
 #include "MainWindow.h"
+#include "EpubPerfLog.h"
 #include "DisplayModel.h"
 #include "Favorites.h"
 #include "WindowTab.h"
@@ -66,17 +68,12 @@ static void LayoutTocContainer(MainWindow* win);
 
 static bool IsKnownTocTreeModel(MainWindow* win, TreeModel* tm);
 
-// Reflow EPUB page numbers are valid once the engine has counted them.
-// ValidPageNo also caps by pagesInfoCount (layout done so far), which wrongly
-// greys out far-ahead TOC entries while the reader is still on earlier pages.
-static bool IsMupdfReflowPageKnown(EngineBase* engine, int pageNo) {
-    return engine && engine->kind == kindEngineMupdf && pageNo >= 1 && pageNo <= engine->PageCount();
-}
-
 static bool IsTocMupdfPageReachable(EngineBase* engine, int pageNo) {
     if (!engine || engine->kind != kindEngineMupdf || pageNo < 1) {
         return false;
     }
+    // engine->PageCount() grows as chapters are counted; a known page number
+    // within it means the target chapter was counted and is safe to jump to
     return pageNo <= engine->PageCount();
 }
 
@@ -391,6 +388,12 @@ static bool IsTocPageReachable(DocController* ctrl, TocItem* tocItem) {
         // OnTocCustomDraw calls this while painting; never dereference dest here.
         return IsMobiEbookTocItemReachable(ctrl, tocItem, engine);
     }
+    if (engine && engine->kind == kindEngineMupdf && !EngineIsProgressiveEbookLoading(engine)) {
+        if (tocItem->pageNo > 0) {
+            return tocItem->pageNo <= engine->PageCount();
+        }
+        return false;
+    }
     IPageDestination* dest = tocItem->GetPageDestination();
     if (dest && dest->GetKind() == kindDestinationMupdf && engine && EngineIsProgressiveEbookLoading(engine)) {
         return IsInternalPageLinkReachable(ctrl, dest);
@@ -402,10 +405,10 @@ static bool IsTocPageReachable(DocController* ctrl, TocItem* tocItem) {
                 return IsTocMupdfPageReachable(engine, pageNo);
             }
             if (EngineIsProgressiveEbookLoading(engine)) {
+                // not counted yet: grey and unclickable until counting reaches it
                 return false;
             }
-            pageNo = EngineMupdfResolveLinkPageNo(engine, dest);
-            return IsMupdfReflowPageKnown(engine, pageNo);
+            return false;
         }
         return true;
     }
@@ -420,7 +423,16 @@ static bool IsTocPageReachable(DocController* ctrl, TocItem* tocItem) {
 
 static void GoToTocLink(GoToTocLinkData* d) {
     AutoDelete delData(d);
+    LARGE_INTEGER tocStart{};
+    if (EpubPerfLogIsEnabled()) {
+        tocStart = TimeGet();
+    }
     defer {
+        if (EpubPerfLogIsEnabled() && d->mupdfUri) {
+            TempStr kv = str::FormatTemp("\"uri\":\"%s\",\"ms\":%.2f,\"page\":%d", d->mupdfUri, TimeSinceInMs(tocStart),
+                                         d->pageNo);
+            EpubPerfLogEmit("toc_jump", kv);
+        }
         FreeGoToTocLinkData(d);
     };
 
@@ -563,18 +575,19 @@ static int TocItemPageNoForMatch(TocItem* item, EngineBase* engine) {
 
     Kind destKind = dest->GetKind();
     if (destKind == kindDestinationMupdf) {
-        // Prefer live resolution so fragment anchors stay accurate after reload and
-        // are not stuck on chapter-start pages cached during progressive load.
-        int pageNo = 0;
-        if (!EngineIsProgressiveEbookLoading(engine)) {
-            pageNo = EngineMupdfResolveLinkPageNo(engine, dest);
+        // Use page numbers baked at TOC build time (epubmeta / outline walk).
+        // Live fz_resolve_link_dest during scroll-sync was freezing large EPUBs.
+        if (item->pageNo > 0) {
+            return item->pageNo;
         }
-        if (pageNo <= 0) {
-            pageNo = EngineMupdfFastOutlinePageNo(engine, dest);
-        }
+        int pageNo = EngineMupdfFastOutlinePageNo(engine, dest);
         if (pageNo > 0) {
             return pageNo;
         }
+        if (EngineIsProgressiveEbookLoading(engine)) {
+            return 0;
+        }
+        return EngineMupdfResolveLinkPageNo(engine, dest);
     }
 
     if (item->pageNo > 0) {
@@ -1190,9 +1203,17 @@ static void GetTocItemRowRect(HWND hwnd, HTREEITEM hItem, NMCUSTOMDRAW* cd, RECT
 static void DrawTocSelectionFill(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem) {
     RECT rcRow;
     GetTocItemRowRect(hwnd, hItem, cd, rcRow);
-    HBRUSH br = CreateSolidBrush(TocSelectionBgColor());
-    FillRect(cd->hdc, &rcRow, br);
-    DeleteObject(br);
+    static COLORREF s_lastCol = (COLORREF)-1;
+    static HBRUSH s_br = nullptr;
+    COLORREF col = TocSelectionBgColor();
+    if (col != s_lastCol) {
+        if (s_br) {
+            DeleteObject(s_br);
+        }
+        s_br = CreateSolidBrush(col);
+        s_lastCol = col;
+    }
+    FillRect(cd->hdc, &rcRow, s_br);
 }
 
 static void DrawTocSelectionFrame(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem) {
@@ -1397,6 +1418,10 @@ static void DrawTocItemHighlight(TreeView::CustomDrawEvent* ev, MainWindow* win)
 
 // https://docs.microsoft.com/en-us/windows/win32/controls/about-custom-draw
 // https://docs.microsoft.com/en-us/windows/win32/api/commctrl/ns-commctrl-nmtvcustomdraw
+// While the user drags the TOC scrollbar thumb, skip per-item custom draw so
+// Win32 can scroll natively; repaint with full styling when the drag ends.
+static HWND gTocFastScrollHwnd = nullptr;
+
 void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
 #if defined(DISPLAY_TOC_PAGE_NUMBERS)
     if (false) return CDRF_DODEFAULT;
@@ -1418,12 +1443,18 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
     NMTVCUSTOMDRAW* tvcd = ev->nm;
     NMCUSTOMDRAW* cd = &(tvcd->nmcd);
 
+    MainWindow* win = FindMainWindowByHwnd(ev->treeView->hwnd);
+    DisplayModel* dm = win && win->ctrl ? win->ctrl->AsFixed() : nullptr;
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (gTocFastScrollHwnd && gTocFastScrollHwnd == ev->treeView->hwnd && !EngineIsProgressiveEbookLoading(engine)) {
+        return;
+    }
+
     if (cd->dwDrawStage == CDDS_PREPAINT) {
         ev->result = CDRF_NOTIFYITEMDRAW;
         return;
     }
 
-    MainWindow* win = FindMainWindowByHwnd(ev->treeView->hwnd);
     bool filterActive = HasTocFilter(win);
 
     if (cd->dwDrawStage == CDDS_ITEMPREPAINT) {
@@ -1595,6 +1626,17 @@ static void LayoutTocContainer(MainWindow* win) {
 
 static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR data) {
     MainWindow* win = (MainWindow*)data;
+    if (msg == WM_VSCROLL) {
+        WORD code = LOWORD(wp);
+        if (code == SB_THUMBTRACK || code == SB_THUMBPOSITION) {
+            gTocFastScrollHwnd = hwnd;
+        } else if (code == SB_ENDSCROLL) {
+            if (gTocFastScrollHwnd == hwnd) {
+                gTocFastScrollHwnd = nullptr;
+                InvalidateRect(hwnd, nullptr, FALSE);
+            }
+        }
+    }
     if (msg == WM_SETCURSOR && LOWORD(lp) == HTCLIENT && win && win->ctrl && win->tocTreeView) {
         POINT pt;
         GetCursorPos(&pt);

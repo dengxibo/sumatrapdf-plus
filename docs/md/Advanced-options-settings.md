@@ -290,6 +290,13 @@ EBookUI [
     ; custom CSS. Might need to set IgnoreDocumentCSS = true
     CustomCSS =
 
+    ; if true, large reflowable EPUBs count chapters in the background for
+    ; faster first paint
+    EpubProgressiveLoad = true
+
+    ; if true, emit structured EPUB performance events as JSON lines in the log
+    EpubPerfLog = false
+
     ; if given, sets the canvas background color for ebook documents (epub, mobi
     ; etc.) (introduced in version 3.7)
     WindowBgCol = 

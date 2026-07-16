@@ -118,6 +118,47 @@ static bool IsReflowContinuousSingleColumn(DisplayModel* dm) {
     return IsContinuous(mode) && !IsBookView(mode) && ColumnsFromDisplayMode(mode) == 1;
 }
 
+// In continuous single-column reflow mode pages are stacked vertically with
+// monotonically increasing pos.y, so visible-page work can skip O(n) scans.
+static int VisiblePageScanFrom(const DisplayModel* dm) {
+    if (!IsReflowContinuousSingleColumn((DisplayModel*)dm) || !dm->pagesInfo || dm->pagesInfoCount <= 0) {
+        return 1;
+    }
+    int lo = 1;
+    int hi = dm->pagesInfoCount;
+    int viewTop = dm->viewPort.y;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        PageInfo* pi = dm->GetPageInfo(mid);
+        if (!pi || !pi->isShown || pi->pos.dy <= 0) {
+            return 1;
+        }
+        if (pi->pos.y + pi->pos.dy <= viewTop) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo > 1 ? lo - 1 : 1;
+}
+
+static int VisiblePageScanTo(const DisplayModel* dm, int fromPage) {
+    if (!IsReflowContinuousSingleColumn((DisplayModel*)dm)) {
+        return dm->pagesInfoCount;
+    }
+    int viewBottom = dm->viewPort.y + dm->viewPort.dy;
+    for (int p = fromPage; p <= dm->pagesInfoCount; p++) {
+        PageInfo* pi = dm->GetPageInfo(p);
+        if (!pi || !pi->isShown || pi->pos.dy <= 0) {
+            return dm->pagesInfoCount;
+        }
+        if (pi->pos.y >= viewBottom) {
+            return std::min(p + 1, dm->pagesInfoCount);
+        }
+    }
+    return dm->pagesInfoCount;
+}
+
 // Layout reflowed continuous pages (validUpto+1 .. toPage) without a full relayout.
 // toPage <= 0 means layout through pagesInfoCount.
 static bool LayoutReflowPagesUpto(DisplayModel* dm, int toPage) {
@@ -452,8 +493,19 @@ void DisplayModel::RenderFinished(PageRenderRequest* req) {
     PageInfo* pageInfo = GetPageInfo(req->pageNo);
     if (req->errorCode != 0) {
         if (pageInfo) {
-            if (EngineIsProgressiveEbookLoading(engine)) {
-                // docLock contention can fail rendering transiently during background load
+            if (EngineIsProgressiveEbookLoading(engine) || EngineMupdfIsReflowWarmActive(engine)) {
+                // docLock contention can fail rendering transiently during background
+                // load or while the chapter pre-layout warmer is running
+                if (IsDisplayModelCurrentTab(this)) {
+                    RepaintDisplay();
+                }
+                return;
+            }
+            // for reflowable ebooks a failure can also be transient (stale chapter
+            // layout, store eviction mid-render): retry a few times before latching
+            bool isReflowableEbook = engine && engine->kind == kindEngineMupdf && !str::EqI(engine->defaultExt, ".pdf");
+            if (isReflowableEbook && pageInfo->renderFailCount < 3) {
+                pageInfo->renderFailCount++;
                 if (IsDisplayModelCurrentTab(this)) {
                     RepaintDisplay();
                 }
@@ -468,8 +520,14 @@ void DisplayModel::RenderFinished(PageRenderRequest* req) {
     }
     if (pageInfo) {
         pageInfo->failedToRender = false;
+        pageInfo->renderFailCount = 0;
     }
-    if (PageVisibleNearby(req->pageNo) && IsDisplayModelCurrentTab(this)) {
+    // After a theme/color switch the visible-page scan can briefly be stale.
+    // The bitmap may already be in the cache, but PageVisibleNearby() then
+    // suppresses the repaint until an unrelated UI action (e.g. a TOC click).
+    // Repaint the active tab for every completed request; predictive renders
+    // are bounded and this makes completed pages appear immediately.
+    if (IsDisplayModelCurrentTab(this)) {
         RepaintDisplay();
     }
 }
@@ -723,6 +781,24 @@ void DisplayModel::EnsurePagesInfoForPage(int pageNo) {
     if (pageNo > enginePageCount) {
         return;
     }
+    // After a far jump during progressive loading, pagesInfo may cover only up
+    // to the jump target while the engine already knows more pages. Kick the
+    // grow chain (OnMorePagesAvailable) so the user can scroll past the target
+    // even when no more loading notifications are coming.
+    defer {
+        if (engine->FilePath() && pagesInfoCount < engine->PageCount()) {
+            // during progressive loading throttle to avoid UI churn (more
+            // notifications keep coming anyway); after loading nothing else
+            // will re-kick the chain, so always notify or scrolling gets
+            // stuck at the jump target
+            bool loading = EngineIsProgressiveEbookLoading(engine);
+            DWORD now = GetTickCount();
+            if (!loading || gLastProgressChainMs == 0 || now - gLastProgressChainMs >= kProgressRelayoutIntervalMs) {
+                gLastProgressChainMs = now;
+                NotifyEbookPagesLoadingProgress(engine->FilePath(), false);
+            }
+        }
+    };
     if (pageNo <= pagesInfoCount) {
         if (IsContinuous(displayMode)) {
             SyncReflowLayoutUpto(this, pageNo);
@@ -827,10 +903,16 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
     int oldCount = pagesInfoCount;
     int growTo = enginePageCount;
     const int kGrowBatch = 128;
+    // batching (with the chained-notification dance) exists only to stay
+    // responsive while background loading keeps adding pages; once loading is
+    // done, grow to the full count in one step with a single relayout - the
+    // batched chain re-lays out the document dozens of times and makes
+    // scrolling crawl
+    bool progressiveLoading = EngineIsProgressiveEbookLoading(engine);
     if (!growAll && !updateUi) {
         // background tab: sync all pages silently in one step (no Notify chain)
         growTo = enginePageCount;
-    } else if (!growAll && enginePageCount - oldCount > kGrowBatch) {
+    } else if (!growAll && progressiveLoading && enginePageCount - oldCount > kGrowBatch) {
         growTo = oldCount + kGrowBatch;
     }
 
@@ -876,8 +958,12 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
     // EPUBs (8000+ pages). Throttle chained UI tasks so the message loop stays
     // responsive while background loading continues.
     if (updateUi && engine->FilePath() && pagesInfoCount < engine->PageCount()) {
+        bool loading = EngineIsProgressiveEbookLoading(engine);
         DWORD now = GetTickCount();
-        if (gLastProgressChainMs == 0 || now - gLastProgressChainMs >= kProgressRelayoutIntervalMs) {
+        // when loading is done there are no more external notifications, so the
+        // chain must be self-sustaining: dropping a link here would permanently
+        // strand pagesInfoCount below the engine page count
+        if (!loading || gLastProgressChainMs == 0 || now - gLastProgressChainMs >= kProgressRelayoutIntervalMs) {
             gLastProgressChainMs = now;
             NotifyEbookPagesLoadingProgress(engine->FilePath(), false);
         }
@@ -1081,7 +1167,9 @@ int DisplayModel::CurrentPageNo() const {
     int mostVisiblePage = kInvalidPageNo;
     float ratio = 0;
 
-    for (int pageNo = 1; pageNo <= PageCount(); pageNo++) {
+    int scanFrom = VisiblePageScanFrom(this);
+    int scanTo = VisiblePageScanTo(this, scanFrom);
+    for (int pageNo = scanFrom; pageNo <= scanTo; pageNo++) {
         PageInfo* pageInfo = GetPageInfo(pageNo);
         if (pageInfo->visibleRatio > ratio) {
             mostVisiblePage = pageNo;
@@ -1212,6 +1300,7 @@ void DisplayModel::Relayout(float newZoomVirtual, int newRotation) {
         return;
     }
 
+    visibleScanTo = 0;
     rotation = NormalizeRotation(newRotation);
 
     bool needHScroll = false;
@@ -1451,7 +1540,22 @@ void DisplayModel::RecalcVisibleParts() const {
         return;
     }
 
-    for (int pageNo = 1; pageNo <= pagesInfoCount; ++pageNo) {
+    int from = VisiblePageScanFrom(this);
+    int to = VisiblePageScanTo(this, from);
+    if (visibleScanTo > 0) {
+        for (int pageNo = visibleScanFrom; pageNo < from; pageNo++) {
+            if (pageNo >= 1 && pageNo <= pagesInfoCount && pagesInfo[pageNo - 1].isShown) {
+                pagesInfo[pageNo - 1].visibleRatio = 0.0;
+            }
+        }
+        for (int pageNo = to + 1; pageNo <= visibleScanTo; pageNo++) {
+            if (pageNo >= 1 && pageNo <= pagesInfoCount && pagesInfo[pageNo - 1].isShown) {
+                pagesInfo[pageNo - 1].visibleRatio = 0.0;
+            }
+        }
+    }
+
+    for (int pageNo = from; pageNo <= to; ++pageNo) {
         if (!pagesInfo[pageNo - 1].isShown) {
             continue;
         }
@@ -1472,11 +1576,43 @@ void DisplayModel::RecalcVisibleParts() const {
         pageInfo->pageOnScreen = pageRect;
         pageInfo->pageOnScreen.Offset(-viewPort.x, -viewPort.y);
     }
+
+    visibleScanFrom = from;
+    visibleScanTo = to;
 }
 
 int DisplayModel::GetPageNoByPoint(Point pt) const {
     // no reasonable answer possible, if zoom hasn't been set yet
     if (zoomReal <= 0) {
+        return -1;
+    }
+
+    if (IsReflowContinuousSingleColumn((DisplayModel*)this)) {
+        int canvasY = viewPort.y + pt.y;
+        int lo = 1;
+        int hi = PageCount();
+        while (lo < hi) {
+            int mid = lo + (hi - lo + 1) / 2;
+            PageInfo* pi = GetPageInfo(mid);
+            if (!pi || !pi->isShown || pi->pos.dy <= 0) {
+                lo = 1;
+                break;
+            }
+            if (pi->pos.y <= canvasY) {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        for (int pageNo = lo; pageNo <= std::min(lo + 1, PageCount()); pageNo++) {
+            if (!pagesInfo[pageNo - 1].isShown) {
+                continue;
+            }
+            PageInfo* pageInfo = GetPageInfo(pageNo);
+            if (pageInfo && pageInfo->pageOnScreen.Contains(pt)) {
+                return pageNo;
+            }
+        }
         return -1;
     }
 
@@ -1597,7 +1733,7 @@ RectF DisplayModel::CvtFromScreen(Rect r, int pageNo) {
 // Given position 'x'/'y' in the draw area, returns a structure describing
 // a link or nullptr if there is no link at this position.
 // don't delete the result
-IPageElement* DisplayModel::GetElementAtPos(Point pt, int* pageNoOut) {
+IPageElement* DisplayModel::GetElementAtPos(Point pt, int* pageNoOut, bool eagerLoadLinks) {
     int pageNo = GetPageNoByPoint(pt);
     if (!ValidPageNo(pageNo)) {
         return nullptr;
@@ -1608,6 +1744,9 @@ IPageElement* DisplayModel::GetElementAtPos(Point pt, int* pageNoOut) {
     }
     if (pageNoOut) {
         *pageNoOut = pageNo;
+    }
+    if (eagerLoadLinks && engine && engine->kind == kindEngineMupdf) {
+        EngineMupdfEnsurePageLinksForHitTest(engine, pageNo);
     }
     PointF pos = CvtFromScreen(pt, pageNo);
     return engine->GetElementAtPos(pageNo, pos);
@@ -1631,13 +1770,19 @@ Annotation* DisplayModel::GetAnnotationAtPos(Point pt, Annotation* annot) {
 }
 
 // note: returns false for non-text areas (text is fetched on demand via GetTextForPage)
-bool DisplayModel::IsOverText(Point pt) {
+bool DisplayModel::IsOverText(Point pt, bool loadText) {
     int pageNo = GetPageNoByPoint(pt);
     if (!ValidPageNo(pageNo)) {
         return false;
     }
     // only return visible elements (for cursor interaction)
     if (!Rect(Point(), viewPort.Size()).Contains(pt)) {
+        return false;
+    }
+    // Cursor hit-testing must not extract structured text: for anthology EPUB
+    // chapters fz_new_stext_page_from_page walks the whole chapter and blocks
+    // the UI for seconds on every mouse move over a new page.
+    if (!loadText && !engine->HasTextForPage(pageNo)) {
         return false;
     }
 
@@ -1653,7 +1798,9 @@ void DisplayModel::RenderVisibleParts() {
     int firstVisiblePage = 0;
     int lastVisiblePage = 0;
 
-    for (int pageNo = 1; pageNo <= PageCount(); ++pageNo) {
+    int scanFrom = VisiblePageScanFrom(this);
+    int scanTo = VisiblePageScanTo(this, scanFrom);
+    for (int pageNo = scanFrom; pageNo <= scanTo; ++pageNo) {
         PageInfo* pageInfo = GetPageInfo(pageNo);
         if (!pageInfo) {
             continue;
@@ -1672,10 +1819,8 @@ void DisplayModel::RenderVisibleParts() {
         return;
     }
 
-    // rendering happens LIFO except if the queue is currently
-    // empty, so request the visible pages first and last to
-    // make sure they're rendered before the predicted pages
-    for (int pageNo = firstVisiblePage; pageNo <= lastVisiblePage; pageNo++) {
+    // Request visible pages LIFO so the on-screen page renders first.
+    for (int pageNo = lastVisiblePage; pageNo >= firstVisiblePage; pageNo--) {
         cb->RequestRendering(pageNo);
     }
 
@@ -1696,14 +1841,6 @@ void DisplayModel::RenderVisibleParts() {
         if (lastVisiblePage < PageCount()) {
             cb->RequestRendering(lastVisiblePage + 1);
         }
-    }
-
-    // re-request the visible pages again so:
-    // * they get picked first by rendering thread
-    // * if queue fills up, the invisible pages from predictive rendering
-    //   wont be rendered
-    for (int pageNo = lastVisiblePage; pageNo >= firstVisiblePage; pageNo--) {
-        cb->RequestRendering(pageNo);
     }
 }
 

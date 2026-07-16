@@ -33,12 +33,12 @@ enum class Arg {
     Page = 44, View = 45, Zoom = 46, Scroll = 47,
     AppData = 48, Plugin = 49, StressTest = 50, N = 51,
     Max = 52, MaxFiles = 53, Render = 54, ExtractText = 55,
-    Bench = 56, Dir = 57, InstallDir = 58, Lang = 59,
-    UpdateSelfTo = 60, ArgDeleteFile = 61, BgCol = 62, BgCol2 = 63,
-    FwdSearchOffset = 64, FwdSearchWidth = 65, FwdSearchColor = 66, FwdSearchPermanent = 67,
-    MangaMode = 68, Search = 69, AllUsers = 70, AllUsers2 = 71,
-    RunInstallNow = 72, Adobe = 73, DDE = 74, EngineDump = 75,
-    SetColorRange = 76, UpgradeFrom = 77,
+    Bench = 56, BenchEpub = 57, Dir = 58, InstallDir = 59,
+    Lang = 60, UpdateSelfTo = 61, ArgDeleteFile = 62, BgCol = 63,
+    BgCol2 = 64, FwdSearchOffset = 65, FwdSearchWidth = 66, FwdSearchColor = 67,
+    FwdSearchPermanent = 68, MangaMode = 69, Search = 70, AllUsers = 71,
+    AllUsers2 = 72, RunInstallNow = 73, Adobe = 74, DDE = 75,
+    EngineDump = 76, SetColorRange = 77, UpgradeFrom = 78,
 };
 
 static const char* gArgNames =
@@ -56,12 +56,12 @@ static const char* gArgNames =
     "page\0" "view\0" "zoom\0" "scroll\0"
     "appdata\0" "plugin\0" "stress-test\0" "n\0"
     "max\0" "max-files\0" "render\0" "extract-text\0"
-    "bench\0" "d\0" "install-dir\0" "lang\0"
-    "update-self-to\0" "delete-file\0" "bgcolor\0" "bg-color\0"
-    "fwdsearch-offset\0" "fwdsearch-width\0" "fwdsearch-color\0" "fwdsearch-permanent\0"
-    "manga-mode\0" "search\0" "all-users\0" "allusers\0"
-    "run-install-now\0" "a\0" "dde\0" "engine-dump\0"
-    "set-color-range\0" "upgrade-from\0";
+    "bench\0" "bench-epub\0" "d\0" "install-dir\0"
+    "lang\0" "update-self-to\0" "delete-file\0" "bgcolor\0"
+    "bg-color\0" "fwdsearch-offset\0" "fwdsearch-width\0" "fwdsearch-color\0"
+    "fwdsearch-permanent\0" "manga-mode\0" "search\0" "all-users\0"
+    "allusers\0" "run-install-now\0" "a\0" "dde\0"
+    "engine-dump\0" "set-color-range\0" "upgrade-from\0";
 // clang-format on
 // @gen-end flags
 
@@ -619,6 +619,11 @@ void ParseFlags(const WCHAR* cmdLine, Flags& i, const char* toolNames) {
             i.exitImmediately = true;
             continue;
         }
+        if (arg == Arg::BenchEpub) {
+            i.benchEpubPath = str::Dup(param);
+            i.exitImmediately = true;
+            continue;
+        }
         if (arg == Arg::Dir || arg == Arg::InstallDir) {
             i.installDir = str::Dup(param);
             continue;
@@ -712,4 +717,5 @@ Flags::~Flags() {
     str::Free(search);
     str::Free(logFile);
     str::Free(dde);
+    str::Free(benchEpubPath);
 }

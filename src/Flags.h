@@ -37,6 +37,7 @@ struct Flags {
     //   to benchmark. It can also be a string "loadonly" which means we'll
     //   only benchmark loading of the catalog
     StrVec pathsToBenchmark;
+    char* benchEpubPath = nullptr;
     bool exitWhenDone = false;
     bool printDialog = false;
     char* printerName = nullptr;

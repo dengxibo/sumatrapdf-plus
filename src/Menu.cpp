@@ -1912,7 +1912,7 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
     Point cursorPos{x, y};
     WindowTab* tab = win->CurrentTab();
     int pageNoUnderEl = 0;
-    IPageElement* pageEl = dm->GetElementAtPos(cursorPos, &pageNoUnderEl);
+    IPageElement* pageEl = dm->GetElementAtPos(cursorPos, &pageNoUnderEl, true);
 
     char* value = nullptr;
     if (pageEl) {

@@ -157,6 +157,17 @@ const ebookUI: Field[] = [
   mkField("LayoutDy", Float, 0, "page height in pt for flowed ebooks. 0 means automatic reader-style height"),
   mkField("IgnoreDocumentCSS", Bool, false, "if true, we ignore ebook's CSS"),
   mkField("CustomCSS", Str, null, "custom CSS. Might need to set IgnoreDocumentCSS = true"),
+  setExpert(
+    mkField(
+      "EpubProgressiveLoad",
+      Bool,
+      true,
+      "if true, large reflowable EPUBs count chapters in the background for faster first paint",
+    ),
+  ),
+  setExpert(
+    mkField("EpubPerfLog", Bool, false, "if true, emit structured EPUB performance events as JSON lines in the log"),
+  ),
   setVersion(
     mkField(
       "WindowBgCol",

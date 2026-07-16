@@ -1147,7 +1147,7 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
         StartAnnotationDrag(win, annot, pt);
     } else {
         ReportIf(win->linkOnLastButtonDown);
-        IPageElement* pageEl = dm->GetElementAtPos(pt, nullptr);
+        IPageElement* pageEl = dm->GetElementAtPos(pt, nullptr, true);
         if (pageEl) {
             if (pageEl->Is(kindPageElementDest) && IsPageElementLinkReachable(win->ctrl, pageEl)) {
                 win->linkOnLastButtonDown = pageEl;
@@ -1178,7 +1178,10 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     bool isShift = IsShiftPressed();
     bool isCtrl = IsCtrlPressed();
     bool canCopy = HasPermission(Perm::CopySelection);
-    bool isOverText = win->AsFixed()->IsOverText(pt);
+    // A click may load text on demand so an EPUB page that has only been
+    // rendered (not yet searched/selected) can still start a text selection.
+    // Hover hit-testing remains cache-only to avoid blocking mouse movement.
+    bool isOverText = win->AsFixed()->IsOverText(pt, true);
 
     // if clicking on already selected text, prepare for drag-out instead of new selection
     if (canCopy && !isShift && !isCtrl && isOverText && win->showSelection && IsPointInSelection(win, pt)) {
@@ -1190,7 +1193,7 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
 
     // if clicking on an image, prepare for image drag-out
     if (canCopy && !isShift && !isCtrl && !isOverText) {
-        IPageElement* pageEl = dm->GetElementAtPos(pt, nullptr);
+        IPageElement* pageEl = dm->GetElementAtPos(pt, nullptr, true);
         if (pageEl && pageEl->Is(kindPageElementImage)) {
             win->imageDragPending = true;
             win->imageDragElement = pageEl;
@@ -1400,7 +1403,7 @@ static void OnMouseLeftButtonDblClk(MainWindow* win, int x, int y, WPARAM key) {
     }
 
     int elementPageNo = -1;
-    IPageElement* pageEl = dm->GetElementAtPos(mousePos, &elementPageNo);
+    IPageElement* pageEl = dm->GetElementAtPos(mousePos, &elementPageNo, true);
     if (isOverText && gGlobalPrefs->enableDoubleClickWordLookup) {
         int pageNo = dm->GetPageNoByPoint(mousePos);
         if (win->ctrl->ValidPageNo(pageNo)) {
@@ -1931,7 +1934,13 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
     int visiblePageCount = 0;
 
     bool isRtl = IsUIRtl();
-    for (int pageNo = 1; pageNo <= dm->PageCount(); ++pageNo) {
+    int paintFrom = 1;
+    int paintTo = dm->PageCount();
+    if (dm->visibleScanTo >= dm->visibleScanFrom && dm->visibleScanFrom >= 1) {
+        paintFrom = dm->visibleScanFrom;
+        paintTo = dm->visibleScanTo;
+    }
+    for (int pageNo = paintFrom; pageNo <= paintTo; ++pageNo) {
         PageInfo* pi = dm->GetPageInfo(pageNo);
         if (!pi || 0.0F == pi->visibleRatio) {
             continue;
@@ -2126,7 +2135,7 @@ static LRESULT OnSetCursorMouseNone(MainWindow* win, HWND hwnd) {
     }
 
     int pageNo = 0;
-    IPageElement* pageEl = dm->GetElementAtPos(pt, &pageNo);
+    IPageElement* pageEl = dm->GetElementAtPos(pt, &pageNo, false);
     if (!pageEl) {
         SetTextOrArrorCursor(dm, pt);
         win->DeleteToolTip();

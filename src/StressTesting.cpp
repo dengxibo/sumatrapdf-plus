@@ -31,6 +31,7 @@
 #include "Flags.h"
 #include "SearchAndDDE.h"
 #include "StressTesting.h"
+#include "EpubPerfLog.h"
 
 #include "utils/Log.h"
 
@@ -91,6 +92,15 @@ static void BenchLoadRender(EngineBase* engine, int pagenum) {
     delete rendered;
     timeMs = TimeSinceInMs(t);
     logf("pagerender %3d: %.2f ms\n", pagenum, timeMs);
+
+    // also time text extraction: this is what mouse-move hit-testing
+    // (IsOverText) and selection trigger while reading
+    t = TimeGet();
+    engine->GetTextForPage(pagenum);
+    timeMs = TimeSinceInMs(t);
+    if (timeMs > 50) {
+        logf("pagetext   %3d: %.2f ms\n", pagenum, timeMs);
+    }
 }
 
 static void BenchChmLoadOnly(const char* filePath) {
@@ -143,6 +153,12 @@ static void BenchFile(const char* path, const char* pagesSpec) {
 
     double timeMs = TimeSinceInMs(t);
     logf("load: %.2f ms\n", timeMs);
+    // reflowable ebooks load progressively; wait for the full page count so
+    // benching pages near the end of large books works
+    while (EngineIsProgressiveEbookLoading(engine)) {
+        Sleep(50);
+    }
+    logf("progressive load done: %.2f ms\n", TimeSinceInMs(t));
     int pages = engine->PageCount();
     logf("page count: %d\n", pages);
 
@@ -167,6 +183,116 @@ static void BenchFile(const char* path, const char* pagesSpec) {
     SafeEngineRelease(&engine);
 
     logf("Finished (in %.2f ms): %s\n", TimeSinceInMs(total), path);
+}
+
+static int CmpBenchDouble(const void* a, const void* b) {
+    double da = *(const double*)a;
+    double db = *(const double*)b;
+    if (da < db) {
+        return -1;
+    }
+    if (da > db) {
+        return 1;
+    }
+    return 0;
+}
+
+static double BenchPercentile(Vec<double>& times, double pct) {
+    if (times.Size() == 0) {
+        return 0;
+    }
+    times.Sort(CmpBenchDouble);
+    int idx = (int)((times.Size() - 1) * pct);
+    return times.At(idx);
+}
+
+static void BenchEpubPerfFragments(EngineBase* engine, TocItem* item, int* tested) {
+    while (item && *tested < 5) {
+        if (item->child) {
+            BenchEpubPerfFragments(engine, item->child, tested);
+        }
+        if (*tested >= 5) {
+            return;
+        }
+        IPageDestination* dest = item->GetPageDestination();
+        if (dest && dest->GetKind() == kindDestinationMupdf) {
+            char* uri = nullptr;
+            if (EngineMupdfSnapshotOutlineLink(dest, &uri, nullptr, nullptr, nullptr) && uri &&
+                str::FindChar(uri, '#')) {
+                auto t = TimeGet();
+                int pageNo = EngineMupdfResolveLinkPageNo(engine, dest);
+                double ms = TimeSinceInMs(t);
+                TempStr fragKv = str::FormatTemp("\"uri\":\"%s\",\"ms\":%.2f,\"page\":%d,\"resolved\":%s", uri, ms,
+                                                 pageNo, pageNo > 0 ? "true" : "false");
+                EpubPerfLogEmit("fragment", fragKv);
+                logf("fragment: %s -> page %d (%.2f ms)\n", uri, pageNo, ms);
+                (*tested)++;
+            }
+            str::FreePtr(&uri);
+        }
+        item = item->next;
+    }
+}
+
+void BenchEpubPerf(const char* path) {
+    if (!path || !file::Exists(path)) {
+        logf("Error: EPUB perf bench file not found: %s\n", path ? path : "(null)");
+        return;
+    }
+
+    TempStr perfPath = path::JoinTemp(path::JoinTemp("out", "perf"),
+                                      str::FormatTemp("epub-%llu.jsonl", (unsigned long long)GetTickCount64()));
+    dir::CreateForFile(perfPath);
+    EpubPerfLogInit(perfPath);
+    defer {
+        EpubPerfLogShutdown();
+    };
+    logf("EpubPerfSuite: logging to %s\n", perfPath);
+
+    auto tOpen = TimeGet();
+    EngineBase* engine = CreateEngineFromFile(path, nullptr, true);
+    if (!engine) {
+        logf("Error: failed to open %s\n", path);
+        return;
+    }
+    defer {
+        SafeEngineRelease(&engine);
+    };
+
+    double openMs = TimeSinceInMs(tOpen);
+    while (EngineIsProgressiveEbookLoading(engine)) {
+        Sleep(50);
+    }
+    int pages = engine->PageCount();
+    TempStr openKv = str::FormatTemp("\"ms\":%.2f,\"pages\":%d", openMs, pages);
+    EpubPerfLogEmit("open", openKv);
+    logf("open: %.2f ms, pages=%d\n", openMs, pages);
+
+    int scrollFrom = pages > 40 ? pages / 2 : 1;
+    Vec<double> scrollMs;
+    for (int i = 0; i < 20 && scrollFrom + i <= pages; i++) {
+        auto t = TimeGet();
+        engine->BenchLoadPage(scrollFrom + i);
+        scrollMs.Append(TimeSinceInMs(t));
+    }
+    if (scrollMs.Size() > 0) {
+        double p50 = BenchPercentile(scrollMs, 0.5);
+        double p95 = BenchPercentile(scrollMs, 0.95);
+        TempStr scrollKv = str::FormatTemp("\"from\":%d,\"count\":%d,\"p50_ms\":%.2f,\"p95_ms\":%.2f", scrollFrom,
+                                           scrollMs.Size(), p50, p95);
+        EpubPerfLogEmit("scroll", scrollKv);
+        logf("scroll: from=%d p50=%.2f p95=%.2f ms\n", scrollFrom, p50, p95);
+    }
+
+    if (engine->kind == kindEngineMupdf && EngineMupdfHasOutline(engine)) {
+        TocTree* toc = engine->GetToc();
+        if (toc && toc->root) {
+            int tested = 0;
+            BenchEpubPerfFragments(engine, toc->root, &tested);
+        }
+    }
+
+    logf("EpubPerfSuite finished: %s\n", perfPath);
 }
 
 static bool IsFileToBench(const char* path) {

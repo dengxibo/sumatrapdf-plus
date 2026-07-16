@@ -60,6 +60,7 @@ const args = [
     "Render", "render",
     "ExtractText", "extract-text",
     "Bench", "bench",
+    "BenchEpub", "bench-epub",
     "Dir", "d",
     "InstallDir", "install-dir",
     "Lang", "lang",

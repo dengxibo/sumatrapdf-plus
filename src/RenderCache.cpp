@@ -461,6 +461,22 @@ void RenderCache::FreeForDisplayModel(DisplayModel* dm) {
     }
 }
 
+// Keep old tiles visible while replacements for a color-mode change render.
+// Their invalid zoom makes normal lookup miss them and queue a fresh render;
+// PaintTile() then uses them as the existing stale-preview path.
+void RenderCache::KeepForColorTransition(DisplayModel* dm) {
+    ScopedCritSec scope(&cacheAccess);
+    for (int i = 0; i < cacheCount; i++) {
+        BitmapCacheEntry* entry = cache[i];
+        if (entry->dm != dm) {
+            continue;
+        }
+        entry->darkModeEpoch = darkModeEpoch;
+        entry->zoom = kInvalidZoom;
+        entry->outOfDate = true;
+    }
+}
+
 void RenderCache::FreeNotVisible() {
     // logvf("RenderCache::FreeNotVisible\n");
     ScopedCritSec scope(&cacheAccess);
@@ -627,13 +643,19 @@ void RenderCache::RequestRendering(DisplayModel* dm, int pageNo, TilePosition ti
     for (int i = 0; i < nRenderThreads; i++) {
         auto* cr = curReqs[i];
         if (cr && (cr->pageNo == pageNo) && (cr->dm == dm) && (cr->tile == tile)) {
-            if ((cr->zoom == zoom) && (cr->rotation == rotation)) {
+            if ((cr->zoom == zoom) && (cr->rotation == rotation) && !cr->abort) {
                 /* we're already rendering exactly the same page */
                 return;
             }
-            /* Currently rendered page is for the same page but with different zoom
-            or rotation, so abort it */
-            AbortCurrentRequest(i);
+            // A matching request can still be in curReqs after
+            // CancelRendering() has marked it aborted. It will never publish a
+            // bitmap or completion callback, so don't let it suppress the
+            // replacement request for the new theme.
+            if (!cr->abort) {
+                /* Currently rendered page is for the same page but with different zoom
+                or rotation, so abort it */
+                AbortCurrentRequest(i);
+            }
         }
     }
 
@@ -1046,7 +1068,12 @@ int RenderCache::PaintTile(HDC hdc, Rect bounds, DisplayModel* dm, int pageNo, T
             }
         }
         renderDelay = GetRenderDelay(dm, pageNo, tile);
-        if (renderMissing && RENDER_DELAY_UNDEFINED == renderDelay && !IsRenderQueueFull()) {
+        // A color-transition tile can paint an old bitmap while the request
+        // that was meant to replace it was canceled by a subsequent redraw.
+        // Re-submit here; RequestRendering() coalesces duplicates, whereas
+        // waiting for an undefined delay leaves the old colors on screen until
+        // a scroll happens to queue the page again.
+        if (renderMissing && !IsRenderQueueFull()) {
             RequestRendering(dm, pageNo, tile);
         }
     }

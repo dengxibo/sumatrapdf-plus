@@ -510,9 +510,7 @@ static bool TabIsForegroundForUi(WindowTab* tab) {
     return curr == tab && win->ctrl == tab->ctrl;
 }
 
-static DWORD gLastTocProgressInvalidateMs = 0;
 static DWORD gLastEbookProgressRepaintMs = 0;
-static const DWORD kTocProgressInvalidateIntervalMs = 300;
 static const DWORD kEbookProgressRepaintIntervalMs = 200;
 static const DWORD kEbookProgressToolbarIntervalMs = 800;
 
@@ -602,17 +600,11 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
             InvalidateTocTree(win);
         }
     }
-    if (win->tocLoaded && win->tocVisible && win->tocTreeView && EngineIsProgressiveEbookLoading(engine)) {
-        if (gLastTocProgressInvalidateMs == 0 ||
-            now - gLastTocProgressInvalidateMs >= kTocProgressInvalidateIntervalMs) {
-            gLastTocProgressInvalidateMs = now;
-            InvalidateRect(win->tocTreeView->hwnd, nullptr, FALSE);
-        }
-    }
     if (isForeground && EngineIsProgressiveEbookLoading(engine)) {
         if (gLastEbookProgressRepaintMs == 0 || now - gLastEbookProgressRepaintMs >= kEbookProgressRepaintIntervalMs) {
             gLastEbookProgressRepaintMs = now;
             ScheduleRepaint(win, 0);
+            InvalidateTocTree(win);
         }
     }
 }
@@ -2505,24 +2497,21 @@ static void ReloadTocUiAfterReflowReparse(MainWindow* win, WindowTab* tab) {
     }
 }
 
-// Theme toggles only user CSS colors; page breaks stay the same. During progressive
-// EPUB loading, avoid growAll=true relayout over thousands of pages on the UI thread.
+// Theme toggles only user CSS colors; page breaks stay the same. Re-layout only
+// the visible area: synchronizing every page in a large continuous EPUB makes a
+// color switch appear to hang while it needlessly walks the whole book.
 static void RefreshDisplayModelAfterThemeChange(DisplayModel* dm, bool updateUi) {
     if (!dm || !dm->pagesInfo) {
         return;
     }
-    if (EngineIsProgressiveEbookLoading(dm->GetEngine())) {
-        if (!updateUi) {
-            return;
-        }
-        dm->RecalcVisibleParts();
-        dm->RenderVisibleParts();
-        if (dm->cb) {
-            dm->cb->UpdateScrollbars(dm->canvasSize);
-        }
+    if (!updateUi) {
         return;
     }
-    dm->OnMorePagesAvailablePreservingScroll(updateUi, true);
+    dm->RecalcVisibleParts();
+    dm->RenderVisibleParts();
+    if (dm->cb) {
+        dm->cb->UpdateScrollbars(dm->canvasSize);
+    }
 }
 
 static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
@@ -2541,14 +2530,12 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
     ReflowLoadingPauseScope reflowPause(engine);
     if (IsReflowableMupdfForTheme(engine)) {
         gRenderCache->CancelRendering(dm);
-        gRenderCache->FreeForDisplayModel(dm);
+        gRenderCache->KeepForColorTransition(dm);
         if (!EngineMupdfRelayoutForThemeChange(engine)) {
             logfa("ApplyThemeChangeToTab: in-place reflow theme CSS update failed\n");
         }
-        EbookAnnotationsInvalidateLayoutCaches(tab);
         RefreshDisplayModelAfterThemeChange(dm, tab == win->CurrentTab());
-        RefreshTextSelectionAfterLayoutChange(tab, win);
-        ResyncReadAloudAfterLayoutChange(tab, win);
+        RemapAnchorsAfterReflow(tab, win);
         ReloadTocUiAfterReflowReparse(win, tab);
         tab->reloadOnFocus = false;
         return;
@@ -2570,6 +2557,7 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
         return;
     }
 
+    reflowPause.Release();
     ReloadDocument(win, false);
 }
 
@@ -3870,6 +3858,11 @@ void MainWindowRerender(MainWindow* win, bool includeNonClientArea) {
     }
     gRenderCache->CancelRendering(dm);
     gRenderCache->KeepForDisplayModel(dm, dm);
+    // KeepForDisplayModel() invalidates visible tiles and CancelRendering()
+    // drops their pending requests. Queue the visible pages again now instead
+    // of relying on a later scroll/paint to do it. This is especially
+    // important when returning from a forced color theme to native colors.
+    dm->RenderVisibleParts();
     if (includeNonClientArea) {
         win->RedrawAllIncludingNonClient();
     } else {
@@ -3935,10 +3928,8 @@ static void ApplyDocumentColorModeChangeToTab(MainWindow* win, WindowTab* tab) {
         EngineMupdfRelayoutForThemeChange(engine);
         DisplayModel* dm = tab->AsFixed();
         if (dm) {
-            EbookAnnotationsInvalidateLayoutCaches(tab);
             RefreshDisplayModelAfterThemeChange(dm, tab == win->CurrentTab());
-            RefreshTextSelectionAfterLayoutChange(tab, win);
-            ResyncReadAloudAfterLayoutChange(tab, win);
+            RemapAnchorsAfterReflow(tab, win);
         }
         ReloadTocUiAfterReflowReparse(win, tab);
         tab->reloadOnFocus = false;
@@ -4013,7 +4004,11 @@ void UpdateDocumentColors(bool rerender, bool updateReflowDocuments) {
             }
             EngineMupdfInvalidateDarkMode(dm->GetEngine());
             gRenderCache->CancelRendering(dm);
-            gRenderCache->FreeForDisplayModel(dm);
+            if (IsReflowableMupdfForTheme(dm->GetEngine())) {
+                gRenderCache->KeepForColorTransition(dm);
+            } else {
+                gRenderCache->FreeForDisplayModel(dm);
+            }
         }
     }
 
@@ -11014,6 +11009,15 @@ static void ResyncReadAloudAfterLayoutChange(WindowTab* tab, MainWindow* win) {
         TtsProcessEvents();
         ReadAloudSpeakChunk(tab, _TRA("No text available to read aloud"));
     }
+}
+
+void RemapAnchorsAfterReflow(WindowTab* tab, MainWindow* win) {
+    if (!tab) {
+        return;
+    }
+    RefreshTextSelectionAfterLayoutChange(tab, win);
+    ResyncReadAloudAfterLayoutChange(tab, win);
+    EbookAnnotationsInvalidateLayoutCaches(tab);
 }
 
 static void ScheduleReadAloudResyncAfterLayoutChange(MainWindow* win, WindowTab* tab) {

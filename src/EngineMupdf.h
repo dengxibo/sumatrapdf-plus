@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 #include "PdfCadDetect.h"
+#include "EpubMeta.h"
 
 struct Annotation;
 struct DarkModePageAnalysis;
@@ -198,6 +199,25 @@ class EngineMupdf : public EngineBase {
     float pendingReflowNavDestX = DEST_USE_DEFAULT;
     float pendingReflowNavDestY = DEST_USE_DEFAULT;
     volatile LONG reflowNavCountAsyncActive = 0;
+    // background chapter-layout warmer (runs after loading completes; pre-lays
+    // out every chapter so page renders and #fragment jumps become instant)
+    volatile LONG reflowWarmActive = 0;
+    // most recently accessed page (1-based); the warmer centers on its chapter
+    // and expands outward so the area the user is reading gets warm first
+    volatile LONG reflowLastAccessedPageNo = 0;
+    // GetTickCount of the most recent page access; the warmer backs off while
+    // the user is actively reading so chapter layouts don't stall scrolling
+    volatile LONG reflowLastPageAccessMs = 0;
+    // Sidecar .epubmeta cache (chapter starts, fragment table, toc pages).
+    EpubMetaData epubMeta;
+    bool epubMetaLoaded = false;
+    DWORD epubOpenStartTick = 0;
+    // Fragment (#anchor) resolution needs a full chapter layout; the async
+    // worker does it off the UI thread and stores the result here (guarded by
+    // pendingReflowNavLock, valid only while pendingReflowNavUri matches).
+    bool pendingReflowNavResolved = false;
+    int pendingReflowNavResolvedPageNo = 0;
+    fz_link_dest pendingReflowNavResolvedDest{};
 
     // used to track "dirty" state of annotations. not perfect because if we add and delete
     // the same annotation, we should be back to 0
@@ -232,8 +252,8 @@ class EngineMupdf : public EngineBase {
     FzPageInfo* GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* cookie = nullptr, bool loadLinks = true);
     fz_matrix viewctm(int pageNo, float zoom, int rotation);
     fz_matrix viewctm(fz_page* page, float zoom, int rotation) const;
-    TocItem* BuildTocTree(TocItem* parent, fz_outline* outline, int& idCounter, bool isAttachment);
-    int OutlinePageNoForItem(fz_link* link, fz_outline* outline);
+    TocItem* BuildTocTree(TocItem* parent, fz_outline* outline, int& idCounter, bool isAttachment, int& outlineIdx);
+    int OutlinePageNoForItem(fz_link* link, fz_outline* outline, int outlineIndex);
     void InvalidateTocTree();
     void DiscardTocTree();
     TempStr ExtractFontListTemp();

@@ -1084,6 +1084,8 @@
     <ClInclude Include="..\src\Accelerators.h" />
     <ClInclude Include="..\src\Annotation.h" />
     <ClInclude Include="..\src\AppSettings.h" />
+    <ClInclude Include="..\src\EpubMeta.h" />
+    <ClInclude Include="..\src\EpubPerfLog.h" />
     <ClInclude Include="..\src\AppTools.h" />
     <ClInclude Include="..\src\Canvas.h" />
     <ClInclude Include="..\src\CaptionGlyphs.h" />
@@ -1210,6 +1212,8 @@
     <ClCompile Include="..\src\Accelerators.cpp" />
     <ClCompile Include="..\src\Annotation.cpp" />
     <ClCompile Include="..\src\AppSettings.cpp" />
+    <ClCompile Include="..\src\EpubMeta.cpp" />
+    <ClCompile Include="..\src\EpubPerfLog.cpp" />
     <ClCompile Include="..\src\AppTools.cpp" />
     <ClCompile Include="..\src\Canvas.cpp" />
     <ClCompile Include="..\src\CanvasAboutUI.cpp" />

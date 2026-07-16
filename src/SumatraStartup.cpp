@@ -1584,7 +1584,12 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
         BenchFileOrDir(flags.pathsToBenchmark);
     }
 
+    if (flags.benchEpubPath) {
+        BenchEpubPerf(flags.benchEpubPath);
+    }
+
     if (flags.exitImmediately) {
+        exitCode = 0;
         goto Exit;
     }
 

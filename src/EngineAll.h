@@ -86,6 +86,7 @@ bool EngineMupdfHasUnsavedAnnotations(EngineBase*);
 bool EngineMupdfSupportsAnnotations(EngineBase*);
 bool EngineMupdfIsEncrypted(EngineBase* engine);
 bool EngineMupdfIsReflowableLoadingInProgress(EngineBase* engine);
+bool EngineMupdfIsReflowWarmActive(EngineBase* engine);
 bool EngineMupdfGetReflowPageChapter(EngineBase* engine, int pageNo, int* chapterOut, int* chapterStartPageOut);
 bool EngineMupdfGetReflowChapterPageRange(EngineBase* engine, int chapter, int* startPageOut, int* endPageOut);
 bool EngineIsProgressiveEbookLoading(EngineBase* engine);
@@ -113,17 +114,22 @@ bool EngineMupdfRelayoutForThemeChange(EngineBase* engine);
 void EngineMupdfSetReflowLoadingPaused(EngineBase* engine, bool paused);
 struct ReflowLoadingPauseScope {
     EngineBase* engine = nullptr;
-    explicit ReflowLoadingPauseScope(EngineBase* e) : engine(e) {
-        EngineMupdfSetReflowLoadingPaused(engine, true);
-    }
-    ~ReflowLoadingPauseScope() {
+    explicit ReflowLoadingPauseScope(EngineBase* e) : engine(e) { EngineMupdfSetReflowLoadingPaused(engine, true); }
+    ~ReflowLoadingPauseScope() { Release(); }
+    // Call before ReloadDocument or any other operation that destroys the engine.
+    void Release() {
+        if (!engine) {
+            return;
+        }
         EngineMupdfSetReflowLoadingPaused(engine, false);
+        engine = nullptr;
     }
 };
 bool EngineMupdfReflowTocNeedsUiReload(EngineBase* engine);
 void EngineMupdfClearReflowTocNeedsUiReload(EngineBase* engine);
 bool EngineSupportsSmartDarkMode(EngineBase* engine);
 void EngineMupdfToggleCadEnhance(EngineBase* engine);
+void EngineMupdfEnsurePageLinksForHitTest(EngineBase* engine, int pageNo);
 
 /* EnginePs.cpp */
 

@@ -88,6 +88,12 @@ struct EBookUI {
     bool ignoreDocumentCSS;
     // custom CSS. Might need to set IgnoreDocumentCSS = true
     char* customCSS;
+    // if true, large reflowable EPUBs count chapters in the background for
+    // faster first paint
+    bool epubProgressiveLoad;
+    // if true, emit structured EPUB performance events as JSON lines in
+    // the log
+    bool epubPerfLog;
     // if given, sets the canvas background color for ebook documents
     // (epub, mobi etc.)
     char* windowBgCol;
@@ -703,10 +709,13 @@ static const FieldInfo gEBookUIFields[] = {
     {offsetof(EBookUI, layoutDy), SettingType::Float, (intptr_t)"0"},
     {offsetof(EBookUI, ignoreDocumentCSS), SettingType::Bool, false},
     {offsetof(EBookUI, customCSS), SettingType::String, 0},
+    {offsetof(EBookUI, epubProgressiveLoad), SettingType::Bool, true},
+    {offsetof(EBookUI, epubPerfLog), SettingType::Bool, false},
     {offsetof(EBookUI, windowBgCol), SettingType::Color, (intptr_t)""},
 };
-static const StructInfo gEBookUIInfo = {sizeof(EBookUI), 6, gEBookUIFields,
-                                        "FontSize\0LayoutDx\0LayoutDy\0IgnoreDocumentCSS\0CustomCSS\0WindowBgCol"};
+static const StructInfo gEBookUIInfo = {
+    sizeof(EBookUI), 8, gEBookUIFields,
+    "FontSize\0LayoutDx\0LayoutDy\0IgnoreDocumentCSS\0CustomCSS\0EpubProgressiveLoad\0EpubPerfLog\0WindowBgCol"};
 
 static const FieldInfo gWindowMargin_1_Fields[] = {
     {offsetof(WindowMargin, top), SettingType::Int, 0},
@@ -954,7 +963,7 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-10.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-12.html"},
     {(size_t)-1, SettingType::Comment, 0},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0},
