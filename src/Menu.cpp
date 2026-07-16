@@ -478,10 +478,6 @@ MenuDef menuDefThemes[] = {
 
 //[ ACCESSKEY_GROUP Settings Menu
 static MenuDef menuDefSettings[] = {
-    {
-        _TRN("Change Language"),
-        CmdChangeLanguage,
-    },
 #if 0
     { _TRN("Contribute Translation"),       CmdContributeTranslation },
     { kMenuSeparator,                             0                  },
@@ -497,6 +493,18 @@ static MenuDef menuDefSettings[] = {
     {
         _TRN("&Theme"),
         (UINT_PTR)menuDefThemes,
+    },
+    {
+        _TRN("Change Language"),
+        CmdChangeLanguage,
+    },
+    {
+        kMenuSeparator,
+        0,
+    },
+    {
+        _TRN("Associate Common Document Formats..."),
+        CmdAssociateCommonFileTypes,
     },
     {
         nullptr,
@@ -1229,6 +1237,14 @@ static void AppendThemesToMenu(HMENU m) {
     Vec<CustomCommand*> cmds;
     GetCommandsWithOrigId(cmds, CmdSetTheme);
     AppendCommandsToMenu(m, cmds, true);
+    // The native menubar refreshes state from WM_INITMENUPOPUP, but the
+    // titlebar/rebar popup can display these freshly built submenus without
+    // going through that window path. Initialize the radio state here so both
+    // menu presentations consistently show the active theme.
+    if (gFirstSetThemeCmdId > 0 && gLastSetThemeCmdId >= gFirstSetThemeCmdId &&
+        gCurrSetThemeCmdId >= gFirstSetThemeCmdId && gCurrSetThemeCmdId <= gLastSetThemeCmdId) {
+        CheckMenuRadioItem(m, gFirstSetThemeCmdId, gLastSetThemeCmdId, gCurrSetThemeCmdId, MF_BYCOMMAND);
+    }
 }
 
 static void AppendExternalViewersToMenu(HMENU menuFile, const char* filePath) {

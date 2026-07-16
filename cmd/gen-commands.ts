@@ -245,6 +245,7 @@ export const commands = [
     "CmdReadAloudFromCursor", "Start Reading From Cursor Position",
     "CmdReadAloudSelection", "Start Reading Selection",
     "CmdFindToggleMatchWholeWord", "Find: Toggle Match Whole Word",
+    "CmdAssociateCommonFileTypes", "Associate Common Document Formats...",
     "CmdNone", "Do nothing",
 ];
 

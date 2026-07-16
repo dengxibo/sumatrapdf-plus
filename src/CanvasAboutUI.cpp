@@ -109,6 +109,32 @@ static void ToggleHomePageFilePin(MainWindow* win, const char* path) {
     win->RedrawAll(true);
 }
 
+static void ShowHomePageSortMenu(MainWindow* win, int x, int y) {
+    constexpr UINT kSortRecent = 1;
+    constexpr UINT kSortFrequent = 2;
+    HMENU menu = CreatePopupMenu();
+    AppendMenuW(menu, MF_STRING, kSortRecent, ToWStrTemp(_TRA("Recently Opened")));
+    AppendMenuW(menu, MF_STRING, kSortFrequent, ToWStrTemp(_TRA("Frequently Read")));
+    UINT selected = gGlobalPrefs->homePageSortByFrequentlyRead ? kSortFrequent : kSortRecent;
+    CheckMenuRadioItem(menu, kSortRecent, kSortFrequent, selected, MF_BYCOMMAND);
+
+    POINT pt = {x, y};
+    ClientToScreen(win->hwndCanvas, &pt);
+    UINT cmd =
+        TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, win->hwndFrame, nullptr);
+    DestroyMenu(menu);
+    if (cmd != kSortRecent && cmd != kSortFrequent) {
+        return;
+    }
+
+    gGlobalPrefs->homePageSortByFrequentlyRead = cmd == kSortFrequent;
+    win->homePageScrollY = 0;
+    win->homePageScrollTargetY = 0;
+    HomePageInvalidateScrollCache(win);
+    SaveSettings();
+    win->RedrawAll(true);
+}
+
 static void OnMouseLeftButtonUpAbout(MainWindow* win, int x, int y, WPARAM) {
     char* url = GetStaticLinkAtTemp(win->staticLinks, x, y, nullptr);
     char* prevUrl = win->urlOnLastButtonDown;
@@ -139,6 +165,8 @@ static void OnMouseLeftButtonUpAbout(MainWindow* win, int x, int y, WPARAM) {
         HomePageInvalidateScrollCache(win);
         SaveSettings();
         win->RedrawAll(true);
+    } else if (str::Eq(url, kLinkHomePageSort)) {
+        ShowHomePageSortMenu(win, x, y);
     } else if (str::StartsWith(url, kLinkHomePageRemoveFile)) {
         RemoveHomePageFile(win, url + str::Len(kLinkHomePageRemoveFile));
     } else if (str::StartsWith(url, kLinkHomePagePinFile)) {

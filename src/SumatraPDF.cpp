@@ -8492,6 +8492,18 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             OpenAdvancedOptions();
             break;
 
+        case CmdAssociateCommonFileTypes: {
+            TempStr exePath = GetSelfExePathTemp();
+            if (!str::IsEmpty(exePath)) {
+                WriteExtendedFileExtensionInfo(HKEY_CURRENT_USER, exePath);
+            }
+            bool launched = LaunchFileShell("ms-settings:defaultapps?registeredAppUser=SumatraPDF");
+            if (!launched) {
+                CreateProcessHelper("control.exe", "/name Microsoft.DefaultPrograms");
+            }
+            break;
+        }
+
         case CmdSendByEmail:
             SendAsEmailAttachment(tab, win->hwndFrame);
             break;
@@ -11767,24 +11779,28 @@ static int AppendTtsVoiceGroupItems(HMENU menu, Vec<TtsVoiceInfo>& voices, TtsVo
 }
 
 // appends an "online voices" style submenu; checked when the current voice is inside
-static void AppendTtsVoiceSubmenu(HMENU voiceMenu, Vec<TtsVoiceInfo>& voices, TtsVoiceGroup group,
-                                  const char* currentVoiceId, const char* title) {
+static bool AppendTtsVoiceSubmenu(HMENU voiceMenu, Vec<TtsVoiceInfo>& voices, TtsVoiceGroup group,
+                                  const char* currentVoiceId, const char* title, bool separatorBefore) {
     HMENU sub = CreatePopupMenu();
     if (!sub) {
-        return;
+        return false;
     }
     bool containsCurrent = false;
     int n = AppendTtsVoiceGroupItems(sub, voices, group, currentVoiceId, &containsCurrent);
     if (n == 0) {
         DestroyMenu(sub);
-        return;
+        return false;
     }
     RemoveBadMenuSeparators(sub);
+    if (separatorBefore) {
+        AppendMenuW(voiceMenu, MF_SEPARATOR, 0, nullptr);
+    }
     UINT flags = MF_POPUP | MF_STRING;
     if (containsCurrent) {
         flags |= MF_CHECKED;
     }
     AppendMenuW(voiceMenu, flags, (UINT_PTR)sub, ToWStrTemp(title));
+    return true;
 }
 
 static void BuildReadAloudVoiceMenuItems(HMENU voiceMenu) {
@@ -11819,9 +11835,8 @@ static void BuildReadAloudVoiceMenuItems(HMENU voiceMenu) {
         AppendMenuW(voiceMenu, MF_STRING, CmdTtsSmartBilingualSettings,
                     ToWStrTemp(_TRA("Local smart bilingual settings...")));
     }
-    AppendMenuW(voiceMenu, MF_SEPARATOR, 0, nullptr);
-
     if (TtsSmartBilingualAvailable(SmartBilingualKind::Online)) {
+        AppendMenuW(voiceMenu, MF_SEPARATOR, 0, nullptr);
         UINT smartFlags = MF_STRING;
         if (isSmartBilingual && activeSmartKind == SmartBilingualKind::Online) {
             smartFlags |= MF_CHECKED;
@@ -11831,12 +11846,11 @@ static void BuildReadAloudVoiceMenuItems(HMENU voiceMenu) {
         AppendMenuW(voiceMenu, MF_STRING, CmdTtsSmartOnlineBilingualSettings,
                     ToWStrTemp(_TRA("Online smart bilingual settings...")));
     }
-    AppendMenuW(voiceMenu, MF_SEPARATOR, 0, nullptr);
 
     // individual online voices are chosen via online smart bilingual settings;
     // multilingual voices remain listed for direct selection
     AppendTtsVoiceSubmenu(voiceMenu, voices, TtsVoiceGroup::OnlineMultilingual, currentVoiceId,
-                          _TRA("Online multilingual voices"));
+                          _TRA("Online multilingual voices"), true);
 
     TtsFreeVoices(voices);
     RemoveBadMenuSeparators(voiceMenu);

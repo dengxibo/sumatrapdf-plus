@@ -255,6 +255,7 @@ static SeqStrings gCommandNames =
     "CmdReadAloudFromCursor\0"
     "CmdReadAloudSelection\0"
     "CmdFindToggleMatchWholeWord\0"
+    "CmdAssociateCommonFileTypes\0"
     "CmdNone\0"
     "\0";
 
@@ -500,6 +501,7 @@ static i32 gCommandIds[] = {
     CmdReadAloudFromCursor,
     CmdReadAloudSelection,
     CmdFindToggleMatchWholeWord,
+    CmdAssociateCommonFileTypes,
     CmdNone,
 };
 
@@ -745,6 +747,7 @@ SeqStrings gCommandDescriptions =
     "Start Reading From Cursor Position\0"
     "Start Reading Selection\0"
     "Find: Toggle Match Whole Word\0"
+    "Associate Common Document Formats...\0"
     "Do nothing\0"
     "\0";
 // clang-format on

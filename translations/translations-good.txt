@@ -1120,6 +1120,9 @@ nl:Weet u zeker dat u SumatraPDF wilt verwijderen?
 pl:Czy na pewno chcesz usunąć SumatraPDF?
 sk:Naozaj chcete odinštalovat SumatraPDF?
 tw:您確定要解除安裝 SumatraPDF 嗎？
+:Associate Common Document Formats...
+cn:将常用文档格式关联到本应用…
+tw:將常用文件格式關聯到本應用程式…
 :Ask &AI
 am:Հարցնել &AI-ին
 br:Perguntar ao &AI
@@ -4939,7 +4942,7 @@ tw:向右移動分頁
 :Navigate Back
 am:Հետ գնալ
 br:Navegar pra Trás
-cn:向前导航
+cn:向后导航
 co:Navigazione in daretu
 de:Zurück
 el:Πλοηγηθείτε πίσω
@@ -4951,7 +4954,7 @@ tw:向後巡覽
 :Navigate Forward
 am:Առաջ գնալ
 br:Navegar pra Frente
-cn:向后导航
+cn:向前导航
 co:Navigazione in avanti
 de:Weiter
 el:Προχωρήστε μπροστά

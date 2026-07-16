@@ -24,6 +24,8 @@ struct FzPageInfo {
     Vec<PageElementDestination*> links;
     // have to keep them alive because they are reverenced in links
     fz_link* retainedLinks = nullptr;
+    // Distinguishes "not checked yet" from a page whose checked link list is empty.
+    bool linksLoaded = false;
 
     Vec<Annotation*> annotations;
     // auto-detected links

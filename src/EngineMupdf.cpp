@@ -4663,6 +4663,7 @@ static void DropSingleFzPageCache(fz_context* ctx, FzPageInfo* pi) {
         fz_drop_link(ctx, pi->retainedLinks);
         pi->retainedLinks = nullptr;
     }
+    pi->linksLoaded = false;
     if (pi->displayList) {
         fz_drop_display_list(ctx, pi->displayList);
         pi->displayList = nullptr;
@@ -6114,7 +6115,7 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
         RebuildCommentsFromAnnotations(ctx, pageInfo);
     }
 
-    if (loadLinks && loadQuick && !pageInfo->fullyLoaded && !pageInfo->retainedLinks) {
+    if (loadLinks && loadQuick && !pageInfo->fullyLoaded && !pageInfo->linksLoaded) {
         fz_link* link = nullptr;
         fz_var(link);
         fz_try(ctx) {
@@ -6125,6 +6126,7 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
         }
         link = FixupPageLinks(link);
         pageInfo->retainedLinks = link;
+        pageInfo->linksLoaded = true;
         while (link) {
             auto pel = NewLinkDestination(pageNo, this, ctx, _doc, link, nullptr);
             pageInfo->links.Append(pel);
@@ -6154,10 +6156,11 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
         fz_report_error(ctx);
     }
 
-    if (!pageInfo->retainedLinks) {
+    if (!pageInfo->linksLoaded) {
         fz_link* link = fz_load_links(ctx, page);
         link = FixupPageLinks(link); // TOOD: is this necessary?
         pageInfo->retainedLinks = link;
+        pageInfo->linksLoaded = true;
         while (link) {
             auto pel = NewLinkDestination(pageNo, this, ctx, _doc, link, nullptr);
             pageInfo->links.Append(pel);

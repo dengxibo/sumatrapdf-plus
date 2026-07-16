@@ -2135,7 +2135,10 @@ static LRESULT OnSetCursorMouseNone(MainWindow* win, HWND hwnd) {
     }
 
     int pageNo = 0;
-    IPageElement* pageEl = dm->GetElementAtPos(pt, &pageNo, false);
+    // EPUB rendering deliberately skips expensive link extraction. Load it on
+    // the first hover for this page, then use the cached hit-test data so links
+    // get the hand cursor before they are clicked.
+    IPageElement* pageEl = dm->GetElementAtPos(pt, &pageNo, true);
     if (!pageEl) {
         SetTextOrArrorCursor(dm, pt);
         win->DeleteToolTip();
@@ -2392,7 +2395,9 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
             si.cbSize = sizeof(si);
             si.fMask = SIF_PAGE;
             GetScrollInfo(win->hwndCanvas, hScroll ? SB_HORZ : SB_VERT, &si);
-            int scrollBy = -MulDiv(si.nPage, delta * 30, WHEEL_DELTA);
+            // Keep zoomed single-page scrolling controlled: one wheel notch moves
+            // one third of the viewport instead of jumping many screens.
+            int scrollBy = -MulDiv(si.nPage, delta, WHEEL_DELTA * 3);
             // on sensitive touchpads delta can be very small
             if (scrollBy == 0) return 0;
             if (hScroll) {
@@ -2503,6 +2508,25 @@ static LRESULT CanvasOnMouseHWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM 
     }
 
     short delta = GET_WHEEL_DELTA_WPARAM(wp);
+
+    if (gDeltaPerLine == 0) {
+        return 0;
+    }
+    if (gDeltaPerLine < 0) {
+        SCROLLINFO si{};
+        si.cbSize = sizeof(si);
+        si.fMask = SIF_PAGE;
+        GetScrollInfo(win->hwndCanvas, SB_HORZ, &si);
+        int scrollBy = MulDiv(si.nPage, delta, WHEEL_DELTA);
+        if (scrollBy != 0) {
+            DisplayModel* dm = win->AsFixed();
+            if (dm) {
+                dm->ScrollXBy(scrollBy);
+            }
+        }
+        return 0;
+    }
+
     win->wheelAccumDelta += delta;
 
     while (win->wheelAccumDelta >= gDeltaPerLine) {

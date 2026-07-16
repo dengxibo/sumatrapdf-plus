@@ -180,8 +180,7 @@ struct DisplayModel : DocController {
 
     char* GetTextInRegion(int pageNo, RectF region) const;
     bool IsOverText(Point pt, bool loadText = false);
-    // eagerLoadLinks: only set for click/context-menu hit tests. The cursor path
-    // must stay false or fz_load_html_links walks the whole chapter per mouse move.
+    // eagerLoadLinks loads and caches links on first hit test for a page.
     IPageElement* GetElementAtPos(Point pt, int* pageNoOut, bool eagerLoadLinks = false);
     Annotation* GetAnnotationAtPos(Point pt, Annotation*);
 

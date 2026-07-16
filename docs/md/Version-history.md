@@ -2,7 +2,20 @@
 
 ## next
 
-- make release auto-update reliable for first launch and long-running sessions: check daily while the app stays open,
+## 3.7.13 (2026-07-17)
+
+- dramatically improve large EPUB anthology performance: progressive pagination and TOC loading, responsive navigation,
+  faster theme and document-color switching, stable redraws, and safer background rendering
+- fix EPUB TOC entries becoming enabled only after mouse movement, selection failures on some pages, stale theme redraws,
+  and crashes caused by concurrent rendering or stale link/selection data
+- add a Settings shortcut to register common document and ebook formats (including PDF, EPUB, MOBI, AZW and Markdown)
+  and open the Windows Default Apps page
+- improve the Home page with a visible Recently Opened / Frequently Read sort menu
+- make document links show the hand cursor immediately, stabilize theme-menu selection marks, and clean up read-aloud menus
+- translate Back and Forward toolbar tooltips, enlarge the read-aloud icon slightly, and refine Settings menu ordering
+- refine mouse-wheel behavior for zoomed single-page and horizontal scrolling modes
+- fix annotation note saving and several MuPDF static-analysis warnings
+- improve release auto-update reliability for first launch and long-running sessions: check daily while the app stays open,
   record only successful checks, and retry transient failures with backoff
 - ask before downloading an update, then show progress and replace/relaunch the portable executable after one confirmation
 - defer a declined version for seven days while allowing a newer release to prompt immediately

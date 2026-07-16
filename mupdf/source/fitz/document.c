@@ -223,7 +223,7 @@ fz_recognize_document_stream_content(fz_context *ctx, fz_stream *stream, const c
 	return fz_recognize_document_stream_and_dir_content(ctx, stream, NULL, magic);
 }
 
-const fz_document_handler *
+static const fz_document_handler *
 do_recognize_document_stream_and_dir_content(fz_context *ctx, fz_stream **streamp, fz_archive *dir, const char *magic, void **handler_state, fz_document_recognize_state_free_fn **handler_free_state)
 {
 	fz_document_handler_context *dc;
@@ -444,7 +444,7 @@ fz_open_accelerated_document_with_stream_and_dir(fz_context *ctx, const char *ma
 {
 	const fz_document_handler *handler;
 	fz_stream *wrapped_stream = stream;
-	fz_document *ret;
+	fz_document *ret = NULL;
 	void *state = NULL;
 	fz_document_recognize_state_free_fn *free_state = NULL;
 
@@ -494,7 +494,7 @@ fz_open_document_with_stream_and_dir(fz_context *ctx, const char *magic, fz_stre
 fz_document *
 fz_open_document_with_buffer(fz_context *ctx, const char *magic, fz_buffer *buffer)
 {
-	fz_document *doc;
+	fz_document *doc = NULL;
 	fz_stream *stream = fz_open_buffer(ctx, buffer);
 	fz_try(ctx)
 		doc = fz_open_document_with_stream(ctx, magic, stream);
@@ -657,7 +657,7 @@ fz_bookmark fz_make_bookmark(fz_context *ctx, fz_document *doc, fz_location loc)
 {
 	if (doc && doc->make_bookmark)
 		return doc->make_bookmark(ctx, doc, loc);
-	return (loc.chapter<<16) + loc.page;
+	return (fz_bookmark)loc.chapter * 65536 + loc.page;
 }
 
 fz_location fz_lookup_bookmark(fz_context *ctx, fz_document *doc, fz_bookmark mark)
@@ -907,7 +907,7 @@ static void
 fz_reap_dead_pages(fz_context *ctx, fz_document *doc)
 {
 	fz_page *page;
-	fz_page *next_page;
+	fz_page *next_page = NULL;
 
 	for (page = doc->open; page; page = next_page)
 	{
@@ -1117,7 +1117,7 @@ fz_drop_page(fz_context *ctx, fz_page *page)
 fz_transition *
 fz_page_presentation(fz_context *ctx, fz_page *page, fz_transition *transition, float *duration)
 {
-	float dummy;
+	float dummy = 0;
 	if (duration)
 		*duration = 0;
 	else

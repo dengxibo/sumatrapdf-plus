@@ -1285,7 +1285,8 @@ void LayoutHomePage(HomePageLayout& l) {
     if (gGlobalPrefs->homePageSortByFrequentlyRead) {
         txt = _TRA("Frequently Read");
     }
-    VirtWndText* hdr = new VirtWndText(hwnd, txt, hdrFont);
+    TempStr hdrText = str::JoinTemp(txt, "  \xE2\x96\xBE");
+    VirtWndText* hdr = new VirtWndText(hwnd, hdrText, hdrFont);
     l.freqRead = hdr;
     hdr->isRtl = isRtl;
     Size txtSize = hdr->GetIdealSize(true);
@@ -1306,6 +1307,7 @@ void LayoutHomePage(HomePageLayout& l) {
     hdr->SetBounds(rcHdr);
     win->staticLinks.Append(new StaticLink(l.rcIconThumbnailView, kLinkHomePageThumbView, _TRA("Thumbnail view")));
     win->staticLinks.Append(new StaticLink(l.rcIconListView, kLinkHomePageListView, _TRA("List view")));
+    win->staticLinks.Append(new StaticLink(rcHdr, kLinkHomePageSort, txt));
 
     /* "Open a document" link next to header */
     Rect rcIconOpen(0, 0, 0, 0);

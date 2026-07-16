@@ -36,6 +36,7 @@ CmdToggleCursorPosition,m,Toggle Cursor Position,
 CmdShowInFolder,,Show File In Folder...,
 CmdToggleBookmarks,"Shift + F12, F12",Toggle Bookmarks,
 CmdToggleTableOfContents,,Toggle Table Of Contents,ver 3.6+
+CmdAssociateCommonFileTypes,,Associate Common Document Formats...,
 CmdCollapseAll,,Collapse All,
 CmdExpandAll,,Expand All,
 CmdOpenEmbeddedPDF,,Open Embedded PDF,
