@@ -66,6 +66,30 @@ static void LayoutTocContainer(MainWindow* win);
 
 static bool IsKnownTocTreeModel(MainWindow* win, TreeModel* tm);
 
+// Reflow EPUB page numbers are valid once the engine has counted them.
+// ValidPageNo also caps by pagesInfoCount (layout done so far), which wrongly
+// greys out far-ahead TOC entries while the reader is still on earlier pages.
+static bool IsMupdfReflowPageKnown(EngineBase* engine, int pageNo) {
+    return engine && engine->kind == kindEngineMupdf && pageNo >= 1 && pageNo <= engine->PageCount();
+}
+
+static bool IsTocMupdfPageReachable(EngineBase* engine, int pageNo) {
+    if (!engine || engine->kind != kindEngineMupdf || pageNo < 1) {
+        return false;
+    }
+    return pageNo <= engine->PageCount();
+}
+
+void InvalidateTocTree(MainWindow* win) {
+    if (!win || !win->tocLoaded || !win->tocVisible || !win->tocTreeView) {
+        return;
+    }
+    HWND hwnd = win->tocTreeView->hwnd;
+    if (hwnd) {
+        InvalidateRect(hwnd, nullptr, FALSE);
+    }
+}
+
 // set tooltip for this item but only if the text isn't fully shown
 // TODO: I might have lost something in translation
 static void TocCustomizeTooltip(TreeView::GetTooltipEvent* ev) {
@@ -230,6 +254,16 @@ static void CaptureGoToTocLinkData(GoToTocLinkData* data, TocItem* tocItem) {
     if (dest->GetKind() == kindDestinationMupdf) {
         EngineMupdfSnapshotOutlineLink(dest, &data->mupdfUri, &data->mupdfReflowOutlineChapter, &data->mupdfDestX,
                                        &data->mupdfDestY);
+        if (data->pageNo <= 0 && data->ctrl) {
+            DisplayModel* dm = data->ctrl->AsFixed();
+            EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+            if (engine) {
+                int pageNo = EngineMupdfFastOutlinePageNo(engine, dest);
+                if (pageNo > 0) {
+                    data->pageNo = pageNo;
+                }
+            }
+        }
     } else if (dest->GetKind() == kindDestinationScrollTo) {
         char* name = PageDestGetName(dest);
         if (name && *name) {
@@ -365,18 +399,18 @@ static bool IsTocPageReachable(DocController* ctrl, TocItem* tocItem) {
         if (engine && dest && dest->GetKind() == kindDestinationMupdf && IsTocInternalPageItem(tocItem)) {
             int pageNo = EngineMupdfFastOutlinePageNo(engine, dest);
             if (pageNo > 0) {
-                if (EngineIsProgressiveEbookLoading(engine)) {
-                    return pageNo <= engine->PageCount();
-                }
-                return ctrl->ValidPageNo(pageNo);
+                return IsTocMupdfPageReachable(engine, pageNo);
             }
             if (EngineIsProgressiveEbookLoading(engine)) {
                 return false;
             }
             pageNo = EngineMupdfResolveLinkPageNo(engine, dest);
-            return pageNo > 0 && ctrl->ValidPageNo(pageNo);
+            return IsMupdfReflowPageKnown(engine, pageNo);
         }
         return true;
+    }
+    if (engine && engine->kind == kindEngineMupdf) {
+        return IsTocMupdfPageReachable(engine, tocItem->pageNo);
     }
     if (engine && EngineIsProgressiveEbookLoading(engine)) {
         return tocItem->pageNo <= engine->PageCount();
@@ -415,12 +449,11 @@ static void GoToTocLink(GoToTocLinkData* d) {
     if (d->destKind == kindDestinationMupdf && d->mupdfUri && engine) {
         bool loaded = !EngineIsProgressiveEbookLoading(engine);
         bool hasFragment = str::FindChar(d->mupdfUri, '#') != nullptr;
-        // Large reflowed EPUBs (e.g. 白话资治通鉴): after load, fz_resolve_link_dest is
-        // unreliable for file-only links; use cached pageNo. Fragment links (e.g. 萤火虫童书
-        // with many entries in one HTML file) must resolve the URI to scroll to the anchor.
+        // Chapter-start page numbers are shared by every #fragment entry in one spine
+        // HTML file (common in anthology EPUBs). Only plain chapter links can fast-path.
         if (loaded && navPage > 0 && !hasFragment) {
             ctrl->PreparePageNavigation(navPage);
-            if (ctrl->ValidPageNo(navPage)) {
+            if (navPage >= 1 && navPage <= engine->PageCount()) {
                 if (d->mupdfDestX != DEST_USE_DEFAULT || d->mupdfDestY != DEST_USE_DEFAULT) {
                     float x = d->mupdfDestX != DEST_USE_DEFAULT ? d->mupdfDestX : 0.f;
                     float y = d->mupdfDestY != DEST_USE_DEFAULT ? d->mupdfDestY : 0.f;
@@ -691,6 +724,9 @@ void UpdateTocSelection(MainWindow* win, int currPageNo) {
     // children of expanded node
     TreeItem toSelect = (TreeItem)FindVisibleParentTreeItem(treeView, item);
     treeView->SelectItem(toSelect);
+    if (toSelect != TreeModel::kNullItem) {
+        InvalidateTocTree(win);
+    }
 }
 
 static void UpdateDocTocExpansionStateRecur(TreeView* treeView, Vec<int>& tocState, TocItem* tocItem) {
@@ -1094,8 +1130,7 @@ void LoadTocTree(MainWindow* win) {
     // when content appears; theming before SetTreeModel leaves them light.
     UpdateControlsColors(win);
     LayoutTocContainer(win);
-    // uint fl = RDW_ERASE | RDW_FRAME | RDW_INVALIDATE | RDW_ALLCHILDREN;
-    // RedrawWindow(hwnd, nullptr, nullptr, fl);
+    InvalidateTocTree(win);
 }
 
 // TODO: use https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-getobject?redirectedfrom=MSDN

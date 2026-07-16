@@ -8,6 +8,7 @@ void ClearTocBox(MainWindow*);
 void ToggleTocBox(MainWindow*);
 void LoadTocTree(MainWindow*);
 void UpdateTocSelection(MainWindow*, int currPageNo);
+void InvalidateTocTree(MainWindow* win);
 void UpdateTocExpansionState(Vec<int>& tocState, TreeView*, TocTree*);
 int CountTocItems(TocItem* item);
 TocItem* TocItemBestMatchForPage(TocItem* item, int pageNo, EngineBase* engine);

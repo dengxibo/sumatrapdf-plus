@@ -5104,27 +5104,32 @@ int EngineMupdf::OutlinePageNoForItem(fz_link* link, fz_outline* ol) {
             ch = EpubUriChapterIndexNoLayout(ctx, _doc, uri);
         }
         int pageInChapter = ol->page.page >= 0 ? ol->page.page : 0;
+        bool hasFragment = uri && str::FindChar(uri, '#');
         int pageNo = ReflowPageNoFromChapter(this, ch, pageInChapter);
-        if (pageNo > 0) {
+        if (pageNo > 0 && !hasFragment) {
             return pageNo;
         }
 
         pageNo = FastReflowableOutlinePageNo(this, ctx, _doc, ol);
-        if (pageNo > 0) {
+        if (pageNo > 0 && !hasFragment) {
             return pageNo;
         }
 
         if (loading || bulkBuildingToc) {
-            return 0;
+            return pageNo > 0 ? pageNo : 0;
         }
 
         // Many EPUBs (e.g. repackaged anthologies) put multiple TOC entries in one spine
         // HTML file with #fragment anchors. The chapter-start cache cannot distinguish them.
-        if (uri && str::FindChar(uri, '#')) {
+        if (uri && hasFragment) {
             pageNo = ResolveMupdfLinkPageNo1(this, uri, nullptr);
             if (pageNo > 0) {
                 return pageNo;
             }
+        }
+
+        if (pageNo > 0) {
+            return pageNo;
         }
 
         if (ol->uri) {
@@ -6261,10 +6266,26 @@ static int ResolveMupdfLinkPageNo1(EngineMupdf* e, const char* uri, fz_link_dest
     if (pageNo < 0) {
         return 0;
     }
+    int pageNo1 = pageNo + 1;
+    if (!e->pdfdoc && pageNo1 > e->pageCount) {
+        int ch = -1;
+        {
+            ScopedCritSec scope(&e->docLock);
+            ch = EpubUriChapterIndexNoLayout(e->Ctx(), e->_doc, uri);
+        }
+        int alt = ReflowPageNoFromChapter(e, ch, 0);
+        if (alt > 0 && alt <= e->pageCount) {
+            pageNo1 = alt;
+        } else if (e->pageCount > 0) {
+            pageNo1 = e->pageCount;
+        } else {
+            return 0;
+        }
+    }
     if (ldestOut) {
         *ldestOut = ldest;
     }
-    return pageNo + 1;
+    return pageNo1;
 }
 
 static const char* MupdfDestUri(PageDestinationMupdf* link) {
@@ -6316,7 +6337,7 @@ void HandleLinkMupdf(EngineMupdf* e, IPageDestination* dest, ILinkHandler* linkH
 
     auto ctrl = linkHandler->GetDocController();
     ctrl->PreparePageNavigation(pageNo1);
-    if (!ctrl->ValidPageNo(pageNo1)) {
+    if (pageNo1 < 1 || pageNo1 > e->PageCount()) {
         return;
     }
 
@@ -7097,6 +7118,13 @@ bool EngineMupdfIsOutlineDestReachable(EngineBase* engine, IPageDestination* des
     if (uri && (IsExternalLink(uri) || IsExternalUrl(uri))) {
         return true;
     }
+    if (link->pageNo > 0) {
+        return link->pageNo <= engine->PageCount();
+    }
+    int pageNo = EngineMupdfFastOutlinePageNo(engine, dest);
+    if (pageNo > 0) {
+        return pageNo <= engine->PageCount();
+    }
     int ch = ReflowOutlineChapterIndex(link);
     if (ch < 0) {
         return false;
@@ -7189,7 +7217,7 @@ void EngineMupdfNavigateUri(EngineBase* engine, const char* uri, int reflowOutli
         return;
     }
     ctrl->PreparePageNavigation(pageNo1);
-    if (!ctrl->ValidPageNo(pageNo1)) {
+    if (pageNo1 < 1 || pageNo1 > engine->PageCount()) {
         return;
     }
 

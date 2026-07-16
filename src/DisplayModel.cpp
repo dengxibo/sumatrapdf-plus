@@ -82,6 +82,9 @@ static bool PagesNeedLayoutSync(const DisplayModel* dm) {
     if (!IsContinuous(dm->displayMode)) {
         return false;
     }
+    if (dm->reflowLayoutValidUpto > 0 && dm->reflowLayoutValidUpto < dm->pagesInfoCount) {
+        return true;
+    }
     PageInfo* pi = dm->GetPageInfo(2);
     return pi && pi->pos.dy == 0;
 }
@@ -103,23 +106,36 @@ static int ColumnsFromDisplayMode(DisplayMode displayMode) {
 // picks up exactly at the first un-laid-out page, leaving no blank gaps.
 //
 // For reflowable EPUBs every page shares the viewport width, so appended pages
-// get the same x centering a full relayout would produce; a full relayout still
-// runs at load completion, correcting any drift.
-static bool LayoutAppendedReflowPages(DisplayModel* dm) {
-    if (!EngineIsProgressiveEbookLoading(dm->engine)) {
+// get the same x centering a full relayout would produce.
+static bool IsReflowContinuousSingleColumn(DisplayModel* dm) {
+    if (!dm || !dm->engine || dm->engine->kind != kindEngineMupdf) {
+        return false;
+    }
+    if (str::EqI(dm->engine->defaultExt, ".pdf")) {
         return false;
     }
     DisplayMode mode = dm->GetDisplayMode();
-    if (!IsContinuous(mode) || IsBookView(mode) || ColumnsFromDisplayMode(mode) != 1) {
+    return IsContinuous(mode) && !IsBookView(mode) && ColumnsFromDisplayMode(mode) == 1;
+}
+
+// Layout reflowed continuous pages (validUpto+1 .. toPage) without a full relayout.
+// toPage <= 0 means layout through pagesInfoCount.
+static bool LayoutReflowPagesUpto(DisplayModel* dm, int toPage) {
+    if (!IsReflowContinuousSingleColumn(dm)) {
         return false;
     }
     int validUpto = dm->reflowLayoutValidUpto;
-    int nPages = dm->PageCount();
-    if (validUpto < 1 || validUpto > nPages) {
-        return false; // no trustworthy baseline -> full relayout
+    if (toPage <= 0) {
+        toPage = dm->pagesInfoCount;
     }
-    if (validUpto == nPages) {
-        return true; // nothing new appended; keep existing layout
+    if (toPage > dm->pagesInfoCount) {
+        toPage = dm->pagesInfoCount;
+    }
+    if (validUpto < 1 || validUpto > toPage) {
+        return false;
+    }
+    if (validUpto >= toPage) {
+        return true;
     }
 
     int columnMaxWidth = dm->reflowLayoutColumnWidth;
@@ -134,7 +150,7 @@ static bool LayoutAppendedReflowPages(DisplayModel* dm) {
     }
     int currPosY = prev->pos.y + prev->pos.dy + dm->pageSpacing.dy;
 
-    for (int p = validUpto + 1; p <= nPages; p++) {
+    for (int p = validUpto + 1; p <= toPage; p++) {
         PageInfo* pi = dm->GetPageInfo(p);
         if (!pi) {
             return false;
@@ -148,7 +164,7 @@ static bool LayoutAppendedReflowPages(DisplayModel* dm) {
         pos.dx = (int)(pageSize.dx * zoom + 0.499);
         pos.dy = (int)(pageSize.dy * zoom + 0.499);
         if (pos.dx > columnMaxWidth) {
-            return false; // a wider page would change centering -> full relayout
+            return false;
         }
         pos.y = currPosY;
         pos.x = first->pos.x + (first->pos.dx - pos.dx) / 2;
@@ -159,8 +175,33 @@ static bool LayoutAppendedReflowPages(DisplayModel* dm) {
     int canvasDy = currPosY + dm->windowMargin.bottom - dm->pageSpacing.dy;
     int canvasDx = dm->canvasSize.dx;
     dm->canvasSize = Size(std::max(canvasDx, dm->viewPort.dx), std::max(canvasDy, dm->viewPort.dy));
-    dm->reflowLayoutValidUpto = nPages;
+    dm->reflowLayoutValidUpto = toPage;
     return true;
+}
+
+static void SyncReflowLayoutUpto(DisplayModel* dm, int toPage) {
+    if (!dm || toPage < 1) {
+        return;
+    }
+    toPage = std::min(toPage, dm->pagesInfoCount);
+    if (dm->reflowLayoutValidUpto >= toPage) {
+        PageInfo* pi = dm->GetPageInfo(toPage);
+        if (pi && pi->pos.dy > 0) {
+            return;
+        }
+    }
+    if (!LayoutReflowPagesUpto(dm, toPage)) {
+        if (IsContinuous(dm->displayMode)) {
+            for (int p = dm->reflowLayoutValidUpto + 1; p <= toPage; p++) {
+                dm->GetPageInfo(p);
+            }
+        }
+        dm->Relayout(dm->zoomVirtual, dm->rotation);
+    }
+}
+
+static bool LayoutAppendedReflowPages(DisplayModel* dm) {
+    return LayoutReflowPagesUpto(dm, 0);
 }
 
 static void ApplyPagesUiUpdate(DisplayModel* dm) {
@@ -679,7 +720,13 @@ void DisplayModel::EnsurePagesInfoForPage(int pageNo) {
         return;
     }
     int enginePageCount = engine->PageCount();
-    if (pageNo > enginePageCount || pageNo <= pagesInfoCount) {
+    if (pageNo > enginePageCount) {
+        return;
+    }
+    if (pageNo <= pagesInfoCount) {
+        if (IsContinuous(displayMode)) {
+            SyncReflowLayoutUpto(this, pageNo);
+        }
         return;
     }
 
@@ -715,9 +762,10 @@ void DisplayModel::EnsurePagesInfoForPage(int pageNo) {
         for (int p = oldCount + 1; p <= growTo; p++) {
             GetPageInfo(p);
         }
+        SyncReflowLayoutUpto(this, growTo);
+    } else {
+        Relayout(zoomVirtual, rotation);
     }
-
-    Relayout(zoomVirtual, rotation);
     RecalcVisibleParts();
     RenderVisibleParts();
     cb->UpdateScrollbars(canvasSize);
@@ -1057,7 +1105,7 @@ int DisplayModel::CurrentPageNo() const {
         }
     }
 
-    return mostVisiblePage;
+    return mostVisiblePage <= engine->PageCount() ? mostVisiblePage : engine->PageCount();
 }
 
 void DisplayModel::CalcZoomReal(float newZoomVirtual) {
@@ -1732,9 +1780,12 @@ void DisplayModel::GoToPage(int pageNo, int scrollY, bool addNavPt, int scrollX)
         }
         return;
     }
+    if (engine && pageNo > engine->PageCount()) {
+        pageNo = engine->PageCount();
+    }
     EnsurePagesInfoForPage(pageNo);
-    if (!ValidPageNo(pageNo)) {
-        logf("DisplayModel::GoToPage: invalid pageNo: %d, nPages: %d\n", pageNo, engine->PageCount());
+    if (!engine || pageNo < 1 || pageNo > engine->PageCount()) {
+        logf("DisplayModel::GoToPage: invalid pageNo: %d, nPages: %d\n", pageNo, engine ? engine->PageCount() : 0);
         if (EngineIsProgressiveEbookLoading(engine) && pageNo >= 1) {
             pendingRestoreScroll = ScrollState(pageNo, scrollX >= 0 ? scrollX : -1, scrollY >= 0 ? scrollY : -1);
             hasPendingRestoreScroll = true;
@@ -2490,8 +2541,11 @@ void DisplayModel::ScrollToLink(IPageDestination* dest) {
 #endif
 
 void DisplayModel::ScrollTo(int pageNo, RectF rect, float zoom) {
+    if (engine && pageNo > engine->PageCount()) {
+        pageNo = engine->PageCount();
+    }
     EnsurePagesInfoForPage(pageNo);
-    if (!ValidPageNo(pageNo)) {
+    if (!engine || pageNo < 1 || pageNo > engine->PageCount()) {
         return;
     }
     PageInfo* pageInfo = GetPageInfo(pageNo);

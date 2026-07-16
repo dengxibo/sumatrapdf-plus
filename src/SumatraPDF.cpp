@@ -570,7 +570,7 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
     if (!progressiveLoad || gLastEbookProgressToolbarMs == 0 ||
         now - gLastEbookProgressToolbarMs >= kEbookProgressToolbarIntervalMs) {
         gLastEbookProgressToolbarMs = now;
-        int pageCount = dm->PageCount();
+        int pageCount = engine ? engine->PageCount() : dm->PageCount();
         UpdateToolbarPageText(win, pageCount);
         if (!progressiveLoad) {
             ToolbarUpdateStateForWindow(win, false);
@@ -580,7 +580,7 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
     // it must not wait for layout batches, otherwise TOC never loads because
     // reloadToc is only true on the first notify while layout is still batched.
     if (reloadToc && !EngineIsProgressiveEbookLoading(engine) && isForeground) {
-        int pageCount = dm->PageCount();
+        int pageCount = engine ? engine->PageCount() : dm->PageCount();
         UpdateToolbarPageText(win, pageCount);
         bool wantToc = tab->showToc || DefaultShowTocForPath(path);
         if (wantToc && win->ctrl && win->ctrl->HasToc()) {
@@ -595,6 +595,8 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
             }
             auto fn = MkFunc0<MainWindow>(DeferredLoadTocTree, win);
             uitask::Post(fn, "DeferredLoadToc");
+        } else if (win->tocVisible) {
+            InvalidateTocTree(win);
         }
     }
     if (win->tocLoaded && win->tocVisible && win->tocTreeView && EngineIsProgressiveEbookLoading(engine)) {
@@ -1359,12 +1361,16 @@ void ControllerCallbackHandler::PageNoChanged(DocController* ctrl, int pageNo) {
     }
 
     if (kInvalidPageNo != pageNo) {
+        DisplayModel* dm = win->ctrl->AsFixed();
+        EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+        if (engine && pageNo > engine->PageCount()) {
+            pageNo = engine->PageCount();
+        }
         TempStr label = win->ctrl->GetPageLabeTemp(pageNo);
         HwndSetText(win->hwndPageEdit, label);
         ToolbarUpdateStateForWindow(win, false);
-        if (win->ctrl->HasPageLabels()) {
-            UpdateToolbarPageText(win, win->ctrl->PageCount(), true);
-        }
+        int totalPages = engine ? engine->PageCount() : win->ctrl->PageCount();
+        UpdateToolbarPageText(win, totalPages, win->ctrl->HasPageLabels());
     }
     if (pageNo == win->currPageNo) {
         return;
