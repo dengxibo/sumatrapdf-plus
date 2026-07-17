@@ -1904,7 +1904,10 @@ void ReloadDocument(MainWindow* win, bool autoRefresh) {
     }
 
     tab->selectedAnnotation = nullptr;
+    tab->selectedEbookAnnotation = nullptr;
     win->annotationBeingDragged = nullptr;
+    win->ebookAnnotationBeingDragged = nullptr;
+    win->ebookAnnotationDragPending = nullptr;
     win->annotationBeingResized = false;
     win->annotationUnderCursor = nullptr;
     tab->ignoreNextAutoReload = false;
@@ -4146,6 +4149,7 @@ static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool 
             gRenderCache->CancelRendering(unloadDm);
         }
         unloadingTab->selectedAnnotation = nullptr;
+        unloadingTab->selectedEbookAnnotation = nullptr;
         if (deleteModel) {
             ResetReadAloudStateForTab(unloadingTab);
         } else if (GetReadAloudSourceTab() == unloadingTab && TtsIsSpeaking()) {
@@ -6558,7 +6562,12 @@ static bool FrameOnKeydown(MainWindow* win, WPARAM key, LPARAM lp) {
             return false;
         }
         WindowTab* tab = win->CurrentTab();
-        if (tab && tab->selectedAnnotation) {
+        if (tab && tab->selectedEbookAnnotation) {
+            if (EbookAnnotationsDelete(tab, tab->selectedEbookAnnotation)) {
+                UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow);
+                MainWindowRerender(win);
+            }
+        } else if (tab && tab->selectedAnnotation) {
             DeleteAnnotationAndUpdateUI(tab, tab->selectedAnnotation);
         }
     } else {
@@ -7679,6 +7688,16 @@ static COLORREF GetEbookAnnotationColor(AnnotationType type, const AnnotCreateAr
     SetAnnotCreateArgs(prefsArgs, nullptr);
     if (prefsArgs.col.parsedOk) {
         return prefsArgs.col.col;
+    }
+    if (type == AnnotationType::FreeText) {
+        return RGB(0, 0, 0);
+    }
+    if (type == AnnotationType::Caret) {
+        return RGB(0, 0, 255);
+    }
+    if (type == AnnotationType::Stamp || type == AnnotationType::Line || type == AnnotationType::Square ||
+        type == AnnotationType::Circle) {
+        return RGB(255, 0, 0);
     }
     return GetDefaultAnnotationColor(type);
 }
@@ -9049,15 +9068,26 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                 pt.x = GET_X_LPARAM(lp);
                 pt.y = GET_Y_LPARAM(lp);
             }
-            if (annotType == AnnotationType::Text && EbookAnnotationsSupported(tab)) {
+            if (EbookAnnotationsSupported(tab)) {
                 AnnotCreateArgs args{annotType};
                 SetAnnotCreateArgs(args, cmd);
                 COLORREF color = GetEbookAnnotationColor(annotType, args, cmd);
-                EbookAnnotation* annotation = EbookAnnotationsCreateText(tab, dm, pt, color);
+                EbookAnnotation* annotation = EbookAnnotationsCreateAt(tab, dm, pt, annotType, color);
                 if (annotation) {
+                    // Creating from a context menu must not inherit a stale
+                    // canvas drag. A later left click either opens the editor
+                    // or begins an ordinary press-and-drag move.
+                    win->ebookAnnotationBeingDragged = nullptr;
+                    win->ebookAnnotationDragPending = nullptr;
+                    ClearMouseState(win);
+                    if (annotType != AnnotationType::FreeText) {
+                        tab->selectedEbookAnnotation = annotation;
+                    }
                     UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, annotation);
                     MainWindowRerender(win);
-                    ShowEditEbookAnnotationsWindow(tab, annotation, EditAnnotFocus::Edit);
+                    if (annotType == AnnotationType::FreeText) {
+                        ShowEditEbookAnnotationsWindow(tab, annotation, EditAnnotFocus::Edit);
+                    }
                 }
                 return 0;
             }
@@ -12051,6 +12081,10 @@ void RebuildReadAloudMenu(MainWindow* win, HMENU menu, bool useContextMenuCursor
     MenuEmpty(menu);
     BuildReadAloudMenuItems(menu, win, useContextMenuCursorPoint);
     RemoveBadMenuSeparators(menu);
+    // Voice and Speed are created dynamically after the menubar was marked.
+    // Mark this rebuilt tree too, otherwise nested popups use the system
+    // white background and selection color instead of the active theme.
+    MarkMenuOwnerDraw(menu, false, true);
 }
 
 static bool HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {

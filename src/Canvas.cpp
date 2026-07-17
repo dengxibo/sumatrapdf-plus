@@ -699,6 +699,36 @@ static ResizeHandle GetResizeHandleAt(MainWindow* win, Point pt, Annotation* ann
     return ResizeHandle::None;
 }
 
+static ResizeHandle GetEbookResizeHandleAt(MainWindow* win, Point pt, EbookAnnotation* annotation) {
+    DisplayModel* dm = win->AsFixed();
+    WindowTab* tab = win->CurrentTab();
+    if (!dm || !tab || !annotation || !AnnotationCanBeResized(EbookAnnotationGetType(annotation))) {
+        return ResizeHandle::None;
+    }
+    int pageNo = 0;
+    RectF bounds;
+    if (!EbookAnnotationGetPageBounds(tab, dm, annotation, &pageNo, &bounds)) {
+        return ResizeHandle::None;
+    }
+    Rect rect = dm->CvtToScreen(pageNo, bounds);
+    int hs = kResizeHandleSize;
+    bool nearLeft = pt.x >= rect.x - hs && pt.x <= rect.x + hs;
+    bool nearRight = pt.x >= rect.BR().x - hs && pt.x <= rect.BR().x + hs;
+    bool nearTop = pt.y >= rect.y - hs && pt.y <= rect.y + hs;
+    bool nearBottom = pt.y >= rect.BR().y - hs && pt.y <= rect.BR().y + hs;
+    bool betweenX = pt.x >= rect.x + hs && pt.x <= rect.BR().x - hs;
+    bool betweenY = pt.y >= rect.y + hs && pt.y <= rect.BR().y - hs;
+    if (nearLeft && nearTop) return ResizeHandle::TopLeft;
+    if (nearRight && nearTop) return ResizeHandle::TopRight;
+    if (nearRight && nearBottom) return ResizeHandle::BottomRight;
+    if (nearLeft && nearBottom) return ResizeHandle::BottomLeft;
+    if (betweenX && nearTop) return ResizeHandle::Top;
+    if (nearRight && betweenY) return ResizeHandle::Right;
+    if (betweenX && nearBottom) return ResizeHandle::Bottom;
+    if (nearLeft && betweenY) return ResizeHandle::Left;
+    return ResizeHandle::None;
+}
+
 // Get the appropriate cursor for a resize handle
 static LPWSTR GetCursorForResizeHandle(ResizeHandle handle) {
     switch (handle) {
@@ -754,6 +784,34 @@ static bool StopDraggingAnnotation(MainWindow* win, int x, int y, bool aborted) 
     return true;
 }
 
+static bool StopDraggingEbookAnnotation(MainWindow* win, int x, int y, bool aborted) {
+    EbookAnnotation* annotation = win->ebookAnnotationBeingDragged;
+    if (!annotation || win->annotationBeingResized) {
+        return false;
+    }
+    DrawMovePattern(win, win->dragPrevPos, win->annotationBeingMovedSize);
+    win->ebookAnnotationBeingDragged = nullptr;
+    if (aborted) {
+        return true;
+    }
+    DisplayModel* dm = win->AsFixed();
+    WindowTab* tab = win->CurrentTab();
+    int pageNo = 0;
+    RectF bounds;
+    if (!EbookAnnotationGetPageBounds(tab, dm, annotation, &pageNo, &bounds)) {
+        return true;
+    }
+    Point topLeft{x + win->annotationBeingMovedOffset.x, y + win->annotationBeingMovedOffset.y};
+    if (dm->GetPageNoByPoint(topLeft) == pageNo) {
+        RectF moved = dm->CvtFromScreen(Rect(topLeft.x, topLeft.y, 1, 1), pageNo);
+        moved.dx = bounds.dx;
+        moved.dy = bounds.dy;
+        EbookAnnotationSetPageBounds(tab, dm, annotation, pageNo, moved, true);
+        MainWindowRerender(win);
+    }
+    return true;
+}
+
 static void StopMouseDrag(MainWindow* win, int x, int y, bool aborted) {
     if (GetCapture() != win->hwndCanvas) {
         return;
@@ -763,8 +821,12 @@ static void StopMouseDrag(MainWindow* win, int x, int y, bool aborted) {
         SetCursorCached(IDC_ARROW);
     }
     ReleaseCapture();
+    // A right-button drag is only a document/context-menu gesture. It must
+    // never leak into a subsequent EPUB annotation move, where it used to
+    // make the next right click act as an unintended "drop".
+    win->dragRightClick = false;
 
-    if (StopDraggingAnnotation(win, x, y, aborted)) {
+    if (StopDraggingEbookAnnotation(win, x, y, aborted) || StopDraggingAnnotation(win, x, y, aborted)) {
         return;
     }
 
@@ -776,13 +838,20 @@ static void StopMouseDrag(MainWindow* win, int x, int y, bool aborted) {
     win->MoveDocBy(drag.dx, -2 * drag.dy);
 }
 
+static bool StopEbookAnnotationResize(MainWindow* win, bool aborted);
+
 void CancelDrag(MainWindow* win) {
     auto pt = win->dragPrevPos;
     auto [x, y] = pt;
-    StopMouseDrag(win, x, y, true);
+    if (win->ebookAnnotationBeingDragged && win->annotationBeingResized) {
+        StopEbookAnnotationResize(win, true);
+    } else {
+        StopMouseDrag(win, x, y, true);
+    }
     win->mouseAction = MouseAction::None;
     win->linkOnLastButtonDown = nullptr;
     win->annotationBeingDragged = nullptr;
+    win->ebookAnnotationDragPending = nullptr;
     win->annotationBeingResized = false;
     SetCursorCached(IDC_ARROW);
 }
@@ -803,6 +872,8 @@ static bool gShowAnnotationNotification = true;
 
 // Forward declaration
 static RectF CalculateResizedRect(MainWindow* win, int x, int y);
+static RectF CalculateResizedEbookRect(MainWindow* win, int x, int y);
+static void StartEbookAnnotationDrag(MainWindow* win, EbookAnnotation* annotation, Point pt);
 
 static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
     DisplayModel* dm = win->AsFixed();
@@ -872,6 +943,22 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
         return;
     }
 
+    if (win->ebookAnnotationDragPending) {
+        if (!IsDragDistance(x, win->dragStart.x, y, win->dragStart.y)) {
+            return;
+        }
+        EbookAnnotation* annotation = win->ebookAnnotationDragPending;
+        win->ebookAnnotationDragPending = nullptr;
+        win->dragStartPending = false;
+        StartEbookAnnotationDrag(win, annotation, win->dragStart);
+        Point dragPoint{x, y};
+        DrawMovePattern(win, win->dragStart, win->annotationBeingMovedSize);
+        DrawMovePattern(win, dragPoint, win->annotationBeingMovedSize);
+        win->mouseAction = MouseAction::Dragging;
+        win->dragPrevPos = dragPoint;
+        return;
+    }
+
     if (win->dragStartPending) {
         if (!IsDragDistance(x, win->dragStart.x, y, win->dragStart.y)) {
             return;
@@ -937,6 +1024,24 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
             break;
         }
         case MouseAction::Dragging: {
+            EbookAnnotation* ebookAnnotation = win->ebookAnnotationBeingDragged;
+            if (ebookAnnotation) {
+                if (win->annotationBeingResized) {
+                    win->dragPrevPos = pos;
+                    SetCursorCached(GetCursorForResizeHandle((ResizeHandle)win->resizeHandle));
+                    int pageNo = 0;
+                    RectF ignored;
+                    EbookAnnotationGetPageBounds(win->CurrentTab(), dm, ebookAnnotation, &pageNo, &ignored);
+                    RectF bounds = CalculateResizedEbookRect(win, x, y);
+                    EbookAnnotationSetPageBounds(win->CurrentTab(), dm, ebookAnnotation, pageNo, bounds, false);
+                    MainWindowRerender(win);
+                } else {
+                    Size size = win->annotationBeingMovedSize;
+                    DrawMovePattern(win, prevPos, size);
+                    DrawMovePattern(win, pos, size);
+                }
+                break;
+            }
             Annotation* annot = win->annotationBeingDragged;
             if (annot) {
                 if (win->annotationBeingResized) {
@@ -985,6 +1090,111 @@ static void StartAnnotationDrag(MainWindow* win, Annotation* annot, Point& pt) {
     int offsetY = rScreen.y - pt.y;
     win->annotationBeingMovedOffset = Point{offsetX, offsetY};
     DrawMovePattern(win, pt, win->annotationBeingMovedSize);
+}
+
+static void StartEbookAnnotationDrag(MainWindow* win, EbookAnnotation* annotation, Point pt) {
+    DisplayModel* dm = win->AsFixed();
+    int pageNo = 0;
+    RectF bounds;
+    if (!EbookAnnotationGetPageBounds(win->CurrentTab(), dm, annotation, &pageNo, &bounds)) {
+        return;
+    }
+    win->ebookAnnotationBeingDragged = annotation;
+    // This path starts from the left button, but it bypasses StartMouseDrag().
+    // Clear the flag left by a previous context-menu drag; otherwise the left
+    // button-up is ignored and a following right click incorrectly drops it.
+    win->dragRightClick = false;
+    CreateMovePatternLazy(win);
+    Rect screen = dm->CvtToScreen(pageNo, bounds);
+    win->annotationBeingMovedSize = screen.Size();
+    win->annotationBeingMovedOffset = {screen.x - pt.x, screen.y - pt.y};
+    DrawMovePattern(win, pt, win->annotationBeingMovedSize);
+}
+
+static RectF CalculateResizedEbookRect(MainWindow* win, int x, int y) {
+    DisplayModel* dm = win->AsFixed();
+    EbookAnnotation* annotation = win->ebookAnnotationBeingDragged;
+    int pageNo = 0;
+    RectF ignored;
+    if (!EbookAnnotationGetPageBounds(win->CurrentTab(), dm, annotation, &pageNo, &ignored)) {
+        return win->annotationOriginalRect;
+    }
+    RectF pagePt = dm->CvtFromScreen(Rect(x, y, 1, 1), pageNo);
+    RectF startPage = dm->CvtFromScreen(Rect(win->dragStart.x, win->dragStart.y, 1, 1), pageNo);
+    float deltaX = pagePt.x - startPage.x;
+    float deltaY = pagePt.y - startPage.y;
+    RectF orig = win->annotationOriginalRect;
+    RectF bounds = orig;
+    ResizeHandle handle = (ResizeHandle)win->resizeHandle;
+    bool moveLeft =
+        handle == ResizeHandle::TopLeft || handle == ResizeHandle::Left || handle == ResizeHandle::BottomLeft;
+    bool moveRight =
+        handle == ResizeHandle::TopRight || handle == ResizeHandle::Right || handle == ResizeHandle::BottomRight;
+    bool moveTop = handle == ResizeHandle::TopLeft || handle == ResizeHandle::Top || handle == ResizeHandle::TopRight;
+    bool moveBottom =
+        handle == ResizeHandle::BottomLeft || handle == ResizeHandle::Bottom || handle == ResizeHandle::BottomRight;
+    constexpr float minSize = 10.f;
+    if (moveLeft) {
+        bounds.x = orig.x + deltaX;
+        bounds.dx = orig.dx - deltaX;
+        if (bounds.dx < minSize) {
+            bounds.x = orig.x + orig.dx - minSize;
+            bounds.dx = minSize;
+        }
+    }
+    if (moveRight) {
+        bounds.dx = std::max(minSize, orig.dx + deltaX);
+    }
+    if (moveTop) {
+        bounds.y = orig.y + deltaY;
+        bounds.dy = orig.dy - deltaY;
+        if (bounds.dy < minSize) {
+            bounds.y = orig.y + orig.dy - minSize;
+            bounds.dy = minSize;
+        }
+    }
+    if (moveBottom) {
+        bounds.dy = std::max(minSize, orig.dy + deltaY);
+    }
+    return bounds;
+}
+
+static void StartEbookAnnotationResize(MainWindow* win, EbookAnnotation* annotation, Point pt, ResizeHandle handle) {
+    int pageNo = 0;
+    RectF bounds;
+    if (!EbookAnnotationGetPageBounds(win->CurrentTab(), win->AsFixed(), annotation, &pageNo, &bounds)) {
+        return;
+    }
+    win->ebookAnnotationBeingDragged = annotation;
+    win->dragRightClick = false;
+    win->annotationBeingResized = true;
+    win->resizeHandle = (int)handle;
+    win->dragStart = pt;
+    win->annotationOriginalRect = bounds;
+    SetCapture(win->hwndCanvas);
+    win->mouseAction = MouseAction::Dragging;
+    win->dragPrevPos = pt;
+}
+
+static bool StopEbookAnnotationResize(MainWindow* win, bool aborted) {
+    EbookAnnotation* annotation = win->ebookAnnotationBeingDragged;
+    if (!annotation || !win->annotationBeingResized) {
+        return false;
+    }
+    int pageNo = 0;
+    RectF bounds;
+    EbookAnnotationGetPageBounds(win->CurrentTab(), win->AsFixed(), annotation, &pageNo, &bounds);
+    win->annotationBeingResized = false;
+    win->ebookAnnotationBeingDragged = nullptr;
+    if (GetCapture() == win->hwndCanvas) {
+        ReleaseCapture();
+    }
+    if (aborted) {
+        bounds = win->annotationOriginalRect;
+    }
+    EbookAnnotationSetPageBounds(win->CurrentTab(), win->AsFixed(), annotation, pageNo, bounds, !aborted);
+    MainWindowRerender(win);
+    return true;
 }
 
 // Helper function to calculate new rectangle during resize
@@ -1119,6 +1329,18 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     }
 
     WindowTab* tab = win->CurrentTab();
+    EbookAnnotation* ebookAnnotation = EbookAnnotationsGetAt(tab, dm, pt);
+    ResizeHandle ebookResizeHandle = GetEbookResizeHandleAt(win, pt, tab->selectedEbookAnnotation);
+    if (ebookResizeHandle != ResizeHandle::None) {
+        StartEbookAnnotationResize(win, tab->selectedEbookAnnotation, pt, ebookResizeHandle);
+    } else if (ebookAnnotation && AnnotationCanBeMoved(EbookAnnotationGetType(ebookAnnotation))) {
+        tab->selectedEbookAnnotation = ebookAnnotation;
+        win->ebookAnnotationDragPending = ebookAnnotation;
+        win->dragStartPending = true;
+        win->dragStart = pt;
+        SetCapture(win->hwndCanvas);
+        return;
+    }
     Annotation* annot = dm->GetAnnotationAtPos(pt, tab->selectedAnnotation);
     bool isMoveableAnnot = annot && AnnotationCanBeMoved(annot->type);
     if (isMoveableAnnot) {
@@ -1164,8 +1386,14 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
         return;
     }
 
-    if (EbookAnnotationsSupported(tab) && EbookAnnotationsHitTest(tab, dm, pt)) {
+    if (!win->ebookAnnotationBeingDragged && EbookAnnotationsSupported(tab) && EbookAnnotationsHitTest(tab, dm, pt)) {
         StartMouseDrag(win, x, y);
+        return;
+    }
+    if (win->ebookAnnotationBeingDragged) {
+        SetCapture(win->hwndCanvas);
+        win->mouseAction = MouseAction::Dragging;
+        win->dragPrevPos = pt;
         return;
     }
 
@@ -1214,6 +1442,17 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
     DisplayModel* dm = win->AsFixed();
     ReportIf(!dm);
 
+    if (win->ebookAnnotationDragPending) {
+        EbookAnnotation* annotation = win->ebookAnnotationDragPending;
+        win->ebookAnnotationDragPending = nullptr;
+        win->dragStartPending = false;
+        if (GetCapture() == win->hwndCanvas) {
+            ReleaseCapture();
+        }
+        ShowEditEbookAnnotationsWindow(win->CurrentTab(), annotation);
+        return;
+    }
+
     // click on selected text without dragging: clear selection
     if (win->textDragPending) {
         win->textDragPending = false;
@@ -1253,7 +1492,10 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
     // TODO: should IsDrag() ever be true here? We should get mouse move first
     bool didDragMouse = !win->dragStartPending || IsDragDistance(x, win->dragStart.x, y, win->dragStart.y);
     if (MouseAction::Dragging == ma) {
-        if (win->annotationBeingResized) {
+        if (win->ebookAnnotationBeingDragged && win->annotationBeingResized) {
+            StopEbookAnnotationResize(win, !didDragMouse);
+            SendMessageW(win->hwndCanvas, WM_SETCURSOR, 0, 0);
+        } else if (win->annotationBeingResized) {
             StopAnnotationResize(win, x, y, !didDragMouse);
             // Trigger cursor update after resize
             SendMessageW(win->hwndCanvas, WM_SETCURSOR, 0, 0);
@@ -2113,6 +2355,12 @@ static LRESULT OnSetCursorMouseNone(MainWindow* win, HWND hwnd) {
 
     WindowTab* tab = win->CurrentTab();
     Annotation* selected = tab->selectedAnnotation;
+
+    ResizeHandle ebookHandle = GetEbookResizeHandleAt(win, pt, tab->selectedEbookAnnotation);
+    if (ebookHandle != ResizeHandle::None) {
+        SetCursorCached(GetCursorForResizeHandle(ebookHandle));
+        return TRUE;
+    }
 
     if (EbookAnnotationsSupported(tab) && EbookAnnotationsHitTest(tab, dm, pt)) {
         SetCursorCached(IDC_HAND);

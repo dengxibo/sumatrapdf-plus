@@ -16,6 +16,7 @@ struct TocTree;
 struct SelectionToolbar;
 struct FindBarWnd;
 struct FindWindowWnd;
+struct EbookAnnotation;
 struct FindWindowWnd;
 
 // one search match with a text snippet around it, for the floating results list
@@ -213,6 +214,8 @@ struct MainWindow {
     HBITMAP bmpMovePattern = nullptr;
     HBRUSH brMovePattern = nullptr;
     Annotation* annotationBeingDragged = nullptr;
+    EbookAnnotation* ebookAnnotationBeingDragged = nullptr;
+    EbookAnnotation* ebookAnnotationDragPending = nullptr;
 
     // Vars for resizing annotations
     int resizeHandle = 0; // ResizeHandle enum casted to int

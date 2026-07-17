@@ -1198,11 +1198,13 @@ BuildMenuCtx* NewBuildMenuCtx(WindowTab* tab, Point pt) {
     }
 
     DisplayModel* dm = tab->AsFixed();
-    if (dm && ctx->supportsAnnotations) {
+    if (dm) {
         int pageNoUnderCursor = dm->GetPageNoByPoint(pt);
         if (pageNoUnderCursor > 0) {
             ctx->isCursorOnPage = true;
         }
+    }
+    if (dm && ctx->supportsAnnotations) {
         ctx->annotationUnderCursor = dm->GetAnnotationAtPos(pt, nullptr);
     }
     if (dm && ctx->supportsEbookAnnotations) {
@@ -1408,8 +1410,12 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
         }
         bool isEbookAnnotationCommand =
             cmdId == CmdEditAnnotations || cmdId == CmdDeleteAnnotation || cmdId == CmdShowAnnotations ||
-            cmdId == CmdHideAnnotations || cmdId == CmdToggleShowAnnotations ||
-            cmdId == (UINT_PTR)menuDefCreateAnnotFromSelection || cmdId == (UINT_PTR)menuDefCreateAnnotUnderCursor;
+            cmdId == CmdHideAnnotations || cmdId == CmdToggleShowAnnotations || cmdId == CmdCreateAnnotHighlight ||
+            cmdId == CmdCreateAnnotUnderline || cmdId == CmdCreateAnnotSquiggly || cmdId == CmdCreateAnnotStrikeOut ||
+            cmdId == CmdCreateAnnotText || cmdId == CmdCreateAnnotFreeText || cmdId == CmdCreateAnnotStamp ||
+            cmdId == CmdCreateAnnotCaret || cmdId == CmdCreateAnnotLine || cmdId == CmdCreateAnnotSquare ||
+            cmdId == CmdCreateAnnotCircle || cmdId == (UINT_PTR)menuDefCreateAnnotFromSelection ||
+            cmdId == (UINT_PTR)menuDefCreateAnnotUnderCursor;
         if (isEbookAnnotationCommand) {
             centralizedRemove = false;
         }
@@ -1470,14 +1476,12 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
         ctx->supportsEbookAnnotations &&
         (cmdId == CmdEditAnnotations || cmdId == CmdDeleteAnnotation || cmdId == CmdShowAnnotations ||
          cmdId == CmdHideAnnotations || cmdId == CmdToggleShowAnnotations ||
-         cmdId == (UINT_PTR)menuDefCreateAnnotFromSelection || cmdId == (UINT_PTR)menuDefCreateAnnotUnderCursor);
+         cmdId == CmdCreateAnnotHighlight || cmdId == CmdCreateAnnotUnderline || cmdId == CmdCreateAnnotSquiggly ||
+         cmdId == CmdCreateAnnotStrikeOut || cmdId == CmdCreateAnnotText || cmdId == CmdCreateAnnotFreeText ||
+         cmdId == CmdCreateAnnotStamp || cmdId == CmdCreateAnnotCaret || cmdId == CmdCreateAnnotLine ||
+         cmdId == CmdCreateAnnotSquare || cmdId == CmdCreateAnnotCircle || cmdId == (UINT_PTR)menuDefCreateAnnotFromSelection ||
+         cmdId == (UINT_PTR)menuDefCreateAnnotUnderCursor);
     remove |= (!ctx->supportsAnnotations && !isEbookAnnotationCommand && cmdIdInList(removeIfAnnotsNotSupported));
-    if (ctx->supportsEbookAnnotations && !ctx->supportsAnnotations) {
-        bool unsupportedUnderCursor = cmdId == CmdCreateAnnotFreeText || cmdId == CmdCreateAnnotStamp ||
-                                      cmdId == CmdCreateAnnotCaret || cmdId == CmdCreateAnnotSquare ||
-                                      cmdId == CmdCreateAnnotLine || cmdId == CmdCreateAnnotCircle;
-        remove |= unsupportedUnderCursor;
-    }
     remove |= !ctx->canSendEmail && (cmdId == CmdSendByEmail);
 
     disable |= (!ctx->hasSelection && cmdIdInList(disableIfNoSelection));
@@ -2323,6 +2327,10 @@ void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar, bool recurseSubmenus) {
     mi.cbSize = sizeof(MENUINFO);
     GetMenuInfo(hmenu, &mi);
     mi.hbrBack = hbrBrush;
+    // Owner-drawn items paint their own check mark. Keep Windows from
+    // reserving its native check-mark gutter, whose background is not themed
+    // for nested popup menus and otherwise shows up as a white strip.
+    mi.dwStyle |= MNS_NOCHECK;
     mi.fMask = MIM_BACKGROUND | MIM_STYLE;
     if (recurseSubmenus) {
         mi.fMask |= MIM_APPLYTOSUBMENUS;

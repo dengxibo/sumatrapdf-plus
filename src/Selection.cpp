@@ -280,7 +280,8 @@ static u8 MultiplyChannel(u8 backdrop, u8 highlight) {
     return (u8)(((unsigned)backdrop * highlight + 127) / 255);
 }
 
-void PaintMultiplyRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color) {
+void PaintMultiplyRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color, int opacity) {
+    opacity = std::clamp(opacity, 0, 100);
     Rect bounds;
     Vec<Rect> clippedRects;
     for (Rect rect : rects) {
@@ -331,9 +332,12 @@ void PaintMultiplyRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF 
             u8* row = pixels + y * info.dsBm.bmWidthBytes;
             for (int x = xStart; x < xStart + rect.dx; x++) {
                 u8* pixel = row + x * 4;
-                pixel[0] = MultiplyChannel(pixel[0], highlight[0]);
-                pixel[1] = MultiplyChannel(pixel[1], highlight[1]);
-                pixel[2] = MultiplyChannel(pixel[2], highlight[2]);
+                u8 mul = MultiplyChannel(pixel[0], highlight[0]);
+                pixel[0] = (u8)(pixel[0] + (mul - pixel[0]) * opacity / 100);
+                mul = MultiplyChannel(pixel[1], highlight[1]);
+                pixel[1] = (u8)(pixel[1] + (mul - pixel[1]) * opacity / 100);
+                mul = MultiplyChannel(pixel[2], highlight[2]);
+                pixel[2] = (u8)(pixel[2] + (mul - pixel[2]) * opacity / 100);
             }
         }
     }

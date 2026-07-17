@@ -200,6 +200,7 @@ void ClearMouseState(MainWindow* win) {
     win->textDragPending = false;
     win->imageDragPending = false;
     win->imageDragElement = nullptr;
+    win->ebookAnnotationDragPending = nullptr;
     win->linkOnLastButtonDown = nullptr;
     win->annotationUnderCursor = nullptr;
 }

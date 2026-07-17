@@ -5683,6 +5683,123 @@ TocItem* EngineMupdf::BuildTocTree(TocItem* parent, fz_outline* outline, int& id
     return root;
 }
 
+static bool IsIgnorableRepeatedTocItem(TocItem* item) {
+    return item && !item->child && (str::IsEmpty(item->title) || str::EqI(item->title, "Untitled"));
+}
+
+struct TocTitleEntry {
+    const char* title;
+    int level;
+};
+
+static void CollectTocTitleEntries(TocItem* item, int level, Vec<TocTitleEntry>& entries) {
+    for (; item; item = item->next) {
+        if (!IsIgnorableRepeatedTocItem(item)) {
+            entries.Append({item->title, level});
+            CollectTocTitleEntries(item->child, level + 1, entries);
+        }
+    }
+}
+
+static bool TocSubtreesHaveSameTitles(TocItem* a, TocItem* b) {
+    Vec<TocTitleEntry> aEntries;
+    Vec<TocTitleEntry> bEntries;
+    CollectTocTitleEntries(a, 0, aEntries);
+    CollectTocTitleEntries(b, 0, bEntries);
+    Vec<TocTitleEntry>* shorter = &aEntries;
+    Vec<TocTitleEntry>* longer = &bEntries;
+    if (shorter->size() > longer->size()) {
+        Vec<TocTitleEntry>* tmp = shorter;
+        shorter = longer;
+        longer = tmp;
+    }
+    if (shorter->empty() || shorter->size() * 10 < longer->size() * 9) {
+        return false;
+    }
+    size_t shorterIdx = 0;
+    for (TocTitleEntry& entry : *longer) {
+        TocTitleEntry& candidate = shorter->at(shorterIdx);
+        if (entry.level == candidate.level && str::Eq(entry.title, candidate.title)) {
+            shorterIdx++;
+            if (shorterIdx == shorter->size()) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static TocItem* PruneTocItemsOutsidePageRange(TocItem* item, int firstPage, int lastPage) {
+    TocItem* head = nullptr;
+    TocItem* tail = nullptr;
+    while (item) {
+        TocItem* next = item->next;
+        item->next = nullptr;
+        item->child = PruneTocItemsOutsidePageRange(item->child, firstPage, lastPage);
+        bool inRange = item->pageNo >= firstPage && item->pageNo <= lastPage;
+        if (!IsIgnorableRepeatedTocItem(item) && (inRange || item->child)) {
+            if (!head) {
+                head = item;
+            } else {
+                tail->next = item;
+            }
+            tail = item;
+        } else {
+            item->DeleteJustSelf();
+        }
+        item = next;
+    }
+    return head;
+}
+
+static void CollapseInvalidTocContainers(TocItem* chapter, int firstPage, int lastPage) {
+    while (chapter->child && !chapter->child->next && chapter->child->child) {
+        TocItem* container = chapter->child;
+        bool inRange = container->pageNo >= firstPage && container->pageNo <= lastPage;
+        if (inRange) {
+            return;
+        }
+        chapter->child = container->child;
+        container->child = nullptr;
+        for (TocItem* item = chapter->child; item; item = item->next) {
+            item->parent = chapter;
+        }
+        container->DeleteJustSelf();
+    }
+}
+
+static void PruneRepeatedTocSubtrees(TocItem* root, int pageCount) {
+    for (TocItem* first = root; first && first->next && first->next->next; first = first->next) {
+        TocItem* second = first->next;
+        TocItem* third = second->next;
+        if (!first->child || !second->child || !third->child ||
+            !TocSubtreesHaveSameTitles(first->child, second->child) ||
+            !TocSubtreesHaveSameTitles(first->child, third->child)) {
+            continue;
+        }
+        int repeatedCount = 0;
+        for (TocItem* chapter = first;
+             chapter && chapter->child && TocSubtreesHaveSameTitles(first->child, chapter->child);
+             chapter = chapter->next) {
+            repeatedCount++;
+        }
+        TocItem* chapter = first;
+        for (int i = 0; i < repeatedCount; i++) {
+            int firstPage = chapter->pageNo;
+            int lastPage = pageCount;
+            if (chapter->next && chapter->next->pageNo > firstPage) {
+                lastPage = chapter->next->pageNo - 1;
+            }
+            if (firstPage > 0) {
+                chapter->child = PruneTocItemsOutsidePageRange(chapter->child, firstPage, lastPage);
+                CollapseInvalidTocContainers(chapter, firstPage, lastPage);
+            }
+            chapter = chapter->next;
+        }
+        return;
+    }
+}
+
 // TODO: maybe build in FinishLoading
 TocTree* EngineMupdf::GetToc() {
     if (tocTree && !tocTreeStale) {
@@ -5746,6 +5863,7 @@ MakeTree:
     if (!root) {
         return nullptr;
     }
+    PruneRepeatedTocSubtrees(root, PageCount());
     TocItem* realRoot = new TocItem();
     realRoot->child = root;
     tocTree = new TocTree(realRoot);

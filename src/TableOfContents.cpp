@@ -1617,9 +1617,10 @@ static void LayoutTocContainer(MainWindow* win) {
     y += labelSize.dy;
     if (edit && edit->hwnd) {
         Size editSize = edit->GetIdealSize();
-        MoveWindow(edit->hwnd, 0, y, rc.dx, editSize.dy, TRUE);
-        dy -= editSize.dy;
-        y += editSize.dy;
+        int rowDy = editSize.dy;
+        MoveWindow(edit->hwnd, 0, y, rc.dx, rowDy, TRUE);
+        dy -= rowDy;
+        y += rowDy;
     }
     MoveWindow(treeView->hwnd, 0, y, rc.dx, dy, TRUE);
 }
@@ -1959,6 +1960,18 @@ static Edit* CreateTocFilterEdit(MainWindow* win, HFONT font, const char* text) 
     return filterEdit;
 }
 
+static void CollapseAllToc(MainWindow* win) {
+    if (win && win->tocTreeView) {
+        win->tocTreeView->CollapseAll();
+    }
+}
+
+static void ExpandAllToc(MainWindow* win) {
+    if (win && win->tocTreeView) {
+        win->tocTreeView->ExpandAll();
+    }
+}
+
 void ReCreateTocFilterEdit(MainWindow* win, HFONT font) {
     if (!win || !win->hwndTocBox || !win->tocFilterEdit) {
         return;
@@ -2011,6 +2024,9 @@ void CreateToc(MainWindow* win) {
 
     auto filterEdit = CreateTocFilterEdit(win, GetAppTreeFontForHwnd(win->hwndFrame), nullptr);
     win->tocFilterEdit = filterEdit;
+
+    l->SetHeaderActions(MkFunc0(ExpandAllToc, win), _TRA("Expand all bookmarks"), MkFunc0(CollapseAllToc, win),
+                        _TRA("Collapse all bookmarks"));
 
     auto treeView = new TreeView();
     TreeView::CreateArgs args;

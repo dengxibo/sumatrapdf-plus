@@ -37,12 +37,33 @@ struct EbookAnnotationsWindow : Wnd {
     Edit* editContents = nullptr;
     Static* staticColor = nullptr;
     DropDown* dropDownColor = nullptr;
+    Static* staticOpacity = nullptr;
+    Trackbar* trackbarOpacity = nullptr;
+    Static* staticTextAlignment = nullptr;
+    DropDown* dropDownTextAlignment = nullptr;
+    Static* staticTextFont = nullptr;
+    DropDown* dropDownTextFont = nullptr;
+    Static* staticTextSize = nullptr;
+    Trackbar* trackbarTextSize = nullptr;
+    Static* staticTextColor = nullptr;
+    DropDown* dropDownTextColor = nullptr;
+    Static* staticBorder = nullptr;
+    Trackbar* trackbarBorder = nullptr;
+    Static* staticLineStart = nullptr;
+    DropDown* dropDownLineStart = nullptr;
+    Static* staticLineEnd = nullptr;
+    DropDown* dropDownLineEnd = nullptr;
+    Static* staticInteriorColor = nullptr;
+    DropDown* dropDownInteriorColor = nullptr;
+    Static* staticIcon = nullptr;
+    DropDown* dropDownIcon = nullptr;
     Button* buttonDelete = nullptr;
     Button* buttonExport = nullptr;
     Vec<EbookAnnotation*> annotations;
     EbookAnnotation* selected = nullptr;
     bool updatingControls = false;
     StrBuilder currCustomColor;
+    StrBuilder currTextColor;
     int dpi = 0;
 
     void OnSize(UINT msg, UINT type, SIZE size) override;
@@ -201,6 +222,26 @@ static void HideAnnotationControls(EbookAnnotationsWindow* window) {
     window->editContents->SetIsVisible(false);
     window->staticColor->SetIsVisible(false);
     window->dropDownColor->SetIsVisible(false);
+    window->staticOpacity->SetIsVisible(false);
+    window->trackbarOpacity->SetIsVisible(false);
+    window->staticTextAlignment->SetIsVisible(false);
+    window->dropDownTextAlignment->SetIsVisible(false);
+    window->staticTextFont->SetIsVisible(false);
+    window->dropDownTextFont->SetIsVisible(false);
+    window->staticTextSize->SetIsVisible(false);
+    window->trackbarTextSize->SetIsVisible(false);
+    window->staticTextColor->SetIsVisible(false);
+    window->dropDownTextColor->SetIsVisible(false);
+    window->staticBorder->SetIsVisible(false);
+    window->trackbarBorder->SetIsVisible(false);
+    window->staticLineStart->SetIsVisible(false);
+    window->dropDownLineStart->SetIsVisible(false);
+    window->staticLineEnd->SetIsVisible(false);
+    window->dropDownLineEnd->SetIsVisible(false);
+    window->staticInteriorColor->SetIsVisible(false);
+    window->dropDownInteriorColor->SetIsVisible(false);
+    window->staticIcon->SetIsVisible(false);
+    window->dropDownIcon->SetIsVisible(false);
     window->buttonDelete->SetIsVisible(false);
 }
 
@@ -326,8 +367,97 @@ static void UpdateSelectedAnnotation(EbookAnnotationsWindow* window, EbookAnnota
 
     window->staticContents->SetIsVisible(true);
     window->editContents->SetIsVisible(true);
+    if (EbookAnnotationGetType(annotation) == AnnotationType::FreeText) {
+        constexpr const char* quadding = "Left\0Center\0Right\0";
+        constexpr const char* fontNames = "Cour\0Helv\0TiRo\0";
+        constexpr const char* fontReadableNames = "Courier\0Helvetica\0TimesRoman\0";
+        window->dropDownTextAlignment->SetItemsSeqStrings(quadding);
+        window->dropDownTextAlignment->SetCurrentSelection(EbookAnnotationGetFreeTextAlignment(annotation));
+        int fontIdx = seqstrings::StrToIdx(fontNames, EbookAnnotationGetFreeTextFont(annotation));
+        window->dropDownTextFont->SetItemsSeqStrings(fontReadableNames);
+        window->dropDownTextFont->SetCurrentSelection(fontIdx < 0 ? 1 : fontIdx);
+        int textSize = EbookAnnotationGetFreeTextSize(annotation);
+        window->staticTextSize->SetText(str::FormatTemp(_TRA("Text Size: %d"), textSize));
+        window->trackbarTextSize->SetValue(textSize);
+        FillAnnotationColorDropDown(window->dropDownTextColor, EbookAnnotationGetColor(annotation),
+                                    window->currTextColor);
+        int border = EbookAnnotationGetFreeTextBorderWidth(annotation);
+        window->staticBorder->SetText(str::FormatTemp(_TRA("Border: %d"), border));
+        window->trackbarBorder->SetValue(border);
+        COLORREF background = 0;
+        if (EbookAnnotationGetFreeTextBackground(annotation, &background)) {
+            FillColorDropDown(window, background);
+        } else {
+            window->dropDownColor->SetItemsSeqStrings(GetPdfAnnotationColorNames());
+            window->dropDownColor->SetCurrentSelection(0);
+        }
+        window->staticColor->SetText(_TRA("Background Color:"));
+        window->staticTextAlignment->SetIsVisible(true);
+        window->dropDownTextAlignment->SetIsVisible(true);
+        window->staticTextFont->SetIsVisible(true);
+        window->dropDownTextFont->SetIsVisible(true);
+        window->staticTextSize->SetIsVisible(true);
+        window->trackbarTextSize->SetIsVisible(true);
+        window->staticTextColor->SetIsVisible(true);
+        window->dropDownTextColor->SetIsVisible(true);
+        window->staticBorder->SetIsVisible(true);
+        window->trackbarBorder->SetIsVisible(true);
+    } else if (EbookAnnotationGetType(annotation) == AnnotationType::Line ||
+               EbookAnnotationGetType(annotation) == AnnotationType::Square ||
+               EbookAnnotationGetType(annotation) == AnnotationType::Circle) {
+        bool isLine = EbookAnnotationGetType(annotation) == AnnotationType::Line;
+        constexpr const char* endings =
+            "None\0Square\0Circle\0Diamond\0OpenArrow\0ClosedArrow\0Butt\0ROpenArrow\0RClosedArrow\0Slash\0";
+        if (isLine) {
+            window->dropDownLineStart->SetItemsSeqStrings(endings);
+            window->dropDownLineStart->SetCurrentSelection(EbookAnnotationGetLineStart(annotation));
+            window->dropDownLineEnd->SetItemsSeqStrings(endings);
+            window->dropDownLineEnd->SetCurrentSelection(EbookAnnotationGetLineEnd(annotation));
+        }
+        int border = EbookAnnotationGetBorderWidth(annotation);
+        window->staticBorder->SetText(str::FormatTemp(_TRA("Border: %d"), border));
+        window->trackbarBorder->SetValue(border);
+        COLORREF interior = 0;
+        if (EbookAnnotationGetInteriorColor(annotation, &interior)) {
+            FillAnnotationColorDropDown(window->dropDownInteriorColor, interior, window->currCustomColor);
+        } else {
+            window->dropDownInteriorColor->SetItemsSeqStrings(GetPdfAnnotationColorNames());
+            window->dropDownInteriorColor->SetCurrentSelection(0);
+        }
+        window->staticColor->SetText(_TRA("Color:"));
+        window->staticLineStart->SetIsVisible(isLine);
+        window->dropDownLineStart->SetIsVisible(isLine);
+        window->staticLineEnd->SetIsVisible(isLine);
+        window->dropDownLineEnd->SetIsVisible(isLine);
+        window->staticBorder->SetIsVisible(true);
+        window->trackbarBorder->SetIsVisible(true);
+        window->staticInteriorColor->SetIsVisible(true);
+        window->dropDownInteriorColor->SetIsVisible(true);
+    } else {
+        window->staticColor->SetText(_TRA("Color:"));
+    }
     window->staticColor->SetIsVisible(true);
     window->dropDownColor->SetIsVisible(true);
+    if (EbookAnnotationGetType(annotation) == AnnotationType::Highlight) {
+        int opacity = EbookAnnotationGetOpacity(annotation);
+        window->staticOpacity->SetText(str::FormatTemp(_TRA("Opacity: %d"), opacity));
+        window->trackbarOpacity->SetValue(opacity);
+        window->staticOpacity->SetIsVisible(true);
+        window->trackbarOpacity->SetIsVisible(true);
+    }
+    AnnotationType annotationType = EbookAnnotationGetType(annotation);
+    if (annotationType == AnnotationType::Text || annotationType == AnnotationType::Stamp) {
+        constexpr const char* stampIcons =
+            "Approved\0AsIs\0Confidential\0Departmental\0Draft\0Experimental\0Expired\0Final\0ForComment\0"
+            "ForPublicRelease\0NotApproved\0NotForPublicRelease\0Sold\0TopSecret\0";
+        const char* icon = EbookAnnotationGetIcon(annotation);
+        const char* icons = annotationType == AnnotationType::Stamp ? stampIcons : gAnnotationTextIcons;
+        int iconIdx = seqstrings::StrToIdxIS(icons, icon);
+        window->dropDownIcon->SetItemsSeqStrings(icons);
+        window->dropDownIcon->SetCurrentSelection(iconIdx < 0 ? 0 : iconIdx);
+        window->staticIcon->SetIsVisible(true);
+        window->dropDownIcon->SetIsVisible(true);
+    }
     window->buttonDelete->SetIsVisible(true);
     window->updatingControls = false;
 
@@ -436,7 +566,113 @@ static void ColorSelectionChanged(EbookAnnotationsWindow* window) {
     if (window->updatingControls || !window->selected) {
         return;
     }
+    if (EbookAnnotationGetType(window->selected) == AnnotationType::FreeText) {
+        int idx = window->dropDownColor->GetCurrentSelection();
+        const char* item = idx >= 0 ? window->dropDownColor->items.At(idx) : "Transparent";
+        bool transparent = str::EqI(item, "Transparent");
+        if (EbookAnnotationSetFreeTextBackground(window->tab, window->selected, transparent,
+                                                 transparent ? 0 : GetSelectedColor(window))) {
+            MainWindowRerender(window->tab->win);
+        }
+        return;
+    }
     if (EbookAnnotationSetColor(window->tab, window->selected, GetSelectedColor(window))) {
+        MainWindowRerender(window->tab->win);
+    }
+}
+
+static void HighlightOpacityChanging(EbookAnnotationsWindow* window, Trackbar::PositionChangingEvent* event) {
+    if (window->updatingControls || !window->selected) return;
+    if (EbookAnnotationSetOpacity(window->tab, window->selected, event->pos)) {
+        window->staticOpacity->SetText(str::FormatTemp(_TRA("Opacity: %d"), event->pos));
+        MainWindowRerender(window->tab->win);
+    }
+}
+
+static void FreeTextAlignmentChanged(EbookAnnotationsWindow* window) {
+    if (window->updatingControls || !window->selected) return;
+    int idx = window->dropDownTextAlignment->GetCurrentSelection();
+    if (EbookAnnotationSetFreeTextAlignment(window->tab, window->selected, idx)) MainWindowRerender(window->tab->win);
+}
+
+static void FreeTextFontChanged(EbookAnnotationsWindow* window) {
+    if (window->updatingControls || !window->selected) return;
+    constexpr const char* fontNames = "Cour\0Helv\0TiRo\0";
+    int idx = window->dropDownTextFont->GetCurrentSelection();
+    if (idx >= 0 &&
+        EbookAnnotationSetFreeTextFont(window->tab, window->selected, seqstrings::IdxToStr(fontNames, idx))) {
+        MainWindowRerender(window->tab->win);
+    }
+}
+
+static void FreeTextSizeChanging(EbookAnnotationsWindow* window, Trackbar::PositionChangingEvent* event) {
+    if (window->updatingControls || !window->selected) return;
+    if (EbookAnnotationSetFreeTextSize(window->tab, window->selected, event->pos)) {
+        window->staticTextSize->SetText(str::FormatTemp(_TRA("Text Size: %d"), event->pos));
+        MainWindowRerender(window->tab->win);
+    }
+}
+
+static void FreeTextColorChanged(EbookAnnotationsWindow* window) {
+    if (window->updatingControls || !window->selected) return;
+    int idx = window->dropDownTextColor->GetCurrentSelection();
+    if (idx >= 0 && EbookAnnotationSetColor(window->tab, window->selected,
+                                            GetAnnotationColorFromDropDown(window->dropDownTextColor->items.At(idx)))) {
+        MainWindowRerender(window->tab->win);
+    }
+}
+
+static void PointBorderChanging(EbookAnnotationsWindow* window, Trackbar::PositionChangingEvent* event);
+
+static void FreeTextBorderChanging(EbookAnnotationsWindow* window, Trackbar::PositionChangingEvent* event) {
+    if (window->updatingControls || !window->selected) return;
+    AnnotationType type = EbookAnnotationGetType(window->selected);
+    if (type == AnnotationType::Line || type == AnnotationType::Square || type == AnnotationType::Circle) {
+        PointBorderChanging(window, event);
+        return;
+    }
+    if (EbookAnnotationSetFreeTextBorderWidth(window->tab, window->selected, event->pos)) {
+        window->staticBorder->SetText(str::FormatTemp(_TRA("Border: %d"), event->pos));
+        MainWindowRerender(window->tab->win);
+    }
+}
+
+static void LineEndsChanged(EbookAnnotationsWindow* window) {
+    if (window->updatingControls || !window->selected) return;
+    int start = window->dropDownLineStart->GetCurrentSelection();
+    int end = window->dropDownLineEnd->GetCurrentSelection();
+    if (EbookAnnotationSetLineEnds(window->tab, window->selected, start, end)) MainWindowRerender(window->tab->win);
+}
+
+static void LineInteriorColorChanged(EbookAnnotationsWindow* window) {
+    if (window->updatingControls || !window->selected) return;
+    int idx = window->dropDownInteriorColor->GetCurrentSelection();
+    const char* item = idx >= 0 ? window->dropDownInteriorColor->items.At(idx) : "Transparent";
+    bool transparent = str::EqI(item, "Transparent");
+    COLORREF color = transparent ? 0 : GetAnnotationColorFromDropDown(item);
+    if (EbookAnnotationSetInteriorColor(window->tab, window->selected, transparent, color)) {
+        MainWindowRerender(window->tab->win);
+    }
+}
+
+static void PointBorderChanging(EbookAnnotationsWindow* window, Trackbar::PositionChangingEvent* event) {
+    if (window->updatingControls || !window->selected) return;
+    if (EbookAnnotationSetBorderWidth(window->tab, window->selected, event->pos)) {
+        window->staticBorder->SetText(str::FormatTemp(_TRA("Border: %d"), event->pos));
+        MainWindowRerender(window->tab->win);
+    }
+}
+
+static void IconSelectionChanged(EbookAnnotationsWindow* window) {
+    if (window->updatingControls || !window->selected) {
+        return;
+    }
+    int idx = window->dropDownIcon->GetCurrentSelection();
+    if (idx < 0) {
+        return;
+    }
+    const char* icon = window->dropDownIcon->items.At(idx);
+    if (EbookAnnotationSetIcon(window->tab, window->selected, icon)) {
         MainWindowRerender(window->tab->win);
     }
 }
@@ -586,6 +822,65 @@ static void CreateMainLayout(EbookAnnotationsWindow* window) {
     window->editContents = edit;
     vbox->AddChild(edit);
 
+    auto addFreeTextLabel = [&](Static*& target, const char* text) {
+        target = CreateStatic(parent, font, text);
+        target->SetInsetsPt(8, 0, 0, 0);
+        vbox->AddChild(target);
+    };
+    auto addFreeTextDropDown = [&](DropDown*& target, const char* items, auto event) {
+        DropDown::CreateArgs args{parent, font, IsUIRtl()};
+        target = new DropDown();
+        target->SetInsetsPt(4, 0, 0, 0);
+        ReportIf(!target->Create(args));
+        target->SetItemsSeqStrings(items);
+        target->onSelectionChanged = event;
+        vbox->AddChild(target);
+    };
+    constexpr const char* quadding = "Left\0Center\0Right\0";
+    constexpr const char* fontReadableNames = "Courier\0Helvetica\0TimesRoman\0";
+    addFreeTextLabel(window->staticTextAlignment, _TRA("Text Alignment:"));
+    addFreeTextDropDown(window->dropDownTextAlignment, quadding, MkFunc0(FreeTextAlignmentChanged, window));
+    addFreeTextLabel(window->staticTextFont, _TRA("Text Font:"));
+    addFreeTextDropDown(window->dropDownTextFont, fontReadableNames, MkFunc0(FreeTextFontChanged, window));
+    addFreeTextLabel(window->staticTextSize, _TRA("Text Size:"));
+    {
+        Trackbar::CreateArgs args;
+        args.parent = parent;
+        args.rangeMin = 5;
+        args.rangeMax = 128;
+        args.font = font;
+        args.isRtl = IsUIRtl();
+        auto trackbar = new Trackbar();
+        trackbar->SetInsetsPt(4, 0, 0, 0);
+        ReportIf(!trackbar->Create(args));
+        trackbar->onPositionChanging = MkFunc1(FreeTextSizeChanging, window);
+        window->trackbarTextSize = trackbar;
+        vbox->AddChild(trackbar);
+    }
+    addFreeTextLabel(window->staticTextColor, _TRA("Text Color:"));
+    addFreeTextDropDown(window->dropDownTextColor, GetPdfAnnotationColorNames(), MkFunc0(FreeTextColorChanged, window));
+    constexpr const char* lineEndings =
+        "None\0Square\0Circle\0Diamond\0OpenArrow\0ClosedArrow\0Butt\0ROpenArrow\0RClosedArrow\0Slash\0";
+    addFreeTextLabel(window->staticLineStart, _TRA("Line Start:"));
+    addFreeTextDropDown(window->dropDownLineStart, lineEndings, MkFunc0(LineEndsChanged, window));
+    addFreeTextLabel(window->staticLineEnd, _TRA("Line End:"));
+    addFreeTextDropDown(window->dropDownLineEnd, lineEndings, MkFunc0(LineEndsChanged, window));
+
+    addFreeTextLabel(window->staticBorder, _TRA("Border:"));
+    {
+        Trackbar::CreateArgs args;
+        args.parent = parent;
+        args.rangeMin = 0;
+        args.rangeMax = 12;
+        args.font = font;
+        args.isRtl = IsUIRtl();
+        auto trackbar = new Trackbar();
+        trackbar->SetInsetsPt(4, 0, 0, 0);
+        ReportIf(!trackbar->Create(args));
+        trackbar->onPositionChanging = MkFunc1(FreeTextBorderChanging, window);
+        window->trackbarBorder = trackbar;
+        vbox->AddChild(trackbar);
+    }
     window->staticColor = CreateStatic(parent, font, _TRA("Color:"));
     window->staticColor->SetInsetsPt(8, 0, 0, 0);
     vbox->AddChild(window->staticColor);
@@ -602,8 +897,52 @@ static void CreateMainLayout(EbookAnnotationsWindow* window) {
     window->dropDownColor = color;
     vbox->AddChild(color);
 
-    auto spacer = new Spacer(0, 0);
-    vbox->AddChild(spacer, 1);
+    window->staticOpacity = CreateStatic(parent, font, _TRA("Opacity:"));
+    window->staticOpacity->SetInsetsPt(8, 0, 0, 0);
+    vbox->AddChild(window->staticOpacity);
+    {
+        Trackbar::CreateArgs args;
+        args.parent = parent;
+        args.rangeMin = 0;
+        args.rangeMax = 100;
+        args.font = font;
+        args.isRtl = IsUIRtl();
+        auto trackbar = new Trackbar();
+        trackbar->SetInsetsPt(4, 0, 0, 0);
+        ReportIf(!trackbar->Create(args));
+        trackbar->onPositionChanging = MkFunc1(HighlightOpacityChanging, window);
+        window->trackbarOpacity = trackbar;
+        vbox->AddChild(trackbar);
+    }
+
+    window->staticInteriorColor = CreateStatic(parent, font, _TRA("Interior Color:"));
+    window->staticInteriorColor->SetInsetsPt(8, 0, 0, 0);
+    vbox->AddChild(window->staticInteriorColor);
+    auto interiorColor = new DropDown();
+    DropDown::CreateArgs interiorColorArgs;
+    interiorColorArgs.parent = parent;
+    interiorColorArgs.font = font;
+    interiorColor->Create(interiorColorArgs);
+    interiorColor->SetItemsSeqStrings(GetPdfAnnotationColorNames());
+    interiorColor->onSelectionChanged = MkFunc0(LineInteriorColorChanged, window);
+    window->dropDownInteriorColor = interiorColor;
+    vbox->AddChild(interiorColor);
+
+    window->staticIcon = CreateStatic(parent, font, _TRA("Icon:"));
+    window->staticIcon->SetInsetsPt(8, 0, 0, 0);
+    vbox->AddChild(window->staticIcon);
+
+    DropDown::CreateArgs iconArgs;
+    iconArgs.parent = parent;
+    iconArgs.font = font;
+    iconArgs.isRtl = IsUIRtl();
+    auto icon = new DropDown();
+    icon->SetInsetsPt(4, 0, 0, 0);
+    icon->Create(iconArgs);
+    icon->SetItemsSeqStrings(gAnnotationTextIcons);
+    icon->onSelectionChanged = MkFunc0(IconSelectionChanged, window);
+    window->dropDownIcon = icon;
+    vbox->AddChild(icon);
 
     Button::CreateArgs buttonArgs;
     buttonArgs.parent = parent;
@@ -629,6 +968,11 @@ static void CreateMainLayout(EbookAnnotationsWindow* window) {
     exportButton->SetIsEnabled(false);
     window->buttonExport = exportButton;
     vbox->AddChild(exportButton);
+
+    // Keep per-annotation actions immediately below the annotation controls,
+    // just like the PDF annotations editor.
+    auto spacer = new Spacer(0, 0);
+    vbox->AddChild(spacer, 1);
 
     window->mainLayout = new Padding(vbox, DpiScaledInsets(parent, 4, 8));
     HideAnnotationControls(window);

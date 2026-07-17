@@ -64,7 +64,7 @@ void PaintTransparentRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORR
                                 u8 alpha = kSelectionDefaultAlpha, int pad = 2);
 
 // Text selection / highlight: multiply blend with page pixels (MuPDF/Acrobat-style).
-void PaintMultiplyRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color);
+void PaintMultiplyRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color, int opacity = 100);
 void PaintSelection(MainWindow* win, HDC hdc);
 void UpdateTextSelection(MainWindow* win, bool select = true);
 // Rebuild text selection after relayout (e.g. theme/document color change) by

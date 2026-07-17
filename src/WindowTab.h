@@ -6,6 +6,7 @@ struct WatchedFile;
 struct EditAnnotationsWindow;
 struct EbookAnnotationsWindow;
 struct EbookAnnotations;
+struct EbookAnnotation;
 struct MainWindow;
 struct StrBuilder;
 struct ReadAloudHighlightMap;
@@ -61,6 +62,7 @@ struct WindowTab {
     TabState* tabState = nullptr; // when lazy loading
 
     Annotation* selectedAnnotation = nullptr;
+    EbookAnnotation* selectedEbookAnnotation = nullptr;
     bool didScrollToSelectedAnnotation = false; // only automatically scroll once
 
     bool hideAnnotations = false;

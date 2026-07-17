@@ -1427,6 +1427,11 @@ static void UpdateUIForSelectedAnnotation(EditAnnotationsWindow* ew, Annotation*
         LayoutToSize(ew->mainLayout, {client.dx, client.dy});
     }
 
+    // Hiding a child window doesn't erase the area it previously occupied.
+    // Annotation types expose different sets of controls, so switching between
+    // them can otherwise leave the old controls painted behind the new layout.
+    RedrawWindow(ew->hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+
     if (!annot) {
         return;
     }
@@ -2000,12 +2005,6 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     }
 
     {
-        // used to take all available space between the what's above and below
-        auto w = new Spacer(0, 0);
-        vbox->AddChild(w, 1);
-    }
-
-    {
         Button::CreateArgs args;
         args.parent = parent;
         args.text = _TRA("Delete Annotation");
@@ -2041,6 +2040,13 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
         w->onClick = MkFunc0(ExportClicked, ew);
         ew->buttonExport = w;
         vbox->AddChild(w);
+    }
+
+    {
+        // Keep annotation actions with the selected annotation and reserve the
+        // bottom of the window for document-level save actions.
+        auto w = new Spacer(0, 0);
+        vbox->AddChild(w, 1);
     }
 
     {

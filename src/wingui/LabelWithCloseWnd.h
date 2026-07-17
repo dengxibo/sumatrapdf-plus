@@ -1,6 +1,8 @@
 /* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
+struct Tooltip;
+
 struct LabelWithCloseWnd : Wnd {
     struct CreateArgs {
         HWND parent = nullptr;
@@ -10,7 +12,7 @@ struct LabelWithCloseWnd : Wnd {
     };
 
     LabelWithCloseWnd() = default;
-    ~LabelWithCloseWnd() override = default;
+    ~LabelWithCloseWnd() override;
 
     HWND Create(const CreateArgs&);
 
@@ -20,6 +22,8 @@ struct LabelWithCloseWnd : Wnd {
     void SetLabel(const char*);
     void SetFont(HFONT);
     void SetPaddingXY(int x, int y);
+    void SetHeaderActions(const Func0& firstAction, const char* firstTooltip, const Func0& secondAction,
+                          const char* secondTooltip);
     void Layout();
 
     Size GetIdealSize();
@@ -27,8 +31,19 @@ struct LabelWithCloseWnd : Wnd {
     int cmdId = 0;
 
     Rect closeBtnPos{};
+    Rect firstActionPos{};
+    Rect secondActionPos{};
 
     // in points
     int padX = 0;
     int padY = 0;
+
+    Func0 firstAction;
+    Func0 secondAction;
+    Tooltip* actionsTooltip = nullptr;
+    int firstActionTooltipId = -1;
+    int secondActionTooltipId = -1;
+    const char* firstActionTooltip = nullptr;
+    const char* secondActionTooltip = nullptr;
+    int pressedAction = 0;
 };
