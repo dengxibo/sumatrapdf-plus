@@ -37,6 +37,9 @@ static_assert((int)AnnotationType::Unknown == (int)PDF_ANNOT_UNKNOWN);
 
 // clang-format off
 const char* gAnnotationTextIcons = "Comment\0Help\0Insert\0Key\0NewParagraph\0Note\0Paragraph\0";
+const char* gStampIcons =
+    "Approved\0AsIs\0Confidential\0Departmental\0Draft\0Experimental\0Expired\0Final\0ForComment\0"
+    "ForPublicRelease\0NotApproved\0NotForPublicRelease\0Sold\0TopSecret\0";
 // clang-format on
 
 // clang format-off

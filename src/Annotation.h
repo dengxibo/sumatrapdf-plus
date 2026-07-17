@@ -48,6 +48,7 @@ class EngineMupdf;
 extern "C" struct pdf_annot;
 
 extern const char* gAnnotationTextIcons;
+extern const char* gStampIcons;
 
 // an user annotation on page
 // It abstracts over pdf_annot so that we don't have to

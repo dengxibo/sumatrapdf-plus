@@ -39,7 +39,7 @@ struct EbookAnnotation {
     int chapter = -1;
     int sourceStart = -1;
     int sourceEnd = -1;
-    COLORREF color = 0;
+    COLORREF color = kColorUnset;
     int opacity = 100;
     float offsetX = 0;
     float offsetY = 0;
@@ -213,10 +213,6 @@ static const char* GetDefaultEbookTextIconTemp() {
     }
     return seqstrings::IdxToStr(gAnnotationTextIcons, idx);
 }
-
-static const char* gEbookStampIcons =
-    "Approved\0AsIs\0Confidential\0Departmental\0Draft\0Experimental\0Expired\0Final\0ForComment\0"
-    "ForPublicRelease\0NotApproved\0NotForPublicRelease\0Sold\0TopSecret\0";
 
 static void AppendUtcDateTime(StrBuilder& s, time_t secs) {
     if (secs <= 0) {
@@ -1146,10 +1142,15 @@ const char* EbookAnnotationGetNote(EbookAnnotation* annotation) {
 }
 
 const char* EbookAnnotationGetIcon(EbookAnnotation* annotation) {
-    if (!annotation || annotation->type != AnnotationType::Text) {
+    if (!annotation) {
         return nullptr;
     }
-    if (annotation->icon) return annotation->icon;
+    if (annotation->type != AnnotationType::Text && annotation->type != AnnotationType::Stamp) {
+        return nullptr;
+    }
+    if (annotation->icon) {
+        return annotation->icon;
+    }
     return annotation->type == AnnotationType::Stamp ? "Draft" : "Note";
 }
 
@@ -1165,16 +1166,34 @@ time_t EbookAnnotationGetModified(EbookAnnotation* annotation) {
     return annotation ? annotation->modified : 0;
 }
 
+static COLORREF GetDefaultEbookPointAnnotationColor(AnnotationType type) {
+    if (type == AnnotationType::FreeText) {
+        return RGB(0, 0, 0);
+    }
+    if (type == AnnotationType::Caret) {
+        return RGB(0, 0, 255);
+    }
+    if (type == AnnotationType::Stamp || type == AnnotationType::Line || type == AnnotationType::Square ||
+        type == AnnotationType::Circle) {
+        return RGB(255, 0, 0);
+    }
+    if (type == AnnotationType::Text) {
+        return GetDefaultAnnotationColor(AnnotationType::Text);
+    }
+    return RGB(0, 0, 0);
+}
+
 COLORREF EbookAnnotationGetColor(EbookAnnotation* annotation) {
     if (!annotation) {
         return GetDefaultAnnotationColor(AnnotationType::Highlight);
     }
-    // Black is the PDF default appearance color for Free Text and is encoded
-    // as COLORREF(0), not as an absent value.
-    if (annotation->type == AnnotationType::FreeText) {
+    if (IsEbookPointAnnotationType(annotation->type)) {
+        if (IsSpecialColor(annotation->color)) {
+            return GetDefaultEbookPointAnnotationColor(annotation->type);
+        }
         return annotation->color;
     }
-    if (annotation->color == 0) {
+    if (IsSpecialColor(annotation->color)) {
         return GetDefaultAnnotationColor(annotation->type);
     }
     return annotation->color;
@@ -1210,7 +1229,7 @@ bool EbookAnnotationSetIcon(WindowTab* tab, EbookAnnotation* annotation, const c
         annotations->items.Find(annotation) < 0) {
         return false;
     }
-    const char* icons = annotation->type == AnnotationType::Stamp ? gEbookStampIcons : gAnnotationTextIcons;
+    const char* icons = annotation->type == AnnotationType::Stamp ? gStampIcons : gAnnotationTextIcons;
     int idx = seqstrings::StrToIdxIS(icons, icon);
     if (idx < 0) {
         return false;
@@ -1226,6 +1245,9 @@ bool EbookAnnotationSetIcon(WindowTab* tab, EbookAnnotation* annotation, const c
         str::Free(annotation->icon);
         annotation->icon = previous.StealData();
         return false;
+    }
+    if (tab->win && (annotation->type == AnnotationType::Stamp || annotation->type == AnnotationType::Text)) {
+        MainWindowRerender(tab->win);
     }
     return true;
 }
@@ -1557,6 +1579,21 @@ static COLORREF MapEbookAnnotationColor(COLORREF color) {
     return RGB(mapChannel(r, rt, rb), mapChannel(g, gt, gb), mapChannel(b, bt, bb));
 }
 
+static int GetEbookStampIconIndex(EbookAnnotation* annotation) {
+    if (!annotation || annotation->type != AnnotationType::Stamp) {
+        return -1;
+    }
+    const char* name = annotation->icon;
+    if (str::IsEmpty(name)) {
+        name = "Draft";
+    }
+    int idx = seqstrings::StrToIdxIS(gStampIcons, name);
+    if (idx < 0) {
+        idx = seqstrings::StrToIdxIS(gStampIcons, "Draft");
+    }
+    return idx;
+}
+
 static void PaintEbookTextMarker(WindowTab* tab, HDC hdc, Rect anchor, COLORREF color, const char* icon) {
     int size = std::max(8, std::min(anchor.dx, anchor.dy));
     Rect marker(anchor.x, anchor.y, size, size);
@@ -1669,7 +1706,7 @@ static void PaintEbookTextMarker(WindowTab* tab, HDC hdc, Rect anchor, COLORREF 
 
 static void PaintEbookPointAnnotation(WindowTab* tab, HDC hdc, Rect marker, EbookAnnotation* annotation) {
     AnnotationType type = annotation->type;
-    COLORREF color = annotation->color;
+    COLORREF color = EbookAnnotationGetColor(annotation);
     if (type == AnnotationType::Text) {
         PaintEbookTextMarker(tab, hdc, marker, MapEbookAnnotationColor(color), EbookAnnotationGetIcon(annotation));
         return;
@@ -1758,37 +1795,56 @@ static void PaintEbookPointAnnotation(WindowTab* tab, HDC hdc, Rect marker, Eboo
             Gdiplus::RectF line((float)marker.x, top, (float)marker.dx, h);
             graphics.DrawString(text, -1, &font, line, &format, &textBrush);
         };
-        const char* name = EbookAnnotationGetIcon(annotation);
-        if (str::Eq(name, "Approved"))
-            drawStampLine(L"APPROVED", 13, 30);
-        else if (str::Eq(name, "AsIs"))
-            drawStampLine(L"AS IS", 13, 30);
-        else if (str::Eq(name, "Confidential"))
-            drawStampLine(L"CONFIDENTIAL", 17, 20);
-        else if (str::Eq(name, "Departmental"))
-            drawStampLine(L"DEPARTMENTAL", 17, 20);
-        else if (str::Eq(name, "Experimental"))
-            drawStampLine(L"EXPERIMENTAL", 17, 20);
-        else if (str::Eq(name, "Expired"))
-            drawStampLine(L"EXPIRED", 13, 30);
-        else if (str::Eq(name, "Final"))
-            drawStampLine(L"FINAL", 13, 30);
-        else if (str::Eq(name, "ForComment"))
-            drawStampLine(L"FOR COMMENT", 17, 20);
-        else if (str::Eq(name, "ForPublicRelease")) {
-            drawStampLine(L"FOR PUBLIC", 26, 18);
-            drawStampLine(L"RELEASE", 8.5f, 18);
-        } else if (str::Eq(name, "NotApproved"))
-            drawStampLine(L"NOT APPROVED", 17, 20);
-        else if (str::Eq(name, "NotForPublicRelease")) {
-            drawStampLine(L"NOT FOR", 26, 18);
-            drawStampLine(L"PUBLIC RELEASE", 8.5f, 18);
-        } else if (str::Eq(name, "Sold"))
-            drawStampLine(L"SOLD", 13, 30);
-        else if (str::Eq(name, "TopSecret"))
-            drawStampLine(L"TOP SECRET", 14, 26);
-        else
-            drawStampLine(L"DRAFT", 13, 30);
+        int stampIdx = GetEbookStampIconIndex(annotation);
+        switch (stampIdx) {
+            case 0:
+                drawStampLine(L"APPROVED", 13, 30);
+                break;
+            case 1:
+                drawStampLine(L"AS IS", 13, 30);
+                break;
+            case 2:
+                drawStampLine(L"CONFIDENTIAL", 17, 20);
+                break;
+            case 3:
+                drawStampLine(L"DEPARTMENTAL", 17, 20);
+                break;
+            case 4:
+                drawStampLine(L"DRAFT", 13, 30);
+                break;
+            case 5:
+                drawStampLine(L"EXPERIMENTAL", 17, 20);
+                break;
+            case 6:
+                drawStampLine(L"EXPIRED", 13, 30);
+                break;
+            case 7:
+                drawStampLine(L"FINAL", 13, 30);
+                break;
+            case 8:
+                drawStampLine(L"FOR COMMENT", 17, 20);
+                break;
+            case 9:
+                drawStampLine(L"FOR PUBLIC", 26, 18);
+                drawStampLine(L"RELEASE", 8.5f, 18);
+                break;
+            case 10:
+                drawStampLine(L"NOT APPROVED", 17, 20);
+                break;
+            case 11:
+                drawStampLine(L"NOT FOR", 26, 18);
+                drawStampLine(L"PUBLIC RELEASE", 8.5f, 18);
+                break;
+            case 12:
+                drawStampLine(L"SOLD", 13, 30);
+                break;
+            case 13:
+                drawStampLine(L"TOP SECRET", 14, 26);
+                break;
+            default:
+                drawStampLine(L"DRAFT", 13, 30);
+                break;
+        }
         graphics.Restore(state);
         return;
     }
@@ -1950,7 +2006,7 @@ static void PaintEbookMarkup(WindowTab* tab, HDC hdc, Vec<Rect>& screenRects, Eb
         PaintEbookPointAnnotation(tab, hdc, screenRects.at(0), annotation);
         return;
     }
-    PaintTextMarkupOverlay(hdc, tab->win->canvasRc, annotation->type, annotation->color, screenRects,
+    PaintTextMarkupOverlay(hdc, tab->win->canvasRc, annotation->type, EbookAnnotationGetColor(annotation), screenRects,
                            EbookAnnotationGetOpacity(annotation));
 }
 

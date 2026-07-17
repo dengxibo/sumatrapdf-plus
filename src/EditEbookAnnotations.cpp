@@ -93,6 +93,22 @@ static void LayoutEbookAnnotationsToClient(EbookAnnotationsWindow* window) {
     }
 }
 
+// Hiding a child window doesn't erase the area it previously occupied.
+// Annotation types expose different sets of controls, so switching between
+// them can otherwise leave the old controls painted behind the new layout.
+static void RedrawAnnotationDetailPanel(EbookAnnotationsWindow* window) {
+    if (!window || !window->hwnd) {
+        return;
+    }
+    RedrawWindow(window->hwnd, nullptr, nullptr,
+                 RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW | RDW_FRAME);
+}
+
+static void RefreshAnnotationDetailPanel(EbookAnnotationsWindow* window) {
+    LayoutEbookAnnotationsToClient(window);
+    RedrawAnnotationDetailPanel(window);
+}
+
 static void GetEditAnnotationsThemeColors(COLORREF& textOut, COLORREF& bgOut) {
     textOut = ThemeWindowTextColor();
     bgOut = ThemeWindowControlBackgroundColor();
@@ -311,6 +327,32 @@ static void FlushContentsFromEdit(EbookAnnotationsWindow* window) {
     EbookAnnotationSetNote(window->tab, window->selected, note);
 }
 
+static void DoIcon(EbookAnnotationsWindow* window, EbookAnnotation* annotation) {
+    const char* itemName = EbookAnnotationGetIcon(annotation);
+    const char* items = nullptr;
+    switch (EbookAnnotationGetType(annotation)) {
+        case AnnotationType::Text:
+            items = gAnnotationTextIcons;
+            break;
+        case AnnotationType::Stamp:
+            items = gStampIcons;
+            break;
+        default:
+            break;
+    }
+    if (!items || str::IsEmpty(itemName)) {
+        return;
+    }
+    window->dropDownIcon->SetItemsSeqStrings(items);
+    int idx = seqstrings::StrToIdxIS(items, itemName);
+    if (idx < 0 && EbookAnnotationGetType(annotation) == AnnotationType::Stamp) {
+        idx = seqstrings::StrToIdxIS(items, "Draft");
+    }
+    window->dropDownIcon->SetCurrentSelection(idx < 0 ? -1 : idx);
+    window->staticIcon->SetIsVisible(true);
+    window->dropDownIcon->SetIsVisible(true);
+}
+
 static void UpdateSelectedAnnotation(EbookAnnotationsWindow* window, EbookAnnotation* annotation,
                                      EditAnnotFocus focus = EditAnnotFocus::Default) {
     if (window->selected != annotation) {
@@ -319,19 +361,21 @@ static void UpdateSelectedAnnotation(EbookAnnotationsWindow* window, EbookAnnota
     window->selected = annotation;
     if (!annotation) {
         ClearAnnotationDetailControls(window);
-        LayoutEbookAnnotationsToClient(window);
+        RefreshAnnotationDetailPanel(window);
         return;
     }
 
     int idx = window->annotations.Find(annotation);
     if (idx < 0) {
         ClearAnnotationDetailControls(window);
-        LayoutEbookAnnotationsToClient(window);
+        RefreshAnnotationDetailPanel(window);
         return;
     }
 
     WindowTab* tab = window->tab;
     window->updatingControls = true;
+    HideAnnotationControls(window);
+    RefreshAnnotationDetailPanel(window);
 
     TempStr note = str::ReplaceTemp(EbookAnnotationGetNote(annotation), "\r\n", "\n");
     note = str::ReplaceTemp(note, "\n", "\r\n");
@@ -436,8 +480,11 @@ static void UpdateSelectedAnnotation(EbookAnnotationsWindow* window, EbookAnnota
     } else {
         window->staticColor->SetText(_TRA("Color:"));
     }
-    window->staticColor->SetIsVisible(true);
-    window->dropDownColor->SetIsVisible(true);
+    DoIcon(window, annotation);
+    if (AnnotationSupportsColor(EbookAnnotationGetType(annotation))) {
+        window->staticColor->SetIsVisible(true);
+        window->dropDownColor->SetIsVisible(true);
+    }
     if (EbookAnnotationGetType(annotation) == AnnotationType::Highlight) {
         int opacity = EbookAnnotationGetOpacity(annotation);
         window->staticOpacity->SetText(str::FormatTemp(_TRA("Opacity: %d"), opacity));
@@ -445,27 +492,13 @@ static void UpdateSelectedAnnotation(EbookAnnotationsWindow* window, EbookAnnota
         window->staticOpacity->SetIsVisible(true);
         window->trackbarOpacity->SetIsVisible(true);
     }
-    AnnotationType annotationType = EbookAnnotationGetType(annotation);
-    if (annotationType == AnnotationType::Text || annotationType == AnnotationType::Stamp) {
-        constexpr const char* stampIcons =
-            "Approved\0AsIs\0Confidential\0Departmental\0Draft\0Experimental\0Expired\0Final\0ForComment\0"
-            "ForPublicRelease\0NotApproved\0NotForPublicRelease\0Sold\0TopSecret\0";
-        const char* icon = EbookAnnotationGetIcon(annotation);
-        const char* icons = annotationType == AnnotationType::Stamp ? stampIcons : gAnnotationTextIcons;
-        int iconIdx = seqstrings::StrToIdxIS(icons, icon);
-        window->dropDownIcon->SetItemsSeqStrings(icons);
-        window->dropDownIcon->SetCurrentSelection(iconIdx < 0 ? 0 : iconIdx);
-        window->staticIcon->SetIsVisible(true);
-        window->dropDownIcon->SetIsVisible(true);
-    }
     window->buttonDelete->SetIsVisible(true);
-    window->updatingControls = false;
 
     if (window->listBox->GetCurrentSelection() != idx) {
         window->listBox->SetCurrentSelection(idx);
     }
 
-    LayoutEbookAnnotationsToClient(window);
+    RefreshAnnotationDetailPanel(window);
 
     if (focus == EditAnnotFocus::Edit || EbookAnnotationGetType(annotation) == AnnotationType::Text) {
         HwndSetFocus(window->editContents->hwnd);
@@ -478,11 +511,12 @@ static void UpdateSelectedAnnotation(EbookAnnotationsWindow* window, EbookAnnota
     DisplayModel* dm = tab->AsFixed();
     if (dm && dm->ValidPageNo(pageNo) && !dm->PageVisible(pageNo)) {
         dm->GoToPage(pageNo, true);
-        LayoutEbookAnnotationsToClient(window);
+        RefreshAnnotationDetailPanel(window);
     }
     if (tab->win) {
         MainWindowRerender(tab->win);
     }
+    window->updatingControls = false;
 }
 
 static void RebuildList(EbookAnnotationsWindow* window) {
@@ -516,7 +550,7 @@ static void RebuildList(EbookAnnotationsWindow* window) {
         window->listBox->SetCurrentSelection(idx);
     }
     UpdateExportButton(window);
-    LayoutEbookAnnotationsToClient(window);
+    RefreshAnnotationDetailPanel(window);
 }
 
 void UpdateEbookAnnotationsList(EbookAnnotationsWindow* window, EbookAnnotation* preferredSelection) {
@@ -540,14 +574,17 @@ void UpdateEbookAnnotationsList(EbookAnnotationsWindow* window, EbookAnnotation*
         return;
     }
     ClearAnnotationDetailControls(window);
-    LayoutEbookAnnotationsToClient(window);
+    RefreshAnnotationDetailPanel(window);
 }
 
 static void ListSelectionChanged(EbookAnnotationsWindow* window) {
+    if (window->updatingControls) {
+        return;
+    }
     int idx = window->listBox->GetCurrentSelection();
     if (!window->annotations.isValidIndex(idx)) {
         ClearAnnotationDetailControls(window);
-        LayoutEbookAnnotationsToClient(window);
+        RefreshAnnotationDetailPanel(window);
         return;
     }
     UpdateSelectedAnnotation(window, window->annotations.at(idx));
@@ -667,14 +704,21 @@ static void IconSelectionChanged(EbookAnnotationsWindow* window) {
     if (window->updatingControls || !window->selected) {
         return;
     }
+    EbookAnnotation* annotation = window->selected;
+    AnnotationType type = EbookAnnotationGetType(annotation);
+    if (type != AnnotationType::Text && type != AnnotationType::Stamp) {
+        return;
+    }
     int idx = window->dropDownIcon->GetCurrentSelection();
     if (idx < 0) {
         return;
     }
-    const char* icon = window->dropDownIcon->items.At(idx);
-    if (EbookAnnotationSetIcon(window->tab, window->selected, icon)) {
-        MainWindowRerender(window->tab->win);
+    const char* icons = type == AnnotationType::Stamp ? gStampIcons : gAnnotationTextIcons;
+    const char* icon = seqstrings::IdxToStr(icons, idx);
+    if (!icon) {
+        return;
     }
+    EbookAnnotationSetIcon(window->tab, annotation, icon);
 }
 
 static void DeleteSelected(EbookAnnotationsWindow* window) {
@@ -700,9 +744,9 @@ static void DeleteSelected(EbookAnnotationsWindow* window) {
         }
         UpdateSelectedAnnotation(window, window->annotations.at(idx));
     } else {
-        ClearAnnotationDetailControls(window);
-        LayoutEbookAnnotationsToClient(window);
-    }
+    ClearAnnotationDetailControls(window);
+    RefreshAnnotationDetailPanel(window);
+}
 
     if (window->tab->win) {
         MainWindowRerender(window->tab->win);
@@ -866,6 +910,22 @@ static void CreateMainLayout(EbookAnnotationsWindow* window) {
     addFreeTextLabel(window->staticLineEnd, _TRA("Line End:"));
     addFreeTextDropDown(window->dropDownLineEnd, lineEndings, MkFunc0(LineEndsChanged, window));
 
+    window->staticIcon = CreateStatic(parent, font, _TRA("Icon:"));
+    window->staticIcon->SetInsetsPt(8, 0, 0, 0);
+    vbox->AddChild(window->staticIcon);
+
+    DropDown::CreateArgs iconArgs;
+    iconArgs.parent = parent;
+    iconArgs.font = font;
+    iconArgs.isRtl = IsUIRtl();
+    auto icon = new DropDown();
+    icon->SetInsetsPt(4, 0, 0, 0);
+    icon->Create(iconArgs);
+    icon->SetItemsSeqStrings(gAnnotationTextIcons);
+    icon->onSelectionChanged = MkFunc0(IconSelectionChanged, window);
+    window->dropDownIcon = icon;
+    vbox->AddChild(icon);
+
     addFreeTextLabel(window->staticBorder, _TRA("Border:"));
     {
         Trackbar::CreateArgs args;
@@ -927,22 +987,6 @@ static void CreateMainLayout(EbookAnnotationsWindow* window) {
     interiorColor->onSelectionChanged = MkFunc0(LineInteriorColorChanged, window);
     window->dropDownInteriorColor = interiorColor;
     vbox->AddChild(interiorColor);
-
-    window->staticIcon = CreateStatic(parent, font, _TRA("Icon:"));
-    window->staticIcon->SetInsetsPt(8, 0, 0, 0);
-    vbox->AddChild(window->staticIcon);
-
-    DropDown::CreateArgs iconArgs;
-    iconArgs.parent = parent;
-    iconArgs.font = font;
-    iconArgs.isRtl = IsUIRtl();
-    auto icon = new DropDown();
-    icon->SetInsetsPt(4, 0, 0, 0);
-    icon->Create(iconArgs);
-    icon->SetItemsSeqStrings(gAnnotationTextIcons);
-    icon->onSelectionChanged = MkFunc0(IconSelectionChanged, window);
-    window->dropDownIcon = icon;
-    vbox->AddChild(icon);
 
     Button::CreateArgs buttonArgs;
     buttonArgs.parent = parent;
