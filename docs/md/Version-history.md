@@ -11,6 +11,8 @@
 - improve annotation editing layout and interaction consistency, including point-annotation dragging and text-note icons
 - set the default text selection color to Acrobat-style blue while retaining yellow as the default highlight annotation color
 - refine themed menu drawing for dynamically created Read Aloud submenus and remove the unwanted native submenu gutter
+- add Expand All and Collapse All controls to the Bookmarks sidebar for quickly expanding or collapsing the table of contents;
+  书签侧栏新增「全部展开」和「全部折叠」按钮，可快速展开或折叠目录
 
 ## 3.7.13 (2026-07-17)
 
