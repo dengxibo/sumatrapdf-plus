@@ -1515,6 +1515,66 @@ static void BlitPixmap(u8* dstSamples, ptrdiff_t dstStride, fz_pixmap* src, int 
     }
 }
 
+void DrawSvgIcon(HDC hdc, const Rect& dest, TbIcon icon, COLORREF fgCol, COLORREF bgCol) {
+    if (dest.dx <= 0 || dest.dy <= 0) {
+        return;
+    }
+    int dx = dest.dx;
+    int dy = dest.dy;
+    fz_context* ctx = fz_new_context_windows();
+    defer {
+        fz_drop_context_windows(ctx);
+    };
+
+    const char* svgData = GetSvgIcon(icon);
+    TempStr strokeCol = SerializeColorTemp(fgCol);
+    TempStr fillCol = SerializeColorTemp(bgCol);
+    TempStr fillColRepl = str::JoinTemp("fill=\"", fillCol, "\"");
+    svgData = str::ReplaceTemp(svgData, "currentColor", strokeCol);
+    svgData = str::ReplaceTemp(svgData, R"(fill="none")", fillColRepl);
+    fz_buffer* buf = fz_new_buffer_from_copied_data(ctx, (u8*)svgData, str::Len(svgData));
+    defer {
+        fz_drop_buffer(ctx, buf);
+    };
+    fz_image* image = fz_new_image_from_svg(ctx, buf, nullptr, nullptr);
+    defer {
+        fz_drop_image(ctx, image);
+    };
+    image->w = dx;
+    image->h = dy;
+    fz_pixmap* pixmap = fz_get_pixmap_from_image(ctx, image, nullptr, nullptr, nullptr, nullptr);
+    defer {
+        fz_drop_pixmap(ctx, pixmap);
+    };
+
+    BITMAPINFO bmi{};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = dx;
+    bmi.bmiHeader.biHeight = -dy;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+    void* bits = nullptr;
+    HDC memDC = CreateCompatibleDC(hdc);
+    defer {
+        DeleteDC(memDC);
+    };
+    HBITMAP hbmp = CreateDIBSection(memDC, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    defer {
+        DeleteObject(hbmp);
+    };
+    SelectObject(memDC, hbmp);
+
+    ptrdiff_t dstStride = (ptrdiff_t)dx * 4;
+    BlitPixmap((u8*)bits, dstStride, pixmap, 0, 0, bgCol);
+
+    BLENDFUNCTION bf{};
+    bf.BlendOp = AC_SRC_OVER;
+    bf.SourceConstantAlpha = 255;
+    bf.AlphaFormat = AC_SRC_ALPHA;
+    AlphaBlend(hdc, dest.x, dest.y, dx, dy, memDC, 0, 0, dx, dy, bf);
+}
+
 static HBITMAP BuildIconsBitmap(int dx, int dy) {
     fz_context* ctx = fz_new_context_windows();
     int nIcons = (int)TbIcon::kMax;

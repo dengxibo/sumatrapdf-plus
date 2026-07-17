@@ -12,8 +12,9 @@
 #include "wingui/WinGui.h"
 
 #include "AppTools.h"
-
+#include "SvgIcons.h"
 #include "Theme.h"
+#include "Toolbar.h"
 
 #include "wingui/LabelWithCloseWnd.h"
 
@@ -32,30 +33,21 @@ static void DrawHeaderAction(HDC hdc, const Rect& r, bool isExpand, bool isHover
         return;
     }
     HWND hwnd = WindowFromDC(hdc);
+    COLORREF iconBgCol = bgCol;
     if (isHover || isPressed) {
-        COLORREF fillCol = isPressed ? (ThemeUsesDarkChrome() ? AccentColor(bgCol, 0, 14) : AccentColor(bgCol, 10))
-                                     : (ThemeUsesDarkChrome() ? AccentColor(bgCol, 0, 8) : AccentColor(bgCol, 6));
+        iconBgCol = isPressed ? (ThemeUsesDarkChrome() ? AccentColor(bgCol, 0, 14) : AccentColor(bgCol, 10))
+                              : (ThemeUsesDarkChrome() ? AccentColor(bgCol, 0, 8) : AccentColor(bgCol, 6));
         int radius = std::max(2, DpiScale(hwnd, 3));
-        AutoDeleteBrush brush(CreateSolidBrush(fillCol));
+        AutoDeleteBrush brush(CreateSolidBrush(iconBgCol));
         HRGN rgn = CreateRoundRectRgn(r.x, r.y, r.x + r.dx, r.y + r.dy, radius * 2, radius * 2);
         FillRgn(hdc, rgn, brush);
         DeleteObject(rgn);
     }
 
-    int inset = DpiScale(hwnd, 6);
-    // A 12x5 logical-pixel chevron is a softer midpoint between the original
-    // narrow glyph and a 90-degree toolbar-style chevron.
-    int step = DpiScale(hwnd, 5);
-    int centerY = r.y + r.dy / 2;
-    AutoDeletePen pen(CreatePen(PS_SOLID, std::max(1, DpiScale(hwnd, 1)), iconCol));
-    ScopedSelectPen selectPen(hdc, pen);
-    int left = r.x + inset;
-    int right = r.x + r.dx - inset;
-    int middle = (left + right) / 2;
-    int direction = isExpand ? 1 : -1;
-    MoveToEx(hdc, left, centerY - direction * step / 2, nullptr);
-    LineTo(hdc, middle, centerY + direction * step / 2);
-    LineTo(hdc, right, centerY - direction * step / 2);
+    int iconSz = std::min(DpiScale(hwnd, 16), std::min(r.dx, r.dy));
+    Rect iconRc(r.x + (r.dx - iconSz) / 2, r.y + (r.dy - iconSz) / 2, iconSz, iconSz);
+    TbIcon icon = isExpand ? TbIcon::ChevronDown : TbIcon::ChevronUp;
+    DrawSvgIcon(hdc, iconRc, icon, iconCol, iconBgCol);
 }
 
 static void PaintHDC(LabelWithCloseWnd* w, HDC hdc, const PAINTSTRUCT& ps) {
@@ -124,6 +116,7 @@ static void PaintHDC(LabelWithCloseWnd* w, HDC hdc, const PAINTSTRUCT& ps) {
 
 LabelWithCloseWnd::~LabelWithCloseWnd() {
     delete actionsTooltip;
+    DeleteObject(actionsTooltipFont);
 }
 
 void LabelWithCloseWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
@@ -235,7 +228,13 @@ void LabelWithCloseWnd::SetHeaderActions(const Func0& first, const char* firstTo
     if (!actionsTooltip) {
         Tooltip::CreateArgs args;
         args.parent = hwnd;
-        args.font = font;
+        // Make an explicit non-underlined copy of the system tooltip font.
+        // The sidebar title font may carry underline styles into this control.
+        LOGFONTW lf{};
+        GetObjectW(GetDefaultGuiFont(), sizeof(lf), &lf);
+        lf.lfUnderline = FALSE;
+        actionsTooltipFont = CreateFontIndirectW(&lf);
+        args.font = actionsTooltipFont;
         args.isRtl = HwndIsRtl(hwnd);
         actionsTooltip = new Tooltip();
         actionsTooltip->Create(args);
@@ -287,6 +286,12 @@ void LabelWithCloseWnd::Layout() {
     }
     // logf("closeBtnPos: (%d,%d) size: (%d, %d)\n", x, y, btnDx, btnDy);
     HwndScheduleRepaint(hwnd);
+}
+
+void LabelWithCloseWnd::UpdateActionsTooltipTheme() {
+    if (actionsTooltip) {
+        actionsTooltip->UpdateTheme();
+    }
 }
 
 // cmd is both the id of the window as well as id of WM_COMMAND sent

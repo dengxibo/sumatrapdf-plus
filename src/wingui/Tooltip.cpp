@@ -14,6 +14,7 @@
 #include "wingui/WinGui.h"
 
 #include "Theme.h"
+#include "DarkModeSubclass.h"
 
 #include "utils/Log.h"
 
@@ -129,6 +130,17 @@ Tooltip::Tooltip() {
     kind = kindTooltip;
 }
 
+void Tooltip::UpdateTheme() {
+    if (!hwnd) {
+        return;
+    }
+    if (UseDarkModeLib() && ThemeUsesDarkChrome()) {
+        DarkMode::setDarkTooltips(hwnd, static_cast<int>(DarkMode::ToolTipsType::tooltip));
+    } else {
+        SetWindowTheme(hwnd, nullptr, nullptr);
+    }
+}
+
 HWND Tooltip::Create(const CreateArgs& args) {
     CreateControlArgs cargs;
     cargs.className = TOOLTIPS_CLASS;
@@ -140,6 +152,7 @@ HWND Tooltip::Create(const CreateArgs& args) {
     parent = args.parent;
 
     Wnd::CreateControl(cargs);
+    UpdateTheme();
     SetDelayTime(TTDT_AUTOPOP, 32767);
     return hwnd;
 }

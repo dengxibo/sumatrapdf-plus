@@ -274,6 +274,7 @@ struct Tooltip : Wnd {
 
     void SetDelayTime(int type, int timeInMs);
     void SetMaxWidth(int dx);
+    void UpdateTheme();
 
     // window this tooltip is associated with
     HWND parent = nullptr;

@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 struct MainWindow;
+enum class TbIcon;
 
 void CreateToolbar(MainWindow*);
 void ReCreateToolbar(MainWindow* win);
@@ -17,6 +18,7 @@ void ShowOrHideToolbar(MainWindow*);
 void UpdateToolbarState(MainWindow*);
 void UpdateToolbarAfterThemeChange(MainWindow*);
 HIMAGELIST BuildStdToolbarImageList(int dx);
+void DrawSvgIcon(HDC hdc, const Rect& dest, TbIcon icon, COLORREF fgCol, COLORREF bgCol);
 Rect GetToolbarButtonScreenRect(MainWindow*, int cmdId);
 void UpdateDoubleClickWordLookupToolbarButton(MainWindow*);
 void UpdatePdfDocumentColorModeToolbarButton(MainWindow*);

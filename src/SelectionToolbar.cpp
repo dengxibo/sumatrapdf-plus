@@ -70,13 +70,13 @@ static void InitButtons(SelectionToolbar* tb, MainWindow* win) {
         tb->buttons[i++] = {CmdCreateAnnotUnderline, "Underline", true, {}};
         tb->buttons[i++] = {CmdCreateAnnotSquiggly, "Squiggly", true, {}};
         tb->buttons[i++] = {CmdCreateAnnotStrikeOut, "Strike Out", true, {}};
-        tb->buttons[i++] = {CmdCreateAnnotText, "Text", true, {}};
+        tb->buttons[i++] = {CmdCreateAnnotText, "&Text", true, {}};
     } else if (EbookAnnotationsSupported(win->CurrentTab())) {
         tb->buttons[i++] = {CmdCreateAnnotHighlight, "Highlight", true, {}};
         tb->buttons[i++] = {CmdCreateAnnotUnderline, "Underline", true, {}};
         tb->buttons[i++] = {CmdCreateAnnotSquiggly, "Squiggly", true, {}};
         tb->buttons[i++] = {CmdCreateAnnotStrikeOut, "Strike Out", true, {}};
-        tb->buttons[i++] = {CmdCreateAnnotText, "Text", true, {}};
+        tb->buttons[i++] = {CmdCreateAnnotText, "&Text", true, {}};
     }
     tb->nButtons = i;
 }
@@ -100,6 +100,11 @@ static HFONT CreateScaledFontFrom(HFONT base, int pct) {
     return CreateFontIndirectW(&lf);
 }
 
+static TempStr ToolbarButtonLabelTemp(const SelectionToolbarButton& button) {
+    TempStr label = str::ReplaceTemp(_TRA(button.label), "(&T)", "");
+    return str::ReplaceTemp(label, "&", "");
+}
+
 static void LayoutToolbar(SelectionToolbar* tb) {
     HWND hwnd = tb->hwnd;
     int padX = DpiScale(hwnd, kBtnPadX);
@@ -112,7 +117,7 @@ static void LayoutToolbar(SelectionToolbar* tb) {
     int n = tb->nButtons;
     for (int i = 0; i < n; i++) {
         SelectionToolbarButton& b = tb->buttons[i];
-        const char* txt = _TRA(b.label);
+        TempStr txt = ToolbarButtonLabelTemp(b);
         Size s = HwndMeasureText(hwnd, txt, tb->font);
         int dx = s.dx + 2 * padX;
         int dy = s.dy + 2 * padY;
@@ -180,7 +185,7 @@ static void PaintToolbar(SelectionToolbar* tb, HDC hdc) {
             FillFloatingPopupRoundedRect(hdc, b.rc, btnRadius, hoverBg);
         }
         SetTextColor(hdc, b.enabled ? textCol : mutedCol);
-        const char* txt = _TRA(b.label);
+        TempStr txt = ToolbarButtonLabelTemp(b);
         DrawCenteredText(hdc, b.rc, txt);
     }
 }

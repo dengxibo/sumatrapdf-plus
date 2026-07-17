@@ -2025,8 +2025,8 @@ void CreateToc(MainWindow* win) {
     auto filterEdit = CreateTocFilterEdit(win, GetAppTreeFontForHwnd(win->hwndFrame), nullptr);
     win->tocFilterEdit = filterEdit;
 
-    l->SetHeaderActions(MkFunc0(ExpandAllToc, win), _TRA("Expand all bookmarks"), MkFunc0(CollapseAllToc, win),
-                        _TRA("Collapse all bookmarks"));
+    l->SetHeaderActions(MkFunc0(ExpandAllToc, win), _TRA("Expand All"), MkFunc0(CollapseAllToc, win),
+                        _TRA("Collapse All"));
 
     auto treeView = new TreeView();
     TreeView::CreateArgs args;

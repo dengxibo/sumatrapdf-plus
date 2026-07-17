@@ -788,6 +788,7 @@ void UpdateControlsColors(MainWindow* win) {
         tocTreeView->SetColors(txtCol, bgCol);
 
         win->tocLabelWithClose->SetColors(txtCol, bgCol);
+        win->tocLabelWithClose->UpdateActionsTooltipTheme();
         if (win->tocFilterEdit) {
             win->tocFilterEdit->SetColors(txtCol, bgCol);
         }
@@ -809,6 +810,10 @@ void UpdateControlsColors(MainWindow* win) {
         if (win->hwndFavBox) {
             InvalidateRect(win->hwndFavBox, nullptr, FALSE);
         }
+    }
+
+    if (win->infotip) {
+        win->infotip->UpdateTheme();
     }
 }
 
