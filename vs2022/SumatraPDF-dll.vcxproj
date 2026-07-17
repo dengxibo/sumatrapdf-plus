@@ -1116,6 +1116,8 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <ClInclude Include="..\src\EbookAnnotations.h" />
     <ClInclude Include="..\src\EbookDoc.h" />
     <ClInclude Include="..\src\EbookFormatter.h" />
+    <ClInclude Include="..\src\EpubMeta.h" />
+    <ClInclude Include="..\src\EpubPerfLog.h" />
     <ClInclude Include="..\src\EditAnnotations.h" />
     <ClInclude Include="..\src\EditEbookAnnotations.h" />
     <ClInclude Include="..\src\EngineAll.h" />
@@ -1238,6 +1240,8 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <ClCompile Include="..\src\EbookAnnotations.cpp" />
     <ClCompile Include="..\src\EbookDoc.cpp" />
     <ClCompile Include="..\src\EbookFormatter.cpp" />
+    <ClCompile Include="..\src\EpubMeta.cpp" />
+    <ClCompile Include="..\src\EpubPerfLog.cpp" />
     <ClCompile Include="..\src\EditAnnotations.cpp" />
     <ClCompile Include="..\src\EditEbookAnnotations.cpp" />
     <ClCompile Include="..\src\EngineBase.cpp" />

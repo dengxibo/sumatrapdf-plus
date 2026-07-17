@@ -15,6 +15,7 @@
 #include "SvgIcons.h"
 #include "Theme.h"
 #include "Toolbar.h"
+#include "Translations.h"
 
 #include "wingui/LabelWithCloseWnd.h"
 
@@ -219,6 +220,10 @@ DoDefault:
     return WndProcDefault(hwnd, msg, wp, lp);
 }
 
+static const char* HeaderActionTooltipTemp(const char* key) {
+    return trans::GetTranslation(key);
+}
+
 void LabelWithCloseWnd::SetHeaderActions(const Func0& first, const char* firstTooltip, const Func0& second,
                                          const char* secondTooltip) {
     firstAction = first;
@@ -238,8 +243,10 @@ void LabelWithCloseWnd::SetHeaderActions(const Func0& first, const char* firstTo
         args.isRtl = HwndIsRtl(hwnd);
         actionsTooltip = new Tooltip();
         actionsTooltip->Create(args);
-        firstActionTooltipId = actionsTooltip->Add(firstActionTooltip, firstActionPos, false);
-        secondActionTooltipId = actionsTooltip->Add(secondActionTooltip, secondActionPos, false);
+        firstActionTooltipId =
+            actionsTooltip->Add(HeaderActionTooltipTemp(firstActionTooltip), firstActionPos, false);
+        secondActionTooltipId =
+            actionsTooltip->Add(HeaderActionTooltipTemp(secondActionTooltip), secondActionPos, false);
     }
     Layout();
 }
@@ -280,8 +287,10 @@ void LabelWithCloseWnd::Layout() {
             firstActionPos = Rect(secondActionPos.x - gapDx - actionDx, actionY, actionDx, actionDy);
         }
         if (actionsTooltip) {
-            actionsTooltip->Update(firstActionTooltipId, firstActionTooltip, firstActionPos, false);
-            actionsTooltip->Update(secondActionTooltipId, secondActionTooltip, secondActionPos, false);
+            actionsTooltip->Update(firstActionTooltipId, HeaderActionTooltipTemp(firstActionTooltip),
+                                   firstActionPos, false);
+            actionsTooltip->Update(secondActionTooltipId, HeaderActionTooltipTemp(secondActionTooltip),
+                                   secondActionPos, false);
         }
     }
     // logf("closeBtnPos: (%d,%d) size: (%d, %d)\n", x, y, btnDx, btnDy);
@@ -291,6 +300,20 @@ void LabelWithCloseWnd::Layout() {
 void LabelWithCloseWnd::UpdateActionsTooltipTheme() {
     if (actionsTooltip) {
         actionsTooltip->UpdateTheme();
+    }
+}
+
+void LabelWithCloseWnd::UpdateHeaderActionTooltips() {
+    if (!actionsTooltip) {
+        return;
+    }
+    if (firstActionTooltipId >= 0) {
+        actionsTooltip->Update(firstActionTooltipId, HeaderActionTooltipTemp(firstActionTooltip), firstActionPos,
+                               false);
+    }
+    if (secondActionTooltipId >= 0) {
+        actionsTooltip->Update(secondActionTooltipId, HeaderActionTooltipTemp(secondActionTooltip), secondActionPos,
+                               false);
     }
 }
 

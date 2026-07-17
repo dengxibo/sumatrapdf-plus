@@ -977,6 +977,7 @@
     <ClCompile Include="..\src\DocProperties.cpp" />
     <ClCompile Include="..\src\EbookDoc.cpp" />
     <ClCompile Include="..\src\EbookFormatter.cpp" />
+    <ClCompile Include="..\src\EpubMeta.cpp" />
     <ClCompile Include="..\src\EngineBase.cpp" />
     <ClCompile Include="..\src\EngineDjVu.cpp" />
     <ClCompile Include="..\src\EngineEbook.cpp" />
@@ -992,6 +993,7 @@
     <ClCompile Include="..\src\PdfCadEnhanceNoOp.cpp" />
     <ClCompile Include="..\src\PdfCreator.cpp" />
     <ClCompile Include="..\src\PdfDarkModeNoOp.cpp" />
+    <ClCompile Include="..\src\PreviewFilterStubs.cpp" />
     <ClCompile Include="..\src\MdConvertNoOp.cpp" />
     <ClCompile Include="..\src\RegistryPreview.cpp" />
     <ClCompile Include="..\src\SumatraConfig.cpp" />

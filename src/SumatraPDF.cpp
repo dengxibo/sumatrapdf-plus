@@ -2053,6 +2053,7 @@ static void UpdateToolbarSidebarText(MainWindow* win) {
     UpdateToolbarButtonsToolTipsForWindow(win);
 
     win->tocLabelWithClose->SetLabel(_TRA("Bookmarks"));
+    win->tocLabelWithClose->UpdateHeaderActionTooltips();
     win->favLabelWithClose->SetLabel(_TRA("Favorites"));
 }
 

@@ -120,6 +120,10 @@ EXPORTS
 ; EngineMupdf exports (also required by PdfFilter/PdfPreview)
 
 	fz_location_from_page_number
+	fz_make_link_dest_none
+	fz_make_link_dest_xyz
+	fz_open_accelerated_document_with_stream
+	fz_user_css
 	fz_purge_stored_html
 	fz_purge_stored_html_chapter
 """

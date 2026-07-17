@@ -25,6 +25,7 @@ struct LabelWithCloseWnd : Wnd {
     void SetHeaderActions(const Func0& firstAction, const char* firstTooltip, const Func0& secondAction,
                           const char* secondTooltip);
     void UpdateActionsTooltipTheme();
+    void UpdateHeaderActionTooltips();
     void Layout();
 
     Size GetIdealSize();
@@ -45,7 +46,7 @@ struct LabelWithCloseWnd : Wnd {
     HFONT actionsTooltipFont = nullptr;
     int firstActionTooltipId = -1;
     int secondActionTooltipId = -1;
-    const char* firstActionTooltip = nullptr;
+    const char* firstActionTooltip = nullptr; // _TRN key, translated on demand
     const char* secondActionTooltip = nullptr;
     int pressedAction = 0;
 };
