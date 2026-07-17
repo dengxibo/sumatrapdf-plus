@@ -2,6 +2,16 @@
 
 ## next
 
+## 3.7.14 (2026-07-17)
+
+- extend EPUB/MOBI/AZW annotations with PDF-style text notes, free text, stamps, carets, lines, squares and circles;
+  use matching appearance controls and annotation editor options
+- add PDF-style Highlight, Underline, Squiggly and Strike Out controls to ebook text-selection actions, plus a Text
+  annotation action anchored at the end of the selected text
+- improve annotation editing layout and interaction consistency, including point-annotation dragging and text-note icons
+- set the default text selection color to Acrobat-style blue while retaining yellow as the default highlight annotation color
+- refine themed menu drawing for dynamically created Read Aloud submenus and remove the unwanted native submenu gutter
+
 ## 3.7.13 (2026-07-17)
 
 - dramatically improve large EPUB anthology performance: progressive pagination and TOC loading, responsive navigation,
