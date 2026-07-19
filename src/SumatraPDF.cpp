@@ -607,6 +607,12 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
             InvalidateTocTree(win);
         }
     }
+    if (isForeground && engine) {
+        OnEbookPageCountChanged(win);
+    }
+    if (!progressiveLoad && IsFindUIVisible(win)) {
+        RefreshFindSearchBlockedStatus(win);
+    }
 }
 
 void NotifyEbookPagesLoadingProgress(const char* filePath, bool reloadToc) {
@@ -2142,7 +2148,6 @@ static MainWindow* CreateMainWindow() {
 
     CreateTabbar(win);
     CreateToolbar(win);
-    win->findBar = CreateFindBar(win);
     CreateSidebar(win);
     UpdateFindbox(win);
     if (CanAccessDisk() && !gPluginMode) {
@@ -2614,6 +2619,7 @@ void UpdateAfterThemeChange() {
         }
     }
     RerenderEverything();
+    InvalidateFindMatchPaintCache();
 
     for (auto win : gWindows) {
         DeleteObject(win->brControlBgColor);
@@ -3664,6 +3670,13 @@ void LoadModelIntoTab(WindowTab* tab) {
     }
 
     MainWindow* win = tab->win;
+    WindowTab* prevTab = win->CurrentTab();
+    const bool switchingTab = (tab != prevTab);
+    // Stop find/count workers and destroy find UI while ctrl still refers to the
+    // tab being left, before any ShowWindow/RedrawAll that pumps messages.
+    if (switchingTab) {
+        ResetFindUIForTabSwitch(win);
+    }
     if (gGlobalPrefs->lazyLoading && win->ctrl && !tab->ctrl && !tab->IsAboutTab()) {
         NotificationCreateArgs args;
         args.hwndParent = win->hwndCanvas;
@@ -5774,6 +5787,7 @@ static void FrameOnSize(MainWindow* win, int, int) {
     RelayoutFrame(win);
     // re-anchor the floating find bar over the (possibly moved) search icon
     FindBarReposition(win);
+    FindWindowReposition(win);
 
     if (win->presentation || win->isFullScreen) {
         Rect fullscreen = GetFullscreenRect(win->hwndFrame);
@@ -6896,6 +6910,9 @@ static void DeferredLoadTocTree(MainWindow* win) {
     if (win->tocLoaded && win->ctrl) {
         UpdateTocSelection(win, win->ctrl->CurrentPageNo());
         RefreshSidebarDpiFonts(win);
+    }
+    if (IsFindUIVisible(win)) {
+        RefreshFindSearchBlockedStatus(win);
     }
 }
 
@@ -9820,8 +9837,13 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
                 *callDef = false;
                 return 0;
             }
-            if (wp == kFindDebounceTimerId) {
-                FindDebounceTimerFired(win);
+            if (wp == kFindStatusAnimateTimerId) {
+                FindStatusAnimateTimerFired(win);
+                *callDef = false;
+                return 0;
+            }
+            if (wp == kFindStatusCompleteFlashTimerId) {
+                FindStatusCompleteFlashTimerFired(win);
                 *callDef = false;
                 return 0;
             }
@@ -10293,7 +10315,7 @@ static void AutoFillSmartBilingualVoicePrefsIfEmpty(SmartBilingualKind kind) {
     TtsFreeVoices(voices);
 }
 
-static void ReadAloudSaveSmartBilingualVoice(SmartBilingualKind kind, bool isZh, const char* voiceId) {
+static void ReadAloudApplySmartBilingualVoice(SmartBilingualKind kind, bool isZh, const char* voiceId) {
     char** pref = isZh ? SmartBilingualZhPref(kind) : SmartBilingualEnPref(kind);
     if (!pref || str::IsEmpty(voiceId)) {
         return;
@@ -10305,8 +10327,6 @@ static void ReadAloudSaveSmartBilingualVoice(SmartBilingualKind kind, bool isZh,
 
     str::ReplaceWithCopy(pref, voiceId);
     InvalidateSmartBilingualVoiceCache();
-    SaveSettings();
-
     if (IsSmartBilingualKindActive(kind)) {
         ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
     }
@@ -10315,6 +10335,8 @@ static void ReadAloudSaveSmartBilingualVoice(SmartBilingualKind kind, bool isZh,
 struct Dialog_ReadAloudSmartVoices_Data {
     Vec<char*> ownedVoiceIds;
     SmartBilingualKind kind = SmartBilingualKind::Local;
+    char* originalZhVoiceId = nullptr;
+    char* originalEnVoiceId = nullptr;
 };
 
 static void FreeReadAloudSmartVoiceComboIds(Dialog_ReadAloudSmartVoices_Data* data) {
@@ -10325,6 +10347,44 @@ static void FreeReadAloudSmartVoiceComboIds(Dialog_ReadAloudSmartVoices_Data* da
         str::Free(id);
     }
     data->ownedVoiceIds.Reset();
+}
+
+static void FreeReadAloudSmartVoiceDialogData(Dialog_ReadAloudSmartVoices_Data* data) {
+    if (!data) {
+        return;
+    }
+    FreeReadAloudSmartVoiceComboIds(data);
+    str::FreePtr(&data->originalZhVoiceId);
+    str::FreePtr(&data->originalEnVoiceId);
+}
+
+static void ReadAloudRestoreSmartBilingualVoicesFromDialog(Dialog_ReadAloudSmartVoices_Data* data) {
+    if (!data) {
+        return;
+    }
+
+    char** zhPref = SmartBilingualZhPref(data->kind);
+    char** enPref = SmartBilingualEnPref(data->kind);
+    bool changed = false;
+    const char* originalZh = data->originalZhVoiceId ? data->originalZhVoiceId : "";
+    const char* originalEn = data->originalEnVoiceId ? data->originalEnVoiceId : "";
+
+    if (zhPref && !str::Eq(*zhPref, originalZh)) {
+        str::ReplaceWithCopy(zhPref, originalZh);
+        changed = true;
+    }
+    if (enPref && !str::Eq(*enPref, originalEn)) {
+        str::ReplaceWithCopy(enPref, originalEn);
+        changed = true;
+    }
+    if (!changed) {
+        return;
+    }
+
+    InvalidateSmartBilingualVoiceCache();
+    if (IsSmartBilingualKindActive(data->kind)) {
+        ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
+    }
 }
 
 static void FillReadAloudSmartVoiceCombo(HWND combo, Vec<TtsVoiceInfo>& voices, const char* langPrefix,
@@ -10503,9 +10563,12 @@ static INT_PTR CALLBACK Dialog_ReadAloudSmartVoices_Proc(HWND hDlg, UINT msg, WP
             HwndSetDlgItemText(hDlg, IDCANCEL, _TRA("Cancel"));
 
             {
-                Vec<TtsVoiceInfo> voices = TtsGetVoices();
                 char** zhPref = SmartBilingualZhPref(data->kind);
                 char** enPref = SmartBilingualEnPref(data->kind);
+                data->originalZhVoiceId = str::Dup(zhPref && *zhPref ? *zhPref : "");
+                data->originalEnVoiceId = str::Dup(enPref && *enPref ? *enPref : "");
+
+                Vec<TtsVoiceInfo> voices = TtsGetVoices();
                 const char* zhSel = zhPref ? *zhPref : nullptr;
                 const char* enSel = enPref ? *enPref : nullptr;
                 FillReadAloudSmartVoiceCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH), voices, "zh", zhSel, data);
@@ -10522,18 +10585,37 @@ static INT_PTR CALLBACK Dialog_ReadAloudSmartVoices_Proc(HWND hDlg, UINT msg, WP
             switch (LOWORD(wp)) {
                 case IDOK:
                     data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
-                    ReadAloudSaveSmartBilingualVoice(
+                    ReadAloudApplySmartBilingualVoice(
                         data->kind, true, ReadAloudSmartVoiceIdFromCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH)));
-                    ReadAloudSaveSmartBilingualVoice(
+                    ReadAloudApplySmartBilingualVoice(
                         data->kind, false, ReadAloudSmartVoiceIdFromCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN)));
+                    SaveSettings();
                     EndDialog(hDlg, IDOK);
                     return TRUE;
 
                 case IDCANCEL:
+                    data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
+                    ReadAloudRestoreSmartBilingualVoicesFromDialog(data);
                     EndDialog(hDlg, IDCANCEL);
+                    return TRUE;
+
+                case IDC_READ_ALOUD_SMART_ZH:
+                case IDC_READ_ALOUD_SMART_EN:
+                    if (HIWORD(wp) == CBN_SELCHANGE) {
+                        data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
+                        bool isZh = LOWORD(wp) == IDC_READ_ALOUD_SMART_ZH;
+                        HWND combo = GetDlgItem(hDlg, LOWORD(wp));
+                        ReadAloudApplySmartBilingualVoice(data->kind, isZh, ReadAloudSmartVoiceIdFromCombo(combo));
+                    }
                     return TRUE;
             }
             break;
+
+        case WM_CLOSE:
+            data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
+            ReadAloudRestoreSmartBilingualVoicesFromDialog(data);
+            EndDialog(hDlg, IDCANCEL);
+            return TRUE;
     }
 
     return FALSE;
@@ -10548,7 +10630,7 @@ static void ShowReadAloudSmartVoiceDialog(MainWindow* win, SmartBilingualKind ki
     data.kind = kind;
     CreateAppDialogBox(IDD_DIALOG_READ_ALOUD_SMART_VOICES, win->hwndFrame, Dialog_ReadAloudSmartVoices_Proc,
                        (LPARAM)&data);
-    FreeReadAloudSmartVoiceComboIds(&data);
+    FreeReadAloudSmartVoiceDialogData(&data);
 }
 
 enum class ReadAloudLang {
@@ -10829,6 +10911,18 @@ static int ReadAloudFindBilingualChunkEnd(const char* text, int start, int maxLe
     return end;
 }
 
+static void ReadAloudApplyVoiceFromSettings() {
+    if (!gGlobalPrefs) {
+        return;
+    }
+    const char* voiceId = gGlobalPrefs->readAloudVoiceId;
+    if (TryGetSmartBilingualKind(voiceId, nullptr)) {
+        return;
+    }
+    TtsSetVoiceById(str::IsEmpty(voiceId) ? "" : voiceId);
+    ReadAloudApplyRateForLang(ReadAloudLangFromVoiceId(voiceId));
+}
+
 static void ReadAloudRestartSpeakingFromCurrentPosition(WindowTab* tab) {
     if (!tab || !TtsIsSpeaking() || str::IsEmpty(tab->readAloudText)) {
         return;
@@ -10842,6 +10936,7 @@ static void ReadAloudRestartSpeakingFromCurrentPosition(WindowTab* tab) {
     tab->readAloudChunkEnd = tab->readAloudChunkStart + posInChunk;
     TtsStop();
     TtsProcessEvents();
+    ReadAloudApplyVoiceFromSettings();
     ReadAloudSpeakChunk(tab, _TRA("No text available to read aloud"));
 }
 
@@ -10863,11 +10958,6 @@ static void ReadAloudSaveVoicePref(const char* voiceId) {
         if (!ResolveSmartBilingualVoices(smartKind)) {
             return;
         }
-    } else {
-        if (!TtsSetVoiceById(voiceId)) {
-            return;
-        }
-        ReadAloudApplyRateForLang(ReadAloudLangFromVoiceId(voiceId));
     }
 
     str::ReplaceWithCopy(&gGlobalPrefs->readAloudVoiceId, newVoiceId);
@@ -11728,6 +11818,8 @@ void ReadAloudToggleAtPoint(MainWindow* win, Point screenPt) {
         return;
     }
 
+    SuspendFindEngineAccess(win);
+
     DisplayModel* dm = win->AsFixed();
     int startPage = 0;
     int startGlyph = 0;
@@ -12472,6 +12564,8 @@ static void ApplyMainWindowDpiChromeRefresh(MainWindow* win, HWND hwnd) {
     RelayoutFrame(win);
     RefreshSidebarDpiFonts(win);
     UpdateOverlayScrollbarPositions(win);
+    FindBarReposition(win);
+    FindWindowReposition(win);
 
     if (win->tabsInTitlebar && !win->captionRect.IsEmpty()) {
         RECT r = ToRECT(win->captionRect);
@@ -12485,6 +12579,16 @@ static void ApplyMainWindowDpiChromeRefresh(MainWindow* win, HWND hwnd) {
     CloseEbookAnnotationsWindowsForDpiMove(win);
     ReopenEditAnnotationsWindowsAfterDpiMove(win);
     ReopenEbookAnnotationsWindowsAfterDpiMove(win);
+
+    WindowTab* currentTab = win->CurrentTab();
+    if (currentTab) {
+        ResyncReadAloudAfterLayoutChange(currentTab, win);
+    }
+    for (WindowTab* tab : win->Tabs()) {
+        if (tab != currentTab) {
+            ScheduleReadAloudResyncAfterLayoutChange(win, tab);
+        }
+    }
 }
 
 static void OnMainWindowDpiChanged(MainWindow* win, HWND hwnd, const RECT* suggestedRect, int explicitDpi, bool force) {
@@ -12633,6 +12737,7 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
                 DockOpenEbookAnnotationsWindows(win);
                 // keep the floating find bar anchored over the search icon
                 FindBarReposition(win);
+                FindWindowReposition(win);
             }
             break;
 

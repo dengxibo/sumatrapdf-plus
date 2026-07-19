@@ -60,6 +60,7 @@ struct ScrollState {
 struct TextSelection;
 struct TextSearch;
 struct TextSel;
+#include "SearchSessionCache.h"
 class Synchronizer;
 
 // TODO: in hindsight, zoomVirtual is not a good name since it's either
@@ -138,6 +139,7 @@ struct DisplayModel : DocController {
     TextSelection* textSelection = nullptr;
     // access only from Search thread
     TextSearch* textSearch = nullptr;
+    SearchSessionCache searchSession;
 
     PageInfo* GetPageInfo(int pageNo) const;
     RectF PageMediaBox(int pageNo) const;

@@ -2110,7 +2110,7 @@ void EbookAnnotationsPaintPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pa
                 if (!screenRect.IsEmpty()) {
                     screenRects.Append(screenRect);
                     PaintEbookMarkup(tab, hdc, screenRects, annotation);
-                    if (tab->selectedEbookAnnotation == annotation) {
+                    if (tab->editEbookAnnotsWindow && tab->selectedEbookAnnotation == annotation) {
                         PaintEbookPointAnnotationSelection(hdc, screenRect, annotation->type);
                     }
                 }

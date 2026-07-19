@@ -839,6 +839,11 @@ MainWindow* FindMainWindowByHwnd(HWND hwnd) {
         if ((win->hwndFrame == hwnd) || ::IsChild(win->hwndFrame, hwnd)) {
             return win;
         }
+        // owned popups (compact find bar / floating find window) are not IsChild()
+        // of the frame but still belong to this window
+        if (IsFindUIHwnd(win, hwnd)) {
+            return win;
+        }
     }
     return nullptr;
 }

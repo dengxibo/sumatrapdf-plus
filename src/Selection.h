@@ -30,7 +30,7 @@ struct SelectionOnPage {
 // Highlight band height as a fraction of font size (engine stores coords at kHighlightBandBaseRatio).
 constexpr float kHighlightBandBaseRatio = 1.0f;
 constexpr float kSelectionHighlightBandRatio = 1.10f;
-constexpr float kReadAloudHighlightBandRatio = 0.80f;
+constexpr float kReadAloudHighlightBandRatio = 1.10f;
 // Default opacity when SelectionColor has no alpha (#rrggbb). Used by alpha overlays (e.g. search).
 constexpr u8 kSelectionDefaultAlpha = 0x5f;
 constexpr u8 kSelectionHighlightAlpha = kSelectionDefaultAlpha;
@@ -40,6 +40,9 @@ COLORREF GetSelectionHighlightColor();
 inline COLORREF GetReadAloudHighlightColor() {
     return RGB(255, 255, 0);
 }
+
+// Find-match highlights on the page; defaults to yellow in a fresh settings file.
+COLORREF GetFindMatchHighlightColor();
 
 // Scale a highlight rect to the given band ratio (page coordinates).
 RectF ScaleHighlightBandRect(RectF r, float bandRatio);
@@ -62,6 +65,8 @@ void NormalizeNearbyHighlightHeights(Vec<RectF>& rects);
 void DeleteOldSelectionInfo(MainWindow* win, bool alsoTextSel = false);
 void PaintTransparentRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF selectionColor,
                                 u8 alpha = kSelectionDefaultAlpha, int pad = 2);
+// Find highlights: alpha overlay in light mode; marker-style (yellow band, dark text) in dark mode.
+void PaintFindMatchHighlightRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color, u8 alpha);
 
 // Text selection / highlight: multiply blend with page pixels (MuPDF/Acrobat-style).
 void PaintMultiplyRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color, int opacity = 100);

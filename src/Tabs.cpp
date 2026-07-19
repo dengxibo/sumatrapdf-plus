@@ -31,6 +31,8 @@
 #include "Menu.h"
 #include "TableOfContents.h"
 #include "Tabs.h"
+
+void ResetFindUIForTabSwitch(MainWindow* win);
 #include "FindBar.h"
 #include "SumatraDialogs.h"
 #include "FileHistory.h"
@@ -514,6 +516,9 @@ static void MainWindowTabClosed(MainWindow* win, TabsCtrl::ClosedEvent* ev) {
 static void MainWindowTabSelectionChanging(MainWindow* win, TabsCtrl::SelectionChangingEvent* ev) {
     // TODO: Should we allow the switch of the tab if we are in process of printing?
     SaveCurrentWindowTab(win);
+    // Tear down find UI and abort background search immediately when the user
+    // starts switching tabs (ctrl still refers to the tab being left).
+    ResetFindUIForTabSwitch(win);
     ev->preventChanging = false;
 }
 
@@ -623,11 +628,7 @@ void SaveCurrentWindowTab(MainWindow* win) {
     if (!win->tabsCtrl) {
         return;
     }
-    // the find UI (compact bar or floating window) belongs to the previous tab's
-    // search; close it when leaving the tab (HideFindBar also drops the cached
-    // results so the next tab can't show or navigate into the old document's
-    // matches)
-    HideFindBar(win);
+    // tab switch teardown is done in LoadModelIntoTab via ResetFindUIForTabSwitch
 
     int current = win->tabsCtrl->GetSelected();
     if (-1 == current) {

@@ -42,4 +42,5 @@ struct TextSelection {
 uint distSq(int x, int y);
 bool isCjkWordChar(WCHAR c);
 bool isWordChar(WCHAR c);
+bool isWordChar(int codepoint);
 bool isNonCjkWordChar(WCHAR c);

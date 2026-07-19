@@ -255,6 +255,9 @@ class EngineEbook : public EngineBase {
     bool SaveFileAs(const char* copyFileName) override;
     PageText ExtractPageText(int pageNo) override;
     PageTextUtf8 ExtractPageTextUtf8(int pageNo) override;
+    bool TryExtractPageText(int pageNo, PageText* out) override;
+    bool TryExtractPageTextUtf8(int pageNo, PageTextUtf8* out) override;
+    PageText ExtractPageTextImpl(int pageNo);
     // make RenderCache request larger tiles than per default
     bool HasClipOptimizations(int pageNo) override;
 
@@ -1301,9 +1304,8 @@ static void AppendStringCoords(Vec<Rect>& coords, Rect bbox, size_t strLen, bool
     }
 }
 
-PageText EngineEbook::ExtractPageText(int pageNo) {
+PageText EngineEbook::ExtractPageTextImpl(int pageNo) {
     const WCHAR* lineSep = L"\n";
-    ScopedCritSec scope(&pagesAccess);
 
     InterlockedIncrement(&gAllowAllocFailure);
     defer {
@@ -1390,6 +1392,29 @@ PageText EngineEbook::ExtractPageText(int pageNo) {
     res.text = content.StealData();
     res.coords = coords.StealData();
     return res;
+}
+
+PageText EngineEbook::ExtractPageText(int pageNo) {
+    ScopedCritSec scope(&pagesAccess);
+    return ExtractPageTextImpl(pageNo);
+}
+
+bool EngineEbook::TryExtractPageText(int pageNo, PageText* out) {
+    if (!TryEnterCriticalSection(&pagesAccess)) {
+        return false;
+    }
+    *out = ExtractPageTextImpl(pageNo);
+    LeaveCriticalSection(&pagesAccess);
+    return true;
+}
+
+bool EngineEbook::TryExtractPageTextUtf8(int pageNo, PageTextUtf8* out) {
+    if (!TryEnterCriticalSection(&pagesAccess)) {
+        return false;
+    }
+    LeaveCriticalSection(&pagesAccess);
+    *out = ExtractPageTextUtf8(pageNo);
+    return true;
 }
 
 PageTextUtf8 EngineEbook::ExtractPageTextUtf8(int pageNo) {

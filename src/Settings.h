@@ -47,10 +47,10 @@ struct FixedPageUI {
     // color value with which white (background) will be substituted
     char* backgroundColor;
     ParsedColor backgroundColorParsed;
-    // color value for the text selection rectangle (also used to highlight
-    // found text). Use an #aarrggbb value to control opacity: a smaller
-    // alpha (e.g. #40ffff00) makes the selection more transparent so the
-    // selected text stays crisp; #rrggbb uses the default opacity
+    // color value for the text selection rectangle. Use an #aarrggbb value
+    // to control opacity: a smaller alpha (e.g. #40ffff00) makes the
+    // selection more transparent so the selected text stays crisp; #rrggbb
+    // uses the default opacity
     char* selectionColor;
     ParsedColor selectionColorParsed;
     // top, right, bottom and left margin (in that order) between window
@@ -72,6 +72,9 @@ struct FixedPageUI {
     // if given, sets the canvas background color for PDF files
     char* windowBgCol;
     ParsedColor windowBgColParsed;
+    // color used to highlight the current search match on the page
+    char* findMatchColor;
+    ParsedColor findMatchColorParsed;
 };
 
 // customization options for eBookUI
@@ -698,10 +701,11 @@ static const FieldInfo gFixedPageUIFields[] = {
     {offsetof(FixedPageUI, gradientColors), SettingType::ColorArray, 0},
     {offsetof(FixedPageUI, invertColors), SettingType::Bool, false},
     {offsetof(FixedPageUI, windowBgCol), SettingType::Color, (intptr_t)""},
+    {offsetof(FixedPageUI, findMatchColor), SettingType::Color, (intptr_t)"#ffff00"},
 };
-static const StructInfo gFixedPageUIInfo = {
-    sizeof(FixedPageUI), 8, gFixedPageUIFields,
-    "TextColor\0BackgroundColor\0SelectionColor\0WindowMargin\0PageSpacing\0GradientColors\0InvertColors\0WindowBgCol"};
+static const StructInfo gFixedPageUIInfo = {sizeof(FixedPageUI), 9, gFixedPageUIFields,
+                                            "TextColor\0BackgroundColor\0SelectionColor\0WindowMargin\0PageSpacing\0Gra"
+                                            "dientColors\0InvertColors\0WindowBgCol\0FindMatchColor"};
 
 static const FieldInfo gEBookUIFields[] = {
     {offsetof(EBookUI, fontSize), SettingType::Float, (intptr_t)"0"},
@@ -963,7 +967,7 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-13.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-14.html"},
     {(size_t)-1, SettingType::Comment, 0},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0},

@@ -371,6 +371,29 @@ void EngineBase::EnsurePagesTextSize() {
     pagesTextSize = n;
 }
 
+void EngineBase::EnsurePagesTextUtf8Size() {
+    int n = pageCount;
+    if (n <= 0) {
+        return;
+    }
+    if (!pagesTextUtf8) {
+        pagesTextUtf8 = AllocArray<PageTextUtf8>(n);
+        pagesTextUtf8Size = n;
+        return;
+    }
+    if (pagesTextUtf8Size >= n) {
+        return;
+    }
+    int oldSize = pagesTextUtf8Size;
+    pagesTextUtf8 = (PageTextUtf8*)realloc(pagesTextUtf8, (size_t)n * sizeof(PageTextUtf8));
+    if (!pagesTextUtf8) {
+        pagesTextUtf8Size = 0;
+        return;
+    }
+    memset(&pagesTextUtf8[oldSize], 0, (size_t)(n - oldSize) * sizeof(PageTextUtf8));
+    pagesTextUtf8Size = n;
+}
+
 EngineBase::~EngineBase() {
     if (pagesText) {
         for (int i = 0; i < pagesTextSize; i++) {
@@ -379,6 +402,14 @@ EngineBase::~EngineBase() {
             free(pt->text);
         }
         free(pagesText);
+    }
+    if (pagesTextUtf8) {
+        for (int i = 0; i < pagesTextUtf8Size; i++) {
+            PageTextUtf8* pt = &pagesTextUtf8[i];
+            free(pt->coords);
+            free(pt->text);
+        }
+        free(pagesTextUtf8);
     }
     DeleteCriticalSection(&textCacheLock);
     str::Free(defaultExt);
@@ -399,17 +430,120 @@ bool EngineBase::HasTextForPage(int pageNo) {
 
 void EngineBase::ClearTextCache() {
     ScopedCritSec scope(&textCacheLock);
-    if (!pagesText) {
+    if (!pagesText && !pagesTextUtf8) {
+        textCacheGeneration++;
         return;
     }
-    for (int i = 0; i < pagesTextSize; i++) {
-        PageText* pt = &pagesText[i];
-        free(pt->coords);
-        free(pt->text);
-        pt->text = nullptr;
-        pt->coords = nullptr;
-        pt->len = 0;
+    if (pagesText) {
+        for (int i = 0; i < pagesTextSize; i++) {
+            PageText* pt = &pagesText[i];
+            free(pt->coords);
+            free(pt->text);
+            pt->text = nullptr;
+            pt->coords = nullptr;
+            pt->len = 0;
+        }
     }
+    if (pagesTextUtf8) {
+        for (int i = 0; i < pagesTextUtf8Size; i++) {
+            PageTextUtf8* pt = &pagesTextUtf8[i];
+            free(pt->coords);
+            free(pt->text);
+            pt->text = nullptr;
+            pt->coords = nullptr;
+            pt->len = 0;
+            pt->asciiLetterMask = 0;
+        }
+    }
+    textCacheGeneration++;
+}
+
+bool EngineBase::TryExtractPageText(int pageNo, PageText* out) {
+    *out = ExtractPageText(pageNo);
+    return true;
+}
+
+bool EngineBase::TryExtractPageTextUtf8(int pageNo, PageTextUtf8* out) {
+    *out = ExtractPageTextUtf8(pageNo);
+    return true;
+}
+
+static bool ReturnCachedPageText(PageText* pt, int* lenOut, Rect** coordsOut) {
+    if (lenOut) {
+        *lenOut = pt->len;
+    }
+    if (coordsOut) {
+        *coordsOut = pt->coords;
+    }
+    return pt->text != nullptr;
+}
+
+bool EngineBase::TryGetTextForPage(int pageNo, int* lenOut, Rect** coordsOut) {
+    auto emptyOk = [&]() {
+        if (lenOut) {
+            *lenOut = 0;
+        }
+        if (coordsOut) {
+            *coordsOut = nullptr;
+        }
+        return true;
+    };
+
+    if (pageNo < 1 || pageNo > pageCount) {
+        return emptyOk();
+    }
+
+    {
+        ScopedCritSec scope(&textCacheLock);
+        if (pagesText && pageNo <= pagesTextSize) {
+            PageText* pt = &pagesText[pageNo - 1];
+            if (pt->text) {
+                ReturnCachedPageText(pt, lenOut, coordsOut);
+                return true;
+            }
+        }
+    }
+
+    if (IsProgressiveEbookLoading() && (pageNo < 1 || pageNo > pageCount)) {
+        return emptyOk();
+    }
+
+    PageText extracted;
+    if (!TryExtractPageText(pageNo, &extracted)) {
+        if (lenOut) {
+            *lenOut = 0;
+        }
+        if (coordsOut) {
+            *coordsOut = nullptr;
+        }
+        return false;
+    }
+
+    ScopedCritSec scope(&textCacheLock);
+    EnsurePagesTextSize();
+    if (!pagesText || pageNo > pagesTextSize) {
+        if (lenOut) {
+            *lenOut = 0;
+        }
+        if (coordsOut) {
+            *coordsOut = nullptr;
+        }
+        return true;
+    }
+    PageText* pt = &pagesText[pageNo - 1];
+    if (!pt->text) {
+        *pt = extracted;
+        if (!pt->text) {
+            pt->text = str::Dup(L"");
+            pt->len = 0;
+        }
+        extracted = {};
+    } else {
+        free(extracted.text);
+        free(extracted.coords);
+    }
+    ReturnCachedPageText(pt, lenOut, coordsOut);
+    return true;
 }
 
 const WCHAR* EngineBase::GetTextForPage(int pageNo, int* lenOut, Rect** coordsOut) {
@@ -427,38 +561,38 @@ const WCHAR* EngineBase::GetTextForPage(int pageNo, int* lenOut, Rect** coordsOu
         return emptyResult();
     }
 
-    ScopedCritSec scope(&textCacheLock);
-    if (pagesText && pageNo <= pagesTextSize) {
-        PageText* pt = &pagesText[pageNo - 1];
-        if (pt->text) {
-            if (lenOut) {
-                *lenOut = pt->len;
-            }
+    if (TryGetTextForPage(pageNo, lenOut, coordsOut)) {
+        ScopedCritSec scope(&textCacheLock);
+        if (pagesText && pageNo <= pagesTextSize) {
+            PageText* pt = &pagesText[pageNo - 1];
             if (coordsOut) {
                 *coordsOut = pt->coords;
             }
-            return pt->text;
+            return pt->text ? pt->text : L"";
         }
+        return L"";
     }
 
-    // During progressive ebook load, skip pages not reflowed/formatted yet.
-    // On-demand extraction for ready pages is OK (RenderCache skips prefetch during load).
-    if (IsProgressiveEbookLoading() && (pageNo < 1 || pageNo > pageCount)) {
-        return emptyResult();
-    }
+    // Try-path failed (lock miss or page not loaded yet). Fall back to blocking
+    // extraction so callers like selection still work; search uses TryGet first.
+    PageText extracted = ExtractPageText(pageNo);
 
+    ScopedCritSec scope(&textCacheLock);
     EnsurePagesTextSize();
     if (!pagesText || pageNo > pagesTextSize) {
         return emptyResult();
     }
     PageText* pt = &pagesText[pageNo - 1];
-
     if (!pt->text) {
-        *pt = ExtractPageText(pageNo);
+        *pt = extracted;
         if (!pt->text) {
             pt->text = str::Dup(L"");
             pt->len = 0;
         }
+        extracted = {};
+    } else {
+        free(extracted.text);
+        free(extracted.coords);
     }
 
     if (lenOut) {
@@ -467,7 +601,284 @@ const WCHAR* EngineBase::GetTextForPage(int pageNo, int* lenOut, Rect** coordsOu
     if (coordsOut) {
         *coordsOut = pt->coords;
     }
-    return pt->text;
+    return pt->text ? pt->text : L"";
+}
+
+static bool ReturnCachedPageTextUtf8(PageTextUtf8* pt, int* lenOut, Rect** coordsOut) {
+    if (lenOut) {
+        *lenOut = pt->len;
+    }
+    if (coordsOut) {
+        *coordsOut = pt->coords;
+    }
+    return pt->text != nullptr;
+}
+
+static u32 ComputeAsciiLetterMask(const char* text, int byteLen) {
+    u32 mask = 0;
+    if (!text || byteLen <= 0) {
+        return 0;
+    }
+    for (int i = 0; i < byteLen; i++) {
+        unsigned char b = (unsigned char)text[i];
+        if (b >= 'A' && b <= 'Z') {
+            mask |= (1u << (b - 'A'));
+        } else if (b >= 'a' && b <= 'z') {
+            mask |= (1u << (b - 'a'));
+        }
+    }
+    return mask;
+}
+
+static void FinalizeCachedPageTextUtf8(PageTextUtf8* pt) {
+    if (!pt->text) {
+        pt->text = str::Dup("");
+        pt->len = 0;
+        pt->asciiLetterMask = 0;
+    } else {
+        int byteLen = pt->len;
+        if (byteLen <= 0) {
+            byteLen = (int)str::Len(pt->text);
+            pt->len = byteLen;
+        }
+        pt->asciiLetterMask = ComputeAsciiLetterMask(pt->text, byteLen);
+    }
+}
+
+u32 EngineBase::GetPageAsciiLetterMask(int pageNo) {
+    if (pageNo < 1 || pageNo > pageCount) {
+        return 0;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    if (!pagesTextUtf8 || pageNo > pagesTextUtf8Size) {
+        return UINT32_MAX;
+    }
+    PageTextUtf8* pt = &pagesTextUtf8[pageNo - 1];
+    if (!pt->text) {
+        return UINT32_MAX;
+    }
+    return pt->asciiLetterMask;
+}
+
+void EngineBase::ApplyAsciiMaskPageSkip(u32 anchorMask, int nPages, Vec<bool>& pagesToSkip) {
+    if (anchorMask == 0 || nPages <= 0) {
+        return;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    if (!pagesTextUtf8) {
+        return;
+    }
+    int limit = pagesTextUtf8Size;
+    if (limit > nPages) {
+        limit = nPages;
+    }
+    for (int pageNo = 1; pageNo <= limit; pageNo++) {
+        if (pagesToSkip[pageNo - 1]) {
+            continue;
+        }
+        PageTextUtf8* pt = &pagesTextUtf8[pageNo - 1];
+        if (!pt->text) {
+            continue;
+        }
+        if ((pt->asciiLetterMask & anchorMask) != anchorMask) {
+            pagesToSkip[pageNo - 1] = true;
+        }
+    }
+}
+
+bool EngineBase::CachedPageContainsUtf8Bytes(int pageNo, const char* bytes, int byteLen) {
+    if (!bytes || byteLen <= 0) {
+        return true;
+    }
+    if (pageNo < 1 || pageNo > pageCount) {
+        return false;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    if (!pagesTextUtf8 || pageNo > pagesTextUtf8Size) {
+        return true;
+    }
+    PageTextUtf8* pt = &pagesTextUtf8[pageNo - 1];
+    if (!pt->text) {
+        return true;
+    }
+    int textByteLen = pt->len;
+    if (textByteLen <= 0) {
+        textByteLen = (int)str::Len(pt->text);
+    }
+    if (textByteLen < byteLen) {
+        return false;
+    }
+    for (int i = 0; i <= textByteLen - byteLen; i++) {
+        if (memcmp(pt->text + i, bytes, (size_t)byteLen) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void EngineBase::ApplyUtf8AnchorPageSkip(const char* anchor, int anchorByteLen, int nPages, Vec<bool>& pagesToSkip) {
+    if (!anchor || anchorByteLen <= 0 || nPages <= 0) {
+        return;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    if (!pagesTextUtf8) {
+        return;
+    }
+    int limit = pagesTextUtf8Size;
+    if (limit > nPages) {
+        limit = nPages;
+    }
+    for (int pageNo = 1; pageNo <= limit; pageNo++) {
+        if (pagesToSkip[pageNo - 1]) {
+            continue;
+        }
+        PageTextUtf8* pt = &pagesTextUtf8[pageNo - 1];
+        if (!pt->text) {
+            continue;
+        }
+        int textByteLen = pt->len;
+        if (textByteLen <= 0) {
+            textByteLen = (int)str::Len(pt->text);
+        }
+        if (textByteLen < anchorByteLen) {
+            pagesToSkip[pageNo - 1] = true;
+            continue;
+        }
+        bool found = false;
+        for (int i = 0; i <= textByteLen - anchorByteLen; i++) {
+            if (memcmp(pt->text + i, anchor, (size_t)anchorByteLen) == 0) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            pagesToSkip[pageNo - 1] = true;
+        }
+    }
+}
+
+bool EngineBase::TryGetTextForPageUtf8(int pageNo, int* lenOut, Rect** coordsOut, const char** textOut) {
+    auto emptyOk = [&]() {
+        if (lenOut) {
+            *lenOut = 0;
+        }
+        if (coordsOut) {
+            *coordsOut = nullptr;
+        }
+        return true;
+    };
+
+    if (pageNo < 1 || pageNo > pageCount) {
+        return emptyOk();
+    }
+
+    {
+        ScopedCritSec scope(&textCacheLock);
+        if (pagesTextUtf8 && pageNo <= pagesTextUtf8Size) {
+            PageTextUtf8* pt = &pagesTextUtf8[pageNo - 1];
+            if (pt->text) {
+                ReturnCachedPageTextUtf8(pt, lenOut, coordsOut);
+                if (textOut) {
+                    *textOut = pt->text;
+                }
+                return true;
+            }
+        }
+    }
+
+    if (IsProgressiveEbookLoading() && (pageNo < 1 || pageNo > pageCount)) {
+        return emptyOk();
+    }
+
+    PageTextUtf8 extracted;
+    if (!TryExtractPageTextUtf8(pageNo, &extracted)) {
+        if (lenOut) {
+            *lenOut = 0;
+        }
+        if (coordsOut) {
+            *coordsOut = nullptr;
+        }
+        return false;
+    }
+
+    ScopedCritSec scope(&textCacheLock);
+    EnsurePagesTextUtf8Size();
+    if (!pagesTextUtf8 || pageNo > pagesTextUtf8Size) {
+        if (lenOut) {
+            *lenOut = 0;
+        }
+        if (coordsOut) {
+            *coordsOut = nullptr;
+        }
+        return true;
+    }
+    PageTextUtf8* pt = &pagesTextUtf8[pageNo - 1];
+    if (!pt->text) {
+        *pt = extracted;
+        FinalizeCachedPageTextUtf8(pt);
+        extracted = {};
+    } else {
+        free(extracted.text);
+        free(extracted.coords);
+    }
+    ReturnCachedPageTextUtf8(pt, lenOut, coordsOut);
+    if (textOut) {
+        *textOut = pt->text ? pt->text : "";
+    }
+    return true;
+}
+
+const char* EngineBase::GetTextForPageUtf8(int pageNo, int* lenOut, Rect** coordsOut) {
+    auto emptyResult = [&]() {
+        if (lenOut) {
+            *lenOut = 0;
+        }
+        if (coordsOut) {
+            *coordsOut = nullptr;
+        }
+        return "";
+    };
+
+    if (pageNo < 1 || pageNo > pageCount) {
+        return emptyResult();
+    }
+
+    if (TryGetTextForPageUtf8(pageNo, lenOut, coordsOut, nullptr)) {
+        ScopedCritSec scope(&textCacheLock);
+        if (pagesTextUtf8 && pageNo <= pagesTextUtf8Size) {
+            PageTextUtf8* pt = &pagesTextUtf8[pageNo - 1];
+            if (coordsOut) {
+                *coordsOut = pt->coords;
+            }
+            return pt->text ? pt->text : "";
+        }
+        return "";
+    }
+
+    PageTextUtf8 extracted = ExtractPageTextUtf8(pageNo);
+
+    ScopedCritSec scope(&textCacheLock);
+    EnsurePagesTextUtf8Size();
+    if (!pagesTextUtf8 || pageNo > pagesTextUtf8Size) {
+        return emptyResult();
+    }
+    PageTextUtf8* pt = &pagesTextUtf8[pageNo - 1];
+    if (!pt->text) {
+        *pt = extracted;
+        FinalizeCachedPageTextUtf8(pt);
+        extracted = {};
+    } else {
+        free(extracted.text);
+        free(extracted.coords);
+    }
+
+    if (lenOut) {
+        *lenOut = pt->len;
+    }
+    if (coordsOut) {
+        *coordsOut = pt->coords;
+    }
+    return pt->text ? pt->text : "";
 }
 
 int EngineBase::PageCount() const {

@@ -719,11 +719,17 @@ LRESULT Wnd::WndProcDefault(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
         // with control handling
         // TODO: maybe when font is nullptr, ask the original proc
         case WM_GETFONT: {
+            if (subclassId) {
+                return ::DefSubclassProc(hwnd, msg, wparam, lparam);
+            }
             return (LRESULT)font;
         }
 
         case WM_SETFONT: {
             font = (HFONT)wparam;
+            if (subclassId) {
+                return ::DefSubclassProc(hwnd, msg, wparam, lparam);
+            }
             return 0;
         }
 
@@ -1121,7 +1127,9 @@ HFONT Wnd::GetFont() {
 
 void Wnd::SetFont(HFONT fontIn) {
     font = fontIn;
-    // TODO: for controls, send WM_SETFONT message to original wndproc function
+    if (hwnd && font) {
+        HwndSetFont(hwnd, font);
+    }
 }
 
 void Wnd::SetIsEnabled(bool isEnabled) const {
@@ -1171,9 +1179,21 @@ bool PreTranslateMessage(MSG& msg) {
     if (!shouldProcess) {
         return false;
     }
-    for (HWND hwnd = msg.hwnd; hwnd != nullptr; hwnd = ::GetParent(hwnd)) {
-        auto wnd = WndListFindByHwnd(hwnd);
-        if (wnd && wnd->PreTranslateMessage(msg)) {
+    auto tryChain = [&](HWND hwnd) {
+        for (HWND h = hwnd; h != nullptr; h = ::GetParent(h)) {
+            auto wnd = WndListFindByHwnd(h);
+            if (wnd && wnd->PreTranslateMessage(msg)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    if (tryChain(msg.hwnd)) {
+        return true;
+    }
+    HWND focus = GetFocus();
+    if (focus && focus != msg.hwnd) {
+        if (tryChain(focus)) {
             return true;
         }
     }

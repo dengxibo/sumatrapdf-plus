@@ -29038,6 +29038,360 @@ tw:智慧雙語設定
 uk:Smart bilingual settings...
 uz:Smart bilingual settings...
 vn:Smart bilingual settings...
+:search files (Ctrl + F)
+cn:搜索文件 (Ctrl + F)
+de:Dateien suchen (Strg + F)
+fr:Rechercher des fichiers (Ctrl + F)
+ja:ファイルを検索 (Ctrl + F)
+kr:파일 검색 (Ctrl + F)
+ru:Поиск файлов (Ctrl + F)
+tw:搜尋檔案 (Ctrl + F)
+:Tip: 
+cn:提示：
+de:Tipp: 
+fr:Astuce : 
+ja:ヒント：
+kr:팁: 
+ru:Подсказка: 
+tw:提示：
+:You can [customize scrollbar](CmdChangeScrollbar).
+cn:你可以[自定义滚动条](CmdChangeScrollbar)。
+de:Sie können die [Scrollleiste anpassen](CmdChangeScrollbar).
+fr:Vous pouvez [personnaliser la barre de défilement](CmdChangeScrollbar).
+ja:[スクロールバーをカスタマイズ](CmdChangeScrollbar)できます。
+kr:[스크롤바 사용자 지정](CmdChangeScrollbar)이 가능합니다.
+ru:Можно [настроить полосу прокрутки](CmdChangeScrollbar).
+tw:你可以[自訂捲軸](CmdChangeScrollbar)。
+:You can [customize keyboard shortcuts](Help/Customizing-keyboard-shortcuts).
+cn:你可以[自定义键盘快捷键](Help/Customizing-keyboard-shortcuts)。
+de:Sie können [Tastenkürzel anpassen](Help/Customizing-keyboard-shortcuts).
+fr:Vous pouvez [personnaliser les raccourcis clavier](Help/Customizing-keyboard-shortcuts).
+ja:[キーボードショートカットをカスタマイズ](Help/Customizing-keyboard-shortcuts)できます。
+kr:[키보드 단축키 사용자 지정](Help/Customizing-keyboard-shortcuts)이 가능합니다.
+ru:Можно [настроить сочетания клавиш](Help/Customizing-keyboard-shortcuts).
+tw:你可以[自訂鍵盤快速鍵](Help/Customizing-keyboard-shortcuts)。
+:You can [customize toolbar](Help/Customize-toolbar).
+cn:你可以[自定义工具栏](Help/Customize-toolbar)。
+de:Sie können die [Symbolleiste anpassen](Help/Customize-toolbar).
+fr:Vous pouvez [personnaliser la barre d'outils](Help/Customize-toolbar).
+ja:[ツールバーをカスタマイズ](Help/Customize-toolbar)できます。
+kr:[도구 모음 사용자 지정](Help/Customize-toolbar)이 가능합니다.
+ru:Можно [настроить панель инструментов](Help/Customize-toolbar).
+tw:你可以[自訂工具列](Help/Customize-toolbar)。
+:Press (Key/CmdCommandPalette) to open [command palette](CmdCommandPalette).
+cn:按 (Key/CmdCommandPalette) 打开[命令面板](CmdCommandPalette)。
+de:Drücken Sie (Key/CmdCommandPalette), um die [Befehlsliste](CmdCommandPalette) zu öffnen.
+fr:Appuyez sur (Key/CmdCommandPalette) pour ouvrir la [palette de commandes](CmdCommandPalette).
+ja:(Key/CmdCommandPalette) で[コマンドパレット](CmdCommandPalette)を開けます。
+kr:(Key/CmdCommandPalette)로 [명령 팔레트](CmdCommandPalette)를 엽니다.
+ru:Нажмите (Key/CmdCommandPalette), чтобы открыть [палитру команд](CmdCommandPalette).
+tw:按 (Key/CmdCommandPalette) 開啟[命令面板](CmdCommandPalette)。
+:To open file from history open [command palette](CmdCommandPalette) with (Key/CmdCommandPalette) and type `#`.
+cn:要从历史记录打开文件，请用 (Key/CmdCommandPalette) 打开[命令面板](CmdCommandPalette)并输入 `#`。
+de:Um eine Datei aus dem Verlauf zu öffnen, öffnen Sie die [Befehlsliste](CmdCommandPalette) mit (Key/CmdCommandPalette) und geben `#` ein.
+fr:Pour ouvrir un fichier depuis l'historique, ouvrez la [palette de commandes](CmdCommandPalette) avec (Key/CmdCommandPalette) et tapez `#`.
+ja:履歴からファイルを開くには (Key/CmdCommandPalette) で[コマンドパレット](CmdCommandPalette)を開き、`#` と入力します。
+kr:기록에서 파일을 열려면 (Key/CmdCommandPalette)로 [명령 팔레트](CmdCommandPalette)를 연 뒤 `#`를 입력하세요.
+ru:Чтобы открыть файл из истории, откройте [палитру команд](CmdCommandPalette) через (Key/CmdCommandPalette) и введите `#`.
+tw:要從歷史記錄開啟檔案，請用 (Key/CmdCommandPalette) 開啟[命令面板](CmdCommandPalette)並輸入 `#`。
+:You can [extract text from PDF file](Help/Tool-x-extract-text-from-pdf).
+cn:你可以[从 PDF 文件提取文本](Help/Tool-x-extract-text-from-pdf)。
+de:Sie können [Text aus PDF-Dateien extrahieren](Help/Tool-x-extract-text-from-pdf).
+fr:Vous pouvez [extraire le texte d'un PDF](Help/Tool-x-extract-text-from-pdf).
+ja:[PDF からテキストを抽出](Help/Tool-x-extract-text-from-pdf)できます。
+kr:[PDF에서 텍스트 추출](Help/Tool-x-extract-text-from-pdf)이 가능합니다.
+ru:Можно [извлечь текст из PDF](Help/Tool-x-extract-text-from-pdf).
+tw:你可以[從 PDF 檔案擷取文字](Help/Tool-x-extract-text-from-pdf)。
+:You can [toggle menu bar](CmdToggleMenuBar) with (Key/CmdToggleMenuBar).
+cn:你可以用 (Key/CmdToggleMenuBar) [切换菜单栏](CmdToggleMenuBar)。
+de:Mit (Key/CmdToggleMenuBar) können Sie die [Menüleiste ein-/ausblenden](CmdToggleMenuBar).
+fr:Vous pouvez [afficher/masquer la barre de menus](CmdToggleMenuBar) avec (Key/CmdToggleMenuBar).
+ja:(Key/CmdToggleMenuBar) で[メニューバーの表示を切り替え](CmdToggleMenuBar)できます。
+kr:(Key/CmdToggleMenuBar)로 [메뉴 모음 표시 전환](CmdToggleMenuBar)이 가능합니다.
+ru:Можно [переключить строку меню](CmdToggleMenuBar) с помощью (Key/CmdToggleMenuBar).
+tw:你可以用 (Key/CmdToggleMenuBar) [切換功能表列](CmdToggleMenuBar)。
+:You can [toggle toolbar](CmdToggleToolbar) with (Key/CmdToggleToolbar).
+cn:你可以用 (Key/CmdToggleToolbar) [切换工具栏](CmdToggleToolbar)。
+de:Mit (Key/CmdToggleToolbar) können Sie die [Symbolleiste ein-/ausblenden](CmdToggleToolbar).
+fr:Vous pouvez [afficher/masquer la barre d'outils](CmdToggleToolbar) avec (Key/CmdToggleToolbar).
+ja:(Key/CmdToggleToolbar) で[ツールバーの表示を切り替え](CmdToggleToolbar)できます。
+kr:(Key/CmdToggleToolbar)로 [도구 모음 표시 전환](CmdToggleToolbar)이 가능합니다.
+ru:Можно [переключить панель инструментов](CmdToggleToolbar) с помощью (Key/CmdToggleToolbar).
+tw:你可以用 (Key/CmdToggleToolbar) [切換工具列](CmdToggleToolbar)。
+:You can [edit PDF annotations](Help/Editing-annotations).
+cn:你可以[编辑 PDF 标注](Help/Editing-annotations)。
+de:Sie können [PDF-Anmerkungen bearbeiten](Help/Editing-annotations).
+fr:Vous pouvez [modifier les annotations PDF](Help/Editing-annotations).
+ja:[PDF 注釈を編集](Help/Editing-annotations)できます。
+kr:[PDF 주석 편집](Help/Editing-annotations)이 가능합니다.
+ru:Можно [редактировать аннотации PDF](Help/Editing-annotations).
+tw:你可以[編輯 PDF 註解](Help/Editing-annotations)。
+:note
+cn:说明
+de:Hinweis
+fr:Note
+ja:注記
+kr:참고
+ru:Примечание
+tw:說明
+:Plus source
+cn:Plus 源码
+de:Plus-Quellcode
+fr:Source Plus
+ja:Plus ソース
+kr:Plus 소스
+ru:Исходники Plus
+tw:Plus 原始碼
+:Sumatra PDF Plus on GitHub
+cn:GitHub 上的 Sumatra PDF Plus
+de:Sumatra PDF Plus auf GitHub
+fr:Sumatra PDF Plus sur GitHub
+ja:GitHub の Sumatra PDF Plus
+kr:GitHub의 Sumatra PDF Plus
+ru:Sumatra PDF Plus на GitHub
+tw:GitHub 上的 Sumatra PDF Plus
+:Plus issues
+cn:Plus 问题反馈
+de:Plus-Probleme
+fr:Problèmes Plus
+ja:Plus 問題報告
+kr:Plus 이슈
+ru:Проблемы Plus
+tw:Plus 問題回報
+:Report bugs (this fork only)
+cn:报告错误（仅限本分支）
+de:Fehler melden (nur dieser Fork)
+fr:Signaler des bugs (ce fork uniquement)
+ja:バグ報告（このフォークのみ）
+kr:버그 보고(이 포크만)
+ru:Сообщить об ошибках (только этот форк)
+tw:回報錯誤（僅限本分支）
+:Plus guide
+cn:Plus 指南
+de:Plus-Anleitung
+fr:Guide Plus
+ja:Plus ガイド
+kr:Plus 가이드
+ru:Руководство Plus
+tw:Plus 指南
+:User guide (readme.txt)
+cn:用户指南 (readme.txt)
+de:Benutzerhandbuch (readme.txt)
+fr:Guide utilisateur (readme.txt)
+ja:ユーザーガイド (readme.txt)
+kr:사용자 가이드 (readme.txt)
+ru:Руководство пользователя (readme.txt)
+tw:使用者指南 (readme.txt)
+:official site
+cn:官方网站
+de:Offizielle Website
+fr:Site officiel
+ja:公式サイト
+kr:공식 사이트
+ru:Официальный сайт
+tw:官方網站
+:SumatraPDF website (upstream)
+cn:SumatraPDF 网站（上游）
+de:SumatraPDF-Website (Upstream)
+fr:Site SumatraPDF (amont)
+ja:SumatraPDF サイト（上流）
+kr:SumatraPDF 웹사이트(업스트림)
+ru:Сайт SumatraPDF (upstream)
+tw:SumatraPDF 網站（上游）
+:official manual
+cn:官方手册
+de:Offizielles Handbuch
+fr:Manuel officiel
+ja:公式マニュアル
+kr:공식 매뉴얼
+ru:Официальное руководство
+tw:官方手冊
+:SumatraPDF manual (upstream)
+cn:SumatraPDF 手册（上游）
+de:SumatraPDF-Handbuch (Upstream)
+fr:Manuel SumatraPDF (amont)
+ja:SumatraPDF マニュアル（上流）
+kr:SumatraPDF 매뉴얼(업스트림)
+ru:Руководство SumatraPDF (upstream)
+tw:SumatraPDF 手冊（上游）
+:official forums
+cn:官方论坛
+de:Offizielle Foren
+fr:Forums officiels
+ja:公式フォーラム
+kr:공식 포럼
+ru:Официальные форумы
+tw:官方論壇
+:SumatraPDF forums (upstream)
+cn:SumatraPDF 论坛（上游）
+de:SumatraPDF-Foren (Upstream)
+fr:Forums SumatraPDF (amont)
+ja:SumatraPDF フォーラム（上流）
+kr:SumatraPDF 포럼(업스트림)
+ru:Форумы SumatraPDF (upstream)
+tw:SumatraPDF 論壇（上游）
+:programming
+cn:编程
+de:Programmierung
+fr:Programmation
+ja:プログラミング
+kr:프로그래밍
+ru:Программирование
+tw:程式設計
+:The Programmers
+cn:程序员
+de:Die Programmierer
+fr:Les programmeurs
+ja:プログラマー
+kr:프로그래머
+ru:Программисты
+tw:程式設計師
+:licenses
+cn:许可证
+de:Lizenzen
+fr:Licences
+ja:ライセンス
+kr:라이선스
+ru:Лицензии
+tw:授權
+:Various Open Source
+cn:多种开源许可
+de:Verschiedene Open Source
+fr:Divers open source
+ja:各種オープンソース
+kr:다양한 오픈 소스
+ru:Различные лицензии open source
+tw:多種開源授權
+:last change
+cn:最近更改
+de:Letzte Änderung
+fr:Dernière modification
+ja:最新の変更
+kr:최근 변경
+ru:Последнее изменение
+tw:最近變更
+:git commit
+cn:git 提交
+de:Git-Commit
+fr:commit git
+ja:git コミット
+kr:git 커밋
+ru:git-коммит
+tw:git 提交
+:a note
+cn:说明
+de:Hinweis
+fr:Note
+ja:注記
+kr:참고
+ru:Примечание
+tw:說明
+:Pre-release version, for testing only!
+cn:预发布版本，仅供测试！
+de:Vorabversion, nur zum Testen!
+fr:Version préliminaire, pour tests uniquement !
+ja:プレリリース版、テスト専用！
+kr:프리릴리스 버전, 테스트 전용!
+ru:Предварительная версия, только для тестирования!
+tw:預發行版本，僅供測試！
+:Debug version, for testing only!
+cn:调试版本，仅供测试！
+de:Debug-Version, nur zum Testen!
+fr:Version de débogage, pour tests uniquement !
+ja:デバッグ版、テスト専用！
+kr:디버그 버전, 테스트 전용!
+ru:Отладочная версия, только для тестирования!
+tw:偵錯版本，僅供測試！
+:Pre-release
+cn:预发布
+de:Vorabversion
+fr:Préversion
+ja:プレリリース
+kr:프리릴리스
+ru:Предрелиз
+tw:預發行
+:64-bit
+cn:64 位
+de:64-Bit
+fr:64 bits
+ja:64 ビット
+kr:64비트
+ru:64-bit
+tw:64 位元
+:32-bit
+cn:32 位
+de:32-Bit
+fr:32 bits
+ja:32 ビット
+kr:32비트
+ru:32-bit
+tw:32 位元
+:(dbg)
+cn:(调试)
+de:(dbg)
+fr:(dbg)
+ja:(dbg)
+kr:(dbg)
+ru:(dbg)
+tw:(偵錯)
+:Downloading update...
+am:Արդիացումների ներբեռնում...
+ar:جاري تنزيل التحديث...
+az:Yeniləmə endirilir...
+bg:Изтегляне на обновление...
+br:Baixando atualização...
+by:Спампоўка абнаўлення…
+ca:S'està baixant l'actualització...
+ca-xv:S'està baixant l'actualització...
+cn:正在下载更新...
+co:Scaricamentu di a messa à livellu…
+cy:Lawrlwytho diweddariad...
+cz:Stahuji aktualizaci...
+de:Update wird heruntergeladen…
+dk:Downloader opdatering...
+el:Λήψη ενημέρωσης...
+es:Descargando actualización...
+et:Uuenduse allalaadimine...
+eu:Eguneraketa deskargatzen...
+fa:در حال دانلود بروزرسانی...
+fi:Ladataan päivitystä...
+fo:Hevur dagføring...
+fr:Téléchargement de la mise à jour...
+ga:Nuashonrú á íoslódáil...
+gl:Descargando actualización...
+he:מוריד עדכון...
+hi:अपडेट डाउनलोड हो रहा है...
+hr:Preuzimanje ažuriranja...
+hu:Frissítés letöltése...
+id:Mengunduh pembaruan...
+it:Download dell'aggiornamento...
+ja:更新をダウンロード中...
+kr:업데이트를 다운로드하는 중...
+kw:Ow iskraga nowedhans...
+lv:Lejupielādē atjauninājumu...
+mk:Преземање на надградба...
+ml:അപ്‌ഡേറ്റ് ഡൗൺലോഡ് ചെയ്യുന്നു...
+my:Memuat turun kemas kini...
+nl:Update downloaden...
+nn:Lastar ned oppdatering...
+no:Laster ned oppdatering...
+pl:Pobieranie aktualizacji...
+pt:Baixando atualização...
+ro:Se descarcă actualizarea...
+ru:Загрузка обновления...
+sat:ᱦᱟᱹᱞᱤᱭᱟᱹᱠ ᱰᱟᱩᱱᱞᱚᱰ ᱦᱩᱭᱩᱜ ᱠᱟᱱᱟ...
+sk:Sťahuje sa aktualizácia…
+sl:Prenos posodobitve …
+sr-rs:Преузимање ажурирања...
+sv:Laddar ner uppdatering...
+ta:புதுப்பிப்பு பதிவிறக்கப்படுகிறது...
+th:กำลังดาวน์โหลดการอัปเดต...
+tl:Nagda-download ng update...
+tr:Güncelleme indiriliyor...
+tw:正在下載更新...
+uk:Завантаження оновлення...
+uz:Yangilanish yuklab olinmoqda...
+vn:Đang tải bản cập nhật...
 :Read Aloud
 af:Lees hardop
 am:Բարձրաձայն կարդալ
@@ -31958,358 +32312,76 @@ tw:線上智慧雙語設定
 uk:Online smart bilingual settings
 uz:Online smart bilingual settings
 vn:Online smart bilingual settings
-
-:search files (Ctrl + F)
-cn:搜索文件 (Ctrl + F)
-de:Dateien suchen (Strg + F)
-fr:Rechercher des fichiers (Ctrl + F)
-ja:ファイルを検索 (Ctrl + F)
-kr:파일 검색 (Ctrl + F)
-ru:Поиск файлов (Ctrl + F)
-tw:搜尋檔案 (Ctrl + F)
-:Tip: 
-cn:提示：
-de:Tipp: 
-fr:Astuce : 
-ja:ヒント：
-kr:팁: 
-ru:Подсказка: 
-tw:提示：
-:You can [customize scrollbar](CmdChangeScrollbar).
-cn:你可以[自定义滚动条](CmdChangeScrollbar)。
-de:Sie können die [Scrollleiste anpassen](CmdChangeScrollbar).
-fr:Vous pouvez [personnaliser la barre de défilement](CmdChangeScrollbar).
-ja:[スクロールバーをカスタマイズ](CmdChangeScrollbar)できます。
-kr:[스크롤바 사용자 지정](CmdChangeScrollbar)이 가능합니다.
-ru:Можно [настроить полосу прокрутки](CmdChangeScrollbar).
-tw:你可以[自訂捲軸](CmdChangeScrollbar)。
-:You can [customize keyboard shortcuts](Help/Customizing-keyboard-shortcuts).
-cn:你可以[自定义键盘快捷键](Help/Customizing-keyboard-shortcuts)。
-de:Sie können [Tastenkürzel anpassen](Help/Customizing-keyboard-shortcuts).
-fr:Vous pouvez [personnaliser les raccourcis clavier](Help/Customizing-keyboard-shortcuts).
-ja:[キーボードショートカットをカスタマイズ](Help/Customizing-keyboard-shortcuts)できます。
-kr:[키보드 단축키 사용자 지정](Help/Customizing-keyboard-shortcuts)이 가능합니다.
-ru:Можно [настроить сочетания клавиш](Help/Customizing-keyboard-shortcuts).
-tw:你可以[自訂鍵盤快速鍵](Help/Customizing-keyboard-shortcuts)。
-:You can [customize toolbar](Help/Customize-toolbar).
-cn:你可以[自定义工具栏](Help/Customize-toolbar)。
-de:Sie können die [Symbolleiste anpassen](Help/Customize-toolbar).
-fr:Vous pouvez [personnaliser la barre d'outils](Help/Customize-toolbar).
-ja:[ツールバーをカスタマイズ](Help/Customize-toolbar)できます。
-kr:[도구 모음 사용자 지정](Help/Customize-toolbar)이 가능합니다.
-ru:Можно [настроить панель инструментов](Help/Customize-toolbar).
-tw:你可以[自訂工具列](Help/Customize-toolbar)。
-:Press (Key/CmdCommandPalette) to open [command palette](CmdCommandPalette).
-cn:按 (Key/CmdCommandPalette) 打开[命令面板](CmdCommandPalette)。
-de:Drücken Sie (Key/CmdCommandPalette), um die [Befehlsliste](CmdCommandPalette) zu öffnen.
-fr:Appuyez sur (Key/CmdCommandPalette) pour ouvrir la [palette de commandes](CmdCommandPalette).
-ja:(Key/CmdCommandPalette) で[コマンドパレット](CmdCommandPalette)を開けます。
-kr:(Key/CmdCommandPalette)로 [명령 팔레트](CmdCommandPalette)를 엽니다.
-ru:Нажмите (Key/CmdCommandPalette), чтобы открыть [палитру команд](CmdCommandPalette).
-tw:按 (Key/CmdCommandPalette) 開啟[命令面板](CmdCommandPalette)。
-:To open file from history open [command palette](CmdCommandPalette) with (Key/CmdCommandPalette) and type `#`.
-cn:要从历史记录打开文件，请用 (Key/CmdCommandPalette) 打开[命令面板](CmdCommandPalette)并输入 `#`。
-de:Um eine Datei aus dem Verlauf zu öffnen, öffnen Sie die [Befehlsliste](CmdCommandPalette) mit (Key/CmdCommandPalette) und geben `#` ein.
-fr:Pour ouvrir un fichier depuis l'historique, ouvrez la [palette de commandes](CmdCommandPalette) avec (Key/CmdCommandPalette) et tapez `#`.
-ja:履歴からファイルを開くには (Key/CmdCommandPalette) で[コマンドパレット](CmdCommandPalette)を開き、`#` と入力します。
-kr:기록에서 파일을 열려면 (Key/CmdCommandPalette)로 [명령 팔레트](CmdCommandPalette)를 연 뒤 `#`를 입력하세요.
-ru:Чтобы открыть файл из истории, откройте [палитру команд](CmdCommandPalette) через (Key/CmdCommandPalette) и введите `#`.
-tw:要從歷史記錄開啟檔案，請用 (Key/CmdCommandPalette) 開啟[命令面板](CmdCommandPalette)並輸入 `#`。
-:You can [extract text from PDF file](Help/Tool-x-extract-text-from-pdf).
-cn:你可以[从 PDF 文件提取文本](Help/Tool-x-extract-text-from-pdf)。
-de:Sie können [Text aus PDF-Dateien extrahieren](Help/Tool-x-extract-text-from-pdf).
-fr:Vous pouvez [extraire le texte d'un PDF](Help/Tool-x-extract-text-from-pdf).
-ja:[PDF からテキストを抽出](Help/Tool-x-extract-text-from-pdf)できます。
-kr:[PDF에서 텍스트 추출](Help/Tool-x-extract-text-from-pdf)이 가능합니다.
-ru:Можно [извлечь текст из PDF](Help/Tool-x-extract-text-from-pdf).
-tw:你可以[從 PDF 檔案擷取文字](Help/Tool-x-extract-text-from-pdf)。
-:You can [toggle menu bar](CmdToggleMenuBar) with (Key/CmdToggleMenuBar).
-cn:你可以用 (Key/CmdToggleMenuBar) [切换菜单栏](CmdToggleMenuBar)。
-de:Mit (Key/CmdToggleMenuBar) können Sie die [Menüleiste ein-/ausblenden](CmdToggleMenuBar).
-fr:Vous pouvez [afficher/masquer la barre de menus](CmdToggleMenuBar) avec (Key/CmdToggleMenuBar).
-ja:(Key/CmdToggleMenuBar) で[メニューバーの表示を切り替え](CmdToggleMenuBar)できます。
-kr:(Key/CmdToggleMenuBar)로 [메뉴 모음 표시 전환](CmdToggleMenuBar)이 가능합니다.
-ru:Можно [переключить строку меню](CmdToggleMenuBar) с помощью (Key/CmdToggleMenuBar).
-tw:你可以用 (Key/CmdToggleMenuBar) [切換功能表列](CmdToggleMenuBar)。
-:You can [toggle toolbar](CmdToggleToolbar) with (Key/CmdToggleToolbar).
-cn:你可以用 (Key/CmdToggleToolbar) [切换工具栏](CmdToggleToolbar)。
-de:Mit (Key/CmdToggleToolbar) können Sie die [Symbolleiste ein-/ausblenden](CmdToggleToolbar).
-fr:Vous pouvez [afficher/masquer la barre d'outils](CmdToggleToolbar) avec (Key/CmdToggleToolbar).
-ja:(Key/CmdToggleToolbar) で[ツールバーの表示を切り替え](CmdToggleToolbar)できます。
-kr:(Key/CmdToggleToolbar)로 [도구 모음 표시 전환](CmdToggleToolbar)이 가능합니다.
-ru:Можно [переключить панель инструментов](CmdToggleToolbar) с помощью (Key/CmdToggleToolbar).
-tw:你可以用 (Key/CmdToggleToolbar) [切換工具列](CmdToggleToolbar)。
-:You can [edit PDF annotations](Help/Editing-annotations).
-cn:你可以[编辑 PDF 标注](Help/Editing-annotations)。
-de:Sie können [PDF-Anmerkungen bearbeiten](Help/Editing-annotations).
-fr:Vous pouvez [modifier les annotations PDF](Help/Editing-annotations).
-ja:[PDF 注釈を編集](Help/Editing-annotations)できます。
-kr:[PDF 주석 편집](Help/Editing-annotations)이 가능합니다.
-ru:Можно [редактировать аннотации PDF](Help/Editing-annotations).
-tw:你可以[編輯 PDF 註解](Help/Editing-annotations)。
-:note
-cn:说明
-de:Hinweis
-fr:Note
-ja:注記
-kr:참고
-ru:Примечание
-tw:說明
-:Plus source
-cn:Plus 源码
-de:Plus-Quellcode
-fr:Source Plus
-ja:Plus ソース
-kr:Plus 소스
-ru:Исходники Plus
-tw:Plus 原始碼
-:Sumatra PDF Plus on GitHub
-cn:GitHub 上的 Sumatra PDF Plus
-de:Sumatra PDF Plus auf GitHub
-fr:Sumatra PDF Plus sur GitHub
-ja:GitHub の Sumatra PDF Plus
-kr:GitHub의 Sumatra PDF Plus
-ru:Sumatra PDF Plus на GitHub
-tw:GitHub 上的 Sumatra PDF Plus
-:Plus issues
-cn:Plus 问题反馈
-de:Plus-Probleme
-fr:Problèmes Plus
-ja:Plus 問題報告
-kr:Plus 이슈
-ru:Проблемы Plus
-tw:Plus 問題回報
-:Report bugs (this fork only)
-cn:报告错误（仅限本分支）
-de:Fehler melden (nur dieser Fork)
-fr:Signaler des bugs (ce fork uniquement)
-ja:バグ報告（このフォークのみ）
-kr:버그 보고(이 포크만)
-ru:Сообщить об ошибках (только этот форк)
-tw:回報錯誤（僅限本分支）
-:Plus guide
-cn:Plus 指南
-de:Plus-Anleitung
-fr:Guide Plus
-ja:Plus ガイド
-kr:Plus 가이드
-ru:Руководство Plus
-tw:Plus 指南
-:User guide (readme.txt)
-cn:用户指南 (readme.txt)
-de:Benutzerhandbuch (readme.txt)
-fr:Guide utilisateur (readme.txt)
-ja:ユーザーガイド (readme.txt)
-kr:사용자 가이드 (readme.txt)
-ru:Руководство пользователя (readme.txt)
-tw:使用者指南 (readme.txt)
-:official site
-cn:官方网站
-de:Offizielle Website
-fr:Site officiel
-ja:公式サイト
-kr:공식 사이트
-ru:Официальный сайт
-tw:官方網站
-:SumatraPDF website (upstream)
-cn:SumatraPDF 网站（上游）
-de:SumatraPDF-Website (Upstream)
-fr:Site SumatraPDF (amont)
-ja:SumatraPDF サイト（上流）
-kr:SumatraPDF 웹사이트(업스트림)
-ru:Сайт SumatraPDF (upstream)
-tw:SumatraPDF 網站（上游）
-:official manual
-cn:官方手册
-de:Offizielles Handbuch
-fr:Manuel officiel
-ja:公式マニュアル
-kr:공식 매뉴얼
-ru:Официальное руководство
-tw:官方手冊
-:SumatraPDF manual (upstream)
-cn:SumatraPDF 手册（上游）
-de:SumatraPDF-Handbuch (Upstream)
-fr:Manuel SumatraPDF (amont)
-ja:SumatraPDF マニュアル（上流）
-kr:SumatraPDF 매뉴얼(업스트림)
-ru:Руководство SumatraPDF (upstream)
-tw:SumatraPDF 手冊（上游）
-:official forums
-cn:官方论坛
-de:Offizielle Foren
-fr:Forums officiels
-ja:公式フォーラム
-kr:공식 포럼
-ru:Официальные форумы
-tw:官方論壇
-:SumatraPDF forums (upstream)
-cn:SumatraPDF 论坛（上游）
-de:SumatraPDF-Foren (Upstream)
-fr:Forums SumatraPDF (amont)
-ja:SumatraPDF フォーラム（上流）
-kr:SumatraPDF 포럼(업스트림)
-ru:Форумы SumatraPDF (upstream)
-tw:SumatraPDF 論壇（上游）
-:programming
-cn:编程
-de:Programmierung
-fr:Programmation
-ja:プログラミング
-kr:프로그래밍
-ru:Программирование
-tw:程式設計
-:The Programmers
-cn:程序员
-de:Die Programmierer
-fr:Les programmeurs
-ja:プログラマー
-kr:프로그래머
-ru:Программисты
-tw:程式設計師
-:licenses
-cn:许可证
-de:Lizenzen
-fr:Licences
-ja:ライセンス
-kr:라이선스
-ru:Лицензии
-tw:授權
-:Various Open Source
-cn:多种开源许可
-de:Verschiedene Open Source
-fr:Divers open source
-ja:各種オープンソース
-kr:다양한 오픈 소스
-ru:Различные лицензии open source
-tw:多種開源授權
-:last change
-cn:最近更改
-de:Letzte Änderung
-fr:Dernière modification
-ja:最新の変更
-kr:최근 변경
-ru:Последнее изменение
-tw:最近變更
-:git commit
-cn:git 提交
-de:Git-Commit
-fr:commit git
-ja:git コミット
-kr:git 커밋
-ru:git-коммит
-tw:git 提交
-:a note
-cn:说明
-de:Hinweis
-fr:Note
-ja:注記
-kr:참고
-ru:Примечание
-tw:說明
-:Pre-release version, for testing only!
-cn:预发布版本，仅供测试！
-de:Vorabversion, nur zum Testen!
-fr:Version préliminaire, pour tests uniquement !
-ja:プレリリース版、テスト専用！
-kr:프리릴리스 버전, 테스트 전용!
-ru:Предварительная версия, только для тестирования!
-tw:預發行版本，僅供測試！
-:Debug version, for testing only!
-cn:调试版本，仅供测试！
-de:Debug-Version, nur zum Testen!
-fr:Version de débogage, pour tests uniquement !
-ja:デバッグ版、テスト専用！
-kr:디버그 버전, 테스트 전용!
-ru:Отладочная версия, только для тестирования!
-tw:偵錯版本，僅供測試！
-:Pre-release
-cn:预发布
-de:Vorabversion
-fr:Préversion
-ja:プレリリース
-kr:프리릴리스
-ru:Предрелиз
-tw:預發行
-:64-bit
-cn:64 位
-de:64-Bit
-fr:64 bits
-ja:64 ビット
-kr:64비트
-ru:64-bit
-tw:64 位元
-:32-bit
-cn:32 位
-de:32-Bit
-fr:32 bits
-ja:32 ビット
-kr:32비트
-ru:32-bit
-tw:32 位元
-:(dbg)
-cn:(调试)
-de:(dbg)
-fr:(dbg)
-ja:(dbg)
-kr:(dbg)
-ru:(dbg)
-tw:(偵錯)
-:Downloading update...
-am:Արդիացումների ներբեռնում...
-ar:جاري تنزيل التحديث...
-az:Yeniləmə endirilir...
-bg:Изтегляне на обновление...
-br:Baixando atualização...
-by:Спампоўка абнаўлення…
-ca:S'està baixant l'actualització...
-ca-xv:S'està baixant l'actualització...
-cn:正在下载更新...
-co:Scaricamentu di a messa à livellu…
-cy:Lawrlwytho diweddariad...
-cz:Stahuji aktualizaci...
-de:Update wird heruntergeladen…
-dk:Downloader opdatering...
-el:Λήψη ενημέρωσης...
-es:Descargando actualización...
-et:Uuenduse allalaadimine...
-eu:Eguneraketa deskargatzen...
-fa:در حال دانلود بروزرسانی...
-fi:Ladataan päivitystä...
-fo:Hevur dagføring...
-fr:Téléchargement de la mise à jour...
-ga:Nuashonrú á íoslódáil...
-gl:Descargando actualización...
-he:מוריד עדכון...
-hi:अपडेट डाउनलोड हो रहा है...
-hr:Preuzimanje ažuriranja...
-hu:Frissítés letöltése...
-id:Mengunduh pembaruan...
-it:Download dell'aggiornamento...
-ja:更新をダウンロード中...
-kr:업데이트를 다운로드하는 중...
-kw:Ow iskraga nowedhans...
-lv:Lejupielādē atjauninājumu...
-mk:Преземање на надградба...
-ml:അപ്‌ഡേറ്റ് ഡൗൺലോഡ് ചെയ്യുന്നു...
-my:Memuat turun kemas kini...
-nl:Update downloaden...
-nn:Lastar ned oppdatering...
-no:Laster ned oppdatering...
-pl:Pobieranie aktualizacji...
-pt:Baixando atualização...
-ro:Se descarcă actualizarea...
-ru:Загрузка обновления...
-sat:ᱦᱟᱹᱞᱤᱭᱟᱹᱠ ᱰᱟᱩᱱᱞᱚᱰ ᱦᱩᱭᱩᱜ ᱠᱟᱱᱟ...
-sk:Sťahuje sa aktualizácia…
-sl:Prenos posodobitve …
-sr-rs:Преузимање ажурирања...
-sv:Laddar ner uppdatering...
-ta:புதுப்பிப்பு பதிவிறக்கப்படுகிறது...
-th:กำลังดาวน์โหลดการอัปเดต...
-tl:Nagda-download ng update...
-tr:Güncelleme indiriliyor...
-tw:正在下載更新...
-uk:Завантаження оновлення...
-uz:Yangilanish yuklab olinmoqda...
-vn:Đang tải bản cập nhật...
+:Apply
+af:Pas toe
+am:Կիրառել
+ar:تطبيق
+az:Tətbiq et
+bg:Приложи
+bn:প্রয়োগ
+br:Aplicar
+bs:Primijeni
+by:Ужыць
+ca:Aplica
+ca-xv:Aplica
+cn:应用
+co:Applica
+cy:Gosod
+cz:Použít
+de:Anwenden
+dk:Anvend
+el:Εφαρμογή
+es:Aplicar
+et:Rakenda
+eu:Aplikatu
+fa:اعمال
+fi:Käytä
+fo:Nýt
+fr:Appliquer
+fy-nl:Tapasse
+ga:Cuir i bhfeidhm
+gl:Aplicar
+he:החל
+hi:लागू करें
+hr:Primijeni
+hu:Alkalmaz
+id:Terapkan
+it:Applica
+ja:適用
+jv:Terapake
+ka:გამოყენება
+kr:적용
+ku:Bikar bîne
+kw:Apply
+lt:Taikyti
+lv:Lietot
+mk:Примени
+ml:പ്രയോഗിക്കുക
+mm:သုံးမည်
+my:Gunakan
+ne:लागू गर्नुहोस्
+nl:Toepassen
+nn:Bruk
+no:Bruk
+pa:ਲਾਗੂ ਕਰੋ
+pl:Zastosuj
+pt:Aplicar
+ro:Aplică
+ru:Применить
+sat:Apply
+si:යොදන්න
+sk:Použiť
+sl:Uporabi
+sn:Apply
+sp-rs:Primeni
+sq:Apliko
+sr-rs:Примени
+sv:Verkställ
+ta:பயன்படுத்து
+th:นำไปใช้
+tl:Ilapat
+tr:Uygula
+tw:套用
+uk:Застосувати
+uz:Qo'llash
+vn:Áp dụng

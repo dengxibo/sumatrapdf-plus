@@ -33,12 +33,12 @@ enum class Arg {
     Page = 44, View = 45, Zoom = 46, Scroll = 47,
     AppData = 48, Plugin = 49, StressTest = 50, N = 51,
     Max = 52, MaxFiles = 53, Render = 54, ExtractText = 55,
-    Bench = 56, BenchEpub = 57, Dir = 58, InstallDir = 59,
-    Lang = 60, UpdateSelfTo = 61, ArgDeleteFile = 62, BgCol = 63,
-    BgCol2 = 64, FwdSearchOffset = 65, FwdSearchWidth = 66, FwdSearchColor = 67,
-    FwdSearchPermanent = 68, MangaMode = 69, Search = 70, AllUsers = 71,
-    AllUsers2 = 72, RunInstallNow = 73, Adobe = 74, DDE = 75,
-    EngineDump = 76, SetColorRange = 77, UpgradeFrom = 78,
+    TestSearchCollect = 56, Bench = 57, BenchEpub = 58, Dir = 59,
+    InstallDir = 60, Lang = 61, UpdateSelfTo = 62, ArgDeleteFile = 63,
+    BgCol = 64, BgCol2 = 65, FwdSearchOffset = 66, FwdSearchWidth = 67,
+    FwdSearchColor = 68, FwdSearchPermanent = 69, MangaMode = 70, Search = 71,
+    AllUsers = 72, AllUsers2 = 73, RunInstallNow = 74, Adobe = 75,
+    DDE = 76, EngineDump = 77, SetColorRange = 78, UpgradeFrom = 79,
 };
 
 static const char* gArgNames =
@@ -56,12 +56,12 @@ static const char* gArgNames =
     "page\0" "view\0" "zoom\0" "scroll\0"
     "appdata\0" "plugin\0" "stress-test\0" "n\0"
     "max\0" "max-files\0" "render\0" "extract-text\0"
-    "bench\0" "bench-epub\0" "d\0" "install-dir\0"
-    "lang\0" "update-self-to\0" "delete-file\0" "bgcolor\0"
-    "bg-color\0" "fwdsearch-offset\0" "fwdsearch-width\0" "fwdsearch-color\0"
-    "fwdsearch-permanent\0" "manga-mode\0" "search\0" "all-users\0"
-    "allusers\0" "run-install-now\0" "a\0" "dde\0"
-    "engine-dump\0" "set-color-range\0" "upgrade-from\0";
+    "test-search-collect\0" "bench\0" "bench-epub\0" "d\0"
+    "install-dir\0" "lang\0" "update-self-to\0" "delete-file\0"
+    "bgcolor\0" "bg-color\0" "fwdsearch-offset\0" "fwdsearch-width\0"
+    "fwdsearch-color\0" "fwdsearch-permanent\0" "manga-mode\0" "search\0"
+    "all-users\0" "allusers\0" "run-install-now\0" "a\0"
+    "dde\0" "engine-dump\0" "set-color-range\0" "upgrade-from\0";
 // clang-format on
 // @gen-end flags
 
@@ -417,6 +417,10 @@ void ParseFlags(const WCHAR* cmdLine, Flags& i, const char* toolNames) {
         }
         if (arg == Arg::Tester) {
             i.tester = true;
+            continue;
+        }
+        if (arg == Arg::TestSearchCollect) {
+            i.testSearchCollect = true;
             continue;
         }
         if (arg == Arg::TestApp) {

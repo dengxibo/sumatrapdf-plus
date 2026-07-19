@@ -24,6 +24,7 @@
 #include "EditEbookAnnotations.h"
 #include "SumatraPDF.h"
 #include "Theme.h"
+#include "Toolbar.h"
 
 #include "DarkModeSubclass.h"
 
@@ -355,24 +356,32 @@ static void DoIcon(EbookAnnotationsWindow* window, EbookAnnotation* annotation) 
 
 static void UpdateSelectedAnnotation(EbookAnnotationsWindow* window, EbookAnnotation* annotation,
                                      EditAnnotFocus focus = EditAnnotFocus::Default) {
+    WindowTab* tab = window->tab;
     if (window->selected != annotation) {
         FlushContentsFromEdit(window);
     }
     window->selected = annotation;
     if (!annotation) {
+        tab->selectedEbookAnnotation = nullptr;
         ClearAnnotationDetailControls(window);
         RefreshAnnotationDetailPanel(window);
+        if (tab->win) {
+            MainWindowRerender(tab->win);
+        }
         return;
     }
 
     int idx = window->annotations.Find(annotation);
     if (idx < 0) {
+        tab->selectedEbookAnnotation = nullptr;
         ClearAnnotationDetailControls(window);
         RefreshAnnotationDetailPanel(window);
+        if (tab->win) {
+            MainWindowRerender(tab->win);
+        }
         return;
     }
 
-    WindowTab* tab = window->tab;
     window->updatingControls = true;
     HideAnnotationControls(window);
     RefreshAnnotationDetailPanel(window);
@@ -514,6 +523,7 @@ static void UpdateSelectedAnnotation(EbookAnnotationsWindow* window, EbookAnnota
         RefreshAnnotationDetailPanel(window);
     }
     if (tab->win) {
+        tab->selectedEbookAnnotation = annotation;
         MainWindowRerender(tab->win);
     }
     window->updatingControls = false;
@@ -816,6 +826,13 @@ EbookAnnotationsWindow::~EbookAnnotationsWindow() {
     tab->lastEditAnnotsWindowPos.dy = client.dy;
     tab->lastEditAnnotsWindowDpi = dpi > 0 ? dpi : DpiGet(hwnd);
     tab->lastEditAnnotsWindowMainWidth = WindowRect(tab->win->hwndFrame).dx;
+    if (tab->selectedEbookAnnotation != nullptr) {
+        tab->selectedEbookAnnotation = nullptr;
+        if (!tab->win->isBeingClosed) {
+            MainWindowRerender(tab->win);
+            ToolbarUpdateStateForWindow(tab->win, false);
+        }
+    }
     delete mainLayout;
 }
 

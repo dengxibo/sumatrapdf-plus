@@ -11,6 +11,14 @@ bool isLegalUTF8Sequence(const u8* source, const u8* sourceEnd);
 bool isLegalUTF8String(const u8** source, const u8* sourceEnd);
 int utf8StrLen(const u8* s);
 int utf8RuneLen(const u8* s);
+int Utf8CodepointAtByte(const char* s, int byteLen, int byteIdx, int* nbytesOut = nullptr);
+int Utf8CodepointNext(const char* s, int byteLen, int& byteIdx);
+int Utf8CodepointPrev(const char* s, int byteLen, int& byteIdx);
+int Utf8CodepointToByteIndex(const char* s, int byteLen, int codepointIdx);
+int Utf8CodepointCountN(const char* s, int byteLen);
+
+// case folding for document search (BMP lookup table; Turkish I and sharp-s handled in TextSearch)
+int FoldCaseForSearch(int codepoint);
 
 struct StrSpan {
     char* d = nullptr;

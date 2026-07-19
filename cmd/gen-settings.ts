@@ -271,7 +271,7 @@ const fixedPageUI: Field[] = [
       "SelectionColor",
       Color,
       mkRGB(0x99, 0xc1, 0xda),
-      "color value for the text selection rectangle (also used to highlight found text). " +
+      "color value for the text selection rectangle. " +
         "Use an #aarrggbb value to control opacity: a smaller alpha (e.g. #40ffff00) makes the " +
         "selection more transparent so the selected text stays crisp; #rrggbb uses the default opacity",
     ),
@@ -309,6 +309,15 @@ const fixedPageUI: Field[] = [
       "if given, sets the canvas background color for PDF files",
     ),
     "3.7",
+  ),
+  setVersion(
+    mkField(
+      "FindMatchColor",
+      Color,
+      mkRGB(0xff, 0xff, 0x00),
+      "color used to highlight the current search match on the page",
+    ),
+    "3.7.15",
   ),
 ];
 

@@ -135,6 +135,15 @@ void ListBox::SetModel(ListBoxModel* model) {
     // TODO: update ideal size based on the size of the model
 }
 
+void ListBox::UpdateItemHeightForDpi() {
+    if (!hwnd) {
+        return;
+    }
+    Size sz = HwndMeasureText(hwnd, "Ag", font);
+    int itemHeight = sz.dy + DpiScale(hwnd, itemHeightExtra);
+    SendMessageW(hwnd, LB_SETITEMHEIGHT, 0, itemHeight);
+}
+
 bool ListBox::OnCommand(WPARAM wparam, LPARAM lparam) {
     auto code = HIWORD(wparam);
     // https://docs.microsoft.com/en-us/windows/win32/controls/lbn-selchange

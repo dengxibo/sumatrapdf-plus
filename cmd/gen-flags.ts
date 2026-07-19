@@ -59,6 +59,7 @@ const args = [
     "MaxFiles", "max-files",
     "Render", "render",
     "ExtractText", "extract-text",
+    "TestSearchCollect", "test-search-collect",
     "Bench", "bench",
     "BenchEpub", "bench-epub",
     "Dir", "d",

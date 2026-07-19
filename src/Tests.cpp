@@ -16,6 +16,11 @@
 #include "Flags.h"
 #include "Theme.h"
 #include "PdfDarkMode.h"
+#include "ProgressUpdateUI.h"
+#include "TextSelection.h"
+#include "TextSearch.h"
+
+#include "utils/Log.h"
 
 static void PrintBitmapLuminanceStats(RenderedBitmap* bmp, Vec<Rect>* skipRects) {
     Size size = bmp->GetSize();
@@ -147,6 +152,86 @@ static void extractPageText(EngineBase* engine, int pageNo) {
     }
     printf("'\n");
     FreePageTextUtf8(&pageText);
+}
+
+static int CountMatchesFindNext(EngineBase* engine, const WCHAR* term) {
+    TextSearch ts(engine);
+    int n = 0;
+    if (ts.FindFirst(1, term)) {
+        n++;
+        while (ts.FindNext()) {
+            n++;
+        }
+    }
+    return n;
+}
+
+static int CountMatchesCollect(EngineBase* engine, const WCHAR* term) {
+    TextSearch ts(engine);
+    ts.SetText(term);
+    ts.SyncPageCount();
+    int n = 0;
+    for (int pageNo = 1; pageNo <= ts.nPages; pageNo++) {
+        Vec<TextSearch::MatchSpan> spans;
+        ts.CollectMatchesOnPage(pageNo, &spans);
+        n += (int)spans.size();
+    }
+    return n;
+}
+
+static bool VerifyUtf8TextCache(EngineBase* engine) {
+    int len1 = 0, len2 = 0;
+    const char* t1 = engine->GetTextForPageUtf8(1, &len1);
+    const char* t2 = engine->GetTextForPageUtf8(1, &len2);
+    if (t1 != t2 || len1 != len2) {
+        logf("UTF-8 cache FAIL: ptr %p vs %p, len %d vs %d\n", t1, t2, len1, len2);
+        return false;
+    }
+    logf("UTF-8 cache OK: page 1 len=%d\n", len1);
+    return true;
+}
+
+void TestSearchCollect(const Flags& ci) {
+    if (ci.showConsole) {
+        RedirectIOToConsole();
+    }
+
+    auto files = ci.fileNames;
+    if (files.Size() == 0) {
+        logf("search-collect: no file provided\n");
+        return;
+    }
+
+    int failures = 0;
+    const WCHAR* terms[] = {L"the", L"and", L"a", L"of", nullptr};
+    for (auto fileName : files) {
+        logf("search-collect test: '%s'\n", fileName);
+        auto engine = CreateEngineFromFile(fileName, nullptr, true);
+        if (!engine) {
+            logf("FAIL: could not open '%s'\n", fileName);
+            failures++;
+            continue;
+        }
+        if (!VerifyUtf8TextCache(engine)) {
+            failures++;
+        }
+        for (int i = 0; terms[i]; i++) {
+            int viaFind = CountMatchesFindNext(engine, terms[i]);
+            int viaCollect = CountMatchesCollect(engine, terms[i]);
+            if (viaFind != viaCollect) {
+                logf("FAIL term '%S': FindNext=%d Collect=%d\n", terms[i], viaFind, viaCollect);
+                failures++;
+            } else {
+                logf("OK term '%S': %d matches\n", terms[i], viaFind);
+            }
+        }
+        SafeEngineRelease(&engine);
+    }
+    if (failures) {
+        logf("search-collect: %d failure(s)\n", failures);
+        exit(1);
+    }
+    logf("search-collect: all checks passed\n");
 }
 
 void TestExtractPage(const Flags& ci) {

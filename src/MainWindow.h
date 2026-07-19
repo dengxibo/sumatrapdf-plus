@@ -309,10 +309,15 @@ struct MainWindow {
     bool findCancelled = false;
     bool findMatchCase = false;
     bool findMatchWholeWord = false;
-    // find-as-you-type is debounced: a WM_TIMER on hwndFrame fires the actual
-    // search a short while after the last keystroke (see SearchAndDDE.cpp).
-    // true while that timer is armed and hasn't fired yet.
-    bool findDebouncePending = false;
+    // true after the user edits the find text and before they press Enter to search
+    bool findEnterPending = false;
+    // animated status while find/count runs: "." -> ".." -> "..."
+    bool findStatusAnimating = false;
+    int findStatusDotPhase = 0;
+    // 1-based index of the highlighted match shown in the status bar during search
+    int findStatusCurrentIndex = 0;
+    int findCountLatestFound = 0; // running total from the count worker (UI reads)
+    volatile LONG findCountAnimTaskPending = 0;
 
     // find bar "n / m" match counter (see SearchAndDDE.cpp). The positions of all
     // matches for findCountText are cached so prev/next is instant; a background
@@ -323,9 +328,8 @@ struct MainWindow {
     bool findCountMatchCase = false;
     bool findCountMatchWholeWord = false;
     bool findCountValid = false;
-    // the scan stopped at kMaxFindCount matches; the real total is higher
-    // (shown as "n / m+")
-    bool findCountCapped = false;
+    int findCountPageLimit = 0;    // dm->PageCount() when the cache was built
+    int findCountStartPage = 1;    // page the scan started from
     void* findCountEngine = nullptr; // engine the cache was built for (compared, never deref'd)
     // (page<<32 | startOffset) of each match, in scan order (the scan starts
     // at the page current at the time and wraps around)
@@ -336,7 +340,7 @@ struct MainWindow {
     bool findCountPendingMatchCase = false;
     bool findCountPendingMatchWholeWord = false;
     // per-match positions (and optional snippets for the floating results list);
-    // also built when gShowAllMatches paints all highlights (see SearchAndDDE.cpp)
+    // per-match snippets for the floating results list (see SearchAndDDE.cpp)
     Vec<FindMatch> findMatches;
     bool findCountHasSnippets = false;
 

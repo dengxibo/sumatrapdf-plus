@@ -32,10 +32,16 @@ LRESULT OnCopyData(HWND hwnd, WPARAM wp, LPARAM lp);
 #define HIDE_FWDSRCHMARK_DECAYINTERVAL_IN_MS 100
 #define HIDE_FWDSRCHMARK_STEPS 5
 
-// find-as-you-type debounce timer (lives on hwndFrame); see SearchAndDDE.cpp
-#define kFindDebounceTimerId 0x100
+// animated "." / ".." / "..." while find/count is running (hwndFrame)
+#define kFindStatusAnimateTimerId 0x101
+#define kFindStatusAnimateMs 400
+// brief status-text highlight when a full-document count finishes (hwndFrame)
+#define kFindStatusCompleteFlashTimerId 0x102
+#define kFindStatusCompleteFlashMs 450
 
 bool NeedsFindUI(MainWindow* win);
+// false while a reflowable ebook (EPUB/MOBI etc.) is still formatting pages
+bool IsDocumentSearchReady(MainWindow* win);
 void ClearSearchResult(MainWindow* win);
 bool OnInverseSearch(MainWindow* win, int x, int y);
 void ShowForwardSearchResult(MainWindow* win, const char* fileName, int line, int col, int ret, int page,
@@ -44,28 +50,48 @@ void PaintForwardSearchMark(MainWindow* win, HDC hdc);
 void PaintAllFindMatches(MainWindow* win, HDC hdc);
 void InvalidateFindMatchPaintCache();
 
-// when true, paint every visible search match (current match in orange)
-extern bool gShowAllMatches;
+// when true, paint every visible search match (current match uses FindMatchColor,
+// other matches on the page use a secondary orange)
 void FindPrev(MainWindow* win);
 void FindNext(MainWindow* win);
 void FindFirst(MainWindow* win);
 void FindToggleMatchCase(MainWindow* win);
 void FindToggleMatchWholeWord(MainWindow* win);
-// called when the user edits the find bar's text (find-as-you-type)
+// called when the user edits the find bar's text
 void OnFindBarTextChanged(MainWindow* win);
-// fired by the debounce WM_TIMER on hwndFrame: runs the deferred search
-void FindDebounceTimerFired(MainWindow* win);
-// if a debounced search is pending, cancel the timer and start it now (so Enter
-// forces the search to start immediately). Returns true if one was pending.
+void StartFindStatusAnimation(MainWindow* win);
+void StopFindStatusAnimation(MainWindow* win);
+void FindStatusAnimateTimerFired(MainWindow* win);
+// if the current term has not been searched yet, start the search now (Enter).
+// Returns true if a search was started.
 bool FindFlushPendingSearch(MainWindow* win);
 // navigate to and select a match chosen from the floating results list
 void GoToFindMatch(MainWindow* win, int startPage, int startGlyph, int endPage, int endGlyph);
+// start (or refresh) the deferred full-document match count
+void RequestFindCount(MainWindow* win);
+// clear the find box and in-flight/cached search state when switching tabs
+// (destroys find bar/window HWNDs, aborts workers, resets MainWindow find state)
+void ResetFindUIForTabSwitch(MainWindow* win);
+// tear down find UI HWNDs and reset all search state (tab switch, Esc, close)
+void CloseFindUI(MainWindow* win);
+// update n/m from the valid count cache (no-op if count not ready)
+void UpdateFindMatchCountDisplay(MainWindow* win);
 // free the cached per-match snippets (win->findMatches)
 void ClearFindMatches(MainWindow* win);
+// rebuild snippet strings after the floating find window is resized wider
+void RebuildFindMatchSnippets(MainWindow* win);
+// populate the floating results list from the position cache (e.g. after
+// expanding from the compact bar, or when a count finished without snippets)
+void SyncFindResultsList(MainWindow* win);
+// called when progressive ebook loading adds pages (or finishes)
+void OnEbookPageCountChanged(MainWindow* win);
+// update find status bar when ebook loading blocks search
+void RefreshFindSearchBlockedStatus(MainWindow* win);
 void FindSelection(MainWindow* win, TextSearch::Direction direction);
-bool AbortFinding(MainWindow* win, bool hideMessage);
-void FindTextOnThread(MainWindow* win, TextSearch::Direction direction, bool showProgress);
-void FindTextOnThread(MainWindow* win, TextSearch::Direction direction, const char* text, bool wasModified,
-                      bool showProgress);
+bool AbortFinding(MainWindow* win, bool hideMessage, bool waitForWorkers = true);
+// wait for the count/find worker before using the engine on the UI thread (lookup/tts)
+void SuspendFindEngineAccess(MainWindow* win);
+void FindTextOnThread(MainWindow* win, TextSearch::Direction direction);
+void FindTextOnThread(MainWindow* win, TextSearch::Direction direction, const char* text, bool wasModified);
 extern bool gIsStartup;
 extern StrVec gDdeOpenOnStartup;

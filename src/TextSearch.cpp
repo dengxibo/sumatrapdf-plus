@@ -14,29 +14,292 @@
 #include "TextSelection.h"
 #include "TextSearch.h"
 
-#define SkipWhitespace(c) for (; str::IsWs(*(c)); (c)++)
 // ignore spaces between CJK glyphs but not between Latin, Greek, Cyrillic, etc. letters
 // cf. http://code.google.com/p/sumatrapdf/issues/detail?id=959
-#define isnoncjkwordchar(c) (isWordChar(c) && (unsigned short)(c) < 0x2E80)
+#define isnoncjkwordchar(c) (isWordChar(c) && (unsigned)(c) < 0x2E80)
+
+static int TextByteLen(const char* s) {
+    return s ? (int)str::Len(s) : 0;
+}
+
+// Fetch page text for search. When *abortSearch is set, the caller should stop
+// immediately (search was cancelled while engine locks were contended).
+// lenOut is the number of Unicode codepoints (same indexing as WCHAR page text).
+static const char* GetTextForPageUtf8ForSearch(EngineBase* engine, int pageNo, int* lenOut,
+                                               const ProgressUpdateCb& progressCb, bool* abortSearch) {
+    if (abortSearch) {
+        *abortSearch = false;
+    }
+    int byteLen = 0;
+    const char* text = nullptr;
+    if (engine->TryGetTextForPageUtf8(pageNo, &byteLen, nullptr, &text)) {
+        if (lenOut) {
+            if (text && byteLen > 0) {
+                *lenOut = Utf8CodepointCountN(text, byteLen);
+            } else {
+                *lenOut = 0;
+            }
+        }
+        return text;
+    }
+    if (WasCanceled(progressCb)) {
+        if (abortSearch) {
+            *abortSearch = true;
+        }
+        if (lenOut) {
+            *lenOut = 0;
+        }
+        return nullptr;
+    }
+    text = engine->GetTextForPageUtf8(pageNo, &byteLen);
+    if (lenOut) {
+        if (text && byteLen > 0) {
+            *lenOut = Utf8CodepointCountN(text, byteLen);
+        } else {
+            *lenOut = 0;
+        }
+    }
+    return text;
+}
+
+static void SkipWhitespace(const char* text, int textLen, int& idx, int& byteIdx) {
+    while (idx < textLen) {
+        int nextByte = byteIdx;
+        int c = Utf8CodepointNext(text, TextByteLen(text), nextByte);
+        if (!str::IsWs((char)c)) {
+            break;
+        }
+        byteIdx = nextByte;
+        idx++;
+    }
+}
 
 static void markAllPagesNonSkip(Vec<bool>& pagesToSkip) {
     for (size_t i = 0; i < pagesToSkip.size(); i++) {
         pagesToSkip[i] = false;
     }
 }
+
+static void markAllPagesMatchCacheInvalid(Vec<bool>& pageMatchesCached) {
+    for (size_t i = 0; i < pageMatchesCached.size(); i++) {
+        pageMatchesCached[i] = false;
+    }
+}
+
+static void RebuildAnchorAsciiMask(TextSearch* ts) {
+    ts->anchorAsciiMask = 0;
+    if (!ts->anchor || ts->anchorLen <= 0) {
+        return;
+    }
+    int anchorByteLen = TextByteLen(ts->anchor);
+    u32 mask = 0;
+    for (int i = 0; i < anchorByteLen; i++) {
+        unsigned char b = (unsigned char)ts->anchor[i];
+        if (b < 0x80) {
+            int c = b;
+            if (!ts->matchCase && c >= 'A' && c <= 'Z') {
+                c += 32;
+            }
+            if (c >= 'a' && c <= 'z') {
+                mask |= (1u << (c - 'a'));
+            }
+        }
+    }
+    ts->anchorAsciiMask = mask;
+}
+
+static bool AnchorSupportsUtf8ByteSearch(const char* anchor, int anchorByteLen, bool matchCase) {
+    if (!anchor || anchorByteLen <= 0) {
+        return false;
+    }
+    if (!matchCase) {
+        for (int i = 0; i < anchorByteLen; i++) {
+            unsigned char b = (unsigned char)anchor[i];
+            if (b < 0x80 && ((b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z'))) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static void FreePageMatchList(TextSearch::PageMatchList& list) {
+    free(list.data);
+    list.data = nullptr;
+    list.count = 0;
+}
+
+static void MarkSkippedPageMatchCache(TextSearch* ts, int pageNo) {
+    FreePageMatchList(ts->pageMatchesCache[pageNo - 1]);
+    ts->pageMatchesCached[pageNo - 1] = true;
+}
+
+void TextSearch::SetPageMatchCache(int pageNo, const PageMatchList& spans) {
+    ReportIf(pageNo < 1 || pageNo > nPages);
+    PageMatchList& cache = pageMatchesCache[pageNo - 1];
+    FreePageMatchList(cache);
+    if (spans.count > 0 && spans.data) {
+        cache.data = (MatchSpan*)memdup(spans.data, spans.count * sizeof(MatchSpan));
+        cache.count = spans.count;
+    }
+    pageMatchesCached[pageNo - 1] = true;
+}
+
+void TextSearch::SetPageMatchCache(int pageNo, const Vec<MatchSpan>& spans) {
+    ReportIf(pageNo < 1 || pageNo > nPages);
+    PageMatchList& cache = pageMatchesCache[pageNo - 1];
+    FreePageMatchList(cache);
+    int n = (int)spans.size();
+    if (n > 0) {
+        cache.data = (MatchSpan*)memdup(spans.LendData(), n * sizeof(MatchSpan));
+        cache.count = n;
+    }
+    pageMatchesCached[pageNo - 1] = true;
+}
+
+static bool QuickRejectWholeWordMatch(const char* pageText, int pageTextByteLen, int pageTextLen, int found,
+                                      int findTextLen, bool matchWordStart, bool matchWordEnd) {
+    if (matchWordStart && found > 0) {
+        int byteIdx = Utf8CodepointToByteIndex(pageText, pageTextByteLen, found);
+        int prevByteIdx = byteIdx;
+        int prevCh = Utf8CodepointPrev(pageText, pageTextByteLen, prevByteIdx);
+        int curByteIdx = byteIdx;
+        int curCh = Utf8CodepointNext(pageText, pageTextByteLen, curByteIdx);
+        if (isWordChar(prevCh) && isWordChar(curCh)) {
+            return true;
+        }
+    }
+    if (matchWordEnd && found + findTextLen < pageTextLen) {
+        int endIdx = found + findTextLen;
+        int endByteIdx = Utf8CodepointToByteIndex(pageText, pageTextByteLen, endIdx);
+        int prevByteIdx = endByteIdx;
+        int prevCh = Utf8CodepointPrev(pageText, pageTextByteLen, prevByteIdx);
+        int curCh = Utf8CodepointNext(pageText, pageTextByteLen, endByteIdx);
+        if (isWordChar(prevCh) && isWordChar(curCh)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void FreeAllPageMatchLists(Vec<TextSearch::PageMatchList>& cache) {
+    int n = (int)cache.size();
+    for (int i = 0; i < n; i++) {
+        FreePageMatchList(cache[i]);
+    }
+}
+
 TextSearch::TextSearch(EngineBase* engine) : TextSelection(engine) {
     nPages = engine->PageCount();
     pagesToSkip.SetSize(nPages);
     markAllPagesNonSkip(pagesToSkip);
+    EnsurePageMatchCacheSize();
+    markAllPagesMatchCacheInvalid(pageMatchesCached);
 }
 
 TextSearch::~TextSearch() {
+    FreeAllPageMatchLists(pageMatchesCache);
     Clear();
 }
 
 void TextSearch::SetMaxPageCount(int max) {
     maxPageCount = max;
     SyncPageCount();
+}
+
+void TextSearch::EnsurePageMatchCacheSize() {
+    int oldSize = (int)pageMatchesCache.size();
+    if (nPages <= 0) {
+        FreeAllPageMatchLists(pageMatchesCache);
+        pageMatchesCache.Reset();
+        pageMatchesCached.Reset();
+        return;
+    }
+    if (oldSize == nPages) {
+        return;
+    }
+    FreeAllPageMatchLists(pageMatchesCache);
+    pageMatchesCache.SetSize(nPages);
+    pageMatchesCached.SetSize(nPages);
+    for (int i = 0; i < nPages; i++) {
+        pageMatchesCache[i].data = nullptr;
+        pageMatchesCache[i].count = 0;
+        pageMatchesCached[i] = false;
+    }
+}
+
+void TextSearch::ApplyCachedAsciiPageSkip() {
+    if (anchorAsciiMask == 0 || nPages <= 0) {
+        return;
+    }
+    EnsurePageMatchCacheSize();
+    engine->ApplyAsciiMaskPageSkip(anchorAsciiMask, nPages, pagesToSkip);
+    for (int pageNo = 1; pageNo <= nPages; pageNo++) {
+        if (pagesToSkip[pageNo - 1] && !pageMatchesCached[pageNo - 1]) {
+            MarkSkippedPageMatchCache(this, pageNo);
+        }
+    }
+}
+
+void TextSearch::ApplyCachedUtf8AnchorPageSkip() {
+    if (!anchor || nPages <= 0) {
+        return;
+    }
+    int anchorByteLen = TextByteLen(anchor);
+    if (!AnchorSupportsUtf8ByteSearch(anchor, anchorByteLen, matchCase)) {
+        return;
+    }
+    EnsurePageMatchCacheSize();
+    engine->ApplyUtf8AnchorPageSkip(anchor, anchorByteLen, nPages, pagesToSkip);
+    for (int pageNo = 1; pageNo <= nPages; pageNo++) {
+        if (pagesToSkip[pageNo - 1] && !pageMatchesCached[pageNo - 1]) {
+            MarkSkippedPageMatchCache(this, pageNo);
+        }
+    }
+}
+
+const char* TextSearch::LoadPageText(int pageNo, int* lenOut, bool* abortSearch) {
+    if (pageNo == pageTextPage && pageText) {
+        if (lenOut) {
+            *lenOut = pageTextLen;
+        }
+        return pageText;
+    }
+    pageText = GetTextForPageUtf8ForSearch(engine, pageNo, &pageTextLen, progressCb, abortSearch);
+    pageTextPage = pageNo;
+    if (lenOut) {
+        *lenOut = pageTextLen;
+    }
+    return pageText;
+}
+
+bool TextSearch::TryGetCachedPageMatches(int pageNo, Vec<MatchSpan>* out) const {
+    if (!out || pageNo < 1 || pageNo > nPages) {
+        return false;
+    }
+    if ((int)pageMatchesCached.size() < pageNo || !pageMatchesCached[pageNo - 1]) {
+        return false;
+    }
+    const PageMatchList& cached = pageMatchesCache[pageNo - 1];
+    for (int i = 0; i < cached.count; i++) {
+        out->Append(cached.data[i]);
+    }
+    return true;
+}
+
+bool TextSearch::PageMightContainAnchor(int pageNo) const {
+    if (anchorAsciiMask != 0) {
+        u32 pageMask = engine->GetPageAsciiLetterMask(pageNo);
+        if (pageMask == UINT32_MAX) {
+            return true;
+        }
+        return (pageMask & anchorAsciiMask) == anchorAsciiMask;
+    }
+    int anchorByteLen = TextByteLen(anchor);
+    if (anchor && anchorByteLen > 0 && AnchorSupportsUtf8ByteSearch(anchor, anchorByteLen, matchCase)) {
+        return engine->CachedPageContainsUtf8Bytes(pageNo, anchor, anchorByteLen);
+    }
+    return true;
 }
 
 void TextSearch::SyncPageCount() {
@@ -56,17 +319,22 @@ void TextSearch::SyncPageCount() {
     for (int i = oldCount; i < nPages; i++) {
         pagesToSkip[i] = false;
     }
+    EnsurePageMatchCacheSize();
 }
 
 void TextSearch::Clear() {
     str::FreePtr(&findText);
     str::FreePtr(&anchor);
     str::FreePtr(&lastText);
+    findTextLen = 0;
+    anchorLen = 0;
     Reset();
 }
 
 void TextSearch::Reset() {
     pageText = nullptr;
+    pageTextLen = 0;
+    pageTextPage = 0;
     TextSelection::Reset();
 }
 
@@ -80,53 +348,62 @@ int TextSearch::GetSearchHitStartPageNo() const {
 }
 
 void TextSearch::SetText(const WCHAR* text) {
-    // search text starting with a single space enables the 'Match word start'
-    // and search text ending in a single space enables the 'Match word end' option
-    // (that behavior already "kind of" exists without special treatment, but
-    // usually is not quite what a user expects, so let's try to be cleverer)
-    // "match whole word" forces both word-boundary checks on; otherwise they're
-    // driven by a leading / trailing single space in the search text
     this->matchWordStart = matchWholeWord || (text[0] == ' ' && text[1] != ' ');
     this->matchWordEnd = matchWholeWord || (str::EndsWith(text, L" ") && !str::EndsWith(text, L"  "));
 
-    if (text[0] == ' ') {
-        text++;
+    const WCHAR* searchText = text;
+    if (searchText[0] == ' ') {
+        searchText++;
     }
 
-    // don't reset anything if the search text hasn't changed at all
-    if (str::Eq(this->lastText, text)) {
+    if (str::Eq(this->lastText, searchText)) {
         return;
     }
 
     this->Clear();
-    this->lastText = str::Dup(text);
-    this->findText = str::Dup(text);
+    this->lastText = str::Dup(searchText);
+    this->findText = ToUtf8(searchText);
+    this->findTextLen = Utf8CodepointCountN(this->findText, TextByteLen(this->findText));
 
-    // extract anchor string (the first word or the first symbol) for faster searching
-    if (isnoncjkwordchar(*text)) {
-        const WCHAR* end;
-        for (end = text; isnoncjkwordchar(*end); end++) {
-            ;
+    int searchTextByteLen = TextByteLen(this->findText);
+    int firstCharEndByte = 0;
+    int firstChar = Utf8CodepointNext(this->findText, searchTextByteLen, firstCharEndByte);
+    if (findTextLen > 0 && isnoncjkwordchar(firstChar)) {
+        int end = 1;
+        int endByte = firstCharEndByte;
+        while (end < findTextLen) {
+            int nextByte = endByte;
+            int c = Utf8CodepointNext(this->findText, searchTextByteLen, nextByte);
+            if (!isnoncjkwordchar(c)) {
+                break;
+            }
+            endByte = nextByte;
+            end++;
         }
-        anchor = str::Dup(text, end - text);
-    }
-    // Adobe Reader also matches certain hard-to-type Unicode
-    // characters when searching for easy-to-type homoglyphs
-    // cf. https://web.archive.org/web/20140201013717/http://forums.fofou.org:80/sumatrapdf/topic?id=2432337&comments=3
-    else if (*text == '-' || *text == '\'' || *text == '"') {
+        anchor = str::Dup(this->findText, endByte);
+        anchorLen = end;
+    } else if (findTextLen > 0 && (firstChar == '-' || firstChar == '\'' || firstChar == '"')) {
         anchor = nullptr;
+        anchorLen = 0;
+    } else if (findTextLen > 0) {
+        anchor = str::Dup(this->findText, firstCharEndByte);
+        anchorLen = 1;
     } else {
-        anchor = str::Dup(text, 1);
+        anchor = nullptr;
+        anchorLen = 0;
     }
 
-    if (str::Len(this->findText) >= INT_MAX) {
-        this->findText[(unsigned)INT_MAX - 1] = '\0';
-    }
-    if (str::EndsWith(this->findText, L" ")) {
-        this->findText[str::Len(this->findText) - 1] = '\0';
+    if (findText && findText[searchTextByteLen - 1] == ' ') {
+        findText[searchTextByteLen - 1] = '\0';
+        findTextLen--;
     }
 
     markAllPagesNonSkip(pagesToSkip);
+    EnsurePageMatchCacheSize();
+    markAllPagesMatchCacheInvalid(pageMatchesCached);
+    RebuildAnchorAsciiMask(this);
+    ApplyCachedAsciiPageSkip();
+    ApplyCachedUtf8AnchorPageSkip();
 }
 
 void TextSearch::SetMatchCase(bool newMatchCase) {
@@ -136,6 +413,11 @@ void TextSearch::SetMatchCase(bool newMatchCase) {
     this->matchCase = newMatchCase;
 
     markAllPagesNonSkip(pagesToSkip);
+    EnsurePageMatchCacheSize();
+    markAllPagesMatchCacheInvalid(pageMatchesCached);
+    RebuildAnchorAsciiMask(this);
+    ApplyCachedAsciiPageSkip();
+    ApplyCachedUtf8AnchorPageSkip();
 }
 
 void TextSearch::SetMatchWholeWord(bool newMatchWholeWord) {
@@ -143,10 +425,9 @@ void TextSearch::SetMatchWholeWord(bool newMatchWholeWord) {
         return;
     }
     this->matchWholeWord = newMatchWholeWord;
-    // matchWordStart/matchWordEnd are recomputed from matchWholeWord on the next
-    // SetText() (the re-search after a toggle always calls it), so we only need
-    // to invalidate the per-page skip cache here, like SetMatchCase().
     markAllPagesNonSkip(pagesToSkip);
+    EnsurePageMatchCacheSize();
+    markAllPagesMatchCacheInvalid(pageMatchesCached);
 }
 
 void TextSearch::SetDirection(TextSearch::Direction direction) {
@@ -156,7 +437,7 @@ void TextSearch::SetDirection(TextSearch::Direction direction) {
     }
     forward = fwd;
     if (findText) {
-        int n = (int)str::Len(findText);
+        int n = findTextLen;
         if (fwd) {
             findIndex += n;
         } else {
@@ -175,163 +456,609 @@ void TextSearch::SetLastResult(TextSelection* sel) {
     searchHitStartAt = findPage = std::min(startPage, endPage);
     findPage = std::max(startPage, endPage);
     findIndex = (findPage == endPage ? endGlyph : startGlyph);
-    pageText = engine->GetTextForPage(findPage);
+    pageText = LoadPageText(findPage, &pageTextLen, nullptr);
     forward = true;
 }
 
-static WCHAR CharToLower2(WCHAR c) {
-    WCHAR buf[1] = {c};
-    CharLowerBuffW(buf, 1);
-    return buf[0];
-}
-
-static inline WCHAR CharToLower(WCHAR c) {
-    // fast path that hopefully will be inlined
-    if (c >= 'a' && c <= 'z') {
-        return c;
+static int FirstCachedMatchIndex(const Vec<u64>& positions, int startPage, bool forward) {
+    int n = (int)positions.size();
+    if (n == 0) {
+        return -1;
     }
-    if (c >= '0' && c <= '9') {
-        return c;
-    }
-    if (c >= 'A' && c <= 'Z') {
-        return c + 32;
-    }
-    return CharToLower2(c);
-}
-
-// try to match "findText" from "start" with whitespace tolerance
-// (ignore all whitespace except after alphanumeric characters)
-TextSearch::PageAndOffset TextSearch::MatchEnd(const WCHAR* start) const {
-    const WCHAR *match = findText, *end = start;
-    const PageAndOffset notFound = {-1, -1};
-    int currentPage = findPage;
-    const WCHAR* currentPageText = pageText;
-    bool lookingAtWs;
-
-    if (matchWordStart && start > pageText && isWordChar(start[-1]) && isWordChar(start[0])) {
-        return notFound;
-    }
-
-    if (!match) {
-        return notFound;
-    }
-
-    while (*match) {
-        if (!*end) {
-            return notFound;
+    if (forward) {
+        for (int i = 0; i < n; i++) {
+            int page = (int)(positions[i] >> 32);
+            if (page >= startPage) {
+                return i;
+            }
         }
-        /* Going from page n to page n+1 is a space, too.*/
-        lookingAtWs = (!*end && (currentPage < nPages)) || str::IsWs(*end);
-        bool isMatch = false;
-        if (matchCase) {
-            isMatch = *match == *end;
-        } else {
-            WCHAR matchLower = CharToLower(*match);
-            WCHAR matchEnd = CharToLower(*end);
-            isMatch = matchLower == matchEnd;
+        for (int i = 0; i < n; i++) {
+            int page = (int)(positions[i] >> 32);
+            if (page < startPage) {
+                return i;
+            }
         }
-        if (isMatch) {
-            /* characters are identical */;
-        } else if (str::IsWs(*match) && lookingAtWs) {
-            /* treat all whitespace as identical and end of page as whitespace.
-               The end of the document is NOT seen as whitespace */
-            ;
-            // TODO: Adobe Reader seems to have a more extensive list of
-            //       normalizations - is there an easier way?
-        } else if (*match == '-' && (0x2010 <= *end && *end <= 0x2014)) {
-            /* make HYPHEN-MINUS also match HYPHEN, NON-BREAKING HYPHEN,
-               FIGURE DASH, EN DASH and EM DASH (but not the other way around) */
-            ;
-        } else if (*match == '\'' && (0x2018 <= *end && *end <= 0x201b)) {
-            /* make APOSTROPHE also match LEFT/RIGHT SINGLE QUOTATION MARK */;
-        } else if (*match == '"' && (0x201c <= *end && *end <= 0x201f)) {
-            /* make QUOTATION MARK also match LEFT/RIGHT DOUBLE QUOTATION MARK */;
-        } else {
-            return notFound;
+    } else {
+        for (int i = n - 1; i >= 0; i--) {
+            int page = (int)(positions[i] >> 32);
+            if (page <= startPage) {
+                return i;
+            }
         }
-        match++;
-        // We might get here either ...
-        if (*end) {
-            // ... because there's a genuine match -> consider next character in next loop iteration
-            end++;
-        } else {
-            // ... or because we were looking at whitespace in the pattern and we were at a page break
-            // -> skip to next page
-            ++currentPage;
-            end = currentPageText = engine->GetTextForPage(currentPage);
-        }
-        // treat "??" and "? ?" differently, since '?' could have been a word
-        // character that's just missing an encoding (and '?' is the replacement
-        // character); cf. http://code.google.com/p/sumatrapdf/issues/detail?id=1574
-        if (*match && !isnoncjkwordchar(*(match - 1)) && (*(match - 1) != '?' || *match != '?') ||
-            lookingAtWs && str::IsWs(*(match - 1))) {
-            SkipWhitespace(match);
-            SkipWhitespace(end);
-            while ((!*end) && (currentPage < nPages)) {
-                // treat page break as whitespace, too
-                ++currentPage;
-                end = currentPageText = engine->GetTextForPage(currentPage);
-                SkipWhitespace(end);
+        for (int i = n - 1; i >= 0; i--) {
+            int page = (int)(positions[i] >> 32);
+            if (page > startPage) {
+                return i;
             }
         }
     }
-    if (matchWordEnd && end > currentPageText && isWordChar(end[-1]) && isWordChar(end[0])) {
+    return -1;
+}
+
+bool TextSearch::TryFindFromCachedPositions(const Vec<u64>& positions, int startPage) {
+    if (!findText || findTextLen == 0 || positions.size() == 0) {
+        return false;
+    }
+    int n = (int)positions.size();
+    int idx = FirstCachedMatchIndex(positions, startPage, forward);
+    if (idx < 0) {
+        return false;
+    }
+    for (int tried = 0; tried < n; tried++) {
+        u64 key = positions[idx];
+        int page = (int)(key >> 32);
+        int glyph = (int)(key & 0xffffffff);
+        findPage = page;
+        bool abortSearch = false;
+        if (!LoadPageText(page, &pageTextLen, &abortSearch) || abortSearch || !pageText) {
+            return false;
+        }
+        PageAndOffset end = MatchEnd(glyph);
+        if (end.page > 0) {
+            searchHitStartAt = page;
+            StartAt(page, glyph);
+            SelectUpTo(end.page, end.offset);
+            findIndex = forward ? end.offset : glyph;
+            if (result.len > 0) {
+                return true;
+            }
+        }
+        if (forward) {
+            idx = (idx + 1) % n;
+        } else {
+            idx = (idx + n - 1) % n;
+        }
+    }
+    return false;
+}
+
+static bool IsSharpS(int c) {
+    return c != 0 && FoldCaseForSearch(c) == 0x00DF;
+}
+
+static bool IsLatinS(int c) {
+    return c != 0 && FoldCaseForSearch(c) == L's';
+}
+
+static bool MatchSearchUnit(const char* h, int hLen, int hByteLen, int hIdx, int hByteIdx, const char* n, int nLen,
+                            int nByteLen, int nIdx, int nByteIdx, int& hAdv, int& nAdv, int& hByteAdv, int& nByteAdv) {
+    hAdv = nAdv = hByteAdv = nByteAdv = 0;
+    if (hIdx >= hLen || nIdx >= nLen) {
+        return false;
+    }
+    int hNextByte = hByteIdx;
+    int hc = Utf8CodepointNext(h, hByteLen, hNextByte);
+    int nNextByte = nByteIdx;
+    int nc = Utf8CodepointNext(n, nByteLen, nNextByte);
+    if (IsSharpS(nc) && hIdx + 1 < hLen && IsLatinS(hc)) {
+        int hAfterNextByte = hNextByte;
+        int hNextChar = Utf8CodepointNext(h, hByteLen, hAfterNextByte);
+        if (IsLatinS(hNextChar)) {
+            hAdv = 2;
+            nAdv = 1;
+            hByteAdv = hAfterNextByte - hByteIdx;
+            nByteAdv = nNextByte - nByteIdx;
+            return true;
+        }
+    }
+    if (nIdx + 1 < nLen && IsLatinS(nc) && IsSharpS(hc)) {
+        int nAfterNextByte = nNextByte;
+        int nNextChar = Utf8CodepointNext(n, nByteLen, nAfterNextByte);
+        if (IsLatinS(nNextChar)) {
+            hAdv = 1;
+            nAdv = 2;
+            hByteAdv = hNextByte - hByteIdx;
+            nByteAdv = nAfterNextByte - nByteIdx;
+            return true;
+        }
+    }
+    if (FoldCaseForSearch(hc) == FoldCaseForSearch(nc)) {
+        hAdv = 1;
+        nAdv = 1;
+        hByteAdv = hNextByte - hByteIdx;
+        nByteAdv = nNextByte - nByteIdx;
+        return true;
+    }
+    return false;
+}
+
+static bool IsUtf8LeadByte(unsigned char b) {
+    return (b & 0xC0) != 0x80;
+}
+
+static int StrStrFoldCase(const char* haystack, int haystackByteLen, int haystackLen, int startOff, const char* needle,
+                          int needleByteLen, int needleLen) {
+    if (!haystack || !needle) {
+        return startOff;
+    }
+    int nFirstByte = 0;
+    int nFirst = Utf8CodepointNext(needle, needleByteLen, nFirstByte);
+    int nFirstFolded = FoldCaseForSearch(nFirst);
+    int byteIdx = Utf8CodepointToByteIndex(haystack, haystackByteLen, startOff);
+    for (int i = startOff; i < haystackLen; i++) {
+        int hFirstByte = byteIdx;
+        int hFirst = Utf8CodepointNext(haystack, haystackByteLen, hFirstByte);
+        if (FoldCaseForSearch(hFirst) != nFirstFolded) {
+            Utf8CodepointNext(haystack, haystackByteLen, byteIdx);
+            continue;
+        }
+        int hIdx = i;
+        int hByteIdx = byteIdx;
+        int nIdx = 0;
+        int nByteIdx = 0;
+        bool isMatch = true;
+        while (nIdx < needleLen) {
+            if (hIdx >= haystackLen) {
+                isMatch = false;
+                break;
+            }
+            int hAdv, nAdv, hByteAdv, nByteAdv;
+            if (!MatchSearchUnit(haystack, haystackLen, haystackByteLen, hIdx, hByteIdx, needle, needleLen,
+                                 needleByteLen, nIdx, nByteIdx, hAdv, nAdv, hByteAdv, nByteAdv)) {
+                isMatch = false;
+                break;
+            }
+            hIdx += hAdv;
+            nIdx += nAdv;
+            hByteIdx += hByteAdv;
+            nByteIdx += nByteAdv;
+        }
+        if (isMatch) {
+            return i;
+        }
+        Utf8CodepointNext(haystack, haystackByteLen, byteIdx);
+    }
+    return -1;
+}
+
+static bool StartsWithAtByte(const char* text, int textByteLen, int byteIdx, const char* prefix, int prefixByteLen) {
+    return text && prefix && byteIdx >= 0 && byteIdx + prefixByteLen <= textByteLen &&
+           memcmp(text + byteIdx, prefix, (size_t)prefixByteLen) == 0;
+}
+
+static int StrStr(const char* haystack, int haystackByteLen, int haystackLen, int startOff, const char* needle,
+                  int needleByteLen, int needleLen) {
+    if (!haystack || !needle || needleLen <= 0) {
+        return -1;
+    }
+    int byteIdx = Utf8CodepointToByteIndex(haystack, haystackByteLen, startOff);
+    if (needleByteLen > 0 && (unsigned char)needle[0] < 0x80) {
+        char first = needle[0];
+        while (byteIdx < haystackByteLen) {
+            const char* p = (const char*)memchr(haystack + byteIdx, (unsigned char)first, haystackByteLen - byteIdx);
+            if (!p) {
+                return -1;
+            }
+            int i = Utf8CodepointCountN(haystack, (int)(p - haystack));
+            if (StartsWithAtByte(haystack, haystackByteLen, (int)(p - haystack), needle, needleByteLen)) {
+                return i;
+            }
+            byteIdx = (int)(p - haystack) + 1;
+        }
+        return -1;
+    }
+    for (int i = startOff; i <= haystackLen - needleLen; i++) {
+        if (StartsWithAtByte(haystack, haystackByteLen, byteIdx, needle, needleByteLen)) {
+            return i;
+        }
+        Utf8CodepointNext(haystack, haystackByteLen, byteIdx);
+    }
+    return -1;
+}
+
+static int StrRStr(const char* text, int textByteLen, int textLen, int endOff, const char* needle, int needleByteLen,
+                   int needleLen) {
+    if (!text || !needle || endOff <= 0 || endOff > textLen) {
+        return -1;
+    }
+    if (needleLen <= 0 || needleLen > endOff) {
+        return -1;
+    }
+    int result = -1;
+    int byteIdx = 0;
+    for (int i = 0; i <= endOff - needleLen; i++) {
+        if (StartsWithAtByte(text, textByteLen, byteIdx, needle, needleByteLen)) {
+            result = i;
+        }
+        Utf8CodepointNext(text, textByteLen, byteIdx);
+    }
+    return result;
+}
+
+static int StrRStrFoldCase(const char* text, int textByteLen, int textLen, int endOff, const char* needle,
+                           int needleByteLen, int needleLen) {
+    if (!text || !needle || endOff <= 0 || endOff > textLen) {
+        return -1;
+    }
+    int nLastByte = 0;
+    int nLastIdx = needleLen - 1;
+    for (int i = 0; i < nLastIdx; i++) {
+        Utf8CodepointNext(needle, needleByteLen, nLastByte);
+    }
+    int nLast = Utf8CodepointNext(needle, needleByteLen, nLastByte);
+    int nLastFolded = FoldCaseForSearch(nLast);
+    int result = -1;
+    int byteIdx = 0;
+    for (int i = 0; i < endOff; i++) {
+        if (i + needleLen <= endOff) {
+            int walkByte = byteIdx;
+            for (int j = 0; j < needleLen - 1; j++) {
+                Utf8CodepointNext(text, textByteLen, walkByte);
+            }
+            int hLast = Utf8CodepointNext(text, textByteLen, walkByte);
+            if (FoldCaseForSearch(hLast) == nLastFolded) {
+                int hIdx = i;
+                int hByteIdx = byteIdx;
+                int nIdx = 0;
+                int nByteIdx = 0;
+                bool isMatch = true;
+                while (nIdx < needleLen) {
+                    if (hIdx >= endOff) {
+                        isMatch = false;
+                        break;
+                    }
+                    int hAdv, nAdv, hByteAdv, nByteAdv;
+                    if (!MatchSearchUnit(text, textLen, textByteLen, hIdx, hByteIdx, needle, needleLen, needleByteLen,
+                                         nIdx, nByteIdx, hAdv, nAdv, hByteAdv, nByteAdv)) {
+                        isMatch = false;
+                        break;
+                    }
+                    hIdx += hAdv;
+                    nIdx += nAdv;
+                    hByteIdx += hByteAdv;
+                    nByteIdx += nByteAdv;
+                }
+                if (isMatch) {
+                    result = i;
+                }
+            }
+        }
+        Utf8CodepointNext(text, textByteLen, byteIdx);
+    }
+    return result;
+}
+
+static int StrStrUtf8Anchor(const char* haystack, int haystackByteLen, int haystackLen, int startOff,
+                            const char* needle, int needleByteLen, int needleLen) {
+    if (!haystack || !needle || needleLen <= 0 || needleByteLen <= 0) {
+        return -1;
+    }
+    int byteIdx = Utf8CodepointToByteIndex(haystack, haystackByteLen, startOff);
+    unsigned char first = (unsigned char)needle[0];
+    while (byteIdx <= haystackByteLen - needleByteLen) {
+        const char* scan = haystack + byteIdx;
+        const char* limit = haystack + haystackByteLen - needleByteLen + 1;
+        while (scan < limit) {
+            scan = (const char*)memchr(scan, first, (size_t)(limit - scan));
+            if (!scan) {
+                break;
+            }
+            if (IsUtf8LeadByte((unsigned char)scan[0]) && memcmp(scan, needle, (size_t)needleByteLen) == 0) {
+                return Utf8CodepointCountN(haystack, (int)(scan - haystack));
+            }
+            scan++;
+        }
+        int next = byteIdx;
+        Utf8CodepointNext(haystack, haystackByteLen, next);
+        if (next <= byteIdx) {
+            break;
+        }
+        byteIdx = next;
+    }
+    return -1;
+}
+
+static int StrRStrUtf8Anchor(const char* text, int textByteLen, int textLen, int endOff, const char* needle,
+                             int needleByteLen, int needleLen) {
+    if (!text || !needle || endOff <= 0 || needleLen <= 0 || needleByteLen <= 0) {
+        return -1;
+    }
+    int result = -1;
+    int byteIdx = 0;
+    for (int i = 0; i < endOff; i++) {
+        if (IsUtf8LeadByte((unsigned char)text[byteIdx]) && byteIdx + needleByteLen <= textByteLen &&
+            memcmp(text + byteIdx, needle, (size_t)needleByteLen) == 0) {
+            result = i;
+        }
+        Utf8CodepointNext(text, textByteLen, byteIdx);
+    }
+    return result;
+}
+
+TextSearch::PageAndOffset TextSearch::MatchEnd(int startOff) const {
+    const PageAndOffset notFound = {-1, -1};
+    int currentPage = findPage;
+    const char* currentPageText = pageText;
+    int currentPageTextLen = pageTextLen;
+    int currentPageTextByteLen = TextByteLen(currentPageText);
+    int findTextByteLen = TextByteLen(findText);
+    bool lookingAtWs;
+
+    if (!findText) {
         return notFound;
     }
 
-    int off = (int)(end - currentPageText);
-    return {currentPage, off};
+    int matchIdx = 0;
+    int matchByteIdx = 0;
+    int endIdx = startOff;
+    int endByteIdx = Utf8CodepointToByteIndex(currentPageText, currentPageTextByteLen, endIdx);
+
+    if (matchWordStart && startOff > 0) {
+        int prevByteIdx = endByteIdx;
+        int prevCh = Utf8CodepointPrev(pageText, currentPageTextByteLen, prevByteIdx);
+        int nextByteIdx = endByteIdx;
+        int curCh = Utf8CodepointNext(pageText, currentPageTextByteLen, nextByteIdx);
+        if (isWordChar(prevCh) && isWordChar(curCh)) {
+        return notFound;
+        }
+    }
+
+    while (matchIdx < findTextLen) {
+        bool atPageEnd = endIdx >= currentPageTextLen;
+        if (atPageEnd && currentPage >= nPages) {
+            return notFound;
+        }
+        int endNextByteIdx = endByteIdx;
+        int endCh = atPageEnd ? 0 : Utf8CodepointNext(currentPageText, currentPageTextByteLen, endNextByteIdx);
+        lookingAtWs = (atPageEnd && (currentPage < nPages)) || str::IsWs((char)endCh);
+        bool isMatch = false;
+        int extraMatchAdv = 0;
+        int extraEndAdv = 0;
+        int matchNextByteIdx = matchByteIdx;
+        int matchCh = Utf8CodepointNext(findText, findTextByteLen, matchNextByteIdx);
+        if (matchCase) {
+            isMatch = matchCh == endCh;
+        } else {
+            isMatch = FoldCaseForSearch(matchCh) == FoldCaseForSearch(endCh);
+            if (!isMatch) {
+                if (IsSharpS(matchCh) && !atPageEnd && endIdx + 1 < currentPageTextLen && IsLatinS(endCh)) {
+                    int endAfterNextByteIdx = endNextByteIdx;
+                    int nextEndCh = Utf8CodepointNext(currentPageText, currentPageTextByteLen, endAfterNextByteIdx);
+                    if (IsLatinS(nextEndCh)) {
+                        isMatch = true;
+                        extraEndAdv = 1;
+                        endNextByteIdx = endAfterNextByteIdx;
+                    }
+                } else if (matchIdx + 1 < findTextLen && IsLatinS(matchCh) && IsSharpS(endCh)) {
+                    int matchAfterNextByteIdx = matchNextByteIdx;
+                    int nextMatchCh = Utf8CodepointNext(findText, findTextByteLen, matchAfterNextByteIdx);
+                    if (IsLatinS(nextMatchCh)) {
+                        isMatch = true;
+                        extraMatchAdv = 1;
+                        matchNextByteIdx = matchAfterNextByteIdx;
+                    }
+                }
+            }
+        }
+        if (isMatch) {
+            ;
+        } else if (str::IsWs((char)matchCh) && lookingAtWs) {
+            ;
+        } else if (matchCh == '-' && (0x2010 <= endCh && endCh <= 0x2014)) {
+            ;
+        } else if (matchCh == '\'' && (0x2018 <= endCh && endCh <= 0x201b)) {
+            ;
+        } else if (matchCh == '"' && (0x201c <= endCh && endCh <= 0x201f)) {
+            ;
+        } else {
+            return notFound;
+        }
+        int matchAdv = 1 + extraMatchAdv;
+        matchByteIdx = matchNextByteIdx;
+        matchIdx += matchAdv;
+        if (!atPageEnd && endCh) {
+            int endAdv = 1 + extraEndAdv;
+            endByteIdx = endNextByteIdx;
+            endIdx += endAdv;
+        } else {
+            ++currentPage;
+            bool abortSearch = false;
+            currentPageText =
+                GetTextForPageUtf8ForSearch(engine, currentPage, &currentPageTextLen, progressCb, &abortSearch);
+            if (abortSearch) {
+                return notFound;
+            }
+            currentPageTextByteLen = TextByteLen(currentPageText);
+            endIdx = 0;
+            endByteIdx = 0;
+        }
+        int prevMatchByteIdx = matchByteIdx;
+        int prevMatchCh = Utf8CodepointPrev(findText, findTextByteLen, prevMatchByteIdx);
+        int curMatchCh = Utf8CodepointAtByte(findText, findTextByteLen, matchByteIdx);
+        if (matchIdx < findTextLen && ((!isnoncjkwordchar(prevMatchCh) && (prevMatchCh != '?' || curMatchCh != '?')) ||
+                                       (lookingAtWs && str::IsWs((char)prevMatchCh)))) {
+            SkipWhitespace(findText, findTextLen, matchIdx, matchByteIdx);
+            SkipWhitespace(currentPageText, currentPageTextLen, endIdx, endByteIdx);
+            while (endIdx >= currentPageTextLen && currentPage < nPages) {
+                ++currentPage;
+                bool abortSearch = false;
+                currentPageText =
+                    GetTextForPageUtf8ForSearch(engine, currentPage, &currentPageTextLen, progressCb, &abortSearch);
+                if (abortSearch) {
+                    return notFound;
+                }
+                currentPageTextByteLen = TextByteLen(currentPageText);
+                endIdx = 0;
+                endByteIdx = 0;
+                SkipWhitespace(currentPageText, currentPageTextLen, endIdx, endByteIdx);
+            }
+        }
+    }
+    if (matchWordEnd && endIdx > 0 && endIdx < currentPageTextLen) {
+        int prevByteIdx = endByteIdx;
+        int prevCh = Utf8CodepointPrev(currentPageText, currentPageTextByteLen, prevByteIdx);
+        int nextByteIdx = endByteIdx;
+        int curCh = Utf8CodepointNext(currentPageText, currentPageTextByteLen, nextByteIdx);
+        if (isWordChar(prevCh) && isWordChar(curCh)) {
+        return notFound;
+        }
+    }
+
+    return {currentPage, endIdx};
 }
 
-static const WCHAR* GetNextIndex(const WCHAR* base, int offset, bool forward) {
-    const WCHAR* c = base + offset + (forward ? 0 : -1);
-    if (c < base || !*c) {
-        return nullptr;
+static int GetNextIndex(int textLen, int offset, bool forward) {
+    int idx = offset + (forward ? 0 : -1);
+    if (idx < 0 || idx >= textLen) {
+        return -1;
     }
-    return c;
+    return idx;
+}
+
+static int FindAnchorInPage(const char* pageText, int pageTextByteLen, int pageTextLen, int startOff,
+                            const char* anchor, int anchorByteLen, int anchorLen, bool matchCase, bool forward,
+                            int endOff = -1) {
+    if (!anchor) {
+        return GetNextIndex(pageTextLen, startOff, forward);
+    }
+    if (AnchorSupportsUtf8ByteSearch(anchor, anchorByteLen, matchCase)) {
+        if (forward) {
+            return StrStrUtf8Anchor(pageText, pageTextByteLen, pageTextLen, startOff, anchor, anchorByteLen, anchorLen);
+        }
+        if (endOff < 0) {
+            endOff = startOff;
+        }
+        return StrRStrUtf8Anchor(pageText, pageTextByteLen, pageTextLen, endOff, anchor, anchorByteLen, anchorLen);
+    }
+    if (forward) {
+        if (matchCase) {
+            return StrStr(pageText, pageTextByteLen, pageTextLen, startOff, anchor, anchorByteLen, anchorLen);
+        }
+        return StrStrFoldCase(pageText, pageTextByteLen, pageTextLen, startOff, anchor, anchorByteLen, anchorLen);
+    }
+    if (endOff < 0) {
+        endOff = startOff;
+    }
+    if (matchCase) {
+        return StrRStr(pageText, pageTextByteLen, pageTextLen, endOff, anchor, anchorByteLen, anchorLen);
+    }
+    return StrRStrFoldCase(pageText, pageTextByteLen, pageTextLen, endOff, anchor, anchorByteLen, anchorLen);
+}
+
+void TextSearch::CollectMatchesOnPage(int pageNo, Vec<MatchSpan>* out) {
+    if (!out || !findText || findTextLen == 0) {
+        return;
+    }
+    if (pageNo < 1 || pageNo > nPages) {
+        return;
+    }
+
+    EnsurePageMatchCacheSize();
+    if (TryGetCachedPageMatches(pageNo, out)) {
+        return;
+    }
+
+    if (!PageMightContainAnchor(pageNo)) {
+        MarkSkippedPageMatchCache(this, pageNo);
+        return;
+    }
+
+    findPage = pageNo;
+    bool abortSearch = false;
+    if (!LoadPageText(pageNo, &pageTextLen, &abortSearch)) {
+        if (abortSearch || !pageText) {
+            MarkSkippedPageMatchCache(this, pageNo);
+        }
+        return;
+    }
+
+    int pageTextByteLen = TextByteLen(pageText);
+    int anchorByteLen = TextByteLen(anchor);
+    int idx = 0;
+    Vec<MatchSpan> pageSpans;
+    while (idx <= pageTextLen) {
+        if (WasCanceled(progressCb)) {
+            return;
+        }
+
+        int found = FindAnchorInPage(pageText, pageTextByteLen, pageTextLen, idx, anchor, anchorByteLen, anchorLen,
+                                     matchCase, true);
+        if (found < 0) {
+            break;
+        }
+
+        if (QuickRejectWholeWordMatch(pageText, pageTextByteLen, pageTextLen, found, findTextLen, matchWordStart,
+                                      matchWordEnd)) {
+            idx = found + 1;
+            continue;
+        }
+
+        findPage = pageNo;
+        PageAndOffset fg = MatchEnd(found);
+        if (fg.page > 0) {
+            MatchSpan ms;
+            ms.startPage = pageNo;
+            ms.startGlyph = found;
+            ms.endPage = fg.page;
+            ms.endGlyph = fg.offset;
+            pageSpans.Append(ms);
+        }
+        idx = found + 1;
+    }
+
+    SetPageMatchCache(pageNo, pageSpans);
+    for (int i = 0; i < (int)pageSpans.size(); i++) {
+        out->Append(pageSpans[i]);
+    }
 }
 
 bool TextSearch::FindTextInPage(int pageNo, TextSearch::PageAndOffset* finalGlyph) {
-    if (str::IsEmpty(findText)) {
+    if (!findText || findTextLen == 0) {
         return false;
     }
     if (!pageNo) {
         pageNo = findPage;
     }
-    // According to my analysis of 69912675c766b6325f38036913dcf0505a00be36, when we
-    // get here with pageNo != 0 the findText has already been set so I didn't add
-    // a findText = engine->GetTextForPage(findPage) here.
     findPage = pageNo;
 
-    const WCHAR* found;
+    int pageTextByteLen = TextByteLen(pageText);
+    int anchorByteLen = TextByteLen(anchor);
+    int found = -1;
     PageAndOffset fg;
     do {
-        if (!anchor) {
-            found = GetNextIndex(pageText, findIndex, forward);
-        } else if (forward) {
-            const WCHAR* s = pageText + findIndex;
-            if (matchCase) {
-                found = StrStr(s, anchor);
-            } else {
-                found = StrStrI(s, anchor);
-            }
-        } else {
-            found = StrRStrI(pageText, pageText + findIndex, anchor);
-        }
-        if (!found) {
+        if (WasCanceled(progressCb)) {
             return false;
         }
-        findIndex = (int)(found - pageText) + (forward ? 1 : 0);
+        found = FindAnchorInPage(pageText, pageTextByteLen, pageTextLen, findIndex, anchor, anchorByteLen, anchorLen,
+                                 matchCase, forward, findIndex);
+        if (found < 0) {
+            return false;
+        }
+        if (QuickRejectWholeWordMatch(pageText, pageTextByteLen, pageTextLen, found, findTextLen, matchWordStart,
+                                      matchWordEnd)) {
+            findIndex = found + (forward ? 1 : 0);
+            continue;
+        }
+        findIndex = found + (forward ? 1 : 0);
         fg = MatchEnd(found);
     } while (fg.page <= 0);
 
-    int offset = (int)(found - pageText);
+    int offset = found;
     searchHitStartAt = pageNo;
     StartAt(pageNo, offset);
     SelectUpTo(fg.page, fg.offset);
     findIndex = forward ? fg.offset : offset;
 
-    // try again if the found text is completely outside the page's mediabox
     if (result.len == 0) {
         return FindTextInPage(pageNo, finalGlyph);
     }
@@ -343,7 +1070,7 @@ bool TextSearch::FindTextInPage(int pageNo, TextSearch::PageAndOffset* finalGlyp
 }
 
 bool TextSearch::FindStartingAtPage(int pageNo) {
-    if (str::IsEmpty(findText)) {
+    if (!findText || findTextLen == 0) {
         return false;
     }
 
@@ -358,31 +1085,62 @@ bool TextSearch::FindStartingAtPage(int pageNo) {
             continue;
         }
 
+        if (!PageMightContainAnchor(pageNo)) {
+            pagesToSkip[pageNo - 1] = true;
+            EnsurePageMatchCacheSize();
+            MarkSkippedPageMatchCache(this, pageNo);
+            pageNo += next;
+            continue;
+        }
+
         Reset();
 
-        pageText = engine->GetTextForPage(pageNo, &findIndex);
-        if (pageText) {
+        bool abortSearch = false;
+        if (!LoadPageText(pageNo, &pageTextLen, &abortSearch)) {
+            if (abortSearch) {
+                break;
+            }
+        } else if (pageText) {
             if (forward) {
                 findIndex = 0;
+            } else {
+                findIndex = pageTextLen;
             }
             PageAndOffset r;
             if (FindTextInPage(pageNo, &r)) {
+                int selStartPage = startPage;
+                int selStartGlyph = startGlyph;
+                int selEndPage = endPage;
+                int selEndGlyph = endGlyph;
+
+                EnsurePageMatchCacheSize();
+                if (!pageMatchesCached[pageNo - 1]) {
+                    Vec<MatchSpan> discard;
+                    CollectMatchesOnPage(pageNo, &discard);
+                    StartAt(selStartPage, selStartGlyph);
+                    SelectUpTo(selEndPage, selEndGlyph);
+                }
+
                 if (forward) {
                     if (findPage != r.page) {
                         findPage = r.page;
-                        pageText = engine->GetTextForPage(findPage);
+                        if (!LoadPageText(findPage, &pageTextLen, &abortSearch)) {
+                            if (abortSearch) {
+                                break;
+                            }
+                        }
                     }
                     findIndex = r.offset;
                 }
                 return true;
             }
             pagesToSkip[pageNo - 1] = true;
+            MarkSkippedPageMatchCache(this, pageNo);
         }
 
         pageNo += next;
     }
 
-    // allow for the first/last page to be included in the next search
     searchHitStartAt = findPage = forward ? nPages + 1 : 0;
 
     return false;
@@ -413,7 +1171,12 @@ TextSel* TextSearch::FindNext() {
         if (forward) {
             findPage = finalGlyph.page;
             findIndex = finalGlyph.offset;
-            pageText = engine->GetTextForPage(findPage);
+            bool abortSearch = false;
+            if (!LoadPageText(findPage, &pageTextLen, &abortSearch)) {
+                if (abortSearch) {
+                    return nullptr;
+                }
+            }
         }
         return &result;
     }

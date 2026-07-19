@@ -24,6 +24,13 @@ bool isWordChar(WCHAR c) {
     return IsCharAlphaNumeric(c) || c == '_' || isCjkWordChar(c);
 }
 
+bool isWordChar(int codepoint) {
+    if (codepoint <= 0 || codepoint > 0x10FFFF) {
+        return false;
+    }
+    return isWordChar((WCHAR)codepoint);
+}
+
 bool isNonCjkWordChar(WCHAR c) {
     return isWordChar(c) && (unsigned short)c < 0x2E80;
 }

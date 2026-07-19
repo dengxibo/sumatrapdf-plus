@@ -1647,6 +1647,7 @@ static void OnMouseLeftButtonDblClk(MainWindow* win, int x, int y, WPARAM key) {
     int elementPageNo = -1;
     IPageElement* pageEl = dm->GetElementAtPos(mousePos, &elementPageNo, true);
     if (isOverText && gGlobalPrefs->enableDoubleClickWordLookup) {
+        SuspendFindEngineAccess(win);
         int pageNo = dm->GetPageNoByPoint(mousePos);
         if (win->ctrl->ValidPageNo(pageNo)) {
             PointF pt = dm->CvtFromScreen(mousePos, pageNo);
@@ -1947,7 +1948,7 @@ static void GetGradientColor(COLORREF a, COLORREF b, float perc, TRIVERTEX* tv) 
 static bool gDrawOldStyleAnnotationRect = false;
 
 NO_INLINE static void PaintCurrentEditAnnotationMark(WindowTab* tab, HDC hdc, DisplayModel* dm) {
-    if (!tab) {
+    if (!tab || !tab->editAnnotsWindow) {
         return;
     }
     Annotation* annot = tab->selectedAnnotation;
@@ -2282,9 +2283,7 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
         gs.DrawRectangle(&pen, rc.x, rc.y, rc.dx, rc.dy);
     }
 
-    if (gShowAllMatches) {
-        PaintAllFindMatches(win, hdc);
-    }
+    PaintAllFindMatches(win, hdc);
     // Search matches and the user's text selection are independent layers.
     // The latter must still be painted when all find matches are visible.
     if (win->showSelection) {

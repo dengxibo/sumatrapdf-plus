@@ -56,6 +56,7 @@
 #include "FileThumbnails.h"
 #include "Print.h"
 #include "SearchAndDDE.h"
+#include "FindBar.h"
 #include "Selection.h"
 #include "SumatraDialogs.h"
 #include "SumatraProperties.h"
@@ -290,8 +291,7 @@ static void MaybeStartSearch(MainWindow* win, const char* searchTerm) {
     }
     HwndSetText(win->hwndFindEdit, searchTerm);
     bool wasModified = true;
-    bool showProgress = true;
-    FindTextOnThread(win, TextSearch::Direction::Forward, searchTerm, wasModified, showProgress);
+    FindTextOnThread(win, TextSearch::Direction::Forward, searchTerm, wasModified);
 }
 
 static MainWindow* LoadOnStartup(const char* filePath, const Flags& flags, bool isFirstWin) {
@@ -528,6 +528,24 @@ Error:
     goto Retry;
 }
 
+static MainWindow* MainWindowForAccel(HWND hwnd) {
+    MainWindow* win = FindMainWindowByHwnd(hwnd);
+    if (win) {
+        return win;
+    }
+    // Owned find popups are not IsChild() of the frame; after destroy-on-switch the
+    // focus HWND can be stale yet still pass IsWindow(). Fall back to the frame.
+    win = FindMainWindowByHwnd(gLastActiveFrameHwnd);
+    if (win) {
+        return win;
+    }
+    win = FindMainWindowByHwnd(GetForegroundWindow());
+    if (win) {
+        return win;
+    }
+    return nullptr;
+}
+
 static HACCEL FindAcceleratorsForHwnd(HWND hwnd, HWND* hwndAccel) {
     HACCEL* accTables = GetAcceleratorTables();
 
@@ -549,9 +567,15 @@ static HACCEL FindAcceleratorsForHwnd(HWND hwnd, HWND* hwndAccel) {
         return editAccTable;
     }
 
-    MainWindow* win = FindMainWindowByHwnd(hwnd);
+    MainWindow* win = MainWindowForAccel(hwnd);
     if (!win) {
         return nullptr;
+    }
+    // find bar/window edits are WC_EDIT: use the safe edit accel table so plain
+    // letters type normally; Ctrl+F etc. are included via isSafeAccel()
+    if (IsFindUIHwnd(win, hwnd)) {
+        *hwndAccel = win->hwndFrame;
+        return editAccTable;
     }
     if (hwnd == win->hwndFrame || hwnd == win->hwndCanvas) {
         *hwndAccel = win->hwndFrame;
@@ -572,6 +596,11 @@ static HACCEL FindAcceleratorsForHwnd(HWND hwnd, HWND* hwndAccel) {
         return treeViewAccTable;
     }
 
+    if (IsChild(win->hwndFrame, hwnd)) {
+        *hwndAccel = win->hwndFrame;
+        return accTable;
+    }
+
     return nullptr;
 }
 
@@ -582,19 +611,54 @@ static bool MaybeTranslateAccelerator(MSG& msg) {
     if (!doAccels) return false;
     HWND hwndAccel;
     HACCEL accels = FindAcceleratorsForHwnd(msg.hwnd, &hwndAccel);
-    if (!accels) return false;
-    return TranslateAcceleratorW(hwndAccel, accels, &msg);
+    if (!accels) {
+        return false;
+    }
+    bool translated = TranslateAcceleratorW(hwndAccel, accels, &msg);
+    return translated;
+}
+
+static bool HandleGlobalFindShortcut(MSG& msg) {
+    if (msg.message != WM_KEYDOWN || msg.wParam != 'F' || !IsCtrlPressed() || IsAltPressed()) {
+        return false;
+    }
+    if (IsPdfAnnotContentsEditFocused(msg.hwnd) || IsEbookAnnotContentsEditFocused(msg.hwnd)) {
+        return false;
+    }
+    MainWindow* win = MainWindowForAccel(msg.hwnd);
+    if (!win) {
+        return false;
+    }
+    if (IsFindUIVisible(win)) {
+        FindBarResyncActiveEdit(win);
+        if (win->hwndFindEdit) {
+            FocusFindEditSelectAll(win);
+            return true;
+        }
+    }
+    HwndSendCommand(win->hwndFrame, CmdFindFirst);
+    return true;
 }
 
 static int RunMessageLoop() {
     MSG msg;
 
     while (GetMessage(&msg, nullptr, 0, 0)) {
+        // Route Ctrl+F before control-specific pre-translation. After tab
+        // switches, a tree/edit/owned popup can otherwise consume the key first
+        // and the frame never receives CmdFindFirst. The handler itself leaves
+        // annotation-content edits alone.
+        if (HandleGlobalFindShortcut(msg)) {
+            continue;
+        }
+
         if (PreTranslateMessage(msg)) {
             continue;
         }
 
-        if (MaybeTranslateAccelerator(msg)) continue;
+        if (MaybeTranslateAccelerator(msg)) {
+            continue;
+        }
         HWND hwndDialog = GetCurrentModelessDialog();
         if (hwndDialog && IsDialogMessage(hwndDialog, &msg)) {
             // DbgLogMsg("dialog: ", msg.hwnd, msg.message, msg.wParam, msg.lParam);
@@ -1491,24 +1555,6 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
     }
 
 #if defined(DEBUG)
-    if (flags.testExtractPage) {
-        TestExtractPage(flags);
-        ShutdownCommon();
-        return 0;
-    }
-#endif
-
-    if (flags.engineDump) {
-        void EngineDump(const Flags& flags);
-        EngineDump(flags);
-        return 0;
-    }
-
-    if (flags.appdataDir) {
-        SetAppDataDir(flags.appdataDir);
-    }
-
-#if defined(DEBUG)
     if (flags.testApp) {
         // in TestApp.cpp
         extern void TestApp();
@@ -1528,6 +1574,16 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
         return 0;
     }
 #endif
+
+    if (flags.engineDump) {
+        void EngineDump(const Flags& flags);
+        EngineDump(flags);
+        return 0;
+    }
+
+    if (flags.appdataDir) {
+        SetAppDataDir(flags.appdataDir);
+    }
 
     if (MaybeRunMutool() != kNoMutool) {
         goto Exit;
@@ -1572,6 +1628,16 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
 
     if (flags.testRenderPage) {
         TestRenderPage(flags);
+        ShutdownCommon();
+        return 0;
+    }
+    if (flags.testExtractPage) {
+        TestExtractPage(flags);
+        ShutdownCommon();
+        return 0;
+    }
+    if (flags.testSearchCollect) {
+        TestSearchCollect(flags);
         ShutdownCommon();
         return 0;
     }

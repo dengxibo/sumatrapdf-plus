@@ -640,6 +640,7 @@ DisplayModel::~DisplayModel() {
         cb->CleanUp(this);
     }
 
+    searchSession.Clear();
     delete pdfSync;
     delete textSearch;
     delete textSelection;
@@ -1927,8 +1928,8 @@ void DisplayModel::GoToPage(int pageNo, int scrollY, bool addNavPt, int scrollX)
             pendingRestoreScroll = ScrollState(pageNo, scrollX >= 0 ? scrollX : -1, scrollY >= 0 ? scrollY : -1);
             hasPendingRestoreScroll = true;
             if (ValidPageNo(1)) {
-                ScrollState cur = GetScrollState();
-                if (!ValidPageNo(cur.page) || cur.page <= 1) {
+                int curPage = CurrentPageNo();
+                if (!ValidPageNo(curPage) || curPage <= 1) {
                     GoToPage(1, 0, false, scrollX);
                 }
             }
@@ -2530,14 +2531,19 @@ ScrollState DisplayModel::GetScrollState() {
     ScrollState state(FirstVisiblePageNo(), -1, -1);
     if (!ValidPageNo(state.page)) {
         state.page = CurrentPageNo();
-        ReportIf(!ValidPageNo(state.page));
+    }
+    if (!ValidPageNo(state.page)) {
+        // No visible page yet (progressive ebook load, empty viewport, etc.)
+        if (ValidPageNo(1)) {
+            state.page = 1;
+        }
+        return state;
     }
 
     PageInfo* pageInfo = GetPageInfo(state.page);
     // Shortcut: don't calculate precise positions, if the
     // page wasn't scrolled right/down at all
-    if (!pageInfo || pageInfo->pageOnScreen.x > 0 && pageInfo->pageOnScreen.y > 0) {
-        ReportIf(!ValidPageNo(state.page));
+    if (!pageInfo || (pageInfo->pageOnScreen.x > 0 && pageInfo->pageOnScreen.y > 0)) {
         return state;
     }
 
@@ -2547,8 +2553,10 @@ ScrollState DisplayModel::GetScrollState() {
 
     Rect screen(Point(), viewPort.Size());
     Rect pageVis = pageInfo->pageOnScreen.Intersect(screen);
-    state.page = GetPageNextToPoint(pageVis.TL());
-    ReportIf(!ValidPageNo(state.page));
+    int pageAtPt = GetPageNextToPoint(pageVis.TL());
+    if (ValidPageNo(pageAtPt)) {
+        state.page = pageAtPt;
+    }
     PointF ptD = CvtFromScreen(pageVis.TL(), state.page);
     // Remember to show the margin, if it's currently visible
     if (pageInfo->pageOnScreen.x <= 0) {
@@ -2565,9 +2573,11 @@ void DisplayModel::SetScrollState(const ScrollState& state) {
         if (EngineIsProgressiveEbookLoading(engine) && state.page >= 1) {
             pendingRestoreScroll = state;
             hasPendingRestoreScroll = true;
-            ScrollState cur = GetScrollState();
-            if ((!ValidPageNo(cur.page) || cur.page <= 1) && ValidPageNo(1)) {
-                GoToPage(1, false);
+            if (ValidPageNo(1)) {
+                int curPage = CurrentPageNo();
+                if (!ValidPageNo(curPage) || curPage <= 1) {
+                    GoToPage(1, false);
+                }
             }
             return;
         }

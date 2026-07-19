@@ -11,6 +11,8 @@ const goodPath = join(rootDir, "translations", "translations-good.txt");
 
 // Source string -> { cn, tw }
 const stringsToAdd: Record<string, { cn: string; tw: string }> = {
+  "Match Case": { cn: "匹配大小写", tw: "符合大小寫" },
+  "Match Whole Word": { cn: "全词匹配", tw: "全字匹配" },
   "Read aloud speed": { cn: "朗读速度", tw: "朗讀速度" },
   "English voice:": { cn: "英文语音：", tw: "英文語音：" },
   "Chinese voice:": { cn: "中文语音：", tw: "中文語音：" },

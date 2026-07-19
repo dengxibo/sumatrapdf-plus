@@ -180,6 +180,110 @@ int utf8StrLen(const u8* s) {
     return len;
 }
 
+int Utf8CodepointAtByte(const char* s, int byteLen, int byteIdx, int* nbytesOut) {
+    if (nbytesOut) {
+        *nbytesOut = 0;
+    }
+    if (!s || byteIdx < 0 || byteIdx >= byteLen) {
+        return 0;
+    }
+
+    const u8* p = (const u8*)s + byteIdx;
+    const u8* end = (const u8*)s + byteLen;
+    int n = utf8RuneLen(p);
+    if (n <= 0 || p + n > end || !isLegalUTF8Sequence(p, end)) {
+        if (nbytesOut) {
+            *nbytesOut = 1;
+        }
+        return *p;
+    }
+    if (nbytesOut) {
+        *nbytesOut = n;
+    }
+    if (n == 1) {
+        return p[0];
+    }
+    int rune = p[0] & ((1 << (7 - n)) - 1);
+    for (int i = 1; i < n; i++) {
+        rune = (rune << 6) | (p[i] & 0x3f);
+    }
+    return rune;
+}
+
+int Utf8CodepointNext(const char* s, int byteLen, int& byteIdx) {
+    if (!s || byteIdx < 0 || byteIdx >= byteLen) {
+        return 0;
+    }
+    int n = 0;
+    int c = Utf8CodepointAtByte(s, byteLen, byteIdx, &n);
+    byteIdx += n > 0 ? n : 1;
+    return c;
+}
+
+int Utf8CodepointPrev(const char* s, int byteLen, int& byteIdx) {
+    if (!s || byteIdx <= 0) {
+        return 0;
+    }
+    if (byteIdx > byteLen) {
+        byteIdx = byteLen;
+    }
+    int prevByte = byteIdx - 1;
+    while (prevByte > 0 && (((u8)s[prevByte] & 0xc0) == 0x80)) {
+        prevByte--;
+    }
+    byteIdx = prevByte;
+    return Utf8CodepointAtByte(s, byteLen, byteIdx);
+}
+
+int Utf8CodepointToByteIndex(const char* s, int byteLen, int codepointIdx) {
+    if (!s || codepointIdx <= 0) {
+        return 0;
+    }
+    int byteIdx = 0;
+    int cp = 0;
+    while (byteIdx < byteLen && cp < codepointIdx) {
+        Utf8CodepointNext(s, byteLen, byteIdx);
+        cp++;
+    }
+    return byteIdx;
+}
+
+int Utf8CodepointCountN(const char* s, int byteLen) {
+    if (!s || byteLen <= 0) {
+        return 0;
+    }
+    int nCodepoints = 0;
+    for (int byteIdx = 0; byteIdx < byteLen; nCodepoints++) {
+        Utf8CodepointNext(s, byteLen, byteIdx);
+    }
+    return nCodepoints;
+}
+
+int FoldCaseForSearch(int codepoint) {
+    if (codepoint <= 0) {
+        return codepoint;
+    }
+    if (codepoint == 0x0130) {
+        return L'i';
+    }
+    if (codepoint <= 0xffff) {
+        static WCHAR foldTable[65536];
+        static bool foldTableInit = false;
+        if (!foldTableInit) {
+            for (int i = 0; i < 65536; i++) {
+                if (i == 0x0130) {
+                    foldTable[i] = L'i';
+                } else {
+                    foldTable[i] = (WCHAR)(uintptr_t)CharLowerW((LPWSTR)(uintptr_t)i);
+                }
+            }
+            foldTableInit = true;
+        }
+        return foldTable[codepoint];
+    }
+    return codepoint;
+}
+
 // --- end of Unicode, Inc. utf8 code
 
 bool IsEqual(const ByteSlice& d1, const ByteSlice& d2) {

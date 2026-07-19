@@ -15,6 +15,9 @@ inline void UpdateProgress(const ProgressUpdateCb& cb, int current, int total) {
 }
 
 inline bool WasCanceled(const ProgressUpdateCb& cb) {
+    if (!cb.IsValid()) {
+        return false;
+    }
     bool wasCancelled = false;
     ProgressUpdateData data{0, 0, &wasCancelled};
     cb.Call(&data);

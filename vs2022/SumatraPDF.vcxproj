@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -1145,6 +1145,7 @@
     <ClInclude Include="..\src\Scratch.h" />
     <ClInclude Include="..\src\Screenshot.h" />
     <ClInclude Include="..\src\SearchAndDDE.h" />
+    <ClInclude Include="..\src\SearchSessionCache.h" />
     <ClInclude Include="..\src\Selection.h" />
     <ClInclude Include="..\src\SelectionToolbar.h" />
     <ClInclude Include="..\src\Settings.h" />
@@ -1300,6 +1301,7 @@
     </ClCompile>
     <ClCompile Include="..\src\Screenshot.cpp" />
     <ClCompile Include="..\src\SearchAndDDE.cpp" />
+    <ClCompile Include="..\src\SearchSessionCache.cpp" />
     <ClCompile Include="..\src\Selection.cpp" />
     <ClCompile Include="..\src\SelectionToolbar.cpp" />
     <ClCompile Include="..\src\SimpleBrowserWindow.cpp" />

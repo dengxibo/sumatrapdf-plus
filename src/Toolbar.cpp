@@ -725,9 +725,8 @@ static bool GetVisibleNeighborItemRect(HWND hwnd, int startIdx, int delta, RECT*
 }
 
 // suppress default white/light-blue pressed and checked fills; use theme colors instead
-static LRESULT PrepaintToolbarItem(NMTBCUSTOMDRAW* custDraw) {
+LRESULT PrepaintFlatToolbarItem(NMTBCUSTOMDRAW* custDraw, COLORREF bgCol) {
     UINT itemState = custDraw->nmcd.uItemState;
-    COLORREF bgCol = ThemeChromeBackgroundColor();
     COLORREF txtCol = ThemeWindowTextColor();
     if (itemState & CDIS_DISABLED) {
         txtCol = ThemeWindowTextDisabledColor();
@@ -757,7 +756,7 @@ static LRESULT PrepaintToolbarItem(NMTBCUSTOMDRAW* custDraw) {
 
     RECT fillRc = custDraw->nmcd.rc;
     if (fillCol != bgCol) {
-        fillRc.top += 2;
+        fillRc.top += 1;
     }
 
     HBRUSH br = CreateSolidBrush(fillCol);
@@ -767,17 +766,20 @@ static LRESULT PrepaintToolbarItem(NMTBCUSTOMDRAW* custDraw) {
     if (isChecked) {
         COLORREF borderCol;
         if (ThemeUsesBlackChrome()) {
-            borderCol = AccentColor(bgCol, 28, 52);
+            borderCol = AccentColor(bgCol, 20, 36);
         } else {
-            borderCol = ThemeUsesDarkChrome() ? AccentColor(bgCol, 24, 38) : AccentColor(bgCol, 38);
+            borderCol = ThemeUsesDarkChrome() ? AccentColor(bgCol, 16, 28) : AccentColor(bgCol, 38);
         }
         HBRUSH borderBr = CreateSolidBrush(borderCol);
         FrameRect(custDraw->nmcd.hdc, &fillRc, borderBr);
         DeleteObject(borderBr);
     }
 
-    LRESULT ret = TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND;
-    return ret;
+    return TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND;
+}
+
+static LRESULT PrepaintToolbarItem(NMTBCUSTOMDRAW* custDraw) {
+    return PrepaintFlatToolbarItem(custDraw, ThemeChromeBackgroundColor());
 }
 
 static bool IsToolbarDropdownButtonAtIndex(HWND hwnd, int idx) {
@@ -981,11 +983,10 @@ static LRESULT CALLBACK WndProcToolbar(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
     if (WM_COMMAND == msg) {
         HWND hEdit = (HWND)lp;
         MainWindow* win = FindMainWindowByHwnd(hEdit);
-        // "find as you type" - skip if edit was not modified by user (e.g. programmatic text set)
-        if (EN_UPDATE == HIWORD(wp) && hEdit == win->hwndFindEdit && gGlobalPrefs->showToolbar) {
+        if (win && EN_UPDATE == HIWORD(wp) && hEdit == win->hwndFindEdit && gGlobalPrefs->showToolbar) {
             bool wasModified = Edit_GetModify(win->hwndFindEdit);
             if (wasModified) {
-                FindTextOnThread(win, TextSearch::Direction::Forward, false);
+                OnFindBarTextChanged(win);
             }
         }
     }

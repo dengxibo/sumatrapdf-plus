@@ -30,8 +30,24 @@ struct TextSearch : public TextSelection {
         int offset;
     };
 
-    WCHAR* findText = nullptr;
-    WCHAR* anchor = nullptr;
+    struct MatchSpan {
+        int startPage;
+        int startGlyph;
+        int endPage;
+        int endGlyph;
+    };
+
+    // POD page match list: safe inside Vec<> (unlike Vec<Vec<MatchSpan>>)
+    struct PageMatchList {
+        MatchSpan* data = nullptr;
+        int count = 0;
+    };
+
+    char* findText = nullptr;
+    char* anchor = nullptr;
+    int findTextLen = 0;
+    int anchorLen = 0;
+    u32 anchorAsciiMask = 0;
     int findPage = 0;
     int searchHitStartAt = 0; // when text found spans several pages, searchHitStartAt < findPage
     bool forward = true;
@@ -49,7 +65,9 @@ struct TextSearch : public TextSelection {
     void SetText(const WCHAR* text);
     bool FindTextInPage(int pageNo, PageAndOffset* finalGlyph);
     bool FindStartingAtPage(int pageNo);
-    PageAndOffset MatchEnd(const WCHAR* start) const;
+    // Find every match that starts on pageNo (single page-text load).
+    void CollectMatchesOnPage(int pageNo, Vec<MatchSpan>* out);
+    PageAndOffset MatchEnd(int startOff) const;
 
     void Clear();
     void Reset();
@@ -57,11 +75,27 @@ struct TextSearch : public TextSelection {
     // keep in sync with engine page count (progressive ebook loading grows pages after ctor)
     void SyncPageCount();
 
-    const WCHAR* pageText = nullptr;
+    const char* pageText = nullptr;
+    int pageTextLen = 0;
+    int pageTextPage = 0;
     int findIndex = 0;
 
     WCHAR* lastText = nullptr;
     int nPages = 0;
     int maxPageCount = 0;
     Vec<bool> pagesToSkip;
+    // per-page match lists built by CollectMatchesOnPage (reused by count scans)
+    Vec<PageMatchList> pageMatchesCache;
+    Vec<bool> pageMatchesCached;
+
+    void EnsurePageMatchCacheSize();
+    void SetPageMatchCache(int pageNo, const Vec<MatchSpan>& spans);
+    void SetPageMatchCache(int pageNo, const PageMatchList& spans);
+    void ApplyCachedAsciiPageSkip();
+    void ApplyCachedUtf8AnchorPageSkip();
+    const char* LoadPageText(int pageNo, int* lenOut, bool* abortSearch);
+    bool TryGetCachedPageMatches(int pageNo, Vec<MatchSpan>* out) const;
+    bool PageMightContainAnchor(int pageNo) const;
+    // jump to a match using a cached session position list (wrap order from startPage)
+    bool TryFindFromCachedPositions(const Vec<u64>& positions, int startPage);
 };

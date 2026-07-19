@@ -39,6 +39,7 @@
 #include "Installer.h"
 #include "RegistryPreview.h"
 #include "RegistrySearchFilter.h"
+#include "TextSelection.h"
 
 #include "utils/Log.h"
 
@@ -1281,14 +1282,30 @@ static void PositionCommandPalette(HWND hwnd, HWND hwndRelative) {
     SetWindowPos(hwnd, nullptr, r2.x, r2.y, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
 }
 
-// approximate "is this UTF-8 byte part of a word character?": any byte >= 0x80
-// is part of a multi-byte rune (CJK / Cyrillic / accented Latin -> treat as a
-// word char); ASCII bytes use the same rule as the search engine's isWordChar()
-static bool IsWordByte(u8 b) {
-    if (b >= 0x80) {
-        return true;
+static COLORREF TextColorOnHighlightBackground(COLORREF highlightBg) {
+    u8 r, g, b;
+    UnpackColor(highlightBg, r, g, b);
+    // ITU-R BT.601 luma; bright highlights need dark text for contrast.
+    int lum = (int)r * 299 + (int)g * 587 + (int)b * 114;
+    return lum > 140000 ? RGB(0, 0, 0) : RGB(255, 255, 255);
+}
+
+static void DrawHighlightedTextSegment(HDC hdc, const RECT& rc, const WCHAR* textW, int wStart, int wLen, int originX,
+                                       COLORREF col) {
+    if (wLen <= 0) {
+        return;
     }
-    return IsCharAlphaNumericW((WCHAR)b) || b == '_';
+    SetTextColor(hdc, col);
+    SetBkMode(hdc, TRANSPARENT);
+    SIZE szPrefix{};
+    if (wStart > 0) {
+        GetTextExtentPoint32W(hdc, textW, wStart, &szPrefix);
+    }
+    SIZE szSeg{};
+    GetTextExtentPoint32W(hdc, textW + wStart, wLen, &szSeg);
+    int x = originX + szPrefix.cx;
+    int y = rc.top + (rc.bottom - rc.top - szSeg.cy) / 2;
+    ExtTextOutW(hdc, x, y, ETO_CLIPPED, &rc, textW + wStart, wLen, nullptr);
 }
 
 void DrawMaybeHighlightedText(DrawMaybeHighlightedTextArgs& args) {
@@ -1309,6 +1326,14 @@ void DrawMaybeHighlightedText(DrawMaybeHighlightedTextArgs& args) {
 
     // find all match ranges in text
     int textLen = str::Leni(text);
+    WCHAR* textW = ToWStrTemp(text);
+    int textWLen = str::Leni(textW);
+
+    auto wcharLenAtByteOffset = [&](int byteOff) -> int {
+        TempWStr prefix = ToWStrTemp(text, (size_t)byteOff);
+        return str::Leni(prefix);
+    };
+
     u8* hl = args.highlighted.EnsureCap((size_t)textLen);
     memset(hl, 0, textLen);
     for (int w = 0; w < nWords; w++) {
@@ -1327,8 +1352,11 @@ void DrawMaybeHighlightedText(DrawMaybeHighlightedTextArgs& args) {
             // rule: a boundary is only required when both sides are word chars.
             bool wholeWordOk = true;
             if (args.matchWholeWord) {
-                bool leftViolation = off > 0 && IsWordByte((u8)text[off - 1]) && IsWordByte((u8)text[off]);
-                bool rightViolation = end < textLen && IsWordByte((u8)text[end - 1]) && IsWordByte((u8)text[end]);
+                int wOff = wcharLenAtByteOffset(off);
+                int wEnd = wcharLenAtByteOffset(end);
+                bool leftViolation = wOff > 0 && isWordChar(textW[wOff - 1]) && isWordChar(textW[wOff]);
+                bool rightViolation =
+                    wEnd < textWLen && isWordChar(textW[wEnd - 1]) && isWordChar(textW[wEnd]);
                 wholeWordOk = !leftViolation && !rightViolation;
             }
             if (wholeWordOk) {
@@ -1338,6 +1366,14 @@ void DrawMaybeHighlightedText(DrawMaybeHighlightedTextArgs& args) {
             }
             p += wordLen;
         }
+    }
+
+    // measure total string width for RTL positioning
+    int strOriginX = rc.left;
+    if (isRtl) {
+        SIZE szTotal;
+        GetTextExtentPoint32W(hdc, textW, textWLen, &szTotal);
+        strOriginX = rc.right - szTotal.cx;
     }
 
     // collect contiguous highlighted ranges (up to 16)
@@ -1362,24 +1398,16 @@ void DrawMaybeHighlightedText(DrawMaybeHighlightedTextArgs& args) {
         }
     }
 
-    WCHAR* textW = ToWStrTemp(text);
-    int textWLen = str::Leni(textW);
-
-    // measure total string width for RTL positioning
-    int strOriginX = rc.left;
-    if (isRtl) {
-        SIZE szTotal;
-        GetTextExtentPoint32W(hdc, textW, textWLen, &szTotal);
-        strOriginX = rc.right - szTotal.cx;
+    if (nRanges == 0) {
+        DrawTextW(hdc, textW, -1, &rc, drawFmt);
+        return;
     }
 
     // compute pixel rectangles for each highlighted range
     RECT highlightRects[16];
     for (int i = 0; i < nRanges; i++) {
-        WCHAR* prefixToStart = ToWStrTemp(text, (size_t)byteRanges[i].start);
-        int wStart = str::Leni(prefixToStart);
-        WCHAR* prefixToEnd = ToWStrTemp(text, (size_t)byteRanges[i].end);
-        int wEnd = str::Leni(prefixToEnd);
+        int wStart = wcharLenAtByteOffset(byteRanges[i].start);
+        int wEnd = wcharLenAtByteOffset(byteRanges[i].end);
 
         SIZE szStart, szEnd;
         GetTextExtentPoint32W(hdc, textW, wStart, &szStart);
@@ -1392,13 +1420,9 @@ void DrawMaybeHighlightedText(DrawMaybeHighlightedTextArgs& args) {
     }
 
     // draw highlight background rectangles for matches
+    ParsedColor* parsedCol = GetPrefsColor(gGlobalPrefs->fixedPageUI.findMatchColor);
+    COLORREF highlightCol = parsedCol->parsedOk ? parsedCol->col : RGB(255, 255, 0);
     {
-        COLORREF highlightCol;
-        if (!ThemeUsesDarkChrome()) {
-            highlightCol = RGB(255, 255, 0); // yellow for default theme
-        } else {
-            highlightCol = AccentColor(colBg, 40);
-        }
         HBRUSH hbrHighlight = CreateSolidBrush(highlightCol);
         for (int i = 0; i < nRanges; i++) {
             FillRect(hdc, &highlightRects[i], hbrHighlight);
@@ -1406,8 +1430,27 @@ void DrawMaybeHighlightedText(DrawMaybeHighlightedTextArgs& args) {
         DeleteObject(hbrHighlight);
     }
 
-    // draw the whole string at once over the highlights
-    DrawTextW(hdc, textW, -1, &rc, drawFmt);
+    // draw text in segments so highlighted runs use a contrasting color (white-on-yellow
+    // in dark chrome is hard to read)
+    COLORREF colText = GetTextColor(hdc);
+    COLORREF highlightTextCol = TextColorOnHighlightBackground(highlightCol);
+    int bytePos = 0;
+    for (int i = 0; i < nRanges; i++) {
+        if (bytePos < byteRanges[i].start) {
+            int wStart = wcharLenAtByteOffset(bytePos);
+            int wLen = wcharLenAtByteOffset(byteRanges[i].start) - wStart;
+            DrawHighlightedTextSegment(hdc, rc, textW, wStart, wLen, strOriginX, colText);
+        }
+        int wStart = wcharLenAtByteOffset(byteRanges[i].start);
+        int wLen = wcharLenAtByteOffset(byteRanges[i].end) - wStart;
+        DrawHighlightedTextSegment(hdc, rc, textW, wStart, wLen, strOriginX, highlightTextCol);
+        bytePos = byteRanges[i].end;
+    }
+    if (bytePos < textLen) {
+        int wStart = wcharLenAtByteOffset(bytePos);
+        int wLen = textWLen - wStart;
+        DrawHighlightedTextSegment(hdc, rc, textW, wStart, wLen, strOriginX, colText);
+    }
 }
 
 void CommandPaletteWnd::DrawListBoxItem(ListBox::DrawItemEvent* ev) {

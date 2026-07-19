@@ -38,7 +38,10 @@ enum class TtsBackend {
     WinRt,
     Sapi
 };
-static TtsBackend gTtsBackend = TtsBackend::Unknown;
+// backend for the voice selected by TtsSetVoiceById (or the default if unset)
+static TtsBackend gTtsConfiguredBackend = TtsBackend::Unknown;
+// backend currently playing speech
+static TtsBackend gTtsActiveBackend = TtsBackend::Unknown;
 
 // shared state
 static bool gTtsActive = false;
@@ -318,6 +321,7 @@ static void SapiGetVoices(Vec<TtsVoiceInfo>& voices) {
             info.id = str::Dup(ToUtf8Temp(idW));
             info.name = str::Dup(ToUtf8Temp(nameW));
             info.lang = SapiGetVoiceLanguage(token);
+            info.isSapi = true;
             voices.Append(info);
         }
 
@@ -1185,19 +1189,164 @@ static void WinTtsStop() {
 
 //--- public interface, dispatches to one of the implementations
 
-static bool IsWinRtBackend() {
-    if (gTtsBackend == TtsBackend::Unknown) {
-        // an escape hatch, also for testing the SAPI implementation
-        bool forceSapi = !str::IsEmpty(GetEnvVariableTemp("SUMATRA_TTS_FORCE_SAPI"));
-        if (!forceSapi && WinTtsInit()) {
-            gTtsBackend = TtsBackend::WinRt;
-            log("Tts: using Windows.Media.SpeechSynthesis\n");
-        } else {
-            gTtsBackend = TtsBackend::Sapi;
-            log("Tts: using SAPI\n");
+static bool TtsForceSapiDefault() {
+    return !str::IsEmpty(GetEnvVariableTemp("SUMATRA_TTS_FORCE_SAPI"));
+}
+
+static TtsBackend TtsPreferredDefaultBackend() {
+    if (TtsForceSapiDefault()) {
+        return TtsBackend::Sapi;
+    }
+    if (WinTtsInit()) {
+        return TtsBackend::WinRt;
+    }
+    return TtsBackend::Sapi;
+}
+
+static TtsBackend TtsBackendForSpeak() {
+    if (gTtsConfiguredBackend != TtsBackend::Unknown) {
+        return gTtsConfiguredBackend;
+    }
+    return TtsPreferredDefaultBackend();
+}
+
+// SAPI token ids are registry paths under ...\Speech\Voices\...; WinRT OneCore voices use Speech_OneCore.
+static bool TtsVoiceIdIsSapi(const char* voiceId) {
+    if (str::IsEmpty(voiceId) || str::FindI(voiceId, "Speech_OneCore")) {
+        return false;
+    }
+    return str::StartsWithI(voiceId, "HKEY_") && str::FindI(voiceId, "\\Speech\\") != nullptr;
+}
+
+static char* TtsNormalizeLangKeyTemp(const char* lang) {
+    if (str::IsEmpty(lang)) {
+        return str::DupTemp("");
+    }
+    if (str::FindChar(lang, '-')) {
+        return str::DupTemp(lang);
+    }
+
+    char* end = nullptr;
+    unsigned long langId = strtoul(lang, &end, 16);
+    if (end == lang || langId == 0) {
+        return str::DupTemp(lang);
+    }
+
+    WCHAR localeName[LOCALE_NAME_MAX_LENGTH] = {};
+    int len = LCIDToLocaleName((LCID)langId, localeName, dimof(localeName), 0);
+    if (len <= 0) {
+        return str::DupTemp(lang);
+    }
+
+    return str::DupTemp(ToUtf8Temp(localeName));
+}
+
+// "Microsoft Huihui Desktop" and "Microsoft Huihui" both map to "huihui".
+static char* TtsNormalizeVoiceNameKeyTemp(const char* name) {
+    if (str::IsEmpty(name)) {
+        return str::DupTemp("");
+    }
+
+    AutoFreeStr lower(str::Dup(name));
+    str::ToLowerInPlace(lower.Get());
+    const char* p = lower.Get();
+    if (str::StartsWith(p, "microsoft ")) {
+        p += 10;
+    }
+
+    StrBuilder key;
+    while (*p && *p != ' ' && *p != '(') {
+        key.AppendChar(*p++);
+    }
+    return key.StealData();
+}
+
+// Natural, Neural, Online and Multilingual are distinct products; only plain mechanical
+// voices (Desktop / legacy SAPI) collapse together when the base name matches.
+static char* TtsVoiceVariantKeyTemp(const char* name) {
+    if (str::IsEmpty(name)) {
+        return str::DupTemp("mechanical");
+    }
+    if (str::ContainsI(name, "Multilingual")) {
+        return str::DupTemp("multilingual");
+    }
+    if (str::ContainsI(name, "Online")) {
+        return str::DupTemp("online");
+    }
+    if (str::ContainsI(name, "Natural") || str::ContainsI(name, "Neural")) {
+        return str::DupTemp("natural");
+    }
+    return str::DupTemp("mechanical");
+}
+
+static TempStr TtsVoiceDedupKeyTemp(const TtsVoiceInfo& voice) {
+    TempStr langKey = TtsNormalizeLangKeyTemp(voice.lang);
+    TempStr nameKey = TtsNormalizeVoiceNameKeyTemp(voice.name);
+    TempStr variantKey = TtsVoiceVariantKeyTemp(voice.name);
+    return str::FormatTemp("%s|%s|%s", langKey, nameKey, variantKey);
+}
+
+static int TtsVoiceDedupPriority(const TtsVoiceInfo& voice) {
+    int score = 0;
+    const char* name = voice.name ? voice.name : "";
+    if (str::ContainsI(name, "Natural") || str::ContainsI(name, "Neural")) {
+        score += 100;
+    }
+    if (str::ContainsI(name, "Multilingual")) {
+        score += 80;
+    }
+    if (str::ContainsI(name, "Online")) {
+        score += 60;
+    }
+    if (!str::ContainsI(name, "Desktop")) {
+        score += 20;
+    }
+    // Prefer WinRT for mechanical duplicates like Huihui Desktop vs Huihui.
+    if (str::EqI(TtsVoiceVariantKeyTemp(name), "mechanical") && !voice.isSapi) {
+        score += 25;
+    } else if (!voice.isSapi) {
+        score += 10;
+    }
+    return score;
+}
+
+static void TtsFreeVoiceInfo(TtsVoiceInfo& voice) {
+    free(voice.id);
+    free(voice.name);
+    free(voice.lang);
+    voice = {};
+}
+
+static int TtsFindDuplicateVoice(const Vec<TtsVoiceInfo>& dest, const TtsVoiceInfo& voice) {
+    TempStr key = TtsVoiceDedupKeyTemp(voice);
+    for (int i = 0; i < dest.Size(); i++) {
+        if (str::EqI(dest[i].id, voice.id)) {
+            return i;
+        }
+        if (str::EqI(TtsVoiceDedupKeyTemp(dest[i]), key)) {
+            return i;
         }
     }
-    return gTtsBackend == TtsBackend::WinRt;
+    return -1;
+}
+
+static void TtsMergeVoices(Vec<TtsVoiceInfo>& dest, Vec<TtsVoiceInfo>& src) {
+    for (int i = 0; i < src.Size(); i++) {
+        TtsVoiceInfo voice = src[i];
+        int idx = TtsFindDuplicateVoice(dest, voice);
+        if (idx < 0) {
+            dest.Append(voice);
+            continue;
+        }
+
+        TtsVoiceInfo& existing = dest[idx];
+        if (TtsVoiceDedupPriority(voice) > TtsVoiceDedupPriority(existing)) {
+            TtsFreeVoiceInfo(existing);
+            existing = voice;
+        } else {
+            TtsFreeVoiceInfo(voice);
+        }
+    }
 }
 
 void TtsSetNotifyWindow(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -1210,11 +1359,8 @@ void TtsSetNotifyWindow(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 
 void TtsProcessEvents() {
-    if (gTtsBackend == TtsBackend::WinRt) {
-        WinTtsProcessEvents();
-    } else {
-        SapiProcessEvents();
-    }
+    WinTtsProcessEvents();
+    SapiProcessEvents();
 }
 
 bool TtsSpeakUtf8(const char* text) {
@@ -1228,14 +1374,21 @@ bool TtsSpeakUtf8(const char* text) {
     }
 
     bool ok;
-    if (IsWinRtBackend()) {
+    TtsBackend backend = TtsBackendForSpeak();
+    // Ensure the other backend is idle before starting a new utterance.
+    if (backend == TtsBackend::WinRt) {
+        SapiStop();
         ok = WinTtsSpeak(textW);
     } else {
+        WinTtsStop();
         ok = SapiSpeak(textW);
     }
     if (!ok) {
+        gTtsActiveBackend = TtsBackend::Unknown;
         return false;
     }
+
+    gTtsActiveBackend = backend;
 
     str::Free(gTtsSpokenText);
     gTtsSpokenText = str::Dup(textW);
@@ -1257,7 +1410,7 @@ bool TtsIsSpeaking() {
         return false;
     }
 
-    if (gTtsBackend == TtsBackend::WinRt) {
+    if (gTtsActiveBackend == TtsBackend::WinRt) {
         if (gWinSynthOp || gWinWaveOut) {
             return true;
         }
@@ -1265,9 +1418,14 @@ bool TtsIsSpeaking() {
         return false;
     }
 
-    // SAPI: keep speaking until SPEI_END_INPUT_STREAM clears gTtsActive. Some voices (e.g. NaturalVoice
-    // adapters) do not report SPRS_IS_SPEAKING reliably between word-boundary events.
-    return gSapiStreamNum != 0;
+    if (gTtsActiveBackend == TtsBackend::Sapi) {
+        // SAPI: keep speaking until SPEI_END_INPUT_STREAM clears gTtsActive. Some voices (e.g. NaturalVoice
+        // adapters) do not report SPRS_IS_SPEAKING reliably between word-boundary events.
+        return gSapiStreamNum != 0;
+    }
+
+    gTtsActive = false;
+    return false;
 }
 
 static int TtsWidePosToUtf8Offset(int wpos) {
@@ -1282,10 +1440,13 @@ static int TtsWidePosToUtf8Offset(int wpos) {
 }
 
 static int TtsGetSpokenPosWide() {
-    if (gTtsBackend == TtsBackend::WinRt) {
+    if (gTtsActiveBackend == TtsBackend::WinRt) {
         return WinTtsLastWordPosWide();
     }
-    return (int)gSapiLastWordPos;
+    if (gTtsActiveBackend == TtsBackend::Sapi) {
+        return (int)gSapiLastWordPos;
+    }
+    return -1;
 }
 
 static int TtsGetNextWordStartWide(int wordStartWide) {
@@ -1293,7 +1454,7 @@ static int TtsGetNextWordStartWide(int wordStartWide) {
         return -1;
     }
 
-    if (gTtsBackend == TtsBackend::WinRt) {
+    if (gTtsActiveBackend == TtsBackend::WinRt) {
         for (WinTtsCue& cue : gWinCues) {
             if (cue.inputPos > wordStartWide) {
                 return cue.inputPos;
@@ -1342,37 +1503,59 @@ int TtsGetSpokenWordEndUtf8() {
 }
 
 void TtsStop() {
-    if (gTtsBackend == TtsBackend::WinRt) {
-        WinTtsStop();
-    } else {
-        SapiStop();
-    }
+    WinTtsStop();
+    SapiStop();
     gTtsActive = false;
     gTtsChunkFinished = false;
+    gTtsActiveBackend = TtsBackend::Unknown;
 }
 
 Vec<TtsVoiceInfo> TtsGetVoices() {
     Vec<TtsVoiceInfo> voices;
-    if (IsWinRtBackend()) {
-        WinTtsGetVoices(voices);
-    } else {
-        SapiGetVoices(voices);
-    }
+    Vec<TtsVoiceInfo> sapiVoices;
+
+    WinTtsGetVoices(voices);
+    int nWinRt = voices.Size();
+    SapiGetVoices(sapiVoices);
+    int nSapi = sapiVoices.Size();
+    TtsMergeVoices(voices, sapiVoices);
+    logf("TtsGetVoices: %d WinRT, %d SAPI, %d total\n", nWinRt, nSapi, voices.Size());
     TtsSortVoicesByLanguage(voices);
     return voices;
 }
 
 bool TtsSetVoiceById(const char* voiceId) {
-    bool ok;
-    if (IsWinRtBackend()) {
-        ok = WinTtsSetVoiceById(voiceId);
+    TtsBackend backend = TtsBackend::Unknown;
+    bool ok = false;
+
+    if (str::IsEmpty(voiceId)) {
+        backend = TtsPreferredDefaultBackend();
+        if (backend == TtsBackend::WinRt) {
+            ok = WinTtsSetVoiceById("");
+        } else {
+            ok = SapiInit() && SapiSetVoiceById("");
+        }
+        if (!ok) {
+            backend = backend == TtsBackend::WinRt ? TtsBackend::Sapi : TtsBackend::WinRt;
+            ok = backend == TtsBackend::WinRt ? WinTtsSetVoiceById("") : (SapiInit() && SapiSetVoiceById(""));
+        }
+    } else if (TtsVoiceIdIsSapi(voiceId)) {
+        ok = SapiInit() && SapiSetVoiceById(voiceId);
+        backend = TtsBackend::Sapi;
     } else {
-        ok = SapiSetVoiceById(voiceId);
+        ok = WinTtsSetVoiceById(voiceId);
+        backend = TtsBackend::WinRt;
+        if (!ok) {
+            ok = SapiInit() && SapiSetVoiceById(voiceId);
+            backend = TtsBackend::Sapi;
+        }
     }
+
     if (!ok) {
         return false;
     }
 
+    gTtsConfiguredBackend = backend;
     str::ReplaceWithCopy(&gTtsVoiceId, voiceId ? voiceId : "");
     return true;
 }
@@ -1387,9 +1570,10 @@ bool TtsSetSpeakingRate(float rate) {
     }
     gTtsSpeakingRate = rate;
 
-    if (gTtsBackend == TtsBackend::WinRt) {
+    if (WinTtsInit()) {
         WinTtsApplySpeakingRate();
-    } else if (gTtsBackend == TtsBackend::Sapi) {
+    }
+    if (SapiInit()) {
         SapiApplySpeakingRate();
     }
     return true;
@@ -1413,7 +1597,8 @@ void TtsRelease() {
     SapiRelease();
 
     gTtsActive = false;
-    gTtsBackend = TtsBackend::Unknown;
+    gTtsConfiguredBackend = TtsBackend::Unknown;
+    gTtsActiveBackend = TtsBackend::Unknown;
     str::FreePtr(&gTtsSpokenText);
 
     free(gTtsVoiceId);

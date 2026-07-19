@@ -147,9 +147,14 @@ Size Edit::GetIdealSize() {
     }
     // for multi-line text, this measures multiple line.
     // TODO: maybe figure out better protocol
-    int dy = std::min(s1.dy, s2.dy);
-    if (dy == 0) {
+    int dy;
+    if (idealSizeLines <= 1) {
         dy = std::max(s1.dy, s2.dy);
+    } else {
+        dy = std::min(s1.dy, s2.dy);
+        if (dy == 0) {
+            dy = std::max(s1.dy, s2.dy);
+        }
     }
     dy = dy * idealSizeLines;
     // logf("Edit::GetIdealSize: dx=%d, dy=%d\n", (int)dx, (int)dy);
@@ -162,6 +167,9 @@ Size Edit::GetIdealSize() {
     if (HasBorder()) {
         dx += DpiScale(hwnd, 4);
         dy += DpiScale(hwnd, 8);
+    } else {
+        // borderless edits still need room for the control's internal text inset
+        dy += DpiScale(hwnd, 4);
     }
     // logf("Edit::GetIdealSize(): dx=%d, dy=%d\n", int(res.cx), int(res.cy));
     return {dx, dy};

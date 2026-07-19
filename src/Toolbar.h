@@ -25,6 +25,10 @@ void UpdatePdfDocumentColorModeToolbarButton(MainWindow*);
 bool NeedsDocumentColorModeUI(MainWindow* win);
 bool NeedsPdfDocumentColorModeUI(MainWindow* win);
 
+// Custom-draw a flat toolbar button (suppresses default white checked chrome).
+// bgCol is the toolbar background; returns flags for NM_CUSTOMDRAW ITEMPREPAINT.
+LRESULT PrepaintFlatToolbarItem(NMTBCUSTOMDRAW* custDraw, COLORREF bgCol);
+
 void CreateMenuBarRebar(MainWindow*);
 void DestroyMenuBarRebar(MainWindow*);
 void ShowMenuBarRebar(MainWindow*);

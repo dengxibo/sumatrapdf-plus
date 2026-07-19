@@ -73,6 +73,8 @@ struct PageTextUtf8 {
     char* text = nullptr;
     Rect* coords = nullptr;
     int len = 0;
+    // bitmask of lowercase a-z present on the page (for search prefilter)
+    u32 asciiLetterMask = 0;
 };
 
 void FreePageTextUtf8(PageTextUtf8*);
@@ -409,6 +411,7 @@ class EngineBase {
     bool hideAnnotations = false;
     bool disableAntiAlias = false;
     int pageCount = -1;
+    u32 textCacheGeneration = 1;
 
     StrVec errors;
 
@@ -456,14 +459,30 @@ class EngineBase {
     virtual PageText ExtractPageText(int pageNo) = 0;
     // UTF-8 variant of ExtractPageText. Default implementation returns empty.
     virtual PageTextUtf8 ExtractPageTextUtf8(int) { return {}; }
+    // Non-blocking text extraction for background search. Return false when engine
+    // locks are contended so the caller can yield or abort instead of blocking.
+    virtual bool TryExtractPageText(int pageNo, PageText* out);
+    virtual bool TryExtractPageTextUtf8(int pageNo, PageTextUtf8* out);
 
     // cached per-page text. First call on a page extracts text and caches it,
     // subsequent calls return the cached copy. The returned pointers are owned
     // by EngineBase and remain valid for the lifetime of the engine.
     bool HasTextForPage(int pageNo);
+    bool TryGetTextForPage(int pageNo, int* lenOut = nullptr, Rect** coordsOut = nullptr);
     const WCHAR* GetTextForPage(int pageNo, int* lenOut = nullptr, Rect** coordsOut = nullptr);
+    bool TryGetTextForPageUtf8(int pageNo, int* lenOut = nullptr, Rect** coordsOut = nullptr,
+                               const char** textOut = nullptr);
+    const char* GetTextForPageUtf8(int pageNo, int* lenOut = nullptr, Rect** coordsOut = nullptr);
     // Drop cached per-page text after reflow or theme changes.
     void ClearTextCache();
+    u32 GetTextCacheGeneration() const { return textCacheGeneration; }
+    // returns UINT32_MAX when page text is not cached yet
+    u32 GetPageAsciiLetterMask(int pageNo);
+    // mark pagesToSkip for cached pages that cannot contain anchorAsciiMask
+    void ApplyAsciiMaskPageSkip(u32 anchorMask, int nPages, Vec<bool>& pagesToSkip);
+    // returns true when page text is not cached yet
+    bool CachedPageContainsUtf8Bytes(int pageNo, const char* bytes, int byteLen);
+    void ApplyUtf8AnchorPageSkip(const char* anchor, int anchorByteLen, int nPages, Vec<bool>& pagesToSkip);
 
     // EPUB/MOBI progressive open: defer heavy text extraction until background load finishes.
     virtual bool IsProgressiveEbookLoading() { return false; }
@@ -550,10 +569,13 @@ class EngineBase {
     virtual ~EngineBase();
 
     void EnsurePagesTextSize();
+    void EnsurePagesTextUtf8Size();
 
     // cached text, one entry per page (lazily allocated)
     PageText* pagesText = nullptr;
     int pagesTextSize = 0;
+    PageTextUtf8* pagesTextUtf8 = nullptr;
+    int pagesTextUtf8Size = 0;
     CRITICAL_SECTION textCacheLock;
 };
 

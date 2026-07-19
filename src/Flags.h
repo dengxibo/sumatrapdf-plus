@@ -85,6 +85,7 @@ struct Flags {
     // related to testing
     bool testRenderPage = false;
     bool testExtractPage = false;
+    bool testSearchCollect = false;
     int testPageNo = 0;
     bool testApp = false;
     bool testPlugin = false;

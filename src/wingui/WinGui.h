@@ -379,6 +379,7 @@ struct ListBox : Wnd {
     int GetCurrentSelection();
     bool SetCurrentSelection(int);
     void SetModel(ListBoxModel*);
+    void UpdateItemHeightForDpi();
 };
 
 //--- CheckboxCtrl

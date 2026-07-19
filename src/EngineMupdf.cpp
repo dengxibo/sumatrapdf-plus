@@ -2659,6 +2659,9 @@ EngineMupdf::~EngineMupdf() {
         if (pi->displayList) {
             fz_drop_display_list(ctx, pi->displayList);
         }
+        if (pi->searchStext) {
+            fz_drop_stext_page(ctx, pi->searchStext);
+        }
         PdfDarkModeInvalidatePage(ctx, pi);
         if (pi->page) {
             fz_drop_page(ctx, pi->page);
@@ -4668,6 +4671,10 @@ static void DropSingleFzPageCache(fz_context* ctx, FzPageInfo* pi) {
         fz_drop_display_list(ctx, pi->displayList);
         pi->displayList = nullptr;
     }
+    if (pi->searchStext) {
+        fz_drop_stext_page(ctx, pi->searchStext);
+        pi->searchStext = nullptr;
+    }
     PdfDarkModeInvalidatePage(ctx, pi);
     if (pi->page) {
         fz_drop_page(ctx, pi->page);
@@ -6117,7 +6124,8 @@ fz_stext_page* fz_new_stext_page_from_page2(fz_context* ctx, fz_page* page, cons
 // Maybe: handle FZ_ERROR_TRYLATER, which can happen when parsing from network.
 // (I don't think we read from network now).
 // Maybe: when loading fully, cache extracted text in FzPageInfo
-// so that we don't have to re-do fz_new_stext_page_from_page() when doing search
+// so that we don't have to re-do fz_new_stext_page_from_page() when doing search.
+// Search uses FzPageInfo::searchStext (see ExtractPageTextFromFzPageInfo).
 FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* cookie, bool loadLinks) {
     auto ctx = Ctx();
     bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
@@ -6298,6 +6306,10 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
         pageInfo->contentImagesCollected = true;
     }
     pageInfo->darkLegacySkipHash = 0;
+    if (!pageInfo->searchStext) {
+        pageInfo->searchStext = stext;
+        stext = nullptr;
+    }
     fz_drop_stext_page(ctx, stext);
     return pageInfo;
 }
@@ -7117,69 +7129,192 @@ RenderedBitmap* EngineMupdf::GetPageImage(int pageNo, RectF rect, int imageIdx) 
     return bmp;
 }
 
-PageText EngineMupdf::ExtractPageText(int pageNo) {
-    auto ctx = Ctx();
-    bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
-
-    ReflowUiDocLock docGuard(this, reflowLoading);
-    ReflowRenderLock renderGuard(this, reflowLoading);
-
-    FzPageInfo* pageInfo = GetFzPageInfo(pageNo, true);
-    if (!pageInfo) {
+static PageText ExtractPageTextFromFzPageInfo(EngineMupdf* e, FzPageInfo* pageInfo) {
+    if (!pageInfo || !pageInfo->page) {
         return {};
     }
-
-    fz_stext_page* stext = nullptr;
-    fz_var(stext);
-    fz_stext_options opts = NewTextPageOptions();
-    fz_try(ctx) {
-        stext = fz_new_stext_page_from_page(ctx, pageInfo->page, &opts);
+    auto ctx = e->Ctx();
+    if (!pageInfo->searchStext) {
+        fz_stext_page* stext = nullptr;
+        fz_var(stext);
+        fz_stext_options opts = NewTextPageOptions();
+        fz_try(ctx) {
+            stext = fz_new_stext_page_from_page(ctx, pageInfo->page, &opts);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+        }
+        pageInfo->searchStext = stext;
     }
-    fz_catch(ctx) {
-        fz_report_error(ctx);
-    }
-    if (!stext) {
+    if (!pageInfo->searchStext) {
         return {};
     }
     PageText res;
-    // TODO: convert to return PageText
-    WCHAR* text = FzTextPageToStr(stext, &res.coords);
-    fz_drop_stext_page(ctx, stext);
+    WCHAR* text = FzTextPageToStr(pageInfo->searchStext, &res.coords);
     res.text = text;
     res.len = (int)str::Len(text);
     return res;
 }
 
-PageTextUtf8 EngineMupdf::ExtractPageTextUtf8(int pageNo) {
-    auto ctx = Ctx();
+static PageTextUtf8 ExtractPageTextUtf8FromFzPageInfo(EngineMupdf* e, FzPageInfo* pageInfo) {
+    if (!pageInfo || !pageInfo->page) {
+        return {};
+    }
+    auto ctx = e->Ctx();
+    if (!pageInfo->searchStext) {
+        fz_stext_page* stext = nullptr;
+        fz_var(stext);
+        fz_stext_options opts = NewTextPageOptions();
+        fz_try(ctx) {
+            stext = fz_new_stext_page_from_page(ctx, pageInfo->page, &opts);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+        }
+        pageInfo->searchStext = stext;
+    }
+    if (!pageInfo->searchStext) {
+        return {};
+    }
+    PageTextUtf8 res;
+    char* text = FzTextPageToUtf8(pageInfo->searchStext, &res.coords);
+    res.text = text;
+    res.len = (int)str::Len(text);
+    return res;
+}
+
+PageText EngineMupdf::ExtractPageText(int pageNo) {
     bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
 
     ReflowUiDocLock docGuard(this, reflowLoading);
     ReflowRenderLock renderGuard(this, reflowLoading);
 
     FzPageInfo* pageInfo = GetFzPageInfo(pageNo, true);
-    if (!pageInfo) {
-        return {};
+    return ExtractPageTextFromFzPageInfo(this, pageInfo);
+}
+
+bool EngineMupdf::TryExtractPageText(int pageNo, PageText* out) {
+    *out = {};
+    bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
+
+    if (pdfdoc) {
+        if (!TryEnterCriticalSection(&pagesLock)) {
+            return false;
+        }
+        if (!TryEnterCriticalSection(&renderLock)) {
+            LeaveCriticalSection(&pagesLock);
+            return false;
+        }
+        FzPageInfo* pageInfo = nullptr;
+        if (pageNo >= 1 && pageNo <= pageCount) {
+            pageInfo = pages[pageNo - 1];
+        }
+        if (!pageInfo || !pageInfo->page) {
+            LeaveCriticalSection(&renderLock);
+            LeaveCriticalSection(&pagesLock);
+            return false;
+        }
+        *out = ExtractPageTextFromFzPageInfo(this, pageInfo);
+        LeaveCriticalSection(&renderLock);
+        LeaveCriticalSection(&pagesLock);
+        return true;
     }
 
-    fz_stext_page* stext = nullptr;
-    fz_var(stext);
-    fz_stext_options opts = NewTextPageOptions();
-    fz_try(ctx) {
-        stext = fz_new_stext_page_from_page(ctx, pageInfo->page, &opts);
+    if (MupdfNeedsDocLock(this, reflowLoading)) {
+        if (!TryEnterCriticalSection(&docLock)) {
+            return false;
+        }
     }
-    fz_catch(ctx) {
-        fz_report_error(ctx);
+    if (!TryEnterCriticalSection(&pagesLock)) {
+        if (MupdfNeedsDocLock(this, reflowLoading)) {
+            LeaveCriticalSection(&docLock);
+        }
+        return false;
     }
-    if (!stext) {
-        return {};
+    FzPageInfo* pageInfo = nullptr;
+    if (pageNo >= 1 && pageNo <= pageCount) {
+        pageInfo = pages[pageNo - 1];
     }
-    PageTextUtf8 res;
-    char* text = FzTextPageToUtf8(stext, &res.coords);
-    fz_drop_stext_page(ctx, stext);
-    res.text = text;
-    res.len = (int)str::Len(text);
-    return res;
+    if (!pageInfo || !pageInfo->page) {
+        LeaveCriticalSection(&pagesLock);
+        if (MupdfNeedsDocLock(this, reflowLoading)) {
+            LeaveCriticalSection(&docLock);
+        }
+        return false;
+    }
+    *out = ExtractPageTextFromFzPageInfo(this, pageInfo);
+    LeaveCriticalSection(&pagesLock);
+    if (MupdfNeedsDocLock(this, reflowLoading)) {
+        LeaveCriticalSection(&docLock);
+    }
+    return true;
+}
+
+bool EngineMupdf::TryExtractPageTextUtf8(int pageNo, PageTextUtf8* out) {
+    *out = {};
+    bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
+
+    if (pdfdoc) {
+        if (!TryEnterCriticalSection(&pagesLock)) {
+            return false;
+        }
+        if (!TryEnterCriticalSection(&renderLock)) {
+            LeaveCriticalSection(&pagesLock);
+            return false;
+        }
+        FzPageInfo* pageInfo = nullptr;
+        if (pageNo >= 1 && pageNo <= pageCount) {
+            pageInfo = pages[pageNo - 1];
+        }
+        if (!pageInfo || !pageInfo->page) {
+            LeaveCriticalSection(&renderLock);
+            LeaveCriticalSection(&pagesLock);
+            return false;
+        }
+        *out = ExtractPageTextUtf8FromFzPageInfo(this, pageInfo);
+        LeaveCriticalSection(&renderLock);
+        LeaveCriticalSection(&pagesLock);
+        return true;
+    }
+
+    if (MupdfNeedsDocLock(this, reflowLoading)) {
+        if (!TryEnterCriticalSection(&docLock)) {
+            return false;
+        }
+    }
+    if (!TryEnterCriticalSection(&pagesLock)) {
+        if (MupdfNeedsDocLock(this, reflowLoading)) {
+            LeaveCriticalSection(&docLock);
+        }
+        return false;
+    }
+    FzPageInfo* pageInfo = nullptr;
+    if (pageNo >= 1 && pageNo <= pageCount) {
+        pageInfo = pages[pageNo - 1];
+    }
+    if (!pageInfo || !pageInfo->page) {
+        LeaveCriticalSection(&pagesLock);
+        if (MupdfNeedsDocLock(this, reflowLoading)) {
+            LeaveCriticalSection(&docLock);
+        }
+        return false;
+    }
+    *out = ExtractPageTextUtf8FromFzPageInfo(this, pageInfo);
+    LeaveCriticalSection(&pagesLock);
+    if (MupdfNeedsDocLock(this, reflowLoading)) {
+        LeaveCriticalSection(&docLock);
+    }
+    return true;
+}
+
+PageTextUtf8 EngineMupdf::ExtractPageTextUtf8(int pageNo) {
+    bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
+
+    ReflowUiDocLock docGuard(this, reflowLoading);
+    ReflowRenderLock renderGuard(this, reflowLoading);
+
+    FzPageInfo* pageInfo = GetFzPageInfo(pageNo, true);
+    return ExtractPageTextUtf8FromFzPageInfo(this, pageInfo);
 }
 
 static void pdf_extract_fonts(fz_context* ctx, pdf_obj* res, Vec<pdf_obj*>& fontList, Vec<pdf_obj*>& resList) {

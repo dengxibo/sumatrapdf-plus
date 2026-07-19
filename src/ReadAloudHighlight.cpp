@@ -853,14 +853,155 @@ static bool ReadAloudSameTextLine(const RectF& a, const RectF& b) {
     return std::abs(centerA - centerB) < lineH * 0.45f;
 }
 
-static void ReadAloudAppendLineRect(Vec<RectF>& lineRects, RectF rf) {
-    for (size_t i = 0; i < lineRects.size(); i++) {
-        if (ReadAloudSameTextLine(lineRects[i], rf)) {
-            lineRects[i] = MergeHighlightLineRect(lineRects[i], rf);
-            return;
+struct ReadAloudLineMetrics {
+    RectF sample;
+    float centerY = 0;
+    float dy = 0;
+};
+
+static void ReadAloudUpdateLineMetrics(ReadAloudLineMetrics& m, int* glyphCount, const RectF& g) {
+    float cy = g.y + g.dy * 0.5f;
+    if (*glyphCount <= 0) {
+        m.sample = g;
+        m.centerY = cy;
+        m.dy = g.dy;
+        *glyphCount = 1;
+        return;
+    }
+    (*glyphCount)++;
+    m.centerY += (cy - m.centerY) / *glyphCount;
+    m.dy = std::max(m.dy, g.dy);
+}
+
+static void ReadAloudBuildPageLineMetrics(ReadAloudHighlightMap* map, int pageNo, Vec<ReadAloudLineMetrics>& lines) {
+    lines.Reset();
+    if (!map || !map->locs || map->len <= 0) {
+        return;
+    }
+
+    Vec<int> lineGlyphCounts;
+    for (int i = 0; i < map->len; i++) {
+        ReadAloudByteLoc& loc = map->locs[i];
+        if (loc.pageNo != pageNo || !ReadAloudByteLocHasRect(loc)) {
+            continue;
+        }
+        RectF g = ToRectF(ReadAloudByteLocToRect(loc));
+        if (g.dx <= 0) {
+            continue;
+        }
+
+        ptrdiff_t lineIdx = -1;
+        for (size_t li = 0; li < lines.size(); li++) {
+            if (ReadAloudSameTextLine(lines[li].sample, g)) {
+                lineIdx = (ptrdiff_t)li;
+                break;
+            }
+        }
+
+        if (lineIdx < 0) {
+            ReadAloudLineMetrics m;
+            m.sample = g;
+            m.centerY = g.y + g.dy * 0.5f;
+            m.dy = g.dy;
+            lines.Append(m);
+            lineGlyphCounts.Append(1);
+        } else {
+            ReadAloudUpdateLineMetrics(lines[(size_t)lineIdx], &lineGlyphCounts[(size_t)lineIdx], g);
         }
     }
-    lineRects.Append(rf);
+}
+
+static const ReadAloudLineMetrics* ReadAloudFindLineMetrics(const Vec<ReadAloudLineMetrics>& lines, const RectF& rf) {
+    for (const ReadAloudLineMetrics& m : lines) {
+        if (ReadAloudSameTextLine(m.sample, rf)) {
+            return &m;
+        }
+    }
+    return nullptr;
+}
+
+static RectF ReadAloudSnapRectToLineMetrics(const RectF& horizontal, const ReadAloudLineMetrics& line) {
+    if (horizontal.dx <= 0 || line.dy <= 0) {
+        return RectF();
+    }
+    RectF rf = horizontal;
+    rf.y = line.centerY - line.dy * 0.5f;
+    rf.dy = line.dy;
+    return ScaleHighlightBandRect(rf, kReadAloudHighlightBandRatio);
+}
+
+static void ReadAloudAppendWordLineRects(Vec<RectF>& lineRects, const Vec<RectF>& wordGlyphs,
+                                         const Vec<ReadAloudLineMetrics>& pageLines) {
+    Vec<RectF> groupHorizontal;
+    Vec<RectF> groupSample;
+    Vec<ReadAloudLineMetrics> groupMetrics;
+    Vec<int> groupGlyphCounts;
+
+    for (size_t i = 0; i < wordGlyphs.size(); i++) {
+        const RectF& g = wordGlyphs[i];
+        if (g.dx <= 0) {
+            continue;
+        }
+
+        ptrdiff_t groupIdx = -1;
+        for (size_t gi = 0; gi < groupSample.size(); gi++) {
+            if (ReadAloudSameTextLine(groupSample[gi], g)) {
+                groupIdx = (ptrdiff_t)gi;
+                break;
+            }
+        }
+
+        if (groupIdx < 0) {
+            groupSample.Append(g);
+            groupHorizontal.Append(RectF(g.x, 0, g.dx, 0));
+            ReadAloudLineMetrics m;
+            m.sample = g;
+            m.centerY = g.y + g.dy * 0.5f;
+            m.dy = g.dy;
+            groupMetrics.Append(m);
+            groupGlyphCounts.Append(1);
+            continue;
+        }
+
+        RectF& horizontal = groupHorizontal[(size_t)groupIdx];
+        float x0 = std::min(horizontal.x, g.x);
+        float x1 = std::max(horizontal.x + horizontal.dx, g.x + g.dx);
+        horizontal.x = x0;
+        horizontal.dx = x1 - x0;
+        ReadAloudUpdateLineMetrics(groupMetrics[(size_t)groupIdx], &groupGlyphCounts[(size_t)groupIdx], g);
+    }
+
+    for (size_t gi = 0; gi < groupHorizontal.size(); gi++) {
+        const RectF& horizontal = groupHorizontal[gi];
+        if (horizontal.dx <= 0) {
+            continue;
+        }
+        ReadAloudLineMetrics lineMetrics;
+        const ReadAloudLineMetrics* line = ReadAloudFindLineMetrics(pageLines, groupSample[gi]);
+        if (line) {
+            lineMetrics = *line;
+        } else {
+            lineMetrics = groupMetrics[gi];
+        }
+        if (lineMetrics.dy <= 0) {
+            continue;
+        }
+        RectF rf = ReadAloudSnapRectToLineMetrics(horizontal, lineMetrics);
+        if (rf.IsEmpty()) {
+            continue;
+        }
+        bool merged = false;
+        for (size_t i = 0; i < lineRects.size(); i++) {
+            if (ReadAloudSameTextLine(lineRects[i], rf)) {
+                lineRects[i] = MergeHighlightLineRect(lineRects[i], rf);
+                merged = true;
+                break;
+            }
+        }
+        if (!merged) {
+            lineRects.Append(rf);
+        }
+    }
 }
 
 static bool ReadAloudCollectWordHighlightScreenRects(MainWindow* win, WindowTab* tab, DisplayModel* dm,
@@ -870,10 +1011,27 @@ static bool ReadAloudCollectWordHighlightScreenRects(MainWindow* win, WindowTab*
     }
 
     ReadAloudHighlightMap* map = tab->readAloudHighlight;
-    int pageCount = dm->GetEngine()->PageCount();
+    int wordPageMin = 0;
+    int wordPageMax = 0;
+    for (int i = wordStartAbs; i < wordEndAbs; i++) {
+        int pageNo = map->locs[i].pageNo;
+        if (pageNo <= 0 || !ReadAloudByteLocHasRect(map->locs[i])) {
+            continue;
+        }
+        if (wordPageMin <= 0) {
+            wordPageMin = pageNo;
+            wordPageMax = pageNo;
+        } else {
+            wordPageMin = std::min(wordPageMin, pageNo);
+            wordPageMax = std::max(wordPageMax, pageNo);
+        }
+    }
+    if (wordPageMin <= 0) {
+        return false;
+    }
 
-    for (int pageNo = 1; pageNo <= pageCount; pageNo++) {
-        Vec<RectF> lineRects;
+    for (int pageNo = wordPageMin; pageNo <= wordPageMax; pageNo++) {
+        Vec<RectF> wordGlyphs;
         for (int i = wordStartAbs; i < wordEndAbs; i++) {
             ReadAloudByteLoc& loc = map->locs[i];
             if (loc.pageNo != pageNo || !ReadAloudByteLocHasRect(loc)) {
@@ -883,15 +1041,19 @@ static bool ReadAloudCollectWordHighlightScreenRects(MainWindow* win, WindowTab*
             if (!pi || pi->visibleRatio <= 0.0) {
                 continue;
             }
-            RectF rf = ToRectF(ReadAloudByteLocToRect(loc));
-            ReadAloudAppendLineRect(lineRects, rf);
+            wordGlyphs.Append(ToRectF(ReadAloudByteLocToRect(loc)));
+        }
+        if (wordGlyphs.empty()) {
+            continue;
         }
 
+        Vec<ReadAloudLineMetrics> pageLines;
+        ReadAloudBuildPageLineMetrics(map, pageNo, pageLines);
+
+        Vec<RectF> lineRects;
+        ReadAloudAppendWordLineRects(lineRects, wordGlyphs, pageLines);
+
         for (RectF& u : lineRects) {
-            if (u.IsEmpty()) {
-                continue;
-            }
-            u = ScaleHighlightBandRect(u, kReadAloudHighlightBandRatio);
             Rect sr = dm->CvtToScreen(pageNo, u);
             sr = sr.Intersect(win->canvasRc);
             if (!sr.IsEmpty()) {
@@ -1010,16 +1172,24 @@ static bool ReadAloudCollectAnchorPageRect(WindowTab* tab, int wordStartAbs, int
         return false;
     }
 
-    Vec<RectF> lineRects;
+    Vec<RectF> wordGlyphs;
     for (int i = wordStartAbs; i < wordEndAbs; i++) {
         ReadAloudByteLoc& loc = map->locs[i];
         if (loc.pageNo != pageNo || !ReadAloudByteLocHasRect(loc)) {
             continue;
         }
-        RectF rf = ToRectF(ReadAloudByteLocToRect(loc));
-        rf = ScaleHighlightBandRect(rf, kReadAloudHighlightBandRatio);
-        ReadAloudAppendLineRect(lineRects, rf);
+        wordGlyphs.Append(ToRectF(ReadAloudByteLocToRect(loc)));
     }
+
+    if (wordGlyphs.size() == 0) {
+        return false;
+    }
+
+    Vec<ReadAloudLineMetrics> pageLines;
+    ReadAloudBuildPageLineMetrics(map, pageNo, pageLines);
+
+    Vec<RectF> lineRects;
+    ReadAloudAppendWordLineRects(lineRects, wordGlyphs, pageLines);
 
     if (lineRects.size() == 0) {
         return false;
@@ -1338,8 +1508,8 @@ void PaintReadAloudHighlight(MainWindow* win, HDC hdc) {
         return;
     }
 
-    PaintTransparentRectangles(hdc, win->canvasRc, screenRects, GetReadAloudHighlightColor(), kSelectionHighlightAlpha,
-                               0);
+    PaintFindMatchHighlightRectangles(hdc, win->canvasRc, screenRects, GetReadAloudHighlightColor(),
+                                      kSelectionHighlightAlpha);
 }
 
 static void ReadAloudEnsureLayoutSynced(WindowTab* tab, MainWindow* win) {
@@ -1536,6 +1706,17 @@ bool RefreshReadAloudHighlightAfterLayoutChange(WindowTab* tab, MainWindow* win,
     tab->readAloudAutoScrollHold = true;
     tab->readAloudAutoScrollHoldPageNo = -1;
     tab->readAloudAutoScrollHoldLineY = -1.f;
+
+    if (win && win->CurrentTab() == tab && TtsIsSpeaking() && GetReadAloudSourceTab() == tab) {
+        tab->readAloudAutoScroll = true;
+        int pageNo = 0;
+        RectF pageRect;
+        Rect anchorScreen;
+        if (ReadAloudGetCurrentAnchor(tab, dm, &pageNo, &pageRect, &anchorScreen)) {
+            tab->readAloudAutoScrollHold = false;
+            ReadAloudSyncViewToAnchor(win, tab, dm, pageNo, pageRect, anchorScreen);
+        }
+    }
 
     if (win && win->CurrentTab() == tab) {
         ScheduleRepaint(win, 0);

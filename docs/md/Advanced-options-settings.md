@@ -244,10 +244,10 @@ FixedPageUI [
     ; color value with which white (background) will be substituted
     BackgroundColor = #ffffff
 
-    ; color value for the text selection rectangle (also used to highlight found
-    ; text). Use an #aarrggbb value to control opacity: a smaller alpha (e.g.
-    ; #40ffff00) makes the selection more transparent so the selected text stays
-    ; crisp; #rrggbb uses the default opacity (introduced in version 2.4)
+    ; color value for the text selection rectangle. Use an #aarrggbb value to
+    ; control opacity: a smaller alpha (e.g. #40ffff00) makes the selection more
+    ; transparent so the selected text stays crisp; #rrggbb uses the default
+    ; opacity (introduced in version 2.4)
     SelectionColor = #99c1da
 
     ; top, right, bottom and left margin (in that order) between window and
@@ -271,6 +271,10 @@ FixedPageUI [
     ; if given, sets the canvas background color for PDF files (introduced in
     ; version 3.7)
     WindowBgCol = 
+
+    ; color used to highlight the current search match on the page (introduced
+    ; in version 3.7.15)
+    FindMatchColor = #ffff00
 ]
 
 ; customization options for eBookUI

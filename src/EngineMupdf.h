@@ -67,6 +67,10 @@ struct FzPageInfo {
 
     // Last reflow theme CSS epoch this page was loaded under (EPUB etc.).
     u32 reflowThemeCssEpoch = 0;
+
+    // Cached text extraction for search/copy (default stext options, no images).
+    // Built lazily by ExtractPageText; dropped with the page cache.
+    fz_stext_page* searchStext = nullptr;
 };
 
 class EngineMupdf : public EngineBase {
@@ -86,6 +90,8 @@ class EngineMupdf : public EngineBase {
     bool SaveFileAs(const char* copyFileName) override;
     PageText ExtractPageText(int pageNo) override;
     PageTextUtf8 ExtractPageTextUtf8(int pageNo) override;
+    bool TryExtractPageText(int pageNo, PageText* out) override;
+    bool TryExtractPageTextUtf8(int pageNo, PageTextUtf8* out) override;
 
     bool HasClipOptimizations(int pageNo) override;
     TempStr GetPropertyTemp(const char* name) override;

@@ -4,6 +4,8 @@ struct TtsVoiceInfo {
     char* id;
     char* name;
     char* lang;
+    // SAPI voices (e.g. from NaturalVoiceSAPIAdapter) are separate from WinRT voices.
+    bool isSapi = false;
 };
 
 bool TtsSpeakUtf8(const char* text);

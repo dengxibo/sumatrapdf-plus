@@ -590,6 +590,9 @@ void StrTest() {
     }
 
     strStrTest();
+    utassert(FoldCaseForSearch('A') == 'a');
+    utassert(FoldCaseForSearch(0x0130) == L'i');
+    utassert(FoldCaseForSearch('B') == 'b');
     StrIsDigitTest();
     StrReplaceTest();
     StrSeqTest();

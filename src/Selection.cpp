@@ -30,6 +30,8 @@
 #include "Selection.h"
 #include "SelectionToolbar.h"
 #include "EbookAnnotations.h"
+#include "Theme.h"
+#include "PdfDarkMode.h"
 #include "Toolbar.h"
 #include "Translations.h"
 #include "uia/Provider.h"
@@ -276,6 +278,136 @@ void PaintTransparentRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORR
     gs.FillPath(&tmpBrush, &path);
 }
 
+static bool FindMatchPageUsesLightText() {
+    if (!ThemeUsesDarkChrome()) {
+        return false;
+    }
+    return GetPdfDocumentColorMode() != PdfDocumentColorMode::Light;
+}
+
+static float PixelLuminance01(u8 r, u8 g, u8 b) {
+    return ((int)r * 299 + (int)g * 587 + (int)b * 114) / 255000.0f;
+}
+
+static u8 LerpChannel(u8 a, u8 b, float t) {
+    return (u8)(a + (b - a) * t + 0.5f);
+}
+
+static void PaintFindMatchMarkerRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color, int opacity) {
+    opacity = std::clamp(opacity, 0, 100);
+    constexpr int kPadX = 2;
+    constexpr int kPadY = 1;
+
+    struct TightPaddedRect {
+        Rect tight;
+        Rect padded;
+    };
+    Vec<TightPaddedRect> work;
+    Rect bounds;
+    for (Rect rect : rects) {
+        Rect tight = rect.Intersect(screenRc);
+        if (tight.IsEmpty()) {
+            continue;
+        }
+        Rect padded = tight;
+        padded.Inflate(kPadX, kPadY);
+        padded = padded.Intersect(screenRc);
+        TightPaddedRect tpr{tight, padded};
+        work.Append(tpr);
+        bounds = bounds.IsEmpty() ? padded : bounds.Union(padded);
+    }
+    if (bounds.IsEmpty()) {
+        return;
+    }
+
+    HBITMAP bitmap = CreateMemoryBitmap(bounds.Size());
+    HDC bitmapDc = CreateCompatibleDC(hdc);
+    if (!bitmap || !bitmapDc) {
+        DeleteObject(bitmap);
+        DeleteDC(bitmapDc);
+        return;
+    }
+    HGDIOBJ prevBitmap = SelectObject(bitmapDc, bitmap);
+    if (!BitBlt(bitmapDc, 0, 0, bounds.dx, bounds.dy, hdc, bounds.x, bounds.y, SRCCOPY)) {
+        SelectObject(bitmapDc, prevBitmap);
+        DeleteObject(bitmap);
+        DeleteDC(bitmapDc);
+        return;
+    }
+
+    DIBSECTION info{};
+    int infoSize = GetObject(bitmap, sizeof(info), &info);
+    if (infoSize < (int)sizeof(info.dsBm) || !info.dsBm.bmBits || info.dsBm.bmBitsPixel != 32) {
+        SelectObject(bitmapDc, prevBitmap);
+        DeleteObject(bitmap);
+        DeleteDC(bitmapDc);
+        return;
+    }
+
+    u8 hr, hg, hb;
+    UnpackColor(color, hr, hg, hb);
+    const u8 yellow[3] = {hb, hg, hr};
+    const u8 black[3] = {0, 0, 0};
+    const bool lightTextPage = FindMatchPageUsesLightText();
+    const float blend = opacity / 100.0f;
+
+    u8* pixels = (u8*)info.dsBm.bmBits;
+    for (const TightPaddedRect& tpr : work) {
+        int xStart = tpr.padded.x - bounds.x;
+        int yStart = tpr.padded.y - bounds.y;
+        for (int y = yStart; y < yStart + tpr.padded.dy; y++) {
+            u8* row = pixels + y * info.dsBm.bmWidthBytes;
+            for (int x = xStart; x < xStart + tpr.padded.dx; x++) {
+                u8* pixel = row + x * 4;
+                u8 origB = pixel[0];
+                u8 origG = pixel[1];
+                u8 origR = pixel[2];
+                int sx = bounds.x + x;
+                int sy = bounds.y + y;
+                bool inTight = sx >= tpr.tight.x && sx < tpr.tight.x + tpr.tight.dx && sy >= tpr.tight.y &&
+                               sy < tpr.tight.y + tpr.tight.dy;
+
+                u8 markerB = yellow[0];
+                u8 markerG = yellow[1];
+                u8 markerR = yellow[2];
+                if (inTight) {
+                    // Use source luminance as ink coverage so anti-aliased glyph edges stay smooth.
+                    float lum = PixelLuminance01(origR, origG, origB);
+                    float ink = lightTextPage ? lum : (1.0f - lum);
+                    ink = std::clamp(ink * 1.1f - 0.04f, 0.0f, 1.0f);
+                    markerB = LerpChannel(yellow[0], black[0], ink);
+                    markerG = LerpChannel(yellow[1], black[1], ink);
+                    markerR = LerpChannel(yellow[2], black[2], ink);
+                }
+
+                pixel[0] = LerpChannel(origB, markerB, blend);
+                pixel[1] = LerpChannel(origG, markerG, blend);
+                pixel[2] = LerpChannel(origR, markerR, blend);
+            }
+        }
+    }
+
+    BitBlt(hdc, bounds.x, bounds.y, bounds.dx, bounds.dy, bitmapDc, 0, 0, SRCCOPY);
+    SelectObject(bitmapDc, prevBitmap);
+    DeleteObject(bitmap);
+    DeleteDC(bitmapDc);
+}
+
+void PaintFindMatchHighlightRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF color, u8 alpha) {
+    if (rects.empty()) {
+        return;
+    }
+    u8 a = alpha > 0 ? alpha : kSelectionDefaultAlpha;
+    if (ThemeUsesDarkChrome()) {
+        // Match the search-results list: yellow marker band with dark text for contrast.
+        int opacity = (int)a * 100 / 255;
+        opacity = std::clamp(opacity, 80, 100);
+        PaintFindMatchMarkerRectangles(hdc, screenRc, rects, color, opacity);
+        return;
+    }
+    PaintTransparentRectangles(hdc, screenRc, rects, color, a);
+}
+
 static u8 MultiplyChannel(u8 backdrop, u8 highlight) {
     return (u8)(((unsigned)backdrop * highlight + 127) / 255);
 }
@@ -350,6 +482,11 @@ void PaintMultiplyRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF 
 
 COLORREF GetSelectionHighlightColor() {
     ParsedColor* parsedCol = GetPrefsColor(gGlobalPrefs->fixedPageUI.selectionColor);
+    return parsedCol->col;
+}
+
+COLORREF GetFindMatchHighlightColor() {
+    ParsedColor* parsedCol = GetPrefsColor(gGlobalPrefs->fixedPageUI.findMatchColor);
     return parsedCol->col;
 }
 
