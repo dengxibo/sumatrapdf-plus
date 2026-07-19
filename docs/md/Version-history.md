@@ -2,6 +2,17 @@
 
 ## next
 
+## 3.7.15 (2026-07-20)
+
+- comprehensively upgrade document search with incremental results synchronized to progressive EPUB/MOBI/AZW loading;
+  全面升级文档搜索，实现搜索结果与 EPUB、MOBI、AZW 渐进式加载同步，书籍可以边解析、边分页、边检索
+- unify and refine the compact and floating search interfaces for smoother result browsing, match navigation and mode switching;
+  优化并统一搜索栏和悬浮搜索窗口，使结果浏览、命中跳转和模式切换更加自然流畅
+- optimize search caching, page-text reuse and background task scheduling for substantially faster and more stable large-document search;
+  深度优化搜索缓存、页面文本复用及后台任务调度，显著提升大文档搜索速度、响应能力和整体稳定性
+- improve ebook stamp annotations and color handling;
+  改进电子书印章标注及颜色处理
+
 ## 3.7.14 (2026-07-17)
 
 - extend EPUB/MOBI/AZW annotations with PDF-style text notes, free text, stamps, carets, lines, squares and circles;
