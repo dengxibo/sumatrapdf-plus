@@ -2,6 +2,7 @@
    License: Simplified BSD (see COPYING.BSD) */
 
 int DpiGetForHwnd(HWND);
+int DpiGetForMonitor(HMONITOR monitor);
 int DpiGetForMonitorOfHwnd(HWND hwnd);
 int DpiGet(HWND);
 int DpiScale(HWND, int);

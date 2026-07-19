@@ -39,11 +39,6 @@ static Sig_GetDpiForMonitor GetDpiForMonitorFn() {
 }
 
 static int DpiGetForMonitorAtWindowCenter(HWND hwnd) {
-    auto getDpiForMonitor = GetDpiForMonitorFn();
-    if (!getDpiForMonitor) {
-        return 0;
-    }
-
     RECT rc{};
     if (!GetWindowRect(hwnd, &rc)) {
         return 0;
@@ -55,8 +50,16 @@ static int DpiGetForMonitorAtWindowCenter(HWND hwnd) {
         return 0;
     }
 
+    return DpiGetForMonitor(h);
+}
+
+int DpiGetForMonitor(HMONITOR monitor) {
+    auto getDpiForMonitor = GetDpiForMonitorFn();
+    if (!getDpiForMonitor || !monitor) {
+        return 0;
+    }
     UINT dpiX = 96, dpiY = 96;
-    HRESULT hr = getDpiForMonitor(h, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
+    HRESULT hr = getDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
     if (hr != S_OK || dpiX == 0) {
         return 0;
     }
@@ -65,21 +68,14 @@ static int DpiGetForMonitorAtWindowCenter(HWND hwnd) {
 }
 
 int DpiGetForMonitorOfHwnd(HWND hwnd) {
-    auto getDpiForMonitor = GetDpiForMonitorFn();
-    if (!getDpiForMonitor || !hwnd) {
+    if (!hwnd) {
         return 0;
     }
     HMONITOR h = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
     if (!h) {
         return 0;
     }
-    UINT dpiX = 96, dpiY = 96;
-    HRESULT hr = getDpiForMonitor(h, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
-    if (hr != S_OK || dpiX == 0) {
-        return 0;
-    }
-    ReportIf(dpiX < 72);
-    return (int)dpiX;
+    return DpiGetForMonitor(h);
 }
 
 // get uncached dpi

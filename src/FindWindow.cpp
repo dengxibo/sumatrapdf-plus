@@ -1234,22 +1234,28 @@ static int FindWindowDpiForLayout(MainWindow* win, HWND hwnd) {
     return dpi;
 }
 
-static void FindWindowDefaultSize(MainWindow* win, HWND hwnd, int* dxOut, int* dyOut) {
-    int dpi = FindWindowDpiForLayout(win, hwnd);
+static void FindWindowDefaultSizeForDpi(int dpi, int* dxOut, int* dyOut) {
     *dxOut = MulDiv(kFindWindowDefaultDx, dpi, 96);
     *dyOut = MulDiv(kFindWindowDefaultDy, dpi, 96);
 }
 
+static int FindWindowDpiForSavedRect(MainWindow* win, const Rect& r) {
+    RECT rc = ToRECT(r);
+    HMONITOR monitor = MonitorFromRect(&rc, MONITOR_DEFAULTTONEAREST);
+    int dpi = DpiGetForMonitor(monitor);
+    return dpi > 0 ? RoundUp(dpi, 4) : FindWindowDpiForLayout(win, nullptr);
+}
+
 static void PositionFindWindow(FindWindowWnd* w) {
     MainWindow* win = w->win;
-    int defaultDx = 0;
-    int defaultDy = 0;
-    FindWindowDefaultSize(win, w->hwnd, &defaultDx, &defaultDy);
-
     Rect r = gGlobalPrefs->searchUIWindowPos;
     if (r.IsEmpty()) {
         // default: a reasonable size near the top-right of the frame
         int dpi = FindWindowDpiForLayout(win, w->hwnd);
+        int defaultDx = 0;
+        int defaultDy = 0;
+        FindWindowDefaultSizeForDpi(dpi, &defaultDx, &defaultDy);
+        w->SyncDpi(false, dpi);
         SetWindowPos(w->hwnd, nullptr, 0, 0, defaultDx, defaultDy, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
         w->Layout();
         Rect mainVis = WindowVisibleRect(win->hwndFrame);
@@ -1257,6 +1263,11 @@ static void PositionFindWindow(FindWindowWnd* w) {
         PositionOwnedPopupAtFrameRight(w->hwnd, win->hwndFrame, y);
         return;
     }
+    int targetDpi = FindWindowDpiForSavedRect(win, r);
+    int defaultDx = 0;
+    int defaultDy = 0;
+    FindWindowDefaultSizeForDpi(targetDpi, &defaultDx, &defaultDy);
+    w->SyncDpi(false, targetDpi);
     // Stale saved sizes (e.g. from an older default or a hidden window that was
     // never positioned) must not shrink the dialog when expanding from the bar.
     if (r.dx < defaultDx) {
