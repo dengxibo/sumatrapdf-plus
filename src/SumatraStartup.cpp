@@ -626,15 +626,21 @@ static bool HandleGlobalFindShortcut(MSG& msg) {
         return false;
     }
     MainWindow* win = MainWindowForAccel(msg.hwnd);
+    if (!win && gWindows.size() == 1) {
+        win = gWindows[0];
+    }
     if (!win) {
         return false;
     }
     if (IsFindUIVisible(win)) {
         FindBarResyncActiveEdit(win);
-        if (win->hwndFindEdit) {
+        if (win->hwndFindEdit && IsWindow(win->hwndFindEdit)) {
             FocusFindEditSelectAll(win);
             return true;
         }
+        // A destroyed edit HWND must not consume Ctrl+F. Tear down the stale
+        // shell and let CmdFindFirst recreate the unified find window below.
+        win->hwndFindEdit = nullptr;
     }
     HwndSendCommand(win->hwndFrame, CmdFindFirst);
     return true;
@@ -644,15 +650,14 @@ static int RunMessageLoop() {
     MSG msg;
 
     while (GetMessage(&msg, nullptr, 0, 0)) {
-        // Route Ctrl+F before control-specific pre-translation. After tab
-        // switches, a tree/edit/owned popup can otherwise consume the key first
-        // and the frame never receives CmdFindFirst. The handler itself leaves
-        // annotation-content edits alone.
-        if (HandleGlobalFindShortcut(msg)) {
+        if (PreTranslateMessage(msg)) {
             continue;
         }
 
-        if (PreTranslateMessage(msg)) {
+        // Route Ctrl+F after control-specific handling but before accelerator
+        // lookup. This preserves find-window/edit handling while still avoiding
+        // stale-focus failures after a tab switch.
+        if (HandleGlobalFindShortcut(msg)) {
             continue;
         }
 

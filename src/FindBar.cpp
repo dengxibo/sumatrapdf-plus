@@ -342,15 +342,11 @@ void FindBarWnd::Layout() {
     int p = scale(6);
     int gap = scale(4);
     int editDx = scale(220);
-    int statusDx = scale(88);
-    // Keep enough room for the loading message (and a typical match counter).
-    // The compact bar is an owned popup, so its former fixed widths could push
-    // the status text beyond a narrow frame. Prefer shrinking the edit instead.
-    const char* loadingMsg = _TRA("Please wait - loading...");
+    // The status control contains only n/m now. Measure that directly instead
+    // of preserving space for the removed loading message.
     const char* countSample = "99999 / 99999";
-    Size loadingSz = HwndMeasureText(status->hwnd, loadingMsg, status->font);
     Size countSz = HwndMeasureText(status->hwnd, countSample, status->font);
-    statusDx = std::max(statusDx, std::max(loadingSz.dx, countSz.dx) + scale(4));
+    int statusDx = std::max(scale(64), countSz.dx + scale(4));
 
     int editDy = edit->GetIdealSize().dy;
 
@@ -782,10 +778,6 @@ void RefreshFindUIStatus(MainWindow* win) {
         return;
     }
     TempStr s = FindUIGetStatusText(win);
-    if (s && str::Eq(s, _TRA("Please wait - loading..."))) {
-        FindBarSetStatus(win, "");
-        return;
-    }
     if (!str::IsEmpty(s)) {
         FindBarSetStatus(win, s);
     }

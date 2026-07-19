@@ -675,6 +675,7 @@ static TocItem* TreeItemForPageNo(TreeView* treeView, int pageNo) {
     if (!tm) {
         return nullptr;
     }
+
     TocItem* root = (TocItem*)tm->Root();
     if (!root || !root->child) {
         return nullptr;
@@ -975,7 +976,7 @@ static void TocContextMenu(ContextMenuEvent* ev) {
     Kind destKind = dest ? dest->GetKind() : nullptr;
 
     // TODO: this is pontentially not used at all
-    if (destKind == kindDestinationLaunchEmbedded) {
+    if (dest && destKind == kindDestinationLaunchEmbedded) {
         auto embeddedFile = (PageDestinationFile*)dest;
         // this is a path to a file on disk, e.g. a path to opened PDF
         // with the embedded stream number
@@ -993,7 +994,7 @@ static void TocContextMenu(ContextMenuEvent* ev) {
     }
 
     int attachmentNo = -1;
-    if (destKind == kindDestinationAttachment) {
+    if (dest && destKind == kindDestinationAttachment) {
         auto attachment = (PageDestinationFile*)dest;
         // this is a path to a file on disk, e.g. a path to opened PDF
         // with the embedded stream number
@@ -1130,6 +1131,9 @@ void LoadTocTree(MainWindow* win) {
     bool isRTL = r2l > l2r;
 
     TreeView* treeView = win->tocTreeView;
+    if (!treeView || !treeView->hwnd) {
+        return;
+    }
     HWND hwnd = treeView->hwnd;
     HwndSetRtl(hwnd, isRTL);
 

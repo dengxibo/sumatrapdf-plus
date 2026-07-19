@@ -2486,15 +2486,18 @@ static bool IsReflowableMupdfForTheme(EngineBase* engine) {
     return engine && engine->kind == kindEngineMupdf && !str::EqI(engine->defaultExt, ".pdf");
 }
 
-static void ReloadTocUiAfterReflowReparse(MainWindow* win, WindowTab* tab) {
+static void ReloadTocUiAfterReflowReparse(MainWindow* win, WindowTab* tab, bool forceReload = false) {
     EngineBase* engine = tab ? tab->GetEngine() : nullptr;
-    if (!EngineMupdfReflowTocNeedsUiReload(engine)) {
+    bool engineRequestedReload = EngineMupdfReflowTocNeedsUiReload(engine);
+    if (!engineRequestedReload && !forceReload) {
         return;
     }
     if (!win || tab != win->CurrentTab() || !win->tocVisible) {
         return;
     }
-    EngineMupdfClearReflowTocNeedsUiReload(engine);
+    if (engineRequestedReload) {
+        EngineMupdfClearReflowTocNeedsUiReload(engine);
+    }
     if (win->tocLoaded) {
         ClearTocBox(win);
     }
@@ -2538,6 +2541,13 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
     // (no-op unless a reflowable EPUB is still progressively loading).
     ReflowLoadingPauseScope reflowPause(engine);
     if (IsReflowableMupdfForTheme(engine)) {
+        // Reflow reparsing can discard the engine-owned TocTree. Detach the UI
+        // first: RelayoutFrame synchronizes TOC selection and must never walk
+        // the old TreeModel after EngineMupdfRelayoutForThemeChange frees it.
+        bool reloadVisibleToc = tab == win->CurrentTab() && win->tocVisible && win->tocLoaded;
+        if (reloadVisibleToc) {
+            ClearTocBox(win);
+        }
         gRenderCache->CancelRendering(dm);
         gRenderCache->KeepForColorTransition(dm);
         if (!EngineMupdfRelayoutForThemeChange(engine)) {
@@ -2545,7 +2555,7 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
         }
         RefreshDisplayModelAfterThemeChange(dm, tab == win->CurrentTab());
         RemapAnchorsAfterReflow(tab, win);
-        ReloadTocUiAfterReflowReparse(win, tab);
+        ReloadTocUiAfterReflowReparse(win, tab, reloadVisibleToc);
         tab->reloadOnFocus = false;
         return;
     }

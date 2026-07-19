@@ -88,7 +88,7 @@ void OnEbookPageCountChanged(MainWindow* win);
 // update find status bar when ebook loading blocks search
 void RefreshFindSearchBlockedStatus(MainWindow* win);
 void FindSelection(MainWindow* win, TextSearch::Direction direction);
-bool AbortFinding(MainWindow* win, bool hideMessage, bool waitForWorkers = true);
+bool AbortFinding(MainWindow* win, bool hideMessage, bool waitForWorkers = true, bool pumpMessages = true);
 // wait for the count/find worker before using the engine on the UI thread (lookup/tts)
 void SuspendFindEngineAccess(MainWindow* win);
 void FindTextOnThread(MainWindow* win, TextSearch::Direction direction);

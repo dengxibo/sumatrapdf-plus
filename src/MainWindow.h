@@ -328,8 +328,9 @@ struct MainWindow {
     bool findCountMatchCase = false;
     bool findCountMatchWholeWord = false;
     bool findCountValid = false;
-    int findCountPageLimit = 0;    // dm->PageCount() when the cache was built
-    int findCountStartPage = 1;    // page the scan started from
+    bool findCountPartial = false;   // valid for loaded pages, but the ebook is still growing
+    int findCountPageLimit = 0;      // dm->PageCount() when the cache was built
+    int findCountStartPage = 1;      // page the scan started from
     void* findCountEngine = nullptr; // engine the cache was built for (compared, never deref'd)
     // (page<<32 | startOffset) of each match, in scan order (the scan starts
     // at the page current at the time and wraps around)

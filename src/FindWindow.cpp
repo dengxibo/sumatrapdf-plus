@@ -156,6 +156,17 @@ static void DeferredGoToFindMatch(DeferredGoToFindMatchData* d) {
         return;
     }
     if (d->win->findCountThread) {
+        DisplayModel* dm = d->win->AsFixed();
+        EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+        // The count worker has already extracted and cached every page touched
+        // by this match. Cached text access is protected by EngineBase's text
+        // cache lock, so exact selection can proceed without stopping or
+        // restarting the full-document scan.
+        if (engine && engine->PromoteCachedTextUtf8ForSelection(d->startPage) &&
+            engine->PromoteCachedTextUtf8ForSelection(d->endPage)) {
+            GoToFindMatch(d->win, d->startPage, d->startGlyph, d->endPage, d->endGlyph);
+            return;
+        }
         FindWindowWnd* w = d->findWindow;
         w->hasPendingNavigation = true;
         w->pendingStartPage = d->startPage;
@@ -163,9 +174,6 @@ static void DeferredGoToFindMatch(DeferredGoToFindMatchData* d) {
         w->pendingEndPage = d->endPage;
         w->pendingEndGlyph = d->endGlyph;
         w->pendingNavigationCountEpoch = d->win->findCountEpoch;
-        // Page navigation itself doesn't use TextSearch, so reflect the user's
-        // selection immediately. Defer only the exact text selection/highlight
-        // until the count worker releases the text extractor.
         if (d->win->ctrl) {
             d->win->ctrl->GoToPage(d->startPage, true);
         }
@@ -395,13 +403,11 @@ void FindWindowWnd::Layout() {
     Rect rc = ClientRect(hwnd);
     int pad = FindWindowDpiScale(this, 8);
     int gap = FindWindowDpiScale(this, 6);
-    int statusDx = FindWindowDpiScale(this, 90);
+    int statusDx = FindWindowDpiScale(this, 64);
     if (status && status->hwnd) {
-        const char* loadingMsg = _TRA("Please wait - loading...");
         const char* countSample = "99999 / 99999";
-        Size loadingSz = HwndMeasureText(status->hwnd, loadingMsg, status->font);
         Size countSz = HwndMeasureText(status->hwnd, countSample, status->font);
-        int measured = std::max(loadingSz.dx, countSz.dx) + FindWindowDpiScale(this, 4);
+        int measured = countSz.dx + FindWindowDpiScale(this, 4);
         statusDx = std::max(statusDx, measured);
     }
     int minEditDx = FindWindowDpiScale(this, 48);

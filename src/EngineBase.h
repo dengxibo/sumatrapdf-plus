@@ -468,6 +468,9 @@ class EngineBase {
     // subsequent calls return the cached copy. The returned pointers are owned
     // by EngineBase and remain valid for the lifetime of the engine.
     bool HasTextForPage(int pageNo);
+    // Build the UTF-16 selection cache from text already extracted by the
+    // UTF-8 search path. Never invokes the document engine.
+    bool PromoteCachedTextUtf8ForSelection(int pageNo);
     bool TryGetTextForPage(int pageNo, int* lenOut = nullptr, Rect** coordsOut = nullptr);
     const WCHAR* GetTextForPage(int pageNo, int* lenOut = nullptr, Rect** coordsOut = nullptr);
     bool TryGetTextForPageUtf8(int pageNo, int* lenOut = nullptr, Rect** coordsOut = nullptr,

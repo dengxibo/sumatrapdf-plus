@@ -428,6 +428,42 @@ bool EngineBase::HasTextForPage(int pageNo) {
     return pt->text != nullptr;
 }
 
+bool EngineBase::PromoteCachedTextUtf8ForSelection(int pageNo) {
+    if (pageNo < 1 || pageNo > pageCount) {
+        return false;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    if (pagesText && pageNo <= pagesTextSize && pagesText[pageNo - 1].text) {
+        return true;
+    }
+    if (!pagesTextUtf8 || pageNo > pagesTextUtf8Size) {
+        return false;
+    }
+    PageTextUtf8* src = &pagesTextUtf8[pageNo - 1];
+    if (!src->text) {
+        return false;
+    }
+    EnsurePagesTextSize();
+    if (!pagesText || pageNo > pagesTextSize) {
+        return false;
+    }
+    PageText* dst = &pagesText[pageNo - 1];
+    if (dst->text) {
+        return true;
+    }
+    dst->text = ToWStr(src->text);
+    dst->len = str::Leni(dst->text);
+    if (src->coords && dst->len > 0) {
+        dst->coords = AllocArray<Rect>(dst->len);
+        int copyCount = std::min(dst->len, src->len);
+        memcpy(dst->coords, src->coords, copyCount * sizeof(Rect));
+        for (int i = copyCount; i < dst->len; i++) {
+            dst->coords[i] = copyCount > 0 ? dst->coords[copyCount - 1] : Rect{};
+        }
+    }
+    return dst->text != nullptr;
+}
+
 void EngineBase::ClearTextCache() {
     ScopedCritSec scope(&textCacheLock);
     if (!pagesText && !pagesTextUtf8) {
