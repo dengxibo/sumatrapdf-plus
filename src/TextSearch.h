@@ -68,6 +68,10 @@ struct TextSearch : public TextSelection {
     // Find every match that starts on pageNo (single page-text load).
     void CollectMatchesOnPage(int pageNo, Vec<MatchSpan>* out);
     PageAndOffset MatchEnd(int startOff) const;
+    // Search offsets are Unicode codepoints in UTF-8 text. Selection offsets are
+    // UTF-16 code units in the engine's WCHAR text.
+    int CodepointToGlyph(int pageNo, int codepointOffset) const;
+    int GlyphToCodepoint(int pageNo, int glyphOffset) const;
 
     void Clear();
     void Reset();

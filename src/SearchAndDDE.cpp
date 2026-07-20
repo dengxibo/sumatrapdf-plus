@@ -1117,10 +1117,11 @@ static Vec<FindMatch>* BuildFindMatchesFromPositions(MainWindow* win, EngineBase
             ts.findPage = fm.startPage;
             bool abortSearch = false;
             if (ts.LoadPageText(fm.startPage, nullptr, &abortSearch) && !abortSearch && ts.pageText) {
-                TextSearch::PageAndOffset end = ts.MatchEnd(fm.startGlyph);
+                int startOffset = ts.GlyphToCodepoint(fm.startPage, fm.startGlyph);
+                TextSearch::PageAndOffset end = ts.MatchEnd(startOffset);
                 if (end.page > 0) {
                     fm.endPage = end.page;
-                    fm.endGlyph = end.offset;
+                    fm.endGlyph = ts.CodepointToGlyph(end.page, end.offset);
                 }
             }
             fm.snippet = BuildSnippet(win, engine, fm);
@@ -1892,11 +1893,12 @@ static bool TryNavigateCachedFindMatch(MainWindow* win, TextSearch::Direction di
     if (!ts.LoadPageText(page, nullptr, &abortSearch) || abortSearch) {
         return false;
     }
-    TextSearch::PageAndOffset end = ts.MatchEnd(glyph);
+    int offset = ts.GlyphToCodepoint(page, glyph);
+    TextSearch::PageAndOffset end = ts.MatchEnd(offset);
     if (end.page <= 0) {
         return false;
     }
-    GoToFindMatch(win, page, glyph, end.page, end.offset);
+    GoToFindMatch(win, page, glyph, end.page, ts.CodepointToGlyph(end.page, end.offset));
     return true;
 }
 

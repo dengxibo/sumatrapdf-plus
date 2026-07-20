@@ -22,6 +22,34 @@ static int TextByteLen(const char* s) {
     return s ? (int)str::Len(s) : 0;
 }
 
+static int Utf16CodeUnitsForCodepoint(int codepoint) {
+    return codepoint >= 0x10000 && codepoint <= 0x10FFFF ? 2 : 1;
+}
+
+static int Utf8CodepointToGlyphIndex(const char* text, int codepointOffset) {
+    int byteLen = TextByteLen(text);
+    int byteIdx = 0;
+    int glyphIdx = 0;
+    for (int i = 0; text && i < codepointOffset && byteIdx < byteLen; i++) {
+        int c = Utf8CodepointNext(text, byteLen, byteIdx);
+        glyphIdx += Utf16CodeUnitsForCodepoint(c);
+    }
+    return glyphIdx;
+}
+
+static int Utf8GlyphToCodepointIndex(const char* text, int glyphOffset) {
+    int byteLen = TextByteLen(text);
+    int byteIdx = 0;
+    int glyphIdx = 0;
+    int codepointIdx = 0;
+    while (text && byteIdx < byteLen && glyphIdx < glyphOffset) {
+        int c = Utf8CodepointNext(text, byteLen, byteIdx);
+        glyphIdx += Utf16CodeUnitsForCodepoint(c);
+        codepointIdx++;
+    }
+    return codepointIdx;
+}
+
 // Fetch page text for search. When *abortSearch is set, the caller should stop
 // immediately (search was cancelled while engine locks were contended).
 // lenOut is the number of Unicode codepoints (same indexing as WCHAR page text).
@@ -273,6 +301,18 @@ const char* TextSearch::LoadPageText(int pageNo, int* lenOut, bool* abortSearch)
     return pageText;
 }
 
+int TextSearch::CodepointToGlyph(int pageNo, int codepointOffset) const {
+    int textByteLen = 0;
+    const char* text = engine->GetTextForPageUtf8(pageNo, &textByteLen);
+    return Utf8CodepointToGlyphIndex(text, codepointOffset);
+}
+
+int TextSearch::GlyphToCodepoint(int pageNo, int glyphOffset) const {
+    int textByteLen = 0;
+    const char* text = engine->GetTextForPageUtf8(pageNo, &textByteLen);
+    return Utf8GlyphToCodepointIndex(text, glyphOffset);
+}
+
 bool TextSearch::TryGetCachedPageMatches(int pageNo, Vec<MatchSpan>* out) const {
     if (!out || pageNo < 1 || pageNo > nPages) {
         return false;
@@ -455,7 +495,7 @@ void TextSearch::SetLastResult(TextSelection* sel) {
 
     searchHitStartAt = findPage = std::min(startPage, endPage);
     findPage = std::max(startPage, endPage);
-    findIndex = (findPage == endPage ? endGlyph : startGlyph);
+    findIndex = GlyphToCodepoint(findPage, findPage == endPage ? endGlyph : startGlyph);
     pageText = LoadPageText(findPage, &pageTextLen, nullptr);
     forward = true;
 }
@@ -513,12 +553,13 @@ bool TextSearch::TryFindFromCachedPositions(const Vec<u64>& positions, int start
         if (!LoadPageText(page, &pageTextLen, &abortSearch) || abortSearch || !pageText) {
             return false;
         }
-        PageAndOffset end = MatchEnd(glyph);
+        int offset = GlyphToCodepoint(page, glyph);
+        PageAndOffset end = MatchEnd(offset);
         if (end.page > 0) {
             searchHitStartAt = page;
             StartAt(page, glyph);
-            SelectUpTo(end.page, end.offset);
-            findIndex = forward ? end.offset : glyph;
+            SelectUpTo(end.page, CodepointToGlyph(end.page, end.offset));
+            findIndex = forward ? end.offset : offset;
             if (result.len > 0) {
                 return true;
             }
@@ -809,7 +850,7 @@ TextSearch::PageAndOffset TextSearch::MatchEnd(int startOff) const {
         int nextByteIdx = endByteIdx;
         int curCh = Utf8CodepointNext(pageText, currentPageTextByteLen, nextByteIdx);
         if (isWordChar(prevCh) && isWordChar(curCh)) {
-        return notFound;
+            return notFound;
         }
     }
 
@@ -910,7 +951,7 @@ TextSearch::PageAndOffset TextSearch::MatchEnd(int startOff) const {
         int nextByteIdx = endByteIdx;
         int curCh = Utf8CodepointNext(currentPageText, currentPageTextByteLen, nextByteIdx);
         if (isWordChar(prevCh) && isWordChar(curCh)) {
-        return notFound;
+            return notFound;
         }
     }
 
@@ -1008,9 +1049,9 @@ void TextSearch::CollectMatchesOnPage(int pageNo, Vec<MatchSpan>* out) {
         if (fg.page > 0) {
             MatchSpan ms;
             ms.startPage = pageNo;
-            ms.startGlyph = found;
+            ms.startGlyph = CodepointToGlyph(pageNo, found);
             ms.endPage = fg.page;
-            ms.endGlyph = fg.offset;
+            ms.endGlyph = CodepointToGlyph(fg.page, fg.offset);
             pageSpans.Append(ms);
         }
         idx = found + 1;
@@ -1055,8 +1096,8 @@ bool TextSearch::FindTextInPage(int pageNo, TextSearch::PageAndOffset* finalGlyp
 
     int offset = found;
     searchHitStartAt = pageNo;
-    StartAt(pageNo, offset);
-    SelectUpTo(fg.page, fg.offset);
+    StartAt(pageNo, CodepointToGlyph(pageNo, offset));
+    SelectUpTo(fg.page, CodepointToGlyph(fg.page, fg.offset));
     findIndex = forward ? fg.offset : offset;
 
     if (result.len == 0) {
