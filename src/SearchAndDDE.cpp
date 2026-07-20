@@ -1852,6 +1852,10 @@ void GoToFindMatch(MainWindow* win, int startPage, int startGlyph, int endPage, 
     // glyph range (start/end) survives this, so the bookkeeping stays correct.
     ts->SetLastResult(ts);
     ShowMatchCount(win);
+    // Find Next/Prev may be invoked by the compact find bar while the floating
+    // results window is visible. Keep that list's selected row in sync with the
+    // match we just navigated to.
+    FindWindowRefreshResults(win, false);
 }
 
 // step through the cached match list (same order as the n/m counter and the

@@ -580,6 +580,14 @@ void FindWindowWnd::RefreshResults(bool allowNavigation) {
                 break;
             }
         }
+    } else {
+        // Document navigation (Enter/F3/toolbar buttons) can happen without a
+        // list selection notification. Prefer the match now selected in the
+        // document over the previous list row, so the list follows it.
+        int current = CurrentMatchIndex();
+        if (current >= 0) {
+            sel = current;
+        }
     }
     if (sel < 0) {
         sel = CurrentMatchIndex();
