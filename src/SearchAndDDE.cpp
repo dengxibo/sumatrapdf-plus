@@ -266,12 +266,16 @@ static TempStr FindStatusAnimTextTemp(int currentIdx, int totalKnown, int dotPha
     return str::FormatTemp("%d / %d%.*s", currentIdx, totalKnown, dots, "...");
 }
 
+static int FindKnownMatchCount(MainWindow* win) {
+    return std::max(win->findCountLatestFound, (int)win->findMatches.size());
+}
+
 static void UpdateFindStatusAnimDisplay(MainWindow* win) {
     if (!win) {
         return;
     }
     int cur = win->findStatusCurrentIndex;
-    int total = win->findCountLatestFound;
+    int total = FindKnownMatchCount(win);
     FindBarSetStatus(win, FindStatusAnimTextTemp(cur, total, win->findStatusDotPhase));
 }
 
@@ -730,16 +734,13 @@ static void ShowMatchCount(MainWindow* win) {
     }
 
     if (win->findCountValid && win->findCountPartial) {
-        int total = (int)win->findCountPositions.size();
+        int total = std::max((int)win->findCountPositions.size(), FindKnownMatchCount(win));
         win->findStatusCurrentIndex = n;
         FindBarSetStatus(win, FindStatusAnimTextTemp(n, total, win->findStatusDotPhase));
         return;
     }
 
-    int total = win->findCountLatestFound;
-    if (total <= 0) {
-        total = (int)win->findMatches.size();
-    }
+    int total = FindKnownMatchCount(win);
     bool countActive = win->findCountThread || win->findCountLatestFound > 0 || win->findMatches.size() > 0;
     if (n <= 0 && total <= 0 && !countActive) {
         return;
@@ -1220,6 +1221,7 @@ static void CountResultsTask(CountResultsTaskData* d) {
     }
     win->findCountHasSnippets = true;
     FindWindowRefreshResults(win, false);
+    ShowMatchCount(win);
 }
 
 static void MaybePostCountResults(CountThreadData* d, Vec<FindMatch>* matches, bool force) {

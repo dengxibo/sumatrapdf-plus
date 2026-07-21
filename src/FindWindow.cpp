@@ -164,21 +164,16 @@ static void DeferredGoToFindMatch(DeferredGoToFindMatchData* d) {
         // restarting the full-document scan.
         if (engine && engine->PromoteCachedTextUtf8ForSelection(d->startPage) &&
             engine->PromoteCachedTextUtf8ForSelection(d->endPage)) {
+            d->findWindow->hasPendingNavigation = false;
             GoToFindMatch(d->win, d->startPage, d->startGlyph, d->endPage, d->endGlyph);
             return;
         }
-        FindWindowWnd* w = d->findWindow;
-        w->hasPendingNavigation = true;
-        w->pendingStartPage = d->startPage;
-        w->pendingStartGlyph = d->startGlyph;
-        w->pendingEndPage = d->endPage;
-        w->pendingEndGlyph = d->endGlyph;
-        w->pendingNavigationCountEpoch = d->win->findCountEpoch;
         if (d->win->ctrl) {
             d->win->ctrl->GoToPage(d->startPage, true);
         }
         return;
     }
+    d->findWindow->hasPendingNavigation = false;
     GoToFindMatch(d->win, d->startPage, d->startGlyph, d->endPage, d->endGlyph);
 }
 
@@ -695,6 +690,15 @@ void FindWindowWnd::OnResultSelected() {
         dm->textSearch->startPage == fm.startPage && dm->textSearch->startGlyph == fm.startGlyph) {
         return; // already on this match
     }
+    // Keep the row chosen by Enter/arrows selected until its deferred document
+    // navigation runs. Streamed result refreshes must not snap it back to the
+    // document's previous match in the meantime.
+    hasPendingNavigation = true;
+    pendingStartPage = fm.startPage;
+    pendingStartGlyph = fm.startGlyph;
+    pendingEndPage = fm.endPage;
+    pendingEndGlyph = fm.endGlyph;
+    pendingNavigationCountEpoch = win->findCountEpoch;
     // defer document navigation so the results list can scroll/repaint first
     // (issue #5692). Coalesce rapid F3 / arrow presses to the latest selection.
     auto data = new DeferredGoToFindMatchData;

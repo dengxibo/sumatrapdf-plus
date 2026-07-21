@@ -455,10 +455,23 @@ bool EngineBase::PromoteCachedTextUtf8ForSelection(int pageNo) {
     dst->len = str::Leni(dst->text);
     if (src->coords && dst->len > 0) {
         dst->coords = AllocArray<Rect>(dst->len);
-        int copyCount = std::min(dst->len, src->len);
-        memcpy(dst->coords, src->coords, copyCount * sizeof(Rect));
-        for (int i = copyCount; i < dst->len; i++) {
-            dst->coords[i] = copyCount > 0 ? dst->coords[copyCount - 1] : Rect{};
+        int srcByteLen = src->len;
+        int srcByteIdx = 0;
+        int dstIdx = 0;
+        while (srcByteIdx < srcByteLen && dstIdx < dst->len) {
+            int runeByteIdx = srcByteIdx;
+            int rune = Utf8CodepointNext(src->text, srcByteLen, srcByteIdx);
+            if (srcByteIdx <= runeByteIdx) {
+                break;
+            }
+            Rect r = src->coords[runeByteIdx];
+            dst->coords[dstIdx++] = r;
+            if (rune >= 0x10000 && rune <= 0x10ffff && dstIdx < dst->len) {
+                dst->coords[dstIdx++] = r;
+            }
+        }
+        for (int i = dstIdx; i < dst->len; i++) {
+            dst->coords[i] = dstIdx > 0 ? dst->coords[dstIdx - 1] : Rect{};
         }
     }
     return dst->text != nullptr;

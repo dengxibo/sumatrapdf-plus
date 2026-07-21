@@ -57,6 +57,7 @@
 #include "Print.h"
 #include "SearchAndDDE.h"
 #include "FindBar.h"
+#include "FindWindow.h"
 #include "Selection.h"
 #include "SumatraDialogs.h"
 #include "SumatraProperties.h"
@@ -635,6 +636,11 @@ static bool HandleGlobalFindShortcut(MSG& msg) {
     if (IsFindUIVisible(win)) {
         FindBarResyncActiveEdit(win);
         if (win->hwndFindEdit && IsWindow(win->hwndFindEdit)) {
+            // An ebook reflow can leave the owned popup at its old position.
+            // Reposition the existing UI without calling ShowFindBar(): that
+            // also rebuilds snippets and restarts counting, which can block
+            // Ctrl+F for a long time in large books.
+            FindWindowReposition(win);
             FocusFindEditSelectAll(win);
             return true;
         }
@@ -650,14 +656,15 @@ static int RunMessageLoop() {
     MSG msg;
 
     while (GetMessage(&msg, nullptr, 0, 0)) {
-        if (PreTranslateMessage(msg)) {
+        // Route Ctrl+F before control-specific handling. During an active search
+        // followed by a tab switch, the old popup/edit can otherwise consume the
+        // shortcut before it reaches the newly active document. Annotation edits
+        // are explicitly excluded by HandleGlobalFindShortcut().
+        if (HandleGlobalFindShortcut(msg)) {
             continue;
         }
 
-        // Route Ctrl+F after control-specific handling but before accelerator
-        // lookup. This preserves find-window/edit handling while still avoiding
-        // stale-focus failures after a tab switch.
-        if (HandleGlobalFindShortcut(msg)) {
+        if (PreTranslateMessage(msg)) {
             continue;
         }
 
