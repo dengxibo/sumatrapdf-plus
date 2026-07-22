@@ -138,6 +138,9 @@
     <ClInclude Include="..\src\CaptionGlyphs.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\CharConv.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\ChmFile.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -145,7 +148,7 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\CommandAvailability.h">
-      <Filter>Header Files</Filter>
+      <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\CommandPalette.h">
       <Filter>src</Filter>
@@ -177,12 +180,6 @@
     <ClInclude Include="..\src\EbookFormatter.h">
       <Filter>src</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\EpubMeta.h">
-      <Filter>src</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\EpubPerfLog.h">
-      <Filter>src</Filter>
-    </ClInclude>
     <ClInclude Include="..\src\EditAnnotations.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -198,6 +195,12 @@
     <ClInclude Include="..\src\EngineMupdf.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\EpubMeta.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\EpubPerfLog.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\ExternalViewers.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -208,6 +211,12 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\FileThumbnails.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\FindBar.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\FindWindow.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\Flags.h">
@@ -298,6 +307,9 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\SearchAndDDE.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\SearchSessionCache.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\Selection.h">
@@ -491,6 +503,9 @@
     <ClCompile Include="..\src\CaptionGlyphs.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\CharConv.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\ChmFile.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -498,7 +513,7 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\CommandAvailability.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\CommandPalette.cpp">
       <Filter>src</Filter>
@@ -525,12 +540,6 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\EbookFormatter.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\EpubMeta.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\EpubPerfLog.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\EditAnnotations.cpp">
@@ -563,6 +572,12 @@
     <ClCompile Include="..\src\EnginePs.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\EpubMeta.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\EpubPerfLog.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\ExternalViewers.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -573,6 +588,12 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\FileThumbnails.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\FindBar.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\FindWindow.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\Flags.cpp">
@@ -675,6 +696,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\SearchAndDDE.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\SearchSessionCache.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\Selection.cpp">
@@ -936,7 +960,6 @@
       <Filter>.github\workflows</Filter>
     </None>
     <None Include="..\.gitignore" />
-    <None Include="..\.tmp_test_zh.md" />
     <None Include="..\SECURITY.md" />
     <None Include="..\agents.md" />
     <None Include="..\cmd\build-all.ts">
@@ -985,6 +1008,12 @@
       <Filter>cmd</Filter>
     </None>
     <None Include="..\cmd\diff.ts">
+      <Filter>cmd</Filter>
+    </None>
+    <None Include="..\cmd\epub-perf.ts">
+      <Filter>cmd</Filter>
+    </None>
+    <None Include="..\cmd\epub-upstream-baseline.ts">
       <Filter>cmd</Filter>
     </None>
     <None Include="..\cmd\format.ts">
@@ -1047,6 +1076,9 @@
     <None Include="..\cmd\test-plugin.ts">
       <Filter>cmd</Filter>
     </None>
+    <None Include="..\cmd\trans-add-placeholder.ts">
+      <Filter>cmd</Filter>
+    </None>
     <None Include="..\cmd\trans-dl.ts">
       <Filter>cmd</Filter>
     </None>
@@ -1068,9 +1100,6 @@
     <None Include="..\cmd\wc.ts">
       <Filter>cmd</Filter>
     </None>
-    <None Include="..\debug-azw3-open-hang.md" />
-    <None Include="..\debug-collegiate.txt" />
-    <None Include="..\debug-pron.txt" />
     <None Include="..\docs\gen_docs.search.html">
       <Filter>docs</Filter>
     </None>

@@ -33,6 +33,7 @@
 #include "Toolbar.h"
 #include "WindowTab.h"
 #include "WordLookup.h"
+#include "CharConv.h"
 
 // Experimental: pause read-aloud when opening word lookup, resume on close.
 // Set to false (or revert WordLookup.cpp + SumatraPDF.h/cpp exports) to disable.
@@ -670,6 +671,21 @@ static DictIndexEntry* FindDictIndexEntryIn(OfflineDictionary* dict, const char*
     return nullptr;
 }
 
+static DictIndexEntry* FindDictIndexEntryInZh(const char* word) {
+    DictIndexEntry* e = FindDictIndexEntryIn(&gOfflineDictZh, word);
+    if (e) {
+        return e;
+    }
+    char* simplified = TraditionalToSimplified(word);
+    defer {
+        str::Free(simplified);
+    };
+    if (!simplified || str::Eq(simplified, word)) {
+        return nullptr;
+    }
+    return FindDictIndexEntryIn(&gOfflineDictZh, simplified);
+}
+
 struct DictLookupHit {
     DictIndexEntry* entry = nullptr;
     OfflineDictionary* dict = nullptr;
@@ -685,7 +701,7 @@ static DictLookupHit FindDictLookupHit(const char* word) {
         }
     }
     if (gOfflineDictZh.loaded) {
-        hit.entry = FindDictIndexEntryIn(&gOfflineDictZh, word);
+        hit.entry = FindDictIndexEntryInZh(word);
         if (hit.entry) {
             hit.dict = &gOfflineDictZh;
         }
@@ -885,7 +901,7 @@ static DictLookupHit FindBestChineseDictLookupHit(const char* word, char** match
     }
     for (size_t len = n; len >= 3; len -= 3) {
         TempStr candidate = str::DupTemp(word, len);
-        hit.entry = FindDictIndexEntryIn(&gOfflineDictZh, candidate);
+        hit.entry = FindDictIndexEntryInZh(candidate);
         if (hit.entry) {
             hit.dict = &gOfflineDictZh;
             *matchedWordOut = str::Dup(candidate);
@@ -2253,7 +2269,7 @@ bool ShowEbookWordLookupAt(MainWindow* win, DisplayModel* dm, int pageNo, PointF
                     continue;
                 }
                 TempStr candidate = ToUtf8(run + winStart + start, len);
-                if (FindDictIndexEntryIn(&gOfflineDictZh, candidate)) {
+                if (FindDictIndexEntryInZh(candidate)) {
                     matchedWord = str::Dup(candidate);
                     matchStart = winStart + start;
                     matchEnd = winStart + start + len;
@@ -2353,7 +2369,7 @@ bool ShowChineseWordLookupAt(MainWindow* win, TextSelection* ts, EngineBase* eng
                 continue;
             }
             TempStr candidate = ToUtf8(text + winStart + start, len);
-            if (FindDictIndexEntryIn(&gOfflineDictZh, candidate)) {
+            if (FindDictIndexEntryInZh(candidate)) {
                 matchedWord = str::Dup(candidate);
                 matchStart = winStart + start;
                 matchEnd = winStart + start + len;

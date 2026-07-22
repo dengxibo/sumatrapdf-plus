@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -1084,11 +1084,10 @@
     <ClInclude Include="..\src\Accelerators.h" />
     <ClInclude Include="..\src\Annotation.h" />
     <ClInclude Include="..\src\AppSettings.h" />
-    <ClInclude Include="..\src\EpubMeta.h" />
-    <ClInclude Include="..\src\EpubPerfLog.h" />
     <ClInclude Include="..\src\AppTools.h" />
     <ClInclude Include="..\src\Canvas.h" />
     <ClInclude Include="..\src\CaptionGlyphs.h" />
+    <ClInclude Include="..\src\CharConv.h" />
     <ClInclude Include="..\src\ChmFile.h" />
     <ClInclude Include="..\src\ChmModel.h" />
     <ClInclude Include="..\src\CommandAvailability.h" />
@@ -1107,10 +1106,14 @@
     <ClInclude Include="..\src\EngineAll.h" />
     <ClInclude Include="..\src\EngineBase.h" />
     <ClInclude Include="..\src\EngineMupdf.h" />
+    <ClInclude Include="..\src\EpubMeta.h" />
+    <ClInclude Include="..\src\EpubPerfLog.h" />
     <ClInclude Include="..\src\ExternalViewers.h" />
     <ClInclude Include="..\src\Favorites.h" />
     <ClInclude Include="..\src\FileHistory.h" />
     <ClInclude Include="..\src\FileThumbnails.h" />
+    <ClInclude Include="..\src\FindBar.h" />
+    <ClInclude Include="..\src\FindWindow.h" />
     <ClInclude Include="..\src\Flags.h" />
     <ClInclude Include="..\src\FloatingPopupStyle.h" />
     <ClInclude Include="..\src\FzImgReader.h" />
@@ -1213,12 +1216,11 @@
     <ClCompile Include="..\src\Accelerators.cpp" />
     <ClCompile Include="..\src\Annotation.cpp" />
     <ClCompile Include="..\src\AppSettings.cpp" />
-    <ClCompile Include="..\src\EpubMeta.cpp" />
-    <ClCompile Include="..\src\EpubPerfLog.cpp" />
     <ClCompile Include="..\src\AppTools.cpp" />
     <ClCompile Include="..\src\Canvas.cpp" />
     <ClCompile Include="..\src\CanvasAboutUI.cpp" />
     <ClCompile Include="..\src\CaptionGlyphs.cpp" />
+    <ClCompile Include="..\src\CharConv.cpp" />
     <ClCompile Include="..\src\ChmFile.cpp" />
     <ClCompile Include="..\src\ChmModel.cpp" />
     <ClCompile Include="..\src\CommandAvailability.cpp" />
@@ -1241,12 +1243,14 @@
     <ClCompile Include="..\src\EngineImages.cpp" />
     <ClCompile Include="..\src\EngineMupdf.cpp" />
     <ClCompile Include="..\src\EnginePs.cpp" />
+    <ClCompile Include="..\src\EpubMeta.cpp" />
+    <ClCompile Include="..\src\EpubPerfLog.cpp" />
     <ClCompile Include="..\src\ExternalViewers.cpp" />
     <ClCompile Include="..\src\Favorites.cpp" />
     <ClCompile Include="..\src\FileHistory.cpp" />
+    <ClCompile Include="..\src\FileThumbnails.cpp" />
     <ClCompile Include="..\src\FindBar.cpp" />
     <ClCompile Include="..\src\FindWindow.cpp" />
-    <ClCompile Include="..\src\FileThumbnails.cpp" />
     <ClCompile Include="..\src\Flags.cpp" />
     <ClCompile Include="..\src\FloatingPopupStyle.cpp" />
     <ClCompile Include="..\src\FzImgReader.cpp" />
@@ -1643,7 +1647,6 @@
     <None Include="..\.github\workflows\codeql.yml" />
     <None Include="..\.github\workflows\daily.yml" />
     <None Include="..\.gitignore" />
-    <None Include="..\.tmp_test_zh.md" />
     <None Include="..\SECURITY.md" />
     <None Include="..\agents.md" />
     <None Include="..\cmd\build-all.ts" />
@@ -1662,6 +1665,8 @@
     <None Include="..\cmd\compress-docs-images.ts" />
     <None Include="..\cmd\cppcheck.ts" />
     <None Include="..\cmd\diff.ts" />
+    <None Include="..\cmd\epub-perf.ts" />
+    <None Include="..\cmd\epub-upstream-baseline.ts" />
     <None Include="..\cmd\format.ts" />
     <None Include="..\cmd\gen-commands.ts" />
     <None Include="..\cmd\gen-docs-website.ts" />
@@ -1682,6 +1687,7 @@
     <None Include="..\cmd\sync-bug-files.ts" />
     <None Include="..\cmd\test-md-convert.ts" />
     <None Include="..\cmd\test-plugin.ts" />
+    <None Include="..\cmd\trans-add-placeholder.ts" />
     <None Include="..\cmd\trans-dl.ts" />
     <None Include="..\cmd\trans-gen.ts" />
     <None Include="..\cmd\trans-with-ai.ts" />
@@ -1689,9 +1695,6 @@
     <None Include="..\cmd\tsconfig.json" />
     <None Include="..\cmd\util.ts" />
     <None Include="..\cmd\wc.ts" />
-    <None Include="..\debug-azw3-open-hang.md" />
-    <None Include="..\debug-collegiate.txt" />
-    <None Include="..\debug-pron.txt" />
     <None Include="..\docs\gen_docs.search.html" />
     <None Include="..\docs\manual.tmpl.html" />
     <None Include="..\docs\md\Accessibility-and-Text-to-Speech.md" />

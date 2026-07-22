@@ -221,6 +221,18 @@ export function copyFileNormalized(dst: string, src: string): void {
 
 const kDistributionFontExts = new Set([".ttf", ".otf", ".ttc"]);
 
+export function copyOpenccData(outDir: string): void {
+  const openccDst = join(outDir, "opencc");
+  mkdirSync(openccDst, { recursive: true });
+  const openccSrc = join("ext", "opencc");
+  for (const name of ["TSCharacters.txt", "TSPhrases.txt", "TWPhrases.txt", "LICENSE"]) {
+    const src = join(openccSrc, name);
+    if (existsSync(src)) {
+      copyFileNormalized(join(openccDst, name), src);
+    }
+  }
+}
+
 export function copyDistributionFonts(outDir: string): void {
   const fontsDst = join(outDir, "fonts");
   mkdirSync(fontsDst, { recursive: true });

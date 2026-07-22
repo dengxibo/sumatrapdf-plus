@@ -6,6 +6,8 @@
 
 - fix illustrated PDF rendering where some books (e.g. scanned art catalogues) showed dark blotches or posterized graphics in both light and dark themes;
   修复部分插图类 PDF（如扫描版艺术画册）在浅色和深色主题下出现暗斑、画面失真的问题
+- support Chinese word lookup in Traditional Chinese PDFs by converting text to Simplified before dictionary lookup;
+  支持繁体中文 PDF 查词：查词典前自动繁转简，可查询《现代汉语词典》释义
 
 ## 3.7.15 (2026-07-20)
 

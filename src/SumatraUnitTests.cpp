@@ -18,6 +18,7 @@
 #include "GlobalPrefs.h"
 #include "Flags.h"
 #include "Commands.h"
+#include "CharConv.h"
 #include "UpdateCheckPolicy.h"
 
 #include <float.h>
@@ -341,12 +342,31 @@ void parseCommandsTest() {
     }
 }
 
+static void charconv_test() {
+    utassert(CharConvIsReady());
+    {
+        char* s = TraditionalToSimplified("測試");
+        defer {
+            str::Free(s);
+        };
+        utassert(str::Eq(s, "测试"));
+    }
+    {
+        char* s = TraditionalToSimplified("軟體");
+        defer {
+            str::Free(s);
+        };
+        utassert(str::Eq(s, "软件"));
+    }
+}
+
 void SumatraPDF_UnitTests() {
     parseCommandsTest();
     colorTest();
     BenchRangeTest();
     ParseCommandLineTest();
     versioncheck_test();
+    charconv_test();
     hexstrTest();
     UpdateCheckPolicyTest();
 }
