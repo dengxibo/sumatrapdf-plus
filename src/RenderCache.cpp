@@ -70,8 +70,8 @@ static bool FixedPageEngineNeedsBitmapRecolor(EngineBase* engine) {
     if (ThemeUsesOriginalPageColors()) {
         return FixedPageUiUsesCustomRenderColors();
     }
-    // Light-Warm Smart: uniform eye-care remap (no per-image preserve).
-    return true;
+    // Light-Warm Auto: do not recolor rendered page bitmaps (illustrations stay intact).
+    return false;
 }
 
 static bool IsFixedPageRecolorEngine(EngineBase* engine) {
@@ -135,28 +135,18 @@ static void FinalizeTileSkipRects(Vec<Rect>& skipRects, Size bmpSize) {
     if (skipRects.Size() <= 1 || bmpSize.dx <= 0 || bmpSize.dy <= 0) {
         return;
     }
-    i64 totalArea = (i64)bmpSize.dx * bmpSize.dy;
-    if (totalArea <= 0) {
-        return;
-    }
-    i64 skipArea = 0;
-    for (Rect& r : skipRects) {
-        skipArea += (i64)r.dx * r.dy;
-    }
-    if (skipRects.Size() > 1 && skipArea * 100 > totalArea * 40) {
-        int bestIdx = 0;
-        i64 bestArea = 0;
-        for (int i = 0; i < skipRects.Size(); i++) {
-            i64 a = (i64)skipRects.at(i).dx * skipRects.at(i).dy;
-            if (a > bestArea) {
-                bestArea = a;
-                bestIdx = i;
-            }
+    int bestIdx = 0;
+    i64 bestArea = 0;
+    for (int i = 0; i < skipRects.Size(); i++) {
+        i64 a = (i64)skipRects.at(i).dx * skipRects.at(i).dy;
+        if (a > bestArea) {
+            bestArea = a;
+            bestIdx = i;
         }
-        Rect keep = skipRects.at(bestIdx);
-        skipRects.Clear();
-        skipRects.Append(keep);
     }
+    Rect keep = skipRects.at(bestIdx);
+    skipRects.Clear();
+    skipRects.Append(keep);
 }
 
 bool gShowTileLayout = false;

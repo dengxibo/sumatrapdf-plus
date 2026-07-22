@@ -1772,11 +1772,13 @@ static void fz_img_collect_fill_image(fz_context* ctx, fz_device* dev, fz_image*
 static void fz_img_collect_fill_image_mask(fz_context* ctx, fz_device* dev, fz_image* image, fz_matrix ctm,
                                            fz_colorspace* colorspace, const float* color, float alpha,
                                            fz_color_params color_params) {
+    (void)image;
     (void)colorspace;
     (void)color;
     (void)alpha;
     (void)color_params;
-    fz_img_collect_add(ctx, dev, fz_transform_rect(fz_unit_rect, ctm), false, image);
+    // Image masks are knockouts/clip shapes, not photos — track only for clipping.
+    fz_img_collect_add(ctx, dev, fz_transform_rect(fz_unit_rect, ctm), true, nullptr);
 }
 
 static void fz_img_collect_clip_path(fz_context* ctx, fz_device* dev, const fz_path* path, int even_odd, fz_matrix ctm,
@@ -6428,6 +6430,29 @@ RectF EngineMupdf::Transform(const RectF& rect, int pageNo, float zoom, int rota
 // Smaller embedded images (icons, bullets, ornaments) still use the page recolor filter.
 // Minimum size for preserved PDF images (see GetPreservePdfImagesMinSize(), default 72).
 
+// Illustrated pages often contain many small content-stream images alongside one main
+// artwork. Preserving all of them leaves patchy gaps that get dark-recolored (3.7+).
+// Keep only the largest preserve region per page, matching FinalizeTileSkipRects intent.
+static void DarkLegacySkipKeepLargestArtwork(FzPageInfo* pageInfo) {
+    Vec<Rect>& skipRects = pageInfo->darkLegacySkipDevAbs;
+    if (skipRects.Size() <= 1) {
+        return;
+    }
+    int bestIdx = 0;
+    i64 bestArea = 0;
+    for (int i = 0; i < skipRects.Size(); i++) {
+        i64 a = (i64)skipRects.at(i).dx * skipRects.at(i).dy;
+        if (a > bestArea) {
+            bestArea = a;
+            bestIdx = i;
+        }
+    }
+    Rect keep = skipRects.at(bestIdx);
+    skipRects.Clear();
+    skipRects.Append(keep);
+    pageInfo->darkLegacyArtworkPageBottom = 0.f;
+}
+
 static u32 DarkLegacySkipHash(FzPageInfo* pageInfo, float zoom, int rotation) {
     u32 h = PdfDarkModeComputeOptionsHash();
     h = h * 31 + (u32)(zoom * 1000.f);
@@ -6521,6 +6546,7 @@ static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageIn
             fz_drop_image(ctx, image);
         }
     }
+    DarkLegacySkipKeepLargestArtwork(pageInfo);
 }
 
 void EngineMupdf::GetBitmapRecolorSkipRects(int pageNo, float zoom, int rotation, const RectF& renderPageRect,

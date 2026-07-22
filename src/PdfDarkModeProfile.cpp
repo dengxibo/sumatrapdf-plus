@@ -103,8 +103,11 @@ static void ApplyDocumentColorModeToFixedPageProfile(EngineBase* engine, DarkMod
                 profile->mode = PageColorMode::SmartDark;
             } else if (profile->preservePdfImages) {
                 profile->mode = PageColorMode::PreserveImages;
-            } else {
+            } else if (ThemeUsesDarkChrome()) {
                 profile->mode = PageColorMode::LegacyInvert;
+            } else {
+                // Light-Warm / Light-White: keep original page pixels; eye-care tint is UI chrome only.
+                profile->mode = PageColorMode::Normal;
             }
             break;
     }

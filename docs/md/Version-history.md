@@ -2,6 +2,11 @@
 
 ## next
 
+## 3.5.16 (2026-07-22)
+
+- fix illustrated PDF rendering where some books (e.g. scanned art catalogues) showed dark blotches or posterized graphics in both light and dark themes;
+  修复部分插图类 PDF（如扫描版艺术画册）在浅色和深色主题下出现暗斑、画面失真的问题
+
 ## 3.7.15 (2026-07-20)
 
 - comprehensively upgrade document search with incremental results synchronized to progressive EPUB/MOBI/AZW loading;
