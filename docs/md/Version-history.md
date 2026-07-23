@@ -2,6 +2,11 @@
 
 ## next
 
+## 3.7.17 (2026-07-23)
+
+- fix selection toolbar jitter and flicker while dragging text selection and during edge autoscroll;
+  修复拖选文本及边缘自动滚动时划词工具栏高频抖动、闪烁的问题
+
 ## 3.7.16 (2026-07-22)
 
 - fix illustrated PDF rendering where some books (e.g. scanned art catalogues) showed dark blotches or posterized graphics in both light and dark themes;

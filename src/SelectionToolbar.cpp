@@ -49,6 +49,8 @@ struct SelectionToolbar {
     Size size;
     Rect lastPlaced;    // last screen rect we moved the window to (avoids redundant SetWindowPos)
     Rect lastSelBounds; // last canvas-space selection bounds used for placement
+    DWORD tryShowBlockedUntil = 0;
+    DWORD lastPositionUpdateTick = 0;
     SelectionToolbarButton buttons[9];
     int nButtons = 0;
 };
@@ -89,6 +91,8 @@ constexpr int kBtnGap = 2;  // gap between buttons
 constexpr int kToolbarCornerRadius = 10;
 constexpr int kToolbarButtonRadius = 6;
 constexpr int kToolbarFontPct = 108;
+constexpr DWORD kSelTbTryShowCooldownMs = 150;
+constexpr DWORD kSelTbPositionUpdateMinMs = 32;
 
 static HFONT CreateScaledFontFrom(HFONT base, int pct) {
     if (!base) {
@@ -103,6 +107,42 @@ static HFONT CreateScaledFontFrom(HFONT base, int pct) {
 static TempStr ToolbarButtonLabelTemp(const SelectionToolbarButton& button) {
     TempStr label = str::ReplaceTemp(_TRA(button.label), "(&T)", "");
     return str::ReplaceTemp(label, "&", "");
+}
+
+static bool IsActivelySelecting(MainWindow* win) {
+    MouseAction ma = win->mouseAction;
+    return ma == MouseAction::Selecting || ma == MouseAction::SelectingText;
+}
+
+static int SelectionBoundsSlack(HWND hwnd) {
+    return DpiScale(hwnd, 3);
+}
+
+static bool SelectionBoundsChanged(Rect a, Rect b, int slack) {
+    if (slack <= 0) {
+        return a != b;
+    }
+    return abs(a.x - b.x) > slack || abs(a.y - b.y) > slack || abs(a.dx - b.dx) > slack ||
+           abs(a.dy - b.dy) > slack;
+}
+
+static bool SelTbTryShowBlocked(SelectionToolbar* tb) {
+    if (!tb || tb->tryShowBlockedUntil == 0) {
+        return false;
+    }
+    DWORD now = GetTickCount();
+    if (now >= tb->tryShowBlockedUntil) {
+        tb->tryShowBlockedUntil = 0;
+        return false;
+    }
+    return true;
+}
+
+static void SelTbBlockTryShow(SelectionToolbar* tb, DWORD ms = kSelTbTryShowCooldownMs) {
+    if (!tb) {
+        return;
+    }
+    tb->tryShowBlockedUntil = GetTickCount() + ms;
 }
 
 static void LayoutToolbar(SelectionToolbar* tb) {
@@ -133,8 +173,11 @@ static void LayoutToolbar(SelectionToolbar* tb) {
     for (int i = 0; i < n; i++) {
         tb->buttons[i].rc.dy = maxDy;
     }
+    Size prevSize = tb->size;
     tb->size = Size(x + margin, maxDy + 2 * margin);
-    UpdateFloatingPopupWindowRgn(hwnd, kToolbarCornerRadius);
+    if (tb->size != prevSize) {
+        UpdateFloatingPopupWindowRgn(hwnd, kToolbarCornerRadius);
+    }
 }
 
 static int ButtonFromPoint(SelectionToolbar* tb, int x, int y) {
@@ -335,6 +378,24 @@ static bool GetSelectionBounds(MainWindow* win, Rect& out) {
     return true;
 }
 
+static bool SelTbCanShowToolbar(MainWindow* win) {
+    if (!win || !gGlobalPrefs->annotations.selectionToolbar || IsActivelySelecting(win)) {
+        return false;
+    }
+    if (IsWordLookupVisible()) {
+        return false;
+    }
+    DisplayModel* dm = win->AsFixed();
+    if (!dm || dm->textSelection->result.len <= 0) {
+        return false;
+    }
+    Rect sel;
+    if (!GetSelectionBounds(win, sel)) {
+        return false;
+    }
+    return true;
+}
+
 static void PositionToolbar(SelectionToolbar* tb, const Rect& sel) {
     MainWindow* win = tb->win;
     Rect canvas = win->canvasRc;
@@ -363,14 +424,31 @@ static void PositionToolbar(SelectionToolbar* tb, const Rect& sel) {
         y = canvas.y;
     }
 
-    POINT p{x, y};
-    ClientToScreen(win->hwndCanvas, &p);
-    Rect placed(p.x, p.y, w, h);
-    if (placed == tb->lastPlaced) {
+    Rect clientPlaced(x, y, w, h);
+    Rect placed = MapLtrClientRectToScreen(win->hwndCanvas, clientPlaced);
+    Rect canvasScreen = MapLtrClientRectToScreen(win->hwndCanvas, canvas);
+    int sx = placed.x;
+    int sy = placed.y;
+    int maxSx = canvasScreen.x + canvasScreen.dx - w;
+    int maxSy = canvasScreen.y + canvasScreen.dy - h;
+    if (sx < canvasScreen.x) {
+        sx = canvasScreen.x;
+    }
+    if (sy < canvasScreen.y) {
+        sy = canvasScreen.y;
+    }
+    if (sx > maxSx) {
+        sx = maxSx;
+    }
+    if (sy > maxSy) {
+        sy = maxSy;
+    }
+    Rect screenPlaced(sx, sy, w, h);
+    if (screenPlaced == tb->lastPlaced) {
         return;
     }
-    tb->lastPlaced = placed;
-    SetWindowPos(tb->hwnd, nullptr, p.x, p.y, w, h, SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER);
+    tb->lastPlaced = screenPlaced;
+    SetWindowPos(tb->hwnd, nullptr, sx, sy, w, h, SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER);
 }
 
 static SelectionToolbar* GetOrCreateToolbar(MainWindow* win) {
@@ -398,6 +476,9 @@ void ShowSelectionToolbar(MainWindow* win) {
     if (!win || !gGlobalPrefs->annotations.selectionToolbar) {
         return;
     }
+    if (IsActivelySelecting(win)) {
+        return;
+    }
     if (IsWordLookupVisible()) {
         return;
     }
@@ -419,6 +500,8 @@ void ShowSelectionToolbar(MainWindow* win) {
     tb->tab = win->CurrentTab();
     tb->hotIndex = -1;
     tb->pressedIndex = -1;
+    tb->tryShowBlockedUntil = 0;
+    tb->lastPositionUpdateTick = GetTickCount();
     tb->lastSelBounds = sel;
     InitButtons(tb, win);
     LayoutToolbar(tb);
@@ -431,10 +514,21 @@ void UpdateSelectionToolbarPosition(MainWindow* win) {
     if (!win) {
         return;
     }
+    if (IsActivelySelecting(win)) {
+        SelectionToolbar* activeTb = win->selectionToolbar;
+        if (activeTb && activeTb->hwnd && IsWindowVisible(activeTb->hwnd)) {
+            HideSelectionToolbar(win);
+        }
+        return;
+    }
     SelectionToolbar* tb = win->selectionToolbar;
     if (!tb || !tb->hwnd || !IsWindowVisible(tb->hwnd)) {
-        if (win->showSelection) {
-            ShowSelectionToolbar(win);
+        if (win->showSelection && !SelTbTryShowBlocked(tb)) {
+            if (SelTbCanShowToolbar(win)) {
+                ShowSelectionToolbar(win);
+            } else {
+                SelTbBlockTryShow(tb);
+            }
         }
         return;
     }
@@ -444,18 +538,25 @@ void UpdateSelectionToolbarPosition(MainWindow* win) {
     }
     Rect sel;
     if (!GetSelectionBounds(win, sel)) {
+        SelTbBlockTryShow(tb);
         HideSelectionToolbar(win);
         return;
     }
     // Canvas is repainted often during read-aloud highlight updates. Skip all
-    // toolbar work when the selection has not moved, otherwise SetWindowRgn /
-    // ScheduleRepaint makes the floating bar jitter.
-    if (sel == tb->lastSelBounds) {
+    // toolbar work when the selection has moved only slightly, otherwise
+    // SetWindowRgn / ScheduleRepaint makes the floating bar jitter.
+    int slack = SelectionBoundsSlack(win->hwndFrame);
+    if (!SelectionBoundsChanged(sel, tb->lastSelBounds, slack)) {
         return;
     }
+    DWORD now = GetTickCount();
+    if (tb->lastPositionUpdateTick != 0 && now - tb->lastPositionUpdateTick < kSelTbPositionUpdateMinMs) {
+        return;
+    }
+    tb->lastPositionUpdateTick = now;
+    Rect prevPlaced = tb->lastPlaced;
     tb->lastSelBounds = sel;
 
-    Rect prevPlaced = tb->lastPlaced;
     InitButtons(tb, win);
     LayoutToolbar(tb);
     PositionToolbar(tb, sel);

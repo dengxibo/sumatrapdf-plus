@@ -1460,10 +1460,11 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
     }
 #endif
 
-    // in debug build, default
+    // in debug build, default log next to the executable (portable-friendly)
     if (gIsDebugBuild) {
         if (!flags.logFile) {
-            flags.logFile = str::Dup("sumlog.txt");
+            TempStr exeDir = path::GetDirTemp(GetSelfExePathTemp());
+            flags.logFile = path::JoinTemp(exeDir, "sumlog.txt");
             flags.log = true;
             logFileBecauseDebug = true;
         }
