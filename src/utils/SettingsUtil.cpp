@@ -432,6 +432,12 @@ static void SerializeStructRec(StrBuilder& out, const StructInfo* info, const vo
                 continue;
             }
 #endif
+            if (field.serializeComment && field.serializeComment[0]) {
+                Indent(out, indent);
+                out.Append("# ");
+                out.Append(field.serializeComment);
+                out.Append("\r\n");
+            }
             Indent(out, indent);
             out.Append(fieldName);
             out.Append(" [\r\n");
@@ -469,6 +475,10 @@ static void SerializeStructRec(StrBuilder& out, const StructInfo* info, const vo
             out.Append(" = ");
             bool keep = SerializeField(out, base, field);
             if (keep) {
+                if (field.serializeComment && field.serializeComment[0]) {
+                    out.Append(" # ");
+                    out.Append(field.serializeComment);
+                }
                 out.Append("\r\n");
             } else {
                 out.RemoveAt(offset, out.size() - offset);

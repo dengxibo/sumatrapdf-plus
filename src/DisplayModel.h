@@ -214,6 +214,7 @@ struct DisplayModel : DocController {
     void EnsurePagesInfoForPage(int pageNo);
     void OnMorePagesAvailable(bool updateUi = true, bool growAll = false);
     void OnMorePagesAvailablePreservingScroll(bool updateUi = true, bool growAll = false);
+    void SyncPageCountWithEngine(bool updateUi = true);
     float ZoomRealFromVirtualForPage(float zoomVirtual, int pageNo) const;
     SizeF PageSizeAfterRotation(int pageNo, bool fitToContent = false) const;
     void ChangeStartPage(int startPage);

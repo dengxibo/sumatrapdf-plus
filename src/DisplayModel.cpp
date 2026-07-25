@@ -971,6 +971,36 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
     }
 }
 
+void DisplayModel::SyncPageCountWithEngine(bool updateUi) {
+    if (!engine || !pagesInfo) {
+        return;
+    }
+    int enginePageCount = engine->PageCount();
+    if (enginePageCount == pagesInfoCount) {
+        if (updateUi && PagesNeedLayoutSync(this)) {
+            ApplyPagesUiUpdate(this);
+        }
+        return;
+    }
+    if (enginePageCount < pagesInfoCount) {
+        pagesInfoCount = enginePageCount;
+        reflowLayoutValidUpto = std::min(reflowLayoutValidUpto, pagesInfoCount);
+        int cur = CurrentPageNo();
+        if (cur > pagesInfoCount && pagesInfoCount > 0) {
+            GoToPage(pagesInfoCount, false);
+        }
+        if (updateUi) {
+            Relayout(zoomVirtual, rotation);
+            ApplyPagesUiUpdate(this);
+            if (cb) {
+                cb->UpdateScrollbars(canvasSize);
+            }
+        }
+        return;
+    }
+    OnMorePagesAvailable(updateUi, true);
+}
+
 bool DisplayModel::ShouldSkipTocSelectionUpdate() const {
     if (suppressTocSelectionUpdate || hasPendingRestoreScroll) {
         return true;
@@ -1688,10 +1718,12 @@ Point DisplayModel::CvtToScreen(int pageNo, PointF pt) {
     float zoom = getZoomSafe(this, pageNo, pageInfo);
 
     PointF p = engine->Transform(pt, pageNo, zoom, rotation);
-    // don't add the full 0.5 for rounding to account for precision errors
-    Rect r = pageInfo->pageOnScreen;
-    p.x += 0.499 + r.x;
-    p.y += 0.499 + r.y;
+    // Use layout pos, not pageOnScreen: RecalcVisibleParts only refreshes pageOnScreen
+    // for a scan band; find/selection highlights must stay aligned after zoom/scroll.
+    int ox = pageInfo->pos.x - viewPort.x;
+    int oy = pageInfo->pos.y - viewPort.y;
+    p.x += 0.499f + ox;
+    p.y += 0.499f + oy;
 
     return ToPoint(p);
 }
@@ -1713,9 +1745,9 @@ PointF DisplayModel::CvtFromScreen(Point pt, int pageNo) {
         return PointF();
     }
 
-    // don't add the full 0.5 for rounding to account for precision errors
-    Rect r = pageInfo->pageOnScreen;
-    PointF p = PointF(pt.x - 0.499 - r.x, pt.y - 0.499 - r.y);
+    int ox = pageInfo->pos.x - viewPort.x;
+    int oy = pageInfo->pos.y - viewPort.y;
+    PointF p = PointF(pt.x - 0.499f - ox, pt.y - 0.499f - oy);
 
     float zoom = getZoomSafe(this, pageNo, pageInfo);
     return engine->Transform(p, pageNo, zoom, rotation, true);
@@ -1847,6 +1879,7 @@ void DisplayModel::RenderVisibleParts() {
 
 void DisplayModel::SetViewPortSize(Size newViewPortSize) {
     ScrollState ss;
+    Point savedCanvasOrigin = viewPort.TL();
 
     bool isDocReady = pagesInfo && ValidPageNo(startPage) && zoomReal > 0;
     if (isDocReady) {
@@ -1869,7 +1902,22 @@ void DisplayModel::SetViewPortSize(Size newViewPortSize) {
     if (isDocReady) {
         // when fitting to content, let GoToPage do the necessary scrolling
         if (zoomVirtual != kZoomFitContent) {
-            SetScrollState(ss);
+            // Continuous EPUB: GetScrollState() often has y=-1; SetScrollState snaps to
+            // page top and drops the in-page scroll offset (e.g. closing the TOC).
+            if (IsContinuous(displayMode) && ss.x < 0 && ss.y < 0) {
+                viewPort.x = limitValue(savedCanvasOrigin.x, 0, std::max(0, canvasSize.dx - viewPort.dx));
+                viewPort.y = limitValue(savedCanvasOrigin.y, 0, std::max(0, canvasSize.dy - viewPort.dy));
+                RecalcVisibleParts();
+                RenderVisibleParts();
+                cb->UpdateScrollbars(canvasSize);
+                int pageNo = CurrentPageNo();
+                if (ValidPageNo(pageNo)) {
+                    cb->PageNoChanged(this, pageNo);
+                }
+                RepaintDisplay();
+            } else {
+                SetScrollState(ss);
+            }
         } else {
             GoToPage(ss.page, 0);
         }
@@ -2283,16 +2331,8 @@ void DisplayModel::SetZoomVirtual(float zoomLevel, Point* fixPt) {
 
     ScrollState ss = GetScrollState();
 
-    int centerPage = -1;
-    PointF centerPt;
-    if (fixPt) {
-        centerPage = GetPageNoByPoint(*fixPt);
-        if (ValidPageNo(centerPage)) {
-            centerPt = CvtFromScreen(*fixPt, centerPage);
-        } else {
-            fixPt = nullptr;
-        }
-    }
+    Point oldCanvasOrigin = viewPort.TL();
+    float oldZoomReal = zoomReal;
 
     if (scrollToFitPage) {
         ss.page = CurrentPageNo();
@@ -2302,17 +2342,41 @@ void DisplayModel::SetZoomVirtual(float zoomLevel, Point* fixPt) {
 
     // lf("DisplayModel::SetZoomVirtual() zoomLevel=%.6f", _zoomLevel);
     Relayout(zoomLevel, rotation);
-    SetScrollState(ss);
 
-    if (fixPt) {
-        // scroll so that the fix point remains in the same screen location after zooming
-        Point centerI = CvtToScreen(centerPage, centerPt);
-        if (centerI.x - fixPt->x != 0) {
-            ScrollXBy(centerI.x - fixPt->x);
+    bool continuousReflow = IsContinuous(displayMode) && !scrollToFitPage;
+    if (continuousReflow) {
+        // Anchor zoom on the cursor (or viewport center). Scaling viewPort.y in
+        // Relayout or fixPt via CvtToScreen breaks when the anchor page is off-screen
+        // (pageOnScreen is only updated for visible pages in RecalcVisibleParts).
+        float scale = (oldZoomReal > 0 && zoomReal > 0) ? zoomReal / oldZoomReal : 1.f;
+        Size vp = totalViewPortSize;
+        int anchorX = fixPt ? fixPt->x : vp.dx / 2;
+        int anchorY = fixPt ? fixPt->y : vp.dy / 2;
+        viewPort.x = (int)((oldCanvasOrigin.x + anchorX) * scale) - anchorX;
+        viewPort.y = (int)((oldCanvasOrigin.y + anchorY) * scale) - anchorY;
+        viewPort.x = limitValue(viewPort.x, 0, std::max(0, canvasSize.dx - viewPort.dx));
+        viewPort.y = limitValue(viewPort.y, 0, std::max(0, canvasSize.dy - viewPort.dy));
+        RecalcVisibleParts();
+        RenderVisibleParts();
+        cb->UpdateScrollbars(canvasSize);
+        int pageNo = CurrentPageNo();
+        if (ValidPageNo(pageNo)) {
+            cb->PageNoChanged(this, pageNo);
         }
-        if (centerI.y - fixPt->y != 0) {
-            ScrollYBy(centerI.y - fixPt->y, false);
+        RepaintDisplay();
+    } else if (IsContinuous(displayMode) && ss.x < 0 && ss.y < 0) {
+        viewPort.x = limitValue(viewPort.x, 0, std::max(0, canvasSize.dx - viewPort.dx));
+        viewPort.y = limitValue(viewPort.y, 0, std::max(0, canvasSize.dy - viewPort.dy));
+        RecalcVisibleParts();
+        RenderVisibleParts();
+        cb->UpdateScrollbars(canvasSize);
+        int pageNo = CurrentPageNo();
+        if (ValidPageNo(pageNo)) {
+            cb->PageNoChanged(this, pageNo);
         }
+        RepaintDisplay();
+    } else {
+        SetScrollState(ss);
     }
 
     cb->ZoomChanged(this, zoomLevel);

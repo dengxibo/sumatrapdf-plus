@@ -1341,6 +1341,7 @@ void ControllerCallbackHandler::ZoomChanged(DocController* ctrl, float zoomVirtu
     if (win->ctrl != ctrl) {
         return;
     }
+    OnFindZoomChanged(win);
     NotificationWnd* wnd = GetNotificationForGroup(win->hwndCanvas, kNotifPageInfo);
     if (!wnd) {
         return;
@@ -2516,6 +2517,7 @@ static void RefreshDisplayModelAfterThemeChange(DisplayModel* dm, bool updateUi)
     if (!dm || !dm->pagesInfo) {
         return;
     }
+    dm->SyncPageCountWithEngine(updateUi);
     if (!updateUi) {
         return;
     }
@@ -3950,15 +3952,22 @@ static void ApplyDocumentColorModeChangeToTab(MainWindow* win, WindowTab* tab) {
     }
     EngineBase* engine = tab->GetEngine();
     if (IsReflowableMupdfForTheme(engine)) {
-        // Pause background reflow loading so this operation isn't starved of docLock.
         ReflowLoadingPauseScope reflowPause(engine);
-        EngineMupdfRelayoutForThemeChange(engine);
+        bool reloadVisibleToc = tab == win->CurrentTab() && win->tocVisible && win->tocLoaded;
+        if (reloadVisibleToc) {
+            ClearTocBox(win);
+        }
         DisplayModel* dm = tab->AsFixed();
+        if (dm) {
+            gRenderCache->CancelRendering(dm);
+            gRenderCache->KeepForColorTransition(dm);
+        }
+        EngineMupdfRelayoutForThemeChange(engine);
         if (dm) {
             RefreshDisplayModelAfterThemeChange(dm, tab == win->CurrentTab());
             RemapAnchorsAfterReflow(tab, win);
         }
-        ReloadTocUiAfterReflowReparse(win, tab);
+        ReloadTocUiAfterReflowReparse(win, tab, reloadVisibleToc);
         tab->reloadOnFocus = false;
         return;
     }

@@ -483,11 +483,7 @@ bool FindBarWnd::PreTranslateMessage(MSG& msg) {
     switch (msg.wParam) {
         case 'F':
             if (IsCtrlPressed() && !IsAltPressed()) {
-                if (!IsFindUIVisible(win)) {
-                    FindFirst(win);
-                } else {
-                    FocusFindEditSelectAll(win);
-                }
+                FindWindowActivateForShortcut(win);
                 return true;
             }
             break;

@@ -149,32 +149,53 @@ struct FindWindowWnd : Wnd {
 
 static void DeferredGoToFindMatch(DeferredGoToFindMatchData* d) {
     AutoDelete del(d);
-    if (!IsMainWindowValid(d->win) || !d->findWindow) {
+    MainWindow* win = d->win;
+    if (!IsMainWindowValid(win) || !d->findWindow) {
+        return;
+    }
+    if (win->findWindow != d->findWindow) {
         return;
     }
     if (d->epoch != d->findWindow->pendingNavEpoch) {
         return;
     }
-    if (d->win->findCountThread) {
-        DisplayModel* dm = d->win->AsFixed();
-        EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (d->findWindow->pendingNavigationCountEpoch != win->findCountEpoch) {
+        d->findWindow->hasPendingNavigation = false;
+        return;
+    }
+    if (!win->IsDocLoaded()) {
+        d->findWindow->hasPendingNavigation = false;
+        return;
+    }
+    DisplayModel* dm = win->AsFixed();
+    if (!dm || !dm->textSearch || !dm->GetEngine()) {
+        d->findWindow->hasPendingNavigation = false;
+        return;
+    }
+    if (win->findCountEngine && (void*)dm->GetEngine() != win->findCountEngine) {
+        d->findWindow->hasPendingNavigation = false;
+        return;
+    }
+    if (win->findCountThread) {
+        EngineBase* engine = dm->GetEngine();
         // The count worker has already extracted and cached every page touched
         // by this match. Cached text access is protected by EngineBase's text
         // cache lock, so exact selection can proceed without stopping or
         // restarting the full-document scan.
-        if (engine && engine->PromoteCachedTextUtf8ForSelection(d->startPage) &&
+        if (engine->PromoteCachedTextUtf8ForSelection(d->startPage) &&
             engine->PromoteCachedTextUtf8ForSelection(d->endPage)) {
             d->findWindow->hasPendingNavigation = false;
-            GoToFindMatch(d->win, d->startPage, d->startGlyph, d->endPage, d->endGlyph);
+            GoToFindMatch(win, d->startPage, d->startGlyph, d->endPage, d->endGlyph);
             return;
         }
-        if (d->win->ctrl) {
-            d->win->ctrl->GoToPage(d->startPage, true);
+        if (win->ctrl) {
+            win->ctrl->GoToPage(d->startPage, true);
         }
+        d->findWindow->hasPendingNavigation = false;
         return;
     }
     d->findWindow->hasPendingNavigation = false;
-    GoToFindMatch(d->win, d->startPage, d->startGlyph, d->endPage, d->endGlyph);
+    GoToFindMatch(win, d->startPage, d->startGlyph, d->endPage, d->endGlyph);
 }
 
 // append a command's keyboard shortcut to its tooltip, e.g. "Find Next (F3)"
@@ -1154,11 +1175,7 @@ bool FindWindowWnd::PreTranslateMessage(MSG& msg) {
     switch (msg.wParam) {
         case 'F':
             if (IsCtrlPressed() && !IsAltPressed()) {
-                if (!IsFindUIVisible(win)) {
-                    FindFirst(win);
-                } else {
-                    FocusFindEditSelectAll(win);
-                }
+                FindWindowActivateForShortcut(win);
                 return true;
             }
             break;
@@ -1328,6 +1345,32 @@ void FindWindowReposition(MainWindow* win) {
     }
 }
 
+void FindWindowActivateForShortcut(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    HWND hwndFind = FindWindowHwnd(win);
+    bool visible = hwndFind && IsWindowVisible(hwndFind);
+    if (!visible) {
+        HwndSendCommand(win->hwndFrame, CmdFindFirst);
+        return;
+    }
+    FindBarResyncActiveEdit(win);
+    HWND fg = GetForegroundWindow();
+    if (fg != hwndFind && fg != win->hwndFindEdit && (!fg || !IsChild(hwndFind, fg))) {
+        SetForegroundWindow(hwndFind);
+    }
+    FindWindowReposition(win);
+    ShowWindow(hwndFind, SW_SHOW);
+    if (win->hwndFindEdit && IsWindow(win->hwndFindEdit)) {
+        HwndSetFocus(win->hwndFindEdit);
+        Edit_SetSel(win->hwndFindEdit, 0, -1);
+        return;
+    }
+    win->hwndFindEdit = nullptr;
+    HwndSendCommand(win->hwndFrame, CmdFindFirst);
+}
+
 void ShowFindWindow(MainWindow* win) {
     if (!win->findWindow) {
         win->findWindow = CreateFindWindow(win);
@@ -1482,6 +1525,19 @@ void FindWindowApplyPendingNavigation(MainWindow* win) {
         return;
     }
     if (w->pendingNavigationCountEpoch != win->findCountEpoch) {
+        w->hasPendingNavigation = false;
+        return;
+    }
+    if (!win->IsDocLoaded()) {
+        w->hasPendingNavigation = false;
+        return;
+    }
+    DisplayModel* dm = win->AsFixed();
+    if (!dm || !dm->textSearch || !dm->GetEngine()) {
+        w->hasPendingNavigation = false;
+        return;
+    }
+    if (win->findCountEngine && (void*)dm->GetEngine() != win->findCountEngine) {
         w->hasPendingNavigation = false;
         return;
     }

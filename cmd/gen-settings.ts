@@ -4,6 +4,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname, resolve, basename } from "node:path";
 import { extractSumatraVersion, detectVisualStudio, runLogged, isGitClean } from "./util";
+import { settingsInlineCommentsZh } from "./settings-inline-comments-zh";
 
 async function runCapture(cmd: string, args: string[], cwd?: string): Promise<string> {
   const proc = Bun.spawn([cmd, ...args], { stdout: "pipe", stderr: "pipe", cwd });
@@ -880,14 +881,15 @@ const globalPrefs: Field[] = [
   setDoc(
     setVersion(
       mkField(
-        "PdfDocumentColorMode",
+        "DocumentColorMode",
         Str,
-        "auto",
-        "PDF document color mode in dark theme: auto (smart dark mode), black (full dark), or light (original colors)",
+        "smart",
+        "document color mode for readable formats (PDF, EPUB, MOBI, CHM, XPS, DjVu, Markdown, etc.): " +
+          "smart (intelligent adaptation), original (publisher colors unchanged), or theme (follow current UI theme)",
       ),
       "3.7",
     ),
-    "Valid values: auto, black, light",
+    "Valid values: smart, original, theme. Legacy aliases auto, light, black are still accepted on load.",
   ),
   mkField(
     "TocDy",
@@ -1210,7 +1212,32 @@ function formatComment(comment: string, start: string): string[] {
 }
 
 function formatArrayLines(data: string[][]): string[] {
-  return data.map((ld) => `\t{ ${ld[0]}, ${ld[1]}, ${ld[2]} },`);
+  return data.map((ld) => `\t{ ${ld[0]}, ${ld[1]}, ${ld[2]}, ${ld[3]} },`);
+}
+
+function cserializeComment(comment: string): string {
+  if (!comment) {
+    return "nullptr";
+  }
+  const escaped = comment.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, " ");
+  return `"${escaped}"`;
+}
+
+function fieldPath(pathPrefix: string, field: Field): string {
+  if (pathPrefix) {
+    return `${pathPrefix}${field.Name}`;
+  }
+  if (field.StructName && ["Struct", "Prerelease"].includes(field.Type.name)) {
+    return field.StructName;
+  }
+  return field.Name;
+}
+
+function inlineCommentFor(path: string, field: Field): string {
+  if (field.Type.name === "Comment") {
+    return field.Comment;
+  }
+  return settingsInlineCommentsZh[path] || "";
 }
 
 function cdefault(f: Field, built: Record<string, number>): string {
@@ -1340,7 +1367,7 @@ function buildStruct(struc: Field, built: Record<string, number>): string {
   return s1 + s2;
 }
 
-function buildMetaData(struc: Field, built: Record<string, number>): string {
+function buildMetaData(struc: Field, built: Record<string, number>, pathPrefix = ""): string {
   const lines: string[] = [];
   const names: string[] = [];
   const data: string[][] = [];
@@ -1353,17 +1380,21 @@ function buildMetaData(struc: Field, built: Record<string, number>): string {
   const fields = struc.Default as Field[];
   for (const field of fields) {
     if (field.NotSaved) continue;
+    const path = fieldPath(pathPrefix, field);
     const dataLine: string[] = [];
     dataLine.push(`offsetof(${struc.StructName}, ${field.CName})`);
     dataLine.push(`SettingType::${field.Type.name}`);
     dataLine.push(cdefault(field, built));
+    dataLine.push(cserializeComment(inlineCommentFor(path, field)));
     names.push(field.Name);
     if (["Struct", "Prerelease", "Compact", "Array"].includes(field.Type.name)) {
-      const sublines = buildMetaData(field, built);
+      const childPrefix = field.StructName ? `${field.StructName}.` : `${path}.`;
+      const sublines = buildMetaData(field, built, field.Type.name === "Compact" ? "" : childPrefix);
       lines.push(sublines, "");
       built[field.StructName] = (built[field.StructName] || 0) + 1;
     } else if (field.Type.name === "Comment") {
       dataLine[0] = "(size_t)-1";
+      dataLine[3] = cserializeComment(field.Comment);
     }
     data.push(dataLine);
   }

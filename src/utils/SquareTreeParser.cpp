@@ -65,6 +65,51 @@ static inline char* SkipWsRev(char* begin, char* s) {
     return s;
 }
 
+// returns true if p points to a #RRGGBB or #RRGGBBAA color token
+static bool IsHexColorToken(const char* p, const char* end, int* tokenLen) {
+    if (p >= end || *p != '#') {
+        return false;
+    }
+    int digits = 0;
+    for (p++; p < end; p++) {
+        char c = *p;
+        if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+            digits++;
+            continue;
+        }
+        break;
+    }
+    if (digits != 6 && digits != 8) {
+        return false;
+    }
+    if (p < end && !str::IsWs(*p)) {
+        return false;
+    }
+    if (tokenLen) {
+        *tokenLen = 1 + digits;
+    }
+    return true;
+}
+
+static void TrimInlineComment(char* begin, char* end) {
+    for (char* p = begin + 1; p < end; p++) {
+        if (*p != '#' || !str::IsWs(*(p - 1))) {
+            continue;
+        }
+        int tokenLen = 0;
+        if (IsHexColorToken(p, end, &tokenLen)) {
+            p += tokenLen - 1;
+            continue;
+        }
+        char* trimAt = p;
+        while (trimAt > begin && str::IsWs(*(trimAt - 1))) {
+            trimAt--;
+        }
+        *trimAt = '\0';
+        return;
+    }
+}
+
 static char* SkipWsAndComments(char* s) {
     do {
         s = SkipWs(s);
@@ -195,6 +240,7 @@ static SquareTreeNode* ParseSquareTreeRec(char*& data, bool isTopLevel = false) 
             // string value (decoding is left to the consumer)
             bool hasMoreLines = '\n' == *data;
             *SkipWsRev(key, separator) = '\0';
+            TrimInlineComment(value, data);
             *SkipWsRev(value, data) = '\0';
             node->data.Append(SquareTreeNode::DataItem(key, value));
             if (hasMoreLines) {

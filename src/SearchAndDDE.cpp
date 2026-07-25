@@ -51,34 +51,44 @@ struct FindMatchPaintPageRect {
     Rect rect{};
 };
 
-struct FindMatchPaintRects {
-    u64 key = 0;
-    int firstPos = 0;
-    int len = 0;
-};
-
-static struct {
-    MainWindow* win = nullptr;
-    DisplayModel* dm = nullptr;
-    int firstPage = 0;
-    int lastPage = 0;
-    LONG countEpoch = 0;
-    Vec<FindMatchPaintPageRect> positions;
-    Vec<FindMatchPaintRects> entries;
-} gFindMatchPaintCache;
-
 static void FreeFindMatchPaintCacheEntries() {
-    gFindMatchPaintCache.entries.Reset();
-    gFindMatchPaintCache.positions.Reset();
 }
 
 void InvalidateFindMatchPaintCache() {
     FreeFindMatchPaintCacheEntries();
-    gFindMatchPaintCache.win = nullptr;
-    gFindMatchPaintCache.dm = nullptr;
-    gFindMatchPaintCache.firstPage = 0;
-    gFindMatchPaintCache.lastPage = 0;
-    gFindMatchPaintCache.countEpoch = 0;
+}
+
+void OnFindZoomChanged(MainWindow* win) {
+    OnFindViewLayoutChanged(win);
+}
+
+void OnFindViewLayoutChanged(MainWindow* win) {
+    InvalidateFindMatchPaintCache();
+    if (!win || !win->IsDocLoaded()) {
+        return;
+    }
+    DisplayModel* dm = win->AsFixed();
+    if (!dm) {
+        return;
+    }
+    EngineBase* engine = dm->GetEngine();
+    if (engine) {
+        EngineMupdfInvalidateSearchTextCache(engine);
+    }
+    if (!dm->textSearch) {
+        return;
+    }
+    TextSearch* ts = dm->textSearch;
+    if (ts->result.len == 0) {
+        return;
+    }
+    int startPage = ts->startPage;
+    int startGlyph = ts->startGlyph;
+    int endPage = ts->endPage;
+    int endGlyph = ts->endGlyph;
+    ts->Reset();
+    ts->StartAt(startPage, startGlyph);
+    ts->SelectUpTo(endPage, endGlyph);
 }
 
 Kind kNotifFindProgress = "findProgress";
@@ -1609,12 +1619,9 @@ static void WaitForThreadWithMessagePump(HANDLE th) {
         if (waitRes == WAIT_OBJECT_0 + 1) {
             MSG msg;
             while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-                if (msg.message == WM_QUIT) {
-                    PostQuitMessage((int)msg.wParam);
+                if (!PumpAppMessage(msg)) {
                     return;
                 }
-                TranslateMessage(&msg);
-                DispatchMessageW(&msg);
             }
         }
     }
@@ -1822,7 +1829,11 @@ void OnEbookPageCountChanged(MainWindow* win) {
 // navigate to a match chosen from the floating results list and select it, so
 // Find Next/Prev and the n/m counter continue from there
 void GoToFindMatch(MainWindow* win, int startPage, int startGlyph, int endPage, int endGlyph) {
-    if (!win->IsDocLoaded() || !win->AsFixed()) {
+    if (!win || !win->IsDocLoaded()) {
+        return;
+    }
+    DisplayModel* dm = win->AsFixed();
+    if (!dm || !dm->textSearch || !dm->GetEngine()) {
         return;
     }
     if (!EnsureDocumentSearchReady(win)) {
@@ -1835,7 +1846,6 @@ void GoToFindMatch(MainWindow* win, int startPage, int startGlyph, int endPage, 
         AbortFinding(win, true);
     }
     ClearFindSearchProgressCb(win);
-    DisplayModel* dm = win->AsFixed();
     TextSearch* ts = dm->textSearch;
     ts->Reset();
     ts->StartAt(startPage, startGlyph);
@@ -2219,38 +2229,6 @@ static void AppendPageRectsToScreen(DisplayModel* dm, const Rect& clipRc, const 
     }
 }
 
-static void RebuildFindMatchPaintCache(MainWindow* win, DisplayModel* dm, int firstPage, int lastPage) {
-    FreeFindMatchPaintCacheEntries();
-    gFindMatchPaintCache.win = win;
-    gFindMatchPaintCache.dm = dm;
-    gFindMatchPaintCache.firstPage = firstPage;
-    gFindMatchPaintCache.lastPage = lastPage;
-    gFindMatchPaintCache.countEpoch = win->findCountEpoch;
-
-    EngineBase* engine = dm->GetEngine();
-    if (!engine) {
-        return;
-    }
-    Vec<FindMatchPaintPageRect>& positions = gFindMatchPaintCache.positions;
-    for (int i = 0; i < (int)win->findMatches.size(); i++) {
-        const FindMatch& fm = win->findMatches[i];
-        if (!FindMatchTouchesVisiblePages(fm, firstPage, lastPage)) {
-            continue;
-        }
-        int firstPos = (int)positions.size();
-        AppendMatchPageRects(engine, fm, positions);
-        int n = (int)positions.size() - firstPos;
-        if (n == 0) {
-            continue;
-        }
-        FindMatchPaintRects entry;
-        entry.key = MatchKey(fm.startPage, fm.startGlyph);
-        entry.firstPos = firstPos;
-        entry.len = n;
-        gFindMatchPaintCache.entries.Append(entry);
-    }
-}
-
 static void AppendTextSelScreenRects(DisplayModel* dm, const Rect& clipRc, TextSel* sel, Vec<Rect>& out) {
     if (!sel || sel->len == 0 || !sel->pages || !sel->rects) {
         return;
@@ -2320,16 +2298,10 @@ void PaintAllFindMatches(MainWindow* win, HDC hdc) {
         return;
     }
 
-    if (gFindMatchPaintCache.win != win || gFindMatchPaintCache.dm != dm ||
-        gFindMatchPaintCache.countEpoch != win->findCountEpoch || gFindMatchPaintCache.firstPage != firstPage ||
-        gFindMatchPaintCache.lastPage != lastPage) {
-        RebuildFindMatchPaintCache(win, dm, firstPage, lastPage);
+    EngineBase* engine = dm->GetEngine();
+    if (!engine) {
+        return;
     }
-
-    // Snapshot the cache so a concurrent invalidate/rebuild cannot corrupt pointers
-    // while we're painting (e.g. streaming find results during read-aloud scroll).
-    Vec<FindMatchPaintPageRect> paintPositions = gFindMatchPaintCache.positions;
-    Vec<FindMatchPaintRects> paintEntries = gFindMatchPaintCache.entries;
 
     u64 currentKey = 0;
     if (ts && ts->result.len > 0) {
@@ -2343,13 +2315,20 @@ void PaintAllFindMatches(MainWindow* win, HDC hdc) {
 
     Vec<Rect> otherRects;
     Vec<Rect> currentRects;
-    for (int i = 0; i < (int)paintEntries.size(); i++) {
-        const FindMatchPaintRects& entry = paintEntries[i];
-        if (entry.len <= 0 || entry.firstPos < 0 || entry.firstPos + entry.len > (int)paintPositions.size()) {
+    Vec<FindMatchPaintPageRect> liveRects;
+    for (int i = 0; i < (int)win->findMatches.size(); i++) {
+        const FindMatch& fm = win->findMatches[i];
+        if (!FindMatchTouchesVisiblePages(fm, firstPage, lastPage)) {
             continue;
         }
-        Vec<Rect>& out = (entry.key == currentKey) ? currentRects : otherRects;
-        AppendPageRectsToScreen(dm, win->canvasRc, &paintPositions[entry.firstPos], entry.len, out);
+        liveRects.Reset();
+        AppendMatchPageRects(engine, fm, liveRects);
+        if (liveRects.size() == 0) {
+            continue;
+        }
+        u64 key = MatchKey(fm.startPage, fm.startGlyph);
+        Vec<Rect>& out = (key == currentKey) ? currentRects : otherRects;
+        AppendPageRectsToScreen(dm, win->canvasRc, liveRects.begin(), (int)liveRects.size(), out);
     }
 
     if (otherRects.size() > 0) {

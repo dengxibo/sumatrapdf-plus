@@ -107,6 +107,7 @@ ByteSlice EngineMupdfLoadAnnotAttachment(EngineBase*, int objNum);
 TempStr EngineMupdfGetPdfInfo(const char* path);
 TempStr EngineMupdfGetPdfOutline(const char* path);
 void EngineMupdfInvalidateDarkMode(EngineBase* engine);
+void EngineMupdfInvalidateSearchTextCache(EngineBase* engine);
 bool EngineMupdfRelayoutForThemeChange(EngineBase* engine);
 // Pause/resume the background reflow chapter loader so a UI-critical operation
 // (theme change, annotation edit) can access the document without being starved.

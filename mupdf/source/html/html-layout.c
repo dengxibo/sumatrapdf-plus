@@ -2204,7 +2204,9 @@ static int layout_table(fz_context* ctx, layout_data* ld, fz_html_box* box) {
                     cell_pad = table_cell_padding(ctx, cell);
                 if (fz_css_number_defined_not_auto(cell->style->width)) {
                     float em = box->s.layout.em;
-                    float w = fz_from_css_number(cell->style->width, em, em, 0) + cell_pad;
+                    float percent_base = ld->bounds[R] - ld->bounds[L];
+                    if (percent_base <= 0) percent_base = box->s.layout.w;
+                    float w = fz_from_css_number(cell->style->width, em, percent_base, 0) + cell_pad;
                     tc->fixed = 1;
                     tc->minw = w;
                     tc->maxw = w;

@@ -912,9 +912,5 @@ void OnSelectionStop(MainWindow* win, int x, int y, bool aborted) {
     }
     ScheduleRepaint(win, 0);
 
-    // show the floating annotation/Ask AI toolbar for a finished text selection
-    // (the function self-guards: only PDF text selections that support annotations)
-    if (!aborted) {
-        ShowSelectionToolbar(win);
-    }
+    // ShowSelectionToolbar is called from Canvas after mouseAction is cleared.
 }

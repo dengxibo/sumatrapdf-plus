@@ -187,8 +187,9 @@ LastDarkTheme = Dark-Dracula
 ; Valid light themes: Light-Warm, Light-White (introduced in version 3.7)
 LastLightTheme = Light-Warm
 
-; Valid values: auto, black, light (introduced in version 3.7)
-PdfDocumentColorMode = auto
+; Valid values: smart, original, theme. Legacy aliases auto, light, black are
+; still accepted on load. (introduced in version 3.7)
+DocumentColorMode = smart
 
 ; if both favorites and bookmarks parts of sidebar are visible, this is the
 ; height of bookmarks (table of contents) part

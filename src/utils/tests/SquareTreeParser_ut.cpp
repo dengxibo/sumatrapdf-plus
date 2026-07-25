@@ -12,7 +12,7 @@ void SquareTreeTest() {
         UTF8_BOM "key = value",  UTF8_BOM "key = value",    UTF8_BOM "key=value",
         UTF8_BOM " key =value ", UTF8_BOM "  key= value  ", UTF8_BOM "key: value",
         UTF8_BOM "key : value",  UTF8_BOM "key :value",     UTF8_BOM "# key and value:\n\tkey value\n",
-        UTF8_BOM "key\t\tvalue",
+        UTF8_BOM "key\t\tvalue", UTF8_BOM "key = value # inline comment",
     };
 
     for (size_t i = 0; i < dimof(keyValueData); i++) {
@@ -26,6 +26,25 @@ void SquareTreeTest() {
         size_t off = 0;
         utassert(str::Eq(root->GetValue("key", &off), "value"));
         utassert(!root->GetValue("key", &off));
+        delete root;
+    }
+
+    {
+        SquareTreeNode* root = ParseSquareTree(UTF8_BOM "Color = #abcdef");
+        utassert(root && 1 == root->data.size());
+        utassert(str::Eq(root->GetValue("Color"), "#abcdef"));
+        delete root;
+    }
+    {
+        SquareTreeNode* root = ParseSquareTree(UTF8_BOM "ColorArray = #12345678 #987654");
+        utassert(root && 1 == root->data.size());
+        utassert(str::Eq(root->GetValue("ColorArray"), "#12345678 #987654"));
+        delete root;
+    }
+    {
+        SquareTreeNode* root = ParseSquareTree(UTF8_BOM "Color = #abcdef # color comment");
+        utassert(root && 1 == root->data.size());
+        utassert(str::Eq(root->GetValue("Color"), "#abcdef"));
         delete root;
     }
 

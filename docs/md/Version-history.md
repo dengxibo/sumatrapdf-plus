@@ -2,6 +2,9 @@
 
 ## next
 
+- rename advanced setting `PdfDocumentColorMode` to `DocumentColorMode` with clearer values `smart`, `original`, and `theme`; migrate legacy names on load
+  将高级设置 `PdfDocumentColorMode` 重命名为 `DocumentColorMode`，取值改为 smart / original / theme，加载时自动迁移旧配置
+
 ## 3.7.17 (2026-07-23)
 
 - fix selection toolbar jitter and flicker while dragging text selection and during edge autoscroll;

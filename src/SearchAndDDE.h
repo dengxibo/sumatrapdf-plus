@@ -49,6 +49,9 @@ void ShowForwardSearchResult(MainWindow* win, const char* fileName, int line, in
 void PaintForwardSearchMark(MainWindow* win, HDC hdc);
 void PaintAllFindMatches(MainWindow* win, HDC hdc);
 void InvalidateFindMatchPaintCache();
+void OnFindZoomChanged(MainWindow* win);
+// Same refresh after canvas resize (TOC toggle) without a zoom change.
+void OnFindViewLayoutChanged(MainWindow* win);
 
 // when true, paint every visible search match (current match uses FindMatchColor,
 // other matches on the page use a secondary orange)

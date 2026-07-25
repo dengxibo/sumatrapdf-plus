@@ -24,7 +24,7 @@ Windows 下的 PDF / 电子书阅读器，针对中文 EPUB/MOBI、离线查词�
 | **Session-restore fix** — double-clicking a file no longer crashes when “reopen last session” is enabled            | **会话恢复修复** — 开启“恢复上次会话”后，双击打开文件不再崩溃           |
 | **Offline dictionary** — double-click a word; place `.idx`/`.dat` files in `{exe}\dict\`                            | **离线查词** — 双击词语查词；词典放在 `{exe}\dict\`          |
 | **Light / dark themes** — toolbar toggle; Light-Warm (eye-care) and Light-White (neutral) UI themes                 | **亮/暗主题** — 工具栏切换；暖色护眼与中性浅色 UI                |
-| **Smart PDF dark mode** — preserve photos and color pages while darkening text; toolbar modes: Auto / Black / Light | **PDF 智能暗黑** — 保留图片与彩色页，文字反色；工具栏：自动 / 全黑 / 原色 |
+| **Document color mode** — Smart / Original / Match Theme for PDF, EPUB, MOBI, CHM, XPS, DjVu, Markdown, etc.; toolbar buttons when a document is open | **文档颜色模式** — 自动 / 原稿 / 强制主题；适用于 PDF、EPUB、MOBI、CHM、XPS、DjVu、Markdown 等 |
 | **Read Aloud (TTS)** — Windows text-to-speech with word-by-word highlight; start from top, cursor, or selection; pause/continue; voice and speed presets (0.25×–2.0×) | **朗读 (TTS)** — Windows 语音朗读，逐词高亮；从页首/光标/选中开始；暂停/继续；可选语音与语速（0.25×–2.0×） |
 | **Selection toolbar** — highlight, underline, strike out, Ask AI on PDF text selection                              | **划词工具栏** — PDF 选中文字后可高亮、下划线、删除线、Ask AI       |
 | **UI polish** — Windows 11–style caption, refined toolbar spacing, theme-aware chrome                               | **界面优化** — Win11 风格标题栏、工具栏间距与主题配色             |
@@ -42,7 +42,9 @@ Product name: **Sumatra PDF Plus** (`kAppName` in `src/Version.h`). Executable i
 1. Extract the full folder to any path (avoid special characters in the path).
   解压整个文件夹到任意目录（路径尽量不要含特殊符号）。
 2. Run `SumatraPDF.exe`. Keep the `fonts` folder beside the exe.
-  双击 `SumatraPDF.exe` 运行；不要只复制 exe，请保留同目录的`fonts` 文件夹。
+  双击 `SumatraPDF.exe` 运行；不要只复制 exe，请保留同目录的 `fonts` 文件夹。
+   For Traditional Chinese PDF lookup, also keep the `opencc` folder.  
+   繁体 PDF 查词还需保留 `opencc` 文件夹。
 3. Use the toolbar to toggle light/dark theme and word lookup.
   可通过工具栏切换亮/暗主题和查词开关。
 4. Click the **speaker** icon (after word lookup) or open **Read Aloud (TTS)** in the menu bar to read aloud.
@@ -91,6 +93,25 @@ Dictionary **code** is in this repo;
 
 Override the dictionary folder with the `OfflineDictionaryPath` advanced setting.  
 可用高级设置 `OfflineDictionaryPath` 指定其他词典目录。
+
+**Traditional Chinese PDF lookup / 繁体 PDF 查词** — keep the `opencc` folder next to the exe (OpenCC t2s data). Upgrading only the exe without `opencc` disables Traditional lookup.  
+繁体 PDF 查词需保留 exe 同目录的 `opencc` 文件夹；只升级 exe 将无法繁体查词。
+
+---
+
+## Settings · 配置文件
+
+Settings are stored in `SumatraPDF-settings.txt`:
+
+- **Portable / 便携版:** next to `SumatraPDF.exe`
+- **Installed / 安装版:** `%LOCALAPPDATA%\SumatraPDF\SumatraPDF-settings.txt`
+
+**Annotated reference / 带中文注释的参考模板:** [SumatraPDF-settings-annotated.txt](SumatraPDF-settings-annotated.txt)
+
+Copy only the lines you need into your live settings file. Comments must be on their own `#` lines (inline comments after values are not supported).  
+只复制需要的配置行到真实配置文件；注释必须单独成行，不能写在值后面。
+
+User guide (Chinese) / 中文说明: [readme.txt](readme.txt)
 
 ---
 

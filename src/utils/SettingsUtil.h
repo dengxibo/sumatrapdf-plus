@@ -22,6 +22,9 @@ SubSettings [
 
 See SquareTreeParser.cpp for further details on variations allowed during
 the deserialization of such a settings file.
+
+Inline comments are supported after values on the same line, starting with #.
+Example: CheckForUpdates = true # comment
 */
 
 enum class SettingType {
@@ -48,6 +51,8 @@ struct FieldInfo {
     SettingType type = SettingType::Struct;
     // default value for primitive types and pointer to StructInfo for complex ones
     intptr_t value = 0;
+    // optional inline comment appended when serializing settings (after " = value")
+    const char* serializeComment = nullptr;
 };
 
 struct StructInfo {

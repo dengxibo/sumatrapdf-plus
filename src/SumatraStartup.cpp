@@ -619,8 +619,18 @@ static bool MaybeTranslateAccelerator(MSG& msg) {
     return translated;
 }
 
+static bool IsCtrlFKeyDown(const MSG& msg) {
+    if (msg.wParam != 'F') {
+        return false;
+    }
+    if (msg.message != WM_KEYDOWN && msg.message != WM_SYSKEYDOWN) {
+        return false;
+    }
+    return IsCtrlPressed() && !IsAltPressed();
+}
+
 static bool HandleGlobalFindShortcut(MSG& msg) {
-    if (msg.message != WM_KEYDOWN || msg.wParam != 'F' || !IsCtrlPressed() || IsAltPressed()) {
+    if (!IsCtrlFKeyDown(msg)) {
         return false;
     }
     if (IsPdfAnnotContentsEditFocused(msg.hwnd) || IsEbookAnnotContentsEditFocused(msg.hwnd)) {
@@ -633,22 +643,38 @@ static bool HandleGlobalFindShortcut(MSG& msg) {
     if (!win) {
         return false;
     }
-    if (IsFindUIVisible(win)) {
-        FindBarResyncActiveEdit(win);
-        if (win->hwndFindEdit && IsWindow(win->hwndFindEdit)) {
-            // An ebook reflow can leave the owned popup at its old position.
-            // Reposition the existing UI without calling ShowFindBar(): that
-            // also rebuilds snippets and restarts counting, which can block
-            // Ctrl+F for a long time in large books.
-            FindWindowReposition(win);
-            FocusFindEditSelectAll(win);
-            return true;
-        }
-        // A destroyed edit HWND must not consume Ctrl+F. Tear down the stale
-        // shell and let CmdFindFirst recreate the unified find window below.
-        win->hwndFindEdit = nullptr;
+    FindWindowActivateForShortcut(win);
+    return true;
+}
+
+// Same dispatch path as the main message loop (Ctrl+F, accelerators, etc.).
+// Returns false if WM_QUIT was posted.
+bool PumpAppMessage(MSG& msg) {
+    if (msg.message == WM_QUIT) {
+        PostQuitMessage((int)msg.wParam);
+        return false;
     }
-    HwndSendCommand(win->hwndFrame, CmdFindFirst);
+    // Route Ctrl+F before control-specific handling. During an active search
+    // followed by a tab switch, the old popup/edit can otherwise consume the
+    // shortcut before it reaches the newly active document. Annotation edits
+    // are explicitly excluded by HandleGlobalFindShortcut().
+    if (HandleGlobalFindShortcut(msg)) {
+        return true;
+    }
+    if (PreTranslateMessage(msg)) {
+        return true;
+    }
+    if (MaybeTranslateAccelerator(msg)) {
+        return true;
+    }
+    HWND hwndDialog = GetCurrentModelessDialog();
+    if (hwndDialog && IsDialogMessage(hwndDialog, &msg)) {
+        return true;
+    }
+    TranslateMessage(&msg);
+    DispatchMessage(&msg);
+    uitask::DrainQueue();
+    ResetTempAllocator();
     return true;
 }
 
@@ -656,30 +682,9 @@ static int RunMessageLoop() {
     MSG msg;
 
     while (GetMessage(&msg, nullptr, 0, 0)) {
-        // Route Ctrl+F before control-specific handling. During an active search
-        // followed by a tab switch, the old popup/edit can otherwise consume the
-        // shortcut before it reaches the newly active document. Annotation edits
-        // are explicitly excluded by HandleGlobalFindShortcut().
-        if (HandleGlobalFindShortcut(msg)) {
-            continue;
+        if (!PumpAppMessage(msg)) {
+            break;
         }
-
-        if (PreTranslateMessage(msg)) {
-            continue;
-        }
-
-        if (MaybeTranslateAccelerator(msg)) {
-            continue;
-        }
-        HWND hwndDialog = GetCurrentModelessDialog();
-        if (hwndDialog && IsDialogMessage(hwndDialog, &msg)) {
-            // DbgLogMsg("dialog: ", msg.hwnd, msg.message, msg.wParam, msg.lParam);
-            continue;
-        }
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-        uitask::DrainQueue();
-        ResetTempAllocator();
     }
 
     return (int)msg.wParam;

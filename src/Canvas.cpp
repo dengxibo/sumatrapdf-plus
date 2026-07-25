@@ -55,6 +55,7 @@
 #include "uia/Provider.h"
 #include "SearchAndDDE.h"
 #include "Selection.h"
+#include "SelectionToolbar.h"
 #include "ReadAloudHighlight.h"
 #include "TextToSpeech.h"
 #include "SelectionToolbar.h"
@@ -1510,6 +1511,11 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
     }
 
     win->mouseAction = MouseAction::None;
+
+    if (didDragMouse && win->showSelection &&
+        (ma == MouseAction::SelectingText || ma == MouseAction::Selecting)) {
+        ShowSelectionToolbar(win);
+    }
 
     Point pt(x, y);
     int pageNo = dm->GetPageNoByPoint(pt);

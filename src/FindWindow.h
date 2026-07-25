@@ -9,6 +9,8 @@ struct FindWindowWnd;
 FindWindowWnd* CreateFindWindow(MainWindow* win);
 void DeleteFindWindow(MainWindow* win);
 void ShowFindWindow(MainWindow* win);
+// Ctrl+F / toolbar search: show the find UI or raise the existing window without restarting search.
+void FindWindowActivateForShortcut(MainWindow* win);
 void HideFindWindow(MainWindow* win, bool keepSearchState = false);
 bool IsFindWindowVisible(MainWindow* win);
 bool IsFindWindowDocked(MainWindow* win);

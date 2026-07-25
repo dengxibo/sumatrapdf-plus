@@ -22,13 +22,13 @@ static constexpr PdfDarkModeRenderer kPdfDarkModeRenderer = PdfDarkModeRenderer:
 static bool gPreservePdfImagesInDarkMode = true;
 
 static PdfDocumentColorMode PdfDocumentColorModeFromString(const char* v) {
-    if (!v || !*v || str::EqI(v, "auto")) {
+    if (!v || !*v || str::EqI(v, "auto") || str::EqI(v, "smart")) {
         return PdfDocumentColorMode::Auto;
     }
-    if (str::EqI(v, "black")) {
+    if (str::EqI(v, "black") || str::EqI(v, "theme")) {
         return PdfDocumentColorMode::Black;
     }
-    if (str::EqI(v, "light")) {
+    if (str::EqI(v, "light") || str::EqI(v, "original")) {
         return PdfDocumentColorMode::Light;
     }
     return PdfDocumentColorMode::Auto;
@@ -37,12 +37,12 @@ static PdfDocumentColorMode PdfDocumentColorModeFromString(const char* v) {
 static const char* PdfDocumentColorModeToString(PdfDocumentColorMode mode) {
     switch (mode) {
         case PdfDocumentColorMode::Black:
-            return "black";
+            return "theme";
         case PdfDocumentColorMode::Light:
-            return "light";
+            return "original";
         case PdfDocumentColorMode::Auto:
         default:
-            return "auto";
+            return "smart";
     }
 }
 
@@ -75,10 +75,10 @@ PdfDarkModeRenderer GetPdfDarkModeRenderer() {
 }
 
 PdfDocumentColorMode GetPdfDocumentColorMode() {
-    if (!gGlobalPrefs || !gGlobalPrefs->pdfDocumentColorMode) {
+    if (!gGlobalPrefs || !gGlobalPrefs->documentColorMode) {
         return PdfDocumentColorMode::Auto;
     }
-    return PdfDocumentColorModeFromString(gGlobalPrefs->pdfDocumentColorMode);
+    return PdfDocumentColorModeFromString(gGlobalPrefs->documentColorMode);
 }
 
 void SetPdfDocumentColorMode(PdfDocumentColorMode mode) {
@@ -89,8 +89,8 @@ void SetPdfDocumentColorMode(PdfDocumentColorMode mode) {
         return;
     }
     const char* name = PdfDocumentColorModeToString(mode);
-    if (!str::EqI(gGlobalPrefs->pdfDocumentColorMode, name)) {
-        str::ReplaceWithCopy(&gGlobalPrefs->pdfDocumentColorMode, name);
+    if (!str::EqI(gGlobalPrefs->documentColorMode, name)) {
+        str::ReplaceWithCopy(&gGlobalPrefs->documentColorMode, name);
     }
 }
 

@@ -541,9 +541,10 @@ struct GlobalPrefs {
     char* lastDarkTheme;
     // the light theme to use when toggling from dark mode
     char* lastLightTheme;
-    // PDF document color mode in dark theme: auto (smart dark mode), black
-    // (full dark), or light (original colors)
-    char* pdfDocumentColorMode;
+    // document color mode for readable formats (PDF, EPUB, MOBI, CHM, XPS,
+    // DjVu, Markdown, etc.): smart (intelligent adaptation), original
+    // (publisher colors unchanged), or theme (follow current UI theme)
+    char* documentColorMode;
     // if both favorites and bookmarks parts of sidebar are visible, this
     // is the height of bookmarks (table of contents) part
     int tocDy;
@@ -679,97 +680,97 @@ struct Themes {
 #ifdef INCLUDE_SETTINGSSTRUCTS_METADATA
 
 static const FieldInfo gWindowMarginFields[] = {
-    {offsetof(WindowMargin, top), SettingType::Int, 2},
-    {offsetof(WindowMargin, right), SettingType::Int, 4},
-    {offsetof(WindowMargin, bottom), SettingType::Int, 2},
-    {offsetof(WindowMargin, left), SettingType::Int, 4},
+    {offsetof(WindowMargin, top), SettingType::Int, 2, nullptr},
+    {offsetof(WindowMargin, right), SettingType::Int, 4, nullptr},
+    {offsetof(WindowMargin, bottom), SettingType::Int, 2, nullptr},
+    {offsetof(WindowMargin, left), SettingType::Int, 4, nullptr},
 };
 static const StructInfo gWindowMarginInfo = {sizeof(WindowMargin), 4, gWindowMarginFields, "Top\0Right\0Bottom\0Left"};
 
 static const FieldInfo gSizeFields[] = {
-    {offsetof(Size, dx), SettingType::Int, 4},
-    {offsetof(Size, dy), SettingType::Int, 4},
+    {offsetof(Size, dx), SettingType::Int, 4, nullptr},
+    {offsetof(Size, dy), SettingType::Int, 4, nullptr},
 };
 static const StructInfo gSizeInfo = {sizeof(Size), 2, gSizeFields, "Dx\0Dy"};
 
 static const FieldInfo gFixedPageUIFields[] = {
-    {offsetof(FixedPageUI, textColor), SettingType::Color, (intptr_t)"#000000"},
-    {offsetof(FixedPageUI, backgroundColor), SettingType::Color, (intptr_t)"#ffffff"},
-    {offsetof(FixedPageUI, selectionColor), SettingType::Color, (intptr_t)"#99c1da"},
-    {offsetof(FixedPageUI, windowMargin), SettingType::Compact, (intptr_t)&gWindowMarginInfo},
-    {offsetof(FixedPageUI, pageSpacing), SettingType::Compact, (intptr_t)&gSizeInfo},
-    {offsetof(FixedPageUI, gradientColors), SettingType::ColorArray, 0},
-    {offsetof(FixedPageUI, invertColors), SettingType::Bool, false},
-    {offsetof(FixedPageUI, windowBgCol), SettingType::Color, (intptr_t)""},
-    {offsetof(FixedPageUI, findMatchColor), SettingType::Color, (intptr_t)"#ffff00"},
+    {offsetof(FixedPageUI, textColor), SettingType::Color, (intptr_t)"#000000", "文字颜色"},
+    {offsetof(FixedPageUI, backgroundColor), SettingType::Color, (intptr_t)"#ffffff", "页面底色"},
+    {offsetof(FixedPageUI, selectionColor), SettingType::Color, (intptr_t)"#99c1da", "选中高亮色"},
+    {offsetof(FixedPageUI, windowMargin), SettingType::Compact, (intptr_t)&gWindowMarginInfo, "页边距 上 右 下 左"},
+    {offsetof(FixedPageUI, pageSpacing), SettingType::Compact, (intptr_t)&gSizeInfo, "页面间距 横 纵"},
+    {offsetof(FixedPageUI, gradientColors), SettingType::ColorArray, 0, nullptr},
+    {offsetof(FixedPageUI, invertColors), SettingType::Bool, false, "全局反色"},
+    {offsetof(FixedPageUI, windowBgCol), SettingType::Color, (intptr_t)"", "PDF 画布背景色"},
+    {offsetof(FixedPageUI, findMatchColor), SettingType::Color, (intptr_t)"#ffff00", "查找匹配高亮色"},
 };
 static const StructInfo gFixedPageUIInfo = {sizeof(FixedPageUI), 9, gFixedPageUIFields,
                                             "TextColor\0BackgroundColor\0SelectionColor\0WindowMargin\0PageSpacing\0Gra"
                                             "dientColors\0InvertColors\0WindowBgCol\0FindMatchColor"};
 
 static const FieldInfo gEBookUIFields[] = {
-    {offsetof(EBookUI, fontSize), SettingType::Float, (intptr_t)"0"},
-    {offsetof(EBookUI, layoutDx), SettingType::Float, (intptr_t)"0"},
-    {offsetof(EBookUI, layoutDy), SettingType::Float, (intptr_t)"0"},
-    {offsetof(EBookUI, ignoreDocumentCSS), SettingType::Bool, false},
-    {offsetof(EBookUI, customCSS), SettingType::String, 0},
-    {offsetof(EBookUI, epubProgressiveLoad), SettingType::Bool, true},
-    {offsetof(EBookUI, epubPerfLog), SettingType::Bool, false},
-    {offsetof(EBookUI, windowBgCol), SettingType::Color, (intptr_t)""},
+    {offsetof(EBookUI, fontSize), SettingType::Float, (intptr_t)"0", "电子书字号"},
+    {offsetof(EBookUI, layoutDx), SettingType::Float, (intptr_t)"0", "页面宽度 pt"},
+    {offsetof(EBookUI, layoutDy), SettingType::Float, (intptr_t)"0", "页面高度 pt"},
+    {offsetof(EBookUI, ignoreDocumentCSS), SettingType::Bool, false, "忽略文档 CSS"},
+    {offsetof(EBookUI, customCSS), SettingType::String, 0, "自定义 CSS"},
+    {offsetof(EBookUI, epubProgressiveLoad), SettingType::Bool, true, "EPUB 渐进加载"},
+    {offsetof(EBookUI, epubPerfLog), SettingType::Bool, false, "EPUB 性能日志"},
+    {offsetof(EBookUI, windowBgCol), SettingType::Color, (intptr_t)"", "电子书画布背景色"},
 };
 static const StructInfo gEBookUIInfo = {
     sizeof(EBookUI), 8, gEBookUIFields,
     "FontSize\0LayoutDx\0LayoutDy\0IgnoreDocumentCSS\0CustomCSS\0EpubProgressiveLoad\0EpubPerfLog\0WindowBgCol"};
 
 static const FieldInfo gWindowMargin_1_Fields[] = {
-    {offsetof(WindowMargin, top), SettingType::Int, 0},
-    {offsetof(WindowMargin, right), SettingType::Int, 0},
-    {offsetof(WindowMargin, bottom), SettingType::Int, 0},
-    {offsetof(WindowMargin, left), SettingType::Int, 0},
+    {offsetof(WindowMargin, top), SettingType::Int, 0, nullptr},
+    {offsetof(WindowMargin, right), SettingType::Int, 0, nullptr},
+    {offsetof(WindowMargin, bottom), SettingType::Int, 0, nullptr},
+    {offsetof(WindowMargin, left), SettingType::Int, 0, nullptr},
 };
 static const StructInfo gWindowMargin_1_Info = {sizeof(WindowMargin), 4, gWindowMargin_1_Fields,
                                                 "Top\0Right\0Bottom\0Left"};
 
 static const FieldInfo gSize_1_Fields[] = {
-    {offsetof(Size, dx), SettingType::Int, 4},
-    {offsetof(Size, dy), SettingType::Int, 4},
+    {offsetof(Size, dx), SettingType::Int, 4, nullptr},
+    {offsetof(Size, dy), SettingType::Int, 4, nullptr},
 };
 static const StructInfo gSize_1_Info = {sizeof(Size), 2, gSize_1_Fields, "Dx\0Dy"};
 
 static const FieldInfo gComicBookUIFields[] = {
-    {offsetof(ComicBookUI, windowMargin), SettingType::Compact, (intptr_t)&gWindowMargin_1_Info},
-    {offsetof(ComicBookUI, pageSpacing), SettingType::Compact, (intptr_t)&gSize_1_Info},
-    {offsetof(ComicBookUI, cbxMangaMode), SettingType::Bool, false},
-    {offsetof(ComicBookUI, windowBgCol), SettingType::Color, (intptr_t)""},
+    {offsetof(ComicBookUI, windowMargin), SettingType::Compact, (intptr_t)&gWindowMargin_1_Info, "漫画页边距"},
+    {offsetof(ComicBookUI, pageSpacing), SettingType::Compact, (intptr_t)&gSize_1_Info, "漫画分页间距"},
+    {offsetof(ComicBookUI, cbxMangaMode), SettingType::Bool, false, "日式右向左阅读"},
+    {offsetof(ComicBookUI, windowBgCol), SettingType::Color, (intptr_t)"", "漫画画布背景色"},
 };
 static const StructInfo gComicBookUIInfo = {sizeof(ComicBookUI), 4, gComicBookUIFields,
                                             "WindowMargin\0PageSpacing\0CbxMangaMode\0WindowBgCol"};
 
 static const FieldInfo gImageUIFields[] = {
-    {offsetof(ImageUI, windowBgCol), SettingType::Color, (intptr_t)""},
-    {offsetof(ImageUI, defaultZoom), SettingType::String, (intptr_t)"shrink to fit"},
+    {offsetof(ImageUI, windowBgCol), SettingType::Color, (intptr_t)"", "图片画布背景色"},
+    {offsetof(ImageUI, defaultZoom), SettingType::String, (intptr_t)"shrink to fit", "打开图片默认缩放"},
 };
 static const StructInfo gImageUIInfo = {sizeof(ImageUI), 2, gImageUIFields, "WindowBgCol\0DefaultZoom"};
 
 static const FieldInfo gChmUIFields[] = {
-    {offsetof(ChmUI, useFixedPageUI), SettingType::Bool, false},
+    {offsetof(ChmUI, useFixedPageUI), SettingType::Bool, false, "true=使用 PDF 式布局"},
 };
 static const StructInfo gChmUIInfo = {sizeof(ChmUI), 1, gChmUIFields, "UseFixedPageUI"};
 
 static const FieldInfo gAnnotationsFields[] = {
-    {offsetof(Annotations, highlightColor), SettingType::Color, (intptr_t)"#ffff00"},
-    {offsetof(Annotations, underlineColor), SettingType::Color, (intptr_t)"#00ff00"},
-    {offsetof(Annotations, squigglyColor), SettingType::Color, (intptr_t)"#ff00ff"},
-    {offsetof(Annotations, strikeOutColor), SettingType::Color, (intptr_t)"#ff0000"},
-    {offsetof(Annotations, freeTextColor), SettingType::Color, (intptr_t)""},
-    {offsetof(Annotations, freeTextBackgroundColor), SettingType::Color, (intptr_t)""},
-    {offsetof(Annotations, freeTextOpacity), SettingType::Int, 100},
-    {offsetof(Annotations, freeTextSize), SettingType::Int, 12},
-    {offsetof(Annotations, freeTextBorderWidth), SettingType::Int, 1},
-    {offsetof(Annotations, textIconColor), SettingType::Color, (intptr_t)""},
-    {offsetof(Annotations, textIconType), SettingType::String, (intptr_t)""},
-    {offsetof(Annotations, defaultAuthor), SettingType::String, (intptr_t)""},
-    {offsetof(Annotations, selectionToolbar), SettingType::Bool, true},
+    {offsetof(Annotations, highlightColor), SettingType::Color, (intptr_t)"#ffff00", "高亮颜色"},
+    {offsetof(Annotations, underlineColor), SettingType::Color, (intptr_t)"#00ff00", "下划线颜色"},
+    {offsetof(Annotations, squigglyColor), SettingType::Color, (intptr_t)"#ff00ff", "波浪线颜色"},
+    {offsetof(Annotations, strikeOutColor), SettingType::Color, (intptr_t)"#ff0000", "删除线颜色"},
+    {offsetof(Annotations, freeTextColor), SettingType::Color, (intptr_t)"", "文本批注文字色"},
+    {offsetof(Annotations, freeTextBackgroundColor), SettingType::Color, (intptr_t)"", "文本批注背景色"},
+    {offsetof(Annotations, freeTextOpacity), SettingType::Int, 100, "批注不透明度 0-100"},
+    {offsetof(Annotations, freeTextSize), SettingType::Int, 12, "文本批注字号"},
+    {offsetof(Annotations, freeTextBorderWidth), SettingType::Int, 1, "批注边框粗细"},
+    {offsetof(Annotations, textIconColor), SettingType::Color, (intptr_t)"", "批注图标颜色"},
+    {offsetof(Annotations, textIconType), SettingType::String, (intptr_t)"", "批注图标类型"},
+    {offsetof(Annotations, defaultAuthor), SettingType::String, (intptr_t)"", "新建注释默认作者"},
+    {offsetof(Annotations, selectionToolbar), SettingType::Bool, true, "选中文字后显示划词工具栏"},
 };
 static const StructInfo gAnnotationsInfo = {
     sizeof(Annotations), 13, gAnnotationsFields,
@@ -777,133 +778,133 @@ static const StructInfo gAnnotationsInfo = {
     "city\0FreeTextSize\0FreeTextBorderWidth\0TextIconColor\0TextIconType\0DefaultAuthor\0SelectionToolbar"};
 
 static const FieldInfo gExternalViewerFields[] = {
-    {offsetof(ExternalViewer, commandLine), SettingType::String, 0},
-    {offsetof(ExternalViewer, name), SettingType::String, 0},
-    {offsetof(ExternalViewer, filter), SettingType::String, 0},
-    {offsetof(ExternalViewer, key), SettingType::String, 0},
-    {offsetof(ExternalViewer, toolbarText), SettingType::String, 0},
+    {offsetof(ExternalViewer, commandLine), SettingType::String, 0, "外部程序命令行"},
+    {offsetof(ExternalViewer, name), SettingType::String, 0, "菜单显示名称"},
+    {offsetof(ExternalViewer, filter), SettingType::String, 0, "文件类型过滤"},
+    {offsetof(ExternalViewer, key), SettingType::String, 0, "快捷键"},
+    {offsetof(ExternalViewer, toolbarText), SettingType::String, 0, "工具栏文字"},
 };
 static const StructInfo gExternalViewerInfo = {sizeof(ExternalViewer), 5, gExternalViewerFields,
                                                "CommandLine\0Name\0Filter\0Key\0ToolbarText"};
 
 static const FieldInfo gForwardSearchFields[] = {
-    {offsetof(ForwardSearch, highlightOffset), SettingType::Int, 0},
-    {offsetof(ForwardSearch, highlightWidth), SettingType::Int, 15},
-    {offsetof(ForwardSearch, highlightColor), SettingType::Color, (intptr_t)"#6581ff"},
-    {offsetof(ForwardSearch, highlightPermanent), SettingType::Bool, false},
+    {offsetof(ForwardSearch, highlightOffset), SettingType::Int, 0, "高亮条左边距"},
+    {offsetof(ForwardSearch, highlightWidth), SettingType::Int, 15, "高亮条宽度"},
+    {offsetof(ForwardSearch, highlightColor), SettingType::Color, (intptr_t)"#6581ff", "高亮颜色"},
+    {offsetof(ForwardSearch, highlightPermanent), SettingType::Bool, false, "高亮保持到下次点击"},
 };
 static const StructInfo gForwardSearchInfo = {sizeof(ForwardSearch), 4, gForwardSearchFields,
                                               "HighlightOffset\0HighlightWidth\0HighlightColor\0HighlightPermanent"};
 
 static const FieldInfo gPrinterDefaultsFields[] = {
-    {offsetof(PrinterDefaults, printScale), SettingType::String, (intptr_t)"shrink"},
+    {offsetof(PrinterDefaults, printScale), SettingType::String, (intptr_t)"shrink", "打印缩放 shrink/fit/none"},
 };
 static const StructInfo gPrinterDefaultsInfo = {sizeof(PrinterDefaults), 1, gPrinterDefaultsFields, "PrintScale"};
 
 static const FieldInfo gFullscreenFields[] = {
-    {offsetof(Fullscreen, showToolbar), SettingType::Bool, false},
-    {offsetof(Fullscreen, showMenubar), SettingType::Bool, false},
+    {offsetof(Fullscreen, showToolbar), SettingType::Bool, false, "全屏时显示工具栏"},
+    {offsetof(Fullscreen, showMenubar), SettingType::Bool, false, "全屏时显示菜单栏"},
 };
 static const StructInfo gFullscreenInfo = {sizeof(Fullscreen), 2, gFullscreenFields, "ShowToolbar\0ShowMenubar"};
 
 static const FieldInfo gSelectionHandlerFields[] = {
-    {offsetof(SelectionHandler, url), SettingType::String, 0},
-    {offsetof(SelectionHandler, name), SettingType::String, 0},
-    {offsetof(SelectionHandler, key), SettingType::String, 0},
+    {offsetof(SelectionHandler, url), SettingType::String, 0, "搜索 URL"},
+    {offsetof(SelectionHandler, name), SettingType::String, 0, "菜单名称"},
+    {offsetof(SelectionHandler, key), SettingType::String, 0, "快捷键"},
 };
 static const StructInfo gSelectionHandlerInfo = {sizeof(SelectionHandler), 3, gSelectionHandlerFields,
                                                  "URL\0Name\0Key"};
 
 static const FieldInfo gShortcutFields[] = {
-    {offsetof(Shortcut, cmd), SettingType::String, (intptr_t)""},
-    {offsetof(Shortcut, key), SettingType::String, (intptr_t)""},
-    {offsetof(Shortcut, name), SettingType::String, 0},
-    {offsetof(Shortcut, toolbarText), SettingType::String, 0},
+    {offsetof(Shortcut, cmd), SettingType::String, (intptr_t)"", "命令"},
+    {offsetof(Shortcut, key), SettingType::String, (intptr_t)"", "快捷键"},
+    {offsetof(Shortcut, name), SettingType::String, 0, "命令面板名称"},
+    {offsetof(Shortcut, toolbarText), SettingType::String, 0, "工具栏文字"},
 };
 static const StructInfo gShortcutInfo = {sizeof(Shortcut), 4, gShortcutFields, "Cmd\0Key\0Name\0ToolbarText"};
 
 static const FieldInfo gThemeFields[] = {
-    {offsetof(Theme, name), SettingType::String, (intptr_t)""},
-    {offsetof(Theme, textColor), SettingType::Color, (intptr_t)""},
-    {offsetof(Theme, backgroundColor), SettingType::Color, (intptr_t)""},
-    {offsetof(Theme, controlBackgroundColor), SettingType::Color, (intptr_t)""},
-    {offsetof(Theme, linkColor), SettingType::Color, (intptr_t)""},
-    {offsetof(Theme, colorizeControls), SettingType::Bool, false},
+    {offsetof(Theme, name), SettingType::String, (intptr_t)"", "主题名称"},
+    {offsetof(Theme, textColor), SettingType::Color, (intptr_t)"", "文字颜色"},
+    {offsetof(Theme, backgroundColor), SettingType::Color, (intptr_t)"", "背景颜色"},
+    {offsetof(Theme, controlBackgroundColor), SettingType::Color, (intptr_t)"", "控件背景色"},
+    {offsetof(Theme, linkColor), SettingType::Color, (intptr_t)"", "链接颜色"},
+    {offsetof(Theme, colorizeControls), SettingType::Bool, false, "着色 Windows 控件"},
 };
 static const StructInfo gThemeInfo = {
     sizeof(Theme), 6, gThemeFields,
     "Name\0TextColor\0BackgroundColor\0ControlBackgroundColor\0LinkColor\0ColorizeControls"};
 
 static const FieldInfo gTabFileFields[] = {
-    {offsetof(TabFile, path), SettingType::String, (intptr_t)""},
+    {offsetof(TabFile, path), SettingType::String, (intptr_t)"", nullptr},
 };
 static const StructInfo gTabFileInfo = {sizeof(TabFile), 1, gTabFileFields, "Path"};
 
 static const FieldInfo gTabGroupFields[] = {
-    {offsetof(TabGroup, name), SettingType::String, (intptr_t)""},
-    {offsetof(TabGroup, tabFiles), SettingType::Array, (intptr_t)&gTabFileInfo},
+    {offsetof(TabGroup, name), SettingType::String, (intptr_t)"", "分组名称"},
+    {offsetof(TabGroup, tabFiles), SettingType::Array, (intptr_t)&gTabFileInfo, nullptr},
 };
 static const StructInfo gTabGroupInfo = {sizeof(TabGroup), 2, gTabGroupFields, "Name\0TabFiles"};
 
 static const FieldInfo gRectFields[] = {
-    {offsetof(Rect, x), SettingType::Int, 0},
-    {offsetof(Rect, y), SettingType::Int, 0},
-    {offsetof(Rect, dx), SettingType::Int, 0},
-    {offsetof(Rect, dy), SettingType::Int, 0},
+    {offsetof(Rect, x), SettingType::Int, 0, nullptr},
+    {offsetof(Rect, y), SettingType::Int, 0, nullptr},
+    {offsetof(Rect, dx), SettingType::Int, 0, nullptr},
+    {offsetof(Rect, dy), SettingType::Int, 0, nullptr},
 };
 static const StructInfo gRectInfo = {sizeof(Rect), 4, gRectFields, "X\0Y\0Dx\0Dy"};
 
 static const FieldInfo gRect_1_Fields[] = {
-    {offsetof(Rect, x), SettingType::Int, 0},
-    {offsetof(Rect, y), SettingType::Int, 0},
-    {offsetof(Rect, dx), SettingType::Int, 0},
-    {offsetof(Rect, dy), SettingType::Int, 0},
+    {offsetof(Rect, x), SettingType::Int, 0, nullptr},
+    {offsetof(Rect, y), SettingType::Int, 0, nullptr},
+    {offsetof(Rect, dx), SettingType::Int, 0, nullptr},
+    {offsetof(Rect, dy), SettingType::Int, 0, nullptr},
 };
 static const StructInfo gRect_1_Info = {sizeof(Rect), 4, gRect_1_Fields, "X\0Y\0Dx\0Dy"};
 
 static const FieldInfo gFavoriteFields[] = {
-    {offsetof(Favorite, name), SettingType::String, 0},
-    {offsetof(Favorite, pageNo), SettingType::Int, 0},
-    {offsetof(Favorite, pageLabel), SettingType::String, 0},
+    {offsetof(Favorite, name), SettingType::String, 0, nullptr},
+    {offsetof(Favorite, pageNo), SettingType::Int, 0, nullptr},
+    {offsetof(Favorite, pageLabel), SettingType::String, 0, nullptr},
 };
 static const StructInfo gFavoriteInfo = {sizeof(Favorite), 3, gFavoriteFields, "Name\0PageNo\0PageLabel"};
 
 static const FieldInfo gPointFFields[] = {
-    {offsetof(PointF, x), SettingType::Float, (intptr_t)"0"},
-    {offsetof(PointF, y), SettingType::Float, (intptr_t)"0"},
+    {offsetof(PointF, x), SettingType::Float, (intptr_t)"0", nullptr},
+    {offsetof(PointF, y), SettingType::Float, (intptr_t)"0", nullptr},
 };
 static const StructInfo gPointFInfo = {sizeof(PointF), 2, gPointFFields, "X\0Y"};
 
 static const FieldInfo gRect_2_Fields[] = {
-    {offsetof(Rect, x), SettingType::Int, 0},
-    {offsetof(Rect, y), SettingType::Int, 0},
-    {offsetof(Rect, dx), SettingType::Int, 0},
-    {offsetof(Rect, dy), SettingType::Int, 0},
+    {offsetof(Rect, x), SettingType::Int, 0, nullptr},
+    {offsetof(Rect, y), SettingType::Int, 0, nullptr},
+    {offsetof(Rect, dx), SettingType::Int, 0, nullptr},
+    {offsetof(Rect, dy), SettingType::Int, 0, nullptr},
 };
 static const StructInfo gRect_2_Info = {sizeof(Rect), 4, gRect_2_Fields, "X\0Y\0Dx\0Dy"};
 
 static const FieldInfo gFileStateFields[] = {
-    {offsetof(FileState, filePath), SettingType::String, 0},
-    {offsetof(FileState, favorites), SettingType::Array, (intptr_t)&gFavoriteInfo},
-    {offsetof(FileState, isPinned), SettingType::Bool, false},
-    {offsetof(FileState, isMissing), SettingType::Bool, false},
-    {offsetof(FileState, openCount), SettingType::Int, 0},
-    {offsetof(FileState, decryptionKey), SettingType::String, 0},
-    {offsetof(FileState, useDefaultState), SettingType::Bool, false},
-    {offsetof(FileState, displayMode), SettingType::String, (intptr_t)"automatic"},
-    {offsetof(FileState, scrollPos), SettingType::Compact, (intptr_t)&gPointFInfo},
-    {offsetof(FileState, pageNo), SettingType::Int, 1},
-    {offsetof(FileState, zoom), SettingType::String, (intptr_t)"fit page"},
-    {offsetof(FileState, rotation), SettingType::Int, 0},
-    {offsetof(FileState, windowState), SettingType::Int, 0},
-    {offsetof(FileState, windowPos), SettingType::Compact, (intptr_t)&gRect_2_Info},
-    {offsetof(FileState, showToc), SettingType::Bool, true},
-    {offsetof(FileState, sidebarDx), SettingType::Int, 0},
-    {offsetof(FileState, displayR2L), SettingType::Bool, false},
-    {offsetof(FileState, bgCol), SettingType::Color, (intptr_t)""},
-    {offsetof(FileState, tabCol), SettingType::Color, (intptr_t)""},
-    {offsetof(FileState, reparseIdx), SettingType::Int, 0},
-    {offsetof(FileState, tocState), SettingType::IntArray, 0},
+    {offsetof(FileState, filePath), SettingType::String, 0, nullptr},
+    {offsetof(FileState, favorites), SettingType::Array, (intptr_t)&gFavoriteInfo, nullptr},
+    {offsetof(FileState, isPinned), SettingType::Bool, false, nullptr},
+    {offsetof(FileState, isMissing), SettingType::Bool, false, nullptr},
+    {offsetof(FileState, openCount), SettingType::Int, 0, nullptr},
+    {offsetof(FileState, decryptionKey), SettingType::String, 0, nullptr},
+    {offsetof(FileState, useDefaultState), SettingType::Bool, false, nullptr},
+    {offsetof(FileState, displayMode), SettingType::String, (intptr_t)"automatic", nullptr},
+    {offsetof(FileState, scrollPos), SettingType::Compact, (intptr_t)&gPointFInfo, nullptr},
+    {offsetof(FileState, pageNo), SettingType::Int, 1, nullptr},
+    {offsetof(FileState, zoom), SettingType::String, (intptr_t)"fit page", nullptr},
+    {offsetof(FileState, rotation), SettingType::Int, 0, nullptr},
+    {offsetof(FileState, windowState), SettingType::Int, 0, nullptr},
+    {offsetof(FileState, windowPos), SettingType::Compact, (intptr_t)&gRect_2_Info, nullptr},
+    {offsetof(FileState, showToc), SettingType::Bool, true, nullptr},
+    {offsetof(FileState, sidebarDx), SettingType::Int, 0, nullptr},
+    {offsetof(FileState, displayR2L), SettingType::Bool, false, nullptr},
+    {offsetof(FileState, bgCol), SettingType::Color, (intptr_t)"", nullptr},
+    {offsetof(FileState, tabCol), SettingType::Color, (intptr_t)"", nullptr},
+    {offsetof(FileState, reparseIdx), SettingType::Int, 0, nullptr},
+    {offsetof(FileState, tocState), SettingType::IntArray, 0, nullptr},
 };
 static StructInfo gFileStateInfo = {
     sizeof(FileState), 21, gFileStateFields,
@@ -911,174 +912,184 @@ static StructInfo gFileStateInfo = {
     "o\0Zoom\0Rotation\0WindowState\0WindowPos\0ShowToc\0SidebarDx\0DisplayR2L\0BgCol\0TabCol\0ReparseIdx\0TocState"};
 
 static const FieldInfo gPointF_1_Fields[] = {
-    {offsetof(PointF, x), SettingType::Float, (intptr_t)"0"},
-    {offsetof(PointF, y), SettingType::Float, (intptr_t)"0"},
+    {offsetof(PointF, x), SettingType::Float, (intptr_t)"0", nullptr},
+    {offsetof(PointF, y), SettingType::Float, (intptr_t)"0", nullptr},
 };
 static const StructInfo gPointF_1_Info = {sizeof(PointF), 2, gPointF_1_Fields, "X\0Y"};
 
 static const FieldInfo gTabStateFields[] = {
-    {offsetof(TabState, filePath), SettingType::String, 0},
-    {offsetof(TabState, displayMode), SettingType::String, (intptr_t)"automatic"},
-    {offsetof(TabState, pageNo), SettingType::Int, 1},
-    {offsetof(TabState, zoom), SettingType::String, (intptr_t)"fit page"},
-    {offsetof(TabState, rotation), SettingType::Int, 0},
-    {offsetof(TabState, scrollPos), SettingType::Compact, (intptr_t)&gPointF_1_Info},
-    {offsetof(TabState, showToc), SettingType::Bool, true},
-    {offsetof(TabState, tocState), SettingType::IntArray, 0},
+    {offsetof(TabState, filePath), SettingType::String, 0, nullptr},
+    {offsetof(TabState, displayMode), SettingType::String, (intptr_t)"automatic", nullptr},
+    {offsetof(TabState, pageNo), SettingType::Int, 1, nullptr},
+    {offsetof(TabState, zoom), SettingType::String, (intptr_t)"fit page", nullptr},
+    {offsetof(TabState, rotation), SettingType::Int, 0, nullptr},
+    {offsetof(TabState, scrollPos), SettingType::Compact, (intptr_t)&gPointF_1_Info, nullptr},
+    {offsetof(TabState, showToc), SettingType::Bool, true, nullptr},
+    {offsetof(TabState, tocState), SettingType::IntArray, 0, nullptr},
 };
 static const StructInfo gTabStateInfo = {sizeof(TabState), 8, gTabStateFields,
                                          "FilePath\0DisplayMode\0PageNo\0Zoom\0Rotation\0ScrollPos\0ShowToc\0TocState"};
 
 static const FieldInfo gRect_3_Fields[] = {
-    {offsetof(Rect, x), SettingType::Int, 0},
-    {offsetof(Rect, y), SettingType::Int, 0},
-    {offsetof(Rect, dx), SettingType::Int, 0},
-    {offsetof(Rect, dy), SettingType::Int, 0},
+    {offsetof(Rect, x), SettingType::Int, 0, nullptr},
+    {offsetof(Rect, y), SettingType::Int, 0, nullptr},
+    {offsetof(Rect, dx), SettingType::Int, 0, nullptr},
+    {offsetof(Rect, dy), SettingType::Int, 0, nullptr},
 };
 static const StructInfo gRect_3_Info = {sizeof(Rect), 4, gRect_3_Fields, "X\0Y\0Dx\0Dy"};
 
 static const FieldInfo gSessionDataFields[] = {
-    {offsetof(SessionData, tabStates), SettingType::Array, (intptr_t)&gTabStateInfo},
-    {offsetof(SessionData, tabIndex), SettingType::Int, 1},
-    {offsetof(SessionData, windowState), SettingType::Int, 0},
-    {offsetof(SessionData, windowPos), SettingType::Compact, (intptr_t)&gRect_3_Info},
-    {offsetof(SessionData, sidebarDx), SettingType::Int, 0},
+    {offsetof(SessionData, tabStates), SettingType::Array, (intptr_t)&gTabStateInfo, nullptr},
+    {offsetof(SessionData, tabIndex), SettingType::Int, 1, nullptr},
+    {offsetof(SessionData, windowState), SettingType::Int, 0, nullptr},
+    {offsetof(SessionData, windowPos), SettingType::Compact, (intptr_t)&gRect_3_Info, nullptr},
+    {offsetof(SessionData, sidebarDx), SettingType::Int, 0, nullptr},
 };
 static const StructInfo gSessionDataInfo = {sizeof(SessionData), 5, gSessionDataFields,
                                             "TabStates\0TabIndex\0WindowState\0WindowPos\0SidebarDx"};
 
 static const FieldInfo gFILETIMEFields[] = {
-    {offsetof(FILETIME, dwHighDateTime), SettingType::Int, 0},
-    {offsetof(FILETIME, dwLowDateTime), SettingType::Int, 0},
+    {offsetof(FILETIME, dwHighDateTime), SettingType::Int, 0, nullptr},
+    {offsetof(FILETIME, dwLowDateTime), SettingType::Int, 0, nullptr},
 };
 static const StructInfo gFILETIMEInfo = {sizeof(FILETIME), 2, gFILETIMEFields, "DwHighDateTime\0DwLowDateTime"};
 
 static const FieldInfo gFILETIME_1_Fields[] = {
-    {offsetof(FILETIME, dwHighDateTime), SettingType::Int, 0},
-    {offsetof(FILETIME, dwLowDateTime), SettingType::Int, 0},
+    {offsetof(FILETIME, dwHighDateTime), SettingType::Int, 0, nullptr},
+    {offsetof(FILETIME, dwLowDateTime), SettingType::Int, 0, nullptr},
 };
 static const StructInfo gFILETIME_1_Info = {sizeof(FILETIME), 2, gFILETIME_1_Fields, "DwHighDateTime\0DwLowDateTime"};
 
 static const FieldInfo gPointFields[] = {
-    {offsetof(Point, x), SettingType::Int, 0},
-    {offsetof(Point, y), SettingType::Int, 0},
+    {offsetof(Point, x), SettingType::Int, 0, nullptr},
+    {offsetof(Point, y), SettingType::Int, 0, nullptr},
 };
 static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-14.html"},
-    {(size_t)-1, SettingType::Comment, 0},
-    {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true},
-    {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0},
-    {offsetof(GlobalPrefs, defaultDisplayMode), SettingType::String, (intptr_t)"automatic"},
-    {offsetof(GlobalPrefs, defaultZoom), SettingType::String, (intptr_t)"fit page"},
-    {offsetof(GlobalPrefs, enableTeXEnhancements), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, escToExit), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, fullPathInTitle), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, inverseSearchCmdLine), SettingType::String, 0},
-    {offsetof(GlobalPrefs, lazyLoading), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, mainWindowBackground), SettingType::Color, (intptr_t)"#80fff200"},
-    {offsetof(GlobalPrefs, noHomeTab), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, homePageSortByFrequentlyRead), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, homePageViewMode), SettingType::String, (intptr_t)"thumbnails"},
-    {offsetof(GlobalPrefs, reloadModifiedDocuments), SettingType::Bool, true},
-    {offsetof(GlobalPrefs, rememberOpenedFiles), SettingType::Bool, true},
-    {offsetof(GlobalPrefs, rememberStatePerDocument), SettingType::Bool, true},
-    {offsetof(GlobalPrefs, restoreSession), SettingType::Bool, true},
-    {offsetof(GlobalPrefs, reuseInstance), SettingType::Bool, true},
-    {offsetof(GlobalPrefs, showMenubar), SettingType::Bool, true},
-    {offsetof(GlobalPrefs, showMenubarWithTabs), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, showTips), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, customColors), SettingType::String, 0},
-    {offsetof(GlobalPrefs, showToolbar), SettingType::Bool, true},
-    {offsetof(GlobalPrefs, searchUIFloating), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, offlineDictionaryPath), SettingType::String, 0},
-    {offsetof(GlobalPrefs, enableDoubleClickWordLookup), SettingType::Bool, true},
-    {offsetof(GlobalPrefs, aiChatProvider), SettingType::String, (intptr_t)"doubao"},
-    {offsetof(GlobalPrefs, aiChatUseDeepSeekInsteadOfDoubao), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, enableAskAI), SettingType::Bool, true},
-    {offsetof(GlobalPrefs, showFavorites), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, showToc), SettingType::Bool, true},
-    {offsetof(GlobalPrefs, showLinks), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, showStartPage), SettingType::Bool, true},
-    {offsetof(GlobalPrefs, sidebarDx), SettingType::Int, 0},
-    {offsetof(GlobalPrefs, scrollbars), SettingType::String, (intptr_t)"windows"},
-    {offsetof(GlobalPrefs, scrollbarInSinglePage), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, smoothScroll), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, fastScrollOverScrollbar), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, preventSleepInFullscreen), SettingType::Bool, true},
-    {offsetof(GlobalPrefs, tabWidth), SettingType::Int, 300},
-    {offsetof(GlobalPrefs, theme), SettingType::String, (intptr_t)""},
-    {offsetof(GlobalPrefs, lastDarkTheme), SettingType::String, (intptr_t)"Dark-Dracula"},
-    {offsetof(GlobalPrefs, lastLightTheme), SettingType::String, (intptr_t)"Light-Warm"},
-    {offsetof(GlobalPrefs, pdfDocumentColorMode), SettingType::String, (intptr_t)"auto"},
-    {offsetof(GlobalPrefs, tocDy), SettingType::Int, 0},
-    {offsetof(GlobalPrefs, toolbarSize), SettingType::Int, 18},
-    {offsetof(GlobalPrefs, treeFontName), SettingType::String, (intptr_t)"automatic"},
-    {offsetof(GlobalPrefs, treeFontSize), SettingType::Int, 0},
-    {offsetof(GlobalPrefs, uIFontSize), SettingType::Int, 0},
-    {offsetof(GlobalPrefs, disableAntiAlias), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, engineeringDrawingEnhance), SettingType::String, (intptr_t)"auto"},
-    {offsetof(GlobalPrefs, useSysColors), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, useTabs), SettingType::Bool, true},
-    {offsetof(GlobalPrefs, tabsMru), SettingType::Bool, false},
-    {offsetof(GlobalPrefs, zoomLevels), SettingType::FloatArray, (intptr_t)""},
-    {offsetof(GlobalPrefs, zoomIncrement), SettingType::Float, (intptr_t)"0"},
-    {(size_t)-1, SettingType::Comment, 0},
-    {offsetof(GlobalPrefs, fixedPageUI), SettingType::Struct, (intptr_t)&gFixedPageUIInfo},
-    {(size_t)-1, SettingType::Comment, 0},
-    {offsetof(GlobalPrefs, eBookUI), SettingType::Struct, (intptr_t)&gEBookUIInfo},
-    {(size_t)-1, SettingType::Comment, 0},
-    {offsetof(GlobalPrefs, comicBookUI), SettingType::Struct, (intptr_t)&gComicBookUIInfo},
-    {(size_t)-1, SettingType::Comment, 0},
-    {offsetof(GlobalPrefs, imageUI), SettingType::Struct, (intptr_t)&gImageUIInfo},
-    {(size_t)-1, SettingType::Comment, 0},
-    {offsetof(GlobalPrefs, chmUI), SettingType::Struct, (intptr_t)&gChmUIInfo},
-    {(size_t)-1, SettingType::Comment, 0},
-    {offsetof(GlobalPrefs, annotations), SettingType::Struct, (intptr_t)&gAnnotationsInfo},
-    {(size_t)-1, SettingType::Comment, 0},
-    {offsetof(GlobalPrefs, externalViewers), SettingType::Array, (intptr_t)&gExternalViewerInfo},
-    {(size_t)-1, SettingType::Comment, 0},
-    {offsetof(GlobalPrefs, forwardSearch), SettingType::Struct, (intptr_t)&gForwardSearchInfo},
-    {(size_t)-1, SettingType::Comment, 0},
-    {offsetof(GlobalPrefs, printerDefaults), SettingType::Struct, (intptr_t)&gPrinterDefaultsInfo},
-    {(size_t)-1, SettingType::Comment, 0},
-    {offsetof(GlobalPrefs, fullscreen), SettingType::Struct, (intptr_t)&gFullscreenInfo},
-    {(size_t)-1, SettingType::Comment, 0},
-    {offsetof(GlobalPrefs, selectionHandlers), SettingType::Array, (intptr_t)&gSelectionHandlerInfo},
-    {(size_t)-1, SettingType::Comment, 0},
-    {offsetof(GlobalPrefs, shortcuts), SettingType::Array, (intptr_t)&gShortcutInfo},
-    {(size_t)-1, SettingType::Comment, 0},
-    {offsetof(GlobalPrefs, themes), SettingType::Array, (intptr_t)&gThemeInfo},
-    {(size_t)-1, SettingType::Comment, 0},
-    {offsetof(GlobalPrefs, tabGroups), SettingType::Array, (intptr_t)&gTabGroupInfo},
-    {(size_t)-1, SettingType::Comment, 0},
-    {offsetof(GlobalPrefs, readAloudVoiceId), SettingType::String, 0},
-    {offsetof(GlobalPrefs, readAloudSpeakingRate), SettingType::Float, (intptr_t)"1"},
-    {offsetof(GlobalPrefs, readAloudSpeakingRateZh), SettingType::Float, (intptr_t)"1"},
-    {offsetof(GlobalPrefs, readAloudSpeakingRateEn), SettingType::Float, (intptr_t)"1"},
-    {offsetof(GlobalPrefs, readAloudSmartVoiceZh), SettingType::String, 0},
-    {offsetof(GlobalPrefs, readAloudSmartVoiceEn), SettingType::String, 0},
-    {offsetof(GlobalPrefs, readAloudSmartOnlineVoiceZh), SettingType::String, 0},
-    {offsetof(GlobalPrefs, readAloudSmartOnlineVoiceEn), SettingType::String, 0},
-    {(size_t)-1, SettingType::Comment, 0},
-    {(size_t)-1, SettingType::Comment, (intptr_t)"You're not expected to change those manually"},
-    {offsetof(GlobalPrefs, defaultPasswords), SettingType::StringArray, 0},
-    {offsetof(GlobalPrefs, uiLanguage), SettingType::String, 0},
-    {offsetof(GlobalPrefs, versionToSkip), SettingType::String, 0},
-    {offsetof(GlobalPrefs, windowState), SettingType::Int, 1},
-    {offsetof(GlobalPrefs, windowPos), SettingType::Compact, (intptr_t)&gRectInfo},
-    {offsetof(GlobalPrefs, searchUIWindowPos), SettingType::Compact, (intptr_t)&gRect_1_Info},
-    {offsetof(GlobalPrefs, fileStates), SettingType::Array, (intptr_t)&gFileStateInfo},
-    {offsetof(GlobalPrefs, sessionData), SettingType::Array, (intptr_t)&gSessionDataInfo},
-    {offsetof(GlobalPrefs, reopenOnce), SettingType::StringArray, 0},
-    {offsetof(GlobalPrefs, timeOfLastUpdateCheck), SettingType::Compact, (intptr_t)&gFILETIMEInfo},
-    {offsetof(GlobalPrefs, timeOfUpdateCheckSnooze), SettingType::Compact, (intptr_t)&gFILETIME_1_Info},
-    {offsetof(GlobalPrefs, openCountWeek), SettingType::Int, 0},
-    {offsetof(GlobalPrefs, propWinPos), SettingType::Compact, (intptr_t)&gPointInfo},
-    {(size_t)-1, SettingType::Comment, 0},
-    {(size_t)-1, SettingType::Comment, (intptr_t)"Settings below are not recognized by the current version"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-17.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-17.html"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
+    {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},
+    {offsetof(GlobalPrefs, defaultDisplayMode), SettingType::String, (intptr_t)"automatic", "默认页面布局"},
+    {offsetof(GlobalPrefs, defaultZoom), SettingType::String, (intptr_t)"fit page", "默认缩放"},
+    {offsetof(GlobalPrefs, enableTeXEnhancements), SettingType::Bool, false, "显示 LaTeX SyncTeX 反向搜索命令行"},
+    {offsetof(GlobalPrefs, escToExit), SettingType::Bool, false, "true=按 Esc 直接关闭窗口"},
+    {offsetof(GlobalPrefs, fullPathInTitle), SettingType::Bool, false, "标题栏显示完整路径"},
+    {offsetof(GlobalPrefs, inverseSearchCmdLine), SettingType::String, 0, "LaTeX 反向搜索命令行"},
+    {offsetof(GlobalPrefs, lazyLoading), SettingType::Bool, false, "恢复会话时延迟加载未选中标签页"},
+    {offsetof(GlobalPrefs, mainWindowBackground), SettingType::Color, (intptr_t)"#80fff200",
+     "文档外侧空白区域底色 #AARRGGBB"},
+    {offsetof(GlobalPrefs, noHomeTab), SettingType::Bool, false, "标签模式下不显示首页标签"},
+    {offsetof(GlobalPrefs, homePageSortByFrequentlyRead), SettingType::Bool, false, "首页按打开次数排序"},
+    {offsetof(GlobalPrefs, homePageViewMode), SettingType::String, (intptr_t)"thumbnails", "首页视图 thumbnails/list"},
+    {offsetof(GlobalPrefs, reloadModifiedDocuments), SettingType::Bool, true, "外部修改后自动重载"},
+    {offsetof(GlobalPrefs, rememberOpenedFiles), SettingType::Bool, true, "记录打开过的文件"},
+    {offsetof(GlobalPrefs, rememberStatePerDocument), SettingType::Bool, true, "为每个文档单独保存阅读进度"},
+    {offsetof(GlobalPrefs, restoreSession), SettingType::Bool, true, "启动时恢复上次会话"},
+    {offsetof(GlobalPrefs, reuseInstance), SettingType::Bool, true, "新文件在已有窗口打开"},
+    {offsetof(GlobalPrefs, showMenubar), SettingType::Bool, true, "非标签模式下显示菜单栏"},
+    {offsetof(GlobalPrefs, showMenubarWithTabs), SettingType::Bool, false, "标签模式下显示菜单栏"},
+    {offsetof(GlobalPrefs, showTips), SettingType::Bool, false, "在首页显示使用技巧"},
+    {offsetof(GlobalPrefs, customColors), SettingType::String, 0, "背景色选择器自定义颜色"},
+    {offsetof(GlobalPrefs, showToolbar), SettingType::Bool, true, "显示顶部工具栏"},
+    {offsetof(GlobalPrefs, searchUIFloating), SettingType::Bool, false, "true=悬浮搜索窗口"},
+    {offsetof(GlobalPrefs, offlineDictionaryPath), SettingType::String, 0, "离线词典目录"},
+    {offsetof(GlobalPrefs, enableDoubleClickWordLookup), SettingType::Bool, true, "双击查离线词典"},
+    {offsetof(GlobalPrefs, aiChatProvider), SettingType::String, (intptr_t)"doubao",
+     "Ask AI 提供商 doubao/deepseek/chatgpt"},
+    {offsetof(GlobalPrefs, aiChatUseDeepSeekInsteadOfDoubao), SettingType::Bool, false, "已弃用，请用 AiChatProvider"},
+    {offsetof(GlobalPrefs, enableAskAI), SettingType::Bool, true, "显示 Ask AI 入口"},
+    {offsetof(GlobalPrefs, showFavorites), SettingType::Bool, false, "默认显示收藏侧边栏"},
+    {offsetof(GlobalPrefs, showToc), SettingType::Bool, true, "默认显示目录侧边栏"},
+    {offsetof(GlobalPrefs, showLinks), SettingType::Bool, false, "为链接绘制蓝色边框"},
+    {offsetof(GlobalPrefs, showStartPage), SettingType::Bool, true, "无文档时显示最近文件"},
+    {offsetof(GlobalPrefs, sidebarDx), SettingType::Int, 0, "侧边栏宽度，0=默认"},
+    {offsetof(GlobalPrefs, scrollbars), SettingType::String, (intptr_t)"windows",
+     "滚动条 windows/smart/overlay/hidden"},
+    {offsetof(GlobalPrefs, scrollbarInSinglePage), SettingType::Bool, false, "单页模式显示滚动条"},
+    {offsetof(GlobalPrefs, smoothScroll), SettingType::Bool, false, "平滑滚动"},
+    {offsetof(GlobalPrefs, fastScrollOverScrollbar), SettingType::Bool, false, "滚轮在滚动条区域时半页滚动"},
+    {offsetof(GlobalPrefs, preventSleepInFullscreen), SettingType::Bool, true, "全屏/演示时阻止休眠"},
+    {offsetof(GlobalPrefs, tabWidth), SettingType::Int, 300, "单个标签最大宽度"},
+    {offsetof(GlobalPrefs, theme), SettingType::String, (intptr_t)"", "当前主题"},
+    {offsetof(GlobalPrefs, lastDarkTheme), SettingType::String, (intptr_t)"Dark-Dracula", "切换到深色模式时的主题"},
+    {offsetof(GlobalPrefs, lastLightTheme), SettingType::String, (intptr_t)"Light-Warm", "切换到浅色模式时的主题"},
+    {offsetof(GlobalPrefs, documentColorMode), SettingType::String, (intptr_t)"smart",
+     "文档颜色模式 smart/original/theme"},
+    {offsetof(GlobalPrefs, tocDy), SettingType::Int, 0, "目录区高度（与收藏同显时）"},
+    {offsetof(GlobalPrefs, toolbarSize), SettingType::Int, 18, "工具栏高度"},
+    {offsetof(GlobalPrefs, treeFontName), SettingType::String, (intptr_t)"automatic", "目录/收藏树字体"},
+    {offsetof(GlobalPrefs, treeFontSize), SettingType::Int, 0, "目录/收藏树字号"},
+    {offsetof(GlobalPrefs, uIFontSize), SettingType::Int, 0, "界面字体大小"},
+    {offsetof(GlobalPrefs, disableAntiAlias), SettingType::Bool, false, "关闭 PDF 抗锯齿"},
+    {offsetof(GlobalPrefs, engineeringDrawingEnhance), SettingType::String, (intptr_t)"auto",
+     "工程图纸增强 off/auto/on"},
+    {offsetof(GlobalPrefs, useSysColors), SettingType::Bool, false, "使用 Windows 系统主题色"},
+    {offsetof(GlobalPrefs, useTabs), SettingType::Bool, true, "启用标签页"},
+    {offsetof(GlobalPrefs, tabsMru), SettingType::Bool, false, "Ctrl+Tab 按最近使用排序"},
+    {offsetof(GlobalPrefs, zoomLevels), SettingType::FloatArray, (intptr_t)"", "自定义缩放档位"},
+    {offsetof(GlobalPrefs, zoomIncrement), SettingType::Float, (intptr_t)"0", "滚轮缩放步长"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, fixedPageUI), SettingType::Struct, (intptr_t)&gFixedPageUIInfo, "PDF/XPS/DjVu 界面"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, eBookUI), SettingType::Struct, (intptr_t)&gEBookUIInfo, "EPUB/MOBI 电子书界面"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, comicBookUI), SettingType::Struct, (intptr_t)&gComicBookUIInfo, "CBZ/CBR 漫画界面"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, imageUI), SettingType::Struct, (intptr_t)&gImageUIInfo, "图片文件界面"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, chmUI), SettingType::Struct, (intptr_t)&gChmUIInfo, "CHM 帮助文档界面"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, annotations), SettingType::Struct, (intptr_t)&gAnnotationsInfo, "注释默认样式"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, externalViewers), SettingType::Array, (intptr_t)&gExternalViewerInfo, "外部程序打开方式"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, forwardSearch), SettingType::Struct, (intptr_t)&gForwardSearchInfo, "SyncTeX 正向搜索高亮"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, printerDefaults), SettingType::Struct, (intptr_t)&gPrinterDefaultsInfo, "打印默认参数"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, fullscreen), SettingType::Struct, (intptr_t)&gFullscreenInfo, "全屏模式设置"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, selectionHandlers), SettingType::Array, (intptr_t)&gSelectionHandlerInfo,
+     "选中文字自定义搜索"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, shortcuts), SettingType::Array, (intptr_t)&gShortcutInfo, "自定义快捷键"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, themes), SettingType::Array, (intptr_t)&gThemeInfo, "自定义主题"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, tabGroups), SettingType::Array, (intptr_t)&gTabGroupInfo, "标签分组"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {offsetof(GlobalPrefs, readAloudVoiceId), SettingType::String, 0, "朗读语音 ID"},
+    {offsetof(GlobalPrefs, readAloudSpeakingRate), SettingType::Float, (intptr_t)"1", "朗读语速（旧）"},
+    {offsetof(GlobalPrefs, readAloudSpeakingRateZh), SettingType::Float, (intptr_t)"1", "中文朗读语速"},
+    {offsetof(GlobalPrefs, readAloudSpeakingRateEn), SettingType::Float, (intptr_t)"1", "英文朗读语速"},
+    {offsetof(GlobalPrefs, readAloudSmartVoiceZh), SettingType::String, 0, "本地智能中文语音"},
+    {offsetof(GlobalPrefs, readAloudSmartVoiceEn), SettingType::String, 0, "本地智能英文语音"},
+    {offsetof(GlobalPrefs, readAloudSmartOnlineVoiceZh), SettingType::String, 0, "在线智能中文语音"},
+    {offsetof(GlobalPrefs, readAloudSmartOnlineVoiceEn), SettingType::String, 0, "在线智能英文语音"},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {(size_t)-1, SettingType::Comment, (intptr_t)"You're not expected to change those manually",
+     "You're not expected to change those manually"},
+    {offsetof(GlobalPrefs, defaultPasswords), SettingType::StringArray, 0, nullptr},
+    {offsetof(GlobalPrefs, uiLanguage), SettingType::String, 0, "界面语言"},
+    {offsetof(GlobalPrefs, versionToSkip), SettingType::String, 0, nullptr},
+    {offsetof(GlobalPrefs, windowState), SettingType::Int, 1, "窗口状态 1正常 2最大化 3全屏 4最小化"},
+    {offsetof(GlobalPrefs, windowPos), SettingType::Compact, (intptr_t)&gRectInfo, "窗口位置与尺寸"},
+    {offsetof(GlobalPrefs, searchUIWindowPos), SettingType::Compact, (intptr_t)&gRect_1_Info, "悬浮搜索窗位置"},
+    {offsetof(GlobalPrefs, fileStates), SettingType::Array, (intptr_t)&gFileStateInfo, "各文档阅读状态"},
+    {offsetof(GlobalPrefs, sessionData), SettingType::Array, (intptr_t)&gSessionDataInfo, "上次会话数据"},
+    {offsetof(GlobalPrefs, reopenOnce), SettingType::StringArray, 0, nullptr},
+    {offsetof(GlobalPrefs, timeOfLastUpdateCheck), SettingType::Compact, (intptr_t)&gFILETIMEInfo, "上次检测更新时间"},
+    {offsetof(GlobalPrefs, timeOfUpdateCheckSnooze), SettingType::Compact, (intptr_t)&gFILETIME_1_Info,
+     "更新提示推迟时间"},
+    {offsetof(GlobalPrefs, openCountWeek), SettingType::Int, 0, "本周打开次数统计"},
+    {offsetof(GlobalPrefs, propWinPos), SettingType::Compact, (intptr_t)&gPointInfo, nullptr},
+    {(size_t)-1, SettingType::Comment, 0, nullptr},
+    {(size_t)-1, SettingType::Comment, (intptr_t)"Settings below are not recognized by the current version",
+     "Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
     sizeof(GlobalPrefs), 112, gGlobalPrefsFields,
@@ -1088,28 +1099,28 @@ static const StructInfo gGlobalPrefsInfo = {
     "howMenubar\0ShowMenubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0SearchUIFloating\0OfflineDictionaryPath\0Ena"
     "bleDoubleClickWordLookup\0AiChatProvider\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAskAI\0ShowFavorites\0ShowToc\0S"
     "howLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0FastScrollOverScrollbar\0Prev"
-    "entSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme\0LastLightTheme\0PdfDocumentColorMode\0TocDy\0ToolbarSize\0Tr"
-    "eeFontName\0TreeFontSize\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru"
-    "\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0Externa"
-    "lViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroup"
-    "s\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoic"
-    "eZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSmartOnlineVoiceEn\0\0\0DefaultPasswords\0UiLang"
-    "uage\0VersionToSkip\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpd"
-    "ateCheck\0TimeOfUpdateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
+    "entSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme\0LastLightTheme\0DocumentColorMode\0TocDy\0ToolbarSize\0TreeF"
+    "ontName\0TreeFontSize\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru\0Zo"
+    "omLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalVie"
+    "wers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0"
+    "\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh"
+    "\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSmartOnlineVoiceEn\0\0\0DefaultPasswords\0UiLanguag"
+    "e\0VersionToSkip\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdate"
+    "Check\0TimeOfUpdateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
-    {offsetof(Theme, name), SettingType::String, (intptr_t)""},
-    {offsetof(Theme, textColor), SettingType::Color, (intptr_t)""},
-    {offsetof(Theme, backgroundColor), SettingType::Color, (intptr_t)""},
-    {offsetof(Theme, controlBackgroundColor), SettingType::Color, (intptr_t)""},
-    {offsetof(Theme, linkColor), SettingType::Color, (intptr_t)""},
-    {offsetof(Theme, colorizeControls), SettingType::Bool, false},
+    {offsetof(Theme, name), SettingType::String, (intptr_t)"", "主题名称"},
+    {offsetof(Theme, textColor), SettingType::Color, (intptr_t)"", "文字颜色"},
+    {offsetof(Theme, backgroundColor), SettingType::Color, (intptr_t)"", "背景颜色"},
+    {offsetof(Theme, controlBackgroundColor), SettingType::Color, (intptr_t)"", "控件背景色"},
+    {offsetof(Theme, linkColor), SettingType::Color, (intptr_t)"", "链接颜色"},
+    {offsetof(Theme, colorizeControls), SettingType::Bool, false, "着色 Windows 控件"},
 };
 static const StructInfo gTheme_1_Info = {
     sizeof(Theme), 6, gTheme_1_Fields,
     "Name\0TextColor\0BackgroundColor\0ControlBackgroundColor\0LinkColor\0ColorizeControls"};
 
 static const FieldInfo gThemesFields[] = {
-    {offsetof(Themes, themes), SettingType::Array, (intptr_t)&gTheme_1_Info},
+    {offsetof(Themes, themes), SettingType::Array, (intptr_t)&gTheme_1_Info, "自定义主题"},
 };
 static const StructInfo gThemesInfo = {sizeof(Themes), 1, gThemesFields, "Themes"};
 

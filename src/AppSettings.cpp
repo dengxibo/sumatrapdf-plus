@@ -9,6 +9,7 @@
 #include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
 #include "utils/Timer.h"
+#include "utils/SquareTreeParser.h"
 
 #include "wingui/UIModels.h"
 
@@ -23,6 +24,7 @@
 #include "FileHistory.h"
 #include "GlobalPrefs.h"
 #include "ProgressUpdateUI.h"
+#include "PdfDarkMode.h"
 #include "SumatraPDF.h"
 #include "WindowTab.h"
 #include "ExternalViewers.h"
@@ -118,6 +120,24 @@ static void MigrateAiChatProvider(const char* settingsRaw) {
     }
     str::ReplaceWithCopy(&gGlobalPrefs->aiChatProvider, "deepseek");
     gGlobalPrefs->aiChatUseDeepSeekInsteadOfDoubao = false;
+}
+
+static void MigrateDocumentColorMode(const char* settingsRaw) {
+    if (!gGlobalPrefs) {
+        return;
+    }
+    bool hasNewKey = settingsRaw && str::Find(settingsRaw, "DocumentColorMode");
+    if (!hasNewKey && settingsRaw) {
+        SquareTreeNode* root = ParseSquareTree(settingsRaw);
+        if (root) {
+            const char* legacy = root->GetValue("PdfDocumentColorMode");
+            if (legacy) {
+                str::ReplaceWithCopy(&gGlobalPrefs->documentColorMode, legacy);
+            }
+            delete root;
+        }
+    }
+    SetPdfDocumentColorMode(GetPdfDocumentColorMode());
 }
 
 // SumatraPDF.cpp
@@ -326,6 +346,7 @@ bool LoadSettings() {
         prefsData.Free();
     }
     MigrateAiChatProvider(settingsRaw.Get());
+    MigrateDocumentColorMode(settingsRaw.Get());
 
     if (trans::ValidateLangCode(gprefs->uiLanguage)) {
         SetCurrentLang(gprefs->uiLanguage);

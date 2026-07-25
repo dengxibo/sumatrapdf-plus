@@ -110,6 +110,9 @@ extern HCURSOR gCursorDrag;
 extern bool gCrashOnOpen;
 extern HWND gLastActiveFrameHwnd;
 
+// Process one message like the main loop (including global Ctrl+F). Returns false on WM_QUIT.
+bool PumpAppMessage(MSG& msg);
+
 struct DocController;
 extern DocController* gMostRecentlyOpenedDoc;
 

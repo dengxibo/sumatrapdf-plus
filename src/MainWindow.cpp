@@ -331,6 +331,7 @@ void MainWindow::UpdateCanvasSize() {
     if (IsDocLoaded()) {
         // the display model needs to know the full size (including scroll bars)
         ctrl->SetViewPortSize(GetViewPortSize());
+        OnFindViewLayoutChanged(this);
     }
     if (CurrentTab()) {
         CurrentTab()->canvasRc = canvasRc;
@@ -844,6 +845,20 @@ MainWindow* FindMainWindowByHwnd(HWND hwnd) {
         if (IsFindUIHwnd(win, hwnd)) {
             return win;
         }
+    }
+    // Owned popups use GWLP_HWNDPARENT (not IsChild). After find UI teardown the
+    // focus HWND can outlive win->findWindow briefly; walk parents to the frame.
+    for (HWND h = hwnd; h;) {
+        for (MainWindow* win : gWindows) {
+            if (win->hwndFrame == h) {
+                return win;
+            }
+        }
+        HWND parent = ::GetParent(h);
+        if (!parent || parent == h) {
+            break;
+        }
+        h = parent;
     }
     return nullptr;
 }
