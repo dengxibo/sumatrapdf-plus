@@ -1341,7 +1341,7 @@ void ControllerCallbackHandler::ZoomChanged(DocController* ctrl, float zoomVirtu
     if (win->ctrl != ctrl) {
         return;
     }
-    OnFindZoomChanged(win);
+    OnFindViewLayoutChanged(win);
     NotificationWnd* wnd = GetNotificationForGroup(win->hwndCanvas, kNotifPageInfo);
     if (!wnd) {
         return;
@@ -2631,7 +2631,6 @@ void UpdateAfterThemeChange() {
         }
     }
     RerenderEverything();
-    InvalidateFindMatchPaintCache();
 
     for (auto win : gWindows) {
         DeleteObject(win->brControlBgColor);

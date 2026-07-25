@@ -1608,7 +1608,6 @@ void ResyncFloatingFindEdit(MainWindow* win) {
         return;
     }
     win->hwndFindEdit = win->findWindow->edit->hwnd;
-    InvalidateFindMatchPaintCache();
     FindWindowRefreshResults(win, false);
     ScheduleRepaint(win, 0);
 }

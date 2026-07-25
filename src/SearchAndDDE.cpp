@@ -51,19 +51,7 @@ struct FindMatchPaintPageRect {
     Rect rect{};
 };
 
-static void FreeFindMatchPaintCacheEntries() {
-}
-
-void InvalidateFindMatchPaintCache() {
-    FreeFindMatchPaintCacheEntries();
-}
-
-void OnFindZoomChanged(MainWindow* win) {
-    OnFindViewLayoutChanged(win);
-}
-
 void OnFindViewLayoutChanged(MainWindow* win) {
-    InvalidateFindMatchPaintCache();
     if (!win || !win->IsDocLoaded()) {
         return;
     }
@@ -414,7 +402,6 @@ void CloseFindUI(MainWindow* win) {
     win->findStatusCurrentIndex = 0;
     InterlockedExchange(&win->findCountAnimTaskPending, 0);
     ClearFindMatches(win);
-    InvalidateFindMatchPaintCache();
     ClearFindSearchProgressCb(win);
     RemoveNotificationsForGroup(win->hwndCanvas, kNotifFindProgress);
     // ctrl still points at the tab being left when called from SelectionChanging
@@ -583,7 +570,6 @@ static void ShowSearchResult(MainWindow* win, TextSel* result, bool addNavPt) {
     // one) are highlighted independently by PaintAllFindMatches, so the user's
     // selection highlight is separate and survives searching (issue #5737).
     dm->ShowResultRectToScreen(result);
-    InvalidateFindMatchPaintCache();
     ScheduleRepaint(win, 0);
 }
 
@@ -795,7 +781,6 @@ static void InstallCountCache(MainWindow* win, WCHAR* text, bool matchCase, bool
             FindWindowRefreshResults(win, false);
         }
     }
-    InvalidateFindMatchPaintCache();
     ShowMatchCount(win);
     if (!partial) {
         FindBarBeginStatusCompleteFlash(win);
@@ -824,7 +809,6 @@ void ClearFindMatches(MainWindow* win) {
     }
     win->findMatches.Reset();
     win->findCountHasSnippets = false;
-    InvalidateFindMatchPaintCache();
 }
 
 // how many glyphs to show in a floating find result line, scaled to the results

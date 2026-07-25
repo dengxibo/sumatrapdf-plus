@@ -5,6 +5,15 @@
 - rename advanced setting `PdfDocumentColorMode` to `DocumentColorMode` with clearer values `smart`, `original`, and `theme`; migrate legacy names on load
   将高级设置 `PdfDocumentColorMode` 重命名为 `DocumentColorMode`，取值改为 smart / original / theme，加载时自动迁移旧配置
 
+## 3.7.18 (2026-07-26)
+
+- fix EPUB reflow layout for cnepub comparison tables (table cell widths, portrait alignment) and MuPDF HTML table percent widths;
+  修复萤火虫等 cnepub 对比表排版（单元格宽度、肖像居中）及 MuPDF 表格百分比宽度
+- preserve continuous-view scroll position when zooming with Ctrl+wheel or resizing the canvas (e.g. closing the TOC sidebar);
+  修复连续阅读模式下 Ctrl+滚轮缩放或关闭目录侧栏后页码乱跳
+- improve find-match highlight alignment after zoom and layout changes; drop stale per-chapter page caches when progressive EPUB loading recounts chapters;
+  修复搜索高亮错位，并在渐进加载重新统计章节后刷新该章页面缓存，避免同一页排版逐渐漂移
+
 ## 3.7.17 (2026-07-23)
 
 - fix selection toolbar jitter and flicker while dragging text selection and during edge autoscroll;
