@@ -81,8 +81,8 @@ RectF MergeHighlightLineRect(RectF a, RectF b) {
 Rect BuildHighlightLineRect(Rect* c0, Rect* cEnd) {
     int x0 = INT_MAX;
     int x1 = INT_MIN;
-    int lineDy = 0;
-    double centerSum = 0;
+    int y0 = INT_MAX;
+    int y1 = INT_MIN;
     int n = 0;
 
     for (Rect* c = c0; c < cEnd; c++) {
@@ -91,10 +91,8 @@ Rect BuildHighlightLineRect(Rect* c0, Rect* cEnd) {
         }
         x0 = std::min(x0, c->x);
         x1 = std::max(x1, c->BR().x);
-        if (c->dy >= 3) {
-            lineDy = std::max(lineDy, c->dy);
-        }
-        centerSum += c->y + c->dy * 0.5;
+        y0 = std::min(y0, c->y);
+        y1 = std::max(y1, c->y + c->dy);
         n++;
     }
 
@@ -102,17 +100,7 @@ Rect BuildHighlightLineRect(Rect* c0, Rect* cEnd) {
         return Rect();
     }
 
-    if (lineDy == 0) {
-        for (Rect* c = c0; c < cEnd; c++) {
-            if (!c->x && !c->dx) {
-                continue;
-            }
-            lineDy = std::max(lineDy, c->dy);
-        }
-    }
-
-    int y = (int)(centerSum / n - lineDy * 0.5 + 0.5);
-    return Rect(x0, y, x1 - x0, lineDy);
+    return Rect(x0, y0, x1 - x0, y1 - y0);
 }
 
 void NormalizeHighlightLineHeights(Vec<RectF>& rects) {
