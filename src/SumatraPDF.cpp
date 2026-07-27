@@ -2487,6 +2487,150 @@ static bool IsReflowableMupdfForTheme(EngineBase* engine) {
     return engine && engine->kind == kindEngineMupdf && !str::EqI(engine->defaultExt, ".pdf");
 }
 
+constexpr int kDocumentColorRerenderUiMinPages = 200;
+constexpr int kThemeRelayoutProgressThrottleMs = 100;
+
+static int gMupdfThemeRelayoutUiDepth = 0;
+static NotificationWnd* gMupdfThemeRelayoutNotif = nullptr;
+static HCURSOR gMupdfThemeRelayoutOldCursor = nullptr;
+static DWORD gMupdfThemeRelayoutLastProgressMs = 0;
+
+static void OnMupdfThemeRecountProgress(int chaptersDone, int chapterTotal, void*) {
+    if (!gMupdfThemeRelayoutNotif || chapterTotal <= 0) {
+        return;
+    }
+    DWORD now = GetTickCount();
+    bool isFinal = chaptersDone >= chapterTotal;
+    if (!isFinal && gMupdfThemeRelayoutLastProgressMs != 0 &&
+        now - gMupdfThemeRelayoutLastProgressMs < kThemeRelayoutProgressThrottleMs) {
+        return;
+    }
+    gMupdfThemeRelayoutLastProgressMs = now;
+    TempStr msg = str::FormatTemp(_TRA("Applying theme or document colors… chapter %d / %d"), chaptersDone,
+                                  chapterTotal);
+    NotificationUpdateMessage(gMupdfThemeRelayoutNotif, msg);
+}
+
+static void BeginMupdfThemeRelayoutUi(MainWindow* win) {
+    if (!win || !win->hwndCanvas) {
+        return;
+    }
+    if (gMupdfThemeRelayoutUiDepth++ > 0) {
+        return;
+    }
+    gMupdfThemeRelayoutLastProgressMs = 0;
+    NotificationCreateArgs nargs;
+    nargs.hwndParent = win->hwndCanvas;
+    nargs.groupId = kNotifThemeRelayout;
+    nargs.noClose = true;
+    nargs.timeoutMs = kNotifNoTimeout;
+    nargs.msg = _TRA("Applying theme or document colors, re-pagination in progress…");
+    gMupdfThemeRelayoutNotif = ShowNotification(nargs);
+    gMupdfThemeRelayoutOldCursor = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    EngineMupdfSetThemeRecountProgressCb(OnMupdfThemeRecountProgress, nullptr);
+}
+
+static void EndMupdfThemeRelayoutUi() {
+    if (gMupdfThemeRelayoutUiDepth <= 0) {
+        return;
+    }
+    if (--gMupdfThemeRelayoutUiDepth > 0) {
+        return;
+    }
+    EngineMupdfSetThemeRecountProgressCb(nullptr, nullptr);
+    if (gMupdfThemeRelayoutNotif) {
+        RemoveNotification(gMupdfThemeRelayoutNotif);
+        gMupdfThemeRelayoutNotif = nullptr;
+    }
+    if (gMupdfThemeRelayoutOldCursor) {
+        SetCursor(gMupdfThemeRelayoutOldCursor);
+        gMupdfThemeRelayoutOldCursor = nullptr;
+    }
+}
+
+struct MupdfThemeRelayoutUiScope {
+    explicit MupdfThemeRelayoutUiScope(MainWindow* win) { BeginMupdfThemeRelayoutUi(win); }
+    ~MupdfThemeRelayoutUiScope() { EndMupdfThemeRelayoutUi(); }
+};
+
+static bool RelayoutMupdfForThemeChangeWithProgressUi(MainWindow* win, EngineBase* engine) {
+    MupdfThemeRelayoutUiScope ui(win);
+    return EngineMupdfRelayoutForThemeChange(engine);
+}
+
+static int gDocumentColorRerenderUiDepth = 0;
+static NotificationWnd* gDocumentColorRerenderNotif = nullptr;
+static HCURSOR gDocumentColorRerenderOldCursor = nullptr;
+
+static bool AnyLargePdfTabForColorRerenderUi() {
+    for (MainWindow* win : gWindows) {
+        for (WindowTab* tab : win->Tabs()) {
+            if (!tab->IsDocLoaded() || tab->IsAboutTab()) {
+                continue;
+            }
+            EngineBase* engine = tab->GetEngine();
+            if (engine && engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".pdf") &&
+                engine->PageCount() >= kDocumentColorRerenderUiMinPages) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static MainWindow* MainWindowForDocumentColorRerenderUi() {
+    HWND fg = GetForegroundWindow();
+    for (MainWindow* win : gWindows) {
+        if (fg == win->hwndFrame || IsChild(win->hwndFrame, fg)) {
+            return win;
+        }
+    }
+    return gWindows.size() > 0 ? gWindows.at(0) : nullptr;
+}
+
+static void BeginDocumentColorRerenderUi() {
+    if (!AnyLargePdfTabForColorRerenderUi()) {
+        return;
+    }
+    MainWindow* win = MainWindowForDocumentColorRerenderUi();
+    if (!win || !win->hwndCanvas) {
+        return;
+    }
+    if (gDocumentColorRerenderUiDepth++ > 0) {
+        return;
+    }
+    NotificationCreateArgs nargs;
+    nargs.hwndParent = win->hwndCanvas;
+    nargs.groupId = kNotifThemeRelayout;
+    nargs.noClose = true;
+    nargs.timeoutMs = kNotifNoTimeout;
+    nargs.msg = _TRA("Applying document colors, re-rendering pages…");
+    gDocumentColorRerenderNotif = ShowNotification(nargs);
+    gDocumentColorRerenderOldCursor = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+}
+
+static void EndDocumentColorRerenderUi() {
+    if (gDocumentColorRerenderUiDepth <= 0) {
+        return;
+    }
+    if (--gDocumentColorRerenderUiDepth > 0) {
+        return;
+    }
+    if (gDocumentColorRerenderNotif) {
+        RemoveNotification(gDocumentColorRerenderNotif);
+        gDocumentColorRerenderNotif = nullptr;
+    }
+    if (gDocumentColorRerenderOldCursor) {
+        SetCursor(gDocumentColorRerenderOldCursor);
+        gDocumentColorRerenderOldCursor = nullptr;
+    }
+}
+
+struct DocumentColorRerenderUiScope {
+    DocumentColorRerenderUiScope() { BeginDocumentColorRerenderUi(); }
+    ~DocumentColorRerenderUiScope() { EndDocumentColorRerenderUi(); }
+};
+
 static void ReloadTocUiAfterReflowReparse(MainWindow* win, WindowTab* tab, bool forceReload = false) {
     EngineBase* engine = tab ? tab->GetEngine() : nullptr;
     bool engineRequestedReload = EngineMupdfReflowTocNeedsUiReload(engine);
@@ -2589,7 +2733,7 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
         }
         gRenderCache->CancelRendering(dm);
         gRenderCache->FreeForDisplayModel(dm);
-        if (!EngineMupdfRelayoutForThemeChange(engine)) {
+        if (!RelayoutMupdfForThemeChangeWithProgressUi(win, engine)) {
             logfa("ApplyThemeChangeToTab: in-place reflow theme CSS update failed\n");
         }
         RefreshDisplayModelAfterThemeChange(dm, tab == win->CurrentTab());
@@ -3998,7 +4142,7 @@ static void ApplyDocumentColorModeChangeToTab(MainWindow* win, WindowTab* tab) {
             gRenderCache->CancelRendering(dm);
             gRenderCache->FreeForDisplayModel(dm);
         }
-        EngineMupdfRelayoutForThemeChange(engine);
+        RelayoutMupdfForThemeChangeWithProgressUi(win, engine);
         if (dm) {
             RefreshDisplayModelAfterThemeChange(dm, tab == win->CurrentTab());
             RemapAnchorsAfterReflow(tab, win);
@@ -4090,6 +4234,7 @@ void UpdateDocumentColors(bool rerender, bool updateReflowDocuments) {
     }
 
     if (rerender) {
+        DocumentColorRerenderUiScope rerenderUi;
         RerenderEverything();
     }
 }

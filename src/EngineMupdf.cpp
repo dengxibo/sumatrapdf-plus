@@ -5199,14 +5199,25 @@ static void KickReflowLayoutWarmAsync(EngineMupdf* e);
 static int CountReflowChaptersUpTo(EngineMupdf* e, int targetChapter, const char* notifyPath, bool isBackground,
                                    fz_context* ctxOverride, bool forThemeRecount = false);
 
+static EngineMupdfThemeRecountProgressFn gThemeRecountProgressCb = nullptr;
+static void* gThemeRecountProgressUser = nullptr;
+
+void EngineMupdfSetThemeRecountProgressCb(EngineMupdfThemeRecountProgressFn cb, void* user) {
+    gThemeRecountProgressCb = cb;
+    gThemeRecountProgressUser = user;
+}
+
+static void MaybeReportThemeRecountProgress(EngineMupdf* e, int chaptersDone) {
+    if (!gThemeRecountProgressCb || !e || e->reflowNumChapters <= 0) {
+        return;
+    }
+    gThemeRecountProgressCb(chaptersDone, e->reflowNumChapters, gThemeRecountProgressUser);
+}
+
 static bool RecountReflowPageMapForThemeChange(EngineMupdf* e, fz_context* ctx) {
     if (!e || !ctx || e->pdfdoc) {
         return false;
     }
-    InterlockedExchange(&e->reflowThemeRecountInProgress, 1);
-    defer {
-        InterlockedExchange(&e->reflowThemeRecountInProgress, 0);
-    };
     // Block the background chapter counter from appending after we clear the map.
     // reflowCountLock is normally per-chapter; theme recount holds it for the whole pass.
     ScopedCritSec countScope(&e->reflowCountLock);
@@ -5260,6 +5271,12 @@ bool EngineMupdfRelayoutForThemeChange(EngineBase* engine) {
     if (!e || !e->_doc || e->pdfdoc) {
         return false;
     }
+    if (InterlockedCompareExchange(&e->reflowThemeRecountInProgress, 1, 0) != 0) {
+        return false;
+    }
+    defer {
+        InterlockedExchange(&e->reflowThemeRecountInProgress, 0);
+    };
 
     const char* filePath = engine->FilePath();
     if (str::IsEmpty(filePath)) {
@@ -5511,6 +5528,9 @@ static bool CountReflowChaptersUpToOneChapter(EngineMupdf* e, int targetChapter,
         }
     }
     DropReflowChapterPageCaches(e, ctx, ch, false);
+    if (forThemeRecount) {
+        MaybeReportThemeRecountProgress(e, ch + 1);
+    }
     if (notifyPath) {
         bool navPending = false;
         {

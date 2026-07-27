@@ -49,6 +49,18 @@ const stringsToAdd: Record<string, { cn: string; tw: string }> = {
     cn: "自定义...",
     tw: "自訂...",
   },
+  "Applying theme or document colors, re-pagination in progress…": {
+    cn: "正在应用主题或文档颜色，全书重新分页…",
+    tw: "正在套用主題或文件顏色，全書重新分頁…",
+  },
+  "Applying theme or document colors… chapter %d / %d": {
+    cn: "正在应用主题或文档颜色…第 %d / %d 章",
+    tw: "正在套用主題或文件顏色…第 %d / %d 章",
+  },
+  "Applying document colors, re-rendering pages…": {
+    cn: "正在应用文档颜色，重新渲染页面…",
+    tw: "正在套用文件顏色，重新渲染頁面…",
+  },
 };
 
 // Read the full list of supported language codes from TranslationLangs.cpp.

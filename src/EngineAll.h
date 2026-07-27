@@ -108,6 +108,8 @@ TempStr EngineMupdfGetPdfInfo(const char* path);
 TempStr EngineMupdfGetPdfOutline(const char* path);
 void EngineMupdfInvalidateDarkMode(EngineBase* engine);
 void EngineMupdfInvalidateSearchTextCache(EngineBase* engine);
+using EngineMupdfThemeRecountProgressFn = void (*)(int chaptersDone, int chapterTotal, void* user);
+void EngineMupdfSetThemeRecountProgressCb(EngineMupdfThemeRecountProgressFn cb, void* user);
 bool EngineMupdfRelayoutForThemeChange(EngineBase* engine);
 // Pause/resume the background reflow chapter loader so a UI-critical operation
 // (theme change, annotation edit) can access the document without being starved.

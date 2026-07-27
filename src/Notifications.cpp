@@ -42,6 +42,7 @@ Kind kNotifActionResponse = "responseToAction";
 Kind kNotifPageInfo = "pageInfoHelper";
 // can have multiple of those
 Kind kNotifAdHoc = "notifAdHoc";
+Kind kNotifThemeRelayout = "themeRelayout";
 
 constexpr int kPadding = 6;
 constexpr int kTopLeftMargin = 8;

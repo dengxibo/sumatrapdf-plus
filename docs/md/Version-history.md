@@ -16,6 +16,10 @@
   划词行为对齐上游：恢复原版字形区间算法，拖动超过系统阈值再更新选区，半透明高亮替代整帧正片叠底
 - fix right-to-left text drag excluding the anchor glyph (range now ends at startGlyph+1; drag end uses glyph under cursor)
   修复从右向左划词时选区不含按下字、左边界偏到左侧邻字的问题
+- fix right-to-left drag selecting two characters when only the anchor glyph is intended (immediate left neighbor)
+  修复从右向左只拖一格时误选两字、无法只选按下字的问题
+- show wait cursor and a progress notification when reflow EPUB/MOBI re-pagination runs for a theme or document color change (chapter x / n); large PDFs show a similar notice while pages re-render; ignore overlapping relayout on the same document
+  切换主题或文档颜色导致可重排电子书全书重算分页时显示等待光标与章进度通知；大 PDF 重着色时显示提示；同一文档重算进行中时忽略重复触发
 
 ## 3.7.18 (2026-07-26)
 

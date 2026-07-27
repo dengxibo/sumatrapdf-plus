@@ -149,16 +149,23 @@ static void ComputeGlyphRangeFromEndpoints(const TextSelection* ts, int* fromPag
     *fromPage = std::min(ts->startPage, ts->endPage);
     *toPage = std::max(ts->startPage, ts->endPage);
 
-    // Right-to-left on one page: endGlyph is inclusive at the pointer; anchor glyph must be included.
+    // Right-to-left on one page: include the anchor glyph in the range, but when the
+    // pointer is only on the immediate left neighbor select just the anchor (one CJK
+    // character). A wider left drag uses [endGlyph, startGlyph + 1).
     if (ts->startPage == ts->endPage && ts->startGlyph > ts->endGlyph) {
-        *fromGlyph = ts->endGlyph;
         int textLen = 0;
         ts->engine->GetTextForPage(ts->startPage, &textLen);
-        int anchorExclusive = ts->startGlyph + 1;
-        if (anchorExclusive > textLen) {
-            anchorExclusive = textLen;
+        int anchor = ts->startGlyph;
+        int toExclusive = anchor + 1;
+        if (toExclusive > textLen) {
+            toExclusive = textLen;
         }
-        *toGlyph = anchorExclusive;
+        if (ts->endGlyph == anchor - 1) {
+            *fromGlyph = anchor;
+        } else {
+            *fromGlyph = ts->endGlyph;
+        }
+        *toGlyph = toExclusive;
         if (*fromGlyph > *toGlyph) {
             std::swap(*fromGlyph, *toGlyph);
         }
