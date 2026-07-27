@@ -144,24 +144,42 @@ static int FindClosestGlyph(TextSelection* ts, int pageNo, double x, double y) {
     return result;
 }
 
-static void ComputeSelectionGlyphRange(const TextSelection* ts, int* fromPage, int* toPage, int* fromGlyph,
-                                       int* toGlyph) {
+static void ComputeGlyphRangeFromEndpoints(const TextSelection* ts, int* fromPage, int* toPage, int* fromGlyph,
+                                           int* toGlyph) {
     *fromPage = std::min(ts->startPage, ts->endPage);
     *toPage = std::max(ts->startPage, ts->endPage);
+
+    // Right-to-left on one page: endGlyph is inclusive at the pointer; anchor glyph must be included.
+    if (ts->startPage == ts->endPage && ts->startGlyph > ts->endGlyph) {
+        *fromGlyph = ts->endGlyph;
+        int textLen = 0;
+        ts->engine->GetTextForPage(ts->startPage, &textLen);
+        int anchorExclusive = ts->startGlyph + 1;
+        if (anchorExclusive > textLen) {
+            anchorExclusive = textLen;
+        }
+        *toGlyph = anchorExclusive;
+        if (*fromGlyph > *toGlyph) {
+            std::swap(*fromGlyph, *toGlyph);
+        }
+        return;
+    }
+
     *fromGlyph = (*fromPage == ts->endPage ? ts->endGlyph : ts->startGlyph);
     *toGlyph = (*fromPage == ts->endPage ? ts->startGlyph : ts->endGlyph);
     if (*fromPage == *toPage && *fromGlyph > *toGlyph) {
         std::swap(*fromGlyph, *toGlyph);
     }
-    // Dragging right-to-left: the start anchor on the right is inclusive, but the
-    // range uses an exclusive upper bound like forward selection.
-    if (*fromPage == *toPage && ts->startPage == ts->endPage && ts->startGlyph > ts->endGlyph) {
-        int textLen = 0;
-        ts->engine->GetTextForPage(*fromPage, &textLen);
-        if (*toGlyph == ts->startGlyph && ts->startGlyph < textLen) {
-            (*toGlyph)++;
+}
+
+static int GlyphIndexForDragEndpoint(TextSelection* ts, int pageNo, double x, double y) {
+    if (pageNo == ts->startPage && ts->startGlyph >= 0) {
+        int under = GlyphIndexUnderPoint(ts, pageNo, x, y);
+        if (under >= 0 && under < ts->startGlyph) {
+            return under;
         }
     }
+    return FindClosestGlyph(ts, pageNo, x, y);
 }
 
 static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length, StrVec* lines = nullptr) {
@@ -268,11 +286,15 @@ void TextSelection::StartAt(int pageNo, int glyphIx) {
 }
 
 void TextSelection::StartAt(int pageNo, double x, double y) {
-    StartAt(pageNo, FindClosestGlyph(this, pageNo, x, y));
+    int ix = GlyphIndexUnderPoint(this, pageNo, x, y);
+    if (ix < 0) {
+        ix = FindClosestGlyph(this, pageNo, x, y);
+    }
+    StartAt(pageNo, ix);
 }
 
 void TextSelection::SelectUpTo(int pageNo, double x, double y) {
-    SelectUpTo(pageNo, FindClosestGlyph(this, pageNo, x, y));
+    SelectUpTo(pageNo, GlyphIndexForDragEndpoint(this, pageNo, x, y));
 }
 
 void TextSelection::SelectUpTo(int pageNo, int glyphIx) {
@@ -290,7 +312,7 @@ void TextSelection::SelectUpTo(int pageNo, int glyphIx) {
 
     result.len = 0;
     int fromPage, toPage, fromGlyph, toGlyph;
-    ComputeSelectionGlyphRange(this, &fromPage, &toPage, &fromGlyph, &toGlyph);
+    ComputeGlyphRangeFromEndpoints(this, &fromPage, &toPage, &fromGlyph, &toGlyph);
 
     for (int page = fromPage; page <= toPage; page++) {
         int textLen;
@@ -531,5 +553,5 @@ WCHAR* TextSelection::ExtractText(const char* lineSep) {
 }
 
 void TextSelection::GetGlyphRange(int* fromPage, int* fromGlyph, int* toPage, int* toGlyph) const {
-    ComputeSelectionGlyphRange(this, fromPage, toPage, fromGlyph, toGlyph);
+    ComputeGlyphRangeFromEndpoints(this, fromPage, toPage, fromGlyph, toGlyph);
 }

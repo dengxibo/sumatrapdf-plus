@@ -48,3 +48,18 @@ The Bash tool runs under Git Bash (MSYS2), **not** cmd.exe. This causes critical
 - **NEVER use `dir`** — Use `ls` instead.
 - **For Windows-native commands**, wrap in `cmd /c "..."` explicitly.
 - In general, always use Unix-style commands and paths in the Bash tool.
+
+## Reflowable EPUB: theme and document color mode
+
+When changing **theme** or **document color mode** (Smart / Original / Match theme), MuPDF reflow EPUBs re-parse CSS and recount pages. Do **not** call `DisplayModel::Relayout` until the canvas viewport is valid (`MainWindow::UpdateCanvasSize` / `SetViewPortSize`).
+
+Both code paths must finish layout after the viewport is known:
+
+- `UpdateAfterThemeChange` (application theme)
+- `UpdateDocumentColors` with `updateReflowDocuments` (toolbar document color mode)
+
+Use `ReflowMupdfRelayoutUiAfterCanvasResize` in `SumatraPDF.cpp`. If `totalViewPortSize.dy <= 0` during `RefreshDisplayModelAfterThemeChange`, invalidate layout only and defer full relayout.
+
+Theme recount must hold `reflowCountLock` for the whole pass and warm each chapter (`fz_load_chapter_page` ch,0) before `fz_count_chapter_pages` so pagination matches new CSS.
+
+Full postmortem, symptoms, and regression checklist: [docs/epub-performance-checkpoint-2026-07-17.md](docs/epub-performance-checkpoint-2026-07-17.md) (section **2026-07-26**).

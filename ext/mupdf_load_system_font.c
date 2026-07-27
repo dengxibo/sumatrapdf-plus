@@ -1220,6 +1220,20 @@ static fz_font* load_windows_font(fz_context* ctx, const char* fontname, int bol
         if (!strncmp(clean_name, "Courier", 7)) {
             return NULL;
         }
+        if (!strcmp(clean_name, "Symbol") || !strcmp(clean_name, "ZapfDingbats")) {
+            return NULL;
+        }
+    }
+
+    {
+        const char* plus = strchr(fontname, '+');
+        if (plus) {
+            int b14len;
+            const char* suffix = pdf_clean_font_name(plus + 1);
+            if (fz_lookup_base14_font(ctx, suffix, &b14len)) {
+                return NULL;
+            }
+        }
     }
 
     if (needs_exact_metrics) {

@@ -146,6 +146,8 @@ u32 PdfDarkModeComputeProfileHash(const DarkModeProfile* profile);
 PdfDocumentColorMode GetPdfDocumentColorMode();
 void SetPdfDocumentColorMode(PdfDocumentColorMode mode);
 const char* PdfDocumentColorModeDescription(PdfDocumentColorMode mode);
+// Reflow EPUB/MOBI (MuPDF): Match-theme mode recolors the rendered page bitmap (including images).
+bool ReflowEbookUsesThemeBitmapRecolor();
 DarkModeOptions PdfDarkModeCurrentOptions();
 u32 PdfDarkModeComputeOptionsHash();
 DarkModePalette PdfDarkModeBuildPalette();

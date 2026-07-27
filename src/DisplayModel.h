@@ -215,6 +215,12 @@ struct DisplayModel : DocController {
     void OnMorePagesAvailable(bool updateUi = true, bool growAll = false);
     void OnMorePagesAvailablePreservingScroll(bool updateUi = true, bool growAll = false);
     void SyncPageCountWithEngine(bool updateUi = true);
+    // After reflow EPUB theme/CSS changes engine pagination; drop cached page
+    // sizes and incremental layout watermark so the next UI update relayouts.
+    void InvalidateReflowLayoutAfterEngineReparse();
+    void RelayoutAfterReflowEngineReparsePreservingScroll();
+    // Relayout after the main window viewport size is known (e.g. post RelayoutFrame).
+    void RelayoutPreservingAnchorPageAfterViewPortUpdate();
     float ZoomRealFromVirtualForPage(float zoomVirtual, int pageNo) const;
     SizeF PageSizeAfterRotation(int pageNo, bool fitToContent = false) const;
     void ChangeStartPage(int startPage);

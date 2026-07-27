@@ -89,6 +89,32 @@ static bool IsFixedPageDjVuEngine(EngineBase* engine) {
     return engine && engine->kind == kindEngineDjVu;
 }
 
+static bool IsReflowableMupdfEbookEngine(EngineBase* engine) {
+    if (!engine || engine->kind != kindEngineMupdf || engine->IsImageCollection()) {
+        return false;
+    }
+    return !str::EqI(engine->defaultExt, ".pdf") && !str::EqI(engine->defaultExt, ".xps");
+}
+
+bool ReflowEbookUsesThemeBitmapRecolor() {
+    return GetPdfDocumentColorMode() == PdfDocumentColorMode::Black && ThemeUsesDarkChrome();
+}
+
+static void ApplyDocumentColorModeToReflowMupdfProfile(DarkModeProfile* profile) {
+    switch (GetPdfDocumentColorMode()) {
+        case PdfDocumentColorMode::Light:
+            profile->mode = PageColorMode::Normal;
+            break;
+        case PdfDocumentColorMode::Black:
+            profile->mode = ReflowEbookUsesThemeBitmapRecolor() ? PageColorMode::LegacyInvert : PageColorMode::Normal;
+            break;
+        case PdfDocumentColorMode::Auto:
+        default:
+            profile->mode = PageColorMode::Normal;
+            break;
+    }
+}
+
 static void ApplyDocumentColorModeToFixedPageProfile(EngineBase* engine, DarkModeProfile* profile) {
     switch (GetPdfDocumentColorMode()) {
         case PdfDocumentColorMode::Light:
@@ -134,6 +160,8 @@ void BuildViewDarkModeProfile(EngineBase* engine, DarkModeProfile* profile) {
 
     if (IsFixedPageMupdfEngine(engine) || IsFixedPageDjVuEngine(engine)) {
         ApplyDocumentColorModeToFixedPageProfile(engine, profile);
+    } else if (IsReflowableMupdfEbookEngine(engine)) {
+        ApplyDocumentColorModeToReflowMupdfProfile(profile);
     }
 
     profile->hash = PdfDarkModeComputeProfileHash(profile);

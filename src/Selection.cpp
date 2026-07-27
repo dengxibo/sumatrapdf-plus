@@ -35,6 +35,7 @@
 #include "Toolbar.h"
 #include "Translations.h"
 #include "uia/Provider.h"
+#include "Canvas.h"
 
 static bool HighlightSameTextLine(const RectF& a, const RectF& b) {
     float lineH = std::max(a.dy, b.dy);
@@ -511,7 +512,12 @@ void PaintSelection(MainWindow* win, HDC hdc) {
     } else {
         // during text selection or after selection is done
         if (MouseAction::SelectingText == win->mouseAction) {
-            UpdateTextSelection(win);
+            // double/triple-click set the glyph range immediately; only extend
+            // on repaint when the pointer has actually moved (issue #5712).
+            int endX = win->selectionRect.x + win->selectionRect.dx;
+            int endY = win->selectionRect.y + win->selectionRect.dy;
+            bool dragged = IsDragDistance(win->selectionRect.x, endX, win->selectionRect.y, endY);
+            UpdateTextSelection(win, dragged);
             if (!win->CurrentTab()->selectionOnPage) {
                 // prevent the selection from disappearing while the
                 // user is still at it (OnSelectionStop removes it
@@ -561,7 +567,12 @@ void PaintSelection(MainWindow* win, HDC hdc) {
         }
     }
 
-    PaintMultiplyRectangles(hdc, win->canvasRc, rects, GetSelectionHighlightColor());
+    ParsedColor* parsedCol = GetPrefsColor(gGlobalPrefs->fixedPageUI.selectionColor);
+    u8 alpha = GetAlpha(parsedCol->col);
+    if (alpha == 0) {
+        alpha = kSelectionDefaultAlpha;
+    }
+    PaintTransparentRectangles(hdc, win->canvasRc, rects, parsedCol->col, alpha, 2);
 }
 
 static constexpr int kMaxReselectTextChars = 2000;
@@ -899,7 +910,8 @@ void OnSelectionStop(MainWindow* win, int x, int y, bool aborted) {
 
     // update the text selection before changing the selectionRect
     if (MouseAction::SelectingText == win->mouseAction) {
-        UpdateTextSelection(win);
+        bool dragged = IsDragDistance(win->selectionRect.x, x, win->selectionRect.y, y);
+        UpdateTextSelection(win, dragged);
     }
 
     win->selectionRect = Rect::FromXY(win->selectionRect.x, win->selectionRect.y, x, y);

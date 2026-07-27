@@ -82,6 +82,9 @@ static bool PagesNeedLayoutSync(const DisplayModel* dm) {
     if (!IsContinuous(dm->displayMode)) {
         return false;
     }
+    if (dm->reflowLayoutValidUpto == 0) {
+        return true;
+    }
     if (dm->reflowLayoutValidUpto > 0 && dm->reflowLayoutValidUpto < dm->pagesInfoCount) {
         return true;
     }
@@ -971,6 +974,69 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
     }
 }
 
+void DisplayModel::InvalidateReflowLayoutAfterEngineReparse() {
+    if (!pagesInfo || pagesInfoCount <= 0) {
+        reflowLayoutValidUpto = 0;
+        return;
+    }
+    for (int pageNo = 1; pageNo <= pagesInfoCount; pageNo++) {
+        PageInfo* pi = &pagesInfo[pageNo - 1];
+        pi->state = PageInfoState::Unknown;
+        pi->_mediaBox = {};
+        pi->contentBox = {};
+        pi->pos = {};
+        pi->failedToRender = false;
+        pi->renderFailCount = 0;
+    }
+    reflowLayoutValidUpto = 0;
+}
+
+void DisplayModel::RelayoutAfterReflowEngineReparsePreservingScroll() {
+    if (!pagesInfo) {
+        return;
+    }
+    int anchorPage = CurrentPageNo();
+    if (!ValidPageNo(anchorPage)) {
+        anchorPage = 1;
+    }
+    InvalidateReflowLayoutAfterEngineReparse();
+    SyncPageCountWithEngine(true);
+    Relayout(zoomVirtual, rotation);
+    if (ValidPageNo(anchorPage)) {
+        suppressTocSelectionUpdate = true;
+        GoToPage(anchorPage, 0);
+        suppressTocSelectionUpdate = false;
+    }
+    RecalcVisibleParts();
+    RenderVisibleParts();
+    if (cb) {
+        cb->UpdateScrollbars(canvasSize);
+    }
+    RepaintDisplay();
+}
+
+void DisplayModel::RelayoutPreservingAnchorPageAfterViewPortUpdate() {
+    if (!pagesInfo) {
+        return;
+    }
+    int anchorPage = CurrentPageNo();
+    if (!ValidPageNo(anchorPage)) {
+        anchorPage = 1;
+    }
+    Relayout(zoomVirtual, rotation);
+    if (ValidPageNo(anchorPage)) {
+        suppressTocSelectionUpdate = true;
+        GoToPage(anchorPage, 0);
+        suppressTocSelectionUpdate = false;
+    }
+    RecalcVisibleParts();
+    RenderVisibleParts();
+    if (cb) {
+        cb->UpdateScrollbars(canvasSize);
+    }
+    RepaintDisplay();
+}
+
 void DisplayModel::SyncPageCountWithEngine(bool updateUi) {
     if (!engine || !pagesInfo) {
         return;
@@ -1368,6 +1434,9 @@ RestartLayout:
         Rect pos;
         // don't add the full 0.5 for rounding to account for precision errors
         float zoom = GetZoomReal(pageNo);
+        if (zoom < 0.01f) {
+            zoom = getZoomSafe(this, pageNo, pi);
+        }
         pos.dx = (int)(pageSize.dx * zoom + 0.499);
         pos.dy = (int)(pageSize.dy * zoom + 0.499);
 

@@ -113,6 +113,10 @@ void SetPdfDocumentColorMode(PdfDocumentColorMode mode) {
     (void)mode;
 }
 
+bool ReflowEbookUsesThemeBitmapRecolor() {
+    return false;
+}
+
 bool PdfDarkModeIsDecorativeStripImage(const RectF& imgRect, const RectF& pageBounds) {
     (void)imgRect;
     (void)pageBounds;

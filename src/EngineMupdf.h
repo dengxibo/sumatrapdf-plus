@@ -216,6 +216,8 @@ class EngineMupdf : public EngineBase {
     // GetTickCount of the most recent page access; the warmer backs off while
     // the user is actively reading so chapter layouts don't stall scrolling
     volatile LONG reflowLastPageAccessMs = 0;
+    // Exclusive theme/document-color recount; blocks parallel CountReflowChaptersUpTo.
+    volatile LONG reflowThemeRecountInProgress = 0;
     // Sidecar .epubmeta cache (chapter starts, fragment table, toc pages).
     EpubMetaData epubMeta;
     bool epubMetaLoaded = false;

@@ -33,3 +33,47 @@
 - MuPDF 的 EPUB 布局缓存以章节为单位，失效策略也应以章节为单位，避免合集书重复整章布局。
 - 回归测试至少覆盖：超大多章节 EPUB、单一超大章节 EPUB、快速连续切换主题／文档色彩模式、切回文档原生、TOC 渐进加载期间操作、划词和朗读。
 
+## 可重排 EPUB：主题／文档颜色切换后出现大段空白（2026-07-26）
+
+记录时间：2026-07-26（修复萤火虫等大合集 EPUB 在「特洛伊战争背后的真相」与「艺术与文化」等目录段之间切换文档颜色模式后出现空白页，且往往要再切一次才恢复。）
+
+### 现象
+
+- 第一次切换**文档颜色模式**（工具栏：自动 / 原稿 / 跟随主题）或应用主题 CSS 后，连续阅读模式下中间出现大段空白；再切一次颜色或主题后往往正常。
+- 调试日志中可见：`DisplayModel` 在引擎重排后 `pos.dy == 0`、`canvasDy` 仅等于视口高度（例如 ~976），而引擎 `PageMediabox` 仍正常。
+
+### 根因（勿再犯）
+
+1. **排版顺序错误（主因）**  
+   `EngineMupdfRelayoutForThemeChange` 之后会调用 `RefreshDisplayModelAfterThemeChange` → `Relayout` / `CalcZoomReal`。若此时尚未执行 `MainWindow::UpdateCanvasSize()`（`DisplayModel::SetViewPortSize`），视口宽高为 0，`ZoomRealFromVirtualForPage` 返回 0，连续模式下每页 `pos.dy` 为 0，画布高度不随全书页数增长，滚动位置与内容错位 → 表现为空白带。  
+   **文档颜色**走 `UpdateDocumentColors` → `ApplyDocumentColorModeChangeToAllTabs`，**不会**经过 `UpdateAfterThemeChange`；若只在一处补了「视口就绪后再排版」，另一路径仍会复发。
+
+2. **章节页码表重算竞态**  
+   主题重算会清空 `reflowChapterStartPage` 并重新 `CountReflowChaptersUpTo`。后台渐进加载线程若在 `reflowCountLock` 释放间隙继续往映射里 append，会导致第一次重算分页与 `LoadReflowPageMediabox` 章节索引不一致。重算期间应持有 `reflowCountLock`，并设 `reflowThemeRecountInProgress` 让其它计数方等待或退让。
+
+3. **重算后分页仍用旧布局计数**  
+   仅 `fz_purge_stored_html` 不足以保证 `fz_count_chapter_pages` 立即反映新 CSS。主题重算按章计数前应对该章 `fz_purge_stored_html_chapter` 并 `fz_load_chapter_page(..., 0)` 再计数，否则第一次切换仍可能保留旧 `chapterStarts`（第二次切换时因阅读过程已暖章而「碰巧」正确）。
+
+### 正确做法（实现约定）
+
+| 步骤 | 要求 |
+|------|------|
+| 引擎 CSS / 分页 | `EngineMupdfRelayoutForThemeChange` → `RecountReflowPageMapForThemeChange`：独占 `reflowCountLock`；按章 purge + warm 后计数；再同步 mediabox。 |
+| UI 首次重排 | `RefreshDisplayModelAfterThemeChange`：若 `totalViewPortSize.dy <= 0`，只做 `InvalidateReflowLayoutAfterEngineReparse` + `SyncPageCountWithEngine`，**不要**在此调用完整 `Relayout`。 |
+| UI 最终重排 | 在 `RelayoutFrame` + `UpdateCanvasSize` 之后，对当前窗口 reflow MuPDF EPUB 调用 `DisplayModel::RelayoutPreservingAnchorPageAfterViewPortUpdate()`（封装在 `ReflowMupdfRelayoutUiAfterCanvasResize`）。 |
+| 两条入口都必须调用 | **`UpdateAfterThemeChange`**（应用主题）与 **`UpdateDocumentColors`**（文档颜色模式，`updateReflowDocuments == true`）在 EPUB 重排后都要走上述「画布尺寸已知后再排版」。 |
+| 防御 | `DisplayModel::Relayout` 中若 `GetZoomReal` ≈ 0，可用 `getZoomSafe` 避免页高为 0；不能替代「视口就绪后再排版」。 |
+
+### 相关代码（便于检索）
+
+- `SumatraPDF.cpp`：`ReflowMupdfRelayoutUiAfterCanvasResize`、`RefreshDisplayModelAfterThemeChange`、`UpdateDocumentColors`、`UpdateAfterThemeChange`
+- `DisplayModel.cpp`：`RelayoutAfterReflowEngineReparsePreservingScroll`、`RelayoutPreservingAnchorPageAfterViewPortUpdate`
+- `EngineMupdf.cpp`：`RecountReflowPageMapForThemeChange`、`CountReflowChaptersUpTo`（`forThemeRecount`）
+
+### 回归检查
+
+- 大合集 EPUB，连续模式，滚到目录段交界（多章分页变化大的区域）。
+- **只切换一次**文档颜色模式（自动 ↔ 跟随主题 ↔ 原稿），确认无大段空白、无需第二次切换。
+- 切换应用浅色/深色主题（若会触发 EPUB CSS 重排）同样测一次。
+- 渐进加载未完成时切换颜色/主题（若仍允许）不应崩溃或 TOC 错乱。
+

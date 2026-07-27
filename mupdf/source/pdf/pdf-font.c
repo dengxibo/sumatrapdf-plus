@@ -165,6 +165,27 @@ const char *pdf_clean_font_name(const char *fontname)
 	return fontname;
 }
 
+static const char *
+pdf_get_base14_name(fz_context *ctx, const char *fontname)
+{
+	const char *clean;
+	const char *plus;
+	int len;
+
+	clean = pdf_clean_font_name(fontname);
+	if (fz_lookup_base14_font(ctx, clean, &len))
+		return clean;
+
+	plus = strchr(fontname, '+');
+	if (plus)
+	{
+		clean = pdf_clean_font_name(plus + 1);
+		if (fz_lookup_base14_font(ctx, clean, &len))
+			return clean;
+	}
+	return NULL;
+}
+
 /*
  * FreeType and Rendering glue
  */
@@ -378,10 +399,15 @@ pdf_load_builtin_font(fz_context *ctx, pdf_font_desc *fontdesc, const char *font
 {
 	FT_Face face;
 	const char *clean_name = pdf_clean_font_name(fontname);
-	if (clean_name == fontname)
+	int len;
+
+	if (clean_name == fontname && !fz_lookup_base14_font(ctx, fontname, &len))
 		clean_name = "Times-Roman";
 
-	fontdesc->font = fz_load_system_font(ctx, fontname, 0, 0, !has_descriptor);
+	/* URW base14 Symbol has extensible matrix bracket glyphs (bracketlefttp etc.). */
+	fontdesc->font = NULL;
+	if (strcmp(clean_name, "Symbol") && strcmp(clean_name, "ZapfDingbats"))
+		fontdesc->font = fz_load_system_font(ctx, fontname, 0, 0, !has_descriptor);
 	if (!fontdesc->font)
 	{
 		const unsigned char *data;
@@ -1486,16 +1512,30 @@ pdf_load_font_descriptor(fz_context *ctx, pdf_document *doc, pdf_font_desc *font
 			fz_rethrow_if(ctx, FZ_ERROR_SYSTEM);
 			fz_report_error(ctx);
 			fz_warn(ctx, "ignored error when loading embedded font; attempting to load system font");
-			if (!iscidfont && fontname != pdf_clean_font_name(fontname))
-				pdf_load_builtin_font(ctx, fontdesc, fontname, 1);
+			if (!iscidfont)
+			{
+				const char *base14 = pdf_get_base14_name(ctx, fontname);
+
+				if (base14)
+					pdf_load_builtin_font(ctx, fontdesc, base14, 1);
+				else
+					pdf_load_system_font(ctx, fontdesc, fontname, collection);
+			}
 			else
 				pdf_load_system_font(ctx, fontdesc, fontname, collection);
 		}
 	}
 	else
 	{
-		if (!iscidfont && fontname != pdf_clean_font_name(fontname))
-			pdf_load_builtin_font(ctx, fontdesc, fontname, 1);
+		if (!iscidfont)
+		{
+			const char *base14 = pdf_get_base14_name(ctx, fontname);
+
+			if (base14)
+				pdf_load_builtin_font(ctx, fontdesc, base14, 1);
+			else
+				pdf_load_system_font(ctx, fontdesc, fontname, collection);
+		}
 		else
 			pdf_load_system_font(ctx, fontdesc, fontname, collection);
 	}

@@ -4,6 +4,18 @@
 
 - rename advanced setting `PdfDocumentColorMode` to `DocumentColorMode` with clearer values `smart`, `original`, and `theme`; migrate legacy names on load
   将高级设置 `PdfDocumentColorMode` 重命名为 `DocumentColorMode`，取值改为 smart / original / theme，加载时自动迁移旧配置
+- fix reflow EPUB blank gaps after the first document color mode or theme switch: relayout only after `UpdateCanvasSize`, serialize theme page-map recount, warm chapters before recount; see `docs/epub-performance-checkpoint-2026-07-17.md` (2026-07-26)
+  修复可重排 EPUB 首次切换文档颜色/主题后出现大段空白：须在画布视口就绪后再排版，主题重算串行化并按章暖布局后重数页码
+- reflow EPUB/MOBI in dark UI with document color mode **Match theme**: recolor the rendered page bitmap so illustrations follow theme colors (not only CSS text/background)
+  暗黑界面下可重排电子书选择「匹配主题」文档颜色时，对整页位图（含插图）做主题反色，与正文一致
+- fix matrix outer brackets in some textbook PDFs: use built-in Symbol for subset names like `YFLGZT+Symbol` (extensible bracket glyphs), not Windows Symbol.ttf
+  修复部分教材 PDF 矩阵外括号显示为方括号：对子集 Symbol 字体使用内置 Base14 Symbol（含可伸缩矩阵括号字形）
+- fix PDF URI links (e.g. DOI on references pages) not showing a hand cursor until the page was fully parsed: load link annotations on hover for PDF as for EPUB
+  修复部分 PDF 外链（如参考文献页 DOI）在仅快速渲染时无法手型点击：悬停时加载链接注释
+- align text selection drag with upstream SumatraPDF: same FindClosestGlyph range logic, IsDragDistance before updating selection, semi-transparent highlight instead of per-frame multiply blend
+  划词行为对齐上游：恢复原版字形区间算法，拖动超过系统阈值再更新选区，半透明高亮替代整帧正片叠底
+- fix right-to-left text drag excluding the anchor glyph (range now ends at startGlyph+1; drag end uses glyph under cursor)
+  修复从右向左划词时选区不含按下字、左边界偏到左侧邻字的问题
 
 ## 3.7.18 (2026-07-26)
 

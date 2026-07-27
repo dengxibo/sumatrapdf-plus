@@ -30,6 +30,7 @@ void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, fl
 #include "EngineBase.h"
 #include "MdConvert.h"
 #include "EngineMupdf.h"
+#include <stdio.h>
 #include "EngineAll.h"
 #include "EbookBase.h"
 #include "EbookDoc.h"
@@ -3602,8 +3603,9 @@ static TempStr BuildMarkdownUserCss(const char* nameHint, const char* filePath, 
     bool darkTheme = IsDarkThemeSelected();
     PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
     bool injectThemeColors = docMode != PdfDocumentColorMode::Light;
+    bool reflowThemeBitmapRecolor = ReflowEbookUsesThemeBitmapRecolor();
     bool useEyeCareLightCss = injectThemeColors && !darkTheme && !ThemeUsesOriginalPageColors();
-    bool useDarkCss = injectThemeColors && darkTheme;
+    bool useDarkCss = injectThemeColors && darkTheme && !reflowThemeBitmapRecolor;
 
     TempStr css = nullptr;
     if (useDarkCss) {
@@ -3734,8 +3736,9 @@ static TempStr BuildMupdfReflowUserCss(const char* nameHint, const char* filePat
         bool darkTheme = IsDarkThemeSelected();
         PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
         bool injectThemeColors = docMode != PdfDocumentColorMode::Light;
+        bool reflowThemeBitmapRecolor = ReflowEbookUsesThemeBitmapRecolor();
         bool useEyeCareLightCss = injectThemeColors && !darkTheme && !ThemeUsesOriginalPageColors();
-        bool useDarkCss = injectThemeColors && darkTheme;
+        bool useDarkCss = injectThemeColors && darkTheme && !reflowThemeBitmapRecolor;
 
         // All ebooks: Literata primary; CJK glyphs fall back to songti via load_windows_fallback_font.
         static const char* kEpubFontCss = R"(html, body,
@@ -4865,31 +4868,86 @@ static bool IsLinearizedFile(EngineMupdf* e) {
     return isLinear;
 }
 
-static RectF LoadNonPdfPageMediabox(EngineMupdf* e, int pageIdx) {
+static void AcquireReflowUiDocLock(EngineMupdf* e);
+static void ReleaseReflowUiDocLock(EngineMupdf* e);
+
+static RectF LoadReflowPageMediabox(EngineMupdf* e, int pageNo) {
     auto ctx = e->Ctx();
     fz_rect mbox{};
     fz_page* page = nullptr;
     fz_var(page);
     fz_var(mbox);
-    fz_try(ctx) {
-        page = fz_load_page(ctx, e->_doc, pageIdx);
-        mbox = fz_bound_page(ctx, page);
-    }
-    fz_always(ctx) {
-        fz_drop_page(ctx, page);
-    }
-    fz_catch(ctx) {
-        fz_report_error(ctx);
+
+    int reflowCh = -1;
+    int reflowPageInChapter = 0;
+    bool pageLoaded = false;
+
+    auto loadOnce = [&]() {
+        page = nullptr;
         mbox = {};
+        pageLoaded = false;
+        fz_try(ctx) {
+            if (reflowCh >= 0) {
+                page = fz_load_chapter_page(ctx, e->_doc, reflowCh, reflowPageInChapter);
+            } else {
+                page = fz_load_page(ctx, e->_doc, pageNo - 1);
+            }
+            if (page) {
+                mbox = fz_bound_page(ctx, page);
+                pageLoaded = true;
+            }
+        }
+        fz_always(ctx) {
+            fz_drop_page(ctx, page);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+            mbox = {};
+            pageLoaded = false;
+        }
+    };
+
+    {
+        ScopedCritSec scope(&e->pagesLock);
+        reflowCh = ReflowChapterIndexForPageNo(e, pageNo);
+        if (reflowCh >= 0 && e->reflowChapterStartPage.isValidIndex(reflowCh)) {
+            reflowPageInChapter = (pageNo - 1) - e->reflowChapterStartPage[reflowCh];
+            if (reflowPageInChapter < 0) {
+                reflowPageInChapter = 0;
+            }
+        } else {
+            reflowCh = -1;
+        }
     }
-    if (fz_is_empty_rect(mbox)) {
-        fz_warn(ctx, "cannot find page size for page %d", pageIdx);
+
+    AcquireReflowUiDocLock(e);
+    {
+        ScopedCritSec scope(&e->docLock);
+        loadOnce();
+        if (!pageLoaded && reflowCh >= 0) {
+            fz_try(ctx) {
+                fz_purge_stored_html_chapter(ctx, e->_doc, reflowCh);
+            }
+            fz_catch(ctx) {
+                fz_report_error(ctx);
+            }
+            loadOnce();
+        }
+    }
+    ReleaseReflowUiDocLock(e);
+
+    if (!pageLoaded || fz_is_empty_rect(mbox)) {
+        fz_warn(ctx, "cannot find page size for page %d", pageNo);
         mbox.x0 = 0;
         mbox.y0 = 0;
         mbox.x1 = e->reflowLayoutW;
         mbox.y1 = e->reflowLayoutH;
     }
     return ToRectF(mbox);
+}
+
+static RectF LoadNonPdfPageMediabox(EngineMupdf* e, int pageIdx) {
+    return LoadReflowPageMediabox(e, pageIdx + 1);
 }
 
 static void FinishNonPDFLoading(EngineMupdf* e) {
@@ -5139,12 +5197,19 @@ static void AcquireReflowUiDocLock(EngineMupdf* e);
 static void ReleaseReflowUiDocLock(EngineMupdf* e);
 static void KickReflowLayoutWarmAsync(EngineMupdf* e);
 static int CountReflowChaptersUpTo(EngineMupdf* e, int targetChapter, const char* notifyPath, bool isBackground,
-                                   fz_context* ctxOverride);
+                                   fz_context* ctxOverride, bool forThemeRecount = false);
 
 static bool RecountReflowPageMapForThemeChange(EngineMupdf* e, fz_context* ctx) {
     if (!e || !ctx || e->pdfdoc) {
         return false;
     }
+    InterlockedExchange(&e->reflowThemeRecountInProgress, 1);
+    defer {
+        InterlockedExchange(&e->reflowThemeRecountInProgress, 0);
+    };
+    // Block the background chapter counter from appending after we clear the map.
+    // reflowCountLock is normally per-chapter; theme recount holds it for the whole pass.
+    ScopedCritSec countScope(&e->reflowCountLock);
     fz_try(ctx) {
         fz_purge_stored_html(ctx, e->_doc);
     }
@@ -5158,7 +5223,7 @@ static bool RecountReflowPageMapForThemeChange(EngineMupdf* e, fz_context* ctx) 
         e->reflowPagesCounted = 0;
         InterlockedExchange(&e->reflowChaptersCounted, 0);
     }
-    int total = CountReflowChaptersUpTo(e, -1, nullptr, /*isBackground*/ false, ctx);
+    int total = CountReflowChaptersUpTo(e, -1, nullptr, /*isBackground*/ false, ctx, /*forThemeRecount*/ true);
     if (total <= 0) {
         return false;
     }
@@ -5181,6 +5246,8 @@ static bool RecountReflowPageMapForThemeChange(EngineMupdf* e, fz_context* ctx) 
         FzPageInfo* pi = e->pages[i];
         if (pi) {
             pi->reflowThemeCssEpoch = e->reflowThemeCssEpoch;
+            pi->mediabox = LoadReflowPageMediabox(e, i + 1);
+            pi->pageNo = i + 1;
         }
     }
     e->InvalidateTocTree();
@@ -5370,10 +5437,113 @@ struct ReflowRenderLock {
 // cooperate: whichever thread grabs the lock counts the next chapter and both
 // advance the same shared reflowChaptersCounted, without double-counting or
 // corrupting reflowChapterStartPage. Returns total pages counted so far.
+// When forThemeRecount is true, the caller must already hold reflowCountLock.
+static bool CountReflowChaptersUpToOneChapter(EngineMupdf* e, int targetChapter, fz_context* ctx,
+                                               const char* notifyPath, bool forThemeRecount) {
+    if (e->reflowNumChapters == 0) {
+        int numChapters = 0;
+        {
+            WaitForReflowUiDocLock(e);
+            ScopedCritSec scope(&e->docLock);
+            fz_try(ctx) {
+                numChapters = fz_count_chapters(ctx, e->_doc);
+            }
+            fz_catch(ctx) {
+                fz_report_error(ctx);
+                numChapters = 0;
+            }
+        }
+        if (numChapters <= 0) {
+            return true;
+        }
+        e->reflowNumChapters = numChapters;
+    }
+
+    int target = targetChapter;
+    if (target < 0 || target >= e->reflowNumChapters) {
+        target = e->reflowNumChapters - 1;
+    }
+    int ch = (int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0);
+    if (ch > target) {
+        return true;
+    }
+
+    int chapterPages = 0;
+    int rawChapterPages = 0;
+    {
+        WaitForReflowUiDocLock(e);
+        ScopedCritSec scope(&e->docLock);
+        if (forThemeRecount) {
+            fz_try(ctx) {
+                fz_purge_stored_html_chapter(ctx, e->_doc, ch);
+            }
+            fz_catch(ctx) {
+                fz_report_error(ctx);
+            }
+            fz_page* warmPage = nullptr;
+            fz_var(warmPage);
+            fz_try(ctx) {
+                warmPage = fz_load_chapter_page(ctx, e->_doc, ch, 0);
+            }
+            fz_always(ctx) {
+                fz_drop_page(ctx, warmPage);
+            }
+            fz_catch(ctx) {
+                fz_report_error(ctx);
+            }
+        }
+        fz_try(ctx) {
+            rawChapterPages = fz_count_chapter_pages(ctx, e->_doc, ch);
+            chapterPages = EffectiveReflowChapterPageCount(ctx, e->_doc, ch, rawChapterPages);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+            chapterPages = 0;
+            rawChapterPages = 0;
+        }
+    }
+    int startPage = e->reflowPagesCounted;
+    AppendReflowChapterStartPage(e, startPage, ch + 1);
+    if (chapterPages > 0) {
+        e->reflowPagesCounted = startPage + chapterPages;
+        if (e->reflowPagesCounted > e->pageCount) {
+            GrowReflowPageCount(e, e->reflowPagesCounted);
+        }
+    }
+    DropReflowChapterPageCaches(e, ctx, ch, false);
+    if (notifyPath) {
+        bool navPending = false;
+        {
+            ScopedCritSec navScope(&e->pendingReflowNavLock);
+            navPending = e->pendingReflowNavUri != nullptr && e->pendingReflowNavChapter >= 0;
+        }
+        if (navPending || ((ch + 1) % kReflowNotifyEveryNChapters) == 0 || ch >= target) {
+            NotifyEbookPagesLoadingProgress(notifyPath, false);
+        }
+    }
+    return false;
+}
+
 static int CountReflowChaptersUpTo(EngineMupdf* e, int targetChapter, const char* notifyPath, bool isBackground,
-                                   fz_context* ctxOverride) {
+                                   fz_context* ctxOverride, bool forThemeRecount) {
     if (!e) {
         return 0;
+    }
+    if (InterlockedCompareExchange(&e->reflowThemeRecountInProgress, 0, 0) != 0 && !forThemeRecount) {
+        if (notifyPath != nullptr) {
+            return e->reflowPagesCounted;
+        }
+        if (isBackground) {
+            while (InterlockedCompareExchange(&e->reflowThemeRecountInProgress, 0, 0) != 0 &&
+                   InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) == 0) {
+                Sleep(1);
+            }
+            if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+                return e->reflowPagesCounted;
+            }
+        } else {
+            return e->reflowPagesCounted;
+        }
     }
     auto ctx = ctxOverride ? ctxOverride : e->Ctx();
     for (;;) {
@@ -5393,81 +5563,25 @@ static int CountReflowChaptersUpTo(EngineMupdf* e, int targetChapter, const char
                 break;
             }
         }
-        ScopedCritSec countScope(&e->reflowCountLock);
-
-        if (e->reflowNumChapters == 0) {
-            int numChapters = 0;
-            {
-                WaitForReflowUiDocLock(e);
-                ScopedCritSec scope(&e->docLock);
-                fz_try(ctx) {
-                    numChapters = fz_count_chapters(ctx, e->_doc);
-                }
-                fz_catch(ctx) {
-                    fz_report_error(ctx);
-                    numChapters = 0;
-                }
-            }
-            if (numChapters <= 0) {
-                break;
-            }
-            e->reflowNumChapters = numChapters;
+        bool done = false;
+        if (forThemeRecount) {
+            done = CountReflowChaptersUpToOneChapter(e, targetChapter, ctx, notifyPath, true);
+        } else {
+            ScopedCritSec countScope(&e->reflowCountLock);
+            done = CountReflowChaptersUpToOneChapter(e, targetChapter, ctx, notifyPath, false);
         }
-
-        int target = targetChapter;
-        if (target < 0 || target >= e->reflowNumChapters) {
-            target = e->reflowNumChapters - 1;
-        }
-        int ch = (int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0);
-        if (ch > target) {
+        if (done) {
             break;
         }
-
-        int chapterPages = 0;
-        int rawChapterPages = 0;
-        {
-            WaitForReflowUiDocLock(e);
-            ScopedCritSec scope(&e->docLock);
-            fz_try(ctx) {
-                rawChapterPages = fz_count_chapter_pages(ctx, e->_doc, ch);
-                chapterPages = EffectiveReflowChapterPageCount(ctx, e->_doc, ch, rawChapterPages);
-            }
-            fz_catch(ctx) {
-                fz_report_error(ctx);
-                chapterPages = 0;
-                rawChapterPages = 0;
-            }
-        }
-        // Always record a start page per chapter (even empty ones) so
-        // reflowChapterStartPage[ch] stays aligned with the chapter index and
-        // counting can resume cleanly from reflowChaptersCounted.
-        int startPage = e->reflowPagesCounted;
-        AppendReflowChapterStartPage(e, startPage, ch + 1);
-        if (chapterPages > 0) {
-            e->reflowPagesCounted = startPage + chapterPages;
-            if (e->reflowPagesCounted > e->pageCount) {
-                GrowReflowPageCount(e, e->reflowPagesCounted);
-            }
-        }
-        // Counting lays out the chapter in MuPDF's store; drop any UI page
-        // caches from an earlier on-demand layout so the next paint matches.
-        DropReflowChapterPageCaches(e, ctx, ch, false);
-        if (notifyPath) {
-            bool navPending = false;
-            {
-                ScopedCritSec navScope(&e->pendingReflowNavLock);
-                navPending = e->pendingReflowNavUri != nullptr && e->pendingReflowNavChapter >= 0;
-            }
-            if (navPending || ((ch + 1) % kReflowNotifyEveryNChapters) == 0 || ch >= target) {
-                NotifyEbookPagesLoadingProgress(notifyPath, false);
-            }
+        if (forThemeRecount) {
+            continue;
         }
         bool navPendingYield = false;
         {
             ScopedCritSec navScope(&e->pendingReflowNavLock);
             navPendingYield = e->pendingReflowNavUri != nullptr && e->pendingReflowNavChapter >= 0;
         }
-        if (!navPendingYield && ((ch + 1) % kReflowChaptersPerYield) == 0) {
+        if (!navPendingYield && ((int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0) % kReflowChaptersPerYield) == 0) {
             Sleep(0);
         }
     }
@@ -6634,6 +6748,13 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
         return pageInfo;
     }
 
+    if (!pdfdoc) {
+        fz_rect mbox = fz_bound_page(ctx, page);
+        if (!fz_is_empty_rect(mbox)) {
+            pageInfo->mediabox = ToRectF(mbox);
+        }
+    }
+
     // build annotations info on first access
     if (pdfdoc && pageInfo->annotations.Size() == 0) {
         fz_try(ctx) {
@@ -6727,17 +6848,34 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
 }
 
 RectF EngineMupdf::PageMediabox(int pageNo) {
-    ScopedCritSec scope(&pagesLock);
-    int n = pages.Size();
-    ReportIf(pageNo < 1 || pageNo > pageCount);
-    if (pageNo < 1 || pageNo > n) {
-        return {};
+    FzPageInfo* pi = nullptr;
+    bool measure = false;
+  {
+        ScopedCritSec scope(&pagesLock);
+        int n = pages.Size();
+        ReportIf(pageNo < 1 || pageNo > pageCount);
+        if (pageNo < 1 || pageNo > n) {
+            return {};
+        }
+        pi = pages[pageNo - 1];
+        if (!pi) {
+            return {};
+        }
+        if (!pdfdoc && pi->mediabox.IsEmpty()) {
+            measure = true;
+        } else {
+            return pi->mediabox;
+        }
     }
-    FzPageInfo* pi = pages[pageNo - 1];
-    if (!pi) {
-        return {};
+    if (measure && pi) {
+        RectF box = LoadReflowPageMediabox(this, pageNo);
+        ScopedCritSec scope(&pagesLock);
+        if (pageNo >= 1 && pageNo <= pages.Size() && pages[pageNo - 1] == pi) {
+            pi->mediabox = box;
+        }
+        return box;
     }
-    return pi->mediabox;
+    return {};
 }
 
 // returns a kept reference to the cached "View" display list for the page,
@@ -7311,9 +7449,10 @@ IPageElement* EngineMupdf::GetElementAtPos(int pageNo, PointF pt) {
 
 void EngineMupdfEnsurePageLinksForHitTest(EngineBase* engine, int pageNo) {
     EngineMupdf* e = AsEngineMupdf(engine);
-    if (!e || e->pdfdoc || pageNo < 1 || pageNo > e->pageCount) {
+    if (!e || pageNo < 1 || pageNo > e->pageCount) {
         return;
     }
+    // Rendering uses loadQuick with loadLinks false; populate link hit-test data on first hover.
     e->GetFzPageInfo(pageNo, true, nullptr, /*loadLinks*/ true);
 }
 

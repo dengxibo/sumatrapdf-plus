@@ -2510,17 +2510,54 @@ static void ReloadTocUiAfterReflowReparse(MainWindow* win, WindowTab* tab, bool 
     }
 }
 
-// Theme toggles only user CSS colors; page breaks stay the same. Re-layout only
-// the visible area: synchronizing every page in a large continuous EPUB makes a
-// color switch appear to hang while it needlessly walks the whole book.
+static bool IsReflowMupdfEpubEngine(EngineBase* engine) {
+    return engine && engine->kind == kindEngineMupdf && !str::EqI(engine->defaultExt, ".pdf");
+}
+
+// Reflow EPUB CSS/theme updates relayout in ApplyThemeChangeToTab before the main
+// window canvas size is refreshed; run again after RelayoutFrame/UpdateCanvasSize.
+static void ReflowMupdfRelayoutUiAfterCanvasResize(MainWindow* win) {
+    if (!win || !win->IsDocLoaded()) {
+        return;
+    }
+    win->lastLayoutState = {};
+    RelayoutFrame(win);
+    win->UpdateCanvasSize();
+    DisplayModel* dm = win->AsFixed();
+    if (!dm || EngineIsProgressiveEbookLoading(dm->GetEngine())) {
+        return;
+    }
+    if (!IsReflowMupdfEpubEngine(dm->GetEngine())) {
+        return;
+    }
+    dm->RelayoutPreservingAnchorPageAfterViewPortUpdate();
+}
+
 static void RefreshDisplayModelAfterThemeChange(DisplayModel* dm, bool updateUi) {
     if (!dm || !dm->pagesInfo) {
         return;
     }
-    dm->SyncPageCountWithEngine(updateUi);
+    EngineBase* engine = dm->GetEngine();
+    bool reflowMupdf = IsReflowMupdfEpubEngine(engine);
     if (!updateUi) {
+        if (reflowMupdf) {
+            dm->InvalidateReflowLayoutAfterEngineReparse();
+        }
+        dm->SyncPageCountWithEngine(false);
         return;
     }
+    // EPUB reflow re-pagination changes every page height; incremental layout or
+    // preserving raw canvas Y leaves huge blank gaps after a color-mode switch.
+    if (reflowMupdf) {
+        if (dm->totalViewPortSize.dy <= 0) {
+            dm->InvalidateReflowLayoutAfterEngineReparse();
+            dm->SyncPageCountWithEngine(true);
+        } else {
+            dm->RelayoutAfterReflowEngineReparsePreservingScroll();
+        }
+        return;
+    }
+    dm->SyncPageCountWithEngine(updateUi);
     dm->RecalcVisibleParts();
     dm->RenderVisibleParts();
     if (dm->cb) {
@@ -2551,7 +2588,7 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
             ClearTocBox(win);
         }
         gRenderCache->CancelRendering(dm);
-        gRenderCache->KeepForColorTransition(dm);
+        gRenderCache->FreeForDisplayModel(dm);
         if (!EngineMupdfRelayoutForThemeChange(engine)) {
             logfa("ApplyThemeChangeToTab: in-place reflow theme CSS update failed\n");
         }
@@ -2641,12 +2678,12 @@ void UpdateAfterThemeChange() {
         UpdateToolbarAfterThemeChange(win);
         // Rebar border style changes with dark/light chrome and alters toolbar
         // height; RelayoutFrame must run so the canvas moves with the toolbar.
-        win->lastLayoutState = {};
-        RelayoutFrame(win);
-        win->UpdateCanvasSize();
+        ReflowMupdfRelayoutUiAfterCanvasResize(win);
         DisplayModel* dm = win->AsFixed();
         if (dm && !EngineIsProgressiveEbookLoading(dm->GetEngine())) {
-            dm->OnMorePagesAvailablePreservingScroll(true, true);
+            if (!IsReflowMupdfEpubEngine(dm->GetEngine())) {
+                dm->OnMorePagesAvailablePreservingScroll(true, true);
+            }
         } else if (dm) {
             dm->RecalcVisibleParts();
             if (dm->cb) {
@@ -3959,7 +3996,7 @@ static void ApplyDocumentColorModeChangeToTab(MainWindow* win, WindowTab* tab) {
         DisplayModel* dm = tab->AsFixed();
         if (dm) {
             gRenderCache->CancelRendering(dm);
-            gRenderCache->KeepForColorTransition(dm);
+            gRenderCache->FreeForDisplayModel(dm);
         }
         EngineMupdfRelayoutForThemeChange(engine);
         if (dm) {
@@ -4039,16 +4076,17 @@ void UpdateDocumentColors(bool rerender, bool updateReflowDocuments) {
             }
             EngineMupdfInvalidateDarkMode(dm->GetEngine());
             gRenderCache->CancelRendering(dm);
-            if (IsReflowableMupdfForTheme(dm->GetEngine())) {
-                gRenderCache->KeepForColorTransition(dm);
-            } else {
-                gRenderCache->FreeForDisplayModel(dm);
-            }
+            gRenderCache->FreeForDisplayModel(dm);
         }
     }
 
     if (updateReflowDocuments) {
         ApplyDocumentColorModeChangeToAllTabs();
+        for (MainWindow* win : gWindows) {
+            if (win->CurrentTab() && win->CurrentTab()->IsDocLoaded()) {
+                ReflowMupdfRelayoutUiAfterCanvasResize(win);
+            }
+        }
     }
 
     if (rerender) {
