@@ -1597,8 +1597,8 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
     }
 
     if (win->showSelection) {
-        /* if we had a selection and this was just a click, hide the selection */
-        ClearSearchResult(win);
+        DeleteOldSelectionInfo(win, true);
+        ScheduleRepaint(win, 0);
         return;
     }
 

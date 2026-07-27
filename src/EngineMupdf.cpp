@@ -38,6 +38,23 @@ void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, fl
 #include "EpubPerfLog.h"
 #include "SumatraConfig.h"
 #include "Settings.h"
+
+// #region agent log
+static void AgentLog9e3e69(const char* hyp, const char* loc, const char* msg, int pageNo, float a, float b) {
+    static int n;
+    if (n++ > 30)
+        return;
+    FILE* f = fopen("c:/src/sumatrapdf/debug-9e3e69.log", "a");
+    if (!f)
+        return;
+    long long ts = (long long)time(NULL) * 1000LL;
+    fprintf(f,
+            "{\"sessionId\":\"9e3e69\",\"hypothesisId\":\"%s\",\"location\":\"%s\",\"message\":\"%s\","
+            "\"data\":{\"pageNo\":%d,\"a\":%.2f,\"b\":%.2f},\"timestamp\":%lld}\n",
+            hyp, loc, msg, pageNo, a, b, ts);
+    fclose(f);
+}
+// #endregion
 #include "Theme.h"
 #include "GlobalPrefs.h"
 #include "PdfDarkMode.h"
@@ -77,6 +94,7 @@ static float layoutA4DyPt = 842.F;
 static float layoutFontEm = 11.F;
 
 static TempStr BuildEbookDarkCss(bool isEpub) {
+    // EPUB: colors and backgrounds only — no layout properties (pagination must not change on theme).
     COLORREF bgCol;
     ThemePageRenderColors(bgCol, true);
     TempStr bgHex = str::FormatTemp("#%02x%02x%02x", GetRValue(bgCol), GetGValue(bgCol), GetBValue(bgCol));
@@ -3498,6 +3516,184 @@ static bool IsMarkdownReflowDocument(const char* nameHint, const char* filePath)
     return false;
 }
 
+static bool IsEpubReflowNameHint(const char* nameHint) {
+    return str::EndsWithI(nameHint, ".epub") || str::EndsWithI(nameHint, ".epub.html");
+}
+
+// Palette only: background, text, and link colors. No margins, line-height, page-break, or
+// width/height rules — theme and PdfDocumentColorMode must not change pagination.
+static TempStr BuildMupdfReflowPaletteCss(bool isEpub) {
+    bool darkTheme = IsDarkThemeSelected();
+    PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
+    bool injectThemeColors = docMode != PdfDocumentColorMode::Light;
+    bool reflowThemeBitmapRecolor = ReflowEbookUsesThemeBitmapRecolor();
+    bool useEyeCareLightCss = injectThemeColors && !darkTheme && !ThemeUsesOriginalPageColors();
+    bool useDarkCss = injectThemeColors && darkTheme && !reflowThemeBitmapRecolor;
+
+    if (useDarkCss) {
+        return BuildEbookDarkCss(isEpub);
+    }
+    if (useEyeCareLightCss) {
+        static const char* kLightEyeCareCss = R"(html {
+  background-color: #f7f3e8 !important;
+}
+body {
+  background-color: #f7f3e8 !important;
+  color: #333333;
+}
+pre {
+  background-color: #f7f3e8 !important;
+  color: #333333;
+}
+)";
+        static const char* kEpubReaderLightCss = R"(html {
+  background-color: #f7f3e8 !important;
+  color: #333333 !important;
+}
+body, p, span, blockquote, li, td, th, div,
+section, article, main, header, footer, pre, table,
+.calibre,
+.calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
+.calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
+.calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
+  background-color: transparent !important;
+  color: #333333 !important;
+}
+.noindent-bodycontent-1-fangsong,
+.bodycontent-1-fangsong,
+.bodycontent-2-fangsong,
+.bodycontent-1-fangsong-top,
+.noindent-bodycontent-1-fangsong-top,
+.bodycontent-1-top,
+.noindent-bodycontent-1-top,
+.bodycontent-1-fangsong-top1,
+.bodycontent-2-fangsong-top,
+.hang-bodycontent-1-fangsong,
+.noindent-bodycontent,
+.bodycontent,
+.songti,
+span.songti {
+  background-color: transparent !important;
+  color: #333333 !important;
+  font-weight: 400 !important;
+}
+p {
+  color: #333333 !important;
+}
+h1, h2, h3, h4, h5, h6,
+.title, .chapter, .chapter-title, .sgc-toc-title {
+  color: #3f3a34 !important;
+}
+body, pre, table, td, th {
+  background-color: #f7f3e8 !important;
+}
+a, a:link, a:visited, a:hover, a:active,
+p a, sup a, li a {
+  color: #315f9c !important;
+}
+figcaption, caption, p.caption, div.caption, span.caption,
+.figcaption, .figure-caption, .image-caption, .picture-caption, .pic-caption, .caption {
+  color: #68625a !important;
+}
+)";
+        return str::DupTemp(isEpub ? kEpubReaderLightCss : kLightEyeCareCss);
+    }
+    return nullptr;
+}
+
+// MuPDF has no max-height; comic panels use explicit height in pt — same for cnepub alone* figures.
+static TempStr BuildMupdfReflowEpubImageFitCss(float ldyPt) {
+    float panelH = ldyPt - 16.f;
+    if (panelH < 400.f) {
+        panelH = 400.f;
+    }
+    float h90 = panelH * 0.88f;
+    float h80 = panelH * 0.78f;
+    float h70 = panelH * 0.68f;
+    float h60 = panelH * 0.58f;
+    float h50 = panelH * 0.48f;
+    float h40 = panelH * 0.38f;
+    return str::FormatTemp(R"(/* Sumatra: cnepub figures — one reflow page, explicit height (MuPDF ignores max-height). */
+img.kindle-cn-bodycontent-image-alone100,
+img.kindle-cn-bodycontent-image-alone100-withnote {
+  display: block !important;
+  page-break-before: always !important;
+  width: auto !important;
+  max-width: 90%% !important;
+  height: %.0fpt !important;
+  margin: 0.8em auto !important;
+}
+img.kindle-cn-bodycontent-image-alone80,
+img.kindle-cn-bodycontent-image-alone80-withnote,
+img.kindle-cn-bodycontent-image-alone80-1 {
+  display: block !important;
+  page-break-before: always !important;
+  width: auto !important;
+  max-width: 72%% !important;
+  height: %.0fpt !important;
+  margin: 0.8em auto !important;
+}
+img.kindle-cn-bodycontent-image-alone70,
+img.kindle-cn-bodycontent-image-alone70-withnote {
+  display: block !important;
+  page-break-before: always !important;
+  width: auto !important;
+  max-width: 63%% !important;
+  height: %.0fpt !important;
+  margin: 0.8em auto !important;
+}
+img.kindle-cn-bodycontent-image-alone60,
+img.kindle-cn-bodycontent-image-alone60-withnote {
+  display: block !important;
+  page-break-before: always !important;
+  width: auto !important;
+  max-width: 54%% !important;
+  height: %.0fpt !important;
+  margin: 0.8em auto !important;
+}
+img.kindle-cn-bodycontent-image-alone50,
+img.kindle-cn-bodycontent-image-alone50-withnote {
+  display: block !important;
+  page-break-before: always !important;
+  width: auto !important;
+  max-width: 50%% !important;
+  height: %.0fpt !important;
+  margin: 0.8em auto !important;
+}
+img.kindle-cn-bodycontent-image-alone40,
+img.kindle-cn-bodycontent-image-alone40-withnote,
+img.kindle-cn-bodycontent-image-alone45,
+img.kindle-cn-bodycontent-image-alone45-withnote {
+  display: block !important;
+  page-break-before: always !important;
+  width: auto !important;
+  max-width: 45%% !important;
+  height: %.0fpt !important;
+  margin: 0.8em auto !important;
+}
+.image_full, .image_full_caption, .image_full_landscape, .image_full_caption_landscape {
+  page-break-before: always !important;
+}
+.image_full img, .image_full_caption img, .image_full_landscape img, .image_full_caption_landscape img {
+  display: block !important;
+  width: auto !important;
+  max-width: 100%% !important;
+  height: %.0fpt !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+figure, div.figure, div.image, div.picture, div.pic {
+  page-break-before: always !important;
+}
+img[style*="height:100%%"], img[style*="height: 100%%"] {
+  height: auto !important;
+  width: auto !important;
+  max-width: 100%% !important;
+}
+)",
+                         h90, h80, h70, h60, h50, h40, panelH);
+}
+
 static TempStr BuildMarkdownTableCss(bool darkTheme, bool eyeCareLight) {
     if (darkTheme) {
         return str::DupTemp(R"(table {
@@ -3726,20 +3922,13 @@ tr.kindle-cn-table-body td.rt1 .bodyContent_120 {
 static TempStr BuildMupdfReflowUserCss(const char* nameHint, const char* filePath, float ldx, float ldy,
                                        float lfontDy) {
     ReportIf(IsMarkdownReflowDocument(nameHint, filePath));
-    bool isEpub = str::EndsWithI(nameHint, ".epub");
+    bool isEpub = IsEpubReflowNameHint(nameHint);
     EbookTypographyKind typographyKind = GetEbookTypographyKind();
     TempStr ebookCss = nullptr;
     auto eBookUI = GetEBookUI();
     if (eBookUI) {
         // EPUB files ship with their own CSS (e.g. calibre stylesheets) - don't override
         // fonts or paragraph layout. Other formats get CJK fallbacks only when needed.
-        bool darkTheme = IsDarkThemeSelected();
-        PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
-        bool injectThemeColors = docMode != PdfDocumentColorMode::Light;
-        bool reflowThemeBitmapRecolor = ReflowEbookUsesThemeBitmapRecolor();
-        bool useEyeCareLightCss = injectThemeColors && !darkTheme && !ThemeUsesOriginalPageColors();
-        bool useDarkCss = injectThemeColors && darkTheme && !reflowThemeBitmapRecolor;
-
         // All ebooks: Literata primary; CJK glyphs fall back to songti via load_windows_fallback_font.
         static const char* kEpubFontCss = R"(html, body,
 p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,
@@ -3908,7 +4097,6 @@ img, div img, figure img {
   width: 100% !important;
   max-width: 100% !important;
   height: auto !important;
-  max-height: none !important;
   margin: 0 auto !important;
   display: block !important;
 }
@@ -4174,7 +4362,7 @@ div.kindle-cn-bodycontent-div-alone100a {
   text-align: center !important;
   text-indent: 0 !important;
   clear: both;
-  page-break-before: auto !important;
+  page-break-before: always !important;
 }
 img.kindle-cn-bodycontent-image-alone80,
 img.kindle-cn-bodycontent-image-alone80-withnote,
@@ -4237,7 +4425,6 @@ img.kindle-cn-bodycontent-image-alone20-withnote {
 img.kindle-cn-bodycontent-image-alone100,
 img.kindle-cn-bodycontent-image-alone100-withnote {
   max-width: 90% !important;
-  page-break-before: always !important;
 }
 p.kindle-cn-picture-txt-withmanycharactors,
 p.kindle-cn-picture-txt-withfewcharactors {
@@ -4327,57 +4514,6 @@ li, blockquote {
   line-height: 1.56;
 }
 )";
-        static const char* kEpubReaderLightCss = R"(html {
-  background-color: #f7f3e8 !important;
-  color: #333333 !important;
-}
-body, p, span, blockquote, li, td, th, div,
-section, article, main, header, footer, pre, table,
-.calibre,
-.calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
-.calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
-.calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, .calibre_19, .calibre_20 {
-  background-color: transparent !important;
-  color: #333333 !important;
-}
-.noindent-bodycontent-1-fangsong,
-.bodycontent-1-fangsong,
-.bodycontent-2-fangsong,
-.bodycontent-1-fangsong-top,
-.noindent-bodycontent-1-fangsong-top,
-.bodycontent-1-top,
-.noindent-bodycontent-1-top,
-.bodycontent-1-fangsong-top1,
-.bodycontent-2-fangsong-top,
-.hang-bodycontent-1-fangsong,
-.noindent-bodycontent,
-.bodycontent,
-.songti,
-span.songti {
-  background-color: transparent !important;
-  color: #333333 !important;
-  font-weight: 400 !important;
-}
-p {
-  color: #333333 !important;
-}
-h1, h2, h3, h4, h5, h6,
-.title, .chapter, .chapter-title, .sgc-toc-title {
-  color: #3f3a34 !important;
-}
-body, pre, table, td, th {
-  background-color: #f7f3e8 !important;
-}
-a, a:link, a:visited, a:hover, a:active,
-p a, sup a, li a {
-  color: #315f9c !important;
-}
-figcaption, caption, p.caption, div.caption, span.caption,
-.figcaption, .figure-caption, .image-caption, .picture-caption, .pic-caption, .caption {
-  color: #68625a !important;
-}
-)";
-
         if (isEpub) {
             const char* fontCss =
                 typographyKind == EbookTypographyKind::Cjk ? kEpubReaderCjkFontCss : kEpubReaderLatinFontCss;
@@ -4389,25 +4525,6 @@ figcaption, caption, p.caption, div.caption, span.caption,
             }
             ebookCss = str::JoinTemp(fontCss, "\n", kEpubReaderBaseCss);
             ebookCss = str::JoinTemp(ebookCss, "\n", rhythmCss);
-        }
-        if (useDarkCss) {
-            TempStr darkCss = BuildEbookDarkCss(isEpub);
-            ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", darkCss) : str::DupTemp(darkCss);
-        } else if (useEyeCareLightCss) {
-            static const char* kLightEyeCareCss = R"(html {
-  background-color: #f7f3e8 !important;
-}
-body {
-  background-color: #f7f3e8 !important;
-  color: #333333;
-}
-pre {
-  background-color: #f7f3e8 !important;
-  color: #333333;
-}
-)";
-            const char* lightCss = isEpub ? kEpubReaderLightCss : kLightEyeCareCss;
-            ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", lightCss) : str::DupTemp(lightCss);
         }
         if (!isEpub) {
             ebookCss = ebookCss ? str::JoinTemp(kFallbackFontCss, "\n", ebookCss) : str::DupTemp(kFallbackFontCss);
@@ -4452,7 +4569,13 @@ p.picture > img, p.picture1 > img {
 )",
                                            panelH);
         ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", comicCss) : comicCss;
+        TempStr imgFitCss = BuildMupdfReflowEpubImageFitCss(ldy);
+        ebookCss = str::JoinTemp(ebookCss, "\n", imgFitCss);
         ebookCss = str::JoinTemp(ebookCss, "\n", kEpubCnCompareTableCss);
+    }
+    TempStr paletteCss = BuildMupdfReflowPaletteCss(isEpub);
+    if (paletteCss) {
+        ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", paletteCss) : str::DupTemp(paletteCss);
     }
     return ebookCss;
 }
@@ -4473,6 +4596,15 @@ static void SetMupdfReflowUserCss(fz_context* ctx, const char* nameHint, const c
     }
     TempStr ebookCss = BuildMupdfReflowUserCss(nameHint, filePath, ldx, ldy, lfontDy);
     if (ebookCss) {
+        // #region agent log
+        if (IsEpubReflowNameHint(nameHint)) {
+            const char* p = strstr(ebookCss, "image-alone50");
+            float hasAlone50 = p ? 1.f : 0.f;
+            float hasHeight = (p && strstr(p, "height:")) ? 1.f : 0.f;
+            AgentLog9e3e69("H1", "EngineMupdf.cpp:SetMupdfReflowUserCss", "epub_user_css", 0, hasAlone50,
+                           hasHeight);
+        }
+        // #endregion
         fz_set_user_css(ctx, ebookCss);
     }
 }
@@ -4491,8 +4623,9 @@ static void LayoutMupdfReflowDocument(fz_context* ctx, fz_document* doc, int dis
     }
 }
 
-// Theme toggles only user CSS colors; page breaks stay the same. Do not call
-// fz_count_pages or fz_layout_document here -- chapters relayout lazily when rendered.
+// Theme / document-color: refresh user CSS and drop cached HTML pages. Layout rules in
+// BuildMupdfReflowUserCss are identical for open and theme when nameHint and layout pt match;
+// only BuildMupdfReflowPaletteCss varies with theme / document color mode.
 static void ApplyMupdfThemeCssOnly(fz_context* ctx, const char* nameHint, const char* filePath, float ldxPt,
                                    float ldyPt, float lfontDyPt) {
     SetMupdfReflowUserCss(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
@@ -4538,13 +4671,21 @@ static bool EngineMupdfFragmentInMeta(EngineMupdf* e, const char* uri) {
     return e && e->epubMetaLoaded && uri && EpubMetaLookupFragmentPage(e->epubMeta, uri) > 0;
 }
 
-static void EngineMupdfAddFragmentToMeta(EngineMupdf* e, const char* uri, int ch, int pageInChapter, float x, float y,
-                                         int pageNo) {
+static void EngineMupdfUpsertFragmentInMeta(EngineMupdf* e, const char* uri, int ch, int pageInChapter, float x, float y,
+                                            int pageNo) {
     if (!e || !uri || pageNo <= 0) {
         return;
     }
-    if (EngineMupdfFragmentInMeta(e, uri)) {
-        return;
+    for (auto& f : e->epubMeta.fragments) {
+        if (f.uri && str::Eq(f.uri, uri)) {
+            f.chapter = ch;
+            f.pageInChapter = pageInChapter;
+            f.x = x;
+            f.y = y;
+            f.pageNo = pageNo;
+            e->epubMetaLoaded = true;
+            return;
+        }
     }
     EpubMetaFragment frag;
     frag.uri = str::Dup(uri);
@@ -4559,9 +4700,6 @@ static void EngineMupdfAddFragmentToMeta(EngineMupdf* e, const char* uri, int ch
 
 static void EngineMupdfTryResolveOutlineFragment(EngineMupdf* e, fz_outline* ol) {
     if (!e || !ol || !ol->uri || !str::FindChar(ol->uri, '#')) {
-        return;
-    }
-    if (EngineMupdfFragmentInMeta(e, ol->uri)) {
         return;
     }
     int ch = ol->page.chapter;
@@ -4596,7 +4734,7 @@ static void EngineMupdfTryResolveOutlineFragment(EngineMupdf* e, fz_outline* ol)
     }
     float x = isnan(ldest.x) ? 0.f : ldest.x;
     float y = isnan(ldest.y) ? 0.f : ldest.y;
-    EngineMupdfAddFragmentToMeta(e, ol->uri, resolveCh, pageInChapter, x, y, pageNo);
+    EngineMupdfUpsertFragmentInMeta(e, ol->uri, resolveCh, pageInChapter, x, y, pageNo);
 }
 
 static void EngineMupdfWalkOutlineFragments(EngineMupdf* e, fz_outline* ol) {
@@ -5002,7 +5140,7 @@ static void GrowReflowPageCount(EngineMupdf* e, int newCount) {
 }
 
 static void GetMupdfReflowLayoutPt(const char* nameHint, float* ldxPtOut, float* ldyPtOut, float* lfontDyPtOut) {
-    bool isEpub = str::EndsWithI(nameHint, ".epub");
+    bool isEpub = IsEpubReflowNameHint(nameHint);
     EbookTypographyKind typographyKind = GetEbookTypographyKind();
     float ldx = layoutA5DxPt;
     float ldy = layoutA5DyPt;
@@ -5214,56 +5352,48 @@ static void MaybeReportThemeRecountProgress(EngineMupdf* e, int chaptersDone) {
     gThemeRecountProgressCb(chaptersDone, e->reflowNumChapters, gThemeRecountProgressUser);
 }
 
-static bool RecountReflowPageMapForThemeChange(EngineMupdf* e, fz_context* ctx) {
-    if (!e || !ctx || e->pdfdoc) {
-        return false;
+static void WaitForReflowBackgroundYield(EngineMupdf* e) {
+    if (!e || InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) == 0) {
+        return;
     }
-    // Block the background chapter counter from appending after we clear the map.
-    // reflowCountLock is normally per-chapter; theme recount holds it for the whole pass.
-    ScopedCritSec countScope(&e->reflowCountLock);
+    for (int i = 0; i < 120000; i++) {
+        if (InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) == 0) {
+            return;
+        }
+        if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+            return;
+        }
+        if (InterlockedCompareExchange(&e->reflowUiPaused, 0, 0) != 0 &&
+            InterlockedCompareExchange(&e->reflowBackgroundYielding, 0, 0) != 0) {
+            return;
+        }
+        Sleep(1);
+    }
+}
+
+// Theme / document-color user CSS: palette rules only for EPUB (see BuildMupdfReflowPaletteCss).
+// Caller must hold docLock. Purge MuPDF's stored HTML layout and drop page handles,
+// but keep chapter page map and mediabox geometry.
+static void InvalidateReflowPageCachesForThemeCssLocked(EngineMupdf* e, fz_context* ctx) {
+    if (!e || !ctx || e->pdfdoc || e->pageCount <= 0) {
+        return;
+    }
     fz_try(ctx) {
         fz_purge_stored_html(ctx, e->_doc);
     }
     fz_catch(ctx) {
         fz_report_error(ctx);
     }
-    DropAllReflowPageCaches(ctx, e);
-    {
-        ScopedCritSec scope(&e->pagesLock);
-        e->reflowChapterStartPage.Clear();
-        e->reflowPagesCounted = 0;
-        InterlockedExchange(&e->reflowChaptersCounted, 0);
-    }
-    int total = CountReflowChaptersUpTo(e, -1, nullptr, /*isBackground*/ false, ctx, /*forThemeRecount*/ true);
-    if (total <= 0) {
-        return false;
-    }
-    {
-        ScopedCritSec scope(&e->pagesLock);
-        GrowReflowPageCount(e, total);
-        e->pageCount = total;
-    }
-    e->epubMeta.Clear();
-    e->epubMetaLoaded = false;
-    if (e->outline) {
-        EngineMupdfWalkOutlineFragments(e, e->outline);
-        e->epubMeta.tocResolvedPageNo.Clear();
-        EngineMupdfCollectOutlineTocMeta(e, e->outline, e->epubMeta, 0);
-        e->epubMeta.profile.pages = e->pageCount;
-        e->epubMeta.profile.chapters = e->reflowNumChapters;
-        e->epubMetaLoaded = e->epubMeta.fragments.Size() > 0 || e->epubMeta.tocResolvedPageNo.Size() > 0;
-    }
+    u32 epoch = e->reflowThemeCssEpoch;
+    ScopedCritSec scope(&e->pagesLock);
     for (int i = 0; i < e->pageCount; i++) {
         FzPageInfo* pi = e->pages[i];
-        if (pi) {
-            pi->reflowThemeCssEpoch = e->reflowThemeCssEpoch;
-            pi->mediabox = LoadReflowPageMediabox(e, i + 1);
-            pi->pageNo = i + 1;
+        if (!pi) {
+            continue;
         }
+        DropSingleFzPageCache(ctx, pi);
+        pi->reflowThemeCssEpoch = epoch;
     }
-    e->InvalidateTocTree();
-    e->reflowTocNeedsUiReload = true;
-    return true;
 }
 
 bool EngineMupdfRelayoutForThemeChange(EngineBase* engine) {
@@ -5283,33 +5413,33 @@ bool EngineMupdfRelayoutForThemeChange(EngineBase* engine) {
         return false;
     }
 
-    TempStr nameHint = str::JoinTemp(filePath, ".html");
+    const char* nameHint = filePath;
     float ldxPt, ldyPt, lfontDyPt;
     GetMupdfReflowLayoutPt(nameHint, &ldxPt, &ldyPt, &lfontDyPt);
 
     fz_context* ctx = e->_ctx;
-    bool ok = false;
     bool loading = InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) != 0;
     AcquireReflowUiDocLock(e);
-    fz_try(ctx) {
-        if (!e->reflowHtmlSource.empty()) {
-            ok = RelayoutSingleChapterReflowHtml(e, ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
-        } else {
-            ApplyMupdfThemeCssOnly(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
-            ReleaseAllPerThreadContexts(e);
-            e->reflowThemeCssEpoch++;
-            ok = RecountReflowPageMapForThemeChange(e, ctx);
+    WaitForReflowBackgroundYield(e);
+    bool ok = false;
+    {
+        ScopedCritSec scope(&e->docLock);
+        fz_try(ctx) {
+            if (!e->reflowHtmlSource.empty()) {
+                ok = RelayoutSingleChapterReflowHtml(e, ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
+            } else {
+                ApplyMupdfThemeCssOnly(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
+                ReleaseAllPerThreadContexts(e);
+                e->reflowThemeCssEpoch++;
+                InvalidateReflowPageCachesForThemeCssLocked(e, ctx);
+                ok = e->pageCount > 0;
+            }
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
         }
     }
-    fz_catch(ctx) {
-        fz_report_error(ctx);
-    }
     ReleaseReflowUiDocLock(e);
-    if (ok && !loading) {
-        // all chapter layouts were purged; re-warm with the new CSS (a running
-        // warmer notices the epoch bump and restarts on its own)
-        KickReflowLayoutWarmAsync(e);
-    }
     return ok;
 }
 
@@ -5319,6 +5449,9 @@ void EngineMupdfSetReflowLoadingPaused(EngineBase* engine, bool paused) {
         return;
     }
     InterlockedExchange(&e->reflowUiPaused, paused ? 1 : 0);
+    if (!paused) {
+        InterlockedExchange(&e->reflowBackgroundYielding, 0);
+    }
 }
 
 bool EngineMupdfReflowTocNeedsUiReload(EngineBase* engine) {
@@ -5456,7 +5589,7 @@ struct ReflowRenderLock {
 // corrupting reflowChapterStartPage. Returns total pages counted so far.
 // When forThemeRecount is true, the caller must already hold reflowCountLock.
 static bool CountReflowChaptersUpToOneChapter(EngineMupdf* e, int targetChapter, fz_context* ctx,
-                                               const char* notifyPath, bool forThemeRecount) {
+                                              const char* notifyPath, bool forThemeRecount) {
     if (e->reflowNumChapters == 0) {
         int numChapters = 0;
         {
@@ -5565,7 +5698,6 @@ static int CountReflowChaptersUpTo(EngineMupdf* e, int targetChapter, const char
             return e->reflowPagesCounted;
         }
     }
-    auto ctx = ctxOverride ? ctxOverride : e->Ctx();
     for (;;) {
         if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
             break;
@@ -5577,12 +5709,17 @@ static int CountReflowChaptersUpTo(EngineMupdf* e, int targetChapter, const char
         if (isBackground) {
             while (InterlockedCompareExchange(&e->reflowUiPaused, 0, 0) != 0 &&
                    InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) == 0) {
+                InterlockedExchange(&e->reflowBackgroundYielding, 1);
                 Sleep(1);
             }
+            InterlockedExchange(&e->reflowBackgroundYielding, 0);
             if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
                 break;
             }
         }
+        // Per-thread fz_context clones can be dropped during a theme/CSS update
+        // while this thread is paused; never cache ctx across loop iterations.
+        fz_context* ctx = ctxOverride ? ctxOverride : e->Ctx();
         bool done = false;
         if (forThemeRecount) {
             done = CountReflowChaptersUpToOneChapter(e, targetChapter, ctx, notifyPath, true);
@@ -5601,11 +5738,105 @@ static int CountReflowChaptersUpTo(EngineMupdf* e, int targetChapter, const char
             ScopedCritSec navScope(&e->pendingReflowNavLock);
             navPendingYield = e->pendingReflowNavUri != nullptr && e->pendingReflowNavChapter >= 0;
         }
-        if (!navPendingYield && ((int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0) % kReflowChaptersPerYield) == 0) {
+        if (!navPendingYield &&
+            ((int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0) % kReflowChaptersPerYield) == 0) {
             Sleep(0);
         }
     }
     return e->reflowPagesCounted;
+}
+
+static int ReflowStoredChapterPageCount(EngineMupdf* e, int chapter) {
+    ScopedCritSec scope(&e->pagesLock);
+    if (!e->reflowChapterStartPage.isValidIndex(chapter)) {
+        return -1;
+    }
+    int chStart = e->reflowChapterStartPage[chapter];
+    int chEndPageIdx = e->reflowChapterStartPage.isValidIndex(chapter + 1) ? e->reflowChapterStartPage[chapter + 1] - 1
+                                                                            : e->pageCount - 1;
+    if (chEndPageIdx < chStart) {
+        return 0;
+    }
+    return chEndPageIdx - chStart + 1;
+}
+
+static void TruncateReflowChapterPageMapFrom(EngineMupdf* e, int fromChapter) {
+    ScopedCritSec countScope(&e->reflowCountLock);
+    ScopedCritSec pagesScope(&e->pagesLock);
+    if (fromChapter < 0 || !e->reflowChapterStartPage.isValidIndex(fromChapter)) {
+        return;
+    }
+    int rewindGlobal = e->reflowChapterStartPage[fromChapter];
+    e->reflowChapterStartPage.SetSize(fromChapter);
+    e->reflowPagesCounted = rewindGlobal;
+    InterlockedExchange(&e->reflowChaptersCounted, fromChapter);
+    if (rewindGlobal < e->pageCount) {
+        e->pageCount = rewindGlobal;
+    }
+}
+
+static bool ReflowChapterSpanFinalizedInPageMap(EngineMupdf* e, int chapter) {
+    ScopedCritSec scope(&e->pagesLock);
+    return e->reflowChapterStartPage.isValidIndex(chapter + 1);
+}
+
+static bool ReflowChapterPageMapNeedsResync(EngineMupdf* e, fz_context* ctx, int chapter, int pageInChapter) {
+    if (InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) != 0) {
+        return false;
+    }
+    if (!ReflowChapterSpanFinalizedInPageMap(e, chapter)) {
+        return false;
+    }
+    int sumatraLen = ReflowStoredChapterPageCount(e, chapter);
+    if (sumatraLen < 0) {
+        return false;
+    }
+    int rawPages = 0;
+    WaitForReflowUiDocLock(e);
+    ScopedCritSec docScope(&e->docLock);
+    fz_try(ctx) {
+        rawPages = fz_count_chapter_pages(ctx, e->_doc, chapter);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        return false;
+    }
+    int effPages = EffectiveReflowChapterPageCount(ctx, e->_doc, chapter, rawPages);
+    if (pageInChapter >= rawPages) {
+        return true;
+    }
+    if (effPages > 0 && sumatraLen != effPages) {
+        return true;
+    }
+    return false;
+}
+
+static void ResyncReflowChapterPageMapFrom(EngineMupdf* e, fz_context* ctx, int fromChapter) {
+    if (!e || e->pdfdoc || fromChapter < 0) {
+        return;
+    }
+    if (InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) != 0) {
+        return;
+    }
+    EngineMupdfSetReflowLoadingPaused(e, true);
+    defer {
+        EngineMupdfSetReflowLoadingPaused(e, false);
+    };
+    TruncateReflowChapterPageMapFrom(e, fromChapter);
+    CountReflowChaptersUpTo(e, -1, nullptr, false, ctx, false);
+    GrowReflowPageCount(e, e->reflowPagesCounted);
+    e->pageCount = e->reflowPagesCounted;
+    if (e->outline) {
+        WaitForReflowUiDocLock(e);
+        ScopedCritSec docScope(&e->docLock);
+        EngineMupdfWalkOutlineFragments(e, e->outline);
+    }
+    e->reflowTocNeedsUiReload = true;
+    e->InvalidateTocTree();
+    const char* path = e->FilePath();
+    if (path) {
+        NotifyEbookPagesLoadingProgress(path, true);
+    }
 }
 
 // Pre-lays out every chapter in the background after loading completes and
@@ -6736,6 +6967,21 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
                 }
             }
         }
+        if (reflowCh >= 0 && ReflowChapterPageMapNeedsResync(this, ctx, reflowCh, reflowPageInChapter)) {
+            ResyncReflowChapterPageMapFrom(this, ctx, reflowCh);
+            reflowCh = ReflowChapterIndexForPageNo(this, pageNo);
+            if (reflowCh >= 0) {
+                ScopedCritSec scopePages(&pagesLock);
+                if (reflowCh < reflowChapterStartPage.Size()) {
+                    reflowPageInChapter = (pageNo - 1) - reflowChapterStartPage[reflowCh];
+                    if (reflowPageInChapter < 0) {
+                        reflowPageInChapter = 0;
+                    }
+                } else {
+                    reflowCh = -1;
+                }
+            }
+        }
         fz_try(ctx) {
             if (reflowCh >= 0) {
                 pageInfo->page = fz_load_chapter_page(ctx, _doc, reflowCh, reflowPageInChapter);
@@ -6773,6 +7019,12 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
         if (!fz_is_empty_rect(mbox)) {
             pageInfo->mediabox = ToRectF(mbox);
         }
+        // #region agent log
+        if (pageNo >= 133 && pageNo <= 138) {
+            AgentLog9e3e69("H4", "EngineMupdf.cpp:GetFzPageInfo", "page_mediabox", pageNo, mbox.y1 - mbox.y0,
+                           mbox.x1 - mbox.x0);
+        }
+        // #endregion
     }
 
     // build annotations info on first access
@@ -6870,7 +7122,7 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
 RectF EngineMupdf::PageMediabox(int pageNo) {
     FzPageInfo* pi = nullptr;
     bool measure = false;
-  {
+    {
         ScopedCritSec scope(&pagesLock);
         int n = pages.Size();
         ReportIf(pageNo < 1 || pageNo > pageCount);
@@ -8505,6 +8757,28 @@ int EngineMupdfFastOutlinePageNo(EngineBase* engine, IPageDestination* dest) {
     return pageNo > 0 ? pageNo : 0;
 }
 
+int EngineMupdfTocItemPageNoForSync(EngineBase* engine, IPageDestination* dest, int bakedPageNo) {
+    if (!engine || engine->kind != kindEngineMupdf || EngineIsProgressiveEbookLoading(engine)) {
+        return bakedPageNo > 0 ? bakedPageNo : 0;
+    }
+    if (!dest || dest->GetKind() != kindDestinationMupdf) {
+        return bakedPageNo > 0 ? bakedPageNo : 0;
+    }
+    EngineMupdf* e = AsEngineMupdf(engine);
+    PageDestinationMupdf* link = (PageDestinationMupdf*)dest;
+    if (link->outline && link->outline->uri && str::FindChar(link->outline->uri, '#') && e && e->epubMetaLoaded) {
+        int metaPage = EpubMetaLookupFragmentPage(e->epubMeta, link->outline->uri);
+        if (metaPage > 0) {
+            return metaPage;
+        }
+    }
+    int live = EngineMupdfFastOutlinePageNo(engine, dest);
+    if (live > 0) {
+        return live;
+    }
+    return bakedPageNo > 0 ? bakedPageNo : 0;
+}
+
 int EngineMupdfResolveLinkPageNo(EngineBase* engine, IPageDestination* dest) {
     EngineMupdf* e = AsEngineMupdf(engine);
     if (!e || !dest || dest->GetKind() != kindDestinationMupdf) {
@@ -8695,7 +8969,7 @@ static void ReflowNavCountAsync(EngineMupdf* e) {
         if (pageNo1 > 0) {
             float x = isnan(ldest.x) ? 0.f : ldest.x;
             float y = isnan(ldest.y) ? 0.f : ldest.y;
-            EngineMupdfAddFragmentToMeta(e, uri, resolveCh, pageInChapter, x, y, pageNo1);
+            EngineMupdfUpsertFragmentInMeta(e, uri, resolveCh, pageInChapter, x, y, pageNo1);
         }
         {
             ScopedCritSec scope(&e->pendingReflowNavLock);

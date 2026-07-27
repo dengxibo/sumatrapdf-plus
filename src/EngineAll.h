@@ -91,6 +91,7 @@ bool EngineMupdfGetReflowPageChapter(EngineBase* engine, int pageNo, int* chapte
 bool EngineMupdfGetReflowChapterPageRange(EngineBase* engine, int chapter, int* startPageOut, int* endPageOut);
 bool EngineIsProgressiveEbookLoading(EngineBase* engine);
 int EngineMupdfFastOutlinePageNo(EngineBase* engine, IPageDestination* dest);
+int EngineMupdfTocItemPageNoForSync(EngineBase* engine, IPageDestination* dest, int bakedPageNo);
 int EngineMupdfResolveLinkPageNo(EngineBase* engine, IPageDestination* dest);
 bool EngineMupdfIsOutlineDestReachable(EngineBase* engine, IPageDestination* dest);
 bool EngineMupdfSnapshotOutlineLink(IPageDestination* dest, char** uriOut, int* reflowChOut, float* xOut, float* yOut);

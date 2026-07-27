@@ -389,8 +389,10 @@ static bool IsTocPageReachable(DocController* ctrl, TocItem* tocItem) {
         return IsMobiEbookTocItemReachable(ctrl, tocItem, engine);
     }
     if (engine && engine->kind == kindEngineMupdf && !EngineIsProgressiveEbookLoading(engine)) {
-        if (tocItem->pageNo > 0) {
-            return tocItem->pageNo <= engine->PageCount();
+        IPageDestination* dest = tocItem->GetPageDestination();
+        int pageNo = EngineMupdfTocItemPageNoForSync(engine, dest, tocItem->pageNo);
+        if (pageNo > 0) {
+            return pageNo <= engine->PageCount();
         }
         return false;
     }
@@ -575,8 +577,12 @@ static int TocItemPageNoForMatch(TocItem* item, EngineBase* engine) {
 
     Kind destKind = dest->GetKind();
     if (destKind == kindDestinationMupdf) {
-        // Use page numbers baked at TOC build time (epubmeta / outline walk).
-        // Live fz_resolve_link_dest during scroll-sync was freezing large EPUBs.
+        if (!EngineIsProgressiveEbookLoading(engine)) {
+            int syncPage = EngineMupdfTocItemPageNoForSync(engine, dest, item->pageNo);
+            if (syncPage > 0) {
+                return syncPage;
+            }
+        }
         if (item->pageNo > 0) {
             return item->pageNo;
         }

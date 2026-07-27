@@ -183,6 +183,8 @@ class EngineMupdf : public EngineBase {
     // the background chapter loader fully pauses so it doesn't starve the UI
     // thread's docLock acquisitions for the whole remaining load.
     volatile LONG reflowUiPaused = 0;
+    // Set by the background chapter loader while blocked on reflowUiPaused.
+    volatile LONG reflowBackgroundYielding = 0;
     // 0-based global page index at the start of each chapter (built during background load)
     Vec<int> reflowChapterStartPage;
     // Serializes chapter counting so the background loader and on-demand (TOC

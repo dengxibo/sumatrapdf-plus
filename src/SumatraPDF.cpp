@@ -2488,46 +2488,17 @@ static bool IsReflowableMupdfForTheme(EngineBase* engine) {
 }
 
 constexpr int kDocumentColorRerenderUiMinPages = 200;
-constexpr int kThemeRelayoutProgressThrottleMs = 100;
-
 static int gMupdfThemeRelayoutUiDepth = 0;
-static NotificationWnd* gMupdfThemeRelayoutNotif = nullptr;
 static HCURSOR gMupdfThemeRelayoutOldCursor = nullptr;
-static DWORD gMupdfThemeRelayoutLastProgressMs = 0;
-
-static void OnMupdfThemeRecountProgress(int chaptersDone, int chapterTotal, void*) {
-    if (!gMupdfThemeRelayoutNotif || chapterTotal <= 0) {
-        return;
-    }
-    DWORD now = GetTickCount();
-    bool isFinal = chaptersDone >= chapterTotal;
-    if (!isFinal && gMupdfThemeRelayoutLastProgressMs != 0 &&
-        now - gMupdfThemeRelayoutLastProgressMs < kThemeRelayoutProgressThrottleMs) {
-        return;
-    }
-    gMupdfThemeRelayoutLastProgressMs = now;
-    TempStr msg = str::FormatTemp(_TRA("Applying theme or document colors… chapter %d / %d"), chaptersDone,
-                                  chapterTotal);
-    NotificationUpdateMessage(gMupdfThemeRelayoutNotif, msg);
-}
 
 static void BeginMupdfThemeRelayoutUi(MainWindow* win) {
-    if (!win || !win->hwndCanvas) {
+    if (!win) {
         return;
     }
     if (gMupdfThemeRelayoutUiDepth++ > 0) {
         return;
     }
-    gMupdfThemeRelayoutLastProgressMs = 0;
-    NotificationCreateArgs nargs;
-    nargs.hwndParent = win->hwndCanvas;
-    nargs.groupId = kNotifThemeRelayout;
-    nargs.noClose = true;
-    nargs.timeoutMs = kNotifNoTimeout;
-    nargs.msg = _TRA("Applying theme or document colors, re-pagination in progress…");
-    gMupdfThemeRelayoutNotif = ShowNotification(nargs);
     gMupdfThemeRelayoutOldCursor = SetCursor(LoadCursor(nullptr, IDC_WAIT));
-    EngineMupdfSetThemeRecountProgressCb(OnMupdfThemeRecountProgress, nullptr);
 }
 
 static void EndMupdfThemeRelayoutUi() {
@@ -2536,11 +2507,6 @@ static void EndMupdfThemeRelayoutUi() {
     }
     if (--gMupdfThemeRelayoutUiDepth > 0) {
         return;
-    }
-    EngineMupdfSetThemeRecountProgressCb(nullptr, nullptr);
-    if (gMupdfThemeRelayoutNotif) {
-        RemoveNotification(gMupdfThemeRelayoutNotif);
-        gMupdfThemeRelayoutNotif = nullptr;
     }
     if (gMupdfThemeRelayoutOldCursor) {
         SetCursor(gMupdfThemeRelayoutOldCursor);
@@ -2602,8 +2568,6 @@ static void BeginDocumentColorRerenderUi() {
     NotificationCreateArgs nargs;
     nargs.hwndParent = win->hwndCanvas;
     nargs.groupId = kNotifThemeRelayout;
-    nargs.noClose = true;
-    nargs.timeoutMs = kNotifNoTimeout;
     nargs.msg = _TRA("Applying document colors, re-rendering pages…");
     gDocumentColorRerenderNotif = ShowNotification(nargs);
     gDocumentColorRerenderOldCursor = SetCursor(LoadCursor(nullptr, IDC_WAIT));
@@ -2683,22 +2647,26 @@ static void RefreshDisplayModelAfterThemeChange(DisplayModel* dm, bool updateUi)
     }
     EngineBase* engine = dm->GetEngine();
     bool reflowMupdf = IsReflowMupdfEpubEngine(engine);
-    if (!updateUi) {
-        if (reflowMupdf) {
-            dm->InvalidateReflowLayoutAfterEngineReparse();
+    if (reflowMupdf) {
+        dm->SyncPageCountWithEngine(updateUi);
+        if (!updateUi) {
+            return;
         }
-        dm->SyncPageCountWithEngine(false);
+        // Palette-only user CSS: geometry unchanged until pages re-render. Full
+        // relayout runs once after toolbar/canvas resize (ReflowMupdfRelayoutUiAfterCanvasResize).
+        if (dm->totalViewPortSize.dy <= 0) {
+            return;
+        }
+        dm->RecalcVisibleParts();
+        dm->RenderVisibleParts();
+        if (dm->cb) {
+            dm->cb->UpdateScrollbars(dm->canvasSize);
+        }
+        dm->RepaintDisplay();
         return;
     }
-    // EPUB reflow re-pagination changes every page height; incremental layout or
-    // preserving raw canvas Y leaves huge blank gaps after a color-mode switch.
-    if (reflowMupdf) {
-        if (dm->totalViewPortSize.dy <= 0) {
-            dm->InvalidateReflowLayoutAfterEngineReparse();
-            dm->SyncPageCountWithEngine(true);
-        } else {
-            dm->RelayoutAfterReflowEngineReparsePreservingScroll();
-        }
+    if (!updateUi) {
+        dm->SyncPageCountWithEngine(false);
         return;
     }
     dm->SyncPageCountWithEngine(updateUi);
@@ -2724,13 +2692,6 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
     // (no-op unless a reflowable EPUB is still progressively loading).
     ReflowLoadingPauseScope reflowPause(engine);
     if (IsReflowableMupdfForTheme(engine)) {
-        // Reflow reparsing can discard the engine-owned TocTree. Detach the UI
-        // first: RelayoutFrame synchronizes TOC selection and must never walk
-        // the old TreeModel after EngineMupdfRelayoutForThemeChange frees it.
-        bool reloadVisibleToc = tab == win->CurrentTab() && win->tocVisible && win->tocLoaded;
-        if (reloadVisibleToc) {
-            ClearTocBox(win);
-        }
         gRenderCache->CancelRendering(dm);
         gRenderCache->FreeForDisplayModel(dm);
         if (!RelayoutMupdfForThemeChangeWithProgressUi(win, engine)) {
@@ -2738,7 +2699,7 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
         }
         RefreshDisplayModelAfterThemeChange(dm, tab == win->CurrentTab());
         RemapAnchorsAfterReflow(tab, win);
-        ReloadTocUiAfterReflowReparse(win, tab, reloadVisibleToc);
+        ReloadTocUiAfterReflowReparse(win, tab, false);
         tab->reloadOnFocus = false;
         return;
     }
@@ -4133,10 +4094,6 @@ static void ApplyDocumentColorModeChangeToTab(MainWindow* win, WindowTab* tab) {
     EngineBase* engine = tab->GetEngine();
     if (IsReflowableMupdfForTheme(engine)) {
         ReflowLoadingPauseScope reflowPause(engine);
-        bool reloadVisibleToc = tab == win->CurrentTab() && win->tocVisible && win->tocLoaded;
-        if (reloadVisibleToc) {
-            ClearTocBox(win);
-        }
         DisplayModel* dm = tab->AsFixed();
         if (dm) {
             gRenderCache->CancelRendering(dm);
@@ -4147,7 +4104,7 @@ static void ApplyDocumentColorModeChangeToTab(MainWindow* win, WindowTab* tab) {
             RefreshDisplayModelAfterThemeChange(dm, tab == win->CurrentTab());
             RemapAnchorsAfterReflow(tab, win);
         }
-        ReloadTocUiAfterReflowReparse(win, tab, reloadVisibleToc);
+        ReloadTocUiAfterReflowReparse(win, tab, false);
         tab->reloadOnFocus = false;
         return;
     }

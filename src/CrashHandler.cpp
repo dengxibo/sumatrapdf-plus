@@ -33,10 +33,6 @@
 // decide if will risk it and enable logf() calls or convert
 // logf() into a series of log() calls
 
-#define kCrashHandlerServer "www.sumatrapdfreader.org"
-#define kCrashHandlerServerPort 443
-#define kCrashHandlerServerSubmitURL "/uploadcrash/sumatrapdf-crashes"
-
 // The following functions allow crash handler to be used by both installer
 // and sumatra proper. They must be implemented for each app.
 extern void GetStressTestInfo(StrBuilder* s);
@@ -92,7 +88,7 @@ static bool GetModules(StrBuilder& s, bool additionalOnly) {
         return true;
     }
 
-    MODULEENTRY32 mod;
+    MODULEENTRY32 mod{};
     mod.dwSize = sizeof(mod);
     BOOL cont = Module32First(snap, &mod);
     while (cont) {
@@ -171,7 +167,7 @@ static char* BuildCrashInfoText(const char* condStr, const char* fileLine, bool 
     return s.StealData();
 }
 
-void SaveCrashInfo(const ByteSlice& d) {
+static void SaveCrashInfo(const ByteSlice& d) {
     if (!gCrashFilePath) {
         logf("SaveCrashInfo: skipping because !gCrashFilePath");
         return;
@@ -181,7 +177,7 @@ void SaveCrashInfo(const ByteSlice& d) {
     file::WriteFile(gCrashFilePath, d);
 }
 
-void UploadCrashReport(const ByteSlice& d) {
+static void UploadCrashReport(const ByteSlice& d) {
     log("UploadCrashReport()\n");
     if (d.empty()) {
         return;
@@ -193,7 +189,10 @@ void UploadCrashReport(const ByteSlice& d) {
     StrBuilder data(16 * 1024, gCrashHandlerAllocator);
     data.AppendSlice(d);
 
-    HttpPost(kCrashHandlerServer, kCrashHandlerServerPort, kCrashHandlerServerSubmitURL, &headers, &data);
+    constexpr const char kServer[] = "www.sumatrapdfreader.org";
+    constexpr int kServerPort = 443;
+    constexpr const char kSubmitUrl[] = "/uploadcrash/sumatrapdf-crashes";
+    HttpPost(kServer, kServerPort, kSubmitUrl, &headers, &data);
 }
 
 static bool ExtractSymbols(const u8* archiveData, size_t dataSize, const char* dstDir, Arena* allocator) {
@@ -587,7 +586,8 @@ static void GetProcessorName(StrBuilder& s) {
     }
 }
 
-#define GFX_DRIVER_KEY_FMT "SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}\\%04d"
+static constexpr const char GFX_DRIVER_KEY_FMT[] =
+    "SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}\\%04d";
 
 static void GetGraphicsDriverInfo(StrBuilder& s) {
     // the info is in registry in:
@@ -627,7 +627,7 @@ static void GetSystemInfo(StrBuilder& s) {
     GetProcessorName(s);
 
     {
-        MEMORYSTATUSEX ms;
+        MEMORYSTATUSEX ms{};
         ms.dwLength = sizeof(ms);
         GlobalMemoryStatusEx(&ms);
 
@@ -733,22 +733,18 @@ bool SetSymbolsDir(const char* symDir) {
     return true;
 }
 
-void __cdecl onSignalAbort(int) {
+static void __cdecl onSignalAbort(int) {
     // put the signal back because can be called many times
     // (from multiple threads) and raise() resets the handler
     signal(SIGABRT, onSignalAbort);
     CrashMe();
 }
 
-void onTerminate() {
+static void onTerminate() {
     CrashMe();
 }
 
-void onUnexpected() {
-    CrashMe();
-}
-
-// shadow crt's _purecall() so that we're called instead of CRT
+// CRT _purecall replacement; must keep global linkage (not static).
 int __cdecl _purecall() {
     CrashMe();
     return 0;
@@ -851,7 +847,7 @@ void InstallCrashHandler(const char* crashDumpPath, const char* crashFilePath, c
     // TODO: breaks starting in 17.3. Requires _HAS_EXCEPTION
     // but it is disabled by _HAS_CXX17 because P0003R5
     // https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2016/p0003r5.html
-    //::set_unexpected(onUnexpected);
+    //::set_unexpected(...); // no handler: see TODO above
 #endif
 }
 

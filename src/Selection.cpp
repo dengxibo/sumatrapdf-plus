@@ -645,7 +645,6 @@ void RefreshTextSelectionAfterLayoutChange(WindowTab* tab, MainWindow* win) {
     EbookAnnotationsInvalidateLayoutCaches(tab);
 
     ts->Reset();
-    ts->startPage = ts->endPage = ts->startGlyph = ts->endGlyph = -1;
 
     bool ok = ReselectTextAfterLayoutChange(dm, ts, nearPage, savedText);
     str::Free(savedText);

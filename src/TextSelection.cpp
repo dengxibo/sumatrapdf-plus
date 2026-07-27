@@ -11,6 +11,25 @@
 #include "EngineBase.h"
 #include "Selection.h"
 #include "TextSelection.h"
+#include <stdio.h>
+#include <time.h>
+
+// #region agent log
+static void AgentLogSel9e3e69(const char* hyp, const char* msg, int startG, int endG, int len, int bumped) {
+    static int n;
+    if (n++ > 200)
+        return;
+    FILE* f = fopen("c:/src/sumatrapdf/debug-9e3e69.log", "a");
+    if (!f)
+        return;
+    long long ts = (long long)time(NULL) * 1000LL;
+    fprintf(f,
+            "{\"sessionId\":\"9e3e69\",\"hypothesisId\":\"%s\",\"location\":\"TextSelection.cpp\","
+            "\"message\":\"%s\",\"data\":{\"startG\":%d,\"endG\":%d,\"len\":%d,\"bumped\":%d},\"timestamp\":%lld}\n",
+            hyp, msg, startG, endG, len, bumped, ts);
+    fclose(f);
+}
+// #endregion
 
 uint distSq(int x, int y) {
     return x * x + y * y;
@@ -52,6 +71,12 @@ void TextSelection::Reset() {
     result.pages = nullptr;
     free(result.rects);
     result.rects = nullptr;
+    startPage = -1;
+    endPage = -1;
+    startGlyph = -1;
+    endGlyph = -1;
+    startDragX = 0;
+    dragHoriz = 0;
 }
 
 static bool IsSelectableWhitespace(WCHAR c) {
@@ -149,9 +174,7 @@ static void ComputeGlyphRangeFromEndpoints(const TextSelection* ts, int* fromPag
     *fromPage = std::min(ts->startPage, ts->endPage);
     *toPage = std::max(ts->startPage, ts->endPage);
 
-    // Right-to-left on one page: include the anchor glyph in the range, but when the
-    // pointer is only on the immediate left neighbor select just the anchor (one CJK
-    // character). A wider left drag uses [endGlyph, startGlyph + 1).
+    // Right-to-left on one page: [endGlyph, anchor + 1) with inclusive endGlyph.
     if (ts->startPage == ts->endPage && ts->startGlyph > ts->endGlyph) {
         int textLen = 0;
         ts->engine->GetTextForPage(ts->startPage, &textLen);
@@ -160,11 +183,7 @@ static void ComputeGlyphRangeFromEndpoints(const TextSelection* ts, int* fromPag
         if (toExclusive > textLen) {
             toExclusive = textLen;
         }
-        if (ts->endGlyph == anchor - 1) {
-            *fromGlyph = anchor;
-        } else {
-            *fromGlyph = ts->endGlyph;
-        }
+        *fromGlyph = ts->endGlyph;
         *toGlyph = toExclusive;
         if (*fromGlyph > *toGlyph) {
             std::swap(*fromGlyph, *toGlyph);
@@ -179,14 +198,266 @@ static void ComputeGlyphRangeFromEndpoints(const TextSelection* ts, int* fromPag
     }
 }
 
-static int GlyphIndexForDragEndpoint(TextSelection* ts, int pageNo, double x, double y) {
-    if (pageNo == ts->startPage && ts->startGlyph >= 0) {
-        int under = GlyphIndexUnderPoint(ts, pageNo, x, y);
-        if (under >= 0 && under < ts->startGlyph) {
-            return under;
+static bool GlyphOnDragRow(TextSelection* ts, int pageNo, double x, double y, int glyph) {
+    (void)x;
+    int textLen = 0;
+    Rect* coords = nullptr;
+    ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!coords || glyph < 0 || glyph >= textLen) {
+        return false;
+    }
+    RectF gb = ts->engine->Transform(ToRectF(coords[glyph]), pageNo, 1.0, 0);
+    if (gb.dy <= 0) {
+        return false;
+    }
+    PointF pt = ts->engine->Transform(PointF(x, y), pageNo, 1.0, 0);
+    float slack = gb.dy * 0.35f;
+    return pt.y >= gb.y - slack && pt.y <= gb.y + gb.dy + slack;
+}
+
+static bool GlyphSharesAnchorRow(TextSelection* ts, int pageNo, int anchor, int glyph) {
+    if (glyph < 0) {
+        return false;
+    }
+    int textLen = 0;
+    Rect* coords = nullptr;
+    ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!coords || anchor < 0 || anchor >= textLen || glyph >= textLen) {
+        return false;
+    }
+    RectF ab = ts->engine->Transform(ToRectF(coords[anchor]), pageNo, 1.0, 0);
+    RectF b = ts->engine->Transform(ToRectF(coords[glyph]), pageNo, 1.0, 0);
+    if (ab.dy <= 0 || b.dy <= 0) {
+        return false;
+    }
+    // Overlap test: anchor midline row was too strict for math (subscripts / arg max blocks).
+    return ab.y < b.y + b.dy && b.y < ab.y + ab.dy;
+}
+
+// SelectUpTo uses exclusive end indices [start, end) for left-to-right drags.
+static int ForwardExclusiveEndFromX(TextSelection* ts, int pageNo, double x, double y, int startGlyph) {
+    int textLen = 0;
+    Rect* coords = nullptr;
+    ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!coords || textLen <= 0 || startGlyph < 0 || startGlyph >= textLen) {
+        return startGlyph + 1;
+    }
+    PointF pt = ts->engine->Transform(PointF(x, y), pageNo, 1.0, 0);
+    int end = startGlyph + 1;
+    for (int i = startGlyph; i < textLen; i++) {
+        RectF b = ts->engine->Transform(ToRectF(coords[i]), pageNo, 1.0, 0);
+        if (b.dx <= 0 && b.dy <= 0) {
+            continue;
+        }
+        if (i > startGlyph && !GlyphOnDragRow(ts, pageNo, x, y, i)) {
+            // Skip subscripts etc.; keep scanning for later glyphs on the drag row (e.g. Q after arg max).
+            if (pt.x < b.x) {
+                break;
+            }
+            continue;
+        }
+        float right = b.x + b.dx;
+        float mid = b.x + 0.5f * b.dx;
+        if (pt.x < b.x) {
+            break;
+        }
+        if (i == startGlyph) {
+            end = startGlyph + 1;
+            if (pt.x <= right) {
+                break;
+            }
+            continue;
+        }
+        if (pt.x <= mid) {
+            end = i + 1;
+            break;
+        }
+        end = i + 2;
+        if (pt.x <= right) {
+            break;
         }
     }
-    return FindClosestGlyph(ts, pageNo, x, y);
+    if (end > textLen) {
+        end = textLen;
+    }
+    if (end <= startGlyph) {
+        end = startGlyph + 1;
+    }
+    return end;
+}
+
+// Right-to-left drags use inclusive start indices [end, anchor + 1).
+static int BackwardInclusiveStartFromX(TextSelection* ts, int pageNo, double x, double y, int anchor) {
+    int textLen = 0;
+    Rect* coords = nullptr;
+    ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!coords || textLen <= 0 || anchor <= 0) {
+        return anchor;
+    }
+    PointF pt = ts->engine->Transform(PointF(x, y), pageNo, 1.0, 0);
+
+    int from = anchor;
+    for (int i = anchor - 1; i >= 0; i--) {
+        RectF b = ts->engine->Transform(ToRectF(coords[i]), pageNo, 1.0, 0);
+        if (b.dx <= 0 && b.dy <= 0) {
+            continue;
+        }
+        if (!GlyphOnDragRow(ts, pageNo, x, y, i)) {
+            continue;
+        }
+        float right = b.x + b.dx;
+        if (pt.x < b.x) {
+            continue;
+        }
+        if (pt.x < right) {
+            from = i;
+            break;
+        }
+        // Cursor is to the right of glyph i (gap); try glyphs further left on this line.
+    }
+    if (from >= anchor) {
+        return anchor;
+    }
+    return from;
+}
+
+static bool CursorSharesAnchorLine(TextSelection* ts, int pageNo, double x, double y, int anchor) {
+    (void)x;
+    int textLen = 0;
+    Rect* coords = nullptr;
+    ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!coords || anchor < 0 || anchor >= textLen) {
+        return true;
+    }
+    RectF ab = ts->engine->Transform(ToRectF(coords[anchor]), pageNo, 1.0, 0);
+    PointF pt = ts->engine->Transform(PointF(x, y), pageNo, 1.0, 0);
+    float slack = ab.dy > 0 ? ab.dy * 0.4f : 3.0f;
+    return pt.y >= ab.y - slack && pt.y <= ab.y + ab.dy + slack;
+}
+
+static bool DragExtendsLeftOfAnchor(TextSelection* ts, int pageNo, double x, double y, int anchor) {
+    (void)y;
+    (void)anchor;
+    if (pageNo != ts->startPage) {
+        return false;
+    }
+    return x < ts->startDragX;
+}
+
+static void UpdateDragHorizLock(TextSelection* ts, double x) {
+    if (ts->dragHoriz != 0) {
+        return;
+    }
+    const float kLockEps = 1.0f;
+    if (x < ts->startDragX - kLockEps) {
+        ts->dragHoriz = -1;
+    } else if (x > ts->startDragX + kLockEps) {
+        ts->dragHoriz = 1;
+    }
+}
+
+static bool DragUsesRtlEndpoint(TextSelection* ts, int pageNo, double x, double y, int anchor) {
+    UpdateDragHorizLock(ts, x);
+    if (ts->dragHoriz < 0) {
+        return true;
+    }
+    if (ts->dragHoriz > 0) {
+        return false;
+    }
+    return DragExtendsLeftOfAnchor(ts, pageNo, x, y, anchor);
+}
+
+static int GlyphIndexForDragEndpoint(TextSelection* ts, int pageNo, double x, double y) {
+    if (pageNo == ts->startPage && ts->startGlyph >= 0) {
+        int anchor = ts->startGlyph;
+
+        bool sameLine = CursorSharesAnchorLine(ts, pageNo, x, y, anchor);
+        int offLineG = -1;
+        if (!sameLine) {
+            offLineG = FindClosestGlyph(ts, pageNo, x, y);
+            if (GlyphSharesAnchorRow(ts, pageNo, anchor, offLineG)) {
+                sameLine = true;
+            }
+        }
+        if (!sameLine) {
+            // #region agent log
+            int span = offLineG > anchor ? offLineG - anchor : anchor - offLineG;
+            if (span >= 0 && span <= 500) {
+                AgentLogSel9e3e69("H8", "drag_off_line", anchor, offLineG, span, 0);
+            }
+            // #endregion
+            return offLineG;
+        }
+
+        if (DragUsesRtlEndpoint(ts, pageNo, x, y, anchor)) {
+            int bwd = BackwardInclusiveStartFromX(ts, pageNo, x, y, anchor);
+            if (bwd < anchor) {
+                // #region agent log
+                int len = anchor + 1 - bwd;
+                if (len >= 1 && len <= 20) {
+                    AgentLogSel9e3e69("H5", "drag_rtl", anchor, bwd, len, 0);
+                }
+                // #endregion
+                return bwd;
+            }
+            int closest = FindClosestGlyph(ts, pageNo, x, y);
+            if (closest < anchor && GlyphOnDragRow(ts, pageNo, x, y, closest)) {
+                return closest;
+            }
+            // #region agent log
+            AgentLogSel9e3e69("H7", "drag_rtl_anchor_only", anchor, anchor + 1, 1, bwd);
+            // #endregion
+            return anchor + 1;
+        }
+        int fwd = ForwardExclusiveEndFromX(ts, pageNo, x, y, anchor);
+        int closestFwd = FindClosestGlyph(ts, pageNo, x, y);
+        if (closestFwd > anchor && GlyphOnDragRow(ts, pageNo, x, y, closestFwd)) {
+            int textLen = 0;
+            Rect* coords = nullptr;
+            ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+            int cand = closestFwd;
+            if (coords && closestFwd >= 0 && closestFwd < textLen) {
+                Point pti = ToPoint(ts->engine->Transform(PointF(x, y), pageNo, 1.0, 0));
+                if (coords[closestFwd].Contains(pti)) {
+                    cand = closestFwd + 1;
+                }
+            }
+            if (cand > fwd) {
+                fwd = cand;
+            }
+        }
+        // #region agent log
+        int len = fwd - anchor;
+        if (len >= 1 && len <= 4) {
+            AgentLogSel9e3e69("H6", "drag_ltr", anchor, fwd, len, 0);
+        }
+        // #endregion
+        return fwd;
+    }
+    int g = FindClosestGlyph(ts, pageNo, x, y);
+    int textLen = 0;
+    Rect* coords = nullptr;
+    ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    Point pti = ToPoint(PointF(x, y));
+    if (coords && g >= 0 && g < textLen && coords[g].Contains(pti)) {
+        int endG = ForwardExclusiveEndFromX(ts, pageNo, x, y, ts->startGlyph);
+        // #region agent log
+        int len = endG - ts->startGlyph;
+        if (pageNo == ts->startPage && ts->startGlyph >= 0 && len >= 1 && len <= 4) {
+            AgentLogSel9e3e69("H3", "drag_closest_inside", ts->startGlyph, endG, len, g);
+        }
+        // #endregion
+        return endG;
+    }
+    // #region agent log
+    if (pageNo == ts->startPage && ts->startGlyph >= 0) {
+        int len = g - ts->startGlyph;
+        if (len >= 1 && len <= 4) {
+            AgentLogSel9e3e69("H4", "drag_closest", ts->startGlyph, g, len, 0);
+        }
+    }
+    // #endregion
+    return g;
 }
 
 static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length, StrVec* lines = nullptr) {
@@ -285,6 +556,8 @@ bool TextSelection::IsOverGlyph(int pageNo, double x, double y) {
 void TextSelection::StartAt(int pageNo, int glyphIx) {
     startPage = pageNo;
     startGlyph = glyphIx;
+    endPage = -1;
+    endGlyph = -1;
     if (glyphIx < 0) {
         int textLen;
         engine->GetTextForPage(pageNo, &textLen);
@@ -293,6 +566,8 @@ void TextSelection::StartAt(int pageNo, int glyphIx) {
 }
 
 void TextSelection::StartAt(int pageNo, double x, double y) {
+    startDragX = (float)x;
+    dragHoriz = 0;
     int ix = GlyphIndexUnderPoint(this, pageNo, x, y);
     if (ix < 0) {
         ix = FindClosestGlyph(this, pageNo, x, y);

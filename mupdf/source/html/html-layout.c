@@ -27,6 +27,25 @@
 #include "hb.h"
 #include "hb-ft.h"
 #include <ft2build.h>
+#include <stdio.h>
+#include <time.h>
+
+// #region agent log
+static void agent_log_9e3e69(const char* hyp, const char* loc, const char* msg, float a, float b) {
+    static int n;
+    if (n++ > 50)
+        return;
+    FILE* f = fopen("c:/src/sumatrapdf/debug-9e3e69.log", "a");
+    if (!f)
+        return;
+    long long ts = (long long)time(NULL) * 1000LL;
+    fprintf(f,
+            "{\"sessionId\":\"9e3e69\",\"hypothesisId\":\"%s\",\"location\":\"%s\",\"message\":\"%s\","
+            "\"data\":{\"a\":%.2f,\"b\":%.2f},\"timestamp\":%lld}\n",
+            hyp, loc, msg, a, b, ts);
+    fclose(f);
+}
+// #endregion
 
 #include <math.h>
 #include <assert.h>
@@ -537,8 +556,8 @@ static int flush_line(fz_context* ctx, fz_html_box* box, layout_data* ld, float 
     if (page_h > 0) {
         avail = page_h - fmodf(box->s.layout.b - page_top, page_h);
         /* If the line is larger than the available space skip to the start
-         * of the next page. */
-        if (line_h > avail) {
+         * of the next page. Repeat until the line fits or we need a restart. */
+        while (line_h > avail && avail > 0) {
             if (restart) {
                 assert(restart->start == NULL);
 
@@ -552,6 +571,12 @@ static int flush_line(fz_context* ctx, fz_html_box* box, layout_data* ld, float 
                 return 1;
             }
             box->s.layout.b += avail;
+            // #region agent log
+            agent_log_9e3e69("H2", "html-layout.c:flush_line", "skip_to_next_page", line_h, avail);
+            // #endregion
+            avail = page_h - fmodf(box->s.layout.b - page_top, page_h);
+            if (line_h > page_h)
+                break;
         }
     }
     layout_line(ctx, indent, page_w, line_w, align, a, b, box, baseline, line_h);
@@ -847,6 +872,19 @@ static void layout_flow(fz_context* ctx, layout_data* ld, fz_html_box* box, fz_h
             s = fz_min(xs, ys);
             node->w = node->w * s;
             node->h = node->h * s;
+            /* Never taller than one reflow page slice (avoids clipped split across fz pages). */
+            {
+                float slice_h = ld->page[B] - ld->page[T];
+                if (slice_h > 0 && node->h > slice_h) {
+                    float before = node->h;
+                    float t = slice_h / node->h;
+                    node->w *= t;
+                    node->h = slice_h;
+                    // #region agent log
+                    agent_log_9e3e69("H3", "html-layout.c:measure_image", "slice_clamp", before, slice_h);
+                    // #endregion
+                }
+            }
 
         } else if (node->type == FLOW_ANCHOR) {
             node->h = 0;

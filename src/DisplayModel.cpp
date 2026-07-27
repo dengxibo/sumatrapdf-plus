@@ -128,7 +128,7 @@ static int VisiblePageScanFrom(const DisplayModel* dm) {
         return 1;
     }
     int lo = 1;
-    int hi = dm->pagesInfoCount;
+    int hi = dm->PageCount();
     int viewTop = dm->viewPort.y;
     while (lo < hi) {
         int mid = lo + (hi - lo) / 2;
@@ -146,20 +146,21 @@ static int VisiblePageScanFrom(const DisplayModel* dm) {
 }
 
 static int VisiblePageScanTo(const DisplayModel* dm, int fromPage) {
+    int lastPage = dm->PageCount();
     if (!IsReflowContinuousSingleColumn((DisplayModel*)dm)) {
-        return dm->pagesInfoCount;
+        return lastPage;
     }
     int viewBottom = dm->viewPort.y + dm->viewPort.dy;
-    for (int p = fromPage; p <= dm->pagesInfoCount; p++) {
+    for (int p = fromPage; p <= lastPage; p++) {
         PageInfo* pi = dm->GetPageInfo(p);
         if (!pi || !pi->isShown || pi->pos.dy <= 0) {
-            return dm->pagesInfoCount;
+            return lastPage;
         }
         if (pi->pos.y >= viewBottom) {
-            return std::min(p + 1, dm->pagesInfoCount);
+            return std::min(p + 1, lastPage);
         }
     }
-    return dm->pagesInfoCount;
+    return lastPage;
 }
 
 // Layout reflowed continuous pages (validUpto+1 .. toPage) without a full relayout.
@@ -898,6 +899,10 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
         }
     }
     if (enginePageCount <= pagesInfoCount) {
+        if (enginePageCount < pagesInfoCount) {
+            SyncPageCountWithEngine(updateUi);
+            return;
+        }
         if (updateUi && (growAll || PagesNeedLayoutSync(this))) {
             ApplyPagesUiUpdate(this);
         }
@@ -1268,6 +1273,9 @@ int DisplayModel::CurrentPageNo() const {
     int scanTo = VisiblePageScanTo(this, scanFrom);
     for (int pageNo = scanFrom; pageNo <= scanTo; pageNo++) {
         PageInfo* pageInfo = GetPageInfo(pageNo);
+        if (!pageInfo) {
+            continue;
+        }
         if (pageInfo->visibleRatio > ratio) {
             mostVisiblePage = pageNo;
             ratio = pageInfo->visibleRatio;
@@ -2311,6 +2319,9 @@ void DisplayModel::ScrollXBy(int dx) {
 }
 
 void DisplayModel::ScrollYTo(int yOff) {
+    if (engine && pagesInfo && pagesInfoCount > engine->PageCount()) {
+        SyncPageCountWithEngine(false);
+    }
     int currPageNo = CurrentPageNo();
     viewPort.y = yOff;
     RecalcVisibleParts();

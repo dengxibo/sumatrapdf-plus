@@ -2,6 +2,8 @@
 
 ## next
 
+## 3.7.19 (2026-07-28)
+
 - rename advanced setting `PdfDocumentColorMode` to `DocumentColorMode` with clearer values `smart`, `original`, and `theme`; migrate legacy names on load
   将高级设置 `PdfDocumentColorMode` 重命名为 `DocumentColorMode`，取值改为 smart / original / theme，加载时自动迁移旧配置
 - fix reflow EPUB blank gaps after the first document color mode or theme switch: relayout only after `UpdateCanvasSize`, serialize theme page-map recount, warm chapters before recount; see `docs/epub-performance-checkpoint-2026-07-17.md` (2026-07-26)
@@ -18,8 +20,12 @@
   修复从右向左划词时选区不含按下字、左边界偏到左侧邻字的问题
 - fix right-to-left drag selecting two characters when only the anchor glyph is intended (immediate left neighbor)
   修复从右向左只拖一格时误选两字、无法只选按下字的问题
+- improve CJK/EPUB text selection and math formula highlights (drag row, accent marks, merged highlight bands)
+  改进 CJK/EPUB 划词与公式高亮（拖动行、变音符号、合并高亮带）
 - show wait cursor and a progress notification when reflow EPUB/MOBI re-pagination runs for a theme or document color change (chapter x / n); large PDFs show a similar notice while pages re-render; ignore overlapping relayout on the same document
   切换主题或文档颜色导致可重排电子书全书重算分页时显示等待光标与章进度通知；大 PDF 重着色时显示提示；同一文档重算进行中时忽略重复触发
+- CrashHandler code analysis cleanups (constexpr URLs, static helpers, uninitialized struct init)
+  CrashHandler 静态分析清理
 
 ## 3.7.18 (2026-07-26)
 
