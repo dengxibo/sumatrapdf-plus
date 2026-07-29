@@ -8,7 +8,9 @@
 class EngineBase;
 struct FzPageInfo;
 struct fz_context;
+struct fz_display_list;
 struct fz_image;
+struct fz_page;
 
 enum class DarkImagePolicy {
     Preserve,
@@ -68,6 +70,7 @@ enum class PageColorMode {
     Normal,
     LegacyInvert,
     SmartDark,
+    FollowThemeDirect,
     PreserveImages,
     ScanDark,
 };
@@ -78,6 +81,10 @@ struct DarkModeOptions {
     float maxScanAspectSkew = 1.15f;
     int maxTextOpsForScanPage = 10;
     int maxVectorOpsForScanPage = 20;
+    // Follow-theme fast path: LaTeX-like pages (many tiny text ops, almost no images).
+    int followThemeBitmapRecolorMinTextOps = 60;
+    int followThemeBitmapRecolorMaxImageOps = 4;
+    float followThemeBitmapRecolorMaxImageCoverage = 0.12f;
     // 0=off, 1=blend near-white Preserve-image pixels toward page background
     float preserveImagePaperSoftening = 0.f;
     float lightFillChromaThreshold = 0.05f;
@@ -135,11 +142,16 @@ struct DarkModeReplayState {
 // PDF dark mode runtime options (not stored in settings file)
 bool GetPreservePdfImagesInDarkMode();
 void SetPreservePdfImagesInDarkMode(bool preserve);
+// Smart/Auto and Light-Warm Smart: legacy post-process may skip embedded image rects on fixed PDFs.
+bool PdfSmartModePreservesEmbeddedImages();
+// Follow theme on dark themes: keep embedded/page images at original colors.
+bool PdfFollowThemePreservesEmbeddedImageColors();
 int GetPreservePdfImagesMinSize();
 PdfDarkModeRenderer GetPdfDarkModeRenderer();
 
 bool PdfDarkModeUsesObjectLevel();
 bool DarkModeProfileUsesObjectLevel(const DarkModeProfile* profile);
+bool DarkModeProfileUsesFollowThemeDirect(const DarkModeProfile* profile);
 bool DarkModeProfileUsesLegacyPostProcess(const DarkModeProfile* profile);
 void BuildViewDarkModeProfile(EngineBase* engine, DarkModeProfile* profile);
 u32 PdfDarkModeComputeProfileHash(const DarkModeProfile* profile);
@@ -153,12 +165,62 @@ u32 PdfDarkModeComputeOptionsHash();
 DarkModePalette PdfDarkModeBuildPalette();
 
 void PdfDarkModeFreeAnalysis(fz_context* ctx, DarkModePageAnalysis* analysis);
+
+enum class FollowThemeScanProbe : u8 {
+    Unknown = 0,
+    Mixed = 1,
+    PureScan = 2,
+    // Few images; micro-span text (typical LaTeX). Whole-tile legacy recolor, not per-op wrap.
+    BitmapRecolor = 3,
+};
+
+struct FollowThemePageProbeStats {
+    int textOps = 0;
+    int imageOps = 0;
+    int vectorOps = 0;
+    float maxImageCoverage = 0.f;
+};
+
+inline bool FollowThemePageStatsAllowBitmapRecolor(const FollowThemePageProbeStats& st, const DarkModeOptions& opts) {
+    return st.imageOps <= opts.followThemeBitmapRecolorMaxImageOps &&
+           st.maxImageCoverage <= opts.followThemeBitmapRecolorMaxImageCoverage;
+}
+
+inline bool FollowThemePageStatsMatchBitmapRecolor(const FollowThemePageProbeStats& st, const DarkModeOptions& opts) {
+    return st.textOps >= opts.followThemeBitmapRecolorMinTextOps && FollowThemePageStatsAllowBitmapRecolor(st, opts);
+}
+
+// LaTeX books: only keep Mixed (per-image preserve) when a page has a large figure; dense text pages
+// with a few small XObjects should still use whole-tile recolor for contrast and speed.
+inline FollowThemeScanProbe PdfDarkModeLaTeXRefineFollowThemeProbe(FollowThemeScanProbe probe,
+                                                                   const FollowThemePageProbeStats& st,
+                                                                   const DarkModeOptions& opts) {
+    if (probe != FollowThemeScanProbe::Mixed) {
+        return probe;
+    }
+    if (st.textOps >= opts.followThemeBitmapRecolorMinTextOps && st.maxImageCoverage < 0.18f) {
+        return FollowThemeScanProbe::BitmapRecolor;
+    }
+    return probe;
+}
+
+FollowThemeScanProbe PdfDarkModeProbeFollowThemeScanPage(fz_context* ctx, fz_page* page, const RectF& pageBounds,
+                                                         FollowThemePageProbeStats* stats = nullptr);
+FollowThemeScanProbe PdfDarkModeProbeFollowThemeScanList(fz_context* ctx, fz_display_list* list,
+                                                         const RectF& pageBounds,
+                                                         FollowThemePageProbeStats* stats = nullptr);
+
+struct pdf_document;
+bool PdfDarkModePdfMetadataSuggestsBitmapRecolorDoc(fz_context* ctx, pdf_document* doc);
+bool PdfDarkModePdfMetadataSuggestsLayoutPhotoDoc(fz_context* ctx, pdf_document* doc);
+
 void PdfDarkModeInvalidatePage(fz_context* ctx, FzPageInfo* pageInfo);
 
 void ApplyAdaptiveDocumentDarkMode(float r, float g, float b, const DarkModePalette& palette, float* outR, float* outG,
                                    float* outB);
 
 bool PdfDarkModeIsDecorativeStripImage(const RectF& imgRect, const RectF& pageBounds);
+DarkImagePolicy PdfDarkModePolicyForFollowThemeImage(const RectF& imgBounds, bool isImageMask, const RectF& pageBounds);
 
 // OKLab perceptual remap for SmartDark text/vector colors (Phase 2).
 void MapRgbToDarkThemeOklab(float r, float g, float b, const DarkModePalette& palette, float* outRgb);

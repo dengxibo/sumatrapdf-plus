@@ -22,6 +22,11 @@ bool DarkModeProfileUsesObjectLevel(const DarkModeProfile* profile) {
     return false;
 }
 
+bool DarkModeProfileUsesFollowThemeDirect(const DarkModeProfile* profile) {
+    (void)profile;
+    return false;
+}
+
 bool DarkModeProfileUsesLegacyPostProcess(const DarkModeProfile* profile) {
     (void)profile;
     return false;
@@ -84,9 +89,54 @@ fz_device* PdfDarkModeWrapDevice(fz_context* ctx, fz_device* inner, DarkModePage
     return inner;
 }
 
+fz_device* PdfDarkModeWrapFollowThemeDevice(fz_context* ctx, fz_device* inner, const DarkModePalette* palette,
+                                            const RectF& pageBounds, DarkModeEngineCache* engineCache,
+                                            u32 profileHash) {
+    (void)ctx;
+    (void)palette;
+    (void)pageBounds;
+    (void)engineCache;
+    (void)profileHash;
+    return inner;
+}
+
+fz_image* PdfDarkModeGetCachedFollowThemeImage(fz_context* ctx, DarkModeEngineCache* engineCache, fz_image* srcImage,
+                                               DarkImagePolicy policy, float pageCoverage,
+                                               const DarkModePalette& palette, u32 profileHash) {
+    (void)ctx;
+    (void)engineCache;
+    (void)srcImage;
+    (void)policy;
+    (void)pageCoverage;
+    (void)palette;
+    (void)profileHash;
+    return nullptr;
+}
+
 void PdfDarkModeInvalidatePage(fz_context* ctx, FzPageInfo* pageInfo) {
     (void)ctx;
     (void)pageInfo;
+}
+
+bool PdfDarkModePdfMetadataSuggestsBitmapRecolorDoc(fz_context* ctx, pdf_document* doc) {
+    (void)ctx;
+    (void)doc;
+    return false;
+}
+
+bool PdfDarkModePdfMetadataSuggestsLayoutPhotoDoc(fz_context* ctx, pdf_document* doc) {
+    (void)ctx;
+    (void)doc;
+    return false;
+}
+
+FollowThemeScanProbe PdfDarkModeProbeFollowThemeScanPage(fz_context* ctx, fz_page* page, const RectF& pageBounds,
+                                                         FollowThemePageProbeStats* stats) {
+    (void)stats;
+    (void)ctx;
+    (void)page;
+    (void)pageBounds;
+    return FollowThemeScanProbe::Mixed;
 }
 
 int GetPreservePdfImagesMinSize() {
@@ -95,6 +145,14 @@ int GetPreservePdfImagesMinSize() {
 
 bool GetPreservePdfImagesInDarkMode() {
     return true;
+}
+
+bool PdfSmartModePreservesEmbeddedImages() {
+    return false;
+}
+
+bool PdfFollowThemePreservesEmbeddedImageColors() {
+    return false;
 }
 
 void SetPreservePdfImagesInDarkMode(bool preserve) {

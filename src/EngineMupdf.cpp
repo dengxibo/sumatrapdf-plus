@@ -39,22 +39,6 @@ void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, fl
 #include "SumatraConfig.h"
 #include "Settings.h"
 
-// #region agent log
-static void AgentLog9e3e69(const char* hyp, const char* loc, const char* msg, int pageNo, float a, float b) {
-    static int n;
-    if (n++ > 30)
-        return;
-    FILE* f = fopen("c:/src/sumatrapdf/debug-9e3e69.log", "a");
-    if (!f)
-        return;
-    long long ts = (long long)time(NULL) * 1000LL;
-    fprintf(f,
-            "{\"sessionId\":\"9e3e69\",\"hypothesisId\":\"%s\",\"location\":\"%s\",\"message\":\"%s\","
-            "\"data\":{\"pageNo\":%d,\"a\":%.2f,\"b\":%.2f},\"timestamp\":%lld}\n",
-            hyp, loc, msg, pageNo, a, b, ts);
-    fclose(f);
-}
-// #endregion
 #include "Theme.h"
 #include "GlobalPrefs.h"
 #include "PdfDarkMode.h"
@@ -201,6 +185,35 @@ void EngineMupdfInvalidateSearchTextCache(EngineBase* engine) {
     LeaveCriticalSection(&epdf->pagesLock);
 }
 
+static void DropFollowThemePageBitmapCache(FzPageInfo* pi) {
+    if (!pi) {
+        return;
+    }
+    delete pi->followThemePageBitmap;
+    pi->followThemePageBitmap = nullptr;
+    pi->followThemePageBitmapZoom = 0.f;
+    pi->followThemePageBitmapRotation = 0;
+    pi->followThemePageBitmapProfileHash = 0;
+    pi->followThemePageBitmapDevBounds = fz_empty_irect;
+}
+
+static void ApplyFollowThemeDocClassFromMetadata(EngineMupdf* engine, fz_context* ctx) {
+    if (!engine || !engine->pdfdoc) {
+        if (engine) {
+            engine->followThemeDocBitmapRecolor = 0;
+        }
+        return;
+    }
+    // Doc class comes from PDF metadata only; do not tie it to the current UI theme.
+    if (PdfDarkModePdfMetadataSuggestsBitmapRecolorDoc(ctx, engine->pdfdoc)) {
+        engine->followThemeDocBitmapRecolor = 1;
+    } else if (PdfDarkModePdfMetadataSuggestsLayoutPhotoDoc(ctx, engine->pdfdoc)) {
+        engine->followThemeDocBitmapRecolor = 2;
+    } else {
+        engine->followThemeDocBitmapRecolor = 0;
+    }
+}
+
 void EngineMupdfInvalidateDarkMode(EngineBase* engine) {
     EngineMupdf* epdf = AsEngineMupdf(engine);
     if (!epdf) {
@@ -214,8 +227,10 @@ void EngineMupdfInvalidateDarkMode(EngineBase* engine) {
     for (FzPageInfo* pi : epdf->pages) {
         if (pi) {
             PdfDarkModeInvalidatePage(ctx, pi);
+            DropFollowThemePageBitmapCache(pi);
         }
     }
+    ApplyFollowThemeDocClassFromMetadata(epdf, ctx);
     LeaveCriticalSection(&epdf->pagesLock);
 }
 
@@ -2012,13 +2027,7 @@ static bool PdfShouldCollectContentImages() {
     if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
         return false;
     }
-    if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Black) {
-        return false;
-    }
-    if (!ThemeUsesDarkChrome()) {
-        return false;
-    }
-    if (!GetPreservePdfImagesInDarkMode()) {
+    if (!PdfSmartModePreservesEmbeddedImages()) {
         return false;
     }
     // Smart dark (object-level) builds its own analysis from the display list.
@@ -2783,6 +2792,7 @@ EngineMupdf::~EngineMupdf() {
         if (pi->displayList) {
             fz_drop_display_list(ctx, pi->displayList);
         }
+        DropFollowThemePageBitmapCache(pi);
         if (pi->searchStext) {
             fz_drop_stext_page(ctx, pi->searchStext);
         }
@@ -3527,7 +3537,8 @@ static TempStr BuildMupdfReflowPaletteCss(bool isEpub) {
     PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
     bool injectThemeColors = docMode != PdfDocumentColorMode::Light;
     bool reflowThemeBitmapRecolor = ReflowEbookUsesThemeBitmapRecolor();
-    bool useEyeCareLightCss = injectThemeColors && !darkTheme && !ThemeUsesOriginalPageColors();
+    bool useEyeCareLightCss =
+        injectThemeColors && !darkTheme && !ThemeUsesOriginalPageColors() && !reflowThemeBitmapRecolor;
     bool useDarkCss = injectThemeColors && darkTheme && !reflowThemeBitmapRecolor;
 
     if (useDarkCss) {
@@ -3613,7 +3624,8 @@ static TempStr BuildMupdfReflowEpubImageFitCss(float ldyPt) {
     float h60 = panelH * 0.58f;
     float h50 = panelH * 0.48f;
     float h40 = panelH * 0.38f;
-    return str::FormatTemp(R"(/* Sumatra: cnepub figures — one reflow page, explicit height (MuPDF ignores max-height). */
+    return str::FormatTemp(
+        R"(/* Sumatra: cnepub figures — one reflow page, explicit height (MuPDF ignores max-height). */
 img.kindle-cn-bodycontent-image-alone100,
 img.kindle-cn-bodycontent-image-alone100-withnote {
   display: block !important;
@@ -3691,7 +3703,7 @@ img[style*="height:100%%"], img[style*="height: 100%%"] {
   max-width: 100%% !important;
 }
 )",
-                         h90, h80, h70, h60, h50, h40, panelH);
+        h90, h80, h70, h60, h50, h40, panelH);
 }
 
 static TempStr BuildMarkdownTableCss(bool darkTheme, bool eyeCareLight) {
@@ -3800,7 +3812,8 @@ static TempStr BuildMarkdownUserCss(const char* nameHint, const char* filePath, 
     PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
     bool injectThemeColors = docMode != PdfDocumentColorMode::Light;
     bool reflowThemeBitmapRecolor = ReflowEbookUsesThemeBitmapRecolor();
-    bool useEyeCareLightCss = injectThemeColors && !darkTheme && !ThemeUsesOriginalPageColors();
+    bool useEyeCareLightCss =
+        injectThemeColors && !darkTheme && !ThemeUsesOriginalPageColors() && !reflowThemeBitmapRecolor;
     bool useDarkCss = injectThemeColors && darkTheme && !reflowThemeBitmapRecolor;
 
     TempStr css = nullptr;
@@ -4596,15 +4609,6 @@ static void SetMupdfReflowUserCss(fz_context* ctx, const char* nameHint, const c
     }
     TempStr ebookCss = BuildMupdfReflowUserCss(nameHint, filePath, ldx, ldy, lfontDy);
     if (ebookCss) {
-        // #region agent log
-        if (IsEpubReflowNameHint(nameHint)) {
-            const char* p = strstr(ebookCss, "image-alone50");
-            float hasAlone50 = p ? 1.f : 0.f;
-            float hasHeight = (p && strstr(p, "height:")) ? 1.f : 0.f;
-            AgentLog9e3e69("H1", "EngineMupdf.cpp:SetMupdfReflowUserCss", "epub_user_css", 0, hasAlone50,
-                           hasHeight);
-        }
-        // #endregion
         fz_set_user_css(ctx, ebookCss);
     }
 }
@@ -4671,8 +4675,8 @@ static bool EngineMupdfFragmentInMeta(EngineMupdf* e, const char* uri) {
     return e && e->epubMetaLoaded && uri && EpubMetaLookupFragmentPage(e->epubMeta, uri) > 0;
 }
 
-static void EngineMupdfUpsertFragmentInMeta(EngineMupdf* e, const char* uri, int ch, int pageInChapter, float x, float y,
-                                            int pageNo) {
+static void EngineMupdfUpsertFragmentInMeta(EngineMupdf* e, const char* uri, int ch, int pageInChapter, float x,
+                                            float y, int pageNo) {
     if (!e || !uri || pageNo <= 0) {
         return;
     }
@@ -5196,6 +5200,7 @@ static void DropSingleFzPageCache(fz_context* ctx, FzPageInfo* pi) {
         fz_drop_display_list(ctx, pi->displayList);
         pi->displayList = nullptr;
     }
+    DropFollowThemePageBitmapCache(pi);
     if (pi->searchStext) {
         fz_drop_stext_page(ctx, pi->searchStext);
         pi->searchStext = nullptr;
@@ -5753,7 +5758,7 @@ static int ReflowStoredChapterPageCount(EngineMupdf* e, int chapter) {
     }
     int chStart = e->reflowChapterStartPage[chapter];
     int chEndPageIdx = e->reflowChapterStartPage.isValidIndex(chapter + 1) ? e->reflowChapterStartPage[chapter + 1] - 1
-                                                                            : e->pageCount - 1;
+                                                                           : e->pageCount - 1;
     if (chEndPageIdx < chStart) {
         return 0;
     }
@@ -6295,6 +6300,10 @@ bool EngineMupdf::FinishLoading() {
     ReportIf(pdf_js_supported(ctx, pdfdoc));
 
     RunCadDetection();
+
+    if (pdfdoc) {
+        ApplyFollowThemeDocClassFromMetadata(this, ctx);
+    }
 
     return true;
 }
@@ -7019,12 +7028,6 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
         if (!fz_is_empty_rect(mbox)) {
             pageInfo->mediabox = ToRectF(mbox);
         }
-        // #region agent log
-        if (pageNo >= 133 && pageNo <= 138) {
-            AgentLog9e3e69("H4", "EngineMupdf.cpp:GetFzPageInfo", "page_mediabox", pageNo, mbox.y1 - mbox.y0,
-                           mbox.x1 - mbox.x0);
-        }
-        // #endregion
     }
 
     // build annotations info on first access
@@ -7172,6 +7175,144 @@ static fz_display_list* GetOrBuildPageDisplayList(FzPageInfo* pi, fz_context* ct
     return fz_keep_display_list(ctx, pi->displayList);
 }
 
+static RenderedBitmap* BlitRegionFromFollowThemePageBitmap(const RenderedBitmap* pageBmp, fz_irect pageDevBounds,
+                                                           fz_irect tileDevBounds) {
+    if (!pageBmp || !pageBmp->GetBitmap()) {
+        return nullptr;
+    }
+    fz_irect copy = fz_intersect_irect(tileDevBounds, pageDevBounds);
+    if (fz_is_empty_irect(copy)) {
+        return nullptr;
+    }
+    int w = copy.x1 - copy.x0;
+    int h = copy.y1 - copy.y0;
+    if (w <= 0 || h <= 0) {
+        return nullptr;
+    }
+    HDC srcDc = CreateCompatibleDC(nullptr);
+    if (!srcDc) {
+        return nullptr;
+    }
+    HGDIOBJ srcOld = SelectObject(srcDc, pageBmp->GetBitmap());
+    HDC dstDc = CreateCompatibleDC(nullptr);
+    if (!dstDc) {
+        SelectObject(srcDc, srcOld);
+        DeleteDC(srcDc);
+        return nullptr;
+    }
+    BITMAPINFO bmi{};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = w;
+    bmi.bmiHeader.biHeight = -h;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    void* bits = nullptr;
+    HBITMAP dstHb = CreateDIBSection(dstDc, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (!dstHb) {
+        SelectObject(srcDc, srcOld);
+        DeleteDC(srcDc);
+        DeleteDC(dstDc);
+        return nullptr;
+    }
+    HGDIOBJ dstOld = SelectObject(dstDc, dstHb);
+    int srcX = copy.x0 - pageDevBounds.x0;
+    int srcY = copy.y0 - pageDevBounds.y0;
+    BitBlt(dstDc, 0, 0, w, h, srcDc, srcX, srcY, SRCCOPY);
+    SelectObject(srcDc, srcOld);
+    SelectObject(dstDc, dstOld);
+    DeleteDC(srcDc);
+    DeleteDC(dstDc);
+    return new RenderedBitmap(dstHb, Size(w, h));
+}
+
+static void CacheLaTeXFollowThemePageProbe(EngineMupdf* engine, fz_context* ctx, FzPageInfo* pageInfo, fz_page* page,
+                                           fz_display_list* list);
+static bool FollowThemePageUsesBitmapRecolor(EngineMupdf* engine, fz_context* ctx, FzPageInfo* pageInfo,
+                                             fz_page* page);
+
+static RenderedBitmap* GetOrBuildLaTeXFollowThemePageBitmap(EngineMupdf* engine, FzPageInfo* pageInfo, fz_context* ctx,
+                                                            fz_page* page, fz_display_list* list, float zoom,
+                                                            int rotation, const DarkModeProfile* darkProfile) {
+    if (!engine || !pageInfo || !page || !list || !darkProfile) {
+        return nullptr;
+    }
+    u32 profileHash = PdfDarkModeComputeProfileHash(darkProfile);
+    if (pageInfo->followThemePageBitmap && pageInfo->followThemePageBitmapZoom == zoom &&
+        pageInfo->followThemePageBitmapRotation == rotation &&
+        pageInfo->followThemePageBitmapProfileHash == profileHash) {
+        return pageInfo->followThemePageBitmap;
+    }
+    DropFollowThemePageBitmapCache(pageInfo);
+
+    fz_rect pRect = fz_bound_page(ctx, page);
+    fz_matrix ctm = engine->viewctm(page, zoom, rotation);
+    fz_irect ibounds = fz_round_rect(fz_transform_rect(pRect, ctm));
+    i64 pixels = (i64)(ibounds.x1 - ibounds.x0) * (ibounds.y1 - ibounds.y0);
+    static constexpr i64 kMaxPixels = 28000000;
+    if (pixels <= 0 || pixels > kMaxPixels) {
+        return nullptr;
+    }
+
+    fz_colorspace* csRgb = fz_device_rgb(ctx);
+    fz_pixmap* pix = nullptr;
+    fz_device* dev = nullptr;
+    RenderedBitmap* bitmap = nullptr;
+    fz_var(dev);
+    fz_var(pix);
+    fz_var(bitmap);
+    fz_try(ctx) {
+        pix = fz_new_pixmap_with_bbox(ctx, csRgb, ibounds, nullptr, 1);
+        fz_clear_pixmap_with_value(ctx, pix, 0xff);
+        dev = fz_new_draw_device(ctx, ctm, pix);
+        fz_run_display_list(ctx, list, dev, fz_identity, pRect, nullptr);
+        fz_close_device(ctx, dev);
+        dev = nullptr;
+        if (engine->CadEnhanceActive() && engine->cadRasterDominant && pix) {
+            PdfCadEnhancePixmap(ctx, pix, zoom, true);
+        }
+        bitmap = NewRenderedFzPixmap(ctx, pix);
+        if (bitmap) {
+            Vec<Rect> skipRects;
+            Vec<Rect>* skipPtr = nullptr;
+            if (PdfFollowThemePreservesEmbeddedImageColors()) {
+                if (engine->followThemeDocBitmapRecolor == 1 && !pageInfo->contentImagesCollected) {
+                    FzCollectImagesFromPageContent(ctx, pageInfo->pageNo, pageInfo, page, nullptr);
+                    pageInfo->contentImagesCollected = true;
+                    pageInfo->darkLegacySkipHash = 0;
+                }
+                RectF renderRect = ToRectF(pRect);
+                Size bmpSize = bitmap->GetSize();
+                engine->GetBitmapRecolorSkipRects(pageInfo->pageNo, zoom, rotation, renderRect, bmpSize, skipRects);
+                if (skipRects.Size() > 0) {
+                    skipPtr = &skipRects;
+                }
+            }
+            UpdateBitmapColors(bitmap->GetBitmap(), darkProfile->foreground, darkProfile->pageBackground,
+                               darkProfile->linkColor, skipPtr);
+        }
+    }
+    fz_always(ctx) {
+        if (dev) {
+            fz_drop_device(ctx, dev);
+        }
+        fz_drop_pixmap(ctx, pix);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        delete bitmap;
+        return nullptr;
+    }
+    if (!bitmap) {
+        return nullptr;
+    }
+    pageInfo->followThemePageBitmap = bitmap;
+    pageInfo->followThemePageBitmapZoom = zoom;
+    pageInfo->followThemePageBitmapRotation = rotation;
+    pageInfo->followThemePageBitmapProfileHash = profileHash;
+    pageInfo->followThemePageBitmapDevBounds = ibounds;
+    return bitmap;
+}
+
 RectF EngineMupdf::PageContentBox(int pageNo, RenderTarget target) {
     auto ctx = Ctx();
 
@@ -7250,8 +7391,6 @@ RectF EngineMupdf::Transform(const RectF& rect, int pageNo, float zoom, int rota
 // Smaller embedded images (icons, bullets, ornaments) still use the page recolor filter.
 // Minimum size for preserved PDF images (see GetPreservePdfImagesMinSize(), default 72).
 
-// Illustrated pages often contain many small content-stream images alongside one main
-// artwork. Preserving all of them leaves patchy gaps that get dark-recolored (3.7+).
 // Keep only the largest preserve region per page, matching FinalizeTileSkipRects intent.
 static void DarkLegacySkipKeepLargestArtwork(FzPageInfo* pageInfo) {
     Vec<Rect>& skipRects = pageInfo->darkLegacySkipDevAbs;
@@ -7279,6 +7418,7 @@ static u32 DarkLegacySkipHash(FzPageInfo* pageInfo, float zoom, int rotation) {
     h = h * 31 + (u32)rotation;
     h = h * 31 + (u32)GetPreservePdfImagesMinSize();
     h = h * 31 + (u32)GetPreservePdfImagesInDarkMode();
+    h = h * 31 + (u32)PdfFollowThemePreservesEmbeddedImageColors();
     h = h * 31 + (u32)(pageInfo ? pageInfo->images.Size() : 0);
     return h;
 }
@@ -7297,7 +7437,9 @@ static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageIn
     fz_context* ctx = engine->Ctx();
     fz_page* page = pageInfo->page;
     fz_matrix ctm = engine->viewctm(page, zoom, rotation);
-    int minDx = MinPreservePdfImageSizePx();
+    bool preserveAllImageColors = PdfFollowThemePreservesEmbeddedImageColors();
+    bool latexBitmapDoc = preserveAllImageColors && engine->followThemeDocBitmapRecolor == 1;
+    int minDx = preserveAllImageColors ? 0 : MinPreservePdfImageSizePx();
     int minDy = minDx;
 
     RectF pageBounds = pageInfo->mediabox;
@@ -7320,16 +7462,35 @@ static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageIn
         }
         RectF imgOnPage = imgPage.Intersect(pageBounds);
         float coverage = (imgOnPage.dx * imgOnPage.dy) / pageArea;
-        if (coverage >= kMaxPreserveImagePageCoverage) {
+        if (latexBitmapDoc) {
+            fz_irect devLatex = fz_round_rect(fz_transform_rect(ToFzRect(imgOnPage), ctm));
+            int latexDx = devLatex.x1 - devLatex.x0;
+            int latexDy = devLatex.y1 - devLatex.y0;
+            if (latexDx >= 12 && latexDy >= 12) {
+                Rect r(devLatex.x0, devLatex.y0, latexDx, latexDy);
+                if (!r.IsEmpty()) {
+                    pageInfo->darkLegacySkipDevAbs.Append(r);
+                }
+            }
             if (image) {
                 fz_drop_image(ctx, image);
             }
             continue;
         }
-        if (PdfDarkModeIsDecorativeStripImage(imgOnPage, pageBounds)) {
+        if (!preserveAllImageColors && coverage >= kMaxPreserveImagePageCoverage) {
             if (image) {
                 fz_drop_image(ctx, image);
             }
+            continue;
+        }
+        if (!preserveAllImageColors && PdfDarkModeIsDecorativeStripImage(imgOnPage, pageBounds)) {
+            if (image) {
+                fz_drop_image(ctx, image);
+            }
+            continue;
+        }
+        if (preserveAllImageColors && PdfDarkModeIsDecorativeStripImage(imgOnPage, pageBounds)) {
+            fz_drop_image(ctx, image);
             continue;
         }
         fz_irect fullDev = fz_round_rect(fz_transform_rect(ToFzRect(imgPage), ctm));
@@ -7341,15 +7502,20 @@ static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageIn
             }
             continue;
         }
-        if (!image) {
+        if (!preserveAllImageColors && !image) {
             continue;
         }
-        if (!PdfDarkModeShouldPreserveEmbeddedImageRect(ctx, image, coverage, fullDx, fullDy)) {
+        if (preserveAllImageColors && !image) {
+            continue;
+        }
+        if (!preserveAllImageColors &&
+            !PdfDarkModeShouldPreserveEmbeddedImageRect(ctx, image, coverage, fullDx, fullDy)) {
             fz_drop_image(ctx, image);
             continue;
         }
         // Wide bboxes often span a layout column; only preserve if clearly a dark painting.
-        if (imgOnPage.dx > pageBounds.dx * 0.44f && !PdfDarkModeImageLooksLikeDarkArtwork(ctx, image, coverage)) {
+        if (!preserveAllImageColors && imgOnPage.dx > pageBounds.dx * 0.44f &&
+            !PdfDarkModeImageLooksLikeDarkArtwork(ctx, image, coverage)) {
             fz_drop_image(ctx, image);
             continue;
         }
@@ -7357,16 +7523,20 @@ static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageIn
         Rect r(dev.x0, dev.y0, dev.x1 - dev.x0, dev.y1 - dev.y0);
         if (!r.IsEmpty()) {
             pageInfo->darkLegacySkipDevAbs.Append(r);
-            float bottom = imgOnPage.y + imgOnPage.dy;
-            if (bottom > pageInfo->darkLegacyArtworkPageBottom) {
-                pageInfo->darkLegacyArtworkPageBottom = bottom;
+            if (!preserveAllImageColors) {
+                float bottom = imgOnPage.y + imgOnPage.dy;
+                if (bottom > pageInfo->darkLegacyArtworkPageBottom) {
+                    pageInfo->darkLegacyArtworkPageBottom = bottom;
+                }
             }
         }
         if (image) {
             fz_drop_image(ctx, image);
         }
     }
-    DarkLegacySkipKeepLargestArtwork(pageInfo);
+    if (!preserveAllImageColors) {
+        DarkLegacySkipKeepLargestArtwork(pageInfo);
+    }
 }
 
 void EngineMupdf::GetBitmapRecolorSkipRects(int pageNo, float zoom, int rotation, const RectF& renderPageRect,
@@ -7379,7 +7549,8 @@ void EngineMupdf::GetBitmapRecolorSkipRects(int pageNo, float zoom, int rotation
     if (!pageInfo || !pageInfo->page) {
         return;
     }
-    if (PdfShouldCollectContentImages() && !pageInfo->contentImagesCollected) {
+    bool preserveAllImageColors = PdfFollowThemePreservesEmbeddedImageColors();
+    if ((PdfShouldCollectContentImages() || preserveAllImageColors) && !pageInfo->contentImagesCollected) {
         fz_context* ctx = Ctx();
         FzCollectImagesFromPageContent(ctx, pageNo, pageInfo, pageInfo->page, nullptr);
         pageInfo->contentImagesCollected = true;
@@ -7395,8 +7566,8 @@ void EngineMupdf::GetBitmapRecolorSkipRects(int pageNo, float zoom, int rotation
         BuildPageDarkLegacySkipRects(this, pageInfo, zoom, rotation, hash);
     }
 
-    // Text/layout tiles below the artwork band always recolor uniformly.
-    if (pageInfo->darkLegacyArtworkPageBottom > 0.f && renderPageRect.y >= pageInfo->darkLegacyArtworkPageBottom) {
+    if (!preserveAllImageColors && pageInfo->darkLegacyArtworkPageBottom > 0.f &&
+        renderPageRect.y >= pageInfo->darkLegacyArtworkPageBottom) {
         return;
     }
 
@@ -7490,6 +7661,124 @@ static fz_device* WrapViewRenderDevice(fz_context* ctx, EngineMupdf* engine, fz_
     return renderDev;
 }
 
+static bool FollowThemeProbeUsesBitmapRecolor(FollowThemeScanProbe probe) {
+    return probe == FollowThemeScanProbe::PureScan || probe == FollowThemeScanProbe::BitmapRecolor;
+}
+
+static void CacheLaTeXFollowThemePageProbe(EngineMupdf* engine, fz_context* ctx, FzPageInfo* pageInfo, fz_page* page,
+                                           fz_display_list* list) {
+    if (!engine || !pageInfo || !page || engine->followThemeDocBitmapRecolor != 1) {
+        return;
+    }
+    if (pageInfo->followThemeScanProbe != 0) {
+        return;
+    }
+    RectF pageBounds = pageInfo->mediabox;
+    if (pageBounds.IsEmpty()) {
+        pageBounds = ToRectF(fz_bound_page(ctx, page));
+    }
+    FollowThemePageProbeStats st{};
+    FollowThemeScanProbe probe = FollowThemeScanProbe::Mixed;
+    if (list) {
+        probe = PdfDarkModeProbeFollowThemeScanList(ctx, list, pageBounds, &st);
+    } else {
+        probe = PdfDarkModeProbeFollowThemeScanPage(ctx, page, pageBounds, &st);
+    }
+    probe = PdfDarkModeLaTeXRefineFollowThemeProbe(probe, st, PdfDarkModeCurrentOptions());
+    u8 cacheProbe = (u8)FollowThemeScanProbe::Mixed;
+    if (probe == FollowThemeScanProbe::PureScan) {
+        cacheProbe = (u8)FollowThemeScanProbe::PureScan;
+    } else if (FollowThemeProbeUsesBitmapRecolor(probe)) {
+        cacheProbe = (u8)FollowThemeScanProbe::BitmapRecolor;
+    }
+    pageInfo->followThemeScanProbe = cacheProbe;
+}
+
+static void DetectFollowThemeDocBitmapRecolor(EngineMupdf* engine, fz_context* ctx) {
+    if (!engine->pdfdoc || engine->followThemeDocBitmapRecolor != 0) {
+        return;
+    }
+    if (!PdfFollowThemePreservesEmbeddedImageColors()) {
+        engine->followThemeDocBitmapRecolor = 2;
+        return;
+    }
+    if (PdfDarkModePdfMetadataSuggestsBitmapRecolorDoc(ctx, engine->pdfdoc)) {
+        engine->followThemeDocBitmapRecolor = 1;
+        return;
+    }
+    int pageCount = engine->PageCount();
+    if (pageCount <= 0) {
+        engine->followThemeDocBitmapRecolor = 2;
+        return;
+    }
+    DarkModeOptions opts = PdfDarkModeCurrentOptions();
+    int microTextVotes = 0;
+    int bitmapProbeVotes = 0;
+    int samples = pageCount < 3 ? pageCount : 3;
+    for (int si = 0; si < samples; si++) {
+        int pageNo = 1;
+        if (samples > 1) {
+            pageNo = 1 + (pageCount - 1) * si / (samples - 1);
+        }
+        FzPageInfo* pi = engine->GetFzPageInfo(pageNo, true, nullptr, false);
+        if (!pi || !pi->page) {
+            continue;
+        }
+        RectF pageBounds = pi->mediabox;
+        if (pageBounds.IsEmpty()) {
+            pageBounds = ToRectF(fz_bound_page(ctx, pi->page));
+        }
+        FollowThemePageProbeStats st{};
+        FollowThemeScanProbe probe = PdfDarkModeProbeFollowThemeScanPage(ctx, pi->page, pageBounds, &st);
+        if (probe == FollowThemeScanProbe::BitmapRecolor || probe == FollowThemeScanProbe::PureScan) {
+            bitmapProbeVotes++;
+        }
+        if (FollowThemePageStatsMatchBitmapRecolor(st, opts)) {
+            microTextVotes++;
+        }
+        u8 cacheProbe = FollowThemeProbeUsesBitmapRecolor(probe) ? (u8)FollowThemeScanProbe::BitmapRecolor
+                                                                 : (u8)FollowThemeScanProbe::Mixed;
+        if (probe == FollowThemeScanProbe::PureScan) {
+            cacheProbe = (u8)FollowThemeScanProbe::PureScan;
+        }
+        pi->followThemeScanProbe = cacheProbe;
+    }
+    engine->followThemeDocBitmapRecolor = (bitmapProbeVotes >= 1 || microTextVotes >= 2) ? 1 : 2;
+}
+
+static bool FollowThemePageUsesBitmapRecolor(EngineMupdf* engine, fz_context* ctx, FzPageInfo* pageInfo,
+                                             fz_page* page) {
+    DetectFollowThemeDocBitmapRecolor(engine, ctx);
+
+    if (engine->followThemeDocBitmapRecolor == 1) {
+        CacheLaTeXFollowThemePageProbe(engine, ctx, pageInfo, page, nullptr);
+        u8 cached = pageInfo->followThemeScanProbe;
+        if (cached == (u8)FollowThemeScanProbe::Mixed) {
+            return false;
+        }
+        if (cached == (u8)FollowThemeScanProbe::PureScan || cached == (u8)FollowThemeScanProbe::BitmapRecolor) {
+            return true;
+        }
+        return false;
+    }
+
+    if (engine->followThemeDocBitmapRecolor == 2) {
+        // Layout/photo PDFs: follow-theme wrap preserves figures; per-page PureScan bitmap
+        // recolor breaks some chapter opener pages (e.g. full-bleed section dividers).
+        return false;
+    }
+
+    u8 cached = pageInfo->followThemeScanProbe;
+    if (cached == (u8)FollowThemeScanProbe::PureScan || cached == (u8)FollowThemeScanProbe::BitmapRecolor) {
+        return true;
+    }
+    if (cached == (u8)FollowThemeScanProbe::Mixed) {
+        return false;
+    }
+
+    return false;
+}
+
 RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     auto ctx = Ctx();
     auto pageNo = args.pageNo;
@@ -7546,8 +7835,13 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     // legacy recolor modes it only adds an extra full page traversal before the
     // first pixels can be displayed, so render the page directly as upstream
     // does.
-    bool useCache =
-        (args.target == RenderTarget::View) && !hideAnnotations && DarkModeProfileUsesObjectLevel(args.darkProfile);
+    bool useSmartDarkList = (args.target == RenderTarget::View) && !hideAnnotations && args.darkProfile &&
+                            args.darkProfile->mode == PageColorMode::SmartDark;
+    const DarkModeProfile* darkProfileForPath = args.darkProfile;
+    bool followDirectPath = DarkModeProfileUsesFollowThemeDirect(darkProfileForPath);
+    bool latexDocPath = pdfdoc && followThemeDocBitmapRecolor == 1;
+    bool useBitmapTexList = false;
+    bool usePageDisplayList = useSmartDarkList;
 
     fz_rect pRect;
     fz_matrix ctm;
@@ -7566,8 +7860,12 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
         ctm = viewctm(page, zoom, rotation);
         ibounds = fz_round_rect(fz_transform_rect(pRect, ctm));
 
-        if (useCache) {
+        if (useSmartDarkList) {
             keptList = GetOrBuildPageDisplayList(pageInfo, ctx);
+        } else if (latexDocPath && followDirectPath && args.darkProfile) {
+            keptList = GetOrBuildPageDisplayList(pageInfo, ctx);
+            useBitmapTexList = keptList != nullptr;
+            usePageDisplayList = useBitmapTexList;
         }
     }
 
@@ -7591,21 +7889,57 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
         fz_try(ctx) {
             pix = fz_new_pixmap_with_bbox(ctx, csRgb, ibounds, nullptr, 1);
             const DarkModeProfile* darkProfile = args.darkProfile;
-            if (DarkModeProfileUsesObjectLevel(darkProfile)) {
-                PdfDarkModeClearPixmapToThemeBackground(ctx, pix, darkProfile->palette);
+            if (useBitmapTexList && !useSmartDarkList) {
+                if (latexDocPath) {
+                    RenderedBitmap* pageBmp = GetOrBuildLaTeXFollowThemePageBitmap(this, pageInfo, ctx, page, keptList,
+                                                                                   zoom, rotation, darkProfile);
+                    if (pageBmp) {
+                        bitmap = BlitRegionFromFollowThemePageBitmap(pageBmp, pageInfo->followThemePageBitmapDevBounds,
+                                                                     ibounds);
+                    }
+                }
+                if (!bitmap) {
+                    fz_clear_pixmap_with_value(ctx, pix, 0xff);
+                    dev = fz_new_draw_device(ctx, ctm, pix);
+                    fz_run_display_list(ctx, keptList, dev, fz_identity, pRect, fzcookie);
+                    fz_close_device(ctx, dev);
+                    dev = nullptr;
+                    if (CadEnhanceActive() && cadRasterDominant && pix) {
+                        PdfCadEnhancePixmap(ctx, pix, zoom, true);
+                    }
+                    bitmap = NewRenderedFzPixmap(ctx, pix);
+                    if (bitmap && darkProfile) {
+                        Vec<Rect> skipRects;
+                        Vec<Rect>* skipPtr = nullptr;
+                        if (PdfFollowThemePreservesEmbeddedImageColors()) {
+                            RectF renderRect = pageRect ? *pageRect : ToRectF(pRect);
+                            this->GetBitmapRecolorSkipRects(pageNo, zoom, rotation, renderRect, bitmap->GetSize(),
+                                                            skipRects);
+                            if (skipRects.Size() > 0) {
+                                skipPtr = &skipRects;
+                            }
+                        }
+                        UpdateBitmapColors(bitmap->GetBitmap(), darkProfile->foreground, darkProfile->pageBackground,
+                                           darkProfile->linkColor, skipPtr);
+                    }
+                }
             } else {
-                fz_clear_pixmap_with_value(ctx, pix, 0xff);
+                if (DarkModeProfileUsesObjectLevel(darkProfile)) {
+                    PdfDarkModeClearPixmapToThemeBackground(ctx, pix, darkProfile->palette);
+                } else {
+                    fz_clear_pixmap_with_value(ctx, pix, 0xff);
+                }
+                fz_device* baseDev = fz_new_draw_device(ctx, ctm, pix);
+                DarkModeReplayState replayState{};
+                dev = WrapViewRenderDevice(ctx, this, baseDev, darkProfile, pageInfo, keptList, &replayState, zoom);
+                fz_run_display_list(ctx, keptList, dev, fz_identity, pRect, fzcookie);
+                fz_close_device(ctx, dev);
+                if (CadEnhanceActive() && cadRasterDominant && pix &&
+                    !(darkProfile && DarkModeProfileUsesObjectLevel(darkProfile))) {
+                    PdfCadEnhancePixmap(ctx, pix, zoom, true);
+                }
+                bitmap = NewRenderedFzPixmap(ctx, pix);
             }
-            fz_device* baseDev = fz_new_draw_device(ctx, ctm, pix);
-            DarkModeReplayState replayState{};
-            dev = WrapViewRenderDevice(ctx, this, baseDev, darkProfile, pageInfo, keptList, &replayState, zoom);
-            fz_run_display_list(ctx, keptList, dev, fz_identity, pRect, fzcookie);
-            fz_close_device(ctx, dev);
-            if (CadEnhanceActive() && cadRasterDominant && pix &&
-                !(darkProfile && DarkModeProfileUsesObjectLevel(darkProfile))) {
-                PdfCadEnhancePixmap(ctx, pix, zoom, true);
-            }
-            bitmap = NewRenderedFzPixmap(ctx, pix);
         }
         fz_always(ctx) {
             if (dev) {
@@ -7624,7 +7958,7 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
         return bitmap;
     }
 
-    // Fallback: Print or hideAnnotations (each needs different content/usage,
+    // Fallback: Print or hideAnnotations
     // not what the cached display list captured), or display-list construction
     // failed. Run the page directly under per-page lock.
     ReflowUiDocLock docGuard(this, reflowLoading);
@@ -7640,11 +7974,30 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     pdf_page* pdfpage = nullptr;
     fz_var(pdfpage);
     if (pdfdoc) {
+        const DarkModeProfile* darkProfile = args.darkProfile;
+        bool followDirect = DarkModeProfileUsesFollowThemeDirect(darkProfile);
+        bool followBitmapRecolor = followDirect && FollowThemePageUsesBitmapRecolor(this, ctx, pageInfo, page);
+        bool usedFollowThemeWrap = followDirect && !followBitmapRecolor;
         fz_try(ctx) {
             pdfpage = pdf_page_from_fz_page(ctx, page);
             pix = fz_new_pixmap_with_bbox(ctx, csRgb, ibounds, nullptr, 1);
-            fz_clear_pixmap_with_value(ctx, pix, 0xff);
-            dev = fz_new_draw_device(ctx, ctm, pix);
+            if (followBitmapRecolor) {
+                fz_clear_pixmap_with_value(ctx, pix, 0xff);
+            } else if (DarkModeProfileUsesObjectLevel(darkProfile)) {
+                PdfDarkModeClearPixmapToThemeBackground(ctx, pix, darkProfile->palette);
+            } else {
+                fz_clear_pixmap_with_value(ctx, pix, 0xff);
+            }
+            fz_device* baseDev = fz_new_draw_device(ctx, ctm, pix);
+            dev = baseDev;
+            if (usedFollowThemeWrap) {
+                RectF pageBounds = pageInfo->mediabox;
+                if (pageBounds.IsEmpty()) {
+                    pageBounds = ToRectF(fz_bound_page(ctx, page));
+                }
+                dev = PdfDarkModeWrapFollowThemeDevice(ctx, baseDev, &darkProfile->palette, pageBounds,
+                                                       darkModeEngineCache, darkProfile->hash);
+            }
             if (hideAnnotations) {
                 pdf_run_page_contents_with_usage(ctx, pdfpage, dev, fz_identity, usage, fzcookie);
                 pdf_run_page_widgets_with_usage(ctx, pdfpage, dev, fz_identity, usage, fzcookie);
@@ -7652,21 +8005,77 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                 pdf_run_page_with_usage(ctx, pdfpage, dev, fz_identity, usage, fzcookie);
             }
             fz_close_device(ctx, dev);
-            if (CadEnhanceActive() && cadRasterDominant && pix) {
+            dev = nullptr;
+            if (CadEnhanceActive() && cadRasterDominant && pix &&
+                !(darkProfile && DarkModeProfileUsesObjectLevel(darkProfile) && !followBitmapRecolor)) {
                 PdfCadEnhancePixmap(ctx, pix, zoom, true);
             }
             bitmap = NewRenderedFzPixmap(ctx, pix);
+            if (bitmap && followBitmapRecolor && darkProfile) {
+                UpdateBitmapColors(bitmap->GetBitmap(), darkProfile->foreground, darkProfile->pageBackground,
+                                   darkProfile->linkColor, nullptr);
+            }
         }
         fz_always(ctx) {
             if (dev) {
                 fz_drop_device(ctx, dev);
+                dev = nullptr;
             }
             fz_drop_pixmap(ctx, pix);
+            pix = nullptr;
         }
         fz_catch(ctx) {
             fz_report_error(ctx);
             delete bitmap;
-            return nullptr;
+            bitmap = nullptr;
+        }
+        if (!bitmap && usedFollowThemeWrap && darkProfile) {
+            fz_try(ctx) {
+                if (!pdfpage) {
+                    pdfpage = pdf_page_from_fz_page(ctx, page);
+                }
+                pix = fz_new_pixmap_with_bbox(ctx, csRgb, ibounds, nullptr, 1);
+                fz_clear_pixmap_with_value(ctx, pix, 0xff);
+                dev = fz_new_draw_device(ctx, ctm, pix);
+                if (hideAnnotations) {
+                    pdf_run_page_contents_with_usage(ctx, pdfpage, dev, fz_identity, usage, fzcookie);
+                    pdf_run_page_widgets_with_usage(ctx, pdfpage, dev, fz_identity, usage, fzcookie);
+                } else {
+                    pdf_run_page_with_usage(ctx, pdfpage, dev, fz_identity, usage, fzcookie);
+                }
+                fz_close_device(ctx, dev);
+                dev = nullptr;
+                if (CadEnhanceActive() && cadRasterDominant && pix) {
+                    PdfCadEnhancePixmap(ctx, pix, zoom, true);
+                }
+                bitmap = NewRenderedFzPixmap(ctx, pix);
+                if (bitmap) {
+                    Vec<Rect> skipRects;
+                    Vec<Rect>* skipPtr = nullptr;
+                    if (PdfFollowThemePreservesEmbeddedImageColors()) {
+                        RectF renderRect = pageRect ? *pageRect : ToRectF(fz_bound_page(ctx, page));
+                        GetBitmapRecolorSkipRects(pageNo, zoom, rotation, renderRect, bitmap->GetSize(), skipRects);
+                        if (skipRects.Size() > 0) {
+                            skipPtr = &skipRects;
+                        }
+                    }
+                    UpdateBitmapColors(bitmap->GetBitmap(), darkProfile->foreground, darkProfile->pageBackground,
+                                       darkProfile->linkColor, skipPtr);
+                }
+            }
+            fz_always(ctx) {
+                if (dev) {
+                    fz_drop_device(ctx, dev);
+                    dev = nullptr;
+                }
+                fz_drop_pixmap(ctx, pix);
+                pix = nullptr;
+            }
+            fz_catch(ctx) {
+                fz_report_error(ctx);
+                delete bitmap;
+                bitmap = nullptr;
+            }
         }
     } else {
         fz_try(ctx) {

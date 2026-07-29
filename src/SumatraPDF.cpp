@@ -4137,8 +4137,7 @@ void UpdateDocumentColors(bool rerender, bool updateReflowDocuments) {
     static int s_lastPdfDocumentColorMode = -1;
     static bool s_lastThemeUsesDarkChrome = false;
     static bool s_lastThemeUsesOriginalPageColors = false;
-    bool preservePdfImages = GetPdfDocumentColorMode() == PdfDocumentColorMode::Auto &&
-                             GetPreservePdfImagesInDarkMode() && ThemeUsesDarkChrome();
+    bool preservePdfImages = PdfSmartModePreservesEmbeddedImages();
     int preserveMinSize = preservePdfImages ? GetPreservePdfImagesMinSize() : 0;
     int pdfDarkModeRenderer = (int)GetPdfDarkModeRenderer();
     int pdfDocumentColorMode = (int)GetPdfDocumentColorMode();
@@ -9311,9 +9310,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         case CmdSetPdfDocumentColorModeLight:
             if (NeedsDocumentColorModeUI(win)) {
                 PdfDocumentColorMode mode = PdfDocumentColorMode::Auto;
-                if (cmdId == CmdSetPdfDocumentColorModeBlack) {
-                    mode = PdfDocumentColorMode::Black;
-                } else if (cmdId == CmdSetPdfDocumentColorModeLight) {
+                if (cmdId == CmdSetPdfDocumentColorModeLight) {
                     mode = PdfDocumentColorMode::Light;
                 }
                 SetPdfDocumentColorMode(mode);

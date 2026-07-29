@@ -60,10 +60,7 @@ static bool FixedPageEngineNeedsBitmapRecolor(EngineBase* engine) {
     if (mode == PdfDocumentColorMode::Light) {
         return FixedPageUiUsesCustomRenderColors();
     }
-    if (mode == PdfDocumentColorMode::Black) {
-        return true;
-    }
-    // Smart
+    // Follow theme (smart): recolor when dark, or custom fixed-page UI colors on light themes.
     if (ThemeUsesDarkChrome()) {
         return true;
     }
@@ -118,13 +115,7 @@ static bool ShouldUpdateBitmapColorsLegacy(EngineBase* engine) {
 }
 
 static bool ShouldPreserveImagesLegacy(EngineBase* engine) {
-    if (GetPdfDocumentColorMode() != PdfDocumentColorMode::Auto) {
-        return false;
-    }
-    if (!ThemeUsesDarkChrome()) {
-        return false;
-    }
-    if (!GetPreservePdfImagesInDarkMode()) {
+    if (!PdfSmartModePreservesEmbeddedImages()) {
         return false;
     }
     return ShouldUpdateBitmapColorsLegacy(engine);
@@ -132,6 +123,9 @@ static bool ShouldPreserveImagesLegacy(EngineBase* engine) {
 
 // Several preserved regions in one tile → keep the largest artwork, drop layout ornaments.
 static void FinalizeTileSkipRects(Vec<Rect>& skipRects, Size bmpSize) {
+    if (PdfFollowThemePreservesEmbeddedImageColors()) {
+        return;
+    }
     if (skipRects.Size() <= 1 || bmpSize.dx <= 0 || bmpSize.dy <= 0) {
         return;
     }

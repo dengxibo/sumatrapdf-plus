@@ -20,7 +20,63 @@ typedef struct {
     DarkModeEngineCache* engineCache;
     u32 profileHash;
     bool debugOverlay;
+    bool followDirect;
+    RectF followPageBounds;
 } pdf_dark_mode_device;
+
+static float dm_follow_image_coverage(const RectF& imgBounds, const RectF& pageBounds) {
+    if (imgBounds.IsEmpty() || pageBounds.IsEmpty()) {
+        return 0.f;
+    }
+    float pageArea = pageBounds.dx * pageBounds.dy;
+    if (pageArea <= 0.f) {
+        return 0.f;
+    }
+    return (imgBounds.dx * imgBounds.dy) / pageArea;
+}
+
+static RectF dm_to_rect_f(fz_rect r) {
+    return RectF(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
+}
+
+static RectF dm_follow_image_bounds(fz_matrix ctm, const RectF& pageBounds) {
+    fz_rect bbox = fz_transform_rect(fz_unit_rect, ctm);
+    return dm_to_rect_f(bbox).Intersect(pageBounds);
+}
+
+static DarkImagePolicy dm_follow_image_policy(pdf_dark_mode_device* d, fz_matrix ctm, bool isMask) {
+    RectF imgBounds = dm_follow_image_bounds(ctm, d->followPageBounds);
+    return PdfDarkModePolicyForFollowThemeImage(imgBounds, isMask, d->followPageBounds);
+}
+
+static void dm_follow_fill_image(fz_context* ctx, pdf_dark_mode_device* d, fz_image* image, fz_matrix ctm, float alpha,
+                                 fz_color_params color_params) {
+    DarkImagePolicy policy = dm_follow_image_policy(d, ctm, false);
+    if (policy == DarkImagePolicy::Preserve) {
+        fz_fill_image(ctx, d->inner, image, ctm, alpha, color_params);
+        return;
+    }
+    RectF imgBounds = dm_follow_image_bounds(ctm, d->followPageBounds);
+    float coverage = dm_follow_image_coverage(imgBounds, d->followPageBounds);
+    fz_image* cached =
+        PdfDarkModeGetCachedFollowThemeImage(ctx, d->engineCache, image, policy, coverage, *d->palette, d->profileHash);
+    fz_image* draw = cached ? cached : image;
+    fz_try(ctx) {
+        fz_fill_image(ctx, d->inner, draw, ctm, alpha, color_params);
+    }
+    fz_always(ctx) {
+        if (cached) {
+            fz_drop_image(ctx, cached);
+        }
+    }
+    fz_catch(ctx) {
+        if (cached) {
+            fz_fill_image(ctx, d->inner, image, ctm, alpha, color_params);
+        } else {
+            fz_rethrow(ctx);
+        }
+    }
+}
 
 static DarkImagePolicy dm_current_image_policy(pdf_dark_mode_device* d) {
     if (!d->analysis || !d->replayState) {
@@ -183,9 +239,18 @@ static void dm_stroke_debug_image_box(fz_context* ctx, fz_device* dev, fz_matrix
 static void dm_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_matrix ctm, float alpha,
                           fz_color_params color_params) {
     pdf_dark_mode_device* d = (pdf_dark_mode_device*)dev;
+    if (d->followDirect) {
+        dm_follow_fill_image(ctx, d, image, ctm, alpha, color_params);
+        return;
+    }
     int idx = d->replayState ? d->replayState->nextImageOccurrence : -1;
     DarkImagePolicy policy = dm_current_image_policy(d);
     dm_next_image_occurrence(d);
+
+    if (policy == DarkImagePolicy::Preserve && PdfFollowThemePreservesEmbeddedImageColors()) {
+        fz_fill_image(ctx, d->inner, image, ctm, alpha, color_params);
+        return;
+    }
 
     fz_image* cached = PdfDarkModeGetCachedImage(ctx, d->engineCache, d->analysis, idx, image, policy, *d->palette,
                                                  d->profileHash);
@@ -214,8 +279,11 @@ static void dm_fill_image_mask(fz_context* ctx, fz_device* dev, fz_image* image,
                                fz_colorspace* colorspace, const float* color, float alpha,
                                fz_color_params color_params) {
     pdf_dark_mode_device* d = (pdf_dark_mode_device*)dev;
-    DarkImagePolicy policy = dm_current_image_policy(d);
-    dm_next_image_occurrence(d);
+    DarkImagePolicy policy =
+        d->followDirect ? dm_follow_image_policy(d, ctm, true) : dm_current_image_policy(d);
+    if (!d->followDirect) {
+        dm_next_image_occurrence(d);
+    }
 
     float mapped[FZ_MAX_COLORS] = {};
     const float* useColor = color;
@@ -351,6 +419,57 @@ fz_device* PdfDarkModeWrapDevice(fz_context* ctx, fz_device* inner, DarkModePage
     d->engineCache = engineCache;
     d->profileHash = profileHash;
     d->debugOverlay = debugOverlay;
+    d->followDirect = false;
+    d->followPageBounds = RectF{};
+    PdfDarkModeTakeShadeForwardCount();
+
+    d->super.close_device = dm_forward_close;
+    d->super.drop_device = dm_forward_drop;
+    d->super.fill_path = dm_fill_path;
+    d->super.stroke_path = dm_stroke_path;
+    d->super.fill_text = dm_fill_text;
+    d->super.stroke_text = dm_stroke_text;
+    d->super.fill_shade = dm_fill_shade;
+    d->super.fill_image = dm_fill_image;
+    d->super.fill_image_mask = dm_fill_image_mask;
+    d->super.clip_path = dm_clip_path;
+    d->super.clip_stroke_path = dm_clip_stroke_path;
+    d->super.clip_text = dm_clip_text;
+    d->super.clip_stroke_text = dm_clip_stroke_text;
+    d->super.clip_image_mask = dm_clip_image_mask;
+    d->super.pop_clip = dm_pop_clip;
+    d->super.begin_mask = dm_begin_mask;
+    d->super.end_mask = dm_end_mask;
+    d->super.begin_group = dm_begin_group;
+    d->super.end_group = dm_end_group;
+    d->super.begin_tile = dm_begin_tile;
+    d->super.end_tile = dm_end_tile;
+    d->super.render_flags = dm_render_flags;
+    d->super.set_default_colorspaces = dm_set_default_colorspaces;
+    d->super.begin_layer = dm_begin_layer;
+    d->super.end_layer = dm_end_layer;
+    d->super.begin_structure = dm_begin_structure;
+    d->super.end_structure = dm_end_structure;
+    d->super.begin_metatext = dm_begin_metatext;
+    d->super.end_metatext = dm_end_metatext;
+    d->super.ignore_text = dm_ignore_text;
+
+    return &d->super;
+}
+
+fz_device* PdfDarkModeWrapFollowThemeDevice(fz_context* ctx, fz_device* inner, const DarkModePalette* palette,
+                                            const RectF& pageBounds, DarkModeEngineCache* engineCache,
+                                            u32 profileHash) {
+    pdf_dark_mode_device* d = fz_new_derived_device(ctx, pdf_dark_mode_device);
+    d->inner = inner;
+    d->analysis = nullptr;
+    d->palette = palette;
+    d->replayState = nullptr;
+    d->engineCache = engineCache;
+    d->profileHash = profileHash;
+    d->debugOverlay = false;
+    d->followDirect = true;
+    d->followPageBounds = pageBounds;
     PdfDarkModeTakeShadeForwardCount();
 
     d->super.close_device = dm_forward_close;

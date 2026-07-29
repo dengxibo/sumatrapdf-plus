@@ -135,6 +135,14 @@ static void dm_adaptive_pixel(float r, float g, float b, const DarkModePalette& 
     ApplyAdaptiveDocumentDarkMode(r, g, b, palette, outR, outG, outB);
 }
 
+// Same remap as legacy UpdateBitmapColors — keeps ink readable on layout rasters.
+static void dm_legacy_linear_pixel(float r, float g, float b, const DarkModePalette& palette, float* outR, float* outG,
+                                   float* outB) {
+    *outR = palette.textR + r * palette.diffR;
+    *outG = palette.textG + g * palette.diffG;
+    *outB = palette.textB + b * palette.diffB;
+}
+
 static void dm_shade_pixel(float r, float g, float b, const DarkModePalette& palette, float* outR, float* outG,
                            float* outB) {
     float mapped[FZ_MAX_COLORS] = {};
@@ -168,8 +176,23 @@ static bool dm_irect_equal(fz_irect a, fz_irect b) {
     return a.x0 == b.x0 && a.y0 == b.y0 && a.x1 == b.x1 && a.y1 == b.y1;
 }
 
+static fz_pixmap* dm_load_src_pixmap(fz_context* ctx, fz_image* srcImage, int maxDim) {
+    int w = srcImage->w;
+    int h = srcImage->h;
+    if (w <= 0 || h <= 0) {
+        return fz_get_pixmap_from_image(ctx, srcImage, nullptr, nullptr, nullptr, nullptr);
+    }
+    if (maxDim <= 0 || (w <= maxDim && h <= maxDim)) {
+        return fz_get_pixmap_from_image(ctx, srcImage, nullptr, nullptr, nullptr, nullptr);
+    }
+    float s = (float)maxDim / (float)(w > h ? w : h);
+    fz_matrix ctm = fz_scale(s, s);
+    return fz_get_pixmap_from_image(ctx, srcImage, nullptr, &ctm, nullptr, nullptr);
+}
+
 static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, DarkImagePolicy policy,
-                                            const DarkImageAnalysis* imgAnalysis, const DarkModePalette& palette) {
+                                            const DarkImageAnalysis* imgAnalysis, float pageCoverage,
+                                            const DarkModePalette& palette) {
     fz_pixmap* src = nullptr;
     fz_pixmap* processed = nullptr;
     fz_image* result = nullptr;
@@ -177,11 +200,18 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
     fz_var(processed);
     fz_var(result);
     fz_try(ctx) {
-        src = fz_get_pixmap_from_image(ctx, srcImage, nullptr, nullptr, nullptr, nullptr);
+        bool layoutRaster = policy == DarkImagePolicy::AdaptiveDocument && imgAnalysis &&
+                            PdfFollowThemePreservesEmbeddedImageColors() && pageCoverage >= 0.10f &&
+                            imgAnalysis->kind != DarkImageKind::Photo &&
+                            imgAnalysis->kind != DarkImageKind::FullPageScan;
+        int decodeMaxDim = layoutRaster ? 1200 : 0;
+        src = dm_load_src_pixmap(ctx, srcImage, decodeMaxDim);
         if (policy == DarkImagePolicy::Preserve) {
             processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_preserve_pixel);
         } else if (policy == DarkImagePolicy::AdaptiveDocument) {
-            if (imgAnalysis && imgAnalysis->kind == DarkImageKind::FullPageScan) {
+            if (layoutRaster) {
+                processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_legacy_linear_pixel);
+            } else if (imgAnalysis && imgAnalysis->kind == DarkImageKind::FullPageScan) {
                 processed = PdfDarkModeProcessScanPixmap(ctx, src, *imgAnalysis, palette);
             }
             if (!processed && imgAnalysis && PdfDarkModeShouldBlendLightBackground(*imgAnalysis)) {
@@ -274,6 +304,7 @@ fz_image* PdfDarkModeGetCachedImage(fz_context* ctx, DarkModeEngineCache* engine
     }
 
     const DarkImageAnalysis* imgAnalysis = &analysis->images[occurrenceIndex].analysis;
+    float pageCoverage = analysis->images[occurrenceIndex].pageCoverage;
     DarkImageKind kind = imgAnalysis->kind;
 
     if (engineCache) {
@@ -294,11 +325,37 @@ fz_image* PdfDarkModeGetCachedImage(fz_context* ctx, DarkModeEngineCache* engine
         return fz_keep_image(ctx, cached);
     }
 
-    fz_image* built = dm_build_processed_image(ctx, srcImage, policy, imgAnalysis, palette);
+    fz_image* built = dm_build_processed_image(ctx, srcImage, policy, imgAnalysis, pageCoverage, palette);
     if (!built) {
         return nullptr;
     }
     cache->processedImages[occurrenceIndex] = built;
+    if (engineCache) {
+        PdfDarkModeEngineCacheStoreProcessed(ctx, engineCache, srcImage, profileHash, policy, kind, built);
+    }
+    return fz_keep_image(ctx, built);
+}
+
+fz_image* PdfDarkModeGetCachedFollowThemeImage(fz_context* ctx, DarkModeEngineCache* engineCache, fz_image* srcImage,
+                                               DarkImagePolicy policy, float pageCoverage,
+                                               const DarkModePalette& palette, u32 profileHash) {
+    if (!srcImage || policy == DarkImagePolicy::Preserve) {
+        return nullptr;
+    }
+    constexpr DarkImageKind kind = DarkImageKind::Unknown;
+    if (engineCache) {
+        fz_image* engineHit =
+            PdfDarkModeEngineCacheLookupProcessed(ctx, engineCache, srcImage, profileHash, policy, kind);
+        if (engineHit) {
+            return fz_keep_image(ctx, engineHit);
+        }
+    }
+    DarkImageAnalysis stub{};
+    stub.kind = kind;
+    fz_image* built = dm_build_processed_image(ctx, srcImage, policy, &stub, pageCoverage, palette);
+    if (!built) {
+        return nullptr;
+    }
     if (engineCache) {
         PdfDarkModeEngineCacheStoreProcessed(ctx, engineCache, srcImage, profileHash, policy, kind, built);
     }

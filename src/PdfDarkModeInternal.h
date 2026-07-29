@@ -35,6 +35,14 @@ fz_device* PdfDarkModeWrapDevice(fz_context* ctx, fz_device* inner, DarkModePage
                                  const DarkModePalette* palette, DarkModeReplayState* replayState,
                                  DarkModeEngineCache* engineCache, u32 profileHash, bool debugOverlay = false);
 
+fz_device* PdfDarkModeWrapFollowThemeDevice(fz_context* ctx, fz_device* inner, const DarkModePalette* palette,
+                                            const RectF& pageBounds, DarkModeEngineCache* engineCache,
+                                            u32 profileHash);
+
+fz_image* PdfDarkModeGetCachedFollowThemeImage(fz_context* ctx, DarkModeEngineCache* engineCache, fz_image* srcImage,
+                                               DarkImagePolicy policy, float pageCoverage,
+                                               const DarkModePalette& palette, u32 profileHash);
+
 void MapColorToDarkTheme(fz_context* ctx, fz_colorspace* cs, const float* color, fz_color_params colorParams,
                          const DarkModePalette& palette, float* outRgb);
 

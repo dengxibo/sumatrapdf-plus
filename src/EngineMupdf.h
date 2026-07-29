@@ -71,6 +71,16 @@ struct FzPageInfo {
     // Cached text extraction for search/copy (default stext options, no images).
     // Built lazily by ExtractPageText; dropped with the page cache.
     fz_stext_page* searchStext = nullptr;
+
+    // Follow-theme direct: cached PdfDarkModeProbeFollowThemeScanPage (see FollowThemeScanProbe).
+    u8 followThemeScanProbe = 0;
+
+    // LaTeX / dense-text follow-theme: one recolored view bitmap per page (zoom/rotation/profile).
+    RenderedBitmap* followThemePageBitmap = nullptr;
+    float followThemePageBitmapZoom = 0.f;
+    int followThemePageBitmapRotation = 0;
+    u32 followThemePageBitmapProfileHash = 0;
+    fz_irect followThemePageBitmapDevBounds{};
 };
 
 class EngineMupdf : public EngineBase {
@@ -245,6 +255,8 @@ class EngineMupdf : public EngineBase {
     bool cadHairlineVector = false;
     CadEnhanceOverride cadEnhanceOverride = CadEnhanceOverride::Unset;
     bool cadDetectDone = false;
+    // Follow-theme: 0=unknown, 1=micro-text/LaTeX-like doc, 2=layout/photo doc.
+    u8 followThemeDocBitmapRecolor = 0;
 
     bool CadEnhanceActive() const;
     bool CadEnhanceUseHairlineBoost() const;

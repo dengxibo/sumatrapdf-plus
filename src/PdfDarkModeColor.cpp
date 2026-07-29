@@ -16,8 +16,8 @@ extern "C" {
 
 // Hardcoded PDF dark mode defaults (not persisted in settings file).
 static constexpr int kPreservePdfImagesMinSize = 72;
-// Object-level Smart Dark is opt-in until image/color heuristics are ready (Phase 2+).
-static constexpr PdfDarkModeRenderer kPdfDarkModeRenderer = PdfDarkModeRenderer::LegacyBitmapPostProcess;
+// Object-level Smart Dark for dark + follow-theme PDF (experiment; was LegacyBitmapPostProcess).
+static constexpr PdfDarkModeRenderer kPdfDarkModeRenderer = PdfDarkModeRenderer::ObjectLevelDevice;
 
 static bool gPreservePdfImagesInDarkMode = true;
 
@@ -25,8 +25,9 @@ static PdfDocumentColorMode PdfDocumentColorModeFromString(const char* v) {
     if (!v || !*v || str::EqI(v, "auto") || str::EqI(v, "smart")) {
         return PdfDocumentColorMode::Auto;
     }
+    // Legacy "theme"/"black" (old Match Theme) now uses smart follow-theme behavior.
     if (str::EqI(v, "black") || str::EqI(v, "theme")) {
-        return PdfDocumentColorMode::Black;
+        return PdfDocumentColorMode::Auto;
     }
     if (str::EqI(v, "light") || str::EqI(v, "original")) {
         return PdfDocumentColorMode::Light;
@@ -37,12 +38,11 @@ static PdfDocumentColorMode PdfDocumentColorModeFromString(const char* v) {
 static const char* PdfDocumentColorModeToString(PdfDocumentColorMode mode) {
     switch (mode) {
         case PdfDocumentColorMode::Black:
-            return "theme";
-        case PdfDocumentColorMode::Light:
-            return "original";
         case PdfDocumentColorMode::Auto:
         default:
             return "smart";
+        case PdfDocumentColorMode::Light:
+            return "original";
     }
 }
 
@@ -60,6 +60,23 @@ int PdfDarkModeTakeShadeForwardCount() {
 
 bool GetPreservePdfImagesInDarkMode() {
     return gPreservePdfImagesInDarkMode;
+}
+
+bool PdfSmartModePreservesEmbeddedImages() {
+    if (GetPdfDocumentColorMode() != PdfDocumentColorMode::Auto) {
+        return false;
+    }
+    if (ThemeUsesEyeCareChrome()) {
+        return true;
+    }
+    if (PdfFollowThemePreservesEmbeddedImageColors()) {
+        return true;
+    }
+    return GetPreservePdfImagesInDarkMode() && ThemeUsesDarkChrome();
+}
+
+bool PdfFollowThemePreservesEmbeddedImageColors() {
+    return GetPdfDocumentColorMode() == PdfDocumentColorMode::Auto && ThemeUsesDarkChrome();
 }
 
 void SetPreservePdfImagesInDarkMode(bool preserve) {
@@ -85,6 +102,9 @@ void SetPdfDocumentColorMode(PdfDocumentColorMode mode) {
     if (mode < PdfDocumentColorMode::Auto || mode > PdfDocumentColorMode::Light) {
         mode = PdfDocumentColorMode::Auto;
     }
+    if (mode == PdfDocumentColorMode::Black) {
+        mode = PdfDocumentColorMode::Auto;
+    }
     if (!gGlobalPrefs) {
         return;
     }
@@ -96,13 +116,12 @@ void SetPdfDocumentColorMode(PdfDocumentColorMode mode) {
 
 const char* PdfDocumentColorModeDescription(PdfDocumentColorMode mode) {
     switch (mode) {
-        case PdfDocumentColorMode::Black:
-            return _TRN("Document Color Mode: Match theme (follow current theme colors)");
         case PdfDocumentColorMode::Light:
             return _TRN("Document Color Mode: Original (document colors unchanged)");
+        case PdfDocumentColorMode::Black:
         case PdfDocumentColorMode::Auto:
         default:
-            return _TRN("Document Color Mode: Smart (adapt colors intelligently)");
+            return _TRN("Document Color Mode: Match theme (follow current theme colors)");
     }
 }
 
@@ -143,7 +162,7 @@ void PdfDarkModeClearPixmapToThemeBackground(fz_context* ctx, fz_pixmap* pix, co
 DarkModeOptions PdfDarkModeCurrentOptions() {
     DarkModeOptions opts;
     if (PdfDarkModeUsesObjectLevel()) {
-        opts.preserveImagePaperSoftening = 0.75f;
+        opts.preserveImagePaperSoftening = 0.35f;
     }
     return opts;
 }
@@ -318,6 +337,13 @@ void MapRgbFillToDarkTheme(float r, float g, float b, const DarkModePalette& pal
     float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
     float chroma = maxC - minC;
     DarkModeOptions opts = PdfDarkModeCurrentOptions();
+    // Tinted page paper: linear invert matches legacy readability on textbook pages.
+    if (PdfFollowThemePreservesEmbeddedImageColors() && chroma < 0.14f) {
+        outRgb[0] = palette.textR + r * palette.diffR;
+        outRgb[1] = palette.textG + g * palette.diffG;
+        outRgb[2] = palette.textB + b * palette.diffB;
+        return;
+    }
     if (GetPdfDocumentColorMode() != PdfDocumentColorMode::Auto && lum >= opts.lightFillLuminanceThreshold &&
         chroma >= opts.lightFillChromaThreshold) {
         ApplyAdaptiveDocumentDarkMode(r, g, b, palette, &outRgb[0], &outRgb[1], &outRgb[2]);
@@ -392,4 +418,27 @@ bool PdfDarkModeIsDecorativeStripImage(const RectF& imgRect, const RectF& pageBo
         return true;
     }
     return false;
+}
+
+DarkImagePolicy PdfDarkModePolicyForFollowThemeImage(const RectF& imgBounds, bool isImageMask,
+                                                     const RectF& pageBounds) {
+    if (isImageMask) {
+        return PdfDarkModePolicyForImageKind(DarkImageKind::Unknown, true);
+    }
+    if (imgBounds.IsEmpty() || pageBounds.IsEmpty()) {
+        return DarkImagePolicy::AdaptiveDocument;
+    }
+    int minPx = GetPreservePdfImagesMinSize();
+    if (minPx > 0 && (imgBounds.dx < (float)minPx || imgBounds.dy < (float)minPx)) {
+        return DarkImagePolicy::AdaptiveDocument;
+    }
+    if (PdfDarkModeIsDecorativeStripImage(imgBounds, pageBounds)) {
+        return DarkImagePolicy::AdaptiveDocument;
+    }
+    float pageArea = pageBounds.dx * pageBounds.dy;
+    float coverage = pageArea > 0.f ? (imgBounds.dx * imgBounds.dy) / pageArea : 0.f;
+    if (coverage < kMaxPreserveImagePageCoverage) {
+        return DarkImagePolicy::Preserve;
+    }
+    return DarkImagePolicy::AdaptiveDocument;
 }

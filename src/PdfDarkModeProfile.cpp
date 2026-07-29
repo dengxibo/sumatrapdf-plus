@@ -41,7 +41,11 @@ static DarkModePalette BuildPaletteFromColors(COLORREF textCol, COLORREF bgCol, 
 }
 
 bool DarkModeProfileUsesObjectLevel(const DarkModeProfile* profile) {
-    return profile && profile->mode == PageColorMode::SmartDark;
+    return profile && (profile->mode == PageColorMode::SmartDark || profile->mode == PageColorMode::FollowThemeDirect);
+}
+
+bool DarkModeProfileUsesFollowThemeDirect(const DarkModeProfile* profile) {
+    return profile && profile->mode == PageColorMode::FollowThemeDirect;
 }
 
 bool DarkModeProfileUsesLegacyPostProcess(const DarkModeProfile* profile) {
@@ -68,6 +72,9 @@ u32 PdfDarkModeComputeProfileHash(const DarkModeProfile* profile) {
     h = mix(h, *(u32*)&profile->options.maxScanAspectSkew);
     h = mix(h, (u32)profile->options.maxTextOpsForScanPage);
     h = mix(h, (u32)profile->options.maxVectorOpsForScanPage);
+    h = mix(h, (u32)profile->options.followThemeBitmapRecolorMinTextOps);
+    h = mix(h, (u32)profile->options.followThemeBitmapRecolorMaxImageOps);
+    h = mix(h, *(u32*)&profile->options.followThemeBitmapRecolorMaxImageCoverage);
     h = mix(h, *(u32*)&profile->options.preserveImagePaperSoftening);
     h = mix(h, *(u32*)&profile->options.lightFillChromaThreshold);
     h = mix(h, *(u32*)&profile->options.lightFillLuminanceThreshold);
@@ -97,7 +104,11 @@ static bool IsReflowableMupdfEbookEngine(EngineBase* engine) {
 }
 
 bool ReflowEbookUsesThemeBitmapRecolor() {
-    return GetPdfDocumentColorMode() == PdfDocumentColorMode::Black && ThemeUsesDarkChrome();
+    if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
+        return false;
+    }
+    // Dark follow theme uses reflow CSS; bitmap recolor would invert images too.
+    return ThemeUsesEyeCareChrome();
 }
 
 static void ApplyDocumentColorModeToReflowMupdfProfile(DarkModeProfile* profile) {
@@ -105,12 +116,9 @@ static void ApplyDocumentColorModeToReflowMupdfProfile(DarkModeProfile* profile)
         case PdfDocumentColorMode::Light:
             profile->mode = PageColorMode::Normal;
             break;
-        case PdfDocumentColorMode::Black:
-            profile->mode = ReflowEbookUsesThemeBitmapRecolor() ? PageColorMode::LegacyInvert : PageColorMode::Normal;
-            break;
         case PdfDocumentColorMode::Auto:
         default:
-            profile->mode = PageColorMode::Normal;
+            profile->mode = ReflowEbookUsesThemeBitmapRecolor() ? PageColorMode::LegacyInvert : PageColorMode::Normal;
             break;
     }
 }
@@ -121,18 +129,20 @@ static void ApplyDocumentColorModeToFixedPageProfile(EngineBase* engine, DarkMod
             profile->mode = PageColorMode::Normal;
             break;
         case PdfDocumentColorMode::Black:
-            profile->mode = PageColorMode::LegacyInvert;
-            break;
         case PdfDocumentColorMode::Auto:
         default:
             if (EngineSupportsSmartDarkMode(engine) && PdfDarkModeUsesObjectLevel()) {
-                profile->mode = PageColorMode::SmartDark;
-            } else if (profile->preservePdfImages) {
+                if (PdfFollowThemePreservesEmbeddedImageColors()) {
+                    profile->mode = PageColorMode::FollowThemeDirect;
+                } else {
+                    profile->mode = PageColorMode::SmartDark;
+                }
+            } else if (profile->preservePdfImages || PdfFollowThemePreservesEmbeddedImageColors()) {
                 profile->mode = PageColorMode::PreserveImages;
             } else if (ThemeUsesDarkChrome()) {
                 profile->mode = PageColorMode::LegacyInvert;
             } else {
-                // Light-Warm / Light-White: keep original page pixels; eye-care tint is UI chrome only.
+                // Light-White Smart: original page pixels; Light-Warm uses PreserveImages when enabled.
                 profile->mode = PageColorMode::Normal;
             }
             break;
@@ -152,8 +162,7 @@ void BuildViewDarkModeProfile(EngineBase* engine, DarkModeProfile* profile) {
     profile->pageBackground = bgCol;
     profile->linkColor = ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : 0;
     profile->strength = 1.f;
-    profile->preservePdfImages = GetPdfDocumentColorMode() == PdfDocumentColorMode::Auto &&
-                                 GetPreservePdfImagesInDarkMode() && ThemeUsesDarkChrome();
+    profile->preservePdfImages = PdfSmartModePreservesEmbeddedImages();
     profile->preservePdfImagesMinSize = GetPreservePdfImagesMinSize();
     profile->options = PdfDarkModeCurrentOptions();
     profile->palette = BuildPaletteFromColors(textCol, bgCol, profile->linkColor);

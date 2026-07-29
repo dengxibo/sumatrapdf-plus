@@ -91,12 +91,10 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::Search, CmdFindFirst, _TRN("Find")},
     {TbIcon::Dictionary, CmdToggleDoubleClickWordLookup, _TRN("Toggle Double-Click Word Lookup")},
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
-    {TbIcon::DocColorAuto, CmdSetPdfDocumentColorModeAuto,
-     _TRN("Document Color Mode: Smart (adapt colors intelligently)")},
-    {TbIcon::DocColorOriginal, CmdSetPdfDocumentColorModeLight,
-     _TRN("Document Color Mode: Original (document colors unchanged)")},
     {TbIcon::DocColorFollowTheme, CmdSetPdfDocumentColorModeBlack,
      _TRN("Document Color Mode: Match theme (follow current theme colors)")},
+    {TbIcon::DocColorOriginal, CmdSetPdfDocumentColorModeLight,
+     _TRN("Document Color Mode: Original (document colors unchanged)")},
     {TbIcon::Speak, CmdReadAloud, _TRN("Read Aloud")},
 };
 // unicode chars: https://www.compart.com/en/unicode/U+25BC
@@ -222,7 +220,6 @@ static bool KeepToolbarLayoutOnHomeTab(MainWindow* win) {
 
 void UpdatePdfDocumentColorModeToolbarButton(MainWindow* win) {
     static const int kPdfDocumentColorModeCmds[] = {
-        CmdSetPdfDocumentColorModeAuto,
         CmdSetPdfDocumentColorModeBlack,
         CmdSetPdfDocumentColorModeLight,
     };
@@ -245,8 +242,7 @@ void UpdatePdfDocumentColorModeToolbarButton(MainWindow* win) {
         return;
     }
     PdfDocumentColorMode mode = GetPdfDocumentColorMode();
-    SetToolbarButtonCheckedState(win, CmdSetPdfDocumentColorModeAuto, mode == PdfDocumentColorMode::Auto);
-    SetToolbarButtonCheckedState(win, CmdSetPdfDocumentColorModeBlack, mode == PdfDocumentColorMode::Black);
+    SetToolbarButtonCheckedState(win, CmdSetPdfDocumentColorModeBlack, mode != PdfDocumentColorMode::Light);
     SetToolbarButtonCheckedState(win, CmdSetPdfDocumentColorModeLight, mode == PdfDocumentColorMode::Light);
 }
 

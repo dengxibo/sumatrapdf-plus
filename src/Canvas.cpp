@@ -2067,8 +2067,7 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
                 colDocBg = RgbToCOLORREF(0xFFFFFF);
             } else if (IsDarkThemeSelected()) {
                 ThemePageRenderColors(colDocBg, true);
-            } else if (docMode == PdfDocumentColorMode::Black ||
-                       (docMode == PdfDocumentColorMode::Auto && !ThemeUsesOriginalPageColors())) {
+            } else if (docMode != PdfDocumentColorMode::Light && !ThemeUsesOriginalPageColors()) {
                 colDocBg = RgbToCOLORREF(0xF7F3E8);
             } else {
                 colDocBg = RgbToCOLORREF(0xFFFFFF);

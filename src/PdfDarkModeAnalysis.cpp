@@ -87,9 +87,16 @@ static void dm_analysis_record_image(fz_context* ctx, fz_device* dev, fz_image* 
     info.hasAlpha = image && image->mask;
     info.pageCoverage = coverage;
     if (image) {
-        info.analysis = PdfDarkModeAnalyzeImageCached(ctx, image, coverage, d->analysis->isScannedPage, d->engineCache);
-        info.looksLikePhoto =
-            info.analysis.kind == DarkImageKind::Photo || info.analysis.kind == DarkImageKind::Unknown;
+        if (PdfFollowThemePreservesEmbeddedImageColors()) {
+            info.analysis = DarkImageAnalysis{};
+            info.analysis.kind = DarkImageKind::Unknown;
+            info.looksLikePhoto = true;
+        } else {
+            info.analysis =
+                PdfDarkModeAnalyzeImageCached(ctx, image, coverage, d->analysis->isScannedPage, d->engineCache);
+            info.looksLikePhoto =
+                info.analysis.kind == DarkImageKind::Photo || info.analysis.kind == DarkImageKind::Unknown;
+        }
     } else {
         info.looksLikePhoto = false;
     }
@@ -356,13 +363,24 @@ static bool PdfDarkModeDetectScanPage(DarkModePageAnalysis* analysis, int textOp
     return true;
 }
 
+static void PdfDarkModeAssignFollowThemeImagePolicy(ImageOccurrenceInfo& img, const RectF& pageBounds) {
+    img.policy = PdfDarkModePolicyForFollowThemeImage(img.pageBounds, img.isImageMask, pageBounds);
+}
+
 static void PdfDarkModeAssignPolicies(DarkModePageAnalysis* analysis, const DarkModeOptions& options, int textOps,
                                       int vectorOps, float maxCoverage) {
-    bool isScanned = PdfDarkModeDetectScanPage(analysis, textOps, vectorOps, maxCoverage, options);
+    const bool followThemeFast = PdfFollowThemePreservesEmbeddedImageColors();
+
+    bool isScanned =
+        followThemeFast ? false : PdfDarkModeDetectScanPage(analysis, textOps, vectorOps, maxCoverage, options);
     analysis->isScannedPage = isScanned;
-    bool isPureScan = PdfDarkModeIsPureScanPage(isScanned, textOps, vectorOps);
+    bool isPureScan = followThemeFast ? false : PdfDarkModeIsPureScanPage(isScanned, textOps, vectorOps);
 
     for (ImageOccurrenceInfo& img : analysis->images) {
+        if (followThemeFast) {
+            PdfDarkModeAssignFollowThemeImagePolicy(img, analysis->pageBounds);
+            continue;
+        }
         if (!img.isImageMask) {
             float conf = img.analysis.confidence;
             img.analysis.kind =
@@ -411,6 +429,7 @@ void PdfDarkModeInvalidatePage(fz_context* ctx, FzPageInfo* pageInfo) {
     pageInfo->darkLegacySkipHash = 0;
     pageInfo->darkLegacyArtworkPageBottom = 0.f;
     pageInfo->darkLegacySkipDevAbs.Clear();
+    pageInfo->followThemeScanProbe = 0;
 }
 
 DarkModePageAnalysis* PdfDarkModeGetOrBuildAnalysis(fz_context* ctx, FzPageInfo* pageInfo, fz_display_list* list,
@@ -456,4 +475,251 @@ DarkModePageAnalysis* PdfDarkModeGetOrBuildAnalysis(fz_context* ctx, FzPageInfo*
     pageInfo->darkModeAnalysis = analysis;
     pageInfo->darkModeAnalysisHash = optionsHash;
     return analysis;
+}
+
+typedef struct {
+    fz_device super;
+    float maxImageCoverage;
+    int textOps;
+    int vectorOps;
+    int imageOps;
+    float pageArea;
+} pdf_scan_probe_device;
+
+static void probe_drop_device(fz_context* ctx, fz_device* dev) {
+    (void)ctx;
+    (void)dev;
+}
+
+static void probe_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_matrix ctm, float alpha,
+                             fz_color_params color_params) {
+    (void)ctx;
+    (void)image;
+    (void)alpha;
+    (void)color_params;
+    pdf_scan_probe_device* d = (pdf_scan_probe_device*)dev;
+    d->imageOps++;
+    if (d->pageArea <= 0.f) {
+        return;
+    }
+    fz_rect bbox = fz_transform_rect(fz_unit_rect, ctm);
+    if (fz_is_empty_rect(bbox) || fz_is_infinite_rect(bbox)) {
+        return;
+    }
+    float cov = (bbox.x1 - bbox.x0) * (bbox.y1 - bbox.y0) / d->pageArea;
+    if (cov > d->maxImageCoverage) {
+        d->maxImageCoverage = cov;
+    }
+}
+
+static void probe_fill_text(fz_context* ctx, fz_device* dev, const fz_text* text, fz_matrix ctm,
+                            fz_colorspace* colorspace, const float* color, float alpha, fz_color_params color_params) {
+    (void)ctx;
+    (void)text;
+    (void)ctm;
+    (void)colorspace;
+    (void)color;
+    (void)alpha;
+    (void)color_params;
+    ((pdf_scan_probe_device*)dev)->textOps++;
+}
+
+static void probe_stroke_text(fz_context* ctx, fz_device* dev, const fz_text* text, const fz_stroke_state* stroke,
+                              fz_matrix ctm, fz_colorspace* colorspace, const float* color, float alpha,
+                              fz_color_params color_params) {
+    (void)ctx;
+    (void)text;
+    (void)stroke;
+    (void)ctm;
+    (void)colorspace;
+    (void)color;
+    (void)alpha;
+    (void)color_params;
+    ((pdf_scan_probe_device*)dev)->textOps++;
+}
+
+static void probe_fill_path(fz_context* ctx, fz_device* dev, const fz_path* path, int even_odd, fz_matrix ctm,
+                            fz_colorspace* colorspace, const float* color, float alpha, fz_color_params color_params) {
+    (void)ctx;
+    (void)path;
+    (void)even_odd;
+    (void)ctm;
+    (void)colorspace;
+    (void)color;
+    (void)alpha;
+    (void)color_params;
+    ((pdf_scan_probe_device*)dev)->vectorOps++;
+}
+
+static void probe_stroke_path(fz_context* ctx, fz_device* dev, const fz_path* path, const fz_stroke_state* stroke,
+                              fz_matrix ctm, fz_colorspace* colorspace, const float* color, float alpha,
+                              fz_color_params color_params) {
+    (void)ctx;
+    (void)path;
+    (void)stroke;
+    (void)ctm;
+    (void)colorspace;
+    (void)color;
+    (void)alpha;
+    (void)color_params;
+    ((pdf_scan_probe_device*)dev)->vectorOps++;
+}
+
+static void probe_fill_shade(fz_context* ctx, fz_device* dev, fz_shade* shd, fz_matrix ctm, float alpha,
+                             fz_color_params color_params) {
+    (void)ctx;
+    (void)shd;
+    (void)ctm;
+    (void)alpha;
+    (void)color_params;
+    ((pdf_scan_probe_device*)dev)->vectorOps++;
+}
+
+static bool PdfDarkModeInfoFieldContainsI(fz_context* ctx, pdf_obj* info, pdf_obj* key, const char* needle) {
+    if (!info || !needle || !*needle) {
+        return false;
+    }
+    const char* val = pdf_dict_get_text_string(ctx, info, key);
+    if (!val || !*val) {
+        return false;
+    }
+    return str::FindI(val, needle) != nullptr;
+}
+
+static bool PdfDarkModeInfoFieldsMatchAnyI(fz_context* ctx, pdf_obj* info, const char* const* needles, int count) {
+    for (int i = 0; i < count; i++) {
+        if (PdfDarkModeInfoFieldContainsI(ctx, info, PDF_NAME(Creator), needles[i]) ||
+            PdfDarkModeInfoFieldContainsI(ctx, info, PDF_NAME(Producer), needles[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool PdfDarkModePdfMetadataSuggestsBitmapRecolorDoc(fz_context* ctx, pdf_document* doc) {
+    if (!ctx || !doc) {
+        return false;
+    }
+    pdf_obj* info = pdf_dict_get(ctx, pdf_trailer(ctx, doc), PDF_NAME(Info));
+    if (!info) {
+        return false;
+    }
+    static const char* kLatexNeedles[] = {
+        "latex",  "pdflatex", "xelatex",   "lualatex", "tex live", "texlive", "hyperref",
+        "pdfTeX", "pdfTex",   "xdvipdfmx", "xetex",    "luatex",   "context", "puppeteer",
+        "typst",  "tectonic", "groff",     "ps2pdf",   "dvips",
+    };
+    return PdfDarkModeInfoFieldsMatchAnyI(ctx, info, kLatexNeedles, dimof(kLatexNeedles));
+}
+
+bool PdfDarkModePdfMetadataSuggestsLayoutPhotoDoc(fz_context* ctx, pdf_document* doc) {
+    if (!ctx || !doc) {
+        return false;
+    }
+    pdf_obj* info = pdf_dict_get(ctx, pdf_trailer(ctx, doc), PDF_NAME(Info));
+    if (!info) {
+        return false;
+    }
+    static const char* kLayoutNeedles[] = {
+        "adobe",      "indesign", "illustrator", "quark",       "scribus",    "affinity",  "publisher",
+        "framemaker", "word",     "powerpoint",  "libreoffice", "openoffice", "microsoft", "acrobat",
+        "foxit",      "nitro",    "finereader",  "abbyy",       "indesign",   "prince",    "antenna house",
+    };
+    return PdfDarkModeInfoFieldsMatchAnyI(ctx, info, kLayoutNeedles, dimof(kLayoutNeedles));
+}
+
+static FollowThemeScanProbe PdfDarkModeClassifyFollowThemeProbe(const pdf_scan_probe_device* probe,
+                                                                FollowThemePageProbeStats* stats) {
+    DarkModeOptions opts = PdfDarkModeCurrentOptions();
+    FollowThemePageProbeStats st{.textOps = probe->textOps,
+                                 .imageOps = probe->imageOps,
+                                 .vectorOps = probe->vectorOps,
+                                 .maxImageCoverage = probe->maxImageCoverage};
+    if (stats) {
+        *stats = st;
+    }
+    if (probe->maxImageCoverage >= opts.scanImageCoverageThreshold && probe->textOps <= opts.maxTextOpsForScanPage &&
+        probe->vectorOps <= opts.maxVectorOpsForScanPage && probe->textOps <= 2 && probe->vectorOps <= 2) {
+        return FollowThemeScanProbe::PureScan;
+    }
+    if (::FollowThemePageStatsMatchBitmapRecolor(st, opts)) {
+        return FollowThemeScanProbe::BitmapRecolor;
+    }
+    return FollowThemeScanProbe::Mixed;
+}
+
+static FollowThemeScanProbe PdfDarkModeRunFollowThemeScanProbe(fz_context* ctx, const RectF& pageBounds,
+                                                               void (*run)(fz_context*, fz_device*, void*), void* arg,
+                                                               FollowThemePageProbeStats* stats) {
+    if (!ctx || pageBounds.IsEmpty() || !run) {
+        return FollowThemeScanProbe::Mixed;
+    }
+    float pageArea = pageBounds.dx * pageBounds.dy;
+    if (pageArea <= 0.f) {
+        return FollowThemeScanProbe::Mixed;
+    }
+
+    pdf_scan_probe_device* probe = nullptr;
+    fz_device* dev = nullptr;
+    fz_var(dev);
+    FollowThemeScanProbe result = FollowThemeScanProbe::Mixed;
+    fz_try(ctx) {
+        probe = fz_new_derived_device(ctx, pdf_scan_probe_device);
+        dev = &probe->super;
+        probe->pageArea = pageArea;
+        dev->fill_image = probe_fill_image;
+        dev->fill_text = probe_fill_text;
+        dev->stroke_text = probe_stroke_text;
+        dev->fill_path = probe_fill_path;
+        dev->stroke_path = probe_stroke_path;
+        dev->fill_shade = probe_fill_shade;
+        dev->drop_device = probe_drop_device;
+        run(ctx, dev, arg);
+        fz_close_device(ctx, dev);
+        result = PdfDarkModeClassifyFollowThemeProbe(probe, stats);
+    }
+    fz_always(ctx) {
+        if (dev) {
+            fz_drop_device(ctx, dev);
+        }
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        result = FollowThemeScanProbe::Mixed;
+    }
+    return result;
+}
+
+static void probe_run_page(fz_context* ctx, fz_device* dev, void* arg) {
+    fz_page* page = (fz_page*)arg;
+    fz_run_page(ctx, page, dev, fz_identity, nullptr);
+}
+
+static void probe_run_list(fz_context* ctx, fz_device* dev, void* arg) {
+    struct ProbeListArg {
+        fz_display_list* list;
+        fz_rect rect;
+    };
+    ProbeListArg* a = (ProbeListArg*)arg;
+    fz_run_display_list(ctx, a->list, dev, fz_identity, a->rect, nullptr);
+}
+
+FollowThemeScanProbe PdfDarkModeProbeFollowThemeScanPage(fz_context* ctx, fz_page* page, const RectF& pageBounds,
+                                                         FollowThemePageProbeStats* stats) {
+    if (!page) {
+        return FollowThemeScanProbe::Mixed;
+    }
+    return PdfDarkModeRunFollowThemeScanProbe(ctx, pageBounds, probe_run_page, page, stats);
+}
+
+FollowThemeScanProbe PdfDarkModeProbeFollowThemeScanList(fz_context* ctx, fz_display_list* list,
+                                                         const RectF& pageBounds, FollowThemePageProbeStats* stats) {
+    if (!list) {
+        return FollowThemeScanProbe::Mixed;
+    }
+    struct ProbeListArg {
+        fz_display_list* list;
+        fz_rect rect;
+    } arg{list, ToFzRect(pageBounds)};
+    return PdfDarkModeRunFollowThemeScanProbe(ctx, pageBounds, probe_run_list, &arg, stats);
 }
