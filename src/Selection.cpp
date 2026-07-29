@@ -684,7 +684,6 @@ void UpdateTextSelection(MainWindow* win, bool select) {
     if (win->uiaProvider) {
         win->uiaProvider->OnSelectionChanged();
     }
-    ToolbarUpdateStateForWindow(win, false);
 }
 
 // isTextSelectionOut is set to true if this is text-only selection (as opposed to
@@ -910,6 +909,15 @@ void OnSelectionStop(MainWindow* win, int x, int y, bool aborted) {
         win->showSelection = win->CurrentTab()->selectionOnPage != nullptr;
     }
     ScheduleRepaint(win, 0);
+
+    if (win->ctrl && win->ctrl->PageCount() > 0) {
+        int pageNo = win->ctrl->CurrentPageNo();
+        if (win->ctrl->ValidPageNo(pageNo)) {
+            HwndSetText(win->hwndPageEdit, win->ctrl->GetPageLabeTemp(pageNo));
+            UpdateToolbarPageText(win, win->ctrl->PageCount(), win->ctrl->HasPageLabels());
+        }
+    }
+    ToolbarUpdateStateForWindow(win, false);
 
     // ShowSelectionToolbar is called from Canvas after mouseAction is cleared.
 }

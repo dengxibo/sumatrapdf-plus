@@ -17,11 +17,9 @@
 // #region agent log
 static void AgentLogSel9e3e69(const char* hyp, const char* msg, int startG, int endG, int len, int bumped) {
     static int n;
-    if (n++ > 200)
-        return;
+    if (n++ > 200) return;
     FILE* f = fopen("c:/src/sumatrapdf/debug-9e3e69.log", "a");
-    if (!f)
-        return;
+    if (!f) return;
     long long ts = (long long)time(NULL) * 1000LL;
     fprintf(f,
             "{\"sessionId\":\"9e3e69\",\"hypothesisId\":\"%s\",\"location\":\"TextSelection.cpp\","
@@ -272,10 +270,13 @@ static int ForwardExclusiveEndFromX(TextSelection* ts, int pageNo, double x, dou
             end = i + 1;
             break;
         }
-        end = i + 2;
+        // Right half of glyph i: still on this character — exclusive end is after i, not i+1.
+        // (Previously end = i + 2 here selected the next glyph while the cursor was still on i.)
+        end = i + 1;
         if (pt.x <= right) {
             break;
         }
+        end = i + 2;
     }
     if (end > textLen) {
         end = textLen;

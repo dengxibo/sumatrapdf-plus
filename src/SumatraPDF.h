@@ -140,9 +140,9 @@ void CloseTab(WindowTab* tab, bool quitIfLast);
 bool CanContinueReadAloud(WindowTab* tab);
 void ReadAloudPauseRememberPos();
 void ReadAloudContinueInTab(WindowTab* tab);
+// empty-canvas double-click while read-aloud is active: pause, then continue
+bool ReadAloudHandleCanvasDoubleClick(MainWindow* win);
 WindowTab* GetReadAloudSourceTab();
-// double-click on empty canvas area: pause / continue / start reading below the point
-void ReadAloudToggleAtPoint(MainWindow* win, Point screenPt);
 
 constexpr UINT CmdTtsVoiceDefault = 0x7100;
 constexpr UINT CmdTtsVoiceFirst = 0x7101;

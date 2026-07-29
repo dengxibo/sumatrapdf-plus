@@ -93,8 +93,6 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
     {TbIcon::DocColorFollowTheme, CmdSetPdfDocumentColorModeBlack,
      _TRN("Document Color Mode: Match theme (follow current theme colors)")},
-    {TbIcon::DocColorOriginal, CmdSetPdfDocumentColorModeLight,
-     _TRN("Document Color Mode: Original (document colors unchanged)")},
     {TbIcon::Speak, CmdReadAloud, _TRN("Read Aloud")},
 };
 // unicode chars: https://www.compart.com/en/unicode/U+25BC
@@ -221,7 +219,6 @@ static bool KeepToolbarLayoutOnHomeTab(MainWindow* win) {
 void UpdatePdfDocumentColorModeToolbarButton(MainWindow* win) {
     static const int kPdfDocumentColorModeCmds[] = {
         CmdSetPdfDocumentColorModeBlack,
-        CmdSetPdfDocumentColorModeLight,
     };
     bool showForDoc = NeedsDocumentColorModeUI(win);
     bool show = showForDoc || KeepToolbarLayoutOnHomeTab(win);
@@ -242,8 +239,25 @@ void UpdatePdfDocumentColorModeToolbarButton(MainWindow* win) {
         return;
     }
     PdfDocumentColorMode mode = GetPdfDocumentColorMode();
-    SetToolbarButtonCheckedState(win, CmdSetPdfDocumentColorModeBlack, mode != PdfDocumentColorMode::Light);
-    SetToolbarButtonCheckedState(win, CmdSetPdfDocumentColorModeLight, mode == PdfDocumentColorMode::Light);
+    bool followTheme = mode != PdfDocumentColorMode::Light;
+    SetToolbarButtonCheckedState(win, CmdSetPdfDocumentColorModeBlack, followTheme);
+
+    int buttons[4];
+    int n = GetToolbarButtonsByID(CmdSetPdfDocumentColorModeBlack, buttons);
+    if (n == 0) {
+        return;
+    }
+    const char* tip = followTheme ? _TRN("Document Color Mode: Match theme (follow current theme colors)")
+                                  : _TRN("Document Color Mode: Original (document colors unchanged)");
+    TempStr tipTranslated = (TempStr)trans::GetTranslation(tip);
+    TBBUTTONINFOW bi{};
+    bi.cbSize = sizeof(bi);
+    bi.dwMask = TBIF_TEXT | TBIF_BYINDEX;
+    bi.pszText = ToWStrTemp(tipTranslated);
+    for (int i = 0; i < n; i++) {
+        SendMessageW(win->hwndToolbar, TB_SETBUTTONINFOW, buttons[i], (LPARAM)&bi);
+    }
+    InvalidateRect(win->hwndToolbar, nullptr, FALSE);
 }
 
 void UpdateDoubleClickWordLookupToolbarButton(MainWindow* win) {

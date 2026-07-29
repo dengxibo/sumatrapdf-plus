@@ -1363,16 +1363,19 @@ void ControllerCallbackHandler::PageNoChanged(DocController* ctrl, int pageNo) {
     }
 
     if (kInvalidPageNo != pageNo) {
-        DisplayModel* dm = win->ctrl->AsFixed();
-        EngineBase* engine = dm ? dm->GetEngine() : nullptr;
-        if (engine && pageNo > engine->PageCount()) {
-            pageNo = engine->PageCount();
+        bool deferPageToolbar = win->mouseAction == MouseAction::SelectingText;
+        if (!deferPageToolbar) {
+            DisplayModel* dm = win->ctrl->AsFixed();
+            EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+            if (engine && pageNo > engine->PageCount()) {
+                pageNo = engine->PageCount();
+            }
+            TempStr label = win->ctrl->GetPageLabeTemp(pageNo);
+            HwndSetText(win->hwndPageEdit, label);
+            ToolbarUpdateStateForWindow(win, false);
+            int totalPages = engine ? engine->PageCount() : win->ctrl->PageCount();
+            UpdateToolbarPageText(win, totalPages, win->ctrl->HasPageLabels());
         }
-        TempStr label = win->ctrl->GetPageLabeTemp(pageNo);
-        HwndSetText(win->hwndPageEdit, label);
-        ToolbarUpdateStateForWindow(win, false);
-        int totalPages = engine ? engine->PageCount() : win->ctrl->PageCount();
-        UpdateToolbarPageText(win, totalPages, win->ctrl->HasPageLabels());
     }
     if (pageNo == win->currPageNo) {
         return;
@@ -9312,6 +9315,9 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                 PdfDocumentColorMode mode = PdfDocumentColorMode::Auto;
                 if (cmdId == CmdSetPdfDocumentColorModeLight) {
                     mode = PdfDocumentColorMode::Light;
+                } else if (cmdId == CmdSetPdfDocumentColorModeBlack) {
+                    mode = GetPdfDocumentColorMode() == PdfDocumentColorMode::Light ? PdfDocumentColorMode::Auto
+                                                                                    : PdfDocumentColorMode::Light;
                 }
                 SetPdfDocumentColorMode(mode);
                 UpdateDocumentColors(true);
@@ -11920,6 +11926,24 @@ void ReadAloudPauseRememberPos() {
     }
 }
 
+bool ReadAloudHandleCanvasDoubleClick(MainWindow* win) {
+    if (!win) {
+        return false;
+    }
+    WindowTab* tab = win->CurrentTab();
+    if (TtsIsSpeaking()) {
+        ReadAloudStopRememberPos();
+        ToolbarUpdateStateForWindow(win, true);
+        return true;
+    }
+    if (tab && CanContinueReadAloud(tab)) {
+        ReadAloudContinueInTab(tab);
+        ToolbarUpdateStateForWindow(win, true);
+        return true;
+    }
+    return false;
+}
+
 void ReadAloudContinueInTab(WindowTab* tab) {
     if (!CanContinueReadAloud(tab) || !tab->win) {
         return;
@@ -11944,48 +11968,6 @@ void ReadAloudContinueInTab(WindowTab* tab) {
 
 WindowTab* GetReadAloudSourceTab() {
     return gReadAloudSourceTab;
-}
-
-// toggle read-aloud from a double-click on an empty spot of the canvas:
-// speaking => pause, paused => continue, otherwise start reading from the
-// first text line at or below the clicked point
-void ReadAloudToggleAtPoint(MainWindow* win, Point screenPt) {
-    if (!win) {
-        return;
-    }
-    WindowTab* tab = win->CurrentTab();
-    if (!tab) {
-        return;
-    }
-
-    if (TtsIsSpeaking()) {
-        ReadAloudStopRememberPos();
-        ToolbarUpdateStateForWindow(win, true);
-        return;
-    }
-    if (CanContinueReadAloud(tab)) {
-        ReadAloudContinueInTab(tab);
-        return;
-    }
-
-    if (!HasPermission(Perm::CopySelection)) {
-        ReadAloudShowNotif(tab, _TRA("Copying text is not allowed"));
-        return;
-    }
-
-    SuspendFindEngineAccess(win);
-
-    DisplayModel* dm = win->AsFixed();
-    int startPage = 0;
-    int startGlyph = 0;
-    if (!dm || !ReadAloudGetStartBelowPoint(dm, screenPt, &startPage, &startGlyph)) {
-        ReadAloudShowNotif(tab, _TRA("No text available to read aloud"));
-        return;
-    }
-
-    ReadAloudPrepareRestart(tab, win);
-    tab->readAloudScope = WindowTab::ReadAloudScopeCursor;
-    ReadAloudStartFromPageGlyph(tab, startPage, startGlyph, _TRA("No text available to read aloud"));
 }
 
 // Voice selection menu

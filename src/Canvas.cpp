@@ -1680,10 +1680,8 @@ static void OnMouseLeftButtonDblClk(MainWindow* win, int x, int y, WPARAM key) {
     }
 
     if (!pageEl) {
-        // double-click on empty area toggles read-aloud: speaking => pause,
-        // paused => continue, otherwise start reading from the first line below the click
         if (isLeft && !isOverText && !win->presentation) {
-            ReadAloudToggleAtPoint(win, mousePos);
+            ReadAloudHandleCanvasDoubleClick(win);
         }
         return;
     }
@@ -1702,9 +1700,10 @@ static void OnMouseLeftButtonDblClk(MainWindow* win, int x, int y, WPARAM key) {
         Rect rcPage = dm->CvtToScreen(elementPageNo, dm->GetEngine()->PageMediabox(elementPageNo));
         i64 imgArea = (i64)rc.dx * (i64)rc.dy;
         i64 pageArea = (i64)rcPage.dx * (i64)rcPage.dy;
+        // full-bleed image: same as empty canvas for read-aloud pause/continue
         if (pageArea > 0 && imgArea * 100 >= pageArea * 85) {
             if (isLeft && !isOverText && !win->presentation) {
-                ReadAloudToggleAtPoint(win, mousePos);
+                ReadAloudHandleCanvasDoubleClick(win);
             }
             return;
         }
