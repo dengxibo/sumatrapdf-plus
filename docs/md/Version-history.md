@@ -14,6 +14,14 @@
   双语 MOBI 等：中英混排时英文用 FontFamily、中文用 CjkFontFamily
 - CHM keeps document HTML/CSS fonts; EBookUI font settings apply to EPUB/MOBI only
   CHM 保留文档自带 HTML/CSS 字体，阅读器字体设置仅作用于 EPUB/MOBI
+- load fonts registered outside `%WINDIR%\\Fonts` (e.g. WPS/Kingsoft paths) so installed CJK faces apply in EPUB
+  从注册表加载非系统 Fonts 目录的字体（如 WPS/金山路径），已安装中文字体可在 EPUB 中生效
+- when reader fonts differ from defaults, override publisher `font-family` on body elements (calibre classes, `p`, `div`, etc.)
+  阅读字体非默认时，强制覆盖书籍内 `p`/`div`/calibre 等元素的 `font-family`
+- bilingual EPUB: prefer Western font for Latin text so English is not drawn with Kai-style CJK glyphs
+  双语 EPUB：西文优先，避免英文被楷体类中文字体的拉丁字形渲染
+- CJK font menu: Chinese labels for common installed families; filter UI/symbol/decorative faces
+  中文字体菜单显示常见已安装字体的中文名，并过滤 UI/符号/装饰字体
 
 ## 3.7.20 (2026-07-31)
 
