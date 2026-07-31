@@ -43,6 +43,10 @@ const char* GetEbookCjkFontMenuLabel(const char* canonicalFamily);
 bool EbookLatinFontFamiliesEquivalent(const char* a, const char* b);
 bool EbookCjkFontFamiliesEquivalent(const char* a, const char* b);
 
-// CSS fragments for MuPDF user stylesheet (html, body only).
+bool UsesCustomInstalledEbookFonts();
+bool UsesNonDefaultEbookReaderFonts();
+
+// CSS fragments for MuPDF user stylesheet.
 TempStr BuildEbookReaderFontCss(EbookTypographyKind typographyKind);
 TempStr BuildEbookFallbackFontCss();
+TempStr BuildEbookForceFontCss(EbookTypographyKind typographyKind);

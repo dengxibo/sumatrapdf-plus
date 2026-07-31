@@ -5,6 +5,7 @@
 #include "Settings.h"
 #include "SumatraPDF.h"
 #include "EbookFontConfig.h"
+#include "EbookInstalledFonts.h"
 #include "utils/GdiPlusUtil.h"
 
 extern EBookUI* GetEBookUI();
@@ -132,7 +133,7 @@ const char* GetEbookCjkFontMenuLabel(const char* canonicalFamily) {
     if (str::EqI(family, kBundledEbookCjkFontWenkai)) {
         return "\xe9\x9c\x9e\xe9\x82\x97\xe6\x96\x87\xe9\x91\x8b"; // 霞鹜文楷
     }
-    return family;
+    return GetInstalledCjkFontMenuLabel(family);
 }
 
 bool EbookLatinFontFamiliesEquivalent(const char* a, const char* b) {
@@ -141,6 +142,22 @@ bool EbookLatinFontFamiliesEquivalent(const char* a, const char* b) {
 
 bool EbookCjkFontFamiliesEquivalent(const char* a, const char* b) {
     return str::EqI(NormalizeEbookCjkFontFamily(a), NormalizeEbookCjkFontFamily(b));
+}
+
+bool UsesCustomInstalledEbookFonts() {
+    EnsureEbookFontDefaults();
+    return !IsBundledLatinFontFamily(gLatinFontFamily) || !IsBundledCjkFontFamily(gCjkFontFamily);
+}
+
+bool UsesNonDefaultEbookReaderFonts() {
+    EnsureEbookFontDefaults();
+    if (!EbookLatinFontFamiliesEquivalent(gLatinFontFamily, kDefaultEbookLatinFontFamily)) {
+        return true;
+    }
+    if (!EbookCjkFontFamiliesEquivalent(gCjkFontFamily, kDefaultEbookCjkFontFamily)) {
+        return true;
+    }
+    return UsesCustomInstalledEbookFonts();
 }
 
 void ApplyEbookFontSettingsFromPrefs() {
@@ -238,16 +255,47 @@ html, body {
 }
 
 TempStr BuildEbookFallbackFontCss() {
+    return BuildEbookForceFontCss(EbookTypographyKind::Bilingual);
+}
+
+TempStr BuildEbookForceFontCss(EbookTypographyKind typographyKind) {
     TempStr latin = CssFontFamilyToken(gLatinFontFamily);
     TempStr cjk = CssFontFamilyToken(gCjkFontFamily);
-    return str::FormatTemp(
-        R"(html, body, p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div {
-  font-family: %s, Georgia, Charter, "Palatino Linotype", "Times New Roman", %s, "思源宋体", "NSimSun", "SimSun", "宋体", serif !important;
+    static const char* kSelectors =
+        "html, body, p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,\n"
+        "section, article, main, header, footer,\n"
+        ".calibre,\n"
+        ".calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,\n"
+        ".calibre11, .calibre12, .calibre13, .calibre14, .calibre15, .calibre16, .calibre17, .calibre18, .calibre19, "
+        ".calibre20,\n"
+        ".calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, "
+        ".calibre_10,\n"
+        ".calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, "
+        ".calibre_19, .calibre_20";
+    if (typographyKind == EbookTypographyKind::Latin || typographyKind == EbookTypographyKind::Bilingual) {
+        // Latin (or bilingual) books: user Latin face first. MuPDF falls back to the reader CJK
+        // font for Han characters via load_windows_fallback_font (see mupdf_load_system_font.c).
+        // CJK fonts such as WenKai include Latin glyphs; putting them first would draw English in Kai.
+        return str::FormatTemp(
+            R"(%s {
+  font-family: %s, %s, Georgia, Charter, "Palatino Linotype", "Times New Roman", "思源宋体", "Source Han Serif", "Noto Serif CJK SC", "NSimSun", "SimSun", "宋体", serif !important;
   line-height: 1.45 !important;
 }
 p {
   margin: 0.35em 0;
 }
 )",
-        latin, cjk);
+            kSelectors, latin, cjk);
+    }
+    // Pure CJK books: CJK face first so the primary font loads for body text.
+    return str::FormatTemp(
+        R"(%s {
+  font-family: %s, %s, "思源宋体", "Source Han Serif", "Noto Serif CJK SC", Georgia, "NSimSun", "SimSun", "宋体", serif !important;
+  line-height: 1.45 !important;
+}
+p {
+  margin: 0.35em 0;
+}
+)",
+        kSelectors, cjk, latin);
 }

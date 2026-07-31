@@ -4600,7 +4600,12 @@ li, blockquote {
 }
 )";
         if (isEpub) {
-            TempStr fontCss = BuildEbookReaderFontCss(typographyKind);
+            TempStr fontCss;
+            if (UsesNonDefaultEbookReaderFonts()) {
+                fontCss = BuildEbookForceFontCss(typographyKind);
+            } else {
+                fontCss = BuildEbookReaderFontCss(typographyKind);
+            }
             const char* rhythmCss = kEpubReaderLatinCss;
             if (typographyKind == EbookTypographyKind::Cjk) {
                 rhythmCss = kEpubReaderCjkCss;

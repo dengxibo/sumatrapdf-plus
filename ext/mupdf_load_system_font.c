@@ -686,6 +686,135 @@ static int stricmp_wrapper(const void* ptr1, const void* ptr2) {
     return _stricmp(string1, string2);
 }
 
+static int font_face_already_mapped(const char* facename) {
+    int i;
+    if (!facename || !facename[0]) {
+        return 0;
+    }
+    for (i = 0; i < g_win_fonts.len; i++) {
+        if (font_name_eq(g_win_fonts.fontmap[i].fontface, facename)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void append_mapping_if_new(fz_context* ctx, const char* facename, const char* path, int index) {
+    if (!font_face_already_mapped(facename)) {
+        append_mapping(ctx, facename, path, index);
+    }
+}
+
+static void strip_registry_font_suffix(WCHAR* name) {
+    WCHAR* p;
+    if (!name) {
+        return;
+    }
+    p = wcsstr(name, L" (");
+    if (p) {
+        *p = L'\0';
+    }
+}
+
+static int resolve_registry_font_file_w(const WCHAR* regFile, WCHAR* out, size_t outcap) {
+    if (!regFile || !regFile[0] || !out || outcap < 2) {
+        return 0;
+    }
+    if ((regFile[1] == L':' && regFile[2] == L'\\') || (regFile[0] == L'\\' && regFile[1] == L'\\')) {
+        if (wcsncpy_s(out, outcap, regFile, _TRUNCATE) != 0) {
+            return 0;
+        }
+    } else {
+        WCHAR winDir[MAX_PATH];
+        if (!GetWindowsDirectoryW(winDir, (UINT)nelem(winDir))) {
+            return 0;
+        }
+        if (swprintf(out, outcap, L"%s\\Fonts\\%s", winDir, regFile) < 0) {
+            return 0;
+        }
+    }
+    return GetFileAttributesW(out) != INVALID_FILE_ATTRIBUTES;
+}
+
+static void parse_font_file_if_needed(fz_context* ctx, const char* pathUtf8) {
+    size_t len;
+    char* fileExt;
+
+    if (!pathUtf8 || !pathUtf8[0]) {
+        return;
+    }
+    if (get_font_file(pathUtf8) >= 0) {
+        return;
+    }
+    len = strlen(pathUtf8);
+    if (len < 4) {
+        return;
+    }
+    fileExt = (char*)pathUtf8 + len - 4;
+    fz_try(ctx) {
+        if (streqi(fileExt, ".ttc")) {
+            parseTTCs(ctx, pathUtf8);
+        } else if (streqi(fileExt, ".ttf") || streqi(fileExt, ".otf")) {
+            parseTTFs(ctx, pathUtf8);
+        }
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+}
+
+static void extend_fonts_from_registry_hive(fz_context* ctx, HKEY hive, const WCHAR* subkey) {
+    HKEY hKey;
+    DWORD i;
+
+    if (RegOpenKeyExW(hive, subkey, 0, KEY_READ, &hKey) != ERROR_SUCCESS) {
+        return;
+    }
+
+    for (i = 0;; i++) {
+        WCHAR valueName[512];
+        WCHAR valueData[MAX_PATH * 2];
+        WCHAR pathW[MAX_PATH * 2];
+        char pathUtf8[MAX_PATH * 3];
+        char displayUtf8[MAX_FACENAME];
+        DWORD nameLen = (DWORD)nelem(valueName);
+        DWORD dataLen = sizeof(valueData);
+        DWORD type;
+        LONG rc;
+
+        rc = RegEnumValueW(hKey, i, valueName, &nameLen, NULL, &type, (LPBYTE)valueData, &dataLen);
+        if (rc == ERROR_NO_MORE_ITEMS) {
+            break;
+        }
+        if (rc != ERROR_SUCCESS || type != REG_SZ) {
+            continue;
+        }
+        if (!resolve_registry_font_file_w(valueData, pathW, nelem(pathW))) {
+            continue;
+        }
+        if (!WideCharToMultiByte(CP_UTF8, 0, pathW, -1, pathUtf8, (int)sizeof pathUtf8, NULL, NULL)) {
+            continue;
+        }
+        parse_font_file_if_needed(ctx, pathUtf8);
+
+        strip_registry_font_suffix(valueName);
+        if (!WideCharToMultiByte(CP_UTF8, 0, valueName, -1, displayUtf8, (int)sizeof displayUtf8, NULL, NULL)) {
+            continue;
+        }
+        remove_spaces(displayUtf8);
+        append_mapping_if_new(ctx, displayUtf8, pathUtf8, 0);
+    }
+
+    RegCloseKey(hKey);
+}
+
+/* GDI lists fonts installed outside %WINDIR%\\Fonts (e.g. Kingsoft/WPS muifont paths). */
+static void extend_fonts_from_registry(fz_context* ctx) {
+    static const WCHAR* subkey = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts";
+    extend_fonts_from_registry_hive(ctx, HKEY_LOCAL_MACHINE, subkey);
+    extend_fonts_from_registry_hive(ctx, HKEY_CURRENT_USER, subkey);
+}
+
 static void create_system_font_list(fz_context* ctx) {
     WCHAR szFontDir[MAX_PATH];
     UINT cch;
@@ -726,6 +855,13 @@ static void create_system_font_list(fz_context* ctx) {
                 fz_report_error(ctx);
             }
         }
+    }
+
+    fz_try(ctx) {
+        extend_fonts_from_registry(ctx);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
     }
 
     // sort the font list, so that it can be searched binarily

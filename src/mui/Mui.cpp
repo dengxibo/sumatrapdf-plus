@@ -217,8 +217,15 @@ static bool IsResolvedFontAcceptable(const WCHAR* requested, Gdiplus::Font* font
         return false;
     }
     if (IsEbookCjkFontRequestW(requested)) {
-        return IsEbookCjkFontRequestW(lf.lfFaceName) || str::EqI(lf.lfFaceName, L"SimSun") ||
-               str::EqI(lf.lfFaceName, L"NSimSun") || str::EqI(lf.lfFaceName, L"宋体");
+        if (IsEbookCjkFontRequestW(lf.lfFaceName) || str::EqI(requested, lf.lfFaceName)) {
+            return true;
+        }
+        if (!IsBundledCjkFontFamily(GetEbookCjkFontFamily())) {
+            // Installed fonts may resolve to a different GDI face name than the menu label.
+            return true;
+        }
+        return str::EqI(lf.lfFaceName, L"SimSun") || str::EqI(lf.lfFaceName, L"NSimSun") ||
+               str::EqI(lf.lfFaceName, L"宋体");
     }
     if (str::EqI(requested, GetEbookLatinFontFamilyW())) {
         return str::Find(lf.lfFaceName, GetEbookLatinFontFamilyW()) != nullptr;

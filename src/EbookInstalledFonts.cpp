@@ -9,6 +9,11 @@ struct FontEnumCtx {
     bool wantCjk = false;
 };
 
+struct CjkFontMenuLabelMap {
+    const char* gdiName;
+    const char* zhLabel;
+};
+
 static bool HasCjkScriptInName(const WCHAR* name) {
     if (!name) {
         return false;
@@ -21,11 +26,6 @@ static bool HasCjkScriptInName(const WCHAR* name) {
         }
     }
     return false;
-}
-
-static bool IsCjkCharset(BYTE charset) {
-    return charset == GB2312_CHARSET || charset == CHINESEBIG5_CHARSET || charset == SHIFTJIS_CHARSET ||
-           charset == HANGUL_CHARSET || charset == JOHAB_CHARSET;
 }
 
 static bool WStrStartsWithI(const WCHAR* s, const WCHAR* prefix) {
@@ -42,13 +42,37 @@ static bool WStrStartsWithI(const WCHAR* s, const WCHAR* prefix) {
     return true;
 }
 
-static bool IsKnownCjkFamilyName(const WCHAR* faceName) {
+static bool IsJapaneseOrKoreanFontFamily(const WCHAR* faceName) {
+    if (!faceName) {
+        return false;
+    }
+    static const WCHAR* kJpKrPrefixes[] = {
+        L"Malgun Gothic",
+        L"MS Gothic",
+        L"MS UI Gothic",
+        L"MS PGothic",
+        L"MS Mincho",
+        L"Yu Gothic",
+        L"Yu Mincho",
+        L"Meiryo",
+        L"MS UI Gothic",
+        nullptr,
+    };
+    for (int i = 0; kJpKrPrefixes[i]; i++) {
+        if (str::EqI(faceName, kJpKrPrefixes[i]) || WStrStartsWithI(faceName, kJpKrPrefixes[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool IsKnownChineseFamilyName(const WCHAR* faceName) {
     if (!faceName) {
         return false;
     }
     static const WCHAR* kNames[] = {
         L"Microsoft YaHei",
-        L"Microsoft YaHei UI",
+        L"DengXian",
         L"SimSun",
         L"NSimSun",
         L"SimHei",
@@ -58,15 +82,14 @@ static bool IsKnownCjkFamilyName(const WCHAR* faceName) {
         L"STKaiti",
         L"STXihei",
         L"STFangsong",
+        L"STHeiti",
         L"Microsoft JhengHei",
         L"PMingLiU",
         L"MingLiU",
-        L"Malgun Gothic",
-        L"MS Gothic",
-        L"MS Mincho",
-        L"Yu Gothic",
-        L"Noto Sans CJK",
-        L"Noto Serif CJK",
+        L"Noto Sans SC",
+        L"Noto Serif SC",
+        L"Source Han Sans SC",
+        L"Source Han Serif SC",
         L"Source Han Sans",
         L"Source Han Serif",
         nullptr,
@@ -76,7 +99,82 @@ static bool IsKnownCjkFamilyName(const WCHAR* faceName) {
             return true;
         }
     }
-    return HasCjkScriptInName(faceName);
+    return false;
+}
+
+static bool IsUiOrSpecialPurposeFontFamily(const WCHAR* faceName, const char* name) {
+    if (!faceName || !name) {
+        return false;
+    }
+    // UI-tuned faces (e.g. Microsoft YaHei UI, Segoe UI, Yu Gothic UI).
+    if (wcsstr(faceName, L" UI")) {
+        return true;
+    }
+    if (str::StartsWithI(name, "Bahnschrift")) {
+        return true;
+    }
+    static const char* kSkipExact[] = {
+        "Segoe UI",
+        "Cambria Math",
+        "Segoe Print",
+        "Segoe Script",
+        "Segoe Marker",
+        "Segoe Fluent Icons",
+        "Segoe UI Emoji",
+        "Segoe UI Symbol",
+        "Segoe MDL2 Assets",
+        "HoloLens MDL2 Assets",
+        "Microsoft Sans Serif",
+        "Ink Free",
+        "Gadugi",
+        "Marlett",
+        "Webdings",
+        "Wingdings",
+        "Wingdings 2",
+        "Wingdings 3",
+        "Symbol",
+        "MT Extra",
+        "MS Reference Specialty",
+        "Bookshelf Symbol 7",
+        "Fixedsys",
+        "Modern",
+        "Roman",
+        "Script",
+        "Small Fonts",
+        "System",
+        "Terminal",
+        "Global Monospace",
+        "Global Sans Serif",
+        "Global Serif",
+        "Global User Interface",
+        nullptr,
+    };
+    for (int i = 0; kSkipExact[i]; i++) {
+        if (str::EqI(name, kSkipExact[i])) {
+            return true;
+        }
+    }
+    static const char* kSkipSubstrings[] = {
+        "Emoji",
+        "MDL2",
+        "HoloLens",
+        "Math",
+        "Icons",
+        "Symbol",
+        "Wingdings",
+        "Webdings",
+        "OCR ",
+        nullptr,
+    };
+    for (int i = 0; kSkipSubstrings[i]; i++) {
+        if (str::Find(name, kSkipSubstrings[i])) {
+            return true;
+        }
+    }
+    if (str::EndsWithI(name, " Symbols")) {
+        return true;
+    }
+    return false;
 }
 
 static bool ShouldSkipFontFamily(const WCHAR* faceName, BYTE charset) {
@@ -93,53 +191,39 @@ static bool ShouldSkipFontFamily(const WCHAR* faceName, BYTE charset) {
     if (!name) {
         return true;
     }
-    static const char* kSkipExact[] = {
-        "Marlett",
-        "Webdings",
-        "Wingdings",
-        "Wingdings 2",
-        "Wingdings 3",
-        "Symbol",
-        "MT Extra",
-        "MS Reference Specialty",
-        "Segoe MDL2 Assets",
-        "HoloLens MDL2 Assets",
-        "Segoe Fluent Icons",
-        "Segoe UI Emoji",
-        "Segoe UI Symbol",
-        "Bahnschrift",
-        "Global Monospace",
-        "Global Sans Serif",
-        "Global Serif",
-        "Global User Interface",
-        nullptr,
-    };
-    for (int i = 0; kSkipExact[i]; i++) {
-        if (str::EqI(name, kSkipExact[i])) {
-            return true;
-        }
-    }
-    if (str::StartsWithI(name, "OCR ") || str::EndsWithI(name, " Symbols")) {
-        return true;
-    }
-    if (str::Find(name, "Emoji") || str::Find(name, "MDL2") || str::Find(name, "HoloLens")) {
+    if (IsUiOrSpecialPurposeFontFamily(faceName, name)) {
         return true;
     }
     return false;
 }
 
-static bool ClassifyAsCjkFont(const WCHAR* faceName, BYTE charset) {
-    if (IsCjkCharset(charset)) {
+static bool ClassifyAsChineseMenuFont(const WCHAR* faceName, BYTE charset) {
+    if (ShouldSkipFontFamily(faceName, charset)) {
+        return false;
+    }
+    if (IsJapaneseOrKoreanFontFamily(faceName)) {
+        return false;
+    }
+    if (HasCjkScriptInName(faceName)) {
         return true;
     }
-    return IsKnownCjkFamilyName(faceName);
+    if (charset == GB2312_CHARSET || charset == CHINESEBIG5_CHARSET) {
+        return true;
+    }
+    return IsKnownChineseFamilyName(faceName);
 }
 
 static bool ClassifyAsLatinFont(const WCHAR* faceName, BYTE charset) {
     if (ShouldSkipFontFamily(faceName, charset)) {
         return false;
     }
-    if (ClassifyAsCjkFont(faceName, charset)) {
+    if (ClassifyAsChineseMenuFont(faceName, charset)) {
+        return false;
+    }
+    if (IsJapaneseOrKoreanFontFamily(faceName)) {
+        return false;
+    }
+    if (charset == SHIFTJIS_CHARSET || charset == HANGUL_CHARSET || charset == JOHAB_CHARSET) {
         return false;
     }
     return true;
@@ -178,9 +262,8 @@ static int CALLBACK EnumInstalledFontFamExProc(ENUMLOGFONTEXW* elf, NEWTEXTMETRI
     if (ShouldSkipFontFamily(face, charset)) {
         return 1;
     }
-    bool isCjk = ClassifyAsCjkFont(face, charset);
     if (ctx->wantCjk) {
-        if (!isCjk) {
+        if (!ClassifyAsChineseMenuFont(face, charset)) {
             return 1;
         }
     } else if (!ClassifyAsLatinFont(face, charset)) {
@@ -219,4 +302,103 @@ void CollectInstalledLatinFontFamilies(Vec<char*>* families) {
 
 void CollectInstalledCjkFontFamilies(Vec<char*>* families) {
     CollectInstalledFontFamilies(true, families);
+}
+
+static TempStr LabelFromPrefix(const char* family, const char* gdiPrefix, const char* zhPrefix) {
+    size_t prefixLen = strlen(gdiPrefix);
+    if (str::EqI(family, gdiPrefix)) {
+        return str::DupTemp(zhPrefix);
+    }
+    if (str::StartsWithI(family, gdiPrefix) && family[prefixLen] == ' ') {
+        return str::FormatTemp("%s%s", zhPrefix, family + prefixLen);
+    }
+    return nullptr;
+}
+
+const char* GetInstalledCjkFontMenuLabel(const char* family) {
+    if (!family || !family[0]) {
+        return family;
+    }
+    if (HasCjkScriptInName(ToWStrTemp(family))) {
+        return family;
+    }
+
+    TempStr mapped = LabelFromPrefix(family, "Microsoft YaHei UI", "\xe5\xbe\xae\xe8\xbd\xaf\xe9\x9b\x85\xe9\xbb\x91 UI");
+    if (mapped) {
+        return mapped;
+    }
+    mapped = LabelFromPrefix(family, "Microsoft YaHei", "\xe5\xbe\xae\xe8\xbd\xaf\xe9\x9b\x85\xe9\xbb\x91");
+    if (mapped) {
+        return mapped;
+    }
+    mapped = LabelFromPrefix(family, "Microsoft JhengHei UI",
+                             "\xe5\xbe\xae\xe8\xbd\xaf\xe6\xad\xa3\xe9\xbb\x91\xe9\xab\x94 UI");
+    if (mapped) {
+        return mapped;
+    }
+    mapped = LabelFromPrefix(family, "Microsoft JhengHei", "\xe5\xbe\xae\xe8\xbd\xaf\xe6\xad\xa3\xe9\xbb\x91\xe9\xab\x94");
+    if (mapped) {
+        return mapped;
+    }
+    mapped = LabelFromPrefix(family, "DengXian", "\xe7\xad\x89\xe7\xba\xbf");
+    if (mapped) {
+        return mapped;
+    }
+    mapped = LabelFromPrefix(family, "SimSun-ExtB", "\xe5\xae\x8b\xe4\xbd\x93-ExtB");
+    if (mapped) {
+        return mapped;
+    }
+    mapped = LabelFromPrefix(family, "NSimSun", "\xe6\x96\xb0\xe5\xae\x8b\xe4\xbd\x93");
+    if (mapped) {
+        return mapped;
+    }
+    mapped = LabelFromPrefix(family, "SimSun", "\xe5\xae\x8b\xe4\xbd\x93");
+    if (mapped) {
+        return mapped;
+    }
+    mapped = LabelFromPrefix(family, "SimHei", "\xe9\xbb\x91\xe4\xbd\x93");
+    if (mapped) {
+        return mapped;
+    }
+    mapped = LabelFromPrefix(family, "KaiTi", "\xe6\xa5\xb7\xe4\xbd\x93");
+    if (mapped) {
+        return mapped;
+    }
+    mapped = LabelFromPrefix(family, "FangSong", "\xe4\xbb\xbf\xe5\xae\x8b");
+    if (mapped) {
+        return mapped;
+    }
+    mapped = LabelFromPrefix(family, "Noto Serif SC", "\xe6\x80\x9d\xe6\xba\x90\xe5\xae\x8b\xe4\xbd\x93");
+    if (mapped) {
+        return mapped;
+    }
+    mapped = LabelFromPrefix(family, "Noto Sans SC", "\xe6\x80\x9d\xe6\xba\x90\xe9\xbb\x91\xe4\xbd\x93");
+    if (mapped) {
+        return mapped;
+    }
+    mapped = LabelFromPrefix(family, "Source Han Serif SC", "\xe6\x80\x9d\xe6\xba\x90\xe5\xae\x8b\xe4\xbd\x93");
+    if (mapped) {
+        return mapped;
+    }
+    mapped = LabelFromPrefix(family, "Source Han Sans SC", "\xe6\x80\x9d\xe6\xba\x90\xe9\xbb\x91\xe4\xbd\x93");
+    if (mapped) {
+        return mapped;
+    }
+
+    static const CjkFontMenuLabelMap kExact[] = {
+        {"STSong", "\xe5\x8d\x8e\xe6\x96\x87\xe5\xae\x8b\xe4\xbd\x93"},
+        {"STKaiti", "\xe5\x8d\x8e\xe6\x96\x87\xe6\xa5\xb7\xe4\xbd\x93"},
+        {"STXihei", "\xe5\x8d\x8e\xe6\x96\x87\xe7\xbb\x86\xe9\xbb\x91"},
+        {"STFangsong", "\xe5\x8d\x8e\xe6\x96\x87\xe4\xbb\xbf\xe5\xae\x8b"},
+        {"STHeiti", "\xe5\x8d\x8e\xe6\x96\x87\xe9\xbb\x91\xe4\xbd\x93"},
+        {"PMingLiU", "\xe6\x96\xb0\xe7\xb4\xb0\xe6\x98\x8e\xe9\xab\x94"},
+        {"MingLiU", "\xe7\xb4\xb0\xe6\x98\x8e\xe9\xab\x94"},
+        {"MingLiU-ExtB", "\xe7\xb4\xb0\xe6\x98\x8e\xe9\xab\x94-ExtB"},
+    };
+    for (size_t i = 0; i < dimof(kExact); i++) {
+        if (str::EqI(family, kExact[i].gdiName)) {
+            return kExact[i].zhLabel;
+        }
+    }
+    return family;
 }
