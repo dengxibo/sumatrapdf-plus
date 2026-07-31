@@ -4,24 +4,8 @@
 
 ## 3.7.21 (2026-08-01)
 
-- add `EBookUI.FontFamily`, `EBookUI.CjkFontFamily` for reflowable ebook fonts; CJK resolves from `fonts\` by family name or installed Windows fonts
-  新增电子书字体设置：西文/中文正文字体名，fonts 目录或系统已安装字体按族名加载
-- add Settings menu **字体** (after Theme) with Western/CJK body font choices from bundled `fonts\` and installed Windows fonts (EPUB/MOBI)
-  设置菜单新增「字体」（位于主题之后）：从 fonts 目录与系统已安装字体选择西文/中文字体（EPUB/MOBI）
-- mouse wheel scroll on long font submenus while a menu is open
-  长字体子菜单打开时支持鼠标滚轮滚动
-- bilingual MOBI/EPUB (GDI+ path): split mixed Chinese/English runs so Latin uses FontFamily and CJK uses CjkFontFamily
-  双语 MOBI 等：中英混排时英文用 FontFamily、中文用 CjkFontFamily
-- CHM keeps document HTML/CSS fonts; EBookUI font settings apply to EPUB/MOBI only
-  CHM 保留文档自带 HTML/CSS 字体，阅读器字体设置仅作用于 EPUB/MOBI
-- load fonts registered outside `%WINDIR%\\Fonts` (e.g. WPS/Kingsoft paths) so installed CJK faces apply in EPUB
-  从注册表加载非系统 Fonts 目录的字体（如 WPS/金山路径），已安装中文字体可在 EPUB 中生效
-- when reader fonts differ from defaults, override publisher `font-family` on body elements (calibre classes, `p`, `div`, etc.)
-  阅读字体非默认时，强制覆盖书籍内 `p`/`div`/calibre 等元素的 `font-family`
-- bilingual EPUB: prefer Western font for Latin text so English is not drawn with Kai-style CJK glyphs
-  双语 EPUB：西文优先，避免英文被楷体类中文字体的拉丁字形渲染
-- CJK font menu: Chinese labels for common installed families; filter UI/symbol/decorative faces
-  中文字体菜单显示常见已安装字体的中文名，并过滤 UI/符号/装饰字体
+- add **Settings** menu → **Reading Font** for EPUB/MOBI: **Western Body Font** and **CJK Body Font** separately; fonts above the separator line are from the `fonts\` folder next to the executable, fonts below are installed on the system
+  设置菜单新增「字体」（EPUB/MOBI）：可分别选择西文字体与中文字体；横线上方为 `fonts\` 文件夹字体，横线下方为系统已安装字体
 
 ## 3.7.20 (2026-07-31)
 
