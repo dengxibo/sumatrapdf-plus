@@ -235,6 +235,15 @@ struct DisplayModel : DocController {
     int GetPageNextToPoint(Point pt) const;
     void TryApplyPendingRestoreScroll();
     bool ShouldSkipTocSelectionUpdate() const;
+    // Background EPUB tabs can accumulate layout debt; if enough leading pages are
+    // already laid out, defer syncing the rest until after the tab is shown.
+    bool ShouldDeferLayoutSyncOnTabFocus() const;
+    // Defer a zoom/rotation relayout while incremental layout debt is being drained.
+    bool ShouldDeferZoomRelayout() const;
+
+    // Set during tab switch so EbookPagesProgressUI does not layout synchronously
+    // before TabSwitchDeferredLayoutSync runs.
+    bool tabSwitchLayoutSyncPending = false;
 
     EngineBase* engine = nullptr;
 

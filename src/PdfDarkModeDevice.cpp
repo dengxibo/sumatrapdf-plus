@@ -9,8 +9,6 @@ extern "C" {
 
 #include "PdfDarkModeInternal.h"
 
-#include <stdio.h>
-
 typedef struct {
     fz_device super;
     fz_device* inner;
@@ -22,6 +20,7 @@ typedef struct {
     bool debugOverlay;
     bool followDirect;
     RectF followPageBounds;
+    const Vec<RectF>* followArtworkBounds;
 } pdf_dark_mode_device;
 
 static float dm_follow_image_coverage(const RectF& imgBounds, const RectF& pageBounds) {
@@ -46,16 +45,12 @@ static RectF dm_follow_image_bounds(fz_matrix ctm, const RectF& pageBounds) {
 
 static DarkImagePolicy dm_follow_image_policy(pdf_dark_mode_device* d, fz_matrix ctm, bool isMask) {
     RectF imgBounds = dm_follow_image_bounds(ctm, d->followPageBounds);
-    return PdfDarkModePolicyForFollowThemeImage(imgBounds, isMask, d->followPageBounds);
+    return PdfDarkModePolicyForFollowThemeImage(imgBounds, isMask, d->followPageBounds, d->followArtworkBounds);
 }
 
 static void dm_follow_fill_image(fz_context* ctx, pdf_dark_mode_device* d, fz_image* image, fz_matrix ctm, float alpha,
                                  fz_color_params color_params) {
     DarkImagePolicy policy = dm_follow_image_policy(d, ctm, false);
-    if (policy == DarkImagePolicy::Preserve) {
-        fz_fill_image(ctx, d->inner, image, ctm, alpha, color_params);
-        return;
-    }
     RectF imgBounds = dm_follow_image_bounds(ctm, d->followPageBounds);
     float coverage = dm_follow_image_coverage(imgBounds, d->followPageBounds);
     fz_image* cached =
@@ -459,7 +454,7 @@ fz_device* PdfDarkModeWrapDevice(fz_context* ctx, fz_device* inner, DarkModePage
 
 fz_device* PdfDarkModeWrapFollowThemeDevice(fz_context* ctx, fz_device* inner, const DarkModePalette* palette,
                                             const RectF& pageBounds, DarkModeEngineCache* engineCache,
-                                            u32 profileHash) {
+                                            u32 profileHash, const Vec<RectF>* artworkBounds) {
     pdf_dark_mode_device* d = fz_new_derived_device(ctx, pdf_dark_mode_device);
     d->inner = inner;
     d->analysis = nullptr;
@@ -470,6 +465,7 @@ fz_device* PdfDarkModeWrapFollowThemeDevice(fz_context* ctx, fz_device* inner, c
     d->debugOverlay = false;
     d->followDirect = true;
     d->followPageBounds = pageBounds;
+    d->followArtworkBounds = artworkBounds;
     PdfDarkModeTakeShadeForwardCount();
 
     d->super.close_device = dm_forward_close;

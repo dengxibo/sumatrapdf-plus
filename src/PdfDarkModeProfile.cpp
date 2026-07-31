@@ -124,6 +124,10 @@ static void ApplyDocumentColorModeToReflowMupdfProfile(DarkModeProfile* profile)
 }
 
 static void ApplyDocumentColorModeToFixedPageProfile(EngineBase* engine, DarkModeProfile* profile) {
+    if (EngineMupdfIsFollowThemeProbePending(engine)) {
+        profile->mode = PageColorMode::PreserveImages;
+        return;
+    }
     switch (GetPdfDocumentColorMode()) {
         case PdfDocumentColorMode::Light:
             profile->mode = PageColorMode::Normal;

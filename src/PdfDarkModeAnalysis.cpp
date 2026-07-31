@@ -628,6 +628,25 @@ bool PdfDarkModePdfMetadataSuggestsLayoutPhotoDoc(fz_context* ctx, pdf_document*
     return PdfDarkModeInfoFieldsMatchAnyI(ctx, info, kLayoutNeedles, dimof(kLayoutNeedles));
 }
 
+bool PdfDarkModePdfMetadataSuggestsPaperCaptureDoc(fz_context* ctx, pdf_document* doc) {
+    if (!ctx || !doc) {
+        return false;
+    }
+    pdf_obj* info = pdf_dict_get(ctx, pdf_trailer(ctx, doc), PDF_NAME(Info));
+    if (!info) {
+        return false;
+    }
+    static const char* kPaperCaptureNeedles[] = {
+        "paper capture",
+        "papercapture",
+        "abbyy",
+        "finereader",
+        "tesseract",
+        "ocr ",
+    };
+    return PdfDarkModeInfoFieldsMatchAnyI(ctx, info, kPaperCaptureNeedles, dimof(kPaperCaptureNeedles));
+}
+
 static FollowThemeScanProbe PdfDarkModeClassifyFollowThemeProbe(const pdf_scan_probe_device* probe,
                                                                 FollowThemePageProbeStats* stats) {
     DarkModeOptions opts = PdfDarkModeCurrentOptions();

@@ -500,6 +500,10 @@ struct EbookPagesProgressTask {
     bool reloadToc = false;
 };
 
+struct PdfThemeProbeCompleteTask {
+    char* path = nullptr;
+};
+
 // True only when tab is the selected tab and win->ctrl matches (same as CtrlMatchesCurrentTab).
 static bool TabIsForegroundForUi(WindowTab* tab) {
     if (!tab || !tab->win || !tab->ctrl) {
@@ -508,6 +512,31 @@ static bool TabIsForegroundForUi(WindowTab* tab) {
     MainWindow* win = tab->win;
     WindowTab* curr = win->CurrentTab();
     return curr == tab && win->ctrl == tab->ctrl;
+}
+
+static void PdfThemeProbeCompleteUI(PdfThemeProbeCompleteTask* task) {
+    AutoFreeStr path(task->path);
+    task->path = nullptr;
+    delete task;
+    if (!path) {
+        return;
+    }
+    WindowTab* tab = FindTabByFile(path);
+    if (!tab || !IsWindowTabValid(tab) || !tab->ctrl || !tab->win || !IsMainWindowValid(tab->win) ||
+        tab->win->isBeingClosed) {
+        return;
+    }
+    DisplayModel* dm = tab->ctrl->AsFixed();
+    if (!dm) {
+        return;
+    }
+    EngineMupdfInvalidateDarkMode(dm->GetEngine());
+    gRenderCache->CancelRendering(dm);
+    gRenderCache->FreeForDisplayModel(dm);
+    if (TabIsForegroundForUi(tab)) {
+        dm->RenderVisibleParts();
+        ScheduleRepaint(tab->win, 0);
+    }
 }
 
 static DWORD gLastEbookProgressRepaintMs = 0;
@@ -637,6 +666,16 @@ void NotifyEbookPagesLoadingProgress(const char* filePath, bool reloadToc) {
     gEbookProgressScheduled = true;
     auto fn = MkFunc0<EbookPagesProgressTask>(EbookPagesProgressUI, task);
     uitask::Post(fn, "EbookPagesProgress");
+}
+
+void NotifyPdfFollowThemeProbeComplete(const char* filePath) {
+    if (!filePath) {
+        return;
+    }
+    PdfThemeProbeCompleteTask* task = new PdfThemeProbeCompleteTask;
+    task->path = str::Dup(filePath);
+    auto fn = MkFunc0<PdfThemeProbeCompleteTask>(PdfThemeProbeCompleteUI, task);
+    uitask::Post(fn, "PdfThemeProbeComplete");
 }
 
 // ok for tab to be null
@@ -1139,6 +1178,9 @@ static void CreateThumbnailForFile(MainWindow* win, FileState* ds) {
 
 /* Send the request to render a given page to a rendering thread */
 void ControllerCallbackHandler::RequestRendering(int pageNo) {
+    if (!win) {
+        return;
+    }
     DisplayModel* dm = win->AsFixed();
     if (!dm) {
         return;
@@ -1804,6 +1846,11 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
 
     SetFrameTitleForTab(tab, false);
     UpdateUiForCurrentTab(win);
+
+    if (tab->GetEngine()) {
+        auto probeFn = MkFunc0<EngineBase>(EngineMupdfScheduleFollowThemeProbe, tab->GetEngine());
+        uitask::Post(probeFn, "SchedulePdfThemeProbe");
+    }
 
     if (CanAccessDisk() && tab->GetEngineType() == kindEngineMupdf) {
         ReportIf(!win->AsFixed() || win->AsFixed()->pdfSync);
@@ -3630,12 +3677,13 @@ static void LoadDocumentAsync(LoadDocumentAsyncData* d) {
         args->ctrl = nullptr;
     } else {
         bool progressiveReflow = EngineIsProgressiveEbookLoading(engine);
-        if (!progressiveReflow) {
+        bool earlyDisplayed = InterlockedCompareExchange(&d->displayedOnUI, 0, 0) != 0;
+        if (!progressiveReflow && !earlyDisplayed) {
             args->ctrl = new DisplayModel(engine, win->cbHandler);
             VerifyController(args->ctrl, path);
             gMostRecentlyOpenedDoc = args->ctrl;
             d->engine = nullptr;
-        } else if (args->ctrl || InterlockedCompareExchange(&d->displayedOnUI, 0, 0) != 0) {
+        } else if (args->ctrl || earlyDisplayed) {
             // EarlyEngineDisplayUI already transferred engine ownership to DisplayModel.
             d->engine = nullptr;
         }
@@ -3799,6 +3847,25 @@ MainWindow* LoadDocument(LoadArgs* args) {
 
 // Recreate the shared canvas back-buffer and paint synchronously after a tab
 // switch so stale pixels from the previous tab cannot bleed through.
+static void TabSwitchDeferredLayoutSync(WindowTab* tab) {
+    if (!tab || !IsWindowTabValid(tab) || !tab->win || !IsMainWindowValid(tab->win)) {
+        return;
+    }
+    if (tab->win->isBeingClosed) {
+        return;
+    }
+    DisplayModel* dm = tab->ctrl ? tab->ctrl->AsFixed() : nullptr;
+    if (!dm || !dm->pagesInfo || tab->win->ctrl != dm) {
+        if (dm) {
+            dm->tabSwitchLayoutSyncPending = false;
+        }
+        return;
+    }
+    dm->tabSwitchLayoutSyncPending = false;
+    dm->OnMorePagesAvailable(true, false);
+    UpdateToolbarPageText(tab->win, dm->PageCount());
+}
+
 static void RepaintCanvasAfterTabSwitch(MainWindow* win) {
     if (!IsMainWindowValid(win) || !win->hwndCanvas) {
         return;
@@ -3855,6 +3922,11 @@ void LoadModelIntoTab(WindowTab* tab) {
     win->currentTabTemp = tab;
     win->ctrl = tab->ctrl;
 
+    DisplayModel* dmSwitch = tab->ctrl ? tab->ctrl->AsFixed() : nullptr;
+    if (dmSwitch && switchingTab && dmSwitch->ShouldDeferLayoutSyncOnTabFocus()) {
+        dmSwitch->tabSwitchLayoutSyncPending = true;
+    }
+
     bool rerenderAfterTheme = false;
     bool refreshSelectionAfterTheme = false;
     if (!tab->IsAboutTab() && tab->ctrl && tab->reloadOnFocus) {
@@ -3894,10 +3966,16 @@ void LoadModelIntoTab(WindowTab* tab) {
     if (dm && dm->pagesInfo) {
         if (refreshSelectionAfterTheme) {
             dm->OnMorePagesAvailablePreservingScroll(true, false);
+            UpdateToolbarPageText(win, dm->PageCount());
+        } else if (dm->tabSwitchLayoutSyncPending) {
+            auto fn = MkFunc0<WindowTab>(TabSwitchDeferredLayoutSync, tab);
+            uitask::Post(fn, "TabSwitchLayoutSync");
         } else {
             dm->OnMorePagesAvailable(true, false);
+            UpdateToolbarPageText(win, dm->PageCount());
         }
-        UpdateToolbarPageText(win, dm->PageCount());
+    } else if (dm) {
+        dm->tabSwitchLayoutSyncPending = false;
     }
     if (refreshSelectionAfterTheme) {
         RefreshTextSelectionAfterLayoutChange(tab, win);
@@ -12589,6 +12667,7 @@ static void RefreshWindowChromeAfterFontInvalidate(MainWindow* win) {
 
     if (win->tabsCtrl) {
         win->tabsCtrl->SetFont(GetAppFontForHwnd(win->hwndFrame));
+        UpdateTabWidth(win);
         win->tabsCtrl->LayoutTabs();
     }
 
@@ -12651,6 +12730,7 @@ static void ApplyMainWindowDpiMovePreview(MainWindow* win, HWND hwnd) {
 
     if (win->tabsCtrl) {
         win->tabsCtrl->SetFont(GetAppFontForDpi(win->frameDpi));
+        UpdateTabWidth(win);
         win->tabsCtrl->LayoutTabs();
     }
     ApplySidebarDpiMovePreview(win);
@@ -12693,6 +12773,7 @@ static void ApplyMainWindowDpiChromeRefresh(MainWindow* win, HWND hwnd) {
 
     if (win->tabsCtrl) {
         win->tabsCtrl->SetFont(GetAppFontForHwnd(hwnd));
+        UpdateTabWidth(win);
         win->tabsCtrl->LayoutTabs();
     }
 

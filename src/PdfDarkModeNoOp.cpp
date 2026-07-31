@@ -91,12 +91,13 @@ fz_device* PdfDarkModeWrapDevice(fz_context* ctx, fz_device* inner, DarkModePage
 
 fz_device* PdfDarkModeWrapFollowThemeDevice(fz_context* ctx, fz_device* inner, const DarkModePalette* palette,
                                             const RectF& pageBounds, DarkModeEngineCache* engineCache,
-                                            u32 profileHash) {
+                                            u32 profileHash, const Vec<RectF>* artworkBounds) {
     (void)ctx;
     (void)palette;
     (void)pageBounds;
     (void)engineCache;
     (void)profileHash;
+    (void)artworkBounds;
     return inner;
 }
 
@@ -125,6 +126,12 @@ bool PdfDarkModePdfMetadataSuggestsBitmapRecolorDoc(fz_context* ctx, pdf_documen
 }
 
 bool PdfDarkModePdfMetadataSuggestsLayoutPhotoDoc(fz_context* ctx, pdf_document* doc) {
+    (void)ctx;
+    (void)doc;
+    return false;
+}
+
+bool PdfDarkModePdfMetadataSuggestsPaperCaptureDoc(fz_context* ctx, pdf_document* doc) {
     (void)ctx;
     (void)doc;
     return false;
@@ -178,6 +185,20 @@ bool ReflowEbookUsesThemeBitmapRecolor() {
 bool PdfDarkModeIsDecorativeStripImage(const RectF& imgRect, const RectF& pageBounds) {
     (void)imgRect;
     (void)pageBounds;
+    return false;
+}
+
+bool PdfDarkModeIsPhotoFrameStripImage(const RectF& imgRect, const RectF& pageBounds,
+                                       const Vec<RectF>* artworkBounds) {
+    (void)imgRect;
+    (void)pageBounds;
+    (void)artworkBounds;
+    return false;
+}
+
+bool PdfDarkModeIsSubstantialFollowThemeArtwork(const RectF& imgRect, float pageArea) {
+    (void)imgRect;
+    (void)pageArea;
     return false;
 }
 

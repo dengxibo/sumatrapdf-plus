@@ -11,23 +11,6 @@
 #include "EngineBase.h"
 #include "Selection.h"
 #include "TextSelection.h"
-#include <stdio.h>
-#include <time.h>
-
-// #region agent log
-static void AgentLogSel9e3e69(const char* hyp, const char* msg, int startG, int endG, int len, int bumped) {
-    static int n;
-    if (n++ > 200) return;
-    FILE* f = fopen("c:/src/sumatrapdf/debug-9e3e69.log", "a");
-    if (!f) return;
-    long long ts = (long long)time(NULL) * 1000LL;
-    fprintf(f,
-            "{\"sessionId\":\"9e3e69\",\"hypothesisId\":\"%s\",\"location\":\"TextSelection.cpp\","
-            "\"message\":\"%s\",\"data\":{\"startG\":%d,\"endG\":%d,\"len\":%d,\"bumped\":%d},\"timestamp\":%lld}\n",
-            hyp, msg, startG, endG, len, bumped, ts);
-    fclose(f);
-}
-// #endregion
 
 uint distSq(int x, int y) {
     return x * x + y * y;
@@ -381,33 +364,18 @@ static int GlyphIndexForDragEndpoint(TextSelection* ts, int pageNo, double x, do
             }
         }
         if (!sameLine) {
-            // #region agent log
-            int span = offLineG > anchor ? offLineG - anchor : anchor - offLineG;
-            if (span >= 0 && span <= 500) {
-                AgentLogSel9e3e69("H8", "drag_off_line", anchor, offLineG, span, 0);
-            }
-            // #endregion
             return offLineG;
         }
 
         if (DragUsesRtlEndpoint(ts, pageNo, x, y, anchor)) {
             int bwd = BackwardInclusiveStartFromX(ts, pageNo, x, y, anchor);
             if (bwd < anchor) {
-                // #region agent log
-                int len = anchor + 1 - bwd;
-                if (len >= 1 && len <= 20) {
-                    AgentLogSel9e3e69("H5", "drag_rtl", anchor, bwd, len, 0);
-                }
-                // #endregion
                 return bwd;
             }
             int closest = FindClosestGlyph(ts, pageNo, x, y);
             if (closest < anchor && GlyphOnDragRow(ts, pageNo, x, y, closest)) {
                 return closest;
             }
-            // #region agent log
-            AgentLogSel9e3e69("H7", "drag_rtl_anchor_only", anchor, anchor + 1, 1, bwd);
-            // #endregion
             return anchor + 1;
         }
         int fwd = ForwardExclusiveEndFromX(ts, pageNo, x, y, anchor);
@@ -427,12 +395,6 @@ static int GlyphIndexForDragEndpoint(TextSelection* ts, int pageNo, double x, do
                 fwd = cand;
             }
         }
-        // #region agent log
-        int len = fwd - anchor;
-        if (len >= 1 && len <= 4) {
-            AgentLogSel9e3e69("H6", "drag_ltr", anchor, fwd, len, 0);
-        }
-        // #endregion
         return fwd;
     }
     int g = FindClosestGlyph(ts, pageNo, x, y);
@@ -442,22 +404,8 @@ static int GlyphIndexForDragEndpoint(TextSelection* ts, int pageNo, double x, do
     Point pti = ToPoint(PointF(x, y));
     if (coords && g >= 0 && g < textLen && coords[g].Contains(pti)) {
         int endG = ForwardExclusiveEndFromX(ts, pageNo, x, y, ts->startGlyph);
-        // #region agent log
-        int len = endG - ts->startGlyph;
-        if (pageNo == ts->startPage && ts->startGlyph >= 0 && len >= 1 && len <= 4) {
-            AgentLogSel9e3e69("H3", "drag_closest_inside", ts->startGlyph, endG, len, g);
-        }
-        // #endregion
         return endG;
     }
-    // #region agent log
-    if (pageNo == ts->startPage && ts->startGlyph >= 0) {
-        int len = g - ts->startGlyph;
-        if (len >= 1 && len <= 4) {
-            AgentLogSel9e3e69("H4", "drag_closest", ts->startGlyph, g, len, 0);
-        }
-    }
-    // #endregion
     return g;
 }
 

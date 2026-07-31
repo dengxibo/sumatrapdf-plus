@@ -757,7 +757,7 @@ static void generate_image(fz_context* ctx, fz_html_box* box, fz_image* img, str
         add_flow_word(ctx, pool, flow, box, alt, alt + 7, 0);
     } else {
         fz_try(ctx) {
-            add_flow_sbreak(ctx, pool, flow, box);
+            add_flow_break(ctx, pool, flow, box);
             add_flow_image(ctx, pool, flow, box, img);
             add_flow_sbreak(ctx, pool, flow, box);
         }

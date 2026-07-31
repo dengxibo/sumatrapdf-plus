@@ -69,23 +69,38 @@ void UpdateHomeTabTitles() {
     }
 }
 
+static int LogFontHeightPx(HWND hwnd, HFONT hf) {
+    LOGFONTW lf{};
+    if (!hf || GetObjectW(hf, sizeof(lf), &lf) == 0) {
+        return FontDyPx(hwnd, hf);
+    }
+    int h = lf.lfHeight;
+    if (h < 0) {
+        h = -h;
+    }
+    if (h < 1) {
+        return FontDyPx(hwnd, hf);
+    }
+    return h;
+}
+
 int GetTabbarHeight(HWND hwnd, float factor) {
     int tabDy = DpiScale(hwnd, kTabBarDy);
     HFONT hfont = GetAppFontForHwnd(hwnd);
-    int fontDyWithPadding = FontDyPx(hwnd, hfont) + DpiScale(hwnd, 2);
+    int fontDyWithPadding = LogFontHeightPx(hwnd, hfont) + DpiScale(hwnd, 2);
     if (fontDyWithPadding > tabDy) {
         tabDy = fontDyWithPadding;
     }
     return (int)((float)tabDy * factor);
 }
 
-#if 0
-static inline Size GetTabSize(HWND hwnd) {
-    int dx = DpiScale(hwnd, std::max(gGlobalPrefs->tabWidth, kTabMinDx));
-    int dy = GetTabbarHeight(hwnd);
-    return Size(dx, dy);
+static int TabDefaultDxForHwnd(HWND hwnd) {
+    int w = gGlobalPrefs->tabWidth;
+    if (w < kTabMinDx) {
+        w = kTabMinDx;
+    }
+    return DpiScale(hwnd, w);
 }
-#endif
 
 static void ShowTabBar(MainWindow* win, bool show) {
     if (show == win->tabsVisible) {
@@ -98,7 +113,7 @@ static void ShowTabBar(MainWindow* win, bool show) {
 
 void UpdateTabWidth(MainWindow* win) {
     int nTabs = (int)win->TabCount();
-    int tabWidth = gGlobalPrefs->tabWidth;
+    int tabWidth = TabDefaultDxForHwnd(win->hwndFrame);
     if (win->tabsCtrl) {
         win->tabsCtrl->tabDefaultDx = tabWidth;
     }
@@ -554,8 +569,7 @@ void CreateTabbar(MainWindow* win) {
     args.parent = win->hwndFrame;
     args.withToolTips = true;
     args.font = GetAppFontForHwnd(win->hwndFrame);
-    int tabWidth = gGlobalPrefs->tabWidth;
-    args.tabDefaultDx = tabWidth;
+    args.tabDefaultDx = TabDefaultDxForHwnd(win->hwndFrame);
     args.isRtl = IsUIRtl();
 
     TabsCtrl* tabsCtrl = new TabsCtrl();

@@ -16,6 +16,10 @@ void NotifyEbookPagesLoadingProgress(const char* filePath, bool reloadToc) {
     (void)reloadToc;
 }
 
+void NotifyPdfFollowThemeProbeComplete(const char* filePath) {
+    (void)filePath;
+}
+
 void NotifyEngineDisplayReady(EngineBase* engine) {
     (void)engine;
 }

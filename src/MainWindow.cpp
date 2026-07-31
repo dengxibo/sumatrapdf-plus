@@ -300,7 +300,7 @@ Vec<WindowTab*> MainWindow::Tabs() const {
 }
 
 DisplayModel* MainWindow::AsFixed() const {
-    if (!CtrlMatchesCurrentTab(this)) {
+    if (!ctrl || !CtrlMatchesCurrentTab(this)) {
         return nullptr;
     }
     return ctrl->AsFixed();

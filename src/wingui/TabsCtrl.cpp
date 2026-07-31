@@ -29,6 +29,10 @@ Kind kindTabs = "tabs";
 // clicks drag/select instead of accidentally closing the tab
 constexpr int kMinTabWidthForClose = 64;
 
+static int MinTabWidthForClose(HWND hwnd) {
+    return DpiScale(hwnd, kMinTabWidthForClose);
+}
+
 using Gdiplus::Bitmap;
 using Gdiplus::Color;
 using Gdiplus::CompositingQualityHighQuality;
@@ -45,6 +49,22 @@ using Gdiplus::StringAlignmentCenter;
 using Gdiplus::StringFormat;
 using Gdiplus::TextRenderingHintClearTypeGridFit;
 using Gdiplus::UnitPixel;
+
+// Match Font(hdc, hf) + UnitPixel: em size is abs(lfHeight), already scaled when the HFONT was created.
+static float TabsFontEmSizePx(HWND hwnd, HFONT hf) {
+    LOGFONTW lf{};
+    if (!hf || GetObjectW(hf, sizeof(lf), &lf) == 0) {
+        return (float)DpiScale(hwnd, 12);
+    }
+    int h = lf.lfHeight;
+    if (h < 0) {
+        h = -h;
+    }
+    if (h < 1) {
+        return (float)DpiScale(hwnd, 12);
+    }
+    return (float)h;
+}
 
 static void HwndTabsSetItemSize(HWND hwnd, Size sz) {
     TabCtrl_SetItemSize(hwnd, sz.dx, sz.dy);
@@ -86,7 +106,7 @@ void TabsCtrl::LayoutTabs() {
     // logfa("  closeDx: %d, closeDy: %d\n", closeDx, closeDy);
 
     bool isRtl = HwndIsRtl(hwnd);
-    int closePad = 8; // padding between close circle and tab edge
+    int closePad = DpiScale(hwnd, 8); // padding between close circle and tab edge
 
     HFONT hfont = GetFont();
     int x = isRtl ? rect.dx : 0;
@@ -156,7 +176,7 @@ TabsCtrl::MouseState TabsCtrl::TabStateFromMousePosition(const Point& p) {
         }
         res.tabIdx = i;
         bool isSelected = (i == GetSelected());
-        bool closeActive = isSelected || r.dx >= kMinTabWidthForClose;
+        bool closeActive = isSelected || r.dx >= MinTabWidthForClose(hwnd);
         res.overClose = closeActive && ti->rCloseHit.Contains(pt);
         res.tabInfo = ti;
         Rect rightHalf = r;
@@ -206,7 +226,28 @@ void TabsCtrl::Paint(HDC hdc, const RECT& rc) {
 
     SolidBrush br(GdipCol(ThemeChromeBackgroundColor()));
 
-    Font f(hdc, GetFont());
+    // Font(hdc, hf) with UnitPixel uses abs(lfHeight) as the em size in pixels.
+    HFONT hf = GetFont();
+    LOGFONTW lf{};
+    GetObjectW(hf, sizeof(lf), &lf);
+    float sizePx = TabsFontEmSizePx(hwnd, hf);
+    Gdiplus::FontFamily family(lf.lfFaceName);
+    Gdiplus::FontFamily defaultFamily(L"Segoe UI");
+    Gdiplus::FontFamily* familyPtr = family.IsAvailable() ? &family : &defaultFamily;
+    int fontStyle = Gdiplus::FontStyleRegular;
+    if (lf.lfWeight >= FW_BOLD) {
+        fontStyle |= Gdiplus::FontStyleBold;
+    }
+    if (lf.lfItalic) {
+        fontStyle |= Gdiplus::FontStyleItalic;
+    }
+    if (lf.lfUnderline) {
+        fontStyle |= Gdiplus::FontStyleUnderline;
+    }
+    if (lf.lfStrikeOut) {
+        fontStyle |= Gdiplus::FontStyleStrikeout;
+    }
+    Font f(familyPtr, sizePx, fontStyle, UnitPixel);
 
     Gdiplus::Rect gr = ToGdipRect(rc);
     gfx.FillRectangle(&br, gr);
@@ -318,7 +359,7 @@ void TabsCtrl::Paint(HDC hdc, const RECT& rc) {
             gfx.FillEllipse(&redBr, dotX, dotY, dotRadius * 2, dotRadius * 2);
             gfx.SetSmoothingMode(Gdiplus::SmoothingModeNone);
         }
-        bool closeVisible = ti->canClose && (isSelected || (isUnderMouse && ti->r.dx >= kMinTabWidthForClose));
+        bool closeVisible = ti->canClose && (isSelected || (isUnderMouse && ti->r.dx >= MinTabWidthForClose(hwnd)));
         if (closeVisible) {
             DrawCloseButtonArgs closeArgs;
             closeArgs.hdc = hdc;
@@ -356,13 +397,26 @@ HBITMAP TabsCtrl::RenderForDragging(int idx) {
     Gdiplus::Rect gr(0, 0, ti->r.dx, ti->r.dy);
     gfx->FillRectangle(&br, gr);
 
-    HDC hdc = GetDC(hwnd);
-    Font f(hdc, GetFont());
-    ReleaseDC(hwnd, hdc);
+    HFONT hf = GetFont();
+    LOGFONTW lf{};
+    GetObjectW(hf, sizeof(lf), &lf);
+    float sizePx = TabsFontEmSizePx(hwnd, hf);
+    Gdiplus::FontFamily family(lf.lfFaceName);
+    Gdiplus::FontFamily defaultFamily(L"Segoe UI");
+    Gdiplus::FontFamily* familyPtr = family.IsAvailable() ? &family : &defaultFamily;
+    int fontStyle = Gdiplus::FontStyleRegular;
+    if (lf.lfWeight >= FW_BOLD) {
+        fontStyle |= Gdiplus::FontStyleBold;
+    }
+    if (lf.lfItalic) {
+        fontStyle |= Gdiplus::FontStyleItalic;
+    }
+    Font f(familyPtr, sizePx, fontStyle, UnitPixel);
 
+    int textPad = DpiScale(hwnd, 8);
     Gdiplus::RectF rTxt(0, 0, ti->r.dx, ti->r.dy);
-    rTxt.X += 8;
-    rTxt.Width -= (8 + 8);
+    rTxt.X += textPad;
+    rTxt.Width -= (textPad + textPad);
     br.SetColor(GdipCol(textCol));
     TempWStr ws = ToWStrTemp(ti->text);
     gfx->DrawString(ws, -1, &f, rTxt, &sf, &br);

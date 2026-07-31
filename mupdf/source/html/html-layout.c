@@ -27,25 +27,6 @@
 #include "hb.h"
 #include "hb-ft.h"
 #include <ft2build.h>
-#include <stdio.h>
-#include <time.h>
-
-// #region agent log
-static void agent_log_9e3e69(const char* hyp, const char* loc, const char* msg, float a, float b) {
-    static int n;
-    if (n++ > 50)
-        return;
-    FILE* f = fopen("c:/src/sumatrapdf/debug-9e3e69.log", "a");
-    if (!f)
-        return;
-    long long ts = (long long)time(NULL) * 1000LL;
-    fprintf(f,
-            "{\"sessionId\":\"9e3e69\",\"hypothesisId\":\"%s\",\"location\":\"%s\",\"message\":\"%s\","
-            "\"data\":{\"a\":%.2f,\"b\":%.2f},\"timestamp\":%lld}\n",
-            hyp, loc, msg, a, b, ts);
-    fclose(f);
-}
-// #endregion
 
 #include <math.h>
 #include <assert.h>
@@ -546,18 +527,50 @@ typedef struct {
         DST[L] = SRC[L];  \
     } while (0)
 
+static float layout_remaining_page_space(const layout_data* ld, float b) {
+    float page_h = ld->page[B] - ld->page[T];
+    if (page_h <= 0.f) return page_h;
+    float page_top = ld->page[T];
+    float used = fmodf(b - page_top, page_h);
+    if (used < 0.f) used = 0.f;
+    float avail = page_h - used;
+    if (avail <= 0.01f) avail = page_h;
+    return avail;
+}
+
+static int flow_range_has_image(fz_html_flow* a, fz_html_flow* b) {
+    fz_html_flow* node;
+    for (node = a; node != b; node = node ? node->next : NULL) {
+        if (node && node->type == FLOW_IMAGE) return 1;
+    }
+    return 0;
+}
+
 static int flush_line(fz_context* ctx, fz_html_box* box, layout_data* ld, float line_w, int align, float indent,
                       fz_html_flow* a, fz_html_flow* b, fz_html_restarter* restart) {
     float avail, line_h, baseline;
     float page_w = ld->bounds[R] - ld->bounds[L];
     float page_h = ld->page[B] - ld->page[T];
-    float page_top = ld->page[T];
     line_h = measure_line(a, b, &baseline);
     if (page_h > 0) {
-        avail = page_h - fmodf(box->s.layout.b - page_top, page_h);
-        /* If the line is larger than the available space skip to the start
-         * of the next page. Repeat until the line fits or we need a restart. */
-        while (line_h > avail && avail > 0) {
+        int keep_whole_image = flow_range_has_image(a, b) && line_h <= page_h + 0.5f;
+        avail = layout_remaining_page_space(ld, box->s.layout.b);
+        /* Shrink only when plenty of room remains (e.g. below a heading). If only a
+         * page-bottom sliver is left, skip to the next page at full size instead. */
+        if (keep_whole_image && line_h > avail + 0.5f && avail > 0 && avail >= page_h * 0.45f) {
+            float scale = avail / line_h;
+            fz_html_flow* node;
+            for (node = a; node != b; node = node ? node->next : NULL) {
+                if (node && node->type == FLOW_IMAGE) {
+                    node->w *= scale;
+                    node->h *= scale;
+                }
+            }
+            line_h = measure_line(a, b, &baseline);
+        }
+        while (line_h > avail + 0.5f) {
+            if (!keep_whole_image && line_h > page_h + 0.5f) break;
+            if (keep_whole_image && avail >= page_h - 0.5f) break;
             if (restart) {
                 assert(restart->start == NULL);
 
@@ -571,12 +584,7 @@ static int flush_line(fz_context* ctx, fz_html_box* box, layout_data* ld, float 
                 return 1;
             }
             box->s.layout.b += avail;
-            // #region agent log
-            agent_log_9e3e69("H2", "html-layout.c:flush_line", "skip_to_next_page", line_h, avail);
-            // #endregion
-            avail = page_h - fmodf(box->s.layout.b - page_top, page_h);
-            if (line_h > page_h)
-                break;
+            avail = layout_remaining_page_space(ld, box->s.layout.b);
         }
     }
     layout_line(ctx, indent, page_w, line_w, align, a, b, box, baseline, line_h);
@@ -861,9 +869,10 @@ static void layout_flow(fz_context* ctx, layout_data* ld, fz_html_box* box, fz_h
                                              node->w);
             if (node->box->style->height.unit != N_AUTO)
                 node->h = fz_from_css_number(node->box->style->height, top->s.layout.em, page_h, node->h);
-            if (node->box->style->width.unit == N_AUTO && node->box->style->height.unit != N_AUTO)
+            if (node->box->style->height.unit != N_AUTO && aspect > 0) {
+                /* Height-target figures: derive width from aspect (ignore book width:%). */
                 node->w = node->h * aspect;
-            if (node->box->style->width.unit != N_AUTO && node->box->style->height.unit == N_AUTO)
+            } else if (node->box->style->width.unit != N_AUTO && node->box->style->height.unit == N_AUTO)
                 node->h = (aspect == 0) ? 0 : (node->w / aspect);
 
             /* Shrink image to fit on one page if needed */
@@ -872,17 +881,23 @@ static void layout_flow(fz_context* ctx, layout_data* ld, fz_html_box* box, fz_h
             s = fz_min(xs, ys);
             node->w = node->w * s;
             node->h = node->h * s;
+            /* With-note figures use height:auto; cap tall portraits so caption fits. */
+            if (node->box->style->height.unit == N_AUTO) {
+                float slice_h = ld->page[B] - ld->page[T];
+                float cap = slice_h - 88.f;
+                if (slice_h > 0 && cap > 200.f && node->h > cap) {
+                    float t = cap / node->h;
+                    node->w *= t;
+                    node->h = cap;
+                }
+            }
             /* Never taller than one reflow page slice (avoids clipped split across fz pages). */
             {
                 float slice_h = ld->page[B] - ld->page[T];
                 if (slice_h > 0 && node->h > slice_h) {
-                    float before = node->h;
                     float t = slice_h / node->h;
                     node->w *= t;
                     node->h = slice_h;
-                    // #region agent log
-                    agent_log_9e3e69("H3", "html-layout.c:measure_image", "slice_clamp", before, slice_h);
-                    // #endregion
                 }
             }
 
@@ -950,6 +965,21 @@ static void layout_flow(fz_context* ctx, layout_data* ld, fz_html_box* box, fz_h
                 // default width if broken, zero width if unbroken
                 candidate = node;
                 candidate_w = line_w + node->w;
+                break;
+
+            case FLOW_IMAGE:
+                if (node != line) {
+                    int line_align = (align == TA_JUSTIFY) ? justify_align : align;
+                    if (flush_line(ctx, box, ld, line_w, line_align, indent, line, node, restart)) return;
+                    line = node;
+                    indent = 0;
+                    line_w = 0;
+                    candidate = NULL;
+                    candidate_w = 0;
+                    desperate = NULL;
+                    desperate_w = 0;
+                }
+                line_w += node->w;
                 break;
         }
 
@@ -2447,7 +2477,7 @@ static int layout_block(fz_context* ctx, layout_data* ld, fz_html_box* box) {
     }
 
     /* TODO: remove 'vertical' margin adjustments across automatic page breaks */
-    eop = layout_block_page_break(ctx, ld, &ld->used[B], style->page_break_before);
+    eop = layout_block_page_break(ctx, ld, &ld->bounds[T], style->page_break_before);
 
     /* Cope with positioned blocks. */
     eop |= pre_position(ctx, &position, ld, box, 0);

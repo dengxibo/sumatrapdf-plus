@@ -71,9 +71,12 @@ void NotifyEbookPagesLoadingProgress(const char* filePath, bool reloadToc);
 #include "MainWindow.h"
 
 #include "utils/Log.h"
-
 // if true, we pre-render the pages right before and after the visible pages
 bool gPredictiveRender = true;
+
+static const int kLayoutSyncBatch = 256;
+
+static void ScheduleLayoutSyncChain(DisplayModel* dm);
 
 static bool PagesNeedLayoutSync(const DisplayModel* dm) {
     if (!dm->pagesInfo || dm->pagesInfoCount <= 1) {
@@ -108,6 +111,14 @@ static int ColumnsFromDisplayMode(DisplayMode displayMode) {
 // because those batches never update reflowLayoutValidUpto, the next call here
 // picks up exactly at the first un-laid-out page, leaving no blank gaps.
 //
+static bool IsIncrementalContinuousLayout(DisplayModel* dm) {
+    if (!dm || !dm->engine) {
+        return false;
+    }
+    DisplayMode mode = dm->GetDisplayMode();
+    return IsContinuous(mode) && !IsBookView(mode) && ColumnsFromDisplayMode(mode) == 1;
+}
+
 // For reflowable EPUBs every page shares the viewport width, so appended pages
 // get the same x centering a full relayout would produce.
 static bool IsReflowContinuousSingleColumn(DisplayModel* dm) {
@@ -166,7 +177,7 @@ static int VisiblePageScanTo(const DisplayModel* dm, int fromPage) {
 // Layout reflowed continuous pages (validUpto+1 .. toPage) without a full relayout.
 // toPage <= 0 means layout through pagesInfoCount.
 static bool LayoutReflowPagesUpto(DisplayModel* dm, int toPage) {
-    if (!IsReflowContinuousSingleColumn(dm)) {
+    if (!IsIncrementalContinuousLayout(dm)) {
         return false;
     }
     int validUpto = dm->reflowLayoutValidUpto;
@@ -235,6 +246,14 @@ static void SyncReflowLayoutUpto(DisplayModel* dm, int toPage) {
             return;
         }
     }
+    int from = dm->reflowLayoutValidUpto > 0 ? dm->reflowLayoutValidUpto : 0;
+    if (toPage - from > kLayoutSyncBatch && dm->pagesInfoCount > kLayoutSyncBatch) {
+        int batchEnd = std::min(from + kLayoutSyncBatch, toPage);
+        if (LayoutReflowPagesUpto(dm, batchEnd)) {
+            ScheduleLayoutSyncChain(dm);
+        }
+        return;
+    }
     if (!LayoutReflowPagesUpto(dm, toPage)) {
         if (IsContinuous(dm->displayMode)) {
             for (int p = dm->reflowLayoutValidUpto + 1; p <= toPage; p++) {
@@ -247,6 +266,52 @@ static void SyncReflowLayoutUpto(DisplayModel* dm, int toPage) {
 
 static bool LayoutAppendedReflowPages(DisplayModel* dm) {
     return LayoutReflowPagesUpto(dm, 0);
+}
+
+static bool RelayoutReflowIncremental(DisplayModel* dm, float newZoomVirtual, int newRotation, int syncToPage) {
+    if (!dm || !IsReflowContinuousSingleColumn(dm)) {
+        return false;
+    }
+    dm->visibleScanTo = 0;
+    dm->rotation = NormalizeRotation(newRotation);
+    dm->viewPort = Rect(dm->viewPort.TL(), dm->totalViewPortSize);
+    dm->CalcZoomReal(newZoomVirtual);
+
+    int columnMaxWidth = dm->viewPort.dx - dm->windowMargin.left - dm->windowMargin.right;
+    if (columnMaxWidth <= 0) {
+        return false;
+    }
+    dm->reflowLayoutColumnWidth = columnMaxWidth;
+
+    PageInfo* first = dm->GetPageInfo(1);
+    if (!first) {
+        return false;
+    }
+    SizeF pageSize = dm->PageSizeAfterRotation(1);
+    float zoom = dm->GetZoomReal(1);
+    if (zoom < 0.01f) {
+        zoom = dm->zoomReal > 0 ? dm->zoomReal : 1.f;
+    }
+    first->pos.dx = (int)(pageSize.dx * zoom + 0.499);
+    first->pos.dy = (int)(pageSize.dy * zoom + 0.499);
+    first->pos.x = dm->windowMargin.left + (columnMaxWidth - first->pos.dx) / 2;
+    first->pos.y = dm->windowMargin.top;
+    dm->reflowLayoutValidUpto = 1;
+
+    int toPage = std::min(syncToPage, dm->pagesInfoCount);
+    if (toPage < 1) {
+        toPage = std::min(1 + kLayoutSyncBatch, dm->pagesInfoCount);
+    }
+    if (!LayoutReflowPagesUpto(dm, toPage)) {
+        return false;
+    }
+    if (dm->cb) {
+        dm->cb->UpdateScrollbars(dm->canvasSize);
+    }
+    if (dm->reflowLayoutValidUpto < dm->pagesInfoCount) {
+        ScheduleLayoutSyncChain(dm);
+    }
+    return true;
 }
 
 static void ApplyPagesUiUpdate(DisplayModel* dm) {
@@ -267,6 +332,63 @@ static const DWORD kProgressRelayoutIntervalLargeMs = 500;
 static const int kProgressRelayoutLargeThreshold = 512;
 static DWORD gLastProgressRelayoutMs = 0;
 static DWORD gLastProgressChainMs = 0;
+
+static void ScheduleLayoutSyncChain(DisplayModel* dm) {
+    if (!dm || !dm->engine || !dm->engine->FilePath()) {
+        return;
+    }
+    if (dm->reflowLayoutValidUpto >= dm->pagesInfoCount) {
+        return;
+    }
+    DWORD now = GetTickCount();
+    if (gLastProgressChainMs == 0 || now - gLastProgressChainMs >= kProgressRelayoutIntervalMs) {
+        gLastProgressChainMs = now;
+        NotifyEbookPagesLoadingProgress(dm->engine->FilePath(), false);
+    }
+}
+
+static bool ApplyPagesLayoutSyncBatched(DisplayModel* dm) {
+    if (!dm || !dm->pagesInfo || !dm->cb) {
+        return false;
+    }
+    int from = dm->reflowLayoutValidUpto;
+    if (from < 1) {
+        if (!RelayoutReflowIncremental(dm, dm->zoomVirtual, dm->rotation, kLayoutSyncBatch)) {
+            return false;
+        }
+        from = dm->reflowLayoutValidUpto;
+    }
+    int columnMaxWidth = dm->viewPort.dx - dm->windowMargin.left - dm->windowMargin.right;
+    if (columnMaxWidth > 0) {
+        dm->reflowLayoutColumnWidth = columnMaxWidth;
+    }
+    dm->CalcZoomReal(dm->zoomVirtual);
+    int toPage = std::min(from + kLayoutSyncBatch, dm->pagesInfoCount);
+    if (toPage <= from) {
+        return true;
+    }
+    if (!LayoutReflowPagesUpto(dm, toPage)) {
+        if (!RelayoutReflowIncremental(dm, dm->zoomVirtual, dm->rotation, toPage)) {
+            return false;
+        }
+    }
+    dm->RecalcVisibleParts();
+    dm->RenderVisibleParts();
+    dm->cb->UpdateScrollbars(dm->canvasSize);
+    dm->TryApplyPendingRestoreScroll();
+    if (dm->reflowLayoutValidUpto < dm->pagesInfoCount) {
+        ScheduleLayoutSyncChain(dm);
+    }
+    return dm->reflowLayoutValidUpto >= dm->pagesInfoCount;
+}
+
+static void ApplyPagesUiUpdateIfNeeded(DisplayModel* dm, bool growAll) {
+    if (!growAll && PagesNeedLayoutSync(dm) && dm->pagesInfoCount > kLayoutSyncBatch) {
+        ApplyPagesLayoutSyncBatched(dm);
+    } else {
+        ApplyPagesUiUpdate(dm);
+    }
+}
 
 static bool ShouldThrottleProgressUiUpdate(DisplayModel* dm, int enginePageCount) {
     if (!dm || !EngineIsProgressiveEbookLoading(dm->engine)) {
@@ -893,7 +1015,7 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
     }
     int enginePageCount = engine->PageCount();
     if (EngineIsProgressiveEbookLoading(engine)) {
-        int formatted = EngineEbookGetFormattedPageCount(engine);
+        int formatted = EngineGetProgressivePageCount(engine);
         if (formatted < enginePageCount) {
             enginePageCount = formatted;
         }
@@ -903,8 +1025,8 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
             SyncPageCountWithEngine(updateUi);
             return;
         }
-        if (updateUi && (growAll || PagesNeedLayoutSync(this))) {
-            ApplyPagesUiUpdate(this);
+        if (updateUi && !tabSwitchLayoutSyncPending && (growAll || PagesNeedLayoutSync(this))) {
+            ApplyPagesUiUpdateIfNeeded(this, growAll);
         }
         return;
     }
@@ -957,7 +1079,7 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
         }
     }
 
-    if (updateUi) {
+    if (updateUi && !tabSwitchLayoutSyncPending) {
         if (!ShouldThrottleProgressUiUpdate(this, enginePageCount)) {
             ApplyPagesUiUpdate(this);
         }
@@ -1049,7 +1171,7 @@ void DisplayModel::SyncPageCountWithEngine(bool updateUi) {
     int enginePageCount = engine->PageCount();
     if (enginePageCount == pagesInfoCount) {
         if (updateUi && PagesNeedLayoutSync(this)) {
-            ApplyPagesUiUpdate(this);
+            ApplyPagesUiUpdateIfNeeded(this, false);
         }
         return;
     }
@@ -1089,8 +1211,34 @@ bool DisplayModel::ShouldSkipTocSelectionUpdate() const {
     return false;
 }
 
+bool DisplayModel::ShouldDeferLayoutSyncOnTabFocus() const {
+    if (!IsReflowContinuousSingleColumn(const_cast<DisplayModel*>(this))) {
+        return false;
+    }
+    if (pagesInfoCount <= kLayoutSyncBatch) {
+        return false;
+    }
+    return PagesNeedLayoutSync(this);
+}
+
+bool DisplayModel::ShouldDeferZoomRelayout() const {
+    if (tabSwitchLayoutSyncPending) {
+        return true;
+    }
+    if (!IsReflowContinuousSingleColumn(const_cast<DisplayModel*>(this))) {
+        return false;
+    }
+    if (pagesInfoCount <= kLayoutSyncBatch) {
+        return false;
+    }
+    return PagesNeedLayoutSync(this);
+}
+
 void DisplayModel::TryApplyPendingRestoreScroll() {
     if (!hasPendingRestoreScroll || !ValidPageNo(pendingRestoreScroll.page)) {
+        return;
+    }
+    if (reflowLayoutValidUpto > 0 && reflowLayoutValidUpto < pendingRestoreScroll.page) {
         return;
     }
     ScrollState state = pendingRestoreScroll;
@@ -1405,6 +1553,16 @@ void DisplayModel::Relayout(float newZoomVirtual, int newRotation) {
         return;
     }
 
+    int newRot = NormalizeRotation(newRotation);
+
+    int nPages = PageCount();
+    if (IsIncrementalContinuousLayout(this) && nPages > kLayoutSyncBatch && reflowLayoutValidUpto > 0 &&
+        reflowLayoutValidUpto < pagesInfoCount) {
+        if (RelayoutReflowIncremental(this, newZoomVirtual, newRotation, reflowLayoutValidUpto + kLayoutSyncBatch)) {
+            return;
+        }
+    }
+
     visibleScanTo = 0;
     rotation = NormalizeRotation(newRotation);
 
@@ -1431,7 +1589,6 @@ RestartLayout:
     int rowMaxPageDy = 0;
     bool hideScrollbars = ScrollbarsAreHidden();
     bool useOverlayScrollbar = ScrollbarsUseOverlay();
-    int nPages = PageCount();
     for (int pageNo = 1; pageNo <= nPages; ++pageNo) {
         PageInfo* pi = GetPageInfo(pageNo);
         if (!pi->isShown) {
@@ -2047,6 +2204,11 @@ void DisplayModel::GoToPage(int pageNo, int scrollY, bool addNavPt, int scrollX)
         pageNo = engine->PageCount();
     }
     EnsurePagesInfoForPage(pageNo);
+    if (IsReflowContinuousSingleColumn(this) && reflowLayoutValidUpto > 0 && reflowLayoutValidUpto < pageNo) {
+        pendingRestoreScroll = ScrollState(pageNo, scrollX >= 0 ? scrollX : -1, scrollY >= 0 ? scrollY : -1);
+        hasPendingRestoreScroll = true;
+        pageNo = reflowLayoutValidUpto;
+    }
     if (!engine || pageNo < 1 || pageNo > engine->PageCount()) {
         logf("DisplayModel::GoToPage: invalid pageNo: %d, nPages: %d\n", pageNo, engine ? engine->PageCount() : 0);
         if (EngineIsProgressiveEbookLoading(engine) && pageNo >= 1) {
@@ -2724,6 +2886,21 @@ void DisplayModel::SetScrollState(const ScrollState& state) {
                 }
             }
             return;
+        }
+        return;
+    }
+    if (pagesInfo && IsReflowContinuousSingleColumn(this) && reflowLayoutValidUpto > 0 &&
+        state.page > reflowLayoutValidUpto + kLayoutSyncBatch) {
+        pendingRestoreScroll = state;
+        hasPendingRestoreScroll = true;
+        SyncReflowLayoutUpto(this, reflowLayoutValidUpto + kLayoutSyncBatch);
+        RecalcVisibleParts();
+        RenderVisibleParts();
+        if (cb) {
+            cb->UpdateScrollbars(canvasSize);
+        }
+        if (reflowLayoutValidUpto < state.page) {
+            ScheduleLayoutSyncChain(this);
         }
         return;
     }

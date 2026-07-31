@@ -339,7 +339,7 @@ fz_image* PdfDarkModeGetCachedImage(fz_context* ctx, DarkModeEngineCache* engine
 fz_image* PdfDarkModeGetCachedFollowThemeImage(fz_context* ctx, DarkModeEngineCache* engineCache, fz_image* srcImage,
                                                DarkImagePolicy policy, float pageCoverage,
                                                const DarkModePalette& palette, u32 profileHash) {
-    if (!srcImage || policy == DarkImagePolicy::Preserve) {
+    if (!srcImage) {
         return nullptr;
     }
     constexpr DarkImageKind kind = DarkImageKind::Unknown;

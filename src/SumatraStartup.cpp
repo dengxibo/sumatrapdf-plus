@@ -384,7 +384,14 @@ void SetTabState(WindowTab* tab, TabState* state) {
     float zoom = ZoomFromString(state->zoom, kInvalidZoom);
     if (zoom != kInvalidZoom) {
         if (dm) {
-            dm->Relayout(zoom, state->rotation);
+            int rot = NormalizeRotation(state->rotation);
+            if (dm->zoomVirtual != zoom || dm->rotation != rot) {
+                dm->zoomVirtual = zoom;
+                dm->rotation = rot;
+            }
+            if (!dm->ShouldDeferZoomRelayout()) {
+                dm->Relayout(zoom, rot);
+            }
         } else {
             ctrl->SetZoomVirtual(zoom, nullptr);
         }

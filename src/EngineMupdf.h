@@ -185,6 +185,9 @@ class EngineMupdf : public EngineBase {
     float reflowLayoutW = 612.f;
     float reflowLayoutH = 792.f;
     volatile LONG reflowableLoadingInProgress = 0;
+    // Follow-theme content probe deferred until after first paint (dark+follow open).
+    volatile LONG pdfFollowThemeProbePending = 0;
+    volatile LONG pdfFollowThemeProbeScheduled = 0;
     volatile LONG reflowableLoadAbort = 0;
     volatile LONG reflowChaptersCounted = 0;
     // set while the UI/render thread needs exclusive docLock access
@@ -257,6 +260,7 @@ class EngineMupdf : public EngineBase {
     bool cadDetectDone = false;
     // Follow-theme: 0=unknown, 1=micro-text/LaTeX-like doc, 2=layout/photo doc.
     u8 followThemeDocBitmapRecolor = 0;
+    bool followThemeContentProbed = false;
 
     bool CadEnhanceActive() const;
     bool CadEnhanceUseHairlineBoost() const;

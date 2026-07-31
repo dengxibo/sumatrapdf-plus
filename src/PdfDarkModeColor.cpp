@@ -420,20 +420,96 @@ bool PdfDarkModeIsDecorativeStripImage(const RectF& imgRect, const RectF& pageBo
     return false;
 }
 
+static bool PdfDarkModeStripIsExternallyAdjacentToArt(const RectF& strip, const RectF& art, float tol = 4.f) {
+    constexpr float kMaxGap = 20.f;
+    float sw = strip.dx;
+    float sh = strip.dy;
+    if (sh > sw) {
+        bool yOverlap = strip.y < art.y + art.dy + tol && strip.y + sh > art.y - tol;
+        if (!yOverlap) {
+            return false;
+        }
+        if (strip.x + sw <= art.x + tol) {
+            return art.x - (strip.x + sw) <= kMaxGap;
+        }
+        if (strip.x >= art.x + art.dx - tol) {
+            return strip.x - (art.x + art.dx) <= kMaxGap;
+        }
+        return false;
+    }
+    if (sw > sh) {
+        bool xOverlap = strip.x < art.x + art.dx + tol && strip.x + sw > art.x - tol;
+        if (!xOverlap) {
+            return false;
+        }
+        if (strip.y + sh <= art.y + tol) {
+            return art.y - (strip.y + sh) <= kMaxGap;
+        }
+        if (strip.y >= art.y + art.dy - tol) {
+            return strip.y - (art.y + art.dy) <= kMaxGap;
+        }
+        return false;
+    }
+    return false;
+}
+
+bool PdfDarkModeIsSubstantialFollowThemeArtwork(const RectF& imgRect, float pageArea) {
+    if (imgRect.IsEmpty() || pageArea <= 0.f) {
+        return false;
+    }
+    float w = imgRect.dx;
+    float h = imgRect.dy;
+    float minDim = w < h ? w : h;
+    float maxDim = w > h ? w : h;
+    if (minDim <= 0.f || maxDim <= 0.f) {
+        return false;
+    }
+    float coverage = (w * h) / pageArea;
+    float aspect = minDim / maxDim;
+    return coverage >= 0.04f && minDim >= 50.f && aspect >= 0.25f;
+}
+
+bool PdfDarkModeIsPhotoFrameStripImage(const RectF& imgRect, const RectF& pageBounds,
+                                       const Vec<RectF>* artworkBounds) {
+    if (!PdfDarkModeIsDecorativeStripImage(imgRect, pageBounds)) {
+        return false;
+    }
+    float w = imgRect.dx;
+    float h = imgRect.dy;
+    if (w <= 0.f || h <= 0.f) {
+        return false;
+    }
+    float minDim = w < h ? w : h;
+    float maxDim = w > h ? w : h;
+    // Photo vignette/frame strips are thin on one axis and span a long edge beside artwork.
+    if (minDim >= 40.f || maxDim <= 80.f) {
+        return false;
+    }
+    if (!artworkBounds) {
+        return false;
+    }
+    for (const RectF& art : *artworkBounds) {
+        if (PdfDarkModeStripIsExternallyAdjacentToArt(imgRect, art)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 DarkImagePolicy PdfDarkModePolicyForFollowThemeImage(const RectF& imgBounds, bool isImageMask,
-                                                     const RectF& pageBounds) {
+                                                     const RectF& pageBounds, const Vec<RectF>* artworkBounds) {
     if (isImageMask) {
         return PdfDarkModePolicyForImageKind(DarkImageKind::Unknown, true);
     }
     if (imgBounds.IsEmpty() || pageBounds.IsEmpty()) {
         return DarkImagePolicy::AdaptiveDocument;
     }
-    int minPx = GetPreservePdfImagesMinSize();
-    if (minPx > 0 && (imgBounds.dx < (float)minPx || imgBounds.dy < (float)minPx)) {
-        return DarkImagePolicy::AdaptiveDocument;
-    }
-    if (PdfDarkModeIsDecorativeStripImage(imgBounds, pageBounds)) {
-        return DarkImagePolicy::AdaptiveDocument;
+    bool photoFrameStrip = PdfDarkModeIsPhotoFrameStripImage(imgBounds, pageBounds, artworkBounds);
+    if (!photoFrameStrip) {
+        int minPx = GetPreservePdfImagesMinSize();
+        if (minPx > 0 && (imgBounds.dx < (float)minPx || imgBounds.dy < (float)minPx)) {
+            return DarkImagePolicy::AdaptiveDocument;
+        }
     }
     float pageArea = pageBounds.dx * pageBounds.dy;
     float coverage = pageArea > 0.f ? (imgBounds.dx * imgBounds.dy) / pageArea : 0.f;

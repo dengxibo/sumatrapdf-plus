@@ -213,6 +213,7 @@ FollowThemeScanProbe PdfDarkModeProbeFollowThemeScanList(fz_context* ctx, fz_dis
 struct pdf_document;
 bool PdfDarkModePdfMetadataSuggestsBitmapRecolorDoc(fz_context* ctx, pdf_document* doc);
 bool PdfDarkModePdfMetadataSuggestsLayoutPhotoDoc(fz_context* ctx, pdf_document* doc);
+bool PdfDarkModePdfMetadataSuggestsPaperCaptureDoc(fz_context* ctx, pdf_document* doc);
 
 void PdfDarkModeInvalidatePage(fz_context* ctx, FzPageInfo* pageInfo);
 
@@ -220,7 +221,11 @@ void ApplyAdaptiveDocumentDarkMode(float r, float g, float b, const DarkModePale
                                    float* outB);
 
 bool PdfDarkModeIsDecorativeStripImage(const RectF& imgRect, const RectF& pageBounds);
-DarkImagePolicy PdfDarkModePolicyForFollowThemeImage(const RectF& imgBounds, bool isImageMask, const RectF& pageBounds);
+bool PdfDarkModeIsSubstantialFollowThemeArtwork(const RectF& imgRect, float pageArea);
+bool PdfDarkModeIsPhotoFrameStripImage(const RectF& imgRect, const RectF& pageBounds,
+                                       const Vec<RectF>* artworkBounds);
+DarkImagePolicy PdfDarkModePolicyForFollowThemeImage(const RectF& imgBounds, bool isImageMask, const RectF& pageBounds,
+                                                     const Vec<RectF>* artworkBounds = nullptr);
 
 // OKLab perceptual remap for SmartDark text/vector colors (Phase 2).
 void MapRgbToDarkThemeOklab(float r, float g, float b, const DarkModePalette& palette, float* outRgb);

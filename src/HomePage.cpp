@@ -1027,8 +1027,8 @@ static LRESULT CALLBACK WndProcHomeSearch(HWND hwnd, UINT msg, WPARAM wp, LPARAM
         HwndSetText(hwnd, "");
         MainWindow* win = FindMainWindowByHwnd(GetParent(hwnd));
         if (win) {
+            HomePageApplySearchFilter(win);
             HwndSetFocus(win->hwndCanvas);
-            win->RedrawAll(true);
         }
         return 0;
     }

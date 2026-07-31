@@ -2,6 +2,19 @@
 
 ## next
 
+## 3.7.20 (2026-07-31)
+
+- restore synchronous PDF page layout at open (revert progressive PDF loading that slowed large textbooks and caused repeated relayout)
+  恢复 PDF 打开时同步加载全部页信息，撤销误用 EPUB 渐进式加载导致的慢打开与多次重布局
+- defer PDF match-theme content probe until after first paint; skip heavy probe when metadata already classifies the document; avoid loading imageless pages during probe
+  暗黑+跟随下延后 PDF 主题探测至首帧之后；元数据已分类时跳过重探测；无图页用轻量检查避免整页加载
+- fix crash when theme probe completed on a background thread while switching tabs (marshal UI refresh to main thread)
+  修复主题探测在后台线程触发 UI 重绘、切换标签时崩溃的问题
+- fix tab bar font scaling on high-DPI ultrawide monitors
+  修复超宽高分屏下标签栏字体过小的问题
+- fix document color mode toggle, read-aloud double-click, and text selection UX
+  修复文档颜色模式切换、朗读双击与划词体验
+
 ## 3.7.19 (2026-07-28)
 
 - rename advanced setting `PdfDocumentColorMode` to `DocumentColorMode` with clearer values `smart`, `original`, and `theme`; migrate legacy names on load

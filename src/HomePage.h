@@ -40,5 +40,5 @@ void HomePageDestroySearch(MainWindow* win);
 void HomePageScheduleSearchFilter(MainWindow* win);
 void HomePageApplySearchFilter(MainWindow* win);
 
-#define kHomeSearchDebounceTimerId 0x102
+#define kHomeSearchDebounceTimerId 0x103
 void HomePageOnLanguageChangedAll();
