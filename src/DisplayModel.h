@@ -234,6 +234,7 @@ struct DisplayModel : DocController {
     bool GoToPrevPage(int scrollY);
     int GetPageNextToPoint(Point pt) const;
     void TryApplyPendingRestoreScroll();
+    void RestoreFontReloadInPageScroll(int page, float ratio);
     bool ShouldSkipTocSelectionUpdate() const;
     // Background EPUB tabs can accumulate layout debt; if enough leading pages are
     // already laid out, defer syncing the rest until after the tab is shown.
@@ -272,6 +273,7 @@ struct DisplayModel : DocController {
     // saved scroll target while reflowable docs are still loading pages
     ScrollState pendingRestoreScroll;
     bool hasPendingRestoreScroll = false;
+    float fontReloadInPageRatio = -1.f;
 
     /* size of virtual canvas containing all rendered pages. */
     Size canvasSize;

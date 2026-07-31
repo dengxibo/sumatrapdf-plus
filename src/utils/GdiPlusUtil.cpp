@@ -21,13 +21,66 @@
 #include "utils/Log.h"
 
 static Gdiplus::PrivateFontCollection* gBundledFonts = nullptr;
+static char gReaderLatinFontFamily[128] = "Literata";
+static char gReaderCjkFontFamily[128] = "Source Han Serif SC";
+static char gReaderCjkFontFile[MAX_PATH] = "";
+
+void ConfigureBundledReaderLatinFont(const char* familyName) {
+    const char* family = (familyName && familyName[0]) ? familyName : "Literata";
+    str::BufSet(gReaderLatinFontFamily, sizeof(gReaderLatinFontFamily), family);
+}
+
+void ConfigureBundledReaderCjkFont(const char* familyName, const char* fileName) {
+    const char* family = (familyName && familyName[0]) ? familyName : "Source Han Serif SC";
+    str::BufSet(gReaderCjkFontFamily, sizeof(gReaderCjkFontFamily), family);
+    if (fileName && fileName[0]) {
+        str::BufSet(gReaderCjkFontFile, sizeof(gReaderCjkFontFile), fileName);
+    } else {
+        gReaderCjkFontFile[0] = '\0';
+    }
+}
+
+void ResetBundledReaderFonts() {
+    if (gBundledFonts) {
+        delete gBundledFonts;
+        gBundledFonts = nullptr;
+    }
+}
+
+static bool IsReaderCjkFamilyRequest(const WCHAR* requested) {
+    if (!requested) {
+        return false;
+    }
+    TempWStr cfg = ToWStrTemp(gReaderCjkFontFamily);
+    if (str::EqI(requested, cfg)) {
+        return true;
+    }
+    if (str::EqI(requested, L"Source Han Serif SC") || str::EqI(requested, L"思源宋体")) {
+        return str::EqI(gReaderCjkFontFamily, "Source Han Serif SC");
+    }
+    return false;
+}
+
+static bool IsReaderCjkFamilyName(const WCHAR* familyName) {
+    if (!familyName) {
+        return false;
+    }
+    TempWStr cfg = ToWStrTemp(gReaderCjkFontFamily);
+    if (str::EqI(familyName, cfg)) {
+        return true;
+    }
+    if (str::EqI(familyName, L"Source Han Serif SC") || str::EqI(familyName, L"思源宋体")) {
+        return str::EqI(gReaderCjkFontFamily, "Source Han Serif SC");
+    }
+    return false;
+}
 
 static bool IsSourceHanScRequest(const WCHAR* requested) {
-    return str::EqI(requested, L"Source Han Serif SC") || str::EqI(requested, L"思源宋体");
+    return IsReaderCjkFamilyRequest(requested);
 }
 
 static bool IsSourceHanScFamily(const WCHAR* familyName) {
-    return str::EqI(familyName, L"Source Han Serif SC") || str::EqI(familyName, L"思源宋体");
+    return IsReaderCjkFamilyName(familyName);
 }
 
 static bool BundledFamilyMatchesRequest(const WCHAR* familyName, const WCHAR* requested) {
@@ -45,66 +98,114 @@ static bool BundledFamilyMatchesRequest(const WCHAR* familyName, const WCHAR* re
     return false;
 }
 
-void InstallBundledReaderFonts() {
-    static bool didInstall = false;
-    if (didInstall) {
+static bool ShouldSkipBundledFontFileName(const WCHAR* fileName) {
+    if (!fileName || !fileName[0]) {
+        return true;
+    }
+    if (wcsstr(fileName, L"VariableFont")) {
+        return true;
+    }
+    return false;
+}
+
+static void TryAddBundledFontFile(Gdiplus::PrivateFontCollection* collection, const char* relPath) {
+    TempStr path = GetPathInExeDirTemp(relPath);
+    if (!path || !file::Exists(path)) {
         return;
     }
-    didInstall = true;
+    TempWStr pathW = ToWStrTemp(path);
+    if (!pathW) {
+        return;
+    }
+    collection->AddFontFile(pathW);
+}
+
+static void AddBundledFontsFromExeDir(Gdiplus::PrivateFontCollection* collection, bool includeTtc) {
+    TempStr fontsDir = GetPathInExeDirTemp("fonts");
+    if (!fontsDir || !dir::Exists(fontsDir)) {
+        return;
+    }
+    const char* patternsNoTtc[] = {"*.ttf", "*.otf", nullptr};
+    const char* patternsWithTtc[] = {"*.ttf", "*.otf", "*.ttc", nullptr};
+    const char** patterns = includeTtc ? patternsWithTtc : patternsNoTtc;
+    for (int patIdx = 0; patterns[patIdx]; patIdx++) {
+        const char* pat = patterns[patIdx];
+        TempStr pattern = path::JoinTemp(fontsDir, pat);
+        TempWStr patternW = ToWStrTemp(pattern);
+        if (!patternW) {
+            continue;
+        }
+        WIN32_FIND_DATAW fd{};
+        HANDLE h = FindFirstFileW(patternW, &fd);
+        if (h == INVALID_HANDLE_VALUE) {
+            continue;
+        }
+        do {
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                continue;
+            }
+            if (ShouldSkipBundledFontFileName(fd.cFileName)) {
+                continue;
+            }
+            TempStr relPath = str::JoinTemp("fonts\\", ToUtf8Temp(fd.cFileName));
+            TryAddBundledFontFile(collection, relPath);
+        } while (FindNextFileW(h, &fd));
+        FindClose(h);
+    }
+}
+
+static bool IsDefaultSourceHanCjkFamily() {
+    if (gReaderCjkFontFile[0]) {
+        return false;
+    }
+    const char* family = gReaderCjkFontFamily;
+    if (str::EqI(family, "Source Han Serif SC")) {
+        return true;
+    }
+    if (str::StartsWithI(family, "Source Han Serif") || str::StartsWithI(family, "Noto Serif CJK")) {
+        return true;
+    }
+    return family && strstr(family, "\xe6\x80\x9d\xe6\xba\x90") != nullptr;
+}
+
+void InstallBundledReaderFonts() {
+    if (gBundledFonts) {
+        return;
+    }
 
     gBundledFonts = new Gdiplus::PrivateFontCollection();
 
-    static const char* kFontFiles[] = {
-        "fonts\\Literata-Regular.ttf",         "fonts\\Literata-Bold.ttf",
-        "fonts\\Literata-Italic.ttf",          "fonts\\Literata-BoldItalic.ttf",
-        "fonts\\SourceHanSerifSC-Regular.otf", "fonts\\SOURCEHANSERIFSC-REGULAR.OTF",
-        "fonts\\SourceHanSerifSC-Regular.ttf", nullptr,
+    AddBundledFontsFromExeDir(gBundledFonts, false);
+
+    static const char* kScFontFiles[] = {
+        "fonts\\SourceHanSerifSC-Regular.otf",
+        "fonts\\SOURCEHANSERIFSC-REGULAR.OTF",
+        "fonts\\SourceHanSerifSC-Regular.ttf",
+        nullptr,
     };
 
     bool hasScFont = false;
-    for (int i = 0; kFontFiles[i]; i++) {
-        TempStr path = GetPathInExeDirTemp(kFontFiles[i]);
-        if (!path || !file::Exists(path)) {
-            continue;
-        }
-        TempWStr pathW = ToWStrTemp(path);
-        if (!pathW) {
-            continue;
-        }
-        Gdiplus::Status st = gBundledFonts->AddFontFile(pathW);
-        (void)st;
-        if (i >= 4) {
-            hasScFont = true;
+    if (IsDefaultSourceHanCjkFamily()) {
+        for (int i = 0; kScFontFiles[i]; i++) {
+            TryAddBundledFontFile(gBundledFonts, kScFontFiles[i]);
+            if (file::Exists(GetPathInExeDirTemp(kScFontFiles[i]))) {
+                hasScFont = true;
+            }
         }
     }
 
     // Multi-locale TTC only when no SC-specific font file is bundled; GDI+ may register
     // the Japanese face as plain "Source Han Serif" and win over simplified glyphs.
-    if (!hasScFont) {
-        TempStr ttcPath = GetPathInExeDirTemp("fonts\\SourceHanSerif-Regular.ttc");
-        if (ttcPath && file::Exists(ttcPath)) {
-            TempWStr pathW = ToWStrTemp(ttcPath);
-            if (pathW) {
-                gBundledFonts->AddFontFile(pathW);
-            }
+    if (IsDefaultSourceHanCjkFamily() && !hasScFont) {
+        TryAddBundledFontFile(gBundledFonts, "fonts\\SourceHanSerif-Regular.ttc");
+        if (!file::Exists(GetPathInExeDirTemp("fonts\\SourceHanSerif-Regular.ttc"))) {
+            TryAddBundledFontFile(gBundledFonts, "..\\mupdf\\resources\\fonts\\han\\SourceHanSerif-Regular.ttc");
+            TryAddBundledFontFile(gBundledFonts, "..\\..\\mupdf\\resources\\fonts\\han\\SourceHanSerif-Regular.ttc");
         }
     }
 
-    if (!hasScFont) {
-        TempStr devTtc = GetPathInExeDirTemp("..\\mupdf\\resources\\fonts\\han\\SourceHanSerif-Regular.ttc");
-        if (devTtc && file::Exists(devTtc)) {
-            TempWStr pathW = ToWStrTemp(devTtc);
-            if (pathW) {
-                gBundledFonts->AddFontFile(pathW);
-            }
-        }
-        devTtc = GetPathInExeDirTemp("..\\..\\mupdf\\resources\\fonts\\han\\SourceHanSerif-Regular.ttc");
-        if (devTtc && file::Exists(devTtc)) {
-            TempWStr pathW = ToWStrTemp(devTtc);
-            if (pathW) {
-                gBundledFonts->AddFontFile(pathW);
-            }
-        }
+    if (gReaderCjkFontFile[0]) {
+        TryAddBundledFontFile(gBundledFonts, str::JoinTemp("fonts\\", gReaderCjkFontFile));
     }
 }
 
@@ -124,14 +225,69 @@ static Gdiplus::Font* CreateBundledFontFromFamily(Gdiplus::FontFamily* family, f
     return nullptr;
 }
 
+static void AddSourceHanBundledFontFiles(Gdiplus::PrivateFontCollection* collection) {
+    static const char* kScFontFiles[] = {
+        "fonts\\SourceHanSerifSC-Regular.otf",
+        "fonts\\SOURCEHANSERIFSC-REGULAR.OTF",
+        "fonts\\SourceHanSerifSC-Regular.ttf",
+        nullptr,
+    };
+    for (int i = 0; kScFontFiles[i]; i++) {
+        TryAddBundledFontFile(collection, kScFontFiles[i]);
+    }
+    TryAddBundledFontFile(collection, "fonts\\SourceHanSerif-Regular.ttc");
+    if (!file::Exists(GetPathInExeDirTemp("fonts\\SourceHanSerif-Regular.ttc"))) {
+        TryAddBundledFontFile(collection, "..\\mupdf\\resources\\fonts\\han\\SourceHanSerif-Regular.ttc");
+        TryAddBundledFontFile(collection, "..\\..\\mupdf\\resources\\fonts\\han\\SourceHanSerif-Regular.ttc");
+    }
+}
+
+void CollectBundledFontFamilyNames(Vec<char*>* families) {
+    if (!families) {
+        return;
+    }
+    // Enumerate every bundled face for the View menu, independent of the active CJK
+    // reader font (InstallBundledReaderFonts skips the TTC when a custom CJK is set).
+    Gdiplus::PrivateFontCollection menuFonts;
+    AddBundledFontsFromExeDir(&menuFonts, true);
+    AddSourceHanBundledFontFiles(&menuFonts);
+
+    Gdiplus::FontFamily fontFamilies[128];
+    INT found = 0;
+    if (menuFonts.GetFamilies(128, fontFamilies, &found) != Gdiplus::Ok || found <= 0) {
+        return;
+    }
+
+    for (INT i = 0; i < found; i++) {
+        WCHAR fname[LF_FACESIZE];
+        if (fontFamilies[i].GetFamilyName(fname) != Gdiplus::Ok) {
+            continue;
+        }
+        TempStr utf8 = ToUtf8Temp(fname);
+        if (!utf8 || !utf8[0]) {
+            continue;
+        }
+        bool dup = false;
+        for (char* existing : *families) {
+            if (str::EqI(existing, utf8)) {
+                dup = true;
+                break;
+            }
+        }
+        if (!dup) {
+            families->Append(str::Dup(utf8));
+        }
+    }
+}
+
 Gdiplus::Font* TryCreateBundledFont(const WCHAR* familyName, float sizePt, Gdiplus::FontStyle style) {
     if (!gBundledFonts || !familyName) {
         return nullptr;
     }
 
-    Gdiplus::FontFamily families[32];
+    Gdiplus::FontFamily families[64];
     INT found = 0;
-    if (gBundledFonts->GetFamilies(32, families, &found) != Gdiplus::Ok || found <= 0) {
+    if (gBundledFonts->GetFamilies(64, families, &found) != Gdiplus::Ok || found <= 0) {
         return nullptr;
     }
 

@@ -25,6 +25,7 @@
 #include "Installer.h"
 #include "TextToSpeech.h"
 #include "CommandAvailability.h"
+#include "EbookFontMenu.h"
 
 // clang-format off
 
@@ -325,6 +326,7 @@ AppCommandCtx NewAppCommandCtx(MainWindow* win, Point cursorPos) {
         if (engine && engine->IsImageCollection()) {
             ctx.isImageCollection = true;
         }
+        ctx.isReflowableEbook = IsReflowableEbookTabForFontMenu(ctx.tab);
         ctx.engineKind = ctx.tab->GetEngineType();
         ctx.canSendEmail = CanSendAsEmailAttachment(ctx.tab);
         ctx.isPdf = CouldBePDFDoc(ctx.tab);
@@ -379,6 +381,12 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
     CustomCommand* cmd = FindCustomCommand(cmdId);
     int origCmdId = cmd ? cmd->origId : 0;
     if (origCmdId == CmdSetTheme) {
+        return CommandVisibility::Show;
+    }
+    if (origCmdId == CmdSetEbookLatinFont || origCmdId == CmdSetEbookCjkFont) {
+        if (!ctx.isDocLoaded || !ctx.isReflowableEbook) {
+            return CommandVisibility::Hide;
+        }
         return CommandVisibility::Show;
     }
 

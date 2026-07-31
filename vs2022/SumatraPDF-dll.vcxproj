@@ -1243,6 +1243,10 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <ClCompile Include="..\src\DisplayModel.cpp" />
     <ClCompile Include="..\src\DocProperties.cpp" />
     <ClCompile Include="..\src\EbookAnnotations.cpp" />
+    <ClCompile Include="..\src\EbookFontConfig.cpp" />
+    <ClCompile Include="..\src\EbookInstalledFonts.cpp" />
+    <ClCompile Include="..\src\EbookFontMenu.cpp" />
+    <ClCompile Include="..\src\EbookTypography.cpp" />
     <ClCompile Include="..\src\EbookDoc.cpp" />
     <ClCompile Include="..\src\EbookFormatter.cpp" />
     <ClCompile Include="..\src\EditAnnotations.cpp" />

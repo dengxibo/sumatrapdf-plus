@@ -21,8 +21,12 @@ void GetBaseTransform(Gdiplus::Matrix& m, Gdiplus::RectF pageRect, float zoom, i
 Gdiplus::Bitmap* BitmapFromDataWin(const ByteSlice& bmpData);
 Size ImageSizeFromData(const ByteSlice&);
 Size ImageSizeFromHeader(const ByteSlice&);
-// Register Literata / Source Han Serif from <exe>\fonts\ for GDI+ (MOBI/AZW/CHM path).
+// Register reader fonts from <exe>\fonts\ for GDI+ (MOBI/AZW/CHM path).
+void ConfigureBundledReaderLatinFont(const char* familyName);
+void ConfigureBundledReaderCjkFont(const char* familyName, const char* fileName);
+void ResetBundledReaderFonts();
 void InstallBundledReaderFonts();
 Gdiplus::Font* TryCreateBundledFont(const WCHAR* familyName, float sizePt, Gdiplus::FontStyle style);
+void CollectBundledFontFamilyNames(Vec<char*>* families);
 CLSID GetGdiPlusEncoderClsid(const WCHAR* format);
 RenderedBitmap* LoadRenderedBitmapWin(const char* path);

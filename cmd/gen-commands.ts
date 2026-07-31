@@ -246,6 +246,8 @@ export const commands = [
     "CmdReadAloudSelection", "Start Reading Selection",
     "CmdFindToggleMatchWholeWord", "Find: Toggle Match Whole Word",
     "CmdAssociateCommonFileTypes", "Associate Common Document Formats...",
+    "CmdSetEbookLatinFont", "Set Ebook Western Body Font",
+    "CmdSetEbookCjkFont", "Set Ebook CJK Body Font",
     "CmdNone", "Do nothing",
 ];
 

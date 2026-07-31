@@ -19,6 +19,7 @@
 #include "DocController.h"
 #include "EngineBase.h"
 #include "EngineAll.h"
+#include "EbookFontConfig.h"
 #include "SumatraConfig.h"
 #include "DisplayModel.h"
 #include "FileHistory.h"
@@ -37,6 +38,7 @@
 #include "Translations.h"
 #include "Accelerators.h"
 #include "Theme.h"
+#include "EbookFontMenu.h"
 #include "TextToSpeech.h"
 
 #include "utils/Log.h"
@@ -426,10 +428,10 @@ bool LoadSettings() {
         gprefs->treeFontName = const_cast<char*>("automatic");
     }
 
+    ApplyEbookFontSettingsFromPrefs();
+
     // TODO: verify that all states have a non-nullptr file path?
     gFileHistory.UpdateStatesSource(gprefs->fileStates);
-    //    auto fontName = ToWStrTemp(gprefs->fixedPageUI.ebookFontName);
-    //    SetDefaultEbookFont(fontName.Get(), gprefs->fixedPageUI.ebookFontSize);
 
     ResetCachedFonts();
 
@@ -438,6 +440,7 @@ bool LoadSettings() {
     // Note: some are also created in ReCreateSumatraAcceleratorTable()
     CreateZoomCommands();
     CreateThemeCommands();
+    CreateEbookFontMenuCommands();
     CreateExternalViewersCommands();
     CreateSelectionHandlerCommands();
     CreateCustomShortcuts();

@@ -34,6 +34,7 @@ struct AppCommandCtx {
     bool isChm = false;
     bool isCbx = false;
     bool isImageCollection = false;
+    bool isReflowableEbook = false;
     bool isSinglePage = false;
     bool hasToc = false;
 

@@ -32385,3 +32385,46 @@ tw:套用
 uk:Застосувати
 uz:Qo'llash
 vn:Áp dụng
+
+
+:&Reading Font
+cn:字体(&R)
+tw:字體(&R)
+
+:&Western Body Font
+cn:西文字体(&W)
+tw:西文字體(&W)
+
+:&CJK Body Font
+cn:中文字体(&C)
+tw:中文字體(&C)
+
+
+:&Reading Font
+cn:字体(&R)
+tw:字體(&R)
+
+:&Western Body Font
+cn:西文字体(&W)
+tw:西文字體(&W)
+
+:&CJK Body Font
+cn:中文字体(&C)
+tw:中文字體(&C)
+
+
+:&Reading Font
+cn:字体(&R)
+tw:字體(&R)
+
+:&Western Body Font
+cn:西文字体(&W)
+tw:西文字體(&W)
+
+:&CJK Body Font
+cn:中文字体(&C)
+tw:中文字體(&C)
+
+:&System Font
+cn:系统字体(&S)
+tw:系統字體(&S)

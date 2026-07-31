@@ -11,6 +11,8 @@
 
 #include "EbookBase.h"
 #include "EbookTypography.h"
+#include "EbookFontConfig.h"
+#include "EbookFontConfig.h"
 #include "FzImgReader.h"
 
 #include "HtmlFormatter.h"
@@ -153,24 +155,32 @@ DrawInstr DrawInstr::Anchor(const char* s, size_t len, RectF bbox) {
 static TempWStr MapGenericFontFamily(const char* name, size_t len) {
     EbookTypographyKind kind = GetEbookTypographyKind();
     bool cjkPrimary = kind == EbookTypographyKind::Cjk || kind == EbookTypographyKind::Bilingual;
+    const WCHAR* cjkFont = GetEbookCjkFontFamilyW();
+    const WCHAR* latinFont = GetEbookLatinFontFamilyW();
 
     if (str::EqN(name, "SimSun", len) || str::EqN(name, "NSimSun", len) ||
         str::EqN(name, "\xe5\xae\x8b\xe4\xbd\x93", len) || str::EqN(name, "STSong", len) ||
         str::EqN(name, "STSongti", len) || str::EqN(name, "Songti SC", len) || str::EqN(name, "Songti TC", len)) {
-        return (TempWStr)L"Source Han Serif SC";
+        return (TempWStr)cjkFont;
     }
     if (str::EqN(name, "serif", len)) {
-        return cjkPrimary ? (TempWStr)L"Source Han Serif SC" : (TempWStr)L"Literata";
+        if (kind == EbookTypographyKind::Bilingual) {
+            return (TempWStr)latinFont;
+        }
+        return cjkPrimary ? (TempWStr)cjkFont : (TempWStr)latinFont;
     }
-    if (str::EqN(name, "Literata", len)) {
-        return (TempWStr)L"Literata";
+    if (str::EqN(name, "Literata", len) || str::EqN(name, GetEbookLatinFontFamily(), len)) {
+        return (TempWStr)latinFont;
     }
-    if (str::EqN(name, "Source Han Serif SC", len) ||
+    if (str::EqN(name, GetEbookCjkFontFamily(), len) || str::EqN(name, "Source Han Serif SC", len) ||
         str::EqN(name, "\xe6\x80\x9d\xe6\xba\x90\xe5\xae\x8b\xe4\xbd\x93", len)) {
-        return (TempWStr)L"Source Han Serif SC";
+        return (TempWStr)cjkFont;
     }
     if (str::EqN(name, "sans-serif", len)) {
-        return cjkPrimary ? (TempWStr)L"Source Han Serif SC" : (TempWStr)L"Literata";
+        if (kind == EbookTypographyKind::Bilingual) {
+            return (TempWStr)latinFont;
+        }
+        return cjkPrimary ? (TempWStr)cjkFont : (TempWStr)latinFont;
     }
     if (str::EqN(name, "monospace", len)) {
         return (TempWStr)L"Courier New";
@@ -1017,9 +1027,66 @@ static size_t AdjustCjkLineBreak(const WCHAR* buf, size_t strLen, size_t lenThat
 }
 
 // a text run is a string of consecutive text with uniform style
-void HtmlFormatter::EmitTextRun(const char* s, const char* end) {
-    currReparseIdx = s - htmlParser->Start();
-    ReportIf(!ValidReparseIdx(currReparseIdx, htmlParser));
+enum class MixedScriptKind {
+    Neutral,
+    Latin,
+    Cjk
+};
+
+static MixedScriptKind ClassifyMixedScriptChar(WCHAR c) {
+    if (IsCjkChar(c)) {
+        return MixedScriptKind::Cjk;
+    }
+    if ((c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z')) {
+        return MixedScriptKind::Latin;
+    }
+    return MixedScriptKind::Neutral;
+}
+
+void HtmlFormatter::EmitMixedScriptTextRun(const char* s, const char* end) {
+    ptrdiff_t savedReparseIdx = currReparseIdx;
+    TempWStr w = ToWStrTemp(s, end - s);
+    size_t n = str::Len(w);
+    size_t i = 0;
+    while (i < n) {
+        MixedScriptKind segScript = ClassifyMixedScriptChar(w[i]);
+        if (segScript == MixedScriptKind::Neutral) {
+            segScript = MixedScriptKind::Latin;
+        }
+        size_t j = i + 1;
+        while (j < n) {
+            MixedScriptKind sc = ClassifyMixedScriptChar(w[j]);
+            if (sc == MixedScriptKind::Neutral) {
+                j++;
+                continue;
+            }
+            if (sc != segScript) {
+                break;
+            }
+            j++;
+        }
+        const WCHAR* fontName =
+            segScript == MixedScriptKind::Cjk ? GetEbookCjkFontFamilyW() : GetEbookLatinFontFamilyW();
+        int stackDepth = (int)styleStack.size();
+        SetFont(fontName, (FontStyle)CurrFont()->GetStyle(), CurrFont()->GetSize());
+        char* utf8Part = strconv::WStrToUtf8(w + i, j - i, textAllocator);
+        size_t utf8Len = str::Len(utf8Part);
+        if (utf8Len > 0) {
+            EmitTextRun(utf8Part, utf8Part + utf8Len, false, false);
+        }
+        while ((int)styleStack.size() > stackDepth) {
+            RevertStyleChange();
+        }
+        i = j;
+    }
+    currReparseIdx = savedReparseIdx;
+}
+
+void HtmlFormatter::EmitTextRun(const char* s, const char* end, bool allowScriptSplit, bool trackSourcePos) {
+    if (trackSourcePos) {
+        currReparseIdx = s - htmlParser->Start();
+        ReportIf(!ValidReparseIdx(currReparseIdx, htmlParser));
+    }
     ReportIf(IsSpaceOnly(s, end) && !preFormatted);
     const char* tmp = ResolveHtmlEntities(s, end, textAllocator);
     bool resolved = tmp != s;
@@ -1027,10 +1094,14 @@ void HtmlFormatter::EmitTextRun(const char* s, const char* end) {
         s = tmp;
         end = s + str::Len(s);
     }
+    if (allowScriptSplit && trackSourcePos && !resolved && GetEbookTypographyKind() == EbookTypographyKind::Bilingual) {
+        EmitMixedScriptTextRun(s, end);
+        return;
+    }
 
     while (s < end) {
         // don't update the reparseIdx if s doesn't point into the original source
-        if (!resolved) {
+        if (!resolved && trackSourcePos) {
             currReparseIdx = s - htmlParser->Start();
         }
 

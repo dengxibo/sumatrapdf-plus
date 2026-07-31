@@ -1241,13 +1241,48 @@ void DisplayModel::TryApplyPendingRestoreScroll() {
     if (reflowLayoutValidUpto > 0 && reflowLayoutValidUpto < pendingRestoreScroll.page) {
         return;
     }
+    if (fontReloadInPageRatio >= 0.f) {
+        int page = pendingRestoreScroll.page;
+        float ratio = fontReloadInPageRatio;
+        fontReloadInPageRatio = -1.f;
+        hasPendingRestoreScroll = false;
+        suppressTocSelectionUpdate = true;
+        defer {
+            suppressTocSelectionUpdate = false;
+        };
+        RestoreFontReloadInPageScroll(page, ratio);
+        return;
+    }
     ScrollState state = pendingRestoreScroll;
     hasPendingRestoreScroll = false;
     suppressTocSelectionUpdate = true;
     defer {
         suppressTocSelectionUpdate = false;
     };
+    // GoToPage() stores canvas scroll offsets in pendingRestoreScroll; SetScrollState()
+    // would reinterpret them as document coordinates and jump to the wrong place.
+    if (IsContinuous(displayMode) && state.y >= 0) {
+        int scrollX = state.x >= 0 ? (int)state.x : -1;
+        GoToPage(state.page, (int)state.y, false, scrollX);
+        return;
+    }
     SetScrollState(state);
+}
+
+void DisplayModel::RestoreFontReloadInPageScroll(int page, float ratio) {
+    if (page < 1 || ratio < 0.f || !pagesInfo) {
+        return;
+    }
+    EnsurePagesInfoForPage(page);
+    PageInfo* pageInfo = GetPageInfo(page);
+    if (!pageInfo || pageInfo->pos.dy <= 0) {
+        GoToPage(page, 0, false, -1);
+        return;
+    }
+    int scrollY = (int)(ratio * pageInfo->pos.dy - viewPort.dy * 0.5f);
+    int maxScrollY = std::max(0, pageInfo->pos.dy - viewPort.dy);
+    scrollY = limitValue(scrollY, 0, maxScrollY);
+    GoToPage(page, scrollY, false, -1);
 }
 
 // TODO: a better name e.g. ShouldShow() to better distinguish between
@@ -2706,6 +2741,10 @@ float DisplayModel::GetNextZoomStep(float towardsLevel) const {
 
     const float FUZZ = 0.01f;
     float newZoom = towardsLevel;
+    // Only insert fit-page / fit-width stops while in a fit mode. At an explicit
+    // percentage (e.g. 100%) those stops can sit between the current and next
+    // preset level and hijack zoom-in/out (notably on CHM / ebook fixed-page UI).
+    bool allowFitZoomStops = zoomVirtual <= 0;
     if (currZoom + FUZZ < towardsLevel) {
         for (int i = 0; i < nZoomLevels; i++) {
             float zoom = zoomLevels[i];
@@ -2714,10 +2753,12 @@ float DisplayModel::GetNextZoomStep(float towardsLevel) const {
                 break;
             }
         }
-        if (currZoom + FUZZ < pageZoom && pageZoom < newZoom - FUZZ) {
-            newZoom = kZoomFitPage;
-        } else if (currZoom + FUZZ < widthZoom && widthZoom < newZoom - FUZZ) {
-            newZoom = kZoomFitWidth;
+        if (allowFitZoomStops) {
+            if (currZoom + FUZZ < pageZoom && pageZoom < newZoom - FUZZ) {
+                newZoom = kZoomFitPage;
+            } else if (currZoom + FUZZ < widthZoom && widthZoom < newZoom - FUZZ) {
+                newZoom = kZoomFitWidth;
+            }
         }
     } else if (currZoom - FUZZ > towardsLevel) {
         for (int i = nZoomLevels - 1; i >= 0; i--) {
@@ -2727,11 +2768,13 @@ float DisplayModel::GetNextZoomStep(float towardsLevel) const {
                 break;
             }
         }
-        // skip Fit Width if it results in the same value as Fit Page (same as when zooming in)
-        if (newZoom + FUZZ < widthZoom && widthZoom < currZoom - FUZZ && widthZoom != pageZoom) {
-            newZoom = kZoomFitWidth;
-        } else if (newZoom + FUZZ < pageZoom && pageZoom < currZoom - FUZZ) {
-            newZoom = kZoomFitPage;
+        if (allowFitZoomStops) {
+            // skip Fit Width if it results in the same value as Fit Page (same as when zooming in)
+            if (newZoom + FUZZ < widthZoom && widthZoom < currZoom - FUZZ && widthZoom != pageZoom) {
+                newZoom = kZoomFitWidth;
+            } else if (newZoom + FUZZ < pageZoom && pageZoom < currZoom - FUZZ) {
+                newZoom = kZoomFitPage;
+            }
         }
     }
 

@@ -196,6 +196,8 @@ bool ScrollbarsUseOverlay();
 OverlayScrollbar::Mode ScrollbarsOverlayMode();
 void UpdateTabFileDisplayStateForTab(WindowTab* tab);
 void ReloadDocument(MainWindow* win, bool autoRefresh);
+void ReloadDocumentPreservingScroll(MainWindow* win);
+void ApplyTabReloadOnFocus(MainWindow* win, WindowTab* tab, bool autoRefresh);
 void RemapAnchorsAfterReflow(WindowTab* tab, MainWindow* win);
 void ToggleFullScreen(MainWindow* win, bool presentation = false);
 void RelayoutWindow(MainWindow* win);

@@ -29,6 +29,7 @@
 #include "SumatraConfig.h"
 #include "EbookBase.h"
 #include "EbookTypography.h"
+#include "EbookFontConfig.h"
 #include "PalmDbReader.h"
 #include "EbookDoc.h"
 #include "HtmlFormatter.h"
@@ -108,90 +109,21 @@ static bool IsReaderStyledMobiPath(const char* filePath) {
     return str::EqI(ext, ".mobi") || str::EqI(ext, ".azw") || str::EqI(ext, ".azw3");
 }
 
-static void CountHtmlLetters(const char* s, size_t len, int* cjkOut, int* latinOut) {
-    int cjk = 0;
-    int latin = 0;
-    bool inTag = false;
-    if (!s) {
-        *cjkOut = 0;
-        *latinOut = 0;
-        return;
-    }
-    for (size_t i = 0; i < len; i++) {
-        unsigned char c = (unsigned char)s[i];
-        if (c == '<') {
-            inTag = true;
-            continue;
-        }
-        if (c == '>') {
-            inTag = false;
-            continue;
-        }
-        if (inTag) {
-            continue;
-        }
-        if (c < 0x80) {
-            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
-                latin++;
-            }
-            continue;
-        }
-        if ((c & 0xE0) == 0xC0) {
-            i += 1;
-        } else if ((c & 0xF0) == 0xE0 && i + 2 < len) {
-            unsigned char c1 = (unsigned char)s[i + 1];
-            unsigned char c2 = (unsigned char)s[i + 2];
-            uint cp = ((uint)(c & 0x0F) << 12) | ((uint)(c1 & 0x3F) << 6) | (uint)(c2 & 0x3F);
-            if ((cp >= 0x2E80 && cp <= 0x9FFF) || (cp >= 0xF900 && cp <= 0xFAFF)) {
-                cjk++;
-            }
-            i += 2;
-        } else if ((c & 0xF8) == 0xF0) {
-            i += 3;
-        }
-        if (cjk + latin >= 600) {
-            break;
-        }
-    }
-    *cjkOut = cjk;
-    *latinOut = latin;
-}
-
-static EbookTypographyKind ClassifyHtmlLetters(int cjk, int latin) {
-    if (cjk >= 12 && latin >= 12 && cjk <= latin * 6 && latin <= cjk * 6) {
-        return EbookTypographyKind::Bilingual;
-    }
-    if (cjk >= 8 && cjk * 2 >= latin) {
-        return EbookTypographyKind::Cjk;
-    }
-    if (latin >= 40 && latin > cjk * 3) {
-        return EbookTypographyKind::Latin;
-    }
-    return cjk >= latin ? EbookTypographyKind::Cjk : EbookTypographyKind::Latin;
-}
-
-static EbookTypographyKind DetectHtmlTypographyKind(const ByteSlice& html) {
-    size_t n = html.size();
-    if (n > 384 * 1024) {
-        n = 384 * 1024;
-    }
-    int cjk = 0;
-    int latin = 0;
-    CountHtmlLetters((const char*)html.data(), n, &cjk, &latin);
-    return ClassifyHtmlLetters(cjk, latin);
-}
+/* common classes for EPUB, FictionBook2, Mobi, PalmDOC, CHM, HTML and TXT engines */
 
 static void SetupHtmlFormatterFont(HtmlFormatterArgs& args, const char* /*filePath*/,
                                    EbookTypographyKind typographyKind = EbookTypographyKind::Latin) {
     SetEbookTypographyKind(typographyKind);
-    char* s = gDefaultFontName.Get();
-    if (s) {
-        args.SetFontName(ToWStrTemp(s));
-    } else if (typographyKind == EbookTypographyKind::Cjk || typographyKind == EbookTypographyKind::Bilingual) {
-        args.SetFontName(L"Source Han Serif SC");
-    } else {
-        args.SetFontName(L"Literata");
-    }
+    bool cjk = typographyKind == EbookTypographyKind::Cjk;
+    const WCHAR* fontName = cjk ? GetEbookCjkFontFamilyW() : GetEbookLatinFontFamilyW();
+    args.SetFontName(fontName);
+}
+
+// CHM pages ship with their own HTML/CSS (often Microsoft YaHei, SimSun, etc.).
+// Use a neutral system default only for unstyled text; do not apply EBookUI reader fonts.
+static void SetupChmHtmlFormatterFont(HtmlFormatterArgs& args) {
+    SetEbookTypographyKind(EbookTypographyKind::Latin);
+    args.SetFontName(L"Segoe UI");
 }
 
 static float GetDefaultFontSize() {
@@ -211,17 +143,13 @@ static float GetDefaultFontSize() {
 void SetDefaultEbookFont(const char* name, float size) {
     // intentionally don't validate the input
     if (str::Eq(name, "default")) {
-        // "default" is used for mupdf engine to indicate
-        // we should use the font as given in css
-        name = "Source Han Serif SC";
+        name = kDefaultEbookCjkFontFamily;
     }
     gDefaultFontName.SetCopy(name);
     // use a somewhat smaller size than in the EbookUI, since fit page/width
     // is likely to be above 100% for the paperback page dimensions
     gDefaultFontSize = size * 0.8f;
 }
-
-/* common classes for EPUB, FictionBook2, Mobi, PalmDOC, CHM, HTML and TXT engines */
 
 struct PageAnchor {
     DrawInstr* instr;
@@ -3069,7 +2997,7 @@ bool EngineChm::Load(const char* fileName) {
     args.htmlStr = dataCache->GetHtmlData();
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
-    SetupHtmlFormatterFont(args, FilePath(), EbookTypographyKind::Latin);
+    SetupChmHtmlFormatterFont(args);
     args.fontSize = GetDefaultFontSize();
     args.textAllocator = allocator;
     args.textRenderMethod = mui::TextRenderMethod::GdiplusQuick;

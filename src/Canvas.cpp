@@ -3117,6 +3117,9 @@ static LRESULT WndProcCanvasFixedPageUI(MainWindow* win, HWND hwnd, UINT msg, WP
 
         case WM_MOUSEWHEEL:
             CloseWordLookup();
+            if (MenuWheelScrollHandleWheel(wp)) {
+                return 0;
+            }
             return CanvasOnMouseWheel(win, msg, wp, lp);
 
         case WM_MOUSEHWHEEL:
@@ -3349,7 +3352,7 @@ static void OnTimer(MainWindow* win, HWND hwnd, WPARAM timerId) {
                 if (tab->ignoreNextAutoReload) {
                     tab->ignoreNextAutoReload = false;
                 } else {
-                    ReloadDocument(win, true);
+                    ApplyTabReloadOnFocus(win, tab, true);
                 }
             }
             break;

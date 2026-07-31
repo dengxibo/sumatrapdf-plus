@@ -207,6 +207,10 @@ static bool SerializeField(StrBuilder& out, const u8* base, const FieldInfo& fie
         case SettingType::String:
         case SettingType::Color:
             if (!*(const char**)fieldPtr) {
+                // Keep documented optional strings visible in the settings file.
+                if (field.serializeComment && field.serializeComment[0]) {
+                    return true;
+                }
                 ReportIf(field.value);
                 return false; // skip empty strings
             }

@@ -283,6 +283,18 @@ EBookUI [
     ; font size, default 8.0
     FontSize = 0
 
+    ; default Latin/serif body font for reflowable ebooks (EPUB, MOBI). Empty
+    ; uses Literata (introduced in version 3.7.21)
+    FontFamily = Literata
+
+    ; default CJK body font for reflowable ebooks. Empty uses Source Han Serif
+    ; SC (introduced in version 3.7.21)
+    CjkFontFamily = Source Han Serif SC
+
+    ; optional override: bundled CJK font file in fonts\ when auto-detect by
+    ; CjkFontFamily fails (introduced in version 3.7.21)
+    CjkFontFile =
+
     ; page width in pt for flowed ebooks. 0 means automatic reader-style width
     LayoutDx = 0
 

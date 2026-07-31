@@ -10,6 +10,7 @@ enum class EbookTypographyKind {
 };
 
 EbookTypographyKind DetectEbookTypographyKind(const char* filePath, const char* nameHint);
+EbookTypographyKind DetectHtmlTypographyKind(const ByteSlice& html);
 void SetEbookTypographyKind(EbookTypographyKind kind);
 EbookTypographyKind GetEbookTypographyKind();
 

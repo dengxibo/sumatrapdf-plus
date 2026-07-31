@@ -35,6 +35,12 @@ struct WindowTab {
     Rect canvasRc;
     // whether to auto-reload the document when the tab is selected
     bool reloadOnFocus = false;
+    // ebook font change on a background tab: full reload deferred until focus
+    bool reloadForEbookFontChange = false;
+    int restorePageAfterFontReload = 0;
+    double restoreScrollXAfterFontReload = -1;
+    double restoreScrollYAfterFontReload = -1;
+    float restoreInPageScrollRatioAfterFontReload = -1.f;
     u32 lastDarkModeEpoch = 0;
     // FileWatcher token for unsubscribing
     WatchedFile* watcher = nullptr;

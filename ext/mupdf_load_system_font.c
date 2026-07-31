@@ -186,6 +186,27 @@ static struct {
 
 static win_fonts g_win_fonts = {0};
 
+static char g_sumatra_cjk_family[128] = "Source Han Serif SC";
+static char g_sumatra_cjk_file[MAX_PATH] = "";
+
+static void clear_font_load_failures(void);
+
+void sumatra_set_ebook_font_config(const char* cjk_family, const char* cjk_file) {
+    if (cjk_family && cjk_family[0]) {
+        fz_strlcpy(g_sumatra_cjk_family, cjk_family, sizeof g_sumatra_cjk_family);
+    } else {
+        fz_strlcpy(g_sumatra_cjk_family, "Source Han Serif SC", sizeof g_sumatra_cjk_family);
+    }
+    g_sumatra_cjk_file[0] = '\0';
+    if (cjk_file && cjk_file[0]) {
+        int has_sep = strchr(cjk_file, '/') != NULL || strchr(cjk_file, '\\') != NULL;
+        if (!has_sep && strstr(cjk_file, "..") == NULL) {
+            fz_strlcpy(g_sumatra_cjk_file, cjk_file, sizeof g_sumatra_cjk_file);
+        }
+    }
+    clear_font_load_failures();
+}
+
 static int did_init = 0;
 static CRITICAL_SECTION cs_fonts;
 
@@ -217,6 +238,11 @@ static void add_font_failed(const char* name) {
     gFontsFailedToLoadLen += n;
 }
 
+static void clear_font_load_failures(void) {
+    gFontsFailedToLoadLen = 0;
+    gFontsFailedToLoad[0] = '\0';
+}
+
 static int streq(const char* s1, const char* s2) {
     if (strcmp(s1, s2) == 0) {
         return 1;
@@ -233,7 +259,9 @@ static int streqi(const char* s1, const char* s2) {
 
 static void normalize_font_name_key(const char* src, char* dst, size_t dstcap);
 static int is_source_han_serif_sc_request(const char* fontname);
+static int is_reader_cjk_font_request(const char* fontname);
 static fz_font* load_bundled_source_han_serif(fz_context* ctx, const char* display_name, int ordering);
+static fz_font* load_reader_cjk_serif(fz_context* ctx, const char* display_name, int ordering);
 
 static inline USHORT BEtoHs(USHORT x) {
     BYTE* data = (BYTE*)&x;
@@ -598,6 +626,8 @@ static void parseTTCs(fz_context* ctx, const char* path) {
     }
 }
 
+static int get_exe_dir_w(WCHAR* dir, size_t dircap);
+
 static void extend_system_font_list(fz_context* ctx, const WCHAR* path) {
     WCHAR szPath[MAX_PATH], *lpFileName;
     WIN32_FIND_DATA FileData;
@@ -615,6 +645,9 @@ static void extend_system_font_list(fz_context* ctx, const WCHAR* path) {
     }
     do {
         if (!(FileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            if (wcsstr(FileData.cFileName, L"VariableFont")) {
+                continue;
+            }
             char szPathUtf8[MAX_PATH], *fileExt;
             int res;
             lstrcpynW(lpFileName, FileData.cFileName, szPath + MAX_PATH - lpFileName);
@@ -680,6 +713,20 @@ static void create_system_font_list(fz_context* ctx) {
         extend_system_font_list(ctx, szFile);
     }
 #endif
+
+    {
+        WCHAR exeDir[MAX_PATH];
+        WCHAR fontPattern[MAX_PATH];
+        if (get_exe_dir_w(exeDir, nelem(exeDir)) &&
+            swprintf(fontPattern, nelem(fontPattern), L"%s\\fonts\\*.?t?", exeDir) > 0) {
+            fz_try(ctx) {
+                extend_system_font_list(ctx, fontPattern);
+            }
+            fz_catch(ctx) {
+                fz_report_error(ctx);
+            }
+        }
+    }
 
     // sort the font list, so that it can be searched binarily
     void* map = (void*)&(g_win_fonts.fontmap[0]);
@@ -754,7 +801,7 @@ static int str_ends_with(const char* str, const char* end) {
     return len1 >= len2 && streq(str + len1 - len2, end);
 }
 
-static fz_font* load_windows_font_by_name(fz_context* ctx, const char* orig_name) {
+static fz_font* load_windows_font_by_name_impl(fz_context* ctx, const char* orig_name, int redirect_cjk) {
     win_font_info* found = NULL;
     char *comma, *fontname;
     fz_font* font = NULL;
@@ -764,8 +811,8 @@ static fz_font* load_windows_font_by_name(fz_context* ctx, const char* orig_name
         return NULL;
     }
 
-    if (is_source_han_serif_sc_request(orig_name)) {
-        fz_font* bundled = load_bundled_source_han_serif(ctx, orig_name, FZ_ADOBE_GB);
+    if (redirect_cjk && is_reader_cjk_font_request(orig_name)) {
+        fz_font* bundled = load_reader_cjk_serif(ctx, orig_name, FZ_ADOBE_GB);
         if (bundled) {
             return bundled;
         }
@@ -874,6 +921,10 @@ Exit:
         fz_rethrow(ctx);
     }
     return font;
+}
+
+static fz_font* load_windows_font_by_name(fz_context* ctx, const char* orig_name) {
+    return load_windows_font_by_name_impl(ctx, orig_name, 1);
 }
 
 static int is_css_generic_family(const char* fontname) {
@@ -1192,14 +1243,132 @@ static fz_font* load_bundled_source_han_serif(fz_context* ctx, const char* displ
     return NULL;
 }
 
+static int is_configured_cjk_family_request(const char* fontname) {
+    char norm[128];
+    char cfg[128];
+
+    if (!fontname) {
+        return 0;
+    }
+    if (streq(fontname, g_sumatra_cjk_family)) {
+        return 1;
+    }
+    normalize_font_name_key(fontname, norm, sizeof norm);
+    normalize_font_name_key(g_sumatra_cjk_family, cfg, sizeof cfg);
+    if (cfg[0] && streq(norm, cfg)) {
+        return 1;
+    }
+    if (streq(fontname, "\xe6\x80\x9d\xe6\xba\x90\xe5\xae\x8b\xe4\xbd\x93") &&
+        streq(g_sumatra_cjk_family, "Source Han Serif SC")) {
+        return 1;
+    }
+    return 0;
+}
+
+static int is_bundled_reader_cjk_setting(void) {
+    if (g_sumatra_cjk_file[0]) {
+        return 1;
+    }
+    if (!g_sumatra_cjk_family[0]) {
+        return 1;
+    }
+    if (streq(g_sumatra_cjk_family, "Source Han Serif SC")) {
+        return 1;
+    }
+    if (streq(g_sumatra_cjk_family, "LXGW WenKai")) {
+        return 1;
+    }
+    if (strstr(g_sumatra_cjk_family, "LXGW") != NULL) {
+        return 1;
+    }
+    if (streq(g_sumatra_cjk_family, "\xe6\x80\x9d\xe6\xba\x90\xe5\xae\x8b\xe4\xbd\x93")) {
+        return 1;
+    }
+    return 0;
+}
+
+static int is_reader_cjk_font_request(const char* fontname) {
+    if (is_configured_cjk_family_request(fontname)) {
+        return 1;
+    }
+    if (is_bundled_reader_cjk_setting() && is_source_han_serif_sc_request(fontname)) {
+        return 1;
+    }
+    return 0;
+}
+
+static fz_font* load_bundled_custom_cjk_font(fz_context* ctx) {
+    WCHAR exeDir[MAX_PATH];
+    WCHAR pathW[MAX_PATH];
+    char pathUtf8[MAX_PATH * 3];
+    const char* display_name;
+
+    if (!g_sumatra_cjk_file[0]) {
+        return NULL;
+    }
+    if (!get_exe_dir_w(exeDir, nelem(exeDir))) {
+        return NULL;
+    }
+    if (swprintf(pathW, nelem(pathW), L"%s\\fonts\\%S", exeDir, g_sumatra_cjk_file) < 0) {
+        return NULL;
+    }
+    if (GetFileAttributesW(pathW) == INVALID_FILE_ATTRIBUTES) {
+        return NULL;
+    }
+    if (!wide_to_utf8(pathW, pathUtf8, sizeof pathUtf8)) {
+        return NULL;
+    }
+    display_name = g_sumatra_cjk_family[0] ? g_sumatra_cjk_family : "Custom CJK";
+    return try_font_file(ctx, display_name, pathUtf8, 0, 1);
+}
+
+static fz_font* load_reader_cjk_serif(fz_context* ctx, const char* display_name, int ordering) {
+    const char* family = g_sumatra_cjk_family[0] ? g_sumatra_cjk_family : display_name;
+    fz_font* font = load_bundled_custom_cjk_font(ctx);
+    if (font) {
+        font->flags.cjk = 1;
+        font->flags.cjk_lang = ordering;
+        return font;
+    }
+
+    if (!is_bundled_reader_cjk_setting()) {
+        font = load_windows_font_by_name_impl(ctx, family, 0);
+        if (font) {
+            font->flags.cjk = 1;
+            font->flags.cjk_lang = ordering;
+            return font;
+        }
+        return NULL;
+    }
+
+    /* Always honor EBookUI.CjkFontFamily for reader CJK requests (including publisher
+     * names like STSong / SimSun routed through is_reader_cjk_font_request). */
+    if (!is_source_han_serif_sc_request(family)) {
+        font = load_windows_font_by_name_impl(ctx, family, 0);
+        if (font) {
+            font->flags.cjk = 1;
+            font->flags.cjk_lang = ordering;
+            return font;
+        }
+        return NULL;
+    }
+
+    font = load_bundled_source_han_serif(ctx, family, ordering);
+    if (font) {
+        font->flags.cjk = 1;
+        font->flags.cjk_lang = ordering;
+    }
+    return font;
+}
+
 static fz_font* load_windows_font(fz_context* ctx, const char* fontname, int bold, int italic,
                                   int needs_exact_metrics) {
     fz_font* font;
     const char* clean_name = pdf_clean_font_name(fontname);
     int is_base_14 = clean_name != fontname;
 
-    if (!bold && !italic && is_source_han_serif_sc_request(fontname)) {
-        font = load_bundled_source_han_serif(ctx, fontname, FZ_ADOBE_GB);
+    if (!bold && !italic && is_reader_cjk_font_request(fontname)) {
+        font = load_reader_cjk_serif(ctx, fontname, FZ_ADOBE_GB);
         if (font) {
             return font;
         }
@@ -1271,7 +1440,7 @@ static fz_font* load_windows_cjk_font(fz_context* ctx, const char* fontname, int
                     font = load_windows_font_by_name(ctx, "MingLiU");
                     break;
                 case FZ_ADOBE_GB:
-                    font = load_bundled_source_han_serif(ctx, "Source Han Serif", FZ_ADOBE_GB);
+                    font = load_reader_cjk_serif(ctx, "Source Han Serif", FZ_ADOBE_GB);
                     if (!font) {
                         font = load_windows_font_by_name(ctx, "SimSun");
                     }
@@ -1375,7 +1544,7 @@ static fz_font* load_windows_fallback_font(fz_context* ctx, int script, int lang
         case UCDN_SCRIPT_HAN:
         case UCDN_SCRIPT_BOPOMOFO: {
             int ordering = han_ordering_for_language(language);
-            font = load_bundled_source_han_serif(ctx, "Source Han Serif", ordering);
+            font = load_reader_cjk_serif(ctx, "Source Han Serif", ordering);
             if (font) {
                 return font;
             }

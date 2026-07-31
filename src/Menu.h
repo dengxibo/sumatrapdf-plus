@@ -28,8 +28,15 @@ void OnWindowContextMenu(MainWindow* win, int x, int y);
 void OnAboutContextMenu(MainWindow* win, int x, int y);
 int CmdIdFromVirtualZoom(float virtualZoom);
 void UpdateAppMenu(MainWindow* win, HMENU m);
+void MenuRefreshStateForWindow(MainWindow* win);
 void ToggleMenuBar(MainWindow* win, bool showTemporarily);
 float ZoomMenuItemToZoom(int menuItemId);
 std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId);
 BuildMenuCtx* NewBuildMenuCtx(WindowTab* tab, Point pt);
 void DeleteBuildMenuCtx(BuildMenuCtx*);
+
+// Install/uninstall during WM_ENTERMENULOOP / WM_EXITMENULOOP.
+void MenuWheelScrollHookInstall();
+void MenuWheelScrollHookUninstall();
+bool MenuWheelScrollIsActive();
+bool MenuWheelScrollHandleWheel(WPARAM wp);

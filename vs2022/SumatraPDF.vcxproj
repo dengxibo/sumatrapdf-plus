@@ -1099,6 +1099,9 @@
     <ClInclude Include="..\src\DocController.h" />
     <ClInclude Include="..\src\DocProperties.h" />
     <ClInclude Include="..\src\EbookAnnotations.h" />
+    <ClInclude Include="..\src\EbookFontConfig.h" />
+    <ClInclude Include="..\src\EbookInstalledFonts.h" />
+    <ClInclude Include="..\src\EbookFontMenu.h" />
     <ClInclude Include="..\src\EbookDoc.h" />
     <ClInclude Include="..\src\EbookFormatter.h" />
     <ClInclude Include="..\src\EditAnnotations.h" />
@@ -1231,6 +1234,10 @@
     <ClCompile Include="..\src\DisplayModel.cpp" />
     <ClCompile Include="..\src\DocProperties.cpp" />
     <ClCompile Include="..\src\EbookAnnotations.cpp" />
+    <ClCompile Include="..\src\EbookFontConfig.cpp" />
+    <ClCompile Include="..\src\EbookInstalledFonts.cpp" />
+    <ClCompile Include="..\src\EbookFontMenu.cpp" />
+    <ClCompile Include="..\src\EbookTypography.cpp" />
     <ClCompile Include="..\src\EbookDoc.cpp" />
     <ClCompile Include="..\src\EbookFormatter.cpp" />
     <ClCompile Include="..\src\EditAnnotations.cpp" />

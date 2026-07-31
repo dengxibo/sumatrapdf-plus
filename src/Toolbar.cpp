@@ -2261,6 +2261,7 @@ bool HandleMenuBarCommand(MainWindow* win, int cmdId) {
         gMenuBarPopupNav.currentFlags = 0;
         gMenuBarPopupNav.nextMenuIdx = menuIdx;
 
+        MenuRefreshStateForWindow(win);
         MarkMenuOwnerDraw(subMenu, false);
         SetForegroundWindow(win->hwndFrame);
         HHOOK hook = SetWindowsHookExW(WH_MSGFILTER, MenuBarMsgFilterHook, nullptr, GetCurrentThreadId());

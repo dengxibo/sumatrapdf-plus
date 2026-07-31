@@ -104,6 +104,7 @@ EXPORTS
 	pdf_page_resources
 	xps_drop_part
 	install_load_windows_font_funcs
+	sumatra_set_ebook_font_config
 	pdf_page_transform
 	pdf_page_obj_transform
 	fz_close_device

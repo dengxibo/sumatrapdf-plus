@@ -251,7 +251,9 @@ enum {
     CmdReadAloudSelection = 440,
     CmdFindToggleMatchWholeWord = 441,
     CmdAssociateCommonFileTypes = 442,
-    CmdNone = 443,
+    CmdSetEbookLatinFont = 443,
+    CmdSetEbookCjkFont = 444,
+    CmdNone = 445,
 
     /* range for file history */
     CmdFileHistoryFirst,
@@ -388,6 +390,7 @@ constexpr const char* kCmdArgFilter = "filter";
 constexpr const char* kCmdArgN = "n";
 constexpr const char* kCmdArgMode = "mode";
 constexpr const char* kCmdArgTheme = "theme";
+constexpr const char* kCmdArgFontFamily = "fontfamily";
 constexpr const char* kCmdArgCommandLine = "cmdline";
 constexpr const char* kCmdArgToolbarText = "toolbartext";
 constexpr const char* kCmdArgFocusEdit = "focusedit";

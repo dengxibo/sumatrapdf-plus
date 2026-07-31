@@ -33,6 +33,8 @@ void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, fl
 #include <stdio.h>
 #include "EngineAll.h"
 #include "EbookBase.h"
+#include "EbookFontConfig.h"
+#include "EbookTypography.h"
 #include "EbookDoc.h"
 #include "EpubMeta.h"
 #include "EpubPerfLog.h"
@@ -3213,20 +3215,6 @@ bool EngineMupdf::Load(IStream* stream, const char* nameHint, PasswordUI* pwdUI)
 // TODO: allow setting per
 extern EBookUI* GetEBookUI();
 
-static EbookTypographyKind gEbookTypographyKind = EbookTypographyKind::Cjk;
-
-void SetEbookTypographyKind(EbookTypographyKind kind) {
-    gEbookTypographyKind = kind;
-}
-
-EbookTypographyKind GetEbookTypographyKind() {
-    return gEbookTypographyKind;
-}
-
-bool EbookUsesCjkTypography() {
-    return gEbookTypographyKind == EbookTypographyKind::Cjk || gEbookTypographyKind == EbookTypographyKind::Bilingual;
-}
-
 static bool IsCjkLangTag(const char* lang) {
     if (str::IsEmpty(lang)) {
         return false;
@@ -4612,8 +4600,7 @@ li, blockquote {
 }
 )";
         if (isEpub) {
-            const char* fontCss =
-                typographyKind == EbookTypographyKind::Cjk ? kEpubReaderCjkFontCss : kEpubReaderLatinFontCss;
+            TempStr fontCss = BuildEbookReaderFontCss(typographyKind);
             const char* rhythmCss = kEpubReaderLatinCss;
             if (typographyKind == EbookTypographyKind::Cjk) {
                 rhythmCss = kEpubReaderCjkCss;
@@ -4624,7 +4611,8 @@ li, blockquote {
             ebookCss = str::JoinTemp(ebookCss, "\n", rhythmCss);
         }
         if (!isEpub) {
-            ebookCss = ebookCss ? str::JoinTemp(kFallbackFontCss, "\n", ebookCss) : str::DupTemp(kFallbackFontCss);
+            TempStr fallbackCss = BuildEbookFallbackFontCss();
+            ebookCss = ebookCss ? str::JoinTemp(fallbackCss, "\n", ebookCss) : fallbackCss;
         }
         if (eBookUI->customCSS) {
             ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", eBookUI->customCSS) : str::DupTemp(eBookUI->customCSS);

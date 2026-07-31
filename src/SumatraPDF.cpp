@@ -95,6 +95,8 @@
 #include "SumatraConfig.h"
 #include "EditAnnotations.h"
 #include "EbookAnnotations.h"
+#include "EbookFontConfig.h"
+#include "EbookFontMenu.h"
 #include "EditEbookAnnotations.h"
 #include "CommandPalette.h"
 #include "Installer.h"
@@ -1948,6 +1950,135 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     }
 }
 
+struct FontReloadScrollAnchor {
+    ScrollState scroll;
+    float inPageScrollRatio = -1.f;
+};
+
+static float CaptureInPageScrollRatio(DisplayModel* dm, int page) {
+    if (!dm || !dm->ValidPageNo(page)) {
+        return -1.f;
+    }
+    PageInfo* pageInfo = dm->GetPageInfo(page);
+    if (!pageInfo || pageInfo->pos.dy <= 0) {
+        return -1.f;
+    }
+    float pageTop = (float)(pageInfo->pos.y - dm->windowMargin.top);
+    float viewCenter = dm->viewPort.y + dm->viewPort.dy * 0.5f;
+    return limitValue((viewCenter - pageTop) / (float)pageInfo->pos.dy, 0.f, 1.f);
+}
+
+static FontReloadScrollAnchor CaptureFontReloadScroll(WindowTab* tab) {
+    FontReloadScrollAnchor anchor{};
+    DisplayModel* dm = tab ? tab->AsFixed() : nullptr;
+    if (!dm) {
+        return anchor;
+    }
+    anchor.scroll = dm->GetScrollState();
+    if (!IsContinuous(dm->GetDisplayMode())) {
+        int page = anchor.scroll.page;
+        if (dm->ValidPageNo(page)) {
+            anchor.inPageScrollRatio = CaptureInPageScrollRatio(dm, page);
+        }
+        return anchor;
+    }
+    int page = dm->CurrentPageNo();
+    if (!dm->ValidPageNo(page)) {
+        page = anchor.scroll.page;
+    }
+    if (!dm->ValidPageNo(page)) {
+        return anchor;
+    }
+    anchor.scroll.page = page;
+    anchor.inPageScrollRatio = CaptureInPageScrollRatio(dm, page);
+    return anchor;
+}
+
+static void SaveTabFontReloadScroll(WindowTab* tab, const FontReloadScrollAnchor& anchor) {
+    if (!tab || anchor.scroll.page < 1) {
+        return;
+    }
+    tab->restorePageAfterFontReload = anchor.scroll.page;
+    tab->restoreScrollXAfterFontReload = anchor.scroll.x;
+    tab->restoreScrollYAfterFontReload = anchor.scroll.y;
+    tab->restoreInPageScrollRatioAfterFontReload = anchor.inPageScrollRatio;
+    tab->reloadForEbookFontChange = true;
+}
+
+static FontReloadScrollAnchor FontReloadScrollFromTab(WindowTab* tab) {
+    FontReloadScrollAnchor anchor{};
+    if (!tab || tab->restorePageAfterFontReload < 1) {
+        anchor.scroll = ScrollState(1, -1, -1);
+        return anchor;
+    }
+    anchor.scroll = ScrollState(tab->restorePageAfterFontReload, tab->restoreScrollXAfterFontReload,
+                                tab->restoreScrollYAfterFontReload);
+    anchor.inPageScrollRatio = tab->restoreInPageScrollRatioAfterFontReload;
+    return anchor;
+}
+
+static void ClearTabFontReloadScroll(WindowTab* tab) {
+    if (!tab) {
+        return;
+    }
+    tab->reloadForEbookFontChange = false;
+    tab->restorePageAfterFontReload = 0;
+    tab->restoreScrollXAfterFontReload = -1;
+    tab->restoreScrollYAfterFontReload = -1;
+    tab->restoreInPageScrollRatioAfterFontReload = -1.f;
+}
+
+static void ApplyFontReloadScroll(MainWindow* win, DisplayModel* dm, const FontReloadScrollAnchor& anchor) {
+    (void)win;
+    if (!dm || anchor.scroll.page < 1) {
+        return;
+    }
+    if (IsContinuous(dm->GetDisplayMode()) && anchor.inPageScrollRatio >= 0) {
+        dm->pendingRestoreScroll = ScrollState(anchor.scroll.page, -1, -1);
+        dm->hasPendingRestoreScroll = true;
+        dm->fontReloadInPageRatio = anchor.inPageScrollRatio;
+        dm->TryApplyPendingRestoreScroll();
+        return;
+    }
+    dm->SetScrollState(anchor.scroll);
+}
+
+static bool ShouldReloadForThemeChange(WindowTab* tab);
+static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab);
+static void ApplyFontChangeToTab(MainWindow* win, WindowTab* tab, const FontReloadScrollAnchor& anchor);
+
+void ReloadDocumentPreservingScroll(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    WindowTab* tab = win->CurrentTab();
+    if (!tab) {
+        return;
+    }
+    ApplyFontChangeToTab(win, tab, CaptureFontReloadScroll(tab));
+}
+
+void ApplyTabReloadOnFocus(MainWindow* win, WindowTab* tab, bool autoRefresh) {
+    if (!win || !tab || !tab->reloadOnFocus) {
+        return;
+    }
+    tab->reloadOnFocus = false;
+    if (tab->reloadForEbookFontChange) {
+        FontReloadScrollAnchor anchor = FontReloadScrollFromTab(tab);
+        ClearTabFontReloadScroll(tab);
+        if (tab != win->CurrentTab()) {
+            return;
+        }
+        ApplyFontChangeToTab(win, tab, anchor);
+        return;
+    }
+    if (ShouldReloadForThemeChange(tab)) {
+        ApplyThemeChangeToTab(win, tab);
+        return;
+    }
+    ReloadDocument(win, autoRefresh);
+}
+
 void ReloadDocument(MainWindow* win, bool autoRefresh) {
     WindowTab* tab = win->CurrentTab();
 
@@ -1995,6 +2126,8 @@ void ReloadDocument(MainWindow* win, bool autoRefresh) {
     // Save display state before potentially destroying the old controller
     FileState* fs = NewFileState(path);
     tab->ctrl->GetDisplayState(fs);
+    // In-session reload must always restore the current page/scroll.
+    fs->useDefaultState = false;
     UpdateDisplayStateWindowRect(win, fs);
     UpdateSidebarDisplayState(tab, fs);
 
@@ -2772,6 +2905,39 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
 
     reflowPause.Release();
     ReloadDocument(win, false);
+}
+
+static void ApplyFontChangeToTab(MainWindow* win, WindowTab* tab, const FontReloadScrollAnchor& anchor) {
+    if (!win || !tab || !tab->IsDocLoaded() || tab->IsAboutTab()) {
+        return;
+    }
+    DisplayModel* dm = tab->AsFixed();
+    if (dm) {
+        gRenderCache->CancelRendering(dm);
+        gRenderCache->FreeForDisplayModel(dm);
+    }
+    ReloadDocument(win, false);
+    ApplyFontReloadScroll(win, tab->AsFixed(), anchor);
+    tab->reloadOnFocus = false;
+}
+
+void UpdateAfterEbookFontChange() {
+    for (MainWindow* win : gWindows) {
+        WindowTab* current = win->CurrentTab();
+        for (WindowTab* tab : win->Tabs()) {
+            if (!ShouldReloadForThemeChange(tab)) {
+                continue;
+            }
+            // Font family changes must reopen the document so bundled faces reload.
+            if (tab == current) {
+                ApplyFontChangeToTab(win, tab, CaptureFontReloadScroll(tab));
+            } else {
+                SaveTabFontReloadScroll(tab, CaptureFontReloadScroll(tab));
+                tab->reloadOnFocus = true;
+            }
+        }
+        RebuildMenuBarForWindow(win);
+    }
 }
 
 static void SyncCanvasScrollBarTheme(MainWindow* win) {
@@ -3930,12 +4096,10 @@ void LoadModelIntoTab(WindowTab* tab) {
     bool rerenderAfterTheme = false;
     bool refreshSelectionAfterTheme = false;
     if (!tab->IsAboutTab() && tab->ctrl && tab->reloadOnFocus) {
-        tab->reloadOnFocus = false;
-        if (ShouldReloadForThemeChange(tab)) {
-            ApplyThemeChangeToTab(win, tab);
+        bool themeReload = ShouldReloadForThemeChange(tab) && !tab->reloadForEbookFontChange;
+        ApplyTabReloadOnFocus(win, tab, false);
+        if (themeReload) {
             rerenderAfterTheme = true;
-        } else {
-            ReloadDocument(win, true);
         }
     }
 
@@ -7528,7 +7692,7 @@ static void OnMenuCustomZoom(MainWindow* win) {
     }
 
     float virtZoom = win->ctrl->GetZoomVirtual();
-    if (!Dialog_CustomZoom(win->hwndFrame, win->AsChm() != nullptr, &virtZoom)) {
+    if (!Dialog_CustomZoom(win->hwndFrame, IsChmTab(win->CurrentTab()), &virtZoom)) {
         return;
     }
     SmartZoom(win, virtZoom, nullptr, true);
@@ -8102,6 +8266,40 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                 SetTheme(theme);
                 SaveSettings();
             }
+            return 0;
+        }
+
+        case CmdSetEbookLatinFont: {
+            const char* family = GetCommandStringArg(cmd, kCmdArgFontFamily, nullptr);
+            if (!family || !HasPermission(Perm::SavePreferences)) {
+                return 0;
+            }
+            const char* canonical = NormalizeEbookLatinFontFamily(family);
+            if (EbookLatinFontFamiliesEquivalent(GetEbookLatinFontFamily(), canonical)) {
+                return 0;
+            }
+            str::ReplaceWithCopy(&gGlobalPrefs->eBookUI.fontFamily, canonical);
+            ApplyEbookFontSettingsFromPrefs();
+            SaveSettings();
+            UpdateAfterEbookFontChange();
+            return 0;
+        }
+
+        case CmdSetEbookCjkFont: {
+            const char* family = GetCommandStringArg(cmd, kCmdArgFontFamily, nullptr);
+            if (!family || !HasPermission(Perm::SavePreferences)) {
+                return 0;
+            }
+            const char* canonical = NormalizeEbookCjkFontFamily(family);
+            if (EbookCjkFontFamiliesEquivalent(GetEbookCjkFontFamily(), canonical)) {
+                return 0;
+            }
+            str::ReplaceWithCopy(&gGlobalPrefs->eBookUI.cjkFontFamily, canonical);
+            str::Free(gGlobalPrefs->eBookUI.cjkFontFile);
+            gGlobalPrefs->eBookUI.cjkFontFile = nullptr;
+            ApplyEbookFontSettingsFromPrefs();
+            SaveSettings();
+            UpdateAfterEbookFontChange();
             return 0;
         }
 
@@ -9625,6 +9823,7 @@ static void MenuBarAsPopupMenu(MainWindow* win, Rect btnRect) {
         return;
     }
 
+    MenuRefreshStateForWindow(win);
     MarkMenuOwnerDraw(popup, false, true);
     TrackCaptionPopupMenu(win, popup, btnRect);
 
@@ -13088,10 +13287,12 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
 
         case WM_ENTERMENULOOP:
             gOverlayScrollbarSuppressThick = true;
+            MenuWheelScrollHookInstall();
             return DefWindowProc(hwnd, msg, wp, lp);
 
         case WM_EXITMENULOOP:
             gOverlayScrollbarSuppressThick = false;
+            MenuWheelScrollHookUninstall();
             // hide the menu bar again if it was shown only temporarily
             if (!wp && win && !IsMenubarVisible()) {
                 SetMenu(hwnd, nullptr);
@@ -13138,6 +13339,12 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
 
         case WM_MOUSEWHEEL:
         case WM_MOUSEHWHEEL:
+            if (msg == WM_MOUSEWHEEL && MenuWheelScrollHandleWheel(wp)) {
+                return 0;
+            }
+            if (gOverlayScrollbarSuppressThick || (win && win->isMenuOpen)) {
+                return 0;
+            }
             if (!win || !win->IsDocLoaded()) {
                 break;
             }

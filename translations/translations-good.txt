@@ -96,6 +96,79 @@ nl:&Boekweergave
 pl:Widok o&dczytu
 sk:&Zobraziť ako knihu
 tw:書本檢視(&B)
+:&CJK Body Font
+af:&CJK Body Font
+am:&CJK Body Font
+ar:&CJK Body Font
+az:&CJK Body Font
+bg:&CJK Body Font
+bn:&CJK Body Font
+br:&CJK Body Font
+bs:&CJK Body Font
+by:&CJK Body Font
+ca:&CJK Body Font
+ca-xv:&CJK Body Font
+cn:中文字体(&C)
+co:&CJK Body Font
+cy:&CJK Body Font
+cz:&CJK Body Font
+de:&CJK Body Font
+dk:&CJK Body Font
+el:&CJK Body Font
+es:&CJK Body Font
+et:&CJK Body Font
+eu:&CJK Body Font
+fa:&CJK Body Font
+fi:&CJK Body Font
+fo:&CJK Body Font
+fr:&CJK Body Font
+fy-nl:&CJK Body Font
+ga:&CJK Body Font
+gl:&CJK Body Font
+he:&CJK Body Font
+hi:&CJK Body Font
+hr:&CJK Body Font
+hu:&CJK Body Font
+id:&CJK Body Font
+it:&CJK Body Font
+ja:&CJK Body Font
+jv:&CJK Body Font
+ka:&CJK Body Font
+kr:&CJK Body Font
+ku:&CJK Body Font
+kw:&CJK Body Font
+lt:&CJK Body Font
+lv:&CJK Body Font
+mk:&CJK Body Font
+ml:&CJK Body Font
+mm:&CJK Body Font
+my:&CJK Body Font
+ne:&CJK Body Font
+nl:&CJK Body Font
+nn:&CJK Body Font
+no:&CJK Body Font
+pa:&CJK Body Font
+pl:&CJK Body Font
+pt:&CJK Body Font
+ro:&CJK Body Font
+ru:&CJK Body Font
+sat:&CJK Body Font
+si:&CJK Body Font
+sk:&CJK Body Font
+sl:&CJK Body Font
+sn:&CJK Body Font
+sp-rs:&CJK Body Font
+sq:&CJK Body Font
+sr-rs:&CJK Body Font
+sv:&CJK Body Font
+ta:&CJK Body Font
+th:&CJK Body Font
+tl:&CJK Body Font
+tr:&CJK Body Font
+tw:中文字體(&C)
+uk:&CJK Body Font
+uz:&CJK Body Font
+vn:&CJK Body Font
 :&Cancel
 am:Չեղարկել
 br:&Cancelar
@@ -537,6 +610,79 @@ nl:Afdrukken... (niet toegestaan)
 pl:&Drukuj... (odmówiono)
 sk:&Tlač... (odmietnutá)
 tw:列印(&P)... (已中斷)
+:&Reading Font
+af:&Reading Font
+am:&Reading Font
+ar:&Reading Font
+az:&Reading Font
+bg:&Reading Font
+bn:&Reading Font
+br:&Reading Font
+bs:&Reading Font
+by:&Reading Font
+ca:&Reading Font
+ca-xv:&Reading Font
+cn:字体(&R)
+co:&Reading Font
+cy:&Reading Font
+cz:&Reading Font
+de:&Reading Font
+dk:&Reading Font
+el:&Reading Font
+es:&Reading Font
+et:&Reading Font
+eu:&Reading Font
+fa:&Reading Font
+fi:&Reading Font
+fo:&Reading Font
+fr:&Reading Font
+fy-nl:&Reading Font
+ga:&Reading Font
+gl:&Reading Font
+he:&Reading Font
+hi:&Reading Font
+hr:&Reading Font
+hu:&Reading Font
+id:&Reading Font
+it:&Reading Font
+ja:&Reading Font
+jv:&Reading Font
+ka:&Reading Font
+kr:&Reading Font
+ku:&Reading Font
+kw:&Reading Font
+lt:&Reading Font
+lv:&Reading Font
+mk:&Reading Font
+ml:&Reading Font
+mm:&Reading Font
+my:&Reading Font
+ne:&Reading Font
+nl:&Reading Font
+nn:&Reading Font
+no:&Reading Font
+pa:&Reading Font
+pl:&Reading Font
+pt:&Reading Font
+ro:&Reading Font
+ru:&Reading Font
+sat:&Reading Font
+si:&Reading Font
+sk:&Reading Font
+sl:&Reading Font
+sn:&Reading Font
+sp-rs:&Reading Font
+sq:&Reading Font
+sr-rs:&Reading Font
+sv:&Reading Font
+ta:&Reading Font
+th:&Reading Font
+tl:&Reading Font
+tr:&Reading Font
+tw:字體(&R)
+uk:&Reading Font
+uz:&Reading Font
+vn:&Reading Font
 :&Remember the password for this document
 am:&Հիշել ֆայլի գաղտնաբառը
 br:&Lembrar a senha deste documento
@@ -696,6 +842,79 @@ nl:&Doorhalen
 pl:&Skreślenie
 sk:P&rečiarknuť
 tw:刪除線(&S)
+:&System Font
+af:&System Font
+am:&System Font
+ar:&System Font
+az:&System Font
+bg:&System Font
+bn:&System Font
+br:&System Font
+bs:&System Font
+by:&System Font
+ca:&System Font
+ca-xv:&System Font
+cn:系统字体(&S)
+co:&System Font
+cy:&System Font
+cz:&System Font
+de:&System Font
+dk:&System Font
+el:&System Font
+es:&System Font
+et:&System Font
+eu:&System Font
+fa:&System Font
+fi:&System Font
+fo:&System Font
+fr:&System Font
+fy-nl:&System Font
+ga:&System Font
+gl:&System Font
+he:&System Font
+hi:&System Font
+hr:&System Font
+hu:&System Font
+id:&System Font
+it:&System Font
+ja:&System Font
+jv:&System Font
+ka:&System Font
+kr:&System Font
+ku:&System Font
+kw:&System Font
+lt:&System Font
+lv:&System Font
+mk:&System Font
+ml:&System Font
+mm:&System Font
+my:&System Font
+ne:&System Font
+nl:&System Font
+nn:&System Font
+no:&System Font
+pa:&System Font
+pl:&System Font
+pt:&System Font
+ro:&System Font
+ru:&System Font
+sat:&System Font
+si:&System Font
+sk:&System Font
+sl:&System Font
+sn:&System Font
+sp-rs:&System Font
+sq:&System Font
+sr-rs:&System Font
+sv:&System Font
+ta:&System Font
+th:&System Font
+tl:&System Font
+tr:&System Font
+tw:系統字體(&S)
+uk:&System Font
+uz:&System Font
+vn:&System Font
 :&Text
 am:&Գրվածք
 br:&Texto
@@ -768,6 +987,79 @@ nl:&Beeld
 pl:&Widok
 sk:&Zobraziť
 tw:檢視(&V)
+:&Western Body Font
+af:&Western Body Font
+am:&Western Body Font
+ar:&Western Body Font
+az:&Western Body Font
+bg:&Western Body Font
+bn:&Western Body Font
+br:&Western Body Font
+bs:&Western Body Font
+by:&Western Body Font
+ca:&Western Body Font
+ca-xv:&Western Body Font
+cn:西文字体(&W)
+co:&Western Body Font
+cy:&Western Body Font
+cz:&Western Body Font
+de:&Western Body Font
+dk:&Western Body Font
+el:&Western Body Font
+es:&Western Body Font
+et:&Western Body Font
+eu:&Western Body Font
+fa:&Western Body Font
+fi:&Western Body Font
+fo:&Western Body Font
+fr:&Western Body Font
+fy-nl:&Western Body Font
+ga:&Western Body Font
+gl:&Western Body Font
+he:&Western Body Font
+hi:&Western Body Font
+hr:&Western Body Font
+hu:&Western Body Font
+id:&Western Body Font
+it:&Western Body Font
+ja:&Western Body Font
+jv:&Western Body Font
+ka:&Western Body Font
+kr:&Western Body Font
+ku:&Western Body Font
+kw:&Western Body Font
+lt:&Western Body Font
+lv:&Western Body Font
+mk:&Western Body Font
+ml:&Western Body Font
+mm:&Western Body Font
+my:&Western Body Font
+ne:&Western Body Font
+nl:&Western Body Font
+nn:&Western Body Font
+no:&Western Body Font
+pa:&Western Body Font
+pl:&Western Body Font
+pt:&Western Body Font
+ro:&Western Body Font
+ru:&Western Body Font
+sat:&Western Body Font
+si:&Western Body Font
+sk:&Western Body Font
+sl:&Western Body Font
+sn:&Western Body Font
+sp-rs:&Western Body Font
+sq:&Western Body Font
+sr-rs:&Western Body Font
+sv:&Western Body Font
+ta:&Western Body Font
+th:&Western Body Font
+tl:&Western Body Font
+tr:&Western Body Font
+tw:西文字體(&W)
+uk:&Western Body Font
+uz:&Western Body Font
+vn:&Western Body Font
 :&Window
 am:&Պատուհան
 br:&Janela

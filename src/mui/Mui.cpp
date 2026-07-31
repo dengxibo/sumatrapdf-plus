@@ -6,6 +6,7 @@
 #include "utils/WinUtil.h"
 
 #include "Mui.h"
+#include "EbookFontConfig.h"
 
 #include "utils/Log.h"
 
@@ -215,13 +216,12 @@ static bool IsResolvedFontAcceptable(const WCHAR* requested, Gdiplus::Font* font
     if (str::EqI(lf.lfFaceName, L"Microsoft Sans Serif")) {
         return false;
     }
-    if (str::EqI(requested, L"Source Han Serif SC") || str::EqI(requested, L"思源宋体")) {
-        return str::EqI(lf.lfFaceName, L"Source Han Serif SC") || str::EqI(lf.lfFaceName, L"思源宋体") ||
-               str::EqI(lf.lfFaceName, L"SimSun") || str::EqI(lf.lfFaceName, L"NSimSun") ||
-               str::EqI(lf.lfFaceName, L"宋体");
+    if (IsEbookCjkFontRequestW(requested)) {
+        return IsEbookCjkFontRequestW(lf.lfFaceName) || str::EqI(lf.lfFaceName, L"SimSun") ||
+               str::EqI(lf.lfFaceName, L"NSimSun") || str::EqI(lf.lfFaceName, L"宋体");
     }
-    if (str::EqI(requested, L"Literata")) {
-        return str::Find(lf.lfFaceName, L"Literata") != nullptr;
+    if (str::EqI(requested, GetEbookLatinFontFamilyW())) {
+        return str::Find(lf.lfFaceName, GetEbookLatinFontFamilyW()) != nullptr;
     }
     return true;
 }
@@ -234,6 +234,17 @@ static Gdiplus::Font* CreateFontWithFallback(const WCHAR* name, float sizePt, Gd
 
     font = new Gdiplus::Font(name, sizePt, style);
     if (font->GetLastStatus() == Gdiplus::Status::Ok && IsResolvedFontAcceptable(name, font)) {
+        return font;
+    }
+    delete font;
+
+    const WCHAR* cjkFont = GetEbookCjkFontFamilyW();
+    font = TryCreateBundledFont(cjkFont, sizePt, style);
+    if (font) {
+        return font;
+    }
+    font = new Gdiplus::Font(cjkFont, sizePt, style);
+    if (font->GetLastStatus() == Gdiplus::Status::Ok && IsResolvedFontAcceptable(cjkFont, font)) {
         return font;
     }
     delete font;

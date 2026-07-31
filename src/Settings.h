@@ -81,6 +81,15 @@ struct FixedPageUI {
 struct EBookUI {
     // font size, default 8.0
     float fontSize;
+    // default Latin/serif body font for reflowable ebooks (EPUB, MOBI).
+    // Empty uses Literata
+    char* fontFamily;
+    // default CJK body font for reflowable ebooks. Empty uses Source Han
+    // Serif SC
+    char* cjkFontFamily;
+    // optional override: bundled CJK font file in fonts\ when auto-detect
+    // by CjkFontFamily fails
+    char* cjkFontFile;
     // page width in pt for flowed ebooks. 0 means automatic reader-style
     // width
     float layoutDx;
@@ -710,6 +719,9 @@ static const StructInfo gFixedPageUIInfo = {sizeof(FixedPageUI), 9, gFixedPageUI
 
 static const FieldInfo gEBookUIFields[] = {
     {offsetof(EBookUI, fontSize), SettingType::Float, (intptr_t)"0", "电子书字号"},
+    {offsetof(EBookUI, fontFamily), SettingType::String, (intptr_t)"Literata", "电子书西文/默认衬线字体"},
+    {offsetof(EBookUI, cjkFontFamily), SettingType::String, (intptr_t)"Source Han Serif SC", "电子书中文正文字体"},
+    {offsetof(EBookUI, cjkFontFile), SettingType::String, 0, nullptr},
     {offsetof(EBookUI, layoutDx), SettingType::Float, (intptr_t)"0", "页面宽度 pt"},
     {offsetof(EBookUI, layoutDy), SettingType::Float, (intptr_t)"0", "页面高度 pt"},
     {offsetof(EBookUI, ignoreDocumentCSS), SettingType::Bool, false, "忽略文档 CSS"},
@@ -718,9 +730,9 @@ static const FieldInfo gEBookUIFields[] = {
     {offsetof(EBookUI, epubPerfLog), SettingType::Bool, false, "EPUB 性能日志"},
     {offsetof(EBookUI, windowBgCol), SettingType::Color, (intptr_t)"", "电子书画布背景色"},
 };
-static const StructInfo gEBookUIInfo = {
-    sizeof(EBookUI), 8, gEBookUIFields,
-    "FontSize\0LayoutDx\0LayoutDy\0IgnoreDocumentCSS\0CustomCSS\0EpubProgressiveLoad\0EpubPerfLog\0WindowBgCol"};
+static const StructInfo gEBookUIInfo = {sizeof(EBookUI), 11, gEBookUIFields,
+                                        "FontSize\0FontFamily\0CjkFontFamily\0CjkFontFile\0LayoutDx\0LayoutDy\0IgnoreDo"
+                                        "cumentCSS\0CustomCSS\0EpubProgressiveLoad\0EpubPerfLog\0WindowBgCol"};
 
 static const FieldInfo gWindowMargin_1_Fields[] = {
     {offsetof(WindowMargin, top), SettingType::Int, 0, nullptr},
@@ -968,8 +980,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-17.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-17.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-21.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-21.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},

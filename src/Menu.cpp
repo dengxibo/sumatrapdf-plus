@@ -44,6 +44,7 @@
 #include "Toolbar.h"
 #include "EditAnnotations.h"
 #include "EbookAnnotations.h"
+#include "EbookFontMenu.h"
 #include "Accelerators.h"
 #include "ImageSaveCropResize.h"
 #include "Menu.h"
@@ -68,6 +69,7 @@ struct BuildMenuCtx {
     bool isPdfEncrypted = false;
     bool hasToc = false;
     int pageCount = 0;
+    bool isReflowableEbook = false;
     BuildMenuCtx() = default;
     ~BuildMenuCtx() = default;
 };
@@ -220,6 +222,35 @@ static MenuDef menuDefFile[] = {
     },
 };
 //] ACCESSKEY_GROUP File Menu
+
+MenuDef menuDefEbookLatinFonts[] = {
+    {
+        nullptr,
+        0,
+    },
+};
+
+MenuDef menuDefEbookCjkFonts[] = {
+    {
+        nullptr,
+        0,
+    },
+};
+
+MenuDef menuDefEbookReadingFont[] = {
+    {
+        _TRN("&Western Body Font"),
+        (UINT_PTR)menuDefEbookLatinFonts,
+    },
+    {
+        _TRN("&CJK Body Font"),
+        (UINT_PTR)menuDefEbookCjkFonts,
+    },
+    {
+        nullptr,
+        0,
+    },
+};
 
 //[ ACCESSKEY_GROUP View Menu
 static MenuDef menuDefView[] = {
@@ -483,16 +514,20 @@ static MenuDef menuDefSettings[] = {
     { kMenuSeparator,                             0                  },
 #endif
     {
+        _TRN("&Theme"),
+        (UINT_PTR)menuDefThemes,
+    },
+    {
+        _TRN("&Reading Font"),
+        (UINT_PTR)menuDefEbookReadingFont,
+    },
+    {
         _TRN("&Options..."),
         CmdOptions,
     },
     {
         _TRN("&Advanced Options..."),
         CmdAdvancedOptions,
-    },
-    {
-        _TRN("&Theme"),
-        (UINT_PTR)menuDefThemes,
     },
     {
         _TRN("Change Language"),
@@ -1213,6 +1248,7 @@ BuildMenuCtx* NewBuildMenuCtx(WindowTab* tab, Point pt) {
     ctx->hasSelection = tab->win->showSelection && tab->selectionOnPage;
     ctx->hasToc = tab->ctrl && tab->ctrl->HasToc();
     ctx->pageCount = tab->ctrl ? tab->ctrl->PageCount() : 0;
+    ctx->isReflowableEbook = IsReflowableEbookTabForFontMenu(tab);
     return ctx;
 }
 
@@ -1233,6 +1269,14 @@ static void AppendCommandsToMenu(HMENU m, const Vec<CustomCommand*>& cmds, bool 
         WCHAR* ws = ToWStrTemp(menuString);
         AppendMenuW(m, flags, (UINT_PTR)cmd->id, ws);
     }
+}
+
+static void AppendEbookLatinFontsToMenuWrapper(HMENU m) {
+    AppendEbookLatinFontsToMenu(m);
+}
+
+static void AppendEbookCjkFontsToMenuWrapper(HMENU m) {
+    AppendEbookCjkFontsToMenu(m);
 }
 
 static void AppendThemesToMenu(HMENU m) {
@@ -1530,6 +1574,12 @@ HMENU BuildMenuFromDef(MenuDef* menuDef, HMENU menu, BuildMenuCtx* ctx) {
     if (menuDef == menuDefThemes) {
         AppendThemesToMenu(menu);
     }
+    if (menuDef == menuDefEbookLatinFonts) {
+        AppendEbookLatinFontsToMenuWrapper(menu);
+    }
+    if (menuDef == menuDefEbookCjkFonts) {
+        AppendEbookCjkFontsToMenuWrapper(menu);
+    }
 
     bool addExternalViewersNext = false;
     while (true) {
@@ -1569,6 +1619,7 @@ HMENU BuildMenuFromDef(MenuDef* menuDef, HMENU menu, BuildMenuCtx* ctx) {
         if (ctx) {
             removeMenu |= !ctx->isCursorOnPage && (subMenuDef == menuDefCreateAnnotUnderCursor);
             removeMenu |= !ctx->hasSelection && (subMenuDef == menuDefCreateAnnotFromSelection);
+            removeMenu |= !ctx->isReflowableEbook && (subMenuDef == menuDefEbookReadingFont);
         }
         if (removeMenu) {
             continue;
@@ -2452,6 +2503,16 @@ void MenuCustomDrawMesureItem(HWND hwnd, MEASUREITEMSTRUCT* mis) {
 
 // https://gist.github.com/kjk/1df108aa126b7d8e298a5092550a53b7
 // TODO: improve how we paint the menu:
+static UINT MenuItemStateFromDrawItem(const DRAWITEMSTRUCT* dis, UINT fallbackState) {
+    if (dis->hwndItem && dis->itemID != 0) {
+        UINT st = GetMenuState((HMENU)dis->hwndItem, dis->itemID, MF_BYCOMMAND);
+        if (st != (UINT)-1) {
+            return st;
+        }
+    }
+    return fallbackState;
+}
+
 // - position text the right way (not just DT_CENTER)
 //   taking into account LTR mode
 // - paint shortcut (part after \t if exists) separately
@@ -2484,13 +2545,14 @@ void MenuCustomDrawItem(HWND hwnd, DRAWITEMSTRUCT* dis) {
     // bool isDefault = bit::IsMaskSet(modi->fState, (uint)MFS_DEFAULT);
 
     // disabled should be drawn grayed out
-    bool isDisabled = bit::IsMaskSet(modi->fState, (uint)MFS_DISABLED);
+    UINT itemState = MenuItemStateFromDrawItem(dis, modi->fState);
+    bool isDisabled = bit::IsMaskSet(itemState, (uint)MFS_DISABLED);
 
     // don't know what that means
     // bool isHilited = bit::IsMaskSet(modi->fState, (uint)MFS_HILITE);
 
     // checked/unchecked state for check and radio menus
-    bool isChecked = bit::IsMaskSet(modi->fState, (uint)MFS_CHECKED);
+    bool isChecked = bit::IsMaskSet(itemState, (uint)MFS_CHECKED);
 
     // if isChecked, show as radio button (i.e. circle)
     bool isRadioCheck = bit::IsMaskSet(modi->fType, (uint)MFT_RADIOCHECK);
@@ -2631,6 +2693,10 @@ static bool IsReadAloudMenubarSubmenu(MainWindow* win, HMENU m) {
     return false;
 }
 
+void MenuRefreshStateForWindow(MainWindow* win) {
+    MenuUpdateStateForWindow(win);
+}
+
 void UpdateAppMenu(MainWindow* win, HMENU m) {
     ReportIf(!win);
     if (!win) {
@@ -2727,4 +2793,116 @@ void ToggleMenuBar(MainWindow* win, bool showTemporarily) {
     SetMenu(hwnd, hideMenu ? nullptr : win->menu);
     gGlobalPrefs->showMenubar = !hideMenu;
     gGlobalPrefs->showMenubarWithTabs = !hideMenu;
+}
+
+// Undocumented menu messages used to scroll oversized popup menus (same as the
+// on-screen up/down arrow buttons).
+constexpr UINT kMnButtonDown = 0x01ED;
+constexpr WPARAM kMnScrollDown = (WPARAM)0xFFFFFFFC;
+constexpr WPARAM kMnScrollUp = (WPARAM)0xFFFFFFFD;
+
+static HHOOK gMenuWheelLLHook = nullptr;
+static int gMenuWheelHookDepth = 0;
+
+static HWND GetMenuPopupHwndAtPoint(POINT pt) {
+    HWND hwnd = WindowFromPoint(pt);
+    for (int guard = 0; hwnd && guard < 16; guard++, hwnd = GetParent(hwnd)) {
+        WCHAR cls[16]{};
+        if (GetClassNameW(hwnd, cls, (int)dimof(cls)) && str::Eq(cls, L"#32768")) {
+            return hwnd;
+        }
+    }
+    HWND best = nullptr;
+    LONG bestArea = 0;
+    hwnd = nullptr;
+    while ((hwnd = FindWindowExW(nullptr, hwnd, L"#32768", nullptr)) != nullptr) {
+        RECT rc;
+        if (!GetWindowRect(hwnd, &rc) || !PtInRect(&rc, pt)) {
+            continue;
+        }
+        LONG area = (rc.right - rc.left) * (rc.bottom - rc.top);
+        if (!best || area < bestArea) {
+            best = hwnd;
+            bestArea = area;
+        }
+    }
+    return best;
+}
+
+static void ScrollMenuPopupHwnd(HWND hMenu, int delta) {
+    if (!hMenu || delta == 0) {
+        return;
+    }
+    WPARAM scrollCmd = delta > 0 ? kMnScrollUp : kMnScrollDown;
+    int steps = abs(delta) / WHEEL_DELTA;
+    if (steps < 1) {
+        steps = 1;
+    }
+    steps *= 3;
+    if (steps > 15) {
+        steps = 15;
+    }
+    for (int i = 0; i < steps; i++) {
+        SendMessageW(hMenu, kMnButtonDown, scrollCmd, 0);
+    }
+}
+
+static bool MenuWheelScrollHandleDelta(int delta) {
+    if (delta == 0) {
+        return false;
+    }
+    POINT pt;
+    GetCursorPos(&pt);
+    HWND hMenu = GetMenuPopupHwndAtPoint(pt);
+    if (!hMenu) {
+        hMenu = FindWindowW(L"#32768", nullptr);
+    }
+    if (!hMenu) {
+        return false;
+    }
+    ScrollMenuPopupHwnd(hMenu, delta);
+    return true;
+}
+
+static LRESULT CALLBACK MenuWheelLowLevelMouseHook(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode >= 0 && gMenuWheelHookDepth > 0 && wParam == WM_MOUSEWHEEL) {
+        MSLLHOOKSTRUCT* info = (MSLLHOOKSTRUCT*)lParam;
+        if (info) {
+            int delta = (short)HIWORD(info->mouseData);
+            if (MenuWheelScrollHandleDelta(delta)) {
+                return 1;
+            }
+        }
+    }
+    return CallNextHookEx(gMenuWheelLLHook, nCode, wParam, lParam);
+}
+
+void MenuWheelScrollHookInstall() {
+    gMenuWheelHookDepth++;
+    if (!gMenuWheelLLHook) {
+        gMenuWheelLLHook = SetWindowsHookExW(WH_MOUSE_LL, MenuWheelLowLevelMouseHook,
+                                             GetModuleHandleW(nullptr), 0);
+    }
+}
+
+void MenuWheelScrollHookUninstall() {
+    if (gMenuWheelHookDepth > 0) {
+        gMenuWheelHookDepth--;
+    }
+    if (gMenuWheelHookDepth == 0 && gMenuWheelLLHook) {
+        UnhookWindowsHookEx(gMenuWheelLLHook);
+        gMenuWheelLLHook = nullptr;
+    }
+}
+
+bool MenuWheelScrollIsActive() {
+    return gMenuWheelHookDepth > 0;
+}
+
+bool MenuWheelScrollHandleWheel(WPARAM wp) {
+    if (!MenuWheelScrollIsActive()) {
+        return false;
+    }
+    int delta = (short)HIWORD(wp);
+    return MenuWheelScrollHandleDelta(delta);
 }

@@ -210,7 +210,8 @@ class HtmlFormatter {
 
     bool EmitImage(const ByteSlice* img, const SizeF* maxSize = nullptr, bool center = false);
     void EmitHr();
-    void EmitTextRun(const char* s, const char* end);
+    void EmitTextRun(const char* s, const char* end, bool allowScriptSplit = true, bool trackSourcePos = true);
+    void EmitMixedScriptTextRun(const char* s, const char* end);
     void EmitElasticSpace();
     void EmitParagraph(float indent);
     void EmitEmptyLine(float lineDy);

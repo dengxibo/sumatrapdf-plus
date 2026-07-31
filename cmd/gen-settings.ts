@@ -154,6 +154,33 @@ function isComment(f: Field): boolean {
 
 const ebookUI: Field[] = [
   mkField("FontSize", Float, 0, "font size, default 8.0"),
+  setVersion(
+    mkField(
+      "FontFamily",
+      Str,
+      "Literata",
+      "default Latin/serif body font for reflowable ebooks (EPUB, MOBI). Empty uses Literata",
+    ),
+    "3.7.21",
+  ),
+  setVersion(
+    mkField(
+      "CjkFontFamily",
+      Str,
+      "Source Han Serif SC",
+      "default CJK body font for reflowable ebooks. Empty uses Source Han Serif SC",
+    ),
+    "3.7.21",
+  ),
+  setVersion(
+    mkField(
+      "CjkFontFile",
+      Str,
+      null,
+      "optional override: bundled CJK font file in fonts\\ when auto-detect by CjkFontFamily fails",
+    ),
+    "3.7.21",
+  ),
   mkField("LayoutDx", Float, 0, "page width in pt for flowed ebooks. 0 means automatic reader-style width"),
   mkField("LayoutDy", Float, 0, "page height in pt for flowed ebooks. 0 means automatic reader-style height"),
   mkField("IgnoreDocumentCSS", Bool, false, "if true, we ignore ebook's CSS"),

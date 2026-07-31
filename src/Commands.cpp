@@ -256,6 +256,8 @@ static SeqStrings gCommandNames =
     "CmdReadAloudSelection\0"
     "CmdFindToggleMatchWholeWord\0"
     "CmdAssociateCommonFileTypes\0"
+    "CmdSetEbookLatinFont\0"
+    "CmdSetEbookCjkFont\0"
     "CmdNone\0"
     "\0";
 
@@ -502,6 +504,8 @@ static i32 gCommandIds[] = {
     CmdReadAloudSelection,
     CmdFindToggleMatchWholeWord,
     CmdAssociateCommonFileTypes,
+    CmdSetEbookLatinFont,
+    CmdSetEbookCjkFont,
     CmdNone,
 };
 
@@ -748,6 +752,8 @@ SeqStrings gCommandDescriptions =
     "Start Reading Selection\0"
     "Find: Toggle Match Whole Word\0"
     "Associate Common Document Formats...\0"
+    "Set Ebook Western Body Font\0"
+    "Set Ebook CJK Body Font\0"
     "Do nothing\0"
     "\0";
 // clang-format on
@@ -785,6 +791,9 @@ static const ArgSpec argSpecs[] = {
     {CmdScrollUp, kCmdArgN, CommandArg::Type::Int}, // default
 
     {CmdSetTheme, kCmdArgTheme, CommandArg::Type::String}, // default
+
+    {CmdSetEbookLatinFont, kCmdArgFontFamily, CommandArg::Type::String}, // default
+    {CmdSetEbookCjkFont, kCmdArgFontFamily, CommandArg::Type::String}, // default
 
     {CmdZoomCustom, kCmdArgLevel, CommandArg::Type::String}, // default
 
