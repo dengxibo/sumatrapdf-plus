@@ -6,6 +6,8 @@
 
 - add **Settings** menu → **Reading Font** for EPUB/MOBI: **Western Body Font** and **CJK Body Font** separately; fonts above the separator line are from the `fonts\` folder next to the executable, fonts below are installed on the system
   设置菜单新增「字体」（EPUB/MOBI）：可分别选择西文字体与中文字体；横线上方为 `fonts\` 文件夹字体，横线下方为系统已安装字体
+- upgrade from earlier builds: delete `SumatraPDF-settings.txt` before first run (portable: next to the exe; installed: `%LOCALAPPDATA%\SumatraPDF\SumatraPDF-settings.txt`)
+  从旧版升级：首次运行前删除配置文件（便携版在 exe 同目录；安装版见 `%LOCALAPPDATA%\SumatraPDF\`）
 
 ## 3.7.20 (2026-07-31)
 
