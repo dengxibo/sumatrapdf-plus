@@ -153,7 +153,7 @@ function isComment(f: Field): boolean {
 }
 
 const ebookUI: Field[] = [
-  mkField("FontSize", Float, 0, "font size, default 8.0"),
+  mkField("FontSize", Float, 0, "ebook body font size in points; 0 uses built-in default (~11 pt), 6-26 forces this size (out of range ignored)"),
   setVersion(
     mkField(
       "FontFamily",
@@ -910,13 +910,13 @@ const globalPrefs: Field[] = [
       mkField(
         "DocumentColorMode",
         Str,
-        "smart",
+        "theme",
         "document color mode for readable formats (PDF, EPUB, MOBI, CHM, XPS, DjVu, Markdown, etc.): " +
-          "smart (intelligent adaptation), original (publisher colors unchanged), or theme (follow current UI theme)",
+          "original (publisher colors unchanged) or theme (match current UI theme)",
       ),
       "3.7",
     ),
-    "Valid values: smart, original, theme. Legacy aliases auto, light, black are still accepted on load.",
+    "Valid values: original, theme. Legacy aliases smart, auto, black, light are still accepted on load.",
   ),
   mkField(
     "TocDy",

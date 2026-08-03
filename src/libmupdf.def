@@ -300,6 +300,7 @@ EXPORTS
 	fz_keep_glyph_cache
 	fz_drop_glyph_cache_context
 	fz_purge_glyph_cache
+	fz_purge_fallback_font_cache
 	fz_outline_ft_glyph
 	fz_outline_glyph
 	fz_render_ft_glyph
@@ -944,3 +945,4 @@ EXPORTS
 	fz_htdoc_reparse_html
 	fz_purge_stored_html
 	fz_purge_stored_html_chapter
+	fz_reset_epub_html_font_set

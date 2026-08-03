@@ -15,7 +15,9 @@ struct TextSelection {
     int startGlyph = -1;
     int endGlyph = -1;
     float startDragX = 0;
+    float startDragY = 0;
     int dragHoriz = 0;
+    int dragVert = 0;
 
     EngineBase* engine = nullptr;
 

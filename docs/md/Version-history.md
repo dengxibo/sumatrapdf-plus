@@ -2,6 +2,24 @@
 
 ## next
 
+## 3.7.22 (2026-08-03)
+
+- add PDF table-of-contents editing: create, rename, retarget, delete, reorder and change hierarchy; preserve outline styling and save together with other PDF changes
+  新增 PDF 目录编辑：可创建、重命名、修改目标、删除、排序和调整层级；保留目录样式，并与其他 PDF 修改一并保存
+
+- fix image context menu: restore **Copy To Clipboard** on PDF images; port full **Image** submenu (copy, save, crop, resize, convert to PDF) to EPUB and other formats
+  修复图片右键菜单：PDF 图片恢复「复制到剪贴板」；将完整「图像」子菜单（复制、保存、裁切、调整尺寸、转换为 PDF）移植到 EPUB 等格式
+- show a progress notification while ebook font or font-size changes relayout or reload the document (wait cursor + progress bar)
+  调整电子书字体或字号时显示进度通知（等待光标与进度条），避免长时间重排时误以为程序无响应
+- add toolbar **Decrease Font Size** / **Increase Font Size** buttons for reflowable ebooks (EPUB/MOBI); adjusts `EBookUI.FontSize` in 2 pt steps (6–26) with scroll position preserved
+  为可重排电子书（EPUB/MOBI）增加工具栏缩小/放大字号按钮；每次 2 磅（6–26），并尽量保持阅读位置
+- fix cumulative search highlight drift on reflow EPUB when UTF-8 and WCHAR page text diverge; align text extraction and map search hits to selection glyphs
+  修复可重排 EPUB 搜索高亮逐段错位（累积借位）：对齐 UTF-8/WCHAR 文本流并正确映射命中到字形索引
+- fix vertical reflow EPUB text selection, word lookup, and search highlight offset
+  修复竖排可重排 EPUB 划词、查词与搜索高亮偏移的问题
+- rescan document search after progressive EPUB reflow completes; fix duplicate search results and failed jump-to-match navigation
+  渐进加载完成后重新搜索全书；修复重复结果与无法跳转到匹配项
+
 ## 3.7.21 (2026-08-01)
 
 - add **Settings** menu → **Reading Font** for EPUB/MOBI: **Western Body Font** and **CJK Body Font** separately; fonts above the separator line are from the `fonts\` folder next to the executable, fonts below are installed on the system
@@ -207,6 +225,7 @@ Available in [pre-release](https://www.sumatrapdfreader.org/prerelease) builds.
 - add `CmdSetPdfDocumentColorModeAuto`, `CmdSetPdfDocumentColorModeBlack`, and `CmdSetPdfDocumentColorModeLight` toolbar buttons (visible for PDF in dark theme) to set PDF document rendering: auto (smart dark mode), black (full dark), light (original colors)
 - add `CmdToggleDoubleClickWordLookup` (`Toggle Double-Click Word Lookup` in `Ctrl + k` [command palette](Command-Palette.md)) and toolbar button to enable or disable offline dictionary lookup on double-click; default is enabled (`EnableDoubleClickWordLookup` advanced setting)
 - add `CmdEbookFontSizeDecrease` and `CmdEbookFontSizeIncrease` toolbar buttons to change reflowable ebook font size and reload the document
+- add `CmdEbookFontSizeReset` to restore the built-in reflowable ebook font size from the Reading Font menu or command palette
 - add cmd-line tools `SumatraPDF <tool> <args>`. Tools: draw, convert, audit, bake, clean, create, extract, info, merge, pages, poster, recolor, show, trim, grep, trace
 - add `CmdPdShowInfo` (`Show PDF Info` in `Ctrl + k` [command palette](Command-Palette.md))
 - add `CmdDocumentShowOutline` (`Show Document Outline` in `Ctrl + k` [command palette](Command-Palette.md))

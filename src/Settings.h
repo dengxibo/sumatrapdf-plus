@@ -79,7 +79,8 @@ struct FixedPageUI {
 
 // customization options for eBookUI
 struct EBookUI {
-    // font size, default 8.0
+    // ebook body font size in points; 0 uses built-in default (~11 pt),
+    // 6-26 forces this size (out of range ignored)
     float fontSize;
     // default Latin/serif body font for reflowable ebooks (EPUB, MOBI).
     // Empty uses Literata
@@ -551,8 +552,8 @@ struct GlobalPrefs {
     // the light theme to use when toggling from dark mode
     char* lastLightTheme;
     // document color mode for readable formats (PDF, EPUB, MOBI, CHM, XPS,
-    // DjVu, Markdown, etc.): smart (intelligent adaptation), original
-    // (publisher colors unchanged), or theme (follow current UI theme)
+    // DjVu, Markdown, etc.): original (publisher colors unchanged) or
+    // theme (match current UI theme)
     char* documentColorMode;
     // if both favorites and bookmarks parts of sidebar are visible, this
     // is the height of bookmarks (table of contents) part
@@ -718,7 +719,8 @@ static const StructInfo gFixedPageUIInfo = {sizeof(FixedPageUI), 9, gFixedPageUI
                                             "dientColors\0InvertColors\0WindowBgCol\0FindMatchColor"};
 
 static const FieldInfo gEBookUIFields[] = {
-    {offsetof(EBookUI, fontSize), SettingType::Float, (intptr_t)"0", "电子书字号"},
+    {offsetof(EBookUI, fontSize), SettingType::Float, (intptr_t)"0",
+     "6–26 之间的数字，单位是磅（pt）；0=内置默认；超出范围无效"},
     {offsetof(EBookUI, fontFamily), SettingType::String, (intptr_t)"Literata", "电子书西文/默认衬线字体"},
     {offsetof(EBookUI, cjkFontFamily), SettingType::String, (intptr_t)"Source Han Serif SC", "电子书中文正文字体"},
     {offsetof(EBookUI, cjkFontFile), SettingType::String, 0, nullptr},
@@ -1029,8 +1031,8 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, theme), SettingType::String, (intptr_t)"", "当前主题"},
     {offsetof(GlobalPrefs, lastDarkTheme), SettingType::String, (intptr_t)"Dark-Dracula", "切换到深色模式时的主题"},
     {offsetof(GlobalPrefs, lastLightTheme), SettingType::String, (intptr_t)"Light-Warm", "切换到浅色模式时的主题"},
-    {offsetof(GlobalPrefs, documentColorMode), SettingType::String, (intptr_t)"smart",
-     "文档颜色模式 smart/original/theme"},
+    {offsetof(GlobalPrefs, documentColorMode), SettingType::String, (intptr_t)"theme",
+     "文档颜色模式 original/theme（原稿/匹配主题）"},
     {offsetof(GlobalPrefs, tocDy), SettingType::Int, 0, "目录区高度（与收藏同显时）"},
     {offsetof(GlobalPrefs, toolbarSize), SettingType::Int, 18, "工具栏高度"},
     {offsetof(GlobalPrefs, treeFontName), SettingType::String, (intptr_t)"automatic", "目录/收藏树字体"},

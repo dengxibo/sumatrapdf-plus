@@ -25,6 +25,7 @@
 
 #include <string.h>
 #include <math.h>
+#include <stdio.h>
 
 #include <zlib.h> /* for crc32 */
 
@@ -1057,6 +1058,34 @@ static int epub_recognize_content(fz_context* ctx, const fz_document_handler* ha
     fz_catch(ctx) fz_rethrow(ctx);
 
     return ret;
+}
+
+void fz_reset_epub_html_font_set(fz_context* ctx, fz_document* doc_) {
+    epub_document* doc;
+    char format[16];
+
+    if (!ctx || !doc_) {
+        return;
+    }
+    if (!doc_->lookup_metadata || !doc_->lookup_metadata(ctx, doc_, FZ_META_FORMAT, format, sizeof(format))) {
+        return;
+    }
+    if (strcmp(format, "EPUB") != 0) {
+        return;
+    }
+    doc = (epub_document*)doc_;
+    fz_purge_stored_html(ctx, doc_);
+    fz_drop_html(ctx, doc->most_recent_html);
+    doc->most_recent_html = NULL;
+    if (doc->accel) {
+        invalidate_accelerator(ctx, doc->accel);
+    }
+    doc->layout_w = 0;
+    doc->layout_h = 0;
+    doc->layout_em = 0;
+    fz_drop_html_font_set(ctx, doc->set);
+    doc->set = fz_new_html_font_set(ctx);
+    doc->css_sum = user_css_sum(ctx);
 }
 
 static const char* epub_extensions[] = {"epub", NULL};

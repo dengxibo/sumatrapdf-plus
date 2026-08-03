@@ -90,11 +90,12 @@ CmdToggleFrequentlyRead,,Toggle Frequently Read,ver 3.5+
 CmdSelectNextTheme,,Select Next Theme,ver 3.5+
 CmdToggleLightDarkTheme,,Toggle Light/Dark Theme,Toolbar button and command palette, ver 3.7+
 CmdSetPdfDocumentColorModeAuto,,Set Document Color Mode: Smart,"Toolbar button; smart color adaptation for any readable document, ver 3.7+"
-CmdSetPdfDocumentColorModeBlack,,Set Document Color Mode: Match Theme,"Toolbar button; follow current theme colors for document content, ver 3.7+"
+CmdSetPdfDocumentColorModeBlack,,Set Document Color Mode: Match Theme,"Toolbar button; match current theme colors for document content, ver 3.7+"
 CmdSetPdfDocumentColorModeLight,,Set Document Color Mode: Original,"Toolbar button; original document colors unchanged, ver 3.7+"
 CmdToggleDoubleClickWordLookup,,Toggle Double-Click Word Lookup,"Toolbar button and command palette; toggles EnableDoubleClickWordLookup advanced setting, ver 3.7+"
 CmdEbookFontSizeDecrease,,Ebook Font Size: Decrease,"Toolbar button and command palette; decreases reflowable ebook font size and reloads the document, ver 3.7+"
 CmdEbookFontSizeIncrease,,Ebook Font Size: Increase,"Toolbar button and command palette; increases reflowable ebook font size and reloads the document, ver 3.7+"
+CmdEbookFontSizeReset,,Ebook Font Size: Reset to Default,"Reading Font menu and command palette; restores the built-in document-aware ebook font size and reloads the document, ver 3.7+"
 CmdToggleLinks,,Toggle Show Links,"Toggle drawing blue rectangle around links, ver 3.6+"
 ```
 
@@ -181,8 +182,16 @@ CmdCreateAnnotText,,Create Text Annotation,
 CmdCreateAnnotUnderline,"u, U",Create Underline Annotation,
 CmdDeleteAnnotation,Delete,Delete Annotation,
 CmdEditAnnotations,,Edit Annotations,
-CmdSaveAnnotations,Shift + Ctrl + S,Save Annotations to existing PDF,
-CmdSaveAnnotationsNewFile,,Save Annotations to new PDF,ver 3.6+
+CmdSaveAnnotations,Shift + Ctrl + S,Save changes to existing PDF,
+CmdSaveAnnotationsNewFile,,Save changes to a new PDF,ver 3.6+
+CmdPdfTocAddAfter,,PDF TOC: Add Item After,"PDF only, ver 3.7+"
+CmdPdfTocAddChild,,PDF TOC: Add Child Item,"PDF only, ver 3.7+"
+CmdPdfTocEdit,,PDF TOC: Edit Item,"PDF only, ver 3.7+"
+CmdPdfTocDelete,,PDF TOC: Delete Item,"PDF only, ver 3.7+"
+CmdPdfTocMoveUp,,PDF TOC: Move Item Up,"PDF only, ver 3.7+"
+CmdPdfTocMoveDown,,PDF TOC: Move Item Down,"PDF only, ver 3.7+"
+CmdPdfTocPromote,,PDF TOC: Promote Item,"PDF only, ver 3.7+"
+CmdPdfTocDemote,,PDF TOC: Demote Item,"PDF only, ver 3.7+"
 CmdShowAnnotations,,Show Annotations,"ver 3.6+, for current document"
 CmdHideAnnotations,,Hide Annotations,"ver 3.6+, for current document"
 CmdToggleShowAnnotations,,Toggle Showing Annotations,"ver 3.6+, for current document"
@@ -273,6 +282,7 @@ CmdScreenshot,,Take Screenshot,"ver 3.7+, requires Shortcuts entry (e.g. Key = P
 CmdCropImage,,Crop Image,ver 3.7+
 CmdResizeImage,,Resize Image,ver 3.7+
 CmdSaveImage,,Save Image,"Save image from context menu, ver 3.7+"
+CmdConvertImageToPdf,,Convert Image to PDF,"Convert image to PDF from context menu, ver 3.7+"
 CmdPasteClipboardImage,,Paste Image From Clipboard,"Paste image from clipboard and open it, ver 3.7+"
 CmdShowErrors,,Show Errors,"Show mupdf warnings/errors in right-click context menu, ver 3.7+"
 CmdShowLog,,Show Logs,

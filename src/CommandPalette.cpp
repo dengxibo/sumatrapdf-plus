@@ -25,6 +25,7 @@
 #include "SumatraConfig.h"
 #include "Commands.h"
 #include "CommandAvailability.h"
+#include "EbookFontMenu.h"
 #include "CommandPalette.h"
 #include "Accelerators.h"
 #include "SumatraPDF.h"
@@ -149,6 +150,7 @@ static i32 gCommandsNoActivate[] = {
     CmdListPrinters,
     CmdCropImage,
     CmdResizeImage,
+    CmdConvertImageToPdf,
     CmdTabGroupSave,
     CmdTabGroupRestore,
     // TOOD: probably more
@@ -267,6 +269,7 @@ struct CommandPaletteBuildCtx {
     bool canCloseTabsToLeft = false;
     bool isPdf = false;
     bool isPdfEncrypted = false;
+    bool isReflowableEbook = false;
     int pageCount = 0;
     bool isSinglePage = false;
     bool hasDocTabs = false;
@@ -305,6 +308,7 @@ static bool AllowCommand(const CommandPaletteBuildCtx& ctx, i32 cmdId) {
     appCtx.canCloseTabsToLeft = ctx.canCloseTabsToLeft;
     appCtx.isPdf = ctx.isPdf;
     appCtx.isPdfEncrypted = ctx.isPdfEncrypted;
+    appCtx.isReflowableEbook = ctx.isReflowableEbook;
     appCtx.pageCount = ctx.pageCount;
     appCtx.isSinglePage = ctx.isSinglePage;
     appCtx.hasDocTabs = ctx.hasDocTabs;
@@ -514,8 +518,11 @@ static bool AllowCommand(const CommandPaletteBuildCtx& ctx, i32 cmdId) {
     if (!ctx.cursorOnComment && (cmdId == CmdCopyComment)) {
         return false;
     }
-    if (!ctx.cursorOnImage && (cmdId == CmdCopyImage)) {
-        return false;
+    if (!ctx.cursorOnImage && ctx.engineKind != kindEngineImage) {
+        if (cmdId == CmdCopyImage || cmdId == CmdSaveImage || cmdId == CmdCropImage ||
+            cmdId == CmdResizeImage || cmdId == CmdConvertImageToPdf) {
+            return false;
+        }
     }
     if ((cmdId == CmdToggleBookmarks) || (cmdId == CmdToggleTableOfContents)) {
         return ctx.hasToc;
@@ -763,6 +770,7 @@ void CommandPaletteWnd::CollectStrings(MainWindow* mainWin) {
     ctx.hasSelection = ctx.isDocLoaded && currTab && mainWin->showSelection && currTab->selectionOnPage;
     ctx.canSendEmail = CanSendAsEmailAttachment(currTab);
     ctx.isPdf = ctx.isDocLoaded && CouldBePDFDoc(currTab);
+    ctx.isReflowableEbook = ctx.isDocLoaded && IsReflowableEbookTabForFontMenu(currTab);
     if (ctx.isPdf && currTab) {
         ctx.isPdfEncrypted = EngineMupdfIsEncrypted(currTab->GetEngine());
     }
@@ -820,7 +828,7 @@ void CommandPaletteWnd::CollectStrings(MainWindow* mainWin) {
 
         // PointF ptOnPage = dm->CvtFromScreen(cursorPos, pageNoUnderCursor);
         //  TODO: should this be point on page?
-        IPageElement* pageEl = dm->GetElementAtPos(cursorPos, nullptr);
+        IPageElement* pageEl = dm->GetElementAtPos(cursorPos, nullptr, true);
         if (pageEl) {
             char* value = pageEl->GetValue();
             ctx.cursorOnLinkTarget = value && pageEl->Is(kindPageElementDest);
@@ -1355,8 +1363,7 @@ void DrawMaybeHighlightedText(DrawMaybeHighlightedTextArgs& args) {
                 int wOff = wcharLenAtByteOffset(off);
                 int wEnd = wcharLenAtByteOffset(end);
                 bool leftViolation = wOff > 0 && isWordChar(textW[wOff - 1]) && isWordChar(textW[wOff]);
-                bool rightViolation =
-                    wEnd < textWLen && isWordChar(textW[wEnd - 1]) && isWordChar(textW[wEnd]);
+                bool rightViolation = wEnd < textWLen && isWordChar(textW[wEnd - 1]) && isWordChar(textW[wEnd]);
                 wholeWordOk = !leftViolation && !rightViolation;
             }
             if (wholeWordOk) {

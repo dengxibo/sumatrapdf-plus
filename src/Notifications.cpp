@@ -43,6 +43,7 @@ Kind kNotifPageInfo = "pageInfoHelper";
 // can have multiple of those
 Kind kNotifAdHoc = "notifAdHoc";
 Kind kNotifThemeRelayout = "themeRelayout";
+Kind kNotifEbookFontLayout = "ebookFontLayout";
 
 constexpr int kPadding = 6;
 constexpr int kTopLeftMargin = 8;
@@ -416,6 +417,7 @@ bool UpdateNotificationProgress(NotificationWnd* wnd, const char* msg, int perc)
     ReportIf(perc < 0 || perc > 100);
     wnd->progressPerc = perc;
     wnd->UpdateMessage(msg);
+    HwndRepaintNow(wnd->hwnd);
     return true;
 }
 

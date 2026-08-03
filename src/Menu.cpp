@@ -55,6 +55,7 @@
 
 struct BuildMenuCtx {
     WindowTab* tab = nullptr;
+    Point cursorPos = {};
     bool isCbx = false;
     bool isImageCollection = false;
     bool hasSelection = false;
@@ -126,7 +127,7 @@ static MenuDef menuDefFile[] = {
         CmdSaveAs,
     },
     {
-        _TRN("Save Annotations to existing PDF"),
+        _TRN("Save changes to existing PDF"),
         CmdSaveAnnotations,
     },
 //[ ACCESSKEY_ALTERNATIVE // only one of these two will be shown
@@ -245,6 +246,14 @@ MenuDef menuDefEbookReadingFont[] = {
     {
         _TRN("&CJK Body Font"),
         (UINT_PTR)menuDefEbookCjkFonts,
+    },
+    {
+        kMenuSeparator,
+        0,
+    },
+    {
+        _TRN("Reset Font Si&ze to Default"),
+        CmdEbookFontSizeReset,
     },
     {
         nullptr,
@@ -835,6 +844,10 @@ static MenuDef menuDefContextImage[] = {
         CmdResizeImage,
     },
     {
+        _TRN("Convert to &PDF"),
+        CmdConvertImageToPdf,
+    },
+    {
         nullptr,
         0,
     },
@@ -921,7 +934,7 @@ static MenuDef menuDefContext[] = {
         CmdDeleteAnnotation,
     },
     {
-        _TRN("Save Annotations to existing PDF"),
+        _TRN("Save changes to existing PDF"),
         CmdSaveAnnotations,
     },
     {
@@ -1216,6 +1229,7 @@ BuildMenuCtx* NewBuildMenuCtx(WindowTab* tab, Point pt) {
         return ctx;
     }
     ctx->tab = tab;
+    ctx->cursorPos = pt;
     EngineBase* engine = tab->GetEngine();
     if (engine && (engine->kind == kindEngineComicBooks)) {
         ctx->isCbx = true;
@@ -1428,7 +1442,7 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
     }
     AppCommandCtx appCtx;
     if (ctx && ctx->tab && ctx->tab->win) {
-        appCtx = NewAppCommandCtx(ctx->tab->win);
+        appCtx = NewAppCommandCtx(ctx->tab->win, ctx->cursorPos);
         appCtx.hasSelection = ctx->hasSelection;
         appCtx.supportsAnnots = ctx->supportsAnnotations || ctx->supportsEbookAnnotations;
         appCtx.annotationUnderCursor = ctx->annotationUnderCursor;
@@ -2051,6 +2065,7 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
         if (!isImageEngine && !onImage) {
             MenuRemove(popup, CmdCropImage);
             MenuRemove(popup, CmdResizeImage);
+            MenuRemove(popup, CmdConvertImageToPdf);
         }
         // remove the Image submenu entirely if no items left
         if (!onImage && !isImageEngine) {
@@ -2196,7 +2211,8 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
     switch (cmdId) {
         case CmdSaveImage:
         case CmdCropImage:
-        case CmdResizeImage: {
+        case CmdResizeImage:
+        case CmdConvertImageToPdf: {
             if (pageEl && pageEl->Is(kindPageElementImage)) {
                 RenderedBitmap* bmp = dm->GetEngine()->GetImageForPageElement(pageEl);
                 if (bmp) {
@@ -2205,12 +2221,15 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
                     TempStr noExt = path::GetPathNoExtTemp(base);
                     TempStr destPath = path::JoinTemp(dir, str::FormatTemp("%s_page_%d.png", noExt, pageNoUnderCursor));
                     ImageEditMode m = ImageEditMode::Save;
+                    bool selectPdf = false;
                     if (cmdId == CmdCropImage) {
                         m = ImageEditMode::Crop;
                     } else if (cmdId == CmdResizeImage) {
                         m = ImageEditMode::Resize;
+                    } else if (cmdId == CmdConvertImageToPdf) {
+                        selectPdf = true;
                     }
-                    ShowImageEditWindow(win, m, destPath, bmp);
+                    ShowImageEditWindow(win, m, destPath, bmp, selectPdf);
                     delete bmp;
                 }
             } else {
@@ -2880,8 +2899,7 @@ static LRESULT CALLBACK MenuWheelLowLevelMouseHook(int nCode, WPARAM wParam, LPA
 void MenuWheelScrollHookInstall() {
     gMenuWheelHookDepth++;
     if (!gMenuWheelLLHook) {
-        gMenuWheelLLHook = SetWindowsHookExW(WH_MOUSE_LL, MenuWheelLowLevelMouseHook,
-                                             GetModuleHandleW(nullptr), 0);
+        gMenuWheelLLHook = SetWindowsHookExW(WH_MOUSE_LL, MenuWheelLowLevelMouseHook, GetModuleHandleW(nullptr), 0);
     }
 }
 

@@ -102,4 +102,6 @@ struct TextSearch : public TextSelection {
     bool PageMightContainAnchor(int pageNo) const;
     // jump to a match using a cached session position list (wrap order from startPage)
     bool TryFindFromCachedPositions(const Vec<u64>& positions, int startPage);
+    // discard per-page match lists after reflow/layout changes
+    void InvalidatePageMatchCache();
 };

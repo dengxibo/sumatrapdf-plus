@@ -1195,6 +1195,10 @@ HPROPSHEETPAGE CreatePrintAdvancedPropSheet(Print_Advanced_Data* data, ScopedMem
 struct Dialog_AddFav_Data {
     char* pageNo = nullptr;
     char* favName = nullptr;
+    const char* dialogTitle = nullptr;
+    const char* prompt = nullptr;
+    bool showSetCurrentView = false;
+    bool setCurrentView = false;
     ~Dialog_AddFav_Data() {
         str::Free(pageNo);
         str::Free(favName);
@@ -1209,11 +1213,23 @@ static INT_PTR CALLBACK Dialog_AddFav_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARA
             DarkMode::setDarkWndSafe(hDlg);
         }
         UpdateWindowCaptionTheme(hDlg);
-        HwndSetText(hDlg, _TRA("Add Favorite"));
-        TempStr s = str::FormatTemp(_TRA("Add page %s to favorites with (optional) name:"), data->pageNo);
-        HwndSetDlgItemText(hDlg, IDC_ADD_PAGE_STATIC, s);
+        HwndSetText(hDlg, data->dialogTitle ? data->dialogTitle : _TRA("Add Favorite"));
+        TempStr s;
+        const char* prompt = data->prompt;
+        if (!prompt) {
+            s = str::FormatTemp(_TRA("Add page %s to favorites with (optional) name:"), data->pageNo);
+            prompt = s;
+        }
+        HwndSetDlgItemText(hDlg, IDC_ADD_PAGE_STATIC, prompt);
         HwndSetDlgItemText(hDlg, IDOK, _TRA("OK"));
         HwndSetDlgItemText(hDlg, IDCANCEL, _TRA("Cancel"));
+        HWND setCurrent = GetDlgItem(hDlg, IDC_PDF_TOC_SET_CURRENT);
+        if (data->showSetCurrentView) {
+            HwndSetText(setCurrent, _TRA("Set target to current view"));
+            Button_SetCheck(setCurrent, data->setCurrentView ? BST_CHECKED : BST_UNCHECKED);
+        } else {
+            ShowWindow(setCurrent, SW_HIDE);
+        }
         if (data->favName) {
             HwndSetDlgItemText(hDlg, IDC_FAV_NAME_EDIT, data->favName);
             EditSelectAll(GetDlgItem(hDlg, IDC_FAV_NAME_EDIT));
@@ -1233,6 +1249,9 @@ static INT_PTR CALLBACK Dialog_AddFav_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARA
                 str::ReplaceWithCopy(&data->favName, name);
             } else {
                 str::FreePtr(&data->favName);
+            }
+            if (data->showSetCurrentView) {
+                data->setCurrentView = Button_GetCheck(GetDlgItem(hDlg, IDC_PDF_TOC_SET_CURRENT)) == BST_CHECKED;
             }
             EndDialog(hDlg, IDOK);
             return TRUE;
@@ -1759,5 +1778,24 @@ bool Dialog_AddFavorite(HWND hwnd, const char* pageNo, AutoFreeStr& favName) {
     }
 
     favName.SetCopy(data.favName);
+    return true;
+}
+
+bool Dialog_PdfTocTitle(HWND hwnd, const char* dialogTitle, const char* prompt, AutoFreeStr& title,
+                        bool* setTargetToCurrentView) {
+    Dialog_AddFav_Data data;
+    data.favName = str::Dup(title);
+    data.dialogTitle = dialogTitle;
+    data.prompt = prompt;
+    data.showSetCurrentView = setTargetToCurrentView != nullptr;
+    data.setCurrentView = setTargetToCurrentView && *setTargetToCurrentView;
+    INT_PTR res = CreateAppDialogBox(IDD_DIALOG_FAV_ADD, hwnd, Dialog_AddFav_Proc, (LPARAM)&data);
+    if (res != IDOK || str::IsEmpty(data.favName)) {
+        return false;
+    }
+    title.SetCopy(data.favName);
+    if (setTargetToCurrentView) {
+        *setTargetToCurrentView = data.setCurrentView;
+    }
     return true;
 }

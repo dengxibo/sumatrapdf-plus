@@ -61,6 +61,24 @@ const stringsToAdd: Record<string, { cn: string; tw: string }> = {
     cn: "正在应用文档颜色，重新渲染页面…",
     tw: "正在套用文件顏色，重新渲染頁面…",
   },
+  "Adjusting font size, reformatting pages…": {
+    cn: "正在调整字号，重新排版…",
+    tw: "正在調整字級，重新排版…",
+  },
+  "Applying ebook font, reloading…": {
+    cn: "正在应用字体，重新加载…",
+    tw: "正在套用字體，重新載入…",
+  },
+  "Applying ebook font, reformatting pages…": {
+    cn: "正在应用字体，重新排版…",
+    tw: "正在套用字體，重新排版…",
+  },
+  "Adjusting ebook layout… chapter %d / %d": {
+    cn: "正在调整电子书版式…第 %d / %d 章",
+    tw: "正在調整電子書版式…第 %d / %d 章",
+  },
+  "Convert to &PDF": { cn: "转换为 PDF(&P)", tw: "轉換為 PDF(&P)" },
+  "Convert Image to PDF": { cn: "将图像转换为 PDF", tw: "將圖像轉換為 PDF" },
 };
 
 // Read the full list of supported language codes from TranslationLangs.cpp.

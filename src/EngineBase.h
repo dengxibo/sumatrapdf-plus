@@ -478,6 +478,7 @@ class EngineBase {
     const char* GetTextForPageUtf8(int pageNo, int* lenOut = nullptr, Rect** coordsOut = nullptr);
     // Drop cached per-page text after reflow or theme changes.
     void ClearTextCache();
+    void ClearTextCacheForPage(int pageNo);
     u32 GetTextCacheGeneration() const { return textCacheGeneration; }
     // returns UINT32_MAX when page text is not cached yet
     u32 GetPageAsciiLetterMask(int pageNo);

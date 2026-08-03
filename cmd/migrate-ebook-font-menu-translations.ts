@@ -11,6 +11,8 @@ const stringsToAdd: Record<string, { cn: string; tw: string }> = {
   "&Western Body Font": { cn: "西文字体(&W)", tw: "西文字體(&W)" },
   "&CJK Body Font": { cn: "中文字体(&C)", tw: "中文字體(&C)" },
   "&System Font": { cn: "系统字体(&S)", tw: "系統字體(&S)" },
+  "Reset Font Si&ze to Default": { cn: "恢复默认字号(&Z)", tw: "恢復預設字號(&Z)" },
+  "Ebook Font Size: Reset to Default": { cn: "电子书字号：恢复默认", tw: "電子書字號：恢復預設" },
 };
 
 function readLangCodes(): string[] {

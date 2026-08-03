@@ -114,8 +114,9 @@ static bool IsReaderStyledMobiPath(const char* filePath) {
 static void SetupHtmlFormatterFont(HtmlFormatterArgs& args, const char* /*filePath*/,
                                    EbookTypographyKind typographyKind = EbookTypographyKind::Latin) {
     SetEbookTypographyKind(typographyKind);
-    bool cjk = typographyKind == EbookTypographyKind::Cjk;
-    const WCHAR* fontName = cjk ? GetEbookCjkFontFamilyW() : GetEbookLatinFontFamilyW();
+    bool cjkPrimary =
+        typographyKind == EbookTypographyKind::Cjk || typographyKind == EbookTypographyKind::Bilingual;
+    const WCHAR* fontName = cjkPrimary ? GetEbookCjkFontFamilyW() : GetEbookLatinFontFamilyW();
     args.SetFontName(fontName);
 }
 
@@ -134,8 +135,9 @@ static float GetDefaultFontSize() {
         size = 11.f;
     }
     auto eBookUI = GetEBookUI();
-    if (eBookUI && eBookUI->fontSize > 6 && eBookUI->fontSize < 30) {
-        size = eBookUI->fontSize;
+    float readerFontSize = GetEbookReaderFontSizePt();
+    if (readerFontSize > 0.f) {
+        size = readerFontSize;
     }
     return size * 96.0f / (float)DpiGetForHwnd(HWND_DESKTOP);
 }
@@ -379,13 +381,14 @@ EngineEbook::EngineEbook() {
 
 void EngineEbook::ConfigureMobiReaderStyle(const char* filePath, const ByteSlice& html) {
     readerStyleMobi = IsReaderStyledMobiPath(filePath);
+    SetEbookReaderStyleMobi(readerStyleMobi);
     if (!readerStyleMobi) {
         typographyKind = EbookTypographyKind::Latin;
         SetEbookTypographyKind(typographyKind);
         return;
     }
 
-    typographyKind = DetectHtmlTypographyKind(html);
+    typographyKind = DetectMobiReaderTypography(html);
     SetEbookTypographyKind(typographyKind);
 
     float dpi = GetFileDPI();
@@ -1935,6 +1938,7 @@ bool EngineEpub::FinishLoading() {
         return false;
     }
 
+    SetEbookReaderStyleMobi(false);
     HtmlFormatterArgs args{};
     args.htmlStr = doc->GetHtmlData();
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
@@ -2087,6 +2091,7 @@ bool EngineFb2::FinishLoading() {
         return false;
     }
 
+    SetEbookReaderStyleMobi(false);
     HtmlFormatterArgs args;
     args.htmlStr = doc->GetXmlData();
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
@@ -2266,7 +2271,10 @@ bool EngineMobi::FinishLoading() {
     args.pageDx = (float)pageRect.dx - 2 * pageBorder;
     args.pageDy = (float)pageRect.dy - 2 * pageBorder;
     SetupHtmlFormatterFont(args, FilePath(), typographyKind);
-    args.fontSize = GetDefaultFontSize() * kMobiReaderFontScale;
+    args.fontSize = GetDefaultFontSize();
+    if (!readerStyleMobi) {
+        args.fontSize *= kMobiReaderFontScale;
+    }
     args.textAllocator = allocator;
     args.textRenderMethod = mui::TextRenderMethod::GdiplusQuick;
 

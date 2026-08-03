@@ -40,6 +40,8 @@ enum class TbIcon {
     ArrowsDiagonal,
     ArrowsDiagonalMinimize,
     MatchWholeWord,
+    EbookFontSizeDecrease,
+    EbookFontSizeIncrease,
     kMax
 };
 

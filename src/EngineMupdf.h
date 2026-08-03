@@ -192,7 +192,7 @@ class EngineMupdf : public EngineBase {
     volatile LONG reflowChaptersCounted = 0;
     // set while the UI/render thread needs exclusive docLock access
     volatile LONG reflowUiWantsDocLock = 0;
-    // set while a UI-critical operation (theme change, annotation edit) runs;
+    // nesting depth while UI-critical operations (theme change, annotation edit) run;
     // the background chapter loader fully pauses so it doesn't starve the UI
     // thread's docLock acquisitions for the whole remaining load.
     volatile LONG reflowUiPaused = 0;
@@ -247,6 +247,7 @@ class EngineMupdf : public EngineBase {
     // used to track "dirty" state of annotations. not perfect because if we add and delete
     // the same annotation, we should be back to 0
     bool modifiedAnnotations = false;
+    bool modifiedPdfToc = false;
 
     // Smart Dark Mode engine-level image caches (Phase 6).
     DarkModeEngineCache* darkModeEngineCache = nullptr;

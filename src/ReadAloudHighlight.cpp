@@ -618,7 +618,10 @@ static bool ReadAloudGetGlyphAtCursor(DisplayModel* dm, Point screenPt, int* pag
     if (!dm || !pageOut || !glyphOut || !dm->textSelection) {
         return false;
     }
-    if (!dm->IsOverText(screenPt)) {
+    // This is only called for an explicit cursor-reading action (context menu
+    // or command), so load text on demand. Hover hit-testing remains cache-only
+    // to avoid repeatedly extracting a large reflow chapter on mouse moves.
+    if (!dm->IsOverText(screenPt, true)) {
         return false;
     }
 
@@ -1223,6 +1226,10 @@ static bool ReadAloudGetCurrentAnchor(WindowTab* tab, DisplayModel* dm, int* pag
         return false;
     }
 
+    if (!dm->ValidPageNo(pageNo)) {
+        return false;
+    }
+
     dm->EnsurePagesInfoForPage(pageNo);
     dm->PreparePageNavigation(pageNo);
     Rect screenRect = dm->CvtToScreen(pageNo, pageRect);
@@ -1538,6 +1545,37 @@ static int ReadAloudWordStartUtf8(const char* text, int pos) {
     return pos;
 }
 
+static int ReadAloudFindContextInNewText(const char* oldText, int oldAbs, const char* newText) {
+    if (!oldText || !newText || oldAbs < 0) {
+        return -1;
+    }
+    int oldLen = str::Leni(oldText);
+    if (oldAbs >= oldLen) {
+        return -1;
+    }
+
+    static const int contextRadii[] = {96, 48, 24};
+    for (int radius : contextRadii) {
+        int contextStart = std::max(0, oldAbs - radius / 2);
+        int contextEnd = std::min(oldLen, oldAbs + radius);
+        while (contextStart < oldAbs && (oldText[contextStart] & 0xc0) == 0x80) {
+            contextStart++;
+        }
+        while (contextEnd < oldLen && (oldText[contextEnd] & 0xc0) == 0x80) {
+            contextEnd++;
+        }
+        if (contextEnd <= contextStart) {
+            continue;
+        }
+        TempStr context = str::DupTemp(oldText + contextStart, (size_t)(contextEnd - contextStart));
+        const char* contextHit = str::Find(newText, context);
+        if (contextHit) {
+            return (int)(contextHit - newText) + oldAbs - contextStart;
+        }
+    }
+    return -1;
+}
+
 static int ReadAloudFindAnchorInNewText(const char* oldText, int oldAbs, const char* newText) {
     if (!oldText || !newText || oldAbs < 0) {
         return -1;
@@ -1545,6 +1583,14 @@ static int ReadAloudFindAnchorInNewText(const char* oldText, int oldAbs, const c
     int oldLen = str::Leni(oldText);
     if (oldAbs >= oldLen) {
         return -1;
+    }
+
+    // Prefer some surrounding text over the current word. Short words (and CJK
+    // characters in particular) often occur many times in a chapter, so a word-only
+    // search can resume at the wrong occurrence after pagination changes.
+    int contextAnchor = ReadAloudFindContextInNewText(oldText, oldAbs, newText);
+    if (contextAnchor >= 0) {
+        return contextAnchor;
     }
 
     int wordStart = ReadAloudWordStartUtf8(oldText, oldAbs);
@@ -1570,6 +1616,68 @@ static int ReadAloudFindAnchorInNewText(const char* oldText, int oldAbs, const c
     return (int)(hit - newText);
 }
 
+static int ReadAloudChapterAtAnchor(const ReadAloudHighlightMap* map, int anchorAbs) {
+    if (!map || !map->locs || map->len <= 0 || anchorAbs < 0) {
+        return -1;
+    }
+    anchorAbs = std::min(anchorAbs, map->len - 1);
+    for (int distance = 0; distance < map->len; distance++) {
+        int after = anchorAbs + distance;
+        if (after < map->len && map->locs[after].chapter >= 0) {
+            return map->locs[after].chapter;
+        }
+        int before = anchorAbs - distance;
+        if (before >= 0 && map->locs[before].chapter >= 0) {
+            return map->locs[before].chapter;
+        }
+    }
+    return -1;
+}
+
+static int ReadAloudPageAtAnchor(const ReadAloudHighlightMap* map, int anchorAbs) {
+    if (!map || !map->locs || map->len <= 0 || anchorAbs < 0) {
+        return -1;
+    }
+    anchorAbs = std::min(anchorAbs, map->len - 1);
+    for (int distance = 0; distance < map->len; distance++) {
+        int after = anchorAbs + distance;
+        if (after < map->len && map->locs[after].pageNo > 0) {
+            return map->locs[after].pageNo;
+        }
+        int before = anchorAbs - distance;
+        if (before >= 0 && map->locs[before].pageNo > 0) {
+            return map->locs[before].pageNo;
+        }
+    }
+    return -1;
+}
+
+static int ReadAloudFindAnchorPageAfterReflow(EngineBase* engine, const char* oldText, int anchorAbs, int oldPageNo) {
+    if (!engine || !oldText || anchorAbs < 0) {
+        return -1;
+    }
+    int pageCount = engine->PageCount();
+    oldPageNo = limitValue(oldPageNo, 1, pageCount);
+    for (int distance = 0; distance < pageCount; distance++) {
+        int candidates[] = {oldPageNo + distance, oldPageNo - distance};
+        int candidateCount = distance == 0 ? 1 : 2;
+        for (int i = 0; i < candidateCount; i++) {
+            int pageNo = candidates[i];
+            if (pageNo < 1 || pageNo > pageCount) {
+                continue;
+            }
+            StrBuilder pageText;
+            ReadAloudHighlightMap pageMap{};
+            bool built = ReadAloudHighlightBuildFromPage(engine, pageNo, &pageMap, pageText);
+            ReadAloudHighlightFree(&pageMap);
+            if (built && ReadAloudFindContextInNewText(oldText, anchorAbs, pageText.Get()) >= 0) {
+                return pageNo;
+            }
+        }
+    }
+    return -1;
+}
+
 static bool ReadAloudStealHighlightMap(WindowTab* tab, ReadAloudHighlightMap* newMap) {
     if (!tab || !tab->readAloudHighlight || !newMap || !newMap->locs || newMap->len <= 0) {
         return false;
@@ -1588,6 +1696,12 @@ static bool ReadAloudReplaceHighlightMap(WindowTab* tab, ReadAloudHighlightMap* 
     }
     int textLen = str::Leni(tab->readAloudText);
     if (newMap->len != textLen || newMap->len != str::Leni(rebuiltText)) {
+        return false;
+    }
+    // Equal byte lengths do not mean equal text. Reflow can produce another
+    // page batch of exactly the same length; attaching its coordinates to the
+    // old TTS buffer makes the highlight land on unrelated text or images.
+    if (!str::Eq(tab->readAloudText, rebuiltText)) {
         return false;
     }
     return ReadAloudStealHighlightMap(tab, newMap);
@@ -1664,11 +1778,45 @@ bool RefreshReadAloudHighlightAfterLayoutChange(WindowTab* tab, MainWindow* win,
     ReadAloudHighlightMap newMap{};
     bool ok = false;
 
-    if (tab->readAloudScope == WindowTab::ReadAloudScopeSelection) {
+    // Reflow invalidates global page and glyph numbers. For EPUB, rebuild from
+    // the stable chapter containing the spoken byte instead of reusing the old
+    // page interval, then relocate the spoken text within that chapter.
+    int anchorChapter = ReadAloudChapterAtAnchor(tab->readAloudHighlight, anchorAbs);
+    if (anchorChapter >= 0) {
+        int chapterStartPage = 0;
+        int chapterEndPage = 0;
+        if (EngineMupdfGetReflowChapterPageRange(engine, anchorChapter, &chapterStartPage, &chapterEndPage)) {
+            ok = ReadAloudHighlightBuildFromDocument(dm, chapterStartPage, 0, chapterEndPage, &newMap, cleaned);
+            if (ok) {
+                tab->readAloudStartPage = chapterStartPage;
+                tab->readAloudStartGlyph = 0;
+                tab->readAloudBuiltEndPage = chapterEndPage;
+            }
+        }
+    }
+
+    // Legacy MOBI/EPUB engines are recreated for a font-size change and don't
+    // expose chapter locations. Find the same surrounding text in the new page
+    // stream, then rebuild the normal lazy read-aloud batch around that page.
+    if (!ok && anchorAbs >= 0 && tab->readAloudBuiltEndPage > 0) {
+        int oldAnchorPage = ReadAloudPageAtAnchor(tab->readAloudHighlight, anchorAbs);
+        int anchorPage = ReadAloudFindAnchorPageAfterReflow(engine, tab->readAloudText, anchorAbs, oldAnchorPage);
+        if (anchorPage > 0) {
+            int endPage = std::min(dm->PageCount(), anchorPage + kReadAloudBuildPagesPerBatch - 1);
+            ok = ReadAloudHighlightBuildFromDocument(dm, anchorPage, 0, endPage, &newMap, cleaned);
+            if (ok) {
+                tab->readAloudStartPage = anchorPage;
+                tab->readAloudStartGlyph = 0;
+                tab->readAloudBuiltEndPage = endPage;
+            }
+        }
+    }
+
+    if (!ok && tab->readAloudScope == WindowTab::ReadAloudScopeSelection) {
         if (dm->textSelection && dm->textSelection->result.len > 0) {
             ok = ReadAloudHighlightBuildFromTextSelection(dm->textSelection, &newMap, cleaned);
         }
-    } else if (tab->readAloudBuiltEndPage > 0) {
+    } else if (!ok && tab->readAloudBuiltEndPage > 0) {
         int startPage = tab->readAloudStartPage;
         int startGlyph = tab->readAloudStartGlyph;
         if (startPage <= 0) {
@@ -1683,7 +1831,7 @@ bool RefreshReadAloudHighlightAfterLayoutChange(WindowTab* tab, MainWindow* win,
             ok = ReadAloudHighlightBuildFromDocument(dm, startPage, startGlyph, tab->readAloudBuiltEndPage, &newMap,
                                                      cleaned);
         }
-    } else if (dm->textSelection && dm->textSelection->result.len > 0) {
+    } else if (!ok && dm->textSelection && dm->textSelection->result.len > 0) {
         ok = ReadAloudHighlightBuildFromTextSelection(dm->textSelection, &newMap, cleaned);
     }
 

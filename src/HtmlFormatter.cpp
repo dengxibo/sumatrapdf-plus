@@ -12,7 +12,6 @@
 #include "EbookBase.h"
 #include "EbookTypography.h"
 #include "EbookFontConfig.h"
-#include "EbookFontConfig.h"
 #include "FzImgReader.h"
 
 #include "HtmlFormatter.h"
@@ -152,6 +151,54 @@ DrawInstr DrawInstr::Anchor(const char* s, size_t len, RectF bbox) {
     return di;
 }
 
+static bool FontNameBytesHaveCjk(const char* name, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        if ((unsigned char)name[i] >= 0x80) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool IsMonospaceFontName(const char* name, size_t len) {
+    return str::EqN(name, "Courier", len) || str::EqN(name, "Consolas", len) || str::EqN(name, "monospace", len);
+}
+
+// MOBI/CJK ebooks often specify Times New Roman etc. in HTML; map those to the reader Latin font.
+static const WCHAR* ResolveReaderFontFaceW(const WCHAR* fontName) {
+    if (!fontName || (!EbookUsesCjkTypography() && !EbookReaderStyleMobi())) {
+        return fontName;
+    }
+    if (str::EqI(fontName, GetEbookCjkFontFamilyW()) || str::EqI(fontName, GetEbookLatinFontFamilyW())) {
+        return fontName;
+    }
+    if (str::EqI(fontName, L"Courier New") || str::EqI(fontName, L"Consolas")) {
+        if (EbookReaderStyleMobi() && EbookUsesCjkTypography()) {
+            return GetEbookLatinFontFamilyW();
+        }
+        return fontName;
+    }
+    TempStr utf8 = ToUtf8Temp(fontName);
+    if (!utf8) {
+        return fontName;
+    }
+    size_t len = str::Len(utf8);
+    if (IsMonospaceFontName(utf8, len)) {
+        if (EbookReaderStyleMobi() && EbookUsesCjkTypography()) {
+            return GetEbookLatinFontFamilyW();
+        }
+        return fontName;
+    }
+    if (FontNameBytesHaveCjk(utf8, len) || IsEbookCjkFontRequestW(fontName)) {
+        return GetEbookCjkFontFamilyW();
+    }
+    return GetEbookLatinFontFamilyW();
+}
+
+static bool IsReaderLatinFontFaceW(const WCHAR* face) {
+    return face && str::EqI(face, GetEbookLatinFontFamilyW());
+}
+
 static TempWStr MapGenericFontFamily(const char* name, size_t len) {
     EbookTypographyKind kind = GetEbookTypographyKind();
     bool cjkPrimary = kind == EbookTypographyKind::Cjk || kind == EbookTypographyKind::Bilingual;
@@ -191,6 +238,14 @@ static TempWStr MapGenericFontFamily(const char* name, size_t len) {
     }
     if (str::EqN(name, "SimHei", len) || str::EqN(name, "\xe9\xbb\x91\xe4\xbd\x93", len)) {
         return (TempWStr)L"SimHei";
+    }
+    if (EbookUsesCjkTypography() || EbookReaderStyleMobi()) {
+        if (FontNameBytesHaveCjk(name, len)) {
+            return (TempWStr)cjkFont;
+        }
+        if (!IsMonospaceFontName(name, len)) {
+            return (TempWStr)latinFont;
+        }
     }
     return ToWStrTemp(name, len);
 }
@@ -354,8 +409,20 @@ void HtmlFormatter::RecreateGfxForCurrentThread() {
     gfx = nullptr;
     gfx = mui::AllocGraphicsForMeasureText();
     textMeasure = CreateTextRender(textRenderMethod, gfx, 10, 10);
-    textMeasure->SetFont(CurrFont());
-    lineSpacing = textMeasure->GetCurrFontLineSpacing();
+    for (DrawStyle& s : styleStack) {
+        mui::CachedFont* f = s.font;
+        if (f && f->GetName()) {
+            s.font = mui::GetCachedFont(f->GetName(), f->GetSize(), f->GetStyle());
+        }
+    }
+    if (nextPageStyle.font && nextPageStyle.font->GetName()) {
+        mui::CachedFont* f = nextPageStyle.font;
+        nextPageStyle.font = mui::GetCachedFont(f->GetName(), f->GetSize(), f->GetStyle());
+    }
+    if (CurrFont()) {
+        textMeasure->SetFont(CurrFont());
+        lineSpacing = textMeasure->GetCurrFontLineSpacing();
+    }
 }
 
 void HtmlFormatter::AppendInstr(const DrawInstr& di) {
@@ -439,11 +506,22 @@ void HtmlFormatter::AppendStringInstr(const char* s, size_t utf8Len, RectF bbox,
     AppendInstr(di);
 }
 
+static bool ShouldNormalizeReaderLatinWeight() {
+    return EbookUsesCjkTypography() || EbookReaderStyleMobi();
+}
+
 void HtmlFormatter::SetFont(const WCHAR* fontName, FontStyle fs, float fontSize) {
     if (fontSize < 0) {
         fontSize = CurrFont()->GetSize();
     }
-    mui::CachedFont* newFont = mui::GetCachedFont(fontName, fontSize, fs);
+    const WCHAR* resolved = ResolveReaderFontFaceW(fontName);
+    if (ShouldNormalizeReaderLatinWeight() && IsReaderLatinFontFaceW(resolved) && (fs & FontStyleBold)) {
+        fs = (FontStyle)(fs & ~FontStyleBold);
+    }
+    mui::CachedFont* newFont = mui::GetCachedFont(resolved, fontSize, fs);
+    if (!newFont || !newFont->font) {
+        return;
+    }
     if (CurrFont() != newFont) {
         AppendInstr(DrawInstr::SetFont(newFont));
     }
@@ -1043,10 +1121,133 @@ static MixedScriptKind ClassifyMixedScriptChar(WCHAR c) {
     return MixedScriptKind::Neutral;
 }
 
+static bool HtmlUtf8SliceHasCjk(const char* s, size_t len) {
+    bool inTag = false;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c == '<') {
+            inTag = true;
+            continue;
+        }
+        if (c == '>') {
+            inTag = false;
+            continue;
+        }
+        if (inTag) {
+            continue;
+        }
+        if (c < 0x80) {
+            continue;
+        }
+        if ((c & 0xE0) == 0xC0 && i + 1 < len) {
+            i += 1;
+        } else if ((c & 0xF0) == 0xE0 && i + 2 < len) {
+            unsigned char c1 = (unsigned char)s[i + 1];
+            unsigned char c2 = (unsigned char)s[i + 2];
+            uint cp = ((uint)(c & 0x0F) << 12) | ((uint)(c1 & 0x3F) << 6) | (uint)(c2 & 0x3F);
+            if ((cp >= 0x2E80 && cp <= 0x9FFF) || (cp >= 0xF900 && cp <= 0xFAFF)) {
+                return true;
+            }
+            i += 2;
+        } else if ((c & 0xF8) == 0xF0) {
+            i += 3;
+        }
+    }
+    return false;
+}
+
+static bool CloseTagNameFor(HtmlTag tag, char* buf, size_t bufSize) {
+    switch (tag) {
+        case Tag_P:
+            str::BufSet(buf, bufSize, "p");
+            return true;
+        case Tag_Div:
+            str::BufSet(buf, bufSize, "div");
+            return true;
+        case Tag_Blockquote:
+            str::BufSet(buf, bufSize, "blockquote");
+            return true;
+        case Tag_H1:
+        case Tag_H2:
+        case Tag_H3:
+        case Tag_H4:
+        case Tag_H5:
+        case Tag_H6:
+            buf[0] = 'h';
+            buf[1] = (char)('1' + (tag - Tag_H1));
+            buf[2] = '\0';
+            return true;
+        default:
+            return false;
+    }
+}
+
+static const char* FindParagraphHtmlEnd(const char* html, size_t htmlLen, ptrdiff_t startIdx, HtmlTag closeTag) {
+    char tagName[8];
+    if (!CloseTagNameFor(closeTag, tagName, dimof(tagName))) {
+        return html + htmlLen;
+    }
+    char closePat[16];
+    str::BufSet(closePat, dimof(closePat), "</");
+    str::BufAppend(closePat, dimof(closePat), tagName);
+    str::BufAppend(closePat, dimof(closePat), ">");
+
+    if (startIdx < 0 || (size_t)startIdx >= htmlLen) {
+        return html + htmlLen;
+    }
+    const char* start = html + startIdx;
+    const char* end = html + htmlLen;
+    size_t patLen = str::Len(closePat);
+    for (const char* p = start; p + patLen <= end; p++) {
+        if (str::EqNI(p, closePat, patLen)) {
+            return p;
+        }
+    }
+    return end;
+}
+
+void HtmlFormatter::BeginParagraphScope(HtmlTag closeTag) {
+    paragraphCloseTag = closeTag;
+    paragraphStartReparseIdx = currReparseIdx;
+    paragraphScanned = false;
+    paragraphHasCjk = false;
+}
+
+void HtmlFormatter::EnsureParagraphCjkScanned() {
+    if (paragraphScanned || paragraphStartReparseIdx < 0 || !htmlParser) {
+        return;
+    }
+    paragraphScanned = true;
+    const char* html = htmlParser->Start();
+    size_t htmlLen = htmlParser->Len();
+    const char* paraStart = html + paragraphStartReparseIdx;
+    const char* paraEnd = FindParagraphHtmlEnd(html, htmlLen, paragraphStartReparseIdx, paragraphCloseTag);
+    if (paraEnd > paraStart) {
+        paragraphHasCjk = HtmlUtf8SliceHasCjk(paraStart, (size_t)(paraEnd - paraStart));
+    }
+}
+
+bool HtmlFormatter::InlineLatinUsesCjkFont() {
+    if (!EbookUsesCjkTypography()) {
+        return false;
+    }
+    EnsureParagraphCjkScanned();
+    if (paragraphStartReparseIdx >= 0) {
+        return paragraphHasCjk;
+    }
+    // Text outside explicit <p>/<div> wrappers still needs CJK typography on Chinese MOBI.
+    return GetEbookTypographyKind() != EbookTypographyKind::Latin;
+}
+
 void HtmlFormatter::EmitMixedScriptTextRun(const char* s, const char* end) {
     ptrdiff_t savedReparseIdx = currReparseIdx;
+    mui::CachedFont* baseFont = CurrFont();
+    if (!baseFont || !baseFont->font) {
+        return;
+    }
     TempWStr w = ToWStrTemp(s, end - s);
     size_t n = str::Len(w);
+    bool inlineLatinUsesCjk = InlineLatinUsesCjkFont();
     size_t i = 0;
     while (i < n) {
         MixedScriptKind segScript = ClassifyMixedScriptChar(w[i]);
@@ -1065,10 +1266,21 @@ void HtmlFormatter::EmitMixedScriptTextRun(const char* s, const char* end) {
             }
             j++;
         }
-        const WCHAR* fontName =
-            segScript == MixedScriptKind::Cjk ? GetEbookCjkFontFamilyW() : GetEbookLatinFontFamilyW();
+        const WCHAR* fontName = nullptr;
+        if (segScript == MixedScriptKind::Cjk || inlineLatinUsesCjk) {
+            fontName = GetEbookCjkFontFamilyW();
+        } else {
+            fontName = GetEbookLatinFontFamilyW();
+        }
+        FontStyle segStyle = (FontStyle)baseFont->GetStyle();
+        mui::CachedFont* segFont = mui::GetCachedFont(fontName, baseFont->GetSize(), segStyle);
+        if (!segFont || !segFont->font) {
+            segFont = baseFont;
+        }
         int stackDepth = (int)styleStack.size();
-        SetFont(fontName, (FontStyle)CurrFont()->GetStyle(), CurrFont()->GetSize());
+        if (segFont != CurrFont()) {
+            SetFont(segFont->GetName(), (FontStyle)segFont->GetStyle(), segFont->GetSize());
+        }
         char* utf8Part = strconv::WStrToUtf8(w + i, j - i, textAllocator);
         size_t utf8Len = str::Len(utf8Part);
         if (utf8Len > 0) {
@@ -1078,6 +1290,9 @@ void HtmlFormatter::EmitMixedScriptTextRun(const char* s, const char* end) {
             RevertStyleChange();
         }
         i = j;
+    }
+    if (CurrFont()) {
+        textMeasure->SetFont(CurrFont());
     }
     currReparseIdx = savedReparseIdx;
 }
@@ -1094,7 +1309,8 @@ void HtmlFormatter::EmitTextRun(const char* s, const char* end, bool allowScript
         s = tmp;
         end = s + str::Len(s);
     }
-    if (allowScriptSplit && trackSourcePos && !resolved && GetEbookTypographyKind() == EbookTypographyKind::Bilingual) {
+    bool useMixedScript = allowScriptSplit && trackSourcePos && !resolved && EbookUsesCjkTypography();
+    if (useMixedScript) {
         EmitMixedScriptTextRun(s, end);
         return;
     }
@@ -1112,9 +1328,13 @@ void HtmlFormatter::EmitTextRun(const char* s, const char* end, bool allowScript
         if (0 == strLen) {
             break;
         }
-        textMeasure->SetFont(CurrFont());
+        mui::CachedFont* font = CurrFont();
+        if (!font || !font->font) {
+            break;
+        }
+        textMeasure->SetFont(font);
         RectF bbox = textMeasure->Measure(buf, strLen);
-        ExpandBboxForPureLatinDraw(gfx, CurrFont(), textRenderMethod, buf, strLen, bbox);
+        ExpandBboxForPureLatinDraw(gfx, font, textRenderMethod, buf, strLen, bbox);
         float remDx = pageDx - currX;
         if (remDx <= 0) {
             if (!IsCurrLineEmpty()) {
@@ -1287,6 +1507,7 @@ void HtmlFormatter::HandleTagP(HtmlToken* t, bool isDiv) {
         }
 
         SetAlignment(align);
+        BeginParagraphScope(isDiv ? Tag_Div : Tag_P);
         EmitParagraph(indent);
     } else {
         FlushCurrLine(true);
@@ -1309,7 +1530,7 @@ void HtmlFormatter::HandleTagFont(HtmlToken* t) {
         // multiple font names can be comma separated
         if (strLen > 0 && *buf != ',') {
             str::TransCharsInPlace(buf, L",", L"\0");
-            faceName = buf;
+            faceName = ResolveReaderFontFaceW(buf);
         }
     }
 
@@ -1366,12 +1587,14 @@ void HtmlFormatter::HandleTagHx(HtmlToken* t) {
         currY += CurrFont()->GetSize() / 2;
         RevertStyleChange();
     } else {
+        BeginParagraphScope(t->tag);
         EmitParagraph(0);
         float fontSize = defaultFontSize * (float)pow(1.1f, '5' - t->s[1]);
         if (currY > 0) {
             currY += fontSize / 2;
         }
-        SetFontBasedOn(CurrFont(), FontStyleBold, fontSize);
+        FontStyle hxStyle = EbookReaderStyleMobi() ? FontStyleRegular : FontStyleBold;
+        SetFontBasedOn(CurrFont(), hxStyle, fontSize);
 
         StyleRule rule = ComputeStyleRule(t);
         ApplyStyleRule(rule);
@@ -1909,7 +2132,11 @@ void DrawHtmlPage(Graphics* g, mui::ITextRender* textDraw, Vec<DrawInstr>* drawI
                 textDraw->Draw(buf, strLen, ToGdipRectF(bbox), isRtl);
             }
         } else if (DrawInstrType::SetFont == i.type) {
-            textDraw->SetFont(i.font);
+            mui::CachedFont* font = i.font;
+            if (font && font->GetName()) {
+                font = mui::GetCachedFont(font->GetName(), font->GetSize(), font->GetStyle());
+            }
+            textDraw->SetFont(font);
         }
         if (abortCookie && *abortCookie) {
             break;

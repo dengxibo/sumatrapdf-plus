@@ -46,7 +46,25 @@ bool EbookCjkFontFamiliesEquivalent(const char* a, const char* b);
 bool UsesCustomInstalledEbookFonts();
 bool UsesNonDefaultEbookReaderFonts();
 
+// EBookUI.FontSize: 0 = built-in default; otherwise 6–26 pt (out of range ignored).
+constexpr float kEbookFontSizeMinPt = 6.f;
+constexpr float kEbookFontSizeMaxPt = 26.f;
+constexpr float kEbookFontSizeBuiltinPt = 11.f;
+constexpr float kEbookFontSizeStepPt = 2.f;
+
+float GetEbookReaderFontSizePt();
+float GetEffectiveEbookFontSizePt();
+bool UsesNonDefaultEbookFontSize();
+bool CanIncreaseEbookFontSize();
+bool CanDecreaseEbookFontSize();
+// direction: +1 larger, -1 smaller. Returns false if already at limit.
+bool AdjustEbookFontSize(int direction);
+// Restores EBookUI.FontSize=0 (the built-in document-aware default).
+bool ResetEbookFontSize();
+
 // CSS fragments for MuPDF user stylesheet.
 TempStr BuildEbookReaderFontCss(EbookTypographyKind typographyKind);
 TempStr BuildEbookFallbackFontCss();
 TempStr BuildEbookForceFontCss(EbookTypographyKind typographyKind);
+// displayDpi: same DPI used for fz_layout_document page size (EngineMupdf::displayDPI).
+TempStr BuildEbookForceFontSizeCss(int displayDpi);

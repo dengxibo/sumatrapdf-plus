@@ -260,6 +260,7 @@ static int streqi(const char* s1, const char* s2) {
 static void normalize_font_name_key(const char* src, char* dst, size_t dstcap);
 static int is_source_han_serif_sc_request(const char* fontname);
 static int is_reader_cjk_font_request(const char* fontname);
+static int is_publisher_cjk_font_request(const char* fontname);
 static fz_font* load_bundled_source_han_serif(fz_context* ctx, const char* display_name, int ordering);
 static fz_font* load_reader_cjk_serif(fz_context* ctx, const char* display_name, int ordering);
 
@@ -955,6 +956,13 @@ static fz_font* load_windows_font_by_name_impl(fz_context* ctx, const char* orig
         /* fall through to system SimSun / 宋体 if bundled font is unavailable */
     }
 
+    if (redirect_cjk && is_bundled_reader_cjk_setting() && is_publisher_cjk_font_request(orig_name)) {
+        fz_font* user = load_reader_cjk_serif(ctx, orig_name, FZ_ADOBE_GB);
+        if (user) {
+            return user;
+        }
+    }
+
     EnterCriticalSection(&cs_fonts);
     if (g_win_fonts.len == 0) {
         fz_try(ctx) {
@@ -1433,6 +1441,25 @@ static int is_reader_cjk_font_request(const char* fontname) {
     return 0;
 }
 
+static int is_publisher_cjk_font_request(const char* fontname) {
+    static const char* names[] = {
+        "STKai", "STKaiti", "STKaiti-Regular", "STKai-Regular", "STSong", "STSongti", "STSongti-SC-Regular",
+        "STFangsong", "STHeiti", "SimSun", "NSimSun", "KaiTi", "KaiTi_GB2312", "KaiTi SC", "Kaiti SC", "楷体",
+        "SimHei", "FangSong", "Songti SC", "Songti TC", "MKaiPRC", "MKaiPRC-Regular", "MKai PRC", "PingFang SC",
+        "PingFangSC-Regular", "Microsoft YaHei", "FZFangSong-Z02", "FZFangSong-Z02S", NULL};
+    int i;
+
+    if (!fontname) {
+        return 0;
+    }
+    for (i = 0; names[i]; i++) {
+        if (streq(fontname, names[i])) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static fz_font* load_bundled_custom_cjk_font(fz_context* ctx) {
     WCHAR exeDir[MAX_PATH];
     WCHAR pathW[MAX_PATH];
@@ -1504,6 +1531,13 @@ static fz_font* load_windows_font(fz_context* ctx, const char* fontname, int bol
     int is_base_14 = clean_name != fontname;
 
     if (!bold && !italic && is_reader_cjk_font_request(fontname)) {
+        font = load_reader_cjk_serif(ctx, fontname, FZ_ADOBE_GB);
+        if (font) {
+            return font;
+        }
+    }
+
+    if (!bold && !italic && is_bundled_reader_cjk_setting() && is_publisher_cjk_font_request(fontname)) {
         font = load_reader_cjk_serif(ctx, fontname, FZ_ADOBE_GB);
         if (font) {
             return font;

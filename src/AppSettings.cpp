@@ -124,6 +124,18 @@ static void MigrateAiChatProvider(const char* settingsRaw) {
     gGlobalPrefs->aiChatUseDeepSeekInsteadOfDoubao = false;
 }
 
+static void NormalizeDocumentColorModePref() {
+    if (!gGlobalPrefs || !gGlobalPrefs->documentColorMode) {
+        return;
+    }
+    const char* v = gGlobalPrefs->documentColorMode;
+    if (str::EqI(v, "smart") || str::EqI(v, "auto") || str::EqI(v, "black")) {
+        str::ReplaceWithCopy(&gGlobalPrefs->documentColorMode, "theme");
+    } else if (str::EqI(v, "light")) {
+        str::ReplaceWithCopy(&gGlobalPrefs->documentColorMode, "original");
+    }
+}
+
 static void MigrateDocumentColorMode(const char* settingsRaw) {
     if (!gGlobalPrefs) {
         return;
@@ -139,6 +151,7 @@ static void MigrateDocumentColorMode(const char* settingsRaw) {
             delete root;
         }
     }
+    NormalizeDocumentColorModePref();
     SetPdfDocumentColorMode(GetPdfDocumentColorMode());
 }
 
@@ -419,6 +432,12 @@ bool LoadSettings() {
     }
     setMinMax(gprefs->toolbarSize, 8, 64);
     setMinMax(gprefs->annotations.freeTextOpacity, 0, 100);
+    {
+        float& fs = gprefs->eBookUI.fontSize;
+        if (fs != 0.f && (fs < kEbookFontSizeMinPt || fs > kEbookFontSizeMaxPt)) {
+            fs = 0.f;
+        }
+    }
 
     if (seqstrings::StrToIdxIS(gScrollbarModeNames, gprefs->scrollbars) < 0) {
         str::ReplaceWithCopy(&gprefs->scrollbars, "windows");
@@ -653,6 +672,9 @@ static void ReloadSettings() {
 
     const char* uiLanguage = str::DupTemp(gGlobalPrefs->uiLanguage);
     bool showToolbar = gGlobalPrefs->showToolbar;
+    float oldFontSize = gGlobalPrefs->eBookUI.fontSize;
+    float oldLayoutDx = gGlobalPrefs->eBookUI.layoutDx;
+    float oldLayoutDy = gGlobalPrefs->eBookUI.layoutDy;
 
     gFileHistory.UpdateStatesSource(nullptr);
     CleanUpSettings();
@@ -680,6 +702,12 @@ static void ReloadSettings() {
         UpdateControlsColors(win);
     }
 
+    bool ebookLayoutChanged = oldFontSize != gGlobalPrefs->eBookUI.fontSize ||
+                              oldLayoutDx != gGlobalPrefs->eBookUI.layoutDx ||
+                              oldLayoutDy != gGlobalPrefs->eBookUI.layoutDy;
+    if (ebookLayoutChanged) {
+        UpdateAfterEbookLayoutChange();
+    }
     UpdateDocumentColors();
     UpdateFixedPageScrollbarsVisibility();
 }

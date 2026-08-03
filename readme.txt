@@ -72,7 +72,7 @@
 
 【常用设置速查】
   Theme = Light-Warm              主题（Light-Warm / Light-White / Dark-Dracula / Dark-Black）
-  DocumentColorMode = smart       文档颜色模式：smart=自动 / original=原稿 / theme=强制主题
+  DocumentColorMode = theme       文档颜色模式：original=原稿 / theme=匹配主题
   SearchUIFloating = false        false=顶部搜索栏；true=悬浮搜索窗
   Scrollbars = windows            windows / smart / overlay / hidden
   UseTabs = true                  标签页模式

@@ -24,7 +24,7 @@ Windows 下的 PDF / 电子书阅读器，针对中文 EPUB/MOBI、离线查词�
 | **Session-restore fix** — double-clicking a file no longer crashes when “reopen last session” is enabled            | **会话恢复修复** — 开启“恢复上次会话”后，双击打开文件不再崩溃           |
 | **Offline dictionary** — double-click a word; place `.idx`/`.dat` files in `{exe}\dict\`                            | **离线查词** — 双击词语查词；词典放在 `{exe}\dict\`          |
 | **Light / dark themes** — toolbar toggle; Light-Warm (eye-care) and Light-White (neutral) UI themes                 | **亮/暗主题** — 工具栏切换；暖色护眼与中性浅色 UI                |
-| **Document color mode** — Smart / Original / Match Theme for PDF, EPUB, MOBI, CHM, XPS, DjVu, Markdown, etc.; toolbar buttons when a document is open | **文档颜色模式** — 自动 / 原稿 / 强制主题；适用于 PDF、EPUB、MOBI、CHM、XPS、DjVu、Markdown 等 |
+| **Document color mode** — Original / Match theme for PDF, EPUB, MOBI, CHM, XPS, DjVu, Markdown, etc.; toolbar buttons when a document is open | **文档颜色模式** — 原稿 / 匹配主题；适用于 PDF、EPUB、MOBI、CHM、XPS、DjVu、Markdown 等 |
 | **Read Aloud (TTS)** — Windows text-to-speech with word-by-word highlight; start from top, cursor, or selection; pause/continue; voice and speed presets (0.25×–2.0×) | **朗读 (TTS)** — Windows 语音朗读，逐词高亮；从页首/光标/选中开始；暂停/继续；可选语音与语速（0.25×–2.0×） |
 | **Selection toolbar** — highlight, underline, strike out, Ask AI on PDF text selection                              | **划词工具栏** — PDF 选中文字后可高亮、下划线、删除线、Ask AI       |
 | **UI polish** — Windows 11–style caption, refined toolbar spacing, theme-aware chrome                               | **界面优化** — Win11 风格标题栏、工具栏间距与主题配色             |

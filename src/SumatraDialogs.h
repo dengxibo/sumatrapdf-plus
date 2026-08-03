@@ -13,6 +13,8 @@ INT_PTR CreateAppDialogBox(int dlgId, HWND parent, DLGPROC dlgProc, LPARAM data)
 bool Dialog_ChangeScrollbar(HWND hwnd);
 INT_PTR Dialog_Settings(HWND hwnd, GlobalPrefs* prefs);
 bool Dialog_AddFavorite(HWND hwnd, const char* pageNo, AutoFreeStr& favName);
+bool Dialog_PdfTocTitle(HWND hwnd, const char* dialogTitle, const char* prompt, AutoFreeStr& title,
+                        bool* setTargetToCurrentView);
 
 enum class PrintRangeAdv {
     All = 0,

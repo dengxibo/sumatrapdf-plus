@@ -25700,7 +25700,7 @@ tw:文件色彩模式：智慧（智慧調整色彩）
 uk:Колірний режим документа: Розумний (розумне підлаштування кольорів)
 uz:Hujjat rang rejimi: Aqlli (ranglarni aqllona moslashtirish)
 vn:Chế độ màu tài liệu: Thông minh (điều chỉnh màu một cách thông minh)
-:Document Color Mode: Match theme (follow current theme colors)
+:Document Color Mode: Match theme (use current theme colors)
 af:Dokumentkleurmodus: Volg tema (volg huidige temakleure)
 am:Փաստաթղթի գունային ռեժիմ՝ համապատասխանել թեմային (հետևել ընթացիկ թեմայի գույներին)
 ar:وضع ألوان المستند: مطابقة السمة (اتباع ألوان السمة الحالية)
@@ -25712,7 +25712,7 @@ bs:Način boja dokumenta: Prati temu (prati boje trenutne teme)
 by:Рэжым колеру дакумента: Пад тему (следуючы колерам бягучай темы)
 ca:Mode de color del document: Segueix el tema (segueix els colors del tema actual)
 ca-xv:Mode de color del document: Segueix el tema (segueix els colors del tema actual)
-cn:文档颜色模式：跟随主题（按当前主题着色）
+cn:文档颜色模式：匹配主题（按当前主题着色）
 co:Modu di culore di u documentu: Segue u tema (seguì i colori di u tema attuale)
 cy:Modd lliw dogfen: Cyfateb thema (dilyn lliwiau'r thema gyfredol)
 cz:Barevný režim dokumentu: Podle motivu (barvy podle aktuálního motivu)
@@ -25769,7 +25769,7 @@ ta:ஆவண நிற முறை: தீம் பொருந்த (தற�
 th:โหมดสีเอกสาร: ตามธีม (ใช้สีของธีมปัจจุบัน)
 tl:Color mode ng dokumento: Sunod sa tema (sundin ang kulay ng kasalukuyang tema)
 tr:Belge renk modu: Temaya uy (geçerli tema renklerini uygula)
-tw:文件色彩模式：跟隨主題（依目前主題著色）
+tw:文件色彩模式：匹配主題（依目前主題著色）
 uk:Колірний режим документа: Як у темі (кольори поточної теми)
 uz:Hujjat rang rejimi: Mavzuga mos (joriy mavzu ranglari)
 vn:Chế độ màu tài liệu: Theo giao diện (theo màu giao diện hiện tại)
@@ -25931,7 +25931,7 @@ bs:Postavi način boja dokumenta: Prati temu
 by:Усталяваць рэжым колеру дакумента: Пад тему
 ca:Estableix mode de color del document: Segueix el tema
 ca-xv:Estableix mode de color del document: Segueix el tema
-cn:设置文档颜色模式：跟随主题
+cn:设置文档颜色模式：匹配主题
 co:Impostà modu di culore di u documentu: Segue u tema
 cy:Gosod modd lliw dogfen: Cyfateb thema
 cz:Nastavit barevný režim dokumentu: Podle motivu
@@ -25988,7 +25988,7 @@ ta:ஆவண நிற முறை: தீம் பொருந்த
 th:โหมดสีเอกสาร: ตามธีม
 tl:Color mode ng dokumento: Sunod sa tema
 tr:Belge renk modu: Temaya uy
-tw:設定文件色彩模式：跟隨主題
+tw:設定文件色彩模式：匹配主題
 uk:Колірний режим документа: Як у темі
 uz:Hujjat rang rejimi: Mavzuga mos
 vn:Chế độ màu tài liệu: Theo giao diện
@@ -32428,3 +32428,221 @@ tw:中文字體(&C)
 :&System Font
 cn:系统字体(&S)
 tw:系統字體(&S)
+
+:Add Root PDF TOC Item
+am:Ավելացնել արմատային տարր PDF բովանդակության ցանկում
+br:Adicionar item raiz ao sumário do PDF
+cn:新增 PDF 目录根项目
+co:Aghjunghje un elementu radice à l'indice PDF
+de:Stammeintrag zum PDF-Inhaltsverzeichnis hinzufügen
+el:Προσθήκη ριζικού στοιχείου στα περιεχόμενα PDF
+it:Aggiungi voce principale all'indice PDF
+nl:Hoofditem aan PDF-inhoudsopgave toevoegen
+pl:Dodaj główny element spisu treści PDF
+sk:Pridať koreňovú položku obsahu PDF
+tw:新增 PDF 目錄根項目
+:Add PDF TOC Item After
+am:Ավելացնել PDF բովանդակության տարր հետո
+br:Adicionar item do sumário do PDF depois
+cn:在其后新增 PDF 目录项
+co:Aghjunghje un elementu di l'indice PDF dopu
+de:PDF-Inhaltsverzeichniseintrag danach hinzufügen
+el:Προσθήκη στοιχείου περιεχομένων PDF μετά
+it:Aggiungi voce dell'indice PDF dopo
+nl:PDF-inhoudsopgave-item hierna toevoegen
+pl:Dodaj element spisu treści PDF po tym elemencie
+sk:Pridať položku obsahu PDF za túto položku
+tw:在其後新增 PDF 目錄項目
+:Add PDF TOC Child Item
+am:Ավելացնել PDF բովանդակության ենթատարր
+br:Adicionar subitem ao sumário do PDF
+cn:新增 PDF 目录子项
+co:Aghjunghje un sottoelementu à l'indice PDF
+de:Untereintrag zum PDF-Inhaltsverzeichnis hinzufügen
+el:Προσθήκη θυγατρικού στοιχείου στα περιεχόμενα PDF
+it:Aggiungi sottovoce all'indice PDF
+nl:Subitem aan PDF-inhoudsopgave toevoegen
+pl:Dodaj element podrzędny spisu treści PDF
+sk:Pridať podradenú položku obsahu PDF
+tw:新增 PDF 目錄子項目
+:Edit PDF TOC Item...
+am:Խմբագրել PDF բովանդակության տարրը...
+br:Editar item do sumário do PDF...
+cn:编辑 PDF 目录项...
+co:Mudificà l'elementu di l'indice PDF...
+de:PDF-Inhaltsverzeichniseintrag bearbeiten...
+el:Επεξεργασία στοιχείου περιεχομένων PDF...
+it:Modifica voce dell'indice PDF...
+nl:PDF-inhoudsopgave-item bewerken...
+pl:Edytuj element spisu treści PDF...
+sk:Upraviť položku obsahu PDF...
+tw:編輯 PDF 目錄項目...
+:Delete PDF TOC Item
+am:Ջնջել PDF բովանդակության տարրը
+br:Excluir item do sumário do PDF
+cn:删除 PDF 目录项
+co:Sguassà l'elementu di l'indice PDF
+de:PDF-Inhaltsverzeichniseintrag löschen
+el:Διαγραφή στοιχείου περιεχομένων PDF
+it:Elimina voce dell'indice PDF
+nl:PDF-inhoudsopgave-item verwijderen
+pl:Usuń element spisu treści PDF
+sk:Odstrániť položku obsahu PDF
+tw:刪除 PDF 目錄項目
+:Move PDF TOC Item Up
+am:Տեղափոխել PDF բովանդակության տարրը վերև
+br:Mover item do sumário do PDF para cima
+cn:上移 PDF 目录项
+co:Spostà l'elementu di l'indice PDF in sù
+de:PDF-Inhaltsverzeichniseintrag nach oben verschieben
+el:Μετακίνηση στοιχείου περιεχομένων PDF επάνω
+it:Sposta in alto la voce dell'indice PDF
+nl:PDF-inhoudsopgave-item omhoog verplaatsen
+pl:Przenieś element spisu treści PDF w górę
+sk:Presunúť položku obsahu PDF nahor
+tw:上移 PDF 目錄項目
+:Move PDF TOC Item Down
+am:Տեղափոխել PDF բովանդակության տարրը ներքև
+br:Mover item do sumário do PDF para baixo
+cn:下移 PDF 目录项
+co:Spostà l'elementu di l'indice PDF in ghjò
+de:PDF-Inhaltsverzeichniseintrag nach unten verschieben
+el:Μετακίνηση στοιχείου περιεχομένων PDF κάτω
+it:Sposta in basso la voce dell'indice PDF
+nl:PDF-inhoudsopgave-item omlaag verplaatsen
+pl:Przenieś element spisu treści PDF w dół
+sk:Presunúť položku obsahu PDF nadol
+tw:下移 PDF 目錄項目
+:Promote PDF TOC Item
+am:Բարձրացնել PDF բովանդակության տարրի մակարդակը
+br:Elevar nível do item do sumário do PDF
+cn:提升 PDF 目录项一级
+co:Alzà u livellu di l'elementu di l'indice PDF
+de:PDF-Inhaltsverzeichniseintrag höherstufen
+el:Προαγωγή στοιχείου περιεχομένων PDF
+it:Alza il livello della voce dell'indice PDF
+nl:PDF-inhoudsopgave-item één niveau hoger plaatsen
+pl:Podnieś poziom elementu spisu treści PDF
+sk:Zvýšiť úroveň položky obsahu PDF
+tw:提升 PDF 目錄項目一級
+:Demote PDF TOC Item
+am:Իջեցնել PDF բովանդակության տարրի մակարդակը
+br:Rebaixar nível do item do sumário do PDF
+cn:降低 PDF 目录项一级
+co:Abbassà u livellu di l'elementu di l'indice PDF
+de:PDF-Inhaltsverzeichniseintrag tieferstufen
+el:Υποβιβασμός στοιχείου περιεχομένων PDF
+it:Abbassa il livello della voce dell'indice PDF
+nl:PDF-inhoudsopgave-item één niveau lager plaatsen
+pl:Obniż poziom elementu spisu treści PDF
+sk:Znížiť úroveň položky obsahu PDF
+tw:降低 PDF 目錄項目一級
+:Add PDF TOC Item
+am:Ավելացնել PDF բովանդակության տարր
+br:Adicionar item ao sumário do PDF
+cn:新增 PDF 目录项
+co:Aghjunghje un elementu à l'indice PDF
+de:PDF-Inhaltsverzeichniseintrag hinzufügen
+el:Προσθήκη στοιχείου περιεχομένων PDF
+it:Aggiungi voce all'indice PDF
+nl:PDF-inhoudsopgave-item toevoegen
+pl:Dodaj element spisu treści PDF
+sk:Pridať položku obsahu PDF
+tw:新增 PDF 目錄項目
+:Edit PDF TOC Item
+am:Խմբագրել PDF բովանդակության տարրը
+br:Editar item do sumário do PDF
+cn:编辑 PDF 目录项
+co:Mudificà l'elementu di l'indice PDF
+de:PDF-Inhaltsverzeichniseintrag bearbeiten
+el:Επεξεργασία στοιχείου περιεχομένων PDF
+it:Modifica voce dell'indice PDF
+nl:PDF-inhoudsopgave-item bewerken
+pl:Edytuj element spisu treści PDF
+sk:Upraviť položku obsahu PDF
+tw:編輯 PDF 目錄項目
+:Title (target: current view):
+am:Վերնագիր (թիրախ՝ ընթացիկ տեսք).
+br:Título (destino: visualização atual):
+cn:标题（目标：当前视图）：
+co:Titulu (destinazione: vista attuale):
+de:Titel (Ziel: aktuelle Ansicht):
+el:Τίτλος (προορισμός: τρέχουσα προβολή):
+it:Titolo (destinazione: vista corrente):
+nl:Titel (doel: huidige weergave):
+pl:Tytuł (cel: bieżący widok):
+sk:Názov (cieľ: aktuálne zobrazenie):
+tw:標題（目標：目前檢視）：
+:Title (current target: %s):
+am:Վերնագիր (ընթացիկ թիրախ՝ %s).
+br:Título (destino atual: %s):
+cn:标题（当前目标：%s）：
+co:Titulu (destinazione attuale: %s):
+de:Titel (aktuelles Ziel: %s):
+el:Τίτλος (τρέχων προορισμός: %s):
+it:Titolo (destinazione corrente: %s):
+nl:Titel (huidig doel: %s):
+pl:Tytuł (bieżący cel: %s):
+sk:Názov (aktuálny cieľ: %s):
+tw:標題（目前目標：%s）：
+:Set target to current view
+am:Սահմանել թիրախը որպես ընթացիկ տեսք
+br:Definir destino como visualização atual
+cn:将目标设为当前视图
+co:Impostà a destinazione à a vista attuale
+de:Ziel auf aktuelle Ansicht setzen
+el:Ορισμός προορισμού στην τρέχουσα προβολή
+it:Imposta la destinazione sulla vista corrente
+nl:Doel instellen op huidige weergave
+pl:Ustaw cel na bieżący widok
+sk:Nastaviť cieľ na aktuálne zobrazenie
+tw:將目標設為目前檢視
+:Delete this TOC item?
+am:Ջնջե՞լ այս PDF բովանդակության տարրը։
+br:Excluir este item do sumário do PDF?
+cn:删除这个 PDF 目录项？
+co:Sguassà st'elementu di l'indice PDF?
+de:Diesen PDF-Inhaltsverzeichniseintrag löschen?
+el:Διαγραφή αυτού του στοιχείου περιεχομένων PDF;
+it:Eliminare questa voce dell'indice PDF?
+nl:Dit PDF-inhoudsopgave-item verwijderen?
+pl:Usunąć ten element spisu treści PDF?
+sk:Odstrániť túto položku obsahu PDF?
+tw:刪除這個 PDF 目錄項目？
+:Delete this TOC item and all of its child items?
+am:Ջնջե՞լ այս PDF բովանդակության տարրը և նրա բոլոր ենթատարրերը։
+br:Excluir este item do sumário do PDF e todos os seus subitens?
+cn:删除这个 PDF 目录项及其所有子项？
+co:Sguassà st'elementu di l'indice PDF è tutti i so sottoelementi?
+de:Diesen PDF-Inhaltsverzeichniseintrag und alle Untereinträge löschen?
+el:Διαγραφή αυτού του στοιχείου περιεχομένων PDF και όλων των θυγατρικών του;
+it:Eliminare questa voce dell'indice PDF e tutte le relative sottovoci?
+nl:Dit PDF-inhoudsopgave-item en alle subitems verwijderen?
+pl:Usunąć ten element spisu treści PDF i wszystkie jego elementy podrzędne?
+sk:Odstrániť túto položku obsahu PDF a všetky jej podradené položky?
+tw:刪除這個 PDF 目錄項目及其所有子項目？
+
+
+:&Reading Font
+cn:字体(&R)
+tw:字體(&R)
+
+:&Western Body Font
+cn:西文字体(&W)
+tw:西文字體(&W)
+
+:&CJK Body Font
+cn:中文字体(&C)
+tw:中文字體(&C)
+
+:&System Font
+cn:系统字体(&S)
+tw:系統字體(&S)
+
+:Reset Font Si&ze to Default
+cn:恢复默认字号(&Z)
+tw:恢復預設字號(&Z)
+
+:Ebook Font Size: Reset to Default
+cn:电子书字号：恢复默认
+tw:電子書字號：恢復預設

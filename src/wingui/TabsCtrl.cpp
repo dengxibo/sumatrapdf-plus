@@ -262,7 +262,6 @@ void TabsCtrl::Paint(HDC hdc, const RECT& rc) {
 
     TabInfo* ti;
     int n = TabCount();
-    Rect r;
     Gdiplus::RectF rTxt;
 
     COLORREF textColor = ThemeWindowTextColor();
@@ -296,6 +295,7 @@ void TabsCtrl::Paint(HDC hdc, const RECT& rc) {
         }
 
         ti = GetTab(i);
+        bool closeVisible = ti->canClose && (isSelected || (isUnderMouse && ti->r.dx >= MinTabWidthForClose(hwnd)));
 
         // use per-tab color if explicitly set
         constexpr COLORREF kUnset = (COLORREF)(0xfeffffff);
@@ -328,15 +328,29 @@ void TabsCtrl::Paint(HDC hdc, const RECT& rc) {
 
         // draw text
         gfx.SetCompositingMode(Gdiplus::CompositingModeSourceOver);
-        rTxt = ToGdipRectF(ti->r);
-        if (HwndIsRtl(hwnd)) {
-            // RTL: [8px | close | text | 8px]
-            rTxt.X += (8 + r.dx);
-        } else {
-            // LTR: [8px | text | close | 8px]
-            rTxt.X += 8;
+        bool isRtl = HwndIsRtl(hwnd);
+        int textPad = DpiScale(hwnd, 8);
+        int elementGap = DpiScale(hwnd, 4);
+        int dotDiameter = DpiScale(hwnd, 6);
+        float contentLeft = (float)(ti->r.x + textPad);
+        float contentRight = (float)(ti->r.x + ti->r.dx - textPad);
+        if (closeVisible) {
+            if (isRtl) {
+                contentLeft = (float)(ti->rClose.x + ti->rClose.dx + elementGap);
+            } else {
+                contentRight = (float)(ti->rClose.x - elementGap);
+            }
         }
-        rTxt.Width -= (8 + r.dx + 8);
+        rTxt = ToGdipRectF(ti->r);
+        rTxt.X = contentLeft;
+        rTxt.Width = std::max(0.f, contentRight - contentLeft);
+        if (ti->isDirty) {
+            float dirtySlotDx = (float)(dotDiameter + elementGap);
+            if (isRtl) {
+                rTxt.X += dirtySlotDx;
+            }
+            rTxt.Width = std::max(0.f, rTxt.Width - dirtySlotDx);
+        }
         br.SetColor(GdipCol(textColor));
         TempWStr ws = ToWStrTemp(ti->text);
         gfx.DrawString(ws, -1, &f, rTxt, &sf, &br);
@@ -347,19 +361,21 @@ void TabsCtrl::Paint(HDC hdc, const RECT& rc) {
             // measure actual rendered text width (may be truncated with ellipsis)
             Gdiplus::RectF bounds;
             gfx.MeasureString(ws, -1, &f, rTxt, &sf, &bounds);
-            int dotRadius = DpiScale(hwnd, 3);
-            int dotX = (int)(bounds.X + bounds.Width) + dotRadius;
-            // clamp to not exceed the text area
-            int maxX = (int)(rTxt.X + rTxt.Width) - dotRadius * 2;
-            if (dotX > maxX) {
-                dotX = maxX;
+            int dotX;
+            if (isRtl) {
+                int minX = (int)contentLeft;
+                dotX = (int)bounds.X - elementGap - dotDiameter;
+                dotX = std::max(dotX, minX);
+            } else {
+                int maxX = (int)contentRight - dotDiameter;
+                dotX = (int)(bounds.X + bounds.Width) + elementGap;
+                dotX = std::min(dotX, maxX);
             }
-            int dotY = ti->r.y + (ti->r.dy - dotRadius * 2) / 2;
+            int dotY = ti->r.y + (ti->r.dy - dotDiameter) / 2;
             SolidBrush redBr(Color(255, 0xEE, 0x22, 0x22));
-            gfx.FillEllipse(&redBr, dotX, dotY, dotRadius * 2, dotRadius * 2);
+            gfx.FillEllipse(&redBr, dotX, dotY, dotDiameter, dotDiameter);
             gfx.SetSmoothingMode(Gdiplus::SmoothingModeNone);
         }
-        bool closeVisible = ti->canClose && (isSelected || (isUnderMouse && ti->r.dx >= MinTabWidthForClose(hwnd)));
         if (closeVisible) {
             DrawCloseButtonArgs closeArgs;
             closeArgs.hdc = hdc;
@@ -943,6 +959,7 @@ void TabsCtrl::SetTabDirty(int idx, bool dirty) {
     if (tab && tab->isDirty != dirty) {
         tab->isDirty = dirty;
         LayoutTabs(); // rebuilds tooltips from current ti->tooltip values
+        HwndScheduleRepaint(hwnd);
     }
 }
 

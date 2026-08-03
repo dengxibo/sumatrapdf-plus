@@ -72,7 +72,10 @@ class ScopedMuiCritSec {
 
 class FontListItem {
   public:
+    DWORD threadId;
+
     FontListItem(const WCHAR* name, float sizePt, FontStyle style, Font* font, HFONT hFont) : next(nullptr) {
+        threadId = GetCurrentThreadId();
         cf.name = str::Dup(name);
         cf.sizePt = sizePt;
         cf.style = style;
@@ -90,7 +93,8 @@ class FontListItem {
     FontListItem* next;
 };
 
-// Global, thread-safe font cache. Font objects live forever.
+// Global font cache keyed by (thread, name, size, style). GDI+ Graphics objects are
+// per-thread; bundled/private fonts must be measured on the same thread that created them.
 static FontListItem* gFontsCache = nullptr;
 
 // Graphics objects cannot be used across threads. We have a per-thread
@@ -159,6 +163,13 @@ void Initialize() {
     AllocGraphicsForMeasureText();
 }
 
+void ClearCachedFonts() {
+    ScopedMuiCritSec muiCs;
+    delete gFontsCache;
+    gFontsCache = nullptr;
+    ClearMeasureTextQuickFontCache();
+}
+
 void Destroy() {
     FreeGraphicsForMeasureText(gGraphicsCache->at(0).gfx);
     for (GraphicsCacheEntry& e : *gGraphicsCache) {
@@ -166,8 +177,7 @@ void Destroy() {
     }
     delete gGraphicsCache;
     gGraphicsCache = nullptr;
-    delete gFontsCache;
-    gFontsCache = nullptr;
+    ClearCachedFonts();
     DeleteCriticalSection(&gMuiCs);
 }
 
@@ -233,7 +243,19 @@ static bool IsResolvedFontAcceptable(const WCHAR* requested, Gdiplus::Font* font
     return true;
 }
 
+static bool IsLatinReaderFontRequest(const WCHAR* name) {
+    return name && (str::EqI(name, GetEbookLatinFontFamilyW()) || str::StartsWithI(name, L"Literata") ||
+                    str::StartsWithI(name, L"Source Serif"));
+}
+
 static Gdiplus::Font* CreateFontWithFallback(const WCHAR* name, float sizePt, Gdiplus::FontStyle style) {
+    if (IsLatinReaderFontRequest(name)) {
+        Gdiplus::Font* latinFont = TryCreateReaderLatinFromSystemFiles(sizePt, style);
+        if (latinFont) {
+            return latinFont;
+        }
+    }
+
     Gdiplus::Font* font = TryCreateBundledFont(name, sizePt, style);
     if (font) {
         return font;
@@ -244,6 +266,24 @@ static Gdiplus::Font* CreateFontWithFallback(const WCHAR* name, float sizePt, Gd
         return font;
     }
     delete font;
+
+    if (IsLatinReaderFontRequest(name)) {
+        Gdiplus::FontStyle useStyle = style;
+        if (EbookReaderStyleMobi() && (style & Gdiplus::FontStyleBold)) {
+            useStyle = (Gdiplus::FontStyle)(useStyle & ~Gdiplus::FontStyleBold);
+        }
+        font = new Gdiplus::Font(L"Georgia", sizePt, useStyle);
+        if (font->GetLastStatus() == Gdiplus::Status::Ok) {
+            return font;
+        }
+        delete font;
+        font = new Gdiplus::Font(L"Times New Roman", sizePt, useStyle);
+        if (font->GetLastStatus() == Gdiplus::Status::Ok) {
+            return font;
+        }
+        delete font;
+        return nullptr;
+    }
 
     const WCHAR* cjkFont = GetEbookCjkFontFamilyW();
     font = TryCreateBundledFont(cjkFont, sizePt, style);
@@ -282,8 +322,9 @@ static Gdiplus::Font* CreateFontWithFallback(const WCHAR* name, float sizePt, Gd
 CachedFont* GetCachedFont(const WCHAR* name, float sizePt, FontStyle style) {
     ScopedMuiCritSec muiCs;
 
+    DWORD threadId = GetCurrentThreadId();
     for (FontListItem* item = gFontsCache; item; item = item->next) {
-        if (item->cf.SameAs(name, sizePt, style) && item->cf.font != nullptr) {
+        if (item->threadId == threadId && item->cf.SameAs(name, sizePt, style) && item->cf.font != nullptr) {
             return &item->cf;
         }
     }

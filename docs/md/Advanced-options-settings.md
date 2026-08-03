@@ -187,9 +187,9 @@ LastDarkTheme = Dark-Dracula
 ; Valid light themes: Light-Warm, Light-White (introduced in version 3.7)
 LastLightTheme = Light-Warm
 
-; Valid values: smart, original, theme. Legacy aliases auto, light, black are
+; Valid values: original, theme. Legacy aliases smart, auto, black, light are
 ; still accepted on load. (introduced in version 3.7)
-DocumentColorMode = smart
+DocumentColorMode = theme
 
 ; if both favorites and bookmarks parts of sidebar are visible, this is the
 ; height of bookmarks (table of contents) part
@@ -280,7 +280,8 @@ FixedPageUI [
 
 ; customization options for eBookUI
 EBookUI [
-    ; font size, default 8.0
+    ; ebook body font size in points; 0 uses built-in default (~11 pt), 6-26
+    ; forces this size (out of range ignored)
     FontSize = 0
 
     ; default Latin/serif body font for reflowable ebooks (EPUB, MOBI). Empty

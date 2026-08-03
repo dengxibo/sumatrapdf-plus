@@ -952,14 +952,22 @@ static int RefineSnippetEnd(const char* text, int byteLen, int textLen, int mEnd
 
 // build a one-line "...context match context..." snippet (UTF-8) around a match
 static char* BuildSnippet(EngineBase* engine, const FindMatch& m, int maxSnippetGlyphs) {
+    if (!engine || maxSnippetGlyphs <= 0) {
+        return nullptr;
+    }
     int textByteLen = 0;
     const char* pageText = engine->GetTextForPageUtf8(m.startPage, &textByteLen);
-    if (!pageText) {
+    if (!pageText || textByteLen <= 0) {
         return nullptr;
     }
     int textLen = Utf8CodepointCountN(pageText, textByteLen);
-    int mStart = limitValue(m.startGlyph, 0, textLen);
-    int mEnd = (m.endPage == m.startPage) ? m.endGlyph : textLen;
+    TextSearch ts(engine);
+    int mStart = ts.GlyphToCodepoint(m.startPage, m.startGlyph);
+    int mEnd = textLen;
+    if (m.endPage == m.startPage) {
+        mEnd = ts.GlyphToCodepoint(m.endPage, m.endGlyph);
+    }
+    mStart = limitValue(mStart, 0, textLen);
     mEnd = limitValue(mEnd, mStart, textLen);
     const int kMaxSnippetGlyphs = maxSnippetGlyphs;
     int matchLen = std::max(0, mEnd - mStart);
@@ -997,7 +1005,13 @@ static char* BuildSnippet(EngineBase* engine, const FindMatch& m, int maxSnippet
 
     int fromByte = Utf8CodepointToByteIndex(pageText, textByteLen, from);
     int toByte = Utf8CodepointToByteIndex(pageText, textByteLen, to);
+    if (fromByte < 0 || toByte <= fromByte || toByte > textByteLen) {
+        return nullptr;
+    }
     char* sub = str::Dup(pageText + fromByte, (size_t)(toByte - fromByte));
+    if (!sub) {
+        return nullptr;
+    }
     str::NormalizeWSInPlace(sub);
     bool showLeadingEllipsis = from > 0 && !cleanStart;
     TempStr full = str::FormatTemp("%s%s%s", showLeadingEllipsis ? "..." : "", sub, to < textLen ? "..." : "");
@@ -1431,6 +1445,9 @@ static void RunDocumentMatchScan(DocMatchScanOptions& opt, Vec<u64>* positions, 
             return false;
         }
         u64 key = MatchKey(ms.startPage, ms.startGlyph);
+        if (positions->size() > 0 && positions->Last() == key) {
+            return true;
+        }
         if (insertAt >= 0) {
             positions->InsertAt(insertAt, key);
         } else {
@@ -1801,6 +1818,21 @@ void OnEbookPageCountChanged(MainWindow* win) {
         return;
     }
     if (!EngineIsProgressiveEbookLoading(engine)) {
+        if (win->findCountPartial) {
+            // Pages indexed while reflow was still in progress can be stale.
+            // Rescan the whole document once layout has settled.
+            win->findCountValid = false;
+            win->findCountPartial = false;
+            win->findCountPositions.Reset();
+            ClearFindMatches(win);
+            if (dm->textSearch) {
+                dm->textSearch->InvalidatePageMatchCache();
+            }
+            if (!win->findCountThread && !win->findThread) {
+                StartFindCount(win, text, win->findCountMatchCase, win->findCountMatchWholeWord);
+            }
+            return;
+        }
         win->findCountPartial = false;
         dm->searchSession.Store(engine, text, win->findCountMatchCase, win->findCountMatchWholeWord,
                                 win->findCountStartPage, false, win->findCountPageLimit, win->findCountPageLimit,
@@ -1831,10 +1863,37 @@ void GoToFindMatch(MainWindow* win, int startPage, int startGlyph, int endPage, 
     }
     ClearFindSearchProgressCb(win);
     TextSearch* ts = dm->textSearch;
-    ts->Reset();
-    ts->StartAt(startPage, startGlyph);
-    ts->SelectUpTo(endPage, endGlyph);
+    TempWStr searchText = win->hwndFindEdit ? HwndGetTextWTemp(win->hwndFindEdit) : nullptr;
+
+    auto trySelect = [&]() -> bool {
+        ts->Reset();
+        ts->StartAt(startPage, startGlyph);
+        ts->SelectUpTo(endPage, endGlyph);
+        return ts->result.len > 0;
+    };
+
+    if (!trySelect() && searchText && searchText[0]) {
+        ts->Reset();
+        ts->SetMatchCase(win->findMatchCase);
+        ts->SetMatchWholeWord(win->findMatchWholeWord);
+        ts->SetText(searchText);
+        bool abortSearch = false;
+        if (ts->LoadPageText(startPage, nullptr, &abortSearch) && !abortSearch) {
+            int cp = ts->GlyphToCodepoint(startPage, startGlyph);
+            TextSearch::PageAndOffset end = ts->MatchEnd(cp);
+            if (end.page > 0 && end.offset > cp) {
+                int sg = ts->CodepointToGlyph(startPage, cp);
+                int eg = ts->CodepointToGlyph(end.page, end.offset);
+                ts->StartAt(startPage, sg);
+                ts->SelectUpTo(end.page, eg);
+            }
+        }
+    }
+
     if (ts->result.len == 0) {
+        if (win->ctrl) {
+            win->ctrl->GoToPage(startPage, true);
+        }
         return;
     }
     // navigate to the match while ts->result is still populated. SetLastResult()
@@ -2187,6 +2246,7 @@ static void AppendMatchPageRects(EngineBase* engine, const FindMatch& fm, Vec<Fi
     TextSelection ts(engine);
     ts.StartAt(fm.startPage, fm.startGlyph);
     ts.SelectUpTo(fm.endPage, fm.endGlyph);
+
     for (int i = 0; i < ts.result.len; i++) {
         FindMatchPaintPageRect pr;
         pr.pageNo = ts.result.pages[i];

@@ -26,7 +26,10 @@ void ConfigureBundledReaderLatinFont(const char* familyName);
 void ConfigureBundledReaderCjkFont(const char* familyName, const char* fileName);
 void ResetBundledReaderFonts();
 void InstallBundledReaderFonts();
+void ClearMeasureTextQuickFontCache();
 Gdiplus::Font* TryCreateBundledFont(const WCHAR* familyName, float sizePt, Gdiplus::FontStyle style);
+// Load Literata/Source Serif static TTF from exe\fonts or Windows\Fonts (same files MuPDF uses).
+Gdiplus::Font* TryCreateReaderLatinFromSystemFiles(float sizePt, Gdiplus::FontStyle style);
 void CollectBundledFontFamilyNames(Vec<char*>* families);
 CLSID GetGdiPlusEncoderClsid(const WCHAR* format);
 RenderedBitmap* LoadRenderedBitmapWin(const char* path);

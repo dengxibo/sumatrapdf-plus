@@ -496,7 +496,10 @@ static bool IsDictPackagePresentZh(const char* dir) {
 
 static TempStr OfflineDictionaryDirTemp() {
     if (!str::IsEmpty(gGlobalPrefs->offlineDictionaryPath)) {
-        return str::DupTemp(gGlobalPrefs->offlineDictionaryPath);
+        const char* custom = gGlobalPrefs->offlineDictionaryPath;
+        if (IsDictPackagePresent(custom) || IsDictPackagePresentZh(custom)) {
+            return str::DupTemp(custom);
+        }
     }
     TempStr dictSubDir = GetPathInExeDirTemp("dict");
     if (IsDictPackagePresent(dictSubDir) || IsDictPackagePresentZh(dictSubDir)) {
@@ -1982,6 +1985,76 @@ static bool IsLookupSelectionText(const char* word) {
     return hasLetter;
 }
 
+// Vertical EPUB text often inserts a newline between every glyph in the page
+// text stream. After normalization that becomes "禅 师", which fails
+// IsChineseLookupWord. Collapse interior spaces when the selection is CJK-only.
+static void CollapseWhitespaceInCjkLookupText(char* copy) {
+    if (str::IsEmpty(copy)) {
+        return;
+    }
+    bool onlyCjkAndSpace = true;
+    for (const char* p = copy; *p;) {
+        unsigned char c = (unsigned char)*p;
+        if (c == ' ') {
+            p++;
+            continue;
+        }
+        if (c < 0x80) {
+            onlyCjkAndSpace = false;
+            break;
+        }
+        int len = 1;
+        if ((c & 0xE0) == 0xC0) {
+            len = 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            len = 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            len = 4;
+        } else {
+            onlyCjkAndSpace = false;
+            break;
+        }
+        for (int i = 1; i < len; i++) {
+            if (!p[i] || ((unsigned char)p[i] & 0xC0) != 0x80) {
+                onlyCjkAndSpace = false;
+                break;
+            }
+        }
+        if (!onlyCjkAndSpace) {
+            break;
+        }
+        if (len < 3) {
+            onlyCjkAndSpace = false;
+            break;
+        }
+        p += len;
+    }
+    if (!onlyCjkAndSpace) {
+        return;
+    }
+    char* w = copy;
+    char* r = copy;
+    while (*w) {
+        if (*w == ' ') {
+            w++;
+            continue;
+        }
+        unsigned char c = (unsigned char)*w;
+        int len = 1;
+        if ((c & 0xE0) == 0xC0) {
+            len = 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            len = 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            len = 4;
+        }
+        for (int i = 0; i < len; i++) {
+            *r++ = *w++;
+        }
+    }
+    *r = 0;
+}
+
 static TempStr NormalizeSelectionForLookupTemp(const char* text) {
     if (str::IsEmpty(text)) {
         return nullptr;
@@ -2010,6 +2083,8 @@ static TempStr NormalizeSelectionForLookupTemp(const char* text) {
     if (r > copy && r[-1] == ' ') {
         r[-1] = 0;
     }
+
+    CollapseWhitespaceInCjkLookupText(copy);
 
     if (IsChineseLookupWord(copy)) {
         int nChars = 0;
@@ -2073,15 +2148,24 @@ static bool GetSelectionLookupAnchor(MainWindow* win, Point& out) {
 }
 
 static TempStr GetLookupSelectionTextTemp(WindowTab* tab) {
-    if (!tab || !HasPermission(Perm::CopySelection)) {
+    if (!tab) {
         return nullptr;
     }
-    bool isTextOnly = false;
-    TempStr selText = GetSelectedTextTemp(tab, "\n", isTextOnly);
-    if (!selText || !isTextOnly) {
+    DisplayModel* dm = tab->AsFixed();
+    if (!dm || !tab->selectionOnPage || tab->selectionOnPage->size() == 0) {
         return nullptr;
     }
-    return NormalizeSelectionForLookupTemp(selText);
+    if (dm->textSelection->result.len == 0) {
+        return nullptr;
+    }
+    WCHAR* ws = dm->textSelection->ExtractText("\n");
+    if (!ws) {
+        return nullptr;
+    }
+    TempStr selText = ToUtf8Temp(ws);
+    str::Free(ws);
+    TempStr out = NormalizeSelectionForLookupTemp(selText);
+    return out;
 }
 
 bool CanLookupSelectionInTab(WindowTab* tab) {

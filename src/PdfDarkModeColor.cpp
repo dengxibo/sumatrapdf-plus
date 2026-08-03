@@ -40,7 +40,7 @@ static const char* PdfDocumentColorModeToString(PdfDocumentColorMode mode) {
         case PdfDocumentColorMode::Black:
         case PdfDocumentColorMode::Auto:
         default:
-            return "smart";
+            return "theme";
         case PdfDocumentColorMode::Light:
             return "original";
     }
@@ -121,7 +121,7 @@ const char* PdfDocumentColorModeDescription(PdfDocumentColorMode mode) {
         case PdfDocumentColorMode::Black:
         case PdfDocumentColorMode::Auto:
         default:
-            return _TRN("Document Color Mode: Match theme (follow current theme colors)");
+            return _TRN("Document Color Mode: Match theme (use current theme colors)");
     }
 }
 

@@ -50,6 +50,66 @@ static int Utf8GlyphToCodepointIndex(const char* text, int glyphOffset) {
     return codepointIdx;
 }
 
+static int ReadWcharCodepoint(const WCHAR* text, int len, int& idx) {
+    if (!text || idx < 0 || idx >= len) {
+        return 0;
+    }
+    WCHAR wc = text[idx++];
+    if (wc >= 0xD800 && wc < 0xDC00 && idx < len) {
+        WCHAR w2 = text[idx++];
+        return 0x10000 + ((wc - 0xD800) << 10) + (w2 - 0xDC00);
+    }
+    return (int)wc;
+}
+
+// Map a UTF-8 search codepoint offset to the WCHAR glyph index used for selection.
+// The two streams are usually identical, but whitespace handling can diverge and
+// cause cumulative highlight drift if we only count UTF-16 units in UTF-8 text.
+static int MapUtf8CodepointOffsetToWcharIndex(const char* utf8, int utf8ByteLen, const WCHAR* wtext, int wlen,
+                                              int targetCp) {
+    if (!utf8 || !wtext || targetCp <= 0) {
+        return targetCp;
+    }
+    int uByte = 0;
+    int wIdx = 0;
+    for (int cp = 0; cp < targetCp && uByte < utf8ByteLen; cp++) {
+        int uCp = Utf8CodepointNext(utf8, utf8ByteLen, uByte);
+        bool matched = false;
+        while (!matched && wIdx < wlen) {
+            int wCp = ReadWcharCodepoint(wtext, wlen, wIdx);
+            if (wCp == uCp) {
+                matched = true;
+            }
+        }
+    }
+    return wIdx;
+}
+
+static int MapWcharIndexToUtf8CodepointOffset(const char* utf8, int utf8ByteLen, const WCHAR* wtext, int wlen,
+                                              int wcharIndex) {
+    if (!utf8 || !wtext || wcharIndex <= 0) {
+        return wcharIndex;
+    }
+    int uByte = 0;
+    int wIdx = 0;
+    int cp = 0;
+    while (wIdx < wcharIndex && uByte < utf8ByteLen) {
+        int wCp = ReadWcharCodepoint(wtext, wlen, wIdx);
+        bool matched = false;
+        while (!matched && uByte < utf8ByteLen) {
+            int uCp = Utf8CodepointNext(utf8, utf8ByteLen, uByte);
+            if (uCp == wCp) {
+                matched = true;
+            }
+            cp++;
+        }
+        if (!matched) {
+            break;
+        }
+    }
+    return cp;
+}
+
 // Fetch page text for search. When *abortSearch is set, the caller should stop
 // immediately (search was cancelled while engine locks were contended).
 // lenOut is the number of Unicode codepoints (same indexing as WCHAR page text).
@@ -304,13 +364,27 @@ const char* TextSearch::LoadPageText(int pageNo, int* lenOut, bool* abortSearch)
 int TextSearch::CodepointToGlyph(int pageNo, int codepointOffset) const {
     int textByteLen = 0;
     const char* text = engine->GetTextForPageUtf8(pageNo, &textByteLen);
-    return Utf8CodepointToGlyphIndex(text, codepointOffset);
+    int wlen = 0;
+    const WCHAR* wtext = engine->GetTextForPage(pageNo, &wlen);
+    if (!text || !wtext) {
+        return Utf8CodepointToGlyphIndex(text, codepointOffset);
+    }
+    return MapUtf8CodepointOffsetToWcharIndex(text, textByteLen, wtext, wlen, codepointOffset);
 }
 
 int TextSearch::GlyphToCodepoint(int pageNo, int glyphOffset) const {
     int textByteLen = 0;
     const char* text = engine->GetTextForPageUtf8(pageNo, &textByteLen);
-    return Utf8GlyphToCodepointIndex(text, glyphOffset);
+    int wlen = 0;
+    const WCHAR* wtext = engine->GetTextForPage(pageNo, &wlen);
+    if (!text || !wtext) {
+        return Utf8GlyphToCodepointIndex(text, glyphOffset);
+    }
+    return MapWcharIndexToUtf8CodepointOffset(text, textByteLen, wtext, wlen, glyphOffset);
+}
+
+void TextSearch::InvalidatePageMatchCache() {
+    markAllPagesMatchCacheInvalid(pageMatchesCached);
 }
 
 bool TextSearch::TryGetCachedPageMatches(int pageNo, Vec<MatchSpan>* out) const {
@@ -487,11 +561,37 @@ void TextSearch::SetDirection(TextSearch::Direction direction) {
 }
 
 void TextSearch::SetLastResult(TextSelection* sel) {
-    CopySelection(sel);
+    if (!sel) {
+        return;
+    }
+    // `sel` may be this TextSearch itself (e.g. a match chosen from the
+    // floating results list). CopySelection() resets its destination first,
+    // which would also erase the source endpoints in that case. Preserve the
+    // glyph range before rebuilding the selection.
+    int selectedStartPage = sel->startPage;
+    int selectedStartGlyph = sel->startGlyph;
+    int selectedEndPage = sel->endPage;
+    int selectedEndGlyph = sel->endGlyph;
+    if (selectedStartPage < 1 || selectedEndPage < 1 || selectedStartGlyph < 0 || selectedEndGlyph < 0) {
+        return;
+    }
+
+    Reset();
+    StartAt(selectedStartPage, selectedStartGlyph);
+    SelectUpTo(selectedEndPage, selectedEndGlyph);
 
     AutoFreeWStr selection(ExtractText(" "));
+    if (!selection) {
+        return;
+    }
     str::NormalizeWSInPlace(selection);
     SetText(selection);
+
+    // SetText() clears the selection when the spelling/case of the concrete
+    // hit differs from the search query. Restore the exact cached match so the
+    // canvas can paint it as the active hit and the n/m counter can locate it.
+    StartAt(selectedStartPage, selectedStartGlyph);
+    SelectUpTo(selectedEndPage, selectedEndGlyph);
 
     searchHitStartAt = findPage = std::min(startPage, endPage);
     findPage = std::max(startPage, endPage);
@@ -1046,13 +1146,27 @@ void TextSearch::CollectMatchesOnPage(int pageNo, Vec<MatchSpan>* out) {
 
         findPage = pageNo;
         PageAndOffset fg = MatchEnd(found);
-        if (fg.page > 0) {
+        if (fg.page > 0 && fg.offset > found) {
             MatchSpan ms;
             ms.startPage = pageNo;
             ms.startGlyph = CodepointToGlyph(pageNo, found);
             ms.endPage = fg.page;
             ms.endGlyph = CodepointToGlyph(fg.page, fg.offset);
-            pageSpans.Append(ms);
+            int wlen = 0;
+            engine->GetTextForPage(pageNo, &wlen);
+            bool valid = ms.startGlyph >= 0 && ms.endGlyph > ms.startGlyph;
+            if (ms.endPage == pageNo) {
+                valid = valid && ms.endGlyph <= wlen;
+            } else {
+                int wlenEnd = 0;
+                engine->GetTextForPage(ms.endPage, &wlenEnd);
+                valid = valid && ms.endGlyph <= wlenEnd;
+            }
+            if (valid) {
+                pageSpans.Append(ms);
+                idx = fg.page == pageNo ? fg.offset : found + 1;
+                continue;
+            }
         }
         idx = found + 1;
     }

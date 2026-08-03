@@ -14,6 +14,8 @@ int CountTocItems(TocItem* item);
 TocItem* TocItemBestMatchForPage(TocItem* item, int pageNo, EngineBase* engine);
 void UnsubclassToc(MainWindow*);
 void TocFilterChanged(MainWindow*);
+bool HandlePdfTocEditCommand(MainWindow*, int commandId);
+bool TryAddPdfTocFromSelection(MainWindow*);
 
 // shared with Favorites.cpp
 // void TocCustomizeTooltip(TreeItem::GetTooltipEvent*);

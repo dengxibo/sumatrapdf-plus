@@ -13,6 +13,7 @@
 #include "utils/FileWatcher.h"
 #include "utils/GuessFileType.h"
 #include "utils/HtmlParserLookup.h"
+#include <stdio.h>
 #include "utils/HttpUtil.h"
 #include "utils/SquareTreeParser.h"
 #include "utils/ThreadUtil.h"
@@ -166,6 +167,8 @@ static void BeginFrameRedrawSuppression(MainWindow* win);
 static void EndFrameRedrawSuppression(MainWindow* win);
 static void ResyncReadAloudAfterLayoutChange(WindowTab* tab, MainWindow* win);
 static void ScheduleReadAloudResyncAfterLayoutChange(MainWindow* win, WindowTab* tab);
+static void ReadAloudFinishSession(WindowTab* tab, MainWindow* win);
+static void ReadAloudStartFromViewportTop(WindowTab* tab, const char* errMsg);
 
 static const char* HwndName(HWND hwnd) {
     WCHAR cls[64]{};
@@ -275,6 +278,7 @@ LoadArgs* LoadArgs::Clone() {
     res->lazyLoad = lazyLoad;
     res->async = async;
     res->syncLoad = syncLoad;
+    res->showLoadingProgress = showLoadingProgress;
     res->activateExisting = activateExisting;
     res->tabState = tabState;
     return res;
@@ -1994,14 +1998,21 @@ static FontReloadScrollAnchor CaptureFontReloadScroll(WindowTab* tab) {
     return anchor;
 }
 
-static void SaveTabFontReloadScroll(WindowTab* tab, const FontReloadScrollAnchor& anchor) {
-    if (!tab || anchor.scroll.page < 1) {
+static void SaveTabFontReloadScroll(WindowTab* tab, const FontReloadScrollAnchor& anchor, bool fontSizeChange = false) {
+    if (!tab) {
         return;
     }
-    tab->restorePageAfterFontReload = anchor.scroll.page;
-    tab->restoreScrollXAfterFontReload = anchor.scroll.x;
-    tab->restoreScrollYAfterFontReload = anchor.scroll.y;
-    tab->restoreInPageScrollRatioAfterFontReload = anchor.inPageScrollRatio;
+    if (anchor.scroll.page >= 1) {
+        tab->restorePageAfterFontReload = anchor.scroll.page;
+        tab->restoreScrollXAfterFontReload = anchor.scroll.x;
+        tab->restoreScrollYAfterFontReload = anchor.scroll.y;
+        tab->restoreInPageScrollRatioAfterFontReload = anchor.inPageScrollRatio;
+    }
+    // Font-family work is a superset of a size-only relayout. Once a hidden tab
+    // has a family change pending, a later A+/A- must not downgrade it.
+    if (!tab->reloadForEbookFontChange || !fontSizeChange) {
+        tab->reloadForEbookFontSizeChange = fontSizeChange;
+    }
     tab->reloadForEbookFontChange = true;
 }
 
@@ -2022,6 +2033,7 @@ static void ClearTabFontReloadScroll(WindowTab* tab) {
         return;
     }
     tab->reloadForEbookFontChange = false;
+    tab->reloadForEbookFontSizeChange = false;
     tab->restorePageAfterFontReload = 0;
     tab->restoreScrollXAfterFontReload = -1;
     tab->restoreScrollYAfterFontReload = -1;
@@ -2044,8 +2056,126 @@ static void ApplyFontReloadScroll(MainWindow* win, DisplayModel* dm, const FontR
 }
 
 static bool ShouldReloadForThemeChange(WindowTab* tab);
-static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab);
-static void ApplyFontChangeToTab(MainWindow* win, WindowTab* tab, const FontReloadScrollAnchor& anchor);
+static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab, bool updateUi = true);
+static void ApplyFontChangeToTab(MainWindow* win, WindowTab* tab, const FontReloadScrollAnchor& anchor,
+                                 bool showLayoutUi = false);
+static void ApplyEbookFontSizeChangeToTab(MainWindow* win, WindowTab* tab,
+                                          const FontReloadScrollAnchor* savedAnchor = nullptr);
+
+static int gEbookFontLayoutUiDepth = 0;
+static NotificationWnd* gEbookFontLayoutNotif = nullptr;
+static HCURSOR gEbookFontLayoutOldCursor = nullptr;
+static const char* gEbookFontLayoutMsg = nullptr;
+static bool gEbookFontLayoutShowsChapters = false;
+
+static void OnEbookFontLayoutRelayoutProgress(int percent, void*) {
+    if (!gEbookFontLayoutNotif || !gEbookFontLayoutMsg) {
+        return;
+    }
+    UpdateNotificationProgress(gEbookFontLayoutNotif, gEbookFontLayoutMsg, percent);
+}
+
+static void OnEbookFontLayoutChapterProgress(int chaptersDone, int chapterTotal, void*) {
+    if (!gEbookFontLayoutNotif || !gEbookFontLayoutMsg || chapterTotal <= 0) {
+        return;
+    }
+    int perc = 10 + CalcPerc(chaptersDone, chapterTotal) * 85 / 100;
+    const char* msg = gEbookFontLayoutMsg;
+    if (gEbookFontLayoutShowsChapters) {
+        msg = str::FormatTemp(_TRA("Adjusting ebook layout… chapter %d / %d"), chaptersDone, chapterTotal);
+    }
+    UpdateNotificationProgress(gEbookFontLayoutNotif, msg, perc);
+}
+
+static void BeginEbookFontLayoutUi(MainWindow* win, const char* msg, bool showChapterProgress) {
+    if (!win || !win->hwndCanvas || !msg) {
+        return;
+    }
+    if (gEbookFontLayoutUiDepth++ > 0) {
+        return;
+    }
+    gEbookFontLayoutMsg = msg;
+    gEbookFontLayoutShowsChapters = showChapterProgress;
+    RemoveNotificationsForGroup(win->hwndCanvas, kNotifEbookFontLayout);
+    NotificationCreateArgs nargs;
+    nargs.hwndParent = win->hwndCanvas;
+    nargs.groupId = kNotifEbookFontLayout;
+    nargs.msg = msg;
+    gEbookFontLayoutNotif = ShowNotification(nargs);
+    if (gEbookFontLayoutNotif) {
+        UpdateNotificationProgress(gEbookFontLayoutNotif, msg, 0);
+    }
+    gEbookFontLayoutOldCursor = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    EngineMupdfSetRelayoutProgressCb(OnEbookFontLayoutRelayoutProgress, nullptr);
+    EngineMupdfSetThemeRecountProgressCb(OnEbookFontLayoutChapterProgress, nullptr);
+}
+
+static void EndEbookFontLayoutUi() {
+    if (gEbookFontLayoutUiDepth <= 0) {
+        return;
+    }
+    if (--gEbookFontLayoutUiDepth > 0) {
+        return;
+    }
+    EngineMupdfSetRelayoutProgressCb(nullptr, nullptr);
+    EngineMupdfSetThemeRecountProgressCb(nullptr, nullptr);
+    if (gEbookFontLayoutNotif) {
+        if (gEbookFontLayoutMsg) {
+            UpdateNotificationProgress(gEbookFontLayoutNotif, gEbookFontLayoutMsg, 100);
+        }
+        RemoveNotification(gEbookFontLayoutNotif);
+        gEbookFontLayoutNotif = nullptr;
+    }
+    if (gEbookFontLayoutOldCursor) {
+        SetCursor(gEbookFontLayoutOldCursor);
+        gEbookFontLayoutOldCursor = nullptr;
+    }
+    gEbookFontLayoutMsg = nullptr;
+    gEbookFontLayoutShowsChapters = false;
+}
+
+static bool IsEbookFontAsyncReload(WindowTab* tab) {
+    return tab && tab->reloadForEbookFontChange && !tab->reloadOnFocus;
+}
+
+static void FinishEbookFontAsyncReload(MainWindow* win, WindowTab* tab, bool loaded) {
+    if (!IsEbookFontAsyncReload(tab)) {
+        return;
+    }
+    FontReloadScrollAnchor anchor = FontReloadScrollFromTab(tab);
+    if (loaded) {
+        DisplayModel* dm = tab->AsFixed();
+        ApplyFontReloadScroll(win, dm, anchor);
+        RemapAnchorsAfterReflow(tab, win);
+        if (dm && tab == win->CurrentTab()) {
+            dm->RepaintDisplay();
+        }
+    }
+    ClearTabFontReloadScroll(tab);
+}
+
+static void StartEbookFontAsyncReload(MainWindow* win, WindowTab* tab, const FontReloadScrollAnchor& anchor,
+                                      bool fontSizeChange) {
+    DisplayModel* dm = tab ? tab->AsFixed() : nullptr;
+    if (dm) {
+        gRenderCache->CancelRendering(dm);
+        gRenderCache->FreeForDisplayModel(dm);
+    }
+    SaveTabFontReloadScroll(tab, anchor, fontSizeChange);
+    tab->reloadOnFocus = false;
+    LoadArgs args(tab->filePath, win);
+    args.forceReuse = true;
+    args.noSavePrefs = true;
+    args.showLoadingProgress = true;
+    StartLoadDocument(&args);
+}
+
+struct EbookFontLayoutUiScope {
+    EbookFontLayoutUiScope(MainWindow* win, const char* msg, bool showChapterProgress = false) {
+        BeginEbookFontLayoutUi(win, msg, showChapterProgress);
+    }
+    ~EbookFontLayoutUiScope() { EndEbookFontLayoutUi(); }
+};
 
 void ReloadDocumentPreservingScroll(MainWindow* win) {
     if (!win) {
@@ -2065,15 +2195,23 @@ void ApplyTabReloadOnFocus(MainWindow* win, WindowTab* tab, bool autoRefresh) {
     tab->reloadOnFocus = false;
     if (tab->reloadForEbookFontChange) {
         FontReloadScrollAnchor anchor = FontReloadScrollFromTab(tab);
+        bool fontSizeChange = tab->reloadForEbookFontSizeChange;
         ClearTabFontReloadScroll(tab);
         if (tab != win->CurrentTab()) {
             return;
         }
-        ApplyFontChangeToTab(win, tab, anchor);
+        if (fontSizeChange) {
+            ApplyEbookFontSizeChangeToTab(win, tab, &anchor);
+        } else {
+            ApplyFontChangeToTab(win, tab, anchor, true);
+        }
         return;
     }
     if (ShouldReloadForThemeChange(tab)) {
-        ApplyThemeChangeToTab(win, tab);
+        // During a tab switch the target model has not been fully installed in
+        // the window yet. Update CSS and invalidate its caches now, but let the
+        // normal tab-load path render visible pages once after viewport setup.
+        ApplyThemeChangeToTab(win, tab, false);
         return;
     }
     ReloadDocument(win, autoRefresh);
@@ -2807,7 +2945,7 @@ static bool IsReflowMupdfEpubEngine(EngineBase* engine) {
 
 // Reflow EPUB CSS/theme updates relayout in ApplyThemeChangeToTab before the main
 // window canvas size is refreshed; run again after RelayoutFrame/UpdateCanvasSize.
-static void ReflowMupdfRelayoutUiAfterCanvasResize(MainWindow* win) {
+static void ReflowMupdfRelayoutUiAfterCanvasResize(MainWindow* win, bool forceEvenDuringProgressiveLoad = false) {
     if (!win || !win->IsDocLoaded()) {
         return;
     }
@@ -2815,7 +2953,10 @@ static void ReflowMupdfRelayoutUiAfterCanvasResize(MainWindow* win) {
     RelayoutFrame(win);
     win->UpdateCanvasSize();
     DisplayModel* dm = win->AsFixed();
-    if (!dm || EngineIsProgressiveEbookLoading(dm->GetEngine())) {
+    if (!dm) {
+        return;
+    }
+    if (!forceEvenDuringProgressiveLoad && EngineIsProgressiveEbookLoading(dm->GetEngine())) {
         return;
     }
     if (!IsReflowMupdfEpubEngine(dm->GetEngine())) {
@@ -2860,7 +3001,7 @@ static void RefreshDisplayModelAfterThemeChange(DisplayModel* dm, bool updateUi)
     }
 }
 
-static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
+static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab, bool updateUi) {
     if (!win || !tab || !tab->IsDocLoaded() || tab->IsAboutTab()) {
         return;
     }
@@ -2880,8 +3021,7 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
         if (!RelayoutMupdfForThemeChangeWithProgressUi(win, engine)) {
             logfa("ApplyThemeChangeToTab: in-place reflow theme CSS update failed\n");
         }
-        RefreshDisplayModelAfterThemeChange(dm, tab == win->CurrentTab());
-        RemapAnchorsAfterReflow(tab, win);
+        RefreshDisplayModelAfterThemeChange(dm, updateUi && tab == win->CurrentTab());
         ReloadTocUiAfterReflowReparse(win, tab, false);
         tab->reloadOnFocus = false;
         return;
@@ -2895,8 +3035,6 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
         gRenderCache->FreeForDisplayModel(dm);
         EbookAnnotationsInvalidateLayoutCaches(tab);
         RefreshDisplayModelAfterThemeChange(dm, tab == win->CurrentTab());
-        RefreshTextSelectionAfterLayoutChange(tab, win);
-        ResyncReadAloudAfterLayoutChange(tab, win);
         if (tab != win->CurrentTab()) {
             tab->reloadOnFocus = true;
         }
@@ -2907,18 +3045,50 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab) {
     ReloadDocument(win, false);
 }
 
-static void ApplyFontChangeToTab(MainWindow* win, WindowTab* tab, const FontReloadScrollAnchor& anchor) {
+static void ApplyFontChangeToTab(MainWindow* win, WindowTab* tab, const FontReloadScrollAnchor& anchor,
+                                 bool showLayoutUi) {
     if (!win || !tab || !tab->IsDocLoaded() || tab->IsAboutTab()) {
         return;
     }
+    EngineBase* engine = tab->GetEngine();
+    if (IsReflowableMupdfForTheme(engine)) {
+        StartEbookFontAsyncReload(win, tab, anchor, false);
+        return;
+    }
+    if (TtsIsSpeaking() && GetReadAloudSourceTab() == tab) {
+        TtsStop();
+        TtsProcessEvents();
+        ReadAloudFinishSession(tab, win);
+    }
+    bool ownsUi = showLayoutUi && tab == win->CurrentTab();
+    if (ownsUi) {
+        BeginEbookFontLayoutUi(win, _TRA("Applying ebook font, reloading…"), false);
+    }
+    defer {
+        if (ownsUi) {
+            EndEbookFontLayoutUi();
+        }
+    };
     DisplayModel* dm = tab->AsFixed();
     if (dm) {
         gRenderCache->CancelRendering(dm);
         gRenderCache->FreeForDisplayModel(dm);
     }
+    if (gEbookFontLayoutNotif) {
+        OnEbookFontLayoutRelayoutProgress(20, nullptr);
+    }
     ReloadDocument(win, false);
-    ApplyFontReloadScroll(win, tab->AsFixed(), anchor);
+    if (gEbookFontLayoutNotif) {
+        OnEbookFontLayoutRelayoutProgress(90, nullptr);
+    }
+    dm = tab->AsFixed();
+    ApplyFontReloadScroll(win, dm, anchor);
+    RemapAnchorsAfterReflow(tab, win);
+    if (dm && tab == win->CurrentTab()) {
+        dm->RepaintDisplay();
+    }
     tab->reloadOnFocus = false;
+    ClearTabFontReloadScroll(tab);
 }
 
 void UpdateAfterEbookFontChange() {
@@ -2928,9 +3098,8 @@ void UpdateAfterEbookFontChange() {
             if (!ShouldReloadForThemeChange(tab)) {
                 continue;
             }
-            // Font family changes must reopen the document so bundled faces reload.
             if (tab == current) {
-                ApplyFontChangeToTab(win, tab, CaptureFontReloadScroll(tab));
+                ApplyFontChangeToTab(win, tab, CaptureFontReloadScroll(tab), true);
             } else {
                 SaveTabFontReloadScroll(tab, CaptureFontReloadScroll(tab));
                 tab->reloadOnFocus = true;
@@ -2938,6 +3107,7 @@ void UpdateAfterEbookFontChange() {
         }
         RebuildMenuBarForWindow(win);
     }
+    RerenderEverything();
 }
 
 static void SyncCanvasScrollBarTheme(MainWindow* win) {
@@ -2983,9 +3153,13 @@ void UpdateAfterThemeChange() {
             if (!ShouldReloadForThemeChange(tab)) {
                 continue;
             }
-            // In-place EPUB CSS update is cheap; apply to every loaded tab so
-            // switching back does not paint stale tiles from the old theme.
-            ApplyThemeChangeToTab(win, tab);
+            if (tab == currentTab) {
+                ApplyThemeChangeToTab(win, tab);
+            } else {
+                // Hidden tabs collapse multiple theme changes into one update
+                // when selected instead of synchronously reparsing every book.
+                tab->reloadOnFocus = true;
+            }
         }
     }
     RerenderEverything();
@@ -3032,15 +3206,6 @@ void UpdateAfterThemeChange() {
         UpdateMainWindowNativeChrome(win);
         UpdateControlsColors(win);
         UpdateWindowFrameBorderColor(win);
-        WindowTab* currentTab = win->CurrentTab();
-        if (currentTab) {
-            ResyncReadAloudAfterLayoutChange(currentTab, win);
-        }
-        for (WindowTab* tab : win->Tabs()) {
-            if (tab != currentTab) {
-                ScheduleReadAloudResyncAfterLayoutChange(win, tab);
-            }
-        }
         uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN;
         RedrawWindow(win->hwndFrame, nullptr, nullptr, flags);
     }
@@ -3395,6 +3560,10 @@ MainWindow* LoadDocumentFinish(LoadArgs* args) {
         SetTabState(currTab, currTab->tabState);
         currTab->tabState = nullptr;
     }
+    // A font-size reload uses the regular asynchronous EPUB open path. The
+    // first coherent batch is now attached, so restore the saved reading
+    // anchor without waiting for the remaining chapters to finish counting.
+    FinishEbookFontAsyncReload(win, currTab, true);
     // TODO: figure why we hit this.
     // happens when opening 3 files via "Open With"
     // the first file is loaded via cmd-line arg, the rest
@@ -3440,12 +3609,27 @@ MainWindow* LoadDocumentFinish(LoadArgs* args) {
     return win;
 }
 
-static NotificationWnd* ShowLoadingNotif(MainWindow* win, const char* path) {
+static const char* AsyncLoadingMessage(LoadArgs* args) {
+    if (args && args->showLoadingProgress) {
+        return _TRA("Applying ebook font, reformatting pages…");
+    }
+    const char* path = args ? args->FilePath() : nullptr;
+    return str::FormatTemp(_TRA("Loading %s ..."), path::GetBaseNameTemp(path));
+}
+
+static NotificationWnd* ShowLoadingNotif(MainWindow* win, LoadArgs* args) {
     NotificationCreateArgs nargs;
     nargs.hwndParent = win->hwndCanvas;
-    nargs.groupId = path;
-    nargs.msg = str::FormatTemp(_TRA("Loading %s ..."), path::GetBaseNameTemp(path));
+    nargs.groupId = args && args->showLoadingProgress ? kNotifEbookFontLayout : (Kind)args->FilePath();
+    nargs.msg = AsyncLoadingMessage(args);
     return ShowNotification(nargs);
+}
+
+static void UpdateAsyncLoadingProgress(NotificationWnd* wnd, LoadArgs* args, int percent) {
+    if (!wnd || !args || !args->showLoadingProgress) {
+        return;
+    }
+    UpdateNotificationProgress(wnd, AsyncLoadingMessage(args), percent);
 }
 
 // Create/select a tab and show the window before the (slow) engine load finishes.
@@ -3616,6 +3800,7 @@ static void EarlyEngineDisplayUI(EarlyEngineDisplayTask* task) {
     LoadDocumentAsyncData* d = task->d;
     defer {
         if (d && d->wndNotif) {
+            UpdateAsyncLoadingProgress(d->wndNotif, d->args, 100);
             RemoveNotification(d->wndNotif);
             d->wndNotif = nullptr;
         }
@@ -3663,6 +3848,7 @@ void NotifyEngineDisplayReady(EngineBase* engine) {
 
 static void LoadDocumentAsyncFinish(LoadDocumentAsyncData* d) {
     if (d->wndNotif) {
+        UpdateAsyncLoadingProgress(d->wndNotif, d->args, 100);
         RemoveNotification(d->wndNotif);
         d->wndNotif = nullptr;
     }
@@ -3688,6 +3874,7 @@ static void LoadDocumentAsyncFinish(LoadDocumentAsyncData* d) {
         d->engine = nullptr;
     }
     if (!args->ctrl) {
+        FinishEbookFontAsyncReload(win, win->CurrentTab(), false);
         ShowErrorLoadingNotification(win, path, args->noSavePrefs);
         // re-sync win->ctrl with current tab after ShowErrorLoadingNotification
         // which can pump messages and change tab selection
@@ -3708,6 +3895,7 @@ struct ExtractProgressUITask {
     char* path; // owned by the task; duped on the worker thread
     int nDecoded;
     int nTotal;
+    bool ebookFontSizeChange;
 };
 
 static void UpdateLoadingNotifUI(ExtractProgressUITask* task) {
@@ -3717,20 +3905,26 @@ static void UpdateLoadingNotifUI(ExtractProgressUITask* task) {
         return;
     }
     const char* basename = path::GetBaseNameTemp(task->path);
-    TempStr loading = str::FormatTemp(_TRA("Loading %s ..."), basename);
+    const char* loading = task->ebookFontSizeChange ? _TRA("Applying ebook font, reformatting pages…")
+                                                    : str::FormatTemp(_TRA("Loading %s ..."), basename);
     TempStr msg;
     if (task->nTotal > 0) {
         msg = str::FormatTemp("%s (%d/%d)", loading, task->nDecoded, task->nTotal);
     } else {
         msg = str::FormatTemp("%s (%d)", loading, task->nDecoded);
     }
-    NotificationUpdateMessage(task->wnd, msg);
+    if (task->ebookFontSizeChange && task->nTotal > 0) {
+        UpdateNotificationProgress(task->wnd, loading, limitValue(CalcPerc(task->nDecoded, task->nTotal), 10, 95));
+    } else {
+        NotificationUpdateMessage(task->wnd, msg);
+    }
 }
 
 struct ExtractProgressState {
     NotificationWnd* wnd;
     const char* path;
     DWORD lastUpdate;
+    bool ebookFontSizeChange;
 };
 
 static void OnExtractProgress(ExtractProgressState* s, ArchiveExtractProgress* p) {
@@ -3749,6 +3943,7 @@ static void OnExtractProgress(ExtractProgressState* s, ArchiveExtractProgress* p
     task->path = str::Dup(s->path);
     task->nDecoded = p->nDecoded;
     task->nTotal = p->nTotal;
+    task->ebookFontSizeChange = s->ebookFontSizeChange;
     auto fn = MkFunc0<ExtractProgressUITask>(UpdateLoadingNotifUI, task);
     uitask::Post(fn, "ExtractProgress");
 }
@@ -3812,6 +4007,7 @@ static void LoadDocumentAsync(LoadDocumentAsyncData* d) {
     progState.wnd = d->wndNotif;
     progState.path = path;
     progState.lastUpdate = 0;
+    progState.ebookFontSizeChange = args->showLoadingProgress;
     gArchiveProgressCb = MkFunc1<ExtractProgressState, ArchiveExtractProgress*>(OnExtractProgress, &progState);
 
     // also wire up the file-copy progress callback so the cbx
@@ -3889,7 +4085,8 @@ void StartLoadDocument(LoadArgs* argsIn) {
         return;
     }
 
-    auto wndNotif = ShowLoadingNotif(win, path);
+    auto wndNotif = ShowLoadingNotif(win, argsIn);
+    UpdateAsyncLoadingProgress(wndNotif, argsIn, 10);
     LoadArgs* args = argsIn->Clone();
 
     bool willCreateNewTab = SettingsUseTabs() && !args->forceReuse;
@@ -4186,10 +4383,8 @@ void LoadModelIntoTab(WindowTab* tab) {
         ReloadDocument(win, false);
         RepaintCanvasAfterTabSwitch(win);
     } else if (rerenderAfterTheme) {
-        DisplayModel* themeDm = tab->AsFixed();
-        if (themeDm) {
-            gRenderCache->FreeForDisplayModel(themeDm);
-        }
+        // ApplyThemeChangeToTab already invalidated this model's tiles. Do not
+        // discard them a second time after the normal tab-load render pass.
         RepaintCanvasAfterTabSwitch(win);
     } else {
         RepaintCanvasAfterTabSwitch(win);
@@ -4347,7 +4542,6 @@ static void ApplyDocumentColorModeChangeToTab(MainWindow* win, WindowTab* tab) {
         RelayoutMupdfForThemeChangeWithProgressUi(win, engine);
         if (dm) {
             RefreshDisplayModelAfterThemeChange(dm, tab == win->CurrentTab());
-            RemapAnchorsAfterReflow(tab, win);
         }
         ReloadTocUiAfterReflowReparse(win, tab, false);
         tab->reloadOnFocus = false;
@@ -4366,10 +4560,156 @@ static void ApplyDocumentColorModeChangeToTab(MainWindow* win, WindowTab* tab) {
 
 static void ApplyDocumentColorModeChangeToAllTabs() {
     for (MainWindow* win : gWindows) {
+        WindowTab* current = win->CurrentTab();
         for (WindowTab* tab : win->Tabs()) {
-            ApplyDocumentColorModeChangeToTab(win, tab);
+            if (tab == current) {
+                ApplyDocumentColorModeChangeToTab(win, tab);
+                continue;
+            }
+            EngineBase* engine = tab->GetEngine();
+            ChmModel* chm = tab->AsChm();
+            if (IsReflowableMupdfForTheme(engine) || (chm && chm->UsesNativeHtmlWindow())) {
+                tab->reloadOnFocus = true;
+            }
         }
     }
+}
+
+void UpdateAfterEbookLayoutChange() {
+    for (MainWindow* win : gWindows) {
+        WindowTab* current = win->CurrentTab();
+        for (WindowTab* tab : win->Tabs()) {
+            if (!ShouldReloadForThemeChange(tab)) {
+                continue;
+            }
+            if (tab == current) {
+                ApplyEbookFontSizeChangeToTab(win, tab);
+            } else {
+                SaveTabFontReloadScroll(tab, CaptureFontReloadScroll(tab), true);
+                tab->reloadOnFocus = true;
+            }
+        }
+    }
+}
+
+struct EbookFontSizeChangeTask {
+    MainWindow* win = nullptr;
+    int pendingSteps = 0;
+    HWND timerHwnd = nullptr;
+};
+
+static constexpr UINT_PTR kEbookFontSizeDebounceTimerId = 0x104;
+static constexpr UINT kEbookFontSizeDebounceMs = 280;
+static EbookFontSizeChangeTask gEbookFontSizeTask;
+static bool gEbookFontSizeTaskPosted = false;
+
+static void ApplyEbookFontSizeChangeToTab(MainWindow* win, WindowTab* tab, const FontReloadScrollAnchor* savedAnchor) {
+    if (!win || !tab || !tab->IsDocLoaded() || tab->IsAboutTab()) {
+        return;
+    }
+    FontReloadScrollAnchor anchor = savedAnchor ? *savedAnchor : CaptureFontReloadScroll(tab);
+    EngineBase* engine = tab->GetEngine();
+    if (IsReflowableMupdfForTheme(engine)) {
+        // A font-size change invalidates pagination, rendered pages and text hit
+        // geometry at the same time. Use the same asynchronous open path as a
+        // normal file open: it publishes one coherent batch with the new CSS,
+        // then counts the rest of the chapters progressively in the background.
+        // This also avoids pairing a new bitmap with stale structured text.
+        StartEbookFontAsyncReload(win, tab, anchor, true);
+        return;
+    }
+    if (IsReflowableEbookEngine(engine)) {
+        ApplyFontChangeToTab(win, tab, anchor, false);
+    }
+}
+
+static void ApplyPendingEbookFontSizeChange();
+
+static void ScheduleEbookFontSizeChangeIfNeeded() {
+    if (gEbookFontSizeTask.pendingSteps == 0 || !gEbookFontSizeTask.win) {
+        return;
+    }
+    if (gEbookFontSizeTask.timerHwnd && IsWindow(gEbookFontSizeTask.timerHwnd)) {
+        KillTimer(gEbookFontSizeTask.timerHwnd, kEbookFontSizeDebounceTimerId);
+    }
+    HWND hwnd = gEbookFontSizeTask.win->hwndFrame;
+    gEbookFontSizeTask.timerHwnd = hwnd;
+    gEbookFontSizeTaskPosted = true;
+    if (SetTimer(hwnd, kEbookFontSizeDebounceTimerId, kEbookFontSizeDebounceMs, nullptr) == 0) {
+        gEbookFontSizeTask.timerHwnd = nullptr;
+        uitask::Post(MkFunc0Void(ApplyPendingEbookFontSizeChange), "EbookFontSize");
+    }
+}
+
+static void ApplyPendingEbookFontSizeChange() {
+    MainWindow* win = gEbookFontSizeTask.win;
+    int steps = gEbookFontSizeTask.pendingSteps;
+    gEbookFontSizeTask.pendingSteps = 0;
+    if (!win || !IsMainWindowValid(win) || steps == 0) {
+        gEbookFontSizeTaskPosted = false;
+        return;
+    }
+    while (steps != 0) {
+        int dir = steps > 0 ? 1 : -1;
+        if (!AdjustEbookFontSize(dir)) {
+            break;
+        }
+        steps -= dir;
+    }
+    WindowTab* tab = win->CurrentTab();
+    if (!tab || !IsReflowableEbookTabForFontMenu(tab)) {
+        gEbookFontSizeTaskPosted = false;
+        ScheduleEbookFontSizeChangeIfNeeded();
+        return;
+    }
+    // Font size is a global ebook preference. Reformat visible ebook tabs now
+    // and mark hidden tabs for one lazy reload when they are first activated.
+    // Multiple A+/A- presses collapse to the latest global value.
+    UpdateAfterEbookLayoutChange();
+    SaveSettings();
+    ToolbarUpdateStateForWindow(win, false);
+    gEbookFontSizeTaskPosted = false;
+    ScheduleEbookFontSizeChangeIfNeeded();
+}
+
+void RequestEbookFontSizeChange(MainWindow* win, int direction) {
+    if (!win || direction == 0) {
+        return;
+    }
+    WindowTab* tab = win->CurrentTab();
+    if (!tab || !IsReflowableEbookTabForFontMenu(tab)) {
+        return;
+    }
+    if (direction > 0 && !CanIncreaseEbookFontSize()) {
+        return;
+    }
+    if (direction < 0 && !CanDecreaseEbookFontSize()) {
+        return;
+    }
+    gEbookFontSizeTask.win = win;
+    gEbookFontSizeTask.pendingSteps += direction;
+    ScheduleEbookFontSizeChangeIfNeeded();
+}
+
+static void RequestEbookFontSizeReset(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    WindowTab* tab = win->CurrentTab();
+    if (!tab || !IsReflowableEbookTabForFontMenu(tab)) {
+        return;
+    }
+    if (gEbookFontSizeTask.timerHwnd && IsWindow(gEbookFontSizeTask.timerHwnd)) {
+        KillTimer(gEbookFontSizeTask.timerHwnd, kEbookFontSizeDebounceTimerId);
+    }
+    gEbookFontSizeTask = {};
+    gEbookFontSizeTaskPosted = false;
+    if (!ResetEbookFontSize()) {
+        return;
+    }
+    UpdateAfterEbookLayoutChange();
+    SaveSettings();
+    ToolbarUpdateStateForWindow(win, false);
 }
 
 void UpdateDocumentColors(bool rerender, bool updateReflowDocuments) {
@@ -4633,7 +4973,7 @@ static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool 
 
 static void ShowSavedAnnotationsNotification(HWND hwndParent, const char* path) {
     StrBuilder msg;
-    msg.AppendFmt(_TRA("Saved annotations to '%s'"), path);
+    msg.AppendFmt(_TRA("Saved PDF changes to '%s'"), path);
     NotificationCreateArgs nargs;
     nargs.hwndParent = hwndParent;
     nargs.font = GetDefaultGuiFont();
@@ -4793,9 +5133,9 @@ enum class SaveChoice {
 
 SaveChoice ShouldSaveAnnotationsDialog(HWND hwndParent, const char* filePath) {
     TempStr fileName = (TempStr)path::GetBaseNameTemp(filePath);
-    TempStr mainInstrA = str::FormatTemp(_TRA("Unsaved annotations in '%s'"), fileName);
+    TempStr mainInstrA = str::FormatTemp(_TRA("Unsaved PDF changes in '%s'"), fileName);
     TempWStr mainInstr = ToWStrTemp(mainInstrA);
-    auto content = _TRA("Save annotations?");
+    auto content = _TRA("Save PDF changes?");
 
     constexpr int kBtnIdDiscard = 100;
     constexpr int kBtnIdSaveToExisting = 101;
@@ -4823,7 +5163,7 @@ SaveChoice ShouldSaveAnnotationsDialog(HWND hwndParent, const char* filePath) {
         flags |= TDF_RTL_LAYOUT;
     }
     dialogConfig.cbSize = sizeof(TASKDIALOGCONFIG);
-    s = _TRA("Unsaved annotations");
+    s = _TRA("Unsaved PDF changes");
     dialogConfig.pszWindowTitle = ToWStrTemp(s);
     dialogConfig.pszMainInstruction = mainInstr;
     dialogConfig.pszContent = ToWStrTemp(content);
@@ -4919,7 +5259,11 @@ static bool MaybeSaveAnnotations(WindowTab* tab) {
             ShowErrorData data{tab, path};
             auto fn = MkFunc1(ShowSaveAnnotationError, &data);
             bool ok = EngineMupdfSaveUpdated(engine, nullptr, fn);
-        } break;
+            if (!ok) {
+                tab->askedToSaveAnnotations = false;
+            }
+            return ok;
+        }
         case SaveChoice::Cancel:
             tab->askedToSaveAnnotations = false;
             return false;
@@ -8303,6 +8647,18 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             return 0;
         }
 
+        case CmdEbookFontSizeDecrease:
+            RequestEbookFontSizeChange(win, -1);
+            return 0;
+
+        case CmdEbookFontSizeIncrease:
+            RequestEbookFontSizeChange(win, 1);
+            return 0;
+
+        case CmdEbookFontSizeReset:
+            RequestEbookFontSizeReset(win);
+            return 0;
+
         case CmdSelectionHandler: {
             // TODO: handle kCmdArgExe
             auto url = GetCommandStringArg(cmd, kCmdArgURL, nullptr);
@@ -8420,6 +8776,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
 
         case CmdResizeImage:
             ShowImageEditWindow(win, ImageEditMode::Resize);
+            break;
+
+        case CmdConvertImageToPdf:
+            ShowImageEditWindow(win, ImageEditMode::Save, nullptr, nullptr, true);
             break;
 
         case CmdPasteClipboardImage:
@@ -9265,7 +9625,20 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
 #endif
 
         case CmdFavoriteAdd:
-            AddFavoriteForCurrentPage(win);
+            if (!TryAddPdfTocFromSelection(win)) {
+                AddFavoriteForCurrentPage(win);
+            }
+            break;
+
+        case CmdPdfTocAddAfter:
+        case CmdPdfTocAddChild:
+        case CmdPdfTocEdit:
+        case CmdPdfTocDelete:
+        case CmdPdfTocMoveUp:
+        case CmdPdfTocMoveDown:
+        case CmdPdfTocPromote:
+        case CmdPdfTocDemote:
+            HandlePdfTocEditCommand(win, cmdId);
             break;
 
         case CmdFavoriteDel:
@@ -10270,6 +10643,16 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             break;
 
         case WM_TIMER:
+            if (wp == kEbookFontSizeDebounceTimerId) {
+                KillTimer(hwnd, kEbookFontSizeDebounceTimerId);
+                if (gEbookFontSizeTask.timerHwnd == hwnd) {
+                    gEbookFontSizeTask.timerHwnd = nullptr;
+                    gEbookFontSizeTaskPosted = false;
+                    ApplyPendingEbookFontSizeChange();
+                }
+                *callDef = false;
+                return 0;
+            }
             if (wp == DO_NOT_REOPEN_MENU_TIMER_ID) {
                 KillTimer(hwnd, DO_NOT_REOPEN_MENU_TIMER_ID);
                 *callDef = false;

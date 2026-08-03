@@ -429,8 +429,8 @@ void ChmModel::SetZoomVirtual(float zoom, Point*) {
     if (zoom <= 0 || !IsValidZoom(zoom)) {
         zoom = 100.0f;
     }
-    ZoomTo(zoom);
-    initZoom = zoom;
+    zoomVirtual = zoom;
+    ZoomTo(zoomVirtual);
 }
 
 void ChmModel::ZoomTo(float zoomLevel) const {
@@ -440,10 +440,7 @@ void ChmModel::ZoomTo(float zoomLevel) const {
 }
 
 float ChmModel::GetZoomVirtual(bool) const {
-    if (!htmlWindow) {
-        return 100;
-    }
-    return (float)htmlWindow->GetZoomPercent();
+    return zoomVirtual;
 }
 
 class ChmTocBuilder : public EbookTocVisitor {
@@ -558,11 +555,11 @@ void ChmModel::OnDocumentComplete(const char* url) {
         return;
     }
     currentPageNo = pageNo;
-    // TODO: setting zoom before the first page is loaded seems not to work
-    // (might be a regression from between r4593 and r4629)
-    if (IsValidZoom(initZoom)) {
-        SetZoomVirtual(initZoom, nullptr);
-        initZoom = kInvalidZoom;
+    // IE's optical zoom can reset on navigation, and ExecWB can ignore requests
+    // made while the new document is loading. Reapply the persistent requested
+    // zoom after every completed CHM page.
+    if (IsValidZoom(zoomVirtual)) {
+        ZoomTo(zoomVirtual);
     }
     if (cb) {
         cb->PageNoChanged(this, pageNo);

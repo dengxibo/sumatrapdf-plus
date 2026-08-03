@@ -57,15 +57,66 @@ void TextSelection::Reset() {
     startGlyph = -1;
     endGlyph = -1;
     startDragX = 0;
+    startDragY = 0;
     dragHoriz = 0;
+    dragVert = 0;
 }
 
 static bool IsSelectableWhitespace(WCHAR c) {
     return str::IsWs(c);
 }
 
+static bool PageUsesVerticalGlyphLayout(TextSelection* ts, int pageNo);
+static bool GlyphSharesAnchorColumn(TextSelection* ts, int pageNo, int anchor, int glyph);
+
+static int GlyphIndexAtColumnPoint(TextSelection* ts, int pageNo, double x, double y) {
+    int textLen = 0;
+    Rect* coords = nullptr;
+    const WCHAR* text = ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!text || !coords || textLen <= 0) {
+        return -1;
+    }
+    float px = (float)x;
+    float pickY = (float)y;
+    int containing = -1;
+    float containingY = -FLT_MAX;
+    int nearest = -1;
+    float nearestDy = FLT_MAX;
+    for (int i = 0; i < textLen; i++) {
+        if (!coords[i].dx && !coords[i].dy) {
+            continue;
+        }
+        if (IsSelectableWhitespace(text[i])) {
+            continue;
+        }
+        Rect& b = coords[i];
+        float hitW = std::min((float)b.dx, std::max((float)b.dy * 1.2f, 6.0f));
+        float cx = (float)b.x + (float)b.dx * 0.5f;
+        if (px < cx - hitW * 0.5f || px > cx + hitW * 0.5f) {
+            continue;
+        }
+        float cy = (float)b.y + (float)b.dy * 0.5f;
+        float dy = std::abs(pickY - cy);
+        if (dy < nearestDy) {
+            nearestDy = dy;
+            nearest = i;
+        }
+        if (pickY >= (float)b.y && pickY < (float)b.y + (float)b.dy) {
+            if ((float)b.y > containingY) {
+                containingY = (float)b.y;
+                containing = i;
+            }
+        }
+    }
+    int best = containing >= 0 ? containing : nearest;
+    return best;
+}
+
 // returns the glyph index under (x,y), or -1 if the click is not inside any glyph bbox
 static int GlyphIndexUnderPoint(TextSelection* ts, int pageNo, double x, double y) {
+    if (PageUsesVerticalGlyphLayout(ts, pageNo)) {
+        return GlyphIndexAtColumnPoint(ts, pageNo, x, y);
+    }
     int textLen;
     Rect* coords;
     ts->engine->GetTextForPage(pageNo, &textLen, &coords);
@@ -73,22 +124,239 @@ static int GlyphIndexUnderPoint(TextSelection* ts, int pageNo, double x, double 
         return -1;
     }
     Point pt = ToPoint(PointF(x, y));
+    int best = -1;
+    unsigned int bestDist = UINT_MAX;
     for (int i = 0; i < textLen; i++) {
         Rect& coord = coords[i];
         if (!coord.dx && !coord.dy) {
             continue;
         }
-        if (coord.Contains(pt)) {
-            return i;
+        if (!coord.Contains(pt)) {
+            continue;
+        }
+        uint dist = distSq(pt.x - coord.x - coord.dx / 2, pt.y - coord.y - coord.dy / 2);
+        if (dist < bestDist) {
+            bestDist = dist;
+            best = i;
         }
     }
-    return -1;
+    return best;
+}
+
+static bool GlyphColumnOverlaps(RectF a, RectF b) {
+    if (a.dx <= 0 || b.dx <= 0) {
+        return false;
+    }
+    float overlap = std::min(a.x + a.dx, b.x + b.dx) - std::max(a.x, b.x);
+    float minW = std::min(a.dx, b.dx);
+    return overlap > 0.45f * minW;
+}
+
+// True when anchor sits in a vertical column (stacked glyphs sharing X, differing Y).
+static bool GlyphInVerticalColumn(TextSelection* ts, int pageNo, int anchor) {
+    int textLen = 0;
+    Rect* coords = nullptr;
+    ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!coords || anchor < 0 || anchor >= textLen) {
+        return false;
+    }
+    RectF ab = ts->engine->Transform(ToRectF(coords[anchor]), pageNo, 1.0, 0);
+    if (ab.dx <= 0 || ab.dy <= 0) {
+        return false;
+    }
+    auto stackedNeighbor = [&](int j) -> bool {
+        if (j < 0 || j >= textLen || j == anchor) {
+            return false;
+        }
+        if (!coords[j].dx && !coords[j].dy) {
+            return false;
+        }
+        RectF b = ts->engine->Transform(ToRectF(coords[j]), pageNo, 1.0, 0);
+        if (b.dx <= 0 || b.dy <= 0) {
+            return false;
+        }
+        if (!GlyphColumnOverlaps(ab, b)) {
+            return false;
+        }
+        return std::abs(b.y - ab.y) > ab.dy * 0.35f;
+    };
+    for (int j = anchor + 1; j < textLen && j <= anchor + 8; j++) {
+        if (!coords[j].dx && !coords[j].dy) {
+            continue;
+        }
+        if (stackedNeighbor(j)) {
+            return true;
+        }
+        break;
+    }
+    for (int j = anchor - 1; j >= 0 && j >= anchor - 8; j--) {
+        if (!coords[j].dx && !coords[j].dy) {
+            continue;
+        }
+        if (stackedNeighbor(j)) {
+            return true;
+        }
+        break;
+    }
+    return false;
+}
+
+// Vertical reflow EPUBs often store one glyph per stext line (newline between each char).
+static bool PageUsesVerticalGlyphLayout(TextSelection* ts, int pageNo) {
+    int textLen = 0;
+    Rect* coords = nullptr;
+    const WCHAR* text = ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!text || !coords || textLen < 6) {
+        return false;
+    }
+    int withBox = 0;
+    int stacked = 0;
+    for (int i = 0; i < textLen; i++) {
+        if (!coords[i].dx && !coords[i].dy) {
+            continue;
+        }
+        withBox++;
+        RectF a = ts->engine->Transform(ToRectF(coords[i]), pageNo, 1.0, 0);
+        for (int j = i + 1; j < textLen && j <= i + 8; j++) {
+            if (!coords[j].dx && !coords[j].dy) {
+                continue;
+            }
+            RectF b = ts->engine->Transform(ToRectF(coords[j]), pageNo, 1.0, 0);
+            if (!GlyphColumnOverlaps(a, b)) {
+                break;
+            }
+            if (std::abs(b.y - a.y) > a.dy * 0.35f) {
+                stacked++;
+            }
+            break;
+        }
+    }
+    if (withBox >= 6 && stacked * 4 >= withBox) {
+        return true;
+    }
+
+    // Vertical reflow EPUBs often insert a newline between every glyph.
+    int printable = 0;
+    int nlStacked = 0;
+    for (int i = 0; i + 2 < textLen; i++) {
+        if (!coords[i].dx && !coords[i].dy) {
+            continue;
+        }
+        if (IsSelectableWhitespace(text[i])) {
+            continue;
+        }
+        printable++;
+        if (coords[i + 1].dx || coords[i + 1].dy) {
+            continue;
+        }
+        int j = i + 2;
+        if (j >= textLen || (!coords[j].dx && !coords[j].dy)) {
+            continue;
+        }
+        RectF a = ts->engine->Transform(ToRectF(coords[i]), pageNo, 1.0, 0);
+        RectF b = ts->engine->Transform(ToRectF(coords[j]), pageNo, 1.0, 0);
+        if (!GlyphColumnOverlaps(a, b)) {
+            continue;
+        }
+        if (std::abs(b.y - a.y) > a.dy * 0.35f) {
+            nlStacked++;
+        }
+    }
+    return printable >= 6 && nlStacked * 3 >= printable;
+}
+
+static int CompareGlyphVisualOrder(TextSelection* ts, int pageNo, bool vertical, int a, int b) {
+    int textLen = 0;
+    Rect* coords = nullptr;
+    ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!coords || a < 0 || b < 0 || a >= textLen || b >= textLen) {
+        return 0;
+    }
+    RectF ra = ts->engine->Transform(ToRectF(coords[a]), pageNo, 1.0, 0);
+    RectF rb = ts->engine->Transform(ToRectF(coords[b]), pageNo, 1.0, 0);
+    if (vertical) {
+        float overlap = std::min(ra.x + ra.dx, rb.x + rb.dx) - std::max(ra.x, rb.x);
+        float minW = std::min(ra.dx, rb.dx);
+        if (minW > 0 && overlap <= minW * 0.45f) {
+            return ra.x > rb.x ? -1 : 1;
+        }
+        if (ra.y < rb.y) {
+            return -1;
+        }
+        if (ra.y > rb.y) {
+            return 1;
+        }
+        return 0;
+    }
+    if (ra.y < rb.y) {
+        return -1;
+    }
+    if (ra.y > rb.y) {
+        return 1;
+    }
+    if (ra.x < rb.x) {
+        return -1;
+    }
+    if (ra.x > rb.x) {
+        return 1;
+    }
+    return 0;
+}
+
+static void AppendPageGlyphsInVisualOrder(TextSelection* ts, int pageNo, int fromGlyph, int toGlyph, StrVec& lines,
+                                          bool vertical) {
+    int textLen = 0;
+    Rect* coords = nullptr;
+    const WCHAR* text = ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!text || !coords || textLen <= 0) {
+        return;
+    }
+    fromGlyph = limitValue(fromGlyph, 0, textLen);
+    toGlyph = limitValue(toGlyph, 0, textLen);
+    if (fromGlyph >= toGlyph) {
+        return;
+    }
+
+    Vec<int> glyphs;
+    for (int i = fromGlyph; i < toGlyph; i++) {
+        if (!coords[i].dx && !coords[i].dy) {
+            continue;
+        }
+        if (IsSelectableWhitespace(text[i])) {
+            continue;
+        }
+        glyphs.Append(i);
+    }
+    if (glyphs.Size() == 0) {
+        return;
+    }
+
+    for (int i = 0; i < glyphs.Size(); i++) {
+        for (int j = i + 1; j < glyphs.Size(); j++) {
+            if (CompareGlyphVisualOrder(ts, pageNo, vertical, glyphs[i], glyphs[j]) > 0) {
+                int tmp = glyphs[i];
+                glyphs[i] = glyphs[j];
+                glyphs[j] = tmp;
+            }
+        }
+    }
+
+    for (int i = 0; i < glyphs.Size(); i++) {
+        WCHAR ch[2] = {text[glyphs[i]], 0};
+        lines.Append(ToUtf8Temp(ch));
+    }
 }
 
 // returns the index of the glyph closest to the right of the given coordinates
 // (i.e. when over the right half of a glyph, the returned index will be for the
 // glyph following it, which will be the first glyph (not) to be selected)
 static int FindClosestGlyph(TextSelection* ts, int pageNo, double x, double y) {
+    if (PageUsesVerticalGlyphLayout(ts, pageNo)) {
+        int g = GlyphIndexAtColumnPoint(ts, pageNo, x, y);
+        if (g >= 0) {
+            return g;
+        }
+    }
     int textLen;
     Rect* coords;
     ts->engine->GetTextForPage(pageNo, &textLen, &coords);
@@ -135,8 +403,20 @@ static int FindClosestGlyph(TextSelection* ts, int pageNo, double x, double y) {
         return result;
     }
 
-    // the result indexes the first glyph to be selected in a forward selection
     RectF bbox = ts->engine->Transform(ToRectF(coords[result]), pageNo, 1.0, 0);
+    pt = ts->engine->Transform(pt, pageNo, 1.0, 0);
+    if (GlyphInVerticalColumn(ts, pageNo, result)) {
+        if (pt.y > bbox.y + 0.5f * bbox.dy) {
+            result++;
+            while (result < textLen && coords[result - 1] == coords[result]) {
+                result++;
+            }
+        }
+        return result;
+    }
+
+    // the result indexes the first glyph to be selected in a forward selection
+    bbox = ts->engine->Transform(ToRectF(coords[result]), pageNo, 1.0, 0);
     pt = ts->engine->Transform(pt, pageNo, 1.0, 0);
     if (pt.x > bbox.x + 0.5 * bbox.dx) {
         result++;
@@ -305,6 +585,106 @@ static int BackwardInclusiveStartFromX(TextSelection* ts, int pageNo, double x, 
     return from;
 }
 
+static bool GlyphOnDragColumn(TextSelection* ts, int pageNo, double x, double y, int glyph) {
+    (void)y;
+    int textLen = 0;
+    Rect* coords = nullptr;
+    ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!coords || glyph < 0 || glyph >= textLen) {
+        return false;
+    }
+    RectF gb = ts->engine->Transform(ToRectF(coords[glyph]), pageNo, 1.0, 0);
+    if (gb.dx <= 0) {
+        return false;
+    }
+    PointF pt = ts->engine->Transform(PointF(x, y), pageNo, 1.0, 0);
+    float slack = gb.dx * 0.35f;
+    return pt.x >= gb.x - slack && pt.x <= gb.x + gb.dx + slack;
+}
+
+static bool GlyphSharesAnchorColumn(TextSelection* ts, int pageNo, int anchor, int glyph) {
+    if (glyph < 0) {
+        return false;
+    }
+    int textLen = 0;
+    Rect* coords = nullptr;
+    ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!coords || anchor < 0 || anchor >= textLen || glyph >= textLen) {
+        return false;
+    }
+    RectF ab = ts->engine->Transform(ToRectF(coords[anchor]), pageNo, 1.0, 0);
+    RectF b = ts->engine->Transform(ToRectF(coords[glyph]), pageNo, 1.0, 0);
+    if (ab.dx <= 0 || b.dx <= 0) {
+        return false;
+    }
+    return ab.x < b.x + b.dx && b.x < ab.x + ab.dx;
+}
+
+static int ForwardExclusiveEndFromY(TextSelection* ts, int pageNo, double x, double y, int startGlyph) {
+    int textLen = 0;
+    Rect* coords = nullptr;
+    ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!coords || textLen <= 0 || startGlyph < 0 || startGlyph >= textLen) {
+        return startGlyph + 1;
+    }
+    PointF pt = ts->engine->Transform(PointF(x, y), pageNo, 1.0, 0);
+    int end = startGlyph + 1;
+    for (int i = startGlyph; i < textLen; i++) {
+        RectF b = ts->engine->Transform(ToRectF(coords[i]), pageNo, 1.0, 0);
+        if (b.dx <= 0 && b.dy <= 0) {
+            continue;
+        }
+        if (i > startGlyph && !GlyphOnDragColumn(ts, pageNo, x, y, i)) {
+            if (pt.y < b.y) {
+                break;
+            }
+            continue;
+        }
+        float bottom = b.y + b.dy;
+        float mid = b.y + 0.5f * b.dy;
+        if (pt.y < b.y) {
+            break;
+        }
+        if (i == startGlyph) {
+            end = startGlyph + 1;
+            if (pt.y <= bottom) {
+                break;
+            }
+            continue;
+        }
+        if (pt.y <= mid) {
+            end = i + 1;
+            break;
+        }
+        end = i + 1;
+        if (pt.y <= bottom) {
+            break;
+        }
+        end = i + 2;
+    }
+    if (end > textLen) {
+        end = textLen;
+    }
+    if (end <= startGlyph) {
+        end = startGlyph + 1;
+    }
+    return end;
+}
+
+static bool CursorSharesAnchorColumn(TextSelection* ts, int pageNo, double x, double y, int anchor) {
+    (void)y;
+    int textLen = 0;
+    Rect* coords = nullptr;
+    ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!coords || anchor < 0 || anchor >= textLen) {
+        return true;
+    }
+    RectF ab = ts->engine->Transform(ToRectF(coords[anchor]), pageNo, 1.0, 0);
+    PointF pt = ts->engine->Transform(PointF(x, y), pageNo, 1.0, 0);
+    float slack = ab.dx > 0 ? ab.dx * 0.4f : 3.0f;
+    return pt.x >= ab.x - slack && pt.x <= ab.x + ab.dx + slack;
+}
+
 static bool CursorSharesAnchorLine(TextSelection* ts, int pageNo, double x, double y, int anchor) {
     (void)x;
     int textLen = 0;
@@ -351,9 +731,70 @@ static bool DragUsesRtlEndpoint(TextSelection* ts, int pageNo, double x, double 
     return DragExtendsLeftOfAnchor(ts, pageNo, x, y, anchor);
 }
 
+static bool DragExtendsAboveAnchor(TextSelection* ts, int pageNo, double x, double y, int anchor) {
+    (void)x;
+    (void)anchor;
+    if (pageNo != ts->startPage) {
+        return false;
+    }
+    return y < ts->startDragY;
+}
+
+static void UpdateDragVertLock(TextSelection* ts, double y) {
+    if (ts->dragVert != 0) {
+        return;
+    }
+    const float kLockEps = 1.0f;
+    if (y < ts->startDragY - kLockEps) {
+        ts->dragVert = -1;
+    } else if (y > ts->startDragY + kLockEps) {
+        ts->dragVert = 1;
+    }
+}
+
+static bool DragUsesBackwardVerticalEndpoint(TextSelection* ts, int pageNo, double x, double y, int anchor) {
+    UpdateDragVertLock(ts, y);
+    if (ts->dragVert < 0) {
+        return true;
+    }
+    if (ts->dragVert > 0) {
+        return false;
+    }
+    return DragExtendsAboveAnchor(ts, pageNo, x, y, anchor);
+}
+
 static int GlyphIndexForDragEndpoint(TextSelection* ts, int pageNo, double x, double y) {
     if (pageNo == ts->startPage && ts->startGlyph >= 0) {
         int anchor = ts->startGlyph;
+        bool vertical = PageUsesVerticalGlyphLayout(ts, pageNo) || GlyphInVerticalColumn(ts, pageNo, anchor);
+
+        if (vertical) {
+            bool sameColumn = CursorSharesAnchorColumn(ts, pageNo, x, y, anchor);
+            int offColG = -1;
+            if (!sameColumn) {
+                offColG = FindClosestGlyph(ts, pageNo, x, y);
+                if (GlyphSharesAnchorColumn(ts, pageNo, anchor, offColG)) {
+                    sameColumn = true;
+                }
+            }
+            if (!sameColumn) {
+                return offColG;
+            }
+
+            if (DragUsesBackwardVerticalEndpoint(ts, pageNo, x, y, anchor)) {
+                int under = GlyphIndexAtColumnPoint(ts, pageNo, x, y);
+                if (under >= 0 && under < anchor) {
+                    return under;
+                }
+                return anchor + 1;
+            }
+            int under = GlyphIndexAtColumnPoint(ts, pageNo, x, y);
+            int end = anchor + 1;
+            if (under >= anchor) {
+                end = under + 1;
+            }
+            return end;
+        }
 
         bool sameLine = CursorSharesAnchorLine(ts, pageNo, x, y, anchor);
         int offLineG = -1;
@@ -403,8 +844,11 @@ static int GlyphIndexForDragEndpoint(TextSelection* ts, int pageNo, double x, do
     ts->engine->GetTextForPage(pageNo, &textLen, &coords);
     Point pti = ToPoint(PointF(x, y));
     if (coords && g >= 0 && g < textLen && coords[g].Contains(pti)) {
-        int endG = ForwardExclusiveEndFromX(ts, pageNo, x, y, ts->startGlyph);
-        return endG;
+        int anchor = ts->startGlyph;
+        if (anchor >= 0 && GlyphInVerticalColumn(ts, pageNo, anchor)) {
+            return ForwardExclusiveEndFromY(ts, pageNo, x, y, anchor);
+        }
+        return ForwardExclusiveEndFromX(ts, pageNo, x, y, anchor);
     }
     return g;
 }
@@ -516,7 +960,9 @@ void TextSelection::StartAt(int pageNo, int glyphIx) {
 
 void TextSelection::StartAt(int pageNo, double x, double y) {
     startDragX = (float)x;
+    startDragY = (float)y;
     dragHoriz = 0;
+    dragVert = 0;
     int ix = GlyphIndexUnderPoint(this, pageNo, x, y);
     if (ix < 0) {
         ix = FindClosestGlyph(this, pageNo, x, y);
@@ -763,24 +1209,71 @@ void TextSelection::CopySelection(TextSelection* orig) {
     SelectUpTo(orig->endPage, orig->endGlyph);
 }
 
-WCHAR* TextSelection::ExtractText(const char* lineSep) {
+static WCHAR* ExtractTextFromGlyphRange(TextSelection* ts, int fromPage, int fromGlyph, int toPage, int toGlyph,
+                                        const char* lineSep) {
     StrVec lines;
 
-    int fromPage, fromGlyph, toPage, toGlyph;
-    GetGlyphRange(&fromPage, &fromGlyph, &toPage, &toGlyph);
+    bool vertical = PageUsesVerticalGlyphLayout(ts, fromPage);
+    if (vertical) {
+        for (int page = fromPage; page <= toPage; page++) {
+            int textLen;
+            ts->engine->GetTextForPage(page, &textLen);
+            int glyph = page == fromPage ? fromGlyph : 0;
+            int length = (page == toPage ? toGlyph : textLen) - glyph;
+            if (length > 0) {
+                AppendPageGlyphsInVisualOrder(ts, page, glyph, glyph + length, lines, true);
+            }
+        }
+        TempStr res = JoinTemp(&lines, "");
+        return ToWStr(res);
+    }
 
     for (int page = fromPage; page <= toPage; page++) {
         int textLen;
-        engine->GetTextForPage(page, &textLen);
+        ts->engine->GetTextForPage(page, &textLen);
         int glyph = page == fromPage ? fromGlyph : 0;
         int length = (page == toPage ? toGlyph : textLen) - glyph;
         if (length > 0) {
-            FillResultRects(this, page, glyph, length, &lines);
+            FillResultRects(ts, page, glyph, length, &lines);
         }
     }
 
-    TempStr res = JoinTemp(&lines, lineSep);
+    const char* joinSep = lineSep;
+    if (lines.Size() > 1) {
+        bool allSingleCjk = true;
+        for (int i = 0; i < lines.Size(); i++) {
+            const char* s = lines.At(i);
+            if (str::IsEmpty(s)) {
+                allSingleCjk = false;
+                break;
+            }
+            unsigned char c = (unsigned char)s[0];
+            int len = 1;
+            if ((c & 0xE0) == 0xC0) {
+                len = 2;
+            } else if ((c & 0xF0) == 0xE0) {
+                len = 3;
+            } else if ((c & 0xF8) == 0xF0) {
+                len = 4;
+            }
+            if (len < 3 || s[len] != 0) {
+                allSingleCjk = false;
+                break;
+            }
+        }
+        if (allSingleCjk) {
+            joinSep = "";
+        }
+    }
+
+    TempStr res = JoinTemp(&lines, joinSep);
     return ToWStr(res);
+}
+
+WCHAR* TextSelection::ExtractText(const char* lineSep) {
+    int fromPage, fromGlyph, toPage, toGlyph;
+    GetGlyphRange(&fromPage, &fromGlyph, &toPage, &toGlyph);
+    return ExtractTextFromGlyphRange(this, fromPage, fromGlyph, toPage, toGlyph, lineSep);
 }
 
 void TextSelection::GetGlyphRange(int* fromPage, int* fromGlyph, int* toPage, int* toGlyph) const {

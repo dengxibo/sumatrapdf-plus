@@ -25,6 +25,7 @@
 #include "Installer.h"
 #include "TextToSpeech.h"
 #include "CommandAvailability.h"
+#include "EbookFontConfig.h"
 #include "EbookFontMenu.h"
 
 // clang-format off
@@ -332,6 +333,7 @@ AppCommandCtx NewAppCommandCtx(MainWindow* win, Point cursorPos) {
         ctx.isPdf = CouldBePDFDoc(ctx.tab);
         if (ctx.isPdf && engine) {
             ctx.isPdfEncrypted = EngineMupdfIsEncrypted(engine);
+            ctx.canEditPdfToc = EngineMupdfCanEditPdfToc(engine);
         }
         ctx.canContinueReadAloud = CanContinueReadAloud(ctx.tab);
     }
@@ -354,7 +356,7 @@ AppCommandCtx NewAppCommandCtx(MainWindow* win, Point cursorPos) {
             ctx.isCursorOnPage = true;
         }
         ctx.annotationUnderCursor = dm->GetAnnotationAtPos(cursorPos, nullptr);
-        IPageElement* pageEl = dm->GetElementAtPos(cursorPos, nullptr);
+        IPageElement* pageEl = dm->GetElementAtPos(cursorPos, nullptr, true);
         if (pageEl) {
             char* value = pageEl->GetValue();
             ctx.cursorOnLinkTarget = value && pageEl->Is(kindPageElementDest);
@@ -378,8 +380,12 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         return CommandVisibility::Hide;
     }
 
+    if (cmdId >= CmdPdfTocAddAfter && cmdId <= CmdPdfTocDemote) {
+        return ctx.canEditPdfToc ? CommandVisibility::Show : CommandVisibility::Hide;
+    }
+
     CustomCommand* cmd = FindCustomCommand(cmdId);
-    int origCmdId = cmd ? cmd->origId : 0;
+    int origCmdId = cmd ? cmd->origId : cmdId;
     if (origCmdId == CmdSetTheme) {
         return CommandVisibility::Show;
     }
@@ -388,6 +394,24 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
             return CommandVisibility::Hide;
         }
         return CommandVisibility::Show;
+    }
+    if (origCmdId == CmdEbookFontSizeIncrease) {
+        if (!ctx.isDocLoaded || !ctx.isReflowableEbook) {
+            return CommandVisibility::Hide;
+        }
+        return CanIncreaseEbookFontSize() ? CommandVisibility::Show : CommandVisibility::Disable;
+    }
+    if (origCmdId == CmdEbookFontSizeDecrease) {
+        if (!ctx.isDocLoaded || !ctx.isReflowableEbook) {
+            return CommandVisibility::Hide;
+        }
+        return CanDecreaseEbookFontSize() ? CommandVisibility::Show : CommandVisibility::Disable;
+    }
+    if (origCmdId == CmdEbookFontSizeReset) {
+        if (!ctx.isDocLoaded || !ctx.isReflowableEbook) {
+            return CommandVisibility::Hide;
+        }
+        return UsesNonDefaultEbookFontSize() ? CommandVisibility::Show : CommandVisibility::Disable;
     }
 
     if (surface == CommandSurface::Palette) {
@@ -468,6 +492,10 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         return ctx.allowToggleMenuBar ? CommandVisibility::Show : CommandVisibility::Hide;
     }
 
+    if ((cmdId == CmdSaveAnnotations) || (cmdId == CmdSaveAnnotationsNewFile)) {
+        return ctx.hasUnsavedAnnotations ? CommandVisibility::Show : CommandVisibility::Disable;
+    }
+
     if (!ctx.supportsAnnots) {
         if ((cmdId >= (int)CmdCreateAnnotFirst) && (cmdId <= (int)CmdCreateAnnotLast)) {
             return CommandVisibility::Hide;
@@ -528,10 +556,6 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         return CommandVisibility::Disable;
     }
 
-    if ((cmdId == CmdSaveAnnotations) || (cmdId == CmdSaveAnnotationsNewFile)) {
-        return ctx.hasUnsavedAnnotations ? CommandVisibility::Show : CommandVisibility::Disable;
-    }
-
     if ((cmdId == CmdCheckUpdate) && gIsStoreBuild) {
         return CommandVisibility::Hide;
     }
@@ -569,8 +593,11 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
     if (!ctx.cursorOnComment && cmdId == CmdCopyComment) {
         return CommandVisibility::Hide;
     }
-    if (!ctx.cursorOnImage && cmdId == CmdCopyImage) {
-        return CommandVisibility::Hide;
+    if (!ctx.cursorOnImage && ctx.engineKind != kindEngineImage) {
+        if (cmdId == CmdCopyImage || cmdId == CmdSaveImage || cmdId == CmdCropImage || cmdId == CmdResizeImage ||
+            cmdId == CmdConvertImageToPdf) {
+            return CommandVisibility::Hide;
+        }
     }
     if ((cmdId == CmdToggleBookmarks) || (cmdId == CmdToggleTableOfContents)) {
         return ctx.hasToc ? CommandVisibility::Show : CommandVisibility::Hide;

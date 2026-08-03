@@ -495,6 +495,21 @@ fz_font *fz_load_system_fallback_font(fz_context *ctx, int script, int language,
 	return font;
 }
 
+void fz_purge_fallback_font_cache(fz_context *ctx)
+{
+	int i;
+
+	if (!ctx || !ctx->font)
+		return;
+	for (i = 0; i < (int)nelem(ctx->font->fallback); ++i)
+	{
+		fz_drop_font(ctx, ctx->font->fallback[i].serif);
+		ctx->font->fallback[i].serif = NULL;
+		fz_drop_font(ctx, ctx->font->fallback[i].sans);
+		ctx->font->fallback[i].sans = NULL;
+	}
+}
+
 fz_font *fz_load_fallback_font(fz_context *ctx, int script, int language, int serif, int bold, int italic)
 {
 	fz_font **fontp;

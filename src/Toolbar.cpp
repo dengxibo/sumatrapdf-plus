@@ -37,6 +37,8 @@ extern "C" {
 #include "Toolbar.h"
 #include "FindBar.h"
 #include "TextToSpeech.h"
+#include "EbookFontConfig.h"
+#include "EbookFontMenu.h"
 
 #include "Translations.h"
 #include "SvgIcons.h"
@@ -88,11 +90,13 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::RotateRight, CmdRotateRight, _TRN("Rotate &Right")},
     {TbIcon::ZoomOut, CmdZoomOut, _TRN("Zoom Out")},
     {TbIcon::ZoomIn, CmdZoomIn, _TRN("Zoom In")},
+    {TbIcon::EbookFontSizeDecrease, CmdEbookFontSizeDecrease, _TRN("Decrease Font Size")},
+    {TbIcon::EbookFontSizeIncrease, CmdEbookFontSizeIncrease, _TRN("Increase Font Size")},
     {TbIcon::Search, CmdFindFirst, _TRN("Find")},
     {TbIcon::Dictionary, CmdToggleDoubleClickWordLookup, _TRN("Toggle Double-Click Word Lookup")},
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
     {TbIcon::DocColorFollowTheme, CmdSetPdfDocumentColorModeBlack,
-     _TRN("Document Color Mode: Match theme (follow current theme colors)")},
+     _TRN("Document Color Mode: Match theme (use current theme colors)")},
     {TbIcon::Speak, CmdReadAloud, _TRN("Read Aloud")},
 };
 // unicode chars: https://www.compart.com/en/unicode/U+25BC
@@ -247,7 +251,7 @@ void UpdatePdfDocumentColorModeToolbarButton(MainWindow* win) {
     if (n == 0) {
         return;
     }
-    const char* tip = followTheme ? _TRN("Document Color Mode: Match theme (follow current theme colors)")
+    const char* tip = followTheme ? _TRN("Document Color Mode: Match theme (use current theme colors)")
                                   : _TRN("Document Color Mode: Original (document colors unchanged)");
     TempStr tipTranslated = (TempStr)trans::GetTranslation(tip);
     TBBUTTONINFOW bi{};
@@ -313,6 +317,11 @@ static bool IsCmdAvailable(MainWindow* win, int cmdId) {
             return NeedsRotateUI(win);
         case CmdToggleBookmarks:
             return true;
+        case CmdEbookFontSizeDecrease:
+        case CmdEbookFontSizeIncrease:
+            // Keep these buttons in a stable toolbar position. They are disabled
+            // (gray) rather than hidden for PDF and other fixed-layout documents.
+            return true;
         case CmdFindFirst:
         case CmdFindNext:
         case CmdFindPrev:
@@ -350,6 +359,10 @@ static bool IsCmdEnabled(MainWindow* win, int cmdId) {
             return win->IsDocLoaded() && win->ctrl && win->ctrl->HasToc();
         case CmdToggleLightDarkTheme:
             return true;
+        case CmdEbookFontSizeDecrease:
+            return IsReflowableEbookTabForFontMenu(win->CurrentTab()) && CanDecreaseEbookFontSize();
+        case CmdEbookFontSizeIncrease:
+            return IsReflowableEbookTabForFontMenu(win->CurrentTab()) && CanIncreaseEbookFontSize();
         case CmdSetPdfDocumentColorModeAuto:
         case CmdSetPdfDocumentColorModeBlack:
         case CmdSetPdfDocumentColorModeLight:
@@ -969,7 +982,52 @@ static LRESULT CALLBACK WndProcEditBg(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 }
 
 static WNDPROC DefWndProcToolbar = nullptr;
+
+static bool ShowEbookFontSizeContextMenu(HWND hwnd, LPARAM lp) {
+    MainWindow* win = FindMainWindowByHwnd(hwnd);
+    if (!win || !IsReflowableEbookTabForFontMenu(win->CurrentTab())) {
+        return false;
+    }
+
+    POINT screenPt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+    if (screenPt.x == -1 && screenPt.y == -1) {
+        return false;
+    }
+    POINT clientPt = screenPt;
+    ScreenToClient(hwnd, &clientPt);
+    int idx = (int)SendMessageW(hwnd, TB_HITTEST, 0, (LPARAM)&clientPt);
+    if (idx < 0) {
+        return false;
+    }
+    TBBUTTON button{};
+    if (!SendMessageW(hwnd, TB_GETBUTTON, idx, (LPARAM)&button)) {
+        return false;
+    }
+    if (button.idCommand != CmdEbookFontSizeDecrease && button.idCommand != CmdEbookFontSizeIncrease) {
+        return false;
+    }
+
+    HMENU menu = CreatePopupMenu();
+    UINT flags = MF_STRING;
+    if (!UsesNonDefaultEbookFontSize()) {
+        flags |= MF_DISABLED | MF_GRAYED;
+    }
+    AppendMenuW(menu, flags, CmdEbookFontSizeReset, ToWStrTemp(_TRA("Reset Font Si&ze to Default")));
+    MarkMenuOwnerDraw(menu);
+    int cmdId =
+        TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, screenPt.x, screenPt.y, 0, win->hwndFrame, nullptr);
+    FreeMenuOwnerDrawInfoData(menu);
+    DestroyMenu(menu);
+    if (cmdId != 0 && IsMainWindowValid(win)) {
+        SendMessageW(win->hwndFrame, WM_COMMAND, cmdId, 0);
+    }
+    return true;
+}
+
 static LRESULT CALLBACK WndProcToolbar(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (WM_CONTEXTMENU == msg && ShowEbookFontSizeContextMenu(hwnd, lp)) {
+        return 0;
+    }
     if (WM_CTLCOLORSTATIC == msg || WM_CTLCOLOREDIT == msg) {
         HWND hwndCtrl = (HWND)lp;
         HDC hdc = (HDC)wp;
@@ -1586,7 +1644,7 @@ void DrawSvgIcon(HDC hdc, const Rect& dest, TbIcon icon, COLORREF fgCol, COLORRE
     AlphaBlend(hdc, dest.x, dest.y, dx, dy, memDC, 0, 0, dx, dy, bf);
 }
 
-static HBITMAP BuildIconsBitmap(int dx, int dy) {
+static HBITMAP BuildIconsBitmap(int dx, int dy, COLORREF fgCol, COLORREF bgCol) {
     fz_context* ctx = fz_new_context_windows();
     int nIcons = (int)TbIcon::kMax;
     int destDx = dx * nIcons;
@@ -1623,8 +1681,6 @@ static HBITMAP BuildIconsBitmap(int dx, int dy) {
         hbmp = CreateDIBSection(nullptr, bmi, usage, (void**)&hbmpData, hMap, 0);
     }
 
-    COLORREF fgCol = ThemeWindowTextColor();
-    COLORREF bgCol = ThemeChromeBackgroundColor();
     for (int i = 0; i < nIcons; i++) {
         const char* svgData = GetSvgIcon((TbIcon)i);
         TempStr strokeCol = SerializeColorTemp(fgCol);
@@ -1649,7 +1705,7 @@ static HBITMAP BuildIconsBitmap(int dx, int dy) {
 
 HIMAGELIST BuildStdToolbarImageList(int dx) {
     HIMAGELIST himl = ImageList_Create(dx, dx, ILC_COLOR32, (int)TbIcon::kMax, 0);
-    HBITMAP hbmp = BuildIconsBitmap(dx, dx);
+    HBITMAP hbmp = BuildIconsBitmap(dx, dx, ThemeWindowTextColor(), ThemeChromeBackgroundColor());
     ImageList_Add(himl, hbmp, nullptr);
     DeleteObject(hbmp);
     return himl;
@@ -1689,10 +1745,25 @@ static int SetToolbarIconsImageList(MainWindow* win) {
 
     // assume square icons
     HIMAGELIST himl = ImageList_Create(dx, dx, ILC_COLOR32, kButtonsCount, 0);
-    HBITMAP hbmp = BuildIconsBitmap(dx, dx);
+    COLORREF bgCol = ThemeChromeBackgroundColor();
+    HBITMAP hbmp = BuildIconsBitmap(dx, dx, ThemeWindowTextColor(), bgCol);
     ImageList_Add(himl, hbmp, nullptr);
     DeleteObject(hbmp);
-    SendMessageW(hwndToolbar, TB_SETIMAGELIST, 0, (LPARAM)himl);
+    HIMAGELIST oldNormal = (HIMAGELIST)SendMessageW(hwndToolbar, TB_SETIMAGELIST, 0, (LPARAM)himl);
+    if (oldNormal) {
+        ImageList_Destroy(oldNormal);
+    }
+
+    // Alpha SVG icons don't get a visibly disabled treatment from the toolbar.
+    // Supply an explicit gray image list so disabled buttons are unmistakable.
+    HIMAGELIST disabled = ImageList_Create(dx, dx, ILC_COLOR32, kButtonsCount, 0);
+    hbmp = BuildIconsBitmap(dx, dx, ThemeWindowTextDisabledColor(), bgCol);
+    ImageList_Add(disabled, hbmp, nullptr);
+    DeleteObject(hbmp);
+    HIMAGELIST oldDisabled = (HIMAGELIST)SendMessageW(hwndToolbar, TB_SETDISABLEDIMAGELIST, 0, (LPARAM)disabled);
+    if (oldDisabled) {
+        ImageList_Destroy(oldDisabled);
+    }
     return iconSize;
 }
 

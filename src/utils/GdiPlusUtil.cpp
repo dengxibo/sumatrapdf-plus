@@ -13,6 +13,8 @@
 #include "utils/WinUtil.h"
 #include "utils/GdiPlusUtil.h"
 
+#include "EbookTypography.h"
+
 #if COMPILER_MSVC
 #pragma warning(disable : 4668)
 #endif
@@ -45,6 +47,7 @@ void ResetBundledReaderFonts() {
         delete gBundledFonts;
         gBundledFonts = nullptr;
     }
+    InstallBundledReaderFonts();
 }
 
 static bool IsReaderCjkFamilyRequest(const WCHAR* requested) {
@@ -83,6 +86,70 @@ static bool IsSourceHanScFamily(const WCHAR* familyName) {
     return IsReaderCjkFamilyName(familyName);
 }
 
+static bool Utf8Contains(const char* haystack, const char* needle) {
+    return haystack && needle && strstr(haystack, needle) != nullptr;
+}
+
+static bool IsReaderWenkaiConfigured() {
+    return str::StartsWithI(gReaderCjkFontFamily, "LXGW");
+}
+
+static bool IsWenkaiFamilyRequest(const WCHAR* requested) {
+    if (!requested || !IsReaderWenkaiConfigured()) {
+        return false;
+    }
+    if (str::StartsWithI(requested, L"LXGW")) {
+        return true;
+    }
+    TempStr utf8 = ToUtf8Temp(requested);
+    return utf8 && (Utf8Contains(utf8, "\xe9\x9c\x9e\xe9\x82\x97") || Utf8Contains(utf8, "\xe6\x96\x87\xe9\x91\x8b"));
+}
+
+static bool IsWenkaiFamilyName(const WCHAR* familyName) {
+    if (!familyName) {
+        return false;
+    }
+    if (str::StartsWithI(familyName, L"LXGW")) {
+        return true;
+    }
+    TempStr utf8 = ToUtf8Temp(familyName);
+    return utf8 && (Utf8Contains(utf8, "\xe9\x9c\x9e\xe9\x82\x97") || Utf8Contains(utf8, "\xe6\x96\x87\xe9\x91\x8b"));
+}
+
+static bool IsReaderLatinFamilyRequest(const WCHAR* requested) {
+    if (!requested) {
+        return false;
+    }
+    TempWStr cfg = ToWStrTemp(gReaderLatinFontFamily);
+    if (str::EqI(requested, cfg)) {
+        return true;
+    }
+    if (str::StartsWithI(requested, L"Literata")) {
+        return str::StartsWithI(gReaderLatinFontFamily, "Literata");
+    }
+    if (str::StartsWithI(requested, L"Source Serif")) {
+        return str::StartsWithI(gReaderLatinFontFamily, "Source Serif");
+    }
+    return false;
+}
+
+static bool IsReaderLatinFamilyName(const WCHAR* familyName) {
+    if (!familyName) {
+        return false;
+    }
+    TempWStr cfg = ToWStrTemp(gReaderLatinFontFamily);
+    if (str::EqI(familyName, cfg)) {
+        return true;
+    }
+    if (str::StartsWithI(familyName, L"Literata")) {
+        return str::StartsWithI(gReaderLatinFontFamily, "Literata");
+    }
+    if (str::StartsWithI(familyName, L"Source Serif")) {
+        return str::StartsWithI(gReaderLatinFontFamily, "Source Serif");
+    }
+    return false;
+}
+
 static bool BundledFamilyMatchesRequest(const WCHAR* familyName, const WCHAR* requested) {
     if (!familyName || !requested) {
         return false;
@@ -94,6 +161,12 @@ static bool BundledFamilyMatchesRequest(const WCHAR* familyName, const WCHAR* re
     // SourceHanSerif-Regular.ttc (JP/TC index 0/3); that yields wrong simplified glyphs (e.g. 门).
     if (IsSourceHanScRequest(requested)) {
         return IsSourceHanScFamily(familyName);
+    }
+    if (IsWenkaiFamilyRequest(requested)) {
+        return IsWenkaiFamilyName(familyName);
+    }
+    if (IsReaderLatinFamilyRequest(requested)) {
+        return IsReaderLatinFamilyName(familyName);
     }
     return false;
 }
@@ -280,7 +353,86 @@ void CollectBundledFontFamilyNames(Vec<char*>* families) {
     }
 }
 
+struct ReaderLatinFaceCache {
+    Gdiplus::PrivateFontCollection* collection = nullptr;
+    WCHAR familyName[LF_FACESIZE]{};
+    char sourcePath[260]{};
+    bool tried = false;
+};
+
+static ReaderLatinFaceCache gLiterataRegularFace;
+static ReaderLatinFaceCache gLiterataItalicFace;
+
+static Gdiplus::Font* CreateFontFromFaceCache(ReaderLatinFaceCache* cache, const char* relPath, float emSize) {
+    if (!cache->tried) {
+        cache->tried = true;
+        TempStr path = GetPathInExeDirTemp(relPath);
+        TempWStr pathW = path ? ToWStrTemp(path) : nullptr;
+        if (pathW && GetFileAttributesW(pathW) != INVALID_FILE_ATTRIBUTES) {
+            cache->collection = new Gdiplus::PrivateFontCollection();
+            if (cache->collection->AddFontFile(pathW) == Gdiplus::Ok) {
+                Gdiplus::FontFamily fam[1];
+                INT n = 0;
+                if (cache->collection->GetFamilies(1, fam, &n) == Gdiplus::Ok && n > 0 &&
+                    fam[0].GetFamilyName(cache->familyName) == Gdiplus::Ok) {
+                    str::BufSet(cache->sourcePath, dimof(cache->sourcePath), path);
+                }
+            }
+            if (!cache->familyName[0]) {
+                delete cache->collection;
+                cache->collection = nullptr;
+            }
+        }
+    }
+    if (!cache->collection || !cache->familyName[0]) {
+        return nullptr;
+    }
+    // Match CreateBundledFontFromFamily (UnitPoint); UnitPixel made Literata ~25% smaller than CJK.
+    Gdiplus::Font* font = new Gdiplus::Font(cache->familyName, emSize, Gdiplus::FontStyleRegular, Gdiplus::UnitPoint,
+                                              cache->collection);
+    if (font && font->GetLastStatus() == Gdiplus::Ok) {
+        return font;
+    }
+    delete font;
+    return nullptr;
+}
+
+static Gdiplus::Font* TryCreateGeorgiaLatinFallback(float emSize, Gdiplus::FontStyle style) {
+    Gdiplus::FontStyle useStyle = style;
+    if (EbookReaderStyleMobi() && (style & Gdiplus::FontStyleBold)) {
+        useStyle = (Gdiplus::FontStyle)(useStyle & ~Gdiplus::FontStyleBold);
+    }
+    Gdiplus::Font* font = new Gdiplus::Font(L"Georgia", emSize, useStyle, Gdiplus::UnitPoint);
+    if (font && font->GetLastStatus() == Gdiplus::Ok) {
+        return font;
+    }
+    delete font;
+    return nullptr;
+}
+
+static Gdiplus::Font* TryCreateBundledFontImpl(const WCHAR* familyName, float sizePt, Gdiplus::FontStyle style);
+
 Gdiplus::Font* TryCreateBundledFont(const WCHAR* familyName, float sizePt, Gdiplus::FontStyle style) {
+    return TryCreateBundledFontImpl(familyName, sizePt, style);
+}
+
+Gdiplus::Font* TryCreateReaderLatinFromSystemFiles(float sizePt, Gdiplus::FontStyle style) {
+    if (!str::StartsWithI(gReaderLatinFontFamily, "Literata")) {
+        return nullptr;
+    }
+
+    bool italic = (style & Gdiplus::FontStyleItalic) != 0;
+    ReaderLatinFaceCache* cache = italic ? &gLiterataItalicFace : &gLiterataRegularFace;
+    const char* relPath = italic ? "fonts\\Literata-Italic.ttf" : "fonts\\Literata-Regular.ttf";
+
+    Gdiplus::Font* font = CreateFontFromFaceCache(cache, relPath, sizePt);
+    if (!font) {
+        font = TryCreateGeorgiaLatinFallback(sizePt, style);
+    }
+    return font;
+}
+
+static Gdiplus::Font* TryCreateBundledFontImpl(const WCHAR* familyName, float sizePt, Gdiplus::FontStyle style) {
     if (!gBundledFonts || !familyName) {
         return nullptr;
     }
@@ -385,27 +537,32 @@ static bool IsCjkFontName(const WCHAR* faceName) {
     return false;
 }
 
+static Vec<Font*> gMeasureTextQuickFontCache;
+static Vec<bool> gMeasureTextQuickFixCache;
+
+void ClearMeasureTextQuickFontCache() {
+    gMeasureTextQuickFontCache.Clear();
+    gMeasureTextQuickFixCache.Clear();
+}
+
 RectF MeasureTextQuick(Graphics* g, Font* f, const WCHAR* s, int len) {
     ReportIf(0 >= len);
 
-    static Vec<Font*> fontCache;
-    static Vec<bool> fixCache;
-
     Gdiplus::RectF bbox;
     g->MeasureString(s, len, f, Gdiplus::PointF(0, 0), &bbox);
-    int idx = fontCache.Find(f);
+    int idx = gMeasureTextQuickFontCache.Find(f);
     if (-1 == idx) {
         LOGFONTW lfw;
         Status ok = f->GetLogFontW(g, &lfw);
         bool isItalicOrMonospace = Ok != ok || lfw.lfItalic || str::Eq(lfw.lfFaceName, L"Courier New") ||
                                    str::Find(lfw.lfFaceName, L"Consol") || str::EndsWith(lfw.lfFaceName, L"Mono") ||
                                    str::EndsWith(lfw.lfFaceName, L"Typewriter") || IsCjkFontName(lfw.lfFaceName);
-        fontCache.Append(f);
-        fixCache.Append(isItalicOrMonospace);
-        idx = (int)fontCache.size() - 1;
+        gMeasureTextQuickFontCache.Append(f);
+        gMeasureTextQuickFixCache.Append(isItalicOrMonospace);
+        idx = (int)gMeasureTextQuickFontCache.size() - 1;
     }
     // most documents look good enough with these adjustments
-    if (!fixCache.at(idx)) {
+    if (!gMeasureTextQuickFixCache.at(idx)) {
         float correct = 0;
         for (int i = 0; i < len; i++) {
             switch (s[i]) {

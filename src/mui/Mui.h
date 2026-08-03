@@ -28,6 +28,7 @@ struct CachedFont {
 
 void Initialize();
 void Destroy();
+void ClearCachedFonts();
 
 void InitGraphicsMode(Graphics* g);
 CachedFont* GetCachedFont(const WCHAR* name, float sizePt, FontStyle style);

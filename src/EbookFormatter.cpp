@@ -251,6 +251,7 @@ void MobiFormatter::HandleTagBlockquote(HtmlToken* t) {
     if (t->IsStartTag()) {
         FlushCurrLine(true);
         blockquoteDepth++;
+        BeginParagraphScope(Tag_Blockquote);
     } else if (t->IsEndTag() && blockquoteDepth > 0) {
         FlushCurrLine(true);
         blockquoteDepth--;

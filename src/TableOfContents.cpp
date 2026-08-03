@@ -26,9 +26,13 @@
 #include "GlobalPrefs.h"
 #include "Annotation.h"
 #include "SumatraPDF.h"
+#include "SumatraDialogs.h"
+#include "Toolbar.h"
 #include "MainWindow.h"
 #include "EpubPerfLog.h"
 #include "DisplayModel.h"
+#include "TextSelection.h"
+#include "Selection.h"
 #include "Favorites.h"
 #include "WindowTab.h"
 #include "resource.h"
@@ -347,9 +351,6 @@ bool IsInternalPageLinkReachable(DocController* ctrl, IPageDestination* dest) {
         return EngineMupdfIsOutlineDestReachable(engine, dest);
     }
     if (engine->kind == kindEngineMobi) {
-        if (kind == kindDestinationScrollTo && PageDestGetName(dest)) {
-            return true;
-        }
         int filePos = EngineEbookParseTocLinkFilePos(engine, dest);
         if (filePos >= 0) {
             return EngineEbookIsTocFilePosReachable(engine, filePos);
@@ -357,6 +358,9 @@ bool IsInternalPageLinkReachable(DocController* ctrl, IPageDestination* dest) {
         int pageNo = PageDestGetPageNo(dest);
         if (pageNo > 0) {
             return pageNo <= EngineEbookGetFormattedPageCount(engine);
+        }
+        if (kind == kindDestinationScrollTo && PageDestGetName(dest)) {
+            return true;
         }
     }
     int pageNo = PageDestGetPageNo(dest);
@@ -909,15 +913,363 @@ static void SaveEmbeddedFile(WindowTab* tab, const char* srcPath, const char* fi
     str::Free(data.data());
 }
 
+static EngineBase* PdfTocEditableEngine(MainWindow* win) {
+    DisplayModel* dm = win && win->ctrl ? win->ctrl->AsFixed() : nullptr;
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    return engine && EngineMupdfCanEditPdfToc(engine) ? engine : nullptr;
+}
+
+static TocItem* FindTocItemById(TocItem* item, int id) {
+    for (; item; item = item->next) {
+        if (item->id == id) {
+            return item;
+        }
+        TocItem* found = FindTocItemById(item->child, id);
+        if (found) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+static TocItem* OriginalPdfTocItem(MainWindow* win, TocItem* item) {
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    if (!item || !tab || !tab->currToc || !tab->currToc->root) {
+        return item;
+    }
+    return FindTocItemById(tab->currToc->root->child, item->id);
+}
+
+static bool PdfTocPathForItem(MainWindow* win, TocItem* item, Vec<int>& pathOut) {
+    pathOut.Clear();
+    item = OriginalPdfTocItem(win, item);
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    if (!item || !tab || !tab->currToc || !tab->currToc->root) {
+        return false;
+    }
+    Vec<int> reverse;
+    for (TocItem* curr = item; curr; curr = curr->parent) {
+        TocItem* first = curr->parent ? curr->parent->child : tab->currToc->root->child;
+        int idx = 0;
+        while (first && first != curr) {
+            idx++;
+            first = first->next;
+        }
+        if (!first) {
+            return false;
+        }
+        reverse.Append(idx);
+    }
+    for (int i = reverse.Size() - 1; i >= 0; i--) {
+        pathOut.Append(reverse.At(i));
+    }
+    return true;
+}
+
+static TocItem* PdfTocItemAtPath(TocItem* root, const Vec<int>& path) {
+    TocItem* item = root;
+    for (int depth = 0; depth < path.Size(); depth++) {
+        int idx = path.At(depth);
+        for (int i = 0; item && i < idx; i++) {
+            item = item->next;
+        }
+        if (!item) {
+            return nullptr;
+        }
+        if (depth + 1 < path.Size()) {
+            item = item->child;
+        }
+    }
+    return item;
+}
+
+static bool ConfirmPdfTocSignatureEdit(MainWindow* win, EngineBase* engine) {
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    if (!tab || tab->acceptedPdfTocSignatureWarning || !EngineMupdfPdfHasSignatures(engine)) {
+        return true;
+    }
+    int res = MessageBoxW(win->hwndFrame,
+                          L"Editing the table of contents changes this PDF after it was digitally signed. The "
+                          L"existing signature will remain, but viewers will report that the document was modified. "
+                          L"Continue?",
+                          L"Digitally signed PDF", MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
+    if (res != IDYES) {
+        return false;
+    }
+    tab->acceptedPdfTocSignatureWarning = true;
+    return true;
+}
+
+static char* CurrentPdfTocTarget(MainWindow* win, EngineBase* engine) {
+    DisplayModel* dm = win ? win->AsFixed() : nullptr;
+    if (!dm) {
+        return nullptr;
+    }
+    ScrollState state = dm->GetScrollState();
+    float x = state.x >= 0 ? (float)state.x : 0.f;
+    float y = state.y >= 0 ? (float)state.y : 0.f;
+    return EngineMupdfFormatPdfTocTarget(engine, state.page, x, y);
+}
+
+static void ReloadPdfTocAfterEdit(MainWindow* win, const Vec<int>& selectedPath) {
+    if (!win) {
+        return;
+    }
+    if (win->tocLoaded) {
+        ClearTocBox(win);
+    }
+    LoadTocTree(win);
+    WindowTab* tab = win->CurrentTab();
+    if (!tab || !tab->currToc || !tab->currToc->root || selectedPath.empty()) {
+        return;
+    }
+    TocItem* selected = PdfTocItemAtPath(tab->currToc->root->child, selectedPath);
+    if (selected && win->tocTreeView) {
+        win->tocKeepSelection = true;
+        win->tocTreeView->SelectItem((TreeItem)selected);
+        win->tocKeepSelection = false;
+    }
+}
+
+static void ShowPdfTocEditError(MainWindow* win, const char* error) {
+    TempWStr msg = ToWStrTemp(error ? error : "The PDF table of contents could not be modified.");
+    MessageBoxW(win->hwndFrame, msg, L"PDF table of contents", MB_OK | MB_ICONERROR);
+}
+
+static bool ConfirmPdfTocDelete(MainWindow* win, bool hasChildren) {
+    const char* content = hasChildren ? _TRA("Delete this TOC item and all of its child items?")
+                                      : _TRA("Delete this TOC item?");
+    TASKDIALOG_BUTTON buttons[2]{};
+    buttons[0].nButtonID = IDYES;
+    buttons[0].pszButtonText = ToWStrTemp(_TRA("Yes"));
+    buttons[1].nButtonID = IDNO;
+    buttons[1].pszButtonText = ToWStrTemp(_TRA("No"));
+
+    DWORD flags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT | TDF_POSITION_RELATIVE_TO_WINDOW;
+    if (trans::IsCurrLangRtl()) {
+        flags |= TDF_RTL_LAYOUT;
+    }
+    TASKDIALOGCONFIG config{};
+    config.cbSize = sizeof(config);
+    config.hwndParent = win->hwndFrame;
+    config.dwFlags = flags;
+    config.pszWindowTitle = ToWStrTemp(_TRA("Delete PDF TOC Item"));
+    config.pszContent = ToWStrTemp(content);
+    config.pszMainIcon = TD_WARNING_ICON;
+    config.nDefaultButton = IDNO;
+    config.cButtons = dimof(buttons);
+    config.pButtons = buttons;
+
+    int pressed = 0;
+    HRESULT hr = TaskDialogIndirect(&config, &pressed, nullptr, nullptr);
+    return hr == S_OK && pressed == IDYES;
+}
+
+static void ExecutePdfTocEdit(MainWindow* win, TocItem* selected, PdfTocEditAction action) {
+    EngineBase* engine = PdfTocEditableEngine(win);
+    if (!engine || !ConfirmPdfTocSignatureEdit(win, engine)) {
+        return;
+    }
+    selected = OriginalPdfTocItem(win, selected);
+    Vec<int> path;
+    if (selected && !PdfTocPathForItem(win, selected, path)) {
+        return;
+    }
+
+    AutoFreeStr title;
+    AutoFreeStr target;
+    bool setTargetToCurrentView = false;
+    bool needsTitle = action == PdfTocEditAction::AddAfter || action == PdfTocEditAction::AddChild ||
+                      action == PdfTocEditAction::Update;
+    if (needsTitle) {
+        if (selected && action == PdfTocEditAction::Update) {
+            title.SetCopy(selected->title);
+        } else {
+            TempStr pageLabel = win->ctrl->GetPageLabeTemp(win->ctrl->CurrentPageNo());
+            title.SetCopy(str::FormatTemp(_TRA("Page %s"), pageLabel));
+        }
+        const char* dialogTitle =
+            action == PdfTocEditAction::Update ? _TRA("Edit PDF TOC Item") : _TRA("Add PDF TOC Item");
+        const char* prompt = _TRA("Title (target: current view):");
+        TempStr editPrompt;
+        if (action == PdfTocEditAction::Update) {
+            const char* currentTarget = selected && selected->dest ? PageDestGetValue(selected->dest) : nullptr;
+            editPrompt = str::FormatTemp(_TRA("Title (current target: %s):"),
+                                         currentTarget ? currentTarget : _TRA("none"));
+            prompt = editPrompt;
+        }
+        bool* setTarget = action == PdfTocEditAction::Update ? &setTargetToCurrentView : nullptr;
+        if (!Dialog_PdfTocTitle(win->hwndFrame, dialogTitle, prompt, title, setTarget)) {
+            return;
+        }
+    }
+
+    if (action == PdfTocEditAction::AddAfter || action == PdfTocEditAction::AddChild) {
+        target.Set(CurrentPdfTocTarget(win, engine));
+        if (!target) {
+            ShowPdfTocEditError(win, "The current PDF position could not be captured.");
+            return;
+        }
+    } else if (action == PdfTocEditAction::Update) {
+        if (setTargetToCurrentView) {
+            target.Set(CurrentPdfTocTarget(win, engine));
+            if (!target) {
+                ShowPdfTocEditError(win, "The current PDF position could not be captured.");
+                return;
+            }
+        }
+    } else if (action == PdfTocEditAction::Delete) {
+        if (!ConfirmPdfTocDelete(win, selected && selected->child)) {
+            return;
+        }
+    }
+
+    Vec<int> resultPath;
+    char* errorRaw = nullptr;
+    const char* uri = target ? target.Get() : nullptr;
+    bool ok = EngineMupdfEditPdfToc(engine, action, path, title.Get(), uri, &resultPath, &errorRaw);
+    AutoFreeStr error(errorRaw);
+    if (!ok) {
+        ShowPdfTocEditError(win, error);
+        return;
+    }
+    ReloadPdfTocAfterEdit(win, resultPath);
+    ToolbarUpdateStateForWindow(win, false);
+}
+
+bool TryAddPdfTocFromSelection(MainWindow* win) {
+    EngineBase* engine = PdfTocEditableEngine(win);
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    DisplayModel* dm = tab ? tab->AsFixed() : nullptr;
+    TextSelection* selection = dm ? dm->textSelection : nullptr;
+    if (!engine || !selection || selection->result.len <= 0 || !HasPermission(Perm::CopySelection)) {
+        return false;
+    }
+
+    // Once this is recognized as the PDF TOC shortcut, don't fall back to adding
+    // a favorite if the edit is cancelled or fails.
+    if (!ConfirmPdfTocSignatureEdit(win, engine)) {
+        return true;
+    }
+
+    bool isTextOnlySelection = false;
+    TempStr selectedText = GetSelectedTextTemp(tab, " ", isTextOnlySelection);
+    AutoFreeStr title(str::Dup(selectedText));
+    if (!isTextOnlySelection || !title) {
+        return true;
+    }
+    str::TrimWSInPlace(title.Get(), str::TrimOpt::Both);
+    if (str::IsEmpty(title.Get())) {
+        return true;
+    }
+
+    int pageNo = selection->result.pages[0];
+    Rect selectionRect = selection->result.rects[0];
+    AutoFreeStr target(
+        EngineMupdfFormatPdfTocTarget(engine, pageNo, (float)selectionRect.x, (float)selectionRect.y));
+    if (!target) {
+        ShowPdfTocEditError(win, "The selected PDF position could not be captured.");
+        return true;
+    }
+
+    TocItem* selected = win->tocTreeView ? (TocItem*)win->tocTreeView->GetSelection() : nullptr;
+    selected = OriginalPdfTocItem(win, selected);
+    if (!selected || !selected->dest || selected->dest->GetKind() != kindDestinationMupdf) {
+        selected = nullptr;
+    }
+    Vec<int> path;
+    if (selected && !PdfTocPathForItem(win, selected, path)) {
+        return true;
+    }
+
+    Vec<int> resultPath;
+    char* errorRaw = nullptr;
+    bool ok = EngineMupdfEditPdfToc(engine, PdfTocEditAction::AddAfter, path, title.Get(), target.Get(),
+                                    &resultPath, &errorRaw);
+    AutoFreeStr error(errorRaw);
+    if (!ok) {
+        ShowPdfTocEditError(win, error);
+        return true;
+    }
+    ReloadPdfTocAfterEdit(win, resultPath);
+    ToolbarUpdateStateForWindow(win, false);
+    return true;
+}
+
+bool HandlePdfTocEditCommand(MainWindow* win, int commandId) {
+    PdfTocEditAction action;
+    switch (commandId) {
+        case CmdPdfTocAddAfter:
+            action = PdfTocEditAction::AddAfter;
+            break;
+        case CmdPdfTocAddChild:
+            action = PdfTocEditAction::AddChild;
+            break;
+        case CmdPdfTocEdit:
+            action = PdfTocEditAction::Update;
+            break;
+        case CmdPdfTocDelete:
+            action = PdfTocEditAction::Delete;
+            break;
+        case CmdPdfTocMoveUp:
+            action = PdfTocEditAction::MoveUp;
+            break;
+        case CmdPdfTocMoveDown:
+            action = PdfTocEditAction::MoveDown;
+            break;
+        case CmdPdfTocPromote:
+            action = PdfTocEditAction::Promote;
+            break;
+        case CmdPdfTocDemote:
+            action = PdfTocEditAction::Demote;
+            break;
+        default:
+            return false;
+    }
+    TocItem* selected = nullptr;
+    if (win && win->tocTreeView) {
+        selected = (TocItem*)win->tocTreeView->GetSelection();
+    }
+    if (!selected && action != PdfTocEditAction::AddAfter) {
+        return true;
+    }
+    ExecutePdfTocEdit(win, selected, action);
+    return true;
+}
+
 // clang-format off
 static MenuDef menuDefContextToc[] = {
     {
-        _TRN("Expand All"),
-        CmdExpandAll,
+        _TRN("Add PDF TOC Item After"),
+        CmdPdfTocAddAfter,
     },
     {
-        _TRN("Collapse All"),
-        CmdCollapseAll,
+        _TRN("Add PDF TOC Child Item"),
+        CmdPdfTocAddChild,
+    },
+    {
+        _TRN("Edit PDF TOC Item..."),
+        CmdPdfTocEdit,
+    },
+    {
+        _TRN("Delete PDF TOC Item"),
+        CmdPdfTocDelete,
+    },
+    {
+        _TRN("Move PDF TOC Item Up"),
+        CmdPdfTocMoveUp,
+    },
+    {
+        _TRN("Move PDF TOC Item Down"),
+        CmdPdfTocMoveDown,
+    },
+    {
+        _TRN("Promote PDF TOC Item"),
+        CmdPdfTocPromote,
+    },
+    {
+        _TRN("Demote PDF TOC Item"),
+        CmdPdfTocDemote,
     },
     {
         kMenuSeparator,
@@ -975,7 +1327,44 @@ static void TocContextMenu(ContextMenuEvent* ev) {
     }
 
     WindowTab* tab = win->CurrentTab();
-    HMENU popup = BuildMenuFromDef(menuDefContextToc, CreatePopupMenu(), nullptr);
+    BuildMenuCtx* menuCtx = NewBuildMenuCtx(tab, Point());
+    defer {
+        DeleteBuildMenuCtx(menuCtx);
+    };
+    HMENU popup = BuildMenuFromDef(menuDefContextToc, CreatePopupMenu(), menuCtx);
+
+    EngineBase* pdfTocEngine = PdfTocEditableEngine(win);
+    TocItem* pdfTocItem = OriginalPdfTocItem(win, dti);
+    bool isPdfTocItem = pdfTocItem && pdfTocItem->dest && pdfTocItem->dest->GetKind() == kindDestinationMupdf;
+    const int pdfTocCommands[] = {CmdPdfTocAddAfter, CmdPdfTocAddChild, CmdPdfTocEdit,    CmdPdfTocDelete,
+                                  CmdPdfTocMoveUp,   CmdPdfTocMoveDown, CmdPdfTocPromote, CmdPdfTocDemote};
+    if (!pdfTocEngine) {
+        for (int command : pdfTocCommands) {
+            MenuRemove(popup, command);
+        }
+    } else if (!isPdfTocItem) {
+        for (int command : pdfTocCommands) {
+            if (command != CmdPdfTocAddAfter) {
+                MenuRemove(popup, command);
+            }
+        }
+        MenuSetText(popup, CmdPdfTocAddAfter, _TRA("Add Root PDF TOC Item"));
+    } else {
+        Vec<int> tocPath;
+        bool hasPath = PdfTocPathForItem(win, pdfTocItem, tocPath);
+        int idx = hasPath && !tocPath.empty() ? tocPath.Last() : -1;
+        if (idx <= 0) {
+            MenuRemove(popup, CmdPdfTocMoveUp);
+            MenuRemove(popup, CmdPdfTocDemote);
+        }
+        TocItem* next = pdfTocItem->next;
+        if (!next || !next->dest || next->dest->GetKind() != kindDestinationMupdf) {
+            MenuRemove(popup, CmdPdfTocMoveDown);
+        }
+        if (!pdfTocItem->parent) {
+            MenuRemove(popup, CmdPdfTocPromote);
+        }
+    }
 
     const char* path = nullptr;
     char* fileName = nullptr;
@@ -1020,7 +1409,10 @@ static void TocContextMenu(ContextMenuEvent* ev) {
         MenuRemove(popup, CmdOpenAttachment);
     }
 
-    if (pageNo > 0) {
+    if (pdfTocEngine) {
+        MenuRemove(popup, CmdFavoriteAdd);
+        MenuRemove(popup, CmdFavoriteDel);
+    } else if (pageNo > 0) {
         TempStr pageLabel = win->ctrl->GetPageLabeTemp(pageNo);
         bool isBookmarked = IsPageInFavorites(filePath, pageNo);
         if (isBookmarked) {
@@ -1048,11 +1440,29 @@ static void TocContextMenu(ContextMenuEvent* ev) {
     FreeMenuOwnerDrawInfoData(popup);
     DestroyMenu(popup);
     switch (cmd) {
-        case CmdExpandAll:
-            win->tocTreeView->ExpandAll();
+        case CmdPdfTocAddAfter:
+            ExecutePdfTocEdit(win, isPdfTocItem ? pdfTocItem : nullptr, PdfTocEditAction::AddAfter);
             break;
-        case CmdCollapseAll:
-            win->tocTreeView->CollapseAll();
+        case CmdPdfTocAddChild:
+            ExecutePdfTocEdit(win, pdfTocItem, PdfTocEditAction::AddChild);
+            break;
+        case CmdPdfTocEdit:
+            ExecutePdfTocEdit(win, pdfTocItem, PdfTocEditAction::Update);
+            break;
+        case CmdPdfTocDelete:
+            ExecutePdfTocEdit(win, pdfTocItem, PdfTocEditAction::Delete);
+            break;
+        case CmdPdfTocMoveUp:
+            ExecutePdfTocEdit(win, pdfTocItem, PdfTocEditAction::MoveUp);
+            break;
+        case CmdPdfTocMoveDown:
+            ExecutePdfTocEdit(win, pdfTocItem, PdfTocEditAction::MoveDown);
+            break;
+        case CmdPdfTocPromote:
+            ExecutePdfTocEdit(win, pdfTocItem, PdfTocEditAction::Promote);
+            break;
+        case CmdPdfTocDemote:
+            ExecutePdfTocEdit(win, pdfTocItem, PdfTocEditAction::Demote);
             break;
         case CmdFavoriteAdd:
             AddFavoriteFromToc(win, dti);
@@ -1637,6 +2047,19 @@ static void LayoutTocContainer(MainWindow* win) {
 
 static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR data) {
     MainWindow* win = (MainWindow*)data;
+    if (msg == WM_CONTEXTMENU && win && win->tocTreeView) {
+        POINT ptScreen = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+        POINT ptWindow = ptScreen;
+        if (ptScreen.x != -1 || ptScreen.y != -1) {
+            MapWindowPoints(HWND_DESKTOP, hwnd, &ptWindow, 1);
+        }
+        ContextMenuEvent ev;
+        ev.w = win->tocTreeView;
+        ev.mouseScreen = Point(ptScreen.x, ptScreen.y);
+        ev.mouseWindow = Point(ptWindow.x, ptWindow.y);
+        TocContextMenu(&ev);
+        return 0;
+    }
     if (msg == WM_VSCROLL) {
         WORD code = LOWORD(wp);
         if (code == SB_THUMBTRACK || code == SB_THUMBPOSITION) {
@@ -1668,6 +2091,20 @@ static LRESULT CALLBACK WndProcTocBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
     MainWindow* win = FindMainWindowByHwnd(hwnd);
     if (!win) {
         return DefSubclassProc(hwnd, msg, wp, lp);
+    }
+
+    if (msg == WM_CONTEXTMENU && win->tocTreeView) {
+        POINT ptScreen = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+        POINT ptWindow = ptScreen;
+        if (ptScreen.x != -1 || ptScreen.y != -1) {
+            MapWindowPoints(HWND_DESKTOP, win->tocTreeView->hwnd, &ptWindow, 1);
+        }
+        ContextMenuEvent ev;
+        ev.w = win->tocTreeView;
+        ev.mouseScreen = Point(ptScreen.x, ptScreen.y);
+        ev.mouseWindow = Point(ptWindow.x, ptWindow.y);
+        TocContextMenu(&ev);
+        return 0;
     }
 
     if (msg == WM_ERASEBKGND) {

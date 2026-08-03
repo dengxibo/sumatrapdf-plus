@@ -37,6 +37,8 @@ struct WindowTab {
     bool reloadOnFocus = false;
     // ebook font change on a background tab: full reload deferred until focus
     bool reloadForEbookFontChange = false;
+    // distinguishes a metrics-only size/layout change from a font-family change
+    bool reloadForEbookFontSizeChange = false;
     int restorePageAfterFontReload = 0;
     double restoreScrollXAfterFontReload = -1;
     double restoreScrollYAfterFontReload = -1;
@@ -64,6 +66,7 @@ struct WindowTab {
 
     // TODO: terrible hack
     bool askedToSaveAnnotations = false;
+    bool acceptedPdfTocSignatureWarning = false;
 
     TabState* tabState = nullptr; // when lazy loading
 

@@ -8,6 +8,7 @@ extern Kind kNotifActionResponse;
 extern Kind kNotifPageInfo;
 extern Kind kNotifAdHoc;
 extern Kind kNotifThemeRelayout;
+extern Kind kNotifEbookFontLayout;
 
 using NotificationWndRemoved = Func1<NotificationWnd*>;
 

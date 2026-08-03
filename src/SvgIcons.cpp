@@ -329,6 +329,26 @@ static const char* gIconArrowsDiagonalMinimize =
   <path d="M4 4l6 6" />
 </svg>)";
 
+// Custom "font size" icons: typographic A with +/- (tabler stroke style).
+static const char* gIconEbookFontSizeDecrease =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M5.2 18.4 9.9 5.8" />
+  <path d="M14.6 18.4 9.9 5.8" />
+  <path d="M7.2 13.1h5.5" />
+  <path d="M17.25 8.05h3.55" />
+</svg>)";
+
+static const char* gIconEbookFontSizeIncrease =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M5.2 18.4 9.9 5.8" />
+  <path d="M14.6 18.4 9.9 5.8" />
+  <path d="M7.2 13.1h5.5" />
+  <path d="M17.2 8.05h3.6" />
+  <path d="M19 6.25v3.6" />
+</svg>)";
+
 // must match order in enum class TbIcon
 // clang-format off
 static const char* gIcons[] = {
@@ -367,6 +387,8 @@ static const char* gIcons[] = {
     gIconArrowsDiagonal,
     gIconArrowsDiagonalMinimize,
     gIconMatchWholeWord,
+    gIconEbookFontSizeDecrease,
+    gIconEbookFontSizeIncrease,
 };
 // clang-format on
 

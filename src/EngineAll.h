@@ -88,6 +88,7 @@ const char* ParseEmbeddedStreamNumber(const char* path, int* streamNoOut);
 Annotation* EngineMupdfCreateAnnotation(EngineBase*, int pageNo, PointF pos, AnnotCreateArgs* args);
 void EngineMupdfGetAnnotations(EngineBase*, Vec<Annotation*>&);
 bool EngineMupdfHasUnsavedAnnotations(EngineBase*);
+bool EngineMupdfHasUnsavedPdfChanges(EngineBase*);
 bool EngineMupdfSupportsAnnotations(EngineBase*);
 bool EngineMupdfIsEncrypted(EngineBase* engine);
 bool EngineMupdfIsReflowableLoadingInProgress(EngineBase* engine);
@@ -105,6 +106,21 @@ void EngineMupdfNavigateUri(EngineBase* engine, const char* uri, int reflowOutli
 bool EngineMupdfTryCompletePendingReflowNav(EngineBase* engine, ILinkHandler* lh);
 bool EngineMupdfHasPendingReflowNav(EngineBase* engine);
 bool EngineMupdfHasOutline(EngineBase* engine);
+enum class PdfTocEditAction {
+    AddAfter,
+    AddChild,
+    Update,
+    Delete,
+    MoveUp,
+    MoveDown,
+    Promote,
+    Demote,
+};
+bool EngineMupdfCanEditPdfToc(EngineBase* engine);
+bool EngineMupdfPdfHasSignatures(EngineBase* engine);
+char* EngineMupdfFormatPdfTocTarget(EngineBase* engine, int pageNo, float x, float y);
+bool EngineMupdfEditPdfToc(EngineBase* engine, PdfTocEditAction action, const Vec<int>& path, const char* title,
+                           const char* uri, Vec<int>* resultPathOut, char** errorOut);
 const char* EngineMupdfGetPassword(EngineBase* engine);
 bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErrorCb& showErrorFunc);
 Annotation* EngineMupdfGetAnnotationAtPos(EngineBase*, int pageNo, PointF pos, Annotation*);
@@ -116,7 +132,18 @@ void EngineMupdfInvalidateDarkMode(EngineBase* engine);
 void EngineMupdfInvalidateSearchTextCache(EngineBase* engine);
 using EngineMupdfThemeRecountProgressFn = void (*)(int chaptersDone, int chapterTotal, void* user);
 void EngineMupdfSetThemeRecountProgressCb(EngineMupdfThemeRecountProgressFn cb, void* user);
+using EngineMupdfRelayoutProgressFn = void (*)(int percent, void* user);
+void EngineMupdfSetRelayoutProgressCb(EngineMupdfRelayoutProgressFn cb, void* user);
+enum class MupdfReflowChangeKind {
+    Palette,
+    FontFamily,
+    FontSize,
+    PageGeometry,
+};
+bool EngineMupdfApplyReflowChange(EngineBase* engine, MupdfReflowChangeKind changeKind);
 bool EngineMupdfRelayoutForThemeChange(EngineBase* engine);
+bool EngineMupdfRelayoutForFontChange(EngineBase* engine);
+bool EngineMupdfRelayoutForFontSizeChange(EngineBase* engine);
 // Pause/resume the background reflow chapter loader so a UI-critical operation
 // (theme change, annotation edit) can access the document without being starved.
 // Safe to call when not loading (no-op). Use ReflowLoadingPauseScope for RAII.
@@ -139,6 +166,7 @@ void EngineMupdfClearReflowTocNeedsUiReload(EngineBase* engine);
 bool EngineSupportsSmartDarkMode(EngineBase* engine);
 void EngineMupdfToggleCadEnhance(EngineBase* engine);
 void EngineMupdfEnsurePageLinksForHitTest(EngineBase* engine, int pageNo);
+void EngineMupdfEnsurePageImagesForHitTest(EngineBase* engine, int pageNo);
 
 /* EnginePs.cpp */
 

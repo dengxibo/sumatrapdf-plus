@@ -295,6 +295,12 @@ void fz_install_load_system_font_funcs(fz_context *ctx,
 	fz_load_system_fallback_font_fn *f_fallback);
 
 /**
+	Drop cached fallback fonts (Han/CJK etc.) so the next glyph load
+	re-runs the system fallback hook. Used when reader CJK settings change.
+*/
+void fz_purge_fallback_font_cache(fz_context *ctx);
+
+/**
 	Attempt to load a given font from the system.
 
 	name: The name of the desired font.

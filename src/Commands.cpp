@@ -218,6 +218,7 @@ static SeqStrings gCommandNames =
     "CmdCropImage\0"
     "CmdResizeImage\0"
     "CmdSaveImage\0"
+    "CmdConvertImageToPdf\0"
     "CmdPasteClipboardImage\0"
     "CmdTabGroupSave\0"
     "CmdTabGroupRestore\0"
@@ -258,6 +259,17 @@ static SeqStrings gCommandNames =
     "CmdAssociateCommonFileTypes\0"
     "CmdSetEbookLatinFont\0"
     "CmdSetEbookCjkFont\0"
+    "CmdEbookFontSizeDecrease\0"
+    "CmdEbookFontSizeIncrease\0"
+    "CmdPdfTocAddAfter\0"
+    "CmdPdfTocAddChild\0"
+    "CmdPdfTocEdit\0"
+    "CmdPdfTocDelete\0"
+    "CmdPdfTocMoveUp\0"
+    "CmdPdfTocMoveDown\0"
+    "CmdPdfTocPromote\0"
+    "CmdPdfTocDemote\0"
+    "CmdEbookFontSizeReset\0"
     "CmdNone\0"
     "\0";
 
@@ -466,6 +478,7 @@ static i32 gCommandIds[] = {
     CmdCropImage,
     CmdResizeImage,
     CmdSaveImage,
+    CmdConvertImageToPdf,
     CmdPasteClipboardImage,
     CmdTabGroupSave,
     CmdTabGroupRestore,
@@ -506,6 +519,17 @@ static i32 gCommandIds[] = {
     CmdAssociateCommonFileTypes,
     CmdSetEbookLatinFont,
     CmdSetEbookCjkFont,
+    CmdEbookFontSizeDecrease,
+    CmdEbookFontSizeIncrease,
+    CmdPdfTocAddAfter,
+    CmdPdfTocAddChild,
+    CmdPdfTocEdit,
+    CmdPdfTocDelete,
+    CmdPdfTocMoveUp,
+    CmdPdfTocMoveDown,
+    CmdPdfTocPromote,
+    CmdPdfTocDemote,
+    CmdEbookFontSizeReset,
     CmdNone,
 };
 
@@ -581,8 +605,8 @@ SeqStrings gCommandDescriptions =
     "Find Next Selection\0"
     "Find Previous Selection\0"
     "Find: Toggle Match Case\0"
-    "Save Annotations to existing PDF\0"
-    "Save Annotations to a new PDF\0"
+    "Save changes to existing PDF\0"
+    "Save changes to a new PDF\0"
     "Edit Annotations\0"
     "Delete Annotation\0"
     "Zoom: Fit Page\0"
@@ -714,6 +738,7 @@ SeqStrings gCommandDescriptions =
     "Crop Image\0"
     "Resize Image\0"
     "Save Image\0"
+    "Convert Image to PDF\0"
     "Paste Image From Clipboard\0"
     "Save Tab Group\0"
     "Restore Tab Group\0"
@@ -754,6 +779,17 @@ SeqStrings gCommandDescriptions =
     "Associate Common Document Formats...\0"
     "Set Ebook Western Body Font\0"
     "Set Ebook CJK Body Font\0"
+    "Ebook Font Size: Decrease\0"
+    "Ebook Font Size: Increase\0"
+    "PDF TOC: Add Item After\0"
+    "PDF TOC: Add Child Item\0"
+    "PDF TOC: Edit Item\0"
+    "PDF TOC: Delete Item\0"
+    "PDF TOC: Move Item Up\0"
+    "PDF TOC: Move Item Down\0"
+    "PDF TOC: Promote Item\0"
+    "PDF TOC: Demote Item\0"
+    "Ebook Font Size: Reset to Default\0"
     "Do nothing\0"
     "\0";
 // clang-format on
@@ -793,7 +829,7 @@ static const ArgSpec argSpecs[] = {
     {CmdSetTheme, kCmdArgTheme, CommandArg::Type::String}, // default
 
     {CmdSetEbookLatinFont, kCmdArgFontFamily, CommandArg::Type::String}, // default
-    {CmdSetEbookCjkFont, kCmdArgFontFamily, CommandArg::Type::String}, // default
+    {CmdSetEbookCjkFont, kCmdArgFontFamily, CommandArg::Type::String},   // default
 
     {CmdZoomCustom, kCmdArgLevel, CommandArg::Type::String}, // default
 

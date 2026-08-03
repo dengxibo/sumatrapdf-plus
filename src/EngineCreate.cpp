@@ -335,7 +335,7 @@ bool EngineHasUnsavedAnnotations(EngineBase* engine) {
     if (!IsEngineMupdf(engine)) {
         return false;
     }
-    return EngineMupdfHasUnsavedAnnotations(engine);
+    return EngineMupdfHasUnsavedPdfChanges(engine);
 }
 
 Annotation* EngineGetAnnotationAtPos(EngineBase* engine, int pageNo, PointF pos, Annotation* annot) {

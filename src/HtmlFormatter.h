@@ -311,6 +311,17 @@ class HtmlFormatter {
     // Position in the formatter's visible UTF-16 text stream.
     int textOffset = 0;
 
+    // Paragraph-level mixed-script font policy (CJK typography): scan the current
+    // paragraph HTML once to decide whether inline Latin uses the CJK or Latin font.
+    ptrdiff_t paragraphStartReparseIdx = -1;
+    bool paragraphScanned = false;
+    bool paragraphHasCjk = false;
+    HtmlTag paragraphCloseTag = Tag_NotFound;
+
+    void BeginParagraphScope(HtmlTag closeTag);
+    void EnsureParagraphCjkScanned();
+    bool InlineLatinUsesCjkFont();
+
   public:
     explicit HtmlFormatter(HtmlFormatterArgs* args);
     HtmlFormatter(HtmlFormatter const&) = delete;

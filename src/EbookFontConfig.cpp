@@ -7,6 +7,7 @@
 #include "EbookFontConfig.h"
 #include "EbookInstalledFonts.h"
 #include "utils/GdiPlusUtil.h"
+#include "mui/Mui.h"
 
 extern EBookUI* GetEBookUI();
 
@@ -160,6 +161,65 @@ bool UsesNonDefaultEbookReaderFonts() {
     return UsesCustomInstalledEbookFonts();
 }
 
+float GetEbookReaderFontSizePt() {
+    auto* ui = GetEBookUI();
+    if (!ui || ui->fontSize < kEbookFontSizeMinPt || ui->fontSize > kEbookFontSizeMaxPt) {
+        return 0.f;
+    }
+    return ui->fontSize;
+}
+
+bool UsesNonDefaultEbookFontSize() {
+    return GetEbookReaderFontSizePt() > 0.f;
+}
+
+float GetEffectiveEbookFontSizePt() {
+    float pt = GetEbookReaderFontSizePt();
+    if (pt > 0.f) {
+        return pt;
+    }
+    return kEbookFontSizeBuiltinPt;
+}
+
+bool CanIncreaseEbookFontSize() {
+    return GetEffectiveEbookFontSizePt() + kEbookFontSizeStepPt <= kEbookFontSizeMaxPt;
+}
+
+bool CanDecreaseEbookFontSize() {
+    return GetEffectiveEbookFontSizePt() - kEbookFontSizeStepPt >= kEbookFontSizeMinPt;
+}
+
+bool AdjustEbookFontSize(int direction) {
+    if (direction == 0) {
+        return false;
+    }
+    if (direction > 0) {
+        if (!CanIncreaseEbookFontSize()) {
+            return false;
+        }
+    } else if (!CanDecreaseEbookFontSize()) {
+        return false;
+    }
+    float effective = GetEffectiveEbookFontSizePt();
+    float next = effective + (float)direction * kEbookFontSizeStepPt;
+    next = limitValue(next, kEbookFontSizeMinPt, kEbookFontSizeMaxPt);
+    auto* ui = GetEBookUI();
+    if (!ui) {
+        return false;
+    }
+    ui->fontSize = next;
+    return true;
+}
+
+bool ResetEbookFontSize() {
+    auto* ui = GetEBookUI();
+    if (!ui || !UsesNonDefaultEbookFontSize()) {
+        return false;
+    }
+    ui->fontSize = 0.f;
+    return true;
+}
+
 void ApplyEbookFontSettingsFromPrefs() {
     EnsureEbookFontDefaults();
     auto* ui = GetEBookUI();
@@ -176,6 +236,7 @@ void ApplyEbookFontSettingsFromPrefs() {
     ConfigureBundledReaderLatinFont(gLatinFontFamily);
     ConfigureBundledReaderCjkFont(gCjkFontFamily, gCjkFontFile[0] ? gCjkFontFile : nullptr);
     sumatra_set_ebook_font_config(gCjkFontFamily, gCjkFontFile);
+    mui::ClearCachedFonts();
     ResetBundledReaderFonts();
 }
 
@@ -194,10 +255,12 @@ const char* GetEbookCjkFontFile() {
 }
 
 const WCHAR* GetEbookLatinFontFamilyW() {
+    EnsureEbookFontDefaults();
     return gLatinFontFamilyW;
 }
 
 const WCHAR* GetEbookCjkFontFamilyW() {
+    EnsureEbookFontDefaults();
     return gCjkFontFamilyW;
 }
 
@@ -248,44 +311,327 @@ html, body {
     return str::FormatTemp(
         R"(/* Default body face only; book CSS (e.g. STKai for 书虫) keeps priority on styled elements. */
 html, body {
-  font-family: %s, Georgia, Charter, "Palatino Linotype", "Times New Roman", %s, "思源宋体", "Source Han Serif", "Noto Serif CJK SC", "NSimSun", "SimSun", "宋体", serif !important;
+  font-family: %s, Georgia, Charter, "Palatino Linotype", "Times New Roman", serif !important;
 }
 )",
-        latin, cjk);
+        latin);
 }
 
 TempStr BuildEbookFallbackFontCss() {
     return BuildEbookForceFontCss(EbookTypographyKind::Bilingual);
 }
 
-TempStr BuildEbookForceFontCss(EbookTypographyKind typographyKind) {
-    TempStr latin = CssFontFamilyToken(gLatinFontFamily);
+static const char* kEbookForceFontSelectors =
+    "html, body, p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,\n"
+    "section, article, main, header, footer,\n"
+    ".calibre,\n"
+    ".calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,\n"
+    ".calibre11, .calibre12, .calibre13, .calibre14, .calibre15, .calibre16, .calibre17, .calibre18, .calibre19, "
+    ".calibre20,\n"
+    ".calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, "
+    ".calibre_10,\n"
+    ".calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, "
+    ".calibre_19, .calibre_20";
+
+// Bilingual EPUB (bookworm/cnepub): Latin default on body elements; Han via fallback +
+// fz_purge_fallback_font_cache on font change. CJK in CSS only on cnepub classes
+// (bodyContent_N, kindle-cn-*, publisher overrides). Do NOT use html[lang=zh] or broad
+// p { CJK }: English chapters also declare zh lang (H21 logs).
+static const char* kEbookForceCjkCnepubSelectors =
+    "p.kindle-cn-hei,\n"
+    "p.kindle-cn-hei0,\n"
+    "p.kindle-cn-para-center,\n"
+    "p.kindle-cn-para-center1,\n"
+    "p.kindle-cn-copyright-text,\n"
+    "p.kindle-cn-signature,\n"
+    "p.kindle-cn-heading-1,\n"
+    "span.kindle-cn-hei,\n"
+    "span.font3";
+
+static TempStr BuildBodyContentCjkCss(const char* cjk) {
+    StrBuilder css(16 * 1024);
+    // MuPDF rejects an excessively long comma-separated selector list. Keep
+    // each rule small while covering cnepub classes well above 100.
+    constexpr int kSelectorsPerRule = 16;
+    for (int first = 0; first <= 320; first += kSelectorsPerRule) {
+        int last = std::min(first + kSelectorsPerRule - 1, 320);
+        for (int i = first; i <= last; i++) {
+            if (i > first) {
+                css.Append(",\n");
+            }
+            css.AppendFmt("p.bodyContent_%d", i);
+        }
+        css.AppendFmt(
+            " {\n"
+            "  font-family: %s, \"Source Han Serif\", \"Noto Serif CJK SC\", \"NSimSun\", \"SimSun\", "
+            "serif !important;\n"
+            "  line-height: 1.45 !important;\n"
+            "}\n",
+            cjk);
+    }
+    return str::DupTemp(css.Get());
+}
+
+static TempStr BuildCalibreClassLatinSelectors() {
+    static char storage[8 * 1024];
+    static bool inited = false;
+    if (inited) {
+        return storage;
+    }
+    static const char* kTags[] = {"p", "span", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "li"};
+    char* dst = storage;
+    char* end = storage + sizeof(storage);
+    bool first = true;
+    auto appendClass = [&](const char* cls) {
+        for (const char* tag : kTags) {
+            int n = snprintf(dst, (size_t)(end - dst), "%s%s.%s", first ? "" : ",\n", tag, cls);
+            if (n <= 0 || dst + n >= end) {
+                return false;
+            }
+            dst += n;
+            first = false;
+        }
+        return true;
+    };
+    if (!appendClass("calibre")) {
+        goto Done;
+    }
+    for (int n = 1; n <= 20; n++) {
+        char cls[32];
+        snprintf(cls, sizeof(cls), "calibre%d", n);
+        if (!appendClass(cls)) {
+            goto Done;
+        }
+    }
+    for (int n = 1; n <= 20; n++) {
+        char cls[32];
+        snprintf(cls, sizeof(cls), "calibre_%d", n);
+        if (!appendClass(cls)) {
+            goto Done;
+        }
+    }
+Done:
+    *dst = '\0';
+    inited = true;
+    return storage;
+}
+
+static const char* kEbookForceLatinCalibreSelectors =
+    ".calibre,\n"
+    ".calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,\n"
+    ".calibre11, .calibre12, .calibre13, .calibre14, .calibre15, .calibre16, .calibre17, .calibre18, .calibre19, "
+    ".calibre20,\n"
+    ".calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, "
+    ".calibre_10,\n"
+    ".calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, "
+    ".calibre_19, .calibre_20";
+
+static const char* kEbookForceLatinEnSelectors =
+    "html[lang=\"en\"] body,\n"
+    "html[lang=\"en\"] p,\n"
+    "html[lang=\"en\"] span,\n"
+    "html[lang=\"en\"] blockquote,\n"
+    "html[lang=\"en\"] h1, html[lang=\"en\"] h2, html[lang=\"en\"] h3, html[lang=\"en\"] h4,\n"
+    "html[lang=\"en\"] h5, html[lang=\"en\"] h6,\n"
+    "html[lang=\"en\"] li, html[lang=\"en\"] td, html[lang=\"en\"] th, html[lang=\"en\"] div,\n"
+    "html[lang=\"en\"] section, html[lang=\"en\"] article, html[lang=\"en\"] main,\n"
+    "html[lang=\"en\"] header, html[lang=\"en\"] footer,\n"
+    "html[lang=\"en-us\"] body,\n"
+    "html[lang=\"en-us\"] p,\n"
+    "html[lang=\"en-us\"] span,\n"
+    "html[lang=\"en-US\"] body,\n"
+    "html[lang=\"en-US\"] p,\n"
+    "html[lang=\"en-US\"] span,\n"
+    "html[lang=\"en-GB\"] body,\n"
+    "html[lang=\"en-GB\"] p,\n"
+    "html[lang=\"en-GB\"] span";
+
+static const char* kEbookForceLatinZhCnInlineSelectors =
+    "html[lang=\"zh-CN\"] span.kindle-cn-italic,\n"
+    "html[lang=\"zh-CN\"] span.kindle-cn-eng-yinbiao,\n"
+    "html[lang=\"zh-cn\"] span.kindle-cn-italic,\n"
+    "html[lang=\"zh-cn\"] span.kindle-cn-eng-yinbiao,\n"
+    "html[lang=\"zh\"] span.kindle-cn-italic,\n"
+    "html[lang=\"zh\"] span.kindle-cn-eng-yinbiao";
+
+static TempStr BuildCalibreDescendantLatinSelectors() {
+    static char storage[16 * 1024];
+    static bool inited = false;
+    if (inited) {
+        return storage;
+    }
+    static const char* kTags[] = {"p", "span", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "li"};
+    char* dst = storage;
+    char* end = storage + sizeof(storage);
+    bool first = true;
+    auto appendRule = [&](const char* parent, const char* tag) {
+        int n = snprintf(dst, (size_t)(end - dst), "%s%s %s", first ? "" : ",\n", parent, tag);
+        if (n <= 0 || dst + n >= end) {
+            return false;
+        }
+        dst += n;
+        first = false;
+        return true;
+    };
+    for (int n = 0; n <= 20; n++) {
+        char parent[32];
+        if (n == 0) {
+            snprintf(parent, sizeof(parent), ".calibre");
+        } else {
+            snprintf(parent, sizeof(parent), ".calibre%d", n);
+        }
+        for (const char* tag : kTags) {
+            if (!appendRule(parent, tag)) {
+                goto Done;
+            }
+        }
+    }
+    for (int n = 1; n <= 20; n++) {
+        char parent[32];
+        snprintf(parent, sizeof(parent), ".calibre_%d", n);
+        for (const char* tag : kTags) {
+            if (!appendRule(parent, tag)) {
+                goto Done;
+            }
+        }
+    }
+Done:
+    *dst = '\0';
+    inited = true;
+    return storage;
+}
+
+// Legacy cnepub class names (lowercase bodycontent) on some publishers.
+static const char* kEbookForceCjkOverrideSelectors =
+    "p.noindent-bodycontent-1-fangsong,\n"
+    "p.bodycontent-1-fangsong,\n"
+    "p.bodycontent-2-fangsong,\n"
+    "p.bodycontent-1-fangsong-top,\n"
+    "p.noindent-bodycontent-1-fangsong-top,\n"
+    "p.bodycontent-1-top,\n"
+    "p.noindent-bodycontent-1-top,\n"
+    "p.bodycontent-1-fangsong-top1,\n"
+    "p.bodycontent-2-fangsong-top,\n"
+    "p.hang-bodycontent-1-fangsong,\n"
+    "p.noindent-bodycontent,\n"
+    "p.bodycontent,\n"
+    "p.songti,\n"
+    "span.songti";
+
+static TempStr BuildEbookForceCjkOverrideCss() {
     TempStr cjk = CssFontFamilyToken(gCjkFontFamily);
-    static const char* kSelectors =
-        "html, body, p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,\n"
-        "section, article, main, header, footer,\n"
-        ".calibre,\n"
-        ".calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,\n"
-        ".calibre11, .calibre12, .calibre13, .calibre14, .calibre15, .calibre16, .calibre17, .calibre18, .calibre19, "
-        ".calibre20,\n"
-        ".calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, "
-        ".calibre_10,\n"
-        ".calibre_11, .calibre_12, .calibre_13, .calibre_14, .calibre_15, .calibre_16, .calibre_17, .calibre_18, "
-        ".calibre_19, .calibre_20";
-    if (typographyKind == EbookTypographyKind::Latin || typographyKind == EbookTypographyKind::Bilingual) {
-        // Latin (or bilingual) books: user Latin face first. MuPDF falls back to the reader CJK
-        // font for Han characters via load_windows_fallback_font (see mupdf_load_system_font.c).
-        // CJK fonts such as WenKai include Latin glyphs; putting them first would draw English in Kai.
-        return str::FormatTemp(
-            R"(%s {
-  font-family: %s, %s, Georgia, Charter, "Palatino Linotype", "Times New Roman", "思源宋体", "Source Han Serif", "Noto Serif CJK SC", "NSimSun", "SimSun", "宋体", serif !important;
+    return str::FormatTemp(
+        R"(%s {
+  font-family: %s, "思源宋体", "Source Han Serif", "Noto Serif CJK SC", "NSimSun", "SimSun", "宋体" !important;
+})",
+        kEbookForceCjkOverrideSelectors, cjk);
+}
+
+static TempStr BuildEbookForceBilingualFontCss(TempStr latin, TempStr cjk) {
+    TempStr latinCss = str::FormatTemp(
+        R"(%s {
+  font-family: %s, Georgia, Charter, "Palatino Linotype", "Times New Roman" !important;
   line-height: 1.45 !important;
 }
 p {
   margin: 0.35em 0;
 }
 )",
-            kSelectors, latin, cjk);
+        kEbookForceFontSelectors, latin);
+    TempStr cjkCnepubCss = str::FormatTemp(
+        R"(%s {
+  font-family: %s, "思源宋体", "Source Han Serif", "Noto Serif CJK SC", "NSimSun", "SimSun", "宋体" !important;
+  line-height: 1.45 !important;
+}
+)",
+        kEbookForceCjkCnepubSelectors, cjk);
+    TempStr cjkBodyContentCss = BuildBodyContentCjkCss(cjk);
+    TempStr cjkOverride = BuildEbookForceCjkOverrideCss();
+    TempStr latinCalibreClassCss = str::FormatTemp(
+        R"(%s {
+  font-family: %s, Georgia, Charter, "Palatino Linotype", "Times New Roman" !important;
+  line-height: 1.45 !important;
+}
+)",
+        BuildCalibreClassLatinSelectors(), latin);
+    TempStr latinEnCss = str::FormatTemp(
+        R"(%s {
+  font-family: %s, Georgia, Charter, "Palatino Linotype", "Times New Roman" !important;
+  line-height: 1.45 !important;
+}
+)",
+        kEbookForceLatinEnSelectors, latin);
+    TempStr latinCalibreCss = str::FormatTemp(
+        R"(%s {
+  font-family: %s, Georgia, Charter, "Palatino Linotype", "Times New Roman" !important;
+  line-height: 1.45 !important;
+}
+)",
+        kEbookForceLatinCalibreSelectors, latin);
+    TempStr latinCalibreDescCss = str::FormatTemp(
+        R"(%s {
+  font-family: %s, Georgia, Charter, "Palatino Linotype", "Times New Roman" !important;
+  line-height: 1.45 !important;
+}
+)",
+        BuildCalibreDescendantLatinSelectors(), latin);
+    TempStr latinInlineCss = str::FormatTemp(
+        R"(%s {
+  font-family: %s, Georgia, Charter, "Palatino Linotype", "Times New Roman" !important;
+}
+)",
+        kEbookForceLatinZhCnInlineSelectors, latin);
+    TempStr css = str::JoinTemp(latinCss, "\n", cjkCnepubCss);
+    css = str::JoinTemp(css, "\n", cjkBodyContentCss);
+    css = str::JoinTemp(css, "\n", cjkOverride);
+    css = str::JoinTemp(css, "\n", latinCalibreClassCss);
+    css = str::JoinTemp(css, "\n", latinEnCss);
+    css = str::JoinTemp(css, "\n", latinCalibreCss);
+    css = str::JoinTemp(css, "\n", latinCalibreDescCss);
+    return str::JoinTemp(css, "\n", latinInlineCss);
+}
+
+TempStr BuildEbookForceFontSizeCss(int displayDpi) {
+    float pt = GetEbookReaderFontSizePt();
+    if (pt <= 0.f) {
+        return nullptr;
+    }
+    ReportIf(displayDpi < 70);
+    // MuPDF layout coordinates are dpi-scaled (see EngineMupdf::DpiScale). CSS pt/px
+    // values are layout units, not physical points, so match fz_layout_document.
+    float layoutPx = pt * (float)displayDpi / 96.f;
+    return str::FormatTemp(
+        R"(%s {
+  font-size: %.1fpx !important;
+}
+)",
+        kEbookForceFontSelectors, layoutPx);
+}
+
+TempStr BuildEbookForceFontCss(EbookTypographyKind typographyKind) {
+    TempStr latin = CssFontFamilyToken(gLatinFontFamily);
+    TempStr cjk = CssFontFamilyToken(gCjkFontFamily);
+    const char* selectors = kEbookForceFontSelectors;
+    if (typographyKind == EbookTypographyKind::Bilingual) {
+        return BuildEbookForceBilingualFontCss(latin, cjk);
+    }
+    if (typographyKind == EbookTypographyKind::Latin) {
+        // Latin books: user Latin face only in CSS. Han glyphs are filled in via
+        // load_windows_fallback_font (sumatra_set_ebook_font_config). Do not list the reader CJK
+        // font here: fonts like WenKai include Latin glyphs and MuPDF would draw English in Kai
+        // for mixed or misclassified paragraphs.
+        TempStr latinCss = str::FormatTemp(
+            R"(%s {
+  font-family: %s, Georgia, Charter, "Palatino Linotype", "Times New Roman" !important;
+  line-height: 1.45 !important;
+}
+p {
+  margin: 0.35em 0;
+}
+)",
+            selectors, latin);
+        TempStr cjkOverride = BuildEbookForceCjkOverrideCss();
+        return str::JoinTemp(latinCss, "\n", cjkOverride);
     }
     // Pure CJK books: CJK face first so the primary font loads for body text.
     return str::FormatTemp(
@@ -297,5 +643,5 @@ p {
   margin: 0.35em 0;
 }
 )",
-        kSelectors, cjk, latin);
+        selectors, cjk, latin);
 }

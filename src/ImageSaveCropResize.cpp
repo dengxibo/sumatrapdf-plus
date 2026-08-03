@@ -17,7 +17,9 @@
 #include "GlobalPrefs.h"
 #include "DocController.h"
 #include "EngineBase.h"
+#include "DocProperties.h"
 #include "EngineAll.h"
+#include "PdfCreator.h"
 #include "DisplayModel.h"
 #include "SumatraPDF.h"
 #include "MainWindow.h"
@@ -52,22 +54,26 @@ constexpr int kButtonPadding = 8;
 
 struct ImageFormat {
     const char* label;
-    const GUID* containerFormat; // WIC container format GUID
+    const GUID* containerFormat; // WIC container format GUID (null for PDF)
     const char* ext;
     bool needsProbe; // if true, check if encoder is available before offering
     bool available;  // set after probing
+    bool isPdf;      // PDF is created via PdfCreator, not WIC
 };
 
 // clang-format off
 static ImageFormat gImageFormats[] = {
-    {"PNG",  &GUID_ContainerFormatPng,  ".png",  false, true},
-    {"JPEG", &GUID_ContainerFormatJpeg, ".jpg",  false, true},
-    {"BMP",  &GUID_ContainerFormatBmp,  ".bmp",  false, true},
-    {"GIF",  &GUID_ContainerFormatGif,  ".gif",  false, true},
-    {"TIFF", &GUID_ContainerFormatTiff, ".tif",  false, true},
-    {"WebP", &GUID_ContainerFormatWebp, ".webp", true,  false},
+    {"PNG",  &GUID_ContainerFormatPng,  ".png",  false, true, false},
+    {"JPEG", &GUID_ContainerFormatJpeg, ".jpg",  false, true, false},
+    {"BMP",  &GUID_ContainerFormatBmp,  ".bmp",  false, true, false},
+    {"GIF",  &GUID_ContainerFormatGif,  ".gif",  false, true, false},
+    {"TIFF", &GUID_ContainerFormatTiff, ".tif",  false, true, false},
+    {"WebP", &GUID_ContainerFormatWebp, ".webp", true,  false, false},
+    {"PDF",  nullptr,                   ".pdf",  false, true, true},
 };
 // clang-format on
+
+constexpr int kPdfFormatIdx = 6;
 
 constexpr int kDefaultFormatIdx = 0; // PNG
 
@@ -933,6 +939,45 @@ Done:
     return ok;
 }
 
+static TempStr FormatPdfDateTemp() {
+    SYSTEMTIME lt{};
+    GetLocalTime(&lt);
+    TIME_ZONE_INFORMATION tzi{};
+    DWORD tz = GetTimeZoneInformation(&tzi);
+    int off = 0;
+    if (tz == TIME_ZONE_ID_STANDARD) {
+        off = -tzi.StandardBias;
+    } else if (tz == TIME_ZONE_ID_DAYLIGHT) {
+        off = -tzi.DaylightBias;
+    }
+    char sign = '+';
+    if (off < 0) {
+        sign = '-';
+        off = -off;
+    }
+    int offH = off / 60;
+    int offM = off % 60;
+    return str::FormatTemp("D:%04d%02d%02d%02d%02d%02d%c%02d'%02d'", (int)lt.wYear, (int)lt.wMonth, (int)lt.wDay,
+                           (int)lt.wHour, (int)lt.wMinute, (int)lt.wSecond, sign, offH, offM);
+}
+
+static bool SaveBitmapAsPdf(Bitmap* bmp, const char* destPath) {
+    if (!bmp || !destPath) {
+        return false;
+    }
+    PdfCreator* c = new PdfCreator();
+    bool ok = c->AddPageFromGdiplusBitmap(bmp, 0);
+    if (ok) {
+        TempStr now = FormatPdfDateTemp();
+        c->SetProperty(kPropCreationDate, now);
+        c->SetProperty(kPropModificationDate, now);
+        c->SetProperty(kPropCreatorApp, "SumatraPDF");
+        ok = c->SaveToFile(destPath);
+    }
+    delete c;
+    return ok;
+}
+
 static void OnSave(ImageEditWindow* ew) {
     if (!ew->srcBitmap) {
         return;
@@ -993,7 +1038,12 @@ static void OnSave(ImageEditWindow* ew) {
     }
 
     TempWStr destW = ToWStrTemp(dest);
-    bool saved = SaveBitmapWithWIC(result, destW, gImageFormats[fmtIdx].containerFormat);
+    bool saved = false;
+    if (gImageFormats[fmtIdx].isPdf) {
+        saved = SaveBitmapAsPdf(result, dest);
+    } else {
+        saved = SaveBitmapWithWIC(result, destW, gImageFormats[fmtIdx].containerFormat);
+    }
     delete result;
 
     if (!saved) {
@@ -1638,7 +1688,8 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return 0;
 }
 
-void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePath, RenderedBitmap* rbmp) {
+void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePath, RenderedBitmap* rbmp,
+                         bool selectPdf) {
     if (!win) {
         return;
     }
@@ -1833,12 +1884,13 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
         args.parent = hwnd;
         dd->Create(args);
         StrVec items;
+        int wantFmtIdx = selectPdf ? kPdfFormatIdx : kDefaultFormatIdx;
         int defaultDdIdx = 0;
         for (int i = 0; i < (int)dimof(gImageFormats); i++) {
             if (!gImageFormats[i].available) {
                 continue;
             }
-            if (i == kDefaultFormatIdx) {
+            if (i == wantFmtIdx) {
                 defaultDdIdx = ew->formatIndices.Size();
             }
             ew->formatIndices.Append(i);
@@ -1848,6 +1900,10 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
         dd->SetCurrentSelection(defaultDdIdx);
         dd->onSelectionChanged = MkFunc0<ImageEditWindow>(OnFormatChanged, ew);
         ew->dropFormat = dd;
+    }
+
+    if (selectPdf) {
+        OnFormatChanged(ew);
     }
 
     CalcImageLayout(ew);

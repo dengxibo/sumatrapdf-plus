@@ -1512,8 +1512,7 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
 
     win->mouseAction = MouseAction::None;
 
-    if (didDragMouse && win->showSelection &&
-        (ma == MouseAction::SelectingText || ma == MouseAction::Selecting)) {
+    if (didDragMouse && win->showSelection && (ma == MouseAction::SelectingText || ma == MouseAction::Selecting)) {
         ShowSelectionToolbar(win);
     }
 
@@ -1521,14 +1520,21 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
     int pageNo = dm->GetPageNoByPoint(pt);
     PointF ptPage = dm->CvtFromScreen(pt, pageNo);
 
-    // TODO: win->linkHandler->GotoLink might spin the event loop
-    IPageElement* link = win->linkOnLastButtonDown;
+    // Re-hit-test at click time; linkOnLastButtonDown can dangle when progressive
+    // MOBI/EPUB formatting rebuilds page elements between mouse down and up.
     win->linkOnLastButtonDown = nullptr;
 
     WindowTab* tab = win->CurrentTab();
     if (didDragMouse) {
         // no-op
         return;
+    }
+
+    IPageElement* link = nullptr;
+    IPageElement* pageEl = dm->GetElementAtPos(pt, nullptr, true);
+    if (pageEl && pageEl->Is(kindPageElementDest) && IsPageElementLinkReachable(win->ctrl, pageEl) &&
+        pageEl->GetRect().Contains(ptPage)) {
+        link = pageEl;
     }
 
     if (PM_BLACK_SCREEN == win->presentation || PM_WHITE_SCREEN == win->presentation) {
@@ -1638,7 +1644,8 @@ static void OnMouseLeftButtonDblClk(MainWindow* win, int x, int y, WPARAM key) {
     // note: before 3.5 double-click used to turn 2 pages
     // OnMouseLeftButtonDown(win, x, y, key);
     Point mousePos = Point(x, y);
-    bool isOverText = dm->IsOverText(mousePos);
+    // Double-click may load text on demand (same as single-click selection).
+    bool isOverText = dm->IsOverText(mousePos, true);
 
     if (isLeft && (win->presentation || win->isFullScreen)) {
         // in fullscreen we allow to exit by tapping in upper right corner
@@ -3223,7 +3230,9 @@ static void OnPaintError(MainWindow* win) {
     auto tab = win->CurrentTab();
     const char* filePath = tab ? tab->filePath : nullptr;
     if (filePath) {
-        TempStr msg = str::FormatTemp(_TRA("Loading %s ..."), path::GetBaseNameTemp(filePath));
+        const char* msg = tab->reloadForEbookFontChange
+                              ? _TRA("Applying ebook font, reformatting pages…")
+                              : str::FormatTemp(_TRA("Loading %s ..."), path::GetBaseNameTemp(filePath));
         SetTextColor(hdc, ThemeWindowTextColor());
         DrawCenteredText(hdc, ClientRect(win->hwndCanvas), msg, IsUIRtl());
     }

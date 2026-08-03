@@ -169,7 +169,7 @@ const matchThemeByLang: BlockMap = {
   by: "Рэжым колеру дакумента: Пад тему (следуючы колерам бягучай темы)",
   ca: "Mode de color del document: Segueix el tema (segueix els colors del tema actual)",
   "ca-xv": "Mode de color del document: Segueix el tema (segueix els colors del tema actual)",
-  cn: "文档颜色模式：跟随主题（按当前主题着色）",
+  cn: "文档颜色模式：匹配主题（按当前主题着色）",
   co: "Modu di culore di u documentu: Segue u tema (seguì i colori di u tema attuale)",
   cy: "Modd lliw dogfen: Cyfateb thema (dilyn lliwiau'r thema gyfredol)",
   cz: "Barevný režim dokumentu: Podle motivu (barvy podle aktuálního motivu)",

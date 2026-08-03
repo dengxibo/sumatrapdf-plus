@@ -31,6 +31,7 @@ struct AppCommandCtx {
     int pageCount = 0;
     bool isPdf = false;
     bool isPdfEncrypted = false;
+    bool canEditPdfToc = false;
     bool isChm = false;
     bool isCbx = false;
     bool isImageCollection = false;

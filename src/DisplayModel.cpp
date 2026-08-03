@@ -1417,6 +1417,15 @@ float DisplayModel::ZoomRealFromVirtualForPage(float zoomVirtual, int pageNo) co
             zoom = maxZoom;
         }
     }
+    // A progressive reflowable ebook can briefly expose placeholder page
+    // geometry while its chapter map is growing. If that geometry is only a
+    // few pixels wide, fit-width produces a huge real zoom (often clamped to
+    // 6400% by the first zoom command). Keep the semantic fit mode and use
+    // actual size for this transient pass; the next page-layout update will
+    // recompute fit width from coherent page dimensions.
+    if (EngineIsProgressiveEbookLoading(engine) && zoom > 8.0f * dpiFactor) {
+        zoom = dpiFactor;
+    }
     return zoom;
 }
 
@@ -1888,15 +1897,35 @@ int DisplayModel::GetPageNoByPoint(Point pt) const {
     }
 
     if (IsReflowContinuousSingleColumn((DisplayModel*)this)) {
+        // RecalcVisibleParts() already maintains a small, authoritative band
+        // whose pageOnScreen rectangles are current. Prefer it for hit testing.
+        // When progressive loading finishes, pagesInfo grows to the final count
+        // before every appended page necessarily has a layout position. A binary
+        // search across that mixed table can land on an unlaid-out midpoint and
+        // incorrectly conclude that text on the visible page belongs to no page.
+        int visibleFrom = std::max(visibleScanFrom, 1);
+        int visibleTo = std::min(visibleScanTo, PageCount());
+        if (visibleFrom <= visibleTo) {
+            for (int pageNo = visibleFrom; pageNo <= visibleTo; pageNo++) {
+                PageInfo* pageInfo = GetPageInfo(pageNo);
+                if (pageInfo && pageInfo->isShown && pageInfo->pageOnScreen.Contains(pt)) {
+                    return pageNo;
+                }
+            }
+        }
+
         int canvasY = viewPort.y + pt.y;
         int lo = 1;
-        int hi = PageCount();
+        int hi = std::min(PageCount(), reflowLayoutValidUpto);
+        if (hi < 1) {
+            return -1;
+        }
         while (lo < hi) {
             int mid = lo + (hi - lo + 1) / 2;
             PageInfo* pi = GetPageInfo(mid);
             if (!pi || !pi->isShown || pi->pos.dy <= 0) {
-                lo = 1;
-                break;
+                hi = mid - 1;
+                continue;
             }
             if (pi->pos.y <= canvasY) {
                 lo = mid;
@@ -2049,6 +2078,7 @@ IPageElement* DisplayModel::GetElementAtPos(Point pt, int* pageNoOut, bool eager
     }
     if (eagerLoadLinks && engine && engine->kind == kindEngineMupdf) {
         EngineMupdfEnsurePageLinksForHitTest(engine, pageNo);
+        EngineMupdfEnsurePageImagesForHitTest(engine, pageNo);
     }
     PointF pos = CvtFromScreen(pt, pageNo);
     return engine->GetElementAtPos(pageNo, pos);

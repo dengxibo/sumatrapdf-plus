@@ -83,7 +83,9 @@ struct ChmModel : DocController {
     int currentPageNo = 1;
     HtmlWindow* htmlWindow = nullptr;
     HtmlWindowCallback* htmlWindowCb = nullptr;
-    float initZoom = kInvalidZoom;
+    // Logical zoom requested by Sumatra. The embedded browser can reset optical
+    // zoom while navigating, so this must survive every document load.
+    float zoomVirtual = 100.0f;
 
     Vec<ChmCacheEntry*> urlDataCache;
     // arena for strings that aren't freed until this ChmModel is deleted

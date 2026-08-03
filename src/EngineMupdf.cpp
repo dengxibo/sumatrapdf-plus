@@ -8,6 +8,7 @@ extern "C" {
 #include "../mupdf/source/fitz/color-imp.h"
 void fz_purge_stored_html(fz_context* ctx, void* doc);
 void fz_purge_stored_html_chapter(fz_context* ctx, void* doc, int chapter);
+void fz_reset_epub_html_font_set(fz_context* ctx, fz_document* doc);
 void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, float w, float h, float em);
 }
 
@@ -22,6 +23,8 @@ void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, fl
 #include "utils/Timer.h"
 #include "utils/ThreadUtil.h"
 
+#include <stdio.h>
+
 #include "wingui/UIModels.h"
 
 #include "Annotation.h"
@@ -30,7 +33,6 @@ void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, fl
 #include "EngineBase.h"
 #include "MdConvert.h"
 #include "EngineMupdf.h"
-#include <stdio.h>
 #include "EngineAll.h"
 #include "EbookBase.h"
 #include "EbookFontConfig.h"
@@ -995,23 +997,26 @@ static ByteSlice FzExtractStreamData(fz_context* ctx, fz_stream* stream) {
 }
 
 static inline int WcharsPerRune(int rune) {
-    if (rune & 0x1F0000) {
-        return 2;
-    }
-    return 1;
+    return rune > 0xFFFF ? 2 : 1;
 }
 
-static Rect SelectionRectFromChar(fz_stext_char* c) {
+static Rect SelectionRectFromChar(fz_stext_line* line, fz_stext_char* c) {
     fz_rect bbox = fz_rect_from_quad(c->quad);
     Rect r = ToRectF(bbox).Round();
-    float fs = c->size;
-    if (fs <= 0.01f || r.IsEmpty()) {
+    // Vertical reflow text needs the accurate glyph bounds. Replacing those
+    // bounds with a horizontal font-size band shifts glyph picking by one cell.
+    if (line && line->wmode != 0) {
         return r;
     }
 
-    // MuPDF's reflow text quad includes the CSS line-height. Selection should
-    // follow the visible glyph band instead of filling the paragraph leading.
-    float bandH = std::max(fs, 1.0f);
+    // Some CJK fallback fonts report outline bounds whose ascent/descent fill
+    // most of the CSS line box. Using that height makes horizontal selection and
+    // read-aloud highlights much taller than the visible glyphs. For horizontal
+    // text, retain the established font-size band while keeping its real center.
+    float bandH = c->size;
+    if (bandH <= 0.01f || r.IsEmpty()) {
+        return r;
+    }
     float centerY = (float)r.y + (float)r.dy * 0.5f;
     int y = (int)(centerY - bandH * 0.5f + 0.5f);
     int h = std::max((int)(bandH + 0.5f), 1);
@@ -1020,8 +1025,112 @@ static Rect SelectionRectFromChar(fz_stext_char* c) {
     return r;
 }
 
+static bool RectsFormVerticalStep(const Rect& a, const Rect& b) {
+    if (a.IsEmpty() || b.IsEmpty()) {
+        return false;
+    }
+    int overlap = std::min(a.x + a.dx, b.x + b.dx) - std::max(a.x, b.x);
+    int minW = std::min(a.dx, b.dx);
+    int step = b.y - a.y;
+    int maxH = std::max(a.dy, b.dy);
+    return minW > 0 && overlap * 2 >= minW && step > 0 && step <= maxH * 3;
+}
+
+static Rect VerticalGlyphCell(const Rect& glyphRect, int centerOffset, int step) {
+    Rect cell = glyphRect;
+    int center = glyphRect.y + glyphRect.dy / 2 + centerOffset;
+    cell.y = center - step / 2;
+    cell.dy = step;
+    return cell;
+}
+
+// Some reflowed vertical documents are emitted as one horizontal stext line per
+// glyph. MuPDF associates each line's Unicode with the following painted glyph,
+// so the text is correct but every quad is one visual cell late. Detect that
+// shape from the empty line separators and re-associate rects at the common
+// source used by selection, search, and lookup.
+static void AlignVerticalGlyphRects(Vec<Rect>& rects) {
+    int verticalPairs = 0;
+    int separatedPairs = 0;
+    int previousStart = -1;
+    Rect previous{};
+    bool separated = false;
+    for (int i = 0; i < rects.Size();) {
+        Rect current = rects[i];
+        if (current.IsEmpty()) {
+            separated = previousStart >= 0;
+            i++;
+            continue;
+        }
+        int end = i + 1;
+        while (end < rects.Size() && rects[end] == current) {
+            end++;
+        }
+        if (previousStart >= 0 && separated) {
+            separatedPairs++;
+            if (RectsFormVerticalStep(previous, current)) {
+                verticalPairs++;
+            }
+        }
+        previousStart = i;
+        previous = current;
+        separated = false;
+        i = end;
+    }
+    if (verticalPairs < 6 || verticalPairs * 3 < separatedPairs * 2) {
+        return;
+    }
+
+    previousStart = -1;
+    int previousEnd = -1;
+    Rect previousOriginal{};
+    bool runStarted = false;
+    separated = false;
+    for (int i = 0; i < rects.Size();) {
+        Rect original = rects[i];
+        if (original.IsEmpty()) {
+            separated = previousStart >= 0;
+            i++;
+            continue;
+        }
+        int end = i + 1;
+        while (end < rects.Size() && rects[end] == original) {
+            end++;
+        }
+        if (previousStart >= 0 && separated && RectsFormVerticalStep(previousOriginal, original)) {
+            int step = original.y - previousOriginal.y;
+            if (!runStarted) {
+                Rect first = VerticalGlyphCell(previousOriginal, -step, step);
+                for (int j = previousStart; j < previousEnd; j++) {
+                    rects[j] = first;
+                }
+                runStarted = true;
+            }
+            Rect current = VerticalGlyphCell(previousOriginal, 0, step);
+            for (int j = i; j < end; j++) {
+                rects[j] = current;
+            }
+        } else {
+            runStarted = false;
+        }
+        previousStart = i;
+        previousEnd = end;
+        previousOriginal = original;
+        separated = false;
+        i = end;
+    }
+}
+
+static bool RuneIsWhitespace(int rune) {
+    return rune >= 0 && rune <= 0xFFFF && str::IsWs((WCHAR)rune);
+}
+
+static bool RuneIsNonPrintable(int rune) {
+    return rune <= 32 || (rune >= 0 && rune <= 0xFFFF && str::IsNonCharacter((WCHAR)rune));
+}
+
 static void AddChar(fz_stext_line* line, fz_stext_char* c, WStrBuilder& s, Vec<Rect>& rects) {
-    Rect r = SelectionRectFromChar(c);
+    Rect r = SelectionRectFromChar(line, c);
 
     int n = WcharsPerRune(c->c);
     if (n == 2) {
@@ -1034,7 +1143,7 @@ static void AddChar(fz_stext_line* line, fz_stext_char* c, WStrBuilder& s, Vec<R
         return;
     }
     WCHAR wc = c->c;
-    bool isNonPrintable = (wc <= 32) || str::IsNonCharacter(wc);
+    bool isNonPrintable = RuneIsNonPrintable(c->c);
     if (!isNonPrintable) {
         s.AppendChar(wc);
         rects.Append(r);
@@ -1042,7 +1151,7 @@ static void AddChar(fz_stext_line* line, fz_stext_char* c, WStrBuilder& s, Vec<R
     }
 
     // non-printable or whitespace
-    if (!str::IsWs(wc)) {
+    if (!RuneIsWhitespace(c->c)) {
         s.AppendChar(L'?');
         rects.Append(r);
         return;
@@ -1079,23 +1188,46 @@ static void AddLineSep(WStrBuilder& s, Vec<Rect>& rects, const WCHAR* lineSep, s
     }
 }
 
+static void RemoveLastUtf8Codepoint(StrBuilder& s, Vec<Rect>& rects) {
+    if (s.IsEmpty()) {
+        return;
+    }
+    int byteLen = (int)s.size();
+    int byteIdx = byteLen;
+    Utf8CodepointPrev(s.CStr(), byteLen, byteIdx);
+    int n = byteLen - byteIdx;
+    for (int i = 0; i < n; i++) {
+        s.RemoveLast();
+        rects.RemoveLast();
+    }
+}
+
+static bool Utf8StrEndsWithWhitespace(const StrBuilder& s) {
+    if (s.IsEmpty()) {
+        return false;
+    }
+    int byteLen = (int)s.size();
+    int byteIdx = byteLen;
+    int cp = Utf8CodepointPrev(s.CStr(), byteLen, byteIdx);
+    return str::IsWs((WCHAR)cp);
+}
+
 // UTF-8 variant: append `c` as up to 4 UTF-8 bytes to `s` and the same
 // rect `r` for each byte, so rects.size() == s.size() holds.
-static void AddCharUtf8(fz_stext_line*, fz_stext_char* c, StrBuilder& s, Vec<Rect>& rects) {
-    Rect r = SelectionRectFromChar(c);
+static void AddCharUtf8(fz_stext_line* line, fz_stext_char* c, StrBuilder& s, Vec<Rect>& rects) {
+    Rect r = SelectionRectFromChar(line, c);
 
     int rune = c->c;
-    bool isWhitespace = rune > 0 && rune <= 0x7f && str::IsWs((WCHAR)rune);
-    bool isNonPrintable = rune <= 32 || str::IsNonCharacter((WCHAR)rune);
+    bool isWhitespace = RuneIsWhitespace(rune);
+    bool isNonPrintable = RuneIsNonPrintable(rune);
     if (isNonPrintable && !isWhitespace) {
         s.AppendChar('?');
         rects.Append(r);
         return;
     }
     if (isWhitespace) {
-        // collapse multiple whitespace characters into one
-        char prev = s.IsEmpty() ? 0 : s.LastChar();
-        if (prev == ' ' || prev == '\t' || prev == '\n' || prev == '\r') {
+        // collapse multiple whitespace characters into one (mirror AddChar WCHAR path)
+        if (Utf8StrEndsWithWhitespace(s)) {
             return;
         }
         s.AppendChar(' ');
@@ -1115,10 +1247,15 @@ static void AddLineSepUtf8(StrBuilder& s, Vec<Rect>& rects, const char* lineSep)
     if (lineSepLen == 0) {
         return;
     }
-    // remove trailing space
-    if (!s.IsEmpty() && s.LastChar() == ' ') {
-        s.RemoveLast();
-        rects.RemoveLast();
+    // remove trailing whitespace (mirror AddLineSep WCHAR path)
+    while (!s.IsEmpty()) {
+        int byteLen = (int)s.size();
+        int byteIdx = byteLen;
+        int cp = Utf8CodepointPrev(s.CStr(), byteLen, byteIdx);
+        if (!str::IsWs((WCHAR)cp)) {
+            break;
+        }
+        RemoveLastUtf8Codepoint(s, rects);
     }
     s.Append(lineSep);
     for (size_t i = 0; i < lineSepLen; i++) {
@@ -1151,6 +1288,7 @@ static char* FzTextPageToUtf8(fz_stext_page* text, Rect** coordsOut) {
     }
 
     ReportIf(content.size() != rects.size());
+    AlignVerticalGlyphRects(rects);
 
     if (coordsOut) {
         *coordsOut = rects.StealData();
@@ -1188,6 +1326,7 @@ static WCHAR* FzTextPageToStr(fz_stext_page* text, Rect** coordsOut) {
     }
 
     ReportIf(content.size() != rects.size());
+    AlignVerticalGlyphRects(rects);
 
     if (coordsOut) {
         *coordsOut = rects.StealData();
@@ -3366,8 +3505,11 @@ static bool PathHintsBilingual(const char* path) {
         "\xe6\xb1\x89\xe8\x8b\xb1", // 汉英
         "\xe4\xb8\xad\xe8\x8b\xb1", // 中英
         "\xe5\xaf\xb9\xe7\x85\xa7", // 对照
+        "\xe4\xb9\xa6\xe8\x99\xab", // 书虫 (Oxford Bookworms bilingual editions)
         "bilingual",
         "Bilingual",
+        "bookworm",
+        "Bookworm",
         nullptr,
     };
     for (const char** h = hints; *h; h++) {
@@ -3587,7 +3729,6 @@ section, article, main, header, footer, pre, table,
 span.songti {
   background-color: transparent !important;
   color: #333333 !important;
-  font-weight: 400 !important;
 }
 p {
   color: #333333 !important;
@@ -3762,11 +3903,6 @@ div.kindle-cn-bodycontent-div-alone100a + p.kindle-cn-picture-txt-withfewcharact
 }
 figure, div.figure, div.image, div.picture, div.pic {
   page-break-before: always !important;
-}
-img[style*="height:100%%"], img[style*="height: 100%%"] {
-  height: auto !important;
-  width: auto !important;
-  max-width: 100%% !important;
 }
 )",
         h90, h80, h70, h60, h50, h40, panelH);
@@ -3998,8 +4134,8 @@ tr.kindle-cn-table-body td.rt1 .bodyContent_120 {
 }
 )";
 
-static TempStr BuildMupdfReflowUserCss(const char* nameHint, const char* filePath, float ldx, float ldy,
-                                       float lfontDy) {
+static TempStr BuildMupdfReflowUserCss(const char* nameHint, const char* filePath, float ldx, float ldy, float lfontDy,
+                                       int displayDpi) {
     ReportIf(IsMarkdownReflowDocument(nameHint, filePath));
     bool isEpub = IsEpubReflowNameHint(nameHint);
     EbookTypographyKind typographyKind = GetEbookTypographyKind();
@@ -4601,7 +4737,8 @@ li, blockquote {
 )";
         if (isEpub) {
             TempStr fontCss;
-            if (UsesNonDefaultEbookReaderFonts()) {
+            bool forceFonts = UsesNonDefaultEbookReaderFonts() || typographyKind == EbookTypographyKind::Bilingual;
+            if (forceFonts) {
                 fontCss = BuildEbookForceFontCss(typographyKind);
             } else {
                 fontCss = BuildEbookReaderFontCss(typographyKind);
@@ -4615,12 +4752,26 @@ li, blockquote {
             ebookCss = str::JoinTemp(fontCss, "\n", kEpubReaderBaseCss);
             ebookCss = str::JoinTemp(ebookCss, "\n", rhythmCss);
         }
+        if (UsesNonDefaultEbookFontSize()) {
+            TempStr sizeCss = BuildEbookForceFontSizeCss(displayDpi);
+            if (sizeCss) {
+                ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", sizeCss) : sizeCss;
+            }
+        }
         if (!isEpub) {
             TempStr fallbackCss = BuildEbookFallbackFontCss();
             ebookCss = ebookCss ? str::JoinTemp(fallbackCss, "\n", ebookCss) : fallbackCss;
         }
-        if (eBookUI->customCSS) {
-            ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", eBookUI->customCSS) : str::DupTemp(eBookUI->customCSS);
+        // An empty translated String setting can be serialized as a single-line
+        // "# <description>" value. Do not feed that placeholder to MuPDF as CSS.
+        TempStr customCss = str::DupTemp(eBookUI->customCSS);
+        if (customCss) {
+            str::TrimWSInPlace(customCss, str::TrimOpt::Both);
+        }
+        bool commentPlaceholder = customCss && customCss[0] == '#' && !str::Find(customCss, "{") &&
+                                  !str::Find(customCss, "\n") && !str::Find(customCss, "\r");
+        if (customCss && !commentPlaceholder) {
+            ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", customCss) : str::DupTemp(customCss);
         }
     }
     // Oxford Bookworms comic strips wrap each full-page panel in a link. Fit those
@@ -4671,7 +4822,7 @@ p.picture > img, p.picture1 > img {
 }
 
 static void SetMupdfReflowUserCss(fz_context* ctx, const char* nameHint, const char* filePath, float ldx, float ldy,
-                                  float lfontDy) {
+                                  float lfontDy, int displayDpi) {
     if (IsMarkdownReflowDocument(nameHint, filePath)) {
         fz_set_use_document_css(ctx, true);
         TempStr mdCss = BuildMarkdownUserCss(nameHint, filePath, ldx, ldy, lfontDy);
@@ -4684,7 +4835,7 @@ static void SetMupdfReflowUserCss(fz_context* ctx, const char* nameHint, const c
     if (eBookUI) {
         fz_set_use_document_css(ctx, !eBookUI->ignoreDocumentCSS);
     }
-    TempStr ebookCss = BuildMupdfReflowUserCss(nameHint, filePath, ldx, ldy, lfontDy);
+    TempStr ebookCss = BuildMupdfReflowUserCss(nameHint, filePath, ldx, ldy, lfontDy, displayDpi);
     if (ebookCss) {
         fz_set_user_css(ctx, ebookCss);
     }
@@ -4708,8 +4859,8 @@ static void LayoutMupdfReflowDocument(fz_context* ctx, fz_document* doc, int dis
 // BuildMupdfReflowUserCss are identical for open and theme when nameHint and layout pt match;
 // only BuildMupdfReflowPaletteCss varies with theme / document color mode.
 static void ApplyMupdfThemeCssOnly(fz_context* ctx, const char* nameHint, const char* filePath, float ldxPt,
-                                   float ldyPt, float lfontDyPt) {
-    SetMupdfReflowUserCss(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
+                                   float ldyPt, float lfontDyPt, int displayDpi) {
+    SetMupdfReflowUserCss(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt, displayDpi);
 }
 
 static void WaitForReflowUiDocLock(EngineMupdf* e);
@@ -4910,6 +5061,7 @@ bool EngineMupdf::LoadFromStream(fz_stream* stm, const char* nameHint, PasswordU
     EbookTypographyKind typographyKind =
         isEpub ? DetectEbookTypographyKind(FilePath(), nameHint) : EbookTypographyKind::Latin;
     SetEbookTypographyKind(typographyKind);
+    SetEbookReaderStyleMobi(false);
 
     float ldx = layoutA5DxPt;
     float ldy = layoutA5DyPt;
@@ -4934,7 +5086,7 @@ bool EngineMupdf::LoadFromStream(fz_stream* stm, const char* nameHint, PasswordU
     fz_var(dx);
     fz_var(dy);
     fz_try(ctx) {
-        SetMupdfReflowUserCss(ctx, nameHint, FilePath(), ldxPt, ldyPt, lfontDyPt);
+        SetMupdfReflowUserCss(ctx, nameHint, FilePath(), ldxPt, ldyPt, lfontDyPt, displayDPI);
         _doc = fz_open_accelerated_document_with_stream(ctx, nameHint, stm, nullptr);
         pdfdoc = pdf_specifics(ctx, _doc);
         LayoutMupdfReflowDocument(ctx, _doc, displayDPI, ldxPt, ldyPt, lfontDyPt, &dx, &dy);
@@ -5239,9 +5391,6 @@ static void GetMupdfReflowLayoutPt(const char* nameHint, float* ldxPtOut, float*
     }
     auto eBookUI = GetEBookUI();
     if (eBookUI) {
-        if (eBookUI->fontSize > 6 && eBookUI->fontSize < 30) {
-            lfontDy = eBookUI->fontSize;
-        }
         if (eBookUI->layoutDx > 100 && eBookUI->layoutDx != 560) {
             ldx = eBookUI->layoutDx;
         }
@@ -5287,6 +5436,7 @@ static void DropSingleFzPageCache(fz_context* ctx, FzPageInfo* pi) {
         fz_drop_page(ctx, pi->page);
         pi->page = nullptr;
     }
+    pi->fullyLoaded = false;
     pi->elementsNeedRebuilding = true;
 }
 
@@ -5313,6 +5463,7 @@ static void DropReflowChapterPageCaches(EngineMupdf* e, fz_context* ctx, int cha
             continue;
         }
         DropSingleFzPageCache(ctx, pi);
+        e->ClearTextCacheForPage(pi->pageNo);
         if (stampThemeEpoch) {
             pi->reflowThemeCssEpoch = e->reflowThemeCssEpoch;
         }
@@ -5347,6 +5498,7 @@ static void DropAllReflowPageCaches(fz_context* ctx, EngineMupdf* e) {
             continue;
         }
         DropSingleFzPageCache(ctx, pi);
+        e->ClearTextCacheForPage(pi->pageNo);
         pi->reflowThemeCssEpoch = 0;
     }
 }
@@ -5386,6 +5538,21 @@ static void RefreshSingleChapterReflowAfterReparse(EngineMupdf* e) {
     e->reflowTocNeedsUiReload = true;
 }
 
+static EngineMupdfRelayoutProgressFn gRelayoutProgressCb = nullptr;
+static void* gRelayoutProgressUser = nullptr;
+
+static void MaybeReportRelayoutProgress(int percent) {
+    if (!gRelayoutProgressCb) {
+        return;
+    }
+    if (percent < 0) {
+        percent = 0;
+    } else if (percent > 100) {
+        percent = 100;
+    }
+    gRelayoutProgressCb(percent, gRelayoutProgressUser);
+}
+
 static bool RelayoutSingleChapterReflowHtml(EngineMupdf* e, fz_context* ctx, const char* nameHint, const char* filePath,
                                             float ldxPt, float ldyPt, float lfontDyPt) {
     if (e->reflowHtmlSource.empty()) {
@@ -5395,11 +5562,15 @@ static bool RelayoutSingleChapterReflowHtml(EngineMupdf* e, fz_context* ctx, con
     fz_var(buf);
     bool ok = false;
     fz_try(ctx) {
-        ApplyMupdfThemeCssOnly(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
+        MaybeReportRelayoutProgress(20);
+        ApplyMupdfThemeCssOnly(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt, e->displayDPI);
+        MaybeReportRelayoutProgress(35);
         buf = fz_new_buffer_from_copied_data(ctx, e->reflowHtmlSource.data(), e->reflowHtmlSource.size());
         float em = DpiScale(lfontDyPt, e->displayDPI);
         DropAllReflowPageCaches(ctx, e);
+        MaybeReportRelayoutProgress(45);
         fz_htdoc_reparse_html(ctx, e->_doc, buf, e->reflowLayoutW, e->reflowLayoutH, em);
+        MaybeReportRelayoutProgress(80);
         RefreshSingleChapterReflowAfterReparse(e);
         e->reflowThemeCssEpoch++;
         ok = true;
@@ -5427,6 +5598,11 @@ void EngineMupdfSetThemeRecountProgressCb(EngineMupdfThemeRecountProgressFn cb, 
     gThemeRecountProgressUser = user;
 }
 
+void EngineMupdfSetRelayoutProgressCb(EngineMupdfRelayoutProgressFn cb, void* user) {
+    gRelayoutProgressCb = cb;
+    gRelayoutProgressUser = user;
+}
+
 static void MaybeReportThemeRecountProgress(EngineMupdf* e, int chaptersDone) {
     if (!gThemeRecountProgressCb || !e || e->reflowNumChapters <= 0) {
         return;
@@ -5445,8 +5621,11 @@ static void WaitForReflowBackgroundYield(EngineMupdf* e) {
         if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
             return;
         }
-        if (InterlockedCompareExchange(&e->reflowUiPaused, 0, 0) != 0 &&
-            InterlockedCompareExchange(&e->reflowBackgroundYielding, 0, 0) != 0) {
+        // UI paused background loading for theme/font work; don't spin here.
+        if (InterlockedCompareExchange(&e->reflowUiPaused, 0, 0) != 0) {
+            return;
+        }
+        if (InterlockedCompareExchange(&e->reflowBackgroundYielding, 0, 0) != 0) {
             return;
         }
         Sleep(1);
@@ -5478,7 +5657,90 @@ static void InvalidateReflowPageCachesForThemeCssLocked(EngineMupdf* e, fz_conte
     }
 }
 
-bool EngineMupdfRelayoutForThemeChange(EngineBase* engine) {
+static void ResyncReflowChapterPageMapFrom(EngineMupdf* e, fz_context* ctx, int fromChapter, bool forThemeRecount);
+static void TruncateReflowChapterPageMapFrom(EngineMupdf* e, int fromChapter);
+static void FinishReflowableLoadAsync(EngineMupdf* e);
+
+static int ReflowSyncThroughChapterForProgressiveResync(EngineMupdf* e) {
+    int pageNo = (int)InterlockedCompareExchange(&e->reflowLastAccessedPageNo, 0, 0);
+    if (pageNo < 1) {
+        pageNo = 1;
+    }
+    int syncCh = ReflowChapterIndexForPageNo(e, pageNo);
+    if (syncCh < 0) {
+        syncCh = 0;
+    }
+    int numCh = e->reflowNumChapters;
+    if (numCh > 0) {
+        int ahead = syncCh + 2;
+        if (ahead >= numCh) {
+            ahead = numCh - 1;
+        }
+        if (ahead > syncCh) {
+            syncCh = ahead;
+        }
+    }
+    return syncCh;
+}
+
+static void KickReflowChapterRecountAsync(EngineMupdf* e) {
+    if (!e || e->pdfdoc || IsCreateEngineForThumbnail()) {
+        return;
+    }
+    InterlockedExchange(&e->reflowableLoadAbort, 1);
+    for (int i = 0; i < 5000; i++) {
+        if (InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) == 0) {
+            break;
+        }
+        Sleep(1);
+    }
+    InterlockedExchange(&e->reflowableLoadAbort, 0);
+    InterlockedExchange(&e->reflowableLoadingInProgress, 1);
+    auto fn = MkFunc0<EngineMupdf>(FinishReflowableLoadAsync, e);
+    RunAsync(fn, "MupdfReflowRecount");
+}
+
+static void AbortAndWaitForReflowBackgroundLoad(EngineMupdf* e) {
+    if (!e || InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) == 0) {
+        return;
+    }
+    InterlockedExchange(&e->reflowableLoadAbort, 1);
+    for (int i = 0; i < 120000; i++) {
+        if (InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) == 0) {
+            break;
+        }
+        Sleep(1);
+    }
+    InterlockedExchange(&e->reflowableLoadAbort, 0);
+}
+
+static void ResyncReflowChapterPageMapProgressive(EngineMupdf* e, fz_context* ctx, int fromChapter,
+                                                  int syncThroughChapter) {
+    if (!e || e->pdfdoc || fromChapter < 0) {
+        return;
+    }
+    AbortAndWaitForReflowBackgroundLoad(e);
+    EngineMupdfSetReflowLoadingPaused(e, true);
+    defer {
+        EngineMupdfSetReflowLoadingPaused(e, false);
+    };
+    TruncateReflowChapterPageMapFrom(e, fromChapter);
+    {
+        ScopedCritSec countScope(&e->reflowCountLock);
+        CountReflowChaptersUpTo(e, syncThroughChapter, nullptr, false, ctx, true);
+    }
+    GrowReflowPageCount(e, e->reflowPagesCounted);
+    e->pageCount = e->reflowPagesCounted;
+    e->reflowTocNeedsUiReload = true;
+    e->InvalidateTocTree();
+    const char* path = e->FilePath();
+    if (path) {
+        NotifyEbookPagesLoadingProgress(path, false);
+    }
+    KickReflowChapterRecountAsync(e);
+}
+
+bool EngineMupdfApplyReflowChange(EngineBase* engine, MupdfReflowChangeKind changeKind) {
     EngineMupdf* e = AsEngineMupdf(engine);
     if (!e || !e->_doc || e->pdfdoc) {
         return false;
@@ -5500,29 +5762,91 @@ bool EngineMupdfRelayoutForThemeChange(EngineBase* engine) {
     GetMupdfReflowLayoutPt(nameHint, &ldxPt, &ldyPt, &lfontDyPt);
 
     fz_context* ctx = e->_ctx;
-    bool loading = InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) != 0;
     AcquireReflowUiDocLock(e);
     WaitForReflowBackgroundYield(e);
+    MaybeReportRelayoutProgress(10);
     bool ok = false;
+    bool needChapterResync = false;
+    bool geometryChange = changeKind != MupdfReflowChangeKind::Palette;
+    bool fontFamilyChange = changeKind == MupdfReflowChangeKind::FontFamily;
     {
         ScopedCritSec scope(&e->docLock);
         fz_try(ctx) {
+            if (fontFamilyChange) {
+                fz_purge_fallback_font_cache(ctx);
+                fz_reset_epub_html_font_set(ctx, e->_doc);
+            }
             if (!e->reflowHtmlSource.empty()) {
                 ok = RelayoutSingleChapterReflowHtml(e, ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
             } else {
-                ApplyMupdfThemeCssOnly(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
-                ReleaseAllPerThreadContexts(e);
+                MaybeReportRelayoutProgress(20);
+                ApplyMupdfThemeCssOnly(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt, e->displayDPI);
+                if (geometryChange) {
+                    MaybeReportRelayoutProgress(40);
+                    float dx, dy;
+                    LayoutMupdfReflowDocument(ctx, e->_doc, e->displayDPI, ldxPt, ldyPt, lfontDyPt, &dx, &dy);
+                    e->reflowLayoutW = dx;
+                    e->reflowLayoutH = dy;
+                }
+                // fz_clone_context() shares the style context, so updating the
+                // master context's user CSS is immediately visible to clones.
+                // Never drop contexts owned by other threads here: a renderer
+                // may already have obtained its clone and be waiting for
+                // docLock, which would turn this into a use-after-free when it
+                // resumes.
                 e->reflowThemeCssEpoch++;
+                MaybeReportRelayoutProgress(75);
                 InvalidateReflowPageCachesForThemeCssLocked(e, ctx);
-                ok = e->pageCount > 0;
+                ok = true;
+                needChapterResync = geometryChange;
             }
         }
         fz_catch(ctx) {
             fz_report_error(ctx);
         }
     }
+    MaybeReportRelayoutProgress(95);
     ReleaseReflowUiDocLock(e);
+    if (needChapterResync && ok) {
+        // Fragment and TOC page numbers were resolved against the previous
+        // geometry. A progressive recount only rebuilds nearby chapters
+        // synchronously, so retaining this map can make a distant anthology
+        // TOC entry jump to its old page while the new recount is running.
+        AbortAndWaitForReflowBackgroundLoad(e);
+        e->epubMeta.Clear();
+        e->epubMetaLoaded = false;
+        bool progressive = gGlobalPrefs && gGlobalPrefs->eBookUI.epubProgressiveLoad;
+        int syncThroughChapter = -1;
+        if (progressive) {
+            syncThroughChapter = ReflowSyncThroughChapterForProgressiveResync(e);
+        }
+        if (progressive && syncThroughChapter >= 0) {
+            ResyncReflowChapterPageMapProgressive(e, ctx, 0, syncThroughChapter);
+        } else {
+            ResyncReflowChapterPageMapFrom(e, ctx, 0, true);
+        }
+        ok = e->pageCount > 0;
+    }
+    if (geometryChange && ok) {
+        // GetTextForPage() owns a second cache of extracted text and glyph
+        // coordinates outside the MuPDF page/search caches invalidated above.
+        // Reflow geometry changes make those coordinates stale; keeping them
+        // makes selection and cursor-based reading hit the previous layout.
+        e->ClearTextCache();
+    }
     return ok;
+}
+
+bool EngineMupdfRelayoutForThemeChange(EngineBase* engine) {
+    return EngineMupdfApplyReflowChange(engine, MupdfReflowChangeKind::Palette);
+}
+
+bool EngineMupdfRelayoutForFontChange(EngineBase* engine) {
+    return EngineMupdfApplyReflowChange(engine, MupdfReflowChangeKind::FontFamily);
+}
+
+bool EngineMupdfRelayoutForFontSizeChange(EngineBase* engine) {
+    return EngineMupdfApplyReflowChange(engine, MupdfReflowChangeKind::FontSize);
 }
 
 void EngineMupdfSetReflowLoadingPaused(EngineBase* engine, bool paused) {
@@ -5530,8 +5854,16 @@ void EngineMupdfSetReflowLoadingPaused(EngineBase* engine, bool paused) {
     if (!e) {
         return;
     }
-    InterlockedExchange(&e->reflowUiPaused, paused ? 1 : 0);
-    if (!paused) {
+    if (paused) {
+        InterlockedIncrement(&e->reflowUiPaused);
+        return;
+    }
+    LONG depth = InterlockedDecrement(&e->reflowUiPaused);
+    if (depth < 0) {
+        InterlockedExchange(&e->reflowUiPaused, 0);
+        depth = 0;
+    }
+    if (depth == 0) {
         InterlockedExchange(&e->reflowBackgroundYielding, 0);
     }
 }
@@ -5799,8 +6131,9 @@ static int CountReflowChaptersUpTo(EngineMupdf* e, int targetChapter, const char
                 break;
             }
         }
-        // Per-thread fz_context clones can be dropped during a theme/CSS update
-        // while this thread is paused; never cache ctx across loop iterations.
+        // Resolve this thread's context for each iteration. Runtime CSS updates
+        // preserve cloned contexts; only the owning thread or engine teardown
+        // may release one.
         fz_context* ctx = ctxOverride ? ctxOverride : e->Ctx();
         bool done = false;
         if (forThemeRecount) {
@@ -5893,19 +6226,22 @@ static bool ReflowChapterPageMapNeedsResync(EngineMupdf* e, fz_context* ctx, int
     return false;
 }
 
-static void ResyncReflowChapterPageMapFrom(EngineMupdf* e, fz_context* ctx, int fromChapter) {
+static void ResyncReflowChapterPageMapFrom(EngineMupdf* e, fz_context* ctx, int fromChapter, bool forThemeRecount) {
     if (!e || e->pdfdoc || fromChapter < 0) {
         return;
     }
-    if (InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) != 0) {
-        return;
-    }
+    AbortAndWaitForReflowBackgroundLoad(e);
     EngineMupdfSetReflowLoadingPaused(e, true);
     defer {
         EngineMupdfSetReflowLoadingPaused(e, false);
     };
     TruncateReflowChapterPageMapFrom(e, fromChapter);
-    CountReflowChaptersUpTo(e, -1, nullptr, false, ctx, false);
+    if (forThemeRecount) {
+        ScopedCritSec countScope(&e->reflowCountLock);
+        CountReflowChaptersUpTo(e, -1, nullptr, false, ctx, true);
+    } else {
+        CountReflowChaptersUpTo(e, -1, nullptr, false, ctx, false);
+    }
     GrowReflowPageCount(e, e->reflowPagesCounted);
     e->pageCount = e->reflowPagesCounted;
     if (e->outline) {
@@ -6557,7 +6893,7 @@ TocItem* EngineMupdf::BuildTocTree(TocItem* parent, fz_outline* outline, int& id
         free(name);
         item->isOpenDefault = outline->is_open;
         item->id = ++idCounter;
-        item->fontFlags = 0; // TODO: had outline->flags; but mupdf changed outline
+        item->fontFlags = outline->flags;
         item->pageNo = pageNo;
         if (!isAttachment && InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) == 0) {
             int destPageNo = PageDestGetPageNo(dest);
@@ -6567,12 +6903,9 @@ TocItem* EngineMupdf::BuildTocTree(TocItem* parent, fz_outline* outline, int& id
             ReportIf(!item->PageNumbersMatch());
         }
 
-        // TODO: had outline->n_color and outline->color but mupdf changed outline
-        /*
-        if (outline->n_color > 0) {
-            item->color = ColorRefFromPdfFloat(ctx, outline->n_color, outline->color);
+        if (outline->r != 0 || outline->g != 0 || outline->b != 0) {
+            item->color = RGB(outline->r, outline->g, outline->b);
         }
-        */
 
         if (outline->down) {
             item->child = BuildTocTree(item, outline->down, idCounter, isAttachment, outlineIdx);
@@ -6729,7 +7062,16 @@ TocTree* EngineMupdf::GetToc() {
     tocTree = nullptr;
     tocTreeStale = false;
     if (outline == nullptr && attachments == nullptr) {
-        return nullptr;
+        if (!pdfdoc) {
+            return nullptr;
+        }
+        ScopedCritSec docScope(&docLock);
+        if (!pdf_has_permission(Ctx(), pdfdoc, (fz_permission)PDF_PERM_MODIFY)) {
+            return nullptr;
+        }
+        TocItem* realRoot = new TocItem();
+        tocTree = new TocTree(realRoot);
+        return tocTree;
     }
 
     int idCounter = 0;
@@ -7097,7 +7439,7 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
             }
         }
         if (reflowCh >= 0 && ReflowChapterPageMapNeedsResync(this, ctx, reflowCh, reflowPageInChapter)) {
-            ResyncReflowChapterPageMapFrom(this, ctx, reflowCh);
+            ResyncReflowChapterPageMapFrom(this, ctx, reflowCh, false);
             reflowCh = ReflowChapterIndexForPageNo(this, pageNo);
             if (reflowCh >= 0) {
                 ScopedCritSec scopePages(&pagesLock);
@@ -8016,9 +8358,9 @@ static void DetectFollowThemeDocBitmapRecolor(EngineMupdf* engine, fz_context* c
 
 static bool FollowThemePageUsesBitmapRecolor(EngineMupdf* engine, fz_context* ctx, FzPageInfo* pageInfo,
                                              fz_page* page) {
-  if (InterlockedCompareExchange(&engine->pdfFollowThemeProbePending, 0, 0) != 0) {
-    return false;
-  }
+    if (InterlockedCompareExchange(&engine->pdfFollowThemeProbePending, 0, 0) != 0) {
+        return false;
+    }
     // Doc class is resolved at load time; do not probe/load pages from the render thread.
     (void)ctx;
     (void)page;
@@ -8410,6 +8752,22 @@ void EngineMupdfEnsurePageLinksForHitTest(EngineBase* engine, int pageNo) {
     }
     // Rendering uses loadQuick with loadLinks false; populate link hit-test data on first hover.
     e->GetFzPageInfo(pageNo, true, nullptr, /*loadLinks*/ true);
+}
+
+void EngineMupdfEnsurePageImagesForHitTest(EngineBase* engine, int pageNo) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || pageNo < 1 || pageNo > e->pageCount) {
+        return;
+    }
+    FzPageInfo* pageInfo = e->GetFzPageInfo(pageNo, false, nullptr, false);
+    if (!pageInfo || !pageInfo->page) {
+        return;
+    }
+    if (e->pdfdoc && !pageInfo->contentImagesCollected) {
+        fz_context* ctx = e->Ctx();
+        FzCollectImagesFromPageContent(ctx, pageNo, pageInfo, pageInfo->page, nullptr);
+        pageInfo->contentImagesCollected = true;
+    }
 }
 
 // TOOD: optimize by returning reference or pointer so that
@@ -9485,10 +9843,17 @@ int EngineMupdfTocItemPageNoForSync(EngineBase* engine, IPageDestination* dest, 
     }
     EngineMupdf* e = AsEngineMupdf(engine);
     PageDestinationMupdf* link = (PageDestinationMupdf*)dest;
-    if (link->outline && link->outline->uri && str::FindChar(link->outline->uri, '#') && e && e->epubMetaLoaded) {
-        int metaPage = EpubMetaLookupFragmentPage(e->epubMeta, link->outline->uri);
-        if (metaPage > 0) {
-            return metaPage;
+    const char* uri = link->outline ? link->outline->uri : nullptr;
+    if (uri && str::FindChar(uri, '#') && e) {
+        if (EpubMetaPageMapIsCurrent(e)) {
+            int metaPage = EpubMetaLookupFragmentPage(e->epubMeta, uri);
+            if (metaPage > 0) {
+                return metaPage;
+            }
+        }
+        int livePage = ResolveMupdfLinkPageNo1(e, uri, nullptr);
+        if (livePage > 0) {
+            return livePage;
         }
     }
     int live = EngineMupdfFastOutlinePageNo(engine, dest);
@@ -9912,6 +10277,319 @@ void EngineMupdfNavigateUri(EngineBase* engine, const char* uri, int reflowOutli
     NavigateMupdfToResolvedDest(engine, pageNo1, ldest, lh);
 }
 
+struct PdfTocEditNode {
+    char* title = nullptr;
+    char* uri = nullptr;
+    bool isOpen = false;
+    int flags = 0;
+    int r = 0;
+    int g = 0;
+    int b = 0;
+    Vec<PdfTocEditNode*> children;
+
+    ~PdfTocEditNode() {
+        str::Free(title);
+        str::Free(uri);
+        for (PdfTocEditNode* child : children) {
+            delete child;
+        }
+    }
+};
+
+static void DeletePdfTocEditNodes(Vec<PdfTocEditNode*>& nodes) {
+    for (PdfTocEditNode* node : nodes) {
+        delete node;
+    }
+    nodes.Clear();
+}
+
+static void CapturePdfTocEditNodes(fz_outline* outline, Vec<PdfTocEditNode*>& nodes) {
+    for (; outline; outline = outline->next) {
+        auto node = new PdfTocEditNode;
+        node->title = str::Dup(outline->title ? outline->title : "");
+        node->uri = str::Dup(outline->uri);
+        node->isOpen = outline->is_open != 0;
+        node->flags = outline->flags;
+        node->r = outline->r;
+        node->g = outline->g;
+        node->b = outline->b;
+        CapturePdfTocEditNodes(outline->down, node->children);
+        nodes.Append(node);
+    }
+}
+
+static PdfTocEditNode* PdfTocNodeAtPath(Vec<PdfTocEditNode*>& roots, const Vec<int>& path) {
+    Vec<PdfTocEditNode*>* nodes = &roots;
+    PdfTocEditNode* node = nullptr;
+    for (int idx : path) {
+        if (!nodes->isValidIndex(idx)) {
+            return nullptr;
+        }
+        node = nodes->At(idx);
+        nodes = &node->children;
+    }
+    return node;
+}
+
+static Vec<PdfTocEditNode*>* PdfTocParentNodesAtPath(Vec<PdfTocEditNode*>& roots, const Vec<int>& path) {
+    if (path.empty()) {
+        return &roots;
+    }
+    Vec<PdfTocEditNode*>* nodes = &roots;
+    for (int i = 0; i + 1 < path.Size(); i++) {
+        int idx = path.At(i);
+        if (!nodes->isValidIndex(idx)) {
+            return nullptr;
+        }
+        nodes = &nodes->At(idx)->children;
+    }
+    return nodes;
+}
+
+static void CopyPdfTocPath(Vec<int>* dst, const Vec<int>& src) {
+    if (!dst) {
+        return;
+    }
+    dst->Clear();
+    for (int idx : src) {
+        dst->Append(idx);
+    }
+}
+
+static PdfTocEditNode* NewPdfTocEditNode(const char* title, const char* uri) {
+    auto node = new PdfTocEditNode;
+    node->title = str::Dup(title ? title : "");
+    node->uri = str::Dup(uri);
+    return node;
+}
+
+static bool ApplyPdfTocEditToModel(Vec<PdfTocEditNode*>& roots, PdfTocEditAction action, const Vec<int>& path,
+                                   const char* title, const char* uri, Vec<int>* resultPathOut) {
+    Vec<PdfTocEditNode*>* siblings = PdfTocParentNodesAtPath(roots, path);
+    int idx = path.empty() ? -1 : path.Last();
+    PdfTocEditNode* node = path.empty() ? nullptr : PdfTocNodeAtPath(roots, path);
+    Vec<int> result;
+    CopyPdfTocPath(&result, path);
+
+    switch (action) {
+        case PdfTocEditAction::AddAfter: {
+            auto added = NewPdfTocEditNode(title, uri);
+            if (path.empty()) {
+                roots.Append(added);
+                result.Append(roots.Size() - 1);
+            } else if (siblings && node) {
+                siblings->InsertAt(idx + 1, added);
+                result.Last() = idx + 1;
+            } else {
+                delete added;
+                return false;
+            }
+        } break;
+        case PdfTocEditAction::AddChild: {
+            if (!node) {
+                return false;
+            }
+            node->children.Append(NewPdfTocEditNode(title, uri));
+            result.Append(node->children.Size() - 1);
+        } break;
+        case PdfTocEditAction::Update:
+            if (!node || str::IsEmpty(title)) {
+                return false;
+            }
+            str::ReplaceWithCopy(&node->title, title);
+            if (uri) {
+                str::ReplaceWithCopy(&node->uri, uri);
+            }
+            break;
+        case PdfTocEditAction::Delete:
+            if (!siblings || !node) {
+                return false;
+            }
+            siblings->RemoveAt(idx);
+            delete node;
+            result.Clear();
+            break;
+        case PdfTocEditAction::MoveUp:
+            if (!siblings || !node || idx <= 0) {
+                return false;
+            }
+            siblings->At(idx) = siblings->At(idx - 1);
+            siblings->At(idx - 1) = node;
+            result.Last() = idx - 1;
+            break;
+        case PdfTocEditAction::MoveDown:
+            if (!siblings || !node || idx < 0 || idx + 1 >= siblings->Size()) {
+                return false;
+            }
+            siblings->At(idx) = siblings->At(idx + 1);
+            siblings->At(idx + 1) = node;
+            result.Last() = idx + 1;
+            break;
+        case PdfTocEditAction::Promote: {
+            if (!siblings || !node || path.Size() < 2) {
+                return false;
+            }
+            Vec<int> parentPath;
+            for (int i = 0; i + 1 < path.Size(); i++) {
+                parentPath.Append(path.At(i));
+            }
+            Vec<PdfTocEditNode*>* parentSiblings = PdfTocParentNodesAtPath(roots, parentPath);
+            if (!parentSiblings) {
+                return false;
+            }
+            int parentIdx = parentPath.Last();
+            siblings->RemoveAt(idx);
+            parentSiblings->InsertAt(parentIdx + 1, node);
+            CopyPdfTocPath(&result, parentPath);
+            result.Last() = parentIdx + 1;
+        } break;
+        case PdfTocEditAction::Demote: {
+            if (!siblings || !node || idx <= 0) {
+                return false;
+            }
+            PdfTocEditNode* previous = siblings->At(idx - 1);
+            siblings->RemoveAt(idx);
+            previous->children.Append(node);
+            result.Last() = idx - 1;
+            result.Append(previous->children.Size() - 1);
+        } break;
+    }
+    CopyPdfTocPath(resultPathOut, result);
+    return true;
+}
+
+static void InsertPdfTocEditNode(fz_context* ctx, fz_outline_iterator* iter, PdfTocEditNode* node) {
+    fz_outline_item item{};
+    item.title = node->title;
+    item.uri = node->uri;
+    item.is_open = node->isOpen;
+    item.flags = node->flags;
+    item.r = (float)node->r;
+    item.g = (float)node->g;
+    item.b = (float)node->b;
+    fz_outline_iterator_insert(ctx, iter, &item);
+    fz_outline_iterator_prev(ctx, iter);
+    if (!node->children.empty()) {
+        fz_outline_iterator_down(ctx, iter);
+        for (PdfTocEditNode* child : node->children) {
+            InsertPdfTocEditNode(ctx, iter, child);
+            fz_outline_iterator_next(ctx, iter);
+        }
+        fz_outline_iterator_up(ctx, iter);
+        // PDF inserts start childless and closed. Restore the source expanded
+        // state only after the complete subtree has been inserted.
+        fz_outline_iterator_update(ctx, iter, &item);
+    }
+}
+
+static void RewritePdfTocFromModel(fz_context* ctx, pdf_document* doc, Vec<PdfTocEditNode*>& roots) {
+    fz_outline_iterator* iter = fz_new_outline_iterator(ctx, (fz_document*)doc);
+    fz_var(iter);
+    fz_try(ctx) {
+        while (fz_outline_iterator_item(ctx, iter)) {
+            fz_outline_iterator_delete(ctx, iter);
+        }
+        for (PdfTocEditNode* node : roots) {
+            InsertPdfTocEditNode(ctx, iter, node);
+            fz_outline_iterator_next(ctx, iter);
+        }
+    }
+    fz_always(ctx) {
+        fz_drop_outline_iterator(ctx, iter);
+    }
+    fz_catch(ctx) {
+        fz_rethrow(ctx);
+    }
+}
+
+bool EngineMupdfCanEditPdfToc(EngineBase* engine) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !e->pdfdoc) {
+        return false;
+    }
+    ScopedCritSec scope(&e->docLock);
+    return pdf_has_permission(e->Ctx(), e->pdfdoc, (fz_permission)PDF_PERM_MODIFY) != 0;
+}
+
+bool EngineMupdfPdfHasSignatures(EngineBase* engine) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !e->pdfdoc) {
+        return false;
+    }
+    ScopedCritSec scope(&e->docLock);
+    return pdf_count_signatures(e->Ctx(), e->pdfdoc) > 0;
+}
+
+char* EngineMupdfFormatPdfTocTarget(EngineBase* engine, int pageNo, float x, float y) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !e->pdfdoc || pageNo < 1 || pageNo > e->PageCount()) {
+        return nullptr;
+    }
+    char* uri = nullptr;
+    char* result = nullptr;
+    auto ctx = e->Ctx();
+    ScopedCritSec scope(&e->docLock);
+    fz_try(ctx) {
+        fz_link_dest dest = fz_make_link_dest_xyz(0, pageNo - 1, x, y, NAN);
+        uri = fz_format_link_uri(ctx, e->_doc, dest);
+        result = str::Dup(uri);
+    }
+    fz_always(ctx) {
+        fz_free(ctx, uri);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    return result;
+}
+
+bool EngineMupdfEditPdfToc(EngineBase* engine, PdfTocEditAction action, const Vec<int>& path, const char* title,
+                           const char* uri, Vec<int>* resultPathOut, char** errorOut) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (errorOut) {
+        *errorOut = nullptr;
+    }
+    if (!e || !e->pdfdoc || !EngineMupdfCanEditPdfToc(engine)) {
+        return false;
+    }
+
+    Vec<PdfTocEditNode*> roots;
+    defer {
+        DeletePdfTocEditNodes(roots);
+    };
+
+    bool ok = false;
+    auto ctx = e->Ctx();
+    ScopedCritSec scope(&e->docLock);
+    fz_try(ctx) {
+        CapturePdfTocEditNodes(e->outline, roots);
+        if (!ApplyPdfTocEditToModel(roots, action, path, title, uri, resultPathOut)) {
+            fz_throw(ctx, FZ_ERROR_ARGUMENT, "invalid PDF table of contents edit");
+        }
+        pdf_begin_operation(ctx, e->pdfdoc, "Edit PDF table of contents");
+        fz_try(ctx) {
+            RewritePdfTocFromModel(ctx, e->pdfdoc, roots);
+            pdf_end_operation(ctx, e->pdfdoc);
+        }
+        fz_catch(ctx) {
+            pdf_abandon_operation(ctx, e->pdfdoc);
+            fz_rethrow(ctx);
+        }
+        fz_drop_outline(ctx, e->outline);
+        e->outline = fz_load_outline(ctx, e->_doc);
+        e->InvalidateTocTree();
+        e->modifiedPdfToc = true;
+        ok = true;
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        if (errorOut) {
+            *errorOut = str::Dup(fz_caught_message(ctx));
+        }
+    }
+    return ok;
+}
+
 bool EngineMupdfHasOutline(EngineBase* engine) {
     EngineMupdf* epdf = AsEngineMupdf(engine);
     if (!epdf) {
@@ -9920,7 +10598,7 @@ bool EngineMupdfHasOutline(EngineBase* engine) {
     if (epdf->tocTree) {
         return true;
     }
-    return epdf->outline != nullptr || epdf->attachments != nullptr;
+    return epdf->outline != nullptr || epdf->attachments != nullptr || EngineMupdfCanEditPdfToc(engine);
 }
 
 const char* EngineMupdfGetPassword(EngineBase* engine) {
@@ -9945,7 +10623,7 @@ bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErro
     if (!epdf || !epdf->pdfdoc) {
         return false;
     }
-    if (!EngineMupdfHasUnsavedAnnotations(engine)) {
+    if (!EngineMupdfHasUnsavedPdfChanges(engine)) {
         return false;
     }
 
@@ -9975,7 +10653,7 @@ bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErro
         pdf_save_document(ctx, epdf->pdfdoc, path, &save_opts);
         ok = true;
         auto dur = TimeSinceInMs(timeStart);
-        logf("Saved annotations to '%s' in  %.2f ms, incremental: %d\n", path, dur, save_opts.do_incremental);
+        logf("Saved PDF changes to '%s' in  %.2f ms, incremental: %d\n", path, dur, save_opts.do_incremental);
     }
     fz_catch(ctx) {
         fz_report_error(ctx);
@@ -9990,6 +10668,7 @@ bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErro
     // note: this should be short-lived as we should re-load the file
     if (ok) {
         epdf->modifiedAnnotations = false;
+        epdf->modifiedPdfToc = false;
     }
     return ok;
 }
@@ -10218,6 +10897,11 @@ bool EngineMupdfHasUnsavedAnnotations(EngineBase* engine) {
     }
 #endif
     return epdf->modifiedAnnotations;
+}
+
+bool EngineMupdfHasUnsavedPdfChanges(EngineBase* engine) {
+    EngineMupdf* epdf = AsEngineMupdf(engine);
+    return epdf && epdf->pdfdoc && (epdf->modifiedAnnotations || epdf->modifiedPdfToc);
 }
 
 bool EngineMupdfSupportsAnnotations(EngineBase* engine) {

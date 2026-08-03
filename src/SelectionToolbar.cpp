@@ -59,7 +59,7 @@ static void InitButtons(SelectionToolbar* tb, MainWindow* win) {
     if (gGlobalPrefs->enableAskAI) {
         tb->buttons[i++] = {CmdAnalyzeSelectionWithDoubao, "Ask AI", true, {}};
     }
-    bool lookupEnabled = CanLookupSelectionInTab(win->CurrentTab());
+    bool lookupEnabled = CanLookupSelectionInTab(tb->tab ? tb->tab : win->CurrentTab());
     tb->buttons[i++] = {CmdLookupSelection, "Look Up", lookupEnabled, {}};
     tb->buttons[i++] = {CmdReadAloudSelection, "Read Aloud", HasPermission(Perm::CopySelection), {}};
     tb->buttons[i++] = {CmdCopySelection, "Copy", true, {}};

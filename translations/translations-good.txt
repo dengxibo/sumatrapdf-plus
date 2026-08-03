@@ -1262,6 +1262,54 @@ nl:Voeg Favoriet toe
 pl:Dodaj do ulubionych
 sk:Pridať obľúbenú položku
 tw:加到我的最愛
+:Add PDF TOC Child Item
+am:Ավելացնել PDF բովանդակության ենթատարր
+br:Adicionar subitem ao sumário do PDF
+cn:新增 PDF 目录子项
+co:Aghjunghje un sottoelementu à l'indice PDF
+de:Untereintrag zum PDF-Inhaltsverzeichnis hinzufügen
+el:Προσθήκη θυγατρικού στοιχείου στα περιεχόμενα PDF
+it:Aggiungi sottovoce all'indice PDF
+nl:Subitem aan PDF-inhoudsopgave toevoegen
+pl:Dodaj element podrzędny spisu treści PDF
+sk:Pridať podradenú položku obsahu PDF
+tw:新增 PDF 目錄子項目
+:Add PDF TOC Item
+am:Ավելացնել PDF բովանդակության տարր
+br:Adicionar item ao sumário do PDF
+cn:新增 PDF 目录项
+co:Aghjunghje un elementu à l'indice PDF
+de:PDF-Inhaltsverzeichniseintrag hinzufügen
+el:Προσθήκη στοιχείου περιεχομένων PDF
+it:Aggiungi voce all'indice PDF
+nl:PDF-inhoudsopgave-item toevoegen
+pl:Dodaj element spisu treści PDF
+sk:Pridať položku obsahu PDF
+tw:新增 PDF 目錄項目
+:Add PDF TOC Item After
+am:Ավելացնել PDF բովանդակության տարր հետո
+br:Adicionar item do sumário do PDF depois
+cn:在其后新增 PDF 目录项
+co:Aghjunghje un elementu di l'indice PDF dopu
+de:PDF-Inhaltsverzeichniseintrag danach hinzufügen
+el:Προσθήκη στοιχείου περιεχομένων PDF μετά
+it:Aggiungi voce dell'indice PDF dopo
+nl:PDF-inhoudsopgave-item hierna toevoegen
+pl:Dodaj element spisu treści PDF po tym elemencie
+sk:Pridať položku obsahu PDF za túto položku
+tw:在其後新增 PDF 目錄項目
+:Add Root PDF TOC Item
+am:Ավելացնել արմատային տարր PDF բովանդակության ցանկում
+br:Adicionar item raiz ao sumário do PDF
+cn:新增 PDF 目录根项目
+co:Aghjunghje un elementu radice à l'indice PDF
+de:Stammeintrag zum PDF-Inhaltsverzeichnis hinzufügen
+el:Προσθήκη ριζικού στοιχείου στα περιεχόμενα PDF
+it:Aggiungi voce principale all'indice PDF
+nl:Hoofditem aan PDF-inhoudsopgave toevoegen
+pl:Dodaj główny element spisu treści PDF
+sk:Pridať koreňovú položku obsahu PDF
+tw:新增 PDF 目錄根項目
 :Add page %s to favorites
 am:Ավելացնել %s էջը ընտրյալներին
 br:Adicionar a página %s aos favoritos
@@ -1298,6 +1346,152 @@ nl:Voeg toe aan Favorieten
 pl:Dodaj do ulubionych
 sk:Pridať k obľúbeným
 tw:加到我的最愛
+:Adjusting ebook layout… chapter %d / %d
+af:Adjusting ebook layout… chapter %d / %d
+am:Adjusting ebook layout… chapter %d / %d
+ar:Adjusting ebook layout… chapter %d / %d
+az:Adjusting ebook layout… chapter %d / %d
+bg:Adjusting ebook layout… chapter %d / %d
+bn:Adjusting ebook layout… chapter %d / %d
+br:Adjusting ebook layout… chapter %d / %d
+bs:Adjusting ebook layout… chapter %d / %d
+by:Adjusting ebook layout… chapter %d / %d
+ca:Adjusting ebook layout… chapter %d / %d
+ca-xv:Adjusting ebook layout… chapter %d / %d
+cn:正在调整电子书版式…第 %d / %d 章
+co:Adjusting ebook layout… chapter %d / %d
+cy:Adjusting ebook layout… chapter %d / %d
+cz:Adjusting ebook layout… chapter %d / %d
+de:Adjusting ebook layout… chapter %d / %d
+dk:Adjusting ebook layout… chapter %d / %d
+el:Adjusting ebook layout… chapter %d / %d
+es:Adjusting ebook layout… chapter %d / %d
+et:Adjusting ebook layout… chapter %d / %d
+eu:Adjusting ebook layout… chapter %d / %d
+fa:Adjusting ebook layout… chapter %d / %d
+fi:Adjusting ebook layout… chapter %d / %d
+fo:Adjusting ebook layout… chapter %d / %d
+fr:Adjusting ebook layout… chapter %d / %d
+fy-nl:Adjusting ebook layout… chapter %d / %d
+ga:Adjusting ebook layout… chapter %d / %d
+gl:Adjusting ebook layout… chapter %d / %d
+he:Adjusting ebook layout… chapter %d / %d
+hi:Adjusting ebook layout… chapter %d / %d
+hr:Adjusting ebook layout… chapter %d / %d
+hu:Adjusting ebook layout… chapter %d / %d
+id:Adjusting ebook layout… chapter %d / %d
+it:Adjusting ebook layout… chapter %d / %d
+ja:Adjusting ebook layout… chapter %d / %d
+jv:Adjusting ebook layout… chapter %d / %d
+ka:Adjusting ebook layout… chapter %d / %d
+kr:Adjusting ebook layout… chapter %d / %d
+ku:Adjusting ebook layout… chapter %d / %d
+kw:Adjusting ebook layout… chapter %d / %d
+lt:Adjusting ebook layout… chapter %d / %d
+lv:Adjusting ebook layout… chapter %d / %d
+mk:Adjusting ebook layout… chapter %d / %d
+ml:Adjusting ebook layout… chapter %d / %d
+mm:Adjusting ebook layout… chapter %d / %d
+my:Adjusting ebook layout… chapter %d / %d
+ne:Adjusting ebook layout… chapter %d / %d
+nl:Adjusting ebook layout… chapter %d / %d
+nn:Adjusting ebook layout… chapter %d / %d
+no:Adjusting ebook layout… chapter %d / %d
+pa:Adjusting ebook layout… chapter %d / %d
+pl:Adjusting ebook layout… chapter %d / %d
+pt:Adjusting ebook layout… chapter %d / %d
+ro:Adjusting ebook layout… chapter %d / %d
+ru:Adjusting ebook layout… chapter %d / %d
+sat:Adjusting ebook layout… chapter %d / %d
+si:Adjusting ebook layout… chapter %d / %d
+sk:Adjusting ebook layout… chapter %d / %d
+sl:Adjusting ebook layout… chapter %d / %d
+sn:Adjusting ebook layout… chapter %d / %d
+sp-rs:Adjusting ebook layout… chapter %d / %d
+sq:Adjusting ebook layout… chapter %d / %d
+sr-rs:Adjusting ebook layout… chapter %d / %d
+sv:Adjusting ebook layout… chapter %d / %d
+ta:Adjusting ebook layout… chapter %d / %d
+th:Adjusting ebook layout… chapter %d / %d
+tl:Adjusting ebook layout… chapter %d / %d
+tr:Adjusting ebook layout… chapter %d / %d
+tw:正在調整電子書版式…第 %d / %d 章
+uk:Adjusting ebook layout… chapter %d / %d
+uz:Adjusting ebook layout… chapter %d / %d
+vn:Adjusting ebook layout… chapter %d / %d
+:Adjusting font size, reformatting pages…
+af:Adjusting font size, reformatting pages…
+am:Adjusting font size, reformatting pages…
+ar:Adjusting font size, reformatting pages…
+az:Adjusting font size, reformatting pages…
+bg:Adjusting font size, reformatting pages…
+bn:Adjusting font size, reformatting pages…
+br:Adjusting font size, reformatting pages…
+bs:Adjusting font size, reformatting pages…
+by:Adjusting font size, reformatting pages…
+ca:Adjusting font size, reformatting pages…
+ca-xv:Adjusting font size, reformatting pages…
+cn:正在调整字号，重新排版…
+co:Adjusting font size, reformatting pages…
+cy:Adjusting font size, reformatting pages…
+cz:Adjusting font size, reformatting pages…
+de:Adjusting font size, reformatting pages…
+dk:Adjusting font size, reformatting pages…
+el:Adjusting font size, reformatting pages…
+es:Adjusting font size, reformatting pages…
+et:Adjusting font size, reformatting pages…
+eu:Adjusting font size, reformatting pages…
+fa:Adjusting font size, reformatting pages…
+fi:Adjusting font size, reformatting pages…
+fo:Adjusting font size, reformatting pages…
+fr:Adjusting font size, reformatting pages…
+fy-nl:Adjusting font size, reformatting pages…
+ga:Adjusting font size, reformatting pages…
+gl:Adjusting font size, reformatting pages…
+he:Adjusting font size, reformatting pages…
+hi:Adjusting font size, reformatting pages…
+hr:Adjusting font size, reformatting pages…
+hu:Adjusting font size, reformatting pages…
+id:Adjusting font size, reformatting pages…
+it:Adjusting font size, reformatting pages…
+ja:Adjusting font size, reformatting pages…
+jv:Adjusting font size, reformatting pages…
+ka:Adjusting font size, reformatting pages…
+kr:Adjusting font size, reformatting pages…
+ku:Adjusting font size, reformatting pages…
+kw:Adjusting font size, reformatting pages…
+lt:Adjusting font size, reformatting pages…
+lv:Adjusting font size, reformatting pages…
+mk:Adjusting font size, reformatting pages…
+ml:Adjusting font size, reformatting pages…
+mm:Adjusting font size, reformatting pages…
+my:Adjusting font size, reformatting pages…
+ne:Adjusting font size, reformatting pages…
+nl:Adjusting font size, reformatting pages…
+nn:Adjusting font size, reformatting pages…
+no:Adjusting font size, reformatting pages…
+pa:Adjusting font size, reformatting pages…
+pl:Adjusting font size, reformatting pages…
+pt:Adjusting font size, reformatting pages…
+ro:Adjusting font size, reformatting pages…
+ru:Adjusting font size, reformatting pages…
+sat:Adjusting font size, reformatting pages…
+si:Adjusting font size, reformatting pages…
+sk:Adjusting font size, reformatting pages…
+sl:Adjusting font size, reformatting pages…
+sn:Adjusting font size, reformatting pages…
+sp-rs:Adjusting font size, reformatting pages…
+sq:Adjusting font size, reformatting pages…
+sr-rs:Adjusting font size, reformatting pages…
+sv:Adjusting font size, reformatting pages…
+ta:Adjusting font size, reformatting pages…
+th:Adjusting font size, reformatting pages…
+tl:Adjusting font size, reformatting pages…
+tr:Adjusting font size, reformatting pages…
+tw:正在調整字級，重新排版…
+uk:Adjusting font size, reformatting pages…
+uz:Adjusting font size, reformatting pages…
+vn:Adjusting font size, reformatting pages…
 :Advanced
 am:Ընդլայնված
 br:Avançado
@@ -1546,6 +1740,152 @@ tw:正在套用文件顏色，重新渲染頁面…
 uk:Applying document colors, re-rendering pages…
 uz:Applying document colors, re-rendering pages…
 vn:Applying document colors, re-rendering pages…
+:Applying ebook font, reformatting pages…
+af:Applying ebook font, reformatting pages…
+am:Applying ebook font, reformatting pages…
+ar:Applying ebook font, reformatting pages…
+az:Applying ebook font, reformatting pages…
+bg:Applying ebook font, reformatting pages…
+bn:Applying ebook font, reformatting pages…
+br:Applying ebook font, reformatting pages…
+bs:Applying ebook font, reformatting pages…
+by:Applying ebook font, reformatting pages…
+ca:Applying ebook font, reformatting pages…
+ca-xv:Applying ebook font, reformatting pages…
+cn:正在应用字体，重新排版…
+co:Applying ebook font, reformatting pages…
+cy:Applying ebook font, reformatting pages…
+cz:Applying ebook font, reformatting pages…
+de:Applying ebook font, reformatting pages…
+dk:Applying ebook font, reformatting pages…
+el:Applying ebook font, reformatting pages…
+es:Applying ebook font, reformatting pages…
+et:Applying ebook font, reformatting pages…
+eu:Applying ebook font, reformatting pages…
+fa:Applying ebook font, reformatting pages…
+fi:Applying ebook font, reformatting pages…
+fo:Applying ebook font, reformatting pages…
+fr:Applying ebook font, reformatting pages…
+fy-nl:Applying ebook font, reformatting pages…
+ga:Applying ebook font, reformatting pages…
+gl:Applying ebook font, reformatting pages…
+he:Applying ebook font, reformatting pages…
+hi:Applying ebook font, reformatting pages…
+hr:Applying ebook font, reformatting pages…
+hu:Applying ebook font, reformatting pages…
+id:Applying ebook font, reformatting pages…
+it:Applying ebook font, reformatting pages…
+ja:Applying ebook font, reformatting pages…
+jv:Applying ebook font, reformatting pages…
+ka:Applying ebook font, reformatting pages…
+kr:Applying ebook font, reformatting pages…
+ku:Applying ebook font, reformatting pages…
+kw:Applying ebook font, reformatting pages…
+lt:Applying ebook font, reformatting pages…
+lv:Applying ebook font, reformatting pages…
+mk:Applying ebook font, reformatting pages…
+ml:Applying ebook font, reformatting pages…
+mm:Applying ebook font, reformatting pages…
+my:Applying ebook font, reformatting pages…
+ne:Applying ebook font, reformatting pages…
+nl:Applying ebook font, reformatting pages…
+nn:Applying ebook font, reformatting pages…
+no:Applying ebook font, reformatting pages…
+pa:Applying ebook font, reformatting pages…
+pl:Applying ebook font, reformatting pages…
+pt:Applying ebook font, reformatting pages…
+ro:Applying ebook font, reformatting pages…
+ru:Applying ebook font, reformatting pages…
+sat:Applying ebook font, reformatting pages…
+si:Applying ebook font, reformatting pages…
+sk:Applying ebook font, reformatting pages…
+sl:Applying ebook font, reformatting pages…
+sn:Applying ebook font, reformatting pages…
+sp-rs:Applying ebook font, reformatting pages…
+sq:Applying ebook font, reformatting pages…
+sr-rs:Applying ebook font, reformatting pages…
+sv:Applying ebook font, reformatting pages…
+ta:Applying ebook font, reformatting pages…
+th:Applying ebook font, reformatting pages…
+tl:Applying ebook font, reformatting pages…
+tr:Applying ebook font, reformatting pages…
+tw:正在套用字體，重新排版…
+uk:Applying ebook font, reformatting pages…
+uz:Applying ebook font, reformatting pages…
+vn:Applying ebook font, reformatting pages…
+:Applying ebook font, reloading…
+af:Applying ebook font, reloading…
+am:Applying ebook font, reloading…
+ar:Applying ebook font, reloading…
+az:Applying ebook font, reloading…
+bg:Applying ebook font, reloading…
+bn:Applying ebook font, reloading…
+br:Applying ebook font, reloading…
+bs:Applying ebook font, reloading…
+by:Applying ebook font, reloading…
+ca:Applying ebook font, reloading…
+ca-xv:Applying ebook font, reloading…
+cn:正在应用字体，重新加载…
+co:Applying ebook font, reloading…
+cy:Applying ebook font, reloading…
+cz:Applying ebook font, reloading…
+de:Applying ebook font, reloading…
+dk:Applying ebook font, reloading…
+el:Applying ebook font, reloading…
+es:Applying ebook font, reloading…
+et:Applying ebook font, reloading…
+eu:Applying ebook font, reloading…
+fa:Applying ebook font, reloading…
+fi:Applying ebook font, reloading…
+fo:Applying ebook font, reloading…
+fr:Applying ebook font, reloading…
+fy-nl:Applying ebook font, reloading…
+ga:Applying ebook font, reloading…
+gl:Applying ebook font, reloading…
+he:Applying ebook font, reloading…
+hi:Applying ebook font, reloading…
+hr:Applying ebook font, reloading…
+hu:Applying ebook font, reloading…
+id:Applying ebook font, reloading…
+it:Applying ebook font, reloading…
+ja:Applying ebook font, reloading…
+jv:Applying ebook font, reloading…
+ka:Applying ebook font, reloading…
+kr:Applying ebook font, reloading…
+ku:Applying ebook font, reloading…
+kw:Applying ebook font, reloading…
+lt:Applying ebook font, reloading…
+lv:Applying ebook font, reloading…
+mk:Applying ebook font, reloading…
+ml:Applying ebook font, reloading…
+mm:Applying ebook font, reloading…
+my:Applying ebook font, reloading…
+ne:Applying ebook font, reloading…
+nl:Applying ebook font, reloading…
+nn:Applying ebook font, reloading…
+no:Applying ebook font, reloading…
+pa:Applying ebook font, reloading…
+pl:Applying ebook font, reloading…
+pt:Applying ebook font, reloading…
+ro:Applying ebook font, reloading…
+ru:Applying ebook font, reloading…
+sat:Applying ebook font, reloading…
+si:Applying ebook font, reloading…
+sk:Applying ebook font, reloading…
+sl:Applying ebook font, reloading…
+sn:Applying ebook font, reloading…
+sp-rs:Applying ebook font, reloading…
+sq:Applying ebook font, reloading…
+sr-rs:Applying ebook font, reloading…
+sv:Applying ebook font, reloading…
+ta:Applying ebook font, reloading…
+th:Applying ebook font, reloading…
+tl:Applying ebook font, reloading…
+tr:Applying ebook font, reloading…
+tw:正在套用字體，重新載入…
+uk:Applying ebook font, reloading…
+uz:Applying ebook font, reloading…
+vn:Applying ebook font, reloading…
 :Applying theme or document colors, re-pagination in progress…
 af:Applying theme or document colors, re-pagination in progress…
 am:Applying theme or document colors, re-pagination in progress…
@@ -2610,6 +2950,152 @@ nl:Help met Vertalen
 pl:Dodaj swoje tłumaczenie
 sk:Prispieť k prekladu programu
 tw:提供翻譯
+:Convert Image to PDF
+af:Convert Image to PDF
+am:Convert Image to PDF
+ar:Convert Image to PDF
+az:Convert Image to PDF
+bg:Convert Image to PDF
+bn:Convert Image to PDF
+br:Converter imagem para PDF
+bs:Convert Image to PDF
+by:Convert Image to PDF
+ca:Convert Image to PDF
+ca-xv:Convert Image to PDF
+cn:将图像转换为 PDF
+co:Convert Image to PDF
+cy:Convert Image to PDF
+cz:Convert Image to PDF
+de:Bild in PDF konvertieren
+dk:Convert Image to PDF
+el:Convert Image to PDF
+es:Convertir imagen a PDF
+et:Convert Image to PDF
+eu:Convert Image to PDF
+fa:Convert Image to PDF
+fi:Convert Image to PDF
+fo:Convert Image to PDF
+fr:Convertir l'image en PDF
+fy-nl:Convert Image to PDF
+ga:Convert Image to PDF
+gl:Convert Image to PDF
+he:Convert Image to PDF
+hi:Convert Image to PDF
+hr:Convert Image to PDF
+hu:Convert Image to PDF
+id:Convert Image to PDF
+it:Converti immagine in PDF
+ja:画像を PDF に変換
+jv:Convert Image to PDF
+ka:Convert Image to PDF
+kr:Convert Image to PDF
+ku:Convert Image to PDF
+kw:Convert Image to PDF
+lt:Convert Image to PDF
+lv:Convert Image to PDF
+mk:Convert Image to PDF
+ml:Convert Image to PDF
+mm:Convert Image to PDF
+my:Convert Image to PDF
+ne:Convert Image to PDF
+nl:Afbeelding converteren naar PDF
+nn:Convert Image to PDF
+no:Convert Image to PDF
+pa:Convert Image to PDF
+pl:Konwertuj obraz do PDF
+pt:Convert Image to PDF
+ro:Convert Image to PDF
+ru:Конвертировать изображение в PDF
+sat:Convert Image to PDF
+si:Convert Image to PDF
+sk:Konvertovať obrázok do PDF
+sl:Convert Image to PDF
+sn:Convert Image to PDF
+sp-rs:Convert Image to PDF
+sq:Convert Image to PDF
+sr-rs:Convert Image to PDF
+sv:Convert Image to PDF
+ta:Convert Image to PDF
+th:Convert Image to PDF
+tl:Convert Image to PDF
+tr:Convert Image to PDF
+tw:將圖像轉換為 PDF
+uk:Convert Image to PDF
+uz:Convert Image to PDF
+vn:Convert Image to PDF
+:Convert to &PDF
+af:Convert to &PDF
+am:Convert to &PDF
+ar:Convert to &PDF
+az:Convert to &PDF
+bg:Convert to &PDF
+bn:Convert to &PDF
+br:Converter para &PDF
+bs:Convert to &PDF
+by:Convert to &PDF
+ca:Convert to &PDF
+ca-xv:Convert to &PDF
+cn:转换为 PDF(&P)
+co:Cunvertisce in &PDF
+cy:Convert to &PDF
+cz:Convert to &PDF
+de:In &PDF konvertieren
+dk:Convert to &PDF
+el:Μετατροπή σε &PDF
+es:Convertir a &PDF
+et:Convert to &PDF
+eu:Convert to &PDF
+fa:Convert to &PDF
+fi:Convert to &PDF
+fo:Convert to &PDF
+fr:Convertir en &PDF
+fy-nl:Convert to &PDF
+ga:Convert to &PDF
+gl:Convert to &PDF
+he:Convert to &PDF
+hi:Convert to &PDF
+hr:Convert to &PDF
+hu:Convert to &PDF
+id:Convert to &PDF
+it:Converti in &PDF
+ja:&PDF に変換
+jv:Convert to &PDF
+ka:Convert to &PDF
+kr:Convert to &PDF
+ku:Convert to &PDF
+kw:Convert to &PDF
+lt:Convert to &PDF
+lv:Convert to &PDF
+mk:Convert to &PDF
+ml:Convert to &PDF
+mm:Convert to &PDF
+my:Convert to &PDF
+ne:Convert to &PDF
+nl:Converteren naar &PDF
+nn:Convert to &PDF
+no:Convert to &PDF
+pa:Convert to &PDF
+pl:Konwertuj do &PDF
+pt:Converter para &PDF
+ro:Convert to &PDF
+ru:Конвертировать в &PDF
+sat:Convert to &PDF
+si:Convert to &PDF
+sk:Konvertovať do &PDF
+sl:Convert to &PDF
+sn:Convert to &PDF
+sp-rs:Convert to &PDF
+sq:Convert to &PDF
+sr-rs:Convert to &PDF
+sv:Convert to &PDF
+ta:Convert to &PDF
+th:Convert to &PDF
+tl:Convert to &PDF
+tr:Convert to &PDF
+tw:轉換為 PDF(&P)
+uk:Convert to &PDF
+uz:Convert to &PDF
+vn:Convert to &PDF
 :Copy
 cn:复制
 tw:複製
@@ -3545,6 +4031,9 @@ it:Decomprimi
 nl:Uitpakken PDF
 pl:Dekompresuj PDF
 sk:Dekomprimovať PDF
+:Decrease Font Size
+cn:缩小字号
+tw:縮小字號
 :Decrypt PDF
 br:Decriptografar PDF
 cn:解密 PDF
@@ -3626,6 +4115,18 @@ nl:Verwijder Bestand
 pl:Usuń plik
 sk:Odstrániť súbor
 tw:刪除檔案
+:Delete PDF TOC Item
+am:Ջնջել PDF բովանդակության տարրը
+br:Excluir item do sumário do PDF
+cn:删除 PDF 目录项
+co:Sguassà l'elementu di l'indice PDF
+de:PDF-Inhaltsverzeichniseintrag löschen
+el:Διαγραφή στοιχείου περιεχομένων PDF
+it:Elimina voce dell'indice PDF
+nl:PDF-inhoudsopgave-item verwijderen
+pl:Usuń element spisu treści PDF
+sk:Odstrániť položku obsahu PDF
+tw:刪除 PDF 目錄項目
 :Delete Pages
 br:Apagar Páginas
 cn:删除页面
@@ -3644,6 +4145,42 @@ it:Elimina pagine
 nl:Verwijder Pagina's Van PDF
 pl:Usuń strony z PDF
 sk:Odstrániť strany z PDF
+:Delete this TOC item and all of its child items?
+am:Ջնջե՞լ այս PDF բովանդակության տարրը և նրա բոլոր ենթատարրերը։
+br:Excluir este item do sumário do PDF e todos os seus subitens?
+cn:删除这个 PDF 目录项及其所有子项？
+co:Sguassà st'elementu di l'indice PDF è tutti i so sottoelementi?
+de:Diesen PDF-Inhaltsverzeichniseintrag und alle Untereinträge löschen?
+el:Διαγραφή αυτού του στοιχείου περιεχομένων PDF και όλων των θυγατρικών του;
+it:Eliminare questa voce dell'indice PDF e tutte le relative sottovoci?
+nl:Dit PDF-inhoudsopgave-item en alle subitems verwijderen?
+pl:Usunąć ten element spisu treści PDF i wszystkie jego elementy podrzędne?
+sk:Odstrániť túto položku obsahu PDF a všetky jej podradené položky?
+tw:刪除這個 PDF 目錄項目及其所有子項目？
+:Delete this TOC item?
+am:Ջնջե՞լ այս PDF բովանդակության տարրը։
+br:Excluir este item do sumário do PDF?
+cn:删除这个 PDF 目录项？
+co:Sguassà st'elementu di l'indice PDF?
+de:Diesen PDF-Inhaltsverzeichniseintrag löschen?
+el:Διαγραφή αυτού του στοιχείου περιεχομένων PDF;
+it:Eliminare questa voce dell'indice PDF?
+nl:Dit PDF-inhoudsopgave-item verwijderen?
+pl:Usunąć ten element spisu treści PDF?
+sk:Odstrániť túto položku obsahu PDF?
+tw:刪除這個 PDF 目錄項目？
+:Demote PDF TOC Item
+am:Իջեցնել PDF բովանդակության տարրի մակարդակը
+br:Rebaixar nível do item do sumário do PDF
+cn:降低 PDF 目录项一级
+co:Abbassà u livellu di l'elementu di l'indice PDF
+de:PDF-Inhaltsverzeichniseintrag tieferstufen
+el:Υποβιβασμός στοιχείου περιεχομένων PDF
+it:Abbassa il livello della voce dell'indice PDF
+nl:PDF-inhoudsopgave-item één niveau lager plaatsen
+pl:Obniż poziom elementu spisu treści PDF
+sk:Znížiť úroveň položky obsahu PDF
+tw:降低 PDF 目錄項目一級
 :Denied Permissions:
 am:Լիազորությունները մերժված են.
 br:Permissões Negadas:
@@ -3689,10 +4226,10 @@ it:Documento
 nl:Document
 pl:Dokument
 sk:Dokument
-:Document Color Mode: Match theme (follow current theme colors)
+:Document Color Mode: Match theme (use current theme colors)
 am:Փաստաթղթի գունային ռեժիմ՝ համապատասխանել թեմային (հետևել ընթացիկ թեմայի գույներին)
 br:Modo de cor do documento: Seguir tema (seguir cores do tema atual)
-cn:文档颜色模式：跟随主题（按当前主题着色）
+cn:文档颜色模式：匹配主题（按当前主题着色）
 co:Modu di culore di u documentu: Segue u tema (seguì i colori di u tema attuale)
 de:Dokumentfarbmodus: Theme folgen (Farben des aktuellen Themes)
 el:Λειτουργία χρώματος εγγράφου: Ακολούθηση θέματος (χρώματα τρέχοντος θέματος)
@@ -3700,7 +4237,7 @@ it:Modalità colore documento: Segui tema (colori del tema corrente)
 nl:Documentkleurmodus: Thema volgen (kleuren van huidige thema)
 pl:Tryb koloru dokumentu: Zgodnie z motywem (kolory bieżącego motywu)
 sk:Farebný režim dokumentu: Podľa motívu (farby aktuálneho motívu)
-tw:文件色彩模式：跟隨主題（依目前主題著色）
+tw:文件色彩模式：匹配主題（依目前主題著色）
 :Document Color Mode: Original (document colors unchanged)
 am:Փաստաթղթի գունային ռեժիմ՝ բնօրինակ (փաստաթղթի գույներն անփոփոխ)
 br:Modo de cor do documento: Original (cores do documento inalteradas)
@@ -3845,6 +4382,85 @@ nl:EPUB-bestanden
 pl:Dokumenty EPUB
 sk:EPUB dokumenty
 tw:EPUB 文件
+:Ebook Font Size: Decrease
+cn:电子书字号：缩小
+tw:電子書字號：縮小
+:Ebook Font Size: Increase
+cn:电子书字号：放大
+tw:電子書字號：放大
+:Ebook Font Size: Reset to Default
+af:Ebook Font Size: Reset to Default
+am:Ebook Font Size: Reset to Default
+ar:Ebook Font Size: Reset to Default
+az:Ebook Font Size: Reset to Default
+bg:Ebook Font Size: Reset to Default
+bn:Ebook Font Size: Reset to Default
+br:Ebook Font Size: Reset to Default
+bs:Ebook Font Size: Reset to Default
+by:Ebook Font Size: Reset to Default
+ca:Ebook Font Size: Reset to Default
+ca-xv:Ebook Font Size: Reset to Default
+cn:电子书字号：恢复默认
+co:Ebook Font Size: Reset to Default
+cy:Ebook Font Size: Reset to Default
+cz:Ebook Font Size: Reset to Default
+de:Ebook Font Size: Reset to Default
+dk:Ebook Font Size: Reset to Default
+el:Ebook Font Size: Reset to Default
+es:Ebook Font Size: Reset to Default
+et:Ebook Font Size: Reset to Default
+eu:Ebook Font Size: Reset to Default
+fa:Ebook Font Size: Reset to Default
+fi:Ebook Font Size: Reset to Default
+fo:Ebook Font Size: Reset to Default
+fr:Ebook Font Size: Reset to Default
+fy-nl:Ebook Font Size: Reset to Default
+ga:Ebook Font Size: Reset to Default
+gl:Ebook Font Size: Reset to Default
+he:Ebook Font Size: Reset to Default
+hi:Ebook Font Size: Reset to Default
+hr:Ebook Font Size: Reset to Default
+hu:Ebook Font Size: Reset to Default
+id:Ebook Font Size: Reset to Default
+it:Ebook Font Size: Reset to Default
+ja:Ebook Font Size: Reset to Default
+jv:Ebook Font Size: Reset to Default
+ka:Ebook Font Size: Reset to Default
+kr:Ebook Font Size: Reset to Default
+ku:Ebook Font Size: Reset to Default
+kw:Ebook Font Size: Reset to Default
+lt:Ebook Font Size: Reset to Default
+lv:Ebook Font Size: Reset to Default
+mk:Ebook Font Size: Reset to Default
+ml:Ebook Font Size: Reset to Default
+mm:Ebook Font Size: Reset to Default
+my:Ebook Font Size: Reset to Default
+ne:Ebook Font Size: Reset to Default
+nl:Ebook Font Size: Reset to Default
+nn:Ebook Font Size: Reset to Default
+no:Ebook Font Size: Reset to Default
+pa:Ebook Font Size: Reset to Default
+pl:Ebook Font Size: Reset to Default
+pt:Ebook Font Size: Reset to Default
+ro:Ebook Font Size: Reset to Default
+ru:Ebook Font Size: Reset to Default
+sat:Ebook Font Size: Reset to Default
+si:Ebook Font Size: Reset to Default
+sk:Ebook Font Size: Reset to Default
+sl:Ebook Font Size: Reset to Default
+sn:Ebook Font Size: Reset to Default
+sp-rs:Ebook Font Size: Reset to Default
+sq:Ebook Font Size: Reset to Default
+sr-rs:Ebook Font Size: Reset to Default
+sv:Ebook Font Size: Reset to Default
+ta:Ebook Font Size: Reset to Default
+th:Ebook Font Size: Reset to Default
+tl:Ebook Font Size: Reset to Default
+tr:Ebook Font Size: Reset to Default
+tw:電子書字號：恢復預設
+uk:Ebook Font Size: Reset to Default
+uz:Ebook Font Size: Reset to Default
+vn:Ebook Font Size: Reset to Default
 :Edit %s Annotation
 am:Խմբագրել %s մեկնաբանությունը
 br:Editar a Anotação %s
@@ -3869,6 +4485,30 @@ nl:Bewerk Aantekeningen
 pl:Edytuj adnotacje
 sk:Upraviť anotáciu
 tw:編輯註解
+:Edit PDF TOC Item
+am:Խմբագրել PDF բովանդակության տարրը
+br:Editar item do sumário do PDF
+cn:编辑 PDF 目录项
+co:Mudificà l'elementu di l'indice PDF
+de:PDF-Inhaltsverzeichniseintrag bearbeiten
+el:Επεξεργασία στοιχείου περιεχομένων PDF
+it:Modifica voce dell'indice PDF
+nl:PDF-inhoudsopgave-item bewerken
+pl:Edytuj element spisu treści PDF
+sk:Upraviť položku obsahu PDF
+tw:編輯 PDF 目錄項目
+:Edit PDF TOC Item...
+am:Խմբագրել PDF բովանդակության տարրը...
+br:Editar item do sumário do PDF...
+cn:编辑 PDF 目录项...
+co:Mudificà l'elementu di l'indice PDF...
+de:PDF-Inhaltsverzeichniseintrag bearbeiten...
+el:Επεξεργασία στοιχείου περιεχομένων PDF...
+it:Modifica voce dell'indice PDF...
+nl:PDF-inhoudsopgave-item bewerken...
+pl:Edytuj element spisu treści PDF...
+sk:Upraviť položku obsahu PDF...
+tw:編輯 PDF 目錄項目...
 :Embed...
 am:Ներկառուցված...
 br:Embutir...
@@ -5466,6 +6106,9 @@ nl:Afbeeldingen
 pl:Obrazy
 sk:Obrázky
 tw:圖片
+:Increase Font Size
+cn:放大字号
+tw:放大字號
 :Ink
 am:Թանաք
 br:Tinta
@@ -6255,6 +6898,30 @@ nl:Verplaats Focus van Kader
 pl:Przenieś uaktywnienie ramki
 sk:Presunúť zameranie rámca
 tw:移動框架焦點
+:Move PDF TOC Item Down
+am:Տեղափոխել PDF բովանդակության տարրը ներքև
+br:Mover item do sumário do PDF para baixo
+cn:下移 PDF 目录项
+co:Spostà l'elementu di l'indice PDF in ghjò
+de:PDF-Inhaltsverzeichniseintrag nach unten verschieben
+el:Μετακίνηση στοιχείου περιεχομένων PDF κάτω
+it:Sposta in basso la voce dell'indice PDF
+nl:PDF-inhoudsopgave-item omlaag verplaatsen
+pl:Przenieś element spisu treści PDF w dół
+sk:Presunúť položku obsahu PDF nadol
+tw:下移 PDF 目錄項目
+:Move PDF TOC Item Up
+am:Տեղափոխել PDF բովանդակության տարրը վերև
+br:Mover item do sumário do PDF para cima
+cn:上移 PDF 目录项
+co:Spostà l'elementu di l'indice PDF in sù
+de:PDF-Inhaltsverzeichniseintrag nach oben verschieben
+el:Μετακίνηση στοιχείου περιεχομένων PDF επάνω
+it:Sposta in alto la voce dell'indice PDF
+nl:PDF-inhoudsopgave-item omhoog verplaatsen
+pl:Przenieś element spisu treści PDF w górę
+sk:Presunúť položku obsahu PDF nahor
+tw:上移 PDF 目錄項目
 :Move Tab Left
 am:Տեղափոխել ներդիրը ձախ
 br:Mover a Aba pra Esquerda
@@ -8105,6 +8772,18 @@ nl:Probleem bij het afdrukken
 pl:Problem z drukowaniem.
 sk:Problém pri tlači.
 tw:列印問題
+:Promote PDF TOC Item
+am:Բարձրացնել PDF բովանդակության տարրի մակարդակը
+br:Elevar nível do item do sumário do PDF
+cn:提升 PDF 目录项一级
+co:Alzà u livellu di l'elementu di l'indice PDF
+de:PDF-Inhaltsverzeichniseintrag höherstufen
+el:Προαγωγή στοιχείου περιεχομένων PDF
+it:Alza il livello della voce dell'indice PDF
+nl:PDF-inhoudsopgave-item één niveau hoger plaatsen
+pl:Podnieś poziom elementu spisu treści PDF
+sk:Zvýšiť úroveň položky obsahu PDF
+tw:提升 PDF 目錄項目一級
 :Properties...
 am:Հատկություններ...
 br:Propriedades...
@@ -8687,6 +9366,79 @@ tw:重新開啟上次關閉的內容
 cn:报告错误（仅限本分支）
 de:Fehler melden (nur dieser Fork)
 tw:回報錯誤（僅限本分支）
+:Reset Font Si&ze to Default
+af:Reset Font Si&ze to Default
+am:Reset Font Si&ze to Default
+ar:Reset Font Si&ze to Default
+az:Reset Font Si&ze to Default
+bg:Reset Font Si&ze to Default
+bn:Reset Font Si&ze to Default
+br:Reset Font Si&ze to Default
+bs:Reset Font Si&ze to Default
+by:Reset Font Si&ze to Default
+ca:Reset Font Si&ze to Default
+ca-xv:Reset Font Si&ze to Default
+cn:恢复默认字号(&Z)
+co:Reset Font Si&ze to Default
+cy:Reset Font Si&ze to Default
+cz:Reset Font Si&ze to Default
+de:Reset Font Si&ze to Default
+dk:Reset Font Si&ze to Default
+el:Reset Font Si&ze to Default
+es:Reset Font Si&ze to Default
+et:Reset Font Si&ze to Default
+eu:Reset Font Si&ze to Default
+fa:Reset Font Si&ze to Default
+fi:Reset Font Si&ze to Default
+fo:Reset Font Si&ze to Default
+fr:Reset Font Si&ze to Default
+fy-nl:Reset Font Si&ze to Default
+ga:Reset Font Si&ze to Default
+gl:Reset Font Si&ze to Default
+he:Reset Font Si&ze to Default
+hi:Reset Font Si&ze to Default
+hr:Reset Font Si&ze to Default
+hu:Reset Font Si&ze to Default
+id:Reset Font Si&ze to Default
+it:Reset Font Si&ze to Default
+ja:Reset Font Si&ze to Default
+jv:Reset Font Si&ze to Default
+ka:Reset Font Si&ze to Default
+kr:Reset Font Si&ze to Default
+ku:Reset Font Si&ze to Default
+kw:Reset Font Si&ze to Default
+lt:Reset Font Si&ze to Default
+lv:Reset Font Si&ze to Default
+mk:Reset Font Si&ze to Default
+ml:Reset Font Si&ze to Default
+mm:Reset Font Si&ze to Default
+my:Reset Font Si&ze to Default
+ne:Reset Font Si&ze to Default
+nl:Reset Font Si&ze to Default
+nn:Reset Font Si&ze to Default
+no:Reset Font Si&ze to Default
+pa:Reset Font Si&ze to Default
+pl:Reset Font Si&ze to Default
+pt:Reset Font Si&ze to Default
+ro:Reset Font Si&ze to Default
+ru:Reset Font Si&ze to Default
+sat:Reset Font Si&ze to Default
+si:Reset Font Si&ze to Default
+sk:Reset Font Si&ze to Default
+sl:Reset Font Si&ze to Default
+sn:Reset Font Si&ze to Default
+sp-rs:Reset Font Si&ze to Default
+sq:Reset Font Si&ze to Default
+sr-rs:Reset Font Si&ze to Default
+sv:Reset Font Si&ze to Default
+ta:Reset Font Si&ze to Default
+th:Reset Font Si&ze to Default
+tl:Reset Font Si&ze to Default
+tr:Reset Font Si&ze to Default
+tw:恢復預設字號(&Z)
+uk:Reset Font Si&ze to Default
+uz:Reset Font Si&ze to Default
+vn:Reset Font Si&ze to Default
 :Reset to 1.00x
 af:Reset to 1.00x
 am:Reset to 1.00x
@@ -9603,7 +10355,7 @@ sk:Nastaviť
 :Set Document Color Mode: Match Theme
 am:Փաստաթղթի գունային ռեժիմ՝ համապատասխանել թեմային
 br:Definir modo de cor do documento: Seguir tema
-cn:设置文档颜色模式：跟随主题
+cn:设置文档颜色模式：匹配主题
 co:Impostà modu di culore di u documentu: Segue u tema
 de:Dokumentfarbmodus: Theme folgen
 el:Ορισμός λειτουργίας χρώματος εγγράφου: Ακολούθηση θέματος
@@ -9611,7 +10363,7 @@ it:Modalità colore documento: Segui tema
 nl:Documentkleurmodus: Thema volgen
 pl:Tryb koloru dokumentu: Zgodnie z motywem
 sk:Farebný režim dokumentu: Podľa motívu
-tw:設定文件色彩模式：跟隨主題
+tw:設定文件色彩模式：匹配主題
 :Set Document Color Mode: Original
 am:Փաստաթղթի գունային ռեժիմ՝ բնօրինակ
 br:Definir modo de cor do documento: Original
@@ -9666,6 +10418,18 @@ nl:Omgekeerde zoekrichting instellen
 pl:Ustaw wiersz poleceń do odwrotnego wyszukiwania
 sk:Nastaviť inverzné vyhľadávanie
 tw:設定反向搜尋命令列
+:Set target to current view
+am:Սահմանել թիրախը որպես ընթացիկ տեսք
+br:Definir destino como visualização atual
+cn:将目标设为当前视图
+co:Impostà a destinazione à a vista attuale
+de:Ziel auf aktuelle Ansicht setzen
+el:Ορισμός προορισμού στην τρέχουσα προβολή
+it:Imposta la destinazione sulla vista corrente
+nl:Doel instellen op huidige weergave
+pl:Ustaw cel na bieżący widok
+sk:Nastaviť cieľ na aktuálne zobrazenie
+tw:將目標設為目前檢視
 :Set theme
 am:Սահմանել ոճը
 br:Definir tema
@@ -11133,6 +11897,30 @@ tw:縮圖檢視
 cn:提示：
 de:Tipp: 
 tw:提示：
+:Title (current target: %s):
+am:Վերնագիր (ընթացիկ թիրախ՝ %s).
+br:Título (destino atual: %s):
+cn:标题（当前目标：%s）：
+co:Titulu (destinazione attuale: %s):
+de:Titel (aktuelles Ziel: %s):
+el:Τίτλος (τρέχων προορισμός: %s):
+it:Titolo (destinazione corrente: %s):
+nl:Titel (huidig doel: %s):
+pl:Tytuł (bieżący cel: %s):
+sk:Názov (aktuálny cieľ: %s):
+tw:標題（目前目標：%s）：
+:Title (target: current view):
+am:Վերնագիր (թիրախ՝ ընթացիկ տեսք).
+br:Título (destino: visualização atual):
+cn:标题（目标：当前视图）：
+co:Titulu (destinazione: vista attuale):
+de:Titel (Ziel: aktuelle Ansicht):
+el:Τίτλος (προορισμός: τρέχουσα προβολή):
+it:Titolo (destinazione: vista corrente):
+nl:Titel (doel: huidige weergave):
+pl:Tytuł (cel: bieżący widok):
+sk:Názov (cieľ: aktuálne zobrazenie):
+tw:標題（目標：目前檢視）：
 :Title:
 am:Անունը.
 br:Título:

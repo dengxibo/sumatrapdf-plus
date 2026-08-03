@@ -53,6 +53,18 @@ static void CountHtmlLetters(const char* s, size_t len, int* cjkOut, int* latinO
     *latinOut = latin;
 }
 
+static const char* FindHtmlBodyStart(const char* html, size_t len) {
+    for (size_t i = 0; i + 5 < len; i++) {
+        if (html[i] != '<') {
+            continue;
+        }
+        if (str::EqNI(html + i, "<body", 5)) {
+            return html + i;
+        }
+    }
+    return html;
+}
+
 static EbookTypographyKind ClassifyHtmlLetters(int cjk, int latin) {
     if (cjk >= 12 && latin >= 12 && cjk <= latin * 6 && latin <= cjk * 6) {
         return EbookTypographyKind::Bilingual;
@@ -68,16 +80,46 @@ static EbookTypographyKind ClassifyHtmlLetters(int cjk, int latin) {
 
 EbookTypographyKind DetectHtmlTypographyKind(const ByteSlice& html) {
     size_t n = html.size();
-    if (n > 384 * 1024) {
-        n = 384 * 1024;
+    if (n > 2 * 1024 * 1024) {
+        n = 2 * 1024 * 1024;
     }
+    const char* data = (const char*)html.data();
+    const char* start = FindHtmlBodyStart(data, n);
+    size_t off = (size_t)(start - data);
     int cjk = 0;
     int latin = 0;
-    CountHtmlLetters((const char*)html.data(), n, &cjk, &latin);
+    CountHtmlLetters(start, n - off, &cjk, &latin);
     return ClassifyHtmlLetters(cjk, latin);
 }
 
+EbookTypographyKind DetectMobiReaderTypography(const ByteSlice& html) {
+    EbookTypographyKind kind = DetectHtmlTypographyKind(html);
+    if (kind != EbookTypographyKind::Latin) {
+        return kind;
+    }
+    size_t n = html.size();
+    if (n > 2 * 1024 * 1024) {
+        n = 2 * 1024 * 1024;
+    }
+    const char* data = (const char*)html.data();
+    const char* body = FindHtmlBodyStart(data, n);
+    int cjk = 0;
+    int latin = 0;
+    CountHtmlLetters(body, n - (size_t)(body - data), &cjk, &latin);
+    if (cjk >= 8) {
+        EbookTypographyKind rekind = ClassifyHtmlLetters(cjk, latin);
+        // Chinese MOBI files often have enough English metadata/brand names (e.g. "Facebook")
+        // in the head or front matter to trip the Latin heuristic; never treat them as Latin.
+        if (rekind == EbookTypographyKind::Latin) {
+            rekind = EbookTypographyKind::Cjk;
+        }
+        return rekind;
+    }
+    return kind;
+}
+
 static EbookTypographyKind gEbookTypographyKind = EbookTypographyKind::Cjk;
+static bool gEbookReaderStyleMobi = false;
 
 void SetEbookTypographyKind(EbookTypographyKind kind) {
     gEbookTypographyKind = kind;
@@ -85,6 +127,14 @@ void SetEbookTypographyKind(EbookTypographyKind kind) {
 
 EbookTypographyKind GetEbookTypographyKind() {
     return gEbookTypographyKind;
+}
+
+void SetEbookReaderStyleMobi(bool readerStyle) {
+    gEbookReaderStyleMobi = readerStyle;
+}
+
+bool EbookReaderStyleMobi() {
+    return gEbookReaderStyleMobi;
 }
 
 bool EbookUsesCjkTypography() {

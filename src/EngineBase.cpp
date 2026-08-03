@@ -507,6 +507,32 @@ void EngineBase::ClearTextCache() {
     textCacheGeneration++;
 }
 
+void EngineBase::ClearTextCacheForPage(int pageNo) {
+    if (pageNo < 1) {
+        return;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    int pageIdx = pageNo - 1;
+    bool changed = false;
+    if (pagesText && pageIdx < pagesTextSize) {
+        PageText* pt = &pagesText[pageIdx];
+        changed = changed || pt->text || pt->coords;
+        free(pt->coords);
+        free(pt->text);
+        *pt = {};
+    }
+    if (pagesTextUtf8 && pageIdx < pagesTextUtf8Size) {
+        PageTextUtf8* pt = &pagesTextUtf8[pageIdx];
+        changed = changed || pt->text || pt->coords;
+        free(pt->coords);
+        free(pt->text);
+        *pt = {};
+    }
+    if (changed) {
+        textCacheGeneration++;
+    }
+}
+
 bool EngineBase::TryExtractPageText(int pageNo, PageText* out) {
     *out = ExtractPageText(pageNo);
     return true;
