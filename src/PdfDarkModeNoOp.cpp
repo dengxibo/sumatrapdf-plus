@@ -235,3 +235,17 @@ void PdfDarkModeClearPixmapToThemeBackground(fz_context* ctx, fz_pixmap* pix, co
     (void)pix;
     (void)palette;
 }
+
+DarkModeOptions PdfDarkModeCurrentOptions() {
+    return DarkModeOptions{};
+}
+
+FollowThemeScanProbe PdfDarkModeProbeFollowThemeScanList(fz_context* ctx, fz_display_list* list,
+                                                         const RectF& pageBounds,
+                                                         FollowThemePageProbeStats* stats) {
+    (void)ctx;
+    (void)list;
+    (void)pageBounds;
+    (void)stats;
+    return FollowThemeScanProbe::Unknown;
+}

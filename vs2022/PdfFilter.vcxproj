@@ -980,6 +980,7 @@
     <ClCompile Include="..\src\PalmDbReader.cpp" />
     <ClCompile Include="..\src\PdfCadEnhanceNoOp.cpp" />
     <ClCompile Include="..\src\PdfDarkModeNoOp.cpp" />
+    <ClCompile Include="..\src\PdfFilterOnlyStubs.cpp" />
     <ClCompile Include="..\src\PreviewFilterStubs.cpp" />
     <ClCompile Include="..\src\MdConvertNoOp.cpp" />
     <ClCompile Include="..\src\RegistrySearchFilter.cpp" />

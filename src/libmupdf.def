@@ -84,6 +84,10 @@ EXPORTS
 	fz_throw
 	fz_new_image_from_compressed_buffer
 	pdf_save_document
+	pdf_name_eq
+	pdf_begin_operation
+	pdf_end_operation
+	pdf_abandon_operation
 	fz_warn
 	fz_buffer_extract
 	fz_xml_root
@@ -260,6 +264,7 @@ EXPORTS
 	fz_run_display_list
 	fz_keep_display_list
 	fz_drop_display_list
+	fz_bound_display_list
 
 	fz_open_concat
 	fz_concat_push_drop
@@ -377,6 +382,18 @@ EXPORTS
 	fz_matrix_max_expansion
 
 	fz_drop_outline
+
+	fz_new_outline_iterator
+	fz_drop_outline_iterator
+	fz_outline_iterator_item
+	fz_outline_iterator_next
+	fz_outline_iterator_prev
+	fz_outline_iterator_up
+	fz_outline_iterator_down
+	fz_outline_iterator_update
+	fz_outline_iterator_insert
+	fz_outline_iterator_delete
+	fz_format_link_uri
 
 	fz_new_output_with_buffer
 	fz_close_output
