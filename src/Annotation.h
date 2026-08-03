@@ -139,3 +139,8 @@ bool AnnotationSupportsBorder(AnnotationType);
 bool AnnotationSupportsInteriorColor(AnnotationType);
 
 AnnotationType CmdIdToAnnotationType(int cmdId);
+
+// Play embedded audio from a PDF Sound/RichMedia/Screen annotation. Returns false if no playable sound.
+bool PlaySoundAnnotation(Annotation* annot);
+
+bool AnnotationSupportsMediaPlayback(AnnotationType tp);

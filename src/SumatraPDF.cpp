@@ -233,6 +233,8 @@ static void OnFavSplitterMove(Splitter::MoveEvent*);
 static void CloseAuxiliaryTopLevelWindows();
 static void AbortDocumentBackgroundLoads(MainWindow* winOnly);
 static void ExitProcessAfterShutdown();
+static void DetachTabDocControllerForAsyncDelete(WindowTab* tab, DocController** ctrlOut);
+static void ScheduleDeleteDocController(DocController* ctrl);
 
 static void TerminateApplication();
 static void RestartApplication();
@@ -1655,6 +1657,10 @@ static void DetachWinCtrlIfMatches(MainWindow* win, DocController* ctrl) {
 
 static void SafeDeleteDocController(MainWindow* win, DocController*& ctrl) {
     if (!ctrl) {
+        return;
+    }
+    if (InterlockedCompareExchange(&ctrl->pendingAsyncDelete, 0, 0) != 0) {
+        ctrl = nullptr;
         return;
     }
     DetachWinCtrlIfMatches(win, ctrl);
@@ -3769,13 +3775,14 @@ static void FinishAsyncDocumentLoad(LoadDocumentAsyncData* d) {
         return;
     }
     WindowTab* tab = d->targetTab;
+    if (!tab || !IsWindowTabValid(tab)) {
+        tab = nullptr;
+    }
     if (!tab) {
         tab = win->CurrentTab();
     }
     int tabIdx = tab ? win->GetTabIdx(tab) : -1;
     if (tabIdx < 0) {
-        // The tab was closed while the document was loading on a background
-        // thread. d->targetTab is now a dangling pointer; must not deref it.
         tab = nullptr;
     }
     int selectedIdx = win->tabsCtrl ? win->tabsCtrl->GetSelected() : -1;
@@ -5331,19 +5338,19 @@ void CloseTab(WindowTab* tab, bool quitIfLast) {
         }
     } else {
         ReportIf(gPluginMode && !gWindows.Contains(win));
+        DocController* ctrlToDelete = nullptr;
+        DetachTabDocControllerForAsyncDelete(tab, &ctrlToDelete);
         RemoveTab(tab);
         // RemoveTab -> LoadModelIntoTab can pump messages, potentially destroying win
         // and its cbHandler. Since tab was already removed from win's tab list,
         // ~MainWindow won't delete it, so we must delete it here.
-        // Null out cb to prevent dangling pointer access in ~DisplayModel.
         if (!IsMainWindowValid(win)) {
-            if (tab->ctrl) {
-                tab->ctrl->cb = nullptr;
-            }
             delete tab;
+            ScheduleDeleteDocController(ctrlToDelete);
             return;
         }
         delete tab;
+        ScheduleDeleteDocController(ctrlToDelete);
     }
 
     if (!IsMainWindowValid(win)) {
@@ -5409,6 +5416,67 @@ static void AbortDocumentBackgroundLoads(MainWindow* winOnly) {
             EngineMupdfAbortBackgroundWork(dm->GetEngine());
         }
     }
+}
+
+struct DeleteDocControllerTask {
+    DocController* ctrl = nullptr;
+};
+
+static void DeleteDocControllerAsync(DeleteDocControllerTask* task) {
+    AutoDelete del(task);
+    AtomicIntInc(&gDangerousThreadCount);
+    defer {
+        AtomicIntDec(&gDangerousThreadCount);
+    };
+    DocController* ctrl = task->ctrl;
+    task->ctrl = nullptr;
+    if (ctrl) {
+        if (DisplayModel* dm = ctrl->AsFixed()) {
+            gRenderCache->CancelRendering(dm);
+            gRenderCache->WaitForRenderingComplete(dm);
+            gRenderCache->FreeForDisplayModel(dm);
+        }
+        delete ctrl;
+    }
+}
+
+static void ScheduleDeleteDocController(DocController* ctrl) {
+    if (!ctrl) {
+        return;
+    }
+    if (InterlockedCompareExchange(&ctrl->pendingAsyncDelete, 0, 0) != 0) {
+        return;
+    }
+    InterlockedExchange(&ctrl->pendingAsyncDelete, 1);
+    auto* task = new DeleteDocControllerTask();
+    task->ctrl = ctrl;
+    auto fn = MkFunc0<DeleteDocControllerTask>(DeleteDocControllerAsync, task);
+    RunAsync(fn, "DeleteDocController");
+}
+
+static void DetachTabDocControllerForAsyncDelete(WindowTab* tab, DocController** ctrlOut) {
+    if (!tab || !ctrlOut) {
+        return;
+    }
+    *ctrlOut = nullptr;
+    DocController* ctrl = tab->ctrl;
+    if (!ctrl) {
+        return;
+    }
+    tab->ctrl = nullptr;
+    DetachWinCtrlIfMatches(tab->win, ctrl);
+    if (DisplayModel* dm = ctrl->AsFixed()) {
+        gRenderCache->CancelRendering(dm);
+        dm->pauseRendering = true;
+        EngineMupdfAbortBackgroundWork(dm->GetEngine());
+        dm->cb = nullptr;
+    }
+    if (gMostRecentlyOpenedDoc == ctrl) {
+        gMostRecentlyOpenedDoc = nullptr;
+    }
+    FileWatcherUnsubscribe(tab->watcher);
+    tab->watcher = nullptr;
+    *ctrlOut = ctrl;
 }
 
 /* Close the documents associated with window 'hwnd'.
@@ -9855,6 +9923,9 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             int pageNoUnderCursor = dm->GetPageNoByPoint(pt);
             if (pageNoUnderCursor > 0) {
                 annot = dm->GetAnnotationAtPos(pt, nullptr);
+            }
+            if (annot && AnnotationSupportsMediaPlayback(annot->type)) {
+                annot = nullptr;
             }
             ShowEditAnnotationsWindow(tab, annot);
             return 0;

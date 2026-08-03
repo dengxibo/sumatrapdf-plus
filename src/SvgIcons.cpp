@@ -218,7 +218,7 @@ static const char* gIconDocColorOriginal =
 static const char* gIconThemeMoon =
     R"MOON(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
-  <g transform="translate(12 12) scale(0.85) translate(-12 -12)">
+  <g transform="translate(12 12) scale(0.92) translate(-12 -12)">
     <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
   </g>
 </svg>)MOON";
@@ -329,25 +329,29 @@ static const char* gIconArrowsDiagonalMinimize =
   <path d="M4 4l6 6" />
 </svg>)";
 
-// Custom "font size" icons: typographic A with +/- (tabler stroke style).
+// Custom "font size" icons: A with superscript - / + (tabler stroke style).
 static const char* gIconEbookFontSizeDecrease =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"FONTDEC(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
-  <path d="M5.2 18.4 9.9 5.8" />
-  <path d="M14.6 18.4 9.9 5.8" />
-  <path d="M7.2 13.1h5.5" />
-  <path d="M17.25 8.05h3.55" />
-</svg>)";
+  <g transform="translate(12 12) scale(0.85) translate(-12 -12)">
+    <line x1="4.5" y1="19.5" x2="10.5" y2="4.5"/>
+    <line x1="10.5" y1="4.5" x2="16.5" y2="19.5"/>
+    <line x1="6.8" y1="14" x2="14.2" y2="14"/>
+    <line x1="18" y1="6.5" x2="22" y2="6.5"/>
+  </g>
+</svg>)FONTDEC";
 
 static const char* gIconEbookFontSizeIncrease =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"FONTINC(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
-  <path d="M5.2 18.4 9.9 5.8" />
-  <path d="M14.6 18.4 9.9 5.8" />
-  <path d="M7.2 13.1h5.5" />
-  <path d="M17.2 8.05h3.6" />
-  <path d="M19 6.25v3.6" />
-</svg>)";
+  <g transform="translate(12 12) scale(0.85) translate(-12 -12)">
+    <line x1="4.5" y1="19.5" x2="10.5" y2="4.5"/>
+    <line x1="10.5" y1="4.5" x2="16.5" y2="19.5"/>
+    <line x1="6.8" y1="14" x2="14.2" y2="14"/>
+    <line x1="20" y1="5.5" x2="20" y2="9.5"/>
+    <line x1="18" y1="7.5" x2="22" y2="7.5"/>
+  </g>
+</svg>)FONTINC";
 
 // must match order in enum class TbIcon
 // clang-format off

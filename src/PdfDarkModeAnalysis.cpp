@@ -88,9 +88,10 @@ static void dm_analysis_record_image(fz_context* ctx, fz_device* dev, fz_image* 
     info.pageCoverage = coverage;
     if (image) {
         if (PdfFollowThemePreservesEmbeddedImageColors()) {
-            info.analysis = DarkImageAnalysis{};
-            info.analysis.kind = DarkImageKind::Unknown;
-            info.looksLikePhoto = true;
+            info.analysis =
+                PdfDarkModeAnalyzeImageCached(ctx, image, coverage, false, d->engineCache);
+            info.looksLikePhoto =
+                info.analysis.kind == DarkImageKind::Photo || info.analysis.kind == DarkImageKind::Unknown;
         } else {
             info.analysis =
                 PdfDarkModeAnalyzeImageCached(ctx, image, coverage, d->analysis->isScannedPage, d->engineCache);
@@ -364,6 +365,10 @@ static bool PdfDarkModeDetectScanPage(DarkModePageAnalysis* analysis, int textOp
 }
 
 static void PdfDarkModeAssignFollowThemeImagePolicy(ImageOccurrenceInfo& img, const RectF& pageBounds) {
+    if (img.pageCoverage >= kMaxPreserveImagePageCoverage && img.analysis.confidence > 0.f) {
+        img.policy = PdfDarkModePolicyForImageKind(img.analysis.kind, img.isImageMask);
+        return;
+    }
     img.policy = PdfDarkModePolicyForFollowThemeImage(img.pageBounds, img.isImageMask, pageBounds);
 }
 

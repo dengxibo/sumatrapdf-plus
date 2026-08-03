@@ -2,6 +2,15 @@
 
 ## next
 
+## 3.7.23 (2026-08-04)
+
+- fix PDF smart dark mode inverting colors on RAZ picture-book pages: classify large images as photo/illustration vs scanned page background so illustrations keep natural colors
+  修复 PDF 智能暗色模式下 RAZ 绘本页面颜色反转：区分大图是插图/照片还是扫描页背景，插图保持正常色彩
+- play embedded PDF audio from Sound, RichMedia, and Screen annotations (e.g. RAZ speaker icons); audio is read from the PDF Assets stream, no network required
+  支持播放 PDF 内嵌音频（Sound、RichMedia、Screen 注释，如 RAZ 扬声器图标）；从 PDF Assets 读取 MP3，无需联网
+- media annotations: click to play only; no Ctrl+click edit, no hover tooltip, excluded from the annotation editor list
+  媒体注释：单击即播放；不支持 Ctrl+单击编辑、无悬停提示，且不出现在注释编辑列表中
+
 ## 3.7.22 (2026-08-03)
 
 - add PDF table-of-contents editing: create, rename, retarget, delete, reorder and change hierarchy; preserve outline styling and save together with other PDF changes

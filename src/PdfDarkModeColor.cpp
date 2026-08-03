@@ -497,7 +497,8 @@ bool PdfDarkModeIsPhotoFrameStripImage(const RectF& imgRect, const RectF& pageBo
 }
 
 DarkImagePolicy PdfDarkModePolicyForFollowThemeImage(const RectF& imgBounds, bool isImageMask,
-                                                     const RectF& pageBounds, const Vec<RectF>* artworkBounds) {
+                                                     const RectF& pageBounds, const Vec<RectF>* artworkBounds,
+                                                     fz_context* ctx, fz_image* image) {
     if (isImageMask) {
         return PdfDarkModePolicyForImageKind(DarkImageKind::Unknown, true);
     }
@@ -515,6 +516,10 @@ DarkImagePolicy PdfDarkModePolicyForFollowThemeImage(const RectF& imgBounds, boo
     float coverage = pageArea > 0.f ? (imgBounds.dx * imgBounds.dy) / pageArea : 0.f;
     if (coverage < kMaxPreserveImagePageCoverage) {
         return DarkImagePolicy::Preserve;
+    }
+    if (ctx && image) {
+        DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, image, coverage, false);
+        return PdfDarkModePolicyForImageKind(analysis.kind, false);
     }
     return DarkImagePolicy::AdaptiveDocument;
 }

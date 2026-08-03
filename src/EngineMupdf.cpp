@@ -8015,6 +8015,11 @@ static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageIn
             fz_drop_image(ctx, image);
             continue;
         }
+        if (preserveAllImageColors && coverage >= kMaxPreserveImagePageCoverage &&
+            !PdfDarkModeImageIsConfirmedArtwork(ctx, image, coverage, fullDx, fullDy)) {
+            fz_drop_image(ctx, image);
+            continue;
+        }
         fz_irect dev = fz_round_rect(fz_transform_rect(ToFzRect(imgOnPage), ctm));
         Rect r(dev.x0, dev.y0, dev.x1 - dev.x0, dev.y1 - dev.y0);
         if (!r.IsEmpty()) {

@@ -225,7 +225,8 @@ bool PdfDarkModeIsSubstantialFollowThemeArtwork(const RectF& imgRect, float page
 bool PdfDarkModeIsPhotoFrameStripImage(const RectF& imgRect, const RectF& pageBounds,
                                        const Vec<RectF>* artworkBounds);
 DarkImagePolicy PdfDarkModePolicyForFollowThemeImage(const RectF& imgBounds, bool isImageMask, const RectF& pageBounds,
-                                                     const Vec<RectF>* artworkBounds = nullptr);
+                                                     const Vec<RectF>* artworkBounds = nullptr,
+                                                     fz_context* ctx = nullptr, fz_image* image = nullptr);
 
 // OKLab perceptual remap for SmartDark text/vector colors (Phase 2).
 void MapRgbToDarkThemeOklab(float r, float g, float b, const DarkModePalette& palette, float* outRgb);

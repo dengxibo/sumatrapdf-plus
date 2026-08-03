@@ -342,7 +342,15 @@ fz_image* PdfDarkModeGetCachedFollowThemeImage(fz_context* ctx, DarkModeEngineCa
     if (!srcImage) {
         return nullptr;
     }
-    constexpr DarkImageKind kind = DarkImageKind::Unknown;
+    DarkImageAnalysis analysis{};
+    if (policy == DarkImagePolicy::Preserve) {
+        analysis.kind = DarkImageKind::Photo;
+    } else if (pageCoverage >= kMaxPreserveImagePageCoverage) {
+        analysis = PdfDarkModeAnalyzeImageCached(ctx, srcImage, pageCoverage, false, engineCache);
+    } else {
+        analysis.kind = DarkImageKind::Unknown;
+    }
+    DarkImageKind kind = analysis.kind;
     if (engineCache) {
         fz_image* engineHit =
             PdfDarkModeEngineCacheLookupProcessed(ctx, engineCache, srcImage, profileHash, policy, kind);
@@ -350,9 +358,7 @@ fz_image* PdfDarkModeGetCachedFollowThemeImage(fz_context* ctx, DarkModeEngineCa
             return fz_keep_image(ctx, engineHit);
         }
     }
-    DarkImageAnalysis stub{};
-    stub.kind = kind;
-    fz_image* built = dm_build_processed_image(ctx, srcImage, policy, &stub, pageCoverage, palette);
+    fz_image* built = dm_build_processed_image(ctx, srcImage, policy, &analysis, pageCoverage, palette);
     if (!built) {
         return nullptr;
     }

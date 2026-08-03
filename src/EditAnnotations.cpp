@@ -1544,6 +1544,11 @@ void UpdateAnnotationsList(EditAnnotationsWindow* ew) {
     }
     auto engine = GetEngineMupdf(ew);
     EngineMupdfGetAnnotations(engine, ew->annotations);
+    for (int i = ew->annotations.Size() - 1; i >= 0; i--) {
+        if (AnnotationSupportsMediaPlayback(ew->annotations.at(i)->type)) {
+            ew->annotations.RemoveAt(i);
+        }
+    }
     RebuildAnnotationsListBox(ew);
 }
 

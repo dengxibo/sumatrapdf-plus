@@ -43,14 +43,16 @@ static RectF dm_follow_image_bounds(fz_matrix ctm, const RectF& pageBounds) {
     return dm_to_rect_f(bbox).Intersect(pageBounds);
 }
 
-static DarkImagePolicy dm_follow_image_policy(pdf_dark_mode_device* d, fz_matrix ctm, bool isMask) {
+static DarkImagePolicy dm_follow_image_policy(fz_context* ctx, pdf_dark_mode_device* d, fz_image* image,
+                                              fz_matrix ctm, bool isMask) {
     RectF imgBounds = dm_follow_image_bounds(ctm, d->followPageBounds);
-    return PdfDarkModePolicyForFollowThemeImage(imgBounds, isMask, d->followPageBounds, d->followArtworkBounds);
+    return PdfDarkModePolicyForFollowThemeImage(imgBounds, isMask, d->followPageBounds, d->followArtworkBounds, ctx,
+                                                image);
 }
 
 static void dm_follow_fill_image(fz_context* ctx, pdf_dark_mode_device* d, fz_image* image, fz_matrix ctm, float alpha,
                                  fz_color_params color_params) {
-    DarkImagePolicy policy = dm_follow_image_policy(d, ctm, false);
+    DarkImagePolicy policy = dm_follow_image_policy(ctx, d, image, ctm, false);
     RectF imgBounds = dm_follow_image_bounds(ctm, d->followPageBounds);
     float coverage = dm_follow_image_coverage(imgBounds, d->followPageBounds);
     fz_image* cached =
@@ -275,7 +277,7 @@ static void dm_fill_image_mask(fz_context* ctx, fz_device* dev, fz_image* image,
                                fz_color_params color_params) {
     pdf_dark_mode_device* d = (pdf_dark_mode_device*)dev;
     DarkImagePolicy policy =
-        d->followDirect ? dm_follow_image_policy(d, ctm, true) : dm_current_image_policy(d);
+        d->followDirect ? dm_follow_image_policy(ctx, d, image, ctm, true) : dm_current_image_policy(d);
     if (!d->followDirect) {
         dm_next_image_occurrence(d);
     }

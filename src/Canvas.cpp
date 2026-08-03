@@ -980,7 +980,7 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
                 logf("different annot under cursor. prev: %s, new: %s\n", prevName, name);
 #endif
                 if (gShowAnnotationNotification) {
-                    if (annot) {
+                    if (annot && !AnnotationSupportsMediaPlayback(annot->type)) {
                         // auto r = annot->bounds;
                         // logf("new pos: %d-%d, size: %d-%d\n", (int)r.x, (int)r.y, (int)r.dx, (int)r.dy);
                         RemoveNotificationsForGroup(win->hwndCanvas, kNotifAnnotation);
@@ -990,7 +990,7 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
                         args.timeoutMs = 3000;
                         args.delayInMs = 1000;
                         args.noClose = true;
-                        TempStr name = annot ? AnnotationReadableNameTemp(annot->type) : (TempStr) "none";
+                        TempStr name = AnnotationReadableNameTemp(annot->type);
                         const char* fmt = _TRA("%s annotation. Ctrl+click to edit.");
                         args.msg = str::FormatTemp(fmt, name);
                         ShowNotification(args);
@@ -1420,15 +1420,18 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
         return;
     }
 
-    // if clicking on an image, prepare for image drag-out
+    // if clicking on an image, prepare for image drag-out (but not over a media annotation)
     if (canCopy && !isShift && !isCtrl && !isOverText) {
-        IPageElement* pageEl = dm->GetElementAtPos(pt, nullptr, true);
-        if (pageEl && pageEl->Is(kindPageElementImage)) {
-            win->imageDragPending = true;
-            win->imageDragElement = pageEl;
-            win->linkOnLastButtonDown = nullptr;
-            SetCapture(win->hwndCanvas);
-            return;
+        Annotation* mediaAnnot = dm->GetAnnotationAtPos(pt, tab->selectedAnnotation);
+        if (!(mediaAnnot && AnnotationSupportsMediaPlayback(mediaAnnot->type))) {
+            IPageElement* pageEl = dm->GetElementAtPos(pt, nullptr, true);
+            if (pageEl && pageEl->Is(kindPageElementImage)) {
+                win->imageDragPending = true;
+                win->imageDragElement = pageEl;
+                win->linkOnLastButtonDown = nullptr;
+                SetCapture(win->hwndCanvas);
+                return;
+            }
         }
     }
 
@@ -1465,13 +1468,20 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
         return;
     }
 
-    // click on image without dragging: just cancel
+    // click on image without dragging: play media annotation if one is on top, else cancel
     if (win->imageDragPending) {
         win->imageDragPending = false;
         win->imageDragElement = nullptr;
         win->dragStartPending = false;
         if (GetCapture() == win->hwndCanvas) {
             ReleaseCapture();
+        }
+        Point pt(x, y);
+        WindowTab* tab = win->CurrentTab();
+        Annotation* annotAtClick = dm->GetAnnotationAtPos(pt, tab->selectedAnnotation);
+        if (annotAtClick && AnnotationSupportsMediaPlayback(annotAtClick->type)) {
+            PlaySoundAnnotation(annotAtClick);
+            return;
         }
         return;
     }
@@ -1555,6 +1565,10 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
     // page is re-rendering after creating or editing an annotation.
     Annotation* annotAtClick = dm->GetAnnotationAtPos(pt, tab->selectedAnnotation);
     if (annotAtClick) {
+        if (AnnotationSupportsMediaPlayback(annotAtClick->type)) {
+            PlaySoundAnnotation(annotAtClick);
+            return;
+        }
         if (tab->editAnnotsWindow) {
             SetSelectedAnnotation(tab, annotAtClick);
         } else {

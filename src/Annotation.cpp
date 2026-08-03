@@ -10,6 +10,8 @@ extern "C" {
 #include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
 
+#include "utils/FileUtil.h"
+
 #include "wingui/UIModels.h"
 
 #include "Annotation.h"
@@ -19,6 +21,7 @@ extern "C" {
 #include "EngineMupdf.h"
 #include "GlobalPrefs.h"
 #include "Commands.h"
+#include "LookupAudio.h"
 
 #include "utils/Log.h"
 
@@ -1293,4 +1296,551 @@ AnnotationType CmdIdToAnnotationType(int cmdId) {
     }
     // clang-format on
     return AnnotationType::Unknown;
+}
+
+enum class PdfSoundEncoding {
+    Raw,
+    Signed,
+    MuLaw,
+    ALaw,
+    Unknown,
+};
+
+static void WriteLE16(u8* p, u16 v) {
+    p[0] = (u8)(v & 0xFF);
+    p[1] = (u8)((v >> 8) & 0xFF);
+}
+
+static void WriteLE32(u8* p, u32 v) {
+    p[0] = (u8)(v & 0xFF);
+    p[1] = (u8)((v >> 8) & 0xFF);
+    p[2] = (u8)((v >> 16) & 0xFF);
+    p[3] = (u8)((v >> 24) & 0xFF);
+}
+
+static PdfSoundEncoding PdfSoundEncodingFromObj(fz_context* ctx, pdf_obj* enc) {
+    if (!enc || !pdf_is_name(ctx, enc)) {
+        return PdfSoundEncoding::Raw;
+    }
+    const char* n = pdf_to_name(ctx, enc);
+    if (!n || !*n) {
+        return PdfSoundEncoding::Raw;
+    }
+    if (str::EqI(n, "Raw")) {
+        return PdfSoundEncoding::Raw;
+    }
+    if (str::EqI(n, "Signed")) {
+        return PdfSoundEncoding::Signed;
+    }
+    if (str::EqI(n, "MuLaw")) {
+        return PdfSoundEncoding::MuLaw;
+    }
+    if (str::EqI(n, "ALaw")) {
+        return PdfSoundEncoding::ALaw;
+    }
+    return PdfSoundEncoding::Unknown;
+}
+
+static bool PdfSoundLooksLikeWav(const u8* data, size_t size, size_t* offsetOut) {
+    if (!data || size < 12) {
+        return false;
+    }
+    if (data[0] == 'R' && data[1] == 'I' && data[2] == 'F' && data[3] == 'F') {
+        if (offsetOut) {
+            *offsetOut = 0;
+        }
+        return true;
+    }
+    // Acrobat/iText quirk: first stream byte may be padding before "RIFF".
+    if (size >= 13 && data[1] == 'R' && data[2] == 'I' && data[3] == 'F' && data[4] == 'F') {
+        if (offsetOut) {
+            *offsetOut = 1;
+        }
+        return true;
+    }
+    return false;
+}
+
+static bool PdfSoundLooksLikeMp3(const u8* data, size_t size) {
+    if (!data || size < 3) {
+        return false;
+    }
+    if (data[0] == 'I' && data[1] == 'D' && data[2] == '3') {
+        return true;
+    }
+    if (size >= 2 && data[0] == 0xFF && (data[1] & 0xE0) == 0xE0) {
+        return true;
+    }
+    return false;
+}
+
+static pdf_obj* PdfResolveSoundObject(fz_context* ctx, pdf_obj* annotObj) {
+    if (!annotObj) {
+        return nullptr;
+    }
+    pdf_obj* sound = pdf_dict_get(ctx, annotObj, PDF_NAME(Sound));
+    if (sound) {
+        return sound;
+    }
+    auto tryAction = [&](pdf_obj* action) -> pdf_obj* {
+        if (!action) {
+            return nullptr;
+        }
+        if (!pdf_name_eq(ctx, pdf_dict_get(ctx, action, PDF_NAME(S)), PDF_NAME(Sound))) {
+            return nullptr;
+        }
+        return pdf_dict_get(ctx, action, PDF_NAME(Sound));
+    };
+    sound = tryAction(pdf_dict_get(ctx, annotObj, PDF_NAME(A)));
+    if (sound) {
+        return sound;
+    }
+    pdf_obj* aa = pdf_dict_get(ctx, annotObj, PDF_NAME(AA));
+    if (!aa) {
+        return nullptr;
+    }
+    static const char* kActionKeys[] = {"U", "D", "E", "X"};
+    for (const char* key : kActionKeys) {
+        sound = tryAction(pdf_dict_gets(ctx, aa, key));
+        if (sound) {
+            return sound;
+        }
+    }
+    return nullptr;
+}
+
+static u8* PdfBuildWavFromPcm(const u8* pcm, size_t pcmSize, int sampleRate, int channels, int bitsPerSample,
+                              u16 audioFormat, size_t* outSize) {
+    if (!pcm || pcmSize == 0 || sampleRate <= 0 || channels <= 0 || bitsPerSample <= 0 || !outSize) {
+        return nullptr;
+    }
+    u32 blockAlign = (u32)channels * (u32)bitsPerSample / 8;
+    u32 byteRate = (u32)sampleRate * blockAlign;
+    size_t wavSize = 44 + pcmSize;
+    u8* wav = AllocArray<u8>(wavSize);
+    if (!wav) {
+        return nullptr;
+    }
+    memcpy(wav, "RIFF", 4);
+    WriteLE32(wav + 4, (u32)(wavSize - 8));
+    memcpy(wav + 8, "WAVE", 4);
+    memcpy(wav + 12, "fmt ", 4);
+    WriteLE32(wav + 16, 16);
+    WriteLE16(wav + 20, audioFormat);
+    WriteLE16(wav + 22, (u16)channels);
+    WriteLE32(wav + 24, (u32)sampleRate);
+    WriteLE32(wav + 28, byteRate);
+    WriteLE16(wav + 32, (u16)blockAlign);
+    WriteLE16(wav + 34, (u16)bitsPerSample);
+    memcpy(wav + 36, "data", 4);
+    WriteLE32(wav + 40, (u32)pcmSize);
+    memcpy(wav + 44, pcm, pcmSize);
+    *outSize = wavSize;
+    return wav;
+}
+
+static u8* PdfSoundPcmToWav(fz_context* ctx, const u8* pcm, size_t pcmSize, pdf_obj* sound, size_t* outSize) {
+    int sampleRate = pdf_dict_get_int(ctx, sound, PDF_NAME(R));
+    if (sampleRate <= 0) {
+        return nullptr;
+    }
+    int channels = pdf_dict_get(ctx, sound, PDF_NAME(C)) ? pdf_dict_get_int(ctx, sound, PDF_NAME(C)) : 1;
+    if (channels <= 0) {
+        channels = 1;
+    }
+    int bits = pdf_dict_get(ctx, sound, PDF_NAME(B)) ? pdf_dict_get_int(ctx, sound, PDF_NAME(B)) : 8;
+    if (bits <= 0) {
+        bits = 8;
+    }
+    PdfSoundEncoding enc = PdfSoundEncodingFromObj(ctx, pdf_dict_get(ctx, sound, PDF_NAME(E)));
+
+    u16 audioFormat = 1;
+    const u8* src = pcm;
+    u8* swapped = nullptr;
+    if (enc == PdfSoundEncoding::MuLaw) {
+        audioFormat = 7;
+        bits = 8;
+    } else if (enc == PdfSoundEncoding::ALaw) {
+        audioFormat = 6;
+        bits = 8;
+    } else if (enc == PdfSoundEncoding::Signed && bits == 16) {
+        swapped = AllocArray<u8>(pcmSize);
+        if (!swapped) {
+            return nullptr;
+        }
+        for (size_t i = 0; i + 1 < pcmSize; i += 2) {
+            swapped[i] = pcm[i + 1];
+            swapped[i + 1] = pcm[i];
+        }
+        src = swapped;
+    } else if (enc == PdfSoundEncoding::Unknown) {
+        free(swapped);
+        return nullptr;
+    }
+
+    u8* wav = PdfBuildWavFromPcm(src, pcmSize, sampleRate, channels, bits, audioFormat, outSize);
+    free(swapped);
+    return wav;
+}
+
+static bool PdfPlaySoundBytes(u8* data, size_t size, const char* ext) {
+    if (!data || size == 0) {
+        return false;
+    }
+    return LookupAudioPlayOwned(data, size, ext);
+}
+
+static bool PlaySoundAnnotationInner(fz_context* ctx, Annotation* annot) {
+    pdf_annot* pdfannot = annot->pdfannot;
+    pdf_obj* annotObj = pdf_annot_obj(ctx, pdfannot);
+    pdf_obj* sound = PdfResolveSoundObject(ctx, annotObj);
+    if (!sound) {
+        return false;
+    }
+
+    fz_buffer* buf = nullptr;
+    fz_var(buf);
+    fz_try(ctx) {
+        buf = pdf_load_stream(ctx, sound);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        return false;
+    }
+    if (!buf) {
+        return false;
+    }
+
+    unsigned char* data = nullptr;
+    size_t size = fz_buffer_storage(ctx, buf, &data);
+    if (!data || size == 0) {
+        fz_drop_buffer(ctx, buf);
+        return false;
+    }
+
+    size_t offset = 0;
+    if (PdfSoundLooksLikeWav(data, size, &offset)) {
+        size_t playSize = size - offset;
+        u8* owned = AllocArray<u8>(playSize);
+        if (!owned) {
+            fz_drop_buffer(ctx, buf);
+            return false;
+        }
+        memcpy(owned, data + offset, playSize);
+        fz_drop_buffer(ctx, buf);
+        return PdfPlaySoundBytes(owned, playSize, "wav");
+    }
+    if (PdfSoundLooksLikeMp3(data, size)) {
+        u8* owned = AllocArray<u8>(size);
+        if (!owned) {
+            fz_drop_buffer(ctx, buf);
+            return false;
+        }
+        memcpy(owned, data, size);
+        fz_drop_buffer(ctx, buf);
+        return PdfPlaySoundBytes(owned, size, "mp3");
+    }
+
+    size_t wavSize = 0;
+    u8* wav = PdfSoundPcmToWav(ctx, data, size, sound, &wavSize);
+    fz_drop_buffer(ctx, buf);
+    if (!wav) {
+        return false;
+    }
+    return PdfPlaySoundBytes(wav, wavSize, "wav");
+}
+
+static bool PdfFilenameExtIsVideo(const char* ext) {
+    if (!ext || !*ext) {
+        return false;
+    }
+    return str::EqI(ext, ".mp4") || str::EqI(ext, ".mov") || str::EqI(ext, ".avi") || str::EqI(ext, ".webm") ||
+           str::EqI(ext, ".m4v");
+}
+
+static bool PdfFilenameExtIsNonAudioMedia(const char* ext) {
+    if (!ext || !*ext) {
+        return false;
+    }
+    return str::EqI(ext, ".swf") || PdfFilenameExtIsVideo(ext);
+}
+
+static const char* PdfAudioExtWithoutDot(TempStr ext) {
+    if (!ext || !*ext) {
+        return nullptr;
+    }
+    return ext[0] == '.' ? ext + 1 : ext;
+}
+
+static const char* PdfGuessAudioExtFromBytes(const u8* data, size_t size) {
+    size_t off = 0;
+    if (PdfSoundLooksLikeWav(data, size, &off)) {
+        return "wav";
+    }
+    if (PdfSoundLooksLikeMp3(data, size)) {
+        return "mp3";
+    }
+    if (size >= 4 && data[0] == 'f' && data[1] == 'L' && data[2] == 'a' && data[3] == 'C') {
+        return "flac";
+    }
+    if (size >= 4 && data[0] == 0x4F && data[1] == 0x67 && data[2] == 0x67 && data[3] == 0x53) {
+        return "ogg";
+    }
+    if (size >= 12 && data[4] == 'f' && data[5] == 't' && data[6] == 'y' && data[7] == 'p') {
+        return "m4a";
+    }
+    return nullptr;
+}
+
+struct PdfEmbeddedAudioFindCtx {
+    fz_context* ctx = nullptr;
+    u8* data = nullptr;
+    size_t size = 0;
+    char* ext = nullptr;
+    const char* preferredFilename = nullptr;
+    bool requirePreferred = false;
+};
+
+static bool PdfEmbeddedFilenameMatchesPreferred(const char* filename, const char* preferred) {
+    if (!preferred || !*preferred) {
+        return true;
+    }
+    if (!filename || !*filename) {
+        return false;
+    }
+    if (str::EqI(filename, preferred)) {
+        return true;
+    }
+    TempStr baseName = path::GetBaseNameTemp(filename);
+    return str::EqI(baseName, preferred);
+}
+
+static void PdfTryLoadEmbeddedAudioFilespec(PdfEmbeddedAudioFindCtx* fc, pdf_obj* fs) {
+    if (!fc || fc->data || !fc->ctx || !fs || !pdf_is_embedded_file(fc->ctx, fs)) {
+        return;
+    }
+    pdf_filespec_params params{};
+    pdf_get_filespec_params(fc->ctx, fs, &params);
+    if (fc->requirePreferred && !PdfEmbeddedFilenameMatchesPreferred(params.filename, fc->preferredFilename)) {
+        return;
+    }
+    TempStr fileExt = path::GetExtTemp(params.filename);
+    if (PdfFilenameExtIsNonAudioMedia(fileExt)) {
+        return;
+    }
+
+    fz_buffer* buf = nullptr;
+    fz_var(buf);
+    fz_try(fc->ctx) {
+        buf = pdf_load_embedded_file_contents(fc->ctx, fs);
+        if (!buf) {
+            fz_throw(fc->ctx, FZ_ERROR_GENERIC, "empty embedded file");
+        }
+        unsigned char* bytes = nullptr;
+        size_t len = fz_buffer_storage(fc->ctx, buf, &bytes);
+        if (!bytes || len == 0) {
+            fz_throw(fc->ctx, FZ_ERROR_GENERIC, "empty embedded stream");
+        }
+        const char* playExt = PdfAudioExtWithoutDot(fileExt);
+        if (!playExt) {
+            playExt = PdfGuessAudioExtFromBytes(bytes, len);
+        }
+        if (!playExt) {
+            fz_throw(fc->ctx, FZ_ERROR_GENERIC, "unknown embedded audio format");
+        }
+        u8* owned = AllocArray<u8>(len);
+        if (!owned) {
+            fz_throw(fc->ctx, FZ_ERROR_GENERIC, "alloc failed");
+        }
+        memcpy(owned, bytes, len);
+        fc->data = owned;
+        fc->size = len;
+        fc->ext = str::Dup(playExt);
+    }
+    fz_always(fc->ctx) {
+        fz_drop_buffer(fc->ctx, buf);
+    }
+    fz_catch(fc->ctx) {
+        fz_report_error(fc->ctx);
+    }
+}
+
+static void PdfWalkNameTreeNode(fz_context* ctx, pdf_obj* node, PdfEmbeddedAudioFindCtx* fc) {
+    if (!node || fc->data) {
+        return;
+    }
+    pdf_obj* names = pdf_dict_get(ctx, node, PDF_NAME(Names));
+    if (names) {
+        int n = pdf_array_len(ctx, names);
+        for (int i = 1; i < n; i += 2) {
+            PdfTryLoadEmbeddedAudioFilespec(fc, pdf_array_get(ctx, names, i));
+            if (fc->data) {
+                return;
+            }
+        }
+    }
+    pdf_obj* kids = pdf_dict_get(ctx, node, PDF_NAME(Kids));
+    if (kids) {
+        int n = pdf_array_len(ctx, kids);
+        for (int i = 0; i < n; i++) {
+            PdfWalkNameTreeNode(ctx, pdf_array_get(ctx, kids, i), fc);
+            if (fc->data) {
+                return;
+            }
+        }
+    }
+}
+
+static char* PdfRichMediaPreferredAudioFilename(fz_context* ctx, pdf_obj* annotObj) {
+    pdf_obj* settings = pdf_dict_gets(ctx, annotObj, "RichMediaSettings");
+    if (!settings) {
+        return nullptr;
+    }
+    pdf_obj* activation = pdf_dict_gets(ctx, settings, "Activation");
+    if (!activation) {
+        return nullptr;
+    }
+    pdf_obj* config = pdf_dict_gets(ctx, activation, "Configuration");
+    if (!config) {
+        return nullptr;
+    }
+    pdf_obj* instances = pdf_dict_gets(ctx, config, "Instances");
+    if (!instances || pdf_array_len(ctx, instances) == 0) {
+        return nullptr;
+    }
+    pdf_obj* instance = pdf_array_get(ctx, instances, 0);
+    if (!instance) {
+        return nullptr;
+    }
+    pdf_obj* params = pdf_dict_gets(ctx, instance, "Params");
+    if (!params) {
+        return nullptr;
+    }
+    pdf_obj* flashVars = pdf_dict_gets(ctx, params, "FlashVars");
+    if (!flashVars) {
+        return nullptr;
+    }
+    const char* fv = pdf_to_text_string(ctx, flashVars);
+    if (!fv) {
+        return nullptr;
+    }
+    const char* source = str::Find(fv, "source=");
+    if (!source) {
+        source = str::Find(fv, "Source=");
+    }
+    if (!source) {
+        return nullptr;
+    }
+    source += 7;
+    size_t len = 0;
+    while (source[len] && source[len] != '&') {
+        len++;
+    }
+    if (len == 0) {
+        return nullptr;
+    }
+    return str::Dup(source, len);
+}
+
+static bool PlayRichMediaAnnotationInner(fz_context* ctx, pdf_obj* annotObj) {
+    pdf_obj* content = pdf_dict_gets(ctx, annotObj, "RichMediaContent");
+    if (!content) {
+        return false;
+    }
+    pdf_obj* assets = pdf_dict_gets(ctx, content, "Assets");
+    if (!assets) {
+        return false;
+    }
+    char* preferred = PdfRichMediaPreferredAudioFilename(ctx, annotObj);
+    PdfEmbeddedAudioFindCtx fc{};
+    fc.ctx = ctx;
+    fc.preferredFilename = preferred;
+    fc.requirePreferred = preferred != nullptr;
+    PdfWalkNameTreeNode(ctx, assets, &fc);
+    if (!fc.data && preferred) {
+        fc.requirePreferred = false;
+        PdfWalkNameTreeNode(ctx, assets, &fc);
+    }
+    str::Free(preferred);
+    if (!fc.data) {
+        return false;
+    }
+    bool ok = PdfPlaySoundBytes(fc.data, fc.size, fc.ext);
+    str::Free(fc.ext);
+    return ok;
+}
+
+static pdf_obj* PdfScreenResolveFilespec(fz_context* ctx, pdf_obj* annotObj) {
+    pdf_obj* rendition = pdf_dict_get(ctx, annotObj, PDF_NAME(R));
+    if (!rendition) {
+        return nullptr;
+    }
+    if (pdf_is_array(ctx, rendition)) {
+        rendition = pdf_array_get(ctx, rendition, 0);
+    }
+    if (!rendition) {
+        return nullptr;
+    }
+    pdf_obj* clip = pdf_dict_get(ctx, rendition, PDF_NAME(C));
+    if (clip) {
+        return clip;
+    }
+    return pdf_dict_get(ctx, rendition, PDF_NAME(D));
+}
+
+static bool PlayScreenAnnotationInner(fz_context* ctx, pdf_obj* annotObj) {
+    pdf_obj* fs = PdfScreenResolveFilespec(ctx, annotObj);
+    if (!fs) {
+        return false;
+    }
+    PdfEmbeddedAudioFindCtx fc{};
+    fc.ctx = ctx;
+    PdfTryLoadEmbeddedAudioFilespec(&fc, fs);
+    if (!fc.data) {
+        return false;
+    }
+    bool ok = PdfPlaySoundBytes(fc.data, fc.size, fc.ext);
+    str::Free(fc.ext);
+    return ok;
+}
+
+bool AnnotationSupportsMediaPlayback(AnnotationType tp) {
+    return tp == AnnotationType::Sound || tp == AnnotationType::RichMedia || tp == AnnotationType::Screen;
+}
+
+bool PlaySoundAnnotation(Annotation* annot) {
+    if (!annot || !annot->pdfannot || !annot->engine) {
+        return false;
+    }
+    if (!AnnotationSupportsMediaPlayback(annot->type)) {
+        return false;
+    }
+    EngineMupdf* engine = annot->engine;
+    fz_context* ctx = engine->Ctx();
+    if (!ctx || !engine->pdfdoc) {
+        return false;
+    }
+    ScopedCritSec cs(&engine->docLock);
+    bool ok = false;
+    fz_try(ctx) {
+        pdf_obj* annotObj = pdf_annot_obj(ctx, annot->pdfannot);
+        switch (annot->type) {
+            case AnnotationType::Sound:
+                ok = PlaySoundAnnotationInner(ctx, annot);
+                break;
+            case AnnotationType::RichMedia:
+                ok = PlayRichMediaAnnotationInner(ctx, annotObj);
+                break;
+            case AnnotationType::Screen:
+                ok = PlayScreenAnnotationInner(ctx, annotObj);
+                break;
+            default:
+                break;
+        }
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        ok = false;
+    }
+    return ok;
 }
