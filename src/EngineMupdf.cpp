@@ -2913,11 +2913,17 @@ fz_context* EngineMupdf::Ctx() const {
 
 EngineMupdf::~EngineMupdf() {
     InterlockedExchange(&reflowableLoadAbort, 1);
-    while (InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0) {
-        Sleep(10);
+    for (int i = 0; i < 120000; i++) {
+        if (InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) == 0) {
+            break;
+        }
+        Sleep(1);
     }
-    while (InterlockedCompareExchange(&reflowWarmActive, 0, 0) != 0) {
-        Sleep(10);
+    for (int i = 0; i < 120000; i++) {
+        if (InterlockedCompareExchange(&reflowWarmActive, 0, 0) == 0) {
+            break;
+        }
+        Sleep(1);
     }
 
     EnterCriticalSection(&pagesLock);
@@ -2954,9 +2960,6 @@ EngineMupdf::~EngineMupdf() {
         if (pi->page) {
             fz_drop_page(ctx, pi->page);
         }
-        // storage is arena-owned; run the destructor in place so the inner
-        // Vec<>s free their heap-allocated els buffers, then leave the
-        // memory to the arena.
         pi->~FzPageInfo();
     }
 
@@ -5868,6 +5871,14 @@ void EngineMupdfSetReflowLoadingPaused(EngineBase* engine, bool paused) {
     }
 }
 
+void EngineMupdfAbortBackgroundWork(EngineBase* engine) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e) {
+        return;
+    }
+    InterlockedExchange(&e->reflowableLoadAbort, 1);
+}
+
 bool EngineMupdfReflowTocNeedsUiReload(EngineBase* engine) {
     EngineMupdf* e = AsEngineMupdf(engine);
     return e && e->reflowTocNeedsUiReload;
@@ -5898,7 +5909,13 @@ static void AppendReflowChapterStartPage(EngineMupdf* e, int chapterStartPage, i
 }
 
 static void WaitForReflowUiDocLock(EngineMupdf* e) {
-    while (InterlockedCompareExchange(&e->reflowUiWantsDocLock, 0, 0) != 0) {
+    for (;;) {
+        if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+            return;
+        }
+        if (InterlockedCompareExchange(&e->reflowUiWantsDocLock, 0, 0) == 0) {
+            return;
+        }
         Sleep(1);
     }
 }
@@ -6004,6 +6021,9 @@ struct ReflowRenderLock {
 // When forThemeRecount is true, the caller must already hold reflowCountLock.
 static bool CountReflowChaptersUpToOneChapter(EngineMupdf* e, int targetChapter, fz_context* ctx,
                                               const char* notifyPath, bool forThemeRecount) {
+    if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+        return true;
+    }
     if (e->reflowNumChapters == 0) {
         int numChapters = 0;
         {
@@ -6035,7 +6055,13 @@ static bool CountReflowChaptersUpToOneChapter(EngineMupdf* e, int targetChapter,
     int chapterPages = 0;
     int rawChapterPages = 0;
     {
+        if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+            return true;
+        }
         WaitForReflowUiDocLock(e);
+        if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+            return true;
+        }
         ScopedCritSec scope(&e->docLock);
         if (forThemeRecount) {
             fz_try(ctx) {
@@ -6425,6 +6451,10 @@ static void FinishReflowableLoadAsync(EngineMupdf* e) {
 
     // let the UI thread render the first pages before heavy background work
     Sleep(kReflowBackgroundDelayMs);
+    if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+        InterlockedExchange(&e->reflowableLoadingInProgress, 0);
+        return;
+    }
 
     AutoFreeStr path(str::Dup(e->FilePath()));
     int loadMs = 0;

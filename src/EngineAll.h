@@ -148,6 +148,8 @@ bool EngineMupdfRelayoutForFontSizeChange(EngineBase* engine);
 // (theme change, annotation edit) can access the document without being starved.
 // Safe to call when not loading (no-op). Use ReflowLoadingPauseScope for RAII.
 void EngineMupdfSetReflowLoadingPaused(EngineBase* engine, bool paused);
+// Signal background reflow/counting/warm threads to stop (e.g. on application close).
+void EngineMupdfAbortBackgroundWork(EngineBase* engine);
 struct ReflowLoadingPauseScope {
     EngineBase* engine = nullptr;
     explicit ReflowLoadingPauseScope(EngineBase* e) : engine(e) { EngineMupdfSetReflowLoadingPaused(engine, true); }

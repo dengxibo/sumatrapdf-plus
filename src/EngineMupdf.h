@@ -292,6 +292,9 @@ class EngineMupdf : public EngineBase {
 
 EngineMupdf* AsEngineMupdf(EngineBase* engine);
 
+// set while the application is quitting; EngineMupdf skips slow per-page teardown
+extern bool gEngineMupdfFastShutdown;
+
 fz_rect ToFzRect(RectF rect);
 RectF ToRectF(fz_rect rect);
 void MarkNotificationAsModified(EngineMupdf*, Annotation*, AnnotationChange = AnnotationChange::Modify);

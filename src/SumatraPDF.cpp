@@ -158,6 +158,7 @@ HCURSOR gCursorDrag;
 bool gSupressNextAltMenuTrigger = false;
 
 bool gCrashOnOpen = false;
+bool gEngineMupdfFastShutdown = false;
 bool gRedrawLog = false;
 
 static void RelayoutFrame(MainWindow* win, bool updateToolbars = true, int sidebarDx = -1);
@@ -230,7 +231,9 @@ void DeleteManualBrowserWindow();
 static void OnSidebarSplitterMove(Splitter::MoveEvent*);
 static void OnFavSplitterMove(Splitter::MoveEvent*);
 static void CloseAuxiliaryTopLevelWindows();
+static void AbortDocumentBackgroundLoads(MainWindow* winOnly);
 static void ExitProcessAfterShutdown();
+
 static void TerminateApplication();
 static void RestartApplication();
 
@@ -4813,6 +4816,8 @@ static void TerminateApplication() {
         return;
     }
     CloseAuxiliaryTopLevelWindows();
+    gEngineMupdfFastShutdown = true;
+    AbortDocumentBackgroundLoads(nullptr);
     while (gWindows.size() > 0) {
         MainWindow* w = gWindows.at(0);
         w->isBeingClosed = true;
@@ -4857,6 +4862,8 @@ static void OnMenuExit() {
     // since we are closing the windows one by one,
     // CloseWindow() must not save the session state every time
     // (or we will end up with just the last window)
+    gEngineMupdfFastShutdown = true;
+    AbortDocumentBackgroundLoads(nullptr);
     SaveSettings();
     gDontSaveSettings = true;
 
@@ -5388,6 +5395,22 @@ bool CanCloseWindow(MainWindow* win) {
     return true;
 }
 
+static void AbortDocumentBackgroundLoads(MainWindow* winOnly) {
+    for (MainWindow* win : gWindows) {
+        if (winOnly && win != winOnly) {
+            continue;
+        }
+        for (WindowTab* tab : win->Tabs()) {
+            DisplayModel* dm = tab->AsFixed();
+            if (!dm) {
+                continue;
+            }
+            gRenderCache->CancelRendering(dm);
+            EngineMupdfAbortBackgroundWork(dm->GetEngine());
+        }
+    }
+}
+
 /* Close the documents associated with window 'hwnd'.
    Closes the window unless this is the last window in which
    case it switches to empty window and disables the "File\Close"
@@ -5407,6 +5430,12 @@ void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose) {
     logf("CloseWindow: win: 0x%p, hwndFrame: 0x%x, quitIfLast: %d, forceClose: %d\n", win, win->hwndFrame,
          (int)quitIfLast, (int)forceClose);
     win->isBeingClosed = true;
+    bool closingAll = quitIfLast && gWindows.size() == 1;
+    if (closingAll) {
+        gEngineMupdfFastShutdown = true;
+        ShowWindow(win->hwndFrame, SW_HIDE);
+    }
+    AbortDocumentBackgroundLoads(closingAll ? nullptr : win);
     ReportIf(forceClose && !quitIfLast);
     if (forceClose) {
         quitIfLast = true;
@@ -5458,6 +5487,9 @@ void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose) {
     // if list not empty, only close the tabs not on the list
     if (!canCloseWindow) {
         win->isBeingClosed = false;
+        if (closingAll) {
+            gEngineMupdfFastShutdown = false;
+        }
         for (auto& tab : win->Tabs()) {
             if (tab->AsFixed()) {
                 tab->AsFixed()->pauseRendering = false;
@@ -5474,6 +5506,10 @@ void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose) {
     // if not last, save after closing window (#5418)
     if (lastWindow) {
         SaveSettings();
+    }
+    if (gEngineMupdfFastShutdown && quitIfLast && (lastWindow || gDontSaveSettings)) {
+        ExitProcessAfterShutdown();
+        return;
     }
     // Detach tree items before tab/engine destruction frees TocItem memory.
     ClearTocBox(win);
@@ -5500,7 +5536,9 @@ void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose) {
         // hide immediately before destroying so we don't leave a hidden zombie window
         // if SaveSettings or other work above pumped messages and re-entered CloseWindow
         if (!lastWindow || quitIfLast) {
-            ShowWindow(hwnd, SW_HIDE);
+            if (!IsWindowVisible(hwnd) || !gEngineMupdfFastShutdown) {
+                ShowWindow(hwnd, SW_HIDE);
+            }
         }
         DeleteMainWindow(win);
         DestroyWindow(hwnd);
