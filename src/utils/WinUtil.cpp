@@ -3313,7 +3313,7 @@ COLORREF GetPixel(BitmapPixels* bitmap, int x, int y) {
     if (3 == bitmap->nBytesPerPixel) {
         c = RGB(pixel[2], pixel[1], pixel[0]);
     } else if (4 == bitmap->nBytesPerPixel) {
-        c = RGB(pixel[3], pixel[2], pixel[1]);
+        c = RGB(pixel[2], pixel[1], pixel[0]);
     } else {
         ReportIf(true);
     }
@@ -3436,6 +3436,27 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLO
         return false;
     };
 
+    // After linear invert, mid-gray AA fringes stay mid-gray (halo on dark bg).
+    // For near-achromatic source pixels, pull remapped luminance toward text/bg.
+    auto sharpenAchromaticAfterRemap = [&](u8 srcR, u8 srcG, u8 srcB, u8* pxB, u8* pxG, u8* pxR) {
+        int maxC = srcR > srcG ? (srcR > srcB ? srcR : srcB) : (srcG > srcB ? srcG : srcB);
+        int minC = srcR < srcG ? (srcR < srcB ? srcR : srcB) : (srcG < srcB ? srcG : srcB);
+        if (maxC - minC > 28) {
+            return;
+        }
+        int lum = (int(*pxR) * 54 + int(*pxG) * 183 + int(*pxB) * 19) >> 8;
+        int t;
+        if (lum < 128) {
+            t = (lum * lum) / 128;
+        } else {
+            int inv = 255 - lum;
+            t = 255 - (inv * inv) / 127;
+        }
+        *pxB = (u8)t;
+        *pxG = (u8)t;
+        *pxR = (u8)t;
+    };
+
     // for mapped 32-bit DI bitmaps: directly access the pixel data
     if (ret >= sizeof(info.dsBm) && info.dsBm.bmBits && 32 == info.dsBm.bmBitsPixel &&
         size.dx * 4 == info.dsBm.bmWidthBytes) {
@@ -3457,6 +3478,7 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLO
             for (int k = 0; k < 4; k++) {
                 bmpData[i + k] = (u8)(base[k] + mul255(bmpData[i + k], diff[k]));
             }
+            sharpenAchromaticAfterRemap(r, g, b, &bmpData[i], &bmpData[i + 1], &bmpData[i + 2]);
         }
         return;
     }
@@ -3481,6 +3503,7 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLO
                 for (int k = 0; k < 3; k++) {
                     px[k] = (u8)(base[k] + mul255(px[k], diff[k]));
                 }
+                sharpenAchromaticAfterRemap(r, g, b, &px[0], &px[1], &px[2]);
             }
         }
         return;

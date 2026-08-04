@@ -127,41 +127,17 @@ void PdfDarkModeRemapScanPixel(float r, float g, float b, const DarkImageAnalysi
                                const DarkModePalette& palette, float* outR, float* outG, float* outB) {
     float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
     float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
-    float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
     float chroma = maxC - minC;
 
-    float paperR = analysis.estimatedBackground.r;
-    float paperG = analysis.estimatedBackground.g;
-    float paperB = analysis.estimatedBackground.b;
-    float paperLum = 0.2126f * paperR + 0.7152f * paperG + 0.0722f * paperB;
-    if (paperLum < 0.35f) {
-        paperLum = 0.72f;
-        paperR = paperG = paperB = paperLum;
-    }
-
     const float lowChroma = 0.10f;
-    float inkLum = paperLum * 0.38f;
-    float paperHigh = paperLum * 0.97f;
-    if (paperHigh <= inkLum + 0.05f) {
-        paperHigh = inkLum + 0.20f;
+    if (chroma < lowChroma) {
+        ApplyAdaptiveDocumentDarkMode(r, g, b, palette, outR, outG, outB);
+        return;
     }
 
     float docR = palette.bgR;
     float docG = palette.bgG;
     float docB = palette.bgB;
-    if (chroma < lowChroma) {
-        float inkW = 1.f - SmoothStep(inkLum, paperHigh, lum);
-        float paperW = SmoothStep(inkLum, paperHigh, lum);
-        docR = palette.textR * inkW + palette.bgR * paperW;
-        docG = palette.textG * inkW + palette.bgG * paperW;
-        docB = palette.textB * inkW + palette.bgB * paperW;
-        float grayW = 1.f - chroma / lowChroma;
-        *outR = docR * grayW + r * (1.f - grayW);
-        *outG = docG * grayW + g * (1.f - grayW);
-        *outB = docB * grayW + b * (1.f - grayW);
-        return;
-    }
-
     ApplyAdaptiveDocumentDarkMode(r, g, b, palette, &docR, &docG, &docB);
 
     float photoR = r;

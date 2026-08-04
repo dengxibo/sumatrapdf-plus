@@ -90,6 +90,7 @@
 #include "FindBar.h"
 #include "FindWindow.h"
 #include "WordLookup.h"
+#include "LookupAudio.h"
 #include "Translations.h"
 #include "uia/Provider.h"
 #include "Version.h"
@@ -544,6 +545,7 @@ static void PdfThemeProbeCompleteUI(PdfThemeProbeCompleteTask* task) {
     EngineMupdfInvalidateDarkMode(dm->GetEngine());
     gRenderCache->CancelRendering(dm);
     gRenderCache->FreeForDisplayModel(dm);
+    gRenderCache->darkModeEpoch++;
     if (TabIsForegroundForUi(tab)) {
         dm->RenderVisibleParts();
         ScheduleRepaint(tab->win, 0);
@@ -5320,6 +5322,8 @@ void CloseTab(WindowTab* tab, bool quitIfLast) {
 
     // Stop eventual TTS reading
     StopReadAloudIfSourceTab(tab);
+    // Embedded PDF Sound/RichMedia/Screen (and dictionary) audio is a global player.
+    LookupAudioStop();
 
     if (tab->IsAboutTab()) {
         if (SettingsUseTabs() && !gGlobalPrefs->noHomeTab) {
@@ -5531,6 +5535,7 @@ void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose) {
 
     // Stop eventual TTS reading
     StopReadAloudIfSourceWindow(win);
+    LookupAudioStop();
 
     bool canCloseWindow = true;
     for (auto& tab : win->Tabs()) {

@@ -204,10 +204,25 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
                             PdfFollowThemePreservesEmbeddedImageColors() && pageCoverage >= 0.10f &&
                             imgAnalysis->kind != DarkImageKind::Photo &&
                             imgAnalysis->kind != DarkImageKind::FullPageScan;
-        int decodeMaxDim = layoutRaster ? 1200 : 0;
+        // Full-page text scans are often 2k–4k DuXiu rasters; remapping at native
+        // resolution dominates Match-theme open time. Cap decode for display quality.
+        int decodeMaxDim = 0;
+        if (layoutRaster) {
+            decodeMaxDim = 1200;
+        } else if (policy == DarkImagePolicy::AdaptiveDocument && imgAnalysis &&
+                   imgAnalysis->kind == DarkImageKind::FullPageScan) {
+            decodeMaxDim = 1800;
+        } else if (policy == DarkImagePolicy::Preserve && pageCoverage >= kMaxPreserveImagePageCoverage) {
+            // Picture-book path is still heavy; soft-cap extreme scans for screen use.
+            decodeMaxDim = 2400;
+        }
         src = dm_load_src_pixmap(ctx, srcImage, decodeMaxDim);
         if (policy == DarkImagePolicy::Preserve) {
-            processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_preserve_pixel);
+            if (pageCoverage >= kMaxPreserveImagePageCoverage) {
+                processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette);
+            } else {
+                processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_preserve_pixel);
+            }
         } else if (policy == DarkImagePolicy::AdaptiveDocument) {
             if (layoutRaster) {
                 processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_legacy_linear_pixel);

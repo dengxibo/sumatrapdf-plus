@@ -125,7 +125,15 @@ static void ApplyDocumentColorModeToReflowMupdfProfile(DarkModeProfile* profile)
 
 static void ApplyDocumentColorModeToFixedPageProfile(EngineBase* engine, DarkModeProfile* profile) {
     if (EngineMupdfIsFollowThemeProbePending(engine)) {
-        profile->mode = PageColorMode::PreserveImages;
+        // Do NOT use PreserveImages here: full-bleed RAZ art is skipped by UpdateBitmapColors
+        // and the first paint looks completely unprocessed ("original"). Use wrap immediately;
+        // probe completion only refines bitmap-recolor vs wrap for LaTeX-like docs.
+        if (EngineSupportsSmartDarkMode(engine) && PdfDarkModeUsesObjectLevel() &&
+            PdfFollowThemePreservesEmbeddedImageColors()) {
+            profile->mode = PageColorMode::FollowThemeDirect;
+        } else {
+            profile->mode = PageColorMode::PreserveImages;
+        }
         return;
     }
     switch (GetPdfDocumentColorMode()) {

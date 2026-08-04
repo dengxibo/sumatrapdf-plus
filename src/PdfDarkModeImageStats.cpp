@@ -129,6 +129,13 @@ static bool PdfDarkModeStatsLookLikePhoto(const PdfDarkModeImageSampleStats& sta
         return false;
     }
 
+    // Grayscale documentary photos: tonal range without chroma.
+    // Reject paper-heavy text scans (highLum typically >0.62) — those must not
+    // Promote to Preserve / picture-book processing on full-bleed pages.
+    if (stats.satRatio <= 0.08f && stats.lumVar >= 0.014f && stats.highLumRatio <= 0.62f) {
+        return true;
+    }
+
     bool isPhoto = stats.significantBuckets >= 16 || stats.satRatio >= 0.18f || stats.lumVar >= 0.014f;
     if (stats.highLumRatio > 0.58f && stats.satRatio < 0.18f) {
         isPhoto = false;
@@ -168,8 +175,8 @@ static bool PdfDarkModeStatsLookLikeLayoutBackground(const PdfDarkModeImageSampl
     if (!stats.valid) {
         return false;
     }
-    // Keep colorful picture-book art off the layout-panel recolor path.
-    if (PdfDarkModeStatsLookLikeColorfulIllustration(stats)) {
+    // Keep colorful art and grayscale photos off the layout-panel recolor path.
+    if (PdfDarkModeStatsLookLikeColorfulIllustration(stats) || PdfDarkModeStatsLookLikePhoto(stats)) {
         return false;
     }
     if (PdfDarkModeStatsLookLikeFlatLayoutPanel(stats)) {
