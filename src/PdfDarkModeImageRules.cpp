@@ -50,10 +50,19 @@ static bool PdfDarkModeFeaturesLookLikeGrayscalePhoto(const DarkImageFeatures& f
     return true;
 }
 
+// Soft cream / pastel design pages (e.g. notebook interiors): near-all light paper,
+// low chroma, mild contrast. Steep AdaptiveDocument ink/paper remap turns faint grids
+// into dirty horizontal noise — these must Preserve with gentle paper softening.
+static bool PdfDarkModeFeaturesLookLikeSoftCreamIllustration(const DarkImageFeatures& f) {
+    return f.highLuminanceRatio > 0.90f && f.luminanceVariance < 0.032f && f.saturatedPixelRatio < 0.10f &&
+           f.chromaticPixelRatio < 0.15f;
+}
+
 // True scanned page / flat paper UI — not a colorful illustration or grayscale photo.
 static bool PdfDarkModeFeaturesLookLikeTrueFullPageScan(const DarkImageFeatures& f) {
     int buckets = PdfDarkModeFeatureColorBuckets(f);
-    if (PdfDarkModeFeaturesLookLikeColorfulIllustration(f) || PdfDarkModeFeaturesLookLikeGrayscalePhoto(f)) {
+    if (PdfDarkModeFeaturesLookLikeColorfulIllustration(f) || PdfDarkModeFeaturesLookLikeGrayscalePhoto(f) ||
+        PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
         return false;
     }
     // Paper-heavy grayscale/near-gray page (text scan): high white area, little chroma.
@@ -130,7 +139,10 @@ DarkImageKind PdfDarkModeClassifyImageFeatures(const DarkImageFeatures& f, float
     // Full-bleed: preserve colorful picture-book art; only AdaptiveDocument for true scans.
     // When ambiguous, prefer Photo (Preserve) over FullPageScan.
     if (pageCoverage >= kMaxPreserveImagePageCoverage && f.highLuminanceRatio > 0.45f) {
-        if (PdfDarkModeFeaturesLookLikePhoto(f) || PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
+        if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
+            kind = DarkImageKind::Photo;
+            confidence = 0.74f;
+        } else if (PdfDarkModeFeaturesLookLikePhoto(f) || PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
             kind = DarkImageKind::Photo;
             confidence = 0.76f;
         } else if (PdfDarkModeFeaturesLookLikeTrueFullPageScan(f)) {
@@ -141,7 +153,7 @@ DarkImageKind PdfDarkModeClassifyImageFeatures(const DarkImageFeatures& f, float
             confidence = 0.55f;
         }
     } else if (pageIsScannedHint && pageCoverage >= 0.55f && !PdfDarkModeFeaturesLookLikeColorfulIllustration(f) &&
-               !PdfDarkModeFeaturesLookLikePhoto(f)) {
+               !PdfDarkModeFeaturesLookLikePhoto(f) && !PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
         kind = DarkImageKind::FullPageScan;
         confidence = 0.72f;
     } else if (PdfDarkModeFeaturesLookLikeLayoutBackground(f, pageCoverage)) {
@@ -200,6 +212,9 @@ bool PdfDarkModeShouldPreserveImageFeatures(const DarkImageFeatures& f, float pa
     }
     if (PdfDarkModeFeaturesLookLikeLayoutBackground(f, pageCoverage)) {
         return false;
+    }
+    if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
+        return true;
     }
     if (PdfDarkModeFeaturesLookLikePhoto(f) || PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
         if (pageCoverage < 0.14f && PdfDarkModeFeaturesLookLikePaperTextBox(f) &&

@@ -47,6 +47,16 @@ static void ReadPixmapRgb(fz_context* ctx, fz_pixmap* pix, int x, int y, float* 
     int n = pix->n;
     int components = fz_colorspace_n(ctx, cs);
     unsigned char* px = pix->samples + y * pix->stride + x * n;
+    if (cs == rgb || fz_colorspace_is_rgb(ctx, cs)) {
+        *outR = px[0] / 255.f;
+        *outG = px[1] / 255.f;
+        *outB = px[2] / 255.f;
+        return;
+    }
+    if (components == 1 || fz_colorspace_is_gray(ctx, cs)) {
+        *outR = *outG = *outB = px[0] / 255.f;
+        return;
+    }
     float conv[FZ_MAX_COLORS] = {};
     float srcRgb[FZ_MAX_COLORS] = {};
     for (int c = 0; c < components && c < FZ_MAX_COLORS; c++) {
@@ -172,6 +182,21 @@ static void WritePixmapRgb(fz_context* ctx, fz_pixmap* pix, int x, int y, float 
     int n = pix->n;
     int components = fz_colorspace_n(ctx, cs);
     unsigned char* px = pix->samples + y * pix->stride + x * n;
+    if (cs == rgb || fz_colorspace_is_rgb(ctx, cs)) {
+        int vr = (int)(r * 255.f + 0.5f);
+        int vg = (int)(g * 255.f + 0.5f);
+        int vb = (int)(b * 255.f + 0.5f);
+        px[0] = (unsigned char)(vr < 0 ? 0 : (vr > 255 ? 255 : vr));
+        px[1] = (unsigned char)(vg < 0 ? 0 : (vg > 255 ? 255 : vg));
+        px[2] = (unsigned char)(vb < 0 ? 0 : (vb > 255 ? 255 : vb));
+        return;
+    }
+    if (components == 1 || fz_colorspace_is_gray(ctx, cs)) {
+        float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+        int v = (int)(lum * 255.f + 0.5f);
+        px[0] = (unsigned char)(v < 0 ? 0 : (v > 255 ? 255 : v));
+        return;
+    }
     float out[FZ_MAX_COLORS] = {r, g, b};
     float back[FZ_MAX_COLORS] = {};
     fz_convert_color(ctx, rgb, out, cs, back, cs, fz_default_color_params);
@@ -205,13 +230,44 @@ fz_pixmap* PdfDarkModeProcessScanPixmap(fz_context* ctx, fz_pixmap* src, const D
     fz_pixmap* dst = fz_new_pixmap(ctx, src->colorspace, src->w, src->h, src->seps, src->alpha);
     fz_copy_pixmap_rect(ctx, dst, src, fz_make_irect(0, 0, src->w, src->h), nullptr);
 
+    fz_colorspace* cs = dst->colorspace ? dst->colorspace : fz_device_rgb(ctx);
+    fz_colorspace* rgb = fz_device_rgb(ctx);
+    int components = fz_colorspace_n(ctx, cs);
+    int n = dst->n;
+    int stride = dst->stride;
+    bool fastRgb = cs == rgb || fz_colorspace_is_rgb(ctx, cs);
+    bool fastGray = components == 1 || fz_colorspace_is_gray(ctx, cs);
+
     for (int y = 0; y < dst->h; y++) {
+        unsigned char* row = dst->samples + y * stride;
         for (int x = 0; x < dst->w; x++) {
+            unsigned char* px = row + x * n;
             float r, g, b;
-            ReadPixmapRgb(ctx, dst, x, y, &r, &g, &b);
+            if (fastRgb) {
+                r = px[0] / 255.f;
+                g = px[1] / 255.f;
+                b = px[2] / 255.f;
+            } else if (fastGray) {
+                r = g = b = px[0] / 255.f;
+            } else {
+                ReadPixmapRgb(ctx, dst, x, y, &r, &g, &b);
+            }
             float nr, ng, nb;
             PdfDarkModeRemapScanPixel(r, g, b, work, palette, &nr, &ng, &nb);
-            WritePixmapRgb(ctx, dst, x, y, nr, ng, nb);
+            if (fastRgb) {
+                int vr = (int)(nr * 255.f + 0.5f);
+                int vg = (int)(ng * 255.f + 0.5f);
+                int vb = (int)(nb * 255.f + 0.5f);
+                px[0] = (unsigned char)(vr < 0 ? 0 : (vr > 255 ? 255 : vr));
+                px[1] = (unsigned char)(vg < 0 ? 0 : (vg > 255 ? 255 : vg));
+                px[2] = (unsigned char)(vb < 0 ? 0 : (vb > 255 ? 255 : vb));
+            } else if (fastGray) {
+                float lum = 0.2126f * nr + 0.7152f * ng + 0.0722f * nb;
+                int v = (int)(lum * 255.f + 0.5f);
+                px[0] = (unsigned char)(v < 0 ? 0 : (v > 255 ? 255 : v));
+            } else {
+                WritePixmapRgb(ctx, dst, x, y, nr, ng, nb);
+            }
         }
     }
     return dst;

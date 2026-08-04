@@ -220,6 +220,8 @@ struct pdf_document;
 bool PdfDarkModePdfMetadataSuggestsBitmapRecolorDoc(fz_context* ctx, pdf_document* doc);
 bool PdfDarkModePdfMetadataSuggestsLayoutPhotoDoc(fz_context* ctx, pdf_document* doc);
 bool PdfDarkModePdfMetadataSuggestsPaperCaptureDoc(fz_context* ctx, pdf_document* doc);
+// DuXiu / Pdg2Pic / SuperStar etc.: full-page image scans → whole-tile bitmap recolor.
+bool PdfDarkModePdfMetadataSuggestsFullPageScanDoc(fz_context* ctx, pdf_document* doc);
 
 void PdfDarkModeInvalidatePage(fz_context* ctx, FzPageInfo* pageInfo);
 

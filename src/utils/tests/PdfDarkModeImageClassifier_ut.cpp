@@ -76,6 +76,22 @@ static DarkImageFeatures SoftPictureBookFullBleedFeatures() {
     return f;
 }
 
+// Soft cream notebook / design-book page: near-all light paper, mild contrast, little
+// chroma — must Preserve gently, not AdaptiveDocument sharp remap (dirty grid noise).
+static DarkImageFeatures SoftCreamNotebookFullBleedFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 14.f / 4096.f;
+    f.highLuminanceRatio = 0.93f;
+    f.saturatedPixelRatio = 0.01f;
+    f.chromaticPixelRatio = 0.02f;
+    f.luminanceVariance = 0.024f;
+    f.borderLightRatio = 0.88f;
+    f.borderUniformity = 0.70f;
+    f.flatAreaRatio = 0.40f;
+    return f;
+}
+
 static DarkImageFeatures TruePaperScanFullBleedFeatures() {
     DarkImageFeatures f;
     f.isColorful = false;
@@ -168,6 +184,11 @@ void PdfDarkModeImageClassifier_UnitTests() {
     kind = PdfDarkModeClassifyImageFeatures(TruePaperScanFullBleedFeatures(), 0.90f, false, &confidence);
     utassert(kind == DarkImageKind::FullPageScan);
     utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::AdaptiveDocument);
+
+    // Soft cream notebook (小家越住越大): Photo / Preserve — not FullPageScan sharp remap.
+    kind = PdfDarkModeClassifyImageFeatures(SoftCreamNotebookFullBleedFeatures(), 0.95f, false, &confidence);
+    utassert(kind == DarkImageKind::Photo);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::Preserve);
 
     // High-variance text scan (Merck / DuXiu): FullPageScan, not grayscale Photo.
     kind = PdfDarkModeClassifyImageFeatures(DuXiuTextScanFullBleedFeatures(), 0.95f, false, &confidence);

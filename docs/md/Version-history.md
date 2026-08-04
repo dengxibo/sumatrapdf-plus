@@ -2,22 +2,24 @@
 
 ## next
 
-- speed up Match-theme on full-page text scans (e.g. DuXiu/Merck): do not treat paper+ink variance as grayscale photos (avoids picture-book multi-rect); cap scan decode at 1800px; skip photo-rect search on paper-heavy pages
-  加快「匹配主题」打开全页文字扫描书（读秀/默克等）：纸面+墨迹方差不再误判为灰度照片（避开绘本多矩形）；扫描页解码上限 1800；纸面为主时跳过照片区搜索
-- show a vertical scrollbar on the home page when recent files overflow the visible area (works with Windows / smart / overlay scrollbar modes)
-  主页最近文件超出可视区域时显示右侧纵向滚动条（兼容 windows / smart / overlay 滚动条模式）
-- make the Home tab compact (label-sized); document tabs stay equal width and shrink together when crowded (no tab scroll arrows)
-  主页标签按文字紧凑显示；文档标签保持等宽，过多时一起缩小（不加左右滚动箭头）
-- hide native tab UpDown scroll arrows (SysTabControl overflow buttons); crowded tabs only shrink
-  隐藏系统标签溢出时的左右滚动箭头；标签过多时只缩小宽度
-- sharper Match-theme text on scanned/picture-book pages: steep ink/paper remap for near-gray AA fringes (less halo); photo rects stay untouched
-  匹配主题下扫描/绘本页文字更清晰：近灰抗锯齿用更陡的墨水/纸面映射（减轻光晕）；照片区域仍原样保留
-- stop embedded PDF audio (Sound/RichMedia/Screen) when closing a tab or window
-  关闭标签或窗口时停止 PDF 内嵌音频（Sound/RichMedia/Screen）
-- fix Match-theme dark mode on full-bleed picture-book PDFs (e.g. RAZ): correct PureScan→wrap routing; detect **all** dense photo rectangles (color + side-by-side B&W portraits) and leave them untouched; margin remap is paper/ink only (not linear invert); classify grayscale documentary photos as Photo → Preserve
-  修复「匹配主题」暗色绘本：PureScan 改走 wrap；检出**全部**密集聚照片区（含并排黑白肖像）原样保留；页边只动纸/字不做线性反色；灰度纪实照片识别为 Photo → Preserve
-- fix 32-bit DIB `GetPixel` reading alpha as red (broke dark-mode luminance diagnostics and any 32bpp pixel sampling)
-  修复 32 位 DIB `GetPixel` 把 alpha 当成红色（暗色亮度诊断与所有 32bpp 取色）
+## 3.7.25 (2026-08-05)
+
+- faster Match-theme for DuXiu/Pdg2Pic scan books: metadata → whole-tile bitmap recolor; do not treat paper+ink variance as grayscale photos (avoids picture-book multi-rect)
+  加快读秀/Pdg2Pic 扫描书「匹配主题」：元数据走整页位图重着色；纸面+墨迹方差不再误判为灰度照片（避开绘本多矩形）
+- restore Match-theme open speed for Acrobat textbooks (e.g. Exploring Our World): do not content-probe LayoutPhoto docs with heavy vector pages
+  恢复 Acrobat 教材「匹配主题」打开速度：不再对矢量极重的 LayoutPhoto 文档做内容探测
+- faster Easy RL / figure-heavy LaTeX flips: Mixed pages use wrap; non-full-bleed Preserve figures draw original (no multi-MP soft remap); dense-text pages stay BitmapRecolor
+  加快 Easy RL 等插图 LaTeX 翻页：Mixed 走 wrap；非全幅插图原样绘制；密文本页仍 BitmapRecolor
+- soften Match-theme on soft cream illustrated pages (e.g. notebook design books): Preserve with gentle paper softening instead of steep ink remap (avoids dirty grid noise)
+  「匹配主题」柔和奶油色插图页（如手帐/设计书）：轻柔纸面柔化，避免陡峭墨水映射造成的网格脏噪
+- sharper Match-theme text on scanned/picture-book pages; multi photo-rect protect for RAZ B&W portraits; RGB/Gray fast remap paths
+  扫描/绘本页文字更清晰；RAZ 多照片区保护；RGB/Gray 快速重映射
+- show home-page vertical scrollbar when recent files overflow; compact Home tab; hide native tab UpDown arrows
+  主页最近文件溢出时显示纵向滚动条；主页标签紧凑；隐藏系统标签左右箭头
+- stop embedded PDF audio when closing a tab or window
+  关闭标签或窗口时停止 PDF 内嵌音频
+- fix 32-bit DIB `GetPixel` reading alpha as red
+  修复 32 位 DIB `GetPixel` 把 alpha 当成红色
 
 ## 3.7.24 (2026-08-04)
 

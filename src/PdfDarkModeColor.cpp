@@ -742,9 +742,19 @@ fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, 
                 b = srcRgb[2];
             }
             float nr = r, ng = g, nb = b;
-            // Outside photo rects: steep ink/paper remap so AA text fringes don't
-            // stay mid-gray (halo). Colorful pixels and protected photos are left alone.
-            if (!ApplySharpDocumentInkPaper(r, g, b, palette, &nr, &ng, &nb)) {
+            if (nPhotoRects == 0) {
+                // Soft cream / pastel full-bleed (no dense photo islands): gentle paper
+                // softening only. Steep ink/paper remap turns faint grids into dirty noise.
+                float cr = r, cg = g, cb = b;
+                PdfDarkModeCompressPhotoHighlights(r, g, b, &cr, &cg, &cb);
+                float softening = PdfDarkModeCurrentOptions().preserveImagePaperSoftening;
+                if (softening <= 0.f) {
+                    softening = 0.45f;
+                }
+                ApplyPreserveImagePaperSoftening(cr, cg, cb, palette, softening, &nr, &ng, &nb);
+            } else if (!ApplySharpDocumentInkPaper(r, g, b, palette, &nr, &ng, &nb)) {
+                // Outside photo rects: steep ink/paper remap so AA text fringes don't
+                // stay mid-gray (halo). Colorful pixels and protected photos are left alone.
                 continue;
             }
             if (fastRgb) {

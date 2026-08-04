@@ -85,9 +85,8 @@ static void PrintBitmapLuminanceStats(RenderedBitmap* bmp, Vec<Rect>* skipRects)
     double avgAll = nAll ? (double)sumAll / (3.0 * nAll) : 0.0;
     double avgText = nText ? (double)sumText / (3.0 * nText) : 0.0;
     char line[512];
-    snprintf(line, dimof(line),
-             "  corners TL=(%d,%d,%d) TR=(%d,%d,%d) BL=(%d,%d,%d) BR=(%d,%d,%d) center=(%d,%d,%d)\n", tlR, tlG, tlB,
-             trR, trG, trB, blR, blG, blB, brR, brG, brB, cR, cG, cB);
+    snprintf(line, dimof(line), "  corners TL=(%d,%d,%d) TR=(%d,%d,%d) BL=(%d,%d,%d) BR=(%d,%d,%d) center=(%d,%d,%d)\n",
+             tlR, tlG, tlB, trR, trG, trB, blR, blG, blB, brR, brG, brB, cR, cG, cB);
     printf("%s", line);
     if (gRenderDiagLog) {
         fputs(line, gRenderDiagLog);
@@ -208,7 +207,10 @@ void TestRenderPage(const Flags& i) {
         if (darkProfile.mode != PageColorMode::Normal) {
             args.darkProfile = &darkProfile;
         }
+        i64 t0 = GetTickCount64();
         auto bmp = engine->RenderPage(args);
+        i64 renderMs = (i64)(GetTickCount64() - t0);
+        diag(str::FormatTemp("  RenderPage ms=%lld\n", renderMs));
         if (bmp == nullptr) {
             diag("failed to render page\n");
         } else if (DarkModeProfileUsesLegacyPostProcess(args.darkProfile)) {
