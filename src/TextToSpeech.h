@@ -9,8 +9,14 @@ struct TtsVoiceInfo {
 };
 
 bool TtsSpeakUtf8(const char* text);
+// Speak Chinese with an explicit reading from dictionary pinyin (tone marks or digits).
+// Builds SSML <phoneme alphabet="sapi" ph="..."> for WinRT/SAPI; falls back to plain text.
+bool TtsSpeakUtf8WithChinesePinyin(const char* text, const char* pinyin);
 void TtsStop();
 void TtsRelease();
+
+// Reload tts-pronunciation.json from exe dir or AppData (for tests / manual refresh).
+void TtsPronunciationReloadFromDisk();
 
 bool TtsIsSpeaking();
 

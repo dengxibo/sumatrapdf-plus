@@ -1,0 +1,34 @@
+{
+  "entries": [
+    {
+      "from": "重庆",
+      "to": "崇庆",
+      "wholeWord": true,
+      "_comment": "chóng qìng — force 重 as chóng (not zhòng). Prefer same-sound Hanzi over Latin pinyin."
+    },
+    {
+      "from": "银行",
+      "to": "银杭",
+      "wholeWord": true,
+      "_comment": "yín háng — force 行 as háng"
+    },
+    {
+      "from": "行走",
+      "to": "形走",
+      "wholeWord": true,
+      "_comment": "xíng zǒu — force 行 as xíng"
+    },
+    {
+      "from": "音乐",
+      "to": "阴乐",
+      "wholeWord": true,
+      "_comment": "yīn yuè — force 乐 as yuè"
+    },
+    {
+      "from": "单老师",
+      "to": "善老师",
+      "wholeWord": true,
+      "_comment": "shàn lǎo shī — surname 单 as shàn"
+    }
+  ]
+}

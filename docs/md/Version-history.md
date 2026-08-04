@@ -4,6 +4,10 @@
 
 ## 3.7.24 (2026-08-04)
 
+- dictionary popup: show a speaker button for Chinese lookups and speak via TTS; polyphone tabs use the selected pinyin (SSML); hide the duplicate phonetic line when tabs are shown
+  词典弹窗：中文查词支持喇叭朗读；多音字按当前拼音标签发声（SSML）；有拼音标签时不再另显一行拼音
+- add optional TTS pronunciation dictionary (`tts-pronunciation.json` next to the exe or in AppData): longest-match text rewrites before WinRT/SAPI speak; see `tts-pronunciation.sample.json`
+  可选 TTS 发音词典（程序目录或 AppData 下的 `tts-pronunciation.json`）：送入 WinRT/SAPI 前按最长匹配改写朗读文本；示例见 `tts-pronunciation.sample.json`
 - improve PDF Match-theme dark mode routing: keep colorful picture-book art (e.g. RAZ) with grey paper softening; only AdaptiveDocument-recolor true paper scans; text-heavy literature stays on OKLab remapping
   改进 PDF「匹配主题」暗色分流：绘本彩色插图保留原色（纸面柔化为灰），仅对真扫描页做 Adaptive 重着色；文字类文学书继续 OKLab 重映射
 - fix Screen annotation audio playback when the media rendition lives on an `/A` Rendition action (Media Clip `/D` filespec), e.g. RAZ-AA *The City*

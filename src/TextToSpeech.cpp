@@ -17,6 +17,9 @@
 #include <TextToSpeech.h>
 
 #include "utils/Log.h"
+#include "utils/FileUtil.h"
+#include "TtsPronunciation.h"
+#include "AppTools.h"
 
 #pragma comment(lib, "sapi.lib")
 #pragma comment(lib, "winmm.lib")
@@ -50,6 +53,10 @@ static bool gTtsChunkFinished = false;
 // copy of the text passed to last speak request and the position (in WCHARs)
 // of the last word boundary reached, for resuming stopped speech
 static WCHAR* gTtsSpokenText = nullptr;
+// When pronunciation rewrites change length, map spoken UTF-8 offsets back to the
+// original chunk offsets used by read-aloud highlighting.
+static Vec<int> gTtsSpeakSourceMap;
+static bool gTtsPronunciationLoadAttempted = false;
 
 static char* gTtsVoiceId = nullptr;
 static float gTtsSpeakingRate = 1.0f;
@@ -435,13 +442,14 @@ static void SapiProcessEvents() {
     eventSource->Release();
 }
 
-static bool SapiSpeak(const WCHAR* textW) {
+static bool SapiSpeak(const WCHAR* textW, bool isXml = false) {
     if (!SapiInit()) {
         return false;
     }
 
     ULONG streamNum = 0;
-    HRESULT hr = gSapiVoice->Speak(textW, SPF_ASYNC | SPF_PURGEBEFORESPEAK | SPF_IS_NOT_XML, &streamNum);
+    DWORD flags = SPF_ASYNC | SPF_PURGEBEFORESPEAK | (isXml ? SPF_IS_XML : SPF_IS_NOT_XML);
+    HRESULT hr = gSapiVoice->Speak(textW, flags, &streamNum);
     if (FAILED(hr)) {
         return false;
     }
@@ -842,7 +850,7 @@ static bool WinTtsSetVoiceById(const char* voiceId) {
     return didSet;
 }
 
-static bool WinTtsSpeak(const WCHAR* textW) {
+static bool WinTtsSpeakInternal(const WCHAR* textW, bool ssml) {
     if (!WinTtsInit()) {
         return false;
     }
@@ -858,7 +866,11 @@ static bool WinTtsSpeak(const WCHAR* textW) {
     }
 
     SynthAsyncOp* op = nullptr;
-    hr = gWinSynth->SynthesizeTextToStreamAsync(text, &op);
+    if (ssml) {
+        hr = gWinSynth->SynthesizeSsmlToStreamAsync(text, &op);
+    } else {
+        hr = gWinSynth->SynthesizeTextToStreamAsync(text, &op);
+    }
     pWindowsDeleteString(text);
     if (FAILED(hr) || !op) {
         return false;
@@ -870,6 +882,14 @@ static bool WinTtsSpeak(const WCHAR* textW) {
 
     gWinSynthOp = op;
     return true;
+}
+
+static bool WinTtsSpeak(const WCHAR* textW) {
+    return WinTtsSpeakInternal(textW, false);
+}
+
+static bool WinTtsSpeakSsml(const WCHAR* ssmlW) {
+    return WinTtsSpeakInternal(ssmlW, true);
 }
 
 // extract word boundary cues: where each word starts in the spoken text
@@ -1363,12 +1383,159 @@ void TtsProcessEvents() {
     SapiProcessEvents();
 }
 
+static int TtsMapSpokenUtf8ToSource(int spokenUtf8) {
+    if (spokenUtf8 < 0 || gTtsSpeakSourceMap.Size() == 0) {
+        return spokenUtf8;
+    }
+    if (spokenUtf8 >= gTtsSpeakSourceMap.Size()) {
+        spokenUtf8 = gTtsSpeakSourceMap.Size() - 1;
+    }
+    return gTtsSpeakSourceMap.At(spokenUtf8);
+}
+
+static void TtsPronunciationEnsureLoaded() {
+    if (gTtsPronunciationLoadAttempted) {
+        return;
+    }
+    gTtsPronunciationLoadAttempted = true;
+    const char* kName = "tts-pronunciation.json";
+    TempStr path = GetPathInExeDirTemp(kName);
+    if (!file::Exists(path)) {
+        path = GetPathInAppDataDirTemp(kName);
+    }
+    if (!file::Exists(path)) {
+        return;
+    }
+    ByteSlice data = file::ReadFile(path);
+    if (data.empty()) {
+        return;
+    }
+    defer {
+        data.Free();
+    };
+    // ReadFile zero-pads; safe as a C string for json::Parse.
+    if (!TtsPronunciationLoadFromJson((const char*)data.data())) {
+        logf("TtsPronunciation: failed to parse '%s'\n", path);
+    } else {
+        logf("TtsPronunciation: loaded %d entries from '%s'\n", TtsPronunciationEntryCount(), path);
+    }
+}
+
+void TtsPronunciationReloadFromDisk() {
+    gTtsPronunciationLoadAttempted = false;
+    TtsPronunciationClear();
+    TtsPronunciationEnsureLoaded();
+}
+
+static TempStr EscapeXmlTextTemp(const char* s) {
+    if (str::IsEmpty(s)) {
+        return str::DupTemp("");
+    }
+    if (!str::FindChar(s, '&') && !str::FindChar(s, '<') && !str::FindChar(s, '>') && !str::FindChar(s, '"')) {
+        return str::DupTemp(s);
+    }
+    StrBuilder out;
+    for (const char* p = s; *p; p++) {
+        switch (*p) {
+            case '&':
+                out.Append("&amp;");
+                break;
+            case '<':
+                out.Append("&lt;");
+                break;
+            case '>':
+                out.Append("&gt;");
+                break;
+            case '"':
+                out.Append("&quot;");
+                break;
+            default:
+                out.AppendChar(*p);
+                break;
+        }
+    }
+    return str::DupTemp(out.CStr());
+}
+
+static TempStr BuildChinesePhonemeSsmlTemp(const char* text, const char* sapiPh) {
+    TempStr esc = EscapeXmlTextTemp(text);
+    // SSML 1.0 + sapi phoneme (WinRT SpeechSynthesis / SAPI Chinese voices).
+    return str::FormatTemp(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
+        "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"zh-CN\">"
+        "<phoneme alphabet=\"sapi\" ph=\"%s\">%s</phoneme>"
+        "</speak>",
+        sapiPh, esc);
+}
+
+static bool TtsSpeakSsmlUtf8(const char* ssml, const char* displayTextForPos) {
+    if (str::IsEmpty(ssml)) {
+        return false;
+    }
+    TempWStr ssmlW = ToWStrTemp(ssml);
+    if (!ssmlW) {
+        return false;
+    }
+
+    bool ok;
+    TtsBackend backend = TtsBackendForSpeak();
+    if (backend == TtsBackend::WinRt) {
+        SapiStop();
+        ok = WinTtsSpeakSsml(ssmlW);
+    } else {
+        WinTtsStop();
+        ok = SapiSpeak(ssmlW, true);
+    }
+    if (!ok) {
+        gTtsActiveBackend = TtsBackend::Unknown;
+        gTtsSpeakSourceMap.Reset();
+        return false;
+    }
+
+    gTtsActiveBackend = backend;
+    gTtsSpeakSourceMap.Reset();
+    // Position map unused for dictionary popup; keep display text for any callers.
+    const char* posText = displayTextForPos ? displayTextForPos : ssml;
+    str::Free(gTtsSpokenText);
+    gTtsSpokenText = str::Dup(ToWStrTemp(posText));
+    gTtsChunkFinished = false;
+    gTtsActive = true;
+    return true;
+}
+
+bool TtsSpeakUtf8WithChinesePinyin(const char* text, const char* pinyin) {
+    if (str::IsEmpty(text)) {
+        return false;
+    }
+    char* ph = TtsPinyinToSapiPh(pinyin);
+    if (!ph) {
+        return TtsSpeakUtf8(text);
+    }
+    defer {
+        str::Free(ph);
+    };
+    TempStr ssml = BuildChinesePhonemeSsmlTemp(text, ph);
+    if (TtsSpeakSsmlUtf8(ssml, text)) {
+        return true;
+    }
+    // Some voices reject phoneme SSML; fall back to plain characters.
+    return TtsSpeakUtf8(text);
+}
+
 bool TtsSpeakUtf8(const char* text) {
     if (str::IsEmpty(text)) {
         return false;
     }
 
-    TempWStr textW = ToWStrTemp(text);
+    TtsPronunciationEnsureLoaded();
+    gTtsSpeakSourceMap.Reset();
+    char* spokenOwned = TtsPronunciationApply(text, &gTtsSpeakSourceMap);
+    defer {
+        str::Free(spokenOwned);
+    };
+    const char* speakText = spokenOwned ? spokenOwned : text;
+
+    TempWStr textW = ToWStrTemp(speakText);
     if (!textW) {
         return false;
     }
@@ -1385,6 +1552,7 @@ bool TtsSpeakUtf8(const char* text) {
     }
     if (!ok) {
         gTtsActiveBackend = TtsBackend::Unknown;
+        gTtsSpeakSourceMap.Reset();
         return false;
     }
 
@@ -1483,7 +1651,7 @@ int TtsGetSpokenPosUtf8() {
     if (wpos == 0 && !gTtsActive) {
         return -1;
     }
-    return TtsWidePosToUtf8Offset(wpos);
+    return TtsMapSpokenUtf8ToSource(TtsWidePosToUtf8Offset(wpos));
 }
 
 int TtsGetSpokenWordEndUtf8() {
@@ -1499,7 +1667,7 @@ int TtsGetSpokenWordEndUtf8() {
     if (wend <= wstart) {
         return -1;
     }
-    return TtsWidePosToUtf8Offset(wend);
+    return TtsMapSpokenUtf8ToSource(TtsWidePosToUtf8Offset(wend));
 }
 
 void TtsStop() {
@@ -1508,6 +1676,7 @@ void TtsStop() {
     gTtsActive = false;
     gTtsChunkFinished = false;
     gTtsActiveBackend = TtsBackend::Unknown;
+    gTtsSpeakSourceMap.Reset();
 }
 
 Vec<TtsVoiceInfo> TtsGetVoices() {

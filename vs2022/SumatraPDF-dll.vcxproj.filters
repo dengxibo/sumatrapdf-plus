@@ -357,6 +357,9 @@
     <ClInclude Include="..\src\TextToSpeech.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\TtsPronunciation.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\Theme.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -761,6 +764,9 @@
     <ClCompile Include="..\src\TextToSpeech.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\TtsPronunciation.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\Theme.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -849,6 +855,9 @@
       <Filter>src\utils\tests</Filter>
     </ClCompile>
     <ClCompile Include="..\src\utils\tests\JsonParser_ut.cpp">
+      <Filter>src\utils\tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\utils\tests\TtsPronunciation_ut.cpp">
       <Filter>src\utils\tests</Filter>
     </ClCompile>
     <ClCompile Include="..\src\utils\tests\PdfDarkModeImageClassifier_ut.cpp">

@@ -939,6 +939,7 @@
     <ClCompile Include="..\src\utils\HtmlPrettyPrint.cpp" />
     <ClCompile Include="..\src\utils\HtmlPullParser.cpp" />
     <ClCompile Include="..\src\utils\JsonParser.cpp" />
+    <ClCompile Include="..\src\TtsPronunciation.cpp" />
     <ClCompile Include="..\src\utils\Log.cpp">
       <ObjectFileName>$(IntDir)\Log1.obj</ObjectFileName>
     </ClCompile>
@@ -963,6 +964,7 @@
     <ClCompile Include="..\src\utils\tests\HtmlPrettyPrint_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\HtmlPullParser_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\JsonParser_ut.cpp" />
+    <ClCompile Include="..\src\utils\tests\TtsPronunciation_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\PdfDarkModeImageClassifier_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\PdfDarkModeOklab_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\SettingsUtil_ut.cpp" />

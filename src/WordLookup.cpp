@@ -39,6 +39,8 @@
 // Set to false (or revert WordLookup.cpp + SumatraPDF.h/cpp exports) to disable.
 static const bool kWordLookupResumeReadAloud = true;
 
+static bool IsChineseLookupWord(const char* word);
+
 #include "DarkModeSubclass.h"
 
 #include "utils/Log.h"
@@ -313,6 +315,11 @@ static void SafeDeleteWordLookupWnd() {
     }
     WordLookupWnd* wnd = gWordLookupWnd;
     gWordLookupWnd = nullptr;
+    // Stop Chinese word TTS before resuming document read-aloud.
+    if (wnd->speakerPlaying && IsChineseLookupWord(wnd->queryWord)) {
+        TtsStop();
+        wnd->speakerPlaying = false;
+    }
     WordLookupResumeReadAloudIfNeeded(wnd);
     delete wnd;
 }
@@ -360,6 +367,17 @@ static bool IsAudioReady(const DictSense* sense) {
 
 static bool IsLookupAudioPlaying() {
     return LookupAudioIsPlaying();
+}
+
+static bool IsLookupSpeakerPlaybackActive(WordLookupWnd* wnd) {
+    if (!wnd) {
+        return false;
+    }
+    if (IsLookupAudioPlaying()) {
+        return true;
+    }
+    // Chinese lookup uses TTS instead of recorded clips.
+    return IsChineseLookupWord(wnd->queryWord) && TtsIsSpeaking();
 }
 
 static void EnsureSpeakerAnimTimer(WordLookupWnd* wnd);
@@ -865,11 +883,18 @@ static bool IsChineseLookupWord(const char* word) {
     if (str::IsEmpty(word)) {
         return false;
     }
+    bool hasCjk = false;
     const char* p = word;
     while (*p) {
         unsigned char c = (unsigned char)*p;
         if (c < 0x80) {
-            return false;
+            // Headwords often include ASCII notes, e.g. "群 (＊羣)". Allow those, but any
+            // Latin letter means this is not a Chinese lookup key.
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
+                return false;
+            }
+            p++;
+            continue;
         }
         int len = 1;
         if ((c & 0xE0) == 0xC0) {
@@ -884,12 +909,66 @@ static bool IsChineseLookupWord(const char* word) {
                 return false;
             }
         }
-        if (len < 3) {
-            return false;
+        if (len >= 3) {
+            hasCjk = true;
         }
         p += len;
     }
-    return p > word;
+    return hasCjk;
+}
+
+// Text to speak for Chinese lookup: prefer the user's selection, not headword notes.
+// Strip dictionary sense indexes like "的 1" / "的1" so TTS does not say the number.
+static TempStr StripChineseDictSpeakTextTemp(const char* s) {
+    if (str::IsEmpty(s)) {
+        return nullptr;
+    }
+    size_t n = str::Len(s);
+    // Trim trailing ASCII spaces/tabs and sense digits ("的 1", "的1").
+    while (n > 0) {
+        char c = s[n - 1];
+        if (c == ' ' || c == '\t' || (c >= '0' && c <= '9')) {
+            n--;
+            continue;
+        }
+        break;
+    }
+    if (n == 0) {
+        return nullptr;
+    }
+    return str::DupTemp(s, n);
+}
+
+static TempStr LookupChineseSpeakTextTemp(WordLookupWnd* wnd, DictSense* sense) {
+    const char* raw = nullptr;
+    if (wnd && !str::IsEmpty(wnd->queryWord) && IsChineseLookupWord(wnd->queryWord)) {
+        // queryWord may have been replaced by a long headword after fetch; if it still
+        // looks like a short selection (no ASCII paren note), use it.
+        if (!str::FindChar(wnd->queryWord, '(') && !str::FindChar(wnd->queryWord, ')')) {
+            raw = wnd->queryWord;
+        }
+    }
+    if (!raw && sense && !str::IsEmpty(sense->headword)) {
+        // Strip " (＊…)" / " (...)" variant note for cleaner TTS.
+        const char* h = sense->headword;
+        const char* paren = str::FindChar(h, '(');
+        if (paren && paren > h) {
+            while (paren > h && (paren[-1] == ' ' || paren[-1] == '\t')) {
+                paren--;
+            }
+            if (paren > h) {
+                raw = str::DupTemp(h, (size_t)(paren - h));
+            } else {
+                raw = h;
+            }
+        } else {
+            raw = h;
+        }
+    }
+    if (!raw) {
+        raw = wnd ? wnd->queryWord : nullptr;
+    }
+    return StripChineseDictSpeakTextTemp(raw);
 }
 
 static DictLookupHit FindBestChineseDictLookupHit(const char* word, char** matchedWordOut) {
@@ -1066,18 +1145,23 @@ static const char* LookupChinesePinyin(DictSense* sense) {
     if (!sense) {
         return nullptr;
     }
+    // Polyphone senses put the reading on the tab label (qiào / shāo). Prefer that over
+    // the shared entry-level ipa, which is often only the first reading for every sense.
+    if (sense->label && sense->label[0] && !IsPosAbbrevLabel(sense->label)) {
+        return sense->label;
+    }
     if (sense->ipa && sense->ipa[0]) {
         return sense->ipa;
-    }
-    // older Chinese imports stored pinyin in the tab label for polyphones
-    if (sense->label && !IsPosAbbrevLabel(sense->label)) {
-        return sense->label;
     }
     return nullptr;
 }
 
-static TempStr LookupPhoneticLineTemp(DictSense* sense, const char* title) {
+static TempStr LookupPhoneticLineTemp(WordLookupWnd* wnd, DictSense* sense, const char* title) {
     if (!sense || str::IsEmpty(title)) {
+        return nullptr;
+    }
+    // When polyphone pinyin tabs are shown, the tabs are the only pinyin UI — no second line.
+    if (wnd && !wnd->isLoading && wnd->nSenses > 1) {
         return nullptr;
     }
     if (IsChineseLookupWord(title)) {
@@ -1420,10 +1504,97 @@ static HFONT LookupTitleFont(WordLookupWnd* wnd) {
 }
 
 static bool LookupShowsSpeaker(WordLookupWnd* wnd, DictSense* sense) {
-    if (!wnd || IsChineseLookupWord(wnd->queryWord)) {
+    if (!wnd) {
         return false;
     }
+    // Chinese dict has no recorded clips; show speaker and use TTS for the headword.
+    if (IsChineseLookupWord(wnd->queryWord)) {
+        return !wnd->isLoading && sense && !str::IsEmpty(sense->headword ? sense->headword : wnd->queryWord);
+    }
     return wnd->isLoading || HasAudioMeta(sense);
+}
+
+static bool LookupTtsVoiceLangIsZh(const TtsVoiceInfo& voice) {
+    return voice.lang && (str::StartsWithI(voice.lang, "zh") || str::StartsWithI(voice.lang, "cmn"));
+}
+
+// Prefer the user's Chinese read-aloud voice so lookup matches document TTS.
+static bool LookupEnsureChineseTtsVoice() {
+    auto tryId = [](const char* id) -> bool {
+        if (str::IsEmpty(id)) {
+            return false;
+        }
+        return TtsSetVoiceById(id);
+    };
+    if (gGlobalPrefs) {
+        if (tryId(gGlobalPrefs->readAloudSmartVoiceZh)) {
+            return true;
+        }
+        if (tryId(gGlobalPrefs->readAloudSmartOnlineVoiceZh)) {
+            return true;
+        }
+        // Single selected voice may already be Chinese.
+        if (!str::IsEmpty(gGlobalPrefs->readAloudVoiceId) &&
+            !str::Eq(gGlobalPrefs->readAloudVoiceId, kTtsSmartBilingualVoiceId) &&
+            !str::Eq(gGlobalPrefs->readAloudVoiceId, kTtsSmartOnlineBilingualVoiceId)) {
+            // Only accept if it looks Chinese — check via voice list.
+            Vec<TtsVoiceInfo> voices = TtsGetVoices();
+            bool ok = false;
+            for (TtsVoiceInfo& v : voices) {
+                if (str::Eq(v.id, gGlobalPrefs->readAloudVoiceId) && LookupTtsVoiceLangIsZh(v)) {
+                    ok = tryId(v.id);
+                    break;
+                }
+            }
+            TtsFreeVoices(voices);
+            if (ok) {
+                return true;
+            }
+        }
+    }
+    Vec<TtsVoiceInfo> voices = TtsGetVoices();
+    bool ok = false;
+    for (TtsVoiceInfo& v : voices) {
+        if (LookupTtsVoiceLangIsZh(v) && tryId(v.id)) {
+            ok = true;
+            break;
+        }
+    }
+    TtsFreeVoices(voices);
+    return ok;
+}
+
+static bool SpeakLookupChineseWithTts(WordLookupWnd* wnd) {
+    if (!wnd) {
+        return false;
+    }
+    DictSense* sense = CurrentSense(wnd);
+    TempStr text = LookupChineseSpeakTextTemp(wnd, sense);
+    if (str::IsEmpty(text)) {
+        return false;
+    }
+    // Prefer the selected sense pinyin so polyphone tabs (qiào / shāo) speak differently.
+    LookupAudioStop();
+    LookupEnsureChineseTtsVoice();
+    if (gGlobalPrefs) {
+        TtsSetSpeakingRate(gGlobalPrefs->readAloudSpeakingRateZh);
+    }
+    const char* py = LookupChinesePinyin(sense);
+    bool ok = false;
+    if (!str::IsEmpty(py)) {
+        ok = TtsSpeakUtf8WithChinesePinyin(text, py);
+    } else {
+        ok = TtsSpeakUtf8(text);
+    }
+    if (!ok) {
+        return false;
+    }
+    wnd->speakerPlaying = true;
+    wnd->speakerWaveTick = 0;
+    wnd->speakerPlayFrames = kSpeakerPlayMinFrames;
+    EnsureSpeakerAnimTimer(wnd);
+    HwndScheduleRepaint(wnd->hwnd);
+    return true;
 }
 
 static int CalcLookupTitleRowDy(HWND hwnd, HDC hdc, WordLookupWnd* wnd, HFONT titleFont, DictSense* sense) {
@@ -1456,7 +1627,7 @@ static int CalcLookupWindowDy(WordLookupWnd* wnd) {
     HFONT titleFont = LookupTitleFont(wnd);
 
     dy += CalcLookupTitleRowDy(hwnd, hdc, wnd, titleFont, sense);
-    TempStr phoneticLine = LookupPhoneticLineTemp(sense, wnd->queryWord);
+    TempStr phoneticLine = LookupPhoneticLineTemp(wnd, sense, wnd->queryWord);
     if (phoneticLine) {
         dy += CalcTextDy(hdc, wnd->font, phoneticLine, contentDx, DT_SINGLELINE) + DpiScale(hwnd, 4);
     }
@@ -1530,6 +1701,10 @@ void WordLookupWnd::PlayAudio() {
     if (currTab < 0 || currTab >= nSenses) {
         return;
     }
+    if (IsChineseLookupWord(queryWord)) {
+        SpeakLookupChineseWithTts(this);
+        return;
+    }
     DictSense* sense = &senses[currTab];
     if (!IsAudioReady(sense)) {
         return;
@@ -1547,6 +1722,9 @@ void WordLookupWnd::SelectTab(int tab) {
     if (tab < 0 || tab >= nSenses || tab == currTab) {
         return;
     }
+    if (speakerPlaying && IsChineseLookupWord(queryWord)) {
+        TtsStop();
+    }
     StopCurrentLookupAudio();
     speakerPlaying = false;
     speakerWaveTick = 0;
@@ -1556,6 +1734,10 @@ void WordLookupWnd::SelectTab(int tab) {
     ResizeLookupForPaint(this);
     PositionWordLookup(this, anchorPos);
     HwndScheduleRepaint(hwnd);
+    // Switching polyphone pinyin should immediately play the new reading.
+    if (IsChineseLookupWord(queryWord)) {
+        PlayAudio();
+    }
 }
 
 void WordLookupWnd::SetLoading(const char* word) {
@@ -1735,7 +1917,7 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
     DictSense* sense = CurrentSense(this);
     const char* title = sense && sense->headword ? sense->headword : queryWord;
     HFONT titleFont = LookupTitleFont(this);
-    bool audioReady = !isLoading && sense && IsAudioReady(sense);
+    bool audioReady = !isLoading && sense && (IsAudioReady(sense) || IsChineseLookupWord(queryWord));
     bool showSpeaker = LookupShowsSpeaker(this, sense);
 
     int iconSz = DpiScale(hwnd, 22);
@@ -1766,7 +1948,7 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
     }
     y += std::max(std::max(titleDy, titleRowDy), titleLineDy) + DpiScale(hwnd, 2);
 
-    TempStr phoneticLine = LookupPhoneticLineTemp(sense, title ? title : "");
+    TempStr phoneticLine = LookupPhoneticLineTemp(this, sense, title ? title : "");
     if (phoneticLine && y < bottom) {
         RECT r{x, y, right, bottom};
         y +=
@@ -1894,7 +2076,7 @@ LRESULT WordLookupWnd::WndProc(HWND hwndIn, UINT msg, WPARAM wp, LPARAM lp) {
                     if (speakerPlayFrames > 0) {
                         speakerPlayFrames--;
                     }
-                    if (speakerPlayFrames == 0 && !IsLookupAudioPlaying()) {
+                    if (speakerPlayFrames == 0 && !IsLookupSpeakerPlaybackActive(this)) {
                         speakerPlaying = false;
                         speakerWaveTick = 0;
                     }

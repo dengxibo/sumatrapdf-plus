@@ -93,6 +93,25 @@ No MSIX download; voices are fetched online when reading.
 | Path setup | `C:\TTS` or other ASCII path | None |
 | Best for | Long reading sessions, books | Quick try-out |
 
+## Chinese pronunciation dictionary
+
+WinRT SpeechSynthesis and SAPI 5 speak **plain text only** (no SSML/`<phoneme>`). By default the engine picks readings from context. To force names, places, or polyphones, place `tts-pronunciation.json` next to `SumatraPDF.exe` or in the SumatraPDF AppData folder (exe directory wins). Copy and edit [`tts-pronunciation.sample.json`](../../tts-pronunciation.sample.json) as a starting point.
+
+```json
+{
+  "entries": [
+    { "from": "重庆", "to": "崇庆", "wholeWord": true },
+    { "from": "银行", "to": "银杭", "wholeWord": true },
+    { "from": "单老师", "to": "善老师", "wholeWord": true }
+  ]
+}
+```
+
+- Matching is **longest `from` first**, so a rule for `重庆` wins over a shorter rule for `重`.
+- `to` should usually be **homophone Hanzi** (same intended reading). Latin pinyin in `to` often sounds wrong on Chinese voices.
+- Only the spoken stream is rewritten; on-screen text and word highlight stay on the original document text.
+- Restart reading (or restart the app) after editing the file. `wholeWord` mainly protects Latin tokens (e.g. `row` inside `crowd`); CJK relies on longest-match.
+
 ## FAQ
 
 **Voice menu only shows Huihui / Kangkang / Yaoyao**
