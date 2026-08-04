@@ -44,6 +44,12 @@ int EngineGetProgressivePageCount(EngineBase* engine);
 void EngineMupdfAckPdfDeferredUi(EngineBase* engine);
 bool EngineMupdfIsFollowThemeProbePending(EngineBase* engine);
 void EngineMupdfScheduleFollowThemeProbe(EngineBase* engine);
+// Runs the deferred content probe synchronously (for -render diagnostics / tests).
+void EngineMupdfEnsureFollowThemeProbeDone(EngineBase* engine);
+// 0=unknown/pending, 1=bitmap-recolor doc, 2=layout/wrap doc
+int EngineMupdfGetFollowThemeDocClass(EngineBase* engine);
+// Cached page probe: 0=unset, 1=PureScan, 2=BitmapRecolor, 3=Mixed (see FollowThemeScanProbe)
+int EngineMupdfGetFollowThemePageProbe(EngineBase* engine, int pageNo);
 void NotifyPdfFollowThemeProbeComplete(const char* filePath);
 int EngineEbookParseTocLinkFilePos(EngineBase* engine, IPageDestination* dest);
 bool EngineEbookIsTocFilePosReachable(EngineBase* engine, int filePos);

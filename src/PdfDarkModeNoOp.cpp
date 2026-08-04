@@ -90,8 +90,8 @@ fz_device* PdfDarkModeWrapDevice(fz_context* ctx, fz_device* inner, DarkModePage
 }
 
 fz_device* PdfDarkModeWrapFollowThemeDevice(fz_context* ctx, fz_device* inner, const DarkModePalette* palette,
-                                            const RectF& pageBounds, DarkModeEngineCache* engineCache,
-                                            u32 profileHash, const Vec<RectF>* artworkBounds) {
+                                            const RectF& pageBounds, DarkModeEngineCache* engineCache, u32 profileHash,
+                                            const Vec<RectF>* artworkBounds) {
     (void)ctx;
     (void)palette;
     (void)pageBounds;
@@ -120,6 +120,12 @@ void PdfDarkModeInvalidatePage(fz_context* ctx, FzPageInfo* pageInfo) {
 }
 
 bool PdfDarkModePdfMetadataSuggestsBitmapRecolorDoc(fz_context* ctx, pdf_document* doc) {
+    (void)ctx;
+    (void)doc;
+    return false;
+}
+
+bool PdfDarkModePdfMetadataSuggestsFullPageScanDoc(fz_context* ctx, pdf_document* doc) {
     (void)ctx;
     (void)doc;
     return false;
@@ -188,8 +194,7 @@ bool PdfDarkModeIsDecorativeStripImage(const RectF& imgRect, const RectF& pageBo
     return false;
 }
 
-bool PdfDarkModeIsPhotoFrameStripImage(const RectF& imgRect, const RectF& pageBounds,
-                                       const Vec<RectF>* artworkBounds) {
+bool PdfDarkModeIsPhotoFrameStripImage(const RectF& imgRect, const RectF& pageBounds, const Vec<RectF>* artworkBounds) {
     (void)imgRect;
     (void)pageBounds;
     (void)artworkBounds;
@@ -241,8 +246,7 @@ DarkModeOptions PdfDarkModeCurrentOptions() {
 }
 
 FollowThemeScanProbe PdfDarkModeProbeFollowThemeScanList(fz_context* ctx, fz_display_list* list,
-                                                         const RectF& pageBounds,
-                                                         FollowThemePageProbeStats* stats) {
+                                                         const RectF& pageBounds, FollowThemePageProbeStats* stats) {
     (void)ctx;
     (void)list;
     (void)pageBounds;

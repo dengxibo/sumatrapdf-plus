@@ -90,15 +90,53 @@ void TabsCtrl::LayoutTabs() {
         HwndScheduleRepaint(hwnd);
         return;
     }
-    int dx;
-    if (tabWidthFrozen && frozenTabDx > 0) {
-        dx = frozenTabDx;
-    } else {
-        auto maxDx = (rect.dx - 5) / nTabs;
-        dx = std::min(tabDefaultDx, maxDx);
+
+    HFONT hfont = GetFont();
+    int textPad = DpiScale(hwnd, 8);
+    // Home / pinned tabs: compact width from label (not the shared document max).
+    // Document tabs stay equal and shrink together when crowded — no scroll arrows.
+    int pinnedTotalDx = 0;
+    int nDocTabs = 0;
+    for (int i = 0; i < nTabs; i++) {
+        TabInfo* ti = GetTab(i);
+        if (ti->isPinned) {
+            Size ts = HwndMeasureText(hwnd, ti->text, hfont);
+            int pinnedDx = ts.dx + 2 * textPad;
+            int minPinned = DpiScale(hwnd, 48);
+            if (pinnedDx < minPinned) {
+                pinnedDx = minPinned;
+            }
+            // stash desired width in titleSize.dx until we assign rects
+            ti->titleSize = ts;
+            ti->r.dx = pinnedDx;
+            pinnedTotalDx += pinnedDx;
+        } else {
+            nDocTabs++;
+        }
     }
-    tabSize = {dx, dy};
-    // logfa("TabsCtrl::Layout size: (%d, %d), tab size: (%d, %d)\n", rect.dx, rect.dy, tabSize.dx, tabSize.dy);
+
+    int gap = 5;
+    int availForDocs = rect.dx - gap - pinnedTotalDx;
+    if (availForDocs < 0) {
+        availForDocs = 0;
+    }
+    int docDx;
+    if (tabWidthFrozen && frozenTabDx > 0) {
+        docDx = frozenTabDx;
+    } else if (nDocTabs > 0) {
+        int maxDx = availForDocs / nDocTabs;
+        docDx = std::min(tabDefaultDx, maxDx);
+        int minDoc = DpiScale(hwnd, 40);
+        if (docDx < minDoc && maxDx >= minDoc) {
+            docDx = minDoc;
+        }
+        if (docDx < 1) {
+            docDx = 1;
+        }
+    } else {
+        docDx = tabDefaultDx;
+    }
+    tabSize = {docDx, dy};
 
     int closeDy = DpiScale(hwnd, 16);
     int closeDx = closeDy;
@@ -108,12 +146,12 @@ void TabsCtrl::LayoutTabs() {
     bool isRtl = HwndIsRtl(hwnd);
     int closePad = DpiScale(hwnd, 8); // padding between close circle and tab edge
 
-    HFONT hfont = GetFont();
     int x = isRtl ? rect.dx : 0;
     int xEnd;
     TooltipInfo* tools = AllocArrayTemp<TooltipInfo>(nTabs);
     for (int i = 0; i < nTabs; i++) {
         TabInfo* ti = GetTab(i);
+        int dx = ti->isPinned ? ti->r.dx : docDx;
         if (isRtl) {
             xEnd = x - dx;
             ti->r = {xEnd, 0, dx, dy};
@@ -132,9 +170,9 @@ void TabsCtrl::LayoutTabs() {
             y = 0;
         }
         if (isRtl) {
-            ti->titlePos = {xEnd + dx - 2 - ti->titleSize.dx, y};
+            ti->titlePos = {xEnd + dx - textPad - ti->titleSize.dx, y};
         } else {
-            ti->titlePos = {x + 2, y};
+            ti->titlePos = {x + textPad, y};
         }
         if (withToolTips) {
             tools[i].s = ti->tooltip;
@@ -149,7 +187,18 @@ void TabsCtrl::LayoutTabs() {
         TooltipAddTools(ttHwnd, hwnd, tools, nTabs);
     }
 
-    HwndTabsSetItemSize(hwnd, tabSize);
+    // Native WC_TABCONTROL assumes every tab is TCM_SETITEMSIZE wide. Home is
+    // narrower, so nTabs*docDx can exceed the client and Windows draws UpDown
+    // scroll arrows — hide them; we shrink tabs instead of scrolling.
+    int nativeDx = nTabs > 0 ? (rect.dx - gap) / nTabs : docDx;
+    if (nativeDx < 1) {
+        nativeDx = 1;
+    }
+    HwndTabsSetItemSize(hwnd, {nativeDx, dy});
+    HWND hwndUpDown = FindWindowExW(hwnd, nullptr, UPDOWN_CLASSW, nullptr);
+    if (hwndUpDown) {
+        ShowWindow(hwndUpDown, SW_HIDE);
+    }
 }
 
 // Finds the index of the tab, which contains the given point.

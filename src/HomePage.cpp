@@ -1920,14 +1920,28 @@ static bool HomePageIsThumbFileLink(MainWindow* win, const char* target) {
     return false;
 }
 
-static void HomePageUpdateOverlayScrollPos(MainWindow* win, int pos) {
-    if (win->overlayScrollV && win->homePageMaxScrollY > 0) {
-        SCROLLINFO si{};
-        si.cbSize = sizeof(si);
-        si.fMask = SIF_POS;
-        si.nPos = pos;
-        OverlayScrollbarSetInfo(win->overlayScrollV, &si, TRUE);
+static void HomePageUpdateScrollPos(MainWindow* win, int pos) {
+    if (!win) {
+        return;
     }
+    if (ScrollbarsUseOverlay()) {
+        if (win->overlayScrollV && win->homePageMaxScrollY > 0) {
+            SCROLLINFO si{};
+            si.cbSize = sizeof(si);
+            si.fMask = SIF_POS;
+            si.nPos = pos;
+            OverlayScrollbarSetInfo(win->overlayScrollV, &si, TRUE);
+        }
+        return;
+    }
+    if (ScrollbarsAreHidden()) {
+        return;
+    }
+    SCROLLINFO si{};
+    si.cbSize = sizeof(si);
+    si.fMask = SIF_POS;
+    si.nPos = pos;
+    SetScrollInfo(win->hwndCanvas, SB_VERT, &si, TRUE);
 }
 
 static void HomePageOffsetThumbLinks(MainWindow* win, int dy) {
@@ -2204,7 +2218,7 @@ static bool HomePageApplyScrollStep(MainWindow* win, bool fastDraw) {
 
     win->homePageScrollY = current + scrollBy;
     if (HomePageTryBlitScroll(win, scrollBy, fastDraw)) {
-        HomePageUpdateOverlayScrollPos(win, win->homePageScrollY);
+        HomePageUpdateScrollPos(win, win->homePageScrollY);
         return win->homePageScrollY != target;
     }
 
@@ -2225,7 +2239,7 @@ void HomePageOnScrollTimer(MainWindow* win) {
 
 static void HomePageScrollToTarget(MainWindow* win, int targetY) {
     win->homePageScrollTargetY = targetY;
-    HomePageUpdateOverlayScrollPos(win, targetY);
+    HomePageUpdateScrollPos(win, targetY);
     if (HomePageApplyScrollStep(win, true)) {
         HomePageEnsureScrollTimer(win);
     } else if (win->homePageScrollY == targetY) {
@@ -2248,25 +2262,40 @@ void DrawHomePage(MainWindow* win, HDC hdc) {
 
     HomePageUpdateScrollCache(win, l);
 
-    // update overlay scrollbar for home page if thumbnails overflow visible area
-    bool showScrollbarV = ScrollbarsUseOverlay() && l.totalContentDy > l.thumbsVisibleDy;
-    if (showScrollbarV) {
-        if (!win->overlayScrollV) {
-            win->overlayScrollV =
-                OverlayScrollbarCreate(win->hwndCanvas, OverlayScrollbar::Type::Vert, ScrollbarsOverlayMode());
+    // Vertical scrollbar when the file grid/list overflows the visible area.
+    bool needVScroll = l.totalContentDy > l.thumbsVisibleDy && !ScrollbarsAreHidden();
+    SCROLLINFO si{};
+    si.cbSize = sizeof(si);
+    si.fMask = SIF_ALL;
+    si.nMin = 0;
+    si.nMax = needVScroll ? l.totalContentDy - 1 : 0;
+    si.nPage = needVScroll ? (UINT)l.thumbsVisibleDy : 1;
+    si.nPos = win->homePageScrollY;
+
+    if (ScrollbarsUseOverlay()) {
+        if (needVScroll) {
+            // Thick (always visible) on the home page so overflow is obvious;
+            // document view restores Smart/Overlay mode via UpdateScrollbars.
+            if (!win->overlayScrollV) {
+                win->overlayScrollV =
+                    OverlayScrollbarCreate(win->hwndCanvas, OverlayScrollbar::Type::Vert, OverlayScrollbar::Mode::Thick);
+            } else {
+                OverlayScrollbarSetMode(win->overlayScrollV, OverlayScrollbar::Mode::Thick);
+            }
+            OverlayScrollbarShow(win->overlayScrollV, true);
+            OverlayScrollbarSetInfo(win->overlayScrollV, &si, TRUE);
+        } else {
+            OverlayScrollbarShow(win->overlayScrollV, false);
         }
-        SCROLLINFO si{};
-        si.cbSize = sizeof(si);
-        si.fMask = SIF_ALL;
-        si.nMin = 0;
-        si.nMax = l.totalContentDy - 1;
-        si.nPage = l.thumbsVisibleDy;
-        si.nPos = win->homePageScrollY;
-        OverlayScrollbarShow(win->overlayScrollV, true);
-        OverlayScrollbarSetInfo(win->overlayScrollV, &si, TRUE);
+        ShowScrollBar(win->hwndCanvas, SB_VERT, FALSE);
+    } else if (needVScroll) {
+        OverlayScrollbarShow(win->overlayScrollV, false);
+        ShowScrollBar(win->hwndCanvas, SB_VERT, TRUE);
+        SetScrollInfo(win->hwndCanvas, SB_VERT, &si, TRUE);
+    } else {
+        OverlayScrollbarShow(win->overlayScrollV, false);
+        ShowScrollBar(win->hwndCanvas, SB_VERT, FALSE);
     }
-    // show thin scrollbar briefly to indicate content is scrollable
-    OverlayScrollbarShow(win->overlayScrollV, showScrollbarV);
 }
 
 void HomePageOnVScroll(MainWindow* win, WPARAM wp) {
@@ -2294,10 +2323,15 @@ void HomePageOnVScroll(MainWindow* win, WPARAM wp) {
             break;
         case SB_THUMBTRACK:
         case SB_THUMBPOSITION: {
-            int pos = (int)(short)HIWORD(wp);
-            // overlay scrollbar sends full position in HIWORD for THUMBTRACK
-            if (win->overlayScrollV) {
+            int pos = 0;
+            if (ScrollbarsUseOverlay() && win->overlayScrollV) {
                 pos = win->overlayScrollV->nTrackPos;
+            } else {
+                SCROLLINFO trackSi{};
+                trackSi.cbSize = sizeof(trackSi);
+                trackSi.fMask = SIF_TRACKPOS;
+                GetScrollInfo(win->hwndCanvas, SB_VERT, &trackSi);
+                pos = trackSi.nTrackPos;
             }
             newScrollY = pos;
             break;

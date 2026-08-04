@@ -217,7 +217,10 @@ static void ApplyFollowThemeDocClassFromMetadata(EngineMupdf* engine, fz_context
         return;
     }
     // Doc class comes from PDF metadata only; do not tie it to the current UI theme.
-    if (PdfDarkModePdfMetadataSuggestsBitmapRecolorDoc(ctx, engine->pdfdoc)) {
+    // Full-page scan packs (DuXiu/Pdg2Pic) must win over Acrobat producer → LayoutPhoto,
+    // otherwise every page takes the heavy FollowTheme wrap path.
+    if (PdfDarkModePdfMetadataSuggestsFullPageScanDoc(ctx, engine->pdfdoc) ||
+        PdfDarkModePdfMetadataSuggestsBitmapRecolorDoc(ctx, engine->pdfdoc)) {
         engine->followThemeDocBitmapRecolor = 1;
         engine->followThemeContentProbed = true;
     } else if (PdfDarkModePdfMetadataSuggestsPaperCaptureDoc(ctx, engine->pdfdoc) ||
@@ -8192,6 +8195,73 @@ static bool FollowThemeProbeUsesBitmapRecolor(FollowThemeScanProbe probe) {
     return probe == FollowThemeScanProbe::PureScan || probe == FollowThemeScanProbe::BitmapRecolor;
 }
 
+// RAZ-style PDFs are one full-bleed colorful image per page (few text/vector ops), so the
+// structural PureScan probe matches true paper scans. Whole-tile bitmap recolor then skips
+// that full-page image → the page looks completely unprocessed ("original"). Treat colorful
+// full-bleed art as Mixed so FollowTheme wrap + paper softening runs instead.
+static bool FollowThemePureScanIsColorfulPictureBook(fz_context* ctx, EngineMupdf* engine, FzPageInfo* pageInfo,
+                                                     fz_page* page, float maxImageCoverage) {
+    if (!ctx || !engine || !pageInfo || !page) {
+        return false;
+    }
+    DarkModeOptions opts = PdfDarkModeCurrentOptions();
+    if (maxImageCoverage < opts.scanImageCoverageThreshold) {
+        return false;
+    }
+    if (!pageInfo->contentImagesCollected) {
+        FzCollectImagesFromPageContent(ctx, pageInfo->pageNo, pageInfo, page, nullptr);
+        pageInfo->contentImagesCollected = true;
+    }
+    RectF pageBounds = pageInfo->mediabox;
+    if (pageBounds.IsEmpty()) {
+        pageBounds = ToRectF(fz_bound_page(ctx, page));
+    }
+    float pageArea = pageBounds.dx * pageBounds.dy;
+    if (pageArea <= 0.f) {
+        return false;
+    }
+    for (int i = 0; i < pageInfo->images.Size(); i++) {
+        FitzPageImageInfo* img = pageInfo->images.at(i);
+        if (!img) {
+            continue;
+        }
+        RectF imgOnPage = ToRectF(img->rect).Intersect(pageBounds);
+        float coverage = (imgOnPage.dx * imgOnPage.dy) / pageArea;
+        if (coverage < opts.scanImageCoverageThreshold) {
+            continue;
+        }
+        fz_image* image = FzGetKeptPageImage(ctx, pageInfo, i);
+        if (!image) {
+            continue;
+        }
+        bool art = PdfDarkModeImageIsConfirmedArtwork(ctx, image, coverage, (int)(imgOnPage.dx + 0.5f),
+                                                      (int)(imgOnPage.dy + 0.5f));
+        if (!art) {
+            DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, image, coverage, false);
+            art = PdfDarkModeFeaturesLookLikePhoto(analysis.features) ||
+                  PdfDarkModeShouldPreserveImageFeatures(analysis.features, coverage);
+        }
+        fz_drop_image(ctx, image);
+        if (art) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static FollowThemeScanProbe FollowThemeRefinePureScanForPictureBook(fz_context* ctx, EngineMupdf* engine,
+                                                                    FzPageInfo* pageInfo, fz_page* page,
+                                                                    FollowThemeScanProbe probe,
+                                                                    const FollowThemePageProbeStats& st) {
+    if (probe != FollowThemeScanProbe::PureScan) {
+        return probe;
+    }
+    if (FollowThemePureScanIsColorfulPictureBook(ctx, engine, pageInfo, page, st.maxImageCoverage)) {
+        return FollowThemeScanProbe::Mixed;
+    }
+    return probe;
+}
+
 static void CacheLaTeXFollowThemePageProbe(EngineMupdf* engine, fz_context* ctx, FzPageInfo* pageInfo, fz_page* page,
                                            fz_display_list* list) {
     if (!engine || !pageInfo || !page || engine->followThemeDocBitmapRecolor != 1) {
@@ -8212,6 +8282,7 @@ static void CacheLaTeXFollowThemePageProbe(EngineMupdf* engine, fz_context* ctx,
         probe = PdfDarkModeProbeFollowThemeScanPage(ctx, page, pageBounds, &st);
     }
     probe = PdfDarkModeLaTeXRefineFollowThemeProbe(probe, st, PdfDarkModeCurrentOptions());
+    probe = FollowThemeRefinePureScanForPictureBook(ctx, engine, pageInfo, page, probe, st);
     u8 cacheProbe = (u8)FollowThemeScanProbe::Mixed;
     if (probe == FollowThemeScanProbe::PureScan) {
         cacheProbe = (u8)FollowThemeScanProbe::PureScan;
@@ -8309,26 +8380,31 @@ static void DetectFollowThemeDocBitmapRecolor(EngineMupdf* engine, fz_context* c
     if (engine->followThemeDocBitmapRecolor == 1 || engine->followThemeContentProbed) {
         return;
     }
-    // Paper Capture OCR textbooks: mostly text pages with a few cover/figure scans.
-    // Use the lightweight follow-theme wrap path for the whole document; probing cover
-    // pages is slow and would mis-classify the book as full-page bitmap recolor.
-    if (PdfDarkModePdfMetadataSuggestsPaperCaptureDoc(ctx, engine->pdfdoc)) {
+    // Full-page image scans (DuXiu / Pdg2Pic / …): whole-tile recolor, skip content probe.
+    if (PdfDarkModePdfMetadataSuggestsFullPageScanDoc(ctx, engine->pdfdoc)) {
+        engine->followThemeDocBitmapRecolor = 1;
+        engine->followThemeContentProbed = true;
+        return;
+    }
+    // Paper Capture / Acrobat layout textbooks: wrap path for the whole document.
+    // Do NOT content-probe here — body pages can have tens of thousands of vector ops
+    // (e.g. Exploring Our World) and probing made Match-theme open multi-second.
+    // Scan packs with Pdg2Pic/DuXiu are already handled above as FullPageScan → class 1.
+    if (PdfDarkModePdfMetadataSuggestsPaperCaptureDoc(ctx, engine->pdfdoc) ||
+        PdfDarkModePdfMetadataSuggestsLayoutPhotoDoc(ctx, engine->pdfdoc)) {
         engine->followThemeDocBitmapRecolor = 2;
         engine->followThemeContentProbed = true;
         return;
     }
-    const bool refiningLayoutMetadata = (engine->followThemeDocBitmapRecolor == 2);
-    if (!refiningLayoutMetadata) {
-        if (!PdfFollowThemePreservesEmbeddedImageColors()) {
-            engine->followThemeDocBitmapRecolor = 2;
-            engine->followThemeContentProbed = true;
-            return;
-        }
-        if (PdfDarkModePdfMetadataSuggestsBitmapRecolorDoc(ctx, engine->pdfdoc)) {
-            engine->followThemeDocBitmapRecolor = 1;
-            engine->followThemeContentProbed = true;
-            return;
-        }
+    if (!PdfFollowThemePreservesEmbeddedImageColors()) {
+        engine->followThemeDocBitmapRecolor = 2;
+        engine->followThemeContentProbed = true;
+        return;
+    }
+    if (PdfDarkModePdfMetadataSuggestsBitmapRecolorDoc(ctx, engine->pdfdoc)) {
+        engine->followThemeDocBitmapRecolor = 1;
+        engine->followThemeContentProbed = true;
+        return;
     }
     int pageCount = engine->PageCount();
     if (pageCount <= 0) {
@@ -8366,6 +8442,7 @@ static void DetectFollowThemeDocBitmapRecolor(EngineMupdf* engine, fz_context* c
         }
         FollowThemePageProbeStats st{};
         FollowThemeScanProbe probe = PdfDarkModeProbeFollowThemeScanPage(ctx, pi->page, pageBounds, &st);
+        probe = FollowThemeRefinePureScanForPictureBook(ctx, engine, pi, pi->page, probe, st);
         if (probe == FollowThemeScanProbe::BitmapRecolor || probe == FollowThemeScanProbe::PureScan) {
             bitmapProbeVotes++;
         }
@@ -8379,15 +8456,8 @@ static void DetectFollowThemeDocBitmapRecolor(EngineMupdf* engine, fz_context* c
         }
         pi->followThemeScanProbe = cacheProbe;
     }
-    // Metadata layout/photo docs: only dense-text votes upgrade to the whole-page bitmap
-    // path. A single BitmapRecolor page (e.g. a textbook figure) must not flip the whole
-    // document — that breaks transparent graphics on wrap-quality pages.
-    if (refiningLayoutMetadata) {
-        engine->followThemeDocBitmapRecolor = (microTextVotes >= 2) ? 1 : 2;
-    } else {
-        engine->followThemeDocBitmapRecolor =
-            (bitmapProbeVotes >= 2 || (bitmapProbeVotes >= 1 && microTextVotes >= 2)) ? 1 : 2;
-    }
+    engine->followThemeDocBitmapRecolor =
+        (bitmapProbeVotes >= 2 || (bitmapProbeVotes >= 1 && microTextVotes >= 2)) ? 1 : 2;
     engine->followThemeContentProbed = true;
 }
 
@@ -8402,6 +8472,10 @@ static bool FollowThemePageUsesBitmapRecolor(EngineMupdf* engine, fz_context* ct
     if (engine->followThemeDocBitmapRecolor == 1) {
         CacheLaTeXFollowThemePageProbe(engine, ctx, pageInfo, page, nullptr);
         u8 cached = pageInfo->followThemeScanProbe;
+        // Dense-text / PureScan pages: whole-tile recolor (fast, good contrast).
+        // Mixed pages (large figures, e.g. Easy RL): FollowTheme wrap + capped image
+        // decode — avoid GetOrBuildLaTeXFollowThemePageBitmap which re-decodes multi-MP
+        // CalRGB into a full-page cache on every newly visited figure page.
         if (cached == (u8)FollowThemeScanProbe::Mixed) {
             return false;
         }
@@ -8513,9 +8587,13 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
         if (useSmartDarkList) {
             keptList = GetOrBuildPageDisplayList(pageInfo, ctx);
         } else if (followThemeBitmapDoc && followDirectPath && args.darkProfile) {
-            keptList = GetOrBuildPageDisplayList(pageInfo, ctx);
-            useBitmapTexList = keptList != nullptr;
-            usePageDisplayList = useBitmapTexList;
+            // Doc class 1 still uses per-page Mixed for colorful picture books; only PureScan /
+            // BitmapRecolor pages take the whole-tile LaTeX bitmap path.
+            if (FollowThemePageUsesBitmapRecolor(this, ctx, pageInfo, page)) {
+                keptList = GetOrBuildPageDisplayList(pageInfo, ctx);
+                useBitmapTexList = keptList != nullptr;
+                usePageDisplayList = useBitmapTexList;
+            }
         }
     }
 
@@ -9825,6 +9903,44 @@ bool EngineMupdfIsFollowThemeProbePending(EngineBase* engine) {
         return false;
     }
     return InterlockedCompareExchange(&e->pdfFollowThemeProbePending, 0, 0) != 0;
+}
+
+void EngineMupdfEnsureFollowThemeProbeDone(EngineBase* engine) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !e->pdfdoc) {
+        return;
+    }
+    if (InterlockedCompareExchange(&e->pdfFollowThemeProbePending, 0, 0) == 0) {
+        return;
+    }
+    // Sync path for -render / tests: do not post UI notifications (no message loop).
+    auto ctx = e->Ctx();
+    {
+        ScopedCritSec scope(&e->docLock);
+        DetectFollowThemeDocBitmapRecolor(e, ctx);
+    }
+    InterlockedExchange(&e->pdfFollowThemeProbePending, 0);
+    InterlockedExchange(&e->pdfFollowThemeProbeScheduled, 1);
+}
+
+int EngineMupdfGetFollowThemeDocClass(EngineBase* engine) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !e->pdfdoc) {
+        return 0;
+    }
+    return e->followThemeDocBitmapRecolor;
+}
+
+int EngineMupdfGetFollowThemePageProbe(EngineBase* engine, int pageNo) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !e->pdfdoc || pageNo < 1 || pageNo > e->PageCount()) {
+        return 0;
+    }
+    FzPageInfo* pi = e->pages[pageNo - 1];
+    if (!pi) {
+        return 0;
+    }
+    return (int)pi->followThemeScanProbe;
 }
 
 void EngineMupdfScheduleFollowThemeProbe(EngineBase* engine) {

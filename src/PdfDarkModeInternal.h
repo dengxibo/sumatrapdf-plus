@@ -58,6 +58,10 @@ int PdfDarkModeTakeShadeForwardCount();
 
 void ApplyPreserveImagePaperSoftening(float r, float g, float b, const DarkModePalette& palette, float strength,
                                       float* outR, float* outG, float* outB);
+// Full-bleed picture books: linear remap margins only; photo rect left untouched.
+void ApplyPreservePictureBookPaperAndInk(float r, float g, float b, const DarkModePalette& palette, float* outR,
+                                         float* outG, float* outB);
+fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette);
 
 // Margin strips, drop shadows, and similar layout art — not photos to preserve.
 bool PdfDarkModeIsDecorativeStripImage(const RectF& imgRect, const RectF& pageBounds);

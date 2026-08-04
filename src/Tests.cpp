@@ -4,6 +4,8 @@
 #include "utils/BaseUtil.h"
 #include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
+#include "utils/FileUtil.h"
+#include "utils/TgaReader.h"
 
 #include "wingui/UIModels.h"
 
@@ -22,6 +24,8 @@
 
 #include "utils/Log.h"
 
+static FILE* gRenderDiagLog = nullptr;
+
 static void PrintBitmapLuminanceStats(RenderedBitmap* bmp, Vec<Rect>* skipRects) {
     Size size = bmp->GetSize();
     int stepX = std::max(1, size.dx / 64);
@@ -29,6 +33,9 @@ static void PrintBitmapLuminanceStats(RenderedBitmap* bmp, Vec<Rect>* skipRects)
     BitmapPixels* px = GetBitmapPixels(bmp->GetBitmap());
     if (!px) {
         printf("  luminance stats unavailable\n");
+        if (gRenderDiagLog) {
+            fputs("  luminance stats unavailable\n", gRenderDiagLog);
+        }
         return;
     }
     u64 sumAll = 0, sumText = 0;
@@ -58,11 +65,73 @@ static void PrintBitmapLuminanceStats(RenderedBitmap* bmp, Vec<Rect>* skipRects)
             }
         }
     }
+    auto sampleRgb = [&](int x, int y, int* or_, int* og, int* ob) {
+        COLORREF c = GetPixel(px, x, y);
+        byte r, g, b;
+        UnpackColor(c, r, g, b);
+        *or_ = r;
+        *og = g;
+        *ob = b;
+    };
+    int midX = size.dx / 2;
+    int midY = size.dy / 2;
+    int tlR, tlG, tlB, trR, trG, trB, blR, blG, blB, brR, brG, brB, cR, cG, cB;
+    sampleRgb(0, 0, &tlR, &tlG, &tlB);
+    sampleRgb(size.dx - 1, 0, &trR, &trG, &trB);
+    sampleRgb(0, size.dy - 1, &blR, &blG, &blB);
+    sampleRgb(size.dx - 1, size.dy - 1, &brR, &brG, &brB);
+    sampleRgb(midX, midY, &cR, &cG, &cB);
     FinalizeBitmapPixels(px);
     double avgAll = nAll ? (double)sumAll / (3.0 * nAll) : 0.0;
     double avgText = nText ? (double)sumText / (3.0 * nText) : 0.0;
-    printf("  luminance avg(all)=%.1f avg(non-skip)=%.1f skipRects=%d\n", avgAll, avgText,
-           skipRects ? skipRects->Size() : 0);
+    char line[512];
+    snprintf(line, dimof(line), "  corners TL=(%d,%d,%d) TR=(%d,%d,%d) BL=(%d,%d,%d) BR=(%d,%d,%d) center=(%d,%d,%d)\n",
+             tlR, tlG, tlB, trR, trG, trB, blR, blG, blB, brR, brG, brB, cR, cG, cB);
+    printf("%s", line);
+    if (gRenderDiagLog) {
+        fputs(line, gRenderDiagLog);
+    }
+    snprintf(line, dimof(line), "  luminance avg(all)=%.1f avg(non-skip)=%.1f skipRects=%d size=%dx%d\n", avgAll,
+             avgText, skipRects ? skipRects->Size() : 0, size.dx, size.dy);
+    printf("%s", line);
+    if (gRenderDiagLog) {
+        fputs(line, gRenderDiagLog);
+        fflush(gRenderDiagLog);
+    }
+}
+
+static const char* PageColorModeLabel(PageColorMode mode) {
+    switch (mode) {
+        case PageColorMode::Normal:
+            return "Normal";
+        case PageColorMode::LegacyInvert:
+            return "LegacyInvert";
+        case PageColorMode::SmartDark:
+            return "SmartDark";
+        case PageColorMode::FollowThemeDirect:
+            return "FollowThemeDirect";
+        case PageColorMode::PreserveImages:
+            return "PreserveImages";
+        case PageColorMode::ScanDark:
+            return "ScanDark";
+        default:
+            return "?";
+    }
+}
+
+static const char* FollowThemePageProbeLabel(int probe) {
+    switch (probe) {
+        case (int)FollowThemeScanProbe::Unknown:
+            return "unset";
+        case (int)FollowThemeScanProbe::Mixed:
+            return "Mixed";
+        case (int)FollowThemeScanProbe::PureScan:
+            return "PureScan";
+        case (int)FollowThemeScanProbe::BitmapRecolor:
+            return "BitmapRecolor";
+        default:
+            return "?";
+    }
 }
 
 void TestRenderPage(const Flags& i) {
@@ -70,46 +139,80 @@ void TestRenderPage(const Flags& i) {
         RedirectIOToConsole();
     }
 
-    if (i.pageNumber == -1) {
-        printf("pageNumber is -1\n");
+    gRenderDiagLog = fopen("c:\\src\\sumatrapdf\\tmp-raz-aa\\render-diag.txt", "ab");
+    auto diag = [](const char* line) {
+        printf("%s", line);
+        if (gRenderDiagLog) {
+            fputs(line, gRenderDiagLog);
+            fflush(gRenderDiagLog);
+        }
+    };
+
+    if (i.pageNumber < 1) {
+        diag("pageNumber invalid (use -render N file.pdf)\n");
+        if (gRenderDiagLog) {
+            fclose(gRenderDiagLog);
+            gRenderDiagLog = nullptr;
+        }
         return;
     }
     auto files = i.fileNames;
     if (files.Size() == 0) {
-        printf("no file provided\n");
+        diag("no file provided\n");
+        if (gRenderDiagLog) {
+            fclose(gRenderDiagLog);
+            gRenderDiagLog = nullptr;
+        }
         return;
     }
 
+    // Prefer setting the theme index without full UI refresh (no main windows in -render).
     SetTheme("Black");
     SetPdfDocumentColorMode(PdfDocumentColorMode::Auto);
     (void)PdfDarkModeBuildPalette();
 
-    float zoom = kZoomActualSize;
+    float zoom = 1.f; // RenderPage expects scale (1 = 100%), not virtual zoom percent
     if (i.startZoom != kInvalidZoom) {
-        zoom = i.startZoom;
+        // CLI -zoom is virtual percent (e.g. 50 or 50%); convert to render scale.
+        zoom = i.startZoom >= 1.f ? (i.startZoom / 100.f) : i.startZoom;
+        if (zoom < 0.05f) {
+            zoom = 0.05f;
+        }
+        if (zoom > 4.f) {
+            zoom = 4.f;
+        }
     }
     for (auto fileName : files) {
-        printf("rendering page %d for '%s', zoom: %.2f\n", i.pageNumber, fileName, zoom);
+        diag(str::FormatTemp("rendering page %d for '%s', zoom: %.2f\n", i.pageNumber, fileName, zoom));
         auto engine = CreateEngineFromFile(fileName, nullptr, true);
         if (engine == nullptr) {
-            printf("failed to create engine\n");
+            diag("failed to create engine\n");
             continue;
         }
+        EngineMupdfEnsureFollowThemeProbeDone(engine);
         int pageNo = i.pageNumber;
         if (pageNo < 1 || pageNo > engine->PageCount()) {
-            printf("invalid page number %d (document has %d pages)\n", pageNo, engine->PageCount());
+            diag(str::FormatTemp("invalid page number %d (document has %d pages)\n", pageNo, engine->PageCount()));
             SafeEngineRelease(&engine);
             continue;
         }
         RenderPageArgs args(pageNo, zoom, 0);
         DarkModeProfile darkProfile;
         BuildViewDarkModeProfile(engine, &darkProfile);
+        diag(str::FormatTemp("  docClass=%d pageProbe=%s(%d) mode=%s soft=%.2f\n",
+                             EngineMupdfGetFollowThemeDocClass(engine),
+                             FollowThemePageProbeLabel(EngineMupdfGetFollowThemePageProbe(engine, pageNo)),
+                             EngineMupdfGetFollowThemePageProbe(engine, pageNo), PageColorModeLabel(darkProfile.mode),
+                             darkProfile.options.preserveImagePaperSoftening));
         if (darkProfile.mode != PageColorMode::Normal) {
             args.darkProfile = &darkProfile;
         }
+        i64 t0 = GetTickCount64();
         auto bmp = engine->RenderPage(args);
+        i64 renderMs = (i64)(GetTickCount64() - t0);
+        diag(str::FormatTemp("  RenderPage ms=%lld\n", renderMs));
         if (bmp == nullptr) {
-            printf("failed to render page\n");
+            diag("failed to render page\n");
         } else if (DarkModeProfileUsesLegacyPostProcess(args.darkProfile)) {
             COLORREF bgCol = args.darkProfile ? args.darkProfile->pageBackground : 0;
             COLORREF textCol = args.darkProfile ? args.darkProfile->foreground : ThemePageRenderColors(bgCol, true);
@@ -129,13 +232,32 @@ void TestRenderPage(const Flags& i) {
             UpdateBitmapColors(bmp->GetBitmap(), textCol, bgCol, linkCol, skipRectsPtr);
             PrintBitmapLuminanceStats(bmp, skipRectsPtr);
         } else if (bmp) {
+            diag(str::FormatTemp("  afterRender pageProbe=%s(%d)\n",
+                                 FollowThemePageProbeLabel(EngineMupdfGetFollowThemePageProbe(engine, pageNo)),
+                                 EngineMupdfGetFollowThemePageProbe(engine, pageNo)));
             PrintBitmapLuminanceStats(bmp, nullptr);
+            // Optional TGA dump (disabled by default; SerializeBitmap can be heavy).
+            if (false) {
+                Size sz = bmp->GetSize();
+                if (sz.dx > 0 && sz.dy > 0 && (i64)sz.dx * sz.dy <= 4000000) {
+                    TempStr outPath = str::FormatTemp("%s.p%d.tga", fileName, pageNo);
+                    ByteSlice tga = tga::SerializeBitmap(bmp->GetBitmap());
+                    if (!tga.empty()) {
+                        bool ok = file::WriteFile(outPath, tga);
+                        diag(str::FormatTemp("  wrote %s (%s)\n", outPath, ok ? "ok" : "fail"));
+                        tga.Free();
+                    }
+                }
+            }
         }
         delete bmp;
         SafeEngineRelease(&engine);
     }
+    if (gRenderDiagLog) {
+        fclose(gRenderDiagLog);
+        gRenderDiagLog = nullptr;
+    }
 }
-
 static void extractPageText(EngineBase* engine, int pageNo) {
     PageTextUtf8 pageText = engine->ExtractPageTextUtf8(pageNo);
     if (!pageText.text) {

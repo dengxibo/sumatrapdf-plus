@@ -25,11 +25,50 @@ static bool PdfDarkModeFeaturesLookLikeColorfulIllustration(const DarkImageFeatu
     return false;
 }
 
-// True scanned page / flat paper UI — not a colorful illustration.
+// Historical / documentary grayscale photos: low saturation but real tonal range.
+// Must not fall through to LayoutBackground / FullPageScan (those AdaptiveDocument-invert).
+static bool PdfDarkModeFeaturesLookLikeGrayscalePhoto(const DarkImageFeatures& f) {
+    if (f.saturatedPixelRatio > 0.08f || f.chromaticPixelRatio > 0.12f) {
+        return false;
+    }
+    // Need photographic tonal variation — flat cream panels / icons fail this.
+    if (f.luminanceVariance < 0.014f) {
+        return false;
+    }
+    if (f.flatAreaRatio > 0.58f && f.luminanceVariance < 0.022f) {
+        return false;
+    }
+    // Paper-dominated pages (DuXiu / textbook scans): lots of white + ink variance
+    // look "photographic" but must not Preserve → picture-book multi-rect path.
+    // Documentary portraits are midtone-heavy (highLum typically ~0.25–0.50).
+    if (f.highLuminanceRatio > 0.62f) {
+        return false;
+    }
+    if (f.flatAreaRatio > 0.45f && f.highLuminanceRatio > 0.50f) {
+        return false;
+    }
+    return true;
+}
+
+// Soft cream / pastel design pages (e.g. notebook interiors): near-all light paper,
+// low chroma, mild contrast. Steep AdaptiveDocument ink/paper remap turns faint grids
+// into dirty horizontal noise — these must Preserve with gentle paper softening.
+static bool PdfDarkModeFeaturesLookLikeSoftCreamIllustration(const DarkImageFeatures& f) {
+    return f.highLuminanceRatio > 0.90f && f.luminanceVariance < 0.032f && f.saturatedPixelRatio < 0.10f &&
+           f.chromaticPixelRatio < 0.15f;
+}
+
+// True scanned page / flat paper UI — not a colorful illustration or grayscale photo.
 static bool PdfDarkModeFeaturesLookLikeTrueFullPageScan(const DarkImageFeatures& f) {
     int buckets = PdfDarkModeFeatureColorBuckets(f);
-    if (PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
+    if (PdfDarkModeFeaturesLookLikeColorfulIllustration(f) || PdfDarkModeFeaturesLookLikeGrayscalePhoto(f) ||
+        PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
         return false;
+    }
+    // Paper-heavy grayscale/near-gray page (text scan): high white area, little chroma.
+    // Ink variance can be high — do not require low lumVar (that missed DuXiu books).
+    if (f.highLuminanceRatio > 0.58f && f.saturatedPixelRatio < 0.10f && f.chromaticPixelRatio < 0.12f) {
+        return true;
     }
     if (f.highLuminanceRatio > 0.45f && f.saturatedPixelRatio < 0.12f &&
         (f.luminanceVariance < 0.020f || buckets <= 18)) {
@@ -40,6 +79,9 @@ static bool PdfDarkModeFeaturesLookLikeTrueFullPageScan(const DarkImageFeatures&
 
 // Mirrors PdfDarkModeStatsLookLikePhoto in PdfDarkModeImageStats.cpp.
 bool PdfDarkModeFeaturesLookLikePhoto(const DarkImageFeatures& f) {
+    if (PdfDarkModeFeaturesLookLikeGrayscalePhoto(f)) {
+        return true;
+    }
     int buckets = PdfDarkModeFeatureColorBuckets(f);
     bool isPhoto = buckets >= 16 || f.saturatedPixelRatio >= 0.18f || f.luminanceVariance >= 0.014f;
     if (f.highLuminanceRatio > 0.58f && f.saturatedPixelRatio < 0.18f) {
@@ -62,10 +104,8 @@ static bool PdfDarkModeFeaturesLookLikeFlatLayoutPanel(const DarkImageFeatures& 
 
 // Mirrors PdfDarkModeStatsLookLikeLayoutBackground in PdfDarkModeImageStats.cpp.
 static bool PdfDarkModeFeaturesLookLikeLayoutBackground(const DarkImageFeatures& f, float pageCoverage) {
-    // Colorful illustrations (RAZ soft art, watercolor skies) must not be treated as UI panels.
-    // Do not gate on LookLikePhoto alone: flat cream panels can pass the bucket count before
-    // luminance vetoes when highLum sits on a threshold boundary.
-    if (PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
+    // Colorful illustrations and grayscale photos must not be treated as UI panels.
+    if (PdfDarkModeFeaturesLookLikeColorfulIllustration(f) || PdfDarkModeFeaturesLookLikeGrayscalePhoto(f)) {
         return false;
     }
     int buckets = PdfDarkModeFeatureColorBuckets(f);
@@ -99,7 +139,10 @@ DarkImageKind PdfDarkModeClassifyImageFeatures(const DarkImageFeatures& f, float
     // Full-bleed: preserve colorful picture-book art; only AdaptiveDocument for true scans.
     // When ambiguous, prefer Photo (Preserve) over FullPageScan.
     if (pageCoverage >= kMaxPreserveImagePageCoverage && f.highLuminanceRatio > 0.45f) {
-        if (PdfDarkModeFeaturesLookLikePhoto(f) || PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
+        if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
+            kind = DarkImageKind::Photo;
+            confidence = 0.74f;
+        } else if (PdfDarkModeFeaturesLookLikePhoto(f) || PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
             kind = DarkImageKind::Photo;
             confidence = 0.76f;
         } else if (PdfDarkModeFeaturesLookLikeTrueFullPageScan(f)) {
@@ -110,7 +153,7 @@ DarkImageKind PdfDarkModeClassifyImageFeatures(const DarkImageFeatures& f, float
             confidence = 0.55f;
         }
     } else if (pageIsScannedHint && pageCoverage >= 0.55f && !PdfDarkModeFeaturesLookLikeColorfulIllustration(f) &&
-               !PdfDarkModeFeaturesLookLikePhoto(f)) {
+               !PdfDarkModeFeaturesLookLikePhoto(f) && !PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
         kind = DarkImageKind::FullPageScan;
         confidence = 0.72f;
     } else if (PdfDarkModeFeaturesLookLikeLayoutBackground(f, pageCoverage)) {
@@ -169,6 +212,9 @@ bool PdfDarkModeShouldPreserveImageFeatures(const DarkImageFeatures& f, float pa
     }
     if (PdfDarkModeFeaturesLookLikeLayoutBackground(f, pageCoverage)) {
         return false;
+    }
+    if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
+        return true;
     }
     if (PdfDarkModeFeaturesLookLikePhoto(f) || PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
         if (pageCoverage < 0.14f && PdfDarkModeFeaturesLookLikePaperTextBox(f) &&

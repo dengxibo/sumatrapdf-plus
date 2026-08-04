@@ -88,8 +88,7 @@ static void dm_analysis_record_image(fz_context* ctx, fz_device* dev, fz_image* 
     info.pageCoverage = coverage;
     if (image) {
         if (PdfFollowThemePreservesEmbeddedImageColors()) {
-            info.analysis =
-                PdfDarkModeAnalyzeImageCached(ctx, image, coverage, false, d->engineCache);
+            info.analysis = PdfDarkModeAnalyzeImageCached(ctx, image, coverage, false, d->engineCache);
             info.looksLikePhoto =
                 info.analysis.kind == DarkImageKind::Photo || info.analysis.kind == DarkImageKind::Unknown;
         } else {
@@ -617,6 +616,23 @@ bool PdfDarkModePdfMetadataSuggestsBitmapRecolorDoc(fz_context* ctx, pdf_documen
     return PdfDarkModeInfoFieldsMatchAnyI(ctx, info, kLatexNeedles, dimof(kLatexNeedles));
 }
 
+// Scanned books packaged as one image per page (DuXiu / Pdg2Pic / CAJ). Prefer the
+// cheap whole-tile bitmap recolor path — not FollowTheme wrap / ProcessScanPixmap.
+bool PdfDarkModePdfMetadataSuggestsFullPageScanDoc(fz_context* ctx, pdf_document* doc) {
+    if (!ctx || !doc) {
+        return false;
+    }
+    pdf_obj* info = pdf_dict_get(ctx, pdf_trailer(ctx, doc), PDF_NAME(Info));
+    if (!info) {
+        return false;
+    }
+    static const char* kScanNeedles[] = {
+        "duxiu",    "superstar", "pdg2pic",      "cajviewer",     "caj ",
+        "ssreader", "ss reader", "annasarchive", "annas archive", "chaoxing",
+    };
+    return PdfDarkModeInfoFieldsMatchAnyI(ctx, info, kScanNeedles, dimof(kScanNeedles));
+}
+
 bool PdfDarkModePdfMetadataSuggestsLayoutPhotoDoc(fz_context* ctx, pdf_document* doc) {
     if (!ctx || !doc) {
         return false;
@@ -642,12 +658,7 @@ bool PdfDarkModePdfMetadataSuggestsPaperCaptureDoc(fz_context* ctx, pdf_document
         return false;
     }
     static const char* kPaperCaptureNeedles[] = {
-        "paper capture",
-        "papercapture",
-        "abbyy",
-        "finereader",
-        "tesseract",
-        "ocr ",
+        "paper capture", "papercapture", "abbyy", "finereader", "tesseract", "ocr ",
     };
     return PdfDarkModeInfoFieldsMatchAnyI(ctx, info, kPaperCaptureNeedles, dimof(kPaperCaptureNeedles));
 }

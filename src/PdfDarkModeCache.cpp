@@ -78,30 +78,58 @@ static void dm_transform_pixmap_rgb(fz_context* ctx, fz_pixmap* pix, const DarkM
     int stride = pix->stride;
     int w = pix->w;
     int h = pix->h;
+    bool fastRgb = cs == rgb || fz_colorspace_is_rgb(ctx, cs);
+    bool fastGray = components == 1 || fz_colorspace_is_gray(ctx, cs);
+
     for (int y = 0; y < h; y++) {
         unsigned char* row = pix->samples + y * stride;
         for (int x = 0; x < w; x++) {
             unsigned char* px = row + x * n;
-            float conv[FZ_MAX_COLORS] = {};
-            float srcRgb[FZ_MAX_COLORS] = {};
-            for (int c = 0; c < components && c < FZ_MAX_COLORS; c++) {
-                conv[c] = px[c] / 255.f;
+            float r, g, b;
+            if (fastRgb) {
+                r = px[0] / 255.f;
+                g = px[1] / 255.f;
+                b = px[2] / 255.f;
+            } else if (fastGray) {
+                r = g = b = px[0] / 255.f;
+            } else {
+                float conv[FZ_MAX_COLORS] = {};
+                float srcRgb[FZ_MAX_COLORS] = {};
+                for (int c = 0; c < components && c < FZ_MAX_COLORS; c++) {
+                    conv[c] = px[c] / 255.f;
+                }
+                fz_convert_color(ctx, cs, conv, rgb, srcRgb, cs, fz_default_color_params);
+                r = srcRgb[0];
+                g = srcRgb[1];
+                b = srcRgb[2];
             }
-            fz_convert_color(ctx, cs, conv, rgb, srcRgb, cs, fz_default_color_params);
             float nr = 0.f, ng = 0.f, nb = 0.f;
-            fn(srcRgb[0], srcRgb[1], srcRgb[2], palette, &nr, &ng, &nb);
-            float out[FZ_MAX_COLORS] = {nr, ng, nb};
-            float back[FZ_MAX_COLORS] = {};
-            fz_convert_color(ctx, rgb, out, cs, back, cs, fz_default_color_params);
-            for (int c = 0; c < components && c < FZ_MAX_COLORS; c++) {
-                int v = (int)(back[c] * 255.f + 0.5f);
-                if (v < 0) {
-                    v = 0;
+            fn(r, g, b, palette, &nr, &ng, &nb);
+            if (fastRgb) {
+                int vr = (int)(nr * 255.f + 0.5f);
+                int vg = (int)(ng * 255.f + 0.5f);
+                int vb = (int)(nb * 255.f + 0.5f);
+                px[0] = (unsigned char)(vr < 0 ? 0 : (vr > 255 ? 255 : vr));
+                px[1] = (unsigned char)(vg < 0 ? 0 : (vg > 255 ? 255 : vg));
+                px[2] = (unsigned char)(vb < 0 ? 0 : (vb > 255 ? 255 : vb));
+            } else if (fastGray) {
+                float lum = 0.2126f * nr + 0.7152f * ng + 0.0722f * nb;
+                int v = (int)(lum * 255.f + 0.5f);
+                px[0] = (unsigned char)(v < 0 ? 0 : (v > 255 ? 255 : v));
+            } else {
+                float out[FZ_MAX_COLORS] = {nr, ng, nb};
+                float back[FZ_MAX_COLORS] = {};
+                fz_convert_color(ctx, rgb, out, cs, back, cs, fz_default_color_params);
+                for (int c = 0; c < components && c < FZ_MAX_COLORS; c++) {
+                    int v = (int)(back[c] * 255.f + 0.5f);
+                    if (v < 0) {
+                        v = 0;
+                    }
+                    if (v > 255) {
+                        v = 255;
+                    }
+                    px[c] = (unsigned char)v;
                 }
-                if (v > 255) {
-                    v = 255;
-                }
-                px[c] = (unsigned char)v;
             }
         }
     }
@@ -121,8 +149,8 @@ static void dm_preserve_pixel(float r, float g, float b, const DarkModePalette& 
     }
 }
 
-static void dm_theme_recolor_pixel(float r, float g, float b, const DarkModePalette& palette, float* outR,
-                                   float* outG, float* outB) {
+static void dm_theme_recolor_pixel(float r, float g, float b, const DarkModePalette& palette, float* outR, float* outG,
+                                   float* outB) {
     float mapped[3] = {};
     MapRgbToDarkTheme(r, g, b, palette, mapped);
     *outR = mapped[0];
@@ -191,8 +219,8 @@ static fz_pixmap* dm_load_src_pixmap(fz_context* ctx, fz_image* srcImage, int ma
 }
 
 static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, DarkImagePolicy policy,
-                                            const DarkImageAnalysis* imgAnalysis, float pageCoverage,
-                                            const DarkModePalette& palette) {
+                                          const DarkImageAnalysis* imgAnalysis, float pageCoverage,
+                                          const DarkModePalette& palette) {
     fz_pixmap* src = nullptr;
     fz_pixmap* processed = nullptr;
     fz_image* result = nullptr;
@@ -204,15 +232,38 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
                             PdfFollowThemePreservesEmbeddedImageColors() && pageCoverage >= 0.10f &&
                             imgAnalysis->kind != DarkImageKind::Photo &&
                             imgAnalysis->kind != DarkImageKind::FullPageScan;
-        int decodeMaxDim = layoutRaster ? 1200 : 0;
+        // Soft-cap decode for Match-theme image processing. Easy RL figures can be 20–29MP;
+        // full-page DuXiu scans are ~6MP — remapping at native size dominates render time.
+        int decodeMaxDim = 1600;
+        if (layoutRaster) {
+            decodeMaxDim = 1200;
+        } else if (policy == DarkImagePolicy::AdaptiveDocument && imgAnalysis &&
+                   imgAnalysis->kind == DarkImageKind::FullPageScan) {
+            decodeMaxDim = 1400;
+        } else if (policy == DarkImagePolicy::Preserve && pageCoverage >= kMaxPreserveImagePageCoverage) {
+            decodeMaxDim = 2000;
+        } else if (policy == DarkImagePolicy::Preserve) {
+            // Embedded figures (Easy RL CalRGB): keep quality for screen, avoid native 7k decode.
+            decodeMaxDim = 1200;
+        }
         src = dm_load_src_pixmap(ctx, srcImage, decodeMaxDim);
         if (policy == DarkImagePolicy::Preserve) {
-            processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_preserve_pixel);
+            if (pageCoverage >= kMaxPreserveImagePageCoverage) {
+                processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette);
+            } else {
+                processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_preserve_pixel);
+            }
         } else if (policy == DarkImagePolicy::AdaptiveDocument) {
             if (layoutRaster) {
                 processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_legacy_linear_pixel);
             } else if (imgAnalysis && imgAnalysis->kind == DarkImageKind::FullPageScan) {
-                processed = PdfDarkModeProcessScanPixmap(ctx, src, *imgAnalysis, palette);
+                // Low-chroma text scans: AdaptiveDocument remap (fast). Keep ProcessScan
+                // only when the page has meaningful color (photos on a scan).
+                if (imgAnalysis->features.saturatedPixelRatio < 0.10f) {
+                    processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_adaptive_pixel);
+                } else {
+                    processed = PdfDarkModeProcessScanPixmap(ctx, src, *imgAnalysis, palette);
+                }
             }
             if (!processed && imgAnalysis && PdfDarkModeShouldBlendLightBackground(*imgAnalysis)) {
                 processed = PdfDarkModeProcessLightBackgroundPixmap(ctx, src, *imgAnalysis, palette);
@@ -248,8 +299,8 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
     return result;
 }
 
-static fz_image* dm_build_processed_shade(fz_context* ctx, fz_shade* shade, fz_matrix ctm, float alpha,
-                                            fz_irect bounds, const DarkModePalette& palette) {
+static fz_image* dm_build_processed_shade(fz_context* ctx, fz_shade* shade, fz_matrix ctm, float alpha, fz_irect bounds,
+                                          const DarkModePalette& palette) {
     int w = bounds.x1 - bounds.x0;
     int h = bounds.y1 - bounds.y0;
     if (w <= 0 || h <= 0) {
@@ -340,6 +391,12 @@ fz_image* PdfDarkModeGetCachedFollowThemeImage(fz_context* ctx, DarkModeEngineCa
                                                DarkImagePolicy policy, float pageCoverage,
                                                const DarkModePalette& palette, u32 profileHash) {
     if (!srcImage) {
+        return nullptr;
+    }
+    // Non-full-bleed Preserve (textbook / Easy RL figures): draw the original image.
+    // Paper softening on multi-MP CalRGB dominated Match-theme flip cost; text/vectors
+    // are already remapped by the FollowTheme device.
+    if (policy == DarkImagePolicy::Preserve && pageCoverage < kMaxPreserveImagePageCoverage) {
         return nullptr;
     }
     DarkImageAnalysis analysis{};

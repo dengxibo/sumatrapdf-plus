@@ -76,6 +76,22 @@ static DarkImageFeatures SoftPictureBookFullBleedFeatures() {
     return f;
 }
 
+// Soft cream notebook / design-book page: near-all light paper, mild contrast, little
+// chroma — must Preserve gently, not AdaptiveDocument sharp remap (dirty grid noise).
+static DarkImageFeatures SoftCreamNotebookFullBleedFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 14.f / 4096.f;
+    f.highLuminanceRatio = 0.93f;
+    f.saturatedPixelRatio = 0.01f;
+    f.chromaticPixelRatio = 0.02f;
+    f.luminanceVariance = 0.024f;
+    f.borderLightRatio = 0.88f;
+    f.borderUniformity = 0.70f;
+    f.flatAreaRatio = 0.40f;
+    return f;
+}
+
 static DarkImageFeatures TruePaperScanFullBleedFeatures() {
     DarkImageFeatures f;
     f.isColorful = false;
@@ -87,6 +103,37 @@ static DarkImageFeatures TruePaperScanFullBleedFeatures() {
     f.borderLightRatio = 0.85f;
     f.borderUniformity = 0.80f;
     f.flatAreaRatio = 0.55f;
+    return f;
+}
+
+// DuXiu / SuperStar textbook scan: white paper + text ink variance (high lumVar).
+// Must be FullPageScan / AdaptiveDocument — never Photo → picture-book path.
+static DarkImageFeatures DuXiuTextScanFullBleedFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 22.f / 4096.f;
+    f.highLuminanceRatio = 0.86f;
+    f.saturatedPixelRatio = 0.03f;
+    f.chromaticPixelRatio = 0.04f;
+    f.luminanceVariance = 0.045f;
+    f.borderLightRatio = 0.90f;
+    f.borderUniformity = 0.75f;
+    f.flatAreaRatio = 0.52f;
+    return f;
+}
+
+// Historical B&W portrait (e.g. White House Pets): low sat, real tonal range — must Preserve.
+static DarkImageFeatures GrayscalePortraitFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 8.f / 4096.f;
+    f.highLuminanceRatio = 0.35f;
+    f.saturatedPixelRatio = 0.02f;
+    f.chromaticPixelRatio = 0.03f;
+    f.luminanceVariance = 0.028f;
+    f.borderLightRatio = 0.40f;
+    f.borderUniformity = 0.35f;
+    f.flatAreaRatio = 0.18f;
     return f;
 }
 
@@ -137,6 +184,29 @@ void PdfDarkModeImageClassifier_UnitTests() {
     kind = PdfDarkModeClassifyImageFeatures(TruePaperScanFullBleedFeatures(), 0.90f, false, &confidence);
     utassert(kind == DarkImageKind::FullPageScan);
     utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::AdaptiveDocument);
+
+    // Soft cream notebook (小家越住越大): Photo / Preserve — not FullPageScan sharp remap.
+    kind = PdfDarkModeClassifyImageFeatures(SoftCreamNotebookFullBleedFeatures(), 0.95f, false, &confidence);
+    utassert(kind == DarkImageKind::Photo);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::Preserve);
+
+    // High-variance text scan (Merck / DuXiu): FullPageScan, not grayscale Photo.
+    kind = PdfDarkModeClassifyImageFeatures(DuXiuTextScanFullBleedFeatures(), 0.95f, false, &confidence);
+    utassert(kind == DarkImageKind::FullPageScan);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::AdaptiveDocument);
+    utassert(!PdfDarkModeFeaturesLookLikePhoto(DuXiuTextScanFullBleedFeatures()));
+    utassert(!PdfDarkModeShouldPreserveImageFeatures(DuXiuTextScanFullBleedFeatures(), 0.95f));
+
+    // Grayscale portrait: Photo / Preserve — never AdaptiveDocument invert.
+    kind = PdfDarkModeClassifyImageFeatures(GrayscalePortraitFeatures(), 0.28f, false, &confidence);
+    utassert(kind == DarkImageKind::Photo);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::Preserve);
+    utassert(PdfDarkModeFeaturesLookLikePhoto(GrayscalePortraitFeatures()));
+    utassert(PdfDarkModeShouldPreserveImageFeatures(GrayscalePortraitFeatures(), 0.28f));
+
+    kind = PdfDarkModeClassifyImageFeatures(GrayscalePortraitFeatures(), 0.80f, false, &confidence);
+    utassert(kind == DarkImageKind::Photo);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::Preserve);
 
     // Scanned-page hint: colorful art stays Preserve; flat paper becomes FullPageScan.
     kind = PdfDarkModeClassifyImageFeatures(scan, 0.58f, true, &confidence);
