@@ -9,6 +9,35 @@ static int PdfDarkModeFeatureColorBuckets(const DarkImageFeatures& f) {
     return (int)(f.colorBucketRatio * 4096.f + 0.5f);
 }
 
+// Soft picture-book art can fail LookLikePhoto's bright-paper vetoes while still
+// being colorful enough that AdaptiveDocument / FullPageScan would ruin it.
+static bool PdfDarkModeFeaturesLookLikeColorfulIllustration(const DarkImageFeatures& f) {
+    int buckets = PdfDarkModeFeatureColorBuckets(f);
+    if (f.saturatedPixelRatio >= 0.12f && (buckets >= 14 || f.luminanceVariance >= 0.010f)) {
+        return true;
+    }
+    if (f.saturatedPixelRatio >= 0.15f && buckets >= 10) {
+        return true;
+    }
+    if (f.chromaticPixelRatio >= 0.20f && f.luminanceVariance >= 0.008f) {
+        return true;
+    }
+    return false;
+}
+
+// True scanned page / flat paper UI — not a colorful illustration.
+static bool PdfDarkModeFeaturesLookLikeTrueFullPageScan(const DarkImageFeatures& f) {
+    int buckets = PdfDarkModeFeatureColorBuckets(f);
+    if (PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
+        return false;
+    }
+    if (f.highLuminanceRatio > 0.45f && f.saturatedPixelRatio < 0.12f &&
+        (f.luminanceVariance < 0.020f || buckets <= 18)) {
+        return true;
+    }
+    return false;
+}
+
 // Mirrors PdfDarkModeStatsLookLikePhoto in PdfDarkModeImageStats.cpp.
 bool PdfDarkModeFeaturesLookLikePhoto(const DarkImageFeatures& f) {
     int buckets = PdfDarkModeFeatureColorBuckets(f);
@@ -33,6 +62,12 @@ static bool PdfDarkModeFeaturesLookLikeFlatLayoutPanel(const DarkImageFeatures& 
 
 // Mirrors PdfDarkModeStatsLookLikeLayoutBackground in PdfDarkModeImageStats.cpp.
 static bool PdfDarkModeFeaturesLookLikeLayoutBackground(const DarkImageFeatures& f, float pageCoverage) {
+    // Colorful illustrations (RAZ soft art, watercolor skies) must not be treated as UI panels.
+    // Do not gate on LookLikePhoto alone: flat cream panels can pass the bucket count before
+    // luminance vetoes when highLum sits on a threshold boundary.
+    if (PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
+        return false;
+    }
     int buckets = PdfDarkModeFeatureColorBuckets(f);
     if (PdfDarkModeFeaturesLookLikeFlatLayoutPanel(f)) {
         return pageCoverage >= 0.04f;
@@ -61,22 +96,29 @@ DarkImageKind PdfDarkModeClassifyImageFeatures(const DarkImageFeatures& f, float
     float confidence = 0.4f;
     DarkImageKind kind = DarkImageKind::Unknown;
 
+    // Full-bleed: preserve colorful picture-book art; only AdaptiveDocument for true scans.
+    // When ambiguous, prefer Photo (Preserve) over FullPageScan.
     if (pageCoverage >= kMaxPreserveImagePageCoverage && f.highLuminanceRatio > 0.45f) {
-        if (PdfDarkModeFeaturesLookLikePhoto(f)) {
+        if (PdfDarkModeFeaturesLookLikePhoto(f) || PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
             kind = DarkImageKind::Photo;
             confidence = 0.76f;
-        } else {
+        } else if (PdfDarkModeFeaturesLookLikeTrueFullPageScan(f)) {
             kind = DarkImageKind::FullPageScan;
             confidence = 0.82f;
+        } else {
+            kind = DarkImageKind::Photo;
+            confidence = 0.55f;
         }
-    } else if (pageIsScannedHint && pageCoverage >= 0.55f) {
+    } else if (pageIsScannedHint && pageCoverage >= 0.55f && !PdfDarkModeFeaturesLookLikeColorfulIllustration(f) &&
+               !PdfDarkModeFeaturesLookLikePhoto(f)) {
         kind = DarkImageKind::FullPageScan;
         confidence = 0.72f;
     } else if (PdfDarkModeFeaturesLookLikeLayoutBackground(f, pageCoverage)) {
         kind = DarkImageKind::LightBackgroundArtwork;
         confidence = 0.80f;
-    } else if (PdfDarkModeFeaturesLookLikePhoto(f)) {
-        if (pageCoverage < 0.14f && PdfDarkModeFeaturesLookLikePaperTextBox(f)) {
+    } else if (PdfDarkModeFeaturesLookLikePhoto(f) || PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
+        if (pageCoverage < 0.14f && PdfDarkModeFeaturesLookLikePaperTextBox(f) &&
+            !PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
             kind = DarkImageKind::IconOrLineArt;
             confidence = 0.66f;
         } else {
@@ -128,8 +170,9 @@ bool PdfDarkModeShouldPreserveImageFeatures(const DarkImageFeatures& f, float pa
     if (PdfDarkModeFeaturesLookLikeLayoutBackground(f, pageCoverage)) {
         return false;
     }
-    if (PdfDarkModeFeaturesLookLikePhoto(f)) {
-        if (pageCoverage < 0.14f && PdfDarkModeFeaturesLookLikePaperTextBox(f)) {
+    if (PdfDarkModeFeaturesLookLikePhoto(f) || PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
+        if (pageCoverage < 0.14f && PdfDarkModeFeaturesLookLikePaperTextBox(f) &&
+            !PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
             return false;
         }
         return true;

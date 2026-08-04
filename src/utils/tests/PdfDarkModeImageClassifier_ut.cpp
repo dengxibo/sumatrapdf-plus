@@ -60,6 +60,36 @@ static DarkImageFeatures BrightFilmStillFeatures() {
     return f;
 }
 
+// RAZ-style soft picture-book page: bright margins + colorful art below LookLikePhoto's
+// sat>=0.18 bar, but still clearly illustration (must Preserve, not FullPageScan).
+static DarkImageFeatures SoftPictureBookFullBleedFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = true;
+    f.colorBucketRatio = 28.f / 4096.f;
+    f.highLuminanceRatio = 0.64f;
+    f.saturatedPixelRatio = 0.14f;
+    f.chromaticPixelRatio = 0.22f;
+    f.luminanceVariance = 0.016f;
+    f.borderLightRatio = 0.70f;
+    f.borderUniformity = 0.55f;
+    f.flatAreaRatio = 0.28f;
+    return f;
+}
+
+static DarkImageFeatures TruePaperScanFullBleedFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 10.f / 4096.f;
+    f.highLuminanceRatio = 0.70f;
+    f.saturatedPixelRatio = 0.05f;
+    f.chromaticPixelRatio = 0.04f;
+    f.luminanceVariance = 0.009f;
+    f.borderLightRatio = 0.85f;
+    f.borderUniformity = 0.80f;
+    f.flatAreaRatio = 0.55f;
+    return f;
+}
+
 void PdfDarkModeImageClassifier_UnitTests() {
     float confidence = 0.f;
 
@@ -93,9 +123,34 @@ void PdfDarkModeImageClassifier_UnitTests() {
     utassert(kind == DarkImageKind::FullPageScan);
     utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::AdaptiveDocument);
 
+    // Soft picture-book full-bleed: Preserve (grey paper + keep art), not AdaptiveDocument.
+    kind = PdfDarkModeClassifyImageFeatures(SoftPictureBookFullBleedFeatures(), 0.90f, false, &confidence);
+    utassert(kind == DarkImageKind::Photo);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::Preserve);
+    utassert(PdfDarkModeShouldPreserveImageFeatures(SoftPictureBookFullBleedFeatures(), 0.90f));
+
+    // Soft art must not be classified as layout background / LightBg.
+    kind = PdfDarkModeClassifyImageFeatures(SoftPictureBookFullBleedFeatures(), 0.40f, false, &confidence);
+    utassert(kind == DarkImageKind::Photo);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::Preserve);
+
+    kind = PdfDarkModeClassifyImageFeatures(TruePaperScanFullBleedFeatures(), 0.90f, false, &confidence);
+    utassert(kind == DarkImageKind::FullPageScan);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::AdaptiveDocument);
+
+    // Scanned-page hint: colorful art stays Preserve; flat paper becomes FullPageScan.
     kind = PdfDarkModeClassifyImageFeatures(scan, 0.58f, true, &confidence);
+    utassert(kind == DarkImageKind::Photo);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::Preserve);
+
+    kind = PdfDarkModeClassifyImageFeatures(TruePaperScanFullBleedFeatures(), 0.58f, true, &confidence);
     utassert(kind == DarkImageKind::FullPageScan);
     utassert(confidence >= 0.7f);
+
+    // Literature-style small figure: low coverage → Photo / Preserve.
+    kind = PdfDarkModeClassifyImageFeatures(PhotoLikeFeatures(), 0.10f, false, &confidence);
+    utassert(kind == DarkImageKind::Photo);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::Preserve);
 
     utassert(PdfDarkModePolicyForImageKind(DarkImageKind::Photo, true) == DarkImagePolicy::ThemeRecolor);
 

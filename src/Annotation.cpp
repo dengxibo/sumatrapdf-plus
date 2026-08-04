@@ -1770,19 +1770,92 @@ static bool PlayRichMediaAnnotationInner(fz_context* ctx, pdf_obj* annotObj) {
     return ok;
 }
 
-static pdf_obj* PdfScreenResolveFilespec(fz_context* ctx, pdf_obj* annotObj) {
-    pdf_obj* rendition = pdf_dict_get(ctx, annotObj, PDF_NAME(R));
-    if (!rendition) {
+static bool PdfObjNameEquals(fz_context* ctx, pdf_obj* obj, const char* name) {
+    return obj && pdf_is_name(ctx, obj) && str::Eq(pdf_to_name(ctx, obj), name);
+}
+
+static pdf_obj* PdfScreenRenditionFromAction(fz_context* ctx, pdf_obj* action) {
+    if (!action) {
         return nullptr;
     }
+    if (pdf_is_array(ctx, action)) {
+        int n = pdf_array_len(ctx, action);
+        for (int i = 0; i < n; i++) {
+            pdf_obj* one = pdf_array_get(ctx, action, i);
+            if (!PdfObjNameEquals(ctx, pdf_dict_get(ctx, one, PDF_NAME(S)), "Rendition")) {
+                continue;
+            }
+            pdf_obj* r = pdf_dict_get(ctx, one, PDF_NAME(R));
+            if (pdf_is_array(ctx, r)) {
+                r = pdf_array_get(ctx, r, 0);
+            }
+            if (r) {
+                return r;
+            }
+        }
+        return nullptr;
+    }
+    if (!PdfObjNameEquals(ctx, pdf_dict_get(ctx, action, PDF_NAME(S)), "Rendition")) {
+        return nullptr;
+    }
+    pdf_obj* r = pdf_dict_get(ctx, action, PDF_NAME(R));
+    if (pdf_is_array(ctx, r)) {
+        r = pdf_array_get(ctx, r, 0);
+    }
+    return r;
+}
+
+// Screen annotations often put the media rendition on an /A action
+// (/S /Rendition /R <<...>>) rather than on the annotation itself.
+static pdf_obj* PdfScreenResolveRendition(fz_context* ctx, pdf_obj* annotObj) {
+    pdf_obj* rendition = pdf_dict_get(ctx, annotObj, PDF_NAME(R));
     if (pdf_is_array(ctx, rendition)) {
         rendition = pdf_array_get(ctx, rendition, 0);
     }
+    if (rendition) {
+        return rendition;
+    }
+
+    rendition = PdfScreenRenditionFromAction(ctx, pdf_dict_get(ctx, annotObj, PDF_NAME(A)));
+    if (rendition) {
+        return rendition;
+    }
+
+    // Additional actions (e.g. /AA /U for mouse-up)
+    pdf_obj* aa = pdf_dict_get(ctx, annotObj, PDF_NAME(AA));
+    if (!aa) {
+        return nullptr;
+    }
+    const char* keys[] = {"U", "D", "E", "X", "Fo", "Bl", "PO", "PC", "PV", "PI"};
+    for (const char* key : keys) {
+        rendition = PdfScreenRenditionFromAction(ctx, pdf_dict_gets(ctx, aa, key));
+        if (rendition) {
+            return rendition;
+        }
+    }
+    return nullptr;
+}
+
+// Media Rendition (/S /MR) -> Media Clip Data (/S /MCD) -> /D filespec
+static pdf_obj* PdfScreenResolveFilespec(fz_context* ctx, pdf_obj* annotObj) {
+    pdf_obj* rendition = PdfScreenResolveRendition(ctx, annotObj);
     if (!rendition) {
         return nullptr;
     }
+
     pdf_obj* clip = pdf_dict_get(ctx, rendition, PDF_NAME(C));
     if (clip) {
+        // Media Clip Data: the embedded file is in /D
+        pdf_obj* data = pdf_dict_get(ctx, clip, PDF_NAME(D));
+        if (data && pdf_is_embedded_file(ctx, data)) {
+            return data;
+        }
+        if (pdf_is_embedded_file(ctx, clip)) {
+            return clip;
+        }
+        if (data) {
+            return data;
+        }
         return clip;
     }
     return pdf_dict_get(ctx, rendition, PDF_NAME(D));

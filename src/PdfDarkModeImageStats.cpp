@@ -142,6 +142,20 @@ static bool PdfDarkModeStatsLookLikePhoto(const PdfDarkModeImageSampleStats& sta
     return isPhoto;
 }
 
+// Mirrors PdfDarkModeFeaturesLookLikeColorfulIllustration in PdfDarkModeImageRules.cpp.
+static bool PdfDarkModeStatsLookLikeColorfulIllustration(const PdfDarkModeImageSampleStats& stats) {
+    if (!stats.valid) {
+        return false;
+    }
+    if (stats.satRatio >= 0.12f && (stats.significantBuckets >= 14 || stats.lumVar >= 0.010f)) {
+        return true;
+    }
+    if (stats.satRatio >= 0.15f && stats.significantBuckets >= 10) {
+        return true;
+    }
+    return false;
+}
+
 static bool PdfDarkModeStatsLookLikeFlatLayoutPanel(const PdfDarkModeImageSampleStats& stats) {
     if (!stats.valid) {
         return false;
@@ -154,14 +168,18 @@ static bool PdfDarkModeStatsLookLikeLayoutBackground(const PdfDarkModeImageSampl
     if (!stats.valid) {
         return false;
     }
+    // Keep colorful picture-book art off the layout-panel recolor path.
+    if (PdfDarkModeStatsLookLikeColorfulIllustration(stats)) {
+        return false;
+    }
     if (PdfDarkModeStatsLookLikeFlatLayoutPanel(stats)) {
         return true;
     }
     // Cream/tan/yellow textbook panels and title cards — recolor for uniform dark page.
-    if (stats.highLumRatio > 0.58f && stats.lumVar < 0.018f) {
+    if (stats.highLumRatio > 0.58f && stats.lumVar < 0.018f && stats.satRatio < 0.12f) {
         return true;
     }
-    if (stats.highLumRatio > 0.44f && stats.lumVar < 0.022f) {
+    if (stats.highLumRatio > 0.44f && stats.lumVar < 0.022f && stats.satRatio < 0.12f) {
         return true;
     }
     if (stats.highLumRatio > 0.50f && stats.lumVar < 0.038f && stats.satRatio < 0.22f &&
@@ -252,8 +270,9 @@ bool PdfDarkModeImageShouldPreserveInLegacy(fz_context* ctx, fz_image* image, fl
     if (PdfDarkModeStatsLookLikeDarkArtwork(stats, pageCoverage)) {
         return true;
     }
-    if (PdfDarkModeStatsLookLikePhoto(stats)) {
-        if (pageCoverage < 0.14f && PdfDarkModeStatsLookLikePaperTextBox(stats)) {
+    if (PdfDarkModeStatsLookLikePhoto(stats) || PdfDarkModeStatsLookLikeColorfulIllustration(stats)) {
+        if (pageCoverage < 0.14f && PdfDarkModeStatsLookLikePaperTextBox(stats) &&
+            !PdfDarkModeStatsLookLikeColorfulIllustration(stats)) {
             return false;
         }
         return true;
@@ -275,8 +294,9 @@ bool PdfDarkModeImageIsConfirmedArtwork(fz_context* ctx, fz_image* image, float 
     if (PdfDarkModeStatsLookLikeDarkArtwork(stats, pageCoverage)) {
         return true;
     }
-    if (PdfDarkModeStatsLookLikePhoto(stats)) {
-        if (pageCoverage < 0.14f && PdfDarkModeStatsLookLikePaperTextBox(stats)) {
+    if (PdfDarkModeStatsLookLikePhoto(stats) || PdfDarkModeStatsLookLikeColorfulIllustration(stats)) {
+        if (pageCoverage < 0.14f && PdfDarkModeStatsLookLikePaperTextBox(stats) &&
+            !PdfDarkModeStatsLookLikeColorfulIllustration(stats)) {
             return false;
         }
         return true;

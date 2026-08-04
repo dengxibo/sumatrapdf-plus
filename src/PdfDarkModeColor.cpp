@@ -469,8 +469,7 @@ bool PdfDarkModeIsSubstantialFollowThemeArtwork(const RectF& imgRect, float page
     return coverage >= 0.04f && minDim >= 50.f && aspect >= 0.25f;
 }
 
-bool PdfDarkModeIsPhotoFrameStripImage(const RectF& imgRect, const RectF& pageBounds,
-                                       const Vec<RectF>* artworkBounds) {
+bool PdfDarkModeIsPhotoFrameStripImage(const RectF& imgRect, const RectF& pageBounds, const Vec<RectF>* artworkBounds) {
     if (!PdfDarkModeIsDecorativeStripImage(imgRect, pageBounds)) {
         return false;
     }
@@ -496,9 +495,12 @@ bool PdfDarkModeIsPhotoFrameStripImage(const RectF& imgRect, const RectF& pageBo
     return false;
 }
 
-DarkImagePolicy PdfDarkModePolicyForFollowThemeImage(const RectF& imgBounds, bool isImageMask,
-                                                     const RectF& pageBounds, const Vec<RectF>* artworkBounds,
-                                                     fz_context* ctx, fz_image* image) {
+// Follow-theme image policy:
+// - Text-heavy / small figures (< 75% coverage): Preserve (literature sweet spot).
+// - Full-bleed: classify pixels — Photo/colorful art Preserve; true scans AdaptiveDocument.
+DarkImagePolicy PdfDarkModePolicyForFollowThemeImage(const RectF& imgBounds, bool isImageMask, const RectF& pageBounds,
+                                                     const Vec<RectF>* artworkBounds, fz_context* ctx,
+                                                     fz_image* image) {
     if (isImageMask) {
         return PdfDarkModePolicyForImageKind(DarkImageKind::Unknown, true);
     }

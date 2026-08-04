@@ -2,6 +2,13 @@
 
 ## next
 
+## 3.7.24 (2026-08-04)
+
+- improve PDF Match-theme dark mode routing: keep colorful picture-book art (e.g. RAZ) with grey paper softening; only AdaptiveDocument-recolor true paper scans; text-heavy literature stays on OKLab remapping
+  改进 PDF「匹配主题」暗色分流：绘本彩色插图保留原色（纸面柔化为灰），仅对真扫描页做 Adaptive 重着色；文字类文学书继续 OKLab 重映射
+- fix Screen annotation audio playback when the media rendition lives on an `/A` Rendition action (Media Clip `/D` filespec), e.g. RAZ-AA *The City*
+  修复 Screen 注释音频：支持 `/A` Rendition 动作中的 Media Clip `/D` 内嵌 MP3（如 RAZ-AA《The City》）
+
 ## 3.7.23 (2026-08-04)
 
 - fix PDF smart dark mode inverting colors on RAZ picture-book pages: classify large images as photo/illustration vs scanned page background so illustrations keep natural colors

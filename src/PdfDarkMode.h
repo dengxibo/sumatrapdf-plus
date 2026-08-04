@@ -18,6 +18,11 @@ enum class DarkImagePolicy {
     ThemeRecolor,
 };
 
+// Image role for Match-theme (FollowTheme) routing:
+// - Photo / Unknown → Preserve (+ optional paper softening): grey paper, keep art colors
+//   (picture books / large colorful figures). Prefer this when ambiguous.
+// - FullPageScan / LightBackgroundArtwork / IconOrLineArt → AdaptiveDocument:
+//   recolor true scans and flat UI panels so text-heavy pages stay readable.
 enum class DarkImageKind {
     Photo,
     LightBackgroundArtwork,
@@ -91,7 +96,8 @@ struct DarkModeOptions {
     float lightFillLuminanceThreshold = 0.45f;
 };
 
-// Full-bleed backgrounds / scans at or above this threshold are recolored with the page.
+// Full-bleed backgrounds / scans at or above this threshold are classified;
+// colorful illustrations stay Preserve, true paper scans use AdaptiveDocument.
 static constexpr float kMaxPreserveImagePageCoverage = 0.75f;
 
 struct DarkModePalette {
@@ -222,8 +228,7 @@ void ApplyAdaptiveDocumentDarkMode(float r, float g, float b, const DarkModePale
 
 bool PdfDarkModeIsDecorativeStripImage(const RectF& imgRect, const RectF& pageBounds);
 bool PdfDarkModeIsSubstantialFollowThemeArtwork(const RectF& imgRect, float pageArea);
-bool PdfDarkModeIsPhotoFrameStripImage(const RectF& imgRect, const RectF& pageBounds,
-                                       const Vec<RectF>* artworkBounds);
+bool PdfDarkModeIsPhotoFrameStripImage(const RectF& imgRect, const RectF& pageBounds, const Vec<RectF>* artworkBounds);
 DarkImagePolicy PdfDarkModePolicyForFollowThemeImage(const RectF& imgBounds, bool isImageMask, const RectF& pageBounds,
                                                      const Vec<RectF>* artworkBounds = nullptr,
                                                      fz_context* ctx = nullptr, fz_image* image = nullptr);
