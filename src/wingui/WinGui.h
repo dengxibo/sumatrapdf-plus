@@ -1,6 +1,11 @@
 /* Copyright 2024 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
+#ifndef WinGui_h
+#define WinGui_h
+
+#include "utils/BaseUtil.h"
+
 //--- Wnd
 
 // global messages for wingui start at WM_APP + 0x300 to not
@@ -902,3 +907,5 @@ struct DrawCloseButtonArgs {
 
 void DrawCloseButton(const DrawCloseButtonArgs& args);
 void DrawCloseButton2(const DrawCloseButtonArgs&);
+
+#endif // WinGui_h

@@ -323,9 +323,10 @@ void TabsCtrl::Paint(HDC hdc, const RECT& rc) {
         tabBgHighlight = AccentColor(tabBaseBg, 14, 20);
         tabBgSelected = AccentColor(tabBaseBg, 28, 44);
     } else if (ThemeUsesDarkChrome()) {
-        tabBgBackground = tabBaseBg;
-        tabBgHighlight = AccentColor(tabBaseBg, 4, 8);
-        tabBgSelected = AccentColor(tabBaseBg, 6, 14);
+        // Inactive tabs recede; active tab must pop (old 4/6 accent was nearly invisible).
+        tabBgBackground = AccentColor(tabBaseBg, 0, -12);
+        tabBgHighlight = AccentColor(tabBaseBg, 10, 18);
+        tabBgSelected = AccentColor(tabBaseBg, 22, 36);
     } else {
         tabBgBackground = AccentColor(tabBaseBg, 25);
         tabBgHighlight = AccentColor(tabBaseBg, 35);
@@ -362,10 +363,13 @@ void TabsCtrl::Paint(HDC hdc, const RECT& rc) {
         gr = ToGdipRect(ti->r);
         gfx.FillRectangle(&br, gr);
 
-        if (isSelected && ThemeUsesBlackChrome()) {
+        if (isSelected && ThemeUsesDarkChrome()) {
             gfx.SetCompositingMode(Gdiplus::CompositingModeSourceOver);
-            Pen pen(GdiRgbFromCOLORREF(AccentColor(tabBaseBg, 22, 38)), 1.0f);
-            float y = (float)(ti->r.y + ti->r.dy - 1);
+            COLORREF lineCol =
+                ThemeUsesBlackChrome() ? AccentColor(tabBaseBg, 22, 38) : ThemeWindowLinkColor();
+            float lineW = ThemeUsesBlackChrome() ? 1.0f : 2.0f;
+            Pen pen(GdiRgbFromCOLORREF(lineCol), lineW);
+            float y = (float)(ti->r.y + ti->r.dy) - lineW;
             gfx.DrawLine(&pen, (float)ti->r.x + 2, y, (float)(ti->r.x + ti->r.dx - 2), y);
         }
 
@@ -400,7 +404,11 @@ void TabsCtrl::Paint(HDC hdc, const RECT& rc) {
             }
             rTxt.Width = std::max(0.f, rTxt.Width - dirtySlotDx);
         }
-        br.SetColor(GdipCol(textColor));
+        COLORREF tabTextCol = textColor;
+        if (ThemeUsesDarkChrome()) {
+            tabTextCol = isSelected ? ThemeReadingTextColor() : ThemeWindowTextDisabledColor();
+        }
+        br.SetColor(GdipCol(tabTextCol));
         TempWStr ws = ToWStrTemp(ti->text);
         gfx.DrawString(ws, -1, &f, rTxt, &sf, &br);
 

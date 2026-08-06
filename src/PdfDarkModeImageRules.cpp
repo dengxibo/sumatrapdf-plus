@@ -60,6 +60,24 @@ bool PdfDarkModeFeaturesLookLikeSoftCreamIllustration(const DarkImageFeatures& f
            f.chromaticPixelRatio < 0.15f;
 }
 
+// Classic B&W line-art scans (连环画 / woodblock reprints): paper + ink lines, no color.
+// Must be FullPageScan / uniform remap — not Photo → partial photo-rect protect (gray noise).
+static bool PdfDarkModeFeaturesLookLikeBwLineArtScan(const DarkImageFeatures& f) {
+    if (f.saturatedPixelRatio >= 0.05f) {
+        return false;
+    }
+    if (f.chromaticPixelRatio >= 0.06f) {
+        return false;
+    }
+    if (f.highLuminanceRatio < 0.55f) {
+        return false;
+    }
+    if (f.luminanceVariance < 0.018f) {
+        return false;
+    }
+    return true;
+}
+
 // True scanned page / flat paper UI — not a colorful illustration or grayscale photo.
 static bool PdfDarkModeFeaturesLookLikeTrueFullPageScan(const DarkImageFeatures& f) {
     int buckets = PdfDarkModeFeatureColorBuckets(f);
@@ -150,6 +168,9 @@ DarkImageKind PdfDarkModeClassifyImageFeatures(const DarkImageFeatures& f, float
                 kind = DarkImageKind::Photo;
                 confidence = 0.74f;
             }
+        } else if (PdfDarkModeFeaturesLookLikeBwLineArtScan(f)) {
+            kind = DarkImageKind::FullPageScan;
+            confidence = 0.76f;
         } else if (PdfDarkModeFeaturesLookLikePhoto(f) || PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
             kind = DarkImageKind::Photo;
             confidence = 0.76f;

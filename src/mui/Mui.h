@@ -1,6 +1,11 @@
 /* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
+#ifndef Mui_h
+#define Mui_h
+
+#include "utils/BaseUtil.h"
+
 struct TxtNode;
 
 using Gdiplus::FontStyle;
@@ -44,3 +49,5 @@ class ScopedMui {
     ScopedMui() { mui::Initialize(); }
     ~ScopedMui() { mui::Destroy(); }
 };
+
+#endif // Mui_h

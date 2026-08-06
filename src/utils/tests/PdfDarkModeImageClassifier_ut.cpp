@@ -182,6 +182,21 @@ static DarkImageFeatures GrayscalePortraitFeatures() {
     return f;
 }
 
+// 1954 连环画-style B&W line art on aged paper: ink variance, no color — FullPageScan, not Photo rects.
+static DarkImageFeatures LianhuanhuaBwLineArtScanFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 18.f / 4096.f;
+    f.highLuminanceRatio = 0.72f;
+    f.saturatedPixelRatio = 0.02f;
+    f.chromaticPixelRatio = 0.035f;
+    f.luminanceVariance = 0.032f;
+    f.borderLightRatio = 0.82f;
+    f.borderUniformity = 0.70f;
+    f.flatAreaRatio = 0.42f;
+    return f;
+}
+
 void PdfDarkModeImageClassifier_UnitTests() {
     float confidence = 0.f;
 
@@ -268,6 +283,12 @@ void PdfDarkModeImageClassifier_UnitTests() {
     kind = PdfDarkModeClassifyImageFeatures(GrayscalePortraitFeatures(), 0.80f, false, &confidence);
     utassert(kind == DarkImageKind::Photo);
     utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::Preserve);
+
+    // B&W line-art scan (连环画): FullPageScan — never partial photo-rect picture-book path.
+    kind = PdfDarkModeClassifyImageFeatures(LianhuanhuaBwLineArtScanFeatures(), 0.92f, false, &confidence);
+    utassert(kind == DarkImageKind::FullPageScan);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::AdaptiveDocument);
+    utassert(!PdfDarkModeShouldPreserveImageFeatures(LianhuanhuaBwLineArtScanFeatures(), 0.92f));
 
     // Scanned-page hint: colorful art stays Preserve; flat paper becomes FullPageScan.
     kind = PdfDarkModeClassifyImageFeatures(scan, 0.58f, true, &confidence);

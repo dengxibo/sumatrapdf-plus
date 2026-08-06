@@ -88,6 +88,7 @@
 #include <windows.h>
 #include <ws2def.h>
 #include <unknwn.h>
+#include <objidl.h>
 #include <shlwapi.h>
 #include <shlobj.h>
 #include <commctrl.h>

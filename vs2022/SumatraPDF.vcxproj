@@ -395,9 +395,13 @@
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
+  <PropertyGroup>
+    <VCIntelliSensePreprocessorDefinitions>WINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP;$(VCIntelliSensePreprocessorDefinitions)</VCIntelliSensePreprocessorDefinitions>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles>../src/utils/BaseUtil.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -437,6 +441,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles>../src/utils/BaseUtil.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -476,6 +481,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles>../src/utils/BaseUtil.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -515,6 +521,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug x64_asan|x64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles>../src/utils/BaseUtil.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -554,6 +561,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='DebugFull|Win32'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles>../src/utils/BaseUtil.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -593,6 +601,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='DebugFull|x64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles>../src/utils/BaseUtil.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -632,6 +641,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='DebugFull|ARM64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles>../src/utils/BaseUtil.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -671,6 +681,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='DebugFull x64_asan|x64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles>../src/utils/BaseUtil.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -710,6 +721,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles>../src/utils/BaseUtil.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -754,6 +766,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles>../src/utils/BaseUtil.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -798,6 +811,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles>../src/utils/BaseUtil.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -842,6 +856,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release x64_asan|x64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles>../src/utils/BaseUtil.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -885,6 +900,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseAnalyze|Win32'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles>../src/utils/BaseUtil.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;28125;28252;28253;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -930,6 +946,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseAnalyze|x64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles>../src/utils/BaseUtil.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;28125;28252;28253;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -975,6 +992,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseAnalyze|ARM64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles>../src/utils/BaseUtil.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;28125;28252;28253;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -1020,6 +1038,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseAnalyze x64_asan|x64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles>../src/utils/BaseUtil.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableSpecificWarnings>4127;4189;4324;4458;4522;4611;4800;6319;28125;28252;28253;4100;4244;4267;4701;4702;4703;4706;4819;6324;4302;4311;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -1208,15 +1227,22 @@
     <ClCompile Include="..\ext\darkmodelib\src\DmlibWinApi.cpp" />
     <ClCompile Include="..\ext\md4c\src\entity.c">
       <DisableSpecificWarnings>4200;4201;4310;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <ForcedIncludeFiles />
     </ClCompile>
     <ClCompile Include="..\ext\md4c\src\md4c-html.c">
       <DisableSpecificWarnings>4200;4201;4310;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <ForcedIncludeFiles />
     </ClCompile>
     <ClCompile Include="..\ext\md4c\src\md4c.c">
       <DisableSpecificWarnings>4200;4201;4310;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <ForcedIncludeFiles />
     </ClCompile>
-    <ClCompile Include="..\ext\synctex\synctex_parser.c" />
-    <ClCompile Include="..\ext\synctex\synctex_parser_utils.c" />
+    <ClCompile Include="..\ext\synctex\synctex_parser.c">
+      <ForcedIncludeFiles />
+    </ClCompile>
+    <ClCompile Include="..\ext\synctex\synctex_parser_utils.c">
+      <ForcedIncludeFiles />
+    </ClCompile>
     <ClCompile Include="..\src\Accelerators.cpp" />
     <ClCompile Include="..\src\Annotation.cpp" />
     <ClCompile Include="..\src\AppSettings.cpp" />
@@ -1271,7 +1297,9 @@
     <ClCompile Include="..\src\InstallerCommon.cpp" />
     <ClCompile Include="..\src\LookupAudio.cpp" />
     <ClCompile Include="..\src\MainWindow.cpp" />
-    <ClCompile Include="..\src\Md4cHtml.c" />
+    <ClCompile Include="..\src\Md4cHtml.c">
+      <ForcedIncludeFiles />
+    </ClCompile>
     <ClCompile Include="..\src\MdConvert.cpp" />
     <ClCompile Include="..\src\Menu.cpp" />
     <ClCompile Include="..\src\MobiDoc.cpp" />

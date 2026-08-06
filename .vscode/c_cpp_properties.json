@@ -1,38 +1,52 @@
 {
     "configurations": [
         {
-            "name": "Win32",
+            "name": "Win32-x64-Debug",
             "includePath": [
-                "${workspaceRoot}/mupdf/include",
-                "${workspaceRoot}/src",
-                "${workspaceRoot}/src/utils",
-                "${workspaceRoot}/src/wingui",
-                "${workspaceRoot}/ext/synctex",
-                "${workspaceRoot}/ext/unarr",
-                "${workspaceRoot}/ext/brotli/c/include",
-                "${workspaceRoot}/ext/darkmodelib/include",
-                "${workspaceRoot}/ext/zlib",
-                "${workspaceRoot}/ext/CHMLIB",
-                "${workspaceRoot}/packages/Microsoft.Web.WebView2.1.0.992.28/build/native/include"
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/src/wingui",
+                "${workspaceFolder}/mupdf/include",
+                "${workspaceFolder}/ext/libdjvu",
+                "${workspaceFolder}/ext/CHMLib",
+                "${workspaceFolder}/ext/libarchive",
+                "${workspaceFolder}/ext/md4c/src",
+                "${workspaceFolder}/ext/darkmodelib/include",
+                "${workspaceFolder}/ext/zlib",
+                "${workspaceFolder}/ext/synctex",
+                "${workspaceFolder}/packages/Microsoft.Web.WebView2.1.0.992.28/build/native/include"
             ],
             "defines": [
                 "_DEBUG",
                 "UNICODE",
+                "_UNICODE",
                 "_WIN32",
                 "WIN32",
+                "WINVER=0x0601",
+                "_WIN32_WINNT=0x0601",
+                "NTDDI_VERSION=0x06010000",
+                "_HAS_ITERATOR_DEBUGGING=0",
+                "LIBARCHIVE_STATIC",
+                "_DARKMODELIB_NO_INI_CONFIG",
                 "_CRT_SECURE_NO_WARNINGS",
-                "WINVER=0x0a00",
-                "_WIN32_WINNT=0x0a00"
+                "DISABLE_DOCUMENT_RESTRICTIONS",
+                "_HAS_EXCEPTIONS=0",
+                "_WIN64",
+                "WINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP"
             ],
-            "windowsSdkVersion": "10.0.18362.0",
+            "windowsSdkVersion": "10.0.26100.0",
             "intelliSenseMode": "windows-msvc-x64",
+            "forcedInclude": [
+                "${workspaceFolder}/src/utils/BaseUtil.h"
+            ],
             "browse": {
-                "path": [],
-                "limitSymbolsToIncludedHeaders": false,
-                "databaseFilename": "${workspaceRoot}/.vscode/db/intellisense.db"
+                "path": [
+                    "${workspaceFolder}/src"
+                ],
+                "limitSymbolsToIncludedHeaders": true,
+                "databaseFilename": "${workspaceFolder}/.vscode/db/intellisense.db"
             },
-            "cppStandard": "c++20",
-            "compilerPath": "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe"
+            "cppStandard": "c++latest",
+            "compilerPath": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe"
         }
     ],
     "version": 4

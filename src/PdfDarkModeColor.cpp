@@ -716,8 +716,9 @@ fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, 
 
     DmPbPhotoRect photoRects[kDmPbMaxPhotoRects] = {};
     int nPhotoRects = 0;
-    // Paper-heavy RAZ pages still search — sparse top photos must stay protected.
-    if (paperRatio < 0.92f || satRatio >= 0.04f || chromaRatio >= 0.06f) {
+    // Colorful RAZ / picture-book pages: protect photo rects. B&W ink lines (连环画) register as
+    // dense via luminance contrast but have no color — partial rects leave gray noise outside panels.
+    if (satRatio >= 0.04f) {
         nPhotoRects = dm_pb_find_photo_rects(ctx, src, photoRects, kDmPbMaxPhotoRects);
     }
 

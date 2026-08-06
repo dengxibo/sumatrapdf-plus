@@ -1,6 +1,11 @@
 /* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
+#ifndef HtmlFormatter_h
+#define HtmlFormatter_h
+
+#include "utils/BaseUtil.h"
+
 using Gdiplus::ARGB;
 using Gdiplus::Bitmap;
 using Gdiplus::Color;
@@ -10,6 +15,7 @@ using Gdiplus::FontStyleItalic;
 using Gdiplus::FontStyleRegular;
 using Gdiplus::FontStyleStrikeout;
 using Gdiplus::FontStyleUnderline;
+using Gdiplus::Graphics;
 using Gdiplus::Matrix;
 using Gdiplus::MatrixOrderAppend;
 using Gdiplus::Ok;
@@ -341,3 +347,5 @@ void DrawHtmlPage(Graphics* g, mui::ITextRender* textDraw, Vec<DrawInstr>* drawI
 mui::TextRenderMethod GetTextRenderMethod();
 void SetTextRenderMethod(mui::TextRenderMethod method);
 HtmlFormatterArgs* CreateFormatterDefaultArgs(int dx, int dy, Arena* textAllocator = nullptr);
+
+#endif // HtmlFormatter_h

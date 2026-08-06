@@ -1,6 +1,11 @@
 /* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
+#ifndef GdiPlusUtil_h
+#define GdiPlusUtil_h
+
+#include "utils/BaseUtil.h"
+
 struct RenderedBitmap;
 
 Gdiplus::RectF RectToRectF(Gdiplus::Rect r);
@@ -33,3 +38,5 @@ Gdiplus::Font* TryCreateReaderLatinFromSystemFiles(float sizePt, Gdiplus::FontSt
 void CollectBundledFontFamilyNames(Vec<char*>* families);
 CLSID GetGdiPlusEncoderClsid(const WCHAR* format);
 RenderedBitmap* LoadRenderedBitmapWin(const char* path);
+
+#endif // GdiPlusUtil_h
