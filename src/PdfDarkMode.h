@@ -185,6 +185,7 @@ struct FollowThemePageProbeStats {
     int imageOps = 0;
     int vectorOps = 0;
     float maxImageCoverage = 0.f;
+    float stackedImageCoverage = 0.f;
 };
 
 inline bool FollowThemePageStatsAllowBitmapRecolor(const FollowThemePageProbeStats& st, const DarkModeOptions& opts) {
@@ -222,6 +223,8 @@ bool PdfDarkModePdfMetadataSuggestsLayoutPhotoDoc(fz_context* ctx, pdf_document*
 bool PdfDarkModePdfMetadataSuggestsPaperCaptureDoc(fz_context* ctx, pdf_document* doc);
 // DuXiu / Pdg2Pic / SuperStar etc.: full-page image scans → whole-tile bitmap recolor.
 bool PdfDarkModePdfMetadataSuggestsFullPageScanDoc(fz_context* ctx, pdf_document* doc);
+// Print-to-PDF / Acrobat Elements / PScript scans (multi-layer image pages, no text layer).
+bool PdfDarkModePdfMetadataSuggestsPrintToPdfScanDoc(fz_context* ctx, pdf_document* doc);
 
 void PdfDarkModeInvalidatePage(fz_context* ctx, FzPageInfo* pageInfo);
 
@@ -274,9 +277,13 @@ DarkImageKind PdfDarkModeClassifyImageFeatures(const DarkImageFeatures& features
                                                bool pageIsScannedHint, float* outConfidence);
 
 bool PdfDarkModeFeaturesLookLikePhoto(const DarkImageFeatures& f);
+bool PdfDarkModeFeaturesLookLikeSoftCreamIllustration(const DarkImageFeatures& f);
 bool PdfDarkModeShouldPreserveImageFeatures(const DarkImageFeatures& f, float pageCoverage);
 
 DarkImagePolicy PdfDarkModePolicyForImageKind(DarkImageKind kind, bool isImageMask);
+// Match-theme guard: map Preserve → AdaptiveDocument for white scan pages (not designed art).
+DarkImagePolicy PdfDarkModeClampFollowThemePolicy(DarkImagePolicy policy, float pageCoverage,
+                                                  const DarkImageAnalysis& analysis);
 
 void PdfDarkModeCompressPhotoHighlights(float r, float g, float b, float* outR, float* outG, float* outB);
 

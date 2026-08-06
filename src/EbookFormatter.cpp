@@ -94,6 +94,8 @@ MobiFormatter::MobiFormatter(HtmlFormatterArgs* args, MobiDoc* doc, EbookTypogra
         }
     }
 
+    LoadEmbeddedKf8Css(args->htmlStr);
+
     bool fromBeginning = (0 == args->reparseIdx);
     if (!doc || !fromBeginning) {
         return;
@@ -279,6 +281,97 @@ static float ParseSizeAsPixels(const char* s, size_t len, float emInPoints) {
     return sizeInPixels;
 }
 
+void MobiFormatter::LoadEmbeddedKf8Css(const ByteSlice& html) {
+    if (!readerStyle || html.empty()) {
+        return;
+    }
+    const char* s = (const char*)html.data();
+    int len = (int)html.size();
+    int idx = str::BufFind(s, len, "/* Global setting */");
+    if (idx < 0) {
+        idx = str::BufFind(s, len, "p.bodycontent-text {");
+    }
+    if (idx < 0) {
+        return;
+    }
+    embeddedCssStart = idx;
+    ParseStyleSheet(s + idx, len - idx);
+}
+
+static bool ClassAttrContains(const char* val, size_t valLen, const char* needle) {
+    char* buf = str::DupTemp(val, valLen);
+    return buf && strstr(buf, needle);
+}
+
+bool MobiFormatter::IgnoreText() {
+    if (embeddedCssStart >= 0 && currReparseIdx >= embeddedCssStart) {
+        return true;
+    }
+    return HtmlFormatter::IgnoreText();
+}
+
+void MobiFormatter::HandleTagLink(HtmlToken* t) {
+    // KF8/AZW3 chapters reference kindle:flow:…?mime=text/css; CSS is preloaded above.
+    (void)t;
+}
+
+static bool MobiParagraphAlignAllowsIndent(AlignAttr align) {
+    return align == AlignAttr::Left || align == AlignAttr::Justify || align == AlignAttr::NotFound;
+}
+
+static bool MobiParagraphExplicitNoIndent(HtmlToken* t) {
+    AttrInfo* classAttr = t->GetAttrByName("class");
+    if (classAttr && ClassAttrContains(classAttr->val, classAttr->valLen, "noindent")) {
+        return true;
+    }
+    AttrInfo* alignAttr = t->GetAttrByName("align");
+    if (alignAttr) {
+        AlignAttr a = FindAlignAttr(alignAttr->val, alignAttr->valLen);
+        if (a == AlignAttr::Center || a == AlignAttr::Right) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void MobiFormatter::EnsureCjkParagraphIndent(HtmlToken* t) {
+    if (!readerStyle || !EbookUsesCjkTypography() || !t->IsStartTag()) {
+        return;
+    }
+    if (InTocLikeRegion() || MobiParagraphExplicitNoIndent(t)) {
+        return;
+    }
+    StyleRule rule = ComputeStyleRule(t);
+    if (rule.textIndentUnit != StyleRule::inherit && rule.textIndent == 0) {
+        AttrInfo* classAttr = t->GetAttrByName("class");
+        if (classAttr && ClassAttrContains(classAttr->val, classAttr->valLen, "noindent")) {
+            return;
+        }
+    }
+    AlignAttr align = CurrStyle()->align;
+    if (rule.textAlign != AlignAttr::NotFound) {
+        align = rule.textAlign;
+    }
+    if (!MobiParagraphAlignAllowsIndent(align)) {
+        return;
+    }
+    float want = CjkMobiIndentForChars(CurrFont()->GetSize());
+    float cssIndent = (rule.textIndentUnit != StyleRule::inherit && rule.textIndent > 0) ? rule.textIndent : 0;
+    for (DrawInstr& i : currLineInstr) {
+        if (DrawInstrType::FixedSpace == i.type) {
+            if (i.bbox.dx < want - 0.5f) {
+                currX += want - i.bbox.dx;
+                i.bbox.dx = want;
+            }
+            paragraphIndentEmitted = true;
+            return;
+        }
+    }
+    if (!paragraphIndentEmitted) {
+        EmitParagraph(want);
+    }
+}
+
 void MobiFormatter::HandleSpacing_Mobi(HtmlToken* t) {
     if (!t->IsStartTag()) {
         return;
@@ -292,7 +385,14 @@ void MobiFormatter::HandleSpacing_Mobi(HtmlToken* t) {
         float lineIndent = ParseSizeAsPixels(attr->val, attr->valLen, CurrFont()->GetSize());
         // there are files with negative width which produces partially invisible
         // text, so don't allow that
-        if (lineIndent > 0) {
+        if (lineIndent > 0 && !paragraphIndentEmitted) {
+            if (readerStyle && typographyKind == EbookTypographyKind::Cjk) {
+                float em = CurrFont()->GetSize();
+                float twoChars = CjkMobiIndentForChars(em);
+                if (lineIndent < twoChars - 0.5f) {
+                    lineIndent = twoChars;
+                }
+            }
             // this should replace the previously emitted paragraph/quote block
             EmitParagraph(lineIndent);
         }
@@ -302,11 +402,6 @@ void MobiFormatter::HandleSpacing_Mobi(HtmlToken* t) {
         // for use it in FlushCurrLine()
         currLineTopPadding = ParseSizeAsPixels(attr->val, attr->valLen, CurrFont()->GetSize());
     }
-}
-
-static bool ClassAttrContains(const char* val, size_t valLen, const char* needle) {
-    char* buf = str::DupTemp(val, valLen);
-    return buf && strstr(buf, needle);
 }
 
 static bool MobiHtmlHasEarlyCoverImage(ByteSlice html) {
@@ -473,6 +568,14 @@ void MobiFormatter::HandleHtmlTag(HtmlToken* t) {
         }
         HtmlFormatter::HandleHtmlTag(t);
         HandleSpacing_Mobi(t);
+        if (t->IsStartTag()) {
+            EnsureCjkParagraphIndent(t);
+        }
+    } else if (Tag_Div == t->tag) {
+        HtmlFormatter::HandleHtmlTag(t);
+        if (t->IsStartTag()) {
+            EnsureCjkParagraphIndent(t);
+        }
     } else if (Tag_Center == t->tag) {
         if (!tocPageBreakDone && t->IsStartTag() && (sawColophonPhone || inTocRegion)) {
             StartTocPage();

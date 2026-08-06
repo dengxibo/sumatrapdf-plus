@@ -131,6 +131,12 @@ bool PdfDarkModePdfMetadataSuggestsFullPageScanDoc(fz_context* ctx, pdf_document
     return false;
 }
 
+bool PdfDarkModePdfMetadataSuggestsPrintToPdfScanDoc(fz_context* ctx, pdf_document* doc) {
+    (void)ctx;
+    (void)doc;
+    return false;
+}
+
 bool PdfDarkModePdfMetadataSuggestsLayoutPhotoDoc(fz_context* ctx, pdf_document* doc) {
     (void)ctx;
     (void)doc;

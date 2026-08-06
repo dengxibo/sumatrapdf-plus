@@ -771,6 +771,9 @@ bool HtmlFormatter::IsCurrLineEmpty() {
         if (IsVisibleDrawInstr(i)) {
             return false;
         }
+        if (DrawInstrType::FixedSpace == i.type) {
+            return false;
+        }
     }
     return true;
 }
@@ -856,10 +859,10 @@ bool HtmlFormatter::FlushCurrLine(bool isParagraphBreak) {
     if (IsCurrLineEmpty()) {
         currX = NewLineX();
         currLineTopPadding = 0;
-        // remove all spaces (only keep SetFont, LinkStart and Anchor instructions)
+        // remove elastic spaces (keep paragraph-indent FixedSpace)
         for (size_t k = currLineInstr.size(); k > 0; k--) {
             DrawInstr& i = currLineInstr.at(k - 1);
-            if (DrawInstrType::FixedSpace == i.type || DrawInstrType::ElasticSpace == i.type) {
+            if (DrawInstrType::ElasticSpace == i.type) {
                 currLineInstr.RemoveAt(k - 1);
             }
         }
@@ -922,14 +925,16 @@ void HtmlFormatter::EmitNewPage() {
 }
 
 void HtmlFormatter::EmitEmptyLine(float lineDy) {
-    ReportIf(!IsCurrLineEmpty());
+    if (!IsCurrLineEmpty()) {
+        return;
+    }
     currY += lineDy;
     if (currY <= pageDy) {
         currX = NewLineX();
-        // remove all spaces (only keep SetFont, LinkStart and Anchor instructions)
+        // remove elastic spaces (keep paragraph-indent FixedSpace)
         for (size_t k = currLineInstr.size(); k > 0; k--) {
             DrawInstr& i = currLineInstr.at(k - 1);
-            if (DrawInstrType::FixedSpace == i.type || DrawInstrType::ElasticSpace == i.type) {
+            if (DrawInstrType::ElasticSpace == i.type) {
                 currLineInstr.RemoveAt(k - 1);
             }
         }
@@ -1026,6 +1031,7 @@ void HtmlFormatter::EmitParagraph(float indent) {
     if (indent > 0 && needsIndent && EnsureDx(indent)) {
         AppendInstr(DrawInstr::FixedSpace(indent));
         currX += indent;
+        paragraphIndentEmitted = true;
     }
 }
 
@@ -1211,6 +1217,7 @@ void HtmlFormatter::BeginParagraphScope(HtmlTag closeTag) {
     paragraphStartReparseIdx = currReparseIdx;
     paragraphScanned = false;
     paragraphHasCjk = false;
+    paragraphIndentEmitted = false;
 }
 
 void HtmlFormatter::EnsureParagraphCjkScanned() {
@@ -1492,6 +1499,14 @@ void HtmlFormatter::HandleTagP(HtmlToken* t, bool isDiv) {
             // prefer CSS styling to align attribute
             align = GetAlignAttr(t, align);
         }
+        bool skipDefaultIndent = false;
+        if (rule.textIndentUnit != StyleRule::inherit && rule.textIndent == 0) {
+            AttrInfo* classAttr = t->GetAttrByName("class");
+            if (classAttr) {
+                char* buf = str::DupTemp(classAttr->val, classAttr->valLen);
+                skipDefaultIndent = buf && strstr(buf, "noindent");
+            }
+        }
         if (rule.textIndentUnit != StyleRule::inherit && rule.textIndent > 0) {
             float factor = CurrFont()->GetSize();
             if (rule.textIndentUnit != StyleRule::em) {
@@ -1504,6 +1519,12 @@ void HtmlFormatter::HandleTagP(HtmlToken* t, bool isDiv) {
 #endif
             }
             indent = rule.textIndent * factor;
+            // CJK: publisher em counts characters; each glyph advance ≈ 1.6× font em.
+            if (EbookReaderStyleMobi() && EbookUsesCjkTypography() && rule.textIndentUnit == StyleRule::em) {
+                indent *= kCjkMobiCharAdvanceEm;
+            }
+        } else if (!skipDefaultIndent && EbookReaderStyleMobi() && EbookUsesCjkTypography()) {
+            indent = CjkMobiIndentForChars(CurrFont()->GetSize());
         }
 
         SetAlignment(align);
@@ -1512,8 +1533,8 @@ void HtmlFormatter::HandleTagP(HtmlToken* t, bool isDiv) {
     } else {
         FlushCurrLine(true);
         RevertStyleChange();
+        EmitEmptyLine(ExtraParagraphDy());
     }
-    EmitEmptyLine(ExtraParagraphDy());
 }
 
 void HtmlFormatter::HandleTagFont(HtmlToken* t) {

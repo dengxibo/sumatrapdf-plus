@@ -114,8 +114,7 @@ static bool IsReaderStyledMobiPath(const char* filePath) {
 static void SetupHtmlFormatterFont(HtmlFormatterArgs& args, const char* /*filePath*/,
                                    EbookTypographyKind typographyKind = EbookTypographyKind::Latin) {
     SetEbookTypographyKind(typographyKind);
-    bool cjkPrimary =
-        typographyKind == EbookTypographyKind::Cjk || typographyKind == EbookTypographyKind::Bilingual;
+    bool cjkPrimary = typographyKind == EbookTypographyKind::Cjk || typographyKind == EbookTypographyKind::Bilingual;
     const WCHAR* fontName = cjkPrimary ? GetEbookCjkFontFamilyW() : GetEbookLatinFontFamilyW();
     args.SetFontName(fontName);
 }

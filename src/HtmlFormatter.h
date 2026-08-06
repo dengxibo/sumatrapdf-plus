@@ -298,6 +298,9 @@ class HtmlFormatter {
     // reparse point for the current HtmlToken
     ptrdiff_t currReparseIdx = 0;
 
+    // first-line indent already emitted for the current paragraph (MOBI width attr)
+    bool paragraphIndentEmitted = false;
+
     HtmlPullParser* htmlParser = nullptr;
 
     // list of pages that we've created but haven't yet sent to client

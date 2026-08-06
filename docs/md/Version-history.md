@@ -2,6 +2,15 @@
 
 ## next
 
+## 3.7.26 (2026-08-06)
+
+- PDF Match-theme dark mode: never show white manuscript scans in Match theme; route misclassified colorful scans and Acrobat Elements/PScript stacked-strip pages through PureScan bitmap recolor; fix dual/triple-layer image scans (e.g. telecom contracts); skip rects no longer skip whole-tile bitmap recolor pages
+  PDF「匹配主题」暗色：扫描稿不再显示白底原稿；彩色扫描误判与 Acrobat Elements/PScript 叠条扫描走 PureScan 位图重着色；修复双层/三层图像扫描（如电信合同）；整页位图重着色页不再被 skip rects 跳过
+- MOBI/AZW Chinese first-line indent: two fullwidth characters for Chinese MOBI/AZW/AZW3 in reader style
+  MOBI/AZW 中文首行缩进：阅读样式下中文 MOBI/AZW/AZW3 首行缩进两个全角字符
+- unify Match-theme RAZ / picture-book pages on sharp dark paper + light text (soft mid-grey paper only for true soft-cream notebook pages); route photo-ish FullPageScan misclass through picture-book protect
+  「匹配主题」RAZ/绘本页统一为深色纸+浅色字（仅真软奶油手帐页保留浅灰纸面柔化）；带照片特征的 FullPageScan 误判改走绘本保护路径
+
 ## 3.7.25 (2026-08-05)
 
 - faster Match-theme for DuXiu/Pdg2Pic scan books: metadata → whole-tile bitmap recolor; do not treat paper+ink variance as grayscale photos (avoids picture-book multi-rect)

@@ -36,8 +36,8 @@ fz_device* PdfDarkModeWrapDevice(fz_context* ctx, fz_device* inner, DarkModePage
                                  DarkModeEngineCache* engineCache, u32 profileHash, bool debugOverlay = false);
 
 fz_device* PdfDarkModeWrapFollowThemeDevice(fz_context* ctx, fz_device* inner, const DarkModePalette* palette,
-                                            const RectF& pageBounds, DarkModeEngineCache* engineCache,
-                                            u32 profileHash, const Vec<RectF>* artworkBounds = nullptr);
+                                            const RectF& pageBounds, DarkModeEngineCache* engineCache, u32 profileHash,
+                                            const Vec<RectF>* artworkBounds = nullptr);
 
 fz_image* PdfDarkModeGetCachedFollowThemeImage(fz_context* ctx, DarkModeEngineCache* engineCache, fz_image* srcImage,
                                                DarkImagePolicy policy, float pageCoverage,
@@ -62,12 +62,13 @@ void ApplyPreserveImagePaperSoftening(float r, float g, float b, const DarkModeP
 void ApplyPreservePictureBookPaperAndInk(float r, float g, float b, const DarkModePalette& palette, float* outR,
                                          float* outG, float* outB);
 fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette);
+// Soft-cream notebook pages: gentle paper softening only (no steep ink remap).
+fz_pixmap* PdfDarkModeProcessSoftCreamPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette);
 
 // Margin strips, drop shadows, and similar layout art — not photos to preserve.
 bool PdfDarkModeIsDecorativeStripImage(const RectF& imgRect, const RectF& pageBounds);
 bool PdfDarkModeIsSubstantialFollowThemeArtwork(const RectF& imgRect, float pageArea);
-bool PdfDarkModeIsPhotoFrameStripImage(const RectF& imgRect, const RectF& pageBounds,
-                                       const Vec<RectF>* artworkBounds);
+bool PdfDarkModeIsPhotoFrameStripImage(const RectF& imgRect, const RectF& pageBounds, const Vec<RectF>* artworkBounds);
 
 void PdfDarkModeFreeProcessCache(fz_context* ctx, DarkModePageAnalysis* analysis);
 

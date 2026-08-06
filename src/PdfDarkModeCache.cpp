@@ -249,7 +249,13 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
         src = dm_load_src_pixmap(ctx, srcImage, decodeMaxDim);
         if (policy == DarkImagePolicy::Preserve) {
             if (pageCoverage >= kMaxPreserveImagePageCoverage) {
-                processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette);
+                // Soft-cream notebooks: classifier SoftCream → gentle soften only.
+                // RAZ / picture books: sharp dark paper + light text with photo-rect protect.
+                if (imgAnalysis && PdfDarkModeFeaturesLookLikeSoftCreamIllustration(imgAnalysis->features)) {
+                    processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
+                } else {
+                    processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette);
+                }
             } else {
                 processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_preserve_pixel);
             }
@@ -257,11 +263,21 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
             if (layoutRaster) {
                 processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_legacy_linear_pixel);
             } else if (imgAnalysis && imgAnalysis->kind == DarkImageKind::FullPageScan) {
-                // Low-chroma text scans: AdaptiveDocument remap (fast). Keep ProcessScan
-                // only when the page has meaningful color (photos on a scan).
-                if (imgAnalysis->features.saturatedPixelRatio < 0.10f) {
+                // RAZ / picture-book full-bleed misclassified as FullPageScan: use picture-book
+                // sharp paper/ink + photo-rect protect (same black look as Preserve path) instead
+                // of whole-tile AdaptiveDocument (photo edge halos). Plain DuXiu text scans stay
+                // on AdaptiveDocument (low sat + low chroma).
+                const DarkImageFeatures& f = imgAnalysis->features;
+                bool pictureBookishScan = PdfFollowThemePreservesEmbeddedImageColors() &&
+                                          pageCoverage >= kMaxPreserveImagePageCoverage &&
+                                          (f.saturatedPixelRatio >= 0.08f || f.chromaticPixelRatio >= 0.10f);
+                if (pictureBookishScan) {
+                    processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette);
+                } else if (f.saturatedPixelRatio < 0.10f) {
+                    // Low-chroma text scans: AdaptiveDocument remap (fast).
                     processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_adaptive_pixel);
                 } else {
+                    // Keep ProcessScan when the page has meaningful color (photos on a scan).
                     processed = PdfDarkModeProcessScanPixmap(ctx, src, *imgAnalysis, palette);
                 }
             }

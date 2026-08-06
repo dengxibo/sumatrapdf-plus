@@ -53,8 +53,10 @@ static bool PdfDarkModeFeaturesLookLikeGrayscalePhoto(const DarkImageFeatures& f
 // Soft cream / pastel design pages (e.g. notebook interiors): near-all light paper,
 // low chroma, mild contrast. Steep AdaptiveDocument ink/paper remap turns faint grids
 // into dirty horizontal noise — these must Preserve with gentle paper softening.
-static bool PdfDarkModeFeaturesLookLikeSoftCreamIllustration(const DarkImageFeatures& f) {
-    return f.highLuminanceRatio > 0.90f && f.luminanceVariance < 0.032f && f.saturatedPixelRatio < 0.10f &&
+// Keep lumVar tight: RAZ glossary/back-matter (white + black text) has higher variance
+// (~0.024–0.030) and must not match SoftCream (would stay mid-grey while photo pages go black).
+bool PdfDarkModeFeaturesLookLikeSoftCreamIllustration(const DarkImageFeatures& f) {
+    return f.highLuminanceRatio > 0.90f && f.luminanceVariance < 0.022f && f.saturatedPixelRatio < 0.10f &&
            f.chromaticPixelRatio < 0.15f;
 }
 
@@ -140,14 +142,25 @@ DarkImageKind PdfDarkModeClassifyImageFeatures(const DarkImageFeatures& f, float
     // When ambiguous, prefer Photo (Preserve) over FullPageScan.
     if (pageCoverage >= kMaxPreserveImagePageCoverage && f.highLuminanceRatio > 0.45f) {
         if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
-            kind = DarkImageKind::Photo;
-            confidence = 0.74f;
+            // Scanned contracts mimic soft-cream stats; notebook art has lower flatAreaRatio.
+            if (f.flatAreaRatio > 0.48f || (f.highLuminanceRatio > 0.92f && f.saturatedPixelRatio < 0.008f)) {
+                kind = DarkImageKind::FullPageScan;
+                confidence = 0.80f;
+            } else {
+                kind = DarkImageKind::Photo;
+                confidence = 0.74f;
+            }
         } else if (PdfDarkModeFeaturesLookLikePhoto(f) || PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
             kind = DarkImageKind::Photo;
             confidence = 0.76f;
         } else if (PdfDarkModeFeaturesLookLikeTrueFullPageScan(f)) {
             kind = DarkImageKind::FullPageScan;
             confidence = 0.82f;
+        } else if (f.highLuminanceRatio > 0.78f && f.saturatedPixelRatio < 0.12f && f.chromaticPixelRatio < 0.12f &&
+                   !PdfDarkModeFeaturesLookLikeGrayscalePhoto(f)) {
+            // Office / government text scans: paper-heavy full bleed, not illustration.
+            kind = DarkImageKind::FullPageScan;
+            confidence = 0.68f;
         } else {
             kind = DarkImageKind::Photo;
             confidence = 0.55f;
@@ -204,6 +217,34 @@ DarkImagePolicy PdfDarkModePolicyForImageKind(DarkImageKind kind, bool isImageMa
             return DarkImagePolicy::AdaptiveDocument;
     }
     return DarkImagePolicy::AdaptiveDocument;
+}
+
+// Match-theme: never show an unprocessed white manuscript page. Users who want the
+// original look switch document color mode to Original explicitly.
+DarkImagePolicy PdfDarkModeClampFollowThemePolicy(DarkImagePolicy policy, float pageCoverage,
+                                                  const DarkImageAnalysis& analysis) {
+    if (policy != DarkImagePolicy::Preserve || pageCoverage < 0.50f) {
+        return policy;
+    }
+    if (analysis.kind == DarkImageKind::FullPageScan) {
+        return DarkImagePolicy::AdaptiveDocument;
+    }
+    if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(analysis.features) ||
+        PdfDarkModeFeaturesLookLikeColorfulIllustration(analysis.features)) {
+        float conf = 0.f;
+        DarkImageKind kind =
+            PdfDarkModeClassifyImageFeatures(analysis.features, pageCoverage, true, &conf);
+        if (kind != DarkImageKind::FullPageScan) {
+            return policy;
+        }
+    }
+    if (analysis.features.highLuminanceRatio > 0.82f) {
+        return DarkImagePolicy::AdaptiveDocument;
+    }
+    if (pageCoverage >= kMaxPreserveImagePageCoverage) {
+        return DarkImagePolicy::AdaptiveDocument;
+    }
+    return policy;
 }
 
 bool PdfDarkModeShouldPreserveImageFeatures(const DarkImageFeatures& f, float pageCoverage) {

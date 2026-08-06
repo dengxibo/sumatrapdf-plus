@@ -22,10 +22,13 @@ class MobiFormatter : public HtmlFormatter {
     bool pendingMu = false;
     int blockquoteDepth = 0;
     bool injectedExthCover = false;
+    ptrdiff_t embeddedCssStart = -1;
 
     bool InTocLikeRegion() const { return inToc || (sawColophonPhone && !tocPageBreakDone); }
 
+    void LoadEmbeddedKf8Css(const ByteSlice& html);
     void UpdateTocState();
+    void EnsureCjkParagraphIndent(HtmlToken* t);
     void StartTocPage();
     void OnParserProgress() override;
     bool BeforeTextRun(const char* s, size_t sLen) override;
@@ -33,6 +36,8 @@ class MobiFormatter : public HtmlFormatter {
     void HandleSpacing_Mobi(HtmlToken* t);
     SizeF MaxImageSize(HtmlToken* t);
     void HandleTagImg(HtmlToken* t) override;
+    void HandleTagLink(HtmlToken* t) override;
+    bool IgnoreText() override;
     void HandleHtmlTag(HtmlToken* t) override;
     float ListIndentDx() const override;
     float ExtraParagraphDy() override;

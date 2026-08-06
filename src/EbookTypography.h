@@ -22,3 +22,9 @@ bool EbookReaderStyleMobi();
 // true only for pure CJK books (not bilingual).
 bool EbookNeedsCjkTypography(const char* filePath, const char* nameHint);
 bool EbookUsesCjkTypography();
+
+// MOBI reader-style CJK: glyph advance ≈ 1.6× font em (pt size), not 1×.
+constexpr float kCjkMobiCharAdvanceEm = 1.6f;
+inline float CjkMobiIndentForChars(float fontSize, float numChars = 2.f) {
+    return numChars * kCjkMobiCharAdvanceEm * fontSize;
+}

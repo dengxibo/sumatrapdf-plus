@@ -85,7 +85,7 @@ static DarkImageFeatures SoftCreamNotebookFullBleedFeatures() {
     f.highLuminanceRatio = 0.93f;
     f.saturatedPixelRatio = 0.01f;
     f.chromaticPixelRatio = 0.02f;
-    f.luminanceVariance = 0.024f;
+    f.luminanceVariance = 0.016f;
     f.borderLightRatio = 0.88f;
     f.borderUniformity = 0.70f;
     f.flatAreaRatio = 0.40f;
@@ -119,6 +119,51 @@ static DarkImageFeatures DuXiuTextScanFullBleedFeatures() {
     f.borderLightRatio = 0.90f;
     f.borderUniformity = 0.75f;
     f.flatAreaRatio = 0.52f;
+    return f;
+}
+
+// Contract scan (flat paper, low ink variance): mimics SoftCream stats but must remap.
+static DarkImageFeatures ContractScanFullBleedFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 8.f / 4096.f;
+    f.highLuminanceRatio = 0.97f;
+    f.saturatedPixelRatio = 0.002f;
+    f.chromaticPixelRatio = 0.003f;
+    f.luminanceVariance = 0.008f;
+    f.borderLightRatio = 0.90f;
+    f.borderUniformity = 0.82f;
+    f.flatAreaRatio = 0.55f;
+    return f;
+}
+
+// Government / office notice scan: bright paper, mild ink variance — was ambiguous Photo.
+static DarkImageFeatures GovernmentOfficeScanFullBleedFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 14.f / 4096.f;
+    f.highLuminanceRatio = 0.92f;
+    f.saturatedPixelRatio = 0.04f;
+    f.chromaticPixelRatio = 0.05f;
+    f.luminanceVariance = 0.018f;
+    f.borderLightRatio = 0.88f;
+    f.borderUniformity = 0.78f;
+    f.flatAreaRatio = 0.50f;
+    return f;
+}
+
+// Near-grayscale contract scan: very low sat, soft-cream-like lumVar.
+static DarkImageFeatures PaleContractScanFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 8.f / 4096.f;
+    f.highLuminanceRatio = 0.97f;
+    f.saturatedPixelRatio = 0.001f;
+    f.chromaticPixelRatio = 0.002f;
+    f.luminanceVariance = 0.016f;
+    f.borderLightRatio = 0.90f;
+    f.borderUniformity = 0.82f;
+    f.flatAreaRatio = 0.40f;
     return f;
 }
 
@@ -197,6 +242,22 @@ void PdfDarkModeImageClassifier_UnitTests() {
     utassert(!PdfDarkModeFeaturesLookLikePhoto(DuXiuTextScanFullBleedFeatures()));
     utassert(!PdfDarkModeShouldPreserveImageFeatures(DuXiuTextScanFullBleedFeatures(), 0.95f));
 
+    // Government office notice scan: paper-heavy full bleed — AdaptiveDocument, not Preserve.
+    kind = PdfDarkModeClassifyImageFeatures(GovernmentOfficeScanFullBleedFeatures(), 0.95f, false, &confidence);
+    utassert(kind == DarkImageKind::FullPageScan);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::AdaptiveDocument);
+
+    // Flat contract scan: soft-cream-like lumVar but high flatArea — FullPageScan, not Preserve.
+    kind = PdfDarkModeClassifyImageFeatures(ContractScanFullBleedFeatures(), 0.95f, false, &confidence);
+    utassert(kind == DarkImageKind::FullPageScan);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::AdaptiveDocument);
+    utassert(PdfDarkModeFeaturesLookLikeSoftCreamIllustration(ContractScanFullBleedFeatures()));
+
+    // Pale contract scan: soft-cream lumVar but near-zero saturation — FullPageScan.
+    kind = PdfDarkModeClassifyImageFeatures(PaleContractScanFeatures(), 0.95f, false, &confidence);
+    utassert(kind == DarkImageKind::FullPageScan);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::AdaptiveDocument);
+
     // Grayscale portrait: Photo / Preserve — never AdaptiveDocument invert.
     kind = PdfDarkModeClassifyImageFeatures(GrayscalePortraitFeatures(), 0.28f, false, &confidence);
     utassert(kind == DarkImageKind::Photo);
@@ -223,6 +284,27 @@ void PdfDarkModeImageClassifier_UnitTests() {
     utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::Preserve);
 
     utassert(PdfDarkModePolicyForImageKind(DarkImageKind::Photo, true) == DarkImagePolicy::ThemeRecolor);
+
+    // Match-theme clamp: misclassified white contract scan must not stay Preserve.
+    DarkImageAnalysis contractClamp;
+    contractClamp.kind = DarkImageKind::Photo;
+    contractClamp.features = ContractScanFullBleedFeatures();
+    utassert(PdfDarkModeClampFollowThemePolicy(DarkImagePolicy::Preserve, 0.95f, contractClamp) ==
+             DarkImagePolicy::AdaptiveDocument);
+
+    // Soft-cream notebook design pages may still Preserve (designed art, not white scan).
+    DarkImageAnalysis notebookClamp;
+    notebookClamp.kind = DarkImageKind::Photo;
+    notebookClamp.features = SoftCreamNotebookFullBleedFeatures();
+    utassert(PdfDarkModeClampFollowThemePolicy(DarkImagePolicy::Preserve, 0.95f, notebookClamp) ==
+             DarkImagePolicy::Preserve);
+
+    // Small inline figure stays Preserve.
+    DarkImageAnalysis smallFig;
+    smallFig.kind = DarkImageKind::Photo;
+    smallFig.features = PhotoLikeFeatures();
+    utassert(PdfDarkModeClampFollowThemePolicy(DarkImagePolicy::Preserve, 0.10f, smallFig) ==
+             DarkImagePolicy::Preserve);
 
     float outR = 0.f, outG = 0.f, outB = 0.f;
     PdfDarkModeCompressPhotoHighlights(0.5f, 0.5f, 0.5f, &outR, &outG, &outB);

@@ -682,10 +682,12 @@ fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, 
     int h = src->h;
     int stride = src->stride;
 
-    // Coarse bright-paper estimate: text-scan pages misrouted here must not run
-    // multi-rect photo search (several full-image passes on 2k–4k rasters).
+    // Always sharp dark paper + light text for picture books / RAZ. Soft-cream notebooks
+    // are routed separately via PdfDarkModeProcessSoftCreamPixmap (classifier SoftCream).
     int paperSamples = 0;
     int paperHits = 0;
+    int satHits = 0;
+    int chromaHits = 0;
     int estStepX = w > 64 ? w / 64 : 1;
     int estStepY = h > 64 ? h / 64 : 1;
     for (int y = 0; y < h; y += estStepY) {
@@ -696,17 +698,26 @@ fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, 
             float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
             float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
             float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
-            // Broader than dm_pb_is_paper_rgb: cream/gray textbook paper also counts.
-            if ((maxC - minC) < 0.10f && lum > 0.72f) {
+            float chroma = maxC - minC;
+            if (chroma < 0.10f && lum > 0.72f) {
                 paperHits++;
+            }
+            if (chroma >= 0.12f) {
+                satHits++;
+            }
+            if (chroma >= 0.06f) {
+                chromaHits++;
             }
         }
     }
     float paperRatio = paperSamples > 0 ? (float)paperHits / (float)paperSamples : 0.f;
+    float satRatio = paperSamples > 0 ? (float)satHits / (float)paperSamples : 0.f;
+    float chromaRatio = paperSamples > 0 ? (float)chromaHits / (float)paperSamples : 0.f;
 
     DmPbPhotoRect photoRects[kDmPbMaxPhotoRects] = {};
     int nPhotoRects = 0;
-    if (paperRatio < 0.75f) {
+    // Paper-heavy RAZ pages still search — sparse top photos must stay protected.
+    if (paperRatio < 0.92f || satRatio >= 0.04f || chromaRatio >= 0.06f) {
         nPhotoRects = dm_pb_find_photo_rects(ctx, src, photoRects, kDmPbMaxPhotoRects);
     }
 
@@ -742,21 +753,89 @@ fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, 
                 b = srcRgb[2];
             }
             float nr = r, ng = g, nb = b;
-            if (nPhotoRects == 0) {
-                // Soft cream / pastel full-bleed (no dense photo islands): gentle paper
-                // softening only. Steep ink/paper remap turns faint grids into dirty noise.
-                float cr = r, cg = g, cb = b;
-                PdfDarkModeCompressPhotoHighlights(r, g, b, &cr, &cg, &cb);
-                float softening = PdfDarkModeCurrentOptions().preserveImagePaperSoftening;
-                if (softening <= 0.f) {
-                    softening = 0.45f;
-                }
-                ApplyPreserveImagePaperSoftening(cr, cg, cb, palette, softening, &nr, &ng, &nb);
-            } else if (!ApplySharpDocumentInkPaper(r, g, b, palette, &nr, &ng, &nb)) {
-                // Outside photo rects: steep ink/paper remap so AA text fringes don't
-                // stay mid-gray (halo). Colorful pixels and protected photos are left alone.
+            if (!ApplySharpDocumentInkPaper(r, g, b, palette, &nr, &ng, &nb)) {
+                // Steep ink/paper remap (dark paper + light text). Colorful pixels left alone.
                 continue;
             }
+            if (fastRgb) {
+                int vr = (int)(nr * 255.f + 0.5f);
+                int vg = (int)(ng * 255.f + 0.5f);
+                int vb = (int)(nb * 255.f + 0.5f);
+                px[0] = (unsigned char)(vr < 0 ? 0 : (vr > 255 ? 255 : vr));
+                px[1] = (unsigned char)(vg < 0 ? 0 : (vg > 255 ? 255 : vg));
+                px[2] = (unsigned char)(vb < 0 ? 0 : (vb > 255 ? 255 : vb));
+            } else if (fastGray) {
+                float lum = 0.2126f * nr + 0.7152f * ng + 0.0722f * nb;
+                int v = (int)(lum * 255.f + 0.5f);
+                px[0] = (unsigned char)(v < 0 ? 0 : (v > 255 ? 255 : v));
+            } else {
+                float out[FZ_MAX_COLORS] = {nr, ng, nb};
+                float back[FZ_MAX_COLORS] = {};
+                fz_convert_color(ctx, rgb, out, cs, back, cs, fz_default_color_params);
+                for (int c = 0; c < components && c < FZ_MAX_COLORS; c++) {
+                    int v = (int)(back[c] * 255.f + 0.5f);
+                    if (v < 0) {
+                        v = 0;
+                    }
+                    if (v > 255) {
+                        v = 255;
+                    }
+                    px[c] = (unsigned char)v;
+                }
+            }
+        }
+    }
+    return dst;
+}
+
+fz_pixmap* PdfDarkModeProcessSoftCreamPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette) {
+    if (!ctx || !src || !src->samples) {
+        return src;
+    }
+    fz_colorspace* cs = src->colorspace ? src->colorspace : fz_device_rgb(ctx);
+    fz_colorspace* rgb = fz_device_rgb(ctx);
+    int components = fz_colorspace_n(ctx, cs);
+    int n = src->n;
+    int w = src->w;
+    int h = src->h;
+    int stride = src->stride;
+
+    fz_pixmap* dst = fz_new_pixmap(ctx, cs, w, h, src->seps, src->alpha);
+    fz_copy_pixmap_rect(ctx, dst, src, fz_make_irect(0, 0, w, h), nullptr);
+
+    bool fastRgb = cs == rgb || fz_colorspace_is_rgb(ctx, cs);
+    bool fastGray = components == 1 || fz_colorspace_is_gray(ctx, cs);
+    float softening = PdfDarkModeCurrentOptions().preserveImagePaperSoftening;
+    if (softening <= 0.f) {
+        softening = 0.45f;
+    }
+
+    for (int y = 0; y < h; y++) {
+        unsigned char* row = dst->samples + y * stride;
+        for (int x = 0; x < w; x++) {
+            unsigned char* px = row + x * n;
+            float r, g, b;
+            if (fastRgb) {
+                r = px[0] / 255.f;
+                g = px[1] / 255.f;
+                b = px[2] / 255.f;
+            } else if (fastGray) {
+                r = g = b = px[0] / 255.f;
+            } else {
+                float conv[FZ_MAX_COLORS] = {};
+                float srcRgb[FZ_MAX_COLORS] = {};
+                for (int c = 0; c < components && c < FZ_MAX_COLORS; c++) {
+                    conv[c] = px[c] / 255.f;
+                }
+                fz_convert_color(ctx, cs, conv, rgb, srcRgb, cs, fz_default_color_params);
+                r = srcRgb[0];
+                g = srcRgb[1];
+                b = srcRgb[2];
+            }
+            float cr = r, cg = g, cb = b;
+            PdfDarkModeCompressPhotoHighlights(r, g, b, &cr, &cg, &cb);
+            float nr = r, ng = g, nb = b;
+            ApplyPreserveImagePaperSoftening(cr, cg, cb, palette, softening, &nr, &ng, &nb);
             if (fastRgb) {
                 int vr = (int)(nr * 255.f + 0.5f);
                 int vg = (int)(ng * 255.f + 0.5f);
@@ -920,11 +999,26 @@ DarkImagePolicy PdfDarkModePolicyForFollowThemeImage(const RectF& imgBounds, boo
     float pageArea = pageBounds.dx * pageBounds.dy;
     float coverage = pageArea > 0.f ? (imgBounds.dx * imgBounds.dy) / pageArea : 0.f;
     if (coverage < kMaxPreserveImagePageCoverage) {
+        // Large light panels (government scans) may fall slightly below 75% due to PDF placement.
+        if (ctx && image && coverage >= 0.50f) {
+            bool scannedHint = true;
+            DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, image, coverage, scannedHint);
+            DarkImagePolicy policy = PdfDarkModePolicyForImageKind(analysis.kind, false);
+            if (policy != DarkImagePolicy::Preserve) {
+                return PdfDarkModeClampFollowThemePolicy(policy, coverage, analysis);
+            }
+            return PdfDarkModeClampFollowThemePolicy(DarkImagePolicy::Preserve, coverage, analysis);
+        }
         return DarkImagePolicy::Preserve;
     }
     if (ctx && image) {
-        DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, image, coverage, false);
-        return PdfDarkModePolicyForImageKind(analysis.kind, false);
+        bool scannedHint = coverage >= 0.55f;
+        DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, image, coverage, scannedHint);
+        DarkImagePolicy policy = PdfDarkModePolicyForImageKind(analysis.kind, false);
+        return PdfDarkModeClampFollowThemePolicy(policy, coverage, analysis);
+    }
+    if (coverage >= kMaxPreserveImagePageCoverage) {
+        return DarkImagePolicy::AdaptiveDocument;
     }
     return DarkImagePolicy::AdaptiveDocument;
 }

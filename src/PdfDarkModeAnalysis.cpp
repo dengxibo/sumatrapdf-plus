@@ -366,9 +366,10 @@ static bool PdfDarkModeDetectScanPage(DarkModePageAnalysis* analysis, int textOp
 static void PdfDarkModeAssignFollowThemeImagePolicy(ImageOccurrenceInfo& img, const RectF& pageBounds) {
     if (img.pageCoverage >= kMaxPreserveImagePageCoverage && img.analysis.confidence > 0.f) {
         img.policy = PdfDarkModePolicyForImageKind(img.analysis.kind, img.isImageMask);
-        return;
+    } else {
+        img.policy = PdfDarkModePolicyForFollowThemeImage(img.pageBounds, img.isImageMask, pageBounds);
     }
-    img.policy = PdfDarkModePolicyForFollowThemeImage(img.pageBounds, img.isImageMask, pageBounds);
+    img.policy = PdfDarkModeClampFollowThemePolicy(img.policy, img.pageCoverage, img.analysis);
 }
 
 static void PdfDarkModeAssignPolicies(DarkModePageAnalysis* analysis, const DarkModeOptions& options, int textOps,
@@ -433,7 +434,6 @@ void PdfDarkModeInvalidatePage(fz_context* ctx, FzPageInfo* pageInfo) {
     pageInfo->darkLegacySkipHash = 0;
     pageInfo->darkLegacyArtworkPageBottom = 0.f;
     pageInfo->darkLegacySkipDevAbs.Clear();
-    pageInfo->followThemeScanProbe = 0;
 }
 
 DarkModePageAnalysis* PdfDarkModeGetOrBuildAnalysis(fz_context* ctx, FzPageInfo* pageInfo, fz_display_list* list,
@@ -484,6 +484,7 @@ DarkModePageAnalysis* PdfDarkModeGetOrBuildAnalysis(fz_context* ctx, FzPageInfo*
 typedef struct {
     fz_device super;
     float maxImageCoverage;
+    float stackedImageCoverage;
     int textOps;
     int vectorOps;
     int imageOps;
@@ -513,6 +514,10 @@ static void probe_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, f
     float cov = (bbox.x1 - bbox.x0) * (bbox.y1 - bbox.y0) / d->pageArea;
     if (cov > d->maxImageCoverage) {
         d->maxImageCoverage = cov;
+    }
+    d->stackedImageCoverage += cov;
+    if (d->stackedImageCoverage > 1.05f) {
+        d->stackedImageCoverage = 1.05f;
     }
 }
 
@@ -633,6 +638,20 @@ bool PdfDarkModePdfMetadataSuggestsFullPageScanDoc(fz_context* ctx, pdf_document
     return PdfDarkModeInfoFieldsMatchAnyI(ctx, info, kScanNeedles, dimof(kScanNeedles));
 }
 
+bool PdfDarkModePdfMetadataSuggestsPrintToPdfScanDoc(fz_context* ctx, pdf_document* doc) {
+    if (!ctx || !doc) {
+        return false;
+    }
+    pdf_obj* info = pdf_dict_get(ctx, pdf_trailer(ctx, doc), PDF_NAME(Info));
+    if (!info) {
+        return false;
+    }
+    static const char* kPrintScanNeedles[] = {
+        "acrobat elements", "papercapture", "paper capture", "pscript", "tesseract", "scanimage",
+    };
+    return PdfDarkModeInfoFieldsMatchAnyI(ctx, info, kPrintScanNeedles, dimof(kPrintScanNeedles));
+}
+
 bool PdfDarkModePdfMetadataSuggestsLayoutPhotoDoc(fz_context* ctx, pdf_document* doc) {
     if (!ctx || !doc) {
         return false;
@@ -641,10 +660,16 @@ bool PdfDarkModePdfMetadataSuggestsLayoutPhotoDoc(fz_context* ctx, pdf_document*
     if (!info) {
         return false;
     }
+    // Acrobat Elements / PScript print-to-PDF scans are image packs, not layout photo books.
+    if (PdfDarkModeInfoFieldContainsI(ctx, info, PDF_NAME(Producer), "acrobat elements") ||
+        PdfDarkModeInfoFieldContainsI(ctx, info, PDF_NAME(Creator), "pscript")) {
+        return false;
+    }
     static const char* kLayoutNeedles[] = {
         "adobe",      "indesign", "illustrator", "quark",       "scribus",    "affinity",  "publisher",
         "framemaker", "word",     "powerpoint",  "libreoffice", "openoffice", "microsoft", "acrobat",
         "foxit",      "nitro",    "finereader",  "abbyy",       "indesign",   "prince",    "antenna house",
+        "wps",        "kingsoft", "phantompdf",  "pdf-xchange", "pdfelement", "itext",
     };
     return PdfDarkModeInfoFieldsMatchAnyI(ctx, info, kLayoutNeedles, dimof(kLayoutNeedles));
 }
@@ -669,12 +694,26 @@ static FollowThemeScanProbe PdfDarkModeClassifyFollowThemeProbe(const pdf_scan_p
     FollowThemePageProbeStats st{.textOps = probe->textOps,
                                  .imageOps = probe->imageOps,
                                  .vectorOps = probe->vectorOps,
-                                 .maxImageCoverage = probe->maxImageCoverage};
+                                 .maxImageCoverage = probe->maxImageCoverage,
+                                 .stackedImageCoverage = probe->stackedImageCoverage};
     if (stats) {
         *stats = st;
     }
     if (probe->maxImageCoverage >= opts.scanImageCoverageThreshold && probe->textOps <= opts.maxTextOpsForScanPage &&
         probe->vectorOps <= opts.maxVectorOpsForScanPage && probe->textOps <= 2 && probe->vectorOps <= 2) {
+        return FollowThemeScanProbe::PureScan;
+    }
+    // Single full-page raster with an OCR / print-to-PDF text layer (common in gov/office PDFs).
+    if (probe->maxImageCoverage >= 0.90f && probe->imageOps <= 2 && probe->vectorOps <= opts.maxVectorOpsForScanPage) {
+        return FollowThemeScanProbe::PureScan;
+    }
+    // Multi-layer scan packs (strip + bg + fg): few ops, dominant full-page image.
+    if (probe->maxImageCoverage >= 0.88f && probe->textOps <= 2 && probe->vectorOps <= 2 && probe->imageOps <= 4) {
+        return FollowThemeScanProbe::PureScan;
+    }
+    // Stacked vertical strips (Acrobat Elements / PScript): tiles sum to a full page.
+    if (probe->stackedImageCoverage >= 0.85f && probe->textOps <= 2 && probe->vectorOps <= 2 &&
+        probe->imageOps >= 2 && probe->imageOps <= 6) {
         return FollowThemeScanProbe::PureScan;
     }
     if (::FollowThemePageStatsMatchBitmapRecolor(st, opts)) {
