@@ -1,0 +1,2 @@
+// MSVC IntelliSense hints for GDI+ / winapifamily.h (see vs2022/cpp.hint).
+#define WINAPI_FAMILY WINAPI_FAMILY_DESKTOP_APP
