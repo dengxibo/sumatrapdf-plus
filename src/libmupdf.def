@@ -708,6 +708,7 @@ EXPORTS
 	pdf_dict_get_key
 	pdf_dict_get_val
 	pdf_dict_get
+	pdf_dict_get_int
 	pdf_dict_gets
 	pdf_dict_getp
 	pdf_dict_getsa
