@@ -220,6 +220,34 @@ bool PdfDarkModeImageLooksLikeDarkArtwork(fz_context* ctx, fz_image* image, floa
     return false;
 }
 
+bool PdfDarkModeImageIsConfirmedArtwork(fz_context* ctx, fz_image* image, float pageCoverage, int devW, int devH) {
+    (void)ctx;
+    (void)image;
+    (void)pageCoverage;
+    (void)devW;
+    (void)devH;
+    return false;
+}
+
+DarkImageAnalysis PdfDarkModeAnalyzeImage(fz_context* ctx, fz_image* image, float pageCoverage, bool pageIsScannedHint) {
+    (void)ctx;
+    (void)image;
+    (void)pageCoverage;
+    (void)pageIsScannedHint;
+    return DarkImageAnalysis{};
+}
+
+bool PdfDarkModeFeaturesLookLikePhoto(const DarkImageFeatures& f) {
+    (void)f;
+    return false;
+}
+
+bool PdfDarkModeShouldPreserveImageFeatures(const DarkImageFeatures& f, float pageCoverage) {
+    (void)f;
+    (void)pageCoverage;
+    return false;
+}
+
 RectF PdfDarkModeClampImagePageRect(const RectF& imgPage, int imageW, int imageH) {
     (void)imageW;
     (void)imageH;
