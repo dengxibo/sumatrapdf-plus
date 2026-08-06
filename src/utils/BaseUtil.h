@@ -83,6 +83,11 @@
 
 #include "BuildConfig.h"
 
+// GDI+ SDK headers gate on WINAPI_FAMILY; define before any Windows include.
+#if !defined(WINAPI_FAMILY)
+#define WINAPI_FAMILY 100 /* WINAPI_FAMILY_DESKTOP_APP */
+#endif
+
 #define NOMINMAX
 #include <winsock2.h> // must include before <windows.h>
 #include <windows.h>
