@@ -225,8 +225,14 @@ bool PdfDarkModePdfMetadataSuggestsPaperCaptureDoc(fz_context* ctx, pdf_document
 bool PdfDarkModePdfMetadataSuggestsFullPageScanDoc(fz_context* ctx, pdf_document* doc);
 // Print-to-PDF / Acrobat Elements / PScript scans (multi-layer image pages, no text layer).
 bool PdfDarkModePdfMetadataSuggestsPrintToPdfScanDoc(fz_context* ctx, pdf_document* doc);
+// RAZ / Adobe Image Conversion: one full-bleed raster per page with embedded photos.
+bool PdfDarkModePdfMetadataSuggestsImageConversionPictureBook(fz_context* ctx, pdf_document* doc);
 
 void PdfDarkModeInvalidatePage(fz_context* ctx, FzPageInfo* pageInfo);
+
+bool PdfDarkModeImageHasPreservablePhotoRects(fz_context* ctx, fz_image* image);
+// Full-decode portrait probe: B&W face on paper (RAZ) vs colored illustration on notebook scan.
+bool PdfDarkModeImageDecodeLooksLikeGrayscalePortrait(fz_context* ctx, fz_image* image);
 
 void ApplyAdaptiveDocumentDarkMode(float r, float g, float b, const DarkModePalette& palette, float* outR, float* outG,
                                    float* outB);
@@ -277,7 +283,14 @@ DarkImageKind PdfDarkModeClassifyImageFeatures(const DarkImageFeatures& features
                                                bool pageIsScannedHint, float* outConfidence);
 
 bool PdfDarkModeFeaturesLookLikePhoto(const DarkImageFeatures& f);
+bool PdfDarkModeFeaturesLookLikeGrayscalePhoto(const DarkImageFeatures& f);
+bool PdfDarkModeFeaturesLookLikeBwLineArtScan(const DarkImageFeatures& f);
 bool PdfDarkModeFeaturesLookLikeSoftCreamIllustration(const DarkImageFeatures& f);
+// Pastel callout / "Do You Know?" panels: mostly light paper, not a photo.
+bool PdfDarkModeFeaturesLookLikeLightDocumentPanel(const DarkImageFeatures& f);
+bool PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(const DarkImageFeatures& f);
+bool PdfDarkModeFeaturesLookLikeGovernmentPaperScan(const DarkImageFeatures& f);
+bool PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(const DarkImageFeatures& f);
 bool PdfDarkModeShouldPreserveImageFeatures(const DarkImageFeatures& f, float pageCoverage);
 
 DarkImagePolicy PdfDarkModePolicyForImageKind(DarkImageKind kind, bool isImageMask);

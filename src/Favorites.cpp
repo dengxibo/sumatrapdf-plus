@@ -866,6 +866,10 @@ static LRESULT CALLBACK WndProcFavBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     switch (msg) {
         case WM_SIZE:
             LayoutTreeContainer(win->favLabelWithClose, treeView->hwnd);
+            FavTreeWrapRecalcHeights(win);
+            if (treeView && treeView->hwnd) {
+                InvalidateRect(treeView->hwnd, nullptr, FALSE);
+            }
             break;
 
         case WM_COMMAND:
@@ -880,12 +884,18 @@ static LRESULT CALLBACK WndProcFavBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 // in TableOfContents.cpp
 extern void TocTreeKeyDown2(TreeView::KeyDownEvent*);
 
+static void FavCustomizeTooltip(TreeView::GetTooltipEvent* ev) {
+    TreeItemTooltipIfTruncated(ev);
+}
+
 static void InitFavTreeViewHandlers(TreeView* treeView) {
     auto fn = MkFunc1Void(FavTreeContextMenu);
     treeView->onContextMenu = fn;
     treeView->onSelectionChanged = MkFunc1Void(FavTreeSelectionChanged);
     treeView->onKeyDown = MkFunc1Void(TocTreeKeyDown2);
     treeView->onClick = MkFunc1Void(FavTreeItemClicked);
+    treeView->onCustomDraw = MkFunc1Void(FavTreeWrapOnCustomDraw);
+    treeView->onGetTooltip = MkFunc1Void(FavCustomizeTooltip);
 }
 
 void ReCreateFavTreeView(MainWindow* win, HFONT font, int dpi) {
@@ -909,6 +919,7 @@ void ReCreateFavTreeView(MainWindow* win, HFONT font, int dpi) {
     args.parent = win->hwndFavBox;
     args.font = font;
     args.fullRowSelect = true;
+    TreeWrapLabelsConfigureCreateArgs(args);
     args.exStyle = 0;
     args.isRtl = IsUIRtl();
     InitFavTreeViewHandlers(treeView);
@@ -927,6 +938,10 @@ void ReCreateFavTreeView(MainWindow* win, HFONT font, int dpi) {
 
     UpdateControlsColors(win);
     LayoutTreeContainer(win->favLabelWithClose, treeView->hwnd);
+    FavTreeWrapRecalcHeights(win);
+    if (treeView->hwnd) {
+        InvalidateRect(treeView->hwnd, nullptr, FALSE);
+    }
     if (hadFocus) {
         SetFocus(treeView->hwnd);
     }
@@ -958,6 +973,7 @@ void CreateFavorites(MainWindow* win) {
     args.parent = win->hwndFavBox;
     args.font = GetAppTreeFontForHwnd(win->hwndFrame);
     args.fullRowSelect = true;
+    TreeWrapLabelsConfigureCreateArgs(args);
     args.exStyle = 0;
     args.isRtl = IsUIRtl();
 

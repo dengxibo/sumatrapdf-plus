@@ -28,9 +28,14 @@ Kind kindTabs = "tabs";
 // non-selected tabs narrower than this hide their close button so that
 // clicks drag/select instead of accidentally closing the tab
 constexpr int kMinTabWidthForClose = 64;
+constexpr int kMinPinnedTabWidth = 64;
 
 static int MinTabWidthForClose(HWND hwnd) {
     return DpiScale(hwnd, kMinTabWidthForClose);
+}
+
+static int MinPinnedTabWidth(HWND hwnd) {
+    return DpiScale(hwnd, kMinPinnedTabWidth);
 }
 
 using Gdiplus::Bitmap;
@@ -49,6 +54,16 @@ using Gdiplus::StringAlignmentCenter;
 using Gdiplus::StringFormat;
 using Gdiplus::TextRenderingHintClearTypeGridFit;
 using Gdiplus::UnitPixel;
+
+// Deepen link accent toward chrome bg — richer hue than flattening lightness.
+static COLORREF TabsSelectedTabUnderlineColor(COLORREF linkCol, COLORREF chromeBg) {
+    u8 lr, lg, lb, br, bg, bb;
+    UnpackColor(linkCol, lr, lg, lb);
+    UnpackColor(chromeBg, br, bg, bb);
+    constexpr float kTowardChrome = 0.32f;
+    return RGB((u8)(lr + (br - lr) * kTowardChrome + 0.5f), (u8)(lg + (bg - lg) * kTowardChrome + 0.5f),
+               (u8)(lb + (bb - lb) * kTowardChrome + 0.5f));
+}
 
 // Match Font(hdc, hf) + UnitPixel: em size is abs(lfHeight), already scaled when the HFONT was created.
 static float TabsFontEmSizePx(HWND hwnd, HFONT hf) {
@@ -101,8 +116,8 @@ void TabsCtrl::LayoutTabs() {
         TabInfo* ti = GetTab(i);
         if (ti->isPinned) {
             Size ts = HwndMeasureText(hwnd, ti->text, hfont);
-            int pinnedDx = ts.dx + 2 * textPad;
-            int minPinned = DpiScale(hwnd, 48);
+            int pinnedDx = ts.dx + 2 * textPad + DpiScale(hwnd, 4);
+            int minPinned = MinPinnedTabWidth(hwnd);
             if (pinnedDx < minPinned) {
                 pinnedDx = minPinned;
             }
@@ -365,9 +380,8 @@ void TabsCtrl::Paint(HDC hdc, const RECT& rc) {
 
         if (isSelected && ThemeUsesDarkChrome()) {
             gfx.SetCompositingMode(Gdiplus::CompositingModeSourceOver);
-            COLORREF lineCol =
-                ThemeUsesBlackChrome() ? AccentColor(tabBaseBg, 22, 38) : ThemeWindowLinkColor();
-            float lineW = ThemeUsesBlackChrome() ? 1.0f : 2.0f;
+            COLORREF lineCol = TabsSelectedTabUnderlineColor(ThemeWindowLinkColor(), tabBaseBg);
+            float lineW = 2.0f;
             Pen pen(GdiRgbFromCOLORREF(lineCol), lineW);
             float y = (float)(ti->r.y + ti->r.dy) - lineW;
             gfx.DrawLine(&pen, (float)ti->r.x + 2, y, (float)(ti->r.x + ti->r.dx - 2), y);
@@ -397,6 +411,9 @@ void TabsCtrl::Paint(HDC hdc, const RECT& rc) {
         rTxt = ToGdipRectF(ti->r);
         rTxt.X = contentLeft;
         rTxt.Width = std::max(0.f, contentRight - contentLeft);
+        if (ti->isPinned) {
+            sf.SetTrimming(Gdiplus::StringTrimmingNone);
+        }
         if (ti->isDirty) {
             float dirtySlotDx = (float)(dotDiameter + elementGap);
             if (isRtl) {
@@ -848,6 +865,7 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             tabHighlighted = tabUnderMouse;
 
             if (!draggingTab) {
+                HwndScheduleRepaint(hwnd);
                 return 0;
             }
             draggingTab = false;
@@ -1079,6 +1097,11 @@ int TabsCtrl::SetSelected(int idx) {
     }
     ReportIf(idx < 0 || idx >= nTabs);
     int prevSelectedIdx = TabCtrl_SetCurSel(hwnd, idx);
+    bool visualChange = (idx != prevSelectedIdx) || IsValidIdx(tabForceShowSelected);
+    tabForceShowSelected = -1;
+    if (visualChange) {
+        HwndRepaintNow(hwnd);
+    }
     return prevSelectedIdx;
 }
 

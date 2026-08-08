@@ -92,6 +92,21 @@ static DarkImageFeatures SoftCreamNotebookFullBleedFeatures() {
     return f;
 }
 
+// 小家越住越大 page 62: paper grid + colored figure block — whole-tile recolor, not picture-book rects.
+static DarkImageFeatures XiaojiaNotebookIllustrationPage62Features() {
+    DarkImageFeatures f;
+    f.isColorful = true;
+    f.colorBucketRatio = 48.f / 4096.f;
+    f.highLuminanceRatio = 0.90f;
+    f.saturatedPixelRatio = 0.19f;
+    f.chromaticPixelRatio = 0.20f;
+    f.luminanceVariance = 0.015f;
+    f.borderLightRatio = 0.85f;
+    f.borderUniformity = 0.65f;
+    f.flatAreaRatio = 0.38f;
+    return f;
+}
+
 static DarkImageFeatures TruePaperScanFullBleedFeatures() {
     DarkImageFeatures f;
     f.isColorful = false;
@@ -152,6 +167,73 @@ static DarkImageFeatures GovernmentOfficeScanFullBleedFeatures() {
     return f;
 }
 
+// 人社 PaperStream scan (825通知): text ink variance, tiny red header — soft cream, not picture-book.
+static DarkImageFeatures RenshePaperStreamScanFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 12.f / 4096.f;
+    f.highLuminanceRatio = 0.905f;
+    f.saturatedPixelRatio = 0.0f;
+    f.chromaticPixelRatio = 0.007f;
+    f.luminanceVariance = 0.0464f;
+    f.borderLightRatio = 0.88f;
+    f.borderUniformity = 0.75f;
+    f.flatAreaRatio = 0.48f;
+    return f;
+}
+
+// 人社 Image Conversion scan (2020通知): near-white paper thumbnail stats.
+static DarkImageFeatures RensheImageConversionScanFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 8.f / 4096.f;
+    f.highLuminanceRatio = 0.999f;
+    f.saturatedPixelRatio = 0.0f;
+    f.chromaticPixelRatio = 0.002f;
+    f.luminanceVariance = 0.0016f;
+    f.borderLightRatio = 0.90f;
+    f.borderUniformity = 0.82f;
+    f.flatAreaRatio = 0.55f;
+    return f;
+}
+
+// 人社红头首页: large red header raises thumbnail sat — must still route to government binarize.
+static DarkImageFeatures RensheRedHeaderPage1Features() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 12.f / 4096.f;
+    f.highLuminanceRatio = 0.96f;
+    f.saturatedPixelRatio = 0.14f;
+    f.chromaticPixelRatio = 0.16f;
+    f.luminanceVariance = 0.008f;
+    f.borderLightRatio = 0.88f;
+    f.borderUniformity = 0.75f;
+    f.flatAreaRatio = 0.52f;
+    return f;
+}
+
+// Image Conversion thumb: ultra-white paper, low flatArea on 128px — must still binarize.
+static DarkImageFeatures RensheImageConversionLowFlatFeatures() {
+    DarkImageFeatures f = RensheImageConversionScanFeatures();
+    f.flatAreaRatio = 0.35f;
+    return f;
+}
+
+// RAZ Lincoln page 17 full-bleed portrait: must not match government paper scan.
+static DarkImageFeatures LincolnPage17FullBleedFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 10.f / 4096.f;
+    f.highLuminanceRatio = 0.940f;
+    f.saturatedPixelRatio = 0.0f;
+    f.chromaticPixelRatio = 0.0f;
+    f.luminanceVariance = 0.0361f;
+    f.borderLightRatio = 0.45f;
+    f.borderUniformity = 0.38f;
+    f.flatAreaRatio = 0.22f;
+    return f;
+}
+
 // Near-grayscale contract scan: very low sat, soft-cream-like lumVar.
 static DarkImageFeatures PaleContractScanFeatures() {
     DarkImageFeatures f;
@@ -193,6 +275,81 @@ static DarkImageFeatures LianhuanhuaBwLineArtScanFeatures() {
     f.luminanceVariance = 0.032f;
     f.borderLightRatio = 0.82f;
     f.borderUniformity = 0.70f;
+    f.flatAreaRatio = 0.42f;
+    return f;
+}
+
+// RAZ-Z Abraham Lincoln: full-bleed B&W portrait + caption — must Preserve, not invert interior.
+static DarkImageFeatures RazBwPortraitFullBleedFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 10.f / 4096.f;
+    f.highLuminanceRatio = 0.40f;
+    f.saturatedPixelRatio = 0.015f;
+    f.chromaticPixelRatio = 0.025f;
+    f.luminanceVariance = 0.026f;
+    f.borderLightRatio = 0.45f;
+    f.borderUniformity = 0.38f;
+    f.flatAreaRatio = 0.22f;
+    return f;
+}
+
+// Same book at measured stats (white paper + portrait band): highLum ~0.84, lumVar ~0.044.
+static DarkImageFeatures RazBwPortraitHighPaperFullBleedFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 12.f / 4096.f;
+    f.highLuminanceRatio = 0.84f;
+    f.saturatedPixelRatio = 0.001f;
+    f.chromaticPixelRatio = 0.008f;
+    f.luminanceVariance = 0.044f;
+    f.borderLightRatio = 0.50f;
+    f.borderUniformity = 0.40f;
+    f.flatAreaRatio = 0.35f;
+    return f;
+}
+
+// RAZ Lincoln page 15 map: thumb loses map color (sat=0) — Photo + soft-cream lumVar, not office binarize.
+static DarkImageFeatures LincolnPage15MapFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 10.f / 4096.f;
+    f.highLuminanceRatio = 0.970f;
+    f.saturatedPixelRatio = 0.0f;
+    f.chromaticPixelRatio = 0.0f;
+    f.luminanceVariance = 0.0208f;
+    f.borderLightRatio = 0.85f;
+    f.borderUniformity = 0.75f;
+    f.flatAreaRatio = 0.45f;
+    return f;
+}
+
+// RAZ Lincoln page 21 battlefield: ultra-flat thumb — government stats, picture-book photo protect wins.
+static DarkImageFeatures LincolnPage21BattlefieldFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 8.f / 4096.f;
+    f.highLuminanceRatio = 1.0f;
+    f.saturatedPixelRatio = 0.0f;
+    f.chromaticPixelRatio = 0.0f;
+    f.luminanceVariance = 0.0011f;
+    f.borderLightRatio = 0.90f;
+    f.borderUniformity = 0.82f;
+    f.flatAreaRatio = 0.55f;
+    return f;
+}
+
+// RAZ-Z The Apaches page 3 (map + TOC): was Preserve SoftCream gray — picture-book invert.
+static DarkImageFeatures ApachesPage3TocMapFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = true;
+    f.colorBucketRatio = 24.f / 4096.f;
+    f.highLuminanceRatio = 0.975f;
+    f.saturatedPixelRatio = 0.163f;
+    f.chromaticPixelRatio = 0.318f;
+    f.luminanceVariance = 0.0148f;
+    f.borderLightRatio = 0.85f;
+    f.borderUniformity = 0.75f;
     f.flatAreaRatio = 0.42f;
     return f;
 }
@@ -250,6 +407,11 @@ void PdfDarkModeImageClassifier_UnitTests() {
     utassert(kind == DarkImageKind::Photo);
     utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::Preserve);
 
+    utassert(PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(XiaojiaNotebookIllustrationPage62Features()));
+    utassert(!PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(ApachesPage3TocMapFeatures()));
+    utassert(!PdfDarkModeFeaturesLookLikeGovernmentPaperScan(XiaojiaNotebookIllustrationPage62Features()));
+    utassert(!PdfDarkModeFeaturesLookLikeGovernmentPaperScan(SoftCreamNotebookFullBleedFeatures()));
+
     // High-variance text scan (Merck / DuXiu): FullPageScan, not grayscale Photo.
     kind = PdfDarkModeClassifyImageFeatures(DuXiuTextScanFullBleedFeatures(), 0.95f, false, &confidence);
     utassert(kind == DarkImageKind::FullPageScan);
@@ -261,6 +423,30 @@ void PdfDarkModeImageClassifier_UnitTests() {
     kind = PdfDarkModeClassifyImageFeatures(GovernmentOfficeScanFullBleedFeatures(), 0.95f, false, &confidence);
     utassert(kind == DarkImageKind::FullPageScan);
     utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::AdaptiveDocument);
+    utassert(PdfDarkModeFeaturesLookLikeGovernmentPaperScan(GovernmentOfficeScanFullBleedFeatures()));
+
+    kind = PdfDarkModeClassifyImageFeatures(RenshePaperStreamScanFeatures(), 1.0f, true, &confidence);
+    utassert(kind == DarkImageKind::FullPageScan);
+    utassert(PdfDarkModeFeaturesLookLikeGovernmentPaperScan(RenshePaperStreamScanFeatures()));
+
+    kind = PdfDarkModeClassifyImageFeatures(RensheImageConversionScanFeatures(), 1.0f, true, &confidence);
+    utassert(kind == DarkImageKind::FullPageScan);
+    utassert(PdfDarkModeFeaturesLookLikeGovernmentPaperScan(RensheImageConversionScanFeatures()));
+    utassert(PdfDarkModeFeaturesLookLikeGovernmentPaperScan(RensheImageConversionLowFlatFeatures()));
+    utassert(PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(RensheImageConversionLowFlatFeatures()));
+    utassert(!PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(SoftCreamNotebookFullBleedFeatures()));
+    utassert(!PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(LincolnPage17FullBleedFeatures()));
+    utassert(!PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(RazBwPortraitFullBleedFeatures()));
+    utassert(!PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(RazBwPortraitHighPaperFullBleedFeatures()));
+    utassert(PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(RenshePaperStreamScanFeatures()));
+    utassert(!PdfDarkModeFeaturesLookLikeGovernmentPaperScan(LincolnPage17FullBleedFeatures()));
+    utassert(PdfDarkModeFeaturesLookLikeGovernmentPaperScan(RensheRedHeaderPage1Features()));
+    kind = PdfDarkModeClassifyImageFeatures(LincolnPage15MapFeatures(), 1.0f, false, &confidence);
+    utassert(kind == DarkImageKind::Photo);
+    utassert(PdfDarkModeFeaturesLookLikeSoftCreamIllustration(LincolnPage15MapFeatures()));
+    utassert(PdfDarkModeFeaturesLookLikeGovernmentPaperScan(LincolnPage21BattlefieldFeatures()));
+    kind = PdfDarkModeClassifyImageFeatures(RensheRedHeaderPage1Features(), 1.0f, true, &confidence);
+    utassert(kind == DarkImageKind::FullPageScan);
 
     // Flat contract scan: soft-cream-like lumVar but high flatArea — FullPageScan, not Preserve.
     kind = PdfDarkModeClassifyImageFeatures(ContractScanFullBleedFeatures(), 0.95f, false, &confidence);
@@ -289,6 +475,19 @@ void PdfDarkModeImageClassifier_UnitTests() {
     utassert(kind == DarkImageKind::FullPageScan);
     utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::AdaptiveDocument);
     utassert(!PdfDarkModeShouldPreserveImageFeatures(LianhuanhuaBwLineArtScanFeatures(), 0.92f));
+    utassert(!PdfDarkModeFeaturesLookLikeGrayscalePhoto(LianhuanhuaBwLineArtScanFeatures()));
+
+    // RAZ B&W portrait full bleed: Photo / Preserve — photo rect protect, not negative invert.
+    kind = PdfDarkModeClassifyImageFeatures(RazBwPortraitFullBleedFeatures(), 0.92f, false, &confidence);
+    utassert(kind == DarkImageKind::Photo);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::Preserve);
+    utassert(PdfDarkModeFeaturesLookLikeGrayscalePhoto(RazBwPortraitFullBleedFeatures()));
+    utassert(!PdfDarkModeFeaturesLookLikeBwLineArtScan(RazBwPortraitFullBleedFeatures()));
+
+    kind = PdfDarkModeClassifyImageFeatures(RazBwPortraitHighPaperFullBleedFeatures(), 0.92f, false, &confidence);
+    utassert(kind == DarkImageKind::Photo);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::Preserve);
+    utassert(PdfDarkModeFeaturesLookLikeGrayscalePhoto(RazBwPortraitHighPaperFullBleedFeatures()));
 
     // Scanned-page hint: colorful art stays Preserve; flat paper becomes FullPageScan.
     kind = PdfDarkModeClassifyImageFeatures(scan, 0.58f, true, &confidence);
@@ -313,11 +512,30 @@ void PdfDarkModeImageClassifier_UnitTests() {
     utassert(PdfDarkModeClampFollowThemePolicy(DarkImagePolicy::Preserve, 0.95f, contractClamp) ==
              DarkImagePolicy::AdaptiveDocument);
 
+    // Red-header government page 1 misclassified as Photo must still binarize.
+    DarkImageAnalysis redHeaderClamp;
+    redHeaderClamp.kind = DarkImageKind::Photo;
+    redHeaderClamp.features = RensheRedHeaderPage1Features();
+    utassert(PdfDarkModeClampFollowThemePolicy(DarkImagePolicy::Preserve, 1.0f, redHeaderClamp) ==
+             DarkImagePolicy::AdaptiveDocument);
+
+    DarkImageAnalysis apachesClamp;
+    apachesClamp.kind = DarkImageKind::Photo;
+    apachesClamp.features = ApachesPage3TocMapFeatures();
+    utassert(PdfDarkModeClampFollowThemePolicy(DarkImagePolicy::Preserve, 1.0f, apachesClamp) ==
+             DarkImagePolicy::AdaptiveDocument);
+
     // Soft-cream notebook design pages may still Preserve (designed art, not white scan).
     DarkImageAnalysis notebookClamp;
     notebookClamp.kind = DarkImageKind::Photo;
     notebookClamp.features = SoftCreamNotebookFullBleedFeatures();
     utassert(PdfDarkModeClampFollowThemePolicy(DarkImagePolicy::Preserve, 0.95f, notebookClamp) ==
+             DarkImagePolicy::Preserve);
+
+    DarkImageAnalysis razPortraitClamp;
+    razPortraitClamp.kind = DarkImageKind::Photo;
+    razPortraitClamp.features = RazBwPortraitHighPaperFullBleedFeatures();
+    utassert(PdfDarkModeClampFollowThemePolicy(DarkImagePolicy::Preserve, 0.95f, razPortraitClamp) ==
              DarkImagePolicy::Preserve);
 
     // Small inline figure stays Preserve.

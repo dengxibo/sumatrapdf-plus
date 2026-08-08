@@ -84,6 +84,7 @@ struct MenuOwnerDrawInfo {
     HBITMAP hbmpChecked = nullptr;
     HBITMAP hbmpUnchecked = nullptr;
     HBITMAP hbmpItem = nullptr;
+    bool hasSubMenu = false;
 };
 
 constexpr UINT kMenuSeparatorID = (UINT)-13;
@@ -2434,6 +2435,7 @@ void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar, bool recurseSubmenus) {
         modi->hbmpItem = mii.hbmpItem;
         modi->hbmpChecked = mii.hbmpChecked;
         modi->hbmpUnchecked = mii.hbmpUnchecked;
+        modi->hasSubMenu = mii.hSubMenu != nullptr;
         if (str::Leni(buf) > 0) {
             modi->text = ToUtf8(buf);
         }
@@ -2474,6 +2476,22 @@ static void DrawMenuCheckMark(HWND hwnd, HDC hdc, const RECT& rcItem, int cxChec
     // Same check glyph style as standard menus (Segoe UI check mark).
     WCHAR check[] = L"\u2713";
     DrawTextW(hdc, check, 1, &rcCheck, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+}
+
+// Owner-draw must paint submenu chevrons; the system arrow stays near-black on dark themes.
+static void DrawMenuSubmenuArrow(HWND hwnd, HDC hdc, const RECT& rcItem, int cxArrow, HBRUSH br) {
+    int midY = rcItem.top + RectDy(rcItem) / 2;
+    int arrowH = DpiScale(hwnd, 8);
+    int arrowW = DpiScale(hwnd, 4);
+    int right = rcItem.right - DpiScale(hwnd, 6);
+    POINT pts[3] = {
+        {right - arrowW, midY - arrowH / 2},
+        {right - arrowW, midY + arrowH / 2},
+        {right, midY},
+    };
+    ScopedSelectObject restoreBrush(hdc, br);
+    ScopedSelectObject restorePen(hdc, GetStockObject(NULL_PEN));
+    Polygon(hdc, pts, 3);
 }
 
 constexpr int kMenuPaddingY = 4;
@@ -2518,6 +2536,10 @@ void MenuCustomDrawMesureItem(HWND hwnd, MEASUREITEMSTRUCT* mis) {
     int cxMenuCheckMark = GetMenuCheckMarkCx(hwnd);
     mis->itemHeight += padY * 2;
     mis->itemWidth = uint(dx + cxMenuCheckMark + (padX * 2));
+    if (modi->hasSubMenu) {
+        // room for the right-pointing submenu chevron
+        mis->itemWidth += (uint)cxMenuCheckMark;
+    }
 }
 
 // https://gist.github.com/kjk/1df108aa126b7d8e298a5092550a53b7
@@ -2641,13 +2663,17 @@ void MenuCustomDrawItem(HWND hwnd, DRAWITEMSTRUCT* dis) {
     // DrawTextEx handles & => underscore drawing
     rc.top += padY;
     rc.left += cxCheckMark;
+    if (modi->hasSubMenu) {
+        rc.right -= cxCheckMark;
+    }
     TempWStr ws = ToWStrTemp(menuText);
     DrawTextExW(hdc, ws, -1, &rc, DT_LEFT, nullptr);
     if (shortcutText != nullptr) {
         ws = ToWStrTemp(shortcutText);
         rc = dis->rcItem;
         rc.top += padY;
-        rc.right -= (padX + cxCheckMark / 2);
+        int rightGutter = padX + (modi->hasSubMenu ? cxCheckMark : cxCheckMark / 2);
+        rc.right -= rightGutter;
         DrawTextExW(hdc, ws, -1, &rc, DT_RIGHT, nullptr);
     }
 
@@ -2664,11 +2690,17 @@ void MenuCustomDrawItem(HWND hwnd, DRAWITEMSTRUCT* dis) {
             rc.bottom = rc.top + dx;
             ScopedSelectObject restoreBrush(hdc, brTxt);
             Ellipse(hdc, rc.left, rc.top, rc.right, rc.bottom);
-            return;
+        } else {
+            // Same system check bitmap as non-owner-draw menus (light mode).
+            DrawMenuCheckMark(hwnd, hdc, rc, cxCheckMark);
         }
+    }
 
-        // Same system check bitmap as non-owner-draw menus (light mode).
-        DrawMenuCheckMark(hwnd, hdc, rc, cxCheckMark);
+    if (modi->hasSubMenu) {
+        DrawMenuSubmenuArrow(hwnd, hdc, dis->rcItem, cxCheckMark, brTxt);
+        // Windows blits its default (near-black) submenu arrow after WM_DRAWITEM.
+        // Exclude the whole item so that blit is clipped away.
+        ExcludeClipRect(hdc, dis->rcItem.left, dis->rcItem.top, dis->rcItem.right, dis->rcItem.bottom);
     }
 }
 

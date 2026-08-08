@@ -969,7 +969,8 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
             }
             const DarkModeProfile* profile = args.darkProfile;
             bool legacyPost = false;
-            if (engine->kind == kindEngineDjVu && ThemeUsesDarkChrome()) {
+            if (engine->kind == kindEngineDjVu && ThemeUsesDarkChrome() &&
+                GetPdfDocumentColorMode() != PdfDocumentColorMode::Light) {
                 legacyPost = true;
                 profile = nullptr;
             } else if (profile) {
@@ -979,9 +980,11 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
             }
             if (legacyPost) {
                 bool preserve = profile ? ShouldPreserveImagesInSmartMode(profile) : ShouldPreserveImagesLegacy(engine);
+                // Light eye-care match theme: uniform gauze over text + photos (no skip rects).
+                bool eyeCareGauze = ThemeUsesEyeCareChrome() && !ThemeUsesDarkChrome();
                 Vec<Rect> skipRects;
                 Vec<Rect>* skipRectsPtr = nullptr;
-                if (preserve) {
+                if (preserve && !eyeCareGauze) {
                     Size bmpSize = bmp->GetSize();
                     engine->GetBitmapRecolorSkipRects(req.pageNo, req.zoom, req.rotation, req.pageRect, bmpSize,
                                                       skipRects);

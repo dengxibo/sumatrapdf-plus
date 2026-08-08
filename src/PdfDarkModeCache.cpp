@@ -7,7 +7,31 @@ extern "C" {
 
 #include "utils/BaseUtil.h"
 
+#include "Theme.h"
 #include "PdfDarkModeInternal.h"
+
+static bool dm_should_use_government_paper_pixmap(fz_context* ctx, fz_image* srcImage,
+                                                  const DarkImageAnalysis* imgAnalysis, float pageCoverage) {
+    if (!imgAnalysis || pageCoverage < kMaxPreserveImagePageCoverage) {
+        return false;
+    }
+    const DarkImageFeatures& f = imgAnalysis->features;
+    // Ultra-flat office scans (人社 PaperStream): red header can trip photo-rect probe — still binarize.
+    if (PdfDarkModeFeaturesLookLikeGovernmentPaperScan(f) && f.luminanceVariance < 0.006f) {
+        return true;
+    }
+    // Picture-book photos and B&W portraits: preserve tonal art, not office binarize.
+    if (imgAnalysis->kind == DarkImageKind::Photo) {
+        return false;
+    }
+    if (PdfDarkModeFeaturesLookLikeGrayscalePhoto(f)) {
+        return false;
+    }
+    if (ctx && srcImage && PdfDarkModeImageHasPreservablePhotoRects(ctx, srcImage)) {
+        return false;
+    }
+    return PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(f);
+}
 
 struct DarkModeShadeCacheEntry {
     fz_shade* shade = nullptr;
@@ -138,7 +162,9 @@ static void dm_transform_pixmap_rgb(fz_context* ctx, fz_pixmap* pix, const DarkM
 static void dm_preserve_pixel(float r, float g, float b, const DarkModePalette& palette, float* outR, float* outG,
                               float* outB) {
     float cr = r, cg = g, cb = b;
-    PdfDarkModeCompressPhotoHighlights(r, g, b, &cr, &cg, &cb);
+    if (ThemeUsesDarkChrome()) {
+        PdfDarkModeCompressPhotoHighlights(r, g, b, &cr, &cg, &cb);
+    }
     float softening = PdfDarkModeCurrentOptions().preserveImagePaperSoftening;
     if (softening > 0.f) {
         ApplyPreserveImagePaperSoftening(cr, cg, cb, palette, softening, outR, outG, outB);
@@ -178,6 +204,20 @@ static void dm_shade_pixel(float r, float g, float b, const DarkModePalette& pal
     *outR = mapped[0];
     *outG = mapped[1];
     *outB = mapped[2];
+}
+
+static bool dm_picture_book_embedded_photo_page(fz_context* ctx, fz_image* srcImage, float pageCoverage) {
+    if (!PdfFollowThemePreservesEmbeddedImageColors() || pageCoverage < kMaxPreserveImagePageCoverage) {
+        return false;
+    }
+    if (!ctx || !srcImage) {
+        return false;
+    }
+    if (!PdfDarkModeImageHasPreservablePhotoRects(ctx, srcImage)) {
+        return false;
+    }
+    // B&W portrait / battlefield photo on a text page — not a red-header band on office paper.
+    return PdfDarkModeImageDecodeLooksLikeGrayscalePortrait(ctx, srcImage);
 }
 
 static fz_pixmap* dm_copy_and_transform_pixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette,
@@ -247,20 +287,55 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
             decodeMaxDim = 1200;
         }
         src = dm_load_src_pixmap(ctx, srcImage, decodeMaxDim);
+        int buildBranch = 0;
         if (policy == DarkImagePolicy::Preserve) {
             if (pageCoverage >= kMaxPreserveImagePageCoverage) {
                 // Soft-cream notebooks: classifier SoftCream → gentle soften only.
                 // RAZ / picture books: sharp dark paper + light text with photo-rect protect.
-                if (imgAnalysis && PdfDarkModeFeaturesLookLikeSoftCreamIllustration(imgAnalysis->features)) {
+                if (dm_should_use_government_paper_pixmap(ctx, srcImage, imgAnalysis, pageCoverage)) {
+                    buildBranch = 13;
+                    processed = PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, palette);
+                } else if (imgAnalysis && PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(imgAnalysis->features)) {
+                    buildBranch = 1;
+                    processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
+                } else if (imgAnalysis && PdfDarkModeFeaturesLookLikeSoftCreamIllustration(imgAnalysis->features) &&
+                           !PdfFollowThemePreservesEmbeddedImageColors()) {
+                    buildBranch = 1;
                     processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
                 } else {
-                    processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette);
+                    buildBranch = 2;
+                    processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
                 }
+            } else if (imgAnalysis && PdfDarkModeFeaturesLookLikeLightDocumentPanel(imgAnalysis->features)) {
+                // Cream callout panels ("Do You Know?"): steep paper/ink remap, not Preserve.
+                buildBranch = 14;
+                processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_legacy_linear_pixel);
             } else {
+                buildBranch = 3;
                 processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_preserve_pixel);
             }
         } else if (policy == DarkImagePolicy::AdaptiveDocument) {
-            if (layoutRaster) {
+            if (imgAnalysis && pageCoverage >= kMaxPreserveImagePageCoverage &&
+                imgAnalysis->kind == DarkImageKind::Photo) {
+                if (dm_should_use_government_paper_pixmap(ctx, srcImage, imgAnalysis, pageCoverage)) {
+                    buildBranch = 13;
+                    processed = PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, palette);
+                } else if (PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(imgAnalysis->features)) {
+                    buildBranch = 1;
+                    processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
+                } else if (PdfFollowThemePreservesEmbeddedImageColors() &&
+                           pageCoverage >= kMaxPreserveImagePageCoverage) {
+                    buildBranch = 2;
+                    processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
+                } else if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(imgAnalysis->features)) {
+                    buildBranch = 1;
+                    processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
+                } else {
+                    buildBranch = 2;
+                    processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
+                }
+            } else if (layoutRaster) {
+                buildBranch = 4;
                 processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_legacy_linear_pixel);
             } else if (imgAnalysis && imgAnalysis->kind == DarkImageKind::FullPageScan) {
                 // RAZ / picture-book full-bleed misclassified as FullPageScan: use picture-book
@@ -268,26 +343,62 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
                 // of whole-tile AdaptiveDocument (photo edge halos). Plain DuXiu text scans stay
                 // on AdaptiveDocument (low sat + low chroma).
                 const DarkImageFeatures& f = imgAnalysis->features;
-                bool pictureBookishScan = PdfFollowThemePreservesEmbeddedImageColors() &&
-                                          pageCoverage >= kMaxPreserveImagePageCoverage &&
-                                          (f.saturatedPixelRatio >= 0.08f || f.chromaticPixelRatio >= 0.10f);
-                if (pictureBookishScan) {
-                    processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette);
-                } else if (f.saturatedPixelRatio < 0.10f) {
-                    // Low-chroma text scans: AdaptiveDocument remap (fast).
-                    processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_adaptive_pixel);
+                bool grayscalePhotoScan =
+                    PdfFollowThemePreservesEmbeddedImageColors() && pageCoverage >= kMaxPreserveImagePageCoverage &&
+                    PdfDarkModeFeaturesLookLikeGrayscalePhoto(f) && !PdfDarkModeFeaturesLookLikeBwLineArtScan(f);
+                if (grayscalePhotoScan) {
+                    buildBranch = 6;
+                    processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
+                } else if (dm_picture_book_embedded_photo_page(ctx, srcImage, pageCoverage)) {
+                    buildBranch = 7;
+                    processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
+                } else if (dm_should_use_government_paper_pixmap(ctx, srcImage, imgAnalysis, pageCoverage)) {
+                    buildBranch = 13;
+                    processed = PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, palette);
+                } else if (PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(f)) {
+                    buildBranch = 1;
+                    processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
+                } else if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f) &&
+                           !PdfFollowThemePreservesEmbeddedImageColors()) {
+                    buildBranch = 1;
+                    processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
+                } else if (PdfFollowThemePreservesEmbeddedImageColors() &&
+                           pageCoverage >= kMaxPreserveImagePageCoverage) {
+                    buildBranch = 7;
+                    processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
                 } else {
-                    // Keep ProcessScan when the page has meaningful color (photos on a scan).
-                    processed = PdfDarkModeProcessScanPixmap(ctx, src, *imgAnalysis, palette);
+                    bool pictureBookishScan = PdfFollowThemePreservesEmbeddedImageColors() &&
+                                              pageCoverage >= kMaxPreserveImagePageCoverage &&
+                                              (f.saturatedPixelRatio >= 0.08f || f.chromaticPixelRatio >= 0.10f);
+                    if (pictureBookishScan) {
+                        buildBranch = 5;
+                        processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
+                    } else if (f.saturatedPixelRatio < 0.10f) {
+                        if (PdfDarkModeImageHasPreservablePhotoRects(ctx, srcImage)) {
+                            buildBranch = 7;
+                            processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
+                        } else {
+                            buildBranch = 8;
+                            // Low-chroma text scans: AdaptiveDocument remap (fast).
+                            processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_adaptive_pixel);
+                        }
+                    } else {
+                        buildBranch = 9;
+                        // Keep ProcessScan when the page has meaningful color (photos on a scan).
+                        processed = PdfDarkModeProcessScanPixmap(ctx, src, *imgAnalysis, palette);
+                    }
                 }
             }
             if (!processed && imgAnalysis && PdfDarkModeShouldBlendLightBackground(*imgAnalysis)) {
+                buildBranch = 10;
                 processed = PdfDarkModeProcessLightBackgroundPixmap(ctx, src, *imgAnalysis, palette);
             }
             if (!processed) {
+                buildBranch = 11;
                 processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_adaptive_pixel);
             }
         } else {
+            buildBranch = 12;
             processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_theme_recolor_pixel);
         }
         if (processed == src) {
@@ -409,15 +520,21 @@ fz_image* PdfDarkModeGetCachedFollowThemeImage(fz_context* ctx, DarkModeEngineCa
     if (!srcImage) {
         return nullptr;
     }
-    // Non-full-bleed Preserve (textbook / Easy RL figures): draw the original image.
-    // Paper softening on multi-MP CalRGB dominated Match-theme flip cost; text/vectors
-    // are already remapped by the FollowTheme device.
-    if (policy == DarkImagePolicy::Preserve && pageCoverage < kMaxPreserveImagePageCoverage) {
-        return nullptr;
-    }
     DarkImageAnalysis analysis{};
-    if (policy == DarkImagePolicy::Preserve) {
-        analysis.kind = DarkImageKind::Photo;
+    // Non-full-bleed Preserve (textbook photos): usually draw the original image.
+    // Exception: cream/mint callout panels must still remap or they stay bright.
+    if (policy == DarkImagePolicy::Preserve && pageCoverage < kMaxPreserveImagePageCoverage) {
+        analysis = PdfDarkModeAnalyzeImageCached(ctx, srcImage, pageCoverage, false, engineCache);
+        if (!PdfDarkModeFeaturesLookLikeLightDocumentPanel(analysis.features)) {
+            return nullptr;
+        }
+    } else if (policy == DarkImagePolicy::Preserve) {
+        if (pageCoverage >= kMaxPreserveImagePageCoverage) {
+            analysis = PdfDarkModeAnalyzeImageCached(ctx, srcImage, pageCoverage, false, engineCache);
+        }
+        if (analysis.kind == DarkImageKind::Unknown) {
+            analysis.kind = DarkImageKind::Photo;
+        }
     } else if (pageCoverage >= kMaxPreserveImagePageCoverage) {
         analysis = PdfDarkModeAnalyzeImageCached(ctx, srcImage, pageCoverage, false, engineCache);
     } else {

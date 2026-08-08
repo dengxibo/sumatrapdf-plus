@@ -206,6 +206,11 @@ TreeFontName = automatic
 ; (introduced in version 3.3)
 TreeFontSize = 0
 
+; if true, bookmark and favorites tree labels wrap to multiple lines; if false,
+; single line with ellipsis and full text in tooltip on hover (introduced in
+; version 3.7)
+TreeWrapLabels = false
+
 ; over-ride application font size. 0 means Windows default (introduced in
 ; version 3.6)
 UIFontSize = 0

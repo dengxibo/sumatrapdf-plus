@@ -43,6 +43,9 @@ fz_image* PdfDarkModeGetCachedFollowThemeImage(fz_context* ctx, DarkModeEngineCa
                                                DarkImagePolicy policy, float pageCoverage,
                                                const DarkModePalette& palette, u32 profileHash);
 
+void PdfDarkModeAppendImagePhotoSkipDevRects(fz_context* ctx, fz_image* image, const RectF& imgOnPage,
+                                            const fz_matrix& ctm, Vec<Rect>& outSkip);
+
 void MapColorToDarkTheme(fz_context* ctx, fz_colorspace* cs, const float* color, fz_color_params colorParams,
                          const DarkModePalette& palette, float* outRgb);
 
@@ -61,9 +64,12 @@ void ApplyPreserveImagePaperSoftening(float r, float g, float b, const DarkModeP
 // Full-bleed picture books: linear remap margins only; photo rect left untouched.
 void ApplyPreservePictureBookPaperAndInk(float r, float g, float b, const DarkModePalette& palette, float* outR,
                                          float* outG, float* outB);
-fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette);
+fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette,
+                                             const DarkImageAnalysis* imgAnalysis = nullptr);
 // Soft-cream notebook pages: gentle paper softening only (no steep ink remap).
 fz_pixmap* PdfDarkModeProcessSoftCreamPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette);
+// Government / office paper scans: steep ink↔paper remap for readable text on dark theme.
+fz_pixmap* PdfDarkModeProcessGovernmentPaperPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette);
 
 // Margin strips, drop shadows, and similar layout art — not photos to preserve.
 bool PdfDarkModeIsDecorativeStripImage(const RectF& imgRect, const RectF& pageBounds);

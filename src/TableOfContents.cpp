@@ -70,6 +70,8 @@ static COLORREF SidebarBackgroundColor(COLORREF wndBgColor) {
 
 static void LayoutTocContainer(MainWindow* win);
 
+static void TocRecalcAllItemHeights(MainWindow* win);
+
 static bool IsKnownTocTreeModel(MainWindow* win, TreeModel* tm);
 
 static bool IsTocMupdfPageReachable(EngineBase* engine, int pageNo) {
@@ -88,6 +90,38 @@ void InvalidateTocTree(MainWindow* win) {
     HWND hwnd = win->tocTreeView->hwnd;
     if (hwnd) {
         InvalidateRect(hwnd, nullptr, FALSE);
+    }
+}
+
+bool TreeWrapLabelsEnabled() {
+    return gGlobalPrefs && gGlobalPrefs->treeWrapLabels;
+}
+
+void TreeWrapLabelsConfigureCreateArgs(TreeView::CreateArgs& args) {
+    args.unevenItemHeight = TreeWrapLabelsEnabled();
+}
+
+void TreeItemTooltipIfTruncated(TreeView::GetTooltipEvent* ev) {
+    if (!ev || !ev->treeView || !ev->treeItem || TreeWrapLabelsEnabled()) {
+        return;
+    }
+    TreeModel* tm = ev->treeView->treeModel;
+    if (!tm) {
+        return;
+    }
+    char* text = tm->Text(ev->treeItem);
+    if (!text) {
+        return;
+    }
+    RECT rcLine, rcLabel;
+    ev->treeView->GetItemRect(ev->treeItem, false, rcLine);
+    ev->treeView->GetItemRect(ev->treeItem, true, rcLabel);
+    if (rcLabel.right <= rcLine.right + 2) {
+        return;
+    }
+    NMTVGETINFOTIPW* nm = ev->info;
+    if (nm) {
+        str::BufSet(nm->pszText, nm->cchTextMax, text);
     }
 }
 
@@ -133,16 +167,18 @@ static void TocCustomizeTooltip(TreeView::GetTooltipEvent* ev) {
 
     StrBuilder infotip;
 
-    // Display the item's full label, if it's overlong
-    RECT rcLine, rcLabel;
-    treeView->GetItemRect(ev->treeItem, false, rcLine);
-    treeView->GetItemRect(ev->treeItem, true, rcLabel);
-
-    // TODO: this causes a duplicate. Not sure what changed
-    if (false && rcLine.right + 2 < rcLabel.right) {
-        char* currInfoTip = tm->Text(ti);
-        infotip.Append(currInfoTip);
-        infotip.Append("\r\n");
+    // Display the item's full label when single-line mode truncates it
+    if (!TreeWrapLabelsEnabled()) {
+        RECT rcLine, rcLabel;
+        treeView->GetItemRect(ev->treeItem, false, rcLine);
+        treeView->GetItemRect(ev->treeItem, true, rcLabel);
+        if (rcLabel.right > rcLine.right + 2) {
+            char* currInfoTip = tm->Text(ti);
+            if (currInfoTip) {
+                infotip.Append(currInfoTip);
+                infotip.Append("\r\n");
+            }
+        }
     }
 
     if (kindDestinationLaunchEmbedded == k || kindDestinationAttachment == k) {
@@ -1563,6 +1599,7 @@ void LoadTocTree(MainWindow* win) {
     // when content appears; theming before SetTreeModel leaves them light.
     UpdateControlsColors(win);
     LayoutTocContainer(win);
+    TocRecalcAllItemHeights(win);
     InvalidateTocTree(win);
 }
 
@@ -1598,12 +1635,189 @@ static void UpdateFont(MainWindow* win, HWND hwndTree, HDC hdc, int fontFlags) {
     SelectObject(hdc, hfont);
 }
 
+static int TocTreeItemLevel(HWND hwnd, HTREEITEM hItem) {
+    int level = 0;
+    HTREEITEM p = TreeView_GetParent(hwnd, hItem);
+    while (p) {
+        level++;
+        p = TreeView_GetParent(hwnd, p);
+    }
+    return level;
+}
+
+static int TocGetItemLabelLeft(HWND hwnd, HTREEITEM hItem) {
+    RECT rcLabel;
+    if (TreeView_GetItemRect(hwnd, hItem, &rcLabel, TRUE)) {
+        return rcLabel.left;
+    }
+    int indent = TreeView_GetIndent(hwnd);
+    return indent * (TocTreeItemLevel(hwnd, hItem) + 1);
+}
+
+static void DrawTreeWrappedLabel(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, const WCHAR* textW, MainWindow* win,
+                                int fontFlags) {
+    if (!textW || !*textW) {
+        return;
+    }
+    HWND hwnd = treeView->hwnd;
+    HTREEITEM hItem = (HTREEITEM)tvcd->nmcd.dwItemSpec;
+    RECT rcLabel;
+    if (!TreeView_GetItemRect(hwnd, hItem, &rcLabel, TRUE)) {
+        int labelLeft = TocGetItemLabelLeft(hwnd, hItem);
+        int baseH = treeView->unevenItemBaseHeight;
+        if (baseH <= 0) {
+            baseH = TreeView_GetItemHeight(hwnd);
+        }
+        if (baseH <= 0) {
+            baseH = 18;
+        }
+        rcLabel.left = labelLeft;
+        rcLabel.top = 0;
+        rcLabel.right = labelLeft + 100;
+        rcLabel.bottom = baseH;
+    }
+    RECT rcClient;
+    GetClientRect(hwnd, &rcClient);
+    rcLabel.right = rcClient.right - 2;
+
+    NMCUSTOMDRAW* cd = &tvcd->nmcd;
+    bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+    COLORREF textCol = tvcd->clrText;
+    COLORREF bgCol = tvcd->clrTextBk;
+
+    if (!isSelected || !ThemeUsesDarkChrome()) {
+        RECT rcFill = rcLabel;
+        rcFill.right = rcClient.right;
+        HBRUSH br = CreateSolidBrush(bgCol);
+        FillRect(cd->hdc, &rcFill, br);
+        DeleteObject(br);
+    }
+
+    if (fontFlags != 0 && win) {
+        UpdateFont(win, hwnd, cd->hdc, fontFlags);
+    }
+
+    InflateRect(&rcLabel, -2, -1);
+    SetBkMode(cd->hdc, TRANSPARENT);
+    SetTextColor(cd->hdc, textCol);
+    DrawTextW(cd->hdc, textW, -1, &rcLabel, DT_WORDBREAK | DT_NOPREFIX | DT_LEFT | DT_EDITCONTROL);
+}
+
+static void DrawTocWrappedLabel(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, TocItem* tocItem, MainWindow* win) {
+    if (!tocItem || !tocItem->title) {
+        return;
+    }
+    DrawTreeWrappedLabel(tvcd, treeView, ToWStrTemp(tocItem->title), win, tocItem->fontFlags);
+}
+
 static bool HasTocFilter(MainWindow* win) {
     if (!win || !win->tocFilterEdit) {
         return false;
     }
     TempStr filter = win->tocFilterEdit->GetTextTemp();
     return filter && str::Len(filter) > 0;
+}
+
+static int TocMinItemLabelHeight(HDC hdc) {
+    TEXTMETRIC tm{};
+    if (!GetTextMetrics(hdc, &tm)) {
+        return 18;
+    }
+    return tm.tmHeight + 4;
+}
+
+static int TocMeasureWrappedLabelHeight(HDC hdc, const WCHAR* text, int maxWidth, int minHeight) {
+    if (!text || !*text || maxWidth <= 0) {
+        return minHeight;
+    }
+    RECT rc = {0, 0, maxWidth, 0};
+    DrawTextW(hdc, text, -1, &rc, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX | DT_LEFT | DT_EDITCONTROL);
+    int h = rc.bottom - rc.top + 4;
+    return h < minHeight ? minHeight : h;
+}
+
+static void TocSetTreeItemIntegral(HWND hwnd, HTREEITEM hItem, int integral) {
+    TVITEMEXW item{};
+    item.hItem = hItem;
+    item.mask = TVIF_INTEGRAL;
+    item.iIntegral = integral;
+    TreeView_SetItem(hwnd, &item);
+}
+
+static void TreeWrapUpdateItemHeight(HWND hwnd, HTREEITEM hItem, HDC hdc, int clientWidth, int baseItemHeight,
+                                     TreeView* treeView) {
+    if (!hItem || !treeView) {
+        return;
+    }
+    TreeItem ti = treeView->GetTreeItemByHandle(hItem);
+    if (!ti || !treeView->treeModel) {
+        return;
+    }
+    char* text = treeView->treeModel->Text(ti);
+    if (!text) {
+        return;
+    }
+    int labelLeft = TocGetItemLabelLeft(hwnd, hItem);
+    int maxWidth = clientWidth - labelLeft - 4;
+    if (maxWidth < 24) {
+        maxWidth = 24;
+    }
+    WCHAR* textW = ToWStrTemp(text);
+    int minH = baseItemHeight > 0 ? baseItemHeight : TocMinItemLabelHeight(hdc);
+    int pixelHeight = TocMeasureWrappedLabelHeight(hdc, textW, maxWidth, minH);
+    int integral = baseItemHeight > 0 ? (pixelHeight + baseItemHeight - 1) / baseItemHeight : 1;
+    if (integral < 1) {
+        integral = 1;
+    }
+    TocSetTreeItemIntegral(hwnd, hItem, integral);
+}
+
+static void TreeWrapUpdateItemHeightsRecur(HWND hwnd, HTREEITEM hItem, HDC hdc, int clientWidth, int baseItemHeight,
+                                           TreeView* treeView) {
+    while (hItem) {
+        TreeWrapUpdateItemHeight(hwnd, hItem, hdc, clientWidth, baseItemHeight, treeView);
+        HTREEITEM child = TreeView_GetChild(hwnd, hItem);
+        if (child) {
+            TreeWrapUpdateItemHeightsRecur(hwnd, child, hdc, clientWidth, baseItemHeight, treeView);
+        }
+        hItem = TreeView_GetNextSibling(hwnd, hItem);
+    }
+}
+
+static void TreeWrapRecalcAllItemHeights(TreeView* treeView, HWND hwndFrame) {
+    if (!treeView || !treeView->hwnd || !treeView->unevenItemHeight) {
+        return;
+    }
+    HWND hwnd = treeView->hwnd;
+    RECT rcClient;
+    GetClientRect(hwnd, &rcClient);
+    if (rcClient.right <= 0) {
+        return;
+    }
+    int baseH = treeView->unevenItemBaseHeight;
+    if (baseH <= 0) {
+        baseH = TreeView_GetItemHeight(hwnd);
+    }
+    HDC hdc = GetDC(hwnd);
+    if (!hdc) {
+        return;
+    }
+    HFONT font = GetAppTreeFontForHwnd(hwndFrame);
+    if (font) {
+        SelectObject(hdc, font);
+    }
+    HTREEITEM hItem = TreeView_GetRoot(hwnd);
+    if (hItem) {
+        TreeWrapUpdateItemHeightsRecur(hwnd, hItem, hdc, rcClient.right, baseH, treeView);
+    }
+    ReleaseDC(hwnd, hdc);
+}
+
+static void TocRecalcAllItemHeights(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    TreeWrapRecalcAllItemHeights(win->tocTreeView, win->hwndFrame);
 }
 
 static COLORREF TocSelectionBgColor() {
@@ -1877,12 +2091,49 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
 
     bool filterActive = HasTocFilter(win);
 
+    if (!TreeWrapLabelsEnabled()) {
+        if (cd->dwDrawStage == CDDS_ITEMPREPAINT) {
+            TocItem* tocItem = (TocItem*)ev->treeItem;
+            if (!tocItem) {
+                return;
+            }
+            bool knownTree = win && IsKnownTocTreeModel(win, ev->treeView->treeModel);
+            if (!knownTree || !win || win->isBeingClosed || !win->tocLoaded) {
+                ev->result = CDRF_DODEFAULT;
+                return;
+            }
+            bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+            HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
+            if (ThemeUsesDarkChrome() && isSelected) {
+                DrawTocSelectionFill(cd, ev->treeView->hwnd, hItem);
+                ev->result = CDRF_NOTIFYPOSTPAINT;
+                return;
+            }
+            ev->result = CDRF_DODEFAULT;
+            return;
+        }
+        if (cd->dwDrawStage == CDDS_ITEMPOSTPAINT) {
+            TocItem* tocItem = (TocItem*)ev->treeItem;
+            bool knownTree = win && IsKnownTocTreeModel(win, ev->treeView->treeModel);
+            bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+            if (ThemeUsesDarkChrome() && isSelected && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
+                HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
+                DrawTocSelectionFrame(cd, ev->treeView->hwnd, hItem);
+            }
+            if (filterActive && tocItem && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
+                DrawTocItemHighlight(ev, win);
+            }
+            ev->result = CDRF_DODEFAULT;
+            return;
+        }
+        return;
+    }
+
     if (cd->dwDrawStage == CDDS_ITEMPREPAINT) {
         TocItem* tocItem = (TocItem*)ev->treeItem;
         if (!tocItem) {
             return;
         }
-        LRESULT res = 0;
         bool knownTree = win && IsKnownTocTreeModel(win, ev->treeView->treeModel);
         if (!knownTree || !win || win->isBeingClosed || !win->tocLoaded) {
             ev->result = CDRF_DODEFAULT;
@@ -1896,26 +2147,32 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
         }
         if (tocItem->fontFlags != 0) {
             UpdateFont(win, ev->treeView->hwnd, cd->hdc, tocItem->fontFlags);
-            res = CDRF_NEWFONT;
         }
-        if (ThemeUsesDarkChrome() && isSelected) {
-            res |= CDRF_NOTIFYPOSTPAINT;
-        } else if (filterActive) {
-            res |= CDRF_NOTIFYPOSTPAINT;
+        RECT rcClient;
+        GetClientRect(ev->treeView->hwnd, &rcClient);
+        int baseH = ev->treeView->unevenItemBaseHeight;
+        if (baseH <= 0) {
+            baseH = TreeView_GetItemHeight(ev->treeView->hwnd);
+        }
+        TreeWrapUpdateItemHeight(ev->treeView->hwnd, hItem, cd->hdc, rcClient.right, baseH, ev->treeView);
+        DrawTocWrappedLabel(tvcd, ev->treeView, tocItem, win);
+        LRESULT res = CDRF_SKIPDEFAULT | CDRF_NOTIFYPOSTPAINT;
+        if (tocItem->fontFlags != 0) {
+            res |= CDRF_NEWFONT;
         }
         ev->result = res;
         return;
     }
 
     if (cd->dwDrawStage == CDDS_ITEMPOSTPAINT) {
+        TocItem* tocItem = (TocItem*)ev->treeItem;
+        bool knownTree = win && IsKnownTocTreeModel(win, ev->treeView->treeModel);
         bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
-        if (ThemeUsesDarkChrome() && isSelected && win && win->tocLoaded && !win->isBeingClosed &&
-            IsKnownTocTreeModel(win, ev->treeView->treeModel)) {
+        if (ThemeUsesDarkChrome() && isSelected && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
             HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
             DrawTocSelectionFrame(cd, ev->treeView->hwnd, hItem);
         }
-        if (filterActive && win && win->tocLoaded && !win->isBeingClosed &&
-            IsKnownTocTreeModel(win, ev->treeView->treeModel)) {
+        if (filterActive && tocItem && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
             DrawTocItemHighlight(ev, win);
         }
         ev->result = CDRF_DODEFAULT;
@@ -2130,6 +2387,8 @@ static LRESULT CALLBACK WndProcTocBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
     switch (msg) {
         case WM_SIZE:
             LayoutTocContainer(win);
+            TocRecalcAllItemHeights(win);
+            InvalidateTocTree(win);
             break;
 
         case WM_COMMAND:
@@ -2211,6 +2470,7 @@ void ReCreateTocTreeView(MainWindow* win, HFONT font, int dpi) {
     args.parent = win->hwndTocBox;
     args.font = font;
     args.fullRowSelect = true;
+    TreeWrapLabelsConfigureCreateArgs(args);
     args.exStyle = 0;
     args.isRtl = IsUIRtl();
     InitTocTreeViewHandlers(treeView);
@@ -2233,6 +2493,8 @@ void ReCreateTocTreeView(MainWindow* win, HFONT font, int dpi) {
     SubclassToc(win);
     UpdateControlsColors(win);
     LayoutTocContainer(win);
+    TocRecalcAllItemHeights(win);
+    InvalidateTocTree(win);
     if (hadFocus) {
         SetFocus(treeView->hwnd);
     }
@@ -2443,8 +2705,47 @@ void ReCreateTocFilterEdit(MainWindow* win, HFONT font) {
 
     UpdateControlsColors(win);
     LayoutTocContainer(win);
+    TocRecalcAllItemHeights(win);
+    InvalidateTocTree(win);
     if (hadFocus) {
         SetFocus(filterEdit->hwnd);
+    }
+}
+
+void FavTreeWrapRecalcHeights(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    TreeWrapRecalcAllItemHeights(win->favTreeView, win->hwndFrame);
+}
+
+void FavTreeWrapOnCustomDraw(TreeView::CustomDrawEvent* ev) {
+    ev->result = CDRF_DODEFAULT;
+    if (!TreeWrapLabelsEnabled()) {
+        return;
+    }
+    NMTVCUSTOMDRAW* tvcd = ev->nm;
+    NMCUSTOMDRAW* cd = &tvcd->nmcd;
+    if (cd->dwDrawStage == CDDS_PREPAINT) {
+        ev->result = CDRF_NOTIFYITEMDRAW;
+        return;
+    }
+    if (cd->dwDrawStage == CDDS_ITEMPREPAINT) {
+        if (!ev->treeItem || !ev->treeView->treeModel) {
+            return;
+        }
+        HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
+        RECT rcClient;
+        GetClientRect(ev->treeView->hwnd, &rcClient);
+        int baseH = ev->treeView->unevenItemBaseHeight;
+        if (baseH <= 0) {
+            baseH = TreeView_GetItemHeight(ev->treeView->hwnd);
+        }
+        TreeWrapUpdateItemHeight(ev->treeView->hwnd, hItem, cd->hdc, rcClient.right, baseH, ev->treeView);
+        char* text = ev->treeView->treeModel->Text(ev->treeItem);
+        DrawTreeWrappedLabel(tvcd, ev->treeView, ToWStrTemp(text), nullptr, 0);
+        ev->result = CDRF_SKIPDEFAULT | CDRF_NOTIFYPOSTPAINT;
+        return;
     }
 }
 
@@ -2480,6 +2781,7 @@ void CreateToc(MainWindow* win) {
     args.parent = win->hwndTocBox;
     args.font = GetAppTreeFontForHwnd(win->hwndFrame);
     args.fullRowSelect = true;
+    TreeWrapLabelsConfigureCreateArgs(args);
     args.exStyle = 0;
     args.isRtl = IsUIRtl();
 

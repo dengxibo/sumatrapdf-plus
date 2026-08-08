@@ -3569,6 +3569,7 @@ MainWindow* LoadDocumentFinish(LoadArgs* args) {
         currTab->tabState = args->tabState;
     } else if (currTab->tabState) {
         SetTabState(currTab, currTab->tabState);
+        FreeTabState(currTab->tabState);
         currTab->tabState = nullptr;
     }
     // A font-size reload uses the regular asynchronous EPUB open path. The
@@ -4368,6 +4369,7 @@ void LoadModelIntoTab(WindowTab* tab) {
         }
         if (tab->tabState) {
             SetTabState(tab, tab->tabState);
+            FreeTabState(tab->tabState);
             tab->tabState = nullptr;
         } else if (tab->canvasRc == win->canvasRc) {
             // avoid double setting of scroll state -> it gets triggered by SetViewPortSize();
@@ -6820,6 +6822,7 @@ static void ShowOptionsDialog(HWND hwnd) {
 
     bool useTabsBefore = gGlobalPrefs->useTabs;
     bool checkForUpdatesBefore = gGlobalPrefs->checkForUpdates;
+    bool treeWrapLabelsBefore = gGlobalPrefs->treeWrapLabels;
 
     if (IDOK != Dialog_Settings(hwnd, gGlobalPrefs)) {
         return;
@@ -6832,6 +6835,20 @@ static void ShowOptionsDialog(HWND hwnd) {
     UpdateDocumentColors();
     if (gGlobalPrefs->checkForUpdates != checkForUpdatesBefore) {
         RefreshAutomaticUpdateChecks();
+    }
+
+    if (gGlobalPrefs->treeWrapLabels != treeWrapLabelsBefore) {
+        for (MainWindow* win : gWindows) {
+            int frameDpi = win->frameDpi > 0 ? win->frameDpi : DpiGet(win->hwndFrame);
+            if (win->tocTreeView && win->tocTreeView->hwnd) {
+                int tocDpi = win->tocSidebarDpi > 0 ? win->tocSidebarDpi : frameDpi;
+                ReCreateTocTreeView(win, GetAppTreeFontForDpi(tocDpi), tocDpi);
+            }
+            if (win->favTreeView && win->favTreeView->hwnd) {
+                int favDpi = win->favSidebarDpi > 0 ? win->favSidebarDpi : frameDpi;
+                ReCreateFavTreeView(win, GetAppTreeFontForDpi(favDpi), favDpi);
+            }
+        }
     }
 
     if (gGlobalPrefs->useTabs != useTabsBefore) {

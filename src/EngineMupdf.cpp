@@ -2192,8 +2192,9 @@ static bool PdfShouldCollectContentImages() {
     if (!PdfSmartModePreservesEmbeddedImages()) {
         return false;
     }
-    // Smart dark (object-level) builds its own analysis from the display list.
-    if (PdfDarkModeUsesObjectLevel() && GetPdfDocumentColorMode() == PdfDocumentColorMode::Auto) {
+    // Object-level Smart Dark builds its own analysis from the display list.
+    if (PdfDarkModeUsesObjectLevel() && GetPdfDocumentColorMode() == PdfDocumentColorMode::Auto &&
+        ThemeUsesDarkChrome()) {
         return false;
     }
     return true;
@@ -7943,15 +7944,6 @@ static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageIn
     fz_context* ctx = engine->Ctx();
     fz_page* page = pageInfo->page;
     bool preserveAllImageColors = PdfFollowThemePreservesEmbeddedImageColors();
-    // Whole-tile bitmap recolor (incl. bg+fg dual-layer scans): never skip image regions.
-    if (preserveAllImageColors && FollowThemePageUsesBitmapRecolor(engine, ctx, pageInfo, page)) {
-        return;
-    }
-    fz_matrix ctm = engine->viewctm(page, zoom, rotation);
-    bool latexFigureSkips =
-        preserveAllImageColors && FollowThemePageWantsLatexFigureSkipRects(engine, ctx, pageInfo, page);
-    int minDx = preserveAllImageColors ? 0 : MinPreservePdfImageSizePx();
-    int minDy = minDx;
 
     RectF pageBounds = pageInfo->mediabox;
     if (pageBounds.IsEmpty()) {
@@ -7961,6 +7953,38 @@ static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageIn
     if (pageArea <= 0.f) {
         pageArea = 1.f;
     }
+
+    // Whole-tile bitmap recolor: skip only photo interiors on Image Conversion picture books.
+    if (preserveAllImageColors && FollowThemePageUsesBitmapRecolor(engine, ctx, pageInfo, page)) {
+        if (engine->pdfdoc && PdfDarkModePdfMetadataSuggestsImageConversionPictureBook(ctx, engine->pdfdoc)) {
+            fz_matrix ctm = engine->viewctm(page, zoom, rotation);
+            for (int imgIdx = 0; imgIdx < pageInfo->images.Size(); imgIdx++) {
+                FitzPageImageInfo* img = pageInfo->images.at(imgIdx);
+                RectF imgPage = ToRectF(img->rect);
+                fz_image* image = FzGetKeptPageImage(ctx, pageInfo, imgIdx);
+                if (image && image->w > 0 && image->h > 0) {
+                    imgPage = PdfDarkModeClampImagePageRect(imgPage, image->w, image->h);
+                } else {
+                    imgPage = PdfDarkModeCapUnknownImagePageRect(imgPage, pageBounds.dy);
+                }
+                RectF imgOnPage = imgPage.Intersect(pageBounds);
+                float coverage = (imgOnPage.dx * imgOnPage.dy) / pageArea;
+                if (coverage >= kMaxPreserveImagePageCoverage && image &&
+                    PdfDarkModeImageHasPreservablePhotoRects(ctx, image)) {
+                    PdfDarkModeAppendImagePhotoSkipDevRects(ctx, image, imgOnPage, ctm, pageInfo->darkLegacySkipDevAbs);
+                }
+                if (image) {
+                    fz_drop_image(ctx, image);
+                }
+            }
+        }
+        return;
+    }
+    fz_matrix ctm = engine->viewctm(page, zoom, rotation);
+    bool latexFigureSkips =
+        preserveAllImageColors && FollowThemePageWantsLatexFigureSkipRects(engine, ctx, pageInfo, page);
+    int minDx = preserveAllImageColors ? 0 : MinPreservePdfImageSizePx();
+    int minDy = minDx;
 
     for (int imgIdx = 0; imgIdx < pageInfo->images.Size(); imgIdx++) {
         FitzPageImageInfo* img = pageInfo->images.at(imgIdx);
@@ -7988,7 +8012,36 @@ static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageIn
             }
             continue;
         }
+        // Light eye-care match theme: preserve embedded photos at any coverage above min size.
+        // Without this, UpdateBitmapColors + sharpenAchromatic floods white highlights in photos.
+        if (!preserveAllImageColors && ThemeUsesEyeCareChrome() && image) {
+            DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, image, coverage, false);
+            bool isPhoto = analysis.kind == DarkImageKind::Photo || PdfDarkModeFeaturesLookLikePhoto(analysis.features);
+            fz_irect devPhoto = fz_round_rect(fz_transform_rect(ToFzRect(imgOnPage), ctm));
+            int photoDx = devPhoto.x1 - devPhoto.x0;
+            int photoDy = devPhoto.y1 - devPhoto.y0;
+            if (isPhoto && photoDx >= minDx && photoDy >= minDy) {
+                Rect r(devPhoto.x0, devPhoto.y0, photoDx, photoDy);
+                if (!r.IsEmpty()) {
+                    pageInfo->darkLegacySkipDevAbs.Append(r);
+                }
+                fz_drop_image(ctx, image);
+                continue;
+            }
+        }
         if (!preserveAllImageColors && coverage >= kMaxPreserveImagePageCoverage) {
+            if (ThemeUsesEyeCareChrome() && image) {
+                DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, image, coverage, false);
+                if (analysis.kind == DarkImageKind::Photo || PdfDarkModeFeaturesLookLikePhoto(analysis.features)) {
+                    fz_irect dev = fz_round_rect(fz_transform_rect(ToFzRect(imgOnPage), ctm));
+                    Rect r(dev.x0, dev.y0, dev.x1 - dev.x0, dev.y1 - dev.y0);
+                    if (!r.IsEmpty()) {
+                        pageInfo->darkLegacySkipDevAbs.Append(r);
+                    }
+                    fz_drop_image(ctx, image);
+                    continue;
+                }
+            }
             if (image) {
                 fz_drop_image(ctx, image);
             }
@@ -8092,7 +8145,9 @@ void EngineMupdf::GetBitmapRecolorSkipRects(int pageNo, float zoom, int rotation
         return;
     }
     bool preserveAllImageColors = PdfFollowThemePreservesEmbeddedImageColors();
-    if ((PdfShouldCollectContentImages() || preserveAllImageColors) && !pageInfo->contentImagesCollected) {
+    if ((PdfShouldCollectContentImages() || preserveAllImageColors ||
+         (PdfSmartModePreservesEmbeddedImages() && !ThemeUsesDarkChrome())) &&
+        !pageInfo->contentImagesCollected) {
         fz_context* ctx = Ctx();
         FzCollectImagesFromPageContent(ctx, pageNo, pageInfo, pageInfo->page, nullptr);
         pageInfo->contentImagesCollected = true;
@@ -8256,6 +8311,9 @@ static bool FollowThemePureScanIsColorfulPictureBook(fz_context* ctx, EngineMupd
                       PdfDarkModeShouldPreserveImageFeatures(analysis.features, coverage);
             }
         }
+        if (!art && PdfDarkModeImageHasPreservablePhotoRects(ctx, image)) {
+            art = true;
+        }
         fz_drop_image(ctx, image);
         if (art) {
             return true;
@@ -8271,23 +8329,120 @@ static FollowThemeScanProbe FollowThemeRefinePureScanForPictureBook(fz_context* 
     if (probe != FollowThemeScanProbe::PureScan) {
         return probe;
     }
+    if (engine->pdfdoc && PdfDarkModePdfMetadataSuggestsImageConversionPictureBook(ctx, engine->pdfdoc) &&
+        st.maxImageCoverage >= 0.88f) {
+        return FollowThemeScanProbe::Mixed;
+    }
     if (FollowThemePureScanIsColorfulPictureBook(ctx, engine, pageInfo, page, st.maxImageCoverage)) {
         return FollowThemeScanProbe::Mixed;
     }
     return probe;
 }
 
+static fz_image* FollowThemePageDominantBleedImage(fz_context* ctx, EngineMupdf* engine, FzPageInfo* pageInfo,
+                                                  fz_page* page, float minCoverage) {
+    if (!ctx || !engine || !pageInfo || !page) {
+        return nullptr;
+    }
+    if (!pageInfo->contentImagesCollected) {
+        FzCollectImagesFromPageContent(ctx, pageInfo->pageNo, pageInfo, page, nullptr);
+        pageInfo->contentImagesCollected = true;
+    }
+    RectF pageBounds = pageInfo->mediabox;
+    if (pageBounds.IsEmpty()) {
+        pageBounds = ToRectF(fz_bound_page(ctx, page));
+    }
+    float pageArea = pageBounds.dx * pageBounds.dy;
+    if (pageArea <= 0.f) {
+        return nullptr;
+    }
+    fz_image* best = nullptr;
+    float bestCov = 0.f;
+    for (int i = 0; i < pageInfo->images.Size(); i++) {
+        FitzPageImageInfo* img = pageInfo->images.at(i);
+        if (!img) {
+            continue;
+        }
+        RectF imgOnPage = ToRectF(img->rect).Intersect(pageBounds);
+        float coverage = (imgOnPage.dx * imgOnPage.dy) / pageArea;
+        if (coverage < minCoverage || coverage <= bestCov) {
+            continue;
+        }
+        fz_image* image = FzGetKeptPageImage(ctx, pageInfo, i);
+        if (!image) {
+            continue;
+        }
+        if (best) {
+            fz_drop_image(ctx, best);
+        }
+        best = image;
+        bestCov = coverage;
+    }
+    return best;
+}
+
+static bool FollowThemePageLooksLikeNotebookIllustration(fz_context* ctx, EngineMupdf* engine, FzPageInfo* pageInfo,
+                                                         fz_page* page, float maxCoverage) {
+    if (!ctx || !engine || !pageInfo || !page) {
+        return false;
+    }
+    (void)maxCoverage;
+    if (!pageInfo->contentImagesCollected) {
+        FzCollectImagesFromPageContent(ctx, pageInfo->pageNo, pageInfo, page, nullptr);
+        pageInfo->contentImagesCollected = true;
+    }
+    RectF pageBounds = pageInfo->mediabox;
+    if (pageBounds.IsEmpty()) {
+        pageBounds = ToRectF(fz_bound_page(ctx, page));
+    }
+    float pageArea = pageBounds.dx * pageBounds.dy;
+    if (pageArea <= 0.f) {
+        return false;
+    }
+    for (int i = 0; i < pageInfo->images.Size(); i++) {
+        FitzPageImageInfo* img = pageInfo->images.at(i);
+        if (!img) {
+            continue;
+        }
+        RectF imgOnPage = ToRectF(img->rect).Intersect(pageBounds);
+        float coverage = (imgOnPage.dx * imgOnPage.dy) / pageArea;
+        if (coverage < 0.75f) {
+            continue;
+        }
+        fz_image* image = FzGetKeptPageImage(ctx, pageInfo, i);
+        if (!image) {
+            continue;
+        }
+        DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, image, coverage, false);
+        fz_drop_image(ctx, image);
+        return PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(analysis.features);
+    }
+    return false;
+}
+
 static bool FollowThemePageIsWholeTileScanRecolor(fz_context* ctx, EngineMupdf* engine, FzPageInfo* pageInfo,
                                                   fz_page* page, const FollowThemePageProbeStats& st,
                                                   FollowThemeScanProbe rawProbe) {
-    if (FollowThemePureScanIsColorfulPictureBook(ctx, engine, pageInfo, page, st.maxImageCoverage)) {
-        return false;
-    }
     if (st.textOps > 2 || st.vectorOps > 2 || st.imageOps < 1) {
         return false;
     }
     bool coverageOk = st.maxImageCoverage >= 0.88f || st.stackedImageCoverage >= 0.85f;
     if (!coverageOk) {
+        return false;
+    }
+    bool colorfulPictureBook =
+        FollowThemePureScanIsColorfulPictureBook(ctx, engine, pageInfo, page, st.maxImageCoverage);
+    if (colorfulPictureBook) {
+        // Mixed full-bleed with colored illustration blocks (小家越住越大): whole-tile recolor.
+        // Keep wrap + photo-rect protect for B&W portrait pages (RAZ Abraham Lincoln).
+        if (rawProbe == FollowThemeScanProbe::Mixed && st.imageOps <= 4) {
+            fz_image* dominant = FollowThemePageDominantBleedImage(ctx, engine, pageInfo, page, 0.75f);
+            bool portrait = dominant && PdfDarkModeImageDecodeLooksLikeGrayscalePortrait(ctx, dominant);
+            if (dominant) {
+                fz_drop_image(ctx, dominant);
+            }
+            return !portrait;
+        }
         return false;
     }
     if (rawProbe == FollowThemeScanProbe::PureScan) {
@@ -8528,8 +8683,56 @@ static void DetectFollowThemeDocBitmapRecolor(EngineMupdf* engine, fz_context* c
     engine->followThemeContentProbed = true;
 }
 
+static bool FollowThemeWholeTileBitmapBlockedForPaperScan(fz_context* ctx, EngineMupdf* engine, FzPageInfo* pageInfo,
+                                                          fz_page* page) {
+    if (!pageInfo->contentImagesCollected) {
+        FzCollectImagesFromPageContent(ctx, pageInfo->pageNo, pageInfo, page, nullptr);
+        pageInfo->contentImagesCollected = true;
+    }
+    RectF pageBounds = pageInfo->mediabox;
+    if (pageBounds.IsEmpty()) {
+        pageBounds = ToRectF(fz_bound_page(ctx, page));
+    }
+    float pageArea = pageBounds.dx * pageBounds.dy;
+    if (pageArea <= 0.f) {
+        return false;
+    }
+    for (int i = 0; i < pageInfo->images.Size(); i++) {
+        FitzPageImageInfo* imgInfo = pageInfo->images.at(i);
+        if (!imgInfo) {
+            continue;
+        }
+        RectF imgOnPage = ToRectF(imgInfo->rect).Intersect(pageBounds);
+        float coverage = (imgOnPage.dx * imgOnPage.dy) / pageArea;
+        if (coverage < 0.50f) {
+            continue;
+        }
+        fz_image* image = FzGetKeptPageImage(ctx, pageInfo, i);
+        if (!image) {
+            continue;
+        }
+        DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, image, coverage, true);
+        if (PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(analysis.features)) {
+            return true;
+        }
+    }
+    fz_image* dominant = FollowThemePageDominantBleedImage(ctx, engine, pageInfo, page, 0.50f);
+    if (!dominant) {
+        return false;
+    }
+    DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, dominant, 0.97f, true);
+    bool block = PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(analysis.features);
+    fz_drop_image(ctx, dominant);
+    return block;
+}
+
 static bool FollowThemePageUsesBitmapRecolor(EngineMupdf* engine, fz_context* ctx, FzPageInfo* pageInfo,
                                              fz_page* page) {
+    // Adobe Image Conversion picture books (RAZ-Z): per-image picture-book remap + photo-rect
+    // protect — whole-tile bitmap recolor inverts B&W portraits even with skip rects.
+    if (engine->pdfdoc && PdfDarkModePdfMetadataSuggestsImageConversionPictureBook(ctx, engine->pdfdoc)) {
+        return false;
+    }
     if (engine->followThemeDocBitmapRecolor == 1) {
         CacheLaTeXFollowThemePageProbe(engine, ctx, pageInfo, page, nullptr);
         u8 cached = pageInfo->followThemeScanProbe;
@@ -8541,6 +8744,9 @@ static bool FollowThemePageUsesBitmapRecolor(EngineMupdf* engine, fz_context* ct
             return false;
         }
         if (cached == (u8)FollowThemeScanProbe::PureScan || cached == (u8)FollowThemeScanProbe::BitmapRecolor) {
+            if (FollowThemeWholeTileBitmapBlockedForPaperScan(ctx, engine, pageInfo, page)) {
+                return false;
+            }
             return true;
         }
         return false;
@@ -8551,6 +8757,9 @@ static bool FollowThemePageUsesBitmapRecolor(EngineMupdf* engine, fz_context* ct
         u8 cached = pageInfo->followThemeScanProbe;
         // PureScan only — Mixed keeps wrap for colorful chapter openers.
         if (cached == (u8)FollowThemeScanProbe::PureScan) {
+            if (FollowThemeWholeTileBitmapBlockedForPaperScan(ctx, engine, pageInfo, page)) {
+                return false;
+            }
             return true;
         }
         // Image-only white scans misclassified as Mixed: whole-tile recolor beats unprocessed original.
@@ -8561,7 +8770,26 @@ static bool FollowThemePageUsesBitmapRecolor(EngineMupdf* engine, fz_context* ct
             }
             FollowThemePageProbeStats st{};
             FollowThemeScanProbe rawProbe = PdfDarkModeProbeFollowThemeScanPage(ctx, page, pageBounds, &st);
+            // Single full-bleed raster with vector/handwritten overlay (小家越住越大): whole-tile recolor.
+            if (st.maxImageCoverage >= 0.88f && st.imageOps <= 1) {
+                fz_image* dominant = FollowThemePageDominantBleedImage(ctx, engine, pageInfo, page, 0.75f);
+                bool portrait = dominant && PdfDarkModeImageDecodeLooksLikeGrayscalePortrait(ctx, dominant);
+                bool govtPaper = false;
+                if (dominant && !portrait) {
+                    DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, dominant, st.maxImageCoverage, true);
+                    govtPaper = PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(analysis.features);
+                }
+                if (dominant) {
+                    fz_drop_image(ctx, dominant);
+                }
+                if (!portrait && !govtPaper) {
+                    return true;
+                }
+            }
             if (FollowThemePageIsWholeTileScanRecolor(ctx, engine, pageInfo, page, st, rawProbe)) {
+                return true;
+            }
+            if (FollowThemePageLooksLikeNotebookIllustration(ctx, engine, pageInfo, page, st.maxImageCoverage)) {
                 return true;
             }
             return false;
@@ -8572,6 +8800,9 @@ static bool FollowThemePageUsesBitmapRecolor(EngineMupdf* engine, fz_context* ct
     CacheLaTeXFollowThemePageProbe(engine, ctx, pageInfo, page, nullptr);
     u8 cached = pageInfo->followThemeScanProbe;
     if (cached == (u8)FollowThemeScanProbe::PureScan || cached == (u8)FollowThemeScanProbe::BitmapRecolor) {
+        if (FollowThemeWholeTileBitmapBlockedForPaperScan(ctx, engine, pageInfo, page)) {
+            return false;
+        }
         return true;
     }
     if (cached == (u8)FollowThemeScanProbe::Mixed) {
@@ -8678,7 +8909,8 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
         if (useSmartDarkList) {
             keptList = GetOrBuildPageDisplayList(pageInfo, ctx);
         } else if (followDirectPath && args.darkProfile) {
-            if (FollowThemePageUsesBitmapRecolor(this, ctx, pageInfo, page)) {
+            bool bitmapRecolor = FollowThemePageUsesBitmapRecolor(this, ctx, pageInfo, page);
+            if (bitmapRecolor) {
                 keptList = GetOrBuildPageDisplayList(pageInfo, ctx);
                 useBitmapTexList = keptList != nullptr;
                 usePageDisplayList = useBitmapTexList;
@@ -8707,7 +8939,9 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
             pix = fz_new_pixmap_with_bbox(ctx, csRgb, ibounds, nullptr, 1);
             const DarkModeProfile* darkProfile = args.darkProfile;
             if (useBitmapTexList && !useSmartDarkList) {
-                if (followThemeBitmapDoc) {
+                bool blockOfficePaperBmp =
+                    FollowThemeWholeTileBitmapBlockedForPaperScan(ctx, this, pageInfo, page);
+                if (followThemeBitmapDoc && !blockOfficePaperBmp) {
                     RenderedBitmap* pageBmp = GetOrBuildLaTeXFollowThemePageBitmap(this, pageInfo, ctx, page, keptList,
                                                                                    zoom, rotation, darkProfile);
                     if (pageBmp) {

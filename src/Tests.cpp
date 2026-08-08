@@ -167,7 +167,7 @@ void TestRenderPage(const Flags& i) {
     }
 
     // Prefer setting the theme index without full UI refresh (no main windows in -render).
-    SetTheme("Black");
+    SetTheme("Dark-Black");
     SetPdfDocumentColorMode(PdfDocumentColorMode::Auto);
     (void)PdfDarkModeBuildPalette();
 

@@ -124,6 +124,11 @@ static void ApplyDocumentColorModeToReflowMupdfProfile(DarkModeProfile* profile)
 }
 
 static void ApplyDocumentColorModeToFixedPageProfile(EngineBase* engine, DarkModeProfile* profile) {
+    // Original (Light): always publisher pixels — must win over follow-theme probe pending.
+    if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
+        profile->mode = PageColorMode::Normal;
+        return;
+    }
     if (EngineMupdfIsFollowThemeProbePending(engine)) {
         // Do NOT use PreserveImages here: full-bleed RAZ art is skipped by UpdateBitmapColors
         // and the first paint looks completely unprocessed ("original"). Use wrap immediately;
@@ -146,6 +151,10 @@ static void ApplyDocumentColorModeToFixedPageProfile(EngineBase* engine, DarkMod
             if (EngineSupportsSmartDarkMode(engine) && PdfDarkModeUsesObjectLevel()) {
                 if (PdfFollowThemePreservesEmbeddedImageColors()) {
                     profile->mode = PageColorMode::FollowThemeDirect;
+                } else if (!ThemeUsesDarkChrome()) {
+                    // Light match theme: eye-care page tint via legacy post-process only;
+                    // SmartDark remaps photos (highlight crush, picture-book paths).
+                    profile->mode = profile->preservePdfImages ? PageColorMode::PreserveImages : PageColorMode::Normal;
                 } else {
                     profile->mode = PageColorMode::SmartDark;
                 }

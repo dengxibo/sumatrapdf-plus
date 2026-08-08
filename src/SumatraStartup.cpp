@@ -406,10 +406,13 @@ static void RestoreTabOnStartup(MainWindow* win, TabState* state, bool lazyLoad 
     args.noSavePrefs = true;
     args.showWin = false;
     if (lazyLoad) {
-        args.tabState = state;
+        args.tabState = CloneTabState(state);
     }
     args.lazyLoad = lazyLoad;
     if (!LoadDocument(&args)) {
+        if (args.tabState) {
+            FreeTabState(args.tabState);
+        }
         return;
     }
     WindowTab* tab = win->CurrentTab();
@@ -1821,7 +1824,7 @@ ContinueOpenWindow:
                     continue;
                 }
                 // always create tab shells first; load only the selected tab below
-                RestoreTabOnStartup(win, state, true);
+                RestoreTabOnStartup(win, state, gGlobalPrefs->lazyLoading);
             }
             // selects the session tab and loads it if still a shell (TabsSelect also
             // handles the case where the last restored tab is already selected)

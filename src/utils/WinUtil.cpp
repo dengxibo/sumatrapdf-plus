@@ -3418,6 +3418,9 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLO
     byte rb, gb, bb;
     UnpackColor(bgColor, rb, gb, bb);
     int const diff[4] = {(int)bb - base[0], (int)gb - base[1], (int)rb - base[2], 255};
+    // sharpenAchromaticAfterRemap is for inverted (dark) remaps only; on light eye-care
+    // gauze it floods white photo highlights into flat gray/white patches.
+    bool invertedRemap = (int(rt) + int(gt) + int(bt)) > (int(rb) + int(gb) + int(bb));
 
     DIBSECTION info{};
     int ret = GetObject(hbmp, sizeof(info), &info);
@@ -3478,7 +3481,9 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLO
             for (int k = 0; k < 4; k++) {
                 bmpData[i + k] = (u8)(base[k] + mul255(bmpData[i + k], diff[k]));
             }
-            sharpenAchromaticAfterRemap(r, g, b, &bmpData[i], &bmpData[i + 1], &bmpData[i + 2]);
+            if (invertedRemap) {
+                sharpenAchromaticAfterRemap(r, g, b, &bmpData[i], &bmpData[i + 1], &bmpData[i + 2]);
+            }
         }
         return;
     }
@@ -3503,7 +3508,9 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLO
                 for (int k = 0; k < 3; k++) {
                     px[k] = (u8)(base[k] + mul255(px[k], diff[k]));
                 }
-                sharpenAchromaticAfterRemap(r, g, b, &px[0], &px[1], &px[2]);
+                if (invertedRemap) {
+                    sharpenAchromaticAfterRemap(r, g, b, &px[0], &px[1], &px[2]);
+                }
             }
         }
         return;

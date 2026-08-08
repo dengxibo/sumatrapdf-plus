@@ -149,6 +149,33 @@ bool PdfDarkModePdfMetadataSuggestsPaperCaptureDoc(fz_context* ctx, pdf_document
     return false;
 }
 
+bool PdfDarkModePdfMetadataSuggestsImageConversionPictureBook(fz_context* ctx, pdf_document* doc) {
+    (void)ctx;
+    (void)doc;
+    return false;
+}
+
+bool PdfDarkModeImageHasPreservablePhotoRects(fz_context* ctx, fz_image* image) {
+    (void)ctx;
+    (void)image;
+    return false;
+}
+
+bool PdfDarkModeImageDecodeLooksLikeGrayscalePortrait(fz_context* ctx, fz_image* image) {
+    (void)ctx;
+    (void)image;
+    return false;
+}
+
+void PdfDarkModeAppendImagePhotoSkipDevRects(fz_context* ctx, fz_image* image, const RectF& imgOnPage,
+                                            const fz_matrix& ctm, Vec<Rect>& outSkip) {
+    (void)ctx;
+    (void)image;
+    (void)imgOnPage;
+    (void)ctm;
+    (void)outSkip;
+}
+
 FollowThemeScanProbe PdfDarkModeProbeFollowThemeScanPage(fz_context* ctx, fz_page* page, const RectF& pageBounds,
                                                          FollowThemePageProbeStats* stats) {
     (void)stats;

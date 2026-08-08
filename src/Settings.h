@@ -566,6 +566,10 @@ struct GlobalPrefs {
     // font size for bookmarks and favorites tree views. 0 means Windows
     // default
     int treeFontSize;
+    // if true, bookmark and favorites tree labels wrap to multiple lines;
+    // if false, single line with ellipsis and full text in tooltip on
+    // hover
+    bool treeWrapLabels;
     // over-ride application font size. 0 means Windows default
     int uIFontSize;
     // if true, disables anti-aliasing for rendering PDF documents
@@ -982,8 +986,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-21.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-21.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-26.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-26.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},
@@ -1037,6 +1041,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, toolbarSize), SettingType::Int, 18, "工具栏高度"},
     {offsetof(GlobalPrefs, treeFontName), SettingType::String, (intptr_t)"automatic", "目录/收藏树字体"},
     {offsetof(GlobalPrefs, treeFontSize), SettingType::Int, 0, "目录/收藏树字号"},
+    {offsetof(GlobalPrefs, treeWrapLabels), SettingType::Bool, false, "目录/收藏树多行显示（关闭则单行+悬停气泡）"},
     {offsetof(GlobalPrefs, uIFontSize), SettingType::Int, 0, "界面字体大小"},
     {offsetof(GlobalPrefs, disableAntiAlias), SettingType::Bool, false, "关闭 PDF 抗锯齿"},
     {offsetof(GlobalPrefs, engineeringDrawingEnhance), SettingType::String, (intptr_t)"auto",
@@ -1106,7 +1111,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
      "Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 112, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 113, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0HomePage"
     "ViewMode\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSession\0ReuseInstance\0S"
@@ -1114,13 +1119,13 @@ static const StructInfo gGlobalPrefsInfo = {
     "bleDoubleClickWordLookup\0AiChatProvider\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAskAI\0ShowFavorites\0ShowToc\0S"
     "howLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0FastScrollOverScrollbar\0Prev"
     "entSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme\0LastLightTheme\0DocumentColorMode\0TocDy\0ToolbarSize\0TreeF"
-    "ontName\0TreeFontSize\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru\0Zo"
-    "omLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalVie"
-    "wers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0"
-    "\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh"
-    "\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSmartOnlineVoiceEn\0\0\0DefaultPasswords\0UiLanguag"
-    "e\0VersionToSkip\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdate"
-    "Check\0TimeOfUpdateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
+    "ontName\0TreeFontSize\0TreeWrapLabels\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0UseSysColors\0UseT"
+    "abs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotation"
+    "s\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes"
+    "\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAl"
+    "oudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSmartOnlineVoiceEn\0\0\0DefaultPassw"
+    "ords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0T"
+    "imeOfLastUpdateCheck\0TimeOfUpdateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)"", "主题名称"},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)"", "文字颜色"},

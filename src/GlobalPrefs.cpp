@@ -109,6 +109,28 @@ TabState* NewTabState(FileState* fs) {
     return state;
 }
 
+TabState* CloneTabState(const TabState* src) {
+    if (!src) {
+        return nullptr;
+    }
+    TabState* dst = (TabState*)DeserializeStruct(&gTabStateInfo, nullptr);
+    str::ReplaceWithCopy(&dst->filePath, src->filePath);
+    str::ReplaceWithCopy(&dst->displayMode, src->displayMode);
+    dst->pageNo = src->pageNo;
+    str::ReplaceWithCopy(&dst->zoom, src->zoom);
+    dst->rotation = src->rotation;
+    dst->scrollPos = src->scrollPos;
+    dst->showToc = src->showToc;
+    *dst->tocState = *src->tocState;
+    return dst;
+}
+
+void FreeTabState(TabState* state) {
+    if (state) {
+        FreeStruct(&gTabStateInfo, state);
+    }
+}
+
 void FreeSessionData(SessionData* data) {
     FreeStruct(&gSessionDataInfo, data);
 }

@@ -580,6 +580,7 @@ struct TreeView : Wnd {
         HFONT font = nullptr;
         DWORD exStyle = 0; // additional flags, will be OR with the rest
         bool fullRowSelect = false;
+        bool unevenItemHeight = false;
         bool isRtl = false;
     };
 
@@ -667,6 +668,8 @@ struct TreeView : Wnd {
     TreeItemState GetItemState(TreeItem ti);
 
     bool fullRowSelect = false;
+    bool unevenItemHeight = false;
+    int unevenItemBaseHeight = 0;
     Size idealSize{};
 
     TreeModel* treeModel = nullptr; // not owned by us

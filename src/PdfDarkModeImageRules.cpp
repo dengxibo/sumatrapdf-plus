@@ -27,7 +27,7 @@ static bool PdfDarkModeFeaturesLookLikeColorfulIllustration(const DarkImageFeatu
 
 // Historical / documentary grayscale photos: low saturation but real tonal range.
 // Must not fall through to LayoutBackground / FullPageScan (those AdaptiveDocument-invert).
-static bool PdfDarkModeFeaturesLookLikeGrayscalePhoto(const DarkImageFeatures& f) {
+bool PdfDarkModeFeaturesLookLikeGrayscalePhoto(const DarkImageFeatures& f) {
     if (f.saturatedPixelRatio > 0.08f || f.chromaticPixelRatio > 0.12f) {
         return false;
     }
@@ -38,13 +38,12 @@ static bool PdfDarkModeFeaturesLookLikeGrayscalePhoto(const DarkImageFeatures& f
     if (f.flatAreaRatio > 0.58f && f.luminanceVariance < 0.022f) {
         return false;
     }
-    // Paper-dominated pages (DuXiu / textbook scans): lots of white + ink variance
-    // look "photographic" but must not Preserve → picture-book multi-rect path.
-    // Documentary portraits are midtone-heavy (highLum typically ~0.25–0.50).
-    if (f.highLuminanceRatio > 0.62f) {
+    // Paper-dominated text scans (DuXiu): very flat paper panels.
+    if (f.flatAreaRatio > 0.48f && f.highLuminanceRatio > 0.50f) {
         return false;
     }
-    if (f.flatAreaRatio > 0.45f && f.highLuminanceRatio > 0.50f) {
+    // High white area + low tonal variance — office / textbook text scans, not portraits.
+    if (f.highLuminanceRatio > 0.62f && f.luminanceVariance < 0.035f) {
         return false;
     }
     return true;
@@ -60,9 +59,98 @@ bool PdfDarkModeFeaturesLookLikeSoftCreamIllustration(const DarkImageFeatures& f
            f.chromaticPixelRatio < 0.15f;
 }
 
+bool PdfDarkModeFeaturesLookLikeLightDocumentPanel(const DarkImageFeatures& f) {
+    // Cream/mint callout boxes (RAZ "Do You Know?"): light-dominated, little photo chroma.
+    // Looser than SoftCream so bordered panels still match. Exclude photo-like tonal range.
+    if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
+        return true;
+    }
+    if (f.luminanceVariance >= 0.028f && f.highLuminanceRatio < 0.85f) {
+        return false;
+    }
+    return f.highLuminanceRatio > 0.72f && f.luminanceVariance < 0.040f && f.saturatedPixelRatio < 0.14f &&
+           f.chromaticPixelRatio < 0.22f;
+}
+
+// Notebook with a colored figure block (小家越住越大): paper-dominated grid, center illustration
+// adds saturation — must not route to picture-book partial protect (dirty JPEG blocks).
+bool PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(const DarkImageFeatures& f) {
+    // RAZ map + TOC (The Apaches p.3): very white paper + colorful art — picture-book invert.
+    if (f.highLuminanceRatio > 0.94f) {
+        return false;
+    }
+    if (f.highLuminanceRatio < 0.88f || f.luminanceVariance >= 0.018f) {
+        return false;
+    }
+    return f.saturatedPixelRatio >= 0.08f && f.saturatedPixelRatio < 0.24f;
+}
+
+// 红头文件 / office paper scans: white paper, black text, small red header — steep ink/paper
+// remap for readable text; red header handled separately in ProcessGovernmentPaperPixmap.
+bool PdfDarkModeFeaturesLookLikeGovernmentPaperScan(const DarkImageFeatures& f) {
+    if (f.highLuminanceRatio < 0.82f) {
+        return false;
+    }
+    // Red-header page 1: saturated area is small — allow higher sat/chroma when paper-dominated.
+    const float maxSat = f.highLuminanceRatio > 0.88f ? 0.22f : 0.12f;
+    const float maxChroma = f.highLuminanceRatio > 0.88f ? 0.25f : 0.18f;
+    if (f.saturatedPixelRatio >= maxSat || f.chromaticPixelRatio >= maxChroma) {
+        return false;
+    }
+    if (PdfDarkModeFeaturesLookLikeGrayscalePhoto(f) &&
+        (f.highLuminanceRatio < 0.85f || f.luminanceVariance >= 0.055f)) {
+        return false;
+    }
+    if (PdfDarkModeFeaturesLookLikeColorfulIllustration(f) || PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(f)) {
+        return false;
+    }
+    if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
+        return false;
+    }
+    if (f.flatAreaRatio < 0.44f) {
+        // 128px thumbnails under-estimate flat paper; text scans keep ink variance (人社 PaperStream).
+        if (f.luminanceVariance < 0.022f) {
+            // Ultra-white office scans: low flatArea on downscaled thumb is normal.
+            if (f.highLuminanceRatio > 0.92f && f.saturatedPixelRatio < 0.08f && f.chromaticPixelRatio < 0.15f) {
+                return true;
+            }
+            return false;
+        }
+        return f.luminanceVariance < 0.055f && f.saturatedPixelRatio < 0.04f && f.chromaticPixelRatio < 0.02f &&
+               f.highLuminanceRatio < 0.92f;
+    }
+    if (f.luminanceVariance < 0.022f) {
+        return true;
+    }
+    return f.luminanceVariance < 0.055f && f.saturatedPixelRatio < 0.06f && f.chromaticPixelRatio < 0.14f &&
+           f.highLuminanceRatio < 0.92f;
+}
+
+// Office / government full-page scans that should use steep ink/paper binarize (not SoftCream gray).
+bool PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(const DarkImageFeatures& f) {
+    if (PdfDarkModeFeaturesLookLikeGrayscalePhoto(f)) {
+        return false;
+    }
+    if (PdfDarkModeFeaturesLookLikePhoto(f) && f.luminanceVariance >= 0.018f) {
+        return false;
+    }
+    // Portrait / photo band on paper (RAZ): tonal range, not flat text scan.
+    if (f.flatAreaRatio < 0.38f && f.luminanceVariance >= 0.022f) {
+        return false;
+    }
+    if (PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(f)) {
+        return false;
+    }
+    if (PdfDarkModeFeaturesLookLikeGovernmentPaperScan(f)) {
+        return true;
+    }
+    return PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f) && f.highLuminanceRatio > 0.92f &&
+           f.luminanceVariance < 0.025f && f.saturatedPixelRatio < 0.08f;
+}
+
 // Classic B&W line-art scans (连环画 / woodblock reprints): paper + ink lines, no color.
 // Must be FullPageScan / uniform remap — not Photo → partial photo-rect protect (gray noise).
-static bool PdfDarkModeFeaturesLookLikeBwLineArtScan(const DarkImageFeatures& f) {
+bool PdfDarkModeFeaturesLookLikeBwLineArtScan(const DarkImageFeatures& f) {
     if (f.saturatedPixelRatio >= 0.05f) {
         return false;
     }
@@ -73,6 +161,10 @@ static bool PdfDarkModeFeaturesLookLikeBwLineArtScan(const DarkImageFeatures& f)
         return false;
     }
     if (f.luminanceVariance < 0.018f) {
+        return false;
+    }
+    // Continuous tonal portraits (RAZ B&W photos) exceed ink-line variance.
+    if (f.luminanceVariance > 0.034f) {
         return false;
     }
     return true;
@@ -159,7 +251,13 @@ DarkImageKind PdfDarkModeClassifyImageFeatures(const DarkImageFeatures& f, float
     // Full-bleed: preserve colorful picture-book art; only AdaptiveDocument for true scans.
     // When ambiguous, prefer Photo (Preserve) over FullPageScan.
     if (pageCoverage >= kMaxPreserveImagePageCoverage && f.highLuminanceRatio > 0.45f) {
-        if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
+        if (PdfDarkModeFeaturesLookLikeBwLineArtScan(f)) {
+            kind = DarkImageKind::FullPageScan;
+            confidence = 0.76f;
+        } else if (PdfDarkModeFeaturesLookLikeGovernmentPaperScan(f)) {
+            kind = DarkImageKind::FullPageScan;
+            confidence = 0.78f;
+        } else if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
             // Scanned contracts mimic soft-cream stats; notebook art has lower flatAreaRatio.
             if (f.flatAreaRatio > 0.48f || (f.highLuminanceRatio > 0.92f && f.saturatedPixelRatio < 0.008f)) {
                 kind = DarkImageKind::FullPageScan;
@@ -168,9 +266,6 @@ DarkImageKind PdfDarkModeClassifyImageFeatures(const DarkImageFeatures& f, float
                 kind = DarkImageKind::Photo;
                 confidence = 0.74f;
             }
-        } else if (PdfDarkModeFeaturesLookLikeBwLineArtScan(f)) {
-            kind = DarkImageKind::FullPageScan;
-            confidence = 0.76f;
         } else if (PdfDarkModeFeaturesLookLikePhoto(f) || PdfDarkModeFeaturesLookLikeColorfulIllustration(f)) {
             kind = DarkImageKind::Photo;
             confidence = 0.76f;
@@ -244,17 +339,34 @@ DarkImagePolicy PdfDarkModePolicyForImageKind(DarkImageKind kind, bool isImageMa
 // original look switch document color mode to Original explicitly.
 DarkImagePolicy PdfDarkModeClampFollowThemePolicy(DarkImagePolicy policy, float pageCoverage,
                                                   const DarkImageAnalysis& analysis) {
+    if (PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(analysis.features) &&
+        analysis.kind != DarkImageKind::Photo && !PdfDarkModeFeaturesLookLikeGrayscalePhoto(analysis.features)) {
+        return DarkImagePolicy::AdaptiveDocument;
+    }
     if (policy != DarkImagePolicy::Preserve || pageCoverage < 0.50f) {
         return policy;
     }
+    // Full-bleed photos (RAZ portraits): keep Preserve → picture-book + photo-rect protect.
+    if (analysis.kind == DarkImageKind::Photo) {
+        if (PdfDarkModeFeaturesLookLikeGrayscalePhoto(analysis.features) ||
+            (PdfDarkModeFeaturesLookLikePhoto(analysis.features) && analysis.features.luminanceVariance >= 0.020f)) {
+            return policy;
+        }
+    }
     if (analysis.kind == DarkImageKind::FullPageScan) {
+        return DarkImagePolicy::AdaptiveDocument;
+    }
+    // RAZ map + TOC (The Apaches p.3): colorful art on white paper — picture-book invert,
+    // not Preserve SoftCream gray compromise.
+    if (pageCoverage >= kMaxPreserveImagePageCoverage && analysis.features.highLuminanceRatio > 0.82f &&
+        !PdfDarkModeFeaturesLookLikeGrayscalePhoto(analysis.features) &&
+        PdfDarkModeFeaturesLookLikeColorfulIllustration(analysis.features)) {
         return DarkImagePolicy::AdaptiveDocument;
     }
     if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(analysis.features) ||
         PdfDarkModeFeaturesLookLikeColorfulIllustration(analysis.features)) {
         float conf = 0.f;
-        DarkImageKind kind =
-            PdfDarkModeClassifyImageFeatures(analysis.features, pageCoverage, true, &conf);
+        DarkImageKind kind = PdfDarkModeClassifyImageFeatures(analysis.features, pageCoverage, true, &conf);
         if (kind != DarkImageKind::FullPageScan) {
             return policy;
         }

@@ -55,10 +55,14 @@ HWND TreeView::Create(const CreateArgs& args) {
 
     idealSize = {48, 120}; // arbitrary
     fullRowSelect = args.fullRowSelect;
+    unevenItemHeight = args.unevenItemHeight;
 
     if (fullRowSelect) {
         cargs.style |= TVS_FULLROWSELECT;
         cargs.style &= ~TVS_HASLINES;
+    }
+    if (unevenItemHeight) {
+        cargs.style |= TVS_NONEVENHEIGHT;
     }
 
     Wnd::CreateControl(cargs);
@@ -74,6 +78,21 @@ HWND TreeView::Create(const CreateArgs& args) {
     }
 
     TreeView_SetUnicodeFormat(hwnd, true);
+
+    if (unevenItemHeight) {
+        int itemH = 18;
+        if (args.font) {
+            HDC hdc = GetDC(hwnd);
+            HFONT prev = (HFONT)SelectObject(hdc, args.font);
+            TEXTMETRIC tm{};
+            GetTextMetrics(hdc, &tm);
+            itemH = tm.tmHeight + 4;
+            SelectObject(hdc, prev);
+            ReleaseDC(hwnd, hdc);
+        }
+        TreeView_SetItemHeight(hwnd, itemH);
+        unevenItemBaseHeight = itemH;
+    }
 
     SetToolTipsDelayTime(TTDT_AUTOPOP, 32767);
 

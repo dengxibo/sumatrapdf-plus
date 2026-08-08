@@ -488,28 +488,20 @@ bool LoadSettings() {
     return true;
 }
 
-static TabState* CloneTabState(const TabState* src) {
-    TabState* dst = (TabState*)AllocStruct<TabState>();
-    dst->filePath = str::Dup(src->filePath);
-    dst->displayMode = str::Dup(src->displayMode);
-    dst->pageNo = src->pageNo;
-    dst->zoom = str::Dup(src->zoom);
-    dst->rotation = src->rotation;
-    dst->scrollPos = src->scrollPos;
-    dst->showToc = src->showToc;
-    dst->tocState = new Vec<int>(*src->tocState);
-    return dst;
-}
-
 Vec<SessionData*>* gInitialSessionData = nullptr;
 
 static void RememberSessionState() {
-    Vec<SessionData*>* sessionState = gGlobalPrefs->sessionData;
-    FreeSessionDataVec(sessionState);
-
     if (!SettingsRememberOpenedFiles()) {
         return;
     }
+    // No open windows: keep the loaded session snapshot (startup SaveSettings,
+    // shutdown after teardown, etc. must not wipe SessionData).
+    if (gWindows.Size() == 0) {
+        return;
+    }
+
+    Vec<SessionData*>* sessionState = gGlobalPrefs->sessionData;
+    FreeSessionDataVec(sessionState);
 
     for (auto* win : gWindows) {
         SessionData* windowState = NewSessionData();
@@ -520,29 +512,37 @@ static void RememberSessionState() {
             }
             const char* fp = tab->filePath;
             if (!tab->ctrl) {
-                // lazy loading, file not loaded into a tab
-                // use the saved state from previous session
-                // note: might stil have issues if multiple tabs with same file
-                bool didFind = false;
-                if (!gInitialSessionData) {
+                // lazy shell: tabState survives after gInitialSessionData is freed at startup
+                if (tab->tabState) {
+                    TabState* ts = CloneTabState(tab->tabState);
+                    windowState->tabStates->Append(ts);
                     continue;
                 }
-                int nWindows = gInitialSessionData->Size();
-                for (int i = 0; i < nWindows && !didFind; i++) {
-                    SessionData* psd = gInitialSessionData->At(i);
-                    int nTabs = psd->tabStates->Size();
-                    for (int j = 0; j < nTabs; j++) {
-                        TabState* pts = psd->tabStates->At(j);
-                        if (str::Eq(pts->filePath, fp)) {
-                            TabState* ts = CloneTabState(pts);
-                            windowState->tabStates->Append(ts);
-                            didFind = true;
-                            break;
+                // fallback: match startup snapshot or minimal state from tab shell
+                bool didFind = false;
+                if (gInitialSessionData) {
+                    int nWindows = gInitialSessionData->Size();
+                    for (int i = 0; i < nWindows && !didFind; i++) {
+                        SessionData* psd = gInitialSessionData->At(i);
+                        int nTabs = psd->tabStates->Size();
+                        for (int j = 0; j < nTabs; j++) {
+                            TabState* pts = psd->tabStates->At(j);
+                            if (str::Eq(pts->filePath, fp)) {
+                                TabState* ts = CloneTabState(pts);
+                                windowState->tabStates->Append(ts);
+                                didFind = true;
+                                break;
+                            }
                         }
                     }
                 }
                 if (!didFind) {
-                    logf("RememberSessionState: didn't find state for file '%s'\n", fp ? fp : "(none)");
+                    FileState* fs = NewFileState(fp);
+                    fs->showToc = tab->showToc;
+                    *fs->tocState = tab->tocState;
+                    TabState* ts = NewTabState(fs);
+                    windowState->tabStates->Append(ts);
+                    DeleteFileState(fs);
                 }
                 continue;
             }

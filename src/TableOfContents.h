@@ -2,6 +2,11 @@
    License: GPLv3 */
 
 void CreateToc(MainWindow*);
+bool TreeWrapLabelsEnabled();
+void TreeWrapLabelsConfigureCreateArgs(TreeView::CreateArgs& args);
+void TreeItemTooltipIfTruncated(TreeView::GetTooltipEvent* ev);
+void FavTreeWrapOnCustomDraw(TreeView::CustomDrawEvent* ev);
+void FavTreeWrapRecalcHeights(MainWindow* win);
 void ReCreateTocFilterEdit(MainWindow*, HFONT font);
 void ReCreateTocTreeView(MainWindow*, HFONT font, int dpi);
 void ClearTocBox(MainWindow*);

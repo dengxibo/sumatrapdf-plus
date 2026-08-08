@@ -76,6 +76,7 @@ WindowTab::~WindowTab() {
         ReadAloudHighlightFree(readAloudHighlight);
         delete readAloudHighlight;
     }
+    FreeTabState(tabState);
 }
 
 bool WindowTab::IsDocLoaded() const {

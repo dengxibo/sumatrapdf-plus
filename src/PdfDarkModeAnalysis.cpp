@@ -688,6 +688,18 @@ bool PdfDarkModePdfMetadataSuggestsPaperCaptureDoc(fz_context* ctx, pdf_document
     return PdfDarkModeInfoFieldsMatchAnyI(ctx, info, kPaperCaptureNeedles, dimof(kPaperCaptureNeedles));
 }
 
+bool PdfDarkModePdfMetadataSuggestsImageConversionPictureBook(fz_context* ctx, pdf_document* doc) {
+    if (!ctx || !doc) {
+        return false;
+    }
+    pdf_obj* info = pdf_dict_get(ctx, pdf_trailer(ctx, doc), PDF_NAME(Info));
+    if (!info) {
+        return false;
+    }
+    return PdfDarkModeInfoFieldContainsI(ctx, info, PDF_NAME(Producer), "image conversion") ||
+           PdfDarkModeInfoFieldContainsI(ctx, info, PDF_NAME(Creator), "image conversion");
+}
+
 static FollowThemeScanProbe PdfDarkModeClassifyFollowThemeProbe(const pdf_scan_probe_device* probe,
                                                                 FollowThemePageProbeStats* stats) {
     DarkModeOptions opts = PdfDarkModeCurrentOptions();

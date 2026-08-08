@@ -936,6 +936,16 @@ const globalPrefs: Field[] = [
     mkField("TreeFontSize", Int, 0, "font size for bookmarks and favorites tree views. 0 means Windows default"),
     "3.3",
   ),
+  setVersion(
+    mkField(
+      "TreeWrapLabels",
+      Bool,
+      false,
+      "if true, bookmark and favorites tree labels wrap to multiple lines; " +
+        "if false, single line with ellipsis and full text in tooltip on hover",
+    ),
+    "3.7",
+  ),
   setVersion(mkField("UIFontSize", Int, 0, "over-ride application font size. 0 means Windows default"), "3.6"),
   setVersion(
     mkField("DisableAntiAlias", Bool, false, "if true, disables anti-aliasing for rendering PDF documents"),

@@ -2,6 +2,11 @@
 
 ## next
 
+- add `TreeWrapLabels` setting (default false): bookmarks and favorites use single-line labels with ellipsis and full text in tooltip; set true to wrap long titles to multiple lines
+  新增 `TreeWrapLabels`（默认 false）：书签与收藏均为单行省略 + 悬停气泡显示全文；设为 true 时长标题多行换行
+- light match theme: stop routing colorful PDF covers through SmartDark image remap; preserve full-bleed photos and skip highlight compression on light themes
+  浅色「匹配主题」：彩色封面不再走 SmartDark 图像重映射；全幅照片保留原色，浅色主题跳过高光压缩
+
 ## 3.7.26 (2026-08-06)
 
 - PDF Match-theme dark mode: never show white manuscript scans in Match theme; route misclassified colorful scans and Acrobat Elements/PScript stacked-strip pages through PureScan bitmap recolor; fix dual/triple-layer image scans (e.g. telecom contracts); skip rects no longer skip whole-tile bitmap recolor pages
