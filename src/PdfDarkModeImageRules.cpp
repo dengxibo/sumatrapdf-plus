@@ -55,8 +55,16 @@ bool PdfDarkModeFeaturesLookLikeGrayscalePhoto(const DarkImageFeatures& f) {
 // Keep lumVar tight: RAZ glossary/back-matter (white + black text) has higher variance
 // (~0.024–0.030) and must not match SoftCream (would stay mid-grey while photo pages go black).
 bool PdfDarkModeFeaturesLookLikeSoftCreamIllustration(const DarkImageFeatures& f) {
-    return f.highLuminanceRatio > 0.90f && f.luminanceVariance < 0.022f && f.saturatedPixelRatio < 0.10f &&
-           f.chromaticPixelRatio < 0.15f;
+    if (f.highLuminanceRatio <= 0.90f || f.luminanceVariance >= 0.022f || f.saturatedPixelRatio >= 0.10f) {
+        return false;
+    }
+    // Neutral soft cream / mint notebooks (low paper chroma).
+    if (f.chromaticPixelRatio < 0.15f) {
+        return true;
+    }
+    // Warm cream / peach paper (RAZ Telescopes "Galileo's Dilemma"): chroma is the paper tint,
+    // not saturated illustration ink. Steep remap turns that cream muddy grey-brown.
+    return f.chromaticPixelRatio < 0.42f && f.saturatedPixelRatio < 0.04f;
 }
 
 bool PdfDarkModeFeaturesLookLikeLightDocumentPanel(const DarkImageFeatures& f) {
@@ -148,6 +156,92 @@ bool PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(const DarkImageFeatur
            f.luminanceVariance < 0.025f && f.saturatedPixelRatio < 0.08f;
 }
 
+bool PdfDarkModeFeaturesLookLikeFullPageTextScanForBinarize(const DarkImageFeatures& f) {
+    if (PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(f) ||
+        PdfDarkModeFeaturesLookLikeColorfulIllustration(f) ||
+        PdfDarkModeFeaturesLookLikeGrayscalePhoto(f)) {
+        return false;
+    }
+    if (PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(f)) {
+        return true;
+    }
+    if (PdfDarkModeFeaturesLookLikeBwLineArtScan(f)) {
+        return true;
+    }
+    // Cream/yellow household text scans (faint gray ink on tinted paper) — not RAZ photo pages.
+    if (f.saturatedPixelRatio >= 0.10f || f.chromaticPixelRatio >= 0.25f) {
+        return false;
+    }
+    if (f.luminanceVariance >= 0.10f) {
+        return false;
+    }
+    return f.highLuminanceRatio >= 0.45f && f.highLuminanceRatio <= 0.80f && f.chromaticPixelRatio >= 0.04f &&
+           f.saturatedPixelRatio < 0.08f;
+}
+
+// Full-res pixmap stats must confirm flat paper text — thumbnail lumVar is often too low on
+// RAZ text+illustration pages (downscaled inset art looks like office paper).
+bool PdfDarkModeFullResStatsAllowGovernmentPaperBinarize(const DarkImageAnalysis* imgAnalysis, float paperRatio,
+                                                          float satRatio, float chromaRatio, float lumVar) {
+    if (!imgAnalysis) {
+        return lumVar < 0.035f && paperRatio >= 0.85f;
+    }
+    const DarkImageFeatures& f = imgAnalysis->features;
+    if (PdfDarkModeFeaturesLookLikeBwLineArtScan(f)) {
+        if (lumVar >= 0.045f && paperRatio < 0.88f) {
+            return false;
+        }
+        return lumVar <= 0.050f;
+    }
+    if (PdfDarkModeFeaturesLookLikeGovernmentPaperScan(f)) {
+        return lumVar < 0.010f || (lumVar < 0.035f && paperRatio >= 0.88f && satRatio < 0.04f);
+    }
+    if (PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(f)) {
+        return lumVar < 0.032f && paperRatio >= 0.88f;
+    }
+  // Cream household thumb fallback (LookLikeFullPageTextScanForBinarize tail).
+    return lumVar < 0.038f && paperRatio >= 0.86f && satRatio < 0.055f && chromaRatio >= 0.035f &&
+           chromaRatio < 0.22f;
+}
+
+// Full-res pixmap stats: picture-book / photo pages that thumbnail analysis mislabels as text scans.
+bool PdfDarkModeVetoGovernmentPaperBinarize(const DarkImageAnalysis* imgAnalysis, float paperRatio, float satRatio,
+                                            float chromaRatio, float lumVar) {
+    if (imgAnalysis) {
+        if (imgAnalysis->kind == DarkImageKind::Photo ||
+            PdfDarkModeFeaturesLookLikeColorfulIllustration(imgAnalysis->features) ||
+            PdfDarkModeFeaturesLookLikeGrayscalePhoto(imgAnalysis->features) ||
+            PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(imgAnalysis->features)) {
+            return true;
+        }
+    }
+    if (lumVar >= 0.040f) {
+        return true;
+    }
+    if (lumVar >= 0.032f && paperRatio < 0.88f) {
+        return true;
+    }
+    if (paperRatio < 0.82f && lumVar >= 0.035f) {
+        return true;
+    }
+    if (satRatio >= 0.055f) {
+        return true;
+    }
+    if (satRatio >= 0.10f) {
+        return true;
+    }
+    if (chromaRatio >= 0.09f && lumVar >= 0.025f) {
+        return true;
+    }
+    if (chromaRatio >= 0.22f && lumVar >= 0.008f) {
+        return true;
+    }
+    if (chromaRatio >= 0.13f && lumVar >= 0.048f) {
+        return true;
+    }
+    return false;
+}
+
 // Classic B&W line-art scans (连环画 / woodblock reprints): paper + ink lines, no color.
 // Must be FullPageScan / uniform remap — not Photo → partial photo-rect protect (gray noise).
 bool PdfDarkModeFeaturesLookLikeBwLineArtScan(const DarkImageFeatures& f) {
@@ -163,9 +257,15 @@ bool PdfDarkModeFeaturesLookLikeBwLineArtScan(const DarkImageFeatures& f) {
     if (f.luminanceVariance < 0.018f) {
         return false;
     }
-    // Continuous tonal portraits (RAZ B&W photos) exceed ink-line variance.
+    // Dense hatching can push variance above sparse ink; still line-art when the field is
+    // paper-dominated. Continuous tonal portraits (RAZ) stay out via low flat/border paper.
     if (f.luminanceVariance > 0.034f) {
-        return false;
+        if (f.luminanceVariance > 0.048f) {
+            return false;
+        }
+        if (f.flatAreaRatio < 0.34f || f.borderLightRatio < 0.62f) {
+            return false;
+        }
     }
     return true;
 }

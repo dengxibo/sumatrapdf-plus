@@ -1024,6 +1024,26 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
             ScheduleRepaint(win, 0);
             break;
         }
+        case MouseAction::CreatingAnnotation: {
+            win->annotationUnderCursor = nullptr;
+            if (win->annotCreateToolCmd != CmdCreateAnnotInk) {
+                win->selectionRect.dx = x - win->selectionRect.x;
+                win->selectionRect.dy = y - win->selectionRect.y;
+            }
+            if (win->annotCreateToolCmd == CmdCreateAnnotInk) {
+                int pageNo = dm->GetPageNoByPoint(win->annotCreateDragStart);
+                if (dm->ValidPageNo(pageNo)) {
+                    PointF pagePt = dm->CvtFromScreen({x, y}, pageNo);
+                    if (win->annotCreateInkPoints.len == 0) {
+                        PointF startPt = dm->CvtFromScreen(win->annotCreateDragStart, pageNo);
+                        win->annotCreateInkPoints.Append(startPt);
+                    }
+                    win->annotCreateInkPoints.Append(pagePt);
+                }
+            }
+            ScheduleRepaint(win, 0);
+            break;
+        }
         case MouseAction::Dragging: {
             EbookAnnotation* ebookAnnotation = win->ebookAnnotationBeingDragged;
             if (ebookAnnotation) {
@@ -1297,6 +1317,175 @@ static bool StopAnnotationResize(MainWindow* win, int x, int y, bool aborted) {
     return true;
 }
 
+static Rect NormalizeScreenRect(Point a, Point b) {
+    int x0 = std::min(a.x, b.x);
+    int y0 = std::min(a.y, b.y);
+    int x1 = std::max(a.x, b.x);
+    int y1 = std::max(a.y, b.y);
+    return Rect(x0, y0, x1 - x0, y1 - y0);
+}
+
+static void PaintAnnotCreatePreview(MainWindow* win, DisplayModel* dm, HDC hdc) {
+    if (win->mouseAction != MouseAction::CreatingAnnotation) {
+        return;
+    }
+    int cmdId = win->annotCreateToolCmd;
+    Gdiplus::Graphics gs(hdc);
+    Gdiplus::Color col(200, 255, 140, 0);
+    Gdiplus::Pen pen(col, 2);
+
+    if (cmdId == CmdCreateAnnotInk) {
+        if (win->annotCreateInkPoints.len < 2) {
+            return;
+        }
+        int pageNo = dm->GetPageNoByPoint(win->annotCreateDragStart);
+        if (!dm->ValidPageNo(pageNo)) {
+            return;
+        }
+        PointF prev = win->annotCreateInkPoints[0];
+        Point prevScreen = dm->CvtToScreen(pageNo, prev);
+        for (size_t i = 1; i < win->annotCreateInkPoints.len; i++) {
+            PointF cur = win->annotCreateInkPoints[i];
+            Point curScreen = dm->CvtToScreen(pageNo, cur);
+            gs.DrawLine(&pen, prevScreen.x, prevScreen.y, curScreen.x, curScreen.y);
+            prevScreen = curScreen;
+        }
+        return;
+    }
+
+    if (cmdId == CmdCreateAnnotLine) {
+        Point start = win->annotCreateDragStart;
+        Point end{win->selectionRect.x + win->selectionRect.dx, win->selectionRect.y + win->selectionRect.dy};
+        gs.DrawLine(&pen, start.x, start.y, end.x, end.y);
+        return;
+    }
+
+    Rect rc = win->selectionRect;
+    if (rc.dx < 0) {
+        rc.x += rc.dx;
+        rc.dx = -rc.dx;
+    }
+    if (rc.dy < 0) {
+        rc.y += rc.dy;
+        rc.dy = -rc.dy;
+    }
+    if (rc.dx <= 0 && rc.dy <= 0) {
+        return;
+    }
+    if (cmdId == CmdCreateAnnotCircle) {
+        gs.DrawEllipse(&pen, rc.x, rc.y, rc.dx, rc.dy);
+    } else if (cmdId == CmdCreateAnnotSquare) {
+        gs.DrawRectangle(&pen, rc.x, rc.y, rc.dx, rc.dy);
+    }
+}
+
+static void FinishEbookAnnotCreateDrag(MainWindow* win, WindowTab* tab, DisplayModel* dm, Point endCanvas) {
+    int cmdId = win->annotCreateToolCmd;
+    AnnotationType type = CmdIdToAnnotationType(cmdId);
+    if (type == AnnotationType::Unknown) {
+        return;
+    }
+    Point start = win->annotCreateDragStart;
+    int pageNo = dm->GetPageNoByPoint(start);
+    if (!dm->ValidPageNo(pageNo)) {
+        return;
+    }
+    if (type == AnnotationType::Ink) {
+        if (win->annotCreateInkPoints.len < 2) {
+            PointF a = dm->CvtFromScreen(start, pageNo);
+            PointF b = dm->CvtFromScreen(endCanvas, pageNo);
+            win->annotCreateInkPoints.Reset();
+            win->annotCreateInkPoints.Append(a);
+            win->annotCreateInkPoints.Append(b);
+        }
+        EbookAnnotation* annotation =
+            EbookAnnotationsCreateInkStroke(tab, dm, pageNo, win->annotCreateInkPoints.els,
+                                            (int)win->annotCreateInkPoints.len, GetDefaultAnnotationColor(type));
+        win->annotCreateInkPoints.Reset();
+        if (!annotation) {
+            return;
+        }
+        tab->selectedEbookAnnotation = annotation;
+        UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, annotation);
+        MainWindowRerender(win);
+        return;
+    }
+    Rect screenRect = NormalizeScreenRect(start, endCanvas);
+    if (screenRect.dx < 4 && screenRect.dy < 4) {
+        return;
+    }
+    EbookAnnotation* annotation = EbookAnnotationsCreateDragShape(tab, dm, start, endCanvas, type);
+    if (!annotation) {
+        return;
+    }
+    tab->selectedEbookAnnotation = annotation;
+    UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, annotation);
+    MainWindowRerender(win);
+}
+
+static void FinishAnnotCreateDrag(MainWindow* win, Point endCanvas) {
+    WindowTab* tab = win->CurrentTab();
+    DisplayModel* dm = win->AsFixed();
+    if (!tab || !dm) {
+        return;
+    }
+    if (EbookAnnotationsSupported(tab)) {
+        FinishEbookAnnotCreateDrag(win, tab, dm, endCanvas);
+        return;
+    }
+    EngineBase* engine = dm->GetEngine();
+    if (!engine || !EngineSupportsAnnotations(engine)) {
+        return;
+    }
+    int cmdId = win->annotCreateToolCmd;
+    AnnotationType type = CmdIdToAnnotationType(cmdId);
+    if (type == AnnotationType::Unknown) {
+        return;
+    }
+    Point start = win->annotCreateDragStart;
+    Rect screenRect = NormalizeScreenRect(start, endCanvas);
+    if (cmdId != CmdCreateAnnotInk && (screenRect.dx < 4 && screenRect.dy < 4)) {
+        return;
+    }
+    int pageNo = dm->GetPageNoByPoint(start);
+    if (!dm->ValidPageNo(pageNo)) {
+        return;
+    }
+    AnnotCreateArgs args{type};
+    Annotation* annot = nullptr;
+    if (type == AnnotationType::Ink) {
+        if (win->annotCreateInkPoints.len < 2) {
+            PointF a = dm->CvtFromScreen(start, pageNo);
+            PointF b = dm->CvtFromScreen(endCanvas, pageNo);
+            win->annotCreateInkPoints.Reset();
+            win->annotCreateInkPoints.Append(a);
+            win->annotCreateInkPoints.Append(b);
+        }
+        annot = EngineMupdfCreateAnnotationInkStroke(engine, pageNo, win->annotCreateInkPoints.els,
+                                                     (int)win->annotCreateInkPoints.len, &args);
+    } else if (type == AnnotationType::Line) {
+        PointF a = dm->CvtFromScreen(start, pageNo);
+        PointF b = dm->CvtFromScreen(endCanvas, pageNo);
+        annot = EngineMupdfCreateAnnotation(engine, pageNo, a, &args);
+        if (annot) {
+            SetRect(annot, RectF::FromXY(a, b));
+        }
+    } else {
+        PointF tl = dm->CvtFromScreen({screenRect.x, screenRect.y}, pageNo);
+        PointF br = dm->CvtFromScreen({screenRect.x + screenRect.dx, screenRect.y + screenRect.dy}, pageNo);
+        RectF pageRect = RectF::FromXY(tl, br);
+        annot = EngineMupdfCreateAnnotationInRect(engine, pageNo, pageRect, &args);
+    }
+    win->annotCreateInkPoints.Reset();
+    if (!annot) {
+        return;
+    }
+    SetSelectedAnnotation(tab, annot);
+    UpdateAnnotationsList(tab->editAnnotsWindow);
+    MainWindowRerenderAnnotationChange(win, pageNo, annot);
+    ToolbarUpdateStateForWindow(win, true);
+}
+
 static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     // lf("Left button clicked on %d %d", x, y);
     if (IsRightDragging(win)) {
@@ -1321,6 +1510,25 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     DisplayModel* dm = win->AsFixed();
     ReportIf(!dm);
     Point pt{x, y};
+
+    if (win->annotCreateToolCmd != 0) {
+        WindowTab* tab = win->CurrentTab();
+        bool canDragCreate = EngineSupportsAnnotations(dm->GetEngine());
+        if (!canDragCreate && tab && EbookAnnotationsSupported(tab)) {
+            canDragCreate = true;
+        }
+        if (canDragCreate) {
+            win->annotCreateDragStart = pt;
+            win->dragStart = pt;
+            win->selectionRect = Rect(pt.x, pt.y, 0, 0);
+            win->mouseAction = MouseAction::CreatingAnnotation;
+            win->dragStartPending = true;
+            win->annotCreateInkPoints.Reset();
+            SetCapture(win->hwndCanvas);
+            return;
+        }
+        SetAnnotCreateTool(win, 0);
+    }
 
     if (ReadAloudCanReadFromCursor(dm, pt)) {
         win->readAloudLastClickTextPt = pt;
@@ -1487,6 +1695,18 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
     }
 
     auto ma = win->mouseAction;
+    if (ma == MouseAction::CreatingAnnotation) {
+        Point endCanvas{x, y};
+        win->mouseAction = MouseAction::None;
+        win->dragStartPending = false;
+        win->selectionRect = Rect();
+        if (GetCapture() == win->hwndCanvas) {
+            ReleaseCapture();
+        }
+        FinishAnnotCreateDrag(win, endCanvas);
+        ScheduleRepaint(win, 0);
+        return;
+    }
     if (MouseAction::None == ma || IsRightDragging(win)) {
         return;
     }
@@ -2093,9 +2313,18 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
                 colDocBg = RgbToCOLORREF(0xFFFFFF);
             }
         } else {
+            PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
             ParsedColor* bgOverride = GetPrefsColor(gGlobalPrefs->eBookUI.windowBgCol);
             if (bgOverride->parsedOk) {
                 colDocBg = bgOverride->col;
+            } else if (docMode == PdfDocumentColorMode::Light) {
+                colDocBg = RgbToCOLORREF(0xFFFFFF);
+            } else if (IsDarkThemeSelected()) {
+                ThemePageRenderColors(colDocBg, true);
+            } else if (!ThemeUsesOriginalPageColors()) {
+                colDocBg = RgbToCOLORREF(0xF7F3E8);
+            } else {
+                colDocBg = RgbToCOLORREF(0xFFFFFF);
             }
         }
     } else if (isPdf) {
@@ -2308,6 +2537,8 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
         gs.DrawRectangle(&pen, rc.x, rc.y, rc.dx, rc.dy);
     }
 
+    PaintAnnotCreatePreview(win, dm, hdc);
+
     PaintAllFindMatches(win, hdc);
     // Search matches and the user's text selection are independent layers.
     // The latter must still be painted when all find matches are visible.
@@ -2371,6 +2602,10 @@ static LRESULT OnSetCursorMouseNone(MainWindow* win, HWND hwnd) {
     if (!dm || !GetCursor() || pt.IsEmpty()) {
         win->DeleteToolTip();
         return FALSE;
+    }
+    if (win->annotCreateToolCmd != 0) {
+        SetCursorCached(IDC_CROSS);
+        return TRUE;
     }
     if (GetNotificationForGroup(win->hwndCanvas, kNotifCursorPos)) {
         SetCursorCached(IDC_CROSS);
@@ -2460,6 +2695,9 @@ static LRESULT OnSetCursor(MainWindow* win, HWND hwnd) {
             return TRUE;
         case MouseAction::Selecting:
             break;
+        case MouseAction::CreatingAnnotation:
+            SetCursorCached(IDC_CROSS);
+            return TRUE;
         case MouseAction::None:
             return OnSetCursorMouseNone(win, hwnd);
     }
@@ -3181,35 +3419,12 @@ static LRESULT WndProcCanvasFixedPageUI(MainWindow* win, HWND hwnd, UINT msg, WP
             }
             return DefWindowProc(hwnd, msg, wp, lp);
 
-        case WM_NCPAINT: {
-            if (ScrollbarsAreHidden() || ScrollbarsUseOverlay()) {
-                // native scrollbars are already disabled; don't call ShowScrollBar
-                // here as it changes the client area, triggering WM_SIZE oscillation
-                goto def;
-            }
-
-            DisplayModel* dm = win->AsFixed();
-            bool isSinglePage =
-                gGlobalPrefs->scrollbarInSinglePage && (dm->GetDisplayMode() == DisplayMode::SinglePage);
-            bool needH = dm->NeedHScroll();
-            bool needV = dm->NeedVScroll() || isSinglePage;
-            if (!needH && !needV) {
-                ShowScrollBar(win->hwndCanvas, SB_BOTH, false);
-                goto def;
-            }
-
-            // check whether scrolling is required in the horizontal and/or vertical axes
-            int wBar = -1;
-            if (needH && needV) {
-                wBar = SB_BOTH;
-            } else if (needH) {
-                wBar = SB_HORZ;
-            } else if (needV) {
-                wBar = SB_VERT;
-            }
-            ShowScrollBar(win->hwndCanvas, wBar, true);
-            // allow default processing to continue
-        }
+        case WM_NCPAINT:
+            // Do not call ShowScrollBar here. Visibility is owned by
+            // UpdateScrollbars; ShowScrollBar mid-NCPAINT breaks native
+            // scrollbar track hold-to-page auto-repeat (and can re-enter
+            // uxtheme under dark themes). Match upstream behavior.
+            goto def;
     }
 def:
     return DefWindowProc(hwnd, msg, wp, lp);
@@ -3235,22 +3450,12 @@ static void OnPaintError(MainWindow* win) {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(win->hwndCanvas, &ps);
 
-    HFONT fontRightTxt = CreateSimpleFont(hdc, "MS Shell Dlg", 14);
-    HGDIOBJ hPrevFont = SelectObject(hdc, fontRightTxt);
     auto bgCol = ThemeMainWindowBackgroundColor();
     AutoDeleteBrush bgBrush = CreateSolidBrush(bgCol);
     FillRect(hdc, &ps.rcPaint, bgBrush);
-    // TODO: should this be "Error opening %s"?
-    auto tab = win->CurrentTab();
-    const char* filePath = tab ? tab->filePath : nullptr;
-    if (filePath) {
-        const char* msg = tab->reloadForEbookFontChange
-                              ? _TRA("Applying ebook font, reformatting pages…")
-                              : str::FormatTemp(_TRA("Loading %s ..."), path::GetBaseNameTemp(filePath));
-        SetTextColor(hdc, ThemeWindowTextColor());
-        DrawCenteredText(hdc, ClientRect(win->hwndCanvas), msg, IsUIRtl());
-    }
-    SelectObject(hdc, hPrevFont);
+    // Loading / error status is shown by the top-left notification banner.
+    // Do not DrawCenteredText "Loading …" — same font on the full canvas looks
+    // much larger than the banner (especially the last file of a multi-file open).
 
     EndPaint(win->hwndCanvas, &ps);
 }
@@ -3381,6 +3586,15 @@ static void OnTimer(MainWindow* win, HWND hwnd, WPARAM timerId) {
             break;
         }
 
+        case REFLOW_THEME_RETRY_TIMER_ID: {
+            KillTimer(hwnd, REFLOW_THEME_RETRY_TIMER_ID);
+            WindowTab* tab = win->CurrentTab();
+            if (tab && tab->reloadOnFocus) {
+                ApplyTabReloadOnFocus(win, tab, false);
+            }
+            break;
+        }
+
         case READ_ALOUD_HIGHLIGHT_TIMER_ID: {
             WindowTab* raTab = GetReadAloudSourceTab();
             if (raTab && raTab->win == win && win->CurrentTab() == raTab) {
@@ -3393,7 +3607,7 @@ static void OnTimer(MainWindow* win, HWND hwnd, WPARAM timerId) {
             break;
         }
 
-        case kSmoothScrollTimerID:
+        case kSmoothScrollTimerID: {
             DisplayModel* dm = win->AsFixed();
             // window might have been closed while the timer was running
             if (!dm) {
@@ -3424,6 +3638,7 @@ static void OnTimer(MainWindow* win, HWND hwnd, WPARAM timerId) {
                 }
             }
             break;
+        }
     }
 }
 
@@ -3835,6 +4050,12 @@ LRESULT CALLBACK WndProcCanvas(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             // return HTTRANSPARENT near frame edges so the parent frame
             // can handle resize hit-testing beyond kFrameBorderSize
             if (win && win->tabsInTitlebar && !IsZoomed(GetParent(hwnd))) {
+                // Never steal scrollbar hits for frame resize — the vscroll
+                // sits on the right edge where the resize strip would match.
+                LRESULT ht = DefWindowProc(hwnd, msg, wp, lp);
+                if (ht == HTVSCROLL || ht == HTHSCROLL || ht == HTGROWBOX) {
+                    return ht;
+                }
                 int x = GET_X_LPARAM(lp);
                 int y = GET_Y_LPARAM(lp);
                 RECT wrc;
@@ -3843,6 +4064,7 @@ LRESULT CALLBACK WndProcCanvas(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 if ((x - wrc.left) < b || (wrc.right - x) <= b || (y - wrc.top) < b || (wrc.bottom - y) <= b) {
                     return HTTRANSPARENT;
                 }
+                return ht;
             }
             break;
         }
@@ -3854,6 +4076,11 @@ LRESULT CALLBACK WndProcCanvas(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     // messages that require win
     switch (msg) {
+        case WM_NCLBUTTONDOWN:
+            // Native track/arrow hold-to-repeat uses WM_TIMER. TOC paint storms used to
+            // starve those timers; heights are recalculated outside paint now.
+            return DefWindowProc(hwnd, msg, wp, lp);
+
         case WM_TIMER:
             OnTimer(win, hwnd, wp);
             return 0;

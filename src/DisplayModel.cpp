@@ -74,7 +74,10 @@ void NotifyEbookPagesLoadingProgress(const char* filePath, bool reloadToc);
 // if true, we pre-render the pages right before and after the visible pages
 bool gPredictiveRender = true;
 
-static const int kLayoutSyncBatch = 256;
+static const int kLayoutSyncBatch = 768;
+// Progressive EPUB: grow pagesInfo / relayout in chunks during background load.
+// Keep >= one engine burst (kReflowNotifyEveryNChapters * typical pages/chapter).
+static const int kProgressiveGrowBatch = 1024;
 
 static void ScheduleLayoutSyncChain(DisplayModel* dm);
 
@@ -776,7 +779,9 @@ DisplayModel::~DisplayModel() {
 
 RectF DisplayModel::PageMediaBox(int pageNo) const {
     PageInfo* pi = GetPageInfo(pageNo);
-    if (!pi) return RectF();
+    if (!pi) {
+        return RectF();
+    }
     if (pi->state == PageInfoState::Known) {
         return pi->_mediaBox;
     }
@@ -1033,7 +1038,6 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
 
     int oldCount = pagesInfoCount;
     int growTo = enginePageCount;
-    const int kGrowBatch = 128;
     // batching (with the chained-notification dance) exists only to stay
     // responsive while background loading keeps adding pages; once loading is
     // done, grow to the full count in one step with a single relayout - the
@@ -1043,8 +1047,8 @@ void DisplayModel::OnMorePagesAvailable(bool updateUi, bool growAll) {
     if (!growAll && !updateUi) {
         // background tab: sync all pages silently in one step (no Notify chain)
         growTo = enginePageCount;
-    } else if (!growAll && progressiveLoading && enginePageCount - oldCount > kGrowBatch) {
-        growTo = oldCount + kGrowBatch;
+    } else if (!growAll && progressiveLoading && enginePageCount - oldCount > kProgressiveGrowBatch) {
+        growTo = oldCount + kProgressiveGrowBatch;
     }
 
     PageInfo* newPagesInfo = (PageInfo*)realloc(pagesInfo, growTo * sizeof(PageInfo));
@@ -1416,6 +1420,11 @@ float DisplayModel::ZoomRealFromVirtualForPage(float zoomVirtual, int pageNo) co
         if (zoom > maxZoom) {
             zoom = maxZoom;
         }
+    }
+    if (kZoomFitPage == zoomVirtual && columns > 1) {
+        // Facing layout rounds page widths up; shrink slightly so the row fits without
+        // clipping the right page when overlay scrollbars skip needHScroll relayout.
+        zoom *= 0.998f;
     }
     // A progressive reflowable ebook can briefly expose placeholder page
     // geometry while its chapter map is growing. If that geometry is only a
@@ -1801,10 +1810,17 @@ RestartLayout:
     // for kZoomFitPage in single-page modes, clamp canvas to viewport to avoid
     // 1px scrollbar from floating point rounding in zoom calculation.
     // Don't clamp in continuous modes where canvasDy spans all pages.
+    // Only snap when already within bounds — clamping overflow hides content
+    // without enabling scroll (overlay scrollbar skips needHScroll relayout).
+    // Facing / book view (columns > 1): never clamp canvasDx.
     // (kZoomFitContent intentionally overflows because content box != full page)
     if (zoomVirtual == kZoomFitPage && !IsContinuous(displayMode)) {
-        canvasDy = std::min(canvasDy, viewPort.dy);
-        canvasDx = std::min(canvasDx, viewPort.dx);
+        if (canvasDy <= viewPort.dy) {
+            canvasDy = std::min(canvasDy, viewPort.dy);
+        }
+        if (columns == 1 && canvasDx <= viewPort.dx) {
+            canvasDx = std::min(canvasDx, viewPort.dx);
+        }
     }
     canvasSize = Size(std::max(canvasDx, viewPort.dx), std::max(canvasDy, viewPort.dy));
     // A full relayout positions every page, so the incremental reflow layout can
@@ -2258,6 +2274,9 @@ Point DisplayModel::GetContentStart(int pageNo) const {
 
 // TODO: what's GoToPage supposed to do for Facing at 400% zoom?
 void DisplayModel::GoToPage(int pageNo, int scrollY, bool addNavPt, int scrollX) {
+    if (engine && EngineIsProgressiveEbookLoading(engine)) {
+        EngineMupdfTouchReadingActivity(engine);
+    }
     if (!pagesInfo) {
         if (EngineIsProgressiveEbookLoading(engine) && pageNo >= 1) {
             pendingRestoreScroll = ScrollState(pageNo, scrollX >= 0 ? scrollX : -1, scrollY >= 0 ? scrollY : -1);
@@ -2334,9 +2353,19 @@ void DisplayModel::GoToPage(int pageNo, int scrollY, bool addNavPt, int scrollX)
         viewPort.x = scrollX + pageInfo->pos.x - windowMargin.left;
     } else if (-1 != scrollX) {
         viewPort.x = scrollX;
-    } else if (1 == pageNo && IsBookView(GetDisplayMode())) {
-        // make sure to not display the blank space beside the first page in cover mode
-        viewPort.x = pageInfo->pos.x - windowMargin.left;
+    } else if (!IsContinuous(GetDisplayMode())) {
+        // Non-continuous page changes must not keep horizontal scroll from a prior page
+        // (TOC jumps with scrollX=-1 otherwise show the wrong slice of the canvas).
+        int firstInRow =
+            FirstPageInARowNo(pageNo, ColumnsFromDisplayMode(GetDisplayMode()), IsBookView(GetDisplayMode()));
+        PageInfo* firstPi = GetPageInfo(firstInRow);
+        if (kZoomFitPage == zoomVirtual || kZoomShrinkToFit == zoomVirtual) {
+            viewPort.x = 0;
+        } else if (firstPi) {
+            viewPort.x = firstPi->pos.x - windowMargin.left;
+        } else {
+            viewPort.x = 0;
+        }
     } else if (viewPort.x >= pageInfo->pos.x + pageInfo->pos.dx) {
         // make sure that at least part of the page is visible
         viewPort.x = pageInfo->pos.x;

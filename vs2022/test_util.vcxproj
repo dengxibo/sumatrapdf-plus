@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -967,6 +967,8 @@
     <ClCompile Include="..\src\utils\tests\TtsPronunciation_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\PdfDarkModeImageClassifier_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\PdfDarkModeOklab_ut.cpp" />
+    <ClCompile Include="..\src\utils\tests\PdfDarkModeV2_ut.cpp" />
+    <ClCompile Include="..\src\utils\tests\PdfJoinSplitImages_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\SettingsUtil_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\SimpleLog_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\SquareTreeParser_ut.cpp" />

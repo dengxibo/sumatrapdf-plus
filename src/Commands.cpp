@@ -243,6 +243,7 @@ static SeqStrings gCommandNames =
     "CmdAnalyzeSelectionWithDoubao\0"
     "CmdToggleDoubleClickWordLookup\0"
     "CmdTogglePreservePdfImages\0"
+    "CmdToggleJoinSplitPdfImages\0"
     "CmdSetPdfDocumentColorModeAuto\0"
     "CmdSetPdfDocumentColorModeBlack\0"
     "CmdSetPdfDocumentColorModeLight\0"
@@ -503,6 +504,7 @@ static i32 gCommandIds[] = {
     CmdAnalyzeSelectionWithDoubao,
     CmdToggleDoubleClickWordLookup,
     CmdTogglePreservePdfImages,
+    CmdToggleJoinSplitPdfImages,
     CmdSetPdfDocumentColorModeAuto,
     CmdSetPdfDocumentColorModeBlack,
     CmdSetPdfDocumentColorModeLight,
@@ -763,6 +765,7 @@ SeqStrings gCommandDescriptions =
     "Ask AI\0"
     "Toggle Double-Click Word Lookup\0"
     "Toggle Preserve PDF Image Colors in Dark Mode\0"
+    "Toggle Join Split PDF Images\0"
     "Set Document Color Mode: Smart\0"
     "Set Document Color Mode: Match Theme\0"
     "Set Document Color Mode: Original\0"

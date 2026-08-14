@@ -1,4 +1,4 @@
-// Copyright (C) 2004-2024 Artifex Software, Inc.
+// Copyright (C) 2004-2026 Artifex Software, Inc.
 //
 // This file is part of MuPDF.
 //
@@ -232,9 +232,20 @@ xps_drop_page_list(fz_context *ctx, xps_document *doc)
  * Parse the fixed document sequence structure and _rels/.rels to find the start part.
  */
 
+/* SumatraPDF: bound recursion depth to avoid stack overflow on deeply nested
+   XPS metadata XML (bug #5032). Each frame carries kilobyte-sized url buffers,
+   so the C stack overflows long before fitz's FZ_XML_MAX_DEPTH (4096) would
+   trip. The lone caller wraps this in fz_try, so the throw just fails the open
+   instead of crashing. */
+#define XPS_MAX_METADATA_DEPTH 256
+
 static void
-xps_parse_metadata_imp(fz_context *ctx, xps_document *doc, fz_xml *item, xps_fixdoc *fixdoc)
+xps_parse_metadata_imp(fz_context *ctx, xps_document *doc, fz_xml *item, xps_fixdoc *fixdoc, int depth)
 {
+	/* SumatraPDF: bound recursion depth (bug #5032) */
+	if (depth > XPS_MAX_METADATA_DEPTH)
+		fz_throw(ctx, FZ_ERROR_SYNTAX, "too deeply nested xps metadata");
+
 	while (item)
 	{
 		if (fz_xml_is_tag(item, "Relationship"))
@@ -290,7 +301,7 @@ xps_parse_metadata_imp(fz_context *ctx, xps_document *doc, fz_xml *item, xps_fix
 				xps_add_link_target(ctx, doc, name);
 		}
 
-		xps_parse_metadata_imp(ctx, doc, fz_xml_down(item), fixdoc);
+		xps_parse_metadata_imp(ctx, doc, fz_xml_down(item), fixdoc, depth + 1); /* SumatraPDF: bug #5032 */
 
 		item = fz_xml_next(item);
 	}
@@ -323,7 +334,7 @@ xps_parse_metadata(fz_context *ctx, xps_document *doc, xps_part *part, xps_fixdo
 	xml = fz_parse_xml(ctx, part->data, 0);
 	fz_try(ctx)
 	{
-		xps_parse_metadata_imp(ctx, doc, fz_xml_root(xml), fixdoc);
+		xps_parse_metadata_imp(ctx, doc, fz_xml_root(xml), fixdoc, 0); /* SumatraPDF: bug #5032 */
 	}
 	fz_always(ctx)
 	{
@@ -404,6 +415,8 @@ xps_load_fixed_page(fz_context *ctx, xps_document *doc, xps_fixpage *page)
 	fz_xml *root;
 	char *width_att;
 	char *height_att;
+
+	fz_var(xml);
 
 	part = xps_read_part(ctx, doc, page->name);
 	fz_try(ctx)
@@ -528,6 +541,7 @@ xps_recognize_doc_content(fz_context *ctx, const fz_document_handler *handler, f
 	int ret = 0;
 	fz_xml *xml = NULL;
 	fz_xml *pos;
+	fz_buffer *buf = NULL;
 
 	if (state)
 		*state = NULL;
@@ -537,12 +551,10 @@ xps_recognize_doc_content(fz_context *ctx, const fz_document_handler *handler, f
 	fz_var(arch);
 	fz_var(ret);
 	fz_var(xml);
+	fz_var(buf);
 
 	fz_try(ctx)
 	{
-		int i, count;
-		const char *name;
-
 		if (stream == NULL)
 			arch = fz_keep_archive(ctx, dir);
 		else
@@ -552,49 +564,21 @@ xps_recognize_doc_content(fz_context *ctx, const fz_document_handler *handler, f
 				break;
 		}
 
-		xml = fz_try_parse_xml_archive_entry(ctx, arch, "/_rels/.rels", 0);
-		if (xml == NULL)
-			xml = fz_try_parse_xml_archive_entry(ctx, arch, "\\_rels\\.rels", 0);
+		buf = xps_read_pieces(ctx, arch, "_rels/.rels");
+		if (buf == NULL)
+			buf = xps_read_pieces(ctx, arch, "_rels\\.rels");
 
-		if (xml)
-		{
-			pos = fz_xml_find_dfs(xml, "Relationship", "Type", "http://schemas.microsoft.com/xps/2005/06/fixedrepresentation");
-			if (pos)
-				ret = 100;
-			break;
-		}
-
-		/* Cope with tricksy XPS's have the rels in multiple bits. */
-		count = fz_count_archive_entries(ctx, arch);
-
-		for (i = 0; i < count; i++)
-		{
-			name = fz_list_archive_entry(ctx, arch, i);
-			if (!name)
-				continue;
-			if (strncmp(name, "/_rels/.rels/", 13) == 0 ||
-				strncmp(name, "_rels/.rels/", 12) == 0 ||
-				strncmp(name, "\\_rels\\.rels\\", 13) == 0 ||
-				strncmp(name, "_rels\\.rels\\", 12) == 0)
-			{
-				xml = fz_try_parse_xml_archive_entry(ctx, arch, name, 0);
-				if (xml)
-				{
-					pos = fz_xml_find_dfs(xml, "Relationship", "Type", "http://schemas.microsoft.com/xps/2005/06/fixedrepresentation");
-					if (pos)
-					{
-						ret = 100;
-						break;
-					}
-					fz_drop_xml(ctx, xml);
-					xml = NULL;
-				}
-			}
-		}
+		xml = fz_parse_xml(ctx, buf, 0);
+		pos = fz_xml_find_dfs(xml, "Relationship", "Type", REL_START_PART);
+		if (pos == NULL)
+			pos = fz_xml_find_dfs(xml, "Relationship", "Type", REL_START_PART_OXPS);
+		if (pos)
+			ret = 100;
 	}
 	fz_always(ctx)
 	{
 		fz_drop_xml(ctx, xml);
+		fz_drop_buffer(ctx, buf);
 		fz_drop_archive(ctx, arch);
 	}
 	fz_catch(ctx)

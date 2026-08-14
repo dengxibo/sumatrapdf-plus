@@ -185,6 +185,9 @@ class EngineMupdf : public EngineBase {
     float reflowLayoutW = 612.f;
     float reflowLayoutH = 792.f;
     volatile LONG reflowableLoadingInProgress = 0;
+    // 1 while this document is in a background tab: do not count/warm chapters
+    // until the user actually selects it (session restore often never will).
+    volatile LONG reflowSuspendBackgroundLoad = 1;
     // Follow-theme content probe deferred until after first paint (dark+follow open).
     volatile LONG pdfFollowThemeProbePending = 0;
     volatile LONG pdfFollowThemeProbeScheduled = 0;
@@ -210,6 +213,9 @@ class EngineMupdf : public EngineBase {
     int reflowNumChapters = 0;
     // Bumped on theme toggle; pages/chapters restyle lazily when rendered.
     u32 reflowThemeCssEpoch = 1;
+    // Palette-only CSS does not change chapter geometry. Skip fz_count_chapter_pages
+    // on the next page load so a huge anthology chapter is not laid out twice.
+    volatile LONG reflowPaletteKeepsPageMap = 0;
     // Synthesized HTML for .md/.txt kept for fast theme reparse (styles are baked at parse time).
     ByteSlice reflowHtmlSource;
     // Set when single-chapter HTML reparse discards cached TocItem destinations.
@@ -262,6 +268,14 @@ class EngineMupdf : public EngineBase {
     // Follow-theme: 0=unknown, 1=micro-text/LaTeX-like doc, 2=layout/photo doc.
     u8 followThemeDocBitmapRecolor = 0;
     bool followThemeContentProbed = false;
+
+    // JoinSplitPdfImages: display page i -> engine (raw PDF) page number (1-based).
+    // Empty when the feature is off or no strip pages were detected.
+    Vec<int> joinDisplayToEngine;
+    // Engine page -> display page (1-based). Skipped strip pages map to the
+    // nearest kept display page for TOC/link navigation.
+    Vec<int> joinEngineToDisplay;
+    int joinRawPageCount = 0;
 
     bool CadEnhanceActive() const;
     bool CadEnhanceUseHairlineBoost() const;

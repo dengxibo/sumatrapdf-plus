@@ -367,6 +367,9 @@ void CloseFindUI(MainWindow* win) {
     if (!win) {
         return;
     }
+    if (!win->hwndFindEdit && !win->findThread && !win->findCountThread) {
+        return;
+    }
     // drop pending work before any abort that pumps messages (CountEndTask must
     // not restart a scan for the previous tab while we're switching)
     str::FreePtr(&win->findCountPendingText);

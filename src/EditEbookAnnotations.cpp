@@ -754,9 +754,9 @@ static void DeleteSelected(EbookAnnotationsWindow* window) {
         }
         UpdateSelectedAnnotation(window, window->annotations.at(idx));
     } else {
-    ClearAnnotationDetailControls(window);
-    RefreshAnnotationDetailPanel(window);
-}
+        ClearAnnotationDetailControls(window);
+        RefreshAnnotationDetailPanel(window);
+    }
 
     if (window->tab->win) {
         MainWindowRerender(window->tab->win);

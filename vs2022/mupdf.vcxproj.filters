@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="ext">
@@ -488,6 +488,9 @@
     <ClCompile Include="..\mupdf\source\fitz\crypt-sha2.c">
       <Filter>mupdf\source\fitz</Filter>
     </ClCompile>
+    <ClCompile Include="..\mupdf\source\fitz\cull-device.c">
+      <Filter>mupdf\source\fitz</Filter>
+    </ClCompile>
     <ClCompile Include="..\mupdf\source\fitz\deskew.c">
       <Filter>mupdf\source\fitz</Filter>
     </ClCompile>
@@ -681,6 +684,9 @@
       <Filter>mupdf\source\fitz</Filter>
     </ClCompile>
     <ClCompile Include="..\mupdf\source\fitz\ocr-device.c">
+      <Filter>mupdf\source\fitz</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mupdf\source\fitz\options.c">
       <Filter>mupdf\source\fitz</Filter>
     </ClCompile>
     <ClCompile Include="..\mupdf\source\fitz\outline.c">
@@ -893,7 +899,13 @@
     <ClCompile Include="..\mupdf\source\html\html-parse.c">
       <Filter>mupdf\source\html</Filter>
     </ClCompile>
+    <ClCompile Include="..\mupdf\source\html\md.c">
+      <Filter>mupdf\source\html</Filter>
+    </ClCompile>
     <ClCompile Include="..\mupdf\source\html\mobi.c">
+      <Filter>mupdf\source\html</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mupdf\source\html\office.c">
       <Filter>mupdf\source\html</Filter>
     </ClCompile>
     <ClCompile Include="..\mupdf\source\html\story-writer.c">
@@ -1044,6 +1056,9 @@
       <Filter>mupdf\source\pdf</Filter>
     </ClCompile>
     <ClCompile Include="..\mupdf\source\pdf\pdf-stream.c">
+      <Filter>mupdf\source\pdf</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mupdf\source\pdf\pdf-struct.c">
       <Filter>mupdf\source\pdf</Filter>
     </ClCompile>
     <ClCompile Include="..\mupdf\source\pdf\pdf-subset.c">

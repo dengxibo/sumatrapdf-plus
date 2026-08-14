@@ -11,6 +11,10 @@ bool EbookAnnotationsSupported(WindowTab* tab);
 EbookAnnotation* EbookAnnotationsCreateFromSelection(WindowTab* tab, AnnotationType type, COLORREF color);
 EbookAnnotation* EbookAnnotationsCreateAt(WindowTab* tab, DisplayModel* dm, Point canvasPoint, AnnotationType type,
                                           COLORREF color);
+EbookAnnotation* EbookAnnotationsCreateDragShape(WindowTab* tab, DisplayModel* dm, Point canvasStart,
+                                                   Point canvasEnd, AnnotationType type);
+EbookAnnotation* EbookAnnotationsCreateInkStroke(WindowTab* tab, DisplayModel* dm, int pageNo, PointF* points,
+                                                 int nPoints, COLORREF color);
 EbookAnnotation* EbookAnnotationsCreateText(WindowTab* tab, DisplayModel* dm, Point canvasPoint, COLORREF color);
 EbookAnnotation* EbookAnnotationsGetAt(WindowTab* tab, DisplayModel* dm, Point canvasPoint);
 bool EbookAnnotationsHitTest(WindowTab* tab, DisplayModel* dm, Point canvasPoint);

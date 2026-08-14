@@ -75,6 +75,10 @@ struct FixedPageUI {
     // color used to highlight the current search match on the page
     char* findMatchColor;
     ParsedColor findMatchColorParsed;
+    // if true, hide redundant PDF pages that only show a thin strip of an
+    // image already shown on the previous/next page (Calibre photo books /
+    // split-image PDFs)
+    bool joinSplitPdfImages;
 };
 
 // customization options for eBookUI
@@ -500,6 +504,9 @@ struct GlobalPrefs {
     char* customColors;
     // if true, we show the toolbar at the top of the window
     bool showToolbar;
+    // if true, show rectangle/ellipse/line/ink quick annotation buttons on
+    // the toolbar
+    bool showAnnotToolbarButtons;
     // if true, the find UI is a floating, movable window with a results
     // list instead of the compact toolbar overlay
     bool searchUIFloating;
@@ -717,10 +724,12 @@ static const FieldInfo gFixedPageUIFields[] = {
     {offsetof(FixedPageUI, invertColors), SettingType::Bool, false, "全局反色"},
     {offsetof(FixedPageUI, windowBgCol), SettingType::Color, (intptr_t)"", "PDF 画布背景色"},
     {offsetof(FixedPageUI, findMatchColor), SettingType::Color, (intptr_t)"#ffff00", "查找匹配高亮色"},
+    {offsetof(FixedPageUI, joinSplitPdfImages), SettingType::Bool, true, nullptr},
 };
-static const StructInfo gFixedPageUIInfo = {sizeof(FixedPageUI), 9, gFixedPageUIFields,
-                                            "TextColor\0BackgroundColor\0SelectionColor\0WindowMargin\0PageSpacing\0Gra"
-                                            "dientColors\0InvertColors\0WindowBgCol\0FindMatchColor"};
+static const StructInfo gFixedPageUIInfo = {
+    sizeof(FixedPageUI), 10, gFixedPageUIFields,
+    "TextColor\0BackgroundColor\0SelectionColor\0WindowMargin\0PageSpacing\0GradientColors\0InvertColors\0WindowBgCol\0"
+    "FindMatchColor\0JoinSplitPdfImages"};
 
 static const FieldInfo gEBookUIFields[] = {
     {offsetof(EBookUI, fontSize), SettingType::Float, (intptr_t)"0",
@@ -1013,6 +1022,8 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, showTips), SettingType::Bool, false, "在首页显示使用技巧"},
     {offsetof(GlobalPrefs, customColors), SettingType::String, 0, "背景色选择器自定义颜色"},
     {offsetof(GlobalPrefs, showToolbar), SettingType::Bool, true, "显示顶部工具栏"},
+    {offsetof(GlobalPrefs, showAnnotToolbarButtons), SettingType::Bool, true,
+     "工具栏显示矩形/椭圆/直线/画笔快捷标注按钮"},
     {offsetof(GlobalPrefs, searchUIFloating), SettingType::Bool, false, "true=悬浮搜索窗口"},
     {offsetof(GlobalPrefs, offlineDictionaryPath), SettingType::String, 0, "离线词典目录"},
     {offsetof(GlobalPrefs, enableDoubleClickWordLookup), SettingType::Bool, true, "双击查离线词典"},
@@ -1041,7 +1052,8 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, toolbarSize), SettingType::Int, 18, "工具栏高度"},
     {offsetof(GlobalPrefs, treeFontName), SettingType::String, (intptr_t)"automatic", "目录/收藏树字体"},
     {offsetof(GlobalPrefs, treeFontSize), SettingType::Int, 0, "目录/收藏树字号"},
-    {offsetof(GlobalPrefs, treeWrapLabels), SettingType::Bool, false, "目录/收藏树多行显示（关闭则单行+悬停气泡）"},
+    {offsetof(GlobalPrefs, treeWrapLabels), SettingType::Bool, true,
+     "true=书签/收藏长标题多行换行；false=单行省略+悬停显示全文"},
     {offsetof(GlobalPrefs, uIFontSize), SettingType::Int, 0, "界面字体大小"},
     {offsetof(GlobalPrefs, disableAntiAlias), SettingType::Bool, false, "关闭 PDF 抗锯齿"},
     {offsetof(GlobalPrefs, engineeringDrawingEnhance), SettingType::String, (intptr_t)"auto",
@@ -1111,21 +1123,21 @@ static const FieldInfo gGlobalPrefsFields[] = {
      "Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 113, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 114, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0HomePage"
     "ViewMode\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSession\0ReuseInstance\0S"
-    "howMenubar\0ShowMenubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0SearchUIFloating\0OfflineDictionaryPath\0Ena"
-    "bleDoubleClickWordLookup\0AiChatProvider\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAskAI\0ShowFavorites\0ShowToc\0S"
-    "howLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0FastScrollOverScrollbar\0Prev"
-    "entSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme\0LastLightTheme\0DocumentColorMode\0TocDy\0ToolbarSize\0TreeF"
-    "ontName\0TreeFontSize\0TreeWrapLabels\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0UseSysColors\0UseT"
-    "abs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotation"
-    "s\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes"
-    "\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAl"
-    "oudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSmartOnlineVoiceEn\0\0\0DefaultPassw"
-    "ords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0T"
-    "imeOfLastUpdateCheck\0TimeOfUpdateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
+    "howMenubar\0ShowMenubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0ShowAnnotToolbarButtons\0SearchUIFloating\0O"
+    "fflineDictionaryPath\0EnableDoubleClickWordLookup\0AiChatProvider\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAskAI\0"
+    "ShowFavorites\0ShowToc\0ShowLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0Fast"
+    "ScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme\0LastLightTheme\0DocumentColorMode\0"
+    "TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0TreeWrapLabels\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEn"
+    "hance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0Image"
+    "UI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandle"
+    "rs\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh\0ReadAl"
+    "oudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSmartOnline"
+    "VoiceEn\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0S"
+    "essionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfUpdateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)"", "主题名称"},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)"", "文字颜色"},

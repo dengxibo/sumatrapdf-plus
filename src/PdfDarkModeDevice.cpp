@@ -43,11 +43,11 @@ static RectF dm_follow_image_bounds(fz_matrix ctm, const RectF& pageBounds) {
     return dm_to_rect_f(bbox).Intersect(pageBounds);
 }
 
-static DarkImagePolicy dm_follow_image_policy(fz_context* ctx, pdf_dark_mode_device* d, fz_image* image,
-                                              fz_matrix ctm, bool isMask) {
+static DarkImagePolicy dm_follow_image_policy(fz_context* ctx, pdf_dark_mode_device* d, fz_image* image, fz_matrix ctm,
+                                              bool isMask) {
     RectF imgBounds = dm_follow_image_bounds(ctm, d->followPageBounds);
     return PdfDarkModePolicyForFollowThemeImage(imgBounds, isMask, d->followPageBounds, d->followArtworkBounds, ctx,
-                                                image);
+                                                image, d->engineCache);
 }
 
 static void dm_follow_fill_image(fz_context* ctx, pdf_dark_mode_device* d, fz_image* image, fz_matrix ctm, float alpha,
@@ -204,8 +204,7 @@ static void dm_fill_shade(fz_context* ctx, fz_device* dev, fz_shade* shd, fz_mat
     }
 
     fz_try(ctx) {
-        fz_matrix image_ctm =
-            fz_make_matrix((float)w, 0.f, 0.f, (float)h, (float)ibounds.x0, (float)ibounds.y0);
+        fz_matrix image_ctm = fz_make_matrix((float)w, 0.f, 0.f, (float)h, (float)ibounds.x0, (float)ibounds.y0);
         // Alpha was applied when rasterizing the shade into the cached pixmap.
         fz_fill_image(ctx, d->inner, cached, image_ctm, 1.f, color_params);
     }
@@ -249,8 +248,8 @@ static void dm_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_m
         return;
     }
 
-    fz_image* cached = PdfDarkModeGetCachedImage(ctx, d->engineCache, d->analysis, idx, image, policy, *d->palette,
-                                                 d->profileHash);
+    fz_image* cached =
+        PdfDarkModeGetCachedImage(ctx, d->engineCache, d->analysis, idx, image, policy, *d->palette, d->profileHash);
     fz_image* draw = cached ? cached : image;
     fz_try(ctx) {
         fz_fill_image(ctx, d->inner, draw, ctm, alpha, color_params);
@@ -455,8 +454,8 @@ fz_device* PdfDarkModeWrapDevice(fz_context* ctx, fz_device* inner, DarkModePage
 }
 
 fz_device* PdfDarkModeWrapFollowThemeDevice(fz_context* ctx, fz_device* inner, const DarkModePalette* palette,
-                                            const RectF& pageBounds, DarkModeEngineCache* engineCache,
-                                            u32 profileHash, const Vec<RectF>* artworkBounds) {
+                                            const RectF& pageBounds, DarkModeEngineCache* engineCache, u32 profileHash,
+                                            const Vec<RectF>* artworkBounds) {
     pdf_dark_mode_device* d = fz_new_derived_device(ctx, pdf_dark_mode_device);
     d->inner = inner;
     d->analysis = nullptr;

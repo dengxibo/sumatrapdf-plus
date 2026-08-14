@@ -46,11 +46,11 @@ static const char* gIconLayoutContinuous =
   <line x1="3" y1="12" x2="21" y2="12" />
 </svg>)";
 
-// https://github.com/tabler/tabler-icons/blob/master/icons/square.svg
+// Portrait rounded rect: Fit Single Page vs AnnotSquare (square).
 static const char* gIconLayoutSinglePage =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
-  <rect x="4" y="4" width="16" height="16" rx="2" />
+  <rect x="5" y="3" width="14" height="18" rx="2" />
 </svg>)";
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/chevron-left.svg
@@ -353,6 +353,30 @@ static const char* gIconEbookFontSizeIncrease =
   </g>
 </svg>)FONTINC";
 
+static const char* gIconAnnotSquare =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <rect x="4" y="4" width="16" height="16" rx="2" />
+</svg>)";
+
+static const char* gIconAnnotCircle =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <circle cx="12" cy="12" r="8" />
+</svg>)";
+
+static const char* gIconAnnotLine =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <line x1="5" y1="19" x2="19" y2="5" />
+</svg>)";
+
+static const char* gIconAnnotInk =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M4 18 L8 14 L14 11 L20 5" />
+</svg>)";
+
 // must match order in enum class TbIcon
 // clang-format off
 static const char* gIcons[] = {
@@ -393,6 +417,10 @@ static const char* gIcons[] = {
     gIconMatchWholeWord,
     gIconEbookFontSizeDecrease,
     gIconEbookFontSizeIncrease,
+    gIconAnnotSquare,
+    gIconAnnotCircle,
+    gIconAnnotLine,
+    gIconAnnotInk,
 };
 // clang-format on
 

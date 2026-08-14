@@ -41,11 +41,16 @@ static DarkModePalette BuildPaletteFromColors(COLORREF textCol, COLORREF bgCol, 
 }
 
 bool DarkModeProfileUsesObjectLevel(const DarkModeProfile* profile) {
-    return profile && (profile->mode == PageColorMode::SmartDark || profile->mode == PageColorMode::FollowThemeDirect);
+    return profile && (profile->mode == PageColorMode::SmartDark || profile->mode == PageColorMode::FollowThemeDirect ||
+                       profile->mode == PageColorMode::FollowThemeV2);
 }
 
 bool DarkModeProfileUsesFollowThemeDirect(const DarkModeProfile* profile) {
     return profile && profile->mode == PageColorMode::FollowThemeDirect;
+}
+
+bool DarkModeProfileUsesFollowThemeV2(const DarkModeProfile* profile) {
+    return profile && profile->mode == PageColorMode::FollowThemeV2;
 }
 
 bool DarkModeProfileUsesLegacyPostProcess(const DarkModeProfile* profile) {
@@ -82,6 +87,10 @@ u32 PdfDarkModeComputeProfileHash(const DarkModeProfile* profile) {
     h = mix(h, ThemeUsesDarkChrome() ? 1 : 0);
     h = mix(h, ThemeUsesOriginalPageColors() ? 1 : 0);
     h = mix(h, ThemeUsesEyeCareChrome() ? 1 : 0);
+    // Bump when FollowThemeV2 page-image algorithm changes (invalidates tile/image caches).
+    if (profile->mode == PageColorMode::FollowThemeV2) {
+        h = mix(h, 30u); // 30 = crush leftover JPEG text on paper-heavy MRC backgrounds
+    }
     return h;
 }
 
@@ -135,7 +144,7 @@ static void ApplyDocumentColorModeToFixedPageProfile(EngineBase* engine, DarkMod
         // probe completion only refines bitmap-recolor vs wrap for LaTeX-like docs.
         if (EngineSupportsSmartDarkMode(engine) && PdfDarkModeUsesObjectLevel() &&
             PdfFollowThemePreservesEmbeddedImageColors()) {
-            profile->mode = PageColorMode::FollowThemeDirect;
+            profile->mode = PageColorMode::FollowThemeV2;
         } else {
             profile->mode = PageColorMode::PreserveImages;
         }
@@ -150,7 +159,7 @@ static void ApplyDocumentColorModeToFixedPageProfile(EngineBase* engine, DarkMod
         default:
             if (EngineSupportsSmartDarkMode(engine) && PdfDarkModeUsesObjectLevel()) {
                 if (PdfFollowThemePreservesEmbeddedImageColors()) {
-                    profile->mode = PageColorMode::FollowThemeDirect;
+                    profile->mode = PageColorMode::FollowThemeV2;
                 } else if (!ThemeUsesDarkChrome()) {
                     // Light match theme: eye-care page tint via legacy post-process only;
                     // SmartDark remaps photos (highlight crush, picture-book paths).

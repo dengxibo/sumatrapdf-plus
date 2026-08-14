@@ -92,12 +92,17 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::ZoomIn, CmdZoomIn, _TRN("Zoom In")},
     {TbIcon::EbookFontSizeDecrease, CmdEbookFontSizeDecrease, _TRN("Decrease Font Size")},
     {TbIcon::EbookFontSizeIncrease, CmdEbookFontSizeIncrease, _TRN("Increase Font Size")},
+    {TbIcon::None, 0, nullptr}, // separator
     {TbIcon::Search, CmdFindFirst, _TRN("Find")},
     {TbIcon::Dictionary, CmdToggleDoubleClickWordLookup, _TRN("Toggle Double-Click Word Lookup")},
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
     {TbIcon::DocColorFollowTheme, CmdSetPdfDocumentColorModeBlack,
      _TRN("Document Color Mode: Match theme (use current theme colors)")},
     {TbIcon::Speak, CmdReadAloud, _TRN("Read Aloud")},
+    {TbIcon::AnnotSquare, CmdCreateAnnotSquare, _TRN("Rectangle Annotation")},
+    {TbIcon::AnnotCircle, CmdCreateAnnotCircle, _TRN("Circle Annotation")},
+    {TbIcon::AnnotLine, CmdCreateAnnotLine, _TRN("Line Annotation")},
+    {TbIcon::AnnotInk, CmdCreateAnnotInk, _TRN("Ink Annotation")},
 };
 // unicode chars: https://www.compart.com/en/unicode/U+25BC
 
@@ -336,6 +341,14 @@ static bool IsCmdAvailable(MainWindow* win, int cmdId) {
         case CmdSetPdfDocumentColorModeBlack:
         case CmdSetPdfDocumentColorModeLight:
             return NeedsDocumentColorModeUI(win);
+        case CmdCreateAnnotSquare:
+        case CmdCreateAnnotCircle:
+        case CmdCreateAnnotLine:
+        case CmdCreateAnnotInk:
+            if (!gGlobalPrefs->showAnnotToolbarButtons) {
+                return false;
+            }
+            break;
     }
     auto ctx = NewBuildMenuCtx(win->CurrentTab(), Point{0, 0});
     AutoRun delCtx(DeleteBuildMenuCtx, ctx);
@@ -1256,7 +1269,24 @@ void UpdateToolbarFindText(MainWindow* win) {
     FindBarReposition(win);
 }
 
+void UpdateAnnotToolToolbarButtons(MainWindow* win) {
+    if (!win || !win->hwndToolbar) {
+        return;
+    }
+    // Clear all four first so stale per-button toggles cannot stack checked state.
+    SetToolbarButtonCheckedState(win, CmdCreateAnnotSquare, false);
+    SetToolbarButtonCheckedState(win, CmdCreateAnnotCircle, false);
+    SetToolbarButtonCheckedState(win, CmdCreateAnnotLine, false);
+    SetToolbarButtonCheckedState(win, CmdCreateAnnotInk, false);
+    int active = win->annotCreateToolCmd;
+    if (active == CmdCreateAnnotSquare || active == CmdCreateAnnotCircle || active == CmdCreateAnnotLine ||
+        active == CmdCreateAnnotInk) {
+        SetToolbarButtonCheckedState(win, active, true);
+    }
+}
+
 void UpdateToolbarState(MainWindow* win) {
+    UpdateAnnotToolToolbarButtons(win);
     UpdatePdfDocumentColorModeToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
     if (!win->IsDocLoaded()) {
@@ -2333,7 +2363,8 @@ bool HandleMenuBarCommand(MainWindow* win, int cmdId) {
         gMenuBarPopupNav.nextMenuIdx = menuIdx;
 
         MenuRefreshStateForWindow(win);
-        MarkMenuOwnerDraw(subMenu, false);
+        // Current popup only; nested (Theme / fonts / …) marked on their INITMENUPOPUP.
+        MarkMenuOwnerDraw(subMenu, false, false);
         SetForegroundWindow(win->hwndFrame);
         HHOOK hook = SetWindowsHookExW(WH_MSGFILTER, MenuBarMsgFilterHook, nullptr, GetCurrentThreadId());
         TrackPopupMenuEx(subMenu, flags, anchor.x, anchor.y + anchor.dy, win->hwndFrame, &tpm);

@@ -282,6 +282,7 @@ void TabsSelect(MainWindow* win, int tabIndex) {
 
     // same work as in onSelectionChanging and onSelectionChanged
     SaveCurrentWindowTab(win);
+    ResetFindUIForTabSwitch(win);
     int prevIdx = tabsCtrl->SetSelected(tabIndex);
     if (prevIdx < 0) {
         return;

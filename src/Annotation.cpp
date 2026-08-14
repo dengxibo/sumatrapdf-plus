@@ -999,7 +999,7 @@ static AnnotationType moveableAnnotations[] = {
     AnnotationType::Text,           AnnotationType::FreeText, AnnotationType::Square, AnnotationType::Circle,
     AnnotationType::Redact,         AnnotationType::Stamp,    AnnotationType::Caret,  AnnotationType::Popup,
     AnnotationType::FileAttachment, AnnotationType::Sound,    AnnotationType::Movie,  AnnotationType::Widget,
-    AnnotationType::Line,
+    AnnotationType::Line,         AnnotationType::Ink,
 };
 
 static AnnotationType supportsBorder[] = {
@@ -1267,6 +1267,75 @@ Annotation* EngineMupdfCreateAnnotation(EngineBase* engine, int pageNo, PointF p
                 SetColor(res, col.pdfCol);
                 break;
         }
+    }
+    pdf_drop_annot(ctx, annot);
+    return res;
+}
+
+Annotation* EngineMupdfCreateAnnotationInRect(EngineBase* engine, int pageNo, RectF rect, AnnotCreateArgs* args) {
+    if (rect.dx < 1.f && rect.dy < 1.f) {
+        return nullptr;
+    }
+    PointF pos{rect.x, rect.y};
+    Annotation* annot = EngineMupdfCreateAnnotation(engine, pageNo, pos, args);
+    if (!annot) {
+        return nullptr;
+    }
+    SetRect(annot, rect);
+    return annot;
+}
+
+Annotation* EngineMupdfCreateAnnotationInkStroke(EngineBase* engine, int pageNo, PointF* pts, int count,
+                                                 AnnotCreateArgs* args) {
+    if (!pts || count < 2) {
+        return nullptr;
+    }
+    EngineMupdf* epdf = AsEngineMupdf(engine);
+    fz_context* ctx = epdf->Ctx();
+    auto pageInfo = epdf->GetFzPageInfo(pageNo, true);
+    pdf_annot* annot = nullptr;
+    {
+        ScopedCritSec cs(&epdf->docLock);
+        fz_try(ctx) {
+            auto page = pdf_page_from_fz_page(ctx, pageInfo->page);
+            annot = pdf_create_annot(ctx, page, PDF_ANNOT_INK);
+            pdf_set_annot_modification_date(ctx, annot, time(nullptr));
+            if (pdf_annot_has_author(ctx, annot)) {
+                char* defAuthor = gGlobalPrefs->annotations.defaultAuthor;
+                if (!str::Eq(defAuthor, "(none)")) {
+                    const char* author = getuser();
+                    if (!str::IsEmptyOrWhiteSpace(defAuthor)) {
+                        author = defAuthor;
+                    }
+                    pdf_set_annot_author(ctx, annot, author);
+                }
+            }
+            int nstrokes = 1;
+            int strokeCounts[1] = {count};
+            fz_point* fzpts = (fz_point*)fz_malloc_array(ctx, count, fz_point);
+            for (int i = 0; i < count; i++) {
+                fzpts[i].x = pts[i].x;
+                fzpts[i].y = pts[i].y;
+            }
+            pdf_set_annot_ink_list(ctx, annot, nstrokes, strokeCounts, fzpts);
+            fz_free(ctx, fzpts);
+            pdf_update_annot(ctx, annot);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+            if (annot) {
+                pdf_drop_annot(ctx, annot);
+                annot = nullptr;
+            }
+        }
+    }
+    if (!annot) {
+        return nullptr;
+    }
+    auto res = MakeAnnotationWrapper(epdf, annot, pageNo);
+    MarkNotificationAsModified(epdf, res, AnnotationChange::Add);
+    if (args->col.parsedOk) {
+        SetColor(res, args->col.pdfCol);
     }
     pdf_drop_annot(ctx, annot);
     return res;
@@ -1881,6 +1950,10 @@ bool AnnotationSupportsMediaPlayback(AnnotationType tp) {
     return tp == AnnotationType::Sound || tp == AnnotationType::RichMedia || tp == AnnotationType::Screen;
 }
 
+static u64 PdfMediaPlayToken(EngineMupdf* engine, int objNum) {
+    return ((u64)(uintptr_t)engine) ^ (((u64)(u32)objNum << 1) | 1ull);
+}
+
 bool PlaySoundAnnotation(Annotation* annot) {
     if (!annot || !annot->pdfannot || !annot->engine) {
         return false;
@@ -1894,6 +1967,21 @@ bool PlaySoundAnnotation(Annotation* annot) {
         return false;
     }
     ScopedCritSec cs(&engine->docLock);
+    int objNum = 0;
+    fz_try(ctx) {
+        pdf_obj* annotObj = pdf_annot_obj(ctx, annot->pdfannot);
+        objNum = pdf_to_num(ctx, annotObj);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        return false;
+    }
+    u64 token = PdfMediaPlayToken(engine, objNum);
+    // Second click on the same speaker stops playback immediately.
+    if (LookupAudioIsPlaying() && LookupAudioPlayToken() == token) {
+        LookupAudioStop();
+        return true;
+    }
     bool ok = false;
     fz_try(ctx) {
         pdf_obj* annotObj = pdf_annot_obj(ctx, annot->pdfannot);
@@ -1914,6 +2002,9 @@ bool PlaySoundAnnotation(Annotation* annot) {
     fz_catch(ctx) {
         fz_report_error(ctx);
         ok = false;
+    }
+    if (ok) {
+        LookupAudioSetPlayToken(token);
     }
     return ok;
 }

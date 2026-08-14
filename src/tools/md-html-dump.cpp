@@ -119,9 +119,10 @@ blockquote { border-left: 4px solid #d0d7de; padding-left: 1em; }
         free(body.data);
         return 1;
     }
-    int n = snprintf(out, outCap,
-                     "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>%s</style></head><body>\n%s\n</body></html>\n",
-                     kCss, body.data);
+    int n = snprintf(
+        out, outCap,
+        "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>%s</style></head><body>\n%s\n</body></html>\n", kCss,
+        body.data);
     if (n < 0 || (size_t)n >= outCap) {
         free(out);
         free(body.data);

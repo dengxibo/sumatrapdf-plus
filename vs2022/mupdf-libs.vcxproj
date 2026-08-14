@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -996,7 +996,9 @@
     <ClCompile Include="..\ext\brotli\c\dec\bit_reader.c" />
     <ClCompile Include="..\ext\brotli\c\dec\decode.c" />
     <ClCompile Include="..\ext\brotli\c\dec\huffman.c" />
+    <ClCompile Include="..\ext\brotli\c\dec\prefix.c" />
     <ClCompile Include="..\ext\brotli\c\dec\state.c" />
+    <ClCompile Include="..\ext\brotli\c\dec\static_init.c" />
     <ClCompile Include="..\ext\brotli\c\enc\backward_references.c" />
     <ClCompile Include="..\ext\brotli\c\enc\backward_references_hq.c" />
     <ClCompile Include="..\ext\brotli\c\enc\bit_cost.c" />
@@ -1017,6 +1019,10 @@
     <ClCompile Include="..\ext\brotli\c\enc\memory.c" />
     <ClCompile Include="..\ext\brotli\c\enc\metablock.c" />
     <ClCompile Include="..\ext\brotli\c\enc\static_dict.c" />
+    <ClCompile Include="..\ext\brotli\c\enc\static_dict_lut.c" />
+    <ClCompile Include="..\ext\brotli\c\enc\static_init.c">
+      <ObjectFileName>$(IntDir)\static_init1.obj</ObjectFileName>
+    </ClCompile>
     <ClCompile Include="..\ext\brotli\c\enc\utf8_util.c" />
     <ClCompile Include="..\ext\extract\src\alloc.c" />
     <ClCompile Include="..\ext\extract\src\astring.c" />

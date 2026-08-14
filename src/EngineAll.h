@@ -92,6 +92,9 @@ EngineBase* CreateEngineMupdfFromData(const ByteSlice& data, const char* nameHin
 ByteSlice LoadEmbeddedPDFFile(const char* path);
 const char* ParseEmbeddedStreamNumber(const char* path, int* streamNoOut);
 Annotation* EngineMupdfCreateAnnotation(EngineBase*, int pageNo, PointF pos, AnnotCreateArgs* args);
+Annotation* EngineMupdfCreateAnnotationInRect(EngineBase*, int pageNo, RectF rect, AnnotCreateArgs* args);
+Annotation* EngineMupdfCreateAnnotationInkStroke(EngineBase*, int pageNo, PointF* pts, int count,
+                                                 AnnotCreateArgs* args);
 void EngineMupdfGetAnnotations(EngineBase*, Vec<Annotation*>&);
 bool EngineMupdfHasUnsavedAnnotations(EngineBase*);
 bool EngineMupdfHasUnsavedPdfChanges(EngineBase*);
@@ -154,8 +157,18 @@ bool EngineMupdfRelayoutForFontSizeChange(EngineBase* engine);
 // (theme change, annotation edit) can access the document without being starved.
 // Safe to call when not loading (no-op). Use ReflowLoadingPauseScope for RAII.
 void EngineMupdfSetReflowLoadingPaused(EngineBase* engine, bool paused);
+// Drop a pending UI docLock request so a background EPUB loader can continue
+// after the user leaves a tab that was waiting to apply theme CSS.
+void EngineMupdfClearReflowUiWantsDocLock(EngineBase* engine);
+// Background EPUB tabs should not keep counting chapters. Call with
+// foreground=false on attach-to-background and when leaving a tab; true when
+// the tab becomes current so progressive load can start.
+void EngineMupdfSetReflowLoadWhenForeground(EngineBase* engine, bool foreground);
 // Signal background reflow/counting/warm threads to stop (e.g. on application close).
 void EngineMupdfAbortBackgroundWork(EngineBase* engine);
+void EngineMupdfAbortAndWaitBackgroundWork(EngineBase* engine);
+// Mark recent UI reading activity so background chapter counting yields docLock.
+void EngineMupdfTouchReadingActivity(EngineBase* engine);
 struct ReflowLoadingPauseScope {
     EngineBase* engine = nullptr;
     explicit ReflowLoadingPauseScope(EngineBase* e) : engine(e) { EngineMupdfSetReflowLoadingPaused(engine, true); }

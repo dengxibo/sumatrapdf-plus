@@ -924,13 +924,16 @@ void DrawAboutPage(MainWindow* win, HDC hdc) {
 
 constexpr int kThumbsSeparatorDy = 2;
 constexpr int kThumbsBorderDx = 1;
-#define kThumbsMarginLeft DpiScale(hdc, 40)
-#define kThumbsMarginRight DpiScale(hdc, 40)
-#define kThumbsMarginTop DpiScale(hdc, 50)
-#define kThumbsMarginBottom DpiScale(hdc, 40)
-#define kThumbsSpaceBetweenX DpiScale(hdc, 38)
-#define kThumbsSpaceBetweenY DpiScale(hdc, 58)
-#define kThumbsBottomBoxDy DpiScale(hdc, 50)
+// Use window DPI (not the paint/buffer HDC). CreateCompatibleDC memory DCs often
+// report 96 DPI under PerMonitorV2, which made layout row pitch disagree with
+// scroll redraw via HomePageItemRect and crushed rows after the first gap.
+#define kThumbsMarginLeft DpiScale(dpiHwnd, 40)
+#define kThumbsMarginRight DpiScale(dpiHwnd, 40)
+#define kThumbsMarginTop DpiScale(dpiHwnd, 50)
+#define kThumbsMarginBottom DpiScale(dpiHwnd, 40)
+#define kThumbsSpaceBetweenX DpiScale(dpiHwnd, 38)
+#define kThumbsSpaceBetweenY DpiScale(dpiHwnd, 58)
+#define kThumbsBottomBoxDy DpiScale(dpiHwnd, 50)
 
 static int HomePageListRowDy(HWND hwnd) {
     return DpiScale(hwnd, 58);
@@ -950,6 +953,110 @@ static int HomePageListThumbDy(HWND hwnd) {
 
 static int HomePageListGapDx(HWND hwnd) {
     return DpiScale(hwnd, 8);
+}
+
+// Keep the historic "MS Shell Dlg" 14pt look (CreateSimpleFont uses the paint
+// HDC DPI). Row label height must be measured from that same font — hwnd-DPI
+// DpiScale(20) was shorter than tmHeight when hdcDpi > hwndDpi and clipped text.
+static HFONT HomePageThumbLabelFont(HDC hdc) {
+    return CreateSimpleFont(hdc, "MS Shell Dlg", 14);
+}
+
+static int HomePageThumbLabelDy(HWND hwnd, HDC hdc, HFONT font) {
+    TEXTMETRIC tm{};
+    HFONT old = (HFONT)SelectObject(hdc, font);
+    GetTextMetrics(hdc, &tm);
+    SelectObject(hdc, old);
+    int fromFont = tm.tmHeight + tm.tmExternalLeading;
+    int minDy = DpiScale(hwnd, 20);
+    return std::max(minDy, fromFont);
+}
+
+// Gap between thumbnail bottom and filename (keep tight; do not vertically
+// center the label in the full row gap — that left ~18px empty under the thumb).
+static int HomePageThumbLabelGapY(HWND hwnd) {
+    return DpiScale(hwnd, 6);
+}
+
+static void GetFileStateIcon(FileState* fs);
+
+static int HomePageThumbSpaceBetweenY(MainWindow* win) {
+    int spaceY = win && win->homePageRowDy > kThumbnailDy ? win->homePageRowDy - kThumbnailDy : 0;
+    if (spaceY <= 0 && win) {
+        spaceY = DpiScale(win->hwndCanvas, 58);
+    }
+    return spaceY;
+}
+
+// Full-width label band under the thumbnail. Icon+filename are horizontally
+// centered inside this band when drawing.
+static Rect HomePageThumbTextRect(HWND hwnd, const Rect& rcPage, int labelDy, int spaceBetweenY, bool) {
+    int padY = HomePageThumbLabelGapY(hwnd);
+    if (spaceBetweenY > 0 && padY + labelDy > spaceBetweenY) {
+        padY = std::max(0, spaceBetweenY - labelDy);
+    }
+    return Rect(rcPage.x, rcPage.y + rcPage.dy + padY, rcPage.dx, labelDy);
+}
+
+struct HomePageThumbLabelLayout {
+    Rect rcIcon;
+    Rect rcText;
+    int blockX = 0;
+    int blockDx = 0;
+    int padLeft = 0;
+    int padRight = 0;
+};
+
+static HomePageThumbLabelLayout LayoutHomePageThumbLabel(HWND hwnd, HDC hdc, const Rect& page, const Rect& rcBand,
+                                                         FileState* fs, const char* fileName, HFONT font, bool isRtl) {
+    HomePageThumbLabelLayout out{};
+    GetFileStateIcon(fs);
+    int iconDx = 0, iconDy = 0;
+    if (fs->himl) {
+        ImageList_GetIconSize(fs->himl, &iconDx, &iconDy);
+    }
+    int gap = DpiScale(hwnd, 4);
+    HFONT old = (HFONT)SelectObject(hdc, font);
+    Size textSz = HdcMeasureText(hdc, fileName, DT_SINGLELINE | DT_NOPREFIX, font);
+    SelectObject(hdc, old);
+
+    int maxTextDx = std::max(0, page.dx - iconDx - gap);
+    int textDx = std::min(textSz.dx, maxTextDx);
+    out.blockDx = iconDx + (iconDx > 0 ? gap : 0) + textDx;
+    out.blockX = page.x + (page.dx - out.blockDx) / 2;
+    out.padLeft = out.blockX - page.x;
+    out.padRight = (page.x + page.dx) - (out.blockX + out.blockDx);
+
+    int iconY = rcBand.y + (rcBand.dy - iconDy) / 2;
+    if (isRtl) {
+        out.rcText = {out.blockX, rcBand.y, textDx, rcBand.dy};
+        out.rcIcon = {out.blockX + textDx + (iconDx > 0 ? gap : 0), iconY, iconDx, iconDy};
+    } else {
+        out.rcIcon = {out.blockX, iconY, iconDx, iconDy};
+        out.rcText = {out.blockX + iconDx + (iconDx > 0 ? gap : 0), rcBand.y, textDx, rcBand.dy};
+    }
+    return out;
+}
+
+static void DrawHomePageThumbLabel(HWND hwnd, HDC hdc, const Rect& page, const Rect& rcBand, FileState* fs,
+                                   const char* fileName, HFONT font, StrVec& filterWords, Vec<u8>& highlighted,
+                                   bool isRtl, COLORREF backgroundColor) {
+    HomePageThumbLabelLayout lay = LayoutHomePageThumbLabel(hwnd, hdc, page, rcBand, fs, fileName, font, isRtl);
+    SelectObject(hdc, font);
+    UINT fmt = DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX | (isRtl ? DT_RIGHT : DT_LEFT);
+    RECT rcTextWin = {lay.rcText.x, lay.rcText.y, lay.rcText.x + lay.rcText.dx, lay.rcText.y + lay.rcText.dy};
+    DrawMaybeHighlightedTextArgs hlArgs(filterWords, highlighted);
+    hlArgs.hdc = hdc;
+    hlArgs.rc = rcTextWin;
+    hlArgs.text = fileName;
+    hlArgs.colBg = backgroundColor;
+    hlArgs.isRtl = isRtl;
+    hlArgs.drawFmt = fmt;
+    DrawMaybeHighlightedText(hlArgs);
+
+    if (fs->himl) {
+        ImageList_Draw(fs->himl, fs->iconIdx, hdc, lay.rcIcon.x, lay.rcIcon.y, ILD_TRANSPARENT);
+    }
 }
 
 static bool HomePageUsesListView() {
@@ -1220,6 +1327,7 @@ void LayoutHomePage(HomePageLayout& l) {
     auto hdc = l.hdc;
     auto rc = l.rc;
     auto win = l.win;
+    HWND dpiHwnd = win->hwndCanvas ? win->hwndCanvas : hwnd;
 
     // filter by search query if present
     TempStr searchQuery = nullptr;
@@ -1268,8 +1376,8 @@ void LayoutHomePage(HomePageLayout& l) {
                        (rc.dx - thumbsColsForLayout * kThumbnailDx - (thumbsColsForLayout - 1) * kThumbsSpaceBetweenX -
                         kThumbsMarginLeft - kThumbsMarginRight) /
                            2;
-    if (thumbsStartX < DpiScale(hdc, kInnerPadding)) {
-        thumbsStartX = DpiScale(hdc, kInnerPadding);
+    if (thumbsStartX < DpiScale(dpiHwnd, kInnerPadding)) {
+        thumbsStartX = DpiScale(dpiHwnd, kInnerPadding);
     } else if (nFilesForLayout == 0) {
         thumbsStartX = kThumbsMarginLeft;
     }
@@ -1291,9 +1399,9 @@ void LayoutHomePage(HomePageLayout& l) {
     hdr->isRtl = isRtl;
     Size txtSize = hdr->GetIdealSize(true);
 
-    int hdrY = DpiScale(hdc, 8);
-    int iconGap = DpiScale(hdc, 4);
-    int titleGap = DpiScale(hdc, 8);
+    int hdrY = DpiScale(dpiHwnd, 8);
+    int iconGap = DpiScale(dpiHwnd, 4);
+    int titleGap = DpiScale(dpiHwnd, 8);
     int viewIconsDx = 2 * rcIconView.dx + iconGap;
     Rect rcHdr(thumbsStartX + viewIconsDx + titleGap, hdrY, txtSize.dx, txtSize.dy);
     l.rcIconThumbnailView = {thumbsStartX, rcHdr.y + (rcHdr.dy - rcIconView.dy) / 2, rcIconView.dx, rcIconView.dy};
@@ -1319,7 +1427,7 @@ void LayoutHomePage(HomePageLayout& l) {
     openDoc->withUnderline = true;
     txtSize = openDoc->GetIdealSize(true);
 
-    int openDocSpacing = DpiScale(hdc, 16);
+    int openDocSpacing = DpiScale(dpiHwnd, 16);
     rcIconOpen.x = rcHdr.x + rcHdr.dx + openDocSpacing;
     rcIconOpen.y = rcHdr.y + rcHdr.dy - rcIconOpen.dy - kOpenDocumentYShift + 3;
     if (isRtl) {
@@ -1344,13 +1452,13 @@ void LayoutHomePage(HomePageLayout& l) {
 
     // --- Position search edit below header ---
     EnsureHomeSearchCreated(win);
-    int searchEditDy = DpiScale(hdc, kSearchEditDy);
-    int headerSearchGap = DpiScale(hdc, kHeaderSearchGapY);
-    int searchThumbsGap = DpiScale(hdc, kSearchThumbnailsGapY);
+    int searchEditDy = DpiScale(dpiHwnd, kSearchEditDy);
+    int headerSearchGap = DpiScale(dpiHwnd, kHeaderSearchGapY);
+    int searchThumbsGap = DpiScale(dpiHwnd, kSearchThumbnailsGapY);
     {
         int borderDx = thumbsContentWidth * 3 / 4;
-        if (borderDx < DpiScale(hdc, 200)) {
-            borderDx = DpiScale(hdc, 200);
+        if (borderDx < DpiScale(dpiHwnd, 200)) {
+            borderDx = DpiScale(dpiHwnd, 200);
         }
         int borderX = thumbsStartX + (thumbsContentWidth - borderDx) / 2;
         int borderY = headerBottomY + headerSearchGap;
@@ -1384,7 +1492,7 @@ void LayoutHomePage(HomePageLayout& l) {
     }
     if (tip) {
         MeasureTipWords(*tip, hdc, fontTip);
-        int tipPadding = DpiScale(hdc, 8);
+        int tipPadding = DpiScale(dpiHwnd, 8);
         // do a preliminary layout to get the height (use thumbnails content width)
         int tipTextWidth = thumbsColsForLayout * kThumbnailDx + (thumbsColsForLayout - 1) * kThumbsSpaceBetweenX;
         LayoutTip(*tip, tipTextWidth, 0, 0);
@@ -1437,8 +1545,13 @@ void LayoutHomePage(HomePageLayout& l) {
     } else {
         int thumbsCols = thumbsColsForLayout;
         int thumbsRows = (nFiles + thumbsCols - 1) / thumbsCols;
-        contentDy = thumbsRows * (kThumbnailDy + kThumbsSpaceBetweenY) - kThumbsSpaceBetweenY;
-        rowDy = kThumbnailDy + kThumbsSpaceBetweenY;
+        HFONT labelFont = HomePageThumbLabelFont(hdc);
+        int labelDy = HomePageThumbLabelDy(dpiHwnd, hdc, labelFont);
+        int labelGapY = HomePageThumbLabelGapY(dpiHwnd);
+        int spaceBetweenY = std::max(kThumbsSpaceBetweenY, labelGapY + labelDy + DpiScale(dpiHwnd, 12));
+        rowDy = kThumbnailDy + spaceBetweenY;
+        // include last row's filename band in scrollable content height
+        contentDy = thumbsRows > 0 ? (thumbsRows - 1) * rowDy + kThumbnailDy + labelGapY + labelDy : 0;
 
         int scrollY = win->homePageScrollY;
         int maxScrollY = std::max(0, contentDy - thumbsVisibleDy);
@@ -1463,8 +1576,8 @@ void LayoutHomePage(HomePageLayout& l) {
                 FileState* fs = fileStates.at(row * thumbsCols + col);
                 thumb.fs = fs;
 
-                Rect rcPage(ptOff.x + col * (kThumbnailDx + kThumbsSpaceBetweenX),
-                            ptOff.y + row * (kThumbnailDy + kThumbsSpaceBetweenY), kThumbnailDx, kThumbnailDy);
+                Rect rcPage(ptOff.x + col * (kThumbnailDx + kThumbsSpaceBetweenX), ptOff.y + row * rowDy, kThumbnailDx,
+                            kThumbnailDy);
                 if (isRtl) {
                     rcPage.x = rc.dx - rcPage.x - rcPage.dx;
                 }
@@ -1473,14 +1586,9 @@ void LayoutHomePage(HomePageLayout& l) {
                     thumb.szThumb = thumbImg->GetSize();
                 }
                 thumb.rcPage = rcPage;
-                int iconSpace = DpiScale(hdc, 20);
-                Rect rcText(rcPage.x + iconSpace, rcPage.y + rcPage.dy + 3, rcPage.dx - iconSpace, iconSpace);
-                if (isRtl) {
-                    rcText.x -= iconSpace;
-                }
-                thumb.rcText = rcText;
+                thumb.rcText = HomePageThumbTextRect(dpiHwnd, rcPage, labelDy, spaceBetweenY, isRtl);
                 char* path = fs->filePath;
-                Rect slRect = rcText.Union(rcPage).Intersect(l.rcThumbsArea);
+                Rect slRect = thumb.rcText.Union(rcPage).Intersect(l.rcThumbsArea);
                 if (!slRect.IsEmpty()) {
                     thumb.sl = new StaticLink(slRect, path, path);
                     win->staticLinks.Append(thumb.sl);
@@ -1490,11 +1598,12 @@ void LayoutHomePage(HomePageLayout& l) {
     }
     win->homePageListView = listView;
     win->homePageRowDy = rowDy;
+    win->homePageColDx = listView ? 0 : (kThumbnailDx + kThumbsSpaceBetweenX);
 
     // layout tip at the bottom
     if (tip) {
         Rect rcClient = ClientRect(win->hwndCanvas);
-        int tipPadding = DpiScale(hdc, 8);
+        int tipPadding = DpiScale(dpiHwnd, 8);
 
         int tipY = rcClient.dy - tipHeight;
         // background spans full window width
@@ -1782,7 +1891,7 @@ static void DrawHomePageLayout(HomePageLayout& l) {
         ScopedSelectObject pen(hdc, CreatePen(PS_SOLID, 1, color), true);
         DrawLine(hdc, l.rcLine);
     }
-    HFONT fontText = CreateSimpleFont(hdc, "MS Shell Dlg", 14);
+    HFONT fontText = HomePageThumbLabelFont(hdc);
 
     AutoDeletePen penThumbBorder(CreatePen(PS_SOLID, kThumbsBorderDx, ThemeThumbnailBorderColor()));
     color = ThemeWindowLinkColor();
@@ -1822,24 +1931,9 @@ static void DrawHomePageLayout(HomePageLayout& l) {
             const Rect& rect = thumb.rcText;
             char* path = fs->filePath;
             TempStr fileName = path::GetBaseNameTemp(path);
-            UINT fmt = DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX | (isRtl ? DT_RIGHT : DT_LEFT);
 
-            SelectObject(hdc, fontText);
-            {
-                RECT rcText = {rect.x, rect.y, rect.x + rect.dx, rect.y + rect.dy};
-                DrawMaybeHighlightedTextArgs hlArgs(l.filterWords, l.highlighted);
-                hlArgs.hdc = hdc;
-                hlArgs.rc = rcText;
-                hlArgs.text = fileName;
-                hlArgs.colBg = backgroundColor;
-                hlArgs.isRtl = isRtl;
-                hlArgs.drawFmt = fmt;
-                DrawMaybeHighlightedText(hlArgs);
-            }
-
-            GetFileStateIcon(fs);
-            int x = isRtl ? page.x + page.dx - DpiScale(hdc, 16) : page.x;
-            ImageList_Draw(fs->himl, fs->iconIdx, hdc, x, rect.y, ILD_TRANSPARENT);
+            DrawHomePageThumbLabel(win->hwndCanvas, hdc, page, rect, fs, fileName, fontText, l.filterWords,
+                                   l.highlighted, isRtl, backgroundColor);
         }
     }
 
@@ -2005,10 +2099,19 @@ static Rect HomePageItemRect(MainWindow* win, int idx, int scrollY) {
     }
 
     int cols = win->homePageThumbsCols;
+    if (cols <= 0) {
+        cols = 1;
+    }
     int row = idx / cols;
     int col = idx % cols;
-    int rowDy = kThumbnailDy + DpiScale(win->hwndCanvas, 58);
-    int colDx = kThumbnailDx + DpiScale(win->hwndCanvas, 38);
+    int rowDy = win->homePageRowDy;
+    int colDx = win->homePageColDx;
+    if (rowDy <= 0) {
+        rowDy = kThumbnailDy + DpiScale(win->hwndCanvas, 58);
+    }
+    if (colDx <= 0) {
+        colDx = kThumbnailDx + DpiScale(win->hwndCanvas, 38);
+    }
     Rect rcPage(win->homePageThumbsStartX + col * colDx, win->homePageThumbsTopY - scrollY + row * rowDy, kThumbnailDx,
                 kThumbnailDy);
     if (IsUIRtl()) {
@@ -2033,11 +2136,10 @@ static void HomePageRebuildItemLinks(MainWindow* win, int scrollY) {
             LayoutHomeListItem(win->hwndCanvas, hdc, rcItem, fs, actionIconDx, IsUIRtl(), item);
             AppendHomeListItemLinks(win, item, ta);
         } else {
-            int iconSpace = DpiScale(win->hwndCanvas, 20);
-            Rect rcText(rcItem.x + iconSpace, rcItem.y + rcItem.dy + 3, rcItem.dx - iconSpace, iconSpace);
-            if (IsUIRtl()) {
-                rcText.x -= iconSpace;
-            }
+            HFONT labelFont = HomePageThumbLabelFont(hdc);
+            int labelDy = HomePageThumbLabelDy(win->hwndCanvas, hdc, labelFont);
+            Rect rcText =
+                HomePageThumbTextRect(win->hwndCanvas, rcItem, labelDy, HomePageThumbSpaceBetweenY(win), IsUIRtl());
             Rect slRect = rcText.Union(rcItem).Intersect(ta);
             if (!slRect.IsEmpty()) {
                 auto sl = new StaticLink(slRect, fs->filePath, fs->filePath);
@@ -2065,34 +2167,16 @@ static void HomePageDrawThumbnailAt(MainWindow* win, HDC hdc, FileState* fs, int
     RenderedBitmap* thumbImg = LoadThumbnail(fs);
     DrawThumbnailCard(hdc, rcPage, fs, thumbImg, borderPen, fastDraw);
 
-    int iconSpace = DpiScale(hdc, 20);
-    Rect rcText(rcPage.x + iconSpace, rcPage.y + rcPage.dy + 3, rcPage.dx - iconSpace, iconSpace);
-    if (IsUIRtl()) {
-        rcText.x -= iconSpace;
-    }
+    HFONT fontText = HomePageThumbLabelFont(hdc);
+    int labelDy = HomePageThumbLabelDy(win->hwndCanvas, hdc, fontText);
+    Rect rcText = HomePageThumbTextRect(win->hwndCanvas, rcPage, labelDy, HomePageThumbSpaceBetweenY(win), IsUIRtl());
 
-    HFONT fontText = CreateSimpleFont(hdc, "MS Shell Dlg", 14);
     char* path = fs->filePath;
     TempStr fileName = path::GetBaseNameTemp(path);
-    UINT fmt = DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX | (IsUIRtl() ? DT_RIGHT : DT_LEFT);
     auto backgroundColor = ThemeMainWindowBackgroundColor();
 
-    SelectObject(hdc, fontText);
-    {
-        RECT rcTextWin = {rcText.x, rcText.y, rcText.x + rcText.dx, rcText.y + rcText.dy};
-        DrawMaybeHighlightedTextArgs hlArgs(win->homePageFilterWords, win->homePageHighlighted);
-        hlArgs.hdc = hdc;
-        hlArgs.rc = rcTextWin;
-        hlArgs.text = fileName;
-        hlArgs.colBg = backgroundColor;
-        hlArgs.isRtl = IsUIRtl();
-        hlArgs.drawFmt = fmt;
-        DrawMaybeHighlightedText(hlArgs);
-    }
-
-    GetFileStateIcon(fs);
-    int x = IsUIRtl() ? rcPage.x + rcPage.dx - DpiScale(hdc, 16) : rcPage.x;
-    ImageList_Draw(fs->himl, fs->iconIdx, hdc, x, rcText.y, ILD_TRANSPARENT);
+    DrawHomePageThumbLabel(win->hwndCanvas, hdc, rcPage, rcText, fs, fileName, fontText, win->homePageFilterWords,
+                           win->homePageHighlighted, IsUIRtl(), backgroundColor);
 }
 
 static void HomePageDrawItemsInRect(MainWindow* win, HDC hdc, const Rect& clipRect, int scrollY, bool fastDraw) {
@@ -2118,9 +2202,16 @@ static void HomePageDrawItemsInRect(MainWindow* win, HDC hdc, const Rect& clipRe
     } else {
         AutoDeletePen penThumbBorder(CreatePen(PS_SOLID, kThumbsBorderDx, ThemeThumbnailBorderColor()));
         SelectObject(hdc, penThumbBorder);
+        HFONT labelFont = HomePageThumbLabelFont(hdc);
+        int labelDy = HomePageThumbLabelDy(win->hwndCanvas, hdc, labelFont);
+        int spaceBetweenY = HomePageThumbSpaceBetweenY(win);
         for (int idx = 0; idx < win->homePageFileStates.Size(); idx++) {
             Rect rcPage = HomePageItemRect(win, idx, scrollY);
-            if (rcPage.Intersect(clipRect).IsEmpty()) {
+            // Include filename band: expose strips often cover only the label while the
+            // thumbnail page sits just above, and testing page-only skipped redraws.
+            Rect rcItem =
+                HomePageThumbTextRect(win->hwndCanvas, rcPage, labelDy, spaceBetweenY, IsUIRtl()).Union(rcPage);
+            if (rcItem.Intersect(clipRect).IsEmpty()) {
                 continue;
             }
             HomePageDrawThumbnailAt(win, hdc, win->homePageFileStates[idx], idx, scrollY, penThumbBorder, fastDraw);
@@ -2277,8 +2368,8 @@ void DrawHomePage(MainWindow* win, HDC hdc) {
             // Thick (always visible) on the home page so overflow is obvious;
             // document view restores Smart/Overlay mode via UpdateScrollbars.
             if (!win->overlayScrollV) {
-                win->overlayScrollV =
-                    OverlayScrollbarCreate(win->hwndCanvas, OverlayScrollbar::Type::Vert, OverlayScrollbar::Mode::Thick);
+                win->overlayScrollV = OverlayScrollbarCreate(win->hwndCanvas, OverlayScrollbar::Type::Vert,
+                                                             OverlayScrollbar::Mode::Thick);
             } else {
                 OverlayScrollbarSetMode(win->overlayScrollV, OverlayScrollbar::Mode::Thick);
             }

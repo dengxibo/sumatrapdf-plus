@@ -92,6 +92,22 @@ static DarkImageFeatures SoftCreamNotebookFullBleedFeatures() {
     return f;
 }
 
+// RAZ Telescopes "Galileo's Dilemma": warm cream panel + historical diagram — paper chroma
+// without saturated ink; must SoftCream, not muddy picture-book steep remap.
+static DarkImageFeatures WarmCreamGalileoPageFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 18.f / 4096.f;
+    f.highLuminanceRatio = 0.92f;
+    f.saturatedPixelRatio = 0.019f;
+    f.chromaticPixelRatio = 0.31f;
+    f.luminanceVariance = 0.010f;
+    f.borderLightRatio = 0.90f;
+    f.borderUniformity = 0.72f;
+    f.flatAreaRatio = 0.42f;
+    return f;
+}
+
 // 小家越住越大 page 62: paper grid + colored figure block — whole-tile recolor, not picture-book rects.
 static DarkImageFeatures XiaojiaNotebookIllustrationPage62Features() {
     DarkImageFeatures f;
@@ -279,6 +295,16 @@ static DarkImageFeatures LianhuanhuaBwLineArtScanFeatures() {
     return f;
 }
 
+// Dense hatching (红楼梦·尤二姐 style panels): higher lumVar but still paper-dominated line art.
+static DarkImageFeatures LianhuanhuaDenseHatchingLineArtFeatures() {
+    DarkImageFeatures f = LianhuanhuaBwLineArtScanFeatures();
+    f.luminanceVariance = 0.040f;
+    f.highLuminanceRatio = 0.68f;
+    f.flatAreaRatio = 0.40f;
+    f.borderLightRatio = 0.78f;
+    return f;
+}
+
 // RAZ-Z Abraham Lincoln: full-bleed B&W portrait + caption — must Preserve, not invert interior.
 static DarkImageFeatures RazBwPortraitFullBleedFeatures() {
     DarkImageFeatures f;
@@ -403,6 +429,11 @@ void PdfDarkModeImageClassifier_UnitTests() {
     utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::AdaptiveDocument);
 
     // Soft cream notebook (小家越住越大): Photo / Preserve — not FullPageScan sharp remap.
+    utassert(PdfDarkModeFeaturesLookLikeSoftCreamIllustration(WarmCreamGalileoPageFeatures()));
+    kind = PdfDarkModeClassifyImageFeatures(WarmCreamGalileoPageFeatures(), 0.95f, false, &confidence);
+    utassert(kind == DarkImageKind::Photo);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::Preserve);
+
     kind = PdfDarkModeClassifyImageFeatures(SoftCreamNotebookFullBleedFeatures(), 0.95f, false, &confidence);
     utassert(kind == DarkImageKind::Photo);
     utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::Preserve);
@@ -476,6 +507,13 @@ void PdfDarkModeImageClassifier_UnitTests() {
     utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::AdaptiveDocument);
     utassert(!PdfDarkModeShouldPreserveImageFeatures(LianhuanhuaBwLineArtScanFeatures(), 0.92f));
     utassert(!PdfDarkModeFeaturesLookLikeGrayscalePhoto(LianhuanhuaBwLineArtScanFeatures()));
+    utassert(PdfDarkModeFeaturesLookLikeBwLineArtScan(LianhuanhuaBwLineArtScanFeatures()));
+
+    // Dense 连环画 hatching: still line-art / FullPageScan (not RAZ portrait photo-rect path).
+    kind = PdfDarkModeClassifyImageFeatures(LianhuanhuaDenseHatchingLineArtFeatures(), 0.92f, false, &confidence);
+    utassert(kind == DarkImageKind::FullPageScan);
+    utassert(PdfDarkModeFeaturesLookLikeBwLineArtScan(LianhuanhuaDenseHatchingLineArtFeatures()));
+    utassert(!PdfDarkModeFeaturesLookLikeBwLineArtScan(RazBwPortraitHighPaperFullBleedFeatures()));
 
     // RAZ B&W portrait full bleed: Photo / Preserve — photo rect protect, not negative invert.
     kind = PdfDarkModeClassifyImageFeatures(RazBwPortraitFullBleedFeatures(), 0.92f, false, &confidence);
@@ -483,6 +521,7 @@ void PdfDarkModeImageClassifier_UnitTests() {
     utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::Preserve);
     utassert(PdfDarkModeFeaturesLookLikeGrayscalePhoto(RazBwPortraitFullBleedFeatures()));
     utassert(!PdfDarkModeFeaturesLookLikeBwLineArtScan(RazBwPortraitFullBleedFeatures()));
+    utassert(!PdfDarkModeFeaturesLookLikeBwLineArtScan(GrayscalePortraitFeatures()));
 
     kind = PdfDarkModeClassifyImageFeatures(RazBwPortraitHighPaperFullBleedFeatures(), 0.92f, false, &confidence);
     utassert(kind == DarkImageKind::Photo);

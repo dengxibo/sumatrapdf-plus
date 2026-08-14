@@ -233,6 +233,7 @@ export const commands = [
     "CmdAnalyzeSelectionWithDoubao", "Ask AI",
     "CmdToggleDoubleClickWordLookup", "Toggle Double-Click Word Lookup",
     "CmdTogglePreservePdfImages", "Toggle Preserve PDF Image Colors in Dark Mode",
+    "CmdToggleJoinSplitPdfImages", "Toggle Join Split PDF Images",
     "CmdSetPdfDocumentColorModeAuto", "Set Document Color Mode: Smart",
     "CmdSetPdfDocumentColorModeBlack", "Set Document Color Mode: Match Theme",
     "CmdSetPdfDocumentColorModeLight", "Set Document Color Mode: Original",

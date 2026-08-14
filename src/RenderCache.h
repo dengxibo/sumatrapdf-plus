@@ -140,6 +140,7 @@ struct RenderCache {
     void WaitForRenderingComplete(DisplayModel* dm);
     bool Exists(DisplayModel* dm, int pageNo, int rotation, float zoom = kInvalidZoom, TilePosition* tile = nullptr);
     void FreeForDisplayModel(DisplayModel* dm);
+    void AdoptDarkModeEpochForDisplayModel(DisplayModel* dm);
     void KeepForColorTransition(DisplayModel* dm);
     void KeepForDisplayModel(DisplayModel* oldDm, DisplayModel* newDm);
     void Invalidate(DisplayModel* dm, int pageNo, RectF rect);

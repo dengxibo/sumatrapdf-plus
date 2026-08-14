@@ -44,6 +44,8 @@ struct WindowTab {
     double restoreScrollYAfterFontReload = -1;
     float restoreInPageScrollRatioAfterFontReload = -1.f;
     u32 lastDarkModeEpoch = 0;
+    // CSS/theme generation last applied to this reflowable document.
+    u32 reflowThemeEpoch = 0;
     // FileWatcher token for unsubscribing
     WatchedFile* watcher = nullptr;
     // list of rectangles of the last rectangular, text or image selection
@@ -53,6 +55,8 @@ struct WindowTab {
     float prevZoomVirtual{kInvalidZoom};
     DisplayMode prevDisplayMode{DisplayMode::Automatic};
     TocTree* currToc = nullptr; // not owned by us
+    // TOC wrap-label heights were computed while this tab was last shown.
+    bool tocWrapHeightsReady = false;
     EditAnnotationsWindow* editAnnotsWindow = nullptr;
     EbookAnnotationsWindow* editEbookAnnotsWindow = nullptr;
     Rect lastEditAnnotsWindowPos = {};
@@ -69,6 +73,9 @@ struct WindowTab {
     bool acceptedPdfTocSignatureWarning = false;
 
     TabState* tabState = nullptr; // when lazy loading
+    // Set by PrepareLoadingTab before AddTabToWindow selects the tab. Prevents
+    // LoadModelIntoTab from starting a second LoadDocument for the same open.
+    bool asyncLoadPending = false;
 
     Annotation* selectedAnnotation = nullptr;
     EbookAnnotation* selectedEbookAnnotation = nullptr;

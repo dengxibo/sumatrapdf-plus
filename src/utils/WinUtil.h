@@ -386,6 +386,10 @@ void HwndDestroyWindowSafe(HWND* hwnd);
 void HwndToForeground(HWND hwnd);
 void HwndSetVisibility(HWND hwnd, bool visible);
 
+// Like ShowScrollBar, but no-ops when visibility is already correct.
+// Calling ShowScrollBar during track auto-repeat can cancel Windows' hold-to-page.
+bool ShowScrollBarIfChanged(HWND hwnd, int bar, BOOL show);
+
 bool DeleteObjectSafe(HGDIOBJ*);
 bool DeleteBrushSafe(HBRUSH*);
 bool DestroyIconSafe(HICON*);

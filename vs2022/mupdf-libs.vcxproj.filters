@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="brotli">
@@ -518,7 +518,13 @@
     <ClCompile Include="..\ext\brotli\c\dec\huffman.c">
       <Filter>brotli\c\dec</Filter>
     </ClCompile>
+    <ClCompile Include="..\ext\brotli\c\dec\prefix.c">
+      <Filter>brotli\c\dec</Filter>
+    </ClCompile>
     <ClCompile Include="..\ext\brotli\c\dec\state.c">
+      <Filter>brotli\c\dec</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ext\brotli\c\dec\static_init.c">
       <Filter>brotli\c\dec</Filter>
     </ClCompile>
     <ClCompile Include="..\ext\brotli\c\enc\backward_references.c">

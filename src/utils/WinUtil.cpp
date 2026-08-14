@@ -2490,18 +2490,41 @@ void CenterDialog(HWND hDlg, HWND hParent) {
     }
 
     Rect rcDialog = WindowRect(hDlg);
-    rcDialog.Offset(-rcDialog.x, -rcDialog.y);
-    Rect rcOwner = WindowRect(hParent ? hParent : GetDesktopWindow());
-    Rect rcRect = rcOwner;
-    rcRect.Offset(-rcRect.x, -rcRect.y);
+    int dlgDx = rcDialog.dx;
+    int dlgDy = rcDialog.dy;
 
-    // center dialog on its parent window
-    rcDialog.Offset(rcOwner.x + (rcRect.x - rcDialog.x + rcRect.dx - rcDialog.dx) / 2,
-                    rcOwner.y + (rcRect.y - rcDialog.y + rcRect.dy - rcDialog.dy) / 2);
-    // ensure that the dialog is fully visible on one monitor
-    rcDialog = ShiftRectToWorkArea(rcDialog, hParent, true);
+    // Prefer the monitor under the cursor (e.g. hamburger / popup menu click).
+    // Centering only on the owner can leave the dialog on a stale/disconnected
+    // display, and after TrackPopupMenu, DialogBox may not show it without an
+    // explicit ShowWindow (owner disabled → beep, nothing visible).
+    POINT pt{};
+    GetCursorPos(&pt);
+    HMONITOR hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+    if (!hmon && hParent) {
+        hmon = MonitorFromWindow(hParent, MONITOR_DEFAULTTONEAREST);
+    }
+    if (!hmon) {
+        hmon = MonitorFromWindow(hDlg, MONITOR_DEFAULTTOPRIMARY);
+    }
 
-    SetWindowPos(hDlg, nullptr, rcDialog.x, rcDialog.y, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    RECT work{};
+    if (hmon && GetMonitorInfo(hmon, &mi)) {
+        work = mi.rcWork;
+    } else {
+        SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
+    }
+
+    rcDialog.x = work.left + (work.right - work.left - dlgDx) / 2;
+    rcDialog.y = work.top + (work.bottom - work.top - dlgDy) / 2;
+    rcDialog.dx = dlgDx;
+    rcDialog.dy = dlgDy;
+    rcDialog = ShiftRectToWorkArea(rcDialog, nullptr, true);
+
+    SetWindowPos(hDlg, HWND_TOP, rcDialog.x, rcDialog.y, 0, 0, SWP_NOSIZE | SWP_SHOWWINDOW);
+    ShowWindow(hDlg, SW_SHOWNORMAL);
+    SetForegroundWindow(hDlg);
 }
 
 void SetDlgItemFont(HWND hDlg, int nIDDlgItem, HFONT fnt) {
@@ -3274,6 +3297,33 @@ void HwndSetVisibility(HWND hwnd, bool visible) {
         return;
     }
     ShowWindow(hwnd, visible ? SW_SHOW : SW_HIDE);
+}
+
+static bool IsScrollBarVisible(HWND hwnd, LONG objId) {
+    SCROLLBARINFO sbi{};
+    sbi.cbSize = sizeof(sbi);
+    if (!GetScrollBarInfo(hwnd, objId, &sbi)) {
+        return false;
+    }
+    return (sbi.rgstate[0] & STATE_SYSTEM_INVISIBLE) == 0;
+}
+
+bool ShowScrollBarIfChanged(HWND hwnd, int bar, BOOL show) {
+    if (!hwnd) {
+        return false;
+    }
+    if (bar == SB_BOTH) {
+        bool changed = ShowScrollBarIfChanged(hwnd, SB_HORZ, show);
+        changed = ShowScrollBarIfChanged(hwnd, SB_VERT, show) || changed;
+        return changed;
+    }
+    LONG objId = (bar == SB_HORZ) ? OBJID_HSCROLL : OBJID_VSCROLL;
+    bool visible = IsScrollBarVisible(hwnd, objId);
+    if (visible == (show != FALSE)) {
+        return false;
+    }
+    ShowScrollBar(hwnd, bar, show);
+    return true;
 }
 
 Size GetBitmapSize(HBITMAP hbmp) {

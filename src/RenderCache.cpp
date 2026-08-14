@@ -18,6 +18,7 @@
 #include "TextSelection.h"
 #include "Theme.h"
 #include "PdfDarkMode.h"
+#include "PdfJoinSplitImages.h"
 
 #include "utils/Log.h"
 
@@ -441,6 +442,16 @@ void RenderCache::FreeForDisplayModel(DisplayModel* dm) {
         BitmapCacheEntry* entry = cache[i];
         if (entry->dm == dm) {
             DropCacheEntryIfNotUsed(entry);
+        }
+    }
+}
+
+void RenderCache::AdoptDarkModeEpochForDisplayModel(DisplayModel* dm) {
+    ScopedCritSec scope(&cacheAccess);
+    for (int i = 0; i < cacheCount; i++) {
+        BitmapCacheEntry* entry = cache[i];
+        if (entry->dm == dm) {
+            entry->darkModeEpoch = darkModeEpoch;
         }
     }
 }
@@ -986,7 +997,11 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
                 Vec<Rect>* skipRectsPtr = nullptr;
                 if (preserve && !eyeCareGauze) {
                     Size bmpSize = bmp->GetSize();
-                    engine->GetBitmapRecolorSkipRects(req.pageNo, req.zoom, req.rotation, req.pageRect, bmpSize,
+                    int enginePageNo = EngineMupdfMapDisplayPageToEngine(engine, req.pageNo);
+                    if (enginePageNo < 1) {
+                        enginePageNo = req.pageNo;
+                    }
+                    engine->GetBitmapRecolorSkipRects(enginePageNo, req.zoom, req.rotation, req.pageRect, bmpSize,
                                                       skipRects);
                     FinalizeTileSkipRects(skipRects, bmpSize);
                     if (skipRects.Size() > 0) {

@@ -9,3 +9,7 @@ bool LookupAudioPlayOwned(u8* data, size_t size, const char* ext);
 
 void LookupAudioStop();
 bool LookupAudioIsPlaying();
+
+// Optional caller identity for toggle-to-stop (e.g. PDF Sound annot). Cleared on stop/end.
+void LookupAudioSetPlayToken(u64 token);
+u64 LookupAudioPlayToken();

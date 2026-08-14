@@ -34,7 +34,11 @@ pdf_obj_num_is_stream(fz_context *ctx, pdf_document *doc, int num)
 		return 0;
 
 	fz_try(ctx)
-		entry = pdf_cache_object(ctx, doc, num);
+	{
+		entry = pdf_get_xref_entry(ctx, doc, num);
+		if (entry && entry->type == 'n')
+			entry = pdf_cache_object(ctx, doc, num);
+	}
 	fz_catch(ctx)
 	{
 		fz_rethrow_if(ctx, FZ_ERROR_TRYLATER);
@@ -44,7 +48,7 @@ pdf_obj_num_is_stream(fz_context *ctx, pdf_document *doc, int num)
 	}
 
 	if (entry)
-	return entry->stm_ofs != 0 || entry->stm_buf;
+		return entry->type == 'n' && (entry->stm_ofs != 0 || entry->stm_buf);
 	return 0;
 }
 
@@ -55,6 +59,16 @@ pdf_is_stream(fz_context *ctx, pdf_obj *ref)
 	if (doc)
 		return pdf_obj_num_is_stream(ctx, doc, pdf_to_num(ctx, ref));
 	return 0;
+}
+
+static int64_t
+pdf_stream_length(fz_context *ctx, pdf_document *doc, pdf_obj *dict)
+{
+	/* Return sanity-checked stream length: cannot be negative or larger than the file. */
+	int64_t len = pdf_dict_get_int64(ctx, dict, PDF_NAME(Length));
+	if (len < 0 || len > doc->file_size)
+		len = 0;
+	return len;
 }
 
 /*
@@ -347,9 +361,7 @@ pdf_open_raw_filter(fz_context *ctx, fz_stream *file_stm, pdf_document *doc, pdf
 	}
 
 	hascrypt = pdf_stream_has_crypt(ctx, stmobj);
-	len = pdf_dict_get_int64(ctx, stmobj, PDF_NAME(Length));
-	if (len < 0)
-		len = 0;
+	len = pdf_stream_length(ctx, doc, stmobj);
 	null_stm = fz_open_endstream_filter(ctx, file_stm, (uint64_t)len, offset);
 	if (doc->crypt && !hascrypt)
 	{
@@ -364,6 +376,72 @@ pdf_open_raw_filter(fz_context *ctx, fz_stream *file_stm, pdf_document *doc, pdf
 	return null_stm;
 }
 
+/* SumatraPDF */
+void
+pdf_set_load_external_stream_fn(fz_context *ctx, pdf_document *doc, pdf_load_external_stream_fn *fn, void *opaque)
+{
+	if (!doc)
+		return;
+	doc->load_external_stream = fn;
+	doc->load_external_stream_opaque = opaque;
+}
+
+/* SumatraPDF: if a stream is an external-file stream (its /F entry is a file
+ * specification, e.g. an image referencing a sibling .jpg) and a callback is
+ * registered, load its bytes through the callback and decode them with the
+ * /FFilter / /FDecodeParms chain. Returns NULL when the stream isn't external
+ * or loading is denied, so the caller falls back to the embedded stream. */
+static fz_stream *
+pdf_open_external_stream(fz_context *ctx, pdf_document *doc, pdf_obj *stmobj, fz_compression_params *imparams, int might_be_image)
+{
+	pdf_obj *fobj, *filters, *params;
+	const char *filespec = NULL;
+	fz_buffer *buf;
+	fz_stream *rstm, *fstm = NULL;
+
+	if (!doc || !doc->load_external_stream)
+		return NULL;
+
+	fobj = pdf_dict_get(ctx, stmobj, PDF_NAME(F));
+	/* /F must be a file specification (string or filespec dict). When it's a
+	 * name or array it's the inline-image abbreviation for /Filter, not us. */
+	if (pdf_is_string(ctx, fobj))
+		filespec = pdf_to_text_string(ctx, fobj);
+	else if (pdf_is_dict(ctx, fobj))
+		filespec = pdf_to_text_string(ctx, pdf_dict_geta(ctx, fobj, PDF_NAME(UF), PDF_NAME(F)));
+	if (!filespec || !filespec[0])
+		return NULL;
+
+	buf = doc->load_external_stream(ctx, filespec, doc->load_external_stream_opaque);
+	if (!buf)
+		return NULL;
+
+	/* external streams use /FFilter and /FDecodeParms (not /Filter / /DecodeParms) */
+	filters = pdf_dict_gets(ctx, stmobj, "FFilter");
+	params = pdf_dict_gets(ctx, stmobj, "FDecodeParms");
+	rstm = fz_open_buffer(ctx, buf);
+	fz_drop_buffer(ctx, buf);
+	fz_try(ctx)
+	{
+		if (pdf_is_name(ctx, filters))
+			fstm = build_filter(ctx, rstm, doc, filters, params, 0, 0, imparams, might_be_image);
+		else if (pdf_array_len(ctx, filters) > 0)
+			fstm = build_filter_chain(ctx, rstm, doc, filters, params, 0, 0, imparams, might_be_image);
+		else
+		{
+			if (imparams)
+				imparams->type = FZ_IMAGE_RAW;
+			fstm = fz_keep_stream(ctx, rstm);
+		}
+	}
+	fz_always(ctx)
+		fz_drop_stream(ctx, rstm);
+	fz_catch(ctx)
+		fz_rethrow(ctx);
+
+	return fstm;
+}
+
 /*
  * Construct a filter to decode a stream, constraining
  * to stream length and decrypting.
@@ -371,10 +449,18 @@ pdf_open_raw_filter(fz_context *ctx, fz_stream *file_stm, pdf_document *doc, pdf
 static fz_stream *
 pdf_open_filter(fz_context *ctx, pdf_document *doc, fz_stream *file_stm, pdf_obj *stmobj, int num, int64_t offset, fz_compression_params *imparams, int might_be_image)
 {
-	pdf_obj *filters = pdf_dict_geta(ctx, stmobj, PDF_NAME(Filter), PDF_NAME(F));
-	pdf_obj *params = pdf_dict_geta(ctx, stmobj, PDF_NAME(DecodeParms), PDF_NAME(DP));
+	pdf_obj *filters;
+	pdf_obj *params;
 	int orig_num, orig_gen;
 	fz_stream *rstm, *fstm;
+
+	/* SumatraPDF: external-file streams (/F file specification) */
+	fstm = pdf_open_external_stream(ctx, doc, stmobj, imparams, might_be_image);
+	if (fstm)
+		return fstm;
+
+	filters = pdf_dict_geta(ctx, stmobj, PDF_NAME(Filter), PDF_NAME(F));
+	params = pdf_dict_geta(ctx, stmobj, PDF_NAME(DecodeParms), PDF_NAME(DP));
 
 	rstm = pdf_open_raw_filter(ctx, file_stm, doc, stmobj, num, &orig_num, &orig_gen, offset);
 	fz_try(ctx)
@@ -399,7 +485,7 @@ pdf_open_filter(fz_context *ctx, pdf_document *doc, fz_stream *file_stm, pdf_obj
 }
 
 fz_stream *
-pdf_open_inline_stream(fz_context *ctx, pdf_document *doc, pdf_obj *stmobj, int length, fz_stream *file_stm, fz_compression_params *imparams)
+pdf_open_inline_stream(fz_context *ctx, pdf_document *doc, pdf_obj *stmobj, size_t length, fz_stream *file_stm, fz_compression_params *imparams)
 {
 	pdf_obj *filters = pdf_dict_geta(ctx, stmobj, PDF_NAME(Filter), PDF_NAME(F));
 	pdf_obj *params = pdf_dict_geta(ctx, stmobj, PDF_NAME(DecodeParms), PDF_NAME(DP));
@@ -415,7 +501,7 @@ pdf_open_inline_stream(fz_context *ctx, pdf_document *doc, pdf_obj *stmobj, int 
 }
 
 void
-pdf_load_compressed_inline_image(fz_context *ctx, pdf_document *doc, pdf_obj *dict, int length, fz_stream *file_stm, int indexed, fz_compressed_image *image)
+pdf_load_compressed_inline_image(fz_context *ctx, pdf_document *doc, pdf_obj *dict, size_t length, fz_stream *file_stm, int indexed, fz_compressed_image *image)
 {
 	fz_stream *istm = NULL, *leech = NULL, *decomp = NULL;
 	fz_pixmap *pixmap = NULL;
@@ -509,16 +595,13 @@ pdf_load_raw_stream_number(fz_context *ctx, pdf_document *doc, int num)
 	dict = pdf_load_object(ctx, doc, num);
 
 	fz_try(ctx)
-		len = pdf_dict_get_int64(ctx, dict, PDF_NAME(Length));
+		len = pdf_stream_length(ctx, doc, dict);
 	fz_always(ctx)
 		pdf_drop_obj(ctx, dict);
 	fz_catch(ctx)
 		fz_rethrow(ctx);
 
 	stm = pdf_open_raw_stream_number(ctx, doc, num);
-
-	if (len < 0)
-		len = 1024;
 
 	fz_try(ctx)
 		buf = fz_read_all(ctx, stm, (size_t)len);
@@ -633,14 +716,13 @@ pdf_load_image_stream(fz_context *ctx, pdf_document *doc, int num, fz_compressio
 	dict = pdf_load_object(ctx, doc, num);
 	fz_try(ctx)
 	{
-		int64_t ilen = pdf_dict_get_int64(ctx, dict, PDF_NAME(Length));
-		if (ilen < 0)
-			ilen = 0;
+		int64_t ilen = pdf_stream_length(ctx, doc, dict);
+
+		/* In 32 bit builds, we might find a length being too large for a size_t. */
 		len = (size_t)ilen;
-		/* In 32 bit builds, we might find a length being too
-		 * large for a size_t. */
 		if ((int64_t)len != ilen)
-			fz_throw(ctx, FZ_ERROR_LIMIT, "Stream too large");
+			fz_throw(ctx, FZ_ERROR_LIMIT, "stream is too large for 32-bit systems");
+
 		obj = pdf_dict_get(ctx, dict, PDF_NAME(Filter));
 		len = pdf_guess_filter_length(len, pdf_to_name(ctx, obj));
 		n = pdf_array_len(ctx, obj);
@@ -723,7 +805,7 @@ pdf_open_object_array(fz_context *ctx, pdf_document *doc, pdf_obj *list)
 	{
 		pdf_obj *obj = pdf_array_get(ctx, list, i);
 		fz_try(ctx)
-			fz_concat_push_drop(ctx, stm, pdf_open_stream(ctx, obj));
+			fz_concat_push_drop(ctx, stm, pdf_open_image_stream(ctx, doc, pdf_to_num(ctx, obj), NULL, 0));
 		fz_catch(ctx)
 		{
 			if (fz_caught(ctx) == FZ_ERROR_TRYLATER || fz_caught(ctx) == FZ_ERROR_SYSTEM)

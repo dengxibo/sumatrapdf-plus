@@ -65,8 +65,7 @@ void InitDynCalls() {
         (Sig_GetAwarenessFromDpiAwarenessContext)GetProcAddress(h, "GetAwarenessFromDpiAwarenessContext");
     DynSetThreadDpiAwarenessContext =
         (Sig_SetThreadDpiAwarenessContext)GetProcAddress(h, "SetThreadDpiAwarenessContext");
-    DynSystemParametersInfoForDpi =
-        (Sig_SystemParametersInfoForDpi)GetProcAddress(h, "SystemParametersInfoForDpi");
+    DynSystemParametersInfoForDpi = (Sig_SystemParametersInfoForDpi)GetProcAddress(h, "SystemParametersInfoForDpi");
 
     h = SafeLoadLibrary("uxtheme.dll");
     if (h) {

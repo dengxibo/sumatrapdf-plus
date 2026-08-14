@@ -203,7 +203,8 @@ static bool EnsureCharConvLoaded() {
     TempStr charsPath = OpenccDataPathTemp("TSCharacters.txt");
     TempStr phrasesPath = OpenccDataPathTemp("TSPhrases.txt");
     TempStr twPhrasesPath = OpenccDataPathTemp("TWPhrases.txt");
-    bool ok = LoadOpenccFile(charsPath, false) && LoadOpenccFile(phrasesPath, true) && LoadTwPhrasesReverse(twPhrasesPath);
+    bool ok =
+        LoadOpenccFile(charsPath, false) && LoadOpenccFile(phrasesPath, true) && LoadTwPhrasesReverse(twPhrasesPath);
     if (ok && gChars.size() > 0) {
         gChars.Sort(CompareCharByFrom);
         gPhrases.Sort(ComparePhraseByFromLenDesc);

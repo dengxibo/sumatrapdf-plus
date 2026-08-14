@@ -114,6 +114,10 @@ CustomColors =
 ; if true, we show the toolbar at the top of the window
 ShowToolbar = true
 
+; if true, show rectangle/ellipse/line/ink quick annotation buttons on the
+; toolbar (introduced in version 3.8)
+ShowAnnotToolbarButtons = true
+
 ; if true, the find UI is a floating, movable window with a results list instead
 ; of the compact toolbar overlay (introduced in version 3.7)
 SearchUIFloating = false
@@ -209,7 +213,7 @@ TreeFontSize = 0
 ; if true, bookmark and favorites tree labels wrap to multiple lines; if false,
 ; single line with ellipsis and full text in tooltip on hover (introduced in
 ; version 3.7)
-TreeWrapLabels = false
+TreeWrapLabels = true
 
 ; over-ride application font size. 0 means Windows default (introduced in
 ; version 3.6)
@@ -281,6 +285,11 @@ FixedPageUI [
     ; color used to highlight the current search match on the page (introduced
     ; in version 3.7.15)
     FindMatchColor = #ffff00
+
+    ; if true, hide redundant PDF pages that only show a thin strip of an image
+    ; already shown on the previous/next page (Calibre photo books / split-image
+    ; PDFs) (introduced in version 3.7)
+    JoinSplitPdfImages = true
 ]
 
 ; customization options for eBookUI

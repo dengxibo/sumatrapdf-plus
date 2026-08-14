@@ -1442,11 +1442,35 @@ static int is_reader_cjk_font_request(const char* fontname) {
 }
 
 static int is_publisher_cjk_font_request(const char* fontname) {
-    static const char* names[] = {
-        "STKai", "STKaiti", "STKaiti-Regular", "STKai-Regular", "STSong", "STSongti", "STSongti-SC-Regular",
-        "STFangsong", "STHeiti", "SimSun", "NSimSun", "KaiTi", "KaiTi_GB2312", "KaiTi SC", "Kaiti SC", "楷体",
-        "SimHei", "FangSong", "Songti SC", "Songti TC", "MKaiPRC", "MKaiPRC-Regular", "MKai PRC", "PingFang SC",
-        "PingFangSC-Regular", "Microsoft YaHei", "FZFangSong-Z02", "FZFangSong-Z02S", NULL};
+    static const char* names[] = {"STKai",
+                                  "STKaiti",
+                                  "STKaiti-Regular",
+                                  "STKai-Regular",
+                                  "STSong",
+                                  "STSongti",
+                                  "STSongti-SC-Regular",
+                                  "STFangsong",
+                                  "STHeiti",
+                                  "SimSun",
+                                  "NSimSun",
+                                  "KaiTi",
+                                  "KaiTi_GB2312",
+                                  "KaiTi SC",
+                                  "Kaiti SC",
+                                  "楷体",
+                                  "SimHei",
+                                  "FangSong",
+                                  "Songti SC",
+                                  "Songti TC",
+                                  "MKaiPRC",
+                                  "MKaiPRC-Regular",
+                                  "MKai PRC",
+                                  "PingFang SC",
+                                  "PingFangSC-Regular",
+                                  "Microsoft YaHei",
+                                  "FZFangSong-Z02",
+                                  "FZFangSong-Z02S",
+                                  NULL};
     int i;
 
     if (!fontname) {

@@ -47,16 +47,8 @@ static bool IsJapaneseOrKoreanFontFamily(const WCHAR* faceName) {
         return false;
     }
     static const WCHAR* kJpKrPrefixes[] = {
-        L"Malgun Gothic",
-        L"MS Gothic",
-        L"MS UI Gothic",
-        L"MS PGothic",
-        L"MS Mincho",
-        L"Yu Gothic",
-        L"Yu Mincho",
-        L"Meiryo",
-        L"MS UI Gothic",
-        nullptr,
+        L"Malgun Gothic", L"MS Gothic", L"MS UI Gothic", L"MS PGothic",   L"MS Mincho",
+        L"Yu Gothic",     L"Yu Mincho", L"Meiryo",       L"MS UI Gothic", nullptr,
     };
     for (int i = 0; kJpKrPrefixes[i]; i++) {
         if (str::EqI(faceName, kJpKrPrefixes[i]) || WStrStartsWithI(faceName, kJpKrPrefixes[i])) {
@@ -155,16 +147,7 @@ static bool IsUiOrSpecialPurposeFontFamily(const WCHAR* faceName, const char* na
         }
     }
     static const char* kSkipSubstrings[] = {
-        "Emoji",
-        "MDL2",
-        "HoloLens",
-        "Math",
-        "Icons",
-        "Symbol",
-        "Wingdings",
-        "Webdings",
-        "OCR ",
-        nullptr,
+        "Emoji", "MDL2", "HoloLens", "Math", "Icons", "Symbol", "Wingdings", "Webdings", "OCR ", nullptr,
     };
     for (int i = 0; kSkipSubstrings[i]; i++) {
         if (str::Find(name, kSkipSubstrings[i])) {
@@ -323,7 +306,8 @@ const char* GetInstalledCjkFontMenuLabel(const char* family) {
         return family;
     }
 
-    TempStr mapped = LabelFromPrefix(family, "Microsoft YaHei UI", "\xe5\xbe\xae\xe8\xbd\xaf\xe9\x9b\x85\xe9\xbb\x91 UI");
+    TempStr mapped =
+        LabelFromPrefix(family, "Microsoft YaHei UI", "\xe5\xbe\xae\xe8\xbd\xaf\xe9\x9b\x85\xe9\xbb\x91 UI");
     if (mapped) {
         return mapped;
     }
@@ -336,7 +320,8 @@ const char* GetInstalledCjkFontMenuLabel(const char* family) {
     if (mapped) {
         return mapped;
     }
-    mapped = LabelFromPrefix(family, "Microsoft JhengHei", "\xe5\xbe\xae\xe8\xbd\xaf\xe6\xad\xa3\xe9\xbb\x91\xe9\xab\x94");
+    mapped =
+        LabelFromPrefix(family, "Microsoft JhengHei", "\xe5\xbe\xae\xe8\xbd\xaf\xe6\xad\xa3\xe9\xbb\x91\xe9\xab\x94");
     if (mapped) {
         return mapped;
     }

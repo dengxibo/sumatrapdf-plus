@@ -26,6 +26,8 @@ extern void StrFormatTest();
 extern void StrTest();
 extern void TrivialHtmlParser_UnitTests();
 extern void PdfDarkModeOklab_UnitTests();
+extern void PdfDarkModeV2_UnitTests();
+extern void PdfJoinSplitImages_UnitTests();
 extern void PdfDarkModeImageClassifier_UnitTests();
 extern void TtsPronunciation_UnitTests();
 extern void VecTest();
@@ -62,6 +64,8 @@ int main(int, char**) {
     StrVecTest();
     TrivialHtmlParser_UnitTests();
     PdfDarkModeOklab_UnitTests();
+    PdfDarkModeV2_UnitTests();
+    PdfJoinSplitImages_UnitTests();
     PdfDarkModeImageClassifier_UnitTests();
     TtsPronunciation_UnitTests();
     VecTest();

@@ -33,6 +33,12 @@ static bool dm_should_use_government_paper_pixmap(fz_context* ctx, fz_image* src
     return PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(f);
 }
 
+// Low-chroma full-page text scans (DuXiu, medical/office scans): steep ink/paper binarize,
+// not per-pixel AdaptiveDocument (JPEG grain becomes white speckles on dark theme).
+static bool dm_fullpage_low_chroma_text_scan(const DarkImageFeatures& f) {
+    return PdfDarkModeFeaturesLookLikeFullPageTextScanForBinarize(f);
+}
+
 struct DarkModeShadeCacheEntry {
     fz_shade* shade = nullptr;
     fz_matrix ctm{};
@@ -260,7 +266,7 @@ static fz_pixmap* dm_load_src_pixmap(fz_context* ctx, fz_image* srcImage, int ma
 
 static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, DarkImagePolicy policy,
                                           const DarkImageAnalysis* imgAnalysis, float pageCoverage,
-                                          const DarkModePalette& palette) {
+                                          const DarkModePalette& palette, DarkModeEngineCache* engineCache) {
     fz_pixmap* src = nullptr;
     fz_pixmap* processed = nullptr;
     fz_image* result = nullptr;
@@ -268,6 +274,7 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
     fz_var(processed);
     fz_var(result);
     fz_try(ctx) {
+        const bool layoutTextbookFast = PdfDarkModeEngineCacheLayoutTextbookFastRemap(engineCache);
         bool layoutRaster = policy == DarkImagePolicy::AdaptiveDocument && imgAnalysis &&
                             PdfFollowThemePreservesEmbeddedImageColors() && pageCoverage >= 0.10f &&
                             imgAnalysis->kind != DarkImageKind::Photo &&
@@ -275,7 +282,10 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
         // Soft-cap decode for Match-theme image processing. Easy RL figures can be 20–29MP;
         // full-page DuXiu scans are ~6MP — remapping at native size dominates render time.
         int decodeMaxDim = 1600;
-        if (layoutRaster) {
+        if (layoutTextbookFast) {
+            // Acrobat/PageMaker textbooks: cheaper decode; no PictureBook lum/var planes.
+            decodeMaxDim = 1200;
+        } else if (layoutRaster) {
             decodeMaxDim = 1200;
         } else if (policy == DarkImagePolicy::AdaptiveDocument && imgAnalysis &&
                    imgAnalysis->kind == DarkImageKind::FullPageScan) {
@@ -287,118 +297,110 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
             decodeMaxDim = 1200;
         }
         src = dm_load_src_pixmap(ctx, srcImage, decodeMaxDim);
-        int buildBranch = 0;
         if (policy == DarkImagePolicy::Preserve) {
             if (pageCoverage >= kMaxPreserveImagePageCoverage) {
                 // Soft-cream notebooks: classifier SoftCream → gentle soften only.
                 // RAZ / picture books: sharp dark paper + light text with photo-rect protect.
                 if (dm_should_use_government_paper_pixmap(ctx, srcImage, imgAnalysis, pageCoverage)) {
-                    buildBranch = 13;
                     processed = PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, palette);
                 } else if (imgAnalysis && PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(imgAnalysis->features)) {
-                    buildBranch = 1;
                     processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
-                } else if (imgAnalysis && PdfDarkModeFeaturesLookLikeSoftCreamIllustration(imgAnalysis->features) &&
-                           !PdfFollowThemePreservesEmbeddedImageColors()) {
-                    buildBranch = 1;
+                } else if (imgAnalysis && PdfDarkModeFeaturesLookLikeSoftCreamIllustration(imgAnalysis->features)) {
+                    // Soft cream under FollowTheme too — steep picture-book remap muddies cream.
                     processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
+                } else if (layoutTextbookFast) {
+                    // Journey Across Time / Exploring Our World: vector text + full-bleed art.
+                    // PictureBook photo-rect + lum/var planes dominate render; cheap preserve remap.
+                    processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_preserve_pixel);
                 } else {
-                    buildBranch = 2;
                     processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
                 }
             } else if (imgAnalysis && PdfDarkModeFeaturesLookLikeLightDocumentPanel(imgAnalysis->features)) {
                 // Cream callout panels ("Do You Know?"): steep paper/ink remap, not Preserve.
-                buildBranch = 14;
-                processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_legacy_linear_pixel);
+                if (layoutTextbookFast) {
+                    processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_preserve_pixel);
+                } else {
+                    processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_legacy_linear_pixel);
+                }
             } else {
-                buildBranch = 3;
                 processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_preserve_pixel);
             }
         } else if (policy == DarkImagePolicy::AdaptiveDocument) {
             if (imgAnalysis && pageCoverage >= kMaxPreserveImagePageCoverage &&
                 imgAnalysis->kind == DarkImageKind::Photo) {
                 if (dm_should_use_government_paper_pixmap(ctx, srcImage, imgAnalysis, pageCoverage)) {
-                    buildBranch = 13;
                     processed = PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, palette);
                 } else if (PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(imgAnalysis->features)) {
-                    buildBranch = 1;
                     processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
+                } else if (layoutTextbookFast) {
+                    processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_preserve_pixel);
                 } else if (PdfFollowThemePreservesEmbeddedImageColors() &&
                            pageCoverage >= kMaxPreserveImagePageCoverage) {
-                    buildBranch = 2;
                     processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
                 } else if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(imgAnalysis->features)) {
-                    buildBranch = 1;
                     processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
                 } else {
-                    buildBranch = 2;
                     processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
                 }
             } else if (layoutRaster) {
-                buildBranch = 4;
-                processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_legacy_linear_pixel);
+                if (layoutTextbookFast) {
+                    processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_preserve_pixel);
+                } else {
+                    processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_legacy_linear_pixel);
+                }
             } else if (imgAnalysis && imgAnalysis->kind == DarkImageKind::FullPageScan) {
                 // RAZ / picture-book full-bleed misclassified as FullPageScan: use picture-book
                 // sharp paper/ink + photo-rect protect (same black look as Preserve path) instead
                 // of whole-tile AdaptiveDocument (photo edge halos). Plain DuXiu text scans stay
                 // on AdaptiveDocument (low sat + low chroma).
                 const DarkImageFeatures& f = imgAnalysis->features;
-                bool grayscalePhotoScan =
-                    PdfFollowThemePreservesEmbeddedImageColors() && pageCoverage >= kMaxPreserveImagePageCoverage &&
-                    PdfDarkModeFeaturesLookLikeGrayscalePhoto(f) && !PdfDarkModeFeaturesLookLikeBwLineArtScan(f);
-                if (grayscalePhotoScan) {
-                    buildBranch = 6;
-                    processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
-                } else if (dm_picture_book_embedded_photo_page(ctx, srcImage, pageCoverage)) {
-                    buildBranch = 7;
-                    processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
-                } else if (dm_should_use_government_paper_pixmap(ctx, srcImage, imgAnalysis, pageCoverage)) {
-                    buildBranch = 13;
-                    processed = PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, palette);
-                } else if (PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(f)) {
-                    buildBranch = 1;
-                    processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
-                } else if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f) &&
-                           !PdfFollowThemePreservesEmbeddedImageColors()) {
-                    buildBranch = 1;
-                    processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
-                } else if (PdfFollowThemePreservesEmbeddedImageColors() &&
-                           pageCoverage >= kMaxPreserveImagePageCoverage) {
-                    buildBranch = 7;
-                    processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
+                if (layoutTextbookFast) {
+                    processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_adaptive_pixel);
                 } else {
-                    bool pictureBookishScan = PdfFollowThemePreservesEmbeddedImageColors() &&
-                                              pageCoverage >= kMaxPreserveImagePageCoverage &&
-                                              (f.saturatedPixelRatio >= 0.08f || f.chromaticPixelRatio >= 0.10f);
-                    if (pictureBookishScan) {
-                        buildBranch = 5;
+                    bool grayscalePhotoScan =
+                        PdfFollowThemePreservesEmbeddedImageColors() && pageCoverage >= kMaxPreserveImagePageCoverage &&
+                        PdfDarkModeFeaturesLookLikeGrayscalePhoto(f) && !PdfDarkModeFeaturesLookLikeBwLineArtScan(f);
+                    if (grayscalePhotoScan) {
                         processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
-                    } else if (f.saturatedPixelRatio < 0.10f) {
-                        if (PdfDarkModeImageHasPreservablePhotoRects(ctx, srcImage)) {
-                            buildBranch = 7;
-                            processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
-                        } else {
-                            buildBranch = 8;
-                            // Low-chroma text scans: AdaptiveDocument remap (fast).
-                            processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_adaptive_pixel);
-                        }
+                    } else if (dm_picture_book_embedded_photo_page(ctx, srcImage, pageCoverage)) {
+                        processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
+                    } else if (dm_should_use_government_paper_pixmap(ctx, srcImage, imgAnalysis, pageCoverage)) {
+                        processed = PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, palette);
+                    } else if (PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(f)) {
+                        processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
+                    } else if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
+                        processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
+                    } else if (PdfFollowThemePreservesEmbeddedImageColors() &&
+                               pageCoverage >= kMaxPreserveImagePageCoverage) {
+                        processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
                     } else {
-                        buildBranch = 9;
-                        // Keep ProcessScan when the page has meaningful color (photos on a scan).
-                        processed = PdfDarkModeProcessScanPixmap(ctx, src, *imgAnalysis, palette);
+                        bool pictureBookishScan = PdfFollowThemePreservesEmbeddedImageColors() &&
+                                                  pageCoverage >= kMaxPreserveImagePageCoverage &&
+                                                  (f.saturatedPixelRatio >= 0.08f || f.chromaticPixelRatio >= 0.10f);
+                        if (pictureBookishScan) {
+                            processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
+                        } else if (f.saturatedPixelRatio < 0.10f) {
+                            if (PdfDarkModeImageHasPreservablePhotoRects(ctx, srcImage)) {
+                                processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
+                            } else if (dm_fullpage_low_chroma_text_scan(f)) {
+                                processed = PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, palette);
+                            } else {
+                                processed = PdfDarkModeProcessScanPixmap(ctx, src, *imgAnalysis, palette);
+                            }
+                        } else {
+                            // Keep ProcessScan when the page has meaningful color (photos on a scan).
+                            processed = PdfDarkModeProcessScanPixmap(ctx, src, *imgAnalysis, palette);
+                        }
                     }
-                }
+                } // !layoutTextbookFast
             }
             if (!processed && imgAnalysis && PdfDarkModeShouldBlendLightBackground(*imgAnalysis)) {
-                buildBranch = 10;
                 processed = PdfDarkModeProcessLightBackgroundPixmap(ctx, src, *imgAnalysis, palette);
             }
             if (!processed) {
-                buildBranch = 11;
                 processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_adaptive_pixel);
             }
         } else {
-            buildBranch = 12;
             processed = dm_copy_and_transform_pixmap(ctx, src, palette, dm_theme_recolor_pixel);
         }
         if (processed == src) {
@@ -503,7 +505,7 @@ fz_image* PdfDarkModeGetCachedImage(fz_context* ctx, DarkModeEngineCache* engine
         return fz_keep_image(ctx, cached);
     }
 
-    fz_image* built = dm_build_processed_image(ctx, srcImage, policy, imgAnalysis, pageCoverage, palette);
+    fz_image* built = dm_build_processed_image(ctx, srcImage, policy, imgAnalysis, pageCoverage, palette, engineCache);
     if (!built) {
         return nullptr;
     }
@@ -548,7 +550,7 @@ fz_image* PdfDarkModeGetCachedFollowThemeImage(fz_context* ctx, DarkModeEngineCa
             return fz_keep_image(ctx, engineHit);
         }
     }
-    fz_image* built = dm_build_processed_image(ctx, srcImage, policy, &analysis, pageCoverage, palette);
+    fz_image* built = dm_build_processed_image(ctx, srcImage, policy, &analysis, pageCoverage, palette, engineCache);
     if (!built) {
         return nullptr;
     }

@@ -243,8 +243,7 @@ void LabelWithCloseWnd::SetHeaderActions(const Func0& first, const char* firstTo
         args.isRtl = HwndIsRtl(hwnd);
         actionsTooltip = new Tooltip();
         actionsTooltip->Create(args);
-        firstActionTooltipId =
-            actionsTooltip->Add(HeaderActionTooltipTemp(firstActionTooltip), firstActionPos, false);
+        firstActionTooltipId = actionsTooltip->Add(HeaderActionTooltipTemp(firstActionTooltip), firstActionPos, false);
         secondActionTooltipId =
             actionsTooltip->Add(HeaderActionTooltipTemp(secondActionTooltip), secondActionPos, false);
     }
@@ -287,10 +286,10 @@ void LabelWithCloseWnd::Layout() {
             firstActionPos = Rect(secondActionPos.x - gapDx - actionDx, actionY, actionDx, actionDy);
         }
         if (actionsTooltip) {
-            actionsTooltip->Update(firstActionTooltipId, HeaderActionTooltipTemp(firstActionTooltip),
-                                   firstActionPos, false);
-            actionsTooltip->Update(secondActionTooltipId, HeaderActionTooltipTemp(secondActionTooltip),
-                                   secondActionPos, false);
+            actionsTooltip->Update(firstActionTooltipId, HeaderActionTooltipTemp(firstActionTooltip), firstActionPos,
+                                   false);
+            actionsTooltip->Update(secondActionTooltipId, HeaderActionTooltipTemp(secondActionTooltip), secondActionPos,
+                                   false);
         }
     }
     // logf("closeBtnPos: (%d,%d) size: (%d, %d)\n", x, y, btnDx, btnDy);

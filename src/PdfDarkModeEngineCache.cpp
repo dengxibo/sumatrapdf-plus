@@ -41,6 +41,8 @@ struct DarkModeEngineCache {
     Vec<DarkModeProcessedImageEntry> processed;
     i64 processedBytes = 0;
     u64 accessCounter = 0;
+    // Acrobat/PageMaker textbooks (LayoutPhoto, not Image-Conversion RAZ): skip PictureBook.
+    bool layoutTextbookFastRemap = false;
 };
 
 static bool dm_image_key_match(fz_image* a, int aw, int ah, fz_image* b, int bw, int bh) {
@@ -241,4 +243,14 @@ void PdfDarkModeEngineCacheStoreProcessed(fz_context* ctx, DarkModeEngineCache* 
     entry.lastAccess = dm_next_access(cache);
     cache->processed.Append(entry);
     cache->processedBytes += bytes;
+}
+
+void PdfDarkModeEngineCacheSetLayoutTextbookFastRemap(DarkModeEngineCache* cache, bool enabled) {
+    if (cache) {
+        cache->layoutTextbookFastRemap = enabled;
+    }
+}
+
+bool PdfDarkModeEngineCacheLayoutTextbookFastRemap(const DarkModeEngineCache* cache) {
+    return cache && cache->layoutTextbookFastRemap;
 }

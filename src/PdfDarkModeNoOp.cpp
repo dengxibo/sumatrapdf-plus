@@ -9,6 +9,7 @@ extern "C" {
 
 #include "PdfDarkMode.h"
 #include "PdfDarkModeInternal.h"
+#include "PdfDarkModeV2.h"
 
 // Stub implementations for binaries that compile EngineMupdf.cpp but not
 // PdfDarkMode*.cpp / Theme.cpp (PdfFilter, PdfPreview, etc.).
@@ -23,6 +24,11 @@ bool DarkModeProfileUsesObjectLevel(const DarkModeProfile* profile) {
 }
 
 bool DarkModeProfileUsesFollowThemeDirect(const DarkModeProfile* profile) {
+    (void)profile;
+    return false;
+}
+
+bool DarkModeProfileUsesFollowThemeV2(const DarkModeProfile* profile) {
     (void)profile;
     return false;
 }
@@ -66,6 +72,16 @@ void PdfDarkModeEngineCacheClear(fz_context* ctx, DarkModeEngineCache* cache) {
     (void)cache;
 }
 
+void PdfDarkModeEngineCacheSetLayoutTextbookFastRemap(DarkModeEngineCache* cache, bool enabled) {
+    (void)cache;
+    (void)enabled;
+}
+
+bool PdfDarkModeEngineCacheLayoutTextbookFastRemap(const DarkModeEngineCache* cache) {
+    (void)cache;
+    return false;
+}
+
 DarkModePageAnalysis* PdfDarkModeGetOrBuildAnalysis(fz_context* ctx, FzPageInfo* pageInfo, fz_display_list* list,
                                                     u32 optionsHash, DarkModeEngineCache* engineCache) {
     (void)ctx;
@@ -98,6 +114,16 @@ fz_device* PdfDarkModeWrapFollowThemeDevice(fz_context* ctx, fz_device* inner, c
     (void)engineCache;
     (void)profileHash;
     (void)artworkBounds;
+    return inner;
+}
+
+fz_device* PdfDarkModeWrapV2Device(fz_context* ctx, fz_device* inner, const DarkModePalette* palette,
+                                   const RectF& pageBounds, DarkModeEngineCache* engineCache, u32 profileHash) {
+    (void)ctx;
+    (void)palette;
+    (void)pageBounds;
+    (void)engineCache;
+    (void)profileHash;
     return inner;
 }
 
@@ -168,7 +194,7 @@ bool PdfDarkModeImageDecodeLooksLikeGrayscalePortrait(fz_context* ctx, fz_image*
 }
 
 void PdfDarkModeAppendImagePhotoSkipDevRects(fz_context* ctx, fz_image* image, const RectF& imgOnPage,
-                                            const fz_matrix& ctm, Vec<Rect>& outSkip) {
+                                             const fz_matrix& ctm, Vec<Rect>& outSkip) {
     (void)ctx;
     (void)image;
     (void)imgOnPage;
@@ -247,6 +273,13 @@ bool PdfDarkModeImageLooksLikeDarkArtwork(fz_context* ctx, fz_image* image, floa
     return false;
 }
 
+bool PdfDarkModePageDominantImageRecolors(fz_context* ctx, fz_image* image, float pageCoverage) {
+    (void)ctx;
+    (void)image;
+    (void)pageCoverage;
+    return false;
+}
+
 bool PdfDarkModeImageIsConfirmedArtwork(fz_context* ctx, fz_image* image, float pageCoverage, int devW, int devH) {
     (void)ctx;
     (void)image;
@@ -256,7 +289,8 @@ bool PdfDarkModeImageIsConfirmedArtwork(fz_context* ctx, fz_image* image, float 
     return false;
 }
 
-DarkImageAnalysis PdfDarkModeAnalyzeImage(fz_context* ctx, fz_image* image, float pageCoverage, bool pageIsScannedHint) {
+DarkImageAnalysis PdfDarkModeAnalyzeImage(fz_context* ctx, fz_image* image, float pageCoverage,
+                                          bool pageIsScannedHint) {
     (void)ctx;
     (void)image;
     (void)pageCoverage;

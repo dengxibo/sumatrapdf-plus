@@ -43,6 +43,7 @@
 #include "Commands.h"
 #include "Selection.h"
 #include "SelectionToolbar.h"
+#include "Toolbar.h"
 #include "Flags.h"
 #include "StressTesting.h"
 #include "Translations.h"
@@ -203,6 +204,30 @@ void ClearMouseState(MainWindow* win) {
     win->ebookAnnotationDragPending = nullptr;
     win->linkOnLastButtonDown = nullptr;
     win->annotationUnderCursor = nullptr;
+    if (win->annotCreateToolCmd != 0) {
+        win->annotCreateToolCmd = 0;
+        win->annotCreateInkPoints.Reset();
+        UpdateAnnotToolToolbarButtons(win);
+    }
+}
+
+void SetAnnotCreateTool(MainWindow* win, int cmdId) {
+    if (!win) {
+        return;
+    }
+    if (win->annotCreateToolCmd == cmdId) {
+        win->annotCreateToolCmd = 0;
+    } else {
+        win->annotCreateToolCmd = cmdId;
+    }
+    win->annotCreateInkPoints.Reset();
+    if (win->mouseAction == MouseAction::CreatingAnnotation) {
+        win->mouseAction = MouseAction::None;
+        if (GetCapture() == win->hwndCanvas) {
+            ReleaseCapture();
+        }
+    }
+    UpdateAnnotToolToolbarButtons(win);
 }
 
 bool MainWindow::HasDocsLoaded() const {

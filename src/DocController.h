@@ -51,7 +51,7 @@ struct DocControllerCallback {
 
 struct DocController {
     DocControllerCallback* cb;
-    // set when CloseTab hands off teardown to DeleteDocControllerAsync
+    // set when CloseTab hands off teardown to FastDeleteDocController
     volatile LONG pendingAsyncDelete = 0;
 
     explicit DocController(DocControllerCallback* cb) : cb(cb) { ReportIf(!cb); }

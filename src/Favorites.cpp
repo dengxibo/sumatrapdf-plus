@@ -866,9 +866,13 @@ static LRESULT CALLBACK WndProcFavBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     switch (msg) {
         case WM_SIZE:
             LayoutTreeContainer(win->favLabelWithClose, treeView->hwnd);
-            FavTreeWrapRecalcHeights(win);
-            if (treeView && treeView->hwnd) {
-                InvalidateRect(treeView->hwnd, nullptr, FALSE);
+            ScheduleFavTreeWrapHeights(win);
+            break;
+
+        case WM_TIMER:
+            if (wp == kTreeWrapHeightTimerId) {
+                FlushFavTreeWrapHeights(win);
+                return 0;
             }
             break;
 

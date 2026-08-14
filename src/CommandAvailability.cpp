@@ -314,7 +314,11 @@ AppCommandCtx NewAppCommandCtx(MainWindow* win, Point cursorPos) {
     }
 
     ctx.tab = win->CurrentTab();
-    ctx.isDocLoaded = win->IsDocLoaded();
+    // Menu/command visibility must follow the current tab's controller. Using
+    // win->IsDocLoaded() (ctrl == CurrentTab()->ctrl) hides Go/Zoom/Selection
+    // entirely when win->ctrl is briefly mismatched/null — hamburger then builds
+    // empty flyouts (subN=0) that highlight but never show items.
+    ctx.isDocLoaded = ctx.tab && ctx.tab->IsDocLoaded();
     ctx.filePath = ctx.tab ? ctx.tab->filePath : nullptr;
     ctx.allowToggleMenuBar = true;
 

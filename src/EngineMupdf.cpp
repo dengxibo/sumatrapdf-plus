@@ -23,8 +23,6 @@ void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, fl
 #include "utils/Timer.h"
 #include "utils/ThreadUtil.h"
 
-#include <stdio.h>
-
 #include "wingui/UIModels.h"
 
 #include "Annotation.h"
@@ -47,8 +45,10 @@ void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, fl
 #include "GlobalPrefs.h"
 #include "PdfDarkMode.h"
 #include "PdfDarkModeInternal.h"
+#include "PdfDarkModeV2.h"
 #include "PdfCadDetect.h"
 #include "PdfCadEnhanceDevice.h"
+#include "PdfJoinSplitImages.h"
 #include "DisplayModel.h"
 #include "GlobalPrefs.h"
 #include "AppTools.h"
@@ -59,8 +59,14 @@ void NotifyEbookPagesLoadingProgress(const char* filePath, bool reloadToc);
 void NotifyPdfFollowThemeProbeComplete(const char* filePath);
 
 static const DWORD kReflowBackgroundDelayMs = 50;
+// Brief window after UI page access: throttle (not stop) background chapter counting.
+static const DWORD kReflowActiveReadingMs = 450;
+static const DWORD kReflowBackgroundYieldMs = 12;
 static const int kReflowChaptersPerYield = 1;
-static const int kReflowNotifyEveryNChapters = 16;
+// Notify UI after this many spine chapters are counted. Anthology EPUBs: ~10-15
+// pages/chapter → 64 chapters ≈ 650-950 pages per burst. Tune 32-80; UI stays
+// smooth while reading thanks to background yield + estimated mediabox layout.
+static const int kReflowNotifyEveryNChapters = 64;
 static const int kReflowInitialPages = 8;
 
 // called from FinishLoading on the load thread; posts UI work to show the
@@ -202,15 +208,28 @@ static void DropFollowThemePageBitmapCache(FzPageInfo* pi) {
     pi->followThemePageBitmapDevBounds = fz_empty_irect;
 }
 
+static void SyncFollowThemeLayoutTextbookFastRemap(EngineMupdf* engine, fz_context* ctx) {
+    if (!engine || !engine->darkModeEngineCache) {
+        return;
+    }
+    // LayoutPhoto textbooks (PageMaker/Acrobat) share class 2 with adobe RAZ producers.
+    // Only skip PictureBook when this is NOT Image-Conversion picture-book metadata.
+    bool fast = engine->followThemeDocBitmapRecolor == 2 && engine->pdfdoc &&
+                !PdfDarkModePdfMetadataSuggestsImageConversionPictureBook(ctx, engine->pdfdoc);
+    PdfDarkModeEngineCacheSetLayoutTextbookFastRemap(engine->darkModeEngineCache, fast);
+}
+
 static void ApplyFollowThemeDocClassFromMetadata(EngineMupdf* engine, fz_context* ctx) {
     if (!engine || !engine->pdfdoc) {
         if (engine) {
             engine->followThemeDocBitmapRecolor = 0;
+            SyncFollowThemeLayoutTextbookFastRemap(engine, ctx);
         }
         return;
     }
     // Content probe refines metadata; do not overwrite on theme invalidation.
     if (engine->followThemeContentProbed) {
+        SyncFollowThemeLayoutTextbookFastRemap(engine, ctx);
         return;
     }
     if (InterlockedCompareExchange(&engine->pdfFollowThemeProbePending, 0, 0) != 0) {
@@ -231,9 +250,11 @@ static void ApplyFollowThemeDocClassFromMetadata(EngineMupdf* engine, fz_context
     } else {
         engine->followThemeDocBitmapRecolor = 0;
     }
+    SyncFollowThemeLayoutTextbookFastRemap(engine, ctx);
 }
 
 static void DetectFollowThemeDocBitmapRecolor(EngineMupdf* engine, fz_context* ctx);
+static bool PdfPageObjHasImageXObject(fz_context* ctx, pdf_document* pdfdoc, int pageNo0);
 
 void EngineMupdfInvalidateDarkMode(EngineBase* engine) {
     EngineMupdf* epdf = AsEngineMupdf(engine);
@@ -666,6 +687,9 @@ static IPageDestination* NewPageDestinationMupdf(EngineMupdf* e, fz_context* ctx
         dest->pageNo = 0;
     } else {
         dest->pageNo = OutlinePageNo(e, ctx, doc, pdf_specifics(ctx, doc), link, outline);
+    }
+    if (e && dest->pageNo > 0 && e->joinDisplayToEngine.Size() > 0) {
+        dest->pageNo = EngineMupdfMapEnginePageToDisplay(e, dest->pageNo);
     }
     return dest;
 }
@@ -2068,17 +2092,13 @@ static void fz_img_collect_fill_image(fz_context* ctx, fz_device* dev, fz_image*
     fz_img_collect_add(ctx, dev, fz_transform_rect(fz_unit_rect, ctm), false, image);
 }
 
-static void fz_img_collect_fill_image_mask(fz_context* ctx, fz_device* dev, fz_image* image, fz_matrix ctm,
-                                           fz_colorspace* colorspace, const float* color, float alpha,
-                                           fz_color_params color_params) {
-    (void)image;
-    (void)colorspace;
-    (void)color;
-    (void)alpha;
-    (void)color_params;
-    // Image masks are knockouts/clip shapes, not photos — track only for clipping.
-    fz_img_collect_add(ctx, dev, fz_transform_rect(fz_unit_rect, ctm), true, nullptr);
-}
+// Image masks are knockouts / stencil shapes, not photos, so dark-mode preserve
+// must not treat them as artwork. Do not call fz_img_collect_add(..., clip=true):
+// fill_image_mask is not a clipping operation and has no matching pop_clip
+// (unlike clip_image_mask). Pushing an unpopped clip shrinks later image rects
+// and can leave the collect device's clip stack unbalanced.
+static void fz_img_collect_fill_image_mask(fz_context*, fz_device*, fz_image*, fz_matrix, fz_colorspace*, const float*,
+                                           float, fz_color_params) {}
 
 static void fz_img_collect_clip_path(fz_context* ctx, fz_device* dev, const fz_path* path, int even_odd, fz_matrix ctm,
                                      fz_rect scissor) {
@@ -2216,6 +2236,209 @@ static void FzCollectImagesFromPageContent(fz_context* ctx, int pageNo, FzPageIn
     fz_catch(ctx) {
         fz_report_error(ctx);
     }
+}
+
+// Calibre photo books place the same image XObject on consecutive pages: one
+// page shows most of the photo, the next only a thin clipped strip. Hide the
+// strip page in the display page list so continuous view looks seamless.
+static bool PdfJoinSplitImagesMatch(fz_image* a, fz_image* b) {
+    if (!a || !b) {
+        return false;
+    }
+    if (a == b) {
+        return true;
+    }
+    // Shared PDF XObjects normally share the fz_image store entry; fall back to
+    // identical pixel dimensions when pointers differ.
+    return a->w == b->w && a->h == b->h && a->w >= 64 && a->h >= 64;
+}
+
+struct JoinSplitPageImage {
+    fz_image* image = nullptr;
+    float coverage = 0.f;
+};
+
+static JoinSplitPageImage JoinSplitPickDominantImage(FzPageInfo* pi) {
+    JoinSplitPageImage best{};
+    if (!pi || pi->mediabox.IsEmpty()) {
+        return best;
+    }
+    float pageArea = pi->mediabox.dx * pi->mediabox.dy;
+    if (pageArea <= 0.f) {
+        return best;
+    }
+    for (FitzPageImageInfo* info : pi->images) {
+        if (!info || !info->image) {
+            continue;
+        }
+        RectF visible = ToRectF(info->rect).Intersect(pi->mediabox);
+        if (visible.IsEmpty()) {
+            continue;
+        }
+        float cov = (visible.dx * visible.dy) / pageArea;
+        if (cov > best.coverage) {
+            best.coverage = cov;
+            best.image = info->image;
+        }
+    }
+    return best;
+}
+
+static void ApplyJoinSplitPdfImages(EngineMupdf* e) {
+    if (!e || !e->pdfdoc) {
+        return;
+    }
+    if (!gGlobalPrefs || !gGlobalPrefs->fixedPageUI.joinSplitPdfImages) {
+        return;
+    }
+    if (IsCreateEngineForThumbnail()) {
+        return;
+    }
+    int rawN = e->pageCount;
+    if (rawN < 4) {
+        return;
+    }
+
+    fz_context* ctx = e->Ctx();
+    // Acrobat/InDesign/Office layout PDFs are not Calibre strip albums. Running
+    // fz_run_page on every page at open (e.g. 900+ page textbooks) made open
+    // multi-minute. Skip the whole-document scan for those.
+    if (PdfDarkModePdfMetadataSuggestsLayoutPhotoDoc(ctx, e->pdfdoc) ||
+        PdfDarkModePdfMetadataSuggestsPaperCaptureDoc(ctx, e->pdfdoc)) {
+        return;
+    }
+
+    Vec<JoinSplitPageImage> perPage;
+    perPage.EnsureCap((size_t)rawN);
+    // Calibre strip pairs show up early. If the first chunk has no candidates,
+    // do not pay for parsing the rest of a large non-album PDF.
+    constexpr int kJoinSplitProbePages = 32;
+    int probeSkipCount = 0;
+    for (int pageNo = 1; pageNo <= rawN; pageNo++) {
+        JoinSplitPageImage info{};
+        // Cheap reject: no image XObject → cannot be a strip page.
+        if (!PdfPageObjHasImageXObject(ctx, e->pdfdoc, pageNo - 1)) {
+            perPage.Append(info);
+        } else {
+            FzPageInfo* pi = e->GetFzPageInfo(pageNo, true, nullptr, false);
+            if (pi && pi->page) {
+                if (!pi->contentImagesCollected) {
+                    ScopedCritSec rl(&e->renderLock);
+                    FzCollectImagesFromPageContent(ctx, pageNo, pi, pi->page, nullptr);
+                    pi->contentImagesCollected = true;
+                }
+                info = JoinSplitPickDominantImage(pi);
+            }
+            perPage.Append(info);
+        }
+        if (pageNo >= 2) {
+            const JoinSplitPageImage& a = perPage[pageNo - 2];
+            const JoinSplitPageImage& b = perPage[pageNo - 1];
+            if (PdfJoinSplitImagesMatch(a.image, b.image) &&
+                PdfJoinSplitShouldHideLowerCoverage(a.coverage, b.coverage)) {
+                probeSkipCount++;
+            }
+        }
+        if (pageNo == kJoinSplitProbePages && probeSkipCount == 0) {
+            return;
+        }
+    }
+
+    Vec<u8> skip;
+    skip.SetSize((size_t)rawN);
+    for (int i = 0; i < rawN; i++) {
+        skip[i] = 0;
+    }
+    int skipCount = 0;
+    for (int i = 0; i < rawN - 1; i++) {
+        if (skip[i] || skip[i + 1]) {
+            continue;
+        }
+        const JoinSplitPageImage& a = perPage[i];
+        const JoinSplitPageImage& b = perPage[i + 1];
+        if (!PdfJoinSplitImagesMatch(a.image, b.image)) {
+            continue;
+        }
+        if (!PdfJoinSplitShouldHideLowerCoverage(a.coverage, b.coverage)) {
+            continue;
+        }
+        if (a.coverage <= b.coverage) {
+            skip[i] = 1;
+        } else {
+            skip[i + 1] = 1;
+        }
+        skipCount++;
+    }
+
+    // Require a clear signal so normal documents are not remapped by accident.
+    if (skipCount < 4 && skipCount * 12 < rawN) {
+        return;
+    }
+
+    e->joinRawPageCount = rawN;
+    e->joinDisplayToEngine.Reset();
+    e->joinEngineToDisplay.Reset();
+    e->joinDisplayToEngine.EnsureCap((size_t)(rawN - skipCount));
+    e->joinEngineToDisplay.SetSize((size_t)rawN);
+    for (int i = 0; i < rawN; i++) {
+        e->joinEngineToDisplay[i] = 0;
+    }
+    for (int i = 0; i < rawN; i++) {
+        if (skip[i]) {
+            continue;
+        }
+        int displayNo = e->joinDisplayToEngine.Size() + 1;
+        e->joinDisplayToEngine.Append(i + 1);
+        e->joinEngineToDisplay[i] = displayNo;
+    }
+    int lastDisplay = 1;
+    for (int i = 0; i < rawN; i++) {
+        if (e->joinEngineToDisplay[i] > 0) {
+            lastDisplay = e->joinEngineToDisplay[i];
+        } else {
+            e->joinEngineToDisplay[i] = lastDisplay;
+        }
+    }
+
+    e->pageCount = e->joinDisplayToEngine.Size();
+    logf("JoinSplitPdfImages: collapsed %d -> %d pages (hidden %d strip pages)\n", rawN, e->pageCount, skipCount);
+}
+
+int EngineMupdfMapDisplayPageToEngine(EngineBase* engine, int displayPageNo) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || e->joinDisplayToEngine.Size() == 0) {
+        return displayPageNo;
+    }
+    if (displayPageNo < 1 || displayPageNo > e->joinDisplayToEngine.Size()) {
+        return -1;
+    }
+    return e->joinDisplayToEngine[displayPageNo - 1];
+}
+
+int EngineMupdfMapEnginePageToDisplay(EngineBase* engine, int enginePageNo) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || e->joinEngineToDisplay.Size() == 0) {
+        return enginePageNo;
+    }
+    if (enginePageNo < 1 || enginePageNo > e->joinEngineToDisplay.Size()) {
+        return -1;
+    }
+    return e->joinEngineToDisplay[enginePageNo - 1];
+}
+
+bool EngineMupdfHasJoinSplitPdfImages(EngineBase* engine) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    return e && e->joinDisplayToEngine.Size() > 0;
+}
+
+static int MapJoinDisplayPageNo(EngineMupdf* e, int displayPageNo) {
+    if (!e || e->joinDisplayToEngine.Size() == 0) {
+        return displayPageNo;
+    }
+    if (displayPageNo < 1 || displayPageNo > e->joinDisplayToEngine.Size()) {
+        return -1;
+    }
+    return e->joinDisplayToEngine[displayPageNo - 1];
 }
 
 static void FzFindImagePositions(fz_context* ctx, int pageNo, Vec<FitzPageImageInfo*>& images, fz_stext_page* stext) {
@@ -3830,19 +4053,24 @@ img.kindle-cn-bodycontent-image-alone45 {
   height: %.0fpt !important;
   margin: 0.8em auto !important;
 }
-/* With-note: flow with text; no forced page break after headings. */
+/* With-note: publisher %% width + auto height; page-break on large figures. */
 img.kindle-cn-bodycontent-image-alone100-withnote,
 img.kindle-cn-bodycontent-image-alone80-withnote,
 img.kindle-cn-bodycontent-image-alone70-withnote,
 img.kindle-cn-bodycontent-image-alone60-withnote,
 img.kindle-cn-bodycontent-image-alone50-withnote,
 img.kindle-cn-bodycontent-image-alone45-withnote,
-img.kindle-cn-bodycontent-image-alone40-withnote,
+img.kindle-cn-bodycontent-image-alone40-withnote {
+  display: block !important;
+  page-break-before: always !important;
+  vertical-align: top !important;
+  height: auto !important;
+  margin: 0 auto 0 auto !important;
+}
 img.kindle-cn-bodycontent-image-alone30-withnote,
 img.kindle-cn-bodycontent-image-alone20-withnote {
   display: block !important;
   page-break-before: auto !important;
-  width: auto !important;
   height: auto !important;
   margin: 0.4em auto 0 auto !important;
 }
@@ -3873,9 +4101,15 @@ img.kindle-cn-bodycontent-image-alone20-withnote {
 }
 div.kindle-cn-bodycontent-div-alone100,
 div.kindle-cn-bodycontent-div-alone100a {
-  page-break-before: auto !important;
+  page-break-before: always !important;
   page-break-inside: avoid !important;
   margin: 0.4em auto !important;
+}
+div.kindle-cn-frame-zhijiao div.kindle-cn-bodycontent-div-alone100,
+div.kindle-cn-frame-zhijiao div.kindle-cn-bodycontent-div-alone100a,
+div.kindle-cn-frame-yuanjiao div.kindle-cn-bodycontent-div-alone100,
+div.kindle-cn-frame-yuanjiao div.kindle-cn-bodycontent-div-alone100a {
+  page-break-before: always !important;
 }
 h1 + div.kindle-cn-bodycontent-div-alone100,
 h2 + div.kindle-cn-bodycontent-div-alone100,
@@ -4119,28 +4353,62 @@ pre code {
     return str::JoinTemp(css, "\n", kMdInlineCodeCssLight);
 }
 
-static const char* kEpubCnCompareTableCss = R"(td.kindle-cn-table-rn1, td.rt1 {
+static const char* kEpubCnCompareTableCss =
+    R"(/* cnepub 人物对比表：td width="40/45/10%" 定列宽（html-parse + layout_table） */
+table {
+  table-layout: fixed !important;
+  width: 100% !important;
+  border-collapse: collapse !important;
+}
+td.kindle-cn-table-rn1, td.rt1 {
   text-indent: 0 !important;
+  vertical-align: top !important;
 }
 td.kindle-cn-table-rn1:nth-child(2) {
   text-align: center !important;
   vertical-align: middle !important;
 }
-/* cnepub 人物对比表头行：左右肖像居中、顶对齐（table>tr 无效，中间有 tbody） */
+/* text00039 等：表头行肖像 + 姓名 */
 tr.kindle-cn-table-body td.rt1 {
-  vertical-align: top !important;
   text-align: center !important;
+  vertical-align: top !important;
+  padding: 0 0 0.5em 0 !important;
+  border: none !important;
+}
+tr.kindle-cn-table-body td.rt1:first-child,
+tr.kindle-cn-table-body td.rt1:last-child {
+  height: 11.5em !important;
 }
 tr.kindle-cn-table-body td.rt1 img.kindle-cn-inline-image2 {
-  vertical-align: top !important;
+  height: 9.5em !important;
   width: auto !important;
   max-width: 100% !important;
+  vertical-align: top !important;
+  display: block !important;
+  margin: 0 auto 0.35em auto !important;
+}
+tr.kindle-cn-table-body td.rt1 .bodyContent_120,
+tr.kindle-cn-table-body td.rt1 span.kindle-cn-bold {
+  display: block !important;
+  text-align: center !important;
+  font-size: 0.95em !important;
+  line-height: 1.35 !important;
 }
 tr.kindle-cn-table-body td.rt1:nth-child(2) {
-  vertical-align: middle !important;
-  padding-top: 3.2em !important;
+  vertical-align: top !important;
+  padding-top: 0 !important;
 }
-tr.kindle-cn-table-body td.rt1 .bodyContent_120 {
+tr.kindle-cn-table-body td.rt1:nth-child(2) span {
+  display: block !important;
+  padding-top: 4em !important;
+  font-size: 1.3em !important;
+  line-height: 1.2 !important;
+}
+/* 正文行与表头行分离，避免压到肖像 */
+table > tr:not(.kindle-cn-table-body) > td.kindle-cn-table-rn1 {
+  padding: 0.55em 0.45em 0.45em 0.45em !important;
+}
+td.kindle-cn-table-rn1 .kindle-cn-hei {
   display: block !important;
   text-align: center !important;
 }
@@ -4379,17 +4647,19 @@ p.figure img, p.fig img, p.image img, p.images img, p.pic img, p.illustration im
   margin: 0.8em 0 !important;
 }
 /* HiResonator/KF8 dual-image EPUBs ship .squeeze-epub + .squeeze-amzn pairs.
-   The book CSS hides .squeeze-amzn, but the div.image img rule above wins on
-   specificity; hide the Kindle-only copy explicitly. */
-.squeeze-amzn,
-img.squeeze-amzn,
+   Put the most specific selectors first: mupdf uses the first matching
+   selector's specificity in a comma group, and `div.image img { display:block
+   !important }` otherwise beats `.squeeze-amzn`. */
 div.image img.squeeze-amzn, div.figure img.squeeze-amzn, div.fig img.squeeze-amzn,
-figure img.squeeze-amzn, div.images img.squeeze-amzn, div.picture img.squeeze-amzn {
+figure img.squeeze-amzn, div.images img.squeeze-amzn, div.picture img.squeeze-amzn,
+img.squeeze-amzn,
+.squeeze-amzn {
   display: none !important;
 }
 /* Book CSS uses inline-block .squeeze wrappers centered via text-align on the
    parent; mupdf treats inline-block as block, so use auto margins instead. */
 .squeeze {
+  display: block !important;
   margin-left: auto !important;
   margin-right: auto !important;
   text-align: center !important;
@@ -4833,24 +5103,29 @@ p.picture > img, p.picture1 > img {
     return ebookCss;
 }
 
-static void SetMupdfReflowUserCss(fz_context* ctx, const char* nameHint, const char* filePath, float ldx, float ldy,
-                                  float lfontDy, int displayDpi) {
-    if (IsMarkdownReflowDocument(nameHint, filePath)) {
-        fz_set_use_document_css(ctx, true);
-        TempStr mdCss = BuildMarkdownUserCss(nameHint, filePath, ldx, ldy, lfontDy);
-        if (mdCss) {
-            fz_set_user_css(ctx, mdCss);
-        }
+// mupdf 1.28: per-document styling via fz_style_document (replaces global
+// fz_set_user_css / fz_set_use_document_css). Must run after the document is
+// opened and before fz_layout_document / reparse.
+static void StyleMupdfReflowDocument(fz_context* ctx, fz_document* doc, const char* nameHint, const char* filePath,
+                                     float ldx, float ldy, float lfontDy, int displayDpi) {
+    if (!doc) {
         return;
     }
-    auto eBookUI = GetEBookUI();
-    if (eBookUI) {
-        fz_set_use_document_css(ctx, !eBookUI->ignoreDocumentCSS);
+    const char* userCss = nullptr;
+    int usePublisherCss = 1;
+    TempStr ownedCss = nullptr;
+    if (IsMarkdownReflowDocument(nameHint, filePath)) {
+        ownedCss = BuildMarkdownUserCss(nameHint, filePath, ldx, ldy, lfontDy);
+        userCss = ownedCss;
+    } else {
+        auto eBookUI = GetEBookUI();
+        if (eBookUI) {
+            usePublisherCss = eBookUI->ignoreDocumentCSS ? 0 : 1;
+        }
+        ownedCss = BuildMupdfReflowUserCss(nameHint, filePath, ldx, ldy, lfontDy, displayDpi);
+        userCss = ownedCss;
     }
-    TempStr ebookCss = BuildMupdfReflowUserCss(nameHint, filePath, ldx, ldy, lfontDy, displayDpi);
-    if (ebookCss) {
-        fz_set_user_css(ctx, ebookCss);
-    }
+    fz_style_document(ctx, doc, usePublisherCss, userCss);
 }
 
 static void LayoutMupdfReflowDocument(fz_context* ctx, fz_document* doc, int displayDPI, float ldx, float ldy,
@@ -4870,9 +5145,9 @@ static void LayoutMupdfReflowDocument(fz_context* ctx, fz_document* doc, int dis
 // Theme / document-color: refresh user CSS and drop cached HTML pages. Layout rules in
 // BuildMupdfReflowUserCss are identical for open and theme when nameHint and layout pt match;
 // only BuildMupdfReflowPaletteCss varies with theme / document color mode.
-static void ApplyMupdfThemeCssOnly(fz_context* ctx, const char* nameHint, const char* filePath, float ldxPt,
-                                   float ldyPt, float lfontDyPt, int displayDpi) {
-    SetMupdfReflowUserCss(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt, displayDpi);
+static void ApplyMupdfThemeCssOnly(fz_context* ctx, fz_document* doc, const char* nameHint, const char* filePath,
+                                   float ldxPt, float ldyPt, float lfontDyPt, int displayDpi) {
+    StyleMupdfReflowDocument(ctx, doc, nameHint, filePath, ldxPt, ldyPt, lfontDyPt, displayDpi);
 }
 
 static void WaitForReflowUiDocLock(EngineMupdf* e);
@@ -4946,6 +5221,9 @@ static void EngineMupdfTryResolveOutlineFragment(EngineMupdf* e, fz_outline* ol)
     if (!e || !ol || !ol->uri || !str::FindChar(ol->uri, '#')) {
         return;
     }
+    if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+        return;
+    }
     int ch = ol->page.chapter;
     if (ch < 0) {
         ch = EpubUriChapterIndexNoLayout(e->Ctx(), e->_doc, ol->uri);
@@ -4983,6 +5261,9 @@ static void EngineMupdfTryResolveOutlineFragment(EngineMupdf* e, fz_outline* ol)
 
 static void EngineMupdfWalkOutlineFragments(EngineMupdf* e, fz_outline* ol) {
     while (ol) {
+        if (e && InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+            return;
+        }
         EngineMupdfTryResolveOutlineFragment(e, ol);
         if (ol->down) {
             EngineMupdfWalkOutlineFragments(e, ol->down);
@@ -4993,6 +5274,9 @@ static void EngineMupdfWalkOutlineFragments(EngineMupdf* e, fz_outline* ol) {
 
 static int EngineMupdfCollectOutlineTocMeta(EngineMupdf* e, fz_outline* ol, EpubMetaData& data, int idx) {
     while (ol) {
+        if (e && InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+            return idx;
+        }
         int pageNo = 0;
         if (ol->uri && str::FindChar(ol->uri, '#')) {
             pageNo = EpubMetaLookupFragmentPage(e->epubMeta, ol->uri);
@@ -5098,8 +5382,8 @@ bool EngineMupdf::LoadFromStream(fz_stream* stm, const char* nameHint, PasswordU
     fz_var(dx);
     fz_var(dy);
     fz_try(ctx) {
-        SetMupdfReflowUserCss(ctx, nameHint, FilePath(), ldxPt, ldyPt, lfontDyPt, displayDPI);
         _doc = fz_open_accelerated_document_with_stream(ctx, nameHint, stm, nullptr);
+        StyleMupdfReflowDocument(ctx, _doc, nameHint, FilePath(), ldxPt, ldyPt, lfontDyPt, displayDPI);
         pdfdoc = pdf_specifics(ctx, _doc);
         LayoutMupdfReflowDocument(ctx, _doc, displayDPI, ldxPt, ldyPt, lfontDyPt, &dx, &dy);
         reflowLayoutW = dx;
@@ -5363,7 +5647,9 @@ static void GrowReflowPageCountLocked(EngineMupdf* e, int newCount) {
     for (int i = e->pageCount; i < newCount; i++) {
         auto pi = New<FzPageInfo>(e->arena);
         pi->pageNo = i + 1;
-        pi->mediabox = RectF(0, 0, e->reflowLayoutW, e->reflowLayoutH);
+        // Leave mediabox empty so PageMediabox() measures fz_bound_page instead of
+        // caching layout-sized placeholders during progressive EPUB loading.
+        pi->mediabox = {};
         e->pages.Append(pi);
     }
     e->pageCount = newCount;
@@ -5575,7 +5861,7 @@ static bool RelayoutSingleChapterReflowHtml(EngineMupdf* e, fz_context* ctx, con
     bool ok = false;
     fz_try(ctx) {
         MaybeReportRelayoutProgress(20);
-        ApplyMupdfThemeCssOnly(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt, e->displayDPI);
+        ApplyMupdfThemeCssOnly(ctx, e->_doc, nameHint, filePath, ldxPt, ldyPt, lfontDyPt, e->displayDPI);
         MaybeReportRelayoutProgress(35);
         buf = fz_new_buffer_from_copied_data(ctx, e->reflowHtmlSource.data(), e->reflowHtmlSource.size());
         float em = DpiScale(lfontDyPt, e->displayDPI);
@@ -5597,6 +5883,7 @@ static bool RelayoutSingleChapterReflowHtml(EngineMupdf* e, fz_context* ctx, con
 }
 
 static void AcquireReflowUiDocLock(EngineMupdf* e);
+static bool TryAcquireReflowUiDocLock(EngineMupdf* e);
 static void ReleaseReflowUiDocLock(EngineMupdf* e);
 static void KickReflowLayoutWarmAsync(EngineMupdf* e);
 static int CountReflowChaptersUpTo(EngineMupdf* e, int targetChapter, const char* notifyPath, bool isBackground,
@@ -5644,20 +5931,45 @@ static void WaitForReflowBackgroundYield(EngineMupdf* e) {
     }
 }
 
-// Theme / document-color user CSS: palette rules only for EPUB (see BuildMupdfReflowPaletteCss).
-// Caller must hold docLock. Purge MuPDF's stored HTML layout and drop page handles,
-// but keep chapter page map and mediabox geometry.
+// Block background work only when the UI is waiting on docLock or paused.
+static bool ReflowBackgroundMustYieldForUi(EngineMupdf* e) {
+    if (!e || InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) == 0) {
+        return false;
+    }
+    if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+        return true;
+    }
+    if (InterlockedCompareExchange(&e->reflowUiPaused, 0, 0) != 0) {
+        return true;
+    }
+    if (InterlockedCompareExchange(&e->reflowSuspendBackgroundLoad, 0, 0) != 0) {
+        return true;
+    }
+    return InterlockedCompareExchange(&e->reflowUiWantsDocLock, 0, 0) != 0;
+}
+
+static bool ReflowBackgroundUserReadingRecently(EngineMupdf* e) {
+    DWORD lastAccess = (DWORD)InterlockedCompareExchange(&e->reflowLastPageAccessMs, 0, 0);
+    if (lastAccess == 0) {
+        return false;
+    }
+    return GetTickCount() - lastAccess < kReflowActiveReadingMs;
+}
+
+static void ReflowBackgroundYield(EngineMupdf* e) {
+    InterlockedExchange(&e->reflowBackgroundYielding, 1);
+    Sleep(kReflowBackgroundYieldMs);
+    InterlockedExchange(&e->reflowBackgroundYielding, 0);
+}
+
+// Palette CSS: drop page handles so they re-render with the new colors, but do
+// not fz_purge_stored_html() for every chapter here. That walks a fully counted
+// anthology on the UI thread (20s+). GetFzPageInfo restyles one chapter lazily
+// when the page is actually shown (reflowThemeCssEpoch == 0).
 static void InvalidateReflowPageCachesForThemeCssLocked(EngineMupdf* e, fz_context* ctx) {
     if (!e || !ctx || e->pdfdoc || e->pageCount <= 0) {
         return;
     }
-    fz_try(ctx) {
-        fz_purge_stored_html(ctx, e->_doc);
-    }
-    fz_catch(ctx) {
-        fz_report_error(ctx);
-    }
-    u32 epoch = e->reflowThemeCssEpoch;
     ScopedCritSec scope(&e->pagesLock);
     for (int i = 0; i < e->pageCount; i++) {
         FzPageInfo* pi = e->pages[i];
@@ -5665,7 +5977,7 @@ static void InvalidateReflowPageCachesForThemeCssLocked(EngineMupdf* e, fz_conte
             continue;
         }
         DropSingleFzPageCache(ctx, pi);
-        pi->reflowThemeCssEpoch = epoch;
+        pi->reflowThemeCssEpoch = 0;
     }
 }
 
@@ -5726,6 +6038,23 @@ static void AbortAndWaitForReflowBackgroundLoad(EngineMupdf* e) {
     InterlockedExchange(&e->reflowableLoadAbort, 0);
 }
 
+void EngineMupdfAbortAndWaitBackgroundWork(EngineBase* engine) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e) {
+        return;
+    }
+    InterlockedExchange(&e->reflowableLoadAbort, 1);
+    AbortAndWaitForReflowBackgroundLoad(e);
+}
+
+void EngineMupdfTouchReadingActivity(EngineBase* engine) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || e->pdfdoc) {
+        return;
+    }
+    InterlockedExchange(&e->reflowLastPageAccessMs, (LONG)GetTickCount());
+}
+
 static void ResyncReflowChapterPageMapProgressive(EngineMupdf* e, fz_context* ctx, int fromChapter,
                                                   int syncThroughChapter) {
     if (!e || e->pdfdoc || fromChapter < 0) {
@@ -5757,25 +6086,46 @@ bool EngineMupdfApplyReflowChange(EngineBase* engine, MupdfReflowChangeKind chan
     if (!e || !e->_doc || e->pdfdoc) {
         return false;
     }
-    if (InterlockedCompareExchange(&e->reflowThemeRecountInProgress, 1, 0) != 0) {
-        return false;
-    }
-    defer {
-        InterlockedExchange(&e->reflowThemeRecountInProgress, 0);
-    };
 
     const char* filePath = engine->FilePath();
     if (str::IsEmpty(filePath)) {
         return false;
     }
 
+    bool paletteOnly = changeKind == MupdfReflowChangeKind::Palette;
+    if (paletteOnly) {
+        if (!TryAcquireReflowUiDocLock(e)) {
+            return false;
+        }
+    }
+
+    if (InterlockedCompareExchange(&e->reflowThemeRecountInProgress, 1, 0) != 0) {
+        if (paletteOnly) {
+            ReleaseReflowUiDocLock(e);
+        }
+        return false;
+    }
+    defer {
+        InterlockedExchange(&e->reflowThemeRecountInProgress, 0);
+    };
+
     const char* nameHint = filePath;
     float ldxPt, ldyPt, lfontDyPt;
     GetMupdfReflowLayoutPt(nameHint, &ldxPt, &ldyPt, &lfontDyPt);
 
     fz_context* ctx = e->_ctx;
-    AcquireReflowUiDocLock(e);
-    WaitForReflowBackgroundYield(e);
+    if (!paletteOnly) {
+        AcquireReflowUiDocLock(e);
+    }
+    bool uiLockHeld = true;
+    defer {
+        if (uiLockHeld) {
+            ReleaseReflowUiDocLock(e);
+        }
+    };
+    if (!paletteOnly) {
+        WaitForReflowBackgroundYield(e);
+    }
     MaybeReportRelayoutProgress(10);
     bool ok = false;
     bool needChapterResync = false;
@@ -5792,7 +6142,7 @@ bool EngineMupdfApplyReflowChange(EngineBase* engine, MupdfReflowChangeKind chan
                 ok = RelayoutSingleChapterReflowHtml(e, ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt);
             } else {
                 MaybeReportRelayoutProgress(20);
-                ApplyMupdfThemeCssOnly(ctx, nameHint, filePath, ldxPt, ldyPt, lfontDyPt, e->displayDPI);
+                ApplyMupdfThemeCssOnly(ctx, e->_doc, nameHint, filePath, ldxPt, ldyPt, lfontDyPt, e->displayDPI);
                 if (geometryChange) {
                     MaybeReportRelayoutProgress(40);
                     float dx, dy;
@@ -5800,12 +6150,10 @@ bool EngineMupdfApplyReflowChange(EngineBase* engine, MupdfReflowChangeKind chan
                     e->reflowLayoutW = dx;
                     e->reflowLayoutH = dy;
                 }
-                // fz_clone_context() shares the style context, so updating the
-                // master context's user CSS is immediately visible to clones.
-                // Never drop contexts owned by other threads here: a renderer
-                // may already have obtained its clone and be waiting for
-                // docLock, which would turn this into a use-after-free when it
-                // resumes.
+                // Per-document fz_style_document stores CSS on the document;
+                // cloned contexts see the same fz_document*. Never drop
+                // contexts owned by other threads here: a renderer may already
+                // have obtained its clone and be waiting for docLock.
                 e->reflowThemeCssEpoch++;
                 MaybeReportRelayoutProgress(75);
                 InvalidateReflowPageCachesForThemeCssLocked(e, ctx);
@@ -5819,6 +6167,7 @@ bool EngineMupdfApplyReflowChange(EngineBase* engine, MupdfReflowChangeKind chan
     }
     MaybeReportRelayoutProgress(95);
     ReleaseReflowUiDocLock(e);
+    uiLockHeld = false;
     if (needChapterResync && ok) {
         // Fragment and TOC page numbers were resolved against the previous
         // geometry. A progressive recount only rebuilds nearby chapters
@@ -5845,6 +6194,9 @@ bool EngineMupdfApplyReflowChange(EngineBase* engine, MupdfReflowChangeKind chan
         // Reflow geometry changes make those coordinates stale; keeping them
         // makes selection and cursor-based reading hit the previous layout.
         e->ClearTextCache();
+    }
+    if (ok) {
+        InterlockedExchange(&e->reflowPaletteKeepsPageMap, paletteOnly ? 1 : 0);
     }
     return ok;
 }
@@ -5878,6 +6230,21 @@ void EngineMupdfSetReflowLoadingPaused(EngineBase* engine, bool paused) {
     if (depth == 0) {
         InterlockedExchange(&e->reflowBackgroundYielding, 0);
     }
+}
+
+void EngineMupdfClearReflowUiWantsDocLock(EngineBase* engine) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (e) {
+        InterlockedExchange(&e->reflowUiWantsDocLock, 0);
+    }
+}
+
+void EngineMupdfSetReflowLoadWhenForeground(EngineBase* engine, bool foreground) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || e->pdfdoc) {
+        return;
+    }
+    InterlockedExchange(&e->reflowSuspendBackgroundLoad, foreground ? 0 : 1);
 }
 
 void EngineMupdfAbortBackgroundWork(EngineBase* engine) {
@@ -5964,6 +6331,15 @@ static void AcquireReflowUiDocLock(EngineMupdf* e) {
         InterlockedExchange(&e->reflowUiWantsDocLock, 1);
         Sleep(0);
     }
+}
+
+static bool TryAcquireReflowUiDocLock(EngineMupdf* e) {
+    if (TryEnterCriticalSection(&e->docLock)) {
+        InterlockedExchange(&e->reflowUiWantsDocLock, 0);
+        return true;
+    }
+    InterlockedExchange(&e->reflowUiWantsDocLock, 1);
+    return false;
 }
 
 static void ReleaseReflowUiDocLock(EngineMupdf* e) {
@@ -6156,6 +6532,17 @@ static int CountReflowChaptersUpTo(EngineMupdf* e, int targetChapter, const char
         // on-demand counting on the UI thread (TOC navigation) must not wait on
         // itself. Don't hold reflowCountLock while paused.
         if (isBackground) {
+            while (ReflowBackgroundMustYieldForUi(e)) {
+                InterlockedExchange(&e->reflowBackgroundYielding, 1);
+                Sleep(1);
+                InterlockedExchange(&e->reflowBackgroundYielding, 0);
+                if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+                    break;
+                }
+            }
+            if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+                break;
+            }
             while (InterlockedCompareExchange(&e->reflowUiPaused, 0, 0) != 0 &&
                    InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) == 0) {
                 InterlockedExchange(&e->reflowBackgroundYielding, 1);
@@ -6188,9 +6575,13 @@ static int CountReflowChaptersUpTo(EngineMupdf* e, int targetChapter, const char
             ScopedCritSec navScope(&e->pendingReflowNavLock);
             navPendingYield = e->pendingReflowNavUri != nullptr && e->pendingReflowNavChapter >= 0;
         }
-        if (!navPendingYield &&
-            ((int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0) % kReflowChaptersPerYield) == 0) {
-            Sleep(0);
+        if (!navPendingYield) {
+            if (isBackground && ReflowBackgroundUserReadingRecently(e)) {
+                ReflowBackgroundYield(e);
+            } else if ((int)InterlockedCompareExchange(&e->reflowChaptersCounted, 0, 0) % kReflowChaptersPerYield ==
+                       0) {
+                Sleep(0);
+            }
         }
     }
     return e->reflowPagesCounted;
@@ -6232,6 +6623,9 @@ static bool ReflowChapterSpanFinalizedInPageMap(EngineMupdf* e, int chapter) {
 
 static bool ReflowChapterPageMapNeedsResync(EngineMupdf* e, fz_context* ctx, int chapter, int pageInChapter) {
     if (InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) != 0) {
+        return false;
+    }
+    if (InterlockedCompareExchange(&e->reflowPaletteKeepsPageMap, 0, 0) != 0) {
         return false;
     }
     if (!ReflowChapterSpanFinalizedInPageMap(e, chapter)) {
@@ -6457,11 +6851,25 @@ static void FinishReflowableLoadAsync(EngineMupdf* e) {
     defer {
         AtomicIntDec(&gDangerousThreadCount);
     };
+    // Clear only when this thread fully exits. Setting the flag earlier let
+    // ~EngineMupdf drop fz_context while CountReflowChaptersUpTo still held
+    // an active fz_try on a per-thread clone (context.c error-stack assert).
+    defer {
+        InterlockedExchange(&e->reflowableLoadingInProgress, 0);
+    };
 
     // let the UI thread render the first pages before heavy background work
     Sleep(kReflowBackgroundDelayMs);
     if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
-        InterlockedExchange(&e->reflowableLoadingInProgress, 0);
+        return;
+    }
+    // Session restore opens every tab; only count chapters for the one the
+    // user is actually looking at. Progressive load starts on first focus.
+    while (InterlockedCompareExchange(&e->reflowSuspendBackgroundLoad, 0, 0) != 0 &&
+           InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) == 0) {
+        Sleep(50);
+    }
+    if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
         return;
     }
 
@@ -6476,7 +6884,8 @@ static void FinishReflowableLoadAsync(EngineMupdf* e) {
         totalPages = e->reflowPagesCounted;
     } else {
         totalPages = CountReflowChaptersUpTo(e, -1, path, /*isBackground*/ true, nullptr);
-        if (e->outline) {
+        bool abortedAfterCount = InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0;
+        if (!abortedAfterCount && e->outline) {
             EngineMupdfWalkOutlineFragments(e, e->outline);
             e->epubMeta.tocResolvedPageNo.Clear();
             EngineMupdfCollectOutlineTocMeta(e, e->outline, e->epubMeta, 0);
@@ -6491,11 +6900,6 @@ static void FinishReflowableLoadAsync(EngineMupdf* e) {
         ScopedCritSec scope(&e->pagesLock);
         e->pageCount = totalPages;
     }
-
-    // Mark loading complete before building the TOC so GetToc() resolves final
-    // page numbers exactly as the UI thread would (its per-item page-number
-    // fallbacks only run once loading is done).
-    InterlockedExchange(&e->reflowableLoadingInProgress, 0);
 
     if (!aborted) {
         EngineMupdfBuildAndSaveEpubMeta(e, loadMs);
@@ -6551,7 +6955,9 @@ static void FinishPdfThemeProbeAsync(EngineMupdf* e) {
 }
 
 static void LoadPdfPageMediabox(EngineMupdf* e, fz_context* ctx, int pageNo) {
-    ReportIf(pageNo < 0 || pageNo >= e->pageCount);
+    // Use pages.Size() (raw PDF page count). After JoinSplitPdfImages, pageCount
+    // is the collapsed display count and must not bound raw page indexes.
+    ReportIf(pageNo < 0 || pageNo >= e->pages.Size());
     FzPageInfo* pageInfo = e->pages[pageNo];
     if (!pageInfo) {
         return;
@@ -6689,7 +7095,7 @@ bool EngineMupdf::FinishLoading() {
         for (int i = 0; i < kReflowInitialPages; i++) {
             auto pi = New<FzPageInfo>(arena);
             pi->pageNo = i + 1;
-            pi->mediabox = RectF(0, 0, reflowLayoutW, reflowLayoutH);
+            pi->mediabox = {};
             pages.Append(pi);
         }
 
@@ -6770,36 +7176,45 @@ bool EngineMupdf::FinishLoading() {
         return true;
     }
 
-    ScopedCritSec scope(&docLock);
+    {
+        ScopedCritSec scope(&docLock);
 
-    // Pre-build the page tree so per-page mediabox lookup stays O(n) instead of
-    // repeatedly walking a broken /Pages tree (common in repackaged PDFs).
-    fz_try(ctx) {
-        pdf_load_page_tree(ctx, pdfdoc);
-    }
-    fz_catch(ctx) {
-        fz_report_error(ctx);
-    }
+        // Pre-build the page tree so per-page mediabox lookup stays O(n) instead of
+        // repeatedly walking a broken /Pages tree (common in repackaged PDFs).
+        fz_try(ctx) {
+            pdf_load_page_tree(ctx, pdfdoc);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+        }
 
-    if (IsCreateEngineForThumbnail()) {
+        if (IsCreateEngineForThumbnail()) {
+            for (int pageNo = 0; pageNo < pageCount; pageNo++) {
+                LoadPdfPageMediabox(this, ctx, pageNo);
+            }
+            FinishPdfDeferredWork(this, ctx);
+            DetectFollowThemeDocBitmapRecolor(this, ctx);
+            return true;
+        }
+
         for (int pageNo = 0; pageNo < pageCount; pageNo++) {
             LoadPdfPageMediabox(this, ctx, pageNo);
         }
         FinishPdfDeferredWork(this, ctx);
-        DetectFollowThemeDocBitmapRecolor(this, ctx);
-        return true;
+
+        // Metadata may already classify LayoutPhoto / FullPageScan. Do not
+        // schedule an async probe (and later InvalidateDarkMode) in that case.
+        if (!followThemeContentProbed) {
+            if (PdfFollowThemePreservesEmbeddedImageColors()) {
+                InterlockedExchange(&pdfFollowThemeProbePending, 1);
+            } else {
+                DetectFollowThemeDocBitmapRecolor(this, ctx);
+            }
+        }
     }
 
-    for (int pageNo = 0; pageNo < pageCount; pageNo++) {
-        LoadPdfPageMediabox(this, ctx, pageNo);
-    }
-    FinishPdfDeferredWork(this, ctx);
-
-    if (PdfFollowThemePreservesEmbeddedImageColors()) {
-        InterlockedExchange(&pdfFollowThemeProbePending, 1);
-    } else {
-        DetectFollowThemeDocBitmapRecolor(this, ctx);
-    }
+    // Outside docLock: image collect acquires renderLock / pagesLock.
+    ApplyJoinSplitPdfImages(this);
     return true;
 }
 
@@ -6936,7 +7351,9 @@ TocItem* EngineMupdf::BuildTocTree(TocItem* parent, fz_outline* outline, int& id
         item->pageNo = pageNo;
         if (!isAttachment && InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) == 0) {
             int destPageNo = PageDestGetPageNo(dest);
-            if (pageNo <= 0 && destPageNo > 0) {
+            // JoinSplitPdfImages maps dest pages to the collapsed display list;
+            // keep TocItem.pageNo in sync (otherwise PageNumbersMatch asserts).
+            if (destPageNo > 0 && (pageNo <= 0 || destPageNo != pageNo)) {
                 item->pageNo = destPageNo;
             }
             ReportIf(!item->PageNumbersMatch());
@@ -7238,11 +7655,15 @@ IPageDestination* EngineMupdf::GetNamedDest(const char* name) {
 #endif
 
 // return a page but only if is fully loaded
+// pageNo is a raw engine page (JoinSplit mapping happens at public API entry points).
 FzPageInfo* EngineMupdf::GetFzPageInfoFast(int pageNo) {
     ScopedCritSec scope(&pagesLock);
-    ReportIf(pageNo < 1 || pageNo > pageCount);
+    ReportIf(pageNo < 1 || pageNo > pages.Size());
+    if (pageNo < 1 || pageNo > pages.Size()) {
+        return nullptr;
+    }
     FzPageInfo* pageInfo = pages[pageNo - 1];
-    if (!pageInfo->page || !pageInfo->fullyLoaded) {
+    if (!pageInfo || !pageInfo->page || !pageInfo->fullyLoaded) {
         return nullptr;
     }
     return pageInfo;
@@ -7369,7 +7790,7 @@ FzPageInfo* EngineMupdf::GetFzPageInfoCanFail(int pageNo) {
     if (!TryEnterCriticalSection(&pagesLock)) {
         return nullptr;
     }
-    if (pageNo >= 1 && pageNo <= pageCount) {
+    if (pageNo >= 1 && pageNo <= pages.Size()) {
         FzPageInfo* pageInfo = pages[pageNo - 1];
         if (pageInfo &&
             (pageInfo->fullyLoaded || pageInfo->retainedLinks || pageInfo->links.Size() > 0 || pageInfo->page)) {
@@ -7413,6 +7834,7 @@ fz_stext_page* fz_new_stext_page_from_page2(fz_context* ctx, fz_page* page, cons
 // so that we don't have to re-do fz_new_stext_page_from_page() when doing search.
 // Search uses FzPageInfo::searchStext (see ExtractPageTextFromFzPageInfo).
 FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* cookie, bool loadLinks) {
+    // pageNo is a raw engine page. Public EngineBase APIs map display->engine first.
     auto ctx = Ctx();
     bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
 
@@ -7421,7 +7843,7 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
     {
         ScopedCritSec scope(&pagesLock);
         int n = pages.Size();
-        ReportIf(pageNo < 1 || pageNo > pageCount);
+        ReportIf(pageNo < 1 || pageNo > n);
         if (pageNo < 1 || pageNo > n) {
             return nullptr;
         }
@@ -7624,12 +8046,16 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
 }
 
 RectF EngineMupdf::PageMediabox(int pageNo) {
+    pageNo = MapJoinDisplayPageNo(this, pageNo);
+    if (pageNo < 1) {
+        return {};
+    }
     FzPageInfo* pi = nullptr;
-    bool measure = false;
+    RectF cached{};
     {
         ScopedCritSec scope(&pagesLock);
         int n = pages.Size();
-        ReportIf(pageNo < 1 || pageNo > pageCount);
+        ReportIf(pageNo < 1 || pageNo > n);
         if (pageNo < 1 || pageNo > n) {
             return {};
         }
@@ -7637,17 +8063,27 @@ RectF EngineMupdf::PageMediabox(int pageNo) {
         if (!pi) {
             return {};
         }
-        if (pi->mediabox.IsEmpty()) {
-            measure = true;
-        } else {
-            return pi->mediabox;
-        }
+        cached = pi->mediabox;
     }
+    bool measure = cached.IsEmpty();
     if (measure && pi) {
         if (pdfdoc) {
             ScopedCritSec docScope(&docLock);
             LoadPdfPageMediabox(this, Ctx(), pageNo - 1);
             return pi->mediabox;
+        }
+        bool loading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
+        if (loading && reflowLayoutW > 0 && reflowLayoutH > 0) {
+            // During progressive load, measuring every page via fz_load_chapter_page
+            // blocks scrolling (docLock + per-page layout). Use the document layout
+            // viewport as an estimate for continuous scroll layout; real bounds are
+            // measured when the page is rendered.
+            RectF estimate(0, 0, reflowLayoutW, reflowLayoutH);
+            ScopedCritSec scope(&pagesLock);
+            if (pageNo >= 1 && pageNo <= pages.Size() && pages[pageNo - 1] == pi) {
+                pi->mediabox = estimate;
+            }
+            return estimate;
         }
         RectF box = LoadReflowPageMediabox(this, pageNo);
         ScopedCritSec scope(&pagesLock);
@@ -7656,7 +8092,7 @@ RectF EngineMupdf::PageMediabox(int pageNo) {
         }
         return box;
     }
-    return {};
+    return cached;
 }
 
 // returns a kept reference to the cached "View" display list for the page,
@@ -7736,6 +8172,8 @@ static void CacheLaTeXFollowThemePageProbe(EngineMupdf* engine, fz_context* ctx,
 static bool FollowThemePageUsesBitmapRecolor(EngineMupdf* engine, fz_context* ctx, FzPageInfo* pageInfo, fz_page* page);
 static bool FollowThemePageWantsLatexFigureSkipRects(EngineMupdf* engine, fz_context* ctx, FzPageInfo* pageInfo,
                                                      fz_page* page);
+static bool FollowThemeWholeTileBitmapBlockedForPaperScan(fz_context* ctx, EngineMupdf* engine, FzPageInfo* pageInfo,
+                                                          fz_page* page);
 
 static RenderedBitmap* GetOrBuildLaTeXFollowThemePageBitmap(EngineMupdf* engine, FzPageInfo* pageInfo, fz_context* ctx,
                                                             fz_page* page, fz_display_list* list, float zoom,
@@ -7777,8 +8215,16 @@ static RenderedBitmap* GetOrBuildLaTeXFollowThemePageBitmap(EngineMupdf* engine,
         if (engine->CadEnhanceActive() && engine->cadRasterDominant && pix) {
             PdfCadEnhancePixmap(ctx, pix, zoom, true);
         }
+        bool textScanBinarize = FollowThemeWholeTileBitmapBlockedForPaperScan(ctx, engine, pageInfo, page);
+        if (textScanBinarize) {
+            fz_pixmap* bin = PdfDarkModeProcessGovernmentPaperPixmap(ctx, pix, darkProfile->palette);
+            if (bin && bin != pix) {
+                fz_drop_pixmap(ctx, pix);
+                pix = bin;
+            }
+        }
         bitmap = NewRenderedFzPixmap(ctx, pix);
-        if (bitmap) {
+        if (bitmap && !textScanBinarize) {
             Vec<Rect> skipRects;
             Vec<Rect>* skipPtr = nullptr;
             if (PdfFollowThemePreservesEmbeddedImageColors()) {
@@ -7821,6 +8267,10 @@ static RenderedBitmap* GetOrBuildLaTeXFollowThemePageBitmap(EngineMupdf* engine,
 }
 
 RectF EngineMupdf::PageContentBox(int pageNo, RenderTarget target) {
+    pageNo = MapJoinDisplayPageNo(this, pageNo);
+    if (pageNo < 1) {
+        return RectF();
+    }
     auto ctx = Ctx();
 
     FzPageInfo* pageInfo = GetFzPageInfo(pageNo, false);
@@ -7919,6 +8369,100 @@ static void DarkLegacySkipKeepLargestArtwork(FzPageInfo* pageInfo) {
     pageInfo->darkLegacyArtworkPageBottom = 0.f;
 }
 
+static int DarkLegacyTileFindRoot(Vec<int>& parent, int i) {
+    while (parent[i] != i) {
+        parent[i] = parent[parent[i]];
+        i = parent[i];
+    }
+    return i;
+}
+
+// Some PDFs slice a single illustration into a grid of image tiles. Judged one
+// at a time each tile is just a small picture: the page-dominance rule never
+// fires, the decorative-strip rule throws away the thin edge pieces, and
+// DarkLegacySkipKeepLargestArtwork keeps only one tile of the set. Group tiles
+// that touch into one region and let the rest of the code treat that region as
+// the image.
+//
+// A group only counts as a tiling if its tiles actually fill its bounding box.
+// Without that check, scattered figures on a busy page would chain together
+// into one huge region covering unrelated page content.
+//
+// Fills groupOf (one entry per rect, indexing groupRect) and groupRect. Rects
+// that don't group land in a group of their own, so callers see no difference
+// from the ungrouped case.
+static void DarkLegacyGroupImageTiles(const Vec<RectF>& rects, float tol, Vec<int>& groupOf, Vec<RectF>& groupRect) {
+    groupOf.Clear();
+    groupRect.Clear();
+    int n = rects.Size();
+    Vec<int> parent;
+    for (int i = 0; i < n; i++) {
+        parent.Append(i);
+    }
+    for (int i = 0; i < n; i++) {
+        if (rects[i].IsEmpty()) {
+            continue;
+        }
+        RectF grown = rects[i];
+        grown.Inflate(tol, tol);
+        for (int j = i + 1; j < n; j++) {
+            if (rects[j].IsEmpty() || grown.Intersect(rects[j]).IsEmpty()) {
+                continue;
+            }
+            int ri = DarkLegacyTileFindRoot(parent, i);
+            int rj = DarkLegacyTileFindRoot(parent, j);
+            if (ri != rj) {
+                parent[ri] = rj;
+            }
+        }
+    }
+
+    Vec<RectF> bbox;
+    Vec<float> tileArea;
+    Vec<int> nTiles;
+    for (int i = 0; i < n; i++) {
+        bbox.Append(RectF());
+        tileArea.Append(0.f);
+        nTiles.Append(0);
+    }
+    for (int i = 0; i < n; i++) {
+        if (rects[i].IsEmpty()) {
+            continue;
+        }
+        int r = DarkLegacyTileFindRoot(parent, i);
+        bbox[r] = nTiles[r] == 0 ? rects[i] : bbox[r].Union(rects[i]);
+        tileArea[r] += rects[i].dx * rects[i].dy;
+        nTiles[r]++;
+    }
+    for (int i = 0; i < n; i++) {
+        if (nTiles[i] < 2) {
+            continue;
+        }
+        float bboxArea = bbox[i].dx * bbox[i].dy;
+        if (bboxArea <= 0.f || tileArea[i] < bboxArea * 0.85f) {
+            nTiles[i] = 0; // scattered images, not a tiling - dissolve the group
+        }
+    }
+
+    Vec<int> rootToGroup;
+    for (int i = 0; i < n; i++) {
+        rootToGroup.Append(-1);
+    }
+    for (int i = 0; i < n; i++) {
+        int r = DarkLegacyTileFindRoot(parent, i);
+        if (rects[i].IsEmpty() || nTiles[r] < 2) {
+            groupOf.Append(groupRect.Size());
+            groupRect.Append(rects[i]);
+            continue;
+        }
+        if (rootToGroup[r] < 0) {
+            rootToGroup[r] = groupRect.Size();
+            groupRect.Append(bbox[r]);
+        }
+        groupOf.Append(rootToGroup[r]);
+    }
+}
+
 static u32 DarkLegacySkipHash(FzPageInfo* pageInfo, float zoom, int rotation) {
     u32 h = PdfDarkModeComputeOptionsHash();
     h = h * 31 + (u32)(zoom * 1000.f);
@@ -7986,16 +8530,46 @@ static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageIn
     int minDx = preserveAllImageColors ? 0 : MinPreservePdfImageSizePx();
     int minDy = minDx;
 
-    for (int imgIdx = 0; imgIdx < pageInfo->images.Size(); imgIdx++) {
-        FitzPageImageInfo* img = pageInfo->images.at(imgIdx);
-        RectF imgPage = ToRectF(img->rect);
+    int nImages = pageInfo->images.Size();
+    Vec<RectF> imgPageRects;
+    Vec<RectF> imgOnPageRects;
+    for (int imgIdx = 0; imgIdx < nImages; imgIdx++) {
+        RectF imgPage = ToRectF(pageInfo->images.at(imgIdx)->rect);
         fz_image* image = FzGetKeptPageImage(ctx, pageInfo, imgIdx);
         if (image && image->w > 0 && image->h > 0) {
             imgPage = PdfDarkModeClampImagePageRect(imgPage, image->w, image->h);
         } else {
             imgPage = PdfDarkModeCapUnknownImagePageRect(imgPage, pageBounds.dy);
         }
-        RectF imgOnPage = imgPage.Intersect(pageBounds);
+        if (image) {
+            fz_drop_image(ctx, image);
+        }
+        imgPageRects.Append(imgPage);
+        imgOnPageRects.Append(imgPage.Intersect(pageBounds));
+    }
+    // Tiles of one sliced illustration are judged as the region they form.
+    // Latex figure skips keep per-image rects so neighboring figures don't merge.
+    Vec<int> groupOf;
+    Vec<RectF> groupRect;
+    if (latexFigureSkips) {
+        for (int i = 0; i < nImages; i++) {
+            groupOf.Append(i);
+            groupRect.Append(imgOnPageRects[i]);
+        }
+    } else {
+        float tileTol = std::max(1.0f, std::min(pageBounds.dx, pageBounds.dy) * 0.005f);
+        DarkLegacyGroupImageTiles(imgOnPageRects, tileTol, groupOf, groupRect);
+    }
+    Vec<int> groupAppended;
+    for (int i = 0; i < groupRect.Size(); i++) {
+        groupAppended.Append(0);
+    }
+
+    for (int imgIdx = 0; imgIdx < nImages; imgIdx++) {
+        RectF imgPage = imgPageRects[imgIdx];
+        int groupIdx = groupOf[imgIdx];
+        RectF imgOnPage = groupRect[groupIdx];
+        fz_image* image = FzGetKeptPageImage(ctx, pageInfo, imgIdx);
         float coverage = (imgOnPage.dx * imgOnPage.dy) / pageArea;
         if (latexFigureSkips) {
             fz_irect devLatex = fz_round_rect(fz_transform_rect(ToFzRect(imgOnPage), ctm));
@@ -8003,7 +8577,8 @@ static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageIn
             int latexDy = devLatex.y1 - devLatex.y0;
             if (latexDx >= 12 && latexDy >= 12) {
                 Rect r(devLatex.x0, devLatex.y0, latexDx, latexDy);
-                if (!r.IsEmpty()) {
+                if (!r.IsEmpty() && !groupAppended[groupIdx]) {
+                    groupAppended[groupIdx] = 1;
                     pageInfo->darkLegacySkipDevAbs.Append(r);
                 }
             }
@@ -8022,20 +8597,24 @@ static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageIn
             int photoDy = devPhoto.y1 - devPhoto.y0;
             if (isPhoto && photoDx >= minDx && photoDy >= minDy) {
                 Rect r(devPhoto.x0, devPhoto.y0, photoDx, photoDy);
-                if (!r.IsEmpty()) {
+                if (!r.IsEmpty() && !groupAppended[groupIdx]) {
+                    groupAppended[groupIdx] = 1;
                     pageInfo->darkLegacySkipDevAbs.Append(r);
                 }
                 fz_drop_image(ctx, image);
                 continue;
             }
         }
-        if (!preserveAllImageColors && coverage >= kMaxPreserveImagePageCoverage) {
+        if (!preserveAllImageColors && PdfDarkModePageDominantImageRecolors(ctx, image, coverage)) {
+            // full-bleed backgrounds / scans recolor with the page; artwork
+            // that happens to fill the page does not
             if (ThemeUsesEyeCareChrome() && image) {
                 DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, image, coverage, false);
                 if (analysis.kind == DarkImageKind::Photo || PdfDarkModeFeaturesLookLikePhoto(analysis.features)) {
                     fz_irect dev = fz_round_rect(fz_transform_rect(ToFzRect(imgOnPage), ctm));
                     Rect r(dev.x0, dev.y0, dev.x1 - dev.x0, dev.y1 - dev.y0);
-                    if (!r.IsEmpty()) {
+                    if (!r.IsEmpty() && !groupAppended[groupIdx]) {
+                        groupAppended[groupIdx] = 1;
                         pageInfo->darkLegacySkipDevAbs.Append(r);
                     }
                     fz_drop_image(ctx, image);
@@ -8090,7 +8669,9 @@ static void BuildPageDarkLegacySkipRects(EngineMupdf* engine, FzPageInfo* pageIn
         }
         fz_irect dev = fz_round_rect(fz_transform_rect(ToFzRect(imgOnPage), ctm));
         Rect r(dev.x0, dev.y0, dev.x1 - dev.x0, dev.y1 - dev.y0);
-        if (!r.IsEmpty()) {
+        // Tiles of one sliced illustration share a region - append it once.
+        if (!r.IsEmpty() && !groupAppended[groupIdx]) {
+            groupAppended[groupIdx] = 1;
             pageInfo->darkLegacySkipDevAbs.Append(r);
             if (!preserveAllImageColors) {
                 float bottom = imgOnPage.y + imgOnPage.dy;
@@ -8136,6 +8717,7 @@ static void BuildFollowThemeArtworkBounds(fz_context* ctx, FzPageInfo* pageInfo,
 
 void EngineMupdf::GetBitmapRecolorSkipRects(int pageNo, float zoom, int rotation, const RectF& renderPageRect,
                                             Size bmpSize, Vec<Rect>& skipRects) {
+    // pageNo is a raw engine page (RenderPage maps display->engine before calling).
     skipRects.Clear();
     if (renderPageRect.IsEmpty() || bmpSize.dx <= 0 || bmpSize.dy <= 0) {
         return;
@@ -8340,7 +8922,7 @@ static FollowThemeScanProbe FollowThemeRefinePureScanForPictureBook(fz_context* 
 }
 
 static fz_image* FollowThemePageDominantBleedImage(fz_context* ctx, EngineMupdf* engine, FzPageInfo* pageInfo,
-                                                  fz_page* page, float minCoverage) {
+                                                   fz_page* page, float minCoverage) {
     if (!ctx || !engine || !pageInfo || !page) {
         return nullptr;
     }
@@ -8590,6 +9172,7 @@ static void DetectFollowThemeDocBitmapRecolor(EngineMupdf* engine, fz_context* c
         return;
     }
     if (engine->followThemeDocBitmapRecolor == 1 || engine->followThemeContentProbed) {
+        SyncFollowThemeLayoutTextbookFastRemap(engine, ctx);
         return;
     }
     // Full-page image scans (DuXiu / Pdg2Pic / …): whole-tile recolor, skip content probe.
@@ -8597,6 +9180,7 @@ static void DetectFollowThemeDocBitmapRecolor(EngineMupdf* engine, fz_context* c
         PdfDarkModePdfMetadataSuggestsPrintToPdfScanDoc(ctx, engine->pdfdoc)) {
         engine->followThemeDocBitmapRecolor = 1;
         engine->followThemeContentProbed = true;
+        SyncFollowThemeLayoutTextbookFastRemap(engine, ctx);
         return;
     }
     // Paper Capture / Acrobat layout textbooks: wrap path for the whole document.
@@ -8607,22 +9191,26 @@ static void DetectFollowThemeDocBitmapRecolor(EngineMupdf* engine, fz_context* c
         PdfDarkModePdfMetadataSuggestsLayoutPhotoDoc(ctx, engine->pdfdoc)) {
         engine->followThemeDocBitmapRecolor = 2;
         engine->followThemeContentProbed = true;
+        SyncFollowThemeLayoutTextbookFastRemap(engine, ctx);
         return;
     }
     if (!PdfFollowThemePreservesEmbeddedImageColors()) {
         engine->followThemeDocBitmapRecolor = 2;
         engine->followThemeContentProbed = true;
+        SyncFollowThemeLayoutTextbookFastRemap(engine, ctx);
         return;
     }
     if (PdfDarkModePdfMetadataSuggestsBitmapRecolorDoc(ctx, engine->pdfdoc)) {
         engine->followThemeDocBitmapRecolor = 1;
         engine->followThemeContentProbed = true;
+        SyncFollowThemeLayoutTextbookFastRemap(engine, ctx);
         return;
     }
     int pageCount = engine->PageCount();
     if (pageCount <= 0) {
         engine->followThemeDocBitmapRecolor = 2;
         engine->followThemeContentProbed = true;
+        SyncFollowThemeLayoutTextbookFastRemap(engine, ctx);
         return;
     }
     DarkModeOptions opts = PdfDarkModeCurrentOptions();
@@ -8681,6 +9269,7 @@ static void DetectFollowThemeDocBitmapRecolor(EngineMupdf* engine, fz_context* c
             (bitmapProbeVotes >= 2 || (bitmapProbeVotes >= 1 && microTextVotes >= 2)) ? 1 : 2;
     }
     engine->followThemeContentProbed = true;
+    SyncFollowThemeLayoutTextbookFastRemap(engine, ctx);
 }
 
 static bool FollowThemeWholeTileBitmapBlockedForPaperScan(fz_context* ctx, EngineMupdf* engine, FzPageInfo* pageInfo,
@@ -8712,7 +9301,7 @@ static bool FollowThemeWholeTileBitmapBlockedForPaperScan(fz_context* ctx, Engin
             continue;
         }
         DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, image, coverage, true);
-        if (PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(analysis.features)) {
+        if (PdfDarkModeFeaturesLookLikeFullPageTextScanForBinarize(analysis.features)) {
             return true;
         }
     }
@@ -8721,7 +9310,7 @@ static bool FollowThemeWholeTileBitmapBlockedForPaperScan(fz_context* ctx, Engin
         return false;
     }
     DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, dominant, 0.97f, true);
-    bool block = PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(analysis.features);
+    bool block = PdfDarkModeFeaturesLookLikeFullPageTextScanForBinarize(analysis.features);
     fz_drop_image(ctx, dominant);
     return block;
 }
@@ -8770,6 +9359,11 @@ static bool FollowThemePageUsesBitmapRecolor(EngineMupdf* engine, fz_context* ct
             }
             FollowThemePageProbeStats st{};
             FollowThemeScanProbe rawProbe = PdfDarkModeProbeFollowThemeScanPage(ctx, page, pageBounds, &st);
+            // InDesign/PageMaker textbooks (Basic Grammar): many vector/text ops — wrap path
+            // recolors type cleanly; whole-tile UpdateBitmapColors + sharpen grains anti-aliasing.
+            if (st.textOps > 2 || st.vectorOps > 2) {
+                return false;
+            }
             // Single full-bleed raster with vector/handwritten overlay (小家越住越大): whole-tile recolor.
             if (st.maxImageCoverage >= 0.88f && st.imageOps <= 1) {
                 fz_image* dominant = FollowThemePageDominantBleedImage(ctx, engine, pageInfo, page, 0.75f);
@@ -8826,7 +9420,10 @@ static bool FollowThemePageUsesBitmapRecolor(EngineMupdf* engine, fz_context* ct
 
 RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     auto ctx = Ctx();
-    auto pageNo = args.pageNo;
+    auto pageNo = MapJoinDisplayPageNo(this, args.pageNo);
+    if (pageNo < 1) {
+        return nullptr;
+    }
     bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
 
     // GetFzPageInfo() returns a cached fz_page owned by the reflow document.
@@ -8939,8 +9536,7 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
             pix = fz_new_pixmap_with_bbox(ctx, csRgb, ibounds, nullptr, 1);
             const DarkModeProfile* darkProfile = args.darkProfile;
             if (useBitmapTexList && !useSmartDarkList) {
-                bool blockOfficePaperBmp =
-                    FollowThemeWholeTileBitmapBlockedForPaperScan(ctx, this, pageInfo, page);
+                bool blockOfficePaperBmp = FollowThemeWholeTileBitmapBlockedForPaperScan(ctx, this, pageInfo, page);
                 if (followThemeBitmapDoc && !blockOfficePaperBmp) {
                     RenderedBitmap* pageBmp = GetOrBuildLaTeXFollowThemePageBitmap(this, pageInfo, ctx, page, keptList,
                                                                                    zoom, rotation, darkProfile);
@@ -8958,8 +9554,16 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                     if (CadEnhanceActive() && cadRasterDominant && pix) {
                         PdfCadEnhancePixmap(ctx, pix, zoom, true);
                     }
+                    bool textScanBinarize = blockOfficePaperBmp;
+                    if (textScanBinarize) {
+                        fz_pixmap* bin = PdfDarkModeProcessGovernmentPaperPixmap(ctx, pix, darkProfile->palette);
+                        if (bin && bin != pix) {
+                            fz_drop_pixmap(ctx, pix);
+                            pix = bin;
+                        }
+                    }
                     bitmap = NewRenderedFzPixmap(ctx, pix);
-                    if (bitmap && darkProfile) {
+                    if (bitmap && darkProfile && !textScanBinarize) {
                         Vec<Rect> skipRects;
                         Vec<Rect>* skipPtr = nullptr;
                         if (PdfFollowThemePreservesEmbeddedImageColors()) {
@@ -9027,6 +9631,7 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     if (pdfdoc) {
         const DarkModeProfile* darkProfile = args.darkProfile;
         bool followDirect = DarkModeProfileUsesFollowThemeDirect(darkProfile);
+        bool followV2 = DarkModeProfileUsesFollowThemeV2(darkProfile);
         bool followBitmapRecolor = followDirect && FollowThemePageUsesBitmapRecolor(this, ctx, pageInfo, page);
         bool usedFollowThemeWrap = followDirect && !followBitmapRecolor;
         fz_try(ctx) {
@@ -9041,7 +9646,16 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
             }
             fz_device* baseDev = fz_new_draw_device(ctx, ctm, pix);
             dev = baseDev;
-            if (usedFollowThemeWrap) {
+            // Full-page scan packs (FreePic2Pdf 连环画, DuXiu, …): whole-tile UpdateBitmapColors
+            // like main — do not run FollowThemeV2 photo-rect protect (white patchwork on line art).
+            if (followV2 && !followBitmapRecolor) {
+                RectF pageBounds = pageInfo->mediabox;
+                if (pageBounds.IsEmpty()) {
+                    pageBounds = ToRectF(fz_bound_page(ctx, page));
+                }
+                dev = PdfDarkModeWrapV2Device(ctx, baseDev, &darkProfile->palette, pageBounds, darkModeEngineCache,
+                                              darkProfile->hash);
+            } else if (usedFollowThemeWrap) {
                 RectF pageBounds = pageInfo->mediabox;
                 if (pageBounds.IsEmpty()) {
                     pageBounds = ToRectF(fz_bound_page(ctx, page));
@@ -9159,6 +9773,10 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
 
 // don't delete the result
 IPageElement* EngineMupdf::GetElementAtPos(int pageNo, PointF pt) {
+    pageNo = MapJoinDisplayPageNo(this, pageNo);
+    if (pageNo < 1) {
+        return nullptr;
+    }
     FzPageInfo* pageInfo = GetFzPageInfoCanFail(pageNo);
     bool reflowLoading = !pdfdoc && IsProgressiveEbookLoading();
     if (!pageInfo) {
@@ -9187,6 +9805,10 @@ void EngineMupdfEnsurePageLinksForHitTest(EngineBase* engine, int pageNo) {
     if (!e || pageNo < 1 || pageNo > e->pageCount) {
         return;
     }
+    pageNo = MapJoinDisplayPageNo(e, pageNo);
+    if (pageNo < 1) {
+        return;
+    }
     // Rendering uses loadQuick with loadLinks false; populate link hit-test data on first hover.
     e->GetFzPageInfo(pageNo, true, nullptr, /*loadLinks*/ true);
 }
@@ -9194,6 +9816,10 @@ void EngineMupdfEnsurePageLinksForHitTest(EngineBase* engine, int pageNo) {
 void EngineMupdfEnsurePageImagesForHitTest(EngineBase* engine, int pageNo) {
     EngineMupdf* e = AsEngineMupdf(engine);
     if (!e || pageNo < 1 || pageNo > e->pageCount) {
+        return;
+    }
+    pageNo = MapJoinDisplayPageNo(e, pageNo);
+    if (pageNo < 1) {
         return;
     }
     FzPageInfo* pageInfo = e->GetFzPageInfo(pageNo, false, nullptr, false);
@@ -9210,6 +9836,10 @@ void EngineMupdfEnsurePageImagesForHitTest(EngineBase* engine, int pageNo) {
 // TOOD: optimize by returning reference or pointer so that
 // we don't have to re-create the Vec every time
 Vec<IPageElement*> EngineMupdf::GetElements(int pageNo) {
+    pageNo = MapJoinDisplayPageNo(this, pageNo);
+    if (pageNo < 1) {
+        return Vec<IPageElement*>();
+    }
     auto pageInfo = GetFzPageInfoFast(pageNo);
     if (!pageInfo) {
         return Vec<IPageElement*>();
@@ -9346,6 +9976,10 @@ void HandleLinkMupdf(EngineMupdf* e, IPageDestination* dest, ILinkHandler* linkH
         if (pageNo1 <= 0) {
             return;
         }
+        pageNo1 = EngineMupdfMapEnginePageToDisplay(e, pageNo1);
+        if (pageNo1 <= 0) {
+            return;
+        }
     }
 
     auto ctrl = linkHandler->GetDocController();
@@ -9386,6 +10020,10 @@ RenderedBitmap* EngineMupdf::GetImageForPageElement(IPageElement* ipel) {
 }
 
 bool EngineMupdf::BenchLoadPage(int pageNo) {
+    pageNo = MapJoinDisplayPageNo(this, pageNo);
+    if (pageNo < 1) {
+        return false;
+    }
     return GetFzPageInfo(pageNo, false) != nullptr;
 }
 
@@ -9532,6 +10170,10 @@ static PageTextUtf8 ExtractPageTextUtf8FromFzPageInfo(EngineMupdf* e, FzPageInfo
 }
 
 PageText EngineMupdf::ExtractPageText(int pageNo) {
+    pageNo = MapJoinDisplayPageNo(this, pageNo);
+    if (pageNo < 1) {
+        return {};
+    }
     bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
 
     ReflowUiDocLock docGuard(this, reflowLoading);
@@ -9543,6 +10185,10 @@ PageText EngineMupdf::ExtractPageText(int pageNo) {
 
 bool EngineMupdf::TryExtractPageText(int pageNo, PageText* out) {
     *out = {};
+    pageNo = MapJoinDisplayPageNo(this, pageNo);
+    if (pageNo < 1) {
+        return false;
+    }
     bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
 
     if (pdfdoc) {
@@ -9554,7 +10200,7 @@ bool EngineMupdf::TryExtractPageText(int pageNo, PageText* out) {
             return false;
         }
         FzPageInfo* pageInfo = nullptr;
-        if (pageNo >= 1 && pageNo <= pageCount) {
+        if (pageNo >= 1 && pageNo <= pages.Size()) {
             pageInfo = pages[pageNo - 1];
         }
         if (!pageInfo || !pageInfo->page) {
@@ -9580,7 +10226,7 @@ bool EngineMupdf::TryExtractPageText(int pageNo, PageText* out) {
         return false;
     }
     FzPageInfo* pageInfo = nullptr;
-    if (pageNo >= 1 && pageNo <= pageCount) {
+    if (pageNo >= 1 && pageNo <= pages.Size()) {
         pageInfo = pages[pageNo - 1];
     }
     if (!pageInfo || !pageInfo->page) {
@@ -9600,6 +10246,10 @@ bool EngineMupdf::TryExtractPageText(int pageNo, PageText* out) {
 
 bool EngineMupdf::TryExtractPageTextUtf8(int pageNo, PageTextUtf8* out) {
     *out = {};
+    pageNo = MapJoinDisplayPageNo(this, pageNo);
+    if (pageNo < 1) {
+        return false;
+    }
     bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
 
     if (pdfdoc) {
@@ -9611,7 +10261,7 @@ bool EngineMupdf::TryExtractPageTextUtf8(int pageNo, PageTextUtf8* out) {
             return false;
         }
         FzPageInfo* pageInfo = nullptr;
-        if (pageNo >= 1 && pageNo <= pageCount) {
+        if (pageNo >= 1 && pageNo <= pages.Size()) {
             pageInfo = pages[pageNo - 1];
         }
         if (!pageInfo || !pageInfo->page) {
@@ -9637,7 +10287,7 @@ bool EngineMupdf::TryExtractPageTextUtf8(int pageNo, PageTextUtf8* out) {
         return false;
     }
     FzPageInfo* pageInfo = nullptr;
-    if (pageNo >= 1 && pageNo <= pageCount) {
+    if (pageNo >= 1 && pageNo <= pages.Size()) {
         pageInfo = pages[pageNo - 1];
     }
     if (!pageInfo || !pageInfo->page) {
@@ -9656,6 +10306,10 @@ bool EngineMupdf::TryExtractPageTextUtf8(int pageNo, PageTextUtf8* out) {
 }
 
 PageTextUtf8 EngineMupdf::ExtractPageTextUtf8(int pageNo) {
+    pageNo = MapJoinDisplayPageNo(this, pageNo);
+    if (pageNo < 1) {
+        return {};
+    }
     bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
 
     ReflowUiDocLock docGuard(this, reflowLoading);
@@ -11153,12 +11807,17 @@ bool EngineMupdf::HasClipOptimizations(int pageNo) {
         return false;
     }
 
+    pageNo = MapJoinDisplayPageNo(this, pageNo);
+    if (pageNo < 1) {
+        return false;
+    }
+
     FzPageInfo* pageInfo = GetFzPageInfoFast(pageNo);
     if (!pageInfo || !pageInfo->page) {
         return false;
     }
 
-    fz_rect mbox = ToFzRect(PageMediabox(pageNo));
+    fz_rect mbox = ToFzRect(pageInfo->mediabox);
     // check if any image covers at least 90% of the page
     for (auto& img : pageInfo->images) {
         fz_rect ir = img->rect;
@@ -11170,6 +11829,10 @@ bool EngineMupdf::HasClipOptimizations(int pageNo) {
 }
 
 TempStr EngineMupdf::GetPageLabeTemp(int pageNo) const {
+    // Collapsed display pages use sequential numbers; raw PDF labels would drift.
+    if (joinDisplayToEngine.Size() > 0) {
+        return EngineBase::GetPageLabeTemp(pageNo);
+    }
     if (!pageLabels || pageNo < 1 || PageCount() < pageNo) {
         return EngineBase::GetPageLabeTemp(pageNo);
     }
@@ -11184,6 +11847,9 @@ TempStr EngineMupdf::GetPageLabeTemp(int pageNo) const {
 int EngineMupdf::GetPageByLabel(const char* label) const {
     if (!pdfdoc) {
         // non-pdf documents don't have labels so label is just a page number as string
+        return EngineBase::GetPageByLabel(label);
+    }
+    if (joinDisplayToEngine.Size() > 0) {
         return EngineBase::GetPageByLabel(label);
     }
     int pageNo = 0;

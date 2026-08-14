@@ -15,6 +15,7 @@ void SetToolbarButtonEnableState(MainWindow*, int cmdId, bool isEnabled);
 void SetToolbarButtonCheckedState(MainWindow*, int cmdId, bool isChecked);
 bool ShouldShowToolbar(MainWindow*);
 void ShowOrHideToolbar(MainWindow*);
+void UpdateAnnotToolToolbarButtons(MainWindow* win);
 void UpdateToolbarState(MainWindow*);
 void UpdateToolbarAfterThemeChange(MainWindow*);
 HIMAGELIST BuildStdToolbarImageList(int dx);

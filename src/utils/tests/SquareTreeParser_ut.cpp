@@ -9,10 +9,17 @@
 
 void SquareTreeTest() {
     static const char* keyValueData[] = {
-        UTF8_BOM "key = value",  UTF8_BOM "key = value",    UTF8_BOM "key=value",
-        UTF8_BOM " key =value ", UTF8_BOM "  key= value  ", UTF8_BOM "key: value",
-        UTF8_BOM "key : value",  UTF8_BOM "key :value",     UTF8_BOM "# key and value:\n\tkey value\n",
-        UTF8_BOM "key\t\tvalue", UTF8_BOM "key = value # inline comment",
+        UTF8_BOM "key = value",
+        UTF8_BOM "key = value",
+        UTF8_BOM "key=value",
+        UTF8_BOM " key =value ",
+        UTF8_BOM "  key= value  ",
+        UTF8_BOM "key: value",
+        UTF8_BOM "key : value",
+        UTF8_BOM "key :value",
+        UTF8_BOM "# key and value:\n\tkey value\n",
+        UTF8_BOM "key\t\tvalue",
+        UTF8_BOM "key = value # inline comment",
     };
 
     for (size_t i = 0; i < dimof(keyValueData); i++) {

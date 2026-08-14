@@ -347,6 +347,18 @@ const fixedPageUI: Field[] = [
     ),
     "3.7.15",
   ),
+  setExpert(
+    setVersion(
+      mkField(
+        "JoinSplitPdfImages",
+        Bool,
+        true,
+        "if true, hide redundant PDF pages that only show a thin strip of an image " +
+          "already shown on the previous/next page (Calibre photo books / split-image PDFs)",
+      ),
+      "3.7",
+    ),
+  ),
 ];
 
 const comicBookUI: Field[] = [
@@ -796,6 +808,15 @@ const globalPrefs: Field[] = [
   mkField("ShowToolbar", Bool, true, "if true, we show the toolbar at the top of the window"),
   setVersion(
     mkField(
+      "ShowAnnotToolbarButtons",
+      Bool,
+      true,
+      "if true, show rectangle/ellipse/line/ink quick annotation buttons on the toolbar",
+    ),
+    "3.8",
+  ),
+  setVersion(
+    mkField(
       "SearchUIFloating",
       Bool,
       false,
@@ -940,7 +961,7 @@ const globalPrefs: Field[] = [
     mkField(
       "TreeWrapLabels",
       Bool,
-      false,
+      true,
       "if true, bookmark and favorites tree labels wrap to multiple lines; " +
         "if false, single line with ellipsis and full text in tooltip on hover",
     ),

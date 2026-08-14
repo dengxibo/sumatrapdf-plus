@@ -85,8 +85,7 @@ static bool PdfDarkModeExtractFeatures(fz_context* ctx, fz_image* image, float p
         if (blockH < 1) {
             blockH = 1;
         }
-        int samplesPerBlock =
-            (blockW * blockH > 0) ? (kMaxImageSamples / (kGridBlocks * kGridBlocks)) + 1 : 1;
+        int samplesPerBlock = (blockW * blockH > 0) ? (kMaxImageSamples / (kGridBlocks * kGridBlocks)) + 1 : 1;
         if (samplesPerBlock < 1) {
             samplesPerBlock = 1;
         }
@@ -254,7 +253,8 @@ static bool PdfDarkModeExtractFeatures(fz_context* ctx, fz_image* image, float p
     return true;
 }
 
-DarkImageAnalysis PdfDarkModeAnalyzeImage(fz_context* ctx, fz_image* image, float pageCoverage, bool pageIsScannedHint) {
+DarkImageAnalysis PdfDarkModeAnalyzeImage(fz_context* ctx, fz_image* image, float pageCoverage,
+                                          bool pageIsScannedHint) {
     return PdfDarkModeAnalyzeImageCached(ctx, image, pageCoverage, pageIsScannedHint, nullptr);
 }
 

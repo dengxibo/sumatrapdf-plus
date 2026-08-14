@@ -72,6 +72,7 @@ CmdBookView,Ctrl + 8,Book View,
 CmdFacingView,Ctrl + 7,Facing View,
 CmdInvertColors,Shift + I,Invert Colors,was `i` before 3.6
 CmdTogglePreservePdfImages,,Toggle Preserve PDF Image Colors in Dark Mode,toggles `PreservePdfImagesInDarkMode` advanced setting
+CmdToggleJoinSplitPdfImages,,Toggle Join Split PDF Images,toggles `JoinSplitPdfImages` (hide Calibre-style strip pages)
 CmdRotateLeft,"[, Shift + Ctrl + Subtract",Rotate Left,
 CmdRotateRight,"], Shift + Ctrl + Add",Rotate Right,
 CmdSinglePageView,Ctrl + 6,Single Page View,

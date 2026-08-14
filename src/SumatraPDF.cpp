@@ -235,7 +235,7 @@ static void CloseAuxiliaryTopLevelWindows();
 static void AbortDocumentBackgroundLoads(MainWindow* winOnly);
 static void ExitProcessAfterShutdown();
 static void DetachTabDocControllerForAsyncDelete(WindowTab* tab, DocController** ctrlOut);
-static void ScheduleDeleteDocController(DocController* ctrl);
+static void FastDeleteDocController(DocController* ctrl);
 
 static void TerminateApplication();
 static void RestartApplication();
@@ -553,7 +553,9 @@ static void PdfThemeProbeCompleteUI(PdfThemeProbeCompleteTask* task) {
 }
 
 static DWORD gLastEbookProgressRepaintMs = 0;
+static DWORD gLastEbookProgressTocInvalidateMs = 0;
 static const DWORD kEbookProgressRepaintIntervalMs = 200;
+static const DWORD kEbookProgressTocInvalidateIntervalMs = 2000;
 static const DWORD kEbookProgressToolbarIntervalMs = 800;
 
 static EbookPagesProgressTask* gPendingEbookProgress = nullptr;
@@ -617,6 +619,7 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
         UpdateToolbarPageText(win, pageCount);
         if (!progressiveLoad) {
             ToolbarUpdateStateForWindow(win, false);
+            FlushTocTreeWrapHeights(win);
         }
     }
     // reloadToc fires when background chapter counting finishes (InvalidateTocTree);
@@ -646,8 +649,18 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
         if (gLastEbookProgressRepaintMs == 0 || now - gLastEbookProgressRepaintMs >= kEbookProgressRepaintIntervalMs) {
             gLastEbookProgressRepaintMs = now;
             ScheduleRepaint(win, 0);
-            InvalidateTocTree(win);
+            // TOC gray/reachable state updates are expensive with TreeWrapLabels custom
+            // draw; throttle invalidation during background chapter counting.
+            if (win->tocVisible && win->tocLoaded &&
+                (gLastEbookProgressTocInvalidateMs == 0 ||
+                 now - gLastEbookProgressTocInvalidateMs >= kEbookProgressTocInvalidateIntervalMs)) {
+                gLastEbookProgressTocInvalidateMs = now;
+                InvalidateTocTree(win);
+            }
         }
+    }
+    if (isForeground && engine && !EngineIsProgressiveEbookLoading(engine)) {
+        gLastEbookProgressTocInvalidateMs = 0;
     }
     if (isForeground && engine) {
         OnEbookPageCountChanged(win);
@@ -1284,6 +1297,10 @@ void ControllerCallbackHandler::UpdateScrollbars(Size canvas) {
     bool showHScroll = (viewPort.dx < canvas.dx) && !hideScrollbar;
     if (useOverlay) {
         SetScrollInfo(win->hwndCanvas, SB_HORZ, &si, FALSE);
+        // SetScrollInfo's last arg is redraw, not visibility, and a non-empty
+        // range re-shows the window scrollbar -- hide it explicitly so overlay
+        // mode doesn't show both the window scrollbar and the overlay one
+        ShowScrollBar(win->hwndCanvas, SB_HORZ, FALSE);
         if (!win->overlayScrollH) {
             win->overlayScrollH =
                 OverlayScrollbarCreate(win->hwndCanvas, OverlayScrollbar::Type::Horz, ScrollbarsOverlayMode());
@@ -1295,8 +1312,9 @@ void ControllerCallbackHandler::UpdateScrollbars(Size canvas) {
             OverlayScrollbarShow(win->overlayScrollH, false);
         }
     } else {
-        ShowScrollBar(win->hwndCanvas, SB_HORZ, showHScroll);
+        // Set range/page before showing so first paint has a thumb (issue #5850)
         SetScrollInfo(win->hwndCanvas, SB_HORZ, &si, TRUE);
+        ShowScrollBar(win->hwndCanvas, SB_HORZ, showHScroll);
     }
 
     bool isSinglePageMode = gGlobalPrefs->scrollbarInSinglePage && (dm->GetDisplayMode() == DisplayMode::SinglePage);
@@ -1320,20 +1338,31 @@ void ControllerCallbackHandler::UpdateScrollbars(Size canvas) {
             if (kZoomFitPage != dm->GetZoomVirtual()) {
                 // keep the top/bottom 5% of the previous page visible after paging down/up
                 si.nPage = (uint)(si.nPage * 0.95);
-                si.nMax -= viewPort.dy - si.nPage;
+                si.nMax -= viewPort.dy - (int)si.nPage;
             }
         }
         showVScroll = (viewPort.dy < canvas.dy);
     }
     bool showScrollbar = !hideScrollbar;
     BOOL showWinScrollbar = showScrollbar && !useOverlay;
-    BOOL showOverScrollbar = showScrollbar && useOverlay;
 
     if (useOverlay || hideScrollbar) {
         SetScrollInfo(win->hwndCanvas, SB_VERT, &si, FALSE);
+        // hide the window scrollbar explicitly (see SB_HORZ note above)
+        ShowScrollBar(win->hwndCanvas, SB_VERT, FALSE);
     } else {
-        ShowScrollBar(win->hwndCanvas, SB_VERT, showWinScrollbar);
-        SetScrollInfo(win->hwndCanvas, SB_VERT, &si, showWinScrollbar);
+        // Match upstream: SetScrollInfo first, then ShowScrollBar(wantV).
+        DWORD styleBefore = (DWORD)GetWindowLongW(win->hwndCanvas, GWL_STYLE);
+        bool wantV = showWinScrollbar && showVScroll;
+        SetScrollInfo(win->hwndCanvas, SB_VERT, &si, TRUE);
+        ShowScrollBar(win->hwndCanvas, SB_VERT, wantV);
+        if (wantV) {
+            DWORD styleAfter = (DWORD)GetWindowLongW(win->hwndCanvas, GWL_STYLE);
+            bool newlyShown = !(styleBefore & WS_VSCROLL) && (styleAfter & WS_VSCROLL);
+            if (newlyShown) {
+                RedrawWindow(win->hwndCanvas, nullptr, nullptr, RDW_FRAME | RDW_INVALIDATE);
+            }
+        }
     }
 
     if (useOverlay) {
@@ -1581,8 +1610,17 @@ static void UpdateUiForCurrentTab(MainWindow* win) {
         OverlayScrollbarShow(win->overlayScrollH, false);
     }
 
-    // menu for chm and ebook docs is different, so we have to re-create it
-    RebuildMenuBarForWindow(win);
+    WindowTab* tab = win->CurrentTab();
+    UiMenuDocKind menuKind = UiMenuDocKind::None;
+    if (tab && tab->IsAboutTab()) {
+        menuKind = UiMenuDocKind::About;
+    } else if (win->ctrl) {
+        menuKind = win->AsChm() ? UiMenuDocKind::Chm : UiMenuDocKind::Fixed;
+    }
+    if (menuKind != win->uiMenuDocKind) {
+        win->uiMenuDocKind = menuKind;
+        RebuildMenuBarForWindow(win);
+    }
     // the toolbar isn't supported for ebook docs (yet)
     ShowOrHideToolbar(win);
     // TODO: unify?
@@ -1595,7 +1633,6 @@ static void UpdateUiForCurrentTab(MainWindow* win) {
 
     UpdateFindbox(win);
 
-    WindowTab* tab = win->CurrentTab();
     const char* title = (tab && tab->frameTitle) ? tab->frameTitle : kSumatraWindowTitle;
     HwndSetText(win->hwndFrame, title);
 
@@ -1664,6 +1701,14 @@ static void SafeDeleteDocController(MainWindow* win, DocController*& ctrl) {
     if (InterlockedCompareExchange(&ctrl->pendingAsyncDelete, 0, 0) != 0) {
         ctrl = nullptr;
         return;
+    }
+    if (DisplayModel* dm = ctrl->AsFixed()) {
+        gRenderCache->CancelRendering(dm);
+        dm->pauseRendering = true;
+        EngineMupdfAbortAndWaitBackgroundWork(dm->GetEngine());
+        dm->cb = nullptr;
+        gRenderCache->FreeForDisplayModel(dm);
+        gRenderCache->WaitForRenderingComplete(dm);
     }
     DetachWinCtrlIfMatches(win, ctrl);
     for (auto& t : win->Tabs()) {
@@ -1765,6 +1810,7 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     DocController* prevCtrl = win->ctrl;
     tab->ctrl = ctrl;
     win->ctrl = tab->ctrl;
+    EngineMupdfSetReflowLoadWhenForeground(tab->GetEngine(), true);
 
     EngineBase* engine = tab->GetEngine();
     if (engine) {
@@ -2067,7 +2113,13 @@ static void ApplyFontReloadScroll(MainWindow* win, DisplayModel* dm, const FontR
 }
 
 static bool ShouldReloadForThemeChange(WindowTab* tab);
+static bool IsReflowableEbookEngine(EngineBase* engine);
+static bool TabNeedsReflowThemeApply(WindowTab* tab);
+static void StampTabReflowThemeEpoch(WindowTab* tab);
+static void BumpReflowThemeEpoch();
 static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab, bool updateUi = true);
+static void ScheduleReflowThemeRetry(MainWindow* win, WindowTab* tab);
+static void CancelReflowThemeRetry(MainWindow* win);
 static void ApplyFontChangeToTab(MainWindow* win, WindowTab* tab, const FontReloadScrollAnchor& anchor,
                                  bool showLayoutUi = false);
 static void ApplyEbookFontSizeChangeToTab(MainWindow* win, WindowTab* tab,
@@ -2111,6 +2163,7 @@ static void BeginEbookFontLayoutUi(MainWindow* win, const char* msg, bool showCh
     NotificationCreateArgs nargs;
     nargs.hwndParent = win->hwndCanvas;
     nargs.groupId = kNotifEbookFontLayout;
+    nargs.font = GetAppFontForHwnd(win->hwndCanvas);
     nargs.msg = msg;
     gEbookFontLayoutNotif = ShowNotification(nargs);
     if (gEbookFontLayoutNotif) {
@@ -2218,11 +2271,17 @@ void ApplyTabReloadOnFocus(MainWindow* win, WindowTab* tab, bool autoRefresh) {
         }
         return;
     }
-    if (ShouldReloadForThemeChange(tab)) {
-        // During a tab switch the target model has not been fully installed in
-        // the window yet. Update CSS and invalidate its caches now, but let the
-        // normal tab-load path render visible pages once after viewport setup.
-        ApplyThemeChangeToTab(win, tab, false);
+    if (TabNeedsReflowThemeApply(tab)) {
+        // Deferred apply runs after the tab is installed. Paint immediately so
+        // stale dark tiles are replaced instead of sticking until the next page.
+        bool paintNow = tab == win->CurrentTab() && win->ctrl == tab->ctrl;
+        ApplyThemeChangeToTab(win, tab, paintNow);
+        if (TabNeedsReflowThemeApply(tab)) {
+            ScheduleReflowThemeRetry(win, tab);
+        }
+        return;
+    }
+    if (IsReflowableEbookEngine(tab->GetEngine())) {
         return;
     }
     ReloadDocument(win, autoRefresh);
@@ -2808,6 +2867,28 @@ static bool IsReflowableEbookEngine(EngineBase* engine) {
            engine->kind == kindEnginePdb || engine->kind == kindEngineHtml || engine->kind == kindEngineTxt;
 }
 
+static u32 gReflowThemeEpoch = 1;
+
+static void StampTabReflowThemeEpoch(WindowTab* tab) {
+    if (tab) {
+        tab->reflowThemeEpoch = gReflowThemeEpoch;
+    }
+}
+
+static void BumpReflowThemeEpoch() {
+    gReflowThemeEpoch++;
+}
+
+static bool TabNeedsReflowThemeApply(WindowTab* tab) {
+    if (!tab || !tab->IsDocLoaded() || tab->IsAboutTab()) {
+        return false;
+    }
+    if (!IsReflowableEbookEngine(tab->GetEngine())) {
+        return false;
+    }
+    return tab->reflowThemeEpoch != gReflowThemeEpoch;
+}
+
 static bool ShouldReloadForThemeChange(WindowTab* tab) {
     if (!tab || !tab->IsDocLoaded() || tab->IsAboutTab()) {
         return false;
@@ -2854,6 +2935,23 @@ struct MupdfThemeRelayoutUiScope {
 static bool RelayoutMupdfForThemeChangeWithProgressUi(MainWindow* win, EngineBase* engine) {
     MupdfThemeRelayoutUiScope ui(win);
     return EngineMupdfRelayoutForThemeChange(engine);
+}
+
+static void CancelReflowThemeRetry(MainWindow* win) {
+    if (win && win->hwndCanvas) {
+        KillTimer(win->hwndCanvas, REFLOW_THEME_RETRY_TIMER_ID);
+    }
+}
+
+static void ScheduleReflowThemeRetry(MainWindow* win, WindowTab* tab) {
+    if (!win || !tab) {
+        return;
+    }
+    tab->reloadOnFocus = true;
+    if (tab != win->CurrentTab() || !win->hwndCanvas) {
+        return;
+    }
+    SetTimer(win->hwndCanvas, REFLOW_THEME_RETRY_TIMER_ID, REFLOW_THEME_RETRY_DELAY_IN_MS, nullptr);
 }
 
 static int gDocumentColorRerenderUiDepth = 0;
@@ -3027,14 +3125,23 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab, bool updateUi
     // (no-op unless a reflowable EPUB is still progressively loading).
     ReflowLoadingPauseScope reflowPause(engine);
     if (IsReflowableMupdfForTheme(engine)) {
-        gRenderCache->CancelRendering(dm);
-        gRenderCache->FreeForDisplayModel(dm);
+        DisplayModel* dmTheme = tab->AsFixed();
         if (!RelayoutMupdfForThemeChangeWithProgressUi(win, engine)) {
             logfa("ApplyThemeChangeToTab: in-place reflow theme CSS update failed\n");
+            if (dmTheme) {
+                gRenderCache->CancelRendering(dmTheme);
+                gRenderCache->FreeForDisplayModel(dmTheme);
+            }
+            ScheduleReflowThemeRetry(win, tab);
+            return;
         }
+        gRenderCache->CancelRendering(dm);
+        gRenderCache->FreeForDisplayModel(dm);
         RefreshDisplayModelAfterThemeChange(dm, updateUi && tab == win->CurrentTab());
         ReloadTocUiAfterReflowReparse(win, tab, false);
         tab->reloadOnFocus = false;
+        StampTabReflowThemeEpoch(tab);
+        CancelReflowThemeRetry(win);
         return;
     }
 
@@ -3048,6 +3155,8 @@ static void ApplyThemeChangeToTab(MainWindow* win, WindowTab* tab, bool updateUi
         RefreshDisplayModelAfterThemeChange(dm, tab == win->CurrentTab());
         if (tab != win->CurrentTab()) {
             tab->reloadOnFocus = true;
+        } else {
+            StampTabReflowThemeEpoch(tab);
         }
         return;
     }
@@ -3143,6 +3252,7 @@ static void SyncCanvasScrollBarTheme(MainWindow* win) {
 }
 
 void UpdateAfterThemeChange() {
+    BumpReflowThemeEpoch();
     InvalidateLoadedThumbnails();
     // Reflowable documents are updated below. Doing it here as well reparses
     // synthesized Markdown/TXT HTML twice and briefly exposes stale links.
@@ -3338,6 +3448,7 @@ void ShowErrorLoadingNotification(MainWindow* win, const char* path, bool noSave
     // new translation. Find a better message e.g. why failed.
     NotificationCreateArgs nargs;
     nargs.hwndParent = win->hwndCanvas;
+    nargs.font = GetAppFontForHwnd(win->hwndCanvas);
     nargs.msg = str::FormatTemp(_TRA("Error loading %s"), path);
     nargs.warning = true;
     nargs.timeoutMs = 1000 * 5;
@@ -3427,6 +3538,8 @@ static void AttachDocumentToBackgroundTab(LoadArgs* args, WindowTab* tab) {
     SafeDeleteDocController(win, tab->ctrl);
     tab->ctrl = ctrl;
     args->ctrl = nullptr;
+    StampTabReflowThemeEpoch(tab);
+    EngineMupdfSetReflowLoadWhenForeground(tab->GetEngine(), false);
 
     tab->showToc = DefaultShowTocForPath(fullPath);
     if (tab->ctrl && tab->ctrl->HasToc() && gGlobalPrefs->showToc) {
@@ -3452,7 +3565,9 @@ static void AttachDocumentToBackgroundTab(LoadArgs* args, WindowTab* tab) {
         args->tabState = nullptr;
     }
 
-    SetFrameTitleForTab(tab, true);
+    // Already loaded into this background tab. needRefresh=true would leave
+    // "[Changes detected; refreshing]" on the window title when the tab is selected.
+    SetFrameTitleForTab(tab, false);
     UpdateTabTitle(tab);
 
     const char* path = tab->filePath;
@@ -3485,6 +3600,9 @@ static void AttachDocumentToBackgroundTab(LoadArgs* args, WindowTab* tab) {
 MainWindow* LoadDocumentFinish(LoadArgs* args) {
     MainWindow* win = args->win;
     const char* fullPath = args->FilePath();
+    if (win && win->CurrentTab()) {
+        win->CurrentTab()->asyncLoadPending = false;
+    }
 
     bool openNewTab = SettingsUseTabs() && !args->forceReuse;
     ReportIf(openNewTab && args->forceReuse);
@@ -3576,6 +3694,7 @@ MainWindow* LoadDocumentFinish(LoadArgs* args) {
     // first coherent batch is now attached, so restore the saved reading
     // anchor without waiting for the remaining chapters to finish counting.
     FinishEbookFontAsyncReload(win, currTab, true);
+    StampTabReflowThemeEpoch(currTab);
     // TODO: figure why we hit this.
     // happens when opening 3 files via "Open With"
     // the first file is loaded via cmd-line arg, the rest
@@ -3632,9 +3751,17 @@ static const char* AsyncLoadingMessage(LoadArgs* args) {
 static NotificationWnd* ShowLoadingNotif(MainWindow* win, LoadArgs* args) {
     NotificationCreateArgs nargs;
     nargs.hwndParent = win->hwndCanvas;
-    nargs.groupId = args && args->showLoadingProgress ? kNotifEbookFontLayout : (Kind)args->FilePath();
+    // Stable group id (not FilePath pointer): otherwise a second StartLoadDocument
+    // for the same path cannot replace the first loading banner.
+    nargs.groupId = args && args->showLoadingProgress ? kNotifEbookFontLayout : kNotifDocumentLoading;
+    // Match window UI font / DPI (GetAppBiggerFont() can pick the wrong DPI hwnd
+    // during cold start when the new frame is not yet foreground).
+    nargs.font = GetAppFontForHwnd(win->hwndCanvas);
     nargs.msg = AsyncLoadingMessage(args);
-    return ShowNotification(nargs);
+    NotificationWnd* wnd = ShowNotification(nargs);
+    RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
+    UpdateTocFilterForDocumentLoading(win);
+    return wnd;
 }
 
 static void UpdateAsyncLoadingProgress(NotificationWnd* wnd, LoadArgs* args, int percent) {
@@ -3667,6 +3794,9 @@ static void PrepareLoadingTab(MainWindow* win, LoadArgs* args) {
     if (openNewTab && win->tabsCtrl) {
         WindowTab* tab = new WindowTab(win);
         tab->SetFilePath(fullPath);
+        // AddTabToWindow selects the tab → LoadModelIntoTab. Mark pending so it
+        // does not call ReloadDocument / StartLoadDocument a second time.
+        tab->asyncLoadPending = true;
         win->currentTabTemp = AddTabToWindow(win, tab);
         win->ctrl = nullptr;
         // Hide sidebar left over from the previous tab while the new doc loads.
@@ -3676,11 +3806,13 @@ static void PrepareLoadingTab(MainWindow* win, LoadArgs* args) {
         // shell tab before the async load so CurrentTab() and targetTab stay valid.
         WindowTab* tab = new WindowTab(win);
         tab->SetFilePath(fullPath);
+        tab->asyncLoadPending = true;
         win->currentTabTemp = AddTabToWindow(win, tab);
         win->ctrl = nullptr;
         SetSidebarVisibility(win, false, gGlobalPrefs->showFavorites);
     } else if (win->CurrentTab()) {
         win->CurrentTab()->SetFilePath(fullPath);
+        win->CurrentTab()->asyncLoadPending = true;
         TabsOnChangedDoc(win);
     }
 
@@ -3796,6 +3928,9 @@ static void FinishAsyncDocumentLoad(LoadDocumentAsyncData* d) {
     }
 
     args->activateExisting = false;
+    if (tab) {
+        tab->asyncLoadPending = false;
+    }
     if (isForegroundTab) {
         win->currentTabTemp = nullptr;
         LoadDocumentFinish(args);
@@ -3887,6 +4022,13 @@ static void LoadDocumentAsyncFinish(LoadDocumentAsyncData* d) {
         d->engine = nullptr;
     }
     if (!args->ctrl) {
+        WindowTab* failTab = d->targetTab;
+        if (!failTab || !IsWindowTabValid(failTab)) {
+            failTab = win->CurrentTab();
+        }
+        if (failTab) {
+            failTab->asyncLoadPending = false;
+        }
         FinishEbookFontAsyncReload(win, win->CurrentTab(), false);
         ShowErrorLoadingNotification(win, path, args->noSavePrefs);
         // re-sync win->ctrl with current tab after ShowErrorLoadingNotification
@@ -4054,6 +4196,12 @@ static void LoadDocumentAsync(LoadDocumentAsyncData* d) {
         bool progressiveReflow = EngineIsProgressiveEbookLoading(engine);
         bool earlyDisplayed = InterlockedCompareExchange(&d->displayedOnUI, 0, 0) != 0;
         if (!progressiveReflow && !earlyDisplayed) {
+            // Build large outline→TocTree off the UI thread. Otherwise
+            // SetSidebarVisibility → LoadTocTree → GetToc freezes the UI for
+            // multi-second textbook opens (e.g. ~2.6s / 7750 bookmarks).
+            if (engine->kind == kindEngineMupdf && EngineMupdfHasOutline(engine)) {
+                engine->GetToc();
+            }
             args->ctrl = new DisplayModel(engine, win->cbHandler);
             VerifyController(args->ctrl, path);
             gMostRecentlyOpenedDoc = args->ctrl;
@@ -4242,7 +4390,7 @@ static void TabSwitchDeferredLayoutSync(WindowTab* tab) {
     UpdateToolbarPageText(tab->win, dm->PageCount());
 }
 
-static void RepaintCanvasAfterTabSwitch(MainWindow* win) {
+static void RepaintCanvasAfterTabSwitch(MainWindow* win, bool discardEbookTiles) {
     if (!IsMainWindowValid(win) || !win->hwndCanvas) {
         return;
     }
@@ -4251,7 +4399,7 @@ static void RepaintCanvasAfterTabSwitch(MainWindow* win) {
     if (dm) {
         gRenderCache->CancelRendering(dm);
         EngineBase* engine = dm->GetEngine();
-        if (engine && IsReflowableEbookEngine(engine)) {
+        if (discardEbookTiles && engine && IsReflowableEbookEngine(engine)) {
             gRenderCache->FreeForDisplayModel(dm);
             dm->RepaintDisplay();
         } else {
@@ -4259,7 +4407,31 @@ static void RepaintCanvasAfterTabSwitch(MainWindow* win) {
         }
     }
     InvalidateRect(win->hwndCanvas, nullptr, TRUE);
-    UpdateWindow(win->hwndCanvas);
+    ScheduleRepaint(win, 0);
+}
+
+static void DeferredApplyTabReloadOnFocus(WindowTab* tab) {
+    if (!tab || !IsWindowTabValid(tab)) {
+        return;
+    }
+    MainWindow* win = tab->win;
+    if (!IsMainWindowValid(win) || win->isBeingClosed) {
+        return;
+    }
+    if (win->CurrentTab() != tab || !tab->reloadOnFocus) {
+        return;
+    }
+    ApplyTabReloadOnFocus(win, tab, false);
+    if (win->CurrentTab() != tab) {
+        return;
+    }
+    // Do not CancelRendering/KeepForDisplayModel here: theme CSS just queued
+    // replacement tiles. Canceling them leaves stale dark bitmaps on screen
+    // until the user turns the page.
+    if (win->hwndCanvas) {
+        InvalidateRect(win->hwndCanvas, nullptr, TRUE);
+        ScheduleRepaint(win, 0);
+    }
 }
 
 // Loads document data into the MainWindow.
@@ -4271,17 +4443,26 @@ void LoadModelIntoTab(WindowTab* tab) {
     MainWindow* win = tab->win;
     WindowTab* prevTab = win->CurrentTab();
     const bool switchingTab = (tab != prevTab);
-    // Stop find/count workers and destroy find UI while ctrl still refers to the
-    // tab being left, before any ShowWindow/RedrawAll that pumps messages.
     if (switchingTab) {
-        ResetFindUIForTabSwitch(win);
+        if (win->hwndFindEdit || win->findThread || win->findCountThread) {
+            ResetFindUIForTabSwitch(win);
+        }
+        // Embedded PDF Sound/RichMedia/Screen audio is global; stop when leaving the tab.
+        LookupAudioStop();
+        if (prevTab) {
+            EngineMupdfClearReflowUiWantsDocLock(prevTab->GetEngine());
+        }
+        CancelReflowThemeRetry(win);
     }
     if (gGlobalPrefs->lazyLoading && win->ctrl && !tab->ctrl && !tab->IsAboutTab()) {
         NotificationCreateArgs args;
         args.hwndParent = win->hwndCanvas;
-        args.msg = str::FormatTemp(_TRA("Please wait - loading..."));
-        args.warning = true;
+        args.groupId = kNotifDocumentLoading;
+        args.font = GetAppFontForHwnd(win->hwndCanvas);
+        args.msg = str::FormatTemp(_TRA("Loading %s ..."), path::GetBaseNameTemp(tab->filePath));
         ShowNotification(args);
+        RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
+        UpdateTocFilterForDocumentLoading(win);
         ShowWindow(win->hwndFrame, SW_SHOW);
         // display the notification ASAP
         win->RedrawAll(true);
@@ -4303,25 +4484,49 @@ void LoadModelIntoTab(WindowTab* tab) {
         dmSwitch->tabSwitchLayoutSyncPending = true;
     }
 
+    if (switchingTab && prevTab) {
+        EngineMupdfSetReflowLoadWhenForeground(prevTab->GetEngine(), false);
+    }
+
     bool rerenderAfterTheme = false;
     bool refreshSelectionAfterTheme = false;
+    // Apply EPUB palette CSS before the first paint so the opening frame uses
+    // the current theme + document color mode instead of stale opposite-color tiles.
+    if (!tab->IsAboutTab() && tab->ctrl && tab->reloadOnFocus && TabNeedsReflowThemeApply(tab) &&
+        !tab->reloadForEbookFontChange) {
+        ApplyThemeChangeToTab(win, tab, false);
+        if (!TabNeedsReflowThemeApply(tab)) {
+            tab->reloadOnFocus = false;
+        } else {
+            ScheduleReflowThemeRetry(win, tab);
+        }
+    }
+    // Resume progressive chapter counting only after CSS, so the loader does
+    // not hold docLock during the palette update.
+    EngineMupdfSetReflowLoadWhenForeground(tab->GetEngine(), true);
     if (!tab->IsAboutTab() && tab->ctrl && tab->reloadOnFocus) {
-        bool themeReload = ShouldReloadForThemeChange(tab) && !tab->reloadForEbookFontChange;
-        ApplyTabReloadOnFocus(win, tab, false);
-        if (themeReload) {
-            rerenderAfterTheme = true;
+        if (switchingTab) {
+            auto fn = MkFunc0<WindowTab>(DeferredApplyTabReloadOnFocus, tab);
+            uitask::Post(fn, "DeferredTabReload");
+        } else {
+            ApplyTabReloadOnFocus(win, tab, false);
         }
     }
 
     DisplayModel* dmAfterTheme = tab->AsFixed();
     if (dmAfterTheme && IsReflowableEbookEngine(tab->GetEngine()) &&
         tab->lastDarkModeEpoch != gRenderCache->darkModeEpoch) {
-        gRenderCache->CancelRendering(dmAfterTheme);
-        gRenderCache->FreeForDisplayModel(dmAfterTheme);
-        EbookAnnotationsInvalidateLayoutCaches(tab);
+        if (IsReflowableMupdfForTheme(tab->GetEngine())) {
+            gRenderCache->CancelRendering(dmAfterTheme);
+            gRenderCache->FreeForDisplayModel(dmAfterTheme);
+        } else {
+            gRenderCache->CancelRendering(dmAfterTheme);
+            gRenderCache->FreeForDisplayModel(dmAfterTheme);
+            EbookAnnotationsInvalidateLayoutCaches(tab);
+            rerenderAfterTheme = true;
+            refreshSelectionAfterTheme = true;
+        }
         tab->lastDarkModeEpoch = gRenderCache->darkModeEpoch;
-        rerenderAfterTheme = true;
-        refreshSelectionAfterTheme = true;
     }
 
     if (win->AsChm()) {
@@ -4394,18 +4599,19 @@ void LoadModelIntoTab(WindowTab* tab) {
         InvalidateRect(win->hwndCanvas, nullptr, TRUE);
         UpdateWindow(win->hwndCanvas);
     } else if (!tab->ctrl) {
-        ReloadDocument(win, false);
-        RepaintCanvasAfterTabSwitch(win);
-    } else if (rerenderAfterTheme) {
-        // ApplyThemeChangeToTab already invalidated this model's tiles. Do not
-        // discard them a second time after the normal tab-load render pass.
-        RepaintCanvasAfterTabSwitch(win);
+        // Shell tabs from session restore need a real load; tabs created by
+        // PrepareLoadingTab already have StartLoadDocument in flight.
+        if (!tab->asyncLoadPending) {
+            ReloadDocument(win, false);
+        }
+        RepaintCanvasAfterTabSwitch(win, false);
     } else {
-        RepaintCanvasAfterTabSwitch(win);
+        RepaintCanvasAfterTabSwitch(win, rerenderAfterTheme);
     }
     if (tab->AsFixed()) {
         tab->lastDarkModeEpoch = gRenderCache->darkModeEpoch;
     }
+    UpdateAnnotToolToolbarButtons(win);
 }
 
 enum class MeasurementUnit {
@@ -4549,16 +4755,23 @@ static void ApplyDocumentColorModeChangeToTab(MainWindow* win, WindowTab* tab) {
     if (IsReflowableMupdfForTheme(engine)) {
         ReflowLoadingPauseScope reflowPause(engine);
         DisplayModel* dm = tab->AsFixed();
+        if (!RelayoutMupdfForThemeChangeWithProgressUi(win, engine)) {
+            if (dm) {
+                gRenderCache->CancelRendering(dm);
+                gRenderCache->FreeForDisplayModel(dm);
+            }
+            ScheduleReflowThemeRetry(win, tab);
+            return;
+        }
         if (dm) {
             gRenderCache->CancelRendering(dm);
             gRenderCache->FreeForDisplayModel(dm);
-        }
-        RelayoutMupdfForThemeChangeWithProgressUi(win, engine);
-        if (dm) {
             RefreshDisplayModelAfterThemeChange(dm, tab == win->CurrentTab());
         }
         ReloadTocUiAfterReflowReparse(win, tab, false);
         tab->reloadOnFocus = false;
+        StampTabReflowThemeEpoch(tab);
+        CancelReflowThemeRetry(win);
         return;
     }
     ChmModel* chm = tab->AsChm();
@@ -4573,6 +4786,7 @@ static void ApplyDocumentColorModeChangeToTab(MainWindow* win, WindowTab* tab) {
 }
 
 static void ApplyDocumentColorModeChangeToAllTabs() {
+    BumpReflowThemeEpoch();
     for (MainWindow* win : gWindows) {
         WindowTab* current = win->CurrentTab();
         for (WindowTab* tab : win->Tabs()) {
@@ -4902,7 +5116,11 @@ static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool 
     if (win->AsChm()) {
         win->AsChm()->RemoveParentHwnd();
     }
-    ClearTocBox(win);
+    if (keepUIEnabled) {
+        ClearTocBoxForTabSwitch(win);
+    } else {
+        ClearTocBox(win);
+    }
     AbortFinding(win, true);
 
     ClearMouseState(win);
@@ -5352,18 +5570,22 @@ void CloseTab(WindowTab* tab, bool quitIfLast) {
         // ~MainWindow won't delete it, so we must delete it here.
         if (!IsMainWindowValid(win)) {
             delete tab;
-            ScheduleDeleteDocController(ctrlToDelete);
+            FastDeleteDocController(ctrlToDelete);
             return;
         }
         delete tab;
-        ScheduleDeleteDocController(ctrlToDelete);
+        if (ctrlToDelete) {
+            auto fn = MkFunc0<DocController>(FastDeleteDocController, ctrlToDelete);
+            RunAsync(fn, "FastDeleteDoc");
+        }
     }
 
     if (!IsMainWindowValid(win)) {
         return;
     }
 
-    SaveSettings();
+    auto saveFn = MkFunc0Void(SaveSettingsVoid);
+    uitask::Post(saveFn, "SaveSettings");
 }
 
 // closes the current tab, selecting the next one
@@ -5424,40 +5646,29 @@ static void AbortDocumentBackgroundLoads(MainWindow* winOnly) {
     }
 }
 
-struct DeleteDocControllerTask {
-    DocController* ctrl = nullptr;
-};
-
-static void DeleteDocControllerAsync(DeleteDocControllerTask* task) {
-    AutoDelete del(task);
+static void FastDeleteDocController(DocController* ctrl) {
+    if (!ctrl) {
+        return;
+    }
+    if (InterlockedCompareExchange(&ctrl->pendingAsyncDelete, 1, 0) != 0) {
+        return;
+    }
     AtomicIntInc(&gDangerousThreadCount);
     defer {
         AtomicIntDec(&gDangerousThreadCount);
     };
-    DocController* ctrl = task->ctrl;
-    task->ctrl = nullptr;
-    if (ctrl) {
-        if (DisplayModel* dm = ctrl->AsFixed()) {
-            gRenderCache->CancelRendering(dm);
-            gRenderCache->WaitForRenderingComplete(dm);
-            gRenderCache->FreeForDisplayModel(dm);
-        }
-        delete ctrl;
+    if (DisplayModel* dm = ctrl->AsFixed()) {
+        gRenderCache->CancelRendering(dm);
+        dm->pauseRendering = true;
+        EngineMupdfAbortAndWaitBackgroundWork(dm->GetEngine());
+        dm->cb = nullptr;
+        gRenderCache->FreeForDisplayModel(dm);
+        gRenderCache->WaitForRenderingComplete(dm);
     }
-}
-
-static void ScheduleDeleteDocController(DocController* ctrl) {
-    if (!ctrl) {
-        return;
+    if (gMostRecentlyOpenedDoc == ctrl) {
+        gMostRecentlyOpenedDoc = nullptr;
     }
-    if (InterlockedCompareExchange(&ctrl->pendingAsyncDelete, 0, 0) != 0) {
-        return;
-    }
-    InterlockedExchange(&ctrl->pendingAsyncDelete, 1);
-    auto* task = new DeleteDocControllerTask();
-    task->ctrl = ctrl;
-    auto fn = MkFunc0<DeleteDocControllerTask>(DeleteDocControllerAsync, task);
-    RunAsync(fn, "DeleteDocController");
+    delete ctrl;
 }
 
 static void DetachTabDocControllerForAsyncDelete(WindowTab* tab, DocController** ctrlOut) {
@@ -6553,6 +6764,10 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
 
     dh.End();
 
+    if (GetDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas)) {
+        RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
+    }
+
     if (suppressIntermediateRedraws) {
         // re-enable redraw and invalidate once
         SendMessageW(win->hwndFrame, WM_SETREDRAW, TRUE, 0);
@@ -6592,7 +6807,9 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
     // TODO: if a document with ToC and a broken document are loaded
     //       and the first document is closed with the ToC still visible,
     //       we have tocVisible but !win->ctrl
-    if (tocVisible && win->ctrl) {
+    // Skip during live sidebar drag (sidebarDx != -1): page did not change and
+    // selection work adds cost on every mouse move.
+    if (tocVisible && win->ctrl && sidebarDx == -1) {
         // the ToC selection may change due to resizing
         // (and SetSidebarVisibility relies on this for initialization)
         UpdateTocSelection(win, win->ctrl->CurrentPageNo());
@@ -7728,6 +7945,8 @@ static bool FrameOnSysChar(MainWindow* win, WPARAM key) {
     return false;
 }
 
+static bool gSidebarSplitterWrapSuspended = false;
+
 static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
     Splitter* splitter = ev->w;
     HWND hwnd = splitter->hwnd;
@@ -7748,7 +7967,23 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
         return;
     }
 
+    if (!ev->finishedDragging) {
+        if (!gSidebarSplitterWrapSuspended) {
+            SuspendTreeWrapLiveResizeForWindow(win);
+            gSidebarSplitterWrapSuspended = true;
+        }
+        RelayoutFrame(win, false, sidebarDx);
+        return;
+    }
     RelayoutFrame(win, false, sidebarDx);
+    if (gSidebarSplitterWrapSuspended) {
+        gSidebarSplitterWrapSuspended = false;
+        ResumeTreeWrapLiveResizeAndFlush(win);
+    } else {
+        // Click without move: still ensure heights match final width.
+        FlushTocTreeWrapHeights(win);
+        FlushFavTreeWrapHeights(win);
+    }
 }
 
 static void OnFavSplitterMove(Splitter::MoveEvent* ev) {
@@ -7770,7 +8005,22 @@ static void OnFavSplitterMove(Splitter::MoveEvent* ev) {
         return;
     }
     gGlobalPrefs->tocDy = tocDy;
+    if (!ev->finishedDragging) {
+        if (!gSidebarSplitterWrapSuspended) {
+            SuspendTreeWrapLiveResizeForWindow(win);
+            gSidebarSplitterWrapSuspended = true;
+        }
+        RelayoutFrame(win, false, rToc.dx);
+        return;
+    }
     RelayoutFrame(win, false, rToc.dx);
+    if (gSidebarSplitterWrapSuspended) {
+        gSidebarSplitterWrapSuspended = false;
+        ResumeTreeWrapLiveResizeAndFlush(win);
+    } else {
+        FlushTocTreeWrapHeights(win);
+        FlushFavTreeWrapHeights(win);
+    }
 }
 
 static void DeferredLoadTocTree(MainWindow* win) {
@@ -7780,11 +8030,23 @@ static void DeferredLoadTocTree(MainWindow* win) {
     if (!win->tocVisible || win->tocLoaded) {
         return;
     }
-    LoadTocTree(win);
+    // Posted uitasks run before WM_PAINT. Paint the page first so a large
+    // GetToc() (1s+) does not leave the canvas blank/black.
+    if (win->hwndCanvas) {
+        UpdateWindow(win->hwndCanvas);
+    }
+    WindowTab* tab = win->CurrentTab();
+    if (tab && tab->currToc && tab->ctrl && tab->ctrl->GetToc() == tab->currToc) {
+        RestoreTocTreeForTab(win);
+    } else {
+        LoadTocTree(win);
+    }
     if (win->tocLoaded && win->ctrl) {
         UpdateTocSelection(win, win->ctrl->CurrentPageNo());
         RefreshSidebarDpiFonts(win);
     }
+    UpdateTocFilterForDocumentLoading(win);
+    RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
     if (IsFindUIVisible(win)) {
         RefreshFindSearchBlockedStatus(win);
     }
@@ -7805,10 +8067,11 @@ void SetSidebarVisibility(MainWindow* win, bool tocVisible, bool showFavorites, 
     }
 
     if (tocVisible && !win->tocLoaded) {
-        // Build a placeholder TOC during progressive load (fast chapter-based page
-        // numbers); it is rebuilt with correct pages when counting finishes.
-        LoadTocTree(win);
-        ReportIf(!win->tocLoaded);
+        // Defer TreeView population so the first page can paint before a large
+        // bookmark list is inserted. GetToc() is preferably pre-warmed on the
+        // load thread (see LoadDocumentAsync); this post only attaches the UI.
+        auto fn = MkFunc0<MainWindow>(DeferredLoadTocTree, win);
+        uitask::Post(fn, "DeferredLoadToc");
     }
 
     if (showFavorites) {
@@ -7833,6 +8096,13 @@ void SetSidebarVisibility(MainWindow* win, bool tocVisible, bool showFavorites, 
         HwndSetFocus(win->hwndFrame);
     }
 
+    // Position sidebar/canvas before showing TOC. While loading, the canvas is
+    // full-width; showing TOC first leaves it overlapping the canvas (and any
+    // loading notification child) until RelayoutFrame shrinks the canvas.
+    if (relayout) {
+        RelayoutFrame(win, false);
+    }
+
     HwndSetVisibility(win->sidebarSplitter->hwnd, tocVisible || showFavorites);
     HwndSetVisibility(win->hwndTocBox, tocVisible);
     win->sidebarSplitter->isLive = true;
@@ -7842,7 +8112,6 @@ void SetSidebarVisibility(MainWindow* win, bool tocVisible, bool showFavorites, 
     win->favSplitter->isLive = true;
 
     if (relayout) {
-        RelayoutFrame(win, false);
         if (tocVisible) {
             RedrawWindow(win->hwndTocBox, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
         }
@@ -7854,6 +8123,10 @@ void SetSidebarVisibility(MainWindow* win, bool tocVisible, bool showFavorites, 
         }
         if (tocVisible && showFavorites) {
             InvalidateRect(win->favSplitter->hwnd, nullptr, TRUE);
+        }
+        UpdateTocFilterForDocumentLoading(win);
+        if (GetDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas)) {
+            RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
         }
     }
 }
@@ -9808,6 +10081,17 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             break;
         }
 
+        case CmdToggleJoinSplitPdfImages: {
+            if (!gGlobalPrefs) {
+                break;
+            }
+            gGlobalPrefs->fixedPageUI.joinSplitPdfImages = !gGlobalPrefs->fixedPageUI.joinSplitPdfImages;
+            SaveSettings();
+            // Page map is built at open; reload so display page count updates.
+            ReloadDocument(win, false);
+            break;
+        }
+
         case CmdToggleAntiAlias: {
             gGlobalPrefs->disableAntiAlias ^= true;
             for (auto* w : gWindows) {
@@ -10017,8 +10301,26 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             [[fallthrough]];
         case CmdCreateAnnotLine:
             [[fallthrough]];
-        case CmdCreateAnnotCircle: {
+        case CmdCreateAnnotCircle:
+            [[fallthrough]];
+        case CmdCreateAnnotInk: {
             if (!win || !tab || !dm) {
+                return 0;
+            }
+            HWND cmdHwnd = (HWND)lp;
+            bool fromToolbar = cmdHwnd == win->hwndToolbar || lp == 0;
+            if (fromToolbar && (cmdId == CmdCreateAnnotSquare || cmdId == CmdCreateAnnotCircle ||
+                                cmdId == CmdCreateAnnotLine || cmdId == CmdCreateAnnotInk)) {
+                bool canQuickAnnot = EbookAnnotationsSupported(tab);
+                if (!canQuickAnnot) {
+                    EngineBase* engine = dm->GetEngine();
+                    canQuickAnnot = engine && EngineSupportsAnnotations(engine);
+                }
+                if (canQuickAnnot) {
+                    SetAnnotCreateTool(win, cmdId);
+                    return 0;
+                }
+                UpdateAnnotToolToolbarButtons(win);
                 return 0;
             }
             Point pt = HwndGetCursorPos(win->hwndCanvas);
@@ -10289,6 +10591,15 @@ static void ClearAllHighlights(MainWindow* win) {
     }
 }
 
+// Modal TTS dialogs must not open via an extra PostMessage hop after a popup menu:
+// that loses foreground activation, so DialogBox disables the frame while the
+// dialog stays behind it (freeze + beep). Queue while the menu is live; flush
+// with a direct DialogBox call right after TrackPopupMenu returns.
+static int gCaptionMenuTrackDepth = 0;
+static int gPendingSmartBilingualKind = -1; // -1 = none; else SmartBilingualKind
+static int gPendingSpeedFocusChinese = -2;  // -2 = none; 0/1 = focus English/Chinese
+static void FlushPendingReadAloudDialogs(MainWindow* win);
+
 static void TrackCaptionPopupMenu(MainWindow* win, HMENU menu, Rect btnRect) {
     SetForegroundWindow(win->hwndFrame);
 
@@ -10310,10 +10621,13 @@ static void TrackCaptionPopupMenu(MainWindow* win, HMENU menu, Rect btnRect) {
     tpm.cbSize = sizeof(TPMPARAMS);
     tpm.rcExclude = ToRECT(exclude);
 
+    gCaptionMenuTrackDepth++;
     TrackPopupMenuEx(menu, flags, x, y, win->hwndFrame, &tpm);
+    gCaptionMenuTrackDepth--;
 
     // Win32 menu tracking requires this so the next menu can receive input.
     PostMessageW(win->hwndFrame, WM_NULL, 0, 0);
+    FlushPendingReadAloudDialogs(win);
 }
 
 static void MenuBarAsPopupMenu(MainWindow* win, Rect btnRect) {
@@ -10321,21 +10635,21 @@ static void MenuBarAsPopupMenu(MainWindow* win, Rect btnRect) {
         RebuildMenuBarForWindow(win);
     }
     HMENU popup = BuildMenubarPopupMenu(win);
-    int count = GetMenuItemCount(popup);
-    if (count <= 0) {
+    if (GetMenuItemCount(popup) <= 0) {
         DestroyMenu(popup);
         return;
     }
 
+    // Retarget win->menu while tracking so UpdateAppMenu / checkmarks / File
+    // rebuild apply to this tree. Destroy the whole popup afterward.
+    HMENU savedMenu = win->menu;
+    win->menu = popup;
     MenuRefreshStateForWindow(win);
-    MarkMenuOwnerDraw(popup, false, true);
+    MarkMenuOwnerDraw(popup, false, false);
     TrackCaptionPopupMenu(win, popup, btnRect);
+    win->menu = savedMenu;
 
-    while (count > 0) {
-        --count;
-        RemoveMenu(popup, count, MF_BYPOSITION);
-    }
-    FreeMenuOwnerDrawInfoData(popup, false);
+    FreeMenuOwnerDrawInfoData(popup, true);
     DestroyMenu(popup);
 }
 
@@ -10774,16 +11088,6 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             break;
 
         case WM_TIMER:
-            if (wp == kEbookFontSizeDebounceTimerId) {
-                KillTimer(hwnd, kEbookFontSizeDebounceTimerId);
-                if (gEbookFontSizeTask.timerHwnd == hwnd) {
-                    gEbookFontSizeTask.timerHwnd = nullptr;
-                    gEbookFontSizeTaskPosted = false;
-                    ApplyPendingEbookFontSizeChange();
-                }
-                *callDef = false;
-                return 0;
-            }
             if (wp == DO_NOT_REOPEN_MENU_TIMER_ID) {
                 KillTimer(hwnd, DO_NOT_REOPEN_MENU_TIMER_ID);
                 *callDef = false;
@@ -11092,6 +11396,7 @@ static void ReadAloudShowNotif(WindowTab* tab, const char* msg);
 
 static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg);
 static void ReadAloudSaveVoicePref(const char* voiceId);
+static void ReadAloudSaveSpeakingRatesPrefs(float zhRate, float enRate);
 static void ReadAloudRestartSpeakingFromCurrentPosition(WindowTab* tab);
 static TempStr TtsLangIdToLocaleNameTemp(const char* lang);
 
@@ -11583,6 +11888,26 @@ static void ShowReadAloudSmartVoiceDialog(MainWindow* win, SmartBilingualKind ki
     CreateAppDialogBox(IDD_DIALOG_READ_ALOUD_SMART_VOICES, win->hwndFrame, Dialog_ReadAloudSmartVoices_Proc,
                        (LPARAM)&data);
     FreeReadAloudSmartVoiceDialogData(&data);
+}
+
+static void FlushPendingReadAloudDialogs(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    if (gPendingSmartBilingualKind >= 0) {
+        auto kind = (SmartBilingualKind)gPendingSmartBilingualKind;
+        gPendingSmartBilingualKind = -1;
+        ShowReadAloudSmartVoiceDialog(win, kind);
+    }
+    if (gPendingSpeedFocusChinese >= 0 && gGlobalPrefs) {
+        bool focusChinese = gPendingSpeedFocusChinese != 0;
+        gPendingSpeedFocusChinese = -2;
+        float zhRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateZh);
+        float enRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateEn);
+        if (Dialog_ReadAloudSpeed(win->hwndFrame, &enRate, &zhRate, focusChinese)) {
+            ReadAloudSaveSpeakingRatesPrefs(zhRate, enRate);
+        }
+    }
 }
 
 enum class ReadAloudLang {
@@ -13102,10 +13427,10 @@ void RebuildReadAloudMenu(MainWindow* win, HMENU menu, bool useContextMenuCursor
     MenuEmpty(menu);
     BuildReadAloudMenuItems(menu, win, useContextMenuCursorPoint);
     RemoveBadMenuSeparators(menu);
-    // Voice and Speed are created dynamically after the menubar was marked.
-    // Mark this rebuilt tree too, otherwise nested popups use the system
-    // white background and selection color instead of the active theme.
-    MarkMenuOwnerDraw(menu, false, true);
+    // Do not MarkMenuOwnerDraw here: this runs from WM_INITMENUPOPUP while the
+    // parent menu is live. Re-marking (especially with recurse) has hung the UI
+    // before. Single-level marking, when enabled, is done by the frame's
+    // WM_INITMENUPOPUP handler after rebuild.
 }
 
 static bool HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
@@ -13148,11 +13473,19 @@ static bool HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
     } else if (selected == CmdTtsVoiceSmartBilingual) {
         ReadAloudSaveVoicePref(kTtsSmartBilingualVoiceId);
     } else if (selected == CmdTtsSmartBilingualSettings) {
-        ShowReadAloudSmartVoiceDialog(win, SmartBilingualKind::Local);
+        if (gCaptionMenuTrackDepth > 0) {
+            gPendingSmartBilingualKind = (int)SmartBilingualKind::Local;
+        } else {
+            ShowReadAloudSmartVoiceDialog(win, SmartBilingualKind::Local);
+        }
     } else if (selected == CmdTtsVoiceSmartOnlineBilingual) {
         ReadAloudSaveVoicePref(kTtsSmartOnlineBilingualVoiceId);
     } else if (selected == CmdTtsSmartOnlineBilingualSettings) {
-        ShowReadAloudSmartVoiceDialog(win, SmartBilingualKind::Online);
+        if (gCaptionMenuTrackDepth > 0) {
+            gPendingSmartBilingualKind = (int)SmartBilingualKind::Online;
+        } else {
+            ShowReadAloudSmartVoiceDialog(win, SmartBilingualKind::Online);
+        }
     } else if (selected >= CmdTtsVoiceFirst && selected <= CmdTtsVoiceLast) {
         Vec<TtsVoiceInfo> voices = TtsGetVoices();
         int voiceIndex = (int)(selected - CmdTtsVoiceFirst);
@@ -13171,11 +13504,15 @@ static bool HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
             ReadAloudSaveSpeakingRatePref(false, kReadAloudSpeedPresets[speedIndex]);
         }
     } else if (selected == CmdTtsSpeedZhCustom || selected == CmdTtsSpeedEnCustom) {
-        float zhRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateZh);
-        float enRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateEn);
         bool focusChinese = selected == CmdTtsSpeedZhCustom;
-        if (Dialog_ReadAloudSpeed(win->hwndFrame, &enRate, &zhRate, focusChinese)) {
-            ReadAloudSaveSpeakingRatesPrefs(zhRate, enRate);
+        if (gCaptionMenuTrackDepth > 0) {
+            gPendingSpeedFocusChinese = focusChinese ? 1 : 0;
+        } else if (gGlobalPrefs) {
+            float zhRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateZh);
+            float enRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateEn);
+            if (Dialog_ReadAloudSpeed(win->hwndFrame, &enRate, &zhRate, focusChinese)) {
+                ReadAloudSaveSpeakingRatesPrefs(zhRate, enRate);
+            }
         }
     }
     return false;
@@ -13571,6 +13908,17 @@ static void FinishDeferredMainWindowDpiRefresh(MainWindow* win, HWND hwnd) {
 LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     MainWindow* win = FindMainWindowByHwnd(hwnd);
 
+    // This timer belongs to the frame in both caption modes.
+    if (msg == WM_TIMER && wp == kEbookFontSizeDebounceTimerId) {
+        KillTimer(hwnd, kEbookFontSizeDebounceTimerId);
+        if (gEbookFontSizeTask.timerHwnd == hwnd) {
+            gEbookFontSizeTask.timerHwnd = nullptr;
+            gEbookFontSizeTaskPosted = false;
+            ApplyPendingEbookFontSizeChange();
+        }
+        return 0;
+    }
+
     // DbgLogMsg("frame:", hwnd, msg, wp, lp);
     // detect when an external host (e.g. Total Commander's lister) embeds us
     // by reparenting our window as WS_CHILD
@@ -13684,14 +14032,17 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
             if (win) {
                 UpdateAppMenu(win, (HMENU)wp);
             }
-            if (ThemeColorizeControls() || ThemeUsesDarkChrome()) {
+            if (ShouldOwnerDrawMenus()) {
                 HMENU hPopup = (HMENU)wp;
                 MENUITEMINFOW mii{};
                 mii.cbSize = sizeof(mii);
-                mii.fMask = MIIM_FTYPE;
+                mii.fMask = MIIM_FTYPE | MIIM_DATA;
                 int n = GetMenuItemCount(hPopup);
-                if (n <= 0 || !GetMenuItemInfoW(hPopup, 0, TRUE, &mii) || !(mii.fType & MFT_OWNERDRAW)) {
-                    MarkMenuOwnerDraw(hPopup, false);
+                // Skip if already owner-drawn; only mark this popup level (no recurse)
+                // so Settings → fonts does not re-free itemData while a menu is open.
+                if (n <= 0 || !GetMenuItemInfoW(hPopup, 0, TRUE, &mii) || !(mii.fType & MFT_OWNERDRAW) ||
+                    mii.dwItemData == 0) {
+                    MarkMenuOwnerDraw(hPopup, false, false);
                 }
             }
             break;

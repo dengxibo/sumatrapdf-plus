@@ -899,7 +899,8 @@ bool SetZoneIdentifier(const char* filePath, int zoneId) {
 
 bool DeleteZoneIdentifier(const char* filePath) {
     char* path = str::JoinTemp(filePath, ":Zone.Identifier");
-    return Delete(path);
+    bool ok = Delete(path);
+    return ok;
 }
 
 bool Rename(const char* newPath, const char* oldPath) {

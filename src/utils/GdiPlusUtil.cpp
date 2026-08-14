@@ -388,8 +388,8 @@ static Gdiplus::Font* CreateFontFromFaceCache(ReaderLatinFaceCache* cache, const
         return nullptr;
     }
     // Match CreateBundledFontFromFamily (UnitPoint); UnitPixel made Literata ~25% smaller than CJK.
-    Gdiplus::Font* font = new Gdiplus::Font(cache->familyName, emSize, Gdiplus::FontStyleRegular, Gdiplus::UnitPoint,
-                                              cache->collection);
+    Gdiplus::Font* font =
+        new Gdiplus::Font(cache->familyName, emSize, Gdiplus::FontStyleRegular, Gdiplus::UnitPoint, cache->collection);
     if (font && font->GetLastStatus() == Gdiplus::Ok) {
         return font;
     }

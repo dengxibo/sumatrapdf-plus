@@ -194,23 +194,6 @@ static void DeleteWatchedDir(WatchedDir* wd) {
     free(wd);
 }
 
-// clang-format off
-SeqStrings gFileActionNames =
-    "FILE_ACTION_ADDED\0" \
-    "FILE_ACTION_REMOVED\0" \
-    "FILE_ACTION_MODIFIED\0" \
-    "FILE_ACTION_RENAMED_OLD_NAME\0" \
-    "FILE_ACTION_RENAMED_NEW_NAME\0";
-// clang-format on
-
-const char* GetFileActionName(int actionId) {
-    if (actionId < 1 || actionId > 5) {
-        return "(unknown)";
-    }
-    int n = actionId - 1;
-    return seqstrings::IdxToStr(gFileActionNames, n);
-}
-
 static void CALLBACK ReadDirectoryChangesNotification(DWORD errCode, DWORD bytesTransfered, LPOVERLAPPED overlapped) {
     ScopedCritSec cs(&gFileWatcherMutex);
 
@@ -246,8 +229,6 @@ static void CALLBACK ReadDirectoryChangesNotification(DWORD errCode, DWORD bytes
         // files can get updated either by writing to them directly or
         // by writing to a .tmp file first and then moving that file in place
         // (the latter only yields a RENAMED action with the expected file name)
-        const char* actionName = GetFileActionName(notify->Action);
-        // logf("ReadDirectoryChangesNotification: %s '%s'\n", actionName, fileName);
         if (notify->Action == FILE_ACTION_ADDED || notify->Action == FILE_ACTION_MODIFIED ||
             notify->Action == FILE_ACTION_RENAMED_NEW_NAME) {
             AppendIfNotExists(&changedFiles, fileName);
@@ -314,7 +295,6 @@ static void RunManualChecks() {
             continue;
         }
         if (FileStateChanged(wf->filePath, &wf->fileState)) {
-            // logf("RunManualCheck() %s changed\n", wf->filePath);
             wf->onFileChangedCb.Call();
         }
     }

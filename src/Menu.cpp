@@ -84,7 +84,6 @@ struct MenuOwnerDrawInfo {
     HBITMAP hbmpChecked = nullptr;
     HBITMAP hbmpUnchecked = nullptr;
     HBITMAP hbmpItem = nullptr;
-    bool hasSubMenu = false;
 };
 
 constexpr UINT kMenuSeparatorID = (UINT)-13;
@@ -1473,7 +1472,7 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
             cmdId == CmdCreateAnnotUnderline || cmdId == CmdCreateAnnotSquiggly || cmdId == CmdCreateAnnotStrikeOut ||
             cmdId == CmdCreateAnnotText || cmdId == CmdCreateAnnotFreeText || cmdId == CmdCreateAnnotStamp ||
             cmdId == CmdCreateAnnotCaret || cmdId == CmdCreateAnnotLine || cmdId == CmdCreateAnnotSquare ||
-            cmdId == CmdCreateAnnotCircle || cmdId == (UINT_PTR)menuDefCreateAnnotFromSelection ||
+            cmdId == CmdCreateAnnotCircle || cmdId == CmdCreateAnnotInk || cmdId == (UINT_PTR)menuDefCreateAnnotFromSelection ||
             cmdId == (UINT_PTR)menuDefCreateAnnotUnderCursor;
         if (isEbookAnnotationCommand) {
             centralizedRemove = false;
@@ -2350,12 +2349,18 @@ bool ShouldOwnerDrawMenus() {
     return ThemeColorizeControls() || ThemeUsesDarkChrome() || ThemeUsesEyeCareChrome();
 }
 
-#if 0
-void MarkMenuOwnerDraw(HMENU, bool) {
+// Match upstream: disable custom owner-draw menus and let darkmodelib / the OS
+// theme popups (including submenu chevrons).
+#if 1
+void MarkMenuOwnerDraw(HMENU, bool, bool) {
     // our painting isn't good enough so disable for now
     // rely on darkmodelib for menu theming, which only does light / dark theme from os
 }
 #else
+static bool MenuItemIsOwnerDrawn(const MENUITEMINFOW& mii) {
+    return (mii.fType & MFT_OWNERDRAW) != 0 && mii.dwItemData != 0;
+}
+
 void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar, bool recurseSubmenus) {
     // darkmodelib handles the menu bar via setWindowMenuBarSubclass
     // but doesn't handle popup/context menus, so we owner-draw those
@@ -2403,9 +2408,9 @@ void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar, bool recurseSubmenus) {
     // for nested popup menus and otherwise shows up as a white strip.
     mi.dwStyle |= MNS_NOCHECK;
     mi.fMask = MIM_BACKGROUND | MIM_STYLE;
-    if (recurseSubmenus) {
-        mi.fMask |= MIM_APPLYTOSUBMENUS;
-    }
+    // Never MIM_APPLYTOSUBMENUS here: nested popups get their own
+    // WM_INITMENUPOPUP / MarkMenuOwnerDraw. Applying to the whole tree while a
+    // popup is live (and re-freeing itemData) has hung the UI before.
     SetMenuInfo(hmenu, &mi);
 
     WCHAR buf[1024];
@@ -2422,12 +2427,28 @@ void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar, bool recurseSubmenus) {
         mii.cch = dimof(buf);
         BOOL ok = GetMenuItemInfoW(hmenu, (uint)i, TRUE /* by position */, &mii);
         ReportIf(!ok);
-        mii.fMask = MIIM_FTYPE | MIIM_DATA;
-        mii.fType |= MFT_OWNERDRAW;
-        if (mii.dwItemData != 0) {
+
+        // Already owner-drawn: refresh cached state only. Re-allocating itemData
+        // (or recursing into huge font lists) while a menu is open freezes the UI.
+        if (MenuItemIsOwnerDrawn(mii)) {
             auto modi = (MenuOwnerDrawInfo*)mii.dwItemData;
-            FreeMenuOwnerDrawInfo(modi);
+            modi->fState = mii.fState;
+            modi->fType = mii.fType | MFT_OWNERDRAW;
+            modi->hbmpItem = mii.hbmpItem;
+            modi->hbmpChecked = mii.hbmpChecked;
+            modi->hbmpUnchecked = mii.hbmpUnchecked;
+            if (recurseSubmenus && mii.hSubMenu != nullptr) {
+                MarkMenuOwnerDraw(mii.hSubMenu, false, true);
+            }
+            continue;
         }
+
+        // Keep MIIM_SUBMENU: setting only FTYPE/DATA has cleared hSubMenu on
+        // some hosts so flyouts (Go / Zoom / Selection) never open.
+        HMENU hSubMenu = mii.hSubMenu;
+        mii.fMask = MIIM_FTYPE | MIIM_DATA | MIIM_SUBMENU;
+        mii.fType |= MFT_OWNERDRAW;
+        mii.hSubMenu = hSubMenu;
         auto modi = AllocStruct<MenuOwnerDrawInfo>();
         g_menuDrawInfos.Append(modi);
         modi->fState = mii.fState;
@@ -2435,7 +2456,6 @@ void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar, bool recurseSubmenus) {
         modi->hbmpItem = mii.hbmpItem;
         modi->hbmpChecked = mii.hbmpChecked;
         modi->hbmpUnchecked = mii.hbmpUnchecked;
-        modi->hasSubMenu = mii.hSubMenu != nullptr;
         if (str::Leni(buf) > 0) {
             modi->text = ToUtf8(buf);
         }
@@ -2476,22 +2496,6 @@ static void DrawMenuCheckMark(HWND hwnd, HDC hdc, const RECT& rcItem, int cxChec
     // Same check glyph style as standard menus (Segoe UI check mark).
     WCHAR check[] = L"\u2713";
     DrawTextW(hdc, check, 1, &rcCheck, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
-}
-
-// Owner-draw must paint submenu chevrons; the system arrow stays near-black on dark themes.
-static void DrawMenuSubmenuArrow(HWND hwnd, HDC hdc, const RECT& rcItem, int cxArrow, HBRUSH br) {
-    int midY = rcItem.top + RectDy(rcItem) / 2;
-    int arrowH = DpiScale(hwnd, 8);
-    int arrowW = DpiScale(hwnd, 4);
-    int right = rcItem.right - DpiScale(hwnd, 6);
-    POINT pts[3] = {
-        {right - arrowW, midY - arrowH / 2},
-        {right - arrowW, midY + arrowH / 2},
-        {right, midY},
-    };
-    ScopedSelectObject restoreBrush(hdc, br);
-    ScopedSelectObject restorePen(hdc, GetStockObject(NULL_PEN));
-    Polygon(hdc, pts, 3);
 }
 
 constexpr int kMenuPaddingY = 4;
@@ -2535,11 +2539,8 @@ void MenuCustomDrawMesureItem(HWND hwnd, MEASUREITEMSTRUCT* mis) {
 
     int cxMenuCheckMark = GetMenuCheckMarkCx(hwnd);
     mis->itemHeight += padY * 2;
+    // Match upstream: Windows reserves popup-arrow gutter for MF_POPUP items.
     mis->itemWidth = uint(dx + cxMenuCheckMark + (padX * 2));
-    if (modi->hasSubMenu) {
-        // room for the right-pointing submenu chevron
-        mis->itemWidth += (uint)cxMenuCheckMark;
-    }
 }
 
 // https://gist.github.com/kjk/1df108aa126b7d8e298a5092550a53b7
@@ -2663,17 +2664,13 @@ void MenuCustomDrawItem(HWND hwnd, DRAWITEMSTRUCT* dis) {
     // DrawTextEx handles & => underscore drawing
     rc.top += padY;
     rc.left += cxCheckMark;
-    if (modi->hasSubMenu) {
-        rc.right -= cxCheckMark;
-    }
     TempWStr ws = ToWStrTemp(menuText);
     DrawTextExW(hdc, ws, -1, &rc, DT_LEFT, nullptr);
     if (shortcutText != nullptr) {
         ws = ToWStrTemp(shortcutText);
         rc = dis->rcItem;
         rc.top += padY;
-        int rightGutter = padX + (modi->hasSubMenu ? cxCheckMark : cxCheckMark / 2);
-        rc.right -= rightGutter;
+        rc.right -= (padX + (cxCheckMark / 2));
         DrawTextExW(hdc, ws, -1, &rc, DT_RIGHT, nullptr);
     }
 
@@ -2695,13 +2692,6 @@ void MenuCustomDrawItem(HWND hwnd, DRAWITEMSTRUCT* dis) {
             DrawMenuCheckMark(hwnd, hdc, rc, cxCheckMark);
         }
     }
-
-    if (modi->hasSubMenu) {
-        DrawMenuSubmenuArrow(hwnd, hdc, dis->rcItem, cxCheckMark, brTxt);
-        // Windows blits its default (near-black) submenu arrow after WM_DRAWITEM.
-        // Exclude the whole item so that blit is clipped away.
-        ExcludeClipRect(hdc, dis->rcItem.left, dis->rcItem.top, dis->rcItem.right, dis->rcItem.bottom);
-    }
 }
 
 HMENU BuildMenu(MainWindow* win) {
@@ -2716,20 +2706,13 @@ HMENU BuildMenu(MainWindow* win) {
 }
 
 HMENU BuildMenubarPopupMenu(MainWindow* win) {
-    HMENU popup = CreatePopupMenu();
-    if (!win || !win->menu) {
-        return popup;
-    }
-    for (int i = 0; menuDefMenubar[i].title; i++) {
-        HMENU subMenu = GetSubMenu(win->menu, i);
-        if (!subMenu) {
-            continue;
-        }
-        const char* title = trans::GetTranslation(menuDefMenubar[i].title);
-        TempWStr ws = ToWStrTemp(title);
-        AppendMenuW(popup, MF_POPUP | MF_STRING, (UINT_PTR)subMenu, ws);
-    }
-    return popup;
+    // Independent tree (not shared HMENU handles from win->menu). Sharing the
+    // menubar's submenus with a TrackPopupMenu parent breaks flyouts under
+    // owner-draw — Go / Zoom / Selection would highlight but never open.
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    auto ctx = NewBuildMenuCtx(tab, Point{0, 0});
+    AutoDelete delCtx(ctx);
+    return BuildMenuFromDef(menuDefMenubar, CreatePopupMenu(), ctx);
 }
 
 static bool IsReadAloudMenubarSubmenu(MainWindow* win, HMENU m) {
@@ -2753,7 +2736,14 @@ void UpdateAppMenu(MainWindow* win, HMENU m) {
     if (!win) {
         return;
     }
-    UINT_PTR id = (UINT_PTR)GetMenuItemID(m, 0);
+    // GetMenuItemID() returns -1 for owner-drawn items; read wID explicitly.
+    UINT_PTR id = 0;
+    MENUITEMINFOW miiId{};
+    miiId.cbSize = sizeof(miiId);
+    miiId.fMask = MIIM_ID;
+    if (GetMenuItemCount(m) > 0 && GetMenuItemInfoW(m, 0, TRUE, &miiId)) {
+        id = miiId.wID;
+    }
     if (id == menuDefFile[0].idOrSubmenu) {
         RebuildFileMenu(win->CurrentTab(), m);
     } else if (id == menuDefFavorites[0].idOrSubmenu) {

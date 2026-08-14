@@ -82,8 +82,8 @@ static const char* kMetadataStrong[] = {
 };
 
 static const char* kMetadataWeak[] = {
-    "cad", "dwg", "plot", "engineering", "layout", "draft", "mechanical", "architect",
-    "screenshot", "screen capture", "snipaste", "截图", "wps",
+    "cad",       "dwg",        "plot",           "engineering", "layout", "draft", "mechanical",
+    "architect", "screenshot", "screen capture", "snipaste",    "截图",   "wps",
 };
 
 static const char* kMetadataBlacklist[] = {
@@ -395,8 +395,8 @@ static void AnalyzePage(fz_context* ctx, pdf_document* doc, int pageNo, cad_anal
     }
 }
 
-static int ScoreHeuristic(fz_context* ctx, pdf_document* doc, int pageCount, float maxPageSide,
-                          bool* rasterDominantOut, bool* hairlineVectorOut) {
+static int ScoreHeuristic(fz_context* ctx, pdf_document* doc, int pageCount, float maxPageSide, bool* rasterDominantOut,
+                          bool* hairlineVectorOut) {
     cad_analysis_device stats{};
     stats.pageArea = maxPageSide * maxPageSide;
     int pages = pageCount > 2 ? 2 : pageCount;

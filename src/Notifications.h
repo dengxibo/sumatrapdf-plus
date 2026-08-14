@@ -9,6 +9,7 @@ extern Kind kNotifPageInfo;
 extern Kind kNotifAdHoc;
 extern Kind kNotifThemeRelayout;
 extern Kind kNotifEbookFontLayout;
+extern Kind kNotifDocumentLoading;
 
 using NotificationWndRemoved = Func1<NotificationWnd*>;
 
@@ -35,6 +36,10 @@ bool RemoveNotificationsForGroup(HWND, Kind);
 NotificationWnd* GetNotificationForGroup(HWND, Kind);
 bool UpdateNotificationProgress(NotificationWnd*, const char* msg, int perc);
 void RelayoutNotifications(HWND hwnd);
+
+NotificationWnd* GetDocumentLoadingNotification(HWND hwndFrame, HWND hwndCanvas);
+HWND GetDocumentLoadingNotificationHwnd(HWND hwndFrame, HWND hwndCanvas);
+void RaiseDocumentLoadingNotification(HWND hwndFrame, HWND hwndCanvas);
 
 NotificationWnd* ShowNotification(const NotificationCreateArgs& args);
 NotificationWnd* ShowTemporaryNotification(HWND hwnd, const char* msg, int timeoutMs = kNotifDefaultTimeOut);

@@ -1,4 +1,4 @@
-// Copyright (C) 2004-2025 Artifex Software, Inc.
+// Copyright (C) 2004-2026 Artifex Software, Inc.
 //
 // This file is part of MuPDF.
 //
@@ -21,6 +21,7 @@
 // CA 94129, USA, for further information.
 
 #include "mupdf/fitz.h"
+#include "../fitz/context-imp.h"
 #include "pdf-annot-imp.h"
 #include "mupdf/ucdn.h"
 
@@ -1592,6 +1593,7 @@ add_required_fonts(fz_context *ctx, pdf_document *doc, pdf_obj *res_font,
 	char buf[40];
 
 	int add_latin = 0;
+	int add_latin2 = 0; /* SumatraPDF: CP-1250 fallback font, #5404 */
 	int add_greek = 0;
 	int add_cyrillic = 0;
 	int add_korean = 0;
@@ -1610,7 +1612,13 @@ add_required_fonts(fz_context *ctx, pdf_document *doc, pdf_obj *res_font,
 		default: add_latin = 1; /* for fallback bullet character */ break;
 		case UCDN_SCRIPT_COMMON: break;
 		case UCDN_SCRIPT_INHERITED: break;
-		case UCDN_SCRIPT_LATIN: add_latin = 1; break;
+		case UCDN_SCRIPT_LATIN:
+			/* SumatraPDF: route CP-1250-only letters to the LATIN2 font (#5404) */
+			if (fz_windows_1252_from_unicode(c) < 0 && fz_windows_1250_from_unicode(c) >= 0)
+				add_latin2 = 1;
+			else
+				add_latin = 1;
+			break;
 		case UCDN_SCRIPT_GREEK: add_greek = 1; break;
 		case UCDN_SCRIPT_CYRILLIC: add_cyrillic = 1; break;
 		case UCDN_SCRIPT_HANGUL: add_korean = 1; break;
@@ -1650,6 +1658,14 @@ add_required_fonts(fz_context *ctx, pdf_document *doc, pdf_obj *res_font,
 		if (!pdf_dict_gets(ctx, res_font, fontname))
 			pdf_dict_puts_drop(ctx, res_font, fontname,
 				pdf_add_simple_font(ctx, doc, font, PDF_SIMPLE_ENCODING_LATIN));
+	}
+	/* SumatraPDF: "<font>CE" is the CP-1250 sibling of the Latin font (#5404) */
+	if (add_latin2)
+	{
+		fz_snprintf(buf, sizeof buf, "%sCE", fontname);
+		if (!pdf_dict_gets(ctx, res_font, buf))
+			pdf_dict_puts_drop(ctx, res_font, buf,
+				pdf_add_simple_font(ctx, doc, font, PDF_SIMPLE_ENCODING_LATIN2));
 	}
 	if (add_greek)
 	{
@@ -1711,7 +1727,8 @@ static int find_initial_script(const char *text)
 	return script;
 }
 
-enum { ENC_LATIN = 1, ENC_GREEK, ENC_CYRILLIC, ENC_KOREAN, ENC_JAPANESE, ENC_HANT, ENC_HANS };
+/* SumatraPDF: ENC_LATIN2 (CP-1250 Central European Latin) added for #5404 */
+enum { ENC_LATIN = 1, ENC_LATIN2, ENC_GREEK, ENC_CYRILLIC, ENC_KOREAN, ENC_JAPANESE, ENC_HANT, ENC_HANS };
 
 struct text_walk_state
 {
@@ -1756,8 +1773,21 @@ static int next_text_walk(fz_context *ctx, struct text_walk_state *state)
 		state->c = REPLACEMENT;
 		break;
 	case UCDN_SCRIPT_LATIN:
-		state->enc = ENC_LATIN;
 		state->c = fz_windows_1252_from_unicode(state->u);
+		/* SumatraPDF: Central European Latin letters (Č, Ň, Ď, Ľ, ...) are not
+		 * in WinAnsi; fall back to a CP-1250 encoded font instead of dropping
+		 * the character (REPLACEMENT) (#5404) */
+		if (state->c < 0)
+		{
+			int c2 = fz_windows_1250_from_unicode(state->u);
+			if (c2 >= 0)
+			{
+				state->enc = ENC_LATIN2;
+				state->c = c2;
+				break;
+			}
+		}
+		state->enc = ENC_LATIN;
 		break;
 	case UCDN_SCRIPT_GREEK:
 		state->enc = ENC_GREEK;
@@ -1875,6 +1905,7 @@ write_string(fz_context *ctx, fz_buffer *buf,
 			switch (state.enc)
 			{
 			case ENC_LATIN: fz_append_printf(ctx, buf, "/%s %g Tf\n", fontname, size); break;
+			case ENC_LATIN2: fz_append_printf(ctx, buf, "/%sCE %g Tf\n", fontname, size); break; /* SumatraPDF: #5404 */
 			case ENC_GREEK: fz_append_printf(ctx, buf, "/%sGRK %g Tf\n", fontname, size); break;
 			case ENC_CYRILLIC: fz_append_printf(ctx, buf, "/%sCYR %g Tf\n", fontname, size); break;
 			case ENC_KOREAN: fz_append_printf(ctx, buf, "/Batang %g Tf\n", size); break;
@@ -1964,6 +1995,7 @@ write_comb_string(fz_context *ctx, fz_buffer *buf,
 			switch (state.enc)
 			{
 			case ENC_LATIN: fz_append_printf(ctx, buf, "/%s %g Tf\n", fontname, size); break;
+			case ENC_LATIN2: fz_append_printf(ctx, buf, "/%sCE %g Tf\n", fontname, size); break; /* SumatraPDF: #5404 */
 			case ENC_GREEK: fz_append_printf(ctx, buf, "/%sGRK %g Tf\n", fontname, size); break;
 			case ENC_CYRILLIC: fz_append_printf(ctx, buf, "/%sCYR %g Tf\n", fontname, size); break;
 			case ENC_KOREAN: fz_append_printf(ctx, buf, "/Batang %g Tf\n", size); break;
@@ -2356,7 +2388,7 @@ escape_text(fz_context *ctx, const char *s)
 	return d2;
 }
 
-int text_needs_rich_layout(fz_context *ctx, const char *s)
+static int text_needs_rich_layout(fz_context *ctx, const char *s)
 {
 	int c, script;
 	while (*s)
@@ -2365,6 +2397,11 @@ int text_needs_rich_layout(fz_context *ctx, const char *s)
 
 		// base 14 fonts
 		if (fz_windows_1252_from_unicode(c) > 0)
+			continue;
+		/* SumatraPDF: Central European Latin (Č, Ň, ...) is handled by the
+		 * base appearance path via ENC_LATIN2, so it does not need (and must
+		 * not take) the rich/HTML layout path which renders it blank (#5404) */
+		if (fz_windows_1250_from_unicode(c) > 0)
 			continue;
 		if (fz_iso8859_7_from_unicode(c) > 0)
 			continue;
@@ -3653,14 +3690,17 @@ static void pdf_update_appearance(fz_context *ctx, pdf_annot *annot)
 	pdf_obj *subtype;
 	pdf_obj *ft = NULL;
 	pdf_obj *ap_n;
-	int pop_local_xref = 1;
+	int pop_local_xref;
+	int repaired = 0;
+	int xref_base;
 
 retry_after_repair:
+	pop_local_xref = 1;
 	/* Must have any local xref in place in order to check if it's dirty. */
 	pdf_annot_push_local_xref(ctx, annot);
 
 	pdf_begin_implicit_operation(ctx, annot->page->doc);
-	fz_start_throw_on_repair(ctx);
+	pdf_start_throw_on_repair(ctx, annot->page->doc, &xref_base);
 
 	fz_var(pop_local_xref);
 
@@ -3837,7 +3877,7 @@ retry_after_repair:
 	{
 		if (pop_local_xref)
 			pdf_annot_pop_local_xref(ctx, annot);
-		fz_end_throw_on_repair(ctx);
+		pdf_end_throw_on_repair(ctx, annot->page->doc, xref_base);
 	}
 	fz_catch(ctx)
 	{
@@ -3851,10 +3891,14 @@ retry_after_repair:
 		if (fz_caught(ctx) == FZ_ERROR_REPAIRED)
 		{
 			fz_report_error(ctx);
+			repaired = 1;
 			goto retry_after_repair;
 		}
 		fz_rethrow(ctx);
 	}
+
+	if (repaired)
+		pdf_maybe_throw_after_repair(ctx, annot->page->doc);
 }
 
 static void *

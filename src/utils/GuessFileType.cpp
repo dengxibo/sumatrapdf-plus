@@ -382,8 +382,7 @@ static bool IsOoxmlArchive(MultiFormatArchive* archive) {
     }
     // OOXML word/spreadsheet/presentation documents share _rels/.rels with XPS.
     return str::Find(rels->data, "officeDocument/2006/relationships/officeDocument") != nullptr ||
-           str::Find(rels->data, "spreadsheetml") != nullptr ||
-           str::Find(rels->data, "presentationml") != nullptr;
+           str::Find(rels->data, "spreadsheetml") != nullptr || str::Find(rels->data, "presentationml") != nullptr;
 }
 
 static bool IsXpsArchive(MultiFormatArchive* archive) {

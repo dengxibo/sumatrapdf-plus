@@ -573,7 +573,8 @@ static LRESULT CALLBACK WndProcOverlayScrollbar(HWND hwnd, UINT msg, WPARAM wp, 
                 return 0;
             }
             if (wp == OverlayScrollbar::kTimerRepeatScroll) {
-                if (sb->repeatScrollCode == 0) {
+                if (sb->repeatScrollCode == 0 || (GetKeyState(VK_LBUTTON) & 0x8000) == 0) {
+                    sb->repeatScrollCode = 0;
                     KillTimer(hwnd, OverlayScrollbar::kTimerRepeatScroll);
                     return 0;
                 }
@@ -738,6 +739,16 @@ static LRESULT CALLBACK WndProcOverlayScrollbar(HWND hwnd, UINT msg, WPARAM wp, 
                 SendScrollMsg(sb, ScrollMsgForType(sb), MAKEWPARAM(SB_THUMBPOSITION, sb->nPos));
             }
             ReleaseCapture();
+            return 0;
+
+        case WM_CAPTURECHANGED:
+            if (sb->repeatScrollCode != 0 && (HWND)lp != hwnd) {
+                sb->repeatScrollCode = 0;
+                KillTimer(hwnd, OverlayScrollbar::kTimerRepeatScroll);
+            }
+            if (sb->isDragging && (HWND)lp != hwnd) {
+                sb->isDragging = false;
+            }
             return 0;
 
         case WM_MOUSEWHEEL:

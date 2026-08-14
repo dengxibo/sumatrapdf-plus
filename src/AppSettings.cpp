@@ -800,7 +800,9 @@ HFONT GetAppBiggerFontForDpi(int dpi) {
             fntSize = kMinBiggerFontSize;
         }
     }
-    HFONT font = GetDefaultGuiFontOfSize(fntSize);
+    // Must be DPI-keyed like GetAppFontForDpi; GetDefaultGuiFontOfSize ignores dpi
+    // and can make banners look inconsistently large/small across monitors/startup.
+    HFONT font = GetUserGuiFontForDpi("auto", fntSize, dpi);
     if (!fonts) {
         UiFontsAtDpi entry{};
         entry.dpi = dpi;

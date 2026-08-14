@@ -7,6 +7,7 @@
 
 class EngineBase;
 struct FzPageInfo;
+struct DarkModeEngineCache;
 struct fz_context;
 struct fz_display_list;
 struct fz_image;
@@ -76,6 +77,7 @@ enum class PageColorMode {
     LegacyInvert,
     SmartDark,
     FollowThemeDirect,
+    FollowThemeV2, // Okular text/vector; full-page: photo-rect protect + Okular margins
     PreserveImages,
     ScanDark,
 };
@@ -158,6 +160,7 @@ PdfDarkModeRenderer GetPdfDarkModeRenderer();
 bool PdfDarkModeUsesObjectLevel();
 bool DarkModeProfileUsesObjectLevel(const DarkModeProfile* profile);
 bool DarkModeProfileUsesFollowThemeDirect(const DarkModeProfile* profile);
+bool DarkModeProfileUsesFollowThemeV2(const DarkModeProfile* profile);
 bool DarkModeProfileUsesLegacyPostProcess(const DarkModeProfile* profile);
 void BuildViewDarkModeProfile(EngineBase* engine, DarkModeProfile* profile);
 u32 PdfDarkModeComputeProfileHash(const DarkModeProfile* profile);
@@ -242,7 +245,8 @@ bool PdfDarkModeIsSubstantialFollowThemeArtwork(const RectF& imgRect, float page
 bool PdfDarkModeIsPhotoFrameStripImage(const RectF& imgRect, const RectF& pageBounds, const Vec<RectF>* artworkBounds);
 DarkImagePolicy PdfDarkModePolicyForFollowThemeImage(const RectF& imgBounds, bool isImageMask, const RectF& pageBounds,
                                                      const Vec<RectF>* artworkBounds = nullptr,
-                                                     fz_context* ctx = nullptr, fz_image* image = nullptr);
+                                                     fz_context* ctx = nullptr, fz_image* image = nullptr,
+                                                     DarkModeEngineCache* engineCache = nullptr);
 
 // OKLab perceptual remap for SmartDark text/vector colors (Phase 2).
 void MapRgbToDarkThemeOklab(float r, float g, float b, const DarkModePalette& palette, float* outRgb);
@@ -259,6 +263,10 @@ void PdfDarkModeRemapScanPixel(float r, float g, float b, const DarkImageAnalysi
 
 bool PdfDarkModeImageLooksLikePhoto(fz_context* ctx, fz_image* image);
 bool PdfDarkModeImageLooksLikeDarkArtwork(fz_context* ctx, fz_image* image, float pageCoverage);
+
+// Page-sized images normally recolor with the page (scans / full-bleed backgrounds).
+// Cover illustrations that fill the page should still be preserved.
+bool PdfDarkModePageDominantImageRecolors(fz_context* ctx, fz_image* image, float pageCoverage);
 
 RectF PdfDarkModeClampImagePageRect(const RectF& imgPage, int imageW, int imageH);
 
@@ -291,6 +299,12 @@ bool PdfDarkModeFeaturesLookLikeLightDocumentPanel(const DarkImageFeatures& f);
 bool PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(const DarkImageFeatures& f);
 bool PdfDarkModeFeaturesLookLikeGovernmentPaperScan(const DarkImageFeatures& f);
 bool PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(const DarkImageFeatures& f);
+// Noisy JPEG text scans (medical/office): steep ink/paper binarize, not linear invert.
+bool PdfDarkModeFeaturesLookLikeFullPageTextScanForBinarize(const DarkImageFeatures& f);
+bool PdfDarkModeFullResStatsAllowGovernmentPaperBinarize(const DarkImageAnalysis* imgAnalysis, float paperRatio,
+                                                         float satRatio, float chromaRatio, float lumVar);
+bool PdfDarkModeVetoGovernmentPaperBinarize(const DarkImageAnalysis* imgAnalysis, float paperRatio, float satRatio,
+                                            float chromaRatio, float lumVar);
 bool PdfDarkModeShouldPreserveImageFeatures(const DarkImageFeatures& f, float pageCoverage);
 
 DarkImagePolicy PdfDarkModePolicyForImageKind(DarkImageKind kind, bool isImageMask);

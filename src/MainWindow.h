@@ -73,7 +73,8 @@ enum class MouseAction {
     Dragging,
     Selecting,
     Scrolling,
-    SelectingText
+    SelectingText,
+    CreatingAnnotation
 };
 
 enum PresentationMode {
@@ -81,6 +82,13 @@ enum PresentationMode {
     PM_ENABLED,
     PM_BLACK_SCREEN,
     PM_WHITE_SCREEN
+};
+
+enum class UiMenuDocKind {
+    None = 0,
+    About,
+    Chm,
+    Fixed,
 };
 
 // WM_GESTURE handling
@@ -222,6 +230,11 @@ struct MainWindow {
     bool annotationBeingResized = false;
     RectF annotationOriginalRect;
 
+    // Toolbar quick-annotation tool (CmdCreateAnnotSquare etc.; 0 = inactive)
+    int annotCreateToolCmd = 0;
+    Point annotCreateDragStart;
+    Vec<PointF> annotCreateInkPoints;
+
     /* when moving the document by smooth scrolling, this keeps track of
        the speed at which we should scroll, which depends on the distance
        of the mouse from the point where the user middle clicked. */
@@ -248,6 +261,7 @@ struct MainWindow {
     int homePageThumbsTopY = 0;
     int homePageThumbsCols = 0;
     int homePageRowDy = 0;
+    int homePageColDx = 0;
     bool homePageListView = false;
     int homePagePaintScrollY = 0;
     bool homePageBlitScrollReady = false;
@@ -261,6 +275,7 @@ struct MainWindow {
 
     bool isToolbarVisible = false;
     bool isFullScreen = false;
+    UiMenuDocKind uiMenuDocKind = UiMenuDocKind::None;
     PresentationMode presentation = PM_DISABLED;
     int windowStateBeforePresentation = 0;
     bool suppressFrameRedraw = false;
@@ -424,6 +439,8 @@ void UpdateControlsColors(MainWindow*);
 void ScheduleRepaint(MainWindow*, int delay);
 void CreateMovePatternLazy(MainWindow*);
 void ClearMouseState(MainWindow*);
+void SetAnnotCreateTool(MainWindow* win, int cmdId);
+void UpdateAnnotToolToolbarButtons(MainWindow* win);
 bool IsRightDragging(MainWindow*);
 MainWindow* FindMainWindowByTab(WindowTab*);
 MainWindow* FindMainWindowByHwnd(HWND);

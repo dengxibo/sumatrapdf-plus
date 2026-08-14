@@ -148,7 +148,7 @@ static void BlurMaskBox3(float* mask, int maskW, int maskH) {
 }
 
 static bool BuildEdgeConnectedBgMask(fz_context* ctx, fz_pixmap* src, float bgR, float bgG, float bgB, float* outFgConf,
-                                    int maskW, int maskH) {
+                                     int maskW, int maskH) {
     if (!src || !outFgConf || maskW <= 0 || maskH <= 0) {
         return false;
     }

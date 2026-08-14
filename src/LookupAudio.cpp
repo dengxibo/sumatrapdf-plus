@@ -42,6 +42,7 @@ static HANDLE gLookupAudioThread = nullptr;
 static IAudioClient* gLookupAudioClient = nullptr;
 static volatile LONG gLookupAudioPlaying = 0;
 static volatile LONG gLookupAudioStop = 0;
+static volatile u64 gLookupAudioPlayToken = 0;
 
 static CRITICAL_SECTION* LookupAudioCs() {
     if (InterlockedCompareExchange(&gLookupAudioCsReady, 1, 0) == 0) {
@@ -494,7 +495,16 @@ static DWORD WINAPI LookupAudioThreadProc(void* param) {
     str::Free(ctx->ext);
     free(ctx);
     InterlockedExchange(&gLookupAudioPlaying, 0);
+    InterlockedExchange64((volatile LONG64*)&gLookupAudioPlayToken, 0);
     return playOk ? 0 : 1;
+}
+
+void LookupAudioSetPlayToken(u64 token) {
+    InterlockedExchange64((volatile LONG64*)&gLookupAudioPlayToken, (LONG64)token);
+}
+
+u64 LookupAudioPlayToken() {
+    return (u64)InterlockedCompareExchange64((volatile LONG64*)&gLookupAudioPlayToken, 0, 0);
 }
 
 void LookupAudioStop() {
@@ -517,6 +527,7 @@ void LookupAudioStop() {
     }
     InterlockedExchange(&gLookupAudioPlaying, 0);
     InterlockedExchange(&gLookupAudioStop, 0);
+    InterlockedExchange64((volatile LONG64*)&gLookupAudioPlayToken, 0);
 }
 
 bool LookupAudioIsPlaying() {
@@ -536,6 +547,7 @@ bool LookupAudioPlayOwned(u8* data, size_t size, const char* ext) {
     ctx->ext = str::Dup(ext);
 
     InterlockedExchange(&gLookupAudioStop, 0);
+    InterlockedExchange64((volatile LONG64*)&gLookupAudioPlayToken, 0);
     InterlockedExchange(&gLookupAudioPlaying, 1);
 
     HANDLE thread = CreateThread(nullptr, 0, LookupAudioThreadProc, ctx, 0, nullptr);

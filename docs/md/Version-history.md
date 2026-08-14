@@ -2,8 +2,36 @@
 
 ## next
 
-- add `TreeWrapLabels` setting (default false): bookmarks and favorites use single-line labels with ellipsis and full text in tooltip; set true to wrap long titles to multiple lines
-  新增 `TreeWrapLabels`（默认 false）：书签与收藏均为单行省略 + 悬停气泡显示全文；设为 true 时长标题多行换行
+- toolbar quick annotation buttons (rectangle, circle, line, ink): one click to enter drag-to-draw mode, click again to exit; hide with `ShowAnnotToolbarButtons = false`
+  工具栏快捷标注（矩形/椭圆/直线/画笔）：单击进入拖拽绘制，再单击退出；`ShowAnnotToolbarButtons = false` 可隐藏
+- faster Match-theme render for Acrobat/PageMaker textbooks (e.g. Journey Across Time): cache per-image policy analysis; skip RAZ PictureBook lum/var planes — use cheap preserve/linear remap (Image-Conversion picture books unchanged)
+  加快 Acrobat/PageMaker 教材（如 Journey Across Time）「匹配主题」渲染：缓存每图策略分析；跳过绘本 PictureBook 全图亮度/方差平面，改廉价 preserve/线性重映射（Image Conversion 绘本路径不变）
+- Match-theme dark: stop “worm”/posterization on light photo textures (fur, white clothes, tile) — treat textured near-white as photo content for photo-rect seek; skip ApplySharp on moderate local luminance variance (paper/line-art paths unchanged)
+  「匹配主题」暗色：减轻浅色照片纹理上的蚯蚓/色阶伪影（毛发、白衣、瓷砖）——稠密检测把带纹理近白当照片区；对中等局部亮度方差跳过 ApplySharp（纸面/线稿路径不变）
+- fix freeze/beeps when opening dialogs from the hamburger/popup menus (e.g. smart bilingual settings, custom TTS speed): `CenterDialog` places on the cursor’s monitor and forces ShowWindow so DialogBox is not left invisible while the owner is disabled
+  修复汉堡/弹出菜单打开对话框时卡死并系统蜂鸣（如智能双语设置、自定义语速）：`CenterDialog` 按鼠标所在显示器居中并强制 ShowWindow，避免 DialogBox 不可见而主窗已被禁用
+- fix missing tooltips / dead ebook font-size buttons / native scrollbar hold-to-page: TreeWrapLabels custom-draw was calling `TreeView_SetItem` during paint (~500–850 WM_PAINT/s), starving low-priority `WM_TIMER` (tooltip, font-size debounce, and scrollbar auto-repeat); recalc item heights outside paint; restore native tab/toolbar tips and DefWindowProc scrollbar repeat (remove TimerQueue workaround)
+  修复汽泡提示偶发不显示、电子书字号加减失灵、滚动条槽区按住不连续翻页：TreeWrapLabels 绘制中反复 `TreeView_SetItem` 形成每秒数百次 WM_PAINT，饿死低优先级 `WM_TIMER`（tooltip、字号防抖、滚动条自动重复）；高度改在绘制外重算；恢复原生 tip 与 DefWindowProc 滚动条按住重复（去掉 TimerQueue 绕道）
+- fix sticky TOC/favorites sidebar resize with TreeWrapLabels: suspend wrap-height updates while dragging the splitter (single-line clipped paint); recalc + flush only on mouse-up
+  修复开启 TreeWrapLabels 时拖 TOC/收藏侧栏宽度不跟手/残留竖线：拖动中暂停换行高度更新（单行裁剪绘制）；仅在松开鼠标时重算并 flush
+- match upstream: disable custom owner-draw menus; let darkmodelib/OS theme popups (including submenu chevrons)
+  与上游一致：关闭自绘菜单，弹出菜单交由 darkmodelib/系统主题绘制（含子菜单箭头）
+- PDF Sound/RichMedia/Screen (e.g. RAZ speakers): click the playing icon again to stop; stop audio when switching tabs
+  PDF 内嵌音频（如 RAZ 喇叭）：再点正在播放的图标即停；切换标签页时停止播放
+- fix dark-theme hamburger menu: command visibility uses the current tab’s loaded state so Go/Zoom/Selection are not built empty; independent popup tree; avoid Settings freeze from live owner-draw recurse
+  修复暗色汉堡菜单：命令可见性按当前标签是否已加载文档判断，避免「前往/缩放/选择」建成空菜单；独立弹出菜单树；避免设置菜单因 owner-draw 递归卡死
+- fix oversized “Loading …” banner text: paint with a freshly resolved UI HFONT (cached fonts are deleted on DPI/chrome refresh while the last multi-file banner is still up); fill with GDI not Gdiplus; no full-canvas centered loading line
+  修复「载入…」横幅字号过大：绘制时重新取 UI 字体（多文件打开时 DPI/界面刷新会删掉缓存 HFONT，最后一本横幅仍显示就会落到系统大字体）；背景用 GDI 填充；不再画布居中第二行
+- fix duplicate “Loading …” banners when opening a file: tab selection during prepare no longer starts a second async load
+  修复打开文件时出现两条「载入…」提示：准备标签时不再重复启动异步加载
+- faster PDF open: skip `JoinSplitPdfImages` whole-document page parse for Acrobat/layout textbooks (e.g. Exploring Our World); abort early when the first pages show no strip-image pairs; do not re-probe Match-theme when metadata already classified the doc
+  加快 PDF 打开：Acrobat/排版教材（如 Exploring Our World）跳过 `JoinSplitPdfImages` 全文档解析；前几页无细条拼图信号则提前结束；元数据已分类时不再重复 Match-theme 探测
+- Match-theme dark: protect small inset B&W portraits on paper-heavy RAZ pages (e.g. Historic Peacemakers Betty Williams) so they are not ApplySharp-inverted; stop photo-rect grow from swallowing body text; warm cream SoftCream; colorful RAZ/comic picture-book protect
+  「匹配主题」暗色：纸面为主的 RAZ 页上小幅黑白肖像（如 Historic Peacemakers Betty Williams）纳入照片保护，避免被陡峭重映射成负片；照片保护区不再吞正文；暖奶油 SoftCream；彩色 RAZ/漫画 picture-book 保护
+- add `JoinSplitPdfImages` (default true): hide redundant thin-strip pages in Calibre-style photo PDFs so continuous view joins split images; toggle with `CmdToggleJoinSplitPdfImages`
+  新增 `JoinSplitPdfImages`（默认 true）：隐藏 Calibre 写真集一类「同图细条重复页」，连续滚动时把断开的图片接起来；可用 `CmdToggleJoinSplitPdfImages` 开关
+- add `TreeWrapLabels` setting (default true): bookmarks and favorites wrap long titles to multiple lines; set false for single-line labels with ellipsis and full text in tooltip
+  新增 `TreeWrapLabels`（默认 true）：书签与收藏长标题多行换行；设为 false 时为单行省略 + 悬停气泡显示全文
 - light match theme: stop routing colorful PDF covers through SmartDark image remap; preserve full-bleed photos and skip highlight compression on light themes
   浅色「匹配主题」：彩色封面不再走 SmartDark 图像重映射；全幅照片保留原色，浅色主题跳过高光压缩
 

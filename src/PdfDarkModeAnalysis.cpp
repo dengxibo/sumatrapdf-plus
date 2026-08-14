@@ -632,8 +632,9 @@ bool PdfDarkModePdfMetadataSuggestsFullPageScanDoc(fz_context* ctx, pdf_document
         return false;
     }
     static const char* kScanNeedles[] = {
-        "duxiu",    "superstar", "pdg2pic",      "cajviewer",     "caj ",
-        "ssreader", "ss reader", "annasarchive", "annas archive", "chaoxing",
+        "duxiu",       "superstar", "pdg2pic",      "cajviewer",     "caj ",
+        "ssreader",    "ss reader", "annasarchive", "annas archive", "chaoxing",
+        "freepic2pdf", // 连环画 / image-per-page packs (e.g. 1954 上美红楼梦)
     };
     return PdfDarkModeInfoFieldsMatchAnyI(ctx, info, kScanNeedles, dimof(kScanNeedles));
 }
@@ -724,8 +725,8 @@ static FollowThemeScanProbe PdfDarkModeClassifyFollowThemeProbe(const pdf_scan_p
         return FollowThemeScanProbe::PureScan;
     }
     // Stacked vertical strips (Acrobat Elements / PScript): tiles sum to a full page.
-    if (probe->stackedImageCoverage >= 0.85f && probe->textOps <= 2 && probe->vectorOps <= 2 &&
-        probe->imageOps >= 2 && probe->imageOps <= 6) {
+    if (probe->stackedImageCoverage >= 0.85f && probe->textOps <= 2 && probe->vectorOps <= 2 && probe->imageOps >= 2 &&
+        probe->imageOps <= 6) {
         return FollowThemeScanProbe::PureScan;
     }
     if (::FollowThemePageStatsMatchBitmapRecolor(st, opts)) {

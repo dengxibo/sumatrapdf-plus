@@ -14,6 +14,9 @@ struct DarkModeEngineCache;
 DarkModeEngineCache* PdfDarkModeEngineCacheCreate();
 void PdfDarkModeEngineCacheFree(fz_context* ctx, DarkModeEngineCache* cache);
 void PdfDarkModeEngineCacheClear(fz_context* ctx, DarkModeEngineCache* cache);
+// LayoutPhoto textbooks (Acrobat/PageMaker): cheap remap, not RAZ PictureBook.
+void PdfDarkModeEngineCacheSetLayoutTextbookFastRemap(DarkModeEngineCache* cache, bool enabled);
+bool PdfDarkModeEngineCacheLayoutTextbookFastRemap(const DarkModeEngineCache* cache);
 
 bool PdfDarkModeEngineCacheLookupFeatures(DarkModeEngineCache* cache, fz_image* image, DarkImageFeatures* outFeatures,
                                           PixelColor* outBackground);
@@ -44,7 +47,7 @@ fz_image* PdfDarkModeGetCachedFollowThemeImage(fz_context* ctx, DarkModeEngineCa
                                                const DarkModePalette& palette, u32 profileHash);
 
 void PdfDarkModeAppendImagePhotoSkipDevRects(fz_context* ctx, fz_image* image, const RectF& imgOnPage,
-                                            const fz_matrix& ctm, Vec<Rect>& outSkip);
+                                             const fz_matrix& ctm, Vec<Rect>& outSkip);
 
 void MapColorToDarkTheme(fz_context* ctx, fz_colorspace* cs, const float* color, fz_color_params colorParams,
                          const DarkModePalette& palette, float* outRgb);
@@ -65,7 +68,16 @@ void ApplyPreserveImagePaperSoftening(float r, float g, float b, const DarkModeP
 void ApplyPreservePictureBookPaperAndInk(float r, float g, float b, const DarkModePalette& palette, float* outR,
                                          float* outG, float* outB);
 fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette,
-                                             const DarkImageAnalysis* imgAnalysis = nullptr);
+                                               const DarkImageAnalysis* imgAnalysis = nullptr);
+// V2 full-page: photo-rect interiors preserved; everything else Okular→theme (cached by caller).
+// Pass imgAnalysis so B&W documentary portraits (RAZ) seek photo rects even with large white margins.
+fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette,
+                                              const DarkImageAnalysis* imgAnalysis = nullptr);
+// V2 small images: knock out JPEG white mats around colorful badges (UNIT / Atlas headers).
+// Returns nullptr when knockout does not apply (caller keeps the original image).
+fz_pixmap* PdfDarkModeProcessV2WhiteMatPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette);
+// Soft gray raster drop-shadow plates (Glencoe callouts) → solid theme bg.
+fz_pixmap* PdfDarkModeProcessV2SoftShadowPlatePixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette);
 // Soft-cream notebook pages: gentle paper softening only (no steep ink remap).
 fz_pixmap* PdfDarkModeProcessSoftCreamPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette);
 // Government / office paper scans: steep ink↔paper remap for readable text on dark theme.

@@ -20,8 +20,14 @@
 #include "ProgressUpdateUI.h"
 #include "Notifications.h"
 #include "Theme.h"
+#include "MainWindow.h"
 
 #include "utils/Log.h"
+
+struct MainWindow;
+MainWindow* FindMainWindowByHwnd(HWND hwnd);
+void UpdateTocFilterForDocumentLoading(MainWindow* win);
+void RelayoutTocContainer(MainWindow* win);
 
 using Gdiplus::Graphics;
 using Gdiplus::Pen;
@@ -44,9 +50,11 @@ Kind kNotifPageInfo = "pageInfoHelper";
 Kind kNotifAdHoc = "notifAdHoc";
 Kind kNotifThemeRelayout = "themeRelayout";
 Kind kNotifEbookFontLayout = "ebookFontLayout";
+Kind kNotifDocumentLoading = "documentLoading";
 
 constexpr int kPadding = 6;
 constexpr int kTopLeftMargin = 8;
+constexpr int kLoadingTopLeftMargin = 4;
 
 constexpr UINT_PTR kNotifTimerTimeoutId = 1;
 constexpr UINT_PTR kNotifTimerDelayId = 2;
@@ -119,6 +127,56 @@ static int GetForSameHwnd(NotificationWnd* wnd, NotificationWnd* wnds[kMaxNotifs
     return GetForHwnd(parent, wnds);
 }
 
+static bool IsDocumentLoadingGroup(Kind groupId) {
+    return groupId == kNotifDocumentLoading || groupId == kNotifEbookFontLayout;
+}
+
+NotificationWnd* GetDocumentLoadingNotification(HWND hwndFrame, HWND hwndCanvas) {
+    NotificationWnd* nw = GetNotificationForGroup(hwndCanvas, kNotifDocumentLoading);
+    if (nw) {
+        return nw;
+    }
+    nw = GetNotificationForGroup(hwndFrame, kNotifDocumentLoading);
+    if (nw) {
+        return nw;
+    }
+    nw = GetNotificationForGroup(hwndCanvas, kNotifEbookFontLayout);
+    if (nw) {
+        return nw;
+    }
+    return GetNotificationForGroup(hwndFrame, kNotifEbookFontLayout);
+}
+
+HWND GetDocumentLoadingNotificationHwnd(HWND hwndFrame, HWND hwndCanvas) {
+    NotificationWnd* nw = GetDocumentLoadingNotification(hwndFrame, hwndCanvas);
+    return nw && nw->hwnd ? nw->hwnd : nullptr;
+}
+
+void RaiseDocumentLoadingNotification(HWND hwndFrame, HWND hwndCanvas) {
+    NotificationWnd* nw = GetDocumentLoadingNotification(hwndFrame, hwndCanvas);
+    if (!nw || !nw->hwnd) {
+        return;
+    }
+    MainWindow* win = hwndCanvas ? FindMainWindowByHwnd(hwndCanvas) : nullptr;
+    if (!win && hwndFrame) {
+        win = FindMainWindowByHwnd(hwndFrame);
+    }
+    const char* msg = HwndGetTextTemp(nw->hwnd);
+    nw->Layout(msg);
+    if (win && win->tocVisible && win->hwndTocBox && IsWindowVisible(win->hwndTocBox)) {
+        if (GetParent(nw->hwnd) != win->hwndTocBox) {
+            SetParent(nw->hwnd, win->hwndTocBox);
+        }
+        RelayoutTocContainer(win);
+    } else if (hwndCanvas) {
+        if (GetParent(nw->hwnd) != hwndCanvas) {
+            SetParent(nw->hwnd, hwndCanvas);
+        }
+        BringWindowToTop(nw->hwnd);
+        RelayoutNotifications(hwndCanvas);
+    }
+}
+
 void RelayoutNotifications(HWND hwnd) {
     NotificationWnd* wnds[kMaxNotifs];
     HWND parent = HwndGetParent(hwnd);
@@ -130,13 +188,17 @@ void RelayoutNotifications(HWND hwnd) {
     auto* first = wnds[0];
     HWND hwndCanvas = GetParent(first->hwnd);
     Rect frame = ClientRect(hwndCanvas);
-    int topLeftMargin = DpiScale(hwndCanvas, kTopLeftMargin);
+    bool compact = IsDocumentLoadingGroup(first->groupId);
+    int topLeftMargin = DpiScale(hwndCanvas, compact ? kLoadingTopLeftMargin : kTopLeftMargin);
     int dyPadding = DpiScale(hwndCanvas, kPadding);
     int y = topLeftMargin;
     for (int i = 0; i < nWnds; i++) {
         NotificationWnd* wnd = wnds[i];
         if (wnd->delayTimerId != 0) {
             // still in delay period, not yet visible
+            continue;
+        }
+        if (GetParent(wnd->hwnd) != hwndCanvas) {
             continue;
         }
         Rect rect = WindowRect(wnd->hwnd);
@@ -163,6 +225,16 @@ static void NotifsRemoveNotification(NotificationWnd* wnd) {
         gNotifs[pos] = gNotifs[gNotifsCount];
     }
     gNotifs[gNotifsCount] = nullptr;
+    if (IsDocumentLoadingGroup(wnd->groupId)) {
+        HWND parent = GetParent(wnd->hwnd);
+        MainWindow* win = FindMainWindowByHwnd(parent);
+        if (!win && parent) {
+            win = FindMainWindowByHwnd(GetAncestor(parent, GA_ROOT));
+        }
+        if (win) {
+            UpdateTocFilterForDocumentLoading(win);
+        }
+    }
     RelayoutNotifications(wnd->hwnd);
     delete wnd;
 }
@@ -195,6 +267,7 @@ HWND NotificationWnd::Create(const NotificationCreateArgs& args) {
         wndRemovedCb = MkFunc1Void(NotifsRemoveNotification);
     }
     timeoutMs = args.timeoutMs;
+    groupId = args.groupId;
 
     CreateCustomArgs cargs;
     cargs.parent = args.hwndParent;
@@ -205,7 +278,9 @@ HWND NotificationWnd::Create(const NotificationCreateArgs& args) {
     cargs.style = WS_CHILD | SS_CENTER;
     cargs.title = args.msg;
     if (cargs.font == nullptr) {
-        cargs.font = GetAppBiggerFont();
+        // Match chrome UI font (tabs/toolbar). BiggerFont made banners look oversized
+        // vs the rest of the window; prefer parent hwnd DPI on cold start.
+        cargs.font = args.hwndParent ? GetAppFontForHwnd(args.hwndParent) : GetAppFont();
     }
     cargs.pos = Rect(0, 0, 0, 0);
     cargs.visible = args.delayInMs == 0;
@@ -245,6 +320,7 @@ constexpr int kCloseLeftMargin = 16;
 constexpr int kProgressDy = 5;
 
 void NotificationWnd::Layout(const char* message) {
+    bool compact = IsDocumentLoadingGroup(groupId);
     Size szText;
     {
         HDC hdc = GetDC(hwnd);
@@ -253,8 +329,8 @@ void NotificationWnd::Layout(const char* message) {
         ReleaseDC(hwnd, hdc);
     }
 
-    int padX = DpiScale(hwnd, 12);
-    int padY = DpiScale(hwnd, 8);
+    int padX = DpiScale(hwnd, compact ? 8 : 12);
+    int padY = DpiScale(hwnd, compact ? 3 : 8);
     int dx = padX + szText.dx + padX;
     int dy = padY + szText.dy + padY;
     rTxt = {padX, padY, szText.dx, szText.dy};
@@ -327,8 +403,6 @@ void NotificationWnd::OnPaint(HDC hdcIn, PAINTSTRUCT* ps) {
     HDC hdc = buffer.GetDC();
     // HDC hdc = hdcIn;
 
-    ScopedSelectObject fontPrev(hdc, font);
-
     COLORREF colBg = ThemeNotificationsBackgroundColor();
     COLORREF colBorder = MkGray(0xdd);
     COLORREF colTxt = ThemeNotificationsTextColor();
@@ -337,27 +411,25 @@ void NotificationWnd::OnPaint(HDC hdcIn, PAINTSTRUCT* ps) {
         colBorder = colBg;
         colTxt = ThemeNotificationsHighlightTextColor();
     }
-    // COLORREF colBg = MkRgb(0xff, 0xff, 0x5c);
-    // COLORREF colBg = MkGray(0xff);
 
-    Graphics graphics(hdc);
-    SolidBrush br(GdiRgbFromCOLORREF(colBg));
-    auto grc = Gdiplus::Rect(0, 0, rc.dx, rc.dy);
-    graphics.FillRectangle(&br, grc);
-
-    if (false) {
-        Pen pen(GdiRgbFromCOLORREF(colBorder));
-        pen.SetWidth(4);
-        grc = {rc.x, rc.y, rc.dx, rc.dy};
-        graphics.DrawRectangle(&pen, grc);
+    // Pure GDI fill (avoid Gdiplus::Graphics leaving a large system font on the HDC).
+    // Re-resolve UI font every paint — cached HFONT can be deleted by InvalidateUiFonts()
+    // during DPI/chrome refresh while a loading banner is still up.
+    {
+        AutoDeleteBrush brBg(CreateSolidBrush(colBg));
+        RECT rFill = ToRECT(rc);
+        FillRect(hdc, &rFill, brBg);
     }
+
+    HFONT paintFont = GetAppFontForHwnd(hwnd);
+    font = paintFont;
 
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, colTxt);
     char* text = HwndGetTextTemp(hwnd);
     uint format = DT_SINGLELINE | DT_NOPREFIX;
     RECT rTmp = ToRECT(rTxt);
-    HdcDrawText(hdc, text, &rTmp, format);
+    HdcDrawText(hdc, text, &rTmp, format, paintFont);
 
     if (!noClose) {
         Point curPos = HwndGetCursorPos(hwnd);
@@ -367,31 +439,23 @@ void NotificationWnd::OnPaint(HDC hdcIn, PAINTSTRUCT* ps) {
         args.isHover = rClose.Contains(curPos);
         DrawCloseButton(args);
     }
-#if 0
-    DrawCloseButtonArgs args;
-    args.hdc = hdc;
-    args.r = rClose;
-    args.r.Inflate(-5, -5);
-    args.isHover = isHover;
-    DrawCloseButton2(args);
-#endif
 
     if (HasProgress()) {
-        rc = rProgress;
-        int progressWidth = rc.dx;
-
+        Rect rp = rProgress;
+        int progressWidth = rp.dx;
         COLORREF col = ThemeNotificationsProgressColor();
+        Graphics graphics(hdc);
         Pen pen(GdiRgbFromCOLORREF(col));
-        grc = {rc.x, rc.y, rc.dx, rc.dy};
+        auto grc = Gdiplus::Rect(rp.x, rp.y, rp.dx, rp.dy);
         graphics.DrawRectangle(&pen, grc);
 
-        rc.x += 2;
-        rc.dx = (progressWidth - 3) * progressPerc / 100;
-        rc.y += 2;
-        rc.dy -= 3;
+        rp.x += 2;
+        rp.dx = (progressWidth - 3) * progressPerc / 100;
+        rp.y += 2;
+        rp.dy -= 3;
 
-        br.SetColor(GdiRgbFromCOLORREF(col));
-        grc = {rc.x, rc.y, rc.dx, rc.dy};
+        SolidBrush br(GdiRgbFromCOLORREF(col));
+        grc = {rp.x, rp.y, rp.dx, rp.dy};
         graphics.FillRectangle(&br, grc);
     }
 
@@ -555,7 +619,7 @@ NotificationWnd* ShowNotification(const NotificationCreateArgs& args) {
         delete wnd;
         return nullptr;
     }
-    if (wnd->delayTimerId == 0) {
+    if (wnd->delayTimerId == 0 && !IsDocumentLoadingGroup(args.groupId)) {
         BringWindowToTop(wnd->hwnd);
     }
     bool ok = NotifsAdd(wnd, args.groupId);

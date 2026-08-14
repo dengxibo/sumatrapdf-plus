@@ -110,6 +110,8 @@ static const char* PageColorModeLabel(PageColorMode mode) {
             return "SmartDark";
         case PageColorMode::FollowThemeDirect:
             return "FollowThemeDirect";
+        case PageColorMode::FollowThemeV2:
+            return "FollowThemeV2";
         case PageColorMode::PreserveImages:
             return "PreserveImages";
         case PageColorMode::ScanDark:

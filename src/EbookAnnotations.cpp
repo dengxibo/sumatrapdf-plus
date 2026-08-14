@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
+#include <algorithm>
 #include "utils/CryptoUtil.h"
 #include "utils/Dpi.h"
 #include "utils/FileUtil.h"
@@ -63,6 +64,7 @@ struct EbookAnnotation {
     char* author = nullptr;
     time_t created = 0;
     time_t modified = 0;
+    Vec<PointF> inkPoints;
 
     ~EbookAnnotation() {
         str::Free(exact);
@@ -100,7 +102,7 @@ struct EbookAnnotations {
 static bool IsEbookPointAnnotationType(AnnotationType type) {
     return type == AnnotationType::Text || type == AnnotationType::FreeText || type == AnnotationType::Stamp ||
            type == AnnotationType::Caret || type == AnnotationType::Line || type == AnnotationType::Square ||
-           type == AnnotationType::Circle;
+           type == AnnotationType::Circle || type == AnnotationType::Ink;
 }
 
 static SizeF GetDefaultEbookPointAnnotationSize(AnnotationType type) {
@@ -116,6 +118,7 @@ static SizeF GetDefaultEbookPointAnnotationSize(AnnotationType type) {
         case AnnotationType::Line:
         case AnnotationType::Square:
         case AnnotationType::Circle:
+        case AnnotationType::Ink:
             return {100, 50};
         default:
             return {};
@@ -322,6 +325,21 @@ struct EbookAnnotationsJsonVisitor : json::ValueVisitor {
                 u32 color = 0;
                 str::Parse(value, "%u", &color);
                 annotation->interiorColor = (COLORREF)color;
+            } else if (str::StartsWith(property, "inkPoints/[")) {
+                const char* idxStart = property + str::Len("inkPoints/[");
+                int coordIdx = 0;
+                str::Parse(idxStart, "%d", &coordIdx);
+                float coord = 0;
+                str::Parse(value, "%f", &coord);
+                int pointIdx = coordIdx / 2;
+                while ((int)annotation->inkPoints.len <= pointIdx) {
+                    annotation->inkPoints.Append(PointF{});
+                }
+                if (coordIdx % 2 == 0) {
+                    annotation->inkPoints.at(pointIdx).x = coord;
+                } else {
+                    annotation->inkPoints.at(pointIdx).y = coord;
+                }
             }
         } else if (type == json::Type::String) {
             if (str::Eq(property, "type")) {
@@ -345,6 +363,8 @@ struct EbookAnnotationsJsonVisitor : json::ValueVisitor {
                     annotation->type = AnnotationType::Square;
                 } else if (str::EqI(value, "circle")) {
                     annotation->type = AnnotationType::Circle;
+                } else if (str::EqI(value, "ink")) {
+                    annotation->type = AnnotationType::Ink;
                 } else {
                     annotation->type = AnnotationType::Highlight;
                 }
@@ -484,6 +504,8 @@ static bool SaveEbookAnnotations(EbookAnnotations* annotations) {
             type = "square";
         } else if (annotation->type == AnnotationType::Circle) {
             type = "circle";
+        } else if (annotation->type == AnnotationType::Ink) {
+            type = "ink";
         }
         out.Append("\n      \"type\": ");
         AppendJsonString(out, type);
@@ -530,6 +552,20 @@ static bool SaveEbookAnnotations(EbookAnnotations* annotations) {
                 out.AppendFmt(",\n      \"lineStart\": %d,\n      \"lineEnd\": %d", annotation->lineStart,
                               annotation->lineEnd);
             }
+        }
+        if (annotation->type == AnnotationType::Ink && annotation->inkPoints.len > 0) {
+            out.AppendFmt(",\n      \"borderWidth\": %d", annotation->borderWidth);
+            out.Append(",\n      \"inkPoints\": [");
+            for (size_t idx = 0; idx < annotation->inkPoints.len; idx++) {
+                PointF pt = annotation->inkPoints.els[idx];
+                if (idx != 0) {
+                    out.Append(", ");
+                }
+                out.AppendFmt("%.3f", (double)pt.x);
+                out.Append(", ");
+                out.AppendFmt("%.3f", (double)pt.y);
+            }
+            out.AppendChar(']');
         }
         if (!str::IsEmpty(annotation->author)) {
             out.Append(",\n      \"author\": ");
@@ -880,6 +916,77 @@ EbookAnnotation* EbookAnnotationsCreateAt(WindowTab* tab, DisplayModel* dm, Poin
     return annotation;
 }
 
+EbookAnnotation* EbookAnnotationsCreateDragShape(WindowTab* tab, DisplayModel* dm, Point canvasStart, Point canvasEnd,
+                                                 AnnotationType type) {
+    if (!tab || !dm || !IsEbookPointAnnotationType(type) || type == AnnotationType::Ink) {
+        return nullptr;
+    }
+    COLORREF color = GetDefaultAnnotationColor(type);
+    EbookAnnotation* annotation = EbookAnnotationsCreateAt(tab, dm, canvasStart, type, color);
+    if (!annotation) {
+        return nullptr;
+    }
+    int pageNo = dm->GetPageNoByPoint(canvasStart);
+    if (!dm->ValidPageNo(pageNo)) {
+        return nullptr;
+    }
+    RectF pageBounds;
+    if (type == AnnotationType::Line) {
+        PointF a = dm->CvtFromScreen(canvasStart, pageNo);
+        PointF b = dm->CvtFromScreen(canvasEnd, pageNo);
+        float x0 = std::min(a.x, b.x);
+        float y0 = std::min(a.y, b.y);
+        float x1 = std::max(a.x, b.x);
+        float y1 = std::max(a.y, b.y);
+        pageBounds = {x0, y0, std::max(1.f, x1 - x0), std::max(1.f, y1 - y0)};
+    } else {
+        int x0 = std::min(canvasStart.x, canvasEnd.x);
+        int y0 = std::min(canvasStart.y, canvasEnd.y);
+        int x1 = std::max(canvasStart.x, canvasEnd.x);
+        int y1 = std::max(canvasStart.y, canvasEnd.y);
+        Rect normalized(x0, y0, x1 - x0, y1 - y0);
+        pageBounds = dm->CvtFromScreen(normalized, pageNo);
+    }
+    if (pageBounds.IsEmpty()) {
+        return nullptr;
+    }
+    if (!EbookAnnotationSetPageBounds(tab, dm, annotation, pageNo, pageBounds, false)) {
+        return nullptr;
+    }
+    if (type == AnnotationType::Line || type == AnnotationType::Square || type == AnnotationType::Circle) {
+        annotation->borderWidth = 1;
+    }
+    TouchEbookAnnotationModified(annotation);
+    EbookAnnotations* annotations = EnsureEbookAnnotations(tab);
+    if (!annotations || !SaveEbookAnnotations(annotations)) {
+        return nullptr;
+    }
+    return annotation;
+}
+
+EbookAnnotation* EbookAnnotationsCreateInkStroke(WindowTab* tab, DisplayModel* dm, int pageNo, PointF* points,
+                                                  int nPoints, COLORREF color) {
+    if (!tab || !dm || !points || nPoints < 2 || !dm->ValidPageNo(pageNo)) {
+        return nullptr;
+    }
+    Point canvasStart = dm->CvtToScreen(pageNo, points[0]);
+    EbookAnnotation* annotation = EbookAnnotationsCreateAt(tab, dm, canvasStart, AnnotationType::Ink, color);
+    if (!annotation) {
+        return nullptr;
+    }
+    annotation->inkPoints.Reset();
+    for (int i = 0; i < nPoints; i++) {
+        annotation->inkPoints.Append(points[i]);
+    }
+    annotation->borderWidth = 1;
+    TouchEbookAnnotationModified(annotation);
+    EbookAnnotations* annotations = EnsureEbookAnnotations(tab);
+    if (!annotations || !SaveEbookAnnotations(annotations)) {
+        return nullptr;
+    }
+    return annotation;
+}
+
 EbookAnnotation* EbookAnnotationsCreateText(WindowTab* tab, DisplayModel* dm, Point canvasPoint, COLORREF color) {
     return EbookAnnotationsCreateAt(tab, dm, canvasPoint, AnnotationType::Text, color);
 }
@@ -979,6 +1086,22 @@ static bool GetAnnotationPageRects(EbookAnnotations* annotations, EngineBase* en
 
 static bool GetPointAnnotationPageBounds(EbookAnnotations* annotations, EngineBase* engine, EbookAnnotation* annotation,
                                          int pageNo, RectF* boundsOut) {
+    if (annotation->type == AnnotationType::Ink && annotation->inkPoints.len > 0) {
+        float minX = annotation->inkPoints.at(0).x;
+        float minY = annotation->inkPoints.at(0).y;
+        float maxX = minX;
+        float maxY = minY;
+        for (size_t i = 1; i < annotation->inkPoints.len; i++) {
+            PointF pt = annotation->inkPoints.at(i);
+            minX = std::min(minX, pt.x);
+            minY = std::min(minY, pt.y);
+            maxX = std::max(maxX, pt.x);
+            maxY = std::max(maxY, pt.y);
+        }
+        constexpr float pad = 4.f;
+        *boundsOut = {minX - pad, minY - pad, std::max(1.f, maxX - minX + pad * 2), std::max(1.f, maxY - minY + pad * 2)};
+        return true;
+    }
     Vec<RectF> anchorRects;
     if (!boundsOut || !GetAnnotationPageRects(annotations, engine, annotation, pageNo, anchorRects) ||
         anchorRects.empty()) {
@@ -1971,6 +2094,26 @@ static void PaintEbookPointAnnotation(WindowTab* tab, HDC hdc, Rect marker, Eboo
     }
 }
 
+static void PaintEbookInkStroke(WindowTab* tab, HDC hdc, DisplayModel* dm, int pageNo, EbookAnnotation* annotation) {
+    if (!tab || !dm || !annotation || annotation->inkPoints.len < 2) {
+        return;
+    }
+    COLORREF color = MapEbookAnnotationColor(EbookAnnotationGetColor(annotation));
+    u8 r, g, b;
+    UnpackColor(color, r, g, b);
+    float width = (float)DpiScale(tab->win->hwndFrame, EbookAnnotationGetBorderWidth(annotation));
+    Gdiplus::Graphics graphics(hdc);
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    Gdiplus::Pen pen(Gdiplus::Color(255, r, g, b), std::max(1.f, width));
+    pen.SetLineCap(Gdiplus::LineCapRound, Gdiplus::LineCapRound, Gdiplus::DashCapRound);
+    Point prevScreen = dm->CvtToScreen(pageNo, annotation->inkPoints.at(0));
+    for (size_t i = 1; i < annotation->inkPoints.len; i++) {
+        Point curScreen = dm->CvtToScreen(pageNo, annotation->inkPoints.at(i));
+        graphics.DrawLine(&pen, prevScreen.x, prevScreen.y, curScreen.x, curScreen.y);
+        prevScreen = curScreen;
+    }
+}
+
 static void PaintEbookPointAnnotationSelection(HDC hdc, Rect marker, AnnotationType type) {
     marker.Inflate(type == AnnotationType::Text ? 1 : 4, type == AnnotationType::Text ? 1 : 4);
     Gdiplus::Graphics graphics(hdc);
@@ -2102,6 +2245,19 @@ void EbookAnnotationsPaintPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pa
 
     EngineBase* engine = dm->GetEngine();
     for (EbookAnnotation* annotation : annotations->items) {
+        if (annotation->type == AnnotationType::Ink) {
+            if (annotation->inkPoints.len >= 2) {
+                PaintEbookInkStroke(tab, hdc, dm, pageNo, annotation);
+                if (tab->editEbookAnnotsWindow && tab->selectedEbookAnnotation == annotation) {
+                    RectF bounds;
+                    if (GetPointAnnotationPageBounds(annotations, engine, annotation, pageNo, &bounds)) {
+                        Rect screenRect = dm->CvtToScreen(pageNo, bounds);
+                        PaintEbookPointAnnotationSelection(hdc, screenRect, annotation->type);
+                    }
+                }
+            }
+            continue;
+        }
         if (IsEbookPointAnnotationType(annotation->type)) {
             RectF bounds;
             if (GetPointAnnotationPageBounds(annotations, engine, annotation, pageNo, &bounds)) {

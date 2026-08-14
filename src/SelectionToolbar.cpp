@@ -120,8 +120,7 @@ static bool SelectionBoundsChanged(Rect a, Rect b, int slack) {
     if (slack <= 0) {
         return a != b;
     }
-    return abs(a.x - b.x) > slack || abs(a.y - b.y) > slack || abs(a.dx - b.dx) > slack ||
-           abs(a.dy - b.dy) > slack;
+    return abs(a.x - b.x) > slack || abs(a.y - b.y) > slack || abs(a.dx - b.dx) > slack || abs(a.dy - b.dy) > slack;
 }
 
 static void LayoutToolbar(SelectionToolbar* tb) {

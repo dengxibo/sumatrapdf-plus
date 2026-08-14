@@ -44,6 +44,7 @@
 #include "Menu.h"
 #include "Accelerators.h"
 #include "Theme.h"
+#include "Notifications.h"
 
 #include "utils/Log.h"
 
@@ -68,9 +69,65 @@ static COLORREF SidebarBackgroundColor(COLORREF wndBgColor) {
     return bg;
 }
 
+// Blend toward the sidebar, not the document page. ThemeReadingTextDisabledColor()
+// uses the page background, which makes unread TOC entries look fully lit when the
+// chrome is dark and the document is light.
+static COLORREF TocItemDisabledTextColor(TreeView* treeView) {
+    COLORREF txt;
+    if (ThemeUsesDarkChrome()) {
+        txt = ThemeReadingTextColor();
+    } else if (treeView && !IsSpecialColor(treeView->textColor)) {
+        txt = treeView->textColor;
+    } else {
+        txt = GetSysColor(COLOR_WINDOWTEXT);
+    }
+    COLORREF bg = SidebarBackgroundColor(treeView ? treeView->bgColor : kColorUnset);
+    u8 r = (u8)((GetRValue(txt) + GetRValue(bg)) / 2);
+    u8 g = (u8)((GetGValue(txt) + GetGValue(bg)) / 2);
+    u8 b = (u8)((GetBValue(txt) + GetBValue(bg)) / 2);
+    return RGB(r, g, b);
+}
+
 static void LayoutTocContainer(MainWindow* win);
 
 static void TocRecalcAllItemHeights(MainWindow* win);
+
+// TreeWrapLabels: full-tree integral updates are too heavy for live sidebar drag
+// (WM_SIZE per mouse move). Suspend wrap while dragging; flush on mouse-up.
+// Non-drag WM_SIZE (e.g. window resize) still debounces.
+static constexpr UINT kTreeWrapHeightDebounceMs = 64;
+static int gTreeWrapSuspendDepth = 0;
+
+static bool TreeWrapUpdatesSuspended() {
+    return gTreeWrapSuspendDepth > 0;
+}
+
+static void ScheduleTreeWrapHeightRecalc(HWND hwndHost) {
+    if (!hwndHost || TreeWrapUpdatesSuspended()) {
+        return;
+    }
+    SetTimer(hwndHost, kTreeWrapHeightTimerId, kTreeWrapHeightDebounceMs, nullptr);
+}
+
+static void KillTreeWrapHeightTimer(HWND hwndHost) {
+    if (hwndHost) {
+        KillTimer(hwndHost, kTreeWrapHeightTimerId);
+    }
+}
+
+void SuspendTreeWrapLiveResize() {
+    gTreeWrapSuspendDepth++;
+}
+
+void SuspendTreeWrapLiveResizeForWindow(MainWindow* win) {
+    SuspendTreeWrapLiveResize();
+    if (!win) {
+        return;
+    }
+    // Cancel debounce armed before the drag; flush happens on mouse-up.
+    KillTreeWrapHeightTimer(win->hwndTocBox);
+    KillTreeWrapHeightTimer(win->hwndFavBox);
+}
 
 static bool IsKnownTocTreeModel(MainWindow* win, TreeModel* tm);
 
@@ -167,29 +224,36 @@ static void TocCustomizeTooltip(TreeView::GetTooltipEvent* ev) {
 
     StrBuilder infotip;
 
+    char* labelText = tm->Text(ti);
+    bool truncated = false;
     // Display the item's full label when single-line mode truncates it
     if (!TreeWrapLabelsEnabled()) {
         RECT rcLine, rcLabel;
         treeView->GetItemRect(ev->treeItem, false, rcLine);
         treeView->GetItemRect(ev->treeItem, true, rcLabel);
-        if (rcLabel.right > rcLine.right + 2) {
-            char* currInfoTip = tm->Text(ti);
-            if (currInfoTip) {
-                infotip.Append(currInfoTip);
-                infotip.Append("\r\n");
-            }
+        truncated = rcLabel.right > rcLine.right + 2;
+        if (truncated && labelText) {
+            infotip.Append(labelText);
         }
     }
 
-    if (kindDestinationLaunchEmbedded == k || kindDestinationAttachment == k) {
-        TempStr tmp = str::FormatTemp(_TRA("Attachment: %s"), path);
-        infotip.Append(tmp);
-    } else {
-        infotip.Append(path);
+    // When PageDestGetValue is empty, path falls back to tocItem->title — same as
+    // labelText — so don't append it again after the truncated-label line.
+    bool pathSameAsLabel = labelText && path && str::Eq(labelText, path);
+    if (!truncated || !pathSameAsLabel) {
+        if (truncated && infotip.size() > 0) {
+            infotip.Append("\r\n");
+        }
+        if (kindDestinationLaunchEmbedded == k || kindDestinationAttachment == k) {
+            TempStr tmp = str::FormatTemp(_TRA("Attachment: %s"), path);
+            infotip.Append(tmp);
+        } else {
+            infotip.Append(path);
+        }
     }
 
     auto nm = ev->info;
-    if (!nm) {
+    if (!nm || infotip.size() == 0) {
         return;
     }
     str::BufSet(nm->pszText, nm->cchTextMax, infotip.Get());
@@ -579,6 +643,26 @@ void ClearTocBox(MainWindow* win) {
     win->tocTreeView->Clear();
 
     // clear filter state
+    delete win->tocFilteredTree;
+    win->tocFilteredTree = nullptr;
+    if (win->tocFilterEdit) {
+        win->tocFilterEdit->SetText("");
+    }
+
+    win->currPageNo = 0;
+}
+
+void ClearTocBoxForTabSwitch(MainWindow* win) {
+    if (!win->tocLoaded) {
+        return;
+    }
+
+    win->tocLoaded = false;
+
+    if (win->tocTreeView) {
+        win->tocTreeView->treeModel = nullptr;
+    }
+
     delete win->tocFilteredTree;
     win->tocFilteredTree = nullptr;
     if (win->tocFilterEdit) {
@@ -1552,6 +1636,9 @@ void LoadTocTree(MainWindow* win) {
     if (win->tocLoaded) {
         return;
     }
+    if (!tab->ctrl) {
+        return;
+    }
 
     // clear filter when loading new toc
     // null out currToc first so that SetText("") callback doesn't use stale pointer
@@ -1599,8 +1686,68 @@ void LoadTocTree(MainWindow* win) {
     // when content appears; theming before SetTreeModel leaves them light.
     UpdateControlsColors(win);
     LayoutTocContainer(win);
-    TocRecalcAllItemHeights(win);
+    DisplayModel* dm = win->ctrl ? win->ctrl->AsFixed() : nullptr;
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (EngineIsProgressiveEbookLoading(engine)) {
+        ScheduleTocTreeWrapHeights(win);
+    } else {
+        TocRecalcAllItemHeights(win);
+    }
+    tab->tocWrapHeightsReady = true;
     InvalidateTocTree(win);
+    UpdateTocFilterForDocumentLoading(win);
+    RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
+}
+
+void RestoreTocTreeForTab(MainWindow* win) {
+    WindowTab* tab = win->CurrentTab();
+    if (!tab || win->tocLoaded || !tab->ctrl) {
+        return;
+    }
+
+    TocTree* tocTree = tab->currToc;
+    if (!tocTree) {
+        tocTree = tab->ctrl->GetToc();
+    }
+    if (!tocTree || !tocTree->root) {
+        return;
+    }
+
+    win->tocLoaded = true;
+    tab->currToc = tocTree;
+
+    int l2r = 0, r2l = 0;
+    GetLeftRightCounts(tocTree->root, l2r, r2l);
+    bool isRTL = r2l > l2r;
+
+    TreeView* treeView = win->tocTreeView;
+    if (!treeView || !treeView->hwnd) {
+        return;
+    }
+    HWND hwnd = treeView->hwnd;
+    HwndSetRtl(hwnd, isRTL);
+
+    SetInitialExpandState(tocTree->root, tab->tocState);
+    AutoExpandTopLevelItems(tocTree->root->child);
+
+    treeView->SetTreeModel(tocTree);
+
+    treeView->onCustomDraw = MkFunc1Void(OnTocCustomDraw);
+    UpdateControlsColors(win);
+    LayoutTocContainer(win);
+    DisplayModel* dm = win->ctrl ? win->ctrl->AsFixed() : nullptr;
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (tab->tocWrapHeightsReady) {
+        InvalidateTocTree(win);
+    } else if (EngineIsProgressiveEbookLoading(engine)) {
+        ScheduleTocTreeWrapHeights(win);
+        tab->tocWrapHeightsReady = true;
+    } else {
+        TocRecalcAllItemHeights(win);
+        tab->tocWrapHeightsReady = true;
+    }
+    UpdateTocFilterForDocumentLoading(win);
+    RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
 }
 
 // TODO: use https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-getobject?redirectedfrom=MSDN
@@ -1635,6 +1782,9 @@ static void UpdateFont(MainWindow* win, HWND hwndTree, HDC hdc, int fontFlags) {
     SelectObject(hdc, hfont);
 }
 
+static COLORREF TocItemTextColor(TocItem* tocItem, MainWindow* win, TreeView* treeView);
+static void SetTocItemDrawColors(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, TocItem* tocItem, MainWindow* win);
+
 static int TocTreeItemLevel(HWND hwnd, HTREEITEM hItem) {
     int level = 0;
     HTREEITEM p = TreeView_GetParent(hwnd, hItem);
@@ -1655,7 +1805,7 @@ static int TocGetItemLabelLeft(HWND hwnd, HTREEITEM hItem) {
 }
 
 static void DrawTreeWrappedLabel(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, const WCHAR* textW, MainWindow* win,
-                                int fontFlags) {
+                                 int fontFlags) {
     if (!textW || !*textW) {
         return;
     }
@@ -1682,10 +1832,12 @@ static void DrawTreeWrappedLabel(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, const
 
     NMCUSTOMDRAW* cd = &tvcd->nmcd;
     bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+    bool isHot = (cd->uItemState & CDIS_HOT) != 0;
     COLORREF textCol = tvcd->clrText;
     COLORREF bgCol = tvcd->clrTextBk;
+    bool skipBgFill = ThemeUsesDarkChrome() && (isSelected || isHot);
 
-    if (!isSelected || !ThemeUsesDarkChrome()) {
+    if (!skipBgFill) {
         RECT rcFill = rcLabel;
         rcFill.right = rcClient.right;
         HBRUSH br = CreateSolidBrush(bgCol);
@@ -1700,13 +1852,24 @@ static void DrawTreeWrappedLabel(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, const
     InflateRect(&rcLabel, -2, -1);
     SetBkMode(cd->hdc, TRANSPARENT);
     SetTextColor(cd->hdc, textCol);
-    DrawTextW(cd->hdc, textW, -1, &rcLabel, DT_WORDBREAK | DT_NOPREFIX | DT_LEFT | DT_EDITCONTROL);
+    // During live sidebar resize, keep single-line clipped text so wrap paint
+    // cannot spill and leave vertical ghost lines before heights are flushed.
+    UINT dtFlags = DT_NOPREFIX | DT_LEFT;
+    if (TreeWrapUpdatesSuspended()) {
+        dtFlags |= DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER;
+    } else {
+        dtFlags |= DT_WORDBREAK | DT_EDITCONTROL;
+    }
+    DrawTextW(cd->hdc, textW, -1, &rcLabel, dtFlags);
 }
 
 static void DrawTocWrappedLabel(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, TocItem* tocItem, MainWindow* win) {
     if (!tocItem || !tocItem->title) {
         return;
     }
+    // TreeView default paint between prepaint and postpaint can clobber clrText
+    // (visual styles). Recompute so unread chapters stay muted.
+    SetTocItemDrawColors(tvcd, treeView, tocItem, win);
     DrawTreeWrappedLabel(tvcd, treeView, ToWStrTemp(tocItem->title), win, tocItem->fontFlags);
 }
 
@@ -1820,8 +1983,35 @@ static void TocRecalcAllItemHeights(MainWindow* win) {
     TreeWrapRecalcAllItemHeights(win->tocTreeView, win->hwndFrame);
 }
 
+void ScheduleTocTreeWrapHeights(MainWindow* win) {
+    if (win) {
+        ScheduleTreeWrapHeightRecalc(win->hwndTocBox);
+    }
+}
+
+void FlushTocTreeWrapHeights(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    KillTreeWrapHeightTimer(win->hwndTocBox);
+    TocRecalcAllItemHeights(win);
+    InvalidateTocTree(win);
+}
+
+void ResumeTreeWrapLiveResizeAndFlush(MainWindow* win) {
+    if (gTreeWrapSuspendDepth > 0) {
+        gTreeWrapSuspendDepth--;
+    }
+    FlushTocTreeWrapHeights(win);
+    FlushFavTreeWrapHeights(win);
+}
+
 static COLORREF TocSelectionBgColor() {
     return AccentColor(ThemeWindowControlBackgroundColor(), 25);
+}
+
+static COLORREF TocHotTrackBgColor() {
+    return AccentColor(ThemeWindowControlBackgroundColor(), 12);
 }
 
 static COLORREF TocSelectionBorderColor() {
@@ -1832,22 +2022,36 @@ static void GetTocItemRowRect(HWND hwnd, HTREEITEM hItem, NMCUSTOMDRAW* cd, RECT
     if (!TreeView_GetItemRect(hwnd, hItem, &rcRow, FALSE)) {
         rcRow = cd->rc;
     }
+    TVITEMEXW item{};
+    item.hItem = hItem;
+    item.mask = TVIF_INTEGRAL;
+    if (TreeView_GetItem(hwnd, &item) && item.iIntegral > 1) {
+        int baseH = TreeView_GetItemHeight(hwnd);
+        if (baseH > 0) {
+            rcRow.bottom = rcRow.top + baseH * item.iIntegral;
+        }
+    }
+    RECT rcClient;
+    GetClientRect(hwnd, &rcClient);
+    if (rcRow.right < rcClient.right) {
+        rcRow.right = rcClient.right;
+    }
+}
+
+static void DrawTocRowFill(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem, COLORREF col) {
+    RECT rcRow;
+    GetTocItemRowRect(hwnd, hItem, cd, rcRow);
+    HBRUSH br = CreateSolidBrush(col);
+    FillRect(cd->hdc, &rcRow, br);
+    DeleteObject(br);
 }
 
 static void DrawTocSelectionFill(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem) {
-    RECT rcRow;
-    GetTocItemRowRect(hwnd, hItem, cd, rcRow);
-    static COLORREF s_lastCol = (COLORREF)-1;
-    static HBRUSH s_br = nullptr;
-    COLORREF col = TocSelectionBgColor();
-    if (col != s_lastCol) {
-        if (s_br) {
-            DeleteObject(s_br);
-        }
-        s_br = CreateSolidBrush(col);
-        s_lastCol = col;
-    }
-    FillRect(cd->hdc, &rcRow, s_br);
+    DrawTocRowFill(cd, hwnd, hItem, TocSelectionBgColor());
+}
+
+static void DrawTocHotTrackFill(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem) {
+    DrawTocRowFill(cd, hwnd, hItem, TocHotTrackBgColor());
 }
 
 static void DrawTocSelectionFrame(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem) {
@@ -1877,7 +2081,7 @@ static void DrawTocSelectionFrame(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem) 
 
 static COLORREF TocItemTextColor(TocItem* tocItem, MainWindow* win, TreeView* treeView) {
     if (win->ctrl && IsTocInternalPageItem(tocItem, win->ctrl) && !IsTocPageReachable(win->ctrl, tocItem)) {
-        return ThemeReadingTextDisabledColor();
+        return TocItemDisabledTextColor(treeView);
     }
     if (tocItem->color != kColorUnset) {
         return tocItem->color;
@@ -1891,6 +2095,7 @@ static COLORREF TocItemTextColor(TocItem* tocItem, MainWindow* win, TreeView* tr
 static void SetTocItemDrawColors(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, TocItem* tocItem, MainWindow* win) {
     NMCUSTOMDRAW* cd = &tvcd->nmcd;
     bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+    bool isHot = (cd->uItemState & CDIS_HOT) != 0;
     bool hasFocus = (GetFocus() == treeView->hwnd);
     COLORREF bgCol = SidebarBackgroundColor(treeView->bgColor);
 
@@ -1908,9 +2113,14 @@ static void SetTocItemDrawColors(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, TocIt
         }
         return;
     }
+    if (isHot && ThemeUsesDarkChrome()) {
+        tvcd->clrText = TocItemTextColor(tocItem, win, treeView);
+        tvcd->clrTextBk = TocHotTrackBgColor();
+        return;
+    }
     tvcd->clrTextBk = bgCol;
     if (win->ctrl && IsTocInternalPageItem(tocItem, win->ctrl) && !IsTocPageReachable(win->ctrl, tocItem)) {
-        tvcd->clrText = ThemeReadingTextDisabledColor();
+        tvcd->clrText = TocItemDisabledTextColor(treeView);
     } else if (tocItem->color != kColorUnset) {
         tvcd->clrText = tocItem->color;
     } else if (ThemeUsesDarkChrome()) {
@@ -2103,9 +2313,15 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
                 return;
             }
             bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+            bool isHot = (cd->uItemState & CDIS_HOT) != 0;
             HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
-            if (ThemeUsesDarkChrome() && isSelected) {
-                DrawTocSelectionFill(cd, ev->treeView->hwnd, hItem);
+            SetTocItemDrawColors(tvcd, ev->treeView, tocItem, win);
+            if (ThemeUsesDarkChrome() && (isSelected || isHot)) {
+                if (isSelected) {
+                    DrawTocSelectionFill(cd, ev->treeView->hwnd, hItem);
+                } else {
+                    DrawTocHotTrackFill(cd, ev->treeView->hwnd, hItem);
+                }
                 ev->result = CDRF_NOTIFYPOSTPAINT;
                 return;
             }
@@ -2141,22 +2357,12 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
         }
         SetTocItemDrawColors(tvcd, ev->treeView, tocItem, win);
         bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
-        HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
-        if (ThemeUsesDarkChrome() && isSelected) {
-            DrawTocSelectionFill(cd, ev->treeView->hwnd, hItem);
-        }
         if (tocItem->fontFlags != 0) {
             UpdateFont(win, ev->treeView->hwnd, cd->hdc, tocItem->fontFlags);
         }
-        RECT rcClient;
-        GetClientRect(ev->treeView->hwnd, &rcClient);
-        int baseH = ev->treeView->unevenItemBaseHeight;
-        if (baseH <= 0) {
-            baseH = TreeView_GetItemHeight(ev->treeView->hwnd);
-        }
-        TreeWrapUpdateItemHeight(ev->treeView->hwnd, hItem, cd->hdc, rcClient.right, baseH, ev->treeView);
-        DrawTocWrappedLabel(tvcd, ev->treeView, tocItem, win);
-        LRESULT res = CDRF_SKIPDEFAULT | CDRF_NOTIFYPOSTPAINT;
+        // Default item paint runs between prepaint and postpaint; selection fill is
+        // redrawn over the full row in postpaint before the wrapped label.
+        LRESULT res = CDRF_NOTIFYPOSTPAINT;
         if (tocItem->fontFlags != 0) {
             res |= CDRF_NEWFONT;
         }
@@ -2168,8 +2374,19 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
         TocItem* tocItem = (TocItem*)ev->treeItem;
         bool knownTree = win && IsKnownTocTreeModel(win, ev->treeView->treeModel);
         bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+        bool isHot = (cd->uItemState & CDIS_HOT) != 0;
+        HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
+        if (ThemeUsesDarkChrome() && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
+            if (isSelected) {
+                DrawTocSelectionFill(cd, ev->treeView->hwnd, hItem);
+            } else if (isHot) {
+                DrawTocHotTrackFill(cd, ev->treeView->hwnd, hItem);
+            }
+        }
+        if (tocItem && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
+            DrawTocWrappedLabel(tvcd, ev->treeView, tocItem, win);
+        }
         if (ThemeUsesDarkChrome() && isSelected && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
-            HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
             DrawTocSelectionFrame(cd, ev->treeView->hwnd, hItem);
         }
         if (filterActive && tocItem && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
@@ -2292,7 +2509,16 @@ static void LayoutTocContainer(MainWindow* win) {
     MoveWindow(l->hwnd, 0, y, rc.dx, labelSize.dy, TRUE);
     dy -= labelSize.dy;
     y += labelSize.dy;
-    if (edit && edit->hwnd) {
+    HWND loadHwnd = GetDocumentLoadingNotificationHwnd(win->hwndFrame, win->hwndCanvas);
+    bool loadInToc = loadHwnd && GetParent(loadHwnd) == hwndContainer;
+    if (loadInToc) {
+        Rect rn = WindowRect(loadHwnd);
+        int loadDy = rn.dy;
+        MoveWindow(loadHwnd, 0, y, rc.dx, loadDy, TRUE);
+        dy -= loadDy;
+        y += loadDy;
+    }
+    if (edit && edit->hwnd && IsWindowVisible(edit->hwnd)) {
         Size editSize = edit->GetIdealSize();
         int rowDy = editSize.dy;
         MoveWindow(edit->hwnd, 0, y, rc.dx, rowDy, TRUE);
@@ -2300,6 +2526,13 @@ static void LayoutTocContainer(MainWindow* win) {
         y += rowDy;
     }
     MoveWindow(treeView->hwnd, 0, y, rc.dx, dy, TRUE);
+}
+
+void RelayoutTocContainer(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    LayoutTocContainer(win);
 }
 
 static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR data) {
@@ -2387,8 +2620,25 @@ static LRESULT CALLBACK WndProcTocBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
     switch (msg) {
         case WM_SIZE:
             LayoutTocContainer(win);
-            TocRecalcAllItemHeights(win);
-            InvalidateTocTree(win);
+            if (TreeWrapUpdatesSuspended()) {
+                KillTreeWrapHeightTimer(hwnd);
+                break;
+            }
+            // Window resize (not splitter drag): debounce wrap-height recalc.
+            ScheduleTreeWrapHeightRecalc(hwnd);
+            break;
+
+        case WM_TIMER:
+            if (wp == kTreeWrapHeightTimerId) {
+                if (TreeWrapUpdatesSuspended()) {
+                    KillTreeWrapHeightTimer(hwnd);
+                    return 0;
+                }
+                KillTreeWrapHeightTimer(hwnd);
+                TocRecalcAllItemHeights(win);
+                InvalidateTocTree(win);
+                return 0;
+            }
             break;
 
         case WM_COMMAND:
@@ -2656,6 +2906,14 @@ static void InitTocFilterEdit(MainWindow* win, Edit* filterEdit) {
     SetWindowSubclass(filterEdit->hwnd, WndProcTocFilterEdit, NextSubclassId(), (DWORD_PTR)win);
 }
 
+void UpdateTocFilterForDocumentLoading(MainWindow* win) {
+    if (!win || !win->tocFilterEdit || !win->tocFilterEdit->hwnd) {
+        return;
+    }
+    HwndSetVisibility(win->tocFilterEdit->hwnd, win->tocVisible);
+    RelayoutTocContainer(win);
+}
+
 static Edit* CreateTocFilterEdit(MainWindow* win, HFONT font, const char* text) {
     auto filterEdit = new Edit();
     Edit::CreateArgs eargs;
@@ -2703,13 +2961,15 @@ void ReCreateTocFilterEdit(MainWindow* win, HFONT font) {
     }
     filterEdit->SetSelection((int)selStart, (int)selEnd);
 
+    UpdateTocFilterForDocumentLoading(win);
     UpdateControlsColors(win);
     LayoutTocContainer(win);
     TocRecalcAllItemHeights(win);
     InvalidateTocTree(win);
-    if (hadFocus) {
+    if (hadFocus && IsWindowVisible(filterEdit->hwnd)) {
         SetFocus(filterEdit->hwnd);
     }
+    RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
 }
 
 void FavTreeWrapRecalcHeights(MainWindow* win) {
@@ -2717,6 +2977,23 @@ void FavTreeWrapRecalcHeights(MainWindow* win) {
         return;
     }
     TreeWrapRecalcAllItemHeights(win->favTreeView, win->hwndFrame);
+}
+
+void ScheduleFavTreeWrapHeights(MainWindow* win) {
+    if (win) {
+        ScheduleTreeWrapHeightRecalc(win->hwndFavBox);
+    }
+}
+
+void FlushFavTreeWrapHeights(MainWindow* win) {
+    if (!win || !win->hwndFavBox) {
+        return;
+    }
+    KillTreeWrapHeightTimer(win->hwndFavBox);
+    FavTreeWrapRecalcHeights(win);
+    if (win->favTreeView && win->favTreeView->hwnd) {
+        InvalidateRect(win->favTreeView->hwnd, nullptr, FALSE);
+    }
 }
 
 void FavTreeWrapOnCustomDraw(TreeView::CustomDrawEvent* ev) {
@@ -2734,18 +3011,32 @@ void FavTreeWrapOnCustomDraw(TreeView::CustomDrawEvent* ev) {
         if (!ev->treeItem || !ev->treeView->treeModel) {
             return;
         }
-        HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
-        RECT rcClient;
-        GetClientRect(ev->treeView->hwnd, &rcClient);
-        int baseH = ev->treeView->unevenItemBaseHeight;
-        if (baseH <= 0) {
-            baseH = TreeView_GetItemHeight(ev->treeView->hwnd);
+        char* text = ev->treeView->treeModel->Text(ev->treeItem);
+        (void)text;
+        ev->result = CDRF_NOTIFYPOSTPAINT;
+        return;
+    }
+    if (cd->dwDrawStage == CDDS_ITEMPOSTPAINT) {
+        if (!ev->treeItem || !ev->treeView->treeModel) {
+            return;
         }
-        TreeWrapUpdateItemHeight(ev->treeView->hwnd, hItem, cd->hdc, rcClient.right, baseH, ev->treeView);
+        bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+        bool isHot = (cd->uItemState & CDIS_HOT) != 0;
+        HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
+        if (ThemeUsesDarkChrome()) {
+            if (isSelected) {
+                tvcd->clrText = ThemeReadingTextColor();
+                tvcd->clrTextBk = TocSelectionBgColor();
+                DrawTocSelectionFill(cd, ev->treeView->hwnd, hItem);
+            } else if (isHot) {
+                tvcd->clrText = ThemeReadingTextColor();
+                tvcd->clrTextBk = TocHotTrackBgColor();
+                DrawTocHotTrackFill(cd, ev->treeView->hwnd, hItem);
+            }
+        }
         char* text = ev->treeView->treeModel->Text(ev->treeItem);
         DrawTreeWrappedLabel(tvcd, ev->treeView, ToWStrTemp(text), nullptr, 0);
-        ev->result = CDRF_SKIPDEFAULT | CDRF_NOTIFYPOSTPAINT;
-        return;
+        ev->result = CDRF_DODEFAULT;
     }
 }
 
