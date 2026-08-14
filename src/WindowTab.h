@@ -37,6 +37,7 @@ struct WindowTab {
     bool reloadOnFocus = false;
     // ebook font change on a background tab: full reload deferred until focus
     bool reloadForEbookFontChange = false;
+    i64 fileTimeAtLoad = 0;
     // distinguishes a metrics-only size/layout change from a font-family change
     bool reloadForEbookFontSizeChange = false;
     int restorePageAfterFontReload = 0;

@@ -745,6 +745,38 @@ MainWindow* FindMainWindowByFile(const char* file, bool focusTab) {
     return tab->win;
 }
 
+static i64 FileTimeToI64(FILETIME ft) {
+    ULARGE_INTEGER u;
+    u.LowPart = ft.dwLowDateTime;
+    u.HighPart = ft.dwHighDateTime;
+    return (i64)u.QuadPart;
+}
+
+static void StampTabSourceFileTime(WindowTab* tab) {
+    if (!tab || !tab->filePath) {
+        if (tab) {
+            tab->fileTimeAtLoad = 0;
+        }
+        return;
+    }
+    tab->fileTimeAtLoad = FileTimeToI64(file::GetModificationTime(tab->filePath));
+}
+
+static void ReloadExistingIfDiskChanged(MainWindow* win, const char* path) {
+    if (!win || !path) {
+        return;
+    }
+    WindowTab* tab = FindTabByFile(path);
+    if (!tab || tab->win != win) {
+        return;
+    }
+    i64 now = FileTimeToI64(file::GetModificationTime(path));
+    if (now == 0 || now == tab->fileTimeAtLoad) {
+        return;
+    }
+    ReloadDocument(win, true);
+}
+
 void SetUserOpenActivateExisting(LoadArgs& args) {
     args.activateExisting = !IsCtrlPressed();
 }
@@ -1909,6 +1941,7 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
 
     SetFrameTitleForTab(tab, false);
     UpdateUiForCurrentTab(win);
+    StampTabSourceFileTime(tab);
 
     if (tab->GetEngine()) {
         auto probeFn = MkFunc0<EngineBase>(EngineMupdfScheduleFollowThemeProbe, tab->GetEngine());
@@ -2279,9 +2312,6 @@ void ApplyTabReloadOnFocus(MainWindow* win, WindowTab* tab, bool autoRefresh) {
         if (TabNeedsReflowThemeApply(tab)) {
             ScheduleReflowThemeRetry(win, tab);
         }
-        return;
-    }
-    if (IsReflowableEbookEngine(tab->GetEngine())) {
         return;
     }
     ReloadDocument(win, autoRefresh);
@@ -3569,6 +3599,7 @@ static void AttachDocumentToBackgroundTab(LoadArgs* args, WindowTab* tab) {
     // "[Changes detected; refreshing]" on the window title when the tab is selected.
     SetFrameTitleForTab(tab, false);
     UpdateTabTitle(tab);
+    StampTabSourceFileTime(tab);
 
     const char* path = tab->filePath;
     ReportIf(tab->watcher);
@@ -4237,6 +4268,7 @@ void StartLoadDocument(LoadArgs* argsIn) {
         MainWindow* existing = FindMainWindowByFile(path, true);
         if (existing) {
             existing->Focus();
+            ReloadExistingIfDiskChanged(existing, path);
             return;
         }
     }
@@ -4311,6 +4343,7 @@ MainWindow* LoadDocument(LoadArgs* args) {
         MainWindow* existing = FindMainWindowByFile(path, true);
         if (existing) {
             existing->Focus();
+            ReloadExistingIfDiskChanged(existing, path);
             return existing;
         }
     }
