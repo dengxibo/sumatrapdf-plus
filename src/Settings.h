@@ -75,9 +75,8 @@ struct FixedPageUI {
     // color used to highlight the current search match on the page
     char* findMatchColor;
     ParsedColor findMatchColorParsed;
-    // if true, hide redundant PDF pages that only show a thin strip of an
-    // image already shown on the previous/next page (Calibre photo books /
-    // split-image PDFs)
+    // if true, join Calibre-style split photos: paint the clipped-off strip
+    // onto the keeper page and hide the redundant thin-strip page
     bool joinSplitPdfImages;
 };
 

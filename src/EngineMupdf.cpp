@@ -2034,7 +2034,7 @@ static int MinPreservePdfImageSizePx() {
 }
 
 static void FzAppendPageImageRect(fz_context* ctx, Vec<FitzPageImageInfo*>& images, int pageNo, fz_rect bbox,
-                                  fz_image* image) {
+                                  fz_rect unclipped, fz_image* image) {
     if (fz_is_empty_rect(bbox) || fz_is_infinite_rect(bbox)) {
         return;
     }
@@ -2047,6 +2047,9 @@ static void FzAppendPageImageRect(fz_context* ctx, Vec<FitzPageImageInfo*>& imag
             if (ctx && image && !existing->image) {
                 existing->image = fz_keep_image(ctx, image);
             }
+            if (fz_is_empty_rect(existing->unclipped) && !fz_is_empty_rect(unclipped)) {
+                existing->unclipped = unclipped;
+            }
             return;
         }
     }
@@ -2054,6 +2057,7 @@ static void FzAppendPageImageRect(fz_context* ctx, Vec<FitzPageImageInfo*>& imag
     if (ctx && image) {
         img->image = fz_keep_image(ctx, image);
     }
+    img->unclipped = unclipped;
     auto pel = new PageElementImage();
     pel->pageNo = pageNo;
     pel->rect = rf;
@@ -2074,11 +2078,12 @@ typedef struct {
 
 static void fz_img_collect_add(fz_context* ctx, fz_device* dev, fz_rect rect, bool clip, fz_image* image) {
     fz_image_collect_device* d = (fz_image_collect_device*)dev;
+    fz_rect unclipped = rect;
     if (d->top > 0 && d->top <= IMG_COLLECT_STACK_SIZE) {
         rect = fz_intersect_rect(rect, d->stack[d->top - 1]);
     }
     if (!clip && !fz_is_empty_rect(rect)) {
-        FzAppendPageImageRect(ctx, *d->images, d->pageNo, rect, image);
+        FzAppendPageImageRect(ctx, *d->images, d->pageNo, rect, unclipped, image);
     }
     if (clip && ++d->top <= IMG_COLLECT_STACK_SIZE) {
         d->stack[d->top - 1] = rect;
@@ -2239,8 +2244,8 @@ static void FzCollectImagesFromPageContent(fz_context* ctx, int pageNo, FzPageIn
 }
 
 // Calibre photo books place the same image XObject on consecutive pages: one
-// page shows most of the photo, the next only a thin clipped strip. Hide the
-// strip page in the display page list so continuous view looks seamless.
+// page shows most of the photo (clipped), the next only the leftover strip.
+// Hide the strip page and paint the full unclipped image on the keeper page.
 static bool PdfJoinSplitImagesMatch(fz_image* a, fz_image* b) {
     if (!a || !b) {
         return false;
@@ -2256,6 +2261,8 @@ static bool PdfJoinSplitImagesMatch(fz_image* a, fz_image* b) {
 struct JoinSplitPageImage {
     fz_image* image = nullptr;
     float coverage = 0.f;
+    RectF vis{};
+    RectF unclipped{};
 };
 
 static JoinSplitPageImage JoinSplitPickDominantImage(FzPageInfo* pi) {
@@ -2279,9 +2286,68 @@ static JoinSplitPageImage JoinSplitPickDominantImage(FzPageInfo* pi) {
         if (cov > best.coverage) {
             best.coverage = cov;
             best.image = info->image;
+            best.vis = visible;
+            best.unclipped = ToRectF(info->unclipped);
         }
     }
     return best;
+}
+
+static void JoinSplitApplyKeeperDest(EngineMupdf* e, int keeperIdx, const RectF& dest, fz_image* image) {
+    if (!e || keeperIdx < 0 || keeperIdx >= e->pages.Size() || dest.IsEmpty() || !image) {
+        return;
+    }
+    FzPageInfo* kpi = e->pages[keeperIdx];
+    if (!kpi) {
+        return;
+    }
+    float destY1 = dest.y + dest.dy;
+    float boxY1 = kpi->mediabox.y + kpi->mediabox.dy;
+    if (destY1 > boxY1) {
+        kpi->mediabox.dy = destY1 - kpi->mediabox.y;
+    }
+    if (dest.y < kpi->mediabox.y) {
+        float extra = kpi->mediabox.y - dest.y;
+        kpi->mediabox.y = dest.y;
+        kpi->mediabox.dy += extra;
+    }
+    for (FitzPageImageInfo* info : kpi->images) {
+        if (!info || !info->image || !PdfJoinSplitImagesMatch(info->image, image)) {
+            continue;
+        }
+        info->rect = ToFzRect(dest);
+        if (info->imageElement) {
+            info->imageElement->rect = dest;
+        }
+    }
+}
+
+static void JoinSplitBlitOntoPixmap(fz_context* ctx, EngineMupdf* e, int enginePageNo, fz_pixmap* pix,
+                                    fz_matrix viewCtm) {
+    if (!e || !pix || e->joinExtend.Size() == 0) {
+        return;
+    }
+    if (enginePageNo < 1 || enginePageNo > e->joinExtend.Size()) {
+        return;
+    }
+    const EngineMupdf::JoinSplitExtend& ext = e->joinExtend[enginePageNo - 1];
+    if (!ext.image || ext.dest.IsEmpty()) {
+        return;
+    }
+    fz_device* d = nullptr;
+    fz_var(d);
+    fz_try(ctx) {
+        d = fz_new_draw_device(ctx, viewCtm, pix);
+        fz_matrix imgCtm = fz_make_matrix(ext.dest.dx, 0, 0, ext.dest.dy, ext.dest.x, ext.dest.y);
+        fz_fill_image(ctx, d, ext.image, imgCtm, 1.f, fz_default_color_params);
+        fz_close_device(ctx, d);
+    }
+    fz_always(ctx) {
+        fz_drop_device(ctx, d);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
 }
 
 static void ApplyJoinSplitPdfImages(EngineMupdf* e) {
@@ -2378,10 +2444,31 @@ static void ApplyJoinSplitPdfImages(EngineMupdf* e) {
     e->joinRawPageCount = rawN;
     e->joinDisplayToEngine.Reset();
     e->joinEngineToDisplay.Reset();
+    e->joinExtend.Reset();
+    e->joinExtend.SetSize((size_t)rawN);
     e->joinDisplayToEngine.EnsureCap((size_t)(rawN - skipCount));
     e->joinEngineToDisplay.SetSize((size_t)rawN);
     for (int i = 0; i < rawN; i++) {
         e->joinEngineToDisplay[i] = 0;
+    }
+    {
+        ScopedCritSec scope(&e->pagesLock);
+        for (int i = 0; i < rawN - 1; i++) {
+            if (!skip[i] && !skip[i + 1]) {
+                continue;
+            }
+            if (skip[i] && skip[i + 1]) {
+                continue;
+            }
+            int keeper = skip[i] ? i + 1 : i;
+            int strip = skip[i] ? i : i + 1;
+            bool stripAfter = strip > keeper;
+            RectF dest =
+                PdfJoinSplitKeeperDest(perPage[keeper].vis, perPage[keeper].unclipped, perPage[strip].vis, stripAfter);
+            e->joinExtend[keeper].image = perPage[keeper].image;
+            e->joinExtend[keeper].dest = dest;
+            JoinSplitApplyKeeperDest(e, keeper, dest, perPage[keeper].image);
+        }
     }
     for (int i = 0; i < rawN; i++) {
         if (skip[i]) {
@@ -2401,7 +2488,8 @@ static void ApplyJoinSplitPdfImages(EngineMupdf* e) {
     }
 
     e->pageCount = e->joinDisplayToEngine.Size();
-    logf("JoinSplitPdfImages: collapsed %d -> %d pages (hidden %d strip pages)\n", rawN, e->pageCount, skipCount);
+    logf("JoinSplitPdfImages: collapsed %d -> %d pages (joined %d strip pages onto keepers)\n", rawN, e->pageCount,
+         skipCount);
 }
 
 int EngineMupdfMapDisplayPageToEngine(EngineBase* engine, int displayPageNo) {
@@ -9562,6 +9650,7 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                             pix = bin;
                         }
                     }
+                    JoinSplitBlitOntoPixmap(ctx, this, pageNo, pix, ctm);
                     bitmap = NewRenderedFzPixmap(ctx, pix);
                     if (bitmap && darkProfile && !textScanBinarize) {
                         Vec<Rect> skipRects;
@@ -9593,6 +9682,7 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                     !(darkProfile && DarkModeProfileUsesObjectLevel(darkProfile))) {
                     PdfCadEnhancePixmap(ctx, pix, zoom, true);
                 }
+                JoinSplitBlitOntoPixmap(ctx, this, pageNo, pix, ctm);
                 bitmap = NewRenderedFzPixmap(ctx, pix);
             }
         }
@@ -9677,6 +9767,7 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                 !(darkProfile && DarkModeProfileUsesObjectLevel(darkProfile) && !followBitmapRecolor)) {
                 PdfCadEnhancePixmap(ctx, pix, zoom, true);
             }
+            JoinSplitBlitOntoPixmap(ctx, this, pageNo, pix, ctm);
             bitmap = NewRenderedFzPixmap(ctx, pix);
             if (bitmap && followBitmapRecolor && darkProfile) {
                 UpdateBitmapColors(bitmap->GetBitmap(), darkProfile->foreground, darkProfile->pageBackground,
@@ -9716,6 +9807,7 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                 if (CadEnhanceActive() && cadRasterDominant && pix) {
                     PdfCadEnhancePixmap(ctx, pix, zoom, true);
                 }
+                JoinSplitBlitOntoPixmap(ctx, this, pageNo, pix, ctm);
                 bitmap = NewRenderedFzPixmap(ctx, pix);
                 if (bitmap) {
                     Vec<Rect> skipRects;
@@ -9756,6 +9848,7 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
             if (CadEnhanceActive() && cadRasterDominant && pix) {
                 PdfCadEnhancePixmap(ctx, pix, zoom, true);
             }
+            JoinSplitBlitOntoPixmap(ctx, this, pageNo, pix, ctm);
             bitmap = NewRenderedFzPixmap(ctx, pix);
         }
         fz_always(ctx) {

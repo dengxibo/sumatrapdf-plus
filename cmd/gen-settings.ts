@@ -353,8 +353,8 @@ const fixedPageUI: Field[] = [
         "JoinSplitPdfImages",
         Bool,
         true,
-        "if true, hide redundant PDF pages that only show a thin strip of an image " +
-          "already shown on the previous/next page (Calibre photo books / split-image PDFs)",
+        "if true, join Calibre-style split photos: paint the clipped-off strip onto the " +
+          "keeper page and hide the redundant thin-strip page",
       ),
       "3.7",
     ),

@@ -21,4 +21,16 @@ void PdfJoinSplitImages_UnitTests() {
 
     // Marginal but not strip-like enough.
     utassert(!PdfJoinSplitShouldHideLowerCoverage(0.25f, 0.55f));
+
+    // Guild photo book: same CTM on both pages; keeper clip hides ~23pt of a
+    // 640.8pt-tall image. Unclipped dest is the full photo.
+    RectF vis(77.19f, 101.67f, 462.81f, 617.82f);
+    RectF unclipped(77.19f, 101.67f, 462.81f, 640.81f);
+    RectF strip(77.19f, 72.f, 462.81f, 22.99f);
+    RectF dest = PdfJoinSplitKeeperDest(vis, unclipped, strip, true);
+    utassert(dest.dx > 462.f && dest.dy > 640.f && dest.dy < 641.f);
+
+    // No unclipped dest: stack the strip height onto the keeper.
+    RectF stacked = PdfJoinSplitKeeperDest(vis, {}, strip, true);
+    utassert(stacked.dy > 640.f && stacked.dy < 641.f);
 }

@@ -13,6 +13,8 @@ struct FitzPageImageInfo {
     fz_matrix transform;
     IPageElement* imageElement = nullptr;
     fz_image* image = nullptr;
+    // Destination of fill_image before clip (full photo). Empty if unknown.
+    fz_rect unclipped = fz_empty_rect;
     ~FitzPageImageInfo() { delete imageElement; }
 };
 
@@ -276,6 +278,13 @@ class EngineMupdf : public EngineBase {
     // nearest kept display page for TOC/link navigation.
     Vec<int> joinEngineToDisplay;
     int joinRawPageCount = 0;
+    // Keeper engine page (0-based) -> full-image dest in page space. Empty dest
+    // means this page is not a joined keeper.
+    struct JoinSplitExtend {
+        fz_image* image = nullptr;
+        RectF dest{};
+    };
+    Vec<JoinSplitExtend> joinExtend;
 
     bool CadEnhanceActive() const;
     bool CadEnhanceUseHairlineBoost() const;
