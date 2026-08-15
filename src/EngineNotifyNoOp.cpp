@@ -38,6 +38,10 @@ bool ThemeUsesDarkChrome() {
     return false;
 }
 
+bool ThemeUsesEyeCareChrome() {
+    return false;
+}
+
 bool ThemeUsesOriginalPageColors() {
     return false;
 }

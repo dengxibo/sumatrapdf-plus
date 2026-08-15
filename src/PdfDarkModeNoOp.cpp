@@ -303,6 +303,27 @@ bool PdfDarkModeFeaturesLookLikePhoto(const DarkImageFeatures& f) {
     return false;
 }
 
+bool PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(const DarkImageFeatures& f) {
+    (void)f;
+    return false;
+}
+
+bool PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(const DarkImageFeatures& f) {
+    (void)f;
+    return false;
+}
+
+bool PdfDarkModeFeaturesLookLikeFullPageTextScanForBinarize(const DarkImageFeatures& f) {
+    (void)f;
+    return false;
+}
+
+fz_pixmap* PdfDarkModeProcessGovernmentPaperPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette) {
+    (void)ctx;
+    (void)palette;
+    return src;
+}
+
 bool PdfDarkModeShouldPreserveImageFeatures(const DarkImageFeatures& f, float pageCoverage) {
     (void)f;
     (void)pageCoverage;

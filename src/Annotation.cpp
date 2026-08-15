@@ -999,7 +999,7 @@ static AnnotationType moveableAnnotations[] = {
     AnnotationType::Text,           AnnotationType::FreeText, AnnotationType::Square, AnnotationType::Circle,
     AnnotationType::Redact,         AnnotationType::Stamp,    AnnotationType::Caret,  AnnotationType::Popup,
     AnnotationType::FileAttachment, AnnotationType::Sound,    AnnotationType::Movie,  AnnotationType::Widget,
-    AnnotationType::Line,         AnnotationType::Ink,
+    AnnotationType::Line,           AnnotationType::Ink,
 };
 
 static AnnotationType supportsBorder[] = {
@@ -1312,7 +1312,7 @@ Annotation* EngineMupdfCreateAnnotationInkStroke(EngineBase* engine, int pageNo,
             }
             int nstrokes = 1;
             int strokeCounts[1] = {count};
-            fz_point* fzpts = (fz_point*)fz_malloc_array(ctx, count, fz_point);
+            fz_point* fzpts = (fz_point*)fz_malloc(ctx, sizeof(fz_point) * (size_t)count);
             for (int i = 0; i < count; i++) {
                 fzpts[i].x = pts[i].x;
                 fzpts[i].y = pts[i].y;
