@@ -1124,7 +1124,7 @@ static LRESULT CALLBACK WndProcEditSearch(HWND hwnd, UINT msg, WPARAM wp, LPARAM
             case VK_RETURN: {
                 if (IsShiftPressed()) {
                     FindPrev(win);
-                } else {
+                } else if (!FindEnterFromCurrentPageIfNeeded(win)) {
                     FindNext(win);
                 }
                 return 1;

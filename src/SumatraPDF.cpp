@@ -5547,10 +5547,17 @@ void CloseTab(WindowTab* tab, bool quitIfLast) {
         return;
     }
     MainWindow* win = tab->win;
+    bool closingCurrent = (tab == win->CurrentTab());
     logf("CloseTab: tab: 0x%p win: 0x%p, hwndFrame: 0x%x, quitIfLast: %d, dm: 0x%p\n", tab, win, win->hwndFrame,
          (int)quitIfLast, tab->AsFixed());
 
-    AbortFinding(win, true);
+    // Find UI is per-window but bound to the current document. Closing the
+    // current tab is leaving that document (same as a tab switch). RemoveTab
+    // then LoadModelIntoTab often sees prevTab == newTab, so the switch path
+    // never tears the find window down.
+    if (closingCurrent) {
+        ResetFindUIForTabSwitch(win);
+    }
     RemoveNotificationsForGroup(win->hwndCanvas, kNotifPageInfo);
     RemoveNotificationsForGroup(win->hwndCanvas, kNotifAnnotation);
     RemoveNotificationsForGroup(win->hwndCanvas, kNotifZoom);
@@ -5712,6 +5719,15 @@ static void DetachTabDocControllerForAsyncDelete(WindowTab* tab, DocController**
     DocController* ctrl = tab->ctrl;
     if (!ctrl) {
         return;
+    }
+    // FastDelete can free the engine while UIA still holds this DM. Closing the
+    // current tab and landing on Home never ran OnDocumentUnload (LoadModelIntoTab
+    // only updates UIA for a new Fixed document).
+    if (tab->win && tab->win->uiaProvider) {
+        DisplayModel* dm = tab->AsFixed();
+        if (dm && tab->win->AsFixed() == dm) {
+            tab->win->uiaProvider->OnDocumentUnload();
+        }
     }
     tab->ctrl = nullptr;
     DetachWinCtrlIfMatches(tab->win, ctrl);

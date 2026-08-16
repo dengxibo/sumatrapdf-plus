@@ -73,7 +73,7 @@ bool SearchSessionCache::Lookup(EngineBase* engine, const WCHAR* text, bool matc
 
 void SearchSessionCache::Store(EngineBase* engine, const WCHAR* text, bool matchCase, bool matchWholeWord,
                                int scanStartPage, bool partial, int pageLimit, int scannedPageLimit,
-                               Vec<u64>& positions) {
+                               int continuationPage, Vec<u64>& positions) {
     if (!engine || !text) {
         return;
     }
@@ -85,6 +85,7 @@ void SearchSessionCache::Store(EngineBase* engine, const WCHAR* text, bool match
             e.partial = partial;
             e.pageLimit = pageLimit;
             e.scannedPageLimit = scannedPageLimit;
+            e.continuationPage = continuationPage;
             e.textCacheGeneration = gen;
             delete e.positions;
             e.positions = new Vec<u64>(positions);
@@ -103,6 +104,7 @@ void SearchSessionCache::Store(EngineBase* engine, const WCHAR* text, bool match
     e.partial = partial;
     e.pageLimit = pageLimit;
     e.scannedPageLimit = scannedPageLimit;
+    e.continuationPage = continuationPage;
     e.textCacheGeneration = gen;
     e.positions = new Vec<u64>(positions);
     entries.Append(e);

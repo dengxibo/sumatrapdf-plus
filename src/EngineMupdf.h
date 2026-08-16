@@ -230,6 +230,9 @@ class EngineMupdf : public EngineBase {
     float pendingReflowNavDestX = DEST_USE_DEFAULT;
     float pendingReflowNavDestY = DEST_USE_DEFAULT;
     volatile LONG reflowNavCountAsyncActive = 0;
+    // TOC #fragment resolve after progressive meta apply; not covered by
+    // reflowableLoadingInProgress (that flag is cleared before this worker starts)
+    volatile LONG reflowFragmentsAsyncActive = 0;
     // background chapter-layout warmer (runs after loading completes; pre-lays
     // out every chapter so page renders and #fragment jumps become instant)
     volatile LONG reflowWarmActive = 0;
@@ -301,7 +304,8 @@ class EngineMupdf : public EngineBase {
 
     FzPageInfo* GetFzPageInfoCanFail(int pageNo);
     FzPageInfo* GetFzPageInfoFast(int pageNo);
-    FzPageInfo* GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* cookie = nullptr, bool loadLinks = true);
+    FzPageInfo* GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* cookie = nullptr, bool loadLinks = true,
+                              bool backgroundAccess = false);
     fz_matrix viewctm(int pageNo, float zoom, int rotation);
     fz_matrix viewctm(fz_page* page, float zoom, int rotation) const;
     TocItem* BuildTocTree(TocItem* parent, fz_outline* outline, int& idCounter, bool isAttachment, int& outlineIdx);

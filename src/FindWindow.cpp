@@ -178,6 +178,8 @@ static void DeferredGoToFindMatch(DeferredGoToFindMatchData* d) {
     }
     if (win->findCountThread) {
         EngineBase* engine = dm->GetEngine();
+        logf("search: navigate during count epoch=%ld match=%d:%d-%d:%d pageCount=%d\n", (long)d->epoch, d->startPage,
+             d->startGlyph, d->endPage, d->endGlyph, engine->PageCount());
         // The count worker has already extracted and cached every page touched
         // by this match. Cached text access is protected by EngineBase's text
         // cache lock, so exact selection can proceed without stopping or
@@ -493,7 +495,14 @@ void FindWindowWnd::Layout() {
     // the results list fills the rest of the window below the header
     int listTop = pad + headerDy + pad;
     int listDy = std::max(0, rc.dy - listTop - pad);
-    MoveWindow(results->hwnd, pad, listTop, contentDx, listDy, TRUE);
+    RECT listNow{};
+    GetWindowRect(results->hwnd, &listNow);
+    MapWindowPoints(nullptr, hwnd, (LPPOINT)&listNow, 2);
+    bool listMoved = listNow.left != pad || listNow.top != listTop || (listNow.right - listNow.left) != contentDx ||
+                     (listNow.bottom - listNow.top) != listDy;
+    if (listMoved) {
+        MoveWindow(results->hwnd, pad, listTop, contentDx, listDy, TRUE);
+    }
 
     int newBudget = FindWindowSnippetGlyphBudget(win);
     if (lastSnippetGlyphBudget > 0 && newBudget > lastSnippetGlyphBudget + 10 && win->findCountHasSnippets &&
@@ -555,33 +564,34 @@ void FindWindowWnd::RefreshResults(bool allowNavigation) {
     int oldCount = results->GetCount();
     int newCount = results->model->ItemsCount();
     bool sameScan = displayedResultsInitialized && displayedResultsEpoch == win->findCountEpoch;
-    bool canAppend = sameScan && oldCount >= 0 && oldCount <= newCount;
+    // After the count finishes the list is reordered into document order; a
+    // same-count append would leave wrap-order rows in place.
+    bool sortedComplete = win->findCountValid && !win->findCountPartial;
+    bool canAppend = sameScan && !sortedComplete && oldCount >= 0 && oldCount < newCount;
 
     if (!canAppend) {
         FillWithItems(results->hwnd, results->model);
         oldSel = -1;
         oldTop = 0;
     } else if (oldCount < newCount) {
-        // Streamed results are append-only within one count epoch. Updating the
-        // native list incrementally avoids LB_RESETCONTENT repeatedly changing
-        // its scroll range, top row and selection every ~75 ms.
-        SendMessageW(results->hwnd, WM_SETREDRAW, FALSE, 0);
+        // Streamed results are append-only within one count epoch. Do not
+        // WM_SETREDRAW + full InvalidateRect: that repaints every visible row
+        // (~75 ms) and the yellow highlights flicker even when the top rows
+        // have not changed.
         for (int i = oldCount; i < newCount; i++) {
             TempWStr ws = ToWStrTemp(results->model->Item(i));
             ListBox_AddString(results->hwnd, ws);
         }
-        if (oldSel >= 0 && oldSel < newCount) {
-            results->SetCurrentSelection(oldSel);
-        }
-        if (oldTop >= 0 && oldTop < newCount) {
+        int top = (int)SendMessageW(results->hwnd, LB_GETTOPINDEX, 0, 0);
+        if (oldTop >= 0 && oldTop < newCount && top != oldTop) {
             SendMessageW(results->hwnd, LB_SETTOPINDEX, (WPARAM)oldTop, 0);
         }
-        SendMessageW(results->hwnd, WM_SETREDRAW, TRUE, 0);
-        InvalidateRect(results->hwnd, nullptr, FALSE);
-    } else {
-        // The model is live and owner-drawn. If only snippet/highlight content
-        // changed, repaint existing rows without rebuilding native list items.
-        InvalidateRect(results->hwnd, nullptr, FALSE);
+        for (int i = oldCount; i < newCount; i++) {
+            RECT ir{};
+            if (ListBox_GetItemRect(results->hwnd, i, &ir) != LB_ERR) {
+                InvalidateRect(results->hwnd, &ir, FALSE);
+            }
+        }
     }
     displayedResultsEpoch = win->findCountEpoch;
     displayedResultsInitialized = true;
@@ -637,15 +647,28 @@ void FindWindowWnd::DrawResultItem(ListBox::DrawItemEvent* ev) {
 
     COLORREF colBg = IsSpecialColor(lb->bgColor) ? GetSysColor(COLOR_WINDOW) : lb->bgColor;
     COLORREF colText = IsSpecialColor(lb->textColor) ? GetSysColor(COLOR_WINDOWTEXT) : lb->textColor;
+    int dpi = lastDpi > 0 ? lastDpi : EffectiveDpiForFindWindow(hwnd, 0);
+    // Dark chrome: a gray lift disappears on near-black rows. Tint with the
+    // theme link color (blue / Dracula purple / etc.) and a left accent bar.
     if (ev->selected) {
-        colBg = AccentColor(colBg, 30);
+        if (ThemeUsesDarkChrome()) {
+            colBg = BlendColor(colBg, ThemeWindowLinkColor(), 36);
+        } else {
+            colBg = AccentColor(colBg, 40);
+        }
     }
     SetBkColor(hdc, colBg);
     ExtTextOutW(hdc, 0, 0, ETO_OPAQUE, &rc, nullptr, 0, nullptr);
+    if (ev->selected && ThemeUsesDarkChrome()) {
+        RECT rcBar = rc;
+        rcBar.right = rcBar.left + MulDiv(3, dpi, 96);
+        SetBkColor(hdc, ThemeWindowLinkColor());
+        ExtTextOutW(hdc, 0, 0, ETO_OPAQUE, &rcBar, nullptr, 0, nullptr);
+        SetBkColor(hdc, colBg);
+    }
     SetBkMode(hdc, TRANSPARENT);
 
     HFONT oldFont = lb->font ? SelectFont(hdc, lb->font) : nullptr;
-    int dpi = lastDpi > 0 ? lastDpi : EffectiveDpiForFindWindow(hwnd, 0);
     int pad = MulDiv(6, dpi, 96);
     RECT rcText = rc;
     rcText.left += pad;
@@ -752,15 +775,22 @@ int FindWindowWnd::CurrentMatchIndex() {
     return -1;
 }
 
-// first match at/after the current page. The matches are in scan order (the
-// scan starts at the page that was current at the time and wraps around), so
-// pick the match with the smallest forward page distance from the current page.
+// first match at/after the current page. After the count finishes, matches are
+// in document order; while streaming they are still wrap-scan order.
 int FindWindowWnd::FirstMatchFromCurrentPage() {
     int n = (int)win->findMatches.size();
     if (n == 0) {
         return -1;
     }
     int curPage = win->ctrl ? win->ctrl->CurrentPageNo() : 1;
+    if (win->findCountValid && !win->findCountPartial) {
+        for (int i = 0; i < n; i++) {
+            if (win->findMatches[i].startPage >= curPage) {
+                return i;
+            }
+        }
+        return 0;
+    }
     int nPages = win->ctrl ? win->ctrl->PageCount() : 1;
     int best = 0;
     int bestDist = INT_MAX;
@@ -1163,6 +1193,9 @@ bool FindWindowWnd::PreTranslateMessage(MSG& msg) {
         if (FindFlushPendingSearch(win)) {
             return true;
         }
+        if (!IsShiftPressed() && FindEnterFromCurrentPageIfNeeded(win)) {
+            return true;
+        }
         WPARAM dir = IsShiftPressed() ? VK_UP : VK_DOWN;
         if (!MoveResultSelection(dir)) {
             IsShiftPressed() ? FindPrev(win) : FindNext(win);
@@ -1187,6 +1220,9 @@ bool FindWindowWnd::PreTranslateMessage(MSG& msg) {
             // Enter starts a search only after the query changes; otherwise it
             // steps through the results list (#4626).
             if (msg.wParam == VK_RETURN && FindFlushPendingSearch(win)) {
+                return true;
+            }
+            if (msg.wParam == VK_RETURN && !IsShiftPressed() && FindEnterFromCurrentPageIfNeeded(win)) {
                 return true;
             }
             // step through the results list; fall back to a document search when
@@ -1453,7 +1489,9 @@ HWND FindWindowHwnd(MainWindow* win) {
 void FindWindowSetStatusText(MainWindow* win, const char* s) {
     if (win->findWindow && win->findWindow->status) {
         HwndSetText(win->findWindow->status->hwnd, s ? s : "");
-        win->findWindow->Layout();
+        // Status width is reserved from a fixed "99999 / 99999" sample.
+        // Relayout here MoveWindow'd the results list on every n/m / "..."
+        // tick and made the list jitter during a live search.
     }
 }
 
@@ -1561,6 +1599,14 @@ int FindWindowPendingNavigationIndex(MainWindow* win) {
         }
     }
     return 0;
+}
+
+int FindWindowCurrentSelectionIndex(MainWindow* win) {
+    if (!win || !win->findWindow || !win->findWindow->results) {
+        return 0;
+    }
+    int idx = win->findWindow->results->GetCurrentSelection();
+    return idx >= 0 && idx < (int)win->findMatches.size() ? idx + 1 : 0;
 }
 
 int FindWindowSnippetGlyphBudget(MainWindow* win) {

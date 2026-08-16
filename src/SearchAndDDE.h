@@ -65,6 +65,9 @@ void FindStatusAnimateTimerFired(MainWindow* win);
 // if the current term has not been searched yet, start the search now (Enter).
 // Returns true if a search was started.
 bool FindFlushPendingSearch(MainWindow* win);
+// Enter: if the view left the current hit, jump to the first match on/after
+// the current page (queued until the count finishes). Returns true if handled.
+bool FindEnterFromCurrentPageIfNeeded(MainWindow* win);
 // navigate to and select a match chosen from the floating results list
 void GoToFindMatch(MainWindow* win, int startPage, int startGlyph, int endPage, int endGlyph);
 // start (or refresh) the deferred full-document match count

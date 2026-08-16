@@ -66,12 +66,15 @@ struct TextSearch : public TextSelection {
     bool FindTextInPage(int pageNo, PageAndOffset* finalGlyph);
     bool FindStartingAtPage(int pageNo);
     // Find every match that starts on pageNo (single page-text load).
-    void CollectMatchesOnPage(int pageNo, Vec<MatchSpan>* out);
-    PageAndOffset MatchEnd(int startOff) const;
+    void CollectMatchesOnPage(int pageNo, Vec<MatchSpan>* out, int* continuationPage = nullptr);
+    PageAndOffset MatchEnd(int startOff, bool* needsMorePages = nullptr) const;
     // Search offsets are Unicode codepoints in UTF-8 text. Selection offsets are
     // UTF-16 code units in the engine's WCHAR text.
-    int CodepointToGlyph(int pageNo, int codepointOffset) const;
-    int GlyphToCodepoint(int pageNo, int glyphOffset) const;
+    int CodepointToGlyph(int pageNo, int codepointOffset);
+    int GlyphToCodepoint(int pageNo, int glyphOffset);
+    const char* PreparePageOffsetMap(int pageNo, int* byteLenOut = nullptr, int* codepointLenOut = nullptr);
+    int PageCodepointAt(int pageNo, int codepointOffset);
+    int PageCodepointByteOffset(int pageNo, int codepointOffset);
 
     void Clear();
     void Reset();
@@ -91,6 +94,12 @@ struct TextSearch : public TextSelection {
     // per-page match lists built by CollectMatchesOnPage (reused by count scans)
     Vec<PageMatchList> pageMatchesCache;
     Vec<bool> pageMatchesCached;
+    int offsetMapPage = 0;
+    const char* offsetMapText = nullptr;
+    int offsetMapTextByteLen = 0;
+    Vec<int> offsetMapCodepointBytes;
+    Vec<int> offsetMapCodepointToGlyph;
+    Vec<int> offsetMapGlyphToCodepoint;
 
     void EnsurePageMatchCacheSize();
     void SetPageMatchCache(int pageNo, const Vec<MatchSpan>& spans);
@@ -100,7 +109,7 @@ struct TextSearch : public TextSelection {
     const char* LoadPageText(int pageNo, int* lenOut, bool* abortSearch);
     bool TryGetCachedPageMatches(int pageNo, Vec<MatchSpan>* out) const;
     bool PageMightContainAnchor(int pageNo) const;
-    // jump to a match using a cached session position list (wrap order from startPage)
+    // jump to a match using a cached session position list (document order)
     bool TryFindFromCachedPositions(const Vec<u64>& positions, int startPage);
     // discard per-page match lists after reflow/layout changes
     void InvalidatePageMatchCache();

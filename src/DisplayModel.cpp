@@ -343,11 +343,14 @@ static void ScheduleLayoutSyncChain(DisplayModel* dm) {
     if (dm->reflowLayoutValidUpto >= dm->pagesInfoCount) {
         return;
     }
-    DWORD now = GetTickCount();
-    if (gLastProgressChainMs == 0 || now - gLastProgressChainMs >= kProgressRelayoutIntervalMs) {
-        gLastProgressChainMs = now;
-        NotifyEbookPagesLoadingProgress(dm->engine->FilePath(), false);
-    }
+    // A layout batch has no independent timer. Dropping this notification when
+    // it lands inside the throttle interval permanently strands the watermark
+    // at the current batch boundary (and a pending find-result jump never
+    // reaches its target). EbookPagesProgress coalesces queued notifications,
+    // so always enqueue the successor; each UI task still processes only one
+    // bounded batch and yields back to the message loop.
+    gLastProgressChainMs = GetTickCount();
+    NotifyEbookPagesLoadingProgress(dm->engine->FilePath(), false);
 }
 
 static bool ApplyPagesLayoutSyncBatched(DisplayModel* dm) {

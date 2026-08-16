@@ -343,12 +343,15 @@ struct MainWindow {
     bool findCountMatchCase = false;
     bool findCountMatchWholeWord = false;
     bool findCountValid = false;
-    bool findCountPartial = false;   // valid for loaded pages, but the ebook is still growing
-    int findCountPageLimit = 0;      // dm->PageCount() when the cache was built
-    int findCountStartPage = 1;      // page the scan started from
+    bool findCountPartial = false;     // valid for loaded pages, but the ebook is still growing
+    int findCountPageLimit = 0;        // dm->PageCount() when the cache was built
+    int findCountStartPage = 1;        // page the scan started from
+    int findCountContinuationPage = 0; // earliest boundary candidate to rescan when pages grow
+    u32 findCountTextCacheGeneration = 0;
+    // after a finished count: jump to the first document-order match on/after this page
+    int findPendingFromPage = 0;
     void* findCountEngine = nullptr; // engine the cache was built for (compared, never deref'd)
-    // (page<<32 | startOffset) of each match, in scan order (the scan starts
-    // at the page current at the time and wraps around)
+    // (page<<32 | startOffset) of each match, in document order after the count finishes
     Vec<u64> findCountPositions;
     // a newer count request that arrived while a scan was running; the running
     // worker picks it up when it finishes (coalesces rapid typing to one scan)

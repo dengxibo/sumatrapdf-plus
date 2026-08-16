@@ -3175,17 +3175,29 @@ void ReleasePerThreadContext(EngineMupdf* engine) {
 
 static void ReleaseAllPerThreadContexts(EngineMupdf* engine) {
     Vec<fz_context*> ctxsToDrop;
+    Vec<DWORD> tids;
     {
         ScopedCritSec cs(&gPerThreadContextsCs);
         for (int i = (int)gPerThreadContexts->Size() - 1; i >= 0; i--) {
             auto& el = gPerThreadContexts->at(i);
             if (el.engine == engine) {
                 ctxsToDrop.Append(el.ctx);
+                tids.Append(el.threadID);
                 gPerThreadContexts->RemoveAtFast(i);
             }
         }
     }
-    for (auto ctx : ctxsToDrop) {
+    DWORD cur = GetCurrentThreadId();
+    for (int i = 0; i < (int)ctxsToDrop.size(); i++) {
+        fz_context* ctx = ctxsToDrop[i];
+        int waited = 0;
+        while (ctx && ctx->error.top != ctx->error.stack_base && waited < 120000) {
+            Sleep(1);
+            waited++;
+        }
+        if (ctx && ctx->error.top != ctx->error.stack_base) {
+            continue;
+        }
         fz_drop_context(ctx);
     }
 }
@@ -3241,6 +3253,13 @@ EngineMupdf::~EngineMupdf() {
     }
     for (int i = 0; i < 120000; i++) {
         if (InterlockedCompareExchange(&reflowWarmActive, 0, 0) == 0) {
+            break;
+        }
+        Sleep(1);
+    }
+    for (int i = 0; i < 120000; i++) {
+        if (InterlockedCompareExchange(&reflowFragmentsAsyncActive, 0, 0) == 0 &&
+            InterlockedCompareExchange(&reflowNavCountAsyncActive, 0, 0) == 0) {
             break;
         }
         Sleep(1);
@@ -5402,12 +5421,22 @@ static void EngineMupdfBuildAndSaveEpubMeta(EngineMupdf* e, int loadMs) {
 
 static void EngineMupdfResolveFragmentsAsync(EngineMupdf* e) {
     if (!e || !e->outline) {
+        InterlockedExchange(&e->reflowFragmentsAsyncActive, 0);
         return;
     }
     AtomicIntInc(&gDangerousThreadCount);
     defer {
+        {
+            WaitForReflowUiDocLock(e);
+            ScopedCritSec scope(&e->docLock);
+            ReleasePerThreadContext(e);
+        }
         AtomicIntDec(&gDangerousThreadCount);
+        InterlockedExchange(&e->reflowFragmentsAsyncActive, 0);
     };
+    if (InterlockedCompareExchange(&e->reflowableLoadAbort, 0, 0) != 0) {
+        return;
+    }
     EngineMupdfWalkOutlineFragments(e, e->outline);
     int loadMs = 0;
     if (e->epubOpenStartTick != 0) {
@@ -6112,13 +6141,19 @@ static void KickReflowChapterRecountAsync(EngineMupdf* e) {
     RunAsync(fn, "MupdfReflowRecount");
 }
 
+static bool ReflowBackgroundWorkersIdle(EngineMupdf* e) {
+    return InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) == 0 &&
+           InterlockedCompareExchange(&e->reflowFragmentsAsyncActive, 0, 0) == 0 &&
+           InterlockedCompareExchange(&e->reflowNavCountAsyncActive, 0, 0) == 0;
+}
+
 static void AbortAndWaitForReflowBackgroundLoad(EngineMupdf* e) {
-    if (!e || InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) == 0) {
+    if (!e || ReflowBackgroundWorkersIdle(e)) {
         return;
     }
     InterlockedExchange(&e->reflowableLoadAbort, 1);
     for (int i = 0; i < 120000; i++) {
-        if (InterlockedCompareExchange(&e->reflowableLoadingInProgress, 0, 0) == 0) {
+        if (ReflowBackgroundWorkersIdle(e)) {
             break;
         }
         Sleep(1);
@@ -6441,22 +6476,47 @@ static void ReleaseReflowUiDocLock(EngineMupdf* e) {
 struct ReflowUiDocLock {
     EngineMupdf* e = nullptr;
     bool active = false;
+    bool uiPriority = true;
 
-    ReflowUiDocLock(EngineMupdf* engine, bool reflowLoading) {
+    ReflowUiDocLock(EngineMupdf* engine, bool reflowLoading, bool isBackground = false) {
         if (!MupdfNeedsDocLock(engine, reflowLoading)) {
             return;
         }
         e = engine;
-        active = true;
-        AcquireReflowUiDocLock(e);
+        uiPriority = !isBackground;
+        Acquire();
     }
 
-    ~ReflowUiDocLock() {
+    void Acquire() {
+        if (!e || active) {
+            return;
+        }
+        active = true;
+        if (uiPriority) {
+            AcquireReflowUiDocLock(e);
+        } else {
+            DWORD waitStart = GetTickCount();
+            EnterCriticalSection(&e->docLock);
+            DWORD waited = GetTickCount() - waitStart;
+            if (waited >= 500) {
+                logf("search: waited %lu ms for reflow docLock\n", (unsigned long)waited);
+            }
+        }
+    }
+
+    void Release() {
         if (!active) {
             return;
         }
-        ReleaseReflowUiDocLock(e);
+        if (uiPriority) {
+            ReleaseReflowUiDocLock(e);
+        } else {
+            LeaveCriticalSection(&e->docLock);
+        }
+        active = false;
     }
+
+    ~ReflowUiDocLock() { Release(); }
 };
 
 // During progressive reflow, ReflowUiDocLock already serializes mupdf document
@@ -6724,8 +6784,9 @@ static bool ReflowChapterPageMapNeedsResync(EngineMupdf* e, fz_context* ctx, int
         return false;
     }
     int rawPages = 0;
-    WaitForReflowUiDocLock(e);
-    ScopedCritSec docScope(&e->docLock);
+    // GetFzPageInfo() calls this with docLock already held. Waiting for the UI
+    // here deadlocks if a result click starts rendering at the same instant:
+    // the UI waits for docLock while this thread waits for the UI-wants flag.
     fz_try(ctx) {
         rawPages = fz_count_chapter_pages(ctx, e->_doc, chapter);
     }
@@ -7216,6 +7277,7 @@ bool EngineMupdf::FinishLoading() {
             InterlockedExchange(&reflowableLoadingInProgress, 0);
             NotifyEngineDisplayReady(this);
             if (!IsCreateEngineForThumbnail() && outline) {
+                InterlockedExchange(&reflowFragmentsAsyncActive, 1);
                 auto fn = MkFunc0<EngineMupdf>(EngineMupdfResolveFragmentsAsync, this);
                 RunAsync(fn, "EpubMetaFragments");
             }
@@ -7921,7 +7983,8 @@ fz_stext_page* fz_new_stext_page_from_page2(fz_context* ctx, fz_page* page, cons
 // Maybe: when loading fully, cache extracted text in FzPageInfo
 // so that we don't have to re-do fz_new_stext_page_from_page() when doing search.
 // Search uses FzPageInfo::searchStext (see ExtractPageTextFromFzPageInfo).
-FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* cookie, bool loadLinks) {
+FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* cookie, bool loadLinks,
+                                       bool backgroundAccess) {
     // pageNo is a raw engine page. Public EngineBase APIs map display->engine first.
     auto ctx = Ctx();
     bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
@@ -7941,12 +8004,12 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
         }
     }
 
-    if (!pdfdoc) {
+    if (!pdfdoc && !backgroundAccess) {
         InterlockedExchange(&reflowLastAccessedPageNo, (LONG)pageNo);
         InterlockedExchange(&reflowLastPageAccessMs, (LONG)GetTickCount());
     }
 
-    ReflowUiDocLock docGuard(this, reflowLoading);
+    ReflowUiDocLock docGuard(this, reflowLoading, backgroundAccess);
     ReflowRenderLock renderGuard(this, reflowLoading);
 
     if (!pdfdoc && pageInfo->reflowThemeCssEpoch != reflowThemeCssEpoch) {
@@ -7988,7 +8051,12 @@ FzPageInfo* EngineMupdf::GetFzPageInfo(int pageNo, bool loadQuick, fz_cookie* co
             }
         }
         if (reflowCh >= 0 && ReflowChapterPageMapNeedsResync(this, ctx, reflowCh, reflowPageInChapter)) {
+            // Resync waits for background helpers and manages docLock itself.
+            // Never call it while retaining this search/render acquisition: a
+            // helper or a concurrently waiting UI render may need the same lock.
+            docGuard.Release();
             ResyncReflowChapterPageMapFrom(this, ctx, reflowCh, false);
+            docGuard.Acquire();
             reflowCh = ReflowChapterIndexForPageNo(this, pageNo);
             if (reflowCh >= 0) {
                 ScopedCritSec scopePages(&pagesLock);
@@ -10405,10 +10473,13 @@ PageTextUtf8 EngineMupdf::ExtractPageTextUtf8(int pageNo) {
     }
     bool reflowLoading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
 
-    ReflowUiDocLock docGuard(this, reflowLoading);
+    // UTF-8 extraction is the full-document search path. It must not advertise
+    // itself as a waiting UI operation: doing so makes progressive pagination
+    // yield to the search worker and can starve both jobs after a result click.
+    ReflowUiDocLock docGuard(this, reflowLoading, true);
     ReflowRenderLock renderGuard(this, reflowLoading);
 
-    FzPageInfo* pageInfo = GetFzPageInfo(pageNo, true);
+    FzPageInfo* pageInfo = GetFzPageInfo(pageNo, true, nullptr, false, true);
     return ExtractPageTextUtf8FromFzPageInfo(this, pageInfo);
 }
 

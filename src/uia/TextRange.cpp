@@ -450,11 +450,20 @@ HRESULT STDMETHODCALLTYPE SumatraUIAutomationTextRange::GetText(int maxLength, B
         return S_OK;
     }
 
-    TextSelection selection(document->GetDM()->GetEngine());
+    DisplayModel* dm = document->GetDM();
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (!engine) {
+        return E_FAIL;
+    }
+    // Closing the tab can FastDelete the DisplayModel while Narrator is still
+    // extracting a huge EPUB range. Keep the engine alive for this call.
+    engine->AddRef();
+    TextSelection selection(engine);
     selection.StartAt(startPage, startGlyph);
     selection.SelectUpTo(endPage, endGlyph);
 
     AutoFreeWStr selected_text(selection.ExtractText("\r\n"));
+    engine->Release();
     size_t selected_text_length = str::Len(selected_text);
 
     // -1 and [0, inf) are allowed

@@ -11,6 +11,7 @@ struct SearchSessionEntry {
     bool partial = false;
     int pageLimit = 0;
     int scannedPageLimit = 0; // pages actually scanned (may be < pageLimit during progressive load)
+    int continuationPage = 0; // earliest page with a match candidate waiting for more pages
     u32 textCacheGeneration = 0;
     // SearchSessionEntry is stored in our POD Vec, which relocates elements with
     // memcpy. An inline Vec is not relocatable because els can point at its own
@@ -30,5 +31,5 @@ struct SearchSessionCache {
     bool Lookup(EngineBase* engine, const WCHAR* text, bool matchCase, bool matchWholeWord, int currentPageLimit,
                 bool requireComplete, SearchSessionEntry* out);
     void Store(EngineBase* engine, const WCHAR* text, bool matchCase, bool matchWholeWord, int scanStartPage,
-               bool partial, int pageLimit, int scannedPageLimit, Vec<u64>& positions);
+               bool partial, int pageLimit, int scannedPageLimit, int continuationPage, Vec<u64>& positions);
 };

@@ -30,6 +30,8 @@ void FindWindowSetMatchWholeWordChecked(MainWindow* win, bool checked);
 void FindWindowRefreshResults(MainWindow* win, bool allowNavigation = true);
 void FindWindowApplyPendingNavigation(MainWindow* win);
 int FindWindowPendingNavigationIndex(MainWindow* win);
+// 1-based index of the row currently selected in the results list, or 0
+int FindWindowCurrentSelectionIndex(MainWindow* win);
 // glyph budget for a one-line find-result snippet, based on results list width
 int FindWindowSnippetGlyphBudget(MainWindow* win);
 // re-apply theme colors/icons to the floating window after a theme change

@@ -2,6 +2,14 @@
 
 ## next
 
+- close the find window when closing the current tab (same as switching tabs)
+  关闭当前标签时一并关闭查找窗口（与切换标签一致）
+- find results list: stop jittering while the live match count updates
+  搜索结果列表：全文计数刷新 `n/m` 时不再跟着抖动
+- find results list: selected row is easier to see in dark themes (theme accent wash + left bar)
+  搜索结果列表：暗色主题下当前选中行更明显（主题强调色底 + 左侧色条）
+- search `n/m` and the results list use document order (1 = first hit in the book); first jump still starts from the current page; Enter from a different page starts at that page, F3 / Next / Prev keep stepping from the current hit
+  搜索 `n/m` 与结果列表按全书出现顺序编号（1 = 书中第一条）；首次跳转仍从当前页起；在另一页按 Enter 从该页起跳，F3 / 下一个 / 上一个仍从当前命中继续
 - toolbar quick annotation buttons (rectangle, circle, line, ink): one click to enter drag-to-draw mode, click again to exit; hide with `ShowAnnotToolbarButtons = false`
   工具栏快捷标注（矩形/椭圆/直线/画笔）：单击进入拖拽绘制，再单击退出；`ShowAnnotToolbarButtons = false` 可隐藏
 - faster Match-theme render for Acrobat/PageMaker textbooks (e.g. Journey Across Time): cache per-image policy analysis; skip RAZ PictureBook lum/var planes — use cheap preserve/linear remap (Image-Conversion picture books unchanged)

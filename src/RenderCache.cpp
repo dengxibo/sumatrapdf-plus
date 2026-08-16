@@ -844,7 +844,10 @@ void RenderCache::WaitForRenderingComplete(DisplayModel* dm) {
     }
     CancelRendering(dm);
 
-    const DWORD timeoutMs = 10000;
+    // EPUB chapter layout can hold fz_try for tens of seconds. A 10s timeout
+    // let FastDeleteDocController drop per-thread clones still in fz_try
+    // (context.c error.top != stack_base assert).
+    const DWORD timeoutMs = 120000;
     DWORD start = GetTickCount();
     for (;;) {
         bool busy = false;

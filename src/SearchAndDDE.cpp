@@ -236,6 +236,7 @@ void OnFindBarTextChanged(MainWindow* win) {
         return;
     }
     win->findEnterPending = true;
+    win->findPendingFromPage = 0;
     win->findCountValid = false;
     win->findCountPartial = false;
     FindBarSetStatus(win, "");
@@ -257,6 +258,9 @@ static TempStr FindStatusAnimTextTemp(int currentIdx, int totalKnown, int dotPha
     int dots = (dotPhase % 3) + 1;
     if (currentIdx < 1 && totalKnown < 1) {
         return str::FormatTemp("%.*s", dots, "...");
+    }
+    if (currentIdx < 1) {
+        return str::FormatTemp("0 / %d %.*s", totalKnown, dots, "...");
     }
     if (totalKnown < 1) {
         return str::FormatTemp("%d / %.*s", currentIdx, dots, "...");
@@ -367,7 +371,7 @@ void CloseFindUI(MainWindow* win) {
     if (!win) {
         return;
     }
-    if (!win->hwndFindEdit && !win->findThread && !win->findCountThread) {
+    if (!win->hwndFindEdit && !win->findThread && !win->findCountThread && !win->findBar && !win->findWindow) {
         return;
     }
     // drop pending work before any abort that pumps messages (CountEndTask must
@@ -389,6 +393,7 @@ void CloseFindUI(MainWindow* win) {
     AbortActiveFindWorkers(win, true, true, false);
     DestroyFindUI(win);
     win->findEnterPending = false;
+    win->findPendingFromPage = 0;
     win->findCountValid = false;
     win->findCountPartial = false;
     str::FreePtr(&win->findCountText);
@@ -398,6 +403,8 @@ void CloseFindUI(MainWindow* win) {
     win->findCountEngine = nullptr;
     win->findCountPageLimit = 0;
     win->findCountStartPage = 1;
+    win->findCountContinuationPage = 0;
+    win->findCountTextCacheGeneration = 0;
     win->findCountHasSnippets = false;
     win->findCountLatestFound = 0;
     win->findStatusAnimating = false;
@@ -661,22 +668,87 @@ static u64 MatchKey(int page, int offset) {
     return ((u64)(u32)page << 32) | (u32)offset;
 }
 
-// 1-based index of `key` within the positions cache, or 0 if not found.
-// positions are in scan order (starting at the page current when the scan
-// started, wrapping around), so this is a linear lookup
+static int CmpMatchKey(const void* a, const void* b) {
+    u64 ka = *(const u64*)a;
+    u64 kb = *(const u64*)b;
+    if (ka < kb) {
+        return -1;
+    }
+    if (ka > kb) {
+        return 1;
+    }
+    return 0;
+}
+
+static int CmpFindMatch(const void* a, const void* b) {
+    const FindMatch* ma = (const FindMatch*)a;
+    const FindMatch* mb = (const FindMatch*)b;
+    u64 ka = MatchKey(ma->startPage, ma->startGlyph);
+    u64 kb = MatchKey(mb->startPage, mb->startGlyph);
+    if (ka < kb) {
+        return -1;
+    }
+    if (ka > kb) {
+        return 1;
+    }
+    return 0;
+}
+
+static void SortMatchesDocumentOrder(Vec<u64>& positions, Vec<FindMatch>* matches) {
+    if (positions.size() > 1) {
+        positions.Sort(CmpMatchKey);
+    }
+    if (matches && matches->size() > 1) {
+        matches->Sort(CmpFindMatch);
+    }
+}
+
+// first index with key >= MatchKey(startPage, 0), or -1 if none (positions sorted)
+static int FirstSortedIndexAtOrAfterPage(const Vec<u64>& pos, int startPage) {
+    int n = (int)pos.size();
+    if (n == 0) {
+        return -1;
+    }
+    u64 key = MatchKey(startPage, 0);
+    int lo = 0;
+    int hi = n;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (pos[mid] < key) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo < n ? lo : -1;
+}
+
+// 1-based document-order index of `key`, or 0 if not found.
+// positions are sorted by (page, glyph) after the count finishes.
 static int MatchIndexInCache(MainWindow* win, u64 key) {
     Vec<u64>& pos = win->findCountPositions;
     int n = (int)pos.size();
-    for (int i = 0; i < n; i++) {
-        if (pos[i] == key) {
-            return i + 1;
+    if (n == 0) {
+        return 0;
+    }
+    int lo = 0;
+    int hi = n;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (pos[mid] < key) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
         }
+    }
+    if (lo < n && pos[lo] == key) {
+        return lo + 1;
     }
     return 0;
 }
 
 // list index of the match the document is currently on (so prev/next can step
-// through the cached results in scan order), or -1 if it isn't in the cache
+// through the cached results in document order), or -1 if it isn't in the cache
 static int FindCurrentMatchIndex(MainWindow* win) {
     DisplayModel* dm = win->AsFixed();
     if (!dm || !dm->textSearch) {
@@ -691,14 +763,15 @@ static int FindCurrentMatchIndex(MainWindow* win) {
             return i;
         }
     }
-    Vec<u64>& pos = win->findCountPositions;
-    u64 key = MatchKey(page, glyph);
-    for (int i = 0; i < (int)pos.size(); i++) {
-        if (pos[i] == key) {
-            return i;
-        }
+    if (!win->findCountValid) {
+        return -1;
     }
-    return -1;
+    int idx = MatchIndexInCache(win, MatchKey(page, glyph));
+    return idx > 0 ? idx - 1 : -1;
+}
+
+static bool CountCacheIsComplete(MainWindow* win) {
+    return win && win->findCountValid && !win->findCountPartial;
 }
 
 // update the find bar with "n / m" from the cache (or partial results while
@@ -709,48 +782,41 @@ static void ShowMatchCount(MainWindow* win) {
     }
     DisplayModel* dm = win->AsFixed();
     int n = 0;
-    if (dm && dm->textSearch) {
-        if (win->findCountValid) {
-            u64 key = MatchKey(dm->textSearch->startPage, dm->textSearch->startGlyph);
-            n = MatchIndexInCache(win, key);
-        } else {
-            int idx = FindCurrentMatchIndex(win);
-            n = idx >= 0 ? idx + 1 : 0;
-            int pendingIdx = FindWindowPendingNavigationIndex(win);
-            if (pendingIdx > 0) {
-                n = pendingIdx;
-            }
-        }
+    bool complete = CountCacheIsComplete(win);
+    if (complete && dm && dm->textSearch) {
+        u64 key = MatchKey(dm->textSearch->startPage, dm->textSearch->startGlyph);
+        n = MatchIndexInCache(win, key);
+    }
+    if (complete && n < 1) {
+        // The results list can already have the new query's current row while
+        // dm->textSearch still describes the previous query. Use that row until
+        // navigation synchronizes the document search state.
+        n = FindWindowCurrentSelectionIndex(win);
     }
 
-    if (win->findCountValid && !win->findCountPartial) {
+    if (complete) {
         StopFindStatusAnimation(win);
         int total = (int)win->findCountPositions.size();
         win->findStatusCurrentIndex = n;
-        TempStr s = str::FormatTemp("%d / %d", n, total);
-        FindBarSetStatus(win, s);
+        if (n >= 1) {
+            TempStr s = str::FormatTemp("%d / %d", n, total);
+            FindBarSetStatus(win, s);
+        } else {
+            FindBarSetStatus(win, str::FormatTemp("... / %d", total));
+        }
         return;
     }
 
-    if (win->findCountValid && win->findCountPartial) {
-        int total = std::max((int)win->findCountPositions.size(), FindKnownMatchCount(win));
-        win->findStatusCurrentIndex = n;
-        FindBarSetStatus(win, FindStatusAnimTextTemp(n, total, win->findStatusDotPhase));
+    // wrap-order index is not a document-order n; keep n unknown until sort
+    int total = win->findCountValid ? std::max((int)win->findCountPositions.size(), FindKnownMatchCount(win))
+                                    : FindKnownMatchCount(win);
+    bool countActive =
+        win->findCountThread || win->findCountLatestFound > 0 || win->findMatches.size() > 0 || win->findCountValid;
+    if (total <= 0 && !countActive) {
         return;
     }
-
-    int total = FindKnownMatchCount(win);
-    bool countActive = win->findCountThread || win->findCountLatestFound > 0 || win->findMatches.size() > 0;
-    if (n <= 0 && total <= 0 && !countActive) {
-        return;
-    }
-    win->findStatusCurrentIndex = n;
-    if (win->findStatusAnimating && countActive && !win->findCountValid) {
-        FindBarSetStatus(win, FindStatusAnimTextTemp(n, total, win->findStatusDotPhase));
-    } else {
-        TempStr s = str::FormatTemp("%d / %d", n, total);
-        FindBarSetStatus(win, s);
-    }
+    win->findStatusCurrentIndex = 0;
+    FindBarSetStatus(win, FindStatusAnimTextTemp(0, total, win->findStatusDotPhase));
 }
 
 static bool WantFindSnippets() {
@@ -762,7 +828,9 @@ static bool WantFindSnippets() {
 
 static void InstallCountCache(MainWindow* win, WCHAR* text, bool matchCase, bool matchWholeWord, void* engine,
                               Vec<u64>& positions, Vec<FindMatch>* matches, bool hasSnippets, int pageLimit,
-                              int startPage, bool partial = false) {
+                              int startPage, bool partial = false, int continuationPage = 0,
+                              u32 textCacheGeneration = 0) {
+    SortMatchesDocumentOrder(positions, matches);
     str::FreePtr(&win->findCountText);
     win->findCountText = text;
     win->findCountMatchCase = matchCase;
@@ -771,6 +839,8 @@ static void InstallCountCache(MainWindow* win, WCHAR* text, bool matchCase, bool
     win->findCountPositions = positions;
     win->findCountPageLimit = pageLimit;
     win->findCountStartPage = startPage;
+    win->findCountContinuationPage = continuationPage;
+    win->findCountTextCacheGeneration = textCacheGeneration;
     win->findCountValid = true;
     win->findCountPartial = partial;
     if (matches) {
@@ -800,6 +870,7 @@ static void InstallEmptyCountCache(MainWindow* win, const WCHAR* text) {
 }
 
 static void UpdateMatchCount(MainWindow* win, const WCHAR* text);
+static bool NavigateFirstMatchFromPage(MainWindow* win, int startPage);
 
 // cap on how many per-match snippets we build for the floating results list
 // (matches beyond this still count toward "n / m", just aren't listed)
@@ -829,12 +900,19 @@ static int FindSnippetMaxGlyphs(MainWindow* win) {
     return 72;
 }
 
-static int SnippetCodepointAt(const char* text, int byteLen, int idx) {
-    if (!text || idx < 0) {
+struct SnippetPageContext {
+    TextSearch* ts = nullptr;
+    int pageNo = 0;
+    const char* text = nullptr;
+    int byteLen = 0;
+    int textLen = 0;
+};
+
+static int SnippetCodepointAt(const SnippetPageContext& ctx, int idx) {
+    if (!ctx.text || idx < 0) {
         return 0;
     }
-    int byteIdx = Utf8CodepointToByteIndex(text, byteLen, idx);
-    return Utf8CodepointAtByte(text, byteLen, byteIdx);
+    return ctx.ts->PageCodepointAt(ctx.pageNo, idx);
 }
 
 static bool IsSnippetSentenceEnd(int cp) {
@@ -847,29 +925,29 @@ static bool IsSnippetNewlineCp(int cp) {
 }
 
 // Skip a run of \r and \n (treat CRLF as one soft wrap, not two breaks).
-static int SnippetNewlineRunEnd(const char* text, int byteLen, int textLen, int idx) {
+static int SnippetNewlineRunEnd(const SnippetPageContext& ctx, int idx) {
     int i = idx;
-    while (i < textLen && IsSnippetNewlineCp(SnippetCodepointAt(text, byteLen, i))) {
+    while (i < ctx.textLen && IsSnippetNewlineCp(SnippetCodepointAt(ctx, i))) {
         i++;
     }
     return i;
 }
 
-static bool IsSnippetParagraphBreakAt(const char* text, int byteLen, int textLen, int idx) {
-    int cp = SnippetCodepointAt(text, byteLen, idx);
+static bool IsSnippetParagraphBreakAt(const SnippetPageContext& ctx, int idx) {
+    int cp = SnippetCodepointAt(ctx, idx);
     if (!IsSnippetNewlineCp(cp)) {
         return false;
     }
     // Soft wraps like "structure\r\nis" are not paragraph breaks.
     if (idx > 0) {
-        int prev = SnippetCodepointAt(text, byteLen, idx - 1);
+        int prev = SnippetCodepointAt(ctx, idx - 1);
         if (!IsSnippetNewlineCp(prev) && IsSnippetSentenceEnd(prev)) {
             return true;
         }
     }
-    int runEnd = SnippetNewlineRunEnd(text, byteLen, textLen, idx);
-    for (int j = runEnd; j < textLen; j++) {
-        int c = SnippetCodepointAt(text, byteLen, j);
+    int runEnd = SnippetNewlineRunEnd(ctx, idx);
+    for (int j = runEnd; j < ctx.textLen; j++) {
+        int c = SnippetCodepointAt(ctx, j);
         if (c == ' ' || c == '\t') {
             continue;
         }
@@ -881,21 +959,21 @@ static bool IsSnippetParagraphBreakAt(const char* text, int byteLen, int textLen
     return false;
 }
 
-static int SnippetPosAfterSegmentBreak(const char* text, int byteLen, int textLen, int idx) {
-    int cp = SnippetCodepointAt(text, byteLen, idx);
+static int SnippetPosAfterSegmentBreak(const SnippetPageContext& ctx, int idx) {
+    int cp = SnippetCodepointAt(ctx, idx);
     if (IsSnippetNewlineCp(cp)) {
-        return SnippetNewlineRunEnd(text, byteLen, textLen, idx);
+        return SnippetNewlineRunEnd(ctx, idx);
     }
     return idx + 1;
 }
 
-static bool IsSnippetSegmentBreakAt(const char* text, int byteLen, int textLen, int idx) {
-    int cp = SnippetCodepointAt(text, byteLen, idx);
+static bool IsSnippetSegmentBreakAt(const SnippetPageContext& ctx, int idx) {
+    int cp = SnippetCodepointAt(ctx, idx);
     if (IsSnippetSentenceEnd(cp)) {
         return true;
     }
     if (IsSnippetNewlineCp(cp)) {
-        return IsSnippetParagraphBreakAt(text, byteLen, textLen, idx);
+        return IsSnippetParagraphBreakAt(ctx, idx);
     }
     return false;
 }
@@ -904,30 +982,30 @@ static bool IsSnippetClauseBreak(int cp) {
     return cp == ';' || cp == 0xFF1B /* ； */ || cp == ':' || cp == 0xFF1A /* ： */;
 }
 
-static bool IsCleanSnippetBoundaryBefore(const char* text, int byteLen, int textLen, int from) {
+static bool IsCleanSnippetBoundaryBefore(const SnippetPageContext& ctx, int from) {
     if (from <= 0) {
         return true;
     }
     int i = from - 1;
-    if (IsSnippetSegmentBreakAt(text, byteLen, textLen, i)) {
+    if (IsSnippetSegmentBreakAt(ctx, i)) {
         return true;
     }
-    return IsSnippetClauseBreak(SnippetCodepointAt(text, byteLen, i));
+    return IsSnippetClauseBreak(SnippetCodepointAt(ctx, i));
 }
 
 // Pick a snippet start inside [earliest, mStart]: prefer just after the nearest
 // sentence end, so lines begin on a complete clause like "这倒提醒了我：…".
-static int RefineSnippetStart(const char* text, int byteLen, int textLen, int mStart, int earliest) {
+static int RefineSnippetStart(const SnippetPageContext& ctx, int mStart, int earliest) {
     earliest = std::max(0, earliest);
     for (int i = mStart - 1; i >= earliest; i--) {
-        if (IsSnippetSegmentBreakAt(text, byteLen, textLen, i)) {
-            return SnippetPosAfterSegmentBreak(text, byteLen, textLen, i);
+        if (IsSnippetSegmentBreakAt(ctx, i)) {
+            return SnippetPosAfterSegmentBreak(ctx, i);
         }
     }
     // Short lead-in before the match (e.g. "这倒提醒了我：") is better than a hard cut.
     constexpr int kMaxClauseLeadGlyphs = 20;
     for (int i = mStart - 1; i >= earliest; i--) {
-        if (!IsSnippetClauseBreak(SnippetCodepointAt(text, byteLen, i))) {
+        if (!IsSnippetClauseBreak(SnippetCodepointAt(ctx, i))) {
             continue;
         }
         int start = i + 1;
@@ -939,14 +1017,14 @@ static int RefineSnippetStart(const char* text, int byteLen, int textLen, int mS
 }
 
 // Pick a snippet end inside [mEnd, latest]: prefer the next sentence boundary.
-static int RefineSnippetEnd(const char* text, int byteLen, int textLen, int mEnd, int latest) {
+static int RefineSnippetEnd(const SnippetPageContext& ctx, int mEnd, int latest) {
     for (int i = mEnd; i < latest; i++) {
-        if (IsSnippetSegmentBreakAt(text, byteLen, textLen, i)) {
-            return SnippetPosAfterSegmentBreak(text, byteLen, textLen, i);
+        if (IsSnippetSegmentBreakAt(ctx, i)) {
+            return SnippetPosAfterSegmentBreak(ctx, i);
         }
     }
     for (int i = mEnd; i < latest; i++) {
-        if (IsSnippetClauseBreak(SnippetCodepointAt(text, byteLen, i))) {
+        if (IsSnippetClauseBreak(SnippetCodepointAt(ctx, i))) {
             return i + 1;
         }
     }
@@ -954,21 +1032,24 @@ static int RefineSnippetEnd(const char* text, int byteLen, int textLen, int mEnd
 }
 
 // build a one-line "...context match context..." snippet (UTF-8) around a match
-static char* BuildSnippet(EngineBase* engine, const FindMatch& m, int maxSnippetGlyphs) {
-    if (!engine || maxSnippetGlyphs <= 0) {
+static char* BuildSnippet(TextSearch* ts, const FindMatch& m, int maxSnippetGlyphs) {
+    if (!ts || maxSnippetGlyphs <= 0) {
         return nullptr;
     }
-    int textByteLen = 0;
-    const char* pageText = engine->GetTextForPageUtf8(m.startPage, &textByteLen);
+    SnippetPageContext ctx;
+    ctx.ts = ts;
+    ctx.pageNo = m.startPage;
+    ctx.text = ts->PreparePageOffsetMap(m.startPage, &ctx.byteLen, &ctx.textLen);
+    const char* pageText = ctx.text;
+    int textByteLen = ctx.byteLen;
     if (!pageText || textByteLen <= 0) {
         return nullptr;
     }
-    int textLen = Utf8CodepointCountN(pageText, textByteLen);
-    TextSearch ts(engine);
-    int mStart = ts.GlyphToCodepoint(m.startPage, m.startGlyph);
+    int textLen = ctx.textLen;
+    int mStart = ts->GlyphToCodepoint(m.startPage, m.startGlyph);
     int mEnd = textLen;
     if (m.endPage == m.startPage) {
-        mEnd = ts.GlyphToCodepoint(m.endPage, m.endGlyph);
+        mEnd = ts->GlyphToCodepoint(m.endPage, m.endGlyph);
     }
     mStart = limitValue(mStart, 0, textLen);
     mEnd = limitValue(mEnd, mStart, textLen);
@@ -979,11 +1060,11 @@ static char* BuildSnippet(EngineBase* engine, const FindMatch& m, int maxSnippet
     // Leading "..." feels wrong; trailing "..." is fine.
     constexpr int kMaxLookbackGlyphs = 96;
     int lookbackEarliest = std::max(0, mStart - kMaxLookbackGlyphs);
-    int from = RefineSnippetStart(pageText, textByteLen, textLen, mStart, lookbackEarliest);
-    bool cleanStart = IsCleanSnippetBoundaryBefore(pageText, textByteLen, textLen, from);
+    int from = RefineSnippetStart(ctx, mStart, lookbackEarliest);
+    bool cleanStart = IsCleanSnippetBoundaryBefore(ctx, from);
 
     // Find the natural sentence end first (may be past a soft wrap), then apply budget.
-    int naturalTo = RefineSnippetEnd(pageText, textByteLen, textLen, mEnd, textLen);
+    int naturalTo = RefineSnippetEnd(ctx, mEnd, textLen);
     int maxTo = std::min(textLen, from + kMaxSnippetGlyphs);
     int to = std::min(naturalTo, maxTo);
     if (to - from > kMaxSnippetGlyphs) {
@@ -996,18 +1077,18 @@ static char* BuildSnippet(EngineBase* engine, const FindMatch& m, int maxSnippet
     // Last resort: match does not fit after a clean start — shift start and accept leading "...".
     if (to - from > kMaxSnippetGlyphs) {
         int forcedEarliest = std::max(0, mEnd + matchLen - kMaxSnippetGlyphs);
-        from = RefineSnippetStart(pageText, textByteLen, textLen, mStart, forcedEarliest);
-        cleanStart = IsCleanSnippetBoundaryBefore(pageText, textByteLen, textLen, from);
+        from = RefineSnippetStart(ctx, mStart, forcedEarliest);
+        cleanStart = IsCleanSnippetBoundaryBefore(ctx, from);
         maxTo = std::min(textLen, from + kMaxSnippetGlyphs);
-        naturalTo = RefineSnippetEnd(pageText, textByteLen, textLen, mEnd, textLen);
+        naturalTo = RefineSnippetEnd(ctx, mEnd, textLen);
         to = std::max(mEnd, std::min(naturalTo, maxTo));
         if (to - from > kMaxSnippetGlyphs) {
             to = from + kMaxSnippetGlyphs;
         }
     }
 
-    int fromByte = Utf8CodepointToByteIndex(pageText, textByteLen, from);
-    int toByte = Utf8CodepointToByteIndex(pageText, textByteLen, to);
+    int fromByte = ts->PageCodepointByteOffset(m.startPage, from);
+    int toByte = ts->PageCodepointByteOffset(m.startPage, to);
     if (fromByte < 0 || toByte <= fromByte || toByte > textByteLen) {
         return nullptr;
     }
@@ -1022,18 +1103,19 @@ static char* BuildSnippet(EngineBase* engine, const FindMatch& m, int maxSnippet
     return str::Dup(full);
 }
 
-static char* BuildSnippet(MainWindow* win, EngineBase* engine, const FindMatch& m) {
-    return BuildSnippet(engine, m, FindSnippetMaxGlyphs(win));
+static char* BuildSnippet(MainWindow* win, TextSearch* ts, const FindMatch& m) {
+    return BuildSnippet(ts, m, FindSnippetMaxGlyphs(win));
 }
 
 static void BuildSnippetsForMatchList(MainWindow* win, EngineBase* engine, Vec<FindMatch>* matches) {
     if (!win || !engine || !matches) {
         return;
     }
+    TextSearch ts(engine);
     for (int i = 0; i < (int)matches->size(); i++) {
         FindMatch& fm = (*matches)[i];
         if (!fm.snippet) {
-            fm.snippet = BuildSnippet(win, engine, fm);
+            fm.snippet = BuildSnippet(win, &ts, fm);
         }
     }
 }
@@ -1047,9 +1129,10 @@ void RebuildFindMatchSnippets(MainWindow* win) {
     if (!engine) {
         return;
     }
+    TextSearch ts(engine);
     for (size_t i = 0; i < win->findMatches.size(); i++) {
         FindMatch& fm = win->findMatches[i];
-        char* s = BuildSnippet(win, engine, fm);
+        char* s = BuildSnippet(win, &ts, fm);
         str::ReplacePtr(&fm.snippet, s);
     }
     win->findCountHasSnippets = true;
@@ -1136,7 +1219,7 @@ static Vec<FindMatch>* BuildFindMatchesFromPositions(MainWindow* win, EngineBase
                     fm.endGlyph = ts.CodepointToGlyph(end.page, end.offset);
                 }
             }
-            fm.snippet = BuildSnippet(win, engine, fm);
+            fm.snippet = BuildSnippet(win, &ts, fm);
         }
         matches->Append(fm);
     }
@@ -1154,6 +1237,8 @@ struct CountThreadData {
     int startPage = 1;          // scan from here (the current page), wrapping around
     int resumeFromPage = 0;     // continuation scans only this newly published tail
     int scannedPageLimit = 0;
+    int continuationPage = 0;
+    u32 textCacheGeneration = 0;
     DWORD lastAnimPostMs = 0;
     DWORD lastResultsPostMs = 0;
     int streamedMatchCount = 0;
@@ -1173,6 +1258,7 @@ struct CountThreadData {
         this->wantMatchList = wantMatchList;
         this->wantSnippets = wantSnippets;
         this->startPage = startPage;
+        this->textCacheGeneration = engine->GetTextCacheGeneration();
         this->epoch = epoch;
     }
     ~CountThreadData();
@@ -1195,6 +1281,27 @@ static Vec<FindMatch>* CloneFindMatches(const Vec<FindMatch>& source) {
         result->Append(fm);
     }
     return result;
+}
+
+static void RemoveMatchesStartingAtOrAfter(Vec<u64>* positions, Vec<FindMatch>* matches, int pageNo) {
+    if (pageNo <= 0) {
+        return;
+    }
+    if (positions) {
+        for (int i = (int)positions->size() - 1; i >= 0; i--) {
+            if ((int)((*positions)[i] >> 32) >= pageNo) {
+                positions->RemoveAt(i);
+            }
+        }
+    }
+    if (matches) {
+        for (int i = (int)matches->size() - 1; i >= 0; i--) {
+            if ((*matches)[i].startPage >= pageNo) {
+                str::Free((*matches)[i].snippet);
+                matches->RemoveAt(i);
+            }
+        }
+    }
 }
 
 CountThreadData::~CountThreadData() {
@@ -1282,12 +1389,14 @@ static bool TryInstallCountFromSession(MainWindow* win, DisplayModel* dm, Engine
         return false;
     }
     Vec<u64> positions = *entry.positions;
+    SortMatchesDocumentOrder(positions, nullptr);
     WCHAR* owned = str::Dup(text);
     bool wantSnippets = WantFindSnippets();
     Vec<FindMatch>* matches =
         BuildFindMatchesFromPositions(win, engine, text, matchCase, matchWholeWord, positions, wantSnippets);
     InstallCountCache(win, owned, matchCase, matchWholeWord, engine, positions, matches, wantSnippets && matches,
-                      entry.pageLimit, entry.scanStartPage);
+                      entry.pageLimit, entry.scanStartPage, entry.partial, entry.continuationPage,
+                      entry.textCacheGeneration);
     if (matches) {
         FreeMatchSnippets(matches);
         delete matches;
@@ -1322,20 +1431,33 @@ static void CountEndTask(CountEndTaskData* d) {
     }
     DisplayModel* dm = win->AsFixed();
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (engine && ctd->textCacheGeneration != engine->GetTextCacheGeneration()) {
+        // Text or layout changed while this worker was extracting pages. Its
+        // mixed-generation positions cannot seed a continuation.
+        win->findCountValid = false;
+        win->findCountPartial = false;
+        StartFindCount(win, ctd->text, ctd->matchCase, ctd->matchWholeWord);
+        return;
+    }
     int pageLimit = ctd->scannedPageLimit;
+    logf("search: end epoch=%ld scanned=%d matches=%d enginePages=%d modelPages=%d loading=%d continuation=%d\n",
+         (long)ctd->epoch, pageLimit, d->positions ? (int)d->positions->size() : 0, engine ? engine->PageCount() : 0,
+         dm ? dm->PageCount() : 0, engine ? EngineIsProgressiveEbookLoading(engine) : 0, ctd->continuationPage);
     str::FreePtr(&win->findCountText);
     WCHAR* text = ctd->text;
     ctd->text = nullptr;
     bool partial = dm && engine && (EngineIsProgressiveEbookLoading(engine) || dm->PageCount() > pageLimit);
+    SortMatchesDocumentOrder(*d->positions, d->matches);
     if (dm && engine && text) {
         dm->searchSession.Store(engine, text, ctd->matchCase, ctd->matchWholeWord, ctd->startPage, partial, pageLimit,
-                                ctd->scannedPageLimit, *d->positions);
+                                ctd->scannedPageLimit, ctd->continuationPage, *d->positions);
     }
     if (d->matches && ctd->wantSnippets && engine) {
         BuildSnippetsForMatchList(win, engine, d->matches);
     }
     InstallCountCache(win, text, ctd->matchCase, ctd->matchWholeWord, ctd->engine, *d->positions, d->matches,
-                      ctd->wantSnippets, pageLimit, ctd->startPage, partial);
+                      ctd->wantSnippets, pageLimit, ctd->startPage, partial, ctd->continuationPage,
+                      ctd->textCacheGeneration);
     if (d->matches) {
         for (int i = 0; i < (int)d->matches->size(); i++) {
             (*d->matches)[i].snippet = nullptr; // transferred to win->findMatches
@@ -1344,7 +1466,13 @@ static void CountEndTask(CountEndTaskData* d) {
     if (WantFindSnippets() && !win->findCountHasSnippets && win->findCountPositions.size() > 0) {
         EnsureFindMatchList(win);
     }
+    int pendingListIdx = FindWindowPendingNavigationIndex(win);
     FindWindowApplyPendingNavigation(win);
+    if (pendingListIdx <= 0 && win->findPendingFromPage > 0) {
+        int fromPage = win->findPendingFromPage;
+        win->findPendingFromPage = 0;
+        NavigateFirstMatchFromPage(win, fromPage);
+    }
     // a newer term arrived while we were scanning: run it now (no worker running)
     if (win->findCountPendingText) {
         WCHAR* pending = win->findCountPendingText;
@@ -1366,6 +1494,10 @@ static void CountProgress(CountThreadData* d, ProgressUpdateData* data) {
         return;
     }
     DWORD now = GetTickCount();
+    if (data->current > 0 && (data->current == 1 || data->current == data->total || data->current % 256 == 0)) {
+        logf("search: epoch=%ld page=%d/%d matches=%ld\n", (long)d->epoch, data->current, data->total,
+             (long)d->win->findCountLatestFound);
+    }
     if (now - d->lastAnimPostMs >= kFindStatusAnimateMs) {
         d->lastAnimPostMs = now;
         MaybePostFindCountAnimTask(d->win, d->epoch);
@@ -1410,7 +1542,8 @@ struct DocMatchScanOptions {
 };
 
 static void RunDocumentMatchScan(DocMatchScanOptions& opt, Vec<u64>* positions, Vec<FindMatch>* matches,
-                                 TextSearch* existingTs = nullptr, int* pagesScannedOut = nullptr) {
+                                 TextSearch* existingTs = nullptr, int* pagesScannedOut = nullptr,
+                                 int* continuationPageOut = nullptr) {
     TextSearch tsOwned(opt.engine);
     TextSearch* ts = existingTs ? existingTs : &tsOwned;
     if (!existingTs) {
@@ -1470,7 +1603,7 @@ static void RunDocumentMatchScan(DocMatchScanOptions& opt, Vec<u64>* positions, 
             fm.endPage = ms.endPage;
             fm.endGlyph = ms.endGlyph;
             if (opt.wantSnippets) {
-                fm.snippet = BuildSnippet(opt.engine, fm, opt.snippetMaxGlyphs);
+                fm.snippet = BuildSnippet(ts, fm, opt.snippetMaxGlyphs);
             }
             if (matchInsertAt >= 0 && matchInsertAt <= (int)matches->size()) {
                 matches->InsertAt(matchInsertAt, fm);
@@ -1504,7 +1637,7 @@ static void RunDocumentMatchScan(DocMatchScanOptions& opt, Vec<u64>* positions, 
         }
 
         Vec<TextSearch::MatchSpan> spans;
-        ts->CollectMatchesOnPage(pageNo, &spans);
+        ts->CollectMatchesOnPage(pageNo, &spans, continuationPageOut);
         if (WasCanceled(ts->progressCb)) {
             return false;
         }
@@ -1589,7 +1722,7 @@ static void CountThread(CountThreadData* d) {
     d->win->findCountLatestFound = (int)positions->size();
     DocMatchScanOptions opt;
     SetupCountScanOptions(opt, d, win);
-    RunDocumentMatchScan(opt, positions, matches, nullptr, &d->scannedPageLimit);
+    RunDocumentMatchScan(opt, positions, matches, nullptr, &d->scannedPageLimit, &d->continuationPage);
     MaybePostCountResults(d, matches, true);
     SafeEngineRelease(&engine);
 
@@ -1688,8 +1821,18 @@ static void StartFindCount(MainWindow* win, const WCHAR* text, bool matchCase, b
     bool resume = win->findCountValid && win->findCountPartial && win->findCountText &&
                   str::Eq(win->findCountText, text) && win->findCountMatchCase == matchCase &&
                   win->findCountMatchWholeWord == matchWholeWord && win->findCountEngine == engine &&
+                  win->findCountTextCacheGeneration == engine->GetTextCacheGeneration() &&
                   win->findCountPageLimit > 0 && win->findCountPageLimit < dm->PageCount();
-    int resumeFromPage = resume ? win->findCountPageLimit + 1 : 0;
+    int resumeFromPage = resume && win->findCountContinuationPage > 0 ? win->findCountContinuationPage
+                                                                      : (resume ? win->findCountPageLimit + 1 : 0);
+    if (resume) {
+        // The old boundary is no longer authoritative. Remove it from the
+        // installed model before streaming replacement rows from this pass.
+        RemoveMatchesStartingAtOrAfter(&win->findCountPositions, &win->findMatches, resumeFromPage);
+        win->findCountLatestFound = (int)win->findCountPositions.size();
+        FindWindowRefreshResults(win, false);
+        ShowMatchCount(win);
+    }
     Vec<u64>* seedPositions = resume ? new Vec<u64>(win->findCountPositions) : nullptr;
     Vec<FindMatch>* seedMatches = resume ? CloneFindMatches(win->findMatches) : nullptr;
     int originalStartPage = resume ? win->findCountStartPage : (win->ctrl ? win->ctrl->CurrentPageNo() : 1);
@@ -1697,6 +1840,7 @@ static void StartFindCount(MainWindow* win, const WCHAR* text, bool matchCase, b
     if (!resume) {
         win->findCountValid = false;
         win->findCountPartial = false;
+        win->findCountContinuationPage = 0;
     }
     win->findCountLatestFound = seedPositions ? (int)seedPositions->size() : 0;
     win->findCountEngine = engine;
@@ -1720,6 +1864,11 @@ static void StartFindCount(MainWindow* win, const WCHAR* text, bool matchCase, b
         delete seedPositions;
         FreeMatchSnippets(seedMatches);
         delete seedMatches;
+        if (win->findPendingFromPage > 0) {
+            int fromPage = win->findPendingFromPage;
+            win->findPendingFromPage = 0;
+            NavigateFirstMatchFromPage(win, fromPage);
+        }
         return;
     }
 
@@ -1822,23 +1971,14 @@ void OnEbookPageCountChanged(MainWindow* win) {
     }
     if (!EngineIsProgressiveEbookLoading(engine)) {
         if (win->findCountPartial) {
-            // Pages indexed while reflow was still in progress can be stale.
-            // Rescan the whole document once layout has settled.
-            win->findCountValid = false;
+            // The published prefix is stable. Any candidate that needed pages
+            // beyond the final frontier is now a definite non-match, so the
+            // accumulated incremental result is complete without a full rescan.
             win->findCountPartial = false;
-            win->findCountPositions.Reset();
-            ClearFindMatches(win);
-            if (dm->textSearch) {
-                dm->textSearch->InvalidatePageMatchCache();
-            }
-            if (!win->findCountThread && !win->findThread) {
-                StartFindCount(win, text, win->findCountMatchCase, win->findCountMatchWholeWord);
-            }
-            return;
+            win->findCountContinuationPage = 0;
         }
-        win->findCountPartial = false;
         dm->searchSession.Store(engine, text, win->findCountMatchCase, win->findCountMatchWholeWord,
-                                win->findCountStartPage, false, win->findCountPageLimit, win->findCountPageLimit,
+                                win->findCountStartPage, false, win->findCountPageLimit, win->findCountPageLimit, 0,
                                 win->findCountPositions);
         ShowMatchCount(win);
         FindBarBeginStatusCompleteFlash(win);
@@ -1861,8 +2001,13 @@ void GoToFindMatch(MainWindow* win, int startPage, int startGlyph, int endPage, 
     // A first-match worker shares dm->textSearch and must be joined. The count
     // worker owns a private TextSearch; navigation from its streamed rows uses
     // text already cached for that match and can safely continue concurrently.
-    if (win->findThread || win->findEnterPending) {
+    // findEnterPending only means Enter has not started that first-match
+    // worker. AbortFinding would also AbortCount, which permanently stops
+    // progressive full-document search after a results-list click.
+    if (win->findThread) {
         AbortFinding(win, true);
+    } else {
+        win->findEnterPending = false;
     }
     ClearFindSearchProgressCb(win);
     TextSearch* ts = dm->textSearch;
@@ -1916,23 +2061,10 @@ void GoToFindMatch(MainWindow* win, int startPage, int startGlyph, int endPage, 
     FindWindowRefreshResults(win, false);
 }
 
-// step through the cached match list (same order as the n/m counter and the
-// floating results list) instead of re-scanning the document
-static bool TryNavigateCachedFindMatch(MainWindow* win, TextSearch::Direction direction) {
-    if (!win->findCountValid) {
-        return false;
-    }
+static bool GoToCachedMatchIndex(MainWindow* win, int idx) {
     int n = (int)win->findCountPositions.size();
-    if (n == 0) {
+    if (idx < 0 || idx >= n) {
         return false;
-    }
-    bool forward = direction == TextSearch::Direction::Forward;
-    int cur = FindCurrentMatchIndex(win);
-    int idx;
-    if (forward) {
-        idx = (cur < 0) ? 0 : (cur + 1) % n;
-    } else {
-        idx = (cur < 0) ? n - 1 : (cur - 1 + n) % n;
     }
     if ((int)win->findMatches.size() == n) {
         const FindMatch& fm = win->findMatches[idx];
@@ -1962,6 +2094,84 @@ static bool TryNavigateCachedFindMatch(MainWindow* win, TextSearch::Direction di
     }
     GoToFindMatch(win, page, glyph, end.page, ts.CodepointToGlyph(end.page, end.offset));
     return true;
+}
+
+static bool NavigateFirstMatchFromPage(MainWindow* win, int startPage) {
+    if (!win->findCountValid) {
+        return false;
+    }
+    int n = (int)win->findCountPositions.size();
+    if (n == 0) {
+        return false;
+    }
+    int idx = FirstSortedIndexAtOrAfterPage(win->findCountPositions, startPage);
+    if (idx < 0) {
+        idx = 0;
+    }
+    return GoToCachedMatchIndex(win, idx);
+}
+
+static bool ViewLeftCurrentFindHit(MainWindow* win) {
+    DisplayModel* dm = win->AsFixed();
+    if (!dm || !dm->textSearch || dm->textSearch->result.len == 0) {
+        return true;
+    }
+    if (!win->ctrl) {
+        return true;
+    }
+    return win->ctrl->CurrentPageNo() != dm->textSearch->startPage;
+}
+
+bool FindEnterFromCurrentPageIfNeeded(MainWindow* win) {
+    if (!win || !win->IsDocLoaded() || !NeedsFindUI(win)) {
+        return false;
+    }
+    if (!ViewLeftCurrentFindHit(win)) {
+        return false;
+    }
+    int page = win->ctrl ? win->ctrl->CurrentPageNo() : 1;
+    if (page < 1) {
+        page = 1;
+    }
+    if (CountCacheIsComplete(win)) {
+        if (win->findCountPositions.size() == 0) {
+            return false;
+        }
+        win->findPendingFromPage = 0;
+        return NavigateFirstMatchFromPage(win, page);
+    }
+    // count still running or incomplete: jump after the sorted cache lands
+    win->findPendingFromPage = page;
+    return true;
+}
+
+// step through the cached match list (same order as the n/m counter and the
+// floating results list) instead of re-scanning the document
+static bool TryNavigateCachedFindMatch(MainWindow* win, TextSearch::Direction direction) {
+    if (!win->findCountValid) {
+        return false;
+    }
+    int n = (int)win->findCountPositions.size();
+    if (n == 0) {
+        return false;
+    }
+    bool forward = direction == TextSearch::Direction::Forward;
+    int cur = FindCurrentMatchIndex(win);
+    int idx;
+    if (cur < 0) {
+        int page = win->ctrl ? win->ctrl->CurrentPageNo() : 1;
+        int from = FirstSortedIndexAtOrAfterPage(win->findCountPositions, page);
+        if (forward) {
+            idx = from >= 0 ? from : 0;
+        } else {
+            idx = from > 0 ? from - 1 : n - 1;
+        }
+    } else if (forward) {
+        idx = (cur + 1) % n;
+    } else {
+        idx = (cur - 1 + n) % n;
+    }
+    return GoToCachedMatchIndex(win, idx);
 }
 
 static void FindEndTask(FindEndTaskData* d) {

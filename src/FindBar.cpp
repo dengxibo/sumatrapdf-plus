@@ -471,6 +471,9 @@ bool FindBarWnd::PreTranslateMessage(MSG& msg) {
         if (FindFlushPendingSearch(win)) {
             return true;
         }
+        if (!IsShiftPressed() && FindEnterFromCurrentPageIfNeeded(win)) {
+            return true;
+        }
         IsShiftPressed() ? FindPrev(win) : FindNext(win);
         return true;
     }
@@ -495,6 +498,9 @@ bool FindBarWnd::PreTranslateMessage(MSG& msg) {
             // Enter starts a search only after the query changes; otherwise it
             // steps to the next match (issue #4626).
             if (msg.wParam == VK_RETURN && FindFlushPendingSearch(win)) {
+                return true;
+            }
+            if (msg.wParam == VK_RETURN && !IsShiftPressed() && FindEnterFromCurrentPageIfNeeded(win)) {
                 return true;
             }
             if (IsShiftPressed()) {

@@ -6,6 +6,7 @@
 #include "utils/WinUtil.h"
 #include "utils/FileUtil.h"
 #include "utils/TgaReader.h"
+#include "utils/Timer.h"
 
 #include "wingui/UIModels.h"
 
@@ -23,6 +24,8 @@
 #include "TextSearch.h"
 
 #include "utils/Log.h"
+
+#include <psapi.h>
 
 static FILE* gRenderDiagLog = nullptr;
 
@@ -278,29 +281,183 @@ static void extractPageText(EngineBase* engine, int pageNo) {
     FreePageTextUtf8(&pageText);
 }
 
-static int CountMatchesFindNext(EngineBase* engine, const WCHAR* term) {
+static int CountMatchesFindNext(EngineBase* engine, const WCHAR* term, Vec<u64>* positions = nullptr) {
     TextSearch ts(engine);
     int n = 0;
     if (ts.FindFirst(1, term)) {
         n++;
+        if (positions) {
+            positions->Append(((u64)(u32)ts.startPage << 32) | (u32)ts.startGlyph);
+        }
         while (ts.FindNext()) {
             n++;
+            if (positions) {
+                positions->Append(((u64)(u32)ts.startPage << 32) | (u32)ts.startGlyph);
+            }
         }
     }
     return n;
 }
 
-static int CountMatchesCollect(EngineBase* engine, const WCHAR* term) {
+static void CollectMatchPositions(EngineBase* engine, const WCHAR* term, Vec<u64>& positions) {
     TextSearch ts(engine);
     ts.SetText(term);
     ts.SyncPageCount();
-    int n = 0;
     for (int pageNo = 1; pageNo <= ts.nPages; pageNo++) {
         Vec<TextSearch::MatchSpan> spans;
         ts.CollectMatchesOnPage(pageNo, &spans);
-        n += (int)spans.size();
+        for (TextSearch::MatchSpan& span : spans) {
+            u64 key = ((u64)(u32)span.startPage << 32) | (u32)span.startGlyph;
+            positions.Append(key);
+        }
     }
-    return n;
+}
+
+static void LogMissingFindNextPositions(const Vec<u64>& viaFind, const Vec<u64>& viaCollect) {
+    int findIdx = 0;
+    for (int i = 0; i < (int)viaCollect.size(); i++) {
+        u64 expected = viaCollect[i];
+        while (findIdx < (int)viaFind.size() && viaFind[findIdx] < expected) {
+            findIdx++;
+        }
+        if (findIdx >= (int)viaFind.size() || viaFind[findIdx] != expected) {
+            logf("  FindNext missing page=%d glyph=%d\n", (int)(expected >> 32), (int)(expected & 0xffffffff));
+        }
+    }
+}
+
+struct SearchBenchMemory {
+    size_t workingSet = 0;
+    size_t peakWorkingSet = 0;
+};
+
+static SearchBenchMemory GetSearchBenchMemory() {
+    SearchBenchMemory result;
+    PROCESS_MEMORY_COUNTERS counters{};
+    counters.cb = sizeof(counters);
+    HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
+    using GetProcessMemoryInfoFunc = BOOL(WINAPI*)(HANDLE, PPROCESS_MEMORY_COUNTERS, DWORD);
+    auto getMemoryInfo =
+        kernel32 ? (GetProcessMemoryInfoFunc)GetProcAddress(kernel32, "K32GetProcessMemoryInfo") : nullptr;
+    if (getMemoryInfo && getMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters))) {
+        result.workingSet = counters.WorkingSetSize;
+        result.peakWorkingSet = counters.PeakWorkingSetSize;
+    }
+    return result;
+}
+
+static bool EqualMatchPositions(const Vec<u64>& a, const Vec<u64>& b) {
+    if (a.size() != b.size()) {
+        return false;
+    }
+    for (int i = 0; i < (int)a.size(); i++) {
+        if (a[i] != b[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void RemovePositionSuffix(Vec<u64>& positions, int pageNo) {
+    for (int i = (int)positions.size() - 1; i >= 0; i--) {
+        if ((int)(positions[i] >> 32) >= pageNo) {
+            positions.RemoveAt(i);
+        }
+    }
+}
+
+static bool VerifyIncrementalMatchPositions(EngineBase* engine, const WCHAR* term) {
+    Vec<u64> expected;
+    CollectMatchPositions(engine, term, expected);
+
+    int pageCount = engine->PageCount();
+    int frontiers[] = {std::max(1, pageCount / 4), std::max(1, pageCount / 2), std::max(1, pageCount * 3 / 4),
+                       pageCount};
+    int resumeFromPage = 1;
+    Vec<u64> actual;
+    for (int frontier : frontiers) {
+        RemovePositionSuffix(actual, resumeFromPage);
+        TextSearch ts(engine);
+        ts.SetMaxPageCount(frontier);
+        ts.SetText(term);
+        ts.SyncPageCount();
+        int continuationPage = 0;
+        for (int pageNo = resumeFromPage; pageNo <= frontier; pageNo++) {
+            Vec<TextSearch::MatchSpan> spans;
+            ts.CollectMatchesOnPage(pageNo, &spans, &continuationPage);
+            for (TextSearch::MatchSpan& span : spans) {
+                u64 key = ((u64)(u32)span.startPage << 32) | (u32)span.startGlyph;
+                actual.Append(key);
+            }
+        }
+        resumeFromPage = continuationPage > 0 ? continuationPage : frontier + 1;
+    }
+    bool same = EqualMatchPositions(expected, actual);
+    logf("search-incremental term '%S': expected=%d actual=%d equal=%d\n", term, (int)expected.size(),
+         (int)actual.size(), same);
+    return same;
+}
+
+static double MedianOfThree(double* values) {
+    if (values[0] > values[1]) {
+        double tmp = values[0];
+        values[0] = values[1];
+        values[1] = tmp;
+    }
+    if (values[1] > values[2]) {
+        double tmp = values[1];
+        values[1] = values[2];
+        values[2] = tmp;
+    }
+    if (values[0] > values[1]) {
+        double tmp = values[0];
+        values[0] = values[1];
+        values[1] = tmp;
+    }
+    return values[1];
+}
+
+static bool BenchmarkSearchCacheStages(EngineBase* engine, const WCHAR* term, const char* termKind) {
+    constexpr int kRounds = 3;
+    double coldMs[kRounds]{};
+    double hotMs[kRounds]{};
+    double cachedMs[kRounds]{};
+    bool ok = true;
+    logf("search-bench term '%S' (%s)\n", term, termKind);
+    for (int round = 0; round < kRounds; round++) {
+        engine->ClearTextCache();
+        Vec<u64> coldPositions;
+        auto t = TimeGet();
+        CollectMatchPositions(engine, term, coldPositions);
+        coldMs[round] = TimeSinceInMs(t);
+        SearchBenchMemory coldMem = GetSearchBenchMemory();
+
+        Vec<u64> hotPositions;
+        t = TimeGet();
+        CollectMatchPositions(engine, term, hotPositions);
+        hotMs[round] = TimeSinceInMs(t);
+        SearchBenchMemory hotMem = GetSearchBenchMemory();
+
+        volatile u64 checksum = 0;
+        t = TimeGet();
+        for (u64 key : hotPositions) {
+            checksum ^= key;
+        }
+        cachedMs[round] = TimeSinceInMs(t);
+        SearchBenchMemory cachedMem = GetSearchBenchMemory();
+
+        bool same = EqualMatchPositions(coldPositions, hotPositions);
+        ok = ok && same;
+        logf(
+            "  round %d: cold=%.2f ms hot=%.2f ms cached=%.4f ms matches=%d equal=%d checksum=%llu "
+            "ws=%.1f/%.1f/%.1f MiB processPeak=%.1f MiB\n",
+            round + 1, coldMs[round], hotMs[round], cachedMs[round], (int)hotPositions.size(), same,
+            (unsigned long long)checksum, coldMem.workingSet / (1024.0 * 1024.0), hotMem.workingSet / (1024.0 * 1024.0),
+            cachedMem.workingSet / (1024.0 * 1024.0), cachedMem.peakWorkingSet / (1024.0 * 1024.0));
+    }
+    logf("  median: cold=%.2f ms hot=%.2f ms cached=%.4f ms\n", MedianOfThree(coldMs), MedianOfThree(hotMs),
+         MedianOfThree(cachedMs));
+    return ok;
 }
 
 static bool VerifyUtf8TextCache(EngineBase* engine) {
@@ -336,18 +493,40 @@ void TestSearchCollect(const Flags& ci) {
             failures++;
             continue;
         }
+        // Standalone tests have no foreground tab to resume the progressive
+        // MuPDF chapter counter. Treat this engine as foreground while waiting.
+        EngineMupdfSetReflowLoadWhenForeground(engine, true);
+        auto progressiveStart = TimeGet();
+        while (EngineIsProgressiveEbookLoading(engine)) {
+            Sleep(50);
+        }
+        logf("search-bench progressive load done: %.2f ms, pages=%d\n", TimeSinceInMs(progressiveStart),
+             engine->PageCount());
         if (!VerifyUtf8TextCache(engine)) {
             failures++;
         }
         for (int i = 0; terms[i]; i++) {
-            int viaFind = CountMatchesFindNext(engine, terms[i]);
-            int viaCollect = CountMatchesCollect(engine, terms[i]);
+            Vec<u64> findPositions;
+            Vec<u64> collectPositions;
+            int viaFind = CountMatchesFindNext(engine, terms[i], &findPositions);
+            CollectMatchPositions(engine, terms[i], collectPositions);
+            int viaCollect = (int)collectPositions.size();
             if (viaFind != viaCollect) {
                 logf("FAIL term '%S': FindNext=%d Collect=%d\n", terms[i], viaFind, viaCollect);
+                LogMissingFindNextPositions(findPositions, collectPositions);
                 failures++;
             } else {
                 logf("OK term '%S': %d matches\n", terms[i], viaFind);
             }
+        }
+        if (!BenchmarkSearchCacheStages(engine, L"the", "ordinary")) {
+            failures++;
+        }
+        if (!BenchmarkSearchCacheStages(engine, L"a", "high-frequency")) {
+            failures++;
+        }
+        if (!VerifyIncrementalMatchPositions(engine, L"the")) {
+            failures++;
         }
         SafeEngineRelease(&engine);
     }
