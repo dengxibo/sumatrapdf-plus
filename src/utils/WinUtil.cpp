@@ -2396,6 +2396,21 @@ Rect GetFullscreenRect(HWND hwnd) {
     return Rect(0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
 }
 
+// Tell Explorer this window is fullscreen so the taskbar goes below it.
+void MarkShellFullscreenWindow(HWND hwnd, bool fullscreen) {
+    if (!hwnd) {
+        return;
+    }
+    ScopedComPtr<ITaskbarList2> tbl;
+    if (!tbl.Create(CLSID_TaskbarList)) {
+        return;
+    }
+    if (FAILED(tbl->HrInit())) {
+        return;
+    }
+    tbl->MarkFullscreenWindow(hwnd, fullscreen);
+}
+
 static BOOL CALLBACK GetMonitorRectProc(HMONITOR, HDC, LPRECT rcMonitor, LPARAM data) {
     Rect* rcAll = (Rect*)data;
     *rcAll = rcAll->Union(ToRect(*rcMonitor));
@@ -2980,16 +2995,16 @@ void DeferWinPosHelper::SetWindowPos(HWND hwnd, const Rect rc) {
     hdwp = ::DeferWindowPos(hdwp, hwnd, nullptr, rc.x, rc.y, rc.dx, rc.dy, flags);
 }
 
-void DeferWinPosHelper::MoveWindow(HWND hWnd, int x, int y, int cx, int cy, BOOL bRepaint) {
-    uint uFlags = SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER;
+void DeferWinPosHelper::MoveWindow(HWND hWnd, int x, int y, int cx, int cy, BOOL bRepaint, uint extraFlags) {
+    uint uFlags = SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER | extraFlags;
     if (!bRepaint) {
         uFlags |= SWP_NOREDRAW;
     }
     this->SetWindowPos(hWnd, nullptr, x, y, cx, cy, uFlags);
 }
 
-void DeferWinPosHelper::MoveWindow(HWND hWnd, Rect r) {
-    this->MoveWindow(hWnd, r.x, r.y, r.dx, r.dy);
+void DeferWinPosHelper::MoveWindow(HWND hWnd, Rect r, uint extraFlags) {
+    this->MoveWindow(hWnd, r.x, r.y, r.dx, r.dy, TRUE, extraFlags);
 }
 
 void MenuSetChecked(HMENU m, int id, bool isChecked) {

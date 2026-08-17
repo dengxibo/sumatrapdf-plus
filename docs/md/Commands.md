@@ -77,7 +77,7 @@ CmdRotateLeft,"[, Shift + Ctrl + Subtract",Rotate Left,
 CmdRotateRight,"], Shift + Ctrl + Add",Rotate Right,
 CmdSinglePageView,Ctrl + 6,Single Page View,
 CmdToggleContinuousView,c,Toggle Continuous View,
-CmdToggleFullscreen,"f, Shift + Ctrl + L, F11",Toggle Fullscreen,
+CmdToggleFullscreen,"f, Shift + Ctrl + L, F11",Toggle Fullscreen,Toolbar button, ver 3.7.28+
 CmdToggleMangaMode,,Toggle Manga Mode,
 CmdToggleMenuBar,F9,Toggle Menu Bar,
 CmdTogglePageInfo,i,Show / Hide Current Page Number,was Shift + i before 3.6

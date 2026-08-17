@@ -27,8 +27,6 @@
 
 #include <psapi.h>
 
-static FILE* gRenderDiagLog = nullptr;
-
 static void PrintBitmapLuminanceStats(RenderedBitmap* bmp, Vec<Rect>* skipRects) {
     Size size = bmp->GetSize();
     int stepX = std::max(1, size.dx / 64);
@@ -36,9 +34,6 @@ static void PrintBitmapLuminanceStats(RenderedBitmap* bmp, Vec<Rect>* skipRects)
     BitmapPixels* px = GetBitmapPixels(bmp->GetBitmap());
     if (!px) {
         printf("  luminance stats unavailable\n");
-        if (gRenderDiagLog) {
-            fputs("  luminance stats unavailable\n", gRenderDiagLog);
-        }
         return;
     }
     u64 sumAll = 0, sumText = 0;
@@ -91,16 +86,9 @@ static void PrintBitmapLuminanceStats(RenderedBitmap* bmp, Vec<Rect>* skipRects)
     snprintf(line, dimof(line), "  corners TL=(%d,%d,%d) TR=(%d,%d,%d) BL=(%d,%d,%d) BR=(%d,%d,%d) center=(%d,%d,%d)\n",
              tlR, tlG, tlB, trR, trG, trB, blR, blG, blB, brR, brG, brB, cR, cG, cB);
     printf("%s", line);
-    if (gRenderDiagLog) {
-        fputs(line, gRenderDiagLog);
-    }
     snprintf(line, dimof(line), "  luminance avg(all)=%.1f avg(non-skip)=%.1f skipRects=%d size=%dx%d\n", avgAll,
              avgText, skipRects ? skipRects->Size() : 0, size.dx, size.dy);
     printf("%s", line);
-    if (gRenderDiagLog) {
-        fputs(line, gRenderDiagLog);
-        fflush(gRenderDiagLog);
-    }
 }
 
 static const char* PageColorModeLabel(PageColorMode mode) {
@@ -144,30 +132,15 @@ void TestRenderPage(const Flags& i) {
         RedirectIOToConsole();
     }
 
-    gRenderDiagLog = fopen("c:\\src\\sumatrapdf\\tmp-raz-aa\\render-diag.txt", "ab");
-    auto diag = [](const char* line) {
-        printf("%s", line);
-        if (gRenderDiagLog) {
-            fputs(line, gRenderDiagLog);
-            fflush(gRenderDiagLog);
-        }
-    };
+    auto diag = [](const char* line) { printf("%s", line); };
 
     if (i.pageNumber < 1) {
         diag("pageNumber invalid (use -render N file.pdf)\n");
-        if (gRenderDiagLog) {
-            fclose(gRenderDiagLog);
-            gRenderDiagLog = nullptr;
-        }
         return;
     }
     auto files = i.fileNames;
     if (files.Size() == 0) {
         diag("no file provided\n");
-        if (gRenderDiagLog) {
-            fclose(gRenderDiagLog);
-            gRenderDiagLog = nullptr;
-        }
         return;
     }
 
@@ -257,10 +230,6 @@ void TestRenderPage(const Flags& i) {
         }
         delete bmp;
         SafeEngineRelease(&engine);
-    }
-    if (gRenderDiagLog) {
-        fclose(gRenderDiagLog);
-        gRenderDiagLog = nullptr;
     }
 }
 static void extractPageText(EngineBase* engine, int pageNo) {

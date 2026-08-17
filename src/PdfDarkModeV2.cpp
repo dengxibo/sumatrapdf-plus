@@ -50,6 +50,30 @@ static float v2_image_coverage(fz_matrix ctm, const RectF& pageBounds) {
     return (img.dx * img.dy) / (pageBounds.dx * pageBounds.dy);
 }
 
+// 公文 scans often sit inside the media box (coverage 0.4–0.75) and were treated as
+// small badge images: white-mat knockout leaves light paper + neon red headers.
+static bool v2_large_office_scan_image(fz_context* ctx, fz_image* image, float coverage) {
+    if (!ctx || !image) {
+        return false;
+    }
+    if (coverage < 0.35f || coverage >= kV2FullPageCoverage) {
+        return false;
+    }
+    if (image->w < 1000 || image->h < 1200) {
+        return false;
+    }
+    DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, image, coverage, true);
+    const DarkImageFeatures& f = analysis.features;
+    if (PdfDarkModeFeaturesLookLikePhoto(f) || PdfDarkModeFeaturesLookLikeGrayscalePhoto(f) ||
+        PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(f)) {
+        return false;
+    }
+    return PdfDarkModeFeaturesLookLikeGovernmentPaperScan(f) ||
+           PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(f) ||
+           PdfDarkModeFeaturesLookLikeFullPageTextScanForBinarize(f) || PdfDarkModeFeaturesLookLikeBwLineArtScan(f) ||
+           (f.highLuminanceRatio > 0.85f && f.saturatedPixelRatio < 0.15f && f.luminanceVariance < 0.040f);
+}
+
 static void v2_transform_pixmap(fz_context* ctx, fz_pixmap* pix, const DarkModePalette& palette) {
     if (!pix || !pix->samples) {
         return;
@@ -249,6 +273,14 @@ static fz_image* v2_build_page_image(fz_context* ctx, fz_image* srcImage, const 
         } else {
             src = fz_get_pixmap_from_image(ctx, srcImage, nullptr, nullptr, nullptr, nullptr);
         }
+        // A gray destination cannot represent a chromatic theme background. Promote
+        // before remapping so Dracula and similar palettes retain their exact tint.
+        if (src && src->colorspace && fz_colorspace_is_gray(ctx, src->colorspace)) {
+            fz_pixmap* rgbSrc =
+                fz_convert_pixmap(ctx, src, fz_device_rgb(ctx), nullptr, nullptr, fz_default_color_params, 1);
+            fz_drop_pixmap(ctx, src);
+            src = rgbSrc;
+        }
         if (src && src->samples) {
             // Photo rects preserved; margins / paper / baked text → Okular→theme.
             // Analyze so B&W documentary portraits (RAZ Abraham Lincoln) seek photo rects.
@@ -378,10 +410,11 @@ static void v2_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_m
         return;
     }
     float coverage = v2_image_coverage(ctm, d->pageBounds);
+    bool largeOffice = v2_large_office_scan_image(ctx, image, coverage);
 
     // Small/medium images: knock out JPEG white mats around colorful badges (UNIT / Atlas).
     // Full-page path below handles scans; do not Okular-wash ordinary photos here.
-    if (coverage < kV2FullPageCoverage) {
+    if (coverage < kV2FullPageCoverage && !largeOffice) {
         fz_image* cached = nullptr;
         if (d->engineCache) {
             cached = PdfDarkModeEngineCacheLookupProcessed(ctx, d->engineCache, image, d->profileHash,

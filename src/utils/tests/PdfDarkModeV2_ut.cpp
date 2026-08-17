@@ -120,10 +120,32 @@ void PdfDarkModeV2_UnitTests() {
     utassert(!PdfDarkModeV2LooksLikeSoftShadowPlate(0.02f, 0.03f, 0.01f, 0.30f)); // dark plate
 
     // Speech-bubble clusters vs portrait mats: interior paper, not the rim.
-    utassert(PdfDarkModeV2PhotoRectIsCalloutCluster(0.50f));
-    utassert(PdfDarkModeV2PhotoRectIsCalloutCluster(0.35f));
-    utassert(!PdfDarkModeV2PhotoRectIsCalloutCluster(0.20f));
-    utassert(!PdfDarkModeV2PhotoRectIsCalloutCluster(0.10f));
+    utassert(PdfDarkModeV2PhotoRectIsCalloutCluster(0.50f, 0.01f, 5, 0.02f));
+    utassert(PdfDarkModeV2PhotoRectIsCalloutCluster(0.35f, 0.02f, 8, 0.04f));
+    utassert(!PdfDarkModeV2PhotoRectIsCalloutCluster(0.20f, 0.01f, 5, 0.02f));
+    utassert(!PdfDarkModeV2PhotoRectIsCalloutCluster(0.10f, 0.01f, 5, 0.02f));
+    // White-heavy photographs retain continuous tone / local texture and must not
+    // be discarded as callout clusters before edge-connected mat removal.
+    utassert(!PdfDarkModeV2PhotoRectIsCalloutCluster(0.72f, 0.08f, 24, 0.18f));
+    utassert(!PdfDarkModeV2PhotoRectIsCalloutCluster(0.80f, 0.11f, 18, 0.03f));
+    // Jazz Greats trumpet: cream fill, no grain. Meganeura: high inset paper.
+    utassert(PdfDarkModeV2PhotoRectIsLightIllustrationWash(0.20f, 0.00f, 0.835f, 0.04f));
+    utassert(!PdfDarkModeV2PhotoRectIsLightIllustrationWash(0.70f, 0.00f, 0.90f, 0.02f));
+    utassert(!PdfDarkModeV2PhotoRectIsLightIllustrationWash(0.20f, 0.10f, 0.835f, 0.04f));
+    utassert(!PdfDarkModeV2PhotoRectIsLightIllustrationWash(0.20f, 0.00f, 0.40f, 0.04f));
+    utassert(!PdfDarkModeV2PhotoRectIsLightIllustrationWash(0.20f, 0.00f, 0.835f, 0.22f));
+
+    // Full-bleed photo: colorful continuous tone with no white-paper frame.
+    utassert(PdfDarkModeV2ShouldPreserveFullBleedPhoto(0.15f, 0.55f, 0.64f, 0.080f));
+    // Photo inset on white paper (photo book / every tested RAZ page): keep rect protection.
+    utassert(!PdfDarkModeV2ShouldPreserveFullBleedPhoto(1.00f, 0.55f, 0.64f, 0.080f));
+    // Borderless flat artwork and low-color scans are not automatically photos.
+    utassert(!PdfDarkModeV2ShouldPreserveFullBleedPhoto(0.10f, 0.05f, 0.08f, 0.010f));
+    // 红楼梦连环画 cream paper (runtime p.7 / p.56): not a full-bleed photograph.
+    utassert(!PdfDarkModeV2ShouldPreserveFullBleedPhoto(0.016f, 0.163f, 0.697f, 0.053f));
+    utassert(!PdfDarkModeV2ShouldPreserveFullBleedPhoto(0.310f, 0.161f, 0.339f, 0.050f));
+    // Color cover of the same PDF must still preserve original pixels.
+    utassert(PdfDarkModeV2ShouldPreserveFullBleedPhoto(0.00f, 0.977f, 0.993f, 0.044f));
 
     // MRC leftover-text crush: paper-heavy backgrounds only; keep cover photos.
     utassert(PdfDarkModeV2ShouldCrushMrcBackgroundGhosts(0.723f));
@@ -134,4 +156,18 @@ void PdfDarkModeV2_UnitTests() {
     utassert(!PdfDarkModeV2IsMrcBackgroundGhostPixel(0.35f, 0.75f)); // orange sidebar
     utassert(!PdfDarkModeV2IsMrcBackgroundGhostPixel(0.20f, 0.05f)); // dark ink
     utassert(!PdfDarkModeV2IsMrcBackgroundGhostPixel(0.70f, 0.50f)); // colorful midtone
+
+    // RAZ SPRAK p.2 title row vs illustration / B&W portrait (Lincoln suit has little paper).
+    utassert(PdfDarkModeV2PhotoRectRowLooksLikeInkOnPaper(0.02f, 0.04f, 0.70f));
+    utassert(PdfDarkModeV2PhotoRectRowLooksLikeInkOnPaper(0.00f, 0.00f, 1.00f)); // white gap under the title
+    utassert(!PdfDarkModeV2PhotoRectRowLooksLikeInkOnPaper(0.25f, 0.40f, 0.15f));
+    utassert(!PdfDarkModeV2PhotoRectRowLooksLikeInkOnPaper(0.04f, 0.45f, 0.20f));
+    utassert(!PdfDarkModeV2PhotoRectRowLooksLikeInkOnPaper(0.02f, 0.05f, 0.08f)); // dark suit / silhouette
+
+    // Oval portrait poles: keep dark hair in the mat halo; invert ink that sits on paper.
+    utassert(PdfDarkModeV2PhotoHaloKeepDarkPixel(0.20f, false));  // hair away from mat
+    utassert(!PdfDarkModeV2PhotoHaloKeepDarkPixel(0.18f, true));  // wrapped text on mat
+    utassert(!PdfDarkModeV2PhotoHaloKeepDarkPixel(0.40f, true));  // near-mat gray uses ink/paper map
+    utassert(!PdfDarkModeV2PhotoHaloKeepDarkPixel(0.90f, true));  // white mat
+    utassert(!PdfDarkModeV2PhotoHaloKeepDarkPixel(0.80f, false)); // light AA still remaps
 }

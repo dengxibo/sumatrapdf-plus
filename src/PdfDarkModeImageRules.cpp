@@ -112,6 +112,17 @@ bool PdfDarkModeFeaturesLookLikeGovernmentPaperScan(const DarkImageFeatures& f) 
     if (PdfDarkModeFeaturesLookLikeColorfulIllustration(f) || PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(f)) {
         return false;
     }
+    // Near-white office scans collapse to almost no variance in the thumbnail.
+    // Decide these before SoftCream: neutral paper with either a broad flat field
+    // or an effectively all-white sample is a scan, not a pastel illustration.
+    bool neutralPaper = f.saturatedPixelRatio < 0.01f && f.chromaticPixelRatio < 0.01f;
+    if (neutralPaper && f.luminanceVariance < 0.004f && f.highLuminanceRatio > 0.98f) {
+        return true;
+    }
+    if (f.flatAreaRatio >= 0.48f && f.luminanceVariance < 0.020f && f.saturatedPixelRatio < 0.08f &&
+        f.chromaticPixelRatio < 0.15f) {
+        return true;
+    }
     if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
         return false;
     }
@@ -136,6 +147,12 @@ bool PdfDarkModeFeaturesLookLikeGovernmentPaperScan(const DarkImageFeatures& f) 
 
 // Office / government full-page scans that should use steep ink/paper binarize (not SoftCream gray).
 bool PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(const DarkImageFeatures& f) {
+    // Government-paper detection already excludes portraits and illustrations.
+    // Check it before the broad grayscale-photo heuristic: text ink in a paper
+    // scan can have the same thumbnail variance as a continuous-tone photo.
+    if (PdfDarkModeFeaturesLookLikeGovernmentPaperScan(f)) {
+        return true;
+    }
     if (PdfDarkModeFeaturesLookLikeGrayscalePhoto(f)) {
         return false;
     }
@@ -149,23 +166,19 @@ bool PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(const DarkImageFeatur
     if (PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(f)) {
         return false;
     }
-    if (PdfDarkModeFeaturesLookLikeGovernmentPaperScan(f)) {
-        return true;
-    }
     return PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f) && f.highLuminanceRatio > 0.92f &&
-           f.luminanceVariance < 0.025f && f.saturatedPixelRatio < 0.08f;
+           f.luminanceVariance < 0.025f && f.saturatedPixelRatio < 0.08f && f.flatAreaRatio >= 0.48f;
 }
 
 bool PdfDarkModeFeaturesLookLikeFullPageTextScanForBinarize(const DarkImageFeatures& f) {
-    if (PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(f) ||
-        PdfDarkModeFeaturesLookLikeColorfulIllustration(f) ||
+    if (PdfDarkModeFeaturesLookLikeBwLineArtScan(f)) {
+        return true;
+    }
+    if (PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(f) || PdfDarkModeFeaturesLookLikeColorfulIllustration(f) ||
         PdfDarkModeFeaturesLookLikeGrayscalePhoto(f)) {
         return false;
     }
     if (PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(f)) {
-        return true;
-    }
-    if (PdfDarkModeFeaturesLookLikeBwLineArtScan(f)) {
         return true;
     }
     // Cream/yellow household text scans (faint gray ink on tinted paper) — not RAZ photo pages.
@@ -182,7 +195,7 @@ bool PdfDarkModeFeaturesLookLikeFullPageTextScanForBinarize(const DarkImageFeatu
 // Full-res pixmap stats must confirm flat paper text — thumbnail lumVar is often too low on
 // RAZ text+illustration pages (downscaled inset art looks like office paper).
 bool PdfDarkModeFullResStatsAllowGovernmentPaperBinarize(const DarkImageAnalysis* imgAnalysis, float paperRatio,
-                                                          float satRatio, float chromaRatio, float lumVar) {
+                                                         float satRatio, float chromaRatio, float lumVar) {
     if (!imgAnalysis) {
         return lumVar < 0.035f && paperRatio >= 0.85f;
     }
@@ -199,15 +212,20 @@ bool PdfDarkModeFullResStatsAllowGovernmentPaperBinarize(const DarkImageAnalysis
     if (PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(f)) {
         return lumVar < 0.032f && paperRatio >= 0.88f;
     }
-  // Cream household thumb fallback (LookLikeFullPageTextScanForBinarize tail).
-    return lumVar < 0.038f && paperRatio >= 0.86f && satRatio < 0.055f && chromaRatio >= 0.035f &&
-           chromaRatio < 0.22f;
+    // Cream household thumb fallback (LookLikeFullPageTextScanForBinarize tail).
+    return lumVar < 0.038f && paperRatio >= 0.86f && satRatio < 0.055f && chromaRatio >= 0.035f && chromaRatio < 0.22f;
 }
 
 // Full-res pixmap stats: picture-book / photo pages that thumbnail analysis mislabels as text scans.
 bool PdfDarkModeVetoGovernmentPaperBinarize(const DarkImageAnalysis* imgAnalysis, float paperRatio, float satRatio,
                                             float chromaRatio, float lumVar) {
     if (imgAnalysis) {
+        // Uniform sepia paper makes old line drawings look highly chromatic even
+        // though there is no color artwork. The line-art classifier has already
+        // checked the tight paper/variance signature, so do not veto it as Photo.
+        if (PdfDarkModeFeaturesLookLikeBwLineArtScan(imgAnalysis->features)) {
+            return false;
+        }
         if (imgAnalysis->kind == DarkImageKind::Photo ||
             PdfDarkModeFeaturesLookLikeColorfulIllustration(imgAnalysis->features) ||
             PdfDarkModeFeaturesLookLikeGrayscalePhoto(imgAnalysis->features) ||
@@ -242,9 +260,131 @@ bool PdfDarkModeVetoGovernmentPaperBinarize(const DarkImageAnalysis* imgAnalysis
     return false;
 }
 
+bool PdfDarkModeFullResStatsLookLikeInsetPhotoOnPaper(float paperRatio, float satRatio, float chromaRatio,
+                                                      float lumVar) {
+    // Wildlife Rescue p.8 (runtime): paper=0.839 sat=0.053 chroma=0.090 lumVar=0.072.
+    // Majority paper + photographic variance + a little localized color.
+    // Private Spaceships p.5 (runtime): paper=0.734 sat=0.149 chroma=0.248 lumVar=0.045.
+    // White launch smoke keeps lumVar just under the old 0.050 floor; sat/chroma are
+    // still a real photo (连环画 yellow paper has chroma >> sat, not this pairing).
+    if (lumVar < 0.040f) {
+        return false;
+    }
+    if (lumVar < 0.050f) {
+        if (satRatio < 0.08f || chromaRatio < 0.12f || chromaRatio >= satRatio * 2.0f) {
+            return false;
+        }
+    }
+    if (paperRatio < 0.55f || paperRatio >= 0.94f) {
+        return false;
+    }
+    if (satRatio < 0.035f && chromaRatio < 0.07f) {
+        return false;
+    }
+    // Whole-page aged sepia 连环画: high paper-wide chroma, not a photo island.
+    if (satRatio >= 0.15f && chromaRatio >= 0.40f && chromaRatio >= satRatio * 1.5f) {
+        return false;
+    }
+    return true;
+}
+
+bool PdfDarkModeFullResStatsLookLikeColorIllustrationNotLineArt(float satRatio, float chromaRatio) {
+    // Vincent's Bedroom p.8 (runtime): paper=0.548 sat=0.399 chroma=0.426 lumVar=0.095
+    // and paper=0.523 sat=0.428 chroma=0.444 lumVar=0.044. Line-art thumbnail + paper
+    // just under the 0.55 inset-photo floor sent the red portrait to 公文 stencil.
+    // 红楼梦 cream pages stay sat~0.16 and must remain line-art / gov-paper invert.
+    return satRatio >= 0.28f && chromaRatio >= 0.30f;
+}
+
+bool PdfDarkModeFullResStatsLookLikeAgedYellowLineArtPage(float paperRatio, float satRatio, float chromaRatio,
+                                                          float lumVar, float borderPaperRatio, float redInkRatio) {
+    // Runtime 红楼梦《拷打宝玉》:
+    // p.7 (thumb lineArt=0): paper=0.560 sat=0.163 chroma=0.697 lumVar=0.053 borderPaper=0.016
+    // p.56 (insetPhoto): paper=0.688 sat=0.161 chroma=0.339 lumVar=0.050 borderPaper=0.310
+    // Cover (keep original): sat=0.977
+    // Private Spaceships p.5 (keep photo): chroma/sat ≈ 1.66, white borderPaper ~1
+    // RAZ red callout pages (Vincent's Bedroom): white margins and/or redInk — not cream 连环画
+    if (redInkRatio >= 0.004f) {
+        return false;
+    }
+    if (borderPaperRatio >= 0.45f) {
+        return false;
+    }
+    if (satRatio < 0.08f || satRatio >= 0.28f) {
+        return false;
+    }
+    if (chromaRatio < satRatio * 2.0f) {
+        return false;
+    }
+    if (paperRatio < 0.45f || paperRatio >= 0.88f) {
+        return false;
+    }
+    if (lumVar > 0.070f) {
+        return false;
+    }
+    return true;
+}
+
+bool PdfDarkModeFullResStatsLookLikeInsetGrayPhotoIslands(float paperRatio, float satRatio, float chromaRatio,
+                                                          float lumVar, int nPhotoRects, float largestRectCoverage) {
+    // Dust Bowl Disauster reader p.16 (runtime): paper=0.782 sat=0 chroma=0 lumVar=0.069
+    // nPeek=3, first island ~16% of the page. Color gate rejects sat=chroma=0.
+    if (nPhotoRects < 1) {
+        return false;
+    }
+    // Dust Bowl p.18 (runtime): paper=0.909 lumVar=0.045 — two smaller photos on a
+    // text-heavy page. %.3f logged 0.045 but the old 0.045 exclusive floor missed it.
+    if (lumVar < 0.040f) {
+        return false;
+    }
+    if (paperRatio < 0.55f || paperRatio >= 0.94f) {
+        return false;
+    }
+    if (satRatio >= 0.035f || chromaRatio >= 0.07f) {
+        return false;
+    }
+    // Islands, not a full-page ink field (连环画) or a caption sliver.
+    if (largestRectCoverage < 0.04f || largestRectCoverage > 0.50f) {
+        return false;
+    }
+    return true;
+}
+
+bool PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(float paperRatio, float satRatio, float chromaRatio,
+                                                          float lumVar, float redInkRatio) {
+    // Hangzhou 质疑函 p.1: paper=0.937 sat=0.035 chroma=0.230 lumVar=0.021 redInk=0.019.
+    // p.2–4: same white scans but redInk=0; JPEG chroma 0.16–0.17 hit SoftCream instead.
+    // Dust Bowl p.18 is lumVar=0.045. Cream RAZ paper is not 90%+ chroma<0.10 samples.
+    if (paperRatio < 0.88f || lumVar >= 0.040f) {
+        return false;
+    }
+    if (satRatio >= 0.12f) {
+        return false;
+    }
+    if (chromaRatio < 0.12f) {
+        return true;
+    }
+    if (redInkRatio >= 0.004f && chromaRatio < 0.35f) {
+        return true;
+    }
+    return paperRatio >= 0.90f && satRatio < 0.04f && chromaRatio < 0.28f;
+}
+
 // Classic B&W line-art scans (连环画 / woodblock reprints): paper + ink lines, no color.
 // Must be FullPageScan / uniform remap — not Photo → partial photo-rect protect (gray noise).
 bool PdfDarkModeFeaturesLookLikeBwLineArtScan(const DarkImageFeatures& f) {
+    // Faded 1950s line-art scans can be almost entirely light sepia paper. That
+    // uniform tint raises saturation/chroma enough to resemble color artwork in
+    // a thumbnail, while the very low luminance variance and light border still
+    // distinguish it from a real illustration or photograph.
+    bool agedSepiaLineArt =
+        f.highLuminanceRatio > 0.86f && f.highLuminanceRatio < 0.985f && f.luminanceVariance >= 0.004f &&
+        f.luminanceVariance < 0.030f && f.saturatedPixelRatio >= 0.20f && f.saturatedPixelRatio < 0.34f &&
+        f.chromaticPixelRatio >= 0.45f && f.chromaticPixelRatio < 0.98f && f.flatAreaRatio >= 0.035f &&
+        f.flatAreaRatio < 0.13f && f.borderLightRatio >= 0.62f && f.borderLightRatio < 0.80f;
+    if (agedSepiaLineArt) {
+        return true;
+    }
     if (f.saturatedPixelRatio >= 0.05f) {
         return false;
     }
@@ -255,6 +395,12 @@ bool PdfDarkModeFeaturesLookLikeBwLineArtScan(const DarkImageFeatures& f) {
         return false;
     }
     if (f.luminanceVariance < 0.018f) {
+        return false;
+    }
+    // An almost-white full-page map can lose all color in its thumbnail and
+    // resemble sparse black line art. Keep that ambiguous case on the photo /
+    // soft-cream path instead of applying the harsh line-art remap.
+    if (f.highLuminanceRatio > 0.92f && f.luminanceVariance < 0.022f) {
         return false;
     }
     // Dense hatching can push variance above sparse ink; still line-art when the field is
@@ -359,7 +505,8 @@ DarkImageKind PdfDarkModeClassifyImageFeatures(const DarkImageFeatures& f, float
             confidence = 0.78f;
         } else if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
             // Scanned contracts mimic soft-cream stats; notebook art has lower flatAreaRatio.
-            if (f.flatAreaRatio > 0.48f || (f.highLuminanceRatio > 0.92f && f.saturatedPixelRatio < 0.008f)) {
+            if (f.flatAreaRatio > 0.48f ||
+                (f.highLuminanceRatio > 0.92f && f.saturatedPixelRatio < 0.008f && f.luminanceVariance < 0.018f)) {
                 kind = DarkImageKind::FullPageScan;
                 confidence = 0.80f;
             } else {

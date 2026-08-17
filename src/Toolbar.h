@@ -22,6 +22,7 @@ HIMAGELIST BuildStdToolbarImageList(int dx);
 void DrawSvgIcon(HDC hdc, const Rect& dest, TbIcon icon, COLORREF fgCol, COLORREF bgCol);
 Rect GetToolbarButtonScreenRect(MainWindow*, int cmdId);
 void UpdateDoubleClickWordLookupToolbarButton(MainWindow*);
+void UpdateFullscreenToolbarButton(MainWindow*);
 void UpdatePdfDocumentColorModeToolbarButton(MainWindow*);
 bool NeedsDocumentColorModeUI(MainWindow* win);
 bool NeedsPdfDocumentColorModeUI(MainWindow* win);

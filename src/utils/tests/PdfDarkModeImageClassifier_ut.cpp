@@ -305,6 +305,32 @@ static DarkImageFeatures LianhuanhuaDenseHatchingLineArtFeatures() {
     return f;
 }
 
+// Measured from faded 1954 line-art pages: uniform yellow paper looks
+// chromatic, but its high paper coverage and low luminance variance identify
+// line art rather than a color illustration.
+static DarkImageFeatures LianhuanhuaAgedSepiaLineArtFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = true;
+    f.colorBucketRatio = 24.f / 4096.f;
+    f.highLuminanceRatio = 0.946f;
+    f.saturatedPixelRatio = 0.258f;
+    f.chromaticPixelRatio = 0.650f;
+    f.luminanceVariance = 0.00825f;
+    f.borderLightRatio = 0.697f;
+    f.borderUniformity = 0.55f;
+    f.flatAreaRatio = 0.070f;
+    return f;
+}
+
+static DarkImageFeatures LianhuanhuaAgedSepiaDenseLineArtFeatures() {
+    DarkImageFeatures f = LianhuanhuaAgedSepiaLineArtFeatures();
+    f.highLuminanceRatio = 0.891f;
+    f.chromaticPixelRatio = 0.866f;
+    f.luminanceVariance = 0.02448f;
+    f.borderLightRatio = 0.7045f;
+    return f;
+}
+
 // RAZ-Z Abraham Lincoln: full-bleed B&W portrait + caption — must Preserve, not invert interior.
 static DarkImageFeatures RazBwPortraitFullBleedFeatures() {
     DarkImageFeatures f;
@@ -513,6 +539,63 @@ void PdfDarkModeImageClassifier_UnitTests() {
     kind = PdfDarkModeClassifyImageFeatures(LianhuanhuaDenseHatchingLineArtFeatures(), 0.92f, false, &confidence);
     utassert(kind == DarkImageKind::FullPageScan);
     utassert(PdfDarkModeFeaturesLookLikeBwLineArtScan(LianhuanhuaDenseHatchingLineArtFeatures()));
+    kind = PdfDarkModeClassifyImageFeatures(LianhuanhuaAgedSepiaLineArtFeatures(), 0.97f, true, &confidence);
+    utassert(kind == DarkImageKind::FullPageScan);
+    utassert(PdfDarkModeFeaturesLookLikeBwLineArtScan(LianhuanhuaAgedSepiaLineArtFeatures()));
+    utassert(PdfDarkModeFeaturesLookLikeFullPageTextScanForBinarize(LianhuanhuaAgedSepiaLineArtFeatures()));
+    DarkImageAnalysis agedSepia;
+    agedSepia.kind = kind;
+    agedSepia.features = LianhuanhuaAgedSepiaLineArtFeatures();
+    utassert(PdfDarkModeFullResStatsAllowGovernmentPaperBinarize(&agedSepia, 0.90f, 0.26f, 0.65f, 0.030f));
+    utassert(!PdfDarkModeVetoGovernmentPaperBinarize(&agedSepia, 0.90f, 0.26f, 0.65f, 0.030f));
+    utassert(!PdfDarkModeFullResStatsLookLikeInsetPhotoOnPaper(0.90f, 0.26f, 0.65f, 0.030f));
+    utassert(!PdfDarkModeFullResStatsLookLikeInsetPhotoOnPaper(0.80f, 0.00f, 0.00f, 0.070f));
+    utassert(!PdfDarkModeFullResStatsLookLikeInsetGrayPhotoIslands(0.80f, 0.00f, 0.00f, 0.070f, 0, 0.f));
+    utassert(!PdfDarkModeFullResStatsLookLikeInsetGrayPhotoIslands(0.80f, 0.00f, 0.00f, 0.070f, 1, 0.70f));
+    // Dust Bowl Disauster reader p.16: grayscale photo islands on paper.
+    utassert(PdfDarkModeFullResStatsLookLikeInsetGrayPhotoIslands(0.782f, 0.000f, 0.000f, 0.069f, 3, 0.162f));
+    utassert(PdfDarkModeFullResStatsLookLikeInsetGrayPhotoIslands(0.909f, 0.000f, 0.000f, 0.045f, 2, 0.125f));
+    // Hangzhou 质疑函 A4 scan (runtime): must be government paper, not PictureBook.
+    utassert(PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.972f, 0.000f, 0.000f, 0.006f));
+    utassert(PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.940f, 0.000f, 0.000f, 0.023f));
+    utassert(PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.949f, 0.000f, 0.000f, 0.037f));
+    // Hangzhou 质疑函 p.1 (runtime): red header lifts chroma into SoftCream unless red-ink is counted.
+    utassert(PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.937f, 0.035f, 0.230f, 0.021f, 0.020f));
+    utassert(PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.927f, 0.024f, 0.172f, 0.027f, 0.010f));
+    // Hangzhou p.2–4: JPEG chroma, no sampled 红头 — still government paper, not SoftCream.
+    utassert(PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.927f, 0.024f, 0.172f, 0.027f, 0.f));
+    utassert(PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.938f, 0.018f, 0.160f, 0.022f, 0.f));
+    utassert(PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.931f, 0.022f, 0.173f, 0.024f, 0.f));
+    utassert(!PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.92f, 0.02f, 0.32f, 0.018f, 0.f));
+    // Dust Bowl / Wildlife Rescue stay out (photos, not 公文).
+    utassert(!PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.909f, 0.000f, 0.000f, 0.045f));
+    utassert(!PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.782f, 0.000f, 0.000f, 0.069f));
+    utassert(!PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.839f, 0.053f, 0.090f, 0.072f));
+    // Wildlife Rescue p.8 full-res (runtime logs): inset color photo on white paper.
+    utassert(PdfDarkModeFullResStatsLookLikeInsetPhotoOnPaper(0.839f, 0.053f, 0.090f, 0.072f));
+    utassert(PdfDarkModeFullResStatsLookLikeInsetPhotoOnPaper(0.836f, 0.082f, 0.102f, 0.056f));
+    // Wildlife Rescue p.18: the line-art thumbnail must not suppress the
+    // full-resolution photo-rectangle search for the lower-page group photo.
+    utassert(PdfDarkModeFullResStatsLookLikeInsetPhotoOnPaper(0.795f, 0.095f, 0.121f, 0.088f));
+    // Private Spaceships p.5 (runtime): color launch photo, white smoke, thumbnail line-art.
+    utassert(PdfDarkModeFullResStatsLookLikeInsetPhotoOnPaper(0.734f, 0.149f, 0.248f, 0.045f));
+    utassert(!PdfDarkModeFullResStatsLookLikeInsetPhotoOnPaper(0.80f, 0.02f, 0.10f, 0.045f));
+    // 红楼梦连环画 (runtime): cream paper + decorative border, not RAZ white-margin photos.
+    utassert(PdfDarkModeFullResStatsLookLikeAgedYellowLineArtPage(0.560f, 0.163f, 0.697f, 0.053f, 0.016f, 0.f));
+    utassert(PdfDarkModeFullResStatsLookLikeAgedYellowLineArtPage(0.688f, 0.161f, 0.339f, 0.050f, 0.310f, 0.f));
+    utassert(!PdfDarkModeFullResStatsLookLikeAgedYellowLineArtPage(0.002f, 0.977f, 0.993f, 0.044f, 0.f, 0.811f));
+    utassert(!PdfDarkModeFullResStatsLookLikeAgedYellowLineArtPage(0.734f, 0.149f, 0.248f, 0.045f, 0.993f, 0.f));
+    // RAZ red callout on white paper (Vincent's Bedroom-style): must not take 公文 binarize.
+    utassert(!PdfDarkModeFullResStatsLookLikeAgedYellowLineArtPage(0.70f, 0.12f, 0.30f, 0.055f, 0.90f, 0.05f));
+    utassert(PdfDarkModeFullResStatsLookLikeInsetPhotoOnPaper(0.70f, 0.12f, 0.28f, 0.055f));
+    // Vincent's Bedroom p.8 (runtime): line-art thumb, paper below 0.55 inset floor, high sat.
+    utassert(PdfDarkModeFullResStatsLookLikeColorIllustrationNotLineArt(0.399f, 0.426f));
+    utassert(PdfDarkModeFullResStatsLookLikeColorIllustrationNotLineArt(0.428f, 0.444f));
+    utassert(!PdfDarkModeFullResStatsLookLikeColorIllustrationNotLineArt(0.163f, 0.697f));
+    utassert(!PdfDarkModeFullResStatsLookLikeInsetPhotoOnPaper(0.548f, 0.399f, 0.426f, 0.095f));
+    kind = PdfDarkModeClassifyImageFeatures(LianhuanhuaAgedSepiaDenseLineArtFeatures(), 0.97f, true, &confidence);
+    utassert(kind == DarkImageKind::FullPageScan);
+    utassert(PdfDarkModeFeaturesLookLikeBwLineArtScan(LianhuanhuaAgedSepiaDenseLineArtFeatures()));
     utassert(!PdfDarkModeFeaturesLookLikeBwLineArtScan(RazBwPortraitHighPaperFullBleedFeatures()));
 
     // RAZ B&W portrait full bleed: Photo / Preserve — photo rect protect, not negative invert.

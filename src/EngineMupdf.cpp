@@ -103,6 +103,7 @@ static TempStr BuildEbookDarkCss(bool isEpub) {
 }
 body, p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,
 section, article, main, header, footer, pre, table, td, th,
+b, strong, em, i,
 .calibre,
 .calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
 .calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,
@@ -135,6 +136,7 @@ figcaption, caption, p.caption, div.caption, span.caption,
 }
 body, p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,
 section, article, main, header, footer, pre,
+b, strong, em, i,
 .calibre,
 .calibre1, .calibre2, .calibre3, .calibre4, .calibre5, .calibre6, .calibre7, .calibre8, .calibre9, .calibre10,
 .calibre_1, .calibre_2, .calibre_3, .calibre_4, .calibre_5, .calibre_6, .calibre_7, .calibre_8, .calibre_9, .calibre_10,

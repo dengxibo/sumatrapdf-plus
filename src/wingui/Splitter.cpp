@@ -115,7 +115,7 @@ HWND Splitter::Create(const CreateArgs& args) {
     CreateCustomArgs cargs;
     // cargs.className = L"SplitterWndClass";
     cargs.parent = args.parent;
-    cargs.style = WS_CHILDWINDOW;
+    cargs.style = WS_CHILDWINDOW | WS_CLIPSIBLINGS;
     cargs.exStyle = 0;
     CreateCustom(cargs);
 

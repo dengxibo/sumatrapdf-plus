@@ -591,14 +591,12 @@ COLORREF ThemePageRenderColors(COLORREF& bg, bool respectPdfDocColorMode) {
         return text;
     }
 
-    // if we're inverting in non-default themes, the colors
-    // should match the colors of the window
+    // Default dark document colors follow the theme exactly. In particular,
+    // Dracula pages must use #282A36 instead of a lightened variant; otherwise
+    // scanned-page backgrounds form a visibly different rectangle inside the
+    // reading area. Explicit FixedPageUI colors still take precedence above.
     text = ThemeReadingTextColor();
     bg = ThemeMainWindowBackgroundColor();
-
-    if (GetResolvedThemeIndex() != kThemeIdxDarkBlack) {
-        bg = AccentColor(bg, 8);
-    }
     return text;
 }
 

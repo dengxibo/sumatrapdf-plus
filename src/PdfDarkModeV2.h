@@ -99,8 +99,85 @@ inline bool PdfDarkModeV2LooksLikeSoftShadowPlate(float satRatio, float chromaRa
 // Axis-aligned "photo" rects that are mostly white in the interior are speech-bubble /
 // callout clusters (textbook cartoons), not photographs. Protecting them leaves white
 // patches on a dark page. Portraits with a white mat have paper on the rim, not inside.
-inline bool PdfDarkModeV2PhotoRectIsCalloutCluster(float insetPaperRatio) {
-    return insetPaperRatio >= 0.35f;
+inline bool PdfDarkModeV2PhotoRectIsCalloutCluster(float insetPaperRatio, float photoTextureRatio, int tonalBins,
+                                                   float chromaRatio) {
+    if (insetPaperRatio < 0.35f) {
+        return false;
+    }
+    // White clothes, fur, walls and oval portrait mats can make a real photo mostly
+    // paper-colored. Continuous tone / local photographic grain is stronger evidence
+    // than the amount of white. Flat speech bubbles and callout panels lack both.
+    bool continuousTone = tonalBins >= 12 && photoTextureRatio >= 0.045f;
+    bool strongTexture = photoTextureRatio >= 0.10f;
+    bool colorfulTone = tonalBins >= 16 && chromaRatio >= 0.08f;
+    return !(continuousTone || strongTexture || colorfulTone);
+}
+
+// Light-filled drawings (Jazz Greats TOC trumpet): interior is cream/white wash,
+// not photographic grain and not mostly "paper" by the 0.88 lum gate. Protecting
+// the bbox keeps that wash on the dark page. Sparse ink drawings (Meganeura) have
+// high inset paper and stay protected.
+inline bool PdfDarkModeV2PhotoRectIsLightIllustrationWash(float insetPaperRatio, float photoTextureRatio, float meanLum,
+                                                          float chromaRatio) {
+    if (insetPaperRatio >= 0.35f) {
+        return false;
+    }
+    if (photoTextureRatio >= 0.045f) {
+        return false;
+    }
+    if (meanLum < 0.70f) {
+        return false;
+    }
+    if (chromaRatio >= 0.18f) {
+        return false;
+    }
+    return true;
+}
+
+// Color-page photo rects often swallow a display-type title on paper above the art
+// (RAZ SPRAK p.2). Those rows are paper + black ink, not continuous-tone photo.
+inline bool PdfDarkModeV2PhotoRectRowLooksLikeInkOnPaper(float chromaRatio, float midtoneRatio, float paperRatio) {
+    if (chromaRatio >= 0.10f) {
+        return false;
+    }
+    if (midtoneRatio >= 0.28f) {
+        return false;
+    }
+    // Display type sits on page paper (SPRAK). A dark suit / silhouette is mostly ink
+    // with little paper — Abraham Lincoln p.2 was sliced in half without this gate.
+    if (paperRatio < 0.50f) {
+        return false;
+    }
+    return true;
+}
+
+// 12px box halo around oval mats painted rectangular notches into the photo.
+// 3px is enough for wrapped-text AA on the mat; photo interiors stay protected.
+inline bool PdfDarkModeV2PhotoHaloKeepDarkPixel(float lum, bool nearMat) {
+    if (lum >= 0.58f) {
+        return false;
+    }
+    if (!nearMat) {
+        return true;
+    }
+    return false;
+}
+
+// A colorful, continuous-tone image whose outer band is not paper is already a
+// full-bleed photograph. Running photo-rect extraction on it mistakes bright sky
+// or walls for page paper and produces cut-out halos. White-margin RAZ/photo-book
+// pages stay on the existing paper + protected-photo path.
+inline bool PdfDarkModeV2ShouldPreserveFullBleedPhoto(float borderPaperRatio, float satRatio, float chromaRatio,
+                                                      float lumVar) {
+    if (borderPaperRatio >= 0.50f || satRatio < 0.12f || chromaRatio < 0.20f || lumVar < 0.025f) {
+        return false;
+    }
+    // Cream 连环画 paper (runtime 红楼梦 p.7 sat=0.163 chroma=0.697): yellow-paper
+    // chroma, not a photograph. Covers keep sat≈chroma (~0.98).
+    if (satRatio < 0.28f && chromaRatio >= satRatio * 2.0f) {
+        return false;
+    }
+    return true;
 }
 
 // MRC background plates (hi-res JPEG under a JBIG2 text mask) keep faint leftover

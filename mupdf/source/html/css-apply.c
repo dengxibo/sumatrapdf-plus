@@ -433,7 +433,11 @@ count_selector_names(fz_css_selector *sel)
 	return n;
 }
 
-#define INLINE_SPECIFICITY 10000
+/* style= is author-origin with high specificity, but not more important
+ * than !important. Previously INLINE_SPECIFICITY was 10000 and !important
+ * only added 1000, so inline color:rgb(0,0,0) beat user CSS !important
+ * (EPUB headings stayed black on a dark page). */
+#define INLINE_SPECIFICITY 1000
 
 static int
 selector_specificity(fz_css_selector *sel, int important)
@@ -441,7 +445,7 @@ selector_specificity(fz_css_selector *sel, int important)
 	int b = count_selector_ids(sel);
 	int c = count_selector_atts(sel);
 	int d = count_selector_names(sel);
-	return important * 1000 + b * 100 + c * 10 + d;
+	return important * 10000 + b * 100 + c * 10 + d;
 }
 
 /*
@@ -1105,7 +1109,8 @@ fz_match_css(fz_context *ctx, fz_css_match *match, fz_css_match *up, fz_css *css
 				prop = fz_parse_css_properties(ctx, css->pool, s);
 				while (prop)
 				{
-					add_property(match, prop->name, prop->value, INLINE_SPECIFICITY);
+					add_property(match, prop->name, prop->value,
+						INLINE_SPECIFICITY + prop->important * 10000);
 					prop = prop->next;
 				}
 				/* We can "leak" the property here, since it is freed along with the pool allocator. */

@@ -173,6 +173,36 @@ RectF GetRect(Annotation* annot) {
     return annot->bounds;
 }
 
+void SetLine(Annotation* annot, PointF a, PointF b) {
+    EngineMupdf* e = annot->engine;
+    auto pdfannot = annot->pdfannot;
+    if (!pdfannot) {
+        return;
+    }
+    bool failed = false;
+    {
+        auto ctx = e->Ctx();
+        ScopedCritSec cs(&e->docLock);
+        fz_try(ctx) {
+            fz_point p1 = {a.x, a.y};
+            fz_point p2 = {b.x, b.y};
+            pdf_set_annot_line(ctx, pdfannot, p1, p2);
+            pdf_update_annot(ctx, pdfannot);
+            annot->bounds = ToRectF(pdf_bound_annot(ctx, pdfannot));
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+            failed = true;
+            logf("SetLine(): pdf_set_annot_line() failed\n");
+        }
+    }
+    ReportIf(failed);
+    if (failed) {
+        return;
+    }
+    MarkNotificationAsModified(e, annot);
+}
+
 void SetRect(Annotation* annot, RectF r) {
     EngineMupdf* e = annot->engine;
     auto a = annot->pdfannot;
@@ -188,9 +218,24 @@ void SetRect(Annotation* annot, RectF r) {
         fz_rect rc = ToFzRect(r);
         fz_try(ctx) {
             if (annot->type == AnnotationType::Line) {
-                // line annotation doesn't have a rect but a line position
-                // TODO: not sure this is the right place for this
-                fz_point p1 = {rc.x0, rc.y0}, p2 = {rc.x1, rc.y1};
+                // Keep the original diagonal / arrow direction. Mapping both ends
+                // through a normalized rect (x0,y0)->(x1,y1) mirrors '/' into '\'.
+                fz_point p1 = {}, p2 = {};
+                pdf_annot_line(ctx, a, &p1, &p2);
+                RectF old = annot->bounds;
+                if (old.dx > 0.01f && old.dy > 0.01f) {
+                    float u1 = (p1.x - old.x) / old.dx;
+                    float v1 = (p1.y - old.y) / old.dy;
+                    float u2 = (p2.x - old.x) / old.dx;
+                    float v2 = (p2.y - old.y) / old.dy;
+                    p1.x = r.x + u1 * r.dx;
+                    p1.y = r.y + v1 * r.dy;
+                    p2.x = r.x + u2 * r.dx;
+                    p2.y = r.y + v2 * r.dy;
+                } else {
+                    p1 = {rc.x0, rc.y0};
+                    p2 = {rc.x1, rc.y1};
+                }
                 pdf_set_annot_line(ctx, a, p1, p2);
             } else {
                 pdf_set_annot_rect(ctx, a, rc);

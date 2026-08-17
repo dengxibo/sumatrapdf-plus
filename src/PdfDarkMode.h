@@ -305,6 +305,25 @@ bool PdfDarkModeFullResStatsAllowGovernmentPaperBinarize(const DarkImageAnalysis
                                                          float satRatio, float chromaRatio, float lumVar);
 bool PdfDarkModeVetoGovernmentPaperBinarize(const DarkImageAnalysis* imgAnalysis, float paperRatio, float satRatio,
                                             float chromaRatio, float lumVar);
+// Full-res stats: paper page with a localized color photo (RAZ Wildlife Rescue p.8).
+// Thumbnail line-art must not force a whole-page government-paper remap.
+bool PdfDarkModeFullResStatsLookLikeInsetPhotoOnPaper(float paperRatio, float satRatio, float chromaRatio,
+                                                      float lumVar);
+// Full-res color art (RAZ red callout / portrait) whose thumbnail looks like line-art.
+// Must not take government-paper binarize. 连环画 cream pages stay sat~0.16.
+bool PdfDarkModeFullResStatsLookLikeColorIllustrationNotLineArt(float satRatio, float chromaRatio);
+// Cream/yellow 连环画 (runtime 红楼梦 p.7 / p.56): modest sat, chroma >> sat,
+// decorative non-white border, no red callout. RAZ white-margin + red boxes stay out.
+bool PdfDarkModeFullResStatsLookLikeAgedYellowLineArtPage(float paperRatio, float satRatio, float chromaRatio,
+                                                          float lumVar, float borderPaperRatio, float redInkRatio);
+// Grayscale RAZ historical photos (Dust Bowl p.16): sat/chroma are 0 so the color
+// gate above fails. Require found photo-island rects so 连环画 ink fields stay out.
+bool PdfDarkModeFullResStatsLookLikeInsetGrayPhotoIslands(float paperRatio, float satRatio, float chromaRatio,
+                                                          float lumVar, int nPhotoRects, float largestRectCoverage);
+// Full-res 公文 / office scans that miss the line-art thumbnail (JPEG grain, red seal).
+// High paper + low variance, not RAZ photo pages (those keep higher lumVar or sat).
+bool PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(float paperRatio, float satRatio, float chromaRatio,
+                                                          float lumVar, float redInkRatio = 0.f);
 bool PdfDarkModeShouldPreserveImageFeatures(const DarkImageFeatures& f, float pageCoverage);
 
 DarkImagePolicy PdfDarkModePolicyForImageKind(DarkImageKind kind, bool isImageMask);

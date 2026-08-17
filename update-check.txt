@@ -1,3 +1,3 @@
 [SumatraPDF]
-Latest: 3.7.27
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.27/SumatraPDF.exe
+Latest: 3.7.28
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.28/SumatraPDF.exe

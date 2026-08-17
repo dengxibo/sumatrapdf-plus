@@ -2,6 +2,31 @@
 
 ## next
 
+## 3.7.28 (2026-08-17)
+
+- Match-theme: oval portraits (e.g. Abraham Lincoln) use a small mat halo so poles are not eaten into rectangular bars; wrapped text on the mat still inverts
+  「匹配主题」：椭圆肖像（如 Abraham Lincoln）衬纸光晕缩小，上下两极不再被啃成方块；绕排文字仍正常反色
+- Match-theme: inset RAZ photos (Genetics at Work p.18) do not keep a white hairline where the photo meets body text
+  「匹配主题」：嵌入照片与正文交界不再留白竖线（如 Genetics at Work 第 18 页）
+- Match-theme: RAZ display-type titles on paper above a photo (SPRAK p.2) invert to theme text instead of staying black with a white halo
+  「匹配主题」：照片上方纸面上的粗黑标题（如 SPRAK 第 2 页）反成主题文字色，不再黑心白边
+- Match-theme: RAZ color pages whose thumbnail looks like line-art (Vincent's Bedroom p.8 red portrait) stay on the picture-book path; cream 连环画 (sat~0.16) still inverts as line art
+  「匹配主题」：缩略图像线稿的 RAZ 彩色页（如 Vincent's Bedroom 第 8 页红框肖像）走绘本路径，不再公文二值化；泛黄连环画（sat≈0.16）仍按线稿反色
+- Ctrl+wheel zoom: same ~10% step per notch for slow and fast wheels; cap zoom speed so a flick no longer jumps to 6400% or 20%
+  Ctrl+滚轮缩放：慢滚和快滚都按每格约 10%；限制缩放速度，避免轻轻一甩就到 6400% 或 20%
+- fix TOC sidebar splitter: live drag only moves windows (no per-move page Relayout / SETREDRAW); full layout on mouse-up
+  修复 TOC 分隔条拖动：拖动中只挪窗口，不每次重排页面；松开后再完整布局
+- fix TOC search vs. first bookmark jumping while dragging the sidebar splitter: layout the filter from WS_VISIBLE, not IsWindowVisible (false during WM_SETREDRAW)
+  修复拖 TOC 分隔条时搜索框与第一条书签抢位置：按 WS_VISIBLE 留出搜索行，不再用 IsWindowVisible（整窗暂停重绘时会误判为隐藏）
+- fix EPUB ink in single-page view: keep the stroke on its page instead of drawing it on every flipped page
+  修复 EPUB 单页模式下自由曲线翻页后仍浮在画面上：墨迹只画在所属页
+- fix Windows 11 fullscreen leftover of the taskbar volume icon: make the frame topmost and mark it fullscreen so the tray (and other topmost notify widgets) stay behind the window
+  修复 Windows 11 全屏后右下角喇叭图标残影：全屏窗口置顶并通知资源管理器，任务栏和其它托盘置顶控件不再盖在页面上
+- toolbar fullscreen button (`CmdToggleFullscreen`): enter or leave fullscreen reading; tooltip includes F11 (exit still works with F11 / `f` when the toolbar is hidden)
+  工具栏全屏按钮：切换全屏阅读；提示含 F11（工具栏隐藏时仍可用 F11 / `f` 退出）
+
+## 3.7.27 (2026-08-14)
+
 - close the find window when closing the current tab (same as switching tabs)
   关闭当前标签时一并关闭查找窗口（与切换标签一致）
 - find results list: stop jittering while the live match count updates

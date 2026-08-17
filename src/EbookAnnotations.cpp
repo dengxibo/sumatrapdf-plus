@@ -51,6 +51,9 @@ struct EbookAnnotation {
     int borderWidth = 1;
     int lineStart = 0;
     int lineEnd = 0;
+    // true: top-left to bottom-right of bounds. false: top-right to bottom-left.
+    // Default false matches the previous hardcoded '/' diagonal.
+    bool lineTLBR = false;
     bool backgroundTransparent = true;
     COLORREF backgroundColor = 0;
     bool interiorTransparent = true;
@@ -309,6 +312,10 @@ struct EbookAnnotationsJsonVisitor : json::ValueVisitor {
                 str::Parse(value, "%d", &annotation->lineStart);
             } else if (str::Eq(property, "lineEnd")) {
                 str::Parse(value, "%d", &annotation->lineEnd);
+            } else if (str::Eq(property, "lineTLBR")) {
+                int v = 0;
+                str::Parse(value, "%d", &v);
+                annotation->lineTLBR = v != 0;
             } else if (str::Eq(property, "backgroundTransparent")) {
                 int transparent = 1;
                 str::Parse(value, "%d", &transparent);
@@ -549,8 +556,8 @@ static bool SaveEbookAnnotations(EbookAnnotations* annotations) {
                 ",\n      \"borderWidth\": %d,\n      \"interiorTransparent\": %d,\n      \"interiorColor\": %u",
                 annotation->borderWidth, annotation->interiorTransparent ? 1 : 0, (uint)annotation->interiorColor);
             if (annotation->type == AnnotationType::Line) {
-                out.AppendFmt(",\n      \"lineStart\": %d,\n      \"lineEnd\": %d", annotation->lineStart,
-                              annotation->lineEnd);
+                out.AppendFmt(",\n      \"lineStart\": %d,\n      \"lineEnd\": %d,\n      \"lineTLBR\": %d",
+                              annotation->lineStart, annotation->lineEnd, annotation->lineTLBR ? 1 : 0);
             }
         }
         if (annotation->type == AnnotationType::Ink && annotation->inkPoints.len > 0) {
@@ -921,7 +928,7 @@ EbookAnnotation* EbookAnnotationsCreateDragShape(WindowTab* tab, DisplayModel* d
     if (!tab || !dm || !IsEbookPointAnnotationType(type) || type == AnnotationType::Ink) {
         return nullptr;
     }
-    COLORREF color = GetDefaultAnnotationColor(type);
+    COLORREF color = GetDefaultEbookPointAnnotationColor(type);
     EbookAnnotation* annotation = EbookAnnotationsCreateAt(tab, dm, canvasStart, type, color);
     if (!annotation) {
         return nullptr;
@@ -939,6 +946,7 @@ EbookAnnotation* EbookAnnotationsCreateDragShape(WindowTab* tab, DisplayModel* d
         float x1 = std::max(a.x, b.x);
         float y1 = std::max(a.y, b.y);
         pageBounds = {x0, y0, std::max(1.f, x1 - x0), std::max(1.f, y1 - y0)};
+        annotation->lineTLBR = (b.x - a.x) * (b.y - a.y) >= 0;
     } else {
         int x0 = std::min(canvasStart.x, canvasEnd.x);
         int y0 = std::min(canvasStart.y, canvasEnd.y);
@@ -965,7 +973,7 @@ EbookAnnotation* EbookAnnotationsCreateDragShape(WindowTab* tab, DisplayModel* d
 }
 
 EbookAnnotation* EbookAnnotationsCreateInkStroke(WindowTab* tab, DisplayModel* dm, int pageNo, PointF* points,
-                                                  int nPoints, COLORREF color) {
+                                                 int nPoints, COLORREF color) {
     if (!tab || !dm || !points || nPoints < 2 || !dm->ValidPageNo(pageNo)) {
         return nullptr;
     }
@@ -1087,6 +1095,11 @@ static bool GetAnnotationPageRects(EbookAnnotations* annotations, EngineBase* en
 static bool GetPointAnnotationPageBounds(EbookAnnotations* annotations, EngineBase* engine, EbookAnnotation* annotation,
                                          int pageNo, RectF* boundsOut) {
     if (annotation->type == AnnotationType::Ink && annotation->inkPoints.len > 0) {
+        Vec<RectF> anchorRects;
+        if (!boundsOut || !GetAnnotationPageRects(annotations, engine, annotation, pageNo, anchorRects) ||
+            anchorRects.empty()) {
+            return false;
+        }
         float minX = annotation->inkPoints.at(0).x;
         float minY = annotation->inkPoints.at(0).y;
         float maxX = minX;
@@ -1099,7 +1112,8 @@ static bool GetPointAnnotationPageBounds(EbookAnnotations* annotations, EngineBa
             maxY = std::max(maxY, pt.y);
         }
         constexpr float pad = 4.f;
-        *boundsOut = {minX - pad, minY - pad, std::max(1.f, maxX - minX + pad * 2), std::max(1.f, maxY - minY + pad * 2)};
+        *boundsOut = {minX - pad, minY - pad, std::max(1.f, maxX - minX + pad * 2),
+                      std::max(1.f, maxY - minY + pad * 2)};
         return true;
     }
     Vec<RectF> anchorRects;
@@ -1289,7 +1303,7 @@ time_t EbookAnnotationGetModified(EbookAnnotation* annotation) {
     return annotation ? annotation->modified : 0;
 }
 
-static COLORREF GetDefaultEbookPointAnnotationColor(AnnotationType type) {
+COLORREF GetDefaultEbookPointAnnotationColor(AnnotationType type) {
     if (type == AnnotationType::FreeText) {
         return RGB(0, 0, 0);
     }
@@ -1297,7 +1311,7 @@ static COLORREF GetDefaultEbookPointAnnotationColor(AnnotationType type) {
         return RGB(0, 0, 255);
     }
     if (type == AnnotationType::Stamp || type == AnnotationType::Line || type == AnnotationType::Square ||
-        type == AnnotationType::Circle) {
+        type == AnnotationType::Circle || type == AnnotationType::Ink) {
         return RGB(255, 0, 0);
     }
     if (type == AnnotationType::Text) {
@@ -1674,9 +1688,10 @@ bool EbookAnnotationsExportNotes(WindowTab* tab, HWND hwndParent) {
     return true;
 }
 
-// PDF annotations are rendered into the page bitmap and therefore go through
-// UpdateBitmapColors() together with the page. EPUB annotations are painted as
-// an overlay, so apply the same affine color mapping before painting them.
+// PDF annotations are rendered into the page bitmap. EPUB annotations are an
+// overlay, so near-gray colors still follow the page black↔text / white↔bg map.
+// Saturated markup (PDF default red, yellow highlight) is left unchanged,
+// matching object-level PDF dark mode which already keeps chroma.
 static COLORREF MapEbookAnnotationColor(COLORREF color) {
     PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
     bool pageUsesThemeColors =
@@ -1693,6 +1708,11 @@ static COLORREF MapEbookAnnotationColor(COLORREF color) {
     UnpackColor(color, r, g, b);
     UnpackColor(textColor, rt, gt, bt);
     UnpackColor(bgColor, rb, gb, bb);
+
+    int chroma = std::max({r, g, b}) - std::min({r, g, b});
+    if (chroma >= 40) {
+        return color;
+    }
 
     auto mapChannel = [](u8 value, u8 text, u8 background) -> u8 {
         int x = value * ((int)background - (int)text) + 128;
@@ -1989,8 +2009,14 @@ static void PaintEbookPointAnnotation(WindowTab* tab, HDC hdc, Rect marker, Eboo
     if (type == AnnotationType::Line) {
         float width = (float)DpiScale(tab->win->hwndFrame, EbookAnnotationGetBorderWidth(annotation));
         Gdiplus::Pen linePen(Gdiplus::Color(255, r, g, b), std::max(1.f, width));
-        Gdiplus::PointF a((float)marker.x + 2, (float)marker.BR().y - 2);
-        Gdiplus::PointF z((float)marker.BR().x - 2, (float)marker.y + 2);
+        Gdiplus::PointF a, z;
+        if (annotation->lineTLBR) {
+            a = Gdiplus::PointF((float)marker.x + 2, (float)marker.y + 2);
+            z = Gdiplus::PointF((float)marker.BR().x - 2, (float)marker.BR().y - 2);
+        } else {
+            a = Gdiplus::PointF((float)marker.x + 2, (float)marker.BR().y - 2);
+            z = Gdiplus::PointF((float)marker.BR().x - 2, (float)marker.y + 2);
+        }
         graphics.DrawLine(&linePen, a, z);
         COLORREF interiorColor = 0;
         bool hasInterior = EbookAnnotationGetInteriorColor(annotation, &interiorColor);
@@ -2247,13 +2273,14 @@ void EbookAnnotationsPaintPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pa
     for (EbookAnnotation* annotation : annotations->items) {
         if (annotation->type == AnnotationType::Ink) {
             if (annotation->inkPoints.len >= 2) {
+                RectF bounds;
+                if (!GetPointAnnotationPageBounds(annotations, engine, annotation, pageNo, &bounds)) {
+                    continue;
+                }
                 PaintEbookInkStroke(tab, hdc, dm, pageNo, annotation);
                 if (tab->editEbookAnnotsWindow && tab->selectedEbookAnnotation == annotation) {
-                    RectF bounds;
-                    if (GetPointAnnotationPageBounds(annotations, engine, annotation, pageNo, &bounds)) {
-                        Rect screenRect = dm->CvtToScreen(pageNo, bounds);
-                        PaintEbookPointAnnotationSelection(hdc, screenRect, annotation->type);
-                    }
+                    Rect screenRect = dm->CvtToScreen(pageNo, bounds);
+                    PaintEbookPointAnnotationSelection(hdc, screenRect, annotation->type);
                 }
             }
             continue;

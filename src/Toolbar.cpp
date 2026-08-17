@@ -98,6 +98,7 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
     {TbIcon::DocColorFollowTheme, CmdSetPdfDocumentColorModeBlack,
      _TRN("Document Color Mode: Match theme (use current theme colors)")},
+    {TbIcon::ArrowsDiagonal, CmdToggleFullscreen, _TRN("Toggle Fullscreen (F11)")},
     {TbIcon::Speak, CmdReadAloud, _TRN("Read Aloud")},
     {TbIcon::AnnotSquare, CmdCreateAnnotSquare, _TRN("Rectangle Annotation")},
     {TbIcon::AnnotCircle, CmdCreateAnnotCircle, _TRN("Circle Annotation")},
@@ -267,6 +268,23 @@ void UpdatePdfDocumentColorModeToolbarButton(MainWindow* win) {
         SendMessageW(win->hwndToolbar, TB_SETBUTTONINFOW, buttons[i], (LPARAM)&bi);
     }
     InvalidateRect(win->hwndToolbar, nullptr, FALSE);
+}
+
+void UpdateFullscreenToolbarButton(MainWindow* win) {
+    if (!win || !win->hwndToolbar) {
+        return;
+    }
+    int buttons[4];
+    int n = GetToolbarButtonsByID(CmdToggleFullscreen, buttons);
+    if (n == 0) {
+        return;
+    }
+    bool fullScreen = win->isFullScreen;
+    SetToolbarButtonCheckedState(win, CmdToggleFullscreen, fullScreen);
+    TbIcon icon = fullScreen ? TbIcon::ArrowsDiagonalMinimize : TbIcon::ArrowsDiagonal;
+    for (int i = 0; i < n; i++) {
+        SetToolbarButtonImageByIdx(win->hwndToolbar, buttons[i], icon);
+    }
 }
 
 void UpdateDoubleClickWordLookupToolbarButton(MainWindow* win) {
@@ -451,7 +469,8 @@ static TBBUTTON TbButtonFromButtonInfo(const ToolbarButtonInfo& bi, bool noTrans
         bi.cmdId == CmdToggleDoubleClickWordLookup || bi.cmdId == CmdToggleLightDarkTheme ||
         bi.cmdId == CmdToggleBookmarks || bi.cmdId == CmdZoomFitWidthAndContinuous ||
         bi.cmdId == CmdZoomFitPageAndSinglePage || bi.cmdId == CmdSetPdfDocumentColorModeAuto ||
-        bi.cmdId == CmdSetPdfDocumentColorModeBlack || bi.cmdId == CmdSetPdfDocumentColorModeLight) {
+        bi.cmdId == CmdSetPdfDocumentColorModeBlack || bi.cmdId == CmdSetPdfDocumentColorModeLight ||
+        bi.cmdId == CmdToggleFullscreen) {
         b.fsStyle = BTNS_CHECK;
     }
     if (bi.bmpIndex == TbIcon::Text) {
@@ -492,6 +511,7 @@ void UpdateToolbarButtonsToolTipsForWindow(MainWindow* win) {
     UpdateThemeToolbarButton(win);
     UpdatePdfDocumentColorModeToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
+    UpdateFullscreenToolbarButton(win);
 #if 0
     if (gCustomToolbarButtons) {
         int n = gCustomToolbarButtons->Size();
@@ -1289,6 +1309,7 @@ void UpdateToolbarState(MainWindow* win) {
     UpdateAnnotToolToolbarButtons(win);
     UpdatePdfDocumentColorModeToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
+    UpdateFullscreenToolbarButton(win);
     if (!win->IsDocLoaded()) {
         return;
     }
@@ -1821,6 +1842,7 @@ void UpdateToolbarAfterThemeChange(MainWindow* win) {
     UpdateThemeToolbarButton(win);
     UpdatePdfDocumentColorModeToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
+    UpdateFullscreenToolbarButton(win);
     if (win->hwndReBar) {
         InvalidateRect(win->hwndReBar, nullptr, TRUE);
     }
@@ -1985,6 +2007,7 @@ void CreateToolbar(MainWindow* win) {
     UpdateThemeToolbarButton(win);
     UpdatePdfDocumentColorModeToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
+    UpdateFullscreenToolbarButton(win);
     ConfigureToolbarColors(hwndToolbar);
     InvalidateRect(hwndToolbar, nullptr, TRUE);
 }

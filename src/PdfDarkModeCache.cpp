@@ -297,6 +297,15 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
             decodeMaxDim = 1200;
         }
         src = dm_load_src_pixmap(ctx, srcImage, decodeMaxDim);
+        // Theme paper and ink colors can be chromatic (for example Dracula #282A36).
+        // Keeping a grayscale source pixmap would collapse those colors to luminance,
+        // producing #2A2A2A and visibly separating scanned pages from the canvas.
+        if (src && src->colorspace && fz_colorspace_is_gray(ctx, src->colorspace)) {
+            fz_pixmap* rgbSrc =
+                fz_convert_pixmap(ctx, src, fz_device_rgb(ctx), nullptr, nullptr, fz_default_color_params, 1);
+            fz_drop_pixmap(ctx, src);
+            src = rgbSrc;
+        }
         if (policy == DarkImagePolicy::Preserve) {
             if (pageCoverage >= kMaxPreserveImagePageCoverage) {
                 // Soft-cream notebooks: classifier SoftCream → gentle soften only.

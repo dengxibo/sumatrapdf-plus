@@ -11,6 +11,7 @@ struct AnnotCreateArgs;
 constexpr int kFrameResizeHitTest = 5;
 
 extern bool gRedrawLog;
+bool IsSidebarSplitterLiveDrag();
 
 constexpr const char* kWebsiteURL = "https://www.sumatrapdfreader.org/";
 constexpr const char* kManualURL = "https://www.sumatrapdfreader.org/manual";

@@ -163,6 +163,8 @@ bool gEngineMupdfFastShutdown = false;
 bool gRedrawLog = false;
 
 static void RelayoutFrame(MainWindow* win, bool updateToolbars = true, int sidebarDx = -1);
+static bool gSidebarSplitterWrapSuspended = false;
+static Rect gLastLiveCanvasWin;
 static void UpdateOverlayScrollbarPositions(MainWindow* win);
 static void SyncCanvasScrollBarTheme(MainWindow* win);
 static void BeginFrameRedrawSuppression(MainWindow* win);
@@ -2525,7 +2527,7 @@ static MainWindow* CreateMainWindow() {
     // screen's edge when maximized (cf. Fitts' law) and there are
     // no additional adjustments needed when (un)maximizing
     clsName = CANVAS_CLASS_NAME;
-    style = WS_CHILD | WS_CLIPCHILDREN;
+    style = WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
     if (!ScrollbarsAreHidden() && !ScrollbarsUseOverlay()) {
         style |= WS_HSCROLL | WS_VSCROLL;
     }
@@ -6616,6 +6618,26 @@ constexpr int kTocMinDy = 100;
 
 constexpr int kFrameBorderSize = 1;
 
+static void FillWindowClientStrip(HWND hwnd, bool fromRight, int stripDx, COLORREF col) {
+    if (!hwnd || stripDx <= 0 || !IsWindow(hwnd)) {
+        return;
+    }
+    RECT rc{};
+    GetClientRect(hwnd, &rc);
+    if (stripDx > rc.right) {
+        stripDx = rc.right;
+    }
+    if (stripDx <= 0) {
+        return;
+    }
+    RECT strip = fromRight ? RECT{rc.right - stripDx, 0, rc.right, rc.bottom} : RECT{0, 0, stripDx, rc.bottom};
+    HDC hdc = GetDC(hwnd);
+    HBRUSH br = CreateSolidBrush(col);
+    FillRect(hdc, &strip, br);
+    DeleteObject(br);
+    ReleaseDC(hwnd, hdc);
+}
+
 using LayoutState = MainWindow::LayoutState;
 
 static bool IsLayoutStateEq(LayoutState* s1, LayoutState* s2) {
@@ -6677,12 +6699,19 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
         rc.dy -= kFrameBorderSize - 1;
     }
 
-    // hide overlay scrollbars before relayout so they don't appear at
-    // stale positions while child windows are being repositioned
-    OverlayScrollbarHide(win->overlayScrollV);
-    OverlayScrollbarHide(win->overlayScrollH);
+    // Live splitter drag: only move windows. SETREDRAW + page Relayout + TOC
+    // RDW_ERASE on every WM_MOUSEMOVE starves WM_PAINT (ghosting) and feels laggy.
+    // Canvas keeps copied bits (no SWP_NOCOPYBITS / no erase-paint) so the page
+    // does not flash; TOC/splitter discard bits so sidebar pixels are not copied in.
+    bool liveSidebarDrag = (sidebarDx > 0) && gSidebarSplitterWrapSuspended;
+    uint livePosFlags = liveSidebarDrag ? SWP_NOCOPYBITS : 0;
 
-    bool suppressIntermediateRedraws = !win->suppressFrameRedraw;
+    if (!liveSidebarDrag) {
+        OverlayScrollbarHide(win->overlayScrollV);
+        OverlayScrollbarHide(win->overlayScrollH);
+    }
+
+    bool suppressIntermediateRedraws = !win->suppressFrameRedraw && !liveSidebarDrag;
     if (suppressIntermediateRedraws) {
         // suppress intermediate repaints during relayout
         SendMessageW(win->hwndFrame, WM_SETREDRAW, FALSE, 0);
@@ -6791,29 +6820,29 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
 
         if (tocVisible) {
             Rect rToc(rc.TL(), toc);
-            dh.MoveWindow(win->hwndTocBox, rToc);
+            dh.MoveWindow(win->hwndTocBox, rToc, livePosFlags);
             if (favVisible) {
                 Rect rSplitV(rc.x, rc.y + toc.dy, toc.dx, kSplitterDy);
-                dh.MoveWindow(win->favSplitter->hwnd, rSplitV);
+                dh.MoveWindow(win->favSplitter->hwnd, rSplitV, livePosFlags);
                 toc.dy += kSplitterDy;
             }
         }
         if (favVisible) {
             Rect rFav(rc.x, rc.y + toc.dy, toc.dx, rc.dy - toc.dy);
-            dh.MoveWindow(win->hwndFavBox, rFav);
+            dh.MoveWindow(win->hwndFavBox, rFav, livePosFlags);
         }
         Rect rSplitH(rc.x + toc.dx, rc.y, kSplitterDx, rc.dy);
-        dh.MoveWindow(win->sidebarSplitter->hwnd, rSplitH);
+        dh.MoveWindow(win->sidebarSplitter->hwnd, rSplitH, livePosFlags);
 
         rc.x += toc.dx + kSplitterDx;
         rc.dx -= toc.dx + kSplitterDx;
     }
 
-    dh.MoveWindow(win->hwndCanvas, rc);
+    dh.MoveWindow(win->hwndCanvas, rc.x, rc.y, rc.dx, rc.dy, !liveSidebarDrag);
 
     dh.End();
 
-    if (GetDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas)) {
+    if (!liveSidebarDrag && GetDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas)) {
         RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
     }
 
@@ -6824,16 +6853,57 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
         RedrawWindow(win->hwndCanvas, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
         RedrawWindow(win->hwndFrame, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_FRAME);
     }
-    if (tocVisible) {
+    if (liveSidebarDrag) {
+        Rect canvasWin = WindowRect(win->hwndCanvas);
+        int dxMove = 0;
+        int stripDx = 0;
+        if (!gLastLiveCanvasWin.IsEmpty()) {
+            dxMove = canvasWin.x - gLastLiveCanvasWin.x;
+            stripDx = std::abs(dxMove) + kSplitterDx;
+            if (dxMove != 0 && stripDx > 0) {
+                COLORREF canvasBg = ThemeMainWindowBackgroundColor();
+                COLORREF sidebarBg = ThemeSidebarBackgroundColor();
+                // Canvas left always: expand exposes leftover splitter; shrink
+                // can copy the bar into the new left edge.
+                FillWindowClientStrip(win->hwndCanvas, false, stripDx, canvasBg);
+                if (dxMove > 0) {
+                    // Sidebar grew over old splitter positions.
+                    FillWindowClientStrip(win->hwndTocBox, true, stripDx, sidebarBg);
+                    if (win->tocLabelWithClose) {
+                        FillWindowClientStrip(win->tocLabelWithClose->hwnd, true, stripDx, sidebarBg);
+                    }
+                    if (win->tocFilterEdit) {
+                        FillWindowClientStrip(win->tocFilterEdit->hwnd, true, stripDx, sidebarBg);
+                    }
+                    if (win->tocTreeView) {
+                        FillWindowClientStrip(win->tocTreeView->hwnd, true, stripDx, sidebarBg);
+                    }
+                    if (favVisible) {
+                        FillWindowClientStrip(win->hwndFavBox, true, stripDx, sidebarBg);
+                        if (win->favTreeView) {
+                            FillWindowClientStrip(win->favTreeView->hwnd, true, stripDx, sidebarBg);
+                        }
+                    }
+                }
+            }
+        }
+        gLastLiveCanvasWin = canvasWin;
+        if (tocVisible) {
+            InvalidateRect(win->hwndTocBox, nullptr, FALSE);
+        }
+        if (favVisible) {
+            InvalidateRect(win->hwndFavBox, nullptr, FALSE);
+        }
+    } else if (tocVisible) {
         RedrawWindow(win->hwndTocBox, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
     }
-    if (favVisible) {
+    if (!liveSidebarDrag && favVisible) {
         RedrawWindow(win->hwndFavBox, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
     }
-    if (tocVisible || favVisible) {
+    if (!liveSidebarDrag && (tocVisible || favVisible)) {
         InvalidateRect(win->sidebarSplitter->hwnd, nullptr, TRUE);
     }
-    if (tocVisible && favVisible) {
+    if (!liveSidebarDrag && tocVisible && favVisible) {
         InvalidateRect(win->favSplitter->hwnd, nullptr, TRUE);
     }
     if (updateToolbars && win->isToolbarVisible) {
@@ -6867,7 +6937,7 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
     // reposition overlay scrollbars after relayout (they were hidden at the
     // start to prevent stale positioning); skip during fullscreen transitions
     // where EndFrameRedrawSuppression handles this
-    if (!win->suppressFrameRedraw) {
+    if (!win->suppressFrameRedraw && !liveSidebarDrag) {
         UpdateOverlayScrollbarPositions(win);
     }
 
@@ -7456,8 +7526,11 @@ void EnterFullScreen(MainWindow* win, bool presentation) {
     dwm::SetWindowRoundedCorners(win->hwndFrame, false);
 
     SetWindowLong(win->hwndFrame, GWL_STYLE, ws);
-    uint flags = SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOZORDER;
-    SetWindowPos(win->hwndFrame, nullptr, rect.x, rect.y, rect.dx, rect.dy, flags);
+    // HWND_TOPMOST covers the Win11 taskbar and other topmost tray widgets
+    // (e.g. Qt tool windows in the notify area). MarkFullscreenWindow alone
+    // does not lower those windows.
+    uint flags = SWP_FRAMECHANGED | SWP_NOACTIVATE;
+    SetWindowPos(win->hwndFrame, HWND_TOPMOST, rect.x, rect.y, rect.dx, rect.dy, flags);
 
     if (presentation) {
         win->ctrl->SetInPresentation(true);
@@ -7476,6 +7549,9 @@ void EnterFullScreen(MainWindow* win, bool presentation) {
     if (gGlobalPrefs->preventSleepInFullscreen) {
         SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED);
     }
+    UpdateFullscreenToolbarButton(win);
+    MarkShellFullscreenWindow(win->hwndFrame, true);
+    SetWindowPos(win->hwndFrame, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 }
 
 void ExitFullScreen(MainWindow* win) {
@@ -7531,8 +7607,8 @@ void ExitFullScreen(MainWindow* win) {
 
     Rect cr = ClientRect(win->hwndFrame);
     SetWindowLong(win->hwndFrame, GWL_STYLE, win->nonFullScreenWindowStyle);
-    uint flags = SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOSIZE | SWP_NOMOVE;
-    SetWindowPos(win->hwndFrame, nullptr, 0, 0, 0, 0, flags);
+    uint flags = SWP_FRAMECHANGED | SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE;
+    SetWindowPos(win->hwndFrame, HWND_NOTOPMOST, 0, 0, 0, 0, flags);
     MoveWindow(win->hwndFrame, win->nonFullScreenFrameRect);
     // TODO: this ReportIf() fires in pre-release e.g. 64011
     // ReportIf(WindowRect(win.hwndFrame) != win.nonFullScreenFrameRect);
@@ -7544,6 +7620,8 @@ void ExitFullScreen(MainWindow* win) {
     // show menu bar rebar after layout positions it correctly
     ShowMenuBarRebar(win);
     EndFrameRedrawSuppression(win);
+    UpdateFullscreenToolbarButton(win);
+    MarkShellFullscreenWindow(win->hwndFrame, false);
 }
 
 void ToggleFullScreen(MainWindow* win, bool presentation) {
@@ -7994,7 +8072,9 @@ static bool FrameOnSysChar(MainWindow* win, WPARAM key) {
     return false;
 }
 
-static bool gSidebarSplitterWrapSuspended = false;
+bool IsSidebarSplitterLiveDrag() {
+    return gSidebarSplitterWrapSuspended;
+}
 
 static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
     Splitter* splitter = ev->w;
@@ -8024,11 +8104,14 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
         RelayoutFrame(win, false, sidebarDx);
         return;
     }
-    RelayoutFrame(win, false, sidebarDx);
     if (gSidebarSplitterWrapSuspended) {
         gSidebarSplitterWrapSuspended = false;
+        gLastLiveCanvasWin = {};
+        RelayoutFrame(win, false, sidebarDx);
+        win->UpdateCanvasSize();
         ResumeTreeWrapLiveResizeAndFlush(win);
     } else {
+        RelayoutFrame(win, false, sidebarDx);
         // Click without move: still ensure heights match final width.
         FlushTocTreeWrapHeights(win);
         FlushFavTreeWrapHeights(win);
@@ -8062,11 +8145,14 @@ static void OnFavSplitterMove(Splitter::MoveEvent* ev) {
         RelayoutFrame(win, false, rToc.dx);
         return;
     }
-    RelayoutFrame(win, false, rToc.dx);
     if (gSidebarSplitterWrapSuspended) {
         gSidebarSplitterWrapSuspended = false;
+        gLastLiveCanvasWin = {};
+        RelayoutFrame(win, false, rToc.dx);
+        win->UpdateCanvasSize();
         ResumeTreeWrapLiveResizeAndFlush(win);
     } else {
+        RelayoutFrame(win, false, rToc.dx);
         FlushTocTreeWrapHeights(win);
         FlushFavTreeWrapHeights(win);
     }
@@ -8910,7 +8996,7 @@ static COLORREF GetEbookAnnotationColor(AnnotationType type, const AnnotCreateAr
         return RGB(0, 0, 255);
     }
     if (type == AnnotationType::Stamp || type == AnnotationType::Line || type == AnnotationType::Square ||
-        type == AnnotationType::Circle) {
+        type == AnnotationType::Circle || type == AnnotationType::Ink) {
         return RGB(255, 0, 0);
     }
     return GetDefaultAnnotationColor(type);
@@ -13954,8 +14040,16 @@ static void FinishDeferredMainWindowDpiRefresh(MainWindow* win, HWND hwnd) {
     OnMainWindowDpiChanged(win, hwnd, nullptr, dpi, true);
 }
 
+static UINT gTaskbarCreatedMsg = RegisterWindowMessageW(L"TaskbarCreated");
+
 LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     MainWindow* win = FindMainWindowByHwnd(hwnd);
+
+    // Explorer restart drops fullscreen marking and z-order.
+    if (msg == gTaskbarCreatedMsg && win && (win->isFullScreen || win->presentation)) {
+        MarkShellFullscreenWindow(hwnd, true);
+        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
 
     // This timer belongs to the frame in both caption modes.
     if (msg == WM_TIMER && wp == kEbookFontSizeDebounceTimerId) {
@@ -14132,6 +14226,10 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
         case WM_ACTIVATE:
             if (wp != WA_INACTIVE) {
                 gLastActiveFrameHwnd = hwnd;
+                if (win && (win->isFullScreen || win->presentation)) {
+                    MarkShellFullscreenWindow(hwnd, true);
+                    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                }
             }
             break;
 

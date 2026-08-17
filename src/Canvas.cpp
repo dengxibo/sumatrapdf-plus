@@ -1398,9 +1398,9 @@ static void FinishEbookAnnotCreateDrag(MainWindow* win, WindowTab* tab, DisplayM
             win->annotCreateInkPoints.Append(a);
             win->annotCreateInkPoints.Append(b);
         }
-        EbookAnnotation* annotation =
-            EbookAnnotationsCreateInkStroke(tab, dm, pageNo, win->annotCreateInkPoints.els,
-                                            (int)win->annotCreateInkPoints.len, GetDefaultAnnotationColor(type));
+        EbookAnnotation* annotation = EbookAnnotationsCreateInkStroke(tab, dm, pageNo, win->annotCreateInkPoints.els,
+                                                                      (int)win->annotCreateInkPoints.len,
+                                                                      GetDefaultEbookPointAnnotationColor(type));
         win->annotCreateInkPoints.Reset();
         if (!annotation) {
             return;
@@ -1468,7 +1468,7 @@ static void FinishAnnotCreateDrag(MainWindow* win, Point endCanvas) {
         PointF b = dm->CvtFromScreen(endCanvas, pageNo);
         annot = EngineMupdfCreateAnnotation(engine, pageNo, a, &args);
         if (annot) {
-            SetRect(annot, RectF::FromXY(a, b));
+            SetLine(annot, a, b);
         }
     } else {
         PointF tl = dm->CvtFromScreen({screenRect.x, screenRect.y}, pageNo);
@@ -2567,6 +2567,20 @@ static void OnPaintDocument(MainWindow* win) {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(win->hwndCanvas, &ps);
 
+    if (IsSidebarSplitterLiveDrag()) {
+        int pw = ps.rcPaint.right - ps.rcPaint.left;
+        int ph = ps.rcPaint.bottom - ps.rcPaint.top;
+        // Do not BitBlt neighbor columns: on expand-left that smeared the
+        // splitter into many vertical trails. Fill newly exposed left strips.
+        if (pw > 0 && pw <= 48 && ph > 0 && ps.rcPaint.left == 0) {
+            HBRUSH br = CreateSolidBrush(ThemeMainWindowBackgroundColor());
+            FillRect(hdc, &ps.rcPaint, br);
+            DeleteObject(br);
+        }
+        EndPaint(win->hwndCanvas, &ps);
+        return;
+    }
+
     switch (win->presentation) {
         case PM_BLACK_SCREEN:
             FillRect(hdc, &ps.rcPaint, GetStockBrush(BLACK_BRUSH));
@@ -2711,22 +2725,9 @@ float ScaleZoomBy(MainWindow* win, float factor) {
 
 static bool gWheelZoomRelative = true;
 
-// we guess this is part of continous zoom action if WM_MOUSEWHEEL
-bool IsFirstWheelMsg(LARGE_INTEGER& lastTime) {
-    auto currTime = TimeGet();
-    auto elapsedMs = TimeDiffMs(lastTime, currTime);
-    // 150 ms is a heuristic based on looking at logs
-    if (elapsedMs < 150.0) {
-        // logf("IsFirstWheelMsg: no, elapsed: %.f\n", (float)elapsedMs);
-        lastTime = currTime;
-        return false;
-    }
-    // logf("IsFirstWheelMsg: yes, elapsed: %.f\n", (float)elapsedMs);
-    lastTime = currTime;
-    return true;
-}
-
-// this does zooming via mouse wheel (with ctrl or right mouse buttone)
+// Ctrl+wheel / right-button+wheel zoom. One WHEEL_DELTA notch is ~10%.
+// Fast flicks used to explode (6000% / 20%): only exact ±120 was slowed, and
+// deltas that arrived <150ms apart stacked from the gesture start without bound.
 static void ZoomByMouseWheel(MainWindow* win, WPARAM wp) {
     // don't show the context menu when zooming with the right mouse-button down
     win->dragStartPending = false;
@@ -2736,49 +2737,39 @@ static void ZoomByMouseWheel(MainWindow* win, WPARAM wp) {
 
     short delta = GET_WHEEL_DELTA_WPARAM(wp);
     Point pt = HwndGetCursorPos(win->hwndCanvas);
-    float newZoom;
-    float factor = 0;
     if (!gWheelZoomRelative) {
         // before 3.6 we were scrolling by steps
-        newZoom = win->ctrl->GetNextZoomStep(delta < 0 ? kZoomMin : kZoomMax);
-        bool smartZoom = false; // Note: if true will prioritze selection
-        SmartZoom(win, newZoom, &pt, smartZoom);
+        float newZoom = win->ctrl->GetNextZoomStep(delta < 0 ? kZoomMin : kZoomMax);
+        SmartZoom(win, newZoom, &pt, false);
         return;
     }
 
-    static LARGE_INTEGER lastWheelMsgTime{};
-    static int accumDelta = 0;
-    static float initialZoomVritual = 0;
+    constexpr float kZoomPerNotch = 1.10f;
+    constexpr float kMaxNotchesPerMsg = 2.f;
+    constexpr float kVelocityMs = 300.f; // 2× (or ½) per this many ms
 
-    if (IsFirstWheelMsg(lastWheelMsgTime)) {
-        initialZoomVritual = win->ctrl->GetZoomVirtual(true);
-        accumDelta = 0;
+    float notches = (float)delta / (float)WHEEL_DELTA;
+    notches = limitValue(notches, -kMaxNotchesPerMsg, kMaxNotchesPerMsg);
+    float factor = powf(kZoomPerNotch, notches);
+
+    static LARGE_INTEGER lastZoomTime{};
+    LARGE_INTEGER now = TimeGet();
+    double elapsedMs = TimeDiffMs(lastZoomTime, now);
+    if (lastZoomTime.QuadPart == 0 || elapsedMs > 500.0) {
+        elapsedMs = 100.0; // first tick or pause: one notch applies fully
+    }
+    lastZoomTime = now;
+
+    float maxFactor = powf(2.f, (float)elapsedMs / kVelocityMs);
+    maxFactor = limitValue(maxFactor, 1.04f, 2.f);
+    if (factor > maxFactor) {
+        factor = maxFactor;
+    } else if (factor < 1.f / maxFactor) {
+        factor = 1.f / maxFactor;
     }
 
-    // special case the value coming from pinch gensture on thinkpad touchpad
-    // WHEEL_DELTA is 120, which is too fast, so we slow down zooming
-    // 10 is heuristic
-    if (delta == WHEEL_DELTA) {
-        delta = 10;
-    } else if (delta == -WHEEL_DELTA) {
-        delta = -10;
-    }
-
-    accumDelta += delta;
-    // calc zooming factor as centered around 1.f (1 is no change, > 1 is zoom in, < 1 is zoom out)
-    // from delta values that are centered around 0
-    bool negative = accumDelta < 0;
-
-    factor = (float)std::abs(accumDelta) / 100.F;
-    factor = 1.F + factor;
-    if (negative) {
-        factor = 1.F / factor;
-    }
-    newZoom = initialZoomVritual * factor;
-    bool smartZoom = false; // Note: if true will prioritze selection
-    SmartZoom(win, newZoom, &pt, smartZoom);
-
-    // logf("delta: %d, accumDelta: %d, factor: %f, newZoom: %f\n", delta, accumDelta, factor, newZoom);
+    float newZoom = win->ctrl->GetZoomVirtual(true) * factor;
+    SmartZoom(win, newZoom, &pt, false);
 }
 
 static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM lp) {
@@ -4092,6 +4083,9 @@ LRESULT CALLBACK WndProcCanvas(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     RECT rc;
                     GetClientRect(hwnd, &rc);
                     logf("redraw: WM_SIZE hwnd=0x%p (canvas) size=(%d,%d)\n", hwnd, rc.right, rc.bottom);
+                }
+                if (IsSidebarSplitterLiveDrag()) {
+                    return 0;
                 }
                 win->UpdateCanvasSize();
                 // fully invalidate since layout depends on size

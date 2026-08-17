@@ -89,7 +89,6 @@ static COLORREF TocItemDisabledTextColor(TreeView* treeView) {
 }
 
 static void LayoutTocContainer(MainWindow* win);
-
 static void TocRecalcAllItemHeights(MainWindow* win);
 
 // TreeWrapLabels: full-tree integral updates are too heavy for live sidebar drag
@@ -99,6 +98,10 @@ static constexpr UINT kTreeWrapHeightDebounceMs = 64;
 static int gTreeWrapSuspendDepth = 0;
 
 static bool TreeWrapUpdatesSuspended() {
+    return gTreeWrapSuspendDepth > 0;
+}
+
+bool TreeWrapLiveResizeSuspended() {
     return gTreeWrapSuspendDepth > 0;
 }
 
@@ -1812,7 +1815,8 @@ static void DrawTreeWrappedLabel(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, const
     HWND hwnd = treeView->hwnd;
     HTREEITEM hItem = (HTREEITEM)tvcd->nmcd.dwItemSpec;
     RECT rcLabel;
-    if (!TreeView_GetItemRect(hwnd, hItem, &rcLabel, TRUE)) {
+    bool gotItemRect = TreeView_GetItemRect(hwnd, hItem, &rcLabel, TRUE) != FALSE;
+    if (!gotItemRect) {
         int labelLeft = TocGetItemLabelLeft(hwnd, hItem);
         int baseH = treeView->unevenItemBaseHeight;
         if (baseH <= 0) {
@@ -2506,7 +2510,19 @@ static void LayoutTocContainer(MainWindow* win) {
     Rect rc = WindowRect(hwndContainer);
     int dy = rc.dy;
     int y = 0;
-    MoveWindow(l->hwnd, 0, y, rc.dx, labelSize.dy, TRUE);
+    BOOL liveDrag = TreeWrapLiveResizeSuspended() ? TRUE : FALSE;
+    UINT liveFlags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOREDRAW;
+    auto place = [&](HWND hwnd, int x, int y, int dx, int dy) {
+        if (!hwnd) {
+            return;
+        }
+        if (liveDrag) {
+            SetWindowPos(hwnd, nullptr, x, y, dx, dy, liveFlags);
+        } else {
+            MoveWindow(hwnd, x, y, dx, dy, TRUE);
+        }
+    };
+    place(l->hwnd, 0, y, rc.dx, labelSize.dy);
     dy -= labelSize.dy;
     y += labelSize.dy;
     HWND loadHwnd = GetDocumentLoadingNotificationHwnd(win->hwndFrame, win->hwndCanvas);
@@ -2514,18 +2530,28 @@ static void LayoutTocContainer(MainWindow* win) {
     if (loadInToc) {
         Rect rn = WindowRect(loadHwnd);
         int loadDy = rn.dy;
-        MoveWindow(loadHwnd, 0, y, rc.dx, loadDy, TRUE);
+        place(loadHwnd, 0, y, rc.dx, loadDy);
         dy -= loadDy;
         y += loadDy;
     }
-    if (edit && edit->hwnd && IsWindowVisible(edit->hwnd)) {
+    int editStyleVis = 0;
+    int rowDy = 0;
+    if (edit && edit->hwnd) {
+        editStyleVis = (GetWindowLongW(edit->hwnd, GWL_STYLE) & WS_VISIBLE) ? 1 : 0;
         Size editSize = edit->GetIdealSize();
-        int rowDy = editSize.dy;
-        MoveWindow(edit->hwnd, 0, y, rc.dx, rowDy, TRUE);
-        dy -= rowDy;
-        y += rowDy;
+        // IsWindowVisible is false while RelayoutFrame has WM_SETREDRAW off on the
+        // frame, even though the edit still has WS_VISIBLE. Using it here slides the
+        // tree over the search row (first item vs. filter competing during splitter drag).
+        if (editStyleVis) {
+            rowDy = editSize.dy;
+            place(edit->hwnd, 0, y, rc.dx, rowDy);
+            dy -= rowDy;
+            y += rowDy;
+        }
     }
-    MoveWindow(treeView->hwnd, 0, y, rc.dx, dy, TRUE);
+    if (treeView && treeView->hwnd) {
+        place(treeView->hwnd, 0, y, rc.dx, dy);
+    }
 }
 
 void RelayoutTocContainer(MainWindow* win) {

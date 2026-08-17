@@ -227,46 +227,64 @@ fz_pixmap* PdfDarkModeProcessScanPixmap(fz_context* ctx, fz_pixmap* src, const D
     DarkImageAnalysis work = analysis;
     work.estimatedBackground = EstimatePaperFromPixmap(ctx, src, analysis);
 
-    fz_pixmap* dst = fz_new_pixmap(ctx, src->colorspace, src->w, src->h, src->seps, src->alpha);
-    fz_copy_pixmap_rect(ctx, dst, src, fz_make_irect(0, 0, src->w, src->h), nullptr);
-
-    fz_colorspace* cs = dst->colorspace ? dst->colorspace : fz_device_rgb(ctx);
     fz_colorspace* rgb = fz_device_rgb(ctx);
-    int components = fz_colorspace_n(ctx, cs);
-    int n = dst->n;
-    int stride = dst->stride;
-    bool fastRgb = cs == rgb || fz_colorspace_is_rgb(ctx, cs);
-    bool fastGray = components == 1 || fz_colorspace_is_gray(ctx, cs);
+    fz_colorspace* srcCs = src->colorspace ? src->colorspace : rgb;
+    int srcComponents = fz_colorspace_n(ctx, srcCs);
+    bool srcFastRgb = srcCs == rgb || fz_colorspace_is_rgb(ctx, srcCs);
+    bool srcFastGray = srcComponents == 1 || fz_colorspace_is_gray(ctx, srcCs);
+
+    // A Gray pixmap cannot represent tinted dark-theme colors. Writing Dracula
+    // #282A36 back into Gray produces its luminance #2A2A2A, leaving a visible
+    // rectangle against the reading area. Promote grayscale scans to RGB, just
+    // like the government-paper processor does.
+    bool promoteThemeRgb = srcFastGray && !srcFastRgb;
+    fz_colorspace* dstCs = promoteThemeRgb ? rgb : srcCs;
+    fz_pixmap* dst = fz_new_pixmap(ctx, dstCs, src->w, src->h, src->seps, src->alpha);
+    if (!promoteThemeRgb) {
+        fz_copy_pixmap_rect(ctx, dst, src, fz_make_irect(0, 0, src->w, src->h), nullptr);
+    }
+
+    int srcN = src->n;
+    int srcStride = src->stride;
+    int dstN = dst->n;
+    int dstStride = dst->stride;
+    bool dstFastRgb = dstCs == rgb || fz_colorspace_is_rgb(ctx, dstCs);
+    bool dstFastGray = fz_colorspace_n(ctx, dstCs) == 1 || fz_colorspace_is_gray(ctx, dstCs);
 
     for (int y = 0; y < dst->h; y++) {
-        unsigned char* row = dst->samples + y * stride;
+        unsigned char* srcRow = src->samples + y * srcStride;
+        unsigned char* dstRow = dst->samples + y * dstStride;
         for (int x = 0; x < dst->w; x++) {
-            unsigned char* px = row + x * n;
+            unsigned char* srcPx = srcRow + x * srcN;
+            unsigned char* dstPx = dstRow + x * dstN;
             float r, g, b;
-            if (fastRgb) {
-                r = px[0] / 255.f;
-                g = px[1] / 255.f;
-                b = px[2] / 255.f;
-            } else if (fastGray) {
-                r = g = b = px[0] / 255.f;
+            if (srcFastRgb) {
+                r = srcPx[0] / 255.f;
+                g = srcPx[1] / 255.f;
+                b = srcPx[2] / 255.f;
+            } else if (srcFastGray) {
+                r = g = b = srcPx[0] / 255.f;
             } else {
-                ReadPixmapRgb(ctx, dst, x, y, &r, &g, &b);
+                ReadPixmapRgb(ctx, src, x, y, &r, &g, &b);
             }
             float nr, ng, nb;
             PdfDarkModeRemapScanPixel(r, g, b, work, palette, &nr, &ng, &nb);
-            if (fastRgb) {
+            if (dstFastRgb) {
                 int vr = (int)(nr * 255.f + 0.5f);
                 int vg = (int)(ng * 255.f + 0.5f);
                 int vb = (int)(nb * 255.f + 0.5f);
-                px[0] = (unsigned char)(vr < 0 ? 0 : (vr > 255 ? 255 : vr));
-                px[1] = (unsigned char)(vg < 0 ? 0 : (vg > 255 ? 255 : vg));
-                px[2] = (unsigned char)(vb < 0 ? 0 : (vb > 255 ? 255 : vb));
-            } else if (fastGray) {
+                dstPx[0] = (unsigned char)(vr < 0 ? 0 : (vr > 255 ? 255 : vr));
+                dstPx[1] = (unsigned char)(vg < 0 ? 0 : (vg > 255 ? 255 : vg));
+                dstPx[2] = (unsigned char)(vb < 0 ? 0 : (vb > 255 ? 255 : vb));
+            } else if (dstFastGray) {
                 float lum = 0.2126f * nr + 0.7152f * ng + 0.0722f * nb;
                 int v = (int)(lum * 255.f + 0.5f);
-                px[0] = (unsigned char)(v < 0 ? 0 : (v > 255 ? 255 : v));
+                dstPx[0] = (unsigned char)(v < 0 ? 0 : (v > 255 ? 255 : v));
             } else {
                 WritePixmapRgb(ctx, dst, x, y, nr, ng, nb);
+            }
+            if (promoteThemeRgb && src->alpha && dst->alpha) {
+                dstPx[dstN - 1] = srcPx[srcN - 1];
             }
         }
     }

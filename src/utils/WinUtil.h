@@ -141,6 +141,7 @@ void LimitWindowSizeToScreen(HWND hwnd, SIZE& size);
 void HwndEnsureVisible(HWND hwnd);
 Rect GetFullscreenRect(HWND);
 Rect GetVirtualScreenRect();
+void MarkShellFullscreenWindow(HWND hwnd, bool fullscreen);
 
 void DrawRect(HDC, const Rect&);
 void FillRect(HDC, const Rect&, HBRUSH);
@@ -265,8 +266,8 @@ class DeferWinPosHelper {
     void End();
     void SetWindowPos(HWND hwnd, Rect rc);
     void SetWindowPos(HWND hWnd, HWND hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
-    void MoveWindow(HWND hWnd, int x, int y, int cx, int cy, BOOL bRepaint = TRUE);
-    void MoveWindow(HWND hWnd, Rect r);
+    void MoveWindow(HWND hWnd, int x, int y, int cx, int cy, BOOL bRepaint = TRUE, uint extraFlags = 0);
+    void MoveWindow(HWND hWnd, Rect r, uint extraFlags = 0);
 };
 
 struct BitmapPixels {

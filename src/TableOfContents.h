@@ -14,6 +14,7 @@ void FlushFavTreeWrapHeights(MainWindow* win);
 void SuspendTreeWrapLiveResize();
 void SuspendTreeWrapLiveResizeForWindow(MainWindow* win);
 void ResumeTreeWrapLiveResizeAndFlush(MainWindow* win);
+bool TreeWrapLiveResizeSuspended();
 // Shared by TOC/favorites host WM_TIMER handlers (debounce wrap-height recalc).
 constexpr UINT_PTR kTreeWrapHeightTimerId = 0x7151;
 void ReCreateTocFilterEdit(MainWindow*, HFONT font);
