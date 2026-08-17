@@ -1,3 +1,5 @@
 [SumatraPDF]
 Latest: 3.7.28
 PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.28/SumatraPDF.exe
+Notes: Oval portraits keep a small mat halo (no rectangular bars at the poles); inset photos no longer leave a white hairline; Ctrl+wheel zoom is ~10% per notch; TOC splitter no longer relayouts while dragging; toolbar fullscreen (F11).
+NotesZh: 椭圆肖像衬纸光晕缩小，两极不再被啃成方块；嵌入照片不再留白竖线；Ctrl+滚轮约 10%；拖 TOC 不再重排页面；工具栏增加全屏按钮（F11）。

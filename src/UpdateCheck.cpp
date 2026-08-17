@@ -152,6 +152,8 @@ struct UpdateInfo {
 
     const char* dlURL = nullptr;
     const char* installerPath = nullptr;
+    const char* notes = nullptr;
+    const char* notesZh = nullptr;
 
     UpdateInfo() = default;
     ~UpdateInfo() {
@@ -164,6 +166,8 @@ struct UpdateInfo {
         str::Free(portableArm64);
         str::Free(dlURL);
         str::Free(installerPath);
+        str::Free(notes);
+        str::Free(notesZh);
     }
 };
 
@@ -226,6 +230,8 @@ static UpdateInfo* ParseUpdateInfo(const char* d) {
     res->portable64 = str::Dup(node->GetValue("PortableExe64"));
     res->portableArm64 = str::Dup(node->GetValue("PortableExeArm64"));
     res->portable32 = str::Dup(node->GetValue("PortableExe32"));
+    res->notes = str::Dup(node->GetValue("Notes"));
+    res->notesZh = str::Dup(node->GetValue("NotesZh"));
 
     // figure out which executable to download
     const char* dlURL = nullptr;
@@ -275,11 +281,35 @@ bool StartInstallerAutoUpgrade(const char* installerPath) {
     return CreateProcessHelper(installerPath, cmd.Get());
 }
 
+static bool IsChineseUiLang() {
+    const char* lang = trans::GetCurrentLangCode();
+    if (!lang) {
+        return false;
+    }
+    return str::EqI(lang, "zh-CN") || str::EqI(lang, "zh-TW") || str::EqI(lang, "cn") || str::EqI(lang, "tw");
+}
+
+static const char* UpdateNotesForUi(const UpdateInfo* updateInfo) {
+    if (IsChineseUiLang() && !str::IsEmpty(updateInfo->notesZh)) {
+        return updateInfo->notesZh;
+    }
+    if (!str::IsEmpty(updateInfo->notes)) {
+        return updateInfo->notes;
+    }
+    return updateInfo->notesZh;
+}
+
 static bool PromptUserForUpdate(UpdateInfo* updateInfo) {
     auto mainInstr = _TRA("New version available");
     auto ver = updateInfo->latestVer;
     auto fmt = _TRA("You have version '%s' and version '%s' is available.\nDo you want to install new version?");
     auto content = str::Format(fmt, CURR_VERSION_STRA, ver);
+    const char* notes = UpdateNotesForUi(updateInfo);
+    if (!str::IsEmpty(notes)) {
+        auto withNotes = str::Format("%s\n\n%s", content, notes);
+        str::Free(content);
+        content = withNotes;
+    }
 
     constexpr int kBtnIdDontInstall = 100;
     constexpr int kBtnIdInstall = 101;
@@ -303,6 +333,7 @@ static bool PromptUserForUpdate(UpdateInfo* updateInfo) {
     dialogConfig.pszWindowTitle = ToWStrTemp(title);
     dialogConfig.pszMainInstruction = ToWStrTemp(mainInstr);
     dialogConfig.pszContent = ToWStrTemp(content);
+    str::Free(content);
     dialogConfig.nDefaultButton = kBtnIdInstall;
     dialogConfig.dwFlags = flags;
     dialogConfig.cxWidth = 0;
