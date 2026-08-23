@@ -15,3 +15,7 @@ void RevokeCanvasDropTarget(HWND hwndCanvas);
 
 // Timer for mouse wheel smooth scrolling
 constexpr UINT_PTR kSmoothScrollTimerID = 6;
+// Ctrl+wheel zoom: apply after a short idle so a flick is one jump
+constexpr UINT_PTR kWheelZoomTimerID = 10;
+
+void CancelPendingWheelZoom(MainWindow* win);

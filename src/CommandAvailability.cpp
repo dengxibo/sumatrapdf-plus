@@ -27,6 +27,7 @@
 #include "CommandAvailability.h"
 #include "EbookFontConfig.h"
 #include "EbookFontMenu.h"
+#include "OcrService.h"
 
 // clang-format off
 
@@ -387,6 +388,10 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
     if (cmdId >= CmdPdfTocAddAfter && cmdId <= CmdPdfTocDemote) {
         return ctx.canEditPdfToc ? CommandVisibility::Show : CommandVisibility::Hide;
     }
+    if (cmdId == CmdExtractPdfToc || cmdId == CmdPdfTocCalibrate || cmdId == CmdPdfTocSetCurrentPage ||
+        cmdId == CmdPdfTocFindInBody || cmdId == CmdPdfTocReplaceFromSelection) {
+        return ctx.canEditPdfToc ? CommandVisibility::Show : CommandVisibility::Hide;
+    }
 
     CustomCommand* cmd = FindCustomCommand(cmdId);
     int origCmdId = cmd ? cmd->origId : cmdId;
@@ -458,6 +463,10 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
 
     if (CmdWorksWithoutDocument(cmdId)) {
         return MapForSurface(CommandVisibility::Show, surface);
+    }
+
+    if (cmdId == CmdToggleAutoOcr && !ctx.isDocLoaded) {
+        return CommandVisibility::Show;
     }
 
     if (!ctx.isDocLoaded) {
@@ -544,6 +553,24 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         bool canExtract = ctx.engineKind == kindEngineMupdf || ctx.engineKind == kindEngineDjVu;
         if (!canExtract || ctx.isImageCollection) {
             return CommandVisibility::Hide;
+        }
+    }
+
+    if (cmdId == CmdSaveSearchablePdf) {
+        if (!ctx.isPdf || ctx.engineKind != kindEngineMupdf || !CanAccessDisk() || gPluginMode) {
+            return CommandVisibility::Hide;
+        }
+    }
+
+    if (cmdId == CmdOcrCurrentPage || cmdId == CmdOcrDocument || cmdId == CmdToggleAutoOcr || cmdId == CmdOcrRegion ||
+        cmdId == CmdOcrCancel) {
+        if (ctx.engineKind != kindEngineMupdf && ctx.engineKind != kindEngineDjVu &&
+            ctx.engineKind != kindEngineImage && ctx.engineKind != kindEngineImageDir &&
+            ctx.engineKind != kindEngineComicBooks && ctx.engineKind != kindEnginePostScript) {
+            return CommandVisibility::Hide;
+        }
+        if (cmdId == CmdOcrCancel && !OcrHasQueuedJobs()) {
+            return CommandVisibility::Disable;
         }
     }
 

@@ -39,6 +39,7 @@
 #include "SearchAndDDE.h"
 #include "WindowTab.h"
 #include "TableOfContents.h"
+#include "TocCalib.h"
 #include "resource.h"
 #include "Commands.h"
 #include "Selection.h"
@@ -57,6 +58,7 @@ static void SafeDeleteTabsCtrl(TabsCtrl* tabsCtrl) {
 }
 #include "Theme.h"
 #include "DarkModeSubclass.h"
+#include "utils/WinDynCalls.h"
 #include "Canvas.h"
 
 #include "utils/Log.h"
@@ -117,6 +119,7 @@ void CreateMovePatternLazy(MainWindow* win) {
 
 MainWindow::~MainWindow() {
     KillTimer(hwndCanvas, kSmoothScrollTimerID);
+    KillTimer(hwndCanvas, kWheelZoomTimerID);
     FinishStressTest(this);
 
     ReportIf(TabCount() > 0);
@@ -144,6 +147,7 @@ MainWindow::~MainWindow() {
     DeleteFindBar(this);
     DeleteFindWindow(this);
     DeleteFindWindow(this);
+    DeleteTocCalibUi(this);
 
     // stop the find-bar match-count background thread before we're freed
     // (it reads our fields; a pending CountEndTask closes the handle later)
@@ -206,19 +210,23 @@ void ClearMouseState(MainWindow* win) {
     win->annotationUnderCursor = nullptr;
     if (win->annotCreateToolCmd != 0) {
         win->annotCreateToolCmd = 0;
+        win->annotCreateToolLocked = false;
         win->annotCreateInkPoints.Reset();
         UpdateAnnotToolToolbarButtons(win);
     }
+    win->ocrRegionPending = false;
 }
 
 void SetAnnotCreateTool(MainWindow* win, int cmdId) {
     if (!win) {
         return;
     }
-    if (win->annotCreateToolCmd == cmdId) {
+    if (cmdId == 0 || win->annotCreateToolCmd == cmdId) {
         win->annotCreateToolCmd = 0;
+        win->annotCreateToolLocked = false;
     } else {
         win->annotCreateToolCmd = cmdId;
+        win->annotCreateToolLocked = IsCtrlPressed();
     }
     win->annotCreateInkPoints.Reset();
     if (win->mouseAction == MouseAction::CreatingAnnotation) {
@@ -795,8 +803,13 @@ static void SyncSidebarTreeViewTheme(HWND hwnd) {
     if (ThemeUsesDarkChrome()) {
         DarkMode::setDarkThemeExperimental(hwnd);
         DarkMode::setDarkScrollBar(hwnd);
+        DarkMode::setDarkTooltips(hwnd, static_cast<int>(DarkMode::ToolTipsType::treeview));
     } else {
         DarkMode::setTreeViewWindowThemeEx(hwnd, true);
+        HWND tips = TreeView_GetToolTips(hwnd);
+        if (tips && DynSetWindowTheme) {
+            DynSetWindowTheme(tips, nullptr, nullptr);
+        }
     }
 }
 
@@ -818,6 +831,7 @@ void UpdateControlsColors(MainWindow* win) {
         if (win->tocFilterEdit) {
             win->tocFilterEdit->SetColors(txtCol, bgCol);
         }
+        TocCalibUpdateTheme(win);
         SyncSidebarTreeViewTheme(tocTreeView->hwnd);
         win->sidebarSplitter->SetColors(kColorNoChange, splitterCol);
         InvalidateRect(tocTreeView->hwnd, nullptr, FALSE);

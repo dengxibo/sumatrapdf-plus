@@ -30,8 +30,8 @@ Windows 下的 PDF / 电子书阅读器，针对中文 EPUB/MOBI、离线查词�
 | **UI polish** — Windows 11–style caption, refined toolbar spacing, theme-aware chrome                               | **界面优化** — Win11 风格标题栏、工具栏间距与主题配色             |
 
 
-Product name: **Sumatra PDF Plus** (`kAppName` in `src/Version.h`). Executable is still `SumatraPDF.exe`.  
-显示名称：**Sumatra PDF Plus**，可执行文件名仍为 `SumatraPDF.exe`。
+Product name: **Sumatra PDF Plus** (`kAppName` in `src/Version.h`). Executable: `SumatraPDF-Plus.exe`.  
+显示名称：**Sumatra PDF Plus**，可执行文件为 `SumatraPDF-Plus.exe`。
 
 **Supported formats / 常见格式：** PDF, EPUB, MOBI, AZW/AZW3, FB2, CHM, CBZ/CBR, DjVu, XPS, and more.
 
@@ -41,8 +41,8 @@ Product name: **Sumatra PDF Plus** (`kAppName` in `src/Version.h`). Executable i
 
 1. Extract the full folder to any path (avoid special characters in the path).
   解压整个文件夹到任意目录（路径尽量不要含特殊符号）。
-2. Run `SumatraPDF.exe`. Keep the `fonts` folder beside the exe.
-  双击 `SumatraPDF.exe` 运行；不要只复制 exe，请保留同目录的 `fonts` 文件夹。
+2. Run `SumatraPDF-Plus.exe`. Keep the `fonts` folder beside the exe.
+  双击 `SumatraPDF-Plus.exe` 运行；不要只复制 exe，请保留同目录的 `fonts` 文件夹。
    For Traditional Chinese PDF lookup, also keep the `opencc` folder.  
    繁体 PDF 查词还需保留 `opencc` 文件夹。
 3. Use the toolbar to toggle light/dark theme and word lookup.
@@ -103,7 +103,7 @@ Override the dictionary folder with the `OfflineDictionaryPath` advanced setting
 
 Settings are stored in `SumatraPDF-settings.txt`:
 
-- **Portable / 便携版:** next to `SumatraPDF.exe`
+- **Portable / 便携版:** next to `SumatraPDF-Plus.exe`
 - **Installed / 安装版:** `%LOCALAPPDATA%\SumatraPDF\SumatraPDF-settings.txt`
 
 **Annotated reference / 带中文注释的参考模板:** [SumatraPDF-settings-annotated.txt](SumatraPDF-settings-annotated.txt)
@@ -120,7 +120,7 @@ User guide (Chinese) / 中文说明: [readme.txt](readme.txt)
 Requirements: Visual Studio 2022 build tools, [Bun](https://bun.sh).
 
 ```powershell
-bun ./cmd/build.ts          # debug → out/dbg64/SumatraPDF.exe
+bun ./cmd/build.ts          # debug → out/dbg64/SumatraPDF-Plus.exe
 bun ./cmd/build-all.ts      # release → out/rel64/
 ```
 

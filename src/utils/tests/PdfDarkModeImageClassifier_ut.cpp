@@ -153,6 +153,21 @@ static DarkImageFeatures DuXiuTextScanFullBleedFeatures() {
     return f;
 }
 
+// Sparse gray office photocopy: SoftCream-like thumb (low lumVar) but not cream sat.
+static DarkImageFeatures FadedOfficePhotocopyFeatures() {
+    DarkImageFeatures f;
+    f.isColorful = false;
+    f.colorBucketRatio = 8.f / 4096.f;
+    f.highLuminanceRatio = 0.91f;
+    f.saturatedPixelRatio = 0.0f;
+    f.chromaticPixelRatio = 0.01f;
+    f.luminanceVariance = 0.015f;
+    f.borderLightRatio = 0.86f;
+    f.borderUniformity = 0.78f;
+    f.flatAreaRatio = 0.40f;
+    return f;
+}
+
 // Contract scan (flat paper, low ink variance): mimics SoftCream stats but must remap.
 static DarkImageFeatures ContractScanFullBleedFeatures() {
     DarkImageFeatures f;
@@ -567,6 +582,16 @@ void PdfDarkModeImageClassifier_UnitTests() {
     utassert(PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.938f, 0.018f, 0.160f, 0.022f, 0.f));
     utassert(PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.931f, 0.022f, 0.173f, 0.024f, 0.f));
     utassert(!PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.92f, 0.02f, 0.32f, 0.018f, 0.f));
+    // Faded gray photocopies: paper lum below 0.72 so paperRatio is 0.55–0.88.
+    utassert(PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.72f, 0.010f, 0.020f, 0.020f));
+    utassert(PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.65f, 0.000f, 0.000f, 0.025f));
+    utassert(PdfDarkModeFeaturesLookLikeFadedOfficeScanNotCream(FadedOfficePhotocopyFeatures()));
+    utassert(!PdfDarkModeFeaturesLookLikeFadedOfficeScanNotCream(SoftCreamNotebookFullBleedFeatures()));
+    utassert(!PdfDarkModeFeaturesLookLikeFadedOfficeScanNotCream(LincolnPage15MapFeatures()));
+    utassert(!PdfDarkModeFeaturesLookLikeFadedOfficeScanNotCream(WarmCreamGalileoPageFeatures()));
+    kind = PdfDarkModeClassifyImageFeatures(FadedOfficePhotocopyFeatures(), 0.95f, false, &confidence);
+    utassert(kind == DarkImageKind::FullPageScan);
+    utassert(PdfDarkModePolicyForImageKind(kind, false) == DarkImagePolicy::AdaptiveDocument);
     // Dust Bowl / Wildlife Rescue stay out (photos, not 公文).
     utassert(!PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.909f, 0.000f, 0.000f, 0.045f));
     utassert(!PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(0.782f, 0.000f, 0.000f, 0.069f));

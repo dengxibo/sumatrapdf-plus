@@ -76,6 +76,7 @@
 #include "CommandPalette.h"
 #include "EditAnnotations.h"
 #include "EditEbookAnnotations.h"
+#include "TocCalib.h"
 
 #include "utils/Log.h"
 
@@ -657,6 +658,24 @@ static bool HandleGlobalFindShortcut(MSG& msg) {
     return true;
 }
 
+static bool HandleTocCalibUndoShortcut(const MSG& msg) {
+    if (msg.message != WM_KEYDOWN && msg.message != WM_SYSKEYDOWN) {
+        return false;
+    }
+    if (!IsCtrlPressed() || IsAltPressed()) {
+        return false;
+    }
+    int vk = (int)msg.wParam;
+    if (vk != 'Z' && vk != 'Y') {
+        return false;
+    }
+    MainWindow* win = MainWindowForAccel(msg.hwnd);
+    if (!win && gWindows.size() == 1) {
+        win = gWindows[0];
+    }
+    return TocCalibHandleUndoShortcut(win, msg.hwnd, vk, true, IsShiftPressed());
+}
+
 // Same dispatch path as the main message loop (Ctrl+F, accelerators, etc.).
 // Returns false if WM_QUIT was posted.
 bool PumpAppMessage(MSG& msg) {
@@ -669,6 +688,9 @@ bool PumpAppMessage(MSG& msg) {
     // shortcut before it reaches the newly active document. Annotation edits
     // are explicitly excluded by HandleGlobalFindShortcut().
     if (HandleGlobalFindShortcut(msg)) {
+        return true;
+    }
+    if (HandleTocCalibUndoShortcut(msg)) {
         return true;
     }
     if (PreTranslateMessage(msg)) {
@@ -1666,6 +1688,11 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
     }
     if (flags.testSearchCollect) {
         TestSearchCollect(flags);
+        ShutdownCommon();
+        return 0;
+    }
+    if (flags.extractTocBench) {
+        TestExtractTocBench(flags);
         ShutdownCommon();
         return 0;
     }

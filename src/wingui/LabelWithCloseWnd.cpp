@@ -28,7 +28,29 @@
 #define kHeaderActionDy 24
 #define kHeaderActionGapDx 3
 
-static void DrawHeaderAction(HDC hdc, const Rect& r, bool isExpand, bool isHover, bool isPressed, COLORREF bgCol,
+static void DrawCalibrateHeaderIcon(HDC hdc, HWND hwnd, const Rect& r, COLORREF col) {
+    int pad = DpiScale(hwnd, 5);
+    int x = r.x + pad;
+    int w = r.dx - 2 * pad;
+    int box = std::max(3, DpiScale(hwnd, 4));
+    int gap = std::max(1, DpiScale(hwnd, 2));
+    int y1 = r.y + r.dy / 2 - DpiScale(hwnd, 3);
+    int y2 = r.y + r.dy / 2 + DpiScale(hwnd, 3);
+    int lineR = x + w - box - gap;
+    HPEN pen = CreatePen(PS_SOLID, std::max(1, DpiScale(hwnd, 1)), col);
+    HGDIOBJ old = SelectObject(hdc, pen);
+    MoveToEx(hdc, x, y1, nullptr);
+    LineTo(hdc, lineR, y1);
+    MoveToEx(hdc, x, y2, nullptr);
+    LineTo(hdc, lineR, y2);
+    int half = box / 2;
+    Rectangle(hdc, x + w - box, y1 - half, x + w, y1 + half + 1);
+    Rectangle(hdc, x + w - box, y2 - half, x + w, y2 + half + 1);
+    SelectObject(hdc, old);
+    DeleteObject(pen);
+}
+
+static void DrawHeaderAction(HDC hdc, const Rect& r, int kind, bool isHover, bool isPressed, COLORREF bgCol,
                              COLORREF iconCol) {
     if (r.dx <= 0 || r.dy <= 0) {
         return;
@@ -45,9 +67,13 @@ static void DrawHeaderAction(HDC hdc, const Rect& r, bool isExpand, bool isHover
         DeleteObject(rgn);
     }
 
+    if (kind == 3) {
+        DrawCalibrateHeaderIcon(hdc, hwnd, r, iconCol);
+        return;
+    }
     int iconSz = std::min(DpiScale(hwnd, 16), std::min(r.dx, r.dy));
     Rect iconRc(r.x + (r.dx - iconSz) / 2, r.y + (r.dy - iconSz) / 2, iconSz, iconSz);
-    TbIcon icon = isExpand ? TbIcon::ChevronDown : TbIcon::ChevronUp;
+    TbIcon icon = kind == 1 ? TbIcon::ChevronDown : TbIcon::ChevronUp;
     DrawSvgIcon(hdc, iconRc, icon, iconCol, iconBgCol);
 }
 
@@ -105,10 +131,12 @@ static void PaintHDC(LabelWithCloseWnd* w, HDC hdc, const PAINTSTRUCT& ps) {
     DrawCloseButton(args);
 
     COLORREF iconCol = AccentColor(w->textColor, 70);
-    DrawHeaderAction(hdc, w->firstActionPos, true, w->firstActionPos.Contains(curPos), w->pressedAction == 1,
-                     w->bgColor, iconCol);
-    DrawHeaderAction(hdc, w->secondActionPos, false, w->secondActionPos.Contains(curPos), w->pressedAction == 2,
-                     w->bgColor, iconCol);
+    DrawHeaderAction(hdc, w->firstActionPos, 1, w->firstActionPos.Contains(curPos), w->pressedAction == 1, w->bgColor,
+                     iconCol);
+    DrawHeaderAction(hdc, w->secondActionPos, 2, w->secondActionPos.Contains(curPos), w->pressedAction == 2, w->bgColor,
+                     iconCol);
+    DrawHeaderAction(hdc, w->thirdActionPos, 3, w->thirdActionPos.Contains(curPos), w->pressedAction == 3, w->bgColor,
+                     iconCol);
 
     if (w->font) {
         SelectObject(hdc, prevFont);
@@ -194,6 +222,8 @@ LRESULT LabelWithCloseWnd::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             firstAction.Call();
         } else if (action == 2 && secondActionPos.Contains(cursorPos)) {
             secondAction.Call();
+        } else if (action == 3 && thirdActionPos.Contains(cursorPos)) {
+            thirdAction.Call();
         }
         return 0;
     }
@@ -203,6 +233,8 @@ LRESULT LabelWithCloseWnd::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             pressedAction = 1;
         } else if (secondActionPos.Contains(cursorPos)) {
             pressedAction = 2;
+        } else if (thirdActionPos.Contains(cursorPos)) {
+            pressedAction = 3;
         }
         if (pressedAction != 0) {
             SetCapture(hwnd);
@@ -250,6 +282,25 @@ void LabelWithCloseWnd::SetHeaderActions(const Func0& first, const char* firstTo
     Layout();
 }
 
+void LabelWithCloseWnd::SetThirdHeaderAction(const Func0& action, const char* tooltip) {
+    thirdAction = action;
+    thirdActionTooltip = tooltip;
+    if (actionsTooltip && thirdActionTooltipId < 0 && tooltip) {
+        thirdActionTooltipId = actionsTooltip->Add(HeaderActionTooltipTemp(tooltip), thirdActionPos, false);
+    }
+    Layout();
+}
+
+void LabelWithCloseWnd::ClearThirdHeaderAction() {
+    thirdAction = {};
+    thirdActionTooltip = nullptr;
+    thirdActionPos = {};
+    if (actionsTooltip && thirdActionTooltipId >= 0) {
+        actionsTooltip->Update(thirdActionTooltipId, "", Rect(), false);
+    }
+    Layout();
+}
+
 void LabelWithCloseWnd::SetLabel(const char* label) {
     HwndSetText(this->hwnd, label);
     this->Layout();
@@ -273,16 +324,27 @@ void LabelWithCloseWnd::Layout() {
     closeBtnPos = Rect(x, y, btnDx, btnDy);
     firstActionPos = {};
     secondActionPos = {};
+    thirdActionPos = {};
     if (firstAction.IsValid() && secondAction.IsValid()) {
         int actionDx = DpiScale(hwnd, kHeaderActionDx);
         int actionDy = DpiScale(hwnd, kHeaderActionDy);
         int gapDx = DpiScale(hwnd, kHeaderActionGapDx);
         int actionY = (dy - actionDy) / 2;
         if (isRtl) {
-            firstActionPos = Rect(closeBtnPos.x + closeBtnPos.dx + gapDx, actionY, actionDx, actionDy);
-            secondActionPos = Rect(firstActionPos.x + actionDx + gapDx, actionY, actionDx, actionDy);
+            if (thirdAction.IsValid()) {
+                thirdActionPos = Rect(closeBtnPos.x + closeBtnPos.dx + gapDx, actionY, actionDx, actionDy);
+                secondActionPos = Rect(thirdActionPos.x + actionDx + gapDx, actionY, actionDx, actionDy);
+            } else {
+                secondActionPos = Rect(closeBtnPos.x + closeBtnPos.dx + gapDx, actionY, actionDx, actionDy);
+            }
+            firstActionPos = Rect(secondActionPos.x + actionDx + gapDx, actionY, actionDx, actionDy);
         } else {
-            secondActionPos = Rect(closeBtnPos.x - gapDx - actionDx, actionY, actionDx, actionDy);
+            if (thirdAction.IsValid()) {
+                thirdActionPos = Rect(closeBtnPos.x - gapDx - actionDx, actionY, actionDx, actionDy);
+                secondActionPos = Rect(thirdActionPos.x - gapDx - actionDx, actionY, actionDx, actionDy);
+            } else {
+                secondActionPos = Rect(closeBtnPos.x - gapDx - actionDx, actionY, actionDx, actionDy);
+            }
             firstActionPos = Rect(secondActionPos.x - gapDx - actionDx, actionY, actionDx, actionDy);
         }
         if (actionsTooltip) {
@@ -290,6 +352,11 @@ void LabelWithCloseWnd::Layout() {
                                    false);
             actionsTooltip->Update(secondActionTooltipId, HeaderActionTooltipTemp(secondActionTooltip), secondActionPos,
                                    false);
+            if (thirdActionTooltipId >= 0) {
+                actionsTooltip->Update(thirdActionTooltipId,
+                                       thirdAction.IsValid() ? HeaderActionTooltipTemp(thirdActionTooltip) : "",
+                                       thirdActionPos, false);
+            }
         }
     }
     // logf("closeBtnPos: (%d,%d) size: (%d, %d)\n", x, y, btnDx, btnDy);
@@ -312,6 +379,10 @@ void LabelWithCloseWnd::UpdateHeaderActionTooltips() {
     }
     if (secondActionTooltipId >= 0) {
         actionsTooltip->Update(secondActionTooltipId, HeaderActionTooltipTemp(secondActionTooltip), secondActionPos,
+                               false);
+    }
+    if (thirdActionTooltipId >= 0 && thirdAction.IsValid()) {
+        actionsTooltip->Update(thirdActionTooltipId, HeaderActionTooltipTemp(thirdActionTooltip), thirdActionPos,
                                false);
     }
 }
@@ -346,7 +417,8 @@ Size LabelWithCloseWnd::GetIdealSize() {
     int btnDy = DpiScale(this->hwnd, kCloseBtnDy);
     size.dx += btnDx;
     if (firstAction.IsValid() && secondAction.IsValid()) {
-        size.dx += 2 * DpiScale(this->hwnd, kHeaderActionDx) + 2 * DpiScale(this->hwnd, kHeaderActionGapDx);
+        int n = thirdAction.IsValid() ? 3 : 2;
+        size.dx += n * DpiScale(this->hwnd, kHeaderActionDx) + n * DpiScale(this->hwnd, kHeaderActionGapDx);
     }
     size.dx += DpiScale(this->hwnd, kButtonSpaceDx);
     size.dx += 2 * DpiScale(this->hwnd, this->padX);

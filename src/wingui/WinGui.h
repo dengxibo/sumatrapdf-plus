@@ -582,6 +582,7 @@ struct TreeView : Wnd {
         bool fullRowSelect = false;
         bool unevenItemHeight = false;
         bool isRtl = false;
+        bool editLabels = false;
     };
 
     struct GetTooltipEvent {
@@ -629,7 +630,16 @@ struct TreeView : Wnd {
         LRESULT result = 0;
     };
 
+    struct LabelEditEvent {
+        TreeView* treeView = nullptr;
+        TreeItem treeItem = 0;
+        const WCHAR* text = nullptr;
+        bool cancel = false;
+        LRESULT result = 0;
+    };
+
     using KeyDownHandler = Func1<KeyDownEvent*>;
+    using LabelEditHandler = Func1<LabelEditEvent*>;
     using ClickHandler = Func1<ClickEvent*>;
     using CustomDrawHandler = Func1<CustomDrawEvent*>;
     using GetTooltipHandler = Func1<TreeView::GetTooltipEvent*>;
@@ -686,8 +696,12 @@ struct TreeView : Wnd {
     // for WM_NOTIFY with NM_CLICK or NM_DBCLICK
     ClickHandler onClick;
 
-    // for WM_NOITFY with TVN_KEYDOWN
+    // for WM_NOTIFY with TVN_KEYDOWN
     KeyDownHandler onKeyDown;
+
+    // for WM_NOTIFY with TVN_BEGINLABELEDIT / TVN_ENDLABELEDIT
+    LabelEditHandler onBeginLabelEdit;
+    LabelEditHandler onEndLabelEdit;
 
     // private
     TVITEMW item{};

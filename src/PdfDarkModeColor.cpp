@@ -206,6 +206,44 @@ static bool IsLikelyLinkRgb(float r, float g, float b) {
     return true;
 }
 
+// 公文 红头 / 红章. Linear invert maps red → cyan/green; keep hue red on dark paper.
+static bool IsOfficialRedInkRgb(float r, float g, float b) {
+    float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    if (maxC - minC < 0.11f) {
+        return false;
+    }
+    if (r <= g + 0.05f || r <= b + 0.05f) {
+        return false;
+    }
+    float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+    if (lum > 0.90f) {
+        return false;
+    }
+    if (g > 0.62f && b > 0.55f) {
+        return false;
+    }
+    return true;
+}
+
+static void MapOfficialRedInkToDark(float r, float g, float b, float* outRgb) {
+    float nr = r * 1.15f;
+    float ng = g * 0.45f;
+    float nb = b * 0.45f;
+    if (nr > 1.f) {
+        nr = 1.f;
+    }
+    if (ng > nr * 0.45f) {
+        ng = nr * 0.45f;
+    }
+    if (nb > nr * 0.45f) {
+        nb = nr * 0.45f;
+    }
+    outRgb[0] = nr;
+    outRgb[1] = ng;
+    outRgb[2] = nb;
+}
+
 static float SmoothStep(float edge0, float edge1, float x) {
     if (edge0 == edge1) {
         return x >= edge1 ? 1.f : 0.f;
@@ -527,6 +565,10 @@ void ApplyAdaptiveDocumentDarkMode(float r, float g, float b, const DarkModePale
 }
 
 void MapRgbToDarkTheme(float r, float g, float b, const DarkModePalette& palette, float* outRgb) {
+    if (IsOfficialRedInkRgb(r, g, b)) {
+        MapOfficialRedInkToDark(r, g, b, outRgb);
+        return;
+    }
     if (PdfDarkModeUsesObjectLevel()) {
         MapRgbToDarkThemeOklab(r, g, b, palette, outRgb);
         return;
@@ -2191,6 +2233,15 @@ fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, 
     float satRatio = st.satRatio;
     float chromaRatio = st.chromaRatio;
     float lumVar = st.lumVar;
+    float redInkRatio = st.redInkRatio;
+    bool officeDivert =
+        PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(paperRatio, satRatio, chromaRatio, lumVar, redInkRatio) &&
+        !PdfDarkModeFullResStatsLookLikeInsetPhotoOnPaper(paperRatio, satRatio, chromaRatio, lumVar) &&
+        !PdfDarkModeFullResStatsLookLikeColorIllustrationNotLineArt(satRatio, chromaRatio);
+    if (officeDivert) {
+        DarkModePalette govPalette = PdfDarkModeGovernmentPaperPalette(palette);
+        return PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, govPalette);
+    }
 
     if (PdfDarkModeV2ShouldPreserveFullBleedPhoto(st.borderPaperRatio, satRatio, chromaRatio, lumVar)) {
         fz_pixmap* dst = fz_new_pixmap(ctx, cs, w, h, src->seps, src->alpha);
@@ -2577,6 +2628,8 @@ fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, c
     float redInkRatio = st.redInkRatio;
     bool yellow = PdfDarkModeFullResStatsLookLikeAgedYellowLineArtPage(paperRatio, satRatio, chromaRatio, lumVar,
                                                                        st.borderPaperRatio, redInkRatio);
+    bool officeScan =
+        PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(paperRatio, satRatio, chromaRatio, lumVar, redInkRatio);
     if (yellow) {
         DarkModePalette lineArtPalette = PdfDarkModeGovernmentPaperPalette(palette);
         return PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, lineArtPalette);
@@ -2637,8 +2690,6 @@ fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, c
         return PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, govPalette);
     }
 
-    bool officeScan =
-        PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(paperRatio, satRatio, chromaRatio, lumVar, redInkRatio);
     if (officeScan) {
         DarkModePalette govPalette = PdfDarkModeGovernmentPaperPalette(palette);
         return PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, govPalette);
@@ -3325,6 +3376,64 @@ fz_pixmap* PdfDarkModeProcessGovernmentPaperPixmap(fz_context* ctx, fz_pixmap* s
     bool writeGray = srcGray && !promoteThemeRgb;
 
     float threshold = dm_gov_estimate_binary_threshold(ctx, src, cs, rgb, components, w, h);
+    int thresh8 = (int)(threshold * 255.f + 0.5f);
+    if (thresh8 < 1) {
+        thresh8 = 1;
+    }
+    if (thresh8 > 254) {
+        thresh8 = 254;
+    }
+
+    // Office scans are almost all gray ink/paper. Integer binarize avoids a
+    // float remap of every pixel (native 公文 pages are often 1–6 million px).
+    if ((srcRgb || srcGray) && writeThemeRgb) {
+        for (int y = 0; y < h; y++) {
+            unsigned char* srcRow = src->samples + y * srcStride;
+            unsigned char* dstRow = dst->samples + y * dstStride;
+            for (int x = 0; x < w; x++) {
+                unsigned char* spx = srcRow + x * srcN;
+                unsigned char* dpx = dstRow + x * dstN;
+                int r8, g8, b8;
+                if (srcGray) {
+                    r8 = g8 = b8 = spx[0];
+                } else {
+                    r8 = spx[0];
+                    g8 = spx[1];
+                    b8 = spx[2];
+                }
+                int maxC = r8 > g8 ? (r8 > b8 ? r8 : b8) : (g8 > b8 ? g8 : b8);
+                int minC = r8 < g8 ? (r8 < b8 ? r8 : b8) : (g8 < b8 ? g8 : b8);
+                if (maxC - minC < 36) {
+                    int lum8 = (r8 * 54 + g8 * 183 + b8 * 19) >> 8;
+                    if (lum8 >= thresh8) {
+                        dpx[0] = themeBytes.paperR;
+                        dpx[1] = themeBytes.paperG;
+                        dpx[2] = themeBytes.paperB;
+                    } else {
+                        dpx[0] = themeBytes.inkR;
+                        dpx[1] = themeBytes.inkG;
+                        dpx[2] = themeBytes.inkB;
+                    }
+                } else {
+                    float r = r8 / 255.f, g = g8 / 255.f, b = b8 / 255.f;
+                    float nr = r, ng = g, nb = b;
+                    if (!ApplyGovernmentPaperColoredPixel(r, g, b, threshold, govPalette, &nr, &ng, &nb)) {
+                        ApplyGovernmentPaperFallbackPixel(r, g, b, threshold, govPalette, &nr, &ng, &nb);
+                    }
+                    int vr = (int)(nr * 255.f + 0.5f);
+                    int vg = (int)(ng * 255.f + 0.5f);
+                    int vb = (int)(nb * 255.f + 0.5f);
+                    dpx[0] = (unsigned char)(vr < 0 ? 0 : (vr > 255 ? 255 : vr));
+                    dpx[1] = (unsigned char)(vg < 0 ? 0 : (vg > 255 ? 255 : vg));
+                    dpx[2] = (unsigned char)(vb < 0 ? 0 : (vb > 255 ? 255 : vb));
+                }
+                if (dst->alpha && dstN >= 4) {
+                    dpx[3] = 255;
+                }
+            }
+        }
+        return dst;
+    }
 
     for (int y = 0; y < h; y++) {
         unsigned char* srcRow = src->samples + y * srcStride;

@@ -14,6 +14,9 @@
 
 #include "utils/Log.h"
 
+static u32 ComputeAsciiLetterMask(const char* text, int byteLen);
+static void FinalizeCachedPageTextUtf8(PageTextUtf8* pt);
+
 static thread_local bool gCreateEngineForThumbnail = false;
 
 void SetCreateEngineForThumbnail(bool value) {
@@ -411,6 +414,7 @@ EngineBase::~EngineBase() {
         }
         free(pagesTextUtf8);
     }
+    free(pageOcrTried);
     DeleteCriticalSection(&textCacheLock);
     str::Free(defaultExt);
     ArenaDelete(arena);
@@ -531,6 +535,260 @@ void EngineBase::ClearTextCacheForPage(int pageNo) {
     if (changed) {
         textCacheGeneration++;
     }
+}
+
+static int CountNonWsChars(const WCHAR* s) {
+    if (!s) {
+        return 0;
+    }
+    int n = 0;
+    for (; *s; s++) {
+        if (!str::IsWs(*s) && *s != 0xFFFD) {
+            n++;
+        }
+    }
+    return n;
+}
+
+void EngineBase::EnsurePageOcrTriedSize() {
+    int n = pageCount;
+    if (n <= 0) {
+        return;
+    }
+    if (!pageOcrTried) {
+        pageOcrTried = AllocArray<u8>(n);
+        pageOcrTriedSize = n;
+        return;
+    }
+    if (pageOcrTriedSize >= n) {
+        return;
+    }
+    int oldSize = pageOcrTriedSize;
+    pageOcrTried = (u8*)realloc(pageOcrTried, (size_t)n);
+    if (!pageOcrTried) {
+        pageOcrTriedSize = 0;
+        return;
+    }
+    memset(pageOcrTried + oldSize, 0, (size_t)(n - oldSize));
+    pageOcrTriedSize = n;
+}
+
+bool EngineBase::PageHasUsableText(int pageNo) {
+    if (pageNo < 1 || pageNo > pageCount) {
+        return false;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    if (pagesText && pageNo <= pagesTextSize && pagesText[pageNo - 1].text) {
+        return CountNonWsChars(pagesText[pageNo - 1].text) >= 20;
+    }
+    if (pagesTextUtf8 && pageNo <= pagesTextUtf8Size && pagesTextUtf8[pageNo - 1].text) {
+        int n = 0;
+        const char* s = pagesTextUtf8[pageNo - 1].text;
+        for (; *s; s++) {
+            u8 b = (u8)*s;
+            if (b < 0x80) {
+                if (!str::IsWs((char)b) && b != '?') {
+                    n++;
+                }
+            } else if ((b & 0xC0) != 0x80) {
+                n++;
+            }
+        }
+        return n >= 20;
+    }
+    return false;
+}
+
+bool EngineBase::WasOcrTried(int pageNo) {
+    if (pageNo < 1) {
+        return false;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    if (!pageOcrTried || pageNo > pageOcrTriedSize) {
+        return false;
+    }
+    return pageOcrTried[pageNo - 1] != 0;
+}
+
+void EngineBase::MarkOcrTried(int pageNo) {
+    if (pageNo < 1) {
+        return;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    EnsurePageOcrTriedSize();
+    if (pageOcrTried && pageNo <= pageOcrTriedSize) {
+        pageOcrTried[pageNo - 1] = 1;
+    }
+}
+
+void EngineBase::ClearOcrTried(int pageNo) {
+    if (pageNo < 1) {
+        return;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    if (pageOcrTried && pageNo <= pageOcrTriedSize) {
+        pageOcrTried[pageNo - 1] = 0;
+    }
+}
+
+void EngineBase::SetCachedPageText(int pageNo, PageText pt, PageTextUtf8 utf8) {
+    if (pageNo < 1 || pageNo > pageCount) {
+        FreePageText(&pt);
+        FreePageTextUtf8(&utf8);
+        return;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    EnsurePagesTextSize();
+    EnsurePagesTextUtf8Size();
+    EnsurePageOcrTriedSize();
+    if (pagesText && pageNo <= pagesTextSize) {
+        PageText* dst = &pagesText[pageNo - 1];
+        free(dst->coords);
+        free(dst->text);
+        *dst = pt;
+        pt = {};
+        if (!dst->text) {
+            dst->text = str::Dup(L"");
+            dst->len = 0;
+        }
+    } else {
+        FreePageText(&pt);
+    }
+    if (pagesTextUtf8 && pageNo <= pagesTextUtf8Size) {
+        PageTextUtf8* dst = &pagesTextUtf8[pageNo - 1];
+        free(dst->coords);
+        free(dst->text);
+        *dst = utf8;
+        utf8 = {};
+        FinalizeCachedPageTextUtf8(dst);
+    } else {
+        FreePageTextUtf8(&utf8);
+    }
+    if (pageOcrTried && pageNo <= pageOcrTriedSize) {
+        pageOcrTried[pageNo - 1] = 1;
+    }
+    textCacheGeneration++;
+}
+
+bool EngineBase::HasCachedOcrText(int pageNo) {
+    if (!WasOcrTried(pageNo)) {
+        return false;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    if (pagesTextUtf8 && pageNo <= pagesTextUtf8Size && pagesTextUtf8[pageNo - 1].text &&
+        pagesTextUtf8[pageNo - 1].len > 0) {
+        return true;
+    }
+    if (pagesText && pageNo <= pagesTextSize && pagesText[pageNo - 1].text && pagesText[pageNo - 1].len > 0) {
+        return true;
+    }
+    return false;
+}
+
+int EngineBase::CountOcrCachedPages() {
+    int n = 0;
+    int count = pageCount;
+    for (int i = 1; i <= count; i++) {
+        if (HasCachedOcrText(i)) {
+            n++;
+        }
+    }
+    return n;
+}
+
+void EngineBase::AppendCachedPageText(int pageNo, PageText addW, PageTextUtf8 addU) {
+    if (pageNo < 1 || pageNo > pageCount) {
+        FreePageText(&addW);
+        FreePageTextUtf8(&addU);
+        return;
+    }
+    PageText oldW{};
+    PageTextUtf8 oldU{};
+    {
+        ScopedCritSec scope(&textCacheLock);
+        EnsurePagesTextSize();
+        EnsurePagesTextUtf8Size();
+        if (pagesText && pageNo <= pagesTextSize && pagesText[pageNo - 1].text && pagesText[pageNo - 1].len > 0) {
+            PageText* src = &pagesText[pageNo - 1];
+            oldW.len = src->len;
+            oldW.text = (WCHAR*)memdup(src->text, (src->len + 1) * sizeof(WCHAR));
+            if (src->coords) {
+                oldW.coords = (Rect*)memdup(src->coords, src->len * sizeof(Rect));
+            }
+        }
+        if (pagesTextUtf8 && pageNo <= pagesTextUtf8Size && pagesTextUtf8[pageNo - 1].text &&
+            pagesTextUtf8[pageNo - 1].len > 0) {
+            PageTextUtf8* src = &pagesTextUtf8[pageNo - 1];
+            oldU.len = src->len;
+            oldU.text = (char*)memdup(src->text, src->len + 1);
+            if (src->coords) {
+                oldU.coords = (Rect*)memdup(src->coords, src->len * sizeof(Rect));
+            }
+        }
+    }
+    if (!oldW.text && !oldU.text) {
+        SetCachedPageText(pageNo, addW, addU);
+        return;
+    }
+    PageText mergedW{};
+    PageTextUtf8 mergedU{};
+    if (oldW.text || addW.text) {
+        int a = oldW.text ? oldW.len : 0;
+        int b = addW.text ? addW.len : 0;
+        int sep = (a > 0 && b > 0) ? 1 : 0;
+        mergedW.len = a + sep + b;
+        mergedW.text = AllocArray<WCHAR>(mergedW.len + 1);
+        mergedW.coords = AllocArray<Rect>(mergedW.len);
+        if (a > 0) {
+            memcpy(mergedW.text, oldW.text, a * sizeof(WCHAR));
+            if (oldW.coords) {
+                memcpy(mergedW.coords, oldW.coords, a * sizeof(Rect));
+            }
+        }
+        if (sep) {
+            mergedW.text[a] = L'\n';
+            if (addW.coords && addW.len > 0) {
+                mergedW.coords[a] = addW.coords[0];
+            }
+        }
+        if (b > 0) {
+            memcpy(mergedW.text + a + sep, addW.text, b * sizeof(WCHAR));
+            if (addW.coords) {
+                memcpy(mergedW.coords + a + sep, addW.coords, b * sizeof(Rect));
+            }
+        }
+    }
+    if (oldU.text || addU.text) {
+        int a = oldU.text ? oldU.len : 0;
+        int b = addU.text ? addU.len : 0;
+        int sep = (a > 0 && b > 0) ? 1 : 0;
+        mergedU.len = a + sep + b;
+        mergedU.text = AllocArray<char>(mergedU.len + 1);
+        mergedU.coords = AllocArray<Rect>(mergedU.len);
+        if (a > 0) {
+            memcpy(mergedU.text, oldU.text, a);
+            if (oldU.coords) {
+                memcpy(mergedU.coords, oldU.coords, a * sizeof(Rect));
+            }
+        }
+        if (sep) {
+            mergedU.text[a] = '\n';
+            if (addU.coords && addU.len > 0) {
+                mergedU.coords[a] = addU.coords[0];
+            }
+        }
+        if (b > 0) {
+            memcpy(mergedU.text + a + sep, addU.text, b);
+            if (addU.coords) {
+                memcpy(mergedU.coords + a + sep, addU.coords, b * sizeof(Rect));
+            }
+        }
+    }
+    FreePageText(&oldW);
+    FreePageTextUtf8(&oldU);
+    FreePageText(&addW);
+    FreePageTextUtf8(&addU);
+    SetCachedPageText(pageNo, mergedW, mergedU);
 }
 
 bool EngineBase::TryExtractPageText(int pageNo, PageText* out) {

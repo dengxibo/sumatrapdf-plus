@@ -28,6 +28,8 @@ export const settingsInlineCommentsZh: Record<string, string> = {
   ShowAnnotToolbarButtons: "工具栏显示矩形/椭圆/直线/画笔快捷标注按钮",
   SearchUIFloating: "true=悬浮搜索窗口",
   OfflineDictionaryPath: "离线词典目录",
+  AutoOcrScanPages: "自动识别无文字层的扫描页，便于选择和搜索；模型在 {exedir}/ocr/",
+  ExtractPdfTocMode: "智能提取目录详细程度 conservative/standard/detailed",
   EnableDoubleClickWordLookup: "双击查离线词典",
   AiChatProvider: "Ask AI 提供商 doubao/deepseek/chatgpt",
   AiChatUseDeepSeekInsteadOfDoubao: "已弃用，请用 AiChatProvider",

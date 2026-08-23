@@ -355,19 +355,39 @@ bool PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(float paperRatio, floa
     // Hangzhou 质疑函 p.1: paper=0.937 sat=0.035 chroma=0.230 lumVar=0.021 redInk=0.019.
     // p.2–4: same white scans but redInk=0; JPEG chroma 0.16–0.17 hit SoftCream instead.
     // Dust Bowl p.18 is lumVar=0.045. Cream RAZ paper is not 90%+ chroma<0.10 samples.
-    if (paperRatio < 0.88f || lumVar >= 0.040f) {
-        return false;
-    }
     if (satRatio >= 0.12f) {
         return false;
     }
-    if (chromaRatio < 0.12f) {
+    if (paperRatio >= 0.88f && lumVar < 0.040f) {
+        if (chromaRatio < 0.12f) {
+            return true;
+        }
+        if (redInkRatio >= 0.004f && chromaRatio < 0.35f) {
+            return true;
+        }
+        return satRatio < 0.04f && chromaRatio < 0.28f;
+    }
+    // Faded gray photocopies: paper lum is often 0.62–0.72, so the lum>0.72 paper
+    // counter under-counts and PictureBook Sharp leaves mid-gray glyphs on dark paper.
+    if (paperRatio >= 0.58f && paperRatio < 0.88f && lumVar < 0.038f && satRatio < 0.045f && chromaRatio < 0.10f) {
         return true;
     }
-    if (redInkRatio >= 0.004f && chromaRatio < 0.35f) {
-        return true;
+    return false;
+}
+
+// Thumbnail SoftCream also matches sparse gray office scans (crushed lumVar). Cream
+// notebooks keep a little saturation; ultra-white RAZ thumbs (Lincoln map) stay cream.
+bool PdfDarkModeFeaturesLookLikeFadedOfficeScanNotCream(const DarkImageFeatures& f) {
+    if (f.highLuminanceRatio <= 0.82f || f.highLuminanceRatio > 0.96f) {
+        return false;
     }
-    return paperRatio >= 0.90f && satRatio < 0.04f && chromaRatio < 0.28f;
+    if (f.saturatedPixelRatio >= 0.008f || f.chromaticPixelRatio >= 0.08f) {
+        return false;
+    }
+    if (f.luminanceVariance < 0.006f || f.luminanceVariance >= 0.022f) {
+        return false;
+    }
+    return true;
 }
 
 // Classic B&W line-art scans (连环画 / woodblock reprints): paper + ink lines, no color.
@@ -505,8 +525,11 @@ DarkImageKind PdfDarkModeClassifyImageFeatures(const DarkImageFeatures& f, float
             confidence = 0.78f;
         } else if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
             // Scanned contracts mimic soft-cream stats; notebook art has lower flatAreaRatio.
+            // Sparse gray photocopies also look like cream in a 128px thumb (low lumVar) and
+            // must FullPageScan — Preserve+SoftCream keeps original dark ink on dark paper.
             if (f.flatAreaRatio > 0.48f ||
-                (f.highLuminanceRatio > 0.92f && f.saturatedPixelRatio < 0.008f && f.luminanceVariance < 0.018f)) {
+                (f.highLuminanceRatio > 0.92f && f.saturatedPixelRatio < 0.008f && f.luminanceVariance < 0.018f) ||
+                PdfDarkModeFeaturesLookLikeFadedOfficeScanNotCream(f)) {
                 kind = DarkImageKind::FullPageScan;
                 confidence = 0.80f;
             } else {

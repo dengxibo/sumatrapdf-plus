@@ -34,6 +34,7 @@ void NotificationUpdateMessage(NotificationWnd* wnd, const char* msg, int timeou
 void RemoveNotification(NotificationWnd*);
 bool RemoveNotificationsForGroup(HWND, Kind);
 NotificationWnd* GetNotificationForGroup(HWND, Kind);
+HWND GetNotificationParentHwnd(NotificationWnd* wnd);
 bool UpdateNotificationProgress(NotificationWnd*, const char* msg, int perc);
 void RelayoutNotifications(HWND hwnd);
 

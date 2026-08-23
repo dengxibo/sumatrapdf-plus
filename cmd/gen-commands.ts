@@ -261,6 +261,17 @@ export const commands = [
     "CmdPdfTocPromote", "PDF TOC: Promote Item",
     "CmdPdfTocDemote", "PDF TOC: Demote Item",
     "CmdEbookFontSizeReset", "Ebook Font Size: Reset to Default",
+    "CmdOcrCurrentPage", "OCR Current Page",
+    "CmdOcrDocument", "OCR All Pages",
+    "CmdToggleAutoOcr", "Toggle Auto OCR",
+    "CmdOcrRegion", "OCR Region",
+    "CmdOcrCancel", "Cancel OCR",
+    "CmdSaveSearchablePdf", "Recognize all pages and save",
+    "CmdExtractPdfToc", "Extract Table of Contents",
+    "CmdPdfTocCalibrate", "Calibrate TOC Pages",
+    "CmdPdfTocSetCurrentPage", "Set TOC Item to Current Page",
+    "CmdPdfTocFindInBody", "Find TOC Item in Body",
+    "CmdPdfTocReplaceFromSelection", "Replace TOC Item from Selection",
     "CmdNone", "Do nothing",
 ];
 

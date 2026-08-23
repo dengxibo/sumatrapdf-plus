@@ -2,6 +2,183 @@
 
 ## next
 
+- sidebar splitter: live drag repaints the TOC tree, footer, and canvas immediately (no leftover bits / overlay scrollbar)
+  拖侧栏分隔条时立刻重绘目录树、底部栏和画布，不再留下残影或旧滚动条
+
+- dark theme: inverted scan paper keeps the theme background (Dracula `#282A36`) instead of sharpening to near-black
+  深色主题：反色扫描页的纸色保持主题背景（Dracula 为 `#282A36`），不再被锐化成近纯黑
+
+- enhance-mode: changing the printed page box or ± updates the dest immediately, same as Link
+  对准印刷目录：改页码框或加减后立刻刷新 dest，再点标题跳到新页
+
+- enhance-mode: Save shows a short notification after writing the PDF
+  对准印刷目录：点「保存」写入后弹出提示
+
+- enhance-mode: Link updates the bookmark dest immediately; clicking the title jumps to the new page, not the old outline URI
+  对准印刷目录：点「关联」后立刻改 dest，再点标题跳到新页，不再走旧书签 URI
+
+- enhance-mode: front matter (序, i, ii, A) shows the real page label, not a negative offset such as -3
+  对准印刷目录：目录前的序等用原本的页码（i / ii / A），不再用 offset 算出的负数
+
+- PDF TOC: hovering or clicking an item after extract/edit no longer crashes when the outline dest URI is stale (`strchr` on `(char*)-1`)
+  PDF 目录：提取或改书签后悬停/单击不再因过期的 outline URI 崩溃
+
+- enhance-mode: click a TOC title to jump to its dest page; double-click jumps to that entry on the printed contents pages. Page box, ±, locate, link, merge, and delete do not change the view
+  对准印刷目录：单击标题跳到关联页；双击跳到它在印刷目录里的位置。页码框、加减、定位、关联、合并、删除不跳转
+
+- extract bookmarks (books): `(144)` / `（155）` on a printed-TOC line is that entry's page, not a heading number, and is stripped from the title (right-column page still wins when both exist)
+  提取书目录：`(144)` / `（155）` 是这条的印刷页，不当编号、不留在标题里（同一行右边还有页码时用右边的）
+
+- extract bookmarks (books, phase 4): keep OCR x-gaps so a right-side page number stays its own span; printed 目录 can start later and continue across a couple of weak pages, and titles may wrap onto the next contents page; books with no printed TOC cluster large/bold body lines as headings (still ignore 公文 `一、`)
+  提取书目录（第4阶段）：OCR 大间距把右侧页码拆成独立 span；印刷目录可出现在更后面、中间隔一两页插图也接着认，标题可折到下一页目录；没有印刷目录时按正文大字/加粗聚标题（仍不把公文的 `一、` 当书的骨架）
+
+- extract bookmarks (books): `(144)` / `（147）` at the start of a printed-TOC line is a page number, not a heading number, and does not deepen the outline (公文 `(1)(2)` still does)
+  提取书目录：行首 `（144）` 这类是页码，不当目录编号、不往下缩进（公文的 `（1）（2）` 仍是条款层级）
+
+- PDF TOC: `Ctrl+B` with text selected inserts the new item as the first child if the current bookmark has children; otherwise as the next sibling (same level, immediately below)
+  PDF 目录：选定正文后 `Ctrl+B`，当前条目有子项则作为第一条子项；没有则与当前平级、插在正下方
+
+- PDF bookmark sidebar: drag drop line is indented to the target level. Dropping after an expanded item draws the line after its last child (sibling, before the next chapter), not under the title (which looked like first child)
+  书签栏：拖放线按目标层级缩进。拖到已展开条目的「下面」时，线画在它整棵子树后面（并列、插到下一章前），不再画在标题底下（看起来像第一条子项）
+
+- PDF bookmark sidebar / enhance-mode: merge or add a TOC item keeps the sidebar scroll and expand state (no jump back to the first row)
+  书签栏 / 对准印刷目录：合并或添加一条后保留侧栏滚动和展开，不再跳回第一条
+
+- PDF bookmark sidebar: clicking a selected title no longer starts rename (too easy to trigger). Use F2; double-click still jumps
+  PDF 书签栏：再点已选中标题不再改名（容易误触）。用 F2；双击仍跳转
+
+- enhance-mode: bottom **Save** writes bookmarks and stays in calibration; **Exit** leaves. Former labels were Write bookmarks / Cancel
+  对准印刷目录：底栏「保存」写入书签后不退出；「退出」离开。原先是「写入书签」/「取消」
+
+- enhance-mode: Link / Set to current page always updates the printed-page box, even when the row already had a number (a stale 56 no longer hides the pin)
+  对准印刷目录：关联 / 关联到当前页会改印刷页框，已有数字（比如错的 56）也会被当前页覆盖
+
+- enhance-mode: a TOC row with no printed page between neighbors (e.g. 160 / empty / 162) is filled as 161; Link writes that printed page even when PDF offset is not solved yet
+  对准印刷目录：夹在 160 和 162 之间的空页码会补成 161；关联时即使还没算出 PDF 偏移也会写下印刷页
+
+- bookmark sidebar: committing an in-place rename no longer reloads the tree inside TreeView_EndEditLabelNow (crash). Enhance-mode rename stays in the session until Save
+  书签栏：就地改名不再在 TreeView_EndEditLabelNow 里重载目录（会崩溃）。对准印刷目录里改名只改会话，保存才落盘
+
+- extract bookmarks: English `Table of Contents` / `Title .... 4` printed TOCs are handled as books, not skipped as “no headings”
+  提取书签：英文 `Table of Contents` / `Title .... 4` 印刷目录按书处理，不再报「没有找到标题」
+
+- enhance-mode / extract: dests that land on printed contents pages are cleared; locate skips the whole contents range, not just the first 目录 page
+  对准印刷目录 / 提取：目的页落在印刷目录上的会清掉；定位会跳过整段目录页，不只是「目录」书签那一页
+
+- book printed TOC: keep numbered rows that are full sentences ending with `。` (e.g. `4．电视中的“知心老师”…。`)
+  书的印刷目录：带 `4．` 的完整陈述句不再因句号被当成正文漏句丢掉
+
+- extract bookmarks / enhance-mode auto-verify: if nearby match and BM25 both miss, fall back to Find (same queries as the locate button)
+  提取目录和自动核对：近页和 BM25 都找不到时，改用查找（查询和定位按钮一样）
+
+- enhance-mode: click a TOC title to jump to its dest; double-click goes to that entry on the printed contents pages (not always the first contents page)
+  对准印刷目录：单击标题去关联页；双击去它在印刷目录里的那一页（不再总是目录第一页）
+
+- TOC numbering `1.` / `1.2.3` uses halfwidth dots (`1．2．3` → `1.2.3`)
+  目录编号 `1.` / `1.2.3` 统一成半角点（`1．2．3` → `1.2.3`）
+
+- enhance-mode: if BM25 cannot locate a heading, the locate button falls back to Find (same as Ctrl+F), trying the cleaned title then 12/8/6-glyph prefixes
+  对准印刷目录：BM25 找不到标题时，定位按钮改用查找（和 Ctrl+F 一样），先搜去掉页码的标题，再试 12/8/6 字前缀
+
+- enhance-mode: Ctrl+Z undoes the last TOC edit; Ctrl+Shift+Z / Ctrl+Y redo. Text fields keep their own undo
+  对准印刷目录：Ctrl+Z 撤销上一步；Ctrl+Shift+Z / Ctrl+Y 重做。输入框里的 Ctrl+Z 仍只改文字
+
+- enhance-mode: merge appends the next title and removes that bookmark (live apply no longer restores it from the old tree)
+  对准印刷目录：合并把下一条标题接到本条后面，并删掉下面那一条
+
+- enhance-mode: merge-row icon is a rounded square with up/down chevrons, same stroke weight as locate/link/delete
+  对准印刷目录：合并按钮改为方框里上下箭头，粗细与定位/关联/删除一致
+
+- enhance-mode: do not crash TOC custom-draw after write/reload when the calib session still pointed at a freed engine
+  对准印刷目录：写入书签或文件重载后不再在绘制印刷页时访问已释放的引擎
+
+- enhance-mode: Write Bookmarks keeps promote/demote/move nesting, not just page numbers
+  对准印刷目录：写入书签会保存升降级、拖动后的层级，不只是页码
+
+- enhance-mode: changing a printed page no longer blanks and rebuilds the whole TOC tree
+  对准印刷目录：改印刷页不再整树清空重建，侧栏不再猛闪
+
+- PDF bookmark sidebar: F2 in-place rename no longer jumps or flashes a system-white edit box
+  PDF 书签栏：F2 原地改名不再错位抖动，也不再闪系统白底输入框
+
+- enhance-mode: row buttons (locate / link / merge / delete / page ±) do not jump; only the title click does
+  对准印刷目录：行内按钮（定位 / 关联 / 合并 / 删除 / 页码加减）不跳转，只有点标题才跳
+
+- enhance-mode: locate (map-pin) only jumps; a separate link button pins the current view. Long titles ellipsize so they do not run under the row controls
+  对准印刷目录：水滴只定位不改页，链条按钮把当前页关联到这条；标题单行截断，不叠在右侧按钮上
+
+- enhance-mode: remove the Offset field; printed-to-PDF offset stays majority-voted from pinned rows
+  对准印刷目录：去掉底部「偏移」；印刷页到 PDF 页仍按多数条目自动算
+
+- enhance-mode: each TOC row has a locate button that finds the heading in the body (BM25) and pins that dest; the bookmark menu **Find TOC Item in Body** still jumps without changing the page
+  对准印刷目录：每条目录右侧有「定位并关联」按钮，在正文里找到标题后钉上目的页；右键「在正文中定位」仍只跳转、不改页
+
+- extract bookmarks writes the outline and stays in the normal TOC; 对准印刷目录 is opened only from the bookmark header or `CmdPdfTocCalibrate`
+  提取目录书签后直接写入，不自动进入对准印刷目录；需要时再点书签栏按钮或命令手动进入
+
+- bookmark header tooltip and Calibrate TOC Pages menu: 对准印刷目录; bookmark context menu puts Find TOC Item in Body above linking the current page
+  书签栏图标提示和「校准页码」菜单改为「对准印刷目录」；书签右键「在正文中定位」排到「将第 N 页关联到选中的目录」上面
+
+- PDF TOC: with text selected, `Ctrl+B` adds an item under the current bookmark (first child if it has children, otherwise the next sibling); `Ctrl+Shift+B` (`CmdPdfTocReplaceFromSelection`) replaces that bookmark's title and dest. No selection: `Ctrl+B` still adds a favorite
+  PDF 目录：选定正文后 `Ctrl+B` 钉在当前条目正下方（有子项则第一条子项，否则平级下一条），`Ctrl+Shift+B` 用选中文字替换当前条目（含目的页）。没选文字时 `Ctrl+B` 仍是加收藏
+
+- book printed TOC: merge a chapter title with the next-line em-dash subtitle, and a wrapped question with its answer/page line, into one bookmark
+  书的印刷目录：章节正题与下一行「——」副题、问句折行后的「不是！+(页码)」合成一条书签
+
+- enhance-mode: if a TOC row has no printed page (or nearby verify misses), locate the heading in the body with CJK-bigram BM25; skip printed contents pages; require a clear winner. Bookmark menu **Find TOC Item in Body** jumps to that hit without changing the printed page
+  校准页码：没有印刷页或附近对不上时，用中文二元组 BM25 在正文里定位标题（跳过印刷目录页，分不够高或和第二名太近则不钉）。书签菜单「在正文中定位」只跳到命中页，不改印刷页
+
+- enhance-mode: click a TOC title to jump to its dest; editing printed page / ± stays on the current view; double-click jumps to that entry on the printed contents pages
+  校准页码：单击标题去关联页；改印刷页、± 不跳页；双击去印刷目录上的那一条
+
+- page right-click menu no longer includes Extract Table of Contents or Calibrate TOC Pages (still on View, bookmark sidebar, and command palette)
+  正文右键菜单不再显示「提取目录书签」和「校准页码」（查看菜单、书签栏、命令面板仍保留）
+
+- PDF bookmark sidebar and page right-click: **Set TOC Item to Current Page** names the page like favorites (e.g. 将第 12 页关联到选中的目录)
+  PDF 书签栏和正文右键：「将第 N 页关联到选中的目录」，说法与收藏夹一致（校准模式只改会话映射；普通模式改 outline 目标页）
+
+- bookmark header: the list/checkbox icon tooltip is Calibrate TOC (目录校准)
+  书签栏标题旁清单图标的提示改为「目录校准」
+
+- enhance-mode page calibration: every TOC row shows only the printed page (no PDF page); numbers are visible without selecting a row
+  校准页码：每条目录后面只显示印刷页，不再显示 PDF 页；不用点选也会出现页码
+
+- PDF bookmark sidebar: releasing a dragged TOC item now keeps the new order or nests it as a child of the drop target
+  PDF 书签栏：拖动目录后松手会改顺序；拖到另一条中间则收成它的子项
+
+- enhance-mode page calibration: deleting a TOC item promotes its children one level instead of removing the whole subtree
+  校准页码：删除一条目录时把下一层上提一级，不再连子项一起删掉
+
+- official-document bookmark extract: drop bare 第N节/第N章 numbering with no title (those used to write bookmarks with no dest and show as gray); treat trailing OCR `o`/`○`/`c` after CJK as a misread `。` or speckle
+  公文提取：丢掉只有「第N节」没有标题的条目（写入后没有目的页，书签栏显示灰色）；标题末尾的 OCR `o`/`○`/`c` 按误识别的 `。` 或噪点去掉
+
+- experimental: open OOXML Office files (`.docx`, `.xlsx`, `.pptx`, `.hwpx`) via MuPDF's HTML conversion. Layout is often poor; classic `.doc` / `.xls` / `.ppt` remain unsupported
+  试验：用 MuPDF 的 HTML 转换打开 OOXML（`.docx` / `.xlsx` / `.pptx` / `.hwpx`）。版式往往较差；老的 `.doc` / `.xls` / `.ppt` 仍不支持
+
+- PDF bookmark sidebar: F2 on a selected bookmark edits that item in place; it no longer opens Rename File
+  PDF 书签栏：选中条目时按 F2 原地改书签名，不再弹出「重命名文件」
+
+- Match-theme: faded gray office photocopies invert like high-contrast scans (bright text), instead of staying dim SoftCream / PictureBook gray
+  「匹配主题」：发灰的办公扫描件也按公文纸反色（浅色文字），不再停在 SoftCream / 绘本路径里发暗
+
+- PDF bookmark sidebar: Acrobat-style editing — Ctrl multi-select, Shift range-select, Delete, F2 rename, drag to reorder or nest; Ctrl+Up/Down move, Ctrl+Left/Right promote/demote, Ctrl+A select all, Insert add after
+  PDF 书签栏：接近 Acrobat 的编辑 — Ctrl 多选、Shift 连选、Delete 删除、F2 重命名、拖动改变顺序和层级；Ctrl+↑/↓ 上移下移，Ctrl+←/→ 升级降级，Ctrl+A 全选，Insert 在后方添加
+
+- official-document bookmark extraction: document heading schema, sequence scoring, and a keep/skip DP pass; advanced setting `ExtractPdfTocMode` (`conservative` / `standard` / `detailed`); `-extract-toc-debug` writes a sidecar explanation next to the PDF
+  公文智能提取目录：按本文标题格式压缩层级、编号连续性打分、全局 keep/skip 校正；高级设置 `ExtractPdfTocMode`（保守/标准/详细）；`-extract-toc-debug` 在 PDF 旁写出逐条说明
+
+- portable/debug builds output `SumatraPDF-Plus.exe` (was `SumatraPDF.exe`) so antivirus is less likely to treat the binary as a cracked official build
+  便携/调试编译产物改为 `SumatraPDF-Plus.exe`，降低被免费杀毒当成官方破解版的概率
+
+- extract PDF bookmarks from a printed table of contents or heading styles (`CmdExtractPdfToc`); View menu, bookmark sidebar, and command palette. Writes the outline so it can be edited and saved. An empty bookmark sidebar shows a short hint and a clickable extract action. If the file has no text layer, all pages are recognized automatically and bookmarks are extracted (no dialog). Scanned books can then be calibrated in enhance mode (`CmdPdfTocCalibrate`).
+  从印刷目录页或标题样式提取 PDF 书签（`CmdExtractPdfToc`）：查看菜单、书签栏和命令面板。写入 outline 后可编辑并保存。空书签栏显示简短提示，可点击提取。没有文字层时自动全文识别再提取目录，不弹对话框。扫描书可再进增强模式校准页码（`CmdPdfTocCalibrate`）。
+
+- scanned books with a printed contents page: extract writes bookmarks like official documents. Open enhance mode from the bookmark header button or `CmdPdfTocCalibrate` to set printed page numbers (PDF page is shown, not edited). Offset is taken from the majority of entries and can be overridden; front matter keeps its own page label (i, ii, A) instead of a negative offset. Save writes the file and stays in enhance mode; Exit leaves. Click a bookmark title to jump to its dest; double-click jumps to that entry on the printed contents pages.
+  扫描书若有印刷目录：提取后与公文一样直接写入书签。需要校准页码时，点书签栏标题旁的小按钮或用 `CmdPdfTocCalibrate` 进入增强模式，只改印刷页（PDF 页只读）。偏移按多数条目自动测算，也可手动锁定；译者序等用原本的页码（i / ii / A），不用负数。「保存」写入后不退出；「退出」离开。单击标题去关联页；双击去印刷目录上的那一条。
+
+- OCR scanned pages (RapidOCR / PP-OCR Chinese mobile ONNX): toolbar Auto OCR (`CmdToggleAutoOcr`, setting `AutoOcrScanPages`, default off) recognizes visible/scanned pages when enabled. The OCR dropdown lists Recognize all pages (`CmdOcrDocument`), Recognize all pages and save (`CmdSaveSearchablePdf`), and OCR region (`CmdOcrRegion`). Recognize all pages re-OCRs even when a text layer already exists. Recognize all pages and save shows scan progress, prompts before replacing an existing text layer or outline, extracts bookmarks if none exist (or if you confirm overwrite), then saves over the current PDF with no Save As dialog. `CmdOcrCancel` stops queued page OCR. Models live in `{exedir}/ocr/`.
+  扫描页 OCR：工具栏「自动 OCR」（`CmdToggleAutoOcr` / `AutoOcrScanPages`，默认关闭）打开后会识别当前扫描页。下拉菜单为「全文识别」「全文识别并保存」「框选识别」。全文识别在已有文字层时仍会再扫一遍。全文识别并保存会显示扫描进度；已有文字层或目录时先询问是否覆盖；没有目录则识别后提取；然后直接覆盖保存当前 PDF，不弹另存对话框。`CmdOcrCancel` 可取消排队识别。模型在 `{exedir}/ocr/`。
+
 ## 3.7.28 (2026-08-17)
 
 - Match-theme: oval portraits (e.g. Abraham Lincoln) use a small mat halo so poles are not eaten into rectangular bars; wrapped text on the mat still inverts

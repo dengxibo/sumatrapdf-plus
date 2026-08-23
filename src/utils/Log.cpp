@@ -159,14 +159,6 @@ void logValueSize(const char* name, i64 v) {
 }
 
 static void log2(const char* s, bool always) {
-    bool skipLog = !always && gSkipDuplicateLines && gLogBuf && gLogBuf->Contains(s);
-
-    if (!skipLog) {
-        // in reduced logging mode, we do want to log to at least the debugger
-        if (gLogToDebugger || IsDebuggerPresent() || gReducedLogging) {
-            OutputDebugStringA(s);
-        }
-    }
     if (gDestroyedLogging) {
         return;
     }
@@ -174,6 +166,9 @@ static void log2(const char* s, bool always) {
         // if the pipe already connected, do log to it even if disabled
         // we do want easy logging, just want to reduce doing stuff
         // that can break crash handling
+        if (gLogToDebugger || IsDebuggerPresent()) {
+            OutputDebugStringA(s);
+        }
         if (gLogToPipe && IsValidHandle(hLogPipe)) {
             logToPipe(s);
         }
@@ -196,11 +191,15 @@ static void log2(const char* s, bool always) {
         }
     }
 
+    // Contains/Append must run under gLogMutex. Concurrent OCR workers used to
+    // call logf from OrtFail and race StrBuilder::Realloc (AV in memcpy).
+    bool skipLog = !always && gSkipDuplicateLines && gLogBuf->Contains(s);
     size_t n = str::Len(s);
 
-    // when skipping, we skip buf (crash reports) and console
-    // but write to file and logview
     if (!skipLog) {
+        if (gLogToDebugger || IsDebuggerPresent()) {
+            OutputDebugStringA(s);
+        }
         gLogBuf->Append(s, n);
     }
 

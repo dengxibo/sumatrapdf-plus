@@ -8,6 +8,7 @@ struct FileArgs;
 struct AnnotCreateArgs;
 
 #include "EbookTypography.h"
+#include "PdfTocEditModel.h"
 
 /* EngineDjVu.cpp */
 void CleanupEngineDjVu();
@@ -110,28 +111,24 @@ int EngineMupdfTocItemPageNoForSync(EngineBase* engine, IPageDestination* dest, 
 int EngineMupdfResolveLinkPageNo(EngineBase* engine, IPageDestination* dest);
 bool EngineMupdfIsOutlineDestReachable(EngineBase* engine, IPageDestination* dest);
 bool EngineMupdfSnapshotOutlineLink(IPageDestination* dest, char** uriOut, int* reflowChOut, float* xOut, float* yOut);
+bool EngineMupdfUpdatePageDest(EngineBase* engine, IPageDestination* dest, int pageNo, float x, float y);
 void EngineMupdfNavigateUri(EngineBase* engine, const char* uri, int reflowOutlineChapter, float destX, float destY,
                             ILinkHandler* lh);
 bool EngineMupdfTryCompletePendingReflowNav(EngineBase* engine, ILinkHandler* lh);
 bool EngineMupdfHasPendingReflowNav(EngineBase* engine);
 bool EngineMupdfHasOutline(EngineBase* engine);
-enum class PdfTocEditAction {
-    AddAfter,
-    AddChild,
-    Update,
-    Delete,
-    MoveUp,
-    MoveDown,
-    Promote,
-    Demote,
-};
 bool EngineMupdfCanEditPdfToc(EngineBase* engine);
 bool EngineMupdfPdfHasSignatures(EngineBase* engine);
 char* EngineMupdfFormatPdfTocTarget(EngineBase* engine, int pageNo, float x, float y);
 bool EngineMupdfEditPdfToc(EngineBase* engine, PdfTocEditAction action, const Vec<int>& path, const char* title,
                            const char* uri, Vec<int>* resultPathOut, char** errorOut);
+bool EngineMupdfEditPdfTocMany(EngineBase* engine, PdfTocEditAction action, const Vec<PdfTocPath>& paths,
+                               Vec<PdfTocPath>* resultPathsOut, char** errorOut);
+bool EngineMupdfMovePdfTocItems(EngineBase* engine, const Vec<PdfTocPath>& srcPaths, const Vec<int>& destPath,
+                                PdfTocDropPos pos, Vec<PdfTocPath>* resultPathsOut, char** errorOut);
 const char* EngineMupdfGetPassword(EngineBase* engine);
 bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErrorCb& showErrorFunc);
+bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* path, char** errOut);
 Annotation* EngineMupdfGetAnnotationAtPos(EngineBase*, int pageNo, PointF pos, Annotation*);
 ByteSlice EngineMupdfLoadAttachment(EngineBase*, int attachmentNo);
 ByteSlice EngineMupdfLoadAnnotAttachment(EngineBase*, int objNum);

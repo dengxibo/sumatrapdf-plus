@@ -99,11 +99,13 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::DocColorFollowTheme, CmdSetPdfDocumentColorModeBlack,
      _TRN("Document Color Mode: Match theme (use current theme colors)")},
     {TbIcon::ArrowsDiagonal, CmdToggleFullscreen, _TRN("Toggle Fullscreen (F11)")},
+    {TbIcon::AnnotText, CmdCreateAnnotText, _TRN("Text Annotation (Ctrl+click to lock)")},
+    {TbIcon::AnnotSquare, CmdCreateAnnotSquare, _TRN("Rectangle Annotation (Ctrl+click to lock)")},
+    {TbIcon::AnnotCircle, CmdCreateAnnotCircle, _TRN("Circle Annotation (Ctrl+click to lock)")},
+    {TbIcon::AnnotLine, CmdCreateAnnotLine, _TRN("Line Annotation (Ctrl+click to lock)")},
+    {TbIcon::AnnotInk, CmdCreateAnnotInk, _TRN("Ink Annotation (Ctrl+click to lock)")},
+    {TbIcon::Ocr, CmdToggleAutoOcr, _TRN("Auto OCR")},
     {TbIcon::Speak, CmdReadAloud, _TRN("Read Aloud")},
-    {TbIcon::AnnotSquare, CmdCreateAnnotSquare, _TRN("Rectangle Annotation")},
-    {TbIcon::AnnotCircle, CmdCreateAnnotCircle, _TRN("Circle Annotation")},
-    {TbIcon::AnnotLine, CmdCreateAnnotLine, _TRN("Line Annotation")},
-    {TbIcon::AnnotInk, CmdCreateAnnotInk, _TRN("Ink Annotation")},
 };
 // unicode chars: https://www.compart.com/en/unicode/U+25BC
 
@@ -287,6 +289,30 @@ void UpdateFullscreenToolbarButton(MainWindow* win) {
     }
 }
 
+void UpdateAutoOcrToolbarButton(MainWindow* win) {
+    if (!win || !win->hwndToolbar) {
+        return;
+    }
+    int buttons[4];
+    int n = GetToolbarButtonsByID(CmdToggleAutoOcr, buttons);
+    if (n == 0) {
+        return;
+    }
+    bool enabled = gGlobalPrefs && gGlobalPrefs->autoOcrScanPages;
+    SetToolbarButtonCheckedState(win, CmdToggleAutoOcr, enabled);
+    const char* tip = enabled ? _TRN("Auto OCR (on): scanned pages are recognized for select and search")
+                              : _TRN("Auto OCR (off): turn on to recognize scanned pages as you view them");
+    TempStr tipTranslated = (TempStr)trans::GetTranslation(tip);
+    TBBUTTONINFOW bi{};
+    bi.cbSize = sizeof(bi);
+    bi.dwMask = TBIF_TEXT | TBIF_BYINDEX;
+    bi.pszText = ToWStrTemp(tipTranslated);
+    for (int i = 0; i < n; i++) {
+        SendMessageW(win->hwndToolbar, TB_SETBUTTONINFOW, buttons[i], (LPARAM)&bi);
+    }
+    InvalidateRect(win->hwndToolbar, nullptr, FALSE);
+}
+
 void UpdateDoubleClickWordLookupToolbarButton(MainWindow* win) {
     int buttons[4];
     int n = GetToolbarButtonsByID(CmdToggleDoubleClickWordLookup, buttons);
@@ -355,10 +381,13 @@ static bool IsCmdAvailable(MainWindow* win, int cmdId) {
             return true;
         case CmdToggleLightDarkTheme:
             return true;
+        case CmdToggleAutoOcr:
+            return true;
         case CmdSetPdfDocumentColorModeAuto:
         case CmdSetPdfDocumentColorModeBlack:
         case CmdSetPdfDocumentColorModeLight:
             return NeedsDocumentColorModeUI(win);
+        case CmdCreateAnnotText:
         case CmdCreateAnnotSquare:
         case CmdCreateAnnotCircle:
         case CmdCreateAnnotLine:
@@ -419,7 +448,7 @@ static bool IsCmdEnabled(MainWindow* win, int cmdId) {
 
     // If no file open, only enable open button
     if (!win->IsDocLoaded()) {
-        return CmdOpenFile == cmdId || CmdToggleLightDarkTheme == cmdId;
+        return CmdOpenFile == cmdId || CmdToggleLightDarkTheme == cmdId || CmdToggleAutoOcr == cmdId;
     }
 
     switch (cmdId) {
@@ -462,7 +491,7 @@ static TBBUTTON TbButtonFromButtonInfo(const ToolbarButtonInfo& bi, bool noTrans
     b.iBitmap = (int)bi.bmpIndex;
     b.fsState = TBSTATE_ENABLED;
     b.fsStyle = BTNS_BUTTON;
-    if (bi.cmdId == CmdReadAloud) {
+    if (bi.cmdId == CmdReadAloud || bi.cmdId == CmdToggleAutoOcr) {
         b.fsStyle |= BTNS_DROPDOWN;
     }
     if (bi.cmdId == CmdFindToggleMatchCase || bi.cmdId == CmdFindToggleMatchWholeWord ||
@@ -472,6 +501,9 @@ static TBBUTTON TbButtonFromButtonInfo(const ToolbarButtonInfo& bi, bool noTrans
         bi.cmdId == CmdSetPdfDocumentColorModeBlack || bi.cmdId == CmdSetPdfDocumentColorModeLight ||
         bi.cmdId == CmdToggleFullscreen) {
         b.fsStyle = BTNS_CHECK;
+    }
+    if (bi.cmdId == CmdToggleAutoOcr) {
+        b.fsStyle = BTNS_CHECK | BTNS_DROPDOWN;
     }
     if (bi.bmpIndex == TbIcon::Text) {
         // b.fsStyle = BTNS_DROPDOWN;
@@ -511,6 +543,7 @@ void UpdateToolbarButtonsToolTipsForWindow(MainWindow* win) {
     UpdateThemeToolbarButton(win);
     UpdatePdfDocumentColorModeToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
+    UpdateAutoOcrToolbarButton(win);
     UpdateFullscreenToolbarButton(win);
 #if 0
     if (gCustomToolbarButtons) {
@@ -804,9 +837,10 @@ LRESULT PrepaintFlatToolbarItem(NMTBCUSTOMDRAW* custDraw, COLORREF bgCol) {
     int idx = (int)custDraw->nmcd.dwItemSpec;
     TBBUTTONINFOW tbi{};
     tbi.cbSize = sizeof(tbi);
-    tbi.dwMask = TBIF_STATE;
+    tbi.dwMask = TBIF_STATE | TBIF_STYLE;
     SendMessageW(hwndToolbar, TB_GETBUTTONINFOW, idx, (LPARAM)&tbi);
     bool isChecked = (tbi.fsState & TBSTATE_CHECKED) != 0;
+    bool isDropdown = (tbi.fsStyle & BTNS_DROPDOWN) != 0;
 
     COLORREF fillCol = ToolbarButtonFillColor(bgCol, isChecked, isSelected, isHot);
 
@@ -819,7 +853,8 @@ LRESULT PrepaintFlatToolbarItem(NMTBCUSTOMDRAW* custDraw, COLORREF bgCol) {
     FillRect(custDraw->nmcd.hdc, &fillRc, br);
     DeleteObject(br);
 
-    if (isChecked) {
+    // Split dropdowns (OCR) get two native frames if we outline; fill is enough for "on".
+    if (isChecked && !isDropdown) {
         COLORREF borderCol;
         if (ThemeUsesBlackChrome()) {
             borderCol = AccentColor(bgCol, 20, 36);
@@ -831,24 +866,11 @@ LRESULT PrepaintFlatToolbarItem(NMTBCUSTOMDRAW* custDraw, COLORREF bgCol) {
         DeleteObject(borderBr);
     }
 
-    return TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND;
+    return TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND | TBCDRF_NOEDGES;
 }
 
 static LRESULT PrepaintToolbarItem(NMTBCUSTOMDRAW* custDraw) {
     return PrepaintFlatToolbarItem(custDraw, ThemeChromeBackgroundColor());
-}
-
-static bool IsToolbarDropdownButtonAtIndex(HWND hwnd, int idx) {
-    TBBUTTONINFOW tbi{};
-    tbi.cbSize = sizeof(tbi);
-    tbi.dwMask = TBIF_STYLE | TBIF_STATE;
-    if (SendMessageW(hwnd, TB_GETBUTTONINFOW, idx, (LPARAM)&tbi) == -1) {
-        return false;
-    }
-    if (tbi.fsState & TBSTATE_HIDDEN) {
-        return false;
-    }
-    return (tbi.fsStyle & BTNS_DROPDOWN) != 0;
 }
 
 static LRESULT PrepaintToolbarSeparatorItem(NMTBCUSTOMDRAW* custDraw) {
@@ -924,12 +946,6 @@ static LRESULT CALLBACK ToolbarNotifyWndProc(HWND hWnd, UINT uMsg, WPARAM wParam
                     if (IsToolbarSeparatorDrawIndex(win, idx)) {
                         return PrepaintToolbarSeparatorItem(custDraw);
                     }
-                    if (IsToolbarDropdownButtonAtIndex(win->hwndToolbar, idx)) {
-                        if (UseDarkModeLib() && DarkMode::isEnabled()) {
-                            return DefSubclassProc(hWnd, uMsg, wParam, lParam);
-                        }
-                        return CDRF_DODEFAULT;
-                    }
                     return PrepaintToolbarItem(custDraw);
                 }
                 case CDDS_ITEMPOSTPAINT: {
@@ -937,12 +953,6 @@ static LRESULT CALLBACK ToolbarNotifyWndProc(HWND hWnd, UINT uMsg, WPARAM wParam
                     if (IsToolbarSeparatorDrawIndex(win, idx)) {
                         PostpaintToolbarSeparatorItem(custDraw);
                         return CDRF_SKIPDEFAULT;
-                    }
-                    if (IsToolbarDropdownButtonAtIndex(win->hwndToolbar, idx)) {
-                        if (UseDarkModeLib() && DarkMode::isEnabled()) {
-                            return DefSubclassProc(hWnd, uMsg, wParam, lParam);
-                        }
-                        return CDRF_DODEFAULT;
                     }
                     break;
                 }
@@ -1294,13 +1304,14 @@ void UpdateAnnotToolToolbarButtons(MainWindow* win) {
         return;
     }
     // Clear all four first so stale per-button toggles cannot stack checked state.
+    SetToolbarButtonCheckedState(win, CmdCreateAnnotText, false);
     SetToolbarButtonCheckedState(win, CmdCreateAnnotSquare, false);
     SetToolbarButtonCheckedState(win, CmdCreateAnnotCircle, false);
     SetToolbarButtonCheckedState(win, CmdCreateAnnotLine, false);
     SetToolbarButtonCheckedState(win, CmdCreateAnnotInk, false);
     int active = win->annotCreateToolCmd;
-    if (active == CmdCreateAnnotSquare || active == CmdCreateAnnotCircle || active == CmdCreateAnnotLine ||
-        active == CmdCreateAnnotInk) {
+    if (active == CmdCreateAnnotText || active == CmdCreateAnnotSquare || active == CmdCreateAnnotCircle ||
+        active == CmdCreateAnnotLine || active == CmdCreateAnnotInk) {
         SetToolbarButtonCheckedState(win, active, true);
     }
 }
@@ -1309,6 +1320,7 @@ void UpdateToolbarState(MainWindow* win) {
     UpdateAnnotToolToolbarButtons(win);
     UpdatePdfDocumentColorModeToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
+    UpdateAutoOcrToolbarButton(win);
     UpdateFullscreenToolbarButton(win);
     if (!win->IsDocLoaded()) {
         return;
@@ -1393,7 +1405,7 @@ static LRESULT CALLBACK WndProcPageBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         switch (wp) {
             case VK_RETURN: {
                 char* s = HwndGetTextTemp(win->hwndPageEdit);
-                int newPageNo = win->ctrl->GetPageByLabel(s);
+                int newPageNo = atoi(s);
                 if (win->ctrl->ValidPageNo(newPageNo)) {
                     win->ctrl->GoToPage(newPageNo, true);
                     HwndSetFocus(win->hwndFrame);
@@ -1484,14 +1496,10 @@ void UpdateToolbarPageText(MainWindow* win, int pageCount, bool updateOnly) {
             minSize.dx = 0;
             size2.dx = 0;
         }
-    } else if (!win->ctrl || !win->ctrl->HasPageLabels()) {
+    } else {
         txt = str::FormatTemp(" / %d", pageCount);
         size2 = HwndMeasureText(win->hwndPageTotal, txt);
         minSize.dx = size2.dx;
-    } else {
-        txt = str::FormatTemp("%d / %d", win->ctrl->CurrentPageNo(), pageCount);
-        // TempStr txt2 = str::FormatTemp(" (%d / %d)", pageCount, pageCount);
-        size2 = HwndMeasureText(win->hwndPageTotal, txt);
     }
     labelDx = size2.dx;
     size2.dx = std::max(size2.dx, minSize.dx);
@@ -1504,8 +1512,7 @@ void UpdateToolbarPageText(MainWindow* win, int pageCount, bool updateOnly) {
     size2.dx += DpiScale(win->hwndFrame, kButtonSpacingX);
 
     if (win->ctrl && pageCount > 0 && win->ctrl->ValidPageNo(win->ctrl->CurrentPageNo())) {
-        TempStr label = win->ctrl->GetPageLabeTemp(win->ctrl->CurrentPageNo());
-        HwndSetText(win->hwndPageEdit, label);
+        HwndSetText(win->hwndPageEdit, str::FormatTemp("%d", win->ctrl->CurrentPageNo()));
     } else if (KeepToolbarLayoutOnHomeTab(win)) {
         HwndSetText(win->hwndPageEdit, "");
     }
@@ -1842,6 +1849,7 @@ void UpdateToolbarAfterThemeChange(MainWindow* win) {
     UpdateThemeToolbarButton(win);
     UpdatePdfDocumentColorModeToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
+    UpdateAutoOcrToolbarButton(win);
     UpdateFullscreenToolbarButton(win);
     if (win->hwndReBar) {
         InvalidateRect(win->hwndReBar, nullptr, TRUE);
@@ -2007,6 +2015,7 @@ void CreateToolbar(MainWindow* win) {
     UpdateThemeToolbarButton(win);
     UpdatePdfDocumentColorModeToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
+    UpdateAutoOcrToolbarButton(win);
     UpdateFullscreenToolbarButton(win);
     ConfigureToolbarColors(hwndToolbar);
     InvalidateRect(hwndToolbar, nullptr, TRUE);

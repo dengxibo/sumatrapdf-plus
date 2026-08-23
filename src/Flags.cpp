@@ -33,12 +33,13 @@ enum class Arg {
     Page = 44, View = 45, Zoom = 46, Scroll = 47,
     AppData = 48, Plugin = 49, StressTest = 50, N = 51,
     Max = 52, MaxFiles = 53, Render = 54, ExtractText = 55,
-    TestSearchCollect = 56, Bench = 57, BenchEpub = 58, Dir = 59,
-    InstallDir = 60, Lang = 61, UpdateSelfTo = 62, ArgDeleteFile = 63,
-    BgCol = 64, BgCol2 = 65, FwdSearchOffset = 66, FwdSearchWidth = 67,
-    FwdSearchColor = 68, FwdSearchPermanent = 69, MangaMode = 70, Search = 71,
-    AllUsers = 72, AllUsers2 = 73, RunInstallNow = 74, Adobe = 75,
-    DDE = 76, EngineDump = 77, SetColorRange = 78, UpgradeFrom = 79,
+    TestSearchCollect = 56, ExtractTocBench = 57, ExtractTocDebug = 58, Bench = 59,
+    BenchEpub = 60, Dir = 61, InstallDir = 62, Lang = 63,
+    UpdateSelfTo = 64, ArgDeleteFile = 65, BgCol = 66, BgCol2 = 67,
+    FwdSearchOffset = 68, FwdSearchWidth = 69, FwdSearchColor = 70, FwdSearchPermanent = 71,
+    MangaMode = 72, Search = 73, AllUsers = 74, AllUsers2 = 75,
+    RunInstallNow = 76, Adobe = 77, DDE = 78, EngineDump = 79,
+    SetColorRange = 80, UpgradeFrom = 81,
 };
 
 static const char* gArgNames =
@@ -56,12 +57,13 @@ static const char* gArgNames =
     "page\0" "view\0" "zoom\0" "scroll\0"
     "appdata\0" "plugin\0" "stress-test\0" "n\0"
     "max\0" "max-files\0" "render\0" "extract-text\0"
-    "test-search-collect\0" "bench\0" "bench-epub\0" "d\0"
-    "install-dir\0" "lang\0" "update-self-to\0" "delete-file\0"
-    "bgcolor\0" "bg-color\0" "fwdsearch-offset\0" "fwdsearch-width\0"
-    "fwdsearch-color\0" "fwdsearch-permanent\0" "manga-mode\0" "search\0"
-    "all-users\0" "allusers\0" "run-install-now\0" "a\0"
-    "dde\0" "engine-dump\0" "set-color-range\0" "upgrade-from\0";
+    "test-search-collect\0" "extract-toc-bench\0" "extract-toc-debug\0" "bench\0"
+    "bench-epub\0" "d\0" "install-dir\0" "lang\0"
+    "update-self-to\0" "delete-file\0" "bgcolor\0" "bg-color\0"
+    "fwdsearch-offset\0" "fwdsearch-width\0" "fwdsearch-color\0" "fwdsearch-permanent\0"
+    "manga-mode\0" "search\0" "all-users\0" "allusers\0"
+    "run-install-now\0" "a\0" "dde\0" "engine-dump\0"
+    "set-color-range\0" "upgrade-from\0";
 // clang-format on
 // @gen-end flags
 
@@ -421,6 +423,14 @@ void ParseFlags(const WCHAR* cmdLine, Flags& i, const char* toolNames) {
         }
         if (arg == Arg::TestSearchCollect) {
             i.testSearchCollect = true;
+            continue;
+        }
+        if (arg == Arg::ExtractTocBench) {
+            i.extractTocBench = true;
+            continue;
+        }
+        if (arg == Arg::ExtractTocDebug) {
+            i.extractTocDebug = true;
             continue;
         }
         if (arg == Arg::TestApp) {

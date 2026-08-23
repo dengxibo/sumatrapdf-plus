@@ -8,6 +8,7 @@ struct EbookAnnotationsWindow;
 struct EbookAnnotations;
 struct EbookAnnotation;
 struct MainWindow;
+struct TocCalibSession;
 struct StrBuilder;
 struct ReadAloudHighlightMap;
 
@@ -56,6 +57,7 @@ struct WindowTab {
     float prevZoomVirtual{kInvalidZoom};
     DisplayMode prevDisplayMode{DisplayMode::Automatic};
     TocTree* currToc = nullptr; // not owned by us
+    TocCalibSession* tocCalib = nullptr;
     // TOC wrap-label heights were computed while this tab was last shown.
     bool tocWrapHeightsReady = false;
     EditAnnotationsWindow* editAnnotsWindow = nullptr;

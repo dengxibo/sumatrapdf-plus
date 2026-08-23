@@ -157,6 +157,8 @@ bool IsSupportedFileType(Kind kind, bool enableEngineEbooks) {
         return true;
     } else if (kind == kindFileMd) {
         return true;
+    } else if (kind == kindFileOffice) {
+        return true;
     }
     return false;
 }
@@ -332,6 +334,9 @@ bool EngineGetAnnotations(EngineBase* engine, Vec<Annotation*>& annotsOut) {
 }
 
 bool EngineHasUnsavedAnnotations(EngineBase* engine) {
+    if (engine && engine->HasUnsavedOcrText()) {
+        return true;
+    }
     if (!IsEngineMupdf(engine)) {
         return false;
     }

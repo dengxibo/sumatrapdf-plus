@@ -1864,6 +1864,7 @@ class EngineEpub : public EngineEbook {
     }
 
     TocTree* GetToc() override;
+    TocTree* PeekCachedToc() override { return tocTree; }
 
     static EngineBase* CreateFromFile(const char* fileName);
     static EngineBase* CreateFromStream(IStream* stream);
@@ -2061,6 +2062,7 @@ class EngineFb2 : public EngineEbook {
     }
 
     TocTree* GetToc() override;
+    TocTree* PeekCachedToc() override { return tocTree; }
 
     static EngineBase* CreateFromFile(const char* fileName);
     static EngineBase* CreateFromStream(IStream* stream);
@@ -2216,6 +2218,7 @@ class EngineMobi : public EngineEbook {
 
     IPageDestination* GetNamedDest(const char* name) override;
     TocTree* GetToc() override;
+    TocTree* PeekCachedToc() override { return tocTree; }
 
     int ParseTocUrlFilePos(const char* url) {
         if (!doc || !url || !*url) {

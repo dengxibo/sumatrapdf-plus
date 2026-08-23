@@ -136,6 +136,7 @@ bool HasPermission(Perm permission);
 bool CanAccessDisk();
 bool AnnotationsAreDisabled();
 bool IsUIRtl();
+void SaveSearchablePdfAs(MainWindow* win, bool extractTocWhenDone = false);
 bool SumatraLaunchBrowser(const char* url);
 bool OpenFileExternally(const char* path);
 void CloseCurrentTab(MainWindow* win, bool quitIfLast);
@@ -211,6 +212,7 @@ void SyncMenuBarForTabsInTitlebar(MainWindow* win);
 void SyncMainWindowForNoTabsInTitlebar(MainWindow* win);
 void DuplicateTabInNewWindow(WindowTab* tab);
 void CopyFilePath(WindowTab*);
+void SwitchCurrentTabToSavedFile(MainWindow* win, const char* destPath, const char* replaceFromTemp = nullptr);
 
 // note: background tabs are only searched if focusTab is true
 MainWindow* FindMainWindowByFile(const char* file, bool focusTab);
@@ -297,6 +299,7 @@ TempStr GetLogFilePathTemp();
 void ShowErrorLoadingNotification(MainWindow* win, const char* path, bool noSavePrefs);
 void SumatraOpenPathInDefaultFileManager(const char* path);
 void SmartZoom(MainWindow* win, float factor, Point* pt, bool smartZoom);
+void ShowZoomNotification(MainWindow* win, float zoomLevel);
 TempStr GetNotImportantDataDirTemp();
 TempStr GetCrashInfoDirTemp();
 TempStr GetVerDirNameTemp(const char* prefix);

@@ -1717,8 +1717,8 @@ namespace _com_util {
   }
 
   // ── Link ──────────────────────────────────────────────────────────────
-  console.log("Linking SumatraPDF.exe...");
-  const exePath = join(outDir, "SumatraPDF.exe");
+  console.log("Linking SumatraPDF-Plus.exe...");
+  const exePath = join(outDir, "SumatraPDF-Plus.exe");
   const linkArgs = [
     CXX,
     "-o",

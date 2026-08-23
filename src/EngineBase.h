@@ -410,6 +410,7 @@ class EngineBase {
     bool hasPageLabels = false;
     bool hideAnnotations = false;
     bool disableAntiAlias = false;
+    bool unsavedOcrText = false;
     int pageCount = -1;
     u32 textCacheGeneration = 1;
 
@@ -479,6 +480,17 @@ class EngineBase {
     // Drop cached per-page text after reflow or theme changes.
     void ClearTextCache();
     void ClearTextCacheForPage(int pageNo);
+    bool PageHasUsableText(int pageNo);
+    bool WasOcrTried(int pageNo);
+    void MarkOcrTried(int pageNo);
+    void ClearOcrTried(int pageNo);
+    void SetCachedPageText(int pageNo, PageText pt, PageTextUtf8 utf8);
+    void AppendCachedPageText(int pageNo, PageText pt, PageTextUtf8 utf8);
+    bool HasCachedOcrText(int pageNo);
+    int CountOcrCachedPages();
+    void MarkUnsavedOcrText() { unsavedOcrText = true; }
+    void ClearUnsavedOcrText() { unsavedOcrText = false; }
+    bool HasUnsavedOcrText() const { return unsavedOcrText; }
     u32 GetTextCacheGeneration() const { return textCacheGeneration; }
     // returns UINT32_MAX when page text is not cached yet
     u32 GetPageAsciiLetterMask(int pageNo);
@@ -534,6 +546,8 @@ class EngineBase {
     // returns the root element for the loaded document's Table of Contents
     // caller must delete the result (when no longer needed)
     virtual TocTree* GetToc();
+    // Cached tree only; does not rebuild. May be null even when HasToc() is true.
+    virtual TocTree* PeekCachedToc() { return nullptr; }
 
     // checks whether this document has explicit labels for pages (such as
     // roman numerals) instead of the default plain arabic numbering
@@ -574,12 +588,15 @@ class EngineBase {
 
     void EnsurePagesTextSize();
     void EnsurePagesTextUtf8Size();
+    void EnsurePageOcrTriedSize();
 
     // cached text, one entry per page (lazily allocated)
     PageText* pagesText = nullptr;
     int pagesTextSize = 0;
     PageTextUtf8* pagesTextUtf8 = nullptr;
     int pagesTextUtf8Size = 0;
+    u8* pageOcrTried = nullptr;
+    int pageOcrTriedSize = 0;
     CRITICAL_SECTION textCacheLock;
 };
 

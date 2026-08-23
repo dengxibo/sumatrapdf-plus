@@ -4,3 +4,4 @@
 void TestRenderPage(const Flags& i);
 void TestExtractPage(const Flags& i);
 void TestSearchCollect(const Flags& i);
+void TestExtractTocBench(const Flags& i);

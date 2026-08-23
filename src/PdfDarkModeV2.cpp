@@ -256,18 +256,57 @@ static fz_image* v2_build_white_mat_image(fz_context* ctx, fz_image* srcImage, c
     return result;
 }
 
-static fz_image* v2_build_page_image(fz_context* ctx, fz_image* srcImage, const DarkModePalette& palette) {
+static bool v2_office_scan_may_decode_at_view(const DarkImageAnalysis& analysis) {
+    if (analysis.kind == DarkImageKind::Photo) {
+        return false;
+    }
+    const DarkImageFeatures& f = analysis.features;
+    if (PdfDarkModeFeaturesLookLikePhoto(f) || PdfDarkModeFeaturesLookLikeGrayscalePhoto(f) ||
+        PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(f)) {
+        return false;
+    }
+    return analysis.kind == DarkImageKind::FullPageScan || PdfDarkModeFeaturesLookLikeFullPageTextScanForBinarize(f) ||
+           PdfDarkModeFeaturesLookLikeOfficePaperForDarkBinarize(f) ||
+           PdfDarkModeFeaturesLookLikeGovernmentPaperScan(f);
+}
+
+static fz_image* v2_build_page_image(fz_context* ctx, fz_image* srcImage, const DarkModePalette& palette, int destW,
+                                     int destH, bool* outDownsampled) {
     fz_pixmap* src = nullptr;
     fz_pixmap* dst = nullptr;
     fz_image* result = nullptr;
     fz_var(src);
     fz_var(dst);
     fz_var(result);
+    if (outDownsampled) {
+        *outDownsampled = false;
+    }
     fz_try(ctx) {
+        // Thumbnail classify first. Office/text scans can remap at view size;
+        // native 1–6MP decode+float remap is why dark-mode 公文 shows
+        // "Please wait - rendering..." while light theme stays snappy.
+        DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, srcImage, 0.97f, true);
         int w = srcImage->w;
         int h = srcImage->h;
-        if (w > 0 && h > 0 && (w > kV2MaxDecodeDim || h > kV2MaxDecodeDim)) {
-            float s = (float)kV2MaxDecodeDim / (float)(w > h ? w : h);
+        int maxDim = kV2MaxDecodeDim;
+        if (v2_office_scan_may_decode_at_view(analysis)) {
+            int need = destW > destH ? destW : destH;
+            if (need < 8) {
+                need = 1600;
+            }
+            need = (need * 5) / 4;
+            if (need > 2048) {
+                need = 2048;
+            }
+            if (need < maxDim) {
+                maxDim = need;
+                if (outDownsampled) {
+                    *outDownsampled = true;
+                }
+            }
+        }
+        if (w > 0 && h > 0 && (w > maxDim || h > maxDim)) {
+            float s = (float)maxDim / (float)(w > h ? w : h);
             fz_matrix scale = fz_scale(s, s);
             src = fz_get_pixmap_from_image(ctx, srcImage, nullptr, &scale, nullptr, nullptr);
         } else {
@@ -283,8 +322,6 @@ static fz_image* v2_build_page_image(fz_context* ctx, fz_image* srcImage, const 
         }
         if (src && src->samples) {
             // Photo rects preserved; margins / paper / baked text → Okular→theme.
-            // Analyze so B&W documentary portraits (RAZ Abraham Lincoln) seek photo rects.
-            DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, srcImage, 0.97f, true);
             dst = PdfDarkModeProcessV2FullPagePixmap(ctx, src, palette, &analysis);
             if (!dst) {
                 fz_colorspace* cs = src->colorspace ? src->colorspace : fz_device_rgb(ctx);
@@ -492,9 +529,14 @@ static void v2_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_m
     fz_image* built = nullptr;
     fz_image* draw = cached;
     if (!draw) {
-        built = v2_build_page_image(ctx, image, *d->palette);
+        fz_rect dest = fz_transform_rect(fz_unit_rect, ctm);
+        int destW = (int)(fz_abs(dest.x1 - dest.x0) + 0.5f);
+        int destH = (int)(fz_abs(dest.y1 - dest.y0) + 0.5f);
+        bool downsampled = false;
+        built = v2_build_page_image(ctx, image, *d->palette, destW, destH, &downsampled);
         draw = built ? built : image;
-        if (built && d->engineCache) {
+        // View-sized office-scan remaps must not be reused at a higher zoom.
+        if (built && d->engineCache && !downsampled) {
             PdfDarkModeEngineCacheStoreProcessed(ctx, d->engineCache, image, d->profileHash,
                                                  DarkImagePolicy::ThemeRecolor, DarkImageKind::FullPageScan, built);
         }

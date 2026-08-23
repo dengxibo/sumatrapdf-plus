@@ -52,3 +52,9 @@ log.txt
 sumlog.txt
 vs2022/enc_temp_folder
 docs/md/.obsidian
+
+# OCR sidecar models / runtime (downloaded next to the exe, not in git)
+/ocr/*.onnx
+/ocr/*.dll
+/ocr/*.pdb
+/out/**/ocr/

@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { detectVisualStudio2026, runLogged, copyDistributionFonts, copyOpenccData } from "./util";
+import { detectVisualStudio2026, runLogged, copyDistributionFonts, copyOpenccData, copyOcrSidecar } from "./util";
 import { clearDirPreserveSettings } from "./clean";
 
 let clean = false;
@@ -24,6 +24,7 @@ async function main() {
 
   copyDistributionFonts(join("out", "rel64"));
   copyOpenccData(join("out", "rel64"));
+  copyOcrSidecar(join("out", "rel64"));
 
   // const outDir = join("out", "dbg64");
   // await runLogged(resolve(join(outDir, "test_util.exe")), [], outDir);

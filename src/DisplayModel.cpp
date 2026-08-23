@@ -2679,7 +2679,6 @@ void DisplayModel::SetZoomVirtual(float zoomLevel, Point* fixPt) {
         ss.x = ss.y = -1;
     }
 
-    // lf("DisplayModel::SetZoomVirtual() zoomLevel=%.6f", _zoomLevel);
     Relayout(zoomLevel, rotation);
 
     bool continuousReflow = IsContinuous(displayMode) && !scrollToFitPage;
@@ -2868,15 +2867,19 @@ char* DisplayModel::GetTextInRegion(int pageNo, RectF region) const {
 
     WStrBuilder result;
     Rect regionI = region.Round();
+    int nKeep = 0;
+    int nBreak = 0;
     for (const WCHAR* src = pageText; *src; src++) {
         if (*src != '\n') {
             Rect rect = coords[src - pageText];
             Rect isect = regionI.Intersect(rect);
             if (!isect.IsEmpty() && 1.0 * isect.dx * isect.dy / (rect.dx * rect.dy) >= 0.3) {
                 result.AppendChar(*src);
+                nKeep++;
             }
         } else if (result.size() > 0 && result.Last() != '\n') {
             result.Append(L"\r\n", 2);
+            nBreak++;
         }
     }
 

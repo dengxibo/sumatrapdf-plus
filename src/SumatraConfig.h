@@ -15,7 +15,7 @@ extern const char* currentVersion; // e.g. "3.2.1138"
 extern const char* gitCommidId;
 extern const char* preReleaseVersion;
 
-constexpr const char* kExeName = "SumatraPDF.exe";
+constexpr const char* kExeName = "SumatraPDF-Plus.exe";
 
 int GetAppIconID();
 bool IsDarkThemeSelected();

@@ -321,6 +321,14 @@ static MenuDef menuDefView[] = {
         CmdToggleBookmarks,
     },
     {
+        _TRN("Extract Table of Contents"),
+        CmdExtractPdfToc,
+    },
+    {
+        _TRN("Calibrate TOC Pages"),
+        CmdPdfTocCalibrate,
+    },
+    {
         _TRN("Show &Menu"),
         CmdToggleMenuBar,
     },
@@ -873,6 +881,10 @@ static MenuDef menuDefContext[] = {
         CmdCopySelection,
     },
     {
+        _TRN("OCR region"),
+        CmdOcrRegion,
+    },
+    {
         _TRN("Create Annotation From Selection"),
         (UINT_PTR)menuDefCreateAnnotFromSelection,
     },
@@ -908,6 +920,10 @@ static MenuDef menuDefContext[] = {
     {
         _TRN("Show &Bookmarks"),
         CmdToggleBookmarks,
+    },
+    {
+        _TRN("Set TOC Item to Current Page"),
+        CmdPdfTocSetCurrentPage,
     },
     {
         _TRN("Show &Toolbar"),
@@ -1472,8 +1488,8 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
             cmdId == CmdCreateAnnotUnderline || cmdId == CmdCreateAnnotSquiggly || cmdId == CmdCreateAnnotStrikeOut ||
             cmdId == CmdCreateAnnotText || cmdId == CmdCreateAnnotFreeText || cmdId == CmdCreateAnnotStamp ||
             cmdId == CmdCreateAnnotCaret || cmdId == CmdCreateAnnotLine || cmdId == CmdCreateAnnotSquare ||
-            cmdId == CmdCreateAnnotCircle || cmdId == CmdCreateAnnotInk || cmdId == (UINT_PTR)menuDefCreateAnnotFromSelection ||
-            cmdId == (UINT_PTR)menuDefCreateAnnotUnderCursor;
+            cmdId == CmdCreateAnnotCircle || cmdId == CmdCreateAnnotInk ||
+            cmdId == (UINT_PTR)menuDefCreateAnnotFromSelection || cmdId == (UINT_PTR)menuDefCreateAnnotUnderCursor;
         if (isEbookAnnotationCommand) {
             centralizedRemove = false;
         }
@@ -2111,6 +2127,13 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
     MenuUpdatePrintItem(win, popup, true);
     MenuSetEnabled(popup, CmdToggleBookmarks, win->ctrl->HasToc());
     MenuSetChecked(popup, CmdToggleBookmarks, win->tocVisible);
+    if (win->tocSelectedIds.Size() != 1) {
+        MenuRemove(popup, CmdPdfTocSetCurrentPage);
+    } else if (pageNoUnderCursor > 0) {
+        TempStr pageLabel = win->ctrl->GetPageLabeTemp(pageNoUnderCursor);
+        MenuSetText(popup, CmdPdfTocSetCurrentPage,
+                    str::FormatTemp(_TRA("Link page %s to selected bookmark"), pageLabel));
+    }
 
     MenuSetEnabled(popup, CmdFavoriteToggle, HasFavorites());
     MenuSetChecked(popup, CmdFavoriteToggle, gGlobalPrefs->showFavorites);

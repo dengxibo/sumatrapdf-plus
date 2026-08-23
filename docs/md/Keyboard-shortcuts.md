@@ -9,7 +9,7 @@ You can [customize keyboard shortcuts](Customizing-keyboard-shortcuts.md). Also 
 - `Ctrl + O` Open a file
 - `Ctrl + W` Close current file
 - `Ctrl + S` Save current file as
-- `F2` Rename current file
+- `F2` Rename current file (when the bookmark tree has focus, F2 renames the selected bookmark)
 - `Ctrl + P` Print
 - `Ctrl + D` Properties
 - `Ctrl + Q`, `Alt-F4` Quit app
@@ -27,7 +27,8 @@ You can [customize keyboard shortcuts](Customizing-keyboard-shortcuts.md). Also 
 
 ### Favorites menu
 
-- `Ctrl + B` Add current page to favorites
+- `Ctrl + B` Add current page to favorites. With text selected in a PDF, add a TOC item as the first child if the current bookmark has children, otherwise as the next sibling
+- `Ctrl + Shift + B` Replace the current TOC item with the selected text
 
 ### View menu
 
@@ -107,7 +108,7 @@ You can [customize keyboard shortcuts](Customizing-keyboard-shortcuts.md). Also 
 - `Ctrl + S` Save current document as...
 - `Ctrl + Shift + S` Create a link to current document
 - `Ctrl + P` Print
-- `F2` Rename file and reopen with new name
+- `F2` Rename file and reopen with new name (bookmark tree: rename selected bookmark)
 - `Ctrl + Shift + N` Open current document in new window
 - `r` Reload document
 - `Ctrl + F` Find text
@@ -118,7 +119,8 @@ You can [customize keyboard shortcuts](Customizing-keyboard-shortcuts.md). Also 
 - `q` Close current document (tab). Close window if last tab. Quit app if last window.
 - `Ctrl + Q` Quit app (close all windows and opened documents)
 - `Ctrl + Left Mouse` Select area (can then use with copy, print or +/- zoom)
-- `Ctrl + B` Add current page to favorites
+- `Ctrl + B` Add current page to favorites. With text selected in a PDF, add a TOC item as the first child if the current bookmark has children, otherwise as the next sibling
+- `Ctrl + Shift + B` Replace the current TOC item with the selected text
 - `Right Mouse` Grab and pan page in any direction
 - `Alt + Scroll Wheel` Increase vertical scroll wheel steps (faster)
 - `Shift + Scroll Wheel` Pan horizontally with scroll wheel

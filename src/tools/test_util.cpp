@@ -29,6 +29,7 @@ extern void PdfDarkModeOklab_UnitTests();
 extern void PdfDarkModeV2_UnitTests();
 extern void PdfJoinSplitImages_UnitTests();
 extern void PdfDarkModeImageClassifier_UnitTests();
+extern void PdfTocEditModel_UnitTests();
 extern void TtsPronunciation_UnitTests();
 extern void VecTest();
 extern void WinUtilTest();
@@ -45,6 +46,7 @@ void MaybeDelayedWarningNotification(const char*, ...) {
 
 int main(int, char**) {
     printf("Running unit tests\n");
+    fflush(stdout);
 
     InitDynCalls();
     BaseUtilTest();
@@ -67,6 +69,7 @@ int main(int, char**) {
     PdfDarkModeV2_UnitTests();
     PdfJoinSplitImages_UnitTests();
     PdfDarkModeImageClassifier_UnitTests();
+    PdfTocEditModel_UnitTests();
     TtsPronunciation_UnitTests();
     VecTest();
     WinUtilTest();

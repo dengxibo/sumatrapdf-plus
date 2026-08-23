@@ -221,6 +221,23 @@ export function copyFileNormalized(dst: string, src: string): void {
 
 const kDistributionFontExts = new Set([".ttf", ".otf", ".ttc"]);
 
+export function copyOcrSidecar(outDir: string): void {
+  const dst = join(outDir, "ocr");
+  mkdirSync(dst, { recursive: true });
+  const src = join("ocr");
+  if (!existsSync(src)) {
+    return;
+  }
+  const keep = new Set([".onnx", ".dll", ".txt"]);
+  for (const name of readdirSync(src)) {
+    const ext = extname(name).toLowerCase();
+    if (!keep.has(ext)) {
+      continue;
+    }
+    copyFileNormalized(join(dst, name), join(src, name));
+  }
+}
+
 export function copyOpenccData(outDir: string): void {
   const openccDst = join(outDir, "opencc");
   mkdirSync(openccDst, { recursive: true });

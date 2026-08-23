@@ -271,7 +271,7 @@
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(ProjectDir)..\out\dbg32\</OutDir>
     <IntDir>$(ProjectDir)..\out\dbg32\obj\x86\Debug\SumatraPDF\</IntDir>
-    <TargetName>SumatraPDF</TargetName>
+    <TargetName>SumatraPDF-Plus</TargetName>
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
@@ -279,7 +279,7 @@
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(ProjectDir)..\out\dbg64\</OutDir>
     <IntDir>$(ProjectDir)..\out\dbg64\obj\x64\Debug\SumatraPDF\</IntDir>
-    <TargetName>SumatraPDF</TargetName>
+    <TargetName>SumatraPDF-Plus</TargetName>
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
@@ -287,7 +287,7 @@
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(ProjectDir)..\out\dbgarm64\</OutDir>
     <IntDir>$(ProjectDir)..\out\dbgarm64\obj\arm64\Debug\SumatraPDF\</IntDir>
-    <TargetName>SumatraPDF</TargetName>
+    <TargetName>SumatraPDF-Plus</TargetName>
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
@@ -295,7 +295,7 @@
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(ProjectDir)..\out\dbg64_asan\</OutDir>
     <IntDir>$(ProjectDir)..\out\dbg64_asan\obj\x64_asan\Debug\SumatraPDF\</IntDir>
-    <TargetName>SumatraPDF</TargetName>
+    <TargetName>SumatraPDF-Plus</TargetName>
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
@@ -303,7 +303,7 @@
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(ProjectDir)..\out\dbgfull32\</OutDir>
     <IntDir>$(ProjectDir)..\out\dbgfull32\obj\x86\DebugFull\SumatraPDF\</IntDir>
-    <TargetName>SumatraPDF</TargetName>
+    <TargetName>SumatraPDF-Plus</TargetName>
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
@@ -311,7 +311,7 @@
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(ProjectDir)..\out\dbgfull64\</OutDir>
     <IntDir>$(ProjectDir)..\out\dbgfull64\obj\x64\DebugFull\SumatraPDF\</IntDir>
-    <TargetName>SumatraPDF</TargetName>
+    <TargetName>SumatraPDF-Plus</TargetName>
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
@@ -319,7 +319,7 @@
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(ProjectDir)..\out\dbgfullarm64\</OutDir>
     <IntDir>$(ProjectDir)..\out\dbgfullarm64\obj\arm64\DebugFull\SumatraPDF\</IntDir>
-    <TargetName>SumatraPDF</TargetName>
+    <TargetName>SumatraPDF-Plus</TargetName>
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
@@ -327,7 +327,7 @@
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(ProjectDir)..\out\dbgfull64_asan\</OutDir>
     <IntDir>$(ProjectDir)..\out\dbgfull64_asan\obj\x64_asan\DebugFull\SumatraPDF\</IntDir>
-    <TargetName>SumatraPDF</TargetName>
+    <TargetName>SumatraPDF-Plus</TargetName>
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
@@ -335,7 +335,7 @@
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(ProjectDir)..\out\rel32\</OutDir>
     <IntDir>$(ProjectDir)..\out\rel32\obj\x86\Release\SumatraPDF\</IntDir>
-    <TargetName>SumatraPDF</TargetName>
+    <TargetName>SumatraPDF-Plus</TargetName>
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
@@ -343,7 +343,7 @@
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(ProjectDir)..\out\rel64\</OutDir>
     <IntDir>$(ProjectDir)..\out\rel64\obj\x64\Release\SumatraPDF\</IntDir>
-    <TargetName>SumatraPDF</TargetName>
+    <TargetName>SumatraPDF-Plus</TargetName>
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
@@ -351,7 +351,7 @@
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(ProjectDir)..\out\arm64\</OutDir>
     <IntDir>$(ProjectDir)..\out\arm64\obj\arm64\Release\SumatraPDF\</IntDir>
-    <TargetName>SumatraPDF</TargetName>
+    <TargetName>SumatraPDF-Plus</TargetName>
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
@@ -359,7 +359,7 @@
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(ProjectDir)..\out\rel64_asan\</OutDir>
     <IntDir>$(ProjectDir)..\out\rel64_asan\obj\x64_asan\Release\SumatraPDF\</IntDir>
-    <TargetName>SumatraPDF</TargetName>
+    <TargetName>SumatraPDF-Plus</TargetName>
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
@@ -367,7 +367,7 @@
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(ProjectDir)..\out\rel32_prefast\</OutDir>
     <IntDir>$(ProjectDir)..\out\rel32_prefast\obj\x86\ReleaseAnalyze\SumatraPDF\</IntDir>
-    <TargetName>SumatraPDF</TargetName>
+    <TargetName>SumatraPDF-Plus</TargetName>
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
@@ -375,7 +375,7 @@
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(ProjectDir)..\out\rel64_prefast\</OutDir>
     <IntDir>$(ProjectDir)..\out\rel64_prefast\obj\x64\ReleaseAnalyze\SumatraPDF\</IntDir>
-    <TargetName>SumatraPDF</TargetName>
+    <TargetName>SumatraPDF-Plus</TargetName>
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
@@ -383,7 +383,7 @@
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(ProjectDir)..\out\arm64_prefast\</OutDir>
     <IntDir>$(ProjectDir)..\out\arm64_prefast\obj\arm64\ReleaseAnalyze\SumatraPDF\</IntDir>
-    <TargetName>SumatraPDF</TargetName>
+    <TargetName>SumatraPDF-Plus</TargetName>
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
@@ -391,7 +391,7 @@
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(ProjectDir)..\out\rel64_prefast_asan\</OutDir>
     <IntDir>$(ProjectDir)..\out\rel64_prefast_asan\obj\x64_asan\ReleaseAnalyze\SumatraPDF\</IntDir>
-    <TargetName>SumatraPDF</TargetName>
+    <TargetName>SumatraPDF-Plus</TargetName>
     <TargetExt>.exe</TargetExt>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
@@ -1129,6 +1129,7 @@
     <ClInclude Include="..\src\EditAnnotations.h" />
     <ClInclude Include="..\src\EditEbookAnnotations.h" />
     <ClInclude Include="..\src\EngineAll.h" />
+    <ClInclude Include="..\src\PdfTocEditModel.h" />
     <ClInclude Include="..\src\EngineBase.h" />
     <ClInclude Include="..\src\EngineMupdf.h" />
     <ClInclude Include="..\src\EpubMeta.h" />
@@ -1197,6 +1198,8 @@
     <ClInclude Include="..\src\UpdateCheck.h" />
     <ClInclude Include="..\src\Version.h" />
     <ClInclude Include="..\src\WindowTab.h" />
+    <ClInclude Include="..\src\OcrOnnx.h" />
+    <ClInclude Include="..\src\OcrService.h" />
     <ClInclude Include="..\src\WordLookup.h" />
     <ClInclude Include="..\src\mui\Mui.h" />
     <ClInclude Include="..\src\mui\TextRender.h" />
@@ -1280,6 +1283,7 @@
     <ClCompile Include="..\src\EngineEbook.cpp" />
     <ClCompile Include="..\src\EngineImages.cpp" />
     <ClCompile Include="..\src\EngineMupdf.cpp" />
+    <ClCompile Include="..\src\PdfTocEditModel.cpp" />
     <ClCompile Include="..\src\EnginePs.cpp" />
     <ClCompile Include="..\src\EpubMeta.cpp" />
     <ClCompile Include="..\src\EpubPerfLog.cpp" />
@@ -1393,6 +1397,11 @@
     <ClCompile Include="..\src\Uninstaller.cpp" />
     <ClCompile Include="..\src\UpdateCheck.cpp" />
     <ClCompile Include="..\src\WindowTab.cpp" />
+    <ClCompile Include="..\src\OcrOnnx.cpp" />
+    <ClCompile Include="..\src\OcrService.cpp" />
+    <ClCompile Include="..\src\ExtractPdfToc.cpp" />
+    <ClCompile Include="..\src\ExtractBookToc.cpp" />
+    <ClCompile Include="..\src\TocCalib.cpp" />
     <ClCompile Include="..\src\WordLookup.cpp" />
     <ClCompile Include="..\src\mui\Mui.cpp" />
     <ClCompile Include="..\src\mui\TextRender.cpp" />

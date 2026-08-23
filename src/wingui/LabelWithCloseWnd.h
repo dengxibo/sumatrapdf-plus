@@ -24,6 +24,8 @@ struct LabelWithCloseWnd : Wnd {
     void SetPaddingXY(int x, int y);
     void SetHeaderActions(const Func0& firstAction, const char* firstTooltip, const Func0& secondAction,
                           const char* secondTooltip);
+    void SetThirdHeaderAction(const Func0& action, const char* tooltip);
+    void ClearThirdHeaderAction();
     void UpdateActionsTooltipTheme();
     void UpdateHeaderActionTooltips();
     void Layout();
@@ -35,6 +37,7 @@ struct LabelWithCloseWnd : Wnd {
     Rect closeBtnPos{};
     Rect firstActionPos{};
     Rect secondActionPos{};
+    Rect thirdActionPos{};
 
     // in points
     int padX = 0;
@@ -42,11 +45,14 @@ struct LabelWithCloseWnd : Wnd {
 
     Func0 firstAction;
     Func0 secondAction;
+    Func0 thirdAction;
     Tooltip* actionsTooltip = nullptr;
     HFONT actionsTooltipFont = nullptr;
     int firstActionTooltipId = -1;
     int secondActionTooltipId = -1;
+    int thirdActionTooltipId = -1;
     const char* firstActionTooltip = nullptr; // _TRN key, translated on demand
     const char* secondActionTooltip = nullptr;
+    const char* thirdActionTooltip = nullptr;
     int pressedAction = 0;
 };

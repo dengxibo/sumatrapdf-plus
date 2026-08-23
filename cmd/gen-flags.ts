@@ -60,6 +60,8 @@ const args = [
     "Render", "render",
     "ExtractText", "extract-text",
     "TestSearchCollect", "test-search-collect",
+    "ExtractTocBench", "extract-toc-bench",
+    "ExtractTocDebug", "extract-toc-debug",
     "Bench", "bench",
     "BenchEpub", "bench-epub",
     "Dir", "d",

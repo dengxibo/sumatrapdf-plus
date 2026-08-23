@@ -22,6 +22,8 @@
 #include "ProgressUpdateUI.h"
 #include "TextSelection.h"
 #include "TextSearch.h"
+#include "ExtractPdfToc.h"
+#include "TocCalib.h"
 
 #include "utils/Log.h"
 
@@ -132,15 +134,35 @@ void TestRenderPage(const Flags& i) {
         RedirectIOToConsole();
     }
 
-    auto diag = [](const char* line) { printf("%s", line); };
+    FILE* bench = fopen("c:\\src\\sumatrapdf\\out\\dbg64\\render_bench.txt", "w");
+    if (!bench) {
+        bench = fopen("c:\\src\\sumatrapdf\\_toc_bench\\render_bench.txt", "w");
+    }
+    if (!bench) {
+        logfa("TestRenderPage: failed to open bench file\n");
+    }
+    auto diag = [&](const char* line) {
+        printf("%s", line);
+        logfa("%s", line);
+        if (bench) {
+            fputs(line, bench);
+            fflush(bench);
+        }
+    };
 
     if (i.pageNumber < 1) {
         diag("pageNumber invalid (use -render N file.pdf)\n");
+        if (bench) {
+            fclose(bench);
+        }
         return;
     }
     auto files = i.fileNames;
     if (files.Size() == 0) {
         diag("no file provided\n");
+        if (bench) {
+            fclose(bench);
+        }
         return;
     }
 
@@ -175,6 +197,18 @@ void TestRenderPage(const Flags& i) {
             continue;
         }
         RenderPageArgs args(pageNo, zoom, 0);
+        i64 tLight0 = GetTickCount64();
+        auto bmpLight = engine->RenderPage(args);
+        i64 lightMs = (i64)(GetTickCount64() - tLight0);
+        diag(str::FormatTemp("  light RenderPage ms=%lld bmp=%d", lightMs, bmpLight ? 1 : 0));
+        if (bmpLight) {
+            Size sz = bmpLight->GetSize();
+            diag(str::FormatTemp(" size=%dx%d\n", sz.dx, sz.dy));
+        } else {
+            diag("\n");
+        }
+        delete bmpLight;
+
         DarkModeProfile darkProfile;
         BuildViewDarkModeProfile(engine, &darkProfile);
         diag(str::FormatTemp("  docClass=%d pageProbe=%s(%d) mode=%s soft=%.2f\n",
@@ -188,7 +222,17 @@ void TestRenderPage(const Flags& i) {
         i64 t0 = GetTickCount64();
         auto bmp = engine->RenderPage(args);
         i64 renderMs = (i64)(GetTickCount64() - t0);
-        diag(str::FormatTemp("  RenderPage ms=%lld\n", renderMs));
+        if (bmp) {
+            Size sz = bmp->GetSize();
+            diag(str::FormatTemp("  dark RenderPage ms=%lld size=%dx%d\n", renderMs, sz.dx, sz.dy));
+        } else {
+            diag(str::FormatTemp("  dark RenderPage ms=%lld\n", renderMs));
+        }
+        i64 tWarm0 = GetTickCount64();
+        auto bmpWarm = engine->RenderPage(args);
+        i64 warmMs = (i64)(GetTickCount64() - tWarm0);
+        diag(str::FormatTemp("  dark RenderPage again ms=%lld\n", warmMs));
+        delete bmpWarm;
         if (bmp == nullptr) {
             diag("failed to render page\n");
         } else if (DarkModeProfileUsesLegacyPostProcess(args.darkProfile)) {
@@ -213,7 +257,6 @@ void TestRenderPage(const Flags& i) {
             diag(str::FormatTemp("  afterRender pageProbe=%s(%d)\n",
                                  FollowThemePageProbeLabel(EngineMupdfGetFollowThemePageProbe(engine, pageNo)),
                                  EngineMupdfGetFollowThemePageProbe(engine, pageNo)));
-            PrintBitmapLuminanceStats(bmp, nullptr);
             // Optional TGA dump (disabled by default; SerializeBitmap can be heavy).
             if (false) {
                 Size sz = bmp->GetSize();
@@ -229,7 +272,29 @@ void TestRenderPage(const Flags& i) {
             }
         }
         delete bmp;
+        int nPages = engine->PageCount();
+        int flipMax = nPages < 5 ? nPages : 5;
+        for (int p = 1; p <= flipMax; p++) {
+            if (p == pageNo) {
+                continue;
+            }
+            RenderPageArgs flipLight(p, zoom, 0);
+            i64 tFlipL = GetTickCount64();
+            auto bmpL = engine->RenderPage(flipLight);
+            i64 flipLightMs = (i64)(GetTickCount64() - tFlipL);
+            delete bmpL;
+            RenderPageArgs flipDark(p, zoom, 0);
+            flipDark.darkProfile = args.darkProfile;
+            i64 tFlipD = GetTickCount64();
+            auto bmpD = engine->RenderPage(flipDark);
+            i64 flipDarkMs = (i64)(GetTickCount64() - tFlipD);
+            delete bmpD;
+            diag(str::FormatTemp("  flip p%d light=%lldms dark=%lldms\n", p, flipLightMs, flipDarkMs));
+        }
         SafeEngineRelease(&engine);
+    }
+    if (bench) {
+        fclose(bench);
     }
 }
 static void extractPageText(EngineBase* engine, int pageNo) {
@@ -504,6 +569,277 @@ void TestSearchCollect(const Flags& ci) {
         exit(1);
     }
     logf("search-collect: all checks passed\n");
+}
+
+static void TocJsonEscape(char* dst, int cap, const char* s) {
+    int o = 0;
+    for (int i = 0; s && s[i] && o < cap - 2; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c == '"' || c == '\\') {
+            if (o + 2 >= cap) {
+                break;
+            }
+            dst[o++] = '\\';
+            dst[o++] = (char)c;
+            continue;
+        }
+        if (c < 32) {
+            continue;
+        }
+        dst[o++] = (char)c;
+    }
+    dst[o] = 0;
+}
+
+static void FlattenExtractedToc(const Vec<ExtractedTocItem*>& roots, Vec<ExtractedTocItem*>& flat) {
+    for (ExtractedTocItem* n : roots) {
+        if (!n) {
+            continue;
+        }
+        flat.Append(n);
+        FlattenExtractedToc(n->children, flat);
+    }
+}
+
+static void CompactText(const char* s, char* out, int cap) {
+    int o = 0;
+    for (int i = 0; s && s[i] && o < cap - 1; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == 0xA0) {
+            continue;
+        }
+        if (c == 0xC2 && (unsigned char)s[i + 1] == 0xA8) {
+            i++;
+            continue;
+        }
+        if (c == 0xE3 && (unsigned char)s[i + 1] == 0x80 && (unsigned char)s[i + 2] == 0x80) {
+            i += 2;
+            continue;
+        }
+        if (c == 0xEF && (unsigned char)s[i + 1] == 0xBC && (unsigned char)s[i + 2] >= 0x90 &&
+            (unsigned char)s[i + 2] <= 0x99) {
+            out[o++] = (char)('0' + ((unsigned char)s[i + 2] - 0x90));
+            i += 2;
+            continue;
+        }
+        if (c == 0xEF && (unsigned char)s[i + 1] == 0xBC && (unsigned char)s[i + 2] == 0x8E) {
+            out[o++] = '.';
+            i += 2;
+            continue;
+        }
+        out[o++] = (char)c;
+    }
+    out[o] = 0;
+}
+
+static void TruncateUtf8Bytes(char* s, int maxBytes) {
+    int i = 0;
+    while (s[i]) {
+        unsigned char c = (unsigned char)s[i];
+        int n = 1;
+        if ((c & 0x80) == 0) {
+            n = 1;
+        } else if ((c & 0xE0) == 0xC0) {
+            n = 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            n = 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            n = 4;
+        } else {
+            n = 1;
+        }
+        if (i + n > maxBytes) {
+            break;
+        }
+        i += n;
+    }
+    s[i] = 0;
+}
+
+static char* CollectPageCompact(EngineBase* engine, int pageNo) {
+    Vec<EngineMupdfPageLine> raw;
+    EngineMupdfCollectPageLines(engine, pageNo, raw);
+    int n = 0;
+    for (int i = 0; i < raw.Size(); i++) {
+        if (raw[i].text) {
+            n += (int)str::Len(raw[i].text) + 1;
+        }
+    }
+    char* buf = AllocArray<char>(n + 8);
+    int o = 0;
+    for (int i = 0; i < raw.Size(); i++) {
+        if (!raw[i].text) {
+            continue;
+        }
+        int len = (int)str::Len(raw[i].text);
+        memcpy(buf + o, raw[i].text, (size_t)len);
+        o += len;
+    }
+    buf[o] = 0;
+    EngineMupdfFreePageLines(raw);
+    char compact[8000];
+    CompactText(buf, compact, (int)sizeof(compact));
+    str::Free(buf);
+    return str::Dup(compact);
+}
+
+static bool TitleHitsPage(const char* title, const char* pageCompact) {
+    if (!title || !pageCompact || !pageCompact[0]) {
+        return false;
+    }
+    char t[512];
+    CompactText(title, t, (int)sizeof(t));
+    if (!t[0]) {
+        return false;
+    }
+    int len = (int)str::Len(t);
+    if (len > 72) {
+        TruncateUtf8Bytes(t, 72);
+    }
+    if (str::Find(pageCompact, t) != nullptr) {
+        return true;
+    }
+    int start = 0;
+    while (t[start] && ((unsigned char)t[start] < 128) &&
+           (t[start] == '.' || (t[start] >= '0' && t[start] <= '9') || t[start] == '(' || t[start] == ')')) {
+        start++;
+    }
+    return start > 0 && t[start] && str::Find(pageCompact, t + start) != nullptr;
+}
+
+void TestExtractTocBench(const Flags& ci) {
+    if (ci.showConsole) {
+        RedirectIOToConsole();
+    }
+    CreateDirectoryW(L"c:\\src\\sumatrapdf\\_toc_bench", nullptr);
+    StrVec files;
+    for (auto f : ci.fileNames) {
+        files.Append(f);
+    }
+    if (files.Size() == 0) {
+        ByteSlice data = file::ReadFile("c:\\src\\sumatrapdf\\_toc_bench\\files.txt");
+        if (data.data() && data.sz > 0) {
+            char* txt = AllocArray<char>((int)data.sz + 2);
+            memcpy(txt, data.data(), data.sz);
+            txt[data.sz] = 0;
+            char* start = txt;
+            for (int i = 0;; i++) {
+                if (txt[i] == '\n' || txt[i] == 0) {
+                    char save = txt[i];
+                    txt[i] = 0;
+                    if (start[0]) {
+                        if (start[0] == '\r') {
+                            start++;
+                        }
+                        int n = (int)str::Len(start);
+                        if (n > 0 && start[n - 1] == '\r') {
+                            start[n - 1] = 0;
+                        }
+                        if (start[0]) {
+                            files.Append(start);
+                        }
+                    }
+                    if (save == 0) {
+                        break;
+                    }
+                    txt[i] = save;
+                    start = txt + i + 1;
+                }
+            }
+            str::Free(txt);
+        }
+        data.Free();
+    }
+    FILE* out = fopen("c:\\src\\sumatrapdf\\_toc_bench\\report.jsonl", "w");
+    FILE* sum = fopen("c:\\src\\sumatrapdf\\_toc_bench\\summary.txt", "w");
+    int nOk = 0, nNoText = 0, nNoHead = 0, nFail = 0, nOpen = 0, nMiss = 0, nMono = 0;
+    for (auto fileName : files) {
+        logf("toc-bench: %s\n", fileName);
+        auto engine = CreateEngineFromFile(fileName, nullptr, true);
+        if (!engine) {
+            nOpen++;
+            if (out) {
+                fprintf(out, "{\"file\":\"%s\",\"status\":\"open-fail\"}\n", fileName);
+            }
+            continue;
+        }
+        Vec<ExtractedTocItem*> roots;
+        int nItems = 0;
+        ExtractPdfTocKind kind = ExtractPdfTocFromEngine(engine, roots, &nItems);
+        const char* st = "ok";
+        if (kind == ExtractPdfTocKind::NoText) {
+            st = "notext";
+            nNoText++;
+        } else if (kind == ExtractPdfTocKind::NoHeadings) {
+            st = "noheadings";
+            nNoHead++;
+        } else if (kind != ExtractPdfTocKind::Ok) {
+            st = "fail";
+            nFail++;
+        } else {
+            nOk++;
+        }
+        Vec<ExtractedTocItem*> flat;
+        FlattenExtractedToc(roots, flat);
+        int miss = 0;
+        int mono = 0;
+        int prevPage = 0;
+        char itemsBuf[12000];
+        itemsBuf[0] = 0;
+        int io = 0;
+        for (int i = 0; i < flat.Size(); i++) {
+            ExtractedTocItem* it = flat[i];
+            if (prevPage > 0 && it->pageNo > 0 && it->pageNo < prevPage) {
+                mono++;
+            }
+            if (it->pageNo > 0) {
+                prevPage = it->pageNo;
+            }
+            char* pageTxt = it->pageNo > 0 ? CollectPageCompact(engine, it->pageNo) : nullptr;
+            bool hit = TitleHitsPage(it->title, pageTxt);
+            if (!hit) {
+                miss++;
+            }
+            str::Free(pageTxt);
+            char esc[400];
+            TocJsonEscape(esc, (int)sizeof(esc), it->title ? it->title : "");
+            if (io < (int)sizeof(itemsBuf) - 80) {
+                int n = snprintf(itemsBuf + io, sizeof(itemsBuf) - io,
+                                 "%s{\"l\":%d,\"p\":%d,\"pp\":%d,\"body\":%d,\"ver\":%d,\"hit\":%d,\"t\":\"%s\"}",
+                                 io ? "," : "", it->level, it->pageNo, it->printedPage, it->bodyMatched ? 1 : 0,
+                                 it->verified ? 1 : 0, hit ? 1 : 0, esc);
+                if (n > 0) {
+                    io += n;
+                }
+            }
+        }
+        nMiss += miss;
+        nMono += mono;
+        char fesc[800];
+        TocJsonEscape(fesc, (int)sizeof(fesc), fileName);
+        if (out) {
+            fprintf(
+                out,
+                "{\"file\":\"%s\",\"status\":\"%s\",\"pages\":%d,\"n\":%d,\"miss\":%d,\"mono\":%d,\"items\":[%s]}\n",
+                fesc, st, engine->PageCount(), nItems, miss, mono, itemsBuf);
+        }
+        if (sum) {
+            fprintf(sum, "%s\t%s\tpages=%d n=%d miss=%d mono=%d\n", st, fileName, engine->PageCount(), nItems, miss,
+                    mono);
+        }
+        DeleteExtractedTocItems(roots);
+        SafeEngineRelease(&engine);
+    }
+    if (sum) {
+        fprintf(sum, "ok=%d notext=%d noheadings=%d fail=%d openfail=%d miss=%d mono=%d files=%d\n", nOk, nNoText,
+                nNoHead, nFail, nOpen, nMiss, nMono, files.Size());
+        fclose(sum);
+    }
+    if (out) {
+        fclose(out);
+    }
+    logf("toc-bench: ok=%d notext=%d noheadings=%d fail=%d openfail=%d miss=%d mono=%d files=%d\n", nOk, nNoText,
+         nNoHead, nFail, nOpen, nMiss, nMono, files.Size());
 }
 
 void TestExtractPage(const Flags& ci) {

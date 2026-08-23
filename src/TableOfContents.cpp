@@ -37,6 +37,8 @@
 #include "WindowTab.h"
 #include "resource.h"
 #include "Commands.h"
+#include "ExtractPdfToc.h"
+#include "TocCalib.h"
 #include "AppTools.h"
 #include "TableOfContents.h"
 #include "Translations.h"
@@ -47,6 +49,9 @@
 #include "Notifications.h"
 
 #include "utils/Log.h"
+#include "utils/WinDynCalls.h"
+
+#include <vssym32.h>
 
 /* Define if you want page numbers to be displayed in the ToC sidebar */
 // #define DISPLAY_TOC_PAGE_NUMBERS
@@ -199,6 +204,21 @@ static void TocCustomizeTooltip(TreeView::GetTooltipEvent* ev) {
         return;
     }
     TocItem* tocItem = (TocItem*)ti;
+    if (TocCalibIsActive(win)) {
+        POINT pt{};
+        GetCursorPos(&pt);
+        MapWindowPoints(HWND_DESKTOP, treeView->hwnd, &pt, 1);
+        const char* calibTip = TocCalibRowControlTip(win, treeView->hwnd, pt);
+        NMTVGETINFOTIPW* nmCalib = ev->info;
+        if (nmCalib) {
+            if (calibTip) {
+                str::BufSet(nmCalib->pszText, nmCalib->cchTextMax, calibTip);
+            } else {
+                nmCalib->pszText[0] = 0;
+            }
+        }
+        return;
+    }
     IPageDestination* link = tocItem->GetPageDestination();
     if (!link) {
         return;
@@ -240,8 +260,8 @@ static void TocCustomizeTooltip(TreeView::GetTooltipEvent* ev) {
         }
     }
 
-    // When PageDestGetValue is empty, path falls back to tocItem->title — same as
-    // labelText — so don't append it again after the truncated-label line.
+    // When PageDestGetValue is empty, path falls back to tocItem->title 鈥?same as
+    // labelText 鈥?so don't append it again after the truncated-label line.
     bool pathSameAsLabel = labelText && path && str::Eq(labelText, path);
     if (!truncated || !pathSameAsLabel) {
         if (truncated && infotip.size() > 0) {
@@ -548,7 +568,7 @@ static void GoToTocLink(GoToTocLinkData* d) {
     auto tab = d->tab;
     auto ctrl = d->ctrl;
 
-    // validate tab before dereferencing — it may have been freed
+    // validate tab before dereferencing 鈥?it may have been freed
     // while this task was queued (e.g. user closed the tab/window)
     if (!IsWindowTabValid(tab)) {
         return;
@@ -570,9 +590,12 @@ static void GoToTocLink(GoToTocLinkData* d) {
     if (d->destKind == kindDestinationMupdf && d->mupdfUri && engine) {
         bool loaded = !EngineIsProgressiveEbookLoading(engine);
         bool hasFragment = str::FindChar(d->mupdfUri, '#') != nullptr;
+        bool isPdf = engine->kind == kindEngineMupdf && str::EqI(engine->defaultExt, ".pdf");
         // Chapter-start page numbers are shared by every #fragment entry in one spine
         // HTML file (common in anthology EPUBs). Only plain chapter links can fast-path.
-        if (loaded && navPage > 0 && !hasFragment) {
+        // PDF #page= URIs are the dest page; after 对准印刷目录 pin, pageNo is newer
+        // than a stale outline URI, so prefer pageNo.
+        if (loaded && navPage > 0 && (!hasFragment || isPdf)) {
             ctrl->PreparePageNavigation(navPage);
             if (navPage >= 1 && navPage <= engine->PageCount()) {
                 if (d->mupdfDestX != DEST_USE_DEFAULT || d->mupdfDestY != DEST_USE_DEFAULT) {
@@ -628,10 +651,17 @@ static void GoToTocTreeItem(MainWindow* win, TreeItem ti, bool allowExternal) {
     }
 }
 
+static void ClearTocMultiSelect(MainWindow* win);
+static void TocCancelDrag(MainWindow* win);
+static void UpdateTocCalibrateHeader(MainWindow* win);
+
 void ClearTocBox(MainWindow* win) {
     if (!win->tocLoaded) {
         return;
     }
+
+    win->tocLabelEditItem = nullptr;
+    win->tocLabelEditFromF2 = false;
 
     // set tocLoaded to false before SetText("") because SetText triggers
     // EN_CHANGE synchronously which calls ApplyTocFilter() re-entrantly
@@ -644,6 +674,8 @@ void ClearTocBox(MainWindow* win) {
     }
 
     win->tocTreeView->Clear();
+    ClearTocMultiSelect(win);
+    TocCancelDrag(win);
 
     // clear filter state
     delete win->tocFilteredTree;
@@ -653,18 +685,24 @@ void ClearTocBox(MainWindow* win) {
     }
 
     win->currPageNo = 0;
+    UpdateTocCalibrateHeader(win);
 }
 
 void ClearTocBoxForTabSwitch(MainWindow* win) {
+    HideTocCalib(win);
     if (!win->tocLoaded) {
         return;
     }
 
     win->tocLoaded = false;
+    win->tocLabelEditItem = nullptr;
+    win->tocLabelEditFromF2 = false;
 
     if (win->tocTreeView) {
         win->tocTreeView->treeModel = nullptr;
     }
+    ClearTocMultiSelect(win);
+    TocCancelDrag(win);
 
     delete win->tocFilteredTree;
     win->tocFilteredTree = nullptr;
@@ -684,7 +722,7 @@ void ToggleTocBox(MainWindow* win) {
         return;
     }
     SetSidebarVisibility(win, true, gGlobalPrefs->showFavorites);
-    if (win->tocVisible) {
+    if (win->tocVisible && win->tocTreeView) {
         HwndSetFocus(win->tocTreeView->hwnd);
     }
 }
@@ -851,6 +889,12 @@ void UpdateTocSelection(MainWindow* win, int currPageNo) {
     if (!win->tocLoaded || !win->tocVisible || win->tocKeepSelection) {
         return;
     }
+    if (TocCalibIsActive(win)) {
+        return;
+    }
+    if (win->tocDragging || win->tocSelectedIds.Size() > 1) {
+        return;
+    }
 
     auto treeView = win->tocTreeView;
     if (!treeView || !treeView->treeModel) {
@@ -872,6 +916,13 @@ void UpdateTocSelection(MainWindow* win, int currPageNo) {
     TreeItem toSelect = (TreeItem)FindVisibleParentTreeItem(treeView, item);
     treeView->SelectItem(toSelect);
     if (toSelect != TreeModel::kNullItem) {
+        TocItem* tocItem = (TocItem*)toSelect;
+        win->tocSelectedIds.Reset();
+        if (tocItem && tocItem->id) {
+            win->tocSelectedIds.Append(tocItem->id);
+            win->tocAnchorId = tocItem->id;
+        }
+        win->tocSelectionOwned = true;
         InvalidateTocTree(win);
     }
 }
@@ -1071,8 +1122,9 @@ static bool PdfTocPathForItem(MainWindow* win, TocItem* item, Vec<int>& pathOut)
         return false;
     }
     Vec<int> reverse;
-    for (TocItem* curr = item; curr; curr = curr->parent) {
-        TocItem* first = curr->parent ? curr->parent->child : tab->currToc->root->child;
+    for (TocItem* curr = item; curr && curr != tab->currToc->root; curr = curr->parent) {
+        TocItem* first = (curr->parent && curr->parent != tab->currToc->root) ? curr->parent->child
+                                                                             : tab->currToc->root->child;
         int idx = 0;
         while (first && first != curr) {
             idx++;
@@ -1106,6 +1158,160 @@ static TocItem* PdfTocItemAtPath(TocItem* root, const Vec<int>& path) {
     return item;
 }
 
+static bool HasTocFilter(MainWindow* win);
+static Vec<TocItem*> TocVisibleItems(TreeView* tv);
+
+static bool IsPdfTocBookmarkItem(MainWindow* win, TocItem* item) {
+    item = OriginalPdfTocItem(win, item);
+    if (!item) {
+        return false;
+    }
+    if (item->dest && item->dest->GetKind() == kindDestinationMupdf) {
+        return true;
+    }
+    return TocCalibIsActive(win) && item->id != 0;
+}
+
+static void TocInvalidateTree(MainWindow* win) {
+    if (win && win->tocTreeView && win->tocTreeView->hwnd) {
+        InvalidateRect(win->tocTreeView->hwnd, nullptr, FALSE);
+    }
+}
+
+static void ClearTocMultiSelect(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    win->tocSelectedIds.Reset();
+    win->tocAnchorId = 0;
+    win->tocSelectionOwned = false;
+}
+
+static bool TocItemIdSelected(MainWindow* win, int id) {
+    return win && id != 0 && win->tocSelectedIds.Contains(id);
+}
+
+static bool TocItemIsMultiSelected(MainWindow* win, TocItem* item) {
+    return item && TocItemIdSelected(win, item->id);
+}
+
+static TocItem* TocItemFromId(MainWindow* win, int id) {
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    if (!tab || !tab->currToc || !tab->currToc->root || id == 0) {
+        return nullptr;
+    }
+    return FindTocItemById(tab->currToc->root->child, id);
+}
+
+static void TocFocusItem(MainWindow* win, TocItem* item, bool navigate) {
+    if (!win || !win->tocTreeView || !win->tocTreeView->treeModel || !win->tocTreeView->hwnd) {
+        return;
+    }
+    win->tocSuppressGoTo = true;
+    win->tocKeepSelection = true;
+    win->tocTreeView->SelectItem(item ? (TreeItem)item : TreeModel::kNullItem);
+    win->tocKeepSelection = false;
+    win->tocSuppressGoTo = false;
+    if (navigate && item) {
+        GoToTocTreeItem(win, (TreeItem)item, true);
+    }
+}
+
+static void TocSetSelectedIds(MainWindow* win, const Vec<int>& ids, int anchorId, TocItem* focus, bool navigate) {
+    if (!win) {
+        return;
+    }
+    win->tocSelectedIds.Reset();
+    for (int id : ids) {
+        if (id && !win->tocSelectedIds.Contains(id)) {
+            win->tocSelectedIds.Append(id);
+        }
+    }
+    win->tocAnchorId = anchorId;
+    win->tocSelectionOwned = true;
+    if (focus) {
+        TocFocusItem(win, focus, navigate);
+    }
+    TocInvalidateTree(win);
+}
+
+static void TocSelectOnly(MainWindow* win, TocItem* item, bool navigate) {
+    Vec<int> ids;
+    if (item) {
+        ids.Append(item->id);
+    }
+    TocSetSelectedIds(win, ids, item ? item->id : 0, item, navigate);
+}
+
+static void CollectTocItemIds(TocItem* item, Vec<int>& ids) {
+    for (; item; item = item->next) {
+        if (item->id) {
+            ids.Append(item->id);
+        }
+        CollectTocItemIds(item->child, ids);
+    }
+}
+
+static Vec<TocItem*> TocSelectedBookmarkItems(MainWindow* win) {
+    Vec<TocItem*> items;
+    if (!win) {
+        return items;
+    }
+    if (win->tocSelectedIds.empty()) {
+        TocItem* selected = win->tocTreeView ? (TocItem*)win->tocTreeView->GetSelection() : nullptr;
+        selected = OriginalPdfTocItem(win, selected);
+        if (IsPdfTocBookmarkItem(win, selected)) {
+            items.Append(selected);
+        }
+        return items;
+    }
+    for (int id : win->tocSelectedIds) {
+        TocItem* item = OriginalPdfTocItem(win, TocItemFromId(win, id));
+        if (IsPdfTocBookmarkItem(win, item) && !items.Contains(item)) {
+            items.Append(item);
+        }
+    }
+    return items;
+}
+
+static bool TocCollectSelectedPaths(MainWindow* win, Vec<PdfTocPath>& pathsOut) {
+    pathsOut.Clear();
+    Vec<TocItem*> items = TocSelectedBookmarkItems(win);
+    for (TocItem* item : items) {
+        Vec<int> path;
+        if (!PdfTocPathForItem(win, item, path)) {
+            return false;
+        }
+        PdfTocPath p;
+        PdfTocPathFromVec(p, path);
+        pathsOut.Append(p);
+    }
+    return !pathsOut.empty();
+}
+
+constexpr UINT_PTR kTocDragExpandTimerId = 0x7160;
+
+static void TocCancelDrag(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    HWND hwnd = win->tocTreeView ? win->tocTreeView->hwnd : nullptr;
+    if (hwnd && GetCapture() == hwnd) {
+        ReleaseCapture();
+    }
+    if (hwnd) {
+        KillTimer(hwnd, kTocDragExpandTimerId);
+    }
+    bool wasDragging = win->tocDragging;
+    win->tocDragArmed = false;
+    win->tocDragging = false;
+    win->tocDropItem = nullptr;
+    win->tocDropPos = 1;
+    if (wasDragging) {
+        TocInvalidateTree(win);
+    }
+}
+
 static bool ConfirmPdfTocSignatureEdit(MainWindow* win, EngineBase* engine) {
     WindowTab* tab = win ? win->CurrentTab() : nullptr;
     if (!tab || tab->acceptedPdfTocSignatureWarning || !EngineMupdfPdfHasSignatures(engine)) {
@@ -1134,24 +1340,201 @@ static char* CurrentPdfTocTarget(MainWindow* win, EngineBase* engine) {
     return EngineMupdfFormatPdfTocTarget(engine, state.page, x, y);
 }
 
-static void ReloadPdfTocAfterEdit(MainWindow* win, const Vec<int>& selectedPath) {
+struct TocTreeExpandNode {
+    int path[16]{};
+    int pathLen = 0;
+    bool expanded = false;
+};
+
+struct TocTreeViewKeep {
+    int firstVisibleIndex = 0;
+    int firstVisiblePath[16]{};
+    int firstVisiblePathLen = 0;
+    bool scrollValid = false;
+    Vec<TocTreeExpandNode> expand;
+};
+
+static void TocCopyPathToFixed(int* dst, int* dstLen, int dstCap, const Vec<int>& path) {
+    int n = path.Size();
+    if (n > dstCap) {
+        n = dstCap;
+    }
+    for (int i = 0; i < n; i++) {
+        dst[i] = path[i];
+    }
+    *dstLen = n;
+}
+
+static void TocFixedPathToVec(const int* src, int srcLen, Vec<int>& path) {
+    path.Clear();
+    for (int i = 0; i < srcLen; i++) {
+        path.Append(src[i]);
+    }
+}
+
+static int TocTreeVisibleIndex(HWND hwnd, HTREEITEM target) {
+    if (!hwnd || !target) {
+        return 0;
+    }
+    int n = 0;
+    for (HTREEITEM h = TreeView_GetRoot(hwnd); h; h = TreeView_GetNextVisible(hwnd, h)) {
+        if (h == target) {
+            return n;
+        }
+        n++;
+        if (n > 200000) {
+            break;
+        }
+    }
+    return 0;
+}
+
+static HTREEITEM TocTreeItemAtVisibleIndex(HWND hwnd, int index) {
+    if (!hwnd || index < 0) {
+        return nullptr;
+    }
+    HTREEITEM h = TreeView_GetRoot(hwnd);
+    while (h && index > 0) {
+        h = TreeView_GetNextVisible(hwnd, h);
+        index--;
+    }
+    return h;
+}
+
+static void TocCollectExpandNodes(MainWindow* win, TocItem* item, Vec<TocTreeExpandNode>& out) {
+    if (!win || !win->tocTreeView) {
+        return;
+    }
+    for (; item; item = item->next) {
+        if (item->child) {
+            Vec<int> path;
+            if (PdfTocPathForItem(win, item, path)) {
+                TocTreeExpandNode n{};
+                TocCopyPathToFixed(n.path, &n.pathLen, dimof(n.path), path);
+                n.expanded = win->tocTreeView->IsExpanded((TreeItem)item);
+                out.Append(n);
+            }
+            TocCollectExpandNodes(win, item->child, out);
+        }
+    }
+}
+
+TocTreeViewKeep* TocTreeViewKeepStart(MainWindow* win) {
+    auto* keep = new TocTreeViewKeep;
+    if (!win || !win->tocLoaded || !win->tocTreeView || !win->tocTreeView->hwnd) {
+        return keep;
+    }
+    WindowTab* tab = win->CurrentTab();
+    if (tab && tab->currToc && tab->currToc->root) {
+        TocCollectExpandNodes(win, tab->currToc->root->child, keep->expand);
+    }
+    HWND hwnd = win->tocTreeView->hwnd;
+    HTREEITEM hFirst = TreeView_GetFirstVisible(hwnd);
+    if (!hFirst) {
+        return keep;
+    }
+    keep->firstVisibleIndex = TocTreeVisibleIndex(hwnd, hFirst);
+    TocItem* item = (TocItem*)win->tocTreeView->GetTreeItemByHandle(hFirst);
+    Vec<int> path;
+    if (item && PdfTocPathForItem(win, item, path)) {
+        TocCopyPathToFixed(keep->firstVisiblePath, &keep->firstVisiblePathLen, dimof(keep->firstVisiblePath), path);
+    }
+    keep->scrollValid = true;
+    return keep;
+}
+
+void TocTreeViewKeepFinish(MainWindow* win, TocTreeViewKeep* keep) {
+    if (!keep) {
+        return;
+    }
+    if (win && win->tocLoaded && win->tocTreeView && win->tocTreeView->hwnd) {
+        HWND hwnd = win->tocTreeView->hwnd;
+        WindowTab* tab = win->CurrentTab();
+        TocItem* root = tab && tab->currToc && tab->currToc->root ? tab->currToc->root->child : nullptr;
+        if (root && keep->expand.Size() > 0) {
+            for (int i = 0; i < keep->expand.Size(); i++) {
+                const TocTreeExpandNode& n = keep->expand[i];
+                Vec<int> path;
+                TocFixedPathToVec(n.path, n.pathLen, path);
+                TocItem* item = PdfTocItemAtPath(root, path);
+                if (!item || !item->child) {
+                    continue;
+                }
+                HTREEITEM h = win->tocTreeView->GetHandleByTreeItem((TreeItem)item);
+                if (h) {
+                    TreeView_Expand(hwnd, h, n.expanded ? TVE_EXPAND : TVE_COLLAPSE);
+                }
+            }
+        }
+        if (keep->scrollValid) {
+            HTREEITEM hFirst = nullptr;
+            if (root && keep->firstVisiblePathLen > 0) {
+                Vec<int> path;
+                TocFixedPathToVec(keep->firstVisiblePath, keep->firstVisiblePathLen, path);
+                TocItem* item = PdfTocItemAtPath(root, path);
+                if (item) {
+                    hFirst = win->tocTreeView->GetHandleByTreeItem((TreeItem)item);
+                }
+            }
+            if (!hFirst) {
+                hFirst = TocTreeItemAtVisibleIndex(hwnd, keep->firstVisibleIndex);
+            }
+            if (hFirst) {
+                TreeView_SelectSetFirstVisible(hwnd, hFirst);
+            }
+        }
+    }
+    delete keep;
+}
+
+static void ReloadPdfTocAfterEdit(MainWindow* win, const Vec<PdfTocPath>& selectedPaths) {
     if (!win) {
         return;
     }
+    TocTreeViewKeep* keep = TocTreeViewKeepStart(win);
+    bool prevSuppress = win->tocSuppressGoTo;
+    win->tocSuppressGoTo = true;
     if (win->tocLoaded) {
         ClearTocBox(win);
     }
     LoadTocTree(win);
     WindowTab* tab = win->CurrentTab();
-    if (!tab || !tab->currToc || !tab->currToc->root || selectedPath.empty()) {
-        return;
+    if (tab && tab->tocCalib) {
+        TocCalibRebind(win);
     }
-    TocItem* selected = PdfTocItemAtPath(tab->currToc->root->child, selectedPath);
-    if (selected && win->tocTreeView) {
-        win->tocKeepSelection = true;
-        win->tocTreeView->SelectItem((TreeItem)selected);
-        win->tocKeepSelection = false;
+    if (tab && tab->currToc && tab->currToc->root) {
+        Vec<int> ids;
+        TocItem* focus = nullptr;
+        for (int i = 0; i < selectedPaths.Size(); i++) {
+            Vec<int> path;
+            PdfTocPathToVec(selectedPaths.At(i), path);
+            TocItem* item = PdfTocItemAtPath(tab->currToc->root->child, path);
+            if (!item) {
+                continue;
+            }
+            if (!ids.Contains(item->id)) {
+                ids.Append(item->id);
+            }
+            if (!focus) {
+                focus = item;
+            }
+        }
+        if (focus) {
+            TocSetSelectedIds(win, ids, focus->id, focus, false);
+        }
     }
+    TocTreeViewKeepFinish(win, keep);
+    win->tocSuppressGoTo = prevSuppress;
+}
+
+static void ReloadPdfTocAfterEdit(MainWindow* win, const Vec<int>& selectedPath) {
+    Vec<PdfTocPath> paths;
+    if (!selectedPath.empty()) {
+        PdfTocPath p;
+        PdfTocPathFromVec(p, selectedPath);
+        paths.Append(p);
+    }
+    ReloadPdfTocAfterEdit(win, paths);
 }
 
 static void ShowPdfTocEditError(MainWindow* win, const char* error) {
@@ -1159,9 +1542,18 @@ static void ShowPdfTocEditError(MainWindow* win, const char* error) {
     MessageBoxW(win->hwndFrame, msg, L"PDF table of contents", MB_OK | MB_ICONERROR);
 }
 
-static bool ConfirmPdfTocDelete(MainWindow* win, bool hasChildren) {
-    const char* content = hasChildren ? _TRA("Delete this TOC item and all of its child items?")
-                                      : _TRA("Delete this TOC item?");
+static bool ConfirmPdfTocDelete(MainWindow* win, int count, bool hasChildren, bool promoteChildren = false) {
+    const char* content;
+    if (promoteChildren && hasChildren) {
+        content = count > 1 ? str::FormatTemp(_TRA("Delete %d TOC items? Child items will be moved up one level."), count)
+                            : _TRA("Delete this TOC item? Child items will be moved up one level.");
+    } else if (count > 1) {
+        content = hasChildren ? str::FormatTemp(_TRA("Delete %d TOC items and their child items?"), count)
+                              : str::FormatTemp(_TRA("Delete %d TOC items?"), count);
+    } else {
+        content = hasChildren ? _TRA("Delete this TOC item and all of its child items?")
+                              : _TRA("Delete this TOC item?");
+    }
     TASKDIALOG_BUTTON buttons[2]{};
     buttons[0].nButtonID = IDYES;
     buttons[0].pszButtonText = ToWStrTemp(_TRA("Yes"));
@@ -1189,6 +1581,33 @@ static bool ConfirmPdfTocDelete(MainWindow* win, bool hasChildren) {
 }
 
 static void ExecutePdfTocEdit(MainWindow* win, TocItem* selected, PdfTocEditAction action) {
+    if (TocCalibIsActive(win)) {
+        if (action == PdfTocEditAction::Delete) {
+            TocCalibHandleDelete(win);
+            ToolbarUpdateStateForWindow(win, false);
+            return;
+        }
+        TocCalibOutlineOp op;
+        bool structural = false;
+        if (action == PdfTocEditAction::MoveUp) {
+            op = TocCalibOutlineOp::MoveUp;
+            structural = true;
+        } else if (action == PdfTocEditAction::MoveDown) {
+            op = TocCalibOutlineOp::MoveDown;
+            structural = true;
+        } else if (action == PdfTocEditAction::Promote) {
+            op = TocCalibOutlineOp::Promote;
+            structural = true;
+        } else if (action == PdfTocEditAction::Demote) {
+            op = TocCalibOutlineOp::Demote;
+            structural = true;
+        }
+        if (structural) {
+            TocCalibHandleOutlineOp(win, op);
+            ToolbarUpdateStateForWindow(win, false);
+            return;
+        }
+    }
     EngineBase* engine = PdfTocEditableEngine(win);
     if (!engine || !ConfirmPdfTocSignatureEdit(win, engine)) {
         return;
@@ -1242,7 +1661,7 @@ static void ExecutePdfTocEdit(MainWindow* win, TocItem* selected, PdfTocEditActi
             }
         }
     } else if (action == PdfTocEditAction::Delete) {
-        if (!ConfirmPdfTocDelete(win, selected && selected->child)) {
+        if (!ConfirmPdfTocDelete(win, 1, selected && selected->child)) {
             return;
         }
     }
@@ -1256,48 +1675,200 @@ static void ExecutePdfTocEdit(MainWindow* win, TocItem* selected, PdfTocEditActi
         ShowPdfTocEditError(win, error);
         return;
     }
+    bool structuralMove = action == PdfTocEditAction::MoveUp || action == PdfTocEditAction::MoveDown ||
+                          action == PdfTocEditAction::Promote || action == PdfTocEditAction::Demote;
+    if (structuralMove && resultPath.empty()) {
+        return;
+    }
     ReloadPdfTocAfterEdit(win, resultPath);
     ToolbarUpdateStateForWindow(win, false);
 }
 
-bool TryAddPdfTocFromSelection(MainWindow* win) {
+static bool PdfTocEditIsBatchAction(PdfTocEditAction action) {
+    return action == PdfTocEditAction::Delete || action == PdfTocEditAction::MoveUp ||
+           action == PdfTocEditAction::MoveDown || action == PdfTocEditAction::Promote ||
+           action == PdfTocEditAction::Demote;
+}
+
+static void ExecutePdfTocEditMany(MainWindow* win, PdfTocEditAction action) {
+    Vec<TocItem*> items = TocSelectedBookmarkItems(win);
+    if (TocCalibIsActive(win)) {
+        if (action == PdfTocEditAction::Delete) {
+            TocCalibHandleDelete(win);
+            ToolbarUpdateStateForWindow(win, false);
+            return;
+        }
+        TocCalibOutlineOp op;
+        bool structural = false;
+        if (action == PdfTocEditAction::MoveUp) {
+            op = TocCalibOutlineOp::MoveUp;
+            structural = true;
+        } else if (action == PdfTocEditAction::MoveDown) {
+            op = TocCalibOutlineOp::MoveDown;
+            structural = true;
+        } else if (action == PdfTocEditAction::Promote) {
+            op = TocCalibOutlineOp::Promote;
+            structural = true;
+        } else if (action == PdfTocEditAction::Demote) {
+            op = TocCalibOutlineOp::Demote;
+            structural = true;
+        }
+        if (structural) {
+            TocCalibHandleOutlineOp(win, op);
+            ToolbarUpdateStateForWindow(win, false);
+            return;
+        }
+    }
+    if (items.Size() <= 1) {
+        ExecutePdfTocEdit(win, items.empty() ? nullptr : items.At(0), action);
+        return;
+    }
+    if (!PdfTocEditIsBatchAction(action)) {
+        ExecutePdfTocEdit(win, items.At(0), action);
+        return;
+    }
+
     EngineBase* engine = PdfTocEditableEngine(win);
+    if (!engine || !ConfirmPdfTocSignatureEdit(win, engine)) {
+        return;
+    }
+    Vec<PdfTocPath> paths;
+    if (!TocCollectSelectedPaths(win, paths)) {
+        return;
+    }
+    if (action == PdfTocEditAction::Delete) {
+        bool hasChildren = false;
+        for (TocItem* item : items) {
+            if (item && item->child) {
+                hasChildren = true;
+                break;
+            }
+        }
+        if (!ConfirmPdfTocDelete(win, paths.Size(), hasChildren)) {
+            return;
+        }
+    }
+
+    Vec<PdfTocPath> resultPaths;
+    char* errorRaw = nullptr;
+    bool ok = EngineMupdfEditPdfTocMany(engine, action, paths, &resultPaths, &errorRaw);
+    AutoFreeStr error(errorRaw);
+    if (!ok) {
+        ShowPdfTocEditError(win, error);
+        return;
+    }
+    if (action != PdfTocEditAction::Delete && resultPaths.empty()) {
+        return;
+    }
+    ReloadPdfTocAfterEdit(win, resultPaths);
+    ToolbarUpdateStateForWindow(win, false);
+}
+
+static void ExecutePdfTocDrop(MainWindow* win, TocItem* dest, PdfTocDropPos pos) {
+    if (!win || HasTocFilter(win)) {
+        return;
+    }
+    if (TocCalibIsActive(win) && TocCalibHandleDrop(win, dest, (int)pos)) {
+        return;
+    }
+    EngineBase* engine = PdfTocEditableEngine(win);
+    if (!engine || !ConfirmPdfTocSignatureEdit(win, engine)) {
+        return;
+    }
+    Vec<PdfTocPath> srcPaths;
+    if (!TocCollectSelectedPaths(win, srcPaths)) {
+        return;
+    }
+    dest = OriginalPdfTocItem(win, dest);
+    Vec<int> destPath;
+    if (dest && !PdfTocPathForItem(win, dest, destPath)) {
+        return;
+    }
+    Vec<PdfTocPath> resultPaths;
+    char* errorRaw = nullptr;
+    bool ok = EngineMupdfMovePdfTocItems(engine, srcPaths, destPath, pos, &resultPaths, &errorRaw);
+    AutoFreeStr error(errorRaw);
+    if (!ok) {
+        ShowPdfTocEditError(win, error);
+        return;
+    }
+    ReloadPdfTocAfterEdit(win, resultPaths);
+    ToolbarUpdateStateForWindow(win, false);
+}
+
+static bool PdfTocTakeSelection(MainWindow* win, AutoFreeStr& title, int* pageOut, float* xOut, float* yOut) {
     WindowTab* tab = win ? win->CurrentTab() : nullptr;
     DisplayModel* dm = tab ? tab->AsFixed() : nullptr;
     TextSelection* selection = dm ? dm->textSelection : nullptr;
-    if (!engine || !selection || selection->result.len <= 0 || !HasPermission(Perm::CopySelection)) {
+    if (!selection || selection->result.len <= 0 || !HasPermission(Perm::CopySelection)) {
         return false;
     }
+    bool isTextOnlySelection = false;
+    TempStr selectedText = GetSelectedTextTemp(tab, " ", isTextOnlySelection);
+    if (!isTextOnlySelection || !selectedText) {
+        return false;
+    }
+    title.SetCopy(selectedText);
+    if (!title) {
+        return false;
+    }
+    str::TrimWSInPlace(title.Get(), str::TrimOpt::Both);
+    str::NormalizeWSInPlace(title.Get());
+    if (str::IsEmpty(title.Get())) {
+        return false;
+    }
+    if (pageOut) {
+        *pageOut = selection->result.pages[0];
+    }
+    Rect rc = selection->result.rects[0];
+    if (xOut) {
+        *xOut = (float)rc.x;
+    }
+    if (yOut) {
+        *yOut = (float)rc.y;
+    }
+    return true;
+}
 
+static TocItem* PdfTocCurrentItem(MainWindow* win) {
+    TocItem* selected = win && win->tocTreeView ? (TocItem*)win->tocTreeView->GetSelection() : nullptr;
+    if (!selected && win && win->tocSelectedIds.Size() > 0) {
+        Vec<TocItem*> items = TocSelectedBookmarkItems(win);
+        if (!items.empty()) {
+            selected = items.At(0);
+        }
+    }
+    return OriginalPdfTocItem(win, selected);
+}
+
+bool TryAddPdfTocFromSelection(MainWindow* win) {
+    AutoFreeStr title;
+    int pageNo = 0;
+    float x = 0;
+    float y = 0;
+    if (!PdfTocTakeSelection(win, title, &pageNo, &x, &y)) {
+        return false;
+    }
+    if (TocCalibIsActive(win)) {
+        return TocCalibAddSelectionUnderCurrent(win, title.Get(), pageNo, x, y);
+    }
+    EngineBase* engine = PdfTocEditableEngine(win);
+    if (!engine) {
+        return false;
+    }
     // Once this is recognized as the PDF TOC shortcut, don't fall back to adding
     // a favorite if the edit is cancelled or fails.
     if (!ConfirmPdfTocSignatureEdit(win, engine)) {
         return true;
     }
-
-    bool isTextOnlySelection = false;
-    TempStr selectedText = GetSelectedTextTemp(tab, " ", isTextOnlySelection);
-    AutoFreeStr title(str::Dup(selectedText));
-    if (!isTextOnlySelection || !title) {
-        return true;
-    }
-    str::TrimWSInPlace(title.Get(), str::TrimOpt::Both);
-    if (str::IsEmpty(title.Get())) {
-        return true;
-    }
-
-    int pageNo = selection->result.pages[0];
-    Rect selectionRect = selection->result.rects[0];
-    AutoFreeStr target(
-        EngineMupdfFormatPdfTocTarget(engine, pageNo, (float)selectionRect.x, (float)selectionRect.y));
+    AutoFreeStr target(EngineMupdfFormatPdfTocTarget(engine, pageNo, x, y));
     if (!target) {
         ShowPdfTocEditError(win, "The selected PDF position could not be captured.");
         return true;
     }
 
-    TocItem* selected = win->tocTreeView ? (TocItem*)win->tocTreeView->GetSelection() : nullptr;
-    selected = OriginalPdfTocItem(win, selected);
-    if (!selected || !selected->dest || selected->dest->GetKind() != kindDestinationMupdf) {
+    TocItem* selected = PdfTocCurrentItem(win);
+    if (selected && (!selected->dest || selected->dest->GetKind() != kindDestinationMupdf)) {
         selected = nullptr;
     }
     Vec<int> path;
@@ -1305,14 +1876,111 @@ bool TryAddPdfTocFromSelection(MainWindow* win) {
         return true;
     }
 
+    PdfTocEditAction action = PdfTocEditAction::AddAfter;
+    if (selected && selected->child) {
+        action = PdfTocEditAction::AddChild;
+    }
     Vec<int> resultPath;
     char* errorRaw = nullptr;
-    bool ok = EngineMupdfEditPdfToc(engine, PdfTocEditAction::AddAfter, path, title.Get(), target.Get(),
-                                    &resultPath, &errorRaw);
+    bool ok = EngineMupdfEditPdfToc(engine, action, path, title.Get(), target.Get(), &resultPath, &errorRaw);
     AutoFreeStr error(errorRaw);
     if (!ok) {
         ShowPdfTocEditError(win, error);
         return true;
+    }
+    ReloadPdfTocAfterEdit(win, selected ? path : resultPath);
+    ToolbarUpdateStateForWindow(win, false);
+    return true;
+}
+
+bool TryReplacePdfTocFromSelection(MainWindow* win) {
+    AutoFreeStr title;
+    int pageNo = 0;
+    float x = 0;
+    float y = 0;
+    if (!PdfTocTakeSelection(win, title, &pageNo, &x, &y)) {
+        return false;
+    }
+    if (TocCalibIsActive(win)) {
+        return TocCalibReplaceSelectedFromSelection(win, title.Get(), pageNo, x, y);
+    }
+    EngineBase* engine = PdfTocEditableEngine(win);
+    if (!engine) {
+        return false;
+    }
+    if (!ConfirmPdfTocSignatureEdit(win, engine)) {
+        return true;
+    }
+    TocItem* selected = PdfTocCurrentItem(win);
+    if (!selected || str::IsEmpty(selected->title)) {
+        return false;
+    }
+    Vec<int> path;
+    if (!PdfTocPathForItem(win, selected, path)) {
+        return false;
+    }
+    AutoFreeStr target(EngineMupdfFormatPdfTocTarget(engine, pageNo, x, y));
+    if (!target) {
+        ShowPdfTocEditError(win, "The selected PDF position could not be captured.");
+        return true;
+    }
+    Vec<int> resultPath;
+    char* errorRaw = nullptr;
+    bool ok = EngineMupdfEditPdfToc(engine, PdfTocEditAction::Update, path, title.Get(), target.Get(), &resultPath,
+                                    &errorRaw);
+    AutoFreeStr error(errorRaw);
+    if (!ok) {
+        ShowPdfTocEditError(win, error);
+        return true;
+    }
+    ReloadPdfTocAfterEdit(win, path);
+    ToolbarUpdateStateForWindow(win, false);
+    return true;
+}
+
+bool HandlePdfTocFindInBody(MainWindow* win) {
+    return TocCalibLocateSelectedInBody(win);
+}
+
+bool HandlePdfTocSetCurrentPage(MainWindow* win) {
+    if (!win) {
+        return false;
+    }
+    if (TocCalibIsActive(win)) {
+        return TocCalibPinSelectedToView(win);
+    }
+    EngineBase* engine = PdfTocEditableEngine(win);
+    if (!engine || !ConfirmPdfTocSignatureEdit(win, engine)) {
+        return false;
+    }
+    TocItem* selected = win->tocTreeView ? (TocItem*)win->tocTreeView->GetSelection() : nullptr;
+    if (!selected) {
+        Vec<TocItem*> items = TocSelectedBookmarkItems(win);
+        if (!items.empty()) {
+            selected = items.At(0);
+        }
+    }
+    selected = OriginalPdfTocItem(win, selected);
+    if (!selected || str::IsEmpty(selected->title)) {
+        return false;
+    }
+    Vec<int> path;
+    if (!PdfTocPathForItem(win, selected, path)) {
+        return false;
+    }
+    AutoFreeStr target(CurrentPdfTocTarget(win, engine));
+    if (!target) {
+        ShowPdfTocEditError(win, "The current PDF position could not be captured.");
+        return false;
+    }
+    Vec<int> resultPath;
+    char* errorRaw = nullptr;
+    bool ok = EngineMupdfEditPdfToc(engine, PdfTocEditAction::Update, path, selected->title, target.Get(),
+                                    &resultPath, &errorRaw);
+    AutoFreeStr error(errorRaw);
+    if (!ok) {
+        ShowPdfTocEditError(win, error);
+        return false;
     }
     ReloadPdfTocAfterEdit(win, resultPath);
     ToolbarUpdateStateForWindow(win, false);
@@ -1353,6 +2021,16 @@ bool HandlePdfTocEditCommand(MainWindow* win, int commandId) {
     if (win && win->tocTreeView) {
         selected = (TocItem*)win->tocTreeView->GetSelection();
     }
+    if (PdfTocEditIsBatchAction(action) && win && win->tocSelectedIds.Size() > 1) {
+        ExecutePdfTocEditMany(win, action);
+        return true;
+    }
+    if (!selected && action != PdfTocEditAction::AddAfter) {
+        Vec<TocItem*> items = TocSelectedBookmarkItems(win);
+        if (!items.empty()) {
+            selected = items.At(0);
+        }
+    }
     if (!selected && action != PdfTocEditAction::AddAfter) {
         return true;
     }
@@ -1362,6 +2040,26 @@ bool HandlePdfTocEditCommand(MainWindow* win, int commandId) {
 
 // clang-format off
 static MenuDef menuDefContextToc[] = {
+    {
+        _TRN("Extract Table of Contents"),
+        CmdExtractPdfToc,
+    },
+    {
+        _TRN("Calibrate TOC Pages"),
+        CmdPdfTocCalibrate,
+    },
+    {
+        _TRN("Find TOC Item in Body"),
+        CmdPdfTocFindInBody,
+    },
+    {
+        _TRN("Set TOC Item to Current Page"),
+        CmdPdfTocSetCurrentPage,
+    },
+    {
+        kMenuSeparator,
+        0,
+    },
     {
         _TRN("Add PDF TOC Item After"),
         CmdPdfTocAddAfter,
@@ -1437,8 +2135,27 @@ static void TocContextMenu(ContextMenuEvent* ev) {
     POINT pt{};
 
     TreeView* treeView = (TreeView*)ev->w;
-    TreeModel* tm = treeView->treeModel;
-    TreeItem ti = GetOrSelectTreeItemAtPos(ev, pt);
+    TreeItem ti = TreeModel::kNullItem;
+    pt = {ev->mouseWindow.x, ev->mouseWindow.y};
+    if (pt.x == -1 || pt.y == -1) {
+        ti = treeView->GetSelection();
+        if (ti != TreeModel::kNullItem) {
+            RECT rcItem;
+            if (treeView->GetItemRect(ti, true, rcItem)) {
+                MapWindowPoints(treeView->hwnd, HWND_DESKTOP, (POINT*)&rcItem, 2);
+                pt.x = rcItem.left;
+                pt.y = rcItem.bottom;
+            }
+        }
+    } else {
+        ti = treeView->GetItemAt(pt.x, pt.y);
+        TocItem* hit = (TocItem*)ti;
+        if (hit && !TocItemIsMultiSelected(win, hit)) {
+            TocSelectOnly(win, hit, false);
+        }
+        pt.x = ev->mouseScreen.x;
+        pt.y = ev->mouseScreen.y;
+    }
     if (ti == TreeModel::kNullItem) {
         pt = {ev->mouseScreen.x, ev->mouseScreen.y};
     }
@@ -1458,20 +2175,38 @@ static void TocContextMenu(ContextMenuEvent* ev) {
 
     EngineBase* pdfTocEngine = PdfTocEditableEngine(win);
     TocItem* pdfTocItem = OriginalPdfTocItem(win, dti);
+    Kind destKind = dest ? dest->GetKind() : nullptr;
     bool isPdfTocItem = pdfTocItem && pdfTocItem->dest && pdfTocItem->dest->GetKind() == kindDestinationMupdf;
-    const int pdfTocCommands[] = {CmdPdfTocAddAfter, CmdPdfTocAddChild, CmdPdfTocEdit,    CmdPdfTocDelete,
-                                  CmdPdfTocMoveUp,   CmdPdfTocMoveDown, CmdPdfTocPromote, CmdPdfTocDemote};
+    bool tocMulti = win->tocSelectedIds.Size() > 1;
+    const int pdfTocCommands[] = {CmdExtractPdfToc,  CmdPdfTocCalibrate, CmdPdfTocSetCurrentPage, CmdPdfTocFindInBody,
+                                  CmdPdfTocAddAfter, CmdPdfTocAddChild,  CmdPdfTocEdit,           CmdPdfTocDelete,
+                                  CmdPdfTocMoveUp,   CmdPdfTocMoveDown,  CmdPdfTocPromote,        CmdPdfTocDemote};
+    bool canSetCurrentPage =
+        dti && !tocMulti && destKind != kindDestinationLaunchEmbedded && destKind != kindDestinationAttachment;
+    bool canFindInBody = TocCalibIsActive(win) && canSetCurrentPage;
     if (!pdfTocEngine) {
         for (int command : pdfTocCommands) {
             MenuRemove(popup, command);
         }
     } else if (!isPdfTocItem) {
         for (int command : pdfTocCommands) {
-            if (command != CmdPdfTocAddAfter) {
+            if (command != CmdPdfTocAddAfter && command != CmdExtractPdfToc && command != CmdPdfTocCalibrate &&
+                command != CmdPdfTocSetCurrentPage && command != CmdPdfTocFindInBody) {
                 MenuRemove(popup, command);
             }
         }
+        if (!canSetCurrentPage) {
+            MenuRemove(popup, CmdPdfTocSetCurrentPage);
+        }
         MenuSetText(popup, CmdPdfTocAddAfter, _TRA("Add Root PDF TOC Item"));
+        TocTree* toc = tab && tab->currToc ? tab->currToc : nullptr;
+        if (!toc || !toc->root || !toc->root->child) {
+            MenuRemove(popup, CmdPdfTocCalibrate);
+        }
+    } else if (tocMulti) {
+        MenuRemove(popup, CmdPdfTocAddChild);
+        MenuRemove(popup, CmdPdfTocEdit);
+        MenuRemove(popup, CmdPdfTocSetCurrentPage);
     } else {
         Vec<int> tocPath;
         bool hasPath = PdfTocPathForItem(win, pdfTocItem, tocPath);
@@ -1488,10 +2223,12 @@ static void TocContextMenu(ContextMenuEvent* ev) {
             MenuRemove(popup, CmdPdfTocPromote);
         }
     }
+    if (!canFindInBody) {
+        MenuRemove(popup, CmdPdfTocFindInBody);
+    }
 
     const char* path = nullptr;
     char* fileName = nullptr;
-    Kind destKind = dest ? dest->GetKind() : nullptr;
 
     // TODO: this is pontentially not used at all
     if (dest && destKind == kindDestinationLaunchEmbedded) {
@@ -1556,6 +2293,14 @@ static void TocContextMenu(ContextMenuEvent* ev) {
         MenuRemove(popup, CmdFavoriteAdd);
         MenuRemove(popup, CmdFavoriteDel);
     }
+    if (win->ctrl && GetMenuState(popup, CmdPdfTocSetCurrentPage, MF_BYCOMMAND) != (UINT)-1) {
+        int viewPageNo = win->ctrl->CurrentPageNo();
+        if (viewPageNo > 0) {
+            TempStr viewLabel = win->ctrl->GetPageLabeTemp(viewPageNo);
+            MenuSetText(popup, CmdPdfTocSetCurrentPage,
+                        str::FormatTemp(_TRA("Link page %s to selected bookmark"), viewLabel));
+        }
+    }
     RemoveBadMenuSeparators(popup);
     MarkMenuOwnerDraw(popup);
     uint flags = TPM_RETURNCMD | TPM_RIGHTBUTTON;
@@ -1573,19 +2318,31 @@ static void TocContextMenu(ContextMenuEvent* ev) {
             ExecutePdfTocEdit(win, pdfTocItem, PdfTocEditAction::Update);
             break;
         case CmdPdfTocDelete:
-            ExecutePdfTocEdit(win, pdfTocItem, PdfTocEditAction::Delete);
+            ExecutePdfTocEditMany(win, PdfTocEditAction::Delete);
             break;
         case CmdPdfTocMoveUp:
-            ExecutePdfTocEdit(win, pdfTocItem, PdfTocEditAction::MoveUp);
+            ExecutePdfTocEditMany(win, PdfTocEditAction::MoveUp);
             break;
         case CmdPdfTocMoveDown:
-            ExecutePdfTocEdit(win, pdfTocItem, PdfTocEditAction::MoveDown);
+            ExecutePdfTocEditMany(win, PdfTocEditAction::MoveDown);
             break;
         case CmdPdfTocPromote:
-            ExecutePdfTocEdit(win, pdfTocItem, PdfTocEditAction::Promote);
+            ExecutePdfTocEditMany(win, PdfTocEditAction::Promote);
             break;
         case CmdPdfTocDemote:
-            ExecutePdfTocEdit(win, pdfTocItem, PdfTocEditAction::Demote);
+            ExecutePdfTocEditMany(win, PdfTocEditAction::Demote);
+            break;
+        case CmdExtractPdfToc:
+            HandleExtractPdfTocCommand(win);
+            break;
+        case CmdPdfTocCalibrate:
+            StartTocCalibFromExisting(win);
+            break;
+        case CmdPdfTocSetCurrentPage:
+            HandlePdfTocSetCurrentPage(win);
+            break;
+        case CmdPdfTocFindInBody:
+            HandlePdfTocFindInBody(win);
             break;
         case CmdFavoriteAdd:
             AddFavoriteFromToc(win, dti);
@@ -1699,11 +2456,27 @@ void LoadTocTree(MainWindow* win) {
     tab->tocWrapHeightsReady = true;
     InvalidateTocTree(win);
     UpdateTocFilterForDocumentLoading(win);
+    UpdateTocCalibrateHeader(win);
     RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
+}
+
+void ReloadPdfTocTree(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    if (win->tocLoaded) {
+        ClearTocBox(win);
+    }
+    LoadTocTree(win);
 }
 
 void RestoreTocTreeForTab(MainWindow* win) {
     WindowTab* tab = win->CurrentTab();
+    if (tab && tab->tocCalib) {
+        ShowTocCalib(win);
+    } else {
+        HideTocCalib(win);
+    }
     if (!tab || win->tocLoaded || !tab->ctrl) {
         return;
     }
@@ -1750,6 +2523,7 @@ void RestoreTocTreeForTab(MainWindow* win) {
         tab->tocWrapHeightsReady = true;
     }
     UpdateTocFilterForDocumentLoading(win);
+    UpdateTocCalibrateHeader(win);
     RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
 }
 
@@ -1787,6 +2561,7 @@ static void UpdateFont(MainWindow* win, HWND hwndTree, HDC hdc, int fontFlags) {
 
 static COLORREF TocItemTextColor(TocItem* tocItem, MainWindow* win, TreeView* treeView);
 static void SetTocItemDrawColors(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, TocItem* tocItem, MainWindow* win);
+static bool TocDrawItemSelected(MainWindow* win, TocItem* tocItem, NMCUSTOMDRAW* cd);
 
 static int TocTreeItemLevel(HWND hwnd, HTREEITEM hItem) {
     int level = 0;
@@ -1833,13 +2608,20 @@ static void DrawTreeWrappedLabel(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, const
     RECT rcClient;
     GetClientRect(hwnd, &rcClient);
     rcLabel.right = rcClient.right - 2;
+    if (TocCalibIsActive(win)) {
+        rcLabel.right -= TocCalibColumnsDx(hwnd);
+        if (rcLabel.right < rcLabel.left + 24) {
+            rcLabel.right = rcLabel.left + 24;
+        }
+    }
 
     NMCUSTOMDRAW* cd = &tvcd->nmcd;
-    bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+    TocItem* tocItemForSel = (TocItem*)treeView->GetTreeItemByHandle(hItem);
+    bool isSelected = TocDrawItemSelected(win, tocItemForSel, cd);
     bool isHot = (cd->uItemState & CDIS_HOT) != 0;
     COLORREF textCol = tvcd->clrText;
     COLORREF bgCol = tvcd->clrTextBk;
-    bool skipBgFill = ThemeUsesDarkChrome() && (isSelected || isHot);
+    bool skipBgFill = isSelected || (ThemeUsesDarkChrome() && isHot);
 
     if (!skipBgFill) {
         RECT rcFill = rcLabel;
@@ -1859,7 +2641,7 @@ static void DrawTreeWrappedLabel(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, const
     // During live sidebar resize, keep single-line clipped text so wrap paint
     // cannot spill and leave vertical ghost lines before heights are flushed.
     UINT dtFlags = DT_NOPREFIX | DT_LEFT;
-    if (TreeWrapUpdatesSuspended()) {
+    if (TocCalibIsActive(win) || !TreeWrapLabelsEnabled() || TreeWrapUpdatesSuspended()) {
         dtFlags |= DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER;
     } else {
         dtFlags |= DT_WORDBREAK | DT_EDITCONTROL;
@@ -1926,6 +2708,11 @@ static void TreeWrapUpdateItemHeight(HWND hwnd, HTREEITEM hItem, HDC hdc, int cl
     }
     int labelLeft = TocGetItemLabelLeft(hwnd, hItem);
     int maxWidth = clientWidth - labelLeft - 4;
+    MainWindow* wrapWin = FindMainWindowByHwnd(hwnd);
+    if (TocCalibIsActive(wrapWin)) {
+        TocSetTreeItemIntegral(hwnd, hItem, 1);
+        return;
+    }
     if (maxWidth < 24) {
         maxWidth = 24;
     }
@@ -2037,25 +2824,66 @@ static void GetTocItemRowRect(HWND hwnd, HTREEITEM hItem, NMCUSTOMDRAW* cd, RECT
     }
     RECT rcClient;
     GetClientRect(hwnd, &rcClient);
+    rcRow.left = rcClient.left;
     if (rcRow.right < rcClient.right) {
         rcRow.right = rcClient.right;
     }
 }
 
-static void DrawTocRowFill(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem, COLORREF col) {
-    RECT rcRow;
-    GetTocItemRowRect(hwnd, hItem, cd, rcRow);
-    HBRUSH br = CreateSolidBrush(col);
-    FillRect(cd->hdc, &rcRow, br);
-    DeleteObject(br);
+static void DrawTocExpandGlyph(HDC hdc, HWND hwnd, HTREEITEM hItem, const RECT& rcRow) {
+    if (!TreeView_GetChild(hwnd, hItem)) {
+        return;
+    }
+    RECT rcLabel{};
+    if (!TreeView_GetItemRect(hwnd, hItem, &rcLabel, TRUE)) {
+        return;
+    }
+    bool expanded = (TreeView_GetItemState(hwnd, hItem, TVIS_EXPANDED) & TVIS_EXPANDED) != 0;
+    int indent = TreeView_GetIndent(hwnd);
+    if (indent < 10) {
+        indent = 16;
+    }
+    RECT rc;
+    rc.right = rcLabel.left - 1;
+    rc.left = rc.right - indent;
+    if (rc.left < rcRow.left) {
+        rc.left = rcRow.left;
+    }
+    int sz = (rc.right - rc.left);
+    if (sz > indent) {
+        sz = indent;
+    }
+    int midY = (rcRow.top + rcRow.bottom) / 2;
+    rc.top = midY - sz / 2;
+    rc.bottom = rc.top + sz;
+    HTHEME theme = theme::OpenThemeData(hwnd, L"TREEVIEW");
+    if (theme) {
+        theme::DrawThemeBackground(theme, hdc, TVP_GLYPH, expanded ? GLPS_OPENED : GLPS_CLOSED, &rc, nullptr);
+        theme::CloseThemeData(theme);
+    }
+}
+
+static COLORREF TocSelectedRowFillColor(HWND) {
+    return TocSelectionBgColor();
 }
 
 static void DrawTocSelectionFill(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem) {
-    DrawTocRowFill(cd, hwnd, hItem, TocSelectionBgColor());
+    RECT rcRow;
+    GetTocItemRowRect(hwnd, hItem, cd, rcRow);
+    COLORREF col = TocSelectedRowFillColor(hwnd);
+    HBRUSH br = CreateSolidBrush(col);
+    FillRect(cd->hdc, &rcRow, br);
+    DeleteObject(br);
+    DrawTocExpandGlyph(cd->hdc, hwnd, hItem, rcRow);
 }
 
 static void DrawTocHotTrackFill(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem) {
-    DrawTocRowFill(cd, hwnd, hItem, TocHotTrackBgColor());
+    RECT rcRow;
+    GetTocItemRowRect(hwnd, hItem, cd, rcRow);
+    HBRUSH br = CreateSolidBrush(TocHotTrackBgColor());
+    FillRect(cd->hdc, &rcRow, br);
+    DeleteObject(br);
+    DrawTocExpandGlyph(cd->hdc, hwnd, hItem, rcRow);
 }
 
 static void DrawTocSelectionFrame(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem) {
@@ -2096,25 +2924,25 @@ static COLORREF TocItemTextColor(TocItem* tocItem, MainWindow* win, TreeView* tr
     return IsSpecialColor(treeView->textColor) ? GetSysColor(COLOR_WINDOWTEXT) : treeView->textColor;
 }
 
+static bool TocDrawItemSelected(MainWindow* win, TocItem* tocItem, NMCUSTOMDRAW* cd) {
+    if (win && win->tocSelectionOwned) {
+        return TocItemIsMultiSelected(win, tocItem);
+    }
+    if (win && !win->tocSelectedIds.empty()) {
+        return TocItemIsMultiSelected(win, tocItem);
+    }
+    return cd && (cd->uItemState & CDIS_SELECTED) != 0;
+}
+
 static void SetTocItemDrawColors(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, TocItem* tocItem, MainWindow* win) {
     NMCUSTOMDRAW* cd = &tvcd->nmcd;
-    bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+    bool isSelected = TocDrawItemSelected(win, tocItem, cd);
     bool isHot = (cd->uItemState & CDIS_HOT) != 0;
-    bool hasFocus = (GetFocus() == treeView->hwnd);
     COLORREF bgCol = SidebarBackgroundColor(treeView->bgColor);
 
     if (isSelected) {
-        if (ThemeUsesDarkChrome()) {
-            tvcd->clrText = TocItemTextColor(tocItem, win, treeView);
-            tvcd->clrTextBk = TocSelectionBgColor();
-            return;
-        }
-        if (hasFocus) {
-            tvcd->clrText = GetSysColor(COLOR_HIGHLIGHTTEXT);
-            tvcd->clrTextBk = GetSysColor(COLOR_HIGHLIGHT);
-        } else {
-            tvcd->clrTextBk = GetSysColor(COLOR_BTNFACE);
-        }
+        tvcd->clrText = TocItemTextColor(tocItem, win, treeView);
+        tvcd->clrTextBk = TocSelectionBgColor();
         return;
     }
     if (isHot && ThemeUsesDarkChrome()) {
@@ -2270,6 +3098,8 @@ static void DrawTocItemHighlight(TreeView::CustomDrawEvent* ev, MainWindow* win)
 // Win32 can scroll natively; repaint with full styling when the drag ends.
 static HWND gTocFastScrollHwnd = nullptr;
 
+static bool TocIsEditingItem(MainWindow* win, HTREEITEM hItem);
+
 void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
 #if defined(DISPLAY_TOC_PAGE_NUMBERS)
     if (false) return CDRF_DODEFAULT;
@@ -2316,16 +3146,13 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
                 ev->result = CDRF_DODEFAULT;
                 return;
             }
-            bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+            bool isSelected = TocDrawItemSelected(win, tocItem, cd);
             bool isHot = (cd->uItemState & CDIS_HOT) != 0;
-            HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
             SetTocItemDrawColors(tvcd, ev->treeView, tocItem, win);
-            if (ThemeUsesDarkChrome() && (isSelected || isHot)) {
-                if (isSelected) {
-                    DrawTocSelectionFill(cd, ev->treeView->hwnd, hItem);
-                } else {
-                    DrawTocHotTrackFill(cd, ev->treeView->hwnd, hItem);
-                }
+            if (TocIsEditingItem(win, (HTREEITEM)cd->dwItemSpec)) {
+                tvcd->clrText = tvcd->clrTextBk;
+            }
+            if (isSelected || (ThemeUsesDarkChrome() && isHot) || TocCalibIsActive(win)) {
                 ev->result = CDRF_NOTIFYPOSTPAINT;
                 return;
             }
@@ -2335,13 +3162,36 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
         if (cd->dwDrawStage == CDDS_ITEMPOSTPAINT) {
             TocItem* tocItem = (TocItem*)ev->treeItem;
             bool knownTree = win && IsKnownTocTreeModel(win, ev->treeView->treeModel);
-            bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
-            if (ThemeUsesDarkChrome() && isSelected && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
-                HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
-                DrawTocSelectionFrame(cd, ev->treeView->hwnd, hItem);
+            bool isSelected = TocDrawItemSelected(win, tocItem, cd);
+            HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
+            if (isSelected && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
+                DrawTocSelectionFill(cd, ev->treeView->hwnd, hItem);
+                if (tocItem && !TocIsEditingItem(win, hItem)) {
+                    DrawTocWrappedLabel(tvcd, ev->treeView, tocItem, win);
+                }
+                if (ThemeUsesDarkChrome()) {
+                    DrawTocSelectionFrame(cd, ev->treeView->hwnd, hItem);
+                }
+            } else if (ThemeUsesDarkChrome() && (cd->uItemState & CDIS_HOT) && knownTree && win && win->tocLoaded &&
+                       !win->isBeingClosed) {
+                DrawTocHotTrackFill(cd, ev->treeView->hwnd, hItem);
+                if (tocItem && !TocIsEditingItem(win, hItem)) {
+                    DrawTocWrappedLabel(tvcd, ev->treeView, tocItem, win);
+                }
+            } else if (TocCalibIsActive(win) && tocItem && knownTree && win && win->tocLoaded && !win->isBeingClosed &&
+                       !TocIsEditingItem(win, hItem)) {
+                DrawTocWrappedLabel(tvcd, ev->treeView, tocItem, win);
             }
-            if (filterActive && tocItem && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
+            if (filterActive && tocItem && knownTree && win && win->tocLoaded && !win->isBeingClosed &&
+                !TocIsEditingItem(win, hItem)) {
                 DrawTocItemHighlight(ev, win);
+            }
+            if (TocCalibIsActive(win) && tocItem && knownTree && win && win->tocLoaded && !win->isBeingClosed &&
+                !TocIsEditingItem(win, hItem)) {
+                RECT rcRow{};
+                if (TreeView_GetItemRect(ev->treeView->hwnd, hItem, &rcRow, FALSE)) {
+                    TocCalibDrawColumns(cd->hdc, ev->treeView->hwnd, rcRow, tocItem, win, isSelected);
+                }
             }
             ev->result = CDRF_DODEFAULT;
             return;
@@ -2360,7 +3210,10 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
             return;
         }
         SetTocItemDrawColors(tvcd, ev->treeView, tocItem, win);
-        bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+        if (TocIsEditingItem(win, (HTREEITEM)cd->dwItemSpec)) {
+            tvcd->clrText = tvcd->clrTextBk;
+        }
+        bool isSelected = TocDrawItemSelected(win, tocItem, cd);
         if (tocItem->fontFlags != 0) {
             UpdateFont(win, ev->treeView->hwnd, cd->hdc, tocItem->fontFlags);
         }
@@ -2377,24 +3230,32 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
     if (cd->dwDrawStage == CDDS_ITEMPOSTPAINT) {
         TocItem* tocItem = (TocItem*)ev->treeItem;
         bool knownTree = win && IsKnownTocTreeModel(win, ev->treeView->treeModel);
-        bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+        bool isSelected = TocDrawItemSelected(win, tocItem, cd);
         bool isHot = (cd->uItemState & CDIS_HOT) != 0;
         HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
-        if (ThemeUsesDarkChrome() && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
+        if (knownTree && win && win->tocLoaded && !win->isBeingClosed) {
             if (isSelected) {
                 DrawTocSelectionFill(cd, ev->treeView->hwnd, hItem);
-            } else if (isHot) {
+            } else if (ThemeUsesDarkChrome() && isHot) {
                 DrawTocHotTrackFill(cd, ev->treeView->hwnd, hItem);
             }
         }
-        if (tocItem && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
+        if (tocItem && knownTree && win && win->tocLoaded && !win->isBeingClosed && !TocIsEditingItem(win, hItem)) {
             DrawTocWrappedLabel(tvcd, ev->treeView, tocItem, win);
         }
         if (ThemeUsesDarkChrome() && isSelected && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
             DrawTocSelectionFrame(cd, ev->treeView->hwnd, hItem);
         }
-        if (filterActive && tocItem && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
+        if (filterActive && tocItem && knownTree && win && win->tocLoaded && !win->isBeingClosed &&
+            !TocIsEditingItem(win, hItem)) {
             DrawTocItemHighlight(ev, win);
+        }
+        if (TocCalibIsActive(win) && tocItem && knownTree && win && win->tocLoaded && !win->isBeingClosed &&
+            !TocIsEditingItem(win, hItem)) {
+            RECT rcRow{};
+            if (TreeView_GetItemRect(ev->treeView->hwnd, hItem, &rcRow, FALSE)) {
+                TocCalibDrawColumns(cd->hdc, ev->treeView->hwnd, rcRow, tocItem, win, isSelected);
+            }
         }
         ev->result = CDRF_DODEFAULT;
         return;
@@ -2408,22 +3269,29 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
 // which adds nav point. Maybe I should not add nav point
 // if going to the same page?
 void TocTreeClick(TreeView::ClickEvent* ev) {
-#if 0
-    ev->didHandle = true;
-    if (!ev->treeItem) {
+    ev->result = 0;
+    if (!ev || !ev->treeView || !ev->treeItem) {
         return;
     }
-    MainWindow* win = FindMainWindowByHwnd(ev->w->hwnd);
-    ReportIf(!win);
-    bool allowExternal = false;
-    GoToTocTreeItem(win, ev->treeItem, allowExternal);
-#endif
-    ev->result = -1;
+    MainWindow* win = FindMainWindowByHwnd(ev->treeView->hwnd);
+    if (!win || !TocCalibIsActive(win)) {
+        return;
+    }
+    RECT rcRow{};
+    if (!ev->treeView->GetItemRect(ev->treeItem, false, rcRow)) {
+        return;
+    }
+    if (TocCalibHandleRowClick(win, (TocItem*)ev->treeItem, ev->mouseWindow.x, ev->mouseWindow.y, rcRow)) {
+        ev->result = 1;
+    }
 }
 
 static void TocTreeSelectionChanged(TreeView::SelectionChangedEvent* ev) {
     MainWindow* win = FindMainWindowByHwnd(ev->treeView->hwnd);
     ReportIf(!win);
+    if (win->tocSuppressGoTo) {
+        return;
+    }
 
     // When the focus is set to the toc window the first item in the treeview is automatically
     // selected and a TVN_SELCHANGEDW notification message is sent with the special code pnmtv->action ==
@@ -2435,39 +3303,506 @@ static void TocTreeSelectionChanged(TreeView::SelectionChangedEvent* ev) {
     if (!shouldHandle) {
         return;
     }
+    if (win->tocTreeView == ev->treeView && ev->byKeyboard && !IsShiftPressed() && !IsCtrlPressed()) {
+        TocItem* item = (TocItem*)ev->selectedItem;
+        win->tocSelectedIds.Reset();
+        if (item && item->id) {
+            win->tocSelectedIds.Append(item->id);
+            win->tocAnchorId = item->id;
+        }
+        win->tocSelectionOwned = true;
+        TocInvalidateTree(win);
+    }
     bool allowExternal = ev->byMouse;
-    GoToTocTreeItem(win, ev->selectedItem, allowExternal);
+    if (!TocCalibIsActive(win)) {
+        GoToTocTreeItem(win, ev->selectedItem, allowExternal);
+    }
+}
+
+static void TocSelectAllItems(MainWindow* win) {
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    if (!tab || !tab->currToc || !tab->currToc->root) {
+        return;
+    }
+    Vec<int> ids;
+    if (HasTocFilter(win)) {
+        Vec<TocItem*> visible = TocVisibleItems(win->tocTreeView);
+        for (TocItem* item : visible) {
+            if (item && item->id) {
+                ids.Append(item->id);
+            }
+        }
+    } else {
+        CollectTocItemIds(tab->currToc->root->child, ids);
+    }
+    TocItem* focus = win->tocTreeView ? (TocItem*)win->tocTreeView->GetSelection() : nullptr;
+    if (!focus && !ids.empty()) {
+        focus = TocItemFromId(win, ids.At(0));
+    }
+    TocSetSelectedIds(win, ids, focus ? focus->id : (ids.empty() ? 0 : ids.At(0)), focus, false);
+}
+
+static Vec<TocItem*> TocVisibleItems(TreeView* tv) {
+    Vec<TocItem*> items;
+    if (!tv || !tv->hwnd) {
+        return items;
+    }
+    HTREEITEM h = TreeView_GetRoot(tv->hwnd);
+    while (h) {
+        TocItem* item = (TocItem*)tv->GetTreeItemByHandle(h);
+        if (item) {
+            items.Append(item);
+        }
+        h = TreeView_GetNextVisible(tv->hwnd, h);
+    }
+    return items;
+}
+
+static void TocSelectVisibleRange(MainWindow* win, TocItem* from, TocItem* to) {
+    if (!win || !win->tocTreeView || !to) {
+        return;
+    }
+    Vec<TocItem*> visible = TocVisibleItems(win->tocTreeView);
+    int iFrom = from ? visible.Find(from) : -1;
+    int iTo = visible.Find(to);
+    if (iTo < 0) {
+        TocSelectOnly(win, to, false);
+        return;
+    }
+    if (iFrom < 0) {
+        iFrom = iTo;
+    }
+    if (iFrom > iTo) {
+        int tmp = iFrom;
+        iFrom = iTo;
+        iTo = tmp;
+    }
+    Vec<int> ids;
+    for (int i = iFrom; i <= iTo; i++) {
+        TocItem* item = visible.At(i);
+        if (item && item->id) {
+            ids.Append(item->id);
+        }
+    }
+    TocSetSelectedIds(win, ids, from ? from->id : to->id, to, false);
+}
+
+static constexpr UINT_PTR kTocLabelEditSubclassId = 0x70ced17;
+
+static int TocInPlaceEditRight(MainWindow* win, HWND hwndTv, const RECT& rcLabel, const RECT& rcRow) {
+    int right = rcRow.right - 4;
+    if (TocCalibIsActive(win)) {
+        right -= TocCalibColumnsDx(hwndTv);
+    }
+    if (right < rcLabel.left + 40) {
+        right = rcLabel.left + 40;
+    }
+    return right;
+}
+
+// Same inset as DrawTreeWrappedLabel (InflateRect -2, -1) so F2 text does not jump.
+static bool TocInPlaceEditRect(MainWindow* win, HWND hwndTv, RECT& rcOut) {
+    rcOut = {};
+    if (!win || !win->tocLabelEditItem) {
+        return false;
+    }
+    RECT rcLabel{};
+    RECT rcRow{};
+    if (!TreeView_GetItemRect(hwndTv, win->tocLabelEditItem, &rcLabel, TRUE)) {
+        return false;
+    }
+    if (!TreeView_GetItemRect(hwndTv, win->tocLabelEditItem, &rcRow, FALSE)) {
+        rcRow = rcLabel;
+    }
+    int x = rcLabel.left + 2;
+    int y = rcLabel.top + 1;
+    int right = TocInPlaceEditRight(win, hwndTv, rcLabel, rcRow);
+    int dx = right - x;
+    int dy = rcLabel.bottom - 1 - y;
+    if (dx < 40) {
+        dx = 40;
+    }
+    if (dy < 16) {
+        dy = rcRow.bottom - rcRow.top;
+        if (dy < 16) {
+            dy = 16;
+        }
+        y = rcRow.top + (rcRow.bottom - rcRow.top - dy) / 2;
+    }
+    rcOut.left = x;
+    rcOut.top = y;
+    rcOut.right = x + dx;
+    rcOut.bottom = y + dy;
+    return rcOut.right > rcOut.left && rcOut.bottom > rcOut.top;
+}
+
+static void TocStyleInPlaceEdit(HWND hwndEdit, HWND hwndTv) {
+    if (DynSetWindowTheme) {
+        DynSetWindowTheme(hwndEdit, L"", L"");
+    }
+    DWORD style = GetWindowLongW(hwndEdit, GWL_STYLE);
+    if (style & WS_BORDER) {
+        SetWindowLongW(hwndEdit, GWL_STYLE, style & ~WS_BORDER);
+    }
+    DWORD ex = GetWindowLongW(hwndEdit, GWL_EXSTYLE);
+    if (ex & WS_EX_CLIENTEDGE) {
+        SetWindowLongW(hwndEdit, GWL_EXSTYLE, ex & ~WS_EX_CLIENTEDGE);
+    }
+    SendMessageW(hwndEdit, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, 0);
+    HFONT hf = (HFONT)SendMessageW(hwndTv, WM_GETFONT, 0, 0);
+    if (hf) {
+        SendMessageW(hwndEdit, WM_SETFONT, (WPARAM)hf, FALSE);
+    }
+}
+
+static void TocFitInPlaceEditToRow(MainWindow* win, HWND hwndEdit) {
+    if (!win || !win->tocTreeView || !hwndEdit) {
+        return;
+    }
+    RECT rc{};
+    if (!TocInPlaceEditRect(win, win->tocTreeView->hwnd, rc)) {
+        return;
+    }
+    SetWindowPos(hwndEdit, nullptr, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top,
+                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_NOCOPYBITS);
+}
+
+static LRESULT CALLBACK TocLabelEditSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId,
+                                                 DWORD_PTR data) {
+    auto* win = (MainWindow*)data;
+    if (msg == WM_WINDOWPOSCHANGING && win && win->tocTreeView && win->tocLabelEditItem) {
+        auto* pos = (WINDOWPOS*)lp;
+        if (pos && !((pos->flags & SWP_NOMOVE) && (pos->flags & SWP_NOSIZE))) {
+            RECT rc{};
+            if (TocInPlaceEditRect(win, win->tocTreeView->hwnd, rc)) {
+                pos->x = rc.left;
+                pos->y = rc.top;
+                pos->cx = rc.right - rc.left;
+                pos->cy = rc.bottom - rc.top;
+                pos->flags &= ~(SWP_NOSIZE | SWP_NOMOVE);
+            }
+        }
+    }
+    if (msg == WM_NCPAINT) {
+        return 0;
+    }
+    if (msg == WM_ERASEBKGND) {
+        RECT rc{};
+        GetClientRect(hwnd, &rc);
+        HBRUSH br = CreateSolidBrush(TocSelectionBgColor());
+        FillRect((HDC)wp, &rc, br);
+        DeleteObject(br);
+        return 1;
+    }
+    if (msg == WM_NCDESTROY) {
+        RemoveWindowSubclass(hwnd, TocLabelEditSubclassProc, subclassId);
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static bool TocColorInPlaceEdit(HWND hwndEdit, HDC hdc, HBRUSH* brOut) {
+    if (!hwndEdit || !hdc || !brOut) {
+        return false;
+    }
+    COLORREF bg = TocSelectionBgColor();
+    COLORREF txt = ThemeUsesDarkChrome() ? ThemeReadingTextColor() : ThemeWindowTextColor();
+    SetTextColor(hdc, txt);
+    SetBkColor(hdc, bg);
+    static HBRUSH br = nullptr;
+    static COLORREF brBg = (COLORREF)-1;
+    if (!br || brBg != bg) {
+        if (br) {
+            DeleteObject(br);
+        }
+        br = CreateSolidBrush(bg);
+        brBg = bg;
+    }
+    *brOut = br;
+    return true;
+}
+
+static void TocPrepareInPlaceEdit(MainWindow* win) {
+    if (!win || !win->tocTreeView) {
+        return;
+    }
+    HWND hwndTv = win->tocTreeView->hwnd;
+    HWND hwndEdit = TreeView_GetEditControl(hwndTv);
+    if (!hwndEdit) {
+        return;
+    }
+    TocStyleInPlaceEdit(hwndEdit, hwndTv);
+    RemoveWindowSubclass(hwndEdit, TocLabelEditSubclassProc, kTocLabelEditSubclassId);
+    SetWindowSubclass(hwndEdit, TocLabelEditSubclassProc, kTocLabelEditSubclassId, (DWORD_PTR)win);
+    TocFitInPlaceEditToRow(win, hwndEdit);
+    SendMessageW(hwndEdit, EM_SETSEL, 0, -1);
+}
+
+static bool TocIsEditingItem(MainWindow* win, HTREEITEM hItem) {
+    return win && hItem && win->tocLabelEditItem == hItem;
+}
+
+static void TocStartLabelEdit(MainWindow* win) {
+    if (!win || !win->tocTreeView || HasTocFilter(win) || !PdfTocEditableEngine(win)) {
+        return;
+    }
+    TocItem* item = (TocItem*)win->tocTreeView->GetSelection();
+    if (!IsPdfTocBookmarkItem(win, item)) {
+        return;
+    }
+    HTREEITEM h = win->tocTreeView->GetHandleByTreeItem((TreeItem)item);
+    if (!h) {
+        return;
+    }
+    win->tocLabelEditFromF2 = true;
+    win->tocLabelEditItem = h;
+    HWND hwndEdit = TreeView_EditLabel(win->tocTreeView->hwnd, h);
+    if (!hwndEdit) {
+        win->tocLabelEditFromF2 = false;
+        win->tocLabelEditItem = nullptr;
+    }
+}
+
+static void TocBeginLabelEdit(TreeView::LabelEditEvent* ev) {
+    MainWindow* win = FindMainWindowByHwnd(ev->treeView->hwnd);
+    ev->cancel = !(win && win->tocLabelEditFromF2);
+    if (win) {
+        win->tocLabelEditFromF2 = false;
+        if (ev->cancel) {
+            win->tocLabelEditItem = nullptr;
+        } else {
+            TocPrepareInPlaceEdit(win);
+        }
+    }
+}
+
+static bool TocCommitInPlaceLabelEdit(MainWindow* win) {
+    if (!win || !win->tocTreeView || !win->tocLabelEditItem) {
+        return false;
+    }
+    HWND hwnd = win->tocTreeView->hwnd;
+    if (!hwnd || !IsWindow(hwnd)) {
+        win->tocLabelEditItem = nullptr;
+        return false;
+    }
+    HWND hwndEdit = TreeView_GetEditControl(hwnd);
+    if (!hwndEdit || !IsWindow(hwndEdit)) {
+        win->tocLabelEditItem = nullptr;
+        return false;
+    }
+    TreeView_EndEditLabelNow(hwnd, FALSE);
+    return true;
+}
+
+struct TocLabelCommitTask {
+    MainWindow* win = nullptr;
+    EngineBase* engine = nullptr;
+    Vec<int> path;
+    char* title = nullptr;
+};
+
+static void TocCommitLabelEditOnUi(TocLabelCommitTask* t) {
+    if (!t) {
+        return;
+    }
+    bool stillOpen = false;
+    for (MainWindow* w : gWindows) {
+        if (w == t->win) {
+            stillOpen = true;
+            break;
+        }
+    }
+    if (stillOpen && t->engine && t->title && PdfTocEditableEngine(t->win) == t->engine) {
+        Vec<int> resultPath;
+        char* errorRaw = nullptr;
+        bool ok = EngineMupdfEditPdfToc(t->engine, PdfTocEditAction::Update, t->path, t->title, nullptr, &resultPath,
+                                        &errorRaw);
+        AutoFreeStr error(errorRaw);
+        if (ok) {
+            ReloadPdfTocAfterEdit(t->win, resultPath);
+            ToolbarUpdateStateForWindow(t->win, false);
+        } else {
+            ShowPdfTocEditError(t->win, error);
+        }
+    }
+    str::Free(t->title);
+    delete t;
+}
+
+static void TocEndLabelEdit(TreeView::LabelEditEvent* ev) {
+    ev->result = FALSE;
+    MainWindow* winEnd = FindMainWindowByHwnd(ev->treeView->hwnd);
+    if (winEnd) {
+        winEnd->tocLabelEditItem = nullptr;
+    }
+    if (!ev->text) {
+        return;
+    }
+    MainWindow* win = FindMainWindowByHwnd(ev->treeView->hwnd);
+    EngineBase* engine = PdfTocEditableEngine(win);
+    TocItem* item = OriginalPdfTocItem(win, (TocItem*)ev->treeItem);
+    if (!engine || !IsPdfTocBookmarkItem(win, item)) {
+        return;
+    }
+    TempStr title = ToUtf8Temp(ev->text);
+    str::TrimWSInPlace(title, str::TrimOpt::Both);
+    if (str::IsEmpty(title)) {
+        return;
+    }
+    if (TocCalibIsActive(win)) {
+        str::ReplaceWithCopy(&item->title, title);
+        TocCalibRenameItem(win, item, title);
+        ev->result = TRUE;
+        if (win->tocTreeView && win->tocTreeView->hwnd) {
+            InvalidateRect(win->tocTreeView->hwnd, nullptr, FALSE);
+        }
+        return;
+    }
+    if (!ConfirmPdfTocSignatureEdit(win, engine)) {
+        return;
+    }
+    str::ReplaceWithCopy(&item->title, title);
+    ev->result = TRUE;
+    Vec<int> path;
+    if (!PdfTocPathForItem(win, item, path)) {
+        return;
+    }
+    auto* task = new TocLabelCommitTask;
+    task->win = win;
+    task->engine = engine;
+    task->path = path;
+    task->title = str::Dup(title);
+    uitask::Post(MkFunc0(TocCommitLabelEditOnUi, task), "TocCommitLabelEdit");
 }
 
 void TocTreeKeyDown2(TreeView::KeyDownEvent* ev) {
-    // TODO: trying to fix https://github.com/sumatrapdfreader/sumatrapdf/issues/1841
-    // doesn't work i.e. page up / page down seems to be processed anyway by TreeCtrl
-#if 0
-    if ((ev->keyCode == VK_PRIOR) || (ev->keyCode == VK_NEXT)) {
-        // up/down in tree is not very useful, so instead
-        // send it to frame so that it scrolls document instead
-        MainWindow* win = FindMainWindowByHwnd(ev->hwnd);
-        // this is sent as WM_NOTIFY to TreeCtrl but for frame it's WM_KEYDOWN
-        // alternatively, we could call FrameOnKeydown(ev->wp, ev->lp, false);
-        SendMessageW(win->hwndFrame, WM_KEYDOWN, ev->wp, ev->lp);
-        ev->didHandle = true;
+    MainWindow* win = FindMainWindowByHwnd(ev->treeView->hwnd);
+    if (!win) {
+        ev->result = 0;
+        return;
+    }
+    bool isTocTree = win->tocTreeView == ev->treeView;
+
+    if (ev->keyCode == VK_TAB) {
+        if (win->tabsVisible && IsCtrlPressed()) {
+            TabsOnCtrlTab(win, IsShiftPressed());
+            ev->result = 1;
+            return;
+        }
+        AdvanceFocus(win);
         ev->result = 1;
         return;
     }
-#endif
-    if (ev->keyCode != VK_TAB) {
+
+    if (!isTocTree) {
         ev->result = 0;
         return;
     }
 
-    MainWindow* win = FindMainWindowByHwnd(ev->treeView->hwnd);
-    if (win->tabsVisible && IsCtrlPressed()) {
-        TabsOnCtrlTab(win, IsShiftPressed());
+    if (win->tocDragging && ev->keyCode == VK_ESCAPE) {
+        TocCancelDrag(win);
         ev->result = 1;
         return;
     }
-    AdvanceFocus(win);
-    ev->result = 1;
+
+    if (ev->keyCode == 'A' && IsCtrlPressed() && !IsShiftPressed()) {
+        TocSelectAllItems(win);
+        ev->result = 1;
+        return;
+    }
+
+    if (TocCalibIsActive(win) && IsCtrlPressed() && !IsAltPressed() &&
+        TocCalibHandleUndoShortcut(win, ev->treeView ? ev->treeView->hwnd : nullptr, ev->keyCode, true,
+                                   IsShiftPressed())) {
+        ev->result = 1;
+        return;
+    }
+
+    if (ev->keyCode == VK_ESCAPE && win->tocSelectedIds.Size() > 1) {
+        TocItem* focus = (TocItem*)win->tocTreeView->GetSelection();
+        TocSelectOnly(win, focus, false);
+        ev->result = 1;
+        return;
+    }
+
+    EngineBase* engine = PdfTocEditableEngine(win);
+    bool canEdit = engine && !HasTocFilter(win);
+    // F2 must stay on the TOC item (in-place rename). Do not let it fall through
+    // to the frame accelerator table (CmdRenameFile).
+    if (ev->keyCode == VK_F2) {
+        if (canEdit) {
+            TocStartLabelEdit(win);
+        }
+        ev->result = 1;
+        return;
+    }
+    if (canEdit) {
+        if (ev->keyCode == VK_DELETE || ev->keyCode == VK_BACK) {
+            ExecutePdfTocEditMany(win, PdfTocEditAction::Delete);
+            ev->result = 1;
+            return;
+        }
+        if (ev->keyCode == VK_INSERT && !IsCtrlPressed() && !IsShiftPressed()) {
+            TocItem* selected = (TocItem*)win->tocTreeView->GetSelection();
+            ExecutePdfTocEdit(win, selected, PdfTocEditAction::AddAfter);
+            ev->result = 1;
+            return;
+        }
+        if (IsCtrlPressed() && !IsShiftPressed()) {
+            if (ev->keyCode == VK_UP) {
+                ExecutePdfTocEditMany(win, PdfTocEditAction::MoveUp);
+                ev->result = 1;
+                return;
+            }
+            if (ev->keyCode == VK_DOWN) {
+                ExecutePdfTocEditMany(win, PdfTocEditAction::MoveDown);
+                ev->result = 1;
+                return;
+            }
+            if (ev->keyCode == VK_LEFT) {
+                ExecutePdfTocEditMany(win, PdfTocEditAction::Promote);
+                ev->result = 1;
+                return;
+            }
+            if (ev->keyCode == VK_RIGHT) {
+                ExecutePdfTocEditMany(win, PdfTocEditAction::Demote);
+                ev->result = 1;
+                return;
+            }
+        }
+    }
+
+    if (IsShiftPressed() && !IsCtrlPressed() &&
+        (ev->keyCode == VK_UP || ev->keyCode == VK_DOWN || ev->keyCode == VK_HOME || ev->keyCode == VK_END)) {
+        TocItem* anchor = TocItemFromId(win, win->tocAnchorId);
+        TocItem* focus = (TocItem*)win->tocTreeView->GetSelection();
+        Vec<TocItem*> visible = TocVisibleItems(win->tocTreeView);
+        if (!visible.empty()) {
+            TocItem* dest = nullptr;
+            if (ev->keyCode == VK_HOME) {
+                dest = visible.At(0);
+            } else if (ev->keyCode == VK_END) {
+                dest = visible.Last();
+            } else {
+                int iFocus = focus ? visible.Find(focus) : -1;
+                if (iFocus >= 0) {
+                    int next = ev->keyCode == VK_UP ? iFocus - 1 : iFocus + 1;
+                    if (next >= 0 && next < visible.Size()) {
+                        dest = visible.At(next);
+                    }
+                }
+            }
+            if (dest) {
+                if (!anchor) {
+                    anchor = focus;
+                }
+                TocSelectVisibleRange(win, anchor, dest);
+                ev->result = 1;
+                return;
+            }
+        }
+    }
+
+    ev->result = 0;
 }
 
 #ifdef DISPLAY_TOC_PAGE_NUMBERS
@@ -2511,7 +3846,9 @@ static void LayoutTocContainer(MainWindow* win) {
     int dy = rc.dy;
     int y = 0;
     BOOL liveDrag = TreeWrapLiveResizeSuspended() ? TRUE : FALSE;
-    UINT liveFlags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOREDRAW;
+    // NOCOPYBITS so old pixels are not smeared; do not use SWP_NOREDRAW
+    // or the tree/filter leave white/black ghosts on every mouse-move.
+    UINT liveFlags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS;
     auto place = [&](HWND hwnd, int x, int y, int dx, int dy) {
         if (!hwnd) {
             return;
@@ -2549,8 +3886,23 @@ static void LayoutTocContainer(MainWindow* win) {
             y += rowDy;
         }
     }
+    int barDy = 0;
+    if (TocCalibIsActive(win)) {
+        barDy = TocCalibBarDy(win);
+        if (barDy > dy - 40) {
+            barDy = dy - 40;
+        }
+        if (barDy < 0) {
+            barDy = 0;
+        }
+        dy -= barDy;
+    }
     if (treeView && treeView->hwnd) {
         place(treeView->hwnd, 0, y, rc.dx, dy);
+        y += dy;
+    }
+    if (barDy > 0) {
+        RelayoutTocCalib(win);
     }
 }
 
@@ -2561,8 +3913,701 @@ void RelayoutTocContainer(MainWindow* win) {
     LayoutTocContainer(win);
 }
 
+static bool TocSidebarHasBookmarkItems(MainWindow* win) {
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    if (!tab || !tab->ctrl) {
+        return false;
+    }
+    EngineBase* engine = tab->GetEngine();
+    TocTree* toc = tab->currToc;
+    if (engine) {
+        toc = engine->PeekCachedToc();
+        // currToc is a non-owning alias of the engine tree. Theme/reflow rebuilds
+        // and DiscardTocTree leave it dangling; never walk it if Peek disagrees.
+        if (tab->currToc != toc) {
+            tab->currToc = toc;
+        }
+    }
+    TocItem* root = toc ? toc->root : nullptr;
+    return root && root->child;
+}
+
+static bool TocSidebarShowEmptyHint(MainWindow* win) {
+    return win && win->tocVisible && win->tocTreeView && !HasTocFilter(win) && !TocSidebarHasBookmarkItems(win);
+}
+
+static bool TocEmptyExtractActionRect(MainWindow* win, HWND hwnd, RECT* actionOut) {
+    if (actionOut) {
+        *actionOut = {};
+    }
+    if (!hwnd || !win || !TocSidebarShowEmptyHint(win) || !PdfTocEditableEngine(win)) {
+        return false;
+    }
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+    int pad = DpiScale(hwnd, 16);
+    rc.left += pad;
+    rc.right -= pad;
+    rc.top += pad;
+    if (rc.right <= rc.left || rc.bottom <= rc.top) {
+        return false;
+    }
+    HDC hdc = GetDC(hwnd);
+    if (!hdc) {
+        return false;
+    }
+    HFONT font = GetAppTreeFontForHwnd(win->hwndFrame);
+    HGDIOBJ old = font ? SelectObject(hdc, font) : nullptr;
+    const WCHAR* title = ToWStrTemp(_TRA("No bookmarks"));
+    RECT titleRc = rc;
+    DrawTextW(hdc, title, -1, &titleRc, DT_CALCRECT | DT_WORDBREAK | DT_CENTER | DT_NOPREFIX);
+    int titleH = titleRc.bottom - titleRc.top;
+    const WCHAR* action = ToWStrTemp(_TRA("Extract Table of Contents"));
+    int actionTop = rc.top + titleH + DpiScale(hwnd, 8);
+    SIZE sz{};
+    GetTextExtentPoint32W(hdc, action, lstrlenW(action), &sz);
+    RECT actionRc;
+    int avail = rc.right - rc.left;
+    if (sz.cx > 0 && sz.cx <= avail) {
+        int x = rc.left + (avail - sz.cx) / 2;
+        actionRc = {x, actionTop, x + sz.cx, actionTop + sz.cy};
+    } else {
+        actionRc = rc;
+        actionRc.top = actionTop;
+        DrawTextW(hdc, action, -1, &actionRc, DT_CALCRECT | DT_WORDBREAK | DT_CENTER | DT_NOPREFIX);
+    }
+    int hitPad = DpiScale(hwnd, 4);
+    InflateRect(&actionRc, hitPad, hitPad);
+    if (old) {
+        SelectObject(hdc, old);
+    }
+    ReleaseDC(hwnd, hdc);
+    if (actionRc.right <= actionRc.left || actionRc.bottom <= actionRc.top) {
+        return false;
+    }
+    if (actionOut) {
+        *actionOut = actionRc;
+    }
+    return true;
+}
+
+static bool TocEmptyExtractHitTest(MainWindow* win, HWND hwnd, POINT pt) {
+    RECT actionRc;
+    if (!TocEmptyExtractActionRect(win, hwnd, &actionRc)) {
+        return false;
+    }
+    return PtInRect(&actionRc, pt) != FALSE;
+}
+
+static void DrawTocEmptyHint(MainWindow* win, HWND hwnd) {
+    if (!hwnd || !TocSidebarShowEmptyHint(win)) {
+        return;
+    }
+    HDC hdc = GetDC(hwnd);
+    if (!hdc) {
+        return;
+    }
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+    int pad = DpiScale(hwnd, 16);
+    rc.left += pad;
+    rc.right -= pad;
+    rc.top += pad;
+    if (rc.right <= rc.left || rc.bottom <= rc.top) {
+        ReleaseDC(hwnd, hdc);
+        return;
+    }
+    HFONT font = GetAppTreeFontForHwnd(win->hwndFrame);
+    HGDIOBJ old = font ? SelectObject(hdc, font) : nullptr;
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, GetSysColor(COLOR_GRAYTEXT));
+    const WCHAR* title = ToWStrTemp(_TRA("No bookmarks"));
+    RECT titleRc = rc;
+    DrawTextW(hdc, title, -1, &titleRc, DT_CALCRECT | DT_WORDBREAK | DT_CENTER | DT_NOPREFIX);
+    int titleH = titleRc.bottom - titleRc.top;
+    titleRc = rc;
+    titleRc.bottom = titleRc.top + titleH;
+    DrawTextW(hdc, title, -1, &titleRc, DT_WORDBREAK | DT_CENTER | DT_NOPREFIX);
+    bool canExtract = PdfTocEditableEngine(win) != nullptr;
+    if (canExtract) {
+        RECT actionRc = rc;
+        actionRc.top = titleRc.bottom + DpiScale(hwnd, 8);
+        SIZE sz{};
+        const WCHAR* action = ToWStrTemp(_TRA("Extract Table of Contents"));
+        GetTextExtentPoint32W(hdc, action, lstrlenW(action), &sz);
+        int avail = rc.right - rc.left;
+        if (sz.cx > 0 && sz.cx <= avail) {
+            int x = rc.left + (avail - sz.cx) / 2;
+            actionRc = {x, actionRc.top, x + sz.cx, actionRc.top + sz.cy};
+        }
+        SetTextColor(hdc, ThemeWindowLinkColor());
+        DrawTextW(hdc, action, -1, &actionRc, DT_WORDBREAK | DT_CENTER | DT_NOPREFIX);
+    }
+    if (old) {
+        SelectObject(hdc, old);
+    }
+    ReleaseDC(hwnd, hdc);
+}
+
+static PdfTocDropPos TocDropPosFromInt(int pos) {
+    if (pos == 0) {
+        return PdfTocDropPos::Before;
+    }
+    if (pos == 2) {
+        return PdfTocDropPos::Child;
+    }
+    return PdfTocDropPos::After;
+}
+
+static int TocDropLineLeft(HWND hwnd, HTREEITEM dest, const RECT& rcRow) {
+    RECT rcText{};
+    if (TreeView_GetItemRect(hwnd, dest, &rcText, TRUE) && rcText.left > rcRow.left) {
+        return rcText.left;
+    }
+    int indent = (int)TreeView_GetIndent(hwnd);
+    if (indent < 8) {
+        indent = DpiScale(hwnd, 16);
+    }
+    int level = 0;
+    for (HTREEITEM p = TreeView_GetParent(hwnd, dest); p; p = TreeView_GetParent(hwnd, p)) {
+        level++;
+    }
+    return rcRow.left + DpiScale(hwnd, 4) + level * indent;
+}
+
+static int TocDropLineRight(MainWindow* win, HWND hwnd, const RECT& rcRow, int xLeft) {
+    int right = rcRow.right - DpiScale(hwnd, 4);
+    if (win && TocCalibIsActive(win)) {
+        right -= TocCalibColumnsDx(hwnd);
+    }
+    int minRight = xLeft + DpiScale(hwnd, 24);
+    if (right < minRight) {
+        right = minRight;
+    }
+    return right;
+}
+
+static HTREEITEM TocLastVisibleDescendant(HWND hwnd, HTREEITEM item) {
+    if (!hwnd || !item) {
+        return item;
+    }
+    HTREEITEM last = item;
+    HTREEITEM next = TreeView_GetNextVisible(hwnd, item);
+    while (next) {
+        bool desc = false;
+        for (HTREEITEM p = TreeView_GetParent(hwnd, next); p; p = TreeView_GetParent(hwnd, p)) {
+            if (p == item) {
+                desc = true;
+                break;
+            }
+        }
+        if (!desc) {
+            break;
+        }
+        last = next;
+        next = TreeView_GetNextVisible(hwnd, next);
+    }
+    return last;
+}
+
+static COLORREF TocDropIndicatorColor() {
+    COLORREF link = ThemeWindowLinkColor();
+    int r = GetRValue(link);
+    int g = GetGValue(link);
+    int b = GetBValue(link);
+    int y = (r * 30 + g * 59 + b * 11) / 100;
+    r = (r + y * 2) / 3;
+    g = (g + y * 2) / 3;
+    b = (b + y * 2) / 3;
+    COLORREF muted = RGB(r, g, b);
+    return ThemeUsesDarkChrome() ? AccentColor(muted, 0, -18) : AccentColor(muted, 22);
+}
+
+static void DrawTocDropIndicator(MainWindow* win, HWND hwnd) {
+    if (!win || !win->tocDragging || !win->tocDropItem) {
+        return;
+    }
+    RECT rc;
+    if (!TreeView_GetItemRect(hwnd, win->tocDropItem, &rc, FALSE)) {
+        return;
+    }
+    HDC hdc = GetDC(hwnd);
+    if (!hdc) {
+        return;
+    }
+    COLORREF col = TocDropIndicatorColor();
+    int stroke = DpiScale(hwnd, 1);
+    if (stroke < 1) {
+        stroke = 1;
+    }
+    HPEN pen = CreatePen(PS_SOLID, stroke, col);
+    HPEN oldPen = (HPEN)SelectObject(hdc, pen);
+    int x0 = TocDropLineLeft(hwnd, win->tocDropItem, rc);
+    int x1 = TocDropLineRight(win, hwnd, rc, x0);
+    if (win->tocDropPos == 2) {
+        int boxL = x0 - DpiScale(hwnd, 4);
+        if (boxL < rc.left + 2) {
+            boxL = rc.left + 2;
+        }
+        HGDIOBJ oldBr = SelectObject(hdc, GetStockObject(HOLLOW_BRUSH));
+        Rectangle(hdc, boxL, rc.top + 1, x1, rc.bottom - 1);
+        SelectObject(hdc, oldBr);
+        // First-child slot: a more-indented line under the title.
+        int childIndent = (int)TreeView_GetIndent(hwnd);
+        if (childIndent < 8) {
+            childIndent = DpiScale(hwnd, 16);
+        }
+        int cx0 = x0 + childIndent;
+        int cy = rc.bottom - 1;
+        int tick = DpiScale(hwnd, 7);
+        MoveToEx(hdc, cx0, cy - tick, nullptr);
+        LineTo(hdc, cx0, cy);
+        LineTo(hdc, x1, cy);
+    } else if (win->tocDropPos == 0) {
+        int y = rc.top + 1;
+        int tick = DpiScale(hwnd, 7);
+        MoveToEx(hdc, x0, y + tick, nullptr);
+        LineTo(hdc, x0, y);
+        LineTo(hdc, x1, y);
+    } else {
+        // After: same level as dest. If dest is expanded, the insert
+        // is after the whole subtree (before the next sibling), so draw
+        // there — a full-row line under the title looks like "first child".
+        RECT lineRow = rc;
+        HTREEITEM last = TocLastVisibleDescendant(hwnd, win->tocDropItem);
+        if (last && last != win->tocDropItem) {
+            RECT rcLast{};
+            if (TreeView_GetItemRect(hwnd, last, &rcLast, FALSE)) {
+                lineRow = rcLast;
+            }
+        }
+        int y = lineRow.bottom - 1;
+        int tick = DpiScale(hwnd, 7);
+        if (last && last != win->tocDropItem && lineRow.bottom > rc.bottom) {
+            MoveToEx(hdc, x0, rc.bottom, nullptr);
+            LineTo(hdc, x0, y);
+        }
+        MoveToEx(hdc, x0, y - tick, nullptr);
+        LineTo(hdc, x0, y);
+        LineTo(hdc, x1, y);
+    }
+    SelectObject(hdc, oldPen);
+    DeleteObject(pen);
+    ReleaseDC(hwnd, hdc);
+}
+
+static TocItem* TocLastVisibleItem(TreeView* tv) {
+    if (!tv || !tv->hwnd) {
+        return nullptr;
+    }
+    HTREEITEM h = TreeView_GetRoot(tv->hwnd);
+    HTREEITEM last = h;
+    while (h) {
+        last = h;
+        h = TreeView_GetNextVisible(tv->hwnd, h);
+    }
+    return last ? (TocItem*)tv->GetTreeItemByHandle(last) : nullptr;
+}
+
+static TocItem* TocFirstVisibleItem(TreeView* tv) {
+    if (!tv || !tv->hwnd) {
+        return nullptr;
+    }
+    HTREEITEM h = TreeView_GetRoot(tv->hwnd);
+    return h ? (TocItem*)tv->GetTreeItemByHandle(h) : nullptr;
+}
+
+static bool TocPathIsDescendantOf(const Vec<int>& dest, const Vec<int>& ancestor) {
+    if (dest.Size() <= ancestor.Size() || ancestor.empty()) {
+        return false;
+    }
+    for (int i = 0; i < ancestor.Size(); i++) {
+        if (dest.At(i) != ancestor.At(i)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool TocDropAllowed(MainWindow* win, TocItem* dest) {
+    if (!dest || !IsPdfTocBookmarkItem(win, dest)) {
+        return false;
+    }
+    if (TocItemIsMultiSelected(win, dest)) {
+        return false;
+    }
+    Vec<int> destPath;
+    if (!PdfTocPathForItem(win, dest, destPath)) {
+        return false;
+    }
+    Vec<TocItem*> moving = TocSelectedBookmarkItems(win);
+    for (TocItem* item : moving) {
+        Vec<int> src;
+        if (!PdfTocPathForItem(win, item, src)) {
+            continue;
+        }
+        if (TocPathIsDescendantOf(destPath, src)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool TocUpdateDropTarget(MainWindow* win, POINT pt) {
+    TreeView* tv = win->tocTreeView;
+    HWND hwnd = tv->hwnd;
+    TVHITTESTINFO ht{};
+    ht.pt = pt;
+    HTREEITEM hItem = TreeView_HitTest(hwnd, &ht);
+    int dropPos = 1;
+    if (ht.flags & TVHT_ABOVE) {
+        TocItem* first = TocFirstVisibleItem(tv);
+        hItem = first ? tv->GetHandleByTreeItem((TreeItem)first) : nullptr;
+        dropPos = 0;
+    } else if (!hItem || (ht.flags & (TVHT_NOWHERE | TVHT_BELOW | TVHT_TOLEFT | TVHT_TORIGHT))) {
+        TocItem* last = TocLastVisibleItem(tv);
+        hItem = last ? tv->GetHandleByTreeItem((TreeItem)last) : nullptr;
+        dropPos = 1;
+    } else {
+        RECT rc;
+        if (TreeView_GetItemRect(hwnd, hItem, &rc, FALSE)) {
+            int h = rc.bottom - rc.top;
+            int y = pt.y - rc.top;
+            if (h <= 0) {
+                dropPos = 1;
+            } else if (y < h / 3) {
+                dropPos = 0;
+            } else if (y > (2 * h) / 3) {
+                dropPos = 1;
+            } else {
+                dropPos = 2;
+            }
+        }
+    }
+    TocItem* dest = hItem ? (TocItem*)tv->GetTreeItemByHandle(hItem) : nullptr;
+    dest = OriginalPdfTocItem(win, dest);
+    bool valid = TocDropAllowed(win, dest);
+    HTREEITEM newItem = valid ? hItem : nullptr;
+    int newPos = valid ? dropPos : 1;
+    if (newItem != win->tocDropItem || newPos != win->tocDropPos) {
+        win->tocDropItem = newItem;
+        win->tocDropPos = newPos;
+        InvalidateRect(hwnd, nullptr, FALSE);
+    }
+    RECT rcClient;
+    GetClientRect(hwnd, &rcClient);
+    int margin = DpiScale(hwnd, 18);
+    if (pt.y < rcClient.top + margin) {
+        SendMessageW(hwnd, WM_VSCROLL, SB_LINEUP, 0);
+    } else if (pt.y > rcClient.bottom - margin) {
+        SendMessageW(hwnd, WM_VSCROLL, SB_LINEDOWN, 0);
+    }
+    if (valid && dropPos == 2 && dest && dest->child && !tv->IsExpanded((TreeItem)dest)) {
+        SetTimer(hwnd, kTocDragExpandTimerId, 600, nullptr);
+    } else {
+        KillTimer(hwnd, kTocDragExpandTimerId);
+    }
+    return valid;
+}
+
+static bool TocTreeHandleMouse(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (!win || !win->tocTreeView || win->tocTreeView->hwnd != hwnd) {
+        return false;
+    }
+    if (TocSidebarShowEmptyHint(win)) {
+        return false;
+    }
+
+    POINT pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+    TreeView* tv = win->tocTreeView;
+
+    if (msg == WM_LBUTTONDBLCLK && TocCalibIsActive(win)) {
+        TVHITTESTINFO ht{};
+        ht.pt = pt;
+        TreeView_HitTest(hwnd, &ht);
+        if (ht.flags & TVHT_ONITEMBUTTON) {
+            return false;
+        }
+        if (TocCalibHandleTreeClick(win, hwnd, pt)) {
+            return true;
+        }
+        TocItem* destItem = ht.hItem ? (TocItem*)tv->GetTreeItemByHandle(ht.hItem) : nullptr;
+        if (destItem) {
+            TocCalibJumpToItemContents(win, destItem);
+        }
+        return true;
+    }
+
+    if (msg == WM_MOUSEWHEEL && TocCalibIsActive(win)) {
+        TocCalibClosePageEdit(true);
+    }
+
+    if (msg == WM_LBUTTONDOWN) {
+        Vec<int> labelClickPath;
+        bool endingLabel = win->tocLabelEditItem && TreeView_GetEditControl(hwnd);
+        if (endingLabel) {
+            TVHITTESTINFO ht0{};
+            ht0.pt = pt;
+            TreeView_HitTest(hwnd, &ht0);
+            if (!(ht0.flags & TVHT_ONITEMBUTTON)) {
+                TocItem* it0 = ht0.hItem ? (TocItem*)tv->GetTreeItemByHandle(ht0.hItem) : nullptr;
+                if (it0) {
+                    PdfTocPathForItem(win, it0, labelClickPath);
+                }
+            }
+            TocCommitInPlaceLabelEdit(win);
+            tv = win->tocTreeView;
+            if (!tv || !tv->hwnd) {
+                return true;
+            }
+            hwnd = tv->hwnd;
+        }
+        if (TocCalibIsActive(win)) {
+            TocCalibClosePageEdit(true);
+            tv = win->tocTreeView;
+            if (!tv || !tv->hwnd) {
+                return true;
+            }
+            hwnd = tv->hwnd;
+        }
+        if (endingLabel) {
+            WindowTab* tab = win->CurrentTab();
+            TocItem* next = nullptr;
+            if (tab && tab->currToc && tab->currToc->root && !labelClickPath.empty()) {
+                next = PdfTocItemAtPath(tab->currToc->root->child, labelClickPath);
+            }
+            if (next) {
+                TocSelectOnly(win, next, true);
+            }
+            return true;
+        }
+        if (TocCalibIsActive(win) && TocCalibIsPageControlAt(win, hwnd, pt)) {
+            TVHITTESTINFO htCalib{};
+            htCalib.pt = pt;
+            TreeView_HitTest(hwnd, &htCalib);
+            TocItem* calibItem = htCalib.hItem ? (TocItem*)tv->GetTreeItemByHandle(htCalib.hItem) : nullptr;
+            if (calibItem) {
+                TocSelectOnly(win, calibItem, false);
+            }
+            TocCalibHandleTreeClick(win, hwnd, pt);
+            return true;
+        }
+        TVHITTESTINFO ht{};
+        ht.pt = pt;
+        TreeView_HitTest(hwnd, &ht);
+        if (ht.flags & TVHT_ONITEMBUTTON) {
+            return false;
+        }
+        TocItem* item = ht.hItem ? (TocItem*)tv->GetTreeItemByHandle(ht.hItem) : nullptr;
+        SetFocus(hwnd);
+        bool ctrl = (wp & MK_CONTROL) != 0;
+        bool shift = (wp & MK_SHIFT) != 0;
+        if (!item) {
+            if (!ctrl && !shift) {
+                TocSelectOnly(win, nullptr, false);
+            }
+            return true;
+        }
+        if (ctrl && !shift) {
+            Vec<int> ids = win->tocSelectedIds;
+            if (ids.Contains(item->id)) {
+                ids.Remove(item->id);
+            } else if (item->id) {
+                ids.Append(item->id);
+            }
+            TocSetSelectedIds(win, ids, item->id, item, false);
+            return true;
+        }
+        if (shift) {
+            TocItem* anchor = TocItemFromId(win, win->tocAnchorId);
+            if (!anchor) {
+                anchor = (TocItem*)tv->GetSelection();
+            }
+            TocSelectVisibleRange(win, anchor, item);
+            return true;
+        }
+        bool already = TocItemIsMultiSelected(win, item) ||
+                       (win->tocSelectedIds.Size() <= 1 && (TocItem*)tv->GetSelection() == item);
+        win->tocDragArmed = PdfTocEditableEngine(win) && !HasTocFilter(win) && IsPdfTocBookmarkItem(win, item);
+        win->tocDragging = false;
+        win->tocDragWasSelected = already && win->tocSelectedIds.Size() > 1;
+        win->tocDragStart = pt;
+        win->tocDragItemId = item->id;
+        if (!already) {
+            TocSelectOnly(win, item, !TocCalibIsActive(win));
+        }
+        if (TocCalibIsActive(win)) {
+            GoToTocTreeItem(win, (TreeItem)item, true);
+        }
+        // Capture only when a PDF TOC drag can start. EPUB/MOBI/AZW3 must not
+        // keep capture after click: the tree view uses TVS_TRACKSELECT (hand
+        // cursor), and an unreleased capture sends all clicks back to the TOC.
+        if (win->tocDragArmed) {
+            SetCapture(hwnd);
+        }
+        return true;
+    }
+
+    if (msg == WM_MOUSEMOVE && (win->tocDragArmed || win->tocDragging) && (wp & MK_LBUTTON)) {
+        int dx = pt.x - win->tocDragStart.x;
+        int dy = pt.y - win->tocDragStart.y;
+        int threshX = GetSystemMetrics(SM_CXDRAG);
+        int threshY = GetSystemMetrics(SM_CYDRAG);
+        if (!win->tocDragging && (abs(dx) > threshX || abs(dy) > threshY)) {
+            if (!win->tocDragArmed || HasTocFilter(win) || !PdfTocEditableEngine(win)) {
+                win->tocDragArmed = false;
+                if (GetCapture() == hwnd) {
+                    ReleaseCapture();
+                }
+                return true;
+            }
+            if (win->tocSelectedIds.empty() && win->tocDragItemId) {
+                win->tocSelectedIds.Append(win->tocDragItemId);
+            }
+            win->tocDragging = true;
+            SetCursorCached(IDC_ARROW);
+        }
+        if (win->tocDragging) {
+            bool valid = TocUpdateDropTarget(win, pt);
+            SetCursorCached(valid ? IDC_ARROW : IDC_NO);
+        }
+        return true;
+    }
+
+    if (msg == WM_LBUTTONUP) {
+        bool armed = win->tocDragArmed;
+        bool dragging = win->tocDragging;
+        HTREEITEM dropItem = win->tocDropItem;
+        int dropPos = win->tocDropPos;
+        bool wasSelected = win->tocDragWasSelected;
+        int clickId = win->tocDragItemId;
+        POINT upPt = pt;
+        win->tocDragArmed = false;
+        win->tocDragging = false;
+        win->tocDropItem = nullptr;
+        KillTimer(hwnd, kTocDragExpandTimerId);
+        if (GetCapture() == hwnd) {
+            ReleaseCapture();
+        }
+        if (!armed && !dragging) {
+            return false;
+        }
+        if (dragging && dropItem) {
+            TocItem* dest = (TocItem*)tv->GetTreeItemByHandle(dropItem);
+            ExecutePdfTocDrop(win, dest, TocDropPosFromInt(dropPos));
+        } else if (!dragging && TocCalibIsActive(win) && TocCalibHandleTreeClick(win, hwnd, upPt)) {
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return true;
+        } else if (!dragging && wasSelected) {
+            TocItem* item = TocItemFromId(win, clickId);
+            TocSelectOnly(win, item, !TocCalibIsActive(win));
+        }
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return true;
+    }
+
+    if (msg == WM_CAPTURECHANGED) {
+        if (win->tocDragging || win->tocDragArmed) {
+            win->tocDragArmed = false;
+            win->tocDragging = false;
+            win->tocDropItem = nullptr;
+            KillTimer(hwnd, kTocDragExpandTimerId);
+            InvalidateRect(hwnd, nullptr, FALSE);
+        }
+        return false;
+    }
+
+    if (msg == WM_TIMER && wp == kTocDragExpandTimerId) {
+        KillTimer(hwnd, kTocDragExpandTimerId);
+        if (win->tocDragging && win->tocDropItem && win->tocDropPos == 2) {
+            TreeView_Expand(hwnd, win->tocDropItem, TVE_EXPAND);
+        }
+        return true;
+    }
+
+    if (msg == WM_RBUTTONDOWN) {
+        if (GetCapture() == hwnd) {
+            ReleaseCapture();
+        }
+        TVHITTESTINFO ht{};
+        ht.pt = pt;
+        TreeView_HitTest(hwnd, &ht);
+        TocItem* item = ht.hItem ? (TocItem*)tv->GetTreeItemByHandle(ht.hItem) : nullptr;
+        if (item && !TocItemIsMultiSelected(win, item)) {
+            TocSelectOnly(win, item, false);
+        }
+        return false;
+    }
+
+    return false;
+}
+
 static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR data) {
     MainWindow* win = (MainWindow*)data;
+    if (msg == WM_PAINT) {
+        LRESULT r = DefSubclassProc(hwnd, msg, wp, lp);
+        DrawTocEmptyHint(win, hwnd);
+        DrawTocDropIndicator(win, hwnd);
+        return r;
+    }
+    if (msg == WM_CTLCOLOREDIT) {
+        HBRUSH br = nullptr;
+        if (TocCalibColorPageEdit((HWND)lp, (HDC)wp, &br)) {
+            return (LRESULT)br;
+        }
+        HWND hwndLabelEdit = TreeView_GetEditControl(hwnd);
+        if (hwndLabelEdit && (HWND)lp == hwndLabelEdit && TocColorInPlaceEdit(hwndLabelEdit, (HDC)wp, &br)) {
+            return (LRESULT)br;
+        }
+    }
+    if (msg == WM_SETCURSOR && LOWORD(lp) == HTCLIENT && TocCalibIsActive(win)) {
+        POINT pt{};
+        GetCursorPos(&pt);
+        ScreenToClient(hwnd, &pt);
+        if (TocCalibIsPageFieldAt(win, hwnd, pt)) {
+            SetCursorCached(IDC_IBEAM);
+            return TRUE;
+        }
+    }
+    if (TocTreeHandleMouse(win, hwnd, msg, wp, lp)) {
+        return 0;
+    }
+    if (msg == WM_KEYDOWN && wp == VK_ESCAPE && win && win->tocDragging) {
+        TocCancelDrag(win);
+        return 0;
+    }
+    if (msg == WM_LBUTTONUP && TocSidebarShowEmptyHint(win) && PdfTocEditableEngine(win) && !ExtractPdfTocIsRunning()) {
+        POINT pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+        bool inHit = TocEmptyExtractHitTest(win, hwnd, pt);
+        // #region agent log
+        {
+            FILE* f = fopen("c:\\src\\sumatrapdf\\debug-705e63.log", "ab");
+            if (f) {
+                RECT hit{};
+                TocEmptyExtractActionRect(win, hwnd, &hit);
+                fprintf(f,
+                        "{\"sessionId\":\"705e63\",\"hypothesisId\":\"E\",\"location\":\"TableOfContents.cpp:"
+                        "WndProcTocTree\",\"message\":\"empty-hint-click\",\"data\":{\"inHit\":%d,\"x\":%d,\"y\":%d,"
+                        "\"hitL\":%d,\"hitT\":%d,\"hitR\":%d,\"hitB\":%d},\"timestamp\":%llu}\n",
+                        inHit ? 1 : 0, pt.x, pt.y, hit.left, hit.top, hit.right, hit.bottom,
+                        (unsigned long long)GetTickCount64());
+                fclose(f);
+            }
+        }
+        // #endregion
+        if (inHit) {
+            HandleExtractPdfTocCommand(win);
+            return 0;
+        }
+    }
+    if (msg == WM_SETCURSOR && LOWORD(lp) == HTCLIENT && TocSidebarShowEmptyHint(win) && PdfTocEditableEngine(win)) {
+        POINT pt;
+        GetCursorPos(&pt);
+        ScreenToClient(hwnd, &pt);
+        bool inHit = TocEmptyExtractHitTest(win, hwnd, pt);
+        SetCursorCached(inHit ? IDC_HAND : IDC_ARROW);
+        return TRUE;
+    }
     if (msg == WM_CONTEXTMENU && win && win->tocTreeView) {
         POINT ptScreen = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
         POINT ptWindow = ptScreen;
@@ -2577,6 +4622,9 @@ static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         return 0;
     }
     if (msg == WM_VSCROLL) {
+        if (TocCalibIsActive(win)) {
+            TocCalibClosePageEdit(true);
+        }
         WORD code = LOWORD(wp);
         if (code == SB_THUMBTRACK || code == SB_THUMBPOSITION) {
             gTocFastScrollHwnd = hwnd;
@@ -2586,6 +4634,9 @@ static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
                 InvalidateRect(hwnd, nullptr, FALSE);
             }
         }
+    }
+    if (msg == WM_SETCURSOR && LOWORD(lp) == HTCLIENT && win && win->tocDragging) {
+        return TRUE;
     }
     if (msg == WM_SETCURSOR && LOWORD(lp) == HTCLIENT && win && win->ctrl && win->tocTreeView) {
         POINT pt;
@@ -2708,8 +4759,11 @@ static void InitTocTreeViewHandlers(TreeView* treeView) {
     auto fn = MkFunc1Void(TocContextMenu);
     treeView->onContextMenu = fn;
     treeView->onSelectionChanged = MkFunc1Void(TocTreeSelectionChanged);
+    treeView->onClick = MkFunc1Void(TocTreeClick);
     treeView->onKeyDown = MkFunc1Void(TocTreeKeyDown2);
     treeView->onGetTooltip = MkFunc1Void(TocCustomizeTooltip);
+    treeView->onBeginLabelEdit = MkFunc1Void(TocBeginLabelEdit);
+    treeView->onEndLabelEdit = MkFunc1Void(TocEndLabelEdit);
 }
 
 void ReCreateTocTreeView(MainWindow* win, HFONT font, int dpi) {
@@ -2749,6 +4803,7 @@ void ReCreateTocTreeView(MainWindow* win, HFONT font, int dpi) {
     TreeWrapLabelsConfigureCreateArgs(args);
     args.exStyle = 0;
     args.isRtl = IsUIRtl();
+    args.editLabels = true;
     InitTocTreeViewHandlers(treeView);
 
     treeView->Create(args);
@@ -2862,6 +4917,8 @@ static void ApplyTocFilter(MainWindow* win, const char* filter) {
     if (!win->tocLoaded) {
         return;
     }
+    TocCancelDrag(win);
+    ClearTocMultiSelect(win);
     WindowTab* tab = win->CurrentTab();
     if (!tab || !tab->currToc) {
         return;
@@ -2936,7 +4993,8 @@ void UpdateTocFilterForDocumentLoading(MainWindow* win) {
     if (!win || !win->tocFilterEdit || !win->tocFilterEdit->hwnd) {
         return;
     }
-    HwndSetVisibility(win->tocFilterEdit->hwnd, win->tocVisible);
+    bool show = win->tocVisible && TocSidebarHasBookmarkItems(win);
+    HwndSetVisibility(win->tocFilterEdit->hwnd, show);
     RelayoutTocContainer(win);
 }
 
@@ -2962,6 +5020,26 @@ static void CollapseAllToc(MainWindow* win) {
 static void ExpandAllToc(MainWindow* win) {
     if (win && win->tocTreeView) {
         win->tocTreeView->ExpandAll();
+    }
+}
+
+static void TocHeaderCalibrate(MainWindow* win) {
+    StartTocCalibFromExisting(win);
+}
+
+static void UpdateTocCalibrateHeader(MainWindow* win) {
+    if (!win || !win->tocLabelWithClose) {
+        return;
+    }
+    WindowTab* tab = win->CurrentTab();
+    bool hasItems = tab && tab->currToc && tab->currToc->root && tab->currToc->root->child;
+    if (PdfTocEditableEngine(win) && hasItems) {
+        win->tocLabelWithClose->SetThirdHeaderAction(MkFunc0(TocHeaderCalibrate, win), _TRN("Calibrate TOC"));
+    } else {
+        win->tocLabelWithClose->ClearThirdHeaderAction();
+    }
+    if (win->hwndTocBox) {
+        RelayoutTocContainer(win);
     }
 }
 
@@ -3049,16 +5127,15 @@ void FavTreeWrapOnCustomDraw(TreeView::CustomDrawEvent* ev) {
         bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
         bool isHot = (cd->uItemState & CDIS_HOT) != 0;
         HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
-        if (ThemeUsesDarkChrome()) {
-            if (isSelected) {
-                tvcd->clrText = ThemeReadingTextColor();
-                tvcd->clrTextBk = TocSelectionBgColor();
-                DrawTocSelectionFill(cd, ev->treeView->hwnd, hItem);
-            } else if (isHot) {
-                tvcd->clrText = ThemeReadingTextColor();
-                tvcd->clrTextBk = TocHotTrackBgColor();
-                DrawTocHotTrackFill(cd, ev->treeView->hwnd, hItem);
-            }
+        if (isSelected) {
+            HWND hwnd = ev->treeView->hwnd;
+            tvcd->clrText = ThemeUsesDarkChrome() ? ThemeReadingTextColor() : ThemeWindowTextColor();
+            tvcd->clrTextBk = TocSelectedRowFillColor(hwnd);
+            DrawTocSelectionFill(cd, hwnd, hItem);
+        } else if (ThemeUsesDarkChrome() && isHot) {
+            tvcd->clrText = ThemeReadingTextColor();
+            tvcd->clrTextBk = TocHotTrackBgColor();
+            DrawTocHotTrackFill(cd, ev->treeView->hwnd, hItem);
         }
         char* text = ev->treeView->treeModel->Text(ev->treeItem);
         DrawTreeWrappedLabel(tvcd, ev->treeView, ToWStrTemp(text), nullptr, 0);
@@ -3101,6 +5178,7 @@ void CreateToc(MainWindow* win) {
     TreeWrapLabelsConfigureCreateArgs(args);
     args.exStyle = 0;
     args.isRtl = IsUIRtl();
+    args.editLabels = true;
 
     InitTocTreeViewHandlers(treeView);
 

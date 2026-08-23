@@ -13,6 +13,7 @@
 #include "ProgressUpdateUI.h"
 #include "TextSelection.h"
 #include "TextSearch.h"
+#include "OcrService.h"
 
 // ignore spaces between CJK glyphs but not between Latin, Greek, Cyrillic, etc. letters
 // cf. http://code.google.com/p/sumatrapdf/issues/detail?id=959
@@ -46,6 +47,7 @@ static const char* GetTextForPageUtf8ForSearch(EngineBase* engine, int pageNo, i
     if (abortSearch) {
         *abortSearch = false;
     }
+    OcrEnsurePageTextForSearch(engine, pageNo);
     int byteLen = 0;
     const char* text = nullptr;
     if (engine->TryGetTextForPageUtf8(pageNo, &byteLen, nullptr, &text)) {

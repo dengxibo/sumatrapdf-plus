@@ -10,7 +10,7 @@ import * as path from "node:path";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
 const epubPath = process.argv[2] ?? path.join(repoRoot, "tmpbench.epub");
-const forkExe = path.join(repoRoot, "out", "dbg64", "SumatraPDF.exe");
+const forkExe = path.join(repoRoot, "out", "dbg64", "SumatraPDF-Plus.exe");
 const upstreamExe =
   process.env.UPSTREAM_EXE ??
   path.join(repoRoot, "..", "sumatrapdf-upstream", "out", "dbg64", "SumatraPDF.exe");

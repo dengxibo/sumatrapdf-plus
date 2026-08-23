@@ -145,7 +145,7 @@ CmdNavigateForward,"Alt + Right, Shift + Backspace",Navigate Forward,
 
 ```commands
 Command IDs,Keyboard shortcuts,Command Palette,Notes
-CmdFavoriteAdd,Ctrl + B,Add Favorite,
+CmdFavoriteAdd,Ctrl + B,Add Favorite,"ver next: with text selected on a PDF, adds a TOC item as the first child if the current bookmark has children, otherwise as the next sibling"
 CmdFavoriteDel,,Delete Favorite,
 CmdFavoriteToggle,,Toggle Favorites,
 ```
@@ -193,6 +193,11 @@ CmdPdfTocMoveUp,,PDF TOC: Move Item Up,"PDF only, ver 3.7+"
 CmdPdfTocMoveDown,,PDF TOC: Move Item Down,"PDF only, ver 3.7+"
 CmdPdfTocPromote,,PDF TOC: Promote Item,"PDF only, ver 3.7+"
 CmdPdfTocDemote,,PDF TOC: Demote Item,"PDF only, ver 3.7+"
+CmdExtractPdfToc,,Extract Table of Contents,"PDF only, ver next: View menu, bookmark context menu, and command palette; infer bookmarks from printed TOC or headings"
+CmdPdfTocCalibrate,,Calibrate TOC Pages,"PDF only, ver next: View menu, bookmark context menu, and command palette; open enhance mode to set printed pages (PDF page is read-only). Offset is majority-voted from pinned rows"
+CmdPdfTocSetCurrentPage,,Set TOC Item to Current Page,"PDF only, ver next: page context menu, bookmark context menu, and command palette; bind the selected TOC item to the current view (enhance mode pins the mapping; otherwise updates the outline dest)"
+CmdPdfTocFindInBody,,Find TOC Item in Body,"PDF only, ver next: bookmark context menu and command palette in enhance mode; BM25-lite locate of the selected heading in the body (does not change printed page). Enhance-mode row button finds and pins the dest"
+CmdPdfTocReplaceFromSelection,Ctrl + Shift + B,Replace TOC Item from Selection,"PDF only, ver next: replace the selected bookmark title and dest with the current text selection (enhance mode updates the session only)"
 CmdShowAnnotations,,Show Annotations,"ver 3.6+, for current document"
 CmdHideAnnotations,,Hide Annotations,"ver 3.6+, for current document"
 CmdToggleShowAnnotations,,Toggle Showing Annotations,"ver 3.6+, for current document"
@@ -236,6 +241,12 @@ CmdPdShowInfo,,Show PDF Info,shows information about currently opened PDF file
 CmdDocumentShowOutline,,Show Document Outline,shows the outline (table of contents) of currently opened document
 CmdPdfBake,,Bake PDF File,bakes interactive form and annotation content into static graphics; saves to a new PDF file and opens it
 CmdDocumentExtractText,,Extract Text From Document,"extract text from document pages to a .txt file, with configurable page ranges, ver 3.7+"
+CmdOcrCurrentPage,,OCR Current Page,"recognize text on the current scanned page (RapidOCR sidecar in {exedir}/ocr/), ver 3.8+"
+CmdOcrDocument,,OCR All Pages,"toolbar OCR menu: recognize all pages even if the PDF already has a text layer (re-OCR garbled dual-layer files); if there is no outline, extract bookmarks after OCR, ver 3.8+"
+CmdToggleAutoOcr,,Toggle Auto OCR,"toolbar switch for AutoOcrScanPages: OCR scanned pages as you view or search them, ver 3.8+"
+CmdOcrRegion,,OCR Region,"toolbar OCR menu: drag a rectangle to recognize and copy text, ver 3.8+"
+CmdOcrCancel,,Cancel OCR,"stop queued page OCR; already recognized pages are kept, ver 3.8+"
+CmdSaveSearchablePdf,,Recognize all pages and save,"toolbar OCR menu: OCR all pages with progress, extract bookmarks (prompt to replace an existing outline), then save over the current PDF (prompt if a text layer already exists; no Save As dialog), ver 3.8+"
 ```
 
 ## External app

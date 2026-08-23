@@ -189,6 +189,9 @@
     <ClInclude Include="..\src\EngineAll.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\PdfTocEditModel.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\EngineBase.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -396,6 +399,12 @@
     <ClInclude Include="..\src\WordLookup.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\OcrOnnx.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\OcrService.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\mui\Mui.h">
       <Filter>src\mui</Filter>
     </ClInclude>
@@ -585,6 +594,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\EngineMupdf.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\PdfTocEditModel.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\EnginePs.cpp">
@@ -837,6 +849,21 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\WindowTab.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\OcrOnnx.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\OcrService.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ExtractPdfToc.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ExtractBookToc.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\TocCalib.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\WordLookup.cpp">

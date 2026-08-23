@@ -76,6 +76,8 @@ struct FzPageInfo {
 
     // Follow-theme direct: cached PdfDarkModeProbeFollowThemeScanPage (see FollowThemeScanProbe).
     u8 followThemeScanProbe = 0;
+    // 0 unknown, 1 no, 2 yes — office-paper scan wants display-res binarize.
+    u8 followThemePaperBinarize = 0;
 
     // LaTeX / dense-text follow-theme: one recolored view bitmap per page (zoom/rotation/profile).
     RenderedBitmap* followThemePageBitmap = nullptr;
@@ -124,6 +126,7 @@ class EngineMupdf : public EngineBase {
 
     IPageDestination* GetNamedDest(const char* name) override;
     TocTree* GetToc() override;
+    TocTree* PeekCachedToc() override { return tocTree; }
 
     TempStr GetPageLabeTemp(int pageNo) const override;
     int GetPageByLabel(const char* label) const override;
@@ -166,6 +169,8 @@ class EngineMupdf : public EngineBase {
     pdf_document* pdfdoc = nullptr;
     Vec<FzPageInfo*> pages;
     fz_outline* outline = nullptr;
+    // Previous outline trees still referenced by TocItem dests until GetToc/DiscardTocTree.
+    Vec<fz_outline*> retiredOutlines;
     fz_outline* attachments = nullptr;
     pdf_obj* pdfInfo = nullptr;
     StrVec* pageLabels = nullptr;

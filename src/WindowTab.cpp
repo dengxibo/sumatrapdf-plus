@@ -25,6 +25,7 @@
 #include "EditAnnotations.h"
 #include "EbookAnnotations.h"
 #include "EditEbookAnnotations.h"
+#include "TocCalib.h"
 
 #include "utils/Log.h"
 
@@ -52,6 +53,10 @@ WindowTab::~WindowTab() {
         DestroyWindow(hwndPDFOutline);
         hwndPDFOutline = nullptr;
     }
+    if (win && win->CurrentTab() == this) {
+        HideTocCalib(win);
+    }
+    CloseTocCalibForTab(this);
     CloseAndDeleteEditAnnotationsWindow(this);
     CloseAndDeleteEditEbookAnnotationsWindow(this);
     EbookAnnotationsFree(ebookAnnotations);

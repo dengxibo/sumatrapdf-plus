@@ -324,6 +324,7 @@ bool PdfDarkModeFullResStatsLookLikeInsetGrayPhotoIslands(float paperRatio, floa
 // High paper + low variance, not RAZ photo pages (those keep higher lumVar or sat).
 bool PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(float paperRatio, float satRatio, float chromaRatio,
                                                           float lumVar, float redInkRatio = 0.f);
+bool PdfDarkModeFeaturesLookLikeFadedOfficeScanNotCream(const DarkImageFeatures& f);
 bool PdfDarkModeShouldPreserveImageFeatures(const DarkImageFeatures& f, float pageCoverage);
 
 DarkImagePolicy PdfDarkModePolicyForImageKind(DarkImageKind kind, bool isImageMask);

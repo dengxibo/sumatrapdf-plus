@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { detectVisualStudio2026, runLogged, copyDistributionFonts, copyOpenccData } from "./util";
+import { detectVisualStudio2026, runLogged, copyDistributionFonts, copyOpenccData, copyOcrSidecar } from "./util";
 import { clearDirPreserveSettings } from "./clean";
 
 let clean = false;
@@ -25,6 +25,7 @@ async function main() {
 
   copyDistributionFonts(join("out", "dbg64"));
   copyOpenccData(join("out", "dbg64"));
+  copyOcrSidecar(join("out", "dbg64"));
   // await runLogged(resolve(join(outDir, "test_util.exe")), [], outDir);
 
   const elapsed = ((performance.now() - timeStart) / 1000).toFixed(1);

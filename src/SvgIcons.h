@@ -42,10 +42,15 @@ enum class TbIcon {
     MatchWholeWord,
     EbookFontSizeDecrease,
     EbookFontSizeIncrease,
+    AnnotText,
     AnnotSquare,
     AnnotCircle,
     AnnotLine,
     AnnotInk,
+    Ocr,
+    MapPin,
+    MergeUp,
+    Link,
     kMax
 };
 

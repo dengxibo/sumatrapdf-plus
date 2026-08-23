@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { detectVisualStudio2026, runLogged, copyDistributionFonts, copyOpenccData } from "./util";
+import { detectVisualStudio2026, runLogged, copyDistributionFonts, copyOpenccData, copyOcrSidecar } from "./util";
 
 async function main() {
   const timeStart = performance.now();
@@ -10,9 +10,10 @@ async function main() {
   await runLogged(msbuildPath, [sln, `/t:SumatraPDF`, p, `/m`]);
   copyDistributionFonts(join("out", "rel64"));
   copyOpenccData(join("out", "rel64"));
+  copyOcrSidecar(join("out", "rel64"));
   const elapsed = ((performance.now() - timeStart) / 1000).toFixed(1);
   console.log(`build took ${elapsed}s`);
-  console.log(join("out", "rel64", "SumatraPDF.exe"));
+  console.log(join("out", "rel64", "SumatraPDF-Plus.exe"));
 }
 
 await main();

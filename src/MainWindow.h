@@ -18,6 +18,7 @@ struct FindBarWnd;
 struct FindWindowWnd;
 struct EbookAnnotation;
 struct FindWindowWnd;
+struct TocCalibBar;
 
 // one search match with a text snippet around it, for the floating results list
 struct FindMatch {
@@ -74,7 +75,8 @@ enum class MouseAction {
     Selecting,
     Scrolling,
     SelectingText,
-    CreatingAnnotation
+    CreatingAnnotation,
+    OcrRegion
 };
 
 enum PresentationMode {
@@ -166,6 +168,22 @@ struct MainWindow {
     Edit* tocFilterEdit = nullptr;
     TreeView* tocTreeView = nullptr;
     TocTree* tocFilteredTree = nullptr;
+    TocCalibBar* tocCalibBar = nullptr;
+
+    // Acrobat-style multi-select overlay (Win32 TreeView is single-select).
+    Vec<int> tocSelectedIds;
+    int tocAnchorId = 0;
+    bool tocSuppressGoTo = false;
+    bool tocLabelEditFromF2 = false;
+    HTREEITEM tocLabelEditItem = nullptr;
+    bool tocSelectionOwned = false;
+    bool tocDragArmed = false;
+    bool tocDragging = false;
+    bool tocDragWasSelected = false;
+    POINT tocDragStart{};
+    int tocDragItemId = 0;
+    HTREEITEM tocDropItem = nullptr;
+    int tocDropPos = 1; // 0=Before, 1=After, 2=Child
 
     // whether the current tab's ToC has been loaded into the tree
     bool tocLoaded = false;
@@ -232,8 +250,10 @@ struct MainWindow {
 
     // Toolbar quick-annotation tool (CmdCreateAnnotSquare etc.; 0 = inactive)
     int annotCreateToolCmd = 0;
+    bool annotCreateToolLocked = false;
     Point annotCreateDragStart;
     Vec<PointF> annotCreateInkPoints;
+    bool ocrRegionPending = false;
 
     /* when moving the document by smooth scrolling, this keeps track of
        the speed at which we should scroll, which depends on the distance
@@ -315,6 +335,13 @@ struct MainWindow {
     struct OverlayScrollbar* overlayScrollH = nullptr;
 
     int wheelAccumDelta = 0;
+    // Ctrl/right-button wheel zoom: coalesce a flick into one SetZoomVirtual
+    bool wheelZoomPending = false;
+    bool wheelZoomApplying = false;
+    float wheelZoomTarget = 0;
+    Point wheelZoomPt{};
+    DWORD wheelZoomLastMsgTime = 0;
+    int wheelZoomCoalesced = 0;
     UINT_PTR delayedRepaintTimer = 0;
 
     HANDLE printThread = nullptr;

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -1184,6 +1184,8 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <ClInclude Include="..\src\Version.h" />
     <ClInclude Include="..\src\WindowTab.h" />
     <ClInclude Include="..\src\WordLookup.h" />
+    <ClInclude Include="..\src\OcrOnnx.h" />
+    <ClInclude Include="..\src\OcrService.h" />
     <ClInclude Include="..\src\mui\Mui.h" />
     <ClInclude Include="..\src\mui\TextRender.h" />
     <ClInclude Include="..\src\resource.h" />
@@ -1259,6 +1261,7 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <ClCompile Include="..\src\EngineEbook.cpp" />
     <ClCompile Include="..\src\EngineImages.cpp" />
     <ClCompile Include="..\src\EngineMupdf.cpp" />
+    <ClCompile Include="..\src\PdfTocEditModel.cpp" />
     <ClCompile Include="..\src\EnginePs.cpp" />
     <ClCompile Include="..\src\EpubMeta.cpp" />
     <ClCompile Include="..\src\EpubPerfLog.cpp" />
@@ -1359,6 +1362,11 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <ClCompile Include="..\src\UpdateCheck.cpp" />
     <ClCompile Include="..\src\WindowTab.cpp" />
     <ClCompile Include="..\src\WordLookup.cpp" />
+    <ClCompile Include="..\src\OcrOnnx.cpp" />
+    <ClCompile Include="..\src\OcrService.cpp" />
+    <ClCompile Include="..\src\ExtractPdfToc.cpp" />
+    <ClCompile Include="..\src\ExtractBookToc.cpp" />
+    <ClCompile Include="..\src\TocCalib.cpp" />
     <ClCompile Include="..\src\mui\Mui.cpp" />
     <ClCompile Include="..\src\mui\TextRender.cpp" />
     <ClCompile Include="..\src\regress\Regress.cpp">

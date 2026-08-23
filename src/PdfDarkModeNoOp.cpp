@@ -318,6 +318,11 @@ bool PdfDarkModeFeaturesLookLikeFullPageTextScanForBinarize(const DarkImageFeatu
     return false;
 }
 
+bool PdfDarkModeFeaturesLookLikeFadedOfficeScanNotCream(const DarkImageFeatures& f) {
+    (void)f;
+    return false;
+}
+
 fz_pixmap* PdfDarkModeProcessGovernmentPaperPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette) {
     (void)ctx;
     (void)palette;

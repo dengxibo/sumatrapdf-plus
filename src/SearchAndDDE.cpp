@@ -37,6 +37,8 @@
 #include "SumatraDialogs.h"
 #include "Translations.h"
 
+#include "OcrService.h"
+
 #include "utils/Log.h"
 
 bool gIsStartup = false;
@@ -1811,6 +1813,9 @@ static void StartFindCount(MainWindow* win, const WCHAR* text, bool matchCase, b
     if (!EnsureDocumentSearchReady(win)) {
         return;
     }
+    if (gGlobalPrefs && gGlobalPrefs->autoOcrScanPages) {
+        OcrScheduleDocument(win);
+    }
     EngineBase* engine = dm->GetEngine();
     if (!engine) {
         return;
@@ -2380,6 +2385,9 @@ bool AbortFinding(MainWindow* win, bool hideMessage, bool waitForWorkers, bool p
 void FindTextOnThread(MainWindow* win, TextSearch::Direction direction, const char* text, bool wasModified) {
     if (!EnsureDocumentSearchReady(win)) {
         return;
+    }
+    if (gGlobalPrefs && gGlobalPrefs->autoOcrScanPages) {
+        OcrScheduleDocument(win);
     }
     AbortFinding(win, false);
     if (str::IsEmpty(text)) {

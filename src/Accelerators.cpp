@@ -223,6 +223,7 @@ ACCEL gBuiltInAccelerators[] = {
 
     {FCONTROL | FVIRTKEY, 'A', CmdSelectAll},
     {FCONTROL | FVIRTKEY, 'B', CmdFavoriteAdd},
+    {FSHIFT | FCONTROL | FVIRTKEY, 'B', CmdPdfTocReplaceFromSelection},
     {FCONTROL | FVIRTKEY, 'C', CmdCopySelection},
     {FCONTROL | FVIRTKEY, VK_INSERT, CmdCopySelection},
     {FCONTROL | FVIRTKEY, 'V', CmdPasteClipboardImage},
@@ -614,6 +615,7 @@ static WORD gNotSafeKeys[] = {
     VK_BACK,
     VK_HOME,
     VK_END,
+    VK_F2, // TOC in-place rename; must not hit CmdRenameFile while the tree has focus
     VK_OEM_4,
     VK_OEM_6
 };

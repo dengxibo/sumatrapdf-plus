@@ -29,7 +29,7 @@ async function main() {
   console.log(`build took ${elapsed}s`);
 
   const outDir = join("out", "dbg64");
-  const sumatraExe = resolve(join(outDir, "SumatraPDF.exe"));
+  const sumatraExe = resolve(join(outDir, "SumatraPDF-Plus.exe"));
   const testPluginExe = resolve(join(outDir, "test-plugin.exe"));
 
   // clean up old log files

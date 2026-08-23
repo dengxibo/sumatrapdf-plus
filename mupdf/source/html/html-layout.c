@@ -4553,6 +4553,8 @@ static int draw_block_box(fz_context *ctx, fz_html_box *box, float page_top, flo
 	int skipping;
 	float cell_padding_top = box->type == BOX_TABLE_CELL ? box->u.block.margin[T] : 0;
 	float cell_padding_bot = box->type == BOX_TABLE_CELL ? box->u.block.margin[B] : 0;
+	float cell_adjust_left = box->type == BOX_TABLE_CELL ? box->u.block.margin[L] : 0;
+	float cell_adjust_right = box->type == BOX_TABLE_CELL ? box->u.block.margin[R] : 0;
 
 	assert(fz_html_box_has_boxes(box));
 	x0 = box->s.layout.x - padding[L];
@@ -4587,7 +4589,26 @@ static int draw_block_box(fz_context *ctx, fz_html_box *box, float page_top, flo
 		 * we might find the end-of-skip point inside this box. If there is no content
 		 * then the box height will be 0, so nothing will be drawn. */
 		if (y1 > y0)
-			draw_rect(ctx, dev, ctm, page_top, box->style->background_color, x0, y0 - cell_padding_top, x1, y1 + cell_padding_bot);
+		{
+			float bg_x0 = x0 - cell_adjust_left;
+			float bg_y0 = y0 - cell_padding_top;
+			float bg_x1 = x1 + cell_adjust_right;
+			float bg_y1 = y1 + cell_padding_bot;
+			if (box->type == BOX_TABLE_CELL)
+			{
+				float *border = box->u.block.border;
+				int border_suppress = box->suppress_border;
+				float extend_l = (border_suppress & (1 << L)) ? border[L] / 2 : border[L];
+				float extend_r = (border_suppress & (1 << R)) ? border[R] / 2 : border[R];
+				float extend_t = (border_suppress & (1 << T)) ? border[T] / 2 : border[T];
+				float extend_b = (border_suppress & (1 << B)) ? border[B] / 2 : border[B];
+				bg_x0 -= extend_l;
+				bg_y0 -= extend_t;
+				bg_x1 += extend_r;
+				bg_y1 += extend_b;
+			}
+			draw_rect(ctx, dev, ctm, page_top, box->style->background_color, bg_x0, bg_y0, bg_x1, bg_y1);
+		}
 
 		if (!skipping)
 		{

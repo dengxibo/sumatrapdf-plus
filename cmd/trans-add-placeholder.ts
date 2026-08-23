@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 
 // Add placeholder translations for Read Aloud dialog strings.
 // For cn/tw we provide real Chinese translations; for all other languages we
@@ -11,6 +12,11 @@ const goodPath = join(rootDir, "translations", "translations-good.txt");
 
 // Source string -> { cn, tw }
 const stringsToAdd: Record<string, { cn: string; tw: string }> = {
+  "Delete %d TOC items?": { cn: "删除这 %d 条目录项？", tw: "刪除這 %d 條目錄項？" },
+  "Delete %d TOC items and their child items?": {
+    cn: "删除这 %d 条目录项及其所有子项？",
+    tw: "刪除這 %d 條目錄項及其所有子項？",
+  },
   "Match Case": { cn: "匹配大小写", tw: "符合大小寫" },
   "Match Whole Word": { cn: "全词匹配", tw: "全字匹配" },
   "Read aloud speed": { cn: "朗读速度", tw: "朗讀速度" },
@@ -77,8 +83,146 @@ const stringsToAdd: Record<string, { cn: string; tw: string }> = {
     cn: "正在调整电子书版式…第 %d / %d 章",
     tw: "正在調整電子書版式…第 %d / %d 章",
   },
+  "No bookmarks": { cn: "暂无书签", tw: "暫無書籤" },
   "Convert to &PDF": { cn: "转换为 PDF(&P)", tw: "轉換為 PDF(&P)" },
   "Convert Image to PDF": { cn: "将图像转换为 PDF", tw: "將圖像轉換為 PDF" },
+
+  "Auto OCR": { cn: "自动 OCR", tw: "自動 OCR" },
+  "Auto OCR (on): scanned pages are recognized for select and search": {
+    cn: "自动 OCR（开）：扫描页可选择和搜索",
+    tw: "自動 OCR（開）：掃描頁可選取和搜尋",
+  },
+  "Auto OCR (off): turn on to recognize scanned pages as you view them": {
+    cn: "自动 OCR（关）：打开后翻页即识别扫描页",
+    tw: "自動 OCR（關）：開啟後翻頁即識別掃描頁",
+  },
+  "OCR region": { cn: "框选识别", tw: "框選識別" },
+  "OCR Region": { cn: "框选识别", tw: "框選識別" },
+  "OCR Current Page": { cn: "识别当前页", tw: "識別目前頁" },
+  "OCR All Pages": { cn: "全文识别", tw: "全文識別" },
+  "Toggle Auto OCR": { cn: "开关自动 OCR", tw: "開關自動 OCR" },
+  "Cancel OCR": { cn: "取消 OCR", tw: "取消 OCR" },
+  "Recognize all pages and save": { cn: "全文识别并保存", tw: "全文識別並儲存" },
+  "This PDF already has searchable text. Replace it with newly recognized text?": {
+    cn: "这个 PDF 已有可搜索文字。要用新识别的文字覆盖吗？",
+    tw: "這個 PDF 已有可搜尋文字。要用新識別的文字覆蓋嗎？",
+  },
+  "Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?":
+    {
+      cn: "保存会修改这份已数字签名的 PDF。原签名仍在，但阅读器会提示文件已被更改。要继续吗？",
+      tw: "儲存會修改這份已數位簽署的 PDF。原簽章仍在，但閱讀器會提示檔案已被更改。要繼續嗎？",
+    },
+  "Could not replace the original PDF. The recognized file was kept as a temporary copy.": {
+    cn: "无法覆盖原 PDF。已识别的文件保留为临时副本。",
+    tw: "無法覆蓋原 PDF。已識別的檔案保留為暫存副本。",
+  },
+  "Save as searchable PDF...": { cn: "保存为可搜索 PDF...", tw: "儲存為可搜尋 PDF..." },
+  "Save as searchable PDF": { cn: "保存为可搜索 PDF", tw: "儲存為可搜尋 PDF" },
+  "Save as Searchable PDF": { cn: "保存为可搜索 PDF", tw: "儲存為可搜尋 PDF" },
+  "Save as searchable PDF is only available for PDF files.": {
+    cn: "仅 PDF 文件可保存为可搜索 PDF。",
+    tw: "僅 PDF 檔可儲存為可搜尋 PDF。",
+  },
+  "Text Annotation (Ctrl+click to lock)": {
+    cn: "文本批注（Ctrl+点击锁定）",
+    tw: "文字註解（Ctrl+點選鎖定）",
+  },
+  "Rectangle Annotation (Ctrl+click to lock)": {
+    cn: "矩形批注（Ctrl+点击锁定）",
+    tw: "矩形註解（Ctrl+點選鎖定）",
+  },
+  "Circle Annotation (Ctrl+click to lock)": {
+    cn: "圆形批注（Ctrl+点击锁定）",
+    tw: "圓形註解（Ctrl+點選鎖定）",
+  },
+  "Line Annotation (Ctrl+click to lock)": {
+    cn: "直线批注（Ctrl+点击锁定）",
+    tw: "直線註解（Ctrl+點選鎖定）",
+  },
+  "Ink Annotation (Ctrl+click to lock)": {
+    cn: "墨迹批注（Ctrl+点击锁定）",
+    tw: "墨跡註解（Ctrl+點選鎖定）",
+  },
+  "OCR models not found.\\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\\n%s": {
+    cn: "未找到 OCR 模型。\\n请将 onnxruntime.dll、det.onnx、rec.onnx 和 keys.txt 放到：\\n%s",
+    tw: "找不到 OCR 模型。\\n請將 onnxruntime.dll、det.onnx、rec.onnx 和 keys.txt 放到：\\n%s",
+  },
+  "Scanning…": { cn: "正在识别…", tw: "正在識別…" },
+  "Scanning… %d / %d": { cn: "正在识别… %d / %d", tw: "正在識別… %d / %d" },
+  "Saved.": { cn: "已保存。", tw: "已儲存。" },
+  "Copied.": { cn: "已复制。", tw: "已複製。" },
+  "Cancelled.": { cn: "已取消。", tw: "已取消。" },
+  "OCR is already running. Please wait until it finishes.": {
+    cn: "已有识别任务正在进行，请等待完成后再试。",
+    tw: "已有識別任務正在進行，請等待完成後再試。",
+  },
+  "Ready to search": { cn: "可以搜索了", tw: "可以搜尋了" },
+  "Could not save searchable PDF.": { cn: "无法保存可搜索 PDF。", tw: "無法儲存可搜尋 PDF。" },
+  "Could not recognize text on this page.": { cn: "无法识别此页文字。", tw: "無法識別此頁文字。" },
+  "OCR is only available for PDF and similar documents.": {
+    cn: "OCR 仅适用于 PDF 及同类文档。",
+    tw: "OCR 僅適用於 PDF 及同類文件。",
+  },
+  "OCR is not available for this document type.": {
+    cn: "此文档类型不支持 OCR。",
+    tw: "此文件類型不支援 OCR。",
+  },
+  "No page to recognize.": { cn: "没有可识别的页面。", tw: "沒有可識別的頁面。" },
+  "Selection too small.": { cn: "选区太小。", tw: "選取範圍太小。" },
+  "No OCR text to save. Recognize pages first.": {
+    cn: "没有可保存的 OCR 文字。请先识别页面。",
+    tw: "沒有可儲存的 OCR 文字。請先識別頁面。",
+  },
+  "Extract Table of Contents": { cn: "提取目录书签", tw: "提取目錄書籤" },
+  "Extracting bookmarks… %d / %d": { cn: "正在提取书签… %d / %d", tw: "正在提取書籤… %d / %d" },
+  "Replace the existing PDF bookmarks with extracted headings?": {
+    cn: "用提取的标题替换现有 PDF 书签？",
+    tw: "用提取的標題取代現有 PDF 書籤？",
+  },
+  "Bookmark extraction cancelled.": { cn: "已取消提取书签。", tw: "已取消提取書籤。" },
+  "This document has too little text to extract bookmarks. OCR scanned pages first.": {
+    cn: "文档文字太少，无法提取书签。请先对扫描页做 OCR。",
+    tw: "文件文字太少，無法提取書籤。請先對掃描頁做 OCR。",
+  },
+  "No headings found. OCR scanned pages first, then try again.": {
+    cn: "没有找到标题。请先识别扫描页，然后再试。",
+    tw: "找不到標題。請先識別掃描頁，然後再試。",
+  },
+  "Could not write the PDF table of contents.": {
+    cn: "无法写入 PDF 目录。",
+    tw: "無法寫入 PDF 目錄。",
+  },
+  "Extracted %d bookmarks.": { cn: "已提取 %d 条书签。", tw: "已提取 %d 條書籤。" },
+  "This document looks like a scan.": {
+    cn: "这份文档看起来是扫描件。",
+    tw: "這份文件看起來是掃描件。",
+  },
+  "There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?": {
+    cn: "文字太少，无法提取书签。是否对全部页面做 OCR，并保存为可全文搜索的 PDF？",
+    tw: "文字太少，無法提取書籤。是否對全部頁面做 OCR，並儲存為可全文搜尋的 PDF？",
+  },
+  "Not now": { cn: "暂不", tw: "暫不" },
+  "Don't save": { cn: "不保存", tw: "不儲存" },
+  "This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.": {
+    cn: "当前文件没有文字层。识别全部页面后即可提取目录。可另存为可搜索 PDF，或不保存、仅识别后提取。",
+    tw: "目前檔案沒有文字層。識別全部頁面後即可提取目錄。可另存為可搜尋 PDF，或不儲存、僅識別後提取。",
+  },
+  "Saved PDF changes to '%s'": {
+    cn: "已将 PDF 更改保存到 '%s'",
+    tw: "已將 PDF 變更儲存到 '%s'",
+  },
+  "Unsaved PDF changes in '%s'": {
+    cn: "'%s' 中有未保存的 PDF 更改",
+    tw: "'%s' 中有未儲存的 PDF 變更",
+  },
+  "Save PDF changes?": {
+    cn: "是否保存 PDF 更改？",
+    tw: "是否儲存 PDF 變更？",
+  },
+  "Unsaved PDF changes": {
+    cn: "未保存的 PDF 更改",
+    tw: "未儲存的 PDF 變更",
+  },
 };
 
 // Read the full list of supported language codes from TranslationLangs.cpp.
@@ -160,6 +304,25 @@ function main() {
   writeFileSync(goodPath, out, "utf-8");
   console.log(`Wrote ${goodPath}`);
   console.log(`Added/updated ${Object.keys(stringsToAdd).length} strings for ${allLangCodes.length - 1} languages.`);
+
+  const transPath = join(rootDir, "translations", "translations.txt");
+  let transText = readFileSync(transPath, "utf-8");
+  for (const [english, trans] of Object.entries(stringsToAdd)) {
+    if (transText.includes(":" + english + "\n") || transText.includes(":" + english + "\r\n")) {
+      continue;
+    }
+    transText += `\n:${english}\ncn:${trans.cn}\ntw:${trans.tw}\n`;
+  }
+  writeFileSync(transPath, transText, "utf-8");
+  console.log(`Updated ${transPath}`);
+
+  const makeLzsa = join(rootDir, "bin", "MakeLZSA.exe");
+  const lzsaPath = join(rootDir, "translations", "translations.txt.lzsa");
+  const res = spawnSync(makeLzsa, [lzsaPath, `${goodPath}:translations-good.txt`], { stdio: "inherit" });
+  if (res.status !== 0) {
+    throw new Error(`MakeLZSA failed with exit code ${res.status}`);
+  }
+  console.log(`Wrote ${lzsaPath}`);
 }
 
 main();

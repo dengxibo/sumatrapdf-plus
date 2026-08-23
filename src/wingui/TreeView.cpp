@@ -64,6 +64,9 @@ HWND TreeView::Create(const CreateArgs& args) {
     if (unevenItemHeight) {
         cargs.style |= TVS_NONEVENHEIGHT;
     }
+    if (args.editLabels) {
+        cargs.style |= TVS_EDITLABELS;
+    }
 
     Wnd::CreateControl(cargs);
 
@@ -122,6 +125,9 @@ HWND TreeView::GetToolTipsHwnd() {
 }
 
 HTREEITEM TreeView::GetHandleByTreeItem(TreeItem item) {
+    if (!treeModel) {
+        return nullptr;
+    }
     return treeModel->GetHandle(item);
 }
 
@@ -210,6 +216,24 @@ static bool HandleKey(TreeView* tree, WPARAM wp) {
 LRESULT TreeView::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
     LRESULT res;
     TreeView* w = this;
+
+    if (WM_CTLCOLOREDIT == msg) {
+        HDC hdc = (HDC)wparam;
+        COLORREF bg = ThemeUsesDarkChrome() ? ThemeControlBackgroundColor() : GetSysColor(COLOR_WINDOW);
+        COLORREF fg = ThemeUsesDarkChrome() ? ThemeReadingTextColor() : GetSysColor(COLOR_WINDOWTEXT);
+        SetTextColor(hdc, fg);
+        SetBkColor(hdc, bg);
+        static HBRUSH br = nullptr;
+        static COLORREF brBg = (COLORREF)-1;
+        if (!br || brBg != bg) {
+            if (br) {
+                DeleteObject(br);
+            }
+            br = CreateSolidBrush(bg);
+            brBg = bg;
+        }
+        return (LRESULT)br;
+    }
 
     if (WM_ERASEBKGND == msg) {
         return FALSE;
@@ -618,6 +642,36 @@ LRESULT TreeView::OnNotifyReflect(WPARAM wp, LPARAM lp) {
         ev.keyCode = nmkd->wVKey;
         ev.flags = nmkd->flags;
         onKeyDown.Call(&ev);
+        return ev.result;
+    }
+
+    if (code == TVN_BEGINLABELEDIT) {
+        if (!onBeginLabelEdit.IsValid()) {
+            return TRUE;
+        }
+        NMTVDISPINFOW* info = (NMTVDISPINFOW*)lp;
+        TreeView::LabelEditEvent ev{};
+        ev.treeView = w;
+        ev.treeItem = GetTreeItemByHandle(info->item.hItem);
+        onBeginLabelEdit.Call(&ev);
+        return ev.cancel ? TRUE : FALSE;
+    }
+
+    if (code == TVN_ENDLABELEDIT) {
+        if (!onEndLabelEdit.IsValid()) {
+            return FALSE;
+        }
+        NMTVDISPINFOW* info = (NMTVDISPINFOW*)lp;
+        TreeView::LabelEditEvent ev{};
+        ev.treeView = w;
+        ev.treeItem = GetTreeItemByHandle(info->item.hItem);
+        ev.text = info->item.pszText;
+        onEndLabelEdit.Call(&ev);
+        return ev.result;
+    }
+
+    if (code == TVN_BEGINDRAG) {
+        // TOC (and others) implement their own drag; ignore native TreeView drag.
         return 0;
     }
 

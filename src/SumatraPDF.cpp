@@ -90,6 +90,9 @@
 #include "FindBar.h"
 #include "FindWindow.h"
 #include "WordLookup.h"
+#include "OcrService.h"
+#include "ExtractPdfToc.h"
+#include "TocCalib.h"
 #include "LookupAudio.h"
 #include "Translations.h"
 #include "uia/Provider.h"
@@ -1425,10 +1428,6 @@ static void UpdatePageInfoHelper(DocController* ctrl, NotificationWnd* wnd, int 
     }
     int nPages = ctrl->PageCount();
     TempStr pageInfo = str::FormatTemp("%s %d / %d", _TRA("Page:"), pageNo, nPages);
-    if (ctrl->HasPageLabels()) {
-        TempStr label = ctrl->GetPageLabeTemp(pageNo);
-        pageInfo = str::FormatTemp("%s %s (%d / %d)", _TRA("Page:"), label, pageNo, nPages);
-    }
     float zoomLevel = ctrl->GetZoomVirtual();
     auto zoomStr = BuildZoomString(zoomLevel);
     pageInfo = str::JoinTemp(pageInfo, " ", zoomStr);
@@ -1488,8 +1487,7 @@ void ControllerCallbackHandler::PageNoChanged(DocController* ctrl, int pageNo) {
             if (engine && pageNo > engine->PageCount()) {
                 pageNo = engine->PageCount();
             }
-            TempStr label = win->ctrl->GetPageLabeTemp(pageNo);
-            HwndSetText(win->hwndPageEdit, label);
+            HwndSetText(win->hwndPageEdit, str::FormatTemp("%d", pageNo));
             ToolbarUpdateStateForWindow(win, false);
             int totalPages = engine ? engine->PageCount() : win->ctrl->PageCount();
             UpdateToolbarPageText(win, totalPages, win->ctrl->HasPageLabels());
@@ -1501,6 +1499,7 @@ void ControllerCallbackHandler::PageNoChanged(DocController* ctrl, int pageNo) {
 
     UpdateTocSelection(win, pageNo);
     win->currPageNo = pageNo;
+    OcrScheduleForPage(win, pageNo);
 
     NotificationWnd* wnd = GetNotificationForGroup(win->hwndCanvas, kNotifPageInfo);
     if (!wnd) {
@@ -1670,8 +1669,7 @@ static void UpdateUiForCurrentTab(MainWindow* win) {
     const char* title = (tab && tab->frameTitle) ? tab->frameTitle : kSumatraWindowTitle;
     HwndSetText(win->hwndFrame, title);
 
-    bool onlyNumbers = !win->ctrl || !win->ctrl->HasPageLabels();
-    SetWindowStyle(win->hwndPageEdit, ES_NUMBER, onlyNumbers);
+    SetWindowStyle(win->hwndPageEdit, ES_NUMBER, true);
 }
 
 static bool showTocByDefault(const char* path) {
@@ -1840,6 +1838,13 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     }
 
     AbortFinding(args->win, true);
+
+    // Calib holds a raw engine pointer. Drop it before the old controller dies
+    // (reload / file-watcher refresh) so TOC custom-draw cannot use a freed engine.
+    if (tab->tocCalib) {
+        CloseTocCalibForTab(tab);
+        HideTocCalib(win);
+    }
 
     DocController* prevCtrl = win->ctrl;
     tab->ctrl = ctrl;
@@ -3770,6 +3775,10 @@ MainWindow* LoadDocumentFinish(LoadArgs* args) {
         file::DeleteZoneIdentifier(fullPath);
     }
 
+    if (win->ctrl) {
+        OcrScheduleForPage(win, win->ctrl->CurrentPageNo());
+    }
+
     return win;
 }
 
@@ -5157,6 +5166,7 @@ static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool 
         ClearTocBox(win);
     }
     AbortFinding(win, true);
+    CancelExtractPdfToc();
 
     ClearMouseState(win);
     win->annotationUnderCursor = nullptr;
@@ -5187,6 +5197,7 @@ static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool 
     win->ctrl = nullptr;
     if (deleteModel) {
         if (unloadingTab) {
+            OcrCancelForEngine(unloadingTab->GetEngine());
             SafeDeleteDocController(win, unloadingTab->ctrl);
             FileWatcherUnsubscribe(unloadingTab->watcher);
             unloadingTab->watcher = nullptr;
@@ -5282,14 +5293,35 @@ bool SaveAnnotationsToExistingFile(WindowTab* tab) {
     if (!engine) {
         return false;
     }
+    bool ocr = engine->HasUnsavedOcrText();
+    bool pdfCh = EngineMupdfHasUnsavedPdfChanges(engine);
+    if (!ocr && !pdfCh) {
+        return false;
+    }
     const char* path = engine->FilePath();
     tab->ignoreNextAutoReload = true;
     ShowErrorData data{tab, path};
     auto fn = MkFunc1(ShowSaveAnnotationError, &data);
-    bool ok = EngineMupdfSaveUpdated(engine, nullptr, fn);
-    if (!ok) {
-        tab->ignoreNextAutoReload = false;
-        return false;
+    bool ok = true;
+    if (pdfCh) {
+        ok = EngineMupdfSaveUpdated(engine, nullptr, fn);
+        if (!ok) {
+            tab->ignoreNextAutoReload = false;
+            return false;
+        }
+    }
+    if (ocr) {
+        ok = OcrSaveCachedSearchablePdf(tab->win, path);
+        if (!ok) {
+            tab->ignoreNextAutoReload = false;
+            return false;
+        }
+        ShowSavedAnnotationsNotification(tab->win->hwndCanvas, path);
+        bool hadEditAnnotations = CloseAndDeleteEditAnnotationsWindow(tab);
+        if (hadEditAnnotations) {
+            ShowEditAnnotationsWindow(tab, nullptr);
+        }
+        return true;
     }
     ShowSavedAnnotationsNotification(tab->win->hwndCanvas, path);
 
@@ -5362,8 +5394,27 @@ bool SaveAnnotationsToMaybeNewPdfFile(WindowTab* tab) {
 
     ShowErrorData data{tab, dstFilePath};
     auto fn = MkFunc1(ShowSaveAnnotationError, &data);
-    ok = EngineMupdfSaveUpdated(engine, dstFilePath, fn);
-    if (!ok) {
+    bool ocr = engine->HasUnsavedOcrText();
+    bool pdfCh = EngineMupdfHasUnsavedPdfChanges(engine);
+    ok = true;
+    if (pdfCh) {
+        ok = EngineMupdfSaveUpdated(engine, dstFilePath, fn);
+        if (!ok) {
+            str::Free(srcFileName);
+            return false;
+        }
+    }
+    if (ocr) {
+        char* err = nullptr;
+        ok = EngineMupdfSaveSearchablePdf(engine, dstFilePath, &err);
+        str::Free(err);
+        if (!ok) {
+            str::Free(srcFileName);
+            return false;
+        }
+        engine->ClearUnsavedOcrText();
+    }
+    if (!pdfCh && !ocr) {
         str::Free(srcFileName);
         return false;
     }
@@ -5903,9 +5954,10 @@ static bool AppendFileFilterForDoc(DocController* ctrl, StrBuilder& fileFilter) 
     auto ext = ctrl->GetDefaultFileExt();
     if (str::EqI(ext, ".xps")) {
         fileFilter.Append(_TRA("XPS documents"));
-    } else if (str::EqI(ext, ".epub")) {
-        // .epub can be handled by kindEngineMupdf
-        fileFilter.Append(_TRA("EPUB ebooks"));
+    } else if (str::EqI(ext, ".md") || str::EqI(ext, ".markdown")) {
+        fileFilter.Append(_TRA("Markdown documents"));
+    } else if (str::EqI(ext, ".docx") || str::EqI(ext, ".xlsx") || str::EqI(ext, ".pptx") || str::EqI(ext, ".hwpx")) {
+        fileFilter.Append(_TRA("Office documents"));
     } else if (type == kindEngineDjVu) {
         fileFilter.Append(_TRA("DjVu documents"));
     } else if (type == kindEngineComicBooks) {
@@ -6092,6 +6144,151 @@ static void SaveCurrentFileAs(MainWindow* win) {
     if (ok && IsUntrustedFile(path, gPluginURL)) {
         file::SetZoneIdentifier(realDstFileName);
     }
+}
+
+static bool ConfirmReplaceExistingPdfText(MainWindow* win) {
+    if (!win) {
+        return false;
+    }
+    TASKDIALOG_BUTTON buttons[2]{};
+    buttons[0].nButtonID = IDYES;
+    buttons[0].pszButtonText = ToWStrTemp(_TRA("Yes"));
+    buttons[1].nButtonID = IDNO;
+    buttons[1].pszButtonText = ToWStrTemp(_TRA("No"));
+    DWORD flags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT | TDF_POSITION_RELATIVE_TO_WINDOW;
+    if (trans::IsCurrLangRtl()) {
+        flags |= TDF_RTL_LAYOUT;
+    }
+    TASKDIALOGCONFIG config{};
+    config.cbSize = sizeof(config);
+    config.hwndParent = win->hwndFrame;
+    config.dwFlags = flags;
+    config.pszWindowTitle = ToWStrTemp(_TRA("Recognize all pages and save"));
+    config.pszContent =
+        ToWStrTemp(_TRA("This PDF already has searchable text. Replace it with newly recognized text?"));
+    config.pszMainIcon = TD_WARNING_ICON;
+    config.nDefaultButton = IDNO;
+    config.cButtons = dimof(buttons);
+    config.pButtons = buttons;
+    int pressed = 0;
+    HRESULT hr = TaskDialogIndirect(&config, &pressed, nullptr, nullptr);
+    return hr == S_OK && pressed == IDYES;
+}
+
+static bool ConfirmSearchablePdfSignatureSave(MainWindow* win, EngineBase* engine) {
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    if (!tab || tab->acceptedPdfTocSignatureWarning || !EngineMupdfPdfHasSignatures(engine)) {
+        return true;
+    }
+    int res = MessageBoxW(
+        win->hwndFrame,
+        ToWStrTemp(_TRA("Saving this PDF will change it after it was digitally signed. The existing signature will "
+                        "remain, but viewers will report that the document was modified. Continue?")),
+        L"Digitally signed PDF", MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
+    if (res != IDYES) {
+        return false;
+    }
+    tab->acceptedPdfTocSignatureWarning = true;
+    return true;
+}
+
+void SaveSearchablePdfAs(MainWindow* win, bool extractTocWhenDone) {
+    if (!CanAccessDisk() || gPluginMode) {
+        return;
+    }
+    if (!win || !win->IsDocLoaded()) {
+        return;
+    }
+    DisplayModel* dm = win->AsFixed();
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (!engine || engine->kind != kindEngineMupdf) {
+        ShowWarningNotification(win->hwndCanvas, _TRA("Save as searchable PDF is only available for PDF files."),
+                                kNotif5SecsTimeOut);
+        return;
+    }
+    const char* srcPath = engine->FilePath();
+    if (!srcPath) {
+        ShowWarningNotification(win->hwndCanvas, _TRA("File path not available"), kNotif5SecsTimeOut);
+        return;
+    }
+    if (OcrDocumentHasFileTextLayer(engine) && !ConfirmReplaceExistingPdfText(win)) {
+        return;
+    }
+    if (!ConfirmSearchablePdfSignatureSave(win, engine)) {
+        return;
+    }
+
+    bool doExtract = extractTocWhenDone && EngineMupdfCanEditPdfToc(engine);
+    if (doExtract && EngineMupdfHasStoredOutline(engine) && !ConfirmReplaceExistingPdfToc(win)) {
+        doExtract = false;
+    }
+    OcrSaveSearchablePdfAfterOcr(win, srcPath, doExtract);
+}
+
+void SwitchCurrentTabToSavedFile(MainWindow* win, const char* destPath, const char* replaceFromTemp) {
+    if (!win || str::IsEmpty(destPath) || !file::Exists(destPath)) {
+        return;
+    }
+    WindowTab* tab = win->CurrentTab();
+    if (!tab) {
+        return;
+    }
+    TempStr destNorm = path::NormalizeTemp(destPath);
+    const char* srcPath = tab->filePath;
+    bool sameFile = srcPath && path::IsSame(srcPath, destNorm);
+
+    UpdateTabFileDisplayStateForTab(tab);
+    if (!sameFile && srcPath && gGlobalPrefs->rememberStatePerDocument) {
+        FileState* srcFs = gFileHistory.FindByPath(srcPath);
+        if (srcFs) {
+            FileState* dstFs = gFileHistory.FindByPath(destNorm);
+            if (!dstFs) {
+                dstFs = NewFileState(destNorm);
+                gFileHistory.Append(dstFs);
+            }
+            dstFs->useDefaultState = false;
+            dstFs->pageNo = srcFs->pageNo;
+            dstFs->rotation = srcFs->rotation;
+            dstFs->scrollPos = srcFs->scrollPos;
+            dstFs->showToc = srcFs->showToc;
+            dstFs->sidebarDx = srcFs->sidebarDx;
+            dstFs->displayR2L = srcFs->displayR2L;
+            dstFs->windowState = srcFs->windowState;
+            dstFs->windowPos = srcFs->windowPos;
+            str::ReplacePtr(&dstFs->zoom, srcFs->zoom);
+            str::ReplacePtr(&dstFs->displayMode, srcFs->displayMode);
+        }
+    }
+
+    CloseDocumentInCurrentTab(win, true, true);
+    HwndSetFocus(win->hwndFrame);
+    const char* loadPath = destNorm;
+    if (replaceFromTemp && replaceFromTemp[0]) {
+        WCHAR* tmpW = ToWStrTemp(replaceFromTemp);
+        WCHAR* destW = ToWStrTemp(destNorm);
+        BOOL moved = MoveFileExW(tmpW, destW, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+        if (!moved) {
+            if (file::Delete(destNorm)) {
+                moved = file::Rename(destNorm, replaceFromTemp);
+            }
+        }
+        if (!moved && file::Copy(destNorm, replaceFromTemp, false)) {
+            file::Delete(replaceFromTemp);
+            moved = TRUE;
+        }
+        if (!moved) {
+            loadPath = replaceFromTemp;
+            ShowWarningNotification(win->hwndCanvas,
+                                    _TRA("Could not replace the original PDF. The recognized file was kept as a "
+                                         "temporary copy."),
+                                    kNotif5SecsTimeOut);
+        }
+    }
+    LoadArgs args(loadPath, win);
+    args.forceReuse = true;
+    args.noPlaceWindow = true;
+    args.syncLoad = true;
+    LoadDocument(&args);
 }
 
 void SumatraOpenPathInDefaultFileManager(const char* path) {
@@ -6443,6 +6640,7 @@ static TempWStr GetFileFilterTemp() {
         {_TRA("Images"), "*.bmp;*.dib;*.gif;*.jpg;*.jpeg;*.jxr;*.png;*.tga;*.tif;*.tiff;*.webp;*.heic;*.avif", true},
         {_TRA("Text documents"), "*.txt;*.log;*.nfo;file_id.diz;read.me;*.tcr", true},
         {_TRA("Markdown documents"), "*.md;*.markdown", true},
+        {_TRA("Office documents"), "*.docx;*.xlsx;*.pptx;*.hwpx", true},
     };
     // Prepare the file filters (use \1 instead of \0 so that the
     // double-zero terminated string isn't cut by the string handling
@@ -6618,6 +6816,17 @@ constexpr int kTocMinDy = 100;
 
 constexpr int kFrameBorderSize = 1;
 
+static void FillWindowClientRect(HWND hwnd, const RECT& rc, COLORREF col) {
+    if (!hwnd || !IsWindow(hwnd) || rc.right <= rc.left || rc.bottom <= rc.top) {
+        return;
+    }
+    HDC hdc = GetDC(hwnd);
+    HBRUSH br = CreateSolidBrush(col);
+    FillRect(hdc, &rc, br);
+    DeleteObject(br);
+    ReleaseDC(hwnd, hdc);
+}
+
 static void FillWindowClientStrip(HWND hwnd, bool fromRight, int stripDx, COLORREF col) {
     if (!hwnd || stripDx <= 0 || !IsWindow(hwnd)) {
         return;
@@ -6631,11 +6840,7 @@ static void FillWindowClientStrip(HWND hwnd, bool fromRight, int stripDx, COLORR
         return;
     }
     RECT strip = fromRight ? RECT{rc.right - stripDx, 0, rc.right, rc.bottom} : RECT{0, 0, stripDx, rc.bottom};
-    HDC hdc = GetDC(hwnd);
-    HBRUSH br = CreateSolidBrush(col);
-    FillRect(hdc, &strip, br);
-    DeleteObject(br);
-    ReleaseDC(hwnd, hdc);
+    FillWindowClientRect(hwnd, strip, col);
 }
 
 using LayoutState = MainWindow::LayoutState;
@@ -6699,17 +6904,14 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
         rc.dy -= kFrameBorderSize - 1;
     }
 
-    // Live splitter drag: only move windows. SETREDRAW + page Relayout + TOC
-    // RDW_ERASE on every WM_MOUSEMOVE starves WM_PAINT (ghosting) and feels laggy.
-    // Canvas keeps copied bits (no SWP_NOCOPYBITS / no erase-paint) so the page
-    // does not flash; TOC/splitter discard bits so sidebar pixels are not copied in.
+    // Live splitter drag: move windows only (no page Relayout / SETREDRAW).
+    // Discard copied bits and paint TOC/canvas immediately so leftover
+    // pixels and the overlay scrollbar do not smear.
     bool liveSidebarDrag = (sidebarDx > 0) && gSidebarSplitterWrapSuspended;
     uint livePosFlags = liveSidebarDrag ? SWP_NOCOPYBITS : 0;
 
-    if (!liveSidebarDrag) {
-        OverlayScrollbarHide(win->overlayScrollV);
-        OverlayScrollbarHide(win->overlayScrollH);
-    }
+    OverlayScrollbarHide(win->overlayScrollV);
+    OverlayScrollbarHide(win->overlayScrollH);
 
     bool suppressIntermediateRedraws = !win->suppressFrameRedraw && !liveSidebarDrag;
     if (suppressIntermediateRedraws) {
@@ -6838,7 +7040,7 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
         rc.dx -= toc.dx + kSplitterDx;
     }
 
-    dh.MoveWindow(win->hwndCanvas, rc.x, rc.y, rc.dx, rc.dy, !liveSidebarDrag);
+    dh.MoveWindow(win->hwndCanvas, rc.x, rc.y, rc.dx, rc.dy, TRUE, liveSidebarDrag ? SWP_NOCOPYBITS : 0);
 
     dh.End();
 
@@ -6878,6 +7080,7 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
                     if (win->tocTreeView) {
                         FillWindowClientStrip(win->tocTreeView->hwnd, true, stripDx, sidebarBg);
                     }
+                    TocCalibFillLiveDrag(win);
                     if (favVisible) {
                         FillWindowClientStrip(win->hwndFavBox, true, stripDx, sidebarBg);
                         if (win->favTreeView) {
@@ -6889,11 +7092,22 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
         }
         gLastLiveCanvasWin = canvasWin;
         if (tocVisible) {
-            InvalidateRect(win->hwndTocBox, nullptr, FALSE);
+            InvalidateRect(win->hwndTocBox, nullptr, TRUE);
+            if (win->tocTreeView && win->tocTreeView->hwnd) {
+                RedrawWindow(win->tocTreeView->hwnd, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
+            }
+            TocCalibFillLiveDrag(win);
+            if (win->sidebarSplitter) {
+                RedrawWindow(win->sidebarSplitter->hwnd, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
+            }
         }
         if (favVisible) {
-            InvalidateRect(win->hwndFavBox, nullptr, FALSE);
+            InvalidateRect(win->hwndFavBox, nullptr, TRUE);
+            if (win->favTreeView && win->favTreeView->hwnd) {
+                RedrawWindow(win->favTreeView->hwnd, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
+            }
         }
+        RedrawWindow(win->hwndCanvas, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
     } else if (tocVisible) {
         RedrawWindow(win->hwndTocBox, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
     }
@@ -7329,17 +7543,23 @@ static Point GetSmartZoomPos(MainWindow* win, Point suggestdPoint) {
     return {};
 }
 
-static void ShowZoomNotification(MainWindow* win, float zoomLevel) {
+void ShowZoomNotification(MainWindow* win, float zoomLevel) {
     // don't show zoom info if showing page info
     NotificationWnd* wnd = GetNotificationForGroup(win->hwndCanvas, kNotifPageInfo);
     if (wnd) {
+        return;
+    }
+    TempStr msg = BuildZoomString(zoomLevel);
+    wnd = GetNotificationForGroup(win->hwndCanvas, kNotifZoom);
+    if (wnd) {
+        NotificationUpdateMessage(wnd, msg, 2000);
         return;
     }
     NotificationCreateArgs args;
     args.groupId = kNotifZoom;
     args.timeoutMs = 2000;
     args.hwndParent = win->hwndCanvas;
-    args.msg = BuildZoomString(zoomLevel);
+    args.msg = msg;
     ShowNotification(args);
 }
 
@@ -7349,6 +7569,8 @@ void SmartZoom(MainWindow* win, float newZoom, Point* suggestedPoint, bool smart
     if (!win->IsDocLoaded()) {
         return;
     }
+    // Toolbar/keyboard zoom should not be overwritten by a deferred wheel flick.
+    CancelPendingWheelZoom(win);
     Point* pt = suggestedPoint;
 
     Point ptSmart;
@@ -7748,6 +7970,9 @@ static bool FrameOnKeydown(MainWindow* win, WPARAM key, LPARAM lp) {
     }
 
     if (VK_ESCAPE == key) {
+        if (win->ocrRegionPending || win->mouseAction == MouseAction::OcrRegion) {
+            OcrCancelRegionSelect(win);
+        }
         CancelDrag(win);
         return true;
     }
@@ -8099,6 +8324,9 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
     if (!ev->finishedDragging) {
         if (!gSidebarSplitterWrapSuspended) {
             SuspendTreeWrapLiveResizeForWindow(win);
+            // Snapshot before the first move so the first mouse-move fill
+            // covers newly exposed canvas/sidebar strips (otherwise they stay black).
+            gLastLiveCanvasWin = WindowRect(win->hwndCanvas);
             gSidebarSplitterWrapSuspended = true;
         }
         RelayoutFrame(win, false, sidebarDx);
@@ -8140,6 +8368,7 @@ static void OnFavSplitterMove(Splitter::MoveEvent* ev) {
     if (!ev->finishedDragging) {
         if (!gSidebarSplitterWrapSuspended) {
             SuspendTreeWrapLiveResizeForWindow(win);
+            gLastLiveCanvasWin = WindowRect(win->hwndCanvas);
             gSidebarSplitterWrapSuspended = true;
         }
         RelayoutFrame(win, false, rToc.dx);
@@ -9959,6 +10188,44 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             ShowPdfExtractTextDialog(win);
             break;
 
+        case CmdOcrCurrentPage: {
+            int pageNo = win->currPageNo;
+            if (pageNo < 1 && win->ctrl) {
+                pageNo = win->ctrl->CurrentPageNo();
+            }
+            OcrScheduleForPage(win, pageNo, true);
+            break;
+        }
+
+        case CmdOcrDocument:
+            OcrScheduleDocument(win, true, true);
+            break;
+
+        case CmdToggleAutoOcr:
+            if (gGlobalPrefs) {
+                gGlobalPrefs->autoOcrScanPages = !gGlobalPrefs->autoOcrScanPages;
+                for (MainWindow* w : gWindows) {
+                    UpdateAutoOcrToolbarButton(w);
+                }
+                SaveSettings();
+                if (gGlobalPrefs->autoOcrScanPages && win->ctrl) {
+                    OcrScheduleForPage(win, win->ctrl->CurrentPageNo());
+                }
+            }
+            break;
+
+        case CmdOcrRegion:
+            OcrBeginRegionSelect(win);
+            break;
+
+        case CmdOcrCancel:
+            OcrCancelQueued(win);
+            break;
+
+        case CmdSaveSearchablePdf:
+            SaveSearchablePdfAs(win, true);
+            break;
+
         case CmdMoveFrameFocus:
             if (!HwndIsFocused(win->hwndFrame)) {
                 HwndSetFocus(win->hwndFrame);
@@ -10175,6 +10442,26 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         case CmdPdfTocPromote:
         case CmdPdfTocDemote:
             HandlePdfTocEditCommand(win, cmdId);
+            break;
+
+        case CmdExtractPdfToc:
+            HandleExtractPdfTocCommand(win);
+            break;
+
+        case CmdPdfTocCalibrate:
+            StartTocCalibFromExisting(win);
+            break;
+
+        case CmdPdfTocSetCurrentPage:
+            HandlePdfTocSetCurrentPage(win);
+            break;
+
+        case CmdPdfTocFindInBody:
+            HandlePdfTocFindInBody(win);
+            break;
+
+        case CmdPdfTocReplaceFromSelection:
+            TryReplacePdfTocFromSelection(win);
             break;
 
         case CmdFavoriteDel:
@@ -10444,8 +10731,9 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             }
             HWND cmdHwnd = (HWND)lp;
             bool fromToolbar = cmdHwnd == win->hwndToolbar || lp == 0;
-            if (fromToolbar && (cmdId == CmdCreateAnnotSquare || cmdId == CmdCreateAnnotCircle ||
-                                cmdId == CmdCreateAnnotLine || cmdId == CmdCreateAnnotInk)) {
+            if (fromToolbar &&
+                (cmdId == CmdCreateAnnotText || cmdId == CmdCreateAnnotSquare || cmdId == CmdCreateAnnotCircle ||
+                 cmdId == CmdCreateAnnotLine || cmdId == CmdCreateAnnotInk)) {
                 bool canQuickAnnot = EbookAnnotationsSupported(tab);
                 if (!canQuickAnnot) {
                     EngineBase* engine = dm->GetEngine();
@@ -13705,6 +13993,38 @@ static void ShowTtsVoiceMenu(MainWindow* win, NMTOOLBARW* nmtb) {
     ShowReadAloudPopupMenuAt(win, rc.left, rc.bottom);
 }
 
+static void ShowOcrToolbarMenu(MainWindow* win, NMTOOLBARW* nmtb) {
+    if (!win || !nmtb || nmtb->iItem != CmdToggleAutoOcr) {
+        return;
+    }
+
+    RECT rc{};
+    SendMessageW(nmtb->hdr.hwndFrom, TB_GETRECT, CmdToggleAutoOcr, (LPARAM)&rc);
+    MapWindowPoints(nmtb->hdr.hwndFrom, HWND_DESKTOP, (POINT*)&rc, 2);
+
+    HMENU menu = CreatePopupMenu();
+    if (!menu) {
+        return;
+    }
+    DisplayModel* dm = win->AsFixed();
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    bool canOcr = engine && OcrEngineKindSupported(engine);
+    bool canSave = canOcr && engine && engine->kind == kindEngineMupdf && CanAccessDisk() && !gPluginMode;
+    AppendMenuW(menu, canOcr ? MF_STRING : MF_STRING | MF_GRAYED, CmdOcrRegion, ToWStrTemp(_TRA("OCR region")));
+    AppendMenuW(menu, canOcr ? MF_STRING : MF_STRING | MF_GRAYED, CmdOcrDocument, ToWStrTemp(_TRA("OCR All Pages")));
+    AppendMenuW(menu, canSave ? MF_STRING : MF_STRING | MF_GRAYED, CmdSaveSearchablePdf,
+                ToWStrTemp(_TRA("Recognize all pages and save")));
+
+    SetForegroundWindow(win->hwndFrame);
+    UINT selected = (UINT)TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, rc.left, rc.bottom, 0,
+                                         win->hwndFrame, nullptr);
+    DestroyMenu(menu);
+    if (selected == 0) {
+        return;
+    }
+    SendMessageW(win->hwndFrame, WM_COMMAND, selected, 0);
+}
+
 static int DpiForSidebarHwnd(MainWindow* win, HWND hwnd) {
     (void)hwnd;
     if (win && win->frameDpi > 0) {
@@ -14200,7 +14520,12 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
         case WM_NOTIFY: {
             NMHDR* hdr = (NMHDR*)lp;
             if (win && hdr && hdr->hwndFrom == win->hwndToolbar && hdr->code == TBN_DROPDOWN) {
-                ShowTtsVoiceMenu(win, (NMTOOLBARW*)lp);
+                NMTOOLBARW* nmtb = (NMTOOLBARW*)lp;
+                if (nmtb->iItem == CmdToggleAutoOcr) {
+                    ShowOcrToolbarMenu(win, nmtb);
+                } else {
+                    ShowTtsVoiceMenu(win, nmtb);
+                }
                 return TBDDRET_DEFAULT;
             }
             break;

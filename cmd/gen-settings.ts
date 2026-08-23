@@ -842,6 +842,29 @@ const globalPrefs: Field[] = [
     ),
     "3.7",
   ),
+  setVersion(
+    mkField(
+      "AutoOcrScanPages",
+      Bool,
+      false,
+      "if true, automatically OCR scanned pages with little or no text so they can be selected and searched. Models live in {exedir}/ocr/",
+    ),
+    "3.8",
+  ),
+  setDoc(
+    setExpert(
+      setVersion(
+        mkField(
+          "ExtractPdfTocMode",
+          Str,
+          "standard",
+          "smart bookmark extraction detail: conservative, standard, or detailed",
+        ),
+        "3.8",
+      ),
+    ),
+    "Valid values: conservative, standard, detailed",
+  ),
   setDoc(
     setVersion(
       mkField(

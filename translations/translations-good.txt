@@ -2107,6 +2107,225 @@ nl:Auteur: %s
 pl:Autor: %s
 sk:Autor: %s
 tw:作者: %s
+:Auto OCR
+af:Auto OCR
+am:Auto OCR
+ar:Auto OCR
+az:Auto OCR
+bg:Auto OCR
+bn:Auto OCR
+br:Auto OCR
+bs:Auto OCR
+by:Auto OCR
+ca:Auto OCR
+ca-xv:Auto OCR
+cn:自动 OCR
+co:Auto OCR
+cy:Auto OCR
+cz:Auto OCR
+de:Auto OCR
+dk:Auto OCR
+el:Auto OCR
+es:Auto OCR
+et:Auto OCR
+eu:Auto OCR
+fa:Auto OCR
+fi:Auto OCR
+fo:Auto OCR
+fr:Auto OCR
+fy-nl:Auto OCR
+ga:Auto OCR
+gl:Auto OCR
+he:Auto OCR
+hi:Auto OCR
+hr:Auto OCR
+hu:Auto OCR
+id:Auto OCR
+it:Auto OCR
+ja:Auto OCR
+jv:Auto OCR
+ka:Auto OCR
+kr:Auto OCR
+ku:Auto OCR
+kw:Auto OCR
+lt:Auto OCR
+lv:Auto OCR
+mk:Auto OCR
+ml:Auto OCR
+mm:Auto OCR
+my:Auto OCR
+ne:Auto OCR
+nl:Auto OCR
+nn:Auto OCR
+no:Auto OCR
+pa:Auto OCR
+pl:Auto OCR
+pt:Auto OCR
+ro:Auto OCR
+ru:Auto OCR
+sat:Auto OCR
+si:Auto OCR
+sk:Auto OCR
+sl:Auto OCR
+sn:Auto OCR
+sp-rs:Auto OCR
+sq:Auto OCR
+sr-rs:Auto OCR
+sv:Auto OCR
+ta:Auto OCR
+th:Auto OCR
+tl:Auto OCR
+tr:Auto OCR
+tw:自動 OCR
+uk:Auto OCR
+uz:Auto OCR
+vn:Auto OCR
+:Auto OCR (off): turn on to recognize scanned pages as you view them
+af:Auto OCR (off): turn on to recognize scanned pages as you view them
+am:Auto OCR (off): turn on to recognize scanned pages as you view them
+ar:Auto OCR (off): turn on to recognize scanned pages as you view them
+az:Auto OCR (off): turn on to recognize scanned pages as you view them
+bg:Auto OCR (off): turn on to recognize scanned pages as you view them
+bn:Auto OCR (off): turn on to recognize scanned pages as you view them
+br:Auto OCR (off): turn on to recognize scanned pages as you view them
+bs:Auto OCR (off): turn on to recognize scanned pages as you view them
+by:Auto OCR (off): turn on to recognize scanned pages as you view them
+ca:Auto OCR (off): turn on to recognize scanned pages as you view them
+ca-xv:Auto OCR (off): turn on to recognize scanned pages as you view them
+cn:自动 OCR（关）：打开后翻页即识别扫描页
+co:Auto OCR (off): turn on to recognize scanned pages as you view them
+cy:Auto OCR (off): turn on to recognize scanned pages as you view them
+cz:Auto OCR (off): turn on to recognize scanned pages as you view them
+de:Auto OCR (off): turn on to recognize scanned pages as you view them
+dk:Auto OCR (off): turn on to recognize scanned pages as you view them
+el:Auto OCR (off): turn on to recognize scanned pages as you view them
+es:Auto OCR (off): turn on to recognize scanned pages as you view them
+et:Auto OCR (off): turn on to recognize scanned pages as you view them
+eu:Auto OCR (off): turn on to recognize scanned pages as you view them
+fa:Auto OCR (off): turn on to recognize scanned pages as you view them
+fi:Auto OCR (off): turn on to recognize scanned pages as you view them
+fo:Auto OCR (off): turn on to recognize scanned pages as you view them
+fr:Auto OCR (off): turn on to recognize scanned pages as you view them
+fy-nl:Auto OCR (off): turn on to recognize scanned pages as you view them
+ga:Auto OCR (off): turn on to recognize scanned pages as you view them
+gl:Auto OCR (off): turn on to recognize scanned pages as you view them
+he:Auto OCR (off): turn on to recognize scanned pages as you view them
+hi:Auto OCR (off): turn on to recognize scanned pages as you view them
+hr:Auto OCR (off): turn on to recognize scanned pages as you view them
+hu:Auto OCR (off): turn on to recognize scanned pages as you view them
+id:Auto OCR (off): turn on to recognize scanned pages as you view them
+it:Auto OCR (off): turn on to recognize scanned pages as you view them
+ja:Auto OCR (off): turn on to recognize scanned pages as you view them
+jv:Auto OCR (off): turn on to recognize scanned pages as you view them
+ka:Auto OCR (off): turn on to recognize scanned pages as you view them
+kr:Auto OCR (off): turn on to recognize scanned pages as you view them
+ku:Auto OCR (off): turn on to recognize scanned pages as you view them
+kw:Auto OCR (off): turn on to recognize scanned pages as you view them
+lt:Auto OCR (off): turn on to recognize scanned pages as you view them
+lv:Auto OCR (off): turn on to recognize scanned pages as you view them
+mk:Auto OCR (off): turn on to recognize scanned pages as you view them
+ml:Auto OCR (off): turn on to recognize scanned pages as you view them
+mm:Auto OCR (off): turn on to recognize scanned pages as you view them
+my:Auto OCR (off): turn on to recognize scanned pages as you view them
+ne:Auto OCR (off): turn on to recognize scanned pages as you view them
+nl:Auto OCR (off): turn on to recognize scanned pages as you view them
+nn:Auto OCR (off): turn on to recognize scanned pages as you view them
+no:Auto OCR (off): turn on to recognize scanned pages as you view them
+pa:Auto OCR (off): turn on to recognize scanned pages as you view them
+pl:Auto OCR (off): turn on to recognize scanned pages as you view them
+pt:Auto OCR (off): turn on to recognize scanned pages as you view them
+ro:Auto OCR (off): turn on to recognize scanned pages as you view them
+ru:Auto OCR (off): turn on to recognize scanned pages as you view them
+sat:Auto OCR (off): turn on to recognize scanned pages as you view them
+si:Auto OCR (off): turn on to recognize scanned pages as you view them
+sk:Auto OCR (off): turn on to recognize scanned pages as you view them
+sl:Auto OCR (off): turn on to recognize scanned pages as you view them
+sn:Auto OCR (off): turn on to recognize scanned pages as you view them
+sp-rs:Auto OCR (off): turn on to recognize scanned pages as you view them
+sq:Auto OCR (off): turn on to recognize scanned pages as you view them
+sr-rs:Auto OCR (off): turn on to recognize scanned pages as you view them
+sv:Auto OCR (off): turn on to recognize scanned pages as you view them
+ta:Auto OCR (off): turn on to recognize scanned pages as you view them
+th:Auto OCR (off): turn on to recognize scanned pages as you view them
+tl:Auto OCR (off): turn on to recognize scanned pages as you view them
+tr:Auto OCR (off): turn on to recognize scanned pages as you view them
+tw:自動 OCR（關）：開啟後翻頁即識別掃描頁
+uk:Auto OCR (off): turn on to recognize scanned pages as you view them
+uz:Auto OCR (off): turn on to recognize scanned pages as you view them
+vn:Auto OCR (off): turn on to recognize scanned pages as you view them
+:Auto OCR (on): scanned pages are recognized for select and search
+af:Auto OCR (on): scanned pages are recognized for select and search
+am:Auto OCR (on): scanned pages are recognized for select and search
+ar:Auto OCR (on): scanned pages are recognized for select and search
+az:Auto OCR (on): scanned pages are recognized for select and search
+bg:Auto OCR (on): scanned pages are recognized for select and search
+bn:Auto OCR (on): scanned pages are recognized for select and search
+br:Auto OCR (on): scanned pages are recognized for select and search
+bs:Auto OCR (on): scanned pages are recognized for select and search
+by:Auto OCR (on): scanned pages are recognized for select and search
+ca:Auto OCR (on): scanned pages are recognized for select and search
+ca-xv:Auto OCR (on): scanned pages are recognized for select and search
+cn:自动 OCR（开）：扫描页可选择和搜索
+co:Auto OCR (on): scanned pages are recognized for select and search
+cy:Auto OCR (on): scanned pages are recognized for select and search
+cz:Auto OCR (on): scanned pages are recognized for select and search
+de:Auto OCR (on): scanned pages are recognized for select and search
+dk:Auto OCR (on): scanned pages are recognized for select and search
+el:Auto OCR (on): scanned pages are recognized for select and search
+es:Auto OCR (on): scanned pages are recognized for select and search
+et:Auto OCR (on): scanned pages are recognized for select and search
+eu:Auto OCR (on): scanned pages are recognized for select and search
+fa:Auto OCR (on): scanned pages are recognized for select and search
+fi:Auto OCR (on): scanned pages are recognized for select and search
+fo:Auto OCR (on): scanned pages are recognized for select and search
+fr:Auto OCR (on): scanned pages are recognized for select and search
+fy-nl:Auto OCR (on): scanned pages are recognized for select and search
+ga:Auto OCR (on): scanned pages are recognized for select and search
+gl:Auto OCR (on): scanned pages are recognized for select and search
+he:Auto OCR (on): scanned pages are recognized for select and search
+hi:Auto OCR (on): scanned pages are recognized for select and search
+hr:Auto OCR (on): scanned pages are recognized for select and search
+hu:Auto OCR (on): scanned pages are recognized for select and search
+id:Auto OCR (on): scanned pages are recognized for select and search
+it:Auto OCR (on): scanned pages are recognized for select and search
+ja:Auto OCR (on): scanned pages are recognized for select and search
+jv:Auto OCR (on): scanned pages are recognized for select and search
+ka:Auto OCR (on): scanned pages are recognized for select and search
+kr:Auto OCR (on): scanned pages are recognized for select and search
+ku:Auto OCR (on): scanned pages are recognized for select and search
+kw:Auto OCR (on): scanned pages are recognized for select and search
+lt:Auto OCR (on): scanned pages are recognized for select and search
+lv:Auto OCR (on): scanned pages are recognized for select and search
+mk:Auto OCR (on): scanned pages are recognized for select and search
+ml:Auto OCR (on): scanned pages are recognized for select and search
+mm:Auto OCR (on): scanned pages are recognized for select and search
+my:Auto OCR (on): scanned pages are recognized for select and search
+ne:Auto OCR (on): scanned pages are recognized for select and search
+nl:Auto OCR (on): scanned pages are recognized for select and search
+nn:Auto OCR (on): scanned pages are recognized for select and search
+no:Auto OCR (on): scanned pages are recognized for select and search
+pa:Auto OCR (on): scanned pages are recognized for select and search
+pl:Auto OCR (on): scanned pages are recognized for select and search
+pt:Auto OCR (on): scanned pages are recognized for select and search
+ro:Auto OCR (on): scanned pages are recognized for select and search
+ru:Auto OCR (on): scanned pages are recognized for select and search
+sat:Auto OCR (on): scanned pages are recognized for select and search
+si:Auto OCR (on): scanned pages are recognized for select and search
+sk:Auto OCR (on): scanned pages are recognized for select and search
+sl:Auto OCR (on): scanned pages are recognized for select and search
+sn:Auto OCR (on): scanned pages are recognized for select and search
+sp-rs:Auto OCR (on): scanned pages are recognized for select and search
+sq:Auto OCR (on): scanned pages are recognized for select and search
+sr-rs:Auto OCR (on): scanned pages are recognized for select and search
+sv:Auto OCR (on): scanned pages are recognized for select and search
+ta:Auto OCR (on): scanned pages are recognized for select and search
+th:Auto OCR (on): scanned pages are recognized for select and search
+tl:Auto OCR (on): scanned pages are recognized for select and search
+tr:Auto OCR (on): scanned pages are recognized for select and search
+tw:自動 OCR（開）：掃描頁可選取和搜尋
+uk:Auto OCR (on): scanned pages are recognized for select and search
+uz:Auto OCR (on): scanned pages are recognized for select and search
+vn:Auto OCR (on): scanned pages are recognized for select and search
 :Automatic
 am:Ինքնաշխատ
 br:Automático
@@ -2194,6 +2413,79 @@ nl:Bladwijzer maken
 pl:Zakładki
 sk:Zástupca záložiek
 tw:書籤捷徑
+:Bookmark extraction cancelled.
+af:Bookmark extraction cancelled.
+am:Bookmark extraction cancelled.
+ar:Bookmark extraction cancelled.
+az:Bookmark extraction cancelled.
+bg:Bookmark extraction cancelled.
+bn:Bookmark extraction cancelled.
+br:Bookmark extraction cancelled.
+bs:Bookmark extraction cancelled.
+by:Bookmark extraction cancelled.
+ca:Bookmark extraction cancelled.
+ca-xv:Bookmark extraction cancelled.
+cn:已取消提取书签。
+co:Bookmark extraction cancelled.
+cy:Bookmark extraction cancelled.
+cz:Bookmark extraction cancelled.
+de:Bookmark extraction cancelled.
+dk:Bookmark extraction cancelled.
+el:Bookmark extraction cancelled.
+es:Bookmark extraction cancelled.
+et:Bookmark extraction cancelled.
+eu:Bookmark extraction cancelled.
+fa:Bookmark extraction cancelled.
+fi:Bookmark extraction cancelled.
+fo:Bookmark extraction cancelled.
+fr:Bookmark extraction cancelled.
+fy-nl:Bookmark extraction cancelled.
+ga:Bookmark extraction cancelled.
+gl:Bookmark extraction cancelled.
+he:Bookmark extraction cancelled.
+hi:Bookmark extraction cancelled.
+hr:Bookmark extraction cancelled.
+hu:Bookmark extraction cancelled.
+id:Bookmark extraction cancelled.
+it:Bookmark extraction cancelled.
+ja:Bookmark extraction cancelled.
+jv:Bookmark extraction cancelled.
+ka:Bookmark extraction cancelled.
+kr:Bookmark extraction cancelled.
+ku:Bookmark extraction cancelled.
+kw:Bookmark extraction cancelled.
+lt:Bookmark extraction cancelled.
+lv:Bookmark extraction cancelled.
+mk:Bookmark extraction cancelled.
+ml:Bookmark extraction cancelled.
+mm:Bookmark extraction cancelled.
+my:Bookmark extraction cancelled.
+ne:Bookmark extraction cancelled.
+nl:Bookmark extraction cancelled.
+nn:Bookmark extraction cancelled.
+no:Bookmark extraction cancelled.
+pa:Bookmark extraction cancelled.
+pl:Bookmark extraction cancelled.
+pt:Bookmark extraction cancelled.
+ro:Bookmark extraction cancelled.
+ru:Bookmark extraction cancelled.
+sat:Bookmark extraction cancelled.
+si:Bookmark extraction cancelled.
+sk:Bookmark extraction cancelled.
+sl:Bookmark extraction cancelled.
+sn:Bookmark extraction cancelled.
+sp-rs:Bookmark extraction cancelled.
+sq:Bookmark extraction cancelled.
+sr-rs:Bookmark extraction cancelled.
+sv:Bookmark extraction cancelled.
+ta:Bookmark extraction cancelled.
+th:Bookmark extraction cancelled.
+tl:Bookmark extraction cancelled.
+tr:Bookmark extraction cancelled.
+tw:已取消提取書籤。
+uk:Bookmark extraction cancelled.
+uz:Bookmark extraction cancelled.
+vn:Bookmark extraction cancelled.
 :Bookmark shortcut to page %s of %s
 am:Էջանշել %s էջից %s-ը
 br:Atalho do favorito para a página %s de %s
@@ -2314,6 +2606,152 @@ nl:Annuleren
 pl:Anuluj
 sk:Zrušiť
 tw:取消
+:Cancel OCR
+af:Cancel OCR
+am:Cancel OCR
+ar:Cancel OCR
+az:Cancel OCR
+bg:Cancel OCR
+bn:Cancel OCR
+br:Cancel OCR
+bs:Cancel OCR
+by:Cancel OCR
+ca:Cancel OCR
+ca-xv:Cancel OCR
+cn:取消 OCR
+co:Cancel OCR
+cy:Cancel OCR
+cz:Cancel OCR
+de:Cancel OCR
+dk:Cancel OCR
+el:Cancel OCR
+es:Cancel OCR
+et:Cancel OCR
+eu:Cancel OCR
+fa:Cancel OCR
+fi:Cancel OCR
+fo:Cancel OCR
+fr:Cancel OCR
+fy-nl:Cancel OCR
+ga:Cancel OCR
+gl:Cancel OCR
+he:Cancel OCR
+hi:Cancel OCR
+hr:Cancel OCR
+hu:Cancel OCR
+id:Cancel OCR
+it:Cancel OCR
+ja:Cancel OCR
+jv:Cancel OCR
+ka:Cancel OCR
+kr:Cancel OCR
+ku:Cancel OCR
+kw:Cancel OCR
+lt:Cancel OCR
+lv:Cancel OCR
+mk:Cancel OCR
+ml:Cancel OCR
+mm:Cancel OCR
+my:Cancel OCR
+ne:Cancel OCR
+nl:Cancel OCR
+nn:Cancel OCR
+no:Cancel OCR
+pa:Cancel OCR
+pl:Cancel OCR
+pt:Cancel OCR
+ro:Cancel OCR
+ru:Cancel OCR
+sat:Cancel OCR
+si:Cancel OCR
+sk:Cancel OCR
+sl:Cancel OCR
+sn:Cancel OCR
+sp-rs:Cancel OCR
+sq:Cancel OCR
+sr-rs:Cancel OCR
+sv:Cancel OCR
+ta:Cancel OCR
+th:Cancel OCR
+tl:Cancel OCR
+tr:Cancel OCR
+tw:取消 OCR
+uk:Cancel OCR
+uz:Cancel OCR
+vn:Cancel OCR
+:Cancelled.
+af:Cancelled.
+am:Cancelled.
+ar:Cancelled.
+az:Cancelled.
+bg:Cancelled.
+bn:Cancelled.
+br:Cancelled.
+bs:Cancelled.
+by:Cancelled.
+ca:Cancelled.
+ca-xv:Cancelled.
+cn:已取消。
+co:Cancelled.
+cy:Cancelled.
+cz:Cancelled.
+de:Cancelled.
+dk:Cancelled.
+el:Cancelled.
+es:Cancelled.
+et:Cancelled.
+eu:Cancelled.
+fa:Cancelled.
+fi:Cancelled.
+fo:Cancelled.
+fr:Cancelled.
+fy-nl:Cancelled.
+ga:Cancelled.
+gl:Cancelled.
+he:Cancelled.
+hi:Cancelled.
+hr:Cancelled.
+hu:Cancelled.
+id:Cancelled.
+it:Cancelled.
+ja:Cancelled.
+jv:Cancelled.
+ka:Cancelled.
+kr:Cancelled.
+ku:Cancelled.
+kw:Cancelled.
+lt:Cancelled.
+lv:Cancelled.
+mk:Cancelled.
+ml:Cancelled.
+mm:Cancelled.
+my:Cancelled.
+ne:Cancelled.
+nl:Cancelled.
+nn:Cancelled.
+no:Cancelled.
+pa:Cancelled.
+pl:Cancelled.
+pt:Cancelled.
+ro:Cancelled.
+ru:Cancelled.
+sat:Cancelled.
+si:Cancelled.
+sk:Cancelled.
+sl:Cancelled.
+sn:Cancelled.
+sp-rs:Cancelled.
+sq:Cancelled.
+sr-rs:Cancelled.
+sv:Cancelled.
+ta:Cancelled.
+th:Cancelled.
+tl:Cancelled.
+tr:Cancelled.
+tw:已取消。
+uk:Cancelled.
+uz:Cancelled.
+vn:Cancelled.
 :Cannot print this file
 am:Հնարավոր չէ տպել այս ֆայլը
 br:Não pôde imprimir este arquivo
@@ -2586,6 +3024,79 @@ nl:Cirkel
 pl:Okrąg
 sk:Kruh
 tw:圓圈
+:Circle Annotation (Ctrl+click to lock)
+af:Circle Annotation (Ctrl+click to lock)
+am:Circle Annotation (Ctrl+click to lock)
+ar:Circle Annotation (Ctrl+click to lock)
+az:Circle Annotation (Ctrl+click to lock)
+bg:Circle Annotation (Ctrl+click to lock)
+bn:Circle Annotation (Ctrl+click to lock)
+br:Circle Annotation (Ctrl+click to lock)
+bs:Circle Annotation (Ctrl+click to lock)
+by:Circle Annotation (Ctrl+click to lock)
+ca:Circle Annotation (Ctrl+click to lock)
+ca-xv:Circle Annotation (Ctrl+click to lock)
+cn:圆形批注（Ctrl+点击锁定）
+co:Circle Annotation (Ctrl+click to lock)
+cy:Circle Annotation (Ctrl+click to lock)
+cz:Circle Annotation (Ctrl+click to lock)
+de:Circle Annotation (Ctrl+click to lock)
+dk:Circle Annotation (Ctrl+click to lock)
+el:Circle Annotation (Ctrl+click to lock)
+es:Circle Annotation (Ctrl+click to lock)
+et:Circle Annotation (Ctrl+click to lock)
+eu:Circle Annotation (Ctrl+click to lock)
+fa:Circle Annotation (Ctrl+click to lock)
+fi:Circle Annotation (Ctrl+click to lock)
+fo:Circle Annotation (Ctrl+click to lock)
+fr:Circle Annotation (Ctrl+click to lock)
+fy-nl:Circle Annotation (Ctrl+click to lock)
+ga:Circle Annotation (Ctrl+click to lock)
+gl:Circle Annotation (Ctrl+click to lock)
+he:Circle Annotation (Ctrl+click to lock)
+hi:Circle Annotation (Ctrl+click to lock)
+hr:Circle Annotation (Ctrl+click to lock)
+hu:Circle Annotation (Ctrl+click to lock)
+id:Circle Annotation (Ctrl+click to lock)
+it:Circle Annotation (Ctrl+click to lock)
+ja:Circle Annotation (Ctrl+click to lock)
+jv:Circle Annotation (Ctrl+click to lock)
+ka:Circle Annotation (Ctrl+click to lock)
+kr:Circle Annotation (Ctrl+click to lock)
+ku:Circle Annotation (Ctrl+click to lock)
+kw:Circle Annotation (Ctrl+click to lock)
+lt:Circle Annotation (Ctrl+click to lock)
+lv:Circle Annotation (Ctrl+click to lock)
+mk:Circle Annotation (Ctrl+click to lock)
+ml:Circle Annotation (Ctrl+click to lock)
+mm:Circle Annotation (Ctrl+click to lock)
+my:Circle Annotation (Ctrl+click to lock)
+ne:Circle Annotation (Ctrl+click to lock)
+nl:Circle Annotation (Ctrl+click to lock)
+nn:Circle Annotation (Ctrl+click to lock)
+no:Circle Annotation (Ctrl+click to lock)
+pa:Circle Annotation (Ctrl+click to lock)
+pl:Circle Annotation (Ctrl+click to lock)
+pt:Circle Annotation (Ctrl+click to lock)
+ro:Circle Annotation (Ctrl+click to lock)
+ru:Circle Annotation (Ctrl+click to lock)
+sat:Circle Annotation (Ctrl+click to lock)
+si:Circle Annotation (Ctrl+click to lock)
+sk:Circle Annotation (Ctrl+click to lock)
+sl:Circle Annotation (Ctrl+click to lock)
+sn:Circle Annotation (Ctrl+click to lock)
+sp-rs:Circle Annotation (Ctrl+click to lock)
+sq:Circle Annotation (Ctrl+click to lock)
+sr-rs:Circle Annotation (Ctrl+click to lock)
+sv:Circle Annotation (Ctrl+click to lock)
+ta:Circle Annotation (Ctrl+click to lock)
+th:Circle Annotation (Ctrl+click to lock)
+tl:Circle Annotation (Ctrl+click to lock)
+tr:Circle Annotation (Ctrl+click to lock)
+tw:圓形註解（Ctrl+點選鎖定）
+uk:Circle Annotation (Ctrl+click to lock)
+uz:Circle Annotation (Ctrl+click to lock)
+vn:Circle Annotation (Ctrl+click to lock)
 :Clear History
 am:Մաքրել պատմությունը
 br:Limpar Histórico
@@ -3096,6 +3607,79 @@ tw:轉換為 PDF(&P)
 uk:Convert to &PDF
 uz:Convert to &PDF
 vn:Convert to &PDF
+:Copied.
+af:Copied.
+am:Copied.
+ar:Copied.
+az:Copied.
+bg:Copied.
+bn:Copied.
+br:Copied.
+bs:Copied.
+by:Copied.
+ca:Copied.
+ca-xv:Copied.
+cn:已复制。
+co:Copied.
+cy:Copied.
+cz:Copied.
+de:Copied.
+dk:Copied.
+el:Copied.
+es:Copied.
+et:Copied.
+eu:Copied.
+fa:Copied.
+fi:Copied.
+fo:Copied.
+fr:Copied.
+fy-nl:Copied.
+ga:Copied.
+gl:Copied.
+he:Copied.
+hi:Copied.
+hr:Copied.
+hu:Copied.
+id:Copied.
+it:Copied.
+ja:Copied.
+jv:Copied.
+ka:Copied.
+kr:Copied.
+ku:Copied.
+kw:Copied.
+lt:Copied.
+lv:Copied.
+mk:Copied.
+ml:Copied.
+mm:Copied.
+my:Copied.
+ne:Copied.
+nl:Copied.
+nn:Copied.
+no:Copied.
+pa:Copied.
+pl:Copied.
+pt:Copied.
+ro:Copied.
+ru:Copied.
+sat:Copied.
+si:Copied.
+sk:Copied.
+sl:Copied.
+sn:Copied.
+sp-rs:Copied.
+sq:Copied.
+sr-rs:Copied.
+sv:Copied.
+ta:Copied.
+th:Copied.
+tl:Copied.
+tr:Copied.
+tw:已複製。
+uk:Copied.
+uz:Copied.
+vn:Copied.
 :Copy
 cn:复制
 tw:複製
@@ -3304,6 +3888,298 @@ nl:Kan geen printereigenschappen verkrijgen
 pl:Nie można uzyskać właściwości drukarki
 sk:Získanie vlastností tlačiarne zlyhalo
 tw:無法取得印表機內容
+:Could not recognize text on this page.
+af:Could not recognize text on this page.
+am:Could not recognize text on this page.
+ar:Could not recognize text on this page.
+az:Could not recognize text on this page.
+bg:Could not recognize text on this page.
+bn:Could not recognize text on this page.
+br:Could not recognize text on this page.
+bs:Could not recognize text on this page.
+by:Could not recognize text on this page.
+ca:Could not recognize text on this page.
+ca-xv:Could not recognize text on this page.
+cn:无法识别此页文字。
+co:Could not recognize text on this page.
+cy:Could not recognize text on this page.
+cz:Could not recognize text on this page.
+de:Could not recognize text on this page.
+dk:Could not recognize text on this page.
+el:Could not recognize text on this page.
+es:Could not recognize text on this page.
+et:Could not recognize text on this page.
+eu:Could not recognize text on this page.
+fa:Could not recognize text on this page.
+fi:Could not recognize text on this page.
+fo:Could not recognize text on this page.
+fr:Could not recognize text on this page.
+fy-nl:Could not recognize text on this page.
+ga:Could not recognize text on this page.
+gl:Could not recognize text on this page.
+he:Could not recognize text on this page.
+hi:Could not recognize text on this page.
+hr:Could not recognize text on this page.
+hu:Could not recognize text on this page.
+id:Could not recognize text on this page.
+it:Could not recognize text on this page.
+ja:Could not recognize text on this page.
+jv:Could not recognize text on this page.
+ka:Could not recognize text on this page.
+kr:Could not recognize text on this page.
+ku:Could not recognize text on this page.
+kw:Could not recognize text on this page.
+lt:Could not recognize text on this page.
+lv:Could not recognize text on this page.
+mk:Could not recognize text on this page.
+ml:Could not recognize text on this page.
+mm:Could not recognize text on this page.
+my:Could not recognize text on this page.
+ne:Could not recognize text on this page.
+nl:Could not recognize text on this page.
+nn:Could not recognize text on this page.
+no:Could not recognize text on this page.
+pa:Could not recognize text on this page.
+pl:Could not recognize text on this page.
+pt:Could not recognize text on this page.
+ro:Could not recognize text on this page.
+ru:Could not recognize text on this page.
+sat:Could not recognize text on this page.
+si:Could not recognize text on this page.
+sk:Could not recognize text on this page.
+sl:Could not recognize text on this page.
+sn:Could not recognize text on this page.
+sp-rs:Could not recognize text on this page.
+sq:Could not recognize text on this page.
+sr-rs:Could not recognize text on this page.
+sv:Could not recognize text on this page.
+ta:Could not recognize text on this page.
+th:Could not recognize text on this page.
+tl:Could not recognize text on this page.
+tr:Could not recognize text on this page.
+tw:無法識別此頁文字。
+uk:Could not recognize text on this page.
+uz:Could not recognize text on this page.
+vn:Could not recognize text on this page.
+:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+af:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+am:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+ar:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+az:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+bg:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+bn:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+br:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+bs:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+by:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+ca:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+ca-xv:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+cn:无法覆盖原 PDF。已识别的文件保留为临时副本。
+co:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+cy:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+cz:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+de:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+dk:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+el:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+es:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+et:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+eu:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+fa:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+fi:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+fo:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+fr:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+fy-nl:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+ga:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+gl:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+he:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+hi:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+hr:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+hu:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+id:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+it:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+ja:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+jv:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+ka:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+kr:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+ku:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+kw:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+lt:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+lv:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+mk:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+ml:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+mm:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+my:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+ne:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+nl:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+nn:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+no:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+pa:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+pl:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+pt:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+ro:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+ru:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+sat:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+si:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+sk:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+sl:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+sn:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+sp-rs:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+sq:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+sr-rs:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+sv:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+ta:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+th:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+tl:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+tr:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+tw:無法覆蓋原 PDF。已識別的檔案保留為暫存副本。
+uk:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+uz:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+vn:Could not replace the original PDF. The recognized file was kept as a temporary copy.
+:Could not save searchable PDF.
+af:Could not save searchable PDF.
+am:Could not save searchable PDF.
+ar:Could not save searchable PDF.
+az:Could not save searchable PDF.
+bg:Could not save searchable PDF.
+bn:Could not save searchable PDF.
+br:Could not save searchable PDF.
+bs:Could not save searchable PDF.
+by:Could not save searchable PDF.
+ca:Could not save searchable PDF.
+ca-xv:Could not save searchable PDF.
+cn:无法保存可搜索 PDF。
+co:Could not save searchable PDF.
+cy:Could not save searchable PDF.
+cz:Could not save searchable PDF.
+de:Could not save searchable PDF.
+dk:Could not save searchable PDF.
+el:Could not save searchable PDF.
+es:Could not save searchable PDF.
+et:Could not save searchable PDF.
+eu:Could not save searchable PDF.
+fa:Could not save searchable PDF.
+fi:Could not save searchable PDF.
+fo:Could not save searchable PDF.
+fr:Could not save searchable PDF.
+fy-nl:Could not save searchable PDF.
+ga:Could not save searchable PDF.
+gl:Could not save searchable PDF.
+he:Could not save searchable PDF.
+hi:Could not save searchable PDF.
+hr:Could not save searchable PDF.
+hu:Could not save searchable PDF.
+id:Could not save searchable PDF.
+it:Could not save searchable PDF.
+ja:Could not save searchable PDF.
+jv:Could not save searchable PDF.
+ka:Could not save searchable PDF.
+kr:Could not save searchable PDF.
+ku:Could not save searchable PDF.
+kw:Could not save searchable PDF.
+lt:Could not save searchable PDF.
+lv:Could not save searchable PDF.
+mk:Could not save searchable PDF.
+ml:Could not save searchable PDF.
+mm:Could not save searchable PDF.
+my:Could not save searchable PDF.
+ne:Could not save searchable PDF.
+nl:Could not save searchable PDF.
+nn:Could not save searchable PDF.
+no:Could not save searchable PDF.
+pa:Could not save searchable PDF.
+pl:Could not save searchable PDF.
+pt:Could not save searchable PDF.
+ro:Could not save searchable PDF.
+ru:Could not save searchable PDF.
+sat:Could not save searchable PDF.
+si:Could not save searchable PDF.
+sk:Could not save searchable PDF.
+sl:Could not save searchable PDF.
+sn:Could not save searchable PDF.
+sp-rs:Could not save searchable PDF.
+sq:Could not save searchable PDF.
+sr-rs:Could not save searchable PDF.
+sv:Could not save searchable PDF.
+ta:Could not save searchable PDF.
+th:Could not save searchable PDF.
+tl:Could not save searchable PDF.
+tr:Could not save searchable PDF.
+tw:無法儲存可搜尋 PDF。
+uk:Could not save searchable PDF.
+uz:Could not save searchable PDF.
+vn:Could not save searchable PDF.
+:Could not write the PDF table of contents.
+af:Could not write the PDF table of contents.
+am:Could not write the PDF table of contents.
+ar:Could not write the PDF table of contents.
+az:Could not write the PDF table of contents.
+bg:Could not write the PDF table of contents.
+bn:Could not write the PDF table of contents.
+br:Could not write the PDF table of contents.
+bs:Could not write the PDF table of contents.
+by:Could not write the PDF table of contents.
+ca:Could not write the PDF table of contents.
+ca-xv:Could not write the PDF table of contents.
+cn:无法写入 PDF 目录。
+co:Could not write the PDF table of contents.
+cy:Could not write the PDF table of contents.
+cz:Could not write the PDF table of contents.
+de:Could not write the PDF table of contents.
+dk:Could not write the PDF table of contents.
+el:Could not write the PDF table of contents.
+es:Could not write the PDF table of contents.
+et:Could not write the PDF table of contents.
+eu:Could not write the PDF table of contents.
+fa:Could not write the PDF table of contents.
+fi:Could not write the PDF table of contents.
+fo:Could not write the PDF table of contents.
+fr:Could not write the PDF table of contents.
+fy-nl:Could not write the PDF table of contents.
+ga:Could not write the PDF table of contents.
+gl:Could not write the PDF table of contents.
+he:Could not write the PDF table of contents.
+hi:Could not write the PDF table of contents.
+hr:Could not write the PDF table of contents.
+hu:Could not write the PDF table of contents.
+id:Could not write the PDF table of contents.
+it:Could not write the PDF table of contents.
+ja:Could not write the PDF table of contents.
+jv:Could not write the PDF table of contents.
+ka:Could not write the PDF table of contents.
+kr:Could not write the PDF table of contents.
+ku:Could not write the PDF table of contents.
+kw:Could not write the PDF table of contents.
+lt:Could not write the PDF table of contents.
+lv:Could not write the PDF table of contents.
+mk:Could not write the PDF table of contents.
+ml:Could not write the PDF table of contents.
+mm:Could not write the PDF table of contents.
+my:Could not write the PDF table of contents.
+ne:Could not write the PDF table of contents.
+nl:Could not write the PDF table of contents.
+nn:Could not write the PDF table of contents.
+no:Could not write the PDF table of contents.
+pa:Could not write the PDF table of contents.
+pl:Could not write the PDF table of contents.
+pt:Could not write the PDF table of contents.
+ro:Could not write the PDF table of contents.
+ru:Could not write the PDF table of contents.
+sat:Could not write the PDF table of contents.
+si:Could not write the PDF table of contents.
+sk:Could not write the PDF table of contents.
+sl:Could not write the PDF table of contents.
+sn:Could not write the PDF table of contents.
+sp-rs:Could not write the PDF table of contents.
+sq:Could not write the PDF table of contents.
+sr-rs:Could not write the PDF table of contents.
+sv:Could not write the PDF table of contents.
+ta:Could not write the PDF table of contents.
+th:Could not write the PDF table of contents.
+tl:Could not write the PDF table of contents.
+tr:Could not write the PDF table of contents.
+tw:無法寫入 PDF 目錄。
+uk:Could not write the PDF table of contents.
+uz:Could not write the PDF table of contents.
+vn:Could not write the PDF table of contents.
 :Couldn't create the installation directory
 am:Հնարավոր չեղավ ստեղծել տեղադրման թղթապանակը
 br:Não pôde criar o diretório de instalação
@@ -4079,6 +4955,155 @@ nl:Verwijderen
 pl:Usuń
 sk:Odstrániť
 tw:刪除
+:Delete %d TOC items? Child items will be moved up one level.
+cn:删除这 %d 条目录项？其子项将上提一级。
+tw:刪除這 %d 條目錄項？其子項目將上提一級。
+:Delete %d TOC items and their child items?
+af:Delete %d TOC items and their child items?
+am:Delete %d TOC items and their child items?
+ar:Delete %d TOC items and their child items?
+az:Delete %d TOC items and their child items?
+bg:Delete %d TOC items and their child items?
+bn:Delete %d TOC items and their child items?
+br:Delete %d TOC items and their child items?
+bs:Delete %d TOC items and their child items?
+by:Delete %d TOC items and their child items?
+ca:Delete %d TOC items and their child items?
+ca-xv:Delete %d TOC items and their child items?
+cn:删除这 %d 条目录项及其所有子项？
+co:Delete %d TOC items and their child items?
+cy:Delete %d TOC items and their child items?
+cz:Delete %d TOC items and their child items?
+de:Delete %d TOC items and their child items?
+dk:Delete %d TOC items and their child items?
+el:Delete %d TOC items and their child items?
+es:Delete %d TOC items and their child items?
+et:Delete %d TOC items and their child items?
+eu:Delete %d TOC items and their child items?
+fa:Delete %d TOC items and their child items?
+fi:Delete %d TOC items and their child items?
+fo:Delete %d TOC items and their child items?
+fr:Delete %d TOC items and their child items?
+fy-nl:Delete %d TOC items and their child items?
+ga:Delete %d TOC items and their child items?
+gl:Delete %d TOC items and their child items?
+he:Delete %d TOC items and their child items?
+hi:Delete %d TOC items and their child items?
+hr:Delete %d TOC items and their child items?
+hu:Delete %d TOC items and their child items?
+id:Delete %d TOC items and their child items?
+it:Delete %d TOC items and their child items?
+ja:Delete %d TOC items and their child items?
+jv:Delete %d TOC items and their child items?
+ka:Delete %d TOC items and their child items?
+kr:Delete %d TOC items and their child items?
+ku:Delete %d TOC items and their child items?
+kw:Delete %d TOC items and their child items?
+lt:Delete %d TOC items and their child items?
+lv:Delete %d TOC items and their child items?
+mk:Delete %d TOC items and their child items?
+ml:Delete %d TOC items and their child items?
+mm:Delete %d TOC items and their child items?
+my:Delete %d TOC items and their child items?
+ne:Delete %d TOC items and their child items?
+nl:Delete %d TOC items and their child items?
+nn:Delete %d TOC items and their child items?
+no:Delete %d TOC items and their child items?
+pa:Delete %d TOC items and their child items?
+pl:Delete %d TOC items and their child items?
+pt:Delete %d TOC items and their child items?
+ro:Delete %d TOC items and their child items?
+ru:Delete %d TOC items and their child items?
+sat:Delete %d TOC items and their child items?
+si:Delete %d TOC items and their child items?
+sk:Delete %d TOC items and their child items?
+sl:Delete %d TOC items and their child items?
+sn:Delete %d TOC items and their child items?
+sp-rs:Delete %d TOC items and their child items?
+sq:Delete %d TOC items and their child items?
+sr-rs:Delete %d TOC items and their child items?
+sv:Delete %d TOC items and their child items?
+ta:Delete %d TOC items and their child items?
+th:Delete %d TOC items and their child items?
+tl:Delete %d TOC items and their child items?
+tr:Delete %d TOC items and their child items?
+tw:刪除這 %d 條目錄項及其所有子項？
+uk:Delete %d TOC items and their child items?
+uz:Delete %d TOC items and their child items?
+vn:Delete %d TOC items and their child items?
+:Delete %d TOC items?
+af:Delete %d TOC items?
+am:Delete %d TOC items?
+ar:Delete %d TOC items?
+az:Delete %d TOC items?
+bg:Delete %d TOC items?
+bn:Delete %d TOC items?
+br:Delete %d TOC items?
+bs:Delete %d TOC items?
+by:Delete %d TOC items?
+ca:Delete %d TOC items?
+ca-xv:Delete %d TOC items?
+cn:删除这 %d 条目录项？
+co:Delete %d TOC items?
+cy:Delete %d TOC items?
+cz:Delete %d TOC items?
+de:Delete %d TOC items?
+dk:Delete %d TOC items?
+el:Delete %d TOC items?
+es:Delete %d TOC items?
+et:Delete %d TOC items?
+eu:Delete %d TOC items?
+fa:Delete %d TOC items?
+fi:Delete %d TOC items?
+fo:Delete %d TOC items?
+fr:Delete %d TOC items?
+fy-nl:Delete %d TOC items?
+ga:Delete %d TOC items?
+gl:Delete %d TOC items?
+he:Delete %d TOC items?
+hi:Delete %d TOC items?
+hr:Delete %d TOC items?
+hu:Delete %d TOC items?
+id:Delete %d TOC items?
+it:Delete %d TOC items?
+ja:Delete %d TOC items?
+jv:Delete %d TOC items?
+ka:Delete %d TOC items?
+kr:Delete %d TOC items?
+ku:Delete %d TOC items?
+kw:Delete %d TOC items?
+lt:Delete %d TOC items?
+lv:Delete %d TOC items?
+mk:Delete %d TOC items?
+ml:Delete %d TOC items?
+mm:Delete %d TOC items?
+my:Delete %d TOC items?
+ne:Delete %d TOC items?
+nl:Delete %d TOC items?
+nn:Delete %d TOC items?
+no:Delete %d TOC items?
+pa:Delete %d TOC items?
+pl:Delete %d TOC items?
+pt:Delete %d TOC items?
+ro:Delete %d TOC items?
+ru:Delete %d TOC items?
+sat:Delete %d TOC items?
+si:Delete %d TOC items?
+sk:Delete %d TOC items?
+sl:Delete %d TOC items?
+sn:Delete %d TOC items?
+sp-rs:Delete %d TOC items?
+sq:Delete %d TOC items?
+sr-rs:Delete %d TOC items?
+sv:Delete %d TOC items?
+ta:Delete %d TOC items?
+th:Delete %d TOC items?
+tl:Delete %d TOC items?
+tr:Delete %d TOC items?
+tw:刪除這 %d 條目錄項？
+uk:Delete %d TOC items?
+uz:Delete %d TOC items?
+vn:Delete %d TOC items?
 :Delete Annotation
 am:Ջնջել մեկնաբանությունը
 br:Apagar Anotação
@@ -4157,6 +5182,9 @@ nl:Dit PDF-inhoudsopgave-item en alle subitems verwijderen?
 pl:Usunąć ten element spisu treści PDF i wszystkie jego elementy podrzędne?
 sk:Odstrániť túto položku obsahu PDF a všetky jej podradené položky?
 tw:刪除這個 PDF 目錄項目及其所有子項目？
+:Delete this TOC item? Child items will be moved up one level.
+cn:删除这个目录项？其子项将上提一级。
+tw:刪除這個目錄項目？其子項目將上提一級。
 :Delete this TOC item?
 am:Ջնջե՞լ այս PDF բովանդակության տարրը։
 br:Excluir este item do sumário do PDF?
@@ -4286,6 +5314,79 @@ nl:Niet installeren
 pl:Nie instaluj
 sk:Neinštalovať
 tw:不要安裝
+:Don't save
+af:Don't save
+am:Don't save
+ar:Don't save
+az:Don't save
+bg:Don't save
+bn:Don't save
+br:Don't save
+bs:Don't save
+by:Don't save
+ca:Don't save
+ca-xv:Don't save
+cn:不保存
+co:Don't save
+cy:Don't save
+cz:Don't save
+de:Don't save
+dk:Don't save
+el:Don't save
+es:Don't save
+et:Don't save
+eu:Don't save
+fa:Don't save
+fi:Don't save
+fo:Don't save
+fr:Don't save
+fy-nl:Don't save
+ga:Don't save
+gl:Don't save
+he:Don't save
+hi:Don't save
+hr:Don't save
+hu:Don't save
+id:Don't save
+it:Don't save
+ja:Don't save
+jv:Don't save
+ka:Don't save
+kr:Don't save
+ku:Don't save
+kw:Don't save
+lt:Don't save
+lv:Don't save
+mk:Don't save
+ml:Don't save
+mm:Don't save
+my:Don't save
+ne:Don't save
+nl:Don't save
+nn:Don't save
+no:Don't save
+pa:Don't save
+pl:Don't save
+pt:Don't save
+ro:Don't save
+ru:Don't save
+sat:Don't save
+si:Don't save
+sk:Don't save
+sl:Don't save
+sn:Don't save
+sp-rs:Don't save
+sq:Don't save
+sr-rs:Don't save
+sv:Don't save
+ta:Don't save
+th:Don't save
+tl:Don't save
+tr:Don't save
+tw:不儲存
+uk:Don't save
+uz:Don't save
+vn:Don't save
 :Double-Click Word Lookup (disabled)
 am:Կրկնակի սեղմումով բառային որոնում (անջ.)
 br:Pesquisa por duplo clique (desativada)
@@ -4943,6 +6044,79 @@ it:Estrai pagine
 nl:Pagina's Van PDF Uitpakken
 pl:Wyodrębnij strony z PDF
 sk:Extrahovať strany z PDF
+:Extract Table of Contents
+af:Extract Table of Contents
+am:Extract Table of Contents
+ar:Extract Table of Contents
+az:Extract Table of Contents
+bg:Extract Table of Contents
+bn:Extract Table of Contents
+br:Extract Table of Contents
+bs:Extract Table of Contents
+by:Extract Table of Contents
+ca:Extract Table of Contents
+ca-xv:Extract Table of Contents
+cn:提取目录书签
+co:Extract Table of Contents
+cy:Extract Table of Contents
+cz:Extract Table of Contents
+de:Extract Table of Contents
+dk:Extract Table of Contents
+el:Extract Table of Contents
+es:Extract Table of Contents
+et:Extract Table of Contents
+eu:Extract Table of Contents
+fa:Extract Table of Contents
+fi:Extract Table of Contents
+fo:Extract Table of Contents
+fr:Extract Table of Contents
+fy-nl:Extract Table of Contents
+ga:Extract Table of Contents
+gl:Extract Table of Contents
+he:Extract Table of Contents
+hi:Extract Table of Contents
+hr:Extract Table of Contents
+hu:Extract Table of Contents
+id:Extract Table of Contents
+it:Extract Table of Contents
+ja:Extract Table of Contents
+jv:Extract Table of Contents
+ka:Extract Table of Contents
+kr:Extract Table of Contents
+ku:Extract Table of Contents
+kw:Extract Table of Contents
+lt:Extract Table of Contents
+lv:Extract Table of Contents
+mk:Extract Table of Contents
+ml:Extract Table of Contents
+mm:Extract Table of Contents
+my:Extract Table of Contents
+ne:Extract Table of Contents
+nl:Extract Table of Contents
+nn:Extract Table of Contents
+no:Extract Table of Contents
+pa:Extract Table of Contents
+pl:Extract Table of Contents
+pt:Extract Table of Contents
+ro:Extract Table of Contents
+ru:Extract Table of Contents
+sat:Extract Table of Contents
+si:Extract Table of Contents
+sk:Extract Table of Contents
+sl:Extract Table of Contents
+sn:Extract Table of Contents
+sp-rs:Extract Table of Contents
+sq:Extract Table of Contents
+sr-rs:Extract Table of Contents
+sv:Extract Table of Contents
+ta:Extract Table of Contents
+th:Extract Table of Contents
+tl:Extract Table of Contents
+tr:Extract Table of Contents
+tw:提取目錄書籤
+uk:Extract Table of Contents
+uz:Extract Table of Contents
+vn:Extract Table of Contents
 :Extract Text
 br:Extrair Texto
 cn:提取文本
@@ -4961,6 +6135,152 @@ it:Estrai testo
 nl:Tekst Uit Document Uitpakken
 pl:Wyodrębnij tekst z dokumentu
 sk:Extrahovať text z dokumentu
+:Extracted %d bookmarks.
+af:Extracted %d bookmarks.
+am:Extracted %d bookmarks.
+ar:Extracted %d bookmarks.
+az:Extracted %d bookmarks.
+bg:Extracted %d bookmarks.
+bn:Extracted %d bookmarks.
+br:Extracted %d bookmarks.
+bs:Extracted %d bookmarks.
+by:Extracted %d bookmarks.
+ca:Extracted %d bookmarks.
+ca-xv:Extracted %d bookmarks.
+cn:已提取 %d 条书签。
+co:Extracted %d bookmarks.
+cy:Extracted %d bookmarks.
+cz:Extracted %d bookmarks.
+de:Extracted %d bookmarks.
+dk:Extracted %d bookmarks.
+el:Extracted %d bookmarks.
+es:Extracted %d bookmarks.
+et:Extracted %d bookmarks.
+eu:Extracted %d bookmarks.
+fa:Extracted %d bookmarks.
+fi:Extracted %d bookmarks.
+fo:Extracted %d bookmarks.
+fr:Extracted %d bookmarks.
+fy-nl:Extracted %d bookmarks.
+ga:Extracted %d bookmarks.
+gl:Extracted %d bookmarks.
+he:Extracted %d bookmarks.
+hi:Extracted %d bookmarks.
+hr:Extracted %d bookmarks.
+hu:Extracted %d bookmarks.
+id:Extracted %d bookmarks.
+it:Extracted %d bookmarks.
+ja:Extracted %d bookmarks.
+jv:Extracted %d bookmarks.
+ka:Extracted %d bookmarks.
+kr:Extracted %d bookmarks.
+ku:Extracted %d bookmarks.
+kw:Extracted %d bookmarks.
+lt:Extracted %d bookmarks.
+lv:Extracted %d bookmarks.
+mk:Extracted %d bookmarks.
+ml:Extracted %d bookmarks.
+mm:Extracted %d bookmarks.
+my:Extracted %d bookmarks.
+ne:Extracted %d bookmarks.
+nl:Extracted %d bookmarks.
+nn:Extracted %d bookmarks.
+no:Extracted %d bookmarks.
+pa:Extracted %d bookmarks.
+pl:Extracted %d bookmarks.
+pt:Extracted %d bookmarks.
+ro:Extracted %d bookmarks.
+ru:Extracted %d bookmarks.
+sat:Extracted %d bookmarks.
+si:Extracted %d bookmarks.
+sk:Extracted %d bookmarks.
+sl:Extracted %d bookmarks.
+sn:Extracted %d bookmarks.
+sp-rs:Extracted %d bookmarks.
+sq:Extracted %d bookmarks.
+sr-rs:Extracted %d bookmarks.
+sv:Extracted %d bookmarks.
+ta:Extracted %d bookmarks.
+th:Extracted %d bookmarks.
+tl:Extracted %d bookmarks.
+tr:Extracted %d bookmarks.
+tw:已提取 %d 條書籤。
+uk:Extracted %d bookmarks.
+uz:Extracted %d bookmarks.
+vn:Extracted %d bookmarks.
+:Extracting bookmarks… %d / %d
+af:Extracting bookmarks… %d / %d
+am:Extracting bookmarks… %d / %d
+ar:Extracting bookmarks… %d / %d
+az:Extracting bookmarks… %d / %d
+bg:Extracting bookmarks… %d / %d
+bn:Extracting bookmarks… %d / %d
+br:Extracting bookmarks… %d / %d
+bs:Extracting bookmarks… %d / %d
+by:Extracting bookmarks… %d / %d
+ca:Extracting bookmarks… %d / %d
+ca-xv:Extracting bookmarks… %d / %d
+cn:正在提取书签… %d / %d
+co:Extracting bookmarks… %d / %d
+cy:Extracting bookmarks… %d / %d
+cz:Extracting bookmarks… %d / %d
+de:Extracting bookmarks… %d / %d
+dk:Extracting bookmarks… %d / %d
+el:Extracting bookmarks… %d / %d
+es:Extracting bookmarks… %d / %d
+et:Extracting bookmarks… %d / %d
+eu:Extracting bookmarks… %d / %d
+fa:Extracting bookmarks… %d / %d
+fi:Extracting bookmarks… %d / %d
+fo:Extracting bookmarks… %d / %d
+fr:Extracting bookmarks… %d / %d
+fy-nl:Extracting bookmarks… %d / %d
+ga:Extracting bookmarks… %d / %d
+gl:Extracting bookmarks… %d / %d
+he:Extracting bookmarks… %d / %d
+hi:Extracting bookmarks… %d / %d
+hr:Extracting bookmarks… %d / %d
+hu:Extracting bookmarks… %d / %d
+id:Extracting bookmarks… %d / %d
+it:Extracting bookmarks… %d / %d
+ja:Extracting bookmarks… %d / %d
+jv:Extracting bookmarks… %d / %d
+ka:Extracting bookmarks… %d / %d
+kr:Extracting bookmarks… %d / %d
+ku:Extracting bookmarks… %d / %d
+kw:Extracting bookmarks… %d / %d
+lt:Extracting bookmarks… %d / %d
+lv:Extracting bookmarks… %d / %d
+mk:Extracting bookmarks… %d / %d
+ml:Extracting bookmarks… %d / %d
+mm:Extracting bookmarks… %d / %d
+my:Extracting bookmarks… %d / %d
+ne:Extracting bookmarks… %d / %d
+nl:Extracting bookmarks… %d / %d
+nn:Extracting bookmarks… %d / %d
+no:Extracting bookmarks… %d / %d
+pa:Extracting bookmarks… %d / %d
+pl:Extracting bookmarks… %d / %d
+pt:Extracting bookmarks… %d / %d
+ro:Extracting bookmarks… %d / %d
+ru:Extracting bookmarks… %d / %d
+sat:Extracting bookmarks… %d / %d
+si:Extracting bookmarks… %d / %d
+sk:Extracting bookmarks… %d / %d
+sl:Extracting bookmarks… %d / %d
+sn:Extracting bookmarks… %d / %d
+sp-rs:Extracting bookmarks… %d / %d
+sq:Extracting bookmarks… %d / %d
+sr-rs:Extracting bookmarks… %d / %d
+sv:Extracting bookmarks… %d / %d
+ta:Extracting bookmarks… %d / %d
+th:Extracting bookmarks… %d / %d
+tl:Extracting bookmarks… %d / %d
+tr:Extracting bookmarks… %d / %d
+tw:正在提取書籤… %d / %d
+uk:Extracting bookmarks… %d / %d
+uz:Extracting bookmarks… %d / %d
+vn:Extracting bookmarks… %d / %d
 :Extremely slow (0.25×)
 am:Գերազանց դանդաղ (0.25×)
 br:Extremamente lento (0.25×)
@@ -6121,6 +7441,79 @@ nl:Snelkoppeling
 pl:Atrament
 sk:Atrament
 tw:筆跡
+:Ink Annotation (Ctrl+click to lock)
+af:Ink Annotation (Ctrl+click to lock)
+am:Ink Annotation (Ctrl+click to lock)
+ar:Ink Annotation (Ctrl+click to lock)
+az:Ink Annotation (Ctrl+click to lock)
+bg:Ink Annotation (Ctrl+click to lock)
+bn:Ink Annotation (Ctrl+click to lock)
+br:Ink Annotation (Ctrl+click to lock)
+bs:Ink Annotation (Ctrl+click to lock)
+by:Ink Annotation (Ctrl+click to lock)
+ca:Ink Annotation (Ctrl+click to lock)
+ca-xv:Ink Annotation (Ctrl+click to lock)
+cn:墨迹批注（Ctrl+点击锁定）
+co:Ink Annotation (Ctrl+click to lock)
+cy:Ink Annotation (Ctrl+click to lock)
+cz:Ink Annotation (Ctrl+click to lock)
+de:Ink Annotation (Ctrl+click to lock)
+dk:Ink Annotation (Ctrl+click to lock)
+el:Ink Annotation (Ctrl+click to lock)
+es:Ink Annotation (Ctrl+click to lock)
+et:Ink Annotation (Ctrl+click to lock)
+eu:Ink Annotation (Ctrl+click to lock)
+fa:Ink Annotation (Ctrl+click to lock)
+fi:Ink Annotation (Ctrl+click to lock)
+fo:Ink Annotation (Ctrl+click to lock)
+fr:Ink Annotation (Ctrl+click to lock)
+fy-nl:Ink Annotation (Ctrl+click to lock)
+ga:Ink Annotation (Ctrl+click to lock)
+gl:Ink Annotation (Ctrl+click to lock)
+he:Ink Annotation (Ctrl+click to lock)
+hi:Ink Annotation (Ctrl+click to lock)
+hr:Ink Annotation (Ctrl+click to lock)
+hu:Ink Annotation (Ctrl+click to lock)
+id:Ink Annotation (Ctrl+click to lock)
+it:Ink Annotation (Ctrl+click to lock)
+ja:Ink Annotation (Ctrl+click to lock)
+jv:Ink Annotation (Ctrl+click to lock)
+ka:Ink Annotation (Ctrl+click to lock)
+kr:Ink Annotation (Ctrl+click to lock)
+ku:Ink Annotation (Ctrl+click to lock)
+kw:Ink Annotation (Ctrl+click to lock)
+lt:Ink Annotation (Ctrl+click to lock)
+lv:Ink Annotation (Ctrl+click to lock)
+mk:Ink Annotation (Ctrl+click to lock)
+ml:Ink Annotation (Ctrl+click to lock)
+mm:Ink Annotation (Ctrl+click to lock)
+my:Ink Annotation (Ctrl+click to lock)
+ne:Ink Annotation (Ctrl+click to lock)
+nl:Ink Annotation (Ctrl+click to lock)
+nn:Ink Annotation (Ctrl+click to lock)
+no:Ink Annotation (Ctrl+click to lock)
+pa:Ink Annotation (Ctrl+click to lock)
+pl:Ink Annotation (Ctrl+click to lock)
+pt:Ink Annotation (Ctrl+click to lock)
+ro:Ink Annotation (Ctrl+click to lock)
+ru:Ink Annotation (Ctrl+click to lock)
+sat:Ink Annotation (Ctrl+click to lock)
+si:Ink Annotation (Ctrl+click to lock)
+sk:Ink Annotation (Ctrl+click to lock)
+sl:Ink Annotation (Ctrl+click to lock)
+sn:Ink Annotation (Ctrl+click to lock)
+sp-rs:Ink Annotation (Ctrl+click to lock)
+sq:Ink Annotation (Ctrl+click to lock)
+sr-rs:Ink Annotation (Ctrl+click to lock)
+sv:Ink Annotation (Ctrl+click to lock)
+ta:Ink Annotation (Ctrl+click to lock)
+th:Ink Annotation (Ctrl+click to lock)
+tl:Ink Annotation (Ctrl+click to lock)
+tr:Ink Annotation (Ctrl+click to lock)
+tw:墨跡註解（Ctrl+點選鎖定）
+uk:Ink Annotation (Ctrl+click to lock)
+uz:Ink Annotation (Ctrl+click to lock)
+vn:Ink Annotation (Ctrl+click to lock)
 :Install SumatraPDF
 am:Տեղադրել SumatraPDF-ը
 br:Instalar SumatraPDF
@@ -6342,6 +7735,79 @@ nl:Regel
 pl:Linia
 sk:Čiara
 tw:線條
+:Line Annotation (Ctrl+click to lock)
+af:Line Annotation (Ctrl+click to lock)
+am:Line Annotation (Ctrl+click to lock)
+ar:Line Annotation (Ctrl+click to lock)
+az:Line Annotation (Ctrl+click to lock)
+bg:Line Annotation (Ctrl+click to lock)
+bn:Line Annotation (Ctrl+click to lock)
+br:Line Annotation (Ctrl+click to lock)
+bs:Line Annotation (Ctrl+click to lock)
+by:Line Annotation (Ctrl+click to lock)
+ca:Line Annotation (Ctrl+click to lock)
+ca-xv:Line Annotation (Ctrl+click to lock)
+cn:直线批注（Ctrl+点击锁定）
+co:Line Annotation (Ctrl+click to lock)
+cy:Line Annotation (Ctrl+click to lock)
+cz:Line Annotation (Ctrl+click to lock)
+de:Line Annotation (Ctrl+click to lock)
+dk:Line Annotation (Ctrl+click to lock)
+el:Line Annotation (Ctrl+click to lock)
+es:Line Annotation (Ctrl+click to lock)
+et:Line Annotation (Ctrl+click to lock)
+eu:Line Annotation (Ctrl+click to lock)
+fa:Line Annotation (Ctrl+click to lock)
+fi:Line Annotation (Ctrl+click to lock)
+fo:Line Annotation (Ctrl+click to lock)
+fr:Line Annotation (Ctrl+click to lock)
+fy-nl:Line Annotation (Ctrl+click to lock)
+ga:Line Annotation (Ctrl+click to lock)
+gl:Line Annotation (Ctrl+click to lock)
+he:Line Annotation (Ctrl+click to lock)
+hi:Line Annotation (Ctrl+click to lock)
+hr:Line Annotation (Ctrl+click to lock)
+hu:Line Annotation (Ctrl+click to lock)
+id:Line Annotation (Ctrl+click to lock)
+it:Line Annotation (Ctrl+click to lock)
+ja:Line Annotation (Ctrl+click to lock)
+jv:Line Annotation (Ctrl+click to lock)
+ka:Line Annotation (Ctrl+click to lock)
+kr:Line Annotation (Ctrl+click to lock)
+ku:Line Annotation (Ctrl+click to lock)
+kw:Line Annotation (Ctrl+click to lock)
+lt:Line Annotation (Ctrl+click to lock)
+lv:Line Annotation (Ctrl+click to lock)
+mk:Line Annotation (Ctrl+click to lock)
+ml:Line Annotation (Ctrl+click to lock)
+mm:Line Annotation (Ctrl+click to lock)
+my:Line Annotation (Ctrl+click to lock)
+ne:Line Annotation (Ctrl+click to lock)
+nl:Line Annotation (Ctrl+click to lock)
+nn:Line Annotation (Ctrl+click to lock)
+no:Line Annotation (Ctrl+click to lock)
+pa:Line Annotation (Ctrl+click to lock)
+pl:Line Annotation (Ctrl+click to lock)
+pt:Line Annotation (Ctrl+click to lock)
+ro:Line Annotation (Ctrl+click to lock)
+ru:Line Annotation (Ctrl+click to lock)
+sat:Line Annotation (Ctrl+click to lock)
+si:Line Annotation (Ctrl+click to lock)
+sk:Line Annotation (Ctrl+click to lock)
+sl:Line Annotation (Ctrl+click to lock)
+sn:Line Annotation (Ctrl+click to lock)
+sp-rs:Line Annotation (Ctrl+click to lock)
+sq:Line Annotation (Ctrl+click to lock)
+sr-rs:Line Annotation (Ctrl+click to lock)
+sv:Line Annotation (Ctrl+click to lock)
+ta:Line Annotation (Ctrl+click to lock)
+th:Line Annotation (Ctrl+click to lock)
+tl:Line Annotation (Ctrl+click to lock)
+tr:Line Annotation (Ctrl+click to lock)
+tw:直線註解（Ctrl+點選鎖定）
+uk:Line Annotation (Ctrl+click to lock)
+uz:Line Annotation (Ctrl+click to lock)
+vn:Line Annotation (Ctrl+click to lock)
 :Line End:
 am:Տողի ավարտը.
 br:Fim da Linha:
@@ -7030,6 +8496,152 @@ nl:Nee
 pl:Nie
 sk:Nie
 tw:否
+:No OCR text to save. Recognize pages first.
+af:No OCR text to save. Recognize pages first.
+am:No OCR text to save. Recognize pages first.
+ar:No OCR text to save. Recognize pages first.
+az:No OCR text to save. Recognize pages first.
+bg:No OCR text to save. Recognize pages first.
+bn:No OCR text to save. Recognize pages first.
+br:No OCR text to save. Recognize pages first.
+bs:No OCR text to save. Recognize pages first.
+by:No OCR text to save. Recognize pages first.
+ca:No OCR text to save. Recognize pages first.
+ca-xv:No OCR text to save. Recognize pages first.
+cn:没有可保存的 OCR 文字。请先识别页面。
+co:No OCR text to save. Recognize pages first.
+cy:No OCR text to save. Recognize pages first.
+cz:No OCR text to save. Recognize pages first.
+de:No OCR text to save. Recognize pages first.
+dk:No OCR text to save. Recognize pages first.
+el:No OCR text to save. Recognize pages first.
+es:No OCR text to save. Recognize pages first.
+et:No OCR text to save. Recognize pages first.
+eu:No OCR text to save. Recognize pages first.
+fa:No OCR text to save. Recognize pages first.
+fi:No OCR text to save. Recognize pages first.
+fo:No OCR text to save. Recognize pages first.
+fr:No OCR text to save. Recognize pages first.
+fy-nl:No OCR text to save. Recognize pages first.
+ga:No OCR text to save. Recognize pages first.
+gl:No OCR text to save. Recognize pages first.
+he:No OCR text to save. Recognize pages first.
+hi:No OCR text to save. Recognize pages first.
+hr:No OCR text to save. Recognize pages first.
+hu:No OCR text to save. Recognize pages first.
+id:No OCR text to save. Recognize pages first.
+it:No OCR text to save. Recognize pages first.
+ja:No OCR text to save. Recognize pages first.
+jv:No OCR text to save. Recognize pages first.
+ka:No OCR text to save. Recognize pages first.
+kr:No OCR text to save. Recognize pages first.
+ku:No OCR text to save. Recognize pages first.
+kw:No OCR text to save. Recognize pages first.
+lt:No OCR text to save. Recognize pages first.
+lv:No OCR text to save. Recognize pages first.
+mk:No OCR text to save. Recognize pages first.
+ml:No OCR text to save. Recognize pages first.
+mm:No OCR text to save. Recognize pages first.
+my:No OCR text to save. Recognize pages first.
+ne:No OCR text to save. Recognize pages first.
+nl:No OCR text to save. Recognize pages first.
+nn:No OCR text to save. Recognize pages first.
+no:No OCR text to save. Recognize pages first.
+pa:No OCR text to save. Recognize pages first.
+pl:No OCR text to save. Recognize pages first.
+pt:No OCR text to save. Recognize pages first.
+ro:No OCR text to save. Recognize pages first.
+ru:No OCR text to save. Recognize pages first.
+sat:No OCR text to save. Recognize pages first.
+si:No OCR text to save. Recognize pages first.
+sk:No OCR text to save. Recognize pages first.
+sl:No OCR text to save. Recognize pages first.
+sn:No OCR text to save. Recognize pages first.
+sp-rs:No OCR text to save. Recognize pages first.
+sq:No OCR text to save. Recognize pages first.
+sr-rs:No OCR text to save. Recognize pages first.
+sv:No OCR text to save. Recognize pages first.
+ta:No OCR text to save. Recognize pages first.
+th:No OCR text to save. Recognize pages first.
+tl:No OCR text to save. Recognize pages first.
+tr:No OCR text to save. Recognize pages first.
+tw:沒有可儲存的 OCR 文字。請先識別頁面。
+uk:No OCR text to save. Recognize pages first.
+uz:No OCR text to save. Recognize pages first.
+vn:No OCR text to save. Recognize pages first.
+:No bookmarks
+af:No bookmarks
+am:No bookmarks
+ar:No bookmarks
+az:No bookmarks
+bg:No bookmarks
+bn:No bookmarks
+br:No bookmarks
+bs:No bookmarks
+by:No bookmarks
+ca:No bookmarks
+ca-xv:No bookmarks
+cn:暂无书签
+co:No bookmarks
+cy:No bookmarks
+cz:No bookmarks
+de:No bookmarks
+dk:No bookmarks
+el:No bookmarks
+es:No bookmarks
+et:No bookmarks
+eu:No bookmarks
+fa:No bookmarks
+fi:No bookmarks
+fo:No bookmarks
+fr:No bookmarks
+fy-nl:No bookmarks
+ga:No bookmarks
+gl:No bookmarks
+he:No bookmarks
+hi:No bookmarks
+hr:No bookmarks
+hu:No bookmarks
+id:No bookmarks
+it:No bookmarks
+ja:No bookmarks
+jv:No bookmarks
+ka:No bookmarks
+kr:No bookmarks
+ku:No bookmarks
+kw:No bookmarks
+lt:No bookmarks
+lv:No bookmarks
+mk:No bookmarks
+ml:No bookmarks
+mm:No bookmarks
+my:No bookmarks
+ne:No bookmarks
+nl:No bookmarks
+nn:No bookmarks
+no:No bookmarks
+pa:No bookmarks
+pl:No bookmarks
+pt:No bookmarks
+ro:No bookmarks
+ru:No bookmarks
+sat:No bookmarks
+si:No bookmarks
+sk:No bookmarks
+sl:No bookmarks
+sn:No bookmarks
+sp-rs:No bookmarks
+sq:No bookmarks
+sr-rs:No bookmarks
+sv:No bookmarks
+ta:No bookmarks
+th:No bookmarks
+tl:No bookmarks
+tr:No bookmarks
+tw:暫無書籤
+uk:No bookmarks
+uz:No bookmarks
+vn:No bookmarks
 :No definition for "%s".
 am:ለ"%s" ምንም ትርጉም አልተገኘም።
 br:N'eus termenadur ebet evit "%s".
@@ -7042,6 +8654,152 @@ nl:Geen definitie voor "%s".
 pl:Brak definicji dla "%s".
 sk:Žiadna definícia pre "%s".
 tw:未找到「%s」的釋義。
+:No headings found. OCR scanned pages first, then try again.
+af:No headings found. OCR scanned pages first, then try again.
+am:No headings found. OCR scanned pages first, then try again.
+ar:No headings found. OCR scanned pages first, then try again.
+az:No headings found. OCR scanned pages first, then try again.
+bg:No headings found. OCR scanned pages first, then try again.
+bn:No headings found. OCR scanned pages first, then try again.
+br:No headings found. OCR scanned pages first, then try again.
+bs:No headings found. OCR scanned pages first, then try again.
+by:No headings found. OCR scanned pages first, then try again.
+ca:No headings found. OCR scanned pages first, then try again.
+ca-xv:No headings found. OCR scanned pages first, then try again.
+cn:没有找到标题。请先识别扫描页，然后再试。
+co:No headings found. OCR scanned pages first, then try again.
+cy:No headings found. OCR scanned pages first, then try again.
+cz:No headings found. OCR scanned pages first, then try again.
+de:No headings found. OCR scanned pages first, then try again.
+dk:No headings found. OCR scanned pages first, then try again.
+el:No headings found. OCR scanned pages first, then try again.
+es:No headings found. OCR scanned pages first, then try again.
+et:No headings found. OCR scanned pages first, then try again.
+eu:No headings found. OCR scanned pages first, then try again.
+fa:No headings found. OCR scanned pages first, then try again.
+fi:No headings found. OCR scanned pages first, then try again.
+fo:No headings found. OCR scanned pages first, then try again.
+fr:No headings found. OCR scanned pages first, then try again.
+fy-nl:No headings found. OCR scanned pages first, then try again.
+ga:No headings found. OCR scanned pages first, then try again.
+gl:No headings found. OCR scanned pages first, then try again.
+he:No headings found. OCR scanned pages first, then try again.
+hi:No headings found. OCR scanned pages first, then try again.
+hr:No headings found. OCR scanned pages first, then try again.
+hu:No headings found. OCR scanned pages first, then try again.
+id:No headings found. OCR scanned pages first, then try again.
+it:No headings found. OCR scanned pages first, then try again.
+ja:No headings found. OCR scanned pages first, then try again.
+jv:No headings found. OCR scanned pages first, then try again.
+ka:No headings found. OCR scanned pages first, then try again.
+kr:No headings found. OCR scanned pages first, then try again.
+ku:No headings found. OCR scanned pages first, then try again.
+kw:No headings found. OCR scanned pages first, then try again.
+lt:No headings found. OCR scanned pages first, then try again.
+lv:No headings found. OCR scanned pages first, then try again.
+mk:No headings found. OCR scanned pages first, then try again.
+ml:No headings found. OCR scanned pages first, then try again.
+mm:No headings found. OCR scanned pages first, then try again.
+my:No headings found. OCR scanned pages first, then try again.
+ne:No headings found. OCR scanned pages first, then try again.
+nl:No headings found. OCR scanned pages first, then try again.
+nn:No headings found. OCR scanned pages first, then try again.
+no:No headings found. OCR scanned pages first, then try again.
+pa:No headings found. OCR scanned pages first, then try again.
+pl:No headings found. OCR scanned pages first, then try again.
+pt:No headings found. OCR scanned pages first, then try again.
+ro:No headings found. OCR scanned pages first, then try again.
+ru:No headings found. OCR scanned pages first, then try again.
+sat:No headings found. OCR scanned pages first, then try again.
+si:No headings found. OCR scanned pages first, then try again.
+sk:No headings found. OCR scanned pages first, then try again.
+sl:No headings found. OCR scanned pages first, then try again.
+sn:No headings found. OCR scanned pages first, then try again.
+sp-rs:No headings found. OCR scanned pages first, then try again.
+sq:No headings found. OCR scanned pages first, then try again.
+sr-rs:No headings found. OCR scanned pages first, then try again.
+sv:No headings found. OCR scanned pages first, then try again.
+ta:No headings found. OCR scanned pages first, then try again.
+th:No headings found. OCR scanned pages first, then try again.
+tl:No headings found. OCR scanned pages first, then try again.
+tr:No headings found. OCR scanned pages first, then try again.
+tw:找不到標題。請先識別掃描頁，然後再試。
+uk:No headings found. OCR scanned pages first, then try again.
+uz:No headings found. OCR scanned pages first, then try again.
+vn:No headings found. OCR scanned pages first, then try again.
+:No headings found. Recognize the pages first, then try again.
+af:No headings found. Recognize the pages first, then try again.
+am:No headings found. Recognize the pages first, then try again.
+ar:No headings found. Recognize the pages first, then try again.
+az:No headings found. Recognize the pages first, then try again.
+bg:No headings found. Recognize the pages first, then try again.
+bn:No headings found. Recognize the pages first, then try again.
+br:No headings found. Recognize the pages first, then try again.
+bs:No headings found. Recognize the pages first, then try again.
+by:No headings found. Recognize the pages first, then try again.
+ca:No headings found. Recognize the pages first, then try again.
+ca-xv:No headings found. Recognize the pages first, then try again.
+cn:没有找到标题。请先识别文字后再试。
+co:No headings found. Recognize the pages first, then try again.
+cy:No headings found. Recognize the pages first, then try again.
+cz:No headings found. Recognize the pages first, then try again.
+de:No headings found. Recognize the pages first, then try again.
+dk:No headings found. Recognize the pages first, then try again.
+el:No headings found. Recognize the pages first, then try again.
+es:No headings found. Recognize the pages first, then try again.
+et:No headings found. Recognize the pages first, then try again.
+eu:No headings found. Recognize the pages first, then try again.
+fa:No headings found. Recognize the pages first, then try again.
+fi:No headings found. Recognize the pages first, then try again.
+fo:No headings found. Recognize the pages first, then try again.
+fr:No headings found. Recognize the pages first, then try again.
+fy-nl:No headings found. Recognize the pages first, then try again.
+ga:No headings found. Recognize the pages first, then try again.
+gl:No headings found. Recognize the pages first, then try again.
+he:No headings found. Recognize the pages first, then try again.
+hi:No headings found. Recognize the pages first, then try again.
+hr:No headings found. Recognize the pages first, then try again.
+hu:No headings found. Recognize the pages first, then try again.
+id:No headings found. Recognize the pages first, then try again.
+it:No headings found. Recognize the pages first, then try again.
+ja:No headings found. Recognize the pages first, then try again.
+jv:No headings found. Recognize the pages first, then try again.
+ka:No headings found. Recognize the pages first, then try again.
+kr:No headings found. Recognize the pages first, then try again.
+ku:No headings found. Recognize the pages first, then try again.
+kw:No headings found. Recognize the pages first, then try again.
+lt:No headings found. Recognize the pages first, then try again.
+lv:No headings found. Recognize the pages first, then try again.
+mk:No headings found. Recognize the pages first, then try again.
+ml:No headings found. Recognize the pages first, then try again.
+mm:No headings found. Recognize the pages first, then try again.
+my:No headings found. Recognize the pages first, then try again.
+ne:No headings found. Recognize the pages first, then try again.
+nl:No headings found. Recognize the pages first, then try again.
+nn:No headings found. Recognize the pages first, then try again.
+no:No headings found. Recognize the pages first, then try again.
+pa:No headings found. Recognize the pages first, then try again.
+pl:No headings found. Recognize the pages first, then try again.
+pt:No headings found. Recognize the pages first, then try again.
+ro:No headings found. Recognize the pages first, then try again.
+ru:No headings found. Recognize the pages first, then try again.
+sat:No headings found. Recognize the pages first, then try again.
+si:No headings found. Recognize the pages first, then try again.
+sk:No headings found. Recognize the pages first, then try again.
+sl:No headings found. Recognize the pages first, then try again.
+sn:No headings found. Recognize the pages first, then try again.
+sp-rs:No headings found. Recognize the pages first, then try again.
+sq:No headings found. Recognize the pages first, then try again.
+sr-rs:No headings found. Recognize the pages first, then try again.
+sv:No headings found. Recognize the pages first, then try again.
+ta:No headings found. Recognize the pages first, then try again.
+th:No headings found. Recognize the pages first, then try again.
+tl:No headings found. Recognize the pages first, then try again.
+tr:No headings found. Recognize the pages first, then try again.
+tw:找不到標題。請先識別文字後再試。
+uk:No headings found. Recognize the pages first, then try again.
+uz:No headings found. Recognize the pages first, then try again.
+vn:No headings found. Recognize the pages first, then try again.
 :No matches were found
 am:Ոչինչ չի գտնվել
 br:Não foram achadas combinações
@@ -7054,6 +8812,79 @@ nl:Geen zoekresultaat gevonden
 pl:Nie znaleziono wyników
 sk:Nenájdené podľa zodpovedajúcich kritérií
 tw:找不到結果
+:No page to recognize.
+af:No page to recognize.
+am:No page to recognize.
+ar:No page to recognize.
+az:No page to recognize.
+bg:No page to recognize.
+bn:No page to recognize.
+br:No page to recognize.
+bs:No page to recognize.
+by:No page to recognize.
+ca:No page to recognize.
+ca-xv:No page to recognize.
+cn:没有可识别的页面。
+co:No page to recognize.
+cy:No page to recognize.
+cz:No page to recognize.
+de:No page to recognize.
+dk:No page to recognize.
+el:No page to recognize.
+es:No page to recognize.
+et:No page to recognize.
+eu:No page to recognize.
+fa:No page to recognize.
+fi:No page to recognize.
+fo:No page to recognize.
+fr:No page to recognize.
+fy-nl:No page to recognize.
+ga:No page to recognize.
+gl:No page to recognize.
+he:No page to recognize.
+hi:No page to recognize.
+hr:No page to recognize.
+hu:No page to recognize.
+id:No page to recognize.
+it:No page to recognize.
+ja:No page to recognize.
+jv:No page to recognize.
+ka:No page to recognize.
+kr:No page to recognize.
+ku:No page to recognize.
+kw:No page to recognize.
+lt:No page to recognize.
+lv:No page to recognize.
+mk:No page to recognize.
+ml:No page to recognize.
+mm:No page to recognize.
+my:No page to recognize.
+ne:No page to recognize.
+nl:No page to recognize.
+nn:No page to recognize.
+no:No page to recognize.
+pa:No page to recognize.
+pl:No page to recognize.
+pt:No page to recognize.
+ro:No page to recognize.
+ru:No page to recognize.
+sat:No page to recognize.
+si:No page to recognize.
+sk:No page to recognize.
+sl:No page to recognize.
+sn:No page to recognize.
+sp-rs:No page to recognize.
+sq:No page to recognize.
+sr-rs:No page to recognize.
+sv:No page to recognize.
+ta:No page to recognize.
+th:No page to recognize.
+tl:No page to recognize.
+tr:No page to recognize.
+tw:沒有可識別的頁面。
+uk:No page to recognize.
+uz:No page to recognize.
+vn:No page to recognize.
 :No result found around line %u in file %s
 am:Ոչինչ չի գտնվել %u տողում %s ֆայլի
 br:Nenhum resultado achado próximo da linha %u no arquivo %s
@@ -7236,6 +9067,79 @@ tw:正常 (1.0×)
 uk:Звичайна (1.0×)
 uz:Oddiy (1.0×)
 vn:Bình thường (1.0×)
+:Not now
+af:Not now
+am:Not now
+ar:Not now
+az:Not now
+bg:Not now
+bn:Not now
+br:Not now
+bs:Not now
+by:Not now
+ca:Not now
+ca-xv:Not now
+cn:暂不
+co:Not now
+cy:Not now
+cz:Not now
+de:Not now
+dk:Not now
+el:Not now
+es:Not now
+et:Not now
+eu:Not now
+fa:Not now
+fi:Not now
+fo:Not now
+fr:Not now
+fy-nl:Not now
+ga:Not now
+gl:Not now
+he:Not now
+hi:Not now
+hr:Not now
+hu:Not now
+id:Not now
+it:Not now
+ja:Not now
+jv:Not now
+ka:Not now
+kr:Not now
+ku:Not now
+kw:Not now
+lt:Not now
+lv:Not now
+mk:Not now
+ml:Not now
+mm:Not now
+my:Not now
+ne:Not now
+nl:Not now
+nn:Not now
+no:Not now
+pa:Not now
+pl:Not now
+pt:Not now
+ro:Not now
+ru:Not now
+sat:Not now
+si:Not now
+sk:Not now
+sl:Not now
+sn:Not now
+sp-rs:Not now
+sq:Not now
+sr-rs:Not now
+sv:Not now
+ta:Not now
+th:Not now
+tl:Not now
+tr:Not now
+tw:暫不
+uk:Not now
+uz:Not now
+vn:Not now
 :Number of Images:
 br:Número de Imagens:
 cn:图像数:
@@ -7256,6 +9160,590 @@ nl:Aantal pagina's:
 pl:Liczba stron:
 sk:Počet strán:
 tw:頁數：
+:OCR All Pages
+af:OCR All Pages
+am:OCR All Pages
+ar:OCR All Pages
+az:OCR All Pages
+bg:OCR All Pages
+bn:OCR All Pages
+br:OCR All Pages
+bs:OCR All Pages
+by:OCR All Pages
+ca:OCR All Pages
+ca-xv:OCR All Pages
+cn:全文识别
+co:OCR All Pages
+cy:OCR All Pages
+cz:OCR All Pages
+de:OCR All Pages
+dk:OCR All Pages
+el:OCR All Pages
+es:OCR All Pages
+et:OCR All Pages
+eu:OCR All Pages
+fa:OCR All Pages
+fi:OCR All Pages
+fo:OCR All Pages
+fr:OCR All Pages
+fy-nl:OCR All Pages
+ga:OCR All Pages
+gl:OCR All Pages
+he:OCR All Pages
+hi:OCR All Pages
+hr:OCR All Pages
+hu:OCR All Pages
+id:OCR All Pages
+it:OCR All Pages
+ja:OCR All Pages
+jv:OCR All Pages
+ka:OCR All Pages
+kr:OCR All Pages
+ku:OCR All Pages
+kw:OCR All Pages
+lt:OCR All Pages
+lv:OCR All Pages
+mk:OCR All Pages
+ml:OCR All Pages
+mm:OCR All Pages
+my:OCR All Pages
+ne:OCR All Pages
+nl:OCR All Pages
+nn:OCR All Pages
+no:OCR All Pages
+pa:OCR All Pages
+pl:OCR All Pages
+pt:OCR All Pages
+ro:OCR All Pages
+ru:OCR All Pages
+sat:OCR All Pages
+si:OCR All Pages
+sk:OCR All Pages
+sl:OCR All Pages
+sn:OCR All Pages
+sp-rs:OCR All Pages
+sq:OCR All Pages
+sr-rs:OCR All Pages
+sv:OCR All Pages
+ta:OCR All Pages
+th:OCR All Pages
+tl:OCR All Pages
+tr:OCR All Pages
+tw:全文識別
+uk:OCR All Pages
+uz:OCR All Pages
+vn:OCR All Pages
+:OCR Current Page
+af:OCR Current Page
+am:OCR Current Page
+ar:OCR Current Page
+az:OCR Current Page
+bg:OCR Current Page
+bn:OCR Current Page
+br:OCR Current Page
+bs:OCR Current Page
+by:OCR Current Page
+ca:OCR Current Page
+ca-xv:OCR Current Page
+cn:识别当前页
+co:OCR Current Page
+cy:OCR Current Page
+cz:OCR Current Page
+de:OCR Current Page
+dk:OCR Current Page
+el:OCR Current Page
+es:OCR Current Page
+et:OCR Current Page
+eu:OCR Current Page
+fa:OCR Current Page
+fi:OCR Current Page
+fo:OCR Current Page
+fr:OCR Current Page
+fy-nl:OCR Current Page
+ga:OCR Current Page
+gl:OCR Current Page
+he:OCR Current Page
+hi:OCR Current Page
+hr:OCR Current Page
+hu:OCR Current Page
+id:OCR Current Page
+it:OCR Current Page
+ja:OCR Current Page
+jv:OCR Current Page
+ka:OCR Current Page
+kr:OCR Current Page
+ku:OCR Current Page
+kw:OCR Current Page
+lt:OCR Current Page
+lv:OCR Current Page
+mk:OCR Current Page
+ml:OCR Current Page
+mm:OCR Current Page
+my:OCR Current Page
+ne:OCR Current Page
+nl:OCR Current Page
+nn:OCR Current Page
+no:OCR Current Page
+pa:OCR Current Page
+pl:OCR Current Page
+pt:OCR Current Page
+ro:OCR Current Page
+ru:OCR Current Page
+sat:OCR Current Page
+si:OCR Current Page
+sk:OCR Current Page
+sl:OCR Current Page
+sn:OCR Current Page
+sp-rs:OCR Current Page
+sq:OCR Current Page
+sr-rs:OCR Current Page
+sv:OCR Current Page
+ta:OCR Current Page
+th:OCR Current Page
+tl:OCR Current Page
+tr:OCR Current Page
+tw:識別目前頁
+uk:OCR Current Page
+uz:OCR Current Page
+vn:OCR Current Page
+:OCR Region
+af:OCR Region
+am:OCR Region
+ar:OCR Region
+az:OCR Region
+bg:OCR Region
+bn:OCR Region
+br:OCR Region
+bs:OCR Region
+by:OCR Region
+ca:OCR Region
+ca-xv:OCR Region
+cn:框选识别
+co:OCR Region
+cy:OCR Region
+cz:OCR Region
+de:OCR Region
+dk:OCR Region
+el:OCR Region
+es:OCR Region
+et:OCR Region
+eu:OCR Region
+fa:OCR Region
+fi:OCR Region
+fo:OCR Region
+fr:OCR Region
+fy-nl:OCR Region
+ga:OCR Region
+gl:OCR Region
+he:OCR Region
+hi:OCR Region
+hr:OCR Region
+hu:OCR Region
+id:OCR Region
+it:OCR Region
+ja:OCR Region
+jv:OCR Region
+ka:OCR Region
+kr:OCR Region
+ku:OCR Region
+kw:OCR Region
+lt:OCR Region
+lv:OCR Region
+mk:OCR Region
+ml:OCR Region
+mm:OCR Region
+my:OCR Region
+ne:OCR Region
+nl:OCR Region
+nn:OCR Region
+no:OCR Region
+pa:OCR Region
+pl:OCR Region
+pt:OCR Region
+ro:OCR Region
+ru:OCR Region
+sat:OCR Region
+si:OCR Region
+sk:OCR Region
+sl:OCR Region
+sn:OCR Region
+sp-rs:OCR Region
+sq:OCR Region
+sr-rs:OCR Region
+sv:OCR Region
+ta:OCR Region
+th:OCR Region
+tl:OCR Region
+tr:OCR Region
+tw:框選識別
+uk:OCR Region
+uz:OCR Region
+vn:OCR Region
+:OCR is already running. Please wait until it finishes.
+af:OCR is already running. Please wait until it finishes.
+am:OCR is already running. Please wait until it finishes.
+ar:OCR is already running. Please wait until it finishes.
+az:OCR is already running. Please wait until it finishes.
+bg:OCR is already running. Please wait until it finishes.
+bn:OCR is already running. Please wait until it finishes.
+br:OCR is already running. Please wait until it finishes.
+bs:OCR is already running. Please wait until it finishes.
+by:OCR is already running. Please wait until it finishes.
+ca:OCR is already running. Please wait until it finishes.
+ca-xv:OCR is already running. Please wait until it finishes.
+cn:已有识别任务正在进行，请等待完成后再试。
+co:OCR is already running. Please wait until it finishes.
+cy:OCR is already running. Please wait until it finishes.
+cz:OCR is already running. Please wait until it finishes.
+de:OCR is already running. Please wait until it finishes.
+dk:OCR is already running. Please wait until it finishes.
+el:OCR is already running. Please wait until it finishes.
+es:OCR is already running. Please wait until it finishes.
+et:OCR is already running. Please wait until it finishes.
+eu:OCR is already running. Please wait until it finishes.
+fa:OCR is already running. Please wait until it finishes.
+fi:OCR is already running. Please wait until it finishes.
+fo:OCR is already running. Please wait until it finishes.
+fr:OCR is already running. Please wait until it finishes.
+fy-nl:OCR is already running. Please wait until it finishes.
+ga:OCR is already running. Please wait until it finishes.
+gl:OCR is already running. Please wait until it finishes.
+he:OCR is already running. Please wait until it finishes.
+hi:OCR is already running. Please wait until it finishes.
+hr:OCR is already running. Please wait until it finishes.
+hu:OCR is already running. Please wait until it finishes.
+id:OCR is already running. Please wait until it finishes.
+it:OCR is already running. Please wait until it finishes.
+ja:OCR is already running. Please wait until it finishes.
+jv:OCR is already running. Please wait until it finishes.
+ka:OCR is already running. Please wait until it finishes.
+kr:OCR is already running. Please wait until it finishes.
+ku:OCR is already running. Please wait until it finishes.
+kw:OCR is already running. Please wait until it finishes.
+lt:OCR is already running. Please wait until it finishes.
+lv:OCR is already running. Please wait until it finishes.
+mk:OCR is already running. Please wait until it finishes.
+ml:OCR is already running. Please wait until it finishes.
+mm:OCR is already running. Please wait until it finishes.
+my:OCR is already running. Please wait until it finishes.
+ne:OCR is already running. Please wait until it finishes.
+nl:OCR is already running. Please wait until it finishes.
+nn:OCR is already running. Please wait until it finishes.
+no:OCR is already running. Please wait until it finishes.
+pa:OCR is already running. Please wait until it finishes.
+pl:OCR is already running. Please wait until it finishes.
+pt:OCR is already running. Please wait until it finishes.
+ro:OCR is already running. Please wait until it finishes.
+ru:OCR is already running. Please wait until it finishes.
+sat:OCR is already running. Please wait until it finishes.
+si:OCR is already running. Please wait until it finishes.
+sk:OCR is already running. Please wait until it finishes.
+sl:OCR is already running. Please wait until it finishes.
+sn:OCR is already running. Please wait until it finishes.
+sp-rs:OCR is already running. Please wait until it finishes.
+sq:OCR is already running. Please wait until it finishes.
+sr-rs:OCR is already running. Please wait until it finishes.
+sv:OCR is already running. Please wait until it finishes.
+ta:OCR is already running. Please wait until it finishes.
+th:OCR is already running. Please wait until it finishes.
+tl:OCR is already running. Please wait until it finishes.
+tr:OCR is already running. Please wait until it finishes.
+tw:已有識別任務正在進行，請等待完成後再試。
+uk:OCR is already running. Please wait until it finishes.
+uz:OCR is already running. Please wait until it finishes.
+vn:OCR is already running. Please wait until it finishes.
+:OCR is not available for this document type.
+af:OCR is not available for this document type.
+am:OCR is not available for this document type.
+ar:OCR is not available for this document type.
+az:OCR is not available for this document type.
+bg:OCR is not available for this document type.
+bn:OCR is not available for this document type.
+br:OCR is not available for this document type.
+bs:OCR is not available for this document type.
+by:OCR is not available for this document type.
+ca:OCR is not available for this document type.
+ca-xv:OCR is not available for this document type.
+cn:此文档类型不支持 OCR。
+co:OCR is not available for this document type.
+cy:OCR is not available for this document type.
+cz:OCR is not available for this document type.
+de:OCR is not available for this document type.
+dk:OCR is not available for this document type.
+el:OCR is not available for this document type.
+es:OCR is not available for this document type.
+et:OCR is not available for this document type.
+eu:OCR is not available for this document type.
+fa:OCR is not available for this document type.
+fi:OCR is not available for this document type.
+fo:OCR is not available for this document type.
+fr:OCR is not available for this document type.
+fy-nl:OCR is not available for this document type.
+ga:OCR is not available for this document type.
+gl:OCR is not available for this document type.
+he:OCR is not available for this document type.
+hi:OCR is not available for this document type.
+hr:OCR is not available for this document type.
+hu:OCR is not available for this document type.
+id:OCR is not available for this document type.
+it:OCR is not available for this document type.
+ja:OCR is not available for this document type.
+jv:OCR is not available for this document type.
+ka:OCR is not available for this document type.
+kr:OCR is not available for this document type.
+ku:OCR is not available for this document type.
+kw:OCR is not available for this document type.
+lt:OCR is not available for this document type.
+lv:OCR is not available for this document type.
+mk:OCR is not available for this document type.
+ml:OCR is not available for this document type.
+mm:OCR is not available for this document type.
+my:OCR is not available for this document type.
+ne:OCR is not available for this document type.
+nl:OCR is not available for this document type.
+nn:OCR is not available for this document type.
+no:OCR is not available for this document type.
+pa:OCR is not available for this document type.
+pl:OCR is not available for this document type.
+pt:OCR is not available for this document type.
+ro:OCR is not available for this document type.
+ru:OCR is not available for this document type.
+sat:OCR is not available for this document type.
+si:OCR is not available for this document type.
+sk:OCR is not available for this document type.
+sl:OCR is not available for this document type.
+sn:OCR is not available for this document type.
+sp-rs:OCR is not available for this document type.
+sq:OCR is not available for this document type.
+sr-rs:OCR is not available for this document type.
+sv:OCR is not available for this document type.
+ta:OCR is not available for this document type.
+th:OCR is not available for this document type.
+tl:OCR is not available for this document type.
+tr:OCR is not available for this document type.
+tw:此文件類型不支援 OCR。
+uk:OCR is not available for this document type.
+uz:OCR is not available for this document type.
+vn:OCR is not available for this document type.
+:OCR is only available for PDF and similar documents.
+af:OCR is only available for PDF and similar documents.
+am:OCR is only available for PDF and similar documents.
+ar:OCR is only available for PDF and similar documents.
+az:OCR is only available for PDF and similar documents.
+bg:OCR is only available for PDF and similar documents.
+bn:OCR is only available for PDF and similar documents.
+br:OCR is only available for PDF and similar documents.
+bs:OCR is only available for PDF and similar documents.
+by:OCR is only available for PDF and similar documents.
+ca:OCR is only available for PDF and similar documents.
+ca-xv:OCR is only available for PDF and similar documents.
+cn:OCR 仅适用于 PDF 及同类文档。
+co:OCR is only available for PDF and similar documents.
+cy:OCR is only available for PDF and similar documents.
+cz:OCR is only available for PDF and similar documents.
+de:OCR is only available for PDF and similar documents.
+dk:OCR is only available for PDF and similar documents.
+el:OCR is only available for PDF and similar documents.
+es:OCR is only available for PDF and similar documents.
+et:OCR is only available for PDF and similar documents.
+eu:OCR is only available for PDF and similar documents.
+fa:OCR is only available for PDF and similar documents.
+fi:OCR is only available for PDF and similar documents.
+fo:OCR is only available for PDF and similar documents.
+fr:OCR is only available for PDF and similar documents.
+fy-nl:OCR is only available for PDF and similar documents.
+ga:OCR is only available for PDF and similar documents.
+gl:OCR is only available for PDF and similar documents.
+he:OCR is only available for PDF and similar documents.
+hi:OCR is only available for PDF and similar documents.
+hr:OCR is only available for PDF and similar documents.
+hu:OCR is only available for PDF and similar documents.
+id:OCR is only available for PDF and similar documents.
+it:OCR is only available for PDF and similar documents.
+ja:OCR is only available for PDF and similar documents.
+jv:OCR is only available for PDF and similar documents.
+ka:OCR is only available for PDF and similar documents.
+kr:OCR is only available for PDF and similar documents.
+ku:OCR is only available for PDF and similar documents.
+kw:OCR is only available for PDF and similar documents.
+lt:OCR is only available for PDF and similar documents.
+lv:OCR is only available for PDF and similar documents.
+mk:OCR is only available for PDF and similar documents.
+ml:OCR is only available for PDF and similar documents.
+mm:OCR is only available for PDF and similar documents.
+my:OCR is only available for PDF and similar documents.
+ne:OCR is only available for PDF and similar documents.
+nl:OCR is only available for PDF and similar documents.
+nn:OCR is only available for PDF and similar documents.
+no:OCR is only available for PDF and similar documents.
+pa:OCR is only available for PDF and similar documents.
+pl:OCR is only available for PDF and similar documents.
+pt:OCR is only available for PDF and similar documents.
+ro:OCR is only available for PDF and similar documents.
+ru:OCR is only available for PDF and similar documents.
+sat:OCR is only available for PDF and similar documents.
+si:OCR is only available for PDF and similar documents.
+sk:OCR is only available for PDF and similar documents.
+sl:OCR is only available for PDF and similar documents.
+sn:OCR is only available for PDF and similar documents.
+sp-rs:OCR is only available for PDF and similar documents.
+sq:OCR is only available for PDF and similar documents.
+sr-rs:OCR is only available for PDF and similar documents.
+sv:OCR is only available for PDF and similar documents.
+ta:OCR is only available for PDF and similar documents.
+th:OCR is only available for PDF and similar documents.
+tl:OCR is only available for PDF and similar documents.
+tr:OCR is only available for PDF and similar documents.
+tw:OCR 僅適用於 PDF 及同類文件。
+uk:OCR is only available for PDF and similar documents.
+uz:OCR is only available for PDF and similar documents.
+vn:OCR is only available for PDF and similar documents.
+:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+af:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+am:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+ar:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+az:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+bg:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+bn:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+br:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+bs:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+by:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+ca:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+ca-xv:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+cn:未找到 OCR 模型。\n请将 onnxruntime.dll、det.onnx、rec.onnx 和 keys.txt 放到：\n%s
+co:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+cy:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+cz:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+de:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+dk:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+el:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+es:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+et:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+eu:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+fa:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+fi:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+fo:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+fr:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+fy-nl:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+ga:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+gl:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+he:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+hi:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+hr:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+hu:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+id:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+it:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+ja:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+jv:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+ka:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+kr:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+ku:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+kw:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+lt:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+lv:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+mk:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+ml:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+mm:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+my:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+ne:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+nl:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+nn:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+no:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+pa:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+pl:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+pt:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+ro:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+ru:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+sat:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+si:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+sk:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+sl:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+sn:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+sp-rs:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+sq:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+sr-rs:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+sv:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+ta:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+th:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+tl:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+tr:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+tw:找不到 OCR 模型。\n請將 onnxruntime.dll、det.onnx、rec.onnx 和 keys.txt 放到：\n%s
+uk:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+uz:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+vn:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
+:OCR region
+af:OCR region
+am:OCR region
+ar:OCR region
+az:OCR region
+bg:OCR region
+bn:OCR region
+br:OCR region
+bs:OCR region
+by:OCR region
+ca:OCR region
+ca-xv:OCR region
+cn:框选识别
+co:OCR region
+cy:OCR region
+cz:OCR region
+de:OCR region
+dk:OCR region
+el:OCR region
+es:OCR region
+et:OCR region
+eu:OCR region
+fa:OCR region
+fi:OCR region
+fo:OCR region
+fr:OCR region
+fy-nl:OCR region
+ga:OCR region
+gl:OCR region
+he:OCR region
+hi:OCR region
+hr:OCR region
+hu:OCR region
+id:OCR region
+it:OCR region
+ja:OCR region
+jv:OCR region
+ka:OCR region
+kr:OCR region
+ku:OCR region
+kw:OCR region
+lt:OCR region
+lv:OCR region
+mk:OCR region
+ml:OCR region
+mm:OCR region
+my:OCR region
+ne:OCR region
+nl:OCR region
+nn:OCR region
+no:OCR region
+pa:OCR region
+pl:OCR region
+pt:OCR region
+ro:OCR region
+ru:OCR region
+sat:OCR region
+si:OCR region
+sk:OCR region
+sl:OCR region
+sn:OCR region
+sp-rs:OCR region
+sq:OCR region
+sr-rs:OCR region
+sv:OCR region
+ta:OCR region
+th:OCR region
+tl:OCR region
+tr:OCR region
+tw:框選識別
+uk:OCR region
+uz:OCR region
+vn:OCR region
 :OK
 am:Լավ
 br:OK
@@ -9194,6 +11682,79 @@ tw:朗讀 · %s · 第 %d/%d 頁 · %s
 uk:Читання · %s · сторінка %d з %d · %s
 uz:O'qilmoqda · %s · %d/%d bet · %s
 vn:Đang đọc · %s · trang %d/%d · %s
+:Ready to search
+af:Ready to search
+am:Ready to search
+ar:Ready to search
+az:Ready to search
+bg:Ready to search
+bn:Ready to search
+br:Ready to search
+bs:Ready to search
+by:Ready to search
+ca:Ready to search
+ca-xv:Ready to search
+cn:可以搜索了
+co:Ready to search
+cy:Ready to search
+cz:Ready to search
+de:Ready to search
+dk:Ready to search
+el:Ready to search
+es:Ready to search
+et:Ready to search
+eu:Ready to search
+fa:Ready to search
+fi:Ready to search
+fo:Ready to search
+fr:Ready to search
+fy-nl:Ready to search
+ga:Ready to search
+gl:Ready to search
+he:Ready to search
+hi:Ready to search
+hr:Ready to search
+hu:Ready to search
+id:Ready to search
+it:Ready to search
+ja:Ready to search
+jv:Ready to search
+ka:Ready to search
+kr:Ready to search
+ku:Ready to search
+kw:Ready to search
+lt:Ready to search
+lv:Ready to search
+mk:Ready to search
+ml:Ready to search
+mm:Ready to search
+my:Ready to search
+ne:Ready to search
+nl:Ready to search
+nn:Ready to search
+no:Ready to search
+pa:Ready to search
+pl:Ready to search
+pt:Ready to search
+ro:Ready to search
+ru:Ready to search
+sat:Ready to search
+si:Ready to search
+sk:Ready to search
+sl:Ready to search
+sn:Ready to search
+sp-rs:Ready to search
+sq:Ready to search
+sr-rs:Ready to search
+sv:Ready to search
+ta:Ready to search
+th:Ready to search
+tl:Ready to search
+tr:Ready to search
+tw:可以搜尋了
+uk:Ready to search
+uz:Ready to search
+vn:Ready to search
 :Recently Opened
 am:Վերջերս բացված
 br:Abertos Recentemente
@@ -9206,6 +11767,79 @@ nl:Recent Geopend
 pl:Ostatnio otwarte
 sk:Naposledy otvorené
 tw:最近開啟
+:Recognize all pages and save
+af:Recognize all pages and save
+am:Recognize all pages and save
+ar:Recognize all pages and save
+az:Recognize all pages and save
+bg:Recognize all pages and save
+bn:Recognize all pages and save
+br:Recognize all pages and save
+bs:Recognize all pages and save
+by:Recognize all pages and save
+ca:Recognize all pages and save
+ca-xv:Recognize all pages and save
+cn:全文识别并保存
+co:Recognize all pages and save
+cy:Recognize all pages and save
+cz:Recognize all pages and save
+de:Recognize all pages and save
+dk:Recognize all pages and save
+el:Recognize all pages and save
+es:Recognize all pages and save
+et:Recognize all pages and save
+eu:Recognize all pages and save
+fa:Recognize all pages and save
+fi:Recognize all pages and save
+fo:Recognize all pages and save
+fr:Recognize all pages and save
+fy-nl:Recognize all pages and save
+ga:Recognize all pages and save
+gl:Recognize all pages and save
+he:Recognize all pages and save
+hi:Recognize all pages and save
+hr:Recognize all pages and save
+hu:Recognize all pages and save
+id:Recognize all pages and save
+it:Recognize all pages and save
+ja:Recognize all pages and save
+jv:Recognize all pages and save
+ka:Recognize all pages and save
+kr:Recognize all pages and save
+ku:Recognize all pages and save
+kw:Recognize all pages and save
+lt:Recognize all pages and save
+lv:Recognize all pages and save
+mk:Recognize all pages and save
+ml:Recognize all pages and save
+mm:Recognize all pages and save
+my:Recognize all pages and save
+ne:Recognize all pages and save
+nl:Recognize all pages and save
+nn:Recognize all pages and save
+no:Recognize all pages and save
+pa:Recognize all pages and save
+pl:Recognize all pages and save
+pt:Recognize all pages and save
+ro:Recognize all pages and save
+ru:Recognize all pages and save
+sat:Recognize all pages and save
+si:Recognize all pages and save
+sk:Recognize all pages and save
+sl:Recognize all pages and save
+sn:Recognize all pages and save
+sp-rs:Recognize all pages and save
+sq:Recognize all pages and save
+sr-rs:Recognize all pages and save
+sv:Recognize all pages and save
+ta:Recognize all pages and save
+th:Recognize all pages and save
+tl:Recognize all pages and save
+tr:Recognize all pages and save
+tw:全文識別並儲存
+uk:Recognize all pages and save
+uz:Recognize all pages and save
+vn:Recognize all pages and save
 :Rect: x=%d y=%d dx=%d dy=%d
 am:Ուղղանկյուն` x=%d y=%d dx=%d dy=%d
 br:Retângulo: x=%d y=%d dx=%d dy=%d
@@ -9218,6 +11852,79 @@ nl:Rect: x=%d y=%d dx=%d dy=%d
 pl:Prostokąt: x=%d y=%d dx=%d dy=%d
 sk:Obdĺžnik: x=%d y=%d dx=%d dy=%d
 tw:矩形: x=%d y=%d dx=%d dy=%d
+:Rectangle Annotation (Ctrl+click to lock)
+af:Rectangle Annotation (Ctrl+click to lock)
+am:Rectangle Annotation (Ctrl+click to lock)
+ar:Rectangle Annotation (Ctrl+click to lock)
+az:Rectangle Annotation (Ctrl+click to lock)
+bg:Rectangle Annotation (Ctrl+click to lock)
+bn:Rectangle Annotation (Ctrl+click to lock)
+br:Rectangle Annotation (Ctrl+click to lock)
+bs:Rectangle Annotation (Ctrl+click to lock)
+by:Rectangle Annotation (Ctrl+click to lock)
+ca:Rectangle Annotation (Ctrl+click to lock)
+ca-xv:Rectangle Annotation (Ctrl+click to lock)
+cn:矩形批注（Ctrl+点击锁定）
+co:Rectangle Annotation (Ctrl+click to lock)
+cy:Rectangle Annotation (Ctrl+click to lock)
+cz:Rectangle Annotation (Ctrl+click to lock)
+de:Rectangle Annotation (Ctrl+click to lock)
+dk:Rectangle Annotation (Ctrl+click to lock)
+el:Rectangle Annotation (Ctrl+click to lock)
+es:Rectangle Annotation (Ctrl+click to lock)
+et:Rectangle Annotation (Ctrl+click to lock)
+eu:Rectangle Annotation (Ctrl+click to lock)
+fa:Rectangle Annotation (Ctrl+click to lock)
+fi:Rectangle Annotation (Ctrl+click to lock)
+fo:Rectangle Annotation (Ctrl+click to lock)
+fr:Rectangle Annotation (Ctrl+click to lock)
+fy-nl:Rectangle Annotation (Ctrl+click to lock)
+ga:Rectangle Annotation (Ctrl+click to lock)
+gl:Rectangle Annotation (Ctrl+click to lock)
+he:Rectangle Annotation (Ctrl+click to lock)
+hi:Rectangle Annotation (Ctrl+click to lock)
+hr:Rectangle Annotation (Ctrl+click to lock)
+hu:Rectangle Annotation (Ctrl+click to lock)
+id:Rectangle Annotation (Ctrl+click to lock)
+it:Rectangle Annotation (Ctrl+click to lock)
+ja:Rectangle Annotation (Ctrl+click to lock)
+jv:Rectangle Annotation (Ctrl+click to lock)
+ka:Rectangle Annotation (Ctrl+click to lock)
+kr:Rectangle Annotation (Ctrl+click to lock)
+ku:Rectangle Annotation (Ctrl+click to lock)
+kw:Rectangle Annotation (Ctrl+click to lock)
+lt:Rectangle Annotation (Ctrl+click to lock)
+lv:Rectangle Annotation (Ctrl+click to lock)
+mk:Rectangle Annotation (Ctrl+click to lock)
+ml:Rectangle Annotation (Ctrl+click to lock)
+mm:Rectangle Annotation (Ctrl+click to lock)
+my:Rectangle Annotation (Ctrl+click to lock)
+ne:Rectangle Annotation (Ctrl+click to lock)
+nl:Rectangle Annotation (Ctrl+click to lock)
+nn:Rectangle Annotation (Ctrl+click to lock)
+no:Rectangle Annotation (Ctrl+click to lock)
+pa:Rectangle Annotation (Ctrl+click to lock)
+pl:Rectangle Annotation (Ctrl+click to lock)
+pt:Rectangle Annotation (Ctrl+click to lock)
+ro:Rectangle Annotation (Ctrl+click to lock)
+ru:Rectangle Annotation (Ctrl+click to lock)
+sat:Rectangle Annotation (Ctrl+click to lock)
+si:Rectangle Annotation (Ctrl+click to lock)
+sk:Rectangle Annotation (Ctrl+click to lock)
+sl:Rectangle Annotation (Ctrl+click to lock)
+sn:Rectangle Annotation (Ctrl+click to lock)
+sp-rs:Rectangle Annotation (Ctrl+click to lock)
+sq:Rectangle Annotation (Ctrl+click to lock)
+sr-rs:Rectangle Annotation (Ctrl+click to lock)
+sv:Rectangle Annotation (Ctrl+click to lock)
+ta:Rectangle Annotation (Ctrl+click to lock)
+th:Rectangle Annotation (Ctrl+click to lock)
+tl:Rectangle Annotation (Ctrl+click to lock)
+tr:Rectangle Annotation (Ctrl+click to lock)
+tw:矩形註解（Ctrl+點選鎖定）
+uk:Rectangle Annotation (Ctrl+click to lock)
+uz:Rectangle Annotation (Ctrl+click to lock)
+vn:Rectangle Annotation (Ctrl+click to lock)
 :Redact
 am:Փոփոխել
 br:Redigir
@@ -9362,6 +12069,79 @@ nl:Heropen Laatst Gesloten
 pl:Otwórz ponownie ostatnio zamknięty
 sk:Znovu otvoriť naposledy zatvorené
 tw:重新開啟上次關閉的內容
+:Replace the existing PDF bookmarks with extracted headings?
+af:Replace the existing PDF bookmarks with extracted headings?
+am:Replace the existing PDF bookmarks with extracted headings?
+ar:Replace the existing PDF bookmarks with extracted headings?
+az:Replace the existing PDF bookmarks with extracted headings?
+bg:Replace the existing PDF bookmarks with extracted headings?
+bn:Replace the existing PDF bookmarks with extracted headings?
+br:Replace the existing PDF bookmarks with extracted headings?
+bs:Replace the existing PDF bookmarks with extracted headings?
+by:Replace the existing PDF bookmarks with extracted headings?
+ca:Replace the existing PDF bookmarks with extracted headings?
+ca-xv:Replace the existing PDF bookmarks with extracted headings?
+cn:用提取的标题替换现有 PDF 书签？
+co:Replace the existing PDF bookmarks with extracted headings?
+cy:Replace the existing PDF bookmarks with extracted headings?
+cz:Replace the existing PDF bookmarks with extracted headings?
+de:Replace the existing PDF bookmarks with extracted headings?
+dk:Replace the existing PDF bookmarks with extracted headings?
+el:Replace the existing PDF bookmarks with extracted headings?
+es:Replace the existing PDF bookmarks with extracted headings?
+et:Replace the existing PDF bookmarks with extracted headings?
+eu:Replace the existing PDF bookmarks with extracted headings?
+fa:Replace the existing PDF bookmarks with extracted headings?
+fi:Replace the existing PDF bookmarks with extracted headings?
+fo:Replace the existing PDF bookmarks with extracted headings?
+fr:Replace the existing PDF bookmarks with extracted headings?
+fy-nl:Replace the existing PDF bookmarks with extracted headings?
+ga:Replace the existing PDF bookmarks with extracted headings?
+gl:Replace the existing PDF bookmarks with extracted headings?
+he:Replace the existing PDF bookmarks with extracted headings?
+hi:Replace the existing PDF bookmarks with extracted headings?
+hr:Replace the existing PDF bookmarks with extracted headings?
+hu:Replace the existing PDF bookmarks with extracted headings?
+id:Replace the existing PDF bookmarks with extracted headings?
+it:Replace the existing PDF bookmarks with extracted headings?
+ja:Replace the existing PDF bookmarks with extracted headings?
+jv:Replace the existing PDF bookmarks with extracted headings?
+ka:Replace the existing PDF bookmarks with extracted headings?
+kr:Replace the existing PDF bookmarks with extracted headings?
+ku:Replace the existing PDF bookmarks with extracted headings?
+kw:Replace the existing PDF bookmarks with extracted headings?
+lt:Replace the existing PDF bookmarks with extracted headings?
+lv:Replace the existing PDF bookmarks with extracted headings?
+mk:Replace the existing PDF bookmarks with extracted headings?
+ml:Replace the existing PDF bookmarks with extracted headings?
+mm:Replace the existing PDF bookmarks with extracted headings?
+my:Replace the existing PDF bookmarks with extracted headings?
+ne:Replace the existing PDF bookmarks with extracted headings?
+nl:Replace the existing PDF bookmarks with extracted headings?
+nn:Replace the existing PDF bookmarks with extracted headings?
+no:Replace the existing PDF bookmarks with extracted headings?
+pa:Replace the existing PDF bookmarks with extracted headings?
+pl:Replace the existing PDF bookmarks with extracted headings?
+pt:Replace the existing PDF bookmarks with extracted headings?
+ro:Replace the existing PDF bookmarks with extracted headings?
+ru:Replace the existing PDF bookmarks with extracted headings?
+sat:Replace the existing PDF bookmarks with extracted headings?
+si:Replace the existing PDF bookmarks with extracted headings?
+sk:Replace the existing PDF bookmarks with extracted headings?
+sl:Replace the existing PDF bookmarks with extracted headings?
+sn:Replace the existing PDF bookmarks with extracted headings?
+sp-rs:Replace the existing PDF bookmarks with extracted headings?
+sq:Replace the existing PDF bookmarks with extracted headings?
+sr-rs:Replace the existing PDF bookmarks with extracted headings?
+sv:Replace the existing PDF bookmarks with extracted headings?
+ta:Replace the existing PDF bookmarks with extracted headings?
+th:Replace the existing PDF bookmarks with extracted headings?
+tl:Replace the existing PDF bookmarks with extracted headings?
+tr:Replace the existing PDF bookmarks with extracted headings?
+tw:用提取的標題取代現有 PDF 書籤？
+uk:Replace the existing PDF bookmarks with extracted headings?
+uz:Replace the existing PDF bookmarks with extracted headings?
+vn:Replace the existing PDF bookmarks with extracted headings?
 :Report bugs (this fork only)
 cn:报告错误（仅限本分支）
 de:Fehler melden (nur dieser Fork)
@@ -9800,6 +12580,79 @@ it:Salva immagine
 nl:Afbeelding Opslaan
 pl:Zapisz obraz
 sk:Uložiť obrázok
+:Save PDF changes?
+af:Save PDF changes?
+am:Save PDF changes?
+ar:Save PDF changes?
+az:Save PDF changes?
+bg:Save PDF changes?
+bn:Save PDF changes?
+br:Save PDF changes?
+bs:Save PDF changes?
+by:Save PDF changes?
+ca:Save PDF changes?
+ca-xv:Save PDF changes?
+cn:是否保存 PDF 更改？
+co:Save PDF changes?
+cy:Save PDF changes?
+cz:Save PDF changes?
+de:Save PDF changes?
+dk:Save PDF changes?
+el:Save PDF changes?
+es:Save PDF changes?
+et:Save PDF changes?
+eu:Save PDF changes?
+fa:Save PDF changes?
+fi:Save PDF changes?
+fo:Save PDF changes?
+fr:Save PDF changes?
+fy-nl:Save PDF changes?
+ga:Save PDF changes?
+gl:Save PDF changes?
+he:Save PDF changes?
+hi:Save PDF changes?
+hr:Save PDF changes?
+hu:Save PDF changes?
+id:Save PDF changes?
+it:Save PDF changes?
+ja:Save PDF changes?
+jv:Save PDF changes?
+ka:Save PDF changes?
+kr:Save PDF changes?
+ku:Save PDF changes?
+kw:Save PDF changes?
+lt:Save PDF changes?
+lv:Save PDF changes?
+mk:Save PDF changes?
+ml:Save PDF changes?
+mm:Save PDF changes?
+my:Save PDF changes?
+ne:Save PDF changes?
+nl:Save PDF changes?
+nn:Save PDF changes?
+no:Save PDF changes?
+pa:Save PDF changes?
+pl:Save PDF changes?
+pt:Save PDF changes?
+ro:Save PDF changes?
+ru:Save PDF changes?
+sat:Save PDF changes?
+si:Save PDF changes?
+sk:Save PDF changes?
+sl:Save PDF changes?
+sn:Save PDF changes?
+sp-rs:Save PDF changes?
+sq:Save PDF changes?
+sr-rs:Save PDF changes?
+sv:Save PDF changes?
+ta:Save PDF changes?
+th:Save PDF changes?
+tl:Save PDF changes?
+tr:Save PDF changes?
+tw:是否儲存 PDF 變更？
+uk:Save PDF changes?
+uz:Save PDF changes?
+vn:Save PDF changes?
 :Save S&hortcut...
 am:Պահել դ&յուրանցումը...
 br:Salvar A&talho
@@ -9833,6 +12686,298 @@ nl:Aantekeningen Opslaan?
 pl:Zapisać adnotacje?
 sk:Uložiť anotácie?
 tw:是否要儲存註解?
+:Save as Searchable PDF
+af:Save as Searchable PDF
+am:Save as Searchable PDF
+ar:Save as Searchable PDF
+az:Save as Searchable PDF
+bg:Save as Searchable PDF
+bn:Save as Searchable PDF
+br:Save as Searchable PDF
+bs:Save as Searchable PDF
+by:Save as Searchable PDF
+ca:Save as Searchable PDF
+ca-xv:Save as Searchable PDF
+cn:保存为可搜索 PDF
+co:Save as Searchable PDF
+cy:Save as Searchable PDF
+cz:Save as Searchable PDF
+de:Save as Searchable PDF
+dk:Save as Searchable PDF
+el:Save as Searchable PDF
+es:Save as Searchable PDF
+et:Save as Searchable PDF
+eu:Save as Searchable PDF
+fa:Save as Searchable PDF
+fi:Save as Searchable PDF
+fo:Save as Searchable PDF
+fr:Save as Searchable PDF
+fy-nl:Save as Searchable PDF
+ga:Save as Searchable PDF
+gl:Save as Searchable PDF
+he:Save as Searchable PDF
+hi:Save as Searchable PDF
+hr:Save as Searchable PDF
+hu:Save as Searchable PDF
+id:Save as Searchable PDF
+it:Save as Searchable PDF
+ja:Save as Searchable PDF
+jv:Save as Searchable PDF
+ka:Save as Searchable PDF
+kr:Save as Searchable PDF
+ku:Save as Searchable PDF
+kw:Save as Searchable PDF
+lt:Save as Searchable PDF
+lv:Save as Searchable PDF
+mk:Save as Searchable PDF
+ml:Save as Searchable PDF
+mm:Save as Searchable PDF
+my:Save as Searchable PDF
+ne:Save as Searchable PDF
+nl:Save as Searchable PDF
+nn:Save as Searchable PDF
+no:Save as Searchable PDF
+pa:Save as Searchable PDF
+pl:Save as Searchable PDF
+pt:Save as Searchable PDF
+ro:Save as Searchable PDF
+ru:Save as Searchable PDF
+sat:Save as Searchable PDF
+si:Save as Searchable PDF
+sk:Save as Searchable PDF
+sl:Save as Searchable PDF
+sn:Save as Searchable PDF
+sp-rs:Save as Searchable PDF
+sq:Save as Searchable PDF
+sr-rs:Save as Searchable PDF
+sv:Save as Searchable PDF
+ta:Save as Searchable PDF
+th:Save as Searchable PDF
+tl:Save as Searchable PDF
+tr:Save as Searchable PDF
+tw:儲存為可搜尋 PDF
+uk:Save as Searchable PDF
+uz:Save as Searchable PDF
+vn:Save as Searchable PDF
+:Save as searchable PDF
+af:Save as searchable PDF
+am:Save as searchable PDF
+ar:Save as searchable PDF
+az:Save as searchable PDF
+bg:Save as searchable PDF
+bn:Save as searchable PDF
+br:Save as searchable PDF
+bs:Save as searchable PDF
+by:Save as searchable PDF
+ca:Save as searchable PDF
+ca-xv:Save as searchable PDF
+cn:保存为可搜索 PDF
+co:Save as searchable PDF
+cy:Save as searchable PDF
+cz:Save as searchable PDF
+de:Save as searchable PDF
+dk:Save as searchable PDF
+el:Save as searchable PDF
+es:Save as searchable PDF
+et:Save as searchable PDF
+eu:Save as searchable PDF
+fa:Save as searchable PDF
+fi:Save as searchable PDF
+fo:Save as searchable PDF
+fr:Save as searchable PDF
+fy-nl:Save as searchable PDF
+ga:Save as searchable PDF
+gl:Save as searchable PDF
+he:Save as searchable PDF
+hi:Save as searchable PDF
+hr:Save as searchable PDF
+hu:Save as searchable PDF
+id:Save as searchable PDF
+it:Save as searchable PDF
+ja:Save as searchable PDF
+jv:Save as searchable PDF
+ka:Save as searchable PDF
+kr:Save as searchable PDF
+ku:Save as searchable PDF
+kw:Save as searchable PDF
+lt:Save as searchable PDF
+lv:Save as searchable PDF
+mk:Save as searchable PDF
+ml:Save as searchable PDF
+mm:Save as searchable PDF
+my:Save as searchable PDF
+ne:Save as searchable PDF
+nl:Save as searchable PDF
+nn:Save as searchable PDF
+no:Save as searchable PDF
+pa:Save as searchable PDF
+pl:Save as searchable PDF
+pt:Save as searchable PDF
+ro:Save as searchable PDF
+ru:Save as searchable PDF
+sat:Save as searchable PDF
+si:Save as searchable PDF
+sk:Save as searchable PDF
+sl:Save as searchable PDF
+sn:Save as searchable PDF
+sp-rs:Save as searchable PDF
+sq:Save as searchable PDF
+sr-rs:Save as searchable PDF
+sv:Save as searchable PDF
+ta:Save as searchable PDF
+th:Save as searchable PDF
+tl:Save as searchable PDF
+tr:Save as searchable PDF
+tw:儲存為可搜尋 PDF
+uk:Save as searchable PDF
+uz:Save as searchable PDF
+vn:Save as searchable PDF
+:Save as searchable PDF is only available for PDF files.
+af:Save as searchable PDF is only available for PDF files.
+am:Save as searchable PDF is only available for PDF files.
+ar:Save as searchable PDF is only available for PDF files.
+az:Save as searchable PDF is only available for PDF files.
+bg:Save as searchable PDF is only available for PDF files.
+bn:Save as searchable PDF is only available for PDF files.
+br:Save as searchable PDF is only available for PDF files.
+bs:Save as searchable PDF is only available for PDF files.
+by:Save as searchable PDF is only available for PDF files.
+ca:Save as searchable PDF is only available for PDF files.
+ca-xv:Save as searchable PDF is only available for PDF files.
+cn:仅 PDF 文件可保存为可搜索 PDF。
+co:Save as searchable PDF is only available for PDF files.
+cy:Save as searchable PDF is only available for PDF files.
+cz:Save as searchable PDF is only available for PDF files.
+de:Save as searchable PDF is only available for PDF files.
+dk:Save as searchable PDF is only available for PDF files.
+el:Save as searchable PDF is only available for PDF files.
+es:Save as searchable PDF is only available for PDF files.
+et:Save as searchable PDF is only available for PDF files.
+eu:Save as searchable PDF is only available for PDF files.
+fa:Save as searchable PDF is only available for PDF files.
+fi:Save as searchable PDF is only available for PDF files.
+fo:Save as searchable PDF is only available for PDF files.
+fr:Save as searchable PDF is only available for PDF files.
+fy-nl:Save as searchable PDF is only available for PDF files.
+ga:Save as searchable PDF is only available for PDF files.
+gl:Save as searchable PDF is only available for PDF files.
+he:Save as searchable PDF is only available for PDF files.
+hi:Save as searchable PDF is only available for PDF files.
+hr:Save as searchable PDF is only available for PDF files.
+hu:Save as searchable PDF is only available for PDF files.
+id:Save as searchable PDF is only available for PDF files.
+it:Save as searchable PDF is only available for PDF files.
+ja:Save as searchable PDF is only available for PDF files.
+jv:Save as searchable PDF is only available for PDF files.
+ka:Save as searchable PDF is only available for PDF files.
+kr:Save as searchable PDF is only available for PDF files.
+ku:Save as searchable PDF is only available for PDF files.
+kw:Save as searchable PDF is only available for PDF files.
+lt:Save as searchable PDF is only available for PDF files.
+lv:Save as searchable PDF is only available for PDF files.
+mk:Save as searchable PDF is only available for PDF files.
+ml:Save as searchable PDF is only available for PDF files.
+mm:Save as searchable PDF is only available for PDF files.
+my:Save as searchable PDF is only available for PDF files.
+ne:Save as searchable PDF is only available for PDF files.
+nl:Save as searchable PDF is only available for PDF files.
+nn:Save as searchable PDF is only available for PDF files.
+no:Save as searchable PDF is only available for PDF files.
+pa:Save as searchable PDF is only available for PDF files.
+pl:Save as searchable PDF is only available for PDF files.
+pt:Save as searchable PDF is only available for PDF files.
+ro:Save as searchable PDF is only available for PDF files.
+ru:Save as searchable PDF is only available for PDF files.
+sat:Save as searchable PDF is only available for PDF files.
+si:Save as searchable PDF is only available for PDF files.
+sk:Save as searchable PDF is only available for PDF files.
+sl:Save as searchable PDF is only available for PDF files.
+sn:Save as searchable PDF is only available for PDF files.
+sp-rs:Save as searchable PDF is only available for PDF files.
+sq:Save as searchable PDF is only available for PDF files.
+sr-rs:Save as searchable PDF is only available for PDF files.
+sv:Save as searchable PDF is only available for PDF files.
+ta:Save as searchable PDF is only available for PDF files.
+th:Save as searchable PDF is only available for PDF files.
+tl:Save as searchable PDF is only available for PDF files.
+tr:Save as searchable PDF is only available for PDF files.
+tw:僅 PDF 檔可儲存為可搜尋 PDF。
+uk:Save as searchable PDF is only available for PDF files.
+uz:Save as searchable PDF is only available for PDF files.
+vn:Save as searchable PDF is only available for PDF files.
+:Save as searchable PDF...
+af:Save as searchable PDF...
+am:Save as searchable PDF...
+ar:Save as searchable PDF...
+az:Save as searchable PDF...
+bg:Save as searchable PDF...
+bn:Save as searchable PDF...
+br:Save as searchable PDF...
+bs:Save as searchable PDF...
+by:Save as searchable PDF...
+ca:Save as searchable PDF...
+ca-xv:Save as searchable PDF...
+cn:保存为可搜索 PDF...
+co:Save as searchable PDF...
+cy:Save as searchable PDF...
+cz:Save as searchable PDF...
+de:Save as searchable PDF...
+dk:Save as searchable PDF...
+el:Save as searchable PDF...
+es:Save as searchable PDF...
+et:Save as searchable PDF...
+eu:Save as searchable PDF...
+fa:Save as searchable PDF...
+fi:Save as searchable PDF...
+fo:Save as searchable PDF...
+fr:Save as searchable PDF...
+fy-nl:Save as searchable PDF...
+ga:Save as searchable PDF...
+gl:Save as searchable PDF...
+he:Save as searchable PDF...
+hi:Save as searchable PDF...
+hr:Save as searchable PDF...
+hu:Save as searchable PDF...
+id:Save as searchable PDF...
+it:Save as searchable PDF...
+ja:Save as searchable PDF...
+jv:Save as searchable PDF...
+ka:Save as searchable PDF...
+kr:Save as searchable PDF...
+ku:Save as searchable PDF...
+kw:Save as searchable PDF...
+lt:Save as searchable PDF...
+lv:Save as searchable PDF...
+mk:Save as searchable PDF...
+ml:Save as searchable PDF...
+mm:Save as searchable PDF...
+my:Save as searchable PDF...
+ne:Save as searchable PDF...
+nl:Save as searchable PDF...
+nn:Save as searchable PDF...
+no:Save as searchable PDF...
+pa:Save as searchable PDF...
+pl:Save as searchable PDF...
+pt:Save as searchable PDF...
+ro:Save as searchable PDF...
+ru:Save as searchable PDF...
+sat:Save as searchable PDF...
+si:Save as searchable PDF...
+sk:Save as searchable PDF...
+sl:Save as searchable PDF...
+sn:Save as searchable PDF...
+sp-rs:Save as searchable PDF...
+sq:Save as searchable PDF...
+sr-rs:Save as searchable PDF...
+sv:Save as searchable PDF...
+ta:Save as searchable PDF...
+th:Save as searchable PDF...
+tl:Save as searchable PDF...
+tr:Save as searchable PDF...
+tw:儲存為可搜尋 PDF...
+uk:Save as searchable PDF...
+uz:Save as searchable PDF...
+vn:Save as searchable PDF...
 :Save changes to a new PDF
 am:Պահել փոփոխությունները նոր PDF-ում
 br:Salvar as mudanças num novo PDF
@@ -9881,6 +13026,79 @@ nl:Opslaan...
 pl:Zapisz...
 sk:Uložiť…
 tw:儲存…
+:Saved PDF changes to '%s'
+af:Saved PDF changes to '%s'
+am:Saved PDF changes to '%s'
+ar:Saved PDF changes to '%s'
+az:Saved PDF changes to '%s'
+bg:Saved PDF changes to '%s'
+bn:Saved PDF changes to '%s'
+br:Saved PDF changes to '%s'
+bs:Saved PDF changes to '%s'
+by:Saved PDF changes to '%s'
+ca:Saved PDF changes to '%s'
+ca-xv:Saved PDF changes to '%s'
+cn:已将 PDF 更改保存到 '%s'
+co:Saved PDF changes to '%s'
+cy:Saved PDF changes to '%s'
+cz:Saved PDF changes to '%s'
+de:Saved PDF changes to '%s'
+dk:Saved PDF changes to '%s'
+el:Saved PDF changes to '%s'
+es:Saved PDF changes to '%s'
+et:Saved PDF changes to '%s'
+eu:Saved PDF changes to '%s'
+fa:Saved PDF changes to '%s'
+fi:Saved PDF changes to '%s'
+fo:Saved PDF changes to '%s'
+fr:Saved PDF changes to '%s'
+fy-nl:Saved PDF changes to '%s'
+ga:Saved PDF changes to '%s'
+gl:Saved PDF changes to '%s'
+he:Saved PDF changes to '%s'
+hi:Saved PDF changes to '%s'
+hr:Saved PDF changes to '%s'
+hu:Saved PDF changes to '%s'
+id:Saved PDF changes to '%s'
+it:Saved PDF changes to '%s'
+ja:Saved PDF changes to '%s'
+jv:Saved PDF changes to '%s'
+ka:Saved PDF changes to '%s'
+kr:Saved PDF changes to '%s'
+ku:Saved PDF changes to '%s'
+kw:Saved PDF changes to '%s'
+lt:Saved PDF changes to '%s'
+lv:Saved PDF changes to '%s'
+mk:Saved PDF changes to '%s'
+ml:Saved PDF changes to '%s'
+mm:Saved PDF changes to '%s'
+my:Saved PDF changes to '%s'
+ne:Saved PDF changes to '%s'
+nl:Saved PDF changes to '%s'
+nn:Saved PDF changes to '%s'
+no:Saved PDF changes to '%s'
+pa:Saved PDF changes to '%s'
+pl:Saved PDF changes to '%s'
+pt:Saved PDF changes to '%s'
+ro:Saved PDF changes to '%s'
+ru:Saved PDF changes to '%s'
+sat:Saved PDF changes to '%s'
+si:Saved PDF changes to '%s'
+sk:Saved PDF changes to '%s'
+sl:Saved PDF changes to '%s'
+sn:Saved PDF changes to '%s'
+sp-rs:Saved PDF changes to '%s'
+sq:Saved PDF changes to '%s'
+sr-rs:Saved PDF changes to '%s'
+sv:Saved PDF changes to '%s'
+ta:Saved PDF changes to '%s'
+th:Saved PDF changes to '%s'
+tl:Saved PDF changes to '%s'
+tr:Saved PDF changes to '%s'
+tw:已將 PDF 變更儲存到 '%s'
+uk:Saved PDF changes to '%s'
+uz:Saved PDF changes to '%s'
+vn:Saved PDF changes to '%s'
 :Saved annotations to '%s'
 am:Պահված մեկնաբանություններ '%s'-ում
 br:Salvou as anotações em '%s'
@@ -9893,6 +13111,79 @@ nl:Aantekeningen opgeslagen in '%s'
 pl:Zapisano adnotacje w '%s'
 sk:Anotácie uložené do '%s'
 tw:儲存註解至 '%s'
+:Saved.
+af:Saved.
+am:Saved.
+ar:Saved.
+az:Saved.
+bg:Saved.
+bn:Saved.
+br:Saved.
+bs:Saved.
+by:Saved.
+ca:Saved.
+ca-xv:Saved.
+cn:已保存。
+co:Saved.
+cy:Saved.
+cz:Saved.
+de:Saved.
+dk:Saved.
+el:Saved.
+es:Saved.
+et:Saved.
+eu:Saved.
+fa:Saved.
+fi:Saved.
+fo:Saved.
+fr:Saved.
+fy-nl:Saved.
+ga:Saved.
+gl:Saved.
+he:Saved.
+hi:Saved.
+hr:Saved.
+hu:Saved.
+id:Saved.
+it:Saved.
+ja:Saved.
+jv:Saved.
+ka:Saved.
+kr:Saved.
+ku:Saved.
+kw:Saved.
+lt:Saved.
+lv:Saved.
+mk:Saved.
+ml:Saved.
+mm:Saved.
+my:Saved.
+ne:Saved.
+nl:Saved.
+nn:Saved.
+no:Saved.
+pa:Saved.
+pl:Saved.
+pt:Saved.
+ro:Saved.
+ru:Saved.
+sat:Saved.
+si:Saved.
+sk:Saved.
+sl:Saved.
+sn:Saved.
+sp-rs:Saved.
+sq:Saved.
+sr-rs:Saved.
+sv:Saved.
+ta:Saved.
+th:Saved.
+tl:Saved.
+tr:Saved.
+tw:已儲存。
+uk:Saved.
+uz:Saved.
+vn:Saved.
 :Saving of '%s' failed with: '%s'
 am:'%s'-ի պահումը ձախողվեց հետևյալով՝ '%s'
 br:O salvamento do '%s' falhou com: '%s'
@@ -9905,6 +13196,225 @@ nl:Opslaan van '%s' mislukt met: '%s'
 pl:Zapisywanie '%s' nie powiodło się z: '%s'
 sk:Uloženie '%s' zlyhalo s: '%s'
 tw:儲存 '%s' 失敗，因為: '%s'
+:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+af:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+am:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+ar:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+az:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+bg:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+bn:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+br:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+bs:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+by:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+ca:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+ca-xv:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+cn:保存会修改这份已数字签名的 PDF。原签名仍在，但阅读器会提示文件已被更改。要继续吗？
+co:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+cy:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+cz:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+de:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+dk:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+el:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+es:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+et:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+eu:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+fa:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+fi:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+fo:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+fr:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+fy-nl:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+ga:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+gl:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+he:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+hi:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+hr:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+hu:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+id:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+it:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+ja:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+jv:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+ka:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+kr:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+ku:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+kw:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+lt:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+lv:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+mk:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+ml:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+mm:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+my:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+ne:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+nl:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+nn:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+no:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+pa:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+pl:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+pt:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+ro:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+ru:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+sat:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+si:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+sk:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+sl:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+sn:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+sp-rs:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+sq:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+sr-rs:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+sv:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+ta:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+th:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+tl:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+tr:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+tw:儲存會修改這份已數位簽署的 PDF。原簽章仍在，但閱讀器會提示檔案已被更改。要繼續嗎？
+uk:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+uz:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+vn:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+:Scanning…
+af:Scanning…
+am:Scanning…
+ar:Scanning…
+az:Scanning…
+bg:Scanning…
+bn:Scanning…
+br:Scanning…
+bs:Scanning…
+by:Scanning…
+ca:Scanning…
+ca-xv:Scanning…
+cn:正在识别…
+co:Scanning…
+cy:Scanning…
+cz:Scanning…
+de:Scanning…
+dk:Scanning…
+el:Scanning…
+es:Scanning…
+et:Scanning…
+eu:Scanning…
+fa:Scanning…
+fi:Scanning…
+fo:Scanning…
+fr:Scanning…
+fy-nl:Scanning…
+ga:Scanning…
+gl:Scanning…
+he:Scanning…
+hi:Scanning…
+hr:Scanning…
+hu:Scanning…
+id:Scanning…
+it:Scanning…
+ja:Scanning…
+jv:Scanning…
+ka:Scanning…
+kr:Scanning…
+ku:Scanning…
+kw:Scanning…
+lt:Scanning…
+lv:Scanning…
+mk:Scanning…
+ml:Scanning…
+mm:Scanning…
+my:Scanning…
+ne:Scanning…
+nl:Scanning…
+nn:Scanning…
+no:Scanning…
+pa:Scanning…
+pl:Scanning…
+pt:Scanning…
+ro:Scanning…
+ru:Scanning…
+sat:Scanning…
+si:Scanning…
+sk:Scanning…
+sl:Scanning…
+sn:Scanning…
+sp-rs:Scanning…
+sq:Scanning…
+sr-rs:Scanning…
+sv:Scanning…
+ta:Scanning…
+th:Scanning…
+tl:Scanning…
+tr:Scanning…
+tw:正在識別…
+uk:Scanning…
+uz:Scanning…
+vn:Scanning…
+:Scanning… %d / %d
+af:Scanning… %d / %d
+am:Scanning… %d / %d
+ar:Scanning… %d / %d
+az:Scanning… %d / %d
+bg:Scanning… %d / %d
+bn:Scanning… %d / %d
+br:Scanning… %d / %d
+bs:Scanning… %d / %d
+by:Scanning… %d / %d
+ca:Scanning… %d / %d
+ca-xv:Scanning… %d / %d
+cn:正在识别… %d / %d
+co:Scanning… %d / %d
+cy:Scanning… %d / %d
+cz:Scanning… %d / %d
+de:Scanning… %d / %d
+dk:Scanning… %d / %d
+el:Scanning… %d / %d
+es:Scanning… %d / %d
+et:Scanning… %d / %d
+eu:Scanning… %d / %d
+fa:Scanning… %d / %d
+fi:Scanning… %d / %d
+fo:Scanning… %d / %d
+fr:Scanning… %d / %d
+fy-nl:Scanning… %d / %d
+ga:Scanning… %d / %d
+gl:Scanning… %d / %d
+he:Scanning… %d / %d
+hi:Scanning… %d / %d
+hr:Scanning… %d / %d
+hu:Scanning… %d / %d
+id:Scanning… %d / %d
+it:Scanning… %d / %d
+ja:Scanning… %d / %d
+jv:Scanning… %d / %d
+ka:Scanning… %d / %d
+kr:Scanning… %d / %d
+ku:Scanning… %d / %d
+kw:Scanning… %d / %d
+lt:Scanning… %d / %d
+lv:Scanning… %d / %d
+mk:Scanning… %d / %d
+ml:Scanning… %d / %d
+mm:Scanning… %d / %d
+my:Scanning… %d / %d
+ne:Scanning… %d / %d
+nl:Scanning… %d / %d
+nn:Scanning… %d / %d
+no:Scanning… %d / %d
+pa:Scanning… %d / %d
+pl:Scanning… %d / %d
+pt:Scanning… %d / %d
+ro:Scanning… %d / %d
+ru:Scanning… %d / %d
+sat:Scanning… %d / %d
+si:Scanning… %d / %d
+sk:Scanning… %d / %d
+sl:Scanning… %d / %d
+sn:Scanning… %d / %d
+sp-rs:Scanning… %d / %d
+sq:Scanning… %d / %d
+sr-rs:Scanning… %d / %d
+sv:Scanning… %d / %d
+ta:Scanning… %d / %d
+th:Scanning… %d / %d
+tl:Scanning… %d / %d
+tr:Scanning… %d / %d
+tw:正在識別… %d / %d
+uk:Scanning… %d / %d
+uz:Scanning… %d / %d
+vn:Scanning… %d / %d
 :Scene Type:
 br:Tipo de Cena:
 cn:场景类型:
@@ -10307,6 +13817,79 @@ tw:選取內容
 uk:Виділення
 uz:Tanlov
 vn:Lựa chọn
+:Selection too small.
+af:Selection too small.
+am:Selection too small.
+ar:Selection too small.
+az:Selection too small.
+bg:Selection too small.
+bn:Selection too small.
+br:Selection too small.
+bs:Selection too small.
+by:Selection too small.
+ca:Selection too small.
+ca-xv:Selection too small.
+cn:选区太小。
+co:Selection too small.
+cy:Selection too small.
+cz:Selection too small.
+de:Selection too small.
+dk:Selection too small.
+el:Selection too small.
+es:Selection too small.
+et:Selection too small.
+eu:Selection too small.
+fa:Selection too small.
+fi:Selection too small.
+fo:Selection too small.
+fr:Selection too small.
+fy-nl:Selection too small.
+ga:Selection too small.
+gl:Selection too small.
+he:Selection too small.
+hi:Selection too small.
+hr:Selection too small.
+hu:Selection too small.
+id:Selection too small.
+it:Selection too small.
+ja:Selection too small.
+jv:Selection too small.
+ka:Selection too small.
+kr:Selection too small.
+ku:Selection too small.
+kw:Selection too small.
+lt:Selection too small.
+lv:Selection too small.
+mk:Selection too small.
+ml:Selection too small.
+mm:Selection too small.
+my:Selection too small.
+ne:Selection too small.
+nl:Selection too small.
+nn:Selection too small.
+no:Selection too small.
+pa:Selection too small.
+pl:Selection too small.
+pt:Selection too small.
+ro:Selection too small.
+ru:Selection too small.
+sat:Selection too small.
+si:Selection too small.
+sk:Selection too small.
+sl:Selection too small.
+sn:Selection too small.
+sp-rs:Selection too small.
+sq:Selection too small.
+sr-rs:Selection too small.
+sv:Selection too small.
+ta:Selection too small.
+th:Selection too small.
+tl:Selection too small.
+tr:Selection too small.
+tw:選取範圍太小。
+uk:Selection too small.
+uz:Selection too small.
+vn:Selection too small.
 :Selection:
 am:Նշվածը.
 br:Seleção:
@@ -11769,6 +15352,79 @@ nl:Tekstuitlijning:
 pl:Wyrównanie tekstu:
 sk:Zarovnanie textu:
 tw:文字對齊方式:
+:Text Annotation (Ctrl+click to lock)
+af:Text Annotation (Ctrl+click to lock)
+am:Text Annotation (Ctrl+click to lock)
+ar:Text Annotation (Ctrl+click to lock)
+az:Text Annotation (Ctrl+click to lock)
+bg:Text Annotation (Ctrl+click to lock)
+bn:Text Annotation (Ctrl+click to lock)
+br:Text Annotation (Ctrl+click to lock)
+bs:Text Annotation (Ctrl+click to lock)
+by:Text Annotation (Ctrl+click to lock)
+ca:Text Annotation (Ctrl+click to lock)
+ca-xv:Text Annotation (Ctrl+click to lock)
+cn:文本批注（Ctrl+点击锁定）
+co:Text Annotation (Ctrl+click to lock)
+cy:Text Annotation (Ctrl+click to lock)
+cz:Text Annotation (Ctrl+click to lock)
+de:Text Annotation (Ctrl+click to lock)
+dk:Text Annotation (Ctrl+click to lock)
+el:Text Annotation (Ctrl+click to lock)
+es:Text Annotation (Ctrl+click to lock)
+et:Text Annotation (Ctrl+click to lock)
+eu:Text Annotation (Ctrl+click to lock)
+fa:Text Annotation (Ctrl+click to lock)
+fi:Text Annotation (Ctrl+click to lock)
+fo:Text Annotation (Ctrl+click to lock)
+fr:Text Annotation (Ctrl+click to lock)
+fy-nl:Text Annotation (Ctrl+click to lock)
+ga:Text Annotation (Ctrl+click to lock)
+gl:Text Annotation (Ctrl+click to lock)
+he:Text Annotation (Ctrl+click to lock)
+hi:Text Annotation (Ctrl+click to lock)
+hr:Text Annotation (Ctrl+click to lock)
+hu:Text Annotation (Ctrl+click to lock)
+id:Text Annotation (Ctrl+click to lock)
+it:Text Annotation (Ctrl+click to lock)
+ja:Text Annotation (Ctrl+click to lock)
+jv:Text Annotation (Ctrl+click to lock)
+ka:Text Annotation (Ctrl+click to lock)
+kr:Text Annotation (Ctrl+click to lock)
+ku:Text Annotation (Ctrl+click to lock)
+kw:Text Annotation (Ctrl+click to lock)
+lt:Text Annotation (Ctrl+click to lock)
+lv:Text Annotation (Ctrl+click to lock)
+mk:Text Annotation (Ctrl+click to lock)
+ml:Text Annotation (Ctrl+click to lock)
+mm:Text Annotation (Ctrl+click to lock)
+my:Text Annotation (Ctrl+click to lock)
+ne:Text Annotation (Ctrl+click to lock)
+nl:Text Annotation (Ctrl+click to lock)
+nn:Text Annotation (Ctrl+click to lock)
+no:Text Annotation (Ctrl+click to lock)
+pa:Text Annotation (Ctrl+click to lock)
+pl:Text Annotation (Ctrl+click to lock)
+pt:Text Annotation (Ctrl+click to lock)
+ro:Text Annotation (Ctrl+click to lock)
+ru:Text Annotation (Ctrl+click to lock)
+sat:Text Annotation (Ctrl+click to lock)
+si:Text Annotation (Ctrl+click to lock)
+sk:Text Annotation (Ctrl+click to lock)
+sl:Text Annotation (Ctrl+click to lock)
+sn:Text Annotation (Ctrl+click to lock)
+sp-rs:Text Annotation (Ctrl+click to lock)
+sq:Text Annotation (Ctrl+click to lock)
+sr-rs:Text Annotation (Ctrl+click to lock)
+sv:Text Annotation (Ctrl+click to lock)
+ta:Text Annotation (Ctrl+click to lock)
+th:Text Annotation (Ctrl+click to lock)
+tl:Text Annotation (Ctrl+click to lock)
+tr:Text Annotation (Ctrl+click to lock)
+tw:文字註解（Ctrl+點選鎖定）
+uk:Text Annotation (Ctrl+click to lock)
+uz:Text Annotation (Ctrl+click to lock)
+vn:Text Annotation (Ctrl+click to lock)
 :Text Color:
 am:Գրվածքի գույն
 br:Cor do Texto:
@@ -11869,6 +15525,298 @@ nl:Het installatieprogramma is beschadigd. Gelieve het opnieuw te downloaden.\nO
 pl:Plik instalacyjny jest uszkodzony. Pobierz go jeszcze raz.\nPrzepraszamy za kłopot.
 sk:Inštalačný súbor je poškodený. Prosím stiahnite si ho ešte raz. \nOspravedlňujeme sa za ťažkosti!
 tw:安裝程式已損壞。請重新下載。\n很抱歉給您帶來不便！
+:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+af:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+am:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+ar:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+az:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+bg:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+bn:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+br:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+bs:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+by:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+ca:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+ca-xv:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+cn:文字太少，无法提取书签。是否对全部页面做 OCR，并保存为可全文搜索的 PDF？
+co:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+cy:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+cz:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+de:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+dk:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+el:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+es:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+et:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+eu:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+fa:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+fi:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+fo:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+fr:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+fy-nl:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+ga:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+gl:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+he:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+hi:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+hr:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+hu:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+id:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+it:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+ja:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+jv:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+ka:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+kr:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+ku:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+kw:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+lt:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+lv:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+mk:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+ml:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+mm:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+my:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+ne:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+nl:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+nn:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+no:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+pa:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+pl:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+pt:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+ro:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+ru:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+sat:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+si:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+sk:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+sl:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+sn:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+sp-rs:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+sq:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+sr-rs:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+sv:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+ta:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+th:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+tl:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+tr:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+tw:文字太少，無法提取書籤。是否對全部頁面做 OCR，並儲存為可全文搜尋的 PDF？
+uk:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+uz:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+vn:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+:This PDF already has searchable text. Replace it with newly recognized text?
+af:This PDF already has searchable text. Replace it with newly recognized text?
+am:This PDF already has searchable text. Replace it with newly recognized text?
+ar:This PDF already has searchable text. Replace it with newly recognized text?
+az:This PDF already has searchable text. Replace it with newly recognized text?
+bg:This PDF already has searchable text. Replace it with newly recognized text?
+bn:This PDF already has searchable text. Replace it with newly recognized text?
+br:This PDF already has searchable text. Replace it with newly recognized text?
+bs:This PDF already has searchable text. Replace it with newly recognized text?
+by:This PDF already has searchable text. Replace it with newly recognized text?
+ca:This PDF already has searchable text. Replace it with newly recognized text?
+ca-xv:This PDF already has searchable text. Replace it with newly recognized text?
+cn:这个 PDF 已有可搜索文字。要用新识别的文字覆盖吗？
+co:This PDF already has searchable text. Replace it with newly recognized text?
+cy:This PDF already has searchable text. Replace it with newly recognized text?
+cz:This PDF already has searchable text. Replace it with newly recognized text?
+de:This PDF already has searchable text. Replace it with newly recognized text?
+dk:This PDF already has searchable text. Replace it with newly recognized text?
+el:This PDF already has searchable text. Replace it with newly recognized text?
+es:This PDF already has searchable text. Replace it with newly recognized text?
+et:This PDF already has searchable text. Replace it with newly recognized text?
+eu:This PDF already has searchable text. Replace it with newly recognized text?
+fa:This PDF already has searchable text. Replace it with newly recognized text?
+fi:This PDF already has searchable text. Replace it with newly recognized text?
+fo:This PDF already has searchable text. Replace it with newly recognized text?
+fr:This PDF already has searchable text. Replace it with newly recognized text?
+fy-nl:This PDF already has searchable text. Replace it with newly recognized text?
+ga:This PDF already has searchable text. Replace it with newly recognized text?
+gl:This PDF already has searchable text. Replace it with newly recognized text?
+he:This PDF already has searchable text. Replace it with newly recognized text?
+hi:This PDF already has searchable text. Replace it with newly recognized text?
+hr:This PDF already has searchable text. Replace it with newly recognized text?
+hu:This PDF already has searchable text. Replace it with newly recognized text?
+id:This PDF already has searchable text. Replace it with newly recognized text?
+it:This PDF already has searchable text. Replace it with newly recognized text?
+ja:This PDF already has searchable text. Replace it with newly recognized text?
+jv:This PDF already has searchable text. Replace it with newly recognized text?
+ka:This PDF already has searchable text. Replace it with newly recognized text?
+kr:This PDF already has searchable text. Replace it with newly recognized text?
+ku:This PDF already has searchable text. Replace it with newly recognized text?
+kw:This PDF already has searchable text. Replace it with newly recognized text?
+lt:This PDF already has searchable text. Replace it with newly recognized text?
+lv:This PDF already has searchable text. Replace it with newly recognized text?
+mk:This PDF already has searchable text. Replace it with newly recognized text?
+ml:This PDF already has searchable text. Replace it with newly recognized text?
+mm:This PDF already has searchable text. Replace it with newly recognized text?
+my:This PDF already has searchable text. Replace it with newly recognized text?
+ne:This PDF already has searchable text. Replace it with newly recognized text?
+nl:This PDF already has searchable text. Replace it with newly recognized text?
+nn:This PDF already has searchable text. Replace it with newly recognized text?
+no:This PDF already has searchable text. Replace it with newly recognized text?
+pa:This PDF already has searchable text. Replace it with newly recognized text?
+pl:This PDF already has searchable text. Replace it with newly recognized text?
+pt:This PDF already has searchable text. Replace it with newly recognized text?
+ro:This PDF already has searchable text. Replace it with newly recognized text?
+ru:This PDF already has searchable text. Replace it with newly recognized text?
+sat:This PDF already has searchable text. Replace it with newly recognized text?
+si:This PDF already has searchable text. Replace it with newly recognized text?
+sk:This PDF already has searchable text. Replace it with newly recognized text?
+sl:This PDF already has searchable text. Replace it with newly recognized text?
+sn:This PDF already has searchable text. Replace it with newly recognized text?
+sp-rs:This PDF already has searchable text. Replace it with newly recognized text?
+sq:This PDF already has searchable text. Replace it with newly recognized text?
+sr-rs:This PDF already has searchable text. Replace it with newly recognized text?
+sv:This PDF already has searchable text. Replace it with newly recognized text?
+ta:This PDF already has searchable text. Replace it with newly recognized text?
+th:This PDF already has searchable text. Replace it with newly recognized text?
+tl:This PDF already has searchable text. Replace it with newly recognized text?
+tr:This PDF already has searchable text. Replace it with newly recognized text?
+tw:這個 PDF 已有可搜尋文字。要用新識別的文字覆蓋嗎？
+uk:This PDF already has searchable text. Replace it with newly recognized text?
+uz:This PDF already has searchable text. Replace it with newly recognized text?
+vn:This PDF already has searchable text. Replace it with newly recognized text?
+:This document has too little text to extract bookmarks. OCR scanned pages first.
+af:This document has too little text to extract bookmarks. OCR scanned pages first.
+am:This document has too little text to extract bookmarks. OCR scanned pages first.
+ar:This document has too little text to extract bookmarks. OCR scanned pages first.
+az:This document has too little text to extract bookmarks. OCR scanned pages first.
+bg:This document has too little text to extract bookmarks. OCR scanned pages first.
+bn:This document has too little text to extract bookmarks. OCR scanned pages first.
+br:This document has too little text to extract bookmarks. OCR scanned pages first.
+bs:This document has too little text to extract bookmarks. OCR scanned pages first.
+by:This document has too little text to extract bookmarks. OCR scanned pages first.
+ca:This document has too little text to extract bookmarks. OCR scanned pages first.
+ca-xv:This document has too little text to extract bookmarks. OCR scanned pages first.
+cn:文档文字太少，无法提取书签。请先对扫描页做 OCR。
+co:This document has too little text to extract bookmarks. OCR scanned pages first.
+cy:This document has too little text to extract bookmarks. OCR scanned pages first.
+cz:This document has too little text to extract bookmarks. OCR scanned pages first.
+de:This document has too little text to extract bookmarks. OCR scanned pages first.
+dk:This document has too little text to extract bookmarks. OCR scanned pages first.
+el:This document has too little text to extract bookmarks. OCR scanned pages first.
+es:This document has too little text to extract bookmarks. OCR scanned pages first.
+et:This document has too little text to extract bookmarks. OCR scanned pages first.
+eu:This document has too little text to extract bookmarks. OCR scanned pages first.
+fa:This document has too little text to extract bookmarks. OCR scanned pages first.
+fi:This document has too little text to extract bookmarks. OCR scanned pages first.
+fo:This document has too little text to extract bookmarks. OCR scanned pages first.
+fr:This document has too little text to extract bookmarks. OCR scanned pages first.
+fy-nl:This document has too little text to extract bookmarks. OCR scanned pages first.
+ga:This document has too little text to extract bookmarks. OCR scanned pages first.
+gl:This document has too little text to extract bookmarks. OCR scanned pages first.
+he:This document has too little text to extract bookmarks. OCR scanned pages first.
+hi:This document has too little text to extract bookmarks. OCR scanned pages first.
+hr:This document has too little text to extract bookmarks. OCR scanned pages first.
+hu:This document has too little text to extract bookmarks. OCR scanned pages first.
+id:This document has too little text to extract bookmarks. OCR scanned pages first.
+it:This document has too little text to extract bookmarks. OCR scanned pages first.
+ja:This document has too little text to extract bookmarks. OCR scanned pages first.
+jv:This document has too little text to extract bookmarks. OCR scanned pages first.
+ka:This document has too little text to extract bookmarks. OCR scanned pages first.
+kr:This document has too little text to extract bookmarks. OCR scanned pages first.
+ku:This document has too little text to extract bookmarks. OCR scanned pages first.
+kw:This document has too little text to extract bookmarks. OCR scanned pages first.
+lt:This document has too little text to extract bookmarks. OCR scanned pages first.
+lv:This document has too little text to extract bookmarks. OCR scanned pages first.
+mk:This document has too little text to extract bookmarks. OCR scanned pages first.
+ml:This document has too little text to extract bookmarks. OCR scanned pages first.
+mm:This document has too little text to extract bookmarks. OCR scanned pages first.
+my:This document has too little text to extract bookmarks. OCR scanned pages first.
+ne:This document has too little text to extract bookmarks. OCR scanned pages first.
+nl:This document has too little text to extract bookmarks. OCR scanned pages first.
+nn:This document has too little text to extract bookmarks. OCR scanned pages first.
+no:This document has too little text to extract bookmarks. OCR scanned pages first.
+pa:This document has too little text to extract bookmarks. OCR scanned pages first.
+pl:This document has too little text to extract bookmarks. OCR scanned pages first.
+pt:This document has too little text to extract bookmarks. OCR scanned pages first.
+ro:This document has too little text to extract bookmarks. OCR scanned pages first.
+ru:This document has too little text to extract bookmarks. OCR scanned pages first.
+sat:This document has too little text to extract bookmarks. OCR scanned pages first.
+si:This document has too little text to extract bookmarks. OCR scanned pages first.
+sk:This document has too little text to extract bookmarks. OCR scanned pages first.
+sl:This document has too little text to extract bookmarks. OCR scanned pages first.
+sn:This document has too little text to extract bookmarks. OCR scanned pages first.
+sp-rs:This document has too little text to extract bookmarks. OCR scanned pages first.
+sq:This document has too little text to extract bookmarks. OCR scanned pages first.
+sr-rs:This document has too little text to extract bookmarks. OCR scanned pages first.
+sv:This document has too little text to extract bookmarks. OCR scanned pages first.
+ta:This document has too little text to extract bookmarks. OCR scanned pages first.
+th:This document has too little text to extract bookmarks. OCR scanned pages first.
+tl:This document has too little text to extract bookmarks. OCR scanned pages first.
+tr:This document has too little text to extract bookmarks. OCR scanned pages first.
+tw:文件文字太少，無法提取書籤。請先對掃描頁做 OCR。
+uk:This document has too little text to extract bookmarks. OCR scanned pages first.
+uz:This document has too little text to extract bookmarks. OCR scanned pages first.
+vn:This document has too little text to extract bookmarks. OCR scanned pages first.
+:This document looks like a scan.
+af:This document looks like a scan.
+am:This document looks like a scan.
+ar:This document looks like a scan.
+az:This document looks like a scan.
+bg:This document looks like a scan.
+bn:This document looks like a scan.
+br:This document looks like a scan.
+bs:This document looks like a scan.
+by:This document looks like a scan.
+ca:This document looks like a scan.
+ca-xv:This document looks like a scan.
+cn:这份文档看起来是扫描件。
+co:This document looks like a scan.
+cy:This document looks like a scan.
+cz:This document looks like a scan.
+de:This document looks like a scan.
+dk:This document looks like a scan.
+el:This document looks like a scan.
+es:This document looks like a scan.
+et:This document looks like a scan.
+eu:This document looks like a scan.
+fa:This document looks like a scan.
+fi:This document looks like a scan.
+fo:This document looks like a scan.
+fr:This document looks like a scan.
+fy-nl:This document looks like a scan.
+ga:This document looks like a scan.
+gl:This document looks like a scan.
+he:This document looks like a scan.
+hi:This document looks like a scan.
+hr:This document looks like a scan.
+hu:This document looks like a scan.
+id:This document looks like a scan.
+it:This document looks like a scan.
+ja:This document looks like a scan.
+jv:This document looks like a scan.
+ka:This document looks like a scan.
+kr:This document looks like a scan.
+ku:This document looks like a scan.
+kw:This document looks like a scan.
+lt:This document looks like a scan.
+lv:This document looks like a scan.
+mk:This document looks like a scan.
+ml:This document looks like a scan.
+mm:This document looks like a scan.
+my:This document looks like a scan.
+ne:This document looks like a scan.
+nl:This document looks like a scan.
+nn:This document looks like a scan.
+no:This document looks like a scan.
+pa:This document looks like a scan.
+pl:This document looks like a scan.
+pt:This document looks like a scan.
+ro:This document looks like a scan.
+ru:This document looks like a scan.
+sat:This document looks like a scan.
+si:This document looks like a scan.
+sk:This document looks like a scan.
+sl:This document looks like a scan.
+sn:This document looks like a scan.
+sp-rs:This document looks like a scan.
+sq:This document looks like a scan.
+sr-rs:This document looks like a scan.
+sv:This document looks like a scan.
+ta:This document looks like a scan.
+th:This document looks like a scan.
+tl:This document looks like a scan.
+tr:This document looks like a scan.
+tw:這份文件看起來是掃描件。
+uk:This document looks like a scan.
+uz:This document looks like a scan.
+vn:This document looks like a scan.
 :This document uses unsupported features (%s) and might not render properly
 am:Փաստաթուղթը օգտագործում է չաջակցվող յուրահատկություններ (%s) և հնարավոր է նորմալ չաշխատի:
 br:Este documento usa recursos não suportados (%s) e pode não renderizar apropriadamente
@@ -11881,6 +15829,225 @@ nl:Dit document maakt gebruik van niet-ondersteunde functies (%s) en wordt mogel
 pl:Ten dokument używa niewspieranych funkcji (%s) i może wyświetlać się niepoprawnie
 sk:Tento dokument používa nepodporované funkcie (%s) a týmto sa nemusí vykresliť správne
 tw:此文件使用未支援的功能 (%s) ，並可能無法正確的繪製。
+:This file has no text layer. Recognize all pages and save a searchable PDF?
+af:This file has no text layer. Recognize all pages and save a searchable PDF?
+am:This file has no text layer. Recognize all pages and save a searchable PDF?
+ar:This file has no text layer. Recognize all pages and save a searchable PDF?
+az:This file has no text layer. Recognize all pages and save a searchable PDF?
+bg:This file has no text layer. Recognize all pages and save a searchable PDF?
+bn:This file has no text layer. Recognize all pages and save a searchable PDF?
+br:This file has no text layer. Recognize all pages and save a searchable PDF?
+bs:This file has no text layer. Recognize all pages and save a searchable PDF?
+by:This file has no text layer. Recognize all pages and save a searchable PDF?
+ca:This file has no text layer. Recognize all pages and save a searchable PDF?
+ca-xv:This file has no text layer. Recognize all pages and save a searchable PDF?
+cn:当前文件没有文字层。是否识别全部页面并另存为可搜索文件？
+co:This file has no text layer. Recognize all pages and save a searchable PDF?
+cy:This file has no text layer. Recognize all pages and save a searchable PDF?
+cz:This file has no text layer. Recognize all pages and save a searchable PDF?
+de:This file has no text layer. Recognize all pages and save a searchable PDF?
+dk:This file has no text layer. Recognize all pages and save a searchable PDF?
+el:This file has no text layer. Recognize all pages and save a searchable PDF?
+es:This file has no text layer. Recognize all pages and save a searchable PDF?
+et:This file has no text layer. Recognize all pages and save a searchable PDF?
+eu:This file has no text layer. Recognize all pages and save a searchable PDF?
+fa:This file has no text layer. Recognize all pages and save a searchable PDF?
+fi:This file has no text layer. Recognize all pages and save a searchable PDF?
+fo:This file has no text layer. Recognize all pages and save a searchable PDF?
+fr:This file has no text layer. Recognize all pages and save a searchable PDF?
+fy-nl:This file has no text layer. Recognize all pages and save a searchable PDF?
+ga:This file has no text layer. Recognize all pages and save a searchable PDF?
+gl:This file has no text layer. Recognize all pages and save a searchable PDF?
+he:This file has no text layer. Recognize all pages and save a searchable PDF?
+hi:This file has no text layer. Recognize all pages and save a searchable PDF?
+hr:This file has no text layer. Recognize all pages and save a searchable PDF?
+hu:This file has no text layer. Recognize all pages and save a searchable PDF?
+id:This file has no text layer. Recognize all pages and save a searchable PDF?
+it:This file has no text layer. Recognize all pages and save a searchable PDF?
+ja:This file has no text layer. Recognize all pages and save a searchable PDF?
+jv:This file has no text layer. Recognize all pages and save a searchable PDF?
+ka:This file has no text layer. Recognize all pages and save a searchable PDF?
+kr:This file has no text layer. Recognize all pages and save a searchable PDF?
+ku:This file has no text layer. Recognize all pages and save a searchable PDF?
+kw:This file has no text layer. Recognize all pages and save a searchable PDF?
+lt:This file has no text layer. Recognize all pages and save a searchable PDF?
+lv:This file has no text layer. Recognize all pages and save a searchable PDF?
+mk:This file has no text layer. Recognize all pages and save a searchable PDF?
+ml:This file has no text layer. Recognize all pages and save a searchable PDF?
+mm:This file has no text layer. Recognize all pages and save a searchable PDF?
+my:This file has no text layer. Recognize all pages and save a searchable PDF?
+ne:This file has no text layer. Recognize all pages and save a searchable PDF?
+nl:This file has no text layer. Recognize all pages and save a searchable PDF?
+nn:This file has no text layer. Recognize all pages and save a searchable PDF?
+no:This file has no text layer. Recognize all pages and save a searchable PDF?
+pa:This file has no text layer. Recognize all pages and save a searchable PDF?
+pl:This file has no text layer. Recognize all pages and save a searchable PDF?
+pt:This file has no text layer. Recognize all pages and save a searchable PDF?
+ro:This file has no text layer. Recognize all pages and save a searchable PDF?
+ru:This file has no text layer. Recognize all pages and save a searchable PDF?
+sat:This file has no text layer. Recognize all pages and save a searchable PDF?
+si:This file has no text layer. Recognize all pages and save a searchable PDF?
+sk:This file has no text layer. Recognize all pages and save a searchable PDF?
+sl:This file has no text layer. Recognize all pages and save a searchable PDF?
+sn:This file has no text layer. Recognize all pages and save a searchable PDF?
+sp-rs:This file has no text layer. Recognize all pages and save a searchable PDF?
+sq:This file has no text layer. Recognize all pages and save a searchable PDF?
+sr-rs:This file has no text layer. Recognize all pages and save a searchable PDF?
+sv:This file has no text layer. Recognize all pages and save a searchable PDF?
+ta:This file has no text layer. Recognize all pages and save a searchable PDF?
+th:This file has no text layer. Recognize all pages and save a searchable PDF?
+tl:This file has no text layer. Recognize all pages and save a searchable PDF?
+tr:This file has no text layer. Recognize all pages and save a searchable PDF?
+tw:目前檔案沒有文字層。是否識別全部頁面並另存為可搜尋檔案？
+uk:This file has no text layer. Recognize all pages and save a searchable PDF?
+uz:This file has no text layer. Recognize all pages and save a searchable PDF?
+vn:This file has no text layer. Recognize all pages and save a searchable PDF?
+:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+af:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+am:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+ar:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+az:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+bg:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+bn:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+br:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+bs:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+by:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+ca:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+ca-xv:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+cn:当前文件没有文字层。识别全部页面后即可提取目录。可另存为可搜索 PDF，或不保存、仅识别后提取。
+co:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+cy:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+cz:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+de:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+dk:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+el:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+es:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+et:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+eu:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+fa:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+fi:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+fo:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+fr:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+fy-nl:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+ga:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+gl:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+he:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+hi:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+hr:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+hu:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+id:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+it:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+ja:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+jv:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+ka:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+kr:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+ku:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+kw:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+lt:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+lv:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+mk:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+ml:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+mm:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+my:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+ne:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+nl:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+nn:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+no:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+pa:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+pl:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+pt:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+ro:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+ru:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+sat:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+si:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+sk:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+sl:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+sn:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+sp-rs:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+sq:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+sr-rs:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+sv:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+ta:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+th:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+tl:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+tr:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+tw:目前檔案沒有文字層。識別全部頁面後即可提取目錄。可另存為可搜尋 PDF，或不儲存、僅識別後提取。
+uk:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+uz:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+vn:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
+:This file has no text layer. Recognize the pages first, then extract bookmarks.
+af:This file has no text layer. Recognize the pages first, then extract bookmarks.
+am:This file has no text layer. Recognize the pages first, then extract bookmarks.
+ar:This file has no text layer. Recognize the pages first, then extract bookmarks.
+az:This file has no text layer. Recognize the pages first, then extract bookmarks.
+bg:This file has no text layer. Recognize the pages first, then extract bookmarks.
+bn:This file has no text layer. Recognize the pages first, then extract bookmarks.
+br:This file has no text layer. Recognize the pages first, then extract bookmarks.
+bs:This file has no text layer. Recognize the pages first, then extract bookmarks.
+by:This file has no text layer. Recognize the pages first, then extract bookmarks.
+ca:This file has no text layer. Recognize the pages first, then extract bookmarks.
+ca-xv:This file has no text layer. Recognize the pages first, then extract bookmarks.
+cn:当前文件没有文字层。请先识别文字后再提取书签。
+co:This file has no text layer. Recognize the pages first, then extract bookmarks.
+cy:This file has no text layer. Recognize the pages first, then extract bookmarks.
+cz:This file has no text layer. Recognize the pages first, then extract bookmarks.
+de:This file has no text layer. Recognize the pages first, then extract bookmarks.
+dk:This file has no text layer. Recognize the pages first, then extract bookmarks.
+el:This file has no text layer. Recognize the pages first, then extract bookmarks.
+es:This file has no text layer. Recognize the pages first, then extract bookmarks.
+et:This file has no text layer. Recognize the pages first, then extract bookmarks.
+eu:This file has no text layer. Recognize the pages first, then extract bookmarks.
+fa:This file has no text layer. Recognize the pages first, then extract bookmarks.
+fi:This file has no text layer. Recognize the pages first, then extract bookmarks.
+fo:This file has no text layer. Recognize the pages first, then extract bookmarks.
+fr:This file has no text layer. Recognize the pages first, then extract bookmarks.
+fy-nl:This file has no text layer. Recognize the pages first, then extract bookmarks.
+ga:This file has no text layer. Recognize the pages first, then extract bookmarks.
+gl:This file has no text layer. Recognize the pages first, then extract bookmarks.
+he:This file has no text layer. Recognize the pages first, then extract bookmarks.
+hi:This file has no text layer. Recognize the pages first, then extract bookmarks.
+hr:This file has no text layer. Recognize the pages first, then extract bookmarks.
+hu:This file has no text layer. Recognize the pages first, then extract bookmarks.
+id:This file has no text layer. Recognize the pages first, then extract bookmarks.
+it:This file has no text layer. Recognize the pages first, then extract bookmarks.
+ja:This file has no text layer. Recognize the pages first, then extract bookmarks.
+jv:This file has no text layer. Recognize the pages first, then extract bookmarks.
+ka:This file has no text layer. Recognize the pages first, then extract bookmarks.
+kr:This file has no text layer. Recognize the pages first, then extract bookmarks.
+ku:This file has no text layer. Recognize the pages first, then extract bookmarks.
+kw:This file has no text layer. Recognize the pages first, then extract bookmarks.
+lt:This file has no text layer. Recognize the pages first, then extract bookmarks.
+lv:This file has no text layer. Recognize the pages first, then extract bookmarks.
+mk:This file has no text layer. Recognize the pages first, then extract bookmarks.
+ml:This file has no text layer. Recognize the pages first, then extract bookmarks.
+mm:This file has no text layer. Recognize the pages first, then extract bookmarks.
+my:This file has no text layer. Recognize the pages first, then extract bookmarks.
+ne:This file has no text layer. Recognize the pages first, then extract bookmarks.
+nl:This file has no text layer. Recognize the pages first, then extract bookmarks.
+nn:This file has no text layer. Recognize the pages first, then extract bookmarks.
+no:This file has no text layer. Recognize the pages first, then extract bookmarks.
+pa:This file has no text layer. Recognize the pages first, then extract bookmarks.
+pl:This file has no text layer. Recognize the pages first, then extract bookmarks.
+pt:This file has no text layer. Recognize the pages first, then extract bookmarks.
+ro:This file has no text layer. Recognize the pages first, then extract bookmarks.
+ru:This file has no text layer. Recognize the pages first, then extract bookmarks.
+sat:This file has no text layer. Recognize the pages first, then extract bookmarks.
+si:This file has no text layer. Recognize the pages first, then extract bookmarks.
+sk:This file has no text layer. Recognize the pages first, then extract bookmarks.
+sl:This file has no text layer. Recognize the pages first, then extract bookmarks.
+sn:This file has no text layer. Recognize the pages first, then extract bookmarks.
+sp-rs:This file has no text layer. Recognize the pages first, then extract bookmarks.
+sq:This file has no text layer. Recognize the pages first, then extract bookmarks.
+sr-rs:This file has no text layer. Recognize the pages first, then extract bookmarks.
+sv:This file has no text layer. Recognize the pages first, then extract bookmarks.
+ta:This file has no text layer. Recognize the pages first, then extract bookmarks.
+th:This file has no text layer. Recognize the pages first, then extract bookmarks.
+tl:This file has no text layer. Recognize the pages first, then extract bookmarks.
+tr:This file has no text layer. Recognize the pages first, then extract bookmarks.
+tw:目前檔案沒有文字層。請先識別文字後再提取書籤。
+uk:This file has no text layer. Recognize the pages first, then extract bookmarks.
+uz:This file has no text layer. Recognize the pages first, then extract bookmarks.
+vn:This file has no text layer. Recognize the pages first, then extract bookmarks.
 :Thumbnail view
 am:የአነስተኛ ምስል እይታ
 br:Visualização em miniaturas
@@ -11961,6 +16128,79 @@ nl:Anti Aliasing IN-/UIT Schakelen
 pl:Przełącz renderowanie antyaliasingowe
 sk:Prepnúť Vykresľovanie s vyhladzovaním
 tw:切換消除鋸齒渲染
+:Toggle Auto OCR
+af:Toggle Auto OCR
+am:Toggle Auto OCR
+ar:Toggle Auto OCR
+az:Toggle Auto OCR
+bg:Toggle Auto OCR
+bn:Toggle Auto OCR
+br:Toggle Auto OCR
+bs:Toggle Auto OCR
+by:Toggle Auto OCR
+ca:Toggle Auto OCR
+ca-xv:Toggle Auto OCR
+cn:开关自动 OCR
+co:Toggle Auto OCR
+cy:Toggle Auto OCR
+cz:Toggle Auto OCR
+de:Toggle Auto OCR
+dk:Toggle Auto OCR
+el:Toggle Auto OCR
+es:Toggle Auto OCR
+et:Toggle Auto OCR
+eu:Toggle Auto OCR
+fa:Toggle Auto OCR
+fi:Toggle Auto OCR
+fo:Toggle Auto OCR
+fr:Toggle Auto OCR
+fy-nl:Toggle Auto OCR
+ga:Toggle Auto OCR
+gl:Toggle Auto OCR
+he:Toggle Auto OCR
+hi:Toggle Auto OCR
+hr:Toggle Auto OCR
+hu:Toggle Auto OCR
+id:Toggle Auto OCR
+it:Toggle Auto OCR
+ja:Toggle Auto OCR
+jv:Toggle Auto OCR
+ka:Toggle Auto OCR
+kr:Toggle Auto OCR
+ku:Toggle Auto OCR
+kw:Toggle Auto OCR
+lt:Toggle Auto OCR
+lv:Toggle Auto OCR
+mk:Toggle Auto OCR
+ml:Toggle Auto OCR
+mm:Toggle Auto OCR
+my:Toggle Auto OCR
+ne:Toggle Auto OCR
+nl:Toggle Auto OCR
+nn:Toggle Auto OCR
+no:Toggle Auto OCR
+pa:Toggle Auto OCR
+pl:Toggle Auto OCR
+pt:Toggle Auto OCR
+ro:Toggle Auto OCR
+ru:Toggle Auto OCR
+sat:Toggle Auto OCR
+si:Toggle Auto OCR
+sk:Toggle Auto OCR
+sl:Toggle Auto OCR
+sn:Toggle Auto OCR
+sp-rs:Toggle Auto OCR
+sq:Toggle Auto OCR
+sr-rs:Toggle Auto OCR
+sv:Toggle Auto OCR
+ta:Toggle Auto OCR
+th:Toggle Auto OCR
+tl:Toggle Auto OCR
+tr:Toggle Auto OCR
+tw:開關自動 OCR
+uk:Toggle Auto OCR
+uz:Toggle Auto OCR
+vn:Toggle Auto OCR
 :Toggle Bookmarks
 am:Միացնել/անջատել էջանիշները
 br:Ativar/Desativar os Favoritos
@@ -12319,6 +16559,79 @@ it:Annulla registrazione come filtro ricerca di WIndows
 nl:Deactiveer Windows Zoek Filter
 pl:Wyrejestruj filtr wyszukiwania Windows
 sk:Zrušiť registráciu Windows Search Filter
+:Unable to extract bookmarks
+af:Unable to extract bookmarks
+am:Unable to extract bookmarks
+ar:Unable to extract bookmarks
+az:Unable to extract bookmarks
+bg:Unable to extract bookmarks
+bn:Unable to extract bookmarks
+br:Unable to extract bookmarks
+bs:Unable to extract bookmarks
+by:Unable to extract bookmarks
+ca:Unable to extract bookmarks
+ca-xv:Unable to extract bookmarks
+cn:无法提取书签
+co:Unable to extract bookmarks
+cy:Unable to extract bookmarks
+cz:Unable to extract bookmarks
+de:Unable to extract bookmarks
+dk:Unable to extract bookmarks
+el:Unable to extract bookmarks
+es:Unable to extract bookmarks
+et:Unable to extract bookmarks
+eu:Unable to extract bookmarks
+fa:Unable to extract bookmarks
+fi:Unable to extract bookmarks
+fo:Unable to extract bookmarks
+fr:Unable to extract bookmarks
+fy-nl:Unable to extract bookmarks
+ga:Unable to extract bookmarks
+gl:Unable to extract bookmarks
+he:Unable to extract bookmarks
+hi:Unable to extract bookmarks
+hr:Unable to extract bookmarks
+hu:Unable to extract bookmarks
+id:Unable to extract bookmarks
+it:Unable to extract bookmarks
+ja:Unable to extract bookmarks
+jv:Unable to extract bookmarks
+ka:Unable to extract bookmarks
+kr:Unable to extract bookmarks
+ku:Unable to extract bookmarks
+kw:Unable to extract bookmarks
+lt:Unable to extract bookmarks
+lv:Unable to extract bookmarks
+mk:Unable to extract bookmarks
+ml:Unable to extract bookmarks
+mm:Unable to extract bookmarks
+my:Unable to extract bookmarks
+ne:Unable to extract bookmarks
+nl:Unable to extract bookmarks
+nn:Unable to extract bookmarks
+no:Unable to extract bookmarks
+pa:Unable to extract bookmarks
+pl:Unable to extract bookmarks
+pt:Unable to extract bookmarks
+ro:Unable to extract bookmarks
+ru:Unable to extract bookmarks
+sat:Unable to extract bookmarks
+si:Unable to extract bookmarks
+sk:Unable to extract bookmarks
+sl:Unable to extract bookmarks
+sn:Unable to extract bookmarks
+sp-rs:Unable to extract bookmarks
+sq:Unable to extract bookmarks
+sr-rs:Unable to extract bookmarks
+sv:Unable to extract bookmarks
+ta:Unable to extract bookmarks
+th:Unable to extract bookmarks
+tl:Unable to extract bookmarks
+tr:Unable to extract bookmarks
+tw:無法提取書籤
+uk:Unable to extract bookmarks
+uz:Unable to extract bookmarks
+vn:Unable to extract bookmarks
 :Underline
 cn:下划线
 tw:底線
@@ -12370,6 +16683,152 @@ nl:Onbekend bronbestand (%s)
 pl:Nieznany plik źródłowy (%s)
 sk:Neznámy zdrojový súbor (%s)
 tw:未知來源檔案 (%s)
+:Unsaved PDF changes
+af:Unsaved PDF changes
+am:Unsaved PDF changes
+ar:Unsaved PDF changes
+az:Unsaved PDF changes
+bg:Unsaved PDF changes
+bn:Unsaved PDF changes
+br:Unsaved PDF changes
+bs:Unsaved PDF changes
+by:Unsaved PDF changes
+ca:Unsaved PDF changes
+ca-xv:Unsaved PDF changes
+cn:未保存的 PDF 更改
+co:Unsaved PDF changes
+cy:Unsaved PDF changes
+cz:Unsaved PDF changes
+de:Unsaved PDF changes
+dk:Unsaved PDF changes
+el:Unsaved PDF changes
+es:Unsaved PDF changes
+et:Unsaved PDF changes
+eu:Unsaved PDF changes
+fa:Unsaved PDF changes
+fi:Unsaved PDF changes
+fo:Unsaved PDF changes
+fr:Unsaved PDF changes
+fy-nl:Unsaved PDF changes
+ga:Unsaved PDF changes
+gl:Unsaved PDF changes
+he:Unsaved PDF changes
+hi:Unsaved PDF changes
+hr:Unsaved PDF changes
+hu:Unsaved PDF changes
+id:Unsaved PDF changes
+it:Unsaved PDF changes
+ja:Unsaved PDF changes
+jv:Unsaved PDF changes
+ka:Unsaved PDF changes
+kr:Unsaved PDF changes
+ku:Unsaved PDF changes
+kw:Unsaved PDF changes
+lt:Unsaved PDF changes
+lv:Unsaved PDF changes
+mk:Unsaved PDF changes
+ml:Unsaved PDF changes
+mm:Unsaved PDF changes
+my:Unsaved PDF changes
+ne:Unsaved PDF changes
+nl:Unsaved PDF changes
+nn:Unsaved PDF changes
+no:Unsaved PDF changes
+pa:Unsaved PDF changes
+pl:Unsaved PDF changes
+pt:Unsaved PDF changes
+ro:Unsaved PDF changes
+ru:Unsaved PDF changes
+sat:Unsaved PDF changes
+si:Unsaved PDF changes
+sk:Unsaved PDF changes
+sl:Unsaved PDF changes
+sn:Unsaved PDF changes
+sp-rs:Unsaved PDF changes
+sq:Unsaved PDF changes
+sr-rs:Unsaved PDF changes
+sv:Unsaved PDF changes
+ta:Unsaved PDF changes
+th:Unsaved PDF changes
+tl:Unsaved PDF changes
+tr:Unsaved PDF changes
+tw:未儲存的 PDF 變更
+uk:Unsaved PDF changes
+uz:Unsaved PDF changes
+vn:Unsaved PDF changes
+:Unsaved PDF changes in '%s'
+af:Unsaved PDF changes in '%s'
+am:Unsaved PDF changes in '%s'
+ar:Unsaved PDF changes in '%s'
+az:Unsaved PDF changes in '%s'
+bg:Unsaved PDF changes in '%s'
+bn:Unsaved PDF changes in '%s'
+br:Unsaved PDF changes in '%s'
+bs:Unsaved PDF changes in '%s'
+by:Unsaved PDF changes in '%s'
+ca:Unsaved PDF changes in '%s'
+ca-xv:Unsaved PDF changes in '%s'
+cn:'%s' 中有未保存的 PDF 更改
+co:Unsaved PDF changes in '%s'
+cy:Unsaved PDF changes in '%s'
+cz:Unsaved PDF changes in '%s'
+de:Unsaved PDF changes in '%s'
+dk:Unsaved PDF changes in '%s'
+el:Unsaved PDF changes in '%s'
+es:Unsaved PDF changes in '%s'
+et:Unsaved PDF changes in '%s'
+eu:Unsaved PDF changes in '%s'
+fa:Unsaved PDF changes in '%s'
+fi:Unsaved PDF changes in '%s'
+fo:Unsaved PDF changes in '%s'
+fr:Unsaved PDF changes in '%s'
+fy-nl:Unsaved PDF changes in '%s'
+ga:Unsaved PDF changes in '%s'
+gl:Unsaved PDF changes in '%s'
+he:Unsaved PDF changes in '%s'
+hi:Unsaved PDF changes in '%s'
+hr:Unsaved PDF changes in '%s'
+hu:Unsaved PDF changes in '%s'
+id:Unsaved PDF changes in '%s'
+it:Unsaved PDF changes in '%s'
+ja:Unsaved PDF changes in '%s'
+jv:Unsaved PDF changes in '%s'
+ka:Unsaved PDF changes in '%s'
+kr:Unsaved PDF changes in '%s'
+ku:Unsaved PDF changes in '%s'
+kw:Unsaved PDF changes in '%s'
+lt:Unsaved PDF changes in '%s'
+lv:Unsaved PDF changes in '%s'
+mk:Unsaved PDF changes in '%s'
+ml:Unsaved PDF changes in '%s'
+mm:Unsaved PDF changes in '%s'
+my:Unsaved PDF changes in '%s'
+ne:Unsaved PDF changes in '%s'
+nl:Unsaved PDF changes in '%s'
+nn:Unsaved PDF changes in '%s'
+no:Unsaved PDF changes in '%s'
+pa:Unsaved PDF changes in '%s'
+pl:Unsaved PDF changes in '%s'
+pt:Unsaved PDF changes in '%s'
+ro:Unsaved PDF changes in '%s'
+ru:Unsaved PDF changes in '%s'
+sat:Unsaved PDF changes in '%s'
+si:Unsaved PDF changes in '%s'
+sk:Unsaved PDF changes in '%s'
+sl:Unsaved PDF changes in '%s'
+sn:Unsaved PDF changes in '%s'
+sp-rs:Unsaved PDF changes in '%s'
+sq:Unsaved PDF changes in '%s'
+sr-rs:Unsaved PDF changes in '%s'
+sv:Unsaved PDF changes in '%s'
+ta:Unsaved PDF changes in '%s'
+th:Unsaved PDF changes in '%s'
+tl:Unsaved PDF changes in '%s'
+tr:Unsaved PDF changes in '%s'
+tw:'%s' 中有未儲存的 PDF 變更
+uk:Unsaved PDF changes in '%s'
+uz:Unsaved PDF changes in '%s'
+vn:Unsaved PDF changes in '%s'
 :Unsaved annotations
 am:Չպահված մեկնաբանություններ
 br:Anotações não salvas
@@ -13212,3 +17671,52 @@ it:↑ ↓ per navigare
 nl:↑ ↓ voor navigeren
 pl:↑ ↓ aby nawigować
 sk:↑ ↓ – navigovať
+:Calibrate TOC Pages
+cn:对准印刷目录
+tw:對準印刷目錄
+:Bookmarks extracted. Use Calibrate TOC Pages to adjust page numbers.
+cn:已提取书签。可用「对准印刷目录」调整印刷页与 PDF 页。
+tw:已提取書籤。可用「對準印刷目錄」調整印刷頁與 PDF 頁。
+:Contents page
+cn:目录页
+tw:目錄頁
+:Write bookmarks
+cn:写入书签
+tw:寫入書籤
+:Exit
+cn:退出
+tw:退出
+:Offset
+cn:偏移
+tw:偏移
+:Printed:
+cn:印刷:
+tw:印刷:
+:Calibrate TOC
+cn:对准印刷目录
+tw:對準印刷目錄
+:Set TOC Item to Current Page
+cn:将当前页关联到选中的目录
+tw:將當前頁關聯到選中的目錄
+:Link page %s to selected bookmark
+cn:将第 %s 页关联到选中的目录
+tw:將第 %s 頁關聯到選中的目錄
+:Find TOC Item in Body
+cn:在正文中定位
+tw:在正文中定位
+:Find in Body and Link
+cn:在正文中定位并关联
+tw:在正文中定位並關聯
+:Link to current page
+cn:关联当前页
+tw:關聯當前頁
+:Merge with next TOC item
+cn:合并下一条
+tw:合併下一條
+:Could not find this heading in the body
+cn:正文中找不到这条目录
+tw:正文中找不到這條目錄
+:Replace TOC Item from Selection
+cn:用选中文字替换当前目录
+tw:用選中文字替換當前目錄
+

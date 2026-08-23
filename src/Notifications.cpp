@@ -471,6 +471,8 @@ void NotificationWnd::UpdateMessage(const char* msg, int timeoutMs, bool highlig
     HwndRepaintNow(hwnd);
     if (timeoutMs != 0) {
         SetTimer(hwnd, kNotifTimerTimeoutId, timeoutMs, nullptr);
+    } else {
+        KillTimer(hwnd, kNotifTimerTimeoutId);
     }
 }
 
@@ -676,6 +678,13 @@ NotificationWnd* GetNotificationForGroup(HWND hwnd, Kind kind) {
     NotificationWnd* wnds[kMaxNotifs];
     int nWnds = GetForHwnd(hwnd, wnds);
     return NotifsGetForGroup(wnds, nWnds, kind);
+}
+
+HWND GetNotificationParentHwnd(NotificationWnd* wnd) {
+    if (!wnd || !wnd->hwnd) {
+        return nullptr;
+    }
+    return GetParent(wnd->hwnd);
 }
 
 static StrNode* AllocStrNode(const char* s) {

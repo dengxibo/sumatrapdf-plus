@@ -26,6 +26,12 @@ void ClearTocBoxForTabSwitch(MainWindow*);
 void RestoreTocTreeForTab(MainWindow*);
 void ToggleTocBox(MainWindow*);
 void LoadTocTree(MainWindow*);
+void ReloadPdfTocTree(MainWindow* win);
+
+// Capture TOC expand + first-visible before ClearTocBox/LoadTocTree; restore after.
+struct TocTreeViewKeep;
+TocTreeViewKeep* TocTreeViewKeepStart(MainWindow* win);
+void TocTreeViewKeepFinish(MainWindow* win, TocTreeViewKeep* keep);
 void UpdateTocSelection(MainWindow*, int currPageNo);
 void InvalidateTocTree(MainWindow* win);
 void UpdateTocExpansionState(Vec<int>& tocState, TreeView*, TocTree*);
@@ -34,7 +40,10 @@ TocItem* TocItemBestMatchForPage(TocItem* item, int pageNo, EngineBase* engine);
 void UnsubclassToc(MainWindow*);
 void TocFilterChanged(MainWindow*);
 bool HandlePdfTocEditCommand(MainWindow*, int commandId);
+bool HandlePdfTocSetCurrentPage(MainWindow*);
+bool HandlePdfTocFindInBody(MainWindow*);
 bool TryAddPdfTocFromSelection(MainWindow*);
+bool TryReplacePdfTocFromSelection(MainWindow*);
 
 // shared with Favorites.cpp
 // void TocCustomizeTooltip(TreeItem::GetTooltipEvent*);

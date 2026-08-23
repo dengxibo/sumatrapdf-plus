@@ -353,6 +353,12 @@ static const char* gIconEbookFontSizeIncrease =
   </g>
 </svg>)FONTINC";
 
+static const char* gIconAnnotText =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-5l-5 3v-3h-4a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2" />
+</svg>)";
+
 static const char* gIconAnnotSquare =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
@@ -375,6 +381,43 @@ static const char* gIconAnnotInk =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
   <path d="M4 18 L8 14 L14 11 L20 5" />
+</svg>)";
+
+// https://github.com/tabler/tabler-icons/blob/master/icons/outline/scan.svg
+static const char* gIconOcr =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M4 7v-1a2 2 0 0 1 2 -2h2" />
+  <path d="M4 17v1a2 2 0 0 0 2 2h2" />
+  <path d="M16 4h2a2 2 0 0 1 2 2v1" />
+  <path d="M16 20h2a2 2 0 0 0 2 -2v-1" />
+  <path d="M5 12l14 0" />
+</svg>)";
+
+// tabler map-pin: GPS teardrop
+static const char* gIconMapPin =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" />
+  <path d="M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z" />
+</svg>)";
+
+// merge next TOC row: rounded square + up/down chevrons (user icon, Tabler stroke)
+static const char* gIconMergeUp =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <rect x="4" y="4" width="16" height="16" rx="3" />
+  <path d="M9 10l3 -3l3 3" />
+  <path d="M9 14l3 3l3 -3" />
+</svg>)";
+
+// tabler link: associate dest to current view
+static const char* gIconLink =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M9 15l6 -6" />
+  <path d="M11 6l.463 -.536a5 5 0 0 1 7.071 7.072l-.534 .464" />
+  <path d="M13 18l-.397 .534a5.068 5.068 0 0 1 -7.127 0a4.972 4.972 0 0 1 0 -7.071l.524 -.463" />
 </svg>)";
 
 // must match order in enum class TbIcon
@@ -417,10 +460,15 @@ static const char* gIcons[] = {
     gIconMatchWholeWord,
     gIconEbookFontSizeDecrease,
     gIconEbookFontSizeIncrease,
+    gIconAnnotText,
     gIconAnnotSquare,
     gIconAnnotCircle,
     gIconAnnotLine,
     gIconAnnotInk,
+    gIconOcr,
+    gIconMapPin,
+    gIconMergeUp,
+    gIconLink,
 };
 // clang-format on
 

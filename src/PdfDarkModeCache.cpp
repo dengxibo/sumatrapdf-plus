@@ -10,6 +10,10 @@ extern "C" {
 #include "Theme.h"
 #include "PdfDarkModeInternal.h"
 
+static bool dm_soft_cream_is_faded_office_scan(const DarkImageFeatures& f, float pageCoverage) {
+    return pageCoverage >= kMaxPreserveImagePageCoverage && PdfDarkModeFeaturesLookLikeFadedOfficeScanNotCream(f);
+}
+
 static bool dm_should_use_government_paper_pixmap(fz_context* ctx, fz_image* srcImage,
                                                   const DarkImageAnalysis* imgAnalysis, float pageCoverage) {
     if (!imgAnalysis || pageCoverage < kMaxPreserveImagePageCoverage) {
@@ -18,6 +22,14 @@ static bool dm_should_use_government_paper_pixmap(fz_context* ctx, fz_image* src
     const DarkImageFeatures& f = imgAnalysis->features;
     // Ultra-flat office scans (人社 PaperStream): red header can trip photo-rect probe — still binarize.
     if (PdfDarkModeFeaturesLookLikeGovernmentPaperScan(f) && f.luminanceVariance < 0.006f) {
+        return true;
+    }
+    // Thumbnail already says office/text scan: do not decode a 1400px pixmap just
+    // to hunt photo rects (that path dominates dark-mode scan-page render time).
+    if (PdfDarkModeFeaturesLookLikeFullPageTextScanForBinarize(f) && f.saturatedPixelRatio < 0.06f) {
+        return true;
+    }
+    if (dm_soft_cream_is_faded_office_scan(f, pageCoverage)) {
         return true;
     }
     // Picture-book photos and B&W portraits: preserve tonal art, not office binarize.
@@ -315,8 +327,12 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
                 } else if (imgAnalysis && PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(imgAnalysis->features)) {
                     processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
                 } else if (imgAnalysis && PdfDarkModeFeaturesLookLikeSoftCreamIllustration(imgAnalysis->features)) {
-                    // Soft cream under FollowTheme too — steep picture-book remap muddies cream.
-                    processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
+                    if (dm_soft_cream_is_faded_office_scan(imgAnalysis->features, pageCoverage)) {
+                        processed = PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, palette);
+                    } else {
+                        // Soft cream under FollowTheme too — steep picture-book remap muddies cream.
+                        processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
+                    }
                 } else if (layoutTextbookFast) {
                     // Journey Across Time / Exploring Our World: vector text + full-bleed art.
                     // PictureBook photo-rect + lum/var planes dominate render; cheap preserve remap.
@@ -347,7 +363,11 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
                            pageCoverage >= kMaxPreserveImagePageCoverage) {
                     processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
                 } else if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(imgAnalysis->features)) {
-                    processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
+                    if (dm_soft_cream_is_faded_office_scan(imgAnalysis->features, pageCoverage)) {
+                        processed = PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, palette);
+                    } else {
+                        processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
+                    }
                 } else {
                     processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
                 }
@@ -378,7 +398,11 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
                     } else if (PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(f)) {
                         processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
                     } else if (PdfDarkModeFeaturesLookLikeSoftCreamIllustration(f)) {
-                        processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
+                        if (dm_soft_cream_is_faded_office_scan(f, pageCoverage)) {
+                            processed = PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, palette);
+                        } else {
+                            processed = PdfDarkModeProcessSoftCreamPixmap(ctx, src, palette);
+                        }
                     } else if (PdfFollowThemePreservesEmbeddedImageColors() &&
                                pageCoverage >= kMaxPreserveImagePageCoverage) {
                         processed = PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);

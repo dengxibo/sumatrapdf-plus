@@ -64,6 +64,7 @@
 #include "Tabs.h"
 #include "Toolbar.h"
 #include "Translations.h"
+#include "OcrService.h"
 
 #include "utils/Log.h"
 
@@ -854,6 +855,7 @@ void CancelDrag(MainWindow* win) {
     win->annotationBeingDragged = nullptr;
     win->ebookAnnotationDragPending = nullptr;
     win->annotationBeingResized = false;
+    win->ocrRegionPending = false;
     SetCursorCached(IDC_ARROW);
 }
 
@@ -1041,6 +1043,13 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
                     win->annotCreateInkPoints.Append(pagePt);
                 }
             }
+            ScheduleRepaint(win, 0);
+            break;
+        }
+        case MouseAction::OcrRegion: {
+            win->annotationUnderCursor = nullptr;
+            win->selectionRect.dx = x - win->selectionRect.x;
+            win->selectionRect.dy = y - win->selectionRect.y;
             ScheduleRepaint(win, 0);
             break;
         }
@@ -1326,14 +1335,18 @@ static Rect NormalizeScreenRect(Point a, Point b) {
 }
 
 static void PaintAnnotCreatePreview(MainWindow* win, DisplayModel* dm, HDC hdc) {
-    if (win->mouseAction != MouseAction::CreatingAnnotation) {
+    bool ocrDrag = win->mouseAction == MouseAction::OcrRegion;
+    if (win->mouseAction != MouseAction::CreatingAnnotation && !ocrDrag) {
         return;
     }
     int cmdId = win->annotCreateToolCmd;
     Gdiplus::Graphics gs(hdc);
-    Gdiplus::Color col(200, 255, 140, 0);
+    Gdiplus::Color col = ocrDrag ? Gdiplus::Color(200, 40, 120, 220) : Gdiplus::Color(200, 255, 140, 0);
     Gdiplus::Pen pen(col, 2);
 
+    if (cmdId == CmdCreateAnnotText) {
+        return;
+    }
     if (cmdId == CmdCreateAnnotInk) {
         if (win->annotCreateInkPoints.len < 2) {
             return;
@@ -1372,10 +1385,20 @@ static void PaintAnnotCreatePreview(MainWindow* win, DisplayModel* dm, HDC hdc) 
     if (rc.dx <= 0 && rc.dy <= 0) {
         return;
     }
+    if (ocrDrag) {
+        gs.DrawRectangle(&pen, rc.x, rc.y, rc.dx, rc.dy);
+        return;
+    }
     if (cmdId == CmdCreateAnnotCircle) {
         gs.DrawEllipse(&pen, rc.x, rc.y, rc.dx, rc.dy);
     } else if (cmdId == CmdCreateAnnotSquare) {
         gs.DrawRectangle(&pen, rc.x, rc.y, rc.dx, rc.dy);
+    }
+}
+
+static void ReleaseAnnotCreateToolIfUnlocked(MainWindow* win) {
+    if (win && !win->annotCreateToolLocked) {
+        SetAnnotCreateTool(win, 0);
     }
 }
 
@@ -1388,6 +1411,19 @@ static void FinishEbookAnnotCreateDrag(MainWindow* win, WindowTab* tab, DisplayM
     Point start = win->annotCreateDragStart;
     int pageNo = dm->GetPageNoByPoint(start);
     if (!dm->ValidPageNo(pageNo)) {
+        return;
+    }
+    if (type == AnnotationType::Text) {
+        EbookAnnotation* annotation =
+            EbookAnnotationsCreateAt(tab, dm, start, type, GetDefaultEbookPointAnnotationColor(type));
+        win->annotCreateInkPoints.Reset();
+        if (!annotation) {
+            return;
+        }
+        tab->selectedEbookAnnotation = annotation;
+        UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, annotation);
+        MainWindowRerender(win);
+        ReleaseAnnotCreateToolIfUnlocked(win);
         return;
     }
     if (type == AnnotationType::Ink) {
@@ -1408,6 +1444,7 @@ static void FinishEbookAnnotCreateDrag(MainWindow* win, WindowTab* tab, DisplayM
         tab->selectedEbookAnnotation = annotation;
         UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, annotation);
         MainWindowRerender(win);
+        ReleaseAnnotCreateToolIfUnlocked(win);
         return;
     }
     Rect screenRect = NormalizeScreenRect(start, endCanvas);
@@ -1421,6 +1458,7 @@ static void FinishEbookAnnotCreateDrag(MainWindow* win, WindowTab* tab, DisplayM
     tab->selectedEbookAnnotation = annotation;
     UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, annotation);
     MainWindowRerender(win);
+    ReleaseAnnotCreateToolIfUnlocked(win);
 }
 
 static void FinishAnnotCreateDrag(MainWindow* win, Point endCanvas) {
@@ -1444,7 +1482,7 @@ static void FinishAnnotCreateDrag(MainWindow* win, Point endCanvas) {
     }
     Point start = win->annotCreateDragStart;
     Rect screenRect = NormalizeScreenRect(start, endCanvas);
-    if (cmdId != CmdCreateAnnotInk && (screenRect.dx < 4 && screenRect.dy < 4)) {
+    if (cmdId != CmdCreateAnnotInk && cmdId != CmdCreateAnnotText && (screenRect.dx < 4 && screenRect.dy < 4)) {
         return;
     }
     int pageNo = dm->GetPageNoByPoint(start);
@@ -1453,7 +1491,10 @@ static void FinishAnnotCreateDrag(MainWindow* win, Point endCanvas) {
     }
     AnnotCreateArgs args{type};
     Annotation* annot = nullptr;
-    if (type == AnnotationType::Ink) {
+    if (type == AnnotationType::Text) {
+        PointF ptOnPage = dm->CvtFromScreen(start, pageNo);
+        annot = EngineMupdfCreateAnnotation(engine, pageNo, ptOnPage, &args);
+    } else if (type == AnnotationType::Ink) {
         if (win->annotCreateInkPoints.len < 2) {
             PointF a = dm->CvtFromScreen(start, pageNo);
             PointF b = dm->CvtFromScreen(endCanvas, pageNo);
@@ -1484,6 +1525,7 @@ static void FinishAnnotCreateDrag(MainWindow* win, Point endCanvas) {
     UpdateAnnotationsList(tab->editAnnotsWindow);
     MainWindowRerenderAnnotationChange(win, pageNo, annot);
     ToolbarUpdateStateForWindow(win, true);
+    ReleaseAnnotCreateToolIfUnlocked(win);
 }
 
 static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
@@ -1510,6 +1552,16 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     DisplayModel* dm = win->AsFixed();
     ReportIf(!dm);
     Point pt{x, y};
+
+    if (win->ocrRegionPending) {
+        win->annotCreateDragStart = pt;
+        win->dragStart = pt;
+        win->selectionRect = Rect(pt.x, pt.y, 0, 0);
+        win->mouseAction = MouseAction::OcrRegion;
+        win->dragStartPending = true;
+        SetCapture(win->hwndCanvas);
+        return;
+    }
 
     if (win->annotCreateToolCmd != 0) {
         WindowTab* tab = win->CurrentTab();
@@ -1620,8 +1672,14 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     // Hover hit-testing remains cache-only to avoid blocking mouse movement.
     bool isOverText = win->AsFixed()->IsOverText(pt, true);
 
-    // if clicking on already selected text, prepare for drag-out instead of new selection
-    if (canCopy && !isShift && !isCtrl && isOverText && win->showSelection && IsPointInSelection(win, pt)) {
+    bool inSel = win->showSelection && IsPointInSelection(win, pt);
+    IPageElement* hitEl = dm->GetElementAtPos(pt, nullptr, true);
+    const char* hitKind = (hitEl && hitEl->kind) ? hitEl->kind : "";
+    bool hitImage = hitEl && hitEl->Is(kindPageElementImage);
+
+    // Clicking the current selection (glyphs or the highlight over a page image)
+    // prepares drag-out; a click without drag clears the selection.
+    if (canCopy && !isShift && !isCtrl && inSel) {
         win->textDragPending = true;
         win->linkOnLastButtonDown = nullptr;
         SetCapture(win->hwndCanvas);
@@ -1632,10 +1690,9 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     if (canCopy && !isShift && !isCtrl && !isOverText) {
         Annotation* mediaAnnot = dm->GetAnnotationAtPos(pt, tab->selectedAnnotation);
         if (!(mediaAnnot && AnnotationSupportsMediaPlayback(mediaAnnot->type))) {
-            IPageElement* pageEl = dm->GetElementAtPos(pt, nullptr, true);
-            if (pageEl && pageEl->Is(kindPageElementImage)) {
+            if (hitImage) {
                 win->imageDragPending = true;
-                win->imageDragElement = pageEl;
+                win->imageDragElement = hitEl;
                 win->linkOnLastButtonDown = nullptr;
                 SetCapture(win->hwndCanvas);
                 return;
@@ -1643,8 +1700,10 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
         }
     }
 
+    const char* path = "selStart";
     if (resizeHandle != ResizeHandle::None || isMoveableAnnot || !canCopy || (isShift || !isOverText) && !isCtrl) {
         StartMouseDrag(win, x, y);
+        path = "startDrag";
     } else {
         OnSelectionStart(win, x, y, key);
     }
@@ -1673,6 +1732,7 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
             ReleaseCapture();
         }
         DeleteOldSelectionInfo(win, true);
+        ScheduleRepaint(win, 0);
         return;
     }
 
@@ -1691,10 +1751,27 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
             PlaySoundAnnotation(annotAtClick);
             return;
         }
+        if (win->showSelection) {
+            DeleteOldSelectionInfo(win, true);
+            ScheduleRepaint(win, 0);
+        }
         return;
     }
 
     auto ma = win->mouseAction;
+    if (ma == MouseAction::OcrRegion) {
+        Point endCanvas{x, y};
+        win->mouseAction = MouseAction::None;
+        win->dragStartPending = false;
+        Rect screenRect = NormalizeScreenRect(win->annotCreateDragStart, endCanvas);
+        win->selectionRect = Rect();
+        if (GetCapture() == win->hwndCanvas) {
+            ReleaseCapture();
+        }
+        OcrFinishRegionSelect(win, screenRect);
+        ScheduleRepaint(win, 0);
+        return;
+    }
     if (ma == MouseAction::CreatingAnnotation) {
         Point endCanvas{x, y};
         win->mouseAction = MouseAction::None;
@@ -2568,15 +2645,11 @@ static void OnPaintDocument(MainWindow* win) {
     HDC hdc = BeginPaint(win->hwndCanvas, &ps);
 
     if (IsSidebarSplitterLiveDrag()) {
-        int pw = ps.rcPaint.right - ps.rcPaint.left;
-        int ph = ps.rcPaint.bottom - ps.rcPaint.top;
-        // Do not BitBlt neighbor columns: on expand-left that smeared the
-        // splitter into many vertical trails. Fill newly exposed left strips.
-        if (pw > 0 && pw <= 48 && ph > 0 && ps.rcPaint.left == 0) {
-            HBRUSH br = CreateSolidBrush(ThemeMainWindowBackgroundColor());
-            FillRect(hdc, &ps.rcPaint, br);
-            DeleteObject(br);
-        }
+        // Always cover the update region. Validating without a fill left
+        // black/white ghosts; a 48px-only fill missed fast splitter moves.
+        HBRUSH br = CreateSolidBrush(ThemeMainWindowBackgroundColor());
+        FillRect(hdc, &ps.rcPaint, br);
+        DeleteObject(br);
         EndPaint(win->hwndCanvas, &ps);
         return;
     }
@@ -2617,7 +2690,7 @@ static LRESULT OnSetCursorMouseNone(MainWindow* win, HWND hwnd) {
         win->DeleteToolTip();
         return FALSE;
     }
-    if (win->annotCreateToolCmd != 0) {
+    if (win->annotCreateToolCmd != 0 || win->ocrRegionPending) {
         SetCursorCached(IDC_CROSS);
         return TRUE;
     }
@@ -2710,6 +2783,7 @@ static LRESULT OnSetCursor(MainWindow* win, HWND hwnd) {
         case MouseAction::Selecting:
             break;
         case MouseAction::CreatingAnnotation:
+        case MouseAction::OcrRegion:
             SetCursorCached(IDC_CROSS);
             return TRUE;
         case MouseAction::None:
@@ -2725,9 +2799,114 @@ float ScaleZoomBy(MainWindow* win, float factor) {
 
 static bool gWheelZoomRelative = true;
 
+constexpr float kWheelZoomPerNotch = 1.10f;
+constexpr float kWheelZoomMaxNotchesPerMsg = 2.f;
+constexpr float kWheelZoomVelocityMs = 300.f;
+constexpr UINT kWheelZoomDebounceMs = 32;
+
+static float WheelZoomFactorFromDelta(short delta, DWORD msgTime, DWORD* lastMsgTime) {
+    float notches = (float)delta / (float)WHEEL_DELTA;
+    notches = limitValue(notches, -kWheelZoomMaxNotchesPerMsg, kWheelZoomMaxNotchesPerMsg);
+    float factor = powf(kWheelZoomPerNotch, notches);
+
+    double elapsedMs = 100.0;
+    if (*lastMsgTime != 0) {
+        DWORD dt = msgTime - *lastMsgTime;
+        if (dt < 500) {
+            elapsedMs = (double)dt;
+        }
+    }
+    *lastMsgTime = msgTime;
+
+    float maxFactor = powf(2.f, (float)elapsedMs / kWheelZoomVelocityMs);
+    maxFactor = limitValue(maxFactor, 1.04f, 2.f);
+    if (factor > maxFactor) {
+        factor = maxFactor;
+    } else if (factor < 1.f / maxFactor) {
+        factor = 1.f / maxFactor;
+    }
+    return factor;
+}
+
+static void AccumulateWheelZoom(MainWindow* win, WPARAM wp, Point pt, DWORD msgTime) {
+    if (!win->ctrl) {
+        return;
+    }
+    short delta = GET_WHEEL_DELTA_WPARAM(wp);
+    float factor = WheelZoomFactorFromDelta(delta, msgTime, &win->wheelZoomLastMsgTime);
+    float currZoom = win->ctrl->GetZoomVirtual(true);
+    float base = win->wheelZoomPending ? win->wheelZoomTarget : currZoom;
+    float newZoom = limitValue(base * factor, kZoomMin, kZoomMax);
+    win->wheelZoomTarget = newZoom;
+    win->wheelZoomPt = pt;
+    win->wheelZoomPending = true;
+    win->wheelZoomCoalesced++;
+    ShowZoomNotification(win, newZoom);
+}
+
+static int DrainQueuedWheelZoom(MainWindow* win) {
+    int n = 0;
+    MSG msg;
+    while (PeekMessage(&msg, nullptr, WM_MOUSEWHEEL, WM_MOUSEWHEEL, PM_NOREMOVE)) {
+        if (msg.hwnd && msg.hwnd != win->hwndCanvas && msg.hwnd != win->hwndFrame) {
+            break;
+        }
+        bool isZoom = (LOWORD(msg.wParam) & MK_CONTROL) || (LOWORD(msg.wParam) & MK_RBUTTON);
+        if (!isZoom) {
+            break;
+        }
+        PeekMessage(&msg, nullptr, WM_MOUSEWHEEL, WM_MOUSEWHEEL, PM_REMOVE);
+        Point pt{GET_X_LPARAM(msg.lParam), GET_Y_LPARAM(msg.lParam)};
+        HwndScreenToClient(win->hwndCanvas, pt);
+        AccumulateWheelZoom(win, msg.wParam, pt, msg.time);
+        n++;
+    }
+    return n;
+}
+
+void CancelPendingWheelZoom(MainWindow* win) {
+    if (!win || win->wheelZoomApplying) {
+        return;
+    }
+    win->wheelZoomPending = false;
+    win->wheelZoomCoalesced = 0;
+    if (win->hwndCanvas) {
+        KillTimer(win->hwndCanvas, kWheelZoomTimerID);
+    }
+}
+
+static void ApplyPendingWheelZoom(MainWindow* win) {
+    if (!win || !IsMainWindowValid(win) || win->isBeingClosed || !win->IsDocLoaded()) {
+        CancelPendingWheelZoom(win);
+        return;
+    }
+    for (int pass = 0; pass < 2; pass++) {
+        DrainQueuedWheelZoom(win);
+        if (!win->wheelZoomPending) {
+            KillTimer(win->hwndCanvas, kWheelZoomTimerID);
+            return;
+        }
+        float newZoom = win->wheelZoomTarget;
+        Point pt = win->wheelZoomPt;
+        win->wheelZoomPending = false;
+        win->wheelZoomCoalesced = 0;
+        KillTimer(win->hwndCanvas, kWheelZoomTimerID);
+
+        win->wheelZoomApplying = true;
+        SmartZoom(win, newZoom, &pt, false);
+        win->wheelZoomApplying = false;
+    }
+    DrainQueuedWheelZoom(win);
+    if (win->wheelZoomPending) {
+        SetTimer(win->hwndCanvas, kWheelZoomTimerID, kWheelZoomDebounceMs, nullptr);
+    }
+}
+
 // Ctrl+wheel / right-button+wheel zoom. One WHEEL_DELTA notch is ~10%.
 // Fast flicks used to explode (6000% / 20%): only exact ±120 was slowed, and
 // deltas that arrived <150ms apart stacked from the gesture start without bound.
+// Rapid ticks are coalesced: apply the net target once after a short idle so
+// 1→2→3→4 becomes 1→4, and a reverse before apply cancels the overshoot.
 static void ZoomByMouseWheel(MainWindow* win, WPARAM wp) {
     // don't show the context menu when zooming with the right mouse-button down
     win->dragStartPending = false;
@@ -2744,32 +2923,9 @@ static void ZoomByMouseWheel(MainWindow* win, WPARAM wp) {
         return;
     }
 
-    constexpr float kZoomPerNotch = 1.10f;
-    constexpr float kMaxNotchesPerMsg = 2.f;
-    constexpr float kVelocityMs = 300.f; // 2× (or ½) per this many ms
-
-    float notches = (float)delta / (float)WHEEL_DELTA;
-    notches = limitValue(notches, -kMaxNotchesPerMsg, kMaxNotchesPerMsg);
-    float factor = powf(kZoomPerNotch, notches);
-
-    static LARGE_INTEGER lastZoomTime{};
-    LARGE_INTEGER now = TimeGet();
-    double elapsedMs = TimeDiffMs(lastZoomTime, now);
-    if (lastZoomTime.QuadPart == 0 || elapsedMs > 500.0) {
-        elapsedMs = 100.0; // first tick or pause: one notch applies fully
-    }
-    lastZoomTime = now;
-
-    float maxFactor = powf(2.f, (float)elapsedMs / kVelocityMs);
-    maxFactor = limitValue(maxFactor, 1.04f, 2.f);
-    if (factor > maxFactor) {
-        factor = maxFactor;
-    } else if (factor < 1.f / maxFactor) {
-        factor = 1.f / maxFactor;
-    }
-
-    float newZoom = win->ctrl->GetZoomVirtual(true) * factor;
-    SmartZoom(win, newZoom, &pt, false);
+    AccumulateWheelZoom(win, wp, pt, GetMessageTime());
+    DrainQueuedWheelZoom(win);
+    SetTimer(win->hwndCanvas, kWheelZoomTimerID, kWheelZoomDebounceMs, nullptr);
 }
 
 static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM lp) {
@@ -3595,6 +3751,12 @@ static void OnTimer(MainWindow* win, HWND hwnd, WPARAM timerId) {
             } else {
                 ReadAloudHighlightTimerStop(win);
             }
+            break;
+        }
+
+        case kWheelZoomTimerID: {
+            KillTimer(hwnd, kWheelZoomTimerID);
+            ApplyPendingWheelZoom(win);
             break;
         }
 

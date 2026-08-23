@@ -46,6 +46,8 @@ BEGIN
         BEGIN
             VALUE "FileDescription", kAppName
             VALUE "FileVersion", VER_RESOURCE_STR
+            VALUE "InternalName", "SumatraPDF-Plus"
+            VALUE "OriginalFilename", "SumatraPDF-Plus.exe"
             VALUE "LegalCopyright", kCopyrightStr
             VALUE "ProductName", kAppName
             VALUE "ProductVersion", VER_RESOURCE_STR

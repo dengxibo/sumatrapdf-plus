@@ -44,6 +44,7 @@ Kind kindFilePalmDoc = "filePalmDoc";
 Kind kindFileHTML = "fileHTML";
 Kind kindFileTxt = "fileTxt";
 Kind kindFileMd = "fileMd";
+Kind kindFileOffice = "fileOffice";
 Kind kindFileSvg = "fileSvg";
 Kind kindFileHeic = "fileHeic";
 Kind kindFileAvif = "fileAvif";
@@ -105,6 +106,10 @@ Kind kindFileAvif = "fileAvif";
     V(".xhtml", kindFileHTML)     \
     V(".md", kindFileMd)          \
     V(".markdown", kindFileMd)    \
+    V(".docx", kindFileOffice)    \
+    V(".xlsx", kindFileOffice)    \
+    V(".pptx", kindFileOffice)    \
+    V(".hwpx", kindFileOffice)    \
     V(".svg", kindFileSvg)        \
     V(".djvu", kindFileDjVu)      \
     V(".jp2", kindFileJp2)        \
@@ -159,6 +164,7 @@ static void VerifyExtsMatch() {
     }
     ReportIf(kindFileEpub != GetKindByFileExt("foo.epub"));
     ReportIf(kindFileJp2 != GetKindByFileExt("foo.JP2"));
+    ReportIf(kindFileOffice != GetKindByFileExt("foo.docx"));
     gDidVerifyExtsMatch = true;
 }
 
@@ -439,6 +445,9 @@ Kind GuessFileTypeFromContent(const char* path) {
             }
             if (IsFb2Archive(archive)) {
                 res = kindFileFb2z;
+            }
+            if (IsOoxmlArchive(archive)) {
+                res = kindFileOffice;
             }
             delete archive;
         }

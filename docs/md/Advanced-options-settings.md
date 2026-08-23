@@ -130,6 +130,14 @@ OfflineDictionaryPath =
 ; (introduced in version 3.7)
 EnableDoubleClickWordLookup = true
 
+; if true, automatically OCR scanned pages with little or no text so they can be
+; selected and searched. Models live in {exedir}/ocr/ (introduced in version
+; 3.8)
+AutoOcrScanPages = false
+
+; Valid values: conservative, standard, detailed (introduced in version 3.8)
+ExtractPdfTocMode = standard
+
 ; Valid values: doubao, deepseek, chatgpt (introduced in version 3.7)
 AiChatProvider = doubao
 
@@ -286,9 +294,9 @@ FixedPageUI [
     ; in version 3.7.15)
     FindMatchColor = #ffff00
 
-    ; if true, hide redundant PDF pages that only show a thin strip of an image
-    ; already shown on the previous/next page (Calibre photo books / split-image
-    ; PDFs) (introduced in version 3.7)
+    ; if true, join Calibre-style split photos: paint the clipped-off strip onto
+    ; the keeper page and hide the redundant thin-strip page (introduced in
+    ; version 3.7)
     JoinSplitPdfImages = true
 ]
 

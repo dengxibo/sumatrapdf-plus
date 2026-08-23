@@ -271,6 +271,17 @@ static SeqStrings gCommandNames =
     "CmdPdfTocPromote\0"
     "CmdPdfTocDemote\0"
     "CmdEbookFontSizeReset\0"
+    "CmdOcrCurrentPage\0"
+    "CmdOcrDocument\0"
+    "CmdToggleAutoOcr\0"
+    "CmdOcrRegion\0"
+    "CmdOcrCancel\0"
+    "CmdSaveSearchablePdf\0"
+    "CmdExtractPdfToc\0"
+    "CmdPdfTocCalibrate\0"
+    "CmdPdfTocSetCurrentPage\0"
+    "CmdPdfTocFindInBody\0"
+    "CmdPdfTocReplaceFromSelection\0"
     "CmdNone\0"
     "\0";
 
@@ -532,6 +543,17 @@ static i32 gCommandIds[] = {
     CmdPdfTocPromote,
     CmdPdfTocDemote,
     CmdEbookFontSizeReset,
+    CmdOcrCurrentPage,
+    CmdOcrDocument,
+    CmdToggleAutoOcr,
+    CmdOcrRegion,
+    CmdOcrCancel,
+    CmdSaveSearchablePdf,
+    CmdExtractPdfToc,
+    CmdPdfTocCalibrate,
+    CmdPdfTocSetCurrentPage,
+    CmdPdfTocFindInBody,
+    CmdPdfTocReplaceFromSelection,
     CmdNone,
 };
 
@@ -793,6 +815,17 @@ SeqStrings gCommandDescriptions =
     "PDF TOC: Promote Item\0"
     "PDF TOC: Demote Item\0"
     "Ebook Font Size: Reset to Default\0"
+    "OCR Current Page\0"
+    "OCR All Pages\0"
+    "Toggle Auto OCR\0"
+    "OCR Region\0"
+    "Cancel OCR\0"
+    "Recognize all pages and save\0"
+    "Extract Table of Contents\0"
+    "Calibrate TOC Pages\0"
+    "Set TOC Item to Current Page\0"
+    "Find TOC Item in Body\0"
+    "Replace TOC Item from Selection\0"
     "Do nothing\0"
     "\0";
 // clang-format on

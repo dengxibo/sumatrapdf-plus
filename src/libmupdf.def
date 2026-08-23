@@ -167,6 +167,8 @@ EXPORTS
 	fz_buffer_storage
 	fz_new_buffer
 	fz_new_buffer_from_data
+	fz_append_string
+	fz_append_printf
 	fz_resize_buffer
 	fz_grow_buffer
 	fz_trim_buffer
@@ -499,6 +501,8 @@ EXPORTS
 	fz_fopen_utf8
 	fz_free_argv
 	fz_new_text
+	fz_show_glyph
+	fz_drop_text
 	fz_bound_text
 	fz_generate_transition
 	fz_tree_lookup
@@ -626,6 +630,8 @@ EXPORTS
 	pdf_delete_page
 	pdf_delete_page_range
 	pdf_page_write
+	pdf_add_cid_font
+	pdf_add_stream
 
 	pdf_field_type
 	pdf_field_value
