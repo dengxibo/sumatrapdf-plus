@@ -43,6 +43,37 @@ void WinUtilTest() {
         utassert(allScreens.Intersect(oneScreen) == oneScreen);
     }
 
+    {
+        // White paper remapped to Dracula must stay #282A36, not flatten to gray/black.
+        HBITMAP hbmp = CreateMemoryBitmap(Size(2, 1));
+        utassert(hbmp);
+        BitmapPixels* px = GetBitmapPixels(hbmp);
+        utassert(px && px->pixels && px->nBytesPerPixel == 4);
+        px->pixels[0] = 255;
+        px->pixels[1] = 255;
+        px->pixels[2] = 255;
+        px->pixels[3] = 255;
+        px->pixels[4] = 0;
+        px->pixels[5] = 0;
+        px->pixels[6] = 0;
+        px->pixels[7] = 255;
+        FinalizeBitmapPixels(px);
+
+        COLORREF text = RGB(0xF8, 0xF8, 0xF2);
+        COLORREF bg = RGB(0x28, 0x2A, 0x36);
+        UpdateBitmapColors(hbmp, text, bg, 0, nullptr);
+
+        px = GetBitmapPixels(hbmp);
+        utassert(px);
+        COLORREF paper = GetPixel(px, 0, 0);
+        COLORREF ink = GetPixel(px, 1, 0);
+        FinalizeBitmapPixels(px);
+        DeleteObject(hbmp);
+
+        utassert(GetRValue(paper) == 0x28 && GetGValue(paper) == 0x2A && GetBValue(paper) == 0x36);
+        utassert(GetRValue(ink) == 0xF8 && GetGValue(ink) == 0xF8 && GetBValue(ink) == 0xF2);
+    }
+
     // TODO: moved AdjustLigthness() to Colors.[h|cpp] which is outside of utils directory
 #if 0
     {

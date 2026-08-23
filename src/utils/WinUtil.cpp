@@ -3476,6 +3476,41 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLO
         px[2] = linkR;
     };
 
+    // 公文 红头 / 红章: linear invert turns red into cyan/green.
+    auto keepOfficialRed = [](u8 r, u8 g, u8 b, u8* pxB, u8* pxG, u8* pxR) -> bool {
+        int maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+        int minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+        if (maxC - minC < 28) {
+            return false;
+        }
+        if (r <= g + 12 || r <= b + 12) {
+            return false;
+        }
+        int lum = (int(r) * 54 + int(g) * 183 + int(b) * 19) >> 8;
+        if (lum > 230) {
+            return false;
+        }
+        if (g > 158 && b > 140) {
+            return false;
+        }
+        int nr = (int)(r * 1.15f);
+        int ng = (int)(g * 0.45f);
+        int nb = (int)(b * 0.45f);
+        if (nr > 255) {
+            nr = 255;
+        }
+        if (ng > nr * 45 / 100) {
+            ng = nr * 45 / 100;
+        }
+        if (nb > nr * 45 / 100) {
+            nb = nr * 45 / 100;
+        }
+        *pxR = (u8)nr;
+        *pxG = (u8)ng;
+        *pxB = (u8)nb;
+        return true;
+    };
+
     // color order in DIB is blue-green-red-alpha
     byte rt, gt, bt;
     UnpackColor(textColor, rt, gt, bt);
@@ -3505,24 +3540,26 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLO
     };
 
     // After linear invert, mid-gray AA fringes stay mid-gray (halo on dark bg).
-    // For near-achromatic source pixels, pull remapped luminance toward text/bg.
+    // Sharpen in source luminance, then remap along theme text↔paper. Writing
+    // grayscale of the remapped pixel used to crush Dracula paper (#282A36)
+    // to near-black (#0D0D0D).
     auto sharpenAchromaticAfterRemap = [&](u8 srcR, u8 srcG, u8 srcB, u8* pxB, u8* pxG, u8* pxR) {
         int maxC = srcR > srcG ? (srcR > srcB ? srcR : srcB) : (srcG > srcB ? srcG : srcB);
         int minC = srcR < srcG ? (srcR < srcB ? srcR : srcB) : (srcG < srcB ? srcG : srcB);
         if (maxC - minC > 28) {
             return;
         }
-        int lum = (int(*pxR) * 54 + int(*pxG) * 183 + int(*pxB) * 19) >> 8;
+        int srcLum = (int(srcR) * 54 + int(srcG) * 183 + int(srcB) * 19) >> 8;
         int t;
-        if (lum < 128) {
-            t = (lum * lum) / 128;
+        if (srcLum < 128) {
+            t = (srcLum * srcLum) / 128;
         } else {
-            int inv = 255 - lum;
+            int inv = 255 - srcLum;
             t = 255 - (inv * inv) / 127;
         }
-        *pxB = (u8)t;
-        *pxG = (u8)t;
-        *pxR = (u8)t;
+        *pxB = (u8)(base[0] + mul255(t, diff[0]));
+        *pxG = (u8)(base[1] + mul255(t, diff[1]));
+        *pxR = (u8)(base[2] + mul255(t, diff[2]));
     };
 
     // for mapped 32-bit DI bitmaps: directly access the pixel data
@@ -3541,6 +3578,9 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLO
             }
             if (recolorLinks && isLikelyLinkPixel(r, g, b)) {
                 setLinkPixel(&bmpData[i]);
+                continue;
+            }
+            if (invertedRemap && keepOfficialRed(r, g, b, &bmpData[i], &bmpData[i + 1], &bmpData[i + 2])) {
                 continue;
             }
             for (int k = 0; k < 4; k++) {
@@ -3570,6 +3610,9 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLO
                     setLinkPixel(px);
                     continue;
                 }
+                if (invertedRemap && keepOfficialRed(r, g, b, &px[0], &px[1], &px[2])) {
+                    continue;
+                }
                 for (int k = 0; k < 3; k++) {
                     px[k] = (u8)(base[k] + mul255(px[k], diff[k]));
                 }
@@ -3596,6 +3639,13 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLO
                 palette[i].rgbRed = linkR;
                 palette[i].rgbGreen = linkG;
                 palette[i].rgbBlue = linkB;
+                continue;
+            }
+            u8 kr, kg, kb;
+            if (invertedRemap && keepOfficialRed(r, g, b, &kb, &kg, &kr)) {
+                palette[i].rgbRed = kr;
+                palette[i].rgbGreen = kg;
+                palette[i].rgbBlue = kb;
                 continue;
             }
             palette[i].rgbRed = (u8)(base[2] + mul255(palette[i].rgbRed, diff[2]));
@@ -3634,6 +3684,9 @@ void UpdateBitmapColors(HBITMAP hbmp, COLORREF textColor, COLORREF bgColor, COLO
             }
             if (recolorLinks && isLikelyLinkPixel(r, g, b)) {
                 setLinkPixel(&bmpData[i]);
+                continue;
+            }
+            if (invertedRemap && keepOfficialRed(r, g, b, &bmpData[i], &bmpData[i + 1], &bmpData[i + 2])) {
                 continue;
             }
             for (int k = 0; k < 4; k++) {
