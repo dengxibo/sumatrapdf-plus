@@ -2,6 +2,8 @@
 
 ## next
 
+## 3.7.29 (2026-08-24)
+
 - sidebar splitter: live drag repaints the TOC tree, footer, and canvas immediately (no leftover bits / overlay scrollbar)
   拖侧栏分隔条时立刻重绘目录树、底部栏和画布，不再留下残影或旧滚动条
 

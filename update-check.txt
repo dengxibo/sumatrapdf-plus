@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.28
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.28/SumatraPDF.exe
-Notes: Oval portraits keep a small mat halo (no rectangular bars at the poles); inset photos no longer leave a white hairline; Ctrl+wheel zoom is ~10% per notch; TOC splitter no longer relayouts while dragging; toolbar fullscreen (F11).
-NotesZh: 椭圆肖像衬纸光晕缩小，两极不再被啃成方块；嵌入照片不再留白竖线；Ctrl+滚轮约 10%；拖 TOC 不再重排页面；工具栏增加全屏按钮（F11）。
+Latest: 3.7.29
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.29/SumatraPDF.exe
+Notes: Scan-page OCR (toolbar Auto OCR, off by default); extract bookmarks from printed TOC; printed-TOC calibration; Acrobat-style bookmark sidebar; Dracula scan paper stays #282A36.
+NotesZh: 扫描页 OCR（工具栏自动 OCR，默认关）；从印刷目录提取书签；对准印刷目录；书签栏接近 Acrobat；Dracula 扫描页纸色保持 #282A36。
