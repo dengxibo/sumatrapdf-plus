@@ -11,6 +11,8 @@ Windows 下的 PDF / 电子书阅读器，针对中文 EPUB/MOBI、离线查词�
 - **Upstream / 上游项目：** [https://github.com/sumatrapdfreader/sumatrapdf](https://github.com/sumatrapdfreader/sumatrapdf)  
 - **License / 许可：** [COPYING](COPYING) (GPLv3) + [AUTHORS](AUTHORS)
 
+![Sumatra PDF Plus](docs/github-social-preview.png)
+
 ---
 
 ## Features · 主要特性
