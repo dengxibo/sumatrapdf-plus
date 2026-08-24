@@ -6,7 +6,7 @@
 【这是什么】
   Windows 下的 PDF / EPUB / MOBI 等电子书阅读器。
   在 SumatraPDF 基础上针对国内常用电子书做了优化，
-  侧重：中文 EPUB/MOBI 排版、打开速度、离线查词、繁体查词、暗色主题等。
+  侧重：中文 EPUB/MOBI 排版、打开速度、离线查词、繁体查词、暗色主题、扫描页 OCR 等。
 
   ※ 非 sumatrapdfreader.org 官方版本，基于 SumatraPDF (GPLv3) 的社区修改版。
 
@@ -27,6 +27,7 @@
      - fonts 文件夹
      - opencc 文件夹（繁体 PDF 查词需要，见下文）
      - dict 文件夹（离线查词需要，见下文）
+     - ocr 文件夹（扫描页 OCR 需要，见下文）
 
 【配置文件】
   程序会把用户设置保存在 SumatraPDF-settings.txt：
@@ -63,6 +64,25 @@
   请保留 exe 同目录下的 opencc 文件夹（内含 t2s.json 等数据文件）。
   仅升级 exe、不复制 opencc，繁体查词将不可用。
 
+【扫描页 OCR】
+  扫描件（几乎没有文字层）可本地识别，之后能选择、搜索、查词、朗读、提取书签。
+  使用 RapidOCR / PP-OCR 中文模型，不需要网络。
+
+  请保留 exe 同目录的 ocr 文件夹（含 onnxruntime.dll 与 .onnx 模型）。
+  只复制 exe、不带 ocr，OCR 不可用。
+
+  工具栏「自动 OCR」（在朗读按钮前，默认关闭）：
+  · 单击：打开后翻页即识别当前扫描页（设置 AutoOcrScanPages）
+  · 下拉「全文识别」：整本再识别一遍（已有文字层也会重扫，适合乱码双层 PDF）；
+    结果先留在本次打开的文档里，不自动写回文件。没有目录时识别后提取书签。
+  · 下拉「全文识别并保存」：带进度识别后直接覆盖当前 PDF（不弹另存）；
+    已有文字层或目录时会先询问。仅 PDF。
+  · 下拉「框选识别」：拖选矩形，文字复制到剪贴板。
+  · 可取消排队中的识别；已完成的页保留。
+
+  自动 OCR / 全文识别 / 框选也适用于 DjVu、图片、漫画。
+  更完整说明见 docs\md\OCR.md
+
 【Ask AI（在线）】
   · EnableAskAI = true       显示 Ask AI 入口
   · AiChatProvider = doubao  可选 doubao / deepseek / chatgpt
@@ -78,6 +98,7 @@
   UseTabs = true                  标签页模式
   ShowMenubarWithTabs = false     标签模式下菜单栏（UseTabs=true 时以此为准）
   RestoreSession = true           启动恢复上次会话
+  AutoOcrScanPages = false        自动识别扫描页（默认关；模型在 ocr 文件夹）
   Annotations [ SelectionToolbar ]  划词后浮动工具栏
 
   完整说明见 SumatraPDF-settings-annotated.txt
@@ -87,6 +108,7 @@
   · EPUB 多数优先用内置排版引擎，部分书籍会回退到备用引擎
   · 字体说明见 fonts\README.txt
   · 朗读（TTS）与自然语音配置见 docs\md\Read-Aloud-TTS.md
+  · 扫描页 OCR 见上文「扫描页 OCR」或 docs\md\OCR.md
 
 【反馈】
   试用 EPUB / MOBI / PDF，如有问题请说明书名与现象。

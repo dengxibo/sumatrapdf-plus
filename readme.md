@@ -3,8 +3,8 @@
 **Unofficial fork** of [SumatraPDF](https://github.com/sumatrapdfreader/sumatrapdf) · **非官方**社区增强版  
 Not affiliated with [sumatrapdfreader.org](https://www.sumatrapdfreader.org/) · 与官方站点无关
 
-A Windows document reader (PDF, EPUB, MOBI, and more) with improvements for Chinese ebooks, offline lookup, themes, and smart PDF dark mode.  
-Windows 下的 PDF / 电子书阅读器，针对中文 EPUB/MOBI、离线查词、主题与 PDF 智能暗黑模式等做了增强。
+A Windows document reader (PDF, EPUB, MOBI, and more) with improvements for Chinese ebooks, offline lookup, themes, smart PDF dark mode, and local OCR.  
+Windows 下的 PDF / 电子书阅读器，针对中文 EPUB/MOBI、离线查词、主题、PDF 智能暗黑模式与本地 OCR 等做了增强。
 
 - **Repository / 本仓库：** source code for GPLv3 compliance · 满足 GPLv3 源码随同分发要求  
 - **User guide (Chinese) / 中文详细说明：** [readme.txt](readme.txt)  
@@ -27,6 +27,7 @@ Windows 下的 PDF / 电子书阅读器，针对中文 EPUB/MOBI、离线查词�
 | **Offline dictionary** — double-click a word; place `.idx`/`.dat` files in `{exe}\dict\`                            | **离线查词** — 双击词语查词；词典放在 `{exe}\dict\`          |
 | **Light / dark themes** — toolbar toggle; Light-Warm (eye-care) and Light-White (neutral) UI themes                 | **亮/暗主题** — 工具栏切换；暖色护眼与中性浅色 UI                |
 | **Document color mode** — Original / Match theme for PDF, EPUB, MOBI, CHM, XPS, DjVu, Markdown, etc.; toolbar buttons when a document is open | **文档颜色模式** — 原稿 / 匹配主题；适用于 PDF、EPUB、MOBI、CHM、XPS、DjVu、Markdown 等 |
+| **OCR** — RapidOCR / PP-OCR for scanned pages (offline); Auto OCR, recognize all pages, save a searchable PDF, or drag a region; then search, select, TTS, and extract bookmarks | **OCR** — 扫描页本地识别（RapidOCR / PP-OCR）；自动 OCR、全文识别、保存可搜索 PDF、框选识别；之后可搜索、选中、朗读、提取书签 |
 | **Read Aloud (TTS)** — Windows text-to-speech with word-by-word highlight; start from top, cursor, or selection; pause/continue; voice and speed presets (0.25×–2.0×) | **朗读 (TTS)** — Windows 语音朗读，逐词高亮；从页首/光标/选中开始；暂停/继续；可选语音与语速（0.25×–2.0×） |
 | **Selection toolbar** — highlight, underline, strike out, Ask AI on PDF text selection                              | **划词工具栏** — PDF 选中文字后可高亮、下划线、删除线、Ask AI       |
 | **UI polish** — Windows 11–style caption, refined toolbar spacing, theme-aware chrome                               | **界面优化** — Win11 风格标题栏、工具栏间距与主题配色             |
@@ -47,10 +48,40 @@ Product name: **Sumatra PDF Plus** (`kAppName` in `src/Version.h`). Executable: 
   双击 `SumatraPDF-Plus.exe` 运行；不要只复制 exe，请保留同目录的 `fonts` 文件夹。
    For Traditional Chinese PDF lookup, also keep the `opencc` folder.  
    繁体 PDF 查词还需保留 `opencc` 文件夹。
+   For scanned-page OCR, keep the `ocr` folder (`onnxruntime.dll` and `.onnx` models).  
+   扫描页 OCR 还需保留 `ocr` 文件夹（含 `onnxruntime.dll` 与模型）。
 3. Use the toolbar to toggle light/dark theme and word lookup.
   可通过工具栏切换亮/暗主题和查词开关。
-4. Click the **speaker** icon (after word lookup) or open **Read Aloud (TTS)** in the menu bar to read aloud.
-  点击工具栏**喇叭**图标（在查词按钮后），或菜单栏 **Read Aloud (TTS)** 开始朗读。
+4. Click **Auto OCR** to recognize scanned pages as you view them, or use the dropdown for recognize-all / save / region.
+  点击**自动 OCR** 可在翻页时识别扫描页；下拉菜单可全文识别、保存可搜索 PDF、或框选识别。
+5. Click the **speaker** icon (after OCR) or open **Read Aloud (TTS)** in the menu bar to read aloud.
+  点击工具栏**喇叭**图标（在 OCR 之后），或菜单栏 **Read Aloud (TTS)** 开始朗读。
+
+---
+
+## OCR · 扫描页识别
+
+Recognize scanned pages (little or no text layer) so you can **select, search, look up words, read aloud, and extract bookmarks**. Runs **offline** with RapidOCR / PP-OCR Chinese mobile models in `{exe}\ocr\`.  
+识别几乎没有文字层的扫描页，便于**选择、搜索、查词、朗读和提取书签**。使用 `{exe}\ocr\` 里的 RapidOCR / PP-OCR 中文模型，**完全离线**。
+
+**How to use / 使用方法**
+
+- **Toolbar / 工具栏** — **Auto OCR** (before the speaker). Click to toggle recognition as you view or search scanned pages (default **off**). Dropdown: **Recognize all pages**, **Recognize all pages and save**, **OCR region**.  
+  **自动 OCR**（在喇叭按钮前）。单击后翻页即识别扫描页（默认**关**）。下拉：**全文识别**、**全文识别并保存**、**框选识别**。
+- **Recognize all pages / 全文识别** — re-OCRs every page even if a text layer already exists (garbled dual-layer PDFs). Results stay in memory for this session. If there is no outline, bookmarks are extracted after OCR.  
+  即使已有文字层也会再扫一遍（乱码双层 PDF）。结果先留在本次打开的文档里。没有目录时识别后提取书签。
+- **Recognize all pages and save / 全文识别并保存** — scan with progress, then **overwrite the current PDF** (no Save As). Prompts before replacing an existing text layer or outline. PDF only.  
+  显示进度后**直接覆盖当前 PDF**，不弹另存。已有文字层或目录时先询问。仅 PDF。
+- **OCR region / 框选识别** — drag a rectangle; text is copied.  
+  拖选矩形，识别结果复制到剪贴板。
+- **Cancel / 取消** — stop queued jobs; pages already done are kept.  
+  取消排队中的页；已识别的页保留。
+
+Keep the `ocr` folder next to the exe. Details: [docs/md/OCR.md](docs/md/OCR.md).  
+请保留 exe 同目录的 `ocr` 文件夹。详见 [docs/md/OCR.md](docs/md/OCR.md)。
+
+Advanced setting: `AutoOcrScanPages` (default `false`).  
+高级设置：`AutoOcrScanPages`（默认 `false`）。
 
 ---
 
@@ -61,8 +92,8 @@ Read documents aloud with **word-by-word highlighting** synced to speech. Works 
 
 **How to use / 使用方法**
 
-- **Toolbar / 工具栏** — speaker icon after word lookup; click to start/pause/continue; dropdown for voice, speed, and start options  
-  查词按钮后的**喇叭**；单击开始/暂停/继续；下拉菜单可选语音、语速与起始方式
+- **Toolbar / 工具栏** — speaker icon after Auto OCR; click to start/pause/continue; dropdown for voice, speed, and start options  
+  OCR 按钮后的**喇叭**；单击开始/暂停/继续；下拉菜单可选语音、语速与起始方式
 - **Menu bar / 菜单栏** — **Read Aloud (TTS)** → start from top, cursor, or selection; **Voice** and **Speed** submenus  
   **Read Aloud (TTS)** → 从页首/光标/选中开始；**Voice** 选语音、**Speed** 选调速
 - **Right-click / 右键** — **Start Reading From Cursor Position**; **Pause Reading** / **Continue Reading** while active  
