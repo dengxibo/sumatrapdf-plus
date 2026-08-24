@@ -127,7 +127,12 @@ bool EngineMupdfEditPdfTocMany(EngineBase* engine, PdfTocEditAction action, cons
 bool EngineMupdfMovePdfTocItems(EngineBase* engine, const Vec<PdfTocPath>& srcPaths, const Vec<int>& destPath,
                                 PdfTocDropPos pos, Vec<PdfTocPath>* resultPathsOut, char** errorOut);
 const char* EngineMupdfGetPassword(EngineBase* engine);
-bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErrorCb& showErrorFunc);
+// overwriteTempOut: if overwriting the open file and in-place save fails, a full
+// rewrite is written next to dest (or %TEMP% as a .pdf) and that path is returned
+// for the caller to replace-and-reload (same pattern as OCR save). Caller frees
+// with str::Free.
+bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErrorCb& showErrorFunc,
+                            char** overwriteTempOut = nullptr);
 bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* path, char** errOut);
 Annotation* EngineMupdfGetAnnotationAtPos(EngineBase*, int pageNo, PointF pos, Annotation*);
 ByteSlice EngineMupdfLoadAttachment(EngineBase*, int attachmentNo);

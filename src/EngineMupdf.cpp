@@ -12358,13 +12358,65 @@ const char* EngineMupdfGetPassword(EngineBase* engine) {
     return epdf->pdfPassword;
 }
 
+static bool PdfSaveDocumentToPath(fz_context* ctx, pdf_document* doc, const char* dest, pdf_write_options* opts,
+                                  const char** errOut) {
+    bool ok = false;
+    fz_var(ok);
+    fz_try(ctx) {
+        pdf_save_document(ctx, doc, dest, opts);
+        ok = true;
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        if (errOut) {
+            *errOut = fz_caught_message(ctx);
+        }
+    }
+    return ok;
+}
+
+// Sidecar next to the open PDF (same volume as dest so replace-after-close works).
+// Do not use GetTempFileNameW / %TEMP%\smpXXXX.tmp: that name is what users then see
+// if replacing the original file fails.
+static char* DupPdfOverwriteSidecarPath(const char* destPath) {
+    if (str::IsEmpty(destPath)) {
+        return nullptr;
+    }
+    TempStr sidecar = str::JoinTemp(destPath, ".sumatra-tmp");
+    sidecar = MakeUniqueFilePathTemp(sidecar);
+    return str::Dup(sidecar);
+}
+
+static char* DupPdfTempDirFallbackPath(const char* destPath) {
+    TempStr tmpDir = GetTempFilePathTemp(nullptr);
+    if (str::IsEmpty(tmpDir)) {
+        return nullptr;
+    }
+    const char* base = path::GetBaseNameTemp(destPath);
+    if (str::IsEmpty(base)) {
+        base = "saved.pdf";
+    }
+    if (!str::EndsWithI(base, ".pdf")) {
+        base = str::JoinTemp(base, ".pdf");
+    }
+    TempStr candidate = path::JoinTemp(tmpDir, base);
+    candidate = MakeUniqueFilePathTemp(candidate);
+    return str::Dup(candidate);
+}
+
 // re-save current pdf document using mupdf (as opposed to just saving the data)
 // this is used after the PDF was modified by the user (e.g. by adding / changing
 // annotations).
 // if filePath is not given, we save under the same name
-// TODO: if the file is locked, this might fail.
-bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErrorCb& showErrorFunc) {
+// Overwriting the open file can fail (file locked, long path). If overwriteTempOut
+// is set, fall back to a full rewrite next to dest (or %TEMP% as .pdf) and let the
+// caller replace-and-reload (same pattern as OCR save).
+bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErrorCb& showErrorFunc,
+                            char** overwriteTempOut) {
     ReportIf(!engine);
+    if (overwriteTempOut) {
+        *overwriteTempOut = nullptr;
+    }
     if (!engine) {
         return false;
     }
@@ -12378,6 +12430,7 @@ bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErro
 
     auto timeStart = TimeGet();
     const char* currPath = engine->FilePath();
+    bool overwriteSelf = str::IsEmpty(path) || (currPath && path::IsSame(path, currPath));
     if (str::IsEmpty(path)) {
         path = currPath;
     }
@@ -12386,8 +12439,6 @@ bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErro
 
     pdf_write_options save_opts{};
     save_opts = pdf_default_write_options2;
-    // TODO: if saving to a new file, don't do incremental and linearlize?
-    // save_opts.do_linear = 1;
     save_opts.do_incremental = pdf_can_be_saved_incrementally(ctx, epdf->pdfdoc);
     save_opts.do_compress = 1;
     save_opts.do_compress_images = 1;
@@ -12396,30 +12447,48 @@ bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErro
         save_opts.do_garbage = 1;
     }
 
-    bool ok = false;
-    fz_var(ok);
-    fz_try(ctx) {
-        pdf_save_document(ctx, epdf->pdfdoc, path, &save_opts);
-        ok = true;
+    const char* mupdfErr = nullptr;
+    bool ok = PdfSaveDocumentToPath(ctx, epdf->pdfdoc, path, &save_opts, &mupdfErr);
+    if (ok) {
         auto dur = TimeSinceInMs(timeStart);
         logf("Saved PDF changes to '%s' in  %.2f ms, incremental: %d\n", path, dur, save_opts.do_incremental);
+        epdf->modifiedAnnotations = false;
+        epdf->modifiedPdfToc = false;
+        return true;
     }
-    fz_catch(ctx) {
-        fz_report_error(ctx);
-        const char* mupdfErr = fz_caught_message(ctx);
-        logf("Saving '%s' failed with: '%s'\n", path, mupdfErr);
-        if (showErrorFunc.IsValid()) {
-            showErrorFunc.Call(mupdfErr);
+    logf("Saving '%s' failed with: '%s'\n", path, mupdfErr ? mupdfErr : "");
+
+    if (overwriteSelf && overwriteTempOut) {
+        save_opts.do_incremental = 0;
+        save_opts.do_garbage = 1;
+        for (int pass = 0; pass < 2; pass++) {
+            char* tmp = (pass == 0) ? DupPdfOverwriteSidecarPath(path) : DupPdfTempDirFallbackPath(path);
+            if (!tmp) {
+                continue;
+            }
+            const char* tmpErr = nullptr;
+            ok = PdfSaveDocumentToPath(ctx, epdf->pdfdoc, tmp, &save_opts, &tmpErr);
+            if (ok) {
+                *overwriteTempOut = tmp;
+                auto dur = TimeSinceInMs(timeStart);
+                logf("Saved PDF changes via temp '%s' in %.2f ms\n", tmp, dur);
+                epdf->modifiedAnnotations = false;
+                epdf->modifiedPdfToc = false;
+                return true;
+            }
+            logf("Saving temp '%s' failed with: '%s'\n", tmp, tmpErr ? tmpErr : "");
+            file::Delete(tmp);
+            str::Free(tmp);
+            if (tmpErr) {
+                mupdfErr = tmpErr;
+            }
         }
     }
 
-    // TOOD: what if not ok?
-    // note: this should be short-lived as we should re-load the file
-    if (ok) {
-        epdf->modifiedAnnotations = false;
-        epdf->modifiedPdfToc = false;
+    if (showErrorFunc.IsValid()) {
+        showErrorFunc.Call(mupdfErr ? mupdfErr : "Could not save PDF.");
     }
-    return ok;
+    return false;
 }
 
 static fz_font* TryFontFile(fz_context* ctx, const char* path) {
@@ -12475,6 +12544,123 @@ static int OcrDropAllTextFilter(fz_context*, void*, int*, int, fz_matrix, fz_mat
     return 1;
 }
 
+// Full-page (or nearly full-page) raster: safe to drop the old text layer.
+static constexpr float kOcrScanImagePageOverlap = 0.4f;
+
+static bool PdfPageHasLargeScanImage(fz_context* ctx, pdf_document* doc, int pageIndex) {
+    pdf_page* page = nullptr;
+    fz_device* dev = nullptr;
+    Vec<FitzPageImageInfo*> images;
+    bool large = false;
+    fz_var(page);
+    fz_var(dev);
+    fz_try(ctx) {
+        page = pdf_load_page(ctx, doc, pageIndex);
+        fz_rect mbox = pdf_bound_page(ctx, page, FZ_CROP_BOX);
+        float pageArea = (mbox.x1 - mbox.x0) * (mbox.y1 - mbox.y0);
+        if (pageArea > 1.f) {
+            dev = FzNewImageCollectDevice(ctx, &images, pageIndex + 1);
+            fz_run_page(ctx, &page->super, dev, fz_identity, nullptr);
+            for (FitzPageImageInfo* img : images) {
+                if (img && FzRectOverlap(mbox, img->rect) >= kOcrScanImagePageOverlap) {
+                    large = true;
+                    break;
+                }
+            }
+        }
+    }
+    fz_always(ctx) {
+        if (dev) {
+            fz_drop_device(ctx, dev);
+        }
+        if (page) {
+            fz_drop_page(ctx, &page->super);
+        }
+        for (FitzPageImageInfo* img : images) {
+            if (img && img->image) {
+                fz_drop_image(ctx, img->image);
+                img->image = nullptr;
+            }
+        }
+        DeleteVecMembers(images);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        large = false;
+    }
+    return large;
+}
+
+// Invisible text (Tr 3) does not paint. A flat fill also has no contrast.
+static bool PdfPageHasVisibleContrast(fz_context* ctx, pdf_document* doc, int pageIndex) {
+    pdf_page* page = nullptr;
+    fz_pixmap* pix = nullptr;
+    fz_device* dev = nullptr;
+    bool contrast = false;
+    fz_var(page);
+    fz_var(pix);
+    fz_var(dev);
+    fz_try(ctx) {
+        page = pdf_load_page(ctx, doc, pageIndex);
+        fz_rect bounds = pdf_bound_page(ctx, page, FZ_CROP_BOX);
+        float w = bounds.x1 - bounds.x0;
+        float h = bounds.y1 - bounds.y0;
+        float longest = w > h ? w : h;
+        if (longest >= 1.f) {
+            float scale = 72.f / longest;
+            fz_matrix ctm = fz_scale(scale, scale);
+            fz_irect ibounds = fz_round_rect(fz_transform_rect(bounds, ctm));
+            int pw = ibounds.x1 - ibounds.x0;
+            int ph = ibounds.y1 - ibounds.y0;
+            if (pw > 0 && ph > 0) {
+                pix = fz_new_pixmap_with_bbox(ctx, fz_device_gray(ctx), ibounds, nullptr, 0);
+                fz_clear_pixmap_with_value(ctx, pix, 0xff);
+                dev = fz_new_draw_device(ctx, ctm, pix);
+                fz_run_page(ctx, &page->super, dev, fz_identity, nullptr);
+                fz_close_device(ctx, dev);
+                fz_drop_device(ctx, dev);
+                dev = nullptr;
+                int width = fz_pixmap_width(ctx, pix);
+                int height = fz_pixmap_height(ctx, pix);
+                const unsigned char* samples = fz_pixmap_samples(ctx, pix);
+                int stride = pix->stride;
+                int mn = 255;
+                int mx = 0;
+                for (int y = 0; y < height; y++) {
+                    const unsigned char* row = samples + y * stride;
+                    for (int x = 0; x < width; x++) {
+                        int v = row[x];
+                        if (v < mn) {
+                            mn = v;
+                        }
+                        if (v > mx) {
+                            mx = v;
+                        }
+                    }
+                }
+                contrast = (mx - mn) >= 12;
+            }
+        }
+    }
+    fz_always(ctx) {
+        if (dev) {
+            fz_drop_device(ctx, dev);
+        }
+        if (pix) {
+            fz_drop_pixmap(ctx, pix);
+        }
+        if (page) {
+            fz_drop_page(ctx, &page->super);
+        }
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        // Failed to inspect: keep existing paint rather than blank the page.
+        contrast = true;
+    }
+    return contrast;
+}
+
 // Drop existing PDF text (including a garbled OCR layer) but keep images/paths.
 static void StripExistingPdfText(fz_context* ctx, pdf_document* doc, int pageIndex) {
     pdf_page* page = nullptr;
@@ -12501,8 +12687,8 @@ static void StripExistingPdfText(fz_context* ctx, pdf_document* doc, int pageInd
     }
 }
 
-static bool AppendInvisibleOcrLayer(fz_context* ctx, pdf_document* doc, pdf_obj* fontObj, int pageIndex,
-                                    const char* text, const Rect* coords, int len) {
+static bool AppendOcrTextLayer(fz_context* ctx, pdf_document* doc, pdf_obj* fontObj, int pageIndex, const char* text,
+                               const Rect* coords, int len, bool visible) {
     if (!text || !coords || len <= 0) {
         return false;
     }
@@ -12532,7 +12718,11 @@ static bool AppendInvisibleOcrLayer(fz_context* ctx, pdf_document* doc, pdf_obj*
     fz_buffer* buf = fz_new_buffer(ctx, 1024);
     fz_append_string(ctx, buf, "\nq\n");
     fz_append_printf(ctx, buf, "%g %g %g %g %g %g cm\n", inv.a, inv.b, inv.c, inv.d, inv.e, inv.f);
-    fz_append_string(ctx, buf, "BT\n3 Tr\n/OCR0 1 Tf\n");
+    if (visible) {
+        fz_append_string(ctx, buf, "BT\n0 Tr\n0 g\n/OCR0 1 Tf\n");
+    } else {
+        fz_append_string(ctx, buf, "BT\n3 Tr\n/OCR0 1 Tf\n");
+    }
     int idx = 0;
     while (idx < len) {
         int before = idx;
@@ -12608,6 +12798,8 @@ bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* destPath, char
         char* text = nullptr;
         Rect* coords = nullptr;
         int len = 0;
+        bool writeLayer = false;
+        bool visibleLayer = false;
     };
     Vec<PageOcrDump> pages;
     int nPages = engine->PageCount();
@@ -12653,15 +12845,34 @@ bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* destPath, char
         if (!font) {
             fz_throw(ctx, FZ_ERROR_GENERIC, "Could not load a font for the hidden text layer.");
         }
+        bool anyLayer = false;
         for (int i = 0; i < pages.Size(); i++) {
             PageOcrDump& p = pages[i];
-            StripExistingPdfText(ctx, doc, p.pageNo - 1);
+            // Scan image: drop a garbled text layer, keep the picture, write invisible OCR.
+            // Born-digital / Type3: do not strip — that was blanking the page.
+            // Already-blank (or only Tr 3): write visible OCR so the file is readable.
+            bool hasScanImage = PdfPageHasLargeScanImage(ctx, doc, p.pageNo - 1);
+            if (hasScanImage) {
+                p.writeLayer = true;
+                p.visibleLayer = false;
+            } else if (!PdfPageHasVisibleContrast(ctx, doc, p.pageNo - 1)) {
+                p.writeLayer = true;
+                p.visibleLayer = true;
+            }
+            if (p.writeLayer) {
+                StripExistingPdfText(ctx, doc, p.pageNo - 1);
+                anyLayer = true;
+            }
         }
-        // Add the CID font after stripping so filter/GC cannot reuse its xref for a content stream.
-        fontObj = pdf_add_cjk_font(ctx, doc, font, FZ_ADOBE_GB, 0, 1);
-        for (int i = 0; i < pages.Size(); i++) {
-            PageOcrDump& p = pages[i];
-            AppendInvisibleOcrLayer(ctx, doc, fontObj, p.pageNo - 1, p.text, p.coords, p.len);
+        if (anyLayer) {
+            // Add the CID font after stripping so filter/GC cannot reuse its xref for a content stream.
+            fontObj = pdf_add_cjk_font(ctx, doc, font, FZ_ADOBE_GB, 0, 1);
+            for (int i = 0; i < pages.Size(); i++) {
+                PageOcrDump& p = pages[i];
+                if (p.writeLayer) {
+                    AppendOcrTextLayer(ctx, doc, fontObj, p.pageNo - 1, p.text, p.coords, p.len, p.visibleLayer);
+                }
+            }
         }
         pdf_write_options saveOpts = pdf_default_write_options2;
         saveOpts.do_incremental = 0;

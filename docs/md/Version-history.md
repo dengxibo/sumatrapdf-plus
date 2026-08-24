@@ -2,6 +2,12 @@
 
 ## next
 
+- save PDF changes: when the open file cannot be overwritten, write a sidecar next to it and replace after close — do not reopen `%TEMP%\smpXXXX.tmp` as the document
+  保存 PDF：原文件被占用写不进去时，先写到旁边再替换回去，不再把 `%TEMP%\smpXXXX.tmp` 当成当前文档打开
+
+- save searchable PDF: do not strip a page's visible text unless it is a scanned image; a text-only page kept its hidden OCR layer and looked blank
+  保存可搜索 PDF：只有扫描图页才剥掉旧文字层。纯文字页以前会留下隐形 OCR，打开就是空白
+
 ## 3.7.29 (2026-08-24)
 
 - sidebar splitter: live drag repaints the TOC tree, footer, and canvas immediately (no leftover bits / overlay scrollbar)

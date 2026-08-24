@@ -12138,8 +12138,7 @@ static bool LooksLikeOfficialFrontMatter(const Vec<ScanLine>& lines, int maxPage
         if (str::Find(s, "关于印发") || str::Find(s, "印发《")) {
             return true;
         }
-        if (str::StartsWith(s, "关于") &&
-            (str::Find(s, "的通知") || str::Find(s, "的函") || str::Find(s, "请示"))) {
+        if (str::StartsWith(s, "关于") && (str::Find(s, "的通知") || str::Find(s, "的函") || str::Find(s, "请示"))) {
             return true;
         }
     }
@@ -13178,10 +13177,17 @@ bool WriteExtractedPdfToc(MainWindow* win, EngineBase* engine, Vec<ExtractedTocI
         if (tab) {
             tab->ignoreNextAutoReload = true;
         }
-        bool saved = EngineMupdfSaveUpdated(engine, nullptr, {});
+        char* tmp = nullptr;
+        bool saved = EngineMupdfSaveUpdated(engine, nullptr, {}, &tmp);
         if (saved) {
             engine->ClearUnsavedOcrText();
-            ReloadDocument(win, false);
+            const char* path = engine->FilePath();
+            if (tmp) {
+                SwitchCurrentTabToSavedFile(win, path, tmp);
+                str::Free(tmp);
+            } else {
+                ReloadDocument(win, false);
+            }
             SetSidebarVisibility(win, true, gGlobalPrefs->showFavorites);
             ToolbarUpdateStateForWindow(win, false);
             return true;

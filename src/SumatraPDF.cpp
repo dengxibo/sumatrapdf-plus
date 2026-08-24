@@ -5303,11 +5303,18 @@ bool SaveAnnotationsToExistingFile(WindowTab* tab) {
     ShowErrorData data{tab, path};
     auto fn = MkFunc1(ShowSaveAnnotationError, &data);
     bool ok = true;
+    bool replacedViaTemp = false;
     if (pdfCh) {
-        ok = EngineMupdfSaveUpdated(engine, nullptr, fn);
+        char* tmp = nullptr;
+        ok = EngineMupdfSaveUpdated(engine, nullptr, fn, &tmp);
         if (!ok) {
             tab->ignoreNextAutoReload = false;
             return false;
+        }
+        if (tmp) {
+            SwitchCurrentTabToSavedFile(tab->win, path, tmp);
+            str::Free(tmp);
+            replacedViaTemp = true;
         }
     }
     if (ocr) {
@@ -5328,7 +5335,9 @@ bool SaveAnnotationsToExistingFile(WindowTab* tab) {
     // have to re-open edit annotations window because the current has
     // a reference to deleted Engine
     bool hadEditAnnotations = CloseAndDeleteEditAnnotationsWindow(tab);
-    ReloadDocument(tab->win, false);
+    if (!replacedViaTemp) {
+        ReloadDocument(tab->win, false);
+    }
     if (hadEditAnnotations) {
         // TODO: improve by remembering which annotation was selected and restoring it after  we reload
         ShowEditAnnotationsWindow(tab, nullptr);
@@ -5580,11 +5589,17 @@ static bool MaybeSaveAnnotations(WindowTab* tab) {
             // const char* path = engine->FileName();
             ShowErrorData data{tab, path};
             auto fn = MkFunc1(ShowSaveAnnotationError, &data);
-            bool ok = EngineMupdfSaveUpdated(engine, nullptr, fn);
+            char* tmp = nullptr;
+            bool ok = EngineMupdfSaveUpdated(engine, nullptr, fn, &tmp);
             if (!ok) {
                 tab->askedToSaveAnnotations = false;
+                return false;
             }
-            return ok;
+            if (tmp) {
+                SwitchCurrentTabToSavedFile(win, path, tmp);
+                str::Free(tmp);
+            }
+            return true;
         }
         case SaveChoice::Cancel:
             tab->askedToSaveAnnotations = false;
@@ -6225,15 +6240,85 @@ void SaveSearchablePdfAs(MainWindow* win, bool extractTocWhenDone) {
     OcrSaveSearchablePdfAfterOcr(win, srcPath, doExtract);
 }
 
+static void ClearFileReadOnlyAttr(const char* path) {
+    DWORD attrs = file::GetAttributes(path);
+    if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) {
+        file::SetAttributes(path, attrs & ~FILE_ATTRIBUTE_READONLY);
+    }
+}
+
+// Close-then-replace: dest may still be briefly locked (AV, OneDrive). Cross-volume
+// moves need MOVEFILE_COPY_ALLOWED. Never leave the user on %TEMP%\smpXXXX.tmp.
+static bool TryReplaceFileWithTemp(const char* dest, const char* tmp) {
+    if (str::IsEmpty(dest) || str::IsEmpty(tmp) || !file::Exists(tmp)) {
+        return false;
+    }
+    if (path::IsSame(dest, tmp)) {
+        return true;
+    }
+    ClearFileReadOnlyAttr(dest);
+    DWORD flags = MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH;
+    for (int i = 0; i < 8; i++) {
+        if (i > 0) {
+            Sleep(40 * i);
+        }
+        WCHAR* destW = ToWStrTemp(dest);
+        WCHAR* tmpW = ToWStrTemp(tmp);
+        if (file::Exists(dest) && ReplaceFileW(destW, tmpW, nullptr, REPLACEFILE_WRITE_THROUGH, nullptr, nullptr)) {
+            return true;
+        }
+        if (MoveFileExW(tmpW, destW, flags)) {
+            return true;
+        }
+        if (file::Delete(dest) && file::Rename(dest, tmp)) {
+            return true;
+        }
+        if (file::Copy(dest, tmp, false)) {
+            file::Delete(tmp);
+            return true;
+        }
+    }
+    logf("TryReplaceFileWithTemp failed dest='%s' tmp='%s' err=%u\n", dest, tmp, (unsigned)GetLastError());
+    return false;
+}
+
+static char* DupUniquePdfPathInDir(const char* dir, const char* destPath) {
+    if (str::IsEmpty(dir)) {
+        return nullptr;
+    }
+    const char* baseNoExt = path::GetPathNoExtTemp(path::GetBaseNameTemp(destPath));
+    if (str::IsEmpty(baseNoExt)) {
+        baseNoExt = "saved";
+    }
+    TempStr candidate = path::JoinTemp(dir, str::JoinTemp(baseNoExt, "-saved.pdf"));
+    candidate = MakeUniqueFilePathTemp(candidate);
+    return str::Dup(candidate);
+}
+
 void SwitchCurrentTabToSavedFile(MainWindow* win, const char* destPath, const char* replaceFromTemp) {
-    if (!win || str::IsEmpty(destPath) || !file::Exists(destPath)) {
+    if (!win || str::IsEmpty(destPath)) {
+        return;
+    }
+    bool replacing = replaceFromTemp && replaceFromTemp[0];
+    if (replacing) {
+        if (!file::Exists(replaceFromTemp)) {
+            return;
+        }
+    } else if (!file::Exists(destPath)) {
         return;
     }
     WindowTab* tab = win->CurrentTab();
     if (!tab) {
         return;
     }
-    TempStr destNorm = path::NormalizeTemp(destPath);
+    char* destOwned = str::Dup(path::NormalizeTemp(destPath));
+    if (!destOwned) {
+        return;
+    }
+    defer {
+        str::Free(destOwned);
+    };
+    const char* destNorm = destOwned;
     const char* srcPath = tab->filePath;
     bool sameFile = srcPath && path::IsSame(srcPath, destNorm);
 
@@ -6263,21 +6348,27 @@ void SwitchCurrentTabToSavedFile(MainWindow* win, const char* destPath, const ch
     CloseDocumentInCurrentTab(win, true, true);
     HwndSetFocus(win->hwndFrame);
     const char* loadPath = destNorm;
-    if (replaceFromTemp && replaceFromTemp[0]) {
-        WCHAR* tmpW = ToWStrTemp(replaceFromTemp);
-        WCHAR* destW = ToWStrTemp(destNorm);
-        BOOL moved = MoveFileExW(tmpW, destW, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
-        if (!moved) {
-            if (file::Delete(destNorm)) {
-                moved = file::Rename(destNorm, replaceFromTemp);
+    char* fallbackCopy = nullptr;
+    if (replacing) {
+        Sleep(50);
+        if (!TryReplaceFileWithTemp(destNorm, replaceFromTemp)) {
+            fallbackCopy = DupUniquePdfPathInDir(path::GetDirTemp(destNorm), destNorm);
+            if (!fallbackCopy || !file::Copy(fallbackCopy, replaceFromTemp, false)) {
+                str::Free(fallbackCopy);
+                fallbackCopy = DupUniquePdfPathInDir(GetTempFilePathTemp(nullptr), destNorm);
+                if (fallbackCopy && !file::Copy(fallbackCopy, replaceFromTemp, false)) {
+                    str::Free(fallbackCopy);
+                    fallbackCopy = nullptr;
+                }
             }
-        }
-        if (!moved && file::Copy(destNorm, replaceFromTemp, false)) {
-            file::Delete(replaceFromTemp);
-            moved = TRUE;
-        }
-        if (!moved) {
-            loadPath = replaceFromTemp;
+            if (fallbackCopy) {
+                if (!path::IsSame(fallbackCopy, replaceFromTemp)) {
+                    file::Delete(replaceFromTemp);
+                }
+                loadPath = fallbackCopy;
+            } else {
+                loadPath = replaceFromTemp;
+            }
             ShowWarningNotification(win->hwndCanvas,
                                     _TRA("Could not replace the original PDF. The recognized file was kept as a "
                                          "temporary copy."),
@@ -6289,6 +6380,7 @@ void SwitchCurrentTabToSavedFile(MainWindow* win, const char* destPath, const ch
     args.noPlaceWindow = true;
     args.syncLoad = true;
     LoadDocument(&args);
+    str::Free(fallbackCopy);
 }
 
 void SumatraOpenPathInDefaultFileManager(const char* path) {
