@@ -923,20 +923,6 @@ static void RecParLoop(RecParCtx* ctx) {
         s->out[i].text = text;
         s->out[i].charX = charX;
         s->out[i].nChar = nChar;
-        // #region agent log
-        if (text && (str::Find(text, "\xE5\xBC\x93") || str::Find(text, "\xE5\xBC\xBA") || str::Find(text, "今后") ||
-                     str::Find(text, "下一步"))) {
-            FILE* f = fopen("c:\\src\\sumatrapdf\\debug-705e63.log", "ab");
-            if (f) {
-                fprintf(f,
-                        "{\"sessionId\":\"705e63\",\"hypothesisId\":\"C\",\"location\":\"OcrOnnx.cpp:RecParLoop\","
-                        "\"message\":\"rec-box\",\"data\":{\"x0\":%d,\"y0\":%d,\"x1\":%d,\"y1\":%d,\"nChar\":%d,"
-                        "\"text\":\"%.80s\"},\"timestamp\":%llu}\n",
-                        box.x0, box.y0, box.x1, box.y1, nChar, text, (unsigned long long)GetTickCount64());
-                fclose(f);
-            }
-        }
-        // #endregion
     }
 }
 
@@ -1024,8 +1010,6 @@ static bool RecognizeRgbLocked(OcrOrtBundle* b, const u8* rgb, int w, int h, int
     int nDet = dets.Size();
     free(pred);
 
-    ULONGLONG tRec0 = GetTickCount64();
-    int nRecSlots = 1;
     if (nDet > 0) {
         RecParShare share;
         share.rgb = rgb;
@@ -1061,7 +1045,6 @@ static bool RecognizeRgbLocked(OcrOrtBundle* b, const u8* rgb, int w, int h, int
                 }
             }
         }
-        nRecSlots = 1 + nExtra;
         RecParCtx mainCtx;
         mainCtx.share = &share;
         mainCtx.b = b;
@@ -1083,7 +1066,6 @@ static bool RecognizeRgbLocked(OcrOrtBundle* b, const u8* rgb, int w, int h, int
         }
         free(share.out);
     }
-    ULONGLONG recMs = GetTickCount64() - tRec0;
     if (boxesOut.Size() == 0) {
         SetOcrError(nDet == 0 ? "detector found no text lines" : "recognizer returned empty text");
     }
@@ -1102,9 +1084,7 @@ bool OcrRecognizeRgb(const u8* rgb, int w, int h, int stride, Vec<OcrBox>& boxes
     if (slot < 0) {
         return false;
     }
-    ULONGLONG t0 = GetTickCount64();
     bool ok = RecognizeRgbLocked(&gBundles[slot], rgb, w, h, stride, boxesOut);
-    ULONGLONG dt = GetTickCount64() - t0;
     ReleaseOcrSlot(slot);
     return ok;
 }

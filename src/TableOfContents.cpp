@@ -4579,22 +4579,6 @@ static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
     if (msg == WM_LBUTTONUP && TocSidebarShowEmptyHint(win) && PdfTocEditableEngine(win) && !ExtractPdfTocIsRunning()) {
         POINT pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
         bool inHit = TocEmptyExtractHitTest(win, hwnd, pt);
-        // #region agent log
-        {
-            FILE* f = fopen("c:\\src\\sumatrapdf\\debug-705e63.log", "ab");
-            if (f) {
-                RECT hit{};
-                TocEmptyExtractActionRect(win, hwnd, &hit);
-                fprintf(f,
-                        "{\"sessionId\":\"705e63\",\"hypothesisId\":\"E\",\"location\":\"TableOfContents.cpp:"
-                        "WndProcTocTree\",\"message\":\"empty-hint-click\",\"data\":{\"inHit\":%d,\"x\":%d,\"y\":%d,"
-                        "\"hitL\":%d,\"hitT\":%d,\"hitR\":%d,\"hitB\":%d},\"timestamp\":%llu}\n",
-                        inHit ? 1 : 0, pt.x, pt.y, hit.left, hit.top, hit.right, hit.bottom,
-                        (unsigned long long)GetTickCount64());
-                fclose(f);
-            }
-        }
-        // #endregion
         if (inHit) {
             HandleExtractPdfTocCommand(win);
             return 0;

@@ -809,33 +809,12 @@ static bool OcrIsDirtBulletCp(int cp) {
 }
 
 // Drop a leading OCR speckle decoded as `.`/`．` when the rest is already `1.` / `1．`.
-static bool OcrShouldDropLeadingDirtDot(const int* cps, int nCp, const char* rest, const int* ctcX, int nCtc,
-                                        int* ctcW0, int* ctcW1, int* ctcOv) {
-    if (ctcW0) {
-        *ctcW0 = 0;
-    }
-    if (ctcW1) {
-        *ctcW1 = 0;
-    }
-    if (ctcOv) {
-        *ctcOv = 0;
-    }
+static bool OcrShouldDropLeadingDirtDot(const int* cps, int nCp, const char* rest, const int* ctcX, int nCtc) {
     if (!cps || nCp < 2 || !OcrIsDirtBulletCp(cps[0])) {
         return false;
     }
     if (ctcX && nCtc == nCp) {
-        int w0 = ctcX[1] - ctcX[0];
-        int w1 = ctcX[3] - ctcX[2];
         int ov = ctcX[1] - ctcX[2];
-        if (ctcW0) {
-            *ctcW0 = w0;
-        }
-        if (ctcW1) {
-            *ctcW1 = w1;
-        }
-        if (ctcOv) {
-            *ctcOv = ov;
-        }
         if (ov > 0 && ((cps[1] >= '0' && cps[1] <= '9') || OcrIsCnNumeral(cps[1]))) {
             return true;
         }
@@ -1009,7 +988,7 @@ static bool OcrShouldJoinDocLines(const OcrBox& a, const OcrBox& b, int bodyLeft
 }
 
 static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, int imgH, int stride,
-                            const RectF& pageBox, PageText* pt, PageTextUtf8* utf8, int pageNo) {
+                            const RectF& pageBox, PageText* pt, PageTextUtf8* utf8) {
     if (!pt || !utf8 || imgW < 1 || imgH < 1 || pageBox.IsEmpty()) {
         return;
     }
@@ -1135,8 +1114,6 @@ static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, i
         }
         OcrInsetGlyphXs(nCp, padX, gx0, gx1);
         bool lonePunct = nCp == 1 && OcrIsPunct(cps[0]);
-        int lineY0 = 0;
-        int lineY1 = b.rect.dy;
         if (lonePunct) {
             int lineH = OcrSameLineMaxDy(boxes, bi, lineEm);
             int wantDy = (int)((float)lineH * sy + 0.5f);
@@ -1154,9 +1131,8 @@ static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, i
             Utf8CodepointNext(b.text, tlen, restOff);
         }
         const char* rest = (restOff > 0 && restOff < tlen) ? b.text + restOff : nullptr;
-        int ctcW0 = 0, ctcW1 = 0, ctcOv = 0;
         int skipCp = 0;
-        if (OcrShouldDropLeadingDirtDot(cps, nCp, rest, b.charX, b.nChar, &ctcW0, &ctcW1, &ctcOv)) {
+        if (OcrShouldDropLeadingDirtDot(cps, nCp, rest, b.charX, b.nChar)) {
             skipCp = 1;
         }
         int nextDirt = bi + 1;
@@ -1179,20 +1155,6 @@ static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, i
             int ov = (b.rect.x + b.rect.dx) - boxes[nextDirt].rect.x;
             if (OcrShouldDropSplitRadical(cps[0], host, b.rect.dx, boxes[nextDirt].rect.dx, ov)) {
                 skipBox = true;
-                // #region agent log
-                {
-                    FILE* f = fopen("c:\\src\\sumatrapdf\\debug-705e63.log", "ab");
-                    if (f) {
-                        fprintf(f,
-                                "{\"sessionId\":\"705e63\",\"hypothesisId\":\"B\",\"location\":\"OcrService.cpp:"
-                                "BoxesToPageText\",\"message\":\"drop-radical-box\",\"data\":{\"rad\":%d,\"host\":%d,"
-                                "\"dx\":%d,\"ndx\":%d,\"ov\":%d},\"timestamp\":%llu}\n",
-                                cps[0], host, b.rect.dx, boxes[nextDirt].rect.dx, ov,
-                                (unsigned long long)GetTickCount64());
-                        fclose(f);
-                    }
-                }
-                // #endregion
             }
         }
         u8* dropCp = AllocArray<u8>(nCp);
@@ -1202,19 +1164,6 @@ static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, i
             int ov = OcrCtcOverlap(b.charX, b.nChar, nCp, i);
             if (OcrShouldDropSplitRadical(cps[i], cps[i + 1], w0, w1, ov)) {
                 dropCp[i] = 1;
-                // #region agent log
-                {
-                    FILE* f = fopen("c:\\src\\sumatrapdf\\debug-705e63.log", "ab");
-                    if (f) {
-                        fprintf(f,
-                                "{\"sessionId\":\"705e63\",\"hypothesisId\":\"A\",\"location\":\"OcrService.cpp:"
-                                "BoxesToPageText\",\"message\":\"drop-split-radical\",\"data\":{\"rad\":%d,\"host\":%d,"
-                                "\"w0\":%d,\"w1\":%d,\"ov\":%d,\"nCp\":%d},\"timestamp\":%llu}\n",
-                                cps[i], cps[i + 1], w0, w1, ov, nCp, (unsigned long long)GetTickCount64());
-                        fclose(f);
-                    }
-                }
-                // #endregion
             }
         }
         if (nCp >= 1 && nextDirt < nBox && OcrBoxesOnSameLine(b.rect, boxes[nextDirt].rect)) {
@@ -1234,38 +1183,13 @@ static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, i
             int w1 = OcrCtcSpanW(boxes[nextDirt].charX, boxes[nextDirt].nChar, boxes[nextDirt].nChar, 0);
             if (OcrShouldDropSplitRadical(cps[nCp - 1], host, w0, w1, ov)) {
                 dropCp[nCp - 1] = 1;
-                // #region agent log
-                {
-                    FILE* f = fopen("c:\\src\\sumatrapdf\\debug-705e63.log", "ab");
-                    if (f) {
-                        fprintf(
-                            f,
-                            "{\"sessionId\":\"705e63\",\"hypothesisId\":\"D\",\"location\":\"OcrService.cpp:"
-                            "BoxesToPageText\",\"message\":\"drop-trailing-radical\",\"data\":{\"rad\":%d,\"host\":%"
-                            "d,\"w0\":%d,\"w1\":%d,\"ov\":%d,\"nCp\":%d,\"bx0\":%d,\"bx1\":%d,\"nx0\":%d},"
-                            "\"timestamp\":%llu}\n",
-                            cps[nCp - 1], host, w0, w1, ov, nCp, b.rect.x, b.rect.x + b.rect.dx, boxes[nextDirt].rect.x,
-                            (unsigned long long)GetTickCount64());
-                        fclose(f);
-                    }
-                }
-                // #endregion
             }
         }
-        float cellStep = (float)pageR.dx / unitSum;
-        int deX0 = -1, deX1 = -1, deI = -1;
-        int d4I = -1, d4x0 = -1, d4x1 = -1, d4prev = 0, d4next = 0;
-        int dunI = -1, dunx0 = -1, dunx1 = -1, dunNext = 0, dunPrev = 0;
-        float dunU = 0.f, dunPrevU = 0.f;
-        int qI = -1, qx0 = -1, qx1 = -1, qNext = 0;
-        float qU = 0.f;
-        int perI = -1, perx0 = -1, perx1 = -1, perNext = 0, perPrev = 0;
-        float perU = 0.f, perPrevU = 0.f;
         idx = 0;
         int cpI = 0;
         while (idx < tlen) {
             int before = idx;
-            int cp = Utf8CodepointNext(b.text, tlen, idx);
+            Utf8CodepointNext(b.text, tlen, idx);
             if (idx <= before) {
                 break;
             }
@@ -1279,52 +1203,6 @@ static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, i
             cr.x = pageR.x + (int)((float)ix0 * sx + 0.5f);
             int cellEnd = pageR.x + (int)((float)ix1 * sx + 0.5f);
             cr.dx = (cellEnd > cr.x) ? (cellEnd - cr.x) : 1;
-            if (cp == 0x7684) {
-                deI = cpI;
-                deX0 = cr.x;
-                deX1 = cr.x + cr.dx;
-            }
-            if (cp == '4' && d4I < 0) {
-                d4I = cpI;
-                d4x0 = ix0;
-                d4x1 = ix1;
-                d4prev = (cpI > 0) ? cps[cpI - 1] : 0;
-                d4next = (cpI + 1 < nCp) ? cps[cpI + 1] : 0;
-            }
-            if (cp == 0x3001) {
-                int prev = (cpI > 0) ? cps[cpI - 1] : 0;
-                if (dunI < 0 || prev == 0x201d || prev == 0x2019 || cpI + 1 == nCp) {
-                    dunI = cpI;
-                    dunx0 = ix0;
-                    dunx1 = ix1;
-                    dunNext = (cpI + 1 < nCp) ? cps[cpI + 1] : 0;
-                    dunPrev = prev;
-                    dunU = (cpI < nCp) ? units[cpI] : 0.f;
-                    dunPrevU = (cpI > 0) ? units[cpI - 1] : 0.f;
-                }
-            }
-            if (cp == 0x201d) {
-                int next = (cpI + 1 < nCp) ? cps[cpI + 1] : 0;
-                if (qI < 0 || next == 0x3001) {
-                    qI = cpI;
-                    qx0 = ix0;
-                    qx1 = ix1;
-                    qNext = next;
-                    qU = (cpI < nCp) ? units[cpI] : 0.f;
-                }
-            }
-            if (cp == 0x3002) {
-                int prev = (cpI > 0) ? cps[cpI - 1] : 0;
-                if (perI < 0 || cpI + 1 == nCp || !OcrIsPunct(prev)) {
-                    perI = cpI;
-                    perx0 = ix0;
-                    perx1 = ix1;
-                    perNext = (cpI + 1 < nCp) ? cps[cpI + 1] : 0;
-                    perPrev = prev;
-                    perU = (cpI < nCp) ? units[cpI] : 0.f;
-                    perPrevU = (cpI > 0) ? units[cpI - 1] : 0.f;
-                }
-            }
             utf.Append(b.text + before, (size_t)(idx - before));
             for (int k = before; k < idx; k++) {
                 utfCoords.Append(cr);
@@ -1343,25 +1221,6 @@ static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, i
         bool join = false;
         if (next < nBox) {
             join = OcrShouldJoinDocLines(b, boxes[next], bodyLeft, bodyRight, em, gapMed);
-            if ((b.text && (str::Find(b.text, "下一步") || str::Find(b.text, "今后"))) ||
-                (boxes[next].text && (str::Find(boxes[next].text, "下一步") || str::Find(boxes[next].text, "今后")))) {
-                // #region agent log
-                {
-                    FILE* f = fopen("c:\\src\\sumatrapdf\\debug-705e63.log", "ab");
-                    if (f) {
-                        fprintf(f,
-                                "{\"sessionId\":\"705e63\",\"hypothesisId\":\"I\",\"location\":\"OcrService.cpp:"
-                                "BoxesToPageText\",\"message\":\"ocr-join\",\"data\":{\"join\":%d,\"ax\":%d,\"ay\":%d,"
-                                "\"adx\":%d,\"ady\":%d,\"bx\":%d,\"by\":%d,\"bdx\":%d,\"bdy\":%d,\"a\":\"%.40s\",\"b\":"
-                                "\"%.40s\"},\"timestamp\":%llu}\n",
-                                join ? 1 : 0, b.rect.x, b.rect.y, b.rect.dx, b.rect.dy, boxes[next].rect.x,
-                                boxes[next].rect.y, boxes[next].rect.dx, boxes[next].rect.dy, b.text, boxes[next].text,
-                                (unsigned long long)GetTickCount64());
-                        fclose(f);
-                    }
-                }
-                // #endregion
-            }
         }
         if (!join) {
             utf.Append("\n");
@@ -1453,7 +1312,6 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr) {
     }
 
     bool ok = false;
-    const char* path = "unknown";
     if (OcrModelsAvailable()) {
         bool scanned = OcrPageLooksScanned(engine, pageNo);
         if (!scanned && !forceOcr) {
@@ -1471,35 +1329,26 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr) {
             if (rgb) {
                 Vec<OcrBox> boxes;
                 ok = OcrRecognizeRgb(rgb, w, h, stride, boxes);
-                int nBoxes = boxes.Size();
                 if (ok) {
                     PageText pt{};
                     PageTextUtf8 utf8{};
-                    BoxesToPageText(boxes, rgb, w, h, stride, engine->PageMediabox(pageNo), &pt, &utf8, pageNo);
+                    BoxesToPageText(boxes, rgb, w, h, stride, engine->PageMediabox(pageNo), &pt, &utf8);
                     FreeOcrBoxes(boxes);
                     if (pt.text && pt.len > 0) {
                         engine->SetCachedPageText(pageNo, pt, utf8);
-                        path = "cached";
                     } else {
                         FreePageText(&pt);
                         FreePageTextUtf8(&utf8);
                         ok = false;
-                        path = "emptyPageText";
                     }
                 } else {
                     FreeOcrBoxes(boxes);
-                    path = nBoxes > 0 ? "recEmpty" : "recognizeFalse";
                 }
                 free(rgb);
-            } else {
-                path = "copyRgbFail";
             }
         } else {
             delete bmp;
-            path = "renderFail";
         }
-    } else {
-        path = "modelsUnavailable";
     }
     FinishOcrFlight(owned);
     return ok;
@@ -1526,7 +1375,7 @@ static bool OcrRecognizePageClip(EngineBase* engine, int pageNo, const RectF& cl
     Vec<OcrBox> boxes;
     bool ok = OcrRecognizeRgb(rgb, w, h, stride, boxes);
     if (ok) {
-        BoxesToPageText(boxes, rgb, w, h, stride, clip, ptOut, utf8Out, pageNo);
+        BoxesToPageText(boxes, rgb, w, h, stride, clip, ptOut, utf8Out);
         ok = ptOut->text && ptOut->len > 0;
         if (!ok) {
             FreePageText(ptOut);

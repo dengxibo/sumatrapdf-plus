@@ -4398,6 +4398,8 @@ static ExtractedTocItem* TocTreeFind(const Vec<ExtractedTocItem*>& nodes, const 
 static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask);
 static void InsertOfficialDocTitles(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedTocItem*>& roots);
 static ExtractTocDocClass ClassifyExtractTocDoc(const Vec<ScanLine>& lines, int nPages, const char* filePath);
+static bool ExtractOfficialToc(EngineBase* engine, Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
+                               Vec<ExtractedTocItem*>& roots, const char* tocDebugPath);
 static bool ExtractContractToc(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedTocItem*>& roots);
 static bool ExtractPaperToc(EngineBase* engine, const Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
                             Vec<ExtractedTocItem*>& roots);
@@ -8767,14 +8769,21 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         lines.Append(TestScanLineXYP("第二章 方法", 15, 48, 100));
         bool lateTocBook = ClassifyExtractTocDoc(lines, 20, "情感智力.pdf") == ExtractTocDocClass::Book;
         FreeScanLines(lines);
+        lines.Append(TestScanLine("赣人社发〔2026〕7号", 20));
+        lines.Append(TestScanLine("关于印发《江西省人力资源和社会保障数据安全管理办法》的通知", 40));
+        lines.Append(TestScanLine("日录", 60));
+        lines.Append(TestScanLine("第四章数据全生命周期安全管理", 80));
+        bool banfaOfficial = ClassifyExtractTocDoc(lines, 1, "管理办法.pdf") == ExtractTocDocClass::Official;
+        FreeScanLines(lines);
         bool clsOk = feasOff && paperOk && paperUnderFeasDir && noticeOk && chapAlone && bookOk && lessonBook &&
-                     jiansheBook && contractPath && contractParties && lateTocBook;
+                     jiansheBook && contractPath && contractParties && lateTocBook && banfaOfficial;
         if (clsOk) {
             (*pass)++;
         } else {
             (*fail)++;
-            logf("phase2 fail classify feas=%d paper=%d book=%d lesson=%d jianshe=%d late=%d\n", feasOff ? 1 : 0,
-                 paperOk ? 1 : 0, bookOk ? 1 : 0, lessonBook ? 1 : 0, jiansheBook ? 1 : 0, lateTocBook ? 1 : 0);
+            logf("phase2 fail classify feas=%d paper=%d book=%d lesson=%d jianshe=%d late=%d banfa=%d\n",
+                 feasOff ? 1 : 0, paperOk ? 1 : 0, bookOk ? 1 : 0, lessonBook ? 1 : 0, jiansheBook ? 1 : 0,
+                 lateTocBook ? 1 : 0, banfaOfficial ? 1 : 0);
         }
     }
     {
@@ -10772,6 +10781,32 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         FreeScanLines(lines);
     }
     {
+        Vec<ScanLine> lines;
+        lines.Append(TestScanLineXYP("赣人社发〔2026〕7号", 1, 80, 20));
+        lines.Append(TestScanLineXYP("关于印发《江西省人力资源和社会保障数据安全管理办法》的通知", 1, 72, 40));
+        lines.Append(TestScanLineXYP("日录", 1, 160, 70));
+        lines.Append(TestScanLineXYP("第一章 总则", 2, 72, 40));
+        lines.Append(TestScanLineXYP("第一条 目的", 2, 72, 60));
+        lines.Append(TestScanLineXYP("（二）涉及敏感个人信息", 2, 72, 80));
+        lines.Append(TestScanLineXYP("第二章 数据分类分级", 3, 72, 40));
+        lines.Append(TestScanLineXYP("第四章 数据全生命周期安全管理", 4, 72, 40));
+        Vec<ExtractedTocItem*> roots;
+        Vec<char*> labels;
+        bool cls = ClassifyExtractTocDoc(lines, 4, "管理办法.pdf") == ExtractTocDocClass::Official;
+        bool ran = ExtractOfficialToc(nullptr, lines, labels, 4, roots, nullptr);
+        bool ok = cls && ran && ExtractedFindContaining(roots, "第一章") && ExtractedFindContaining(roots, "第一条") &&
+                  ExtractedFindContaining(roots, "第二章") && ExtractedFindContaining(roots, "第四章") &&
+                  !ExtractedHasPrintedTocBookmark(roots, 0);
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-banfa-not-book-toc", roots);
+        }
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
         bool ok = TocCalibTestDeletePromotesChildren();
         if (ok) {
             (*pass)++;
@@ -12090,6 +12125,27 @@ static bool FrontHasEnglishPrintedToc(const Vec<ScanLine>& lines, int nPages) {
     return false;
 }
 
+// 文号 / 印发 / 关于…的通知：管理办法、厅发通知等公文。压过「第X章 + 目录/日录」。
+static bool LooksLikeOfficialFrontMatter(const Vec<ScanLine>& lines, int maxPage) {
+    for (int i = 0; i < lines.Size(); i++) {
+        if (lines[i].srcPage < 1 || lines[i].srcPage > maxPage || !lines[i].text) {
+            continue;
+        }
+        const char* s = lines[i].text;
+        if (LooksLikeDocNumberLine(s)) {
+            return true;
+        }
+        if (str::Find(s, "关于印发") || str::Find(s, "印发《")) {
+            return true;
+        }
+        if (str::StartsWith(s, "关于") &&
+            (str::Find(s, "的通知") || str::Find(s, "的函") || str::Find(s, "请示"))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static ExtractTocDocClass ClassifyExtractTocDoc(const Vec<ScanLine>& lines, int nPages, const char* filePath) {
     int front = nPages;
     if (front > 20) {
@@ -12114,6 +12170,9 @@ static ExtractTocDocClass ClassifyExtractTocDoc(const Vec<ScanLine>& lines, int 
     // Body 项目概述/建设规模 without 绪论/导师 still stays Official.
     if (advisor || intro || (abs && keywords && !feasBody)) {
         return ExtractTocDocClass::Paper;
+    }
+    if (LooksLikeOfficialFrontMatter(lines, front)) {
+        return ExtractTocDocClass::Official;
     }
     int nChap = CountChapterHeadingLines(lines, front);
     bool preface = FrontMatterHas(lines, front, "前言") || FrontMatterHas(lines, front, "后记");
