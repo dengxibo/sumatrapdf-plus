@@ -126,6 +126,11 @@ EXPORTS
 	fz_user_css
 	fz_purge_stored_html
 	fz_purge_stored_html_chapter
+	fz_font_is_bold
+	pdf_new_sanitize_filter
+	pdf_filter_page_contents
+	pdf_add_new_dict
+	pdf_add_cjk_font
 """
 
 def main():

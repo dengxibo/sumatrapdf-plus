@@ -303,6 +303,11 @@ bool PdfDarkModeFeaturesLookLikePhoto(const DarkImageFeatures& f) {
     return false;
 }
 
+bool PdfDarkModeFeaturesLookLikeGovernmentPaperScan(const DarkImageFeatures& f) {
+    (void)f;
+    return false;
+}
+
 bool PdfDarkModeFeaturesLookLikeNotebookIllustrationPage(const DarkImageFeatures& f) {
     (void)f;
     return false;
