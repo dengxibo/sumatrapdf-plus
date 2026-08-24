@@ -23,7 +23,11 @@ import {
 const { msbuildPath, llvmPdbutilPath } = detectVisualStudio2026();
 const slnPath = join("vs2022", "SumatraPDF.sln");
 
-const pdbFiles = ["libmupdf.pdb", "SumatraPDF-dll.pdb", "SumatraPDF.pdb"];
+const pdbFiles = [
+  "libmupdf.pdb",
+  "SumatraPDF-dll.pdb",
+  "SumatraPDF-Plus.pdb",
+];
 
 // === Secrets ===
 
@@ -415,7 +419,7 @@ async function extractClassesAndGlobalsFromPDB(): Promise<void> {
     return;
   }
 
-  const pdbPath = join("out", "rel64", "SumatraPDF.pdb");
+  const pdbPath = join("out", "rel64", "SumatraPDF-Plus.pdb");
   if (!existsSync(pdbPath)) {
     console.log(
       `uploadPdbBuildArtifacts: '${pdbPath}' doesn't exist, skipping`,
