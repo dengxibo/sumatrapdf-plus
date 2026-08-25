@@ -724,26 +724,52 @@ struct BookUnit {
     int prefixBytes = 0;
 };
 
+static int BookParseAsciiIntAt(const char* s, int from) {
+    if (!s) {
+        return 1;
+    }
+    while (s[from] == ' ' || s[from] == '.') {
+        from++;
+    }
+    int n = 0;
+    bool any = false;
+    while (s[from] >= '0' && s[from] <= '9') {
+        any = true;
+        n = n * 10 + (s[from] - '0');
+        from++;
+        if (n > 9999) {
+            break;
+        }
+    }
+    return any && n > 0 ? n : 1;
+}
+
 static BookUnit BookParseUnit(const char* s) {
     BookUnit u;
     if (!s || !s[0]) {
         return u;
     }
+    if (str::StartsWithI(s, "unit ")) {
+        u.kind = BookUnitKind::Part;
+        u.number = BookParseAsciiIntAt(s, 5);
+        u.prefixBytes = 5;
+        return u;
+    }
     if (str::StartsWithI(s, "part ")) {
         u.kind = BookUnitKind::Part;
-        u.number = 1;
+        u.number = BookParseAsciiIntAt(s, 5);
         u.prefixBytes = 5;
         return u;
     }
     if (str::StartsWithI(s, "chapter")) {
         u.kind = BookUnitKind::Chapter;
-        u.number = 1;
+        u.number = BookParseAsciiIntAt(s, 7);
         u.prefixBytes = 7;
         return u;
     }
     if (str::StartsWithI(s, "section")) {
         u.kind = BookUnitKind::Section;
-        u.number = 1;
+        u.number = BookParseAsciiIntAt(s, 7);
         u.prefixBytes = 7;
         return u;
     }
@@ -1259,7 +1285,7 @@ static int BookScoreTocPage(const Vec<ScanLine>& lines, int p) {
 }
 
 static bool BookFindTocRange(const Vec<ScanLine>& lines, int nPages, int* startOut, int* endOut) {
-    int front = nPages < 40 ? nPages : 40;
+    int front = nPages < 80 ? nPages : 80;
     int start = 0;
     int headingPage = 0;
     int bestScore = 0;

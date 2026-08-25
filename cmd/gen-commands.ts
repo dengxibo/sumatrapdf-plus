@@ -272,6 +272,7 @@ export const commands = [
     "CmdPdfTocSetCurrentPage", "Set TOC Item to Current Page",
     "CmdPdfTocFindInBody", "Find TOC Item in Body",
     "CmdPdfTocReplaceFromSelection", "Replace TOC Item from Selection",
+    "CmdHomePageRemoveMissingFiles", "Remove missing files from home",
     "CmdNone", "Do nothing",
 ];
 

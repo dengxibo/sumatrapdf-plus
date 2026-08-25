@@ -280,11 +280,14 @@ struct MainWindow {
     int homePageThumbsStartX = 0;
     int homePageThumbsTopY = 0;
     int homePageThumbsCols = 0;
+    int homePageThumbDx = 0;
+    int homePageThumbDy = 0;
     int homePageRowDy = 0;
     int homePageColDx = 0;
     bool homePageListView = false;
     int homePagePaintScrollY = 0;
     bool homePageBlitScrollReady = false;
+    AutoFreeStr homePageHoverPath;
     Vec<FileState*> homePageFileStates;
     StrVec homePageFilterWords;
     Vec<u8> homePageHighlighted;

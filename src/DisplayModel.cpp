@@ -105,6 +105,125 @@ static int ColumnsFromDisplayMode(DisplayMode displayMode) {
     return 1;
 }
 
+// PDF /PageLayout TwoPageLeft/Right is for portrait books. Landscape 图解/PPT
+// files often keep that catalog flag; two-column zoom then sizes each page to
+// half the canvas and book view parks page 1 in the right slot, so the cover
+// looks like a clipped half-page. Probe a few pages so a lone landscape cover
+// does not hide a portrait book, and a portrait flyleaf does not hide slides.
+static bool EnginePagesLookMostlyLandscape(EngineBase* engine) {
+    if (!engine || engine->kind != kindEngineMupdf || EngineIsProgressiveEbookLoading(engine)) {
+        return false;
+    }
+    int n = engine->PageCount();
+    if (n < 1) {
+        return false;
+    }
+    const int kProbe[] = {1, 2, 3, 10};
+    int landscape = 0;
+    int counted = 0;
+    for (int i = 0; i < dimofi(kProbe); i++) {
+        int pageNo = kProbe[i];
+        if (pageNo > n) {
+            continue;
+        }
+        RectF box = engine->PageMediabox(pageNo);
+        if (box.IsEmpty()) {
+            continue;
+        }
+        SizeF sz = engine->Transform(box, pageNo, 1.0f, 0).Size();
+        if (sz.dx <= 0 || sz.dy <= 0) {
+            continue;
+        }
+        counted++;
+        if (sz.dx > sz.dy * 1.02) {
+            landscape++;
+        }
+    }
+    return counted > 0 && landscape * 2 >= counted;
+}
+
+// Center each 1-column page that is narrower than the pane. Mixed FXL/reflow
+// books can have a later page as wide as the viewport (so maxPageDx > inner)
+// while the cover is still 520px; skipping those would leave the cover flush
+// right after a stale viewPort.x / two-column-sized canvas.
+static void CenterSingleColumnPagesIfTheyFit(DisplayModel* dm, int columns, int& canvasDx) {
+    if (!dm || dm->viewPort.dx <= 0) {
+        return;
+    }
+    int inner = dm->viewPort.dx - dm->windowMargin.left - dm->windowMargin.right;
+    if (inner <= 0) {
+        return;
+    }
+    // Book view parks page 1 in the right slot. A portrait FXL cover that
+    // already fits the pane then looks flush-right with a black left gutter.
+    // rendition:page-spread-center wants that cover in the middle.
+    if (IsBookView(dm->GetDisplayMode()) && columns == 2) {
+        PageInfo* p1 = dm->GetPageInfo(1);
+        if (p1 && p1->isShown && p1->pos.dx > 0 && p1->pos.dx <= inner) {
+            p1->pos.x = dm->windowMargin.left + (inner - p1->pos.dx) / 2;
+            if (p1->pos.x < 0) {
+                p1->pos.x = 0;
+            }
+            if (dm->startPage <= 1) {
+                dm->viewPort.x = 0;
+            }
+        }
+        return;
+    }
+    if (columns != 1) {
+        return;
+    }
+    int n = dm->PageCount();
+    int centered = 0;
+    int wide = 0;
+    for (int pageNo = 1; pageNo <= n; pageNo++) {
+        PageInfo* pi = dm->GetPageInfo(pageNo);
+        if (!pi || !pi->isShown || pi->pos.dx <= 0) {
+            continue;
+        }
+        if (pi->pos.dx <= inner) {
+            pi->pos.x = dm->windowMargin.left + (inner - pi->pos.dx) / 2;
+            if (pi->pos.x < 0) {
+                pi->pos.x = 0;
+            }
+            centered++;
+        } else {
+            wide++;
+        }
+    }
+    if (centered == 0) {
+        return;
+    }
+    if (wide == 0) {
+        dm->viewPort.x = 0;
+        canvasDx = dm->viewPort.dx;
+    } else {
+        int curNo = dm->startPage;
+        if (curNo < 1) {
+            curNo = 1;
+        }
+        PageInfo* cur = dm->GetPageInfo(curNo);
+        if (cur && cur->isShown && cur->pos.dx > 0 && cur->pos.dx <= inner) {
+            dm->viewPort.x = 0;
+        }
+    }
+}
+
+static void SyncPageOnScreenFromPos(DisplayModel* dm) {
+    if (!dm || !dm->pagesInfo) {
+        return;
+    }
+    int n = dm->PageCount();
+    for (int pageNo = 1; pageNo <= n; pageNo++) {
+        PageInfo* pi = dm->GetPageInfo(pageNo);
+        if (!pi || !pi->isShown || pi->pos.dx <= 0) {
+            continue;
+        }
+        pi->pageOnScreen = pi->pos;
+        pi->pageOnScreen.Offset(-dm->viewPort.x, -dm->viewPort.y);
+    }
+}
+
 // Extend the page layout for pages appended during progressive reflowable-EPUB
 // loading, resuming from dm->reflowLayoutValidUpto (the last page with valid
 // layout). Returns false if a full relayout is required instead.
@@ -232,7 +351,7 @@ static bool LayoutReflowPagesUpto(DisplayModel* dm, int toPage) {
     }
 
     int canvasDy = currPosY + dm->windowMargin.bottom - dm->pageSpacing.dy;
-    int canvasDx = dm->canvasSize.dx;
+    int canvasDx = dm->viewPort.x == 0 ? dm->viewPort.dx : dm->canvasSize.dx;
     dm->canvasSize = Size(std::max(canvasDx, dm->viewPort.dx), std::max(canvasDy, dm->viewPort.dy));
     dm->reflowLayoutValidUpto = toPage;
     return true;
@@ -299,6 +418,15 @@ static bool RelayoutReflowIncremental(DisplayModel* dm, float newZoomVirtual, in
     first->pos.dy = (int)(pageSize.dy * zoom + 0.499);
     first->pos.x = dm->windowMargin.left + (columnMaxWidth - first->pos.dx) / 2;
     first->pos.y = dm->windowMargin.top;
+    // A leftover viewPort.x from an estimated/wide canvas (FXL cover vs
+    // reflow placeholder) keeps the camera on the right even after the page
+    // is centered in the pane.
+    if (first->pos.dx > 0 && first->pos.dx <= columnMaxWidth) {
+        dm->viewPort.x = 0;
+        if (dm->canvasSize.dx > dm->viewPort.dx) {
+            dm->canvasSize.dx = dm->viewPort.dx;
+        }
+    }
     dm->reflowLayoutValidUpto = 1;
 
     int toPage = std::min(syncToPage, dm->pagesInfoCount);
@@ -308,6 +436,10 @@ static bool RelayoutReflowIncremental(DisplayModel* dm, float newZoomVirtual, in
     if (!LayoutReflowPagesUpto(dm, toPage)) {
         return false;
     }
+    int canvasDx = dm->canvasSize.dx;
+    CenterSingleColumnPagesIfTheyFit(dm, 1, canvasDx);
+    dm->canvasSize.dx = std::max(canvasDx, dm->viewPort.dx);
+    SyncPageOnScreenFromPos(dm);
     if (dm->cb) {
         dm->cb->UpdateScrollbars(dm->canvasSize);
     }
@@ -800,7 +932,7 @@ RectF DisplayModel::PageMediaBox(int pageNo) const {
             pi->_mediaBox = RectF(0, 0, 8.5 * fileDPI, 11 * fileDPI);
         }
         pi->state = PageInfoState::Error;
-    } else {
+    } else if (!EngineIsProgressiveEbookLoading(engine)) {
         pi->state = PageInfoState::Known;
     }
     return pi->_mediaBox;
@@ -833,7 +965,8 @@ void DisplayModel::SetInitialViewSettings(DisplayMode newDisplayMode, int newSta
     displayMode = newDisplayMode;
     presDisplayMode = newDisplayMode;
     PageLayout layout = engine->preferredLayout;
-    if (DisplayMode::Automatic == displayMode) {
+    bool resolvedFromAutomatic = DisplayMode::Automatic == displayMode;
+    if (resolvedFromAutomatic) {
         switch (layout.type) {
             case PageLayout::Type::Single:
                 displayMode = DisplayMode::Continuous;
@@ -854,6 +987,15 @@ void DisplayModel::SetInitialViewSettings(DisplayMode newDisplayMode, int newSta
                 }
                 break;
         }
+    }
+    // Remembered "continuous book view" from a previous Automatic open of a
+    // landscape 图解 still clips on the next launch; only honor an explicit
+    // two-column default (DefaultDisplayMode = facing / book view).
+    if ((resolvedFromAutomatic || gGlobalPrefs->defaultDisplayModeEnum == DisplayMode::Automatic) &&
+        (IsFacing(displayMode) || IsBookView(displayMode)) && EnginePagesLookMostlyLandscape(engine)) {
+        displayMode = layout.nonContinuous ? DisplayMode::SinglePage : DisplayMode::Continuous;
+        presDisplayMode = displayMode;
+        dropNextRestoredScrollX = true;
     }
     displayR2L = layout.r2l;
     if (newStartPage == 1) {
@@ -1533,6 +1675,16 @@ void DisplayModel::CalcZoomReal(float newZoomVirtual) {
             zoomReal = 0;
         } else {
             zoomReal = minZoom;
+            // Pages whose Fit zoom was skipped (empty box during progressive
+            // EPUB load) must not fall through to zoom 1.0 — a 1398-wide FXL
+            // cover at 100% makes a canvas wider than the pane, then the
+            // viewPort.x clamp shows the right edge (cover flush right).
+            for (int pageNo = 1; pageNo <= nPages; pageNo++) {
+                PageInfo* pi = GetPageInfo(pageNo);
+                if (pi->isShown && pi->zoomReal < 0.01f) {
+                    pi->zoomReal = minZoom;
+                }
+            }
         }
     } else if (kZoomFitContent == newZoomVirtual) {
         float newZoom = ZoomRealFromVirtualForPage(newZoomVirtual, CurrentPageNo());
@@ -1825,7 +1977,9 @@ RestartLayout:
             canvasDx = std::min(canvasDx, viewPort.dx);
         }
     }
+    CenterSingleColumnPagesIfTheyFit(this, columns, canvasDx);
     canvasSize = Size(std::max(canvasDx, viewPort.dx), std::max(canvasDy, viewPort.dy));
+    SyncPageOnScreenFromPos(this);
     // A full relayout positions every page, so the incremental reflow layout can
     // safely resume appending after the last page (reusing this column width).
     reflowLayoutValidUpto = PageCount();
@@ -2016,6 +2170,13 @@ static float getZoomSafe(DisplayModel* dm, int pageNo, const PageInfo* pageInfo)
     }
     if (dm->zoomReal > 0) {
         return dm->zoomReal;
+    }
+    if (dm->zoomVirtual == kZoomFitWidth || dm->zoomVirtual == kZoomFitPage || dm->zoomVirtual == kZoomShrinkToFit ||
+        dm->zoomVirtual == kZoomFitContent) {
+        float z = dm->ZoomRealFromVirtualForPage(dm->zoomVirtual, pageNo);
+        if (z > 0.01f) {
+            return z;
+        }
     }
     if (dm->zoomVirtual > 0) {
         return dm->zoomVirtual;
@@ -2223,8 +2384,17 @@ void DisplayModel::SetViewPortSize(Size newViewPortSize) {
             // Continuous EPUB: GetScrollState() often has y=-1; SetScrollState snaps to
             // page top and drops the in-page scroll offset (e.g. closing the TOC).
             if (IsContinuous(displayMode) && ss.x < 0 && ss.y < 0) {
-                viewPort.x = limitValue(savedCanvasOrigin.x, 0, std::max(0, canvasSize.dx - viewPort.dx));
                 viewPort.y = limitValue(savedCanvasOrigin.y, 0, std::max(0, canvasSize.dy - viewPort.dy));
+                PageInfo* cur = GetPageInfo(ss.page >= 1 ? ss.page : CurrentPageNo());
+                bool pageFits =
+                    ColumnsFromDisplayMode(displayMode) == 1 && cur && cur->pos.dx > 0 && cur->pos.dx <= viewPort.dx;
+                if (pageFits) {
+                    // Relayout centered a page that fits; a stale origin from
+                    // before TOC / FXL size change would shove it to the right.
+                    viewPort.x = 0;
+                } else {
+                    viewPort.x = limitValue(savedCanvasOrigin.x, 0, std::max(0, canvasSize.dx - viewPort.dx));
+                }
                 RecalcVisibleParts();
                 RenderVisibleParts();
                 cb->UpdateScrollbars(canvasSize);
@@ -3013,26 +3183,31 @@ void DisplayModel::SetScrollState(const ScrollState& state) {
         return;
     }
     hasPendingRestoreScroll = false;
+    ScrollState use = state;
+    if (dropNextRestoredScrollX && use.x >= 0) {
+        dropNextRestoredScrollX = false;
+        use.x = -1;
+    }
     // must have both GoToPage() calls
-    GoToPage(state.page, false);
+    GoToPage(use.page, false);
     // Bail out, if the page wasn't scrolled
-    if (state.x < 0 && state.y < 0) {
+    if (use.x < 0 && use.y < 0) {
         return;
     }
 
-    PointF newPtD(std::max(state.x, (double)0), std::max(state.y, (double)0));
-    Point newPt = CvtToScreen(state.page, newPtD);
+    PointF newPtD(std::max(use.x, (double)0), std::max(use.y, (double)0));
+    Point newPt = CvtToScreen(use.page, newPtD);
 
     // Also show the margins, if this has been requested
-    if (state.x < 0) {
+    if (use.x < 0) {
         newPt.x = -1;
     } else {
         newPt.x += viewPort.x;
     }
-    if (state.y < 0) {
+    if (use.y < 0) {
         newPt.y = 0;
     }
-    GoToPage(state.page, newPt.y, false, newPt.x);
+    GoToPage(use.page, newPt.y, false, newPt.x);
 }
 
 // don't remember more than "enough" history entries (same number as Firefox uses)

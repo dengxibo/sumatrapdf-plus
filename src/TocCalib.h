@@ -74,7 +74,8 @@ void TocCalibRefineExtracted(Vec<ExtractedTocItem*>& roots, EngineBase* engine);
 void TocCalibWriteDebug(const TocCalibSession* s, const char* path);
 
 void DeleteTocCalibSession(TocCalibSession* s);
-TocCalibSession* TocCalibSessionFromExtracted(Vec<ExtractedTocItem*>& roots, EngineBase* engine, bool persistToDisk);
+TocCalibSession* TocCalibSessionFromExtracted(Vec<ExtractedTocItem*>& roots, EngineBase* engine, bool persistToDisk,
+                                              bool scanBody = true);
 void TocCalibSolveSession(TocCalibSession* s);
 bool TocCalibCommitPrinted(TocCalibSession* s, int rowIdx, int printed);
 bool TocCalibSetOffset(TocCalibSession* s, int offset);
@@ -89,7 +90,8 @@ bool TocCalibTestAddChildManual();
 bool TocCalibMergeWithNext(TocCalibSession* s, TocCalibRow* row);
 bool TocCalibTestMergeWithNext();
 
-bool StartTocCalib(MainWindow* win, Vec<ExtractedTocItem*>& roots, EngineBase* engine, bool persistToDisk);
+bool StartTocCalib(MainWindow* win, Vec<ExtractedTocItem*>& roots, EngineBase* engine, bool persistToDisk,
+                   bool scanBody = true);
 bool StartTocCalibFromExisting(MainWindow* win);
 void ShowTocCalib(MainWindow* win);
 void HideTocCalib(MainWindow* win);

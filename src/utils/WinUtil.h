@@ -142,6 +142,8 @@ void HwndEnsureVisible(HWND hwnd);
 Rect GetFullscreenRect(HWND);
 Rect GetVirtualScreenRect();
 void MarkShellFullscreenWindow(HWND hwnd, bool fullscreen);
+// Raise above current WS_EX_TOPMOST windows, then drop always-on-top.
+void CoverTopmostThenRelease(HWND hwnd);
 
 void DrawRect(HDC, const Rect&);
 void FillRect(HDC, const Rect&, HBRUSH);

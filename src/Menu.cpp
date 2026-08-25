@@ -321,14 +321,6 @@ static MenuDef menuDefView[] = {
         CmdToggleBookmarks,
     },
     {
-        _TRN("Extract Table of Contents"),
-        CmdExtractPdfToc,
-    },
-    {
-        _TRN("Calibrate TOC Pages"),
-        CmdPdfTocCalibrate,
-    },
-    {
         _TRN("Show &Menu"),
         CmdToggleMenuBar,
     },
@@ -1941,12 +1933,30 @@ void OnAboutContextMenu(MainWindow* win, int x, int y) {
     }
 
     char* path = GetStaticLinkAtTemp(win->staticLinks, x, y, nullptr);
-    if (!path || *path == '<' || str::StartsWith(path, "http://") || str::StartsWith(path, "https://")) {
-        return;
+    if (path && str::StartsWith(path, kLinkHomePageRemoveFile)) {
+        path = path + str::Len(kLinkHomePageRemoveFile);
+    } else if (path && str::StartsWith(path, kLinkHomePagePinFile)) {
+        path = path + str::Len(kLinkHomePagePinFile);
     }
 
-    FileState* fs = gFileHistory.FindByPath(path);
+    FileState* fs = nullptr;
+    if (path && *path != '<' && !str::StartsWith(path, "http://") && !str::StartsWith(path, "https://")) {
+        fs = gFileHistory.FindByPath(path);
+    }
     if (!fs) {
+        HMENU emptyPopup = CreatePopupMenu();
+        AppendMenuW(emptyPopup, MF_STRING, CmdHomePageRemoveMissingFiles,
+                    ToWStrTemp(_TRA("Remove missing files from home")));
+        POINT emptyPt = {x, y};
+        MapWindowPoints(win->hwndCanvas, HWND_DESKTOP, &emptyPt, 1);
+        MarkMenuOwnerDraw(emptyPopup);
+        INT emptyCmd = TrackPopupMenu(emptyPopup, TPM_RETURNCMD | TPM_RIGHTBUTTON, emptyPt.x, emptyPt.y, 0,
+                                      win->hwndFrame, nullptr);
+        FreeMenuOwnerDrawInfoData(emptyPopup);
+        DestroyMenu(emptyPopup);
+        if (CmdHomePageRemoveMissingFiles == emptyCmd) {
+            HomePageRemoveMissingFiles(win);
+        }
         return;
     }
 
@@ -1973,7 +1983,9 @@ void OnAboutContextMenu(MainWindow* win, int x, int y) {
 
     if (CmdPinSelectedDocument == cmd) {
         fs->isPinned = !fs->isPinned;
+        SaveSettings();
         win->DeleteToolTip();
+        HomePageInvalidateScrollCache(win);
         win->RedrawAll(true);
         return;
     }
@@ -1990,6 +2002,7 @@ void OnAboutContextMenu(MainWindow* win, int x, int y) {
         DeleteThumbnailForFile(filePath);
         SaveSettings();
         win->DeleteToolTip();
+        HomePageInvalidateScrollCache(win);
         win->RedrawAll(true);
         return;
     }

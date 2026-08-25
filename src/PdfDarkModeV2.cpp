@@ -223,6 +223,11 @@ static fz_image* v2_build_white_mat_image(fz_context* ctx, fz_image* srcImage, c
     fz_try(ctx) {
         int w = srcImage->w;
         int h = srcImage->h;
+        if (srcImage->mask) {
+            // Rebuilding from the color pixmap drops the SMask and paints a solid
+            // rectangle (Word 红头 2×2 red stretched across the header).
+            fz_throw(ctx, FZ_ERROR_GENERIC, "skip white-mat on masked image");
+        }
         if (w > 0 && h > 0 && (w > kV2MaxDecodeDim || h > kV2MaxDecodeDim)) {
             // Huge images are never textbook badge mats.
             fz_throw(ctx, FZ_ERROR_GENERIC, "skip white-mat on huge image");
@@ -237,6 +242,48 @@ static fz_image* v2_build_white_mat_image(fz_context* ctx, fz_image* srcImage, c
             if (dst) {
                 result = fz_new_image_from_pixmap(ctx, dst, nullptr);
             }
+        }
+    }
+    fz_always(ctx) {
+        if (src) {
+            fz_drop_pixmap(ctx, src);
+        }
+        if (dst) {
+            fz_drop_pixmap(ctx, dst);
+        }
+    }
+    fz_catch(ctx) {
+        if (result) {
+            fz_drop_image(ctx, result);
+        }
+        return nullptr;
+    }
+    return result;
+}
+
+static bool v2_image_is_paint_chip(fz_image* image) {
+    if (!image || !image->mask) {
+        return false;
+    }
+    return PdfDarkModeV2LooksLikeSoftMaskPaintChip(image->w, image->h, image->mask->w, image->mask->h);
+}
+
+// Remap the tiny color plate (black → theme text, red 红头 keeps hue) and keep the SMask.
+static fz_image* v2_build_paint_chip_image(fz_context* ctx, fz_image* srcImage, const DarkModePalette& palette) {
+    fz_pixmap* src = nullptr;
+    fz_pixmap* dst = nullptr;
+    fz_image* result = nullptr;
+    fz_var(src);
+    fz_var(dst);
+    fz_var(result);
+    fz_try(ctx) {
+        src = fz_get_pixmap_from_image(ctx, srcImage, nullptr, nullptr, nullptr, nullptr);
+        if (src && src->samples) {
+            fz_colorspace* cs = src->colorspace ? src->colorspace : fz_device_rgb(ctx);
+            dst = fz_new_pixmap(ctx, cs, src->w, src->h, src->seps, src->alpha);
+            fz_copy_pixmap_rect(ctx, dst, src, fz_make_irect(0, 0, src->w, src->h), nullptr);
+            v2_transform_pixmap(ctx, dst, palette);
+            result = fz_new_image_from_pixmap(ctx, dst, srcImage->mask);
         }
     }
     fz_always(ctx) {
@@ -448,6 +495,41 @@ static void v2_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_m
     }
     float coverage = v2_image_coverage(ctm, d->pageBounds);
     bool largeOffice = v2_large_office_scan_image(ctx, image, coverage);
+
+    // Word 红头/标题: 2×2 color + glyph SMask. Must not take the "small photo" path.
+    if (v2_image_is_paint_chip(image)) {
+        fz_image* cached = nullptr;
+        if (d->engineCache) {
+            cached = PdfDarkModeEngineCacheLookupProcessed(ctx, d->engineCache, image, d->profileHash,
+                                                           DarkImagePolicy::ThemeRecolor, DarkImageKind::IconOrLineArt);
+        }
+        fz_image* built = nullptr;
+        fz_image* draw = cached;
+        if (!draw) {
+            built = v2_build_paint_chip_image(ctx, image, *d->palette);
+            draw = built ? built : image;
+            if (built && d->engineCache) {
+                PdfDarkModeEngineCacheStoreProcessed(ctx, d->engineCache, image, d->profileHash,
+                                                     DarkImagePolicy::ThemeRecolor, DarkImageKind::IconOrLineArt,
+                                                     built);
+            }
+        }
+        fz_try(ctx) {
+            fz_fill_image(ctx, d->inner, draw, ctm, alpha, color_params);
+        }
+        fz_always(ctx) {
+            if (cached) {
+                fz_drop_image(ctx, cached);
+            }
+            if (built) {
+                fz_drop_image(ctx, built);
+            }
+        }
+        fz_catch(ctx) {
+            fz_fill_image(ctx, d->inner, image, ctm, alpha, color_params);
+        }
+        return;
+    }
 
     // Small/medium images: knock out JPEG white mats around colorful badges (UNIT / Atlas).
     // Full-page path below handles scans; do not Okular-wash ordinary photos here.

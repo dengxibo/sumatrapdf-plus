@@ -39,6 +39,8 @@ void HomePageFocusSearch(MainWindow* win);
 void HomePageDestroySearch(MainWindow* win);
 void HomePageScheduleSearchFilter(MainWindow* win);
 void HomePageApplySearchFilter(MainWindow* win);
+void HomePageRemoveMissingFiles(MainWindow* win);
+void HomePageUpdateHover(MainWindow* win, int x, int y);
 
 #define kHomeSearchDebounceTimerId 0x103
 void HomePageOnLanguageChangedAll();

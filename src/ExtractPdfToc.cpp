@@ -4404,7 +4404,7 @@ static bool ExtractContractToc(const Vec<ScanLine>& lines, int nPages, Vec<Extra
 static bool ExtractPaperToc(EngineBase* engine, const Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
                             Vec<ExtractedTocItem*>& roots);
 static bool ExtractBookToc(EngineBase* engine, const Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
-                           Vec<ExtractedTocItem*>& roots);
+                           Vec<ExtractedTocItem*>& roots, bool bornDigital = false);
 static void MergeDeeperArabicHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedTocItem*>& roots);
 
 static void RunPrintedTocLogicTests() {
@@ -12890,7 +12890,7 @@ static bool ExtractPaperToc(EngineBase* engine, const Vec<ScanLine>& lines, cons
 }
 
 static bool ExtractBookToc(EngineBase* engine, const Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
-                           Vec<ExtractedTocItem*>& roots) {
+                           Vec<ExtractedTocItem*>& roots, bool bornDigital) {
     char* bookDebug = nullptr;
     if (gCli && gCli->extractTocDebug && engine && engine->FilePath()) {
         bookDebug = str::Join(path::GetPathNoExtTemp(engine->FilePath()), ".book-toc-debug.txt");
@@ -12898,12 +12898,19 @@ static bool ExtractBookToc(EngineBase* engine, const Vec<ScanLine>& lines, const
     bool printed = ExtractBookPrintedToc(engine, lines, labels, nPages, roots, bookDebug);
     str::Free(bookDebug);
     if (printed) {
-        if (ExtractedHasPrintedBookCalib(roots)) {
+        // Scans: optional dest refine on short books. Born-digital already has a
+        // text layer and page labels; full-document BM25 is the scan path.
+        if (!bornDigital && nPages <= kExtractPdfToc.tocSearchMaxPages && ExtractedHasPrintedBookCalib(roots)) {
             TocCalibRefineExtracted(roots, engine);
         }
         return true;
     }
     DeleteExtractedTocItems(roots);
+    if (bornDigital) {
+        // Digital books without a parsed Contents are not heading-clustered from
+        // the whole file; that harvest is for OCR/scans with no printed TOC.
+        return false;
+    }
     if (ExtractBookBodyHeadings(lines, nPages, roots)) {
         return true;
     }
@@ -12913,7 +12920,8 @@ static bool ExtractBookToc(EngineBase* engine, const Vec<ScanLine>& lines, const
 }
 
 static ExtractPdfTocKind ExtractFromCollectedLines(EngineBase* engine, Vec<ScanLine>& lines, int nPages, int nText,
-                                                   Vec<ExtractedTocItem*>& roots, int* nItemsOut, bool forceExtract) {
+                                                   Vec<ExtractedTocItem*>& roots, int* nItemsOut, bool forceExtract,
+                                                   bool bornDigital) {
     if (nItemsOut) {
         *nItemsOut = 0;
     }
@@ -12942,19 +12950,19 @@ static ExtractPdfTocKind ExtractFromCollectedLines(EngineBase* engine, Vec<ScanL
     } else if (cls == ExtractTocDocClass::Paper) {
         ok = ExtractPaperToc(engine, lines, labels, nPages, roots);
     } else if (cls == ExtractTocDocClass::Book) {
-        ok = ExtractBookToc(engine, lines, labels, nPages, roots);
+        ok = ExtractBookToc(engine, lines, labels, nPages, roots, bornDigital);
     } else {
         ok = ExtractOfficialToc(engine, lines, labels, nPages, roots, tocDebugPath);
     }
     str::Free(tocDebugPath);
-    for (int i = 0; i < labels.Size(); i++) {
-        str::Free(labels[i]);
-    }
     int n = CountExtracted(roots);
     if ((!ok || n < 1) && cls != ExtractTocDocClass::Book && FrontHasEnglishPrintedToc(lines, nPages)) {
         DeleteExtractedTocItems(roots);
-        ok = ExtractBookToc(engine, lines, labels, nPages, roots);
+        ok = ExtractBookToc(engine, lines, labels, nPages, roots, bornDigital);
         n = CountExtracted(roots);
+    }
+    for (int i = 0; i < labels.Size(); i++) {
+        str::Free(labels[i]);
     }
     if (!ok || n < 1) {
         DeleteExtractedTocItems(roots);
@@ -12966,6 +12974,48 @@ static ExtractPdfTocKind ExtractFromCollectedLines(EngineBase* engine, Vec<ScanL
     return ExtractPdfTocKind::Ok;
 }
 
+// Native PDF text (not this-session OCR). Covers/artwork may be empty; Contents
+// and body pages of a born-digital textbook are not.
+static bool ExtractPdfLooksBornDigital(EngineBase* engine) {
+    if (!engine) {
+        return false;
+    }
+    int n = engine->PageCount();
+    int native = 0;
+    const int probes[] = {1, 2, 3, 8, 9, 10, 15};
+    for (int i = 0; i < dimofi(probes); i++) {
+        int p = probes[i];
+        if (p < 1 || p > n) {
+            continue;
+        }
+        if (engine->HasCachedOcrText(p)) {
+            continue;
+        }
+        int len = 0;
+        engine->GetTextForPage(p, &len);
+        if (len >= 40) {
+            native++;
+        }
+    }
+    return native >= 2;
+}
+
+static int ExtractFrontPageCap(bool bornDigital, int nPages) {
+    int cap = bornDigital ? 80 : kExtractPdfToc.tocSearchMaxPages;
+    if (nPages < cap) {
+        return nPages;
+    }
+    return cap;
+}
+
+static int ExtractProgressTotal(EngineBase* engine, bool bornDigital) {
+    int n = engine->PageCount();
+    if (bornDigital) {
+        return ExtractFrontPageCap(true, n);
+    }
+    return n;
+}
+
 ExtractPdfTocKind ExtractPdfTocFromEngine(EngineBase* engine, Vec<ExtractedTocItem*>& roots, int* nItemsOut) {
     roots.Reset();
     if (nItemsOut) {
@@ -12974,17 +13024,22 @@ ExtractPdfTocKind ExtractPdfTocFromEngine(EngineBase* engine, Vec<ExtractedTocIt
     if (!engine) {
         return ExtractPdfTocKind::Failed;
     }
+    bool bornDigital = ExtractPdfLooksBornDigital(engine);
     int nPages = engine->PageCount();
+    int to = ExtractFrontPageCap(bornDigital, nPages);
+    if (!bornDigital) {
+        to = nPages;
+    }
     Vec<ScanLine> lines;
     int nText = 0;
-    for (int p = 1; p <= nPages; p++) {
+    for (int p = 1; p <= to; p++) {
         int before = lines.Size();
         CollectPageScanLines(engine, p, lines);
         if (lines.Size() > before) {
             nText++;
         }
     }
-    ExtractPdfTocKind k = ExtractFromCollectedLines(engine, lines, nPages, nText, roots, nItemsOut, false);
+    ExtractPdfTocKind k = ExtractFromCollectedLines(engine, lines, nPages, nText, roots, nItemsOut, false, bornDigital);
     FreeScanLines(lines);
     return k;
 }
@@ -13008,8 +13063,60 @@ struct ExtractWork {
     int nTextPages = 0;
     bool skipConfirm = false;
     bool persistToDisk = true;
+    bool bornDigital = false;
     char* error = nullptr;
 };
+
+struct ExtractProgressUi {
+    HWND hwnd = nullptr;
+    int done = 0;
+    int total = 0;
+};
+
+static void ExtractProgressOnUi(ExtractProgressUi* p) {
+    if (p && p->hwnd && IsWindow(p->hwnd)) {
+        TempStr msg = str::FormatTemp(_TRA("Extracting bookmarks… %d / %d"), p->done, p->total);
+        NotificationCreateArgs args;
+        args.hwndParent = p->hwnd;
+        args.groupId = kNotifExtractToc;
+        args.msg = msg;
+        args.timeoutMs = kNotifNoTimeout;
+        ShowNotification(args);
+    }
+    delete p;
+}
+
+static void ShowExtractProgress(HWND hwnd, int done, int total) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return;
+    }
+    ExtractProgressOnUi(new ExtractProgressUi{hwnd, done, total});
+}
+
+static void PostExtractProgress(HWND hwnd, int done, int total) {
+    if (!hwnd) {
+        return;
+    }
+    uitask::Post(MkFunc0(ExtractProgressOnUi, new ExtractProgressUi{hwnd, done, total}), "ExtractPdfTocProgress");
+}
+
+static bool CollectScanLineRange(EngineBase* engine, Vec<ScanLine>& lines, int* nText, int fromPage, int toPage,
+                                 LONG cancelSeq, HWND hwndCanvas, int nPages) {
+    for (int p = fromPage; p <= toPage; p++) {
+        if (ExtractCancelled(cancelSeq)) {
+            return false;
+        }
+        int before = lines.Size();
+        CollectPageScanLines(engine, p, lines);
+        if (lines.Size() > before && nText) {
+            (*nText)++;
+        }
+        if (p == toPage || (p % 2) == 0) {
+            PostExtractProgress(hwndCanvas, p, nPages);
+        }
+    }
+    return true;
+}
 
 static void HideExtractProgress(HWND hwnd) {
     if (hwnd && IsWindow(hwnd)) {
@@ -13062,28 +13169,38 @@ static void ExtractApplyOnUi(ExtractWork* w);
 static void ExtractThread(ExtractWork* w) {
     EngineBase* engine = w->engine;
     int nPages = engine->PageCount();
+    bool bornDigital = w->bornDigital;
+    int front = ExtractFrontPageCap(bornDigital, nPages);
+    int workTotal = bornDigital ? front : nPages;
     Vec<ScanLine> lines;
     int nText = 0;
-    for (int p = 1; p <= nPages; p++) {
-        if (ExtractCancelled(w->cancelSeq)) {
-            w->status = ExtractPdfTocStatus::Cancelled;
-            break;
-        }
-        int before = lines.Size();
-        CollectPageScanLines(engine, p, lines);
-        if (lines.Size() > before) {
-            nText++;
-        }
-    }
-    w->nTextPages = nText;
-    if (w->status == ExtractPdfTocStatus::Cancelled) {
+    if (!CollectScanLineRange(engine, lines, &nText, 1, front, w->cancelSeq, w->hwndCanvas, workTotal)) {
+        w->status = ExtractPdfTocStatus::Cancelled;
+        w->nTextPages = nText;
         FreeScanLines(lines);
         uitask::Post(MkFunc0(ExtractApplyOnUi, w), "ExtractPdfTocDone");
         return;
     }
     int nItems = 0;
     bool force = w->skipConfirm && nText >= 1;
-    ExtractPdfTocKind k = ExtractFromCollectedLines(engine, lines, nPages, nText, w->roots, &nItems, force);
+    ExtractPdfTocKind k =
+        ExtractFromCollectedLines(engine, lines, nPages, nText, w->roots, &nItems, force, bornDigital);
+    // Scans may hide the printed 目录 later, or need body clustering. A
+    // born-digital textbook with Contents is finished after the front pages.
+    if (k != ExtractPdfTocKind::Ok && k != ExtractPdfTocKind::NoText && !bornDigital && nPages > front) {
+        DeleteExtractedTocItems(w->roots);
+        w->roots.Reset();
+        nItems = 0;
+        if (!CollectScanLineRange(engine, lines, &nText, front + 1, nPages, w->cancelSeq, w->hwndCanvas, workTotal)) {
+            w->status = ExtractPdfTocStatus::Cancelled;
+            w->nTextPages = nText;
+            FreeScanLines(lines);
+            uitask::Post(MkFunc0(ExtractApplyOnUi, w), "ExtractPdfTocDone");
+            return;
+        }
+        k = ExtractFromCollectedLines(engine, lines, nPages, nText, w->roots, &nItems, force, bornDigital);
+    }
+    w->nTextPages = nText;
     FreeScanLines(lines);
     if (k == ExtractPdfTocKind::NoText) {
         w->status = ExtractPdfTocStatus::NoText;
@@ -13139,7 +13256,9 @@ static void ExtractApplyOnUi(ExtractWork* w) {
         return;
     }
     if (w->status != ExtractPdfTocStatus::Ok) {
-        ShowExtractDone(w->hwndCanvas, _TRA("No headings found. Recognize the pages first, then try again."), true);
+        const char* msg = w->bornDigital ? _TRA("No printed table of contents found in the first pages.")
+                                         : _TRA("No headings found. Recognize the pages first, then try again.");
+        ShowExtractDone(w->hwndCanvas, msg, true);
         DeleteExtractedTocItems(w->roots);
         delete w;
         return;
@@ -13153,9 +13272,12 @@ static void ExtractApplyOnUi(ExtractWork* w) {
         HideTocCalib(win);
     }
     bool ok = WriteExtractedPdfToc(win, w->engine, w->roots, w->persistToDisk);
+    int nItems = w->nItems;
     DeleteExtractedTocItems(w->roots);
     if (!ok) {
         ShowExtractDone(canvas, _TRA("Could not write the PDF table of contents."), true);
+    } else {
+        ShowExtractDone(canvas, str::FormatTemp(_TRA("Extracted %d bookmarks."), nItems), false);
     }
     delete w;
 }
@@ -13227,7 +13349,10 @@ bool HandleExtractPdfTocCommand(MainWindow* win, bool skipConfirm, bool persistT
     if (!engine || !win) {
         return true;
     }
+    bool bornDigital = ExtractPdfLooksBornDigital(engine);
+    int workTotal = ExtractProgressTotal(engine, bornDigital);
     if (ExtractPdfTocIsRunning()) {
+        ShowExtractProgress(win->hwndCanvas, 0, workTotal);
         return true;
     }
     if (!skipConfirm && !ConfirmPdfTocSignatureExtract(win, engine)) {
@@ -13243,8 +13368,10 @@ bool HandleExtractPdfTocCommand(MainWindow* win, bool skipConfirm, bool persistT
     w->hwndFrame = win->hwndFrame;
     w->skipConfirm = skipConfirm;
     w->persistToDisk = persistToDisk;
+    w->bornDigital = bornDigital;
     w->cancelSeq = InterlockedCompareExchange(&gExtractCancelSeq, 0, 0);
     InterlockedExchange(&gExtractRunning, 1);
+    ShowExtractProgress(win->hwndCanvas, 0, workTotal);
     RunAsync(MkFunc0(ExtractThread, w), "ExtractPdfToc");
     return true;
 }

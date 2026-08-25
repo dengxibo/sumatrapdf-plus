@@ -277,7 +277,8 @@ enum {
     CmdPdfTocSetCurrentPage = 466,
     CmdPdfTocFindInBody = 467,
     CmdPdfTocReplaceFromSelection = 468,
-    CmdNone = 469,
+    CmdHomePageRemoveMissingFiles = 469,
+    CmdNone = 470,
 
     /* range for file history */
     CmdFileHistoryFirst,

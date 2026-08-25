@@ -286,6 +286,7 @@ CmdAdvancedSettings,,Advanced Options (Settings)...,
 CmdChangeLanguage,,Change Language...,
 CmdCheckUpdate,,Check For Updates,
 CmdClearHistory,,Clear History,Clears history of opened files (for recently opened list in home page)
+CmdHomePageRemoveMissingFiles,,Remove missing files from home,"Home page: drop local files that no longer exist (USB/network skipped). Thumbnail and empty-canvas context menu, ver next"
 CmdContributeTranslation,,Contribute Translation,
 CmdForgetSelectedDocument,,Remove Selected Document From History,
 CmdListPrinters,,List Printers,ver 3.7+

@@ -282,6 +282,7 @@ static SeqStrings gCommandNames =
     "CmdPdfTocSetCurrentPage\0"
     "CmdPdfTocFindInBody\0"
     "CmdPdfTocReplaceFromSelection\0"
+    "CmdHomePageRemoveMissingFiles\0"
     "CmdNone\0"
     "\0";
 
@@ -554,6 +555,7 @@ static i32 gCommandIds[] = {
     CmdPdfTocSetCurrentPage,
     CmdPdfTocFindInBody,
     CmdPdfTocReplaceFromSelection,
+    CmdHomePageRemoveMissingFiles,
     CmdNone,
 };
 
@@ -826,6 +828,7 @@ SeqStrings gCommandDescriptions =
     "Set TOC Item to Current Page\0"
     "Find TOC Item in Body\0"
     "Replace TOC Item from Selection\0"
+    "Remove missing files from home\0"
     "Do nothing\0"
     "\0";
 // clang-format on

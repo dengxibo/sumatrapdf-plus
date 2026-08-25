@@ -193,6 +193,10 @@ const stringsToAdd: Record<string, { cn: string; tw: string }> = {
     tw: "無法寫入 PDF 目錄。",
   },
   "Extracted %d bookmarks.": { cn: "已提取 %d 条书签。", tw: "已提取 %d 條書籤。" },
+  "No printed table of contents found in the first pages.": {
+    cn: "前几页没有找到印刷目录。",
+    tw: "前幾頁沒有找到印刷目錄。",
+  },
   "This document looks like a scan.": {
     cn: "这份文档看起来是扫描件。",
     tw: "這份文件看起來是掃描件。",
@@ -222,6 +226,10 @@ const stringsToAdd: Record<string, { cn: string; tw: string }> = {
   "Unsaved PDF changes": {
     cn: "未保存的 PDF 更改",
     tw: "未儲存的 PDF 變更",
+  },
+  "Remove missing files from home": {
+    cn: "从首页移除丢失的文件",
+    tw: "從首頁移除遺失的檔案",
   },
 };
 

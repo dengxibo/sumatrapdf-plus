@@ -89,7 +89,7 @@ u32 PdfDarkModeComputeProfileHash(const DarkModeProfile* profile) {
     h = mix(h, ThemeUsesEyeCareChrome() ? 1 : 0);
     // Bump when FollowThemeV2 page-image algorithm changes (invalidates tile/image caches).
     if (profile->mode == PageColorMode::FollowThemeV2) {
-        h = mix(h, 30u); // 30 = crush leftover JPEG text on paper-heavy MRC backgrounds
+        h = mix(h, 31u); // 31 = Word 红头/标题 2×2 color + SMask paint chips
     }
     return h;
 }

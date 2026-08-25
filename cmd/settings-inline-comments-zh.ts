@@ -15,6 +15,7 @@ export const settingsInlineCommentsZh: Record<string, string> = {
   NoHomeTab: "标签模式下不显示首页标签",
   HomePageSortByFrequentlyRead: "首页按打开次数排序",
   HomePageViewMode: "首页视图 thumbnails/list",
+  HomePageThumbnailDx: "首页缩略图首选宽度（像素），会略微伸缩铺满窗口；列表视图不受影响；有效范围 160-280",
   ReloadModifiedDocuments: "外部修改后自动重载",
   RememberOpenedFiles: "记录打开过的文件",
   RememberStatePerDocument: "为每个文档单独保存阅读进度",

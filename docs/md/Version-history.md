@@ -2,6 +2,29 @@
 
 ## next
 
+## 3.7.30 (2026-08-25)
+
+- home: thumbnail cards have pin/remove; right-click a card for Open / Show in folder / Pin / Remove; empty canvas offers Remove missing files from home (fixed-drive only). Thumbnails grow/shrink slightly to fill the window width (`HomePageThumbnailDx`)
+  首页：缩略图可钉住/删除；右键打开、在文件夹中显示、钉住、从历史删除；空白处可清掉丢失的本地文件（U 盘/网络盘不算）。缩略图略微伸缩铺满窗口宽度（`HomePageThumbnailDx`）
+
+- home: list rows are two-line (name / path + size); list covers fill the thumb box; header view toggle and title sit on one baseline; list pin/remove capsules match the page instead of flashing white
+  首页：列表改成两行（文件名 / 路径+大小）；列表封面铺满缩略图格；顶栏视图开关和标题对齐；列表钉住/删除胶囊跟页面底色，不再刺眼白块
+
+- fullscreen: Ctrl+Tab document switcher and Alt+Tab work again. Cover leftover Win11 tray widgets with a one-shot topmost bump instead of staying always-on-top
+  全屏：Ctrl+Tab 文档切换浮层和 Alt+Tab 恢复可用。进全屏时顶一下托盘残留控件，不再始终置顶
+
+- open: landscape 图解/PPT PDFs with `/PageLayout /TwoPageRight` no longer start in book view (cover in the right slot, looking like half a page). Automatic uses single-column until you pick facing/book yourself.
+  打开：横版图解/PPT 若带了双页目录标记，不再一进来就是书籍模式（封面挤在右栏、只露半张）。自动布局改用单栏，需要双页再手动选。
+
+- open: fixed-layout EPUB covers (`<meta viewport>` larger than the reflow page) no longer layout at the placeholder 750×1025 size while rendering at 1398×2000. Opening such a book uses fit-width so the cover fills the pane; fit-page still centers a cover that fits.
+  打开：固定版式 EPUB 封面不再按占位页尺寸排、按真实 viewport 画。打开时用适合宽度铺满阅读区；适合页面时能放下的封面仍居中。
+
+- dark match-theme: Word 红头/标题 that are a 2×2 color chip plus a glyph SMask remap like ink, instead of staying black (or stretching into a red smear)
+  深色「匹配主题」：Word 红头/标题若是 2×2 色块加字形软遮罩，按墨色重映射，不再黑字叠黑底，也不再拉成一条红带
+
+- extract bookmarks: born-digital PDFs parse the printed Contents in the front and stop; scans still OCR / search the rest of the book and may refine dests. Show progress immediately.
+  提取目录：电子书只从前部印刷目录取书签，不再整本扫、也不做扫描书那套页码校准；扫描书仍可 OCR、往后找、再校准。一点就显示进度。
+
 - save PDF changes: when the open file cannot be overwritten, write a sidecar next to it and replace after close — do not reopen `%TEMP%\smpXXXX.tmp` as the document
   保存 PDF：原文件被占用写不进去时，先写到旁边再替换回去，不再把 `%TEMP%\smpXXXX.tmp` 当成当前文档打开
 

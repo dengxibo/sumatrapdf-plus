@@ -188,6 +188,20 @@ inline bool PdfDarkModeV2ShouldCrushMrcBackgroundGhosts(float paperRatio) {
     return paperRatio >= 0.65f;
 }
 
+// Word/WPS 红头与标题: a 2×2 Indexed color chip plus a high-res SMask of the glyphs.
+// Treating that chip as a "small photo" keeps original black ink on a dark page.
+inline bool PdfDarkModeV2LooksLikeSoftMaskPaintChip(int colorW, int colorH, int maskW, int maskH) {
+    if (colorW < 1 || colorH < 1 || maskW < 1 || maskH < 1) {
+        return false;
+    }
+    if (colorW <= 8 && colorH <= 8 && maskW >= 32 && maskH >= 32) {
+        return true;
+    }
+    i64 colorN = (i64)colorW * (i64)colorH;
+    i64 maskN = (i64)maskW * (i64)maskH;
+    return maskN >= colorN * 64 && maskW >= 32 && maskH >= 32;
+}
+
 // Light leftover JPEG text: high lum, low-to-mid chroma (brown ghosts, cream paper).
 // Dark ink and high-chroma art (orange sidebar, cartoons) stay out.
 inline bool PdfDarkModeV2IsMrcBackgroundGhostPixel(float lum, float chroma) {

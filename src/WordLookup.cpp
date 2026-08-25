@@ -40,6 +40,7 @@
 static const bool kWordLookupResumeReadAloud = true;
 
 static bool IsChineseLookupWord(const char* word);
+static bool IsEnglishLookupWord(const char* word);
 
 #include "DarkModeSubclass.h"
 
@@ -315,8 +316,8 @@ static void SafeDeleteWordLookupWnd() {
     }
     WordLookupWnd* wnd = gWordLookupWnd;
     gWordLookupWnd = nullptr;
-    // Stop Chinese word TTS before resuming document read-aloud.
-    if (wnd->speakerPlaying && IsChineseLookupWord(wnd->queryWord)) {
+    // Stop lookup TTS (Chinese or English fallback) before resuming document read-aloud.
+    if (wnd->speakerPlaying) {
         TtsStop();
         wnd->speakerPlaying = false;
     }
@@ -376,8 +377,8 @@ static bool IsLookupSpeakerPlaybackActive(WordLookupWnd* wnd) {
     if (IsLookupAudioPlaying()) {
         return true;
     }
-    // Chinese lookup uses TTS instead of recorded clips.
-    return IsChineseLookupWord(wnd->queryWord) && TtsIsSpeaking();
+    // Chinese lookup and English entries without a clip use TTS.
+    return TtsIsSpeaking() && (IsChineseLookupWord(wnd->queryWord) || IsEnglishLookupWord(wnd->queryWord));
 }
 
 static void EnsureSpeakerAnimTimer(WordLookupWnd* wnd);
@@ -1511,11 +1512,22 @@ static bool LookupShowsSpeaker(WordLookupWnd* wnd, DictSense* sense) {
     if (IsChineseLookupWord(wnd->queryWord)) {
         return !wnd->isLoading && sense && !str::IsEmpty(sense->headword ? sense->headword : wnd->queryWord);
     }
+    if (IsEnglishLookupWord(wnd->queryWord)) {
+        if (wnd->isLoading) {
+            return true;
+        }
+        const char* title = sense && sense->headword ? sense->headword : wnd->queryWord;
+        return HasAudioMeta(sense) || !str::IsEmpty(title);
+    }
     return wnd->isLoading || HasAudioMeta(sense);
 }
 
 static bool LookupTtsVoiceLangIsZh(const TtsVoiceInfo& voice) {
     return voice.lang && (str::StartsWithI(voice.lang, "zh") || str::StartsWithI(voice.lang, "cmn"));
+}
+
+static bool LookupTtsVoiceLangIsEn(const TtsVoiceInfo& voice) {
+    return voice.lang && str::StartsWithI(voice.lang, "en");
 }
 
 // Prefer the user's Chinese read-aloud voice so lookup matches document TTS.
@@ -1564,6 +1576,49 @@ static bool LookupEnsureChineseTtsVoice() {
     return ok;
 }
 
+static bool LookupEnsureEnglishTtsVoice() {
+    auto tryId = [](const char* id) -> bool {
+        if (str::IsEmpty(id)) {
+            return false;
+        }
+        return TtsSetVoiceById(id);
+    };
+    if (gGlobalPrefs) {
+        if (tryId(gGlobalPrefs->readAloudSmartVoiceEn)) {
+            return true;
+        }
+        if (tryId(gGlobalPrefs->readAloudSmartOnlineVoiceEn)) {
+            return true;
+        }
+        if (!str::IsEmpty(gGlobalPrefs->readAloudVoiceId) &&
+            !str::Eq(gGlobalPrefs->readAloudVoiceId, kTtsSmartBilingualVoiceId) &&
+            !str::Eq(gGlobalPrefs->readAloudVoiceId, kTtsSmartOnlineBilingualVoiceId)) {
+            Vec<TtsVoiceInfo> voices = TtsGetVoices();
+            bool ok = false;
+            for (TtsVoiceInfo& v : voices) {
+                if (str::Eq(v.id, gGlobalPrefs->readAloudVoiceId) && LookupTtsVoiceLangIsEn(v)) {
+                    ok = tryId(v.id);
+                    break;
+                }
+            }
+            TtsFreeVoices(voices);
+            if (ok) {
+                return true;
+            }
+        }
+    }
+    Vec<TtsVoiceInfo> voices = TtsGetVoices();
+    bool ok = false;
+    for (TtsVoiceInfo& v : voices) {
+        if (LookupTtsVoiceLangIsEn(v) && tryId(v.id)) {
+            ok = true;
+            break;
+        }
+    }
+    TtsFreeVoices(voices);
+    return ok;
+}
+
 static bool SpeakLookupChineseWithTts(WordLookupWnd* wnd) {
     if (!wnd) {
         return false;
@@ -1587,6 +1642,31 @@ static bool SpeakLookupChineseWithTts(WordLookupWnd* wnd) {
         ok = TtsSpeakUtf8(text);
     }
     if (!ok) {
+        return false;
+    }
+    wnd->speakerPlaying = true;
+    wnd->speakerWaveTick = 0;
+    wnd->speakerPlayFrames = kSpeakerPlayMinFrames;
+    EnsureSpeakerAnimTimer(wnd);
+    HwndScheduleRepaint(wnd->hwnd);
+    return true;
+}
+
+static bool SpeakLookupEnglishWithTts(WordLookupWnd* wnd) {
+    if (!wnd) {
+        return false;
+    }
+    DictSense* sense = CurrentSense(wnd);
+    const char* text = sense && sense->headword ? sense->headword : wnd->queryWord;
+    if (str::IsEmpty(text)) {
+        return false;
+    }
+    LookupAudioStop();
+    LookupEnsureEnglishTtsVoice();
+    if (gGlobalPrefs) {
+        TtsSetSpeakingRate(gGlobalPrefs->readAloudSpeakingRateEn);
+    }
+    if (!TtsSpeakUtf8(text)) {
         return false;
     }
     wnd->speakerPlaying = true;
@@ -1698,23 +1778,26 @@ void WordLookupWnd::UpdateChrome() {
 }
 
 void WordLookupWnd::PlayAudio() {
-    if (currTab < 0 || currTab >= nSenses) {
+    if (isLoading) {
         return;
     }
     if (IsChineseLookupWord(queryWord)) {
         SpeakLookupChineseWithTts(this);
         return;
     }
-    DictSense* sense = &senses[currTab];
-    if (!IsAudioReady(sense)) {
+    DictSense* sense = CurrentSense(this);
+    if (sense && IsAudioReady(sense)) {
+        if (PlayLookupAudio(this)) {
+            speakerPlaying = true;
+            speakerWaveTick = 0;
+            speakerPlayFrames = kSpeakerPlayMinFrames;
+            EnsureSpeakerAnimTimer(this);
+            HwndScheduleRepaint(hwnd);
+        }
         return;
     }
-    if (PlayLookupAudio(this)) {
-        speakerPlaying = true;
-        speakerWaveTick = 0;
-        speakerPlayFrames = kSpeakerPlayMinFrames;
-        EnsureSpeakerAnimTimer(this);
-        HwndScheduleRepaint(hwnd);
+    if (IsEnglishLookupWord(queryWord)) {
+        SpeakLookupEnglishWithTts(this);
     }
 }
 
@@ -1722,7 +1805,7 @@ void WordLookupWnd::SelectTab(int tab) {
     if (tab < 0 || tab >= nSenses || tab == currTab) {
         return;
     }
-    if (speakerPlaying && IsChineseLookupWord(queryWord)) {
+    if (speakerPlaying) {
         TtsStop();
     }
     StopCurrentLookupAudio();
@@ -1917,7 +2000,8 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
     DictSense* sense = CurrentSense(this);
     const char* title = sense && sense->headword ? sense->headword : queryWord;
     HFONT titleFont = LookupTitleFont(this);
-    bool audioReady = !isLoading && sense && (IsAudioReady(sense) || IsChineseLookupWord(queryWord));
+    bool audioReady = !isLoading && (IsChineseLookupWord(queryWord) || IsEnglishLookupWord(queryWord) ||
+                                     (sense && IsAudioReady(sense)));
     bool showSpeaker = LookupShowsSpeaker(this, sense);
 
     int iconSz = DpiScale(hwnd, 22);

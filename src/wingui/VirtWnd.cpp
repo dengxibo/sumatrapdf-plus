@@ -90,9 +90,18 @@ void VirtWndText::Paint(HDC hdc) {
         prevCol = SetTextColor(hdc, textColor);
     }
     prevBkMode = SetBkMode(hdc, TRANSPARENT);
-    UINT fmt = DT_NOCLIP | DT_NOPREFIX;
+    UINT fmt = DT_NOPREFIX;
+    if (vCenter) {
+        fmt |= DT_SINGLELINE | DT_VCENTER | DT_LEFT;
+    } else {
+        fmt |= DT_NOCLIP;
+    }
     if (isRtl) {
         fmt |= DT_RTLREADING;
+        if (vCenter) {
+            fmt &= ~DT_LEFT;
+            fmt |= DT_RIGHT;
+        }
     }
     RECT dr = ToRECT(lastBounds);
     HdcDrawText(hdc, s, &dr, fmt, font);

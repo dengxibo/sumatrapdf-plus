@@ -273,6 +273,9 @@ struct DisplayModel : DocController {
     // saved scroll target while reflowable docs are still loading pages
     ScrollState pendingRestoreScroll;
     bool hasPendingRestoreScroll = false;
+    // Set when Automatic book/facing is ignored for a landscape 图解 so a
+    // remembered two-column scroll X does not keep showing the right half.
+    bool dropNextRestoredScrollX = false;
     float fontReloadInPageRatio = -1.f;
 
     /* size of virtual canvas containing all rendered pages. */

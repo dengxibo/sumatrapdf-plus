@@ -157,6 +157,14 @@ void PdfDarkModeV2_UnitTests() {
     utassert(!PdfDarkModeV2IsMrcBackgroundGhostPixel(0.20f, 0.05f)); // dark ink
     utassert(!PdfDarkModeV2IsMrcBackgroundGhostPixel(0.70f, 0.50f)); // colorful midtone
 
+    // Word 赣税函: 2×2 Indexed chip + SMask of 方正小标宋 / title glyphs.
+    utassert(PdfDarkModeV2LooksLikeSoftMaskPaintChip(2, 2, 3809, 497));
+    utassert(PdfDarkModeV2LooksLikeSoftMaskPaintChip(2, 2, 3118, 218));
+    utassert(PdfDarkModeV2LooksLikeSoftMaskPaintChip(2, 2, 368, 218));
+    utassert(!PdfDarkModeV2LooksLikeSoftMaskPaintChip(2, 2, 2, 2));
+    utassert(!PdfDarkModeV2LooksLikeSoftMaskPaintChip(64, 64, 64, 64));
+    utassert(!PdfDarkModeV2LooksLikeSoftMaskPaintChip(2, 2, 0, 218));
+
     // RAZ SPRAK p.2 title row vs illustration / B&W portrait (Lincoln suit has little paper).
     utassert(PdfDarkModeV2PhotoRectRowLooksLikeInkOnPaper(0.02f, 0.04f, 0.70f));
     utassert(PdfDarkModeV2PhotoRectRowLooksLikeInkOnPaper(0.00f, 0.00f, 1.00f)); // white gap under the title

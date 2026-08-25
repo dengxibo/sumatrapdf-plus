@@ -1931,6 +1931,11 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
 
     // Relayout before tearing down prevCtrl so WM_PAINT during document swap
     // never calls SetViewPortSize with an invalid zoom.
+    if (!fs && engine && zoomVirtual == kZoomFitPage && EngineMupdfFirstPageLooksFixedLayout(engine)) {
+        // Hybrid FXL+reflow EPUBs (this 图解 OKR book): Fit Page letterboxes a
+        // 1398×2000 cover in a landscape pane. Fit Width fills the reading area.
+        zoomVirtual = kZoomFitWidth;
+    }
     if (win->AsFixed()) {
         win->AsFixed()->Relayout(zoomVirtual, rotation);
     } else if (win && win->ctrl && win->IsDocLoaded()) {
@@ -3541,6 +3546,9 @@ static void EnsureDisplayModelPagesInfo(MainWindow* win, WindowTab* tab) {
     EngineBase* engine = tab->GetEngine();
     if (engine && engine->kind == kindEngineImage && gGlobalPrefs->imageUI.defaultZoomFloat != 0) {
         zoomVirtual = gGlobalPrefs->imageUI.defaultZoomFloat;
+    }
+    if (!tab->tabState && zoomVirtual == kZoomFitPage && EngineMupdfFirstPageLooksFixedLayout(engine)) {
+        zoomVirtual = kZoomFitWidth;
     }
     if (!IsValidZoom(zoomVirtual)) {
         zoomVirtual = kZoomFitWidth;
@@ -7761,6 +7769,11 @@ static void OnMenuGoToPage(MainWindow* win) {
     }
 }
 
+static void ApplyFullscreenZOrder(HWND hwnd) {
+    MarkShellFullscreenWindow(hwnd, true);
+    CoverTopmostThenRelease(hwnd);
+}
+
 void EnterFullScreen(MainWindow* win, bool presentation) {
     if (!HasPermission(Perm::FullscreenAccess) || gPluginMode) {
         return;
@@ -7840,9 +7853,9 @@ void EnterFullScreen(MainWindow* win, bool presentation) {
     dwm::SetWindowRoundedCorners(win->hwndFrame, false);
 
     SetWindowLong(win->hwndFrame, GWL_STYLE, ws);
-    // HWND_TOPMOST covers the Win11 taskbar and other topmost tray widgets
-    // (e.g. Qt tool windows in the notify area). MarkFullscreenWindow alone
-    // does not lower those windows.
+    // Cover leftover topmost tray widgets (Win11 volume HUD, Qt notify
+    // windows) while sizing. Do not keep WS_EX_TOPMOST: that blocks Alt+Tab
+    // and unowned popups (Ctrl+Tab document switcher).
     uint flags = SWP_FRAMECHANGED | SWP_NOACTIVATE;
     SetWindowPos(win->hwndFrame, HWND_TOPMOST, rect.x, rect.y, rect.dx, rect.dy, flags);
 
@@ -7864,8 +7877,7 @@ void EnterFullScreen(MainWindow* win, bool presentation) {
         SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED);
     }
     UpdateFullscreenToolbarButton(win);
-    MarkShellFullscreenWindow(win->hwndFrame, true);
-    SetWindowPos(win->hwndFrame, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    ApplyFullscreenZOrder(win->hwndFrame);
 }
 
 void ExitFullScreen(MainWindow* win) {
@@ -9609,6 +9621,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
 
         case CmdClearHistory:
             ClearHistory(win);
+            break;
+
+        case CmdHomePageRemoveMissingFiles:
+            HomePageRemoveMissingFiles(win);
             break;
 
         case CmdReopenLastClosedFile:
@@ -14459,8 +14475,7 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
 
     // Explorer restart drops fullscreen marking and z-order.
     if (msg == gTaskbarCreatedMsg && win && (win->isFullScreen || win->presentation)) {
-        MarkShellFullscreenWindow(hwnd, true);
-        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        ApplyFullscreenZOrder(hwnd);
     }
 
     // This timer belongs to the frame in both caption modes.
@@ -14644,8 +14659,7 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
             if (wp != WA_INACTIVE) {
                 gLastActiveFrameHwnd = hwnd;
                 if (win && (win->isFullScreen || win->presentation)) {
-                    MarkShellFullscreenWindow(hwnd, true);
-                    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                    ApplyFullscreenZOrder(hwnd);
                 }
             }
             break;

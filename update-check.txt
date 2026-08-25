@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.29
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.29/SumatraPDF-Plus.exe
-Notes: Scan-page OCR (toolbar Auto OCR, off by default); extract bookmarks from printed TOC; printed-TOC calibration; Acrobat-style bookmark sidebar; Dracula scan paper stays #282A36.
-NotesZh: 扫描页 OCR（工具栏自动 OCR，默认关）；从印刷目录提取书签；对准印刷目录；书签栏接近 Acrobat；Dracula 扫描页纸色保持 #282A36。
+Latest: 3.7.30
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.30/SumatraPDF-Plus.exe
+Notes: Home list: pin/remove, two-line rows, covers fill the thumb; header alignment; landscape TwoPageRight no longer opens in book view; FXL EPUB cover uses fit-width; Word red-header match-theme; extract bookmarks from front matter only.
+NotesZh: 首页列表：钉住/删除、两行信息、封面铺满缩略图；顶栏对齐；横版双页目录不再开成书籍模式；固定版式 EPUB 封面适合宽度；Word 红头匹配主题；提取目录只扫前部印刷目录。

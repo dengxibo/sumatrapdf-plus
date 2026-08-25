@@ -762,6 +762,17 @@ const globalPrefs: Field[] = [
   setVersion(
     setExpert(
       mkField(
+        "HomePageThumbnailDx",
+        Int,
+        212,
+        "preferred home page thumbnail width in pixels; layout grows or shrinks slightly so the grid fills the window. List view is unchanged. Valid range: 160-280",
+      ),
+    ),
+    "3.7",
+  ),
+  setVersion(
+    setExpert(
+      mkField(
         "ReloadModifiedDocuments",
         Bool,
         true,

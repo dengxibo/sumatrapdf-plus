@@ -51,6 +51,7 @@ enum class TbIcon {
     MapPin,
     MergeUp,
     Link,
+    CalibrateToc,
     kMax
 };
 

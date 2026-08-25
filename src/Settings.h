@@ -477,6 +477,10 @@ struct GlobalPrefs {
     // home page file list layout: thumbnails (grid with previews) or list
     // (filename and path)
     char* homePageViewMode;
+    // preferred home page thumbnail width in pixels; layout grows or
+    // shrinks slightly so the grid fills the window. List view is
+    // unchanged. Valid range: 160-280
+    int homePageThumbnailDx;
     // if true, a document will be reloaded automatically whenever it's
     // changed (currently doesn't work for documents shown in the ebook UI)
     bool reloadModifiedDocuments;
@@ -1000,8 +1004,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-28.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-28.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-29.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-29.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},
@@ -1017,6 +1021,8 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, noHomeTab), SettingType::Bool, false, "标签模式下不显示首页标签"},
     {offsetof(GlobalPrefs, homePageSortByFrequentlyRead), SettingType::Bool, false, "首页按打开次数排序"},
     {offsetof(GlobalPrefs, homePageViewMode), SettingType::String, (intptr_t)"thumbnails", "首页视图 thumbnails/list"},
+    {offsetof(GlobalPrefs, homePageThumbnailDx), SettingType::Int, 212,
+     "首页缩略图首选宽度（像素），会略微伸缩铺满窗口；列表视图不受影响；有效范围 160-280"},
     {offsetof(GlobalPrefs, reloadModifiedDocuments), SettingType::Bool, true, "外部修改后自动重载"},
     {offsetof(GlobalPrefs, rememberOpenedFiles), SettingType::Bool, true, "记录打开过的文件"},
     {offsetof(GlobalPrefs, rememberStatePerDocument), SettingType::Bool, true, "为每个文档单独保存阅读进度"},
@@ -1132,22 +1138,22 @@ static const FieldInfo gGlobalPrefsFields[] = {
      "Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 116, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 117, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0HomePage"
-    "ViewMode\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSession\0ReuseInstance\0S"
-    "howMenubar\0ShowMenubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0ShowAnnotToolbarButtons\0SearchUIFloating\0O"
-    "fflineDictionaryPath\0EnableDoubleClickWordLookup\0AutoOcrScanPages\0ExtractPdfTocMode\0AiChatProvider\0AiChatUseD"
-    "eepSeekInsteadOfDoubao\0EnableAskAI\0ShowFavorites\0ShowToc\0ShowLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0Scro"
-    "llbarInSinglePage\0SmoothScroll\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme"
-    "\0LastLightTheme\0DocumentColorMode\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0TreeWrapLabels\0UIFontSize\0D"
-    "isableAntiAlias\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPage"
-    "UI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefa"
-    "ults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeaking"
-    "Rate\0ReadAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSma"
-    "rtOnlineVoiceZh\0ReadAloudSmartOnlineVoiceEn\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0Window"
-    "Pos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfUpdateCheckSnooze\0OpenC"
-    "ountWeek\0PropWinPos\0\0"};
+    "ViewMode\0HomePageThumbnailDx\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSess"
+    "ion\0ReuseInstance\0ShowMenubar\0ShowMenubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0ShowAnnotToolbarButtons"
+    "\0SearchUIFloating\0OfflineDictionaryPath\0EnableDoubleClickWordLookup\0AutoOcrScanPages\0ExtractPdfTocMode\0AiCha"
+    "tProvider\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAskAI\0ShowFavorites\0ShowToc\0ShowLinks\0ShowStartPage\0Sideba"
+    "rDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth"
+    "\0Theme\0LastDarkTheme\0LastLightTheme\0DocumentColorMode\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0TreeWra"
+    "pLabels\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0Zoom"
+    "Increment\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0Forwar"
+    "dSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoic"
+    "eId\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmar"
+    "tVoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSmartOnlineVoiceEn\0\0\0DefaultPasswords\0UiLanguage\0VersionToSki"
+    "p\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfUp"
+    "dateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)"", "主题名称"},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)"", "文字颜色"},

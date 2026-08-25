@@ -117,6 +117,7 @@ void EngineMupdfNavigateUri(EngineBase* engine, const char* uri, int reflowOutli
 bool EngineMupdfTryCompletePendingReflowNav(EngineBase* engine, ILinkHandler* lh);
 bool EngineMupdfHasPendingReflowNav(EngineBase* engine);
 bool EngineMupdfHasOutline(EngineBase* engine);
+bool EngineMupdfFirstPageLooksFixedLayout(EngineBase* engine);
 bool EngineMupdfCanEditPdfToc(EngineBase* engine);
 bool EngineMupdfPdfHasSignatures(EngineBase* engine);
 char* EngineMupdfFormatPdfTocTarget(EngineBase* engine, int pageNo, float x, float y);

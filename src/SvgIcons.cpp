@@ -394,12 +394,12 @@ static const char* gIconOcr =
   <path d="M5 12l14 0" />
 </svg>)";
 
-// tabler map-pin: GPS teardrop
+// locate: user pin (1024 filled icon → 24 outline, same stroke as link/merge/close)
 static const char* gIconMapPin =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
-  <path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" />
-  <path d="M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z" />
+  <circle cx="12" cy="10.1" r="2.3" />
+  <path d="M12 21c-3.6-5.4-6.8-8.2-6.8-11a6.8 6.8 0 0 1 13.6 0c0 2.8-3.2 5.6-6.8 11z" />
 </svg>)";
 
 // merge next TOC row: rounded square + up/down chevrons (user icon, Tabler stroke)
@@ -412,6 +412,16 @@ static const char* gIconMergeUp =
 </svg>)";
 
 // tabler link: associate dest to current view
+// list lines mapped to dest boxes (calibrate printed TOC pages)
+static const char* gIconCalibrateToc =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <line x1="4" y1="8" x2="13" y2="8" />
+  <rect x="15" y="6" width="4" height="4" />
+  <line x1="4" y1="16" x2="13" y2="16" />
+  <rect x="15" y="14" width="4" height="4" />
+</svg>)";
+
 static const char* gIconLink =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
@@ -469,6 +479,7 @@ static const char* gIcons[] = {
     gIconMapPin,
     gIconMergeUp,
     gIconLink,
+    gIconCalibrateToc,
 };
 // clang-format on
 

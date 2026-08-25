@@ -257,19 +257,6 @@ void TestRenderPage(const Flags& i) {
             diag(str::FormatTemp("  afterRender pageProbe=%s(%d)\n",
                                  FollowThemePageProbeLabel(EngineMupdfGetFollowThemePageProbe(engine, pageNo)),
                                  EngineMupdfGetFollowThemePageProbe(engine, pageNo)));
-            // Optional TGA dump (disabled by default; SerializeBitmap can be heavy).
-            if (false) {
-                Size sz = bmp->GetSize();
-                if (sz.dx > 0 && sz.dy > 0 && (i64)sz.dx * sz.dy <= 4000000) {
-                    TempStr outPath = str::FormatTemp("%s.p%d.tga", fileName, pageNo);
-                    ByteSlice tga = tga::SerializeBitmap(bmp->GetBitmap());
-                    if (!tga.empty()) {
-                        bool ok = file::WriteFile(outPath, tga);
-                        diag(str::FormatTemp("  wrote %s (%s)\n", outPath, ok ? "ok" : "fail"));
-                        tga.Free();
-                    }
-                }
-            }
         }
         delete bmp;
         int nPages = engine->PageCount();

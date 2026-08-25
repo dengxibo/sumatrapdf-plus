@@ -12021,6 +12021,18 @@ nl:Verwijder uit favorieten
 pl:Usuń z ulubionych
 sk:Odobrať z obľúbených položiek
 tw:從我的最愛移除
+:Remove missing files from home
+am:Remove missing files from home
+br:Remover arquivos ausentes da página inicial
+cn:从首页移除丢失的文件
+co:Caccià i schedari mancanti da a pagina d'iniziu
+de:Fehlende Dateien von der Startseite entfernen
+el:Αφαίρεση αρχείων που λείπουν από την αρχική
+it:Rimuovi i file mancanti dalla pagina iniziale
+nl:Ontbrekende bestanden van startpagina verwijderen
+pl:Usuń brakujące pliki ze strony startowej
+sk:Odstrániť chýbajúce súbory z úvodnej stránky
+tw:從首頁移除遺失的檔案
 :Remove page %s from favorites
 am:Հեռացնել %s  էջը ընտրյալներից
 br:Remover a página %s dos favoritos
@@ -17672,11 +17684,11 @@ nl:↑ ↓ voor navigeren
 pl:↑ ↓ aby nawigować
 sk:↑ ↓ – navigovať
 :Calibrate TOC Pages
-cn:对准印刷目录
-tw:對準印刷目錄
+cn:校准目录书签
+tw:校準目錄書籤
 :Bookmarks extracted. Use Calibrate TOC Pages to adjust page numbers.
-cn:已提取书签。可用「对准印刷目录」调整印刷页与 PDF 页。
-tw:已提取書籤。可用「對準印刷目錄」調整印刷頁與 PDF 頁。
+cn:已提取书签。可用「校准目录书签」调整印刷页与 PDF 页。
+tw:已提取書籤。可用「校準目錄書籤」調整印刷頁與 PDF 頁。
 :Contents page
 cn:目录页
 tw:目錄頁
@@ -17693,8 +17705,8 @@ tw:偏移
 cn:印刷:
 tw:印刷:
 :Calibrate TOC
-cn:对准印刷目录
-tw:對準印刷目錄
+cn:校准目录书签
+tw:校準目錄書籤
 :Set TOC Item to Current Page
 cn:将当前页关联到选中的目录
 tw:將當前頁關聯到選中的目錄

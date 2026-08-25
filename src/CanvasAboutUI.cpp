@@ -209,6 +209,12 @@ static void OnMouseRightButtonUpAbout(MainWindow* win, int x, int y, WPARAM) {
 static LRESULT OnSetCursorAbout(MainWindow* win, HWND hwnd) {
     Point pt = HwndGetCursorPos(hwnd);
     if (!pt.IsEmpty()) {
+        TRACKMOUSEEVENT tme{};
+        tme.cbSize = sizeof(tme);
+        tme.dwFlags = TME_LEAVE;
+        tme.hwndTrack = hwnd;
+        TrackMouseEvent(&tme);
+        HomePageUpdateHover(win, pt.x, pt.y);
         StaticLink* link;
         if (GetStaticLinkAtTemp(win->staticLinks, pt.x, pt.y, &link)) {
             win->ShowToolTip(link->tooltip, link->rect);
@@ -220,6 +226,7 @@ static LRESULT OnSetCursorAbout(MainWindow* win, HWND hwnd) {
         return TRUE;
     }
 
+    HomePageUpdateHover(win, -1, -1);
     win->DeleteToolTip();
     return FALSE;
 }
@@ -273,9 +280,27 @@ LRESULT WndProcCanvasAbout(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, LPAR
             }
             return DefWindowProc(hwnd, msg, wp, lp);
 
-        case WM_CONTEXTMENU:
-            OnAboutContextMenu(win, 0, 0);
+        case WM_MOUSELEAVE:
+            HomePageUpdateHover(win, -1, -1);
+            win->DeleteToolTip();
             return 0;
+
+        case WM_CONTEXTMENU: {
+            int cx = GET_X_LPARAM(lp);
+            int cy = GET_Y_LPARAM(lp);
+            if (cx == -1 && cy == -1) {
+                Point pt = HwndGetCursorPos(hwnd);
+                cx = pt.x;
+                cy = pt.y;
+            } else {
+                POINT p{cx, cy};
+                ScreenToClient(hwnd, &p);
+                cx = p.x;
+                cy = p.y;
+            }
+            OnAboutContextMenu(win, cx, cy);
+            return 0;
+        }
 
         case WM_PAINT:
             if (gRedrawLog) {

@@ -32976,12 +32976,12 @@ cn:印刷:
 tw:印刷:
 
 :Calibrate TOC Pages
-cn:对准印刷目录
-tw:對準印刷目錄
+cn:校准目录书签
+tw:校準目錄書籤
 
 :Calibrate TOC
-cn:对准印刷目录
-tw:對準印刷目錄
+cn:校准目录书签
+tw:校準目錄書籤
 
 :Set TOC Item to Current Page
 cn:将当前页关联到选中的目录
@@ -33014,5 +33014,9 @@ tw:正文中找不到這條目錄
 :Replace TOC Item from Selection
 cn:用选中文字替换当前目录
 tw:用選中文字替換當前目錄
+
+:Remove missing files from home
+cn:从首页移除丢失的文件
+tw:從首頁移除遺失的檔案
 
 

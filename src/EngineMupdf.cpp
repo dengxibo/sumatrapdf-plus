@@ -4889,8 +4889,8 @@ img, svg {
   max-width: 100%;
   height: auto;
 }
-/* Calibre titlepage.xhtml: SVG jacket should fill the page width. */
-body > div > svg {
+)" R"(/* Calibre titlepage.xhtml: SVG jacket should fill the page width. */
+body > svg, body > div > svg {
   display: block !important;
   width: 100% !important;
   max-width: 100% !important;
@@ -8485,17 +8485,14 @@ RectF EngineMupdf::PageMediabox(int pageNo) {
             return pi->mediabox;
         }
         bool loading = InterlockedCompareExchange(&reflowableLoadingInProgress, 0, 0) != 0;
-        if (loading && reflowLayoutW > 0 && reflowLayoutH > 0) {
-            // During progressive load, measuring every page via fz_load_chapter_page
-            // blocks scrolling (docLock + per-page layout). Use the document layout
-            // viewport as an estimate for continuous scroll layout; real bounds are
-            // measured when the page is rendered.
-            RectF estimate(0, 0, reflowLayoutW, reflowLayoutH);
-            ScopedCritSec scope(&pagesLock);
-            if (pageNo >= 1 && pageNo <= pages.Size() && pages[pageNo - 1] == pi) {
-                pi->mediabox = estimate;
-            }
-            return estimate;
+        // Placeholder size for pages not laid out yet. Do not cache it: FXL
+        // chapters honor <meta viewport> (this book's cover is 1398x2000) while
+        // the reflow page is ~750x1025. Caching the estimate makes Fit Page
+        // position a small box while render draws the real page — cover sits
+        // to the right and looks like half an image. Always measure the first
+        // screen of pages (they are on screen immediately).
+        if (loading && reflowLayoutW > 0 && reflowLayoutH > 0 && pageNo > kReflowInitialPages) {
+            return RectF(0, 0, reflowLayoutW, reflowLayoutH);
         }
         RectF box = LoadReflowPageMediabox(this, pageNo);
         ScopedCritSec scope(&pagesLock);
@@ -12348,6 +12345,24 @@ bool EngineMupdfHasOutline(EngineBase* engine) {
         return true;
     }
     return epdf->outline != nullptr || epdf->attachments != nullptr || EngineMupdfCanEditPdfToc(engine);
+}
+
+bool EngineMupdfFirstPageLooksFixedLayout(EngineBase* engine) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || e->pdfdoc) {
+        return false;
+    }
+    if (e->defaultExt && str::EqI(e->defaultExt, ".pdf")) {
+        return false;
+    }
+    if (e->reflowLayoutW <= 0 || e->reflowLayoutH <= 0) {
+        return false;
+    }
+    RectF box = engine->PageMediabox(1);
+    if (box.IsEmpty() || box.dx <= 0 || box.dy <= 0) {
+        return false;
+    }
+    return box.dx > e->reflowLayoutW * 1.15f || box.dy > e->reflowLayoutH * 1.15f;
 }
 
 const char* EngineMupdfGetPassword(EngineBase* engine) {

@@ -28,28 +28,6 @@
 #define kHeaderActionDy 24
 #define kHeaderActionGapDx 3
 
-static void DrawCalibrateHeaderIcon(HDC hdc, HWND hwnd, const Rect& r, COLORREF col) {
-    int pad = DpiScale(hwnd, 5);
-    int x = r.x + pad;
-    int w = r.dx - 2 * pad;
-    int box = std::max(3, DpiScale(hwnd, 4));
-    int gap = std::max(1, DpiScale(hwnd, 2));
-    int y1 = r.y + r.dy / 2 - DpiScale(hwnd, 3);
-    int y2 = r.y + r.dy / 2 + DpiScale(hwnd, 3);
-    int lineR = x + w - box - gap;
-    HPEN pen = CreatePen(PS_SOLID, std::max(1, DpiScale(hwnd, 1)), col);
-    HGDIOBJ old = SelectObject(hdc, pen);
-    MoveToEx(hdc, x, y1, nullptr);
-    LineTo(hdc, lineR, y1);
-    MoveToEx(hdc, x, y2, nullptr);
-    LineTo(hdc, lineR, y2);
-    int half = box / 2;
-    Rectangle(hdc, x + w - box, y1 - half, x + w, y1 + half + 1);
-    Rectangle(hdc, x + w - box, y2 - half, x + w, y2 + half + 1);
-    SelectObject(hdc, old);
-    DeleteObject(pen);
-}
-
 static void DrawHeaderAction(HDC hdc, const Rect& r, int kind, bool isHover, bool isPressed, COLORREF bgCol,
                              COLORREF iconCol) {
     if (r.dx <= 0 || r.dy <= 0) {
@@ -67,13 +45,14 @@ static void DrawHeaderAction(HDC hdc, const Rect& r, int kind, bool isHover, boo
         DeleteObject(rgn);
     }
 
-    if (kind == 3) {
-        DrawCalibrateHeaderIcon(hdc, hwnd, r, iconCol);
-        return;
-    }
     int iconSz = std::min(DpiScale(hwnd, 16), std::min(r.dx, r.dy));
     Rect iconRc(r.x + (r.dx - iconSz) / 2, r.y + (r.dy - iconSz) / 2, iconSz, iconSz);
-    TbIcon icon = kind == 1 ? TbIcon::ChevronDown : TbIcon::ChevronUp;
+    TbIcon icon = TbIcon::ChevronDown;
+    if (kind == 2) {
+        icon = TbIcon::ChevronUp;
+    } else if (kind == 3) {
+        icon = TbIcon::CalibrateToc;
+    }
     DrawSvgIcon(hdc, iconRc, icon, iconCol, iconBgCol);
 }
 
@@ -130,7 +109,7 @@ static void PaintHDC(LabelWithCloseWnd* w, HDC hdc, const PAINTSTRUCT& ps) {
     // args.noMirror = true;
     DrawCloseButton(args);
 
-    COLORREF iconCol = AccentColor(w->textColor, 70);
+    COLORREF iconCol = kColCloseX;
     DrawHeaderAction(hdc, w->firstActionPos, 1, w->firstActionPos.Contains(curPos), w->pressedAction == 1, w->bgColor,
                      iconCol);
     DrawHeaderAction(hdc, w->secondActionPos, 2, w->secondActionPos.Contains(curPos), w->pressedAction == 2, w->bgColor,

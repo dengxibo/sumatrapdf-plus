@@ -1176,6 +1176,14 @@ void TocCalibVerifyNearPredicted(TocCalibSession* s) {
             s->rows[i].identPageNo = it->pageNo;
             continue;
         }
+        // Indexing every page for BM25/Find freezes a 900-page textbook.
+        // Near-page search above is enough; skip the full-document pass.
+        if (s->nPages > 800) {
+            if (!it->bodyMatched && it->confidence > 60) {
+                it->confidence = 60;
+            }
+            continue;
+        }
         if (TocCalibGlyphCount(title) >= 4 && TocCalibSearchBm25(s, title, pages, cache, &bm25, &hit) &&
             !TocCalibPageInToc(s, hit.page)) {
             if (TocCalibApplyNearHit(it, hit.page, hit.x, hit.y, hit.score, 0)) {
@@ -1383,14 +1391,44 @@ static void TocCalibSeedPrintedFromPages(TocCalibSession* s) {
     }
 }
 
-static void TocCalibPrepareMapping(TocCalibSession* s, bool markConfirm) {
+// scanBody: extract printed-TOC pages, footers, and full-document BM25/Find.
+// Opening 对准印刷页码 on an existing outline must stay off this path — a
+// 900-page textbook with a large TOC would freeze the UI for minutes.
+static void TocCalibSeedPrintedFromLabels(TocCalibSession* s) {
+    if (!s || !s->engine) {
+        return;
+    }
+    for (int i = 0; i < s->rows.Size(); i++) {
+        ExtractedTocItem* it = s->rows[i].item;
+        if (!it || TocCalibHasPrinted(it->printedPage)) {
+            continue;
+        }
+        if (TocCalibNoPrintedTitle(it->title) || TocCalibNoPrintedTitle(it->rawTitle)) {
+            continue;
+        }
+        int pdf = TocCalibRowPdf(&s->rows[i]);
+        if (pdf < 1) {
+            continue;
+        }
+        int lab = TocCalibLabelPrinted(s, pdf);
+        if (TocCalibHasPrinted(lab)) {
+            it->printedPage = lab;
+        }
+    }
+}
+
+static void TocCalibPrepareMapping(TocCalibSession* s, bool markConfirm, bool scanBody) {
     if (!s) {
         return;
     }
     TocCalibCollectRows(s);
-    TocCalibEnsureTocRange(s);
-    TocCalibClearDestsOnTocPages(s);
-    TocCalibSeedPrintedFromPages(s);
+    if (scanBody) {
+        TocCalibEnsureTocRange(s);
+        TocCalibClearDestsOnTocPages(s);
+        TocCalibSeedPrintedFromPages(s);
+    } else {
+        TocCalibSeedPrintedFromLabels(s);
+    }
     s->editPdf = true;
     for (int i = 0; i < s->rows.Size(); i++) {
         if (s->rows[i].item && TocCalibHasPrinted(s->rows[i].item->printedPage)) {
@@ -1399,8 +1437,10 @@ static void TocCalibPrepareMapping(TocCalibSession* s, bool markConfirm) {
         }
     }
     TocCalibSolveSession(s);
-    TocCalibVerifyNearPredicted(s);
-    TocCalibSolveSession(s);
+    if (scanBody) {
+        TocCalibVerifyNearPredicted(s);
+        TocCalibSolveSession(s);
+    }
     if (markConfirm) {
         TocCalibMarkConfirm(s);
     }
@@ -1415,7 +1455,7 @@ void TocCalibRefineExtracted(Vec<ExtractedTocItem*>& roots, EngineBase* engine) 
     for (int i = 0; i < roots.Size(); i++) {
         s.roots.Append(roots[i]);
     }
-    TocCalibPrepareMapping(&s, false);
+    TocCalibPrepareMapping(&s, false, true);
     s.roots.Reset();
     s.rows.Reset();
 }
@@ -2636,7 +2676,8 @@ static void TocCalibNormalizeForestTitles(const Vec<ExtractedTocItem*>& roots) {
     }
 }
 
-TocCalibSession* TocCalibSessionFromExtracted(Vec<ExtractedTocItem*>& roots, EngineBase* engine, bool persistToDisk) {
+TocCalibSession* TocCalibSessionFromExtracted(Vec<ExtractedTocItem*>& roots, EngineBase* engine, bool persistToDisk,
+                                              bool scanBody) {
     auto* s = new TocCalibSession;
     s->engine = engine;
     s->persistToDisk = persistToDisk;
@@ -2646,7 +2687,7 @@ TocCalibSession* TocCalibSessionFromExtracted(Vec<ExtractedTocItem*>& roots, Eng
     }
     roots.Reset();
     TocCalibNormalizeForestTitles(s->roots);
-    TocCalibPrepareMapping(s, true);
+    TocCalibPrepareMapping(s, true, scanBody);
     return s;
 }
 
@@ -4687,7 +4728,7 @@ static TocCalibSpinLayout TocCalibMakeLayout(HWND hwnd, const RECT& rcRow, bool 
     int yMid = (rcRow.top + rcRow.bottom) / 2;
     L.showPrinted = true;
     L.showPdf = false;
-    int locDx = DpiScale(hwnd, 15);
+    int locDx = DpiScale(hwnd, 16);
     int midDx = DpiScale(hwnd, 16);
     int locDy = locDx;
     int midDy = midDx;
@@ -5872,7 +5913,8 @@ void ShowTocCalib(MainWindow* win) {
     TocCalibEnterSinglePage(win);
 }
 
-bool StartTocCalib(MainWindow* win, Vec<ExtractedTocItem*>& roots, EngineBase* engine, bool persistToDisk) {
+bool StartTocCalib(MainWindow* win, Vec<ExtractedTocItem*>& roots, EngineBase* engine, bool persistToDisk,
+                   bool scanBody) {
     if (!win) {
         DeleteExtractedTocItems(roots);
         return false;
@@ -5883,7 +5925,7 @@ bool StartTocCalib(MainWindow* win, Vec<ExtractedTocItem*>& roots, EngineBase* e
         return false;
     }
     DeleteTocCalibSession(tab->tocCalib);
-    tab->tocCalib = TocCalibSessionFromExtracted(roots, engine, persistToDisk);
+    tab->tocCalib = TocCalibSessionFromExtracted(roots, engine, persistToDisk, scanBody);
     if (!tab->tocCalib || tab->tocCalib->rows.Size() < 1) {
         DeleteTocCalibSession(tab->tocCalib);
         tab->tocCalib = nullptr;
@@ -5891,18 +5933,22 @@ bool StartTocCalib(MainWindow* win, Vec<ExtractedTocItem*>& roots, EngineBase* e
     }
     TocTree* cur = tab->ctrl ? tab->ctrl->GetToc() : nullptr;
     TocCalibCloneOutline(cur, tab->tocCalib->backup);
-    char* err = nullptr;
-    bool ok = EngineMupdfReplacePdfToc(engine, tab->tocCalib->roots, &err);
-    str::Free(err);
-    if (!ok) {
-        DeleteTocCalibSession(tab->tocCalib);
-        tab->tocCalib = nullptr;
-        return false;
+    // Opening an existing outline only binds the calib bar. Rewriting the PDF
+    // outline and rebuilding the tree is for extracted TOCs (scanBody).
+    if (scanBody) {
+        char* err = nullptr;
+        bool ok = EngineMupdfReplacePdfToc(engine, tab->tocCalib->roots, &err);
+        str::Free(err);
+        if (!ok) {
+            DeleteTocCalibSession(tab->tocCalib);
+            tab->tocCalib = nullptr;
+            return false;
+        }
+        if (win->tocLoaded) {
+            ClearTocBox(win);
+        }
+        LoadTocTree(win);
     }
-    if (win->tocLoaded) {
-        ClearTocBox(win);
-    }
-    LoadTocTree(win);
     TocCalibBindToTree(win);
     ShowTocCalib(win);
     return true;
@@ -5931,7 +5977,7 @@ bool StartTocCalibFromExisting(MainWindow* win) {
     if (roots.Size() < 1) {
         return false;
     }
-    return StartTocCalib(win, roots, engine, true);
+    return StartTocCalib(win, roots, engine, true, false);
 }
 
 void TocCalibOnTabSwitch(MainWindow* win) {

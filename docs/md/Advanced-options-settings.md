@@ -78,6 +78,11 @@ HomePageSortByFrequentlyRead = false
 ; Valid values: thumbnails, list (introduced in version 3.7)
 HomePageViewMode = thumbnails
 
+; preferred home page thumbnail width in pixels; layout grows or shrinks
+; slightly so the grid fills the window. List view is unchanged. Valid range:
+; 160-280 (introduced in version 3.7)
+HomePageThumbnailDx = 212
+
 ; if true, a document will be reloaded automatically whenever it's changed
 ; (currently doesn't work for documents shown in the ebook UI) (introduced in
 ; version 2.5)

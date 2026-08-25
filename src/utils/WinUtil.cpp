@@ -2411,6 +2411,16 @@ void MarkShellFullscreenWindow(HWND hwnd, bool fullscreen) {
     tbl->MarkFullscreenWindow(hwnd, fullscreen);
 }
 
+// Cover leftover topmost tray widgets (Win11 volume HUD, Qt notify windows)
+// without staying WS_EX_TOPMOST, which blocks Alt+Tab and unowned popups.
+void CoverTopmostThenRelease(HWND hwnd) {
+    if (!hwnd) {
+        return;
+    }
+    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+}
+
 static BOOL CALLBACK GetMonitorRectProc(HMONITOR, HDC, LPRECT rcMonitor, LPARAM data) {
     Rect* rcAll = (Rect*)data;
     *rcAll = rcAll->Union(ToRect(*rcMonitor));
