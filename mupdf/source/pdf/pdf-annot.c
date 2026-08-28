@@ -1003,7 +1003,8 @@ pdf_create_annot(fz_context *ctx, pdf_page *page, enum pdf_annot_type type)
 
 		case PDF_ANNOT_STAMP:
 			{
-				fz_rect stamp_rect = { 12, 12, 12+190, 12+50 };
+				/* SumatraPDF: larger click-to-place stamp (keep in sync with GetDefaultStampSize). */
+				fz_rect stamp_rect = { 12, 12, 12+280, 12+74 };
 				pdf_set_annot_rect(ctx, annot, stamp_rect);
 				pdf_set_annot_color(ctx, annot, 3, red);
 				pdf_set_annot_icon_name(ctx, annot, "Draft");

@@ -1347,6 +1347,22 @@ static void PaintAnnotCreatePreview(MainWindow* win, DisplayModel* dm, HDC hdc) 
     if (cmdId == CmdCreateAnnotText) {
         return;
     }
+    if (cmdId == CmdCreateAnnotStamp) {
+        Rect rc = win->selectionRect;
+        if (rc.dx < 0) {
+            rc.x += rc.dx;
+            rc.dx = -rc.dx;
+        }
+        if (rc.dy < 0) {
+            rc.y += rc.dy;
+            rc.dy = -rc.dy;
+        }
+        if (rc.dx < 4 && rc.dy < 4) {
+            return;
+        }
+        gs.DrawRectangle(&pen, rc.x, rc.y, rc.dx, rc.dy);
+        return;
+    }
     if (cmdId == CmdCreateAnnotInk) {
         if (win->annotCreateInkPoints.len < 2) {
             return;
@@ -1426,6 +1442,24 @@ static void FinishEbookAnnotCreateDrag(MainWindow* win, WindowTab* tab, DisplayM
         ReleaseAnnotCreateToolIfUnlocked(win);
         return;
     }
+    if (type == AnnotationType::Stamp) {
+        Rect screenRect = NormalizeScreenRect(start, endCanvas);
+        EbookAnnotation* annotation = nullptr;
+        if (screenRect.dx < 4 && screenRect.dy < 4) {
+            annotation = EbookAnnotationsCreateAt(tab, dm, start, type, GetDefaultEbookPointAnnotationColor(type));
+        } else {
+            annotation = EbookAnnotationsCreateDragShape(tab, dm, start, endCanvas, type);
+        }
+        win->annotCreateInkPoints.Reset();
+        if (!annotation) {
+            return;
+        }
+        tab->selectedEbookAnnotation = annotation;
+        UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, annotation);
+        MainWindowRerender(win);
+        ReleaseAnnotCreateToolIfUnlocked(win);
+        return;
+    }
     if (type == AnnotationType::Ink) {
         if (win->annotCreateInkPoints.len < 2) {
             PointF a = dm->CvtFromScreen(start, pageNo);
@@ -1482,7 +1516,8 @@ static void FinishAnnotCreateDrag(MainWindow* win, Point endCanvas) {
     }
     Point start = win->annotCreateDragStart;
     Rect screenRect = NormalizeScreenRect(start, endCanvas);
-    if (cmdId != CmdCreateAnnotInk && cmdId != CmdCreateAnnotText && (screenRect.dx < 4 && screenRect.dy < 4)) {
+    if (cmdId != CmdCreateAnnotInk && cmdId != CmdCreateAnnotText && cmdId != CmdCreateAnnotStamp &&
+        (screenRect.dx < 4 && screenRect.dy < 4)) {
         return;
     }
     int pageNo = dm->GetPageNoByPoint(start);
@@ -1510,6 +1545,16 @@ static void FinishAnnotCreateDrag(MainWindow* win, Point endCanvas) {
         annot = EngineMupdfCreateAnnotation(engine, pageNo, a, &args);
         if (annot) {
             SetLine(annot, a, b);
+        }
+    } else if (type == AnnotationType::Stamp) {
+        if (screenRect.dx < 4 && screenRect.dy < 4) {
+            PointF ptOnPage = dm->CvtFromScreen(start, pageNo);
+            annot = EngineMupdfCreateAnnotation(engine, pageNo, ptOnPage, &args);
+        } else {
+            PointF tl = dm->CvtFromScreen({screenRect.x, screenRect.y}, pageNo);
+            PointF br = dm->CvtFromScreen({screenRect.x + screenRect.dx, screenRect.y + screenRect.dy}, pageNo);
+            RectF pageRect = RectF::FromXY(tl, br);
+            annot = EngineMupdfCreateAnnotationInRect(engine, pageNo, pageRect, &args);
         }
     } else {
         PointF tl = dm->CvtFromScreen({screenRect.x, screenRect.y}, pageNo);

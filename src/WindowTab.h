@@ -74,6 +74,8 @@ struct WindowTab {
     // TODO: terrible hack
     bool askedToSaveAnnotations = false;
     bool acceptedPdfTocSignatureWarning = false;
+    // One-shot: do not loop auto-rebuild of a stale embedded official outline.
+    bool attemptedOfficialTocRepair = false;
 
     TabState* tabState = nullptr; // when lazy loading
     // Set by PrepareLoadingTab before AddTabToWindow selects the tab. Prevents

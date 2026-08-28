@@ -135,6 +135,23 @@ const char* EngineMupdfGetPassword(EngineBase* engine);
 bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErrorCb& showErrorFunc,
                             char** overwriteTempOut = nullptr);
 bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* path, char** errOut);
+// Set this page's PDF /Rotate from GetOcrPageRotate (live doc). Returns true if changed.
+bool EngineMupdfEnsurePageOcrRotate(EngineBase* engine, int pageNo);
+// Current PDF /Rotate for this page (0/90/180/270). Non-PDF engines return 0.
+int EngineMupdfGetPageRotateCw(EngineBase* engine, int pageNo);
+// Neighbors agree on 90 or 270: snap a 180° opposite page; fill a 0 hole only
+// when both neighbors were flagged this session (not a landscape 汇总表).
+int OcrResolveNeighborPageRotate(int cur, int left, int right, bool leftFromSession, bool rightFromSession);
+// Landscape MediaBox 公文: a rotate-0 hole between matching 90/270 neighbors is sideways.
+int OcrFillRotateZeroHole(int cur, int left, int right);
+// 汇总表 pages: copy a landscape sibling (rotate 0) rather than baked 270 from 审批表.
+int OcrChooseHuizongRotate(const int* rot, const u8* isHuizong, int n);
+int OcrNearestPortraitRotate(const int* rot, const u8* skipHuizong, int n, int from, int dir);
+bool OcrTextLooksLikeHuizongTable(const char* s);
+bool OcrTextLooksLikeOfficialForm(const char* s);
+bool OcrTextLooksLikePortraitOfficialBody(const char* s);
+// Apply GetOcrPageRotate for every page that needs it. Returns how many pages changed.
+int EngineMupdfApplyPendingOcrPageRotates(EngineBase* engine);
 Annotation* EngineMupdfGetAnnotationAtPos(EngineBase*, int pageNo, PointF pos, Annotation*);
 ByteSlice EngineMupdfLoadAttachment(EngineBase*, int attachmentNo);
 ByteSlice EngineMupdfLoadAnnotAttachment(EngineBase*, int objNum);

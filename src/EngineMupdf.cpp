@@ -4889,7 +4889,8 @@ img, svg {
   max-width: 100%;
   height: auto;
 }
-)" R"(/* Calibre titlepage.xhtml: SVG jacket should fill the page width. */
+)"
+                                                R"(/* Calibre titlepage.xhtml: SVG jacket should fill the page width. */
 body > svg, body > div > svg {
   display: block !important;
   width: 100% !important;
@@ -12785,6 +12786,510 @@ static bool AppendOcrTextLayer(fz_context* ctx, pdf_document* doc, pdf_obj* font
     return true;
 }
 
+static int PdfNormRotateCw(int deg) {
+    int cur = ((deg % 360) + 360) % 360;
+    cur = 90 * ((cur + 45) / 90);
+    if (cur >= 360) {
+        cur = 0;
+    }
+    return cur;
+}
+
+// Neighbors at the same 90/270: a 90 vs 270 hole is upside-down (180°), not a
+// missing rotate. Immediate rotate-0 汇总表 neighbors are skipped by the caller.
+int OcrResolveNeighborPageRotate(int cur, int left, int right, bool leftFromSession, bool rightFromSession) {
+    cur = PdfNormRotateCw(cur);
+    left = PdfNormRotateCw(left);
+    right = PdfNormRotateCw(right);
+    if (left < 90 || left != right) {
+        return cur;
+    }
+    int opp = PdfNormRotateCw(left + 180);
+    if (cur == opp) {
+        return left;
+    }
+    if (cur < 1 && leftFromSession && rightFromSession) {
+        return left;
+    }
+    return cur;
+}
+
+// Landscape MediaBox (scanner put portrait paper in a wide box): /Rotate 0
+// displays the 办法 body sideways. Neighbors at the same 90/270 fill the hole.
+int OcrFillRotateZeroHole(int cur, int left, int right) {
+    cur = PdfNormRotateCw(cur);
+    left = PdfNormRotateCw(left);
+    right = PdfNormRotateCw(right);
+    if (cur >= 90) {
+        return cur;
+    }
+    if (left >= 90 && left == right) {
+        return left;
+    }
+    return cur;
+}
+
+static bool CpIsRotateSearchSpace(int cp) {
+    return cp <= 32 || cp == 0xa0 || cp == 0x3000;
+}
+
+// 填表说明 is 1–3 portrait pages between 审批表 and 认定表. A 办法 body is much longer.
+static const int kOcrRotateSkipZeroMax = 3;
+
+static char* OcrCompactRotateSearchText(const char* s) {
+    if (!s || !s[0]) {
+        return nullptr;
+    }
+    int slen = (int)str::Len(s);
+    char* compact = AllocArray<char>((size_t)slen + 1);
+    if (!compact) {
+        return nullptr;
+    }
+    int o = 0;
+    int i = 0;
+    while (i < slen) {
+        int start = i;
+        int cp = Utf8CodepointNext(s, slen, i);
+        if (cp <= 0) {
+            break;
+        }
+        if (CpIsRotateSearchSpace(cp)) {
+            continue;
+        }
+        for (int b = start; b < i && o < slen; b++) {
+            compact[o++] = s[b];
+        }
+    }
+    compact[o] = 0;
+    return compact;
+}
+
+static bool OcrCompactStartsWithListNumber(const char* s) {
+    if (!s || s[0] < '1' || s[0] > '9') {
+        return false;
+    }
+    const u8* p = (const u8*)s + 1;
+    if (p[0] == '.' || p[0] == ')') {
+        return true;
+    }
+    // 。 U+3002
+    if (p[0] == 0xE3 && p[1] == 0x80 && p[2] == 0x82) {
+        return true;
+    }
+    // ． U+FF0E
+    if (p[0] == 0xEF && p[1] == 0xBC && p[2] == 0x8E) {
+        return true;
+    }
+    return false;
+}
+
+static bool OcrCompactHasHuizongFormChrome(const char* compact) {
+    if (!compact) {
+        return false;
+    }
+    if (str::Find(compact, "\xE5\xA1\xAB\xE6\x8A\xA5\xE5\x8D\x95\xE4\xBD\x8D")) { // 填报单位
+        return true;
+    }
+    if (str::Find(compact,
+                  "\xE9\x99\x84\xE4\xBB\xB6"
+                  "2")) { // 附件2
+        return true;
+    }
+    if (str::Find(compact, "\xE5\xBA\x8F\xE5\x8F\xB7")) { // 序号
+        return true;
+    }
+    return false;
+}
+
+bool OcrTextLooksLikeHuizongTable(const char* s) {
+    if (!s || !s[0]) {
+        return false;
+    }
+    const char* needle = "\xE6\xB1\x87\xE6\x80\xBB\xE8\xA1\xA8"; // 汇总表
+    char* compact = OcrCompactRotateSearchText(s);
+    if (!compact) {
+        return false;
+    }
+    bool hit = str::Find(compact, needle) != nullptr;
+    // 办法末 "2.公务员转任审批汇总表" is the attachment list, not the landscape sheet.
+    if (hit && OcrCompactStartsWithListNumber(compact) && !OcrCompactHasHuizongFormChrome(compact)) {
+        hit = false;
+    }
+    free(compact);
+    return hit;
+}
+
+bool OcrTextLooksLikeOfficialForm(const char* s) {
+    if (OcrTextLooksLikeHuizongTable(s)) {
+        return true;
+    }
+    char* compact = OcrCompactRotateSearchText(s);
+    if (!compact) {
+        return false;
+    }
+    bool hit = false;
+    if (str::Find(compact, "\xE5\xA1\xAB\xE6\x8A\xA5\xE5\x8D\x95\xE4\xBD\x8D")) { // 填报单位
+        hit = true;
+    } else if (str::Find(compact, "\xE5\xA7\x93\xE5\x90\x8D") && str::Find(compact, "\xE6\x80\xA7\xE5\x88\xAB") &&
+               (str::Find(compact, "\xE5\x87\xBA\xE7\x94\x9F") || str::Find(compact, "\xE7\xB1\x8D\xE8\xB4\xAF") ||
+                str::Find(compact, "\xE6\xB0\x91\xE6\x97\x8F"))) {
+        // 姓名 + 性别 + 出生/籍贯/民族 — 审批表 / 认定表 grid
+        hit = true;
+    }
+    free(compact);
+    return hit;
+}
+
+bool OcrTextLooksLikePortraitOfficialBody(const char* s) {
+    if (!s || !s[0] || OcrTextLooksLikeOfficialForm(s)) {
+        return false;
+    }
+    char* compact = OcrCompactRotateSearchText(s);
+    if (!compact) {
+        return false;
+    }
+    bool hit = false;
+    int n = (int)str::Len(compact);
+    if (OcrCompactStartsWithListNumber(compact) && n < 200 &&
+        (str::Find(compact, "\xE8\xA1\xA8") || str::Find(compact, "\xE9\x99\x84\xE4\xBB\xB6"))) {
+        // 2.汇总表 / 3.认定表 wrap after 附件：1.
+        hit = true;
+    } else if (str::Find(compact, "\xE6\x9C\xAC\xE5\x8A\x9E\xE6\xB3\x95") || // 本办法
+               str::Find(compact, "\xE9\x99\x84\xE4\xBB\xB6\xEF\xBC\x9A") || // 附件：
+               str::Find(compact, "\xE9\x99\x84\xE4\xBB\xB6:")) {
+        hit = true;
+    } else if (str::Find(compact, "\xE7\xAC\xAC") &&
+               (str::Find(compact, "\xE6\x9D\xA1") || str::Find(compact, "\xE7\xAB\xA0"))) {
+        // 第N条 / 第N章 办法 body (page 25 第二十三条)
+        hit = true;
+    }
+    free(compact);
+    return hit;
+}
+
+int OcrChooseHuizongRotate(const int* rot, const u8* isHuizong, int n) {
+    if (!rot || !isHuizong || n < 1) {
+        return -1;
+    }
+    bool any = false;
+    bool any0 = false;
+    bool any90 = false;
+    bool any270 = false;
+    for (int i = 0; i < n; i++) {
+        if (!isHuizong[i]) {
+            continue;
+        }
+        any = true;
+        int r = PdfNormRotateCw(rot[i]);
+        if (r == 0) {
+            any0 = true;
+        } else if (r == 90) {
+            any90 = true;
+        } else if (r == 270) {
+            any270 = true;
+        }
+    }
+    if (!any) {
+        return -1;
+    }
+    // A readable landscape 汇总表 is /Rotate 0 on a landscape MediaBox (page 32).
+    if (any0) {
+        return 0;
+    }
+    if (any90 && !any270) {
+        return 90;
+    }
+    if (any270 && !any90) {
+        return 270;
+    }
+    return 0;
+}
+
+int OcrNearestPortraitRotate(const int* rot, const u8* skipHuizong, int n, int from, int dir) {
+    if (!rot || n < 1 || from < 0 || from >= n || (dir != 1 && dir != -1)) {
+        return 0;
+    }
+    int skippedZero = 0;
+    for (int i = from + dir; i >= 0 && i < n; i += dir) {
+        if (skipHuizong && skipHuizong[i]) {
+            continue;
+        }
+        int r = PdfNormRotateCw(rot[i]);
+        if (r == 90 || r == 270) {
+            return r;
+        }
+        skippedZero++;
+        if (skippedZero > kOcrRotateSkipZeroMax) {
+            return 0;
+        }
+    }
+    return 0;
+}
+
+static int PdfPageRotateCw(fz_context* ctx, pdf_document* doc, int pageIndex) {
+    if (!ctx || !doc || pageIndex < 0) {
+        return 0;
+    }
+    int cur = 0;
+    fz_try(ctx) {
+        pdf_obj* pageobj = pdf_lookup_page_obj(ctx, doc, pageIndex);
+        if (pageobj) {
+            cur = pdf_dict_get_inheritable_int(ctx, pageobj, PDF_NAME(Rotate));
+        }
+    }
+    fz_catch(ctx) {
+        return 0;
+    }
+    return PdfNormRotateCw(cur);
+}
+
+// Bake OCR 90/270 into this page only. Viewers rotate clockwise; other pages stay 0.
+static void PdfApplyOcrPageRotate(fz_context* ctx, pdf_document* doc, int pageIndex, int wantCw) {
+    if (wantCw != 90 && wantCw != 180 && wantCw != 270 && wantCw != 0) {
+        return;
+    }
+    pdf_obj* pageobj = pdf_lookup_page_obj(ctx, doc, pageIndex);
+    if (!pageobj) {
+        return;
+    }
+    int cur = PdfNormRotateCw(pdf_dict_get_inheritable_int(ctx, pageobj, PDF_NAME(Rotate)));
+    int next = PdfNormRotateCw(wantCw);
+    if (next == cur) {
+        return;
+    }
+    if (next == 0) {
+        pdf_dict_del(ctx, pageobj, PDF_NAME(Rotate));
+    } else {
+        pdf_dict_put_int(ctx, pageobj, PDF_NAME(Rotate), next);
+    }
+    logf("Ocr: page %d Rotate %d -> %d\n", pageIndex + 1, cur, next);
+}
+
+int EngineMupdfGetPageRotateCw(EngineBase* engine, int pageNo) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !e->pdfdoc || pageNo < 1 || pageNo > engine->PageCount()) {
+        return 0;
+    }
+    auto ctx = e->Ctx();
+    ScopedCritSec scope(&e->docLock);
+    return PdfPageRotateCw(ctx, e->pdfdoc, pageNo - 1);
+}
+
+static bool EngineMupdfApplyPageRotateCw(EngineBase* engine, int pageNo, int wantCw) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !e->pdfdoc || pageNo < 1 || pageNo > engine->PageCount()) {
+        return false;
+    }
+    int want = PdfNormRotateCw(wantCw);
+    if (want != 0 && want != 90 && want != 180 && want != 270) {
+        return false;
+    }
+    auto ctx = e->Ctx();
+    ScopedCritSec scope(&e->docLock);
+    pdf_obj* pageobj = nullptr;
+    int cur = 0;
+    fz_try(ctx) {
+        pageobj = pdf_lookup_page_obj(ctx, e->pdfdoc, pageNo - 1);
+        if (pageobj) {
+            cur = pdf_dict_get_inheritable_int(ctx, pageobj, PDF_NAME(Rotate));
+        }
+    }
+    fz_catch(ctx) {
+        return false;
+    }
+    cur = PdfNormRotateCw(cur);
+    if (cur == want) {
+        return false;
+    }
+    fz_try(ctx) {
+        PdfApplyOcrPageRotate(ctx, e->pdfdoc, pageNo - 1, want);
+        if (pageNo - 1 < e->pages.Size()) {
+            FzPageInfo* pi = e->pages[pageNo - 1];
+            DropSingleFzPageCache(ctx, pi);
+            if (pi) {
+                pi->mediabox = {};
+            }
+        }
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        return false;
+    }
+    return true;
+}
+
+bool EngineMupdfEnsurePageOcrRotate(EngineBase* engine, int pageNo) {
+    if (!engine || pageNo < 1) {
+        return false;
+    }
+    int want = engine->GetOcrPageRotate(pageNo);
+    if (want != 90 && want != 180 && want != 270) {
+        return false;
+    }
+    return EngineMupdfApplyPageRotateCw(engine, pageNo, want);
+}
+
+int EngineMupdfApplyPendingOcrPageRotates(EngineBase* engine) {
+    if (!engine) {
+        return 0;
+    }
+    int nPages = engine->PageCount();
+    EngineMupdf* e = AsEngineMupdf(engine);
+    Vec<int> pdfRot;
+    if (e && e->pdfdoc && nPages > 0) {
+        auto ctx = e->Ctx();
+        ScopedCritSec scope(&e->docLock);
+        for (int i = 0; i < nPages; i++) {
+            pdfRot.Append(PdfPageRotateCw(ctx, e->pdfdoc, i));
+        }
+    } else {
+        for (int i = 0; i < nPages; i++) {
+            pdfRot.Append(0);
+        }
+    }
+    Vec<u8> isHuizong;
+    Vec<int> effective;
+    Vec<int> want;
+    for (int i = 0; i < nPages; i++) {
+        int sess = engine->GetOcrPageRotate(i + 1);
+        effective.Append(sess < 1 ? pdfRot[i] : sess);
+        want.Append(-1);
+        u8 hzFlag = 0;
+        const char* text = nullptr;
+        int len = 0;
+        if (engine->TryGetTextForPageUtf8(i + 1, &len, nullptr, &text) && text) {
+            if (OcrTextLooksLikeHuizongTable(text)) {
+                hzFlag = 1;
+            }
+        }
+        isHuizong.Append(hzFlag);
+    }
+    Vec<u8> isForm;
+    Vec<u8> isPortraitBody;
+    for (int i = 0; i < nPages; i++) {
+        u8 formFlag = isHuizong[i];
+        u8 bodyFlag = 0;
+        const char* text = nullptr;
+        int len = 0;
+        if (engine->TryGetTextForPageUtf8(i + 1, &len, nullptr, &text) && text) {
+            if (!formFlag && OcrTextLooksLikeOfficialForm(text)) {
+                formFlag = 1;
+            }
+            if (OcrTextLooksLikePortraitOfficialBody(text)) {
+                bodyFlag = 1;
+            }
+        }
+        isForm.Append(formFlag);
+        isPortraitBody.Append(bodyFlag);
+    }
+    int hz = OcrChooseHuizongRotate(effective.LendData(), isHuizong.LendData(), nPages);
+    bool landscapeMb = false;
+    if (e && e->pdfdoc && nPages > 0) {
+        auto ctx = e->Ctx();
+        ScopedCritSec scope(&e->docLock);
+        fz_rect mb = fz_empty_rect;
+        fz_try(ctx) {
+            pdf_obj* pageobj = pdf_lookup_page_obj(ctx, e->pdfdoc, 0);
+            if (pageobj) {
+                pdf_obj* mbobj = pdf_dict_get_inheritable(ctx, pageobj, PDF_NAME(MediaBox));
+                if (mbobj) {
+                    mb = pdf_to_rect(ctx, mbobj);
+                }
+            }
+        }
+        fz_catch(ctx) {
+            mb = fz_empty_rect;
+        }
+        float mw = mb.x1 - mb.x0;
+        float mh = mb.y1 - mb.y0;
+        landscapeMb = mw > mh * 1.05f;
+        // Landscape MediaBox + 90/270 shows the 汇总表 as portrait. Page 32 at 0 is the readable one.
+        if (landscapeMb && hz >= 90) {
+            hz = 0;
+        }
+    }
+    if (hz >= 0) {
+        for (int i = 0; i < nPages; i++) {
+            if (isHuizong[i] && PdfNormRotateCw(effective[i]) != PdfNormRotateCw(hz)) {
+                want[i] = hz;
+                effective[i] = hz;
+            }
+        }
+    }
+    // Portrait MediaBox: 办法 body / 附件清单 must stay /Rotate 0. A baked 90
+    // from the following 审批表 makes the page wide. Landscape MediaBox is the
+    // opposite — /Rotate 0 is the sideways wide view; body needs 90/270.
+    if (!landscapeMb) {
+        for (int i = 0; i < nPages; i++) {
+            if (!isPortraitBody[i] || isForm[i] || isHuizong[i]) {
+                continue;
+            }
+            if (PdfNormRotateCw(effective[i]) >= 90) {
+                want[i] = 0;
+                effective[i] = 0;
+            }
+        }
+    }
+    // 审批表 / 认定表: snap 90↔270, skipping landscape 汇总表 (rotate 0) neighbors.
+    bool filled = true;
+    while (filled) {
+        filled = false;
+        for (int i = 1; i < nPages - 1; i++) {
+            if (isHuizong[i]) {
+                continue;
+            }
+            if (!landscapeMb && isPortraitBody[i]) {
+                continue;
+            }
+            int left = OcrNearestPortraitRotate(effective.LendData(), isHuizong.LendData(), nPages, i, -1);
+            int right = OcrNearestPortraitRotate(effective.LendData(), isHuizong.LendData(), nPages, i, 1);
+            int cur = effective[i];
+            int next = OcrResolveNeighborPageRotate(cur, left, right, false, false);
+            if (next != PdfNormRotateCw(cur)) {
+                want[i] = next;
+                effective[i] = next;
+                filled = true;
+            }
+        }
+    }
+    // Landscape MediaBox: fill rotate-0 办法 holes (pages 25–27) from matching neighbors.
+    if (landscapeMb) {
+        filled = true;
+        while (filled) {
+            filled = false;
+            for (int i = 0; i < nPages; i++) {
+                if (isHuizong[i]) {
+                    continue;
+                }
+                int left = OcrNearestPortraitRotate(effective.LendData(), isHuizong.LendData(), nPages, i, -1);
+                int right = OcrNearestPortraitRotate(effective.LendData(), isHuizong.LendData(), nPages, i, 1);
+                int cur = effective[i];
+                int next = OcrFillRotateZeroHole(cur, left, right);
+                if (next != PdfNormRotateCw(cur)) {
+                    want[i] = next;
+                    effective[i] = next;
+                    filled = true;
+                }
+            }
+        }
+    }
+    int n = 0;
+    for (int pageNo = 1; pageNo <= nPages; pageNo++) {
+        int w = want[pageNo - 1];
+        if (w < 0) {
+            w = engine->GetOcrPageRotate(pageNo);
+            if (w < 1) {
+                continue;
+            }
+        }
+        engine->SetOcrPageRotate(pageNo, w);
+        if (EngineMupdfApplyPageRotateCw(engine, pageNo, w)) {
+            n++;
+        }
+    }
+    return n;
+}
+
 bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* destPath, char** errOut) {
     if (errOut) {
         *errOut = nullptr;
@@ -12815,6 +13320,7 @@ bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* destPath, char
         int len = 0;
         bool writeLayer = false;
         bool visibleLayer = false;
+        int rotateCw = 0;
     };
     Vec<PageOcrDump> pages;
     int nPages = engine->PageCount();
@@ -12833,6 +13339,7 @@ bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* destPath, char
         p.len = len;
         p.text = str::Dup(text);
         p.coords = (Rect*)memdup(coords, (size_t)len * sizeof(Rect));
+        p.rotateCw = engine->GetOcrPageRotate(pageNo);
         pages.Append(p);
     }
     if (pages.Size() == 0) {
@@ -12887,6 +13394,12 @@ bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* destPath, char
                 if (p.writeLayer) {
                     AppendOcrTextLayer(ctx, doc, fontObj, p.pageNo - 1, p.text, p.coords, p.len, p.visibleLayer);
                 }
+            }
+        }
+        for (int pageNo = 1; pageNo <= nPages; pageNo++) {
+            int rot = engine->GetOcrPageRotate(pageNo);
+            if (rot > 0) {
+                PdfApplyOcrPageRotate(ctx, doc, pageNo - 1, rot);
             }
         }
         pdf_write_options saveOpts = pdf_default_write_options2;

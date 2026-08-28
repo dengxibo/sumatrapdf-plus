@@ -197,6 +197,10 @@ const stringsToAdd: Record<string, { cn: string; tw: string }> = {
     cn: "前几页没有找到印刷目录。",
     tw: "前幾頁沒有找到印刷目錄。",
   },
+  "Text was found, but this file has no table of contents or chapter headings to extract.": {
+    cn: "文字已经识别。没有找到印刷目录或章节标题，无法提取书签。",
+    tw: "文字已經識別。沒有找到印刷目錄或章節標題，無法提取書籤。",
+  },
   "This document looks like a scan.": {
     cn: "这份文档看起来是扫描件。",
     tw: "這份文件看起來是掃描件。",

@@ -2510,6 +2510,9 @@ nl:Bladwijzers
 pl:Zakładki
 sk:Záložky
 tw:書籤
+:Bookmarks extracted. Use Calibrate TOC Pages to adjust page numbers.
+cn:已提取书签。可用「校准目录书签」调整印刷页与 PDF 页。
+tw:已提取書籤。可用「校準目錄書籤」調整印刷頁與 PDF 頁。
 :Border: %d
 am:Եզրագիծ. %d
 br:Borda: %d
@@ -2564,6 +2567,12 @@ nl:CHM-documenten
 pl:Dokumenty CHM
 sk:CHM dokumenty
 tw:CHM 文件
+:Calibrate TOC
+cn:校准目录书签
+tw:校準目錄書籤
+:Calibrate TOC Pages
+cn:校准目录书签
+tw:校準目錄書籤
 :Camera Make:
 br:Fabricante da Câmera:
 cn:相机品牌:
@@ -3328,6 +3337,9 @@ de:Komprimierte Bits pro Pixel:
 it:Bit/Pixel compressi:
 nl:Gecomprimeerd Bits/Pixels
 pl:Skompresowane bity/piksel:
+:Contents page
+cn:目录页
+tw:目錄頁
 :Contents:
 am:Բովանդակությունը՝
 br:Conteúdo:
@@ -3876,6 +3888,9 @@ nl:Auteursrecht
 pl:Prawo autorskie:
 sk:Autorské práva:
 tw:版權:
+:Could not find this heading in the body
+cn:正文中找不到这条目录
+tw:正文中找不到這條目錄
 :Could not obtain Printer properties
 am:Տպիչի հատկությունները հասանելի չեն
 br:Não pôde obter as propriedades da impressora
@@ -4955,9 +4970,6 @@ nl:Verwijderen
 pl:Usuń
 sk:Odstrániť
 tw:刪除
-:Delete %d TOC items? Child items will be moved up one level.
-cn:删除这 %d 条目录项？其子项将上提一级。
-tw:刪除這 %d 條目錄項？其子項目將上提一級。
 :Delete %d TOC items and their child items?
 af:Delete %d TOC items and their child items?
 am:Delete %d TOC items and their child items?
@@ -5104,6 +5116,9 @@ tw:刪除這 %d 條目錄項？
 uk:Delete %d TOC items?
 uz:Delete %d TOC items?
 vn:Delete %d TOC items?
+:Delete %d TOC items? Child items will be moved up one level.
+cn:删除这 %d 条目录项？其子项将上提一级。
+tw:刪除這 %d 條目錄項？其子項目將上提一級。
 :Delete Annotation
 am:Ջնջել մեկնաբանությունը
 br:Apagar Anotação
@@ -5182,9 +5197,6 @@ nl:Dit PDF-inhoudsopgave-item en alle subitems verwijderen?
 pl:Usunąć ten element spisu treści PDF i wszystkie jego elementy podrzędne?
 sk:Odstrániť túto položku obsahu PDF a všetky jej podradené položky?
 tw:刪除這個 PDF 目錄項目及其所有子項目？
-:Delete this TOC item? Child items will be moved up one level.
-cn:删除这个目录项？其子项将上提一级。
-tw:刪除這個目錄項目？其子項目將上提一級。
 :Delete this TOC item?
 am:Ջնջե՞լ այս PDF բովանդակության տարրը։
 br:Excluir este item do sumário do PDF?
@@ -5197,6 +5209,9 @@ nl:Dit PDF-inhoudsopgave-item verwijderen?
 pl:Usunąć ten element spisu treści PDF?
 sk:Odstrániť túto položku obsahu PDF?
 tw:刪除這個 PDF 目錄項目？
+:Delete this TOC item? Child items will be moved up one level.
+cn:删除这个目录项？其子项将上提一级。
+tw:刪除這個目錄項目？其子項目將上提一級。
 :Demote PDF TOC Item
 am:Իջեցնել PDF բովանդակության տարրի մակարդակը
 br:Rebaixar nível do item do sumário do PDF
@@ -5969,6 +5984,9 @@ de:Exif-Version:
 it:Versione Exif:
 nl:Exif Versie:
 pl:Wersja EXIF:
+:Exit
+cn:退出
+tw:退出
 :Exit Application
 am:Ելք ծրագրից
 br:Sair do Aplicativo
@@ -6823,6 +6841,12 @@ nl:Zoek Vorige Selectie
 pl:Znajdź poprzednie zaznaczenie
 sk:Hľadať predchádzajúci výber
 tw:尋找上個選取内容
+:Find TOC Item in Body
+cn:在正文中定位
+tw:在正文中定位
+:Find in Body and Link
+cn:在正文中定位并关联
+tw:在正文中定位並關聯
 :Find:
 am:Գտնել.
 br:Localizar:
@@ -7514,6 +7538,9 @@ tw:墨跡註解（Ctrl+點選鎖定）
 uk:Ink Annotation (Ctrl+click to lock)
 uz:Ink Annotation (Ctrl+click to lock)
 vn:Ink Annotation (Ctrl+click to lock)
+:Stamp Annotation (Ctrl+click to lock)
+cn:图章（Ctrl+点击锁定）
+tw:圖章（Ctrl+點選鎖定）
 :Install SumatraPDF
 am:Տեղադրել SumatraPDF-ը
 br:Instalar SumatraPDF
@@ -7832,6 +7859,12 @@ nl:Lijn Begin
 pl:Początek linii:
 sk:Začiatok čiary:
 tw:行首:
+:Link page %s to selected bookmark
+cn:将第 %s 页关联到选中的目录
+tw:將第 %s 頁關聯到選中的目錄
+:Link to current page
+cn:关联当前页
+tw:關聯當前頁
 :List Printers
 br:Listar Impressoras
 cn:列出打印机
@@ -8319,6 +8352,9 @@ it:Menu
 nl:Menu
 pl:Menu
 sk:Ponuka
+:Merge with next TOC item
+cn:合并下一条
+tw:合併下一條
 :Metering Mode:
 br:Modo de Medição:
 cn:测光模式:
@@ -8885,6 +8921,79 @@ tw:沒有可識別的頁面。
 uk:No page to recognize.
 uz:No page to recognize.
 vn:No page to recognize.
+:No printed table of contents found in the first pages.
+af:No printed table of contents found in the first pages.
+am:No printed table of contents found in the first pages.
+ar:No printed table of contents found in the first pages.
+az:No printed table of contents found in the first pages.
+bg:No printed table of contents found in the first pages.
+bn:No printed table of contents found in the first pages.
+br:No printed table of contents found in the first pages.
+bs:No printed table of contents found in the first pages.
+by:No printed table of contents found in the first pages.
+ca:No printed table of contents found in the first pages.
+ca-xv:No printed table of contents found in the first pages.
+cn:前几页没有找到印刷目录。
+co:No printed table of contents found in the first pages.
+cy:No printed table of contents found in the first pages.
+cz:No printed table of contents found in the first pages.
+de:No printed table of contents found in the first pages.
+dk:No printed table of contents found in the first pages.
+el:No printed table of contents found in the first pages.
+es:No printed table of contents found in the first pages.
+et:No printed table of contents found in the first pages.
+eu:No printed table of contents found in the first pages.
+fa:No printed table of contents found in the first pages.
+fi:No printed table of contents found in the first pages.
+fo:No printed table of contents found in the first pages.
+fr:No printed table of contents found in the first pages.
+fy-nl:No printed table of contents found in the first pages.
+ga:No printed table of contents found in the first pages.
+gl:No printed table of contents found in the first pages.
+he:No printed table of contents found in the first pages.
+hi:No printed table of contents found in the first pages.
+hr:No printed table of contents found in the first pages.
+hu:No printed table of contents found in the first pages.
+id:No printed table of contents found in the first pages.
+it:No printed table of contents found in the first pages.
+ja:No printed table of contents found in the first pages.
+jv:No printed table of contents found in the first pages.
+ka:No printed table of contents found in the first pages.
+kr:No printed table of contents found in the first pages.
+ku:No printed table of contents found in the first pages.
+kw:No printed table of contents found in the first pages.
+lt:No printed table of contents found in the first pages.
+lv:No printed table of contents found in the first pages.
+mk:No printed table of contents found in the first pages.
+ml:No printed table of contents found in the first pages.
+mm:No printed table of contents found in the first pages.
+my:No printed table of contents found in the first pages.
+ne:No printed table of contents found in the first pages.
+nl:No printed table of contents found in the first pages.
+nn:No printed table of contents found in the first pages.
+no:No printed table of contents found in the first pages.
+pa:No printed table of contents found in the first pages.
+pl:No printed table of contents found in the first pages.
+pt:No printed table of contents found in the first pages.
+ro:No printed table of contents found in the first pages.
+ru:No printed table of contents found in the first pages.
+sat:No printed table of contents found in the first pages.
+si:No printed table of contents found in the first pages.
+sk:No printed table of contents found in the first pages.
+sl:No printed table of contents found in the first pages.
+sn:No printed table of contents found in the first pages.
+sp-rs:No printed table of contents found in the first pages.
+sq:No printed table of contents found in the first pages.
+sr-rs:No printed table of contents found in the first pages.
+sv:No printed table of contents found in the first pages.
+ta:No printed table of contents found in the first pages.
+th:No printed table of contents found in the first pages.
+tl:No printed table of contents found in the first pages.
+tr:No printed table of contents found in the first pages.
+tw:前幾頁沒有找到印刷目錄。
+uk:No printed table of contents found in the first pages.
+uz:No printed table of contents found in the first pages.
+vn:No printed table of contents found in the first pages.
 :No result found around line %u in file %s
 am:Ոչինչ չի գտնվել %u տողում %s ֆայլի
 br:Nenhum resultado achado próximo da linha %u no arquivo %s
@@ -9756,6 +9865,9 @@ nl:Ok
 pl:OK
 sk:Nastaviť
 tw:確定(&O)
+:Offset
+cn:偏移
+tw:偏移
 :Online multilingual voices
 af:Aanlyn veeltalige stemme
 am:Առցանց բազմալեզու ձայներ
@@ -11191,6 +11303,9 @@ nl:Bereik afdrukken
 pl:Zakres druku
 sk:Rozsah tlače
 tw:列印範圍
+:Printed:
+cn:印刷:
+tw:印刷:
 :Printer '%s' doesn't exist
 br:A impressora "%s" não existe
 cn:'%s' 打印机不存在
@@ -12022,17 +12137,78 @@ pl:Usuń z ulubionych
 sk:Odobrať z obľúbených položiek
 tw:從我的最愛移除
 :Remove missing files from home
+af:Remove missing files from home
 am:Remove missing files from home
+ar:Remove missing files from home
+az:Remove missing files from home
+bg:Remove missing files from home
+bn:Remove missing files from home
 br:Remover arquivos ausentes da página inicial
+bs:Remove missing files from home
+by:Remove missing files from home
+ca:Remove missing files from home
+ca-xv:Remove missing files from home
 cn:从首页移除丢失的文件
 co:Caccià i schedari mancanti da a pagina d'iniziu
+cy:Remove missing files from home
+cz:Remove missing files from home
 de:Fehlende Dateien von der Startseite entfernen
+dk:Remove missing files from home
 el:Αφαίρεση αρχείων που λείπουν από την αρχική
+es:Remove missing files from home
+et:Remove missing files from home
+eu:Remove missing files from home
+fa:Remove missing files from home
+fi:Remove missing files from home
+fo:Remove missing files from home
+fr:Remove missing files from home
+fy-nl:Remove missing files from home
+ga:Remove missing files from home
+gl:Remove missing files from home
+he:Remove missing files from home
+hi:Remove missing files from home
+hr:Remove missing files from home
+hu:Remove missing files from home
+id:Remove missing files from home
 it:Rimuovi i file mancanti dalla pagina iniziale
+ja:Remove missing files from home
+jv:Remove missing files from home
+ka:Remove missing files from home
+kr:Remove missing files from home
+ku:Remove missing files from home
+kw:Remove missing files from home
+lt:Remove missing files from home
+lv:Remove missing files from home
+mk:Remove missing files from home
+ml:Remove missing files from home
+mm:Remove missing files from home
+my:Remove missing files from home
+ne:Remove missing files from home
 nl:Ontbrekende bestanden van startpagina verwijderen
+nn:Remove missing files from home
+no:Remove missing files from home
+pa:Remove missing files from home
 pl:Usuń brakujące pliki ze strony startowej
+pt:Remove missing files from home
+ro:Remove missing files from home
+ru:Remove missing files from home
+sat:Remove missing files from home
+si:Remove missing files from home
 sk:Odstrániť chýbajúce súbory z úvodnej stránky
+sl:Remove missing files from home
+sn:Remove missing files from home
+sp-rs:Remove missing files from home
+sq:Remove missing files from home
+sr-rs:Remove missing files from home
+sv:Remove missing files from home
+ta:Remove missing files from home
+th:Remove missing files from home
+tl:Remove missing files from home
+tr:Remove missing files from home
 tw:從首頁移除遺失的檔案
+uk:Remove missing files from home
+uz:Remove missing files from home
+vn:Remove missing files from home
 :Remove page %s from favorites
 am:Հեռացնել %s  էջը ընտրյալներից
 br:Remover a página %s dos favoritos
@@ -12081,6 +12257,9 @@ nl:Heropen Laatst Gesloten
 pl:Otwórz ponownie ostatnio zamknięty
 sk:Znovu otvoriť naposledy zatvorené
 tw:重新開啟上次關閉的內容
+:Replace TOC Item from Selection
+cn:用选中文字替换当前目录
+tw:用選中文字替換當前目錄
 :Replace the existing PDF bookmarks with extracted headings?
 af:Replace the existing PDF bookmarks with extracted headings?
 am:Replace the existing PDF bookmarks with extracted headings?
@@ -13992,6 +14171,9 @@ it:Imposta tasti rapidi screenshot
 nl:Instellen Sneltoets Screenshot
 pl:Ustaw klawisz skrótu zrzutu ekranu
 sk:Nastaviť klávesovú skratku pre snímku obrazovky
+:Set TOC Item to Current Page
+cn:将当前页关联到选中的目录
+tw:將當前頁關聯到選中的目錄
 :Set Tab Color
 br:Definir a Cor da Aba
 cn:设置标签颜色
@@ -15497,6 +15679,79 @@ nl:Tekstdocumenten
 pl:Pliki tekstowe
 sk:Textové dokumenty
 tw:文字文件
+:Text was found, but this file has no table of contents or chapter headings to extract.
+af:Text was found, but this file has no table of contents or chapter headings to extract.
+am:Text was found, but this file has no table of contents or chapter headings to extract.
+ar:Text was found, but this file has no table of contents or chapter headings to extract.
+az:Text was found, but this file has no table of contents or chapter headings to extract.
+bg:Text was found, but this file has no table of contents or chapter headings to extract.
+bn:Text was found, but this file has no table of contents or chapter headings to extract.
+br:Text was found, but this file has no table of contents or chapter headings to extract.
+bs:Text was found, but this file has no table of contents or chapter headings to extract.
+by:Text was found, but this file has no table of contents or chapter headings to extract.
+ca:Text was found, but this file has no table of contents or chapter headings to extract.
+ca-xv:Text was found, but this file has no table of contents or chapter headings to extract.
+cn:文字已经识别。没有找到印刷目录或章节标题，无法提取书签。
+co:Text was found, but this file has no table of contents or chapter headings to extract.
+cy:Text was found, but this file has no table of contents or chapter headings to extract.
+cz:Text was found, but this file has no table of contents or chapter headings to extract.
+de:Text was found, but this file has no table of contents or chapter headings to extract.
+dk:Text was found, but this file has no table of contents or chapter headings to extract.
+el:Text was found, but this file has no table of contents or chapter headings to extract.
+es:Text was found, but this file has no table of contents or chapter headings to extract.
+et:Text was found, but this file has no table of contents or chapter headings to extract.
+eu:Text was found, but this file has no table of contents or chapter headings to extract.
+fa:Text was found, but this file has no table of contents or chapter headings to extract.
+fi:Text was found, but this file has no table of contents or chapter headings to extract.
+fo:Text was found, but this file has no table of contents or chapter headings to extract.
+fr:Text was found, but this file has no table of contents or chapter headings to extract.
+fy-nl:Text was found, but this file has no table of contents or chapter headings to extract.
+ga:Text was found, but this file has no table of contents or chapter headings to extract.
+gl:Text was found, but this file has no table of contents or chapter headings to extract.
+he:Text was found, but this file has no table of contents or chapter headings to extract.
+hi:Text was found, but this file has no table of contents or chapter headings to extract.
+hr:Text was found, but this file has no table of contents or chapter headings to extract.
+hu:Text was found, but this file has no table of contents or chapter headings to extract.
+id:Text was found, but this file has no table of contents or chapter headings to extract.
+it:Text was found, but this file has no table of contents or chapter headings to extract.
+ja:Text was found, but this file has no table of contents or chapter headings to extract.
+jv:Text was found, but this file has no table of contents or chapter headings to extract.
+ka:Text was found, but this file has no table of contents or chapter headings to extract.
+kr:Text was found, but this file has no table of contents or chapter headings to extract.
+ku:Text was found, but this file has no table of contents or chapter headings to extract.
+kw:Text was found, but this file has no table of contents or chapter headings to extract.
+lt:Text was found, but this file has no table of contents or chapter headings to extract.
+lv:Text was found, but this file has no table of contents or chapter headings to extract.
+mk:Text was found, but this file has no table of contents or chapter headings to extract.
+ml:Text was found, but this file has no table of contents or chapter headings to extract.
+mm:Text was found, but this file has no table of contents or chapter headings to extract.
+my:Text was found, but this file has no table of contents or chapter headings to extract.
+ne:Text was found, but this file has no table of contents or chapter headings to extract.
+nl:Text was found, but this file has no table of contents or chapter headings to extract.
+nn:Text was found, but this file has no table of contents or chapter headings to extract.
+no:Text was found, but this file has no table of contents or chapter headings to extract.
+pa:Text was found, but this file has no table of contents or chapter headings to extract.
+pl:Text was found, but this file has no table of contents or chapter headings to extract.
+pt:Text was found, but this file has no table of contents or chapter headings to extract.
+ro:Text was found, but this file has no table of contents or chapter headings to extract.
+ru:Text was found, but this file has no table of contents or chapter headings to extract.
+sat:Text was found, but this file has no table of contents or chapter headings to extract.
+si:Text was found, but this file has no table of contents or chapter headings to extract.
+sk:Text was found, but this file has no table of contents or chapter headings to extract.
+sl:Text was found, but this file has no table of contents or chapter headings to extract.
+sn:Text was found, but this file has no table of contents or chapter headings to extract.
+sp-rs:Text was found, but this file has no table of contents or chapter headings to extract.
+sq:Text was found, but this file has no table of contents or chapter headings to extract.
+sr-rs:Text was found, but this file has no table of contents or chapter headings to extract.
+sv:Text was found, but this file has no table of contents or chapter headings to extract.
+ta:Text was found, but this file has no table of contents or chapter headings to extract.
+th:Text was found, but this file has no table of contents or chapter headings to extract.
+tl:Text was found, but this file has no table of contents or chapter headings to extract.
+tr:Text was found, but this file has no table of contents or chapter headings to extract.
+tw:文字已經識別。沒有找到印刷目錄或章節標題，無法提取書籤。
+uk:Text was found, but this file has no table of contents or chapter headings to extract.
+uz:Text was found, but this file has no table of contents or chapter headings to extract.
+vn:Text was found, but this file has no table of contents or chapter headings to extract.
 :Thank you for choosing SumatraPDF!
 am:Շնորհակալություն SumatraPDF-ը նախընտրելու համար:
 br:Obrigado por escolher o SumatraPDF!
@@ -17108,6 +17363,9 @@ it:Bilanciamento bianco:
 nl:Wit Balance:
 pl:Balans bieli:
 sk:Vyváženie bielej:
+:Write bookmarks
+cn:写入书签
+tw:寫入書籤
 :XPS documents
 am:XPS ֆայլեր
 br:Documentos XPS
@@ -17683,52 +17941,3 @@ it:↑ ↓ per navigare
 nl:↑ ↓ voor navigeren
 pl:↑ ↓ aby nawigować
 sk:↑ ↓ – navigovať
-:Calibrate TOC Pages
-cn:校准目录书签
-tw:校準目錄書籤
-:Bookmarks extracted. Use Calibrate TOC Pages to adjust page numbers.
-cn:已提取书签。可用「校准目录书签」调整印刷页与 PDF 页。
-tw:已提取書籤。可用「校準目錄書籤」調整印刷頁與 PDF 頁。
-:Contents page
-cn:目录页
-tw:目錄頁
-:Write bookmarks
-cn:写入书签
-tw:寫入書籤
-:Exit
-cn:退出
-tw:退出
-:Offset
-cn:偏移
-tw:偏移
-:Printed:
-cn:印刷:
-tw:印刷:
-:Calibrate TOC
-cn:校准目录书签
-tw:校準目錄書籤
-:Set TOC Item to Current Page
-cn:将当前页关联到选中的目录
-tw:將當前頁關聯到選中的目錄
-:Link page %s to selected bookmark
-cn:将第 %s 页关联到选中的目录
-tw:將第 %s 頁關聯到選中的目錄
-:Find TOC Item in Body
-cn:在正文中定位
-tw:在正文中定位
-:Find in Body and Link
-cn:在正文中定位并关联
-tw:在正文中定位並關聯
-:Link to current page
-cn:关联当前页
-tw:關聯當前頁
-:Merge with next TOC item
-cn:合并下一条
-tw:合併下一條
-:Could not find this heading in the body
-cn:正文中找不到这条目录
-tw:正文中找不到這條目錄
-:Replace TOC Item from Selection
-cn:用选中文字替换当前目录
-tw:用選中文字替換當前目錄
-

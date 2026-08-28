@@ -45,6 +45,31 @@ const char* gStampIcons =
     "ForPublicRelease\0NotApproved\0NotForPublicRelease\0Sold\0TopSecret\0";
 // clang-format on
 
+static char gLastStampIcon[32] = "Draft";
+
+void RememberStampIconName(const char* name) {
+    if (str::IsEmpty(name)) {
+        return;
+    }
+    if (seqstrings::StrToIdxIS(gStampIcons, name) < 0) {
+        return;
+    }
+    str::BufSet(gLastStampIcon, dimof(gLastStampIcon), name);
+}
+
+const char* DefaultStampIconName() {
+    if (str::IsEmpty(gLastStampIcon)) {
+        return "Draft";
+    }
+    return gLastStampIcon;
+}
+
+SizeF GetDefaultStampSize() {
+    // Display-space size for click-to-place. Wide enough to read on a form;
+    // appearance writer keeps it horizontal on /Rotate 90/270 pages.
+    return {280, 74};
+}
+
 // clang format-off
 
 #if 0
@@ -562,6 +587,9 @@ void SetIconName(Annotation* annot, const char* iconName) {
         fz_catch(ctx) {
             fz_report_error(ctx);
         }
+    }
+    if (annot->type == AnnotationType::Stamp) {
+        RememberStampIconName(iconName);
     }
     // TODO: only if the value changed
     MarkNotificationAsModified(e, annot);
@@ -1222,7 +1250,6 @@ Annotation* EngineMupdfCreateAnnotation(EngineBase* engine, int pageNo, PointF p
                 } break;
                 case AnnotationType::Text:
                 case AnnotationType::FreeText:
-                case AnnotationType::Stamp:
                 case AnnotationType::Caret:
                 case AnnotationType::Square:
                 case AnnotationType::Circle: {
@@ -1234,6 +1261,16 @@ Annotation* EngineMupdfCreateAnnotation(EngineBase* engine, int pageNo, PointF p
                     trect.y0 = pos.y;
                     trect.y1 = trect.y0 + dy;
                     pdf_set_annot_rect(ctx, annot, trect);
+                } break;
+                case AnnotationType::Stamp: {
+                    SizeF sz = GetDefaultStampSize();
+                    fz_rect trect;
+                    trect.x0 = pos.x - sz.dx / 2.f;
+                    trect.x1 = pos.x + sz.dx / 2.f;
+                    trect.y0 = pos.y - sz.dy / 2.f;
+                    trect.y1 = pos.y + sz.dy / 2.f;
+                    pdf_set_annot_rect(ctx, annot, trect);
+                    pdf_update_annot(ctx, annot);
                 } break;
                 case AnnotationType::Line: {
                     fz_point a{pos.x, pos.y};
@@ -1299,6 +1336,12 @@ Annotation* EngineMupdfCreateAnnotation(EngineBase* engine, int pageNo, PointF p
     if (typ == AnnotationType::Text) {
         TempStr iconName = GetAnnotationTextIconTemp();
         if (!str::EqI(iconName, "Note")) {
+            SetIconName(res, iconName);
+        }
+    }
+    if (typ == AnnotationType::Stamp) {
+        const char* iconName = DefaultStampIconName();
+        if (!str::EqI(iconName, "Draft")) {
             SetIconName(res, iconName);
         }
     }

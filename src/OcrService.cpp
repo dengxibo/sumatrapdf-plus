@@ -142,6 +142,18 @@ bool OcrEngineKindSupported(EngineBase* engine) {
            k == kindEngineComicBooks || k == kindEnginePostScript;
 }
 
+bool OcrAutoEnabled(EngineBase* engine) {
+    return engine && gGlobalPrefs && gGlobalPrefs->autoOcrScanPages && OcrEngineKindSupported(engine);
+}
+
+bool OcrDeferExtractUntilDocumentReady(MainWindow* win, bool persistToDisk) {
+    // Born-digital / already-OCR'd docs extract immediately. Image-only docs go through
+    // OcrScheduleDocument(..., extractTocIfMissing) from the UI path instead.
+    (void)win;
+    (void)persistToDisk;
+    return false;
+}
+
 bool OcrPageLooksScanned(EngineBase* engine, int pageNo) {
     if (!OcrEngineKindSupported(engine) || engine->WasOcrTried(pageNo)) {
         return false;
@@ -987,6 +999,138 @@ static bool OcrShouldJoinDocLines(const OcrBox& a, const OcrBox& b, int bodyLeft
     return true;
 }
 
+static int CountOcrCjkGlyphs(const char* s) {
+    if (!s || !s[0]) {
+        return 0;
+    }
+    int len = (int)str::Len(s);
+    int i = 0;
+    int n = 0;
+    while (i < len) {
+        int cp = Utf8CodepointNext(s, len, i);
+        if (cp <= 0) {
+            break;
+        }
+        if (cp >= 0x4E00 && cp <= 0x9FFF) {
+            n++;
+        }
+    }
+    return n;
+}
+
+static int ScoreOcrBoxes(const Vec<OcrBox>& boxes) {
+    int score = 0;
+    for (int i = 0; i < boxes.Size(); i++) {
+        const char* t = boxes[i].text;
+        if (!t || !t[0]) {
+            continue;
+        }
+        int cjk = CountOcrCjkGlyphs(t);
+        score += cjk * 4 + (int)str::Len(t);
+        if (str::Find(t, "\xE9\x99\x84\xE4\xBB\xB6")) { // 附件
+            score += 90;
+        }
+        if (str::Find(t, "\xE6\x8A\xA5\xE5\x90\x8D")) { // 报名
+            score += 40;
+        }
+        if (str::Find(t, "\xE5\xBA\x8F\xE5\x8F\xB7")) { // 序号
+            score += 20;
+        }
+        if (str::Find(t, "\xE4\xBA\x8B\xE9\xA1\xB9")) { // 事项
+            score += 20;
+        }
+    }
+    return score;
+}
+
+static bool OcrShouldTryPageRotate(const Vec<OcrBox>& boxes, int imgW, int imgH) {
+    int score = ScoreOcrBoxes(boxes);
+    if (score >= 90) {
+        return false;
+    }
+    int n = 0;
+    int tall = 0;
+    for (int i = 0; i < boxes.Size(); i++) {
+        const OcrBox& b = boxes[i];
+        if (!b.text || !b.text[0]) {
+            continue;
+        }
+        n++;
+        if (b.rect.dy > b.rect.dx * 1.5f && b.rect.dy > 20) {
+            tall++;
+        }
+    }
+    if (score < 30) {
+        return true;
+    }
+    if (n >= 2 && tall * 2 >= n) {
+        return true;
+    }
+    return imgW > 80 && imgH > 80 && score < 60;
+}
+
+// 90° clockwise in top-left pixel space: (x,y) -> (h-1-y, x). Dest is h x w.
+static u8* RotateRgb90(const u8* src, int w, int h, int stride, bool clockwise, int* nw, int* nh, int* nstride) {
+    if (!src || w < 8 || h < 8) {
+        return nullptr;
+    }
+    int dw = h;
+    int dh = w;
+    int ds = dw * 3;
+    u8* dst = AllocArray<u8>((size_t)ds * (size_t)dh);
+    if (!dst) {
+        return nullptr;
+    }
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int dx = clockwise ? (h - 1 - y) : y;
+            int dy = clockwise ? x : (w - 1 - x);
+            const u8* s = src + (size_t)y * (size_t)stride + (size_t)x * 3;
+            u8* d = dst + (size_t)dy * (size_t)ds + (size_t)dx * 3;
+            d[0] = s[0];
+            d[1] = s[1];
+            d[2] = s[2];
+        }
+    }
+    if (nw) {
+        *nw = dw;
+    }
+    if (nh) {
+        *nh = dh;
+    }
+    if (nstride) {
+        *nstride = ds;
+    }
+    return dst;
+}
+
+static Rect MapOcrRectFrom90(const Rect& r, int origW, int origH, bool clockwise) {
+    if (clockwise) {
+        return Rect(r.y, origH - r.x - r.dx, r.dy, r.dx);
+    }
+    return Rect(origW - r.y - r.dy, r.x, r.dy, r.dx);
+}
+
+static void MapOcrBoxesFrom90(Vec<OcrBox>& boxes, int origW, int origH, bool clockwise) {
+    for (int i = 0; i < boxes.Size(); i++) {
+        OcrBox& b = boxes[i];
+        b.rect = MapOcrRectFrom90(b.rect, origW, origH, clockwise);
+        free(b.charX);
+        b.charX = nullptr;
+        b.nChar = 0;
+    }
+}
+
+static bool OcrRecognizeRgbScored(const u8* rgb, int w, int h, int stride, Vec<OcrBox>& boxes, int* scoreOut) {
+    boxes.Reset();
+    bool ok = OcrRecognizeRgb(rgb, w, h, stride, boxes);
+    int score = ok ? ScoreOcrBoxes(boxes) : 0;
+    if (scoreOut) {
+        *scoreOut = score;
+    }
+    return ok && score > 0;
+}
+
 static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, int imgH, int stride,
                             const RectF& pageBox, PageText* pt, PageTextUtf8* utf8) {
     if (!pt || !utf8 || imgW < 1 || imgH < 1 || pageBox.IsEmpty()) {
@@ -1328,7 +1472,51 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr) {
             bmp = nullptr;
             if (rgb) {
                 Vec<OcrBox> boxes;
-                ok = OcrRecognizeRgb(rgb, w, h, stride, boxes);
+                int usedRot = 0;
+                bool ok0 = OcrRecognizeRgb(rgb, w, h, stride, boxes);
+                int score0 = ok0 ? ScoreOcrBoxes(boxes) : 0;
+                if (!ok0) {
+                    FreeOcrBoxes(boxes);
+                    score0 = 0;
+                }
+                if (OcrShouldTryPageRotate(boxes, w, h)) {
+                    int bestScore = score0;
+                    int bestRot = 0;
+                    Vec<OcrBox> bestBoxes;
+                    const int rots[2] = {90, 270};
+                    for (int ri = 0; ri < 2; ri++) {
+                        bool cw = rots[ri] == 90;
+                        int nw = 0, nh = 0, ns = 0;
+                        u8* rot = RotateRgb90(rgb, w, h, stride, cw, &nw, &nh, &ns);
+                        if (!rot) {
+                            continue;
+                        }
+                        Vec<OcrBox> rotBoxes;
+                        int rotScore = 0;
+                        bool rotOk = OcrRecognizeRgbScored(rot, nw, nh, ns, rotBoxes, &rotScore);
+                        if (rotOk && rotScore > bestScore + 18) {
+                            MapOcrBoxesFrom90(rotBoxes, w, h, cw);
+                            FreeOcrBoxes(bestBoxes);
+                            bestBoxes = rotBoxes;
+                            rotBoxes.Reset();
+                            bestScore = rotScore;
+                            bestRot = rots[ri];
+                        } else {
+                            FreeOcrBoxes(rotBoxes);
+                        }
+                        free(rot);
+                    }
+                    if (bestRot != 0) {
+                        logf("Ocr: page %d using %d deg (score %d > %d)\n", pageNo, bestRot, bestScore, score0);
+                        FreeOcrBoxes(boxes);
+                        boxes = bestBoxes;
+                        bestBoxes.Reset();
+                        usedRot = bestRot;
+                    } else {
+                        FreeOcrBoxes(bestBoxes);
+                    }
+                }
+                ok = ScoreOcrBoxes(boxes) > 0;
                 if (ok) {
                     PageText pt{};
                     PageTextUtf8 utf8{};
@@ -1336,13 +1524,16 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr) {
                     FreeOcrBoxes(boxes);
                     if (pt.text && pt.len > 0) {
                         engine->SetCachedPageText(pageNo, pt, utf8);
+                        engine->SetOcrPageRotate(pageNo, usedRot);
                     } else {
                         FreePageText(&pt);
                         FreePageTextUtf8(&utf8);
                         ok = false;
+                        engine->SetOcrPageRotate(pageNo, 0);
                     }
                 } else {
                     FreeOcrBoxes(boxes);
+                    engine->SetOcrPageRotate(pageNo, 0);
                 }
                 free(rgb);
             }
@@ -1699,6 +1890,14 @@ static void OcrFinishUi(OcrDoneUi* d) {
                 if (d->engine && d->engine->CountOcrCachedPages() > 0) {
                     d->engine->MarkUnsavedOcrText();
                 }
+                if (d->engine && EngineMupdfApplyPendingOcrPageRotates(d->engine) > 0) {
+                    MainWindow* win =
+                        d->hwndCanvas && IsWindow(d->hwndCanvas) ? FindMainWindowByHwnd(d->hwndCanvas) : nullptr;
+                    DisplayModel* dm = win ? win->AsFixed() : nullptr;
+                    if (dm && dm->GetEngine() == d->engine) {
+                        dm->Relayout(dm->GetZoomVirtual(), dm->GetRotation());
+                    }
+                }
                 OcrShowQuietDone(d->hwndCanvas, _TRA("Ready to search"));
                 MainWindow* win =
                     d->hwndCanvas && IsWindow(d->hwndCanvas) ? FindMainWindowByHwnd(d->hwndCanvas) : nullptr;
@@ -1717,6 +1916,15 @@ static void OcrFinishUi(OcrDoneUi* d) {
 
     if (d->ok && d->hwndCanvas && IsWindow(d->hwndCanvas)) {
         InvalidateRect(d->hwndCanvas, nullptr, FALSE);
+    }
+    if (d->ok && d->engine && d->pageNo > 0 && d->engine->GetOcrPageRotate(d->pageNo) > 0) {
+        if (EngineMupdfEnsurePageOcrRotate(d->engine, d->pageNo)) {
+            MainWindow* win = d->hwndCanvas && IsWindow(d->hwndCanvas) ? FindMainWindowByHwnd(d->hwndCanvas) : nullptr;
+            DisplayModel* dm = win ? win->AsFixed() : nullptr;
+            if (dm && dm->GetEngine() == d->engine) {
+                dm->Relayout(dm->GetZoomVirtual(), dm->GetRotation());
+            }
+        }
     }
     if (d->regionJob) {
         if (d->ok) {

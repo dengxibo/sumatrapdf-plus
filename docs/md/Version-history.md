@@ -2,6 +2,39 @@
 
 ## next
 
+- extract bookmarks: two 办法 in one PDF keep their own 附件1/2/3; landscape scanned 公文 body stands up with /Rotate 270
+  提取目录：同一 PDF 里两份办法各自保留附件 1/2/3；横向扫描的办法正文用 /Rotate 270 立起来，不再侧着
+
+- toolbar: stamp after the line tools — click to place a built-in PDF stamp (Draft by default; last type chosen in the editor is reused). Drag to size. Ctrl+click to keep stamping
+  工具栏：画线工具后增加图章。单击盖系统内置图章（默认 Draft，编辑器里选过的类型会记住）。拖动改大小，Ctrl+点击可连续盖章
+
+- extract bookmarks: restore missing English word spaces (ACupofCider → A Cup of Cider)
+  提取目录：补回英文词间被 OCR 吃掉的窄空格，不再粘成 ACupofCider
+
+- home: list-view filenames use the theme text color instead of washed-out gray
+  首页：列表模式的书名用主题正文色，不再发灰发淡
+
+- extract bookmarks: still find a printed Contents page when OCR glues "Contents" to the next title (ContentsA / TableofContentsACupofCider)
+  提取目录：OCR 把 Contents 和下一条标题粘在一起时仍能认出印刷目录，不再整页漏掉
+
+- extract bookmarks: if OCR/text exists but there is no printed TOC or chapter list, say so — do not tell the user to recognize text again
+  提取目录：已经有 OCR/文字、只是没有印刷目录或章节标题时，直说无法提取，不再误报「请先识别文字」
+
+- sidebar: dragging the TOC splitter keeps the last page on screen without flashing; full relayout runs on mouse-up
+  拖目录分隔条时正文保留上一帧且不再闪抖，松手后再重排
+
+- home: recently-opened toggle uses a stroke history icon (gap 9–11 o'clock, filled arrowhead, L-shaped hands, no white tile)
+  首页：「最近打开」为描边历史图标：开口 9 点到 11 点、实心箭头、中间 L 形时针分针，无白底
+
+- home: search matches the file name only, not folders in the path
+  首页搜索只匹配文件名，目录名命中不算
+
+- home: thumbnail search highlights stay inside the filename box (no stray yellow squares in an empty slot)
+  首页：缩略图搜索高亮不出文件名框，不再在空栏里画出黄块
+
+- home: list/grid and recent/frequent are icon toggles with tooltips
+  首页：列表/缩略图、最近/经常打开都是图标开关，悬停有提示
+
 ## 3.7.30 (2026-08-25)
 
 - home: thumbnail cards have pin/remove; right-click a card for Open / Show in folder / Pin / Remove; empty canvas offers Remove missing files from home (fixed-drive only). Thumbnails grow/shrink slightly to fill the window width (`HomePageThumbnailDx`)

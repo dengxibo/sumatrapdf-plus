@@ -177,7 +177,7 @@ CmdCreateAnnotPopup,,Create Popup Annotation,
 CmdCreateAnnotRedact,,Create Redact Annotation,
 CmdCreateAnnotSquare,,Create Square Annotation,
 CmdCreateAnnotSquiggly,,Create Squiggly Annotation,
-CmdCreateAnnotStamp,,Create Stamp Annotation,
+CmdCreateAnnotStamp,,Create Stamp Annotation,toolbar stamp (click to place built-in Draft/Approved/…)
 CmdCreateAnnotStrikeOut,,Create Strike Out Annotation,
 CmdCreateAnnotText,,Create Text Annotation,
 CmdCreateAnnotUnderline,"u, U",Create Underline Annotation,

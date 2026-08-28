@@ -10841,7 +10841,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             bool fromToolbar = cmdHwnd == win->hwndToolbar || lp == 0;
             if (fromToolbar &&
                 (cmdId == CmdCreateAnnotText || cmdId == CmdCreateAnnotSquare || cmdId == CmdCreateAnnotCircle ||
-                 cmdId == CmdCreateAnnotLine || cmdId == CmdCreateAnnotInk)) {
+                 cmdId == CmdCreateAnnotLine || cmdId == CmdCreateAnnotInk || cmdId == CmdCreateAnnotStamp)) {
                 bool canQuickAnnot = EbookAnnotationsSupported(tab);
                 if (!canQuickAnnot) {
                     EngineBase* engine = dm->GetEngine();

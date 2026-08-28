@@ -145,3 +145,7 @@ AnnotationType CmdIdToAnnotationType(int cmdId);
 bool PlaySoundAnnotation(Annotation* annot);
 
 bool AnnotationSupportsMediaPlayback(AnnotationType tp);
+
+const char* DefaultStampIconName();
+void RememberStampIconName(const char* name);
+SizeF GetDefaultStampSize();

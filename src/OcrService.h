@@ -5,6 +5,8 @@ struct MainWindow;
 class EngineBase;
 
 bool OcrEngineKindSupported(EngineBase* engine);
+bool OcrAutoEnabled(EngineBase* engine);
+bool OcrDeferExtractUntilDocumentReady(MainWindow* win, bool persistToDisk);
 bool OcrDocumentHasFileTextLayer(EngineBase* engine);
 bool OcrPageLooksScanned(EngineBase* engine, int pageNo);
 bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr = false);

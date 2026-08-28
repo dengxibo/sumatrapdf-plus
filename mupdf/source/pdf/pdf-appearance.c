@@ -1464,23 +1464,66 @@ write_stamp(fz_context *ctx, fz_buffer *buf, fz_font *font, const char *text, fl
 	fz_append_string(ctx, buf, "ET\n");
 }
 
+/* SumatraPDF: keep rubber stamps upright on /Rotate 90/270 pages.
+ * Art is 190x50 in form space; page CTM includes rotate(-page_rot), so the
+ * appearance Matrix must rotate(+page_rot) or the stamp reads as a thin
+ * vertical strip and aspect-fit shrinks it to a few points. */
+static int
+pdf_page_rotate_for_stamp(fz_context *ctx, pdf_annot *annot)
+{
+	int rotate;
+
+	if (!annot->page)
+		return 0;
+	rotate = pdf_dict_get_inheritable_int(ctx, annot->page->obj, PDF_NAME(Rotate));
+	if (rotate < 0)
+		rotate = 360 - ((-rotate) % 360);
+	if (rotate >= 360)
+		rotate = rotate % 360;
+	rotate = 90 * ((rotate + 45) / 90);
+	if (rotate >= 360)
+		rotate = 0;
+	return rotate;
+}
+
 static void
 pdf_write_stamp_appearance_rubber(fz_context *ctx, pdf_annot *annot, fz_buffer *buf, fz_rect *rect, fz_rect *bbox, fz_matrix *matrix, pdf_obj **res)
 {
 	fz_font *font;
 	pdf_obj *res_font;
 	pdf_obj *name;
-	float w, h, xs, ys;
+	float w, h, xs, ys, fit_w, fit_h;
 	fz_matrix rotate;
+	int page_rot;
 
 	name = pdf_dict_get(ctx, annot->obj, PDF_NAME(Name));
 	if (!name)
 		name = PDF_NAME(Draft);
 
+	page_rot = pdf_page_rotate_for_stamp(ctx, annot);
+	/* Tilt around the art center; expand BBox so the corners are not clipped. */
+	rotate = fz_translate(95, 25);
+	rotate = fz_pre_rotate(rotate, 8.f);
+	rotate = fz_pre_translate(rotate, -95, -25);
+	{
+		fz_rect ink = fz_make_rect(1, 1, 189, 47);
+		ink = fz_transform_rect(ink, rotate);
+		ink = fz_expand_rect(ink, 2);
+		fit_w = ink.x1 - ink.x0;
+		fit_h = ink.y1 - ink.y0;
+		*bbox = ink;
+	}
+	if (page_rot == 90 || page_rot == 270)
+	{
+		float t = fit_w;
+		fit_w = fit_h;
+		fit_h = t;
+	}
+
 	h = rect->y1 - rect->y0;
 	w = rect->x1 - rect->x0;
-	xs = w / 190;
-	ys = h / 50;
+	xs = w / fit_w;
+	ys = h / fit_h;
 
 	font = fz_new_base14_font(ctx, "Times-Bold");
 	fz_try(ctx)
@@ -1494,7 +1537,6 @@ pdf_write_stamp_appearance_rubber(fz_context *ctx, pdf_annot *annot, fz_buffer *
 		pdf_write_opacity(ctx, annot, buf, res);
 		pdf_write_fill_color_appearance(ctx, annot, buf);
 		pdf_write_stroke_color_appearance(ctx, annot, buf);
-		rotate = fz_rotate(0.6f);
 		fz_append_printf(ctx, buf, "%M cm\n", &rotate);
 		fz_append_string(ctx, buf, "2 w\n2 2 186 44 re\nS\n");
 
@@ -1540,21 +1582,21 @@ pdf_write_stamp_appearance_rubber(fz_context *ctx, pdf_annot *annot, fz_buffer *
 	fz_catch(ctx)
 		fz_rethrow(ctx);
 
-	*bbox = fz_make_rect(0, 0, 190, 50);
 	if (xs > ys)
 	{
 		float xc = (rect->x1+rect->x0) / 2;
-		rect->x0 = xc - 95 * ys;
-		rect->x1 = xc + 95 * ys;
+		rect->x0 = xc - (fit_w / 2) * ys;
+		rect->x1 = xc + (fit_w / 2) * ys;
 	}
 	else
 	{
 		float yc = (rect->y1+rect->y0) / 2;
-		rect->y0 = yc - 25 * xs;
-		rect->y1 = yc + 25 * xs;
+		rect->y0 = yc - (fit_h / 2) * xs;
+		rect->y1 = yc + (fit_h / 2) * xs;
 	}
 
-	*matrix = fz_identity;
+	/* Counter page /Rotate so the 190x50 art stays horizontal on screen. */
+	*matrix = fz_rotate((float)page_rot);
 }
 
 static void

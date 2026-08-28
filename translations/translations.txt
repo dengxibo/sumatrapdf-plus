@@ -32795,6 +32795,10 @@ tw:直線註解（Ctrl+點選鎖定）
 cn:墨迹批注（Ctrl+点击锁定）
 tw:墨跡註解（Ctrl+點選鎖定）
 
+:Stamp Annotation (Ctrl+click to lock)
+cn:图章（Ctrl+点击锁定）
+tw:圖章（Ctrl+點選鎖定）
+
 :OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
 cn:未找到 OCR 模型。\n请将 onnxruntime.dll、det.onnx、rec.onnx 和 keys.txt 放到：\n%s
 tw:找不到 OCR 模型。\n請將 onnxruntime.dll、det.onnx、rec.onnx 和 keys.txt 放到：\n%s
@@ -33020,3 +33024,11 @@ cn:从首页移除丢失的文件
 tw:從首頁移除遺失的檔案
 
 
+
+:No printed table of contents found in the first pages.
+cn:前几页没有找到印刷目录。
+tw:前幾頁沒有找到印刷目錄。
+
+:Text was found, but this file has no table of contents or chapter headings to extract.
+cn:文字已经识别。没有找到印刷目录或章节标题，无法提取书签。
+tw:文字已經識別。沒有找到印刷目錄或章節標題，無法提取書籤。

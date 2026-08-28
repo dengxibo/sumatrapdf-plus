@@ -383,6 +383,34 @@ static const char* gIconAnnotInk =
   <path d="M4 18 L8 14 L14 11 L20 5" />
 </svg>)";
 
+// tabler rubber-stamp, without the ground line (same stroke as other toolbar icons)
+static const char* gIconAnnotStamp =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M21 17.85h-18c0 -4.05 1.421 -4.05 3.79 -4.05c5.21 0 1.21 -4.59 1.21 -6.8a4 4 0 1 1 8 0c0 2.21 -4 6.8 1.21 6.8c2.369 0 3.79 0 3.79 4.05z" />
+</svg>)";
+
+// User fullscreen icon (4 corners out). Same 1024 path, currentColor so the toolbar theme applies.
+static const char* gIconFullscreen =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 1024 1024">
+  <rect x="0" y="0" width="1024" height="1024" stroke="none" fill="none"></rect>
+  <path d="M285.866667 810.666667H384v42.666666H213.333333v-170.666666h42.666667v98.133333l128-128 29.866667 29.866667-128 128z m494.933333 0l-128-128 29.866667-29.866667 128 128V682.666667h42.666666v170.666666h-170.666666v-42.666666h98.133333zM285.866667 256l128 128-29.866667 29.866667-128-128V384H213.333333V213.333333h170.666667v42.666667H285.866667z m494.933333 0H682.666667V213.333333h170.666666v170.666667h-42.666666V285.866667l-128 128-29.866667-29.866667 128-128z" fill="currentColor"></path>
+</svg>)";
+
+// Matching 4-corner inward when already fullscreen (tabler arrows-minimize).
+static const char* gIconFullscreenExit =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M5 9l4 0l0 -4" />
+  <path d="M3 3l6 6" />
+  <path d="M5 15l4 0l0 4" />
+  <path d="M3 21l6 -6" />
+  <path d="M19 9l-4 0l0 -4" />
+  <path d="M15 9l6 -6" />
+  <path d="M19 15l-4 0l0 4" />
+  <path d="M15 15l6 6" />
+</svg>)";
+
 // https://github.com/tabler/tabler-icons/blob/master/icons/outline/scan.svg
 static const char* gIconOcr =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -480,6 +508,9 @@ static const char* gIcons[] = {
     gIconMergeUp,
     gIconLink,
     gIconCalibrateToc,
+    gIconAnnotStamp,
+    gIconFullscreen,
+    gIconFullscreenExit,
 };
 // clang-format on
 

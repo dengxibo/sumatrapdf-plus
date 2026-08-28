@@ -115,7 +115,7 @@ static SizeF GetDefaultEbookPointAnnotationSize(AnnotationType type) {
         case AnnotationType::FreeText:
             return {200, 100};
         case AnnotationType::Stamp:
-            return {190, 50};
+            return GetDefaultStampSize();
         case AnnotationType::Caret:
             return {18, 15};
         case AnnotationType::Line:
@@ -907,7 +907,7 @@ EbookAnnotation* EbookAnnotationsCreateAt(WindowTab* tab, DisplayModel* dm, Poin
     } else if (type == AnnotationType::Text) {
         annotation->icon = str::Dup(GetDefaultEbookTextIconTemp());
     } else if (type == AnnotationType::Stamp) {
-        annotation->icon = str::Dup("Draft");
+        annotation->icon = str::Dup(DefaultStampIconName());
     }
     annotation->exact = str::Dup(ExtractContextTemp(engine, pageNo, glyph, std::min(glyph + 1, textLen)));
     constexpr int kContextChars = 32;
@@ -1378,6 +1378,9 @@ bool EbookAnnotationSetIcon(WindowTab* tab, EbookAnnotation* annotation, const c
     AutoFreeStr previous(annotation->icon);
     annotation->icon = str::Dup(normalized);
     TouchEbookAnnotationModified(annotation);
+    if (annotation->type == AnnotationType::Stamp) {
+        RememberStampIconName(normalized);
+    }
     if (!SaveEbookAnnotations(annotations)) {
         str::Free(annotation->icon);
         annotation->icon = previous.StealData();
@@ -1918,9 +1921,11 @@ static void PaintEbookPointAnnotation(WindowTab* tab, HDC hdc, Rect marker, Eboo
         float cx = (float)marker.x + marker.dx / 2.f;
         float cy = (float)marker.y + marker.dy / 2.f;
         graphics.TranslateTransform(cx, cy);
-        graphics.RotateTransform(.6f);
+        graphics.RotateTransform(8.f);
         graphics.TranslateTransform(-cx, -cy);
-        float inset = std::max(2.f, lineWidth * 2.f);
+        // Keep the tilted frame inside the marker (same 8° as the PDF appearance).
+        float tiltPad = marker.dx * 0.07f + marker.dy * 0.02f;
+        float inset = std::max(std::max(2.f, lineWidth * 2.f), tiltPad);
         Gdiplus::RectF stamp((float)marker.x + inset, (float)marker.y + inset, (float)marker.dx - inset * 2,
                              (float)marker.dy - inset * 2);
         Gdiplus::Pen stampPen(Gdiplus::Color(255, r, g, b), lineWidth * 2.f);

@@ -52,6 +52,9 @@ enum class TbIcon {
     MergeUp,
     Link,
     CalibrateToc,
+    AnnotStamp,
+    Fullscreen,
+    FullscreenExit,
     kMax
 };
 

@@ -488,6 +488,9 @@ class EngineBase {
     void AppendCachedPageText(int pageNo, PageText pt, PageTextUtf8 utf8);
     bool HasCachedOcrText(int pageNo);
     int CountOcrCachedPages();
+    // Extra clockwise page /Rotate to apply for sideways OCR (0, 90, 180, 270).
+    void SetOcrPageRotate(int pageNo, int degCw);
+    int GetOcrPageRotate(int pageNo);
     void MarkUnsavedOcrText() { unsavedOcrText = true; }
     void ClearUnsavedOcrText() { unsavedOcrText = false; }
     bool HasUnsavedOcrText() const { return unsavedOcrText; }
@@ -589,6 +592,7 @@ class EngineBase {
     void EnsurePagesTextSize();
     void EnsurePagesTextUtf8Size();
     void EnsurePageOcrTriedSize();
+    void EnsurePageOcrRotateSize();
 
     // cached text, one entry per page (lazily allocated)
     PageText* pagesText = nullptr;
@@ -597,6 +601,8 @@ class EngineBase {
     int pagesTextUtf8Size = 0;
     u8* pageOcrTried = nullptr;
     int pageOcrTriedSize = 0;
+    u16* pageOcrRotate = nullptr;
+    int pageOcrRotateSize = 0;
     CRITICAL_SECTION textCacheLock;
 };
 

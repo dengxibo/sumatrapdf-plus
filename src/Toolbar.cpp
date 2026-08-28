@@ -98,12 +98,13 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
     {TbIcon::DocColorFollowTheme, CmdSetPdfDocumentColorModeBlack,
      _TRN("Document Color Mode: Match theme (use current theme colors)")},
-    {TbIcon::ArrowsDiagonal, CmdToggleFullscreen, _TRN("Toggle Fullscreen (F11)")},
-    {TbIcon::AnnotText, CmdCreateAnnotText, _TRN("Text Annotation (Ctrl+click to lock)")},
-    {TbIcon::AnnotSquare, CmdCreateAnnotSquare, _TRN("Rectangle Annotation (Ctrl+click to lock)")},
-    {TbIcon::AnnotCircle, CmdCreateAnnotCircle, _TRN("Circle Annotation (Ctrl+click to lock)")},
+    {TbIcon::Fullscreen, CmdToggleFullscreen, _TRN("Toggle Fullscreen (F11)")},
     {TbIcon::AnnotLine, CmdCreateAnnotLine, _TRN("Line Annotation (Ctrl+click to lock)")},
     {TbIcon::AnnotInk, CmdCreateAnnotInk, _TRN("Ink Annotation (Ctrl+click to lock)")},
+    {TbIcon::AnnotSquare, CmdCreateAnnotSquare, _TRN("Rectangle Annotation (Ctrl+click to lock)")},
+    {TbIcon::AnnotCircle, CmdCreateAnnotCircle, _TRN("Circle Annotation (Ctrl+click to lock)")},
+    {TbIcon::AnnotText, CmdCreateAnnotText, _TRN("Text Annotation (Ctrl+click to lock)")},
+    {TbIcon::AnnotStamp, CmdCreateAnnotStamp, _TRN("Stamp Annotation (Ctrl+click to lock)")},
     {TbIcon::Ocr, CmdToggleAutoOcr, _TRN("Auto OCR")},
     {TbIcon::Speak, CmdReadAloud, _TRN("Read Aloud")},
 };
@@ -283,7 +284,7 @@ void UpdateFullscreenToolbarButton(MainWindow* win) {
     }
     bool fullScreen = win->isFullScreen;
     SetToolbarButtonCheckedState(win, CmdToggleFullscreen, fullScreen);
-    TbIcon icon = fullScreen ? TbIcon::ArrowsDiagonalMinimize : TbIcon::ArrowsDiagonal;
+    TbIcon icon = fullScreen ? TbIcon::FullscreenExit : TbIcon::Fullscreen;
     for (int i = 0; i < n; i++) {
         SetToolbarButtonImageByIdx(win->hwndToolbar, buttons[i], icon);
     }
@@ -392,6 +393,7 @@ static bool IsCmdAvailable(MainWindow* win, int cmdId) {
         case CmdCreateAnnotCircle:
         case CmdCreateAnnotLine:
         case CmdCreateAnnotInk:
+        case CmdCreateAnnotStamp:
             if (!gGlobalPrefs->showAnnotToolbarButtons) {
                 return false;
             }
@@ -1303,15 +1305,16 @@ void UpdateAnnotToolToolbarButtons(MainWindow* win) {
     if (!win || !win->hwndToolbar) {
         return;
     }
-    // Clear all four first so stale per-button toggles cannot stack checked state.
+    // Clear all first so stale per-button toggles cannot stack checked state.
     SetToolbarButtonCheckedState(win, CmdCreateAnnotText, false);
     SetToolbarButtonCheckedState(win, CmdCreateAnnotSquare, false);
     SetToolbarButtonCheckedState(win, CmdCreateAnnotCircle, false);
     SetToolbarButtonCheckedState(win, CmdCreateAnnotLine, false);
     SetToolbarButtonCheckedState(win, CmdCreateAnnotInk, false);
+    SetToolbarButtonCheckedState(win, CmdCreateAnnotStamp, false);
     int active = win->annotCreateToolCmd;
     if (active == CmdCreateAnnotText || active == CmdCreateAnnotSquare || active == CmdCreateAnnotCircle ||
-        active == CmdCreateAnnotLine || active == CmdCreateAnnotInk) {
+        active == CmdCreateAnnotLine || active == CmdCreateAnnotInk || active == CmdCreateAnnotStamp) {
         SetToolbarButtonCheckedState(win, active, true);
     }
 }

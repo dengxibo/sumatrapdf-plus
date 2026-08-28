@@ -415,6 +415,7 @@ EngineBase::~EngineBase() {
         free(pagesTextUtf8);
     }
     free(pageOcrTried);
+    free(pageOcrRotate);
     DeleteCriticalSection(&textCacheLock);
     str::Free(defaultExt);
     ArenaDelete(arena);
@@ -619,6 +620,56 @@ void EngineBase::MarkOcrTried(int pageNo) {
     if (pageOcrTried && pageNo <= pageOcrTriedSize) {
         pageOcrTried[pageNo - 1] = 1;
     }
+}
+
+void EngineBase::EnsurePageOcrRotateSize() {
+    int n = pageCount;
+    if (n < 1) {
+        return;
+    }
+    if (!pageOcrRotate) {
+        pageOcrRotate = AllocArray<u16>(n);
+        pageOcrRotateSize = n;
+        return;
+    }
+    if (pageOcrRotateSize >= n) {
+        return;
+    }
+    int oldSize = pageOcrRotateSize;
+    pageOcrRotate = (u16*)realloc(pageOcrRotate, (size_t)n * sizeof(u16));
+    if (!pageOcrRotate) {
+        pageOcrRotateSize = 0;
+        return;
+    }
+    memset(pageOcrRotate + oldSize, 0, (size_t)(n - oldSize) * sizeof(u16));
+    pageOcrRotateSize = n;
+}
+
+void EngineBase::SetOcrPageRotate(int pageNo, int degCw) {
+    if (pageNo < 1 || pageNo > pageCount) {
+        return;
+    }
+    int d = ((degCw % 360) + 360) % 360;
+    d = 90 * ((d + 45) / 90);
+    if (d >= 360) {
+        d = 0;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    EnsurePageOcrRotateSize();
+    if (pageOcrRotate && pageNo <= pageOcrRotateSize) {
+        pageOcrRotate[pageNo - 1] = (u16)d;
+    }
+}
+
+int EngineBase::GetOcrPageRotate(int pageNo) {
+    if (pageNo < 1) {
+        return 0;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    if (!pageOcrRotate || pageNo > pageOcrRotateSize) {
+        return 0;
+    }
+    return (int)pageOcrRotate[pageNo - 1];
 }
 
 void EngineBase::ClearOcrTried(int pageNo) {
