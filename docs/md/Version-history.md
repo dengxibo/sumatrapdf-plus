@@ -2,6 +2,66 @@
 
 ## next
 
+- home: restore the two icon toggles (list/thumbnails, recent/frequent); drop the “Recently Opened” dropdown and header “Open a document…” link
+  首页：恢复两个图标开关（列表/缩略图、最近/最热），不再用「最近打开」下拉和顶栏「打开文档」
+
+- extract bookmarks: `2、设区市负担…万元` stays in the outline even when the same page lists `附件2` and a later form is `附件2`; only 函末 `2.申请表` / `2.一览表` is the same item as that attachment
+  提取目录：正文「2、设区市负担…万元」不要因为同页函末清单和后面的附件2就删掉；只有「2.申请表」「2.一览表」这种才和附件2是同一条
+
+- extract bookmarks: `附件 2` (space before the digit) is attachment 2, not a second `附件1`; glue a following large `…填写规范` title; do not remap `附件1 年度考核登记表` onto that spec
+  提取目录：「附件 2」中间有空格仍是附件2，不要并进附件1；下面大号「…填写规范」收成附件2的标题，不要把附件1的跳转改到这份规范上
+
+- OCR toolbar: Auto-save (`CmdToggleOcrAutoSave`, setting `OcrAutoSave`, default off). When checked, Recognize All Scanned Pages overwrites the current PDF after the scan, and bookmark extraction writes the outline to disk
+  OCR 下拉增加「自动保存」（`OcrAutoSave`，默认关）。勾选后，识别完全文会覆盖保存当前 PDF；提取目录也会写入文件
+
+- extract bookmarks: drop a leftover `征求〈…要点` of the 函 title; cover-list `附件1 某某` and a later large `某某` become one `附件1` at the heading
+  提取目录：函标题残片「征求〈…要点」不要；函末「附件1 某某」和后面大号「某某」合成一条「附件1」，跳到大标题
+
+- extract bookmarks: 红头 `…领导小组办公室` is not part of the title — keep `关于印发《…》的通知` so the sidebar shows the notice, not the letterhead
+  提取目录：红头「…领导小组办公室」不拼进标题，书签只留「关于印发《…》的通知」，侧栏先看见通知本身
+
+- extract bookmarks: a 通知 may mix `一、` then `1.` with `三、` then `（一）`/`（二）` then `1.`; `1.12333电话` stays a list item under `（二）`, not a `1.1` sibling
+  提取目录：同一份通知里，一、下面可以直接跟 1.，三、也可以先（一）（二）再跟 1.；「1.12333电话」仍是（二）下的条目，不当成 1.1 跟（二）平级
+
+- read aloud: vertical books turn to the next page when TTS leaves the current one (column highlights stay mid-screen, so the old 78% Y threshold never fired)
+  朗读：竖版读完当前页会翻到下一页（竖栏高亮一直在画面中部，原先按纵向 78% 跟读不会触发翻页）
+
+- home: pinned list/thumbnail pushpins go near-black (near-white in dark chrome); idle pins stay mid-gray — not the theme link color
+  首页：钉住的图钉变深（深色主题变亮），未钉住仍是中灰，不再用链接色
+
+- extract bookmarks: official TOC titles drop the issuing-agency prefix (中共…人民政府 / …厅) so the sidebar shows 关于… / 印发… / 转发… first
+  提取目录：公文标题去掉发文单位（中共…人民政府 / …厅），书签栏先显示关于… / 印发… / 转发…
+
+- home: opening the tab only loads on-screen thumbnails and does not restat every history file (missing/network paths no longer freeze the UI)
+  首页：点开只加载屏幕上的封面，不再对历史里每一项做磁盘探测（缺失/网络路径不再把界面卡死）
+
+- OCR: vertical books stay upright — do not bake a 90° page rotate. Recognize tall columns (crop 90° CCW, right-to-left order) without transposing the page. Official landscape forms still stand up.
+  OCR：竖版书不再被转 90°。按竖栏识别（裁块逆时针转、从右往左排），页面保持正立。公文横表仍会立起来。
+
+- extract bookmarks: `1.…@qq.com` is a task line, not a `600mm` spec row — keep it under 四、 when 2. 3. are already there
+  提取目录：1.…@qq.com 是事项，不是 600mm 规格行；四、下已有 2. 3. 时把这条 1. 补上
+
+- extract bookmarks: 函末 `附件：报名表` is a cite — keep one later real 附件 heading, do not keep three copies or invent 附件2
+  提取目录：函末「附件：报名表」是正文引用，只留后面真正的附件标题，不再留三份或编出附件2
+
+- extract bookmarks: CID / missing-ToUnicode titles like 人汴 / 通亦 / 部11 are not 繁体 — OCR those pages and rewrite to 人社 / 通办 / 部门
+  提取目录：人汴、通亦、部11 不是繁体，是字库 ToUnicode 对错了；这类页走 OCR，并改回人社、通办、部门
+
+- extract bookmarks: 印发《方案》的通知 stays the first TOC item; do not rewrite it to the inner 方案 name
+  提取目录：印发《方案》的通知仍作第一条，不再收成书名号里的方案名
+
+- dark mode: newly drawn shapes, lines, and stamps appear immediately (drop the match-theme page bitmap when annotations change)
+  暗黑模式：画完图形、线条、印章后马上显示（改标注时丢掉跟随主题的整页缓存）
+
+- extract bookmarks: 3-line 意见 titles (`中共…人民政府` / `关于…` / `“一号…”的意见`) become the TOC root; do not treat the issuer line as 红头 or glue the date. CID `关千` / `［程` and a basename ending `（OA）` still count as that title; do not salvage `和自我革新相结合、` as `1.`
+  提取目录：三行意见标题（中共…人民政府 / 关于… / “一号…”的意见）收成目录根；签发机关行不当红头，也不要把日期拼进标题。CID「关千／［程」和文件名末「（OA）」仍算这份标题；不要把「和自我革新相结合、」补成 1.
+
+- OCR toolbar dropdown: OCR region, Recognize All Scanned Pages (Fast) / (Accurate). Fast / Accurate clear this session's OCR and re-recognize every page.
+  OCR 下拉：框选识别、识别所有扫描页（快速）/（精确）。快速 / 精确会清除本次识别结果并重新识别全部页面。
+
+- OCR: PP-OCRv6 Tiny/Small (Fast / Balanced / experimental Hybrid) with paired dictionaries; current page uses Small, full-document OCR uses Tiny. ONNX Runtime 1.20.x so RapidOCR v6 IR 10 models load without a header patch
+  OCR：支持 PP-OCRv6 Tiny/Small（Fast / Balanced / 实验 Hybrid），识别模型与字典成对；当前页用 Small，全文用 Tiny。ONNX Runtime 升到 1.20.x，直接加载 RapidOCR v6 的 IR 10 模型，不再改模型头
+
 - extract bookmarks: two 办法 in one PDF keep their own 附件1/2/3; landscape scanned 公文 body stands up with /Rotate 270
   提取目录：同一 PDF 里两份办法各自保留附件 1/2/3；横向扫描的办法正文用 /Rotate 270 立起来，不再侧着
 

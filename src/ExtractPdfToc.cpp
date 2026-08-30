@@ -926,6 +926,7 @@ enum class MarkerType {
 struct HeadingMarker {
     MarkerType type = MarkerType::None;
     int number = -1;
+    int subNumber = 0; // 附件1-1 → number=1, subNumber=1
     int prefixLength = 0;
     int rank = 0;
 };
@@ -1027,6 +1028,68 @@ static void SkipSpacesUtf8(const char* s, int len, int& i) {
             return;
         }
     }
+}
+
+static bool IsOfficialAttachHyphenCp(int cp) {
+    return cp == '-' || cp == 0xFF0D || cp == 0x2013 || cp == 0x2014 || cp == 0x2212;
+}
+
+// After 附件N, consume "-1" / "－2" and an optional "." / "、" / "：".
+static bool ConsumeOfficialAttachSubNumber(const char* s, int len, int& i, int* subOut) {
+    int peek = i;
+    SkipSpacesUtf8(s, len, peek);
+    int hy = peek < len ? Utf8CodepointNext(s, len, peek) : 0;
+    if (!IsOfficialAttachHyphenCp(hy)) {
+        return false;
+    }
+    SkipSpacesUtf8(s, len, peek);
+    int n = ConsumeOfficialNumber(s, len, peek);
+    if (n < 1 || n > 40) {
+        return false;
+    }
+    int after = peek;
+    SkipSpacesUtf8(s, len, after);
+    int next = after < len ? Utf8CodepointNext(s, len, after) : 0;
+    if (next == 0x7B2C) { // 第 — "附件1-第二章"
+        return false;
+    }
+    i = peek;
+    if (IsSimpleArabicListSepCp(next) || next == ':' || next == 0xFF1A) {
+        i = after;
+    }
+    if (subOut) {
+        *subOut = n;
+    }
+    return true;
+}
+
+// "1-1.标题" / "1-1 标题" / "2-2、标题"
+static bool ParseOfficialAttachFormSerial(const char* s, int* majorOut, int* subOut, const char** titleOut) {
+    if (!s || !s[0]) {
+        return false;
+    }
+    int len = (int)str::Len(s);
+    int i = 0;
+    SkipSpacesUtf8(s, len, i);
+    int major = ConsumeOfficialNumber(s, len, i);
+    if (major < 1 || major > 40) {
+        return false;
+    }
+    int sub = 0;
+    if (!ConsumeOfficialAttachSubNumber(s, len, i, &sub)) {
+        return false;
+    }
+    SkipSpacesUtf8(s, len, i);
+    if (titleOut) {
+        *titleOut = s + i;
+    }
+    if (majorOut) {
+        *majorOut = major;
+    }
+    if (subOut) {
+        *subOut = sub;
+    }
+    return titleOut ? s[i] != 0 : true;
 }
 
 // After 附件N, leftover ) / ）。 from a wrapped "见附件N）。" is not a title.
@@ -1190,6 +1253,26 @@ static bool LooksLikeAmountTail(const char* s) {
 }
 
 // 招标规格 / 附件填表说明: "1、标准机柜尺寸为600mm" / "5.表中列对关系"
+// "600mm" is a spec unit. ".com" / "qq.com" is not (email 1.任务 would be dropped).
+static bool LineHasMmAsLengthUnit(const char* s) {
+    if (!s || !s[0]) {
+        return false;
+    }
+    const char* p = s;
+    while (p && p[0]) {
+        const char* hit = str::FindI(p, "mm");
+        if (!hit) {
+            return false;
+        }
+        if (hit > s && hit[-1] == '.') {
+            p = hit + 2;
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
 static bool LooksLikeOfficialSpecOrFormLine(const char* s) {
     if (!s || !s[0]) {
         return false;
@@ -1216,7 +1299,7 @@ static bool LooksLikeOfficialSpecOrFormLine(const char* s) {
             }
         }
     }
-    if (str::FindI(s, "kva") || str::Find(s, "UPS") || str::Find(s, "mm") || str::Find(s, "MM") || str::Find(s, "㎡") ||
+    if (str::FindI(s, "kva") || str::Find(s, "UPS") || LineHasMmAsLengthUnit(s) || str::Find(s, "㎡") ||
         str::Find(s, "平米") || str::Find(s, "平方米") || str::Find(s, "承重")) {
         return true;
     }
@@ -1310,11 +1393,11 @@ static HeadingMarker ParseHeadingMarker(const char* s) {
         int cp2 = i < len ? Utf8CodepointNext(s, len, i) : 0;
         if (cp2 == 0x4EF6) { // 件
             m.type = MarkerType::Appendix;
-            int numAt = i;
-            SkipSpacesUtf8(s, len, numAt);
-            int bang = numAt < len ? Utf8CodepointNext(s, len, numAt) : 0;
+            SkipSpacesUtf8(s, len, i);
+            int bangAt = i;
+            int bang = bangAt < len ? Utf8CodepointNext(s, len, bangAt) : 0;
             if (bang == '!' || bang == 0xFF01) {
-                i = numAt;
+                i = bangAt;
                 m.number = 1;
             } else {
                 m.number = ConsumeOfficialNumber(s, len, i);
@@ -1328,6 +1411,13 @@ static HeadingMarker ParseHeadingMarker(const char* s) {
                         HeadingMarker empty;
                         return empty;
                     }
+                    // "附件：1-1.…" / "附件：" is a cover list, not 附件1.
+                    if (peek == ':' || peek == 0xFF1A) {
+                        m.number = 0;
+                        m.prefixLength = i;
+                        m.rank = 1;
+                        return m;
+                    }
                     m.number = 1;
                 }
             }
@@ -1335,6 +1425,12 @@ static HeadingMarker ParseHeadingMarker(const char* s) {
             if (m.number >= 1 && LooksLikeOfficialAppendixCiteAfterNumber(s, len, i)) {
                 HeadingMarker empty;
                 return empty;
+            }
+            if (m.number >= 1) {
+                int sub = 0;
+                if (ConsumeOfficialAttachSubNumber(s, len, i, &sub)) {
+                    m.subNumber = sub;
+                }
             }
             m.prefixLength = i;
             m.rank = 1;
@@ -1833,6 +1929,13 @@ static void ParseHeadingNumbering(const char* s, ParsedNumbering* out) {
             int after = i;
             int look = after < len ? Utf8CodepointNext(s, len, after) : 0;
             if (IsDigitCp(look) && DottedFollowedByDate(s, len, i)) {
+                out->comp[out->nComp++] = v;
+                out->hadTrailingDot = true;
+                nDig = 0;
+                break;
+            }
+            // "1.12333电话…" is list "1." plus a phone/ID run, not section 1.1233.
+            if (IsDigitCp(look) && CountAsciiDigitsFrom(s, len, i) >= 4) {
                 out->comp[out->nComp++] = v;
                 out->hadTrailingDot = true;
                 nDig = 0;
@@ -2573,6 +2676,68 @@ static bool ScanLinesLookSideways(const Vec<ScanLine>& page, bool afterSideways 
     return false;
 }
 
+static bool CpIsCommonCnProse(int cp);
+static bool FileNameHasOfficialKind(const char* filePath);
+
+// Upright 竖版书: tall CJK columns with prose, not a sideways 报名表.
+static bool ScanLinesLookLikeVerticalBook(const Vec<ScanLine>& page) {
+    int n = 0;
+    int tall = 0;
+    int long8 = 0;
+    int common = 0;
+    for (int i = 0; i < page.Size(); i++) {
+        if (!page[i].text || !page[i].text[0]) {
+            continue;
+        }
+        n++;
+        int g = GlyphCount(page[i].text);
+        if (g >= 8) {
+            long8++;
+        }
+        if (page[i].dy > page[i].dx * 1.4f && page[i].dy > 10.f) {
+            tall++;
+        }
+        int len = (int)str::Len(page[i].text);
+        int b = 0;
+        while (b < len) {
+            int cp = Utf8CodepointNext(page[i].text, len, b);
+            if (cp <= 0) {
+                break;
+            }
+            if (CpIsCommonCnProse(cp)) {
+                common++;
+            }
+        }
+    }
+    if (n < 8 || tall * 2 < n) {
+        return false;
+    }
+    if (common < 3 && long8 < 2) {
+        return false;
+    }
+    return true;
+}
+
+static bool ScanLinesLookLikeBookSpine(const Vec<ScanLine>& page) {
+    for (int i = 0; i < page.Size(); i++) {
+        const char* s = page[i].text;
+        if (!s || !s[0]) {
+            continue;
+        }
+        if (LooksLikePrintedTocHeading(s) || StartsWithXinDeHeading(s)) {
+            return true;
+        }
+        if (str::Find(s, "\xE5\x89\x8D\xE8\xA8\x80") || str::Find(s, "\xE5\x90\x8E\xE8\xAE\xB0")) { // 前言 / 后记
+            return true;
+        }
+        HeadingMarker m = ParseHeadingMarker(s);
+        if (m.type == MarkerType::Chapter) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Fangzheng / Identity-H CJK with no ToUnicode: MuPDF emits dingbats, bopomofo,
 // enclosed numbers, or random Han. Looks like a text layer, so Auto OCR skips it.
 static bool CpIsHanUnified(int cp) {
@@ -2655,18 +2820,45 @@ static bool ScanLineHasUsableOfficialMarker(const char* s) {
            m.type == MarkerType::FormTable;
 }
 
+// Identity-H maps the right glyph to the wrong Han: 人社→人汴, 通办→通亦, 部门→部11.
+// A page can still have 一、 / （二） / 1. so we must not treat a marker as "good text".
+static bool OfficialHeadingRestLooksLikeCidMash(const char* s) {
+    if (!s || !s[0]) {
+        return false;
+    }
+    HeadingMarker m = ParseHeadingMarker(s);
+    const char* rest = (m.rank >= 1 && m.prefixLength > 0) ? s + m.prefixLength : s;
+    int rlen = (int)str::Len(rest);
+    int ri = 0;
+    SkipSpacesUtf8(rest, rlen, ri);
+    rest += ri;
+    if (!rest[0]) {
+        return false;
+    }
+    if (str::Find(rest, "人汴") || str::Find(rest, "通亦") || str::Find(rest, "对林") || str::Find(rest, "推阐") ||
+        str::Find(rest, "部11") || str::Find(rest, "合量子") || str::Find(rest, "｜") || str::Find(rest, "|")) {
+        return true;
+    }
+    return false;
+}
+
 static bool ScanLinesLookLikeCidFontGarbage(const Vec<ScanLine>& page) {
     int nGlyph = 0;
     int nHan = 0;
     int nJunk = 0;
     int nCommon = 0;
+    int nMash = 0;
+    int nMarker = 0;
     for (int i = 0; i < page.Size(); i++) {
         const char* s = page[i].text;
         if (!s || !s[0]) {
             continue;
         }
-        if (ScanLineHasUsableOfficialMarker(s)) {
-            return false;
+        if (ScanLineHasUsableOfficialMarker(s) || ParseHeadingMarker(s).rank >= 1) {
+            nMarker++;
+            if (OfficialHeadingRestLooksLikeCidMash(s)) {
+                nMash++;
+            }
         }
         int len = (int)str::Len(s);
         int b = 0;
@@ -2689,6 +2881,9 @@ static bool ScanLinesLookLikeCidFontGarbage(const Vec<ScanLine>& page) {
                 }
             }
         }
+    }
+    if (nMash >= 2 && nMarker >= 2) {
+        return true;
     }
     if (nGlyph < 12) {
         return false;
@@ -2756,7 +2951,9 @@ static void CollectPageScanLines(EngineBase* engine, int pageNo, Vec<ScanLine>& 
     bool afterSideways = engine && pageNo > 1 && engine->GetOcrPageRotate(pageNo - 1) >= 90;
     int pdfRot = engine ? EngineMupdfGetPageRotateCw(engine, pageNo) : 0;
     bool alreadyRotated = (engine && engine->GetOcrPageRotate(pageNo) >= 90) || pdfRot >= 90;
-    bool sideways = ScanLinesLookSideways(page, afterSideways, !alreadyRotated);
+    bool officialName = engine && FileNameHasOfficialKind(engine->FilePath());
+    bool bookLike = !officialName && (ScanLinesLookLikeVerticalBook(page) || ScanLinesLookLikeBookSpine(page));
+    bool sideways = !bookLike && ScanLinesLookSideways(page, afterSideways, !alreadyRotated);
     bool cidGarbage = ScanLinesLookLikeCidFontGarbage(page);
     int cidCap = engine ? CidGarbageOcrFrontPageCap(engine->PageCount()) : 0;
     bool cidOcrFront = cidGarbage && pageNo <= cidCap;
@@ -2786,13 +2983,15 @@ static void CollectPageScanLines(EngineBase* engine, int pageNo, Vec<ScanLine>& 
         if (cacheWeak) {
             bool scannedOk = !fewNative || mixedImage || sideways || cidOcrFront || OcrPageLooksScanned(engine, pageNo);
             if (scannedOk) {
-                OcrRecognizeEnginePage(engine, pageNo, sideways || mixedImage || imageOnlySmall || cidOcrFront);
+                OcrRecognizeEnginePage(engine, pageNo, sideways || mixedImage || imageOnlySmall || cidOcrFront,
+                                       OcrOperation::AllPages);
             }
         }
         // Sideways 报名表 / 清单: bake /Rotate so the viewer shows landscape without
         // rotating the whole document. Prefer OCR's best angle. Do not default 90
         // over an existing 270 (that is a 180° flip). Only guess 90 when /Rotate is 0.
-        if (sideways) {
+        // Books / 竖版书 stay upright — never bake a page transpose here.
+        if (sideways && !bookLike) {
             int want = engine->GetOcrPageRotate(pageNo);
             int cur = EngineMupdfGetPageRotateCw(engine, pageNo);
             if (want == 90 || want == 270) {
@@ -2802,7 +3001,7 @@ static void CollectPageScanLines(EngineBase* engine, int pageNo, Vec<ScanLine>& 
                     engine->SetOcrPageRotate(pageNo, cur);
                 }
                 EngineMupdfEnsurePageOcrRotate(engine, pageNo);
-            } else if (cur < 1) {
+            } else if (cur < 1 && !engine->HasCachedOcrText(pageNo)) {
                 engine->SetOcrPageRotate(pageNo, 90);
                 EngineMupdfEnsurePageOcrRotate(engine, pageNo);
             }
@@ -3346,6 +3545,15 @@ static bool LooksLikeDomainOrEmailFragment(const char* s) {
         return false;
     }
     if (str::Find(s, "@")) {
+        // "yc7116 @qq.com" crumb vs "请各设区…发送至490034849@qq.com" task line.
+        int g = GlyphCount(s);
+        int len = (int)str::Len(s);
+        int i = 0;
+        SkipSpacesUtf8(s, len, i);
+        int cp = i < len ? Utf8CodepointNext(s, len, i) : 0;
+        if (cp >= 0x4E00 && cp <= 0x9FFF && g >= 8) {
+            return false;
+        }
         return true;
     }
     // Numbered https:// list items are real headings; only reject email/TLD crumbs.
@@ -3481,11 +3689,141 @@ static bool LooksLikeArchiveJunk(const char* s) {
            str::EndsWithI(s, ".zip") || str::EndsWithI(s, ".json.zst") || str::EndsWithI(s, ".tar.zst");
 }
 
+static bool OfficialTitleFindGuanYu(const char* s) {
+    return s && (str::Find(s, "关于") || str::Find(s, "关千"));
+}
+
+static bool OfficialTitleIsIssuerBanner(const char* s) {
+    if (!s || !s[0] || ParseHeadingMarker(s).rank >= 1) {
+        return false;
+    }
+    int g = GlyphCount(s);
+    if (g < 4 || g > 28) {
+        return false;
+    }
+    if (OfficialTitleFindGuanYu(s)) {
+        return false;
+    }
+    return str::StartsWith(s, "中共") || (str::Find(s, "省委") && str::Find(s, "人民政府"));
+}
+
+// 红头 like 江西省…厅…领导小组办公室 — not a 3-line 意见 issuer, not a title.
+static bool LooksLikeOfficialHongtouLetterhead(const char* s) {
+    if (!s || !s[0] || ParseHeadingMarker(s).rank >= 1) {
+        return false;
+    }
+    if (OfficialTitleFindGuanYu(s) || str::Find(s, "印发") || str::Find(s, "转发") || str::Find(s, "批转")) {
+        return false;
+    }
+    int g = GlyphCount(s);
+    if (g < 6 || g > 36) {
+        return false;
+    }
+    if (!str::EndsWith(s, "办公室")) {
+        return false;
+    }
+    return str::Find(s, "厅") || str::Find(s, "局") || str::Find(s, "政府") || str::Find(s, "领导小组");
+}
+
+// Sidebar is narrow: drop 发文单位 so the bookmark starts at 关于 / 印发 / 转发.
+static const char* OfficialFindEarliestSubjectStart(const char* s) {
+    if (!s) {
+        return nullptr;
+    }
+    const char* best = nullptr;
+    const char* needles[] = {"关于", "关千", "印发", "转发", "批转", "《"};
+    for (int i = 0; i < (int)dimof(needles); i++) {
+        const char* p = str::Find(s, needles[i]);
+        if (p && (!best || p < best)) {
+            best = p;
+        }
+    }
+    return best;
+}
+
+static bool OfficialTitlePrefixLooksLikeIssuer(const char* s, int byteLen) {
+    if (!s || byteLen < 2) {
+        return false;
+    }
+    char buf[192];
+    if (byteLen >= (int)sizeof(buf)) {
+        byteLen = (int)sizeof(buf) - 1;
+    }
+    memcpy(buf, s, (size_t)byteLen);
+    buf[byteLen] = 0;
+    str::TrimWSInPlace(buf, str::TrimOpt::Both);
+    int n = (int)str::Len(buf);
+    while (n > 0) {
+        int idx = n;
+        int cp = Utf8CodepointPrev(buf, n, idx);
+        if (cp == ',' || cp == 0x3001 || cp == 0xFF0C || cp == 0x3000 || cp == ' ' || cp == '\t') {
+            buf[idx] = 0;
+            n = idx;
+            continue;
+        }
+        break;
+    }
+    if (OfficialTitleFindGuanYu(buf) || str::Find(buf, "印发") || str::Find(buf, "转发") || str::Find(buf, "批转")) {
+        return false;
+    }
+    int g = GlyphCount(buf);
+    if (g < 2 || g > 40) {
+        return false;
+    }
+    if (str::Find(buf, "中共") || str::Find(buf, "省委") || str::Find(buf, "市委") || str::Find(buf, "县委") ||
+        str::Find(buf, "区委") || str::Find(buf, "人民政府") || str::Find(buf, "办公厅") || str::Find(buf, "国务院") ||
+        str::Find(buf, "人大常委会") || str::Find(buf, "纪委") || str::Find(buf, "监委") ||
+        str::Find(buf, "领导小组")) {
+        return true;
+    }
+    return str::EndsWith(buf, "厅") || str::EndsWith(buf, "局") || str::EndsWith(buf, "党组") ||
+           str::EndsWith(buf, "部") || str::EndsWith(buf, "委员会") || str::EndsWith(buf, "管理局") ||
+           str::EndsWith(buf, "办公室");
+}
+
+static void StripOfficialIssuerPrefixInPlace(char* title) {
+    if (!title || !title[0]) {
+        return;
+    }
+    HeadingMarker m = ParseHeadingMarker(title);
+    char* body = title + m.prefixLength;
+    if (!body[0]) {
+        return;
+    }
+    if (str::StartsWith(body, "关于") || str::StartsWith(body, "关千") || str::StartsWith(body, "印发") ||
+        str::StartsWith(body, "转发") || str::StartsWith(body, "批转") || str::StartsWith(body, "《")) {
+        return;
+    }
+    const char* sub = OfficialFindEarliestSubjectStart(body);
+    if (!sub || sub == body) {
+        return;
+    }
+    int prefixLen = (int)(sub - body);
+    if (!OfficialTitlePrefixLooksLikeIssuer(body, prefixLen)) {
+        return;
+    }
+    if (GlyphCount(sub) < 4) {
+        return;
+    }
+    memmove(body, sub, str::Len(sub) + 1);
+}
+
+static bool LooksLikeOfficialDocDateLine(const char* s) {
+    if (!s || !s[0] || GlyphCount(s) > 18) {
+        return false;
+    }
+    return str::Find(s, "年") && str::Find(s, "月") && str::Find(s, "日");
+}
+
 static bool LooksLikeOfficialBoilerplate(const char* s) {
     if (!s || !s[0]) {
         return false;
     }
     if (HeadingLevelFromText(s) > 0) {
+        return false;
+    }
+    // 中共江西省委 江西省人民政府 is the first line of a 意见 title, not 红头.
+    if (OfficialTitleIsIssuerBanner(s)) {
         return false;
     }
     if (str::Find(s, "抄送") || str::Find(s, "签发人") || str::Find(s, "主题词") || str::Find(s, "此件") ||
@@ -3504,6 +3842,9 @@ static bool LooksLikeOfficialBoilerplate(const char* s) {
     if (g >= 4 && g <= 22 && !str::StartsWith(s, "关于") &&
         (str::EndsWith(s, "厅") || str::EndsWith(s, "局") || str::EndsWith(s, "党组") || str::EndsWith(s, "人民政府") ||
          str::EndsWith(s, "管理局") || str::EndsWith(s, "委员会") || str::EndsWith(s, "办公厅"))) {
+        return true;
+    }
+    if (LooksLikeOfficialHongtouLetterhead(s)) {
         return true;
     }
     return false;
@@ -4390,7 +4731,8 @@ static bool OfficialNameLooksLikeAttachmentIndex(const char* name) {
            str::EndsWith(name, "说明函") || str::EndsWith(name, "承诺书") || str::EndsWith(name, "申请书") ||
            str::EndsWith(name, "确认表") || str::EndsWith(name, "意见表") || str::EndsWith(name, "申请表") ||
            str::EndsWith(name, "合规性要求") || str::EndsWith(name, "程序") || str::EndsWith(name, "模板") ||
-           str::EndsWith(name, "说明") || str::EndsWith(name, "流程") || str::EndsWith(name, "表");
+           str::EndsWith(name, "说明") || str::EndsWith(name, "流程") || str::EndsWith(name, "规范") ||
+           str::EndsWith(name, "须知") || str::EndsWith(name, "指引") || str::EndsWith(name, "表");
 }
 
 // Body "1.报送《…》（见附件1）" is a task that cites 附件N, not 函末 "1.申请表".
@@ -4449,20 +4791,75 @@ static bool ParseAppendixColonArabicList(const char* s, HeadingMarker* innerOut,
     }
     SkipSpacesUtf8(rest, len, i);
     HeadingMarker inner = ParseHeadingMarker(rest + i);
-    if (inner.type != MarkerType::ArabicDot || inner.number < 1 || inner.prefixLength < 1) {
+    if (inner.type == MarkerType::ArabicDot && inner.number >= 1 && inner.prefixLength >= 1) {
+        if (innerOut) {
+            *innerOut = inner;
+        }
+        if (nameOut) {
+            const char* name = rest + i + inner.prefixLength;
+            int nlen = (int)str::Len(name);
+            int ni = 0;
+            SkipSpacesUtf8(name, nlen, ni);
+            *nameOut = name + ni;
+        }
+        return true;
+    }
+    int serialMaj = 0;
+    int serialSub = 0;
+    const char* serialName = nullptr;
+    if (!ParseOfficialAttachFormSerial(rest + i, &serialMaj, &serialSub, &serialName) || !serialName ||
+        !serialName[0]) {
         return false;
     }
+    inner = {};
+    inner.type = MarkerType::ArabicDot;
+    inner.number = serialMaj;
+    inner.subNumber = serialSub;
+    inner.prefixLength = (int)(serialName - (rest + i));
+    inner.rank = 3;
     if (innerOut) {
         *innerOut = inner;
     }
     if (nameOut) {
-        const char* name = rest + i + inner.prefixLength;
-        int nlen = (int)str::Len(name);
-        int ni = 0;
-        SkipSpacesUtf8(name, nlen, ni);
-        *nameOut = name + ni;
+        *nameOut = serialName;
     }
     return true;
+}
+
+// 函末「附件：全省…报名表」has no 1. — a manifest cite, not 附件1.
+static const char* OfficialUnnumberedAppendixColonName(const char* s) {
+    if (!s || !s[0] || ParseAppendixColonArabicList(s, nullptr, nullptr)) {
+        return nullptr;
+    }
+    HeadingMarker m = ParseHeadingMarker(s);
+    if (m.type != MarkerType::Appendix || m.prefixLength < 1) {
+        return nullptr;
+    }
+    const char* rest = s + m.prefixLength;
+    int len = (int)str::Len(rest);
+    int i = 0;
+    SkipSpacesUtf8(rest, len, i);
+    int cp = i < len ? Utf8CodepointNext(rest, len, i) : 0;
+    if (cp != ':' && cp != 0xFF1A) {
+        return nullptr;
+    }
+    SkipSpacesUtf8(rest, len, i);
+    if (!rest[i]) {
+        return nullptr;
+    }
+    HeadingMarker inner = ParseHeadingMarker(rest + i);
+    if (inner.type == MarkerType::ArabicDot && inner.number >= 1) {
+        return nullptr;
+    }
+    int g = GlyphCount(rest + i);
+    if (g < 2 || g > 60 || str::Find(rest + i, "。")) {
+        return nullptr;
+    }
+    return rest + i;
+}
+
+static bool LooksLikeOfficialUnnumberedAppendixColonCite(const char* s) {
+    return OfficialUnnumberedAppendixColonName(s) != nullptr;
 }
 
 static bool LooksLikeOfficialFubiaoTitleLine(const char* s) {
@@ -4525,10 +4922,20 @@ static bool ShouldMergeOfficialAppendixTitleWrap(const ScanLine& a, const ScanLi
             return false;
         }
     } else if (!OfficialNameLooksLikeAttachmentIndex(b.text)) {
-        return false;
+        int bMajor = 0;
+        int bSub = 0;
+        const char* bName = nullptr;
+        if (!(aBare && ma.type == MarkerType::Appendix &&
+              ParseOfficialAttachFormSerial(b.text, &bMajor, &bSub, &bName) &&
+              (ma.number < 1 || bMajor == ma.number))) {
+            return false;
+        }
     }
     float gap = b.y - (a.y + a.dy);
-    float lim = a.dy > 6 ? a.dy * (aBare || aFubiaoNeedName ? 2.4f : 1.55f) : 14;
+    float lim = a.dy > 6 ? a.dy * (aBare || aFubiaoNeedName ? 3.2f : 1.55f) : 14;
+    if ((aBare || aFubiaoNeedName) && lim < 36) {
+        lim = 36;
+    }
     if (gap < -a.dy * 0.85f || gap > lim) {
         return false;
     }
@@ -4563,6 +4970,48 @@ static bool OfficialArabicDotTitleIncomplete(const char* s) {
         return true;
     }
     return LineEndsLikeBodyContinuation(s);
+}
+
+// Body wrap "坚持…和自我革新相结合" OCR'd as "1.和自我革新相结合、".
+static bool OfficialArabicDotLooksLikeBodyWrap(const char* s) {
+    if (!s || !s[0]) {
+        return false;
+    }
+    HeadingMarker m = ParseHeadingMarker(s);
+    if (m.type != MarkerType::ArabicDot || m.number < 1 || m.prefixLength < 1) {
+        return false;
+    }
+    const char* rest = s + m.prefixLength;
+    int rlen = (int)str::Len(rest);
+    int ri = 0;
+    SkipSpacesUtf8(rest, rlen, ri);
+    rest += ri;
+    if (!(str::StartsWith(rest, "和") || str::StartsWith(rest, "与") || str::StartsWith(rest, "及") ||
+          str::StartsWith(rest, "或"))) {
+        return false;
+    }
+    return TitleNeedsWrapContinuation(s) || GlyphCount(rest) <= 14;
+}
+
+// Unmarked wrap "和自我革新相结合、" — salvage must not invent "1.和…".
+static bool OfficialLineLooksLikeConjunctionBodyWrap(const char* s) {
+    if (!s || !s[0]) {
+        return false;
+    }
+    if (OfficialArabicDotLooksLikeBodyWrap(s)) {
+        return true;
+    }
+    HeadingMarker m = ParseHeadingMarker(s);
+    const char* rest = m.prefixLength > 0 ? s + m.prefixLength : s;
+    int rlen = (int)str::Len(rest);
+    int ri = 0;
+    SkipSpacesUtf8(rest, rlen, ri);
+    rest += ri;
+    if (!(str::StartsWith(rest, "和") || str::StartsWith(rest, "与") || str::StartsWith(rest, "及") ||
+          str::StartsWith(rest, "或"))) {
+        return false;
+    }
+    return TitleNeedsWrapContinuation(s) || GlyphCount(rest) <= 14;
 }
 
 static bool ShouldMergeOfficialArabicDotTitleWrap(const ScanLine& a, const ScanLine& b) {
@@ -4602,6 +5051,28 @@ static bool ShouldMergeOfficialArabicDotTitleWrap(const ScanLine& a, const ScanL
     return dx <= 80.f;
 }
 
+// Wrap leftover of 关于征求《…》的函: "征求〈江西省…王作要点" is not a bookmark.
+static bool LooksLikeOfficialCoverTitleFragment(const char* s) {
+    if (!s || !s[0] || ParseHeadingMarker(s).rank >= 1) {
+        return false;
+    }
+    if (str::StartsWith(s, "关于") || str::StartsWith(s, "关千")) {
+        return false;
+    }
+    int g = GlyphCount(s);
+    if (g < 6 || g > 48) {
+        return false;
+    }
+    bool openBook = (str::Find(s, "《") && !str::Find(s, "》")) || (str::Find(s, "〈") && !str::Find(s, "〉"));
+    bool solicit = str::StartsWith(s, "征求") || str::StartsWith(s, "印发") || str::StartsWith(s, "转发");
+    if (str::Find(s, "》") && (str::EndsWith(s, "的函") || str::EndsWith(s, "通知") || str::EndsWith(s, "意见") ||
+                               str::EndsWith(s, "决定"))) {
+        return false;
+    }
+    return solicit && (openBook || (!str::EndsWith(s, "的函") && !str::EndsWith(s, "通知") &&
+                                    !str::EndsWith(s, "意见") && !str::EndsWith(s, "决定")));
+}
+
 static bool OfficialDocTitleNeedsWrap(const char* s) {
     if (!s || !s[0]) {
         return false;
@@ -4612,12 +5083,19 @@ static bool OfficialDocTitleNeedsWrap(const char* s) {
     if (str::StartsWith(s, "根据") || str::StartsWith(s, "为做好") || str::StartsWith(s, "现将")) {
         return false;
     }
-    if (str::Find(s, "《") && !str::Find(s, "》")) {
+    if ((str::Find(s, "《") && !str::Find(s, "》")) || (str::Find(s, "〈") && !str::Find(s, "〉"))) {
         return true;
     }
-    if ((str::Find(s, "关于印发") || str::Find(s, "印发《") || str::StartsWith(s, "关于")) &&
+    if (OfficialTitleIsIssuerBanner(s)) {
+        return true;
+    }
+    if ((str::Find(s, "关于印发") || str::Find(s, "印发《") || str::StartsWith(s, "关于") ||
+         str::StartsWith(s, "关千") ||
+         (OfficialTitleFindGuanYu(s) && (str::StartsWith(s, "中共") || str::StartsWith(s, "江西省") ||
+                                         str::StartsWith(s, "国务院") || str::StartsWith(s, "人力资源")))) &&
         !str::EndsWith(s, "通知") && !str::EndsWith(s, "的函") && !str::EndsWith(s, "请示") &&
-        !str::EndsWith(s, "通报") && !str::EndsWith(s, "批复")) {
+        !str::EndsWith(s, "通报") && !str::EndsWith(s, "批复") && !str::EndsWith(s, "意见") &&
+        !str::EndsWith(s, "决定")) {
         return true;
     }
     return false;
@@ -4642,7 +5120,21 @@ static bool OfficialDocTitleLooksComplete(const char* s) {
 
 static bool OfficialDocTitleWrapTailLooksLikeBody(const char* s) {
     return str::StartsWith(s, "为确保") || str::StartsWith(s, "现将") || str::StartsWith(s, "现印发") ||
+           str::StartsWith(s, "根据") || str::StartsWith(s, "为贯彻") || str::StartsWith(s, "为完善") ||
+           str::StartsWith(s, "为规范") || str::StartsWith(s, "为做好") || str::StartsWith(s, "按照") ||
            str::StartsWith(s, "各省") || str::StartsWith(s, "国家税务总局各省");
+}
+
+// Body after a 规章 title: "…的部署要求，结合…制定本方案". Not a bookmark.
+static bool LooksLikeOfficialDocPreamble(const char* s) {
+    if (!s || !s[0] || ParseHeadingMarker(s).rank >= 1) {
+        return false;
+    }
+    if (str::Find(s, "制定本方案") || str::Find(s, "制定本办法") || str::Find(s, "制定本细则") ||
+        str::Find(s, "制定本规定") || str::Find(s, "的部署要求")) {
+        return true;
+    }
+    return str::Find(s, "结合") && str::Find(s, "实际") && str::Find(s, "制定本");
 }
 
 static bool ShouldMergeOfficialDocTitleWrap(const ScanLine& a, const ScanLine& b) {
@@ -4658,7 +5150,8 @@ static bool ShouldMergeOfficialDocTitleWrap(const ScanLine& a, const ScanLine& b
     if (ParseHeadingMarker(b.text).rank >= 1) {
         return false;
     }
-    if (!HasLetterOrCjk(b.text) || LineLooksLikePageNumber(b.text) || OfficialDocTitleWrapTailLooksLikeBody(b.text) ||
+    if (!HasLetterOrCjk(b.text) || LineLooksLikePageNumber(b.text) || LooksLikeOfficialDocDateLine(b.text) ||
+        OfficialDocTitleWrapTailLooksLikeBody(b.text) || LooksLikeOfficialDocPreamble(b.text) ||
         LooksLikeOfficialBoilerplate(b.text) || LooksLikeDocNumberLine(b.text)) {
         return false;
     }
@@ -4670,7 +5163,10 @@ static bool ShouldMergeOfficialDocTitleWrap(const ScanLine& a, const ScanLine& b
         return b.y < 220.f;
     }
     float gap = b.y - (a.y + a.dy);
-    float lim = a.dy > 6 ? a.dy * 2.4f : 22;
+    float lim = a.dy > 6 ? a.dy * 2.8f : 28;
+    if (a.fontSize >= 16 && a.dy * 2.2f > lim) {
+        lim = a.dy * 2.2f;
+    }
     if (gap < -a.dy * 0.85f || gap > lim) {
         return false;
     }
@@ -4678,7 +5174,11 @@ static bool ShouldMergeOfficialDocTitleWrap(const ScanLine& a, const ScanLine& b
     if (dx < 0) {
         dx = -dx;
     }
-    return dx <= 80.f;
+    float dc = (a.x + a.dx * 0.5f) - (b.x + b.dx * 0.5f);
+    if (dc < 0) {
+        dc = -dc;
+    }
+    return dx <= 100.f || dc <= 80.f;
 }
 
 static bool ShouldContinueOfficialFormTableTitle(const ScanLine& a, const ScanLine& b) {
@@ -4699,13 +5199,77 @@ static bool ShouldContinueOfficialFormTableTitle(const ScanLine& a, const ScanLi
     return true;
 }
 
-static char* JoinAppendixNumberTitle(int n, const char* name) {
+static char* JoinAppendixNumberTitle(int n, const char* name, int sub = 0) {
     if (!name || !name[0] || n < 1) {
         return nullptr;
     }
-    char prefix[32];
-    snprintf(prefix, (int)sizeof(prefix), "\xE9\x99\x84\xE4\xBB\xB6%d ", n);
+    char prefix[40];
+    if (sub >= 1) {
+        snprintf(prefix, (int)sizeof(prefix), "\xE9\x99\x84\xE4\xBB\xB6%d-%d ", n, sub);
+    } else {
+        snprintf(prefix, (int)sizeof(prefix), "\xE9\x99\x84\xE4\xBB\xB6%d ", n);
+    }
     return str::Join(prefix, name);
+}
+
+static char* RewriteAppendixColonListTitle(const char* s);
+
+// "附件1 1-1.财政支出…" / leftover "-1.标题" after 附件1 → "附件1-1 财政支出…"
+static void RewriteOfficialAppendixCompoundTitle(char** titleOut) {
+    char* s = titleOut ? *titleOut : nullptr;
+    if (!s || !s[0]) {
+        return;
+    }
+    HeadingMarker m = ParseHeadingMarker(s);
+    if (m.type != MarkerType::Appendix || m.prefixLength < 1) {
+        return;
+    }
+    if (m.number < 1) {
+        char* rw = RewriteAppendixColonListTitle(s);
+        if (rw) {
+            str::Free(s);
+            *titleOut = rw;
+        }
+        return;
+    }
+    const char* rest = s + m.prefixLength;
+    int rlen = (int)str::Len(rest);
+    int ri = 0;
+    SkipSpacesUtf8(rest, rlen, ri);
+    int colonAt = ri;
+    int colon = ri < rlen ? Utf8CodepointNext(rest, rlen, ri) : 0;
+    if (colon == ':' || colon == 0xFF1A) {
+        SkipSpacesUtf8(rest, rlen, ri);
+    } else {
+        ri = colonAt;
+    }
+    int major = 0;
+    int sub = 0;
+    const char* name = nullptr;
+    int useSub = m.subNumber;
+    if (ParseOfficialAttachFormSerial(rest + ri, &major, &sub, &name) && name && name[0]) {
+        if (major != m.number && !(m.subNumber >= 1 && major == m.subNumber)) {
+            return;
+        }
+        useSub = sub >= 1 ? sub : m.subNumber;
+    } else if (m.subNumber >= 1 && rest[ri]) {
+        name = rest + ri;
+    } else {
+        return;
+    }
+    if (useSub < 1 || !name || !name[0]) {
+        return;
+    }
+    char* joined = JoinAppendixNumberTitle(m.number, name, useSub);
+    if (!joined) {
+        return;
+    }
+    if (str::Eq(s, joined)) {
+        str::Free(joined);
+        return;
+    }
+    str::Free(s);
+    *titleOut = joined;
 }
 
 static char* RewriteAppendixColonListTitle(const char* s) {
@@ -4717,7 +5281,7 @@ static char* RewriteAppendixColonListTitle(const char* s) {
     if (!OfficialNameLooksLikeAttachmentIndex(name) && GlyphCount(name) < 6) {
         return nullptr;
     }
-    return JoinAppendixNumberTitle(inner.number, name);
+    return JoinAppendixNumberTitle(inner.number, name, inner.subNumber);
 }
 
 static char* RewriteArabicDotAsAppendixTitle(const char* s, int n) {
@@ -5999,6 +6563,7 @@ static void RewriteOcrAppendixBang(char** titleOut) {
     StripOcrJunkBeforeAppendix(titleOut);
     char* s = titleOut ? *titleOut : nullptr;
     if (!s || !s[0] || !str::Find(s, "\xE9\x99\x84\xE4\xBB\xB6")) {
+        RewriteOfficialAppendixCompoundTitle(titleOut);
         return;
     }
     int len = (int)str::Len(s);
@@ -6050,11 +6615,13 @@ static void RewriteOcrAppendixBang(char** titleOut) {
         i = bangAt;
     }
     if (!hit) {
+        RewriteOfficialAppendixCompoundTitle(titleOut);
         return;
     }
     buf[o] = 0;
     char* neu = str::Dup(buf);
     if (!neu) {
+        RewriteOfficialAppendixCompoundTitle(titleOut);
         return;
     }
     // #region agent log
@@ -6062,6 +6629,7 @@ static void RewriteOcrAppendixBang(char** titleOut) {
     // #endregion
     str::Free(s);
     *titleOut = neu;
+    RewriteOfficialAppendixCompoundTitle(titleOut);
 }
 
 // PDF/OCR often emits "l ．标题" / "I.标题" for list item 1. Only rewrite when the rest is CJK.
@@ -7242,12 +7810,26 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask);
 static void CollectOfficialAppendixNumNodes(const Vec<ExtractedTocItem*>& nodes, Vec<ExtractedTocItem*>& out);
 static void DropOfficialArabicDotDuplicateAppendices(Vec<ExtractedTocItem*>& nodes,
                                                      const Vec<ExtractedTocItem*>& appendixNodes);
-static void InsertOfficialDocTitles(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedTocItem*>& roots);
+static void InsertOfficialDocTitles(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedTocItem*>& roots,
+                                    const char* filePath = nullptr);
+static void StripOfficialDocTitleGluedPreamble(char* s);
+static void StripOfficialIssuerPrefixInPlace(char* title);
+static bool OfficialTitleHasDocSuffix(const char* s);
+static char* OfficialIssuedDocTitleFromCover(const char* s);
+static char* OfficialPrepareInsertedDocTitle(const char* title);
+static void RewriteOfficialTitleOcr(char** titleOut);
 static void MergeOfficialDuplicateAppendices(Vec<ExtractedTocItem*>& roots);
+static void MergeOfficialCoverAppendixWithRealHeading(Vec<ExtractedTocItem*>& roots);
+static const char* OfficialAppendixRestAfterPrefix(const char* title);
+static void NestOfficialAppendixUnderFrontLetter(Vec<ExtractedTocItem*>& roots);
+static bool OfficialTitleIsDocRoot(const char* s);
 static void TrimMashedOfficialAttachName(char* title);
+static bool OfficialAttachLooksLikeFieldLabel(const char* s);
+static bool LooksLikeOfficialAttachTableBodyTitle(const char* s);
 static void FoldRedundantOfficialAppendixTitles(Vec<ExtractedTocItem*>& nodes);
 static void DropOfficialDuplicateFormTitleSiblings(Vec<ExtractedTocItem*>& nodes);
 static ExtractTocDocClass ClassifyExtractTocDoc(const Vec<ScanLine>& lines, int nPages, const char* filePath);
+static bool FileNameHasOfficialKind(const char* filePath);
 static bool ExtractOfficialToc(EngineBase* engine, Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
                                Vec<ExtractedTocItem*>& roots, const char* tocDebugPath, bool bornDigital = false);
 static bool ExtractContractToc(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedTocItem*>& roots);
@@ -9934,9 +10516,27 @@ static void KeepOfficialArabicListSpine(Vec<InferHeadingCand>& cands) {
         }
         bool consec = c.marker.number == lastKept + 1;
         bool closeJump = lastKept >= 1 && c.marker.number > lastKept + 1 && c.marker.number <= lastKept + 8;
-        // Restart at 1. only when no ArabicDot is open yet (do not re-keep a second 1.).
-        bool start = lastKept < 1 && c.marker.number == 1;
-        if (!consec && !closeJump && !start) {
+        bool dunhaoSince = false;
+        bool parenSince = false;
+        if (lastKeptIdx >= 0) {
+            for (int k = lastKeptIdx + 1; k < i; k++) {
+                if (!cands[k].dpKeep) {
+                    continue;
+                }
+                if (cands[k].marker.type == MarkerType::ChineseDunhao) {
+                    dunhaoSince = true;
+                }
+                if (cands[k].marker.type == MarkerType::ChineseParen) {
+                    parenSince = true;
+                }
+            }
+        }
+        // 四、其他事项 / 二、工作措施 restart 1. 2. 3.  Do not wait until no ArabicDot is open.
+        // Same-list twin 1. has no 一、 between hits and is collapsed by overlap above.
+        // （二） after （一）'s 5. likewise restarts 1. 2. 3. (通知 mix, not GB 问答 continue).
+        bool start = c.marker.number == 1 && (lastKept < 1 || dunhaoSince || parenSince);
+        bool listAfterBand = (dunhaoSince || parenSince) && c.marker.number >= 2 && c.marker.number <= 5;
+        if (!consec && !closeJump && !start && !listAfterBand) {
             continue;
         }
         c.dpKeep = true;
@@ -10621,8 +11221,14 @@ static void SalvageSequenceGaps(Vec<InferHeadingCand>& cands, Vec<InferHeadingCa
             if (LooksLikeOfficialTiaoKuanCite(sl.text)) {
                 continue;
             }
-            if (LooksLikeOfficialFillNotesHeader(sl.text) || LooksLikeOfficialSpecOrFormLine(sl.text) ||
-                LineStartsWithDotThenTitle(sl.text)) {
+            if (LooksLikeOfficialUnnumberedAppendixColonCite(sl.text)) {
+                continue;
+            }
+            if (OfficialLineLooksLikeConjunctionBodyWrap(sl.text)) {
+                continue;
+            }
+            if (LooksLikeOfficialFillNotesHeader(sl.text) || LineStartsWithDotThenTitle(sl.text) ||
+                (LooksLikeOfficialSpecOrFormLine(sl.text) && !str::Find(sl.text, "@"))) {
                 continue;
             }
             if (numberedHit) {
@@ -10649,7 +11255,8 @@ static void SalvageSequenceGaps(Vec<InferHeadingCand>& cands, Vec<InferHeadingCa
         }
         const ScanLine& sl = lines[bestLine];
         if (LooksLikeDunhaoBodyRun(sl.text) || LooksLikeOfficialFillNotesHeader(sl.text) ||
-            LooksLikeOfficialSpecOrFormLine(sl.text) || LineStartsWithDotThenTitle(sl.text)) {
+            LineStartsWithDotThenTitle(sl.text) ||
+            (LooksLikeOfficialSpecOrFormLine(sl.text) && !str::Find(sl.text, "@"))) {
             continue;
         }
         char* work = nullptr;
@@ -10681,6 +11288,10 @@ static void SalvageSequenceGaps(Vec<InferHeadingCand>& cands, Vec<InferHeadingCa
             CapNumberedHeadingTitle(work);
         }
         str::Free(colonRw);
+        if (OfficialArabicDotLooksLikeBodyWrap(work) || OfficialLineLooksLikeConjunctionBodyWrap(sl.text)) {
+            str::Free(work);
+            continue;
+        }
         HeadingMarker m = ParseHeadingMarker(work);
         int gp = GlyphCount(work);
         if (gp < 4 || gp > kExtractPdfToc.headingMaxGlyphs) {
@@ -10740,6 +11351,7 @@ enum class OfficialAttachKind {
 
 struct OfficialAttachManifestItem {
     int number = 0;
+    int subNumber = 0;
     char* title = nullptr;
     int srcPage = 0;
     float x = 0;
@@ -10748,6 +11360,7 @@ struct OfficialAttachManifestItem {
 
 struct OfficialAttachSeg {
     int number = 0;
+    int subNumber = 0;
     int startPage = 0;
     int endPage = 0;
     float startY = 0;
@@ -11056,6 +11669,7 @@ static bool InferHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedT
         if (!extraMerge && !merged && i + 1 < lines.Size() && ShouldMergeOfficialAppendixTitleWrap(sl, lines[i + 1])) {
             extraMerge = str::Join(sl.text, " ", lines[i + 1].text);
             if (extraMerge) {
+                RewriteOfficialAppendixCompoundTitle(&extraMerge);
                 title = extraMerge;
                 skipUntil = i + 1;
                 g = GlyphCount(title);
@@ -11243,6 +11857,28 @@ static bool InferHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedT
             if (LooksLikeOfficialFillNotesHeader(titlePiece) || LooksLikeOfficialFillNotesHeader(piece)) {
                 fillNotesActive = true;
             }
+            {
+                HeadingMarker colonInnerEarly;
+                const char* colonSrc = nullptr;
+                if (ParseAppendixColonArabicList(titlePiece, &colonInnerEarly, nullptr)) {
+                    colonSrc = titlePiece;
+                } else if (ParseAppendixColonArabicList(piece, &colonInnerEarly, nullptr)) {
+                    colonSrc = piece;
+                }
+                if (colonSrc) {
+                    char* rw = RewriteAppendixColonListTitle(colonSrc);
+                    if (rw) {
+                        str::Free(work);
+                        work = rw;
+                        titlePiece = work;
+                        marker = ParseHeadingMarker(work);
+                        gp = GlyphCount(work);
+                        numbered = marker.rank > 0 ? marker.rank : 1;
+                        appendixIndexNum = colonInnerEarly.number;
+                        pendingAppendixIndex = false;
+                    }
+                }
+            }
             if (afterOfficialSpine) {
                 HeadingMarker colonInner;
                 if (ParseAppendixColonArabicList(piece, &colonInner, nullptr)) {
@@ -11277,10 +11913,31 @@ static bool InferHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedT
                         Dbg92a48e("J", "ExtractPdfToc.cpp:InferHeadings.promoteIndex", work, "appendix-index");
                         // #endregion
                     }
-                } else if (marker.type == MarkerType::Appendix &&
-                           !ParseAppendixColonArabicList(piece, nullptr, nullptr)) {
-                    appendixIndexNum = 0;
-                    pendingAppendixIndex = false;
+                } else {
+                    int sMaj = 0;
+                    int sSub = 0;
+                    const char* sName = nullptr;
+                    bool serialOk = ParseOfficialAttachFormSerial(titlePiece, &sMaj, &sSub, &sName) && sName &&
+                                    sName[0] && (pendingAppendixIndex || appendixIndexNum >= 1) &&
+                                    (pendingAppendixIndex || sMaj == appendixIndexNum || sMaj == appendixIndexNum + 1);
+                    if (serialOk) {
+                        char* rw = JoinAppendixNumberTitle(sMaj, sName, sSub);
+                        if (rw) {
+                            str::Free(work);
+                            work = rw;
+                            titlePiece = work;
+                            appendixIndexNum = sMaj;
+                            pendingAppendixIndex = false;
+                            marker = ParseHeadingMarker(work);
+                            gp = GlyphCount(work);
+                            numbered = marker.rank > 0 ? marker.rank : 1;
+                            Dbg92a48e("J", "ExtractPdfToc.cpp:InferHeadings.promoteSerial", work, "appendix-index");
+                        }
+                    } else if (marker.type == MarkerType::Appendix &&
+                               !ParseAppendixColonArabicList(piece, nullptr, nullptr)) {
+                        appendixIndexNum = 0;
+                        pendingAppendixIndex = false;
+                    }
                 }
             }
             if (numbered > 0 && TitleIsNumberingOnly(titlePiece)) {
@@ -11350,15 +12007,26 @@ static bool InferHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedT
                                   (narrow || sl.bold || sl.fontSize >= body * 1.7f);
                 bool officialDoc =
                     OfficialDocTitleLooksComplete(titlePiece) && gp >= 10 && gp <= kExtractPdfToc.headingMaxGlyphs;
-                if (unnumbered || officialDoc) {
-                    lvl = (officialDoc || sl.fontSize >= body * 1.7f) ? 1 : 2;
+                bool officialHan = hasCjk && OfficialTitleFindGuanYu(titlePiece) &&
+                                   (str::EndsWith(titlePiece, "意见") || str::EndsWith(titlePiece, "决定") ||
+                                    str::EndsWith(titlePiece, "通知") || str::EndsWith(titlePiece, "的函")) &&
+                                   gp >= 10 && gp <= kExtractPdfToc.headingMaxGlyphs &&
+                                   !LooksLikeOfficialDocPreamble(titlePiece);
+                bool largeNamed = OfficialTitleHasDocSuffix(titlePiece) && !LooksLikeOfficialDocPreamble(titlePiece) &&
+                                  gp >= 6 && gp <= 40 && hasCjk && (sl.bold || bigger || sl.fontSize >= body * 1.25f);
+                if (OfficialTitleIsIssuerBanner(titlePiece) || LooksLikeOfficialHongtouLetterhead(titlePiece) ||
+                    LooksLikeOfficialCoverTitleFragment(titlePiece)) {
+                    lvl = 0;
+                } else if (unnumbered || officialDoc || officialHan || largeNamed) {
+                    lvl = (officialDoc || officialHan || largeNamed || sl.fontSize >= body * 1.7f) ? 1 : 2;
                 }
             }
             int dropArabAll = 0;
             int dropDense = 0;
             int dropNarrow = 0;
             bool dropSpec = false;
-            if (lvl >= 1 && marker.type == MarkerType::ArabicDot && LooksLikeOfficialSpecOrFormLine(titlePiece)) {
+            if (lvl >= 1 && marker.type == MarkerType::ArabicDot && LooksLikeOfficialSpecOrFormLine(titlePiece) &&
+                !str::Find(titlePiece, "@") && !str::Find(piece, "@")) {
                 dropSpec = true;
             }
             if (lvl >= 1 && marker.type == MarkerType::ChineseDunhao &&
@@ -11387,6 +12055,9 @@ static bool InferHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedT
             // still looks like an unfinished wrap (、 / mid-word), not a complete question.
             // 条款 "1.…卡，基本养老金实" trims to the first clause — keep that heading.
             bool trimmedShorter = piece && titlePiece && (int)str::Len(titlePiece) + 6 < (int)str::Len(piece);
+            if (OfficialArabicDotLooksLikeBodyWrap(titlePiece) || OfficialArabicDotLooksLikeBodyWrap(piece)) {
+                dropSpec = true;
+            }
             if (marker.type == MarkerType::ArabicDot && OfficialArabicDotTitleIncomplete(piece) && !trimmedShorter &&
                 (OfficialArabicDotTitleIncomplete(titlePiece) ||
                  (marker.rank < 3 && (TitleNeedsWrapContinuation(titlePiece) || TitleNeedsWrapContinuation(piece))))) {
@@ -11443,6 +12114,27 @@ static bool InferHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedT
                 (LooksLikeOfficialAppendixCiteFragment(titlePiece) || LooksLikeOfficialAppendixCiteFragment(piece))) {
                 lvl = 0;
             }
+            if (lvl >= 1 && (LooksLikeOfficialUnnumberedAppendixColonCite(titlePiece) ||
+                             LooksLikeOfficialUnnumberedAppendixColonCite(piece))) {
+                const char* citeName = OfficialUnnumberedAppendixColonName(titlePiece);
+                if (!citeName) {
+                    citeName = OfficialUnnumberedAppendixColonName(piece);
+                }
+                bool laterReal = false;
+                for (int si = 0; si < attachLay.segs.Size(); si++) {
+                    const OfficialAttachSeg& seg = attachLay.segs[si];
+                    if (seg.startPage < sl.srcPage || (seg.startPage == sl.srcPage && seg.startY <= sl.y + 8.f)) {
+                        continue;
+                    }
+                    if (citeName && seg.title && (str::Find(seg.title, citeName) || str::Find(citeName, seg.title))) {
+                        laterReal = true;
+                        break;
+                    }
+                }
+                if (laterReal) {
+                    lvl = 0;
+                }
+            }
             if (lvl < 1) {
                 // #region agent log
                 if (DbgFace09Hit(titlePiece) || DbgFace09Hit(piece)) {
@@ -11453,7 +12145,8 @@ static bool InferHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedT
                 }
                 // #endregion
                 if (numbered > 0 && marker.number >= 1 && HeadingSchemaKey(marker) > 0 &&
-                    !LooksLikeOfficialSpecOrFormLine(titlePiece) && !LooksLikeOfficialSpecOrFormLine(piece) &&
+                    (str::Find(titlePiece, "@") || str::Find(piece, "@") ||
+                     (!LooksLikeOfficialSpecOrFormLine(titlePiece) && !LooksLikeOfficialSpecOrFormLine(piece))) &&
                     !LooksLikeDunhaoBodyRun(piece) && !LooksLikeDunhaoBodyRun(titlePiece) &&
                     !LooksLikeOfficialTiaoKuanCite(titlePiece) && !LooksLikeOfficialTiaoKuanCite(piece) &&
                     !fillNotesActive) {
@@ -11656,6 +12349,17 @@ static bool ExtractedHasPrefix(const Vec<ExtractedTocItem*>& nodes, const char* 
     return false;
 }
 
+static int ExtractedCountPrefix(const Vec<ExtractedTocItem*>& nodes, const char* prefix) {
+    int n = 0;
+    for (int i = 0; i < nodes.Size(); i++) {
+        if (nodes[i]->title && str::StartsWith(nodes[i]->title, prefix)) {
+            n++;
+        }
+        n += ExtractedCountPrefix(nodes[i]->children, prefix);
+    }
+    return n;
+}
+
 static ExtractedTocItem* ExtractedFindContaining(const Vec<ExtractedTocItem*>& nodes, const char* needle) {
     for (int i = 0; i < nodes.Size(); i++) {
         if (nodes[i]->title && needle && str::Find(nodes[i]->title, needle)) {
@@ -11723,8 +12427,18 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         toc.Append(TestScanLine("（一）发展基础 ........................ (7)", 80));
         Vec<ScanLine> cover;
         cover.Append(TestScanLine("关于印发《江西省人力资源和社会保障事业发展“十四五”规划》的通知", 40));
+        Vec<ScanLine> mash;
+        mash.Append(TestScanLine("（二）全国人汴服务“一日通亦”应用任务清单(共82项)", 40));
+        mash.Append(TestScanLine("1.任务清单对林82项任务", 60));
+        mash.Append(TestScanLine("2.责任部11", 80));
+        mash.Append(TestScanLine("5.社保卡推阐组", 100));
+        Vec<ScanLine> cleanOff;
+        cleanOff.Append(TestScanLine("一、指导思想", 40));
+        cleanOff.Append(TestScanLine("二、工作目标", 60));
+        cleanOff.Append(TestScanLine("以习近平新时代中国特色社会主义思想为指导", 80));
         bool ok = ScanLinesLookLikeCidFontGarbage(junk) && !ScanLinesLookLikeCidFontGarbage(toc) &&
-                  !ScanLinesLookLikeCidFontGarbage(cover);
+                  !ScanLinesLookLikeCidFontGarbage(cover) && ScanLinesLookLikeCidFontGarbage(mash) &&
+                  !ScanLinesLookLikeCidFontGarbage(cleanOff);
         if (ok) {
             (*pass)++;
         } else {
@@ -11735,6 +12449,8 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         FreeScanLines(junk);
         FreeScanLines(toc);
         FreeScanLines(cover);
+        FreeScanLines(mash);
+        FreeScanLines(cleanOff);
     }
     {
         Vec<ScanLine> tall;
@@ -11751,6 +12467,20 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         prose.Append(TestScanLine("全面贯彻党的二十大和二十届历次全会精神", 60));
         prose.Append(TestScanLine("深入贯彻落实党中央、国务院决策部署", 80));
         bool ok = ScanLinesLookSideways(tall) && ScanLinesLookSideways(chips) && !ScanLinesLookSideways(prose);
+        ok = ok && !ScanLinesLookLikeVerticalBook(tall) && !ScanLinesLookLikeVerticalBook(chips) &&
+             !ScanLinesLookLikeVerticalBook(prose);
+        {
+            Vec<ScanLine> vbook;
+            const char* glyphs[] = {"的", "是", "了", "不", "在", "人", "有", "中"};
+            for (int c = 0; c < 3; c++) {
+                for (int i = 0; i < 8; i++) {
+                    vbook.Append(
+                        TestScanLineBox(glyphs[i], 1, 220.f - (float)c * 24, 40.f + (float)i * 22, 12, 24, 14));
+                }
+            }
+            ok = ok && ScanLinesLookLikeVerticalBook(vbook);
+            FreeScanLines(vbook);
+        }
         Vec<ScanLine> form;
         const char* cells[] = {"姓名", "关系", "与", "职务", "备注", "单位"};
         for (int i = 0; i < 24; i++) {
@@ -12166,6 +12896,328 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         } else {
             (*fail)++;
             LogBookExtractFail("official-doc-title-wrap", roots);
+        }
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        // 印发通知 is the TOC root; mashed 根据《…》制定本方案 is not a title.
+        char* mashed = str::Dup(
+            "江西省数字人社5532建设行动实施方案根据《人力资源社会保障部关于印发数字人社建设行动实施方案的通知》（"
+            "人社部发〔2023〕34号）和《江西省人民政府关于印发江西省数字政府建设总体方案的通知》(赣府发[2023]8号）的"
+            "部署要求，结合江西人社工作实际，制定本方案");
+        StripOfficialDocTitleGluedPreamble(mashed);
+        Vec<ScanLine> lines;
+        ScanLine tongzhi = TestScanLineXYP("关于印发江西省数字人社5532建设行动实施方案的通知", 1, 72, 40);
+        tongzhi.fontSize = 16;
+        tongzhi.bold = true;
+        ScanLine plan = TestScanLineXYP(
+            "江西省数字人社5532建设行动实施方案根据《人力资源社会保障部关于印发数字人社建设行动实施方案的通知》（"
+            "人社部发〔2023〕34号）和《江西省人民政府",
+            3, 72, 40);
+        plan.fontSize = 22;
+        plan.bold = true;
+        ScanLine body = TestScanLineXYP(
+            "关于印发江西省数字政府建设总体方案的通知(赣府发[2023]8号）的部署要求，结合江西人社工作实际，制定本方案", 3,
+            72, 62);
+        body.fontSize = 14;
+        ScanLine yi = TestScanLineXYP("一、总体要求", 3, 72, 120);
+        yi.fontSize = 14;
+        ScanLine paren = TestScanLineXYP("（一）指导思想", 3, 72, 150);
+        paren.fontSize = 13;
+        lines.Append(tongzhi);
+        lines.Append(plan);
+        lines.Append(body);
+        lines.Append(yi);
+        lines.Append(paren);
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 3, roots);
+        InsertOfficialDocTitles(lines, 3, roots);
+        ExtractedTocItem* doc = ExtractedFindContaining(roots, "关于印发江西省数字人社5532建设行动实施方案的通知");
+        char* issued = OfficialIssuedDocTitleFromCover("关于印发江西省数字人社5532建设行动实施方案的通知");
+        bool stripOk = mashed && str::Eq(mashed, "江西省数字人社5532建设行动实施方案") && issued &&
+                       str::Eq(issued, "江西省数字人社5532建设行动实施方案");
+        ExtractedTocItem* yiItem = ExtractedFindContaining(roots, "一、总体要求");
+        bool ok = stripOk && ran && doc && str::EndsWith(doc->title, "的通知") && yiItem &&
+                  ExtractedHasPrefix(doc->children, "一、总体要求") && !ExtractedFindContaining(roots, "根据《") &&
+                  !ExtractedFindContaining(roots, "制定本方案") &&
+                  !ExtractedFindContaining(roots, "数字政府建设总体方案") &&
+                  !ExtractedIsRootContaining(roots, "一、总体要求");
+        str::Free(issued);
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-plan-not-cover-letter", roots);
+        }
+        str::Free(mashed);
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        // Page-1 印发通知 (body-sized OCR) + page-3 一、; hang outline under the 通知.
+        Vec<ScanLine> lines;
+        ScanLine tongzhi = TestScanLineXYP("关于印发江西省数字人社5532建设行动实施方案的通知", 1, 72, 40);
+        tongzhi.fontSize = 12;
+        ScanLine yi = TestScanLineXYP("一、总体要求", 3, 72, 80);
+        yi.fontSize = 14;
+        ScanLine er = TestScanLineXYP("二、系统集成优化政策供给", 3, 72, 120);
+        er.fontSize = 14;
+        lines.Append(tongzhi);
+        lines.Append(yi);
+        lines.Append(er);
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 3, roots);
+        InsertOfficialDocTitles(lines, 3, roots);
+        ExtractedTocItem* doc = ExtractedFindContaining(roots, "关于印发江西省数字人社5532建设行动实施方案的通知");
+        bool ok =
+            ran && doc && str::EndsWith(doc->title, "的通知") && ExtractedHasPrefix(doc->children, "一、总体要求") &&
+            ExtractedHasPrefix(doc->children, "二、系统集成") && !ExtractedIsRootContaining(roots, "一、总体要求");
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-title-root-from-cover", roots);
+        }
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        // Filename is the 印发通知 when the large title was not OCR'd.
+        Vec<ScanLine> lines;
+        ScanLine yi = TestScanLineXYP("一、总体要求", 2, 72, 40);
+        yi.fontSize = 14;
+        ScanLine er = TestScanLineXYP("二、主要任务", 2, 72, 80);
+        er.fontSize = 14;
+        lines.Append(yi);
+        lines.Append(er);
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 2, roots);
+        InsertOfficialDocTitles(lines, 2, roots, "C:\\docs\\关于印发江西省数字人社5532建设行动实施方案的通知.pdf");
+        ExtractedTocItem* doc = ExtractedFindContaining(roots, "关于印发江西省数字人社5532建设行动实施方案的通知");
+        bool ok =
+            ran && doc && str::EndsWith(doc->title, "的通知") && ExtractedHasPrefix(doc->children, "一、总体要求") &&
+            ExtractedHasPrefix(doc->children, "二、主要任务") && !ExtractedIsRootContaining(roots, "一、总体要求");
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-title-root-from-filename", roots);
+        }
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        // 印发《方案》的通知 is the first bookmark; do not rewrite to the inner 方案.
+        Vec<ScanLine> lines;
+        ScanLine t1 = TestScanLineXYP("关于印发《吉林省人社信息化便民服务", 1, 80, 40);
+        t1.fontSize = 18;
+        t1.bold = true;
+        t1.dx = 280;
+        t1.dy = 20;
+        ScanLine t2 = TestScanLineXYP("创新提升行动推进方案》的通知", 1, 80, 64);
+        t2.fontSize = 18;
+        t2.bold = true;
+        t2.dx = 240;
+        t2.dy = 20;
+        ScanLine plan = TestScanLineXYP("吉林省人社信息化便民服务创新提升行动推进方案", 2, 72, 40);
+        plan.fontSize = 22;
+        plan.bold = true;
+        ScanLine yi = TestScanLineXYP("一、指导思想", 2, 72, 80);
+        yi.fontSize = 14;
+        ScanLine er = TestScanLineXYP("二、工作目标", 2, 72, 120);
+        er.fontSize = 14;
+        lines.Append(t1);
+        lines.Append(t2);
+        lines.Append(plan);
+        lines.Append(yi);
+        lines.Append(er);
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 2, roots);
+        InsertOfficialDocTitles(lines, 2, roots);
+        ExtractedTocItem* doc = ExtractedFindContaining(roots, "关于印发");
+        bool ok = ran && doc && str::StartsWith(doc->title, "关于印发") && str::Find(doc->title, "推进方案") &&
+                  str::EndsWith(doc->title, "的通知") && ExtractedHasPrefix(doc->children, "一、指导思想") &&
+                  ExtractedHasPrefix(doc->children, "二、工作目标") &&
+                  !ExtractedIsRootContaining(roots, "一、指导思想") && roots.Size() == 1;
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-yinfa-notice-keeps-tongzhi", roots);
+        }
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        char* joined = str::Dup("中共江西省委 江西省人民政府关于深入推进营商环境优化升级“一号改革工程”的意见");
+        char* hall = str::Dup("江西省人力资源和社会保障厅关于印发《方案》的通知");
+        char* ask = str::Dup("关于征求《江西省人民政府办公厅关于做好评估工作》意见的函");
+        char* method = str::Dup("江西省公务员录用实施办法（试行）");
+        char* fwd = str::Dup("省政府办公厅转发省人力资源和社会保障厅关于做好就业工作的通知");
+        if (joined) {
+            StripOfficialIssuerPrefixInPlace(joined);
+        }
+        if (hall) {
+            StripOfficialIssuerPrefixInPlace(hall);
+        }
+        if (ask) {
+            StripOfficialIssuerPrefixInPlace(ask);
+        }
+        if (method) {
+            StripOfficialIssuerPrefixInPlace(method);
+        }
+        if (fwd) {
+            StripOfficialIssuerPrefixInPlace(fwd);
+        }
+        bool ok = joined && str::StartsWith(joined, "关于深入推进") && !str::Find(joined, "中共") &&
+                  str::Find(joined, "的意见") && hall && str::Eq(hall, "关于印发《方案》的通知") && ask &&
+                  str::StartsWith(ask, "关于征求") && str::Find(ask, "江西省人民政府") && method &&
+                  str::StartsWith(method, "江西省公务员") && fwd && str::StartsWith(fwd, "转发");
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            logf("phase2 fail official-strip-issuer-prefix\n");
+        }
+        str::Free(joined);
+        str::Free(hall);
+        str::Free(ask);
+        str::Free(method);
+        str::Free(fwd);
+    }
+    {
+        const char* hongtou = "江西省人力资源和社会保障厅网络安全和信息化领导小组办公室";
+        char* glued = str::Join(hongtou, "关于印发《江西省人力资源和社会保障厅网络和数据安全信息通报管理办法》的通知");
+        if (glued) {
+            StripOfficialIssuerPrefixInPlace(glued);
+        }
+        Vec<ScanLine> lines;
+        ScanLine banner = TestScanLineXYP(hongtou, 1, 80, 24);
+        banner.fontSize = 22;
+        banner.bold = true;
+        banner.dx = 420;
+        banner.dy = 22;
+        ScanLine tongzhi =
+            TestScanLineXYP("关于印发《江西省人力资源和社会保障厅网络和数据安全信息通报管理办法》的通知", 1, 90, 58);
+        tongzhi.fontSize = 16;
+        tongzhi.bold = true;
+        tongzhi.dx = 380;
+        ScanLine ch = TestScanLineXYP("第一章 总则", 2, 72, 40);
+        ch.fontSize = 14;
+        lines.Append(banner);
+        lines.Append(tongzhi);
+        lines.Append(ch);
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 2, roots);
+        InsertOfficialDocTitles(lines, 2, roots);
+        ExtractedTocItem* doc = ExtractedFindContaining(roots, "关于印发");
+        bool stripOk = glued && str::StartsWith(glued, "关于印发") && str::EndsWith(glued, "的通知") &&
+                       !str::Find(glued, "领导小组") && LooksLikeOfficialHongtouLetterhead(hongtou);
+        bool ok = stripOk && ran && doc && str::StartsWith(doc->title, "关于印发") &&
+                  str::Find(doc->title, "管理办法") && str::EndsWith(doc->title, "的通知") &&
+                  !str::Find(doc->title, "领导小组") && !ExtractedFindContaining(roots, "领导小组办公室") &&
+                  ExtractedHasPrefix(doc->children, "第一章");
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-hongtou-not-in-title", roots);
+        }
+        str::Free(glued);
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        // 中共…关于…意见 is the file title; 1.和自我革新相结合、 is body wrap.
+        Vec<ScanLine> lines;
+        ScanLine t1 = TestScanLineXYP("中共江西省委 江西省人民政府", 1, 100, 36);
+        t1.fontSize = 22;
+        t1.bold = true;
+        t1.dx = 280;
+        t1.dy = 26;
+        ScanLine t2 = TestScanLineXYP("关于深入推进营商环境优化升级", 1, 120, 70);
+        t2.fontSize = 22;
+        t2.bold = true;
+        t2.dx = 240;
+        t2.dy = 26;
+        ScanLine t3 = TestScanLineXYP("“一号改革工程”的意见", 1, 150, 104);
+        t3.fontSize = 22;
+        t3.bold = true;
+        t3.dx = 180;
+        t3.dy = 26;
+        ScanLine date = TestScanLineXYP("(2022年1月30日)", 1, 160, 140);
+        date.fontSize = 12;
+        ScanLine yi = TestScanLineXYP("一、总体要求", 1, 72, 220);
+        yi.fontSize = 14;
+        ScanLine junk = TestScanLineXYP("1.和自我革新相结合、", 1, 72, 250);
+        junk.fontSize = 12;
+        ScanLine er = TestScanLineXYP("二、主要任务", 1, 72, 290);
+        er.fontSize = 14;
+        lines.Append(t1);
+        lines.Append(t2);
+        lines.Append(t3);
+        lines.Append(date);
+        lines.Append(yi);
+        lines.Append(junk);
+        lines.Append(er);
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 1, roots);
+        InsertOfficialDocTitles(lines, 1, roots);
+        ExtractedTocItem* doc = ExtractedFindContaining(roots, "一号改革工程");
+        bool ok = ran && doc && str::StartsWith(doc->title, "关于") && str::Find(doc->title, "的意见") &&
+                  !str::Find(doc->title, "中共") && ExtractedHasPrefix(doc->children, "一、总体要求") &&
+                  ExtractedHasPrefix(doc->children, "二、主要任务") && !ExtractedFindContaining(roots, "自我革新") &&
+                  !ExtractedFindContaining(roots, "2022年") && !ExtractedIsRootContaining(roots, "一、总体要求");
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-party-opinion-title-root", roots);
+        }
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        // CID title: 关千 / 坏境 / ［程; 一、 on page 2; filename ends （OA）.
+        Vec<ScanLine> lines;
+        ScanLine t1 = TestScanLineBox("中共江西省委 江西省人民政府", 1, 153.9f, 397.9f, 288.2f, 15.8f, 16);
+        t1.bold = true;
+        ScanLine t2 = TestScanLineBox("关千深入推进营商坏境优化升级", 1, 131.3f, 433.9f, 332.4f, 15.6f, 16);
+        t2.bold = true;
+        ScanLine t3 = TestScanLineBox("“一号改革［程”的意见", 1, 189.1f, 469.4f, 216.0f, 15.1f, 16);
+        t3.bold = true;
+        ScanLine date = TestScanLineBox("(2022 年 1 月 30 日）", 1, 230.9f, 504.0f, 133.2f, 11.3f, 11);
+        ScanLine body = TestScanLineBox("营商环境是企业生存发展的土壤，是重要生产力、核心竟争", 1, 109.9f, 543.1f,
+                                        406.8f, 12.7f, 12);
+        ScanLine yi = TestScanLineBox("一、总体要求", 2, 109.2f, 91.9f, 91.4f, 12.7f, 13);
+        ScanLine wrap = TestScanLineBox("和自我革新相结合、", 2, 77.8f, 233.3f, 130.1f, 12.5f, 12);
+        ScanLine next = TestScanLineBox("坚持有事必应和无事不扰相结合，对标国际", 2, 219.6f, 233.3f, 296.6f, 12.5f, 12);
+        ScanLine er = TestScanLineBox("二、 主要任务", 2, 109.2f, 686.2f, 91.7f, 12.0f, 13);
+        lines.Append(t1);
+        lines.Append(t2);
+        lines.Append(t3);
+        lines.Append(date);
+        lines.Append(body);
+        lines.Append(yi);
+        lines.Append(wrap);
+        lines.Append(next);
+        lines.Append(er);
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 2, roots);
+        InsertOfficialDocTitles(
+            lines, 2, roots,
+            "C:\\docs\\中共江西省委、江西省人民政府关于深入推进营商环境优化升级“一号改革工程”的意见（OA）.pdf");
+        ExtractedTocItem* doc = ExtractedFindContaining(roots, "一号改革");
+        bool ok = ran && doc && str::StartsWith(doc->title, "关于") && !str::Find(doc->title, "中共") &&
+                  str::Find(doc->title, "的意见") && ExtractedHasPrefix(doc->children, "一、总体要求") &&
+                  ExtractedHasPrefix(doc->children, "二、") && !ExtractedFindContaining(roots, "自我革新") &&
+                  !ExtractedFindContaining(roots, "2022") && !ExtractedIsRootContaining(roots, "一、总体要求");
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-party-opinion-ocr-title-root", roots);
         }
         DeleteExtractedTocItems(roots);
         FreeScanLines(lines);
@@ -12697,6 +13749,51 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         FreeScanLines(lines);
     }
     {
+        const char* frag = "征求〈江西省 2026 年数据王作要点";
+        bool fragOk =
+            LooksLikeOfficialCoverTitleFragment(frag) &&
+            !LooksLikeOfficialCoverTitleFragment("关于征求《江西省2026年数据工作要点（征求意见稿）》意见建议的函");
+        Vec<ScanLine> lines;
+        ScanLine han = TestScanLineXYP("关于征求《江西省2026年数据工作要点（征求意见稿）》意见建议的函", 1, 72, 40);
+        han.fontSize = 16;
+        han.bold = true;
+        lines.Append(han);
+        ScanLine list = TestScanLineXYP("附件：1.2026年江西省数据工作要点（征求意见稿）", 1, 72, 200);
+        list.fontSize = 12;
+        lines.Append(list);
+        lines.Append(TestScanLineXYP("2.各有关单位名单", 1, 72, 220));
+        ScanLine junk = TestScanLineXYP(frag, 1, 90, 280);
+        junk.fontSize = 14;
+        lines.Append(junk);
+        ScanLine real = TestScanLineXYP("2026年江西省数据工作要点", 2, 100, 60);
+        real.fontSize = 20;
+        real.bold = true;
+        real.dx = 280;
+        lines.Append(real);
+        ScanLine yi = TestScanLineXYP("一、深化数据领域规划制度建设", 2, 72, 120);
+        yi.fontSize = 14;
+        lines.Append(yi);
+        ScanLine er = TestScanLineXYP("二、夯实数据基础设施支撑", 2, 72, 150);
+        er.fontSize = 14;
+        lines.Append(er);
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 2, roots);
+        InsertOfficialDocTitles(lines, 2, roots);
+        ExtractedTocItem* ap = ExtractedFindContaining(roots, "附件1");
+        bool ok = fragOk && ran && ap && str::Find(ap->title, "数据工作要点") && ap->pageNo == 2 &&
+                  ExtractedCountPrefix(roots, "附件1") == 1 && ExtractedFindContaining(ap->children, "深化数据") &&
+                  !ExtractedFindContaining(roots, "王作要点") &&
+                  !ExtractedIsRootContaining(roots, "2026年江西省数据工作要点");
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-zhengqiu-attach-heading", roots);
+        }
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
         Vec<ScanLine> lines;
         ScanLine header = TestScanLineXYP("省推进政府职能转变和数字政府建设领导小组汇报材料", 1, 72, 30);
         header.fontSize = 16;
@@ -12754,12 +13851,93 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         bool ran = InferHeadings(lines, 2, roots);
         InsertOfficialDocTitles(lines, 2, roots);
         bool ok = ran && ExtractedFindContaining(roots, "调研提纲") && !ExtractedFindContaining(roots, "资源和") &&
-                  ExtractedFindContaining(roots, "一体化信息平台") && ExtractedIsRootContaining(roots, "一、调研内容");
+                  ExtractedFindContaining(roots, "一体化信息平台") &&
+                  ExtractedIsRootContaining(roots, "一、调研内容") && ExtractedCountAppendixNum(roots, 1) <= 1 &&
+                  ExtractedCountAppendixNum(roots, 2) == 0;
         if (ok) {
             (*pass)++;
         } else {
             (*fail)++;
             LogBookExtractFail("official-fujian-tigang", roots);
+        }
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        // 函末「附件：报名表」plus the real form heading must be one 附件1.
+        Vec<ScanLine> lines;
+        ScanLine notice = TestScanLineXYP("关于召开全省人力资源和社会保障信息化工作会的通知", 1, 72, 40);
+        notice.fontSize = 18;
+        notice.bold = true;
+        lines.Append(notice);
+        lines.Append(TestScanLineXYP("一、会议时间", 1, 72, 80));
+        lines.Append(TestScanLineXYP("二、会议地点", 1, 72, 110));
+        lines.Append(TestScanLineXYP("三、会议内容", 2, 72, 40));
+        lines.Append(TestScanLineXYP("四、有关要求", 2, 72, 80));
+        lines.Append(TestScanLineXYP("特此通知。", 3, 72, 200));
+        ScanLine cite = TestScanLineXYP("附件：全省人力资源和社会保障信息化工作会报名表", 3, 72, 360);
+        cite.fontSize = 12;
+        lines.Append(cite);
+        ScanLine fu = TestScanLineXYP("附件", 3, 200, 480);
+        fu.fontSize = 14;
+        lines.Append(fu);
+        ScanLine name = TestScanLineXYP("全省人力资源和社会保障信息化工作会报名表", 3, 160, 510);
+        name.fontSize = 18;
+        name.bold = true;
+        name.dx = 220;
+        lines.Append(name);
+        lines.Append(TestScanLineXYP("姓名 单位 职务 联系电话", 3, 72, 560));
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 3, roots);
+        InsertOfficialDocTitles(lines, 3, roots);
+        OfficialAttachLayout lay;
+        BuildOfficialAttachLayout(lines, 3, lay);
+        ExtractedTocItem* ap = ExtractedFindContaining(roots, "报名表");
+        bool citeOk = LooksLikeOfficialUnnumberedAppendixColonCite("附件：全省人力资源和社会保障信息化工作会报名表") &&
+                      !LooksLikeOfficialUnnumberedAppendixColonCite("附件：1.申报表") &&
+                      !LooksLikeOfficialUnnumberedAppendixColonCite("附件1 全省人力资源和社会保障信息化工作会报名表") &&
+                      !LooksLikeOfficialUnnumberedAppendixColonCite("附件：");
+        bool ok = citeOk && ran && ap && ap->pageNo == 3 && ap->y >= 470.f && lay.manifest.Size() >= 1 &&
+                  ExtractedCountAppendixNum(roots, 1) == 1 && ExtractedCountAppendixNum(roots, 2) == 0;
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-meeting-baoming-dedup", roots);
+        }
+        FreeOfficialAttachLayout(lay);
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        // 四、其他事项 1. …@qq.com — ".com" must not look like a 600mm spec line.
+        const char* item1 =
+            "1.请各设区人社局组织辖区范围内县（市、区）参会人员统一报名，各地原则上不带司机。"
+            "请于3月24日17:00前将参会人员名单（纸质盖章版）报省厅信息中心，同时将电子版发送至490034849@qq.com.";
+        bool specOk = !LooksLikeOfficialSpecOrFormLine(item1) && LooksLikeOfficialSpecOrFormLine("机柜尺寸600mm") &&
+                      LooksLikeOfficialSpecOrFormLine("承重 800kg") && HeadingLevelFromText(item1) >= 3;
+        Vec<ScanLine> lines;
+        lines.Append(TestScanLineXYP("三、参会人员", 2, 72, 40));
+        lines.Append(TestScanLineXYP("1.各设区市人力资源社会保障局主要负责同志", 2, 72, 70));
+        lines.Append(TestScanLineXYP("2.省厅相关处室负责同志", 2, 72, 100));
+        lines.Append(TestScanLineXYP("3.厅各处室单位主要负责同志。", 2, 72, 130));
+        lines.Append(TestScanLineXYP("四、其他事项", 2, 72, 170));
+        ScanLine one = TestScanLineXYP(item1, 2, 72, 200);
+        one.dx = 420;
+        lines.Append(one);
+        lines.Append(TestScanLineXYP("2.请参会人员于3月26日17:00前到赣江宾馆3号楼一楼大厅报到。", 2, 72, 280));
+        lines.Append(TestScanLineXYP("3.3月27日下午4:00将召开全省医疗保险基金审计发现问题专项整治行动动员部署视频会。",
+                                     2, 72, 320));
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 2, roots);
+        ExtractedTocItem* si = ExtractedFindContaining(roots, "其他事项");
+        bool ok = specOk && ran && ExtractedFindContaining(roots, "请各设区") &&
+                  ExtractedFindContaining(roots, "请参会人员") && ExtractedFindContaining(roots, "3月27日") && si;
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-si-qita-keep-1", roots);
         }
         DeleteExtractedTocItems(roots);
         FreeScanLines(lines);
@@ -12991,6 +14169,36 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         }
         DeleteExtractedTocItems(roots);
         FreeScanLines(lines);
+    }
+    {
+        // 函 一、…五、 then 附件1 outline 一、二、三、 then 附件2: nest the
+        // attachment spine under 附件1, not as siblings.
+        Vec<ExtractedTocItem*> roots;
+        roots.Append(NewItem("江西省政务服务管理办公室关于召开人工智能赋能数字政府建设座谈会", 1, 72, 20, 1));
+        roots.Append(NewItem("一、会议时间", 1, 72, 80, 2));
+        roots.Append(NewItem("二、会议地点", 1, 72, 100, 2));
+        roots.Append(NewItem("五、有关事项", 2, 72, 80, 2));
+        roots.Append(NewItem("附件1 浙江省“十五五”时期人工智能赋能经济社会发展报告（纲要）", 8, 72, 30, 2));
+        roots.Append(NewItem("一、怎么“看”：趋势判断", 8, 72, 80, 2));
+        roots.Append(NewItem("二、怎么“办”：政府策略选择", 12, 72, 40, 2));
+        roots.Append(NewItem("三、怎么“干”", 20, 72, 40, 2));
+        roots.Append(NewItem("附件2 参会回执", 33, 72, 40, 2));
+        RelayoutOfficialArabicListLevels(roots);
+        ExtractedTocItem* ap1 = ExtractedFindContaining(roots, "附件1");
+        ExtractedTocItem* ap2 = ExtractedFindContaining(roots, "附件2");
+        ExtractedTocItem* coverYi = ExtractedFindContaining(roots, "一、会议时间");
+        bool ok = ap1 && ap2 && coverYi && ExtractedHasPrefix(ap1->children, "一、怎么") &&
+                  ExtractedHasPrefix(ap1->children, "二、怎么") && ExtractedHasPrefix(ap1->children, "三、怎么") &&
+                  !ExtractedFindContaining(ap1->children, "会议时间") &&
+                  !ExtractedFindContaining(ap1->children, "附件2") && coverYi->level == ap1->level &&
+                  ap2->level == ap1->level;
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-attach-dunhao-under-appendix", roots);
+        }
+        DeleteExtractedTocItems(roots);
     }
     {
         // 管理办法: 附件N is a sibling of 第N章, not a child of 附则.
@@ -13297,6 +14505,99 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         FreeScanLines(lines);
     }
     {
+        HeadingMarker spaced = ParseHeadingMarker("附件 2");
+        Vec<ScanLine> lines;
+        ScanLine tongzhi = TestScanLineXYP("关于做好2018年度考核工作的通知", 1, 72, 40);
+        tongzhi.fontSize = 16;
+        tongzhi.bold = true;
+        lines.Append(tongzhi);
+        lines.Append(TestScanLineXYP("一、工作人员考核", 1, 72, 80));
+        lines.Append(TestScanLineXYP("五、其他事项", 1, 72, 120));
+        ScanLine ap1 = TestScanLineXYP("附件1 年度考核登记表", 2, 72, 40);
+        ap1.fontSize = 16;
+        lines.Append(ap1);
+        lines.Append(TestScanLineXYP("一、基本要求", 2, 72, 80));
+        ScanLine ap2 = TestScanLineXYP("附件 2", 3, 100, 40);
+        ap2.fontSize = 14;
+        ap2.dy = 16;
+        ScanLine spec = TestScanLineXYP("年度考核登记表填写规范", 3, 80, 70);
+        spec.fontSize = 20;
+        spec.bold = true;
+        spec.dx = 280;
+        lines.Append(ap2);
+        lines.Append(spec);
+        lines.Append(TestScanLineXYP("一、基本要求", 3, 72, 110));
+        lines.Append(TestScanLineXYP("二、正处级领导干部的相关填写要求", 3, 72, 140));
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 3, roots);
+        InsertOfficialDocTitles(lines, 3, roots);
+        ExtractedTocItem* a1 = ExtractedFindContaining(roots, "附件1");
+        ExtractedTocItem* a2 = ExtractedFindContaining(roots, "附件2");
+        bool ok = spaced.type == MarkerType::Appendix && spaced.number == 2 && ran && a1 && a2 &&
+                  str::Find(a1->title, "年度考核登记表") && !str::Find(a1->title, "填写规范") &&
+                  str::Find(a2->title, "填写规范") && a2->pageNo == 3 && ExtractedCountPrefix(roots, "附件2") == 1 &&
+                  ExtractedFindContaining(a2->children, "正处级");
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-fujian-space-num", roots);
+        }
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        Vec<ScanLine> lines;
+        ScanLine report = TestScanLineXYP("关于恳请解决我省金保工程二期建设资金的报告", 1, 72, 40);
+        report.fontSize = 16;
+        report.bold = true;
+        lines.Append(report);
+        lines.Append(TestScanLineXYP("1、省本级负担 54239 万元", 2, 72, 80));
+        ScanLine two = TestScanLineXYP(
+            "2、设区市负担 21127 万元。其中南昌 1712 万元，九江 2319 万元，景德镇 1327 万元，萍乡 1350 "
+            "万元，新余 1253 万元，鹰潭 1428 万元，赣州 3034 万元，宜春 1829 万元，上饶 2765 万元，吉安 2332 "
+            "万元，抚州 1778 万元，建议分别由各设区市财政分年度承担。",
+            3, 90, 40);
+        two.dx = 420;
+        lines.Append(two);
+        ScanLine ap1 = TestScanLineXYP("附件1:我省金保工程二期建设年度预算一览表", 3, 144, 430);
+        ap1.fontSize = 12;
+        lines.Append(ap1);
+        ScanLine ap2 = TestScanLineXYP("附件2:我省金保工程二期建设资金投入渠道表", 3, 144, 462);
+        ap2.fontSize = 12;
+        lines.Append(ap2);
+        ScanLine form1 = TestScanLineXYP("附件1:", 4, 107, 133);
+        form1.fontSize = 14;
+        lines.Append(form1);
+        ScanLine form1t = TestScanLineXYP("我省金保工程二期建设年度预算一览表", 4, 175, 166);
+        form1t.fontSize = 16;
+        form1t.bold = true;
+        lines.Append(form1t);
+        ScanLine form2 = TestScanLineXYP("附件 2:", 5, 70, 134);
+        form2.fontSize = 14;
+        lines.Append(form2);
+        ScanLine form2t = TestScanLineXYP("我省金保工程二期建设资金投入渠道表", 5, 175, 168);
+        form2t.fontSize = 16;
+        form2t.bold = true;
+        lines.Append(form2t);
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 5, roots);
+        InsertOfficialDocTitles(lines, 5, roots);
+        ExtractedTocItem* one = ExtractedFindContaining(roots, "省本级负担");
+        ExtractedTocItem* city = ExtractedFindContaining(roots, "设区市负担");
+        ExtractedTocItem* a1 = ExtractedFindContaining(roots, "一览表");
+        ExtractedTocItem* a2 = ExtractedFindContaining(roots, "渠道表");
+        bool ok = ran && one && city && a1 && a2 && a1->pageNo == 4 && a2->pageNo == 5;
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-jinbao-erqi-fudan-two", roots);
+        }
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
         Vec<ScanLine> lines;
         lines.Append(TestScanLine("一、总体要求", 20));
         for (int n = 1; n <= 18; n++) {
@@ -13484,7 +14785,10 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         // Wrapped email "126. com" is not Arabic-dot heading 126.
         bool notHead = HeadingLevelFromText("126. com") == 0 && HeadingLevelFromText("126.com") == 0 &&
                        LooksLikeDomainOrEmailFragment(" com") && LooksLikeDomainOrEmailFragment("mohrss. gov. cn") &&
-                       !LooksLikeDomainOrEmailFragment("https://pan.baidu.com/s/1zWbz5");
+                       LooksLikeDomainOrEmailFragment("yc7116@qq.com") &&
+                       !LooksLikeDomainOrEmailFragment("https://pan.baidu.com/s/1zWbz5") &&
+                       !LooksLikeDomainOrEmailFragment(
+                           "请各设区人社局组织辖区范围内县（市、区）参会人员统一报名，发送至490034849@qq.com.");
         Vec<ScanLine> lines;
         lines.Append(TestScanLineXYP("（三）报送方式。", 2, 72, 80));
         lines.Append(TestScanLineXYP("人力资源社会保障部门调查数据通过SMIS2012系统报送电子邮箱yc7116 @", 2, 72, 100));
@@ -13548,6 +14852,86 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         }
         DeleteExtractedTocItems(roots);
         FreeScanLines(lines);
+    }
+    {
+        // 附件1-1 / 附件2-1 / 附件2-2 is one Appendix marker. Glue 附件1 + 1-1.标题.
+        // Form-table rows such as （二）投入经济性 stay off the bookmark.
+        HeadingMarker m11 = ParseHeadingMarker("附件1-1 财政支出项目事前绩效评估表");
+        HeadingMarker m21 = ParseHeadingMarker("附件2-1 财政支出项目事前绩效评估报告");
+        HeadingMarker m22 = ParseHeadingMarker("附件2-2 事前绩效评估结果审核表");
+        HeadingMarker mDot = ParseHeadingMarker("附件1-1.财政支出项目事前绩效评估表");
+        char* mashed = str::Dup("附件1 1-1.财政支出项目事前绩效评估表");
+        RewriteOfficialAppendixCompoundTitle(&mashed);
+        ScanLine bare = TestScanLineXYP("附件1", 11, 72, 30);
+        bare.fontSize = 16;
+        ScanLine serial = TestScanLineXYP("1-1.财政支出项目事前绩效评估表", 11, 72, 52);
+        serial.fontSize = 16;
+        bool glue = ShouldMergeOfficialAppendixTitleWrap(bare, serial);
+        Vec<ScanLine> lines;
+        lines.Append(TestScanLineXYP("第六章 附则", 10, 72, 40));
+        lines.Append(TestScanLineXYP("第二十二条本办法自发布之日起施行", 10, 72, 200));
+        ScanLine colonList = TestScanLineXYP("附件： 1-1.财政支出项目事前绩效评估表", 10, 72, 280);
+        colonList.fontSize = 14;
+        lines.Append(colonList);
+        lines.Append(TestScanLineXYP("1-2.财政支出政策事前绩效评估表", 10, 90, 310));
+        lines.Append(bare);
+        lines.Append(serial);
+        ScanLine cellA = TestScanLineXYP("（二）投入经济性", 11, 72, 140);
+        cellA.fontSize = 12;
+        ScanLine cellB = TestScanLineXYP("1.成本测算是否准确", 11, 72, 170);
+        cellB.fontSize = 11;
+        lines.Append(cellA);
+        lines.Append(cellB);
+        ScanLine a21 = TestScanLineXYP("附件2-1 财政支出项目事前绩效评估报告（参考格式）摘要", 15, 72, 30);
+        a21.fontSize = 16;
+        ScanLine a22 = TestScanLineXYP("附件2-2 事前绩效评估结果审核表", 18, 72, 30);
+        a22.fontSize = 16;
+        lines.Append(a21);
+        lines.Append(a22);
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 18, roots);
+        InsertOfficialDocTitles(lines, 18, roots);
+        ApplyOfficialAttachmentPolicy(lines, 18, roots);
+        char* colonListRw = RewriteAppendixColonListTitle("附件： 1-1.财政支出项目事前绩效评估表");
+        bool parseOk = m11.type == MarkerType::Appendix && m11.number == 1 && m11.subNumber == 1 && m21.number == 2 &&
+                       m21.subNumber == 1 && m22.number == 2 && m22.subNumber == 2 && mDot.number == 1 &&
+                       mDot.subNumber == 1 && glue && mashed && str::Find(mashed, "附件1-1") &&
+                       str::Find(mashed, "财政支出项目事前绩效评估表") && !str::Find(mashed, "1-1.") && colonListRw &&
+                       str::Find(colonListRw, "附件1-1") && !str::Find(colonListRw, "附件1：") &&
+                       !str::Find(colonListRw, "1-1.");
+        bool treeOk = ran && ExtractedCountPrefix(roots, "附件1-1") == 1 && ExtractedHasPrefix(roots, "附件2-1") &&
+                      ExtractedHasPrefix(roots, "附件2-2") && !ExtractedFindContaining(roots, "附件1：") &&
+                      !ExtractedFindContaining(roots, "1-1.财政") && !ExtractedFindContaining(roots, "投入经济性") &&
+                      !ExtractedFindContaining(roots, "成本测算");
+        str::Free(colonListRw);
+        if (parseOk && treeOk) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-attach-compound-1-1", roots);
+        }
+        str::Free(mashed);
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        // 函末 leftover 附件1：1-1.… is the same sheet as 附件1-1; do not keep both
+        // when 附件1-2 also exists (bare-附件1 fold used to skip this).
+        Vec<ExtractedTocItem*> roots;
+        roots.Append(NewItem("第二十二条本办法自发布之日起施行", 10, 72, 40, 1));
+        roots.Append(NewItem("附件1 ：1-1.财政支出项目事前绩效评估表", 10, 72, 280, 1));
+        roots.Append(NewItem("附件1-1 财政支出项目事前绩效评估表", 11, 72, 30, 1));
+        roots.Append(NewItem("附件1-2 财政支出政策事前绩效评估表", 12, 72, 30, 1));
+        MergeOfficialDuplicateAppendices(roots);
+        bool ok = ExtractedCountPrefix(roots, "附件1-1") == 1 && ExtractedHasPrefix(roots, "附件1-2") &&
+                  !ExtractedFindContaining(roots, "附件1：") && !ExtractedFindContaining(roots, "1-1.财政");
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-attach-colon-1-1-dup", roots);
+        }
+        DeleteExtractedTocItems(roots);
     }
     {
         // False 附件2) can nest 二、/三、; merging with later 附件2 must not delete them.
@@ -14926,6 +16310,68 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         }
         str::Free(trimmed);
         str::Free(keepShort);
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        // Same 通知: 一、 skips （一） and takes 1.; 三、 uses （一）/（二） then 1.
+        // 1.12333电话 is a list item under （二）, not a 1.1 sibling of （二）.
+        Vec<ScanLine> lines;
+        ScanLine tongzhi = TestScanLineXYP("关于开展2020年度考核工作的通知", 1, 72, 20);
+        tongzhi.fontSize = 16;
+        tongzhi.bold = true;
+        lines.Append(tongzhi);
+        lines.Append(TestScanLineXYP("一、考核对象", 1, 72, 50));
+        lines.Append(TestScanLineXYP("1.中心正处级领导以外的在编在岗干部职工。", 1, 72, 70));
+        lines.Append(TestScanLineXYP("2.12333电话咨询科编制外聘用人员，共19人。", 1, 72, 90));
+        lines.Append(TestScanLineXYP("3.社保卡科技服务站编制外聘用人员，共12人。", 1, 72, 110));
+        lines.Append(TestScanLineXYP("4.中心其他科室编制外聘用人员，共5人。", 1, 72, 130));
+        lines.Append(TestScanLineXYP("二、考核标准及名额", 1, 72, 150));
+        lines.Append(TestScanLineXYP("三、考核程序和时间安排", 2, 72, 40));
+        lines.Append(TestScanLineXYP("（一）关于在编在岗干部职工的考核", 2, 72, 60));
+        lines.Append(TestScanLineXYP("1.中心在编在岗干部职工参加年度考核。", 2, 72, 80));
+        lines.Append(TestScanLineXYP("2.综合科将中心在编在岗干部职工年度考核登记表印发。", 2, 72, 100));
+        lines.Append(TestScanLineXYP("3.适时组织召开中心在编在岗职工大会。", 2, 72, 120));
+        lines.Append(TestScanLineXYP("4.组织民主测评。", 2, 72, 140));
+        lines.Append(TestScanLineXYP("5.召开中心主任会。", 2, 72, 160));
+        lines.Append(TestScanLineXYP("（二）关于编制外聘用人员的考核", 3, 72, 40));
+        lines.Append(TestScanLineXYP("1.12333电话咨询科、社保卡科技服务站自行组织述职。", 3, 72, 60));
+        lines.Append(TestScanLineXYP("2.中心其他科室编制外聘用人员的民主测评。", 3, 72, 80));
+        lines.Append(TestScanLineXYP("3.召开中心主任会。", 3, 72, 100));
+        lines.Append(TestScanLineXYP("四、其他事项", 3, 72, 120));
+        lines.Append(TestScanLineXYP("附件1：年度考核登记表", 3, 72, 140));
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 3, roots);
+        InsertOfficialDocTitles(lines, 3, roots);
+        ExtractedTocItem* yi = ExtractedFindContaining(roots, "一、考核对象");
+        ExtractedTocItem* san = ExtractedFindContaining(roots, "三、考核程序");
+        ExtractedTocItem* yiParen = ExtractedFindContaining(roots, "（一）关于在编在岗");
+        ExtractedTocItem* erParen = ExtractedFindContaining(roots, "（二）关于编制外");
+        bool yiKids = yi && yi->children.Size() == 4 && yi->children[1]->children.Size() == 0 &&
+                      str::StartsWith(yi->children[1]->title, "2.12333") &&
+                      str::StartsWith(yi->children[2]->title, "3.") && str::StartsWith(yi->children[3]->title, "4.");
+        bool sanKids =
+            san && ExtractedHasPrefix(san->children, "（一）") && ExtractedHasPrefix(san->children, "（二）");
+        bool paren1 = yiParen && yiParen->children.Size() >= 5 && str::StartsWith(yiParen->children[0]->title, "1.");
+        bool paren2 = erParen && erParen->children.Size() >= 3 &&
+                      str::StartsWith(erParen->children[0]->title, "1.12333") &&
+                      str::StartsWith(erParen->children[1]->title, "2.") &&
+                      str::StartsWith(erParen->children[2]->title, "3.") && erParen->children[0]->children.Size() == 0;
+        bool besideSan = false;
+        if (san) {
+            for (int i = 0; i < san->children.Size(); i++) {
+                if (san->children[i]->title && str::StartsWith(san->children[i]->title, "1.12333")) {
+                    besideSan = true;
+                }
+            }
+        }
+        bool ok = ran && yiKids && sanKids && paren1 && paren2 && !besideSan;
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-mixed-skip-paren-arabic", roots);
+        }
         DeleteExtractedTocItems(roots);
         FreeScanLines(lines);
     }
@@ -18143,11 +19589,120 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
     }
 }
 
-static bool OfficialHanComplete(const char* s) {
+static bool OfficialHanEndsLikeComplete(const char* s) {
     return s && (str::EndsWith(s, "通知") || str::EndsWith(s, "的函") || str::EndsWith(s, "请示") ||
                  str::EndsWith(s, "通报") || str::EndsWith(s, "批复") || str::EndsWith(s, "意见的函") ||
-                 str::EndsWith(s, "回复意见") || str::EndsWith(s, "情况说明"));
+                 str::EndsWith(s, "回复意见") || str::EndsWith(s, "情况说明") || str::EndsWith(s, "的意见") ||
+                 str::EndsWith(s, "的决定") || str::EndsWith(s, "意见") || str::EndsWith(s, "决定"));
 }
+
+static void StripOfficialTitleTrailingParens(char* t) {
+    if (!t || !t[0]) {
+        return;
+    }
+    for (;;) {
+        int len = (int)str::Len(t);
+        int end = len;
+        int last = end > 0 ? Utf8CodepointPrev(t, len, end) : 0;
+        if (last != ')' && last != 0xFF09) {
+            break;
+        }
+        int openCp = last == 0xFF09 ? 0xFF08 : '(';
+        int depth = 1;
+        int pos = end;
+        int cutAt = -1;
+        while (pos > 0 && depth > 0) {
+            int prev = pos;
+            int cp = Utf8CodepointPrev(t, len, prev);
+            if (cp == last) {
+                depth++;
+            } else if (cp == openCp) {
+                depth--;
+                if (depth == 0) {
+                    cutAt = prev;
+                }
+            }
+            pos = prev;
+        }
+        if (cutAt < 0) {
+            t[end] = 0;
+            break;
+        }
+        t[cutAt] = 0;
+        str::TrimWSInPlace(t, str::TrimOpt::Both);
+    }
+}
+
+static bool OfficialHanComplete(const char* s) {
+    if (OfficialHanEndsLikeComplete(s)) {
+        return true;
+    }
+    if (!s || !s[0]) {
+        return false;
+    }
+    char* t = str::Dup(s);
+    if (!t) {
+        return false;
+    }
+    str::TrimWSInPlace(t, str::TrimOpt::Both);
+    StripOfficialTitleTrailingParens(t);
+    bool ok = OfficialHanEndsLikeComplete(t);
+    str::Free(t);
+    return ok;
+}
+
+static void OfficialReplaceAllInTitle(char** titleOut, const char* from, const char* to) {
+    char* s = titleOut ? *titleOut : nullptr;
+    if (!s || !from || !from[0] || !to || !str::Find(s, from)) {
+        return;
+    }
+    char buf[2048];
+    int o = 0;
+    int slen = (int)str::Len(s);
+    int fl = (int)str::Len(from);
+    int tl = (int)str::Len(to);
+    int i = 0;
+    while (i < slen) {
+        if (str::StartsWith(s + i, from)) {
+            if (o + tl >= (int)sizeof(buf)) {
+                return;
+            }
+            memcpy(buf + o, to, (size_t)tl);
+            o += tl;
+            i += fl;
+            continue;
+        }
+        if (o + 1 >= (int)sizeof(buf)) {
+            return;
+        }
+        buf[o++] = s[i++];
+    }
+    buf[o] = 0;
+    if (str::Eq(s, buf)) {
+        return;
+    }
+    str::Free(s);
+    *titleOut = str::Dup(buf);
+}
+
+// CID / missing-ToUnicode: 关千→关于, 人汴→人社, 通亦→通办, 部11→部门.
+static void RewriteOfficialTitleOcr(char** titleOut) {
+    if (!titleOut || !*titleOut) {
+        return;
+    }
+    OfficialReplaceAllInTitle(titleOut, "关千", "关于");
+    OfficialReplaceAllInTitle(titleOut, "坏境", "环境");
+    OfficialReplaceAllInTitle(titleOut, "［程", "工程");
+    OfficialReplaceAllInTitle(titleOut, "[程", "工程");
+    OfficialReplaceAllInTitle(titleOut, "人汴", "人社");
+    OfficialReplaceAllInTitle(titleOut, "通亦", "通办");
+    OfficialReplaceAllInTitle(titleOut, "对林", "对标");
+    OfficialReplaceAllInTitle(titleOut, "推阐", "推广");
+    OfficialReplaceAllInTitle(titleOut, "部11", "部门");
+}
+
+static bool OfficialTitleHasDocSuffix(const char* s);
+static void StripOfficialDocTitleGluedPreamble(char* s);
 
 static bool OfficialTitleRunComplete(const char* s) {
     return OfficialHanComplete(s) || str::EndsWith(s, "情况说明");
@@ -18161,7 +19716,8 @@ static bool LooksLikeOfficialTitle(const char* s) {
     if (str::Find(s, "参见") || str::StartsWith(s, "详见")) {
         return false;
     }
-    if (str::StartsWith(s, "根据") || str::StartsWith(s, "为做好") || str::StartsWith(s, "现将")) {
+    if (str::StartsWith(s, "根据") || str::StartsWith(s, "为做好") || str::StartsWith(s, "现将") ||
+        LooksLikeOfficialDocPreamble(s)) {
         return false;
     }
     if (str::Find(s, "《") && !str::Find(s, "》")) {
@@ -18172,9 +19728,19 @@ static bool LooksLikeOfficialTitle(const char* s) {
         return false;
     }
     if (str::Find(s, "关于印发") || str::Find(s, "印发《")) {
+        char* probe = str::Dup(s);
+        StripOfficialDocTitleGluedPreamble(probe);
+        bool glued = probe && !str::Eq(probe, s);
+        str::Free(probe);
+        if (glued) {
+            return false;
+        }
         return true;
     }
-    if (str::StartsWith(s, "关于") && OfficialHanComplete(s)) {
+    if ((str::StartsWith(s, "关于") || str::StartsWith(s, "关千")) && OfficialHanComplete(s)) {
+        return true;
+    }
+    if (OfficialTitleFindGuanYu(s) && (OfficialHanComplete(s) || OfficialTitleHasDocSuffix(s))) {
         return true;
     }
     return OfficialHanComplete(s) && g >= 10;
@@ -18186,9 +19752,22 @@ static char* JoinOfficialTitleRun(const Vec<ScanLine>& lines, int start, int* us
         return nullptr;
     }
     char* s = str::Dup(lines[start].text);
+    if (LooksLikeOfficialHongtouLetterhead(s)) {
+        str::Free(s);
+        return nullptr;
+    }
+    if (start > 0 && s && !OfficialTitleIsIssuerBanner(s) && lines[start - 1].text &&
+        OfficialTitleIsIssuerBanner(lines[start - 1].text) && lines[start - 1].srcPage == lines[start].srcPage) {
+        char* withIssuer = str::Join(lines[start - 1].text, s);
+        if (withIssuer) {
+            str::Free(s);
+            s = withIssuer;
+        }
+    }
     int page = lines[start].srcPage;
-    for (int k = 1; k <= 3 && start + k < lines.Size(); k++) {
-        if (OfficialTitleRunComplete(s)) {
+    for (int k = 1; k <= 4 && start + k < lines.Size(); k++) {
+        if (OfficialTitleRunComplete(s) || (OfficialTitleHasDocSuffix(s) && !OfficialDocTitleNeedsWrap(s) &&
+                                            !str::Find(s, "关于印发") && !str::Find(s, "印发《"))) {
             break;
         }
         const ScanLine& b = lines[start + k];
@@ -18197,18 +19776,22 @@ static char* JoinOfficialTitleRun(const Vec<ScanLine>& lines, int start, int* us
         }
         int ga = GlyphCount(s);
         int gb = GlyphCount(b.text);
-        bool wrap = OfficialDocTitleNeedsWrap(s);
+        bool wrap = OfficialDocTitleNeedsWrap(s) || OfficialTitleIsIssuerBanner(s);
         int gbMax = wrap ? 48 : 40;
         int totalMax = wrap ? 80 : 80;
         if (ga + gb > totalMax || gb < 1 || gb > gbMax) {
             break;
         }
         if (HeadingLevelFromText(b.text) > 0 || LooksLikeOfficialBoilerplate(b.text) ||
-            LooksLikeDocNumberLine(b.text)) {
+            LooksLikeDocNumberLine(b.text) || LooksLikeOfficialDocDateLine(b.text) ||
+            OfficialDocTitleWrapTailLooksLikeBody(b.text)) {
             break;
         }
         float gap = b.y - (lines[start + k - 1].y + lines[start + k - 1].dy);
-        float gapLim = wrap ? 28.f : 22.f;
+        float gapLim = wrap ? 36.f : 26.f;
+        if (lines[start].fontSize >= 16 && lines[start].dy * 2.2f > gapLim) {
+            gapLim = lines[start].dy * 2.2f;
+        }
         if (gap > gapLim) {
             break;
         }
@@ -18220,6 +19803,11 @@ static char* JoinOfficialTitleRun(const Vec<ScanLine>& lines, int start, int* us
             break;
         }
     }
+    if (s) {
+        str::TrimWSInPlace(s, str::TrimOpt::Both);
+        RewriteOfficialTitleOcr(&s);
+    }
+    StripOfficialDocTitleGluedPreamble(s);
     return s;
 }
 
@@ -18238,6 +19826,9 @@ static bool OfficialTitleStartsLikeFragment(const char* s) {
 static bool OfficialTitleLooksLikeSentence(const char* s) {
     if (!s || !s[0]) {
         return true;
+    }
+    if (OfficialHanComplete(s)) {
+        return false;
     }
     if (str::Find(s, "。") || str::Find(s, "；") || str::Find(s, "需要") || str::Find(s, "应当") ||
         str::Find(s, "必须") || str::Find(s, "的")) {
@@ -18325,6 +19916,122 @@ static bool OfficialTitleHasDocSuffix(const char* s) {
               (str::EndsWith(t, "表") && GlyphCount(t) >= 4);
     str::Free(t);
     return ok;
+}
+
+static bool OfficialOffsetInsideBookTitle(const char* s, int at) {
+    if (!s || at < 1) {
+        return false;
+    }
+    int len = (int)str::Len(s);
+    int i = 0;
+    int depth = 0;
+    while (i < at && i < len) {
+        int cp = Utf8CodepointNext(s, len, i);
+        if (cp == 0x300A) { // 《
+            depth++;
+        } else if (cp == 0x300B && depth > 0) {
+            depth--;
+        }
+    }
+    return depth > 0;
+}
+
+// "实施方案根据《…》…制定本方案" — keep the short 规章 title.
+static void StripOfficialDocTitleGluedPreamble(char* s) {
+    if (!s || !s[0] || ParseHeadingMarker(s).rank >= 1) {
+        return;
+    }
+    const char* needles[] = {"根据《", "根据", "为贯彻落实", "为完善", "为规范", "为做好", "按照《", "按照"};
+    int bestAt = -1;
+    for (int n = 0; n < (int)dimof(needles); n++) {
+        const char* p = s;
+        int nlen = (int)str::Len(needles[n]);
+        while ((p = str::Find(p, needles[n])) != nullptr) {
+            int at = (int)(p - s);
+            if (at < 1 || OfficialOffsetInsideBookTitle(s, at)) {
+                p += nlen;
+                continue;
+            }
+            char saved = s[at];
+            s[at] = 0;
+            bool prefixOk = OfficialTitleHasDocSuffix(s) && GlyphCount(s) >= 6 && !str::Find(s, "。");
+            s[at] = saved;
+            if (prefixOk) {
+                bestAt = at;
+                break;
+            }
+            p += nlen;
+        }
+        if (bestAt >= 0) {
+            break;
+        }
+    }
+    if (bestAt < 1) {
+        return;
+    }
+    s[bestAt] = 0;
+    str::TrimWSInPlace(s, str::TrimOpt::Both);
+}
+
+// 关于印发X的通知 / 关于印发《X》的通知 → X when X is 办法/方案/细则.
+static char* OfficialIssuedDocTitleFromCover(const char* s) {
+    if (!s || !s[0] || LooksLikeOfficialDocPreamble(s)) {
+        return nullptr;
+    }
+    if (!str::EndsWith(s, "通知") && !str::EndsWith(s, "的通知")) {
+        return nullptr;
+    }
+    const char* yinfa = str::Find(s, "印发");
+    if (!yinfa) {
+        return nullptr;
+    }
+    yinfa += 6; // 印发
+    int ylen = (int)str::Len(yinfa);
+    int yi = 0;
+    SkipSpacesUtf8(yinfa, ylen, yi);
+    int peek = yi;
+    int open = peek < ylen ? Utf8CodepointNext(yinfa, ylen, peek) : 0;
+    bool hadBook = (open == 0x300A);
+    if (hadBook) {
+        yi = peek;
+    }
+    const char* end = str::Find(yinfa + yi, "的通知");
+    if (!end) {
+        return nullptr;
+    }
+    if (end[strlen("的通知")] != 0) {
+        return nullptr;
+    }
+    int n = (int)(end - (yinfa + yi));
+    if (n < 6 || n > 120) {
+        return nullptr;
+    }
+    char* name = str::Dup(yinfa + yi, (size_t)n);
+    if (!name) {
+        return nullptr;
+    }
+    if (hadBook) {
+        int nl = (int)str::Len(name);
+        if (nl >= 3 && str::EndsWith(name, "》")) {
+            name[nl - 3] = 0;
+        }
+        if (str::StartsWith(name, "《")) {
+            memmove(name, name + 3, str::Len(name + 3) + 1);
+        }
+    }
+    str::TrimWSInPlace(name, str::TrimOpt::Both);
+    if (!OfficialTitleHasDocSuffix(name) || GlyphCount(name) < 6 || GlyphCount(name) > 40 ||
+        LooksLikeOfficialDocPreamble(name)) {
+        str::Free(name);
+        return nullptr;
+    }
+    return name;
+}
+
+// Keep 关于印发《方案》的通知 as the TOC root. The inner 方案 name is only used
+// to drop a duplicate bookmark of that plan (see DropOfficialCoverLetterQuotingDocFlat).
+static void RewriteOfficialCoverToIssuedDocTitle(char** titleOut) {
+    (void)titleOut;
 }
 
 static bool LooksLikeOfficialAppendixName(const char* s) {
@@ -18521,8 +20228,17 @@ static bool IsOfficialExtractJunkTitle(const char* s) {
     if (!s || !s[0]) {
         return true;
     }
-    if (LooksLikeOfficialCoverAttachmentList(s) || LooksLikeOfficialAppendixCiteFragment(s)) {
+    if (LooksLikeOfficialCoverTitleFragment(s) || LooksLikeOfficialAppendixCiteFragment(s)) {
         return true;
+    }
+    if (LooksLikeOfficialCoverAttachmentList(s)) {
+        HeadingMarker inner;
+        const char* name = nullptr;
+        // Keep 函末「附件：1.文件名」so it can merge with the later large heading.
+        if (!(ParseAppendixColonArabicList(s, &inner, &name) && name && GlyphCount(name) >= 6 &&
+              !str::Find(name, "有关单位名单") && !OfficialNameLooksLikeAttachmentIndex(name))) {
+            return true;
+        }
     }
     if (str::Find(s, "履约金") || str::Find(s, "质保金缴纳")) {
         return true;
@@ -18552,10 +20268,16 @@ static bool IsOfficialExtractJunkTitle(const char* s) {
     if (LooksLikeBracketTxnCodeTitle(s)) {
         return false;
     }
+    if (OfficialArabicDotLooksLikeBodyWrap(s) || OfficialLineLooksLikeConjunctionBodyWrap(s)) {
+        return true;
+    }
     if (HeadingLevelFromText(s) > 0) {
         return false;
     }
-    if (LooksLikeOfficialTitle(s) || LooksLikeOfficialFileTitle(s)) {
+    if (LooksLikeOfficialDocPreamble(s)) {
+        return true;
+    }
+    if (LooksLikeOfficialTitle(s) || LooksLikeOfficialFileTitle(s) || OfficialHanComplete(s)) {
         return false;
     }
     return true;
@@ -18647,6 +20369,10 @@ static void NormalizeOfficialExtractedTitles(Vec<ExtractedTocItem*>& nodes) {
             continue;
         }
         StripOfficialTitleLeadingOrnament(n->title);
+        StripOfficialDocTitleGluedPreamble(n->title);
+        RewriteOfficialTitleOcr(&n->title);
+        RewriteOfficialCoverToIssuedDocTitle(&n->title);
+        StripOfficialIssuerPrefixInPlace(n->title);
         NormalizeOfficialExtractedTitles(n->children);
     }
 }
@@ -18657,7 +20383,7 @@ static char* JoinLargeOfficialTitleRun(const Vec<ScanLine>& lines, int start, fl
         return nullptr;
     }
     // Do not start a title run on decorative "g" / "&" above 汇总表.
-    if (OfficialTitleLineIsOrnamentOnly(lines[start].text)) {
+    if (OfficialTitleLineIsOrnamentOnly(lines[start].text) || LooksLikeOfficialHongtouLetterhead(lines[start].text)) {
         return nullptr;
     }
     char* s = str::Dup(lines[start].text);
@@ -18670,6 +20396,10 @@ static char* JoinLargeOfficialTitleRun(const Vec<ScanLine>& lines, int start, fl
         if (OfficialTitleLineIsOrnamentOnly(b.text)) {
             continue;
         }
+        if (OfficialTitleHasDocSuffix(s) && !OfficialDocTitleNeedsWrap(s) && !str::Find(s, "关于印发") &&
+            !str::Find(s, "印发《")) {
+            break;
+        }
         bool needHan = str::StartsWith(s, "关于") && !OfficialHanComplete(s);
         bool wrap = OfficialDocTitleNeedsWrap(s);
         float joinMin = needHan ? minFont * 0.8f : minFont;
@@ -18680,7 +20410,8 @@ static char* JoinLargeOfficialTitleRun(const Vec<ScanLine>& lines, int start, fl
             break;
         }
         if (HeadingLevelFromText(b.text) > 0 || LooksLikeOfficialBoilerplate(b.text) ||
-            LooksLikeDocNumberLine(b.text)) {
+            LooksLikeDocNumberLine(b.text) || LooksLikeOfficialDocDateLine(b.text) ||
+            OfficialDocTitleWrapTailLooksLikeBody(b.text)) {
             break;
         }
         float prevBottom = lines[start + k - 1].y + (lines[start + k - 1].dy > 1 ? lines[start + k - 1].dy : 14);
@@ -18700,6 +20431,11 @@ static char* JoinLargeOfficialTitleRun(const Vec<ScanLine>& lines, int start, fl
         *usedExtra = k;
     }
     StripOfficialTitleLeadingOrnament(s);
+    if (s) {
+        str::TrimWSInPlace(s, str::TrimOpt::Both);
+        RewriteOfficialTitleOcr(&s);
+    }
+    StripOfficialDocTitleGluedPreamble(s);
     return s;
 }
 
@@ -18779,10 +20515,11 @@ static bool OfficialFlatTitleOverlapsTitle(const char* flatTitle, const char* ti
     if (str::Eq(flatTitle, title)) {
         return true;
     }
-    // Covering letters quote attachment names inside 《…》; do not treat the glued 附件：1.行 as already having that
-    // title.
+    // Cover-list 「附件：1.某某」 must not block a later large 某某 heading. A real
+    // 「附件2 某某」 that already glued that name is the same bookmark.
     if (ParseHeadingMarker(flatTitle).type == MarkerType::Appendix) {
-        return false;
+        const char* rest = OfficialAppendixRestAfterPrefix(flatTitle);
+        return rest && rest[0] && str::Eq(rest, title);
     }
     if (OfficialFlatQuotedAttachmentName(flatTitle, title)) {
         return false;
@@ -18905,6 +20642,11 @@ static void TrimMashedOfficialAttachName(char* title) {
             str::TrimWSInPlace(title, str::TrimOpt::Both);
             return;
         }
+        // "登记表填写规范" is the attachment title, not mashed form fields.
+        if (str::StartsWith(title + rest, "填写") || str::StartsWith(title + rest, "填报") ||
+            str::StartsWith(title + rest, "规范") || str::StartsWith(title + rest, "须知")) {
+            return;
+        }
         if (!HasLetterOrCjk(title + rest) || GlyphCount(title + rest) < 4) {
             return;
         }
@@ -18922,7 +20664,36 @@ static void TightenOfficialAppendixTitle(ExtractedTocItem* it) {
     if (m.type != MarkerType::Appendix) {
         return;
     }
+    RewriteOfficialAppendixCompoundTitle(&it->title);
+    m = ParseHeadingMarker(it->title);
     TrimMashedOfficialAttachName(it->title);
+    m = ParseHeadingMarker(it->title);
+    if (m.type == MarkerType::Appendix && m.number >= 1 && str::StartsWith(it->title, "附件 ")) {
+        const char* rest = OfficialAppendixRestAfterPrefix(it->title);
+        char* joined = rest ? JoinAppendixNumberTitle(m.number, rest, m.subNumber) : nullptr;
+        if (joined) {
+            str::Free(it->title);
+            it->title = joined;
+            m = ParseHeadingMarker(it->title);
+        }
+    }
+    if (m.type != MarkerType::Appendix || m.prefixLength < 1) {
+        return;
+    }
+    const char* rest = it->title + m.prefixLength;
+    int rlen = (int)str::Len(rest);
+    int ri = 0;
+    SkipSpacesUtf8(rest, rlen, ri);
+    if (!rest[ri]) {
+        return;
+    }
+    if (OfficialNameLooksLikeAttachmentIndex(rest + ri)) {
+        return;
+    }
+    if (LooksLikeOfficialAttachTableBodyTitle(rest + ri) || OfficialAttachLooksLikeFieldLabel(rest + ri)) {
+        it->title[m.prefixLength] = 0;
+        str::TrimWSInPlace(it->title, str::TrimOpt::Both);
+    }
 }
 
 static bool OfficialAppendixHasVisibleNumber(const char* s) {
@@ -18954,7 +20725,17 @@ static void FillBareOfficialAppendixNumbers(Vec<ExtractedTocItem*>& roots) {
             continue;
         }
         HeadingMarker m = ParseHeadingMarker(n->title);
-        if (m.type != MarkerType::Appendix || OfficialAppendixHasVisibleNumber(n->title) || m.prefixLength < 1) {
+        if (m.type != MarkerType::Appendix || m.prefixLength < 1) {
+            continue;
+        }
+        // "附件：1-1.标题" is a cover list, not a missing 附件1.
+        char* colonRw = RewriteAppendixColonListTitle(n->title);
+        if (colonRw) {
+            str::Free(n->title);
+            n->title = colonRw;
+            continue;
+        }
+        if (OfficialAppendixHasVisibleNumber(n->title)) {
             continue;
         }
         const char* rest = n->title + m.prefixLength;
@@ -18963,6 +20744,27 @@ static void FillBareOfficialAppendixNumbers(Vec<ExtractedTocItem*>& roots) {
         SkipSpacesUtf8(rest, rlen, ri);
         rest += ri;
         if (!rest[0] || GlyphCount(rest) < 2) {
+            continue;
+        }
+        int sMaj = 0;
+        int sSub = 0;
+        const char* sName = nullptr;
+        int rlenSerial = (int)str::Len(rest);
+        int rsi = 0;
+        SkipSpacesUtf8(rest, rlenSerial, rsi);
+        int colonAt = rsi;
+        int colon = rsi < rlenSerial ? Utf8CodepointNext(rest, rlenSerial, rsi) : 0;
+        if (colon == ':' || colon == 0xFF1A) {
+            SkipSpacesUtf8(rest, rlenSerial, rsi);
+        } else {
+            rsi = colonAt;
+        }
+        if (ParseOfficialAttachFormSerial(rest + rsi, &sMaj, &sSub, &sName) && sName && sName[0]) {
+            char* joined = JoinAppendixNumberTitle(sMaj, sName, sSub);
+            if (joined) {
+                str::Free(n->title);
+                n->title = joined;
+            }
             continue;
         }
         int guess = 1;
@@ -19340,51 +21142,52 @@ static void CollectOfficialTitlesAboveYi(const Vec<ScanLine>& lines, int nPages,
         if (!sl.text || sl.srcPage < 1 || sl.srcPage > nPages) {
             continue;
         }
-        if (sl.srcPage < page - 1 || sl.srcPage > page) {
+        int fromPage = page > 3 ? page - 2 : 1;
+        if (sl.srcPage < fromPage || sl.srcPage > page) {
             continue;
         }
         if (sl.srcPage == page && sl.y + 0.5f >= yiY) {
             continue;
         }
         if (HeadingLevelFromText(sl.text) > 0 || LooksLikeOfficialBoilerplate(sl.text) ||
-            LooksLikeDocNumberLine(sl.text) || LineLooksLikePageNumber(sl.text)) {
+            LooksLikeDocNumberLine(sl.text) || LineLooksLikePageNumber(sl.text) ||
+            LooksLikeOfficialDocPreamble(sl.text)) {
             continue;
         }
         int extra = 0;
         char* joined = JoinLargeOfficialTitleRun(lines, i, namedMin, &extra);
         const char* title = joined ? joined : sl.text;
-        bool named = LooksLikeOfficialTitle(title) || LooksLikeOfficialAppendixName(title);
+        bool named =
+            LooksLikeOfficialTitle(title) || LooksLikeOfficialAppendixName(title) || OfficialTitleHasDocSuffix(title);
         float need = named ? namedMin : minFont;
-        if (sl.fontSize + 0.05f < need) {
+        bool skipFont = str::Find(title, "关于印发") || str::Find(title, "印发《") || OfficialHanComplete(title) ||
+                        OfficialTitleHasDocSuffix(title);
+        if (sl.fontSize + 0.05f < need && !skipFont) {
             str::Free(joined);
             continue;
         }
-        if (!LooksLikeOfficialFileTitle(title) || OfficialTitleTextTaken(flat, title)) {
-            str::Free(joined);
+        char* prepared = OfficialPrepareInsertedDocTitle(title);
+        str::Free(joined);
+        joined = nullptr;
+        if (!prepared || !LooksLikeOfficialFileTitle(prepared) || OfficialTitleTextTaken(flat, prepared) ||
+            OfficialTitleInsertDuplicate(inserts, prepared)) {
+            str::Free(prepared);
             if (extra > 0) {
                 skip = i + extra;
             }
             continue;
-        }
-        if (OfficialTitleInsertDuplicate(inserts, title)) {
-            str::Free(joined);
-            if (extra > 0) {
-                skip = i + extra;
-            }
-            goto next_line;
         }
         {
             OfficialTitleInsert ins;
-            ins.item = NewItem(title, sl.srcPage, sl.x, sl.y, titleLevel, 90);
+            ins.item = NewItem(prepared, sl.srcPage, sl.x, sl.y, titleLevel, 90);
             ins.beforeFlat = yiFlatIdx;
             ins.underAppendix = underAp;
             inserts.Append(ins);
         }
-        str::Free(joined);
+        str::Free(prepared);
         if (extra > 0) {
             skip = i + extra;
         }
-    next_line:;
     }
 }
 
@@ -19408,7 +21211,8 @@ static void CollectOfficialTitlesAboveChapter(const Vec<ScanLine>& lines, int nP
         if (!sl.text || sl.srcPage < 1 || sl.srcPage > nPages) {
             continue;
         }
-        if (sl.srcPage < page - 1 || sl.srcPage > page) {
+        int fromPage = page > 3 ? page - 2 : 1;
+        if (sl.srcPage < fromPage || sl.srcPage > page) {
             continue;
         }
         if (sl.srcPage == page && sl.y + 0.5f >= chY) {
@@ -19428,26 +21232,23 @@ static void CollectOfficialTitlesAboveChapter(const Vec<ScanLine>& lines, int nP
             str::Free(joined);
             continue;
         }
-        if (!LooksLikeOfficialRegulationDocTitle(title) || OfficialTitleTextTaken(flat, title)) {
-            str::Free(joined);
-            if (extra > 0) {
-                skip = i + extra;
-            }
-            continue;
-        }
-        if (OfficialTitleInsertDuplicate(inserts, title)) {
-            str::Free(joined);
+        char* prepared = OfficialPrepareInsertedDocTitle(title);
+        str::Free(joined);
+        joined = nullptr;
+        if (!prepared || !LooksLikeOfficialRegulationDocTitle(prepared) || OfficialTitleTextTaken(flat, prepared) ||
+            OfficialTitleInsertDuplicate(inserts, prepared)) {
+            str::Free(prepared);
             if (extra > 0) {
                 skip = i + extra;
             }
             continue;
         }
         OfficialTitleInsert ins;
-        ins.item = NewItem(title, sl.srcPage, sl.x, sl.y, titleLevel, 92);
+        ins.item = NewItem(prepared, sl.srcPage, sl.x, sl.y, titleLevel, 92);
         ins.beforeFlat = chFlatIdx;
         ins.underAppendix = underAp;
         inserts.Append(ins);
-        str::Free(joined);
+        str::Free(prepared);
         if (extra > 0) {
             skip = i + extra;
         }
@@ -19463,7 +21264,7 @@ static bool OfficialCountsAsMainDocFrontTitle(const char* title) {
     }
     if (LooksLikeOfficialTitle(title)) {
         // Wrap tail "合方案…》的通知" ends like a 公文 but is not the covering letter.
-        if (!str::Find(title, "关于") && !str::Find(title, "印发")) {
+        if (!OfficialTitleFindGuanYu(title) && !str::Find(title, "印发") && !str::Find(title, "中共")) {
             return false;
         }
         return true;
@@ -19500,7 +21301,7 @@ static int ScoreMainOfficialDocTitle(const char* title, const ScanLine& sl) {
     }
     int score = 10;
     int g = GlyphCount(title);
-    if (str::StartsWith(title, "关于")) {
+    if (str::StartsWith(title, "关于") || str::StartsWith(title, "关千") || OfficialTitleFindGuanYu(title)) {
         score += 12;
     }
     if (str::Find(title, "关于印发") || str::Find(title, "印发《")) {
@@ -19517,6 +21318,9 @@ static int ScoreMainOfficialDocTitle(const char* title, const ScanLine& sl) {
     }
     if (g >= 10 && g <= 50) {
         score += 4;
+    }
+    if (str::Find(title, "中共") || (str::Find(title, "省委") && str::Find(title, "人民政府"))) {
+        score += 10;
     }
     if (sl.fontSize >= 12) {
         score += 2;
@@ -19579,7 +21383,9 @@ static void CollectMainOfficialDocTitle(const Vec<ScanLine>& lines, int nPages, 
             continue;
         }
         bool named = LooksLikeOfficialTitle(title);
-        if (named && sl.fontSize + 0.05f < namedMin && !sl.bold) {
+        bool skipFont = str::Find(title, "关于印发") || str::Find(title, "印发《") || OfficialHanComplete(title) ||
+                        OfficialTitleHasDocSuffix(title);
+        if (named && sl.fontSize + 0.05f < namedMin && !sl.bold && !skipFont) {
             str::Free(cand);
             if (extra > 0) {
                 skip = i + extra;
@@ -19603,7 +21409,31 @@ static void CollectMainOfficialDocTitle(const Vec<ScanLine>& lines, int nPages, 
         str::Free(bestText);
         return;
     }
-    if (OfficialTitleTextTaken(flat, bestText) || OfficialTitleInsertDuplicate(inserts, bestText)) {
+    char* prepared = OfficialPrepareInsertedDocTitle(bestText);
+    str::Free(bestText);
+    bestText = prepared;
+    if (!bestText || LooksLikeOfficialDocPreamble(bestText)) {
+        str::Free(bestText);
+        return;
+    }
+    bool have = false;
+    for (int i = 0; i < flat.Size(); i++) {
+        ExtractedTocItem* it = flat[i];
+        if (!it || !it->title || ParseHeadingMarker(it->title).rank >= 1) {
+            continue;
+        }
+        if (str::Eq(it->title, bestText) || str::Find(it->title, bestText)) {
+            have = true;
+            break;
+        }
+        if (str::Find(bestText, it->title) && GlyphCount(bestText) > GlyphCount(it->title)) {
+            str::Free(it->title);
+            it->title = str::Dup(bestText);
+            have = true;
+            break;
+        }
+    }
+    if (have || OfficialTitleInsertDuplicate(inserts, bestText)) {
         str::Free(bestText);
         return;
     }
@@ -19805,11 +21635,109 @@ static void UnlinkExtractedNode(Vec<ExtractedTocItem*>& nodes, ExtractedTocItem*
     }
 }
 
+// 附件1-1, or leftover "附件1：1-1.标题" / "附件：1-1.标题" from a 函末 list.
+static int OfficialAttachTitleSubNumber(const char* title) {
+    if (!title || !title[0]) {
+        return 0;
+    }
+    HeadingMarker m = ParseHeadingMarker(title);
+    if (m.subNumber >= 1) {
+        return m.subNumber;
+    }
+    HeadingMarker inner;
+    if (ParseAppendixColonArabicList(title, &inner, nullptr) && inner.subNumber >= 1) {
+        return inner.subNumber;
+    }
+    if (m.type != MarkerType::Appendix || m.prefixLength < 1) {
+        return 0;
+    }
+    const char* rest = title + m.prefixLength;
+    int rlen = (int)str::Len(rest);
+    int ri = 0;
+    SkipSpacesUtf8(rest, rlen, ri);
+    int colonAt = ri;
+    int colon = ri < rlen ? Utf8CodepointNext(rest, rlen, ri) : 0;
+    if (colon == ':' || colon == 0xFF1A) {
+        SkipSpacesUtf8(rest, rlen, ri);
+    } else {
+        ri = colonAt;
+    }
+    int major = 0;
+    int sub = 0;
+    const char* name = nullptr;
+    if (ParseOfficialAttachFormSerial(rest + ri, &major, &sub, &name) && name && name[0] &&
+        (m.number < 1 || major == m.number)) {
+        return sub;
+    }
+    return 0;
+}
+
+static bool OfficialAppendixSameCompound(const HeadingMarker& a, const HeadingMarker& b) {
+    if (a.type != MarkerType::Appendix || b.type != MarkerType::Appendix || a.number != b.number) {
+        return false;
+    }
+    if (a.subNumber > 0 && b.subNumber > 0 && a.subNumber != b.subNumber) {
+        return false;
+    }
+    return true;
+}
+
+static const char* OfficialAppendixRestAfterPrefix(const char* title) {
+    if (!title || !title[0]) {
+        return nullptr;
+    }
+    HeadingMarker m = ParseHeadingMarker(title);
+    if (m.type != MarkerType::Appendix || m.prefixLength < 1) {
+        return nullptr;
+    }
+    const char* name = title + m.prefixLength;
+    int len = (int)str::Len(name);
+    int i = 0;
+    SkipSpacesUtf8(name, len, i);
+    int cp = i < len ? Utf8CodepointNext(name, len, i) : 0;
+    if (cp == ':' || cp == 0xFF1A) {
+        SkipSpacesUtf8(name, len, i);
+    }
+    name += i;
+    if (!name[0] || GlyphCount(name) < 4) {
+        return nullptr;
+    }
+    return name;
+}
+
+static bool OfficialAppendixRestNamesMatch(const char* a, const char* b) {
+    const char* na = OfficialAppendixRestAfterPrefix(a);
+    const char* nb = OfficialAppendixRestAfterPrefix(b);
+    if (!na || !nb) {
+        return false;
+    }
+    return str::Eq(na, nb) || str::Find(na, nb) || str::Find(nb, na);
+}
+
+static bool OfficialAppendixKeepIsLater(const ExtractedTocItem* keep, int keepIdx, const ExtractedTocItem* drop,
+                                        int dropIdx) {
+    if (!keep || !drop) {
+        return false;
+    }
+    if (keep->pageNo != drop->pageNo) {
+        return keep->pageNo > drop->pageNo;
+    }
+    if (keep->y > drop->y + 0.01f) {
+        return true;
+    }
+    if (keep->y < drop->y - 0.01f) {
+        return false;
+    }
+    return keepIdx > dropIdx;
+}
+
 static void MergeOfficialDuplicateAppendices(Vec<ExtractedTocItem*>& roots) {
     for (int num = 1; num <= 40; num++) {
         Vec<ExtractedTocItem*> pre;
         FlattenExtractedTocItems(roots, pre);
         Vec<ExtractedTocItem*> hits;
+        int distinctSub = 0;
+        bool seenSub[41]{};
         for (int i = 0; i < pre.Size(); i++) {
             if (!pre[i] || !pre[i]->title) {
                 continue;
@@ -19817,21 +21745,48 @@ static void MergeOfficialDuplicateAppendices(Vec<ExtractedTocItem*>& roots) {
             HeadingMarker m = ParseHeadingMarker(pre[i]->title);
             if (m.type == MarkerType::Appendix && m.number == num) {
                 hits.Append(pre[i]);
+                int sub = OfficialAttachTitleSubNumber(pre[i]->title);
+                if (sub >= 1 && sub <= 40 && !seenSub[sub]) {
+                    seenSub[sub] = true;
+                    distinctSub++;
+                }
             }
         }
         if (hits.Size() < 2) {
             continue;
         }
-        ExtractedTocItem* keep = hits[0];
-        for (int i = 1; i < hits.Size(); i++) {
-            ExtractedTocItem* h = hits[i];
-            if (h->pageNo > keep->pageNo || (h->pageNo == keep->pageNo && h->y > keep->y)) {
-                keep = h;
-            }
-        }
         for (int i = 0; i < hits.Size(); i++) {
             ExtractedTocItem* drop = hits[i];
-            if (drop == keep) {
+            if (!drop) {
+                continue;
+            }
+            int dropSub = OfficialAttachTitleSubNumber(drop->title);
+            ExtractedTocItem* keep = nullptr;
+            int keepIdx = -1;
+            for (int j = 0; j < hits.Size(); j++) {
+                ExtractedTocItem* cand = hits[j];
+                if (!cand || cand == drop) {
+                    continue;
+                }
+                HeadingMarker keepM = ParseHeadingMarker(cand->title);
+                HeadingMarker dropM = ParseHeadingMarker(drop->title);
+                if (!OfficialAppendixSameCompound(keepM, dropM)) {
+                    continue;
+                }
+                int keepSub = OfficialAttachTitleSubNumber(cand->title);
+                if (keepSub >= 1 && dropSub >= 1 && keepSub != dropSub) {
+                    continue;
+                }
+                // Several 附件2-1 / 附件2-2: do not fold a bare 附件2 onto one of them.
+                if (distinctSub >= 2 && keepSub != dropSub) {
+                    continue;
+                }
+                if (!keep || OfficialAppendixKeepIsLater(cand, j, keep, keepIdx)) {
+                    keep = cand;
+                    keepIdx = j;
+                }
+            }
+            if (!OfficialAppendixKeepIsLater(keep, keepIdx, drop, i)) {
                 continue;
             }
             if (OfficialYiBetweenPreorder(pre, drop, keep) || OfficialDocBoundaryBetweenPreorder(pre, drop, keep)) {
@@ -19886,7 +21841,81 @@ static void MergeOfficialDuplicateAppendices(Vec<ExtractedTocItem*>& roots) {
             // #endregion
             UnlinkExtractedNode(roots, drop);
             delete drop;
+            hits[i] = nullptr;
         }
+    }
+    // 函末「附件：报名表」numbered 附件1 and a later false 附件2 with the same name.
+    for (;;) {
+        Vec<ExtractedTocItem*> pre;
+        FlattenExtractedTocItems(roots, pre);
+        ExtractedTocItem* drop = nullptr;
+        ExtractedTocItem* keep = nullptr;
+        for (int i = 0; i < pre.Size(); i++) {
+            ExtractedTocItem* a = pre[i];
+            if (!a || !a->title) {
+                continue;
+            }
+            HeadingMarker am = ParseHeadingMarker(a->title);
+            if (am.type != MarkerType::Appendix || !OfficialAppendixRestAfterPrefix(a->title)) {
+                continue;
+            }
+            for (int j = i + 1; j < pre.Size(); j++) {
+                ExtractedTocItem* b = pre[j];
+                if (!b || !b->title) {
+                    continue;
+                }
+                HeadingMarker bm = ParseHeadingMarker(b->title);
+                if (bm.type != MarkerType::Appendix || am.number == bm.number) {
+                    continue;
+                }
+                if (am.subNumber > 0 && bm.subNumber > 0 && am.subNumber != bm.subNumber) {
+                    continue;
+                }
+                if (!OfficialAppendixRestNamesMatch(a->title, b->title)) {
+                    continue;
+                }
+                if (OfficialYiBetweenPreorder(pre, a, b) || OfficialDocBoundaryBetweenPreorder(pre, a, b)) {
+                    continue;
+                }
+                if (OfficialAppendixKeepIsLater(b, j, a, i)) {
+                    drop = a;
+                    keep = b;
+                } else {
+                    drop = b;
+                    keep = a;
+                }
+                break;
+            }
+            if (drop) {
+                break;
+            }
+        }
+        if (!drop || !keep) {
+            break;
+        }
+        HeadingMarker keepM = ParseHeadingMarker(keep->title);
+        HeadingMarker dropM = ParseHeadingMarker(drop->title);
+        if (dropM.number >= 1 && (keepM.number < 1 || dropM.number < keepM.number)) {
+            const char* rest = OfficialAppendixRestAfterPrefix(keep->title);
+            if (!rest) {
+                rest = OfficialAppendixRestAfterPrefix(drop->title);
+            }
+            int sub = OfficialAttachTitleSubNumber(keep->title);
+            if (sub < 1) {
+                sub = OfficialAttachTitleSubNumber(drop->title);
+            }
+            char* joined = rest ? JoinAppendixNumberTitle(dropM.number, rest, sub) : nullptr;
+            if (joined) {
+                str::Free(keep->title);
+                keep->title = joined;
+            }
+        } else if (OfficialAppendixTitleBare(keep->title) && drop->title && !OfficialAppendixTitleBare(drop->title)) {
+            str::Free(keep->title);
+            keep->title = str::Dup(drop->title);
+        }
+        TakeOfficialAppendixDropChildren(roots, keep, drop);
+        UnlinkExtractedNode(roots, drop);
+        delete drop;
     }
 }
 
@@ -19923,6 +21952,217 @@ static bool OfficialAppendixNameChildRedundant(const char* apTitle, const char* 
     }
     str::Free(cleaned);
     return ok;
+}
+
+static void OfficialStripAttachCompareDecor(char* s) {
+    if (!s || !s[0]) {
+        return;
+    }
+    StripOfficialTitleTrailingParens(s);
+    int o = 0;
+    int len = (int)str::Len(s);
+    int i = 0;
+    while (i < len) {
+        int save = i;
+        int d0 = Utf8CodepointNext(s, len, i);
+        if (d0 == ' ' || d0 == 0x3000) {
+            continue;
+        }
+        if (IsDigitCp(d0)) {
+            int nDig = 1;
+            int look = i;
+            while (look < len && nDig < 4) {
+                int st = look;
+                int d = Utf8CodepointNext(s, len, look);
+                if (!IsDigitCp(d)) {
+                    look = st;
+                    break;
+                }
+                nDig++;
+            }
+            int after = look;
+            int unit = after < len ? Utf8CodepointNext(s, len, after) : 0;
+            if (nDig >= 4 && unit == 0x5E74) { // 年
+                i = after;
+                continue;
+            }
+        }
+        int n = i - save;
+        if (n > 0) {
+            memmove(s + o, s + save, (size_t)n);
+            o += n;
+        }
+    }
+    s[o] = 0;
+}
+
+static bool OfficialAttachBodyNamesMatch(const char* a, const char* b) {
+    if (!a || !b) {
+        return false;
+    }
+    const char* ra = OfficialAppendixRestAfterPrefix(a);
+    const char* rb = OfficialAppendixRestAfterPrefix(b);
+    char* na = str::Dup(ra ? ra : a);
+    char* nb = str::Dup(rb ? rb : b);
+    OfficialStripAttachCompareDecor(na);
+    OfficialStripAttachCompareDecor(nb);
+    bool ok = na && nb && na[0] && nb[0] && GlyphCount(na) >= 4 && GlyphCount(nb) >= 4 &&
+              (str::Eq(na, nb) || str::Find(na, nb) || str::Find(nb, na));
+    if (ok && na && nb && !str::Eq(na, nb)) {
+        const char* hi = str::Find(na, nb) ? na : nb;
+        const char* lo = hi == na ? nb : na;
+        const char* tail = hi + str::Len(lo);
+        if (str::StartsWith(tail, "填写") || str::StartsWith(tail, "填报") || str::StartsWith(tail, "规范") ||
+            str::StartsWith(tail, "须知")) {
+            ok = false;
+        }
+    }
+    str::Free(na);
+    str::Free(nb);
+    return ok;
+}
+
+static bool OfficialAppendixNumberFromTitle(const char* s, int* numOut, int* subOut) {
+    HeadingMarker inner;
+    const char* name = nullptr;
+    if (ParseAppendixColonArabicList(s, &inner, &name) && inner.number >= 1) {
+        if (numOut) {
+            *numOut = inner.number;
+        }
+        if (subOut) {
+            *subOut = inner.subNumber;
+        }
+        return true;
+    }
+    HeadingMarker m = ParseHeadingMarker(s);
+    if (m.type == MarkerType::Appendix && m.number >= 1) {
+        if (numOut) {
+            *numOut = m.number;
+        }
+        if (subOut) {
+            *subOut = OfficialAttachTitleSubNumber(s);
+        }
+        return true;
+    }
+    return false;
+}
+
+// 函末「附件1 某某」and a later large「某某」are one item: keep the heading dest, prefix 附件N.
+static void MergeOfficialCoverAppendixWithRealHeading(Vec<ExtractedTocItem*>& roots) {
+    for (;;) {
+        Vec<ExtractedTocItem*> pre;
+        FlattenExtractedTocItems(roots, pre);
+        ExtractedTocItem* drop = nullptr;
+        ExtractedTocItem* keep = nullptr;
+        int apNum = 0;
+        int apSub = 0;
+        for (int i = 0; i < pre.Size() && !drop; i++) {
+            ExtractedTocItem* a = pre[i];
+            if (!a || !a->title) {
+                continue;
+            }
+            int aNum = 0;
+            int aSub = 0;
+            if (!OfficialAppendixNumberFromTitle(a->title, &aNum, &aSub)) {
+                continue;
+            }
+            if (!OfficialAppendixRestAfterPrefix(a->title) && !OfficialAppendixTitleBare(a->title) &&
+                !ParseAppendixColonArabicList(a->title, nullptr, nullptr)) {
+                continue;
+            }
+            for (int j = i + 1; j < pre.Size(); j++) {
+                ExtractedTocItem* b = pre[j];
+                if (!b || !b->title) {
+                    continue;
+                }
+                HeadingMarker bm = ParseHeadingMarker(b->title);
+                if (bm.type == MarkerType::Appendix || bm.rank >= 1) {
+                    continue;
+                }
+                if (OfficialCountsAsMainDocFrontTitle(b->title)) {
+                    continue;
+                }
+                if (OfficialDocBoundaryBetweenPreorder(pre, a, b)) {
+                    continue;
+                }
+                // 一、 under the later heading must not block merge when that heading is later.
+                if (OfficialYiBetweenPreorder(pre, a, b) && b->pageNo <= a->pageNo) {
+                    continue;
+                }
+                if (!OfficialAppendixNameChildRedundant(a->title, b->title) &&
+                    !OfficialAttachBodyNamesMatch(a->title, b->title)) {
+                    continue;
+                }
+                drop = a;
+                keep = b;
+                apNum = aNum;
+                apSub = aSub;
+                break;
+            }
+        }
+        if (!drop || !keep) {
+            break;
+        }
+        if (ParseHeadingMarker(keep->title).type != MarkerType::Appendix) {
+            char* joined = JoinAppendixNumberTitle(apNum, keep->title, apSub);
+            if (joined) {
+                str::Free(keep->title);
+                keep->title = joined;
+            }
+        }
+        TakeOfficialAppendixDropChildren(roots, keep, drop);
+        UnlinkExtractedNode(roots, drop);
+        delete drop;
+    }
+}
+
+// Relayout can lift 附件N beside the 函. Put those roots back under the covering letter.
+static void NestOfficialAppendixUnderFrontLetter(Vec<ExtractedTocItem*>& roots) {
+    ExtractedTocItem* front = nullptr;
+    int frontI = -1;
+    for (int i = 0; i < roots.Size(); i++) {
+        if (roots[i] && OfficialCountsAsMainDocFrontTitle(roots[i]->title)) {
+            front = roots[i];
+            frontI = i;
+            break;
+        }
+    }
+    if (!front) {
+        return;
+    }
+    int until = roots.Size();
+    for (int i = frontI + 1; i < roots.Size(); i++) {
+        if (roots[i] && OfficialTitleIsDocRoot(roots[i]->title) &&
+            ParseHeadingMarker(roots[i]->title).type != MarkerType::Appendix) {
+            until = i;
+            break;
+        }
+    }
+    Vec<ExtractedTocItem*> keep;
+    bool moved = false;
+    for (int i = 0; i < roots.Size(); i++) {
+        ExtractedTocItem* n = roots[i];
+        if (n == front) {
+            keep.Append(n);
+            continue;
+        }
+        bool nest = n && n->title && ParseHeadingMarker(n->title).type == MarkerType::Appendix &&
+                    (i < frontI || (i > frontI && i < until));
+        if (nest) {
+            n->level = (front->level > 0 ? front->level : 1) + 1;
+            front->children.Append(n);
+            moved = true;
+            continue;
+        }
+        keep.Append(n);
+    }
+    if (!moved) {
+        return;
+    }
+    roots.Reset();
+    for (int i = 0; i < keep.Size(); i++) {
+        roots.Append(keep[i]);
+    }
 }
 
 // Relayout lifts 附件N beside 第N章; the large form name can stay under 附则.
@@ -20097,7 +22337,7 @@ static bool OfficialLineIsCoverAppendixIndex(const ScanLine& sl, int num, int li
     if (!sl.text) {
         return false;
     }
-    if (LooksLikeOfficialCoverAttachmentList(sl.text)) {
+    if (LooksLikeOfficialCoverAttachmentList(sl.text) || LooksLikeOfficialUnnumberedAppendixColonCite(sl.text)) {
         return true;
     }
     HeadingMarker inner;
@@ -20119,6 +22359,12 @@ static bool OfficialAppendixBodyTitleHit(const ScanLine& sl, int num, int listPa
         return false;
     }
     if (!str::Find(sl.text, name)) {
+        return false;
+    }
+    const char* nameHit = str::Find(sl.text, name);
+    const char* nameTail = nameHit + str::Len(name);
+    if (str::StartsWith(nameTail, "填写") || str::StartsWith(nameTail, "填报") || str::StartsWith(nameTail, "规范") ||
+        str::StartsWith(nameTail, "须知")) {
         return false;
     }
     if (OfficialLineIsCoverAppendixIndex(sl, num, listPage)) {
@@ -20258,11 +22504,20 @@ static int OfficialAttachSimilarity(const char* a, const char* b) {
     if (str::Eq(na, nb)) {
         score = 100;
     } else if (str::Find(na, nb) || str::Find(nb, na)) {
-        int lo = ga < gb ? ga : gb;
-        int hi = ga > gb ? ga : gb;
-        score = hi > 0 ? (lo * 92) / hi : 0;
-        if (score < 72) {
-            score = 72;
+        const char* hi = str::Find(na, nb) ? na : nb;
+        const char* lo = hi == na ? nb : na;
+        const char* tail = hi + str::Len(lo);
+        // 「登记表」vs「登记表填写规范」are different attachments.
+        if (str::StartsWith(tail, "填写") || str::StartsWith(tail, "填报") || str::StartsWith(tail, "规范") ||
+            str::StartsWith(tail, "须知")) {
+            score = 0;
+        } else {
+            int loN = ga < gb ? ga : gb;
+            int hiN = ga > gb ? ga : gb;
+            score = hiN > 0 ? (loN * 92) / hiN : 0;
+            if (score < 72) {
+                score = 72;
+            }
         }
     } else {
         int ia = 0;
@@ -20316,7 +22571,8 @@ static bool OfficialAttachLineIsCite(const char* s) {
     return str::Find(s, "详见附件") || str::Find(s, "详见附表") || str::Find(s, "详见附录") || str::Find(s, "见附件") ||
            str::Find(s, "见附表") || str::Find(s, "（附件") || str::Find(s, "(附件") || str::Find(s, "有关材料详见") ||
            str::Find(s, "具体要求详见") || str::Find(s, "具体内容详见") || str::Find(s, "与本表") ||
-           str::Find(s, "同时归档") || LooksLikeOfficialAppendixCiteFragment(s);
+           str::Find(s, "同时归档") || LooksLikeOfficialAppendixCiteFragment(s) ||
+           LooksLikeOfficialUnnumberedAppendixColonCite(s);
 }
 
 static bool OfficialAttachLooksLikeFieldLabel(const char* s) {
@@ -20364,7 +22620,8 @@ static bool OfficialAttachLooksLikeRosterLine(const char* s) {
     return false;
 }
 
-static bool OfficialAttachParseMarker(const char* s, int* numberOut, int* prefixOut, bool* hadNumberOut) {
+static bool OfficialAttachParseMarker(const char* s, int* numberOut, int* prefixOut, bool* hadNumberOut,
+                                      int* subNumberOut = nullptr) {
     if (numberOut) {
         *numberOut = 0;
     }
@@ -20373,6 +22630,9 @@ static bool OfficialAttachParseMarker(const char* s, int* numberOut, int* prefix
     }
     if (hadNumberOut) {
         *hadNumberOut = false;
+    }
+    if (subNumberOut) {
+        *subNumberOut = 0;
     }
     if (!s || !s[0] || OfficialAttachLineIsCite(s)) {
         return false;
@@ -20404,6 +22664,8 @@ static bool OfficialAttachParseMarker(const char* s, int* numberOut, int* prefix
     if (!hadNum) {
         i = numAt;
         n = 0;
+    } else {
+        ConsumeOfficialAttachSubNumber(s, len, i, subNumberOut);
     }
     SkipSpacesUtf8(s, len, i);
     peek = i;
@@ -20479,10 +22741,31 @@ static bool OfficialAttachLineIsLargeTitle(const ScanLine& sl, float bodyFont) {
     return false;
 }
 
+static bool LooksLikeOfficialAttachTableBodyTitle(const char* s) {
+    if (!s || !s[0]) {
+        return false;
+    }
+    if (str::Find(s, "\xEF\xBF\xBD")) { // U+FFFD
+        return true;
+    }
+    HeadingMarker m = ParseHeadingMarker(s);
+    if (m.type == MarkerType::ChineseParen || m.type == MarkerType::ChineseDunhao) {
+        const char* rest = s + m.prefixLength;
+        int g = GlyphCount(rest);
+        return g >= 2 && g <= 18 && !str::Find(rest, "。");
+    }
+    if (m.type == MarkerType::ArabicDot && m.rank >= 3 && m.number >= 1) {
+        const char* rest = s + m.prefixLength;
+        int g = GlyphCount(rest);
+        return g >= 2 && g <= 24 && !str::Find(rest, "。") && !OfficialNameLooksLikeAttachmentIndex(s);
+    }
+    return false;
+}
+
 static bool OfficialAttachTitleCandidateOk(const char* s) {
     if (!s || !s[0] || OfficialAttachLooksLikeFieldLabel(s) || OfficialAttachLooksLikeRosterLine(s) ||
         OfficialAttachLineIsCite(s) || LooksLikeOfficialBoilerplate(s) || LooksLikeDocNumberLine(s) ||
-        LineLooksLikePageNumber(s)) {
+        LineLooksLikePageNumber(s) || LooksLikeOfficialAttachTableBodyTitle(s)) {
         return false;
     }
     int dummyN = 0;
@@ -20864,6 +23147,20 @@ static void OfficialAttachCollectManifest(const Vec<ScanLine>& lines, int nPages
         if (!sl.text || sl.srcPage < 1 || sl.srcPage > nPages) {
             continue;
         }
+        const char* bareColonName = OfficialUnnumberedAppendixColonName(sl.text);
+        if (bareColonName) {
+            OfficialAttachManifestItem it;
+            it.number = lastNum >= 1 ? lastNum + 1 : 1;
+            it.title = DupTrimmed(bareColonName);
+            it.srcPage = sl.srcPage;
+            it.x = sl.x;
+            it.y = sl.y;
+            manifest.Append(it);
+            lastNum = it.number;
+            pending = true;
+            pendingPage = sl.srcPage;
+            continue;
+        }
         if (OfficialAttachLineIsCite(sl.text)) {
             pending = false;
             continue;
@@ -20873,6 +23170,7 @@ static void OfficialAttachCollectManifest(const Vec<ScanLine>& lines, int nPages
         if (ParseAppendixColonArabicList(sl.text, &colonInner, &name) && colonInner.number >= 1 && name && name[0]) {
             OfficialAttachManifestItem it;
             it.number = colonInner.number;
+            it.subNumber = colonInner.subNumber;
             it.title = DupTrimmed(name);
             it.srcPage = sl.srcPage;
             it.x = sl.x;
@@ -20916,6 +23214,23 @@ static void OfficialAttachCollectManifest(const Vec<ScanLine>& lines, int nPages
                 pendingPage = sl.srcPage;
                 continue;
             }
+        }
+        int serialMaj = 0;
+        int serialSub = 0;
+        const char* serialName = nullptr;
+        if (sameRun && ParseOfficialAttachFormSerial(sl.text, &serialMaj, &serialSub, &serialName) && serialName &&
+            serialName[0] && (serialMaj == lastNum || serialMaj == lastNum + 1 || lastNum < 1)) {
+            OfficialAttachManifestItem it;
+            it.number = serialMaj;
+            it.subNumber = serialSub;
+            it.title = DupTrimmed(serialName);
+            it.srcPage = sl.srcPage;
+            it.x = sl.x;
+            it.y = sl.y;
+            manifest.Append(it);
+            lastNum = serialMaj;
+            pendingPage = sl.srcPage;
+            continue;
         }
         if (sameRun && m.type == MarkerType::ArabicDot && m.number == lastNum + 1 && m.prefixLength > 0) {
             const char* rest = sl.text + m.prefixLength;
@@ -21130,16 +23445,19 @@ static void BuildOfficialAttachLayout(const Vec<ScanLine>& lines, int nPages, Of
         int number = 0;
         int prefix = 0;
         bool hadNum = false;
-        bool fromMarker = OfficialAttachParseMarker(sl.text, &number, &prefix, &hadNum);
+        int subNumber = 0;
+        bool fromMarker = OfficialAttachParseMarker(sl.text, &number, &prefix, &hadNum, &subNumber);
         if (fromMarker && !hadNum) {
             char* rw = str::Dup(sl.text);
             RewriteOcrAppendixBang(&rw);
             int n2 = 0;
             int p2 = 0;
             bool h2 = false;
-            if (rw && OfficialAttachParseMarker(rw, &n2, &p2, &h2) && h2 && n2 >= 1) {
+            int s2 = 0;
+            if (rw && OfficialAttachParseMarker(rw, &n2, &p2, &h2, &s2) && h2 && n2 >= 1) {
                 number = n2;
                 hadNum = true;
+                subNumber = s2;
             }
             str::Free(rw);
         }
@@ -21302,7 +23620,9 @@ static void BuildOfficialAttachLayout(const Vec<ScanLine>& lines, int nPages, Of
         // #endregion
         bool dup = false;
         for (int s = 0; s < lay.segs.Size(); s++) {
-            if (number >= 1 && lay.segs[s].number == number) {
+            bool sameNum = number >= 1 && lay.segs[s].number == number &&
+                           (subNumber < 1 || lay.segs[s].subNumber < 1 || lay.segs[s].subNumber == subNumber);
+            if (sameNum) {
                 if (sl.srcPage == lay.segs[s].startPage) {
                     dup = true;
                     break;
@@ -21336,6 +23656,7 @@ static void BuildOfficialAttachLayout(const Vec<ScanLine>& lines, int nPages, Of
         }
         OfficialAttachSeg seg;
         seg.number = number;
+        seg.subNumber = subNumber;
         seg.startPage = sl.srcPage;
         seg.endPage = nPages;
         seg.startY = sl.y;
@@ -21423,7 +23744,20 @@ static bool LooksLikeOfficialListHeadingTitle(const char* title) {
         return false;
     }
     int g = GlyphCount(title);
-    return HasLetterOrCjk(title) && g >= 4 && g <= kExtractPdfToc.headingMaxGlyphs && !str::Find(title, "。");
+    if (!HasLetterOrCjk(title) || g < 4 || g > kExtractPdfToc.headingMaxGlyphs) {
+        return false;
+    }
+    // "2、设区市负担 21127 万元。" is the heading; a mid-title 。 is body.
+    const char* period = str::Find(title, "。");
+    if (period) {
+        int rest = (int)(period - title) + (int)str::Len("。");
+        int len = (int)str::Len(title);
+        SkipSpacesUtf8(title, len, rest);
+        if (title[rest]) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static bool OfficialAttachShouldDropHeading(const OfficialAttachLayout& lay, int page, const HeadingMarker& m,
@@ -21448,13 +23782,13 @@ static bool OfficialAttachShouldDropHeading(const OfficialAttachLayout& lay, int
     if (OfficialAttachLooksLikeFieldLabel(title) || OfficialAttachLooksLikeRosterLine(title)) {
         return true;
     }
+    bool listMark = (m.type == MarkerType::ArabicDot && m.rank >= 3) || m.type == MarkerType::ArabicParen ||
+                    m.type == MarkerType::ChineseParen || m.type == MarkerType::ChineseDunhao;
+    if (listMark && (LooksLikeOfficialListHeadingTitle(title) || OfficialAttachLineIsOutlineSpine(title))) {
+        return false;
+    }
     if (kind == OfficialAttachKind::Roster || kind == OfficialAttachKind::FormTable) {
         return true;
-    }
-    bool listMark = (m.type == MarkerType::ArabicDot && m.rank >= 3) || m.type == MarkerType::ArabicParen ||
-                    m.type == MarkerType::ChineseParen;
-    if (listMark && LooksLikeOfficialListHeadingTitle(title)) {
-        return false;
     }
     if (kind == OfficialAttachKind::Unknown && (m.type == MarkerType::ArabicDot || m.type == MarkerType::ArabicParen)) {
         return table >= 30 || GlyphCount(title) <= 8;
@@ -21542,15 +23876,15 @@ static bool OfficialAttachIsCoverIndexNode(const OfficialAttachLayout& lay, cons
         return false;
     }
     HeadingMarker m = ParseHeadingMarker(n->title);
+    const char* rest = n->title;
+    if (m.prefixLength > 0 && m.prefixLength <= (int)str::Len(n->title)) {
+        rest = n->title + m.prefixLength;
+        int rlen = (int)str::Len(rest);
+        int ri = 0;
+        SkipSpacesUtf8(rest, rlen, ri);
+        rest += ri;
+    }
     if (m.type == MarkerType::ArabicDot) {
-        const char* rest = n->title;
-        if (m.prefixLength > 0 && m.prefixLength <= (int)str::Len(n->title)) {
-            rest = n->title + m.prefixLength;
-            int rlen = (int)str::Len(rest);
-            int ri = 0;
-            SkipSpacesUtf8(rest, rlen, ri);
-            rest += ri;
-        }
         if (OfficialArabicDotLooksLikeAppendixCiteTask(rest)) {
             return false;
         }
@@ -21577,24 +23911,23 @@ static bool OfficialAttachIsCoverIndexNode(const OfficialAttachLayout& lay, cons
     }
     // Drop the 函末清单 entry only when a later real start exists. Title-only
     // attachments with no 附件N line stay so Remap can jump to the body title.
+    // ArabicDot on that page is 函末 2.申请表 / 2.一览表, not body 2、设区市负担.
     if (onListPage && numberedIndex && laterSeg) {
-        return true;
+        if (m.type != MarkerType::ArabicDot) {
+            return true;
+        }
+        if (OfficialNameLooksLikeAttachmentIndex(rest) ||
+            (own && own->title && OfficialAttachBodyNamesMatch(n->title, own->title))) {
+            return true;
+        }
     }
     if (m.type == MarkerType::ArabicDot && m.number >= 1 && m.number < lay.markerStartPage.Size() &&
         lay.markerStartPage[m.number] > n->pageNo) {
-        const char* rest = n->title;
-        if (m.prefixLength > 0 && m.prefixLength <= (int)str::Len(n->title)) {
-            rest = n->title + m.prefixLength;
-            int rlen = (int)str::Len(rest);
-            int ri = 0;
-            SkipSpacesUtf8(rest, rlen, ri);
-            rest += ri;
-        }
-        if (onListPage || OfficialNameLooksLikeAttachmentIndex(rest)) {
+        if (OfficialNameLooksLikeAttachmentIndex(rest)) {
             return true;
         }
         OfficialAttachSeg* later = OfficialAttachFindSeg(const_cast<OfficialAttachLayout&>(lay), m.number, n->pageNo);
-        if (later && later->title && OfficialAttachSimilarity(rest, later->title) >= 72) {
+        if (later && later->title && OfficialAttachBodyNamesMatch(n->title, later->title)) {
             return true;
         }
     }
@@ -21683,6 +24016,9 @@ static void OfficialAttachEnsureSegNodes(OfficialAttachLayout& lay, Vec<Extracte
             if (!ap || ParseHeadingMarker(ap->title).number != num) {
                 continue;
             }
+            if (OfficialAttachIsCoverIndexNode(lay, ap)) {
+                continue;
+            }
             if (ap->pageNo >= lay.segs[s].startPage && ap->pageNo <= lay.segs[s].endPage) {
                 covered = true;
                 break;
@@ -21702,11 +24038,15 @@ static void OfficialAttachEnsureSegNodes(OfficialAttachLayout& lay, Vec<Extracte
             name = OfficialAttachManifestNameAt(lay.manifest, num, lay.segs[s].startPage);
         }
         if (name && GlyphCount(name) >= 2) {
-            title = JoinAppendixNumberTitle(num, name);
+            title = JoinAppendixNumberTitle(num, name, lay.segs[s].subNumber);
         }
         if (!title) {
-            char buf[32];
-            snprintf(buf, (int)sizeof(buf), "\xE9\x99\x84\xE4\xBB\xB6%d", num);
+            char buf[40];
+            if (lay.segs[s].subNumber >= 1) {
+                snprintf(buf, (int)sizeof(buf), "\xE9\x99\x84\xE4\xBB\xB6%d-%d", num, lay.segs[s].subNumber);
+            } else {
+                snprintf(buf, (int)sizeof(buf), "\xE9\x99\x84\xE4\xBB\xB6%d", num);
+            }
             title = str::Dup(buf);
         }
         ExtractedTocItem* n = NewItem(title, lay.segs[s].startPage, 0, lay.segs[s].startY, lvl, 90);
@@ -21808,7 +24148,8 @@ static void ApplyOfficialAttachmentPolicyNodes(OfficialAttachLayout& lay, Vec<Ex
                     pageName && use && str::Find(use, pageName) && GlyphCount(use) > GlyphCount(pageName);
                 if (use && GlyphCount(use) >= 2 &&
                     (OfficialAppendixTitleBare(n->title) || mashed || !pageNamed || needNum || pageIncomplete)) {
-                    char* joined = useNum >= 1 ? JoinAppendixNumberTitle(useNum, use) : str::Dup(use);
+                    int useSub = m.subNumber >= 1 ? m.subNumber : (seg ? seg->subNumber : 0);
+                    char* joined = useNum >= 1 ? JoinAppendixNumberTitle(useNum, use, useSub) : str::Dup(use);
                     if (joined) {
                         str::Free(n->title);
                         n->title = joined;
@@ -21921,11 +24262,7 @@ static bool OfficialArabicDotDuplicatesAppendix(const Vec<ExtractedTocItem*>& ap
     if (OfficialNameLooksLikeAttachmentIndex(rest)) {
         return true;
     }
-    const char* apRest = OfficialAppendixRestName(ap->title);
-    if (apRest && OfficialAttachSimilarity(rest, apRest) >= 72) {
-        return true;
-    }
-    return OfficialAttachSimilarity(rest, ap->title) >= 72;
+    return OfficialAttachBodyNamesMatch(n->title, ap->title);
 }
 
 static void DropOfficialArabicDotDuplicateAppendices(Vec<ExtractedTocItem*>& nodes,
@@ -22019,7 +24356,7 @@ static bool OfficialDocTitleIsWrapFragment(const char* s) {
     if (!s || ParseHeadingMarker(s).rank >= 1) {
         return false;
     }
-    return str::Find(s, "《") && !str::Find(s, "》");
+    return (str::Find(s, "《") && !str::Find(s, "》")) || (str::Find(s, "〈") && !str::Find(s, "〉"));
 }
 
 static bool OfficialDocTitleIsWrapTail(const char* s) {
@@ -22105,9 +24442,227 @@ static void DropOfficialDocTitleWrapSuffixes(Vec<ExtractedTocItem*>& flat) {
     }
 }
 
+static bool OfficialIssuedNameIsAttachedPlan(const char* s) {
+    return s && (str::EndsWith(s, "方案") || str::EndsWith(s, "规划") || str::EndsWith(s, "计划") ||
+                 str::EndsWith(s, "要点"));
+}
+
+// 印发《方案》的通知 stays the first bookmark. Drop a later bare 方案 with the
+// same issued name. Keep 办法/规定 that start a 第N章 spine in multi-doc PDFs.
+static void DropOfficialCoverLetterQuotingDocFlat(Vec<ExtractedTocItem*>& flat) {
+    Vec<char*> issuedPlans;
+    for (int i = 0; i < flat.Size(); i++) {
+        ExtractedTocItem* n = flat[i];
+        if (!n || !n->title) {
+            continue;
+        }
+        StripOfficialDocTitleGluedPreamble(n->title);
+        char* issued = OfficialIssuedDocTitleFromCover(n->title);
+        if (issued && OfficialIssuedNameIsAttachedPlan(issued)) {
+            issuedPlans.Append(issued);
+        } else {
+            str::Free(issued);
+        }
+    }
+    if (issuedPlans.Size() < 1) {
+        return;
+    }
+    Vec<ExtractedTocItem*> keep;
+    for (int i = 0; i < flat.Size(); i++) {
+        ExtractedTocItem* n = flat[i];
+        if (!n) {
+            continue;
+        }
+        bool drop = false;
+        if (n->title && !OfficialCountsAsMainDocFrontTitle(n->title) && ParseHeadingMarker(n->title).rank < 1) {
+            for (int d = 0; d < issuedPlans.Size(); d++) {
+                if (str::Eq(n->title, issuedPlans[d]) || OfficialFlatTitleOverlapsTitle(n->title, issuedPlans[d])) {
+                    drop = true;
+                    break;
+                }
+            }
+        }
+        if (drop) {
+            delete n;
+        } else {
+            keep.Append(n);
+        }
+    }
+    for (int d = 0; d < issuedPlans.Size(); d++) {
+        str::Free(issuedPlans[d]);
+    }
+    flat.Reset();
+    for (int i = 0; i < keep.Size(); i++) {
+        flat.Append(keep[i]);
+    }
+}
+
+// 印发通知 rewritten to 实施方案, or a large 办法 title already in the list.
+static bool OfficialTitleIsIssuedPlanOrRule(const char* s) {
+    if (!s || !s[0] || LooksLikeOfficialDocPreamble(s) || OfficialCountsAsMainDocFrontTitle(s)) {
+        return false;
+    }
+    if (ParseHeadingMarker(s).rank >= 1) {
+        return false;
+    }
+    if (!OfficialTitleHasDocSuffix(s) || str::EndsWith(s, "表") || str::EndsWith(s, "清单") ||
+        str::EndsWith(s, "说明")) {
+        return false;
+    }
+    return str::Find(s, "办法") || str::Find(s, "方案") || str::Find(s, "细则") || str::Find(s, "规定") ||
+           str::Find(s, "规划") || str::Find(s, "条例");
+}
+
+static bool OfficialTitleIsDocRoot(const char* s) {
+    if (!s || !s[0] || LooksLikeOfficialDocPreamble(s) || ParseHeadingMarker(s).rank >= 1) {
+        return false;
+    }
+    if (OfficialTitleIsIssuedPlanOrRule(s) || OfficialCountsAsMainDocFrontTitle(s)) {
+        return true;
+    }
+    return OfficialTitleFindGuanYu(s) && (OfficialHanComplete(s) || OfficialTitleHasDocSuffix(s));
+}
+
+static char* OfficialDocTitleFromFileName(const char* filePath) {
+    if (!filePath || !filePath[0]) {
+        return nullptr;
+    }
+    const char* base = path::GetBaseNameTemp(filePath);
+    if (!base || !base[0]) {
+        return nullptr;
+    }
+    char* name = str::Dup(base);
+    if (!name) {
+        return nullptr;
+    }
+    char* dot = str::FindCharLast(name, '.');
+    if (dot && dot != name) {
+        *dot = 0;
+    }
+    str::TrimWSInPlace(name, str::TrimOpt::Both);
+    RewriteOfficialTitleOcr(&name);
+    RewriteOfficialCoverToIssuedDocTitle(&name);
+    StripOfficialIssuerPrefixInPlace(name);
+    if (!name || !name[0] || LooksLikeOfficialDocPreamble(name)) {
+        str::Free(name);
+        return nullptr;
+    }
+    int g = GlyphCount(name);
+    if (g < 6 || g > 80 || ParseHeadingMarker(name).rank >= 1) {
+        str::Free(name);
+        return nullptr;
+    }
+    if (!(LooksLikeOfficialTitle(name) || LooksLikeOfficialFileTitle(name) || OfficialHanComplete(name) ||
+          OfficialTitleHasDocSuffix(name) || OfficialTitleFindGuanYu(name))) {
+        str::Free(name);
+        return nullptr;
+    }
+    return name;
+}
+
+static bool OfficialFlatHasDocRoot(const Vec<ExtractedTocItem*>& flat) {
+    for (int i = 0; i < flat.Size(); i++) {
+        if (flat[i] && OfficialTitleIsDocRoot(flat[i]->title)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void DropOfficialPreambleFlat(Vec<ExtractedTocItem*>& flat) {
+    Vec<ExtractedTocItem*> keep;
+    for (int i = 0; i < flat.Size(); i++) {
+        ExtractedTocItem* n = flat[i];
+        if (!n) {
+            continue;
+        }
+        if (n->title && LooksLikeOfficialDocPreamble(n->title)) {
+            delete n;
+            continue;
+        }
+        keep.Append(n);
+    }
+    flat.Reset();
+    for (int i = 0; i < keep.Size(); i++) {
+        flat.Append(keep[i]);
+    }
+}
+
+static char* OfficialPrepareInsertedDocTitle(const char* title) {
+    if (!title || !title[0]) {
+        return nullptr;
+    }
+    char* s = str::Dup(title);
+    if (!s) {
+        return nullptr;
+    }
+    str::TrimWSInPlace(s, str::TrimOpt::Both);
+    RewriteOfficialTitleOcr(&s);
+    StripOfficialDocTitleGluedPreamble(s);
+    RewriteOfficialCoverToIssuedDocTitle(&s);
+    StripOfficialIssuerPrefixInPlace(s);
+    if (!s || !s[0] || LooksLikeOfficialDocPreamble(s)) {
+        str::Free(s);
+        return nullptr;
+    }
+    return s;
+}
+
+static void MergeOfficialDuplicateUnnumberedTitles(Vec<ExtractedTocItem*>& flat) {
+    Vec<ExtractedTocItem*> keep;
+    for (int i = 0; i < flat.Size(); i++) {
+        ExtractedTocItem* n = flat[i];
+        if (!n) {
+            continue;
+        }
+        bool drop = false;
+        if (n->title && ParseHeadingMarker(n->title).rank < 1) {
+            for (int k = 0; k < keep.Size(); k++) {
+                if (keep[k]->title && ParseHeadingMarker(keep[k]->title).rank < 1 &&
+                    str::Eq(keep[k]->title, n->title)) {
+                    drop = true;
+                    break;
+                }
+            }
+        }
+        if (drop) {
+            delete n;
+            continue;
+        }
+        keep.Append(n);
+    }
+    flat.Reset();
+    for (int i = 0; i < keep.Size(); i++) {
+        flat.Append(keep[i]);
+    }
+}
+
+// 关于印发《方案》的通知 stays L1; nest following 一、 / 第N章 until the next 办法/方案.
+static void NestOfficialSpineUnderPlanTitles(Vec<ExtractedTocItem*>& flat) {
+    Vec<int> titleAt;
+    for (int i = 0; i < flat.Size(); i++) {
+        ExtractedTocItem* n = flat[i];
+        if (!n || !OfficialTitleIsDocRoot(n->title)) {
+            continue;
+        }
+        n->level = 1;
+        titleAt.Append(i);
+    }
+    for (int t = 0; t < titleAt.Size(); t++) {
+        int start = titleAt[t] + 1;
+        int end = t + 1 < titleAt.Size() ? titleAt[t + 1] : flat.Size();
+        for (int i = start; i < end; i++) {
+            if (flat[i] && flat[i]->level <= 1) {
+                flat[i]->level = 2;
+            }
+        }
+    }
+}
+
 // Merged 公文 PDFs restart at 一、 / 第一章. Large file titles above those
 // spines are inserted as L1; later TOC until the next doc title nests under them.
-static void InsertOfficialDocTitles(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedTocItem*>& roots) {
+static void InsertOfficialDocTitles(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedTocItem*>& roots,
+                                    const char* filePath) {
     if (roots.Size() < 1) {
         return;
     }
@@ -22135,12 +24690,29 @@ static void InsertOfficialDocTitles(const Vec<ScanLine>& lines, int nPages, Vec<
         TightenOfficialAppendixTitle(flat[i]);
         if (flat[i]) {
             StripOfficialTitleLeadingOrnament(flat[i]->title);
+            StripOfficialDocTitleGluedPreamble(flat[i]->title);
+            RewriteOfficialTitleOcr(&flat[i]->title);
+            RewriteOfficialCoverToIssuedDocTitle(&flat[i]->title);
+            StripOfficialIssuerPrefixInPlace(flat[i]->title);
         }
     }
     MergeWrappedOfficialDocTitleFlat(flat);
+    DropOfficialPreambleFlat(flat);
+    MergeOfficialDuplicateUnnumberedTitles(flat);
     DedupOfficialOverlappingNumberedFlat(flat);
     Vec<OfficialTitleInsert> inserts;
     CollectMainOfficialDocTitle(lines, nPages, flat, namedMin, inserts);
+    if (inserts.Size() < 1 && !OfficialFlatHasDocRoot(flat)) {
+        char* fromFile = OfficialDocTitleFromFileName(filePath);
+        if (fromFile && !OfficialTitleTextTaken(flat, fromFile) && !OfficialTitleInsertDuplicate(inserts, fromFile)) {
+            OfficialTitleInsert ins;
+            ins.item = NewItem(fromFile, 1, 0, 0, 1, 88);
+            ins.beforeFlat = 0;
+            ins.underAppendix = false;
+            inserts.Append(ins);
+        }
+        str::Free(fromFile);
+    }
     for (int i = 0; i < flat.Size(); i++) {
         ExtractedTocItem* it = flat[i];
         if (!it || !IsOfficialYiDunhaoItem(it->title)) {
@@ -22164,15 +24736,24 @@ static void InsertOfficialDocTitles(const Vec<ScanLine>& lines, int nPages, Vec<
     }
     if (inserts.Size() < 1) {
         DropOfficialDocTitleWrapSuffixes(flat);
+        DropOfficialCoverLetterQuotingDocFlat(flat);
+        DropOfficialPreambleFlat(flat);
+        MergeOfficialDuplicateUnnumberedTitles(flat);
+        NestOfficialSpineUnderPlanTitles(flat);
         BuildTreeFromFlat(flat, roots);
         NormalizeOfficialExtractedTitles(roots);
         DropOfficialExtractJunk(roots);
+        FillBareOfficialAppendixNumbers(roots);
+        TightenOfficialAppendixTitlesInTree(roots);
         MergeOfficialDuplicateAppendices(roots);
+        MergeOfficialCoverAppendixWithRealHeading(roots);
         ApplyOfficialAttachmentPolicy(lines, nPages, roots);
         FillBareOfficialAppendixNumbers(roots);
         TightenOfficialAppendixTitlesInTree(roots);
         MergeOfficialDuplicateAppendices(roots);
+        MergeOfficialCoverAppendixWithRealHeading(roots);
         RelayoutOfficialArabicListLevels(roots);
+        NestOfficialAppendixUnderFrontLetter(roots);
         FoldRedundantOfficialAppendixTitles(roots);
         DropOfficialDuplicateFormTitleSiblings(roots);
         return;
@@ -22187,6 +24768,7 @@ static void InsertOfficialDocTitles(const Vec<ScanLine>& lines, int nPages, Vec<
         }
         flat.InsertAt(at, inserts[t].item);
     }
+    DropOfficialCoverLetterQuotingDocFlat(flat);
     // Nest under each main doc title until the next main doc title (multi-doc PDFs).
     Vec<int> titleAt;
     for (int t = 0; t < inserts.Size(); t++) {
@@ -22225,16 +24807,24 @@ static void InsertOfficialDocTitles(const Vec<ScanLine>& lines, int nPages, Vec<
     }
     MergeWrappedOfficialDocTitleFlat(flat);
     DropOfficialDocTitleWrapSuffixes(flat);
+    DropOfficialPreambleFlat(flat);
+    MergeOfficialDuplicateUnnumberedTitles(flat);
+    NestOfficialSpineUnderPlanTitles(flat);
     DedupOfficialOverlappingNumberedFlat(flat);
     BuildTreeFromFlat(flat, roots);
     NormalizeOfficialExtractedTitles(roots);
     DropOfficialExtractJunk(roots);
+    FillBareOfficialAppendixNumbers(roots);
+    TightenOfficialAppendixTitlesInTree(roots);
     MergeOfficialDuplicateAppendices(roots);
+    MergeOfficialCoverAppendixWithRealHeading(roots);
     ApplyOfficialAttachmentPolicy(lines, nPages, roots);
     FillBareOfficialAppendixNumbers(roots);
     TightenOfficialAppendixTitlesInTree(roots);
     MergeOfficialDuplicateAppendices(roots);
+    MergeOfficialCoverAppendixWithRealHeading(roots);
     RelayoutOfficialArabicListLevels(roots);
+    NestOfficialAppendixUnderFrontLetter(roots);
     FoldRedundantOfficialAppendixTitles(roots);
     DropOfficialDuplicateFormTitleSiblings(roots);
 }
@@ -22290,8 +24880,13 @@ static bool InferDocTitle(const Vec<ScanLine>& lines, Vec<ExtractedTocItem*>& ro
         return false;
     }
     const char* use = bestText ? bestText : lines[best].text;
-    roots.Append(NewItem(use, lines[best].srcPage, lines[best].x, lines[best].y, 1));
+    char* prepared = OfficialPrepareInsertedDocTitle(use);
     str::Free(bestText);
+    if (!prepared) {
+        return false;
+    }
+    roots.Append(NewItem(prepared, lines[best].srcPage, lines[best].x, lines[best].y, 1));
+    str::Free(prepared);
     return CountExtracted(roots) >= 1;
 }
 
@@ -22982,6 +25577,7 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
     }
     // #endregion
     int lAp = 0;
+    int lForm = 0;
     int lDunhao = 0;
     int lArticle = 0;
     int lParen = 0;
@@ -23010,6 +25606,7 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
         }
         if (m.type == MarkerType::Chapter) {
             lAp = it->level > 0 ? it->level : 1;
+            lForm = 0;
             lDunhao = 0;
             lArticle = 0;
             lParen = 0;
@@ -23024,6 +25621,21 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
             } else {
                 lAp = it->level > 0 ? it->level : 1;
             }
+            lForm = 0;
+            lDunhao = 0;
+            lArticle = 0;
+            lParen = 0;
+            lDotted = 0;
+            lDecimal = 0;
+            continue;
+        }
+        if (m.type == MarkerType::FormTable) {
+            int need = lAp > 0 ? lAp + 1 : (it->level > 0 ? it->level : 2);
+            if (need > 6) {
+                need = 6;
+            }
+            it->level = need;
+            lForm = it->level;
             lDunhao = 0;
             lArticle = 0;
             lParen = 0;
@@ -23037,6 +25649,7 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
                 need = 6;
             }
             it->level = need;
+            lForm = 0;
             lDunhao = 0;
             lArticle = 0;
             lParen = 0;
@@ -23045,7 +25658,14 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
             continue;
         }
         if (m.type == MarkerType::ChineseDunhao) {
-            int need = it->level > 0 ? it->level : (lAp > 0 ? lAp + 1 : 1);
+            // After 附件N (or 表N), a restart of 一、 is the attachment outline, not
+            // a sibling of 附件N. Infer often keeps the cover-letter 一、 level.
+            int need = it->level > 0 ? it->level : 1;
+            if (lForm > 0) {
+                need = lForm + 1;
+            } else if (lAp > 0) {
+                need = lAp + 1;
+            }
             if (lDecimal > 0) {
                 need = lDecimal + 1;
             }
@@ -23075,6 +25695,7 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
             // #endregion
             it->level = need;
             lArticle = it->level;
+            lForm = 0;
             lParen = 0;
             lDotted = 0;
             lDecimal = 0;
@@ -23120,7 +25741,14 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
         }
         ParsedNumbering num;
         ParseHeadingNumbering(it->title, &num);
-        if (num.nComp >= 2) {
+        // 1.12333电话… parses as ArabicDot rank 3 (list) even when numbering
+        // still sees two digit runs. Treating it as 1.1 would reset lParen and
+        // leave the 1. 2. 3. under （二） as siblings of （二）.
+        bool dottedSection = num.nComp >= 2;
+        if (dottedSection && m.type == MarkerType::ArabicDot && m.rank >= 3) {
+            dottedSection = false;
+        }
+        if (dottedSection) {
             lDunhao = 0;
             lParen = 0;
             lArticle = 0;
@@ -23805,7 +26433,7 @@ static bool ExtractOfficialToc(EngineBase* engine, Vec<ScanLine>& lines, const V
                 MergeDeeperArabicHeadings(lines, nPages, roots);
                 MergeOfficialPrintedGapsFromBody(lines, nPages, roots);
             }
-            InsertOfficialDocTitles(lines, nPages, roots);
+            InsertOfficialDocTitles(lines, nPages, roots, engine ? engine->FilePath() : nullptr);
             RelayoutOfficialArabicListLevels(roots);
             DropOfficialDottedNoiseUnderChapterSpine(roots);
             FoldRedundantOfficialAppendixTitles(roots);
@@ -23817,7 +26445,7 @@ static bool ExtractOfficialToc(EngineBase* engine, Vec<ScanLine>& lines, const V
     }
     DeleteExtractedTocItems(roots);
     if (InferHeadings(lines, nPages, roots, tocDebugPath)) {
-        InsertOfficialDocTitles(lines, nPages, roots);
+        InsertOfficialDocTitles(lines, nPages, roots, engine ? engine->FilePath() : nullptr);
         InheritMissingExtractedDests(roots);
         FinishOfficialToc(engine, roots, nPages, "infer");
         return true;
@@ -23874,7 +26502,7 @@ static bool ExtractBookToc(EngineBase* engine, const Vec<ScanLine>& lines, const
 
 static ExtractPdfTocKind ExtractFromCollectedLines(EngineBase* engine, Vec<ScanLine>& lines, int nPages, int nText,
                                                    Vec<ExtractedTocItem*>& roots, int* nItemsOut, bool forceExtract,
-                                                   bool bornDigital) {
+                                                   bool bornDigital, ExtractTocDocClass* clsOut = nullptr) {
     if (nItemsOut) {
         *nItemsOut = 0;
     }
@@ -23898,6 +26526,9 @@ static ExtractPdfTocKind ExtractFromCollectedLines(EngineBase* engine, Vec<ScanL
         tocDebugPath = str::Join(path::GetPathNoExtTemp(engine->FilePath()), ".toc-debug.txt");
     }
     ExtractTocDocClass cls = ClassifyExtractTocDoc(lines, nPages, engine ? engine->FilePath() : nullptr);
+    if (clsOut) {
+        *clsOut = cls;
+    }
     // #region agent log
     {
         const char* cs = "official";
@@ -24035,7 +26666,12 @@ ExtractPdfTocKind ExtractPdfTocFromEngine(EngineBase* engine, Vec<ExtractedTocIt
             nText++;
         }
     }
-    ExtractPdfTocKind k = ExtractFromCollectedLines(engine, lines, nPages, nText, roots, nItemsOut, false, bornDigital);
+    ExtractTocDocClass cls = ExtractTocDocClass::Official;
+    ExtractPdfTocKind k =
+        ExtractFromCollectedLines(engine, lines, nPages, nText, roots, nItemsOut, false, bornDigital, &cls);
+    if (cls == ExtractTocDocClass::Book) {
+        EngineMupdfClearOcrPageRotates(engine);
+    }
     FreeScanLines(lines);
     return k;
 }
@@ -24060,6 +26696,7 @@ struct ExtractWork {
     bool skipConfirm = false;
     bool persistToDisk = true;
     bool bornDigital = false;
+    bool isBook = false;
     char* error = nullptr;
 };
 
@@ -24188,8 +26825,10 @@ static void ExtractThread(ExtractWork* w) {
     }
     int nItems = 0;
     bool force = w->skipConfirm && nText >= 1;
+    ExtractTocDocClass cls = ExtractTocDocClass::Official;
     ExtractPdfTocKind k =
-        ExtractFromCollectedLines(engine, lines, nPages, nText, w->roots, &nItems, force, bornDigital);
+        ExtractFromCollectedLines(engine, lines, nPages, nText, w->roots, &nItems, force, bornDigital, &cls);
+    w->isBook = cls == ExtractTocDocClass::Book;
     // #region agent log
     {
         char extra[160];
@@ -24275,9 +26914,14 @@ static void ExtractApplyOnUi(ExtractWork* w) {
         HideTocCalib(win);
     }
     // Apply /Rotate before WriteExtractedPdfToc: persist/reload destroys w->engine.
+    // Books never transpose pages (竖版书 stays upright).
     int nRot = 0;
     if (w->engine) {
-        nRot = EngineMupdfApplyPendingOcrPageRotates(w->engine);
+        if (w->isBook) {
+            nRot = EngineMupdfClearOcrPageRotates(w->engine);
+        } else {
+            nRot = EngineMupdfApplyPendingOcrPageRotates(w->engine);
+        }
     }
     bool ok = WriteExtractedPdfToc(win, w->engine, w->roots, w->persistToDisk);
     int nItems = w->nItems;
@@ -24363,6 +27007,9 @@ bool HandleExtractPdfTocCommand(MainWindow* win, bool skipConfirm, bool persistT
     EngineBase* engine = ExtractEngineForWin(win);
     if (!engine || !win) {
         return true;
+    }
+    if (!persistToDisk && gGlobalPrefs && gGlobalPrefs->ocrAutoSave && CanAccessDisk() && !gPluginMode) {
+        persistToDisk = true;
     }
     bool bornDigital = ExtractPdfLooksBornDigital(engine);
     int workTotal = ExtractProgressTotal(engine, bornDigital);
