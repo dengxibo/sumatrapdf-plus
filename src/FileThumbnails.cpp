@@ -69,21 +69,16 @@ void DeleteThumbnailForFile(const char* filePath) {
 }
 
 RenderedBitmap* LoadThumbnail(FileState* fs) {
+    if (!fs) {
+        return nullptr;
+    }
+    // Home-page paint used to restat the document on every call (IsThumbnailStale
+    // OpenReadOnly). Missing/network paths freeze the UI for tens of seconds.
     if (fs->thumbnail) {
-        TempStr currentPath = GetThumbnailPathTemp(fs->filePath);
-        if (currentPath && !IsThumbnailStale(fs->filePath, currentPath)) {
-            return fs->thumbnail;
-        }
-        delete fs->thumbnail;
-        fs->thumbnail = nullptr;
-        fs->thumbnailBlankKnown = false;
-        fs->thumbnailIsBlank = false;
+        return fs->thumbnail;
     }
     TempStr bmpPath = GetThumbnailPathTemp(fs->filePath);
     if (!bmpPath) {
-        return nullptr;
-    }
-    if (IsThumbnailStale(fs->filePath, bmpPath)) {
         return nullptr;
     }
 

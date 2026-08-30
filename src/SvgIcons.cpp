@@ -275,9 +275,9 @@ static const char* gIconHomeList =
   <line x1="9" y1="6" x2="20" y2="6" />
   <line x1="9" y1="12" x2="20" y2="12" />
   <line x1="9" y1="18" x2="20" y2="18" />
-  <line x1="5" y1="6" x2="5" y2="6.01" />
-  <line x1="5" y1="12" x2="5" y2="12.01" />
-  <line x1="5" y1="18" x2="5" y2="18.01" />
+  <circle cx="5" cy="6" r="1" fill="currentColor" stroke="none" />
+  <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
+  <circle cx="5" cy="18" r="1" fill="currentColor" stroke="none" />
 </svg>)";
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/layout-grid.svg
@@ -289,6 +289,24 @@ static const char* gIconHomeThumbnails =
   <rect x="4" y="14" width="6" height="6" rx="1" />
   <rect x="14" y="14" width="6" height="6" rx="1" />
 </svg>)";
+
+// Recently opened: CCW ring, gap/arrow at top-left, L-shaped 12+3 hands.
+static const char* gIconHomeHistory =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M3 12A9 9 0 1 0 7.5 4.2" />
+  <path d="M4.9 5.7L8.6 6L6.5 2.4Z" fill="currentColor" stroke="none" />
+  <path d="M11.3 9.3v3.2h3.2" />
+</svg>)";
+
+// https://github.com/tabler/tabler-icons/blob/master/icons/outline/flame.svg
+static const char* gIconHomeFrequent =
+    R"FLAME(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <g transform="translate(0 -1.5)">
+    <path d="M12 12c2 -2.96 0 -7 -1 -8c0 3.038 -1.773 4.741 -3 6c-1.226 1.26 -2 3.24 -2 5a6 6 0 1 0 12 0c0 -1.532 -1.056 -3.94 -2 -5c-1.786 3 -2.791 3 -4 2z" />
+  </g>
+</svg>)FLAME";
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/x.svg
 static const char* gIconClose =
@@ -511,6 +529,8 @@ static const char* gIcons[] = {
     gIconAnnotStamp,
     gIconFullscreen,
     gIconFullscreenExit,
+    gIconHomeHistory,
+    gIconHomeFrequent,
 };
 // clang-format on
 

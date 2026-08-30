@@ -55,6 +55,8 @@ enum class TbIcon {
     AnnotStamp,
     Fullscreen,
     FullscreenExit,
+    HomeHistory,
+    HomeFrequent,
     kMax
 };
 
