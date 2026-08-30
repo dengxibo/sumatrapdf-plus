@@ -24,9 +24,10 @@
 #define kCloseBtnDx 16
 #define kCloseBtnDy 16
 #define kButtonSpaceDx 8
-#define kHeaderActionDx 24
-#define kHeaderActionDy 24
-#define kHeaderActionGapDx 3
+#define kHeaderActionDx 20
+#define kHeaderActionDy 20
+#define kHeaderActionGapDx 1
+#define kHeaderCloseGapDx 8
 
 static void DrawHeaderAction(HDC hdc, const Rect& r, int kind, bool isHover, bool isPressed, COLORREF bgCol,
                              COLORREF iconCol) {
@@ -102,14 +103,17 @@ static void PaintHDC(LabelWithCloseWnd* w, HDC hdc, const PAINTSTRUCT& ps) {
     Point curPos = HwndGetCursorPos(w->hwnd);
     // TODO: hack
     UnmirrorRtl(w->hwnd, curPos);
+    // Darker than kColCloseX so the four header marks read on beige; still
+    // softer than full window text. Same ink for next / prev / calibrate / close.
+    COLORREF iconCol = AccentColor(ThemeWindowTextColor(), ThemeUsesDarkChrome() ? 22 : 36);
     DrawCloseButtonArgs args;
     args.hdc = hdc;
     args.r = w->closeBtnPos;
     args.isHover = w->closeBtnPos.Contains(curPos);
+    args.colX = iconCol;
     // args.noMirror = true;
     DrawCloseButton(args);
 
-    COLORREF iconCol = kColCloseX;
     DrawHeaderAction(hdc, w->firstActionPos, 1, w->firstActionPos.Contains(curPos), w->pressedAction == 1, w->bgColor,
                      iconCol);
     DrawHeaderAction(hdc, w->secondActionPos, 2, w->secondActionPos.Contains(curPos), w->pressedAction == 2, w->bgColor,
@@ -308,21 +312,22 @@ void LabelWithCloseWnd::Layout() {
         int actionDx = DpiScale(hwnd, kHeaderActionDx);
         int actionDy = DpiScale(hwnd, kHeaderActionDy);
         int gapDx = DpiScale(hwnd, kHeaderActionGapDx);
+        int closeGapDx = DpiScale(hwnd, kHeaderCloseGapDx);
         int actionY = (dy - actionDy) / 2;
         if (isRtl) {
             if (thirdAction.IsValid()) {
-                thirdActionPos = Rect(closeBtnPos.x + closeBtnPos.dx + gapDx, actionY, actionDx, actionDy);
+                thirdActionPos = Rect(closeBtnPos.x + closeBtnPos.dx + closeGapDx, actionY, actionDx, actionDy);
                 secondActionPos = Rect(thirdActionPos.x + actionDx + gapDx, actionY, actionDx, actionDy);
             } else {
-                secondActionPos = Rect(closeBtnPos.x + closeBtnPos.dx + gapDx, actionY, actionDx, actionDy);
+                secondActionPos = Rect(closeBtnPos.x + closeBtnPos.dx + closeGapDx, actionY, actionDx, actionDy);
             }
             firstActionPos = Rect(secondActionPos.x + actionDx + gapDx, actionY, actionDx, actionDy);
         } else {
             if (thirdAction.IsValid()) {
-                thirdActionPos = Rect(closeBtnPos.x - gapDx - actionDx, actionY, actionDx, actionDy);
+                thirdActionPos = Rect(closeBtnPos.x - closeGapDx - actionDx, actionY, actionDx, actionDy);
                 secondActionPos = Rect(thirdActionPos.x - gapDx - actionDx, actionY, actionDx, actionDy);
             } else {
-                secondActionPos = Rect(closeBtnPos.x - gapDx - actionDx, actionY, actionDx, actionDy);
+                secondActionPos = Rect(closeBtnPos.x - closeGapDx - actionDx, actionY, actionDx, actionDy);
             }
             firstActionPos = Rect(secondActionPos.x - gapDx - actionDx, actionY, actionDx, actionDy);
         }
@@ -397,7 +402,9 @@ Size LabelWithCloseWnd::GetIdealSize() {
     size.dx += btnDx;
     if (firstAction.IsValid() && secondAction.IsValid()) {
         int n = thirdAction.IsValid() ? 3 : 2;
-        size.dx += n * DpiScale(this->hwnd, kHeaderActionDx) + n * DpiScale(this->hwnd, kHeaderActionGapDx);
+        size.dx += n * DpiScale(this->hwnd, kHeaderActionDx);
+        size.dx += (n - 1) * DpiScale(this->hwnd, kHeaderActionGapDx);
+        size.dx += DpiScale(this->hwnd, kHeaderCloseGapDx);
     }
     size.dx += DpiScale(this->hwnd, kButtonSpaceDx);
     size.dx += 2 * DpiScale(this->hwnd, this->padX);

@@ -211,7 +211,7 @@ LRESULT WndProcCanvasAbout(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, LPAR
         case WM_CTLCOLOREDIT:
             if ((HWND)lp == win->hwndHomeSearch) {
                 HDC hdcEdit = (HDC)wp;
-                SetTextColor(hdcEdit, ThemeWindowTextColor());
+                SetTextColor(hdcEdit, HomePageSearchTextColor());
                 SetBkColor(hdcEdit, ThemeControlBackgroundColor());
                 if (!win->brControlBgColor) {
                     win->brControlBgColor = CreateSolidBrush(ThemeControlBackgroundColor());

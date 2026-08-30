@@ -14245,12 +14245,9 @@ static void ApplyTreeFontForDpi(HWND hwndTree, HFONT treeFont, int dpi) {
 static bool ApplyDpiFontsToSidebar(MainWindow* win) {
     int tocDpi = DpiForSidebarHwnd(win, SidebarDpiHwnd(win->hwndTocBox, win->tocTreeView));
     int favDpi = DpiForSidebarHwnd(win, SidebarDpiHwnd(win->hwndFavBox, win->favTreeView));
-    int frameDpi = win->frameDpi > 0 ? win->frameDpi : DpiGet(win->hwndFrame);
-    HFONT homeSearchFont = GetAppMenuFontForDpi(frameDpi);
-
     bool tocDpiNeedsApply = win->tocDpiRecreatePending || win->tocSidebarDpi <= 0 || win->tocSidebarDpi != tocDpi;
     bool favDpiNeedsApply = win->favDpiRecreatePending || win->favSidebarDpi <= 0 || win->favSidebarDpi != favDpi;
-    bool homeSearchNeedsApply = win->hwndHomeSearch && HwndGetFont(win->hwndHomeSearch) != homeSearchFont;
+    bool homeSearchNeedsApply = HomePageApplySearchFont(win);
     if (!tocDpiNeedsApply && !favDpiNeedsApply && !homeSearchNeedsApply) {
         return false;
     }
@@ -14306,7 +14303,6 @@ static bool ApplyDpiFontsToSidebar(MainWindow* win) {
         didApply = true;
     }
     if (homeSearchNeedsApply) {
-        HwndSetFont(win->hwndHomeSearch, homeSearchFont);
         didApply = true;
     }
     return didApply;
@@ -14395,7 +14391,7 @@ static void ApplySidebarDpiMovePreview(MainWindow* win) {
         HwndSetFont(win->tocFilterEdit->hwnd, treeFont);
     }
     if (win->hwndHomeSearch) {
-        HwndSetFont(win->hwndHomeSearch, GetAppMenuFontForDpi(dpi));
+        HomePageApplySearchFont(win);
     }
     RelayoutSidebarContainers(win);
 }

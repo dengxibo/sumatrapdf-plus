@@ -36,6 +36,8 @@ void HomePageOnScrollTimer(MainWindow* win);
 void HomePageInvalidateScrollCache(MainWindow* win);
 void HomePageFocusSearch(MainWindow* win);
 void HomePageDestroySearch(MainWindow* win);
+bool HomePageApplySearchFont(MainWindow* win);
+COLORREF HomePageSearchTextColor();
 void HomePageScheduleSearchFilter(MainWindow* win);
 void HomePageApplySearchFilter(MainWindow* win);
 void HomePageRemoveMissingFiles(MainWindow* win);

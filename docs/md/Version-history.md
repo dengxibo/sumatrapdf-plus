@@ -2,6 +2,15 @@
 
 ## next
 
+- bookmarks: next/prev/calibrate/close header icons share one darker gray (not the faint close-X gray)
+  书签栏：上一项/下一项/校准/关闭四个图标用同一套更深的灰
+
+- bookmarks: tighter gaps between the next/prev/calibrate header icons; keep a wider gap before the close button
+  书签栏：上一项/下一项/校准三个图标收紧，关闭按钮前仍留一点空隙
+
+- home: search field uses the home UI font (slightly larger than menu type) and sits on the font line height so the query is vertically centered in the chrome
+  首页：搜索框用主页字号（比菜单字略大），输入高度跟行高走，文字在圆角框里垂直居中
+
 - home: restore the two icon toggles (list/thumbnails, recent/frequent); drop the “Recently Opened” dropdown and header “Open a document…” link
   首页：恢复两个图标开关（列表/缩略图、最近/最热），不再用「最近打开」下拉和顶栏「打开文档」
 

@@ -978,10 +978,18 @@ static HFONT HomePageFileNameFont(HWND hwnd) {
     return HomePageUiFont(hwnd, 2, FW_SEMIBOLD);
 }
 
-// Soften theme ink so a semibold title stays the loudest line without
-// sitting as max-contrast black/white on the page.
-static COLORREF HomePageListNameColor() {
+// Soften theme ink so home-page type isn't max-contrast black on beige.
+static COLORREF HomePageInkColor() {
     return AccentColor(ThemeWindowTextColor(), 42);
+}
+
+static COLORREF HomePageListNameColor() {
+    return HomePageInkColor();
+}
+
+static HFONT HomePageSearchFont(HWND hwnd) {
+    // Same size band as filenames. Menu/app font sits too high in the chrome.
+    return HomePageUiFont(hwnd, 3, FW_NORMAL);
 }
 
 static HFONT HomePageMetaFont(HWND hwnd) {
@@ -1275,7 +1283,7 @@ struct HomePageLayout {
 HomePageLayout::~HomePageLayout() {}
 
 constexpr int kThumbsMiddleMargin = 32;
-constexpr int kSearchEditDy = 30;
+constexpr int kSearchChromeDy = 44;
 constexpr int kHeaderSearchGapY = 10;
 constexpr int kSearchThumbnailsGapY = 16;
 
@@ -1305,12 +1313,9 @@ static void EnsureHomeSearchCreated(MainWindow* win) {
     HMODULE hmod = GetModuleHandleW(nullptr);
     DWORD style = WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL;
     DWORD exStyle = 0;
-    win->hwndHomeSearch = CreateWindowExW(exStyle, WC_EDITW, L"", style, 0, 0, 100, kSearchEditDy, win->hwndCanvas,
-                                          nullptr, hmod, nullptr);
-    HDC hdc = GetDC(win->hwndCanvas);
-    HFONT font = GetAppFontForHwnd(win->hwndCanvas);
-    ReleaseDC(win->hwndCanvas, hdc);
-    SetWindowFont(win->hwndHomeSearch, font, TRUE);
+    win->hwndHomeSearch = CreateWindowExW(exStyle, WC_EDITW, L"", style, 0, 0, 100, DpiScale(win->hwndCanvas, 24),
+                                          win->hwndCanvas, nullptr, hmod, nullptr);
+    SetWindowFont(win->hwndHomeSearch, HomePageSearchFont(win->hwndCanvas), TRUE);
     if (!DefWndProcHomeSearch) {
         DefWndProcHomeSearch = (WNDPROC)GetWindowLongPtr(win->hwndHomeSearch, GWLP_WNDPROC);
     }
@@ -1320,6 +1325,23 @@ static void EnsureHomeSearchCreated(MainWindow* win) {
     // add left/right padding so text doesn't overlap the border
     int margin = DpiScale(win->hwndCanvas, 6);
     SendMessage(win->hwndHomeSearch, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(margin, margin));
+}
+
+bool HomePageApplySearchFont(MainWindow* win) {
+    if (!win || !win->hwndHomeSearch) {
+        return false;
+    }
+    HWND hwnd = win->hwndCanvas ? win->hwndCanvas : win->hwndFrame;
+    HFONT font = HomePageSearchFont(hwnd);
+    if (HwndGetFont(win->hwndHomeSearch) == font) {
+        return false;
+    }
+    HwndSetFont(win->hwndHomeSearch, font);
+    return true;
+}
+
+COLORREF HomePageSearchTextColor() {
+    return HomePageInkColor();
 }
 
 void HomePageDestroySearch(MainWindow* win) {
@@ -1953,11 +1975,19 @@ void LayoutHomePage(HomePageLayout& l) {
 
     // --- Position search edit below header ---
     EnsureHomeSearchCreated(win);
-    int searchEditDy = DpiScale(dpiHwnd, kSearchEditDy);
+    HomePageApplySearchFont(win);
+    int chromeDy = DpiScale(dpiHwnd, kSearchChromeDy);
     int headerSearchGap = DpiScale(dpiHwnd, kHeaderSearchGapY);
     int searchThumbsGap = DpiScale(dpiHwnd, kSearchThumbnailsGapY);
     int searchPadX = DpiScale(dpiHwnd, 12);
-    int searchPadY = DpiScale(dpiHwnd, 7);
+    int searchEditDy = HomePageFontLineDy(win->hwndCanvas, HomePageSearchFont(win->hwndCanvas));
+    int extra = chromeDy - searchEditDy;
+    int minExtra = DpiScale(dpiHwnd, 10);
+    if (extra < minExtra) {
+        extra = minExtra;
+        chromeDy = searchEditDy + extra;
+    }
+    int searchPadY = extra / 2;
     {
         int borderDx = headerContentWidth;
         if (borderDx < DpiScale(dpiHwnd, 200)) {
