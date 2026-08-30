@@ -1233,10 +1233,6 @@ static bool ReadAloudGetCurrentAnchor(WindowTab* tab, DisplayModel* dm, int* pag
     dm->EnsurePagesInfoForPage(pageNo);
     dm->PreparePageNavigation(pageNo);
     Rect screenRect = dm->CvtToScreen(pageNo, pageRect);
-    if (screenRect.IsEmpty()) {
-        return false;
-    }
-
     *pageNoOut = pageNo;
     *pageRectOut = pageRect;
     *screenRectOut = screenRect;
@@ -1369,7 +1365,17 @@ static void ReadAloudSyncViewToAnchor(MainWindow* win, WindowTab* tab, DisplayMo
     DisplayMode mode = dm->GetDisplayMode();
     bool anchorOnScreen = ReadAloudAnchorVisibleInCanvas(win, anchorScreen);
 
-    if (!IsContinuous(mode) && !dm->PageVisible(pageNo)) {
+    if (!dm->PageVisible(pageNo)) {
+        win->readAloudScrollFromCode = true;
+        defer {
+            win->readAloudScrollFromCode = false;
+        };
+        int scrollY = ReadAloudScrollYForAnchorAtRatio(dm, pageNo, pageRect, kReadAloudTargetRatio);
+        dm->GoToPage(pageNo, scrollY, false);
+        return;
+    }
+
+    if (!IsContinuous(mode) && !anchorOnScreen) {
         win->readAloudScrollFromCode = true;
         defer {
             win->readAloudScrollFromCode = false;
@@ -1435,6 +1441,15 @@ void ReadAloudUpdateAutoScroll(MainWindow* win) {
     }
 
     Size viewSize = dm->GetViewPort().Size();
+
+    // 竖版 columns keep a mid-screen Y, so the 78% downward threshold never
+    // fires. When TTS has already moved to a page that is not on screen,
+    // turn/scroll to it immediately (single-page, facing, and fit-page).
+    if (!dm->PageVisible(pageNo)) {
+        tab->readAloudAutoScrollHold = false;
+        ReadAloudSyncViewToAnchor(win, tab, dm, pageNo, pageRect, anchorScreen);
+        return;
+    }
 
     // After start/resume, keep the view stable on the first visible line. TTS advances
     // spokenPos within a word immediately, so word-index comparisons are unreliable here.
