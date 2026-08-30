@@ -13290,6 +13290,25 @@ int EngineMupdfApplyPendingOcrPageRotates(EngineBase* engine) {
     return n;
 }
 
+int EngineMupdfClearOcrPageRotates(EngineBase* engine) {
+    if (!engine) {
+        return 0;
+    }
+    int n = 0;
+    int nPages = engine->PageCount();
+    for (int pageNo = 1; pageNo <= nPages; pageNo++) {
+        int sess = engine->GetOcrPageRotate(pageNo);
+        if (sess < 1) {
+            continue;
+        }
+        engine->SetOcrPageRotate(pageNo, 0);
+        if (EngineMupdfApplyPageRotateCw(engine, pageNo, 0)) {
+            n++;
+        }
+    }
+    return n;
+}
+
 bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* destPath, char** errOut) {
     if (errOut) {
         *errOut = nullptr;
@@ -13837,8 +13856,9 @@ NO_INLINE void MarkNotificationAsModified(EngineMupdf* e, Annotation* annot, Ann
     }
     pageInfo->elementsNeedRebuilding = true;
 
-    // cached display list captured the old annotations; drop it so the next
-    // render rebuilds with the new state.
+    // cached display list / dark-mode bitmaps captured the old annotations.
+    // Light mode rerenders from the page; Match-theme keeps a full-page bitmap
+    // keyed only by zoom/rotation, so skip that cache or new shapes/stamps stay invisible.
     {
         auto ctx = e->Ctx();
         ScopedCritSec rl(&e->renderLock);
@@ -13846,6 +13866,8 @@ NO_INLINE void MarkNotificationAsModified(EngineMupdf* e, Annotation* annot, Ann
             fz_drop_display_list(ctx, pageInfo->displayList);
             pageInfo->displayList = nullptr;
         }
+        PdfDarkModeInvalidatePage(ctx, pageInfo);
+        DropFollowThemePageBitmapCache(pageInfo);
     }
 }
 

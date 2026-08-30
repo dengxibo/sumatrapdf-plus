@@ -11,6 +11,7 @@
 #include "wingui/UIModels.h"
 
 #include "Settings.h"
+#include "AppSettings.h"
 #include "DocController.h"
 #include "EngineBase.h"
 #include "EngineAll.h"
@@ -32,6 +33,7 @@
 #include "Toolbar.h"
 
 #include "utils/Log.h"
+#include "utils/Timer.h"
 
 static Kind kNotifOcr = "ocrProgress";
 constexpr int kOcrDoneTimeoutMs = 2000;
@@ -46,6 +48,12 @@ static EngineBase* gOcrDocEngine = nullptr;
 static HWND gOcrDocHwnd = nullptr;
 static int gOcrDocTotal = 0;
 static int gOcrDocDone = 0;
+static LARGE_INTEGER gOcrDocT0{};
+static Vec<float> gOcrDocPageMs;
+static double gOcrDocRasterMs = 0;
+static double gOcrDocDetMs = 0;
+static double gOcrDocRecMs = 0;
+static double gOcrDocTextMs = 0;
 
 static EngineBase* gOcrPendingSaveEngine = nullptr;
 static HWND gOcrPendingSaveHwnd = nullptr;
@@ -99,6 +107,7 @@ struct OcrJob {
     bool documentJob = false;
     bool regionJob = false;
     bool forceOcr = false;
+    OcrOperation op = OcrOperation::CurrentPage;
     RectF clipRect;
 };
 
@@ -161,6 +170,32 @@ bool OcrPageLooksScanned(EngineBase* engine, int pageNo) {
     int len = 0;
     const WCHAR* text = engine->GetTextForPage(pageNo, &len);
     return CountUsableChars(text) < 20;
+}
+
+// 1 = Fast/Hybrid, 2 = Balanced. Balanced satisfies Fast.
+static u8 OcrQualityForProfile(OcrProfile profile) {
+    return profile == OcrProfile::Balanced ? 2 : 1;
+}
+
+static bool OcrPageShouldRecognize(EngineBase* engine, int pageNo, OcrOperation op, bool* forceOcrOut) {
+    if (forceOcrOut) {
+        *forceOcrOut = false;
+    }
+    if (!engine || pageNo < 1 || pageNo > engine->PageCount()) {
+        return false;
+    }
+    u8 need = OcrQualityForProfile(GetOcrProfileForOperation(op));
+    u8 have = engine->GetOcrCacheQuality(pageNo);
+    if (have >= need) {
+        return false;
+    }
+    if (have > 0) {
+        if (forceOcrOut) {
+            *forceOcrOut = true;
+        }
+        return true;
+    }
+    return OcrPageLooksScanned(engine, pageNo);
 }
 
 static void OcrOnProgressClosed(NotificationWnd* wnd);
@@ -410,6 +445,60 @@ static void OcrSqueezePunctUnits(const int* cps, float* units, int n) {
 
 // Place per-glyph [x0,x1): 公文等宽汉字/全角标点，半角数字约半格。
 // 只把空隙吸到「〕4」「4.号」这类半角邻接上，避免汉字格子忽宽忽窄。
+static void OcrPlaceGlyphYs(int nCp, const Rect& box, int* y0, int* y1, const int* ctcX, int nCtc) {
+    for (int i = 0; i < nCp; i++) {
+        y0[i] = 0;
+        y1[i] = box.dy;
+    }
+    if (nCp < 1 || box.dy < 1) {
+        return;
+    }
+    if (ctcX && nCtc == nCp) {
+        y0[0] = 0;
+        y1[nCp - 1] = box.dy;
+        for (int i = 0; i < nCp - 1; i++) {
+            int a = ctcX[i * 2];
+            int b = ctcX[i * 2 + 1];
+            int c = ctcX[(i + 1) * 2];
+            int d = ctcX[(i + 1) * 2 + 1];
+            if (a < 0) {
+                a = 0;
+            }
+            if (c < 0) {
+                c = 0;
+            }
+            int mid = ((a + b) / 2 + (c + d) / 2) / 2;
+            if (mid <= y0[i]) {
+                mid = y0[i] + 1;
+            }
+            int remain = nCp - 1 - i;
+            if (mid > box.dy - remain) {
+                mid = box.dy - remain;
+            }
+            if (mid <= y0[i]) {
+                mid = y0[i] + 1;
+            }
+            y1[i] = mid;
+            y0[i + 1] = mid;
+        }
+        if (y1[nCp - 1] <= y0[nCp - 1]) {
+            y1[nCp - 1] = y0[nCp - 1] + 1;
+        }
+        return;
+    }
+    int slice = box.dy / nCp;
+    if (slice < 1) {
+        slice = 1;
+    }
+    for (int i = 0; i < nCp; i++) {
+        y0[i] = i * slice;
+        y1[i] = (i + 1 == nCp) ? box.dy : (i + 1) * slice;
+        if (y1[i] <= y0[i]) {
+            y1[i] = y0[i] + 1;
+        }
+    }
+}
+
 static void OcrPlaceGlyphXs(const int* cps, const float* units, int nCp, float unitSum, const u8* rgb, int imgW,
                             int imgH, int stride, const Rect& box, int* x0, int* x1, const int* ctcX, int nCtc) {
     for (int i = 0; i < nCp; i++) {
@@ -961,9 +1050,38 @@ static int OcrSameLineMaxDy(const Vec<OcrBox>& boxes, int self, int em) {
 }
 
 // 段内折行接上；段首缩进、短标题、层次序号另起一段。
+static bool OcrBoxIsVerticalCol(const OcrBox& b) {
+    if (b.vertical) {
+        return true;
+    }
+    return b.rect.dy > b.rect.dx * 3 / 2 && b.rect.dy > 20;
+}
+
+static bool OcrBoxesInSameColumn(const Rect& a, const Rect& b) {
+    int overlap = (a.x + a.dx < b.x + b.dx ? a.x + a.dx : b.x + b.dx) - (a.x > b.x ? a.x : b.x);
+    int minW = a.dx < b.dx ? a.dx : b.dx;
+    if (minW < 1 || overlap < 1) {
+        return false;
+    }
+    return overlap * 100 > minW * 45;
+}
+
 static bool OcrShouldJoinDocLines(const OcrBox& a, const OcrBox& b, int bodyLeft, int bodyRight, int em, int gapMed) {
     if (!a.text || !b.text) {
         return false;
+    }
+    if (OcrBoxIsVerticalCol(a) && OcrBoxIsVerticalCol(b)) {
+        if (!OcrBoxesInSameColumn(a.rect, b.rect)) {
+            return false;
+        }
+        if (OcrStartsLikeGbtHeading(b.text)) {
+            return false;
+        }
+        int gap = b.rect.y - (a.rect.y + a.rect.dy);
+        if (gapMed > 0 && gap > gapMed * 2 + em / 2) {
+            return false;
+        }
+        return gap >= -em;
     }
     if (OcrBoxesOnSameLine(a.rect, b.rect)) {
         return true;
@@ -1043,7 +1161,121 @@ static int ScoreOcrBoxes(const Vec<OcrBox>& boxes) {
     return score;
 }
 
+static char* OcrJoinBoxText(const Vec<OcrBox>& boxes) {
+    StrBuilder sb;
+    for (int i = 0; i < boxes.Size(); i++) {
+        const char* t = boxes[i].text;
+        if (!t || !t[0]) {
+            continue;
+        }
+        sb.Append(t);
+        sb.Append("\n");
+    }
+    return sb.StealData();
+}
+
+static bool OcrBoxesLookLikeOfficialSideways(const Vec<OcrBox>& boxes) {
+    char* t = OcrJoinBoxText(boxes);
+    bool hit = t && (OcrTextLooksLikeOfficialForm(t) || OcrTextLooksLikeHuizongTable(t) ||
+                     OcrTextLooksLikePortraitOfficialBody(t));
+    str::Free(t);
+    return hit;
+}
+
+static bool OcrFileNameHasOfficialKind(const char* filePath) {
+    if (!filePath || !filePath[0]) {
+        return false;
+    }
+    const char* name = path::GetBaseNameTemp(filePath);
+    return name && (str::Find(name, "\xE5\x9B\x9E\xE5\xA4\x8D\xE6\x84\x8F\xE8\xA7\x81") || // 回复意见
+                    str::Find(name, "\xE5\xBE\x81\xE6\xB1\x82\xE6\x84\x8F\xE8\xA7\x81") || // 征求意见
+                    str::Find(name, "\xE6\x84\x8F\xE8\xA7\x81\xE7\xA8\xBF") ||             // 意见稿
+                    str::Find(name, "\xE9\x80\x9A\xE7\x9F\xA5") ||                         // 通知
+                    str::Find(name, "\xE8\xAF\xB7\xE7\xA4\xBA") ||                         // 请示
+                    str::Find(name, "\xE6\x89\xB9\xE5\xA4\x8D") ||                         // 批复
+                    str::Find(name, "\xE9\x80\x9A\xE6\x8A\xA5") ||                         // 通报
+                    str::Find(name, "\xE7\x9A\x84\xE5\x87\xBD") ||                         // 的函
+                    str::Find(name, "\xE5\x87\xBD"));                                      // 函
+}
+
+static bool OcrBoxesLookLikeVerticalBook(const Vec<OcrBox>& boxes, int imgW, int imgH) {
+    if (imgW > 80 && imgH > 80 && imgW > imgH * 1.05f) {
+        return false;
+    }
+    if (OcrBoxesLookLikeOfficialSideways(boxes)) {
+        return false;
+    }
+    int n = 0;
+    int tall = 0;
+    int cjk = 0;
+    int longBox = 0;
+    for (int i = 0; i < boxes.Size(); i++) {
+        const OcrBox& b = boxes[i];
+        if (!b.text || !b.text[0]) {
+            continue;
+        }
+        n++;
+        int g = CountOcrCjkGlyphs(b.text);
+        cjk += g;
+        if (OcrBoxIsVerticalCol(b)) {
+            tall++;
+            if (g >= 4) {
+                longBox++;
+            }
+        }
+    }
+    if (n < 2 || tall * 2 < n) {
+        return false;
+    }
+    return cjk >= 6 || longBox >= 2;
+}
+
+static bool OcrPageBoxesAreVertical(const Vec<OcrBox>& boxes) {
+    int n = 0;
+    int v = 0;
+    for (int i = 0; i < boxes.Size(); i++) {
+        if (!boxes[i].text || !boxes[i].text[0]) {
+            continue;
+        }
+        n++;
+        if (OcrBoxIsVerticalCol(boxes[i])) {
+            v++;
+        }
+    }
+    return n >= 2 && v * 2 >= n;
+}
+
+static void SortOcrBoxesVerticalReading(Vec<OcrBox>& boxes) {
+    int n = boxes.Size();
+    for (int i = 0; i < n; i++) {
+        int best = i;
+        for (int j = i + 1; j < n; j++) {
+            const Rect& a = boxes[best].rect;
+            const Rect& b = boxes[j].rect;
+            if (OcrBoxesInSameColumn(a, b)) {
+                if (b.y < a.y) {
+                    best = j;
+                }
+            } else {
+                int ax = a.x + a.dx / 2;
+                int bx = b.x + b.dx / 2;
+                if (bx > ax) {
+                    best = j;
+                }
+            }
+        }
+        if (best != i) {
+            OcrBox tmp = boxes[i];
+            boxes[i] = boxes[best];
+            boxes[best] = tmp;
+        }
+    }
+}
+
 static bool OcrShouldTryPageRotate(const Vec<OcrBox>& boxes, int imgW, int imgH) {
+    if (OcrBoxesLookLikeVerticalBook(boxes, imgW, imgH)) {
+        return false;
+    }
     int score = ScoreOcrBoxes(boxes);
     if (score >= 90) {
         return false;
@@ -1118,17 +1350,85 @@ static void MapOcrBoxesFrom90(Vec<OcrBox>& boxes, int origW, int origH, bool clo
         free(b.charX);
         b.charX = nullptr;
         b.nChar = 0;
+        b.vertical = b.rect.dy > b.rect.dx * 3 / 2 && b.rect.dy > 20;
     }
 }
 
-static bool OcrRecognizeRgbScored(const u8* rgb, int w, int h, int stride, Vec<OcrBox>& boxes, int* scoreOut) {
+static bool OcrRecognizeRgbScored(const u8* rgb, int w, int h, int stride, Vec<OcrBox>& boxes, int* scoreOut,
+                                  OcrProfile profile) {
     boxes.Reset();
-    bool ok = OcrRecognizeRgb(rgb, w, h, stride, boxes);
+    bool ok = OcrRecognizeRgb(rgb, w, h, stride, boxes, profile);
     int score = ok ? ScoreOcrBoxes(boxes) : 0;
     if (scoreOut) {
         *scoreOut = score;
     }
     return ok && score > 0;
+}
+
+static void OcrLogPageTiming(int pageNo, OcrProfile profile, const OcrPageTiming& t) {
+    double det = t.detPreprocessMs + t.detInferenceMs + t.detPostprocessMs;
+    double rec = t.recPreprocessMs + t.recInferenceMs + t.recPostprocessMs;
+    logf(
+        "OCR timing page=%d profile=%s raster=%.0f det=%.0f (pre=%.0f inf=%.0f post=%.0f) crop=%.0f rec=%.0f "
+        "(pre=%.0f inf=%.0f post=%.0f) text=%.0f total=%.0f detBoxes=%d recBoxes=%d\n",
+        pageNo, OcrProfileName(profile), t.rasterizeMs, det, t.detPreprocessMs, t.detInferenceMs, t.detPostprocessMs,
+        t.cropMs, rec, t.recPreprocessMs, t.recInferenceMs, t.recPostprocessMs, t.textLayerMs, t.pageTotalMs,
+        t.nDetBoxes, t.nRecBoxes);
+}
+
+static int CmpFloatMs(const void* a, const void* b) {
+    float fa = *(const float*)a;
+    float fb = *(const float*)b;
+    return (fa > fb) - (fa < fb);
+}
+
+static void OcrResetDocTiming() {
+    gOcrDocT0 = TimeGet();
+    gOcrDocPageMs.Reset();
+    gOcrDocRasterMs = 0;
+    gOcrDocDetMs = 0;
+    gOcrDocRecMs = 0;
+    gOcrDocTextMs = 0;
+}
+
+static void OcrAccumPageTiming(const OcrPageTiming& t) {
+    gOcrDocPageMs.Append((float)t.pageTotalMs);
+    gOcrDocRasterMs += t.rasterizeMs;
+    gOcrDocDetMs += t.detPreprocessMs + t.detInferenceMs + t.detPostprocessMs;
+    gOcrDocRecMs += t.cropMs + t.recPreprocessMs + t.recInferenceMs + t.recPostprocessMs;
+    gOcrDocTextMs += t.textLayerMs;
+}
+
+static void OcrLogDocSummary(const char* tag, double saveMs) {
+    int n = gOcrDocPageMs.Size();
+    double totalMs = TimeSinceInMs(gOcrDocT0);
+    if (n < 1) {
+        logf("OCR doc %s pages=0 total_ms=%.0f save_ms=%.0f\n", tag ? tag : "", totalMs, saveMs);
+        return;
+    }
+    float* copy = AllocArray<float>((size_t)n);
+    for (int i = 0; i < n; i++) {
+        copy[i] = gOcrDocPageMs[i];
+    }
+    qsort(copy, (size_t)n, sizeof(float), CmpFloatMs);
+    float median = copy[n / 2];
+    int p95i = (n * 95) / 100;
+    if (p95i >= n) {
+        p95i = n - 1;
+    }
+    float p95 = copy[p95i];
+    free(copy);
+    double avg = 0;
+    for (int i = 0; i < n; i++) {
+        avg += gOcrDocPageMs[i];
+    }
+    avg /= (double)n;
+    double pagesPerSec = totalMs > 1 ? (1000.0 * (double)n / totalMs) : 0;
+    logf(
+        "OCR doc %s pages=%d total_s=%.2f pages/s=%.2f avg_ms=%.0f median=%.0f p95=%.0f raster=%.0f det=%.0f rec=%.0f "
+        "text=%.0f save_ms=%.0f\n",
+        tag ? tag : "", n, totalMs / 1000.0, pagesPerSec, avg, median, p95, gOcrDocRasterMs, gOcrDocDetMs, gOcrDocRecMs,
+        gOcrDocTextMs, saveMs);
 }
 
 static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, int imgH, int stride,
@@ -1231,7 +1531,12 @@ static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, i
         }
         int* gx0 = AllocArray<int>(nCp);
         int* gx1 = AllocArray<int>(nCp);
-        OcrPlaceGlyphXs(cps, units, nCp, unitSum, rgb, imgW, imgH, stride, b.rect, gx0, gx1, b.charX, b.nChar);
+        bool vert = OcrBoxIsVerticalCol(b);
+        if (vert) {
+            OcrPlaceGlyphYs(nCp, b.rect, gx0, gx1, b.charX, b.nChar);
+        } else {
+            OcrPlaceGlyphXs(cps, units, nCp, unitSum, rgb, imgW, imgH, stride, b.rect, gx0, gx1, b.charX, b.nChar);
+        }
         int lineEm = em;
         int nHan = 0;
         int sumHan = 0;
@@ -1251,6 +1556,9 @@ static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, i
                 lineEm = avg;
             }
         }
+        if (vert && b.rect.dx > lineEm) {
+            lineEm = b.rect.dx;
+        }
         OcrExpandPunctCells(cps, nCp, lineEm, gx0, gx1);
         int padX = lineEm / 10;
         if (padX < 2) {
@@ -1258,7 +1566,7 @@ static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, i
         }
         OcrInsetGlyphXs(nCp, padX, gx0, gx1);
         bool lonePunct = nCp == 1 && OcrIsPunct(cps[0]);
-        if (lonePunct) {
+        if (lonePunct && !vert) {
             int lineH = OcrSameLineMaxDy(boxes, bi, lineEm);
             int wantDy = (int)((float)lineH * sy + 0.5f);
             if (wantDy < 1) {
@@ -1343,10 +1651,18 @@ static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, i
             }
             Rect cr = pageR;
             int ix0 = (cpI < nCp) ? gx0[cpI] : 0;
-            int ix1 = (cpI < nCp) ? gx1[cpI] : b.rect.dx;
-            cr.x = pageR.x + (int)((float)ix0 * sx + 0.5f);
-            int cellEnd = pageR.x + (int)((float)ix1 * sx + 0.5f);
-            cr.dx = (cellEnd > cr.x) ? (cellEnd - cr.x) : 1;
+            int ix1 = (cpI < nCp) ? gx1[cpI] : (vert ? b.rect.dy : b.rect.dx);
+            if (vert) {
+                cr.x = pageR.x;
+                cr.dx = pageR.dx > 0 ? pageR.dx : 1;
+                cr.y = pageR.y + (int)((float)ix0 * sy + 0.5f);
+                int cellEnd = pageR.y + (int)((float)ix1 * sy + 0.5f);
+                cr.dy = (cellEnd > cr.y) ? (cellEnd - cr.y) : 1;
+            } else {
+                cr.x = pageR.x + (int)((float)ix0 * sx + 0.5f);
+                int cellEnd = pageR.x + (int)((float)ix1 * sx + 0.5f);
+                cr.dx = (cellEnd > cr.x) ? (cellEnd - cr.x) : 1;
+            }
             utf.Append(b.text + before, (size_t)(idx - before));
             for (int k = before; k < idx; k++) {
                 utfCoords.Append(cr);
@@ -1423,7 +1739,7 @@ static void FinishOcrFlight(OcrFlight* owned) {
     delete owned;
 }
 
-bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr) {
+bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOperation op) {
     if (!engine || pageNo < 1 || pageNo > engine->PageCount()) {
         return false;
     }
@@ -1464,7 +1780,12 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr) {
             return usable;
         }
         engine->MarkOcrTried(pageNo);
+        OcrProfile profile = GetOcrProfileForOperation(op);
+        OcrPageTiming timing{};
+        LARGE_INTEGER tPage = TimeGet();
+        LARGE_INTEGER tRaster = TimeGet();
         RenderedBitmap* bmp = RenderPageForOcr(engine, pageNo);
+        timing.rasterizeMs = TimeSinceInMs(tRaster);
         if (bmp && bmp->IsValid()) {
             int w = 0, h = 0, stride = 0;
             u8* rgb = CopyBitmapToRgb(bmp->GetBitmap(), &w, &h, &stride);
@@ -1473,12 +1794,13 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr) {
             if (rgb) {
                 Vec<OcrBox> boxes;
                 int usedRot = 0;
-                bool ok0 = OcrRecognizeRgb(rgb, w, h, stride, boxes);
+                bool ok0 = OcrRecognizeRgb(rgb, w, h, stride, boxes, profile, &timing);
                 int score0 = ok0 ? ScoreOcrBoxes(boxes) : 0;
                 if (!ok0) {
                     FreeOcrBoxes(boxes);
                     score0 = 0;
                 }
+                bool vertical0 = OcrBoxesLookLikeVerticalBook(boxes, w, h);
                 if (OcrShouldTryPageRotate(boxes, w, h)) {
                     int bestScore = score0;
                     int bestRot = 0;
@@ -1493,7 +1815,7 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr) {
                         }
                         Vec<OcrBox> rotBoxes;
                         int rotScore = 0;
-                        bool rotOk = OcrRecognizeRgbScored(rot, nw, nh, ns, rotBoxes, &rotScore);
+                        bool rotOk = OcrRecognizeRgbScored(rot, nw, nh, ns, rotBoxes, &rotScore, profile);
                         if (rotOk && rotScore > bestScore + 18) {
                             MapOcrBoxesFrom90(rotBoxes, w, h, cw);
                             FreeOcrBoxes(bestBoxes);
@@ -1516,15 +1838,32 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr) {
                         FreeOcrBoxes(bestBoxes);
                     }
                 }
+                // Books / 竖版书: keep the page upright. 90° OCR may still feed
+                // recognition (boxes already mapped back). 公文 forms still bake.
+                if (usedRot != 0) {
+                    bool officialName = OcrFileNameHasOfficialKind(engine->FilePath());
+                    bool officialText = OcrBoxesLookLikeOfficialSideways(boxes);
+                    bool verticalNow = OcrBoxesLookLikeVerticalBook(boxes, w, h);
+                    if ((vertical0 || verticalNow) && !officialName && !officialText) {
+                        logf("Ocr: page %d keep 0 deg (vertical book, was %d)\n", pageNo, usedRot);
+                        usedRot = 0;
+                    }
+                }
+                if (OcrPageBoxesAreVertical(boxes)) {
+                    SortOcrBoxesVerticalReading(boxes);
+                }
                 ok = ScoreOcrBoxes(boxes) > 0;
                 if (ok) {
                     PageText pt{};
                     PageTextUtf8 utf8{};
+                    LARGE_INTEGER tText = TimeGet();
                     BoxesToPageText(boxes, rgb, w, h, stride, engine->PageMediabox(pageNo), &pt, &utf8);
+                    timing.textLayerMs = TimeSinceInMs(tText);
                     FreeOcrBoxes(boxes);
                     if (pt.text && pt.len > 0) {
                         engine->SetCachedPageText(pageNo, pt, utf8);
                         engine->SetOcrPageRotate(pageNo, usedRot);
+                        engine->SetOcrCacheQuality(pageNo, OcrQualityForProfile(profile));
                     } else {
                         FreePageText(&pt);
                         FreePageTextUtf8(&utf8);
@@ -1539,6 +1878,11 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr) {
             }
         } else {
             delete bmp;
+        }
+        timing.pageTotalMs = TimeSinceInMs(tPage);
+        OcrLogPageTiming(pageNo, profile, timing);
+        if (op == OcrOperation::AllPages || op == OcrOperation::SaveSearchable) {
+            OcrAccumPageTiming(timing);
         }
     }
     FinishOcrFlight(owned);
@@ -1564,7 +1908,8 @@ static bool OcrRecognizePageClip(EngineBase* engine, int pageNo, const RectF& cl
         return false;
     }
     Vec<OcrBox> boxes;
-    bool ok = OcrRecognizeRgb(rgb, w, h, stride, boxes);
+    OcrProfile profile = GetOcrProfileForOperation(OcrOperation::CurrentPage);
+    bool ok = OcrRecognizeRgb(rgb, w, h, stride, boxes, profile);
     if (ok) {
         BoxesToPageText(boxes, rgb, w, h, stride, clip, ptOut, utf8Out);
         ok = ptOut->text && ptOut->len > 0;
@@ -1588,7 +1933,7 @@ void OcrEnsurePageTextForSearch(EngineBase* engine, int pageNo) {
     if (!gGlobalPrefs || !gGlobalPrefs->autoOcrScanPages) {
         return;
     }
-    if (OcrPageLooksScanned(engine, pageNo)) {
+    if (OcrPageShouldRecognize(engine, pageNo, OcrOperation::CurrentPage, nullptr)) {
         OcrRecognizeEnginePage(engine, pageNo);
     }
 }
@@ -1669,6 +2014,7 @@ static void OcrClearPendingExtractToc() {
 }
 
 static void OcrSetPendingSave(EngineBase* engine, HWND hwnd, const char* destPath, bool extractTocWhenDone) {
+    OcrClearPendingExtractToc();
     OcrClearPendingSave();
     if (!engine || str::IsEmpty(destPath)) {
         return;
@@ -1711,7 +2057,10 @@ static bool OcrWriteSearchablePdfToPath(EngineBase* engine, HWND hwnd, const cha
         writePath = tmpPath;
     }
     char* err = nullptr;
+    LARGE_INTEGER tSave = TimeGet();
     bool ok = EngineMupdfSaveSearchablePdf(engine, writePath, &err);
+    double saveMs = TimeSinceInMs(tSave);
+    OcrLogDocSummary("save", saveMs);
     if (!hwnd || !IsWindow(hwnd)) {
         if (tmpPath && !ok) {
             file::Delete(tmpPath);
@@ -1874,6 +2223,7 @@ static void OcrFinishUi(OcrDoneUi* d) {
             if (saving) {
                 OcrFinishPendingSaveIfAny(d->engine);
             } else if (extractToc) {
+                OcrLogDocSummary("all-pages", 0);
                 HWND hwnd = gOcrPendingExtractHwnd;
                 bool persist = gOcrPendingExtractPersist;
                 OcrClearPendingExtractToc();
@@ -1887,6 +2237,7 @@ static void OcrFinishUi(OcrDoneUi* d) {
                     ToolbarUpdateStateForWindow(win, false);
                 }
             } else {
+                OcrLogDocSummary("all-pages", 0);
                 if (d->engine && d->engine->CountOcrCachedPages() > 0) {
                     d->engine->MarkUnsavedOcrText();
                 }
@@ -2024,7 +2375,7 @@ static void OcrWorker() {
                 FreePageTextUtf8(&regionUtf8);
             }
         } else {
-            ok = OcrRecognizeEnginePage(job->engine, job->pageNo, job->forceOcr);
+            ok = OcrRecognizeEnginePage(job->engine, job->pageNo, job->forceOcr, job->op);
             if (!job->documentJob && !job->regionJob && gGlobalPrefs && gGlobalPrefs->autoOcrScanPages) {
                 OcrQueueAutoNearby(job->engine, job->hwndCanvas, job->pageNo);
             }
@@ -2060,7 +2411,8 @@ static void OcrEnqueueAutoPage(EngineBase* engine, HWND hwnd, int pageNo) {
     if (!engine || pageNo < 1 || pageNo > engine->PageCount()) {
         return;
     }
-    if (!OcrPageLooksScanned(engine, pageNo)) {
+    bool forceOcr = false;
+    if (!OcrPageShouldRecognize(engine, pageNo, OcrOperation::CurrentPage, &forceOcr)) {
         return;
     }
     gFlightLock.Lock();
@@ -2080,6 +2432,7 @@ static void OcrEnqueueAutoPage(EngineBase* engine, HWND hwnd, int pageNo) {
     engine->AddRef();
     job->pageNo = pageNo;
     job->showStatus = false;
+    job->forceOcr = forceOcr;
     job->cancelSeq = gOcrCancelSeq;
     gQueue.Append(job);
     gQueueLock.Unlock();
@@ -2136,22 +2489,17 @@ void OcrScheduleForPage(MainWindow* win, int pageNo, bool ignoreAutoPref) {
         return;
     }
 
+    bool forceOcr = false;
+    bool shouldRun = true;
     if (ignoreAutoPref) {
-        bool tried = engine->WasOcrTried(pageNo);
-        bool usable = engine->PageHasUsableText(pageNo);
-        if (usable && !tried) {
-            OcrShowQuietDone(win->hwndCanvas, _TRA("Ready to search"));
+        // Explicit "Recognize Current Page": always re-run Balanced, even if
+        // the page already has a native text layer or a previous OCR cache.
+        forceOcr = true;
+    } else {
+        shouldRun = OcrPageShouldRecognize(engine, pageNo, OcrOperation::CurrentPage, &forceOcr);
+        if (!shouldRun) {
             return;
         }
-        if (tried && usable) {
-            OcrShowQuietDone(win->hwndCanvas, _TRA("Ready to search"));
-            return;
-        }
-        if (tried) {
-            engine->ClearOcrTried(pageNo);
-        }
-    } else if (!OcrPageLooksScanned(engine, pageNo)) {
-        return;
     }
 
     gQueueLock.Lock();
@@ -2168,6 +2516,8 @@ void OcrScheduleForPage(MainWindow* win, int pageNo, bool ignoreAutoPref) {
     engine->AddRef();
     job->pageNo = pageNo;
     job->showStatus = ignoreAutoPref;
+    job->forceOcr = forceOcr;
+    job->op = OcrOperation::CurrentPage;
     job->cancelSeq = gOcrCancelSeq;
     gQueue.Append(job);
     gQueueLock.Unlock();
@@ -2177,7 +2527,7 @@ void OcrScheduleForPage(MainWindow* win, int pageNo, bool ignoreAutoPref) {
     StartOcrWorkerIfNeeded();
 }
 
-static int OcrQueueUnscannedPages(MainWindow* win, bool forceUncached) {
+static int OcrQueueUnscannedPages(MainWindow* win, bool forceUncached, OcrOperation op) {
     if (!win) {
         return -1;
     }
@@ -2199,39 +2549,32 @@ static int OcrQueueUnscannedPages(MainWindow* win, bool forceUncached) {
     }
     int n = engine->PageCount();
     int queued = 0;
-    int nCached = 0;
-    int nTried = 0;
-    int nUsable = 0;
     gQueueLock.Lock();
     bool busyOther = gOcrDocTotal > 0 && gOcrDocEngine && gOcrDocEngine != engine;
-    EngineBase* busyEng = gOcrDocEngine;
-    int busyDone = gOcrDocDone;
-    int busyTotal = gOcrDocTotal;
     gQueueLock.Unlock();
     if (busyOther) {
         ShowWarningNotification(win->hwndCanvas, _TRA("OCR is already running. Please wait until it finishes."),
                                 kNotif5SecsTimeOut);
         return -1;
     }
-    gQueueLock.Lock();
+    Vec<int> pageNos;
+    Vec<u8> forceFlags;
     for (int pageNo = 1; pageNo <= n; pageNo++) {
-        bool cached = engine->HasCachedOcrText(pageNo);
-        bool tried = engine->WasOcrTried(pageNo);
-        bool usable = engine->PageHasUsableText(pageNo);
-        if (cached && !forceUncached) {
-            nCached++;
+        bool forceOcr = false;
+        if (forceUncached) {
+            pageNos.Append(pageNo);
+            forceFlags.Append(1);
             continue;
         }
-        if (!forceUncached) {
-            if (tried) {
-                nTried++;
-                continue;
-            }
-            if (usable) {
-                nUsable++;
-                continue;
-            }
+        if (!OcrPageShouldRecognize(engine, pageNo, op, &forceOcr)) {
+            continue;
         }
+        pageNos.Append(pageNo);
+        forceFlags.Append(forceOcr ? 1 : 0);
+    }
+    gQueueLock.Lock();
+    for (int i = 0; i < pageNos.Size(); i++) {
+        int pageNo = pageNos[i];
         if (QueueHas(engine, pageNo)) {
             continue;
         }
@@ -2242,7 +2585,8 @@ static int OcrQueueUnscannedPages(MainWindow* win, bool forceUncached) {
         job->pageNo = pageNo;
         job->showStatus = false;
         job->documentJob = true;
-        job->forceOcr = forceUncached;
+        job->forceOcr = forceFlags[i] != 0;
+        job->op = op;
         job->cancelSeq = gOcrCancelSeq;
         gQueue.Append(job);
         queued++;
@@ -2254,6 +2598,7 @@ static int OcrQueueUnscannedPages(MainWindow* win, bool forceUncached) {
     if (gOcrDocEngine != engine) {
         gOcrDocDone = 0;
         gOcrDocTotal = 0;
+        OcrResetDocTiming();
     }
     gOcrDocEngine = engine;
     gOcrDocHwnd = win->hwndCanvas;
@@ -2263,12 +2608,53 @@ static int OcrQueueUnscannedPages(MainWindow* win, bool forceUncached) {
     return queued;
 }
 
+static void OcrClearSessionResults(EngineBase* engine) {
+    if (!engine) {
+        return;
+    }
+    int n = engine->PageCount();
+    for (int pageNo = 1; pageNo <= n; pageNo++) {
+        if (!engine->WasOcrTried(pageNo)) {
+            continue;
+        }
+        engine->ClearTextCacheForPage(pageNo);
+        engine->ClearOcrTried(pageNo);
+        engine->SetOcrPageRotate(pageNo, 0);
+    }
+}
+
+void OcrRerunAllPages(MainWindow* win, bool accurate) {
+    if (gGlobalPrefs) {
+        str::ReplaceWithCopy(&gGlobalPrefs->ocrFullDocumentMode, accurate ? "accurate" : "fast");
+        SaveSettings();
+    }
+    DisplayModel* dm = win ? win->AsFixed() : nullptr;
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    bool extractToc = true;
+    bool autoSave = gGlobalPrefs && gGlobalPrefs->ocrAutoSave && engine && engine->kind == kindEngineMupdf &&
+                    engine->FilePath() && CanAccessDisk() && !gPluginMode;
+    if (autoSave && !ConfirmOcrAutoSave(win, &extractToc)) {
+        return;
+    }
+    OcrCancelQueued(win, true);
+    OcrClearSessionResults(engine);
+    if (win && win->hwndCanvas && IsWindow(win->hwndCanvas)) {
+        InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+    }
+    OcrScheduleDocument(win, !autoSave, true);
+    if (autoSave && engine && engine->FilePath()) {
+        OcrSaveSearchablePdfAfterOcr(win, engine->FilePath(), extractToc);
+    }
+}
+
 void OcrScheduleDocument(MainWindow* win, bool extractTocIfMissing, bool forceOcrAll) {
     DisplayModel* dm = win ? win->AsFixed() : nullptr;
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
-    bool needToc =
-        extractTocIfMissing && engine && EngineMupdfCanEditPdfToc(engine) && !EngineMupdfHasStoredOutline(engine);
-    int queued = OcrQueueUnscannedPages(win, forceOcrAll);
+    // After full-document OCR (scan-only or force-all), always extract bookmarks
+    // when this PDF can store an outline. Existing bookmarks are replaced in
+    // memory (persistToDisk=false); the file is not overwritten.
+    bool needToc = extractTocIfMissing && engine && EngineMupdfCanEditPdfToc(engine);
+    int queued = OcrQueueUnscannedPages(win, forceOcrAll, OcrOperation::AllPages);
     if (queued < 0) {
         return;
     }
@@ -2280,7 +2666,11 @@ void OcrScheduleDocument(MainWindow* win, bool extractTocIfMissing, bool forceOc
         if (needToc) {
             HandleExtractPdfTocCommand(win, true, false);
         } else if (win) {
-            OcrShowQuietDone(win->hwndCanvas, _TRA("Ready to search"));
+            if (engine && engine->CountOcrCachedPages() > 0) {
+                OcrShowQuietDone(win->hwndCanvas, _TRA("Ready to search"));
+            } else {
+                OcrShowQuietDone(win->hwndCanvas, _TRA("No scanned pages to recognize."));
+            }
         }
         return;
     }
@@ -2302,7 +2692,7 @@ void OcrExtractTocAfterDocumentOcr(MainWindow* win) {
     if (!engine) {
         return;
     }
-    int queued = OcrQueueUnscannedPages(win, false);
+    int queued = OcrQueueUnscannedPages(win, false, OcrOperation::AllPages);
     if (queued < 0) {
         return;
     }
@@ -2328,7 +2718,7 @@ void OcrSaveSearchablePdfAfterOcr(MainWindow* win, const char* destPath, bool ex
                                 kNotif5SecsTimeOut);
         return;
     }
-    int queued = OcrQueueUnscannedPages(win, true);
+    int queued = OcrQueueUnscannedPages(win, false, OcrOperation::SaveSearchable);
     if (queued < 0) {
         return;
     }
@@ -2350,7 +2740,7 @@ bool OcrHasQueuedJobs() {
     return has || InterlockedCompareExchange(&gWorkersAlive, 0, 0) != 0;
 }
 
-void OcrCancelQueued(MainWindow* win) {
+void OcrCancelQueued(MainWindow* win, bool quiet) {
     HWND hwnd = win ? win->hwndCanvas : nullptr;
     LONG prevSeq = InterlockedCompareExchange(&gOcrCancelSeq, 0, 0);
     InterlockedIncrement(&gOcrCancelSeq);
@@ -2390,7 +2780,9 @@ void OcrCancelQueued(MainWindow* win) {
         OcrClearPendingExtractToc();
     }
     if (hwnd) {
-        if (removed > 0 || hadPending || hadExtract || hadDoc) {
+        if (quiet) {
+            HideOcrStatus(hwnd);
+        } else if (removed > 0 || hadPending || hadExtract || hadDoc) {
             OcrShowQuietDone(hwnd, _TRA("Cancelled."));
         } else {
             HideOcrStatus(hwnd);
@@ -2512,4 +2904,136 @@ void OcrFinishRegionSelect(MainWindow* win, Rect screenRect) {
     gQueueLock.Unlock();
     ShowOcrStatus(win->hwndCanvas, _TRA("Scanning…"), kNotifNoTimeout);
     StartOcrWorkerIfNeeded();
+}
+
+static void OcrWriteUtf8File(const char* path, const char* text) {
+    if (!path) {
+        return;
+    }
+    const char* s = text ? text : "";
+    file::WriteFile(path, ByteSlice((const u8*)s, str::Len(s)));
+}
+
+static char* OcrBoxesJoinText(const Vec<OcrBox>& boxes) {
+    StrBuilder sb;
+    for (int i = 0; i < boxes.Size(); i++) {
+        if (boxes[i].text && boxes[i].text[0]) {
+            sb.Append(boxes[i].text);
+            sb.Append("\n");
+        }
+    }
+    return sb.StealData();
+}
+
+int OcrRunFileBenchmark(const char* pdfPath, const char* outDir, int maxPages) {
+    if (str::IsEmpty(pdfPath)) {
+        logf("OCR bench: missing pdf path\n");
+        return 1;
+    }
+    if (!file::Exists(pdfPath)) {
+        logf("OCR bench: file not found %s\n", pdfPath);
+        return 1;
+    }
+    const char* dir = outDir && outDir[0] ? outDir : "c:\\src\\sumatrapdf\\_ocr_bench";
+    dir::CreateAll(dir);
+    if (!OcrModelsAvailable()) {
+        logf("OCR bench: models not available: %s\n", OcrLastError() ? OcrLastError() : OcrModelsMissingHint());
+        return 1;
+    }
+    EngineBase* engine = CreateEngineFromFile(pdfPath, nullptr, true);
+    if (!engine) {
+        logf("OCR bench: failed to open %s\n", pdfPath);
+        return 1;
+    }
+    int nPages = engine->PageCount();
+    if (maxPages < 1) {
+        maxPages = 6;
+    }
+    if (maxPages > nPages) {
+        maxPages = nPages;
+    }
+    logf("OCR bench: %s pages=%d benchPages=%d out=%s\n", pdfPath, nPages, maxPages, dir);
+
+    OcrProfile profiles[3] = {OcrProfile::Fast, OcrProfile::Balanced, OcrProfile::Hybrid};
+    const char* names[3] = {"tiny", "small", "hybrid"};
+    double sumMs[3]{};
+    double sumRaster[3]{};
+    double sumDet[3]{};
+    double sumRec[3]{};
+    double sumText[3]{};
+    int nOk[3]{};
+
+    for (int pi = 0; pi < 3; pi++) {
+        StrBuilder allText;
+        logf("OCR bench: --- profile %s ---\n", names[pi]);
+        LARGE_INTEGER tProf = TimeGet();
+        for (int pageNo = 1; pageNo <= maxPages; pageNo++) {
+            LARGE_INTEGER tRaster = TimeGet();
+            RenderedBitmap* bmp = RenderPageForOcr(engine, pageNo);
+            double rasterMs = TimeSinceInMs(tRaster);
+            if (!bmp || !bmp->IsValid()) {
+                delete bmp;
+                logf("OCR bench: render failed page %d profile %s\n", pageNo, names[pi]);
+                continue;
+            }
+            int w = 0, h = 0, stride = 0;
+            u8* rgb = CopyBitmapToRgb(bmp->GetBitmap(), &w, &h, &stride);
+            delete bmp;
+            if (!rgb) {
+                continue;
+            }
+            Vec<OcrBox> boxes;
+            OcrPageTiming timing{};
+            timing.rasterizeMs = rasterMs;
+            bool ok = OcrRecognizeRgb(rgb, w, h, stride, boxes, profiles[pi], &timing);
+            LARGE_INTEGER tText = TimeGet();
+            char* pageText = OcrBoxesJoinText(boxes);
+            timing.textLayerMs = TimeSinceInMs(tText);
+            timing.pageTotalMs = rasterMs + timing.pageTotalMs + timing.textLayerMs;
+            OcrLogPageTiming(pageNo, profiles[pi], timing);
+            TempStr path = path::JoinTemp(dir, str::FormatTemp("%s_p%02d.txt", names[pi], pageNo));
+            OcrWriteUtf8File(path, pageText);
+            if (pageText) {
+                allText.AppendFmt("--- page %d ---\n", pageNo);
+                allText.Append(pageText);
+                allText.Append("\n");
+            }
+            if (ok) {
+                nOk[pi]++;
+            }
+            sumMs[pi] += timing.pageTotalMs;
+            sumRaster[pi] += timing.rasterizeMs;
+            sumDet[pi] += timing.detPreprocessMs + timing.detInferenceMs + timing.detPostprocessMs;
+            sumRec[pi] += timing.cropMs + timing.recPreprocessMs + timing.recInferenceMs + timing.recPostprocessMs;
+            sumText[pi] += timing.textLayerMs;
+            str::Free(pageText);
+            FreeOcrBoxes(boxes);
+            free(rgb);
+        }
+        double profMs = TimeSinceInMs(tProf);
+        TempStr allPath = path::JoinTemp(dir, str::FormatTemp("%s_all.txt", names[pi]));
+        OcrWriteUtf8File(allPath, allText.CStr());
+        double avg = maxPages > 0 ? sumMs[pi] / (double)maxPages : 0;
+        double pps = profMs > 1 ? 1000.0 * (double)maxPages / profMs : 0;
+        logf(
+            "OCR bench summary %s pages=%d ok=%d avg_ms=%.0f pages/s=%.2f raster=%.0f det=%.0f rec=%.0f text=%.0f "
+            "total_s=%.2f\n",
+            names[pi], maxPages, nOk[pi], avg, pps, sumRaster[pi], sumDet[pi], sumRec[pi], sumText[pi],
+            profMs / 1000.0);
+    }
+
+    StrBuilder sum;
+    sum.Append("profile,avg_ms,pages_per_sec,raster_ms,det_ms,rec_ms,text_ms,ok_pages\n");
+    for (int pi = 0; pi < 3; pi++) {
+        double avg = maxPages > 0 ? sumMs[pi] / (double)maxPages : 0;
+        double pps = avg > 1 ? 1000.0 / avg : 0;
+        sum.AppendFmt("%s,%.0f,%.2f,%.0f,%.0f,%.0f,%.0f,%d\n", names[pi], avg, pps, sumRaster[pi] / (double)maxPages,
+                      sumDet[pi] / (double)maxPages, sumRec[pi] / (double)maxPages, sumText[pi] / (double)maxPages,
+                      nOk[pi]);
+    }
+    TempStr sumPath = path::JoinTemp(dir, "summary.csv");
+    OcrWriteUtf8File(sumPath, sum.CStr());
+    logf("OCR bench wrote %s\n", sumPath);
+    SafeEngineRelease(&engine);
+    return 0;
 }

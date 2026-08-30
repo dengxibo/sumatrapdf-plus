@@ -1814,7 +1814,7 @@ static void StartFindCount(MainWindow* win, const WCHAR* text, bool matchCase, b
         return;
     }
     if (gGlobalPrefs && gGlobalPrefs->autoOcrScanPages) {
-        OcrScheduleDocument(win);
+        OcrScheduleForPage(win, dm->CurrentPageNo());
     }
     EngineBase* engine = dm->GetEngine();
     if (!engine) {
@@ -2387,7 +2387,10 @@ void FindTextOnThread(MainWindow* win, TextSearch::Direction direction, const ch
         return;
     }
     if (gGlobalPrefs && gGlobalPrefs->autoOcrScanPages) {
-        OcrScheduleDocument(win);
+        DisplayModel* dm = win->AsFixed();
+        if (dm) {
+            OcrScheduleForPage(win, dm->CurrentPageNo());
+        }
     }
     AbortFinding(win, false);
     if (str::IsEmpty(text)) {

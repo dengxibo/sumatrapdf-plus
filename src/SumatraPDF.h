@@ -137,6 +137,7 @@ bool CanAccessDisk();
 bool AnnotationsAreDisabled();
 bool IsUIRtl();
 void SaveSearchablePdfAs(MainWindow* win, bool extractTocWhenDone = false);
+bool ConfirmOcrAutoSave(MainWindow* win, bool* extractTocOut);
 bool SumatraLaunchBrowser(const char* url);
 bool OpenFileExternally(const char* path);
 void CloseCurrentTab(MainWindow* win, bool quitIfLast);

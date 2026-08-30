@@ -283,6 +283,10 @@ static SeqStrings gCommandNames =
     "CmdPdfTocFindInBody\0"
     "CmdPdfTocReplaceFromSelection\0"
     "CmdHomePageRemoveMissingFiles\0"
+    "CmdOcrFullDocumentModeFast\0"
+    "CmdOcrFullDocumentModeAccurate\0"
+    "CmdOcrReRecognizeAllPages\0"
+    "CmdToggleOcrAutoSave\0"
     "CmdNone\0"
     "\0";
 
@@ -556,6 +560,10 @@ static i32 gCommandIds[] = {
     CmdPdfTocFindInBody,
     CmdPdfTocReplaceFromSelection,
     CmdHomePageRemoveMissingFiles,
+    CmdOcrFullDocumentModeFast,
+    CmdOcrFullDocumentModeAccurate,
+    CmdOcrReRecognizeAllPages,
+    CmdToggleOcrAutoSave,
     CmdNone,
 };
 
@@ -817,18 +825,22 @@ SeqStrings gCommandDescriptions =
     "PDF TOC: Promote Item\0"
     "PDF TOC: Demote Item\0"
     "Ebook Font Size: Reset to Default\0"
-    "OCR Current Page\0"
-    "OCR All Pages\0"
+    "Recognize Current Page\0"
+    "Recognize All Scanned Pages (Fast)\0"
     "Toggle Auto OCR\0"
     "OCR Region\0"
     "Cancel OCR\0"
-    "Recognize all pages and save\0"
+    "Save as Searchable PDF\0"
     "Extract Table of Contents\0"
     "Calibrate TOC Pages\0"
     "Set TOC Item to Current Page\0"
     "Find TOC Item in Body\0"
     "Replace TOC Item from Selection\0"
     "Remove missing files from home\0"
+    "Full-document OCR Mode: Fast\0"
+    "Full-document OCR Mode: High Accuracy\0"
+    "Recognize All Scanned Pages (Accurate)\0"
+    "Toggle Auto-save After OCR\0"
     "Do nothing\0"
     "\0";
 // clang-format on

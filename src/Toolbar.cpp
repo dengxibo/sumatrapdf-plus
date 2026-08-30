@@ -301,8 +301,7 @@ void UpdateAutoOcrToolbarButton(MainWindow* win) {
     }
     bool enabled = gGlobalPrefs && gGlobalPrefs->autoOcrScanPages;
     SetToolbarButtonCheckedState(win, CmdToggleAutoOcr, enabled);
-    const char* tip = enabled ? _TRN("Auto OCR (on): scanned pages are recognized for select and search")
-                              : _TRN("Auto OCR (off): turn on to recognize scanned pages as you view them");
+    const char* tip = enabled ? _TRN("Auto OCR is enabled") : _TRN("Enable Auto OCR");
     TempStr tipTranslated = (TempStr)trans::GetTranslation(tip);
     TBBUTTONINFOW bi{};
     bi.cbSize = sizeof(bi);

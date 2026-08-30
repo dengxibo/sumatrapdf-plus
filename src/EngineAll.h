@@ -152,6 +152,8 @@ bool OcrTextLooksLikeOfficialForm(const char* s);
 bool OcrTextLooksLikePortraitOfficialBody(const char* s);
 // Apply GetOcrPageRotate for every page that needs it. Returns how many pages changed.
 int EngineMupdfApplyPendingOcrPageRotates(EngineBase* engine);
+// Book path: drop session 90/270 and restore /Rotate 0. Returns how many pages changed.
+int EngineMupdfClearOcrPageRotates(EngineBase* engine);
 Annotation* EngineMupdfGetAnnotationAtPos(EngineBase*, int pageNo, PointF pos, Annotation*);
 ByteSlice EngineMupdfLoadAttachment(EngineBase*, int attachmentNo);
 ByteSlice EngineMupdfLoadAnnotAttachment(EngineBase*, int objNum);

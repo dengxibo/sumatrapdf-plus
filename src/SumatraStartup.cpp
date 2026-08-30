@@ -67,6 +67,7 @@
 #include "StressTesting.h"
 #include "Version.h"
 #include "Tests.h"
+#include "OcrService.h"
 #include "Menu.h"
 #include "AppTools.h"
 #include "Installer.h"
@@ -1695,6 +1696,24 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
         TestExtractTocBench(flags);
         ShutdownCommon();
         return 0;
+    }
+    {
+        char benchPdf[MAX_PATH]{};
+        DWORD nEnv = GetEnvironmentVariableA("SUMATRA_OCR_BENCH_PDF", benchPdf, dimof(benchPdf));
+        if (nEnv > 0 && nEnv < dimof(benchPdf)) {
+            RedirectIOToConsole();
+            gLogToConsole = true;
+            char benchDir[MAX_PATH]{};
+            GetEnvironmentVariableA("SUMATRA_OCR_BENCH_DIR", benchDir, dimof(benchDir));
+            char pagesBuf[32]{};
+            int maxPages = 6;
+            if (GetEnvironmentVariableA("SUMATRA_OCR_BENCH_PAGES", pagesBuf, dimof(pagesBuf)) > 0) {
+                maxPages = atoi(pagesBuf);
+            }
+            int rc = OcrRunFileBenchmark(benchPdf, benchDir[0] ? benchDir : nullptr, maxPages);
+            ShutdownCommon();
+            return rc;
+        }
     }
 
     if (flags.showConsole) {

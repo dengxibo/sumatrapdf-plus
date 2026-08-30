@@ -30,6 +30,8 @@ export const settingsInlineCommentsZh: Record<string, string> = {
   SearchUIFloating: "true=悬浮搜索窗口",
   OfflineDictionaryPath: "离线词典目录",
   AutoOcrScanPages: "自动识别无文字层的扫描页，便于选择和搜索；模型在 {exedir}/ocr/",
+  OcrAutoSave: "全文识别或提取目录完成后覆盖保存当前 PDF",
+  OcrFullDocumentMode: "全文识别模式 fast=极速 accurate=高精度；框选/当前页/自动 OCR 始终用高精度",
   ExtractPdfTocMode: "智能提取目录详细程度 conservative/standard/detailed",
   EnableDoubleClickWordLookup: "双击查离线词典",
   AiChatProvider: "Ask AI 提供商 doubao/deepseek/chatgpt",

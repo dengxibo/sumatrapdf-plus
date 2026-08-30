@@ -484,6 +484,10 @@ class EngineBase {
     bool WasOcrTried(int pageNo);
     void MarkOcrTried(int pageNo);
     void ClearOcrTried(int pageNo);
+    // 0 = none, 1 = Fast, 2 = Balanced. Balanced satisfies Fast; Fast does not
+    // satisfy an explicit Balanced request.
+    u8 GetOcrCacheQuality(int pageNo);
+    void SetOcrCacheQuality(int pageNo, u8 quality);
     void SetCachedPageText(int pageNo, PageText pt, PageTextUtf8 utf8);
     void AppendCachedPageText(int pageNo, PageText pt, PageTextUtf8 utf8);
     bool HasCachedOcrText(int pageNo);

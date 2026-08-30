@@ -33032,3 +33032,71 @@ tw:前幾頁沒有找到印刷目錄。
 :Text was found, but this file has no table of contents or chapter headings to extract.
 cn:文字已经识别。没有找到印刷目录或章节标题，无法提取书签。
 tw:文字已經識別。沒有找到印刷目錄或章節標題，無法提取書籤。
+
+:Enable Auto OCR
+cn:开启自动 OCR
+tw:開啟自動 OCR
+
+:Auto OCR is enabled
+cn:自动 OCR 已开启
+tw:自動 OCR 已開啟
+
+:Recognize Current Page
+cn:识别当前页
+tw:識別目前頁
+
+:Recognize All Scanned Pages
+cn:识别所有扫描页
+tw:識別所有掃描頁
+
+:Save as Searchable PDF...
+cn:另存为可搜索 PDF...
+tw:另存為可搜尋 PDF...
+
+:Full-document OCR Mode
+cn:全文识别模式
+tw:全文識別模式
+
+:Full-document OCR Mode: Fast
+cn:全文识别模式：极速
+tw:全文識別模式：極速
+
+:Full-document OCR Mode: High Accuracy
+cn:全文识别模式：高精度
+tw:全文識別模式：高精度
+
+:Fast (Recommended)
+cn:极速（推荐）
+tw:極速（推薦）
+
+:High Accuracy
+cn:高精度
+tw:高精度
+
+:No scanned pages to recognize.
+cn:没有需要识别的扫描页
+tw:沒有需要識別的掃描頁
+
+:No scanned pages to recognize. Use Recognize Current Page to force this page.
+cn:没有需要识别的扫描页。可用「识别当前页」强制识别。
+tw:沒有需要識別的掃描頁。可用「識別目前頁」強制識別。
+
+:Re-recognize All Pages
+cn:重新识别所有页
+tw:重新識別所有頁
+
+:Recognize All Scanned Pages (Fast)
+cn:识别所有扫描页（快速）
+tw:識別所有掃描頁（快速）
+
+:Recognize All Scanned Pages (Accurate)
+cn:识别所有扫描页（精确）
+tw:識別所有掃描頁（精確）
+
+:Auto-save
+cn:自动保存
+tw:自動儲存
+
+:Toggle Auto-save After OCR
+cn:开关识别后自动保存
+tw:開關識別後自動儲存

@@ -278,7 +278,11 @@ enum {
     CmdPdfTocFindInBody = 467,
     CmdPdfTocReplaceFromSelection = 468,
     CmdHomePageRemoveMissingFiles = 469,
-    CmdNone = 470,
+    CmdOcrFullDocumentModeFast = 470,
+    CmdOcrFullDocumentModeAccurate = 471,
+    CmdOcrReRecognizeAllPages = 472,
+    CmdToggleOcrAutoSave = 473,
+    CmdNone = 474,
 
     /* range for file history */
     CmdFileHistoryFirst,

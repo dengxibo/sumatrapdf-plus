@@ -6186,7 +6186,7 @@ static bool ConfirmReplaceExistingPdfText(MainWindow* win) {
     config.cbSize = sizeof(config);
     config.hwndParent = win->hwndFrame;
     config.dwFlags = flags;
-    config.pszWindowTitle = ToWStrTemp(_TRA("Recognize all pages and save"));
+    config.pszWindowTitle = ToWStrTemp(_TRA("Save as Searchable PDF"));
     config.pszContent =
         ToWStrTemp(_TRA("This PDF already has searchable text. Replace it with newly recognized text?"));
     config.pszMainIcon = TD_WARNING_ICON;
@@ -6215,6 +6215,43 @@ static bool ConfirmSearchablePdfSignatureSave(MainWindow* win, EngineBase* engin
     return true;
 }
 
+bool ConfirmOcrAutoSave(MainWindow* win, bool* extractTocOut) {
+    if (extractTocOut) {
+        *extractTocOut = false;
+    }
+    if (!CanAccessDisk() || gPluginMode) {
+        return false;
+    }
+    if (!win || !win->IsDocLoaded()) {
+        return false;
+    }
+    DisplayModel* dm = win->AsFixed();
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (!engine || engine->kind != kindEngineMupdf) {
+        ShowWarningNotification(win->hwndCanvas, _TRA("Save as searchable PDF is only available for PDF files."),
+                                kNotif5SecsTimeOut);
+        return false;
+    }
+    if (!engine->FilePath()) {
+        ShowWarningNotification(win->hwndCanvas, _TRA("File path not available"), kNotif5SecsTimeOut);
+        return false;
+    }
+    if (OcrDocumentHasFileTextLayer(engine) && !ConfirmReplaceExistingPdfText(win)) {
+        return false;
+    }
+    if (!ConfirmSearchablePdfSignatureSave(win, engine)) {
+        return false;
+    }
+    bool doExtract = EngineMupdfCanEditPdfToc(engine);
+    if (doExtract && EngineMupdfHasStoredOutline(engine) && !ConfirmReplaceExistingPdfToc(win)) {
+        doExtract = false;
+    }
+    if (extractTocOut) {
+        *extractTocOut = doExtract;
+    }
+    return true;
+}
+
 void SaveSearchablePdfAs(MainWindow* win, bool extractTocWhenDone) {
     if (!CanAccessDisk() || gPluginMode) {
         return;
@@ -6234,6 +6271,7 @@ void SaveSearchablePdfAs(MainWindow* win, bool extractTocWhenDone) {
         ShowWarningNotification(win->hwndCanvas, _TRA("File path not available"), kNotif5SecsTimeOut);
         return;
     }
+
     if (OcrDocumentHasFileTextLayer(engine) && !ConfirmReplaceExistingPdfText(win)) {
         return;
     }
@@ -10306,7 +10344,11 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         }
 
         case CmdOcrDocument:
-            OcrScheduleDocument(win, true, true);
+            OcrRerunAllPages(win, false);
+            break;
+
+        case CmdOcrReRecognizeAllPages:
+            OcrRerunAllPages(win, true);
             break;
 
         case CmdToggleAutoOcr:
@@ -10330,8 +10372,29 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             OcrCancelQueued(win);
             break;
 
+        case CmdToggleOcrAutoSave:
+            if (gGlobalPrefs) {
+                gGlobalPrefs->ocrAutoSave = !gGlobalPrefs->ocrAutoSave;
+                SaveSettings();
+            }
+            break;
+
         case CmdSaveSearchablePdf:
             SaveSearchablePdfAs(win, true);
+            break;
+
+        case CmdOcrFullDocumentModeFast:
+            if (gGlobalPrefs) {
+                str::ReplaceWithCopy(&gGlobalPrefs->ocrFullDocumentMode, "fast");
+                SaveSettings();
+            }
+            break;
+
+        case CmdOcrFullDocumentModeAccurate:
+            if (gGlobalPrefs) {
+                str::ReplaceWithCopy(&gGlobalPrefs->ocrFullDocumentMode, "accurate");
+                SaveSettings();
+            }
             break;
 
         case CmdMoveFrameFocus:
@@ -14117,11 +14180,20 @@ static void ShowOcrToolbarMenu(MainWindow* win, NMTOOLBARW* nmtb) {
     DisplayModel* dm = win->AsFixed();
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
     bool canOcr = engine && OcrEngineKindSupported(engine);
-    bool canSave = canOcr && engine && engine->kind == kindEngineMupdf && CanAccessDisk() && !gPluginMode;
     AppendMenuW(menu, canOcr ? MF_STRING : MF_STRING | MF_GRAYED, CmdOcrRegion, ToWStrTemp(_TRA("OCR region")));
-    AppendMenuW(menu, canOcr ? MF_STRING : MF_STRING | MF_GRAYED, CmdOcrDocument, ToWStrTemp(_TRA("OCR All Pages")));
-    AppendMenuW(menu, canSave ? MF_STRING : MF_STRING | MF_GRAYED, CmdSaveSearchablePdf,
-                ToWStrTemp(_TRA("Recognize all pages and save")));
+    AppendMenuW(menu, canOcr ? MF_STRING : MF_STRING | MF_GRAYED, CmdOcrDocument,
+                ToWStrTemp(_TRA("Recognize All Scanned Pages (Fast)")));
+    AppendMenuW(menu, canOcr ? MF_STRING : MF_STRING | MF_GRAYED, CmdOcrReRecognizeAllPages,
+                ToWStrTemp(_TRA("Recognize All Scanned Pages (Accurate)")));
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    UINT autoSaveFlags = MF_STRING;
+    if (gGlobalPrefs && gGlobalPrefs->ocrAutoSave) {
+        autoSaveFlags |= MF_CHECKED;
+    }
+    if (!canOcr || !CanAccessDisk() || gPluginMode) {
+        autoSaveFlags |= MF_GRAYED;
+    }
+    AppendMenuW(menu, autoSaveFlags, CmdToggleOcrAutoSave, ToWStrTemp(_TRA("Auto-save")));
 
     SetForegroundWindow(win->hwndFrame);
     UINT selected = (UINT)TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, rc.left, rc.bottom, 0,

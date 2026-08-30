@@ -617,8 +617,30 @@ void EngineBase::MarkOcrTried(int pageNo) {
     }
     ScopedCritSec scope(&textCacheLock);
     EnsurePageOcrTriedSize();
-    if (pageOcrTried && pageNo <= pageOcrTriedSize) {
+    if (pageOcrTried && pageNo <= pageOcrTriedSize && pageOcrTried[pageNo - 1] == 0) {
         pageOcrTried[pageNo - 1] = 1;
+    }
+}
+
+u8 EngineBase::GetOcrCacheQuality(int pageNo) {
+    if (pageNo < 1) {
+        return 0;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    if (!pageOcrTried || pageNo > pageOcrTriedSize) {
+        return 0;
+    }
+    return pageOcrTried[pageNo - 1];
+}
+
+void EngineBase::SetOcrCacheQuality(int pageNo, u8 quality) {
+    if (pageNo < 1) {
+        return;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    EnsurePageOcrTriedSize();
+    if (pageOcrTried && pageNo <= pageOcrTriedSize) {
+        pageOcrTried[pageNo - 1] = quality;
     }
 }
 
@@ -715,7 +737,7 @@ void EngineBase::SetCachedPageText(int pageNo, PageText pt, PageTextUtf8 utf8) {
     } else {
         FreePageTextUtf8(&utf8);
     }
-    if (pageOcrTried && pageNo <= pageOcrTriedSize) {
+    if (pageOcrTried && pageNo <= pageOcrTriedSize && pageOcrTried[pageNo - 1] == 0) {
         pageOcrTried[pageNo - 1] = 1;
     }
     textCacheGeneration++;

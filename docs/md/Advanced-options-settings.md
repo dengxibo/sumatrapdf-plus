@@ -140,6 +140,13 @@ EnableDoubleClickWordLookup = true
 ; 3.8)
 AutoOcrScanPages = false
 
+; if true, overwrite the current PDF after Recognize All Scanned Pages and after
+; extracting bookmarks (introduced in version 3.8)
+OcrAutoSave = false
+
+; Valid values: fast, accurate (introduced in version 3.8)
+OcrFullDocumentMode = fast
+
 ; Valid values: conservative, standard, detailed (introduced in version 3.8)
 ExtractPdfTocMode = standard
 

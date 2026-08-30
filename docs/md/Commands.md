@@ -241,12 +241,16 @@ CmdPdShowInfo,,Show PDF Info,shows information about currently opened PDF file
 CmdDocumentShowOutline,,Show Document Outline,shows the outline (table of contents) of currently opened document
 CmdPdfBake,,Bake PDF File,bakes interactive form and annotation content into static graphics; saves to a new PDF file and opens it
 CmdDocumentExtractText,,Extract Text From Document,"extract text from document pages to a .txt file, with configurable page ranges, ver 3.7+"
-CmdOcrCurrentPage,,OCR Current Page,"recognize text on the current scanned page (RapidOCR sidecar in {exedir}/ocr/), ver 3.8+"
-CmdOcrDocument,,OCR All Pages,"toolbar OCR menu: recognize all pages even if the PDF already has a text layer (re-OCR garbled dual-layer files); if there is no outline, extract bookmarks after OCR, ver 3.8+"
-CmdToggleAutoOcr,,Toggle Auto OCR,"toolbar switch for AutoOcrScanPages: OCR scanned pages as you view or search them, ver 3.8+"
+CmdOcrCurrentPage,,Recognize Current Page,"recognize the current page (high accuracy), even if it already has a text layer. Memory cache only; does not change the PDF file, ver 3.8+"
+CmdOcrDocument,,Recognize All Scanned Pages (Fast),"toolbar OCR menu: clear session OCR and re-recognize every page with the fast profile; then extract bookmarks (in memory, replaces existing outline), ver 3.8+"
+CmdToggleAutoOcr,,Toggle Auto OCR,"toolbar switch for AutoOcrScanPages: OCR visible scanned pages as you view them, ver 3.8+"
 CmdOcrRegion,,OCR Region,"toolbar OCR menu: drag a rectangle to recognize and copy text, ver 3.8+"
 CmdOcrCancel,,Cancel OCR,"stop queued page OCR; already recognized pages are kept, ver 3.8+"
-CmdSaveSearchablePdf,,Recognize all pages and save,"toolbar OCR menu: OCR all pages with progress, extract bookmarks (prompt to replace an existing outline), then save over the current PDF (prompt if a text layer already exists; no Save As dialog), ver 3.8+"
+CmdSaveSearchablePdf,,Save as Searchable PDF,"toolbar OCR menu: OCR missing scan pages with progress, then overwrite the current PDF (no Save As dialog), ver 3.8+"
+CmdOcrFullDocumentModeFast,,Full-document OCR Mode: Fast,"full-document OCR uses the fast profile (Recognize All Scanned Pages / Save as Searchable PDF). Setting OcrFullDocumentMode=fast, ver 3.8+"
+CmdOcrFullDocumentModeAccurate,,Full-document OCR Mode: High Accuracy,"full-document OCR uses high accuracy. Setting OcrFullDocumentMode=accurate, ver 3.8+"
+CmdOcrReRecognizeAllPages,,Recognize All Scanned Pages (Accurate),"toolbar OCR menu: clear session OCR and re-recognize every page with high accuracy; then extract bookmarks (in memory, replaces existing outline), ver 3.8+"
+CmdToggleOcrAutoSave,,Toggle Auto-save After OCR,"toolbar OCR menu: when checked, Recognize All Scanned Pages overwrites the current PDF and extracting bookmarks saves to disk. Setting OcrAutoSave, ver 3.8+"
 ```
 
 ## External app

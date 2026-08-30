@@ -11,50 +11,63 @@ User guide: docs/md/OCR.md
 Put these files in this folder (next to SumatraPDF-Plus.exe after a build they are
 also copied to out/dbg64/ocr and out/rel64/ocr):
 
-  onnxruntime.dll          ONNX Runtime CPU, Windows x64
-                           (same major version as ext/onnxruntime/onnxruntime_c_api.h,
-                            currently 1.17.x)
+  onnxruntime.dll                      ONNX Runtime CPU, Windows x64 (1.20.x)
+  onnxruntime_providers_shared.dll     required sibling of onnxruntime.dll 1.20+
 
-  det.onnx                 PP-OCR detection (mobile)
-  rec.onnx                 PP-OCR recognition (mobile)
-  keys.txt                 character table, one token per line
-                           (CTC blank is implied as index 0)
+  RapidOCR's PP-OCRv6 ONNX files are ONNX IR 10. Ship ORT 1.18+ so they load
+  without rewriting the model header.
+
+Recommended default models
+--------------------------
+
+Fast / full-document OCR (OCR all pages, Recognize all pages and save):
+
+  PP-OCRv6_det_tiny.onnx
+  PP-OCRv6_rec_tiny.onnx
+  ppocrv6_tiny_dict.txt
+
+Balanced / current-page OCR:
+
+  PP-OCRv6_det_small.onnx
+  PP-OCRv6_rec_small.onnx
+  ppocrv6_dict.txt
+
+Experimental Hybrid (small detection + tiny recognition; not a default):
+
+  PP-OCRv6_det_small.onnx
+  PP-OCRv6_rec_tiny.onnx
+  ppocrv6_tiny_dict.txt
+
+Recognition model and dictionary MUST match. Do not mix:
+
+  v6 tiny rec  + ppocrv6_tiny_dict.txt
+  v6 small rec + ppocrv6_dict.txt
+
+The engine pairs them; a missing requested profile falls back
+(Fast → Balanced) and logs the files it actually loaded.
+
+Generic filenames
+-----------------
+
+  rec.onnx still works, but then keys.txt is required. The engine will not
+  guess a v6 tiny / v6 small dictionary for an unknown rec.onnx.
+
+  det.onnx is accepted as a generic detector with rec.onnx + keys.txt.
 
 Optional:
 
   cls.onnx                 0/180 angle classifier
 
-Accepted filenames (first match wins):
-
-  det:  det.onnx
-        ch_PP-OCRv4_det_mobile.onnx
-        ch_PP-OCRv4_det_infer.onnx
-        ch_PP-OCRv5_det_mobile.onnx
-        ch_PP-OCRv5_det_infer.onnx
-
-  rec:  rec.onnx
-        ch_PP-OCRv4_rec_mobile.onnx
-        ch_PP-OCRv4_rec_infer.onnx
-        ch_PP-OCRv5_rec_mobile.onnx
-        ch_PP-OCRv5_rec_infer.onnx
-
-  cls:  cls.onnx
-        ch_ppocr_mobile_v2.0_cls_infer.onnx
-        ch_ppocr_mobile_v2.0_cls_mobile.onnx
-
-  keys: keys.txt
-        ppocr_keys_v1.txt
-        ppocr_keys.txt
-
 Where to get them
 -----------------
-Models are RapidOCR builds of Baidu Paddle PP-OCR (ONNX). Download the Chinese
-mobile set, not the large server models (those are optional later).
+Models are RapidOCR ONNX builds of Baidu Paddle PP-OCR (Chinese).
 
   https://github.com/RapidAI/RapidOCR
-  https://github.com/microsoft/onnxruntime/releases
+  python/rapidocr/default_models.yaml  (PP-OCRv6 tiny/small ONNX + dicts)
 
-Default zip ships mobile only (about 30-50 MB with the runtime).
+  https://github.com/microsoft/onnxruntime/releases  (1.20.x CPU x64)
+
+Do not ship PP-OCRv6 medium, Python, or PaddlePaddle.
 
 Advanced setting: AutoOcrScanPages (default false). Set true or use the toolbar
 switch to turn on automatic recognition; File menu still has "OCR current page"

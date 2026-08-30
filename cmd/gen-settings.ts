@@ -645,6 +645,12 @@ const fileSettings: Field[] = [
   ),
   notSaved(mkField("Himl", { name: "", ctype: "HIMAGELIST" }, "NULL", "")),
   notSaved(mkField("IconIdx", Int, -1, "")),
+  notSaved(
+    mkField("HomePageSizeKnown", Bool, false, "runtime-only: cached file::GetSize for homepage list rows"),
+  ),
+  notSaved(
+    mkField("HomePageFileSize", { name: "", ctype: "i64" }, "-1", "runtime-only: cached file size in bytes"),
+  ),
 ];
 
 const tabState: Field[] = [
@@ -853,7 +859,7 @@ const globalPrefs: Field[] = [
     ),
     "3.7",
   ),
-  setVersion(
+    setVersion(
     mkField(
       "AutoOcrScanPages",
       Bool,
@@ -861,6 +867,27 @@ const globalPrefs: Field[] = [
       "if true, automatically OCR scanned pages with little or no text so they can be selected and searched. Models live in {exedir}/ocr/",
     ),
     "3.8",
+  ),
+    setVersion(
+    mkField(
+      "OcrAutoSave",
+      Bool,
+      false,
+      "if true, overwrite the current PDF after Recognize All Scanned Pages and after extracting bookmarks",
+    ),
+    "3.8",
+  ),
+  setDoc(
+    setVersion(
+      mkField(
+        "OcrFullDocumentMode",
+        Str,
+        "fast",
+        "full-document OCR mode for Recognize All Scanned Pages and Save as Searchable PDF: fast or accurate. Auto OCR, current page, and region always use high accuracy.",
+      ),
+      "3.8",
+    ),
+    "Valid values: fast, accurate",
   ),
   setDoc(
     setExpert(

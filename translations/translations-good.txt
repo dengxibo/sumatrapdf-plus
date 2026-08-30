@@ -2326,6 +2326,79 @@ tw:自動 OCR（開）：掃描頁可選取和搜尋
 uk:Auto OCR (on): scanned pages are recognized for select and search
 uz:Auto OCR (on): scanned pages are recognized for select and search
 vn:Auto OCR (on): scanned pages are recognized for select and search
+:Auto OCR is enabled
+af:Auto OCR is enabled
+am:Auto OCR is enabled
+ar:Auto OCR is enabled
+az:Auto OCR is enabled
+bg:Auto OCR is enabled
+bn:Auto OCR is enabled
+br:Auto OCR is enabled
+bs:Auto OCR is enabled
+by:Auto OCR is enabled
+ca:Auto OCR is enabled
+ca-xv:Auto OCR is enabled
+cn:自动 OCR 已开启
+co:Auto OCR is enabled
+cy:Auto OCR is enabled
+cz:Auto OCR is enabled
+de:Auto OCR is enabled
+dk:Auto OCR is enabled
+el:Auto OCR is enabled
+es:Auto OCR is enabled
+et:Auto OCR is enabled
+eu:Auto OCR is enabled
+fa:Auto OCR is enabled
+fi:Auto OCR is enabled
+fo:Auto OCR is enabled
+fr:Auto OCR is enabled
+fy-nl:Auto OCR is enabled
+ga:Auto OCR is enabled
+gl:Auto OCR is enabled
+he:Auto OCR is enabled
+hi:Auto OCR is enabled
+hr:Auto OCR is enabled
+hu:Auto OCR is enabled
+id:Auto OCR is enabled
+it:Auto OCR is enabled
+ja:Auto OCR is enabled
+jv:Auto OCR is enabled
+ka:Auto OCR is enabled
+kr:Auto OCR is enabled
+ku:Auto OCR is enabled
+kw:Auto OCR is enabled
+lt:Auto OCR is enabled
+lv:Auto OCR is enabled
+mk:Auto OCR is enabled
+ml:Auto OCR is enabled
+mm:Auto OCR is enabled
+my:Auto OCR is enabled
+ne:Auto OCR is enabled
+nl:Auto OCR is enabled
+nn:Auto OCR is enabled
+no:Auto OCR is enabled
+pa:Auto OCR is enabled
+pl:Auto OCR is enabled
+pt:Auto OCR is enabled
+ro:Auto OCR is enabled
+ru:Auto OCR is enabled
+sat:Auto OCR is enabled
+si:Auto OCR is enabled
+sk:Auto OCR is enabled
+sl:Auto OCR is enabled
+sn:Auto OCR is enabled
+sp-rs:Auto OCR is enabled
+sq:Auto OCR is enabled
+sr-rs:Auto OCR is enabled
+sv:Auto OCR is enabled
+ta:Auto OCR is enabled
+th:Auto OCR is enabled
+tl:Auto OCR is enabled
+tr:Auto OCR is enabled
+tw:自動 OCR 已開啟
+uk:Auto OCR is enabled
+uz:Auto OCR is enabled
+vn:Auto OCR is enabled
 :Automatic
 am:Ինքնաշխատ
 br:Automático
@@ -5637,6 +5710,79 @@ nl:Insluiten...
 pl:Osadź...
 sk:Vložiť…
 tw:内嵌…
+:Enable Auto OCR
+af:Enable Auto OCR
+am:Enable Auto OCR
+ar:Enable Auto OCR
+az:Enable Auto OCR
+bg:Enable Auto OCR
+bn:Enable Auto OCR
+br:Enable Auto OCR
+bs:Enable Auto OCR
+by:Enable Auto OCR
+ca:Enable Auto OCR
+ca-xv:Enable Auto OCR
+cn:开启自动 OCR
+co:Enable Auto OCR
+cy:Enable Auto OCR
+cz:Enable Auto OCR
+de:Enable Auto OCR
+dk:Enable Auto OCR
+el:Enable Auto OCR
+es:Enable Auto OCR
+et:Enable Auto OCR
+eu:Enable Auto OCR
+fa:Enable Auto OCR
+fi:Enable Auto OCR
+fo:Enable Auto OCR
+fr:Enable Auto OCR
+fy-nl:Enable Auto OCR
+ga:Enable Auto OCR
+gl:Enable Auto OCR
+he:Enable Auto OCR
+hi:Enable Auto OCR
+hr:Enable Auto OCR
+hu:Enable Auto OCR
+id:Enable Auto OCR
+it:Enable Auto OCR
+ja:Enable Auto OCR
+jv:Enable Auto OCR
+ka:Enable Auto OCR
+kr:Enable Auto OCR
+ku:Enable Auto OCR
+kw:Enable Auto OCR
+lt:Enable Auto OCR
+lv:Enable Auto OCR
+mk:Enable Auto OCR
+ml:Enable Auto OCR
+mm:Enable Auto OCR
+my:Enable Auto OCR
+ne:Enable Auto OCR
+nl:Enable Auto OCR
+nn:Enable Auto OCR
+no:Enable Auto OCR
+pa:Enable Auto OCR
+pl:Enable Auto OCR
+pt:Enable Auto OCR
+ro:Enable Auto OCR
+ru:Enable Auto OCR
+sat:Enable Auto OCR
+si:Enable Auto OCR
+sk:Enable Auto OCR
+sl:Enable Auto OCR
+sn:Enable Auto OCR
+sp-rs:Enable Auto OCR
+sq:Enable Auto OCR
+sr-rs:Enable Auto OCR
+sv:Enable Auto OCR
+ta:Enable Auto OCR
+th:Enable Auto OCR
+tl:Enable Auto OCR
+tr:Enable Auto OCR
+tw:開啟自動 OCR
+uk:Enable Auto OCR
+uz:Enable Auto OCR
+vn:Enable Auto OCR
 :Encrypt PDF
 br:Criptografar PDF
 cn:加密 PDF
@@ -6513,6 +6659,79 @@ tw:較快 (1.25×)
 uk:Швидко (1.25×)
 uz:Tez (1.25×)
 vn:Nhanh (1.25×)
+:Fast (Recommended)
+af:Fast (Recommended)
+am:Fast (Recommended)
+ar:Fast (Recommended)
+az:Fast (Recommended)
+bg:Fast (Recommended)
+bn:Fast (Recommended)
+br:Fast (Recommended)
+bs:Fast (Recommended)
+by:Fast (Recommended)
+ca:Fast (Recommended)
+ca-xv:Fast (Recommended)
+cn:极速（推荐）
+co:Fast (Recommended)
+cy:Fast (Recommended)
+cz:Fast (Recommended)
+de:Fast (Recommended)
+dk:Fast (Recommended)
+el:Fast (Recommended)
+es:Fast (Recommended)
+et:Fast (Recommended)
+eu:Fast (Recommended)
+fa:Fast (Recommended)
+fi:Fast (Recommended)
+fo:Fast (Recommended)
+fr:Fast (Recommended)
+fy-nl:Fast (Recommended)
+ga:Fast (Recommended)
+gl:Fast (Recommended)
+he:Fast (Recommended)
+hi:Fast (Recommended)
+hr:Fast (Recommended)
+hu:Fast (Recommended)
+id:Fast (Recommended)
+it:Fast (Recommended)
+ja:Fast (Recommended)
+jv:Fast (Recommended)
+ka:Fast (Recommended)
+kr:Fast (Recommended)
+ku:Fast (Recommended)
+kw:Fast (Recommended)
+lt:Fast (Recommended)
+lv:Fast (Recommended)
+mk:Fast (Recommended)
+ml:Fast (Recommended)
+mm:Fast (Recommended)
+my:Fast (Recommended)
+ne:Fast (Recommended)
+nl:Fast (Recommended)
+nn:Fast (Recommended)
+no:Fast (Recommended)
+pa:Fast (Recommended)
+pl:Fast (Recommended)
+pt:Fast (Recommended)
+ro:Fast (Recommended)
+ru:Fast (Recommended)
+sat:Fast (Recommended)
+si:Fast (Recommended)
+sk:Fast (Recommended)
+sl:Fast (Recommended)
+sn:Fast (Recommended)
+sp-rs:Fast (Recommended)
+sq:Fast (Recommended)
+sr-rs:Fast (Recommended)
+sv:Fast (Recommended)
+ta:Fast (Recommended)
+th:Fast (Recommended)
+tl:Fast (Recommended)
+tr:Fast (Recommended)
+tw:極速（推薦）
+uk:Fast (Recommended)
+uz:Fast (Recommended)
+vn:Fast (Recommended)
 :Fast Web View
 am:Արագ վեբ դիտում
 br:Visualização Rápida na Web
@@ -7220,6 +7439,225 @@ tw:從頁首
 uk:Зверху
 uz:Yuqoridan
 vn:Từ đầu
+:Full-document OCR Mode
+af:Full-document OCR Mode
+am:Full-document OCR Mode
+ar:Full-document OCR Mode
+az:Full-document OCR Mode
+bg:Full-document OCR Mode
+bn:Full-document OCR Mode
+br:Full-document OCR Mode
+bs:Full-document OCR Mode
+by:Full-document OCR Mode
+ca:Full-document OCR Mode
+ca-xv:Full-document OCR Mode
+cn:全文识别模式
+co:Full-document OCR Mode
+cy:Full-document OCR Mode
+cz:Full-document OCR Mode
+de:Full-document OCR Mode
+dk:Full-document OCR Mode
+el:Full-document OCR Mode
+es:Full-document OCR Mode
+et:Full-document OCR Mode
+eu:Full-document OCR Mode
+fa:Full-document OCR Mode
+fi:Full-document OCR Mode
+fo:Full-document OCR Mode
+fr:Full-document OCR Mode
+fy-nl:Full-document OCR Mode
+ga:Full-document OCR Mode
+gl:Full-document OCR Mode
+he:Full-document OCR Mode
+hi:Full-document OCR Mode
+hr:Full-document OCR Mode
+hu:Full-document OCR Mode
+id:Full-document OCR Mode
+it:Full-document OCR Mode
+ja:Full-document OCR Mode
+jv:Full-document OCR Mode
+ka:Full-document OCR Mode
+kr:Full-document OCR Mode
+ku:Full-document OCR Mode
+kw:Full-document OCR Mode
+lt:Full-document OCR Mode
+lv:Full-document OCR Mode
+mk:Full-document OCR Mode
+ml:Full-document OCR Mode
+mm:Full-document OCR Mode
+my:Full-document OCR Mode
+ne:Full-document OCR Mode
+nl:Full-document OCR Mode
+nn:Full-document OCR Mode
+no:Full-document OCR Mode
+pa:Full-document OCR Mode
+pl:Full-document OCR Mode
+pt:Full-document OCR Mode
+ro:Full-document OCR Mode
+ru:Full-document OCR Mode
+sat:Full-document OCR Mode
+si:Full-document OCR Mode
+sk:Full-document OCR Mode
+sl:Full-document OCR Mode
+sn:Full-document OCR Mode
+sp-rs:Full-document OCR Mode
+sq:Full-document OCR Mode
+sr-rs:Full-document OCR Mode
+sv:Full-document OCR Mode
+ta:Full-document OCR Mode
+th:Full-document OCR Mode
+tl:Full-document OCR Mode
+tr:Full-document OCR Mode
+tw:全文識別模式
+uk:Full-document OCR Mode
+uz:Full-document OCR Mode
+vn:Full-document OCR Mode
+:Full-document OCR Mode: Fast
+af:Full-document OCR Mode: Fast
+am:Full-document OCR Mode: Fast
+ar:Full-document OCR Mode: Fast
+az:Full-document OCR Mode: Fast
+bg:Full-document OCR Mode: Fast
+bn:Full-document OCR Mode: Fast
+br:Full-document OCR Mode: Fast
+bs:Full-document OCR Mode: Fast
+by:Full-document OCR Mode: Fast
+ca:Full-document OCR Mode: Fast
+ca-xv:Full-document OCR Mode: Fast
+cn:全文识别模式：极速
+co:Full-document OCR Mode: Fast
+cy:Full-document OCR Mode: Fast
+cz:Full-document OCR Mode: Fast
+de:Full-document OCR Mode: Fast
+dk:Full-document OCR Mode: Fast
+el:Full-document OCR Mode: Fast
+es:Full-document OCR Mode: Fast
+et:Full-document OCR Mode: Fast
+eu:Full-document OCR Mode: Fast
+fa:Full-document OCR Mode: Fast
+fi:Full-document OCR Mode: Fast
+fo:Full-document OCR Mode: Fast
+fr:Full-document OCR Mode: Fast
+fy-nl:Full-document OCR Mode: Fast
+ga:Full-document OCR Mode: Fast
+gl:Full-document OCR Mode: Fast
+he:Full-document OCR Mode: Fast
+hi:Full-document OCR Mode: Fast
+hr:Full-document OCR Mode: Fast
+hu:Full-document OCR Mode: Fast
+id:Full-document OCR Mode: Fast
+it:Full-document OCR Mode: Fast
+ja:Full-document OCR Mode: Fast
+jv:Full-document OCR Mode: Fast
+ka:Full-document OCR Mode: Fast
+kr:Full-document OCR Mode: Fast
+ku:Full-document OCR Mode: Fast
+kw:Full-document OCR Mode: Fast
+lt:Full-document OCR Mode: Fast
+lv:Full-document OCR Mode: Fast
+mk:Full-document OCR Mode: Fast
+ml:Full-document OCR Mode: Fast
+mm:Full-document OCR Mode: Fast
+my:Full-document OCR Mode: Fast
+ne:Full-document OCR Mode: Fast
+nl:Full-document OCR Mode: Fast
+nn:Full-document OCR Mode: Fast
+no:Full-document OCR Mode: Fast
+pa:Full-document OCR Mode: Fast
+pl:Full-document OCR Mode: Fast
+pt:Full-document OCR Mode: Fast
+ro:Full-document OCR Mode: Fast
+ru:Full-document OCR Mode: Fast
+sat:Full-document OCR Mode: Fast
+si:Full-document OCR Mode: Fast
+sk:Full-document OCR Mode: Fast
+sl:Full-document OCR Mode: Fast
+sn:Full-document OCR Mode: Fast
+sp-rs:Full-document OCR Mode: Fast
+sq:Full-document OCR Mode: Fast
+sr-rs:Full-document OCR Mode: Fast
+sv:Full-document OCR Mode: Fast
+ta:Full-document OCR Mode: Fast
+th:Full-document OCR Mode: Fast
+tl:Full-document OCR Mode: Fast
+tr:Full-document OCR Mode: Fast
+tw:全文識別模式：極速
+uk:Full-document OCR Mode: Fast
+uz:Full-document OCR Mode: Fast
+vn:Full-document OCR Mode: Fast
+:Full-document OCR Mode: High Accuracy
+af:Full-document OCR Mode: High Accuracy
+am:Full-document OCR Mode: High Accuracy
+ar:Full-document OCR Mode: High Accuracy
+az:Full-document OCR Mode: High Accuracy
+bg:Full-document OCR Mode: High Accuracy
+bn:Full-document OCR Mode: High Accuracy
+br:Full-document OCR Mode: High Accuracy
+bs:Full-document OCR Mode: High Accuracy
+by:Full-document OCR Mode: High Accuracy
+ca:Full-document OCR Mode: High Accuracy
+ca-xv:Full-document OCR Mode: High Accuracy
+cn:全文识别模式：高精度
+co:Full-document OCR Mode: High Accuracy
+cy:Full-document OCR Mode: High Accuracy
+cz:Full-document OCR Mode: High Accuracy
+de:Full-document OCR Mode: High Accuracy
+dk:Full-document OCR Mode: High Accuracy
+el:Full-document OCR Mode: High Accuracy
+es:Full-document OCR Mode: High Accuracy
+et:Full-document OCR Mode: High Accuracy
+eu:Full-document OCR Mode: High Accuracy
+fa:Full-document OCR Mode: High Accuracy
+fi:Full-document OCR Mode: High Accuracy
+fo:Full-document OCR Mode: High Accuracy
+fr:Full-document OCR Mode: High Accuracy
+fy-nl:Full-document OCR Mode: High Accuracy
+ga:Full-document OCR Mode: High Accuracy
+gl:Full-document OCR Mode: High Accuracy
+he:Full-document OCR Mode: High Accuracy
+hi:Full-document OCR Mode: High Accuracy
+hr:Full-document OCR Mode: High Accuracy
+hu:Full-document OCR Mode: High Accuracy
+id:Full-document OCR Mode: High Accuracy
+it:Full-document OCR Mode: High Accuracy
+ja:Full-document OCR Mode: High Accuracy
+jv:Full-document OCR Mode: High Accuracy
+ka:Full-document OCR Mode: High Accuracy
+kr:Full-document OCR Mode: High Accuracy
+ku:Full-document OCR Mode: High Accuracy
+kw:Full-document OCR Mode: High Accuracy
+lt:Full-document OCR Mode: High Accuracy
+lv:Full-document OCR Mode: High Accuracy
+mk:Full-document OCR Mode: High Accuracy
+ml:Full-document OCR Mode: High Accuracy
+mm:Full-document OCR Mode: High Accuracy
+my:Full-document OCR Mode: High Accuracy
+ne:Full-document OCR Mode: High Accuracy
+nl:Full-document OCR Mode: High Accuracy
+nn:Full-document OCR Mode: High Accuracy
+no:Full-document OCR Mode: High Accuracy
+pa:Full-document OCR Mode: High Accuracy
+pl:Full-document OCR Mode: High Accuracy
+pt:Full-document OCR Mode: High Accuracy
+ro:Full-document OCR Mode: High Accuracy
+ru:Full-document OCR Mode: High Accuracy
+sat:Full-document OCR Mode: High Accuracy
+si:Full-document OCR Mode: High Accuracy
+sk:Full-document OCR Mode: High Accuracy
+sl:Full-document OCR Mode: High Accuracy
+sn:Full-document OCR Mode: High Accuracy
+sp-rs:Full-document OCR Mode: High Accuracy
+sq:Full-document OCR Mode: High Accuracy
+sr-rs:Full-document OCR Mode: High Accuracy
+sv:Full-document OCR Mode: High Accuracy
+ta:Full-document OCR Mode: High Accuracy
+th:Full-document OCR Mode: High Accuracy
+tl:Full-document OCR Mode: High Accuracy
+tr:Full-document OCR Mode: High Accuracy
+tw:全文識別模式：高精度
+uk:Full-document OCR Mode: High Accuracy
+uz:Full-document OCR Mode: High Accuracy
+vn:Full-document OCR Mode: High Accuracy
 :GB
 am:ԳԲ
 br:GBs
@@ -7361,6 +7799,79 @@ nl:'Eerder Weergegeven' verbergen
 pl:Ukryj ostatnio otwierane
 sk:Skryť často čítané dokumenty
 tw:隱藏經常開啟的檔案
+:High Accuracy
+af:High Accuracy
+am:High Accuracy
+ar:High Accuracy
+az:High Accuracy
+bg:High Accuracy
+bn:High Accuracy
+br:High Accuracy
+bs:High Accuracy
+by:High Accuracy
+ca:High Accuracy
+ca-xv:High Accuracy
+cn:高精度
+co:High Accuracy
+cy:High Accuracy
+cz:High Accuracy
+de:High Accuracy
+dk:High Accuracy
+el:High Accuracy
+es:High Accuracy
+et:High Accuracy
+eu:High Accuracy
+fa:High Accuracy
+fi:High Accuracy
+fo:High Accuracy
+fr:High Accuracy
+fy-nl:High Accuracy
+ga:High Accuracy
+gl:High Accuracy
+he:High Accuracy
+hi:High Accuracy
+hr:High Accuracy
+hu:High Accuracy
+id:High Accuracy
+it:High Accuracy
+ja:High Accuracy
+jv:High Accuracy
+ka:High Accuracy
+kr:High Accuracy
+ku:High Accuracy
+kw:High Accuracy
+lt:High Accuracy
+lv:High Accuracy
+mk:High Accuracy
+ml:High Accuracy
+mm:High Accuracy
+my:High Accuracy
+ne:High Accuracy
+nl:High Accuracy
+nn:High Accuracy
+no:High Accuracy
+pa:High Accuracy
+pl:High Accuracy
+pt:High Accuracy
+ro:High Accuracy
+ru:High Accuracy
+sat:High Accuracy
+si:High Accuracy
+sk:High Accuracy
+sl:High Accuracy
+sn:High Accuracy
+sp-rs:High Accuracy
+sq:High Accuracy
+sr-rs:High Accuracy
+sv:High Accuracy
+ta:High Accuracy
+th:High Accuracy
+tl:High Accuracy
+tr:High Accuracy
+tw:高精度
+uk:High Accuracy
+uz:High Accuracy
+vn:High Accuracy
 :Highlight
 cn:高亮
 tw:螢光標示
@@ -7538,9 +8049,6 @@ tw:墨跡註解（Ctrl+點選鎖定）
 uk:Ink Annotation (Ctrl+click to lock)
 uz:Ink Annotation (Ctrl+click to lock)
 vn:Ink Annotation (Ctrl+click to lock)
-:Stamp Annotation (Ctrl+click to lock)
-cn:图章（Ctrl+点击锁定）
-tw:圖章（Ctrl+點選鎖定）
 :Install SumatraPDF
 am:Տեղադրել SumatraPDF-ը
 br:Instalar SumatraPDF
@@ -9006,6 +9514,152 @@ nl:Geen resultaat gevonden bij regel %u in bestand %s
 pl:Nie znaleziono wyników w okolicach wiersza %u w pliku %s
 sk:Nenájdené žiadne výsledky na riadku %u v súbore %s
 tw:在第 %u 行附近（檔案 %s）找不到目標
+:No scanned pages to recognize.
+af:No scanned pages to recognize.
+am:No scanned pages to recognize.
+ar:No scanned pages to recognize.
+az:No scanned pages to recognize.
+bg:No scanned pages to recognize.
+bn:No scanned pages to recognize.
+br:No scanned pages to recognize.
+bs:No scanned pages to recognize.
+by:No scanned pages to recognize.
+ca:No scanned pages to recognize.
+ca-xv:No scanned pages to recognize.
+cn:没有需要识别的扫描页
+co:No scanned pages to recognize.
+cy:No scanned pages to recognize.
+cz:No scanned pages to recognize.
+de:No scanned pages to recognize.
+dk:No scanned pages to recognize.
+el:No scanned pages to recognize.
+es:No scanned pages to recognize.
+et:No scanned pages to recognize.
+eu:No scanned pages to recognize.
+fa:No scanned pages to recognize.
+fi:No scanned pages to recognize.
+fo:No scanned pages to recognize.
+fr:No scanned pages to recognize.
+fy-nl:No scanned pages to recognize.
+ga:No scanned pages to recognize.
+gl:No scanned pages to recognize.
+he:No scanned pages to recognize.
+hi:No scanned pages to recognize.
+hr:No scanned pages to recognize.
+hu:No scanned pages to recognize.
+id:No scanned pages to recognize.
+it:No scanned pages to recognize.
+ja:No scanned pages to recognize.
+jv:No scanned pages to recognize.
+ka:No scanned pages to recognize.
+kr:No scanned pages to recognize.
+ku:No scanned pages to recognize.
+kw:No scanned pages to recognize.
+lt:No scanned pages to recognize.
+lv:No scanned pages to recognize.
+mk:No scanned pages to recognize.
+ml:No scanned pages to recognize.
+mm:No scanned pages to recognize.
+my:No scanned pages to recognize.
+ne:No scanned pages to recognize.
+nl:No scanned pages to recognize.
+nn:No scanned pages to recognize.
+no:No scanned pages to recognize.
+pa:No scanned pages to recognize.
+pl:No scanned pages to recognize.
+pt:No scanned pages to recognize.
+ro:No scanned pages to recognize.
+ru:No scanned pages to recognize.
+sat:No scanned pages to recognize.
+si:No scanned pages to recognize.
+sk:No scanned pages to recognize.
+sl:No scanned pages to recognize.
+sn:No scanned pages to recognize.
+sp-rs:No scanned pages to recognize.
+sq:No scanned pages to recognize.
+sr-rs:No scanned pages to recognize.
+sv:No scanned pages to recognize.
+ta:No scanned pages to recognize.
+th:No scanned pages to recognize.
+tl:No scanned pages to recognize.
+tr:No scanned pages to recognize.
+tw:沒有需要識別的掃描頁
+uk:No scanned pages to recognize.
+uz:No scanned pages to recognize.
+vn:No scanned pages to recognize.
+:No scanned pages to recognize. Use Recognize Current Page to force this page.
+af:No scanned pages to recognize. Use Recognize Current Page to force this page.
+am:No scanned pages to recognize. Use Recognize Current Page to force this page.
+ar:No scanned pages to recognize. Use Recognize Current Page to force this page.
+az:No scanned pages to recognize. Use Recognize Current Page to force this page.
+bg:No scanned pages to recognize. Use Recognize Current Page to force this page.
+bn:No scanned pages to recognize. Use Recognize Current Page to force this page.
+br:No scanned pages to recognize. Use Recognize Current Page to force this page.
+bs:No scanned pages to recognize. Use Recognize Current Page to force this page.
+by:No scanned pages to recognize. Use Recognize Current Page to force this page.
+ca:No scanned pages to recognize. Use Recognize Current Page to force this page.
+ca-xv:No scanned pages to recognize. Use Recognize Current Page to force this page.
+cn:没有需要识别的扫描页。可用「识别当前页」强制识别。
+co:No scanned pages to recognize. Use Recognize Current Page to force this page.
+cy:No scanned pages to recognize. Use Recognize Current Page to force this page.
+cz:No scanned pages to recognize. Use Recognize Current Page to force this page.
+de:No scanned pages to recognize. Use Recognize Current Page to force this page.
+dk:No scanned pages to recognize. Use Recognize Current Page to force this page.
+el:No scanned pages to recognize. Use Recognize Current Page to force this page.
+es:No scanned pages to recognize. Use Recognize Current Page to force this page.
+et:No scanned pages to recognize. Use Recognize Current Page to force this page.
+eu:No scanned pages to recognize. Use Recognize Current Page to force this page.
+fa:No scanned pages to recognize. Use Recognize Current Page to force this page.
+fi:No scanned pages to recognize. Use Recognize Current Page to force this page.
+fo:No scanned pages to recognize. Use Recognize Current Page to force this page.
+fr:No scanned pages to recognize. Use Recognize Current Page to force this page.
+fy-nl:No scanned pages to recognize. Use Recognize Current Page to force this page.
+ga:No scanned pages to recognize. Use Recognize Current Page to force this page.
+gl:No scanned pages to recognize. Use Recognize Current Page to force this page.
+he:No scanned pages to recognize. Use Recognize Current Page to force this page.
+hi:No scanned pages to recognize. Use Recognize Current Page to force this page.
+hr:No scanned pages to recognize. Use Recognize Current Page to force this page.
+hu:No scanned pages to recognize. Use Recognize Current Page to force this page.
+id:No scanned pages to recognize. Use Recognize Current Page to force this page.
+it:No scanned pages to recognize. Use Recognize Current Page to force this page.
+ja:No scanned pages to recognize. Use Recognize Current Page to force this page.
+jv:No scanned pages to recognize. Use Recognize Current Page to force this page.
+ka:No scanned pages to recognize. Use Recognize Current Page to force this page.
+kr:No scanned pages to recognize. Use Recognize Current Page to force this page.
+ku:No scanned pages to recognize. Use Recognize Current Page to force this page.
+kw:No scanned pages to recognize. Use Recognize Current Page to force this page.
+lt:No scanned pages to recognize. Use Recognize Current Page to force this page.
+lv:No scanned pages to recognize. Use Recognize Current Page to force this page.
+mk:No scanned pages to recognize. Use Recognize Current Page to force this page.
+ml:No scanned pages to recognize. Use Recognize Current Page to force this page.
+mm:No scanned pages to recognize. Use Recognize Current Page to force this page.
+my:No scanned pages to recognize. Use Recognize Current Page to force this page.
+ne:No scanned pages to recognize. Use Recognize Current Page to force this page.
+nl:No scanned pages to recognize. Use Recognize Current Page to force this page.
+nn:No scanned pages to recognize. Use Recognize Current Page to force this page.
+no:No scanned pages to recognize. Use Recognize Current Page to force this page.
+pa:No scanned pages to recognize. Use Recognize Current Page to force this page.
+pl:No scanned pages to recognize. Use Recognize Current Page to force this page.
+pt:No scanned pages to recognize. Use Recognize Current Page to force this page.
+ro:No scanned pages to recognize. Use Recognize Current Page to force this page.
+ru:No scanned pages to recognize. Use Recognize Current Page to force this page.
+sat:No scanned pages to recognize. Use Recognize Current Page to force this page.
+si:No scanned pages to recognize. Use Recognize Current Page to force this page.
+sk:No scanned pages to recognize. Use Recognize Current Page to force this page.
+sl:No scanned pages to recognize. Use Recognize Current Page to force this page.
+sn:No scanned pages to recognize. Use Recognize Current Page to force this page.
+sp-rs:No scanned pages to recognize. Use Recognize Current Page to force this page.
+sq:No scanned pages to recognize. Use Recognize Current Page to force this page.
+sr-rs:No scanned pages to recognize. Use Recognize Current Page to force this page.
+sv:No scanned pages to recognize. Use Recognize Current Page to force this page.
+ta:No scanned pages to recognize. Use Recognize Current Page to force this page.
+th:No scanned pages to recognize. Use Recognize Current Page to force this page.
+tl:No scanned pages to recognize. Use Recognize Current Page to force this page.
+tr:No scanned pages to recognize. Use Recognize Current Page to force this page.
+tw:沒有需要識別的掃描頁。可用「識別目前頁」強制識別。
+uk:No scanned pages to recognize. Use Recognize Current Page to force this page.
+uz:No scanned pages to recognize. Use Recognize Current Page to force this page.
+vn:No scanned pages to recognize. Use Recognize Current Page to force this page.
 :No synchronization file found
 am:Չեն գտնվել համանման ֆայլեր
 br:Nenhum arquivo de sincronização foi achado
@@ -11432,6 +12086,79 @@ nl:Her&noem
 pl:Zmień &nazwę...
 sk:P&remenovať…
 tw:重新命名(&N)...
+:Re-recognize All Pages
+af:Re-recognize All Pages
+am:Re-recognize All Pages
+ar:Re-recognize All Pages
+az:Re-recognize All Pages
+bg:Re-recognize All Pages
+bn:Re-recognize All Pages
+br:Re-recognize All Pages
+bs:Re-recognize All Pages
+by:Re-recognize All Pages
+ca:Re-recognize All Pages
+ca-xv:Re-recognize All Pages
+cn:重新识别所有页
+co:Re-recognize All Pages
+cy:Re-recognize All Pages
+cz:Re-recognize All Pages
+de:Re-recognize All Pages
+dk:Re-recognize All Pages
+el:Re-recognize All Pages
+es:Re-recognize All Pages
+et:Re-recognize All Pages
+eu:Re-recognize All Pages
+fa:Re-recognize All Pages
+fi:Re-recognize All Pages
+fo:Re-recognize All Pages
+fr:Re-recognize All Pages
+fy-nl:Re-recognize All Pages
+ga:Re-recognize All Pages
+gl:Re-recognize All Pages
+he:Re-recognize All Pages
+hi:Re-recognize All Pages
+hr:Re-recognize All Pages
+hu:Re-recognize All Pages
+id:Re-recognize All Pages
+it:Re-recognize All Pages
+ja:Re-recognize All Pages
+jv:Re-recognize All Pages
+ka:Re-recognize All Pages
+kr:Re-recognize All Pages
+ku:Re-recognize All Pages
+kw:Re-recognize All Pages
+lt:Re-recognize All Pages
+lv:Re-recognize All Pages
+mk:Re-recognize All Pages
+ml:Re-recognize All Pages
+mm:Re-recognize All Pages
+my:Re-recognize All Pages
+ne:Re-recognize All Pages
+nl:Re-recognize All Pages
+nn:Re-recognize All Pages
+no:Re-recognize All Pages
+pa:Re-recognize All Pages
+pl:Re-recognize All Pages
+pt:Re-recognize All Pages
+ro:Re-recognize All Pages
+ru:Re-recognize All Pages
+sat:Re-recognize All Pages
+si:Re-recognize All Pages
+sk:Re-recognize All Pages
+sl:Re-recognize All Pages
+sn:Re-recognize All Pages
+sp-rs:Re-recognize All Pages
+sq:Re-recognize All Pages
+sr-rs:Re-recognize All Pages
+sv:Re-recognize All Pages
+ta:Re-recognize All Pages
+th:Re-recognize All Pages
+tl:Re-recognize All Pages
+tr:Re-recognize All Pages
+tw:重新識別所有頁
+uk:Re-recognize All Pages
+uz:Re-recognize All Pages
+vn:Re-recognize All Pages
 :Read Aloud
 af:Lees hardop
 am:Բարձրաձայն կարդալ
@@ -11882,6 +12609,298 @@ nl:Recent Geopend
 pl:Ostatnio otwarte
 sk:Naposledy otvorené
 tw:最近開啟
+:Recognize All Scanned Pages
+af:Recognize All Scanned Pages
+am:Recognize All Scanned Pages
+ar:Recognize All Scanned Pages
+az:Recognize All Scanned Pages
+bg:Recognize All Scanned Pages
+bn:Recognize All Scanned Pages
+br:Recognize All Scanned Pages
+bs:Recognize All Scanned Pages
+by:Recognize All Scanned Pages
+ca:Recognize All Scanned Pages
+ca-xv:Recognize All Scanned Pages
+cn:识别所有扫描页
+co:Recognize All Scanned Pages
+cy:Recognize All Scanned Pages
+cz:Recognize All Scanned Pages
+de:Recognize All Scanned Pages
+dk:Recognize All Scanned Pages
+el:Recognize All Scanned Pages
+es:Recognize All Scanned Pages
+et:Recognize All Scanned Pages
+eu:Recognize All Scanned Pages
+fa:Recognize All Scanned Pages
+fi:Recognize All Scanned Pages
+fo:Recognize All Scanned Pages
+fr:Recognize All Scanned Pages
+fy-nl:Recognize All Scanned Pages
+ga:Recognize All Scanned Pages
+gl:Recognize All Scanned Pages
+he:Recognize All Scanned Pages
+hi:Recognize All Scanned Pages
+hr:Recognize All Scanned Pages
+hu:Recognize All Scanned Pages
+id:Recognize All Scanned Pages
+it:Recognize All Scanned Pages
+ja:Recognize All Scanned Pages
+jv:Recognize All Scanned Pages
+ka:Recognize All Scanned Pages
+kr:Recognize All Scanned Pages
+ku:Recognize All Scanned Pages
+kw:Recognize All Scanned Pages
+lt:Recognize All Scanned Pages
+lv:Recognize All Scanned Pages
+mk:Recognize All Scanned Pages
+ml:Recognize All Scanned Pages
+mm:Recognize All Scanned Pages
+my:Recognize All Scanned Pages
+ne:Recognize All Scanned Pages
+nl:Recognize All Scanned Pages
+nn:Recognize All Scanned Pages
+no:Recognize All Scanned Pages
+pa:Recognize All Scanned Pages
+pl:Recognize All Scanned Pages
+pt:Recognize All Scanned Pages
+ro:Recognize All Scanned Pages
+ru:Recognize All Scanned Pages
+sat:Recognize All Scanned Pages
+si:Recognize All Scanned Pages
+sk:Recognize All Scanned Pages
+sl:Recognize All Scanned Pages
+sn:Recognize All Scanned Pages
+sp-rs:Recognize All Scanned Pages
+sq:Recognize All Scanned Pages
+sr-rs:Recognize All Scanned Pages
+sv:Recognize All Scanned Pages
+ta:Recognize All Scanned Pages
+th:Recognize All Scanned Pages
+tl:Recognize All Scanned Pages
+tr:Recognize All Scanned Pages
+tw:識別所有掃描頁
+uk:Recognize All Scanned Pages
+uz:Recognize All Scanned Pages
+vn:Recognize All Scanned Pages
+:Recognize All Scanned Pages (Accurate)
+af:Recognize All Scanned Pages (Accurate)
+am:Recognize All Scanned Pages (Accurate)
+ar:Recognize All Scanned Pages (Accurate)
+az:Recognize All Scanned Pages (Accurate)
+bg:Recognize All Scanned Pages (Accurate)
+bn:Recognize All Scanned Pages (Accurate)
+br:Recognize All Scanned Pages (Accurate)
+bs:Recognize All Scanned Pages (Accurate)
+by:Recognize All Scanned Pages (Accurate)
+ca:Recognize All Scanned Pages (Accurate)
+ca-xv:Recognize All Scanned Pages (Accurate)
+cn:识别所有扫描页（精确）
+co:Recognize All Scanned Pages (Accurate)
+cy:Recognize All Scanned Pages (Accurate)
+cz:Recognize All Scanned Pages (Accurate)
+de:Recognize All Scanned Pages (Accurate)
+dk:Recognize All Scanned Pages (Accurate)
+el:Recognize All Scanned Pages (Accurate)
+es:Recognize All Scanned Pages (Accurate)
+et:Recognize All Scanned Pages (Accurate)
+eu:Recognize All Scanned Pages (Accurate)
+fa:Recognize All Scanned Pages (Accurate)
+fi:Recognize All Scanned Pages (Accurate)
+fo:Recognize All Scanned Pages (Accurate)
+fr:Recognize All Scanned Pages (Accurate)
+fy-nl:Recognize All Scanned Pages (Accurate)
+ga:Recognize All Scanned Pages (Accurate)
+gl:Recognize All Scanned Pages (Accurate)
+he:Recognize All Scanned Pages (Accurate)
+hi:Recognize All Scanned Pages (Accurate)
+hr:Recognize All Scanned Pages (Accurate)
+hu:Recognize All Scanned Pages (Accurate)
+id:Recognize All Scanned Pages (Accurate)
+it:Recognize All Scanned Pages (Accurate)
+ja:Recognize All Scanned Pages (Accurate)
+jv:Recognize All Scanned Pages (Accurate)
+ka:Recognize All Scanned Pages (Accurate)
+kr:Recognize All Scanned Pages (Accurate)
+ku:Recognize All Scanned Pages (Accurate)
+kw:Recognize All Scanned Pages (Accurate)
+lt:Recognize All Scanned Pages (Accurate)
+lv:Recognize All Scanned Pages (Accurate)
+mk:Recognize All Scanned Pages (Accurate)
+ml:Recognize All Scanned Pages (Accurate)
+mm:Recognize All Scanned Pages (Accurate)
+my:Recognize All Scanned Pages (Accurate)
+ne:Recognize All Scanned Pages (Accurate)
+nl:Recognize All Scanned Pages (Accurate)
+nn:Recognize All Scanned Pages (Accurate)
+no:Recognize All Scanned Pages (Accurate)
+pa:Recognize All Scanned Pages (Accurate)
+pl:Recognize All Scanned Pages (Accurate)
+pt:Recognize All Scanned Pages (Accurate)
+ro:Recognize All Scanned Pages (Accurate)
+ru:Recognize All Scanned Pages (Accurate)
+sat:Recognize All Scanned Pages (Accurate)
+si:Recognize All Scanned Pages (Accurate)
+sk:Recognize All Scanned Pages (Accurate)
+sl:Recognize All Scanned Pages (Accurate)
+sn:Recognize All Scanned Pages (Accurate)
+sp-rs:Recognize All Scanned Pages (Accurate)
+sq:Recognize All Scanned Pages (Accurate)
+sr-rs:Recognize All Scanned Pages (Accurate)
+sv:Recognize All Scanned Pages (Accurate)
+ta:Recognize All Scanned Pages (Accurate)
+th:Recognize All Scanned Pages (Accurate)
+tl:Recognize All Scanned Pages (Accurate)
+tr:Recognize All Scanned Pages (Accurate)
+tw:識別所有掃描頁（精確）
+uk:Recognize All Scanned Pages (Accurate)
+uz:Recognize All Scanned Pages (Accurate)
+vn:Recognize All Scanned Pages (Accurate)
+:Recognize All Scanned Pages (Fast)
+af:Recognize All Scanned Pages (Fast)
+am:Recognize All Scanned Pages (Fast)
+ar:Recognize All Scanned Pages (Fast)
+az:Recognize All Scanned Pages (Fast)
+bg:Recognize All Scanned Pages (Fast)
+bn:Recognize All Scanned Pages (Fast)
+br:Recognize All Scanned Pages (Fast)
+bs:Recognize All Scanned Pages (Fast)
+by:Recognize All Scanned Pages (Fast)
+ca:Recognize All Scanned Pages (Fast)
+ca-xv:Recognize All Scanned Pages (Fast)
+cn:识别所有扫描页（快速）
+co:Recognize All Scanned Pages (Fast)
+cy:Recognize All Scanned Pages (Fast)
+cz:Recognize All Scanned Pages (Fast)
+de:Recognize All Scanned Pages (Fast)
+dk:Recognize All Scanned Pages (Fast)
+el:Recognize All Scanned Pages (Fast)
+es:Recognize All Scanned Pages (Fast)
+et:Recognize All Scanned Pages (Fast)
+eu:Recognize All Scanned Pages (Fast)
+fa:Recognize All Scanned Pages (Fast)
+fi:Recognize All Scanned Pages (Fast)
+fo:Recognize All Scanned Pages (Fast)
+fr:Recognize All Scanned Pages (Fast)
+fy-nl:Recognize All Scanned Pages (Fast)
+ga:Recognize All Scanned Pages (Fast)
+gl:Recognize All Scanned Pages (Fast)
+he:Recognize All Scanned Pages (Fast)
+hi:Recognize All Scanned Pages (Fast)
+hr:Recognize All Scanned Pages (Fast)
+hu:Recognize All Scanned Pages (Fast)
+id:Recognize All Scanned Pages (Fast)
+it:Recognize All Scanned Pages (Fast)
+ja:Recognize All Scanned Pages (Fast)
+jv:Recognize All Scanned Pages (Fast)
+ka:Recognize All Scanned Pages (Fast)
+kr:Recognize All Scanned Pages (Fast)
+ku:Recognize All Scanned Pages (Fast)
+kw:Recognize All Scanned Pages (Fast)
+lt:Recognize All Scanned Pages (Fast)
+lv:Recognize All Scanned Pages (Fast)
+mk:Recognize All Scanned Pages (Fast)
+ml:Recognize All Scanned Pages (Fast)
+mm:Recognize All Scanned Pages (Fast)
+my:Recognize All Scanned Pages (Fast)
+ne:Recognize All Scanned Pages (Fast)
+nl:Recognize All Scanned Pages (Fast)
+nn:Recognize All Scanned Pages (Fast)
+no:Recognize All Scanned Pages (Fast)
+pa:Recognize All Scanned Pages (Fast)
+pl:Recognize All Scanned Pages (Fast)
+pt:Recognize All Scanned Pages (Fast)
+ro:Recognize All Scanned Pages (Fast)
+ru:Recognize All Scanned Pages (Fast)
+sat:Recognize All Scanned Pages (Fast)
+si:Recognize All Scanned Pages (Fast)
+sk:Recognize All Scanned Pages (Fast)
+sl:Recognize All Scanned Pages (Fast)
+sn:Recognize All Scanned Pages (Fast)
+sp-rs:Recognize All Scanned Pages (Fast)
+sq:Recognize All Scanned Pages (Fast)
+sr-rs:Recognize All Scanned Pages (Fast)
+sv:Recognize All Scanned Pages (Fast)
+ta:Recognize All Scanned Pages (Fast)
+th:Recognize All Scanned Pages (Fast)
+tl:Recognize All Scanned Pages (Fast)
+tr:Recognize All Scanned Pages (Fast)
+tw:識別所有掃描頁（快速）
+uk:Recognize All Scanned Pages (Fast)
+uz:Recognize All Scanned Pages (Fast)
+vn:Recognize All Scanned Pages (Fast)
+:Recognize Current Page
+af:Recognize Current Page
+am:Recognize Current Page
+ar:Recognize Current Page
+az:Recognize Current Page
+bg:Recognize Current Page
+bn:Recognize Current Page
+br:Recognize Current Page
+bs:Recognize Current Page
+by:Recognize Current Page
+ca:Recognize Current Page
+ca-xv:Recognize Current Page
+cn:识别当前页
+co:Recognize Current Page
+cy:Recognize Current Page
+cz:Recognize Current Page
+de:Recognize Current Page
+dk:Recognize Current Page
+el:Recognize Current Page
+es:Recognize Current Page
+et:Recognize Current Page
+eu:Recognize Current Page
+fa:Recognize Current Page
+fi:Recognize Current Page
+fo:Recognize Current Page
+fr:Recognize Current Page
+fy-nl:Recognize Current Page
+ga:Recognize Current Page
+gl:Recognize Current Page
+he:Recognize Current Page
+hi:Recognize Current Page
+hr:Recognize Current Page
+hu:Recognize Current Page
+id:Recognize Current Page
+it:Recognize Current Page
+ja:Recognize Current Page
+jv:Recognize Current Page
+ka:Recognize Current Page
+kr:Recognize Current Page
+ku:Recognize Current Page
+kw:Recognize Current Page
+lt:Recognize Current Page
+lv:Recognize Current Page
+mk:Recognize Current Page
+ml:Recognize Current Page
+mm:Recognize Current Page
+my:Recognize Current Page
+ne:Recognize Current Page
+nl:Recognize Current Page
+nn:Recognize Current Page
+no:Recognize Current Page
+pa:Recognize Current Page
+pl:Recognize Current Page
+pt:Recognize Current Page
+ro:Recognize Current Page
+ru:Recognize Current Page
+sat:Recognize Current Page
+si:Recognize Current Page
+sk:Recognize Current Page
+sl:Recognize Current Page
+sn:Recognize Current Page
+sp-rs:Recognize Current Page
+sq:Recognize Current Page
+sr-rs:Recognize Current Page
+sv:Recognize Current Page
+ta:Recognize Current Page
+th:Recognize Current Page
+tl:Recognize Current Page
+tr:Recognize Current Page
+tw:識別目前頁
+uk:Recognize Current Page
+uz:Recognize Current Page
+vn:Recognize Current Page
 :Recognize all pages and save
 af:Recognize all pages and save
 am:Recognize all pages and save
@@ -12950,6 +13969,79 @@ tw:儲存為可搜尋 PDF
 uk:Save as Searchable PDF
 uz:Save as Searchable PDF
 vn:Save as Searchable PDF
+:Save as Searchable PDF...
+af:Save as Searchable PDF...
+am:Save as Searchable PDF...
+ar:Save as Searchable PDF...
+az:Save as Searchable PDF...
+bg:Save as Searchable PDF...
+bn:Save as Searchable PDF...
+br:Save as Searchable PDF...
+bs:Save as Searchable PDF...
+by:Save as Searchable PDF...
+ca:Save as Searchable PDF...
+ca-xv:Save as Searchable PDF...
+cn:另存为可搜索 PDF...
+co:Save as Searchable PDF...
+cy:Save as Searchable PDF...
+cz:Save as Searchable PDF...
+de:Save as Searchable PDF...
+dk:Save as Searchable PDF...
+el:Save as Searchable PDF...
+es:Save as Searchable PDF...
+et:Save as Searchable PDF...
+eu:Save as Searchable PDF...
+fa:Save as Searchable PDF...
+fi:Save as Searchable PDF...
+fo:Save as Searchable PDF...
+fr:Save as Searchable PDF...
+fy-nl:Save as Searchable PDF...
+ga:Save as Searchable PDF...
+gl:Save as Searchable PDF...
+he:Save as Searchable PDF...
+hi:Save as Searchable PDF...
+hr:Save as Searchable PDF...
+hu:Save as Searchable PDF...
+id:Save as Searchable PDF...
+it:Save as Searchable PDF...
+ja:Save as Searchable PDF...
+jv:Save as Searchable PDF...
+ka:Save as Searchable PDF...
+kr:Save as Searchable PDF...
+ku:Save as Searchable PDF...
+kw:Save as Searchable PDF...
+lt:Save as Searchable PDF...
+lv:Save as Searchable PDF...
+mk:Save as Searchable PDF...
+ml:Save as Searchable PDF...
+mm:Save as Searchable PDF...
+my:Save as Searchable PDF...
+ne:Save as Searchable PDF...
+nl:Save as Searchable PDF...
+nn:Save as Searchable PDF...
+no:Save as Searchable PDF...
+pa:Save as Searchable PDF...
+pl:Save as Searchable PDF...
+pt:Save as Searchable PDF...
+ro:Save as Searchable PDF...
+ru:Save as Searchable PDF...
+sat:Save as Searchable PDF...
+si:Save as Searchable PDF...
+sk:Save as Searchable PDF...
+sl:Save as Searchable PDF...
+sn:Save as Searchable PDF...
+sp-rs:Save as Searchable PDF...
+sq:Save as Searchable PDF...
+sr-rs:Save as Searchable PDF...
+sv:Save as Searchable PDF...
+ta:Save as Searchable PDF...
+th:Save as Searchable PDF...
+tl:Save as Searchable PDF...
+tr:Save as Searchable PDF...
+tw:另存為可搜尋 PDF...
+uk:Save as Searchable PDF...
+uz:Save as Searchable PDF...
+vn:Save as Searchable PDF...
 :Save as searchable PDF
 af:Save as searchable PDF
 am:Save as searchable PDF
@@ -14921,6 +16013,9 @@ tw:矩形
 :Squiggly
 cn:波浪线
 tw:波浪線
+:Stamp Annotation (Ctrl+click to lock)
+cn:图章（Ctrl+点击锁定）
+tw:圖章（Ctrl+點選鎖定）
 :Start Reading From Cursor Position
 af:Begin lees vanaf cursor
 am:Սկսել կարդալ կursor-ից
@@ -17941,3 +19036,149 @@ it:↑ ↓ per navigare
 nl:↑ ↓ voor navigeren
 pl:↑ ↓ aby nawigować
 sk:↑ ↓ – navigovať
+:Auto-save
+af:Auto-save
+am:Auto-save
+ar:Auto-save
+az:Auto-save
+bg:Auto-save
+bn:Auto-save
+br:Auto-save
+bs:Auto-save
+by:Auto-save
+ca:Auto-save
+ca-xv:Auto-save
+cn:自动保存
+co:Auto-save
+cy:Auto-save
+cz:Auto-save
+de:Auto-save
+dk:Auto-save
+el:Auto-save
+es:Auto-save
+et:Auto-save
+eu:Auto-save
+fa:Auto-save
+fi:Auto-save
+fo:Auto-save
+fr:Auto-save
+fy-nl:Auto-save
+ga:Auto-save
+gl:Auto-save
+he:Auto-save
+hi:Auto-save
+hr:Auto-save
+hu:Auto-save
+id:Auto-save
+it:Auto-save
+ja:Auto-save
+jv:Auto-save
+ka:Auto-save
+kr:Auto-save
+ku:Auto-save
+kw:Auto-save
+lt:Auto-save
+lv:Auto-save
+mk:Auto-save
+ml:Auto-save
+mm:Auto-save
+my:Auto-save
+ne:Auto-save
+nl:Auto-save
+nn:Auto-save
+no:Auto-save
+pa:Auto-save
+pl:Auto-save
+pt:Auto-save
+ro:Auto-save
+ru:Auto-save
+sat:Auto-save
+si:Auto-save
+sk:Auto-save
+sl:Auto-save
+sn:Auto-save
+sp-rs:Auto-save
+sq:Auto-save
+sr-rs:Auto-save
+sv:Auto-save
+ta:Auto-save
+th:Auto-save
+tl:Auto-save
+tr:Auto-save
+tw:自動儲存
+uk:Auto-save
+uz:Auto-save
+vn:Auto-save
+:Toggle Auto-save After OCR
+af:Toggle Auto-save After OCR
+am:Toggle Auto-save After OCR
+ar:Toggle Auto-save After OCR
+az:Toggle Auto-save After OCR
+bg:Toggle Auto-save After OCR
+bn:Toggle Auto-save After OCR
+br:Toggle Auto-save After OCR
+bs:Toggle Auto-save After OCR
+by:Toggle Auto-save After OCR
+ca:Toggle Auto-save After OCR
+ca-xv:Toggle Auto-save After OCR
+cn:开关识别后自动保存
+co:Toggle Auto-save After OCR
+cy:Toggle Auto-save After OCR
+cz:Toggle Auto-save After OCR
+de:Toggle Auto-save After OCR
+dk:Toggle Auto-save After OCR
+el:Toggle Auto-save After OCR
+es:Toggle Auto-save After OCR
+et:Toggle Auto-save After OCR
+eu:Toggle Auto-save After OCR
+fa:Toggle Auto-save After OCR
+fi:Toggle Auto-save After OCR
+fo:Toggle Auto-save After OCR
+fr:Toggle Auto-save After OCR
+fy-nl:Toggle Auto-save After OCR
+ga:Toggle Auto-save After OCR
+gl:Toggle Auto-save After OCR
+he:Toggle Auto-save After OCR
+hi:Toggle Auto-save After OCR
+hr:Toggle Auto-save After OCR
+hu:Toggle Auto-save After OCR
+id:Toggle Auto-save After OCR
+it:Toggle Auto-save After OCR
+ja:Toggle Auto-save After OCR
+jv:Toggle Auto-save After OCR
+ka:Toggle Auto-save After OCR
+kr:Toggle Auto-save After OCR
+ku:Toggle Auto-save After OCR
+kw:Toggle Auto-save After OCR
+lt:Toggle Auto-save After OCR
+lv:Toggle Auto-save After OCR
+mk:Toggle Auto-save After OCR
+ml:Toggle Auto-save After OCR
+mm:Toggle Auto-save After OCR
+my:Toggle Auto-save After OCR
+ne:Toggle Auto-save After OCR
+nl:Toggle Auto-save After OCR
+nn:Toggle Auto-save After OCR
+no:Toggle Auto-save After OCR
+pa:Toggle Auto-save After OCR
+pl:Toggle Auto-save After OCR
+pt:Toggle Auto-save After OCR
+ro:Toggle Auto-save After OCR
+ru:Toggle Auto-save After OCR
+sat:Toggle Auto-save After OCR
+si:Toggle Auto-save After OCR
+sk:Toggle Auto-save After OCR
+sl:Toggle Auto-save After OCR
+sn:Toggle Auto-save After OCR
+sp-rs:Toggle Auto-save After OCR
+sq:Toggle Auto-save After OCR
+sr-rs:Toggle Auto-save After OCR
+sv:Toggle Auto-save After OCR
+ta:Toggle Auto-save After OCR
+th:Toggle Auto-save After OCR
+tl:Toggle Auto-save After OCR
+tr:Toggle Auto-save After OCR
+tw:開關識別後自動儲存
+uk:Toggle Auto-save After OCR
+uz:Toggle Auto-save After OCR
+vn:Toggle Auto-save After OCR
