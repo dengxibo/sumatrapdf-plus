@@ -67,6 +67,9 @@ class Synchronizer;
 // virtual zoom level OR physical zoom level. Would be good to find
 // better naming scheme (call it zoomLevel?)
 
+// Pointer compare against live tabs. Safe to call with a dangling dm.
+bool DisplayModelIsAlive(const DisplayModel* dm);
+
 /* Information needed to drive the display of a given document on a screen.
    You can think of it as a model in the MVC pardigm.
    All the display changes should be done through changing this model via

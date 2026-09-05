@@ -853,6 +853,20 @@ static int GlyphIndexForDragEndpoint(TextSelection* ts, int pageNo, double x, do
     return g;
 }
 
+// Detects the first glyph of the next visual line when joined stext lines share
+// no zero-width separator glyph (e.g. CJK paragraph join in EngineMupdf): the
+// glyph is vertically separated from the current line band, unlike sub/superscripts
+// which overlap their base glyph substantially. Works for both top-aligned and
+// centered/indented lines where consecutive lines need not overlap in X.
+static bool GlyphJumpsToNextBandLine(const Rect& band, const Rect& c) {
+    if (band.dy <= 0 || c.dy <= 0) {
+        return false;
+    }
+    int yOverlap = std::min(band.y + band.dy, c.y + c.dy) - std::max(band.y, c.y);
+    int minDy = std::min(band.dy, c.dy);
+    return yOverlap * 10 < minDy * 3;
+}
+
 static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length, StrVec* lines = nullptr) {
     int len;
     Rect* coords;
@@ -874,6 +888,10 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
         return;
     }
     Rect mediabox = ts->engine->PageMediabox(pageNo).Round();
+    // Joined stext lines (e.g. CJK paragraph join) share no zero-width separator
+    // glyph, so visual lines must additionally be split geometrically. Vertical
+    // glyph layouts stack glyphs along Y inside a column and must not be split.
+    bool geoSplit = !PageUsesVerticalGlyphLayout(ts, pageNo);
     Rect *c = &coords[glyph], *end = c + length;
     while (c < end) {
         // skip line breaks
@@ -885,7 +903,12 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
         }
 
         Rect* c0 = c;
+        Rect band = *c0;
         for (; c < end && (c->x || c->dx); c++) {
+            if (geoSplit && c != c0 && GlyphJumpsToNextBandLine(band, *c)) {
+                break;
+            }
+            band = band.Union(*c);
             // find the end of this visual line
         }
 
@@ -905,8 +928,9 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
             continue;
         }
 
-        // cut the right edge, if it overlaps the next character
-        if (c < coords + len && (c->x || c->dx) && bbox.x < c->x && bbox.x + bbox.dx > c->x) {
+        // cut the right edge, if it overlaps the next character on the same line
+        if (c < coords + len && (c->x || c->dx) && bbox.x < c->x && bbox.x + bbox.dx > c->x &&
+            bbox.y < c->y + c->dy && c->y < bbox.y + bbox.dy) {
             bbox.dx = c->x - bbox.x;
         }
 

@@ -34,6 +34,7 @@ TocTreeViewKeep* TocTreeViewKeepStart(MainWindow* win);
 void TocTreeViewKeepFinish(MainWindow* win, TocTreeViewKeep* keep);
 void UpdateTocSelection(MainWindow*, int currPageNo);
 void InvalidateTocTree(MainWindow* win);
+bool TocSidebarShowsEmptyHint(MainWindow* win);
 void UpdateTocExpansionState(Vec<int>& tocState, TreeView*, TocTree*);
 int CountTocItems(TocItem* item);
 TocItem* TocItemBestMatchForPage(TocItem* item, int pageNo, EngineBase* engine);

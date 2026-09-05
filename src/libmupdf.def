@@ -715,6 +715,7 @@ EXPORTS
 	pdf_dict_get_val
 	pdf_dict_get
 	pdf_dict_get_int
+	pdf_dict_get_inheritable_int
 	pdf_dict_gets
 	pdf_dict_getp
 	pdf_dict_getsa
@@ -723,6 +724,7 @@ EXPORTS
 	pdf_dict_puts_drop
 	pdf_dict_putp
 	pdf_dict_putp_drop
+	pdf_dict_put_int
 	pdf_dict_del
 	pdf_dict_dels
 	pdf_sort_dict

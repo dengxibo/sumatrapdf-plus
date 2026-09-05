@@ -33100,3 +33100,31 @@ tw:自動儲存
 :Toggle Auto-save After OCR
 cn:开关识别后自动保存
 tw:開關識別後自動儲存
+
+:This file is read-only. Bookmark extraction was not started.
+cn:此文件为只读，未开始提取书签。
+tw:此檔案為唯讀，未開始提取書籤。
+
+:Extract for review
+cn:提取后预览
+tw:擷取後預覽
+
+:Extract and overwrite file
+cn:提取并覆盖文件
+tw:擷取並覆寫檔案
+
+:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+cn:提取的书签将先替换当前书签以供预览。只有选择“提取并覆盖文件”才会将更改保存到原文件。取消预览可恢复原书签。
+tw:擷取的書籤會先取代目前書籤供預覽。只有選擇「擷取並覆寫檔案」才會將變更儲存到原始檔案。取消預覽可還原原書籤。
+
+:Could not prepare the extracted table of contents.
+cn:无法准备提取的目录书签。
+tw:無法準備擷取的目錄書籤。
+
+:Keep for this session
+cn:保留到本次会话
+tw:保留至本次工作階段
+
+:Discard
+cn:丢弃
+tw:捨棄

@@ -52,6 +52,7 @@ static void OnPaintAbout(MainWindow* win) {
     win->buffer->Flush(hdc);
 
     EndPaint(win->hwndCanvas, &ps);
+    HomePageUpdateScrollbar(win, drawHome);
     if (gShowFrameRate) {
         win->frameRateWnd->ShowFrameRateDur(TimeSinceInMs(t));
     }

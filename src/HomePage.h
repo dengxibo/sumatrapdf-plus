@@ -29,6 +29,7 @@ constexpr const char* kLinkNextTip = "<NextTip>";
 void SetPromoString(const char*);
 
 void DrawHomePage(MainWindow* win, HDC hdc);
+void HomePageUpdateScrollbar(MainWindow* win, bool forHomePage);
 void PickAnotherRandomPromotion();
 void HomePageOnVScroll(MainWindow* win, WPARAM wp);
 void HomePageOnMouseWheel(MainWindow* win, int delta);

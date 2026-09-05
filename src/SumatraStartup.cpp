@@ -1377,6 +1377,8 @@ Exit:
     return res;
 }
 
+#include "SelTest.cpp"
+
 static void LogCommandLine() {
     TempStr s = ToUtf8Temp(GetCommandLineW());
     logf("'%s'\n  ver %s\n", s, UPDATE_CHECK_VERA);
@@ -1467,6 +1469,21 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
 
     ParseFlags(GetCommandLineW(), flags, gToolNames);
     gCli = &flags;
+    // forensic harness for issue #76: -seltest <file.pdf> (no UI)
+    {
+        CmdLineArgsIter selArgs(GetCommandLineW());
+        const char* selArg = selArgs.NextArg();
+        while (selArg) {
+            if (str::EqI(selArg, "-seltest")) {
+                const char* selPdf = selArgs.EatParam();
+                if (selPdf) {
+                    return RunSelTextTest(selPdf);
+                }
+                break;
+            }
+            selArg = selArgs.NextArg();
+        }
+    }
     bool isInstaller = flags.install || flags.runInstallNow || flags.fastInstall || IsInstallerAndNamedAsSuch();
     if (flags.justExtractFiles) {
         isInstaller = false;

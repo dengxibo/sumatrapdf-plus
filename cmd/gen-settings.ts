@@ -883,7 +883,7 @@ const globalPrefs: Field[] = [
         "OcrFullDocumentMode",
         Str,
         "fast",
-        "full-document OCR mode for Recognize All Scanned Pages and Save as Searchable PDF: fast or accurate. Auto OCR, current page, and region always use high accuracy.",
+        "full-document OCR mode for Recognize All Scanned Pages and Save as Searchable PDF: fast or accurate. Auto OCR uses fast mode; current page and region use high accuracy.",
       ),
       "3.8",
     ),

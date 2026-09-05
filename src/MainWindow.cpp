@@ -359,6 +359,14 @@ void MainWindow::UpdateCanvasSize() {
     // about the change of the canvas size
     delete buffer;
     buffer = new DoubleBuffer(hwndCanvas, canvasRc);
+    // ShowScrollBar during a paint can recreate this buffer; fill so the next
+    // blit is not uninitialized black.
+    if (buffer && !canvasRc.IsEmpty()) {
+        HDC bufDC = buffer->GetDC();
+        if (bufDC) {
+            FillRect(bufDC, canvasRc, ThemeMainWindowBackgroundColor());
+        }
+    }
     HomePageInvalidateScrollCache(this);
 
     if (IsDocLoaded()) {

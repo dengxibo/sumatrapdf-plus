@@ -64,6 +64,10 @@ struct TocCalibSession {
     bool restoreDisplayMode = false;
     int savedDisplayMode = 0;
     bool undoBusy = false;
+    // Value of the engine's "PDF outline was modified" flag when the session
+    // started. Cancel restores it so a TOC session cannot leave a phantom
+    // dirty state behind when the document was clean before the session.
+    bool baselineModifiedToc = false;
     EngineBase* engine = nullptr;
 };
 

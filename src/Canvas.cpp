@@ -2689,16 +2689,6 @@ static void OnPaintDocument(MainWindow* win) {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(win->hwndCanvas, &ps);
 
-    if (IsSidebarSplitterLiveDrag()) {
-        // Always cover the update region. Validating without a fill left
-        // black/white ghosts; a 48px-only fill missed fast splitter moves.
-        HBRUSH br = CreateSolidBrush(ThemeMainWindowBackgroundColor());
-        FillRect(hdc, &ps.rcPaint, br);
-        DeleteObject(br);
-        EndPaint(win->hwndCanvas, &ps);
-        return;
-    }
-
     switch (win->presentation) {
         case PM_BLACK_SCREEN:
             FillRect(hdc, &ps.rcPaint, GetStockBrush(BLACK_BRUSH));
@@ -2706,11 +2696,25 @@ static void OnPaintDocument(MainWindow* win) {
         case PM_WHITE_SCREEN:
             FillRect(hdc, &ps.rcPaint, GetStockBrush(WHITE_BRUSH));
             break;
-        default:
+        default: {
             bool shouldPaint = DrawDocument(win, win->buffer->GetDC(), &ps.rcPaint);
             if (!gNoFlickerRender || shouldPaint) {
-                win->buffer->Flush(hdc, &ps.rcPaint);
+                if (IsSidebarSplitterLiveDrag()) {
+                    // The update region during a live sidebar drag is a union of
+                    // fragments (resize-exposed strips accumulated across
+                    // SetWindowPos calls). Blitting only ps.rcPaint (the bounding
+                    // box) gets clipped to those fragments, leaving stale page
+                    // borders between them = vertical ghost trails. DrawDocument
+                    // always renders a complete frame, so present the whole
+                    // buffer through an unclipped client DC instead.
+                    HDC fullDC = GetDC(win->hwndCanvas);
+                    win->buffer->Flush(fullDC, nullptr);
+                    ReleaseDC(win->hwndCanvas, fullDC);
+                } else {
+                    win->buffer->Flush(hdc, &ps.rcPaint);
+                }
             }
+        }
     }
 
     EndPaint(win->hwndCanvas, &ps);
@@ -4291,9 +4295,10 @@ LRESULT CALLBACK WndProcCanvas(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     GetClientRect(hwnd, &rc);
                     logf("redraw: WM_SIZE hwnd=0x%p (canvas) size=(%d,%d)\n", hwnd, rc.right, rc.bottom);
                 }
-                if (IsSidebarSplitterLiveDrag()) {
-                    return 0;
-                }
+                // Live sidebar-drag resizes go through this same path as a
+                // main-window resize: UpdateCanvasSize re-lays out the display
+                // model for the new viewport and InvalidateRect lets the
+                // normal message loop coalesce the repaint.
                 win->UpdateCanvasSize();
                 // fully invalidate since layout depends on size
                 // (replaces CS_HREDRAW | CS_VREDRAW which caused transparent flash)

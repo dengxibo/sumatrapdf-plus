@@ -470,7 +470,7 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
     }
 
     if ((cmdId == CmdToggleAutoOcr || cmdId == CmdToggleOcrAutoSave) && !ctx.isDocLoaded) {
-        return CommandVisibility::Show;
+        return CommandVisibility::Disable;
     }
 
     if (!ctx.isDocLoaded) {

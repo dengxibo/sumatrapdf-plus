@@ -24,8 +24,10 @@ enum class OcrProfile {
 
 enum class OcrOperation {
     CurrentPage = 0,
+    Auto,
     AllPages,
     SaveSearchable,
+    Region,
 };
 
 struct OcrPageTiming {
@@ -41,6 +43,7 @@ struct OcrPageTiming {
     double pageTotalMs = 0;
     int nDetBoxes = 0;
     int nRecBoxes = 0;
+    int nRecBatches = 0; // number of batched rec inference calls
 };
 
 // Directory we look in for onnxruntime.dll + det/rec/cls + keys.
@@ -56,6 +59,10 @@ void OcrSetForcedProfile(OcrProfile profile, bool enable);
 // RGB top-down 24-bit (3 bytes/pixel, packed or strided). boxesOut owns text strings.
 bool OcrRecognizeRgb(const u8* rgb, int w, int h, int stride, Vec<OcrBox>& boxesOut, OcrProfile profile,
                      OcrPageTiming* timing = nullptr);
+
+// RapidOrientation classifies the visual page direction (clockwise degrees).
+// Returns false when the optional model is unavailable or is not confident.
+bool OcrClassifyPageOrientationRgb(const u8* rgb, int w, int h, int stride, int* clockwiseDegrees, float* confidence);
 
 // How many pages we OCR at once (1–4). Same count as ONNX session slots.
 int OcrInferenceSlotCount();

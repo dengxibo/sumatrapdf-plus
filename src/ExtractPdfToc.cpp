@@ -322,6 +322,10 @@ static void NormalizeTocNumberingParens(char** titleOut);
 static void NormalizeTocNumberingDots(char** titleOut);
 static void StripNumberingTitleSpace(char** titleOut);
 static int LastNonSpaceCp(const char* s);
+static bool OfficialTitleHasDocSuffix(const char* s);
+static bool OfficialDocTitleNeedsWrap(const char* s);
+static bool LooksLikeOfficialDraftParen(const char* s);
+static bool LooksLikeOfficialAppendixHeadingName(const char* s);
 
 static int GlyphCount(const char* s) {
     if (!s) {
@@ -1411,14 +1415,18 @@ static HeadingMarker ParseHeadingMarker(const char* s) {
                         HeadingMarker empty;
                         return empty;
                     }
-                    // "附件：1-1.…" / "附件：" is a cover list, not 附件1.
+                    // "附件：1-1.…" / "附件：" is a cover list, not a numbered attachment.
                     if (peek == ':' || peek == 0xFF1A) {
                         m.number = 0;
                         m.prefixLength = i;
                         m.rank = 1;
                         return m;
                     }
-                    m.number = 1;
+                    // Preserve an unnumbered “附件” as such. Its position in
+                    // a document is not evidence that the author called it
+                    // “附件1”. Later attachment-sequence handling may fill a
+                    // number only when an explicit sibling proves one exists.
+                    m.number = 0;
                 }
             }
             // "见附件2)。" wrap: leftover "附件2)" / "附件2）。" is not a heading.
@@ -2665,12 +2673,15 @@ static bool ScanLinesLookSideways(const Vec<ScanLine>& page, bool afterSideways 
             tall++;
         }
     }
-    if (n >= 6 && shortG * 2 >= n && tall * 2 >= n) {
+    // A portrait Chinese cover or a page full of round seals also has many
+    // one-glyph tall boxes. It cannot establish the first rotated page by
+    // itself; only continue an already confirmed landscape table run.
+    if (afterSideways && n >= 6 && shortG * 2 >= n && tall * 2 >= n) {
         return true;
     }
     // 公文 body is ~15–25 long lines; these pages have 100+ chips.
     int minChips = afterSideways ? 20 : 50;
-    if (allowShatteredOverlay && n >= minChips && short4 * 5 >= n * 4 && long8 * 20 < n) {
+    if (allowShatteredOverlay && afterSideways && n >= minChips && short4 * 5 >= n * 4 && long8 * 20 < n) {
         return true;
     }
     return false;
@@ -2716,26 +2727,6 @@ static bool ScanLinesLookLikeVerticalBook(const Vec<ScanLine>& page) {
         return false;
     }
     return true;
-}
-
-static bool ScanLinesLookLikeBookSpine(const Vec<ScanLine>& page) {
-    for (int i = 0; i < page.Size(); i++) {
-        const char* s = page[i].text;
-        if (!s || !s[0]) {
-            continue;
-        }
-        if (LooksLikePrintedTocHeading(s) || StartsWithXinDeHeading(s)) {
-            return true;
-        }
-        if (str::Find(s, "\xE5\x89\x8D\xE8\xA8\x80") || str::Find(s, "\xE5\x90\x8E\xE8\xAE\xB0")) { // 前言 / 后记
-            return true;
-        }
-        HeadingMarker m = ParseHeadingMarker(s);
-        if (m.type == MarkerType::Chapter) {
-            return true;
-        }
-    }
-    return false;
 }
 
 // Fangzheng / Identity-H CJK with no ToUnicode: MuPDF emits dingbats, bopomofo,
@@ -2891,6 +2882,11 @@ static bool ScanLinesLookLikeCidFontGarbage(const Vec<ScanLine>& page) {
     if (nJunk >= 6 && nJunk * 2 >= nCommon + 1) {
         return true;
     }
+    // Landscape 一本账 / 报名表 tables have lots of Han and almost no 的/是/了.
+    // That is not Identity-H garbage; extract must not OCR those pages.
+    if (nGlyph >= 80 && nJunk < 3 && nMash < 1) {
+        return false;
+    }
     if (nHan >= 20 && nCommon < 2) {
         return true;
     }
@@ -2945,79 +2941,26 @@ static void CollectPageScanLines(EngineBase* engine, int pageNo, Vec<ScanLine>& 
         }
     }
     EngineMupdfFreePageLines(raw);
-    // Prefer the PDF text layer. Session OCR can overwrite a good layer with
-    // worse lines; use cached OCR only when native text is missing or sideways.
+    // File stext we just collected. Do not use PageHasUsableText here — that
+    // only looks at the text cache (empty at extract start, or filled by OCR).
     bool fewNative = ScanLinesGlyphCount(page) < 20;
-    bool afterSideways = engine && pageNo > 1 && engine->GetOcrPageRotate(pageNo - 1) >= 90;
-    int pdfRot = engine ? EngineMupdfGetPageRotateCw(engine, pageNo) : 0;
-    bool alreadyRotated = (engine && engine->GetOcrPageRotate(pageNo) >= 90) || pdfRot >= 90;
-    bool officialName = engine && FileNameHasOfficialKind(engine->FilePath());
-    bool bookLike = !officialName && (ScanLinesLookLikeVerticalBook(page) || ScanLinesLookLikeBookSpine(page));
-    bool sideways = !bookLike && ScanLinesLookSideways(page, afterSideways, !alreadyRotated);
     bool cidGarbage = ScanLinesLookLikeCidFontGarbage(page);
+    bool fileLayerOk = !fewNative && !cidGarbage;
     int cidCap = engine ? CidGarbageOcrFrontPageCap(engine->PageCount()) : 0;
-    bool cidOcrFront = cidGarbage && pageNo <= cidCap;
-    // Mixed 公文: 通知 has a text layer, 报名表 is a scanned landscape image.
-    bool mixedImage = fewNative && OcrDocumentHasFileTextLayer(engine);
-    // Small image-only 通知: no text layer on any page. Detect via native text,
-    // not GetTextForPage, so later pages still OCR after page 1 fills the cache.
-    bool imageOnlySmall = fewNative && engine && engine->PageCount() <= 8 && !OcrDocumentHasFileTextLayer(engine);
-    bool wantOcr = sideways || mixedImage || imageOnlySmall || cidOcrFront || (fewNative && OcrAutoEnabled(engine));
-    if (wantOcr && engine && OcrModelsAvailable()) {
-        bool cacheWeak = !engine->HasCachedOcrText(pageNo);
-        if (sideways) {
-            // Always re-OCR sideways pages; a weak 0° layer (or 附件 fragments) is not enough.
-            cacheWeak = true;
-        } else if (!cacheWeak && mixedImage) {
-            int len = 0;
-            Rect* coords = nullptr;
-            const char* text = nullptr;
-            cacheWeak = true;
-            if (engine->TryGetTextForPageUtf8(pageNo, &len, &coords, &text) && text && len > 0) {
-                // 附件 / 报名 : 0° OCR of a landscape form usually has neither.
-                if (str::Find(text, "\xE9\x99\x84\xE4\xBB\xB6") || str::Find(text, "\xE6\x8A\xA5\xE5\x90\x8D")) {
-                    cacheWeak = false;
-                }
-            }
+    // Full-document OCR is scheduled before asynchronous TOC extraction. Do
+    // not OCR again here: a long table-heavy PDF would be recognized twice,
+    // making bookmark extraction slower than the original document scan.
+    if (!fileLayerOk && engine && engine->HasCachedOcrText(pageNo)) {
+        for (int i = 0; i < page.Size(); i++) {
+            str::Free(page[i].text);
+            page[i].text = nullptr;
         }
-        if (cacheWeak) {
-            bool scannedOk = !fewNative || mixedImage || sideways || cidOcrFront || OcrPageLooksScanned(engine, pageNo);
-            if (scannedOk) {
-                OcrRecognizeEnginePage(engine, pageNo, sideways || mixedImage || imageOnlySmall || cidOcrFront,
-                                       OcrOperation::AllPages);
-            }
-        }
-        // Sideways 报名表 / 清单: bake /Rotate so the viewer shows landscape without
-        // rotating the whole document. Prefer OCR's best angle. Do not default 90
-        // over an existing 270 (that is a 180° flip). Only guess 90 when /Rotate is 0.
-        // Books / 竖版书 stay upright — never bake a page transpose here.
-        if (sideways && !bookLike) {
-            int want = engine->GetOcrPageRotate(pageNo);
-            int cur = EngineMupdfGetPageRotateCw(engine, pageNo);
-            if (want == 90 || want == 270) {
-                if ((cur == 90 || cur == 270) && cur != want) {
-                    // OCR picked the opposite of baked /Rotate. Keep baked; neighbor
-                    // snap at apply time fixes a wrong 90 that should have been 270.
-                    engine->SetOcrPageRotate(pageNo, cur);
-                }
-                EngineMupdfEnsurePageOcrRotate(engine, pageNo);
-            } else if (cur < 1 && !engine->HasCachedOcrText(pageNo)) {
-                engine->SetOcrPageRotate(pageNo, 90);
-                EngineMupdfEnsurePageOcrRotate(engine, pageNo);
-            }
-        }
-        if (engine->HasCachedOcrText(pageNo)) {
-            for (int i = 0; i < page.Size(); i++) {
-                str::Free(page[i].text);
-                page[i].text = nullptr;
-            }
-            page.Reset();
-            int len = 0;
-            Rect* coords = nullptr;
-            const char* text = nullptr;
-            if (engine->TryGetTextForPageUtf8(pageNo, &len, &coords, &text) && text && coords && len > 0) {
-                CollectLinesFromUtf8(text, coords, len, pageNo, page);
-            }
+        page.Reset();
+        int len = 0;
+        Rect* coords = nullptr;
+        const char* text = nullptr;
+        if (engine->TryGetTextForPageUtf8(pageNo, &len, &coords, &text) && text && coords && len > 0) {
+            CollectLinesFromUtf8(text, coords, len, pageNo, page);
         }
     }
     if (page.Size() < 1 && engine) {
@@ -3029,9 +2972,23 @@ static void CollectPageScanLines(EngineBase* engine, int pageNo, Vec<ScanLine>& 
         }
     }
     if (cidGarbage && !(engine && engine->HasCachedOcrText(pageNo))) {
-        // Drop only when OCR can replace this page. Past the cap, keep native
-        // Identity-H lines so 19. … on the last sheets are not deleted.
-        if (pageNo <= cidCap) {
+        // If the page already carries some Han glyphs (OCR text was merged
+        // into searchStext), do not drop. Mixed Identity-H + OCR pages like
+        // the 附件4/5 sheets must keep their OCR titles.
+        int nHanHere = 0;
+        for (int i = 0; i < page.Size(); i++) {
+            const char* s = page[i].text;
+            if (!s) continue;
+            int len = (int)str::Len(s), b = 0;
+            while (b < len) {
+                int cp = Utf8CodepointNext(s, len, b);
+                if (cp <= 0) break;
+                if (CpIsHanUnified(cp)) nHanHere++;
+            }
+        }
+        if (nHanHere >= 5) {
+            // Keep page — has enough OCR Han to be useful.
+        } else if (pageNo <= cidCap) {
             for (int i = 0; i < page.Size(); i++) {
                 str::Free(page[i].text);
                 page[i].text = nullptr;
@@ -3042,6 +2999,20 @@ static void CollectPageScanLines(EngineBase* engine, int pageNo, Vec<ScanLine>& 
     }
     if (page.Size() < 1) {
         return;
+    }
+    char tracePath[MAX_PATH]{};
+    if (pageNo == 4 && GetEnvironmentVariableA("SUMATRA_TOC_TRACE", tracePath, dimof(tracePath)) > 0) {
+        str::BufAppend(tracePath, dimof(tracePath), ".raw");
+        FILE* trace = _wfopen(ToWStrTemp(tracePath), L"w");
+        if (trace) {
+            fprintf(trace, "MuPDF text lines before RebuildVisualLines, page=%d count=%d\n", pageNo, page.Size());
+            for (int i = 0; i < page.Size(); i++) {
+                const ScanLine& line = page[i];
+                fprintf(trace, "R idx=%d x=%.1f y=%.1f dx=%.1f dy=%.1f text=%s\n", i, line.x, line.y, line.dx, line.dy,
+                        line.text ? line.text : "");
+            }
+            fclose(trace);
+        }
     }
     RebuildVisualLines(page);
     for (int i = 0; i < page.Size(); i++) {
@@ -3147,12 +3118,27 @@ static ExtractedTocItem* NewItem(const char* title, int pageNo, float x, float y
     RewriteOcrDashAsYiDunhao(&n->title);
     RewriteOcrGraveAsDunhao(&n->title);
     StripLeadingListBullet(&n->title);
-    TrimAtNextEmbeddedHeading(n->title);
-    TrimTitleToFirstSentence(n->title);
+    HeadingMarker nm = ParseHeadingMarker(n->title);
+    bool keepOfficialApTitle = false;
+    if (nm.type == MarkerType::Appendix && nm.prefixLength > 0) {
+        const char* rest = n->title + nm.prefixLength;
+        int rlen = (int)str::Len(rest);
+        int ri = 0;
+        SkipSpacesUtf8(rest, rlen, ri);
+        rest += ri;
+        keepOfficialApTitle =
+            rest[0] && (OfficialTitleHasDocSuffix(rest) || OfficialDocTitleNeedsWrap(rest) ||
+                        LooksLikeOfficialAppendixHeadingName(rest) || LooksLikeOfficialDraftParen(rest) ||
+                        str::Find(rest, "工作要点") || str::Find(rest, "征求意见稿"));
+    }
+    if (!keepOfficialApTitle) {
+        TrimAtNextEmbeddedHeading(n->title);
+        TrimTitleToFirstSentence(n->title);
+        StripGluedBodyAfterHeading(n->title);
+        TrimAtNextDiHeading(n->title);
+    }
     StripTrailingOcrTitleJunk(n->title);
-    StripGluedBodyAfterHeading(n->title);
     ShortenOfficialUrlListTitle(n->title);
-    TrimAtNextDiHeading(n->title);
     NormalizeTocNumberingParens(&n->title);
     NormalizeTocNumberingDots(&n->title);
     StripNumberingTitleSpace(&n->title);
@@ -3315,7 +3301,8 @@ static bool LineLooksLikePageNumber(const char* s) {
     if (i < len) {
         return false;
     }
-    if (!hadLead && afterDigits < len) {
+    // Scan footer leftover "60—" / "0—" is still a page number after leaders are eaten.
+    if (!hadLead && afterDigits < len && i < len) {
         return false;
     }
     return true;
@@ -3690,7 +3677,7 @@ static bool LooksLikeArchiveJunk(const char* s) {
 }
 
 static bool OfficialTitleFindGuanYu(const char* s) {
-    return s && (str::Find(s, "关于") || str::Find(s, "关千"));
+    return s && (str::Find(s, "关于") || str::Find(s, "关千") || str::Find(s, "美于印发"));
 }
 
 static bool OfficialTitleIsIssuerBanner(const char* s) {
@@ -3731,7 +3718,7 @@ static const char* OfficialFindEarliestSubjectStart(const char* s) {
         return nullptr;
     }
     const char* best = nullptr;
-    const char* needles[] = {"关于", "关千", "印发", "转发", "批转", "《"};
+    const char* needles[] = {"关于", "关千", "美于印发", "印发", "转发", "批转", "《"};
     for (int i = 0; i < (int)dimof(needles); i++) {
         const char* p = str::Find(s, needles[i]);
         if (p && (!best || p < best)) {
@@ -4088,6 +4075,15 @@ static bool TitleNeedsWrapContinuation(const char* s) {
     if (last == 0x89C1) { // 见 — "（见附件N）" wrap
         return true;
     }
+    if (last == 0x5C0F) { // 小 — "领导小" / "小组" split
+        return true;
+    }
+    if (last == 0x5404) { // 各 — "请各" leftover of 请各编报单位
+        int prev = Utf8CodepointPrev(s, len, i);
+        if (prev == 0x8BF7) { // 请
+            return true;
+        }
+    }
     return str::Find(s, "《") && !str::Find(s, "》");
 }
 
@@ -4426,10 +4422,23 @@ static bool LooksLikeBodyContinuationStart(const char* s) {
     SkipSpacesUtf8(s, len, i);
     const char* t = s + i;
     return str::StartsWith(t, "为了") || str::StartsWith(t, "根据") || str::StartsWith(t, "按照") ||
+           str::StartsWith(t, "请各") ||
            (str::StartsWith(t, "各") && !str::StartsWith(t, "各地") && !str::StartsWith(t, "各级")) ||
            str::StartsWith(t, "坚持") || str::StartsWith(t, "通过") || str::StartsWith(t, "充分") ||
            str::StartsWith(t, "进一步") || str::StartsWith(t, "今后") || str::StartsWith(t, "今") ||
            str::StartsWith(t, "我厅") || str::StartsWith(t, "我局");
+}
+
+// Page-top wrap of a 公文 paragraph: "财政局、赣江新区…还应报送本地区纸质年报"
+static bool LooksLikeOfficialOutlineWrapBody(const char* s) {
+    if (!s || !s[0] || ParseHeadingMarker(s).rank >= 1) {
+        return false;
+    }
+    if (str::StartsWith(s, "财政局、") || str::StartsWith(s, "区市财政局") || str::StartsWith(s, "编报单位") ||
+        str::StartsWith(s, "金融局还应") || str::StartsWith(s, "金融局应对")) {
+        return true;
+    }
+    return str::Find(s, "还应报送") || str::Find(s, "还应当报送");
 }
 
 static bool BodyContinuationAt(const char* s, int len, int i) {
@@ -4717,8 +4726,33 @@ static bool ShouldMergeFalseYiDunhaoWrap(const ScanLine& a, const ScanLine& b) {
     return dx <= maxDx;
 }
 
+// Table 序号 row "1 对照全国数据共享清单，根据…" is not 附件4-1 / a 清单 title.
+static bool OfficialNameStartsWithTableSerial(const char* s) {
+    if (!s || !s[0]) {
+        return false;
+    }
+    int len = (int)str::Len(s);
+    int i = 0;
+    SkipSpacesUtf8(s, len, i);
+    int n = ConsumeOfficialNumber(s, len, i);
+    if (n < 1 || n > 80) {
+        return false;
+    }
+    int sub = 0;
+    int save = i;
+    if (ConsumeOfficialAttachSubNumber(s, len, save, &sub) && sub >= 1) {
+        return false;
+    }
+    SkipSpacesUtf8(s, len, i);
+    int cp = i < len ? Utf8CodepointNext(s, len, i) : 0;
+    return cp >= 0x4E00 && cp <= 0x9FFF;
+}
+
 static bool OfficialNameLooksLikeAttachmentIndex(const char* name) {
     if (!name || !name[0]) {
+        return false;
+    }
+    if (OfficialNameStartsWithTableSerial(name)) {
         return false;
     }
     int g = GlyphCount(name);
@@ -4733,6 +4767,44 @@ static bool OfficialNameLooksLikeAttachmentIndex(const char* name) {
            str::EndsWith(name, "合规性要求") || str::EndsWith(name, "程序") || str::EndsWith(name, "模板") ||
            str::EndsWith(name, "说明") || str::EndsWith(name, "流程") || str::EndsWith(name, "规范") ||
            str::EndsWith(name, "须知") || str::EndsWith(name, "指引") || str::EndsWith(name, "表");
+}
+
+// Bare 附件 + next line: 申请表, or an unmarked title such as 浙江省…“一本账S1”.
+static bool LooksLikeOfficialAppendixHeadingName(const char* s) {
+    if (OfficialNameLooksLikeAttachmentIndex(s)) {
+        return true;
+    }
+    if (!s || !s[0] || OfficialNameStartsWithTableSerial(s) || LooksLikeOfficialBoilerplate(s) ||
+        LooksLikeOfficialSpecOrFormLine(s) || LooksLikeOfficialFillNotesHeader(s) || LineLooksLikePageNumber(s) ||
+        LooksLikeOfficialTableNoiseTitle(s)) {
+        return false;
+    }
+    HeadingMarker m = ParseHeadingMarker(s);
+    if (m.rank >= 1) {
+        return false;
+    }
+    int g = GlyphCount(s);
+    if (g < 4 || g > 48) {
+        return false;
+    }
+    if (str::Find(s, "。") || str::Find(s, "；") || str::Find(s, "，") || str::Find(s, ",")) {
+        return false;
+    }
+    if (!HasLetterOrCjk(s)) {
+        return false;
+    }
+    int len = (int)str::Len(s);
+    int i = 0;
+    SkipSpacesUtf8(s, len, i);
+    int first = i < len ? Utf8CodepointNext(s, len, i) : 0;
+    if (first == 0x5BF9 || first == 0x9A7B) { // 对 驻 — table body
+        return false;
+    }
+    if (str::Eq(s, "序号") || str::StartsWith(s, "序号") || str::Eq(s, "姓名") || str::Eq(s, "单位") ||
+        str::Eq(s, "备注")) {
+        return false;
+    }
+    return true;
 }
 
 // Body "1.报送《…》（见附件1）" is a task that cites 附件N, not 函末 "1.申请表".
@@ -4774,6 +4846,44 @@ static bool LooksLikeOfficialTemplateParen(const char* s) {
         return false;
     }
     return str::Eq(s, "（模板）") || str::Eq(s, "(模板)") || str::Eq(s, "（模版）") || str::Eq(s, "(模版)");
+}
+
+// Lone title line "(征求意见稿）" / "（试行）" — glue onto the previous 附件 / 函 title.
+static bool LooksLikeOfficialDraftParen(const char* s) {
+    if (!s || !s[0] || ParseHeadingMarker(s).rank >= 1) {
+        return false;
+    }
+    if (LooksLikeOfficialTemplateParen(s)) {
+        return true;
+    }
+    int g = GlyphCount(s);
+    if (g < 3 || g > 14) {
+        return false;
+    }
+    int len = (int)str::Len(s);
+    int i = 0;
+    SkipSpacesUtf8(s, len, i);
+    int open = i < len ? Utf8CodepointNext(s, len, i) : 0;
+    if (open != '(' && open != 0xFF08) {
+        return false;
+    }
+    SkipSpacesUtf8(s, len, i);
+    const char* mid = s + i;
+    int midLen = (int)str::Len(mid);
+    int j = midLen;
+    int close = midLen > 0 ? Utf8CodepointPrev(mid, midLen, j) : 0;
+    if (close != ')' && close != 0xFF09) {
+        return false;
+    }
+    char* body = str::Dup(mid, j);
+    if (!body) {
+        return false;
+    }
+    str::TrimWSInPlace(body, str::TrimOpt::Both);
+    bool ok = str::Eq(body, "征求意见稿") || str::Eq(body, "试行") || str::Eq(body, "暂行") ||
+              str::Eq(body, "修订稿") || str::Eq(body, "讨论稿") || str::Eq(body, "草案");
+    str::Free(body);
+    return ok;
 }
 
 static bool ParseAppendixColonArabicList(const char* s, HeadingMarker* innerOut, const char** nameOut) {
@@ -4862,6 +4972,130 @@ static bool LooksLikeOfficialUnnumberedAppendixColonCite(const char* s) {
     return OfficialUnnumberedAppendixColonName(s) != nullptr;
 }
 
+// True when "YYYY年…" is a 落款 date (2022年7月18日), not a title year (2026年工作要点).
+static bool OfficialYearHitIsIssuerDate(const char* yhit) {
+    if (!yhit || !yhit[0]) {
+        return false;
+    }
+    int len = (int)str::Len(yhit);
+    int i = 0;
+    int nDig = 0;
+    while (i < len) {
+        int save = i;
+        int cp = Utf8CodepointNext(yhit, len, i);
+        if (!IsDigitCp(cp)) {
+            i = save;
+            break;
+        }
+        nDig++;
+        if (nDig > 4) {
+            return false;
+        }
+    }
+    if (nDig < 4) {
+        return false;
+    }
+    if (i >= len || !str::StartsWith(yhit + i, "\xE5\xB9\xB4")) { // 年
+        return false;
+    }
+    i += (int)str::Len("\xE5\xB9\xB4");
+    SkipSpacesUtf8(yhit, len, i);
+    if (i >= len) {
+        return true;
+    }
+    // Title years: 2026年工作要点 / 2021年网络安全…汇总表 / 2024年度考核
+    if (str::StartsWith(yhit + i, "工作") || str::StartsWith(yhit + i, "度") || str::StartsWith(yhit + i, "计划") ||
+        str::StartsWith(yhit + i, "规划") || str::StartsWith(yhit + i, "考核") || str::StartsWith(yhit + i, "要点") ||
+        str::StartsWith(yhit + i, "网络") || str::StartsWith(yhit + i, "数据") || str::StartsWith(yhit + i, "政府")) {
+        return false;
+    }
+    int save = i;
+    int cp = Utf8CodepointNext(yhit, len, i);
+    if (IsDigitCp(cp)) {
+        while (i < len) {
+            save = i;
+            cp = Utf8CodepointNext(yhit, len, i);
+            if (!IsDigitCp(cp)) {
+                i = save;
+                break;
+            }
+        }
+        if (i < len && str::StartsWith(yhit + i, "\xE6\x9C\x88")) { // 月
+            return true;
+        }
+        return false;
+    }
+    // Glued issuer after the year token is rare; keep cutting only for 中共.
+    return str::StartsWith(yhit + i, "中共");
+}
+
+// RebuildVisualLines can glue 函末「附件：…」to 中共…办公厅 / 2022年7月18日.
+static void TrimOfficialAppendixIssuerTail(char* s) {
+    if (!s || !s[0]) {
+        return;
+    }
+    HeadingMarker m = ParseHeadingMarker(s);
+    char* body = s;
+    if (m.type == MarkerType::Appendix && m.prefixLength > 0) {
+        body = s + m.prefixLength;
+        int blen = (int)str::Len(body);
+        int bi = 0;
+        SkipSpacesUtf8(body, blen, bi);
+        int cp = bi < blen ? Utf8CodepointNext(body, blen, bi) : 0;
+        if (cp == ':' || cp == 0xFF1A) {
+            SkipSpacesUtf8(body, blen, bi);
+            body += bi;
+        }
+    }
+    if (!body[0]) {
+        return;
+    }
+    const char* cut = str::Find(body, "中共");
+    const char* yhit = nullptr;
+    for (int y = 1990; y <= 2040; y++) {
+        char buf[16];
+        snprintf(buf, (int)sizeof(buf), "%d\xE5\xB9\xB4", y);
+        const char* h = str::Find(body, buf);
+        if (h && OfficialYearHitIsIssuerDate(h) && (!yhit || h < yhit)) {
+            yhit = h;
+        }
+    }
+    if (yhit && (!cut || yhit < cut)) {
+        cut = yhit;
+    }
+    // 「2021年网络安全…汇总表」starts with a year — that is the title, not a 落款.
+    int preG = 0;
+    if (cut && cut > body) {
+        char save = *cut;
+        *(char*)cut = 0;
+        preG = GlyphCount(body);
+        *(char*)cut = save;
+    }
+    if (cut && cut != body && preG >= 8) {
+        s[(int)(cut - s)] = 0;
+        str::TrimWSInPlace(s, str::TrimOpt::Both);
+    }
+}
+
+// Last 函末「附件：浙江省…一本账」name before a later bare 附件 heading.
+static const char* OfficialAppendixCiteNameBefore(const Vec<ScanLine>& lines, int beforeIdx, int beforePage) {
+    const char* best = nullptr;
+    int lim = (beforeIdx >= 0 && beforeIdx <= lines.Size()) ? beforeIdx : lines.Size();
+    for (int k = 0; k < lim; k++) {
+        if (!lines[k].text) {
+            continue;
+        }
+        if (beforePage >= 1 && lines[k].srcPage >= beforePage) {
+            continue;
+        }
+        const char* name = OfficialUnnumberedAppendixColonName(lines[k].text);
+        if (name && LooksLikeOfficialAppendixHeadingName(name)) {
+            best = name;
+        }
+    }
+    return best;
+}
+
 static bool LooksLikeOfficialFubiaoTitleLine(const char* s) {
     if (!s || !s[0] || LooksLikeOfficialBoilerplate(s) || LooksLikeOfficialSpecOrFormLine(s) ||
         LooksLikeOfficialFillNotesHeader(s) || LineLooksLikePageNumber(s)) {
@@ -4881,6 +5115,8 @@ static bool LooksLikeOfficialFubiaoTitleLine(const char* s) {
     return HasLetterOrCjk(s);
 }
 
+static bool LooksLikeOfficialFubiaoTitleLine(const char* s);
+static bool OfficialDocTitleNeedsWrap(const char* s);
 static bool ShouldMergeOfficialAppendixTitleWrap(const ScanLine& a, const ScanLine& b) {
     if (a.srcPage != b.srcPage || !a.text || !b.text) {
         return false;
@@ -4903,11 +5139,19 @@ static bool ShouldMergeOfficialAppendixTitleWrap(const ScanLine& a, const ScanLi
     bool aIndex = colonList || ma.type == MarkerType::ArabicDot;
     bool aFubiaoNeedName =
         ma.type == MarkerType::FormTable && restG >= 2 && restG <= 16 && !OfficialNameLooksLikeAttachmentIndex(a.text);
-    if (!aBare && !aIndex && !aFubiaoNeedName) {
+    const char* aRest = a.text + (ma.prefixLength > 0 ? ma.prefixLength : 0);
+    int aRestLen = (int)str::Len(aRest);
+    int aRi = 0;
+    SkipSpacesUtf8(aRest, aRestLen, aRi);
+    aRest += aRi;
+    bool aNeedsTitleWrap =
+        ma.type == MarkerType::Appendix && restG >= 2 &&
+        (OfficialDocTitleNeedsWrap(aRest) || TitleNeedsWrapContinuation(a.text) || LooksLikeOfficialDraftParen(b.text));
+    if (!aBare && !aIndex && !aFubiaoNeedName && !aNeedsTitleWrap) {
         return false;
     }
     // 9.…（模板） already complete: do not glue the next 表/承诺书 as a wrap.
-    if (!aBare && OfficialAttachLineNameComplete(a.text) && !LooksLikeOfficialTemplateParen(b.text)) {
+    if (!aBare && OfficialAttachLineNameComplete(a.text) && !LooksLikeOfficialDraftParen(b.text) && !aNeedsTitleWrap) {
         return false;
     }
     if (!HasLetterOrCjk(b.text) || LineLooksLikePageNumber(b.text)) {
@@ -4921,7 +5165,14 @@ static bool ShouldMergeOfficialAppendixTitleWrap(const ScanLine& a, const ScanLi
         if (!LooksLikeOfficialFubiaoTitleLine(b.text) && !OfficialNameLooksLikeAttachmentIndex(b.text)) {
             return false;
         }
-    } else if (!OfficialNameLooksLikeAttachmentIndex(b.text)) {
+    } else if (aNeedsTitleWrap) {
+        if (LooksLikeOfficialDraftParen(b.text)) {
+            // ok
+        } else if (!HasLetterOrCjk(b.text) || GlyphCount(b.text) > 36) {
+            return false;
+        }
+    } else if (!OfficialNameLooksLikeAttachmentIndex(b.text) &&
+               !(aBare && ma.type == MarkerType::Appendix && LooksLikeOfficialAppendixHeadingName(b.text))) {
         int bMajor = 0;
         int bSub = 0;
         const char* bName = nullptr;
@@ -4932,8 +5183,8 @@ static bool ShouldMergeOfficialAppendixTitleWrap(const ScanLine& a, const ScanLi
         }
     }
     float gap = b.y - (a.y + a.dy);
-    float lim = a.dy > 6 ? a.dy * (aBare || aFubiaoNeedName ? 3.2f : 1.55f) : 14;
-    if ((aBare || aFubiaoNeedName) && lim < 36) {
+    float lim = a.dy > 6 ? a.dy * (aBare || aFubiaoNeedName || aNeedsTitleWrap ? 3.2f : 1.55f) : 14;
+    if ((aBare || aFubiaoNeedName || aNeedsTitleWrap) && lim < 36) {
         lim = 36;
     }
     if (gap < -a.dy * 0.85f || gap > lim) {
@@ -4943,7 +5194,74 @@ static bool ShouldMergeOfficialAppendixTitleWrap(const ScanLine& a, const ScanLi
     if (dx < 0) {
         dx = -dx;
     }
-    return dx <= (aBare || aFubiaoNeedName ? 220.f : 48.f);
+    return dx <= (aBare || aFubiaoNeedName || aNeedsTitleWrap ? 220.f : 48.f);
+}
+
+static bool ScanLineLooksVerticalRun(const ScanLine& sl) {
+    if (!sl.text || sl.dx < 1.f || sl.dy < 1.f) {
+        return false;
+    }
+    return sl.dy > sl.dx * 2.2f && GlyphCount(sl.text) >= 6;
+}
+
+// Landscape 附件 is often left of a tall vertical title (一本账S1); y-gap wrap fails.
+static int FindOfficialAppendixHeadingNameNear(const Vec<ScanLine>& lines, int markIdx) {
+    if (markIdx < 0 || markIdx >= lines.Size() || !lines[markIdx].text) {
+        return -1;
+    }
+    const ScanLine& a = lines[markIdx];
+    HeadingMarker ma = ParseHeadingMarker(a.text);
+    int restG = ma.prefixLength > 0 ? GlyphCount(a.text + ma.prefixLength) : GlyphCount(a.text);
+    if (ma.type != MarkerType::Appendix || restG >= 2) {
+        return -1;
+    }
+    int best = -1;
+    float bestScore = -1e9f;
+    for (int j = 0; j < lines.Size(); j++) {
+        if (j == markIdx || !lines[j].text || lines[j].srcPage != a.srcPage) {
+            continue;
+        }
+        int g = GlyphCount(lines[j].text);
+        if (!LooksLikeOfficialAppendixHeadingName(lines[j].text) || g < 8) {
+            continue;
+        }
+        float dx = a.x - lines[j].x;
+        if (dx < 0) {
+            dx = -dx;
+        }
+        bool vert = ScanLineLooksVerticalRun(lines[j]) || ScanLineLooksVerticalRun(a);
+        if (dx > (vert ? 80.f : 220.f)) {
+            continue;
+        }
+        if (!vert && !ShouldMergeOfficialAppendixTitleWrap(a, lines[j])) {
+            // After /Rotate the title sits below 附件 with a gap wider than wrap.
+            if (g < 10 || dx > 120.f) {
+                continue;
+            }
+        }
+        float score = (float)g * 2.f - dx;
+        if (vert) {
+            score += 40.f;
+        }
+        if (lines[j].fontSize > a.fontSize + 0.05f) {
+            score += 15.f;
+        }
+        if (OfficialNameLooksLikeAttachmentIndex(lines[j].text)) {
+            score += 80.f;
+        }
+        if (OfficialNameStartsWithTableSerial(lines[j].text)) {
+            score -= 80.f;
+        }
+        float gapY = lines[j].y - a.y;
+        if (gapY > 0 && gapY < 90.f) {
+            score += 25.f;
+        }
+        if (score > bestScore) {
+            bestScore = score;
+            best = j;
+        }
+    }
+    return best;
 }
 
 static bool LineLooksLikeQaAnswerStart(const char* s) {
@@ -5073,6 +5391,9 @@ static bool LooksLikeOfficialCoverTitleFragment(const char* s) {
                                     !str::EndsWith(s, "意见") && !str::EndsWith(s, "决定")));
 }
 
+static bool OfficialDocTitleNeedsWrap(const char* s);
+static bool OfficialTitleHasDocSuffix(const char* s);
+
 static bool OfficialDocTitleNeedsWrap(const char* s) {
     if (!s || !s[0]) {
         return false;
@@ -5087,6 +5408,15 @@ static bool OfficialDocTitleNeedsWrap(const char* s) {
         return true;
     }
     if (OfficialTitleIsIssuerBanner(s)) {
+        return true;
+    }
+    // Split 规章 title: "江西省…国有资产" + "配置管理暂行办法"
+    // Also "…数字政府建设" + "领导小组2026年工作要点" / "…领导小" + "组2026…"
+    if (!OfficialTitleHasDocSuffix(s) && !str::Find(s, "。") && GlyphCount(s) >= 8 && GlyphCount(s) <= 40 &&
+        (str::StartsWith(s, "江西") || str::StartsWith(s, "关于") || str::Find(s, "行政事业") ||
+         str::Find(s, "国有资产") || str::Find(s, "数字政府") || str::Find(s, "政府职能") || str::EndsWith(s, "资产") ||
+         str::EndsWith(s, "单位") || str::EndsWith(s, "机关") || str::EndsWith(s, "建设") ||
+         str::EndsWith(s, "领导小") || str::EndsWith(s, "和"))) {
         return true;
     }
     if ((str::Find(s, "关于印发") || str::Find(s, "印发《") || str::StartsWith(s, "关于") ||
@@ -5135,6 +5465,73 @@ static bool LooksLikeOfficialDocPreamble(const char* s) {
         return true;
     }
     return str::Find(s, "结合") && str::Find(s, "实际") && str::Find(s, "制定本");
+}
+
+// A line such as 《……通知》（国办发〔2015〕18号） is a citation of
+// another document in the body, not the title of the document being read.
+// Distinguishing patterns:
+//   A. Starts with 《 / 〈 and carries a doc-number bracket after 》/〉.
+//   B. Contains 《…》〔…〕号 + trailing body verb "要求"/"规定".
+//   C. Truncated half-title that ends mid-doc-number like 〔2014〕 with
+//      no closing 〕数字号 — a real title on its own line never ends
+//      with a dangling bracket; this is always a body paragraph split
+//      across OCR lines where we only grabbed the first fragment.
+static bool LooksLikeOfficialQuotedDocumentCitation(const char* s) {
+    if (!s || !s[0]) {
+        return false;
+    }
+    // Pattern A: starts with 《 and carries a doc-number bracket after 》
+    if (str::StartsWith(s, "《") || str::StartsWith(s, "〈")) {
+        const char* close = str::Find(s, str::StartsWith(s, "《") ? "》" : "〉");
+        if (close && close[3]) {
+            const char* suffix = close + 3;
+            if (str::Find(suffix, "〔") && (str::Find(suffix, "号") || str::Find(suffix, "发"))) {
+                return true;
+            }
+        }
+    }
+    // Pattern B: 《…》〔…〕号 followed by body verb
+    const char* open = str::Find(s, "《");
+    if (!open) {
+        open = str::Find(s, "〈");
+    }
+    if (open && str::Find(s, "〔") && str::Find(s, "号")) {
+        if (str::Find(s, "要求") || str::Find(s, "规定") || str::Find(s, "等要求") ||
+            str::Find(s, "有关要求") || str::Find(s, "有关规定")) {
+            return true;
+        }
+    }
+    // Pattern C (truncation): string contains 〔 but the final 〕 is not
+    // followed by a digit — a real doc-number always continues with
+    // 〕28号; if it ends right after 〕 we only got the first chunk of a
+    // body paragraph split across OCR lines.
+    int len = (int)str::Len(s);
+    if (str::Find(s, "〔")) {
+        // walk backwards from end looking for the final 〕
+        int lastCloseIdx = -1;
+        for (int idx = len - 1; idx >= 0; ) {
+            int prev = idx;
+            int cp = Utf8CodepointPrev(s, len, prev); // prev updated to start of prev codepoint
+            if (cp == 0x3015 /* 〕 */) {
+                lastCloseIdx = prev;
+                break;
+            }
+            if (prev <= 0) break;
+            idx = prev - 1;
+        }
+        if (lastCloseIdx >= 0) {
+            if (lastCloseIdx + 3 >= len) {
+                // 〕 is at the very end — truncated, no doc number
+                return true;
+            }
+            char nc = s[lastCloseIdx + 3];
+            if (!(nc >= '0' && nc <= '9')) {
+                // 〕 followed by non-digit — doc number is incomplete
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 static bool ShouldMergeOfficialDocTitleWrap(const ScanLine& a, const ScanLine& b) {
@@ -5210,6 +5607,13 @@ static char* JoinAppendixNumberTitle(int n, const char* name, int sub = 0) {
         snprintf(prefix, (int)sizeof(prefix), "\xE9\x99\x84\xE4\xBB\xB6%d ", n);
     }
     return str::Join(prefix, name);
+}
+
+static char* JoinBareAppendixTitle(const char* name) {
+    if (!name || !name[0]) {
+        return nullptr;
+    }
+    return str::Format("附件 %s", name);
 }
 
 static char* RewriteAppendixColonListTitle(const char* s);
@@ -6312,6 +6716,9 @@ static void TrimTitleToFirstSentence(char* s) {
             reason = "sentence-end";
         } else if (comma && SentenceEndWithinGlyphs(s, len, i, 24)) {
             reason = "comma-before-period";
+        } else if (comma && str::StartsWith(s + i, "请各")) {
+            cut = true;
+            reason = "comma-qingge";
         } else if (suffixG >= 12) {
             cut = true;
             reason = "suffix-long";
@@ -6803,6 +7210,10 @@ static int FindNextEmbeddedHeading(const char* s) {
                 } else if (afterBoundary && leadG >= 2) {
                     SkipWsUtf8(s, len, save);
                     return save;
+                } else if (firstRank < 1 && leadG >= 6 && m.type == MarkerType::ChineseParen && restG >= 6 &&
+                           !LooksLikeOfficialTiaoKuanCite(s + save)) {
+                    // 财政局…本（一）地方政府… — wrap leftover glued onto the heading.
+                    return save;
                 }
             }
         }
@@ -7253,6 +7664,40 @@ static int TitleMatchScore(const char* a, const char* b) {
     return 0;
 }
 
+// The generic printed-TOC parser can see two near-overlaid OCR rows as
+// different rows when the page token was recognized differently. At this
+// point destination resolution has completed, so (source TOC page,
+// destination page, title match) is the reliable identity. This is narrower
+// than raw-line de-duplication and deliberately leaves same-titled headings
+// that lead to different document pages intact.
+static void DropMappedDuplicatePrintedHits(Vec<PrintedHit>& hits) {
+    int dropped = 0;
+    for (int i = 0; i < hits.Size(); i++) {
+        for (int j = i + 1; j < hits.Size();) {
+            bool same = hits[i].srcPage == hits[j].srcPage && hits[i].destPage > 0 &&
+                        hits[i].destPage == hits[j].destPage && TitleMatchScore(hits[i].title, hits[j].title) >= 80;
+            if (!same) {
+                j++;
+                continue;
+            }
+            // For a dotted/garbled variant, retain the shorter clean title.
+            int ni = GlyphCount(hits[i].title);
+            int nj = GlyphCount(hits[j].title);
+            if (nj < ni) {
+                PrintedHit t = hits[i];
+                hits[i] = hits[j];
+                hits[j] = t;
+            }
+            logf("TOC printed-duplicate drop tocPage=%d dest=%d keep=%s drop=%s\n", hits[i].srcPage, hits[i].destPage,
+                 hits[i].title ? hits[i].title : "", hits[j].title ? hits[j].title : "");
+            str::Free(hits[j].title);
+            hits.RemoveAt(j);
+            dropped++;
+        }
+    }
+    logf("TOC printed-duplicate dropped=%d remaining=%d\n", dropped, hits.Size());
+}
+
 static void CompleteTruncatedBookQuotes(const Vec<ScanLine>& lines, Vec<PrintedHit>& hits) {
     for (int i = 0; i < hits.Size(); i++) {
         char* t = hits[i].title;
@@ -7604,6 +8049,15 @@ static void RepairPrintedHitTitles(Vec<PrintedHit>& hits) {
     for (int i = 0; i < hits.Size(); i++) {
         PolishPrintedHitTitle(&hits[i].title);
     }
+    // Trace the generic printed-TOC path before any destination correction.
+    // Unlike the book parser, this is the path selected for the 149-page
+    // textbook, so this snapshot identifies the first stage containing a
+    // duplicate pair.
+    for (int i = 0; i < hits.Size(); i++) {
+        const PrintedHit& h = hits[i];
+        logf("TOC printed-hit stage=parsed idx=%d tocPage=%d x=%.1f y=%.1f printed=%d dest=%d title=%s\n", i, h.srcPage,
+             h.srcX, h.srcY, h.printed, h.destPage, h.title ? h.title : "");
+    }
 }
 
 static void PrefixSectionNumber(PrintedHit& h, int chap, int sec) {
@@ -7810,6 +8264,7 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask);
 static void CollectOfficialAppendixNumNodes(const Vec<ExtractedTocItem*>& nodes, Vec<ExtractedTocItem*>& out);
 static void DropOfficialArabicDotDuplicateAppendices(Vec<ExtractedTocItem*>& nodes,
                                                      const Vec<ExtractedTocItem*>& appendixNodes);
+static bool PageHasOfficialSealGrid(const Vec<ScanLine>& lines, int pageNo);
 static void InsertOfficialDocTitles(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedTocItem*>& roots,
                                     const char* filePath = nullptr);
 static void StripOfficialDocTitleGluedPreamble(char* s);
@@ -7817,13 +8272,20 @@ static void StripOfficialIssuerPrefixInPlace(char* title);
 static bool OfficialTitleHasDocSuffix(const char* s);
 static char* OfficialIssuedDocTitleFromCover(const char* s);
 static char* OfficialPrepareInsertedDocTitle(const char* title);
+static char* JoinOfficialTitleRun(const Vec<ScanLine>& lines, int start, int* usedExtra);
 static void RewriteOfficialTitleOcr(char** titleOut);
 static void MergeOfficialDuplicateAppendices(Vec<ExtractedTocItem*>& roots);
 static void MergeOfficialCoverAppendixWithRealHeading(Vec<ExtractedTocItem*>& roots);
+static bool OfficialAppendixTitleLooksLikeRegulation(const char* title);
+static bool OfficialAppendixSameCompound(const HeadingMarker& a, const HeadingMarker& b);
+static bool OfficialAppendixRestNamesMatch(const char* a, const char* b);
+static bool OfficialAttachBodyNamesMatch(const char* a, const char* b);
+static void OfficialStripAttachCompareDecor(char* s);
 static const char* OfficialAppendixRestAfterPrefix(const char* title);
 static void NestOfficialAppendixUnderFrontLetter(Vec<ExtractedTocItem*>& roots);
 static bool OfficialTitleIsDocRoot(const char* s);
 static void TrimMashedOfficialAttachName(char* title);
+static bool OfficialDunhaoLooksLikeTableColumnCell(const char* s);
 static bool OfficialAttachLooksLikeFieldLabel(const char* s);
 static bool LooksLikeOfficialAttachTableBodyTitle(const char* s);
 static void FoldRedundantOfficialAppendixTitles(Vec<ExtractedTocItem*>& nodes);
@@ -9319,6 +9781,24 @@ static bool TryPrintedToc(EngineBase* engine, const Vec<ScanLine>& lines, const 
             break;
         }
     }
+    // Candidate discovery can temporarily walk past the directory while it
+    // tolerates OCR-damaged pages. The final layout decision above is the
+    // authoritative range: never carry a body-page heading into a
+    // printed-TOC result merely because it happened to parse as a row.
+    int droppedOutsideToc = 0;
+    for (int i = hits.Size() - 1; i >= 0; i--) {
+        if (hits[i].srcPage >= tocStart && hits[i].srcPage <= tocEnd) {
+            continue;
+        }
+        logf("TOC printed-range drop tocPage=%d range=%d-%d title=%s\n", hits[i].srcPage, tocStart, tocEnd,
+             hits[i].title ? hits[i].title : "");
+        str::Free(hits[i].title);
+        hits.RemoveAt((size_t)i);
+        droppedOutsideToc++;
+    }
+    if (droppedOutsideToc > 0) {
+        logf("TOC printed-range dropped=%d\n", droppedOutsideToc);
+    }
     SortPrintedHits(hits);
     if (opts.repairMissingSectionNumbers) {
         RepairPrintedHitTitles(hits);
@@ -9361,6 +9841,12 @@ static bool TryPrintedToc(EngineBase* engine, const Vec<ScanLine>& lines, const 
         FindDestOnPage(lines, dest, hits[i].title, &hits[i].x, &hits[i].y);
     }
     EnforceMonotonicPrintedDests(hits);
+    DropMappedDuplicatePrintedHits(hits);
+    for (int i = 0; i < hits.Size(); i++) {
+        const PrintedHit& h = hits[i];
+        logf("TOC printed-hit stage=mapped idx=%d tocPage=%d x=%.1f y=%.1f printed=%d dest=%d title=%s\n", i, h.srcPage,
+             h.srcX, h.srcY, h.printed, h.destPage, h.title ? h.title : "");
+    }
     int nBodyHit2 = 0;
     int nDestEqPrinted2 = 0;
     int nDestBeforeToc2 = 0;
@@ -10473,6 +10959,43 @@ static void KeepOfficialFormTableSpine(Vec<InferHeadingCand>& cands) {
     }
 }
 
+// Bare 附件 / 附件 浙江省…“一本账S1” is easy for DP to drop (2 glyphs, or no 表/清单 suffix).
+static void KeepOfficialAppendixSpine(Vec<InferHeadingCand>& cands) {
+    for (int i = 0; i < cands.Size(); i++) {
+        InferHeadingCand& c = cands[i];
+        if (c.marker.type != MarkerType::Appendix || !c.title) {
+            continue;
+        }
+        if (LooksLikeOfficialUnnumberedAppendixColonCite(c.title) || LooksLikeOfficialAppendixCiteFragment(c.title)) {
+            continue;
+        }
+        int g = c.glyphs > 0 ? c.glyphs : GlyphCount(c.title);
+        if (g < 2 || g > kExtractPdfToc.headingMaxGlyphs) {
+            continue;
+        }
+        const char* rest = c.title + c.marker.prefixLength;
+        int restG = GlyphCount(rest);
+        bool bareMarker = restG <= 1;
+        bool namedForm = OfficialNameLooksLikeAttachmentIndex(rest) || OfficialTitleHasDocSuffix(rest) ||
+                         LooksLikeOfficialDraftParen(rest);
+        // A bare "附件" needs preserving, but an arbitrary unpunctuated table
+        // cell after 附件 must not become a forced TOC node. The unusual free-form
+        // appendix names need both a strong candidate score and title styling.
+        bool styledFreeForm =
+            LooksLikeOfficialAppendixHeadingName(rest) && c.localScore >= 70 && (c.bold || c.fontSize >= 14.f);
+        if (!bareMarker && !namedForm && !styledFreeForm) {
+            continue;
+        }
+        c.dpKeep = true;
+        if (c.inferredLevel < 1) {
+            c.inferredLevel = c.levelGuess > 0 ? c.levelGuess : 1;
+        }
+        if (c.confidence < 60) {
+            c.confidence = 60;
+        }
+    }
+}
+
 // 1. 2. 3. under （一） must stay even when DP keeps only a short "3." and drops the long 1. 2.
 // GB 问答 also allows 一、 to skip （一） and keep a single 1. 2. 3. thread across 二、三、
 // and across （一） children of a question.
@@ -11224,7 +11747,7 @@ static void SalvageSequenceGaps(Vec<InferHeadingCand>& cands, Vec<InferHeadingCa
             if (LooksLikeOfficialUnnumberedAppendixColonCite(sl.text)) {
                 continue;
             }
-            if (OfficialLineLooksLikeConjunctionBodyWrap(sl.text)) {
+            if (OfficialLineLooksLikeConjunctionBodyWrap(sl.text) || LooksLikeOfficialOutlineWrapBody(sl.text)) {
                 continue;
             }
             if (LooksLikeOfficialFillNotesHeader(sl.text) || LineStartsWithDotThenTitle(sl.text) ||
@@ -11358,6 +11881,15 @@ struct OfficialAttachManifestItem {
     float y = 0;
 };
 
+// Keep the source label for an attachment-like page.  "附件", "附表" and
+// "附录" are all attachment structures, but they are not interchangeable in
+// a document's published terminology.
+enum class OfficialAttachLabel {
+    Appendix,
+    FormTable,
+    Addendum,
+};
+
 struct OfficialAttachSeg {
     int number = 0;
     int subNumber = 0;
@@ -11365,6 +11897,7 @@ struct OfficialAttachSeg {
     int endPage = 0;
     float startY = 0;
     char* title = nullptr;
+    OfficialAttachLabel label = OfficialAttachLabel::Appendix;
     OfficialAttachKind kind = OfficialAttachKind::Unknown;
     int score = 0;
 };
@@ -11683,16 +12216,79 @@ static bool InferHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedT
                         g = GlyphCount(title);
                     }
                 }
-                if (i + 2 < lines.Size() && LooksLikeOfficialTemplateParen(lines[i + 2].text) &&
-                    GlyphCount(title) <= 40) {
-                    char* neu = str::Join(title, lines[i + 2].text);
-                    if (neu) {
+                // Keep joining wrap tails / （征求意见稿） after any first glue.
+                while (skipUntil + 1 < lines.Size() && lines[skipUntil + 1].text && GlyphCount(title) <= 72) {
+                    const ScanLine& nx = lines[skipUntil + 1];
+                    if (ParseHeadingMarker(nx.text).rank >= 1 || LineLooksLikePageNumber(nx.text)) {
+                        break;
+                    }
+                    const char* rest = OfficialAppendixRestAfterPrefix(title);
+                    bool need = LooksLikeOfficialDraftParen(nx.text) ||
+                                (rest && OfficialDocTitleNeedsWrap(rest) && HasLetterOrCjk(nx.text) &&
+                                 GlyphCount(nx.text) >= 2 && GlyphCount(nx.text) <= 28);
+                    if (!need) {
+                        break;
+                    }
+                    char* neu = str::Join(title, nx.text);
+                    if (!neu) {
+                        break;
+                    }
+                    str::Free(extraMerge);
+                    extraMerge = neu;
+                    title = extraMerge;
+                    skipUntil++;
+                    g = GlyphCount(title);
+                }
+            }
+        }
+        if (!extraMerge && !merged) {
+            int nameAt = FindOfficialAppendixHeadingNameNear(lines, i);
+            if (nameAt >= 0 && lines[nameAt].text) {
+                extraMerge = str::Join(sl.text, " ", lines[nameAt].text);
+                if (extraMerge) {
+                    RewriteOfficialAppendixCompoundTitle(&extraMerge);
+                    title = extraMerge;
+                    if (nameAt > i) {
+                        skipUntil = nameAt;
+                    }
+                    g = GlyphCount(title);
+                    while (skipUntil + 1 < lines.Size() && lines[skipUntil + 1].text && GlyphCount(title) <= 72) {
+                        const ScanLine& nx = lines[skipUntil + 1];
+                        if (ParseHeadingMarker(nx.text).rank >= 1 || LineLooksLikePageNumber(nx.text)) {
+                            break;
+                        }
+                        const char* rest = OfficialAppendixRestAfterPrefix(title);
+                        bool need = LooksLikeOfficialDraftParen(nx.text) ||
+                                    (rest && OfficialDocTitleNeedsWrap(rest) && HasLetterOrCjk(nx.text) &&
+                                     GlyphCount(nx.text) >= 2 && GlyphCount(nx.text) <= 28);
+                        if (!need) {
+                            break;
+                        }
+                        char* neu = str::Join(title, nx.text);
+                        if (!neu) {
+                            break;
+                        }
                         str::Free(extraMerge);
                         extraMerge = neu;
                         title = extraMerge;
-                        skipUntil = i + 2;
+                        skipUntil++;
                         g = GlyphCount(title);
                     }
+                }
+            } else {
+                const char* citeName = OfficialAppendixCiteNameBefore(lines, i, sl.srcPage);
+                if (citeName) {
+                    char* named = str::Dup(citeName);
+                    TrimOfficialAppendixIssuerTail(named);
+                    if (named && named[0] && LooksLikeOfficialAppendixHeadingName(named)) {
+                        extraMerge = str::Join(sl.text, " ", named);
+                        if (extraMerge) {
+                            RewriteOfficialAppendixCompoundTitle(&extraMerge);
+                            title = extraMerge;
+                            g = GlyphCount(title);
+                        }
+                    }
+                    str::Free(named);
                 }
             }
         }
@@ -12025,6 +12621,7 @@ static bool InferHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedT
             int dropDense = 0;
             int dropNarrow = 0;
             bool dropSpec = false;
+            bool dropAttachmentTable = false;
             if (lvl >= 1 && marker.type == MarkerType::ArabicDot && LooksLikeOfficialSpecOrFormLine(titlePiece) &&
                 !str::Find(titlePiece, "@") && !str::Find(piece, "@")) {
                 dropSpec = true;
@@ -12049,6 +12646,12 @@ static bool InferHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedT
                 dropSpec = true;
             }
             if (LooksLikeOfficialTiaoKuanCite(titlePiece) || LooksLikeOfficialTiaoKuanCite(piece)) {
+                dropSpec = true;
+            }
+            if (LooksLikeOfficialOutlineWrapBody(titlePiece) || LooksLikeOfficialOutlineWrapBody(piece)) {
+                dropSpec = true;
+            }
+            if (OfficialNameStartsWithTableSerial(titlePiece) || OfficialNameStartsWithTableSerial(piece)) {
                 dropSpec = true;
             }
             // Trim at ， can strip a trailing ？; only drop when the original line
@@ -12107,8 +12710,24 @@ static bool InferHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedT
                     lvl = 0;
                 }
             }
-            if (lvl >= 1 && OfficialAttachShouldDropHeading(attachLay, sl.srcPage, marker, titlePiece)) {
-                lvl = 0;
+            if (lvl >= 1) {
+                bool dropAttach = OfficialAttachShouldDropHeading(attachLay, sl.srcPage, marker, titlePiece);
+                int table =
+                    sl.srcPage >= 1 && sl.srcPage < attachLay.pageTable.Size() ? attachLay.pageTable[sl.srcPage] : -1;
+                int attach = sl.srcPage >= 1 && sl.srcPage < attachLay.pageAttachNum.Size()
+                                 ? attachLay.pageAttachNum[sl.srcPage]
+                                 : -1;
+                int kind =
+                    sl.srcPage >= 1 && sl.srcPage < attachLay.pageKind.Size() ? attachLay.pageKind[sl.srcPage] : -1;
+                logf(
+                    "TOC attachment-candidate page=%d keep=%d table=%d attachment=%d kind=%d marker=%d rank=%d "
+                    "title=%s\n",
+                    sl.srcPage, (int)!dropAttach, table, attach, kind, (int)marker.type, marker.rank,
+                    titlePiece ? titlePiece : "");
+                if (dropAttach) {
+                    dropAttachmentTable = true;
+                    lvl = 0;
+                }
             }
             if (lvl >= 1 &&
                 (LooksLikeOfficialAppendixCiteFragment(titlePiece) || LooksLikeOfficialAppendixCiteFragment(piece))) {
@@ -12131,6 +12750,27 @@ static bool InferHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedT
                         break;
                     }
                 }
+                if (!laterReal) {
+                    for (int li = i + 1; li < lines.Size(); li++) {
+                        const char* lt = lines[li].text;
+                        if (!lt || lines[li].srcPage < sl.srcPage) {
+                            continue;
+                        }
+                        if (lines[li].srcPage == sl.srcPage && lines[li].y <= sl.y + 8.f) {
+                            continue;
+                        }
+                        HeadingMarker lm = ParseHeadingMarker(lt);
+                        if (lm.type != MarkerType::Appendix) {
+                            continue;
+                        }
+                        if (LooksLikeOfficialUnnumberedAppendixColonCite(lt) ||
+                            LooksLikeOfficialAppendixCiteFragment(lt)) {
+                            continue;
+                        }
+                        laterReal = true;
+                        break;
+                    }
+                }
                 if (laterReal) {
                     lvl = 0;
                 }
@@ -12144,7 +12784,7 @@ static bool InferHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedT
                     DbgFace09("C", "ExtractPdfToc.cpp:InferHeadings.lvl0", titlePiece, extra);
                 }
                 // #endregion
-                if (numbered > 0 && marker.number >= 1 && HeadingSchemaKey(marker) > 0 &&
+                if (!dropAttachmentTable && numbered > 0 && marker.number >= 1 && HeadingSchemaKey(marker) > 0 &&
                     (str::Find(titlePiece, "@") || str::Find(piece, "@") ||
                      (!LooksLikeOfficialSpecOrFormLine(titlePiece) && !LooksLikeOfficialSpecOrFormLine(piece))) &&
                     !LooksLikeDunhaoBodyRun(piece) && !LooksLikeDunhaoBodyRun(titlePiece) &&
@@ -12222,6 +12862,7 @@ static bool InferHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedT
     RunHeadingDp(cands);
     KeepOfficialDunhaoSpine(cands);
     KeepOfficialFormTableSpine(cands);
+    KeepOfficialAppendixSpine(cands);
     KeepOfficialArabicListSpine(cands);
     KeepOfficialChineseParenSpine(cands);
     SalvageOfficialDunhaoFromLines(cands, lines, schema);
@@ -12418,6 +13059,31 @@ static void LogBookExtractFail(const char* name, const Vec<ExtractedTocItem*>& r
 
 static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
     {
+        Vec<ScanLine> lines;
+        ScanLine a = TestScanLineXYP("江西省人民政府办公厅美于印发江西省新型", 1, 72, 40);
+        ScanLine b = TestScanLineXYP("基础设施项目建设三年行动计划", 1, 92, 62);
+        ScanLine c = TestScanLineXYP("(2020-2022年）的通知", 1, 138, 84);
+        a.fontSize = b.fontSize = c.fontSize = 20;
+        a.dy = b.dy = c.dy = 16;
+        lines.Append(a);
+        lines.Append(b);
+        lines.Append(c);
+        int usedExtra = 0;
+        char* joined = JoinOfficialTitleRun(lines, 0, &usedExtra);
+        char* title = OfficialPrepareInsertedDocTitle(joined);
+        bool ok = title && str::Eq(title, "关于印发江西省新型基础设施项目建设三年行动计划(2020-2022年）的通知") &&
+                  usedExtra == 2;
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            logf("Official title OCR/issuer normalization failed: %s\n", title ? title : "(null)");
+        }
+        str::Free(joined);
+        str::Free(title);
+        FreeScanLines(lines);
+    }
+    {
         Vec<ScanLine> junk;
         junk.Append(TestScanLine("薈ᦒ酉⒉႕ነ❢❢❢❢❢❢ㆅ㈦ㆆ", 40));
         junk.Append(TestScanLine("薈ᦒ酉⒉႕ነ❢❢❢❢❢❢ㆅ㈦ㆆ", 60));
@@ -12436,9 +13102,15 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         cleanOff.Append(TestScanLine("一、指导思想", 40));
         cleanOff.Append(TestScanLine("二、工作目标", 60));
         cleanOff.Append(TestScanLine("以习近平新时代中国特色社会主义思想为指导", 80));
+        Vec<ScanLine> ybzTable;
+        ybzTable.Append(TestScanLine("附件", 40));
+        ybzTable.Append(TestScanLine("浙江省公权力大数据监督应用“一本账S1”", 60));
+        for (int k = 0; k < 8; k++) {
+            ybzTable.Append(TestScanLine("牵头单位配合单位应用谋划建设进度试点单位", 80 + k * 12));
+        }
         bool ok = ScanLinesLookLikeCidFontGarbage(junk) && !ScanLinesLookLikeCidFontGarbage(toc) &&
                   !ScanLinesLookLikeCidFontGarbage(cover) && ScanLinesLookLikeCidFontGarbage(mash) &&
-                  !ScanLinesLookLikeCidFontGarbage(cleanOff);
+                  !ScanLinesLookLikeCidFontGarbage(cleanOff) && !ScanLinesLookLikeCidFontGarbage(ybzTable);
         if (ok) {
             (*pass)++;
         } else {
@@ -12451,6 +13123,7 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         FreeScanLines(cover);
         FreeScanLines(mash);
         FreeScanLines(cleanOff);
+        FreeScanLines(ybzTable);
     }
     {
         Vec<ScanLine> tall;
@@ -13225,6 +13898,10 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
     {
         // Multi-doc 规章: large 办法 title above 第一章 nests that spine; prior 第N章 stay under first doc.
         Vec<ScanLine> lines;
+        ScanLine notice = TestScanLineXYP(
+            "关于印发《江西省公务员录用实施办法（试行）》江西省公务员转任实施办法（试行）》的通知", 1, 72, 20);
+        notice.fontSize = 18;
+        notice.bold = true;
         ScanLine a1 = TestScanLineXYP("江西省公务员录用实施办法（试行）", 1, 72, 40);
         a1.fontSize = 22;
         a1.bold = true;
@@ -13241,6 +13918,7 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         d1.fontSize = 16;
         ScanLine d2 = TestScanLineXYP("第二章 转任对象和条件", 5, 72, 40);
         d2.fontSize = 16;
+        lines.Append(notice);
         lines.Append(a1);
         lines.Append(c1);
         lines.Append(c5);
@@ -13263,6 +13941,127 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         } else {
             (*fail)++;
             LogBookExtractFail("official-multi-doc-chapter-title", roots);
+        }
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        // 印发通知 + 附件一 split 办法 title + 第一章; later form 附件1 must not steal the 办法.
+        Vec<ScanLine> lines;
+        ScanLine notice =
+            TestScanLineXYP("关于印发江西省省级行政事业单位国有资产配置使用处置管理暂行办法的通知", 1, 72, 40);
+        notice.fontSize = 18;
+        notice.bold = true;
+        lines.Append(notice);
+        lines.Append(TestScanLineXYP("附件一", 3, 104, 100));
+        ScanLine t1 = TestScanLineXYP("江西省省级行政事业单位国有资产", 3, 153, 155);
+        t1.fontSize = 18;
+        t1.bold = true;
+        t1.dx = 315;
+        ScanLine t2 = TestScanLineXYP("配置管理暂行办法", 3, 225, 187);
+        t2.fontSize = 18;
+        t2.bold = true;
+        t2.dx = 167;
+        lines.Append(t1);
+        lines.Append(t2);
+        ScanLine ch = TestScanLineXYP("第一章总则", 3, 259, 251);
+        ch.fontSize = 14;
+        lines.Append(ch);
+        lines.Append(TestScanLineXYP("第一条为规范和加强省级行政事业单位国有资产配置管理", 3, 133, 280));
+        lines.Append(TestScanLineXYP("附件1", 43, 108, 58));
+        ScanLine form =
+            TestScanLineXYP("江西省省级行政事业单位国有资产处置申报审批表（不含省直管单位办公用房）", 43, 128, 85);
+        form.fontSize = 12;
+        lines.Append(form);
+        lines.Append(TestScanLineXYP("年月日", 43, 399, 106));
+        lines.Append(TestScanLineXYP("申报日期", 43, 302, 107));
+        lines.Append(TestScanLineXYP("金额：万元", 43, 579, 112));
+        bool wrapOk = OfficialDocTitleNeedsWrap("江西省省级行政事业单位国有资产") &&
+                      !OfficialDocTitleNeedsWrap("江西省省级行政事业单位国有资产配置管理暂行办法");
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 43, roots);
+        InsertOfficialDocTitles(lines, 43, roots);
+        ExtractedTocItem* banfa = ExtractedFindContaining(roots, "配置管理暂行办法");
+        ExtractedTocItem* ch1 = ExtractedFindContaining(roots, "第一章");
+        ExtractedTocItem* formAp = ExtractedFindContaining(roots, "处置申报审批表");
+        bool nestOk = banfa && ch1 && ExtractedFindContaining(banfa->children, "第一章");
+        bool ok = wrapOk && ran && banfa && ch1 && formAp && nestOk && !str::Find(banfa->title, "年月日") &&
+                  !ExtractedFindContaining(roots, "年月日") && ExtractedCountAppendixNum(roots, 1) >= 2;
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-guoyou-banfa-title", roots);
+        }
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        // 函三行换行 + 附件1 多行要点 + 单独一行（征求意见稿） must stay one bookmark each.
+        bool draftOk = LooksLikeOfficialDraftParen("（征求意见稿）") && LooksLikeOfficialDraftParen("(征求意见稿）") &&
+                       !LooksLikeOfficialDraftParen("（一）固定资产");
+        char* yearTitle = str::Dup("附件1 江西省推进政府职能转变和数字政府建设领导小组2026年工作要点（征求意见稿）");
+        TrimOfficialAppendixIssuerTail(yearTitle);
+        bool yearKeep = yearTitle && str::Find(yearTitle, "2026年工作要点") && str::Find(yearTitle, "征求意见稿");
+        str::Free(yearTitle);
+        Vec<ScanLine> lines;
+        ScanLine t1 = TestScanLineXYP("关于征求《江西省推进政府职能转变和", 1, 131, 430);
+        t1.fontSize = 16;
+        t1.bold = true;
+        lines.Append(t1);
+        ScanLine t2 = TestScanLineXYP("数字政府建设领导小组2026年工作要点", 1, 119, 468);
+        t2.fontSize = 16;
+        t2.bold = true;
+        lines.Append(t2);
+        ScanLine t3 = TestScanLineXYP("（征求意见稿）》意见建议的函", 1, 163, 504);
+        t3.fontSize = 16;
+        t3.bold = true;
+        lines.Append(t3);
+        lines.Append(TestScanLineXYP("附件1", 3, 81, 100));
+        ScanLine a1 = TestScanLineXYP("江西省推进政府职能转变和数字政府建设", 3, 113, 152);
+        a1.fontSize = 18;
+        a1.bold = true;
+        a1.dx = 368;
+        lines.Append(a1);
+        ScanLine a2 = TestScanLineXYP("领导小组2026年工作要点", 3, 178, 188);
+        a2.fontSize = 18;
+        a2.bold = true;
+        a2.dx = 237;
+        lines.Append(a2);
+        ScanLine a3 = TestScanLineXYP("(征求意见稿）", 3, 243, 233);
+        a3.fontSize = 14;
+        lines.Append(a3);
+        lines.Append(TestScanLineXYP("一、深化统筹集约建设", 3, 112, 367));
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 3, roots);
+        InsertOfficialDocTitles(lines, 3, roots);
+        ExtractedTocItem* han = ExtractedFindContaining(roots, "意见建议的函");
+        ExtractedTocItem* ap = ExtractedFindContaining(roots, "附件1");
+        bool orphanDraft = false;
+        bool orphanMid = false;
+        Vec<ExtractedTocItem*> flatChk;
+        FlattenExtractedTocItems(roots, flatChk);
+        for (int i = 0; i < flatChk.Size(); i++) {
+            if (!flatChk[i] || !flatChk[i]->title) {
+                continue;
+            }
+            if (LooksLikeOfficialDraftParen(flatChk[i]->title)) {
+                orphanDraft = true;
+            }
+            if (str::Eq(flatChk[i]->title, "数字政府建设领导小组2026年工作要点") ||
+                str::Eq(flatChk[i]->title, "领导小组2026年工作要点")) {
+                orphanMid = true;
+            }
+        }
+        bool ok = draftOk && yearKeep && ran && han && str::Find(han->title, "数字政府建设领导小组2026年工作要点") &&
+                  str::Find(han->title, "意见建议的函") && !orphanMid && !orphanDraft && ap &&
+                  str::Find(ap->title, "领导小组2026年工作要点") && str::Find(ap->title, "征求意见稿") &&
+                  ExtractedFindContaining(ap->children, "深化统筹");
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-zhengqiu-wrap-title", roots);
         }
         DeleteExtractedTocItems(roots);
         FreeScanLines(lines);
@@ -13906,6 +14705,193 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
             LogBookExtractFail("official-meeting-baoming-dedup", roots);
         }
         FreeOfficialAttachLayout(lay);
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        // 函末「附件：一本账…」is a cite; page-4 bare 附件 + unmarked title is the heading.
+        const char* ybzName = "浙江省公权力大数据监督应用“一本账S1”";
+        ScanLine ybzFu = TestScanLineXYP("附件", 4, 200, 40);
+        ybzFu.fontSize = 16;
+        ScanLine ybzTitle = TestScanLineXYP(ybzName, 4, 120, 70);
+        ybzTitle.fontSize = 16;
+        ybzTitle.dx = 280;
+        bool glueOk = ShouldMergeOfficialAppendixTitleWrap(ybzFu, ybzTitle) &&
+                      LooksLikeOfficialUnnumberedAppendixColonCite("附件：浙江省公权力大数据监督应用“一本账S1”");
+        Vec<ScanLine> lines;
+        ScanLine notice = TestScanLineXYP("关于印发《浙江省公权力大数据监督应用场景“一本账”》的通知", 1, 72, 40);
+        notice.fontSize = 18;
+        notice.bold = true;
+        lines.Append(notice);
+        lines.Append(TestScanLineXYP("（一）落实“一把手”责任制", 2, 72, 80));
+        lines.Append(TestScanLineXYP("（二）专班化运作推进", 2, 72, 110));
+        lines.Append(TestScanLineXYP("（三）全力推进应用场景建设", 2, 72, 140));
+        lines.Append(TestScanLineXYP("（四）加强“一本账”动态管理", 2, 72, 170));
+        ScanLine cite = TestScanLineXYP("附件：浙江省公权力大数据监督应用“一本账S1”", 3, 72, 360);
+        cite.fontSize = 12;
+        lines.Append(cite);
+        lines.Append(ybzFu);
+        lines.Append(ybzTitle);
+        lines.Append(TestScanLineXYP("序号", 4, 72, 120));
+        Vec<ScanLine> land;
+        land.Append(TestScanLineXYP("（四）加强“一本账”动态管理", 2, 72, 170));
+        land.Append(TestScanLineBox(ybzName, 5, 86.2f, 192.f, 46.8f, 437.f, 39.f));
+        land.Append(TestScanLineBox("附件", 5, 64.6f, 694.f, 32.4f, 43.f, 27.f));
+        bool landNear = FindOfficialAppendixHeadingNameNear(land, land.Size() - 1) >= 0;
+        Vec<ScanLine> rot;
+        rot.Append(TestScanLineBox("附件", 6, 72, 40, 40, 18, 16));
+        rot.Append(TestScanLineBox(ybzName, 6, 80, 120, 280, 20, 18));
+        bool rotNear = FindOfficialAppendixHeadingNameNear(rot, 0) >= 0;
+        FreeScanLines(rot);
+        Vec<ExtractedTocItem*> landRoots;
+        bool landRan = InferHeadings(land, 5, landRoots);
+        InsertOfficialDocTitles(land, 5, landRoots);
+        ExtractedTocItem* landAp = ExtractedFindContaining(landRoots, "附件");
+        bool landOk =
+            landNear && rotNear && landRan && landAp && landAp->pageNo == 5 && str::Find(landAp->title, "一本账");
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 4, roots);
+        InsertOfficialDocTitles(lines, 4, roots);
+        ExtractedTocItem* ap = ExtractedFindContaining(roots, "附件");
+        ExtractedTocItem* front = ExtractedFindContaining(roots, "关于印发");
+        ExtractedTocItem* p4 = ExtractedFindContaining(roots, "动态管理");
+        bool apUnderSi = p4 && ExtractedFindContaining(p4->children, "附件");
+        bool apBesideParen = false;
+        if (front) {
+            for (int ci = 0; ci < front->children.Size(); ci++) {
+                ExtractedTocItem* ch = front->children[ci];
+                if (ch && ch->title && ParseHeadingMarker(ch->title).type == MarkerType::Appendix) {
+                    apBesideParen = true;
+                    break;
+                }
+            }
+        }
+        Vec<ScanLine> citeOnly;
+        ScanLine notice2 = TestScanLineXYP("关于印发《浙江省公权力大数据监督应用场景“一本账”》的通知", 1, 72, 40);
+        notice2.fontSize = 18;
+        notice2.bold = true;
+        citeOnly.Append(notice2);
+        citeOnly.Append(TestScanLineXYP("（四）加强“一本账”动态管理", 2, 72, 170));
+        ScanLine cite2 =
+            TestScanLineXYP("附件：浙江省公权力大数据监督应用“一本账S1”中共浙江省纪委办公厅2022年7月18日", 3, 72, 360);
+        cite2.fontSize = 12;
+        citeOnly.Append(cite2);
+        ScanLine bareFu = TestScanLineXYP("附件", 4, 200, 40);
+        bareFu.fontSize = 16;
+        citeOnly.Append(bareFu);
+        Vec<ExtractedTocItem*> citeRoots;
+        bool citeRan = InferHeadings(citeOnly, 4, citeRoots);
+        InsertOfficialDocTitles(citeOnly, 4, citeRoots);
+        ExtractedTocItem* citeAp = ExtractedFindContaining(citeRoots, "附件");
+        bool citeTitleOk = citeRan && citeAp && citeAp->pageNo == 4 && str::Find(citeAp->title, "一本账") &&
+                           !str::Find(citeAp->title, "中共") && !str::Find(citeAp->title, "2022");
+        bool ok = glueOk && ran && ap && ap->pageNo == 4 && str::Find(ap->title, "一本账") &&
+                  !str::Find(ap->title, "中共") && !ExtractedFindContaining(roots, "附件：") && landOk && !apUnderSi &&
+                  apBesideParen && citeTitleOk;
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-yibenzhang-appendix-heading",
+                               landOk ? (citeTitleOk ? roots : citeRoots) : landRoots);
+        }
+        DeleteExtractedTocItems(citeRoots);
+        FreeScanLines(citeOnly);
+        DeleteExtractedTocItems(landRoots);
+        FreeScanLines(land);
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        // 采购统计通知: page-4 （一） ends 请各; page-5 财政局、… is wrap body, not a heading.
+        char* qing = str::Dup("（一）地方政府采购信息统计工作分为季报和年报，请各");
+        bool wrapCont = TitleNeedsWrapContinuation(qing);
+        TrimTitleToFirstSentence(qing);
+        bool qingTrim = qing && str::Find(qing, "年报") && !str::Find(qing, "请各");
+        char* qingStrip = str::Dup("（一）地方政府采购信息统计工作分为季报和年报，请各");
+        StripGluedBodyAfterHeading(qingStrip);
+        bool qingStripOk = qingStrip && str::Find(qingStrip, "年报") && !str::Find(qingStrip, "请各");
+        const char* mash = "财政局、赣江新区财政金融局还应报送本（一）地方政府采购信息统计工作分为季报和年报。请各";
+        bool wrapBody = LooksLikeOfficialOutlineWrapBody("财政局、赣江新区财政金融局还应报送本地区纸质年报（含涉") &&
+                        LooksLikeOfficialOutlineWrapBody(mash);
+        int emb = FindNextEmbeddedHeading(mash);
+        Vec<ScanLine> lines;
+        ScanLine notice = TestScanLineXYP("关于做好2021年政府采购信息统计工作的通知", 1, 72, 40);
+        notice.fontSize = 18;
+        notice.bold = true;
+        lines.Append(notice);
+        lines.Append(TestScanLineXYP("三、按时报送，做好分析", 4, 72, 80));
+        lines.Append(TestScanLineXYP("（一）地方政府采购信息统计工作分为季报和年报，请各", 4, 72, 110));
+        lines.Append(
+            TestScanLineXYP("编报单位于每个季度结束后10日内上报季报，并于次年1月15日前上报年报。各设区市", 4, 72, 140));
+        lines.Append(TestScanLineXYP("财政局、赣江新区财政金融局还应报送本地区纸质年报（含涉", 5, 72, 40));
+        lines.Append(TestScanLineXYP("密政府采购项目数据）和统计分析报告（加盖单位行政公章）", 5, 72, 70));
+        lines.Append(TestScanLineXYP("（二）各设区市财政局、省直管县财政局、赣江新区财政", 5, 72, 160));
+        lines.Append(TestScanLineXYP("（三）省财政厅将", 5, 72, 200));
+        lines.Append(TestScanLineXYP("四、其他", 5, 72, 240));
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 5, roots);
+        ExtractedTocItem* yi = ExtractedFindContaining(roots, "季报和年报");
+        bool noWrap = !ExtractedFindContaining(roots, "还应报送") && !ExtractedHasPrefix(roots, "财政局、") &&
+                      !ExtractedFindContaining(roots, "统计分析报告");
+        bool ok = wrapCont && qingTrim && qingStripOk && wrapBody && emb > 0 && ran && yi &&
+                  !str::Find(yi->title, "请各") && ExtractedFindContaining(roots, "各设区市财政局") &&
+                  ExtractedFindContaining(roots, "省财政厅将") && ExtractedFindContaining(roots, "其他") && noWrap;
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-caigou-wrap-body", roots);
+        }
+        str::Free(qing);
+        str::Free(qingStrip);
+        DeleteExtractedTocItems(roots);
+        FreeScanLines(lines);
+    }
+    {
+        // 附件4 任务分工表: glue the large title, not table row "1 对照全国数据共享清单".
+        bool nameOk = LooksLikeOfficialAppendixHeadingName("人社信息化创新提升攻坚行动任务分工表") &&
+                      OfficialNameLooksLikeAttachmentIndex("人社信息化创新提升攻坚行动任务分工表") &&
+                      !LooksLikeOfficialAppendixHeadingName("1 对照全国数据共享清单") &&
+                      !OfficialNameLooksLikeAttachmentIndex("1 对照全国数据共享清单") &&
+                      OfficialDunhaoLooksLikeTableColumnCell("一、实现人社数") &&
+                      OfficialDunhaoLooksLikeTableColumnCell("四、增强全国-29 扩大“就业在线") &&
+                      !OfficialDunhaoLooksLikeTableColumnCell("一、工作目标") &&
+                      !OfficialDunhaoLooksLikeTableColumnCell("一、自查采集工具下载");
+        Vec<ScanLine> lines;
+        ScanLine notice =
+            TestScanLineXYP("关于征求《人力资源社会保障信息化创新提升攻坚行动方案》意见的通知", 1, 72, 40);
+        notice.fontSize = 18;
+        notice.bold = true;
+        lines.Append(notice);
+        lines.Append(TestScanLineXYP("4.人社信息化创新提升攻坚行动任务分工表", 12, 162, 196));
+        lines.Append(TestScanLineBox("附件4", 60, 74, 62, 58, 20, 14));
+        lines.Append(TestScanLineBox("0—", 60, 30, 104, 15, 44, 10));
+        ScanLine sheet = TestScanLineBox("人社信息化创新提升攻坚行动任务分工表", 60, 231, 103, 396, 18, 16);
+        sheet.bold = true;
+        lines.Append(sheet);
+        lines.Append(TestScanLineBox("1 对照全国数据共享清单，根据属地范围内的跨业务跨部门共 省级人社部门 2020年12月",
+                                     60, 178, 169, 596, 16, 12));
+        lines.Append(TestScanLineBox("一、实现人社数", 60, 81, 297, 81, 16, 12));
+        lines.Append(TestScanLineBox("据跨层级跨部", 60, 65, 309, 92, 16, 12));
+        lines.Append(TestScanLineBox("二、实现全国人", 61, 81, 80, 81, 16, 12));
+        lines.Append(TestScanLineBox("四、增强全国-29 扩大“就业在线", 62, 81, 120, 120, 16, 12));
+        lines.Append(TestScanLineBox("六、提升职业技 41 在所有地市开", 64, 81, 160, 140, 16, 12));
+        Vec<ExtractedTocItem*> roots;
+        bool ran = InferHeadings(lines, 64, roots);
+        InsertOfficialDocTitles(lines, 64, roots);
+        ExtractedTocItem* ap4 = ExtractedFindContaining(roots, "附件4");
+        bool ok = nameOk && ran && ap4 && str::Find(ap4->title, "任务分工表") && !str::Find(ap4->title, "对照全国") &&
+                  !str::Find(ap4->title, " 1 ") && !ExtractedFindContaining(roots, "对照全国") &&
+                  !ExtractedFindContaining(roots, "实现人社数") && !ExtractedFindContaining(roots, "实现全国人") &&
+                  !ExtractedFindContaining(roots, "增强全国") && !ExtractedFindContaining(roots, "提升职业技") &&
+                  !ExtractedHasPrefix(roots, "0—");
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-attach4-fenbiao", roots);
+        }
         DeleteExtractedTocItems(roots);
         FreeScanLines(lines);
     }
@@ -19587,6 +20573,28 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         DeleteExtractedTocItems(roots);
         FreeScanLines(lines);
     }
+    {
+        // A grid of seals must not be treated as several document covers.
+        Vec<ScanLine> seals;
+        seals.Append(TestScanLineXYP("江西省科学技术厅", 1, 80, 120));
+        seals.Append(TestScanLineXYP("江西省发展和改革委员会", 1, 310, 120));
+        seals.Append(TestScanLineXYP("江西省人力资源和社会保障厅", 1, 80, 260));
+        bool grid = PageHasOfficialSealGrid(seals, 1);
+        FreeScanLines(seals);
+
+        Vec<ScanLine> signer;
+        signer.Append(TestScanLineXYP("江西省科学技术厅", 1, 300, 500));
+        signer.Append(TestScanLineXYP("江西省财政厅", 1, 300, 530));
+        bool singleBlock = PageHasOfficialSealGrid(signer, 1);
+        FreeScanLines(signer);
+        if (grid && !singleBlock) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            Vec<ExtractedTocItem*> empty;
+            LogBookExtractFail("official-seal-grid", empty);
+        }
+    }
 }
 
 static bool OfficialHanEndsLikeComplete(const char* s) {
@@ -19685,12 +20693,15 @@ static void OfficialReplaceAllInTitle(char** titleOut, const char* from, const c
     *titleOut = str::Dup(buf);
 }
 
-// CID / missing-ToUnicode: 关千→关于, 人汴→人社, 通亦→通办, 部11→部门.
+// CID / OCR confusions in official titles.
 static void RewriteOfficialTitleOcr(char** titleOut) {
     if (!titleOut || !*titleOut) {
         return;
     }
     OfficialReplaceAllInTitle(titleOut, "关千", "关于");
+    // Keep this contextual: 美于 can be legitimate prose, 美于印发 in a
+    // government title is the common OCR confusion for 关于印发.
+    OfficialReplaceAllInTitle(titleOut, "美于印发", "关于印发");
     OfficialReplaceAllInTitle(titleOut, "坏境", "环境");
     OfficialReplaceAllInTitle(titleOut, "［程", "工程");
     OfficialReplaceAllInTitle(titleOut, "[程", "工程");
@@ -20034,6 +21045,82 @@ static void RewriteOfficialCoverToIssuedDocTitle(char** titleOut) {
     (void)titleOut;
 }
 
+// A forwarding notice is often followed by the issuer line in the same OCR
+// run. A scanned package often captures both that notice and the issued plan
+// cover as roots. Keep both useful labels: the clean notice first, then the
+// plan/rule. Restrict this rewrite to roots so quoted notices in body text and
+// existing section titles stay intact.
+static void RewriteOfficialRootIssuedDocTitles(Vec<ExtractedTocItem*>& roots) {
+    for (int i = 0; i < roots.Size(); i++) {
+        ExtractedTocItem* n = roots[i];
+        if (!n || !n->title || !n->title[0]) {
+            continue;
+        }
+        char* cover = str::Dup(n->title);
+        if (!cover) {
+            continue;
+        }
+        const char* noticeEnd = str::Find(cover, "的通知");
+        if (noticeEnd) {
+            char* issuer = cover + (noticeEnd - cover) + (int)str::Len("的通知");
+            str::TrimWSInPlace(issuer, str::TrimOpt::Both);
+            if (issuer[0] && OfficialTitlePrefixLooksLikeIssuer(issuer, (int)str::Len(issuer))) {
+                *issuer = 0;
+                str::TrimWSInPlace(cover, str::TrimOpt::Both);
+            }
+        }
+        char* issued = OfficialIssuedDocTitleFromCover(cover);
+        if (!issued) {
+            str::Free(cover);
+            continue;
+        }
+        ExtractedTocItem* earlierIssued = nullptr;
+        for (int j = 0; j < i; j++) {
+            if (roots[j] && roots[j]->title && str::Eq(roots[j]->title, issued)) {
+                earlierIssued = roots[j];
+                break;
+            }
+        }
+        if (earlierIssued) {
+            // The previous root was converted from the notice. Restore its
+            // cleaned notice label; this root is the issued plan cover.
+            str::Free(earlierIssued->title);
+            earlierIssued->title = cover;
+        } else {
+            str::Free(cover);
+        }
+        str::Free(n->title);
+        n->title = issued;
+    }
+}
+
+static void MergeDuplicateOfficialRootTitles(Vec<ExtractedTocItem*>& roots) {
+    Vec<ExtractedTocItem*> keep;
+    for (int i = 0; i < roots.Size(); i++) {
+        ExtractedTocItem* n = roots[i];
+        if (!n) {
+            continue;
+        }
+        ExtractedTocItem* same = nullptr;
+        for (int j = 0; j < keep.Size(); j++) {
+            if (keep[j]->title && n->title && str::Eq(keep[j]->title, n->title)) {
+                same = keep[j];
+                break;
+            }
+        }
+        if (!same) {
+            keep.Append(n);
+            continue;
+        }
+        for (int c = 0; c < n->children.Size(); c++) {
+            same->children.Append(n->children[c]);
+        }
+        n->children.Reset();
+        delete n;
+    }
+    roots = keep;
+}
+
 static bool LooksLikeOfficialAppendixName(const char* s) {
     if (!s || !s[0] || LooksLikeOfficialBoilerplate(s) || LooksLikeLeaderTitle(s) || LooksLikeArchiveJunk(s)) {
         return false;
@@ -20228,7 +21315,8 @@ static bool IsOfficialExtractJunkTitle(const char* s) {
     if (!s || !s[0]) {
         return true;
     }
-    if (LooksLikeOfficialCoverTitleFragment(s) || LooksLikeOfficialAppendixCiteFragment(s)) {
+    if (LooksLikeOfficialCoverTitleFragment(s) || LooksLikeOfficialAppendixCiteFragment(s) ||
+        LooksLikeOfficialDraftParen(s)) {
         return true;
     }
     if (LooksLikeOfficialCoverAttachmentList(s)) {
@@ -20246,20 +21334,8 @@ static bool IsOfficialExtractJunkTitle(const char* s) {
     {
         HeadingMarker jm = ParseHeadingMarker(s);
         int restG = jm.prefixLength > 0 ? GlyphCount(s + jm.prefixLength) : GlyphCount(s);
-        if (jm.type == MarkerType::Appendix && restG < 1) {
-            bool hasNum = false;
-            int len = (int)str::Len(s);
-            int i = 0;
-            while (i < len) {
-                int cp = Utf8CodepointNext(s, len, i);
-                if (IsDigitCp(cp) || IsCnNumeral(cp)) {
-                    hasNum = true;
-                    break;
-                }
-            }
-            if (!hasNum) {
-                return true;
-            }
+        if (jm.type == MarkerType::Appendix && restG < 1 && LooksLikeOfficialAppendixCiteFragment(s)) {
+            return true;
         }
     }
     if (LineStartsWithDotThenTitle(s) || LooksLikeOfficialFillNotesHeader(s) || LooksLikeOfficialTableNoiseTitle(s)) {
@@ -20268,7 +21344,8 @@ static bool IsOfficialExtractJunkTitle(const char* s) {
     if (LooksLikeBracketTxnCodeTitle(s)) {
         return false;
     }
-    if (OfficialArabicDotLooksLikeBodyWrap(s) || OfficialLineLooksLikeConjunctionBodyWrap(s)) {
+    if (OfficialArabicDotLooksLikeBodyWrap(s) || OfficialLineLooksLikeConjunctionBodyWrap(s) ||
+        LooksLikeOfficialOutlineWrapBody(s)) {
         return true;
     }
     if (HeadingLevelFromText(s) > 0) {
@@ -20406,7 +21483,8 @@ static char* JoinLargeOfficialTitleRun(const Vec<ScanLine>& lines, int start, fl
         if (wrap) {
             joinMin = minFont * 0.55f;
         }
-        if (b.fontSize + 0.2f < joinMin) {
+        // OCR / stext sometimes reports fontSize 0; do not block wrap of 规章 titles.
+        if (b.fontSize > 1.f && b.fontSize + 0.2f < joinMin) {
             break;
         }
         if (HeadingLevelFromText(b.text) > 0 || LooksLikeOfficialBoilerplate(b.text) ||
@@ -20545,6 +21623,18 @@ static bool OfficialTitleTextTaken(const Vec<ExtractedTocItem*>& flat, const cha
     return false;
 }
 
+static bool OfficialExactTitleTaken(const Vec<ExtractedTocItem*>& flat, const char* title) {
+    if (!title) {
+        return true;
+    }
+    for (int i = 0; i < flat.Size(); i++) {
+        if (flat[i] && flat[i]->title && str::Eq(flat[i]->title, title)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void FlattenExtractedDetach(Vec<ExtractedTocItem*>& nodes, Vec<ExtractedTocItem*>& flat) {
     for (int i = 0; i < nodes.Size(); i++) {
         ExtractedTocItem* n = nodes[i];
@@ -20623,7 +21713,8 @@ static void TrimMashedOfficialAttachName(char* title) {
         if (!hit) {
             continue;
         }
-        int end = (int)(hit - title) + (int)str::Len(suffixes[i]);
+        int nlen = (int)str::Len(suffixes[i]);
+        int end = (int)(hit - title) + nlen;
         if (str::StartsWith(title + end, "（模板）")) {
             end += (int)str::Len("（模板）");
         } else if (str::StartsWith(title + end, "(模板)")) {
@@ -20631,6 +21722,13 @@ static void TrimMashedOfficialAttachName(char* title) {
         }
         if (title[end] == 0) {
             return;
+        }
+        // Short suffixes (单字如"表"，或 2-3 字复合) only make sense at the
+        // END of the title. If they appear in the middle they are almost
+        // always part of a legitimate compound word ("表彰" contains "表",
+        // "申请表审批表" contains "表" twice, etc.). Skip truncation.
+        if (nlen <= 3) {
+            continue;
         }
         int rest = end;
         int len = (int)str::Len(title);
@@ -20666,7 +21764,30 @@ static void TightenOfficialAppendixTitle(ExtractedTocItem* it) {
     }
     RewriteOfficialAppendixCompoundTitle(&it->title);
     m = ParseHeadingMarker(it->title);
+    TrimOfficialAppendixIssuerTail(it->title);
+    m = ParseHeadingMarker(it->title);
     TrimMashedOfficialAttachName(it->title);
+    // Strip trailing OCR table-header glue like "填报单位：" / "填报单位（盖章）：".
+    // These are table field labels that OCR merged with the appendix title.
+    {
+        const char* glue = str::Find(it->title, "填报单位");
+        if (glue) {
+            int afterGlue = (int)(glue - it->title) + (int)str::Len("填报单位");
+            char* p = it->title + afterGlue;
+            while (*p == ' ' || *p == '\t') p++;
+            if (str::StartsWith(p, "（盖章）")) p += (int)str::Len("（盖章）");
+            else if (str::StartsWith(p, "(盖章)")) p += (int)str::Len("(盖章)");
+            while (*p == ' ' || *p == '\t') p++;
+            bool endsWithColon = *p == ':' ||
+                                 ((unsigned char)p[0] == 0xEF && (unsigned char)p[1] == 0xBC &&
+                                  (unsigned char)p[2] == 0x9A) ||
+                                 *p == 0;
+            if (endsWithColon) {
+                it->title[glue - it->title] = 0;
+                str::TrimWSInPlace(it->title, str::TrimOpt::Both);
+            }
+        }
+    }
     m = ParseHeadingMarker(it->title);
     if (m.type == MarkerType::Appendix && m.number >= 1 && str::StartsWith(it->title, "附件 ")) {
         const char* rest = OfficialAppendixRestAfterPrefix(it->title);
@@ -20690,7 +21811,8 @@ static void TightenOfficialAppendixTitle(ExtractedTocItem* it) {
     if (OfficialNameLooksLikeAttachmentIndex(rest + ri)) {
         return;
     }
-    if (LooksLikeOfficialAttachTableBodyTitle(rest + ri) || OfficialAttachLooksLikeFieldLabel(rest + ri)) {
+    if (LooksLikeOfficialAttachTableBodyTitle(rest + ri) || OfficialAttachLooksLikeFieldLabel(rest + ri) ||
+        OfficialNameStartsWithTableSerial(rest + ri)) {
         it->title[m.prefixLength] = 0;
         str::TrimWSInPlace(it->title, str::TrimOpt::Both);
     }
@@ -20767,19 +21889,29 @@ static void FillBareOfficialAppendixNumbers(Vec<ExtractedTocItem*>& roots) {
             }
             continue;
         }
-        int guess = 1;
+        // Unnumbered 附件 浙江省…“一本账” is already the heading — do not invent 附件1.
+        if (LooksLikeOfficialAppendixHeadingName(rest) && !OfficialNameLooksLikeAttachmentIndex(rest)) {
+            continue;
+        }
+        // Never manufacture “附件1” just because a document has one
+        // unnumbered attachment.  A missing number is recoverable only when
+        // a later numbered sibling proves this is a numbered sequence (e.g.
+        // bare 附件 followed by 附件2).
+        int guess = 0;
         for (int j = i + 1; j < flat.Size(); j++) {
             if (!flat[j] || !flat[j]->title) {
                 continue;
             }
             HeadingMarker nm = ParseHeadingMarker(flat[j]->title);
             if (nm.type == MarkerType::Appendix && nm.number >= 1 && OfficialAppendixHasVisibleNumber(flat[j]->title)) {
-                guess = nm.number - 1;
-                if (guess < 1) {
-                    guess = 1;
+                if (nm.number >= 2) {
+                    guess = nm.number - 1;
+                    break;
                 }
-                break;
             }
+        }
+        if (guess < 1) {
+            continue;
         }
         char* joined = JoinAppendixNumberTitle(guess, rest);
         if (joined) {
@@ -20801,7 +21933,86 @@ struct OfficialTitleInsert {
     ExtractedTocItem* item = nullptr;
     int beforeFlat = 0;
     bool underAppendix = false;
+    const char* route = "unknown";
 };
+
+// OCR commonly recognizes the horizontal center text of a round seal as an
+// ordinary short line. A page carrying several seals is therefore a bad place
+// to discover the title of another document. Do not identify individual
+// agencies: use the usual organization suffix only as one signal, then require
+// a two-dimensional cluster so a normal signature block is left alone.
+static bool LooksLikeOfficialSealIssuerLine(const char* s) {
+    if (!s || !s[0] || HeadingLevelFromText(s) > 0 || LooksLikeOfficialFileTitle(s)) {
+        return false;
+    }
+    int g = GlyphCount(s);
+    if (g < 4 || g > 32 || !HasLetterOrCjk(s) || str::Find(s, "。") || str::Find(s, "：")) {
+        return false;
+    }
+    return str::EndsWith(s, "厅") || str::EndsWith(s, "局") || str::EndsWith(s, "委") || str::EndsWith(s, "委员会") ||
+           str::EndsWith(s, "办公室") || str::EndsWith(s, "中心") || str::EndsWith(s, "公司") ||
+           str::EndsWith(s, "集团") || str::EndsWith(s, "大学") || str::EndsWith(s, "学院") ||
+           str::EndsWith(s, "医院") || str::EndsWith(s, "银行") || str::EndsWith(s, "协会");
+}
+
+static bool PageHasOfficialSealGrid(const Vec<ScanLine>& lines, int pageNo) {
+    int n = 0;
+    int nFragments = 0;
+    float minX = 1e9f;
+    float maxX = -1e9f;
+    float minY = 1e9f;
+    float maxY = -1e9f;
+    float fragmentMinX = 1e9f;
+    float fragmentMaxX = -1e9f;
+    float fragmentMinY = 1e9f;
+    float fragmentMaxY = -1e9f;
+    for (int i = 0; i < lines.Size(); i++) {
+        const ScanLine& sl = lines[i];
+        if (sl.srcPage != pageNo || !sl.text) {
+            continue;
+        }
+        if (LooksLikeOfficialSealIssuerLine(sl.text)) {
+            n++;
+            if (sl.x < minX) {
+                minX = sl.x;
+            }
+            if (sl.x > maxX) {
+                maxX = sl.x;
+            }
+            if (sl.y < minY) {
+                minY = sl.y;
+            }
+            if (sl.y > maxY) {
+                maxY = sl.y;
+            }
+        }
+        int glyphs = GlyphCount(sl.text);
+        if (glyphs >= 1 && glyphs <= 2) {
+            nFragments++;
+            if (sl.x < fragmentMinX) {
+                fragmentMinX = sl.x;
+            }
+            if (sl.x > fragmentMaxX) {
+                fragmentMaxX = sl.x;
+            }
+            if (sl.y < fragmentMinY) {
+                fragmentMinY = sl.y;
+            }
+            if (sl.y > fragmentMaxY) {
+                fragmentMaxY = sl.y;
+            }
+        }
+    }
+    // At least three issuer lines spread in both axes distinguishes a seal
+    // array from one normal signer block or a list of agencies in the body.
+    bool issuerGrid = n >= 3 && maxX - minX >= 120.f && maxY - minY >= 80.f;
+    // Curved seal text is often recognized as individual glyphs instead of an
+    // agency name. A large two-dimensional cloud of tiny OCR boxes has the
+    // same meaning, but ordinary prose and a single signature never do.
+    bool fragmentGrid =
+        nFragments >= 24 && fragmentMaxX - fragmentMinX >= 200.f && fragmentMaxY - fragmentMinY >= 200.f;
+    return issuerGrid || fragmentGrid;
+}
 
 static bool OfficialTitleInsertDuplicate(const Vec<OfficialTitleInsert>& inserts, const char* title) {
     if (!title) {
@@ -20814,6 +22025,37 @@ static bool OfficialTitleInsertDuplicate(const Vec<OfficialTitleInsert>& inserts
         }
     }
     return false;
+}
+
+static bool OfficialTitleInsertExactDuplicate(const Vec<OfficialTitleInsert>& inserts, const char* title) {
+    if (!title) {
+        return true;
+    }
+    for (int t = 0; t < inserts.Size(); t++) {
+        if (inserts[t].item && inserts[t].item->title && str::Eq(inserts[t].item->title, title)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Crossing a page boundary is much weaker evidence than a title directly
+// above its first section. OCR from signatures, seals and distribution lists
+// is commonly followed two pages later by an attachment's 一、. Do not let a
+// generic file/form name (指南、表、清单…) bridge that gap.
+static bool OfficialTitleCanStartNextPage(const char* title) {
+    if (!title || !title[0] || LooksLikeOfficialDocPreamble(title)) {
+        return false;
+    }
+    if (LooksLikeOfficialTitle(title)) {
+        return true;
+    }
+    if (GlyphCount(title) < 8 || str::Find(title, "。") || str::Find(title, "：")) {
+        return false;
+    }
+    return str::EndsWith(title, "办法") || str::EndsWith(title, "规定") || str::EndsWith(title, "细则") ||
+           str::EndsWith(title, "条例") || str::EndsWith(title, "规划") || str::EndsWith(title, "方案") ||
+           str::EndsWith(title, "计划") || str::EndsWith(title, "要点");
 }
 
 static char* OfficialAppendixGluedDocTitle(const char* s) {
@@ -20869,7 +22111,13 @@ static bool OfficialAppendixHasInlineName(const char* s) {
         name += i;
     }
     int g = GlyphCount(name);
-    if (g < 2 || g > 16) {
+    if (g < 2 || g > 48) {
+        return false;
+    }
+    if (LooksLikeOfficialAppendixHeadingName(name)) {
+        return true;
+    }
+    if (g > 16) {
         return false;
     }
     return !OfficialTitleStartsLikeFragment(name) && !OfficialTitleLooksLikeSentence(name);
@@ -20962,6 +22210,9 @@ static bool OfficialLineInAppendixTitleBand(const ScanLine& sl, int apPage, floa
         return false;
     }
     if (sl.srcPage == apPage) {
+        if (LooksLikeOfficialAppendixHeadingName(sl.text) && GlyphCount(sl.text) >= 8 && ScanLineLooksVerticalRun(sl)) {
+            return true;
+        }
         if (sl.y + 0.5f <= apY) {
             return false;
         }
@@ -20987,11 +22238,81 @@ static void CollectOfficialTitleForAppendix(const Vec<ScanLine>& lines, int nPag
         return;
     }
     if (OfficialAppendixHasInlineName(apItem->title) || AppendixFlatAlreadyHasDocTitle(flat, apFlatIdx)) {
-        // #region agent log
-        if (Dbg92Interesting(apItem->title)) {
-            Dbg92a48e("L", "ExtractPdfToc.cpp:CollectOfficialTitleForAppendix", apItem->title, "skip-inline");
+        const char* rest = OfficialAppendixRestAfterPrefix(apItem->title);
+        bool needWrap = rest && OfficialDocTitleNeedsWrap(rest);
+        bool needDraft = false;
+        if (!needWrap) {
+            for (int i = 0; i < lines.Size(); i++) {
+                const ScanLine& sl = lines[i];
+                if (!sl.text || sl.srcPage != apItem->pageNo || sl.y + 0.5f <= apItem->y) {
+                    continue;
+                }
+                if (ParseHeadingMarker(sl.text).rank >= 1) {
+                    break;
+                }
+                if (LooksLikeOfficialDraftParen(sl.text)) {
+                    needDraft = true;
+                }
+                break;
+            }
         }
-        // #endregion
+        if (!needWrap && !needDraft) {
+            // #region agent log
+            if (Dbg92Interesting(apItem->title)) {
+                Dbg92a48e("L", "ExtractPdfToc.cpp:CollectOfficialTitleForAppendix", apItem->title, "skip-inline");
+            }
+            // #endregion
+            return;
+        }
+        // Incomplete inline name ("…国有资产"); keep going to glue "配置管理暂行办法"
+        // and a following lone （征求意见稿）.
+        for (int i = 0; i < lines.Size(); i++) {
+            const ScanLine& sl = lines[i];
+            if (!sl.text || sl.srcPage != apItem->pageNo || sl.y + 0.5f <= apItem->y) {
+                continue;
+            }
+            if (ParseHeadingMarker(sl.text).rank >= 1 || LineLooksLikePageNumber(sl.text)) {
+                break;
+            }
+            if (str::Find(apItem->title, sl.text)) {
+                continue;
+            }
+            int gb = GlyphCount(sl.text);
+            bool draft = LooksLikeOfficialDraftParen(sl.text);
+            if (!draft && (gb < 2 || gb > 28 || !HasLetterOrCjk(sl.text))) {
+                continue;
+            }
+            char* neu = str::Join(apItem->title, sl.text);
+            if (!neu) {
+                break;
+            }
+            str::Free(apItem->title);
+            apItem->title = neu;
+            if (draft) {
+                break;
+            }
+            if (!OfficialDocTitleNeedsWrap(OfficialAppendixRestAfterPrefix(apItem->title))) {
+                // Peek one more line for （征求意见稿） only.
+                for (int j = i + 1; j < lines.Size(); j++) {
+                    const ScanLine& nx = lines[j];
+                    if (!nx.text || nx.srcPage != apItem->pageNo) {
+                        break;
+                    }
+                    if (ParseHeadingMarker(nx.text).rank >= 1) {
+                        break;
+                    }
+                    if (LooksLikeOfficialDraftParen(nx.text)) {
+                        char* withDraft = str::Join(apItem->title, nx.text);
+                        if (withDraft) {
+                            str::Free(apItem->title);
+                            apItem->title = withDraft;
+                        }
+                    }
+                    break;
+                }
+                break;
+            }
+        }
         return;
     }
     char* glued = OfficialAppendixGluedDocTitle(apItem->title);
@@ -21045,9 +22366,10 @@ static void CollectOfficialTitleForAppendix(const Vec<ScanLine>& lines, int nPag
         char* joined = JoinLargeOfficialTitleRun(lines, i, namedMin, &extra);
         const char* title = joined ? joined : sl.text;
         bool named = LooksLikeOfficialTitle(title) || LooksLikeOfficialAppendixName(title) ||
-                     OfficialNameLooksLikeAttachmentIndex(title);
+                     OfficialNameLooksLikeAttachmentIndex(title) || OfficialDocTitleNeedsWrap(sl.text) ||
+                     OfficialTitleHasDocSuffix(title);
         float need = named ? namedMin * 0.88f : minFont;
-        if (sl.fontSize + 0.05f < need) {
+        if (sl.fontSize > 1.f && sl.fontSize + 0.05f < need) {
             str::Free(joined);
             continue;
         }
@@ -21059,7 +22381,8 @@ static void CollectOfficialTitleForAppendix(const Vec<ScanLine>& lines, int nPag
             }
             continue;
         }
-        if ((!LooksLikeOfficialFileTitle(title) && !OfficialNameLooksLikeAttachmentIndex(title)) ||
+        if ((!LooksLikeOfficialFileTitle(title) && !OfficialNameLooksLikeAttachmentIndex(title) &&
+             !LooksLikeOfficialAppendixHeadingName(title)) ||
             OfficialTitleTextTaken(flat, title) || OfficialTitleInsertDuplicate(inserts, title)) {
             str::Free(joined);
             if (extra > 0) {
@@ -21080,7 +22403,30 @@ static void CollectOfficialTitleForAppendix(const Vec<ScanLine>& lines, int nPag
             skip = i + extra;
         }
     }
+    HeadingMarker am = ParseHeadingMarker(apItem->title);
+    int restG = am.prefixLength > 0 ? GlyphCount(apItem->title + am.prefixLength) : GlyphCount(apItem->title);
+    if (!bestTitle && am.type == MarkerType::Appendix && restG < 2) {
+        const char* citeName = OfficialAppendixCiteNameBefore(lines, -1, page);
+        if (citeName) {
+            char* named = str::Dup(citeName);
+            TrimOfficialAppendixIssuerTail(named);
+            if (named && named[0] && LooksLikeOfficialAppendixHeadingName(named)) {
+                bestTitle = named;
+                named = nullptr;
+            }
+            str::Free(named);
+        }
+    }
     if (!bestTitle) {
+        return;
+    }
+    if (am.type == MarkerType::Appendix && restG < 2 && LooksLikeOfficialAppendixHeadingName(bestTitle)) {
+        char* joined = str::Join(apItem->title, " ", bestTitle);
+        if (joined) {
+            str::Free(apItem->title);
+            apItem->title = joined;
+        }
+        str::Free(bestTitle);
         return;
     }
     OfficialTitleInsert ins;
@@ -21142,12 +22488,22 @@ static void CollectOfficialTitlesAboveYi(const Vec<ScanLine>& lines, int nPages,
         if (!sl.text || sl.srcPage < 1 || sl.srcPage > nPages) {
             continue;
         }
+        if (PageHasOfficialSealGrid(lines, sl.srcPage)) {
+            continue;
+        }
         int fromPage = page > 3 ? page - 2 : 1;
         if (sl.srcPage < fromPage || sl.srcPage > page) {
             continue;
         }
         if (sl.srcPage == page && sl.y + 0.5f >= yiY) {
             continue;
+        }
+        if (gCli && gCli->extractTocDebug) {
+            logf(
+                "TOC doc-title-probe route=yi anchorPage=%d anchorY=%.1f page=%d x=%.1f y=%.1f sealGrid=%d "
+                "fileTitle=%d text=%s\n",
+                page, yiY, sl.srcPage, sl.x, sl.y, (int)PageHasOfficialSealGrid(lines, sl.srcPage),
+                (int)LooksLikeOfficialFileTitle(sl.text), sl.text);
         }
         if (HeadingLevelFromText(sl.text) > 0 || LooksLikeOfficialBoilerplate(sl.text) ||
             LooksLikeDocNumberLine(sl.text) || LineLooksLikePageNumber(sl.text) ||
@@ -21157,6 +22513,17 @@ static void CollectOfficialTitlesAboveYi(const Vec<ScanLine>& lines, int nPages,
         int extra = 0;
         char* joined = JoinLargeOfficialTitleRun(lines, i, namedMin, &extra);
         const char* title = joined ? joined : sl.text;
+        // A generic name such as "…参赛指南" on an earlier signature/list
+        // page is not evidence of a new document. Only a real 公文 title may
+        // cross a page boundary to introduce a later 一、 spine. This leaves
+        // same-page unnumbered cover titles and the dedicated 附件 path intact.
+        if (sl.srcPage != page && !LooksLikeOfficialTitle(title)) {
+            str::Free(joined);
+            if (extra > 0) {
+                skip = i + extra;
+            }
+            continue;
+        }
         bool named =
             LooksLikeOfficialTitle(title) || LooksLikeOfficialAppendixName(title) || OfficialTitleHasDocSuffix(title);
         float need = named ? namedMin : minFont;
@@ -21169,8 +22536,19 @@ static void CollectOfficialTitlesAboveYi(const Vec<ScanLine>& lines, int nPages,
         char* prepared = OfficialPrepareInsertedDocTitle(title);
         str::Free(joined);
         joined = nullptr;
-        if (!prepared || !LooksLikeOfficialFileTitle(prepared) || OfficialTitleTextTaken(flat, prepared) ||
-            OfficialTitleInsertDuplicate(inserts, prepared)) {
+        if (LooksLikeOfficialQuotedDocumentCitation(prepared)) {
+            str::Free(prepared);
+            if (extra > 0) {
+                skip = i + extra;
+            }
+            continue;
+        }
+        bool titleTaken =
+            sl.srcPage == page ? OfficialExactTitleTaken(flat, prepared) : OfficialTitleTextTaken(flat, prepared);
+        bool insertDuplicate = sl.srcPage == page ? OfficialTitleInsertExactDuplicate(inserts, prepared)
+                                                  : OfficialTitleInsertDuplicate(inserts, prepared);
+        if (!prepared || !LooksLikeOfficialFileTitle(prepared) ||
+            (sl.srcPage < page && !OfficialTitleCanStartNextPage(prepared)) || titleTaken || insertDuplicate) {
             str::Free(prepared);
             if (extra > 0) {
                 skip = i + extra;
@@ -21182,7 +22560,15 @@ static void CollectOfficialTitlesAboveYi(const Vec<ScanLine>& lines, int nPages,
             ins.item = NewItem(prepared, sl.srcPage, sl.x, sl.y, titleLevel, 90);
             ins.beforeFlat = yiFlatIdx;
             ins.underAppendix = underAp;
+            ins.route = "above-yi";
             inserts.Append(ins);
+            if (gCli && gCli->extractTocDebug) {
+                logf(
+                    "TOC title-queue route=%s anchor=%s anchorPage=%d candidatePage=%d x=%.1f y=%.1f font=%.1f "
+                    "joined=%d title=%s\n",
+                    ins.route, yiItem->title ? yiItem->title : "", page, sl.srcPage, sl.x, sl.y, sl.fontSize, extra,
+                    prepared);
+            }
         }
         str::Free(prepared);
         if (extra > 0) {
@@ -21211,12 +22597,22 @@ static void CollectOfficialTitlesAboveChapter(const Vec<ScanLine>& lines, int nP
         if (!sl.text || sl.srcPage < 1 || sl.srcPage > nPages) {
             continue;
         }
+        if (PageHasOfficialSealGrid(lines, sl.srcPage)) {
+            continue;
+        }
         int fromPage = page > 3 ? page - 2 : 1;
         if (sl.srcPage < fromPage || sl.srcPage > page) {
             continue;
         }
         if (sl.srcPage == page && sl.y + 0.5f >= chY) {
             continue;
+        }
+        if (gCli && gCli->extractTocDebug) {
+            logf(
+                "TOC doc-title-probe route=chapter anchorPage=%d anchorY=%.1f page=%d x=%.1f y=%.1f sealGrid=%d "
+                "fileTitle=%d text=%s\n",
+                page, chY, sl.srcPage, sl.x, sl.y, (int)PageHasOfficialSealGrid(lines, sl.srcPage),
+                (int)LooksLikeOfficialFileTitle(sl.text), sl.text);
         }
         if (HeadingLevelFromText(sl.text) > 0 || LooksLikeOfficialBoilerplate(sl.text) ||
             LooksLikeDocNumberLine(sl.text) || LineLooksLikePageNumber(sl.text)) {
@@ -21225,18 +22621,23 @@ static void CollectOfficialTitlesAboveChapter(const Vec<ScanLine>& lines, int nP
         int extra = 0;
         char* joined = JoinLargeOfficialTitleRun(lines, i, namedMin, &extra);
         const char* title = joined ? joined : sl.text;
-        bool named = LooksLikeOfficialRegulationDocTitle(title) || LooksLikeOfficialTitle(title);
+        bool named = LooksLikeOfficialRegulationDocTitle(title) || LooksLikeOfficialTitle(title) ||
+                     OfficialDocTitleNeedsWrap(sl.text);
         float need = named ? namedMin : minFont;
         // Document main titles are clearly larger than 第N章.
-        if (sl.fontSize + 0.05f < need) {
+        if (sl.fontSize > 1.f && sl.fontSize + 0.05f < need) {
             str::Free(joined);
             continue;
         }
         char* prepared = OfficialPrepareInsertedDocTitle(title);
         str::Free(joined);
         joined = nullptr;
-        if (!prepared || !LooksLikeOfficialRegulationDocTitle(prepared) || OfficialTitleTextTaken(flat, prepared) ||
-            OfficialTitleInsertDuplicate(inserts, prepared)) {
+        bool titleTaken =
+            sl.srcPage == page ? OfficialExactTitleTaken(flat, prepared) : OfficialTitleTextTaken(flat, prepared);
+        bool insertDuplicate = sl.srcPage == page ? OfficialTitleInsertExactDuplicate(inserts, prepared)
+                                                  : OfficialTitleInsertDuplicate(inserts, prepared);
+        if (!prepared || !LooksLikeOfficialRegulationDocTitle(prepared) ||
+            (sl.srcPage < page && !OfficialTitleCanStartNextPage(prepared)) || titleTaken || insertDuplicate) {
             str::Free(prepared);
             if (extra > 0) {
                 skip = i + extra;
@@ -21247,7 +22648,15 @@ static void CollectOfficialTitlesAboveChapter(const Vec<ScanLine>& lines, int nP
         ins.item = NewItem(prepared, sl.srcPage, sl.x, sl.y, titleLevel, 92);
         ins.beforeFlat = chFlatIdx;
         ins.underAppendix = underAp;
+        ins.route = "above-chapter";
         inserts.Append(ins);
+        if (gCli && gCli->extractTocDebug) {
+            logf(
+                "TOC title-queue route=%s anchor=%s anchorPage=%d candidatePage=%d x=%.1f y=%.1f font=%.1f "
+                "joined=%d title=%s\n",
+                ins.route, chItem->title ? chItem->title : "", page, sl.srcPage, sl.x, sl.y, sl.fontSize, extra,
+                prepared);
+        }
         str::Free(prepared);
         if (extra > 0) {
             skip = i + extra;
@@ -21354,6 +22763,9 @@ static void CollectMainOfficialDocTitle(const Vec<ScanLine>& lines, int nPages, 
         }
         const ScanLine& sl = lines[i];
         if (!sl.text || sl.srcPage < 1 || sl.srcPage > nPages || sl.srcPage > 3) {
+            continue;
+        }
+        if (PageHasOfficialSealGrid(lines, sl.srcPage)) {
             continue;
         }
         if (firstYiFlat >= 0) {
@@ -21523,15 +22935,62 @@ static bool OfficialDocBoundaryBetweenPreorder(const Vec<ExtractedTocItem*>& pre
         ia = ib;
         ib = t;
     }
+    HeadingMarker ma = a && a->title ? ParseHeadingMarker(a->title) : HeadingMarker{};
+    HeadingMarker mb = b && b->title ? ParseHeadingMarker(b->title) : HeadingMarker{};
+    // Cover 附件1 remapped onto the same 规章 start as body 附件一: 第N章 between them
+    // in preorder is that 规章's spine, not a new document.
+    bool sameApDup =
+        ma.type == MarkerType::Appendix && mb.type == MarkerType::Appendix && ma.number >= 1 &&
+        OfficialAppendixSameCompound(ma, mb) &&
+        (OfficialAppendixRestNamesMatch(a->title, b->title) || OfficialAttachBodyNamesMatch(a->title, b->title) ||
+         (OfficialAppendixTitleLooksLikeRegulation(a->title) && OfficialAppendixTitleLooksLikeRegulation(b->title)) ||
+         OfficialAppendixTitleBare(a->title) || OfficialAppendixTitleBare(b->title));
+    int pageLo = a->pageNo < b->pageNo ? a->pageNo : b->pageNo;
+    int pageHi = a->pageNo > b->pageNo ? a->pageNo : b->pageNo;
     for (int i = ia + 1; i < ib; i++) {
         if (!pre[i] || !pre[i]->title) {
             continue;
         }
-        if (LooksLikeOfficialRegulationDocTitle(pre[i]->title)) {
+        HeadingMarker m = ParseHeadingMarker(pre[i]->title);
+        if (sameApDup) {
+            if (m.type == MarkerType::Appendix && m.number >= 1 && m.number != ma.number) {
+                return true;
+            }
+            if (m.type == MarkerType::Chapter) {
+                continue;
+            }
+            if (LooksLikeOfficialRegulationDocTitle(pre[i]->title) &&
+                !OfficialAppendixTitleLooksLikeRegulation(pre[i]->title)) {
+                return true;
+            }
+            continue;
+        }
+        if (LooksLikeOfficialRegulationDocTitle(pre[i]->title) ||
+            OfficialAppendixTitleLooksLikeRegulation(pre[i]->title)) {
             return true;
         }
+        if (m.type == MarkerType::Chapter && m.number >= 1) {
+            return true;
+        }
+    }
+    if (sameApDup) {
+        return false;
+    }
+    // 第一章 may sit as a sibling of 通知 (Infer level=1) while 附件N are children —
+    // then it is outside the preorder span between two 附件. Still a doc boundary.
+    for (int i = 0; i < pre.Size(); i++) {
+        if (!pre[i] || !pre[i]->title) {
+            continue;
+        }
+        if (pre[i]->pageNo <= pageLo || pre[i]->pageNo >= pageHi) {
+            continue;
+        }
         HeadingMarker m = ParseHeadingMarker(pre[i]->title);
-        if (m.type == MarkerType::Chapter && m.number == 1) {
+        if (m.type == MarkerType::Chapter && m.number >= 1) {
+            return true;
+        }
+        if (LooksLikeOfficialRegulationDocTitle(pre[i]->title) ||
+            OfficialAppendixTitleLooksLikeRegulation(pre[i]->title)) {
             return true;
         }
     }
@@ -21711,7 +23170,15 @@ static bool OfficialAppendixRestNamesMatch(const char* a, const char* b) {
     if (!na || !nb) {
         return false;
     }
-    return str::Eq(na, nb) || str::Find(na, nb) || str::Find(nb, na);
+    char* sa = str::Dup(na);
+    char* sb = str::Dup(nb);
+    OfficialStripAttachCompareDecor(sa);
+    OfficialStripAttachCompareDecor(sb);
+    bool ok = sa && sb && sa[0] && sb[0] && GlyphCount(sa) >= 4 && GlyphCount(sb) >= 4 &&
+              (str::Eq(sa, sb) || str::Find(sa, sb) || str::Find(sb, sa));
+    str::Free(sa);
+    str::Free(sb);
+    return ok;
 }
 
 static bool OfficialAppendixKeepIsLater(const ExtractedTocItem* keep, int keepIdx, const ExtractedTocItem* drop,
@@ -21729,6 +23196,78 @@ static bool OfficialAppendixKeepIsLater(const ExtractedTocItem* keep, int keepId
         return false;
     }
     return keepIdx > dropIdx;
+}
+
+static bool OfficialAppendixTitleLooksLikeRegulation(const char* title) {
+    if (!title || !title[0]) {
+        return false;
+    }
+    HeadingMarker m = ParseHeadingMarker(title);
+    const char* rest = title;
+    if (m.type == MarkerType::Appendix && m.prefixLength > 0) {
+        rest = title + m.prefixLength;
+        int rlen = (int)str::Len(rest);
+        int ri = 0;
+        SkipSpacesUtf8(rest, rlen, ri);
+        rest += ri;
+    } else if (m.rank >= 1) {
+        return false;
+    }
+    if (!rest || !rest[0]) {
+        return false;
+    }
+    if (OfficialTitleHasDocSuffix(rest)) {
+        return true;
+    }
+    return LooksLikeOfficialRegulationDocTitle(rest);
+}
+
+static bool OfficialAppendixSubtreeHasChapterSpine(const ExtractedTocItem* n) {
+    if (!n) {
+        return false;
+    }
+    if (n->title) {
+        HeadingMarker m = ParseHeadingMarker(n->title);
+        if (m.type == MarkerType::Chapter && m.number >= 1) {
+            return true;
+        }
+        if (OfficialAppendixTitleLooksLikeRegulation(n->title) || LooksLikeOfficialRegulationDocTitle(n->title)) {
+            return true;
+        }
+    }
+    for (int i = 0; i < n->children.Size(); i++) {
+        if (OfficialAppendixSubtreeHasChapterSpine(n->children[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool OfficialAppendixTitleLooksLikeFormSheet(const char* title) {
+    if (!title || !title[0]) {
+        return false;
+    }
+    HeadingMarker m = ParseHeadingMarker(title);
+    if (m.type != MarkerType::Appendix) {
+        return false;
+    }
+    const char* rest = title + (m.prefixLength > 0 ? m.prefixLength : 0);
+    int rlen = (int)str::Len(rest);
+    int ri = 0;
+    SkipSpacesUtf8(rest, rlen, ri);
+    if (!rest[ri]) {
+        return false;
+    }
+    if (OfficialAppendixTitleLooksLikeRegulation(title)) {
+        return false;
+    }
+    if (str::Find(rest + ri, "年月日") || str::Find(rest + ri, "申报日期") || str::Find(rest + ri, "金额：") ||
+        str::Find(rest + ri, "金额:") || str::Find(rest + ri, "填表说明")) {
+        return true;
+    }
+    return OfficialNameLooksLikeAttachmentIndex(rest + ri) &&
+           (str::Find(rest + ri, "表") || str::Find(rest + ri, "审批") || str::Find(rest + ri, "备案") ||
+            str::Find(rest + ri, "申请"));
 }
 
 static void MergeOfficialDuplicateAppendices(Vec<ExtractedTocItem*>& roots) {
@@ -21800,6 +23339,26 @@ static void MergeOfficialDuplicateAppendices(Vec<ExtractedTocItem*>& roots) {
                 // #endregion
                 continue;
             }
+            // 规章 附件一 (with 第N章 / …办法) must not fold onto a later form 附件1 审批表.
+            bool dropSpine = OfficialAppendixSubtreeHasChapterSpine(drop);
+            bool keepSpine = OfficialAppendixSubtreeHasChapterSpine(keep);
+            bool dropReg = dropSpine || OfficialAppendixTitleLooksLikeRegulation(drop->title);
+            bool keepReg = keepSpine || OfficialAppendixTitleLooksLikeRegulation(keep->title);
+            bool dropForm = OfficialAppendixTitleLooksLikeFormSheet(drop->title);
+            bool keepForm = OfficialAppendixTitleLooksLikeFormSheet(keep->title);
+            bool sameRegName = OfficialAppendixRestNamesMatch(drop->title, keep->title) ||
+                               (dropReg && keepReg && !dropForm && !keepForm);
+            if ((dropReg && keepForm) || (keepReg && dropForm) ||
+                (dropReg != keepReg && (dropForm || keepForm) && !sameRegName) ||
+                (dropSpine != keepSpine && (dropForm || keepForm) && !sameRegName)) {
+                continue;
+            }
+            // Remapped 函末 "…领导小" can sit below the full body title; keep the longer name.
+            if (sameRegName && GlyphCount(drop->title) > GlyphCount(keep->title) + 4) {
+                ExtractedTocItem* t = keep;
+                keep = drop;
+                drop = t;
+            }
             if (OfficialAppendixTitleBare(keep->title) && drop->title && !OfficialAppendixTitleBare(drop->title)) {
                 str::Free(keep->title);
                 keep->title = str::Dup(drop->title);
@@ -21842,6 +23401,100 @@ static void MergeOfficialDuplicateAppendices(Vec<ExtractedTocItem*>& roots) {
             UnlinkExtractedNode(roots, drop);
             delete drop;
             hits[i] = nullptr;
+        }
+    }
+    // Cover 附件1 《…》 and body 附件一 …办法 on the same/near page: fold even when
+    // 第N章 sat between them in a bad preorder (same 规章, not a multi-doc boundary).
+    for (int num = 1; num <= 40; num++) {
+        for (;;) {
+            Vec<ExtractedTocItem*> pre;
+            FlattenExtractedTocItems(roots, pre);
+            ExtractedTocItem* drop = nullptr;
+            ExtractedTocItem* keep = nullptr;
+            int dropIdx = -1;
+            int keepIdx = -1;
+            for (int i = 0; i < pre.Size(); i++) {
+                if (!pre[i] || !pre[i]->title) {
+                    continue;
+                }
+                HeadingMarker m = ParseHeadingMarker(pre[i]->title);
+                if (m.type != MarkerType::Appendix || m.number != num) {
+                    continue;
+                }
+                for (int j = i + 1; j < pre.Size(); j++) {
+                    if (!pre[j] || !pre[j]->title) {
+                        continue;
+                    }
+                    HeadingMarker mj = ParseHeadingMarker(pre[j]->title);
+                    if (mj.type != MarkerType::Appendix || mj.number != num || !OfficialAppendixSameCompound(m, mj)) {
+                        continue;
+                    }
+                    int dPage = pre[i]->pageNo - pre[j]->pageNo;
+                    if (dPage < 0) {
+                        dPage = -dPage;
+                    }
+                    bool pagesNear = dPage <= 1;
+                    bool names = OfficialAppendixRestNamesMatch(pre[i]->title, pre[j]->title) ||
+                                 OfficialAttachBodyNamesMatch(pre[i]->title, pre[j]->title);
+                    bool bothReg = OfficialAppendixTitleLooksLikeRegulation(pre[i]->title) &&
+                                   OfficialAppendixTitleLooksLikeRegulation(pre[j]->title);
+                    if (!(pagesNear && (names || bothReg || OfficialAppendixTitleBare(pre[i]->title) ||
+                                        OfficialAppendixTitleBare(pre[j]->title)))) {
+                        continue;
+                    }
+                    // Prefer the longer title: remapped 函末 "…领导小" often sits below the
+                    // real 附件1 line and would win on y alone.
+                    int gi = GlyphCount(pre[i]->title);
+                    int gj = GlyphCount(pre[j]->title);
+                    if (gi > gj + 4) {
+                        drop = pre[j];
+                        keep = pre[i];
+                        dropIdx = j;
+                        keepIdx = i;
+                    } else if (gj > gi + 4) {
+                        drop = pre[i];
+                        keep = pre[j];
+                        dropIdx = i;
+                        keepIdx = j;
+                    } else if (OfficialAppendixKeepIsLater(pre[j], j, pre[i], i)) {
+                        drop = pre[i];
+                        keep = pre[j];
+                        dropIdx = i;
+                        keepIdx = j;
+                    } else {
+                        drop = pre[j];
+                        keep = pre[i];
+                        dropIdx = j;
+                        keepIdx = i;
+                    }
+                    break;
+                }
+                if (drop) {
+                    break;
+                }
+            }
+            if (!drop || !keep) {
+                break;
+            }
+            // Longer title wins even if KeepIsLater points the other way.
+            if (GlyphCount(drop->title) > GlyphCount(keep->title) + 4) {
+                ExtractedTocItem* t = drop;
+                drop = keep;
+                keep = t;
+            }
+            if (OfficialAppendixTitleLooksLikeFormSheet(drop->title) !=
+                    OfficialAppendixTitleLooksLikeFormSheet(keep->title) &&
+                (OfficialAppendixTitleLooksLikeFormSheet(drop->title) ||
+                 OfficialAppendixTitleLooksLikeFormSheet(keep->title))) {
+                break;
+            }
+            if (OfficialAppendixTitleBare(keep->title) && drop->title && !OfficialAppendixTitleBare(drop->title)) {
+                str::Free(keep->title);
+                keep->title = str::Dup(drop->title);
+            }
+            TakeOfficialAppendixDropChildren(roots, keep, drop);
+            UnlinkExtractedNode(roots, drop);
+            delete drop;
         }
     }
     // 函末「附件：报名表」numbered 附件1 and a later false 附件2 with the same name.
@@ -21965,7 +23618,8 @@ static void OfficialStripAttachCompareDecor(char* s) {
     while (i < len) {
         int save = i;
         int d0 = Utf8CodepointNext(s, len, i);
-        if (d0 == ' ' || d0 == 0x3000) {
+        if (d0 == ' ' || d0 == 0x3000 || d0 == 0x300A || d0 == 0x300B || d0 == 0x3008 || d0 == 0x3009 || d0 == '"' ||
+            d0 == 0x201C || d0 == 0x201D) {
             continue;
         }
         if (IsDigitCp(d0)) {
@@ -22587,6 +24241,7 @@ static bool OfficialAttachLooksLikeFieldLabel(const char* s) {
     t += i;
     if (str::Find(t, "申报单位") || str::Find(t, "项目名称") || str::Find(t, "联系人") || str::Find(t, "联系电话") ||
         str::Find(t, "负责人") || str::Find(t, "身份证") || str::Find(t, "填表日期") || str::Find(t, "填表说明") ||
+        str::Find(t, "申报日期") || str::Find(t, "年月日") || str::Find(t, "金额：") || str::Find(t, "金额:") ||
         str::Find(t, "履约金") || str::Find(t, "质保金") || str::Find(t, "单位签章") || str::Find(t, "法人签章") ||
         (str::Find(t, "签章") && GlyphCount(t) <= 6) || str::Eq(t, "电话") || str::Eq(t, "联系电话") ||
         str::Find(t, "联系人及") || str::Find(t, "开户名称") || str::Find(t, "开户银行") || str::Find(t, "银行账号") ||
@@ -22697,6 +24352,56 @@ static bool OfficialAttachParseMarker(const char* s, int* numberOut, int* prefix
     return true;
 }
 
+static OfficialAttachLabel OfficialAttachLabelFromMarker(const char* s) {
+    if (!s) {
+        return OfficialAttachLabel::Appendix;
+    }
+    int len = (int)str::Len(s);
+    int i = 0;
+    SkipSpacesUtf8(s, len, i);
+    int cp = i < len ? Utf8CodepointNext(s, len, i) : 0;
+    if (cp != 0x9644) { // 附
+        return OfficialAttachLabel::Appendix;
+    }
+    int cp2 = i < len ? Utf8CodepointNext(s, len, i) : 0;
+    if (cp2 == 0x8868) { // 表
+        return OfficialAttachLabel::FormTable;
+    }
+    if (cp2 == 0x5F55) { // 录
+        return OfficialAttachLabel::Addendum;
+    }
+    return OfficialAttachLabel::Appendix;
+}
+
+static const char* OfficialAttachLabelText(OfficialAttachLabel label) {
+    switch (label) {
+        case OfficialAttachLabel::FormTable:
+            return "\xE9\x99\x84\xE8\xA1\xA8"; // 附表
+        case OfficialAttachLabel::Addendum:
+            return "\xE9\x99\x84\xE5\xBD\x95"; // 附录
+        default:
+            return "\xE9\x99\x84\xE4\xBB\xB6"; // 附件
+    }
+}
+
+static char* JoinOfficialAttachLabelNumberTitle(OfficialAttachLabel label, int number, const char* name,
+                                                int subNumber) {
+    const char* prefix = OfficialAttachLabelText(label);
+    if (!name || !name[0]) {
+        char buf[40];
+        if (subNumber >= 1) {
+            snprintf(buf, (int)sizeof(buf), "%s%d-%d", prefix, number, subNumber);
+        } else {
+            snprintf(buf, (int)sizeof(buf), "%s%d", prefix, number);
+        }
+        return str::Dup(buf);
+    }
+    if (subNumber >= 1) {
+        return str::Format("%s%d-%d %s", prefix, number, subNumber, name);
+    }
+    return str::Format("%s%d %s", prefix, number, name);
+}
+
 static bool OfficialAttachPageHasNumberedMarker(const Vec<ScanLine>& lines, int page, int nPages) {
     if (page < 1 || page > nPages) {
         return false;
@@ -22709,6 +24414,22 @@ static bool OfficialAttachPageHasNumberedMarker(const Vec<ScanLine>& lines, int 
         int p = 0;
         bool h = false;
         if (OfficialAttachParseMarker(lines[i].text, &n, &p, &h) && h && n >= 1) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool OfficialAttachPageHasChapter(const Vec<ScanLine>& lines, int page, int nPages) {
+    if (page < 1 || page > nPages) {
+        return false;
+    }
+    for (int i = 0; i < lines.Size(); i++) {
+        if (lines[i].srcPage != page || !lines[i].text) {
+            continue;
+        }
+        HeadingMarker m = ParseHeadingMarker(lines[i].text);
+        if (m.type == MarkerType::Chapter && m.number >= 1) {
             return true;
         }
     }
@@ -22779,13 +24500,21 @@ static bool OfficialAttachTitleCandidateOk(const char* s) {
         return false;
     }
     int g = GlyphCount(s);
-    if (g < 2 || g > 28) {
+    if (g < 2) {
         return false;
     }
-    if (str::Find(s, "。") || str::Find(s, "；")) {
+    bool longOk = OfficialTitleHasDocSuffix(s) || OfficialNameLooksLikeAttachmentIndex(s) ||
+                  LooksLikeOfficialAppendixHeadingName(s);
+    if (g > 28 && !longOk) {
         return false;
     }
-    return HasLetterOrCjk(s) || LooksLikeOfficialTemplateParen(s);
+    if (g > 52) {
+        return false;
+    }
+    if (str::Find(s, "。") || str::Find(s, "；") || str::Find(s, "，") || str::Find(s, ",")) {
+        return false;
+    }
+    return HasLetterOrCjk(s) || LooksLikeOfficialDraftParen(s);
 }
 
 static char* OfficialAttachGlueTitleTail(const Vec<ScanLine>& lines, int at, float bodyFont, char* acc) {
@@ -22800,7 +24529,7 @@ static char* OfficialAttachGlueTitleTail(const Vec<ScanLine>& lines, int at, flo
         if (OfficialAttachLooksLikeFieldLabel(nx.text) || OfficialAttachLooksLikeRosterLine(nx.text)) {
             break;
         }
-        if (LooksLikeOfficialTemplateParen(nx.text)) {
+        if (LooksLikeOfficialDraftParen(nx.text)) {
             char* neu = str::Join(acc, nx.text);
             str::Free(acc);
             acc = neu;
@@ -22811,7 +24540,7 @@ static char* OfficialAttachGlueTitleTail(const Vec<ScanLine>& lines, int at, flo
         }
         bool nextLarge = OfficialAttachLineIsLargeTitle(nx, bodyFont);
         bool nextForm = OfficialNameLooksLikeAttachmentIndex(nx.text);
-        if (OfficialAttachLineNameComplete(acc) && !LooksLikeOfficialTemplateParen(nx.text)) {
+        if (OfficialAttachLineNameComplete(acc) && !LooksLikeOfficialDraftParen(nx.text)) {
             if (!(nextLarge && GlyphCount(nx.text) <= 10 && GlyphCount(acc) < 36)) {
                 break;
             }
@@ -22864,7 +24593,8 @@ static char* OfficialAttachDetectTitleBlock(const Vec<ScanLine>& lines, int star
         }
         float gap = after ? (sl.y - (mark.y + (mark.dy > 1 ? mark.dy : 14))) : (mark.y - (sl.y + sl.dy));
         bool large = OfficialAttachLineIsLargeTitle(sl, bodyFont);
-        bool formName = OfficialNameLooksLikeAttachmentIndex(sl.text) || LooksLikeOfficialTemplateParen(sl.text);
+        bool formName = OfficialNameLooksLikeAttachmentIndex(sl.text) || LooksLikeOfficialDraftParen(sl.text) ||
+                        LooksLikeOfficialAppendixHeadingName(sl.text);
         if (!large && !formName) {
             continue;
         }
@@ -22926,7 +24656,7 @@ static char* OfficialAttachDetectTitleBlock(const Vec<ScanLine>& lines, int star
         if (sl.srcPage == mark.srcPage + 1 && sl.y > 90) {
             break;
         }
-        if (!OfficialAttachTitleCandidateOk(sl.text) && !LooksLikeOfficialTemplateParen(sl.text)) {
+        if (!OfficialAttachTitleCandidateOk(sl.text) && !LooksLikeOfficialDraftParen(sl.text)) {
             int g1 = GlyphCount(sl.text);
             if (g1 == 1) {
                 continue;
@@ -22940,7 +24670,7 @@ static char* OfficialAttachDetectTitleBlock(const Vec<ScanLine>& lines, int star
         float gap = sl.y - prevY;
         float lim = mark.dy > 6 ? mark.dy * 2.4f : 22;
         bool formName = OfficialNameLooksLikeAttachmentIndex(sl.text);
-        bool skipGap = !acc && (formName || LooksLikeOfficialTemplateParen(sl.text));
+        bool skipGap = !acc && (formName || LooksLikeOfficialDraftParen(sl.text));
         if (!skipGap && (gap < -mark.dy * 0.5f || gap > lim)) {
             break;
         }
@@ -22948,10 +24678,10 @@ static char* OfficialAttachDetectTitleBlock(const Vec<ScanLine>& lines, int star
             break;
         }
         if (acc && OfficialAttachLineIsLargeTitle(lines[startIdx], bodyFont) &&
-            !OfficialAttachLineIsLargeTitle(sl, bodyFont) && !LooksLikeOfficialTemplateParen(sl.text) && !formName) {
+            !OfficialAttachLineIsLargeTitle(sl, bodyFont) && !LooksLikeOfficialDraftParen(sl.text) && !formName) {
             break;
         }
-        if (acc && OfficialNameLooksLikeAttachmentIndex(acc) && !LooksLikeOfficialTemplateParen(sl.text)) {
+        if (acc && OfficialNameLooksLikeAttachmentIndex(acc) && !LooksLikeOfficialDraftParen(sl.text)) {
             break;
         }
         if (acc) {
@@ -22984,7 +24714,22 @@ static int OfficialAttachTableLikelihood(const Vec<ScanLine>& lines, int page, i
         colHits.Append(0);
     }
     int nSameY = 0;
+    int pageStart = -1;
+    int pageEnd = -1;
     for (int i = 0; i < lines.Size(); i++) {
+        if (lines[i].srcPage == page) {
+            if (pageStart < 0) {
+                pageStart = i;
+            }
+            pageEnd = i + 1;
+        } else if (pageStart >= 0 && lines[i].srcPage > page) {
+            break;
+        }
+    }
+    if (pageStart < 0) {
+        return 0;
+    }
+    for (int i = pageStart; i < pageEnd; i++) {
         const ScanLine& sl = lines[i];
         if (sl.srcPage != page || !sl.text || page < 1 || page > nPages) {
             continue;
@@ -23005,7 +24750,7 @@ static int OfficialAttachTableLikelihood(const Vec<ScanLine>& lines, int page, i
             colHits[col]++;
         }
         int nPeer = 0;
-        for (int j = 0; j < lines.Size(); j++) {
+        for (int j = pageStart; j < pageEnd; j++) {
             if (lines[j].srcPage != page || !lines[j].text || j == i) {
                 continue;
             }
@@ -23064,6 +24809,7 @@ static OfficialAttachKind OfficialAttachClassifySeg(const Vec<ScanLine>& lines, 
     int nField = 0;
     int nRoster = 0;
     int nArab = 0;
+    int nChapter = 0;
     int tableMax = 0;
     for (int p = seg.startPage; p <= seg.endPage && p <= nPages; p++) {
         int t = OfficialAttachTableLikelihood(lines, p, nPages);
@@ -23085,6 +24831,8 @@ static OfficialAttachKind OfficialAttachClassifySeg(const Vec<ScanLine>& lines, 
             nBiao++;
         } else if (m.type == MarkerType::ArabicDot) {
             nArab++;
+        } else if (m.type == MarkerType::Chapter) {
+            nChapter++;
         }
         if (OfficialAttachLooksLikeFieldLabel(sl.text)) {
             nField++;
@@ -23095,19 +24843,36 @@ static OfficialAttachKind OfficialAttachClassifySeg(const Vec<ScanLine>& lines, 
     }
     bool nameRoster =
         seg.title && (str::Find(seg.title, "名单") || str::Find(seg.title, "名册") || str::Find(seg.title, "人员名单"));
-    bool nameForm = seg.title && (str::EndsWith(seg.title, "申报表") || str::EndsWith(seg.title, "汇总表") ||
-                                  str::EndsWith(seg.title, "登记表") || str::Find(seg.title, "自查表") ||
-                                  str::EndsWith(seg.title, "验收表") || str::EndsWith(seg.title, "规划表") ||
-                                  str::EndsWith(seg.title, "计划表") || str::EndsWith(seg.title, "情况表") ||
-                                  str::Find(seg.title, "扣分表") || str::EndsWith(seg.title, "考核表"));
+    bool nameForm =
+        seg.title &&
+        (str::EndsWith(seg.title, "申报表") || str::EndsWith(seg.title, "汇总表") ||
+         str::EndsWith(seg.title, "登记表") || str::Find(seg.title, "自查表") || str::EndsWith(seg.title, "验收表") ||
+         str::EndsWith(seg.title, "规划表") || str::EndsWith(seg.title, "计划表") ||
+         str::EndsWith(seg.title, "情况表") || str::Find(seg.title, "扣分表") || str::EndsWith(seg.title, "考核表") ||
+         str::EndsWith(seg.title, "分工表") || str::EndsWith(seg.title, "任务表") || str::Find(seg.title, "任务分工"));
     bool nameNarrative = seg.title && (str::Find(seg.title, "实施细则") || str::Find(seg.title, "实施方案") ||
                                        str::Find(seg.title, "实施办法") || str::Find(seg.title, "管理办法") ||
                                        str::Find(seg.title, "工作方案") || str::EndsWith(seg.title, "办法") ||
                                        str::Find(seg.title, "工作说明"));
+    // A 任务分工表 naturally contains chapter-like numbered text in its first
+    // column. That must not make the attachment itself look narrative.
+    bool taskAssignmentTable = seg.title && str::Find(seg.title, "任务分工");
+    if (taskAssignmentTable && tableMax >= 18) {
+        return OfficialAttachKind::FormTable;
+    }
+    if (nameForm && (OfficialTitleHasDocSuffix(seg.title) || nChapter >= 1)) {
+        nameForm = false;
+    }
     if (nBiao >= 1 && nDunhao >= 1) {
         return OfficialAttachKind::Mixed;
     }
-    if (nameNarrative && nDunhao >= 1) {
+    // A task-assignment attachment has numbered first-column cells that look
+    // like an outline. Its title says "表", and an actual table signal must
+    // win over that false narrative structure.
+    if (nameForm && tableMax >= 30) {
+        return OfficialAttachKind::FormTable;
+    }
+    if (nameNarrative || nChapter >= 1) {
         return OfficialAttachKind::Narrative;
     }
     if (nDunhao >= 2 && nParen >= 1 && tableMax < 55) {
@@ -23150,13 +24915,17 @@ static void OfficialAttachCollectManifest(const Vec<ScanLine>& lines, int nPages
         const char* bareColonName = OfficialUnnumberedAppendixColonName(sl.text);
         if (bareColonName) {
             OfficialAttachManifestItem it;
-            it.number = lastNum >= 1 ? lastNum + 1 : 1;
+            // A lone unnumbered 附件：foo should stay number=0 — we only
+            // promote to numbered once a second attachment appears (either
+            // another bare-colon or an explicitly-numbered one), proving the
+            // document actually uses numbered attachments.  See the
+            // renumbering pass at the end of this function.
+            it.number = 0;
             it.title = DupTrimmed(bareColonName);
             it.srcPage = sl.srcPage;
             it.x = sl.x;
             it.y = sl.y;
             manifest.Append(it);
-            lastNum = it.number;
             pending = true;
             pendingPage = sl.srcPage;
             continue;
@@ -23266,6 +25035,34 @@ static void OfficialAttachCollectManifest(const Vec<ScanLine>& lines, int nPages
         }
         if (pending && LooksLikeOfficialBoilerplate(sl.text)) {
             pending = false;
+        }
+    }
+    // After the scan, bare-colon (number=0) entries need renumbering only
+    // when the document clearly uses numbered attachments — either multiple
+    // bare-colon entries, or any explicitly-numbered entries already present.
+    // A single bare-colon entry stays number=0 so downstream Guess does not
+    // manufacture "附件1" for a lone 附件.
+    {
+        int nBare = 0;
+        int nNum = 0;
+        int maxNum = 0;
+        for (int i = 0; i < manifest.Size(); i++) {
+            if (manifest[i].number < 1) {
+                nBare++;
+            } else {
+                nNum++;
+                if (manifest[i].number > maxNum) {
+                    maxNum = manifest[i].number;
+                }
+            }
+        }
+        if (nBare > 0 && (nBare >= 2 || nNum >= 1)) {
+            int next = maxNum + 1;
+            for (int i = 0; i < manifest.Size(); i++) {
+                if (manifest[i].number < 1) {
+                    manifest[i].number = next++;
+                }
+            }
         }
     }
     for (int i = 0; i < manifest.Size(); i++) {
@@ -23414,6 +25211,12 @@ static void BuildOfficialAttachLayout(const Vec<ScanLine>& lines, int nPages, Of
     if (nPages < 1) {
         return;
     }
+    // Table suppression must not depend on recognizing an "附件N" marker.
+    // Higher-detail OCR can miss that small marker while still returning
+    // every cell, otherwise making short/large cell text look like headings.
+    for (int p = 1; p <= nPages; p++) {
+        lay.pageTable[p] = OfficialAttachTableLikelihood(lines, p, nPages);
+    }
     OfficialAttachCollectManifest(lines, nPages, lay.manifest);
     for (int n = 0; n < 80; n++) {
         lay.markerStartPage.Append(0);
@@ -23447,6 +25250,7 @@ static void BuildOfficialAttachLayout(const Vec<ScanLine>& lines, int nPages, Of
         bool hadNum = false;
         int subNumber = 0;
         bool fromMarker = OfficialAttachParseMarker(sl.text, &number, &prefix, &hadNum, &subNumber);
+        OfficialAttachLabel label = OfficialAttachLabelFromMarker(sl.text);
         if (fromMarker && !hadNum) {
             char* rw = str::Dup(sl.text);
             RewriteOcrAppendixBang(&rw);
@@ -23519,11 +25323,14 @@ static void BuildOfficialAttachLayout(const Vec<ScanLine>& lines, int nPages, Of
                     markerScore = 22;
                 }
             }
-            if (!hadNum && title && pageTop && sl.srcPage > lastManPage) {
+            // Do not manufacture "附件1" just because a document has one
+            // unnumbered attachment.  Only assign a sequential number when
+            // a previous numbered sibling already exists — its presence proves
+            // the document uses numbered attachments.  A lone attachment's
+            // original unnumbered title is preserved by downstream logic
+            // (preserveBarePrefix in ApplyOfficialAttachmentPolicyNodes).
+            if (!hadNum && title && pageTop && sl.srcPage > lastManPage && lastStartNum >= 1) {
                 number = lastStartNum + 1;
-                if (number < 1) {
-                    number = 1;
-                }
                 hadNum = true;
                 markerScore = 22;
             }
@@ -23639,6 +25446,12 @@ static void BuildOfficialAttachLayout(const Vec<ScanLine>& lines, int nPages, Of
                 if (sawLaterNum) {
                     continue;
                 }
+                // 函末 附件1 then body 附件一 …办法 / 第一章: new 规章 start, not a near dup.
+                bool bodyRegulation = (title && OfficialTitleHasDocSuffix(title)) ||
+                                      OfficialAttachPageHasChapter(lines, sl.srcPage, nPages);
+                if (bodyRegulation && sl.srcPage > lay.segs[s].startPage) {
+                    continue;
+                }
                 if (sl.srcPage >= lay.segs[s].startPage && sl.srcPage <= lay.segs[s].startPage + 4) {
                     dup = true;
                     break;
@@ -23661,6 +25474,7 @@ static void BuildOfficialAttachLayout(const Vec<ScanLine>& lines, int nPages, Of
         seg.endPage = nPages;
         seg.startY = sl.y;
         seg.title = title;
+        seg.label = label;
         seg.score = score;
         lay.segs.Append(seg);
         if (number >= 1) {
@@ -23735,6 +25549,61 @@ static void BuildOfficialAttachLayout(const Vec<ScanLine>& lines, int nPages, Of
     }
 }
 
+// First-column wrap in a 任务分工表: "一、实现人社数" / "四、增强全国-29 扩大…"
+static bool OfficialDunhaoLooksLikeTableColumnCell(const char* s) {
+    if (!s || !s[0]) {
+        return false;
+    }
+    HeadingMarker m = ParseHeadingMarker(s);
+    if (m.type != MarkerType::ChineseDunhao || m.prefixLength < 1) {
+        return false;
+    }
+    const char* rest = s + m.prefixLength;
+    int rlen = (int)str::Len(rest);
+    int ri = 0;
+    SkipSpacesUtf8(rest, rlen, ri);
+    rest += ri;
+    if (!rest[0]) {
+        return false;
+    }
+    if (str::Find(rest, "万元") || str::Find(rest, "。") || str::Find(rest, "？")) {
+        return false;
+    }
+    if (str::EndsWith(rest, "目标") || str::EndsWith(rest, "内容") || str::EndsWith(rest, "步骤") ||
+        str::EndsWith(rest, "安排") || str::EndsWith(rest, "要求") || str::EndsWith(rest, "措施") ||
+        str::EndsWith(rest, "保障") || str::EndsWith(rest, "范围") || str::EndsWith(rest, "说明") ||
+        str::EndsWith(rest, "事项") || str::EndsWith(rest, "其他") || str::EndsWith(rest, "项目") ||
+        str::EndsWith(rest, "时间") || str::EndsWith(rest, "地点") || str::EndsWith(rest, "下载") ||
+        str::EndsWith(rest, "填报")) {
+        return false;
+    }
+    int g = GlyphCount(rest);
+    if (g >= 2 && g <= 7 && !str::Find(rest, "分)")) {
+        return true;
+    }
+    int cjk = 0;
+    int i = 0;
+    int len = (int)str::Len(rest);
+    while (i < len) {
+        int cp = Utf8CodepointNext(rest, len, i);
+        if (cp >= 0x4E00 && cp <= 0x9FFF) {
+            cjk++;
+            if (cjk > 8) {
+                return false;
+            }
+            continue;
+        }
+        if (cjk >= 3 && cjk <= 8 && IsDigitCp(cp)) {
+            return true;
+        }
+        if (cp <= 32 || cp == 0x3000 || IsOfficialAttachHyphenCp(cp)) {
+            continue;
+        }
+        return false;
+    }
+    return false;
+}
+
 // 1.业务咨询（部信息中心） vs 2.技术对接支持: a page with a document table + 联系人
 // fields scores as "table-y", and the short 2. line used to be dropped as a cell.
 static bool LooksLikeOfficialListHeadingTitle(const char* title) {
@@ -23762,14 +25631,51 @@ static bool LooksLikeOfficialListHeadingTitle(const char* title) {
 
 static bool OfficialAttachShouldDropHeading(const OfficialAttachLayout& lay, int page, const HeadingMarker& m,
                                             const char* title) {
-    if (page < 1 || page >= lay.pageAttachNum.Size() || lay.pageAttachNum[page] < 1) {
+    if (page < 1 || page >= lay.pageAttachNum.Size()) {
         return false;
     }
+    int table = page < lay.pageTable.Size() ? lay.pageTable[page] : 0;
+    bool inAttachment = lay.pageAttachNum[page] >= 1;
     if (m.type == MarkerType::Appendix || m.type == MarkerType::FormTable) {
         return false;
     }
     if (m.type == MarkerType::Chapter || m.type == MarkerType::Section || m.type == MarkerType::Article) {
         return false;
+    }
+    if (!inAttachment) {
+        // Two independent grid signals (multiple stable columns and repeated
+        // same-row peers) score 34. That is already strong evidence of a
+        // table. Requiring 55 accidentally made suppression depend on short
+        // cell OCR / known field names; the accurate OCR profile often joins
+        // those cells into longer strings and therefore never reached 55.
+        if (table < 30) {
+            return false;
+        }
+        // A grid/signature page may contain many OCR fragments plus a repeated
+        // document name. A suffix such as "指南" is not structure: without a
+        // real marker it must never make every seal or table cell a TOC item.
+        // Keep only a complete formal document title in this exceptional case.
+        if (m.rank == 0) {
+            return !OfficialDocTitleLooksComplete(title);
+        }
+        if (OfficialDocTitleLooksComplete(title) || OfficialTitleHasDocSuffix(title) ||
+            OfficialNameLooksLikeAttachmentIndex(title)) {
+            return false;
+        }
+        // On a strong table page, unnumbered OCR "large text" is commonly a
+        // header cell. Arabic row numbers are cells as well. Preserve only a
+        // plausible Chinese outline marker; it has independent structure.
+        if (m.type == MarkerType::ChineseDunhao || m.type == MarkerType::ChineseParen) {
+            return !LooksLikeOfficialListHeadingTitle(title);
+        }
+        return true;
+    }
+    // An attachment on a clear grid page is a table, even when its first
+    // column is OCRed as perfectly valid 一、/二、 outline text. Keep only
+    // the attachment heading above; never expose the table's rows as TOC
+    // children. This intentionally makes Fast and Balanced OCR agree here.
+    if (table >= 30) {
+        return true;
     }
     if (title && lay.repeatHeaders.Find(title) >= 0) {
         // Repeating 一、/三、实施步骤 across 实施方案 is the outline, not a page header.
@@ -23777,18 +25683,24 @@ static bool OfficialAttachShouldDropHeading(const OfficialAttachLayout& lay, int
             return true;
         }
     }
+    if (OfficialDunhaoLooksLikeTableColumnCell(title)) {
+        return true;
+    }
     OfficialAttachKind kind = (OfficialAttachKind)lay.pageKind[page];
-    int table = page < lay.pageTable.Size() ? lay.pageTable[page] : 0;
     if (OfficialAttachLooksLikeFieldLabel(title) || OfficialAttachLooksLikeRosterLine(title)) {
+        return true;
+    }
+    // A form/roster attachment has no body outline below its attachment
+    // title. Do this before the plausible-list exception: table cells often
+    // happen to be valid-looking 一、/1. headings, especially with Balanced
+    // OCR joining more of the cell text.
+    if (kind == OfficialAttachKind::Roster || kind == OfficialAttachKind::FormTable) {
         return true;
     }
     bool listMark = (m.type == MarkerType::ArabicDot && m.rank >= 3) || m.type == MarkerType::ArabicParen ||
                     m.type == MarkerType::ChineseParen || m.type == MarkerType::ChineseDunhao;
     if (listMark && (LooksLikeOfficialListHeadingTitle(title) || OfficialAttachLineIsOutlineSpine(title))) {
         return false;
-    }
-    if (kind == OfficialAttachKind::Roster || kind == OfficialAttachKind::FormTable) {
-        return true;
     }
     if (kind == OfficialAttachKind::Unknown && (m.type == MarkerType::ArabicDot || m.type == MarkerType::ArabicParen)) {
         return table >= 30 || GlyphCount(title) <= 8;
@@ -23902,9 +25814,16 @@ static bool OfficialAttachIsCoverIndexNode(const OfficialAttachLayout& lay, cons
     bool numberedIndex = m.type == MarkerType::Appendix || m.type == MarkerType::ArabicDot;
     if (numberedIndex && m.number >= 1) {
         for (int i = 0; i < lay.manifest.Size(); i++) {
-            if (lay.manifest[i].number == m.number &&
-                (n->pageNo == lay.manifest[i].srcPage || n->pageNo == lay.manifest[i].srcPage + 1)) {
+            if (lay.manifest[i].number == m.number && n->pageNo == lay.manifest[i].srcPage) {
                 onListPage = true;
+                break;
+            }
+            // Manifest wrap onto the next page only when this is still the list,
+            // not the body 附件一 / 第一章 that starts the 规章.
+            if (lay.manifest[i].number == m.number && n->pageNo == lay.manifest[i].srcPage + 1) {
+                if (!(own && own->startPage == n->pageNo) && !OfficialAppendixTitleLooksLikeRegulation(n->title)) {
+                    onListPage = true;
+                }
                 break;
             }
         }
@@ -24038,16 +25957,10 @@ static void OfficialAttachEnsureSegNodes(OfficialAttachLayout& lay, Vec<Extracte
             name = OfficialAttachManifestNameAt(lay.manifest, num, lay.segs[s].startPage);
         }
         if (name && GlyphCount(name) >= 2) {
-            title = JoinAppendixNumberTitle(num, name, lay.segs[s].subNumber);
+            title = JoinOfficialAttachLabelNumberTitle(lay.segs[s].label, num, name, lay.segs[s].subNumber);
         }
         if (!title) {
-            char buf[40];
-            if (lay.segs[s].subNumber >= 1) {
-                snprintf(buf, (int)sizeof(buf), "\xE9\x99\x84\xE4\xBB\xB6%d-%d", num, lay.segs[s].subNumber);
-            } else {
-                snprintf(buf, (int)sizeof(buf), "\xE9\x99\x84\xE4\xBB\xB6%d", num);
-            }
-            title = str::Dup(buf);
+            title = JoinOfficialAttachLabelNumberTitle(lay.segs[s].label, num, nullptr, lay.segs[s].subNumber);
         }
         ExtractedTocItem* n = NewItem(title, lay.segs[s].startPage, 0, lay.segs[s].startY, lvl, 90);
         str::Free(title);
@@ -24111,13 +26024,18 @@ static void ApplyOfficialAttachmentPolicyNodes(OfficialAttachLayout& lay, Vec<Ex
                 int useNum = m.number >= 1 ? m.number : seg->number;
                 const char* manName = OfficialAttachManifestNameAt(lay.manifest, useNum, n->pageNo);
                 const char* pageName = nullptr;
+                auto restIsAttachName = [](const char* r) -> bool {
+                    return r && r[0] &&
+                           (OfficialNameLooksLikeAttachmentIndex(r) || OfficialTitleHasDocSuffix(r) ||
+                            LooksLikeOfficialAppendixHeadingName(r));
+                };
                 if (n->title) {
                     HeadingMarker tm = ParseHeadingMarker(n->title);
                     const char* rest = (tm.prefixLength > 0) ? n->title + tm.prefixLength : n->title;
                     int rlen = (int)str::Len(rest);
                     int ri = 0;
                     SkipSpacesUtf8(rest, rlen, ri);
-                    if (OfficialNameLooksLikeAttachmentIndex(rest + ri)) {
+                    if (restIsAttachName(rest + ri)) {
                         pageName = rest + ri;
                     }
                 }
@@ -24127,29 +26045,45 @@ static void ApplyOfficialAttachmentPolicyNodes(OfficialAttachLayout& lay, Vec<Ex
                         if (!ch || !ch->title || ParseHeadingMarker(ch->title).rank >= 1) {
                             continue;
                         }
-                        if (OfficialNameLooksLikeAttachmentIndex(ch->title)) {
+                        if (restIsAttachName(ch->title)) {
                             pageName = ch->title;
                             break;
                         }
                     }
                 }
                 const char* use = nullptr;
-                if (seg->title && OfficialNameLooksLikeAttachmentIndex(seg->title)) {
+                if (seg->title && restIsAttachName(seg->title)) {
                     use = seg->title;
                 } else if (pageName) {
                     use = pageName;
+                } else if (seg->title && GlyphCount(seg->title) >= 2 &&
+                           (!manName || GlyphCount(seg->title) >= GlyphCount(manName))) {
+                    use = seg->title;
                 } else {
                     use = manName ? manName : seg->title;
                 }
+                // Do not replace a longer 规章/要点 body title with a truncated 函末清单 name.
+                if (use && n->title && pageName && GlyphCount(pageName) > GlyphCount(use) + 2 &&
+                    (OfficialTitleHasDocSuffix(pageName) || LooksLikeOfficialAppendixHeadingName(pageName))) {
+                    use = pageName;
+                }
                 bool pageNamed = pageName != nullptr;
-                bool needNum = m.number < 1 && useNum >= 1;
+                // Numbering a lone, explicitly unnumbered attachment changes
+                // the published title. Segment order is not numbering evidence.
+                bool preserveBarePrefix =
+                    m.number < 1 && !OfficialAppendixHasVisibleNumber(n->title) && lay.segs.Size() == 1;
+                bool needNum = !preserveBarePrefix && m.number < 1 && useNum >= 1;
                 bool mashed = use && n->title && GlyphCount(n->title) > GlyphCount(use) + 8 && str::Find(n->title, use);
                 bool pageIncomplete =
                     pageName && use && str::Find(use, pageName) && GlyphCount(use) > GlyphCount(pageName);
-                if (use && GlyphCount(use) >= 2 &&
+                bool wouldShorten = use && n->title && GlyphCount(n->title) > GlyphCount(use) + 4 &&
+                                    !OfficialAppendixTitleBare(n->title) && restIsAttachName(pageName);
+                if (use && GlyphCount(use) >= 2 && !wouldShorten &&
                     (OfficialAppendixTitleBare(n->title) || mashed || !pageNamed || needNum || pageIncomplete)) {
                     int useSub = m.subNumber >= 1 ? m.subNumber : (seg ? seg->subNumber : 0);
-                    char* joined = useNum >= 1 ? JoinAppendixNumberTitle(useNum, use, useSub) : str::Dup(use);
+                    char* joined = preserveBarePrefix ? JoinBareAppendixTitle(use)
+                                   : useNum >= 1      ? JoinAppendixNumberTitle(useNum, use, useSub)
+                                                      : str::Dup(use);
                     if (joined) {
                         str::Free(n->title);
                         n->title = joined;
@@ -24218,33 +26152,12 @@ static void CollectOfficialAppendixNumNodes(const Vec<ExtractedTocItem*>& nodes,
     }
 }
 
-static ExtractedTocItem* ExtractedFindAppendixNumNode(const Vec<ExtractedTocItem*>& nodes, int num) {
-    for (int i = 0; i < nodes.Size(); i++) {
-        if (!nodes[i] || !nodes[i]->title) {
-            continue;
-        }
-        HeadingMarker m = ParseHeadingMarker(nodes[i]->title);
-        if (m.type == MarkerType::Appendix && m.number == num) {
-            return nodes[i];
-        }
-    }
-    return nullptr;
-}
-
 static bool OfficialArabicDotDuplicatesAppendix(const Vec<ExtractedTocItem*>& appendixNodes, ExtractedTocItem* n) {
     if (!n || !n->title) {
         return false;
     }
     HeadingMarker m = ParseHeadingMarker(n->title);
     if (m.type != MarkerType::ArabicDot || m.number < 1 || m.rank < 3) {
-        return false;
-    }
-    ExtractedTocItem* ap = ExtractedFindAppendixNumNode(appendixNodes, m.number);
-    if (!ap || ap == n) {
-        return false;
-    }
-    bool later = ap->pageNo > n->pageNo || (ap->pageNo == n->pageNo && ap->y > n->y + 8.f);
-    if (!later) {
         return false;
     }
     const char* rest = n->title;
@@ -24259,10 +26172,46 @@ static bool OfficialArabicDotDuplicatesAppendix(const Vec<ExtractedTocItem*>& ap
     if (OfficialArabicDotLooksLikeAppendixCiteTask(rest)) {
         return false;
     }
+    ExtractedTocItem* best = nullptr;
+    for (int i = 0; i < appendixNodes.Size(); i++) {
+        ExtractedTocItem* ap = appendixNodes[i];
+        if (!ap || ap == n || !ap->title) {
+            continue;
+        }
+        HeadingMarker am = ParseHeadingMarker(ap->title);
+        if (am.type != MarkerType::Appendix || am.number != m.number) {
+            continue;
+        }
+        bool later = ap->pageNo > n->pageNo || (ap->pageNo == n->pageNo && ap->y > n->y + 8.f);
+        if (!later) {
+            continue;
+        }
+        if (!best) {
+            best = ap;
+            continue;
+        }
+        // Prefer a named 规章 / matching title over a bare "附件2" that appears earlier.
+        bool apNamed = !OfficialAppendixTitleBare(ap->title);
+        bool bestNamed = !OfficialAppendixTitleBare(best->title);
+        bool apMatch = OfficialAttachBodyNamesMatch(n->title, ap->title);
+        bool bestMatch = OfficialAttachBodyNamesMatch(n->title, best->title);
+        if ((apMatch && !bestMatch) || (apNamed && !bestNamed) ||
+            (OfficialAppendixTitleLooksLikeRegulation(ap->title) &&
+             !OfficialAppendixTitleLooksLikeRegulation(best->title))) {
+            best = ap;
+        }
+    }
+    if (!best) {
+        return false;
+    }
     if (OfficialNameLooksLikeAttachmentIndex(rest)) {
         return true;
     }
-    return OfficialAttachBodyNamesMatch(n->title, ap->title);
+    // 函末 "2.《…使用管理暂行办法》" duplicates later 附件2 规章.
+    if (str::Find(rest, "《") || OfficialTitleHasDocSuffix(rest)) {
+        return true;
+    }
+    return OfficialAttachBodyNamesMatch(n->title, best->title);
 }
 
 static void DropOfficialArabicDotDuplicateAppendices(Vec<ExtractedTocItem*>& nodes,
@@ -24408,29 +26357,60 @@ static void MergeWrappedOfficialDocTitleFlat(Vec<ExtractedTocItem*>& flat) {
     }
 }
 
+static bool IsPlausibleExtractedTocTitle(const char* title) {
+    // Titles are allocated strings. Small integer values indicate a stale node
+    // reference left by an earlier merge and must never reach string helpers.
+    return (uintptr_t)title > 0x10000;
+}
+
 static void DropOfficialDocTitleWrapSuffixes(Vec<ExtractedTocItem*>& flat) {
     Vec<ExtractedTocItem*> keep;
     for (int i = 0; i < flat.Size(); i++) {
         ExtractedTocItem* n = flat[i];
+        bool alreadyKept = false;
+        for (int j = 0; j < keep.Size(); j++) {
+            if (keep[j] == n) {
+                alreadyKept = true;
+                break;
+            }
+        }
+        if (alreadyKept) {
+            // Flattened input must have unique ownership. A repeated pointer is
+            // an alias, not another node to compare or delete.
+            continue;
+        }
+        if (n && !IsPlausibleExtractedTocTitle(n->title)) {
+            // Do not delete: n itself may already have been freed. Just discard
+            // this stale occurrence from the rebuilt flat list.
+            continue;
+        }
         bool drop = false;
         if (n && n->title && ParseHeadingMarker(n->title).rank < 1) {
             int nn = (int)str::Len(n->title);
             for (int j = 0; j < keep.Size(); j++) {
                 ExtractedTocItem* a = keep[j];
-                if (!a || !a->title || a->pageNo != n->pageNo) {
+                if (!a || !IsPlausibleExtractedTocTitle(a->title) || a->pageNo != n->pageNo) {
                     continue;
                 }
                 if (ParseHeadingMarker(a->title).rank >= 1) {
                     continue;
                 }
                 int na = (int)str::Len(a->title);
-                if (nn >= 6 && nn < na && str::EndsWith(a->title, n->title)) {
+                bool adjacentCoverFragment = OfficialCountsAsMainDocFrontTitle(a->title) && a->y > 0 && n->y > 0 &&
+                                             n->y + 0.5f >= a->y && n->y - a->y <= 160.f &&
+                                             str::Find(a->title, n->title);
+                if (nn >= 6 && nn < na && (str::EndsWith(a->title, n->title) || adjacentCoverFragment)) {
                     drop = true;
                     break;
                 }
             }
         }
         if (drop) {
+            // Promote kids if any (draft paren should have none).
+            for (int c = 0; c < n->children.Size(); c++) {
+                keep.Append(n->children[c]);
+            }
+            n->children.Reset();
             delete n;
         } else {
             keep.Append(n);
@@ -24443,8 +26423,15 @@ static void DropOfficialDocTitleWrapSuffixes(Vec<ExtractedTocItem*>& flat) {
 }
 
 static bool OfficialIssuedNameIsAttachedPlan(const char* s) {
-    return s && (str::EndsWith(s, "方案") || str::EndsWith(s, "规划") || str::EndsWith(s, "计划") ||
-                 str::EndsWith(s, "要点"));
+    if (!s || !s[0]) {
+        return false;
+    }
+    char* t = str::Dup(s);
+    StripOfficialTitleTrailingParens(t);
+    bool ok = t && (str::EndsWith(t, "方案") || str::EndsWith(t, "规划") || str::EndsWith(t, "计划") ||
+                    str::EndsWith(t, "要点"));
+    str::Free(t);
+    return ok;
 }
 
 // 印发《方案》的通知 stays the first bookmark. Drop a later bare 方案 with the
@@ -24509,8 +26496,8 @@ static bool OfficialTitleIsIssuedPlanOrRule(const char* s) {
         str::EndsWith(s, "说明")) {
         return false;
     }
-    return str::Find(s, "办法") || str::Find(s, "方案") || str::Find(s, "细则") || str::Find(s, "规定") ||
-           str::Find(s, "规划") || str::Find(s, "条例");
+    return str::Find(s, "办法") || str::Find(s, "方案") || str::Find(s, "计划") || str::Find(s, "细则") ||
+           str::Find(s, "规定") || str::Find(s, "规划") || str::Find(s, "条例");
 }
 
 static bool OfficialTitleIsDocRoot(const char* s) {
@@ -24521,6 +26508,59 @@ static bool OfficialTitleIsDocRoot(const char* s) {
         return true;
     }
     return OfficialTitleFindGuanYu(s) && (OfficialHanComplete(s) || OfficialTitleHasDocSuffix(s));
+}
+
+static void IncreaseOfficialSubtreeLevels(ExtractedTocItem* n, int by) {
+    if (!n || by < 1) {
+        return;
+    }
+    n->level += by;
+    for (int i = 0; i < n->children.Size(); i++) {
+        IncreaseOfficialSubtreeLevels(n->children[i], by);
+    }
+}
+
+// An 印发通知 and the attached 方案/规划/计划/要点 are one document package:
+// keep both bookmarks, but make the attached document (and its outline) a
+// child of the notice. Regulations such as 办法/规定 remain independent roots.
+static void NestOfficialIssuedPlanUnderFrontLetter(Vec<ExtractedTocItem*>& roots) {
+    ExtractedTocItem* front = nullptr;
+    int frontAt = -1;
+    for (int i = 0; i < roots.Size(); i++) {
+        if (roots[i] && OfficialCountsAsMainDocFrontTitle(roots[i]->title)) {
+            front = roots[i];
+            frontAt = i;
+            break;
+        }
+    }
+    if (!front || !front->title) {
+        return;
+    }
+    Vec<ExtractedTocItem*> keep;
+    for (int i = 0; i < roots.Size(); i++) {
+        ExtractedTocItem* n = roots[i];
+        // A matching title in a later, separately merged document is not an
+        // attachment of this notice. Issued plans normally begin immediately
+        // after the short covering letter; keep a generous page window for
+        // signature and attachment-list pages.
+        bool nearby = n && n->pageNo >= front->pageNo && n->pageNo <= front->pageNo + 12;
+        bool issuedPlan = i > frontAt && nearby && n->title && OfficialIssuedNameIsAttachedPlan(n->title) &&
+                          str::Find(front->title, n->title);
+        if (!issuedPlan) {
+            keep.Append(n);
+            continue;
+        }
+        int need = (front->level > 0 ? front->level : 1) + 1;
+        int by = need - n->level;
+        if (by > 0) {
+            IncreaseOfficialSubtreeLevels(n, by);
+        }
+        front->children.Append(n);
+    }
+    roots.Reset();
+    for (int i = 0; i < keep.Size(); i++) {
+        roots.Append(keep[i]);
+    }
 }
 
 static char* OfficialDocTitleFromFileName(const char* filePath) {
@@ -24754,11 +26794,18 @@ static void InsertOfficialDocTitles(const Vec<ScanLine>& lines, int nPages, Vec<
         MergeOfficialCoverAppendixWithRealHeading(roots);
         RelayoutOfficialArabicListLevels(roots);
         NestOfficialAppendixUnderFrontLetter(roots);
+        NestOfficialIssuedPlanUnderFrontLetter(roots);
         FoldRedundantOfficialAppendixTitles(roots);
         DropOfficialDuplicateFormTitleSiblings(roots);
         return;
     }
     for (int t = inserts.Size() - 1; t >= 0; t--) {
+        if (gCli && gCli->extractTocDebug && inserts[t].item) {
+            logf("TOC title-apply route=%s before=%d page=%d x=%.1f y=%.1f level=%d source=%d title=%s\n",
+                 inserts[t].route ? inserts[t].route : "unknown", inserts[t].beforeFlat, inserts[t].item->pageNo,
+                 inserts[t].item->x, inserts[t].item->y, inserts[t].item->level, (int)inserts[t].item->source,
+                 inserts[t].item->title ? inserts[t].item->title : "");
+        }
         int at = inserts[t].beforeFlat;
         if (at < 0) {
             at = 0;
@@ -24805,7 +26852,6 @@ static void InsertOfficialDocTitles(const Vec<ScanLine>& lines, int nPages, Vec<
             }
         }
     }
-    MergeWrappedOfficialDocTitleFlat(flat);
     DropOfficialDocTitleWrapSuffixes(flat);
     DropOfficialPreambleFlat(flat);
     MergeOfficialDuplicateUnnumberedTitles(flat);
@@ -24825,6 +26871,7 @@ static void InsertOfficialDocTitles(const Vec<ScanLine>& lines, int nPages, Vec<
     MergeOfficialCoverAppendixWithRealHeading(roots);
     RelayoutOfficialArabicListLevels(roots);
     NestOfficialAppendixUnderFrontLetter(roots);
+    NestOfficialIssuedPlanUnderFrontLetter(roots);
     FoldRedundantOfficialAppendixTitles(roots);
     DropOfficialDuplicateFormTitleSiblings(roots);
 }
@@ -24915,9 +26962,10 @@ static bool FileNameHasOfficialKind(const char* filePath) {
         return false;
     }
     const char* name = path::GetBaseNameTemp(filePath);
-    return PathHasNeedle(name, "回复意见") || PathHasNeedle(name, "征求意见") || PathHasNeedle(name, "意见稿") ||
-           PathHasNeedle(name, "通知") || PathHasNeedle(name, "请示") || PathHasNeedle(name, "批复") ||
-           PathHasNeedle(name, "通报") || PathHasNeedle(name, "的函") || PathHasNeedle(name, "函");
+    return PathHasNeedle(name, "实施意见") || PathHasNeedle(name, "回复意见") || PathHasNeedle(name, "征求意见") ||
+           PathHasNeedle(name, "意见稿") || PathHasNeedle(name, "通知") || PathHasNeedle(name, "请示") ||
+           PathHasNeedle(name, "批复") || PathHasNeedle(name, "通报") || PathHasNeedle(name, "的函") ||
+           PathHasNeedle(name, "函");
 }
 
 static bool LineIsChapterHeading(const char* s) {
@@ -25578,17 +27626,31 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
     // #endregion
     int lAp = 0;
     int lForm = 0;
+    int lChapter = 0;
     int lDunhao = 0;
     int lArticle = 0;
     int lParen = 0;
     int lDotted = 0;
     int lDecimal = 0;
+    int lDoc = 0;
     for (int i = 0; i < flat.Size(); i++) {
         ExtractedTocItem* it = flat[i];
         if (!it || !it->title) {
             continue;
         }
         HeadingMarker m = ParseHeadingMarker(it->title);
+        if (m.rank < 1 && OfficialTitleIsDocRoot(it->title)) {
+            lDoc = it->level > 0 ? it->level : 1;
+            lAp = 0;
+            lForm = 0;
+            lChapter = 0;
+            lDunhao = 0;
+            lArticle = 0;
+            lParen = 0;
+            lDotted = 0;
+            lDecimal = 0;
+            continue;
+        }
         if (LooksLikeBracketTxnCodeTitle(it->title)) {
             int need = lDotted > 0 ? lDotted + 1 : (lParen > 0 ? lParen + 1 : it->level);
             if (need > 6) {
@@ -25605,7 +27667,13 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
             continue;
         }
         if (m.type == MarkerType::Chapter) {
-            lAp = it->level > 0 ? it->level : 1;
+            // After 附件N, 第N章 nests under that attachment (not a sibling of 通知).
+            int need = lAp > 0 ? lAp + 1 : (lDoc > 0 ? lDoc + 1 : (it->level > 0 ? it->level : 1));
+            if (need > 6) {
+                need = 6;
+            }
+            it->level = need;
+            lChapter = it->level;
             lForm = 0;
             lDunhao = 0;
             lArticle = 0;
@@ -25615,13 +27683,23 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
             continue;
         }
         if (m.type == MarkerType::Appendix) {
-            // 附件N is a sibling of 第N章 / 一、, not a child of the last 附则.
+            // 附件N is a sibling of 第N章 / （一） / 一、, not a child of the last 附则.
             if (lAp > 0) {
                 it->level = lAp;
+            } else if (lDoc > 0) {
+                it->level = lDoc + 1;
+                lAp = it->level;
+            } else if (lChapter > 0) {
+                it->level = lChapter;
+                lAp = it->level;
+            } else if (lParen > 0) {
+                it->level = lParen;
+                lAp = it->level;
             } else {
                 lAp = it->level > 0 ? it->level : 1;
             }
             lForm = 0;
+            lChapter = 0;
             lDunhao = 0;
             lArticle = 0;
             lParen = 0;
@@ -25644,7 +27722,7 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
             continue;
         }
         if (m.type == MarkerType::Section) {
-            int need = lAp > 0 ? lAp + 1 : 2;
+            int need = lChapter > 0 ? lChapter + 1 : (lAp > 0 ? lAp + 1 : 2);
             if (need > 6) {
                 need = 6;
             }
@@ -25663,8 +27741,12 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
             int need = it->level > 0 ? it->level : 1;
             if (lForm > 0) {
                 need = lForm + 1;
+            } else if (lChapter > 0) {
+                need = lChapter + 1;
             } else if (lAp > 0) {
                 need = lAp + 1;
+            } else if (lDoc > 0 && need <= lDoc) {
+                need = lDoc + 1;
             }
             if (lDecimal > 0) {
                 need = lDecimal + 1;
@@ -25680,7 +27762,7 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
             continue;
         }
         if (m.type == MarkerType::Article) {
-            int need = lDunhao > 0 ? lDunhao + 1 : (lAp > 0 ? lAp + 1 : 1);
+            int need = lDunhao > 0 ? lDunhao + 1 : (lChapter > 0 ? lChapter + 1 : (lAp > 0 ? lAp + 1 : 1));
             if (need > 6) {
                 need = 6;
             }
@@ -25688,8 +27770,8 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
             {
                 char extra[192];
                 snprintf(extra, (int)sizeof(extra),
-                         "nestArticle oldLvl=%d need=%d lAp=%d lDunhao=%d lArticle=%d num=%d", it->level, need, lAp,
-                         lDunhao, lArticle, m.number);
+                         "nestArticle oldLvl=%d need=%d lAp=%d lChapter=%d lDunhao=%d lArticle=%d num=%d", it->level,
+                         need, lAp, lChapter, lDunhao, lArticle, m.number);
                 Dbg92a48e("T", "ExtractPdfToc.cpp:RelayoutOfficialArabicListLevels.article", it->title, extra);
             }
             // #endregion
@@ -25702,7 +27784,7 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
             continue;
         }
         if (m.type == MarkerType::ChineseParen) {
-            int need = 1;
+            int need = lDoc > 0 ? lDoc + 1 : 1;
             if (m.number == 1 && lDotted > 0 && lParen < 1) {
                 // GB 问答: 1. then （一） sit under the question, not beside 一、.
                 need = lDotted + 1;
@@ -26310,6 +28392,13 @@ static bool InferProfileHeadings(const Vec<ScanLine>& lines, int nPages, Vec<Ext
             continue;
         }
         flat.Append(NewItem(work, sl.srcPage, sl.x, sl.y, lvl));
+        // This is deliberately logged at the instant a fallback candidate is
+        // created. It lets us tell whether a repeated bookmark was already a
+        // repeated MuPDF/OCR line or was duplicated by tree construction.
+        if (kind == TocProfileKind::Paper) {
+            logf("TOC paper-candidate scan=%d page=%d x=%.1f y=%.1f level=%d raw=%s title=%s\n", i, sl.srcPage, sl.x,
+                 sl.y, lvl, sl.text ? sl.text : "", work);
+        }
         str::Free(work);
     }
     if (flat.Size() < 1) {
@@ -26318,6 +28407,7 @@ static bool InferProfileHeadings(const Vec<ScanLine>& lines, int nPages, Vec<Ext
     EnforceMonotonicPages(flat);
     if (kind == TocProfileKind::Paper) {
         DropBackwardPaperChapters(flat);
+        logf("TOC paper-candidates after-filter=%d\n", flat.Size());
     }
     BuildTreeFromFlat(flat, roots);
     return CountExtracted(roots) >= 1;
@@ -26349,6 +28439,11 @@ static int PruneOfficialJunkItems(Vec<ExtractedTocItem*>& nodes, int maxPage) {
     Vec<ExtractedTocItem*> keep;
     for (ExtractedTocItem* n : nodes) {
         bool drop = n && OfficialHeadingIsSpecFormOrBidJunk(n->title);
+        // A body citation fragment like 《…通知》〔…〕号/要求 must not appear
+        // as its own TOC entry; it is just prose quoting another document.
+        if (!drop && n && LooksLikeOfficialQuotedDocumentCitation(n->title)) {
+            drop = true;
+        }
         if (n && maxPage > 0 && n->pageNo > maxPage) {
             drop = true;
         }
@@ -26372,14 +28467,208 @@ static int PruneOfficialJunkItems(Vec<ExtractedTocItem*>& nodes, int maxPage) {
     return nDrop;
 }
 
-static void FinishOfficialToc(EngineBase* engine, Vec<ExtractedTocItem*>& roots, int nPages, const char* via) {
+static const char* Utf8TailGlyphs(const char* s, int nGlyphs) {
+    if (!s || nGlyphs < 1) {
+        return nullptr;
+    }
+    int len = (int)str::Len(s);
+    int i = 0;
+    int n = 0;
+    while (i < len) {
+        if (Utf8CodepointNext(s, len, i) <= 0) {
+            return nullptr;
+        }
+        n++;
+    }
+    if (n < nGlyphs) {
+        return nullptr;
+    }
+    i = 0;
+    for (int skip = n - nGlyphs; skip > 0; skip--) {
+        Utf8CodepointNext(s, len, i);
+    }
+    return s + i;
+}
+
+// A sideways scanned table can make its first narrow cell look like a short
+// heading prefix. The wide table heading is then repeated on every page, e.g.
+// "X 社会保障卡应用计划表（试行）". It is not an outline: genuine headings do
+// not repeat an identical long tail four times with a different 1–4 glyph
+// unnumbered prefix. Keep a numbered attachment title, if there is one.
+struct RepeatedOfficialOcrTableTail {
+    char* text = nullptr;
+    int count = 0;
+};
+
+static const char* RepeatedOfficialOcrTableTailStart(const char* title) {
+    if (!title || ParseHeadingMarker(title).rank > 0) {
+        return nullptr;
+    }
+    const char* tail = Utf8TailGlyphs(title, 12);
+    if (!tail) {
+        return nullptr;
+    }
+    int prefixGlyphs = GlyphCount(title) - GlyphCount(tail);
+    return prefixGlyphs >= 1 && prefixGlyphs <= 4 ? tail : nullptr;
+}
+
+static bool IsRepeatedOfficialOcrTableTail(const char* title, const Vec<RepeatedOfficialOcrTableTail>& tails) {
+    const char* tail = RepeatedOfficialOcrTableTailStart(title);
+    if (!tail) {
+        return false;
+    }
+    for (int i = 0; i < tails.Size(); i++) {
+        if (tails[i].count >= 4 && str::Eq(tails[i].text, tail)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void DropRepeatedOfficialOcrTableTitlesWalk(Vec<ExtractedTocItem*>& nodes,
+                                                   const Vec<RepeatedOfficialOcrTableTail>& tails) {
+    Vec<ExtractedTocItem*> keep;
+    for (int i = 0; i < nodes.Size(); i++) {
+        ExtractedTocItem* n = nodes[i];
+        if (!n) {
+            continue;
+        }
+        DropRepeatedOfficialOcrTableTitlesWalk(n->children, tails);
+        if (IsRepeatedOfficialOcrTableTail(n->title, tails)) {
+            for (int c = 0; c < n->children.Size(); c++) {
+                keep.Append(n->children[c]);
+            }
+            n->children.Reset();
+            delete n;
+            continue;
+        }
+        keep.Append(n);
+    }
+    nodes = keep;
+}
+
+static void DropRepeatedOfficialOcrTableTitles(Vec<ExtractedTocItem*>& roots) {
+    Vec<ExtractedTocItem*> flat;
+    FlattenExtractedTocItems(roots, flat);
+    Vec<RepeatedOfficialOcrTableTail> tails;
+    for (int i = 0; i < flat.Size(); i++) {
+        const char* tail = flat[i] ? RepeatedOfficialOcrTableTailStart(flat[i]->title) : nullptr;
+        if (!tail) {
+            continue;
+        }
+        int found = -1;
+        for (int j = 0; j < tails.Size(); j++) {
+            if (str::Eq(tails[j].text, tail)) {
+                found = j;
+                break;
+            }
+        }
+        if (found < 0) {
+            RepeatedOfficialOcrTableTail group;
+            group.text = str::Dup(tail);
+            tails.Append(group);
+            found = tails.Size() - 1;
+        }
+        tails[found].count++;
+    }
+    DropRepeatedOfficialOcrTableTitlesWalk(roots, tails);
+    for (int i = 0; i < tails.Size(); i++) {
+        str::Free(tails[i].text);
+    }
+}
+
+static void NormalizeOfficialAttachmentPrefixes(Vec<ExtractedTocItem*>& nodes) {
+    for (ExtractedTocItem* n : nodes) {
+        if (!n || !n->title) {
+            continue;
+        }
+        char* s = n->title;
+        int i = 0;
+        while (s[i] >= '0' && s[i] <= '9') {
+            i++;
+        }
+        while (s[i] == ' ' || s[i] == '\t') {
+            i++;
+        }
+        // OCR sometimes glues a table serial to an appendix heading:
+        // "1附件3 …" is never a meaningful bookmark title.
+        if (i > 0 && str::StartsWith(s + i, "附件")) {
+            n->title = str::Dup(s + i);
+            str::Free(s);
+        }
+        NormalizeOfficialAttachmentPrefixes(n->children);
+    }
+}
+
+static int DropShortOfficialAttachmentOcrFragments(const OfficialAttachLayout& lay, Vec<ExtractedTocItem*>& roots) {
+    int nDrop = 0;
+    int activeAttachment = 0;
+    Vec<ExtractedTocItem*> flat;
+    StealExtractedInOrder(roots, flat);
+    Vec<ExtractedTocItem*> keep;
+    for (ExtractedTocItem* n : flat) {
+        if (!n) {
+            continue;
+        }
+        HeadingMarker marker = ParseHeadingMarker(n->title);
+        if (marker.type == MarkerType::Appendix && marker.number >= 1) {
+            activeAttachment = marker.number;
+        } else if (OfficialTitleIsDocRoot(n->title)) {
+            activeAttachment = 0;
+        }
+        int pageAttachment = n->pageNo >= 1 && n->pageNo < lay.pageAttachNum.Size() ? lay.pageAttachNum[n->pageNo] : 0;
+        int pageTable = n->pageNo >= 1 && n->pageNo < lay.pageTable.Size() ? lay.pageTable[n->pageNo] : 0;
+        if (pageAttachment >= 1) {
+            activeAttachment = pageAttachment;
+        }
+        // A candidate must satisfy three independent signals: it lies in an
+        // attachment range, on a detected grid page, and is a short unnumbered
+        // suffix fragment. Thus normal headings and clean 一、… attachment
+        // children are retained, while clipped OCR table cells are removed.
+        bool fragment = activeAttachment >= 1 && pageTable >= 30 && marker.rank == 0 && n->title &&
+                        GlyphCount(n->title) >= 4 && GlyphCount(n->title) <= 10 &&
+                        (str::EndsWith(n->title, "清单") || str::EndsWith(n->title, "目录"));
+        if (fragment) {
+            logf("TOC drop attachment table fragment page=%d attachment=%d title=%s\n", n->pageNo, activeAttachment,
+                 n->title);
+            nDrop++;
+            delete n;
+            continue;
+        }
+        keep.Append(n);
+    }
+    BuildTreeFromFlat(keep, roots);
+    return nDrop;
+}
+
+static void FinishOfficialToc(EngineBase* engine, const Vec<ScanLine>& lines, Vec<ExtractedTocItem*>& roots, int nPages,
+                              const char* via) {
     int maxPage = 0;
     const char* path = engine && engine->FilePath() ? engine->FilePath() : "";
     if (OfficialBidPacketCoverOnly(path, roots, nPages)) {
         maxPage = 3;
     }
     ReplaceFullwidthDotsInExtractedTree(roots);
+    NormalizeOfficialAttachmentPrefixes(roots);
     int nDrop = PruneOfficialJunkItems(roots, maxPage);
+    OfficialAttachLayout lay;
+    BuildOfficialAttachLayout(lines, nPages, lay);
+    nDrop += DropShortOfficialAttachmentOcrFragments(lay, roots);
+    FreeOfficialAttachLayout(lay);
+    DropRepeatedOfficialOcrTableTitles(roots);
+    RewriteOfficialRootIssuedDocTitles(roots);
+    MergeDuplicateOfficialRootTitles(roots);
+    Vec<ExtractedTocItem*> flat;
+    FlattenExtractedTocItems(roots, flat);
+    logf("TOC official-final via=%s items=%d pruned=%d\n", via ? via : "", flat.Size(), nDrop);
+    for (int i = 0; i < flat.Size(); i++) {
+        ExtractedTocItem* item = flat[i];
+        if (!item) {
+            continue;
+        }
+        logf("TOC official-final item=%d page=%d level=%d source=%d title=%s\n", i, item->pageNo, item->level,
+             (int)item->source, item->title ? item->title : "");
+    }
     // #region agent log
     {
         char extra[320];
@@ -26439,7 +28728,7 @@ static bool ExtractOfficialToc(EngineBase* engine, Vec<ScanLine>& lines, const V
             FoldRedundantOfficialAppendixTitles(roots);
             DropOfficialDuplicateFormTitleSiblings(roots);
             InheritMissingExtractedDests(roots);
-            FinishOfficialToc(engine, roots, nPages, "printed");
+            FinishOfficialToc(engine, lines, roots, nPages, "printed");
             return true;
         }
     }
@@ -26447,7 +28736,7 @@ static bool ExtractOfficialToc(EngineBase* engine, Vec<ScanLine>& lines, const V
     if (InferHeadings(lines, nPages, roots, tocDebugPath)) {
         InsertOfficialDocTitles(lines, nPages, roots, engine ? engine->FilePath() : nullptr);
         InheritMissingExtractedDests(roots);
-        FinishOfficialToc(engine, roots, nPages, "infer");
+        FinishOfficialToc(engine, lines, roots, nPages, "infer");
         return true;
     }
     DeleteExtractedTocItems(roots);
@@ -26460,14 +28749,19 @@ static bool ExtractContractToc(const Vec<ScanLine>& lines, int nPages, Vec<Extra
 
 static bool ExtractPaperToc(EngineBase* engine, const Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
                             Vec<ExtractedTocItem*>& roots) {
-    if (engine && TryPrintedToc(engine, lines, labels, nPages, roots, PaperPrintedTocOpts())) {
+    bool printed = engine && TryPrintedToc(engine, lines, labels, nPages, roots, PaperPrintedTocOpts());
+    logf("TOC paper-path printed=%d printed-items=%d\n", (int)printed, CountExtracted(roots));
+    if (printed) {
         RelayoutExtractedByProfile(roots, TocProfileKind::Paper, false);
         if (CountExtracted(roots) >= 1) {
+            logf("TOC paper-path selected=printed items=%d\n", CountExtracted(roots));
             return true;
         }
     }
     DeleteExtractedTocItems(roots);
-    return InferProfileHeadings(lines, nPages, roots, TocProfileKind::Paper);
+    bool inferred = InferProfileHeadings(lines, nPages, roots, TocProfileKind::Paper);
+    logf("TOC paper-path selected=fallback inferred=%d items=%d\n", (int)inferred, CountExtracted(roots));
+    return inferred;
 }
 
 static bool ExtractBookToc(EngineBase* engine, const Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
@@ -26487,17 +28781,51 @@ static bool ExtractBookToc(EngineBase* engine, const Vec<ScanLine>& lines, const
         return true;
     }
     DeleteExtractedTocItems(roots);
-    if (bornDigital) {
-        // Digital books without a parsed Contents are not heading-clustered from
-        // the whole file; that harvest is for OCR/scans with no printed TOC.
+    // Books use only their printed Contents. A heading-based fallback turns
+    // ordinary body lines into a huge, unreliable bookmark tree when OCR is
+    // noisy or the Contents page was parsed only partially.
+    return false;
+}
+
+// Classification is deliberately conservative for public documents, but a
+// Chinese book with a plain printed directory can otherwise fall through to
+// the Official profile. Accept the book parser independently only when its
+// result has several printed rows and actual destination evidence.
+static bool TryStrongPrintedBookToc(EngineBase* engine, const Vec<ScanLine>& lines, const Vec<char*>& labels,
+                                    int nPages, Vec<ExtractedTocItem*>& roots, bool bornDigital) {
+    char* bookDebug = nullptr;
+    if (gCli && gCli->extractTocDebug && engine && engine->FilePath()) {
+        bookDebug = str::Join(path::GetPathNoExtTemp(engine->FilePath()), ".book-toc-debug.txt");
+    }
+    bool parsed = ExtractBookPrintedToc(engine, lines, labels, nPages, roots, bookDebug);
+    str::Free(bookDebug);
+    if (!parsed) {
+        DeleteExtractedTocItems(roots);
         return false;
     }
-    if (ExtractBookBodyHeadings(lines, nPages, roots)) {
-        return true;
+    Vec<ExtractedTocItem*> flat;
+    FlattenExtractedTocItems(roots, flat);
+    int printed = 0;
+    int mapped = 0;
+    for (int i = 0; i < flat.Size(); i++) {
+        ExtractedTocItem* it = flat[i];
+        if (!it || it->source != ExtractedTocSource::PrintedToc || ExtractedTitleIsContentsPage(it->title)) {
+            continue;
+        }
+        printed++;
+        if (it->printedPage > 0 && it->pageNo > 0) {
+            mapped++;
+        }
     }
-    DeleteExtractedTocItems(roots);
-    // Numbered-only fallback when style clustering finds nothing.
-    return InferProfileHeadings(lines, nPages, roots, TocProfileKind::Book);
+    bool strong = printed >= 4 && mapped >= 2;
+    if (!strong) {
+        DeleteExtractedTocItems(roots);
+        return false;
+    }
+    if (!bornDigital && nPages <= kExtractPdfToc.tocSearchMaxPages && ExtractedHasPrintedBookCalib(roots)) {
+        TocCalibRefineExtracted(roots, engine);
+    }
+    return true;
 }
 
 static ExtractPdfTocKind ExtractFromCollectedLines(EngineBase* engine, Vec<ScanLine>& lines, int nPages, int nText,
@@ -26506,7 +28834,12 @@ static ExtractPdfTocKind ExtractFromCollectedLines(EngineBase* engine, Vec<ScanL
     if (nItemsOut) {
         *nItemsOut = 0;
     }
-    RunPrintedTocLogicTests();
+    // Logic self-tests are useful for the explicit debug command, but running
+    // them before every benchmark document mutates unrelated test trees and
+    // obscures crashes in the document currently being measured.
+    if (gCli && gCli->extractTocDebug) {
+        RunPrintedTocLogicTests();
+    }
     SplitGluedPrintedTocHeadings(lines);
     // Printed TOC lives in the first pages. A 169-page scan with text only on
     // those pages is still extractable; do not treat "most pages are images" as
@@ -26529,22 +28862,16 @@ static ExtractPdfTocKind ExtractFromCollectedLines(EngineBase* engine, Vec<ScanL
     if (clsOut) {
         *clsOut = cls;
     }
-    // #region agent log
-    {
-        const char* cs = "official";
-        if (cls == ExtractTocDocClass::Book) {
-            cs = "book";
-        } else if (cls == ExtractTocDocClass::Paper) {
-            cs = "paper";
-        } else if (cls == ExtractTocDocClass::Contract) {
-            cs = "contract";
-        }
-        char extra[320];
-        snprintf(extra, (int)sizeof(extra), "cls=%s nPages=%d nText=%d nLines=%d", cs, nPages, nText, lines.Size());
-        Dbg92a48e("E", "ExtractPdfToc.cpp:ExtractFromCollectedLines",
-                  engine && engine->FilePath() ? engine->FilePath() : "", extra);
+    const char* clsName = "official";
+    if (cls == ExtractTocDocClass::Book) {
+        clsName = "book";
+    } else if (cls == ExtractTocDocClass::Paper) {
+        clsName = "paper";
+    } else if (cls == ExtractTocDocClass::Contract) {
+        clsName = "contract";
     }
-    // #endregion
+    logf("TOC classify initial=%s pages=%d textPages=%d lines=%d explicitOfficialName=%d\n", clsName, nPages, nText,
+         lines.Size(), (int)FileNameHasOfficialKind(engine ? engine->FilePath() : nullptr));
     if (gCli && gCli->extractTocDebug) {
         const char* cs = "official";
         if (cls == ExtractTocDocClass::Book) {
@@ -26571,8 +28898,24 @@ static ExtractPdfTocKind ExtractFromCollectedLines(EngineBase* engine, Vec<ScanL
             str::Free(linesPath);
         }
     }
-    bool ok = false;
-    if (cls == ExtractTocDocClass::Contract) {
+    // A notification/letter/official-opinion filename is decisive. Tables in
+    // its annexes can resemble a printed book directory, but must not switch
+    // the whole document to the book extractor (which emitted 2,091 entries).
+    bool independentBook = cls == ExtractTocDocClass::Official &&
+                           !FileNameHasOfficialKind(engine ? engine->FilePath() : nullptr) &&
+                           TryStrongPrintedBookToc(engine, lines, labels, nPages, roots, bornDigital);
+    logf("TOC classify final=%s independentBook=%d\n", independentBook ? "book" : clsName, (int)independentBook);
+    if (independentBook) {
+        cls = ExtractTocDocClass::Book;
+        if (clsOut) {
+            *clsOut = cls;
+        }
+    }
+    bool ok = independentBook;
+    if (independentBook) {
+        // A strong printed directory takes priority over the default Official
+        // classification; no public-document heuristics are applied to it.
+    } else if (cls == ExtractTocDocClass::Contract) {
         ok = ExtractContractToc(lines, nPages, roots);
     } else if (cls == ExtractTocDocClass::Paper) {
         ok = ExtractPaperToc(engine, lines, labels, nPages, roots);
@@ -26616,6 +28959,20 @@ static bool ExtractPdfLooksBornDigital(EngineBase* engine) {
             continue;
         }
         if (engine->HasCachedOcrText(p)) {
+            // GetTextForPage is the OCR cache. Still born-digital if the file layer is dense.
+            Vec<EngineMupdfPageLine> raw;
+            if (EngineMupdfCollectPageLines(engine, p, raw)) {
+                int g = 0;
+                for (int k = 0; k < raw.Size(); k++) {
+                    if (raw[k].text) {
+                        g += GlyphCount(raw[k].text);
+                    }
+                }
+                EngineMupdfFreePageLines(raw);
+                if (g >= 40) {
+                    native++;
+                }
+            }
             continue;
         }
         int len = 0;
@@ -26669,9 +29026,6 @@ ExtractPdfTocKind ExtractPdfTocFromEngine(EngineBase* engine, Vec<ExtractedTocIt
     ExtractTocDocClass cls = ExtractTocDocClass::Official;
     ExtractPdfTocKind k =
         ExtractFromCollectedLines(engine, lines, nPages, nText, roots, nItemsOut, false, bornDigital, &cls);
-    if (cls == ExtractTocDocClass::Book) {
-        EngineMupdfClearOcrPageRotates(engine);
-    }
     FreeScanLines(lines);
     return k;
 }
@@ -26770,25 +29124,15 @@ static void ShowExtractDone(HWND hwnd, const char* msg, bool warning) {
     ShowNotification(args);
 }
 
-bool ConfirmReplaceExistingPdfToc(MainWindow* win) {
-    TASKDIALOG_BUTTON buttons[2]{};
-    buttons[0].nButtonID = IDYES;
-    buttons[0].pszButtonText = ToWStrTemp(_TRA("Yes"));
-    buttons[1].nButtonID = IDNO;
-    buttons[1].pszButtonText = ToWStrTemp(_TRA("No"));
-    TASKDIALOGCONFIG config{};
-    config.cbSize = sizeof(config);
-    config.hwndParent = win->hwndFrame;
-    config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
-    config.pszWindowTitle = ToWStrTemp(_TRA("Extract Table of Contents"));
-    config.pszContent = ToWStrTemp(_TRA("Replace the existing PDF bookmarks with extracted headings?"));
-    config.pszMainIcon = TD_WARNING_ICON;
-    config.nDefaultButton = IDNO;
-    config.cButtons = dimof(buttons);
-    config.pButtons = buttons;
-    int pressed = 0;
-    HRESULT hr = TaskDialogIndirect(&config, &pressed, nullptr, nullptr);
-    return hr == S_OK && pressed == IDYES;
+static bool ExtractPdfTocFileIsReadOnly(MainWindow* win, EngineBase* engine) {
+    const char* path = engine ? engine->FilePath() : nullptr;
+    DWORD attrs = path ? file::GetAttributes(path) : INVALID_FILE_ATTRIBUTES;
+    if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) {
+        MessageBoxW(win->hwndFrame, ToWStrTemp(_TRA("This file is read-only. Bookmark extraction was not started.")),
+                    ToWStrTemp(_TRA("Extract Table of Contents")), MB_OK | MB_ICONWARNING);
+        return true;
+    }
+    return false;
 }
 
 static EngineBase* ExtractEngineForWin(MainWindow* win) {
@@ -26808,14 +29152,8 @@ static void ExtractThread(ExtractWork* w) {
     int workTotal = to;
     Vec<ScanLine> lines;
     int nText = 0;
-    // #region agent log
-    {
-        char extra[160];
-        snprintf(extra, (int)sizeof(extra), "bornDigital=%d nPages=%d front=%d to=%d", (int)bornDigital, nPages, front,
-                 to);
-        DbgFace09("D", "ExtractPdfToc.cpp:ExtractThread.start", engine->FilePath() ? engine->FilePath() : "", extra);
-    }
-    // #endregion
+    logf("TOC extract start bornDigital=%d pages=%d to=%d persist=%d path=%s\n", (int)bornDigital, nPages, to,
+         (int)w->persistToDisk, engine->FilePath() ? engine->FilePath() : "");
     if (!CollectScanLineRange(engine, lines, &nText, 1, to, w->cancelSeq, w->hwndCanvas, workTotal)) {
         w->status = ExtractPdfTocStatus::Cancelled;
         w->nTextPages = nText;
@@ -26829,13 +29167,7 @@ static void ExtractThread(ExtractWork* w) {
     ExtractPdfTocKind k =
         ExtractFromCollectedLines(engine, lines, nPages, nText, w->roots, &nItems, force, bornDigital, &cls);
     w->isBook = cls == ExtractTocDocClass::Book;
-    // #region agent log
-    {
-        char extra[160];
-        snprintf(extra, (int)sizeof(extra), "k=%d nText=%d nItems=%d nLines=%d", (int)k, nText, nItems, lines.Size());
-        DbgFace09("D", "ExtractPdfToc.cpp:ExtractThread.done", engine->FilePath() ? engine->FilePath() : "", extra);
-    }
-    // #endregion
+    logf("TOC extract result kind=%d textPages=%d items=%d lines=%d\n", (int)k, nText, nItems, lines.Size());
     w->nTextPages = nText;
     FreeScanLines(lines);
     if (k == ExtractPdfTocKind::NoText) {
@@ -26906,37 +29238,16 @@ static void ExtractApplyOnUi(ExtractWork* w) {
         return;
     }
     HWND canvas = w->hwndCanvas;
-    // Extract always writes the outline. 对准印刷目录 is opened only by the
-    // header button / CmdPdfTocCalibrate — not automatically after extract.
     if (TocCalibIsActive(win)) {
         WindowTab* tab = win->CurrentTab();
         CloseTocCalibForTab(tab);
         HideTocCalib(win);
     }
-    // Apply /Rotate before WriteExtractedPdfToc: persist/reload destroys w->engine.
-    // Books never transpose pages (竖版书 stays upright).
-    int nRot = 0;
-    if (w->engine) {
-        if (w->isBook) {
-            nRot = EngineMupdfClearOcrPageRotates(w->engine);
-        } else {
-            nRot = EngineMupdfApplyPendingOcrPageRotates(w->engine);
-        }
-    }
-    bool ok = WriteExtractedPdfToc(win, w->engine, w->roots, w->persistToDisk);
-    int nItems = w->nItems;
-    DeleteExtractedTocItems(w->roots);
-    if (ok && nRot > 0) {
-        EngineBase* liveEng = ExtractEngineForWin(win);
-        DisplayModel* dm = win->AsFixed();
-        if (dm && liveEng && dm->GetEngine() == liveEng) {
-            dm->Relayout(dm->GetZoomVirtual(), dm->GetRotation());
-        }
-    }
+    // The calibration bar owns the extracted tree. Save writes it to disk and
+    // Cancel restores the original outline, so extraction itself is reversible.
+    bool ok = StartTocCalib(win, w->roots, w->engine, w->persistToDisk, true);
     if (!ok) {
         ShowExtractDone(canvas, _TRA("Could not write the PDF table of contents."), true);
-    } else {
-        ShowExtractDone(canvas, str::FormatTemp(_TRA("Extracted %d bookmarks."), nItems), false);
     }
     delete w;
 }
@@ -27006,6 +29317,7 @@ static bool ConfirmPdfTocSignatureExtract(MainWindow* win, EngineBase* engine) {
 bool HandleExtractPdfTocCommand(MainWindow* win, bool skipConfirm, bool persistToDisk) {
     EngineBase* engine = ExtractEngineForWin(win);
     if (!engine || !win) {
+        logf("TOC extract skipped: no editable PDF engine or window\n");
         return true;
     }
     if (!persistToDisk && gGlobalPrefs && gGlobalPrefs->ocrAutoSave && CanAccessDisk() && !gPluginMode) {
@@ -27014,16 +29326,18 @@ bool HandleExtractPdfTocCommand(MainWindow* win, bool skipConfirm, bool persistT
     bool bornDigital = ExtractPdfLooksBornDigital(engine);
     int workTotal = ExtractProgressTotal(engine, bornDigital);
     if (ExtractPdfTocIsRunning()) {
+        logf("TOC extract already running; keeping current pass\n");
         ShowExtractProgress(win->hwndCanvas, 0, workTotal);
+        return true;
+    }
+    if (!skipConfirm && ExtractPdfTocFileIsReadOnly(win, engine)) {
         return true;
     }
     if (!skipConfirm && !ConfirmPdfTocSignatureExtract(win, engine)) {
         return true;
     }
-    if (!skipConfirm && EngineMupdfHasStoredOutline(engine) && !ConfirmReplaceExistingPdfToc(win)) {
-        return true;
-    }
     if (OcrDeferExtractUntilDocumentReady(win, persistToDisk)) {
+        logf("TOC extract deferred until OCR document is ready persist=%d\n", (int)persistToDisk);
         return true;
     }
     InterlockedIncrement(&gExtractCancelSeq);
@@ -27036,6 +29350,7 @@ bool HandleExtractPdfTocCommand(MainWindow* win, bool skipConfirm, bool persistT
     w->bornDigital = bornDigital;
     w->cancelSeq = InterlockedCompareExchange(&gExtractCancelSeq, 0, 0);
     InterlockedExchange(&gExtractRunning, 1);
+    logf("TOC extract queued persist=%d bornDigital=%d pages=%d\n", (int)persistToDisk, (int)bornDigital, workTotal);
     ShowExtractProgress(win->hwndCanvas, 0, workTotal);
     RunAsync(MkFunc0(ExtractThread, w), "ExtractPdfToc");
     return true;

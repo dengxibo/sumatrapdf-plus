@@ -281,8 +281,21 @@ static bool BookLooksLikeJunk(const char* s) {
     return false;
 }
 
+// Some RAZ / scanned fonts report a bbox several times taller than the
+// actual glyphs. Using that dy as line height glues consecutive TOC rows.
+static float BookVisualHeight(const BookLine& sl) {
+    float h = sl.dy;
+    if (sl.fontSize > 4.f && sl.dy > sl.fontSize * 1.75f) {
+        h = sl.fontSize;
+    }
+    if (h < 4.f) {
+        h = 4.f;
+    }
+    return h;
+}
+
 static float BookMidY(const BookLine& sl) {
-    return sl.y + sl.dy * 0.5f;
+    return sl.y + BookVisualHeight(sl) * 0.5f;
 }
 
 static float BookPageWidth(const Vec<BookLine>& page) {
@@ -524,6 +537,21 @@ static bool BookSplitInlinePage(const char* raw, char** titleOut, int* pageOut) 
     *titleOut = s;
     *pageOut = page;
     return true;
+}
+
+// OCR occasionally keeps a whole Contents row as one text line, so the first
+// parsing pass may leave its leaders and printed page in the title. Run the
+// same conservative splitter once more after wrapped rows have been merged.
+static int BookExtractTrailingInlinePage(char* title) {
+    char* clean = nullptr;
+    int page = 0;
+    if (!BookSplitInlinePage(title, &clean, &page) || !clean || page < 1) {
+        str::Free(clean);
+        return 0;
+    }
+    memmove(title, clean, str::Len(clean) + 1);
+    str::Free(clean);
+    return page;
 }
 
 static bool BookStartsWithDi(const char* s) {
@@ -991,6 +1019,50 @@ static void BookStripTrailingTocStop(char* s) {
     str::TrimWSInPlace(s, str::TrimOpt::Both);
 }
 
+// Broken OCR occasionally turns the dot leader and a two-digit page number
+// into a long digit run (e.g. "……600080800002"). It is neither a title nor
+// a usable page label; keep the title before it so the normal duplicate pass
+// can match the correctly recognized row.
+static void BookStripBrokenTrailingLeaderNumber(char* s) {
+    if (!s) {
+        return;
+    }
+    int len = (int)str::Len(s);
+    for (int i = 0; i < len;) {
+        int leaderAt = i;
+        int cp = Utf8CodepointNext(s, len, i);
+        if (!BookIsLeader(cp)) {
+            continue;
+        }
+        int j = i;
+        while (j < len) {
+            int save = j;
+            cp = Utf8CodepointNext(s, len, j);
+            if (!BookIsLeader(cp)) {
+                j = save;
+                break;
+            }
+        }
+        int digits = 0;
+        int k = j;
+        while (k < len) {
+            int save = k;
+            cp = Utf8CodepointNext(s, len, k);
+            if (!BookIsDigit(cp)) {
+                k = save;
+                break;
+            }
+            digits++;
+        }
+        if (digits >= 5 && k >= len) {
+            s[leaderAt] = 0;
+            str::TrimWSInPlace(s, str::TrimOpt::Both);
+            return;
+        }
+        i = j > i ? j : i + 1;
+    }
+}
+
 static bool BookIsDotLeader(int cp) {
     return cp == '.' || cp == 0xFF0E || cp == 0x00B7 || cp == 0x2026 || cp == 0x30FB || cp == 0x2022 || cp == 0x2024 ||
            cp == 0x2219 || cp == 0x00A8 || cp == 0xFF65 || cp == 0x22EF || cp == 0x2025 || cp == '_';
@@ -1083,7 +1155,11 @@ static void BookSortVisual(Vec<BookLine>& v) {
 }
 
 static bool BookSameRow(const BookLine& a, const BookLine& b) {
-    float dy = a.dy > b.dy ? a.dy : b.dy;
+    float dy = BookVisualHeight(a);
+    float bh = BookVisualHeight(b);
+    if (bh > dy) {
+        dy = bh;
+    }
     float tol = dy * 0.65f;
     if (tol < 10) {
         tol = 10;
@@ -1164,6 +1240,24 @@ static void BookMergeSameRow(Vec<BookLine>& page) {
                     changed = true;
                     break;
                 }
+                // OCR commonly puts a printed TOC row's title/leaders and
+                // right-aligned page number in separate boxes. They still
+                // belong to one visual row even with a wide column gap.
+                // Do not apply this to vertically stacked body text: that
+                // was filtered by BookSameRow() above.
+                if (iNum != jNum && gap < 520) {
+                    if (page[j].x < page[i].x) {
+                        BookJoinLine(page[j], page[i]);
+                        str::Free(page[i].text);
+                        page[i].text = nullptr;
+                    } else {
+                        BookJoinLine(page[i], page[j]);
+                        str::Free(page[j].text);
+                        page[j].text = nullptr;
+                    }
+                    changed = true;
+                    break;
+                }
                 if (!iNum && !jNum && gap < 28) {
                     if (page[j].x < page[i].x) {
                         BookJoinLine(page[j], page[i]);
@@ -1220,152 +1314,202 @@ static void BookCollectPage(const Vec<ScanLine>& lines, int p, Vec<BookLine>& pa
     BookMergeSameRow(page);
 }
 
-static int BookScoreTocPage(const Vec<ScanLine>& lines, int p) {
+struct BookTocPageFeatures {
+    int meaningful = 0;
+    int entries = 0;
+    int leaders = 0;
+    int prose = 0;
+    int aligned = 0;
+    bool heading = false;
+    int score = 0;
+};
+
+// A printed Contents page is a repeated page layout, not a collection of
+// chapter-shaped strings. In particular, a body page's single footer number
+// must never turn its chapter heading into a TOC row.
+static BookTocPageFeatures BookAnalyzeTocPage(const Vec<ScanLine>& lines, int p) {
+    BookTocPageFeatures f;
     if (BookLooksLikeCipPage(lines, p)) {
-        return 0;
+        return f;
     }
     Vec<BookLine> page;
     BookCollectPage(lines, p, page);
-    float pageW = BookPageWidth(page);
-    int score = 0;
-    int nRight = 0;
-    int nShort = 0;
-    int nLeader = 0;
-    int nStruct = 0;
-    bool heading = false;
+    float rightEdges[64]{};
+    int nEdges = 0;
     for (int i = 0; i < page.Size(); i++) {
-        const char* s = page[i].text;
-        if (!s) {
+        const BookLine& ln = page[i];
+        const char* s = ln.text;
+        if (!s || !s[0]) {
             continue;
         }
         if (BookLooksLikeTocHeading(s)) {
-            score += 50;
-            heading = true;
+            f.heading = true;
             continue;
         }
-        if (BookIsStructTitle(s) || BookStartsWithListNumber(s)) {
-            nStruct++;
+        int glyphs = BookGlyphCount(s);
+        if (glyphs >= 2 && BookHasLetterOrCjk(s)) {
+            f.meaningful++;
+            if (glyphs > 52 || BookLooksLikeBodyBlurb(s)) {
+                f.prose++;
+            }
         }
-        int printed = BookParseIsolatedPage(s);
-        bool right = page[i].x > pageW * 0.70f;
-        if (printed > 0 && (right || BookLineIsPageNum(s))) {
-            nRight++;
+        bool leader =
+            str::Find(s, "......") || str::Find(s, "\xE2\x80\xA6") || str::Find(s, "····") || str::Find(s, "⋯");
+        if (leader) {
+            f.leaders++;
+        }
+        // OCR can collapse an entire lesson-style Contents page into one
+        // box. Three or more chapter units plus leaders is still a repeated
+        // TOC layout, whereas normal body prose does not have that shape.
+        int packedLessons = 0;
+        int len = (int)str::Len(s);
+        for (int at = 0; at < len;) {
+            int pos = at;
+            int cp = Utf8CodepointNext(s, len, at);
+            if (cp == 0x7B2C && BookParseUnit(s + pos).kind == BookUnitKind::Chapter) {
+                packedLessons++;
+            }
+        }
+        if (leader && packedLessons >= 3) {
+            f.entries += packedLessons;
+            f.leaders += packedLessons - 1;
+            f.aligned = packedLessons;
             continue;
         }
         char* title = nullptr;
-        int pg = 0;
-        if (BookSplitInlinePage(s, &title, &pg)) {
-            nRight++;
-            nShort++;
-            str::Free(title);
-            continue;
-        }
-        int g = BookGlyphCount(s);
-        if (g >= 2 && g <= 40 && BookHasLetterOrCjk(s)) {
-            nShort++;
-        }
-        if (str::Find(s, "......") || str::Find(s, "\xE2\x80\xA6") || str::Find(s, "····")) {
-            nLeader++;
-        }
-    }
-    BookFreeLines(page);
-    score += nRight * 6;
-    score += nShort;
-    score += nLeader * 2;
-    if (nStruct >= 1 && nRight >= 1) {
-        score += 16;
-    }
-    if (heading && nRight >= 2) {
-        score += 20;
-    }
-    if (!heading && nRight < 3 && nStruct < 1) {
-        score /= 2;
-    }
-    return score;
-}
-
-static bool BookFindTocRange(const Vec<ScanLine>& lines, int nPages, int* startOut, int* endOut) {
-    int front = nPages < 80 ? nPages : 80;
-    int start = 0;
-    int headingPage = 0;
-    int bestScore = 0;
-    int bestPage = 0;
-    for (int p = 1; p <= front; p++) {
-        if (BookLooksLikeCipPage(lines, p)) {
-            continue;
-        }
-        bool head = false;
-        for (int i = 0; i < lines.Size(); i++) {
-            if (lines[i].srcPage == p && BookLooksLikeTocHeading(lines[i].text)) {
-                head = true;
-                break;
+        int printed = 0;
+        if (BookSplitInlinePage(s, &title, &printed) && title && printed > 0) {
+            f.entries++;
+            if (nEdges < dimof(rightEdges)) {
+                rightEdges[nEdges++] = ln.x + ln.dx;
             }
         }
-        int sc = BookScoreTocPage(lines, p);
-        if (head && headingPage < 1) {
-            headingPage = p;
-        }
-        if (sc > bestScore) {
-            bestScore = sc;
-            bestPage = p;
+        str::Free(title);
+    }
+    BookFreeLines(page);
+    if (nEdges >= 2) {
+        for (int i = 0; i < nEdges; i++) {
+            int nAlignedHere = 0;
+            for (int j = 0; j < nEdges; j++) {
+                float d = rightEdges[i] - rightEdges[j];
+                if (d < 0) {
+                    d = -d;
+                }
+                if (d <= 24.f) {
+                    nAlignedHere++;
+                }
+            }
+            if (nAlignedHere > f.aligned) {
+                f.aligned = nAlignedHere;
+            }
         }
     }
-    if (headingPage > 0) {
-        start = headingPage;
-    } else if (bestScore >= 16 && bestPage > 0) {
-        start = bestPage;
+    int ratio = f.meaningful > 0 ? f.entries * 100 / f.meaningful : 0;
+    f.score = f.entries * 12 + ratio / 2 + f.leaders * 3 + f.aligned * 5 - f.prose * 5;
+    if (f.score < 0) {
+        f.score = 0;
+    }
+    return f;
+}
+
+static bool BookIsTocStartPage(const BookTocPageFeatures& f) {
+    return f.entries >= 3 && f.score >= 48;
+}
+
+static bool BookIsTocContinuationPage(const BookTocPageFeatures& f) {
+    // The final Contents page can be short, but it still needs at least two
+    // independently parsed title+printed-page rows. A lone body footer fails.
+    return f.entries >= 2 && f.score >= 30 && f.prose * 2 < f.meaningful + 1;
+}
+
+static bool BookFindTocRange(const Vec<ScanLine>& lines, int nPages, int* startOut, int* endOut, bool debug = false) {
+    int front = nPages < 80 ? nPages : 80;
+    int start = 0;
+    for (int p = 1; p <= front; p++) {
+        BookTocPageFeatures f = BookAnalyzeTocPage(lines, p);
+        if (debug) {
+            logf(
+                "book-toc page=%d entries=%d meaningful=%d leaders=%d aligned=%d prose=%d score=%d start=%d "
+                "continue=%d\n",
+                p, f.entries, f.meaningful, f.leaders, f.aligned, f.prose, f.score, BookIsTocStartPage(f) ? 1 : 0,
+                BookIsTocContinuationPage(f) ? 1 : 0);
+            if (f.leaders > 0) {
+                Vec<BookLine> page;
+                BookCollectPage(lines, p, page);
+                for (int i = 0; i < page.Size(); i++) {
+                    logf("book-toc line page=%d x=%.0f y=%.0f dx=%.0f text=%s\n", p, page[i].x, page[i].y, page[i].dx,
+                         page[i].text);
+                }
+                BookFreeLines(page);
+            }
+        }
+        if (!BookIsTocStartPage(f)) {
+            continue;
+        }
+        start = p;
+        break;
     }
     if (start < 1) {
         return false;
     }
     int end = start;
-    int empty = 0;
+    int misses = 0;
     int lim = start + 48;
     if (lim > nPages) {
         lim = nPages;
     }
-    for (int p = start; p <= lim; p++) {
-        if (BookLooksLikeCipPage(lines, p)) {
+    // State machine: once the repeated TOC layout ends, never restart it in
+    // the body. One weak page is tolerated for OCR damage or a sparse final
+    // TOC sheet; two consecutive body pages terminate the region.
+    for (int p = start + 1; p <= lim; p++) {
+        BookTocPageFeatures f = BookAnalyzeTocPage(lines, p);
+        if (BookIsTocContinuationPage(f)) {
+            end = p;
+            misses = 0;
             continue;
         }
-        int sc = BookScoreTocPage(lines, p);
-        bool head = false;
-        for (int i = 0; i < lines.Size(); i++) {
-            if (lines[i].srcPage == p && BookLooksLikeTocHeading(lines[i].text)) {
-                head = true;
-                break;
-            }
-        }
-        if (sc >= 12 || head || (p == start)) {
-            end = p;
-            empty = 0;
-        } else if (p > start) {
-            empty++;
-            if (empty >= 3) {
-                bool more = false;
-                int peekLim = p + 2;
-                if (peekLim > lim) {
-                    peekLim = lim;
-                }
-                for (int q = p + 1; q <= peekLim; q++) {
-                    if (BookLooksLikeCipPage(lines, q)) {
-                        continue;
-                    }
-                    if (BookScoreTocPage(lines, q) >= 12) {
-                        more = true;
-                        break;
-                    }
-                }
-                if (!more) {
-                    break;
-                }
-                empty = 1;
-            }
+        misses++;
+        if (misses >= 2) {
+            break;
         }
     }
     *startOut = start;
     *endOut = end;
     return true;
+}
+
+static void BookWriteTocRangeTrace(const char* path, const Vec<ScanLine>& lines, int nPages, int start, int end) {
+    if (!path) {
+        return;
+    }
+    FILE* f = _wfopen(ToWStrTemp(path), L"w");
+    if (!f) {
+        return;
+    }
+    fprintf(f, "Book printed TOC range trace\nrange: %d-%d\n\n", start, end);
+    int front = nPages < 80 ? nPages : 80;
+    for (int p = 1; p <= front; p++) {
+        BookTocPageFeatures pf = BookAnalyzeTocPage(lines, p);
+        if (pf.score > 0 || pf.heading || (start > 0 && p >= start - 1 && p <= end + 2)) {
+            fprintf(f,
+                    "page=%d entries=%d meaningful=%d leaders=%d aligned=%d prose=%d score=%d start=%d continue=%d%s\n",
+                    p, pf.entries, pf.meaningful, pf.leaders, pf.aligned, pf.prose, pf.score,
+                    BookIsTocStartPage(pf) ? 1 : 0, BookIsTocContinuationPage(pf) ? 1 : 0,
+                    p >= start && p <= end ? " selected" : "");
+        }
+    }
+    if (start > 0) {
+        Vec<BookLine> page;
+        BookCollectPage(lines, start, page);
+        fprintf(f, "\nCollected visual lines for selected TOC page %d: %d\n", start, page.Size());
+        for (int i = 0; i < page.Size(); i++) {
+            const BookLine& line = page[i];
+            fprintf(f, "L idx=%d x=%.1f y=%.1f dx=%.1f dy=%.1f text=%s\n", i, line.x, line.y, line.dx, line.dy,
+                    line.text ? line.text : "");
+        }
+        BookFreeLines(page);
+    }
+    fclose(f);
 }
 
 static void BookAppendEntry(Vec<BookTocEntry>& hits, const char* rawTitle, int printed, const BookLine& sl,
@@ -1375,6 +1519,7 @@ static void BookAppendEntry(Vec<BookTocEntry>& hits, const char* rawTitle, int p
         return;
     }
     BookStripLeadersInPlace(title);
+    BookStripBrokenTrailingLeaderNumber(title);
     BookStripTrailingTocStop(title);
     int fromTitle = StripBookPrintedPageFromTitle(title);
     if (printed < 1 && fromTitle > 0) {
@@ -1409,6 +1554,45 @@ static void BookAppendEntry(Vec<BookTocEntry>& hits, const char* rawTitle, int p
         h.confidence = printed > 0 ? 0.85f : 0.65f;
     }
     hits.Append(h);
+}
+
+// Some low-resolution scans are recognized as one long text box even though
+// the image plainly contains a multi-row Contents list. Do not run this on
+// prose: require several repeated Chinese lesson headings in that one box.
+static bool BookParsePackedLessonTocLine(const BookLine& sl, Vec<BookTocEntry>& hits) {
+    if (!sl.text) {
+        return false;
+    }
+    int starts[32];
+    int nStarts = 0;
+    int len = (int)str::Len(sl.text);
+    for (int i = 0; i < len;) {
+        int at = i;
+        int cp = Utf8CodepointNext(sl.text, len, i);
+        if (cp == 0x7B2C && nStarts < dimof(starts)) { // 第
+            BookUnit unit = BookParseUnit(sl.text + at);
+            if (unit.kind == BookUnitKind::Chapter) {
+                starts[nStarts++] = at;
+            }
+        }
+    }
+    if (nStarts < 3) {
+        return false;
+    }
+    int added = 0;
+    for (int i = 0; i < nStarts; i++) {
+        int end = i + 1 < nStarts ? starts[i + 1] : len;
+        char* raw = str::Dup(sl.text + starts[i], end - starts[i]);
+        char* title = nullptr;
+        int printed = 0;
+        if (BookSplitInlinePage(raw, &title, &printed) && title && printed > 0) {
+            BookAppendEntry(hits, title, printed, sl, raw, "packed TOC OCR row", 0.72f);
+            added++;
+        }
+        str::Free(title);
+        str::Free(raw);
+    }
+    return added >= 2;
 }
 
 static bool BookTitleNeedsWrap(const char* s) {
@@ -2084,6 +2268,10 @@ static void BookParseTocPage(Vec<BookLine>& page, Vec<BookTocEntry>& hits) {
     float pageW = BookPageWidth(page);
     BookSortVisual(page);
     for (int i = 0; i < page.Size(); i++) {
+        if (page[i].text && BookParsePackedLessonTocLine(page[i], hits)) {
+            page[i].used = true;
+            continue;
+        }
         if (!page[i].text || BookLooksLikeTocHeading(page[i].text) || BookLooksLikeJunk(page[i].text) ||
             BookIsLeaderOnly(page[i].text)) {
             page[i].used = true;
@@ -2409,6 +2597,140 @@ static void BookSortEntries(Vec<BookTocEntry>& hits) {
     }
 }
 
+// Use only content glyphs for duplicate detection. OCR commonly alternates
+// between fullwidth and ASCII punctuation in the two boxes for the same row.
+static int BookTitleKeyGlyphs(const char* s, int out[192]) {
+    if (!s) {
+        return 0;
+    }
+    int len = (int)str::Len(s);
+    int n = 0;
+    for (int i = 0; i < len && n < 192;) {
+        int cp = Utf8CodepointNext(s, len, i);
+        bool keep =
+            BookIsDigit(cp) || (cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z') || (cp >= 0x4E00 && cp <= 0x9FFF);
+        if (keep) {
+            out[n++] = cp;
+        }
+    }
+    return n;
+}
+
+static bool BookTitlesSameOrContainedLoose(const char* a, const char* b) {
+    int ka[192];
+    int kb[192];
+    int na = BookTitleKeyGlyphs(a, ka);
+    int nb = BookTitleKeyGlyphs(b, kb);
+    if (na < 2 || nb < 2) {
+        return false;
+    }
+    if (na == nb) {
+        for (int i = 0; i < na; i++) {
+            if (ka[i] != kb[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+    // A duplicate OCR box can lose a short unit prefix (e.g. "第十二课")
+    // or append a stray leader/page fragment. Only fold that containment when
+    // the two forms are close in length.
+    const int* shortKey = na < nb ? ka : kb;
+    const int* longKey = na < nb ? kb : ka;
+    int ns = std::min(na, nb);
+    int nl = std::max(na, nb);
+    if (nl - ns > 5) {
+        return false;
+    }
+    for (int at = 0; at <= nl - ns; at++) {
+        int i = 0;
+        for (; i < ns; i++) {
+            if (shortKey[i] != longKey[at + i]) {
+                break;
+            }
+        }
+        if (i == ns) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// OCR can expose one printed-TOC row both as a packed text box and as its
+// individual title/page boxes. Both parsing paths are useful for damaged
+// scans, but they must not turn into two identical bookmarks. OCR often gets
+// the title from both boxes but gets the printed page from only one of them.
+// Restrict this to one source page; different known printed destinations on
+// that page remain separate in case the book really repeats a title.
+static void BookDropExactDuplicateEntries(Vec<BookTocEntry>& hits) {
+    int dropped = 0;
+    for (int i = 0; i < hits.Size(); i++) {
+        for (int j = i + 1; j < hits.Size();) {
+            bool samePrinted =
+                hits[i].printedPage > 0 && hits[j].printedPage > 0 && hits[i].printedPage != hits[j].printedPage;
+            bool same = hits[i].srcPage == hits[j].srcPage && !samePrinted &&
+                        BookTitlesSameOrContainedLoose(hits[i].title, hits[j].title);
+            if (!same) {
+                j++;
+                continue;
+            }
+            // A known printed page is stronger evidence than OCR confidence.
+            // Only compare confidence when both candidates have (or lack) it.
+            bool preferJ = hits[j].printedPage > 0 && hits[i].printedPage < 1;
+            preferJ =
+                preferJ || (hits[j].printedPage == hits[i].printedPage && hits[j].confidence > hits[i].confidence);
+            if (preferJ) {
+                BookTocEntry t = hits[i];
+                hits[i] = hits[j];
+                hits[j] = t;
+            }
+            str::Free(hits[j].title);
+            str::Free(hits[j].raw);
+            str::Free(hits[j].reason);
+            hits.RemoveAt(j);
+            dropped++;
+        }
+    }
+    if (dropped > 0) {
+        logf("Book TOC: removed exact duplicate printed rows=%d\n", dropped);
+    }
+}
+
+// A damaged page-number token can differ between two OCR layers. Once both
+// rows have been mapped, the PDF destination is the authoritative identity.
+// This catches e.g. "第五节假言判断……" and "第五节假言判断" without merging
+// same-titled entries that genuinely point to different pages.
+static void BookDropMappedDuplicateEntries(Vec<BookTocEntry>& hits) {
+    int dropped = 0;
+    for (int i = 0; i < hits.Size(); i++) {
+        for (int j = i + 1; j < hits.Size();) {
+            bool same = hits[i].srcPage == hits[j].srcPage && hits[i].pdfPage > 0 &&
+                        hits[i].pdfPage == hits[j].pdfPage &&
+                        BookTitlesSameOrContainedLoose(hits[i].title, hits[j].title);
+            if (!same) {
+                j++;
+                continue;
+            }
+            bool preferJ = hits[j].printedPage > 0 && hits[i].printedPage < 1;
+            preferJ =
+                preferJ || (hits[j].printedPage == hits[i].printedPage && hits[j].confidence > hits[i].confidence);
+            if (preferJ) {
+                BookTocEntry t = hits[i];
+                hits[i] = hits[j];
+                hits[j] = t;
+            }
+            str::Free(hits[j].title);
+            str::Free(hits[j].raw);
+            str::Free(hits[j].reason);
+            hits.RemoveAt(j);
+            dropped++;
+        }
+    }
+    if (dropped > 0) {
+        logf("Book TOC: removed mapped duplicate printed rows=%d\n", dropped);
+    }
+}
+
 static void BookMergeWrapEntries(Vec<BookTocEntry>& hits) {
     for (int i = 1; i < hits.Size();) {
         bool samePage = hits[i].srcPage == hits[i - 1].srcPage;
@@ -2526,6 +2848,33 @@ static void BookAssignLevels(Vec<BookTocEntry>& hits) {
         bool subtitle =
             kind == BookUnitKind::None && !banner && prevWasChap && BookLooksLikeChapSubtitle(hits[i].title);
         int scheme = BookEntryScheme(hits[i].title, nullptr);
+        // Printed books frequently have a peer title without a 第X课/章/节
+        // marker. A matching left edge is stronger hierarchy evidence than
+        // the missing marker: it belongs with the structural rows in that
+        // indent band, not under the preceding one. Only use real page
+        // coordinates, so synthetic/text-only inputs keep their old rules.
+        int alignedStructLevel = 0;
+        if (kind == BookUnitKind::None && !banner && hits[i].srcX > 1.f) {
+            float bestDx = 1e9f;
+            for (int k = 0; k < n; k++) {
+                BookUnitKind other = BookParseUnit(hits[k].title).kind;
+                if (other == BookUnitKind::None || hits[k].srcX <= 1.f) {
+                    continue;
+                }
+                float dx = hits[i].srcX - hits[k].srcX;
+                if (dx < 0) {
+                    dx = -dx;
+                }
+                if (dx > 12.f || dx > bestDx) {
+                    continue;
+                }
+                int otherLevel = BookStructOutlineLevel(other, hasPart, hasChap);
+                if (dx < bestDx || (dx == bestDx && otherLevel < alignedStructLevel)) {
+                    bestDx = dx;
+                    alignedStructLevel = otherLevel;
+                }
+            }
+        }
         int lvl = leftoverBase;
         if (kind == BookUnitKind::Part || banner) {
             lvl = 1;
@@ -2539,6 +2888,12 @@ static void BookAssignLevels(Vec<BookTocEntry>& hits) {
             lastScheme = 0;
             lastSchemeLvl = 0;
             prevWasChap = kind == BookUnitKind::Chapter;
+        } else if (alignedStructLevel > 0) {
+            lvl = alignedStructLevel;
+            containerLvl = lvl;
+            lastScheme = 0;
+            lastSchemeLvl = 0;
+            prevWasChap = false;
         } else if (BookIsXinDe(hits[i].title) && hasPart) {
             lvl = 2;
             containerLvl = 2;
@@ -2742,7 +3097,7 @@ static void BookFillPrintedDestMap(const Vec<ScanLine>& lines, const Vec<char*>&
 
 static int BookMedianAgreeOffset(const int* offs, int n) {
     if (!offs || n < 2) {
-        return 0;
+        return -1;
     }
     int sorted[32];
     int m = n < 32 ? n : 32;
@@ -2769,7 +3124,7 @@ static int BookMedianAgreeOffset(const int* offs, int n) {
             agree++;
         }
     }
-    return agree >= 2 ? med : 0;
+    return agree >= 2 ? med : -1;
 }
 
 static int BookCalibratedPrintedOffset(const int* toPdf, int cap, int tocEnd, int nPages) {
@@ -2795,7 +3150,7 @@ static int BookResolvePrintedDest(const int* toPdf, int cap, int printed, int of
     if (printed < cap && toPdf[printed] > tocEnd) {
         return toPdf[printed];
     }
-    if (offset > 0) {
+    if (offset >= 0) {
         int p = printed + offset;
         if (p > tocEnd && p <= nPages) {
             return p;
@@ -2922,7 +3277,7 @@ static int BookCalibrateTitlePrintedOffset(const Vec<ScanLine>& lines, int tocSt
 
 static void BookApplyPrintedOffsetMap(int* toPdf, int cap, int offset, int tocEnd, int nPages,
                                       const Vec<BookTocEntry>& hits) {
-    if (!toPdf || offset < 1 || cap < 2) {
+    if (!toPdf || offset < 0 || cap < 2) {
         return;
     }
     for (int pr = 1; pr < cap; pr++) {
@@ -2955,10 +3310,10 @@ static void BookMapPrintedPages(const Vec<ScanLine>& lines, int tocStart, int to
     BookFillPrintedDestMap(lines, labels, tocEnd, nPages, toPdf, 401);
     int footerOff = BookCalibratedPrintedOffset(toPdf, 401, tocEnd, nPages);
     int titleOff = BookCalibrateTitlePrintedOffset(lines, tocStart, tocEnd, nPages, hits);
-    int offset = 0;
+    int offset = -1;
     if (BookLabelsAreCustom(labels)) {
-        offset = footerOff > 0 ? footerOff : titleOff;
-    } else if (titleOff > 0) {
+        offset = footerOff >= 0 ? footerOff : titleOff;
+    } else if (titleOff >= 0) {
         offset = titleOff;
         BookApplyPrintedOffsetMap(toPdf, 401, offset, tocEnd, nPages, hits);
     } else {
@@ -3013,8 +3368,10 @@ static void BookMapPrintedPages(const Vec<ScanLine>& lines, int tocStart, int to
                 }
             }
         }
-        bool samePrinted = nb >= 0 && (hits[h].printedPage < 1 || hits[nb].printedPage < 1 ||
-                                       hits[h].printedPage == hits[nb].printedPage);
+        // An omitted/unreadable printed number is not evidence that this row
+        // has the same destination as its neighbour. Sharing it turns a whole
+        // run of uncertain TOC rows into plausible-but-wrong bookmarks.
+        bool samePrinted = nb >= 0 && hits[h].printedPage > 0 && hits[h].printedPage == hits[nb].printedPage;
         if (nb >= 0 && samePrinted) {
             hits[h].pdfPage = hits[nb].pdfPage;
             hits[h].x = hits[nb].x;
@@ -3052,7 +3409,7 @@ static void BookEnforceReadingOrder(Vec<BookTocEntry>& hits, int offset, int toc
             prevPr = pr;
         }
         int pred = 0;
-        if (pr > 0 && offset > 0) {
+        if (pr > 0 && offset >= 0) {
             pred = pr + offset;
             if (pred <= tocEnd || pred > nPages) {
                 pred = 0;
@@ -3061,13 +3418,12 @@ static void BookEnforceReadingOrder(Vec<BookTocEntry>& hits, int offset, int toc
         int pdf = hits[i].pdfPage;
         if (pdf > 0 && prevPdf > 0 && pdf < prevPdf) {
             pdf = 0;
+            hits[i].pdfPage = 0;
             hits[i].bodyMatched = false;
         }
         if (pdf < 1) {
             if (pred >= prevPdf && pred > 0) {
                 pdf = pred;
-            } else if (prevPdf > 0) {
-                pdf = prevPdf;
             }
         }
         if (pdf > 0) {
@@ -3197,7 +3553,7 @@ static void BookWriteDebug(const char* path, int tocStart, int tocEnd, int print
     if (!path) {
         return;
     }
-    FILE* f = fopen(path, "w");
+    FILE* f = _wfopen(ToWStrTemp(path), L"a");
     if (!f) {
         return;
     }
@@ -3440,11 +3796,18 @@ bool ExtractBookBodyHeadings(const Vec<ScanLine>& lines, int nPages, Vec<Extract
 bool ExtractBookPrintedToc(EngineBase* engine, const Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
                            Vec<ExtractedTocItem*>& roots, const char* debugPath) {
     (void)engine;
+    char tracePath[MAX_PATH]{};
+    const char* trace = debugPath;
+    if (!trace && GetEnvironmentVariableA("SUMATRA_TOC_TRACE", tracePath, dimof(tracePath)) > 0) {
+        trace = tracePath;
+    }
     int tocStart = 0;
     int tocEnd = 0;
-    if (!BookFindTocRange(lines, nPages, &tocStart, &tocEnd)) {
+    if (!BookFindTocRange(lines, nPages, &tocStart, &tocEnd, trace != nullptr)) {
+        BookWriteTocRangeTrace(trace, lines, nPages, 0, 0);
         return false;
     }
+    BookWriteTocRangeTrace(trace, lines, nPages, tocStart, tocEnd);
     Vec<BookTocEntry> hits;
     for (int p = tocStart; p <= tocEnd; p++) {
         if (BookLooksLikeCipPage(lines, p)) {
@@ -3458,6 +3821,13 @@ bool ExtractBookPrintedToc(EngineBase* engine, const Vec<ScanLine>& lines, const
     BookSortEntries(hits);
     BookMergeWrapEntries(hits);
     BookSortEntries(hits);
+    BookDropExactDuplicateEntries(hits);
+    for (int i = 0; i < hits.Size(); i++) {
+        int page = BookExtractTrailingInlinePage(hits[i].title);
+        if (hits[i].printedPage < 1 && page > 0) {
+            hits[i].printedPage = page;
+        }
+    }
     if (hits.Size() < 2) {
         BookFreeEntries(hits);
         return false;
@@ -3467,10 +3837,11 @@ bool ExtractBookPrintedToc(EngineBase* engine, const Vec<ScanLine>& lines, const
     int printedOffset = 0;
     BookMapPrintedPages(lines, tocStart, tocEnd, nPages, labels, hits, &printedOffset);
     BookEnforceReadingOrder(hits, printedOffset, tocEnd, nPages);
+    BookDropMappedDuplicateEntries(hits);
     BookInsertPrintedTocBookmark(lines, tocStart, tocEnd, hits);
     BookBuildTree(hits, roots);
-    if (debugPath) {
-        BookWriteDebug(debugPath, tocStart, tocEnd, printedOffset, hits);
+    if (trace) {
+        BookWriteDebug(trace, tocStart, tocEnd, printedOffset, hits);
     }
     BookFreeEntries(hits);
     int n = 0;

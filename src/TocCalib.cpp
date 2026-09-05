@@ -1477,6 +1477,13 @@ static void TocCalibClearDestsOnTocPages(TocCalibSession* s) {
         if (!it || TocCalibIsContentsTitle(it->title)) {
             continue;
         }
+        // Only clear items that came from the printed TOC (they only have
+        // print-page numbers, not PDF page numbers). BodyInference items come
+        // from heading detection on body pages and already have the correct PDF
+        // pageNo -- clearing them here would lose that anchor info.
+        if (it->source != ExtractedTocSource::PrintedToc) {
+            continue;
+        }
         if (it->pageNo > 0 && TocCalibPageInToc(s, it->pageNo)) {
             it->pageNo = 0;
             it->bodyMatched = false;
@@ -1689,9 +1696,9 @@ static bool TocCalibItemVisible(ExtractedTocItem* it) {
     if (TocCalibIsContentsTitle(it->title)) {
         return false;
     }
-    if (!TocCalibHasPrinted(it->printedPage) && it->pageNo < 1) {
-        return false;
-    }
+    // Keep unresolved rows in the editing sequence. They are drawn gray, but
+    // are still real adjacent TOC items: hiding them from s->rows made
+    // "merge with next" skip a gray line and consume the following one.
     return true;
 }
 
@@ -3710,6 +3717,9 @@ bool TocCalibLocateSelectedInBody(MainWindow* win) {
     if (!TocCalibSearchRowInBody(s, row, &hit)) {
         return TocCalibNotifyNoBodyHit(win);
     }
+    TocCalibRemember(s);
+    TocCalibPinRowToPage(s, row, hit.page, hit.x, hit.y, nullptr);
+    TocCalibLiveApply(win, false);
     TocCalibJumpToPdfPage(win, hit.page);
     return true;
 }
@@ -3724,6 +3734,9 @@ static bool TocCalibLocateRowInBody(MainWindow* win, TocCalibRow* row) {
     if (!TocCalibSearchRowInBody(s, row, &hit)) {
         return TocCalibNotifyNoBodyHit(win);
     }
+    TocCalibRemember(s);
+    TocCalibPinRowToPage(s, row, hit.page, hit.x, hit.y, nullptr);
+    TocCalibLiveApply(win, false);
     TocCalibJumpToPdfPage(win, hit.page);
     return true;
 }
@@ -3967,17 +3980,24 @@ bool TocCalibTestMergeWithNext() {
     b->title = str::Dup("是错误的");
     b->rawTitle = str::Dup("是错误的");
     b->level = 1;
-    b->pageNo = 19;
-    b->printedPage = 5;
+    // An unresolved (gray) row must remain the immediate merge target.
+    b->pageNo = 0;
+    b->printedPage = 0;
+    auto* c = new ExtractedTocItem;
+    c->title = str::Dup("后续条目");
+    c->rawTitle = str::Dup("后续条目");
+    c->level = 1;
+    c->pageNo = 19;
+    c->printedPage = 5;
     s.roots.Append(a);
     s.roots.Append(b);
+    s.roots.Append(c);
     TocCalibLinkParents(s.roots, nullptr);
     TocCalibCollectRows(&s);
     bool ok = TocCalibMergeWithNext(&s, &s.rows[0]);
-    ok = ok && s.roots.Size() == 1 && s.roots[0] == a;
+    ok = ok && s.roots.Size() == 2 && s.roots[0] == a && s.roots[1] == c;
     ok = ok && str::Eq(a->title, "认为高考竞争对孩子不利是错误的");
     ok = ok && a->pageNo == 18 && a->printedPage == 4;
-    ok = ok && !TocCalibMergeWithNext(&s, &s.rows[0]);
     DeleteExtractedTocItems(s.roots);
     return ok;
 }
@@ -4448,6 +4468,10 @@ static void TocCalibCancel(MainWindow* win) {
         return;
     }
     EngineBase* engine = s->engine;
+    // Transaction rollback: restore both the outline contents and the engine's
+    // TOC-dirty flag captured at session start. Other dirty sources
+    // (annotations, unsaved OCR text) are untouched and stay as they were.
+    bool baselineModifiedToc = s->baselineModifiedToc;
     Vec<ExtractedTocItem*> backup;
     for (int i = 0; i < s->backup.Size(); i++) {
         backup.Append(s->backup[i]);
@@ -4461,8 +4485,31 @@ static void TocCalibCancel(MainWindow* win) {
         char* err = nullptr;
         EngineMupdfReplacePdfToc(engine, backup, &err);
         str::Free(err);
+        // ReplacePdfToc re-marks the engine dirty; restore the baseline taken
+        // before the session so a cancelled extraction leaves no phantom dirty.
+        EngineMupdfSetPdfTocModified(engine, baselineModifiedToc);
     }
     DeleteExtractedTocItems(backup);
+    if (win->tocLoaded) {
+        ClearTocBox(win);
+    }
+    LoadTocTree(win);
+    // Refresh the tab dirty indicators right now: they must mirror the real
+    // unsaved state without waiting for a tab switch.
+    ToolbarUpdateStateForWindow(win, false);
+}
+
+static void TocCalibFinish(MainWindow* win) {
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    TocCalibSession* s = tab ? tab->tocCalib : nullptr;
+    if (!s) {
+        HideTocCalib(win);
+        return;
+    }
+    TocCalibRestoreDisplayMode(win, s);
+    tab->tocCalib = nullptr;
+    DeleteTocCalibSession(s);
+    HideTocCalib(win);
     if (win->tocLoaded) {
         ClearTocBox(win);
     }
@@ -4515,7 +4562,7 @@ bool TocCalibBar::Create(MainWindow* mainWin) {
     jumpToc =
         CreateButton(hwnd, _TRA("Contents page"), MkMethod0<TocCalibBar, &TocCalibBar::OnJumpToc>(this), IsUIRtl());
     done = CreateButton(hwnd, _TRA("Save"), MkMethod0<TocCalibBar, &TocCalibBar::OnDone>(this), IsUIRtl());
-    cancel = CreateButton(hwnd, _TRA("Exit"), MkMethod0<TocCalibBar, &TocCalibBar::OnCancel>(this), IsUIRtl());
+    cancel = CreateButton(hwnd, _TRA("Cancel"), MkMethod0<TocCalibBar, &TocCalibBar::OnCancel>(this), IsUIRtl());
     UpdateTheme();
     return true;
 }
@@ -4622,7 +4669,11 @@ void TocCalibBar::OnJumpToc() {
 }
 
 void TocCalibBar::OnDone() {
-    TocCalibWriteBookmarks(win);
+    if (TocCalibWriteBookmarks(win)) {
+        // Exit without restoring the old snapshot: the saved outline is now
+        // the document state, so there is no post-save "Cancel" state.
+        TocCalibFinish(win);
+    }
 }
 
 void TocCalibBar::OnCancel() {
@@ -5621,8 +5672,9 @@ static bool TocCalibLineHasPrintedPageTok(const char* t) {
     return n >= 1 && n <= 3;
 }
 
-static int TocCalibPageTocScore(const Vec<EngineMupdfPageLine>* lines) {
+static int TocCalibPageTocScore(const Vec<EngineMupdfPageLine>* lines, bool* outHasWord = nullptr) {
     if (!lines) {
+        if (outHasWord) *outHasWord = false;
         return 0;
     }
     int leaders = 0;
@@ -5666,6 +5718,7 @@ static int TocCalibPageTocScore(const Vec<EngineMupdfPageLine>* lines) {
     if (hasWord) {
         sc += 8;
     }
+    if (outHasWord) *outHasWord = hasWord;
     return sc;
 }
 
@@ -5680,7 +5733,12 @@ static void TocCalibEnsureTocRange(TocCalibSession* s) {
     if (start < 1) {
         for (int p = 1; p <= maxP; p++) {
             const Vec<EngineMupdfPageLine>* lines = TocCalibCachePage(s, p, pages, cache);
-            if (TocCalibPageTocScore(lines) >= 4) {
+            bool hasWord = false;
+            int sc = TocCalibPageTocScore(lines, &hasWord);
+            // Require hasWord (目录/contents) for initial detection. A page with
+            // only numbered lists can accidentally score >= 4 on content pages
+            // of official documents without any real TOC.
+            if (sc >= 4 && hasWord) {
                 start = p;
                 break;
             }
@@ -5913,6 +5971,58 @@ void ShowTocCalib(MainWindow* win) {
     TocCalibEnterSinglePage(win);
 }
 
+static const char* TocCalibDebugSourceName(ExtractedTocSource source) {
+    switch (source) {
+        case ExtractedTocSource::PrintedToc:
+            return "printed";
+        case ExtractedTocSource::BodyInference:
+            return "body";
+        default:
+            return "unknown";
+    }
+}
+
+static void TocCalibDebugDumpExtracted(FILE* f, const Vec<ExtractedTocItem*>& nodes, int depth) {
+    for (int i = 0; i < nodes.Size(); i++) {
+        ExtractedTocItem* it = nodes[i];
+        if (!it) {
+            continue;
+        }
+        fprintf(f, "E depth=%d source=%s printed=%d pdf=%d title=%s\n", depth, TocCalibDebugSourceName(it->source),
+                it->printedPage, it->pageNo, it->title ? it->title : "");
+        TocCalibDebugDumpExtracted(f, it->children, depth + 1);
+    }
+}
+
+static void TocCalibDebugDumpEngineTree(FILE* f, TocItem* first, int depth) {
+    for (TocItem* it = first; it; it = it->next) {
+        fprintf(f, "T depth=%d pdf=%d title=%s\n", depth, it->pageNo, it->title ? it->title : "");
+        TocCalibDebugDumpEngineTree(f, it->child, depth + 1);
+    }
+}
+
+static void TocCalibWriteFlowDebug(MainWindow* win, TocCalibSession* s, const char* stage) {
+    if (!gCli || !gCli->extractTocDebug || !s || !s->engine || !s->engine->FilePath()) {
+        return;
+    }
+    char* path = str::Join(path::GetPathNoExtTemp(s->engine->FilePath()), ".toc-flow-debug.txt");
+    FILE* f = path ? fopen(path, "a") : nullptr;
+    str::Free(path);
+    if (!f) {
+        return;
+    }
+    fprintf(f, "\n===== %s =====\n", stage ? stage : "TOC flow");
+    TocCalibDebugDumpExtracted(f, s->roots, 1);
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    TocTree* tree = tab ? tab->currToc : nullptr;
+    if (!tree || !tree->root) {
+        fprintf(f, "T <tree not loaded>\n");
+    } else {
+        TocCalibDebugDumpEngineTree(f, tree->root->child, 1);
+    }
+    fclose(f);
+}
+
 bool StartTocCalib(MainWindow* win, Vec<ExtractedTocItem*>& roots, EngineBase* engine, bool persistToDisk,
                    bool scanBody) {
     if (!win) {
@@ -5931,8 +6041,13 @@ bool StartTocCalib(MainWindow* win, Vec<ExtractedTocItem*>& roots, EngineBase* e
         tab->tocCalib = nullptr;
         return false;
     }
+    TocCalibWriteFlowDebug(win, tab->tocCalib, "session before outline rewrite");
     TocTree* cur = tab->ctrl ? tab->ctrl->GetToc() : nullptr;
     TocCalibCloneOutline(cur, tab->tocCalib->backup);
+    // Begin the TOC transaction: remember the engine's dirty flag so Cancel
+    // can restore it. The extracted outline below is committed to the PDF
+    // model only as a working preview (Save/Cancel decides its fate).
+    tab->tocCalib->baselineModifiedToc = EngineMupdfIsPdfTocModified(engine);
     // Opening an existing outline only binds the calib bar. Rewriting the PDF
     // outline and rebuilding the tree is for extracted TOCs (scanBody).
     if (scanBody) {
@@ -5948,8 +6063,10 @@ bool StartTocCalib(MainWindow* win, Vec<ExtractedTocItem*>& roots, EngineBase* e
             ClearTocBox(win);
         }
         LoadTocTree(win);
+        TocCalibWriteFlowDebug(win, tab->tocCalib, "engine tree after outline rewrite");
     }
     TocCalibBindToTree(win);
+    TocCalibWriteFlowDebug(win, tab->tocCalib, "session after tree rebind");
     ShowTocCalib(win);
     return true;
 }

@@ -99,6 +99,8 @@ Annotation* EngineMupdfCreateAnnotationInkStroke(EngineBase*, int pageNo, PointF
 void EngineMupdfGetAnnotations(EngineBase*, Vec<Annotation*>&);
 bool EngineMupdfHasUnsavedAnnotations(EngineBase*);
 bool EngineMupdfHasUnsavedPdfChanges(EngineBase*);
+bool EngineMupdfIsPdfTocModified(EngineBase*);
+void EngineMupdfSetPdfTocModified(EngineBase*, bool modified);
 bool EngineMupdfSupportsAnnotations(EngineBase*);
 bool EngineMupdfIsEncrypted(EngineBase* engine);
 bool EngineMupdfIsReflowableLoadingInProgress(EngineBase* engine);
@@ -137,6 +139,8 @@ bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErro
 bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* path, char** errOut);
 // Set this page's PDF /Rotate from GetOcrPageRotate (live doc). Returns true if changed.
 bool EngineMupdfEnsurePageOcrRotate(EngineBase* engine, int pageNo);
+// Remove this page's PDF /Rotate. Used to repair a previously baked OCR false positive.
+bool EngineMupdfClearPageOcrRotate(EngineBase* engine, int pageNo);
 // Current PDF /Rotate for this page (0/90/180/270). Non-PDF engines return 0.
 int EngineMupdfGetPageRotateCw(EngineBase* engine, int pageNo);
 // Neighbors agree on 90 or 270: snap a 180° opposite page; fill a 0 hole only

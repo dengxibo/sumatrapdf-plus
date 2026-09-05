@@ -13044,6 +13044,63 @@ static int PdfPageRotateCw(fz_context* ctx, pdf_document* doc, int pageIndex) {
 }
 
 // Bake OCR 90/270 into this page only. Viewers rotate clockwise; other pages stay 0.
+[[maybe_unused]] static void SwapPdfBoxWH(fz_context* ctx, pdf_document* doc, pdf_obj* pageobj, pdf_obj* boxNameObj) {
+    // First check if this page defines its own box (not inheritable from parent).
+    pdf_obj* box = pdf_dict_get(ctx, pageobj, boxNameObj);
+    bool createdOverride = false;
+    if (!box || !pdf_is_array(ctx, box) || pdf_array_len(ctx, box) != 4) {
+        // No page-local box — read the inherited one and install a page-level override
+        // so we don't mutate a shared Pages-dict box used by every other page.
+        pdf_obj* inh = pdf_dict_get_inheritable(ctx, pageobj, boxNameObj);
+        if (!inh || !pdf_is_array(ctx, inh) || pdf_array_len(ctx, inh) != 4) {
+            logf("Ocr: SwapPdfBoxWH skipped (no box, no inherit)\n");
+            return;
+        }
+        pdf_obj* newBox = pdf_new_array(ctx, doc, 4);
+        for (int i = 0; i < 4; i++) {
+            pdf_array_push(ctx, newBox, pdf_array_get(ctx, inh, i));
+        }
+        pdf_dict_put(ctx, pageobj, boxNameObj, newBox);
+        box = newBox;
+        createdOverride = true;
+    }
+    fz_rect r = pdf_to_rect(ctx, box);
+    float w = r.x1 - r.x0;
+    float h = r.y1 - r.y0;
+    logf("Ocr: SwapPdfBoxWH before: %.2f %.2f %.2f %.2f (w=%.1f h=%.1f) override=%d\n", r.x0, r.y0, r.x1, r.y1, w, h, createdOverride);
+    if (fz_abs(w - h) < 0.01f) {
+        if (createdOverride) {
+            pdf_dict_del(ctx, pageobj, boxNameObj); // undo the pointless override
+        }
+        return; // square — no visible change
+    }
+    // Swap width and height, anchoring at (x0, y0)
+    pdf_array_put_real(ctx, box, 2, r.x0 + h);
+    pdf_array_put_real(ctx, box, 3, r.y0 + w);
+    fz_rect r2 = pdf_to_rect(ctx, box);
+    logf("Ocr: SwapPdfBoxWH after: %.2f %.2f %.2f %.2f (w=%.1f h=%.1f)\n", r2.x0, r2.y0, r2.x1, r2.y1, r2.x1-r2.x0, r2.y1-r2.y0);
+}
+
+[[maybe_unused]] static bool PdfBoxIsLandscape(fz_context* ctx, pdf_obj* pageobj, pdf_obj* boxNameObj) {
+    pdf_obj* box = pdf_dict_get_inheritable(ctx, pageobj, boxNameObj);
+    if (!box || !pdf_is_array(ctx, box) || pdf_array_len(ctx, box) != 4) {
+        return false;
+    }
+    fz_rect r = pdf_to_rect(ctx, box);
+    return (r.x1 - r.x0) > (r.y1 - r.y0);
+}
+
+[[maybe_unused]] static void EnsurePdfBoxesMatchRotate(fz_context* ctx, pdf_document* doc, pdf_obj* pageobj, int rotation) {
+    bool rotLandscape = (rotation == 90 || rotation == 270);
+    // Only check MediaBox (required by PDF spec); CropBox is optional
+    bool boxLandscape = PdfBoxIsLandscape(ctx, pageobj, PDF_NAME(MediaBox));
+    if (boxLandscape != rotLandscape) {
+        SwapPdfBoxWH(ctx, doc, pageobj, PDF_NAME(MediaBox));
+        SwapPdfBoxWH(ctx, doc, pageobj, PDF_NAME(CropBox));
+        logf("Ocr: page box swapped to match Rotate=%d\n", rotation);
+    }
+}
+
 static void PdfApplyOcrPageRotate(fz_context* ctx, pdf_document* doc, int pageIndex, int wantCw) {
     if (wantCw != 90 && wantCw != 180 && wantCw != 270 && wantCw != 0) {
         return;
@@ -13054,15 +13111,18 @@ static void PdfApplyOcrPageRotate(fz_context* ctx, pdf_document* doc, int pageIn
     }
     int cur = PdfNormRotateCw(pdf_dict_get_inheritable_int(ctx, pageobj, PDF_NAME(Rotate)));
     int next = PdfNormRotateCw(wantCw);
-    if (next == cur) {
-        return;
+    if (next != cur) {
+        if (next == 0) {
+            pdf_dict_del(ctx, pageobj, PDF_NAME(Rotate));
+        } else {
+            pdf_dict_put_int(ctx, pageobj, PDF_NAME(Rotate), next);
+        }
+        logf("Ocr: page %d Rotate %d -> %d\n", pageIndex + 1, cur, next);
     }
-    if (next == 0) {
-        pdf_dict_del(ctx, pageobj, PDF_NAME(Rotate));
-    } else {
-        pdf_dict_put_int(ctx, pageobj, PDF_NAME(Rotate), next);
-    }
-    logf("Ocr: page %d Rotate %d -> %d\n", pageIndex + 1, cur, next);
+    // Do NOT swap MediaBox/CropBox here! MuPDF applies /Rotate to the MediaBox
+    // automatically at render time. Swapping boxes AND setting Rotate would
+    // effectively double-rotate the page, causing landscape pages to render as
+    // portrait again (clipped right half). Rotate alone is sufficient.
 }
 
 int EngineMupdfGetPageRotateCw(EngineBase* engine, int pageNo) {
@@ -13274,19 +13334,25 @@ int EngineMupdfApplyPendingOcrPageRotates(EngineBase* engine) {
         }
     }
     int n = 0;
+    logfa("ApplyPendingOcrPageRotates: nPages=%d\n", nPages);
     for (int pageNo = 1; pageNo <= nPages; pageNo++) {
         int w = want[pageNo - 1];
         if (w < 0) {
             w = engine->GetOcrPageRotate(pageNo);
-            if (w < 1) {
-                continue;
-            }
+        }
+        logfa("ApplyPendingOcrPageRotates: page=%d wantCalc=%d sessRot=%d pdfRot=%d\n", pageNo, want[pageNo - 1],
+              engine->GetOcrPageRotate(pageNo), (pageNo - 1 < pdfRot.Size()) ? pdfRot[pageNo - 1] : -1);
+        if (w < 1) {
+            continue;
         }
         engine->SetOcrPageRotate(pageNo, w);
-        if (EngineMupdfApplyPageRotateCw(engine, pageNo, w)) {
+        bool applied = EngineMupdfApplyPageRotateCw(engine, pageNo, w);
+        logfa("ApplyPendingOcrPageRotates: page=%d applyRot=%d applied=%d\n", pageNo, w, applied);
+        if (applied) {
             n++;
         }
     }
+    logfa("ApplyPendingOcrPageRotates: totalChanged=%d\n", n);
     return n;
 }
 
@@ -13418,7 +13484,33 @@ bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* destPath, char
         for (int pageNo = 1; pageNo <= nPages; pageNo++) {
             int rot = engine->GetOcrPageRotate(pageNo);
             if (rot > 0) {
+                // Dump current state before applying
+                fz_try(ctx) {
+                    pdf_obj* po = pdf_lookup_page_obj(ctx, doc, pageNo - 1);
+                    if (po) {
+                        int curRot = pdf_dict_get_inheritable_int(ctx, po, PDF_NAME(Rotate));
+                        pdf_obj* mb = pdf_dict_get_inheritable(ctx, po, PDF_NAME(MediaBox));
+                        fz_rect mbr = mb ? pdf_to_rect(ctx, mb) : fz_empty_rect;
+                        bool pageHasMb = pdf_dict_get(ctx, po, PDF_NAME(MediaBox)) != nullptr;
+                        logf("Save-before page=%d curRot=%d applyRot=%d MediaBox=[%.1f %.1f %.1f %.1f] localMb=%d\n",
+                             pageNo, curRot, rot, mbr.x0, mbr.y0, mbr.x1, mbr.y1, pageHasMb);
+                    }
+                }
+                fz_catch(ctx) {}
                 PdfApplyOcrPageRotate(ctx, doc, pageNo - 1, rot);
+                // Dump after
+                fz_try(ctx) {
+                    pdf_obj* po = pdf_lookup_page_obj(ctx, doc, pageNo - 1);
+                    if (po) {
+                        int curRot = pdf_dict_get_inheritable_int(ctx, po, PDF_NAME(Rotate));
+                        pdf_obj* mb = pdf_dict_get_inheritable(ctx, po, PDF_NAME(MediaBox));
+                        fz_rect mbr = mb ? pdf_to_rect(ctx, mb) : fz_empty_rect;
+                        bool pageHasMb = pdf_dict_get(ctx, po, PDF_NAME(MediaBox)) != nullptr;
+                        logf("Save-after page=%d curRot=%d MediaBox=[%.1f %.1f %.1f %.1f] localMb=%d\n",
+                             pageNo, curRot, mbr.x0, mbr.y0, mbr.x1, mbr.y1, pageHasMb);
+                    }
+                }
+                fz_catch(ctx) {}
             }
         }
         pdf_write_options saveOpts = pdf_default_write_options2;
@@ -13698,6 +13790,18 @@ bool EngineMupdfHasUnsavedAnnotations(EngineBase* engine) {
 bool EngineMupdfHasUnsavedPdfChanges(EngineBase* engine) {
     EngineMupdf* epdf = AsEngineMupdf(engine);
     return epdf && epdf->pdfdoc && (epdf->modifiedAnnotations || epdf->modifiedPdfToc);
+}
+
+bool EngineMupdfIsPdfTocModified(EngineBase* engine) {
+    EngineMupdf* epdf = AsEngineMupdf(engine);
+    return epdf && epdf->modifiedPdfToc;
+}
+
+void EngineMupdfSetPdfTocModified(EngineBase* engine, bool modified) {
+    EngineMupdf* epdf = AsEngineMupdf(engine);
+    if (epdf) {
+        epdf->modifiedPdfToc = modified;
+    }
 }
 
 bool EngineMupdfSupportsAnnotations(EngineBase* engine) {

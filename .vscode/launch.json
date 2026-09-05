@@ -50,7 +50,7 @@
             "type": "cppvsdbg",
             "preLaunchTask": "build-rel-asan-64",
             "request": "launch",
-            "program": "${workspaceFolder}/out/rel64_asan/SumatraPDF.exe",
+            "program": "${workspaceFolder}/out/rel64_asan/SumatraPDF-Plus.exe",
             "args": ["-n", "2", "-rand", "-console", "-stress-test", "d:\\sumstress"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

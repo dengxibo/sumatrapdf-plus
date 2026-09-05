@@ -1413,6 +1413,7 @@ void DrawMaybeHighlightedText(DrawMaybeHighlightedTextArgs& args) {
 
     // compute pixel rectangles for each highlighted range
     RECT highlightRects[16];
+    int nValidRanges = 0;
     for (int i = 0; i < nRanges; i++) {
         int wStart = wcharLenAtByteOffset(byteRanges[i].start);
         int wEnd = wcharLenAtByteOffset(byteRanges[i].end);
@@ -1421,10 +1422,21 @@ void DrawMaybeHighlightedText(DrawMaybeHighlightedTextArgs& args) {
         GetTextExtentPoint32W(hdc, textW, wStart, &szStart);
         GetTextExtentPoint32W(hdc, textW, wEnd, &szEnd);
 
-        highlightRects[i].top = rc.top;
-        highlightRects[i].bottom = rc.bottom;
-        highlightRects[i].left = strOriginX + szStart.cx;
-        highlightRects[i].right = strOriginX + szEnd.cx;
+        int hLeft = strOriginX + szStart.cx;
+        int hRight = strOriginX + szEnd.cx;
+        // Clamp to rc so truncated text (DT_END_ELLIPSIS) doesn't paint
+        // highlight rectangles outside the visible label band (issue #XXXX).
+        hLeft = std::max<int>(hLeft, (int)rc.left);
+        hRight = std::min<int>(hRight, (int)rc.right);
+        if (hRight <= hLeft) {
+            // match starts or ends completely outside the visible area; skip it
+            continue;
+        }
+        highlightRects[nValidRanges].top = rc.top;
+        highlightRects[nValidRanges].bottom = rc.bottom;
+        highlightRects[nValidRanges].left = hLeft;
+        highlightRects[nValidRanges].right = hRight;
+        nValidRanges++;
     }
 
     // draw highlight background rectangles for matches
@@ -1432,7 +1444,7 @@ void DrawMaybeHighlightedText(DrawMaybeHighlightedTextArgs& args) {
     COLORREF highlightCol = parsedCol->parsedOk ? parsedCol->col : RGB(255, 255, 0);
     {
         HBRUSH hbrHighlight = CreateSolidBrush(highlightCol);
-        for (int i = 0; i < nRanges; i++) {
+        for (int i = 0; i < nValidRanges; i++) {
             FillRect(hdc, &highlightRects[i], hbrHighlight);
         }
         DeleteObject(hbrHighlight);

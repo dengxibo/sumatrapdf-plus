@@ -530,8 +530,8 @@ struct GlobalPrefs {
     // and after extracting bookmarks
     bool ocrAutoSave;
     // full-document OCR mode for Recognize All Scanned Pages and Save as
-    // Searchable PDF: fast or accurate. Auto OCR, current page, and region
-    // always use high accuracy.
+    // Searchable PDF: fast or accurate. Auto OCR uses fast mode; current
+    // page and region use high accuracy.
     char* ocrFullDocumentMode;
     // smart bookmark extraction detail: conservative, standard, or
     // detailed
@@ -1053,7 +1053,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
      "自动识别无文字层的扫描页，便于选择和搜索；模型在 {exedir}/ocr/"},
     {offsetof(GlobalPrefs, ocrAutoSave), SettingType::Bool, false, "全文识别或提取目录完成后覆盖保存当前 PDF"},
     {offsetof(GlobalPrefs, ocrFullDocumentMode), SettingType::String, (intptr_t)"fast",
-     "全文识别模式 fast=极速 accurate=高精度；框选/当前页/自动 OCR 始终用高精度"},
+     "全文识别模式 fast=极速 accurate=高精度；自动 OCR 使用极速，框选/当前页使用高精度"},
     {offsetof(GlobalPrefs, extractPdfTocMode), SettingType::String, (intptr_t)"standard",
      "智能提取目录详细程度 conservative/standard/detailed"},
     {offsetof(GlobalPrefs, aiChatProvider), SettingType::String, (intptr_t)"doubao",

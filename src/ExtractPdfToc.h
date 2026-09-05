@@ -75,7 +75,6 @@ enum class ExtractPdfTocKind {
 ExtractPdfTocKind ExtractPdfTocFromEngine(EngineBase* engine, Vec<ExtractedTocItem*>& roots, int* nItemsOut);
 
 bool WriteExtractedPdfToc(MainWindow* win, EngineBase* engine, Vec<ExtractedTocItem*>& roots, bool persistToDisk);
-bool ConfirmReplaceExistingPdfToc(MainWindow* win);
 bool HandleExtractPdfTocCommand(MainWindow* win, bool skipConfirm = false, bool persistToDisk = true);
 void CancelExtractPdfToc();
 bool ExtractPdfTocIsRunning();

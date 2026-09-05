@@ -1507,6 +1507,16 @@ bool TtsSpeakUtf8WithChinesePinyin(const char* text, const char* pinyin) {
     if (str::IsEmpty(text)) {
         return false;
     }
+    // Windows.Media.SpeechSynthesis accepts plain Chinese text for its
+    // built-in voices, but several zh-CN voices reject the SAPI-specific
+    // <phoneme alphabet="sapi"> extension asynchronously. The old code saw
+    // the async request start successfully and never reached its fallback,
+    // leaving dictionary pronunciation silent. Keep the selected WinRT voice
+    // and speak the characters directly; SAPI keeps the pinyin control below.
+    if (TtsBackendForSpeak() == TtsBackend::WinRt) {
+        logf("TTS Chinese pinyin: WinRT voice uses plain-text fallback\n");
+        return TtsSpeakUtf8(text);
+    }
     char* ph = TtsPinyinToSapiPh(pinyin);
     if (!ph) {
         return TtsSpeakUtf8(text);

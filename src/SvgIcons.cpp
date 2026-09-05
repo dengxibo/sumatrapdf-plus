@@ -269,16 +269,19 @@ static const char* gIconDictionary =
 </svg>)DICT";
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/list.svg
+// Same 1px stroke as the toolbar; scale the glyph only (stroke stays 1).
 static const char* gIconHomeList =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"LIST(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.85" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
-  <line x1="9" y1="6" x2="20" y2="6" />
-  <line x1="9" y1="12" x2="20" y2="12" />
-  <line x1="9" y1="18" x2="20" y2="18" />
-  <circle cx="5" cy="6" r="1" fill="currentColor" stroke="none" />
-  <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
-  <circle cx="5" cy="18" r="1" fill="currentColor" stroke="none" />
-</svg>)";
+  <g transform="translate(12 12) scale(1.18) translate(-12 -12)">
+    <line x1="9" y1="6" x2="20" y2="6" />
+    <line x1="9" y1="12" x2="20" y2="12" />
+    <line x1="9" y1="18" x2="20" y2="18" />
+    <circle cx="5" cy="6" r="1" fill="currentColor" stroke="none" />
+    <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
+    <circle cx="5" cy="18" r="1" fill="currentColor" stroke="none" />
+  </g>
+</svg>)LIST";
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/layout-grid.svg
 static const char* gIconHomeThumbnails =
@@ -290,20 +293,33 @@ static const char* gIconHomeThumbnails =
   <rect x="14" y="14" width="6" height="6" rx="1" />
 </svg>)";
 
-// Recently opened: CCW ring, gap/arrow at top-left, L-shaped 12+3 hands.
+// Recently opened: official Microsoft Fluent UI System Icons "History 20
+// Regular", geometry used verbatim:
+// https://github.com/microsoft/fluentui-system-icons/blob/main/assets/History/SVG/ic_fluent_history_20_regular.svg
+// Only fill="#212121" is changed to fill="currentColor" so the icon follows
+// the theme like the other toolbar icons (DrawSvgIcon swaps currentColor for
+// the theme text color). The toolbar renders home icons at ~20px, matching
+// this icon's native 20px grid. The background rect (like in the Tabler
+// icons) is required by DrawSvgIcon's transparency keying: BlitPixmap marks
+// pixels equal to the theme background color as transparent; without it the
+// MuPDF pixmap's white base would show as an opaque white square.
+// fill-opacity compensates visual weight: the Tabler toolbar icons render a
+// ~0.83px stroke (stroke-width 1 on a 24px grid scaled to 20px) whose
+// antialiased coverage integrates to pi*0.83/4 ~= 0.65, while this icon's
+// native 1:1 fill strokes are ~1.5px solid. fill-opacity is a paint
+// property; the official path geometry is untouched.
 static const char* gIconHomeHistory =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
-  <path d="M3 12A9 9 0 1 0 7.5 4.2" />
-  <path d="M4.9 5.7L8.6 6L6.5 2.4Z" fill="currentColor" stroke="none" />
-  <path d="M11.3 9.3v3.2h3.2" />
-</svg>)";
+    R"HIST(<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="-1" y="-1" width="22" height="22" fill="none"/>
+<path d="M10 4C13.3137 4 16 6.68629 16 10C16 13.3137 13.3137 16 10 16C6.68629 16 4 13.3137 4 10C4 9.84443 4.00591 9.69034 4.0175 9.53793C4.03845 9.26258 3.83222 9.02239 3.55687 9.00144C3.28152 8.98049 3.04133 9.18673 3.02038 9.46207C3.00687 9.6397 3 9.8191 3 10C3 13.866 6.13401 17 10 17C13.866 17 17 13.866 17 10C17 6.13401 13.866 3 10 3C8.04094 3 6.27012 3.80499 5 5.10109V3.5C5 3.22386 4.77614 3 4.5 3C4.22386 3 4 3.22386 4 3.5V6.5C4 6.77614 4.22386 7 4.5 7H7.5C7.77614 7 8 6.77614 8 6.5C8 6.22386 7.77614 6 7.5 6H5.52772C6.62683 4.77191 8.2234 4 10 4ZM10 6.5C10 6.22386 9.77614 6 9.5 6C9.22386 6 9 6.22386 9 6.5V10.5C9 10.7761 9.22386 11 9.5 11H12.5C12.7761 11 13 10.7761 13 10.5C13 10.2239 12.7761 10 12.5 10H10V6.5Z" fill="currentColor" fill-opacity="0.65"/>
+</svg>)HIST";
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/outline/flame.svg
+// Same 1px stroke as the toolbar after scale.
 static const char* gIconHomeFrequent =
-    R"FLAME(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"FLAME(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.83" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
-  <g transform="translate(0 -1.5)">
+  <g transform="translate(12 10.8) scale(1.2) translate(-12 -12)">
     <path d="M12 12c2 -2.96 0 -7 -1 -8c0 3.038 -1.773 4.741 -3 6c-1.226 1.26 -2 3.24 -2 5a6 6 0 1 0 12 0c0 -1.532 -1.056 -3.94 -2 -5c-1.786 3 -2.791 3 -4 2z" />
   </g>
 </svg>)FLAME";
@@ -408,11 +424,12 @@ static const char* gIconAnnotStamp =
   <path d="M21 17.85h-18c0 -4.05 1.421 -4.05 3.79 -4.05c5.21 0 1.21 -4.59 1.21 -6.8a4 4 0 1 1 8 0c0 2.21 -4 6.8 1.21 6.8c2.369 0 3.79 0 3.79 4.05z" />
 </svg>)";
 
-// User fullscreen icon (4 corners out). Same 1024 path, currentColor so the toolbar theme applies.
+// Compact four-corner expand icon. Reduce the filled path's opacity so its
+// visual weight matches the neighboring 1px toolbar strokes.
 static const char* gIconFullscreen =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 1024 1024">
   <rect x="0" y="0" width="1024" height="1024" stroke="none" fill="none"></rect>
-  <path d="M285.866667 810.666667H384v42.666666H213.333333v-170.666666h42.666667v98.133333l128-128 29.866667 29.866667-128 128z m494.933333 0l-128-128 29.866667-29.866667 128 128V682.666667h42.666666v170.666666h-170.666666v-42.666666h98.133333zM285.866667 256l128 128-29.866667 29.866667-128-128V384H213.333333V213.333333h170.666667v42.666667H285.866667z m494.933333 0H682.666667V213.333333h170.666666v170.666667h-42.666666V285.866667l-128 128-29.866667-29.866667 128-128z" fill="currentColor"></path>
+  <path d="M285.866667 810.666667H384v42.666666H213.333333v-170.666666h42.666667v98.133333l128-128 29.866667 29.866667-128 128z m494.933333 0l-128-128 29.866667-29.866667 128 128V682.666667h42.666666v170.666666h-170.666666v-42.666666h98.133333zM285.866667 256l128 128-29.866667 29.866667-128-128V384H213.333333V213.333333h170.666667v42.666667H285.866667z m494.933333 0H682.666667V213.333333h170.666666v170.666667h-42.666666V285.866667l-128 128-29.866667-29.866667 128-128z" fill="currentColor" fill-opacity="0.66"></path>
 </svg>)";
 
 // Matching 4-corner inward when already fullscreen (tabler arrows-minimize).

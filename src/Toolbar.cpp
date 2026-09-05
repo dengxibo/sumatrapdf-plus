@@ -44,6 +44,7 @@ extern "C" {
 #include "SvgIcons.h"
 #include "SumatraConfig.h"
 #include "Theme.h"
+#include "OcrService.h"
 #include "PdfDarkMode.h"
 #include "DarkModeSubclass.h"
 #include "wingui/Layout.h"
@@ -98,7 +99,6 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
     {TbIcon::DocColorFollowTheme, CmdSetPdfDocumentColorModeBlack,
      _TRN("Document Color Mode: Match theme (use current theme colors)")},
-    {TbIcon::Fullscreen, CmdToggleFullscreen, _TRN("Toggle Fullscreen (F11)")},
     {TbIcon::AnnotLine, CmdCreateAnnotLine, _TRN("Line Annotation (Ctrl+click to lock)")},
     {TbIcon::AnnotInk, CmdCreateAnnotInk, _TRN("Ink Annotation (Ctrl+click to lock)")},
     {TbIcon::AnnotSquare, CmdCreateAnnotSquare, _TRN("Rectangle Annotation (Ctrl+click to lock)")},
@@ -107,6 +107,7 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::AnnotStamp, CmdCreateAnnotStamp, _TRN("Stamp Annotation (Ctrl+click to lock)")},
     {TbIcon::Ocr, CmdToggleAutoOcr, _TRN("Auto OCR")},
     {TbIcon::Speak, CmdReadAloud, _TRN("Read Aloud")},
+    {TbIcon::Fullscreen, CmdToggleFullscreen, _TRN("Toggle Fullscreen (F11)")},
 };
 // unicode chars: https://www.compart.com/en/unicode/U+25BC
 
@@ -299,9 +300,11 @@ void UpdateAutoOcrToolbarButton(MainWindow* win) {
     if (n == 0) {
         return;
     }
-    bool enabled = gGlobalPrefs && gGlobalPrefs->autoOcrScanPages;
-    SetToolbarButtonCheckedState(win, CmdToggleAutoOcr, enabled);
-    const char* tip = enabled ? _TRN("Auto OCR is enabled") : _TRN("Enable Auto OCR");
+    // checked mirrors the Auto OCR switch of the current tab (not feature
+    // availability); the toggle handler is the only writer of that state.
+    bool checked = OcrAutoEnabled(win);
+    SetToolbarButtonCheckedState(win, CmdToggleAutoOcr, checked);
+    const char* tip = checked ? _TRN("Auto OCR is enabled") : _TRN("Enable Auto OCR");
     TempStr tipTranslated = (TempStr)trans::GetTranslation(tip);
     TBBUTTONINFOW bi{};
     bi.cbSize = sizeof(bi);
@@ -449,7 +452,7 @@ static bool IsCmdEnabled(MainWindow* win, int cmdId) {
 
     // If no file open, only enable open button
     if (!win->IsDocLoaded()) {
-        return CmdOpenFile == cmdId || CmdToggleLightDarkTheme == cmdId || CmdToggleAutoOcr == cmdId;
+        return CmdOpenFile == cmdId || CmdToggleLightDarkTheme == cmdId;
     }
 
     switch (cmdId) {

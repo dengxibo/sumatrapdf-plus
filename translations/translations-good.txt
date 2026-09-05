@@ -2399,6 +2399,79 @@ tw:自動 OCR 已開啟
 uk:Auto OCR is enabled
 uz:Auto OCR is enabled
 vn:Auto OCR is enabled
+:Auto-save
+af:Auto-save
+am:Auto-save
+ar:Auto-save
+az:Auto-save
+bg:Auto-save
+bn:Auto-save
+br:Auto-save
+bs:Auto-save
+by:Auto-save
+ca:Auto-save
+ca-xv:Auto-save
+cn:自动保存
+co:Auto-save
+cy:Auto-save
+cz:Auto-save
+de:Auto-save
+dk:Auto-save
+el:Auto-save
+es:Auto-save
+et:Auto-save
+eu:Auto-save
+fa:Auto-save
+fi:Auto-save
+fo:Auto-save
+fr:Auto-save
+fy-nl:Auto-save
+ga:Auto-save
+gl:Auto-save
+he:Auto-save
+hi:Auto-save
+hr:Auto-save
+hu:Auto-save
+id:Auto-save
+it:Auto-save
+ja:Auto-save
+jv:Auto-save
+ka:Auto-save
+kr:Auto-save
+ku:Auto-save
+kw:Auto-save
+lt:Auto-save
+lv:Auto-save
+mk:Auto-save
+ml:Auto-save
+mm:Auto-save
+my:Auto-save
+ne:Auto-save
+nl:Auto-save
+nn:Auto-save
+no:Auto-save
+pa:Auto-save
+pl:Auto-save
+pt:Auto-save
+ro:Auto-save
+ru:Auto-save
+sat:Auto-save
+si:Auto-save
+sk:Auto-save
+sl:Auto-save
+sn:Auto-save
+sp-rs:Auto-save
+sq:Auto-save
+sr-rs:Auto-save
+sv:Auto-save
+ta:Auto-save
+th:Auto-save
+tl:Auto-save
+tr:Auto-save
+tw:自動儲存
+uk:Auto-save
+uz:Auto-save
+vn:Auto-save
 :Automatic
 am:Ինքնաշխատ
 br:Automático
@@ -3976,6 +4049,79 @@ nl:Kan geen printereigenschappen verkrijgen
 pl:Nie można uzyskać właściwości drukarki
 sk:Získanie vlastností tlačiarne zlyhalo
 tw:無法取得印表機內容
+:Could not prepare the extracted table of contents.
+af:Could not prepare the extracted table of contents.
+am:Could not prepare the extracted table of contents.
+ar:Could not prepare the extracted table of contents.
+az:Could not prepare the extracted table of contents.
+bg:Could not prepare the extracted table of contents.
+bn:Could not prepare the extracted table of contents.
+br:Could not prepare the extracted table of contents.
+bs:Could not prepare the extracted table of contents.
+by:Could not prepare the extracted table of contents.
+ca:Could not prepare the extracted table of contents.
+ca-xv:Could not prepare the extracted table of contents.
+cn:无法准备提取的目录书签。
+co:Could not prepare the extracted table of contents.
+cy:Could not prepare the extracted table of contents.
+cz:Could not prepare the extracted table of contents.
+de:Could not prepare the extracted table of contents.
+dk:Could not prepare the extracted table of contents.
+el:Could not prepare the extracted table of contents.
+es:Could not prepare the extracted table of contents.
+et:Could not prepare the extracted table of contents.
+eu:Could not prepare the extracted table of contents.
+fa:Could not prepare the extracted table of contents.
+fi:Could not prepare the extracted table of contents.
+fo:Could not prepare the extracted table of contents.
+fr:Could not prepare the extracted table of contents.
+fy-nl:Could not prepare the extracted table of contents.
+ga:Could not prepare the extracted table of contents.
+gl:Could not prepare the extracted table of contents.
+he:Could not prepare the extracted table of contents.
+hi:Could not prepare the extracted table of contents.
+hr:Could not prepare the extracted table of contents.
+hu:Could not prepare the extracted table of contents.
+id:Could not prepare the extracted table of contents.
+it:Could not prepare the extracted table of contents.
+ja:Could not prepare the extracted table of contents.
+jv:Could not prepare the extracted table of contents.
+ka:Could not prepare the extracted table of contents.
+kr:Could not prepare the extracted table of contents.
+ku:Could not prepare the extracted table of contents.
+kw:Could not prepare the extracted table of contents.
+lt:Could not prepare the extracted table of contents.
+lv:Could not prepare the extracted table of contents.
+mk:Could not prepare the extracted table of contents.
+ml:Could not prepare the extracted table of contents.
+mm:Could not prepare the extracted table of contents.
+my:Could not prepare the extracted table of contents.
+ne:Could not prepare the extracted table of contents.
+nl:Could not prepare the extracted table of contents.
+nn:Could not prepare the extracted table of contents.
+no:Could not prepare the extracted table of contents.
+pa:Could not prepare the extracted table of contents.
+pl:Could not prepare the extracted table of contents.
+pt:Could not prepare the extracted table of contents.
+ro:Could not prepare the extracted table of contents.
+ru:Could not prepare the extracted table of contents.
+sat:Could not prepare the extracted table of contents.
+si:Could not prepare the extracted table of contents.
+sk:Could not prepare the extracted table of contents.
+sl:Could not prepare the extracted table of contents.
+sn:Could not prepare the extracted table of contents.
+sp-rs:Could not prepare the extracted table of contents.
+sq:Could not prepare the extracted table of contents.
+sr-rs:Could not prepare the extracted table of contents.
+sv:Could not prepare the extracted table of contents.
+ta:Could not prepare the extracted table of contents.
+th:Could not prepare the extracted table of contents.
+tl:Could not prepare the extracted table of contents.
+tr:Could not prepare the extracted table of contents.
+tw:無法準備擷取的目錄書籤。
+uk:Could not prepare the extracted table of contents.
+uz:Could not prepare the extracted table of contents.
+vn:Could not prepare the extracted table of contents.
 :Could not recognize text on this page.
 af:Could not recognize text on this page.
 am:Could not recognize text on this page.
@@ -5309,6 +5455,79 @@ nl:Niet toegestaan:
 pl:Brak zezwoleń:
 sk:Odmietnuté povolenia:
 tw:權限不足:
+:Discard
+af:Discard
+am:Discard
+ar:Discard
+az:Discard
+bg:Discard
+bn:Discard
+br:Discard
+bs:Discard
+by:Discard
+ca:Discard
+ca-xv:Discard
+cn:丢弃
+co:Discard
+cy:Discard
+cz:Discard
+de:Discard
+dk:Discard
+el:Discard
+es:Discard
+et:Discard
+eu:Discard
+fa:Discard
+fi:Discard
+fo:Discard
+fr:Discard
+fy-nl:Discard
+ga:Discard
+gl:Discard
+he:Discard
+hi:Discard
+hr:Discard
+hu:Discard
+id:Discard
+it:Discard
+ja:Discard
+jv:Discard
+ka:Discard
+kr:Discard
+ku:Discard
+kw:Discard
+lt:Discard
+lv:Discard
+mk:Discard
+ml:Discard
+mm:Discard
+my:Discard
+ne:Discard
+nl:Discard
+nn:Discard
+no:Discard
+pa:Discard
+pl:Discard
+pt:Discard
+ro:Discard
+ru:Discard
+sat:Discard
+si:Discard
+sk:Discard
+sl:Discard
+sn:Discard
+sp-rs:Discard
+sq:Discard
+sr-rs:Discard
+sv:Discard
+ta:Discard
+th:Discard
+tl:Discard
+tr:Discard
+tw:捨棄
+uk:Discard
+uz:Discard
+vn:Discard
 :DjVu documents
 am:DjVu ֆայլեր
 br:Documentos DjVu
@@ -6299,6 +6518,152 @@ it:Estrai testo
 nl:Tekst Uit Document Uitpakken
 pl:Wyodrębnij tekst z dokumentu
 sk:Extrahovať text z dokumentu
+:Extract and overwrite file
+af:Extract and overwrite file
+am:Extract and overwrite file
+ar:Extract and overwrite file
+az:Extract and overwrite file
+bg:Extract and overwrite file
+bn:Extract and overwrite file
+br:Extract and overwrite file
+bs:Extract and overwrite file
+by:Extract and overwrite file
+ca:Extract and overwrite file
+ca-xv:Extract and overwrite file
+cn:提取并覆盖文件
+co:Extract and overwrite file
+cy:Extract and overwrite file
+cz:Extract and overwrite file
+de:Extract and overwrite file
+dk:Extract and overwrite file
+el:Extract and overwrite file
+es:Extract and overwrite file
+et:Extract and overwrite file
+eu:Extract and overwrite file
+fa:Extract and overwrite file
+fi:Extract and overwrite file
+fo:Extract and overwrite file
+fr:Extract and overwrite file
+fy-nl:Extract and overwrite file
+ga:Extract and overwrite file
+gl:Extract and overwrite file
+he:Extract and overwrite file
+hi:Extract and overwrite file
+hr:Extract and overwrite file
+hu:Extract and overwrite file
+id:Extract and overwrite file
+it:Extract and overwrite file
+ja:Extract and overwrite file
+jv:Extract and overwrite file
+ka:Extract and overwrite file
+kr:Extract and overwrite file
+ku:Extract and overwrite file
+kw:Extract and overwrite file
+lt:Extract and overwrite file
+lv:Extract and overwrite file
+mk:Extract and overwrite file
+ml:Extract and overwrite file
+mm:Extract and overwrite file
+my:Extract and overwrite file
+ne:Extract and overwrite file
+nl:Extract and overwrite file
+nn:Extract and overwrite file
+no:Extract and overwrite file
+pa:Extract and overwrite file
+pl:Extract and overwrite file
+pt:Extract and overwrite file
+ro:Extract and overwrite file
+ru:Extract and overwrite file
+sat:Extract and overwrite file
+si:Extract and overwrite file
+sk:Extract and overwrite file
+sl:Extract and overwrite file
+sn:Extract and overwrite file
+sp-rs:Extract and overwrite file
+sq:Extract and overwrite file
+sr-rs:Extract and overwrite file
+sv:Extract and overwrite file
+ta:Extract and overwrite file
+th:Extract and overwrite file
+tl:Extract and overwrite file
+tr:Extract and overwrite file
+tw:擷取並覆寫檔案
+uk:Extract and overwrite file
+uz:Extract and overwrite file
+vn:Extract and overwrite file
+:Extract for review
+af:Extract for review
+am:Extract for review
+ar:Extract for review
+az:Extract for review
+bg:Extract for review
+bn:Extract for review
+br:Extract for review
+bs:Extract for review
+by:Extract for review
+ca:Extract for review
+ca-xv:Extract for review
+cn:提取后预览
+co:Extract for review
+cy:Extract for review
+cz:Extract for review
+de:Extract for review
+dk:Extract for review
+el:Extract for review
+es:Extract for review
+et:Extract for review
+eu:Extract for review
+fa:Extract for review
+fi:Extract for review
+fo:Extract for review
+fr:Extract for review
+fy-nl:Extract for review
+ga:Extract for review
+gl:Extract for review
+he:Extract for review
+hi:Extract for review
+hr:Extract for review
+hu:Extract for review
+id:Extract for review
+it:Extract for review
+ja:Extract for review
+jv:Extract for review
+ka:Extract for review
+kr:Extract for review
+ku:Extract for review
+kw:Extract for review
+lt:Extract for review
+lv:Extract for review
+mk:Extract for review
+ml:Extract for review
+mm:Extract for review
+my:Extract for review
+ne:Extract for review
+nl:Extract for review
+nn:Extract for review
+no:Extract for review
+pa:Extract for review
+pl:Extract for review
+pt:Extract for review
+ro:Extract for review
+ru:Extract for review
+sat:Extract for review
+si:Extract for review
+sk:Extract for review
+sl:Extract for review
+sn:Extract for review
+sp-rs:Extract for review
+sq:Extract for review
+sr-rs:Extract for review
+sv:Extract for review
+ta:Extract for review
+th:Extract for review
+tl:Extract for review
+tr:Extract for review
+tw:擷取後預覽
+uk:Extract for review
+uz:Extract for review
+vn:Extract for review
 :Extracted %d bookmarks.
 af:Extracted %d bookmarks.
 am:Extracted %d bookmarks.
@@ -6372,6 +6737,79 @@ tw:已提取 %d 條書籤。
 uk:Extracted %d bookmarks.
 uz:Extracted %d bookmarks.
 vn:Extracted %d bookmarks.
+:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+af:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+am:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+ar:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+az:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+bg:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+bn:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+br:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+bs:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+by:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+ca:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+ca-xv:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+cn:提取的书签将先替换当前书签以供预览。只有选择“提取并覆盖文件”才会将更改保存到原文件。取消预览可恢复原书签。
+co:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+cy:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+cz:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+de:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+dk:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+el:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+es:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+et:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+eu:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+fa:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+fi:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+fo:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+fr:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+fy-nl:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+ga:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+gl:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+he:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+hi:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+hr:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+hu:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+id:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+it:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+ja:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+jv:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+ka:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+kr:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+ku:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+kw:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+lt:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+lv:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+mk:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+ml:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+mm:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+my:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+ne:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+nl:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+nn:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+no:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+pa:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+pl:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+pt:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+ro:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+ru:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+sat:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+si:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+sk:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+sl:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+sn:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+sp-rs:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+sq:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+sr-rs:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+sv:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+ta:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+th:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+tl:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+tr:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+tw:擷取的書籤會先取代目前書籤供預覽。只有選擇「擷取並覆寫檔案」才會將變更儲存到原始檔案。取消預覽可還原原書籤。
+uk:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+uz:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+vn:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
 :Extracting bookmarks… %d / %d
 af:Extracting bookmarks… %d / %d
 am:Extracting bookmarks… %d / %d
@@ -8181,6 +8619,79 @@ nl:KB
 pl:KB
 sk:KB
 tw:KB
+:Keep for this session
+af:Keep for this session
+am:Keep for this session
+ar:Keep for this session
+az:Keep for this session
+bg:Keep for this session
+bn:Keep for this session
+br:Keep for this session
+bs:Keep for this session
+by:Keep for this session
+ca:Keep for this session
+ca-xv:Keep for this session
+cn:保留到本次会话
+co:Keep for this session
+cy:Keep for this session
+cz:Keep for this session
+de:Keep for this session
+dk:Keep for this session
+el:Keep for this session
+es:Keep for this session
+et:Keep for this session
+eu:Keep for this session
+fa:Keep for this session
+fi:Keep for this session
+fo:Keep for this session
+fr:Keep for this session
+fy-nl:Keep for this session
+ga:Keep for this session
+gl:Keep for this session
+he:Keep for this session
+hi:Keep for this session
+hr:Keep for this session
+hu:Keep for this session
+id:Keep for this session
+it:Keep for this session
+ja:Keep for this session
+jv:Keep for this session
+ka:Keep for this session
+kr:Keep for this session
+ku:Keep for this session
+kw:Keep for this session
+lt:Keep for this session
+lv:Keep for this session
+mk:Keep for this session
+ml:Keep for this session
+mm:Keep for this session
+my:Keep for this session
+ne:Keep for this session
+nl:Keep for this session
+nn:Keep for this session
+no:Keep for this session
+pa:Keep for this session
+pl:Keep for this session
+pt:Keep for this session
+ro:Keep for this session
+ru:Keep for this session
+sat:Keep for this session
+si:Keep for this session
+sk:Keep for this session
+sl:Keep for this session
+sn:Keep for this session
+sp-rs:Keep for this session
+sq:Keep for this session
+sr-rs:Keep for this session
+sv:Keep for this session
+ta:Keep for this session
+th:Keep for this session
+tl:Keep for this session
+tr:Keep for this session
+tw:保留至本次工作階段
+uk:Keep for this session
+uz:Keep for this session
+vn:Keep for this session
 :Keywords:
 br:Palavras-Chave:
 cn:关键词:
@@ -17410,6 +17921,79 @@ tw:目前檔案沒有文字層。請先識別文字後再提取書籤。
 uk:This file has no text layer. Recognize the pages first, then extract bookmarks.
 uz:This file has no text layer. Recognize the pages first, then extract bookmarks.
 vn:This file has no text layer. Recognize the pages first, then extract bookmarks.
+:This file is read-only. Bookmark extraction was not started.
+af:This file is read-only. Bookmark extraction was not started.
+am:This file is read-only. Bookmark extraction was not started.
+ar:This file is read-only. Bookmark extraction was not started.
+az:This file is read-only. Bookmark extraction was not started.
+bg:This file is read-only. Bookmark extraction was not started.
+bn:This file is read-only. Bookmark extraction was not started.
+br:This file is read-only. Bookmark extraction was not started.
+bs:This file is read-only. Bookmark extraction was not started.
+by:This file is read-only. Bookmark extraction was not started.
+ca:This file is read-only. Bookmark extraction was not started.
+ca-xv:This file is read-only. Bookmark extraction was not started.
+cn:此文件为只读，未开始提取书签。
+co:This file is read-only. Bookmark extraction was not started.
+cy:This file is read-only. Bookmark extraction was not started.
+cz:This file is read-only. Bookmark extraction was not started.
+de:This file is read-only. Bookmark extraction was not started.
+dk:This file is read-only. Bookmark extraction was not started.
+el:This file is read-only. Bookmark extraction was not started.
+es:This file is read-only. Bookmark extraction was not started.
+et:This file is read-only. Bookmark extraction was not started.
+eu:This file is read-only. Bookmark extraction was not started.
+fa:This file is read-only. Bookmark extraction was not started.
+fi:This file is read-only. Bookmark extraction was not started.
+fo:This file is read-only. Bookmark extraction was not started.
+fr:This file is read-only. Bookmark extraction was not started.
+fy-nl:This file is read-only. Bookmark extraction was not started.
+ga:This file is read-only. Bookmark extraction was not started.
+gl:This file is read-only. Bookmark extraction was not started.
+he:This file is read-only. Bookmark extraction was not started.
+hi:This file is read-only. Bookmark extraction was not started.
+hr:This file is read-only. Bookmark extraction was not started.
+hu:This file is read-only. Bookmark extraction was not started.
+id:This file is read-only. Bookmark extraction was not started.
+it:This file is read-only. Bookmark extraction was not started.
+ja:This file is read-only. Bookmark extraction was not started.
+jv:This file is read-only. Bookmark extraction was not started.
+ka:This file is read-only. Bookmark extraction was not started.
+kr:This file is read-only. Bookmark extraction was not started.
+ku:This file is read-only. Bookmark extraction was not started.
+kw:This file is read-only. Bookmark extraction was not started.
+lt:This file is read-only. Bookmark extraction was not started.
+lv:This file is read-only. Bookmark extraction was not started.
+mk:This file is read-only. Bookmark extraction was not started.
+ml:This file is read-only. Bookmark extraction was not started.
+mm:This file is read-only. Bookmark extraction was not started.
+my:This file is read-only. Bookmark extraction was not started.
+ne:This file is read-only. Bookmark extraction was not started.
+nl:This file is read-only. Bookmark extraction was not started.
+nn:This file is read-only. Bookmark extraction was not started.
+no:This file is read-only. Bookmark extraction was not started.
+pa:This file is read-only. Bookmark extraction was not started.
+pl:This file is read-only. Bookmark extraction was not started.
+pt:This file is read-only. Bookmark extraction was not started.
+ro:This file is read-only. Bookmark extraction was not started.
+ru:This file is read-only. Bookmark extraction was not started.
+sat:This file is read-only. Bookmark extraction was not started.
+si:This file is read-only. Bookmark extraction was not started.
+sk:This file is read-only. Bookmark extraction was not started.
+sl:This file is read-only. Bookmark extraction was not started.
+sn:This file is read-only. Bookmark extraction was not started.
+sp-rs:This file is read-only. Bookmark extraction was not started.
+sq:This file is read-only. Bookmark extraction was not started.
+sr-rs:This file is read-only. Bookmark extraction was not started.
+sv:This file is read-only. Bookmark extraction was not started.
+ta:This file is read-only. Bookmark extraction was not started.
+th:This file is read-only. Bookmark extraction was not started.
+tl:This file is read-only. Bookmark extraction was not started.
+tr:This file is read-only. Bookmark extraction was not started.
+tw:此檔案為唯讀，未開始提取書籤。
+uk:This file is read-only. Bookmark extraction was not started.
+uz:This file is read-only. Bookmark extraction was not started.
+vn:This file is read-only. Bookmark extraction was not started.
 :Thumbnail view
 am:የአነስተኛ ምስል እይታ
 br:Visualização em miniaturas
@@ -17563,6 +18147,79 @@ tw:開關自動 OCR
 uk:Toggle Auto OCR
 uz:Toggle Auto OCR
 vn:Toggle Auto OCR
+:Toggle Auto-save After OCR
+af:Toggle Auto-save After OCR
+am:Toggle Auto-save After OCR
+ar:Toggle Auto-save After OCR
+az:Toggle Auto-save After OCR
+bg:Toggle Auto-save After OCR
+bn:Toggle Auto-save After OCR
+br:Toggle Auto-save After OCR
+bs:Toggle Auto-save After OCR
+by:Toggle Auto-save After OCR
+ca:Toggle Auto-save After OCR
+ca-xv:Toggle Auto-save After OCR
+cn:开关识别后自动保存
+co:Toggle Auto-save After OCR
+cy:Toggle Auto-save After OCR
+cz:Toggle Auto-save After OCR
+de:Toggle Auto-save After OCR
+dk:Toggle Auto-save After OCR
+el:Toggle Auto-save After OCR
+es:Toggle Auto-save After OCR
+et:Toggle Auto-save After OCR
+eu:Toggle Auto-save After OCR
+fa:Toggle Auto-save After OCR
+fi:Toggle Auto-save After OCR
+fo:Toggle Auto-save After OCR
+fr:Toggle Auto-save After OCR
+fy-nl:Toggle Auto-save After OCR
+ga:Toggle Auto-save After OCR
+gl:Toggle Auto-save After OCR
+he:Toggle Auto-save After OCR
+hi:Toggle Auto-save After OCR
+hr:Toggle Auto-save After OCR
+hu:Toggle Auto-save After OCR
+id:Toggle Auto-save After OCR
+it:Toggle Auto-save After OCR
+ja:Toggle Auto-save After OCR
+jv:Toggle Auto-save After OCR
+ka:Toggle Auto-save After OCR
+kr:Toggle Auto-save After OCR
+ku:Toggle Auto-save After OCR
+kw:Toggle Auto-save After OCR
+lt:Toggle Auto-save After OCR
+lv:Toggle Auto-save After OCR
+mk:Toggle Auto-save After OCR
+ml:Toggle Auto-save After OCR
+mm:Toggle Auto-save After OCR
+my:Toggle Auto-save After OCR
+ne:Toggle Auto-save After OCR
+nl:Toggle Auto-save After OCR
+nn:Toggle Auto-save After OCR
+no:Toggle Auto-save After OCR
+pa:Toggle Auto-save After OCR
+pl:Toggle Auto-save After OCR
+pt:Toggle Auto-save After OCR
+ro:Toggle Auto-save After OCR
+ru:Toggle Auto-save After OCR
+sat:Toggle Auto-save After OCR
+si:Toggle Auto-save After OCR
+sk:Toggle Auto-save After OCR
+sl:Toggle Auto-save After OCR
+sn:Toggle Auto-save After OCR
+sp-rs:Toggle Auto-save After OCR
+sq:Toggle Auto-save After OCR
+sr-rs:Toggle Auto-save After OCR
+sv:Toggle Auto-save After OCR
+ta:Toggle Auto-save After OCR
+th:Toggle Auto-save After OCR
+tl:Toggle Auto-save After OCR
+tr:Toggle Auto-save After OCR
+tw:開關識別後自動儲存
+uk:Toggle Auto-save After OCR
+uz:Toggle Auto-save After OCR
+vn:Toggle Auto-save After OCR
 :Toggle Bookmarks
 am:Միացնել/անջատել էջանիշները
 br:Ativar/Desativar os Favoritos
@@ -19036,149 +19693,3 @@ it:↑ ↓ per navigare
 nl:↑ ↓ voor navigeren
 pl:↑ ↓ aby nawigować
 sk:↑ ↓ – navigovať
-:Auto-save
-af:Auto-save
-am:Auto-save
-ar:Auto-save
-az:Auto-save
-bg:Auto-save
-bn:Auto-save
-br:Auto-save
-bs:Auto-save
-by:Auto-save
-ca:Auto-save
-ca-xv:Auto-save
-cn:自动保存
-co:Auto-save
-cy:Auto-save
-cz:Auto-save
-de:Auto-save
-dk:Auto-save
-el:Auto-save
-es:Auto-save
-et:Auto-save
-eu:Auto-save
-fa:Auto-save
-fi:Auto-save
-fo:Auto-save
-fr:Auto-save
-fy-nl:Auto-save
-ga:Auto-save
-gl:Auto-save
-he:Auto-save
-hi:Auto-save
-hr:Auto-save
-hu:Auto-save
-id:Auto-save
-it:Auto-save
-ja:Auto-save
-jv:Auto-save
-ka:Auto-save
-kr:Auto-save
-ku:Auto-save
-kw:Auto-save
-lt:Auto-save
-lv:Auto-save
-mk:Auto-save
-ml:Auto-save
-mm:Auto-save
-my:Auto-save
-ne:Auto-save
-nl:Auto-save
-nn:Auto-save
-no:Auto-save
-pa:Auto-save
-pl:Auto-save
-pt:Auto-save
-ro:Auto-save
-ru:Auto-save
-sat:Auto-save
-si:Auto-save
-sk:Auto-save
-sl:Auto-save
-sn:Auto-save
-sp-rs:Auto-save
-sq:Auto-save
-sr-rs:Auto-save
-sv:Auto-save
-ta:Auto-save
-th:Auto-save
-tl:Auto-save
-tr:Auto-save
-tw:自動儲存
-uk:Auto-save
-uz:Auto-save
-vn:Auto-save
-:Toggle Auto-save After OCR
-af:Toggle Auto-save After OCR
-am:Toggle Auto-save After OCR
-ar:Toggle Auto-save After OCR
-az:Toggle Auto-save After OCR
-bg:Toggle Auto-save After OCR
-bn:Toggle Auto-save After OCR
-br:Toggle Auto-save After OCR
-bs:Toggle Auto-save After OCR
-by:Toggle Auto-save After OCR
-ca:Toggle Auto-save After OCR
-ca-xv:Toggle Auto-save After OCR
-cn:开关识别后自动保存
-co:Toggle Auto-save After OCR
-cy:Toggle Auto-save After OCR
-cz:Toggle Auto-save After OCR
-de:Toggle Auto-save After OCR
-dk:Toggle Auto-save After OCR
-el:Toggle Auto-save After OCR
-es:Toggle Auto-save After OCR
-et:Toggle Auto-save After OCR
-eu:Toggle Auto-save After OCR
-fa:Toggle Auto-save After OCR
-fi:Toggle Auto-save After OCR
-fo:Toggle Auto-save After OCR
-fr:Toggle Auto-save After OCR
-fy-nl:Toggle Auto-save After OCR
-ga:Toggle Auto-save After OCR
-gl:Toggle Auto-save After OCR
-he:Toggle Auto-save After OCR
-hi:Toggle Auto-save After OCR
-hr:Toggle Auto-save After OCR
-hu:Toggle Auto-save After OCR
-id:Toggle Auto-save After OCR
-it:Toggle Auto-save After OCR
-ja:Toggle Auto-save After OCR
-jv:Toggle Auto-save After OCR
-ka:Toggle Auto-save After OCR
-kr:Toggle Auto-save After OCR
-ku:Toggle Auto-save After OCR
-kw:Toggle Auto-save After OCR
-lt:Toggle Auto-save After OCR
-lv:Toggle Auto-save After OCR
-mk:Toggle Auto-save After OCR
-ml:Toggle Auto-save After OCR
-mm:Toggle Auto-save After OCR
-my:Toggle Auto-save After OCR
-ne:Toggle Auto-save After OCR
-nl:Toggle Auto-save After OCR
-nn:Toggle Auto-save After OCR
-no:Toggle Auto-save After OCR
-pa:Toggle Auto-save After OCR
-pl:Toggle Auto-save After OCR
-pt:Toggle Auto-save After OCR
-ro:Toggle Auto-save After OCR
-ru:Toggle Auto-save After OCR
-sat:Toggle Auto-save After OCR
-si:Toggle Auto-save After OCR
-sk:Toggle Auto-save After OCR
-sl:Toggle Auto-save After OCR
-sn:Toggle Auto-save After OCR
-sp-rs:Toggle Auto-save After OCR
-sq:Toggle Auto-save After OCR
-sr-rs:Toggle Auto-save After OCR
-sv:Toggle Auto-save After OCR
-ta:Toggle Auto-save After OCR
-th:Toggle Auto-save After OCR
-tl:Toggle Auto-save After OCR
-tr:Toggle Auto-save After OCR
-tw:開關識別後自動儲存
-uk:Toggle Auto-save After OCR
-uz:Toggle Auto-save After OCR
-vn:Toggle Auto-save After OCR

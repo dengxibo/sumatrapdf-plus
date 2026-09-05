@@ -6,10 +6,14 @@
 #include "OcrOnnx.h"
 
 struct MainWindow;
+struct WindowTab;
 class EngineBase;
 
 bool OcrEngineKindSupported(EngineBase* engine);
-bool OcrAutoEnabled(EngineBase* engine);
+// Auto OCR switch for the current tab. Toolbar checked state and the auto
+// scheduling gates all read this; never use it as a feature-availability test.
+bool OcrAutoEnabled(MainWindow* win);
+void ApplyAutoOcrDefaultForTab(WindowTab* tab);
 bool OcrDeferExtractUntilDocumentReady(MainWindow* win, bool persistToDisk);
 bool OcrDocumentHasFileTextLayer(EngineBase* engine);
 bool OcrPageLooksScanned(EngineBase* engine, int pageNo);

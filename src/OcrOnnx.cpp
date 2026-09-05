@@ -40,6 +40,7 @@ static const OrtApi* gApi = nullptr;
 static const OrtApiBase* gApiBase = nullptr;
 static OrtEnv* gEnv = nullptr;
 static OrtSessionOptions* gOpts = nullptr;
+static int gIntraOpThreads = 0;
 static OrtMemoryInfo* gMem = nullptr;
 static OrtAllocator* gAlloc = nullptr;
 static bool gRuntimeTried = false;
@@ -50,9 +51,33 @@ static bool gLoggedGenericRec = false;
 static char gMissingHint[512] = {};
 static char gLastError[512] = {};
 static char* gOrtVersion = nullptr;
+static OrtSession* gOrientation = nullptr;
+static char* gOrientationIn = nullptr;
+static char* gOrientationOut = nullptr;
+static bool gOrientationTried = false;
 
 static constexpr int kOcrMaxSlots = 8;
 static constexpr int kOcrProfileCount = 3;
+static constexpr int kOcrRecBatchMax = 16;
+
+// REC batch size for one inference call. SUMATRA_OCR_RECBATCH overrides the
+// default (8) so batch=1/4/6/8 can be benchmarked; clamped to [1,16] and
+// further clamped by what the rec model actually accepts at runtime.
+static int OcrRecBatchSize() {
+    static int cached = 0;
+    if (!cached) {
+        int v = 8;
+        char env[16]{};
+        if (GetEnvironmentVariableA("SUMATRA_OCR_RECBATCH", env, dimof(env)) > 0) {
+            int parsed = atoi(env);
+            if (parsed >= 1 && parsed <= kOcrRecBatchMax) {
+                v = parsed;
+            }
+        }
+        cached = v;
+    }
+    return cached;
+}
 
 struct OcrOrtBundle {
     OrtSession* det = nullptr;
@@ -89,6 +114,8 @@ struct OcrProfileState {
     char* clsPath = nullptr;
     StrVec keys;
     int recClassCount = 0;
+    int recMaxBatch = 1;
+    int clsMaxBatch = 1;
     OcrOrtBundle bundles[kOcrMaxSlots];
     bool slotBusy[kOcrMaxSlots]{};
     int slotCount = 0;
@@ -101,6 +128,9 @@ static char* gSharedClsPath = nullptr;
 
 static const char* kClsNames[] = {"cls.onnx", "ch_ppocr_mobile_v2.0_cls_infer.onnx",
                                   "ch_ppocr_mobile_v2.0_cls_mobile.onnx", nullptr};
+
+static bool InitRuntimeLocked();
+static bool EnsureOrientationLocked();
 
 char* OcrSidecarDirTemp() {
     TempStr exeDir = GetSelfExeDirTemp();
@@ -199,7 +229,14 @@ OcrProfile GetOcrProfileForOperation(OcrOperation op) {
     }
     switch (op) {
         case OcrOperation::CurrentPage:
+        case OcrOperation::Region:
+            // Region OCR is an explicit user action: accuracy-first (Balanced =
+            // small det + small rec, the most accurate profile this build ships).
             return OcrProfile::Balanced;
+        case OcrOperation::Auto:
+            // Auto OCR is a latency-first interactive feature (page becomes
+            // selectable while reading): always the fastest Tiny pair.
+            return OcrProfile::Fast;
         case OcrOperation::AllPages:
         case OcrOperation::SaveSearchable:
             if (gGlobalPrefs && gGlobalPrefs->ocrFullDocumentMode &&
@@ -409,6 +446,64 @@ static bool LogAndCacheIo(OrtSession* session, const char* tag, char** firstIn, 
     return true;
 }
 
+// Largest batch dimension the session's first input accepts. A negative dim
+// (-1 or symbolic) means dynamic batch; PP-OCR rec/cls exports are dynamic,
+// hand-converted models can be pinned to 1 (then REC batching is disabled).
+static int ProbeInputMaxBatch(OrtSession* session) {
+    if (!session || !gApi) {
+        return 1;
+    }
+    OrtTypeInfo* ti = nullptr;
+    OrtStatus* st = gApi->SessionGetInputTypeInfo(session, 0, &ti);
+    if (st) {
+        OrtFail(st, "SessionGetInputTypeInfo");
+        return 1;
+    }
+    const OrtTensorTypeAndShapeInfo* info = nullptr;
+    st = gApi->CastTypeInfoToTensorInfo(ti, &info);
+    if (st) {
+        OrtFail(st, "CastTypeInfoToTensorInfo");
+        gApi->ReleaseTypeInfo(ti);
+        return 1;
+    }
+    size_t rank = 0;
+    gApi->GetDimensionsCount(info, &rank);
+    int64_t dim0 = rank > 0 ? -1 : 1;
+    if (rank > 0) {
+        gApi->GetDimensions(info, &dim0, 1);
+    }
+    gApi->ReleaseTypeInfo(ti);
+    if (dim0 < 0) {
+        return kOcrRecBatchMax;
+    }
+    if (dim0 == 0 || dim0 > kOcrRecBatchMax) {
+        return kOcrRecBatchMax;
+    }
+    return (int)dim0;
+}
+
+static bool EnsureOrientationLocked() {
+    if (gOrientationTried) {
+        return gOrientation && gOrientationIn && gOrientationOut;
+    }
+    gOrientationTried = true;
+    if (!InitRuntimeLocked()) {
+        return false;
+    }
+    TempStr path = path::JoinTemp(OcrSidecarDirTemp(), "rapid_orientation.onnx");
+    if (!file::Exists(path)) {
+        logf("OcrOnnx: optional rapid_orientation.onnx not present\n");
+        return false;
+    }
+    gOrientation = LoadSession(path);
+    if (!gOrientation || !LogAndCacheIo(gOrientation, "orientation", &gOrientationIn, &gOrientationOut, nullptr)) {
+        logf("OcrOnnx: failed to load rapid_orientation.onnx\n");
+        return false;
+    }
+    logf("OcrOnnx: page orientation model: rapid_orientation.onnx (IR %d)\n", OnnxIrVersion(path));
+    return true;
+}
+
 static bool CopyBundleIoNames(const OcrOrtBundle* src, OcrOrtBundle* dst) {
     if (!src || !dst || !src->detIn || !src->detOut || !src->recIn || !src->recOut) {
         return false;
@@ -455,6 +550,7 @@ static bool EnsureBundleLocked(OcrProfileState* st, int i) {
     if (!st->detPath || !st->recPath) {
         return false;
     }
+    LARGE_INTEGER t0 = TimeGet();
     b->det = LoadSession(st->detPath);
     b->rec = LoadSession(st->recPath);
     if (st->clsPath) {
@@ -464,13 +560,21 @@ static bool EnsureBundleLocked(OcrProfileState* st, int i) {
         return false;
     }
     if (i > 0 && st->bundles[0].detIn) {
-        return CopyBundleIoNames(&st->bundles[0], b);
+        if (!CopyBundleIoNames(&st->bundles[0], b)) {
+            return false;
+        }
+    } else {
+        int recClass = 0;
+        if (!CacheSessionNames(b, &recClass)) {
+            return false;
+        }
+        st->recClassCount = recClass;
+        st->recMaxBatch = ProbeInputMaxBatch(b->rec);
+        st->clsMaxBatch = b->cls ? ProbeInputMaxBatch(b->cls) : 1;
+        logf("OcrOnnx: rec dynamic-batch max=%d cls max=%d (recBatch env=%d)\n", st->recMaxBatch, st->clsMaxBatch,
+             OcrRecBatchSize());
     }
-    int recClass = 0;
-    if (!CacheSessionNames(b, &recClass)) {
-        return false;
-    }
-    st->recClassCount = recClass;
+    logf("OcrOnnx: OCR slot %d session load %.1f ms\n", i + 1, TimeSinceInMs(t0));
     return true;
 }
 
@@ -752,7 +856,21 @@ static bool InitRuntimeLocked() {
         OrtFail(st, "CreateSessionOptions");
         return InitFail("CreateSessionOptions");
     }
-    st = gApi->SetIntraOpNumThreads(gOpts, DesiredOcrSlotCount() > 1 ? 1 : 2);
+    // One thread per session slot: the outer worker pool (one slot each)
+    // already fills the cores, and stacking intra-op threads on top of
+    // kOcrMaxSlots sessions oversubscribes the CPU. SUMATRA_OCR_INTRA allows
+    // experimenting with a higher per-session thread count.
+    int slots = DesiredOcrSlotCount();
+    char envIntra[16]{};
+    int intra = slots > 1 ? 1 : 2;
+    if (GetEnvironmentVariableA("SUMATRA_OCR_INTRA", envIntra, dimof(envIntra)) > 0) {
+        int v = atoi(envIntra);
+        if (v >= 1 && v <= 16) {
+            intra = v;
+        }
+    }
+    gIntraOpThreads = intra;
+    st = gApi->SetIntraOpNumThreads(gOpts, intra);
     if (st) {
         OrtFail(st, "SetIntraOpNumThreads");
     }
@@ -917,6 +1035,24 @@ static void RgbToNchwNorm(const u8* rgb, int w, int h, int stride, float* out) {
             for (int c = 0; c < 3; c++) {
                 float v = (float)row[x * 3 + c] / 255.f;
                 out[c * plane + i] = (v - 0.5f) / 0.5f;
+            }
+        }
+    }
+}
+
+// RapidOrientation's reference loader is OpenCV imread(), hence BGR. OCR
+// raster data here is RGB, so preserve the model's documented channel order.
+static void RgbToNchwNormBgr(const u8* rgb, int w, int h, int stride, float* out) {
+    static const float mean[] = {.485f, .456f, .406f};
+    static const float stddev[] = {.229f, .224f, .225f};
+    size_t plane = (size_t)w * (size_t)h;
+    for (int y = 0; y < h; y++) {
+        const u8* row = rgb + (size_t)y * (size_t)stride;
+        for (int x = 0; x < w; x++) {
+            size_t i = (size_t)y * (size_t)w + (size_t)x;
+            for (int c = 0; c < 3; c++) {
+                float v = (float)row[x * 3 + (2 - c)] / 255.f;
+                out[c * plane + i] = (v - mean[c]) / stddev[c];
             }
         }
     }
@@ -1337,6 +1473,18 @@ static bool ShouldRotate180(OcrOrtBundle* b, const u8* rgb, int w, int h) {
     return rot;
 }
 
+static constexpr int kRecH = 48; // rec model input height
+
+struct RecChunkItem {
+    int detIdx = 0; // index into share->dets / share->out
+    Vec<u8> crop;   // packed RGB after optional 90° CCW rotation
+    int cw = 0;
+    int ch = 0;
+    int recW = 0; // resized width at kRecH, multiple of 8
+    bool vertical = false;
+    bool skip = false;
+};
+
 struct RecParShare {
     const u8* rgb = nullptr;
     int w = 0;
@@ -1346,6 +1494,7 @@ struct RecParShare {
     int nDets = 0;
     OcrBox* out = nullptr;
     OcrProfileState* st = nullptr;
+    int recBatch = 1;
     volatile LONG next = 0;
 };
 
@@ -1355,56 +1504,263 @@ struct RecParCtx {
     OcrPageTiming local{};
 };
 
+// Batched cls: one inference decides the 180° flag for every crop in a chunk.
+static void ChunkRotate180Batch(RecParCtx* ctx, RecChunkItem* items, int nItems, OcrPageTiming* timing) {
+    RecParShare* s = ctx->share;
+    OcrProfileState* st = s->st;
+    OcrOrtBundle* b = ctx->b;
+    const int clsW = 192, clsH = 48;
+    bool batchCls = b->cls && b->clsIn && b->clsOut && st->clsMaxBatch > 1 && nItems > 1;
+    if (!b->cls || !b->clsIn || !b->clsOut) {
+        return;
+    }
+    if (!batchCls) {
+        for (int i = 0; i < nItems; i++) {
+            if (items[i].skip) {
+                continue;
+            }
+            if (ShouldRotate180(b, items[i].crop.LendData(), items[i].cw, items[i].ch)) {
+                Rotate180(items[i].crop, items[i].cw, items[i].ch);
+            }
+        }
+        return;
+    }
+    LARGE_INTEGER tInf = TimeGet();
+    float* nchw = AllocArray<float>((size_t)nItems * 3 * clsH * clsW);
+    u8* tmp = AllocArray<u8>((size_t)clsW * clsH * 3);
+    if (!nchw || !tmp) {
+        free(nchw);
+        free(tmp);
+        for (int i = 0; i < nItems; i++) {
+            if (!items[i].skip && ShouldRotate180(b, items[i].crop.LendData(), items[i].cw, items[i].ch)) {
+                Rotate180(items[i].crop, items[i].cw, items[i].ch);
+            }
+        }
+        return;
+    }
+    for (int i = 0; i < nItems; i++) {
+        if (items[i].skip) {
+            continue;
+        }
+        BilinearRgb(items[i].crop.LendData(), items[i].cw, items[i].ch, items[i].cw * 3, tmp, clsW, clsH);
+        RgbToNchwNorm(tmp, clsW, clsH, clsW * 3, nchw + (size_t)i * 3 * clsH * clsW);
+    }
+    free(tmp);
+    int64_t shape[4] = {nItems, 3, clsH, clsW};
+    float* out = nullptr;
+    size_t outN = 0;
+    bool ok = RunTensor(b->cls, b->clsIn, b->clsOut, nchw, shape, 4, &out, &outN);
+    free(nchw);
+    if (timing) {
+        timing->recInferenceMs += TimeSinceInMs(tInf);
+    }
+    if (ok && out && outN >= (size_t)nItems * 2) {
+        for (int i = 0; i < nItems; i++) {
+            if (items[i].skip) {
+                continue;
+            }
+            if (out[i * 2 + 1] > out[i * 2] && out[i * 2 + 1] > 0.9f) {
+                Rotate180(items[i].crop, items[i].cw, items[i].ch);
+            }
+        }
+    }
+    free(out);
+}
+
+// One resized rec crop -> planes inside the batch tensor. Padding columns are
+// white ((255/255 - 0.5) / 0.5 == 1.0), matching PaddleOCR batch padding.
+static void RecItemToBatchPlanes(const u8* resized, int rw, int batchW, int n, float* nchw) {
+    size_t plane = (size_t)kRecH * (size_t)batchW;
+    float* base = nchw + (size_t)n * 3 * plane;
+    for (int c = 0; c < 3; c++) {
+        float* p = base + (size_t)c * plane;
+        for (size_t j = 0; j < plane; j++) {
+            p[j] = 1.f;
+        }
+    }
+    for (int y = 0; y < kRecH; y++) {
+        const u8* row = resized + (size_t)y * (size_t)rw * 3;
+        size_t yo = (size_t)y * (size_t)batchW;
+        for (int x = 0; x < rw; x++) {
+            size_t i = yo + (size_t)x;
+            for (int c = 0; c < 3; c++) {
+                float v = (float)row[x * 3 + c] / 255.f;
+                base[(size_t)c * plane + i] = (v - 0.5f) / 0.5f;
+            }
+        }
+    }
+}
+
+// Recognize up to ctx->share->recBatch crops with a single rec inference.
+static void RecognizeChunk(RecParCtx* ctx, int start, int count) {
+    RecParShare* s = ctx->share;
+    OcrProfileState* st = s->st;
+    OcrOrtBundle* b = ctx->b;
+    RecChunkItem items[kOcrRecBatchMax];
+    int nItems = 0;
+
+    // 1) crop + vertical handling (identical semantics to the per-item path)
+    for (int k = 0; k < count; k++) {
+        int i = start + k;
+        DetBox& box = s->dets[i];
+        RecChunkItem& it = items[nItems];
+        LARGE_INTEGER tCrop = TimeGet();
+        CropRgb(s->rgb, s->w, s->h, s->stride, box, it.crop, &it.cw, &it.ch);
+        ctx->local.cropMs += TimeSinceInMs(tCrop);
+        it.detIdx = i;
+        it.skip = it.cw < 4 || it.ch < 4;
+        if (!it.skip) {
+            // Vertical book columns are tall. Rec expects a wide strip (height ~48).
+            bool vertical = it.ch > it.cw * 3 / 2 && it.ch > 20;
+            if (vertical) {
+                Vec<u8> rot;
+                RotateRgbPacked90Ccw(it.crop.LendData(), it.cw, it.ch, rot);
+                if (rot.Size() > 0) {
+                    it.crop.Reset();
+                    u8* p = it.crop.AppendBlanks((size_t)rot.Size());
+                    memcpy(p, rot.LendData(), (size_t)rot.Size());
+                    int t = it.cw;
+                    it.cw = it.ch;
+                    it.ch = t;
+                } else {
+                    vertical = false;
+                }
+            }
+            it.vertical = vertical;
+            nItems++;
+        }
+    }
+    if (nItems == 0) {
+        return;
+    }
+
+    // 2) 180° orientation fix (batched when the cls model supports it)
+    LARGE_INTEGER tPre = TimeGet();
+    ChunkRotate180Batch(ctx, items, nItems, &ctx->local);
+
+    // 3) resize to (recW x 48) and pack into one (N,3,48,batchW) tensor
+    int batchW = 8;
+    for (int i = 0; i < nItems; i++) {
+        RecChunkItem& it = items[i];
+        int rw = (int)((float)it.cw * (float)kRecH / (float)it.ch + 0.5f);
+        if (rw < 8) {
+            rw = 8;
+        }
+        if (rw > 960) {
+            rw = 960;
+        }
+        rw = (rw + 7) & ~7;
+        it.recW = rw;
+        if (rw > batchW) {
+            batchW = rw;
+        }
+    }
+    batchW = (batchW + 7) & ~7;
+    float* nchw = AllocArray<float>((size_t)nItems * 3 * kRecH * (size_t)batchW);
+    u8* tmp = AllocArray<u8>((size_t)960 * kRecH * 3);
+    if (!nchw || !tmp) {
+        free(nchw);
+        free(tmp);
+        return;
+    }
+    for (int i = 0; i < nItems; i++) {
+        RecChunkItem& it = items[i];
+        BilinearRgb(it.crop.LendData(), it.cw, it.ch, it.cw * 3, tmp, it.recW, kRecH);
+        RecItemToBatchPlanes(tmp, it.recW, batchW, i, nchw);
+    }
+    free(tmp);
+    ctx->local.recPreprocessMs += TimeSinceInMs(tPre);
+
+    // 4) one batched inference for the whole chunk
+    LARGE_INTEGER tInf = TimeGet();
+    int64_t shape[4] = {nItems, 3, kRecH, batchW};
+    float* out = nullptr;
+    size_t outN = 0;
+    bool ok = RunTensor(b->rec, b->recIn, b->recOut, nchw, shape, 4, &out, &outN);
+    free(nchw);
+    ctx->local.recInferenceMs += TimeSinceInMs(tInf);
+    ctx->local.nRecBatches++;
+    if (!ok || !out || outN < 2) {
+        free(out);
+        // Robustness fallback: the model probe should prevent this, but if a
+        // batched run is rejected fall back to the proven per-item path.
+        for (int i = 0; i < nItems; i++) {
+            RecChunkItem& it = items[i];
+            if (it.skip) {
+                continue;
+            }
+            int* charX = nullptr;
+            int nChar = 0;
+            char* text = RecognizeCrop(b, st, it.crop.LendData(), it.cw, it.ch, &charX, &nChar, &ctx->local);
+            if (!text) {
+                free(charX);
+                continue;
+            }
+            DetBox& box = s->dets[it.detIdx];
+            s->out[it.detIdx].rect = Rect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
+            s->out[it.detIdx].text = text;
+            s->out[it.detIdx].charX = charX;
+            s->out[it.detIdx].nChar = nChar;
+            s->out[it.detIdx].vertical = it.vertical;
+        }
+        return;
+    }
+
+    // 5) CTC decode per item
+    LARGE_INTEGER tPost = TimeGet();
+    int cls = st->recClassCount > 0 ? st->recClassCount : st->keys.Size();
+    if (cls <= 0 || outN % (size_t)(nItems * cls) != 0) {
+        SetOcrError("recognition output size does not match dictionary class count");
+        logf("OcrOnnx: rec batch outN=%zu n=%d cls=%d — refusing CTC decode\n", outN, nItems, cls);
+        free(out);
+        ctx->local.recPostprocessMs += TimeSinceInMs(tPost);
+        return;
+    }
+    int t = (int)(outN / (size_t)(nItems * cls));
+    for (int i = 0; i < nItems; i++) {
+        RecChunkItem& it = items[i];
+        if (it.skip) {
+            continue;
+        }
+        int* charX = nullptr;
+        int nChar = 0;
+        char* text = CtcDecode(out + (size_t)i * (size_t)t * (size_t)cls, t, cls, it.cw, st->keys, &charX, &nChar);
+        if (!text) {
+            free(charX);
+            continue;
+        }
+        DetBox& box = s->dets[it.detIdx];
+        s->out[it.detIdx].rect = Rect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
+        s->out[it.detIdx].text = text;
+        s->out[it.detIdx].charX = charX;
+        s->out[it.detIdx].nChar = nChar;
+        s->out[it.detIdx].vertical = it.vertical;
+    }
+    free(out);
+    ctx->local.recPostprocessMs += TimeSinceInMs(tPost);
+}
+
 static void RecParLoop(RecParCtx* ctx) {
     if (!ctx || !ctx->share || !ctx->b || !ctx->share->st) {
         return;
     }
     RecParShare* s = ctx->share;
+    if (!ctx->b->rec || !ctx->b->recIn || !ctx->b->recOut) {
+        return;
+    }
+    int batch = s->recBatch > 0 ? s->recBatch : 1;
     for (;;) {
-        LONG i = InterlockedIncrement(&s->next) - 1;
-        if (i >= s->nDets) {
+        // Pull a whole chunk atomically so boxes that sit next to each other
+        // (detector order) share one inference with minimal padding waste.
+        LONG start = InterlockedAdd(&s->next, (LONG)batch) - (LONG)batch;
+        if (start >= (LONG)s->nDets) {
             return;
         }
-        DetBox& box = s->dets[i];
-        Vec<u8> crop;
-        int cw = 0, ch = 0;
-        LARGE_INTEGER tCrop = TimeGet();
-        CropRgb(s->rgb, s->w, s->h, s->stride, box, crop, &cw, &ch);
-        ctx->local.cropMs += TimeSinceInMs(tCrop);
-        if (cw < 4 || ch < 4) {
-            continue;
+        int count = batch;
+        if (start + count > (LONG)s->nDets) {
+            count = (int)((LONG)s->nDets - start);
         }
-        // Vertical book columns are tall. Rec expects a wide strip (height ~48).
-        bool vertical = ch > cw * 3 / 2 && ch > 20;
-        if (vertical) {
-            Vec<u8> rot;
-            RotateRgbPacked90Ccw(crop.LendData(), cw, ch, rot);
-            if (rot.Size() > 0) {
-                crop.Reset();
-                u8* p = crop.AppendBlanks((size_t)rot.Size());
-                memcpy(p, rot.LendData(), (size_t)rot.Size());
-                int t = cw;
-                cw = ch;
-                ch = t;
-            } else {
-                vertical = false;
-            }
-        }
-        if (ShouldRotate180(ctx->b, crop.LendData(), cw, ch)) {
-            Rotate180(crop, cw, ch);
-        }
-        int* charX = nullptr;
-        int nChar = 0;
-        char* text = RecognizeCrop(ctx->b, s->st, crop.LendData(), cw, ch, &charX, &nChar, &ctx->local);
-        if (!text) {
-            free(charX);
-            continue;
-        }
-        s->out[i].rect = Rect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
-        s->out[i].text = text;
-        s->out[i].charX = charX;
-        s->out[i].nChar = nChar;
-        s->out[i].vertical = vertical;
+        RecognizeChunk(ctx, start, count);
     }
 }
 
@@ -1527,6 +1883,13 @@ static bool RecognizeRgbLocked(OcrProfileState* st, OcrOrtBundle* b, const u8* r
         share.out = AllocArray<OcrBox>((size_t)nDet);
         share.st = st;
         share.next = 0;
+        share.recBatch = OcrRecBatchSize();
+        if (share.recBatch > st->recMaxBatch) {
+            share.recBatch = st->recMaxBatch;
+        }
+        if (share.recBatch < 1) {
+            share.recBatch = 1;
+        }
 
         HANDLE extraTh[kOcrMaxSlots]{};
         int extraSlot[kOcrMaxSlots]{};
@@ -1561,6 +1924,7 @@ static bool RecognizeRgbLocked(OcrProfileState* st, OcrOrtBundle* b, const u8* r
             timing->recPreprocessMs += mainCtx.local.recPreprocessMs;
             timing->recInferenceMs += mainCtx.local.recInferenceMs;
             timing->recPostprocessMs += mainCtx.local.recPostprocessMs;
+            timing->nRecBatches += mainCtx.local.nRecBatches;
         }
         if (nExtra > 0) {
             WaitForMultipleObjects((DWORD)nExtra, extraTh, TRUE, INFINITE);
@@ -1572,6 +1936,7 @@ static bool RecognizeRgbLocked(OcrProfileState* st, OcrOrtBundle* b, const u8* r
                     timing->recPreprocessMs += extraCtx[i].local.recPreprocessMs;
                     timing->recInferenceMs += extraCtx[i].local.recInferenceMs;
                     timing->recPostprocessMs += extraCtx[i].local.recPostprocessMs;
+                    timing->nRecBatches += extraCtx[i].local.nRecBatches;
                 }
             }
         }
@@ -1607,6 +1972,19 @@ bool OcrRecognizeRgb(const u8* rgb, int w, int h, int stride, Vec<OcrBox>& boxes
     if (!st) {
         return false;
     }
+    // Print the real resolved profile + model files once per profile so the
+    // runtime log proves which ONNX pair each entry actually uses.
+    {
+        static OcrProfile gLoggedProfiles[kOcrProfileCount] = {OcrProfile(-1), OcrProfile(-1), OcrProfile(-1)};
+        OcrProfile logged = gLoggedProfiles[(int)profile];
+        if (logged != profile) {
+            gLoggedProfiles[(int)profile] = profile;
+            logfa("OcrOnnx[%s] actual=%s det=%s rec=%s dict=%s slots=%d intraOpThreads=%d graphOpt=EXTENDED\n",
+                  OcrProfileName(profile), OcrProfileName(st->actual), path::GetBaseNameTemp(st->detPath),
+                  path::GetBaseNameTemp(st->recPath), path::GetBaseNameTemp(st->dictPath), st->slotCount,
+                  gIntraOpThreads);
+        }
+    }
     int slot = AcquireOcrSlot(st);
     if (slot < 0) {
         return false;
@@ -1617,4 +1995,98 @@ bool OcrRecognizeRgb(const u8* rgb, int w, int h, int stride, Vec<OcrBox>& boxes
         timing->pageTotalMs += TimeSinceInMs(t0);
     }
     return ok;
+}
+
+bool OcrClassifyPageOrientationRgb(const u8* rgb, int w, int h, int stride, int* clockwiseDegrees, float* confidence) {
+    if (clockwiseDegrees) {
+        *clockwiseDegrees = 0;
+    }
+    if (confidence) {
+        *confidence = 0;
+    }
+    if (!rgb || w < 16 || h < 16 || stride < w * 3) {
+        logfa("orientModel: early return rgb=%p w=%d h=%d stride=%d\n", rgb, w, h, stride);
+        return false;
+    }
+
+    gOcrLock.Lock();
+    bool ready = EnsureOrientationLocked();
+    gOcrLock.Unlock();
+    if (!ready) {
+        logfa("orientModel: model NOT ready (rapid_orientation.onnx not found or failed to load)\n");
+        return false;
+    }
+
+    // This is exactly the preprocessing bundled with RapidOrientation: resize
+    // the short edge to 256, then take three identical centre 224x224 crops.
+    int shortEdge = w < h ? w : h;
+    float scale = 256.f / (float)shortEdge;
+    int rw = (int)(w * scale + .5f);
+    int rh = (int)(h * scale + .5f);
+    if (rw < 224 || rh < 224) {
+        return false;
+    }
+    Vec<u8> resized;
+    resized.SetSize((size_t)rw * (size_t)rh * 3);
+    BilinearRgb(rgb, w, h, stride, &resized[0], rw, rh);
+    int x0 = (rw - 224) / 2;
+    int y0 = (rh - 224) / 2;
+    float* input = AllocArray<float>((size_t)3 * 3 * 224 * 224);
+    if (!input) {
+        return false;
+    }
+    for (int n = 0; n < 3; n++) {
+        RgbToNchwNormBgr(&resized[0] + ((size_t)y0 * rw + x0) * 3, 224, 224, rw * 3, input + (size_t)n * 3 * 224 * 224);
+    }
+    int64_t shape[4] = {3, 3, 224, 224};
+    float* output = nullptr;
+    size_t outputN = 0;
+    bool ok = RunTensor(gOrientation, gOrientationIn, gOrientationOut, input, shape, 4, &output, &outputN);
+    free(input);
+    if (!ok || !output || outputN < 4 || outputN % 4 != 0) {
+        free(output);
+        return false;
+    }
+    int nBatch = (int)(outputN / 4);
+    // Average the three softmax distributions. The published model labels are
+    // ordered 0, 90, 180, 270. They describe the input's current direction;
+    // PDF correction is the inverse clockwise rotation.
+    float probs[4]{};
+    for (int n = 0; n < nBatch; n++) {
+        float maxLogit = output[n * 4];
+        for (int c = 1; c < 4; c++) {
+            if (output[n * 4 + c] > maxLogit) {
+                maxLogit = output[n * 4 + c];
+            }
+        }
+        float denom = 0;
+        for (int c = 0; c < 4; c++) {
+            denom += expf(output[n * 4 + c] - maxLogit);
+        }
+        if (denom > 0) {
+            for (int c = 0; c < 4; c++) {
+                probs[c] += expf(output[n * 4 + c] - maxLogit) / denom;
+            }
+        }
+    }
+    free(output);
+    int best = 0;
+    for (int c = 1; c < 4; c++) {
+        if (probs[c] > probs[best]) {
+            best = c;
+        }
+    }
+    float conf = probs[best] / (float)nBatch;
+    int currentDegrees = best * 90;
+    int correction = (360 - currentDegrees) % 360;
+    logfa("orientModel: current=%d bestIdx=%d conf=%.3f correction=%d probs=[%.3f %.3f %.3f %.3f]\n",
+          currentDegrees, best, conf, correction, probs[0] / (float)nBatch, probs[1] / (float)nBatch,
+          probs[2] / (float)nBatch, probs[3] / (float)nBatch);
+    if (clockwiseDegrees) {
+        *clockwiseDegrees = correction;
+    }
+    if (confidence) {
+        *confidence = conf;
+    }
+    return true;
 }

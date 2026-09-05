@@ -975,7 +975,7 @@ static HFONT HomePageUiFont(HWND hwnd, int deltaPx96, int weight) {
 }
 
 static HFONT HomePageFileNameFont(HWND hwnd) {
-    return HomePageUiFont(hwnd, 2, FW_SEMIBOLD);
+    return HomePageUiFont(hwnd, 2, FW_MEDIUM);
 }
 
 // Soften theme ink so home-page type isn't max-contrast black on beige.
@@ -1253,6 +1253,7 @@ struct HomePageLayout {
     Rect rcLine;       // line under bApp
     Rect rcIconView;
     Rect rcIconSort;
+    Rect rcIconOpen;
 
     HIMAGELIST himlOpen = nullptr;
     VirtWndText* hideShowFreqRead = nullptr;
@@ -1711,7 +1712,8 @@ static void DrawHomeThumbPinIcon(Gdiplus::Graphics& g, const Rect& rc, COLORREF 
     if (d < 4.f) {
         return;
     }
-    Gdiplus::REAL pad = d * 0.10f;
+    // 1024 viewBox (glyph is inset). Slightly less pad than the original 0.10.
+    Gdiplus::REAL pad = d * 0.07f;
     Gdiplus::REAL s = (d - pad * 2.f) / 1024.f;
     Gdiplus::Matrix xf;
     xf.Translate((Gdiplus::REAL)rc.x + pad, (Gdiplus::REAL)rc.y + pad);
@@ -1953,23 +1955,32 @@ void LayoutHomePage(HomePageLayout& l) {
     ImageList_GetIconSize(l.himlOpen, &rcIconSz.dx, &rcIconSz.dy);
 
     int hdrY = DpiScale(dpiHwnd, 14);
-    int iconPad = DpiScale(dpiHwnd, 2);
+    int iconPad = DpiScale(dpiHwnd, 1);
     int cellDx = rcIconSz.dx + iconPad * 2;
     int cellDy = rcIconSz.dy + iconPad * 2;
     int headerRowDy = cellDy;
-    int clusterGap = DpiScale(dpiHwnd, 4);
+    // View/Sort are one "view controls" group; Open File is a separate file
+    // action. Grouping is expressed purely through proximity (Fluent 4px grid):
+    // 8px inside the group, 16px between the groups.
+    constexpr int kHomeToolbarGroupItemGap = 8;
+    constexpr int kHomeToolbarGroupGap = 16;
+    int itemGap = DpiScale(dpiHwnd, kHomeToolbarGroupItemGap);
+    int groupGap = DpiScale(dpiHwnd, kHomeToolbarGroupGap);
 
     l.rcIconView = {headerStartX, hdrY, cellDx, headerRowDy};
-    l.rcIconSort = {l.rcIconView.x + cellDx + clusterGap, hdrY, cellDx, headerRowDy};
+    l.rcIconSort = {l.rcIconView.x + cellDx + itemGap, hdrY, cellDx, headerRowDy};
+    l.rcIconOpen = {l.rcIconSort.x + cellDx + groupGap, hdrY, cellDx, headerRowDy};
     if (isRtl) {
+        l.rcIconOpen.x = l.rcIconSort.x - groupGap - cellDx;
+        l.rcIconSort.x = l.rcIconView.x - itemGap - cellDx;
         l.rcIconView.x = rc.dx - headerStartX - cellDx;
-        l.rcIconSort.x = l.rcIconView.x - clusterGap - cellDx;
     }
     bool frequent = gGlobalPrefs && gGlobalPrefs->homePageSortByFrequentlyRead;
     win->staticLinks.Append(
         new StaticLink(l.rcIconView, kLinkHomePageToggleView, listView ? _TRA("List view") : _TRA("Thumbnail view")));
     win->staticLinks.Append(new StaticLink(l.rcIconSort, kLinkHomePageToggleSort,
                                            frequent ? _TRA("Frequently Read") : _TRA("Recently Opened")));
+    win->staticLinks.Append(new StaticLink(l.rcIconOpen, kLinkOpenFile, _TRA("Open File")));
 
     int headerBottomY = hdrY + headerRowDy;
 
@@ -1997,8 +2008,18 @@ void LayoutHomePage(HomePageLayout& l) {
         int borderY = headerBottomY + headerSearchGap;
         int borderDy = searchEditDy + 2 * searchPadY;
         l.rcSearchBorder = {borderX, borderY, borderDx, borderDy};
-        MoveWindow(win->hwndHomeSearch, borderX + searchPadX, borderY + searchPadY, borderDx - 2 * searchPadX,
-                   searchEditDy, TRUE);
+        if (win->hwndHomeSearch) {
+            int editX = borderX + searchPadX;
+            int editY = borderY + searchPadY;
+            int editDx = borderDx - 2 * searchPadX;
+            RECT cur{};
+            GetWindowRect(win->hwndHomeSearch, &cur);
+            MapWindowPoints(HWND_DESKTOP, win->hwndCanvas, (POINT*)&cur, 2);
+            if (cur.left != editX || cur.top != editY || cur.right - cur.left != editDx ||
+                cur.bottom - cur.top != searchEditDy) {
+                MoveWindow(win->hwndHomeSearch, editX, editY, editDx, searchEditDy, TRUE);
+            }
+        }
     }
     int searchAreaDy = headerSearchGap + searchEditDy + 2 * searchPadY + searchThumbsGap;
     headerBottomY += searchAreaDy;
@@ -2381,7 +2402,7 @@ static void DrawHomeIconBtn(HDC hdc, const Rect& rc, TbIcon icon) {
     if (rc.IsEmpty()) {
         return;
     }
-    int pad = DpiScale(hdc, 2);
+    int pad = DpiScale(hdc, 1);
     Rect dest = rc;
     dest.Inflate(-pad, -pad);
     if (dest.dx < 8 || dest.dy < 8) {
@@ -2440,6 +2461,7 @@ static void DrawHomePageLayout(HomePageLayout& l) {
     bool frequent = gGlobalPrefs && gGlobalPrefs->homePageSortByFrequentlyRead;
     DrawHomeIconBtn(hdc, l.rcIconView, HomePageUsesListView() ? TbIcon::HomeList : TbIcon::HomeThumbnails);
     DrawHomeIconBtn(hdc, l.rcIconSort, frequent ? TbIcon::HomeFrequent : TbIcon::HomeHistory);
+    DrawHomeIconBtn(hdc, l.rcIconOpen, TbIcon::Open);
 
     // clip file list to the middle area
     {
@@ -2953,41 +2975,36 @@ void DrawHomePage(MainWindow* win, HDC hdc) {
     DrawHomePageLayout(l);
 
     HomePageUpdateScrollCache(win, l);
+}
 
-    // Vertical scrollbar when the file grid/list overflows the visible area.
-    bool needVScroll = l.totalContentDy > l.thumbsVisibleDy && !ScrollbarsAreHidden();
+void HomePageUpdateScrollbar(MainWindow* win, bool forHomePage) {
+    if (!win || !win->hwndCanvas) {
+        return;
+    }
+    bool needVScroll = forHomePage && win->homePageMaxScrollY > 0 && !ScrollbarsAreHidden();
     SCROLLINFO si{};
     si.cbSize = sizeof(si);
     si.fMask = SIF_ALL;
     si.nMin = 0;
-    si.nMax = needVScroll ? l.totalContentDy - 1 : 0;
-    si.nPage = needVScroll ? (UINT)l.thumbsVisibleDy : 1;
+    si.nMax = needVScroll ? win->homePageMaxScrollY + win->homePageThumbsVisibleDy - 1 : 0;
+    si.nPage = needVScroll ? (UINT)win->homePageThumbsVisibleDy : 1;
     si.nPos = win->homePageScrollY;
 
-    if (ScrollbarsUseOverlay()) {
-        if (needVScroll) {
-            // Thick (always visible) on the home page so overflow is obvious;
-            // document view restores Smart/Overlay mode via UpdateScrollbars.
-            if (!win->overlayScrollV) {
-                win->overlayScrollV = OverlayScrollbarCreate(win->hwndCanvas, OverlayScrollbar::Type::Vert,
-                                                             OverlayScrollbar::Mode::Thick);
-            } else {
-                OverlayScrollbarSetMode(win->overlayScrollV, OverlayScrollbar::Mode::Thick);
-            }
-            OverlayScrollbarShow(win->overlayScrollV, true);
-            OverlayScrollbarSetInfo(win->overlayScrollV, &si, TRUE);
+    // Always overlay on the home page. A native ShowScrollBar resizes the
+    // canvas and the header icons jump when list/thumbnails changes overflow.
+    if (needVScroll) {
+        if (!win->overlayScrollV) {
+            win->overlayScrollV =
+                OverlayScrollbarCreate(win->hwndCanvas, OverlayScrollbar::Type::Vert, OverlayScrollbar::Mode::Thick);
         } else {
-            OverlayScrollbarShow(win->overlayScrollV, false);
+            OverlayScrollbarSetMode(win->overlayScrollV, OverlayScrollbar::Mode::Thick);
         }
-        ShowScrollBar(win->hwndCanvas, SB_VERT, FALSE);
-    } else if (needVScroll) {
-        OverlayScrollbarShow(win->overlayScrollV, false);
-        ShowScrollBar(win->hwndCanvas, SB_VERT, TRUE);
-        SetScrollInfo(win->hwndCanvas, SB_VERT, &si, TRUE);
+        OverlayScrollbarShow(win->overlayScrollV, true);
+        OverlayScrollbarSetInfo(win->overlayScrollV, &si, TRUE);
     } else {
         OverlayScrollbarShow(win->overlayScrollV, false);
-        ShowScrollBar(win->hwndCanvas, SB_VERT, FALSE);
     }
+    ShowScrollBar(win->hwndCanvas, SB_VERT, FALSE);
 }
 
 void HomePageOnVScroll(MainWindow* win, WPARAM wp) {

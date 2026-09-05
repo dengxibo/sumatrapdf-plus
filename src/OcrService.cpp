@@ -107,6 +107,9 @@ struct OcrJob {
     bool documentJob = false;
     bool regionJob = false;
     bool forceOcr = false;
+    // snapshot of "Auto OCR is on" taken when an auto job was enqueued; the
+    // worker thread uses it to chain nearby pages without touching UI state
+    bool autoJob = false;
     OcrOperation op = OcrOperation::CurrentPage;
     RectF clipRect;
 };
@@ -151,8 +154,53 @@ bool OcrEngineKindSupported(EngineBase* engine) {
            k == kindEngineComicBooks || k == kindEnginePostScript;
 }
 
-bool OcrAutoEnabled(EngineBase* engine) {
-    return engine && gGlobalPrefs && gGlobalPrefs->autoOcrScanPages && OcrEngineKindSupported(engine);
+bool OcrAutoEnabled(MainWindow* win) {
+    // Pure per-tab state read: the toolbar checked state and the auto-OCR
+    // scheduling gates must all observe the SAME source of truth, otherwise
+    // the toggle button looks dead (state written but never read).
+    if (!win) {
+        return false;
+    }
+    WindowTab* tab = win->CurrentTab();
+    return tab && tab->autoOcrOn;
+}
+
+// Does this document have any usable text layer? Capped scan: native text
+// PDFs almost always have text on the first pages, image-only scans have
+// none anywhere, so scanning a bounded prefix keeps document load fast.
+static bool DocHasAnyTextLayerCapped(EngineBase* engine, int maxPages) {
+    if (!engine) {
+        return false;
+    }
+    int n = std::min(engine->PageCount(), maxPages);
+    for (int pageNo = 1; pageNo <= n; pageNo++) {
+        if (engine->HasCachedOcrText(pageNo)) {
+            return true;
+        }
+        int len = 0;
+        const WCHAR* text = engine->GetTextForPage(pageNo, &len);
+        if (CountUsableChars(text) >= 20) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void ApplyAutoOcrDefaultForTab(WindowTab* tab) {
+    // DEFAULT POLICY ONLY: auto OCR starts ON exclusively for image-only
+    // scanned PDFs (supported engine, no usable text layer anywhere). Docs
+    // with a native or already-OCR'd text layer - and non-PDF formats such
+    // as EPUB - start OFF but stay manually toggleable via the toolbar.
+    // This must never be used to block the user from enabling it later.
+    if (!tab) {
+        return;
+    }
+    tab->autoOcrOn = false;
+    EngineBase* engine = tab->GetEngine();
+    if (!OcrEngineKindSupported(engine) || !OcrModelsAvailable()) {
+        return;
+    }
+    tab->autoOcrOn = !DocHasAnyTextLayerCapped(engine, 60);
 }
 
 bool OcrDeferExtractUntilDocumentReady(MainWindow* win, bool persistToDisk) {
@@ -1370,10 +1418,10 @@ static void OcrLogPageTiming(int pageNo, OcrProfile profile, const OcrPageTiming
     double rec = t.recPreprocessMs + t.recInferenceMs + t.recPostprocessMs;
     logf(
         "OCR timing page=%d profile=%s raster=%.0f det=%.0f (pre=%.0f inf=%.0f post=%.0f) crop=%.0f rec=%.0f "
-        "(pre=%.0f inf=%.0f post=%.0f) text=%.0f total=%.0f detBoxes=%d recBoxes=%d\n",
+        "(pre=%.0f inf=%.0f post=%.0f) text=%.0f total=%.0f detBoxes=%d recBoxes=%d batches=%d\n",
         pageNo, OcrProfileName(profile), t.rasterizeMs, det, t.detPreprocessMs, t.detInferenceMs, t.detPostprocessMs,
         t.cropMs, rec, t.recPreprocessMs, t.recInferenceMs, t.recPostprocessMs, t.textLayerMs, t.pageTotalMs,
-        t.nDetBoxes, t.nRecBoxes);
+        t.nDetBoxes, t.nRecBoxes, t.nRecBatches);
 }
 
 static int CmpFloatMs(const void* a, const void* b) {
@@ -1743,6 +1791,7 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
     if (!engine || pageNo < 1 || pageNo > engine->PageCount()) {
         return false;
     }
+    logfa("OCR[%d] ENTER forceOcr=%d op=%d modelsAvail=%d\n", pageNo, forceOcr, (int)op, OcrModelsAvailable());
 
     HANDLE waitEv = nullptr;
     OcrFlight* owned = nullptr;
@@ -1753,6 +1802,7 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
                         DUPLICATE_SAME_ACCESS);
     } else if (engine->WasOcrTried(pageNo) && !forceOcr) {
         gFlightLock.Unlock();
+        logfa("OCR[%d] SKIP was tried earlier\n", pageNo);
         bool usable = engine->PageHasUsableText(pageNo);
         return usable;
     } else {
@@ -1774,8 +1824,10 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
     bool ok = false;
     if (OcrModelsAvailable()) {
         bool scanned = OcrPageLooksScanned(engine, pageNo);
+        logfa("OCR[%d] scanned=%d forceOcr=%d\n", pageNo, scanned, forceOcr);
         if (!scanned && !forceOcr) {
             FinishOcrFlight(owned);
+            logfa("OCR[%d] SKIP not scanned\n", pageNo);
             bool usable = engine->PageHasUsableText(pageNo);
             return usable;
         }
@@ -1786,73 +1838,130 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
         LARGE_INTEGER tRaster = TimeGet();
         RenderedBitmap* bmp = RenderPageForOcr(engine, pageNo);
         timing.rasterizeMs = TimeSinceInMs(tRaster);
+        logfa("OCR[%d] bmp=%p valid=%d\n", pageNo, bmp, bmp ? bmp->IsValid() : 0);
         if (bmp && bmp->IsValid()) {
             int w = 0, h = 0, stride = 0;
             u8* rgb = CopyBitmapToRgb(bmp->GetBitmap(), &w, &h, &stride);
             delete bmp;
             bmp = nullptr;
+            logfa("OCR[%d] rgb=%p w=%d h=%d stride=%d\n", pageNo, rgb, w, h, stride);
             if (rgb) {
                 Vec<OcrBox> boxes;
                 int usedRot = 0;
+                // RapidOrientation model pre-check: detect page direction before
+                // spending time on OCR. Recommended rotation angles (90/270) are
+                // added as rotation candidates alongside the heuristic 90/270 sweep.
+                int modelDeg = 0;
+                float modelConf = 0;
+                bool modelOk = OcrClassifyPageOrientationRgb(rgb, w, h, stride, &modelDeg, &modelConf);
+                bool hasModelHint = modelOk && (modelDeg == 90 || modelDeg == 270);
                 bool ok0 = OcrRecognizeRgb(rgb, w, h, stride, boxes, profile, &timing);
                 int score0 = ok0 ? ScoreOcrBoxes(boxes) : 0;
+                logfa("OCR[%d] 0deg ocr: ok=%d score=%d nBoxes=%d\n", pageNo, ok0, score0, boxes.Size());
                 if (!ok0) {
                     FreeOcrBoxes(boxes);
                     score0 = 0;
                 }
                 bool vertical0 = OcrBoxesLookLikeVerticalBook(boxes, w, h);
-                if (OcrShouldTryPageRotate(boxes, w, h)) {
+                bool shouldTryHeuristic = OcrShouldTryPageRotate(boxes, w, h);
+                logfa("OCR[%d] vertical0=%d shouldTryHeuristic=%d\n", pageNo, vertical0, shouldTryHeuristic);
+                if (hasModelHint || shouldTryHeuristic) {
                     int bestScore = score0;
                     int bestRot = 0;
                     Vec<OcrBox> bestBoxes;
-                    const int rots[2] = {90, 270};
-                    for (int ri = 0; ri < 2; ri++) {
-                        bool cw = rots[ri] == 90;
+                    // Build candidate rotation list. Model-recommended angle (if any)
+                    // is evaluated first with a looser threshold; heuristic angles
+                    // need a larger score gain before they win.
+                    int candRots[3] = {};
+                    int nCand = 0;
+                    if (hasModelHint) {
+                        candRots[nCand++] = modelDeg;
+                    }
+                    if (!hasModelHint || modelDeg != 90) {
+                        candRots[nCand++] = 90;
+                    }
+                    if (!hasModelHint || modelDeg != 270) {
+                        candRots[nCand++] = 270;
+                    }
+                    for (int ci = 0; ci < nCand; ci++) {
+                        int rotDeg = candRots[ci];
+                        bool cw = rotDeg == 90;
                         int nw = 0, nh = 0, ns = 0;
                         u8* rot = RotateRgb90(rgb, w, h, stride, cw, &nw, &nh, &ns);
                         if (!rot) {
+                            logfa("OCR[%d] rot %d: RotateRgb90 failed\n", pageNo, rotDeg);
                             continue;
                         }
                         Vec<OcrBox> rotBoxes;
                         int rotScore = 0;
                         bool rotOk = OcrRecognizeRgbScored(rot, nw, nh, ns, rotBoxes, &rotScore, profile);
-                        if (rotOk && rotScore > bestScore + 18) {
+                        // Model-recommended angle: accept if score is close to or
+                        // above baseline; heuristic angles need +18 gain to override.
+                        int threshold = (hasModelHint && rotDeg == modelDeg) ? 0 : 18;
+                        logfa("OCR[%d] rot %d: ocrOk=%d score=%d best=%d threshold=%d\n", pageNo, rotDeg, rotOk, rotScore,
+                              bestScore, threshold);
+                        if (rotOk && rotScore > bestScore + threshold) {
                             MapOcrBoxesFrom90(rotBoxes, w, h, cw);
                             FreeOcrBoxes(bestBoxes);
                             bestBoxes = rotBoxes;
                             rotBoxes.Reset();
                             bestScore = rotScore;
-                            bestRot = rots[ri];
+                            bestRot = rotDeg;
+                            logfa("OCR[%d] rot %d WINS: score=%d > best+%d=%d\n", pageNo, rotDeg, rotScore, threshold,
+                                  bestScore - rotScore);
                         } else {
                             FreeOcrBoxes(rotBoxes);
                         }
                         free(rot);
                     }
                     if (bestRot != 0) {
-                        logf("Ocr: page %d using %d deg (score %d > %d)\n", pageNo, bestRot, bestScore, score0);
+                        if (hasModelHint) {
+                            logfa("OCR[%d] ROTATE %d FINAL score=%d > %d modelConf=%.2f\n", pageNo, bestRot, bestScore,
+                                  score0, modelConf);
+                        } else {
+                            logfa("OCR[%d] ROTATE %d FINAL score=%d > %d (heuristic)\n", pageNo, bestRot, bestScore, score0);
+                        }
                         FreeOcrBoxes(boxes);
                         boxes = bestBoxes;
                         bestBoxes.Reset();
                         usedRot = bestRot;
                     } else {
                         FreeOcrBoxes(bestBoxes);
+                        if (hasModelHint) {
+                            logfa("OCR[%d] model suggested %d (conf %.2f) but score %d <= baseline %d\n", pageNo,
+                                  modelDeg, modelConf, bestScore, score0);
+                        } else {
+                            logfa("OCR[%d] no rotation won (heuristic only)\n", pageNo);
+                        }
                     }
+                } else {
+                    logfa("OCR[%d] no rotation attempt (hasHint=%d shouldTry=%d)\n", pageNo, hasModelHint,
+                          shouldTryHeuristic);
                 }
                 // Books / 竖版书: keep the page upright. 90° OCR may still feed
                 // recognition (boxes already mapped back). 公文 forms still bake.
-                if (usedRot != 0) {
+                // However: the orientation model has already visually classified
+                // the page direction. Don't let the OCR-box-shape-based vertical0
+                // heuristic override a model-driven rotation — sideways tables in
+                // portrait PDFs look like vertical books when viewed at 0°.
+                if (usedRot != 0 && !(hasModelHint && usedRot == modelDeg)) {
                     bool officialName = OcrFileNameHasOfficialKind(engine->FilePath());
                     bool officialText = OcrBoxesLookLikeOfficialSideways(boxes);
                     bool verticalNow = OcrBoxesLookLikeVerticalBook(boxes, w, h);
+                    logfa("OCR[%d] post-check (heuristic): vertical0=%d verticalNow=%d officialName=%d officialText=%d\n",
+                          pageNo, vertical0, verticalNow, officialName, officialText);
                     if ((vertical0 || verticalNow) && !officialName && !officialText) {
-                        logf("Ocr: page %d keep 0 deg (vertical book, was %d)\n", pageNo, usedRot);
+                        logfa("OCR[%d] KEEP 0 deg (vertical book, was %d)\n", pageNo, usedRot);
                         usedRot = 0;
                     }
+                } else if (usedRot != 0) {
+                    logfa("OCR[%d] post-check: rotation from model, skipping vertical0 guard\n", pageNo);
                 }
                 if (OcrPageBoxesAreVertical(boxes)) {
                     SortOcrBoxesVerticalReading(boxes);
                 }
                 ok = ScoreOcrBoxes(boxes) > 0;
+                logfa("OCR[%d] final: ok=%d score=%d usedRot=%d\n", pageNo, ok, ScoreOcrBoxes(boxes), usedRot);
                 if (ok) {
                     PageText pt{};
                     PageTextUtf8 utf8{};
@@ -1864,6 +1973,7 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
                         engine->SetCachedPageText(pageNo, pt, utf8);
                         engine->SetOcrPageRotate(pageNo, usedRot);
                         engine->SetOcrCacheQuality(pageNo, OcrQualityForProfile(profile));
+                        logfa("OCR[%d] SetOcrPageRotate(%d)\n", pageNo, usedRot);
                     } else {
                         FreePageText(&pt);
                         FreePageTextUtf8(&utf8);
@@ -1877,6 +1987,7 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
                 free(rgb);
             }
         } else {
+            logfa("OCR[%d] bmp invalid\n", pageNo);
             delete bmp;
         }
         timing.pageTotalMs = TimeSinceInMs(tPage);
@@ -1884,8 +1995,11 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
         if (op == OcrOperation::AllPages || op == OcrOperation::SaveSearchable) {
             OcrAccumPageTiming(timing);
         }
+    } else {
+        logfa("OCR[%d] MODELS NOT AVAILABLE\n", pageNo);
     }
     FinishOcrFlight(owned);
+    logfa("OCR[%d] EXIT ok=%d\n", pageNo, ok);
     return ok;
 }
 
@@ -1908,8 +2022,18 @@ static bool OcrRecognizePageClip(EngineBase* engine, int pageNo, const RectF& cl
         return false;
     }
     Vec<OcrBox> boxes;
-    OcrProfile profile = GetOcrProfileForOperation(OcrOperation::CurrentPage);
-    bool ok = OcrRecognizeRgb(rgb, w, h, stride, boxes, profile);
+    OcrProfile profile = GetOcrProfileForOperation(OcrOperation::Region);
+    OcrPageTiming timing{};
+    LARGE_INTEGER t0 = TimeGet();
+    bool ok = OcrRecognizeRgb(rgb, w, h, stride, boxes, profile, &timing);
+    timing.pageTotalMs = TimeSinceInMs(t0);
+    logfa("OCR region timing page=%d clip=%.0fx%.0f raster=%dx%d profile=%s det=%.0f rec=%.0f (pre=%.0f inf=%.0f "
+          "post=%.0f) crop=%.0f total=%.0f detBoxes=%d recBoxes=%d batches=%d\n",
+          pageNo, clip.dx, clip.dy, w, h, OcrProfileName(profile),
+          timing.detPreprocessMs + timing.detInferenceMs + timing.detPostprocessMs,
+          timing.recPreprocessMs + timing.recInferenceMs + timing.recPostprocessMs, timing.recPreprocessMs,
+          timing.recInferenceMs, timing.recPostprocessMs, timing.cropMs, timing.pageTotalMs, timing.nDetBoxes,
+          timing.nRecBoxes, timing.nRecBatches);
     if (ok) {
         BoxesToPageText(boxes, rgb, w, h, stride, clip, ptOut, utf8Out);
         ok = ptOut->text && ptOut->len > 0;
@@ -1927,14 +2051,16 @@ void OcrEnsurePageTextForSearch(EngineBase* engine, int pageNo) {
     if (!OcrEngineKindSupported(engine)) {
         return;
     }
+    // Gate on the owning tab's Auto OCR state (search has no MainWindow*).
+    WindowTab* tab = FindTabByFile(engine->FilePath());
+    if (!tab || !tab->autoOcrOn) {
+        return;
+    }
     if (WaitIfOcrInFlight(engine, pageNo)) {
         return;
     }
-    if (!gGlobalPrefs || !gGlobalPrefs->autoOcrScanPages) {
-        return;
-    }
-    if (OcrPageShouldRecognize(engine, pageNo, OcrOperation::CurrentPage, nullptr)) {
-        OcrRecognizeEnginePage(engine, pageNo);
+    if (OcrPageShouldRecognize(engine, pageNo, OcrOperation::Auto, nullptr)) {
+        OcrRecognizeEnginePage(engine, pageNo, false, OcrOperation::Auto);
     }
 }
 
@@ -2221,9 +2347,36 @@ static void OcrFinishUi(OcrDoneUi* d) {
             gOcrDocTotal = 0;
             gOcrDocDone = 0;
             if (saving) {
+                // Apply rotations + MediaBox swaps to the running engine BEFORE saving,
+                // so the display is updated AND the file copy opened by Save sees the
+                // correct state as well (the running engine is the authoritative copy).
+                if (d->engine) {
+                    int changed = EngineMupdfApplyPendingOcrPageRotates(d->engine);
+                    logfa("OCR[doc-save] ApplyPendingOcrPageRotates changed=%d\n", changed);
+                    if (changed > 0) {
+                        MainWindow* win =
+                            d->hwndCanvas && IsWindow(d->hwndCanvas) ? FindMainWindowByHwnd(d->hwndCanvas) : nullptr;
+                        DisplayModel* dm = win ? win->AsFixed() : nullptr;
+                        if (dm && dm->GetEngine() == d->engine) {
+                            // Must clear DisplayModel's cached page sizes so Relayout
+                            // re-reads the (now rotated) MediaBox from the engine.
+                            // Without this, pageOnScreen stays portrait and clips the
+                            // right half of landscape pages.
+                            dm->InvalidateReflowLayoutAfterEngineReparse();
+                            dm->Relayout(dm->GetZoomVirtual(), dm->GetRotation());
+                        }
+                    }
+                }
                 OcrFinishPendingSaveIfAny(d->engine);
             } else if (extractToc) {
                 OcrLogDocSummary("all-pages", 0);
+                // Also apply orientation-detected page rotations before TOC extraction
+                // (the else-for-extractToc branch had been skipping this entirely, so
+                // sideways tables would never get rotated until a later save)
+                if (d->engine) {
+                    int changed = EngineMupdfApplyPendingOcrPageRotates(d->engine);
+                    logfa("OCR[doc-extractToc] ApplyPendingOcrPageRotates changed=%d\n", changed);
+                }
                 HWND hwnd = gOcrPendingExtractHwnd;
                 bool persist = gOcrPendingExtractPersist;
                 OcrClearPendingExtractToc();
@@ -2233,6 +2386,12 @@ static void OcrFinishUi(OcrDoneUi* d) {
                     d->engine->MarkUnsavedOcrText();
                 }
                 if (win) {
+                    // Relayout so rotated pages are shown upright when TOC is displayed
+                    DisplayModel* dm = win->AsFixed();
+                    if (dm && dm->GetEngine() == d->engine) {
+                        dm->InvalidateReflowLayoutAfterEngineReparse();
+                        dm->Relayout(dm->GetZoomVirtual(), dm->GetRotation());
+                    }
                     HandleExtractPdfTocCommand(win, true, persist);
                     ToolbarUpdateStateForWindow(win, false);
                 }
@@ -2241,12 +2400,17 @@ static void OcrFinishUi(OcrDoneUi* d) {
                 if (d->engine && d->engine->CountOcrCachedPages() > 0) {
                     d->engine->MarkUnsavedOcrText();
                 }
-                if (d->engine && EngineMupdfApplyPendingOcrPageRotates(d->engine) > 0) {
-                    MainWindow* win =
-                        d->hwndCanvas && IsWindow(d->hwndCanvas) ? FindMainWindowByHwnd(d->hwndCanvas) : nullptr;
-                    DisplayModel* dm = win ? win->AsFixed() : nullptr;
-                    if (dm && dm->GetEngine() == d->engine) {
-                        dm->Relayout(dm->GetZoomVirtual(), dm->GetRotation());
+                if (d->engine) {
+                    int changed = EngineMupdfApplyPendingOcrPageRotates(d->engine);
+                    logfa("OCR[doc] ApplyPendingOcrPageRotates changed=%d\n", changed);
+                    if (changed > 0) {
+                        MainWindow* win =
+                            d->hwndCanvas && IsWindow(d->hwndCanvas) ? FindMainWindowByHwnd(d->hwndCanvas) : nullptr;
+                        DisplayModel* dm = win ? win->AsFixed() : nullptr;
+                        if (dm && dm->GetEngine() == d->engine) {
+                            dm->InvalidateReflowLayoutAfterEngineReparse();
+                            dm->Relayout(dm->GetZoomVirtual(), dm->GetRotation());
+                        }
                     }
                 }
                 OcrShowQuietDone(d->hwndCanvas, _TRA("Ready to search"));
@@ -2268,8 +2432,11 @@ static void OcrFinishUi(OcrDoneUi* d) {
     if (d->ok && d->hwndCanvas && IsWindow(d->hwndCanvas)) {
         InvalidateRect(d->hwndCanvas, nullptr, FALSE);
     }
-    if (d->ok && d->engine && d->pageNo > 0 && d->engine->GetOcrPageRotate(d->pageNo) > 0) {
-        if (EngineMupdfEnsurePageOcrRotate(d->engine, d->pageNo)) {
+    if (d->ok && d->engine && d->pageNo > 0) {
+        int rot = d->engine->GetOcrPageRotate(d->pageNo);
+        logfa("OCR[page-done] page=%d rotate=%d ensureResult=%d\n", d->pageNo, rot,
+              rot > 0 ? EngineMupdfEnsurePageOcrRotate(d->engine, d->pageNo) : 0);
+        if (rot > 0) {
             MainWindow* win = d->hwndCanvas && IsWindow(d->hwndCanvas) ? FindMainWindowByHwnd(d->hwndCanvas) : nullptr;
             DisplayModel* dm = win ? win->AsFixed() : nullptr;
             if (dm && dm->GetEngine() == d->engine) {
@@ -2376,7 +2543,7 @@ static void OcrWorker() {
             }
         } else {
             ok = OcrRecognizeEnginePage(job->engine, job->pageNo, job->forceOcr, job->op);
-            if (!job->documentJob && !job->regionJob && gGlobalPrefs && gGlobalPrefs->autoOcrScanPages) {
+            if (!job->documentJob && !job->regionJob && job->autoJob) {
                 OcrQueueAutoNearby(job->engine, job->hwndCanvas, job->pageNo);
             }
         }
@@ -2433,13 +2600,16 @@ static void OcrEnqueueAutoPage(EngineBase* engine, HWND hwnd, int pageNo) {
     job->pageNo = pageNo;
     job->showStatus = false;
     job->forceOcr = forceOcr;
+    // chained nearby-page jobs are auto jobs by definition
+    job->autoJob = true;
+    job->op = OcrOperation::Auto;
     job->cancelSeq = gOcrCancelSeq;
     gQueue.Append(job);
     gQueueLock.Unlock();
 }
 
 static void OcrQueueAutoNearby(EngineBase* engine, HWND hwnd, int centerPage) {
-    if (!engine || !gGlobalPrefs || !gGlobalPrefs->autoOcrScanPages) {
+    if (!engine) {
         return;
     }
     OcrEnqueueAutoPage(engine, hwnd, centerPage + 1);
@@ -2456,7 +2626,9 @@ void OcrScheduleForPage(MainWindow* win, int pageNo, bool ignoreAutoPref) {
     if (!win || !gGlobalPrefs) {
         return;
     }
-    if (!ignoreAutoPref && !gGlobalPrefs->autoOcrScanPages) {
+    // Auto path follows the owning tab's Auto OCR switch (the toolbar toggle).
+    // ignoreAutoPref (explicit "OCR current page") bypasses it by design.
+    if (!ignoreAutoPref && !OcrAutoEnabled(win)) {
         return;
     }
     DisplayModel* dm = win->AsFixed();
@@ -2517,7 +2689,12 @@ void OcrScheduleForPage(MainWindow* win, int pageNo, bool ignoreAutoPref) {
     job->pageNo = pageNo;
     job->showStatus = ignoreAutoPref;
     job->forceOcr = forceOcr;
-    job->op = OcrOperation::CurrentPage;
+    // Latency-first: chained Auto OCR always resolves to the Fast/Tiny profile.
+    // Explicit "OCR current page" (ignoreAutoPref) stays CurrentPage/Balanced.
+    job->op = ignoreAutoPref ? OcrOperation::CurrentPage : OcrOperation::Auto;
+    // snapshot the auto path for the worker: auto jobs chain nearby pages,
+    // explicit "OCR current page" jobs do not
+    job->autoJob = !ignoreAutoPref;
     job->cancelSeq = gOcrCancelSeq;
     gQueue.Append(job);
     gQueueLock.Unlock();
@@ -2900,7 +3077,10 @@ void OcrFinishRegionSelect(MainWindow* win, Rect screenRect) {
     job->regionJob = true;
     job->clipRect = clip;
     job->cancelSeq = gOcrCancelSeq;
-    gQueue.Append(job);
+    // Region OCR is an explicit user action waiting on the result: jump the
+    // queue ahead of queued Auto OCR page prefetches. In-flight jobs finish
+    // first; this job is picked up by the next free worker.
+    gQueue.InsertAt(0, job);
     gQueueLock.Unlock();
     ShowOcrStatus(win->hwndCanvas, _TRA("Scanning…"), kNotifNoTimeout);
     StartOcrWorkerIfNeeded();

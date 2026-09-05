@@ -1539,27 +1539,35 @@ static bool LookupEnsureChineseTtsVoice() {
         return TtsSetVoiceById(id);
     };
     if (gGlobalPrefs) {
-        if (tryId(gGlobalPrefs->readAloudSmartVoiceZh)) {
-            return true;
-        }
-        if (tryId(gGlobalPrefs->readAloudSmartOnlineVoiceZh)) {
-            return true;
-        }
-        // Single selected voice may already be Chinese.
-        if (!str::IsEmpty(gGlobalPrefs->readAloudVoiceId) &&
-            !str::Eq(gGlobalPrefs->readAloudVoiceId, kTtsSmartBilingualVoiceId) &&
-            !str::Eq(gGlobalPrefs->readAloudVoiceId, kTtsSmartOnlineBilingualVoiceId)) {
+        const char* selected = gGlobalPrefs->readAloudVoiceId;
+        if (str::Eq(selected, kTtsSmartBilingualVoiceId)) {
+            // The two smart modes have separate Chinese preferences. Do not
+            // let a stale local preference override the active online mode.
+            if (tryId(gGlobalPrefs->readAloudSmartVoiceZh)) {
+                logf("Lookup TTS Chinese voice: active local smart preference\n");
+                return true;
+            }
+        } else if (str::Eq(selected, kTtsSmartOnlineBilingualVoiceId)) {
+            if (tryId(gGlobalPrefs->readAloudSmartOnlineVoiceZh)) {
+                logf("Lookup TTS Chinese voice: active online smart preference\n");
+                return true;
+            }
+        } else if (!str::IsEmpty(selected)) {
+            // A single selected voice is shared by lookup and read-aloud only
+            // when it is actually Chinese; never force a configured English
+            // voice onto a Chinese dictionary entry.
             // Only accept if it looks Chinese — check via voice list.
             Vec<TtsVoiceInfo> voices = TtsGetVoices();
             bool ok = false;
             for (TtsVoiceInfo& v : voices) {
-                if (str::Eq(v.id, gGlobalPrefs->readAloudVoiceId) && LookupTtsVoiceLangIsZh(v)) {
+                if (str::Eq(v.id, selected) && LookupTtsVoiceLangIsZh(v)) {
                     ok = tryId(v.id);
                     break;
                 }
             }
             TtsFreeVoices(voices);
             if (ok) {
+                logf("Lookup TTS Chinese voice: selected read-aloud voice\n");
                 return true;
             }
         }
@@ -1569,6 +1577,7 @@ static bool LookupEnsureChineseTtsVoice() {
     for (TtsVoiceInfo& v : voices) {
         if (LookupTtsVoiceLangIsZh(v) && tryId(v.id)) {
             ok = true;
+            logf("Lookup TTS Chinese voice: fallback Chinese voice\n");
             break;
         }
     }

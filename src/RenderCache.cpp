@@ -440,8 +440,13 @@ void RenderCache::FreeForDisplayModel(DisplayModel* dm) {
     // must go from end becaues freeing changes the cache
     for (int i = cacheCount - 1; i >= 0; i--) {
         BitmapCacheEntry* entry = cache[i];
-        if (entry->dm == dm) {
-            DropCacheEntryIfNotUsed(entry);
+        if (entry->dm != dm) {
+            continue;
+        }
+        if (!DropCacheEntryIfNotUsed(entry)) {
+            // PaintTile / a render thread still holds a ref — clear the
+            // pointer so FreeNotVisible cannot touch a freed DisplayModel.
+            entry->dm = nullptr;
         }
     }
 }
@@ -478,6 +483,12 @@ void RenderCache::FreeNotVisible() {
     // must go from end becaues freeing changes the cache
     for (int i = cacheCount - 1; i >= 0; i--) {
         BitmapCacheEntry* entry = cache[i];
+        // KeepForDisplayModel / FreeForDisplayModel may leave dm null while a
+        // PaintTile ref is held; also drop tiles whose DisplayModel is gone.
+        if (!entry->dm || !DisplayModelIsAlive(entry->dm)) {
+            DropCacheEntryIfNotUsed(entry);
+            continue;
+        }
         // all invisible pages resp. page tiles
         bool shouldFree = !entry->dm->PageVisibleNearby(entry->pageNo);
         if (!shouldFree && entry->tile.res > 1) {
@@ -493,17 +504,26 @@ void RenderCache::FreeNotVisible() {
 // mark invisible pages as out-of-date to prevent inconsistencies
 void RenderCache::KeepForDisplayModel(DisplayModel* oldDm, DisplayModel* newDm) {
     ScopedCritSec scope(&cacheAccess);
-    for (int i = 0; i < cacheCount; i++) {
+    // must go from end because DropCacheEntryIfNotUsed changes the cache
+    for (int i = cacheCount - 1; i >= 0; i--) {
         BitmapCacheEntry* entry = cache[i];
         if (entry->dm != oldDm) {
             continue;
         }
         if (oldDm->PageVisible(entry->pageNo)) {
             entry->dm = newDm;
+            // make sure that the page is rerendered eventually
+            entry->zoom = kInvalidZoom;
+            entry->outOfDate = true;
+            continue;
         }
-        // make sure that the page is rerendered eventually
-        entry->zoom = kInvalidZoom;
-        entry->outOfDate = true;
+        // Invisible tiles must not keep oldDm: SafeDeleteDocController frees it
+        // next, and FreeNotVisible would then crash in PageVisibleNearby.
+        if (!DropCacheEntryIfNotUsed(entry)) {
+            entry->dm = nullptr;
+            entry->zoom = kInvalidZoom;
+            entry->outOfDate = true;
+        }
     }
 }
 
@@ -943,6 +963,9 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
             continue;
         }
 
+        if (!req.dm) {
+            continue;
+        }
         if (!req.dm->PageVisibleNearby(req.pageNo) && !req.renderFinishedCb.IsValid()) {
             continue;
         }

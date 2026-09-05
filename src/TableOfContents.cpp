@@ -518,6 +518,8 @@ static bool IsTocPageReachable(DocController* ctrl, TocItem* tocItem) {
     if (engine && engine->kind == kindEngineMupdf && !EngineIsProgressiveEbookLoading(engine)) {
         IPageDestination* dest = tocItem->GetPageDestination();
         int pageNo = EngineMupdfTocItemPageNoForSync(engine, dest, tocItem->pageNo);
+        logf("TOC reachable baked=%d computed=%d pageCount=%d title=%.40s",
+             tocItem->pageNo, pageNo, engine->PageCount(), tocItem->title ? tocItem->title : "");
         if (pageNo > 0) {
             return pageNo <= engine->PageCount();
         }
@@ -2621,7 +2623,11 @@ static void DrawTreeWrappedLabel(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, const
     bool isHot = (cd->uItemState & CDIS_HOT) != 0;
     COLORREF textCol = tvcd->clrText;
     COLORREF bgCol = tvcd->clrTextBk;
-    bool skipBgFill = isSelected || (ThemeUsesDarkChrome() && isHot);
+    // Skip the row background fill whenever a full-row hover/selection fill was
+    // already painted (selected in any theme, hot in any theme). Filling the
+    // label rect with the plain background here would erase the hover color
+    // from label-left to client right and leave only the indent sliver.
+    bool skipBgFill = isSelected || isHot;
 
     if (!skipBgFill) {
         RECT rcFill = rcLabel;
@@ -2945,7 +2951,9 @@ static void SetTocItemDrawColors(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, TocIt
         tvcd->clrTextBk = TocSelectionBgColor();
         return;
     }
-    if (isHot && ThemeUsesDarkChrome()) {
+    if (isHot) {
+        // Shared TOC hover color for BOTH themes and BOTH modes (normal +
+        // calibration). Selected above keeps its own stronger accent color.
         tvcd->clrText = TocItemTextColor(tocItem, win, treeView);
         tvcd->clrTextBk = TocHotTrackBgColor();
         return;
@@ -3152,7 +3160,10 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
             if (TocIsEditingItem(win, (HTREEITEM)cd->dwItemSpec)) {
                 tvcd->clrText = tvcd->clrTextBk;
             }
-            if (isSelected || (ThemeUsesDarkChrome() && isHot) || TocCalibIsActive(win)) {
+            // Hot rows (any theme) need postpaint so the shared full-row hover
+            // fill (DrawTocHotTrackFill) replaces the system's pale-blue hot
+            // highlight with the same gray used by calibration mode.
+            if (isSelected || isHot || TocCalibIsActive(win)) {
                 ev->result = CDRF_NOTIFYPOSTPAINT;
                 return;
             }
@@ -3172,8 +3183,11 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
                 if (ThemeUsesDarkChrome()) {
                     DrawTocSelectionFrame(cd, ev->treeView->hwnd, hItem);
                 }
-            } else if (ThemeUsesDarkChrome() && (cd->uItemState & CDIS_HOT) && knownTree && win && win->tocLoaded &&
-                       !win->isBeingClosed) {
+            } else if ((cd->uItemState & CDIS_HOT) && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
+                // Hot row: postpaint was requested (calibration columns or selection),
+                // so paint our own full-row hover fill for BOTH themes. In light theme
+                // the label repaint below would otherwise erase the default theme
+                // hover, leaving only a sliver left of the label rect.
                 DrawTocHotTrackFill(cd, ev->treeView->hwnd, hItem);
                 if (tocItem && !TocIsEditingItem(win, hItem)) {
                     DrawTocWrappedLabel(tvcd, ev->treeView, tocItem, win);
@@ -3236,7 +3250,9 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
         if (knownTree && win && win->tocLoaded && !win->isBeingClosed) {
             if (isSelected) {
                 DrawTocSelectionFill(cd, ev->treeView->hwnd, hItem);
-            } else if (ThemeUsesDarkChrome() && isHot) {
+            } else if (isHot) {
+                // Wrap path always requests postpaint, so hover must be repainted
+                // here for both themes (same mechanism as dark mode above).
                 DrawTocHotTrackFill(cd, ev->treeView->hwnd, hItem);
             }
         }
@@ -3936,6 +3952,10 @@ static bool TocSidebarShowEmptyHint(MainWindow* win) {
     return win && win->tocVisible && win->tocTreeView && !HasTocFilter(win) && !TocSidebarHasBookmarkItems(win);
 }
 
+bool TocSidebarShowsEmptyHint(MainWindow* win) {
+    return TocSidebarShowEmptyHint(win);
+}
+
 static bool TocEmptyExtractActionRect(MainWindow* win, HWND hwnd, RECT* actionOut) {
     if (actionOut) {
         *actionOut = {};
@@ -3999,22 +4019,16 @@ static bool TocEmptyExtractHitTest(MainWindow* win, HWND hwnd, POINT pt) {
     return PtInRect(&actionRc, pt) != FALSE;
 }
 
-static void DrawTocEmptyHint(MainWindow* win, HWND hwnd) {
-    if (!hwnd || !TocSidebarShowEmptyHint(win)) {
+static void DrawTocEmptyHint(MainWindow* win, HWND hwnd, HDC hdc, const RECT& client) {
+    if (!hwnd || !hdc || !TocSidebarShowEmptyHint(win)) {
         return;
     }
-    HDC hdc = GetDC(hwnd);
-    if (!hdc) {
-        return;
-    }
-    RECT rc;
-    GetClientRect(hwnd, &rc);
+    RECT rc = client;
     int pad = DpiScale(hwnd, 16);
     rc.left += pad;
     rc.right -= pad;
     rc.top += pad;
     if (rc.right <= rc.left || rc.bottom <= rc.top) {
-        ReleaseDC(hwnd, hdc);
         return;
     }
     HFONT font = GetAppTreeFontForHwnd(win->hwndFrame);
@@ -4046,7 +4060,6 @@ static void DrawTocEmptyHint(MainWindow* win, HWND hwnd) {
     if (old) {
         SelectObject(hdc, old);
     }
-    ReleaseDC(hwnd, hdc);
 }
 
 static PdfTocDropPos TocDropPosFromInt(int pos) {
@@ -4544,9 +4557,24 @@ static bool TocTreeHandleMouse(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, 
 
 static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR data) {
     MainWindow* win = (MainWindow*)data;
+    if (msg == WM_ERASEBKGND && TocSidebarShowEmptyHint(win)) {
+        return 1;
+    }
+    if (msg == WM_PAINT && TocSidebarShowEmptyHint(win)) {
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hwnd, &ps);
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        COLORREF bgCol = SidebarBackgroundColor(win->tocTreeView ? win->tocTreeView->bgColor : kColorUnset);
+        HBRUSH br = CreateSolidBrush(bgCol);
+        FillRect(hdc, &rc, br);
+        DeleteObject(br);
+        DrawTocEmptyHint(win, hwnd, hdc, rc);
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
     if (msg == WM_PAINT) {
         LRESULT r = DefSubclassProc(hwnd, msg, wp, lp);
-        DrawTocEmptyHint(win, hwnd);
         DrawTocDropIndicator(win, hwnd);
         return r;
     }

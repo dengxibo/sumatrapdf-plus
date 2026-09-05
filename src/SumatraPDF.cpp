@@ -1849,6 +1849,7 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     DocController* prevCtrl = win->ctrl;
     tab->ctrl = ctrl;
     win->ctrl = tab->ctrl;
+    ApplyAutoOcrDefaultForTab(tab);
     EngineMupdfSetReflowLoadWhenForeground(tab->GetEngine(), true);
 
     EngineBase* engine = tab->GetEngine();
@@ -3583,6 +3584,7 @@ static void AttachDocumentToBackgroundTab(LoadArgs* args, WindowTab* tab) {
     SafeDeleteDocController(win, tab->ctrl);
     tab->ctrl = ctrl;
     args->ctrl = nullptr;
+    ApplyAutoOcrDefaultForTab(tab);
     StampTabReflowThemeEpoch(tab);
     EngineMupdfSetReflowLoadWhenForeground(tab->GetEngine(), false);
 
@@ -6242,10 +6244,10 @@ bool ConfirmOcrAutoSave(MainWindow* win, bool* extractTocOut) {
     if (!ConfirmSearchablePdfSignatureSave(win, engine)) {
         return false;
     }
+    // Extracted bookmarks enter the reversible calibration session, whose
+    // Save / Cancel actions already decide whether existing PDF bookmarks are
+    // replaced. Do not ask the same question before starting that session.
     bool doExtract = EngineMupdfCanEditPdfToc(engine);
-    if (doExtract && EngineMupdfHasStoredOutline(engine) && !ConfirmReplaceExistingPdfToc(win)) {
-        doExtract = false;
-    }
     if (extractTocOut) {
         *extractTocOut = doExtract;
     }
@@ -6280,9 +6282,6 @@ void SaveSearchablePdfAs(MainWindow* win, bool extractTocWhenDone) {
     }
 
     bool doExtract = extractTocWhenDone && EngineMupdfCanEditPdfToc(engine);
-    if (doExtract && EngineMupdfHasStoredOutline(engine) && !ConfirmReplaceExistingPdfToc(win)) {
-        doExtract = false;
-    }
     OcrSaveSearchablePdfAfterOcr(win, srcPath, doExtract);
 }
 
@@ -7201,11 +7200,9 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
             dxMove = canvasWin.x - gLastLiveCanvasWin.x;
             stripDx = std::abs(dxMove) + kSplitterDx;
             if (dxMove != 0 && stripDx > 0) {
-                COLORREF canvasBg = ThemeMainWindowBackgroundColor();
                 COLORREF sidebarBg = ThemeSidebarBackgroundColor();
-                // Canvas left always: expand exposes leftover splitter; shrink
-                // can copy the bar into the new left edge.
-                FillWindowClientStrip(win->hwndCanvas, false, stripDx, canvasBg);
+                // The canvas paints itself live (same pipeline as a main-window
+                // resize), so only the sidebar edges need strip repair here.
                 if (dxMove > 0) {
                     // Sidebar grew over old splitter positions.
                     FillWindowClientStrip(win->hwndTocBox, true, stripDx, sidebarBg);
@@ -7230,9 +7227,11 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
         }
         gLastLiveCanvasWin = canvasWin;
         if (tocVisible) {
-            InvalidateRect(win->hwndTocBox, nullptr, TRUE);
+            bool emptyHint = TocSidebarShowsEmptyHint(win);
+            InvalidateRect(win->hwndTocBox, nullptr, emptyHint ? FALSE : TRUE);
             if (win->tocTreeView && win->tocTreeView->hwnd) {
-                RedrawWindow(win->tocTreeView->hwnd, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
+                UINT rdW = emptyHint ? (RDW_INVALIDATE | RDW_UPDATENOW) : (RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
+                RedrawWindow(win->tocTreeView->hwnd, nullptr, nullptr, rdW);
             }
             TocCalibFillLiveDrag(win);
             if (win->sidebarSplitter) {
@@ -7245,7 +7244,9 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
                 RedrawWindow(win->favTreeView->hwnd, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
             }
         }
-        RedrawWindow(win->hwndCanvas, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
+        // The canvas repaints through its own WM_SIZE -> InvalidateRect ->
+        // WM_PAINT pipeline (coalesced by the message loop), just like a
+        // main-window resize; no synchronous forced repaint per mouse move.
     } else if (tocVisible) {
         RedrawWindow(win->hwndTocBox, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
     }
@@ -8443,6 +8444,33 @@ bool IsSidebarSplitterLiveDrag() {
     return gSidebarSplitterWrapSuspended;
 }
 
+// WM_PAINT is the lowest-priority message: under a burst of splitter mouse
+// moves it starves and the screen keeps showing stale pixels (ghost trails)
+// until the mouse stops. Flush the canvas synchronously, but coalesced to
+// ~60fps, so every drag frame presents a complete fresh document frame
+// without a synchronous repaint per mouse event.
+// The sidebar header buttons (collapse/expand/calibrate/close) are painted
+// inside the LabelWithClose window and suffer the same starvation: their
+// geometry is updated synchronously in the WM_SIZE chain, but a starved
+// WM_PAINT leaves the old button pixels on screen until a gap between moves
+// lets them snap over = rubber-band trailing. Flush them in the same tick so
+// they stay welded to the sidebar edge.
+static void ThrottledLiveCanvasFlush(MainWindow* win) {
+    static DWORD gLastLiveCanvasFlushMs = 0;
+    DWORD now = GetTickCount();
+    if (now - gLastLiveCanvasFlushMs < 16) {
+        return;
+    }
+    gLastLiveCanvasFlushMs = now;
+    RedrawWindow(win->hwndCanvas, nullptr, nullptr, RDW_INVALIDATE | RDW_NOERASE | RDW_UPDATENOW);
+    if (win->tocLabelWithClose) {
+        RedrawWindow(win->tocLabelWithClose->hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_NOERASE | RDW_UPDATENOW);
+    }
+    if (win->favLabelWithClose) {
+        RedrawWindow(win->favLabelWithClose->hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_NOERASE | RDW_UPDATENOW);
+    }
+}
+
 static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
     Splitter* splitter = ev->w;
     HWND hwnd = splitter->hwnd;
@@ -8458,12 +8486,16 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
     Rect rToc = ClientRect(win->hwndTocBox);
     int minDx = std::min(kSidebarMinDx, rToc.dx);
     int maxDx = std::max(rFrame.dx / 2, rToc.dx);
-    if (sidebarDx < minDx || sidebarDx > maxDx) {
+    bool inRange = sidebarDx >= minDx && sidebarDx <= maxDx;
+    if (!inRange) {
         ev->resizeAllowed = false;
-        return;
     }
 
     if (!ev->finishedDragging) {
+        if (!inRange) {
+            // out of range mid-drag: keep the last valid layout
+            return;
+        }
         if (!gSidebarSplitterWrapSuspended) {
             SuspendTreeWrapLiveResizeForWindow(win);
             // Snapshot before the first move so the first mouse-move fill
@@ -8472,16 +8504,32 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
             gSidebarSplitterWrapSuspended = true;
         }
         RelayoutFrame(win, false, sidebarDx);
+        ThrottledLiveCanvasFlush(win);
         return;
     }
+
+    // Drag finished. Must always finalize, even when the cursor released out
+    // of range: at max sidebar width the cursor sits on the splitter bar,
+    // which is kSplitterDx px to the RIGHT of the toc edge, so sidebarDx is
+    // legitimately > maxDx here. Skipping the finalization leaves the layout
+    // at the last in-range mouse position (and stale TOC wrap heights).
+    int finalDx = limitValue(sidebarDx, minDx, maxDx);
     if (gSidebarSplitterWrapSuspended) {
         gSidebarSplitterWrapSuspended = false;
         gLastLiveCanvasWin = {};
-        RelayoutFrame(win, false, sidebarDx);
+        RelayoutFrame(win, false, finalDx);
         win->UpdateCanvasSize();
+        // WM_SIZE already kept the canvas live during the drag; this final
+        // pass just guarantees the exact final position is laid out and
+        // painted even when Windows sends no further WM_SIZE.
+        InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+        if (DisplayModel* dm = win->AsFixed()) {
+            dm->RepaintDisplay();
+        }
+        RedrawWindow(win->hwndCanvas, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
         ResumeTreeWrapLiveResizeAndFlush(win);
     } else {
-        RelayoutFrame(win, false, sidebarDx);
+        RelayoutFrame(win, false, finalDx);
         // Click without move: still ensure heights match final width.
         FlushTocTreeWrapHeights(win);
         FlushFavTreeWrapHeights(win);
@@ -8502,25 +8550,41 @@ static void OnFavSplitterMove(Splitter::MoveEvent* ev) {
     ReportIf(rToc.dx != ClientRect(win->hwndFavBox).dx);
     int minDy = std::min(kTocMinDy, rToc.dy);
     int maxDy = std::max(rFrame.dy - kTocMinDy, rToc.dy);
-    if (tocDy < minDy || tocDy > maxDy) {
+    bool inRange = tocDy >= minDy && tocDy <= maxDy;
+    if (!inRange) {
         ev->resizeAllowed = false;
-        return;
     }
-    gGlobalPrefs->tocDy = tocDy;
     if (!ev->finishedDragging) {
+        if (!inRange) {
+            // out of range mid-drag: keep the last valid layout
+            return;
+        }
+        gGlobalPrefs->tocDy = tocDy;
         if (!gSidebarSplitterWrapSuspended) {
             SuspendTreeWrapLiveResizeForWindow(win);
             gLastLiveCanvasWin = WindowRect(win->hwndCanvas);
             gSidebarSplitterWrapSuspended = true;
         }
         RelayoutFrame(win, false, rToc.dx);
+        ThrottledLiveCanvasFlush(win);
         return;
     }
+    // Drag finished. Must always finalize, even when the cursor released out
+    // of range (same issue as the sidebar splitter: the cursor rests on the
+    // splitter bar, just outside the valid toc range).
+    gGlobalPrefs->tocDy = limitValue(tocDy, minDy, maxDy);
     if (gSidebarSplitterWrapSuspended) {
         gSidebarSplitterWrapSuspended = false;
         gLastLiveCanvasWin = {};
         RelayoutFrame(win, false, rToc.dx);
         win->UpdateCanvasSize();
+        // See the sidebar splitter: guarantee the exact final layout and a
+        // real document repaint even without a further WM_SIZE.
+        InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+        if (DisplayModel* dm = win->AsFixed()) {
+            dm->RepaintDisplay();
+        }
+        RedrawWindow(win->hwndCanvas, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
         ResumeTreeWrapLiveResizeAndFlush(win);
     } else {
         RelayoutFrame(win, false, rToc.dx);
@@ -10352,13 +10416,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             break;
 
         case CmdToggleAutoOcr:
-            if (gGlobalPrefs) {
-                gGlobalPrefs->autoOcrScanPages = !gGlobalPrefs->autoOcrScanPages;
-                for (MainWindow* w : gWindows) {
-                    UpdateAutoOcrToolbarButton(w);
-                }
-                SaveSettings();
-                if (gGlobalPrefs->autoOcrScanPages && win->ctrl) {
+            if (tab) {
+                tab->autoOcrOn = !tab->autoOcrOn;
+                UpdateAutoOcrToolbarButton(win);
+                if (tab->autoOcrOn && win->ctrl) {
                     OcrScheduleForPage(win, win->ctrl->CurrentPageNo());
                 }
             }
@@ -10616,7 +10677,9 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             break;
 
         case CmdExtractPdfToc:
-            HandleExtractPdfTocCommand(win);
+            // Debug extraction must never rewrite the source PDF. It writes
+            // the collected OCR lines and decision trace next to that file.
+            HandleExtractPdfTocCommand(win, gCli && gCli->extractTocDebug, !(gCli && gCli->extractTocDebug));
             break;
 
         case CmdPdfTocCalibrate:

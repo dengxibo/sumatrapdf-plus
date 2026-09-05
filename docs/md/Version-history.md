@@ -2,6 +2,54 @@
 
 ## next
 
+- toolbar: fullscreen button moves to the far right (after Read Aloud)
+  工具栏：全屏按钮移到最右侧（朗读后面）
+
+- bookmarks sidebar: empty “No bookmarks / Extract Table of Contents” text no longer flickers when dragging the splitter
+  书签栏为空时拖分隔条，「无书签 / 提取目录」不再闪抖
+
+- extract bookmarks: unnumbered `附件` plus `浙江省…“一本账S1”` is the real attachment (including landscape vertical titles); if the form page has no title, reuse the 函末 `附件：…` name; nest `附件` beside `（一）`–`（四）`, not under the last point; 函末 `附件：…` stays a cite
+  提取目录：单独一行「附件」和「浙江省…一本账」（横页竖排也能对上）收成附件标题；表页没有标题时用函末「附件：…」的名字；附件和（一）到（四）同级，不挂在最后一点下面；函末「附件：…」仍是引用
+
+- extract bookmarks: page-top wrap of a 公文 paragraph (`财政局、…还应报送`, leftover `请各`) is not a heading; `（一）…年报，请各` keeps only up to 年报
+  提取目录：公文换页正文（「财政局、…还应报送」、标题末「请各」）不当标题；（一）只收到「年报」
+
+- extract bookmarks: `附件4` plus the large `…任务分工表` is the attachment title; table row `1 对照全国数据共享清单` and first-column `一、实现人社数` are not (including when sequence-gap salvage tries to revive them)
+  提取目录：「附件4」跟大标题「…任务分工表」收成附件名；表里「1 对照全国数据共享清单」、竖列「一、实现人社数」不当标题（补洞 salvage 也不再救回）
+
+- extract bookmarks: split 规章 title (`江西省…国有资产` + `配置管理暂行办法`) is joined; 附件一 with 第N章 nests under it and is not merged into a later form 附件1 (`年月日` / 审批表)
+  提取目录：拆开的规章标题（「江西省…国有资产」+「配置管理暂行办法」）会拼回；附件一挂上第N章，不跟后面的表单附件1（年月日/审批表）合并
+
+- extract bookmarks: 函/附件 multi-line titles (`关于征求《…` wrap, `附件1` + `…工作要点` + `（征求意见稿）`) stay one bookmark; lone `（征求意见稿）` is not a child; title years like `2026年工作要点` are not trimmed as 落款 dates
+  提取目录：函和附件多行标题（「关于征求《…」换行、「附件1」+「…工作要点」+「（征求意见稿）」）收成一条；单独的「（征求意见稿）」不当子标题；标题里的「2026年工作要点」不再被当成落款日期裁掉
+
+- fix crash: after reload, FreeNotVisible no longer calls PageVisibleNearby on a freed DisplayModel (invisible cache tiles cleared or dm nulled)
+  修崩溃：重载后 FreeNotVisible 不再对已释放的 DisplayModel 调 PageVisibleNearby（不可见图块释放或清空 dm）
+
+- extract bookmarks: pages that already have a file text layer, or finished OCR, are not OCR'd again during extract; if accurate stext drops CJK because Song is missing, fall back to plain stext; the printed-TOC unit suite runs only with `-extract-toc-debug` / `-extract-toc-bench`
+  提取目录：文件已有文字层、或已经识别过的页，提取时不再重新 OCR；缺宋体时改用不依赖字框的文字层；日常提取不再跑目录单测
+
+- home: header view/sort icons sit closer together and use the same 1px stroke / text color as the toolbar
+  首页：列表/宫格和最近/最热两个图标收紧，线宽和颜色跟工具栏一致
+
+- home: list search no longer flashes black when deleting the query (do not resize the canvas scrollbar during paint)
+  首页：列表里删搜索字不再整屏闪黑（滚动条改在画完之后再调）
+
+- home: file names use Medium (same band as thumbnail labels), not Semibold
+  首页：列表文件名用 Medium，和缩略图标签同一档，不再用 Semibold
+
+- home: pin icon is only slightly larger than the original 1024-viewBox size
+  首页：图钉只比原来大一点点
+
+- reopen: last file paints on the first frame after incremental relayout (recalc visible pages before the first paint)
+  重开上次文件：增量重排后立刻算出可见页，不再先白屏、滚一下才出内容
+
+- extract bookmarks: RAZ printed TOC keeps each row when the font bbox is 2–3× too tall; printed-page offset 0 is a real calibration
+  提取目录：RAZ 小书印刷目录在虚高 bbox 时不再把相邻行粘在一起；页码偏移 0 算有效校准，不再当成没校准丢掉
+
+- OCR: Auto OCR turns on by default only for image-only scanned PDFs; other PDFs and EPUB/MOBI/AZW stay off until you click the toolbar
+  OCR：只有几乎没有文字层的扫描 PDF 才默认开自动 OCR；其他 PDF 以及 EPUB/MOBI/AZW 默认关，需手动点工具栏
+
 - bookmarks: next/prev/calibrate/close header icons share one darker gray (not the faint close-X gray)
   书签栏：上一项/下一项/校准/关闭四个图标用同一套更深的灰
 

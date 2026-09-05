@@ -440,6 +440,8 @@ static bool RelayoutReflowIncremental(DisplayModel* dm, float newZoomVirtual, in
     CenterSingleColumnPagesIfTheyFit(dm, 1, canvasDx);
     dm->canvasSize.dx = std::max(canvasDx, dm->viewPort.dx);
     SyncPageOnScreenFromPos(dm);
+    dm->RecalcVisibleParts();
+    dm->RenderVisibleParts();
     if (dm->cb) {
         dm->cb->UpdateScrollbars(dm->canvasSize);
     }
@@ -714,7 +716,10 @@ void DisplayModel::RepaintDisplay() {
     cb->Repaint();
 }
 
-static bool IsDisplayModelValid(DisplayModel* dm) {
+bool DisplayModelIsAlive(const DisplayModel* dm) {
+    if (!dm) {
+        return false;
+    }
     for (MainWindow* win : gWindows) {
         for (WindowTab* tab : win->Tabs()) {
             if (tab->AsFixed() == dm) {
@@ -723,6 +728,10 @@ static bool IsDisplayModelValid(DisplayModel* dm) {
         }
     }
     return false;
+}
+
+static bool IsDisplayModelValid(DisplayModel* dm) {
+    return DisplayModelIsAlive(dm);
 }
 
 static bool IsDisplayModelCurrentTab(DisplayModel* dm) {
@@ -1453,6 +1462,9 @@ bool DisplayModel::PageVisible(int pageNo) const {
 
 /* Return true if a page is visible or a page in a row below or above is visible */
 bool DisplayModel::PageVisibleNearby(int pageNo) const {
+    if (!pagesInfo) {
+        return false;
+    }
     DisplayMode mode = GetDisplayMode();
     int columns = ColumnsFromDisplayMode(mode);
 

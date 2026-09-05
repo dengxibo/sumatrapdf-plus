@@ -23,6 +23,7 @@
 #include "TextSelection.h"
 #include "TextSearch.h"
 #include "ExtractPdfToc.h"
+#include "OcrService.h"
 #include "TocCalib.h"
 
 #include "utils/Log.h"
@@ -494,9 +495,7 @@ static bool VerifyUtf8TextCache(EngineBase* engine) {
 }
 
 void TestSearchCollect(const Flags& ci) {
-    if (ci.showConsole) {
-        RedirectIOToConsole();
-    }
+    // The process already owns the console when -console was parsed.
 
     auto files = ci.fileNames;
     if (files.Size() == 0) {
@@ -750,6 +749,12 @@ void TestExtractTocBench(const Flags& ci) {
             }
             continue;
         }
+        char forceOcr[8]{};
+        if (GetEnvironmentVariableA("SUMATRA_TOC_BENCH_OCR", forceOcr, dimof(forceOcr)) > 0) {
+            for (int pageNo = 1; pageNo <= engine->PageCount(); pageNo++) {
+                OcrRecognizeEnginePage(engine, pageNo, true, OcrOperation::AllPages);
+            }
+        }
         Vec<ExtractedTocItem*> roots;
         int nItems = 0;
         ExtractPdfTocKind kind = ExtractPdfTocFromEngine(engine, roots, &nItems);
@@ -771,7 +776,14 @@ void TestExtractTocBench(const Flags& ci) {
         int miss = 0;
         int mono = 0;
         int prevPage = 0;
-        char itemsBuf[12000];
+        // Heap: a flat TOC can be large; a 256KB stack buffer overflows on some PDFs.
+        const int kItemsCap = 256000;
+        char* itemsBuf = AllocArray<char>(kItemsCap);
+        if (!itemsBuf) {
+            DeleteExtractedTocItems(roots);
+            SafeEngineRelease(&engine);
+            continue;
+        }
         itemsBuf[0] = 0;
         int io = 0;
         for (int i = 0; i < flat.Size(); i++) {
@@ -790,11 +802,12 @@ void TestExtractTocBench(const Flags& ci) {
             str::Free(pageTxt);
             char esc[400];
             TocJsonEscape(esc, (int)sizeof(esc), it->title ? it->title : "");
-            if (io < (int)sizeof(itemsBuf) - 80) {
-                int n = snprintf(itemsBuf + io, sizeof(itemsBuf) - io,
-                                 "%s{\"l\":%d,\"p\":%d,\"pp\":%d,\"body\":%d,\"ver\":%d,\"hit\":%d,\"t\":\"%s\"}",
-                                 io ? "," : "", it->level, it->pageNo, it->printedPage, it->bodyMatched ? 1 : 0,
-                                 it->verified ? 1 : 0, hit ? 1 : 0, esc);
+            if (io < kItemsCap - 80) {
+                int n = snprintf(itemsBuf + io, (size_t)(kItemsCap - io),
+                                 "%s{\"l\":%d,\"p\":%d,\"pp\":%d,\"tp\":%d,\"src\":%d,\"body\":%d,\"ver\":%d,\"hit\":%"
+                                 "d,\"t\":\"%s\"}",
+                                 io ? "," : "", it->level, it->pageNo, it->printedPage, it->tocPageNo, (int)it->source,
+                                 it->bodyMatched ? 1 : 0, it->verified ? 1 : 0, hit ? 1 : 0, esc);
                 if (n > 0) {
                     io += n;
                 }
@@ -814,6 +827,7 @@ void TestExtractTocBench(const Flags& ci) {
             fprintf(sum, "%s\t%s\tpages=%d n=%d miss=%d mono=%d\n", st, fileName, engine->PageCount(), nItems, miss,
                     mono);
         }
+        free(itemsBuf);
         DeleteExtractedTocItems(roots);
         SafeEngineRelease(&engine);
     }
