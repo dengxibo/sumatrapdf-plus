@@ -2699,20 +2699,7 @@ static void OnPaintDocument(MainWindow* win) {
         default: {
             bool shouldPaint = DrawDocument(win, win->buffer->GetDC(), &ps.rcPaint);
             if (!gNoFlickerRender || shouldPaint) {
-                if (IsSidebarSplitterLiveDrag()) {
-                    // The update region during a live sidebar drag is a union of
-                    // fragments (resize-exposed strips accumulated across
-                    // SetWindowPos calls). Blitting only ps.rcPaint (the bounding
-                    // box) gets clipped to those fragments, leaving stale page
-                    // borders between them = vertical ghost trails. DrawDocument
-                    // always renders a complete frame, so present the whole
-                    // buffer through an unclipped client DC instead.
-                    HDC fullDC = GetDC(win->hwndCanvas);
-                    win->buffer->Flush(fullDC, nullptr);
-                    ReleaseDC(win->hwndCanvas, fullDC);
-                } else {
-                    win->buffer->Flush(hdc, &ps.rcPaint);
-                }
+                win->buffer->Flush(hdc, &ps.rcPaint);
             }
         }
     }

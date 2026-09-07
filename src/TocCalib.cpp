@@ -4617,16 +4617,6 @@ void TocCalibBar::LayoutIn(int x, int y, int dx, int dy) {
     if (cancel) {
         placeBtn(cancel->hwnd, pad + 2 * (third + gap), pad, inner - 2 * (third + gap), btnDy);
     }
-    if (live) {
-        TocCalibFillLiveDrag(win);
-        UpdateWindow(hwnd);
-        Button* btns[] = {jumpToc, done, cancel};
-        for (Button* b : btns) {
-            if (b && b->hwnd) {
-                UpdateWindow(b->hwnd);
-            }
-        }
-    }
 }
 
 LRESULT TocCalibBar::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
@@ -4639,29 +4629,6 @@ LRESULT TocCalibBar::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
         return 1;
     }
     return Wnd::WndProc(hwnd, msg, wparam, lparam);
-}
-
-void TocCalibFillLiveDrag(MainWindow* win) {
-    if (!win || !win->tocCalibBar || !win->tocCalibBar->hwnd) {
-        return;
-    }
-    HWND hwnd = win->tocCalibBar->hwnd;
-    RECT rc{};
-    GetClientRect(hwnd, &rc);
-    HDC hdc = GetDC(hwnd);
-    HBRUSH br = CreateSolidBrush(ThemeSidebarBackgroundColor());
-    FillRect(hdc, &rc, br);
-    DeleteObject(br);
-    ReleaseDC(hwnd, hdc);
-    InvalidateRect(hwnd, nullptr, FALSE);
-    UpdateWindow(hwnd);
-    Button* btns[] = {win->tocCalibBar->jumpToc, win->tocCalibBar->done, win->tocCalibBar->cancel};
-    for (Button* b : btns) {
-        if (b && b->hwnd) {
-            InvalidateRect(b->hwnd, nullptr, FALSE);
-            UpdateWindow(b->hwnd);
-        }
-    }
 }
 
 void TocCalibBar::OnJumpToc() {

@@ -514,8 +514,12 @@ COLORREF ThemeDocumentColors(COLORREF& bg) {
     PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
     if (docMode == PdfDocumentColorMode::Light) {
         bg = ThemeMainWindowBackgroundColor();
-        if (ThemeUsesDarkChrome() && GetResolvedThemeIndex() != kThemeIdxDarkBlack) {
-            bg = AccentColor(bg, 8);
+        if (ThemeUsesDarkChrome()) {
+            // Dark-Black: subtle near-black workspace (#0D0D0D) matching the
+            // ChatGPT-style dark UI; Dracula keeps AccentColor(bg, 8) which
+            // produces the existing #2F313F sidebar / canvas hierarchy.
+            int delta = (GetResolvedThemeIndex() == kThemeIdxDarkBlack) ? 13 : 8;
+            bg = AccentColor(bg, delta);
         }
         return ThemeUsesDarkChrome() ? ThemeReadingTextColor() : ThemeWindowTextColor();
     }
@@ -603,9 +607,11 @@ COLORREF ThemePageRenderColors(COLORREF& bg, bool respectPdfDocColorMode) {
 void ThemeSidebarColors(COLORREF& bg, COLORREF& text) {
     if (ThemeUsesDarkChrome()) {
         bg = ThemeMainWindowBackgroundColor();
-        if (GetResolvedThemeIndex() != kThemeIdxDarkBlack) {
-            bg = AccentColor(bg, 8);
-        }
+        // Dark-Black: TOC bg #111111 (delta 17 on #000000) - slightly lighter
+        // than the #0D0D0D document area to keep the sidebar/canvas hierarchy
+        // visible without forming a heavy band. Dracula keeps delta 8 (#2F313F).
+        int delta = (GetResolvedThemeIndex() == kThemeIdxDarkBlack) ? 17 : 8;
+        bg = AccentColor(bg, delta);
         text = ThemeReadingTextColor();
         return;
     }
@@ -617,6 +623,54 @@ COLORREF ThemeSidebarBackgroundColor() {
     COLORREF bg, text;
     ThemeSidebarColors(bg, text);
     return bg;
+}
+
+// explicit separator for the draggable sidebar splitter (TOC/favorites vs.
+// document area). derived from the sidebar background so it remains visible
+// even when the canvas background equals the sidebar (e.g. Dark-Black theme).
+// AccentColor() darkens the line on light themes and lightens it on dark
+// themes, so each theme gets a subtle but findable boundary.
+COLORREF ThemeSidebarSeparatorColor(SidebarSeparatorState state) {
+    // Dracula: use the official "Current Line" palette color (#44475A) as the
+    // resting splitter, brighter on hover/active. Keeps Dracula's identity and
+    // stays visible against the #2F313F sidebar without imposing a neutral gray.
+    if (GetResolvedThemeIndex() == kThemeIdxDarkDracula) {
+        switch (state) {
+            case SidebarSeparatorState::Normal:
+                return RGB(0x44, 0x47, 0x5A);
+            case SidebarSeparatorState::Hover:
+                return RGB(0x56, 0x5A, 0x70);
+            case SidebarSeparatorState::Active:
+                return RGB(0x68, 0x6C, 0x86);
+        }
+    }
+    // Dark-Black: explicit neutral-gray splitter visible against the
+    // #111111 sidebar / #0D0D0D canvas. Pure AccentColor deltas (22/32/48)
+    // are too close to the sidebar to read clearly at 1px; pinning to the
+    // user-requested values (#2B2B2B / #3A3A3A / #4A4A4A) keeps the line
+    // findable without brightening the whole chrome.
+    if (ThemeUsesBlackChrome()) {
+        switch (state) {
+            case SidebarSeparatorState::Normal:
+                return RGB(0x2B, 0x2B, 0x2B);
+            case SidebarSeparatorState::Hover:
+                return RGB(0x3A, 0x3A, 0x3A);
+            case SidebarSeparatorState::Active:
+                return RGB(0x4A, 0x4A, 0x4A);
+        }
+    }
+    // Light themes (Light-Warm / Light-White / System): the resting line needs
+    // a clearly visible step from the sidebar background. A 1px line with the
+    // old delta 16 is imperceptible (esp. with no scrollbar next to it), so
+    // darken decisively: ~#c5c1b8 on the #f5f1e8 sidebar, ~#c9c9c9 on white.
+    // hover/drag keep the same brightening progression.
+    int delta = 44;
+    if (state == SidebarSeparatorState::Hover) {
+        delta = 64;
+    } else if (state == SidebarSeparatorState::Active) {
+        delta = 88;
+    }
+    return AccentColor(ThemeSidebarBackgroundColor(), delta);
 }
 
 COLORREF ThemeControlBackgroundColor() {
@@ -680,6 +734,12 @@ COLORREF ThemeWindowTextColor() {
 COLORREF ThemeReadingTextColor() {
     if (!ThemeUsesDarkChrome()) {
         return ThemeWindowTextColor();
+    }
+    // Dark-Black uses a neutral gray-white (#ECECEC) to match the
+    // ChatGPT-style near-black UI without the warm tint of kColReadingText.
+    // Dracula keeps the warm off-white (#E6E1D8) for its existing palette.
+    if (ThemeUsesBlackChrome()) {
+        return RGB(0xEC, 0xEC, 0xEC);
     }
     return kColReadingText;
 }

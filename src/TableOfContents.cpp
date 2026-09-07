@@ -106,10 +106,6 @@ static bool TreeWrapUpdatesSuspended() {
     return gTreeWrapSuspendDepth > 0;
 }
 
-bool TreeWrapLiveResizeSuspended() {
-    return gTreeWrapSuspendDepth > 0;
-}
-
 static void ScheduleTreeWrapHeightRecalc(HWND hwndHost) {
     if (!hwndHost || TreeWrapUpdatesSuspended()) {
         return;
@@ -518,8 +514,8 @@ static bool IsTocPageReachable(DocController* ctrl, TocItem* tocItem) {
     if (engine && engine->kind == kindEngineMupdf && !EngineIsProgressiveEbookLoading(engine)) {
         IPageDestination* dest = tocItem->GetPageDestination();
         int pageNo = EngineMupdfTocItemPageNoForSync(engine, dest, tocItem->pageNo);
-        logf("TOC reachable baked=%d computed=%d pageCount=%d title=%.40s",
-             tocItem->pageNo, pageNo, engine->PageCount(), tocItem->title ? tocItem->title : "");
+        logf("TOC reachable baked=%d computed=%d pageCount=%d title=%.40s", tocItem->pageNo, pageNo,
+             engine->PageCount(), tocItem->title ? tocItem->title : "");
         if (pageNo > 0) {
             return pageNo <= engine->PageCount();
         }
@@ -3837,18 +3833,31 @@ static void TocTreeMsgFilter(WndEvent*) {
 }
 #endif
 
+// During a live sidebar drag, discard old pixels instead of copying the
+// TreeView scrollbar and selection background to their new geometry.
+static void PlaceContainerChild(HWND hwnd, int x, int y, int dx, int dy) {
+    if (!hwnd) {
+        return;
+    }
+    UINT flags = SWP_NOZORDER | SWP_NOACTIVATE;
+    if (TreeWrapUpdatesSuspended()) {
+        flags |= SWP_NOCOPYBITS;
+    }
+    SetWindowPos(hwnd, nullptr, x, y, dx, dy, flags);
+}
+
 // Position label with close button and tree window within their parent.
 // Used for toc and favorites.
 void LayoutTreeContainer(LabelWithCloseWnd* l, HWND hwndTree) {
     HWND hwndContainer = GetParent(hwndTree);
     Size labelSize = l->GetIdealSize();
-    Rect rc = WindowRect(hwndContainer);
+    Rect rc = ClientRect(hwndContainer);
     int dy = rc.dy;
     int y = 0;
-    MoveWindow(l->hwnd, y, 0, rc.dx, labelSize.dy, TRUE);
+    PlaceContainerChild(l->hwnd, y, 0, rc.dx, labelSize.dy);
     dy -= labelSize.dy;
     y += labelSize.dy;
-    MoveWindow(hwndTree, 0, y, rc.dx, dy, TRUE);
+    PlaceContainerChild(hwndTree, 0, y, rc.dx, dy);
 }
 
 // Position label, filter edit, and tree window within toc container.
@@ -3858,23 +3867,10 @@ static void LayoutTocContainer(MainWindow* win) {
     TreeView* treeView = win->tocTreeView;
     HWND hwndContainer = win->hwndTocBox;
     Size labelSize = l->GetIdealSize();
-    Rect rc = WindowRect(hwndContainer);
+    Rect rc = ClientRect(hwndContainer);
     int dy = rc.dy;
     int y = 0;
-    BOOL liveDrag = TreeWrapLiveResizeSuspended() ? TRUE : FALSE;
-    // NOCOPYBITS so old pixels are not smeared; do not use SWP_NOREDRAW
-    // or the tree/filter leave white/black ghosts on every mouse-move.
-    UINT liveFlags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS;
-    auto place = [&](HWND hwnd, int x, int y, int dx, int dy) {
-        if (!hwnd) {
-            return;
-        }
-        if (liveDrag) {
-            SetWindowPos(hwnd, nullptr, x, y, dx, dy, liveFlags);
-        } else {
-            MoveWindow(hwnd, x, y, dx, dy, TRUE);
-        }
-    };
+    auto place = [&](HWND hwnd, int x, int y, int dx, int dy) { PlaceContainerChild(hwnd, x, y, dx, dy); };
     place(l->hwnd, 0, y, rc.dx, labelSize.dy);
     dy -= labelSize.dy;
     y += labelSize.dy;
@@ -4663,6 +4659,7 @@ static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
             }
         }
     }
+
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
 

@@ -322,6 +322,11 @@ struct MainWindow {
     };
     LayoutState lastLayoutState;
 
+    // Coalesce bursts of TOC splitter mouse moves into one layout pass.
+    int pendingSidebarDx = -1;
+    bool sidebarRelayoutPending = false;
+    bool sidebarDragHadVScrollbar = false;
+
     // last known DPI of hwndFrame; used to refresh UI after display topology changes
     int frameDpi = 0;
     int tocSidebarDpi = 0;

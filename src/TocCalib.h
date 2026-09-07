@@ -103,7 +103,6 @@ void TocCalibUpdateTheme(MainWindow* win);
 void DeleteTocCalibUi(MainWindow* win);
 bool TocCalibIsActive(MainWindow* win);
 void RelayoutTocCalib(MainWindow* win);
-void TocCalibFillLiveDrag(MainWindow* win);
 int TocCalibBarDy(MainWindow* win);
 void TocCalibOnTabSwitch(MainWindow* win);
 void CloseTocCalibForTab(WindowTab* tab);

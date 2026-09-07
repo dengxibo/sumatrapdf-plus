@@ -24,14 +24,6 @@
 
 Kind kindSplitter = "splitter";
 
-static void OnSplitterPaint(HWND hwnd, COLORREF bgCol) {
-    PAINTSTRUCT ps;
-    HDC hdc = BeginPaint(hwnd, &ps);
-    AutoDeleteBrush br = CreateSolidBrush(bgCol);
-    FillRect(hdc, &ps.rcPaint, br);
-    EndPaint(hwnd, &ps);
-}
-
 static void DrawXorBar(HDC hdc, HBRUSH br, int x1, int y1, int width, int height) {
     SetBrushOrgEx(hdc, x1, y1, nullptr);
     HBRUSH hbrushOld = (HBRUSH)SelectObject(hdc, br);
@@ -130,6 +122,8 @@ LRESULT Splitter::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 
     if (WM_LBUTTONDOWN == msg) {
         SetCapture(hwnd);
+        // reflect the active (dragging) separator state immediately
+        HwndScheduleRepaint(hwnd);
         if (!isLive) {
             if (parentClipsChildren) {
                 SetWindowStyle(GetParent(hwnd), WS_CLIPCHILDREN, false);
@@ -197,11 +191,44 @@ LRESULT Splitter::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
     }
 
     if (WM_PAINT == msg) {
-        COLORREF col = bgColor;
-        if (!ThemeUsesDarkChrome()) {
-            col = AccentColor(bgColor, 30);
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hwnd, &ps);
+        // Keep the wider mouse hit band visually merged into the sidebar.
+        // bgColor is captured when the control is created and can be a stale
+        // system color after a theme switch (most visible in Dracula).
+        AutoDeleteBrush brBg = CreateSolidBrush(ThemeSidebarBackgroundColor());
+        FillRect(hdc, &ps.rcPaint, brBg);
+
+        // explicit, theme-aware separator line centered in the (wider) hit
+        // area. it must stay visible even when the sidebar and canvas
+        // backgrounds are identical (e.g. full-black theme), so we can't rely
+        // on background color differences. hover/drag brighten the line.
+        SidebarSeparatorState state = SidebarSeparatorState::Normal;
+        if (GetCapture() == hwnd) {
+            state = SidebarSeparatorState::Active;
+        } else if (isMouseOver) {
+            state = SidebarSeparatorState::Hover;
         }
-        OnSplitterPaint(hwnd, col);
+        int lineSize = SplitterType::Vert == type ? 1 : DpiScale(hwnd, 1);
+        // Geometry is independent of the dirty rectangle. BeginPaint already
+        // clips drawing; using rcPaint here moves the line on partial paints.
+        RECT rl{};
+        GetClientRect(hwnd, &rl);
+        if (SplitterType::Vert == type) {
+            // The hit target stays wide, but its only visible boundary is one
+            // physical pixel directly beside the TreeView/scrollbar. Centering
+            // it creates a shadow-like gutter in themes whose colors differ.
+            rl.right = rl.left + lineSize;
+        } else {
+            int y = rl.top + (((rl.bottom - rl.top) - lineSize) / 2);
+            rl.top = y;
+            rl.bottom = y + lineSize;
+        }
+        if (!hideVisual) {
+            AutoDeleteBrush brLine = CreateSolidBrush(ThemeSidebarSeparatorColor(state));
+            FillRect(hdc, &rl, brLine);
+        }
+        EndPaint(hwnd, &ps);
         return 0;
     }
 

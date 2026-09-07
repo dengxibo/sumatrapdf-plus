@@ -562,6 +562,7 @@ struct Splitter : Wnd {
     bool parentClipsChildren = false;
     bool isMouseOver = false;
     bool mouseTracking = false;
+    bool hideVisual = false;
 
     Splitter();
     ~Splitter() override;

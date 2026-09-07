@@ -10,8 +10,17 @@ void UpdateThemeCommandLabels();
 
 COLORREF ThemeDocumentColors(COLORREF&);
 COLORREF ThemePageRenderColors(COLORREF&, bool respectPdfDocColorMode = true);
+enum class SidebarSeparatorState {
+    Normal,
+    Hover,
+    Active
+};
 void ThemeSidebarColors(COLORREF& bg, COLORREF& text);
 COLORREF ThemeSidebarBackgroundColor();
+// explicit separator line for the draggable sidebar splitter; derived from the
+// sidebar background so it stays visible even when the canvas background
+// equals the sidebar background (e.g. Dark-Black theme)
+COLORREF ThemeSidebarSeparatorColor(SidebarSeparatorState state);
 COLORREF ThemeMainWindowBackgroundColor();
 COLORREF ThemeControlBackgroundColor();
 COLORREF ThemeChromeBackgroundColor();
