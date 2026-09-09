@@ -327,20 +327,30 @@ static int CpuLogicalCount() {
     return n;
 }
 
+// Latency-first thread budget for OCR: leave a couple of cores to the UI /
+// render pipeline so paging never stutters, then split the remaining budget
+// between a few session slots and 2 intra-op threads per session. Fewer slots
+// with more intra-op threads per session makes a SINGLE page finish faster
+// (det runs in parallel) than many single-threaded slots competing for cores.
+static int OcrThreadBudget() {
+    int budget = CpuLogicalCount() - 2;
+    return budget < 1 ? 1 : budget;
+}
+
 static int DesiredOcrSlotCount() {
-    int n = CpuLogicalCount();
-    if (n <= 2) {
-        return 1;
+    int slots = OcrThreadBudget() / 2;
+    if (slots < 1) {
+        slots = 1;
     }
-    int leave = (n >= 8) ? 2 : 1;
-    int w = n - leave;
-    if (w < 2) {
-        w = 2;
+    if (slots > 3) {
+        slots = 3;
     }
-    if (w > kOcrMaxSlots) {
-        w = kOcrMaxSlots;
+    // Wide machines can afford a 4th slot while still leaving half the cores
+    // to the UI (4 slots x 2 intra threads = 8 OCR threads).
+    if (CpuLogicalCount() >= 12 && slots < 4) {
+        slots = 4;
     }
-    return w;
+    return slots;
 }
 
 int OcrInferenceSlotCount() {
@@ -856,13 +866,14 @@ static bool InitRuntimeLocked() {
         OrtFail(st, "CreateSessionOptions");
         return InitFail("CreateSessionOptions");
     }
-    // One thread per session slot: the outer worker pool (one slot each)
-    // already fills the cores, and stacking intra-op threads on top of
-    // kOcrMaxSlots sessions oversubscribes the CPU. SUMATRA_OCR_INTRA allows
-    // experimenting with a higher per-session thread count.
+    // Latency-first: each session keeps 2 intra-op threads so a single page's
+    // det/rec finishes faster than with 1 thread per session; the slot pool is
+    // capped (DesiredOcrSlotCount) so the total stays below the core count and
+    // the UI keeps cores. SUMATRA_OCR_INTRA allows experimenting with a higher
+    // per-session thread count.
     int slots = DesiredOcrSlotCount();
     char envIntra[16]{};
-    int intra = slots > 1 ? 1 : 2;
+    int intra = slots > 1 || OcrThreadBudget() >= 2 ? 2 : 1;
     if (GetEnvironmentVariableA("SUMATRA_OCR_INTRA", envIntra, dimof(envIntra)) > 0) {
         int v = atoi(envIntra);
         if (v >= 1 && v <= 16) {
@@ -1722,9 +1733,21 @@ static void RecognizeChunk(RecParCtx* ctx, int start, int count) {
         if (it.skip) {
             continue;
         }
+        // The tensor is batchW wide but item i only fills its own recW; its
+        // CTC time steps cover recW, not the padded batch width. Decoding all
+        // t steps mapped charX with the batch denominator, compressing short
+        // items' glyph positions toward the crop start whenever the batch
+        // contained a wider item. Decode with the item's own step count.
+        int tItem = (int)((float)it.recW * (float)t / (float)batchW + 0.5f);
+        if (tItem < 1) {
+            tItem = 1;
+        }
+        if (tItem > t) {
+            tItem = t;
+        }
         int* charX = nullptr;
         int nChar = 0;
-        char* text = CtcDecode(out + (size_t)i * (size_t)t * (size_t)cls, t, cls, it.cw, st->keys, &charX, &nChar);
+        char* text = CtcDecode(out + (size_t)i * (size_t)t * (size_t)cls, tItem, cls, it.cw, st->keys, &charX, &nChar);
         if (!text) {
             free(charX);
             continue;
@@ -2079,9 +2102,9 @@ bool OcrClassifyPageOrientationRgb(const u8* rgb, int w, int h, int stride, int*
     float conf = probs[best] / (float)nBatch;
     int currentDegrees = best * 90;
     int correction = (360 - currentDegrees) % 360;
-    logfa("orientModel: current=%d bestIdx=%d conf=%.3f correction=%d probs=[%.3f %.3f %.3f %.3f]\n",
-          currentDegrees, best, conf, correction, probs[0] / (float)nBatch, probs[1] / (float)nBatch,
-          probs[2] / (float)nBatch, probs[3] / (float)nBatch);
+    logfa("orientModel: current=%d bestIdx=%d conf=%.3f correction=%d probs=[%.3f %.3f %.3f %.3f]\n", currentDegrees,
+          best, conf, correction, probs[0] / (float)nBatch, probs[1] / (float)nBatch, probs[2] / (float)nBatch,
+          probs[3] / (float)nBatch);
     if (clockwiseDegrees) {
         *clockwiseDegrees = correction;
     }

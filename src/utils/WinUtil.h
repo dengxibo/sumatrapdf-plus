@@ -256,7 +256,12 @@ struct DoubleBuffer {
     ~DoubleBuffer();
 
     HDC GetDC() const;
+    bool HasBitmap() const { return hdcBuffer != nullptr; }
     void Flush(HDC hdc, RECT* rcPaint = nullptr) const;
+    // Blit the part of the buffer that lands in dst, where the buffer origin
+    // sits at dstOrigin (in hdc coordinates). Used to present a buffer of a
+    // different size than the destination window at a shifted position.
+    void Flush(HDC hdc, const RECT* dst, Point dstOrigin) const;
 };
 
 class DeferWinPosHelper {

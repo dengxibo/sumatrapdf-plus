@@ -2689,6 +2689,52 @@ static void OnPaintDocument(MainWindow* win) {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(win->hwndCanvas, &ps);
 
+    if (IsSidebarSplitterLiveDrag()) {
+        // The canvas window follows the splitter, while its expensive model
+        // layout and DoubleBuffer resize are intentionally deferred. Do not
+        // call DrawDocument with those two different geometries: it writes
+        // overlapping old/new page positions into the buffer and creates
+        // content trails. Present the last complete frame unchanged and fill
+        // only any newly exposed area. The stale buffer is anchored to the
+        // canvas edge that does not move (the right one, in frame coords), so
+        // the page stays visually fixed instead of sliding with the splitter.
+        // Blit first and as one call: CopyBits already keeps the moved window
+        // pixels screen-stationary, so a full-canvas background fill before
+        // the blit would only open a window for DWM to present a blank frame
+        // (seen as violent flicker during real mouse drags).
+        if (win->buffer && win->buffer->HasBitmap() && !win->canvasRc.IsEmpty()) {
+            Point origin;
+            origin.x = ClientRect(win->hwndCanvas).dx - win->canvasRc.dx;
+            origin.y = 0;
+            RECT bufDst{origin.x, origin.y, origin.x + win->canvasRc.dx, origin.y + win->canvasRc.dy};
+            RECT dst;
+            if (IntersectRect(&dst, &ps.rcPaint, &bufDst)) {
+                win->buffer->Flush(hdc, &dst, origin);
+            }
+            // fill only the strips the frame blit does not cover (the left
+            // strip while the canvas grows past the stale buffer width)
+            if (ps.rcPaint.left < bufDst.left || ps.rcPaint.right > bufDst.right) {
+                AutoDeleteBrush bg = CreateSolidBrush(ThemeMainWindowBackgroundColor());
+                RECT fillRc;
+                if (ps.rcPaint.left < bufDst.left) {
+                    fillRc = {ps.rcPaint.left, ps.rcPaint.top, std::min(ps.rcPaint.right, bufDst.left),
+                              ps.rcPaint.bottom};
+                    FillRect(hdc, &fillRc, bg);
+                }
+                if (ps.rcPaint.right > bufDst.right) {
+                    fillRc = {std::max(ps.rcPaint.left, bufDst.right), ps.rcPaint.top, ps.rcPaint.right,
+                              ps.rcPaint.bottom};
+                    FillRect(hdc, &fillRc, bg);
+                }
+            }
+        } else {
+            AutoDeleteBrush bg = CreateSolidBrush(ThemeMainWindowBackgroundColor());
+            FillRect(hdc, &ps.rcPaint, bg);
+        }
+        EndPaint(win->hwndCanvas, &ps);
+        return;
+    }
+
     switch (win->presentation) {
         case PM_BLACK_SCREEN:
             FillRect(hdc, &ps.rcPaint, GetStockBrush(BLACK_BRUSH));
@@ -4263,6 +4309,12 @@ LRESULT CALLBACK WndProcCanvas(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return DefWindowProc(hwnd, msg, wp, lp);
     }
 
+    if ((msg == WM_LBUTTONDOWN || msg == WM_NCLBUTTONDOWN || msg == WM_MOUSEMOVE || msg == WM_NCMOUSEMOVE ||
+         msg == WM_SETCURSOR) &&
+        HandleSidebarSplitterHit(win, hwnd, msg, lp)) {
+        return msg == WM_SETCURSOR ? TRUE : 0;
+    }
+
     // messages that require win
     switch (msg) {
         case WM_NCLBUTTONDOWN:
@@ -4282,10 +4334,15 @@ LRESULT CALLBACK WndProcCanvas(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     GetClientRect(hwnd, &rc);
                     logf("redraw: WM_SIZE hwnd=0x%p (canvas) size=(%d,%d)\n", hwnd, rc.right, rc.bottom);
                 }
-                // Live sidebar-drag resizes go through this same path as a
-                // main-window resize: UpdateCanvasSize re-lays out the display
-                // model for the new viewport and InvalidateRect lets the
-                // normal message loop coalesce the repaint.
+                if (IsSidebarSplitterLiveDrag()) {
+                    // Resizing a large fixed document walks its page layout;
+                    // resizing a reflowable EPUB can repaginate the whole
+                    // book. Keep the canvas window following the splitter but
+                    // defer that model/buffer work until mouse-up, where the
+                    // splitter finalization calls UpdateCanvasSize once.
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                    return 0;
+                }
                 win->UpdateCanvasSize();
                 // fully invalidate since layout depends on size
                 // (replaces CS_HREDRAW | CS_VREDRAW which caused transparent flash)

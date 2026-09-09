@@ -164,6 +164,10 @@ bool gSupressNextAltMenuTrigger = false;
 bool gCrashOnOpen = false;
 bool gEngineMupdfFastShutdown = false;
 bool gRedrawLog = false;
+// SUMATRA_OCR_AUTO_BENCH=1: automation hook for OCR alignment testing. Auto-
+// confirms the searchable-PDF save prompts and triggers "recognize all scanned
+// pages" (with auto-save) right after a document loads.
+bool gOcrAutoBench = false;
 
 static void RelayoutFrame(MainWindow* win, bool updateToolbars = true, int sidebarDx = -1);
 static bool gSidebarSplitterWrapSuspended = false;
@@ -1850,6 +1854,16 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
     tab->ctrl = ctrl;
     win->ctrl = tab->ctrl;
     ApplyAutoOcrDefaultForTab(tab);
+    if (gOcrAutoBench) {
+        // automation hook: start the all-pages OCR once per process. Saving the
+        // searchable PDF reloads the document, which would re-post the command
+        // forever if we didn't latch it off.
+        static bool gOcrAutoBenchPosted = false;
+        if (!gOcrAutoBenchPosted) {
+            gOcrAutoBenchPosted = true;
+            PostMessage(win->hwndFrame, WM_COMMAND, CmdOcrDocument, 0);
+        }
+    }
     EngineMupdfSetReflowLoadWhenForeground(tab->GetEngine(), true);
 
     EngineBase* engine = tab->GetEngine();
@@ -6175,6 +6189,9 @@ static bool ConfirmReplaceExistingPdfText(MainWindow* win) {
     if (!win) {
         return false;
     }
+    if (gOcrAutoBench) {
+        return true;
+    }
     TASKDIALOG_BUTTON buttons[2]{};
     buttons[0].nButtonID = IDYES;
     buttons[0].pszButtonText = ToWStrTemp(_TRA("Yes"));
@@ -6946,7 +6963,9 @@ again:
     HwndRepaintNow(win->tabsCtrl->hwnd);
 }
 
-constexpr int kSplitterDx = 5;
+// Visible/real splitter width. Mouse tolerance is handled virtually by
+// HandleSidebarSplitterHit() and doesn't consume layout space.
+constexpr int kSplitterDx = 1;
 constexpr int kSplitterDy = 4;
 constexpr int kSidebarMinDx = 150;
 constexpr int kTocMinDy = 100;
@@ -6985,7 +7004,7 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
     // splitter window doubles as the mouse hit area, so scale it with DPI to
     // stay grabbable on high-density displays (visual line is drawn by the
     // splitter itself, centered inside this band)
-    int splitterDx = DpiScale(win->hwndFrame, kSplitterDx);
+    int splitterDx = kSplitterDx;
     int splitterDy = DpiScale(win->hwndFrame, kSplitterDy);
     // build a snapshot of all state that affects layout
     MainWindow::LayoutState curState;
@@ -8408,9 +8427,43 @@ bool IsSidebarSplitterLiveDrag() {
     return gSidebarSplitterWrapSuspended;
 }
 
+bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM lp) {
+    if (!win || !win->sidebarSplitter || !win->sidebarSplitter->hwnd || !IsWindowVisible(win->sidebarSplitter->hwnd)) {
+        return false;
+    }
+    POINT pt{};
+    if (msg == WM_LBUTTONDOWN || msg == WM_MOUSEMOVE) {
+        pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+        ClientToScreen(sourceHwnd, &pt);
+    } else if (msg == WM_NCLBUTTONDOWN || msg == WM_NCMOUSEMOVE) {
+        pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+    } else {
+        GetCursorPos(&pt);
+    }
+    RECT rc{};
+    GetWindowRect(win->sidebarSplitter->hwnd, &rc);
+    int tolerance = DpiScale(win->hwndFrame, 5);
+    if (pt.y < rc.top || pt.y >= rc.bottom || pt.x < rc.left - tolerance || pt.x >= rc.right + tolerance) {
+        return false;
+    }
+    SetCursorCached(IDC_SIZEWE);
+    if (msg == WM_LBUTTONDOWN || msg == WM_NCLBUTTONDOWN) {
+        ScreenToClient(win->sidebarSplitter->hwnd, &pt);
+        SendMessageW(win->sidebarSplitter->hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(pt.x, pt.y));
+        // A synthetic child-window button message does not make the normal
+        // mouse dispatcher transfer capture ownership for us. Do it
+        // explicitly after routing the synthetic click, so every following
+        // move reaches Splitter::WndProc and
+        // enters the existing live-drag (scrollbar-hide/coalesced-paint) path.
+        SetCapture(win->sidebarSplitter->hwnd);
+        return GetCapture() == win->sidebarSplitter->hwnd;
+    }
+    return true;
+}
+
 // TOC drag perf profiling (SUMATRA_TOC_DRAG_LOG=1): aggregate relayout
 // timings across one splitter drag, logged once at drag end. Cheap QPC reads
-// per move. Temporary diagnostics; remove once drag repaint is verified.
+// per move; also feeds the synthetic drag bench (SUMATRA_TOC_DRAG_BENCH).
 struct TocDragPerf {
     int moves = 0;
     double relayoutMs = 0;
@@ -8457,24 +8510,10 @@ static void ScheduleSidebarRelayout(MainWindow* win, int sidebarDx) {
         return;
     }
     win->sidebarRelayoutPending = true;
-    PostMessageW(win->hwndFrame, WM_SIDEBAR_RELAYOUT, 0, 0);
-}
-
-static void PaintLiveSidebarSeparator(MainWindow* win) {
-    if (!win || !win->tocTreeView || !win->tocTreeView->hwnd) {
-        return;
-    }
-    HWND hwndTree = win->tocTreeView->hwnd;
-    RECT rc{};
-    GetWindowRect(hwndTree, &rc);
-    HDC hdc = GetWindowDC(hwndTree);
-    // Match the normal splitter: a crisp physical pixel, not a DPI-expanded
-    // strip that looks like a shadow beside the native TreeView scrollbar.
-    int lineDx = 1;
-    RECT rr{RectDx(rc) - lineDx, 0, RectDx(rc), RectDy(rc)};
-    AutoDeleteBrush line = CreateSolidBrush(ThemeSidebarSeparatorColor(SidebarSeparatorState::Active));
-    FillRect(hdc, &rr, line);
-    ReleaseDC(hwndTree, hdc);
+    // Canvas WM_SIZE skips model/buffer relayout during this live drag, so
+    // synchronously keep the TOC and canvas geometry on the cursor. The only
+    // expensive document layout happens once on mouse-up.
+    SendMessageW(win->hwndFrame, WM_SIDEBAR_RELAYOUT, 0, 0);
 }
 
 static void RunScheduledSidebarRelayout(MainWindow* win) {
@@ -8487,20 +8526,35 @@ static void RunScheduledSidebarRelayout(MainWindow* win) {
     if (!gSidebarSplitterWrapSuspended || sidebarDx <= 0) {
         return;
     }
+    RECT oldSplitterRect{};
+    bool hadSplitterRect = win->sidebarSplitter && GetWindowRect(win->sidebarSplitter->hwnd, &oldSplitterRect);
     RelayoutFrame(win, false, sidebarDx);
-    // Present one internally consistent frame before accepting another
-    // coalesced width. This repaints both the TreeView non-client scrollbar
-    // and the full document viewport, so neither can lag behind the splitter.
-    if (win->tocVisible) {
-        RedrawWindow(win->hwndTocBox, nullptr, nullptr,
-                     RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
-    }
+    // RelayoutFrame moves the splitter and all adjacent child windows once.
+    // Paint just the lightweight 1px splitter synchronously so the visible
+    // edge follows the pointer without an intermediate, mismatched position.
     if (win->sidebarSplitter) {
         RedrawWindow(win->sidebarSplitter->hwnd, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
     }
-    RedrawWindow(win->hwndCanvas, nullptr, nullptr,
-                 RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
-    PaintLiveSidebarSeparator(win);
+    // Let
+    // normal WM_PAINT processing coalesce the expensive full TreeView and
+    // document paints when mouse input arrives faster than the display can
+    // present it.
+    if (win->tocVisible) {
+        RedrawWindow(win->hwndTocBox, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN);
+    }
+    RedrawWindow(win->hwndCanvas, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN);
+    if (hadSplitterRect) {
+        // WS_CLIPCHILDREN can preserve the pixel formerly occupied by the
+        // splitter after the canvas moves over it. Repaint that old strip
+        // through whichever child now covers it.
+        MapWindowPoints(HWND_DESKTOP, win->hwndFrame, (POINT*)&oldSplitterRect, 2);
+        // Include the old native scrollbar band so the scrollbar can remain
+        // visible during the drag without leaving a copy at its previous edge.
+        oldSplitterRect.left -= GetSystemMetrics(SM_CXVSCROLL) + 2;
+        oldSplitterRect.right += 2;
+        RedrawWindow(win->hwndFrame, &oldSplitterRect, nullptr,
+                     RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+    }
 }
 
 static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
@@ -8532,14 +8586,10 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
             return;
         }
         if (!gSidebarSplitterWrapSuspended) {
-            win->sidebarDragHadVScrollbar = win->tocTreeView && WindowHasVisibleVScrollbar(win->tocTreeView->hwnd);
-            if (win->tocTreeView) {
-                ShowScrollBar(win->tocTreeView->hwnd, SB_VERT, FALSE);
-            }
-            // Keep the capturing HWND alive, but make its independently
-            // composed visual line transparent for the duration of the drag.
-            win->sidebarSplitter->hideVisual = true;
-            HwndRepaintNow(win->sidebarSplitter->hwnd);
+            // The splitter is a real 1px window now. Keep it visible and move
+            // that single surface directly. The TreeView keeps its native
+            // scrollbar visible; the old-edge repaint in the scheduled
+            // relayout prevents it from leaving copies behind.
             SuspendTreeWrapLiveResizeForWindow(win);
             gSidebarSplitterWrapSuspended = true;
             gTocDragPerf = {};
@@ -8572,12 +8622,6 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
         UpdateOverlayScrollbarPositions(win);
         win->UpdateCanvasSize();
         ResumeTreeWrapLiveResizeAndFlush(win);
-        if (win->tocTreeView) {
-            ShowScrollBar(win->tocTreeView->hwnd, SB_VERT, win->sidebarDragHadVScrollbar ? TRUE : FALSE);
-            SetWindowPos(win->tocTreeView->hwnd, nullptr, 0, 0, 0, 0,
-                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-        }
-        win->sidebarSplitter->hideVisual = false;
         RedrawWindow(win->hwndTocBox, nullptr, nullptr,
                      RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
         RedrawWindow(win->sidebarSplitter->hwnd, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
@@ -8665,6 +8709,29 @@ static void MaybeRunTocDragBench(MainWindow* win) {
     if (expandAll) {
         // CASE B: expanded tree => many items + native scrollbar visible
         win->tocTreeView->ExpandAll();
+    }
+    // The bench fires right after the TOC loads, which is often before the
+    // async first-page renders finish. Without a wait the drag exercises the
+    // frozen-paint path over an empty (background-only) buffer and the frames
+    // look blank even though the fix works. Wait (default 3s), then pump
+    // messages so completed renders paint into the buffer before dragging.
+    char delayBuf[32] = {0};
+    int delayMs = 3000;
+    if (GetEnvironmentVariableA("SUMATRA_TOC_DRAG_DELAY_MS", delayBuf, dimof(delayBuf)) > 0) {
+        delayMs = atoi(delayBuf);
+    }
+    if (delayMs > 0) {
+        logfa("TOC-DRAG-BENCH wait %d ms for first render", delayMs);
+        Sleep(delayMs);
+        ULONGLONG until = GetTickCount64() + 1500;
+        MSG delayMsg;
+        while (GetTickCount64() < until) {
+            while (PeekMessageW(&delayMsg, nullptr, 0, 0, PM_REMOVE)) {
+                TranslateMessage(&delayMsg);
+                DispatchMessageW(&delayMsg);
+            }
+            Sleep(30);
+        }
     }
     logfa("TOC-DRAG-BENCH begin sbar=%d expand=%d dx0=%d", WindowHasVisibleVScrollbar(win->tocTreeView->hwnd) ? 1 : 0,
           expandAll ? 1 : 0, WindowRect(win->hwndTocBox).dx);

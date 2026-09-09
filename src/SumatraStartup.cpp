@@ -1524,6 +1524,7 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
             logFileBecauseDebug = true;
         }
     }
+    gOcrAutoBench = GetEnvironmentVariableA("SUMATRA_OCR_AUTO_BENCH", nullptr, 0) > 0;
     if (flags.log && !noLogHere) {
         if (flags.logFile) {
             logFilePath = flags.logFile;

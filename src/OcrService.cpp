@@ -43,6 +43,16 @@ static Mutex gQueueLock;
 static Vec<void*> gQueue; // OcrJob*
 static LONG gWorkersAlive = 0;
 static LONG gOcrCancelSeq = 0;
+static LONG gPrefetchRunning = 0;
+
+// Scheduling priority (lower wins). The current page must never wait behind
+// prefetch jobs: user turns to page N -> page N is OCR'd next, period. It also
+// must never wait behind a queued "recognize all pages" batch, hence the
+// document batch level sits below the current-page level.
+constexpr int kOcrPrioExplicit = 0; // user-triggered "OCR current page" / region OCR
+constexpr int kOcrPrioCurrent = 1;  // auto OCR of the page the user is looking at
+constexpr int kOcrPrioDocument = 2; // document-wide batch (user-initiated)
+constexpr int kOcrPrioPrefetch = 3; // opportunistic nearby-page prefetch
 
 static EngineBase* gOcrDocEngine = nullptr;
 static HWND gOcrDocHwnd = nullptr;
@@ -112,6 +122,10 @@ struct OcrJob {
     bool autoJob = false;
     OcrOperation op = OcrOperation::CurrentPage;
     RectF clipRect;
+    // scheduling: lower prio is picked first by workers; tQueued is T1
+    // (request queued) for the T0..T8 latency chain
+    int prio = kOcrPrioCurrent;
+    LARGE_INTEGER tQueued = {};
 };
 
 static int CountUsableChars(const WCHAR* s) {
@@ -491,6 +505,187 @@ static void OcrSqueezePunctUnits(const int* cps, float* units, int n) {
     }
 }
 
+// DBNet line boxes can sit slightly high and miss ascenders/descenders, which
+// shifts the whole text layer up and makes cells shorter than the glyphs.
+// Recalibrate a horizontal box's vertical extent against the actual ink rows:
+// shrink while the outer rows are blank, grow at most a few px while ink
+// continues right outside. Controlled growth avoids bleeding into the
+// neighboring line on tightly spaced pages.
+static void OcrCalibrateBoxVert(const u8* rgb, int imgW, int imgH, int stride, Rect& box) {
+    if (!rgb || box.dx < 4 || box.dy < 4) {
+        return;
+    }
+    int x0 = box.x;
+    int x1 = box.x + box.dx;
+    if (x0 < 0) {
+        x0 = 0;
+    }
+    if (x1 > imgW) {
+        x1 = imgW;
+    }
+    if (x1 - x0 < 4) {
+        return;
+    }
+    // Captions under photos often have their glyph tops cut by the det box;
+    // allow enough growth to recover them (measured deficit ~10px).
+    const int pad = 8;
+    int sy0 = box.y - pad;
+    if (sy0 < 0) {
+        sy0 = 0;
+    }
+    int sy1 = box.y + box.dy + pad;
+    if (sy1 > imgH) {
+        sy1 = imgH;
+    }
+    if (sy1 - sy0 < 4) {
+        return;
+    }
+    auto rowDarkAt = [&](int y) {
+        const u8* row = rgb + (size_t)y * (size_t)stride;
+        int sum = 0;
+        for (int x = x0; x < x1; x++) {
+            const u8* p = row + (size_t)x * 3;
+            sum += 255 * 3 - (p[0] + p[1] + p[2]);
+        }
+        return sum;
+    };
+    int maxRow = 0;
+    int by0 = box.y;
+    int by1 = box.y + box.dy;
+    if (by0 < 0) {
+        by0 = 0;
+    }
+    if (by1 > imgH) {
+        by1 = imgH;
+    }
+    for (int y = by0; y < by1; y++) {
+        int d = rowDarkAt(y);
+        if (d > maxRow) {
+            maxRow = d;
+        }
+    }
+    if (maxRow <= 0) {
+        return;
+    }
+    int thr = maxRow / 6;
+    if (thr < 1) {
+        thr = 1;
+    }
+    int top = -1;
+    int bot = -1;
+    for (int y = by0; y < by1; y++) {
+        if (rowDarkAt(y) >= thr) {
+            if (top < 0) {
+                top = y;
+            }
+            bot = y;
+        }
+    }
+    if (top < 0 || bot < top) {
+        return;
+    }
+    while (top - 1 >= sy0 && rowDarkAt(top - 1) >= thr && by0 - top < pad) {
+        top--;
+    }
+    while (bot + 1 < sy1 && rowDarkAt(bot + 1) >= thr && bot - (by1 - 1) < pad) {
+        bot++;
+    }
+    int newDy = bot + 1 - top;
+    if (newDy < box.dy / 3 || newDy > box.dy * 3) {
+        return;
+    }
+    box.y = top;
+    box.dy = newDy;
+}
+
+// Vertical text columns: DBNet boxes are unclip-expanded sideways (1.5x), so a
+// column box is much wider than the ink column it holds. Shrink the box's
+// horizontal extent to the actual ink columns (mirror of OcrCalibrateBoxVert);
+// the text layer then centers each glyph's em box on the narrowed column.
+static void OcrCalibrateBoxCols(const u8* rgb, int imgW, int imgH, int stride, Rect& box) {
+    if (!rgb || box.dx < 4 || box.dy < 4) {
+        return;
+    }
+    int y0 = box.y;
+    int y1 = box.y + box.dy;
+    if (y0 < 0) {
+        y0 = 0;
+    }
+    if (y1 > imgH) {
+        y1 = imgH;
+    }
+    if (y1 - y0 < 4) {
+        return;
+    }
+    const int pad = 3;
+    int sx0 = box.x - pad;
+    if (sx0 < 0) {
+        sx0 = 0;
+    }
+    int sx1 = box.x + box.dx + pad;
+    if (sx1 > imgW) {
+        sx1 = imgW;
+    }
+    if (sx1 - sx0 < 4) {
+        return;
+    }
+    auto colDarkAt = [&](int x) {
+        int sum = 0;
+        for (int y = y0; y < y1; y++) {
+            const u8* p = rgb + (size_t)y * (size_t)stride + (size_t)x * 3;
+            sum += 255 * 3 - (p[0] + p[1] + p[2]);
+        }
+        return sum;
+    };
+    int maxCol = 0;
+    int bx0 = box.x;
+    int bx1 = box.x + box.dx;
+    if (bx0 < 0) {
+        bx0 = 0;
+    }
+    if (bx1 > imgW) {
+        bx1 = imgW;
+    }
+    for (int x = bx0; x < bx1; x++) {
+        int d = colDarkAt(x);
+        if (d > maxCol) {
+            maxCol = d;
+        }
+    }
+    if (maxCol <= 0) {
+        return;
+    }
+    int thr = maxCol / 6;
+    if (thr < 1) {
+        thr = 1;
+    }
+    int left = -1;
+    int right = -1;
+    for (int x = bx0; x < bx1; x++) {
+        if (colDarkAt(x) >= thr) {
+            if (left < 0) {
+                left = x;
+            }
+            right = x;
+        }
+    }
+    if (left < 0 || right < left) {
+        return;
+    }
+    while (left - 1 >= sx0 && colDarkAt(left - 1) >= thr && bx0 - left < pad) {
+        left--;
+    }
+    while (right + 1 < sx1 && colDarkAt(right + 1) >= thr && right - (bx1 - 1) < pad) {
+        right++;
+    }
+    int newDx = right + 1 - left;
+    if (newDx < box.dx / 3 || newDx > box.dx * 3) {
+        return;
+    }
+    box.x = left;
+    box.dx = newDx;
+}
+
 // Place per-glyph [x0,x1): 公文等宽汉字/全角标点，半角数字约半格。
 // 只把空隙吸到「〕4」「4.号」这类半角邻接上，避免汉字格子忽宽忽窄。
 static void OcrPlaceGlyphYs(int nCp, const Rect& box, int* y0, int* y1, const int* ctcX, int nCtc) {
@@ -592,6 +787,66 @@ static void OcrPlaceGlyphXs(const int* cps, const float* units, int nCp, float u
         }
         while (xR > xL && dark[xR - 1] < thr) {
             xR--;
+        }
+    }
+    // Ink-blob cells: when every recognized char matches exactly one ink blob
+    // (typical CJK line, including wide letter spacing in headings), snap the
+    // cells to the blobs. Uneven spacing (chapter number + title gap) then
+    // stays aligned, which even-spacing and CTC midpoint cuts get wrong.
+    // Any deviation (spaces, merged/split glyphs) changes the blob count and
+    // falls back to the CTC/even paths below.
+    if (dark && nCp >= 1 && xR - xL >= nCp && nCp <= 256) {
+        int cellW = (xR - xL) / nCp;
+        int gapThr = cellW / 3;
+        if (gapThr < 3) {
+            gapThr = 3;
+        }
+        int bs[256];
+        int be[256];
+        int nBlob = 0;
+        int k = xL;
+        while (k < xR && nBlob < 256) {
+            if (dark[k] < thr) {
+                k++;
+                continue;
+            }
+            int start = k;
+            int end = k;
+            while (end < xR && dark[end] >= thr) {
+                end++;
+            }
+            while (end < xR) {
+                int g = end;
+                while (g < xR && dark[g] < thr) {
+                    g++;
+                }
+                if (g >= xR || g - end < gapThr) {
+                    break;
+                }
+                while (g < xR && dark[g] >= thr) {
+                    g++;
+                }
+                end = g;
+            }
+            bs[nBlob] = start;
+            be[nBlob] = end;
+            nBlob++;
+            k = end;
+        }
+        if (nBlob == nCp) {
+            int cut = xL;
+            for (int bI = 0; bI < nCp; bI++) {
+                int cutEnd = (bI + 1 < nCp) ? (be[bI] + bs[bI + 1]) / 2 : xR;
+                if (cutEnd <= cut) {
+                    cutEnd = cut + 1;
+                }
+                x0[bI] = cut;
+                x1[bI] = cutEnd;
+                cut = cutEnd;
+            }
+            free(cuts);
+            free(dark);
+            return;
         }
     }
     if (ctcX && nCtc == nCp && nCp > 0) {
@@ -1479,6 +1734,71 @@ static void OcrLogDocSummary(const char* tag, double saveMs) {
         gOcrDocTextMs, saveMs);
 }
 
+// Alignment debugging: when SUMATRA_OCR_DUMP_DIR=<dir> is set, write per-page
+// det boxes (rect + text + charX) and the OCR raster as binary PPM so the
+// boxes can be compared against the actual ink offline.
+static void OcrWriteUtf8File(const char* path, const char* text);
+static void OcrDumpPageBoxes(int pageNo, const u8* rgb, int w, int h, int stride, const Vec<OcrBox>& boxes) {
+    char dir[280];
+    if (GetEnvironmentVariableA("SUMATRA_OCR_DUMP_DIR", dir, dimof(dir)) == 0 || !dir[0]) {
+        return;
+    }
+    StrBuilder sb;
+    for (int i = 0; i < boxes.Size(); i++) {
+        const OcrBox& b = boxes[i];
+        sb.AppendFmt("%d\tx=%d y=%d dx=%d dy=%d vert=%d nChar=%d text=%s charX=", i, b.rect.x, b.rect.y, b.rect.dx,
+                     b.rect.dy, b.vertical ? 1 : 0, b.nChar, b.text ? b.text : "");
+        for (int k = 0; k < 2 * b.nChar && b.charX; k++) {
+            sb.AppendFmt("%d,", b.charX[k]);
+        }
+        sb.Append("\n");
+    }
+    TempStr boxesPath = path::JoinTemp(dir, str::FormatTemp("p%02d_boxes.txt", pageNo));
+    OcrWriteUtf8File(boxesPath, sb.Get());
+    if (!rgb) {
+        return;
+    }
+    StrBuilder ppm;
+    ppm.AppendFmt("P6\n%d %d\n255\n", w, h);
+    size_t hdrLen = ppm.Size();
+    size_t dataLen = (size_t)w * 3 * (size_t)h;
+    u8* buf = AllocArray<u8>(hdrLen + dataLen);
+    memcpy(buf, ppm.Get(), hdrLen);
+    for (int y = 0; y < h; y++) {
+        memcpy(buf + hdrLen + (size_t)y * w * 3, rgb + (size_t)y * stride, (size_t)w * 3);
+    }
+    TempStr ppmPath = path::JoinTemp(dir, str::FormatTemp("p%02d.ppm", pageNo));
+    file::WriteFile(ppmPath, ByteSlice(buf, hdrLen + dataLen));
+    free(buf);
+}
+
+// Alignment debugging: write the final per-char text-layer rects (page points,
+// one line per codepoint, coords indexed by byte offset) so tooling can compare
+// the text layer actually handed to the PDF writer against the page raster ink.
+static void OcrDumpPageTextCoords(int pageNo, const RectF& pageBox, const PageTextUtf8& utf8) {
+    char dir[280];
+    if (GetEnvironmentVariableA("SUMATRA_OCR_DUMP_DIR", dir, dimof(dir)) == 0 || !dir[0]) {
+        return;
+    }
+    if (!utf8.text || utf8.len <= 0 || !utf8.coords) {
+        return;
+    }
+    StrBuilder sb;
+    sb.AppendFmt("# pagebox %.3f %.3f %.3f %.3f\n", pageBox.x, pageBox.y, pageBox.dx, pageBox.dy);
+    int idx = 0;
+    while (idx < utf8.len) {
+        int before = idx;
+        int cp = Utf8CodepointNext(utf8.text, utf8.len, idx);
+        if (idx <= before) {
+            break;
+        }
+        Rect r = utf8.coords[before];
+        sb.AppendFmt("%d %.3f %.3f %.3f %.3f\n", cp, (float)r.x, (float)r.y, (float)r.dx, (float)r.dy);
+    }
+    TempStr coordsPath = path::JoinTemp(dir, str::FormatTemp("p%02d_coords.txt", pageNo));
+    OcrWriteUtf8File(coordsPath, sb.Get());
+}
+
 static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, int imgH, int stride,
                             const RectF& pageBox, PageText* pt, PageTextUtf8* utf8) {
     if (!pt || !utf8 || imgW < 1 || imgH < 1 || pageBox.IsEmpty()) {
@@ -1546,8 +1866,17 @@ static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, i
         if (nCp < 1) {
             nCp = 1;
         }
-        Rect pageR((int)(b.rect.x * sx + pageBox.x), (int)(b.rect.y * sy + pageBox.y), (int)(b.rect.dx * sx),
-                   (int)(b.rect.dy * sy));
+        bool vert = OcrBoxIsVerticalCol(b);
+        // Det boxes sit slightly high on horizontal lines and are unclip-wide
+        // on vertical columns; snap the extent to the actual ink.
+        Rect calBox = b.rect;
+        if (vert) {
+            OcrCalibrateBoxCols(rgb, imgW, imgH, stride, calBox);
+        } else {
+            OcrCalibrateBoxVert(rgb, imgW, imgH, stride, calBox);
+        }
+        Rect pageR((int)(calBox.x * sx + pageBox.x), (int)(calBox.y * sy + pageBox.y), (int)(calBox.dx * sx),
+                   (int)(calBox.dy * sy));
         if (pageR.dx < 1) {
             pageR.dx = 1;
         }
@@ -1579,11 +1908,10 @@ static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, i
         }
         int* gx0 = AllocArray<int>(nCp);
         int* gx1 = AllocArray<int>(nCp);
-        bool vert = OcrBoxIsVerticalCol(b);
         if (vert) {
             OcrPlaceGlyphYs(nCp, b.rect, gx0, gx1, b.charX, b.nChar);
         } else {
-            OcrPlaceGlyphXs(cps, units, nCp, unitSum, rgb, imgW, imgH, stride, b.rect, gx0, gx1, b.charX, b.nChar);
+            OcrPlaceGlyphXs(cps, units, nCp, unitSum, rgb, imgW, imgH, stride, calBox, gx0, gx1, b.charX, b.nChar);
         }
         int lineEm = em;
         int nHan = 0;
@@ -1701,11 +2029,19 @@ static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, i
             int ix0 = (cpI < nCp) ? gx0[cpI] : 0;
             int ix1 = (cpI < nCp) ? gx1[cpI] : (vert ? b.rect.dy : b.rect.dx);
             if (vert) {
-                cr.x = pageR.x;
-                cr.dx = pageR.dx > 0 ? pageR.dx : 1;
                 cr.y = pageR.y + (int)((float)ix0 * sy + 0.5f);
                 int cellEnd = pageR.y + (int)((float)ix1 * sy + 0.5f);
                 cr.dy = (cellEnd > cr.y) ? (cellEnd - cr.y) : 1;
+                // MuPDF renders each char with advance ~ fs == cr.dy, so the
+                // selection quad is an em box anchored at cr.x. Center that em
+                // box on the calibrated ink column instead of anchoring it at
+                // the unclip-expanded det box's left edge.
+                int fs = cr.dy;
+                if (fs < 1) {
+                    fs = 1;
+                }
+                cr.x = pageR.x - (fs - pageR.dx) / 2;
+                cr.dx = fs;
             } else {
                 cr.x = pageR.x + (int)((float)ix0 * sx + 0.5f);
                 int cellEnd = pageR.x + (int)((float)ix1 * sx + 0.5f);
@@ -1787,11 +2123,16 @@ static void FinishOcrFlight(OcrFlight* owned) {
     delete owned;
 }
 
-bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOperation op) {
+bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOperation op, LARGE_INTEGER tQueued) {
     if (!engine || pageNo < 1 || pageNo > engine->PageCount()) {
         return false;
     }
-    logfa("OCR[%d] ENTER forceOcr=%d op=%d modelsAvail=%d\n", pageNo, forceOcr, (int)op, OcrModelsAvailable());
+    // T2: OCR actually starts. tQueued is T1 (request queued); the difference
+    // is how long the request waited for a worker / higher-priority jobs.
+    LARGE_INTEGER tStart = TimeGet();
+    int queueWaitMs = tQueued.QuadPart ? TimeSinceInMs(tQueued) : -1;
+    logfa("OCR[%d] ENTER forceOcr=%d op=%d modelsAvail=%d queueWaitMs=%d\n", pageNo, forceOcr, (int)op,
+          OcrModelsAvailable(), queueWaitMs);
 
     HANDLE waitEv = nullptr;
     OcrFlight* owned = nullptr;
@@ -1855,89 +2196,123 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
                 float modelConf = 0;
                 bool modelOk = OcrClassifyPageOrientationRgb(rgb, w, h, stride, &modelDeg, &modelConf);
                 bool hasModelHint = modelOk && (modelDeg == 90 || modelDeg == 270);
-                bool ok0 = OcrRecognizeRgb(rgb, w, h, stride, boxes, profile, &timing);
-                int score0 = ok0 ? ScoreOcrBoxes(boxes) : 0;
-                logfa("OCR[%d] 0deg ocr: ok=%d score=%d nBoxes=%d\n", pageNo, ok0, score0, boxes.Size());
-                if (!ok0) {
-                    FreeOcrBoxes(boxes);
-                    score0 = 0;
-                }
-                bool vertical0 = OcrBoxesLookLikeVerticalBook(boxes, w, h);
-                bool shouldTryHeuristic = OcrShouldTryPageRotate(boxes, w, h);
-                logfa("OCR[%d] vertical0=%d shouldTryHeuristic=%d\n", pageNo, vertical0, shouldTryHeuristic);
-                if (hasModelHint || shouldTryHeuristic) {
-                    int bestScore = score0;
-                    int bestRot = 0;
-                    Vec<OcrBox> bestBoxes;
-                    // Build candidate rotation list. Model-recommended angle (if any)
-                    // is evaluated first with a looser threshold; heuristic angles
-                    // need a larger score gain before they win.
-                    int candRots[3] = {};
-                    int nCand = 0;
-                    if (hasModelHint) {
-                        candRots[nCand++] = modelDeg;
-                    }
-                    if (!hasModelHint || modelDeg != 90) {
-                        candRots[nCand++] = 90;
-                    }
-                    if (!hasModelHint || modelDeg != 270) {
-                        candRots[nCand++] = 270;
-                    }
-                    for (int ci = 0; ci < nCand; ci++) {
-                        int rotDeg = candRots[ci];
-                        bool cw = rotDeg == 90;
-                        int nw = 0, nh = 0, ns = 0;
-                        u8* rot = RotateRgb90(rgb, w, h, stride, cw, &nw, &nh, &ns);
-                        if (!rot) {
-                            logfa("OCR[%d] rot %d: RotateRgb90 failed\n", pageNo, rotDeg);
-                            continue;
-                        }
+                // High-confidence orientation hint: OCR the recommended angle
+                // directly and skip the 0deg baseline pass. Saves a full det+rec
+                // (roughly half the page time) on rotated pages. Falls back to the
+                // classic 0deg-first flow when the rotated pass yields nothing.
+                bool modelFirstUsed = false;
+                bool vertical0 = false;
+                if (hasModelHint && modelConf >= 0.6f) {
+                    bool cw = modelDeg == 90;
+                    int nw = 0, nh = 0, ns = 0;
+                    u8* rot = RotateRgb90(rgb, w, h, stride, cw, &nw, &nh, &ns);
+                    if (rot) {
                         Vec<OcrBox> rotBoxes;
                         int rotScore = 0;
                         bool rotOk = OcrRecognizeRgbScored(rot, nw, nh, ns, rotBoxes, &rotScore, profile);
-                        // Model-recommended angle: accept if score is close to or
-                        // above baseline; heuristic angles need +18 gain to override.
-                        int threshold = (hasModelHint && rotDeg == modelDeg) ? 0 : 18;
-                        logfa("OCR[%d] rot %d: ocrOk=%d score=%d best=%d threshold=%d\n", pageNo, rotDeg, rotOk, rotScore,
-                              bestScore, threshold);
-                        if (rotOk && rotScore > bestScore + threshold) {
+                        if (rotOk && rotScore > 0) {
                             MapOcrBoxesFrom90(rotBoxes, w, h, cw);
-                            FreeOcrBoxes(bestBoxes);
-                            bestBoxes = rotBoxes;
+                            FreeOcrBoxes(boxes);
+                            boxes = rotBoxes;
                             rotBoxes.Reset();
-                            bestScore = rotScore;
-                            bestRot = rotDeg;
-                            logfa("OCR[%d] rot %d WINS: score=%d > best+%d=%d\n", pageNo, rotDeg, rotScore, threshold,
-                                  bestScore - rotScore);
+                            usedRot = modelDeg;
+                            modelFirstUsed = true;
+                            logfa("OCR[%d] MODEL-FIRST %d wins conf=%.2f score=%d (0deg pass skipped)\n", pageNo,
+                                  modelDeg, modelConf, rotScore);
                         } else {
                             FreeOcrBoxes(rotBoxes);
+                            logfa("OCR[%d] model-first %d (conf %.2f) yielded score %d, falling back to 0deg\n", pageNo,
+                                  modelDeg, modelConf, rotScore);
                         }
                         free(rot);
                     }
-                    if (bestRot != 0) {
-                        if (hasModelHint) {
-                            logfa("OCR[%d] ROTATE %d FINAL score=%d > %d modelConf=%.2f\n", pageNo, bestRot, bestScore,
-                                  score0, modelConf);
-                        } else {
-                            logfa("OCR[%d] ROTATE %d FINAL score=%d > %d (heuristic)\n", pageNo, bestRot, bestScore, score0);
-                        }
-                        FreeOcrBoxes(boxes);
-                        boxes = bestBoxes;
-                        bestBoxes.Reset();
-                        usedRot = bestRot;
-                    } else {
-                        FreeOcrBoxes(bestBoxes);
-                        if (hasModelHint) {
-                            logfa("OCR[%d] model suggested %d (conf %.2f) but score %d <= baseline %d\n", pageNo,
-                                  modelDeg, modelConf, bestScore, score0);
-                        } else {
-                            logfa("OCR[%d] no rotation won (heuristic only)\n", pageNo);
-                        }
-                    }
-                } else {
-                    logfa("OCR[%d] no rotation attempt (hasHint=%d shouldTry=%d)\n", pageNo, hasModelHint,
-                          shouldTryHeuristic);
                 }
+                if (!modelFirstUsed) {
+                    bool ok0 = OcrRecognizeRgb(rgb, w, h, stride, boxes, profile, &timing);
+                    int score0 = ok0 ? ScoreOcrBoxes(boxes) : 0;
+                    logfa("OCR[%d] 0deg ocr: ok=%d score=%d nBoxes=%d\n", pageNo, ok0, score0, boxes.Size());
+                    if (!ok0) {
+                        FreeOcrBoxes(boxes);
+                        score0 = 0;
+                    }
+                    vertical0 = OcrBoxesLookLikeVerticalBook(boxes, w, h);
+                    bool shouldTryHeuristic = OcrShouldTryPageRotate(boxes, w, h);
+                    logfa("OCR[%d] vertical0=%d shouldTryHeuristic=%d\n", pageNo, vertical0, shouldTryHeuristic);
+                    if (hasModelHint || shouldTryHeuristic) {
+                        int bestScore = score0;
+                        int bestRot = 0;
+                        Vec<OcrBox> bestBoxes;
+                        // Build candidate rotation list. Model-recommended angle (if any)
+                        // is evaluated first with a looser threshold; heuristic angles
+                        // need a larger score gain before they win.
+                        int candRots[3] = {};
+                        int nCand = 0;
+                        if (hasModelHint) {
+                            candRots[nCand++] = modelDeg;
+                        }
+                        if (!hasModelHint || modelDeg != 90) {
+                            candRots[nCand++] = 90;
+                        }
+                        if (!hasModelHint || modelDeg != 270) {
+                            candRots[nCand++] = 270;
+                        }
+                        for (int ci = 0; ci < nCand; ci++) {
+                            int rotDeg = candRots[ci];
+                            bool cw = rotDeg == 90;
+                            int nw = 0, nh = 0, ns = 0;
+                            u8* rot = RotateRgb90(rgb, w, h, stride, cw, &nw, &nh, &ns);
+                            if (!rot) {
+                                logfa("OCR[%d] rot %d: RotateRgb90 failed\n", pageNo, rotDeg);
+                                continue;
+                            }
+                            Vec<OcrBox> rotBoxes;
+                            int rotScore = 0;
+                            bool rotOk = OcrRecognizeRgbScored(rot, nw, nh, ns, rotBoxes, &rotScore, profile);
+                            // Model-recommended angle: accept if score is close to or
+                            // above baseline; heuristic angles need +18 gain to override.
+                            int threshold = (hasModelHint && rotDeg == modelDeg) ? 0 : 18;
+                            logfa("OCR[%d] rot %d: ocrOk=%d score=%d best=%d threshold=%d\n", pageNo, rotDeg, rotOk,
+                                  rotScore, bestScore, threshold);
+                            if (rotOk && rotScore > bestScore + threshold) {
+                                MapOcrBoxesFrom90(rotBoxes, w, h, cw);
+                                FreeOcrBoxes(bestBoxes);
+                                bestBoxes = rotBoxes;
+                                rotBoxes.Reset();
+                                bestScore = rotScore;
+                                bestRot = rotDeg;
+                                logfa("OCR[%d] rot %d WINS: score=%d > best+%d=%d\n", pageNo, rotDeg, rotScore,
+                                      threshold, bestScore - rotScore);
+                            } else {
+                                FreeOcrBoxes(rotBoxes);
+                            }
+                            free(rot);
+                        }
+                        if (bestRot != 0) {
+                            if (hasModelHint) {
+                                logfa("OCR[%d] ROTATE %d FINAL score=%d > %d modelConf=%.2f\n", pageNo, bestRot,
+                                      bestScore, score0, modelConf);
+                            } else {
+                                logfa("OCR[%d] ROTATE %d FINAL score=%d > %d (heuristic)\n", pageNo, bestRot, bestScore,
+                                      score0);
+                            }
+                            FreeOcrBoxes(boxes);
+                            boxes = bestBoxes;
+                            bestBoxes.Reset();
+                            usedRot = bestRot;
+                        } else {
+                            FreeOcrBoxes(bestBoxes);
+                            if (hasModelHint) {
+                                logfa("OCR[%d] model suggested %d (conf %.2f) but score %d <= baseline %d\n", pageNo,
+                                      modelDeg, modelConf, bestScore, score0);
+                            } else {
+                                logfa("OCR[%d] no rotation won (heuristic only)\n", pageNo);
+                            }
+                        }
+                    } else {
+                        logfa("OCR[%d] no rotation attempt (hasHint=%d shouldTry=%d)\n", pageNo, hasModelHint,
+                              shouldTryHeuristic);
+                    }
+                } // !modelFirstUsed
                 // Books / 竖版书: keep the page upright. 90° OCR may still feed
                 // recognition (boxes already mapped back). 公文 forms still bake.
                 // However: the orientation model has already visually classified
@@ -1948,8 +2323,9 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
                     bool officialName = OcrFileNameHasOfficialKind(engine->FilePath());
                     bool officialText = OcrBoxesLookLikeOfficialSideways(boxes);
                     bool verticalNow = OcrBoxesLookLikeVerticalBook(boxes, w, h);
-                    logfa("OCR[%d] post-check (heuristic): vertical0=%d verticalNow=%d officialName=%d officialText=%d\n",
-                          pageNo, vertical0, verticalNow, officialName, officialText);
+                    logfa(
+                        "OCR[%d] post-check (heuristic): vertical0=%d verticalNow=%d officialName=%d officialText=%d\n",
+                        pageNo, vertical0, verticalNow, officialName, officialText);
                     if ((vertical0 || verticalNow) && !officialName && !officialText) {
                         logfa("OCR[%d] KEEP 0 deg (vertical book, was %d)\n", pageNo, usedRot);
                         usedRot = 0;
@@ -1960,20 +2336,33 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
                 if (OcrPageBoxesAreVertical(boxes)) {
                     SortOcrBoxesVerticalReading(boxes);
                 }
+                OcrDumpPageBoxes(pageNo, rgb, w, h, stride, boxes);
                 ok = ScoreOcrBoxes(boxes) > 0;
                 logfa("OCR[%d] final: ok=%d score=%d usedRot=%d\n", pageNo, ok, ScoreOcrBoxes(boxes), usedRot);
                 if (ok) {
                     PageText pt{};
                     PageTextUtf8 utf8{};
                     LARGE_INTEGER tText = TimeGet();
-                    BoxesToPageText(boxes, rgb, w, h, stride, engine->PageMediabox(pageNo), &pt, &utf8);
+                    RectF pageBox = engine->PageMediabox(pageNo);
+                    BoxesToPageText(boxes, rgb, w, h, stride, pageBox, &pt, &utf8);
                     timing.textLayerMs = TimeSinceInMs(tText);
+                    OcrDumpPageTextCoords(pageNo, pageBox, utf8);
                     FreeOcrBoxes(boxes);
                     if (pt.text && pt.len > 0) {
                         engine->SetCachedPageText(pageNo, pt, utf8);
                         engine->SetOcrPageRotate(pageNo, usedRot);
                         engine->SetOcrCacheQuality(pageNo, OcrQualityForProfile(profile));
                         logfa("OCR[%d] SetOcrPageRotate(%d)\n", pageNo, usedRot);
+                        // T6: result committed; the text layer can query it right
+                        // now (T8 == T6, same cache read path). T2->T6 spans
+                        // raster + det + rec + text-layer build.
+                        logfa(
+                            "OCR-T page=%d op=%d T1->T2 queue=%dms T2->T6 commit=%.0fms raster=%.0f det=%.0f rec=%.0f "
+                            "text=%.0f pageTotal=%.0f\n",
+                            pageNo, (int)op, queueWaitMs, TimeSinceInMs(tStart), timing.rasterizeMs,
+                            timing.detPreprocessMs + timing.detInferenceMs + timing.detPostprocessMs,
+                            timing.recPreprocessMs + timing.recInferenceMs + timing.recPostprocessMs,
+                            timing.textLayerMs, timing.pageTotalMs);
                     } else {
                         FreePageText(&pt);
                         FreePageTextUtf8(&utf8);
@@ -2027,13 +2416,14 @@ static bool OcrRecognizePageClip(EngineBase* engine, int pageNo, const RectF& cl
     LARGE_INTEGER t0 = TimeGet();
     bool ok = OcrRecognizeRgb(rgb, w, h, stride, boxes, profile, &timing);
     timing.pageTotalMs = TimeSinceInMs(t0);
-    logfa("OCR region timing page=%d clip=%.0fx%.0f raster=%dx%d profile=%s det=%.0f rec=%.0f (pre=%.0f inf=%.0f "
-          "post=%.0f) crop=%.0f total=%.0f detBoxes=%d recBoxes=%d batches=%d\n",
-          pageNo, clip.dx, clip.dy, w, h, OcrProfileName(profile),
-          timing.detPreprocessMs + timing.detInferenceMs + timing.detPostprocessMs,
-          timing.recPreprocessMs + timing.recInferenceMs + timing.recPostprocessMs, timing.recPreprocessMs,
-          timing.recInferenceMs, timing.recPostprocessMs, timing.cropMs, timing.pageTotalMs, timing.nDetBoxes,
-          timing.nRecBoxes, timing.nRecBatches);
+    logfa(
+        "OCR region timing page=%d clip=%.0fx%.0f raster=%dx%d profile=%s det=%.0f rec=%.0f (pre=%.0f inf=%.0f "
+        "post=%.0f) crop=%.0f total=%.0f detBoxes=%d recBoxes=%d batches=%d\n",
+        pageNo, clip.dx, clip.dy, w, h, OcrProfileName(profile),
+        timing.detPreprocessMs + timing.detInferenceMs + timing.detPostprocessMs,
+        timing.recPreprocessMs + timing.recInferenceMs + timing.recPostprocessMs, timing.recPreprocessMs,
+        timing.recInferenceMs, timing.recPostprocessMs, timing.cropMs, timing.pageTotalMs, timing.nDetBoxes,
+        timing.nRecBoxes, timing.nRecBatches);
     if (ok) {
         BoxesToPageText(boxes, rgb, w, h, stride, clip, ptOut, utf8Out);
         ok = ptOut->text && ptOut->len > 0;
@@ -2075,6 +2465,8 @@ struct OcrDoneUi {
     bool showStatus = false;
     RectF clipRect;
     char* regionText = nullptr;
+    // T6 (result committed) snapshot for the T6->T7 UI-apply latency log
+    LARGE_INTEGER tCommitted = {};
 };
 
 static void OcrShowRecognizingUi(OcrDoneUi* d) {
@@ -2432,6 +2824,10 @@ static void OcrFinishUi(OcrDoneUi* d) {
     if (d->ok && d->hwndCanvas && IsWindow(d->hwndCanvas)) {
         InvalidateRect(d->hwndCanvas, nullptr, FALSE);
     }
+    if (d->ok && d->tCommitted.QuadPart) {
+        // T7: the UI task that activates the freshly committed page result.
+        logfa("OCR-T page=%d T6->T7 uiApply=%.0fms\n", d->pageNo, TimeSinceInMs(d->tCommitted));
+    }
     if (d->ok && d->engine && d->pageNo > 0) {
         int rot = d->engine->GetOcrPageRotate(d->pageNo);
         logfa("OCR[page-done] page=%d rotate=%d ensureResult=%d\n", d->pageNo, rot,
@@ -2469,6 +2865,29 @@ static void OcrFinishUi(OcrDoneUi* d) {
 static void OcrWorker();
 static void OcrQueueAutoNearby(EngineBase* engine, HWND hwnd, int centerPage);
 
+// Pick the highest-priority pending job (lowest prio value, FIFO within a
+// level). Caller must hold gQueueLock. Returns nullptr when the queue is empty.
+static OcrJob* PopNextOcrJobLocked() {
+    int best = -1;
+    int bestPrio = 0;
+    for (int i = 0; i < gQueue.Size(); i++) {
+        auto* j = (OcrJob*)gQueue[i];
+        if (best < 0 || j->prio < bestPrio) {
+            best = i;
+            bestPrio = j->prio;
+            if (bestPrio == kOcrPrioExplicit) {
+                break; // cannot get better than this
+            }
+        }
+    }
+    if (best < 0) {
+        return nullptr;
+    }
+    auto* job = (OcrJob*)gQueue[best];
+    gQueue.RemoveAt(best);
+    return job;
+}
+
 static void StartOcrWorkerIfNeeded() {
     int want = OcrInferenceSlotCount();
     if (want < 1) {
@@ -2497,11 +2916,8 @@ static void StartOcrWorkerIfNeeded() {
 
 static void OcrWorker() {
     for (;;) {
-        OcrJob* job = nullptr;
         gQueueLock.Lock();
-        if (gQueue.Size() > 0) {
-            job = (OcrJob*)gQueue.PopAt(0);
-        }
+        OcrJob* job = PopNextOcrJobLocked();
         gQueueLock.Unlock();
         if (!job) {
             InterlockedDecrement(&gWorkersAlive);
@@ -2513,8 +2929,21 @@ static void OcrWorker() {
             }
             return;
         }
+        // Opportunistic prefetch must never occupy every inference slot: if
+        // another prefetch is already running, put the job back and wait a
+        // tick. Higher-priority jobs (current page) bypass this gate entirely.
+        if (job->prio >= kOcrPrioPrefetch && InterlockedCompareExchange(&gPrefetchRunning, 1, 0) != 0) {
+            gQueueLock.Lock();
+            gQueue.Append(job);
+            gQueueLock.Unlock();
+            Sleep(15);
+            continue;
+        }
         LONG liveSeq = InterlockedCompareExchange(&gOcrCancelSeq, 0, 0);
         if (job->cancelSeq != liveSeq) {
+            if (job->prio >= kOcrPrioPrefetch) {
+                InterlockedExchange(&gPrefetchRunning, 0);
+            }
             if (job->engine) {
                 job->engine->Release();
             }
@@ -2542,10 +2971,13 @@ static void OcrWorker() {
                 FreePageTextUtf8(&regionUtf8);
             }
         } else {
-            ok = OcrRecognizeEnginePage(job->engine, job->pageNo, job->forceOcr, job->op);
+            ok = OcrRecognizeEnginePage(job->engine, job->pageNo, job->forceOcr, job->op, job->tQueued);
             if (!job->documentJob && !job->regionJob && job->autoJob) {
                 OcrQueueAutoNearby(job->engine, job->hwndCanvas, job->pageNo);
             }
+        }
+        if (job->prio >= kOcrPrioPrefetch) {
+            InterlockedExchange(&gPrefetchRunning, 0);
         }
         auto* done = new OcrDoneUi();
         done->hwndCanvas = job->hwndCanvas;
@@ -2558,6 +2990,7 @@ static void OcrWorker() {
         done->showStatus = job->showStatus;
         done->clipRect = job->clipRect;
         done->regionText = regionTextCopy;
+        done->tCommitted = TimeGet();
         job->engine = nullptr;
         delete job;
         uitask::Post(MkFunc0<OcrDoneUi>(OcrFinishUi, done), "OcrFinish");
@@ -2579,7 +3012,9 @@ static void OcrEnqueueAutoPage(EngineBase* engine, HWND hwnd, int pageNo) {
         return;
     }
     bool forceOcr = false;
-    if (!OcrPageShouldRecognize(engine, pageNo, OcrOperation::CurrentPage, &forceOcr)) {
+    // Prefetch jobs run the Fast/Tiny profile, so the Fast quality bar applies
+    // (see OcrScheduleForPage: the Balanced bar caused duplicate re-OCR).
+    if (!OcrPageShouldRecognize(engine, pageNo, OcrOperation::Auto, &forceOcr)) {
         return;
     }
     gFlightLock.Lock();
@@ -2603,6 +3038,8 @@ static void OcrEnqueueAutoPage(EngineBase* engine, HWND hwnd, int pageNo) {
     // chained nearby-page jobs are auto jobs by definition
     job->autoJob = true;
     job->op = OcrOperation::Auto;
+    job->prio = kOcrPrioPrefetch;
+    job->tQueued = TimeGet();
     job->cancelSeq = gOcrCancelSeq;
     gQueue.Append(job);
     gQueueLock.Unlock();
@@ -2668,7 +3105,10 @@ void OcrScheduleForPage(MainWindow* win, int pageNo, bool ignoreAutoPref) {
         // the page already has a native text layer or a previous OCR cache.
         forceOcr = true;
     } else {
-        shouldRun = OcrPageShouldRecognize(engine, pageNo, OcrOperation::CurrentPage, &forceOcr);
+        // Auto OCR produces (and therefore requires) only the Fast/Tiny quality:
+        // checking against the Balanced bar here made every page OCR twice and
+        // re-OCR on every revisit (Fast quality 1 < Balanced quality 2).
+        shouldRun = OcrPageShouldRecognize(engine, pageNo, OcrOperation::Auto, &forceOcr);
         if (!shouldRun) {
             return;
         }
@@ -2681,6 +3121,24 @@ void OcrScheduleForPage(MainWindow* win, int pageNo, bool ignoreAutoPref) {
             ShowOcrStatus(win->hwndCanvas, _TRA("Scanning…"), kNotifNoTimeout);
         }
         return;
+    }
+    // The user has moved: prefetch jobs parked around an older current page
+    // lose value once they fall outside the ±2 window of the new current page.
+    // Drop them so workers never run stale work before the current page.
+    for (int i = gQueue.Size() - 1; i >= 0; i--) {
+        auto* j = (OcrJob*)gQueue[i];
+        if (j->engine != engine || j->prio < kOcrPrioPrefetch) {
+            continue;
+        }
+        int dist = j->pageNo - pageNo;
+        if (dist < 0) {
+            dist = -dist;
+        }
+        if (dist > 2) {
+            gQueue.RemoveAt(i);
+            j->engine->Release();
+            delete j;
+        }
     }
     auto* job = new OcrJob();
     job->hwndCanvas = win->hwndCanvas;
@@ -2695,9 +3153,13 @@ void OcrScheduleForPage(MainWindow* win, int pageNo, bool ignoreAutoPref) {
     // snapshot the auto path for the worker: auto jobs chain nearby pages,
     // explicit "OCR current page" jobs do not
     job->autoJob = !ignoreAutoPref;
+    job->prio = ignoreAutoPref ? kOcrPrioExplicit : kOcrPrioCurrent;
+    job->tQueued = TimeGet();
     job->cancelSeq = gOcrCancelSeq;
     gQueue.Append(job);
+    int qLen = gQueue.Size();
     gQueueLock.Unlock();
+    logfa("OCR-T page=%d prio=%d T1 queued qLen=%d\n", pageNo, job->prio, qLen);
     if (ignoreAutoPref) {
         ShowOcrStatus(win->hwndCanvas, _TRA("Scanning…"), kNotifNoTimeout);
     }
@@ -2764,6 +3226,8 @@ static int OcrQueueUnscannedPages(MainWindow* win, bool forceUncached, OcrOperat
         job->documentJob = true;
         job->forceOcr = forceFlags[i] != 0;
         job->op = op;
+        job->prio = kOcrPrioDocument;
+        job->tQueued = TimeGet();
         job->cancelSeq = gOcrCancelSeq;
         gQueue.Append(job);
         queued++;
@@ -2895,18 +3359,33 @@ void OcrSaveSearchablePdfAfterOcr(MainWindow* win, const char* destPath, bool ex
                                 kNotif5SecsTimeOut);
         return;
     }
-    int queued = OcrQueueUnscannedPages(win, false, OcrOperation::SaveSearchable);
-    if (queued < 0) {
-        return;
-    }
+    // When document OCR jobs are already queued/running for this engine (e.g.
+    // "Recognize All Scanned Pages" with auto-save), skip the per-page
+    // enumeration below. OcrPageShouldRecognize extracts the full text layer of
+    // every page on the UI thread; with OCR workers rastering under renderLock
+    // each TryExtractPageText falls back to the blocking ExtractPageText, so
+    // the UI thread blocked on renderLock for every page of OCR-dense
+    // documents (hang at "Scanning... 0 / N" right after the replace prompt:
+    // OcrFinishUi progress tasks could never run). The batch already covers
+    // every page, so only the pending save registration is needed here.
     bool running = false;
     gQueueLock.Lock();
     running = gOcrDocEngine == engine && (gOcrDocTotal > 0 || OcrQueueHasDocumentJob(engine));
     gQueueLock.Unlock();
-    if (queued == 0 && !running) {
-        OcrWriteSearchablePdfToPath(engine, win->hwndCanvas, destPath, extractTocWhenDone, true);
-        return;
+    if (!running) {
+        int queued = OcrQueueUnscannedPages(win, false, OcrOperation::SaveSearchable);
+        if (queued < 0) {
+            return;
+        }
+        gQueueLock.Lock();
+        running = gOcrDocEngine == engine && (gOcrDocTotal > 0 || OcrQueueHasDocumentJob(engine));
+        gQueueLock.Unlock();
+        if (queued == 0 && !running) {
+            OcrWriteSearchablePdfToPath(engine, win->hwndCanvas, destPath, extractTocWhenDone, true);
+            return;
+        }
     }
+    logfa("OCR[doc-save] pending save registered (batch running=%d)\n", running ? 1 : 0);
     OcrSetPendingSave(engine, win->hwndCanvas, destPath, extractTocWhenDone);
 }
 
@@ -3076,11 +3555,13 @@ void OcrFinishRegionSelect(MainWindow* win, Rect screenRect) {
     job->showStatus = true;
     job->regionJob = true;
     job->clipRect = clip;
+    job->prio = kOcrPrioExplicit;
+    job->tQueued = TimeGet();
     job->cancelSeq = gOcrCancelSeq;
-    // Region OCR is an explicit user action waiting on the result: jump the
-    // queue ahead of queued Auto OCR page prefetches. In-flight jobs finish
-    // first; this job is picked up by the next free worker.
-    gQueue.InsertAt(0, job);
+    // Region OCR is an explicit user action waiting on the result: the
+    // priority pop in OcrWorker picks it before any queued prefetch job.
+    // In-flight jobs finish first; this job is picked up by the next free worker.
+    gQueue.Append(job);
     gQueueLock.Unlock();
     ShowOcrStatus(win->hwndCanvas, _TRA("Scanning…"), kNotifNoTimeout);
     StartOcrWorkerIfNeeded();
@@ -3114,6 +3595,17 @@ int OcrRunFileBenchmark(const char* pdfPath, const char* outDir, int maxPages) {
         logf("OCR bench: file not found %s\n", pdfPath);
         return 1;
     }
+    // 1-based first page to bench; SUMATRA_OCR_BENCH_FIRST overrides.
+    int firstPage = 1;
+    {
+        char firstBuf[32]{};
+        if (GetEnvironmentVariableA("SUMATRA_OCR_BENCH_FIRST", firstBuf, dimof(firstBuf)) > 0) {
+            int v = atoi(firstBuf);
+            if (v >= 1) {
+                firstPage = v;
+            }
+        }
+    }
     const char* dir = outDir && outDir[0] ? outDir : "c:\\src\\sumatrapdf\\_ocr_bench";
     dir::CreateAll(dir);
     if (!OcrModelsAvailable()) {
@@ -3129,10 +3621,13 @@ int OcrRunFileBenchmark(const char* pdfPath, const char* outDir, int maxPages) {
     if (maxPages < 1) {
         maxPages = 6;
     }
-    if (maxPages > nPages) {
-        maxPages = nPages;
+    if (firstPage > nPages) {
+        firstPage = nPages;
     }
-    logf("OCR bench: %s pages=%d benchPages=%d out=%s\n", pdfPath, nPages, maxPages, dir);
+    if (maxPages > nPages - firstPage + 1) {
+        maxPages = nPages - firstPage + 1;
+    }
+    logf("OCR bench: %s pages=%d first=%d benchPages=%d out=%s\n", pdfPath, nPages, firstPage, maxPages, dir);
 
     OcrProfile profiles[3] = {OcrProfile::Fast, OcrProfile::Balanced, OcrProfile::Hybrid};
     const char* names[3] = {"tiny", "small", "hybrid"};
@@ -3147,7 +3642,8 @@ int OcrRunFileBenchmark(const char* pdfPath, const char* outDir, int maxPages) {
         StrBuilder allText;
         logf("OCR bench: --- profile %s ---\n", names[pi]);
         LARGE_INTEGER tProf = TimeGet();
-        for (int pageNo = 1; pageNo <= maxPages; pageNo++) {
+        int endPage = firstPage + maxPages - 1;
+        for (int pageNo = firstPage; pageNo <= endPage; pageNo++) {
             LARGE_INTEGER tRaster = TimeGet();
             RenderedBitmap* bmp = RenderPageForOcr(engine, pageNo);
             double rasterMs = TimeSinceInMs(tRaster);
@@ -3166,6 +3662,17 @@ int OcrRunFileBenchmark(const char* pdfPath, const char* outDir, int maxPages) {
             OcrPageTiming timing{};
             timing.rasterizeMs = rasterMs;
             bool ok = OcrRecognizeRgb(rgb, w, h, stride, boxes, profiles[pi], &timing);
+            if (pi == 1) {
+                // dump det boxes + raster once (small profile) for alignment work
+                OcrDumpPageBoxes(pageNo, rgb, w, h, stride, boxes);
+                RectF pageBox = engine->PageMediabox(pageNo);
+                PageText ptBench;
+                PageTextUtf8 utf8Bench;
+                BoxesToPageText(boxes, rgb, w, h, stride, pageBox, &ptBench, &utf8Bench);
+                OcrDumpPageTextCoords(pageNo, pageBox, utf8Bench);
+                FreePageText(&ptBench);
+                FreePageTextUtf8(&utf8Bench);
+            }
             LARGE_INTEGER tText = TimeGet();
             char* pageText = OcrBoxesJoinText(boxes);
             timing.textLayerMs = TimeSinceInMs(tText);

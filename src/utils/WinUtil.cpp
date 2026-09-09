@@ -2983,6 +2983,21 @@ void DoubleBuffer::Flush(HDC hdc, RECT* rcPaint) const {
     BitBlt(hdc, dest.left, dest.top, w, h, hdcBuffer, dest.left, dest.top, SRCCOPY);
 }
 
+void DoubleBuffer::Flush(HDC hdc, const RECT* dst, Point dstOrigin) const {
+    ReportIf(hdc == hdcBuffer);
+    if (!hdcBuffer || !dst) {
+        return;
+    }
+    if (dst->left >= dst->right || dst->top >= dst->bottom) {
+        return;
+    }
+    int w = dst->right - dst->left;
+    int h = dst->bottom - dst->top;
+    // the buffer origin sits at dstOrigin in hdc coordinates; the source
+    // position is therefore the destination shifted by that offset
+    BitBlt(hdc, dst->left, dst->top, w, h, hdcBuffer, dst->left - dstOrigin.x, dst->top - dstOrigin.y, SRCCOPY);
+}
+
 DeferWinPosHelper::DeferWinPosHelper() : hdwp(::BeginDeferWindowPos(32)) {}
 
 DeferWinPosHelper::~DeferWinPosHelper() {

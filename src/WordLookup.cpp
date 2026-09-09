@@ -125,6 +125,7 @@ struct WordLookupWnd : Wnd {
     int currTab = 0;
     bool isLoading = false;
     Point anchorPos{};
+    bool userPositioned = false;
 
     HFONT font = nullptr;
     HFONT headwordFont = nullptr;
@@ -1904,15 +1905,18 @@ static void PositionWordLookup(WordLookupWnd* wnd, Point screenPos) {
     int dy = rc.dy;
     int gap = DpiScale(hwnd, kPopupGap);
 
-    bool showBelow = screenPos.y + gap + dy <= work.y + work.dy;
-    if (!showBelow && screenPos.y - gap - dy < work.y) {
-        int belowSpace = work.y + work.dy - screenPos.y;
-        int aboveSpace = screenPos.y - work.y;
-        showBelow = belowSpace >= aboveSpace;
+    int x = rc.x;
+    int y = rc.y;
+    if (!wnd->userPositioned) {
+        bool showBelow = screenPos.y + gap + dy <= work.y + work.dy;
+        if (!showBelow && screenPos.y - gap - dy < work.y) {
+            int belowSpace = work.y + work.dy - screenPos.y;
+            int aboveSpace = screenPos.y - work.y;
+            showBelow = belowSpace >= aboveSpace;
+        }
+        x = screenPos.x - DpiScale(hwnd, 42);
+        y = showBelow ? screenPos.y + gap : screenPos.y - dy - gap;
     }
-
-    int x = screenPos.x - DpiScale(hwnd, 42);
-    int y = showBelow ? screenPos.y + gap : screenPos.y - dy - gap;
     if (x + dx > work.x + work.dx) {
         x = work.x + work.dx - dx;
     }
@@ -2179,6 +2183,18 @@ LRESULT WordLookupWnd::WndProc(HWND hwndIn, UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             break;
+        case WM_LBUTTONDOWN: {
+            Point pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            if (closeBtnPos.Contains(pt) || speakerBtnPos.Contains(pt) || HitTestLookupTab(this, pt) >= 0) {
+                break;
+            }
+            userPositioned = true;
+            ReleaseCapture();
+            POINT screenPt = {pt.x, pt.y};
+            ClientToScreen(hwndIn, &screenPt);
+            SendMessageW(hwndIn, WM_NCLBUTTONDOWN, HTCAPTION, MAKELPARAM(screenPt.x, screenPt.y));
+            return 0;
+        }
         case WM_LBUTTONUP: {
             Point pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
             if (closeBtnPos.Contains(pt)) {
@@ -2535,8 +2551,34 @@ static void FetchWordLookupAsync(FetchLookupData* d) {
 }
 
 // stext / DrawInstr bboxes use line or em-box height; shrink selection chrome only.
+// For a vertical word, preserve its full top-to-bottom span and tighten across
+// the column instead. Applying the horizontal rule to a vertical two-character
+// word derives its height from half the column width and collapses the
+// highlight to a small strip between the glyphs.
 static void TightenWordLookupHighlightBox(RectF* r, int charCount) {
-    if (!r || r->dy <= 1.f || charCount <= 0) {
+    if (!r || r->dx <= 1.f || r->dy <= 1.f || charCount <= 0) {
+        return;
+    }
+    bool vertical = charCount > 1 && r->dy > r->dx * 1.25f;
+    if (vertical) {
+        float targetDx = r->dx;
+        float avgH = r->dy / (float)charCount;
+        float capDx = avgH * 1.1f;
+        if (capDx >= 2.f && capDx < targetDx) {
+            targetDx = capDx;
+        }
+        float insetDx = r->dx * 0.18f;
+        if (insetDx >= 1.f) {
+            float fromInset = r->dx - 2.f * insetDx;
+            if (fromInset < targetDx) {
+                targetDx = fromInset;
+            }
+        }
+        if (targetDx < r->dx - 0.5f) {
+            float pad = (r->dx - targetDx) * 0.5f;
+            r->x += pad;
+            r->dx = targetDx;
+        }
         return;
     }
     float targetDy = r->dy;
@@ -2745,19 +2787,34 @@ bool ShowChineseWordLookupAt(MainWindow* win, TextSelection* ts, EngineBase* eng
     }
 
     int matchLen = matchEnd - matchStart;
-    Rect* coords = nullptr;
-    int coordsLen = 0;
-    engine->GetTextForPage(pageNo, &coordsLen, &coords);
-    if (coords && matchStart >= 0 && matchEnd <= coordsLen && matchLen > 0) {
-        RectF hlBox = WordLookupHighlightFromCoords(coords, matchStart, matchEnd);
-        if (hlBox.dx > 0.f && hlBox.dy > 0.f) {
-            TightenWordLookupHighlightBox(&hlBox, matchLen);
-            ts->SelectPageBbox(pageNo, hlBox);
+    bool cachedOcr = engine->HasCachedOcrText(pageNo);
+    if (!cachedOcr) {
+        // MuPDF extraction uses FZ_STEXT_ACCURATE_BBOXES, so its per-glyph
+        // rectangles already follow the visible outlines. The old lookup-only
+        // proportional shrink could move an otherwise correct highlight away
+        // from small glyphs, unusual fonts, and superscript/subscript text.
+        ts->SelectGlyphRange(pageNo, matchStart, matchEnd);
+    } else {
+        Rect* coords = nullptr;
+        int coordsLen = 0;
+        engine->GetTextForPage(pageNo, &coordsLen, &coords);
+        if (coords && matchStart >= 0 && matchEnd <= coordsLen && matchLen > 0) {
+            RectF hlBox = WordLookupHighlightFromCoords(coords, matchStart, matchEnd);
+            if (hlBox.dx > 0.f && hlBox.dy > 0.f) {
+                // Cached horizontal OCR boxes have already been calibrated
+                // against raster ink. Vertical OCR cells remain square, so
+                // tighten only their cross-column extent.
+                bool vertical = matchLen > 1 && hlBox.dy > hlBox.dx * 1.25f;
+                if (vertical) {
+                    TightenWordLookupHighlightBox(&hlBox, matchLen);
+                }
+                ts->SelectPageBbox(pageNo, hlBox);
+            } else {
+                ts->SelectGlyphRange(pageNo, matchStart, matchEnd);
+            }
         } else {
             ts->SelectGlyphRange(pageNo, matchStart, matchEnd);
         }
-    } else {
-        ts->SelectGlyphRange(pageNo, matchStart, matchEnd);
     }
     ShowWordLookup(win, matchedWord, screenPos);
     str::Free(matchedWord);

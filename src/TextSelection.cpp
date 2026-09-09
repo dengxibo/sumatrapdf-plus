@@ -80,8 +80,10 @@ static int GlyphIndexAtColumnPoint(TextSelection* ts, int pageNo, double x, doub
     float pickY = (float)y;
     int containing = -1;
     float containingY = -FLT_MAX;
+    float containingDx = FLT_MAX;
     int nearest = -1;
     float nearestDy = FLT_MAX;
+    float nearestDx = FLT_MAX;
     for (int i = 0; i < textLen; i++) {
         if (!coords[i].dx && !coords[i].dy) {
             continue;
@@ -90,19 +92,30 @@ static int GlyphIndexAtColumnPoint(TextSelection* ts, int pageNo, double x, doub
             continue;
         }
         Rect& b = coords[i];
-        float hitW = std::min((float)b.dx, std::max((float)b.dy * 1.2f, 6.0f));
+        // OCR vertical cells can have the same visual glyph width but very
+        // different square boxes because their width is derived from the
+        // CTC Y spacing. A narrow cell must still accept clicks on the outer
+        // strokes of its glyph. Otherwise a wider cell elsewhere in the same
+        // column can become the only candidate (e.g. clicking 談 selected 與).
+        float hitW = std::max(std::max((float)b.dx, (float)b.dy) * 1.8f, 6.0f);
         float cx = (float)b.x + (float)b.dx * 0.5f;
-        if (px < cx - hitW * 0.5f || px > cx + hitW * 0.5f) {
+        float dx = std::abs(px - cx);
+        if (dx > hitW * 0.5f) {
             continue;
         }
         float cy = (float)b.y + (float)b.dy * 0.5f;
         float dy = std::abs(pickY - cy);
-        if (dy < nearestDy) {
+        if (dy < nearestDy || (dy == nearestDy && dx < nearestDx)) {
             nearestDy = dy;
+            nearestDx = dx;
             nearest = i;
         }
         if (pickY >= (float)b.y && pickY < (float)b.y + (float)b.dy) {
-            if ((float)b.y > containingY) {
+            // Overlapping hit bands can include an adjacent column. Prefer
+            // the column whose center is closest to the pointer; use the
+            // lower-starting cell only as a tie-break within that column.
+            if (dx < containingDx || (dx == containingDx && (float)b.y > containingY)) {
+                containingDx = dx;
                 containingY = (float)b.y;
                 containing = i;
             }
@@ -929,8 +942,8 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
         }
 
         // cut the right edge, if it overlaps the next character on the same line
-        if (c < coords + len && (c->x || c->dx) && bbox.x < c->x && bbox.x + bbox.dx > c->x &&
-            bbox.y < c->y + c->dy && c->y < bbox.y + bbox.dy) {
+        if (c < coords + len && (c->x || c->dx) && bbox.x < c->x && bbox.x + bbox.dx > c->x && bbox.y < c->y + c->dy &&
+            c->y < bbox.y + bbox.dy) {
             bbox.dx = c->x - bbox.x;
         }
 

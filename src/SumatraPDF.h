@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 struct AnnotCreateArgs;
+struct MainWindow;
 
 #include "OverlayScrollbar.h"
 
@@ -11,7 +12,9 @@ struct AnnotCreateArgs;
 constexpr int kFrameResizeHitTest = 5;
 
 extern bool gRedrawLog;
+extern bool gOcrAutoBench;
 bool IsSidebarSplitterLiveDrag();
+bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM lp);
 
 constexpr const char* kWebsiteURL = "https://www.sumatrapdfreader.org/";
 constexpr const char* kManualURL = "https://www.sumatrapdfreader.org/manual";

@@ -5,6 +5,8 @@
 
 #include "OcrOnnx.h"
 
+#include <windows.h>
+
 struct MainWindow;
 struct WindowTab;
 class EngineBase;
@@ -17,8 +19,10 @@ void ApplyAutoOcrDefaultForTab(WindowTab* tab);
 bool OcrDeferExtractUntilDocumentReady(MainWindow* win, bool persistToDisk);
 bool OcrDocumentHasFileTextLayer(EngineBase* engine);
 bool OcrPageLooksScanned(EngineBase* engine, int pageNo);
+// tQueued: T1 timestamp (when the request was queued) for latency logs; pass
+// a zero LARGE_INTEGER when the caller does not track queueing.
 bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr = false,
-                            OcrOperation op = OcrOperation::CurrentPage);
+                            OcrOperation op = OcrOperation::CurrentPage, LARGE_INTEGER tQueued = {});
 void OcrEnsurePageTextForSearch(EngineBase* engine, int pageNo);
 void OcrScheduleForPage(MainWindow* win, int pageNo);
 void OcrScheduleForPage(MainWindow* win, int pageNo, bool ignoreAutoPref);

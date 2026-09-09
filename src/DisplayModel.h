@@ -236,6 +236,17 @@ struct DisplayModel : DocController {
     void GoToPage(int pageNo, int scrollY, bool addNavPt = false, int scrollX = -1);
     bool GoToPrevPage(int scrollY);
     int GetPageNextToPoint(Point pt) const;
+
+    // Returns true when the document should fill the viewport horizontally
+    // without page gutters, i.e. Fit Width on a single-column document that is
+    // not an image collection. Fit Page, manual zoom and image collections keep
+    // their gutters so users still perceive the page as a sheet.
+    bool IsFlushFitWidth() const;
+    // Returns windowMargin adjusted for Fit Width flush mode: left/right are
+    // 0 when IsFlushFitWidth() is true; otherwise the raw windowMargin. Layout,
+    // zoom and scroll code should call this instead of touching windowMargin
+    // directly when computing horizontal geometry.
+    WindowMargin GetEffectiveWindowMargin() const;
     void TryApplyPendingRestoreScroll();
     void RestoreFontReloadInPageScroll(int page, float ratio);
     bool ShouldSkipTocSelectionUpdate() const;

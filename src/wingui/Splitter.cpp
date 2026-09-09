@@ -141,6 +141,9 @@ LRESULT Splitter::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
             }
         }
         ReleaseCapture();
+        // onMove can perform a costly final EPUB pagination. Do not leave the
+        // resize cursor stuck on screen throughout that synchronous work.
+        SetCursorCached(IDC_ARROW);
         Splitter::MoveEvent arg;
         arg.w = this;
         arg.finishedDragging = true;
@@ -171,9 +174,7 @@ LRESULT Splitter::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
             arg.w = this;
             arg.finishedDragging = false;
             onMove.Call(&arg);
-            if (!arg.resizeAllowed) {
-                curId = IDC_NO;
-            } else if (!isLive) {
+            if (arg.resizeAllowed && !isLive) {
                 DrawResizeLine(hwnd, brush, type, true, true, prevResizeLinePos);
             }
         }
@@ -224,10 +225,8 @@ LRESULT Splitter::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
             rl.top = y;
             rl.bottom = y + lineSize;
         }
-        if (!hideVisual) {
-            AutoDeleteBrush brLine = CreateSolidBrush(ThemeSidebarSeparatorColor(state));
-            FillRect(hdc, &rl, brLine);
-        }
+        AutoDeleteBrush brLine = CreateSolidBrush(ThemeSidebarSeparatorColor(state));
+        FillRect(hdc, &rl, brLine);
         EndPaint(hwnd, &ps);
         return 0;
     }

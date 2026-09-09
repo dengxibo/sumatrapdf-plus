@@ -150,7 +150,10 @@ static void CenterSingleColumnPagesIfTheyFit(DisplayModel* dm, int columns, int&
     if (!dm || dm->viewPort.dx <= 0) {
         return;
     }
-    int inner = dm->viewPort.dx - dm->windowMargin.left - dm->windowMargin.right;
+    // Use the effective margin so Fit Width pages sit flush with the viewport
+    // edge instead of being re-centered into a windowMargin gutter.
+    WindowMargin em = dm->GetEffectiveWindowMargin();
+    int inner = dm->viewPort.dx - em.left - em.right;
     if (inner <= 0) {
         return;
     }
@@ -160,7 +163,7 @@ static void CenterSingleColumnPagesIfTheyFit(DisplayModel* dm, int columns, int&
     if (IsBookView(dm->GetDisplayMode()) && columns == 2) {
         PageInfo* p1 = dm->GetPageInfo(1);
         if (p1 && p1->isShown && p1->pos.dx > 0 && p1->pos.dx <= inner) {
-            p1->pos.x = dm->windowMargin.left + (inner - p1->pos.dx) / 2;
+            p1->pos.x = em.left + (inner - p1->pos.dx) / 2;
             if (p1->pos.x < 0) {
                 p1->pos.x = 0;
             }
@@ -182,7 +185,7 @@ static void CenterSingleColumnPagesIfTheyFit(DisplayModel* dm, int columns, int&
             continue;
         }
         if (pi->pos.dx <= inner) {
-            pi->pos.x = dm->windowMargin.left + (inner - pi->pos.dx) / 2;
+            pi->pos.x = em.left + (inner - pi->pos.dx) / 2;
             if (pi->pos.x < 0) {
                 pi->pos.x = 0;
             }
@@ -399,7 +402,10 @@ static bool RelayoutReflowIncremental(DisplayModel* dm, float newZoomVirtual, in
     dm->viewPort = Rect(dm->viewPort.TL(), dm->totalViewPortSize);
     dm->CalcZoomReal(newZoomVirtual);
 
-    int columnMaxWidth = dm->viewPort.dx - dm->windowMargin.left - dm->windowMargin.right;
+    // Use the effective margin so Fit Width on reflowable ebooks also sits
+    // flush with the viewport edge (no horizontal gutter around the column).
+    WindowMargin em = dm->GetEffectiveWindowMargin();
+    int columnMaxWidth = dm->viewPort.dx - em.left - em.right;
     if (columnMaxWidth <= 0) {
         return false;
     }
@@ -416,7 +422,7 @@ static bool RelayoutReflowIncremental(DisplayModel* dm, float newZoomVirtual, in
     }
     first->pos.dx = (int)(pageSize.dx * zoom + 0.499);
     first->pos.dy = (int)(pageSize.dy * zoom + 0.499);
-    first->pos.x = dm->windowMargin.left + (columnMaxWidth - first->pos.dx) / 2;
+    first->pos.x = em.left + (columnMaxWidth - first->pos.dx) / 2;
     first->pos.y = dm->windowMargin.top;
     // A leftover viewPort.x from an estimated/wide canvas (FXL cover vs
     // reflow placeholder) keeps the camera on the right even after the page
@@ -498,7 +504,10 @@ static bool ApplyPagesLayoutSyncBatched(DisplayModel* dm) {
         }
         from = dm->reflowLayoutValidUpto;
     }
-    int columnMaxWidth = dm->viewPort.dx - dm->windowMargin.left - dm->windowMargin.right;
+    // Use the effective margin so Fit Width on reflowable ebooks also computes
+    // the column width against the full viewport width (no horizontal gutter).
+    WindowMargin em = dm->GetEffectiveWindowMargin();
+    int columnMaxWidth = dm->viewPort.dx - em.left - em.right;
     if (columnMaxWidth > 0) {
         dm->reflowLayoutColumnWidth = columnMaxWidth;
     }
@@ -1558,8 +1567,12 @@ float DisplayModel::ZoomRealFromVirtualForPage(float zoomVirtual, int pageNo) co
         return 0;
     }
 
-    int areaForPagesDx = viewPort.dx - windowMargin.left - windowMargin.right;
-    int areaForPagesDy = viewPort.dy - windowMargin.top - windowMargin.bottom;
+    // Fit Width on single-column documents must compute zoom against the full
+    // viewport width (no horizontal gutter); use the effective margin so the
+    // page actually fills the pane instead of leaving a thin canvas strip.
+    WindowMargin em = GetEffectiveWindowMargin();
+    int areaForPagesDx = viewPort.dx - em.left - em.right;
+    int areaForPagesDy = viewPort.dy - em.top - em.bottom;
     if (areaForPagesDx <= 0 || areaForPagesDy <= 0) {
         return 0;
     }
@@ -1761,6 +1774,26 @@ float DisplayModel::GetZoomSafe(int pageNo) const {
     return getZoomSafe(const_cast<DisplayModel*>(this), pageNo, pageInfo);
 }
 
+bool DisplayModel::IsFlushFitWidth() const {
+    if (kZoomFitWidth != zoomVirtual) {
+        return false;
+    }
+    if (engine && engine->IsImageCollection()) {
+        return false;
+    }
+    int columns = ColumnsFromDisplayMode(GetDisplayMode());
+    return columns == 1;
+}
+
+WindowMargin DisplayModel::GetEffectiveWindowMargin() const {
+    WindowMargin m = windowMargin;
+    if (IsFlushFitWidth()) {
+        m.left = 0;
+        m.right = 0;
+    }
+    return m;
+}
+
 /* Given zoom and rotation, calculate the position of each page on a
    large sheet that is continuous view. Needs to be recalculated when:
      * zoom changes
@@ -1794,6 +1827,10 @@ RestartLayout:
     int currPosY = windowMargin.top;
     float currZoomReal = zoomReal;
     CalcZoomReal(newZoomVirtual);
+    // Fit Width on a single-column document must fill the viewport horizontally
+    // (no left/right gutter); compute the effective margin once per restart so
+    // all horizontal geometry below stays consistent.
+    WindowMargin em = GetEffectiveWindowMargin();
 
     int newViewPortOffsetX = 0;
     if (0 != currZoomReal && kInvalidZoom != currZoomReal) {
@@ -1851,8 +1888,8 @@ RestartLayout:
         //   scrollbars are being hidden or if `needHScroll` has already been
         //   set to true (i.e., the block has been processed)
         if ((!hideScrollbars && !useOverlayScrollbar) && (!needHScroll) &&
-            viewPort.dx < windowMargin.left + columnMaxWidth[0] +
-                              (columns == 2 ? pageSpacing.dx + columnMaxWidth[1] : 0) + windowMargin.right) {
+            viewPort.dx < em.left + columnMaxWidth[0] +
+                              (columns == 2 ? pageSpacing.dx + columnMaxWidth[1] : 0) + em.right) {
             needHScroll = true;
             viewPort.dy -= GetSystemMetrics(SM_CYHSCROLL);
             goto RestartLayout;
@@ -1894,8 +1931,8 @@ RestartLayout:
 
     // restart the layout if we detect we need to show scrollbars
     // (there are some edge cases we can't catch in the above loop)
-    int canvasDx = windowMargin.left + columnMaxWidth[0] + (columns == 2 ? pageSpacing.dx + columnMaxWidth[1] : 0) +
-                   windowMargin.right;
+    int canvasDx = em.left + columnMaxWidth[0] + (columns == 2 ? pageSpacing.dx + columnMaxWidth[1] : 0) +
+                   em.right;
     if ((!hideScrollbars && !useOverlayScrollbar) && (!needHScroll) && canvasDx > viewPort.dx) {
         needHScroll = true;
         viewPort.dy -= GetSystemMetrics(SM_CYHSCROLL);
@@ -1912,7 +1949,7 @@ RestartLayout:
 
     ReportIf(offX < 0);
     pageInARow = 0;
-    int pageOffX = offX + windowMargin.left;
+    int pageOffX = offX + em.left;
     int nPages2 = PageCount();
     for (int pageNo = 1; pageNo <= nPages2; ++pageNo) {
         if (!pagesInfo[pageNo - 1].isShown) {
@@ -1936,7 +1973,7 @@ RestartLayout:
         }
         // center the cover page over the first two spots in non-continuous mode
         if (IsBookView(GetDisplayMode()) && pageNo == 1 && !IsContinuous(GetDisplayMode())) {
-            pageInfo->pos.x = offX + windowMargin.left +
+            pageInfo->pos.x = offX + em.left +
                               (columnMaxWidth[0] + pageSpacing.dx + columnMaxWidth[1] - pageInfo->pos.dx) / 2;
         }
         // mirror the page layout when displaying a Right-to-Left document
@@ -1950,7 +1987,7 @@ RestartLayout:
         ReportIf(!(pageOffX >= 0 && pageInfo->pos.x >= 0));
 
         if (pageInARow == columns) {
-            pageOffX = offX + windowMargin.left;
+            pageOffX = offX + em.left;
             pageInARow = 0;
         }
     }
@@ -2535,7 +2572,7 @@ void DisplayModel::GoToPage(int pageNo, int scrollY, bool addNavPt, int scrollX)
             Point second = GetContentStart(lastPageNo);
             scrollY = std::min(scrollY, second.y);
         }
-        viewPort.x = scrollX + pageInfo->pos.x - windowMargin.left;
+        viewPort.x = scrollX + pageInfo->pos.x - GetEffectiveWindowMargin().left;
     } else if (-1 != scrollX) {
         viewPort.x = scrollX;
     } else if (!IsContinuous(GetDisplayMode())) {
@@ -2547,7 +2584,9 @@ void DisplayModel::GoToPage(int pageNo, int scrollY, bool addNavPt, int scrollX)
         if (kZoomFitPage == zoomVirtual || kZoomShrinkToFit == zoomVirtual) {
             viewPort.x = 0;
         } else if (firstPi) {
-            viewPort.x = firstPi->pos.x - windowMargin.left;
+            // Pages are positioned with the effective (Fit-Width-flushed) left
+            // margin; subtract the same value so the page's left edge is shown.
+            viewPort.x = firstPi->pos.x - GetEffectiveWindowMargin().left;
         } else {
             viewPort.x = 0;
         }

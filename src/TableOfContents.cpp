@@ -3128,7 +3128,12 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
     MainWindow* win = FindMainWindowByHwnd(ev->treeView->hwnd);
     DisplayModel* dm = win && win->ctrl ? win->ctrl->AsFixed() : nullptr;
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
-    if (gTocFastScrollHwnd && gTocFastScrollHwnd == ev->treeView->hwnd && !EngineIsProgressiveEbookLoading(engine)) {
+    // Hiding/restoring the native scrollbar during a sidebar resize can leave
+    // the thumb-track optimization active until a later SB_ENDSCROLL. Never
+    // fall back to native TreeView colors while resizing: that briefly exposes
+    // the system-blue selected/hot row in themed TOCs.
+    if (gTocFastScrollHwnd && gTocFastScrollHwnd == ev->treeView->hwnd && !IsSidebarSplitterLiveDrag() &&
+        !EngineIsProgressiveEbookLoading(engine)) {
         return;
     }
 
@@ -4553,6 +4558,11 @@ static bool TocTreeHandleMouse(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, 
 
 static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId, DWORD_PTR data) {
     MainWindow* win = (MainWindow*)data;
+    if ((msg == WM_LBUTTONDOWN || msg == WM_NCLBUTTONDOWN || msg == WM_MOUSEMOVE || msg == WM_NCMOUSEMOVE ||
+         msg == WM_SETCURSOR) &&
+        HandleSidebarSplitterHit(win, hwnd, msg, lp)) {
+        return msg == WM_SETCURSOR ? TRUE : 0;
+    }
     if (msg == WM_ERASEBKGND && TocSidebarShowEmptyHint(win)) {
         return 1;
     }
@@ -4634,9 +4644,12 @@ static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
             TocCalibClosePageEdit(true);
         }
         WORD code = LOWORD(wp);
-        if (code == SB_THUMBTRACK || code == SB_THUMBPOSITION) {
+        if (code == SB_THUMBTRACK && !IsSidebarSplitterLiveDrag()) {
             gTocFastScrollHwnd = hwnd;
-        } else if (code == SB_ENDSCROLL) {
+        } else {
+            // SB_THUMBPOSITION is the release/final-position notification.
+            // Some themed TreeViews don't follow it with SB_ENDSCROLL, which
+            // used to leave custom draw disabled and expose system-blue rows.
             if (gTocFastScrollHwnd == hwnd) {
                 gTocFastScrollHwnd = nullptr;
                 InvalidateRect(hwnd, nullptr, FALSE);
@@ -4667,6 +4680,12 @@ static LRESULT CALLBACK WndProcTocBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
     MainWindow* win = FindMainWindowByHwnd(hwnd);
     if (!win) {
         return DefSubclassProc(hwnd, msg, wp, lp);
+    }
+
+    if ((msg == WM_LBUTTONDOWN || msg == WM_NCLBUTTONDOWN || msg == WM_MOUSEMOVE || msg == WM_NCMOUSEMOVE ||
+         msg == WM_SETCURSOR) &&
+        HandleSidebarSplitterHit(win, hwnd, msg, lp)) {
+        return msg == WM_SETCURSOR ? TRUE : 0;
     }
 
     if (msg == WM_CONTEXTMENU && win->tocTreeView) {

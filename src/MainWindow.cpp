@@ -357,7 +357,11 @@ void MainWindow::UpdateCanvasSize() {
 
     // create a new output buffer and notify the model
     // about the change of the canvas size
-    delete buffer;
+    // Carry the previous frame into the new buffer, anchored to the edge that
+    // does not move (same rule as the live-drag presentation in Canvas.cpp),
+    // so a resize never flashes an empty canvas even when the document
+    // repaint is deferred or its renders are still pending.
+    DoubleBuffer* oldBuffer = buffer;
     buffer = new DoubleBuffer(hwndCanvas, canvasRc);
     // ShowScrollBar during a paint can recreate this buffer; fill so the next
     // blit is not uninitialized black.
@@ -365,8 +369,19 @@ void MainWindow::UpdateCanvasSize() {
         HDC bufDC = buffer->GetDC();
         if (bufDC) {
             FillRect(bufDC, canvasRc, ThemeMainWindowBackgroundColor());
+            if (oldBuffer && oldBuffer->HasBitmap() && !oldBuffer->rect.IsEmpty()) {
+                int dx = canvasRc.dx - oldBuffer->rect.dx;
+                int dstX = dx > 0 ? dx : 0;
+                int srcX = dx < 0 ? -dx : 0;
+                int w = std::min(canvasRc.dx - dstX, oldBuffer->rect.dx - srcX);
+                int h = std::min(canvasRc.dy, oldBuffer->rect.dy);
+                if (w > 0 && h > 0) {
+                    BitBlt(bufDC, dstX, 0, w, h, oldBuffer->GetDC(), srcX, 0, SRCCOPY);
+                }
+            }
         }
     }
+    delete oldBuffer;
     HomePageInvalidateScrollCache(this);
 
     if (IsDocLoaded()) {
