@@ -14,6 +14,9 @@ constexpr int kFrameResizeHitTest = 5;
 
 extern bool gRedrawLog;
 extern bool gOcrAutoBench;
+// automation hook: when set (env SUMATRA_COPY_BENCH=<path>), copy the
+// select-all text via the merged-copy path into this file and exit
+extern char* gCopyBenchOutPath;
 bool IsSidebarSplitterLiveDrag();
 bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM lp);
 

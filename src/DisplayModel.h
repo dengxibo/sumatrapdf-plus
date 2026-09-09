@@ -183,7 +183,7 @@ struct DisplayModel : DocController {
        kZoomFitWidth or kZoomFitContent, whose real value depends on draw area size */
     void RotateBy(int rotation);
 
-    char* GetTextInRegion(int pageNo, RectF region) const;
+    char* GetTextInRegion(int pageNo, RectF region, bool mergeLines = false) const;
     bool IsOverText(Point pt, bool loadText = false);
     // eagerLoadLinks loads and caches links on first hit test for a page.
     IPageElement* GetElementAtPos(Point pt, int* pageNoOut, bool eagerLoadLinks = false);

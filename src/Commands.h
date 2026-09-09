@@ -282,7 +282,8 @@ enum {
     CmdOcrFullDocumentModeAccurate = 471,
     CmdOcrReRecognizeAllPages = 472,
     CmdToggleOcrAutoSave = 473,
-    CmdNone = 474,
+    CmdToggleOcrCopyMerged = 474,
+    CmdNone = 475,
 
     /* range for file history */
     CmdFileHistoryFirst,

@@ -287,6 +287,7 @@ static SeqStrings gCommandNames =
     "CmdOcrFullDocumentModeAccurate\0"
     "CmdOcrReRecognizeAllPages\0"
     "CmdToggleOcrAutoSave\0"
+    "CmdToggleOcrCopyMerged\0"
     "CmdNone\0"
     "\0";
 
@@ -564,6 +565,7 @@ static i32 gCommandIds[] = {
     CmdOcrFullDocumentModeAccurate,
     CmdOcrReRecognizeAllPages,
     CmdToggleOcrAutoSave,
+    CmdToggleOcrCopyMerged,
     CmdNone,
 };
 
@@ -841,6 +843,7 @@ SeqStrings gCommandDescriptions =
     "Full-document OCR Mode: High Accuracy\0"
     "Recognize All Scanned Pages (Accurate)\0"
     "Toggle Auto-save After OCR\0"
+    "Toggle Paragraph-merged Copy of OCR Results\0"
     "Do nothing\0"
     "\0";
 // clang-format on

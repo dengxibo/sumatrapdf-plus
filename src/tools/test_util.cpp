@@ -19,6 +19,7 @@ extern void FileUtilTest();
 extern void HtmlPrettyPrintTest();
 extern void HtmlPullParser_UnitTests();
 extern void JsonTest();
+extern void OcrTextMerge_UnitTests();
 extern void SettingsUtilTest();
 extern void SimpleLogTest();
 extern void SquareTreeTest();
@@ -58,6 +59,7 @@ int main(int, char**) {
     HtmlPrettyPrintTest();
     HtmlPullParser_UnitTests();
     JsonTest();
+    OcrTextMerge_UnitTests();
     SettingsUtilTest();
     SimpleLogTest();
     SquareTreeTest();

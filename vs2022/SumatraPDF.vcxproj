@@ -1200,6 +1200,7 @@
     <ClInclude Include="..\src\WindowTab.h" />
     <ClInclude Include="..\src\OcrOnnx.h" />
     <ClInclude Include="..\src\OcrService.h" />
+    <ClInclude Include="..\src\OcrTextMerge.h" />
     <ClInclude Include="..\src\WordLookup.h" />
     <ClInclude Include="..\src\mui\Mui.h" />
     <ClInclude Include="..\src\mui\TextRender.h" />
@@ -1399,6 +1400,7 @@
     <ClCompile Include="..\src\WindowTab.cpp" />
     <ClCompile Include="..\src\OcrOnnx.cpp" />
     <ClCompile Include="..\src\OcrService.cpp" />
+    <ClCompile Include="..\src\OcrTextMerge.cpp" />
     <ClCompile Include="..\src\ExtractPdfToc.cpp" />
     <ClCompile Include="..\src\ExtractBookToc.cpp" />
     <ClCompile Include="..\src\TocCalib.cpp" />

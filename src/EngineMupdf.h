@@ -74,6 +74,10 @@ struct FzPageInfo {
     // Built lazily by ExtractPageText; dropped with the page cache.
     fz_stext_page* searchStext = nullptr;
 
+    // 0 unknown, 1 native text page, 2 scanned page dominated by a large image
+    // (likely an OCR text-layer source for paragraph-merged copy).
+    u8 scannedTextPage = 0;
+
     // Follow-theme direct: cached PdfDarkModeProbeFollowThemeScanPage (see FollowThemeScanProbe).
     u8 followThemeScanProbe = 0;
     // 0 unknown, 1 no, 2 yes — office-paper scan wants display-res binarize.
@@ -169,6 +173,12 @@ class EngineMupdf : public EngineBase {
     pdf_document* pdfdoc = nullptr;
     Vec<FzPageInfo*> pages;
     fz_outline* outline = nullptr;
+    // True when the document Info carries the OCR-save marker (saved searchable
+    // PDF produced by EngineMupdfSaveSearchablePdf): all pages with a text
+    // layer are treated as OCR pages for paragraph-merged copy.
+    bool ocrSavedTextMarker = false;
+    // per engine page (1-based index - 1): 0 unknown, 1 native text, 2 scanned
+    Vec<u8> scannedPageCache;
     // Previous outline trees still referenced by TocItem dests until GetToc/DiscardTocTree.
     Vec<fz_outline*> retiredOutlines;
     fz_outline* attachments = nullptr;
@@ -323,6 +333,11 @@ class EngineMupdf : public EngineBase {
 };
 
 EngineMupdf* AsEngineMupdf(EngineBase* engine);
+
+// True when pageNo (1-based engine page) is a scanned page carrying an OCR
+// text layer: the document was saved by the OCR save (Info marker) or the
+// page is dominated by a large image (same heuristic as the save path).
+bool EngineMupdfIsScannedTextPage(EngineBase* engine, int pageNo);
 
 // set while the application is quitting; EngineMupdf skips slow per-page teardown
 extern bool gEngineMupdfFastShutdown;

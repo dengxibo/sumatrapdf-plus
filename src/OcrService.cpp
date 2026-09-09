@@ -27,6 +27,7 @@
 #include "Translations.h"
 #include "OcrOnnx.h"
 #include "OcrService.h"
+#include "OcrTextMerge.h"
 #include "ExtractPdfToc.h"
 #include "Selection.h"
 #include "SelectionToolbar.h"
@@ -1404,8 +1405,31 @@ static bool OcrShouldJoinDocLines(const OcrBox& a, const OcrBox& b, int bodyLeft
     if (OcrStartsLikeGbtHeading(a.text) && a.rect.dx < measure * 3 / 4) {
         return false;
     }
+    // A long centered title wraps over 2-3 lines; join them so a copied title
+    // is one line (file-name friendly). Guards keep "body line -> centered
+    // heading" a new block: no terminal punctuation on the previous line,
+    // similar glyph height (same font size) and a normal line gap. Numbered
+    // headings are rejected above.
     int aRight = a.rect.x + a.rect.dx;
     bool aFull = aRight >= bodyRight - em;
+    {
+        int aLeftPad = a.rect.x - bodyLeft;
+        int aRightPad = bodyRight - aRight;
+        bool aCentered = !aFull && aLeftPad > em * 3 / 2 && aRightPad > em * 3 / 2 && a.rect.dx < measure * 2 / 3;
+        int bLeftPad = b.rect.x - bodyLeft;
+        int bRightPad = bodyRight - (b.rect.x + b.rect.dx);
+        bool bCentered = bLeftPad > em * 2 && bRightPad > em * 2 && b.rect.dx < measure * 2 / 3;
+        if ((aCentered || aFull) && bCentered && !OcrTextEndsWithTerminalPunct(a.text)) {
+            int dyA = a.rect.dy > 0 ? a.rect.dy : em;
+            int dyB = b.rect.dy > 0 ? b.rect.dy : em;
+            int dyDiff = dyA > dyB ? dyA - dyB : dyB - dyA;
+            int gap = b.rect.y - (a.rect.y + a.rect.dy);
+            bool gapOk = gap >= -em / 2 && (gapMed <= 0 || gap <= gapMed * 2 + em / 2);
+            if (dyDiff * 4 <= dyA && gapOk) {
+                return true;
+            }
+        }
+    }
     if (!aFull) {
         return false;
     }

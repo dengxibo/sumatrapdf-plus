@@ -147,6 +147,11 @@ OcrAutoSave = false
 ; Valid values: fast, accurate (introduced in version 3.8)
 OcrFullDocumentMode = fast
 
+; if true, copy of OCR results merges soft-wrapped lines into coherent
+; paragraphs instead of following the original page layout (introduced in
+; version 3.8)
+OcrCopyMerged = true
+
 ; Valid values: conservative, standard, detailed (introduced in version 3.8)
 ExtractPdfTocMode = standard
 

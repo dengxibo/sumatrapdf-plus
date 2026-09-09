@@ -168,11 +168,16 @@ bool gRedrawLog = false;
 // confirms the searchable-PDF save prompts and triggers "recognize all scanned
 // pages" (with auto-save) right after a document loads.
 bool gOcrAutoBench = false;
+// SUMATRA_COPY_BENCH=<file>: automation hook. After a document loads, run
+// select-all and the copy path (with paragraph merging per settings) and write
+// the UTF-8 result to the file, then quit.
+char* gCopyBenchOutPath = nullptr;
 
 static void RelayoutFrame(MainWindow* win, bool updateToolbars = true, int sidebarDx = -1);
 static bool gSidebarSplitterWrapSuspended = false;
 static bool gSidebarWidthDragScrollbarsHidden = false;
 static constexpr UINT WM_SIDEBAR_RELAYOUT = WM_APP + 0x423;
+static constexpr UINT WM_COPY_BENCH_RUN = WM_APP + 0x424;
 static void UpdateOverlayScrollbarPositions(MainWindow* win);
 static void SyncCanvasScrollBarTheme(MainWindow* win);
 static void BeginFrameRedrawSuppression(MainWindow* win);
@@ -1864,6 +1869,16 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         if (!gOcrAutoBenchPosted) {
             gOcrAutoBenchPosted = true;
             PostMessage(win->hwndFrame, WM_COMMAND, CmdOcrDocument, 0);
+        }
+    }
+    if (gCopyBenchOutPath) {
+        // automation hook: exercise the copy path once per process. Deferred to
+        // the message loop so the page layout is finished by the time the
+        // select-all runs.
+        static bool gCopyBenchPosted = false;
+        if (!gCopyBenchPosted) {
+            gCopyBenchPosted = true;
+            PostMessageW(win->hwndFrame, WM_COPY_BENCH_RUN, 0, 0);
         }
     }
     EngineMupdfSetReflowLoadWhenForeground(tab->GetEngine(), true);
@@ -8641,6 +8656,30 @@ static void RunScheduledSidebarRelayout(MainWindow* win) {
     }
 }
 
+// SUMATRA_COPY_BENCH=<file> automation: select all text, run it through the
+// copy path (paragraph merging per settings), write the UTF-8 result to the
+// file and quit. Dispatched from the message loop after the document layout.
+static void RunCopyBench(MainWindow* win) {
+    if (!win || !gCopyBenchOutPath) {
+        return;
+    }
+    static bool gCopyBenchDone = false;
+    if (gCopyBenchDone) {
+        return;
+    }
+    gCopyBenchDone = true;
+    OnSelectAll(win);
+    bool isTextOnlySelection = false;
+    WindowTab* tab = win->CurrentTab();
+    TempStr selText =
+        tab ? GetSelectedTextTemp(tab, "\r\n", isTextOnlySelection, gGlobalPrefs->ocrCopyMerged) : nullptr;
+    if (selText) {
+        file::WriteFile(gCopyBenchOutPath, selText);
+        str::Free(selText);
+    }
+    PostMessageW(win->hwndFrame, WM_CLOSE, 0, 0);
+}
+
 static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
     Splitter* splitter = ev->w;
     HWND hwnd = splitter->hwnd;
@@ -10717,6 +10756,13 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         case CmdToggleOcrAutoSave:
             if (gGlobalPrefs) {
                 gGlobalPrefs->ocrAutoSave = !gGlobalPrefs->ocrAutoSave;
+                SaveSettings();
+            }
+            break;
+
+        case CmdToggleOcrCopyMerged:
+            if (gGlobalPrefs) {
+                gGlobalPrefs->ocrCopyMerged = !gGlobalPrefs->ocrCopyMerged;
                 SaveSettings();
             }
             break;
@@ -14599,6 +14645,12 @@ static void ShowOcrToolbarMenu(MainWindow* win, NMTOOLBARW* nmtb) {
     }
     AppendMenuW(menu, autoSaveFlags, CmdToggleOcrAutoSave, ToWStrTemp(_TRA("Auto-save")));
 
+    UINT copyMergedFlags = MF_STRING;
+    if (gGlobalPrefs && gGlobalPrefs->ocrCopyMerged) {
+        copyMergedFlags |= MF_CHECKED;
+    }
+    AppendMenuW(menu, copyMergedFlags, CmdToggleOcrCopyMerged, ToWStrTemp(_TRA("Paragraph-merged copy")));
+
     SetForegroundWindow(win->hwndFrame);
     UINT selected = (UINT)TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, rc.left, rc.bottom, 0,
                                          win->hwndFrame, nullptr);
@@ -15025,6 +15077,12 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
         case WM_SIDEBAR_RELAYOUT:
             if (win) {
                 RunScheduledSidebarRelayout(win);
+            }
+            return 0;
+
+        case WM_COPY_BENCH_RUN:
+            if (win) {
+                RunCopyBench(win);
             }
             return 0;
 

@@ -137,6 +137,9 @@ const char* EngineMupdfGetPassword(EngineBase* engine);
 bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErrorCb& showErrorFunc,
                             char** overwriteTempOut = nullptr);
 bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* path, char** errOut);
+// True when pageNo (1-based) is a scanned page carrying an OCR text layer
+// (Info marker from our OCR save, or a large-image page heuristic).
+bool EngineMupdfIsScannedTextPage(EngineBase* engine, int pageNo);
 // Set this page's PDF /Rotate from GetOcrPageRotate (live doc). Returns true if changed.
 bool EngineMupdfEnsurePageOcrRotate(EngineBase* engine, int pageNo);
 // Remove this page's PDF /Rotate. Used to repair a previously baked OCR false positive.

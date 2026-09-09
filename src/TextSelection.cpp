@@ -1,4 +1,4 @@
-/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
+﻿/* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
 #include "utils/BaseUtil.h"
@@ -9,6 +9,8 @@
 
 #include "DocController.h"
 #include "EngineBase.h"
+#include "EngineAll.h"
+#include "OcrTextMerge.h"
 #include "Selection.h"
 #include "TextSelection.h"
 
@@ -278,6 +280,11 @@ static bool PageUsesVerticalGlyphLayout(TextSelection* ts, int pageNo) {
     return printable >= 6 && nlStacked * 3 >= printable;
 }
 
+bool PageHasVerticalGlyphLayout(EngineBase* engine, int pageNo) {
+    TextSelection ts(engine);
+    return PageUsesVerticalGlyphLayout(&ts, pageNo);
+}
+
 static int CompareGlyphVisualOrder(TextSelection* ts, int pageNo, bool vertical, int a, int b) {
     int textLen = 0;
     Rect* coords = nullptr;
@@ -316,8 +323,9 @@ static int CompareGlyphVisualOrder(TextSelection* ts, int pageNo, bool vertical,
     return 0;
 }
 
-static void AppendPageGlyphsInVisualOrder(TextSelection* ts, int pageNo, int fromGlyph, int toGlyph, StrVec& lines,
-                                          bool vertical) {
+// Glyphs of [fromGlyph, toGlyph) that carry ink, sorted in visual reading order.
+static void CollectPageGlyphsInVisualOrder(TextSelection* ts, int pageNo, int fromGlyph, int toGlyph, Vec<int>& glyphs,
+                                           bool vertical) {
     int textLen = 0;
     Rect* coords = nullptr;
     const WCHAR* text = ts->engine->GetTextForPage(pageNo, &textLen, &coords);
@@ -330,7 +338,6 @@ static void AppendPageGlyphsInVisualOrder(TextSelection* ts, int pageNo, int fro
         return;
     }
 
-    Vec<int> glyphs;
     for (int i = fromGlyph; i < toGlyph; i++) {
         if (!coords[i].dx && !coords[i].dy) {
             continue;
@@ -352,6 +359,27 @@ static void AppendPageGlyphsInVisualOrder(TextSelection* ts, int pageNo, int fro
                 glyphs[j] = tmp;
             }
         }
+    }
+}
+
+static void AppendPageGlyphsInVisualOrder(TextSelection* ts, int pageNo, int fromGlyph, int toGlyph, StrVec& lines,
+                                          bool vertical) {
+    int textLen = 0;
+    Rect* coords = nullptr;
+    const WCHAR* text = ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!text || !coords || textLen <= 0) {
+        return;
+    }
+    fromGlyph = limitValue(fromGlyph, 0, textLen);
+    toGlyph = limitValue(toGlyph, 0, textLen);
+    if (fromGlyph >= toGlyph) {
+        return;
+    }
+
+    Vec<int> glyphs;
+    CollectPageGlyphsInVisualOrder(ts, pageNo, fromGlyph, toGlyph, glyphs, vertical);
+    if (glyphs.Size() == 0) {
+        return;
     }
 
     for (int i = 0; i < glyphs.Size(); i++) {
@@ -880,7 +908,8 @@ static bool GlyphJumpsToNextBandLine(const Rect& band, const Rect& c) {
     return yOverlap * 10 < minDy * 3;
 }
 
-static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length, StrVec* lines = nullptr) {
+static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length, StrVec* lines = nullptr,
+                            Vec<Rect>* lineBboxes = nullptr) {
     int len;
     Rect* coords;
     const WCHAR* text = ts->engine->GetTextForPage(pageNo, &len, &coords);
@@ -938,6 +967,9 @@ static void FillResultRects(TextSelection* ts, int pageNo, int glyph, int length
         if (lines) {
             char* s = ToUtf8Temp(text + (c0 - coords), c - c0);
             lines->Append(s);
+            if (lineBboxes) {
+                lineBboxes->Append(bbox);
+            }
             continue;
         }
 
@@ -1246,9 +1278,110 @@ void TextSelection::CopySelection(TextSelection* orig) {
     SelectUpTo(orig->endPage, orig->endGlyph);
 }
 
+// Fast path for pages with in-session OCR cache: the cached text already has
+// paragraph structure — the zero-width '\n' glyphs mark true paragraph breaks
+// (OcrShouldJoinDocLines joined soft-wrapped lines at recognition time). Each
+// chunk between breaks is one already-merged paragraph line.
+static void AppendCachedOcrParagraphLines(TextSelection* ts, int pageNo, int fromGlyph, int toGlyph, StrVec& lines) {
+    int textLen = 0;
+    Rect* coords = nullptr;
+    const WCHAR* text = ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (!text || !coords || textLen <= 0) {
+        return;
+    }
+    fromGlyph = limitValue(fromGlyph, 0, textLen);
+    toGlyph = limitValue(toGlyph, 0, textLen);
+    if (fromGlyph >= toGlyph) {
+        return;
+    }
+    int segStart = fromGlyph;
+    for (int i = fromGlyph; i <= toGlyph; i++) {
+        bool isBreak = i < toGlyph && text[i] == '\n' && !coords[i].x && !coords[i].dx;
+        if (!isBreak) {
+            continue;
+        }
+        if (i > segStart) {
+            lines.Append(ToUtf8Temp(text + segStart, i - segStart));
+        }
+        segStart = i + 1;
+    }
+}
+
+// Re-opened searchable PDF (no in-session cache): collect layout lines with
+// their bboxes, then merge soft-wrapped lines back into paragraphs. Vertical
+// pages band glyphs into columns (reading order, right to left) first.
+static void AppendMergedScannedPageLines(TextSelection* ts, int pageNo, int fromGlyph, int toGlyph, StrVec& lines) {
+    bool vertical = PageUsesVerticalGlyphLayout(ts, pageNo);
+    if (!vertical) {
+        StrVec rawLines;
+        Vec<Rect> lineBoxes;
+        FillResultRects(ts, pageNo, fromGlyph, toGlyph - fromGlyph, &rawLines, &lineBoxes);
+        int n = std::min(rawLines.Size(), lineBoxes.Size());
+        if (n == 0) {
+            return;
+        }
+        Vec<OcrMergeLine> mls;
+        for (int i = 0; i < n; i++) {
+            OcrMergeLine ml;
+            ml.text = rawLines.At(i);
+            ml.bbox = lineBoxes.At(i);
+            mls.Append(ml);
+        }
+        OcrMergeLayoutLines(lines, mls, false);
+        return;
+    }
+
+    Vec<int> glyphs;
+    CollectPageGlyphsInVisualOrder(ts, pageNo, fromGlyph, toGlyph, glyphs, true);
+    int textLen = 0;
+    Rect* coords = nullptr;
+    const WCHAR* text = ts->engine->GetTextForPage(pageNo, &textLen, &coords);
+    if (glyphs.Size() == 0 || !text || !coords) {
+        return;
+    }
+    Vec<OcrMergeGlyph> mgs;
+    for (int gi = 0; gi < glyphs.Size(); gi++) {
+        int g = glyphs.At(gi);
+        OcrMergeGlyph mg;
+        mg.ch = text[g];
+        mg.bbox = ts->engine->Transform(ToRectF(coords[g]), pageNo, 1.0, 0);
+        mgs.Append(mg);
+    }
+    OcrMergeVerticalGlyphs(lines, mgs);
+}
+
 static WCHAR* ExtractTextFromGlyphRange(TextSelection* ts, int fromPage, int fromGlyph, int toPage, int toGlyph,
-                                        const char* lineSep) {
+                                        const char* lineSep, bool mergeLines) {
     StrVec lines;
+
+    if (mergeLines) {
+        for (int page = fromPage; page <= toPage; page++) {
+            int textLen;
+            ts->engine->GetTextForPage(page, &textLen);
+            int glyph = page == fromPage ? fromGlyph : 0;
+            int length = (page == toPage ? toGlyph : textLen) - glyph;
+            if (length <= 0) {
+                continue;
+            }
+            if (ts->engine->HasCachedOcrText(page)) {
+                // paragraph structure comes straight from the OCR cache
+                AppendCachedOcrParagraphLines(ts, page, glyph, glyph + length, lines);
+                continue;
+            }
+            if (EngineMupdfIsScannedTextPage(ts->engine, page)) {
+                AppendMergedScannedPageLines(ts, page, glyph, glyph + length, lines);
+                continue;
+            }
+            // native text page: preserve the original line layout
+            if (PageUsesVerticalGlyphLayout(ts, page)) {
+                AppendPageGlyphsInVisualOrder(ts, page, glyph, glyph + length, lines, true);
+            } else {
+                FillResultRects(ts, page, glyph, length, &lines);
+            }
+        }
+        TempStr res = JoinTemp(&lines, lineSep);
+        return ToWStr(res);
+    }
 
     bool vertical = PageUsesVerticalGlyphLayout(ts, fromPage);
     if (vertical) {
@@ -1307,10 +1440,10 @@ static WCHAR* ExtractTextFromGlyphRange(TextSelection* ts, int fromPage, int fro
     return ToWStr(res);
 }
 
-WCHAR* TextSelection::ExtractText(const char* lineSep) {
+WCHAR* TextSelection::ExtractText(const char* lineSep, bool mergeLines) {
     int fromPage, fromGlyph, toPage, toGlyph;
     GetGlyphRange(&fromPage, &fromGlyph, &toPage, &toGlyph);
-    return ExtractTextFromGlyphRange(this, fromPage, fromGlyph, toPage, toGlyph, lineSep);
+    return ExtractTextFromGlyphRange(this, fromPage, fromGlyph, toPage, toGlyph, lineSep, mergeLines);
 }
 
 void TextSelection::GetGlyphRange(int* fromPage, int* fromGlyph, int* toPage, int* toGlyph) const {

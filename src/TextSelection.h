@@ -35,7 +35,7 @@ struct TextSelection {
     void SelectGlyphRange(int pageNo, int startGlyph, int endGlyph);
     char* ExtractWordAt(int pageNo, double x, double y);
     void CopySelection(TextSelection* orig);
-    WCHAR* ExtractText(const char* lineSep);
+    WCHAR* ExtractText(const char* lineSep, bool mergeLines = false);
     void Reset();
 
     TextSel result{};
@@ -48,3 +48,5 @@ bool isCjkWordChar(WCHAR c);
 bool isWordChar(WCHAR c);
 bool isWordChar(int codepoint);
 bool isNonCjkWordChar(WCHAR c);
+// true when the page's glyphs are stacked in vertical columns (vertical layout)
+bool PageHasVerticalGlyphLayout(EngineBase* engine, int pageNo);

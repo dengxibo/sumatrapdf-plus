@@ -889,6 +889,15 @@ const globalPrefs: Field[] = [
     ),
     "Valid values: fast, accurate",
   ),
+  setVersion(
+    mkField(
+      "OcrCopyMerged",
+      Bool,
+      true,
+      "if true, copy of OCR results merges soft-wrapped lines into coherent paragraphs instead of following the original page layout",
+    ),
+    "3.8",
+  ),
   setDoc(
     setExpert(
       setVersion(

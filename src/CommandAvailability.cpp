@@ -469,7 +469,8 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         return MapForSurface(CommandVisibility::Show, surface);
     }
 
-    if ((cmdId == CmdToggleAutoOcr || cmdId == CmdToggleOcrAutoSave) && !ctx.isDocLoaded) {
+    if ((cmdId == CmdToggleAutoOcr || cmdId == CmdToggleOcrAutoSave || cmdId == CmdToggleOcrCopyMerged) &&
+        !ctx.isDocLoaded) {
         return CommandVisibility::Disable;
     }
 
@@ -567,7 +568,8 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
     }
 
     if (cmdId == CmdOcrCurrentPage || cmdId == CmdOcrDocument || cmdId == CmdOcrReRecognizeAllPages ||
-        cmdId == CmdToggleAutoOcr || cmdId == CmdToggleOcrAutoSave || cmdId == CmdOcrRegion || cmdId == CmdOcrCancel) {
+        cmdId == CmdToggleAutoOcr || cmdId == CmdToggleOcrAutoSave || cmdId == CmdToggleOcrCopyMerged ||
+        cmdId == CmdOcrRegion || cmdId == CmdOcrCancel) {
         if (ctx.engineKind != kindEngineMupdf && ctx.engineKind != kindEngineDjVu &&
             ctx.engineKind != kindEngineImage && ctx.engineKind != kindEngineImageDir &&
             ctx.engineKind != kindEngineComicBooks && ctx.engineKind != kindEnginePostScript) {

@@ -1525,6 +1525,13 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
         }
     }
     gOcrAutoBench = GetEnvironmentVariableA("SUMATRA_OCR_AUTO_BENCH", nullptr, 0) > 0;
+    {
+        char copyBenchPath[MAX_PATH]{};
+        if (GetEnvironmentVariableA("SUMATRA_COPY_BENCH", copyBenchPath, dimof(copyBenchPath)) > 0 &&
+            copyBenchPath[0]) {
+            gCopyBenchOutPath = str::Dup(copyBenchPath);
+        }
+    }
     if (flags.log && !noLogHere) {
         if (flags.logFile) {
             logFilePath = flags.logFile;

@@ -32759,6 +32759,10 @@ tw:開關自動 OCR
 cn:取消 OCR
 tw:取消 OCR
 
+:Paragraph-merged copy
+cn:段落合并复制
+tw:段落合併複製
+
 :Save as searchable PDF...
 cn:保存为可搜索 PDF...
 tw:儲存為可搜尋 PDF...

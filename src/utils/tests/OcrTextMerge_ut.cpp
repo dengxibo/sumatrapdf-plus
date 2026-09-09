@@ -1,0 +1,366 @@
+/* Copyright 2026 the SumatraPDF project authors (see AUTHORS file).
+   License: GPLv3 */
+
+#include "utils/BaseUtil.h"
+#include "OcrTextMerge.h"
+#include "utils/UtAssert.h"
+
+static void AddLine(Vec<OcrMergeLine>& lines, const char* text, int x, int y, int dx, int dy) {
+    OcrMergeLine l;
+    l.text = text;
+    l.bbox = Rect(x, y, dx, dy);
+    lines.Append(l);
+}
+
+static void ExpectParas(StrVec& out, const char* p1, const char* p2 = nullptr, const char* p3 = nullptr) {
+    int want = 1;
+    if (p2) {
+        want++;
+    }
+    if (p3) {
+        want++;
+    }
+    utassert(out.Size() == want);
+    utassert(str::Eq(out.At(0), p1));
+    if (p2) {
+        utassert(str::Eq(out.At(1), p2));
+    }
+    if (p3) {
+        utassert(str::Eq(out.At(2), p3));
+    }
+}
+
+static void TerminalPunctTests() {
+    utassert(OcrTextEndsWithTerminalPunct(nullptr) == false);
+    utassert(OcrTextEndsWithTerminalPunct("") == false);
+    utassert(OcrTextEndsWithTerminalPunct("\xe6\xb1\x89\xe5\xad\x97") == false); // 汉字
+    utassert(OcrTextEndsWithTerminalPunct("\xe6\x96\x87\xe3\x80\x82"));          // 文。
+    utassert(OcrTextEndsWithTerminalPunct("\xe6\x96\x87\xef\xbc\x81"));          // 文！
+    utassert(OcrTextEndsWithTerminalPunct("\xe6\x96\x87\xef\xbc\x9f"));          // 文？
+    utassert(OcrTextEndsWithTerminalPunct("\xe6\x96\x87\xef\xbc\x9b"));          // 文；
+    utassert(OcrTextEndsWithTerminalPunct("\xe2\x80\xa6\xe2\x80\xa6"));          // ……
+    utassert(OcrTextEndsWithTerminalPunct("done."));
+    utassert(OcrTextEndsWithTerminalPunct("really?"));
+    utassert(OcrTextEndsWithTerminalPunct("no!"));
+    utassert(OcrTextEndsWithTerminalPunct("title:"));
+    utassert(OcrTextEndsWithTerminalPunct("text ") == false);
+    utassert(OcrTextEndsWithTerminalPunct("\xe6\x96\x87\xe5\xad\x97 ") == false);
+}
+
+static void EmptyAndSingleTests() {
+    {
+        Vec<OcrMergeLine> lines;
+        StrVec out;
+        OcrMergeLayoutLines(out, lines, false);
+        utassert(out.Size() == 0);
+    }
+    {
+        Vec<OcrMergeLine> lines;
+        AddLine(lines, "\xe5\x8d\x95\xe8\xa1\x8c", 100, 100, 400, 16); // 单行
+        StrVec out;
+        OcrMergeLayoutLines(out, lines, false);
+        ExpectParas(out, "\xe5\x8d\x95\xe8\xa1\x8c");
+    }
+    {
+        // lines with empty / null text are skipped
+        Vec<OcrMergeLine> lines;
+        AddLine(lines, "", 100, 100, 400, 16);
+        AddLine(lines, nullptr, 100, 120, 400, 16);
+        StrVec out;
+        OcrMergeLayoutLines(out, lines, false);
+        utassert(out.Size() == 0);
+    }
+}
+
+// soft-wrapped body lines: full lines plus a short last line at the left margin
+static void SoftWrapMergeTest() {
+    Vec<OcrMergeLine> lines;
+    AddLine(lines,
+            "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe8\x90\xbd\xe7\x9a\x84\xe7\xac\xac\xe4\xb8\x80\xe8\xa1\x8c\xe5\x86"
+            "\x85\xe5\xae\xb9",
+            100, 100, 400, 16);
+    AddLine(
+        lines,
+        "\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c\xe7\xbb\xa7\xe7\xbb\xad\xe5\x90\x8c\xe4\xb8\x80\xe5\x8f\xa5\xe8\xaf\x9d",
+        100, 120, 400, 16);
+    AddLine(lines, "\xe7\xac\xac\xe4\xb8\x89\xe8\xa1\x8c\xe8\xbf\x98\xe6\x98\xaf\xe5\x90\x8c\xe4\xb8\x80\xe6\xae\xb5",
+            100, 140, 250, 16);
+    StrVec out;
+    OcrMergeLayoutLines(out, lines, false);
+    ExpectParas(
+        out,
+        "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe8\x90\xbd\xe7\x9a\x84\xe7\xac\xac\xe4\xb8\x80\xe8\xa1\x8c"
+        "\xe5\x86\x85\xe5\xae\xb9"
+        "\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c\xe7\xbb\xa7\xe7\xbb\xad\xe5\x90\x8c\xe4\xb8\x80\xe5\x8f\xa5\xe8\xaf\x9d"
+        "\xe7\xac\xac\xe4\xb8\x89\xe8\xa1\x8c\xe8\xbf\x98\xe6\x98\xaf\xe5\x90\x8c\xe4\xb8\x80\xe6\xae\xb5");
+}
+
+// first-line indent starts a new paragraph
+static void IndentBreakTest() {
+    Vec<OcrMergeLine> lines;
+    AddLine(lines, "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe5\x86\x85\xe5\xae\xb9\xe7\xac\xac\xe4\xb8\x80\xe8\xa1\x8c",
+            100, 100, 400, 16);
+    AddLine(lines, "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe5\x86\x85\xe5\xae\xb9\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c",
+            100, 120, 400, 16);
+    AddLine(lines, "\xe7\xac\xac\xe4\xba\x8c\xe6\xae\xb5\xe6\x9c\x89\xe9\xa6\x96\xe8\xa1\x8c\xe7\xbc\xa9\xe8\xbf\x9b",
+            132, 140, 368, 16);
+    AddLine(lines, "\xe7\xac\xac\xe4\xba\x8c\xe6\xae\xb5\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c\xe6\x96\x87\xe6\x9c\xac",
+            100, 160, 400, 16);
+    StrVec out;
+    OcrMergeLayoutLines(out, lines, false);
+    ExpectParas(out,
+                "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe5\x86\x85\xe5\xae\xb9\xe7\xac\xac\xe4\xb8\x80\xe8\xa1\x8c"
+                "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe5\x86\x85\xe5\xae\xb9\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c",
+                "\xe7\xac\xac\xe4\xba\x8c\xe6\xae\xb5\xe6\x9c\x89\xe9\xa6\x96\xe8\xa1\x8c\xe7\xbc\xa9\xe8\xbf\x9b"
+                "\xe7\xac\xac\xe4\xba\x8c\xe6\xae\xb5\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c\xe6\x96\x87\xe6\x9c\xac");
+}
+
+// sentence-final punctuation always breaks
+static void TerminalPunctBreakTest() {
+    Vec<OcrMergeLine> lines;
+    AddLine(lines, "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe5\x88\xb0\xe6\xad\xa4\xe7\xbb\x93\xe6\x9d\x9f\xe3\x80\x82",
+            100, 100, 400, 16);
+    AddLine(lines, "\xe7\xac\xac\xe4\xba\x8c\xe6\xae\xb5\xe4\xbb\x8e\xe8\xbf\x99\xe9\x87\x8c\xe5\xbc\x80\xe5\xa7\x8b",
+            100, 120, 400, 16);
+    StrVec out;
+    OcrMergeLayoutLines(out, lines, false);
+    ExpectParas(out, "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe5\x88\xb0\xe6\xad\xa4\xe7\xbb\x93\xe6\x9d\x9f\xe3\x80\x82",
+                "\xe7\xac\xac\xe4\xba\x8c\xe6\xae\xb5\xe4\xbb\x8e\xe8\xbf\x99\xe9\x87\x8c\xe5\xbc\x80\xe5\xa7\x8b");
+}
+
+// a vertical gap much larger than the body line pitch breaks
+static void LargeGapBreakTest() {
+    Vec<OcrMergeLine> lines;
+    AddLine(lines, "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe7\xac\xac\xe4\xb8\x80\xe8\xa1\x8c", 100, 100, 400, 16);
+    AddLine(lines, "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c", 100, 120, 400, 16);
+    AddLine(lines, "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe7\xac\xac\xe4\xb8\x89\xe8\xa1\x8c", 100, 140, 400, 16);
+    AddLine(lines, "\xe7\xac\xac\xe4\xba\x8c\xe6\xae\xb5\xe7\xac\xac\xe4\xb8\x80\xe8\xa1\x8c", 100, 180, 400, 16);
+    StrVec out;
+    OcrMergeLayoutLines(out, lines, false);
+    ExpectParas(out,
+                "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe7\xac\xac\xe4\xb8\x80\xe8\xa1\x8c"
+                "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c"
+                "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe7\xac\xac\xe4\xb8\x89\xe8\xa1\x8c",
+                "\xe7\xac\xac\xe4\xba\x8c\xe6\xae\xb5\xe7\xac\xac\xe4\xb8\x80\xe8\xa1\x8c");
+}
+
+// centered short rows form a title paragraph of their own
+static void CenteredTitleTwoLinesTest() {
+    Vec<OcrMergeLine> lines;
+    AddLine(lines,
+            "\xe8\xbf\x99\xe6\x98\xaf\xe4\xb8\x80\xe4\xb8\xaa\xe6\xaf\x94\xe8\xbe\x83\xe9\x95\xbf\xe7\x9a\x84\xe6\x96"
+            "\x87\xe6\xa1\xa3\xe4\xb8\xbb\xe6\xa0\x87\xe9\xa2\x98",
+            175, 100, 250, 20);
+    AddLine(
+        lines,
+        "\xe4\xbb\xa5\xe5\x8f\x8a\xe5\xae\x83\xe7\x9a\x84\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c\xe6\x96\x87\xe5\xad\x97",
+        175, 124, 250, 20);
+    AddLine(
+        lines,
+        "\xe6\xad\xa3\xe6\x96\x87\xe7\xac\xac\xe4\xb8\x80\xe8\xa1\x8c\xe5\x86\x85\xe5\xae\xb9\xe6\x96\x87\xe5\xad\x97",
+        100, 160, 400, 16);
+    AddLine(
+        lines,
+        "\xe6\xad\xa3\xe6\x96\x87\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c\xe5\x86\x85\xe5\xae\xb9\xe6\x96\x87\xe5\xad\x97",
+        100, 180, 400, 16);
+    AddLine(lines, "\xe6\xad\xa3\xe6\x96\x87\xe7\xac\xac\xe4\xb8\x89\xe8\xa1\x8c", 100, 200, 200, 16);
+    StrVec out;
+    OcrMergeLayoutLines(out, lines, false);
+    ExpectParas(
+        out,
+        "\xe8\xbf\x99\xe6\x98\xaf\xe4\xb8\x80\xe4\xb8\xaa\xe6\xaf\x94\xe8\xbe\x83\xe9\x95\xbf\xe7\x9a\x84\xe6\x96\x87"
+        "\xe6\xa1\xa3\xe4\xb8\xbb\xe6\xa0\x87\xe9\xa2\x98"
+        "\xe4\xbb\xa5\xe5\x8f\x8a\xe5\xae\x83\xe7\x9a\x84\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c\xe6\x96\x87\xe5\xad\x97",
+        "\xe6\xad\xa3\xe6\x96\x87\xe7\xac\xac\xe4\xb8\x80\xe8\xa1\x8c\xe5\x86\x85\xe5\xae\xb9\xe6\x96\x87\xe5\xad\x97"
+        "\xe6\xad\xa3\xe6\x96\x87\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c\xe5\x86\x85\xe5\xae\xb9\xe6\x96\x87\xe5\xad\x97"
+        "\xe6\xad\xa3\xe6\x96\x87\xe7\xac\xac\xe4\xb8\x89\xe8\xa1\x8c");
+}
+
+// three centered rows (occasional long title) still join into one line
+static void CenteredTitleThreeLinesTest() {
+    Vec<OcrMergeLine> lines;
+    AddLine(lines,
+            "\xe9\x95\xbf\xe6\xa0\x87\xe9\xa2\x98\xe7\xac\xac\xe4\xb8\x80\xe8\xa1\x8c\xe5\x86\x85\xe5\xae\xb9\xe6\x96"
+            "\x87\xe5\xad\x97",
+            175, 100, 250, 20);
+    AddLine(lines,
+            "\xe9\x95\xbf\xe6\xa0\x87\xe9\xa2\x98\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c\xe6\x96\x87\xe5\xad\x97\xe5\x86"
+            "\x85\xe5\xae\xb9",
+            175, 124, 250, 20);
+    AddLine(lines, "\xe6\xa0\x87\xe9\xa2\x98\xe7\xac\xac\xe4\xb8\x89\xe8\xa1\x8c", 200, 148, 200, 20);
+    AddLine(lines, "\xe6\xad\xa3\xe6\x96\x87\xe5\xbc\x80\xe5\xa7\x8b\xe8\xbf\x99\xe9\x87\x8c", 100, 184, 400, 16);
+    StrVec out;
+    OcrMergeLayoutLines(out, lines, false);
+    ExpectParas(out,
+                "\xe9\x95\xbf\xe6\xa0\x87\xe9\xa2\x98\xe7\xac\xac\xe4\xb8\x80\xe8\xa1\x8c\xe5\x86\x85\xe5\xae\xb9\xe6"
+                "\x96\x87\xe5\xad\x97"
+                "\xe9\x95\xbf\xe6\xa0\x87\xe9\xa2\x98\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c\xe6\x96\x87\xe5\xad\x97\xe5"
+                "\x86\x85\xe5\xae\xb9"
+                "\xe6\xa0\x87\xe9\xa2\x98\xe7\xac\xac\xe4\xb8\x89\xe8\xa1\x8c",
+                "\xe6\xad\xa3\xe6\x96\x87\xe5\xbc\x80\xe5\xa7\x8b\xe8\xbf\x99\xe9\x87\x8c");
+}
+
+// a wrapped title whose first line fills the measure and whose second line is
+// centered still joins into one line
+static void FullLineThenCenteredTitleTest() {
+    Vec<OcrMergeLine> lines;
+    AddLine(lines,
+            "\xe9\x95\xbf\xe6\xa0\x87\xe9\xa2\x98\xe7\xac\xac\xe4\xb8\x80\xe8\xa1\x8c\xe5\x86\x85\xe5\xae\xb9\xe5\xa1"
+            "\xab\xe6\xbb\xa1\xe7\x89\x88\xe5\xbf\x83",
+            100, 100, 400, 16);
+    AddLine(lines, "\xe6\xa0\x87\xe9\xa2\x98\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c", 200, 120, 200, 16);
+    AddLine(lines, "\xe6\xad\xa3\xe6\x96\x87\xe7\xac\xac\xe4\xb8\x80\xe8\xa1\x8c\xe3\x80\x82", 100, 140, 400, 16);
+    StrVec out;
+    OcrMergeLayoutLines(out, lines, false);
+    ExpectParas(out,
+                "\xe9\x95\xbf\xe6\xa0\x87\xe9\xa2\x98\xe7\xac\xac\xe4\xb8\x80\xe8\xa1\x8c\xe5\x86\x85\xe5\xae\xb9\xe5"
+                "\xa1\xab\xe6\xbb\xa1\xe7\x89\x88\xe5\xbf\x83"
+                "\xe6\xa0\x87\xe9\xa2\x98\xe7\xac\xac\xe4\xba\x8c\xe8\xa1\x8c",
+                "\xe6\xad\xa3\xe6\x96\x87\xe7\xac\xac\xe4\xb8\x80\xe8\xa1\x8c\xe3\x80\x82");
+}
+
+// a centered heading set in a larger font starts a new block even when the
+// previous body line has no terminal punctuation
+static void CenteredHeadingLargerFontBreakTest() {
+    Vec<OcrMergeLine> lines;
+    AddLine(lines, "\xe6\xad\xa3\xe6\x96\x87\xe6\x9c\xab\xe8\xa1\x8c\xe6\x97\xa0\xe6\xa0\x87\xe7\x82\xb9", 100, 100,
+            400, 16);
+    AddLine(lines, "\xe5\xb1\x85\xe4\xb8\xad\xe6\xa0\x87\xe9\xa2\x98", 200, 120, 200, 22);
+    StrVec out;
+    OcrMergeLayoutLines(out, lines, false);
+    ExpectParas(out, "\xe6\xad\xa3\xe6\x96\x87\xe6\x9c\xab\xe8\xa1\x8c\xe6\x97\xa0\xe6\xa0\x87\xe7\x82\xb9",
+                "\xe5\xb1\x85\xe4\xb8\xad\xe6\xa0\x87\xe9\xa2\x98");
+}
+
+// terminal punctuation on the previous line keeps a centered line separate
+static void PunctBeforeCenteredBreakTest() {
+    Vec<OcrMergeLine> lines;
+    AddLine(lines, "\xe6\xae\xb5\xe8\x90\xbd\xe5\x88\xb0\xe6\xad\xa4\xe7\xbb\x93\xe6\x9d\x9f\xe3\x80\x82", 100, 100,
+            400, 16);
+    AddLine(lines, "\xe5\xb1\x85\xe4\xb8\xad\xe6\xa0\x87\xe9\xa2\x98", 200, 120, 200, 16);
+    StrVec out;
+    OcrMergeLayoutLines(out, lines, false);
+    ExpectParas(out, "\xe6\xae\xb5\xe8\x90\xbd\xe5\x88\xb0\xe6\xad\xa4\xe7\xbb\x93\xe6\x9d\x9f\xe3\x80\x82",
+                "\xe5\xb1\x85\xe4\xb8\xad\xe6\xa0\x87\xe9\xa2\x98");
+}
+
+// Latin words joined across lines get a space, CJK flows without one
+static void LatinSpacingTest() {
+    Vec<OcrMergeLine> lines;
+    AddLine(lines, "The quick brown fox", 100, 100, 400, 16);
+    AddLine(lines, "jumps over the lazy dog", 100, 120, 400, 16);
+    StrVec out;
+    OcrMergeLayoutLines(out, lines, false);
+    ExpectParas(out, "The quick brown fox jumps over the lazy dog");
+}
+
+// vertical layout: full-height columns in reading order (right to left)
+static void VerticalColumnsJoinTest() {
+    Vec<OcrMergeLine> lines;
+    AddLine(lines, "\xe5\x8f\xb3\xe8\xb5\xb7\xe7\xac\xac\xe4\xb8\x80\xe5\x88\x97\xe6\xad\xa3\xe6\x96\x87", 400, 100, 20,
+            400);
+    AddLine(lines, "\xe7\xac\xac\xe4\xba\x8c\xe5\x88\x97\xe7\xbb\xa7\xe7\xbb\xad\xe6\xad\xa3\xe6\x96\x87", 370, 100, 20,
+            400);
+    AddLine(lines, "\xe7\xac\xac\xe4\xb8\x89\xe5\x88\x97\xe7\xbb\x93\xe6\x9d\x9f\xe6\xad\xa3\xe6\x96\x87", 340, 100, 20,
+            400);
+    StrVec out;
+    OcrMergeLayoutLines(out, lines, true);
+    ExpectParas(out,
+                "\xe5\x8f\xb3\xe8\xb5\xb7\xe7\xac\xac\xe4\xb8\x80\xe5\x88\x97\xe6\xad\xa3\xe6\x96\x87"
+                "\xe7\xac\xac\xe4\xba\x8c\xe5\x88\x97\xe7\xbb\xa7\xe7\xbb\xad\xe6\xad\xa3\xe6\x96\x87"
+                "\xe7\xac\xac\xe4\xb8\x89\xe5\x88\x97\xe7\xbb\x93\xe6\x9d\x9f\xe6\xad\xa3\xe6\x96\x87");
+}
+
+// vertical layout: a short top-hanging column is a title, body columns follow
+static void VerticalTitleBreakTest() {
+    Vec<OcrMergeLine> lines;
+    AddLine(lines, "\xe6\xa0\x87\xe9\xa2\x98\xe5\x88\x97", 400, 100, 20, 100);
+    AddLine(lines, "\xe7\xac\xac\xe4\xb8\x80\xe5\x88\x97\xe6\xad\xa3\xe6\x96\x87\xe5\x86\x85\xe5\xae\xb9", 370, 100, 20,
+            400);
+    AddLine(lines, "\xe7\xac\xac\xe4\xba\x8c\xe5\x88\x97\xe6\xad\xa3\xe6\x96\x87\xe5\x86\x85\xe5\xae\xb9", 340, 100, 20,
+            400);
+    StrVec out;
+    OcrMergeLayoutLines(out, lines, true);
+    ExpectParas(out, "\xe6\xa0\x87\xe9\xa2\x98\xe5\x88\x97",
+                "\xe7\xac\xac\xe4\xb8\x80\xe5\x88\x97\xe6\xad\xa3\xe6\x96\x87\xe5\x86\x85\xe5\xae\xb9"
+                "\xe7\xac\xac\xe4\xba\x8c\xe5\x88\x97\xe6\xad\xa3\xe6\x96\x87\xe5\x86\x85\xe5\xae\xb9");
+}
+
+// an empty (blank) line between body lines separates paragraphs
+static void BlankLineBreakTest() {
+    Vec<OcrMergeLine> lines;
+    AddLine(lines, "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe5\x86\x85\xe5\xae\xb9", 100, 100, 400, 16);
+    AddLine(lines, "", 100, 120, 400, 16);
+    AddLine(lines, "\xe7\xac\xac\xe4\xba\x8c\xe6\xae\xb5\xe5\x86\x85\xe5\xae\xb9", 100, 140, 400, 16);
+    StrVec out;
+    OcrMergeLayoutLines(out, lines, false);
+    ExpectParas(out, "\xe7\xac\xac\xe4\xb8\x80\xe6\xae\xb5\xe5\x86\x85\xe5\xae\xb9",
+                "\xe7\xac\xac\xe4\xba\x8c\xe6\xae\xb5\xe5\x86\x85\xe5\xae\xb9");
+}
+
+static void AddGlyph(Vec<OcrMergeGlyph>& gs, WCHAR ch, int x, int y, int dx, int dy) {
+    OcrMergeGlyph g;
+    g.ch = ch;
+    g.bbox = RectF((float)x, (float)y, (float)dx, (float)dy);
+    gs.Append(g);
+}
+
+// vertical glyphs arrive in stream order; they are sorted into columns (right
+// to left, top to bottom) and full columns join into one paragraph
+static void VerticalGlyphsJoinTest() {
+    Vec<OcrMergeGlyph> gs;
+    // column 1 (rightmost), shuffled: 一二三
+    AddGlyph(gs, 0x4E8C, 400, 120, 20, 20); // 二
+    AddGlyph(gs, 0x4E09, 400, 140, 20, 20); // 三
+    AddGlyph(gs, 0x4E00, 400, 100, 20, 20); // 一
+    // column 2: 四五六
+    AddGlyph(gs, 0x4E94, 370, 140, 20, 20); // 五
+    AddGlyph(gs, 0x516D, 370, 160, 20, 20); // 六
+    AddGlyph(gs, 0x56DB, 370, 100, 20, 20); // 四
+    StrVec out;
+    OcrMergeVerticalGlyphs(out, gs);
+    ExpectParas(out, "\xe4\xb8\x80\xe4\xba\x8c\xe4\xb8\x89\xe5\x9b\x9b\xe4\xba\x94\xe5\x85\xad"); // 一二三四五六
+}
+
+// a short top-hanging title column stays separate; body columns join
+static void VerticalGlyphsTitleBreakTest() {
+    Vec<OcrMergeGlyph> gs;
+    // title column: 标题
+    AddGlyph(gs, 0x6807, 400, 100, 20, 20); // 标
+    AddGlyph(gs, 0x9898, 400, 120, 20, 20); // 题
+    // body columns: 一二三四 / 五六七八, interleaved in stream order
+    const WCHAR col2[4] = {0x4E00, 0x4E8C, 0x4E09, 0x56DB}; // 一二三四
+    const WCHAR col3[4] = {0x4E94, 0x516D, 0x4E03, 0x516B}; // 五六七八
+    for (int i = 0; i < 4; i++) {
+        AddGlyph(gs, col2[i], 370, 100 + i * 20, 20, 20);
+        AddGlyph(gs, col3[i], 340, 100 + i * 20, 20, 20);
+    }
+    // whitespace glyphs between columns are ignored
+    AddGlyph(gs, L' ', 355, 130, 20, 20);
+    AddGlyph(gs, L'\n', 355, 150, 20, 20);
+    StrVec out;
+    OcrMergeVerticalGlyphs(out, gs);
+    ExpectParas(out, "\xe6\xa0\x87\xe9\xa2\x98", // 标题
+                "\xe4\xb8\x80\xe4\xba\x8c\xe4\xb8\x89\xe5\x9b\x9b"
+                "\xe4\xba\x94\xe5\x85\xad\xe4\xb8\x83\xe5\x85\xab"); // 一二三四五六七八
+}
+
+void OcrTextMerge_UnitTests() {
+    TerminalPunctTests();
+    EmptyAndSingleTests();
+    SoftWrapMergeTest();
+    IndentBreakTest();
+    TerminalPunctBreakTest();
+    LargeGapBreakTest();
+    CenteredTitleTwoLinesTest();
+    CenteredTitleThreeLinesTest();
+    FullLineThenCenteredTitleTest();
+    CenteredHeadingLargerFontBreakTest();
+    PunctBeforeCenteredBreakTest();
+    LatinSpacingTest();
+    VerticalColumnsJoinTest();
+    VerticalTitleBreakTest();
+    VerticalGlyphsJoinTest();
+    VerticalGlyphsTitleBreakTest();
+    BlankLineBreakTest();
+}

@@ -277,6 +277,7 @@ export const commands = [
     "CmdOcrFullDocumentModeAccurate", "Full-document OCR Mode: High Accuracy",
     "CmdOcrReRecognizeAllPages", "Recognize All Scanned Pages (Accurate)",
     "CmdToggleOcrAutoSave", "Toggle Auto-save After OCR",
+    "CmdToggleOcrCopyMerged", "Toggle Paragraph-merged Copy of OCR Results",
     "CmdNone", "Do nothing",
 ];
 

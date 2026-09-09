@@ -7389,6 +7389,11 @@ static void FinishPdfDeferredWork(EngineMupdf* e, fz_context* ctx) {
 
         if (origInfo) {
             e->pdfInfo = PdfCopyStrDict(ctx, e->pdfdoc, origInfo);
+            // marker written by EngineMupdfSaveSearchablePdf: the document is a
+            // saved searchable PDF with OCR text layers
+            if (pdf_dict_gets(ctx, origInfo, "SumatraOcrText") != nullptr) {
+                e->ocrSavedTextMarker = true;
+            }
         }
         if (!e->pdfInfo) {
             e->pdfInfo = pdf_new_dict(ctx, e->pdfdoc, 4);
@@ -12607,6 +12612,52 @@ static bool PdfPageHasLargeScanImage(fz_context* ctx, pdf_document* doc, int pag
     return large;
 }
 
+// True when pageNo (1-based) is a scanned page with a text layer, i.e. a page
+// whose copyable text should be paragraph-merged. Two mechanisms: the Info
+// marker written by the OCR save (covers all pages of that file), or a
+// per-page large-image heuristic (covers files saved before the marker and
+// third-party OCR files). Results are cached per engine page.
+bool EngineMupdfIsScannedTextPage(EngineBase* engine, int pageNo) {
+    EngineMupdf* em = AsEngineMupdf(engine);
+    if (!em || !em->pdfdoc) {
+        return false;
+    }
+    if (em->ocrSavedTextMarker) {
+        return true;
+    }
+    int nEnginePages = em->pages.Size();
+    if (pageNo < 1 || pageNo > nEnginePages) {
+        return false;
+    }
+    {
+        ScopedCritSec scope(&em->pagesLock);
+        if (pageNo <= em->scannedPageCache.Size()) {
+            u8 v = em->scannedPageCache.At(pageNo - 1);
+            if (v == 1) {
+                return false;
+            }
+            if (v == 2) {
+                return true;
+            }
+        }
+    }
+    bool res = false;
+    auto ctx = em->Ctx();
+    {
+        ScopedCritSec scope(&em->docLock);
+        res = PdfPageHasLargeScanImage(ctx, em->pdfdoc, pageNo - 1);
+    }
+    {
+        ScopedCritSec scope(&em->pagesLock);
+        int want = em->pages.Size();
+        while (em->scannedPageCache.Size() < want) {
+            em->scannedPageCache.Append(0);
+        }
+        em->scannedPageCache.At(pageNo - 1) = res ? 2 : 1;
+    }
+    return res;
+}
+
 // Invisible text (Tr 3) does not paint. A flat fill also has no contrast.
 static bool PdfPageHasVisibleContrast(fz_context* ctx, pdf_document* doc, int pageIndex) {
     pdf_page* page = nullptr;
@@ -13067,7 +13118,8 @@ static int PdfPageRotateCw(fz_context* ctx, pdf_document* doc, int pageIndex) {
     fz_rect r = pdf_to_rect(ctx, box);
     float w = r.x1 - r.x0;
     float h = r.y1 - r.y0;
-    logf("Ocr: SwapPdfBoxWH before: %.2f %.2f %.2f %.2f (w=%.1f h=%.1f) override=%d\n", r.x0, r.y0, r.x1, r.y1, w, h, createdOverride);
+    logf("Ocr: SwapPdfBoxWH before: %.2f %.2f %.2f %.2f (w=%.1f h=%.1f) override=%d\n", r.x0, r.y0, r.x1, r.y1, w, h,
+         createdOverride);
     if (fz_abs(w - h) < 0.01f) {
         if (createdOverride) {
             pdf_dict_del(ctx, pageobj, boxNameObj); // undo the pointless override
@@ -13078,7 +13130,8 @@ static int PdfPageRotateCw(fz_context* ctx, pdf_document* doc, int pageIndex) {
     pdf_array_put_real(ctx, box, 2, r.x0 + h);
     pdf_array_put_real(ctx, box, 3, r.y0 + w);
     fz_rect r2 = pdf_to_rect(ctx, box);
-    logf("Ocr: SwapPdfBoxWH after: %.2f %.2f %.2f %.2f (w=%.1f h=%.1f)\n", r2.x0, r2.y0, r2.x1, r2.y1, r2.x1-r2.x0, r2.y1-r2.y0);
+    logf("Ocr: SwapPdfBoxWH after: %.2f %.2f %.2f %.2f (w=%.1f h=%.1f)\n", r2.x0, r2.y0, r2.x1, r2.y1, r2.x1 - r2.x0,
+         r2.y1 - r2.y0);
 }
 
 [[maybe_unused]] static bool PdfBoxIsLandscape(fz_context* ctx, pdf_obj* pageobj, pdf_obj* boxNameObj) {
@@ -13090,7 +13143,8 @@ static int PdfPageRotateCw(fz_context* ctx, pdf_document* doc, int pageIndex) {
     return (r.x1 - r.x0) > (r.y1 - r.y0);
 }
 
-[[maybe_unused]] static void EnsurePdfBoxesMatchRotate(fz_context* ctx, pdf_document* doc, pdf_obj* pageobj, int rotation) {
+[[maybe_unused]] static void EnsurePdfBoxesMatchRotate(fz_context* ctx, pdf_document* doc, pdf_obj* pageobj,
+                                                       int rotation) {
     bool rotLandscape = (rotation == 90 || rotation == 270);
     // Only check MediaBox (required by PDF spec); CropBox is optional
     bool boxLandscape = PdfBoxIsLandscape(ctx, pageobj, PDF_NAME(MediaBox));
@@ -13506,8 +13560,8 @@ bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* destPath, char
                         pdf_obj* mb = pdf_dict_get_inheritable(ctx, po, PDF_NAME(MediaBox));
                         fz_rect mbr = mb ? pdf_to_rect(ctx, mb) : fz_empty_rect;
                         bool pageHasMb = pdf_dict_get(ctx, po, PDF_NAME(MediaBox)) != nullptr;
-                        logf("Save-after page=%d curRot=%d MediaBox=[%.1f %.1f %.1f %.1f] localMb=%d\n",
-                             pageNo, curRot, mbr.x0, mbr.y0, mbr.x1, mbr.y1, pageHasMb);
+                        logf("Save-after page=%d curRot=%d MediaBox=[%.1f %.1f %.1f %.1f] localMb=%d\n", pageNo, curRot,
+                             mbr.x0, mbr.y0, mbr.x1, mbr.y1, pageHasMb);
                     }
                 }
                 fz_catch(ctx) {}
@@ -13517,6 +13571,16 @@ bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* destPath, char
         saveOpts.do_incremental = 0;
         saveOpts.do_compress = 1;
         saveOpts.do_garbage = 1;
+        if (anyLayer) {
+            // mark the document as OCR-saved so paragraph-merged copy recognizes
+            // the text layers when the file is re-opened
+            pdf_obj* trailer = pdf_trailer(ctx, doc);
+            pdf_obj* info = pdf_dict_gets(ctx, trailer, "Info");
+            if (!pdf_is_dict(ctx, info)) {
+                info = pdf_dict_put_dict(ctx, trailer, PDF_NAME(Info), 2);
+            }
+            pdf_dict_puts_drop(ctx, info, "SumatraOcrText", PDF_TRUE);
+        }
         pdf_save_document(ctx, doc, destPath, &saveOpts);
         ok = true;
     }

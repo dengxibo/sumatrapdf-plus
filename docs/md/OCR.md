@@ -34,6 +34,7 @@ Toolbar **Auto OCR** (before Read Aloud). Click the icon to toggle; the arrow op
 | Recognize All Scanned Pages (Fast) | 识别所有扫描页（快速） | Clear this session's OCR results and re-recognize **every** page with the fast profile. Then extract bookmarks (in memory). Progress and cancel. |
 | Recognize All Scanned Pages (Accurate) | 识别所有扫描页（精确） | Same as Fast, using high accuracy. Then extract bookmarks (in memory). |
 | Auto-save | 自动保存 | Toggle. On: after Recognize All Scanned Pages, overwrite the current PDF (and extract bookmarks to disk). Extracting bookmarks also saves. Setting: `OcrAutoSave`, default **off**. |
+| Paragraph-merged copy | 段落合并复制 | Toggle, default **on**. Copying OCR results merges soft-wrapped lines into coherent paragraphs (true paragraph breaks are kept) and a long wrapped title copies as one line, so it no longer truncates when used as a file name. Setting: `OcrCopyMerged`. |
 | Cancel OCR | 取消 OCR | Stop queued page jobs; pages already done are kept. |
 
 Auto OCR / region also work on DjVu, images, and comic books. Vertical books stay upright (columns are recognized in place). Landscape official forms may still get a per-page `/Rotate`.  

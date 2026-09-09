@@ -874,6 +874,7 @@
     <ClInclude Include="..\src\Commands.h" />
     <ClInclude Include="..\src\DisplayMode.h" />
     <ClInclude Include="..\src\Flags.h" />
+    <ClInclude Include="..\src\OcrTextMerge.h" />
     <ClInclude Include="..\src\PdfDarkMode.h" />
     <ClInclude Include="..\src\PdfTocEditModel.h" />
     <ClInclude Include="..\src\SumatraConfig.h" />
@@ -914,6 +915,7 @@
     <ClCompile Include="..\src\CrashHandlerNoOp.cpp" />
     <ClCompile Include="..\src\DisplayMode.cpp" />
     <ClCompile Include="..\src\Flags.cpp" />
+    <ClCompile Include="..\src\OcrTextMerge.cpp" />
     <ClCompile Include="..\src\PdfDarkModeImageRules.cpp" />
     <ClCompile Include="..\src\PdfDarkModeOklab.cpp" />
     <ClCompile Include="..\src\PdfTocEditModel.cpp" />
@@ -966,6 +968,7 @@
     <ClCompile Include="..\src\utils\tests\HtmlPrettyPrint_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\HtmlPullParser_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\JsonParser_ut.cpp" />
+    <ClCompile Include="..\src\utils\tests\OcrTextMerge_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\TtsPronunciation_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\PdfDarkModeImageClassifier_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\PdfDarkModeOklab_ut.cpp" />

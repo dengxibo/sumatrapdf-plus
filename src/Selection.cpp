@@ -689,7 +689,7 @@ void UpdateTextSelection(MainWindow* win, bool select) {
 // isTextSelectionOut is set to true if this is text-only selection (as opposed to
 // rectangular selection)
 // caller needs to str::Free() the result
-TempStr GetSelectedTextTemp(WindowTab* tab, const char* lineSep, bool& isTextOnlySelectionOut) {
+TempStr GetSelectedTextTemp(WindowTab* tab, const char* lineSep, bool& isTextOnlySelectionOut, bool mergeLines) {
     if (!tab || !tab->selectionOnPage) {
         return nullptr;
     }
@@ -707,7 +707,7 @@ TempStr GetSelectedTextTemp(WindowTab* tab, const char* lineSep, bool& isTextOnl
 
     isTextOnlySelectionOut = dm->textSelection->result.len > 0;
     if (isTextOnlySelectionOut) {
-        WCHAR* s = dm->textSelection->ExtractText(lineSep);
+        WCHAR* s = dm->textSelection->ExtractText(lineSep, mergeLines);
         TempStr res = ToUtf8Temp(s);
         str::Free(s);
         return res;
@@ -718,7 +718,7 @@ TempStr GetSelectedTextTemp(WindowTab* tab, const char* lineSep, bool& isTextOnl
         if (!dm->ValidPageNo(sel.pageNo)) {
             continue;
         }
-        char* text = dm->GetTextInRegion(sel.pageNo, sel.rect);
+        char* text = dm->GetTextInRegion(sel.pageNo, sel.rect, mergeLines);
         if (!str::IsEmpty(text)) {
             selections.Append(text);
         }
@@ -752,7 +752,7 @@ void CopySelectionToClipboard(MainWindow* win) {
         args.msg = _TRA("Copying text was denied (copying as image only)");
         ShowNotification(args);
     } else {
-        selText = GetSelectedTextTemp(tab, "\r\n", isTextOnlySelectionOut);
+        selText = GetSelectedTextTemp(tab, "\r\n", isTextOnlySelectionOut, gGlobalPrefs->ocrCopyMerged);
     }
 
     if (!str::IsEmpty(selText)) {

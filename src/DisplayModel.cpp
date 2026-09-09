@@ -63,6 +63,7 @@ void NotifyEbookPagesLoadingProgress(const char* filePath, bool reloadToc);
 
 #include "PdfSync.h"
 #include "ProgressUpdateUI.h"
+#include "OcrTextMerge.h"
 #include "TextSelection.h"
 #include "TextSearch.h"
 #include "RenderCache.h"
@@ -1888,8 +1889,8 @@ RestartLayout:
         //   scrollbars are being hidden or if `needHScroll` has already been
         //   set to true (i.e., the block has been processed)
         if ((!hideScrollbars && !useOverlayScrollbar) && (!needHScroll) &&
-            viewPort.dx < em.left + columnMaxWidth[0] +
-                              (columns == 2 ? pageSpacing.dx + columnMaxWidth[1] : 0) + em.right) {
+            viewPort.dx <
+                em.left + columnMaxWidth[0] + (columns == 2 ? pageSpacing.dx + columnMaxWidth[1] : 0) + em.right) {
             needHScroll = true;
             viewPort.dy -= GetSystemMetrics(SM_CYHSCROLL);
             goto RestartLayout;
@@ -1931,8 +1932,7 @@ RestartLayout:
 
     // restart the layout if we detect we need to show scrollbars
     // (there are some edge cases we can't catch in the above loop)
-    int canvasDx = em.left + columnMaxWidth[0] + (columns == 2 ? pageSpacing.dx + columnMaxWidth[1] : 0) +
-                   em.right;
+    int canvasDx = em.left + columnMaxWidth[0] + (columns == 2 ? pageSpacing.dx + columnMaxWidth[1] : 0) + em.right;
     if ((!hideScrollbars && !useOverlayScrollbar) && (!needHScroll) && canvasDx > viewPort.dx) {
         needHScroll = true;
         viewPort.dy -= GetSystemMetrics(SM_CYHSCROLL);
@@ -1973,8 +1973,8 @@ RestartLayout:
         }
         // center the cover page over the first two spots in non-continuous mode
         if (IsBookView(GetDisplayMode()) && pageNo == 1 && !IsContinuous(GetDisplayMode())) {
-            pageInfo->pos.x = offX + em.left +
-                              (columnMaxWidth[0] + pageSpacing.dx + columnMaxWidth[1] - pageInfo->pos.dx) / 2;
+            pageInfo->pos.x =
+                offX + em.left + (columnMaxWidth[0] + pageSpacing.dx + columnMaxWidth[1] - pageInfo->pos.dx) / 2;
         }
         // mirror the page layout when displaying a Right-to-Left document
         if (displayR2L && columns > 1) {
@@ -3079,7 +3079,7 @@ void DisplayModel::RotateBy(int newRotation) {
 
 /* Given <region> (in user coordinates ) on page <pageNo>, copies text in that region
  * into a newly allocated buffer (which the caller needs to free()). */
-char* DisplayModel::GetTextInRegion(int pageNo, RectF region) const {
+char* DisplayModel::GetTextInRegion(int pageNo, RectF region, bool mergeLines) const {
     Rect* coords;
     const WCHAR* pageText = engine->GetTextForPage(pageNo, nullptr, &coords);
     if (str::IsEmpty(pageText)) {
@@ -3090,6 +3090,108 @@ char* DisplayModel::GetTextInRegion(int pageNo, RectF region) const {
     Rect regionI = region.Round();
     int nKeep = 0;
     int nBreak = 0;
+
+    // Saved searchable PDF without an in-session cache: merge soft-wrapped
+    // layout lines back into paragraphs. Cached OCR pages already carry their
+    // paragraph structure in the '\n' markers.
+    bool mergeLayoutLines =
+        mergeLines && !engine->HasCachedOcrText(pageNo) && EngineMupdfIsScannedTextPage(engine, pageNo);
+    bool verticalLayout = mergeLayoutLines && PageHasVerticalGlyphLayout(engine, pageNo);
+    if (mergeLayoutLines && !verticalLayout) {
+        StrVec rawLines;
+        Vec<Rect> lineBoxes;
+        WStrBuilder lineText;
+        Rect lineBox;
+        bool lineOpen = false;
+        auto flushLine = [&]() {
+            if (lineOpen && lineText.size() > 0) {
+                rawLines.Append(ToUtf8Temp(lineText.Get()));
+                lineBoxes.Append(lineBox);
+            }
+            lineText.Reset();
+            lineOpen = false;
+        };
+        int idx = 0;
+        for (const WCHAR* src = pageText; *src; src++, idx++) {
+            if (*src != '\n') {
+                Rect rect = coords[idx];
+                Rect isect = regionI.Intersect(rect);
+                if (!isect.IsEmpty() && 1.0 * isect.dx * isect.dy / (rect.dx * rect.dy) >= 0.3) {
+                    lineText.AppendChar(*src);
+                    if (lineOpen) {
+                        lineBox = lineBox.Union(rect);
+                    } else {
+                        lineBox = rect;
+                        lineOpen = true;
+                    }
+                }
+            } else {
+                flushLine();
+            }
+        }
+        flushLine();
+
+        int n = std::min(rawLines.Size(), lineBoxes.Size());
+        if (n > 0) {
+            Vec<OcrMergeLine> mls;
+            for (int i = 0; i < n; i++) {
+                OcrMergeLine ml;
+                ml.text = rawLines.At(i);
+                ml.bbox = lineBoxes.At(i);
+                mls.Append(ml);
+            }
+            StrVec merged;
+            OcrMergeLayoutLines(merged, mls, false);
+            for (int i = 0; i < merged.Size(); i++) {
+                if (result.size() > 0) {
+                    result.Append(L"\r\n", 2);
+                }
+                TempStr u8s = merged.At(i);
+                WCHAR* ws = ToWStrTemp(u8s);
+                result.Append(ws);
+            }
+            return ToUtf8(result.Get());
+        }
+        // nothing survived the merge (e.g. empty region): fall through
+        return nullptr;
+    }
+
+    if (verticalLayout) {
+        // vertical page: band glyphs into columns (right to left, top to
+        // bottom) and merge the columns into paragraphs
+        Vec<OcrMergeGlyph> mgs;
+        int idx = 0;
+        for (const WCHAR* src = pageText; *src; src++, idx++) {
+            if (*src == '\n') {
+                continue;
+            }
+            Rect rect = coords[idx];
+            Rect isect = regionI.Intersect(rect);
+            if (isect.IsEmpty() || 1.0 * isect.dx * isect.dy / (rect.dx * rect.dy) < 0.3) {
+                continue;
+            }
+            OcrMergeGlyph mg;
+            mg.ch = *src;
+            mg.bbox = engine->Transform(ToRectF(rect), pageNo, 1.0, 0);
+            mgs.Append(mg);
+        }
+        StrVec merged;
+        OcrMergeVerticalGlyphs(merged, mgs);
+        for (int i = 0; i < merged.Size(); i++) {
+            if (result.size() > 0) {
+                result.Append(L"\r\n", 2);
+            }
+            TempStr u8s = merged.At(i);
+            WCHAR* ws = ToWStrTemp(u8s);
+            result.Append(ws);
+        }
+        if (result.size() > 0) {
+            return ToUtf8(result.Get());
+        }
+        // nothing survived the merge (e.g. empty region): fall through
+        return nullptr;
+    }
+
     for (const WCHAR* src = pageText; *src; src++) {
         if (*src != '\n') {
             Rect rect = coords[src - pageText];

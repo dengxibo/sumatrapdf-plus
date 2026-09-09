@@ -533,6 +533,9 @@ struct GlobalPrefs {
     // Searchable PDF: fast or accurate. Auto OCR uses fast mode; current
     // page and region use high accuracy.
     char* ocrFullDocumentMode;
+    // if true, copy of OCR results merges soft-wrapped lines into coherent
+    // paragraphs instead of following the original page layout
+    bool ocrCopyMerged;
     // smart bookmark extraction detail: conservative, standard, or
     // detailed
     char* extractPdfTocMode;
@@ -1054,6 +1057,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, ocrAutoSave), SettingType::Bool, false, "全文识别或提取目录完成后覆盖保存当前 PDF"},
     {offsetof(GlobalPrefs, ocrFullDocumentMode), SettingType::String, (intptr_t)"fast",
      "全文识别模式 fast=极速 accurate=高精度；自动 OCR 使用极速，框选/当前页使用高精度"},
+    {offsetof(GlobalPrefs, ocrCopyMerged), SettingType::Bool, true, nullptr},
     {offsetof(GlobalPrefs, extractPdfTocMode), SettingType::String, (intptr_t)"standard",
      "智能提取目录详细程度 conservative/standard/detailed"},
     {offsetof(GlobalPrefs, aiChatProvider), SettingType::String, (intptr_t)"doubao",
@@ -1152,22 +1156,22 @@ static const FieldInfo gGlobalPrefsFields[] = {
      "Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 119, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 120, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0HomePage"
     "ViewMode\0HomePageThumbnailDx\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSess"
     "ion\0ReuseInstance\0ShowMenubar\0ShowMenubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0ShowAnnotToolbarButtons"
     "\0SearchUIFloating\0OfflineDictionaryPath\0EnableDoubleClickWordLookup\0AutoOcrScanPages\0OcrAutoSave\0OcrFullDocu"
-    "mentMode\0ExtractPdfTocMode\0AiChatProvider\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAskAI\0ShowFavorites\0ShowToc"
-    "\0ShowLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0FastScrollOverScrollbar\0P"
-    "reventSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme\0LastLightTheme\0DocumentColorMode\0TocDy\0ToolbarSize\0Tr"
-    "eeFontName\0TreeFontSize\0TreeWrapLabels\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0UseSysColors\0U"
-    "seTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotat"
-    "ions\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0The"
-    "mes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0Rea"
-    "dAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSmartOnlineVoiceEn\0\0\0DefaultPa"
-    "sswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce"
-    "\0TimeOfLastUpdateCheck\0TimeOfUpdateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
+    "mentMode\0OcrCopyMerged\0ExtractPdfTocMode\0AiChatProvider\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAskAI\0ShowFav"
+    "orites\0ShowToc\0ShowLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0FastScrollO"
+    "verScrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme\0LastLightTheme\0DocumentColorMode\0TocDy\0"
+    "ToolbarSize\0TreeFontName\0TreeFontSize\0TreeWrapLabels\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0"
+    "UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0C"
+    "hmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0S"
+    "hortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh\0ReadAloudSpea"
+    "kingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSmartOnlineVoiceEn"
+    "\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionD"
+    "ata\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfUpdateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)"", "主题名称"},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)"", "文字颜色"},

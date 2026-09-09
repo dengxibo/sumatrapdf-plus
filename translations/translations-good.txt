@@ -12019,6 +12019,79 @@ nl:PalmDoc documenten
 pl:Dokumenty PalmDoc
 sk:PalmDoc dokumenty
 tw:PalmDoc 文件
+:Paragraph-merged copy
+af:Paragraph-merged copy
+am:Paragraph-merged copy
+ar:نسخ مع دمج الفقرات
+az:Paragraph-merged copy
+bg:Копиране с обединени абзаци
+bn:Paragraph-merged copy
+br:Copiar parágrafos unificados
+bs:Kopiraj s objedinjenim pasusima
+by:Капіраванне з аб'яднаннем абзацаў
+ca:Copia amb paràgrafs unificats
+ca-xv:Copia amb paràgrafs unificats
+cn:段落合并复制
+co:Paragraph-merged copy
+cy:Copïo â pharagraffau unwed
+cz:Kopírovat se sloučenými odstavci
+de:Absätze zusammengefasst kopieren
+dk:Kopiér med sammenføjede afsnit
+el:Αντιγραφή με ενοποιημένες παραγράφους
+es:Copiar con párrafos unificados
+et:Paragraph-merged copy
+eu:Paragraph-merged copy
+fa:کپی با ادغام پاراگراف‌ها
+fi:Kopioi yhdistetyillä kappaleilla
+fo:Paragraph-merged copy
+fr:Copier avec paragraphes fusionnés
+fy-nl:Paragraph-merged copy
+ga:Paragraph-merged copy
+gl:Copiar con parágrafos unificados
+he:העתקה עם מיזוג פסקאות
+hi:अनुच्छेद मिलाकर कॉपी करें
+hr:Kopiraj s objedinjenim pasusima
+hu:Másolás bekezdések összevonásával
+id:Salin dengan paragraf yang digabung
+it:Copia con paragrafi unificati
+ja:段落をまとめてコピー
+jv:Paragraph-merged copy
+ka:Paragraph-merged copy
+kr:단락을 병합하여 복사
+ku:Paragraph-merged copy
+kw:Paragraph-merged copy
+lt:Kopijuoti su sujungtais pastraipomis
+lv:Kopēt ar apvienotām rindkopām
+mk:Paragraph-merged copy
+ml:Paragraph-merged copy
+mm:Paragraph-merged copy
+my:Paragraph-merged copy
+ne:Paragraph-merged copy
+nl:Kopiëren met samengevoegde alinea's
+nn:Kopier med sammenslåtte avsnitt
+no:Kopier med sammenslåtte avsnitt
+pa:Paragraph-merged copy
+pl:Kopiuj z łączonymi akapitami
+pt:Copiar com parágrafos unificados
+ro:Copiere cu paragrafe unificate
+ru:Копировать с объединением абзацев
+sat:Paragraph-merged copy
+si:Paragraph-merged copy
+sk:Kopírovať so zlúčenými odstavcami
+sl:Kopiraj s združenimi odstavki
+sn:Paragraph-merged copy
+sp-rs:Kopiraj s objedinjenim pasusima
+sq:Paragraph-merged copy
+sr-rs:Копирај са обједињеним пасусима
+sv:Kopiera med sammanfogade stycken
+ta:Paragraph-merged copy
+th:คัดลอกแบบรวมย่อหน้า
+tl:Paragraph-merged copy
+tr:Paragrafları birleştirerek kopyala
+tw:段落合併複製
+uk:Копіювати з об'єднанням абзаців
+uz:Paragraph-merged copy
+vn:Sao chép gộp đoạn văn
 :Password:
 br:Senha:
 cn:密码:

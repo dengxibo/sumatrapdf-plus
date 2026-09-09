@@ -251,6 +251,7 @@ CmdOcrFullDocumentModeFast,,Full-document OCR Mode: Fast,"full-document OCR uses
 CmdOcrFullDocumentModeAccurate,,Full-document OCR Mode: High Accuracy,"full-document OCR uses high accuracy. Setting OcrFullDocumentMode=accurate, ver 3.8+"
 CmdOcrReRecognizeAllPages,,Recognize All Scanned Pages (Accurate),"toolbar OCR menu: clear session OCR and re-recognize every page with high accuracy; then extract bookmarks (in memory, replaces existing outline), ver 3.8+"
 CmdToggleOcrAutoSave,,Toggle Auto-save After OCR,"toolbar OCR menu: when checked, Recognize All Scanned Pages overwrites the current PDF and extracting bookmarks saves to disk. Setting OcrAutoSave, ver 3.8+"
+CmdToggleOcrCopyMerged,,Toggle Paragraph-merged Copy of OCR Results,"toolbar OCR menu: when checked (default), copying OCR results merges soft-wrapped lines into coherent paragraphs instead of following the page layout. Setting OcrCopyMerged, ver 3.8+"
 ```
 
 ## External app
