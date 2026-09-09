@@ -2,6 +2,7 @@
    License: GPLv3 */
 
 struct AnnotCreateArgs;
+class EngineBase;
 struct MainWindow;
 
 #include "OverlayScrollbar.h"
@@ -152,6 +153,7 @@ void ReadAloudContinueInTab(WindowTab* tab);
 // empty-canvas double-click while read-aloud is active: pause, then continue
 bool ReadAloudHandleCanvasDoubleClick(MainWindow* win);
 WindowTab* GetReadAloudSourceTab();
+void ReadAloudOnOcrPageReady(EngineBase* engine, int pageNo);
 
 constexpr UINT CmdTtsVoiceDefault = 0x7100;
 constexpr UINT CmdTtsVoiceFirst = 0x7101;

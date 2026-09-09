@@ -53,7 +53,7 @@ RectF ScaleHighlightBandRect(RectF r, float bandRatio) {
     }
 
     float scale = bandRatio / kHighlightBandBaseRatio;
-    float centerY = r.y + r.dy * 0.5f;
+    float centerY = r.y + r.dy * (0.5f + kHighlightBandCenterOffsetRatio);
     float newDy = r.dy * scale;
     if (newDy < 1.0f) {
         newDy = 1.0f;

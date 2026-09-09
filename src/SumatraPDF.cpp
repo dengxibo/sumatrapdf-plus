@@ -171,6 +171,7 @@ bool gOcrAutoBench = false;
 
 static void RelayoutFrame(MainWindow* win, bool updateToolbars = true, int sidebarDx = -1);
 static bool gSidebarSplitterWrapSuspended = false;
+static bool gSidebarWidthDragScrollbarsHidden = false;
 static constexpr UINT WM_SIDEBAR_RELAYOUT = WM_APP + 0x423;
 static void UpdateOverlayScrollbarPositions(MainWindow* win);
 static void SyncCanvasScrollBarTheme(MainWindow* win);
@@ -180,6 +181,7 @@ static void ResyncReadAloudAfterLayoutChange(WindowTab* tab, MainWindow* win);
 static void ScheduleReadAloudResyncAfterLayoutChange(MainWindow* win, WindowTab* tab);
 static void ReadAloudFinishSession(WindowTab* tab, MainWindow* win);
 static void ReadAloudStartFromViewportTop(WindowTab* tab, const char* errMsg);
+static void ReadAloudStartFromPageGlyph(WindowTab* tab, int startPage, int startGlyph, const char* errMsg);
 
 static const char* HwndName(HWND hwnd) {
     WCHAR cls[64]{};
@@ -3309,6 +3311,23 @@ static void SyncCanvasScrollBarTheme(MainWindow* win) {
 }
 
 void UpdateAfterThemeChange() {
+    // Theme changes touch the toolbar, rebars, sidebars, canvas background and
+    // (for reflow/OCR documents) page layout at different times. Letting each
+    // child paint as it becomes ready exposes a patchwork of old/new colors and
+    // repeatedly redraws the hovered theme button, producing a fuzzy halo.
+    // Freeze only the foreground frame's screen output while keeping every
+    // window logically visible: WM_SETREDRAW on a top-level window clears
+    // WS_VISIBLE and breaks taskbar/sidebar visibility decisions.
+    HWND frozenFrame = nullptr;
+    HWND foreground = GetForegroundWindow();
+    for (auto win : gWindows) {
+        if (win->hwndFrame == foreground || IsChild(win->hwndFrame, foreground)) {
+            frozenFrame = win->hwndFrame;
+            break;
+        }
+    }
+    bool frameLocked = frozenFrame && LockWindowUpdate(frozenFrame);
+
     BumpReflowThemeEpoch();
     InvalidateLoadedThumbnails();
     // Reflowable documents are updated below. Doing it here as well reparses
@@ -3399,6 +3418,12 @@ void UpdateAfterThemeChange() {
     RefreshWordLookupTheme();
     RefreshEditAnnotationsWindowsTheme();
     RefreshEbookAnnotationsWindowsTheme();
+
+    if (frameLocked) {
+        LockWindowUpdate(nullptr);
+        RedrawWindow(frozenFrame, nullptr, nullptr,
+                     RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME | RDW_UPDATENOW);
+    }
 }
 
 static void RenameFileInHistory(const char* oldPath, const char* newPath) {
@@ -6986,6 +7011,74 @@ static bool WindowHasVisibleVScrollbar(HWND hwnd) {
     return (sbi.rgstate[0] & STATE_SYSTEM_INVISIBLE) == 0;
 }
 
+static LRESULT CALLBACK SidebarScrollbarMaskProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
+    if (msg == WM_NCHITTEST) {
+        return HTTRANSPARENT;
+    }
+    if (msg == WM_ERASEBKGND) {
+        return TRUE;
+    }
+    if (msg == WM_PAINT) {
+        PAINTSTRUCT ps{};
+        HDC hdc = BeginPaint(hwnd, &ps);
+        AutoDeleteBrush brush = CreateSolidBrush(ThemeSidebarBackgroundColor());
+        FillRect(hdc, &ps.rcPaint, brush);
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static void SetSidebarTreeScrollbarMasksVisible(MainWindow* win, bool visible) {
+    if (!win) {
+        return;
+    }
+    HWND trees[] = {win->tocTreeView ? win->tocTreeView->hwnd : nullptr,
+                    win->favTreeView ? win->favTreeView->hwnd : nullptr};
+    HWND parents[] = {win->hwndTocBox, win->hwndFavBox};
+    HWND* masks[] = {&win->hwndTocScrollbarMask, &win->hwndFavScrollbarMask};
+    for (int i = 0; i < dimof(trees); i++) {
+        HWND tree = trees[i];
+        HWND parent = parents[i];
+        HWND& mask = *masks[i];
+        if (!tree || !IsWindow(tree)) {
+            continue;
+        }
+        if (!visible) {
+            if (mask) {
+                ShowWindow(mask, SW_HIDE);
+            }
+            RedrawWindow(tree, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW);
+            continue;
+        }
+        if (!parent || !IsWindow(parent)) {
+            continue;
+        }
+        if (!mask) {
+            // The tree must clip this higher sibling, including when its
+            // native non-client scrollbar repaints synchronously on resize.
+            SetWindowLongPtrW(tree, GWL_STYLE, GetWindowLongPtrW(tree, GWL_STYLE) | WS_CLIPSIBLINGS);
+            mask = CreateWindowExW(0, WC_STATIC, nullptr, WS_CHILD | WS_CLIPSIBLINGS, 0, 0, 0, 0, parent, nullptr,
+                                   GetModuleHandleW(nullptr), nullptr);
+            if (mask) {
+                SetWindowSubclass(mask, SidebarScrollbarMaskProc, 1, 0);
+            }
+        }
+        if (!mask) {
+            continue;
+        }
+        RECT rc{};
+        GetWindowRect(tree, &rc);
+        MapWindowPoints(HWND_DESKTOP, parent, (POINT*)&rc, 2);
+        int width = GetSystemMetrics(SM_CXVSCROLL) + 2;
+        bool rtl = (GetWindowLongPtrW(tree, GWL_EXSTYLE) & WS_EX_LAYOUTRTL) != 0;
+        int x = rtl ? rc.left : rc.right - width;
+        SetWindowPos(mask, HWND_TOP, x, rc.top, width, rc.bottom - rc.top,
+                     SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOCOPYBITS);
+        RedrawWindow(mask, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
+    }
+}
+
 using LayoutState = MainWindow::LayoutState;
 
 static bool IsLayoutStateEq(LayoutState* s1, LayoutState* s2) {
@@ -7059,7 +7152,7 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
     // ScheduledSidebarRelayout coalesces the mouse flood and presents one
     // complete frame immediately, so repaint starvation isn't an issue here.
     bool liveSidebarDrag = (sidebarDx > 0) && gSidebarSplitterWrapSuspended;
-    uint livePosFlags = liveSidebarDrag ? SWP_NOCOPYBITS : 0;
+    uint livePosFlags = liveSidebarDrag ? (SWP_NOCOPYBITS | SWP_NOREDRAW) : 0;
 
     OverlayScrollbarHide(win->overlayScrollV);
     OverlayScrollbarHide(win->overlayScrollH);
@@ -8510,10 +8603,9 @@ static void ScheduleSidebarRelayout(MainWindow* win, int sidebarDx) {
         return;
     }
     win->sidebarRelayoutPending = true;
-    // Canvas WM_SIZE skips model/buffer relayout during this live drag, so
-    // synchronously keep the TOC and canvas geometry on the cursor. The only
-    // expensive document layout happens once on mouse-up.
-    SendMessageW(win->hwndFrame, WM_SIDEBAR_RELAYOUT, 0, 0);
+    // Coalesce the mouse flood. RelayoutFrame only moves windows during this
+    // drag; the expensive document layout still happens once on mouse-up.
+    PostMessageW(win->hwndFrame, WM_SIDEBAR_RELAYOUT, 0, 0);
 }
 
 static void RunScheduledSidebarRelayout(MainWindow* win) {
@@ -8526,34 +8618,26 @@ static void RunScheduledSidebarRelayout(MainWindow* win) {
     if (!gSidebarSplitterWrapSuspended || sidebarDx <= 0) {
         return;
     }
-    RECT oldSplitterRect{};
-    bool hadSplitterRect = win->sidebarSplitter && GetWindowRect(win->sidebarSplitter->hwnd, &oldSplitterRect);
     RelayoutFrame(win, false, sidebarDx);
-    // RelayoutFrame moves the splitter and all adjacent child windows once.
-    // Paint just the lightweight 1px splitter synchronously so the visible
-    // edge follows the pointer without an intermediate, mismatched position.
+    // Geometry changes suppress painting until the higher sibling mask has
+    // reached the new scrollbar position. Then present the complete sidebar.
+    SetSidebarTreeScrollbarMasksVisible(win, true);
+
+    // Show one complete live-resize frame before processing the next queued
+    // mouse position. The native TreeView scrollbars stay hidden throughout,
+    // so neither their non-client pixels nor the divider can accumulate.
+    uint redrawFlags = RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW;
+    if (win->hwndTocBox) {
+        RedrawWindow(win->hwndTocBox, nullptr, nullptr, redrawFlags);
+    }
+    if (win->hwndFavBox) {
+        RedrawWindow(win->hwndFavBox, nullptr, nullptr, redrawFlags);
+    }
+    if (win->hwndCanvas) {
+        RedrawWindow(win->hwndCanvas, nullptr, nullptr, redrawFlags);
+    }
     if (win->sidebarSplitter) {
         RedrawWindow(win->sidebarSplitter->hwnd, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
-    }
-    // Let
-    // normal WM_PAINT processing coalesce the expensive full TreeView and
-    // document paints when mouse input arrives faster than the display can
-    // present it.
-    if (win->tocVisible) {
-        RedrawWindow(win->hwndTocBox, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN);
-    }
-    RedrawWindow(win->hwndCanvas, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN);
-    if (hadSplitterRect) {
-        // WS_CLIPCHILDREN can preserve the pixel formerly occupied by the
-        // splitter after the canvas moves over it. Repaint that old strip
-        // through whichever child now covers it.
-        MapWindowPoints(HWND_DESKTOP, win->hwndFrame, (POINT*)&oldSplitterRect, 2);
-        // Include the old native scrollbar band so the scrollbar can remain
-        // visible during the drag without leaving a copy at its previous edge.
-        oldSplitterRect.left -= GetSystemMetrics(SM_CXVSCROLL) + 2;
-        oldSplitterRect.right += 2;
-        RedrawWindow(win->hwndFrame, &oldSplitterRect, nullptr,
-                     RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
     }
 }
 
@@ -8578,18 +8662,16 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
     }
 
     if (!ev->finishedDragging) {
-        if (!inRange) {
-            // out of range mid-drag: keep the last valid layout
-            return;
-        }
-        if (sidebarDx == rToc.dx) {
+        sidebarDx = limitValue(sidebarDx, minDx, maxDx);
+        if (sidebarDx == rToc.dx && !gSidebarSplitterWrapSuspended) {
             return;
         }
         if (!gSidebarSplitterWrapSuspended) {
-            // The splitter is a real 1px window now. Keep it visible and move
-            // that single surface directly. The TreeView keeps its native
-            // scrollbar visible; the old-edge repaint in the scheduled
-            // relayout prevents it from leaving copies behind.
+            // Native TreeView scrollbars are non-client pixels and leave
+            // trails when their window moves rapidly. Hide them for the whole
+            // width drag; the splitter remains visible as the resize cue.
+            SetSidebarTreeScrollbarMasksVisible(win, true);
+            gSidebarWidthDragScrollbarsHidden = true;
             SuspendTreeWrapLiveResizeForWindow(win);
             gSidebarSplitterWrapSuspended = true;
             gTocDragPerf = {};
@@ -8622,6 +8704,10 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
         UpdateOverlayScrollbarPositions(win);
         win->UpdateCanvasSize();
         ResumeTreeWrapLiveResizeAndFlush(win);
+        if (gSidebarWidthDragScrollbarsHidden) {
+            gSidebarWidthDragScrollbarsHidden = false;
+            SetSidebarTreeScrollbarMasksVisible(win, false);
+        }
         RedrawWindow(win->hwndTocBox, nullptr, nullptr,
                      RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
         RedrawWindow(win->sidebarSplitter->hwnd, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW);
@@ -12243,6 +12329,8 @@ static constexpr UINT WM_MAIN_WINDOW_DPI_SETTLED = WM_APP + 0x422;
 
 static WindowTab* gReadAloudSourceTab = nullptr;
 static WindowTab* gReadAloudSessionTab = nullptr;
+static WindowTab* gReadAloudWaitingForOcrTab = nullptr;
+static int gReadAloudWaitingForOcrPage = 0;
 
 static void ReadAloudShowNotif(WindowTab* tab, const char* msg);
 
@@ -13183,12 +13271,46 @@ static bool ReadAloudEnsureDocumentTextExtended(WindowTab* tab) {
         tab->readAloudHighlight = new ReadAloudHighlightMap{};
     }
 
+    if (tab->autoOcrOn) {
+        // Pages after the visible one may not have been recognized yet. Building
+        // a large batch would treat those pages as empty and permanently skip
+        // them, so recognize and append one page at a time. Continue past a
+        // genuinely blank page instead of ending the read-aloud session.
+        EngineBase* engine = dm->GetEngine();
+        for (int pageNo = nextStart; pageNo <= pageCount; pageNo++) {
+            bool appended =
+                ReadAloudHighlightAppendDocumentPages(dm, pageNo, pageNo, tab->readAloudHighlight, &tab->readAloudText);
+            if (appended) {
+                tab->readAloudBuiltEndPage = pageNo;
+                return true;
+            }
+            if (!engine->WasOcrTried(pageNo) || OcrPageIsPending(engine, pageNo)) {
+                gReadAloudWaitingForOcrTab = tab;
+                gReadAloudWaitingForOcrPage = pageNo;
+                OcrScheduleForPage(tab->win, pageNo);
+                return false;
+            }
+            tab->readAloudBuiltEndPage = pageNo;
+        }
+        return false;
+    }
+
     if (!ReadAloudHighlightAppendDocumentPages(dm, nextStart, nextEnd, tab->readAloudHighlight, &tab->readAloudText)) {
         return false;
     }
 
     tab->readAloudBuiltEndPage = nextEnd;
     return true;
+}
+
+static int ReadAloudInitialBuildEndPage(WindowTab* tab, DisplayModel* dm, int startPage) {
+    int pageCount = dm->PageCount();
+    if (tab->autoOcrOn) {
+        // Leave later pages for incremental asynchronous OCR extension.
+        return startPage;
+    }
+    int endPage = startPage + kReadAloudBuildPagesPerBatch - 1;
+    return std::min(endPage, pageCount);
 }
 
 static bool ReadAloudHasMoreChunks(WindowTab* tab) {
@@ -13228,6 +13350,10 @@ static void ReadAloudFinishSession(WindowTab* tab, MainWindow* win) {
     tab->readAloudAutoScrollHoldPageNo = -1;
     tab->readAloudAutoScrollHoldLineY = -1.f;
     tab->readAloudScope = 0;
+    if (gReadAloudWaitingForOcrTab == tab) {
+        gReadAloudWaitingForOcrTab = nullptr;
+        gReadAloudWaitingForOcrPage = 0;
+    }
     ReadAloudClearSourceTab();
     if (gReadAloudSessionTab == tab) {
         gReadAloudSessionTab = nullptr;
@@ -13365,6 +13491,33 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
     ToolbarUpdateStateForWindow(tab->win, true);
     InvalidateRect(tab->win->hwndCanvas, nullptr, FALSE);
     return true;
+}
+
+void ReadAloudOnOcrPageReady(EngineBase* engine, int pageNo) {
+    WindowTab* tab = gReadAloudWaitingForOcrTab;
+    if (!tab || pageNo != gReadAloudWaitingForOcrPage) {
+        return;
+    }
+    DisplayModel* dm = tab->AsFixed();
+    if (!dm || dm->GetEngine() != engine || GetReadAloudSourceTab() != tab) {
+        gReadAloudWaitingForOcrTab = nullptr;
+        gReadAloudWaitingForOcrPage = 0;
+        return;
+    }
+
+    gReadAloudWaitingForOcrTab = nullptr;
+    gReadAloudWaitingForOcrPage = 0;
+    ReadAloudEnsureDocumentTextExtended(tab);
+    if (TtsIsSpeaking()) {
+        return;
+    }
+    if (ReadAloudHasMoreChunks(tab)) {
+        if (!ReadAloudSpeakChunk(tab, _TRA("No text available to read aloud")) && gReadAloudWaitingForOcrTab != tab) {
+            ReadAloudFinishSession(tab, tab->win);
+        }
+    } else if (gReadAloudWaitingForOcrTab != tab) {
+        ReadAloudFinishSession(tab, tab->win);
+    }
 }
 
 // Global speed menu sets Chinese or English rate separately.
@@ -13732,11 +13885,7 @@ static void ReadAloudStartFromViewportTop(WindowTab* tab, const char* errMsg) {
 
     StrBuilder cleaned;
     ReadAloudHighlightMap map{};
-    int pageCount = dm->PageCount();
-    int endPage = startPage + kReadAloudBuildPagesPerBatch - 1;
-    if (endPage > pageCount) {
-        endPage = pageCount;
-    }
+    int endPage = ReadAloudInitialBuildEndPage(tab, dm, startPage);
     if (!ReadAloudHighlightBuildFromDocument(dm, startPage, startGlyph, endPage, &map, cleaned)) {
         ReadAloudShowNotif(tab, errMsg);
         return;
@@ -13807,12 +13956,9 @@ static void ReadAloudStartFromPageGlyph(WindowTab* tab, int startPage, int start
 
     StrBuilder cleaned;
     ReadAloudHighlightMap map{};
-    int pageCount = dm->PageCount();
-    int endPage = startPage + kReadAloudBuildPagesPerBatch - 1;
-    if (endPage > pageCount) {
-        endPage = pageCount;
-    }
-    if (!ReadAloudHighlightBuildFromDocument(dm, startPage, startGlyph, endPage, &map, cleaned)) {
+    int endPage = ReadAloudInitialBuildEndPage(tab, dm, startPage);
+    bool built = ReadAloudHighlightBuildFromDocument(dm, startPage, startGlyph, endPage, &map, cleaned);
+    if (!built) {
         ReadAloudShowNotif(tab, errMsg);
         return;
     }
@@ -15199,13 +15345,17 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
                 WindowTab* raTab = gReadAloudSourceTab;
                 if (ReadAloudHasMoreChunks(raTab)) {
                     if (!ReadAloudSpeakChunk(raTab, _TRA("No text available to read aloud"))) {
-                        ReadAloudFinishSession(raTab, win);
+                        if (gReadAloudWaitingForOcrTab != raTab) {
+                            ReadAloudFinishSession(raTab, win);
+                        }
                     }
                 } else if (ReadAloudEnsureDocumentTextExtended(raTab) && ReadAloudHasMoreChunks(raTab)) {
                     if (!ReadAloudSpeakChunk(raTab, _TRA("No text available to read aloud"))) {
-                        ReadAloudFinishSession(raTab, win);
+                        if (gReadAloudWaitingForOcrTab != raTab) {
+                            ReadAloudFinishSession(raTab, win);
+                        }
                     }
-                } else {
+                } else if (gReadAloudWaitingForOcrTab != raTab) {
                     ReadAloudFinishSession(raTab, win);
                 }
             }

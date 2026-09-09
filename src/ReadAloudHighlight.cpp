@@ -214,22 +214,22 @@ static bool IsLineBreakGlyph(const WCHAR* text, const Rect* coords, int idx, int
 }
 
 static void ReadAloudAppendPageUtf8(Vec<ReadAloudRawByte>& raw, EngineBase* engine, int pageNo) {
-    PageTextUtf8 pageText = engine->ExtractPageTextUtf8(pageNo);
-    if (!pageText.text || pageText.len <= 0) {
-        FreePageTextUtf8(&pageText);
+    int textLen = 0;
+    Rect* coords = nullptr;
+    const char* text = nullptr;
+    if (!engine->TryGetTextForPageUtf8(pageNo, &textLen, &coords, &text) || !text || textLen <= 0) {
         return;
     }
 
-    for (int i = 0; i < pageText.len; i++) {
+    for (int i = 0; i < textLen; i++) {
         ReadAloudByteLoc loc;
-        Rect r = pageText.coords[i];
+        Rect r = coords[i];
         if (r.x || r.dx) {
             ReadAloudByteLocSetFromRect(loc, pageNo, r);
         }
         ReadAloudByteLocSetChapter(loc, engine, pageNo, i);
-        ReadAloudHighlightAppendRaw(raw, pageText.text[i], loc);
+        ReadAloudHighlightAppendRaw(raw, text[i], loc);
     }
-    FreePageTextUtf8(&pageText);
 }
 
 static bool ReadAloudAppendRawToHighlight(Vec<ReadAloudRawByte>& raw, ReadAloudHighlightMap* map,
@@ -367,22 +367,22 @@ bool ReadAloudHighlightBuildFromPage(EngineBase* engine, int pageNo, ReadAloudHi
         return false;
     }
 
-    PageTextUtf8 pageText = engine->ExtractPageTextUtf8(pageNo);
-    if (!pageText.text || pageText.len <= 0) {
-        FreePageTextUtf8(&pageText);
+    int textLen = 0;
+    Rect* coords = nullptr;
+    const char* text = nullptr;
+    if (!engine->TryGetTextForPageUtf8(pageNo, &textLen, &coords, &text) || !text || textLen <= 0) {
         return false;
     }
 
     Vec<ReadAloudRawByte> raw;
-    for (int i = 0; i < pageText.len; i++) {
+    for (int i = 0; i < textLen; i++) {
         ReadAloudByteLoc loc;
-        Rect r = pageText.coords[i];
+        Rect r = coords[i];
         if (r.x || r.dx) {
             ReadAloudByteLocSetFromRect(loc, pageNo, r);
         }
-        ReadAloudHighlightAppendRaw(raw, pageText.text[i], loc);
+        ReadAloudHighlightAppendRaw(raw, text[i], loc);
     }
-    FreePageTextUtf8(&pageText);
 
     return CleanRawBytes(raw, map, cleanedOut);
 }
@@ -860,6 +860,8 @@ struct ReadAloudLineMetrics {
     RectF sample;
     float centerY = 0;
     float dy = 0;
+    float sumDx = 0;
+    int glyphCount = 0;
 };
 
 static void ReadAloudUpdateLineMetrics(ReadAloudLineMetrics& m, int* glyphCount, const RectF& g) {
@@ -868,12 +870,16 @@ static void ReadAloudUpdateLineMetrics(ReadAloudLineMetrics& m, int* glyphCount,
         m.sample = g;
         m.centerY = cy;
         m.dy = g.dy;
+        m.sumDx = g.dx;
+        m.glyphCount = 1;
         *glyphCount = 1;
         return;
     }
     (*glyphCount)++;
     m.centerY += (cy - m.centerY) / *glyphCount;
     m.dy = std::max(m.dy, g.dy);
+    m.sumDx += g.dx;
+    m.glyphCount++;
 }
 
 static void ReadAloudBuildPageLineMetrics(ReadAloudHighlightMap* map, int pageNo, Vec<ReadAloudLineMetrics>& lines) {
@@ -906,6 +912,8 @@ static void ReadAloudBuildPageLineMetrics(ReadAloudHighlightMap* map, int pageNo
             m.sample = g;
             m.centerY = g.y + g.dy * 0.5f;
             m.dy = g.dy;
+            m.sumDx = g.dx;
+            m.glyphCount = 1;
             lines.Append(m);
             lineGlyphCounts.Append(1);
         } else {
@@ -923,18 +931,25 @@ static const ReadAloudLineMetrics* ReadAloudFindLineMetrics(const Vec<ReadAloudL
     return nullptr;
 }
 
-static RectF ReadAloudSnapRectToLineMetrics(const RectF& horizontal, const ReadAloudLineMetrics& line) {
+static RectF ReadAloudSnapRectToLineMetrics(const RectF& horizontal, const ReadAloudLineMetrics& line, bool cachedOcr) {
     if (horizontal.dx <= 0 || line.dy <= 0) {
         return RectF();
     }
     RectF rf = horizontal;
     rf.y = line.centerY - line.dy * 0.5f;
     rf.dy = line.dy;
+    if (cachedOcr && line.glyphCount > 0) {
+        float capDy = line.sumDx / (float)line.glyphCount * 1.1f;
+        if (capDy >= 2.f && capDy < rf.dy) {
+            rf.y = line.centerY - capDy * 0.5f;
+            rf.dy = capDy;
+        }
+    }
     return ScaleHighlightBandRect(rf, kReadAloudHighlightBandRatio);
 }
 
 static void ReadAloudAppendWordLineRects(Vec<RectF>& lineRects, const Vec<RectF>& wordGlyphs,
-                                         const Vec<ReadAloudLineMetrics>& pageLines) {
+                                         const Vec<ReadAloudLineMetrics>& pageLines, bool cachedOcr) {
     Vec<RectF> groupHorizontal;
     Vec<RectF> groupSample;
     Vec<ReadAloudLineMetrics> groupMetrics;
@@ -961,6 +976,8 @@ static void ReadAloudAppendWordLineRects(Vec<RectF>& lineRects, const Vec<RectF>
             m.sample = g;
             m.centerY = g.y + g.dy * 0.5f;
             m.dy = g.dy;
+            m.sumDx = g.dx;
+            m.glyphCount = 1;
             groupMetrics.Append(m);
             groupGlyphCounts.Append(1);
             continue;
@@ -989,7 +1006,7 @@ static void ReadAloudAppendWordLineRects(Vec<RectF>& lineRects, const Vec<RectF>
         if (lineMetrics.dy <= 0) {
             continue;
         }
-        RectF rf = ReadAloudSnapRectToLineMetrics(horizontal, lineMetrics);
+        RectF rf = ReadAloudSnapRectToLineMetrics(horizontal, lineMetrics, cachedOcr);
         if (rf.IsEmpty()) {
             continue;
         }
@@ -1054,7 +1071,7 @@ static bool ReadAloudCollectWordHighlightScreenRects(MainWindow* win, WindowTab*
         ReadAloudBuildPageLineMetrics(map, pageNo, pageLines);
 
         Vec<RectF> lineRects;
-        ReadAloudAppendWordLineRects(lineRects, wordGlyphs, pageLines);
+        ReadAloudAppendWordLineRects(lineRects, wordGlyphs, pageLines, dm->GetEngine()->HasCachedOcrText(pageNo));
 
         for (RectF& u : lineRects) {
             Rect sr = dm->CvtToScreen(pageNo, u);
@@ -1127,8 +1144,15 @@ static bool ReadAloudGetCurrentWordAbsRange(WindowTab* tab, int* startAbsOut, in
     }
 
     int spokenPos = TtsGetSpokenPosUtf8();
+    // Windows can take a timer tick to report the first word boundary of a
+    // newly queued utterance. Keep following the start of that chunk in the
+    // meantime; otherwise a short page can finish before auto-scroll ever
+    // gets a valid anchor for the next page.
     if (spokenPos < 0) {
-        return false;
+        if (!TtsIsSpeaking() || tab->readAloudChunkStart < 0 || tab->readAloudChunkStart >= tab->readAloudChunkEnd) {
+            return false;
+        }
+        spokenPos = 0;
     }
 
     const char* chunkText = tab->readAloudText + tab->readAloudChunkStart;
@@ -1192,7 +1216,9 @@ static bool ReadAloudCollectAnchorPageRect(WindowTab* tab, int wordStartAbs, int
     ReadAloudBuildPageLineMetrics(map, pageNo, pageLines);
 
     Vec<RectF> lineRects;
-    ReadAloudAppendWordLineRects(lineRects, wordGlyphs, pageLines);
+    DisplayModel* dm = tab->AsFixed();
+    bool cachedOcr = dm && dm->GetEngine()->HasCachedOcrText(pageNo);
+    ReadAloudAppendWordLineRects(lineRects, wordGlyphs, pageLines, cachedOcr);
 
     if (lineRects.size() == 0) {
         return false;
@@ -1412,8 +1438,15 @@ void ReadAloudOnUserViewChanged(MainWindow* win) {
     int pageNo = 0;
     RectF pageRect;
     Rect anchorScreen;
-    if (!ReadAloudGetCurrentAnchor(tab, dm, &pageNo, &pageRect, &anchorScreen) ||
-        !ReadAloudAnchorVisibleInCanvas(win, anchorScreen)) {
+    if (!ReadAloudGetCurrentAnchor(tab, dm, &pageNo, &pageRect, &anchorScreen)) {
+        tab->readAloudAutoScroll = false;
+        return;
+    }
+
+    // A newly spoken page is expected to be outside the canvas until
+    // ReadAloudUpdateAutoScroll turns to it. Do not treat that as a user
+    // override and disable auto-scroll before the next timer tick can act.
+    if (dm->PageVisible(pageNo) && !ReadAloudAnchorVisibleInCanvas(win, anchorScreen)) {
         tab->readAloudAutoScroll = false;
     }
 }

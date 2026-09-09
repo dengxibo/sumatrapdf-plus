@@ -3846,7 +3846,7 @@ static void PlaceContainerChild(HWND hwnd, int x, int y, int dx, int dy) {
     }
     UINT flags = SWP_NOZORDER | SWP_NOACTIVATE;
     if (TreeWrapUpdatesSuspended()) {
-        flags |= SWP_NOCOPYBITS;
+        flags |= SWP_NOCOPYBITS | SWP_NOREDRAW;
     }
     SetWindowPos(hwnd, nullptr, x, y, dx, dy, flags);
 }

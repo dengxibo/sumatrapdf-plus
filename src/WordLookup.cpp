@@ -2621,6 +2621,85 @@ static RectF WordLookupHighlightFromCoords(const Rect* coords, int start, int en
     return ToRectF(bbox);
 }
 
+static void ReanchorCachedOcrLookupHighlight(const Rect* coords, int coordsLen, int clickGlyph, PointF pagePt,
+                                             RectF* hlBox) {
+    if (!coords || !hlBox || clickGlyph < 0 || clickGlyph >= coordsLen || hlBox->IsEmpty()) {
+        return;
+    }
+    if (pagePt.x >= hlBox->x && pagePt.x <= hlBox->x + hlBox->dx && pagePt.y >= hlBox->y &&
+        pagePt.y <= hlBox->y + hlBox->dy) {
+        return;
+    }
+
+    const Rect& clicked = coords[clickGlyph];
+    if (clicked.dx <= 0 || clicked.dy <= 0) {
+        return;
+    }
+    float clickedCx = (float)clicked.x + (float)clicked.dx * 0.5f;
+    float clickedCy = (float)clicked.y + (float)clicked.dy * 0.5f;
+    hlBox->x += pagePt.x - clickedCx;
+    hlBox->y += pagePt.y - clickedCy;
+}
+
+static void TightenCachedOcrLookupHighlight(const WCHAR* text, int textLen, const Rect* coords, int matchStart,
+                                            int matchEnd, RectF* hlBox) {
+    if (!text || !coords || !hlBox || matchStart < 0 || matchEnd <= matchStart || matchEnd > textLen) {
+        return;
+    }
+    int matchLen = matchEnd - matchStart;
+    if (matchLen > 1 && hlBox->dy > hlBox->dx * 1.25f) {
+        TightenWordLookupHighlightBox(hlBox, matchLen);
+        return;
+    }
+
+    int lineStart = matchStart;
+    while (lineStart > 0 && text[lineStart - 1] != '\n' && text[lineStart - 1] != '\r') {
+        lineStart--;
+    }
+    int lineEnd = matchEnd;
+    while (lineEnd < textLen && text[lineEnd] != '\n' && text[lineEnd] != '\r') {
+        lineEnd++;
+    }
+
+    float sumDx = 0;
+    float sumCy = 0;
+    int count = 0;
+    float matchCenterY = hlBox->y + hlBox->dy * 0.5f;
+    float sameLineTolerance = hlBox->dy * 0.55f;
+    if (sameLineTolerance < 2.f) {
+        sameLineTolerance = 2.f;
+    }
+    for (int i = lineStart; i < lineEnd; i++) {
+        const Rect& r = coords[i];
+        if (r.dx <= 0 || r.dy <= 0 || iswspace(text[i])) {
+            continue;
+        }
+        float cy = (float)r.y + (float)r.dy * 0.5f;
+        // OCR joins wrapped lines into one logical paragraph for searching and
+        // reading. Height normalization must stay on the matched visual line;
+        // averaging the whole paragraph moves a correct lookup rectangle to a
+        // different row.
+        if (std::abs(cy - matchCenterY) > sameLineTolerance) {
+            continue;
+        }
+        sumDx += (float)r.dx;
+        sumCy += cy;
+        count++;
+    }
+    if (count <= 0) {
+        TightenWordLookupHighlightBox(hlBox, matchLen);
+        return;
+    }
+
+    float targetDy = sumDx / (float)count * 1.1f;
+    if (targetDy < 2.f || targetDy >= hlBox->dy) {
+        return;
+    }
+    float centerY = sumCy / (float)count;
+    hlBox->y = centerY - targetDy * 0.5f;
+    hlBox->dy = targetDy;
+}
+
 bool ShowEbookWordLookupAt(MainWindow* win, DisplayModel* dm, int pageNo, PointF pagePt, Point screenPos) {
     if (!win || !dm) {
         return false;
@@ -2801,13 +2880,16 @@ bool ShowChineseWordLookupAt(MainWindow* win, TextSelection* ts, EngineBase* eng
         if (coords && matchStart >= 0 && matchEnd <= coordsLen && matchLen > 0) {
             RectF hlBox = WordLookupHighlightFromCoords(coords, matchStart, matchEnd);
             if (hlBox.dx > 0.f && hlBox.dy > 0.f) {
-                // Cached horizontal OCR boxes have already been calibrated
-                // against raster ink. Vertical OCR cells remain square, so
-                // tighten only their cross-column extent.
-                bool vertical = matchLen > 1 && hlBox.dy > hlBox.dx * 1.25f;
-                if (vertical) {
-                    TightenWordLookupHighlightBox(&hlBox, matchLen);
-                }
+                // A corrupt/stale OCR coordinate map can still return the
+                // correct word index while its rectangle points at another
+                // word or even another line. The clicked glyph is authoritative
+                // for lookup, so reject that impossible geometry and translate
+                // the matched word back to the click before sizing its band.
+                ReanchorCachedOcrLookupHighlight(coords, coordsLen, clickGlyph, pagePt, &hlBox);
+                // Use the whole OCR line as the height reference. Per-word cell
+                // widths can be distorted by CTC cuts, which otherwise makes
+                // adjacent words alternate between short and tall highlights.
+                TightenCachedOcrLookupHighlight(text, textLen, coords, matchStart, matchEnd, &hlBox);
                 ts->SelectPageBbox(pageNo, hlBox);
             } else {
                 ts->SelectGlyphRange(pageNo, matchStart, matchEnd);

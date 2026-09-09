@@ -2489,7 +2489,8 @@ static void AppendPageRectsToScreen(DisplayModel* dm, const Rect& clipRc, const 
         if (!dm->ValidPageNo(pr.pageNo) || !dm->PageVisible(pr.pageNo)) {
             continue;
         }
-        Rect rc = dm->CvtToScreen(pr.pageNo, ToRectF(pr.rect));
+        RectF rf = ScaleHighlightBandRect(ToRectF(pr.rect), kFindHighlightBandRatio);
+        Rect rc = dm->CvtToScreen(pr.pageNo, rf);
         rc = rc.Intersect(clipRc);
         if (!rc.IsEmpty()) {
             out.Append(rc);
@@ -2506,7 +2507,8 @@ static void AppendTextSelScreenRects(DisplayModel* dm, const Rect& clipRc, TextS
         if (!dm->PageVisible(pageNo)) {
             continue;
         }
-        Rect rc = dm->CvtToScreen(pageNo, ToRectF(sel->rects[i]));
+        RectF rf = ScaleHighlightBandRect(ToRectF(sel->rects[i]), kFindHighlightBandRatio);
+        Rect rc = dm->CvtToScreen(pageNo, rf);
         rc = rc.Intersect(clipRc);
         if (!rc.IsEmpty()) {
             out.Append(rc);

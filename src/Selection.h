@@ -29,8 +29,15 @@ struct SelectionOnPage {
 
 // Highlight band height as a fraction of font size (engine stores coords at kHighlightBandBaseRatio).
 constexpr float kHighlightBandBaseRatio = 1.0f;
-constexpr float kSelectionHighlightBandRatio = 1.10f;
-constexpr float kReadAloudHighlightBandRatio = 1.10f;
+// Leave a modest vertical margin around glyph ink. Keep all interactive
+// highlights on the same band geometry so selection, reading, and search do
+// not appear to jump in height when switching actions.
+constexpr float kSelectionHighlightBandRatio = 1.35f;
+constexpr float kReadAloudHighlightBandRatio = 1.35f;
+constexpr float kFindHighlightBandRatio = 1.35f;
+// OCR cells tend to sit slightly above the visible glyph baseline. Shift the
+// common band down so most of the extra breathing room is below the glyph.
+constexpr float kHighlightBandCenterOffsetRatio = 0.075f;
 // Default opacity when SelectionColor has no alpha (#rrggbb). Used by alpha overlays (e.g. search).
 constexpr u8 kSelectionDefaultAlpha = 0x5f;
 constexpr u8 kSelectionHighlightAlpha = kSelectionDefaultAlpha;

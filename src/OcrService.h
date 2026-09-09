@@ -34,6 +34,7 @@ void OcrExtractTocAfterDocumentOcr(MainWindow* win);
 void OcrCancelQueued(MainWindow* win, bool quiet = false);
 void OcrCancelForEngine(EngineBase* engine);
 bool OcrHasQueuedJobs();
+bool OcrPageIsPending(EngineBase* engine, int pageNo);
 void OcrBeginRegionSelect(MainWindow* win);
 void OcrCancelRegionSelect(MainWindow* win);
 void OcrFinishRegionSelect(MainWindow* win, Rect screenRect);

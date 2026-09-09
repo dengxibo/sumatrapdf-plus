@@ -200,6 +200,10 @@ struct MainWindow {
 
     // vertical splitter for resizing left side panel
     Splitter* sidebarSplitter = nullptr;
+    // Covers native TreeView scrollbars during a live sidebar resize without
+    // changing their non-client layout.
+    HWND hwndTocScrollbarMask = nullptr;
+    HWND hwndFavScrollbarMask = nullptr;
 
     // horizontal splitter for resizing favorites and bookmars parts
     Splitter* favSplitter = nullptr;

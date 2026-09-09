@@ -795,7 +795,12 @@ static void OcrPlaceGlyphXs(const int* cps, const float* units, int nCp, float u
     // stays aligned, which even-spacing and CTC midpoint cuts get wrong.
     // Any deviation (spaces, merged/split glyphs) changes the blob count and
     // falls back to the CTC/even paths below.
-    if (dark && nCp >= 1 && xR - xL >= nCp && nCp <= 256) {
+    // CTC spans are tied to the decoded character sequence, so prefer them
+    // whenever they are complete. Projection blobs only describe anonymous
+    // ink: on noisy/multiply-scanned pages a split glyph plus a merged pair can
+    // preserve the blob count while shifting every following character. Keep
+    // blob cells solely as the fallback for recognizers without usable spans.
+    if (dark && (!ctcX || nCtc != nCp) && nCp >= 1 && xR - xL >= nCp && nCp <= 256) {
         int cellW = (xR - xL) / nCp;
         int gapThr = cellW / 3;
         if (gapThr < 3) {
@@ -2840,6 +2845,9 @@ static void OcrFinishUi(OcrDoneUi* d) {
             }
         }
     }
+    if (d->engine && d->pageNo > 0) {
+        ReadAloudOnOcrPageReady(d->engine, d->pageNo);
+    }
     if (d->regionJob) {
         if (d->ok) {
             OcrApplyRegionResult(d);
@@ -3005,6 +3013,22 @@ static bool QueueHas(EngineBase* engine, int pageNo) {
         }
     }
     return false;
+}
+
+bool OcrPageIsPending(EngineBase* engine, int pageNo) {
+    if (!engine || pageNo <= 0) {
+        return false;
+    }
+    gFlightLock.Lock();
+    bool inFlight = FindFlightLocked(engine, pageNo) != nullptr;
+    gFlightLock.Unlock();
+    if (inFlight) {
+        return true;
+    }
+    gQueueLock.Lock();
+    bool queued = QueueHas(engine, pageNo);
+    gQueueLock.Unlock();
+    return queued;
 }
 
 static void OcrEnqueueAutoPage(EngineBase* engine, HWND hwnd, int pageNo) {
