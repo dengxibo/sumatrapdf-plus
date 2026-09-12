@@ -26,6 +26,7 @@ enum class OcrOperation {
     CurrentPage = 0,
     Auto,
     AllPages,
+    Toc,
     SaveSearchable,
     Region,
 };

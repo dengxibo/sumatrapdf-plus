@@ -24,6 +24,7 @@
 #include "TextSearch.h"
 #include "ExtractPdfToc.h"
 #include "OcrService.h"
+#include "PrintedTocModel.h"
 #include "TocCalib.h"
 
 #include "utils/Log.h"
@@ -663,6 +664,26 @@ static char* CollectPageCompact(EngineBase* engine, int pageNo) {
     }
     buf[o] = 0;
     EngineMupdfFreePageLines(raw);
+    // Image-only pages have no native stext; verify against the cached OCR
+    // text instead so bench hit/miss is meaningful for scanned documents
+    // (mirrors CollectPageScanLines' fallback).
+    int glyphCount = 0;
+    for (int i = 0; buf[i] && glyphCount < 20; i++) {
+        char c = buf[i];
+        bool ws = c == ' ' || c == '\t' || c == '\n' || c == '\r';
+        if ((unsigned char)c >= 0x80 || !ws) {
+            glyphCount++;
+        }
+    }
+    if (glyphCount < 20 && engine) {
+        int len = 0;
+        Rect* coords = nullptr;
+        const char* text = nullptr;
+        if (engine->TryGetTextForPageUtf8(pageNo, &len, &coords, &text) && text && len > 0) {
+            str::Free(buf);
+            buf = str::Dup(text);
+        }
+    }
     char compact[8000];
     CompactText(buf, compact, (int)sizeof(compact));
     str::Free(buf);
@@ -736,9 +757,45 @@ void TestExtractTocBench(const Flags& ci) {
         }
         data.Free();
     }
+    char pageBenchDir[MAX_PATH]{};
+    if (GetEnvironmentVariableA("SUMATRA_TOC_PAGE_BENCH", pageBenchDir, dimof(pageBenchDir)) > 0) {
+        for (auto fileName : files) {
+            auto* engine = CreateEngineFromFile(fileName, nullptr, true);
+            if (!engine) continue;
+            Vec<int> pages;
+            PtocFindCachedTocPages(engine, pages, true, true);
+            PtJsonBuf result;
+            result.Raw("{\"file\":");
+            result.Escaped(fileName);
+            result.Raw(",\"pageCount\":");
+            result.Int(engine->PageCount());
+            result.Raw(",\"prediction\":[");
+            for (int i = 0; i < pages.Size(); i++) {
+                if (i) result.Raw(",");
+                result.Int(pages[i]);
+            }
+            result.Raw("]}");
+            TempStr output = path::JoinTemp(pageBenchDir, str::FormatTemp("%s.json", path::GetBaseNameTemp(fileName)));
+            dir::CreateForFile(output);
+            AutoFree json(result.Steal());
+            file::WriteFile(output, ByteSlice(json.Get()));
+            // Collect the entire diagnostic window after recording the actual
+            // production prediction, including pages skipped by early stopping.
+            Vec<ScanLine> lines;
+            int limit = engine->PageCount() < 30 ? engine->PageCount() : 30;
+            for (int p = 1; p <= limit; p++) {
+                if (!engine->HasCachedOcrText(p)) OcrRecognizeEnginePage(engine, p, false, OcrOperation::Toc);
+                PtocCollectPageScanLines(engine, p, lines);
+            }
+            PtocDumpScanLinesJson(fileName, lines, limit, "page-detection-benchmark");
+            PtocFreeScanLines(lines);
+            SafeEngineRelease(&engine);
+        }
+        return;
+    }
     FILE* out = fopen("c:\\src\\sumatrapdf\\_toc_bench\\report.jsonl", "w");
     FILE* sum = fopen("c:\\src\\sumatrapdf\\_toc_bench\\summary.txt", "w");
-    int nOk = 0, nNoText = 0, nNoHead = 0, nFail = 0, nOpen = 0, nMiss = 0, nMono = 0;
+    int nOk = 0, nNoText = 0, nNoHead = 0, nFail = 0, nOpen = 0, nMiss = 0, nMono = 0, nJump = 0;
     for (auto fileName : files) {
         logf("toc-bench: %s\n", fileName);
         auto engine = CreateEngineFromFile(fileName, nullptr, true);
@@ -775,7 +832,9 @@ void TestExtractTocBench(const Flags& ci) {
         FlattenExtractedToc(roots, flat);
         int miss = 0;
         int mono = 0;
+        int jump = 0;
         int prevPage = 0;
+        int prevLevel = 0;
         // Heap: a flat TOC can be large; a 256KB stack buffer overflows on some PDFs.
         const int kItemsCap = 256000;
         char* itemsBuf = AllocArray<char>(kItemsCap);
@@ -794,6 +853,13 @@ void TestExtractTocBench(const Flags& ci) {
             if (it->pageNo > 0) {
                 prevPage = it->pageNo;
             }
+            // Hierarchy health: a child may only be one level below its
+            // predecessor; anything deeper is an unanchored jump that usually
+            // means a level-assignment bug.
+            if (prevLevel > 0 && it->level > prevLevel + 1) {
+                jump++;
+            }
+            prevLevel = it->level;
             char* pageTxt = it->pageNo > 0 ? CollectPageCompact(engine, it->pageNo) : nullptr;
             bool hit = TitleHitsPage(it->title, pageTxt);
             if (!hit) {
@@ -815,32 +881,33 @@ void TestExtractTocBench(const Flags& ci) {
         }
         nMiss += miss;
         nMono += mono;
+        nJump += jump;
         char fesc[800];
         TocJsonEscape(fesc, (int)sizeof(fesc), fileName);
         if (out) {
-            fprintf(
-                out,
-                "{\"file\":\"%s\",\"status\":\"%s\",\"pages\":%d,\"n\":%d,\"miss\":%d,\"mono\":%d,\"items\":[%s]}\n",
-                fesc, st, engine->PageCount(), nItems, miss, mono, itemsBuf);
+            fprintf(out,
+                    "{\"file\":\"%s\",\"status\":\"%s\",\"pages\":%d,\"n\":%d,\"miss\":%d,\"mono\":%d,\"jump\":%d,"
+                    "\"items\":[%s]}\n",
+                    fesc, st, engine->PageCount(), nItems, miss, mono, jump, itemsBuf);
         }
         if (sum) {
-            fprintf(sum, "%s\t%s\tpages=%d n=%d miss=%d mono=%d\n", st, fileName, engine->PageCount(), nItems, miss,
-                    mono);
+            fprintf(sum, "%s\t%s\tpages=%d n=%d miss=%d mono=%d jump=%d\n", st, fileName, engine->PageCount(), nItems,
+                    miss, mono, jump);
         }
         free(itemsBuf);
         DeleteExtractedTocItems(roots);
         SafeEngineRelease(&engine);
     }
     if (sum) {
-        fprintf(sum, "ok=%d notext=%d noheadings=%d fail=%d openfail=%d miss=%d mono=%d files=%d\n", nOk, nNoText,
-                nNoHead, nFail, nOpen, nMiss, nMono, files.Size());
+        fprintf(sum, "ok=%d notext=%d noheadings=%d fail=%d openfail=%d miss=%d mono=%d jump=%d files=%d\n", nOk,
+                nNoText, nNoHead, nFail, nOpen, nMiss, nMono, nJump, files.Size());
         fclose(sum);
     }
     if (out) {
         fclose(out);
     }
-    logf("toc-bench: ok=%d notext=%d noheadings=%d fail=%d openfail=%d miss=%d mono=%d files=%d\n", nOk, nNoText,
-         nNoHead, nFail, nOpen, nMiss, nMono, files.Size());
+    logf("toc-bench: ok=%d notext=%d noheadings=%d fail=%d openfail=%d miss=%d mono=%d jump=%d files=%d\n", nOk,
+         nNoText, nNoHead, nFail, nOpen, nMiss, nMono, nJump, files.Size());
 }
 
 void TestExtractPage(const Flags& ci) {

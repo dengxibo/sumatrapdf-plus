@@ -65,6 +65,7 @@
 #include "Toolbar.h"
 #include "Translations.h"
 #include "OcrService.h"
+#include "PrintedTocOverlay.h"
 
 #include "utils/Log.h"
 
@@ -2623,6 +2624,7 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
 
         EbookAnnotationsPaintPage(win->CurrentTab(), hdc, dm, pageNo);
         PaintPdfMarkupOverlayPage(win->CurrentTab(), hdc, dm, pageNo);
+        PaintPrintedTocOverlay(hdc, dm, pageNo);
         if (win->CurrentTab() && !gRenderCache->PageNeedsMarkupOverlay(dm, pageNo)) {
             ClearPdfMarkupOverlayForPage(win->CurrentTab(), pageNo);
         }

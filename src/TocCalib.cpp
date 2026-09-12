@@ -50,6 +50,21 @@ static bool TocCalibHasPrinted(int printed) {
     return printed > 0;
 }
 
+// OCR mangles printed page numbers ("113" can arrive as "70 3"); a printed
+// page far beyond the document's page count is garbage. Feeding it into the
+// printed->pdf mapping clamps the row to the last page, and the monotonic
+// repair then drags every later row there too (a "703" on a 345-page book
+// turned chapters 3-5 into page 345).
+static bool TocCalibPrintedPlausible(int nPages, int printed) {
+    if (!TocCalibHasPrinted(printed)) {
+        return false;
+    }
+    if (nPages <= 0) {
+        return true;
+    }
+    return printed <= nPages + nPages / 2 + 32;
+}
+
 static int TocCalibRowPdf(const TocCalibRow* row);
 static int TocCalibLabelPrinted(const TocCalibSession* s, int pdf);
 static bool TocCalibLabelIsPlainPdf(const char* label, int pdf);
@@ -1142,7 +1157,7 @@ void TocCalibVerifyNearPredicted(TocCalibSession* s) {
             continue;
         }
         int pred = it->pageNo;
-        if (pred < 1 && TocCalibHasPrinted(it->printedPage) && s->map.confidence > 0) {
+        if (pred < 1 && TocCalibPrintedPlausible(s->nPages, it->printedPage) && s->map.confidence > 0) {
             pred = it->printedPage + s->map.offset;
             if (pred < 1) {
                 pred = 1;
@@ -1829,6 +1844,10 @@ static void TocCalibRowsToMap(const TocCalibSession* s, Vec<TocCalibMapRow>& map
         if (!it) {
             continue;
         }
+        if (!TocCalibPrintedPlausible(s->nPages, it->printedPage)) {
+            // Garbage printed must not vote on the offset.
+            continue;
+        }
         TocCalibMapRow r;
         r.printedPage = it->printedPage;
         r.pdfPage = it->pageNo;
@@ -2394,6 +2413,12 @@ static void TocCalibEnforceReadingOrder(TocCalibSession* s) {
         if (!it || TocCalibIsContentsTitle(it->title)) {
             continue;
         }
+        if (s->rows[i].clamped) {
+            // A row clamped to the last page carries no order information;
+            // it must not drag the remaining rows there.
+            s->rows[i].needsConfirm = true;
+            continue;
+        }
         if (it->printedPage > 0) {
             if (prevPr > 0 && it->printedPage < prevPr) {
                 if (!s->rows[i].userSet) {
@@ -2424,10 +2449,17 @@ static void TocCalibEnforceReadingOrder(TocCalibSession* s) {
             if (it->printedPage > 0 && TocCalibHaveOffset(s)) {
                 pred = TocCalibPredPdf(it->printedPage, s->map.offset, s->nPages);
             }
-            it->pageNo = pred >= prevPdf ? pred : prevPdf;
-            it->bodyMatched = false;
-            s->rows[i].needsConfirm = true;
-            pdf = it->pageNo;
+            if (it->bodyMatched) {
+                // Direct body-text evidence outranks the running order when
+                // the two conflict: keep the verified page (the earlier row
+                // is the likely garbage) and re-anchor the sequence on it.
+                s->rows[i].needsConfirm = true;
+            } else {
+                it->pageNo = pred >= prevPdf ? pred : prevPdf;
+                it->bodyMatched = false;
+                s->rows[i].needsConfirm = true;
+                pdf = it->pageNo;
+            }
         }
         if (pdf > 0) {
             prevPdf = pdf;
@@ -2463,6 +2495,12 @@ void TocCalibSolveSession(TocCalibSession* s) {
         if (!it) {
             continue;
         }
+        if (!TocCalibPrintedPlausible(s->nPages, it->printedPage)) {
+            // Garbage printed (OCR mangling): drop it and keep the extracted
+            // pdf page instead of clamping a bogus printed+offset to nPages.
+            it->printedPage = 0;
+            it->verified = false;
+        }
         if (!s->rows[i].pdfPinned) {
             if (TocCalibHasPrinted(it->printedPage) && haveOffset) {
                 it->pageNo = TocCalibPredPdf(it->printedPage, s->map.offset, s->nPages);
@@ -2470,8 +2508,10 @@ void TocCalibSolveSession(TocCalibSession* s) {
                 it->pageNo = s->rows[i].origPageNo;
             }
         }
+        s->rows[i].clamped = false;
         if (s->nPages > 0 && it->pageNo > s->nPages) {
             it->pageNo = s->nPages;
+            s->rows[i].clamped = true;
         }
         if (TocCalibHasPrinted(it->printedPage)) {
             if (!havePrinted || it->printedPage < pMin) {
@@ -2526,7 +2566,7 @@ bool TocCalibSetOffset(TocCalibSession* s, int offset) {
     s->offsetLocked = true;
     for (int i = 0; i < s->rows.Size(); i++) {
         ExtractedTocItem* it = s->rows[i].item;
-        if (!it || !TocCalibHasPrinted(it->printedPage) || s->rows[i].pdfPinned) {
+        if (!it || !TocCalibPrintedPlausible(s->nPages, it->printedPage) || s->rows[i].pdfPinned) {
             continue;
         }
         it->pageNo = TocCalibPredPdf(it->printedPage, offset, s->nPages);
@@ -2568,7 +2608,7 @@ bool TocCalibCommitRow(TocCalibSession* s, int rowIdx, int printed, int pdf, int
         s->offsetLocked = true;
         for (int i = 0; i < s->rows.Size(); i++) {
             ExtractedTocItem* row = s->rows[i].item;
-            if (!row || !TocCalibHasPrinted(row->printedPage) || s->rows[i].pdfPinned) {
+            if (!row || !TocCalibPrintedPlausible(s->nPages, row->printedPage) || s->rows[i].pdfPinned) {
                 continue;
             }
             row->pageNo = TocCalibPredPdf(row->printedPage, offset, s->nPages);
@@ -2579,7 +2619,7 @@ bool TocCalibCommitRow(TocCalibSession* s, int rowIdx, int printed, int pdf, int
         s->offsetLocked = true;
         for (int i = 0; i < s->rows.Size(); i++) {
             ExtractedTocItem* row = s->rows[i].item;
-            if (!row || !TocCalibHasPrinted(row->printedPage) || s->rows[i].pdfPinned) {
+            if (!row || !TocCalibPrintedPlausible(s->nPages, row->printedPage) || s->rows[i].pdfPinned) {
                 continue;
             }
             row->pageNo = TocCalibPredPdf(row->printedPage, offset, s->nPages);

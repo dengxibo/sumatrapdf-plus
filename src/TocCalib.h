@@ -40,6 +40,9 @@ struct TocCalibRow {
     bool pdfPinned = false;
     bool colChosen = false;
     bool editPdf = false;
+    // pageNo was clamped to the document's last page during solve, so it
+    // carries no reliable order information.
+    bool clamped = false;
     int identPageNo = 0;
     int origPageNo = 0;
     TocCalibItemRef toc;

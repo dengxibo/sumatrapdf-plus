@@ -33132,3 +33132,11 @@ tw:保留至本次工作階段
 :Discard
 cn:丢弃
 tw:捨棄
+
+:AI Recognize Table of Contents
+cn:AI提取目录书签
+tw:AI擷取目錄書籤
+
+:Extract Table of Contents Locally
+cn:本地提取目录书签
+tw:本地擷取目錄書籤

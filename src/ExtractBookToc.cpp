@@ -278,6 +278,53 @@ static bool BookLooksLikeJunk(const char* s) {
     if (str::Find(s, "ISBN") || str::Find(s, "www.") || str::Find(s, "http")) {
         return true;
     }
+    // Decorative running headers OCR into fragments of "CONTENTS" that no
+    // real title contains ("ONTENTS", "C ONTENTS第警量票量量集章").
+    if (str::ContainsI(s, "ONTENTS")) {
+        return true;
+    }
+    return false;
+}
+
+// Sentence punctuation marks a row as prose (chapter intros bleed into the
+// TOC text layer with oversized OCR boxes). Real titles keep enumeration
+// marks like 、 and separators like ：, so those stay allowed.
+static bool BookHasSentencePunct(const char* s) {
+    if (!s || !s[0]) {
+        return false;
+    }
+    int len = (int)str::Len(s);
+    int i = 0;
+    while (i < len) {
+        int cp = Utf8CodepointNext(s, len, i);
+        switch (cp) {
+            case 0xFF0C: // ，
+            case 0x3002: // 。
+            case 0xFF1B: // ；
+            case 0xFF01: // ！
+            case 0xFF1F: // ？
+            case 0x2026: // …
+            case 0x2014: // —
+            case ',':
+            case '.':
+            case ';':
+            case '!':
+            case '?':
+                return true;
+        }
+    }
+    return false;
+}
+
+static bool BookHasAsciiDigit(const char* s) {
+    if (!s) {
+        return false;
+    }
+    for (int i = 0; s[i]; i++) {
+        if (s[i] >= '0' && s[i] <= '9') {
+            return true;
+        }
+    }
     return false;
 }
 
@@ -805,11 +852,14 @@ static BookUnit BookParseUnit(const char* s) {
     int i = 0;
     BookSkipWs(s, len, i);
     int cp = i < len ? Utf8CodepointNext(s, len, i) : 0;
-    if (cp == 0x5E8F || cp == 0x672B) { // 序 末
+    if (cp == 0x5E8F || cp == 0x672B || cp == 0x7EEA) { // 序 末 绪
+        // OCR drops random spaces inside the unit ("绪 论"): skip before
+        // reading the unit word's second glyph.
+        BookSkipWs(s, len, i);
         int n = i < len ? Utf8CodepointNext(s, len, i) : 0;
-        if (n == 0x7AE0) { // 章
+        if (n == 0x7AE0 || (cp == 0x7EEA && n == 0x8BBA)) { // 章 / 绪论
             u.kind = BookUnitKind::Chapter;
-            u.number = cp == 0x5E8F ? 0 : 99;
+            u.number = cp == 0x672B ? 99 : 0;
             u.prefixBytes = i;
         }
         return u;
@@ -1258,7 +1308,22 @@ static void BookMergeSameRow(Vec<BookLine>& page) {
                     changed = true;
                     break;
                 }
-                if (!iNum && !jNum && gap < 28) {
+                // Title fragments of one visual row. The gap budget must scale
+                // with the raw bbox height: OCR drops glyphs inside large-font
+                // chapter banners ("第 一章帮助孩 | 地融入高中生活", gap 37pt at
+                // dy 42.9), and a fixed 28pt budget left those halves as two
+                // rows - the second then nested as a fake subsection. Keep the
+                // 28pt floor for body-size rows and cap the scaled budget so
+                // two-column entries never fuse across the column gap.
+                float hRaw = page[i].dy > page[j].dy ? page[i].dy : page[j].dy;
+                float gapMax = 28.f;
+                if (hRaw > 31.f) {
+                    gapMax = hRaw * 0.9f;
+                    if (gapMax > 56.f) {
+                        gapMax = 56.f;
+                    }
+                }
+                if (!iNum && !jNum && gap < gapMax) {
                     if (page[j].x < page[i].x) {
                         BookJoinLine(page[j], page[i]);
                         str::Free(page[i].text);
@@ -1413,6 +1478,14 @@ static BookTocPageFeatures BookAnalyzeTocPage(const Vec<ScanLine>& lines, int p)
 }
 
 static bool BookIsTocStartPage(const BookTocPageFeatures& f) {
+    // A Contents opener whose rows lost their inline page numbers to OCR
+    // (numbers drifting into separate right-edge fragments, leader dots
+    // reduced to single '.') still starts the printed Contents when the page
+    // carries the 目录/Contents heading ("日录" included, see the matcher)
+    // and reads as short rows rather than prose.
+    if (f.heading) {
+        return (f.entries >= 1 || f.meaningful >= 6) && f.prose * 2 < f.meaningful + 1;
+    }
     return f.entries >= 3 && f.score >= 48;
 }
 
@@ -2268,7 +2341,7 @@ static void BookParseTocPage(Vec<BookLine>& page, Vec<BookTocEntry>& hits) {
     float pageW = BookPageWidth(page);
     BookSortVisual(page);
     for (int i = 0; i < page.Size(); i++) {
-        if (page[i].text && BookParsePackedLessonTocLine(page[i], hits)) {
+        if (page[i].text && !page[i].used && BookParsePackedLessonTocLine(page[i], hits)) {
             page[i].used = true;
             continue;
         }
@@ -2829,6 +2902,62 @@ static void BookAssignLevels(Vec<BookTocEntry>& hits) {
     }
     bool hasPart = nPartUnit > 0 || nBanner > 0;
     bool hasChap = nChap > 0;
+    // Large-font chapter recovery. Scanned TOCs set chapter banners in a much
+    // larger font, and OCR routinely eats the "第X章" prefix ("章教会孩子..." /
+    // "子健康生活的坚实后盾" / "力孩子度渡叛逆期" all parsed as unnumbered L3
+    // rows). Once the book is known to use 章 structure, an unnumbered row
+    // with real geometry that is markedly larger than the median body row,
+    // carries no printed page, and reads as a title (>= 4 glyphs, no sentence
+    // punctuation - intro prose bleeds in with oversized boxes but always
+    // carries 。， etc.) is a chapter whose prefix was truncated. Books without
+    // any 第X章 keep the banner logic untouched.
+    int chapLvl = hasPart ? 2 : 1;
+    float medFont = 0;
+    Vec<int> promoted;
+    if (nChap >= 1) {
+        Vec<float> body;
+        for (int i = 0; i < n; i++) {
+            if (hits[i].printedPage >= 1 && hits[i].fontSize > 1.f) {
+                body.Append(hits[i].fontSize);
+            }
+        }
+        if (body.Size() >= 4) {
+            for (int a = 1; a < body.Size(); a++) { // insertion sort, n is small
+                float v = body[a];
+                int b = a - 1;
+                while (b >= 0 && body[b] > v) {
+                    body[b + 1] = body[b];
+                    b--;
+                }
+                body[b + 1] = v;
+            }
+            medFont = body[body.Size() / 2];
+        }
+    }
+    for (int i = 0; i < n; i++) {
+        bool prom = false;
+        if (medFont > 1.f) {
+            prom = BookParseUnit(hits[i].title).kind == BookUnitKind::None && !isBanner[i] && hits[i].printedPage < 1 &&
+                   hits[i].srcX > 1.f && hits[i].fontSize > 1.f && hits[i].fontSize >= medFont * 1.55f &&
+                   BookGlyphCount(hits[i].title) >= 4 && !BookHasSentencePunct(hits[i].title);
+        }
+        promoted.Append(prom ? 1 : 0);
+    }
+    // Effective structural level per row (0 = content row), used by the
+    // indent-band walk so promoted banners act as chapter anchors there too.
+    Vec<int> outline;
+    for (int i = 0; i < n; i++) {
+        BookUnitKind kind2 = BookParseUnit(hits[i].title).kind;
+        int lv = 0;
+        if (kind2 == BookUnitKind::Part || isBanner[i]) {
+            lv = 1;
+        } else if (kind2 == BookUnitKind::Chapter || kind2 == BookUnitKind::Section) {
+            lv = BookStructOutlineLevel(kind2, hasPart, hasChap);
+        } else if (promoted[i]) {
+            lv = chapLvl;
+        }
+        outline.Append(lv);
+    }
     int leftoverBase = 1;
     if (hasPart && hasChap && nSec > 0) {
         leftoverBase = 4;
@@ -2842,37 +2971,73 @@ static void BookAssignLevels(Vec<BookTocEntry>& hits) {
     int lastScheme = 0;
     int lastSchemeLvl = 0;
     bool prevWasChap = false;
+    // Level-decision provenance counters: they make the mix of signals
+    // observable in the trace so new failure patterns surface as skewed
+    // ratios instead of silent mis-nesting.
+    int nDecidedStruct = 0;
+    int nDecidedBandPeer = 0;
+    int nDecidedBandChild = 0;
+    int nDecidedBandLeft = 0;
+    int nDecidedOther = 0;
+    int nDecidedCapped = 0;
     for (int i = 0; i < n; i++) {
+        const char* lvlWhy = nullptr;
         BookUnitKind kind = BookParseUnit(hits[i].title).kind;
         bool banner = isBanner[i] != 0;
-        bool subtitle =
-            kind == BookUnitKind::None && !banner && prevWasChap && BookLooksLikeChapSubtitle(hits[i].title);
+        bool promotedChap = promoted[i] != 0;
+        bool subtitle = kind == BookUnitKind::None && !banner && !promotedChap && prevWasChap &&
+                        BookLooksLikeChapSubtitle(hits[i].title);
         int scheme = BookEntryScheme(hits[i].title, nullptr);
-        // Printed books frequently have a peer title without a 第X课/章/节
-        // marker. A matching left edge is stronger hierarchy evidence than
-        // the missing marker: it belongs with the structural rows in that
-        // indent band, not under the preceding one. Only use real page
+        // Indent-band hierarchy for unnumbered rows, resolved against the
+        // nearest preceding structural row instead of a global nearest-x
+        // match. Structural rows drift across scanned TOC pages (one book
+        // had 章 rows at x=62..119 and 节 rows at x=78..84), so a fixed
+        // global tolerance matched content rows to the wrong band and made
+        // them siblings of the chapter. Sequence-local rules: within a
+        // small tolerance of the predecessor's left edge the row is that
+        // row's peer; clearly right of it nests one level deeper; clearly
+        // left of it belongs to an earlier, shallower band. Only real page
         // coordinates, so synthetic/text-only inputs keep their old rules.
-        int alignedStructLevel = 0;
-        if (kind == BookUnitKind::None && !banner && hits[i].srcX > 1.f) {
-            float bestDx = 1e9f;
-            for (int k = 0; k < n; k++) {
-                BookUnitKind other = BookParseUnit(hits[k].title).kind;
-                if (other == BookUnitKind::None || hits[k].srcX <= 1.f) {
+        int bandLevel = 0;
+        bool bandPeer = false;
+        bool bandLeft = false;
+        if (kind == BookUnitKind::None && !banner && !promotedChap && hits[i].srcX > 1.f) {
+            const float peerTol = 5.f;
+            int k = i - 1;
+            while (k >= 0) {
+                int otherLevel = outline[k];
+                float otherX = hits[k].srcX;
+                k--;
+                if (otherLevel <= 0 || otherX <= 1.f) {
                     continue;
                 }
-                float dx = hits[i].srcX - hits[k].srcX;
-                if (dx < 0) {
-                    dx = -dx;
+                float dx = hits[i].srcX - otherX;
+                if (dx < -peerTol) {
+                    // Left of its predecessor: peer of a shallower band.
+                    // Walk back to the nearest earlier row it reaches.
+                    bandLeft = true;
+                    while (k >= 0) {
+                        int lv2 = outline[k];
+                        float otherX2 = hits[k].srcX;
+                        k--;
+                        if (lv2 <= 0 || otherX2 <= 1.f) {
+                            continue;
+                        }
+                        if (hits[i].srcX <= otherX2 + peerTol) {
+                            bandLevel = lv2;
+                            bandPeer = true;
+                        } else {
+                            bandLevel = lv2 + 1;
+                        }
+                        break;
+                    }
+                } else if (dx <= peerTol) {
+                    bandLevel = otherLevel; // same band: peer of that row
+                    bandPeer = true;
+                } else {
+                    bandLevel = otherLevel + 1; // indented under that row
                 }
-                if (dx > 12.f || dx > bestDx) {
-                    continue;
-                }
-                int otherLevel = BookStructOutlineLevel(other, hasPart, hasChap);
-                if (dx < bestDx || (dx == bestDx && otherLevel < alignedStructLevel)) {
-                    bestDx = dx;
-                    alignedStructLevel = otherLevel;
-                }
+                break;
             }
         }
         int lvl = leftoverBase;
@@ -2882,24 +3047,46 @@ static void BookAssignLevels(Vec<BookTocEntry>& hits) {
             lastScheme = 0;
             lastSchemeLvl = 0;
             prevWasChap = false;
+            nDecidedStruct++;
         } else if (kind == BookUnitKind::Chapter || kind == BookUnitKind::Section) {
             lvl = BookStructOutlineLevel(kind, hasPart, hasChap);
             containerLvl = lvl;
             lastScheme = 0;
             lastSchemeLvl = 0;
             prevWasChap = kind == BookUnitKind::Chapter;
-        } else if (alignedStructLevel > 0) {
-            lvl = alignedStructLevel;
+            nDecidedStruct++;
+        } else if (promotedChap) {
+            lvl = chapLvl;
+            containerLvl = lvl;
+            lastScheme = 0;
+            lastSchemeLvl = 0;
+            prevWasChap = true;
+            lvlWhy = "lvl:bigfont-chapter";
+            nDecidedStruct++;
+        } else if (bandLevel > 0) {
+            lvl = bandLevel;
             containerLvl = lvl;
             lastScheme = 0;
             lastSchemeLvl = 0;
             prevWasChap = false;
+            if (bandLeft) {
+                lvlWhy = "lvl:band-left";
+                nDecidedBandLeft++;
+            } else if (bandPeer) {
+                lvlWhy = "lvl:band-peer";
+                nDecidedBandPeer++;
+            } else {
+                lvlWhy = "lvl:band-child";
+                nDecidedBandChild++;
+            }
         } else if (BookIsXinDe(hits[i].title) && hasPart) {
             lvl = 2;
             containerLvl = 2;
             lastScheme = 0;
             lastSchemeLvl = 0;
             prevWasChap = false;
+            lvlWhy = "lvl:xinde";
+            nDecidedOther++;
         } else if (subtitle) {
             lvl = containerLvl + 1;
             if (lvl < 2) {
@@ -2909,36 +3096,58 @@ static void BookAssignLevels(Vec<BookTocEntry>& hits) {
             lastScheme = 0;
             lastSchemeLvl = 0;
             prevWasChap = false;
+            lvlWhy = "lvl:subtitle";
+            nDecidedOther++;
         } else if (scheme > 0 && lastScheme == scheme && lastSchemeLvl > 0) {
             lvl = lastSchemeLvl;
             prevWasChap = false;
+            lvlWhy = "lvl:scheme-cont";
+            nDecidedOther++;
         } else if (scheme > 0) {
             lvl = containerLvl + 1;
             prevWasChap = false;
+            lvlWhy = "lvl:scheme-new";
+            nDecidedOther++;
         } else {
             // Unnumbered leftovers stay one step under the current 章/课.
             // Indent-chasing turned printed pages like "(144)" / "(145)" into a
             // fake deep outline; books do not nest that way (公文 does).
             lvl = containerLvl + 1;
             prevWasChap = false;
+            lvlWhy = "lvl:leftover";
+            nDecidedOther++;
         }
         if (lvl < 1) {
             lvl = 1;
         }
-        bool absolute = kind != BookUnitKind::None || banner;
+        bool absolute = kind != BookUnitKind::None || banner || promotedChap;
         if (!absolute && lvl > prev + 1) {
             lvl = prev + 1;
+            lvlWhy = "lvl:cap";
+            nDecidedCapped++;
         }
         if (lvl > 6) {
             lvl = 6;
         }
         hits[i].inferredLevel = lvl;
+        if (lvlWhy) {
+            char reason[320];
+            reason[0] = 0;
+            if (hits[i].reason) {
+                BookBufCat(reason, (int)sizeof(reason), hits[i].reason, nullptr);
+            }
+            BookReasonAdd(reason, (int)sizeof(reason), lvlWhy);
+            str::Free(hits[i].reason);
+            hits[i].reason = BookDupTrim(reason);
+        }
         prev = lvl;
         if (scheme > 0) {
             lastScheme = scheme;
             lastSchemeLvl = lvl;
         }
     }
+    logf("BookAssignLevels: n=%d struct=%d band-peer=%d band-child=%d band-left=%d other=%d capped=%d\n", n,
+         nDecidedStruct, nDecidedBandPeer, nDecidedBandChild, nDecidedBandLeft, nDecidedOther, nDecidedCapped);
 }
 
 static int BookTitleMatchScore(const char* body, const char* title) {
@@ -2961,6 +3170,766 @@ static int BookTitleMatchScore(const char* body, const char* title) {
         return tg;
     }
     return 0;
+}
+
+static int BookCollectSpaceFreeCps(const char* s, int* out, int cap) {
+    if (!s) {
+        return 0;
+    }
+    int len = (int)str::Len(s);
+    int i = 0;
+    int n = 0;
+    while (i < len && n < cap) {
+        int cp = Utf8CodepointNext(s, len, i);
+        if (cp <= 32 || cp == 0x3000) {
+            continue;
+        }
+        out[n++] = cp;
+    }
+    return n;
+}
+
+// OCR inserts spaces at random and drops glyphs inside titles ("第 一章帮助
+// 孩地融入高中生活"), so exact substring search fails. Compare on the
+// whitespace-free codepoint runs instead.
+static int BookSpaceFreePrefixRun(const int* a, int na, const int* b, int nb) {
+    int n = na < nb ? na : nb;
+    for (int i = 0; i < n; i++) {
+        if (a[i] != b[i]) {
+            return i;
+        }
+    }
+    return n;
+}
+
+// Longest common subsequence in glyphs; OCR scrambles single glyphs
+// ("度过" -> "度渡") inside otherwise intact titles. Inputs are capped small.
+static int BookGlyphLcs(const int* a, int na, const int* b, int nb) {
+    int prev[129] = {0};
+    int cur[129] = {0};
+    for (int i = 1; i <= na; i++) {
+        for (int j = 1; j <= nb; j++) {
+            if (a[i - 1] == b[j - 1]) {
+                cur[j] = prev[j - 1] + 1;
+            } else {
+                cur[j] = prev[j] > cur[j - 1] ? prev[j] : cur[j - 1];
+            }
+        }
+        memcpy(prev, cur, sizeof(int) * (size_t)(nb + 1));
+    }
+    return prev[nb];
+}
+
+// Score a body line as a reading-order anchor for a TOC title whose OCR text
+// may be truncated, space-glitched or scrambled. Exact / substring matches
+// win; otherwise a long whitespace-free common prefix or a dominant glyph
+// subsequence counts.
+static int BookBodyAnchorScore(const char* body, const char* title) {
+    int sc = BookTitleMatchScore(body, title);
+    if (sc > 0) {
+        return sc;
+    }
+    const int kCap = 128;
+    int cb[128];
+    int ct[128];
+    int nb = BookCollectSpaceFreeCps(body, cb, kCap);
+    int nt = BookCollectSpaceFreeCps(title, ct, kCap);
+    if (nt < 4) {
+        return 0;
+    }
+    int run = BookSpaceFreePrefixRun(cb, nb, ct, nt);
+    if (run >= 6) {
+        return run;
+    }
+    int lcs = BookGlyphLcs(ct, nt, cb, nb);
+    if (lcs >= 5 && lcs * 2 >= nt) {
+        return lcs;
+    }
+    return 0;
+}
+
+static void BookApplyLineDest(BookTocEntry& hit, const ScanLine& sl);
+static bool BookDestIsTocPage(int page, int tocStart, int tocEnd);
+
+// Body-anchor evidence tiers. A real heading line is set in a larger font
+// than the page's body text (chapter openers run 2-3x body size); running
+// headers, prose references and book-end appendix lists quote the very same
+// titles in body size, and scans often carry no text on the real opener page
+// at all. Anchoring therefore prefers heading-size evidence and ignores
+// body-size matches on pages that read like a secondary contents list.
+struct BookAnchorHit {
+    int score = 0;
+    int page = 0;
+    int line = -1;
+    bool inExtra = false;
+    bool strong = false;
+};
+
+struct BookPageFontStats {
+    float median = 0;          // body text size on the page
+    int nStruct = 0;           // lines with a 第X章/节/篇 prefix
+    bool strongStruct = false; // one of them set in heading size
+};
+
+static bool BookIsHeadingSizeLine(float fontSize, float pageMedian) {
+    // Display-size evidence. OCR text layers report unreliable font sizes for
+    // prose and running headers alike (relative-to-page thresholds misfire on
+    // opener pages whose intro text is set nearly as large as the title), but
+    // real display titles are always set >= ~2.5x the common body size.
+    return fontSize >= 26.f;
+}
+
+static float BookMedianOf(Vec<float>& v) {
+    int n = v.Size();
+    if (n < 1) {
+        return 0.f;
+    }
+    for (int a = 1; a < n; a++) {
+        float val = v[a];
+        int b = a - 1;
+        while (b >= 0 && v[b] > val) {
+            v[b + 1] = v[b];
+            b--;
+        }
+        v[b + 1] = val;
+    }
+    return v[n / 2];
+}
+
+// Per-page body font median + structural line census across both scan sets.
+static void BookCollectPageFontStats(const Vec<ScanLine>& a, const Vec<ScanLine>& b, int nPages,
+                                     Vec<BookPageFontStats>& out) {
+    out.Reset();
+    BookPageFontStats none;
+    for (int p = 0; p <= nPages + 1; p++) {
+        out.Append(none);
+    }
+    Vec<float> fonts;
+    Vec<float> structFonts;
+    for (int p = 1; p <= nPages; p++) {
+        fonts.Reset();
+        structFonts.Reset();
+        for (int pass = 0; pass < 2; pass++) {
+            const Vec<ScanLine>& ls = pass == 0 ? a : b;
+            for (int k = 0; k < ls.Size(); k++) {
+                const ScanLine& sl = ls[k];
+                if (sl.srcPage != p) {
+                    continue;
+                }
+                if (sl.fontSize > 1.f) {
+                    fonts.Append(sl.fontSize);
+                }
+                if (sl.text && BookParseUnit(sl.text).kind != BookUnitKind::None) {
+                    structFonts.Append(sl.fontSize > 1.f ? sl.fontSize : 0.f);
+                }
+            }
+        }
+        if (fonts.Size() < 1 && structFonts.Size() < 1) {
+            continue;
+        }
+        BookPageFontStats st;
+        st.median = BookMedianOf(fonts);
+        st.nStruct = structFonts.Size();
+        for (int k = 0; k < structFonts.Size(); k++) {
+            if (BookIsHeadingSizeLine(structFonts[k], st.median)) {
+                st.strongStruct = true;
+                break;
+            }
+        }
+        out[p] = st;
+    }
+}
+
+// Pages quoting >= 2 structural titles without any heading-size structural
+// line are a secondary contents list (book-end appendix, 目录 recap); they
+// match every row perfectly and must not anchor body-size (weak) matches.
+static bool BookWeakAnchorsBlockedOnPage(const BookPageFontStats& st) {
+    return st.nStruct >= 2 && !st.strongStruct;
+}
+
+static bool BookAnchorTraceEnabled() {
+    static int gTrace = -1;
+    if (gTrace < 0) {
+        char buf[8]{};
+        gTrace = GetEnvironmentVariableA("SUMATRA_TOC_TRACE", buf, dimof(buf)) > 0 ? 1 : 0;
+    }
+    return gTrace == 1;
+}
+
+static void BookBestAnchorInVec(const Vec<ScanLine>& ls, const char* title, int lastAnchor, int tocStart, int tocEnd,
+                                const Vec<BookPageFontStats>& stats, bool inExtra, BookAnchorHit* io) {
+    for (int k = 0; k < ls.Size(); k++) {
+        const ScanLine& sl = ls[k];
+        if (!sl.text || sl.srcPage <= lastAnchor || BookDestIsTocPage(sl.srcPage, tocStart, tocEnd)) {
+            continue;
+        }
+        int sc = BookBodyAnchorScore(sl.text, title);
+        if (sc < 6) {
+            continue;
+        }
+        const BookPageFontStats& st = sl.srcPage < stats.Size() ? stats[sl.srcPage] : BookPageFontStats();
+        bool strong = BookIsHeadingSizeLine(sl.fontSize, st.median);
+        if (!strong && BookWeakAnchorsBlockedOnPage(st)) {
+            continue;
+        }
+        bool better;
+        if (io->line < 0) {
+            better = true;
+        } else if (strong != io->strong) {
+            better = strong;
+        } else if (sc != io->score) {
+            better = sc > io->score;
+        } else {
+            better = sl.srcPage < io->page;
+        }
+        if (better) {
+            io->score = sc;
+            io->page = sl.srcPage;
+            io->line = k;
+            io->inExtra = inExtra;
+            io->strong = strong;
+        }
+    }
+}
+
+// Chapter banners and other OCR-mangled rows can end up with no destination:
+// banners carry no printed page, and the body ScanLine set may be
+// front-capped (an embedded OCR text layer makes the scan classify as
+// born-digital, so only the first ~80 pages were collected). Collect the
+// remaining pages and resolve each still-unresolved row against the first
+// body anchor after the previous resolved row. In TOC reading order a
+// chapter's title headers begin on the chapter's opener page, so ties
+// (running headers repeat on every page of the chapter) resolve to the
+// earliest page - exactly the destination a TOC banner needs. Exact printed
+// offsets stay authoritative: rows with a destination are never touched.
+// The TOC scan set is front-capped (an embedded OCR text layer makes the scan
+// classify as born-digital, so only the first ~80 pages were collected).
+// Chapter anchoring needs the whole body, so collect the remaining pages once
+// and share them (plus the per-page font stats) with every anchor pass.
+static void BookCollectExtraScanLines(EngineBase* engine, const Vec<ScanLine>& lines, int nPages,
+                                      Vec<ScanLine>& extra) {
+    extra.Reset();
+    if (!engine || nPages < 2) {
+        return;
+    }
+    int lastCovered = 0;
+    for (int i = 0; i < lines.Size(); i++) {
+        if (lines[i].srcPage > lastCovered) {
+            lastCovered = lines[i].srcPage;
+        }
+    }
+    if (lastCovered >= 1 && lastCovered < nPages) {
+        for (int p = lastCovered + 1; p <= nPages; p++) {
+            PtocCollectPageScanLines(engine, p, extra);
+        }
+    }
+}
+
+static void BookResolveMissingDestsByBody(const Vec<ScanLine>& lines, const Vec<ScanLine>& extra,
+                                          const Vec<BookPageFontStats>& stats, int tocStart, int tocEnd, int nPages,
+                                          Vec<BookTocEntry>& hits) {
+    if (nPages < 2 || hits.Size() < 1) {
+        return;
+    }
+    int nUnresolved = 0;
+    for (int i = 0; i < hits.Size(); i++) {
+        if (hits[i].pdfPage < 1 && hits[i].title) {
+            nUnresolved++;
+        }
+    }
+    if (nUnresolved < 1) {
+        return;
+    }
+    logf("BookResolveMissingDestsByBody: unresolved=%d nPages=%d lines=%d extra=%d toc=%d..%d\n", nUnresolved, nPages,
+         lines.Size(), extra.Size(), tocStart, tocEnd);
+    if (BookAnchorTraceEnabled()) {
+        FILE* ef = fopen("c:\\src\\sumatrapdf\\_toc_bench\\extra-lines.txt", "w");
+        if (ef) {
+            for (int k = 0; k < extra.Size(); k++) {
+                const char* t = extra[k].text ? extra[k].text : "";
+                fprintf(ef, "p=%d x=%.1f y=%.1f fs=%.1f | %s\n", extra[k].srcPage, extra[k].x, extra[k].y,
+                        extra[k].fontSize, t);
+            }
+            fclose(ef);
+        }
+    }
+    int lastAnchor = 0;
+    for (int i = 0; i < hits.Size(); i++) {
+        if (hits[i].pdfPage > lastAnchor) {
+            lastAnchor = hits[i].pdfPage;
+        }
+        if (hits[i].pdfPage >= 1 || !hits[i].title) {
+            continue;
+        }
+        BookAnchorHit best;
+        BookBestAnchorInVec(lines, hits[i].title, lastAnchor, tocStart, tocEnd, stats, false, &best);
+        if (extra.Size() > 0) {
+            BookBestAnchorInVec(extra, hits[i].title, lastAnchor, tocStart, tocEnd, stats, true, &best);
+        }
+        if (best.line >= 0) {
+            BookApplyLineDest(hits[i], best.inExtra ? extra[best.line] : lines[best.line]);
+        }
+        if (BookAnchorTraceEnabled() && hits[i].title) {
+            const ScanLine& sl = best.line >= 0 ? (best.inExtra ? extra[best.line] : lines[best.line]) : ScanLine{};
+            logf("anchor '%s' -> p%d sc=%d strong=%d fs=%.1f med=%.1f\n", hits[i].title, best.page, best.score,
+                 (int)best.strong, best.line >= 0 ? sl.fontSize : 0.f,
+                 best.page > 0 && best.page < stats.Size() ? stats[best.page].median : 0.f);
+        }
+    }
+}
+
+// --- Chapter dest refinement + title prefix repair -------------------------
+//
+// The scanned-TOC path assigns a chapter row a dest by layout estimation when
+// its printed page was lost to OCR. Those estimates can be tens of pages off,
+// and they are final: BookResolveMissingDestsByBody only fills rows that have
+// no dest at all. The opener page itself carries the strongest possible
+// evidence - the chapter banner in display size - so two extra passes use it:
+//
+//   BookRefineChapterDestsByBody  re-anchor a chapter row whose dest is not
+//                                 backed by a display-size banner match
+//   BookRepairChapterTitlePrefixes  restore the "第X章" unit prefix that OCR
+//                                 ate ("章教会孩子..." -> "第三章教会孩子...")
+
+// Configurable knobs (see tmp/ptoc-book2/TocChapterDiagnosis.md):
+static const float kBannerAbsFontSize = 26.f;    // display size in absolute pt...
+static const float kBannerRelRatio = 1.2f;       // ...or relative to the page's body size
+static const int kChapterAnchorMinScore = 5;     // min matching glyphs
+static const float kChapterAnchorMinSim = 0.55f; // LCS / longer-title glyph ratio
+
+// Banners are either set in an absolute display size or, in textbooks with
+// modest size contrast, merely ~1.2x the page's body size. Enlarged lead prose
+// can reach the relative bar too, so relative-size lines only ever count
+// together with a dominant title-glyph overlap (checked by the caller).
+static bool BookIsBannerSizeLine(float fontSize, float pageMedian) {
+    if (fontSize >= kBannerAbsFontSize) {
+        return true;
+    }
+    return fontSize > 1.f && pageMedian > 1.f && fontSize >= pageMedian * kBannerRelRatio;
+}
+
+// One page's banner block: OCR splits a title across adjacent rows
+// ("做好孩子健康生" + "活的坚实后盾"), so the display-size lines that stack
+// vertically are joined before matching. Long runs (enlarged lead prose) are
+// rejected by the caller's length cap; giant decorative glyphs ("范教") add no
+// title glyphs and never win a score.
+struct BookBannerGroup {
+    int page = 0;
+    char* text = nullptr; // whitespace-free concatenation
+    int glyphs = 0;
+};
+
+static void BookFreeBannerGroups(Vec<BookBannerGroup>& groups) {
+    for (int i = 0; i < groups.Size(); i++) {
+        str::Free(groups[i].text);
+    }
+    groups.Reset();
+}
+
+struct BookBannerLine {
+    const char* text;
+    float y;
+    float dy;
+};
+
+static void BookCollectPageBannerGroups(const Vec<ScanLine>& a, const Vec<ScanLine>& b,
+                                        const Vec<BookPageFontStats>& stats, int tocStart, int tocEnd, int nPages,
+                                        Vec<BookBannerGroup>& out) {
+    out.Reset();
+    if (nPages < 2) {
+        return;
+    }
+    // Running headers quote the chapter title at the top of every body page,
+    // occasionally in a larger-than-body font ("第二章帮助孩子为高考打下扎实
+    // 的基础" on all 60+ chapter-2 pages, sz 8..16). A one-time opener banner
+    // never recurs. The header's line split, bbox height and glyphs vary per
+    // page ("第二章"+"帮助孩子..." vs one 17-glyph line, OCR even doubles a
+    // glyph), so the fingerprint is the per-page concatenation of top-band
+    // lines compared with an LCS ratio - a header repeats, a banner does not.
+    // Band membership tests the line TOP y: merged bboxes inflate dy so much
+    // that y+dy of a 16pt header can reach 75pt while its top stays at 29pt,
+    // overlapping the body band.
+    const float kBannerHeaderBandMaxY = 42.f;
+    struct BookBandKey {
+        int page;
+        char* text; // owned, whitespace-free band concatenation
+    };
+    Vec<BookBandKey> bandKeys;
+    Vec<BookBannerLine> ls;
+    Vec<BookBannerLine> band;
+    for (int p = 1; p <= nPages; p++) {
+        if (BookDestIsTocPage(p, tocStart, tocEnd)) {
+            continue;
+        }
+        band.Reset();
+        for (int pass = 0; pass < 2; pass++) {
+            const Vec<ScanLine>& src = pass == 0 ? a : b;
+            for (int k = 0; k < src.Size(); k++) {
+                const ScanLine& sl = src[k];
+                if (sl.srcPage != p || !sl.text || !sl.text[0]) {
+                    continue;
+                }
+                if (sl.y > kBannerHeaderBandMaxY) {
+                    continue;
+                }
+                BookBannerLine bl;
+                bl.text = sl.text;
+                bl.y = sl.y;
+                bl.dy = sl.dy > 1.f ? sl.dy : sl.fontSize;
+                band.Append(bl);
+            }
+        }
+        if (band.Size() < 1) {
+            continue;
+        }
+        // stable y order for the concatenation
+        for (int i = 1; i < band.Size(); i++) {
+            BookBannerLine bl = band[i];
+            int j = i - 1;
+            while (j >= 0 && band[j].y > bl.y) {
+                band[j + 1] = band[j];
+                j--;
+            }
+            band[j + 1] = bl;
+        }
+        StrBuilder sb;
+        for (int i = 0; i < band.Size(); i++) {
+            sb.Append(band[i].text);
+        }
+        BookBandKey bk;
+        bk.page = p;
+        bk.text = str::Dup(sb.Get());
+        bandKeys.Append(bk);
+    }
+    auto IsRunningHeader = [&bandKeys](int page, const char* text) {
+        int cb[128];
+        int ncb = BookCollectSpaceFreeCps(text, cb, 128);
+        if (ncb < 4) {
+            return false; // too short to fingerprint ("中" side artifacts)
+        }
+        for (int i = 0; i < bandKeys.Size(); i++) {
+            if (bandKeys[i].page == page) {
+                continue;
+            }
+            int bb[128];
+            int nbb = BookCollectSpaceFreeCps(bandKeys[i].text, bb, 128);
+            if (nbb < 4) {
+                continue;
+            }
+            int lcs = BookGlyphLcs(cb, ncb, bb, nbb);
+            if (lcs * 5 >= (ncb < nbb ? ncb : nbb) * 4) {
+                return true;
+            }
+        }
+        return false;
+    };
+    for (int p = 1; p <= nPages; p++) {
+        if (BookDestIsTocPage(p, tocStart, tocEnd)) {
+            continue;
+        }
+        float med = p < stats.Size() ? stats[p].median : 0.f;
+        ls.Reset();
+        for (int pass = 0; pass < 2; pass++) {
+            const Vec<ScanLine>& src = pass == 0 ? a : b;
+            for (int k = 0; k < src.Size(); k++) {
+                const ScanLine& sl = src[k];
+                if (sl.srcPage != p || !sl.text || !sl.text[0]) {
+                    continue;
+                }
+                if (!BookIsBannerSizeLine(sl.fontSize, med)) {
+                    continue;
+                }
+                // A display-size line is never header furniture; only lines
+                // admitted by the relative-size rule can be running headers
+                // (the opener banner spells the same title as the header, so
+                // the fingerprint alone would kill the real evidence).
+                if (sl.fontSize < kBannerAbsFontSize && sl.y <= kBannerHeaderBandMaxY && IsRunningHeader(p, sl.text)) {
+                    continue;
+                }
+                BookBannerLine bl;
+                bl.text = sl.text;
+                bl.y = sl.y;
+                bl.dy = sl.dy > 1.f ? sl.dy : sl.fontSize;
+                ls.Append(bl);
+            }
+        }
+        if (ls.Size() < 1) {
+            continue;
+        }
+        // group display-size lines that stack vertically (gap <= 1.8x line
+        // height): cluster from the first unassigned line, absorbing every
+        // line reachable through overlapping/near-stacking rows
+        bool assigned[64] = {};
+        int nAssigned = 0;
+        int n = ls.Size() < 64 ? ls.Size() : 64;
+        while (nAssigned < n) {
+            int seed = -1;
+            for (int i = 0; i < n; i++) {
+                if (!assigned[i]) {
+                    seed = i;
+                    break;
+                }
+            }
+            float lo = ls[seed].y;
+            float hi = ls[seed].y + ls[seed].dy;
+            bool grown = true;
+            bool inGroup[64] = {};
+            inGroup[seed] = true;
+            assigned[seed] = true;
+            nAssigned++;
+            while (grown) {
+                grown = false;
+                for (int j = 0; j < n; j++) {
+                    if (assigned[j] && !inGroup[j]) {
+                        continue; // belongs to another group
+                    }
+                    if (inGroup[j]) {
+                        continue;
+                    }
+                    float gap =
+                        ls[j].y > hi ? ls[j].y - hi : (ls[j].y + ls[j].dy < lo ? lo - (ls[j].y + ls[j].dy) : 0.f);
+                    float dy = ls[j].dy > (hi - lo) ? ls[j].dy : (hi - lo);
+                    if (gap <= 1.8f * dy) {
+                        inGroup[j] = true;
+                        assigned[j] = true;
+                        nAssigned++;
+                        lo = ls[j].y < lo ? ls[j].y : lo;
+                        hi = ls[j].y + ls[j].dy > hi ? ls[j].y + ls[j].dy : hi;
+                        grown = true;
+                    }
+                }
+            }
+            StrBuilder sb;
+            for (int j = 0; j < n; j++) {
+                if (inGroup[j]) {
+                    sb.Append(ls[j].text);
+                }
+            }
+            BookBannerGroup g;
+            g.page = p;
+            g.text = str::Dup(sb.Get());
+            g.glyphs = BookGlyphCount(g.text);
+            out.Append(g);
+        }
+    }
+    for (int i = 0; i < bandKeys.Size(); i++) {
+        str::Free(bandKeys[i].text);
+    }
+    bandKeys.Reset();
+    band.Reset();
+    ls.Reset();
+}
+
+// Re-anchor top-level chapter rows against display-size banner groups on the
+// opener pages. The TOC-page layout estimate for an OCR-mangled banner row is
+// a guess; the banner itself is ground truth. Constraints that keep a prose
+// line or a section banner from stealing the anchor:
+//   - the row is searched in (previous chapter's dest, next chapter's dest),
+//     so reading order bounds the window;
+//   - a group must be title-sized (<= title glyphs + 10), cover >= half the
+//     row's glyphs with >= kChapterAnchorMinScore, and reach a majority
+//     similarity (LCS / longer title);
+//   - the earliest passing page wins (the opener precedes every page that
+//     merely quotes the title).
+static void BookRefineChapterDestsByBody(const Vec<ScanLine>& lines, const Vec<ScanLine>& extra,
+                                         const Vec<BookPageFontStats>& stats, int tocStart, int tocEnd, int nPages,
+                                         Vec<BookTocEntry>& hits) {
+    if (nPages < 2 || hits.Size() < 1) {
+        return;
+    }
+    Vec<int> chapIdx;
+    for (int i = 0; i < hits.Size(); i++) {
+        if (hits[i].inferredLevel != 1 || !hits[i].title) {
+            continue;
+        }
+        if (BookLooksLikeTocHeading(hits[i].title)) {
+            continue;
+        }
+        chapIdx.Append(i);
+    }
+    if (chapIdx.Size() < 1) {
+        return;
+    }
+    Vec<BookBannerGroup> groups;
+    BookCollectPageBannerGroups(lines, extra, stats, tocStart, tocEnd, nPages, groups);
+    if (groups.Size() < 1) {
+        return;
+    }
+    int prevDest = tocEnd > 0 ? tocEnd : 0;
+    for (int c = 0; c < chapIdx.Size(); c++) {
+        BookTocEntry& hit = hits[chapIdx[c]];
+        int nt = BookGlyphCount(hit.title);
+        int nextDest = nPages + 1;
+        for (int k = c + 1; k < chapIdx.Size(); k++) {
+            int d = hits[chapIdx[k]].pdfPage;
+            if (d > prevDest && d <= nPages) {
+                nextDest = d;
+                break;
+            }
+        }
+        if (nt >= 4) {
+            Vec<int> candPage;
+            Vec<int> candScore;
+            int bestScore = 0;
+            for (int g = 0; g < groups.Size(); g++) {
+                const BookBannerGroup& bg = groups[g];
+                if (bg.page <= prevDest || bg.page >= nextDest) {
+                    continue;
+                }
+                if (bg.glyphs < 4) {
+                    continue;
+                }
+                int cg[128];
+                int ncg = BookCollectSpaceFreeCps(bg.text, cg, 128);
+                int ct[128];
+                int nct = BookCollectSpaceFreeCps(hit.title, ct, 128);
+                if (nct < 4) {
+                    continue;
+                }
+                // The vertical grouping can absorb stacked lead prose or
+                // decorative glyphs around the banner ("第章帮助孩子为高考
+                // 打下扎实的基础" + 170 prose glyphs on one opener). Score
+                // the best title-sized window of the concatenation instead of
+                // the whole run - the banner is a y-ordered prefix or an
+                // island inside it, and prose windows never reach the bar.
+                int wMax = nct + 10;
+                if (wMax > ncg) {
+                    wMax = ncg;
+                }
+                int sc = 0;
+                for (int start = 0; start + 4 <= ncg; start++) {
+                    int wLen = ncg - start < wMax ? ncg - start : wMax;
+                    if (wLen < 4) {
+                        break;
+                    }
+                    const int* win = cg + start;
+                    int run = BookSpaceFreePrefixRun(win, wLen, ct, nct);
+                    int wsc = run >= 6 ? run : 0;
+                    int lcs = BookGlyphLcs(ct, nct, win, wLen);
+                    if (lcs >= 5 && lcs * 2 >= nct && lcs > wsc) {
+                        wsc = lcs;
+                    }
+                    if (wsc < kChapterAnchorMinScore) {
+                        continue;
+                    }
+                    if (lcs < wLen && lcs < nct) {
+                        // containment already scored above; partial overlap
+                        // needs a majority of the longer side's glyphs
+                        float sim = (float)lcs / (float)(wLen > nct ? wLen : nct);
+                        if (sim < kChapterAnchorMinSim) {
+                            continue;
+                        }
+                    }
+                    if (wsc > sc) {
+                        sc = wsc;
+                    }
+                }
+                if (sc < kChapterAnchorMinScore) {
+                    continue;
+                }
+                candPage.Append(bg.page);
+                candScore.Append(sc);
+                if (sc > bestScore) {
+                    bestScore = sc;
+                }
+            }
+            // The opener precedes every page that merely quotes the title, so
+            // take the earliest candidate whose evidence is within OCR-noise
+            // distance of the strongest one (a damaged opener banner can lose
+            // a glyph or two against a pristine quotation).
+            const int kChapterAnchorScoreTol = 2;
+            int bestPage = 0;
+            for (int i = 0; i < candPage.Size(); i++) {
+                if (candScore[i] >= bestScore - kChapterAnchorScoreTol) {
+                    bestPage = candPage[i];
+                    break;
+                }
+            }
+            if (bestPage > 0 && bestPage != hit.pdfPage) {
+                logf("chapter dest refined '%s' p%d -> p%d (score %d)\n", hit.title, hit.pdfPage, bestPage, bestScore);
+                hit.pdfPage = bestPage;
+                hit.bodyMatched = true;
+                hit.x = hit.srcX;
+                hit.y = 0;
+            }
+        }
+        if (hit.pdfPage > prevDest && hit.pdfPage <= nPages) {
+            prevDest = hit.pdfPage;
+        }
+    }
+    BookFreeBannerGroups(groups);
+}
+
+// OCR eats the leading "第X章" of a banner row outright ("章教会孩子...",
+// "力孩子度渡叛逆期"): the row still reads as a chapter by size, but the unit
+// anchor is gone, so unit-based matching and grouping misclassify it. The
+// complete title recurs verbatim elsewhere - the book-end recap list and
+// running references all carry the prefix - so re-adopt the cleanest prefixed
+// line that covers the row's glyphs. Guards: a valid leading 第X unit, no
+// sentence punctuation, length within [title, title+8], glyph overlap >= half
+// the row with >= kChapterAnchorMinScore.
+static void BookRepairChapterTitlePrefixes(const Vec<ScanLine>& lines, const Vec<ScanLine>& extra, int tocStart,
+                                           int tocEnd, Vec<BookTocEntry>& hits) {
+    for (int i = 0; i < hits.Size(); i++) {
+        BookTocEntry& hit = hits[i];
+        if (hit.inferredLevel != 1 || !hit.title) {
+            continue;
+        }
+        BookUnit u = BookParseUnit(hit.title);
+        bool damaged = u.kind == BookUnitKind::None;
+        if (!damaged) {
+            int pos = 0;
+            int cp = Utf8CodepointNext(hit.title, (int)str::Len(hit.title), pos);
+            // also treat a bare trailing unit word ("章教会..." / "节 ...") as
+            // a prefix that lost its number
+            if (cp == 0x7AE0 || cp == 0x8282 || cp == 0x7BC7) { // 章 节 篇
+                damaged = true;
+            }
+        }
+        if (!damaged) {
+            continue;
+        }
+        int nt = BookGlyphCount(hit.title);
+        if (nt < 4) {
+            continue;
+        }
+        int bestScore = 0;
+        int bestLen = 0;
+        const char* bestText = nullptr;
+        for (int pass = 0; pass < 2 && !bestText; pass++) {
+            const Vec<ScanLine>& src = pass == 0 ? lines : extra;
+            for (int k = 0; k < src.Size(); k++) {
+                const ScanLine& sl = src[k];
+                if (!sl.text || BookDestIsTocPage(sl.srcPage, tocStart, tocEnd)) {
+                    continue;
+                }
+                if (BookParseUnit(sl.text).kind == BookUnitKind::None) {
+                    continue;
+                }
+                if (BookHasSentencePunct(sl.text)) {
+                    continue;
+                }
+                int nc = BookGlyphCount(sl.text);
+                if (nc < nt || nc > nt + 8) {
+                    continue;
+                }
+                int sc = BookBodyAnchorScore(sl.text, hit.title);
+                if (sc < kChapterAnchorMinScore || sc * 2 < nt) {
+                    continue;
+                }
+                if (sc > bestScore || (sc == bestScore && nc < bestLen)) {
+                    bestScore = sc;
+                    bestLen = nc;
+                    bestText = sl.text;
+                }
+            }
+        }
+        if (bestText) {
+            logf("chapter title repaired '%s' -> '%s' (score %d)\n", hit.title, bestText, bestScore);
+            str::Free(hit.title);
+            hit.title = BookDupTrim(bestText);
+        }
+    }
 }
 
 static int BookParsePageLabel(const char* s) {
@@ -3433,6 +4402,44 @@ static void BookEnforceReadingOrder(Vec<BookTocEntry>& hits, int offset, int toc
     }
 }
 
+// A parent row with no destination (OCR-mangled banner, no printed page)
+// opens at or before its first resolved descendant: inherit that page. Only
+// when no resolved row of the parent's own level or higher separates them,
+// so the descendant really belongs to this parent's subtree, and only when
+// the inherited page keeps reading order monotonic.
+static void BookInheritParentDestsFromChildren(Vec<BookTocEntry>& hits) {
+    for (int i = 0; i < hits.Size(); i++) {
+        if (hits[i].pdfPage >= 1 || !hits[i].title) {
+            continue;
+        }
+        int lvl = hits[i].inferredLevel;
+        int page = 0;
+        for (int j = i + 1; j < hits.Size(); j++) {
+            if (hits[j].inferredLevel <= lvl) {
+                break; // subtree ended without a resolved descendant
+            }
+            if (hits[j].pdfPage >= 1) {
+                page = hits[j].pdfPage;
+                break;
+            }
+        }
+        if (page < 1) {
+            continue;
+        }
+        int prevPdf = 0;
+        for (int k = 0; k < i; k++) {
+            if (hits[k].pdfPage > prevPdf) {
+                prevPdf = hits[k].pdfPage;
+            }
+        }
+        if (page < prevPdf) {
+            continue;
+        }
+        hits[i].pdfPage = page;
+        hits[i].bodyMatched = true;
+    }
+}
+
 static ExtractedTocItem* BookNewItem(const char* title, int pageNo, float x, float y, int level, int confidence,
                                      ExtractedTocSource source, const char* rawTitle) {
     auto* n = new ExtractedTocItem;
@@ -3571,6 +4578,7 @@ static void BookWriteDebug(const char* path, int tocStart, int tocEnd, int print
             fprintf(f, "printed %d -> pdf %d (offset %d)\n\n", h.printedPage, h.pdfPage, h.pdfPage - h.printedPage);
         }
         fprintf(f, "pdf page:\n%d\n\n", h.pdfPage);
+        fprintf(f, "src: page=%d y=%.1f size=%.1f bold=%d\n", h.srcPage, h.srcY, h.fontSize, h.bold ? 1 : 0);
         fprintf(f, "level:\n%d\n\n", h.inferredLevel);
         fprintf(f, "confidence:\n%.2f\n\n", h.confidence);
         fprintf(f, "reason:\n%s\n\n", h.reason && h.reason[0] ? h.reason : "-");
@@ -3793,9 +4801,8 @@ bool ExtractBookBodyHeadings(const Vec<ScanLine>& lines, int nPages, Vec<Extract
     return n >= 2;
 }
 
-bool ExtractBookPrintedToc(EngineBase* engine, const Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
+bool ExtractBookPrintedToc(EngineBase* engine, Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
                            Vec<ExtractedTocItem*>& roots, const char* debugPath) {
-    (void)engine;
     char tracePath[MAX_PATH]{};
     const char* trace = debugPath;
     if (!trace && GetEnvironmentVariableA("SUMATRA_TOC_TRACE", tracePath, dimof(tracePath)) > 0) {
@@ -3807,7 +4814,74 @@ bool ExtractBookPrintedToc(EngineBase* engine, const Vec<ScanLine>& lines, const
         BookWriteTocRangeTrace(trace, lines, nPages, 0, 0);
         return false;
     }
+    // Hybrid PDFs can contain real text on some Contents sheets and scans on
+    // their interleaved neighbours. The document-level "born digital" result
+    // then skips OCR, leaving a hole such as page 9 between parsed pages 8 and
+    // 10. OCR only empty pages already proven to lie in the Contents range;
+    // this keeps extraction bounded and never turns body pages into OCR work.
+    if (engine) {
+        int nOcrPages = 0;
+        for (int p = tocStart; p <= tocEnd; p++) {
+            bool hasLines = false;
+            for (int i = 0; i < lines.Size(); i++) {
+                if (lines[i].srcPage == p) {
+                    hasLines = true;
+                    break;
+                }
+            }
+            if (!hasLines && PtocOcrAndCollectPageScanLines(engine, p, lines)) {
+                nOcrPages++;
+            }
+        }
+        if (nOcrPages > 0) {
+            logf("book-toc OCR-filled-pages=%d range=%d-%d\n", nOcrPages, tocStart, tocEnd);
+            BookFindTocRange(lines, nPages, &tocStart, &tocEnd, trace != nullptr);
+        }
+    }
     BookWriteTocRangeTrace(trace, lines, nPages, tocStart, tocEnd);
+    // Running-header band detection. Scanned TOC pages repeat a decorative
+    // page header near the top of every page ("ONTENTS", glyph salads like
+    // "量量整系最服票"); the text is garbled differently on each page, so the
+    // reliable signature is positional: short digit-free non-structural lines
+    // hugging the top margin on >= 2 pages, never interrupted by a
+    // page-numbered row. Once proven, drop every such candidate on all pages.
+    const float kHeaderBandBottom = 56.f; // TOC content starts below y=56
+    auto IsHeaderBandCandidate = [](const BookLine& sl) {
+        if (!sl.text || sl.y + sl.dy > kHeaderBandBottom) {
+            return false;
+        }
+        if (BookHasAsciiDigit(sl.text) || !BookHasLetterOrCjk(sl.text)) {
+            return false;
+        }
+        int glyphs = BookGlyphCount(sl.text);
+        if (glyphs < 1 || glyphs > 24) {
+            return false;
+        }
+        return !BookIsStructTitle(sl.text) && !BookLooksLikeTocHeading(sl.text);
+    };
+    int nBandPages = 0;
+    bool bandBlocked = false;
+    for (int p = tocStart; p <= tocEnd; p++) {
+        if (BookLooksLikeCipPage(lines, p)) {
+            continue;
+        }
+        Vec<BookLine> page;
+        BookCollectPage(lines, p, page);
+        bool got = false;
+        for (int i = 0; i < page.Size(); i++) {
+            if (page[i].text && page[i].y + page[i].dy <= kHeaderBandBottom && BookHasAsciiDigit(page[i].text)) {
+                bandBlocked = true; // real content reaches into the band
+            }
+            if (IsHeaderBandCandidate(page[i])) {
+                got = true;
+            }
+        }
+        if (got) {
+            nBandPages++;
+        }
+        BookFreeLines(page);
+    }
+    bool dropHeaderBand = nBandPages >= 2 && !bandBlocked;
     Vec<BookTocEntry> hits;
     for (int p = tocStart; p <= tocEnd; p++) {
         if (BookLooksLikeCipPage(lines, p)) {
@@ -3815,6 +4889,13 @@ bool ExtractBookPrintedToc(EngineBase* engine, const Vec<ScanLine>& lines, const
         }
         Vec<BookLine> page;
         BookCollectPage(lines, p, page);
+        if (dropHeaderBand) {
+            for (int i = 0; i < page.Size(); i++) {
+                if (IsHeaderBandCandidate(page[i])) {
+                    page[i].used = true;
+                }
+            }
+        }
         BookParseTocPage(page, hits);
         BookFreeLines(page);
     }
@@ -3836,8 +4917,33 @@ bool ExtractBookPrintedToc(EngineBase* engine, const Vec<ScanLine>& lines, const
     BookSanitizePrintedPages(hits);
     int printedOffset = 0;
     BookMapPrintedPages(lines, tocStart, tocEnd, nPages, labels, hits, &printedOffset);
+    Vec<ScanLine> bodyExtra;
+    BookCollectExtraScanLines(engine, lines, nPages, bodyExtra);
+    Vec<BookPageFontStats> anchorStats;
+    BookCollectPageFontStats(lines, bodyExtra, nPages, anchorStats);
+    BookResolveMissingDestsByBody(lines, bodyExtra, anchorStats, tocStart, tocEnd, nPages, hits);
+    // Repair damaged titles first: the refiner matches whole titles against
+    // opener banners, and a repaired "第五章..." prefix lifts the LCS
+    // similarity of a mangled row back over the acceptance bar.
+    BookRepairChapterTitlePrefixes(lines, bodyExtra, tocStart, tocEnd, hits);
+    BookRefineChapterDestsByBody(lines, bodyExtra, anchorStats, tocStart, tocEnd, nPages, hits);
+    PtocFreeScanLines(bodyExtra);
     BookEnforceReadingOrder(hits, printedOffset, tocEnd, nPages);
+    BookInheritParentDestsFromChildren(hits);
     BookDropMappedDuplicateEntries(hits);
+    // A TOC-heading row that slipped through the append filter (wrap-merge
+    // re-joins "目" + "录" fragments afterwards) would shadow the deliberate
+    // synthetic TOC bookmark below; drop them all here.
+    for (int i = 0; i < hits.Size();) {
+        if (BookLooksLikeTocHeading(hits[i].title)) {
+            str::Free(hits[i].title);
+            str::Free(hits[i].raw);
+            str::Free(hits[i].reason);
+            hits.RemoveAt(i);
+        } else {
+            i++;
+        }
+    }
     BookInsertPrintedTocBookmark(lines, tocStart, tocEnd, hits);
     BookBuildTree(hits, roots);
     if (trace) {

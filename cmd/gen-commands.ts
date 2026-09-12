@@ -278,6 +278,7 @@ export const commands = [
     "CmdOcrReRecognizeAllPages", "Recognize All Scanned Pages (Accurate)",
     "CmdToggleOcrAutoSave", "Toggle Auto-save After OCR",
     "CmdToggleOcrCopyMerged", "Toggle Paragraph-merged Copy of OCR Results",
+    "CmdAiRecognizePdfToc", "AI Recognize Table of Contents",
     "CmdNone", "Do nothing",
 ];
 

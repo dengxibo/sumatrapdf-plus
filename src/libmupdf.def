@@ -720,6 +720,7 @@ EXPORTS
 	pdf_dict_getp
 	pdf_dict_getsa
 	pdf_dict_put
+	pdf_dict_put_dict
 	pdf_dict_puts
 	pdf_dict_puts_drop
 	pdf_dict_putp

@@ -66,6 +66,19 @@ bool EngineMupdfCollectPageLines(EngineBase* engine, int pageNo, Vec<EngineMupdf
 bool EngineMupdfHasStoredOutline(EngineBase* engine);
 bool EngineMupdfReplacePdfToc(EngineBase* engine, Vec<ExtractedTocItem*>& roots, char** errorOut);
 
+// Text-layer ScanLine collection for one page (shared with the second-pass
+// body-anchor resolution in ExtractBookToc.cpp).
+void PtocCollectPageScanLines(EngineBase* engine, int pageNo, Vec<ScanLine>& out);
+// OCR and collect a page that contributed no usable file-text ScanLines. Used
+// only after the book parser has established that the page lies inside a
+// printed Contents span; do not use this as a general document-wide OCR pass.
+bool PtocOcrAndCollectPageScanLines(EngineBase* engine, int pageNo, Vec<ScanLine>& out);
+void PtocFindCachedTocPages(EngineBase* engine, Vec<int>& pageNosOut, bool includePrecisePages = false,
+                            bool recognizeMissingPages = false, bool (*isCanceled)(void*) = nullptr,
+                            void* cancelContext = nullptr, void (*onProgress)(void*, int, int) = nullptr,
+                            void* progressContext = nullptr);
+void PtocFreeScanLines(Vec<ScanLine>& lines);
+
 enum class ExtractPdfTocKind {
     Ok,
     NoText,
@@ -78,3 +91,8 @@ bool WriteExtractedPdfToc(MainWindow* win, EngineBase* engine, Vec<ExtractedTocI
 bool HandleExtractPdfTocCommand(MainWindow* win, bool skipConfirm = false, bool persistToDisk = true);
 void CancelExtractPdfToc();
 bool ExtractPdfTocIsRunning();
+
+// If the stored PDF outline is debris from an older extract (dot-leader
+// titles, leaked 目录 heading, cover attachment lists), re-extract in memory
+// (never rewrites the file). Call once after the TOC tree is loaded.
+void MaybeRebuildStaleOfficialPdfToc(MainWindow* win);

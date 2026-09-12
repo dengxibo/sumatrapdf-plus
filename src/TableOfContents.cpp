@@ -37,6 +37,7 @@
 #include "WindowTab.h"
 #include "resource.h"
 #include "Commands.h"
+#include "AiToc.h"
 #include "ExtractPdfToc.h"
 #include "TocCalib.h"
 #include "AppTools.h"
@@ -2039,12 +2040,16 @@ bool HandlePdfTocEditCommand(MainWindow* win, int commandId) {
 // clang-format off
 static MenuDef menuDefContextToc[] = {
     {
-        _TRN("Extract Table of Contents"),
-        CmdExtractPdfToc,
-    },
-    {
         _TRN("Calibrate TOC Pages"),
         CmdPdfTocCalibrate,
+    },
+    {
+        _TRN("AI Recognize Table of Contents"),
+        CmdAiRecognizePdfToc,
+    },
+    {
+        _TRN("Extract Table of Contents Locally"),
+        CmdExtractPdfToc,
     },
     {
         _TRN("Find TOC Item in Body"),
@@ -2332,6 +2337,9 @@ static void TocContextMenu(ContextMenuEvent* ev) {
             break;
         case CmdExtractPdfToc:
             HandleExtractPdfTocCommand(win);
+            break;
+        case CmdAiRecognizePdfToc:
+            StartAiTocProofOfConcept(win);
             break;
         case CmdPdfTocCalibrate:
             StartTocCalibFromExisting(win);

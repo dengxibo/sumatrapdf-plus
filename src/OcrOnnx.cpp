@@ -219,6 +219,12 @@ static OcrProfile ParseProfileEnv(const char* s) {
 }
 
 OcrProfile GetOcrProfileForOperation(OcrOperation op) {
+    if (op == OcrOperation::Toc) {
+        // TOC discovery is a structural coarse pass. The geometry scorer
+        // validates candidate pages afterwards, so do not make the user wait
+        // for the Small models across the whole front matter.
+        return OcrProfile::Fast;
+    }
     if (gForceProfile) {
         return gForcedProfile;
     }
@@ -244,6 +250,8 @@ OcrProfile GetOcrProfileForOperation(OcrOperation op) {
                 return OcrProfile::Balanced;
             }
             return OcrProfile::Fast;
+        case OcrOperation::Toc:
+            return OcrProfile::Balanced;
     }
     return OcrProfile::Balanced;
 }

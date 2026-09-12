@@ -91,6 +91,8 @@
 #include "FindWindow.h"
 #include "WordLookup.h"
 #include "OcrService.h"
+#include "AiToc.h"
+#include "PrintedTocModel.h"
 #include "ExtractPdfToc.h"
 #include "TocCalib.h"
 #include "LookupAudio.h"
@@ -1352,6 +1354,8 @@ void ControllerCallbackHandler::UpdateScrollbars(Size canvas) {
         if (!win->overlayScrollH) {
             win->overlayScrollH =
                 OverlayScrollbarCreate(win->hwndCanvas, OverlayScrollbar::Type::Horz, ScrollbarsOverlayMode());
+        } else {
+            OverlayScrollbarSetMode(win->overlayScrollH, ScrollbarsOverlayMode());
         }
         if (showHScroll) {
             OverlayScrollbarShow(win->overlayScrollH, true);
@@ -1363,6 +1367,7 @@ void ControllerCallbackHandler::UpdateScrollbars(Size canvas) {
         // Set range/page before showing so first paint has a thumb (issue #5850)
         SetScrollInfo(win->hwndCanvas, SB_HORZ, &si, TRUE);
         ShowScrollBar(win->hwndCanvas, SB_HORZ, showHScroll);
+        OverlayScrollbarShow(win->overlayScrollH, false);
     }
 
     bool isSinglePageMode = gGlobalPrefs->scrollbarInSinglePage && (dm->GetDisplayMode() == DisplayMode::SinglePage);
@@ -1417,6 +1422,8 @@ void ControllerCallbackHandler::UpdateScrollbars(Size canvas) {
         if (!win->overlayScrollV) {
             win->overlayScrollV =
                 OverlayScrollbarCreate(win->hwndCanvas, OverlayScrollbar::Type::Vert, ScrollbarsOverlayMode());
+        } else {
+            OverlayScrollbarSetMode(win->overlayScrollV, ScrollbarsOverlayMode());
         }
         if (showVScroll && showScrollbar) {
             OverlayScrollbarShow(win->overlayScrollV, true);
@@ -1424,6 +1431,11 @@ void ControllerCallbackHandler::UpdateScrollbars(Size canvas) {
         } else {
             OverlayScrollbarShow(win->overlayScrollV, false);
         }
+    } else {
+        // The home page uses the same canvas and always owns an overlay
+        // scrollbar. Do not let that overlay survive when this document uses
+        // Windows or hidden scrollbars.
+        OverlayScrollbarShow(win->overlayScrollV, false);
     }
 }
 
@@ -3430,6 +3442,7 @@ void UpdateAfterThemeChange() {
             return TRUE;
         },
         0);
+    RefreshAiTocWindowsTheme();
     RefreshWordLookupTheme();
     RefreshEditAnnotationsWindowsTheme();
     RefreshEbookAnnotationsWindowsTheme();
@@ -5261,7 +5274,9 @@ static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool 
     win->ctrl = nullptr;
     if (deleteModel) {
         if (unloadingTab) {
-            OcrCancelForEngine(unloadingTab->GetEngine());
+            EngineBase* unloadEngine = unloadingTab->GetEngine();
+            OcrCancelForEngine(unloadEngine);
+            PtocCaptureForget(unloadEngine ? unloadEngine->FilePath() : nullptr);
             SafeDeleteDocController(win, unloadingTab->ctrl);
             FileWatcherUnsubscribe(unloadingTab->watcher);
             unloadingTab->watcher = nullptr;
@@ -11007,6 +11022,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             // Debug extraction must never rewrite the source PDF. It writes
             // the collected OCR lines and decision trace next to that file.
             HandleExtractPdfTocCommand(win, gCli && gCli->extractTocDebug, !(gCli && gCli->extractTocDebug));
+            break;
+
+        case CmdAiRecognizePdfToc:
+            StartAiTocProofOfConcept(win);
             break;
 
         case CmdPdfTocCalibrate:

@@ -182,6 +182,8 @@ const stringsToAdd: Record<string, { cn: string; tw: string }> = {
     tw: "沒有可儲存的 OCR 文字。請先識別頁面。",
   },
   "Extract Table of Contents": { cn: "提取目录书签", tw: "提取目錄書籤" },
+  "Extract Table of Contents Locally": { cn: "本地提取目录书签", tw: "本地擷取目錄書籤" },
+  "AI Recognize Table of Contents": { cn: "AI提取目录书签", tw: "AI擷取目錄書籤" },
   "Extracting bookmarks… %d / %d": { cn: "正在提取书签… %d / %d", tw: "正在提取書籤… %d / %d" },
   "Replace the existing PDF bookmarks with extracted headings?": {
     cn: "用提取的标题替换现有 PDF 书签？",

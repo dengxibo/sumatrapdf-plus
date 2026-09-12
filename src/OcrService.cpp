@@ -28,6 +28,7 @@
 #include "OcrOnnx.h"
 #include "OcrService.h"
 #include "OcrTextMerge.h"
+#include "PrintedTocModel.h"
 #include "ExtractPdfToc.h"
 #include "Selection.h"
 #include "SelectionToolbar.h"
@@ -73,6 +74,9 @@ static bool gOcrPendingSaveExtractToc = false;
 static EngineBase* gOcrPendingExtractEngine = nullptr;
 static HWND gOcrPendingExtractHwnd = nullptr;
 static bool gOcrPendingExtractPersist = false;
+static bool gOcrPendingTocRefineTried = false;
+
+static int OcrQueueTocPages(MainWindow* win);
 
 struct OcrFlight {
     EngineBase* engine = nullptr;
@@ -2366,6 +2370,12 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
                     SortOcrBoxesVerticalReading(boxes);
                 }
                 OcrDumpPageBoxes(pageNo, rgb, w, h, stride, boxes);
+                // PrintedToc diagnostics: raw OCR boxes as JSON for offline
+                // parser testing (SUMATRA_PTOC_DUMP=1, no-op otherwise).
+                PtocDumpOcrPageJson(engine->FilePath(), pageNo, w, h, profile, boxes);
+                // PrintedToc P3: feed the raw boxes to the capture store for
+                // the geometry-first TOC extraction fallback.
+                PtocCaptureOcrPage(engine->FilePath(), pageNo, w, h, boxes);
                 ok = ScoreOcrBoxes(boxes) > 0;
                 logfa("OCR[%d] final: ok=%d score=%d usedRot=%d\n", pageNo, ok, ScoreOcrBoxes(boxes), usedRot);
                 if (ok) {
@@ -2800,9 +2810,22 @@ static void OcrFinishUi(OcrDoneUi* d) {
                 }
                 HWND hwnd = gOcrPendingExtractHwnd;
                 bool persist = gOcrPendingExtractPersist;
-                OcrClearPendingExtractToc();
-                HideOcrStatus(hwnd ? hwnd : d->hwndCanvas);
                 MainWindow* win = hwnd && IsWindow(hwnd) ? FindMainWindowByHwnd(hwnd) : nullptr;
+                // A fast full-document pass is sufficient for search, but a
+                // Contents page needs the accurate model. Queue only detected
+                // TOC pages and let this document-completion path resume after
+                // they finish; an accurate full pass has nothing to enqueue.
+                if (win && !gOcrPendingTocRefineTried) {
+                    gOcrPendingTocRefineTried = true;
+                    int refined = OcrQueueTocPages(win);
+                    if (refined > 0) {
+                        logf("TOC OCR refinement queued pages=%d\n", refined);
+                        return;
+                    }
+                }
+                OcrClearPendingExtractToc();
+                gOcrPendingTocRefineTried = false;
+                HideOcrStatus(hwnd ? hwnd : d->hwndCanvas);
                 if (d->engine && d->engine->CountOcrCachedPages() > 0) {
                     d->engine->MarkUnsavedOcrText();
                 }
@@ -3297,6 +3320,50 @@ static int OcrQueueUnscannedPages(MainWindow* win, bool forceUncached, OcrOperat
     return queued;
 }
 
+// This is deliberately a second, tiny document batch. The first batch has
+// supplied enough OCR geometry to identify the printed Contents; this batch
+// upgrades only those pages from Fast/Hybrid to Balanced before extraction.
+static int OcrQueueTocPages(MainWindow* win) {
+    DisplayModel* dm = win ? win->AsFixed() : nullptr;
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (!engine || !OcrEngineKindSupported(engine)) {
+        return 0;
+    }
+    Vec<int> pageNos;
+    PtocFindCachedTocPages(engine, pageNos);
+    if (pageNos.Size() == 0) {
+        return 0;
+    }
+    int queued = 0;
+    gQueueLock.Lock();
+    for (int i = 0; i < pageNos.Size(); i++) {
+        int pageNo = pageNos[i];
+        if (QueueHas(engine, pageNo) || engine->GetOcrCacheQuality(pageNo) >= 2) {
+            continue;
+        }
+        auto* job = new OcrJob();
+        job->hwndCanvas = win->hwndCanvas;
+        job->engine = engine;
+        engine->AddRef();
+        job->pageNo = pageNo;
+        job->documentJob = true;
+        job->forceOcr = true;
+        job->op = OcrOperation::Toc;
+        job->prio = kOcrPrioDocument;
+        job->tQueued = TimeGet();
+        job->cancelSeq = gOcrCancelSeq;
+        gQueue.Append(job);
+        queued++;
+    }
+    gQueueLock.Unlock();
+    if (queued > 0) {
+        gOcrDocTotal += queued;
+        OcrShowDocumentProgress(win->hwndCanvas);
+        StartOcrWorkerIfNeeded();
+    }
+    return queued;
+}
+
 static void OcrClearSessionResults(EngineBase* engine) {
     if (!engine) {
         return;
@@ -3353,6 +3420,16 @@ void OcrScheduleDocument(MainWindow* win, bool extractTocIfMissing, bool forceOc
             ToolbarUpdateStateForWindow(win, false);
         }
         if (needToc) {
+            gOcrPendingTocRefineTried = true;
+            engine->AddRef();
+            gOcrPendingExtractEngine = engine;
+            gOcrPendingExtractHwnd = win->hwndCanvas;
+            gOcrPendingExtractPersist = false;
+            if (OcrQueueTocPages(win) > 0) {
+                return;
+            }
+            OcrClearPendingExtractToc();
+            gOcrPendingTocRefineTried = false;
             HandleExtractPdfTocCommand(win, true, false);
         } else if (win) {
             if (engine && engine->CountOcrCachedPages() > 0) {
@@ -3365,6 +3442,7 @@ void OcrScheduleDocument(MainWindow* win, bool extractTocIfMissing, bool forceOc
     }
     if (needToc) {
         OcrClearPendingExtractToc();
+        gOcrPendingTocRefineTried = false;
         engine->AddRef();
         gOcrPendingExtractEngine = engine;
         gOcrPendingExtractHwnd = win->hwndCanvas;
@@ -3386,10 +3464,21 @@ void OcrExtractTocAfterDocumentOcr(MainWindow* win) {
         return;
     }
     if (queued == 0) {
+        gOcrPendingTocRefineTried = true;
+        engine->AddRef();
+        gOcrPendingExtractEngine = engine;
+        gOcrPendingExtractHwnd = win->hwndCanvas;
+        gOcrPendingExtractPersist = true;
+        if (OcrQueueTocPages(win) > 0) {
+            return;
+        }
+        OcrClearPendingExtractToc();
+        gOcrPendingTocRefineTried = false;
         HandleExtractPdfTocCommand(win, true, true);
         return;
     }
     OcrClearPendingExtractToc();
+    gOcrPendingTocRefineTried = false;
     engine->AddRef();
     gOcrPendingExtractEngine = engine;
     gOcrPendingExtractHwnd = win->hwndCanvas;

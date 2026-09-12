@@ -2990,21 +2990,25 @@ void HomePageUpdateScrollbar(MainWindow* win, bool forHomePage) {
     si.nPage = needVScroll ? (UINT)win->homePageThumbsVisibleDy : 1;
     si.nPos = win->homePageScrollY;
 
-    // Always overlay on the home page. A native ShowScrollBar resizes the
-    // canvas and the header icons jump when list/thumbnails changes overflow.
-    if (needVScroll) {
+    if (ScrollbarsUseOverlay()) {
         if (!win->overlayScrollV) {
             win->overlayScrollV =
-                OverlayScrollbarCreate(win->hwndCanvas, OverlayScrollbar::Type::Vert, OverlayScrollbar::Mode::Thick);
+                OverlayScrollbarCreate(win->hwndCanvas, OverlayScrollbar::Type::Vert, ScrollbarsOverlayMode());
         } else {
-            OverlayScrollbarSetMode(win->overlayScrollV, OverlayScrollbar::Mode::Thick);
+            OverlayScrollbarSetMode(win->overlayScrollV, ScrollbarsOverlayMode());
         }
-        OverlayScrollbarShow(win->overlayScrollV, true);
-        OverlayScrollbarSetInfo(win->overlayScrollV, &si, TRUE);
+        if (needVScroll) {
+            OverlayScrollbarShow(win->overlayScrollV, true);
+            OverlayScrollbarSetInfo(win->overlayScrollV, &si, TRUE);
+        } else {
+            OverlayScrollbarShow(win->overlayScrollV, false);
+        }
+        ShowScrollBar(win->hwndCanvas, SB_VERT, FALSE);
     } else {
         OverlayScrollbarShow(win->overlayScrollV, false);
+        SetScrollInfo(win->hwndCanvas, SB_VERT, &si, TRUE);
+        ShowScrollBar(win->hwndCanvas, SB_VERT, needVScroll);
     }
-    ShowScrollBar(win->hwndCanvas, SB_VERT, FALSE);
 }
 
 void HomePageOnVScroll(MainWindow* win, WPARAM wp) {

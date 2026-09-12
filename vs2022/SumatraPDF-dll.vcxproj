@@ -1187,6 +1187,9 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <ClInclude Include="..\src\OcrOnnx.h" />
     <ClInclude Include="..\src\OcrService.h" />
     <ClInclude Include="..\src\OcrTextMerge.h" />
+    <ClInclude Include="..\src\PrintedTocModel.h" />
+    <ClInclude Include="..\src\PrintedTocPageDetector.h" />
+    <ClInclude Include="..\src\PrintedTocOverlay.h" />
     <ClInclude Include="..\src\mui\Mui.h" />
     <ClInclude Include="..\src\mui\TextRender.h" />
     <ClInclude Include="..\src\resource.h" />
@@ -1280,6 +1283,7 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <ClCompile Include="..\src\HomePage.cpp" />
     <ClCompile Include="..\src\HtmlFormatter.cpp" />
     <ClCompile Include="..\src\ImageSaveCropResize.cpp" />
+    <ClCompile Include="..\src\AiToc.cpp" />
     <ClCompile Include="..\src\Installer.cpp" />
     <ClCompile Include="..\src\InstallerCommon.cpp" />
     <ClCompile Include="..\src\LookupAudio.cpp" />
@@ -1369,6 +1373,10 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <ClCompile Include="..\src\ExtractPdfToc.cpp" />
     <ClCompile Include="..\src\ExtractBookToc.cpp" />
     <ClCompile Include="..\src\TocCalib.cpp" />
+    <ClCompile Include="..\src\PrintedTocModel.cpp" />
+    <ClCompile Include="..\src\PrintedTocPageDetector.cpp" />
+    <ClCompile Include="..\src\PrintedTocReconstruct.cpp" />
+    <ClCompile Include="..\src\PrintedTocOverlay.cpp" />
     <ClCompile Include="..\src\mui\Mui.cpp" />
     <ClCompile Include="..\src\mui\TextRender.cpp" />
     <ClCompile Include="..\src\regress\Regress.cpp">

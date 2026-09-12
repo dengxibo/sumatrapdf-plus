@@ -283,7 +283,8 @@ enum {
     CmdOcrReRecognizeAllPages = 472,
     CmdToggleOcrAutoSave = 473,
     CmdToggleOcrCopyMerged = 474,
-    CmdNone = 475,
+    CmdAiRecognizePdfToc = 475,
+    CmdNone = 476,
 
     /* range for file history */
     CmdFileHistoryFirst,

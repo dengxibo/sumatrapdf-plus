@@ -1238,6 +1238,79 @@ nl:@ Tabs
 pl:@ Karty
 sk:@ Karty
 tw:@ 索引標籤
+:AI Recognize Table of Contents
+af:AI Recognize Table of Contents
+am:AI Recognize Table of Contents
+ar:AI Recognize Table of Contents
+az:AI Recognize Table of Contents
+bg:AI Recognize Table of Contents
+bn:AI Recognize Table of Contents
+br:AI Recognize Table of Contents
+bs:AI Recognize Table of Contents
+by:AI Recognize Table of Contents
+ca:AI Recognize Table of Contents
+ca-xv:AI Recognize Table of Contents
+cn:AI提取目录书签
+co:AI Recognize Table of Contents
+cy:AI Recognize Table of Contents
+cz:AI Recognize Table of Contents
+de:AI Recognize Table of Contents
+dk:AI Recognize Table of Contents
+el:AI Recognize Table of Contents
+es:AI Recognize Table of Contents
+et:AI Recognize Table of Contents
+eu:AI Recognize Table of Contents
+fa:AI Recognize Table of Contents
+fi:AI Recognize Table of Contents
+fo:AI Recognize Table of Contents
+fr:AI Recognize Table of Contents
+fy-nl:AI Recognize Table of Contents
+ga:AI Recognize Table of Contents
+gl:AI Recognize Table of Contents
+he:AI Recognize Table of Contents
+hi:AI Recognize Table of Contents
+hr:AI Recognize Table of Contents
+hu:AI Recognize Table of Contents
+id:AI Recognize Table of Contents
+it:AI Recognize Table of Contents
+ja:AI Recognize Table of Contents
+jv:AI Recognize Table of Contents
+ka:AI Recognize Table of Contents
+kr:AI Recognize Table of Contents
+ku:AI Recognize Table of Contents
+kw:AI Recognize Table of Contents
+lt:AI Recognize Table of Contents
+lv:AI Recognize Table of Contents
+mk:AI Recognize Table of Contents
+ml:AI Recognize Table of Contents
+mm:AI Recognize Table of Contents
+my:AI Recognize Table of Contents
+ne:AI Recognize Table of Contents
+nl:AI Recognize Table of Contents
+nn:AI Recognize Table of Contents
+no:AI Recognize Table of Contents
+pa:AI Recognize Table of Contents
+pl:AI Recognize Table of Contents
+pt:AI Recognize Table of Contents
+ro:AI Recognize Table of Contents
+ru:AI Recognize Table of Contents
+sat:AI Recognize Table of Contents
+si:AI Recognize Table of Contents
+sk:AI Recognize Table of Contents
+sl:AI Recognize Table of Contents
+sn:AI Recognize Table of Contents
+sp-rs:AI Recognize Table of Contents
+sq:AI Recognize Table of Contents
+sr-rs:AI Recognize Table of Contents
+sv:AI Recognize Table of Contents
+ta:AI Recognize Table of Contents
+th:AI Recognize Table of Contents
+tl:AI Recognize Table of Contents
+tr:AI Recognize Table of Contents
+tw:AI擷取目錄書籤
+uk:AI Recognize Table of Contents
+uz:AI Recognize Table of Contents
+vn:AI Recognize Table of Contents
 :About Sumatra PDF Plus
 am:SumatraPDF-ի մասին
 br:Sobre o SumatraPDF
@@ -6500,6 +6573,79 @@ tw:提取目錄書籤
 uk:Extract Table of Contents
 uz:Extract Table of Contents
 vn:Extract Table of Contents
+:Extract Table of Contents Locally
+af:Extract Table of Contents Locally
+am:Extract Table of Contents Locally
+ar:Extract Table of Contents Locally
+az:Extract Table of Contents Locally
+bg:Extract Table of Contents Locally
+bn:Extract Table of Contents Locally
+br:Extract Table of Contents Locally
+bs:Extract Table of Contents Locally
+by:Extract Table of Contents Locally
+ca:Extract Table of Contents Locally
+ca-xv:Extract Table of Contents Locally
+cn:本地提取目录书签
+co:Extract Table of Contents Locally
+cy:Extract Table of Contents Locally
+cz:Extract Table of Contents Locally
+de:Extract Table of Contents Locally
+dk:Extract Table of Contents Locally
+el:Extract Table of Contents Locally
+es:Extract Table of Contents Locally
+et:Extract Table of Contents Locally
+eu:Extract Table of Contents Locally
+fa:Extract Table of Contents Locally
+fi:Extract Table of Contents Locally
+fo:Extract Table of Contents Locally
+fr:Extract Table of Contents Locally
+fy-nl:Extract Table of Contents Locally
+ga:Extract Table of Contents Locally
+gl:Extract Table of Contents Locally
+he:Extract Table of Contents Locally
+hi:Extract Table of Contents Locally
+hr:Extract Table of Contents Locally
+hu:Extract Table of Contents Locally
+id:Extract Table of Contents Locally
+it:Extract Table of Contents Locally
+ja:Extract Table of Contents Locally
+jv:Extract Table of Contents Locally
+ka:Extract Table of Contents Locally
+kr:Extract Table of Contents Locally
+ku:Extract Table of Contents Locally
+kw:Extract Table of Contents Locally
+lt:Extract Table of Contents Locally
+lv:Extract Table of Contents Locally
+mk:Extract Table of Contents Locally
+ml:Extract Table of Contents Locally
+mm:Extract Table of Contents Locally
+my:Extract Table of Contents Locally
+ne:Extract Table of Contents Locally
+nl:Extract Table of Contents Locally
+nn:Extract Table of Contents Locally
+no:Extract Table of Contents Locally
+pa:Extract Table of Contents Locally
+pl:Extract Table of Contents Locally
+pt:Extract Table of Contents Locally
+ro:Extract Table of Contents Locally
+ru:Extract Table of Contents Locally
+sat:Extract Table of Contents Locally
+si:Extract Table of Contents Locally
+sk:Extract Table of Contents Locally
+sl:Extract Table of Contents Locally
+sn:Extract Table of Contents Locally
+sp-rs:Extract Table of Contents Locally
+sq:Extract Table of Contents Locally
+sr-rs:Extract Table of Contents Locally
+sv:Extract Table of Contents Locally
+ta:Extract Table of Contents Locally
+th:Extract Table of Contents Locally
+tl:Extract Table of Contents Locally
+tr:Extract Table of Contents Locally
+tw:本地擷取目錄書籤
+uk:Extract Table of Contents Locally
+uz:Extract Table of Contents Locally
+vn:Extract Table of Contents Locally
 :Extract Text
 br:Extrair Texto
 cn:提取文本

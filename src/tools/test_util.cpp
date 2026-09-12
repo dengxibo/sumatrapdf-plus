@@ -1,5 +1,7 @@
 #include "utils/BaseUtil.h"
 #include "utils/WinDynCalls.h"
+#include "utils/FileUtil.h"
+#include "PrintedTocPageDetector.h"
 
 // must be last due to assert() over-write
 #include "utils/UtAssert.h"
@@ -31,6 +33,7 @@ extern void PdfDarkModeV2_UnitTests();
 extern void PdfJoinSplitImages_UnitTests();
 extern void PdfDarkModeImageClassifier_UnitTests();
 extern void PdfTocEditModel_UnitTests();
+extern void PrintedTocModel_UnitTests();
 extern void TtsPronunciation_UnitTests();
 extern void VecTest();
 extern void WinUtilTest();
@@ -45,7 +48,29 @@ void MaybeDelayedWarningNotification(const char*, ...) {
     // a stub to make this compile
 }
 
-int main(int, char**) {
+int main(int argc, char** argv) {
+    if (argc == 5 && str::Eq(argv[1], "--toc-page-replay")) {
+        Vec<TocPageFeatures> features;
+        int count = atoi(argv[3]);
+        for (int p = 1; p <= count; p++) {
+            PtPageData page;
+            TempStr input = path::JoinTemp(argv[2], str::FormatTemp("ocr-p%d.json", p));
+            if (PtocLoadOcrPageJson(input, &page)) {
+                auto f = MeasureTocPage(page, count);
+                auto old = PtProcessPage(page, nullptr, nullptr);
+                printf(
+                    "page=%d legacy=%.3f keyword=%.2f anchors=%.3f alignment=%.3f indent=%.3f new=%.3f entries=%d "
+                    "paragraph=%.3f\n",
+                    p, old.total, old.tocKeywordScore, old.endingPageNumberRatio, old.pageNumberXAlignment,
+                    old.indentationBandScore, f.raw, f.entries, f.paragraph);
+                features.Append(f);
+            }
+            page.Free();
+        }
+        auto interval = DetectTocPageInterval(features);
+        WriteTocPageDiagnostics(argv[4], features, interval);
+        return 0;
+    }
     printf("Running unit tests\n");
     fflush(stdout);
 
@@ -72,6 +97,7 @@ int main(int, char**) {
     PdfJoinSplitImages_UnitTests();
     PdfDarkModeImageClassifier_UnitTests();
     PdfTocEditModel_UnitTests();
+    PrintedTocModel_UnitTests();
     TtsPronunciation_UnitTests();
     VecTest();
     WinUtilTest();

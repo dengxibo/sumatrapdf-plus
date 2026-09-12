@@ -1585,6 +1585,40 @@ static void RunAiChatPasteSubmitOnUiThread(HWND browserHwnd, bool useCenteredInp
     RunBrowserChatUiTask(AiChatPasteSubmitUiTask, ctx);
 }
 
+struct AiChatPasteWaitCtx : AiChatPasteUiCtx {
+    HANDLE done = nullptr;
+};
+
+static void AiChatPasteWaitUiTask(void* param) {
+    auto* ctx = (AiChatPasteWaitCtx*)param;
+    ExecuteBrowserChatPasteSubmit(ctx->browserHwnd, ctx->useCenteredInput, ctx->dismissChromeFocus, ctx->submit,
+                                  ctx->url, ctx->inputReady);
+    SetEvent(ctx->done);
+}
+
+static bool RunAiChatPasteSubmitAndWait(HWND browserHwnd, bool useCenteredInput, const char* url, DWORD timeoutMs) {
+    auto* ctx = (AiChatPasteWaitCtx*)calloc(1, sizeof(AiChatPasteWaitCtx));
+    if (!ctx) return false;
+    ctx->browserHwnd = browserHwnd;
+    ctx->useCenteredInput = useCenteredInput;
+    ctx->url = str::Dup(url);
+    ctx->done = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (!ctx->done || !ctx->url) {
+        if (ctx->done) CloseHandle(ctx->done);
+        str::Free(ctx->url);
+        free(ctx);
+        return false;
+    }
+    RunBrowserChatUiTask(AiChatPasteWaitUiTask, ctx);
+    bool completed = WaitForSingleObject(ctx->done, timeoutMs) == WAIT_OBJECT_0;
+    logf("AI TOC: refocus composer hwnd=%p foreground=%p completed=%d\n", browserHwnd, GetForegroundWindow(),
+         completed);
+    CloseHandle(ctx->done);
+    str::Free(ctx->url);
+    free(ctx);
+    return completed;
+}
+
 bool PasteClipboardToBrowserChatInput(HWND browserHwnd, int delayBeforePasteMs) {
     if (!browserHwnd) {
         return false;
@@ -1847,6 +1881,8 @@ static const char* AiChatServiceUrl(AiChatService service) {
     return nullptr;
 }
 
+static HWND PollForBrowserWindowAfterLaunch(const char* reuseKey, const char* host, int timeoutMs);
+
 bool PasteAndSubmitAiChatWhenReady(AiChatService service, HWND browserHwnd, bool waitForPageReady,
                                    bool dismissChromeFocus) {
     const char* url = AiChatServiceUrl(service);
@@ -1854,6 +1890,95 @@ bool PasteAndSubmitAiChatWhenReady(AiChatService service, HWND browserHwnd, bool
         return false;
     }
     return PasteAndSubmitBrowserChatInputWhenReady(browserHwnd, url, waitForPageReady, dismissChromeFocus);
+}
+
+static bool CopyAiChatImage(const char* path, bool appendOnly = false) {
+    // A shell file list (CF_HDROP) is not an image paste on every website.
+    // Supply a DIB, as a screenshot paste does, with clipboard-owned storage.
+    Gdiplus::Bitmap image(ToWStrTemp(path));
+    if (image.GetLastStatus() != Gdiplus::Ok) return false;
+    UINT width = image.GetWidth(), height = image.GetHeight();
+    if (!width || !height || width > 10000 || height > 10000) return false;
+    HBITMAP bitmap = nullptr;
+    if (image.GetHBITMAP(Gdiplus::Color(255, 255, 255), &bitmap) != Gdiplus::Ok) return false;
+    defer {
+        DeleteObject(bitmap);
+    };
+    size_t bytes = sizeof(BITMAPINFOHEADER) + (size_t)width * height * 4;
+    HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, bytes);
+    if (!mem) return false;
+    bool transferred = false;
+    defer {
+        if (!transferred) GlobalFree(mem);
+    };
+    auto* info = (BITMAPINFO*)GlobalLock(mem);
+    if (!info) return false;
+    info->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info->bmiHeader.biWidth = width;
+    info->bmiHeader.biHeight = height;
+    info->bmiHeader.biPlanes = 1;
+    info->bmiHeader.biBitCount = 32;
+    info->bmiHeader.biCompression = BI_RGB;
+    HDC dc = GetDC(nullptr);
+    int lines = GetDIBits(dc, bitmap, 0, height, (u8*)info + sizeof(BITMAPINFOHEADER), info, DIB_RGB_COLORS);
+    ReleaseDC(nullptr, dc);
+    GlobalUnlock(mem);
+    if (lines != (int)height || !OpenClipboard(nullptr)) return false;
+    if (appendOnly || EmptyClipboard()) transferred = SetClipboardData(CF_DIB, mem) != nullptr;
+    CloseClipboard();
+    return transferred;
+}
+
+bool CopyAiChatPayloadToClipboard(const StrVec& paths, const char* prompt) {
+    if (!CopyFilesToClipboard(paths)) return false;
+    if (paths.Size() == 1 && !CopyAiChatImage(paths[0], true)) return false;
+    if (!OpenClipboard(nullptr)) return false;
+    bool ok = AppendTextToClipboard(prompt);
+    CloseClipboard();
+    return ok;
+}
+
+bool PasteAiChatFilesWhenReady(AiChatService service, HWND browserHwnd, bool waitForPageReady, const StrVec& paths) {
+    const char* url = AiChatServiceUrl(service);
+    if (!url || paths.IsEmpty()) {
+        return false;
+    }
+    TempStr reuseKey = BrowserReuseKeyFromUrlTemp(url);
+    TempStr host = HostFromUrlTemp(url);
+    if (waitForPageReady) {
+        browserHwnd = WaitForBrowserChatPageReady(browserHwnd, url, false);
+    } else if (!browserHwnd || !IsBrowserTopLevelWindow(browserHwnd)) {
+        browserHwnd = PollForBrowserWindowAfterLaunch(reuseKey, host, 5000);
+    }
+    if (!browserHwnd) {
+        return false;
+    }
+    bool centered = ShouldUseCenteredChatInput(url, browserHwnd, waitForPageReady);
+    // Chromium may turn a multi-file clipboard paste into one attachment. Put
+    // every page on the clipboard and paste it separately, preserving source
+    // order and allowing the web page to materialize each preview.
+    for (int i = 0; i < paths.Size(); i++) {
+        if (i > 0) {
+            logf("AI TOC: reactivate browser after attachment %d hwnd=%p foreground=%p\n", i, browserHwnd,
+                 GetForegroundWindow());
+        }
+        logf("AI TOC: image=%d set clipboard\n", i + 1);
+        if (!CopyAiChatImage(paths[i])) {
+            return false;
+        }
+        logf("AI TOC: image=%d paste begin hwnd=%p foreground=%p\n", i + 1, browserHwnd, GetForegroundWindow());
+        if (!RunAiChatPasteSubmitAndWait(browserHwnd, centered && i == 0, url, waitForPageReady ? 15000 : 8000)) {
+            return false;
+        }
+        logf("AI TOC: image=%d paste sent\n", i + 1);
+        if (i == 0) {
+            logf("AI TOC: first attachment bootstrap\n");
+            Sleep(waitForPageReady ? 1500 : 500);
+        } else {
+            Sleep(500);
+        }
+    }
+    return true;
 }
 
 struct AiChatPromptThreadCtx {
@@ -2644,6 +2769,66 @@ bool CopyImageToClipboard(HBITMAP hbmp, bool appendOnly) {
         CloseClipboard();
     }
 
+    return ok;
+}
+
+bool CopyFilesToClipboard(const StrVec& paths) {
+    if (paths.IsEmpty()) {
+        return false;
+    }
+    size_t chars = 1;
+    for (const char* path : paths) {
+        if (str::IsEmpty(path)) {
+            return false;
+        }
+        chars += (size_t)str::Leni(ToWStrTemp(path)) + 1;
+    }
+    size_t bytes = sizeof(DROPFILES) + chars * sizeof(WCHAR);
+    HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, bytes);
+    if (!mem) {
+        return false;
+    }
+    auto* drop = (DROPFILES*)GlobalLock(mem);
+    if (!drop) {
+        GlobalFree(mem);
+        return false;
+    }
+    drop->pFiles = sizeof(DROPFILES);
+    drop->fWide = TRUE;
+    WCHAR* dst = (WCHAR*)((u8*)drop + sizeof(DROPFILES));
+    for (const char* path : paths) {
+        TempWStr pathW = ToWStrTemp(path);
+        int n = str::Leni(pathW);
+        memcpy(dst, pathW, (size_t)n * sizeof(WCHAR));
+        dst += n + 1;
+    }
+    GlobalUnlock(mem);
+    if (!OpenClipboard(nullptr)) {
+        GlobalFree(mem);
+        return false;
+    }
+    EmptyClipboard();
+    bool ok = SetClipboardData(CF_HDROP, mem) != nullptr;
+    // Match Explorer's Copy operation. Chromium-based applications can use
+    // this shell format to distinguish a file copy from a drag/drop payload.
+    if (ok) {
+        UINT preferredDropEffect = RegisterClipboardFormatW(CFSTR_PREFERREDDROPEFFECT);
+        HGLOBAL effectMem = GlobalAlloc(GMEM_MOVEABLE, sizeof(DWORD));
+        DWORD* effect = effectMem ? (DWORD*)GlobalLock(effectMem) : nullptr;
+        if (effect) {
+            *effect = DROPEFFECT_COPY;
+            GlobalUnlock(effectMem);
+            if (!SetClipboardData(preferredDropEffect, effectMem)) {
+                GlobalFree(effectMem);
+            }
+        } else if (effectMem) {
+            GlobalFree(effectMem);
+        }
+    }
+    CloseClipboard();
+    if (!ok) {
+        GlobalFree(mem);
+    }
     return ok;
 }
 

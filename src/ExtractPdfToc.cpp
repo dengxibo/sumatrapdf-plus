@@ -31,6 +31,8 @@
 #include "TocCalib.h"
 #include "OcrService.h"
 #include "OcrOnnx.h"
+#include "PrintedTocModel.h"
+#include "PrintedTocPageDetector.h"
 
 #include "utils/Log.h"
 
@@ -3051,6 +3053,30 @@ static void CollectPageScanLines(EngineBase* engine, int pageNo, Vec<ScanLine>& 
     }
 }
 
+// Exported for ExtractBookToc.cpp: late second-pass body collection resolves
+// TOC rows whose destination pages live beyond the front-page cap (a scanned
+// book with an embedded OCR text layer classifies as born-digital, so only
+// the first pages were collected before extraction ran).
+void PtocCollectPageScanLines(EngineBase* engine, int pageNo, Vec<ScanLine>& out) {
+    CollectPageScanLines(engine, pageNo, out);
+}
+
+bool PtocOcrAndCollectPageScanLines(EngineBase* engine, int pageNo, Vec<ScanLine>& out) {
+    if (!engine || pageNo < 1 || pageNo > engine->PageCount()) {
+        return false;
+    }
+    if (!OcrRecognizeEnginePage(engine, pageNo, false, OcrOperation::Auto)) {
+        return false;
+    }
+    int before = out.Size();
+    CollectPageScanLines(engine, pageNo, out);
+    return out.Size() > before;
+}
+
+void PtocFreeScanLines(Vec<ScanLine>& lines) {
+    FreeScanLines(lines);
+}
+
 static int MapPrintedPage(EngineBase* engine, int printed, const Vec<char*>& labels) {
     char buf[16];
     snprintf(buf, sizeof(buf), "%d", printed);
@@ -5496,8 +5522,8 @@ static bool LooksLikeOfficialQuotedDocumentCitation(const char* s) {
         open = str::Find(s, "〈");
     }
     if (open && str::Find(s, "〔") && str::Find(s, "号")) {
-        if (str::Find(s, "要求") || str::Find(s, "规定") || str::Find(s, "等要求") ||
-            str::Find(s, "有关要求") || str::Find(s, "有关规定")) {
+        if (str::Find(s, "要求") || str::Find(s, "规定") || str::Find(s, "等要求") || str::Find(s, "有关要求") ||
+            str::Find(s, "有关规定")) {
             return true;
         }
     }
@@ -5509,7 +5535,7 @@ static bool LooksLikeOfficialQuotedDocumentCitation(const char* s) {
     if (str::Find(s, "〔")) {
         // walk backwards from end looking for the final 〕
         int lastCloseIdx = -1;
-        for (int idx = len - 1; idx >= 0; ) {
+        for (int idx = len - 1; idx >= 0;) {
             int prev = idx;
             int cp = Utf8CodepointPrev(s, len, prev); // prev updated to start of prev codepoint
             if (cp == 0x3015 /* 〕 */) {
@@ -8297,7 +8323,7 @@ static bool ExtractOfficialToc(EngineBase* engine, Vec<ScanLine>& lines, const V
 static bool ExtractContractToc(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedTocItem*>& roots);
 static bool ExtractPaperToc(EngineBase* engine, const Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
                             Vec<ExtractedTocItem*>& roots);
-static bool ExtractBookToc(EngineBase* engine, const Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
+static bool ExtractBookToc(EngineBase* engine, Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
                            Vec<ExtractedTocItem*>& roots, bool bornDigital = false);
 static void MergeDeeperArabicHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedTocItem*>& roots);
 static void MergeOfficialPrintedGapsFromBody(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedTocItem*>& roots);
@@ -9925,6 +9951,74 @@ static bool TryPrintedToc(EngineBase* engine, const Vec<ScanLine>& lines, const 
     BuildTreeFromFlat(flat, roots);
     int nItems = CountExtracted(roots);
     return nItems >= opts.minHits;
+}
+
+void PtocFindCachedTocPages(EngineBase* engine, Vec<int>& pageNosOut, bool includePrecisePages,
+                            bool recognizeMissingPages, bool (*isCanceled)(void*), void* cancelContext,
+                            void (*onProgress)(void*, int, int), void* progressContext) {
+    pageNosOut.Reset();
+    if (!engine) return;
+    int nPages = engine->PageCount();
+    Vec<TocPageFeatures> features;
+    TocPageInterval interval;
+    // Scan the front matter until a candidate interval is found. Once a
+    // candidate ends, inspect at most three following pages as confirmation;
+    // never force the detector to OCR an arbitrary 30-page window.
+    int progressLimit = nPages < 30 ? nPages : 30;
+    int nonTocAfterInterval = 0;
+    for (int p = 1; p <= nPages; p++) {
+        if (isCanceled && isCanceled(cancelContext)) return;
+        if (recognizeMissingPages && !engine->HasCachedOcrText(p)) {
+            OcrRecognizeEnginePage(engine, p, false, OcrOperation::Toc);
+        }
+        if (isCanceled && isCanceled(cancelContext)) return;
+        PtPageData page;
+        if (!PtocCaptureCopyPageFor(engine->FilePath(), p, page)) {
+            // Native text and persisted OCR are valid detector inputs too.
+            // Their absence from RapidOCR's in-memory capture is not negative evidence.
+            Vec<ScanLine> lines;
+            PtocCollectPageScanLines(engine, p, lines);
+            RectF bounds = engine->PageMediabox(p);
+            page.pageIndex = p;
+            page.width = bounds.dx;
+            page.height = bounds.dy;
+            for (const auto& line : lines) {
+                PtToken token;
+                token.text = str::Dup(line.text);
+                token.box = {line.x - bounds.x, line.y - bounds.y, line.x + line.dx - bounds.x,
+                             line.y + line.dy - bounds.y};
+                page.tokens.Append(token);
+            }
+            FreeScanLines(lines);
+        }
+        features.Append(MeasureTocPage(page, nPages));
+        page.Free();
+        if (p > progressLimit) progressLimit = p + 3 < nPages ? p + 3 : nPages;
+        if (onProgress) onProgress(progressContext, p, progressLimit);
+        interval = DetectTocPageInterval(features);
+        if (interval.startPage > 0 && p > interval.endPage) {
+            nonTocAfterInterval++;
+            // The three pages are boundary confirmation only and are never
+            // included in the returned interval.
+            if (nonTocAfterInterval >= 3) break;
+        } else if (interval.startPage > 0) {
+            nonTocAfterInterval = 0;
+        }
+    }
+    interval = DetectTocPageInterval(features);
+    for (int p = interval.startPage; p > 0 && p <= interval.endPage; p++) {
+        // Quality filtering is only for the existing OCR-upgrade caller.
+        // The AI caller asks for every page in the contiguous interval.
+        if (includePrecisePages || (engine->HasCachedOcrText(p) && engine->GetOcrCacheQuality(p) < 2)) {
+            pageNosOut.Append(p);
+        }
+    }
+    if (PtocDumpRequested()) {
+        TempStr output = path::JoinTemp(PtocDumpDirForFileTemp(engine->FilePath()), "page-detection.json");
+        WriteTocPageDiagnostics(output, features, interval);
+    }
+    logf("TOC page interval=%d-%d confidence=%.3f scanned=%d\n", interval.startPage, interval.endPage,
+         interval.confidence, features.Size());
 }
 
 static int BareListNumberValue(const char* s) {
@@ -16986,6 +17080,34 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         DeleteExtractedTocItems(roots);
     }
     {
+        // Stored outline polluted by printed-TOC dot leaders plus a leaked
+        // Contents heading: debris from an older extractor run.
+        Vec<ExtractedTocItem*> roots;
+        auto* led = new ExtractedTocItem;
+        led->title = str::Dup("高中生生理发展的基本特征……… ");
+        led->level = 1;
+        led->pageNo = 17;
+        auto* head = new ExtractedTocItem;
+        head->title = str::Dup("Contents");
+        head->level = 1;
+        head->pageNo = 8;
+        auto* ch = new ExtractedTocItem;
+        ch->title = str::Dup("第一章帮助孩子更好地融入高中生活");
+        ch->level = 1;
+        ch->pageNo = 29;
+        roots.Append(led);
+        roots.Append(head);
+        roots.Append(ch);
+        bool ok = OfficialExtractedLooksStale(roots);
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-stale-leader-outline", roots);
+        }
+        DeleteExtractedTocItems(roots);
+    }
+    {
         Vec<ScanLine> lines;
         ScanLine minutes = TestScanLineXYP("2026年宣传中心第7次主任办公会议纪要", 1, 72, 40);
         minutes.fontSize = 16;
@@ -18681,6 +18803,92 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
             (*fail)++;
             logf("BookToc fail book-calib-mono dest a=%d b=%d off=%d\n", a->pageNo, b->pageNo,
                  sess ? sess->map.offset : -1);
+        }
+        DeleteTocCalibSession(sess);
+    }
+    {
+        // OCR page-number mangling ("113" read as "70 3"): a printed page far
+        // beyond the document size must be dropped instead of clamping the row
+        // to the last page, and the clamp must not drag later rows there.
+        auto* a = new ExtractedTocItem;
+        a->title = str::Dup("孩子学习的效率很低怎么办");
+        a->rawTitle = str::Dup("孩子学习的效率很低怎么办");
+        a->printedPage = 703;
+        a->pageNo = 94;
+        a->bodyMatched = true;
+        a->source = ExtractedTocSource::PrintedToc;
+        auto* b = new ExtractedTocItem;
+        b->title = str::Dup("第三章 教会孩子正确对待娱乐与交往");
+        b->rawTitle = str::Dup("第三章 教会孩子正确对待娱乐与交往");
+        b->printedPage = 0;
+        b->pageNo = 137;
+        b->bodyMatched = true;
+        b->source = ExtractedTocSource::PrintedToc;
+        auto* c = new ExtractedTocItem;
+        c->title = str::Dup("第一节 怎样才能让孩子娱乐、学习两不误");
+        c->rawTitle = str::Dup("第一节 怎样才能让孩子娱乐、学习两不误");
+        c->printedPage = 0;
+        c->pageNo = 139;
+        c->source = ExtractedTocSource::PrintedToc;
+        Vec<ExtractedTocItem*> roots;
+        roots.Append(a);
+        roots.Append(b);
+        roots.Append(c);
+        TocCalibSession* sess = TocCalibSessionFromExtracted(roots, nullptr, false);
+        if (sess) {
+            sess->nPages = 345;
+            TocCalibSolveSession(sess);
+        }
+        bool ok = sess && a->printedPage == 0 && a->pageNo == 94 && b->pageNo == 137 && c->pageNo == 139;
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            logf("BookToc fail book-calib-garbage-printed a=%d/%d b=%d c=%d\n", a->printedPage, a->pageNo, b->pageNo,
+                 c->pageNo);
+        }
+        DeleteTocCalibSession(sess);
+    }
+    {
+        // A printed page that survives the plausibility bound but still
+        // overflows the document clamps to the last page; that clamped row
+        // must not anchor the monotonic repair for the rows after it.
+        auto* a = new ExtractedTocItem;
+        a->title = str::Dup("第二节 帮助孩子改正不良学习习惯");
+        a->rawTitle = str::Dup("第二节 帮助孩子改正不良学习习惯");
+        a->printedPage = 79;
+        a->pageNo = 94;
+        a->bodyMatched = true;
+        a->source = ExtractedTocSource::PrintedToc;
+        auto* b = new ExtractedTocItem;
+        b->title = str::Dup("孩子学习的效率很低怎么办");
+        b->rawTitle = str::Dup("孩子学习的效率很低怎么办");
+        b->printedPage = 500;
+        b->pageNo = 118;
+        b->bodyMatched = true;
+        b->source = ExtractedTocSource::PrintedToc;
+        auto* c = new ExtractedTocItem;
+        c->title = str::Dup("第三章 教会孩子正确对待娱乐与交往");
+        c->rawTitle = str::Dup("第三章 教会孩子正确对待娱乐与交往");
+        c->printedPage = 0;
+        c->pageNo = 137;
+        c->bodyMatched = true;
+        c->source = ExtractedTocSource::PrintedToc;
+        Vec<ExtractedTocItem*> roots;
+        roots.Append(a);
+        roots.Append(b);
+        roots.Append(c);
+        TocCalibSession* sess = TocCalibSessionFromExtracted(roots, nullptr, false);
+        if (sess) {
+            sess->nPages = 345;
+            TocCalibSolveSession(sess);
+        }
+        bool ok = sess && b->pageNo == 345 && c->pageNo == 137;
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            logf("BookToc fail book-calib-clamp-no-cascade a=%d b=%d c=%d\n", a->pageNo, b->pageNo, c->pageNo);
         }
         DeleteTocCalibSession(sess);
     }
@@ -21241,7 +21449,57 @@ static bool LooksLikeOfficialCoverAttachmentList(const char* s) {
     return false;
 }
 
-static void OfficialOutlineTitleStats(const char* title, int* nCover, int* nDunhao) {
+static bool OfficialTitleHasDotLeader(const char* s) {
+    // Printed-TOC debris: titles still carrying dot leaders ("特征………" or "特征......").
+    if (!s || !s[0]) {
+        return false;
+    }
+    int len = (int)str::Len(s);
+    int i = 0;
+    int runDot = 0;
+    int runEll = 0;
+    while (i < len) {
+        int cp = Utf8CodepointNext(s, len, i);
+        if (cp == '.') {
+            runDot++;
+        } else {
+            runDot = 0;
+        }
+        if (cp == 0x2026) { // …
+            runEll++;
+        } else {
+            runEll = 0;
+        }
+        if (runDot >= 3 || runEll >= 2) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool OfficialTitleIsTocHeading(const char* s) {
+    // A leaked 目录/Contents page heading stored as an outline entry.
+    if (!s || !s[0]) {
+        return false;
+    }
+    while (*s == ' ' || *s == '\t') {
+        s++;
+    }
+    int len = (int)str::Len(s);
+    while (len > 0 && (s[len - 1] == ' ' || s[len - 1] == '\t')) {
+        len--;
+    }
+    if (len == 0 || len >= 64) {
+        return false;
+    }
+    char buf[64];
+    strncpy(buf, s, len);
+    buf[len] = 0;
+    return str::EqI(buf, "contents") || str::EqI(buf, "table of contents") || str::Eq(buf, "目录") ||
+           str::Eq(buf, "目次");
+}
+
+static void OfficialOutlineTitleStats(const char* title, int* nCover, int* nDunhao, int* nLeader, int* nTocHead) {
     if (!title || !title[0] || !nCover || !nDunhao) {
         return;
     }
@@ -21252,30 +21510,43 @@ static void OfficialOutlineTitleStats(const char* title, int* nCover, int* nDunh
     if (m.type == MarkerType::ChineseDunhao) {
         (*nDunhao)++;
     }
+    if (nLeader && OfficialTitleHasDotLeader(title)) {
+        (*nLeader)++;
+    }
+    if (nTocHead && OfficialTitleIsTocHeading(title)) {
+        (*nTocHead)++;
+    }
 }
 
-static bool OfficialOutlineLooksStale(int nCover, int nDunhao) {
+static bool OfficialOutlineLooksStale(int nCover, int nDunhao, int nLeader, int nTocHead) {
     // Earlier extracts kept 函封面「附件：1. / 2.有关单位名单」and dropped 一、二、.
-    return nCover >= 1 && nDunhao < 1;
+    if (nCover >= 1 && nDunhao < 1) {
+        return true;
+    }
+    // Outline titles polluted with printed-TOC dot leaders, or a leaked
+    // 目录/Contents heading, are debris from an older extractor run.
+    return nLeader >= 3 || nTocHead >= 1;
 }
 
 static bool OfficialExtractedLooksStale(const Vec<ExtractedTocItem*>& roots) {
     int nCover = 0;
     int nDunhao = 0;
+    int nLeader = 0;
+    int nTocHead = 0;
     Vec<ExtractedTocItem*> flat;
     FlattenExtractedTocItems(roots, flat);
     for (int i = 0; i < flat.Size(); i++) {
         if (flat[i]) {
-            OfficialOutlineTitleStats(flat[i]->title, &nCover, &nDunhao);
+            OfficialOutlineTitleStats(flat[i]->title, &nCover, &nDunhao, &nLeader, &nTocHead);
         }
     }
-    return OfficialOutlineLooksStale(nCover, nDunhao);
+    return OfficialOutlineLooksStale(nCover, nDunhao, nLeader, nTocHead);
 }
 
-static void OfficialTocItemStats(TocItem* n, int* nCover, int* nDunhao) {
+static void OfficialTocItemStats(TocItem* n, int* nCover, int* nDunhao, int* nLeader, int* nTocHead) {
     for (; n; n = n->next) {
-        OfficialOutlineTitleStats(n->title, nCover, nDunhao);
-        OfficialTocItemStats(n->child, nCover, nDunhao);
+        OfficialOutlineTitleStats(n->title, nCover, nDunhao, nLeader, nTocHead);
+        OfficialTocItemStats(n->child, nCover, nDunhao, nLeader, nTocHead);
     }
 }
 
@@ -21285,12 +21556,14 @@ static bool OfficialStoredOutlineNeedsRebuild(TocItem* root) {
     }
     int nCover = 0;
     int nDunhao = 0;
+    int nLeader = 0;
+    int nTocHead = 0;
     TocItem* start = root;
     if ((!root->title || !root->title[0]) && root->child) {
         start = root->child;
     }
-    OfficialTocItemStats(start, &nCover, &nDunhao);
-    return OfficialOutlineLooksStale(nCover, nDunhao);
+    OfficialTocItemStats(start, &nCover, &nDunhao, &nLeader, &nTocHead);
+    return OfficialOutlineLooksStale(nCover, nDunhao, nLeader, nTocHead);
 }
 
 void MaybeRebuildStaleOfficialPdfToc(MainWindow* win) {
@@ -21775,13 +22048,14 @@ static void TightenOfficialAppendixTitle(ExtractedTocItem* it) {
             int afterGlue = (int)(glue - it->title) + (int)str::Len("填报单位");
             char* p = it->title + afterGlue;
             while (*p == ' ' || *p == '\t') p++;
-            if (str::StartsWith(p, "（盖章）")) p += (int)str::Len("（盖章）");
-            else if (str::StartsWith(p, "(盖章)")) p += (int)str::Len("(盖章)");
+            if (str::StartsWith(p, "（盖章）"))
+                p += (int)str::Len("（盖章）");
+            else if (str::StartsWith(p, "(盖章)"))
+                p += (int)str::Len("(盖章)");
             while (*p == ' ' || *p == '\t') p++;
-            bool endsWithColon = *p == ':' ||
-                                 ((unsigned char)p[0] == 0xEF && (unsigned char)p[1] == 0xBC &&
-                                  (unsigned char)p[2] == 0x9A) ||
-                                 *p == 0;
+            bool endsWithColon =
+                *p == ':' ||
+                ((unsigned char)p[0] == 0xEF && (unsigned char)p[1] == 0xBC && (unsigned char)p[2] == 0x9A) || *p == 0;
             if (endsWithColon) {
                 it->title[glue - it->title] = 0;
                 str::TrimWSInPlace(it->title, str::TrimOpt::Both);
@@ -28764,7 +29038,7 @@ static bool ExtractPaperToc(EngineBase* engine, const Vec<ScanLine>& lines, cons
     return inferred;
 }
 
-static bool ExtractBookToc(EngineBase* engine, const Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
+static bool ExtractBookToc(EngineBase* engine, Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
                            Vec<ExtractedTocItem*>& roots, bool bornDigital) {
     char* bookDebug = nullptr;
     if (gCli && gCli->extractTocDebug && engine && engine->FilePath()) {
@@ -28791,8 +29065,8 @@ static bool ExtractBookToc(EngineBase* engine, const Vec<ScanLine>& lines, const
 // Chinese book with a plain printed directory can otherwise fall through to
 // the Official profile. Accept the book parser independently only when its
 // result has several printed rows and actual destination evidence.
-static bool TryStrongPrintedBookToc(EngineBase* engine, const Vec<ScanLine>& lines, const Vec<char*>& labels,
-                                    int nPages, Vec<ExtractedTocItem*>& roots, bool bornDigital) {
+static bool TryStrongPrintedBookToc(EngineBase* engine, Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
+                                    Vec<ExtractedTocItem*>& roots, bool bornDigital) {
     char* bookDebug = nullptr;
     if (gCli && gCli->extractTocDebug && engine && engine->FilePath()) {
         bookDebug = str::Join(path::GetPathNoExtTemp(engine->FilePath()), ".book-toc-debug.txt");
@@ -28890,8 +29164,8 @@ static ExtractPdfTocKind ExtractFromCollectedLines(EngineBase* engine, Vec<ScanL
                 fprintf(lf, "nPages=%d nText=%d nLines=%d cls=%s\n", nPages, nText, lines.Size(), cs);
                 for (int i = 0; i < lines.Size(); i++) {
                     const char* t = lines[i].text ? lines[i].text : "";
-                    fprintf(lf, "p=%d x=%.1f y=%.1f dx=%.1f dy=%.1f | %s\n", lines[i].srcPage, lines[i].x, lines[i].y,
-                            lines[i].dx, lines[i].dy, t);
+                    fprintf(lf, "p=%d x=%.1f y=%.1f dx=%.1f dy=%.1f fs=%.1f | %s\n", lines[i].srcPage, lines[i].x,
+                            lines[i].y, lines[i].dx, lines[i].dy, lines[i].fontSize, t);
                 }
                 fclose(lf);
             }
@@ -29000,6 +29274,111 @@ static int ExtractProgressTotal(EngineBase* engine, bool bornDigital) {
     return n;
 }
 
+static int PtocExtractFromOcrPages(EngineBase* engine, Vec<ExtractedTocItem*>& roots);
+
+// --- Dual-path quality selection (classic text vs printed-OCR geometry) ----
+
+// Flattened-tree stats used to judge an extracted TOC: how many entries are
+// navigable (resolved PDF page) and how many carry the printed page ordinal.
+struct ExtractTocTreeStats {
+    int n = 0;
+    int nNoPdfPage = 0;
+    int nNoPrintedPage = 0;
+};
+
+static void ExtractTocCollectTreeStats(const Vec<ExtractedTocItem*>& roots, ExtractTocTreeStats& st) {
+    Vec<ExtractedTocItem*> flat;
+    FlattenExtractedTocItems(roots, flat);
+    st.n = flat.Size();
+    for (int i = 0; i < flat.Size(); i++) {
+        ExtractedTocItem* it = flat[i];
+        if (it->pageNo <= 0) {
+            st.nNoPdfPage++;
+        }
+        if (it->printedPage <= 0) {
+            st.nNoPrintedPage++;
+        }
+    }
+}
+
+// Navigability + printed-page coverage: 1.0 per resolved-PDF-page ratio plus
+// 0.5 per printed-ordinal ratio. Both paths are scored with the same ruler so
+// the comparison is meaningful.
+static double ExtractTocTreeQuality(const ExtractTocTreeStats& st) {
+    if (st.n <= 0) {
+        return 0.0;
+    }
+    double nav = (double)(st.n - st.nNoPdfPage) / st.n;
+    double printed = (double)(st.n - st.nNoPrintedPage) / st.n;
+    return nav + 0.5 * printed;
+}
+
+// A classic "ok" result is suspect when many entries cannot navigate or lack
+// the printed page ordinal — typical for double-layer scanned books whose text
+// layer is low-quality OCR (broken leader dots, page numbers split by spaces).
+static bool ExtractTocClassicResultSuspect(const Vec<ExtractedTocItem*>& roots) {
+    ExtractTocTreeStats st;
+    ExtractTocCollectTreeStats(roots, st);
+    if (st.n < 4) {
+        return true;
+    }
+    if (st.nNoPdfPage * 10 >= st.n) {
+        return true; // >=10% entries without a resolved PDF page
+    }
+    if (st.nNoPrintedPage * 4 >= st.n) {
+        return true; // >=25% entries without a printed page ordinal
+    }
+    return false;
+}
+
+// Runs the geometry-first printed-TOC pipeline over the OCR capture collected
+// this session. Fires when the classic path produced nothing, and also chal-
+// lenges a classic "ok" result whose tree looks suspect; the printed tree then
+// replaces the classic one only when it scores strictly better on the same
+// quality ruler. Rewrites k/nItems/cls when it took over. No-op for documents
+// without OCR capture.
+static bool ExtractTryPrintedOcrFallback(EngineBase* engine, Vec<ExtractedTocItem*>& roots, ExtractPdfTocKind& k,
+                                         int& nItems, ExtractTocDocClass& cls) {
+    bool classicOk = k == ExtractPdfTocKind::Ok;
+    if (classicOk && !ExtractTocClassicResultSuspect(roots)) {
+        return false;
+    }
+    // Build the printed-TOC tree separately so the classic result stays
+    // intact until the better tree has been picked.
+    Vec<ExtractedTocItem*> ptRoots;
+    int nPt = PtocExtractFromOcrPages(engine, ptRoots);
+    if (nPt <= 0) {
+        return false; // ptRoots is empty when nPt <= 0
+    }
+    double qClassic = 0.0;
+    if (classicOk) {
+        ExtractTocTreeStats stClassic;
+        ExtractTocCollectTreeStats(roots, stClassic);
+        qClassic = ExtractTocTreeQuality(stClassic);
+    }
+    ExtractTocTreeStats stPt;
+    ExtractTocCollectTreeStats(ptRoots, stPt);
+    double qPt = ExtractTocTreeQuality(stPt);
+    if (classicOk && qPt <= qClassic) {
+        DeleteExtractedTocItems(ptRoots);
+        logf("TOC printed-ocr fallback: kept classic (q classic=%.2f printed=%.2f)\n", qClassic, qPt);
+        return false;
+    }
+    if (classicOk) {
+        DeleteExtractedTocItems(roots);
+    }
+    roots.Reset();
+    for (int i = 0; i < ptRoots.Size(); i++) {
+        roots.Append(ptRoots[i]);
+    }
+    ptRoots.Reset();
+    k = ExtractPdfTocKind::Ok;
+    nItems = nPt;
+    cls = ExtractTocDocClass::Book;
+    logf("TOC printed-ocr fallback: replaced classic (q classic=%.2f printed=%.2f items=%d)\n", qClassic, qPt, nPt);
+    return true;
+}
+
 ExtractPdfTocKind ExtractPdfTocFromEngine(EngineBase* engine, Vec<ExtractedTocItem*>& roots, int* nItemsOut) {
     roots.Reset();
     if (nItemsOut) {
@@ -29023,10 +29402,16 @@ ExtractPdfTocKind ExtractPdfTocFromEngine(EngineBase* engine, Vec<ExtractedTocIt
             nText++;
         }
     }
+    PtocDumpScanLinesJson(engine->FilePath(), lines, nPages, "collected");
     ExtractTocDocClass cls = ExtractTocDocClass::Official;
     ExtractPdfTocKind k =
         ExtractFromCollectedLines(engine, lines, nPages, nText, roots, nItemsOut, false, bornDigital, &cls);
     FreeScanLines(lines);
+    int nItems = nItemsOut ? *nItemsOut : 0;
+    ExtractTryPrintedOcrFallback(engine, roots, k, nItems, cls);
+    if (nItemsOut) {
+        *nItemsOut = nItems;
+    }
     return k;
 }
 
@@ -29143,6 +29528,97 @@ static EngineBase* ExtractEngineForWin(MainWindow* win) {
 
 static void ExtractApplyOnUi(ExtractWork* w);
 
+// ---------------------------------------------------------------------------
+// P3 fallback: geometry-first printed-TOC extraction over captured OCR pages.
+//
+// The classic keyword/regex path works on the flattened OCR text layer; this
+// fallback feeds the raw per-line OCR geometry (captured by PtocCaptureOcrPage
+// during full-document OCR) to PtBuildDocumentToc. It fires when the classic
+// path produced nothing, and additionally challenges a suspect classic result
+// (see ExtractTocClassicResultSuspect) — strictly additive either way.
+// ---------------------------------------------------------------------------
+
+// Builds the ExtractedTocItem tree from entries in TOC reading order. Levels
+// deeper than parent+1 are clamped so indent noise cannot create phantom
+// depth. Entries without a resolved PDF page are dropped (not navigable).
+static void PtocRootsFromEntries(const Vec<PtEntryCandidate>& entries, Vec<ExtractedTocItem*>& roots) {
+    roots.Reset();
+    const PrintedTocConfig& cfg = PtocConfig();
+    Vec<ExtractedTocItem*> stack; // stack[i] is an item with level i + 1
+    for (int i = 0; i < entries.Size(); i++) {
+        const PtEntryCandidate& c = entries[i];
+        if (!c.resolvedPdfPage.has_value() || !c.title || !c.title[0]) {
+            continue;
+        }
+        int want = c.level > 0 ? c.level : 1;
+        while (stack.Size() >= want) {
+            stack.RemoveAt(stack.Size() - 1);
+        }
+        auto* it = new ExtractedTocItem();
+        it->title = str::Dup(c.title);
+        it->pageNo = *c.resolvedPdfPage;
+        it->level = stack.Size() + 1;
+        it->confidence = (int)((0.5f * c.parseConf + 0.3f * c.pageMappingConf + 0.2f * c.bodyValidationConf) * 100.0f);
+        if (it->confidence < 0) {
+            it->confidence = 0;
+        }
+        if (it->confidence > 100) {
+            it->confidence = 100;
+        }
+        it->source = ExtractedTocSource::PrintedToc;
+        if (c.printedPage.hasOrdinal) {
+            it->printedPage = c.printedPage.ordinal;
+            it->printedLabel = str::Dup(c.printedPage.rawText);
+        }
+        it->tocPageNo = c.tocSourcePage;
+        it->tocX = c.titleBox.x0;
+        it->tocY = c.titleBox.MidY();
+        it->bodyMatched = c.bodyValidationConf >= cfg.bodyMatchThreshold;
+        if (stack.Size() > 0) {
+            it->parent = stack.Last();
+            it->parent->children.Append(it);
+        } else {
+            roots.Append(it);
+        }
+        stack.Append(it);
+    }
+}
+
+static int PtocExtractFromOcrPages(EngineBase* engine, Vec<ExtractedTocItem*>& roots) {
+    roots.Reset();
+    if (!engine || !engine->FilePath() || !engine->FilePath()[0]) {
+        return 0;
+    }
+    Vec<PtPageData*> pages;
+    if (!PtocCaptureCopyFor(engine->FilePath(), &pages)) {
+        return 0;
+    }
+    PtDocTocInput in;
+    in.pages = &pages;
+    in.nPdfPages = engine->PageCount();
+    in.bodyPages = &pages; // body validation runs against the same OCR'd pages
+
+    Vec<PtEntryCandidate> entries;
+    Vec<PtocOverlayPage*> overlay;
+    bool ok = PtBuildDocumentToc(in, &entries, &overlay);
+    PtocOverlaySet(engine->FilePath(), overlay); // steals overlay pages (debug overlay goes live)
+    int n = 0;
+    if (ok) {
+        PtocRootsFromEntries(entries, roots);
+        n = CountExtracted(roots);
+    }
+    for (int i = 0; i < entries.Size(); i++) {
+        entries[i].Free();
+    }
+    for (int i = 0; i < pages.Size(); i++) {
+        delete pages[i];
+    }
+    if (n > 0) {
+        logf("TOC printed-ocr pipeline: pages=%d entries=%d items=%d\n", pages.Size(), entries.Size(), n);
+    }
+    return n;
+}
+
 static void ExtractThread(ExtractWork* w) {
     EngineBase* engine = w->engine;
     int nPages = engine->PageCount();
@@ -29161,6 +29637,7 @@ static void ExtractThread(ExtractWork* w) {
         uitask::Post(MkFunc0(ExtractApplyOnUi, w), "ExtractPdfTocDone");
         return;
     }
+    PtocDumpScanLinesJson(engine->FilePath(), lines, nPages, "collected");
     int nItems = 0;
     bool force = w->skipConfirm && nText >= 1;
     ExtractTocDocClass cls = ExtractTocDocClass::Official;
@@ -29170,6 +29647,9 @@ static void ExtractThread(ExtractWork* w) {
     logf("TOC extract result kind=%d textPages=%d items=%d lines=%d\n", (int)k, nText, nItems, lines.Size());
     w->nTextPages = nText;
     FreeScanLines(lines);
+    if (ExtractTryPrintedOcrFallback(engine, w->roots, k, nItems, cls)) {
+        w->isBook = cls == ExtractTocDocClass::Book;
+    }
     if (k == ExtractPdfTocKind::NoText) {
         w->status = ExtractPdfTocStatus::NoText;
     } else if (k == ExtractPdfTocKind::Ok) {

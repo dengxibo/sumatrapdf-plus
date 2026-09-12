@@ -939,6 +939,18 @@ Done:
     return ok;
 }
 
+bool SaveBitmapAsPng(HBITMAP hbmp, const char* destPath) {
+    if (!hbmp || str::IsEmpty(destPath)) {
+        return false;
+    }
+    Bitmap bmp(hbmp, nullptr);
+    if (bmp.GetLastStatus() != Ok) {
+        return false;
+    }
+    TempWStr destW = ToWStrTemp(destPath);
+    return SaveBitmapWithWIC(&bmp, destW, &GUID_ContainerFormatPng);
+}
+
 static TempStr FormatPdfDateTemp() {
     SYSTEMTIME lt{};
     GetLocalTime(&lt);

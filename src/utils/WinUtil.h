@@ -113,6 +113,12 @@ bool LaunchAiChatBrowser(AiChatService service, bool* reusedOut = nullptr, HWND*
                          bool* navigatedOut = nullptr);
 bool PasteAndSubmitAiChatWhenReady(AiChatService service, HWND browserHwnd, bool waitForPageReady,
                                    bool dismissChromeFocus = false);
+// Pastes each image into the user-visible web AI page without submitting text.
+// Success means paste was attempted, not a server-side upload acknowledgement.
+bool PasteAiChatFilesWhenReady(AiChatService service, HWND browserHwnd, bool waitForPageReady, const StrVec& paths);
+// Preserve all files and the prompt for manual paste. Websites choose which
+// clipboard formats they accept; a single image additionally has a DIB format.
+bool CopyAiChatPayloadToClipboard(const StrVec& paths, const char* prompt);
 void LaunchAiChatWithPromptAsync(AiChatService service, const char* prompt);
 void OpenPathInDefaultFileManager(const char* path);
 void PaintCheckerboard(HDC hdc, int x, int y, int w, int h);
@@ -183,6 +189,8 @@ bool CopyTextToClipboard(const char*);
 bool AppendTextToClipboard(const char*);
 
 bool CopyImageToClipboard(HBITMAP hbmp, bool appendOnly);
+// Copies existing files in the same way as Explorer's Copy command.
+bool CopyFilesToClipboard(const StrVec& paths);
 
 bool IsWindowStyleSet(HWND hwnd, DWORD flags);
 bool IsWindowStyleExSet(HWND hwnd, DWORD flags);
