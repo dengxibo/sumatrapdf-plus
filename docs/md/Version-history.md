@@ -2,6 +2,8 @@
 
 ## next
 
+## 3.7.31 (2026-09-15)
+
 - PDF repair: documents that require lenient page-tree recovery are now marked as repaired, forcing a full rewrite when AI TOC or other PDF edits are saved instead of producing an invalid incremental update.
   PDF 修复：需要宽容页面树恢复的损坏文档现在会标记为已修复；保存 AI 目录或其他 PDF 编辑时将强制完整重写，避免生成无效的增量更新。
 
