@@ -700,6 +700,9 @@ void FindWindowWnd::DrawResultItem(ListBox::DrawItemEvent* ev) {
         // Matches are already filtered by TextSearch; don't re-apply whole-word
         // boundaries on snippets (CJK context bytes fail the byte-level check).
         args.matchWholeWord = false;
+        args.primaryHighlightStart = fm.snippetMatchStart;
+        args.primaryHighlightEnd = fm.snippetMatchEnd;
+        args.secondaryHighlightColor = RGB(255, 176, 64);
         args.drawFmt = DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_LEFT | DT_END_ELLIPSIS;
         // clip snippet drawing so match highlights cannot bleed into the page
         // number column when the floating window is narrow (issue #5736);

@@ -1034,7 +1034,22 @@ static int RefineSnippetEnd(const SnippetPageContext& ctx, int mEnd, int latest)
 }
 
 // build a one-line "...context match context..." snippet (UTF-8) around a match
-static char* BuildSnippet(TextSearch* ts, const FindMatch& m, int maxSnippetGlyphs) {
+static int NormalizedSnippetByteOffset(const char* text, int sourceOffset) {
+    bool addedSpace = true;
+    int dst = 0;
+    for (int i = 0; text[i] && i < sourceOffset; i++) {
+        if (!str::IsWs(text[i])) {
+            dst++;
+            addedSpace = false;
+        } else if (!addedSpace) {
+            dst++;
+            addedSpace = true;
+        }
+    }
+    return dst;
+}
+
+static char* BuildSnippet(TextSearch* ts, FindMatch& m, int maxSnippetGlyphs) {
     if (!ts || maxSnippetGlyphs <= 0) {
         return nullptr;
     }
@@ -1058,10 +1073,11 @@ static char* BuildSnippet(TextSearch* ts, const FindMatch& m, int maxSnippetGlyp
     const int kMaxSnippetGlyphs = maxSnippetGlyphs;
     int matchLen = std::max(0, mEnd - mStart);
 
-    // Prefer a clean sentence/clause start even if it uses more leading room.
-    // Leading "..." feels wrong; trailing "..." is fine.
-    constexpr int kMaxLookbackGlyphs = 96;
-    int lookbackEarliest = std::max(0, mStart - kMaxLookbackGlyphs);
+    // Keep the selected match in the first third of the visible sample. A
+    // distant sentence boundary must never push the actual hit past the list
+    // column's ellipsis.
+    int leadBudget = std::max(8, (kMaxSnippetGlyphs - matchLen) / 3);
+    int lookbackEarliest = std::max(0, mStart - leadBudget);
     int from = RefineSnippetStart(ctx, mStart, lookbackEarliest);
     bool cleanStart = IsCleanSnippetBoundaryBefore(ctx, from);
 
@@ -1078,7 +1094,7 @@ static char* BuildSnippet(TextSearch* ts, const FindMatch& m, int maxSnippetGlyp
 
     // Last resort: match does not fit after a clean start — shift start and accept leading "...".
     if (to - from > kMaxSnippetGlyphs) {
-        int forcedEarliest = std::max(0, mEnd + matchLen - kMaxSnippetGlyphs);
+        int forcedEarliest = std::max(0, mEnd - kMaxSnippetGlyphs);
         from = RefineSnippetStart(ctx, mStart, forcedEarliest);
         cleanStart = IsCleanSnippetBoundaryBefore(ctx, from);
         maxTo = std::min(textLen, from + kMaxSnippetGlyphs);
@@ -1098,14 +1114,19 @@ static char* BuildSnippet(TextSearch* ts, const FindMatch& m, int maxSnippetGlyp
     if (!sub) {
         return nullptr;
     }
-    str::NormalizeWSInPlace(sub);
     bool showLeadingEllipsis = from > 0 && !cleanStart;
+    int matchStartByte = ts->PageCodepointByteOffset(m.startPage, mStart) - fromByte;
+    int matchEndByte = ts->PageCodepointByteOffset(m.startPage, mEnd) - fromByte;
+    int ellipsisBytes = showLeadingEllipsis ? 3 : 0;
+    m.snippetMatchStart = ellipsisBytes + NormalizedSnippetByteOffset(sub, matchStartByte);
+    m.snippetMatchEnd = ellipsisBytes + NormalizedSnippetByteOffset(sub, matchEndByte);
+    str::NormalizeWSInPlace(sub);
     TempStr full = str::FormatTemp("%s%s%s", showLeadingEllipsis ? "..." : "", sub, to < textLen ? "..." : "");
     str::Free(sub);
     return str::Dup(full);
 }
 
-static char* BuildSnippet(MainWindow* win, TextSearch* ts, const FindMatch& m) {
+static char* BuildSnippet(MainWindow* win, TextSearch* ts, FindMatch& m) {
     return BuildSnippet(ts, m, FindSnippetMaxGlyphs(win));
 }
 

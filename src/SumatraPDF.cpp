@@ -3590,6 +3590,8 @@ static void EnsureDisplayModelPagesInfo(MainWindow* win, WindowTab* tab) {
     if (!needPagesInfo && !needZoom) {
         return;
     }
+    logf("SESSIONTRACE EnsurePages begin file='%s' needPages=%d needZoom=%d actualPage=%d\n", tab->filePath,
+         needPagesInfo, needZoom, dm->CurrentPageNo());
 
     int dpi = gGlobalPrefs->customScreenDPI;
     if (dpi == 0) {
@@ -3629,6 +3631,12 @@ static void EnsureDisplayModelPagesInfo(MainWindow* win, WindowTab* tab) {
     if (needPagesInfo || needZoom) {
         dm->Relayout(zoomVirtual, rotation);
     }
+    ScrollState actual = dm->GetScrollState();
+    logf(
+        "SESSIONTRACE EnsurePages end file='%s' startPage=%d actualPage=%d scroll=%.1f,%.1f pending=%d "
+        "pendingPage=%d\n",
+        tab->filePath, startPage, actual.page, actual.x, actual.y, dm->hasPendingRestoreScroll,
+        dm->pendingRestoreScroll.page);
 }
 
 // attach a finished async load to a tab that is not currently selected
@@ -3668,7 +3676,22 @@ static void AttachDocumentToBackgroundTab(LoadArgs* args, WindowTab* tab) {
     } else if (tab->ctrl && !tab->ctrl->HasToc()) {
         tab->showToc = false;
     }
+
+    // Associate the saved state with this background tab before initializing
+    // its layout, so fixed-layout documents start directly on the saved page.
+    if (!tab->tabState && args->tabState) {
+        tab->tabState = args->tabState;
+        args->tabState = nullptr;
+    }
     EnsureDisplayModelPagesInfo(win, tab);
+    DisplayModel* backgroundDm = tab->AsFixed();
+    if (backgroundDm) {
+        ScrollState actual = backgroundDm->GetScrollState();
+        logf(
+            "SESSIONTRACE AttachBackground file='%s' actualPage=%d scroll=%.1f,%.1f tabStatePage=%d argsStatePage=%d\n",
+            tab->filePath, actual.page, actual.x, actual.y, tab->tabState ? tab->tabState->pageNo : -1,
+            args->tabState ? args->tabState->pageNo : -1);
+    }
 
     // Defer SetTabState until LoadModelIntoTab selects this tab. Applying scroll
     // state here calls GoToPage -> UpdateScrollbars which uses win->AsFixed()
@@ -3676,9 +3699,6 @@ static void AttachDocumentToBackgroundTab(LoadArgs* args, WindowTab* tab) {
     if (tab->tabState) {
         tab->showToc = tab->tabState->showToc;
         tab->tocState = *tab->tabState->tocState;
-    } else if (args->tabState) {
-        tab->tabState = args->tabState;
-        args->tabState = nullptr;
     }
 
     // Already loaded into this background tab. needRefresh=true would leave
@@ -3802,10 +3822,17 @@ MainWindow* LoadDocumentFinish(LoadArgs* args) {
     // real loading so restore tab state
     if (!currTab->ctrl && !currTab->tabState) {
         currTab->tabState = args->tabState;
+        args->tabState = nullptr;
     } else if (currTab->tabState) {
         SetTabState(currTab, currTab->tabState);
         FreeTabState(currTab->tabState);
         currTab->tabState = nullptr;
+    } else if (args->tabState) {
+        // Non-lazy startup loads are asynchronous too. Apply the state carried
+        // by this load only after its controller has been attached.
+        SetTabState(currTab, args->tabState);
+        FreeTabState(args->tabState);
+        args->tabState = nullptr;
     }
     // A font-size reload uses the regular asynchronous EPUB open path. The
     // first coherent batch is now attached, so restore the saved reading
@@ -4508,8 +4535,14 @@ static void TabSwitchDeferredLayoutSync(WindowTab* tab) {
         }
         return;
     }
+    ScrollState before = dm->GetScrollState();
+    logf("SESSIONTRACE DeferredLayout begin file='%s' actualPage=%d scroll=%.1f,%.1f pending=%d pendingPage=%d\n",
+         tab->filePath, before.page, before.x, before.y, dm->hasPendingRestoreScroll, dm->pendingRestoreScroll.page);
     dm->tabSwitchLayoutSyncPending = false;
     dm->OnMorePagesAvailable(true, false);
+    ScrollState after = dm->GetScrollState();
+    logf("SESSIONTRACE DeferredLayout end file='%s' actualPage=%d scroll=%.1f,%.1f pending=%d pendingPage=%d\n",
+         tab->filePath, after.page, after.x, after.y, dm->hasPendingRestoreScroll, dm->pendingRestoreScroll.page);
     UpdateToolbarPageText(tab->win, dm->PageCount());
 }
 
@@ -4566,6 +4599,8 @@ void LoadModelIntoTab(WindowTab* tab) {
     MainWindow* win = tab->win;
     WindowTab* prevTab = win->CurrentTab();
     const bool switchingTab = (tab != prevTab);
+    logf("SESSIONTRACE LoadModelIntoTab begin file='%s' switching=%d loaded=%d tabStatePage=%d\n", tab->filePath,
+         switchingTab, tab->ctrl != nullptr, tab->tabState ? tab->tabState->pageNo : -1);
     if (switchingTab) {
         if (win->hwndFindEdit || win->findThread || win->findCountThread) {
             ResetFindUIForTabSwitch(win);
@@ -4696,6 +4731,8 @@ void LoadModelIntoTab(WindowTab* tab) {
             win->ctrl->SetViewPortSize(viewPort);
         }
         if (tab->tabState) {
+            logf("SESSIONTRACE LoadModelIntoTab applying file='%s' tabStatePage=%d\n", tab->filePath,
+                 tab->tabState->pageNo);
             SetTabState(tab, tab->tabState);
             FreeTabState(tab->tabState);
             tab->tabState = nullptr;
@@ -4706,6 +4743,10 @@ void LoadModelIntoTab(WindowTab* tab) {
         if (dm->InPresentation() != win->InPresentation()) {
             dm->SetInPresentation(win->InPresentation());
         }
+        ScrollState actual = dm->GetScrollState();
+        logf("SESSIONTRACE LoadModelIntoTab end file='%s' actualPage=%d scroll=%.1f,%.1f pending=%d pendingPage=%d\n",
+             tab->filePath, actual.page, actual.x, actual.y, dm->hasPendingRestoreScroll,
+             dm->pendingRestoreScroll.page);
     } else if (win->AsChm()) {
         win->ctrl->GoToPage(win->ctrl->CurrentPageNo(), false);
     }

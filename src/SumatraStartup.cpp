@@ -352,6 +352,8 @@ void SetTabState(WindowTab* tab, TabState* state) {
     auto win = tab->win;
     DocController* ctrl = tab->ctrl;
     DisplayModel* dm = tab->AsFixed();
+    logf("SESSIONTRACE SetTabState begin file='%s' savedPage=%d scroll=%.1f,%.1f zoom='%s' dm=%p current=%d\n",
+         tab->filePath, state->pageNo, state->scrollPos.x, state->scrollPos.y, state->zoom, dm, ctrl->CurrentPageNo());
 
     // validate page number from session state
     // TODO: figure out how this happens in the first place i.e.
@@ -376,13 +378,6 @@ void SetTabState(WindowTab* tab, TabState* state) {
         SwitchToDisplayMode(win, displayMode);
     }
 
-    if (dm) {
-        ScrollState scrollState = {state->pageNo, state->scrollPos.x, state->scrollPos.y};
-        dm->SetScrollState(scrollState);
-    } else {
-        ctrl->GoToPage(state->pageNo, true);
-    }
-
     float zoom = ZoomFromString(state->zoom, kInvalidZoom);
     if (zoom != kInvalidZoom) {
         if (dm) {
@@ -398,28 +393,38 @@ void SetTabState(WindowTab* tab, TabState* state) {
             ctrl->SetZoomVirtual(zoom, nullptr);
         }
     }
+
+    // Restore the position last. Changing display mode, zoom, or rotation can
+    // relayout a lazily loaded background document and reset it to page 1.
+    if (dm) {
+        ScrollState scrollState = {state->pageNo, state->scrollPos.x, state->scrollPos.y};
+        dm->SetScrollState(scrollState);
+        ScrollState actual = dm->GetScrollState();
+        logf("SESSIONTRACE SetTabState end file='%s' actualPage=%d scroll=%.1f,%.1f pending=%d pendingPage=%d\n",
+             tab->filePath, actual.page, actual.x, actual.y, dm->hasPendingRestoreScroll,
+             dm->pendingRestoreScroll.page);
+    } else {
+        ctrl->GoToPage(state->pageNo, true);
+        logf("SESSIONTRACE SetTabState end nonfixed file='%s' actualPage=%d\n", tab->filePath, ctrl->CurrentPageNo());
+    }
 }
 
-// TODO: when files are lazy loaded, they do not restore TabState. Need to remember
-// it in LoadArgs and call SetTabState() if present after loading
 static void RestoreTabOnStartup(MainWindow* win, TabState* state, bool lazyLoad = true) {
-    logf("RestoreTabOnStartup: state->filePath: '%s'\n", state->filePath);
+    logf("SESSIONTRACE RestoreTabOnStartup file='%s' page=%d scroll=%.1f,%.1f zoom='%s' lazy=%d\n", state->filePath,
+         state->pageNo, state->scrollPos.x, state->scrollPos.y, state->zoom, lazyLoad);
     LoadArgs args(state->filePath, win);
     args.noSavePrefs = true;
     args.showWin = false;
-    if (lazyLoad) {
-        args.tabState = CloneTabState(state);
-    }
+    // Loading is asynchronous even when lazy loading is disabled. Carry the
+    // state with this specific load so background completion cannot apply it
+    // to whichever tab happens to be current at that time.
+    args.tabState = CloneTabState(state);
     args.lazyLoad = lazyLoad;
     if (!LoadDocument(&args)) {
         if (args.tabState) {
             FreeTabState(args.tabState);
         }
         return;
-    }
-    WindowTab* tab = win->CurrentTab();
-    if (!lazyLoad) {
-        SetTabState(tab, state);
     }
 }
 

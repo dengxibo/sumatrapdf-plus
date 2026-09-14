@@ -1651,7 +1651,6 @@ HMENU BuildMenuFromDef(MenuDef* menuDef, HMENU menu, BuildMenuCtx* ctx) {
         if (ctx) {
             removeMenu |= !ctx->isCursorOnPage && (subMenuDef == menuDefCreateAnnotUnderCursor);
             removeMenu |= !ctx->hasSelection && (subMenuDef == menuDefCreateAnnotFromSelection);
-            removeMenu |= !ctx->isReflowableEbook && (subMenuDef == menuDefEbookReadingFont);
         }
         if (removeMenu) {
             continue;

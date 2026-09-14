@@ -1417,6 +1417,7 @@ void DrawMaybeHighlightedText(DrawMaybeHighlightedTextArgs& args) {
 
     // compute pixel rectangles for each highlighted range
     RECT highlightRects[16];
+    int highlightRangeIndexes[16];
     int nValidRanges = 0;
     for (int i = 0; i < nRanges; i++) {
         int wStart = wcharLenAtByteOffset(byteRanges[i].start);
@@ -1440,24 +1441,34 @@ void DrawMaybeHighlightedText(DrawMaybeHighlightedTextArgs& args) {
         highlightRects[nValidRanges].bottom = rc.bottom;
         highlightRects[nValidRanges].left = hLeft;
         highlightRects[nValidRanges].right = hRight;
+        highlightRangeIndexes[nValidRanges] = i;
         nValidRanges++;
     }
 
     // draw highlight background rectangles for matches
     ParsedColor* parsedCol = GetPrefsColor(gGlobalPrefs->fixedPageUI.findMatchColor);
     COLORREF highlightCol = parsedCol->parsedOk ? parsedCol->col : RGB(255, 255, 0);
-    {
-        HBRUSH hbrHighlight = CreateSolidBrush(highlightCol);
-        for (int i = 0; i < nValidRanges; i++) {
-            FillRect(hdc, &highlightRects[i], hbrHighlight);
-        }
-        DeleteObject(hbrHighlight);
+    HBRUSH hbrHighlight = CreateSolidBrush(highlightCol);
+    HBRUSH hbrSecondary =
+        args.secondaryHighlightColor != CLR_INVALID ? CreateSolidBrush(args.secondaryHighlightColor) : nullptr;
+    COLORREF rangeColors[16];
+    for (int i = 0; i < nRanges; i++) {
+        bool isPrimary = args.primaryHighlightStart >= 0 && byteRanges[i].start < args.primaryHighlightEnd &&
+                         byteRanges[i].end > args.primaryHighlightStart;
+        rangeColors[i] = !isPrimary && hbrSecondary ? args.secondaryHighlightColor : highlightCol;
     }
+    for (int i = 0; i < nValidRanges; i++) {
+        COLORREF color = rangeColors[highlightRangeIndexes[i]];
+        FillRect(hdc, &highlightRects[i], color == highlightCol ? hbrHighlight : hbrSecondary);
+    }
+    if (hbrSecondary) {
+        DeleteObject(hbrSecondary);
+    }
+    DeleteObject(hbrHighlight);
 
     // draw text in segments so highlighted runs use a contrasting color (white-on-yellow
     // in dark chrome is hard to read)
     COLORREF colText = GetTextColor(hdc);
-    COLORREF highlightTextCol = TextColorOnHighlightBackground(highlightCol);
     int bytePos = 0;
     for (int i = 0; i < nRanges; i++) {
         if (bytePos < byteRanges[i].start) {
@@ -1467,7 +1478,8 @@ void DrawMaybeHighlightedText(DrawMaybeHighlightedTextArgs& args) {
         }
         int wStart = wcharLenAtByteOffset(byteRanges[i].start);
         int wLen = wcharLenAtByteOffset(byteRanges[i].end) - wStart;
-        DrawHighlightedTextSegment(hdc, rc, textW, wStart, wLen, strOriginX, highlightTextCol);
+        COLORREF rangeTextCol = TextColorOnHighlightBackground(rangeColors[i]);
+        DrawHighlightedTextSegment(hdc, rc, textW, wStart, wLen, strOriginX, rangeTextCol);
         bytePos = byteRanges[i].end;
     }
     if (bytePos < textLen) {

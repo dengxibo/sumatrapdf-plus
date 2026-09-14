@@ -40,6 +40,7 @@ static UINT_PTR gNoDocWhitelist[] = {
     CmdAdvancedOptions,
     CmdAdvancedSettings,
     CmdChangeLanguage,
+    CmdAssociateCommonFileTypes,
     CmdCheckUpdate,
     CmdHelpOpenManual,
     CmdHelpOpenManualOnWebsite,
@@ -403,9 +404,6 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         return CommandVisibility::Show;
     }
     if (origCmdId == CmdSetEbookLatinFont || origCmdId == CmdSetEbookCjkFont) {
-        if (!ctx.isDocLoaded || !ctx.isReflowableEbook) {
-            return CommandVisibility::Hide;
-        }
         return CommandVisibility::Show;
     }
     if (origCmdId == CmdEbookFontSizeIncrease) {
@@ -421,9 +419,6 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         return CanDecreaseEbookFontSize() ? CommandVisibility::Show : CommandVisibility::Disable;
     }
     if (origCmdId == CmdEbookFontSizeReset) {
-        if (!ctx.isDocLoaded || !ctx.isReflowableEbook) {
-            return CommandVisibility::Hide;
-        }
         return UsesNonDefaultEbookFontSize() ? CommandVisibility::Show : CommandVisibility::Disable;
     }
 

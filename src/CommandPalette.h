@@ -23,6 +23,9 @@ struct DrawMaybeHighlightedTextArgs {
     bool isRtl = false;
     bool matchWholeWord = false; // only highlight whole-word occurrences (issue #4295)
     uint drawFmt = 0;
+    int primaryHighlightStart = -1; // optional UTF-8 byte range rendered with the primary color
+    int primaryHighlightEnd = -1;
+    COLORREF secondaryHighlightColor = CLR_INVALID;
 
     DrawMaybeHighlightedTextArgs(const StrVec& fw, Vec<u8>& hl) : filterWords(fw), highlighted(hl) {}
 };

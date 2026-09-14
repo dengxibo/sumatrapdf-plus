@@ -511,13 +511,18 @@ static void RememberSessionState() {
                 continue;
             }
             const char* fp = tab->filePath;
+            // A loaded background controller can be relaid out without its
+            // canvas viewport and fall back to page 1. Prefer the exact state
+            // captured when the tab left the foreground.
+            if (tab->tabState) {
+                TabState* ts = CloneTabState(tab->tabState);
+                logf("SESSIONTRACE RememberSessionState snapshot file='%s' page=%d scroll=%.1f,%.1f zoom='%s'\n", fp,
+                     ts->pageNo, ts->scrollPos.x, ts->scrollPos.y, ts->zoom);
+                windowState->tabStates->Append(ts);
+                continue;
+            }
             if (!tab->ctrl) {
                 // lazy shell: tabState survives after gInitialSessionData is freed at startup
-                if (tab->tabState) {
-                    TabState* ts = CloneTabState(tab->tabState);
-                    windowState->tabStates->Append(ts);
-                    continue;
-                }
                 // fallback: match startup snapshot or minimal state from tab shell
                 bool didFind = false;
                 if (gInitialSessionData) {
@@ -529,6 +534,10 @@ static void RememberSessionState() {
                             TabState* pts = psd->tabStates->At(j);
                             if (str::Eq(pts->filePath, fp)) {
                                 TabState* ts = CloneTabState(pts);
+                                logf(
+                                    "SESSIONTRACE RememberSessionState initial file='%s' page=%d scroll=%.1f,%.1f "
+                                    "zoom='%s'\n",
+                                    fp, ts->pageNo, ts->scrollPos.x, ts->scrollPos.y, ts->zoom);
                                 windowState->tabStates->Append(ts);
                                 didFind = true;
                                 break;
@@ -541,6 +550,8 @@ static void RememberSessionState() {
                     fs->showToc = tab->showToc;
                     *fs->tocState = tab->tocState;
                     TabState* ts = NewTabState(fs);
+                    logf("SESSIONTRACE RememberSessionState fallback file='%s' page=%d scroll=%.1f,%.1f zoom='%s'\n",
+                         fp, ts->pageNo, ts->scrollPos.x, ts->scrollPos.y, ts->zoom);
                     windowState->tabStates->Append(ts);
                     DeleteFileState(fs);
                 }
@@ -551,6 +562,8 @@ static void RememberSessionState() {
             fs->showToc = tab->showToc;
             *fs->tocState = tab->tocState;
             TabState* ts = NewTabState(fs);
+            logf("SESSIONTRACE RememberSessionState controller file='%s' page=%d scroll=%.1f,%.1f zoom='%s'\n", fp,
+                 ts->pageNo, ts->scrollPos.x, ts->scrollPos.y, ts->zoom);
             windowState->tabStates->Append(ts);
             DeleteFileState(fs);
         }

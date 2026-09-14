@@ -1422,6 +1422,8 @@ void DisplayModel::TryApplyPendingRestoreScroll() {
         return;
     }
     ScrollState state = pendingRestoreScroll;
+    logf("SESSIONTRACE TryApplyPending begin targetPage=%d scroll=%.1f,%.1f actualPage=%d validUpto=%d\n", state.page,
+         state.x, state.y, CurrentPageNo(), reflowLayoutValidUpto);
     hasPendingRestoreScroll = false;
     suppressTocSelectionUpdate = true;
     defer {
@@ -1435,6 +1437,9 @@ void DisplayModel::TryApplyPendingRestoreScroll() {
         return;
     }
     SetScrollState(state);
+    ScrollState actual = GetScrollState();
+    logf("SESSIONTRACE TryApplyPending end actualPage=%d scroll=%.1f,%.1f pending=%d pendingPage=%d\n", actual.page,
+         actual.x, actual.y, hasPendingRestoreScroll, pendingRestoreScroll.page);
 }
 
 void DisplayModel::RestoreFontReloadInPageScroll(int page, float ratio) {
@@ -3305,10 +3310,13 @@ ScrollState DisplayModel::GetScrollState() {
 }
 
 void DisplayModel::SetScrollState(const ScrollState& state) {
+    logf("SESSIONTRACE SetScrollState request page=%d scroll=%.1f,%.1f actualPage=%d valid=%d validUpto=%d\n",
+         state.page, state.x, state.y, CurrentPageNo(), ValidPageNo(state.page), reflowLayoutValidUpto);
     if (!ValidPageNo(state.page)) {
         if (EngineIsProgressiveEbookLoading(engine) && state.page >= 1) {
             pendingRestoreScroll = state;
             hasPendingRestoreScroll = true;
+            logf("SESSIONTRACE SetScrollState pending-invalid targetPage=%d\n", state.page);
             if (ValidPageNo(1)) {
                 int curPage = CurrentPageNo();
                 if (!ValidPageNo(curPage) || curPage <= 1) {
@@ -3323,6 +3331,8 @@ void DisplayModel::SetScrollState(const ScrollState& state) {
         state.page > reflowLayoutValidUpto + kLayoutSyncBatch) {
         pendingRestoreScroll = state;
         hasPendingRestoreScroll = true;
+        logf("SESSIONTRACE SetScrollState pending-layout targetPage=%d validUpto=%d\n", state.page,
+             reflowLayoutValidUpto);
         SyncReflowLayoutUpto(this, reflowLayoutValidUpto + kLayoutSyncBatch);
         RecalcVisibleParts();
         RenderVisibleParts();
@@ -3342,6 +3352,7 @@ void DisplayModel::SetScrollState(const ScrollState& state) {
     }
     // must have both GoToPage() calls
     GoToPage(use.page, false);
+    logf("SESSIONTRACE SetScrollState navigated targetPage=%d actualPage=%d\n", use.page, CurrentPageNo());
     // Bail out, if the page wasn't scrolled
     if (use.x < 0 && use.y < 0) {
         return;

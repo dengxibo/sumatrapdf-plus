@@ -662,6 +662,22 @@ void SaveCurrentWindowTab(MainWindow* win) {
     SyncTabFromWindow(win, tab);
     VerifyWindowTab(win, tab);
 
+    // Capture the reading position while this tab still owns the live canvas.
+    // A background controller can later be relaid out without its viewport and
+    // report page 1 during shutdown, so SessionData must use this snapshot.
+    if (tab->ctrl && tab->filePath) {
+        FileState* fs = NewFileState(tab->filePath);
+        tab->ctrl->GetDisplayState(fs);
+        logf("SESSIONTRACE SaveCurrentWindowTab file='%s' page=%d scroll=%.1f,%.1f zoom='%s'\n", tab->filePath,
+             fs->pageNo, fs->scrollPos.x, fs->scrollPos.y, fs->zoom);
+        fs->showToc = tab->showToc;
+        *fs->tocState = tab->tocState;
+        TabState* state = NewTabState(fs);
+        DeleteFileState(fs);
+        FreeTabState(tab->tabState);
+        tab->tabState = state;
+    }
+
     // update the selection history
     win->tabSelectionHistory->Remove(tab);
     win->tabSelectionHistory->Append(tab);
