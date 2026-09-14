@@ -39,7 +39,7 @@ enum class Arg {
     FwdSearchOffset = 68, FwdSearchWidth = 69, FwdSearchColor = 70, FwdSearchPermanent = 71,
     MangaMode = 72, Search = 73, AllUsers = 74, AllUsers2 = 75,
     RunInstallNow = 76, Adobe = 77, DDE = 78, EngineDump = 79,
-    SetColorRange = 80, UpgradeFrom = 81,
+    SetColorRange = 80, UpgradeFrom = 81, TestBodyToc = 82,
 };
 
 static const char* gArgNames =
@@ -63,7 +63,7 @@ static const char* gArgNames =
     "fwdsearch-offset\0" "fwdsearch-width\0" "fwdsearch-color\0" "fwdsearch-permanent\0"
     "manga-mode\0" "search\0" "all-users\0" "allusers\0"
     "run-install-now\0" "a\0" "dde\0" "engine-dump\0"
-    "set-color-range\0" "upgrade-from\0";
+    "set-color-range\0" "upgrade-from\0" "test-body-toc\0";
 // clang-format on
 // @gen-end flags
 
@@ -427,6 +427,10 @@ void ParseFlags(const WCHAR* cmdLine, Flags& i, const char* toolNames) {
         }
         if (arg == Arg::ExtractTocBench) {
             i.extractTocBench = true;
+            continue;
+        }
+        if (arg == Arg::TestBodyToc) {
+            i.testBodyToc = true;
             continue;
         }
         if (arg == Arg::ExtractTocDebug) {

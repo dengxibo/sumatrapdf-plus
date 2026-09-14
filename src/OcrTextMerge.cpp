@@ -216,6 +216,16 @@ static bool SameLineThickness(const Rect& a, const Rect& b, bool vertical) {
     return diff * 4 <= ta;
 }
 
+static bool CenteredInsidePreviousLine(const Rect& a, const Rect& b, int em) {
+    int leftInset = b.x - a.x;
+    int rightInset = (a.x + a.dx) - (b.x + b.dx);
+    if (leftInset <= 0 || rightInset <= 0) {
+        return false;
+    }
+    int insetDiff = leftInset > rightInset ? leftInset - rightInset : rightInset - leftInset;
+    return insetDiff <= em;
+}
+
 static bool ShouldJoinLines(const OcrMergeLine& a, const OcrMergeLine& b, const MergeStats& st, bool vertical) {
     if (!a.text || !a.text[0] || !b.text || !b.text[0]) {
         return false;
@@ -254,6 +264,13 @@ static bool ShouldJoinLines(const OcrMergeLine& a, const OcrMergeLine& b, const 
             return false;
         }
         return SameLineThickness(a.bbox, b.bbox, vertical);
+    }
+    // Native PDF title lines can be wider than the generic "centered short"
+    // threshold. A shorter row inset equally on both sides is still an
+    // unmistakable centered continuation, unlike a first-line indent whose
+    // right edge remains aligned with the body measure.
+    if (SameLineThickness(a.bbox, b.bbox, vertical) && CenteredInsidePreviousLine(a.bbox, b.bbox, st.em)) {
+        return true;
     }
     int bLeftPad = b.bbox.x - st.bodyLo;
     if (bLeftPad < st.em + st.em / 2) {

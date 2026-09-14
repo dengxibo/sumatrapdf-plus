@@ -146,6 +146,9 @@ bool EngineMupdfEnsurePageOcrRotate(EngineBase* engine, int pageNo);
 bool EngineMupdfClearPageOcrRotate(EngineBase* engine, int pageNo);
 // Current PDF /Rotate for this page (0/90/180/270). Non-PDF engines return 0.
 int EngineMupdfGetPageRotateCw(EngineBase* engine, int pageNo);
+// Set this page's PDF /Rotate to an absolute value (0/90/180/270, e.g. for
+// manual page rotation). Returns true if the page was changed.
+bool EngineMupdfSetPageRotateCw(EngineBase* engine, int pageNo, int wantCw);
 // Neighbors agree on 90 or 270: snap a 180° opposite page; fill a 0 hole only
 // when both neighbors were flagged this session (not a landscape 汇总表).
 int OcrResolveNeighborPageRotate(int cur, int left, int right, bool leftFromSession, bool rightFromSession);
@@ -217,6 +220,9 @@ bool EngineSupportsSmartDarkMode(EngineBase* engine);
 void EngineMupdfToggleCadEnhance(EngineBase* engine);
 void EngineMupdfEnsurePageLinksForHitTest(EngineBase* engine, int pageNo);
 void EngineMupdfEnsurePageImagesForHitTest(EngineBase* engine, int pageNo);
+// Full-load the page (links included) and return its elements. Works headless,
+// unlike GetElements() which requires fullyLoaded (rendered) pages.
+Vec<IPageElement*> EngineMupdfGetPageElementsForExtraction(EngineBase* engine, int pageNo);
 
 /* EnginePs.cpp */
 

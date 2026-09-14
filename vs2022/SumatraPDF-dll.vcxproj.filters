@@ -809,6 +809,7 @@
     <ClCompile Include="..\src\ExtractPdfToc.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\TocExtraction.cpp"><Filter>src</Filter></ClCompile>
     <ClCompile Include="..\src\ExtractBookToc.cpp">
       <Filter>src</Filter>
     </ClCompile>

@@ -1307,10 +1307,10 @@ static void AppendCachedOcrParagraphLines(TextSelection* ts, int pageNo, int fro
     }
 }
 
-// Re-opened searchable PDF (no in-session cache): collect layout lines with
+// File-backed PDF text (no in-session OCR cache): collect layout lines with
 // their bboxes, then merge soft-wrapped lines back into paragraphs. Vertical
 // pages band glyphs into columns (reading order, right to left) first.
-static void AppendMergedScannedPageLines(TextSelection* ts, int pageNo, int fromGlyph, int toGlyph, StrVec& lines) {
+static void AppendMergedPageLines(TextSelection* ts, int pageNo, int fromGlyph, int toGlyph, StrVec& lines) {
     bool vertical = PageUsesVerticalGlyphLayout(ts, pageNo);
     if (!vertical) {
         StrVec rawLines;
@@ -1368,12 +1368,11 @@ static WCHAR* ExtractTextFromGlyphRange(TextSelection* ts, int fromPage, int fro
                 AppendCachedOcrParagraphLines(ts, page, glyph, glyph + length, lines);
                 continue;
             }
-            if (EngineMupdfIsScannedTextPage(ts->engine, page)) {
-                AppendMergedScannedPageLines(ts, page, glyph, glyph + length, lines);
-                continue;
-            }
-            // native text page: preserve the original line layout
-            if (PageUsesVerticalGlyphLayout(ts, page)) {
+            if (ts->engine->kind == kindEngineMupdf) {
+                // File-backed PDF text, whether OCR-generated or native, uses
+                // layout-aware paragraph merging when the option is enabled.
+                AppendMergedPageLines(ts, page, glyph, glyph + length, lines);
+            } else if (PageUsesVerticalGlyphLayout(ts, page)) {
                 AppendPageGlyphsInVisualOrder(ts, page, glyph, glyph + length, lines, true);
             } else {
                 FillResultRects(ts, page, glyph, length, &lines);

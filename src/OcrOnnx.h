@@ -56,6 +56,9 @@ const char* OcrLastError();
 const char* OcrProfileName(OcrProfile profile);
 OcrProfile GetOcrProfileForOperation(OcrOperation op);
 void OcrSetForcedProfile(OcrProfile profile, bool enable);
+// Coarse-det mode for the TOC discovery pass: lowers the det input resolution
+// for the calling thread (structure-level scan, not text-level accuracy).
+void OcrSetTocCoarseDet(bool enable);
 
 // RGB top-down 24-bit (3 bytes/pixel, packed or strided). boxesOut owns text strings.
 bool OcrRecognizeRgb(const u8* rgb, int w, int h, int stride, Vec<OcrBox>& boxesOut, OcrProfile profile,

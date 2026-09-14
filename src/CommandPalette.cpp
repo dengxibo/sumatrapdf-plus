@@ -454,6 +454,10 @@ static bool AllowCommand(const CommandPaletteBuildCtx& ctx, i32 cmdId) {
         return false;
     }
 
+    if (cmdId == CmdPdfRotatePages && !ctx.isPdf) {
+        return false;
+    }
+
     if (cmdId == CmdPdfEncrypt && (!ctx.isPdf || ctx.isPdfEncrypted)) {
         return false;
     }

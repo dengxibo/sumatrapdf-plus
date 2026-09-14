@@ -95,6 +95,7 @@
 #include "PrintedTocModel.h"
 #include "ExtractPdfToc.h"
 #include "TocCalib.h"
+#include "TocExtraction.h"
 #include "LookupAudio.h"
 #include "Translations.h"
 #include "uia/Provider.h"
@@ -3443,6 +3444,7 @@ void UpdateAfterThemeChange() {
         },
         0);
     RefreshAiTocWindowsTheme();
+    RefreshPdfRotatePagesTheme();
     RefreshWordLookupTheme();
     RefreshEditAnnotationsWindowsTheme();
     RefreshEbookAnnotationsWindowsTheme();
@@ -6291,7 +6293,7 @@ static bool ConfirmSearchablePdfSignatureSave(MainWindow* win, EngineBase* engin
 
 bool ConfirmOcrAutoSave(MainWindow* win, bool* extractTocOut) {
     if (extractTocOut) {
-        *extractTocOut = false;
+        *extractTocOut = true;
     }
     if (!CanAccessDisk() || gPluginMode) {
         return false;
@@ -6316,12 +6318,8 @@ bool ConfirmOcrAutoSave(MainWindow* win, bool* extractTocOut) {
     if (!ConfirmSearchablePdfSignatureSave(win, engine)) {
         return false;
     }
-    // Extracted bookmarks enter the reversible calibration session, whose
-    // Save / Cancel actions already decide whether existing PDF bookmarks are
-    // replaced. Do not ask the same question before starting that session.
-    bool doExtract = EngineMupdfCanEditPdfToc(engine);
     if (extractTocOut) {
-        *extractTocOut = doExtract;
+        *extractTocOut = true;
     }
     return true;
 }
@@ -10721,6 +10719,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             ShowPdfExtractPagesDialog(win);
             break;
 
+        case CmdPdfRotatePages:
+            ShowPdfRotatePagesDialog(win);
+            break;
+
         case CmdPdfEncrypt:
             ShowPdfEncryptDialog(win);
             break;
@@ -11021,7 +11023,11 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         case CmdExtractPdfToc:
             // Debug extraction must never rewrite the source PDF. It writes
             // the collected OCR lines and decision trace next to that file.
-            HandleExtractPdfTocCommand(win, gCli && gCli->extractTocDebug, !(gCli && gCli->extractTocDebug));
+            if (gCli && gCli->extractTocDebug) {
+                HandleExtractPdfTocCommand(win, true, false);
+            } else {
+                ShowTocExtraction(win);
+            }
             break;
 
         case CmdAiRecognizePdfToc:

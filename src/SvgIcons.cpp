@@ -493,6 +493,12 @@ static const char* gIconLink =
   <path d="M13 18l-.397 .534a5.068 5.068 0 0 1 -7.127 0a4.972 4.972 0 0 1 0 -7.071l.524 -.463" />
 </svg>)";
 
+static const char* gIconTrash =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1 -13M10 10v7M14 10v7" />
+</svg>)";
+
 // must match order in enum class TbIcon
 // clang-format off
 static const char* gIcons[] = {
@@ -548,6 +554,7 @@ static const char* gIcons[] = {
     gIconFullscreenExit,
     gIconHomeHistory,
     gIconHomeFrequent,
+    gIconTrash,
 };
 // clang-format on
 

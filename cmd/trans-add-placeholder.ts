@@ -182,7 +182,7 @@ const stringsToAdd: Record<string, { cn: string; tw: string }> = {
     tw: "沒有可儲存的 OCR 文字。請先識別頁面。",
   },
   "Extract Table of Contents": { cn: "提取目录书签", tw: "提取目錄書籤" },
-  "Extract Table of Contents Locally": { cn: "本地提取目录书签", tw: "本地擷取目錄書籤" },
+  "Extract Table of Contents Locally": { cn: "提取目录书签", tw: "擷取目錄書籤" },
   "AI Recognize Table of Contents": { cn: "AI提取目录书签", tw: "AI擷取目錄書籤" },
   "Extracting bookmarks… %d / %d": { cn: "正在提取书签… %d / %d", tw: "正在提取書籤… %d / %d" },
   "Replace the existing PDF bookmarks with extracted headings?": {
@@ -261,6 +261,38 @@ const stringsToAdd: Record<string, { cn: string; tw: string }> = {
     cn: "从首页移除丢失的文件",
     tw: "從首頁移除遺失的檔案",
   },
+  "Rotate PDF Pages...": { cn: "旋转 PDF 页面...", tw: "旋轉 PDF 頁面..." },
+  "Rotate PDF Pages": { cn: "旋转 PDF 页面", tw: "旋轉 PDF 頁面" },
+  "Pages To Rotate:": { cn: "要旋转的页面:", tw: "要旋轉的頁面:" },
+  "Rotation Angle:": { cn: "旋转角度:", tw: "旋轉角度:" },
+  "90° Clockwise": { cn: "顺时针 90°", tw: "順時針 90°" },
+  "270° Clockwise": { cn: "顺时针 270°", tw: "順時針 270°" },
+  "Rotate Pages": { cn: "旋转页面", tw: "旋轉頁面" },
+  "Selected pages are already at that rotation.": {
+    cn: "所选页面已经是该旋转角度。",
+    tw: "所選頁面已經是該旋轉角度。",
+  },
+  "Failed to save rotated PDF pages.": {
+    cn: "保存旋转后的页面失败。",
+    tw: "儲存旋轉後的頁面失敗。",
+  },
+  "Rotated %d page(s) and saved to '%s'": {
+    cn: "已旋转 %d 页并保存到 '%s'",
+    tw: "已旋轉 %d 頁並儲存到 '%s'",
+  },
+  "Apply To": { cn: "应用到", tw: "套用至" },
+  "Current Page (Page %d)": {
+    cn: "当前页（第 %d 页）",
+    tw: "目前頁（第 %d 頁）",
+  },
+  "All Pages (%d)": { cn: "全部页面（共 %d 页）", tw: "所有頁面（共 %d 頁）" },
+  "Specified Pages": { cn: "指定页面", tw: "指定頁面" },
+  "e.g. 2, 5-7, 13-": { cn: "例如：2, 5-7, 13-", tw: "例如：2, 5-7, 13-" },
+  "Rotation": { cn: "旋转方向", tw: "旋轉方向" },
+  "Left 90°": { cn: "向左 90°", tw: "向左 90°" },
+  "Right 90°": { cn: "向右 90°", tw: "向右 90°" },
+  "Apply Rotation": { cn: "应用旋转", tw: "套用旋轉" },
+  "Invalid page range.": { cn: "页面范围无效。", tw: "頁面範圍無效。" },
 };
 
 // Read the full list of supported language codes from TranslationLangs.cpp.

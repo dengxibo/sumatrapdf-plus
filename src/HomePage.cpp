@@ -1254,6 +1254,7 @@ struct HomePageLayout {
     Rect rcIconView;
     Rect rcIconSort;
     Rect rcIconOpen;
+    VirtWndText* openDoc = nullptr;
 
     HIMAGELIST himlOpen = nullptr;
     VirtWndText* hideShowFreqRead = nullptr;
@@ -1281,7 +1282,9 @@ struct HomePageLayout {
     ~HomePageLayout();
 };
 
-HomePageLayout::~HomePageLayout() {}
+HomePageLayout::~HomePageLayout() {
+    delete openDoc;
+}
 
 constexpr int kThumbsMiddleMargin = 32;
 constexpr int kSearchChromeDy = 44;
@@ -1958,37 +1961,35 @@ void LayoutHomePage(HomePageLayout& l) {
     int iconPad = DpiScale(dpiHwnd, 1);
     int cellDx = rcIconSz.dx + iconPad * 2;
     int cellDy = rcIconSz.dy + iconPad * 2;
-    int headerRowDy = cellDy;
+    l.openDoc = new VirtWndText(l.hwnd, str::ReplaceTemp(_TRA("&Open..."), "&", ""), HomePageSearchFont(dpiHwnd));
+    l.openDoc->withUnderline = true;
+    l.openDoc->isRtl = isRtl;
+    Size openTextSize = l.openDoc->GetIdealSize(true);
+    int headerRowDy = std::max(cellDy, HomePageFontLineDy(dpiHwnd, HomePageSearchFont(dpiHwnd)) + DpiScale(dpiHwnd, 4));
     // View/Sort are one "view controls" group; Open File is a separate file
     // action. Grouping is expressed purely through proximity (Fluent 4px grid):
     // 8px inside the group, 16px between the groups.
     constexpr int kHomeToolbarGroupItemGap = 8;
-    constexpr int kHomeToolbarGroupGap = 16;
     int itemGap = DpiScale(dpiHwnd, kHomeToolbarGroupItemGap);
-    int groupGap = DpiScale(dpiHwnd, kHomeToolbarGroupGap);
 
-    l.rcIconView = {headerStartX, hdrY, cellDx, headerRowDy};
-    l.rcIconSort = {l.rcIconView.x + cellDx + itemGap, hdrY, cellDx, headerRowDy};
-    l.rcIconOpen = {l.rcIconSort.x + cellDx + groupGap, hdrY, cellDx, headerRowDy};
+    // One compact toolbar row: open action on the left, search in the middle,
+    // view and sort toggles on the right.
+    int rightStart = rc.dx - headerStartX - 2 * cellDx - itemGap;
+    l.rcIconView = {rightStart, hdrY, cellDx, headerRowDy};
+    l.rcIconSort = {rightStart + cellDx + itemGap, hdrY, cellDx, headerRowDy};
+    l.rcIconOpen = {headerStartX, hdrY, cellDx + DpiScale(dpiHwnd, 3) + openTextSize.dx, headerRowDy};
     if (isRtl) {
-        l.rcIconOpen.x = l.rcIconSort.x - groupGap - cellDx;
-        l.rcIconSort.x = l.rcIconView.x - itemGap - cellDx;
-        l.rcIconView.x = rc.dx - headerStartX - cellDx;
+        l.rcIconOpen.x = rc.dx - headerStartX - l.rcIconOpen.dx;
+        l.rcIconSort.x = headerStartX;
+        l.rcIconView.x = headerStartX + cellDx + itemGap;
     }
     bool frequent = gGlobalPrefs && gGlobalPrefs->homePageSortByFrequentlyRead;
-    win->staticLinks.Append(
-        new StaticLink(l.rcIconView, kLinkHomePageToggleView, listView ? _TRA("List view") : _TRA("Thumbnail view")));
-    win->staticLinks.Append(new StaticLink(l.rcIconSort, kLinkHomePageToggleSort,
-                                           frequent ? _TRA("Frequently Read") : _TRA("Recently Opened")));
-    win->staticLinks.Append(new StaticLink(l.rcIconOpen, kLinkOpenFile, _TRA("Open File")));
-
     int headerBottomY = hdrY + headerRowDy;
 
-    // --- Position search edit below header ---
+    // --- Position search edit in the same header row ---
     EnsureHomeSearchCreated(win);
     HomePageApplySearchFont(win);
-    int chromeDy = DpiScale(dpiHwnd, kSearchChromeDy);
-    int headerSearchGap = DpiScale(dpiHwnd, kHeaderSearchGapY);
+    int chromeDy = headerRowDy + DpiScale(dpiHwnd, 6);
     int searchThumbsGap = DpiScale(dpiHwnd, kSearchThumbnailsGapY);
     int searchPadX = DpiScale(dpiHwnd, 12);
     int searchEditDy = HomePageFontLineDy(win->hwndCanvas, HomePageSearchFont(win->hwndCanvas));
@@ -2004,10 +2005,26 @@ void LayoutHomePage(HomePageLayout& l) {
         if (borderDx < DpiScale(dpiHwnd, 200)) {
             borderDx = DpiScale(dpiHwnd, 200);
         }
-        int borderX = headerStartX;
-        int borderY = headerBottomY + headerSearchGap;
+        int borderX = l.rcIconOpen.x + l.rcIconOpen.dx + DpiScale(dpiHwnd, 18);
+        int borderY = hdrY;
+        int rightEdge = l.rcIconView.x - DpiScale(dpiHwnd, 18);
+        if (isRtl) {
+            borderX = l.rcIconView.x + cellDx + DpiScale(dpiHwnd, 18);
+            rightEdge = l.rcIconOpen.x - DpiScale(dpiHwnd, 18);
+        }
+        borderDx = std::max(DpiScale(dpiHwnd, 200), rightEdge - borderX);
         int borderDy = searchEditDy + 2 * searchPadY;
         l.rcSearchBorder = {borderX, borderY, borderDx, borderDy};
+        // Center every header control on the search field's visual center.
+        int centerY = borderY + borderDy / 2;
+        l.rcIconOpen.y = centerY - headerRowDy / 2;
+        l.rcIconView.y = centerY - headerRowDy / 2;
+        l.rcIconSort.y = centerY - headerRowDy / 2;
+        win->staticLinks.Append(new StaticLink(l.rcIconView, kLinkHomePageToggleView,
+                                               listView ? _TRA("List view") : _TRA("Thumbnail view")));
+        win->staticLinks.Append(new StaticLink(l.rcIconSort, kLinkHomePageToggleSort,
+                                               frequent ? _TRA("Frequently Read") : _TRA("Recently Opened")));
+        win->staticLinks.Append(new StaticLink(l.rcIconOpen, kLinkOpenFile, _TRA("Open File...")));
         if (win->hwndHomeSearch) {
             int editX = borderX + searchPadX;
             int editY = borderY + searchPadY;
@@ -2021,8 +2038,7 @@ void LayoutHomePage(HomePageLayout& l) {
             }
         }
     }
-    int searchAreaDy = headerSearchGap + searchEditDy + 2 * searchPadY + searchThumbsGap;
-    headerBottomY += searchAreaDy;
+    headerBottomY = hdrY + std::max(headerRowDy, searchEditDy + 2 * searchPadY) + searchThumbsGap;
 
     // --- Step 2: calculate tip area at the bottom (before thumbnails) ---
     int tipHeight = 0;
@@ -2430,7 +2446,7 @@ static void DrawHomePageLayout(HomePageLayout& l) {
     {
         const Rect& sb = l.rcSearchBorder;
         COLORREF bgCol = ThemeControlBackgroundColor();
-        int radius = DpiScale(hdc, 8);
+        int radius = 0;
         FillRoundedRect(hdc, sb, radius, bgCol);
         COLORREF borderCol = AccentColor(bgCol, ThemeUsesDarkChrome() ? -18 : 32);
         AutoDeletePen penSearch(CreatePen(PS_SOLID, 1, borderCol));
@@ -2461,7 +2477,18 @@ static void DrawHomePageLayout(HomePageLayout& l) {
     bool frequent = gGlobalPrefs && gGlobalPrefs->homePageSortByFrequentlyRead;
     DrawHomeIconBtn(hdc, l.rcIconView, HomePageUsesListView() ? TbIcon::HomeList : TbIcon::HomeThumbnails);
     DrawHomeIconBtn(hdc, l.rcIconSort, frequent ? TbIcon::HomeFrequent : TbIcon::HomeHistory);
-    DrawHomeIconBtn(hdc, l.rcIconOpen, TbIcon::Open);
+    Rect openIcon = l.rcIconOpen;
+    openIcon.dx = l.rcIconView.dx;
+    if (isRtl) openIcon.x += l.rcIconOpen.dx - openIcon.dx;
+    DrawHomeIconBtn(hdc, openIcon, TbIcon::Open);
+    Rect openText = l.rcIconOpen;
+    openText.dx = l.openDoc->sz.dx;
+    openText.dy = l.openDoc->sz.dy;
+    openText.y += (l.rcIconOpen.dy - openText.dy) / 2;
+    if (!isRtl) openText.x += openIcon.dx + DpiScale(win->hwndCanvas, 3);
+    SetTextColor(hdc, ThemeWindowLinkColor());
+    l.openDoc->SetBounds(openText);
+    l.openDoc->Paint(hdc);
 
     // clip file list to the middle area
     {

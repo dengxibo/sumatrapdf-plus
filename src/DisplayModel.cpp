@@ -3091,11 +3091,10 @@ char* DisplayModel::GetTextInRegion(int pageNo, RectF region, bool mergeLines) c
     int nKeep = 0;
     int nBreak = 0;
 
-    // Saved searchable PDF without an in-session cache: merge soft-wrapped
+    // File-backed text, whether OCR-generated or native, merges soft-wrapped
     // layout lines back into paragraphs. Cached OCR pages already carry their
     // paragraph structure in the '\n' markers.
-    bool mergeLayoutLines =
-        mergeLines && !engine->HasCachedOcrText(pageNo) && EngineMupdfIsScannedTextPage(engine, pageNo);
+    bool mergeLayoutLines = mergeLines && engine->kind == kindEngineMupdf && !engine->HasCachedOcrText(pageNo);
     bool verticalLayout = mergeLayoutLines && PageHasVerticalGlyphLayout(engine, pageNo);
     if (mergeLayoutLines && !verticalLayout) {
         StrVec rawLines;

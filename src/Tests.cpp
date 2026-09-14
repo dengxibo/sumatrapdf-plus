@@ -26,6 +26,7 @@
 #include "OcrService.h"
 #include "PrintedTocModel.h"
 #include "TocCalib.h"
+#include "TocStructureScan.h"
 
 #include "utils/Log.h"
 
@@ -712,6 +713,126 @@ static bool TitleHitsPage(const char* title, const char* pageCompact) {
         start++;
     }
     return start > 0 && t[start] && str::Find(pageCompact, t + start) != nullptr;
+}
+
+// Pure-logic tests for the body-structure TOC ("从正文生成目录"): the v2
+// reply schema check, the local candidate-id whitelist/dedup and bookmark
+// tree construction. No document/engine required.
+void TestBodyTocParsing(const Flags& ci) {
+    if (ci.showConsole) {
+        RedirectIOToConsole();
+    }
+    int failures = 0;
+#define BODY_TOC_CHECK(cond, msg)                                                                                              \
+    do {                                                                                                                       \
+        if (!(cond)) {                                                                                                         \
+            logf("body-toc-test: FAIL: %s\n", msg);                                                                            \
+            failures++;                                                                                                        \
+        }                                                                                                                      \
+    } while (0)
+
+    TocStructureScanResult scan;
+    scan.totalPages = 42;
+    auto addCandidate = [&](int page, const char* text) {
+        auto* c = new HeadingCandidate();
+        c->id = scan.candidates.Size() + 1;
+        c->pdfPage = page;
+        c->text = str::Dup(text);
+        scan.candidates.Append(c);
+    };
+    addCandidate(3, "第一章 总则");
+    addCandidate(3, "第一节 立法目的");
+    addCandidate(8, "第二章 机构职责");
+
+    BODY_TOC_CHECK(IsBodyTocJsonCandidate("{\"toc\":[{\"candidate_id\":\"C1\"}]}"), "detect v2 payload");
+    BODY_TOC_CHECK(!IsBodyTocJsonCandidate("{\"items\":[]}"), "v1 payload is not v2");
+    BODY_TOC_CHECK(!IsBodyTocJsonCandidate("no json"), "prose is not v2");
+    BODY_TOC_CHECK(!IsBodyTocJsonCandidate(nullptr), "null is not v2");
+
+    const char* reply = "以下是识别结果：\n```json\n"
+                        "{\"toc\":["
+                        "{\"candidate_id\":\"C1\",\"level\":1},"
+                        "{\"candidate_id\":\"C2\",\"level\":2},"
+                        "{\"candidate_id\":\"C3\"}," // missing level -> 1
+                        "{\"candidate_id\":\"C999\",\"level\":1}," // unknown id rejected
+                        "{\"candidate_id\":\"C2\",\"level\":3}" // duplicate id dropped
+                        "],\"suspected_gaps\":[{\"after\":\"C3\",\"pdf_page\":20}]}\n"
+                        "```\n";
+    Vec<BodyTocSelection> sel;
+    BODY_TOC_CHECK(ParseBodyTocSelections(reply, scan, sel), "parse v2 reply");
+    BODY_TOC_CHECK(sel.Size() == 3, "whitelist + dedup leave 3 selections");
+    if (sel.Size() == 3) {
+        BODY_TOC_CHECK(sel[0].candidateId == 1 && sel[0].level == 1, "selection 0");
+        BODY_TOC_CHECK(sel[1].candidateId == 2 && sel[1].level == 2, "selection 1");
+        BODY_TOC_CHECK(sel[2].candidateId == 3 && sel[2].level == 1, "selection 2 defaults to level 1");
+    }
+
+    Vec<ExtractedTocItem*> roots;
+    BODY_TOC_CHECK(BuildBodyTocItems(scan, sel, roots) && roots.Size() == 2, "tree has 2 roots");
+    if (roots.Size() == 2) {
+        BODY_TOC_CHECK(str::Eq(roots[0]->title, "第一章 总则") && roots[0]->pageNo == 3 && roots[0]->level == 1,
+                       "root 0 facts restored");
+        BODY_TOC_CHECK(roots[0]->children.Size() == 1, "root 0 has one child");
+        if (roots[0]->children.Size() == 1) {
+            ExtractedTocItem* ch = roots[0]->children[0];
+            BODY_TOC_CHECK(str::Eq(ch->title, "第一节 立法目的") && ch->pageNo == 3 && ch->level == 2 &&
+                               ch->parent == roots[0] && ch->source == ExtractedTocSource::BodyInference,
+                           "child facts restored");
+        }
+        BODY_TOC_CHECK(str::Eq(roots[1]->title, "第二章 机构职责") && roots[1]->pageNo == 8 && roots[1]->level == 1,
+                       "root 1 facts restored");
+    }
+    DeleteExtractedTocItems(roots);
+
+    // A level jump on an empty stack is clamped instead of inventing levels.
+    Vec<BodyTocSelection> jumpSel;
+    jumpSel.Append(BodyTocSelection{1, 4});
+    Vec<ExtractedTocItem*> jumpRoots;
+    BODY_TOC_CHECK(BuildBodyTocItems(scan, jumpSel, jumpRoots) && jumpRoots.Size() == 1 && jumpRoots[0]->level == 1,
+                   "level jump clamped to 1");
+    DeleteExtractedTocItems(jumpRoots);
+
+    // GB/T 9704-2012: half-width ordinal parens in level-2 headings are
+    // rewritten to full-width, while other levels and rawTitle stay verbatim.
+    addCandidate(12, "(五) 聚焦生态化发展，提升共享协同能力。"); // id 4
+    addCandidate(15, "(1) 试点工作");                            // id 5
+    Vec<BodyTocSelection> parenSel;
+    parenSel.Append(BodyTocSelection{1, 1});
+    parenSel.Append(BodyTocSelection{4, 2});
+    parenSel.Append(BodyTocSelection{5, 3});
+    Vec<ExtractedTocItem*> parenRoots;
+    BODY_TOC_CHECK(BuildBodyTocItems(scan, parenSel, parenRoots) && parenRoots.Size() == 1, "paren tree built");
+    if (parenRoots.Size() == 1) {
+        ExtractedTocItem* lvl1 = parenRoots[0];
+        BODY_TOC_CHECK(lvl1->level == 1 && str::Eq(lvl1->title, "第一章 总则"), "level 1 title untouched");
+        BODY_TOC_CHECK(lvl1->children.Size() == 1, "level 2 node present");
+        if (lvl1->children.Size() == 1) {
+            ExtractedTocItem* lvl2 = lvl1->children[0];
+            BODY_TOC_CHECK(lvl2->level == 2 && str::StartsWith(lvl2->title, "\xEF\xBC\x88\xE4\xBA\x94\xEF\xBC\x89"),
+                           "level 2 half-width parens normalized to full-width");
+            BODY_TOC_CHECK(str::StartsWith(lvl2->rawTitle, "(五)"), "rawTitle keeps original text");
+            BODY_TOC_CHECK(lvl2->children.Size() == 1, "level 3 node present");
+            if (lvl2->children.Size() == 1) {
+                ExtractedTocItem* lvl3 = lvl2->children[0];
+                BODY_TOC_CHECK(lvl3->level == 3 && str::Eq(lvl3->title, "(1) 试点工作"),
+                               "level 3 parens not normalized");
+            }
+        }
+    }
+    DeleteExtractedTocItems(parenRoots);
+
+    AutoFreeStr digest(BuildBodyTocDigest(scan));
+    BODY_TOC_CHECK(str::Find(digest, "id=\"C1\"") && str::Find(digest, "第一章 总则") && str::Find(digest, "pdf_page: 8"),
+                   "digest keeps id, text and page");
+
+    Vec<BodyTocSelection> bad;
+    BODY_TOC_CHECK(!ParseBodyTocSelections("there is no json here", scan, bad), "prose rejected");
+    Vec<BodyTocSelection> unknown;
+    BODY_TOC_CHECK(!ParseBodyTocSelections("{\"toc\":[{\"candidate_id\":\"C404\",\"level\":1}]}", scan, unknown),
+                   "all-unknown ids rejected");
+
+#undef BODY_TOC_CHECK
+    logf(failures ? "body-toc-test: %d FAILURE(S)\n" : "body-toc-test: all OK\n", failures);
 }
 
 void TestExtractTocBench(const Flags& ci) {

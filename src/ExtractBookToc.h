@@ -8,8 +8,10 @@
 class EngineBase;
 struct ScanLine;
 struct ExtractedTocItem;
+struct TocExtractProgress;
 
 bool ExtractBookPrintedToc(EngineBase* engine, Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
-                           Vec<ExtractedTocItem*>& roots, const char* debugPath = nullptr);
+                           Vec<ExtractedTocItem*>& roots, const char* debugPath = nullptr,
+                           const TocExtractProgress* prog = nullptr);
 bool ExtractBookBodyHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedTocItem*>& roots);
 int StripBookPrintedPageFromTitle(char* title);

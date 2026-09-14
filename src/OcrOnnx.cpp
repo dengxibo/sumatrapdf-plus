@@ -47,6 +47,8 @@ static bool gRuntimeTried = false;
 static bool gRuntimeOk = false;
 static bool gForceProfile = false;
 static OcrProfile gForcedProfile = OcrProfile::Balanced;
+// Per-thread coarse-det switch for the TOC discovery pass (see DetParamsFor).
+static thread_local bool tl_tocCoarseDet = false;
 static bool gLoggedGenericRec = false;
 static char gMissingHint[512] = {};
 static char gLastError[512] = {};
@@ -202,6 +204,10 @@ void OcrSetForcedProfile(OcrProfile profile, bool enable) {
     gForcedProfile = profile;
 }
 
+void OcrSetTocCoarseDet(bool enable) {
+    tl_tocCoarseDet = enable;
+}
+
 static OcrProfile ParseProfileEnv(const char* s) {
     if (!s || !s[0]) {
         return OcrProfile::Fast;
@@ -266,6 +272,14 @@ static OcrDetParams DetParamsFor(OcrProfile) {
     p.limitSideLen = 736;
     p.limitMin = true;
     p.maxSideLen = 960;
+    if (tl_tocCoarseDet) {
+        // TOC discovery only needs page structure (indentation, dot leaders,
+        // page-number columns), not readable text: a 560 min-side det input
+        // has ~42% fewer pixels than 736. Text accuracy is irrelevant here —
+        // the AI pass reads the original render, not this OCR.
+        p.limitSideLen = 560;
+        p.maxSideLen = 720;
+    }
     p.thresh = 0.3f;
     p.boxThresh = 0.5f;
     p.unclipRatio = 1.6f;

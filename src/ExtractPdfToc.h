@@ -1,6 +1,8 @@
 /* Copyright 2026 the SumatraPDF project authors (see AUTHORS file).
    License: GPLv3 */
 
+#pragma once
+
 class EngineBase;
 struct MainWindow;
 
@@ -26,10 +28,33 @@ struct ScanLine {
     bool bold = false;
 };
 
+// Shared progress/cancel context for asynchronous TOC extraction. The worker
+// thread reports per-stage page counts; the UI thread shows them as a
+// notification. hwnd may be null (CLI runs); cancelSeq == 0 disables
+// cancellation checks.
+struct TocExtractProgress {
+    HWND hwnd = nullptr;
+    LONG cancelSeq = 0;
+};
+
+bool TocExtractCancelled(const TocExtractProgress* prog);
+// done/total cover the pages of the current stage; bodyPhase switches the
+// notification text to the body-analysis message (the printed-TOC page scan
+// reports through the "Extracting bookmarks…" message).
+void TocExtractReportProgress(const TocExtractProgress* prog, int done, int total, bool bodyPhase);
+
 enum class ExtractedTocSource {
     Unknown = 0,
     PrintedToc = 1,
     BodyInference = 2,
+};
+
+// Where the destination (page/x/y) of an extracted TOC entry came from.
+enum class TocDestinationSource {
+    Unknown = 0,
+    Estimated = 1,  // printed page number mapped by offset, no body/link proof
+    BodyMatch = 2,  // title text found on the target body page
+    PdfLink = 3,    // clickable GoTo link on the printed Contents page
 };
 
 struct ExtractedTocItem {
@@ -41,6 +66,7 @@ struct ExtractedTocItem {
     int level = 1;
     int confidence = 0;
     ExtractedTocSource source = ExtractedTocSource::Unknown;
+    TocDestinationSource destinationSource = TocDestinationSource::Unknown;
     int printedPage = 0;
     char* printedLabel = nullptr;
     int tocPageNo = 0;
@@ -57,6 +83,10 @@ struct ExtractedTocItem {
 };
 
 void NormalizeTocNumberingDotsHalfwidth(char** titleOut);
+// Rewrites the leading ordinal parentheses (e.g. "(一)" / "〈一〉" as read by
+// OCR) to the GB/T 9704 fullwidth form "（一）". Titles without a paren
+// ordinal prefix are left untouched.
+void NormalizeTocNumberingParens(char** titleOut);
 bool ExtractedHasPrintedBookCalib(const Vec<ExtractedTocItem*>& roots);
 void FlattenExtractedTocItems(const Vec<ExtractedTocItem*>& nodes, Vec<ExtractedTocItem*>& flat);
 

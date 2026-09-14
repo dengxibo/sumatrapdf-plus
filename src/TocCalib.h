@@ -50,6 +50,10 @@ struct TocCalibRow {
 
 struct TocCalibUndoSnap;
 
+// Cooperative chunked body-verification job (see StartTocCalibAsync). Owned
+// by the session while running; opaque outside TocCalib.cpp.
+struct TocCalibVerifyJob;
+
 struct TocCalibSession {
     Vec<ExtractedTocItem*> roots;
     Vec<ExtractedTocItem*> extras;
@@ -72,6 +76,9 @@ struct TocCalibSession {
     // dirty state behind when the document was clean before the session.
     bool baselineModifiedToc = false;
     EngineBase* engine = nullptr;
+    // Non-null while a chunked (async) body verification runs for this
+    // session; DeleteTocCalibSession aborts it through this pointer.
+    TocCalibVerifyJob* verifyJob = nullptr;
 };
 
 int TocCalibTitleMatchScore(const char* body, const char* title);
@@ -82,7 +89,7 @@ void TocCalibWriteDebug(const TocCalibSession* s, const char* path);
 
 void DeleteTocCalibSession(TocCalibSession* s);
 TocCalibSession* TocCalibSessionFromExtracted(Vec<ExtractedTocItem*>& roots, EngineBase* engine, bool persistToDisk,
-                                              bool scanBody = true);
+                                              bool scanBody = true, bool deferVerify = false);
 void TocCalibSolveSession(TocCalibSession* s);
 bool TocCalibCommitPrinted(TocCalibSession* s, int rowIdx, int printed);
 bool TocCalibSetOffset(TocCalibSession* s, int offset);
@@ -99,6 +106,16 @@ bool TocCalibTestMergeWithNext();
 
 bool StartTocCalib(MainWindow* win, Vec<ExtractedTocItem*>& roots, EngineBase* engine, bool persistToDisk,
                    bool scanBody = true);
+// Same outcome as StartTocCalib, but the expensive body-verification pass
+// (per-title text search across document pages) runs in cooperative ~40ms
+// slices on the UI thread instead of blocking. Callbacks run on the UI
+// thread: onProgress(doneRows, totalRows) during verification, onDone(ok)
+// once the outline is committed and the calib bar is shown. On early
+// failure the function returns false without invoking any callback.
+typedef void (*TocCalibVerifyProgressFn)(int done, int total, void* ctx);
+typedef void (*TocCalibVerifyDoneFn)(bool ok, void* ctx);
+bool StartTocCalibAsync(MainWindow* win, Vec<ExtractedTocItem*>& roots, EngineBase* engine, bool persistToDisk,
+                        TocCalibVerifyProgressFn onProgress, TocCalibVerifyDoneFn onDone, void* ctx);
 bool StartTocCalibFromExisting(MainWindow* win);
 void ShowTocCalib(MainWindow* win);
 void HideTocCalib(MainWindow* win);

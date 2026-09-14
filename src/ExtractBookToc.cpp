@@ -3,11 +3,25 @@
 
 #include "utils/BaseUtil.h"
 #include "utils/FileUtil.h"
+#include "utils/ScopedWin.h"
+#include "utils/WinUtil.h"
+#include "utils/ThreadUtil.h"
+#include "utils/UITask.h"
 
+#include "wingui/UIModels.h"
+#include "wingui/Layout.h"
+#include "wingui/WinGui.h"
+
+#include "Settings.h"
+#include "DocController.h"
+#include "EngineBase.h"
+#include "EngineAll.h"
 #include "ExtractPdfToc.h"
 #include "ExtractBookToc.h"
 
 #include "utils/Log.h"
+
+void EngineMupdfEnsurePageLinksForHitTest(EngineBase* engine, int pageNo);
 
 // Book TOC extraction is not administrative TOC extraction.
 // Phase 1: recover the author's printed 目录, then bind printed page -> PDF page
@@ -36,6 +50,8 @@ struct BookTocEntry {
     float bodyGap = 0;
     bool bodyBold = false;
     bool bodyMatched = false;
+    int linkPage = 0; // pdf dest from a GoTo link on the printed Contents row
+    bool linkFixed = false;
     int source = 0; // 0 printed TOC, 1 style learner
     char* raw = nullptr;
     char* reason = nullptr;
@@ -44,6 +60,7 @@ struct BookTocEntry {
 struct BookLine {
     char* text = nullptr;
     int page = 0;
+    int linkPage = 0; // GoTo dest sharing this row's band (strong evidence)
     float x = 0;
     float y = 0;
     float dx = 0;
@@ -284,6 +301,57 @@ static bool BookLooksLikeJunk(const char* s) {
         return true;
     }
     return false;
+}
+
+// Running-footer furniture like "第 12 页" / "第 i 页" / "第页", optionally
+// behind a label prefix ("文档编号： 第IV页"). This is page numbering, never a
+// TOC entry title, so it is dropped even when shaped like a structural title
+// ("第X章" parsers happily accept "第页").
+static bool BookLooksLikePageFooter(const char* s) {
+    if (!s || !s[0]) {
+        return false;
+    }
+    int len = (int)str::Len(s);
+    int i = 0;
+    BookSkipWs(s, len, i);
+    // Optional "标签：" prefix before the 第...页 core.
+    int j = i;
+    while (j < len) {
+        int save = j;
+        int cp = Utf8CodepointNext(s, len, j);
+        if (cp == 0xFF1A || cp == ':') {
+            BookSkipWs(s, len, j);
+            i = j;
+            break;
+        }
+        if (cp == 0x7B2C) { // 第 already reached: no prefix
+            j = save;
+            break;
+        }
+    }
+    int cp = i < len ? Utf8CodepointNext(s, len, i) : 0;
+    if (cp != 0x7B2C) { // 第
+        return false;
+    }
+    BookSkipWs(s, len, i);
+    int run = 0;
+    while (i < len && run < 6) {
+        int save = i;
+        cp = Utf8CodepointNext(s, len, i);
+        if (BookIsDigit(cp) || BookIsCnNumeral(cp) || (cp >= 'a' && cp <= 'z') || (cp >= 'A' && cp <= 'Z')) {
+            run++;
+            continue;
+        }
+        i = save;
+        break;
+    }
+    BookSkipWs(s, len, i);
+    cp = i < len ? Utf8CodepointNext(s, len, i) : 0;
+    if (cp != 0x9875) { // 页
+        return false;
+    }
+    BookSkipWs(s, len, i);
+    return i >= len;
 }
 
 // Sentence punctuation marks a row as prose (chapter intros bleed into the
@@ -706,6 +774,83 @@ static int BookParseListPrefix(const char* s, int from, int* numberOut) {
 
 static bool BookStartsWithListNumber(const char* s) {
     return BookParseListPrefix(s, 0, nullptr) > 0;
+}
+
+// "1.1 项目名称" / "1.4.1 政策及标准规范依据" — multi-segment dotted
+// numbering. The segment count itself declares the outline depth, a signal
+// that is independent of layout: scanned TOCs often set the first chapter's
+// children flush with the chapter row, which makes indent bands misread them
+// as siblings of the chapter. Returns the byte length of the numbering prefix
+// (not counting trailing whitespace), stores the segment count and the first
+// segment's numeric value (used to tie "1.x" rows to the running 第X章);
+// -1 when s does not start with 2+ dot-separated numbers. Single-segment
+// "1." stays with BookParseListPrefix, which deliberately rejects these.
+static int BookParseMultiDotPrefix(const char* s, int* depthOut, int* firstOut) {
+    if (depthOut) {
+        *depthOut = 0;
+    }
+    if (firstOut) {
+        *firstOut = 0;
+    }
+    if (!s) {
+        return -1;
+    }
+    int len = (int)str::Len(s);
+    int i = 0;
+    BookSkipWs(s, len, i);
+    int segs = 0;
+    int firstVal = 0;
+    int end = -1;
+    for (;;) {
+        int digits = 0;
+        int val = 0;
+        while (i < len) {
+            int save = i;
+            int cp = Utf8CodepointNext(s, len, i);
+            if (!BookIsDigit(cp)) {
+                i = save;
+                break;
+            }
+            val = val * 10 + BookDigitVal(cp);
+            digits++;
+            if (digits > 3) {
+                return -1;
+            }
+        }
+        if (digits < 1) {
+            return -1;
+        }
+        segs++;
+        if (segs == 1) {
+            firstVal = val;
+        }
+        end = i;
+        // a dot followed by another digit continues the series; anything
+        // else (whitespace, title text, end of line) ends the prefix
+        int save = i;
+        BookSkipWs(s, len, i);
+        int cp = i < len ? Utf8CodepointNext(s, len, i) : 0;
+        if ((cp == '.' || cp == 0xFF0E) && i < len) {
+            int peek = i;
+            BookSkipWs(s, len, peek);
+            int nx = peek < len ? Utf8CodepointNext(s, len, peek) : 0;
+            if (BookIsDigit(nx)) {
+                continue;
+            }
+        }
+        i = save;
+        break;
+    }
+    if (segs < 2) {
+        return -1;
+    }
+    if (depthOut) {
+        *depthOut = segs;
+    }
+    if (firstOut) {
+        *firstOut = firstVal;
+    }
+    return end;
 }
 
 // "一、准备" / "二、练习" — same sibling series as 1. 2. 3.
@@ -1484,6 +1629,13 @@ static bool BookIsTocStartPage(const BookTocPageFeatures& f) {
     // carries the 目录/Contents heading ("日录" included, see the matcher)
     // and reads as short rows rather than prose.
     if (f.heading) {
+        // Born-digital Contents rows run long (dot leaders inflate the glyph
+        // count past the prose threshold), so a heading page that clearly has
+        // a repeated title+printed-page layout must not be filtered as prose.
+        // The prose check stays for weak heading pages (cover/notice blurbs).
+        if (f.entries >= 5 && f.leaders >= 5) {
+            return true;
+        }
         return (f.entries >= 1 || f.meaningful >= 6) && f.prose * 2 < f.meaningful + 1;
     }
     return f.entries >= 3 && f.score >= 48;
@@ -1492,62 +1644,81 @@ static bool BookIsTocStartPage(const BookTocPageFeatures& f) {
 static bool BookIsTocContinuationPage(const BookTocPageFeatures& f) {
     // The final Contents page can be short, but it still needs at least two
     // independently parsed title+printed-page rows. A lone body footer fails.
-    return f.entries >= 2 && f.score >= 30 && f.prose * 2 < f.meaningful + 1;
+    // Born-digital rows with long dot leaders inflate the prose count (see
+    // BookIsTocStartPage), so a strong repeated layout overrides the prose cap.
+    // Leaders stay mandatory: the first body page after the Contents opens
+    // with the chapter banner plus numbered section headings, which scores
+    // high on rows alone but has no dot leaders at all.
+    if (f.entries >= 5 && f.leaders >= 5) {
+        return true;
+    }
+    return f.entries >= 2 && f.score >= 30 && f.leaders >= 2 && f.prose * 2 < f.meaningful + 1;
 }
 
 static bool BookFindTocRange(const Vec<ScanLine>& lines, int nPages, int* startOut, int* endOut, bool debug = false) {
     int front = nPages < 80 ? nPages : 80;
-    int start = 0;
-    for (int p = 1; p <= front; p++) {
+    // Front-matter pages before the Contents often mimic its shape (design
+    // transmittal sheets, distribution lists with "单位+数字" rows). Instead
+    // of committing to the first page that looks like a Contents opener,
+    // evaluate every candidate run and keep the strongest one.
+    int scanLim = front + 48;
+    if (scanLim > nPages) {
+        scanLim = nPages;
+    }
+    Vec<BookTocPageFeatures> feats;
+    for (int p = 1; p <= scanLim; p++) {
         BookTocPageFeatures f = BookAnalyzeTocPage(lines, p);
+        feats.Append(f);
         if (debug) {
             logf(
                 "book-toc page=%d entries=%d meaningful=%d leaders=%d aligned=%d prose=%d score=%d start=%d "
                 "continue=%d\n",
                 p, f.entries, f.meaningful, f.leaders, f.aligned, f.prose, f.score, BookIsTocStartPage(f) ? 1 : 0,
                 BookIsTocContinuationPage(f) ? 1 : 0);
-            if (f.leaders > 0) {
-                Vec<BookLine> page;
-                BookCollectPage(lines, p, page);
-                for (int i = 0; i < page.Size(); i++) {
-                    logf("book-toc line page=%d x=%.0f y=%.0f dx=%.0f text=%s\n", p, page[i].x, page[i].y, page[i].dx,
-                         page[i].text);
-                }
-                BookFreeLines(page);
+        }
+    }
+    auto at = [&](int p) -> BookTocPageFeatures& { return feats[p - 1]; };
+
+    int bestStart = 0;
+    int bestEnd = 0;
+    long long bestScore = -1;
+    int p = 1;
+    while (p <= front) {
+        if (!BookIsTocStartPage(at(p))) {
+            p++;
+            continue;
+        }
+        // State machine: once the repeated TOC layout ends, never restart it
+        // in the body. One weak page is tolerated for OCR damage or a sparse
+        // final TOC sheet; two consecutive body pages terminate the region.
+        int end = p;
+        int misses = 0;
+        long long runScore = at(p).score;
+        int q = p + 1;
+        for (; q <= scanLim; q++) {
+            if (BookIsTocContinuationPage(at(q))) {
+                end = q;
+                misses = 0;
+                runScore += at(q).score;
+                continue;
+            }
+            misses++;
+            if (misses >= 2) {
+                break;
             }
         }
-        if (!BookIsTocStartPage(f)) {
-            continue;
+        if (runScore > bestScore) {
+            bestScore = runScore;
+            bestStart = p;
+            bestEnd = end;
         }
-        start = p;
-        break;
+        p = end + 1;
     }
-    if (start < 1) {
+    if (bestStart < 1) {
         return false;
     }
-    int end = start;
-    int misses = 0;
-    int lim = start + 48;
-    if (lim > nPages) {
-        lim = nPages;
-    }
-    // State machine: once the repeated TOC layout ends, never restart it in
-    // the body. One weak page is tolerated for OCR damage or a sparse final
-    // TOC sheet; two consecutive body pages terminate the region.
-    for (int p = start + 1; p <= lim; p++) {
-        BookTocPageFeatures f = BookAnalyzeTocPage(lines, p);
-        if (BookIsTocContinuationPage(f)) {
-            end = p;
-            misses = 0;
-            continue;
-        }
-        misses++;
-        if (misses >= 2) {
-            break;
-        }
-    }
-    *startOut = start;
-    *endOut = end;
+    *startOut = bestStart;
+    *endOut = bestEnd;
     return true;
 }
 
@@ -1585,6 +1756,16 @@ static void BookWriteTocRangeTrace(const char* path, const Vec<ScanLine>& lines,
     fclose(f);
 }
 
+// Clickable internal links on a printed Contents page are the strongest
+// possible row evidence: the publisher themselves marked the row as an entry
+// and told us the destination. Collected once per TOC page.
+struct BookLinkHit {
+    RectF r;
+    int page = 0;
+};
+
+struct BookTocRow;
+
 static void BookAppendEntry(Vec<BookTocEntry>& hits, const char* rawTitle, int printed, const BookLine& sl,
                             const char* rawLine = nullptr, const char* reason = nullptr, float conf = -1.f) {
     char* title = BookDupTrim(rawTitle);
@@ -1599,18 +1780,27 @@ static void BookAppendEntry(Vec<BookTocEntry>& hits, const char* rawTitle, int p
         printed = fromTitle;
     }
     str::TrimWSInPlace(title, str::TrimOpt::Both);
-    if (!title[0] || BookLooksLikeTocHeading(title) || BookLooksLikeJunk(title) || BookLooksLikeBodyBlurb(title) ||
-        BookLineIsPageNum(title)) {
+    // A linked row is publisher-marked; accept it even if its shape looks
+    // unusual (short title, no printed number).
+    if (!sl.linkPage &&
+        (!title[0] || BookLooksLikeTocHeading(title) || BookLooksLikeJunk(title) || BookLooksLikeBodyBlurb(title) ||
+         BookLooksLikePageFooter(title) || BookLineIsPageNum(title))) {
         str::Free(title);
         return;
     }
-    if (BookGlyphCount(title) < 2) {
+    if (!sl.linkPage && BookGlyphCount(title) < 2) {
         str::Free(title);
         return;
     }
     BookTocEntry h;
     h.title = title;
     h.printedPage = printed;
+    h.linkPage = sl.linkPage;
+    h.linkFixed = sl.linkPage > 0;
+    if (h.linkFixed) {
+        h.pdfPage = h.linkPage;
+        h.bodyMatched = true;
+    }
     h.srcPage = sl.page;
     h.srcX = sl.x;
     h.srcY = sl.y;
@@ -1790,6 +1980,38 @@ static int BookFindDashSplitOffset(const char* s) {
     return -1;
 }
 
+static void BookCollectPageLinks(EngineBase* engine, int page, Vec<BookLinkHit>& out) {
+    if (!engine || page < 1 || page > engine->PageCount()) {
+        return;
+    }
+    Vec<IPageElement*> elements = EngineMupdfGetPageElementsForExtraction(engine, page);
+    for (IPageElement* el : elements) {
+        IPageDestination* dest = el && el->IsLink() ? el->AsLink() : nullptr;
+        if (!dest || dest->pageNo < 1 || dest->pageNo > engine->PageCount()) {
+            continue;
+        }
+        BookLinkHit hit;
+        hit.r = el->GetRect();
+        hit.page = dest->pageNo;
+        out.Append(hit);
+    }
+}
+
+// A link whose rect overlaps the row's band marks the row as a real entry
+// and hands us the destination page directly.
+static int BookRowLinkPage(const Vec<BookLinkHit>& links, const BookTocRow& row) {
+    for (const BookLinkHit& lh : links) {
+        if (lh.r.x + lh.r.dx < row.x - 3 || lh.r.x > row.x + row.dx + 3) {
+            continue;
+        }
+        if (lh.r.y + lh.r.dy < row.y - 4 || lh.r.y > row.y + row.dy + 4) {
+            continue;
+        }
+        return lh.page;
+    }
+    return 0;
+}
+
 static bool BookLeftEndsWithDi(const char* s, int end) {
     if (!s || end < 1) {
         return false;
@@ -1809,6 +2031,29 @@ static bool BookRightStartsWithUnitWord(const char* s, int from, int len) {
     return cp == 0x8BFE || cp == 0x7AE0 || cp == 0x8282 || cp == 0x8BB2; // 课 章 节 讲
 }
 
+// "IPV6" / "H.264" / "B12" / "COVID-19" — a digit run that extends a Latin
+// token is part of that word, not a glued printed page. Splitting there
+// shredded "7.10.4 IPV6 地址规划" into "7.10.4 IPV" + page 6 + "地址规划".
+// Walk back over the token's [0-9.-] prefix; a Latin letter there means the
+// number is word-embedded. Page numbers glued to the preceding title touch
+// CJK glyphs ("总论12第二章"), not Latin ones.
+static bool BookDigitRunExtendsLatinToken(const char* s, int digStart) {
+    if (!s || digStart < 1) {
+        return false;
+    }
+    int i = digStart;
+    for (;;) {
+        int cp = Utf8CodepointPrev(s, digStart, i);
+        if (cp == 0) {
+            return false; // walked to the start of the string
+        }
+        if (BookIsDigit(cp) || cp == '.' || cp == '-') {
+            continue;
+        }
+        return (cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z');
+    }
+}
+
 // Isolated 1-3 digit printed page, not "第18课" and not "1.1".
 static bool BookTakeBarePage(const char* s, int len, int i, int* pageOut, int* afterOut) {
     BookSkipWs(s, len, i);
@@ -1826,6 +2071,11 @@ static bool BookTakeBarePage(const char* s, int len, int i, int* pageOut, int* a
     int save = i;
     int cp = Utf8CodepointNext(s, len, i);
     if (!BookIsDigit(cp)) {
+        return false;
+    }
+    // "IPV6", "H.264", "B12": the digit run extends a Latin token, so it is
+    // part of that word and never an isolated printed page.
+    if (BookDigitRunExtendsLatinToken(s, save)) {
         return false;
     }
     int page = BookDigitVal(cp);
@@ -1945,9 +2195,58 @@ static bool BookSplitGluedTocLine(const char* s, char** leftOut, int* pageOut, c
         int cp = Utf8CodepointNext(s, len, i);
         int page = 0;
         int after = 0;
-        if (save > 0 && BookTakeBarePage(s, len, save, &page, &after) && BookRangeHasLetterOrCjk(s, 0, save) &&
+        // A bare number immediately followed by 年 is a year ("2021 年度",
+        // "2021 年政务…"), not a glued printed page. Splitting there shreds
+        // titles into junk rows ("年度", "年政务…").
+        bool yearFollows = false;
+        if (save > 0) {
+            int j = save;
+            BookSkipWs(s, len, j);
+            while (j < len) {
+                int dj = j;
+                int dcp = Utf8CodepointNext(s, len, j);
+                if (!BookIsDigit(dcp)) {
+                    j = dj;
+                    break;
+                }
+            }
+            int k = j;
+            BookSkipWs(s, len, k);
+            if (k < len) {
+                int kcp = k;
+                yearFollows = Utf8CodepointNext(s, len, kcp) == 0x5E74; // 年
+            }
+        }
+        if (save > 0 && !yearFollows && BookTakeBarePage(s, len, save, &page, &after) && BookRangeHasLetterOrCjk(s, 0, save) &&
             BookRangeHasLetterOrCjk(s, after, len) && !BookLeftEndsWithDi(s, save) &&
             !BookRightStartsWithUnitWord(s, after, len)) {
+            // A number directly followed by a colon is a label ("附表1：...",
+            // "图3：..."), not a glued printed page. Splitting there shreds the
+            // title into "附表" + "：..." junk rows.
+            {
+                int cj = after;
+                BookSkipWs(s, len, cj);
+                if (cj < len) {
+                    int ccp = Utf8CodepointNext(s, len, cj);
+                    if (ccp == 0xFF1A || ccp == ':') {
+                        i = save;
+                        int nSkip = 0;
+                        while (i < len) {
+                            int s2 = i;
+                            int c2 = Utf8CodepointNext(s, len, i);
+                            if (!BookIsDigit(c2)) {
+                                i = s2;
+                                break;
+                            }
+                            nSkip++;
+                        }
+                        if (nSkip < 1) {
+                            Utf8CodepointNext(s, len, i);
+                        }
+                        continue;
+                    }
+                }
+            }
             char* left = (char*)memdup(s, (size_t)save, 1);
             if (!left) {
                 return false;
@@ -2337,7 +2636,7 @@ static float BookRowConfidence(const BookTocRow& row, bool merged) {
     return c;
 }
 
-static void BookParseTocPage(Vec<BookLine>& page, Vec<BookTocEntry>& hits) {
+static void BookParseTocPage(Vec<BookLine>& page, Vec<BookTocEntry>& hits, const Vec<BookLinkHit>& links) {
     float pageW = BookPageWidth(page);
     BookSortVisual(page);
     for (int i = 0; i < page.Size(); i++) {
@@ -2581,6 +2880,21 @@ static void BookParseTocPage(Vec<BookLine>& page, Vec<BookTocEntry>& hits) {
             if (dashAt >= 3 && rows[r].keepDashSubtitle) {
                 dashAt = -1;
             }
+            // A colon label binds the dash suffix to the same entry
+            // ("附表6：情报指挥中心配套改造估算表-配套拆除" is one table, not
+            // a chapter + dash subtitle pair).
+            if (dashAt >= 3) {
+                bool hasColonLabel = false;
+                for (int q = 0; q < dashAt && !hasColonLabel; ) {
+                    int qcp = Utf8CodepointNext(rows[r].title, dashAt, q);
+                    if (qcp == 0xFF1A || qcp == ':') {
+                        hasColonLabel = true;
+                    }
+                }
+                if (hasColonLabel) {
+                    dashAt = -1;
+                }
+            }
             int at = -1;
             if (listAt >= 1 && (dashAt < 1 || listAt < dashAt)) {
                 at = listAt;
@@ -2629,21 +2943,51 @@ static void BookParseTocPage(Vec<BookLine>& page, Vec<BookTocEntry>& hits) {
         r++;
     }
 
+    // Rows above the 目录/Contents heading on its page are page furniture
+    // (document title, running header), not TOC entries.
+    int headingPage = 0;
+    float headingY = 0;
+    for (int r = 0; r < rows.Size(); r++) {
+        if (rows[r].title && BookLooksLikeTocHeading(rows[r].title)) {
+            headingPage = rows[r].page;
+            headingY = rows[r].y;
+            break;
+        }
+    }
     for (int r = 0; r < rows.Size(); r++) {
         BookTocRow& row = rows[r];
-        if (!row.title || BookLooksLikeTocHeading(row.title) || BookLooksLikeJunk(row.title) ||
-            BookLooksLikeBodyBlurb(row.title)) {
+        int linkPage = BookRowLinkPage(links, row);
+        // A GoTo link on the row is publisher evidence that this is a real
+        // entry: it overrides junk/keep heuristics and page furniture drops.
+        if (!row.title) {
+            continue;
+        }
+        if (BookLooksLikeTocHeading(row.title) || BookLooksLikePageFooter(row.title)) {
+            continue;
+        }
+        if (!linkPage &&
+            (BookLooksLikeJunk(row.title) || BookLooksLikeBodyBlurb(row.title) ||
+             (headingPage > 0 && row.page == headingPage && row.y < headingY))) {
+            continue;
+        }
+        // On a publisher-linked TOC page every real entry is clickable (wrap
+        // continuation rows carry the row's link too). A row without a link is
+        // page furniture (running document title on a later TOC page) unless
+        // it carries its own strong entry shape.
+        if (!linkPage && links.Size() > 0 && !BookStartsWithListNumber(row.title) && !BookIsStructTitle(row.title) &&
+            !BookIsPartTitle(row.title) && !BookIsXinDe(row.title)) {
             continue;
         }
         int g = BookGlyphCount(row.title);
         bool keep = BookIsStructTitle(row.title) || BookIsXinDe(row.title) || BookIsPartTitle(row.title) ||
                     row.printedPage > 0 || BookStartsWithListNumber(row.title);
-        if (!keep && (g > 22 || g < 2 || !BookHasLetterOrCjk(row.title))) {
+        if (!keep && !linkPage && (g > 22 || g < 2 || !BookHasLetterOrCjk(row.title))) {
             continue;
         }
         BookLine sl;
         sl.text = row.title;
         sl.page = row.page;
+        sl.linkPage = linkPage;
         sl.x = row.x;
         sl.y = row.y;
         sl.dx = row.dx;
@@ -2968,6 +3312,10 @@ static void BookAssignLevels(Vec<BookTocEntry>& hits) {
     }
     int prev = 1;
     int containerLvl = 1;
+    // Running 第X章 anchor for multi-dot rows: "1.4" ties to chapter 1 by
+    // number, not by layout, so its depth reliably nests under that chapter.
+    int chapNum = 0;
+    int chapLvlCur = 1;
     int lastScheme = 0;
     int lastSchemeLvl = 0;
     bool prevWasChap = false;
@@ -2975,14 +3323,19 @@ static void BookAssignLevels(Vec<BookTocEntry>& hits) {
     // observable in the trace so new failure patterns surface as skewed
     // ratios instead of silent mis-nesting.
     int nDecidedStruct = 0;
+    int nDecidedMultidot = 0;
     int nDecidedBandPeer = 0;
     int nDecidedBandChild = 0;
     int nDecidedBandLeft = 0;
     int nDecidedOther = 0;
     int nDecidedCapped = 0;
+    // (firstSeg, depth, level) triples of earlier multi-dot rows, used to
+    // chain-resolve decimal outlines in books that have no structural units.
+    Vec<int> multiHist;
     for (int i = 0; i < n; i++) {
         const char* lvlWhy = nullptr;
-        BookUnitKind kind = BookParseUnit(hits[i].title).kind;
+        BookUnit unit = BookParseUnit(hits[i].title);
+        BookUnitKind kind = unit.kind;
         bool banner = isBanner[i] != 0;
         bool promotedChap = promoted[i] != 0;
         bool subtitle = kind == BookUnitKind::None && !banner && !promotedChap && prevWasChap &&
@@ -3040,6 +3393,37 @@ static void BookAssignLevels(Vec<BookTocEntry>& hits) {
                 break;
             }
         }
+        // Multi-dot numbering ("1.1", "1.4.1") declares outline depth
+        // independently of layout; decided ahead of the indent bands below,
+        // which misread flush-left first-chapter children as the chapter's
+        // siblings.
+        int multiDotDepth = 0;
+        int multiDotFirst = 0;
+        bool isMultiDot = kind == BookUnitKind::None && !banner && !promotedChap &&
+                          BookParseMultiDotPrefix(hits[i].title, &multiDotDepth, &multiDotFirst) > 0;
+        // Books with no structural units at all (no 篇/章/节 rows) are pure
+        // decimal outlines: match the nearest earlier row with the same first
+        // segment - equal depth is a sibling, one less is its parent.
+        int chainLvl = 0;
+        bool chainBook = !hasPart && !hasChap && nSec == 0;
+        if (isMultiDot && chainBook) {
+            for (int h = multiHist.Size() - 3; h >= 0; h -= 3) {
+                if (multiHist[h] != multiDotFirst) {
+                    continue;
+                }
+                if (multiHist[h + 1] == multiDotDepth) {
+                    chainLvl = multiHist[h + 2];
+                    break;
+                }
+                if (multiHist[h + 1] == multiDotDepth - 1) {
+                    chainLvl = multiHist[h + 2] + 1;
+                    break;
+                }
+                if (multiHist[h + 1] < multiDotDepth - 1) {
+                    break; // the intermediate parent never appeared
+                }
+            }
+        }
         int lvl = leftoverBase;
         if (kind == BookUnitKind::Part || banner) {
             lvl = 1;
@@ -3054,6 +3438,10 @@ static void BookAssignLevels(Vec<BookTocEntry>& hits) {
             lastScheme = 0;
             lastSchemeLvl = 0;
             prevWasChap = kind == BookUnitKind::Chapter;
+            if (kind == BookUnitKind::Chapter) {
+                chapNum = unit.number;
+                chapLvlCur = lvl;
+            }
             nDecidedStruct++;
         } else if (promotedChap) {
             lvl = chapLvl;
@@ -3063,6 +3451,24 @@ static void BookAssignLevels(Vec<BookTocEntry>& hits) {
             prevWasChap = true;
             lvlWhy = "lvl:bigfont-chapter";
             nDecidedStruct++;
+        } else if (isMultiDot && chapNum > 0 && multiDotFirst == chapNum) {
+            // Numbering wins over band geometry: "1.4" under 第一章 is depth
+            // 2 => one level below the chapter, "1.4.1" is depth 3 => two.
+            lvl = chapLvlCur + (multiDotDepth - 1);
+            containerLvl = lvl;
+            lastScheme = 0;
+            lastSchemeLvl = 0;
+            prevWasChap = false;
+            lvlWhy = "lvl:multidot";
+            nDecidedMultidot++;
+        } else if (isMultiDot && chainLvl > 0) {
+            lvl = chainLvl;
+            containerLvl = lvl;
+            lastScheme = 0;
+            lastSchemeLvl = 0;
+            prevWasChap = false;
+            lvlWhy = "lvl:multidot-chain";
+            nDecidedMultidot++;
         } else if (bandLevel > 0) {
             lvl = bandLevel;
             containerLvl = lvl;
@@ -3130,6 +3536,11 @@ static void BookAssignLevels(Vec<BookTocEntry>& hits) {
             lvl = 6;
         }
         hits[i].inferredLevel = lvl;
+        if (isMultiDot && chainBook) {
+            multiHist.Append(multiDotFirst);
+            multiHist.Append(multiDotDepth);
+            multiHist.Append(lvl);
+        }
         if (lvlWhy) {
             char reason[320];
             reason[0] = 0;
@@ -3146,8 +3557,9 @@ static void BookAssignLevels(Vec<BookTocEntry>& hits) {
             lastSchemeLvl = lvl;
         }
     }
-    logf("BookAssignLevels: n=%d struct=%d band-peer=%d band-child=%d band-left=%d other=%d capped=%d\n", n,
-         nDecidedStruct, nDecidedBandPeer, nDecidedBandChild, nDecidedBandLeft, nDecidedOther, nDecidedCapped);
+    logf("BookAssignLevels: n=%d struct=%d multidot=%d band-peer=%d band-child=%d band-left=%d other=%d capped=%d\n", n,
+         nDecidedStruct, nDecidedMultidot, nDecidedBandPeer, nDecidedBandChild, nDecidedBandLeft, nDecidedOther,
+         nDecidedCapped);
 }
 
 static int BookTitleMatchScore(const char* body, const char* title) {
@@ -3406,11 +3818,11 @@ static void BookBestAnchorInVec(const Vec<ScanLine>& ls, const char* title, int 
 // classify as born-digital, so only the first ~80 pages were collected).
 // Chapter anchoring needs the whole body, so collect the remaining pages once
 // and share them (plus the per-page font stats) with every anchor pass.
-static void BookCollectExtraScanLines(EngineBase* engine, const Vec<ScanLine>& lines, int nPages,
-                                      Vec<ScanLine>& extra) {
+static bool BookCollectExtraScanLines(EngineBase* engine, const Vec<ScanLine>& lines, int nPages,
+                                      Vec<ScanLine>& extra, const TocExtractProgress* prog) {
     extra.Reset();
     if (!engine || nPages < 2) {
-        return;
+        return true;
     }
     int lastCovered = 0;
     for (int i = 0; i < lines.Size(); i++) {
@@ -3419,10 +3831,25 @@ static void BookCollectExtraScanLines(EngineBase* engine, const Vec<ScanLine>& l
         }
     }
     if (lastCovered >= 1 && lastCovered < nPages) {
+        // The printed-TOC scan usually stops at the front-page cap, so this
+        // collects the remaining body pages (hundreds on big scans). Report
+        // each page: this stage is the long tail the progress bar must show,
+        // and it stays cancellable.
+        int total = nPages - lastCovered;
+        int done = 0;
+        logf("TOC extract stage bodyCollect start pages=%d..%d\n", lastCovered + 1, nPages);
         for (int p = lastCovered + 1; p <= nPages; p++) {
+            if (TocExtractCancelled(prog)) {
+                logf("TOC extract stage bodyCollect cancelled done=%d\n", done);
+                return false;
+            }
             PtocCollectPageScanLines(engine, p, extra);
+            done++;
+            TocExtractReportProgress(prog, done, total, true);
         }
+        logf("TOC extract stage bodyCollect done pages=%d lines=%d\n", done, extra.Size());
     }
+    return true;
 }
 
 static void BookResolveMissingDestsByBody(const Vec<ScanLine>& lines, const Vec<ScanLine>& extra,
@@ -4117,6 +4544,18 @@ static int BookResolvePrintedDest(const int* toPdf, int cap, int printed, int of
         return 0;
     }
     if (printed < cap && toPdf[printed] > tocEnd) {
+        if (offset < 0 || toPdf[printed] - printed == offset) {
+            return toPdf[printed];
+        }
+        // The map claim fights the calibrated offset. That claim is usually a
+        // stray footer-band number (a table reference like "7" near the
+        // footer) or a renumbered appendix page that grabbed the slot
+        // first-come; the calibrated offset is the median of many agreeing
+        // pages, so it wins and the map claim stays a fallback.
+        int p = printed + offset;
+        if (p > tocEnd && p <= nPages) {
+            return p;
+        }
         return toPdf[printed];
     }
     if (offset >= 0) {
@@ -4294,6 +4733,12 @@ static void BookMapPrintedPages(const Vec<ScanLine>& lines, int tocStart, int to
     Vec<int> matched;
     for (int h = 0; h < hits.Size(); h++) {
         matched.Append(0);
+        // Link-backed rows carry the publisher's own destination; never let
+        // printed-page mapping or body search move them.
+        if (hits[h].linkFixed) {
+            matched[h] = 1;
+            continue;
+        }
         int dest = BookResolvePrintedDest(toPdf, 401, hits[h].printedPage, offset, tocEnd, nPages);
         if (BookDestIsTocPage(dest, tocStart, tocEnd)) {
             dest = 0;
@@ -4354,7 +4799,7 @@ static void BookMapPrintedPages(const Vec<ScanLine>& lines, int tocStart, int to
         }
     }
     for (int h = 0; h < hits.Size(); h++) {
-        if (BookDestIsTocPage(hits[h].pdfPage, tocStart, tocEnd)) {
+        if (!hits[h].linkFixed && BookDestIsTocPage(hits[h].pdfPage, tocStart, tocEnd)) {
             hits[h].pdfPage = 0;
         }
     }
@@ -4385,7 +4830,7 @@ static void BookEnforceReadingOrder(Vec<BookTocEntry>& hits, int offset, int toc
             }
         }
         int pdf = hits[i].pdfPage;
-        if (pdf > 0 && prevPdf > 0 && pdf < prevPdf) {
+        if (pdf > 0 && prevPdf > 0 && pdf < prevPdf && !hits[i].linkFixed) {
             pdf = 0;
             hits[i].pdfPage = 0;
             hits[i].bodyMatched = false;
@@ -4525,7 +4970,7 @@ static void BookInsertPrintedTocBookmark(const Vec<ScanLine>& lines, int tocStar
 static void BookBuildTree(Vec<BookTocEntry>& hits, Vec<ExtractedTocItem*>& roots) {
     Vec<ExtractedTocItem*> flat;
     for (int i = 0; i < hits.Size(); i++) {
-        int conf = (int)(hits[i].confidence * 100.f);
+        int conf = hits[i].linkFixed ? 100 : (int)(hits[i].confidence * 100.f);
         ExtractedTocSource src =
             hits[i].source == 1 ? ExtractedTocSource::BodyInference : ExtractedTocSource::PrintedToc;
         ExtractedTocItem* n = BookNewItem(hits[i].title, hits[i].pdfPage, hits[i].x, hits[i].y, hits[i].inferredLevel,
@@ -4534,8 +4979,8 @@ static void BookBuildTree(Vec<BookTocEntry>& hits, Vec<ExtractedTocItem*>& roots
         n->tocPageNo = hits[i].srcPage;
         n->tocX = hits[i].srcX;
         n->tocY = hits[i].srcY;
-        n->bodyMatched = hits[i].bodyMatched;
-        n->verified = hits[i].bodyMatched && hits[i].printedPage > 0 && hits[i].pdfPage > 0;
+        n->bodyMatched = hits[i].bodyMatched || hits[i].linkFixed;
+        n->verified = (hits[i].bodyMatched && hits[i].printedPage > 0 && hits[i].pdfPage > 0) || hits[i].linkFixed;
         flat.Append(n);
     }
     Vec<ExtractedTocItem*> stack;
@@ -4578,6 +5023,9 @@ static void BookWriteDebug(const char* path, int tocStart, int tocEnd, int print
             fprintf(f, "printed %d -> pdf %d (offset %d)\n\n", h.printedPage, h.pdfPage, h.pdfPage - h.printedPage);
         }
         fprintf(f, "pdf page:\n%d\n\n", h.pdfPage);
+        if (h.linkPage > 0) {
+            fprintf(f, "link dest: %d\n\n", h.linkPage);
+        }
         fprintf(f, "src: page=%d y=%.1f size=%.1f bold=%d\n", h.srcPage, h.srcY, h.fontSize, h.bold ? 1 : 0);
         fprintf(f, "level:\n%d\n\n", h.inferredLevel);
         fprintf(f, "confidence:\n%.2f\n\n", h.confidence);
@@ -4801,8 +5249,361 @@ bool ExtractBookBodyHeadings(const Vec<ScanLine>& lines, int nPages, Vec<Extract
     return n >= 2;
 }
 
+// ============================================================================
+// Native Linked TOC path.
+//
+// For born-digital PDFs whose printed Contents rows already carry internal
+// GoTo link annotations. The PDF has already done the hard work: the row text
+// is the title and the link destination is the target. This path only
+//   1. merges link rects with the visual line they share a band with,
+//   2. strips leader dots and the trailing displayed page number,
+//   3. derives levels from the hierarchical numbering prefix (12.5.1. -> 3),
+// and never runs the OCR printed-TOC cleanup, glued-line splitting, body
+// re-matching or candidate deletion. Principle: keep the text, trust the link.
+// ============================================================================
+
+// "12.5.1." -> 3, "12.1." -> 2, "3." -> 1, "第十二章" -> 0. The whole dotted
+// run is ONE numbering prefix; it must never be treated as multiple fields.
+static int BookCountNumberingDepth(const char* s) {
+    if (!s || !s[0]) {
+        return 0;
+    }
+    int len = (int)str::Len(s);
+    int i = 0;
+    BookSkipWs(s, len, i);
+    if (i >= len || s[i] < '0' || s[i] > '9') {
+        return 0;
+    }
+    int depth = 0;
+    while (i < len) {
+        int n = 0;
+        while (i < len && s[i] >= '0' && s[i] <= '9' && n < 4) {
+            n++;
+            i++;
+        }
+        if (n < 1) {
+            break;
+        }
+        if (i < len && s[i] == '.') {
+            depth++;
+            i++;
+            BookSkipWs(s, len, i);
+            continue;
+        }
+        if (i + 2 < len && (unsigned char)s[i] == 0xEF && (unsigned char)s[i + 1] == 0xBC &&
+            (unsigned char)s[i + 2] == 0x8E) { // full-width ．
+            depth++;
+            i += 3;
+            BookSkipWs(s, len, i);
+            continue;
+        }
+        break;
+    }
+    return depth;
+}
+
+// Strip only the trailing displayed page number ("............174" / " 174").
+// A number glued to a word ("IPv6") or a numbering prefix ("12.5.1.") stays.
+static int BookStripTrailingDisplayPage(char* s) {
+    if (!s || !s[0]) {
+        return 0;
+    }
+    int len = (int)str::Len(s);
+    int end = len;
+    while (end > 0 && s[end - 1] >= '0' && s[end - 1] <= '9') {
+        end--;
+    }
+    int digits = len - end;
+    if (digits < 1 || digits > 4) {
+        return 0;
+    }
+    int j = end;
+    while (j > 0 && (s[j - 1] == ' ' || s[j - 1] == '\t' || s[j - 1] == 0x3000)) {
+        j--;
+    }
+    bool hadWs = j < end;
+    if (!hadWs) {
+        // directly preceded by leader dots ("估算表......174")?
+        int k = j;
+        while (k > 0 && ((unsigned char)s[k - 1] & 0xC0) == 0x80) {
+            k--;
+        }
+        if (k > 0) {
+            k--; // step onto the lead byte / ASCII char
+        }
+        int kk = k;
+        int cp = k < j ? Utf8CodepointNext(s, j, kk) : 0;
+        bool dotLeader = cp == '.' || cp == 0xFF0E || cp == 0x2026 || cp == 0x00B7 || cp == 0x30FB || cp == 0x2024 ||
+                         cp == 0x2219 || cp == 0x22EF;
+        if (!dotLeader) {
+            return 0;
+        }
+    }
+    int page = 0;
+    for (int q = end; q < len; q++) {
+        page = page * 10 + (s[q] - '0');
+    }
+    s[j] = 0;
+    str::TrimWSInPlace(s, str::TrimOpt::Right);
+    return page;
+}
+
+struct BookNativeTocPageStats {
+    int matched = 0;
+    int distinctTargets = 0;
+};
+
+// Match one visual line against the page's link annotations. A link belongs
+// to the line when the rects overlap: generators cover the full row, the
+// title only, the page number only, or the leader dots — any non-empty band
+// overlap with >= 50% of the line height counts.
+static int BookNativeLinkForLine(const Vec<BookLinkHit>& links, const BookLine& ln) {
+    float y0 = ln.y;
+    float y1 = ln.y + ln.dy;
+    float x0 = ln.x;
+    float x1 = ln.x + ln.dx;
+    int best = 0;
+    float bestArea = 0;
+    for (int i = 0; i < links.Size(); i++) {
+        const RectF& r = links[i].r;
+        float ry0 = r.y;
+        float ry1 = r.y + r.dy;
+        float rx0 = r.x;
+        float rx1 = r.x + r.dx;
+        float oy = std::min(y1, ry1) - std::max(y0, ry0);
+        if (oy < (y1 - y0) * 0.5f) {
+            continue;
+        }
+        float ox = std::min(x1, rx1) - std::max(x0, rx0);
+        if (ox <= 0) {
+            continue;
+        }
+        if (oy * ox > bestArea) {
+            bestArea = oy * ox;
+            best = links[i].page;
+        }
+    }
+    return best;
+}
+
+// Build TOC items from one page's native linked Contents rows. Returns the
+// number of entries appended and fills stats for page detection.
+static int BookNativeLinkedPageItems(EngineBase* engine, const Vec<ScanLine>& lines, int p,
+                                     Vec<ExtractedTocItem*>& out, BookNativeTocPageStats* stats, FILE* dbg) {
+    stats->matched = 0;
+    stats->distinctTargets = 0;
+    Vec<BookLine> page;
+    BookCollectPage(lines, p, page);
+    Vec<BookLinkHit> links;
+    BookCollectPageLinks(engine, p, links);
+    if (page.Size() < 3 || links.Size() < 3) {
+        BookFreeLines(page);
+        return 0;
+    }
+    int prevTarget = 0;
+    int appended = 0;
+    for (int i = 0; i < page.Size(); i++) {
+        BookLine& ln = page[i];
+        const char* raw = ln.text;
+        if (!raw || !raw[0]) {
+            continue;
+        }
+        // Page furniture, not entries. The link itself never sits on these.
+        if (BookLooksLikePageFooter(raw) || BookLineIsPageNum(raw) || BookLooksLikeTocHeading(raw)) {
+            continue;
+        }
+        int target = BookNativeLinkForLine(links, ln);
+        if (target < 1 || target > engine->PageCount()) {
+            continue;
+        }
+        stats->matched++;
+        if (target != prevTarget) {
+            stats->distinctTargets++;
+            prevTarget = target;
+        }
+        char* title = BookDupTrim(raw);
+        if (!title || !title[0]) {
+            str::Free(title);
+            continue;
+        }
+        int printed = BookStripTrailingDisplayPage(title);
+        BookStripLeadersInPlace(title);
+        str::TrimWSInPlace(title, str::TrimOpt::Both);
+        if (!title[0]) {
+            str::Free(title);
+            continue;
+        }
+        // Level: numbering depth first, chapter/section keywords second,
+        // inherit-last as a last resort. Never a reason to drop the entry.
+        // Depth is the SEGMENT count, not the dot count: "1.1 项目名称" has
+        // one dot but two segments, so counting dots put every x.y row one
+        // level too shallow (flush with its chapter). BookParseMultiDotPrefix
+        // counts segments for both "1.1" and the trailing-dot "12.5.1." style;
+        // BookCountNumberingDepth stays as the fallback for single-segment
+        // "12.5.1." outlines without a parent row.
+        int level = 0;
+        int multiSegs = 0;
+        if (BookParseMultiDotPrefix(title, &multiSegs, nullptr) > 0) {
+            level = multiSegs;
+        } else {
+            level = BookCountNumberingDepth(title);
+        }
+        if (level < 1) {
+            BookUnit u = BookParseUnit(title);
+            if (u.kind == BookUnitKind::Part || u.kind == BookUnitKind::Chapter) {
+                level = 1;
+            } else if (u.kind == BookUnitKind::Section) {
+                level = 2;
+            }
+        }
+        if (dbg) {
+            fprintf(dbg, "NATIVE:\nRAW: %s\nLINK: -> page %d\nAFTER MINIMAL CLEAN: %s\nNUMBERING DEPTH: %d\nLEVEL: %d\n\n",
+                    raw, target, title, level, level < 1 ? 1 : level);
+        }
+        ExtractedTocItem* n = BookNewItem(title, target, ln.x, ln.y, level, 95, ExtractedTocSource::PrintedToc, raw);
+        n->printedPage = printed;
+        n->tocPageNo = p;
+        n->tocX = ln.x;
+        n->tocY = ln.y;
+        n->destinationSource = TocDestinationSource::PdfLink;
+        n->verified = true;
+        n->bodyMatched = false;
+        out.Append(n);
+        appended++;
+        str::Free(title);
+    }
+    BookFreeLines(page);
+    return appended;
+}
+
+// Detect the multi-page native linked Contents span and, when the evidence is
+// strong, build the whole outline from it. Multi-page TOCs merge fully; a
+// weak page (few links) inside the run still extends it.
+static bool TryNativeLinkedBookToc(EngineBase* engine, const Vec<ScanLine>& lines, int nPages,
+                                   Vec<ExtractedTocItem*>& roots, const char* debugPath) {
+    if (!engine || nPages < 1) {
+        return false;
+    }
+    FILE* dbg = debugPath ? _wfopen(ToWStrTemp(debugPath), L"a") : nullptr;
+    int scanCap = nPages < 200 ? nPages : 200;
+    Vec<ExtractedTocItem*> flat;
+    int pagesLo = 0;
+    int pagesHi = 0;
+    int totalMatched = 0;
+    int totalLinks = 0;
+    bool inRun = false;
+    for (int p = 1; p <= scanCap; p++) {
+        Vec<ExtractedTocItem*> pageItems;
+        BookNativeTocPageStats st;
+        int got = BookNativeLinkedPageItems(engine, lines, p, pageItems, &st, dbg);
+        bool strong = st.matched >= 6 && st.distinctTargets >= 4;
+        bool weak = st.matched >= 3;
+        if (strong || (inRun && weak && got >= 3)) {
+            inRun = true;
+            if (pagesLo == 0) {
+                pagesLo = p;
+            }
+            pagesHi = p;
+            totalMatched += st.matched;
+            totalLinks += got;
+            for (int i = 0; i < pageItems.Size(); i++) {
+                flat.Append(pageItems[i]);
+            }
+            continue;
+        }
+        if (inRun) {
+            break; // Contents span ended
+        }
+        // before the run: drop non-TOC page results (stray links in front matter)
+        for (int i = 0; i < pageItems.Size(); i++) {
+            delete pageItems[i];
+        }
+    }
+    // Acceptance: a real clickable Contents has many link-bound rows spread
+    // over several distinct targets. Everything else falls back to the
+    // printed/OCR pipeline untouched.
+    int nDistinct = 0;
+    {
+        int prev = 0;
+        for (int i = 0; i < flat.Size(); i++) {
+            if (flat[i]->pageNo != prev) {
+                prev = flat[i]->pageNo;
+                nDistinct++;
+            }
+        }
+    }
+    bool ok = flat.Size() >= 8 && nDistinct >= 6 && pagesLo > 0;
+    if (!ok) {
+        logf("native-linked-toc: rejected pages=%d-%d entries=%d distinctTargets=%d\n", pagesLo, pagesHi, flat.Size(),
+             nDistinct);
+        if (dbg) {
+            fprintf(dbg, "native-linked-toc REJECTED entries=%d distinctTargets=%d\n", flat.Size(), nDistinct);
+            fclose(dbg);
+        }
+        for (int i = 0; i < flat.Size(); i++) {
+            delete flat[i];
+        }
+        return false;
+    }
+    // Put the 目录 heading itself in front, like the printed path does.
+    for (int p = pagesLo; p <= pagesHi; p++) {
+        bool found = false;
+        for (int i = 0; i < lines.Size() && !found; i++) {
+            if (lines[i].srcPage != p || !lines[i].text || !BookLooksLikeTocHeading(lines[i].text)) {
+                continue;
+            }
+            ExtractedTocItem* n =
+                BookNewItem(BookPrintedTocBookmarkTitle(lines[i].text), p, lines[i].x, lines[i].y, 1, 99,
+                            ExtractedTocSource::PrintedToc, lines[i].text);
+            n->tocPageNo = p;
+            n->tocX = lines[i].x;
+            n->tocY = lines[i].y;
+            n->destinationSource = TocDestinationSource::PdfLink;
+            n->verified = true;
+            roots.Append(n);
+            found = true;
+        }
+        if (found) {
+            break;
+        }
+    }
+    // Tree by level with a level stack (same shape as BookBuildTree).
+    Vec<ExtractedTocItem*> stack;
+    for (int i = 0; i < flat.Size(); i++) {
+        ExtractedTocItem* n = flat[i];
+        if (n->level < 1) {
+            n->level = 1;
+        }
+        while (stack.Size() > 0 && stack.Last()->level >= n->level) {
+            stack.RemoveLast();
+        }
+        if (stack.Size() == 0) {
+            n->parent = nullptr;
+            roots.Append(n);
+        } else {
+            n->parent = stack.Last();
+            stack.Last()->children.Append(n);
+        }
+        stack.Append(n);
+    }
+    logf("native-linked-toc: pages=%d-%d linkLines=%d entries=%d distinctTargets=%d\n", pagesLo, pagesHi, totalLinks,
+         flat.Size(), nDistinct);
+    if (dbg) {
+        fprintf(dbg, "Native Linked TOC debug\npages: %d-%d\nlink lines: %d\nentries: %d\ndistinct targets: %d\n\n",
+                pagesLo, pagesHi, totalMatched, flat.Size(), nDistinct);
+        fclose(dbg);
+    }
+    return true;
+}
+
 bool ExtractBookPrintedToc(EngineBase* engine, Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
-                           Vec<ExtractedTocItem*>& roots, const char* debugPath) {
+                           Vec<ExtractedTocItem*>& roots, const char* debugPath, const TocExtractProgress* prog) {
+    // Native Linked TOC first: when the Contents rows already carry internal
+    // GoTo links, convert them directly to the outline. The OCR printed-TOC
+    // pipeline below stays untouched for scans and link-less books.
+    if (engine && TryNativeLinkedBookToc(engine, lines, nPages, roots, debugPath)) {
+        return true;
+    }
     char tracePath[MAX_PATH]{};
     const char* trace = debugPath;
     if (!trace && GetEnvironmentVariableA("SUMATRA_TOC_TRACE", tracePath, dimof(tracePath)) > 0) {
@@ -4889,6 +5690,10 @@ bool ExtractBookPrintedToc(EngineBase* engine, Vec<ScanLine>& lines, const Vec<c
         }
         Vec<BookLine> page;
         BookCollectPage(lines, p, page);
+        Vec<BookLinkHit> links;
+        if (engine) {
+            BookCollectPageLinks(engine, p, links);
+        }
         if (dropHeaderBand) {
             for (int i = 0; i < page.Size(); i++) {
                 if (IsHeaderBandCandidate(page[i])) {
@@ -4896,7 +5701,7 @@ bool ExtractBookPrintedToc(EngineBase* engine, Vec<ScanLine>& lines, const Vec<c
                 }
             }
         }
-        BookParseTocPage(page, hits);
+        BookParseTocPage(page, hits, links);
         BookFreeLines(page);
     }
     BookSortEntries(hits);
@@ -4918,7 +5723,11 @@ bool ExtractBookPrintedToc(EngineBase* engine, Vec<ScanLine>& lines, const Vec<c
     int printedOffset = 0;
     BookMapPrintedPages(lines, tocStart, tocEnd, nPages, labels, hits, &printedOffset);
     Vec<ScanLine> bodyExtra;
-    BookCollectExtraScanLines(engine, lines, nPages, bodyExtra);
+    if (!BookCollectExtraScanLines(engine, lines, nPages, bodyExtra, prog)) {
+        PtocFreeScanLines(bodyExtra);
+        BookFreeEntries(hits);
+        return false;
+    }
     Vec<BookPageFontStats> anchorStats;
     BookCollectPageFontStats(lines, bodyExtra, nPages, anchorStats);
     BookResolveMissingDestsByBody(lines, bodyExtra, anchorStats, tocStart, tocEnd, nPages, hits);

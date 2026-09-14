@@ -242,6 +242,7 @@ CmdPdShowInfo,,Show PDF Info,shows information about currently opened PDF file
 CmdDocumentShowOutline,,Show Document Outline,shows the outline (table of contents) of currently opened document
 CmdPdfBake,,Bake PDF File,bakes interactive form and annotation content into static graphics; saves to a new PDF file and opens it
 CmdDocumentExtractText,,Extract Text From Document,"extract text from document pages to a .txt file, with configurable page ranges, ver 3.7+"
+CmdPdfRotatePages,,Rotate PDF Pages...,"rotate a selected PDF page range and save the changes, ver 3.8+"
 CmdOcrCurrentPage,,Recognize Current Page,"recognize the current page (high accuracy), even if it already has a text layer. Memory cache only; does not change the PDF file, ver 3.8+"
 CmdOcrDocument,,Recognize All Scanned Pages (Fast),"toolbar OCR menu: clear session OCR and re-recognize every page with the fast profile; then extract bookmarks (in memory, replaces existing outline), ver 3.8+"
 CmdToggleAutoOcr,,Toggle Auto OCR,"toolbar switch for AutoOcrScanPages: OCR visible scanned pages as you view them, ver 3.8+"
@@ -252,7 +253,7 @@ CmdOcrFullDocumentModeFast,,Full-document OCR Mode: Fast,"full-document OCR uses
 CmdOcrFullDocumentModeAccurate,,Full-document OCR Mode: High Accuracy,"full-document OCR uses high accuracy. Setting OcrFullDocumentMode=accurate, ver 3.8+"
 CmdOcrReRecognizeAllPages,,Recognize All Scanned Pages (Accurate),"toolbar OCR menu: clear session OCR and re-recognize every page with high accuracy; then extract bookmarks (in memory, replaces existing outline), ver 3.8+"
 CmdToggleOcrAutoSave,,Toggle Auto-save After OCR,"toolbar OCR menu: when checked, Recognize All Scanned Pages overwrites the current PDF and extracting bookmarks saves to disk. Setting OcrAutoSave, ver 3.8+"
-CmdToggleOcrCopyMerged,,Toggle Paragraph-merged Copy of OCR Results,"toolbar OCR menu: when checked (default), copying OCR results merges soft-wrapped lines into coherent paragraphs instead of following the page layout. Setting OcrCopyMerged, ver 3.8+"
+CmdToggleOcrCopyMerged,,Toggle Paragraph-merged Copy,"toolbar OCR menu: when checked (default), copying text from OCR or native-text PDF pages merges soft-wrapped lines into coherent paragraphs instead of following the page layout. Setting OcrCopyMerged, ver 3.8+"
 ```
 
 ## External app

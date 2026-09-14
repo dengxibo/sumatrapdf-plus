@@ -18,6 +18,7 @@
 #include "wingui/LabelWithCloseWnd.h"
 
 #include "Settings.h"
+#include "resource.h"
 #include "DocController.h"
 #include "EngineBase.h"
 #include "EngineAll.h"
@@ -43,6 +44,7 @@
 #include "TocCalib.h"
 
 #include "utils/Log.h"
+#include "utils/UITask.h"
 
 static void TocCalibRestoreDisplayMode(MainWindow* win, TocCalibSession* s);
 
@@ -523,6 +525,164 @@ int TocCalibTitleMatchScore(const char* body, const char* title) {
     return 0;
 }
 
+// Presence bitmap over the low byte of each filtered codepoint. False
+// positives are harmless (the precise scoring still runs); false negatives
+// are impossible, which makes it safe as a prefilter for the cover test.
+struct TocCalibCpBits {
+    unsigned char b[32];
+
+    void Add(int cp) {
+        int v = cp & 0xFF;
+        b[v >> 3] |= (unsigned char)(1 << (v & 7));
+    }
+    bool Has(int cp) const {
+        int v = cp & 0xFF;
+        return (b[v >> 3] >> (v & 7)) & 1;
+    }
+    void OrWith(const TocCalibCpBits& o) {
+        for (int i = 0; i < 32; i++) {
+            b[i] |= o.b[i];
+        }
+    }
+};
+
+static void TocCalibCpBitsFill(const char* s, int len, TocCalibCpBits* out) {
+    int i = 0;
+    while (i < len) {
+        int cp = Utf8CodepointNext(s, len, i);
+        if (cp <= 0) {
+            break;
+        }
+        if (TocCalibSkipMatchCp(cp)) {
+            continue;
+        }
+        out->Add(cp);
+    }
+}
+
+// The cover test needs at least 4 in-order hits, so if the presence bitmap
+// shows fewer than 4 of the title's glyphs can possibly appear in the body,
+// the full evaluation would return 0 anyway.
+static bool TocCalibCpBitsMayCover(const TocCalibCpBits& bits, const int* cps, int nCp) {
+    int missing = 0;
+    for (int k = 0; k < nCp; k++) {
+        if (!bits.Has(cps[k])) {
+            missing++;
+            if (missing > nCp - 4) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+// Prepared form of a TOC title for repeated matching against many body
+// lines: glyph count, compacted text and the filtered codepoint array used
+// by the in-order cover pass. Building it once per search instead of once
+// per body line removes the dominant repeated cost of near-page scans.
+struct TocCalibTitleCtx {
+    const char* title; // not owned; must outlive the ctx
+    char compact[512];
+    int glyphCount;
+    int cps[256];
+    int nCp;
+};
+
+static void TocCalibTitleCtxInit(TocCalibTitleCtx* ctx, const char* title) {
+    ctx->title = title;
+    ctx->compact[0] = 0;
+    ctx->glyphCount = 0;
+    ctx->nCp = 0;
+    if (!title || !title[0]) {
+        return;
+    }
+    ctx->glyphCount = TocCalibGlyphCount(title);
+    TocCalibCompact(title, ctx->compact, (int)sizeof(ctx->compact));
+    int tlen = (int)str::Len(title);
+    int ti = 0;
+    while (ti < tlen && ctx->nCp < (int)dimof(ctx->cps)) {
+        int tcp = Utf8CodepointNext(title, tlen, ti);
+        if (tcp <= 0) {
+            break;
+        }
+        if (TocCalibSkipMatchCp(tcp)) {
+            continue;
+        }
+        ctx->cps[ctx->nCp++] = tcp;
+    }
+}
+
+static int TocCalibInOrderCoverCps(const int* tcps, int nT, const char* body) {
+    if (!body || nT < 1) {
+        return 0;
+    }
+    int blen = (int)str::Len(body);
+    int bi = 0;
+    int n = 0;
+    for (int k = 0; k < nT; k++) {
+        int tcp = tcps[k];
+        int bstart = bi;
+        bool found = false;
+        while (bi < blen) {
+            int bcp = Utf8CodepointNext(body, blen, bi);
+            if (bcp <= 0) {
+                break;
+            }
+            if (TocCalibSkipMatchCp(bcp)) {
+                continue;
+            }
+            if (bcp == tcp) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            bi = bstart;
+            continue;
+        }
+        n++;
+    }
+    return n;
+}
+
+// Same semantics as TocCalibTitleMatchScore(body, ctx->title) with the
+// title-side work (glyph count, compact, codepoint filtering) already done.
+int TocCalibTitleMatchScoreCtx(const TocCalibTitleCtx* ctx, const char* body) {
+    if (!ctx || ctx->glyphCount < 2 || !body || !body[0]) {
+        return 0;
+    }
+    const char* title = ctx->title;
+    int tg = ctx->glyphCount;
+    if (str::Eq(body, title) || str::StartsWith(body, title) || str::Find(body, title)) {
+        return tg;
+    }
+    int bg = TocCalibGlyphCount(body);
+    if (tg < 4) {
+        char bbuf[256];
+        TocCalibCompact(body, bbuf, (int)sizeof(bbuf));
+        if (ctx->compact[0] && (str::Eq(bbuf, ctx->compact) || str::StartsWith(bbuf, ctx->compact))) {
+            return tg;
+        }
+        return 0;
+    }
+    if (bg >= 4 && bg * 2 >= tg && str::StartsWith(title, body)) {
+        return bg;
+    }
+    char bbuf[768];
+    TocCalibCompact(body, bbuf, (int)sizeof(bbuf));
+    if (ctx->compact[0] && (str::Eq(bbuf, ctx->compact) || str::StartsWith(bbuf, ctx->compact) || str::Find(bbuf, ctx->compact))) {
+        return tg;
+    }
+    if (bg >= 4 && bg * 2 >= tg && ctx->compact[0] && str::StartsWith(ctx->compact, bbuf)) {
+        return bg;
+    }
+    int cover = TocCalibInOrderCoverCps(ctx->cps, ctx->nCp, body);
+    if (cover >= 4 && cover * 5 >= tg * 4) {
+        return cover;
+    }
+    return 0;
+}
+
 bool TocCalibApplyNearHit(ExtractedTocItem* it, int hitPage, float x, float y, int score, int predPage) {
     if (!it || hitPage < 1 || score < 2) {
         return false;
@@ -544,6 +704,7 @@ bool TocCalibApplyNearHit(ExtractedTocItem* it, int hitPage, float x, float y, i
     it->x = x;
     it->y = y;
     it->bodyMatched = true;
+    it->destinationSource = TocDestinationSource::BodyMatch;
     if (it->confidence < 70) {
         it->confidence = 70;
     }
@@ -734,13 +895,20 @@ static void TocCalibBm25AddPage(TocCalibBm25Index* idx, int page, const char* co
     }
 }
 
-static bool TocCalibBm25Build(TocCalibSession* s, Vec<int>& pages, Vec<Vec<EngineMupdfPageLine>*>& cache,
-                              TocCalibBm25Index* idx) {
+// Incrementally indexes pages [*pNext..nPages) into idx, processing pages
+// until the time budget (budgetMs, or UINT_MAX for "no budget") is used up.
+// Returns true when indexing is complete (regardless of nDocs), false when
+// the budget ran out and the caller should call again with the advanced
+// *pNext cursor. Caller owns the initial TocCalibBm25Free.
+static bool TocCalibBm25BuildChunk(TocCalibSession* s, Vec<int>& pages, Vec<Vec<EngineMupdfPageLine>*>& cache,
+                                   TocCalibBm25Index* idx, int* pNext, DWORD budgetMs) {
     if (!s || !idx || s->nPages < 1) {
         return false;
     }
-    TocCalibBm25Free(idx);
-    for (int p = 1; p <= s->nPages; p++) {
+    DWORD t0 = ::GetTickCount();
+    int p = *pNext;
+    for (; p <= s->nPages; p++) {
+        *pNext = p + 1;
         if (TocCalibPageInToc(s, p)) {
             continue;
         }
@@ -806,7 +974,22 @@ static bool TocCalibBm25Build(TocCalibSession* s, Vec<int>& pages, Vec<Vec<Engin
             heading[hused] = 0;
         }
         TocCalibBm25AddPage(idx, p, compact, maxY, avgFont, heading);
+        if (budgetMs != UINT_MAX && ::GetTickCount() - t0 > budgetMs) {
+            return false;
+        }
     }
+    *pNext = s->nPages + 1;
+    return true;
+}
+
+static bool TocCalibBm25Build(TocCalibSession* s, Vec<int>& pages, Vec<Vec<EngineMupdfPageLine>*>& cache,
+                              TocCalibBm25Index* idx) {
+    if (!s || !idx || s->nPages < 1) {
+        return false;
+    }
+    TocCalibBm25Free(idx);
+    int next = 1;
+    TocCalibBm25BuildChunk(s, pages, cache, idx, &next, UINT_MAX);
     return idx->nDocs > 0;
 }
 
@@ -1006,6 +1189,19 @@ static bool TocCalibSearchNearPage(TocCalibSession* s, const char* title, int pr
     if (!s || !title || !title[0] || predPage < 1 || !out) {
         return false;
     }
+    TocCalibTitleCtx tctx;
+    TocCalibTitleCtxInit(&tctx, title);
+    if (tctx.glyphCount < 2) {
+        return false;
+    }
+    int tg = tctx.glyphCount;
+    int minScore = tg < 4 ? tg : 4;
+    if (minScore < 2) {
+        minScore = 2;
+    }
+    // the bitmap prefilter models the cover test, which only exists for
+    // titles of 4+ glyphs; shorter titles must always be scored directly
+    bool usePrefilter = tctx.nCp >= 4;
     Vec<TocCalibNearHit> hits;
     int lo = predPage - radius;
     int hi = predPage + radius;
@@ -1023,18 +1219,33 @@ static bool TocCalibSearchNearPage(TocCalibSession* s, const char* title, int pr
         if (!lines) {
             continue;
         }
-        int minScore = TocCalibGlyphCount(title) < 4 ? TocCalibGlyphCount(title) : 4;
-        if (minScore < 2) {
-            minScore = 2;
+        int nL = lines->Size();
+        // per-line presence bitmaps, built once per page and OR-combined as
+        // the joined-line window grows; lets the inner loop skip line combos
+        // that cannot possibly reach the in-order-cover threshold
+        Vec<TocCalibCpBits> bits;
+        if (nL > 0 && usePrefilter) {
+            bits.SetSize(nL);
+            memset(bits.LendData(), 0, (size_t)nL * sizeof(TocCalibCpBits));
+            for (int i = 0; i < nL; i++) {
+                const EngineMupdfPageLine& ln = lines->At(i);
+                if (ln.text && ln.text[0]) {
+                    TocCalibCpBitsFill(ln.text, (int)str::Len(ln.text), &bits[i]);
+                }
+            }
         }
-        for (int i = 0; i < lines->Size(); i++) {
+        for (int i = 0; i < nL; i++) {
             const EngineMupdfPageLine& ln = lines->At(i);
             char joined[768];
             joined[0] = 0;
             int used = 0;
             float y0 = ln.y;
             float dy0 = ln.dy > 2 ? ln.dy : 12;
-            for (int k = 0; k < 3 && i + k < lines->Size(); k++) {
+            TocCalibCpBits combo;
+            if (usePrefilter) {
+                combo = bits[i];
+            }
+            for (int k = 0; k < 3 && i + k < nL; k++) {
                 const EngineMupdfPageLine& part = lines->At(i + k);
                 if (!part.text || !part.text[0]) {
                     break;
@@ -1046,6 +1257,9 @@ static bool TocCalibSearchNearPage(TocCalibSession* s, const char* title, int pr
                     }
                     if (gap > dy0 * 3.2f) {
                         break;
+                    }
+                    if (usePrefilter) {
+                        combo.OrWith(bits[i + k]);
                     }
                 }
                 int add = (int)str::Len(part.text);
@@ -1059,7 +1273,10 @@ static bool TocCalibSearchNearPage(TocCalibSession* s, const char* title, int pr
                 if (part.dy > 2) {
                     dy0 = part.dy;
                 }
-                int sc = TocCalibTitleMatchScore(joined, title);
+                if (usePrefilter && !TocCalibCpBitsMayCover(combo, tctx.cps, tctx.nCp)) {
+                    continue;
+                }
+                int sc = TocCalibTitleMatchScoreCtx(&tctx, joined);
                 if (sc < minScore) {
                     continue;
                 }
@@ -1135,6 +1352,103 @@ static bool TocCalibSearchNearPage(TocCalibSession* s, const char* title, int pr
     return true;
 }
 
+enum class TocCalibRowVerifyPhase {
+    Skip,     // row needs no work (pinned / too short / consistent already)
+    Done,     // matched via near-page search
+    NeedFull, // needs the full-document BM25 / Find fallback passes
+};
+
+// Verify one row using only the cheap near-page search around the predicted
+// page. Shared by the synchronous and the chunked (async) verify drivers.
+static TocCalibRowVerifyPhase TocCalibVerifyRowNear(TocCalibSession* s, int i, Vec<int>& pages,
+                                                    Vec<Vec<EngineMupdfPageLine>*>& cache) {
+    ExtractedTocItem* it = s->rows[i].item;
+    if (!it) {
+        return TocCalibRowVerifyPhase::Skip;
+    }
+    if (s->rows[i].pdfPinned || s->rows[i].userSet) {
+        return TocCalibRowVerifyPhase::Skip;
+    }
+    const char* title = it->rawTitle && it->rawTitle[0] ? it->rawTitle : it->title;
+    if (!title || TocCalibGlyphCount(title) < 2) {
+        return TocCalibRowVerifyPhase::Skip;
+    }
+    int pred = it->pageNo;
+    if (pred < 1 && TocCalibPrintedPlausible(s->nPages, it->printedPage) && s->map.confidence > 0) {
+        pred = it->printedPage + s->map.offset;
+        if (pred < 1) {
+            pred = 1;
+        }
+    }
+    if (it->bodyMatched && it->pageNo > 0 && pred > 0) {
+        int d = it->pageNo - pred;
+        if (d < 0) {
+            d = -d;
+        }
+        if (d <= 2) {
+            if (it->confidence < 80) {
+                it->confidence = 80;
+            }
+            return TocCalibRowVerifyPhase::Skip;
+        }
+    }
+    TocCalibNearHit hit;
+    bool found = false;
+    if (pred > 0) {
+        found = TocCalibSearchNearPage(s, title, pred, 2, pages, cache, &hit);
+        if (!found && TocCalibGlyphCount(title) >= 6) {
+            found = TocCalibSearchNearPage(s, title, pred, 4, pages, cache, &hit);
+        }
+    }
+    if (found && TocCalibPageInToc(s, hit.page)) {
+        found = false;
+    }
+    if (found) {
+        TocCalibApplyNearHit(it, hit.page, hit.x, hit.y, hit.score, pred);
+        s->rows[i].identPageNo = it->pageNo;
+        return TocCalibRowVerifyPhase::Done;
+    }
+    return TocCalibRowVerifyPhase::NeedFull;
+}
+
+// Full-document fallback pass for one row (BM25 index must be complete when
+// nPages <= 800; the >800 case only demotes confidence). Shared by both
+// verify drivers.
+static void TocCalibVerifyRowFull(TocCalibSession* s, int i, Vec<int>& pages, Vec<Vec<EngineMupdfPageLine>*>& cache,
+                                  TocCalibBm25Index* bm25) {
+    ExtractedTocItem* it = s->rows[i].item;
+    if (!it) {
+        return;
+    }
+    const char* title = it->rawTitle && it->rawTitle[0] ? it->rawTitle : it->title;
+    // Indexing every page for BM25/Find freezes a 900-page textbook.
+    // Near-page search above is enough; skip the full-document pass.
+    if (s->nPages > 800) {
+        if (!it->bodyMatched && it->confidence > 60) {
+            it->confidence = 60;
+        }
+        return;
+    }
+    TocCalibNearHit hit;
+    if (TocCalibGlyphCount(title) >= 4 && TocCalibSearchBm25(s, title, pages, cache, bm25, &hit) &&
+        !TocCalibPageInToc(s, hit.page)) {
+        if (TocCalibApplyNearHit(it, hit.page, hit.x, hit.y, hit.score, 0)) {
+            s->rows[i].identPageNo = it->pageNo;
+            if (it->confidence < 75) {
+                it->confidence = 75;
+            }
+        }
+    } else if (TocCalibGlyphCount(title) >= 4 && TocCalibSearchTextFindFallback(s, &s->rows[i], title, &hit) &&
+               !TocCalibPageInToc(s, hit.page) && TocCalibApplyNearHit(it, hit.page, hit.x, hit.y, hit.score, 0)) {
+        s->rows[i].identPageNo = it->pageNo;
+        if (it->confidence < 75) {
+            it->confidence = 75;
+        }
+    } else if (!it->bodyMatched && it->confidence > 60) {
+        it->confidence = 60;
+    }
+}
+
 void TocCalibVerifyNearPredicted(TocCalibSession* s) {
     if (!s || !s->engine) {
         return;
@@ -1145,81 +1459,47 @@ void TocCalibVerifyNearPredicted(TocCalibSession* s) {
     Vec<Vec<EngineMupdfPageLine>*> cache;
     TocCalibBm25Index bm25;
     for (int i = 0; i < s->rows.Size(); i++) {
-        ExtractedTocItem* it = s->rows[i].item;
-        if (!it) {
-            continue;
-        }
-        if (s->rows[i].pdfPinned || s->rows[i].userSet) {
-            continue;
-        }
-        const char* title = it->rawTitle && it->rawTitle[0] ? it->rawTitle : it->title;
-        if (!title || TocCalibGlyphCount(title) < 2) {
-            continue;
-        }
-        int pred = it->pageNo;
-        if (pred < 1 && TocCalibPrintedPlausible(s->nPages, it->printedPage) && s->map.confidence > 0) {
-            pred = it->printedPage + s->map.offset;
-            if (pred < 1) {
-                pred = 1;
-            }
-        }
-        if (it->bodyMatched && it->pageNo > 0 && pred > 0) {
-            int d = it->pageNo - pred;
-            if (d < 0) {
-                d = -d;
-            }
-            if (d <= 2) {
-                if (it->confidence < 80) {
-                    it->confidence = 80;
-                }
-                continue;
-            }
-        }
-        TocCalibNearHit hit;
-        bool found = false;
-        if (pred > 0) {
-            found = TocCalibSearchNearPage(s, title, pred, 2, pages, cache, &hit);
-            if (!found && TocCalibGlyphCount(title) >= 6) {
-                found = TocCalibSearchNearPage(s, title, pred, 4, pages, cache, &hit);
-            }
-        }
-        if (found && TocCalibPageInToc(s, hit.page)) {
-            found = false;
-        }
-        if (found) {
-            TocCalibApplyNearHit(it, hit.page, hit.x, hit.y, hit.score, pred);
-            s->rows[i].identPageNo = it->pageNo;
-            continue;
-        }
-        // Indexing every page for BM25/Find freezes a 900-page textbook.
-        // Near-page search above is enough; skip the full-document pass.
-        if (s->nPages > 800) {
-            if (!it->bodyMatched && it->confidence > 60) {
-                it->confidence = 60;
-            }
-            continue;
-        }
-        if (TocCalibGlyphCount(title) >= 4 && TocCalibSearchBm25(s, title, pages, cache, &bm25, &hit) &&
-            !TocCalibPageInToc(s, hit.page)) {
-            if (TocCalibApplyNearHit(it, hit.page, hit.x, hit.y, hit.score, 0)) {
-                s->rows[i].identPageNo = it->pageNo;
-                if (it->confidence < 75) {
-                    it->confidence = 75;
-                }
-            }
-        } else if (TocCalibGlyphCount(title) >= 4 && TocCalibSearchTextFindFallback(s, &s->rows[i], title, &hit) &&
-                   !TocCalibPageInToc(s, hit.page) && TocCalibApplyNearHit(it, hit.page, hit.x, hit.y, hit.score, 0)) {
-            s->rows[i].identPageNo = it->pageNo;
-            if (it->confidence < 75) {
-                it->confidence = 75;
-            }
-        } else if (!it->bodyMatched && it->confidence > 60) {
-            it->confidence = 60;
+        TocCalibRowVerifyPhase ph = TocCalibVerifyRowNear(s, i, pages, cache);
+        if (ph == TocCalibRowVerifyPhase::NeedFull) {
+            TocCalibVerifyRowFull(s, i, pages, cache, &bm25);
         }
     }
     TocCalibBm25Free(&bm25);
     TocCalibFreePageCache(cache);
 }
+
+// Chunked body-verification state, driven by ~40ms UI-thread slices (see
+// StartTocCalibAsync). Owned by the session (s->verifyJob) while running;
+// the job frees itself when its slice chain ends.
+struct TocCalibVerifyJob {
+    MainWindow* win = nullptr;
+    TocCalibSession* s = nullptr;
+    Vec<int> pages;
+    Vec<Vec<EngineMupdfPageLine>*> cache;
+    TocCalibBm25Index bm25;
+    int row = 0;
+    int total = 0;
+    // wall-clock start of the whole verify job (for stage timing logs)
+    DWORD tStart = 0;
+    // incremental BM25 build cursor (valid while bm25Building)
+    int bm25Page = 1;
+    bool bm25Building = false;
+    bool aborted = false;
+    // verify cost statistics (logged when the job completes)
+    int nSkip = 0;
+    int nNear = 0;
+    int nNeedFull = 0;
+    int nFull = 0;
+    DWORD bm25BuildMs = 0;
+    TocCalibVerifyProgressFn onProgress = nullptr;
+    TocCalibVerifyDoneFn onDone = nullptr;
+    void* ctx = nullptr;
+    // Scheduling goes through a one-shot timer on this message-only window
+    // (NOT a self-reposting uitask): back-to-back posted tasks starve the
+    // message pump and make the dialog impossible to drag. The timer gap
+    // guarantees the pump processes input between slices.
+    HWND timerWnd = nullptr;
+};
 
 static void TocCalibWriteDebugIfCli(const TocCalibSession* s) {
     if (!gCli || !gCli->extractTocDebug || !s || !s->engine || !s->engine->FilePath()) {
@@ -1432,7 +1712,7 @@ static void TocCalibSeedPrintedFromLabels(TocCalibSession* s) {
     }
 }
 
-static void TocCalibPrepareMapping(TocCalibSession* s, bool markConfirm, bool scanBody) {
+static void TocCalibPrepareMapping(TocCalibSession* s, bool markConfirm, bool scanBody, bool deferVerify = false) {
     if (!s) {
         return;
     }
@@ -1453,13 +1733,19 @@ static void TocCalibPrepareMapping(TocCalibSession* s, bool markConfirm, bool sc
     }
     TocCalibSolveSession(s);
     if (scanBody) {
-        TocCalibVerifyNearPredicted(s);
-        TocCalibSolveSession(s);
+        // deferVerify: the caller runs the (expensive) verification pass in
+        // chunked slices via StartTocCalibAsync, then re-solves + marks.
+        if (!deferVerify) {
+            TocCalibVerifyNearPredicted(s);
+            TocCalibSolveSession(s);
+        }
     }
-    if (markConfirm) {
+    if (markConfirm && !(deferVerify && scanBody)) {
         TocCalibMarkConfirm(s);
     }
-    TocCalibWriteDebugIfCli(s);
+    if (!deferVerify) {
+        TocCalibWriteDebugIfCli(s);
+    }
 }
 
 void TocCalibRefineExtracted(Vec<ExtractedTocItem*>& roots, EngineBase* engine) {
@@ -1489,7 +1775,7 @@ static void TocCalibClearDestsOnTocPages(TocCalibSession* s) {
     TocCalibEnsureTocRange(s);
     for (int i = 0; i < s->rows.Size(); i++) {
         ExtractedTocItem* it = s->rows[i].item;
-        if (!it || TocCalibIsContentsTitle(it->title)) {
+        if (!it || it->destinationSource == TocDestinationSource::PdfLink || TocCalibIsContentsTitle(it->title)) {
             continue;
         }
         // Only clear items that came from the printed TOC (they only have
@@ -1532,6 +1818,7 @@ static ExtractedTocItem* TocCalibCloneExtracted(const ExtractedTocItem* src) {
     n->level = src->level;
     n->confidence = src->confidence;
     n->source = src->source;
+    n->destinationSource = src->destinationSource;
     n->printedPage = src->printedPage;
     n->printedLabel = str::Dup(src->printedLabel);
     n->tocPageNo = src->tocPageNo;
@@ -1651,6 +1938,15 @@ static void TocCalibInstallSnap(TocCalibSession* s, TocCalibUndoSnap* snap) {
 void DeleteTocCalibSession(TocCalibSession* s) {
     if (!s) {
         return;
+    }
+    if (s->verifyJob) {
+        // Detach the pending verify job; its next slice (already queued or
+        // to be posted) sees s == nullptr and frees itself without touching
+        // this session again.
+        s->verifyJob->aborted = true;
+        s->verifyJob->s = nullptr;
+        s->verifyJob->win = nullptr;
+        s->verifyJob = nullptr;
     }
     s->engine = nullptr;
     TocCalibFreeUndoStack(s->undo);
@@ -1790,12 +2086,14 @@ static void TocCalibCollectOne(TocCalibSession* s, ExtractedTocItem* it, int dep
         if (!TocCalibRestoreRowFlags(prev, it, row)) {
             row.identPageNo = it->pageNo;
             row.origPageNo = it->pageNo;
+            row.pdfPinned = it->destinationSource == TocDestinationSource::PdfLink;
         }
         if (row.identPageNo < 1 && it->pageNo > 0) {
             row.identPageNo = it->pageNo;
         }
         if (row.origPageNo < 1 && it->pageNo > 0) {
             row.origPageNo = it->pageNo;
+            row.pdfPinned = it->destinationSource == TocDestinationSource::PdfLink;
         }
         s->rows.Append(row);
     }
@@ -1830,10 +2128,11 @@ static void TocCalibMarkConfirm(TocCalibSession* s) {
             }
             continue;
         }
-        s->rows[i].needsConfirm = false;
-        if (it && TocCalibHasPrinted(it->printedPage) && it->pageNo > 0) {
-            it->verified = true;
-        }
+        bool reliable =
+            it && it->pageNo > 0 && !s->rows[i].clamped &&
+            (it->bodyMatched || s->rows[i].pdfPinned || it->destinationSource == TocDestinationSource::BodyMatch);
+        s->rows[i].needsConfirm = s->rows[i].needsConfirm || !reliable;
+        if (it) it->verified = reliable;
     }
 }
 
@@ -2314,7 +2613,7 @@ static int TocCalibInterpolatePrinted(const TocCalibSession* s, int rowIdx) {
     int myEmpty = -1;
     for (int i = prev + 1; i < next; i++) {
         ExtractedTocItem* it = s->rows[i].item;
-        if (!it || TocCalibIsContentsTitle(it->title)) {
+        if (!it || it->destinationSource == TocDestinationSource::PdfLink || TocCalibIsContentsTitle(it->title)) {
             continue;
         }
         if (TocCalibHasPrinted(it->printedPage)) {
@@ -2410,7 +2709,7 @@ static void TocCalibEnforceReadingOrder(TocCalibSession* s) {
     int prevPdf = 0;
     for (int i = 0; i < s->rows.Size(); i++) {
         ExtractedTocItem* it = s->rows[i].item;
-        if (!it || TocCalibIsContentsTitle(it->title)) {
+        if (!it || it->destinationSource == TocDestinationSource::PdfLink || TocCalibIsContentsTitle(it->title)) {
             continue;
         }
         if (s->rows[i].clamped) {
@@ -2724,7 +3023,7 @@ static void TocCalibNormalizeForestTitles(const Vec<ExtractedTocItem*>& roots) {
 }
 
 TocCalibSession* TocCalibSessionFromExtracted(Vec<ExtractedTocItem*>& roots, EngineBase* engine, bool persistToDisk,
-                                              bool scanBody) {
+                                              bool scanBody, bool deferVerify) {
     auto* s = new TocCalibSession;
     s->engine = engine;
     s->persistToDisk = persistToDisk;
@@ -2734,7 +3033,7 @@ TocCalibSession* TocCalibSessionFromExtracted(Vec<ExtractedTocItem*>& roots, Eng
     }
     roots.Reset();
     TocCalibNormalizeForestTitles(s->roots);
-    TocCalibPrepareMapping(s, true, scanBody);
+    TocCalibPrepareMapping(s, true, scanBody, deferVerify);
     return s;
 }
 
@@ -3195,7 +3494,11 @@ static bool TocCalibSyncHierarchyFromTree(MainWindow* win, TocCalibSession* s) {
 
 // syncFromTree: write-bookmarks / tree-first add. Session-first merge/delete/move
 // must pass false — the visible tree still has the old nodes and would undo them.
-static bool TocCalibPushOutline(MainWindow* win, TocCalibSession* s, bool syncFromTree = true) {
+static bool TocCalibPushOutline(MainWindow* win, TocCalibSession* s, bool syncFromTree = true,
+                                char** errOut = nullptr) {
+    if (errOut) {
+        *errOut = nullptr;
+    }
     if (!win || !s || !s->engine || s->roots.Size() < 1) {
         return false;
     }
@@ -3205,7 +3508,11 @@ static bool TocCalibPushOutline(MainWindow* win, TocCalibSession* s, bool syncFr
     }
     char* err = nullptr;
     bool ok = EngineMupdfReplacePdfToc(s->engine, s->roots, &err);
-    str::Free(err);
+    if (errOut) {
+        *errOut = err; // caller owns (surface the mupdf reason in the UI)
+    } else {
+        str::Free(err);
+    }
     return ok;
 }
 
@@ -4462,6 +4769,26 @@ bool TocCalibTestPromoteDemote() {
     return ok;
 }
 
+struct TocCalibSaveErrCapture {
+    char* err = nullptr;
+};
+
+static void TocCalibOnSaveError(TocCalibSaveErrCapture* ctx, const char* msg) {
+    if (msg) {
+        str::Free(ctx->err);
+        ctx->err = str::Dup(msg);
+    }
+}
+
+static void TocCalibReportWriteError(MainWindow* win, char* err) {
+    // Surface the actual mupdf reason ("journaling", file lock, permissions…)
+    // instead of the generic "Could not write the PDF table of contents."
+    TempWStr detail = err ? ToWStrTemp(err) : nullptr;
+    const WCHAR* msg = (detail && detail[0]) ? detail : ToWStrTemp(_TRA("Could not write the PDF table of contents."));
+    MessageBoxW(win->hwndFrame, msg, L"PDF table of contents", MB_OK | MB_ICONERROR);
+    str::Free(err);
+}
+
 static bool TocCalibWriteBookmarks(MainWindow* win) {
     TocCalibClosePageEdit(true);
     WindowTab* tab = win ? win->CurrentTab() : nullptr;
@@ -4471,21 +4798,33 @@ static bool TocCalibWriteBookmarks(MainWindow* win) {
     }
     TocCalibSolveSession(s);
     TocCalibApplyPins(s);
-    if (!TocCalibPushOutline(win, s)) {
-        MessageBoxW(win->hwndFrame, ToWStrTemp(_TRA("Could not write the PDF table of contents.")),
-                    L"PDF table of contents", MB_OK | MB_ICONERROR);
+    char* pushErr = nullptr;
+    if (!TocCalibPushOutline(win, s, true, &pushErr)) {
+        TocCalibReportWriteError(win, pushErr);
         return false;
     }
+    str::Free(pushErr);
     if (s->persistToDisk) {
         tab->ignoreNextAutoReload = true;
-        bool saved = EngineMupdfSaveUpdated(s->engine, nullptr, {});
+        TocCalibSaveErrCapture saveErr;
+        auto saveErrCb = MkFunc1<TocCalibSaveErrCapture, const char*>(TocCalibOnSaveError, &saveErr);
+        char* tmp = nullptr;
+        bool saved = EngineMupdfSaveUpdated(s->engine, nullptr, saveErrCb, &tmp);
         if (!saved) {
             tab->ignoreNextAutoReload = false;
-            MessageBoxW(win->hwndFrame, ToWStrTemp(_TRA("Could not write the PDF table of contents.")),
-                        L"PDF table of contents", MB_OK | MB_ICONERROR);
+            TocCalibReportWriteError(win, saveErr.err);
             return false;
         }
         s->engine->ClearUnsavedOcrText();
+        if (tmp) {
+            // In-place overwrite failed (file locked / permission denied);
+            // the full rewrite went to a sidecar temp. Switch the tab over
+            // to it (replace-and-reload), same pattern as annotation save.
+            // The engine is swapped, so skip the stale-session tail below.
+            SwitchCurrentTabToSavedFile(win, s->engine->FilePath(), tmp);
+            str::Free(tmp);
+            return true;
+        }
     }
     DeleteExtractedTocItems(s->backup);
     TocCalibCloneForest(s->roots, s->backup);
@@ -4539,6 +4878,10 @@ static void TocCalibCancel(MainWindow* win) {
     ToolbarUpdateStateForWindow(win, false);
 }
 
+void CancelTocExtractionPreview(MainWindow* win) {
+    TocCalibCancel(win);
+}
+
 static void TocCalibFinish(MainWindow* win) {
     WindowTab* tab = win ? win->CurrentTab() : nullptr;
     TocCalibSession* s = tab ? tab->tocCalib : nullptr;
@@ -4558,9 +4901,10 @@ static void TocCalibFinish(MainWindow* win) {
 
 struct TocCalibBar : Wnd {
     MainWindow* win = nullptr;
-    Button* jumpToc = nullptr;
-    Button* done = nullptr;
-    Button* cancel = nullptr;
+    HWND panel = nullptr;
+    HWND jumpToc = nullptr;
+    HWND done = nullptr;
+    HWND cancel = nullptr;
 
     ~TocCalibBar() override;
     bool Create(MainWindow* mainWin);
@@ -4573,9 +4917,8 @@ struct TocCalibBar : Wnd {
 };
 
 TocCalibBar::~TocCalibBar() {
-    delete jumpToc;
-    delete done;
-    delete cancel;
+    if (panel) DestroyWindow(panel);
+
     jumpToc = nullptr;
     done = nullptr;
     cancel = nullptr;
@@ -4599,10 +4942,36 @@ bool TocCalibBar::Create(MainWindow* mainWin) {
     if (!hwnd) {
         return false;
     }
-    jumpToc =
-        CreateButton(hwnd, _TRA("Contents page"), MkMethod0<TocCalibBar, &TocCalibBar::OnJumpToc>(this), IsUIRtl());
-    done = CreateButton(hwnd, _TRA("Save"), MkMethod0<TocCalibBar, &TocCalibBar::OnDone>(this), IsUIRtl());
-    cancel = CreateButton(hwnd, _TRA("Cancel"), MkMethod0<TocCalibBar, &TocCalibBar::OnCancel>(this), IsUIRtl());
+    panel = CreateDialogParamW(
+        GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDD_TOC_FOOTER), hwnd,
+        [](HWND dlg, UINT msg, WPARAM wp, LPARAM lp) -> INT_PTR {
+            auto* bar = (TocCalibBar*)GetWindowLongPtrW(dlg, GWLP_USERDATA);
+            if (msg == WM_INITDIALOG) {
+                SetWindowLongPtrW(dlg, GWLP_USERDATA, lp);
+                if (UseDarkModeLib()) DarkMode::setDarkWndSafe(dlg);
+                return TRUE;
+            }
+            if (msg == WM_COMMAND && bar && HIWORD(wp) == BN_CLICKED) {
+                if (LOWORD(wp) == 100)
+                    bar->OnJumpToc();
+                else if (LOWORD(wp) == IDOK)
+                    bar->OnDone();
+                else if (LOWORD(wp) == IDCANCEL)
+                    bar->OnCancel();
+                else
+                    return FALSE;
+                return TRUE;
+            }
+            return FALSE;
+        },
+        (LPARAM)this);
+    if (!panel) return false;
+    jumpToc = GetDlgItem(panel, 100);
+    done = GetDlgItem(panel, IDOK);
+    cancel = GetDlgItem(panel, IDCANCEL);
+    HwndSetText(jumpToc, _TRA("Contents page"));
+    HwndSetText(done, _TRA("Save"));
+    HwndSetText(cancel, _TRA("Cancel"));
     UpdateTheme();
     return true;
 }
@@ -4618,26 +4987,20 @@ void TocCalibBar::LayoutIn(int x, int y, int dx, int dy) {
         flags |= SWP_NOCOPYBITS;
     }
     SetWindowPos(hwnd, nullptr, x, y, dx, dy, flags);
-    int pad = DpiScale(hwnd, 6);
-    int gap = DpiScale(hwnd, 4);
+    MoveWindow(panel, 0, 1, dx, std::max(1, dy - 1), TRUE);
+    int pad = DpiScale(hwnd, 8);
+    int gap = DpiScale(hwnd, 8);
     int inner = dx - 2 * pad;
     if (inner < 40) {
         inner = 40;
     }
-    int btnDy = DpiScale(hwnd, 26);
-    if (done) {
-        Size sz = done->GetIdealSize();
-        if (sz.dy > btnDy) {
-            btnDy = sz.dy;
-        }
-    }
-    if (jumpToc) {
-        Size sz = jumpToc->GetIdealSize();
-        if (sz.dy > btnDy) {
-            btnDy = sz.dy;
-        }
-    }
-    int third = (inner - 2 * gap) / 3;
+    RECT buttonUnits{0, 0, 50, 14};
+    MapDialogRect(panel, &buttonUnits);
+    int btnDy = buttonUnits.bottom;
+    int third = std::max(1, std::min((int)buttonUnits.right, (inner - 2 * gap) / 3));
+    int top = std::max(0, (dy - btnDy) / 2);
+    int jumpWidth = jumpToc ? ButtonGetIdealSize(jumpToc).dx : third;
+    jumpWidth = std::max(1, std::min(jumpWidth, inner - 2 * third - 2 * gap));
     auto placeBtn = [&](HWND btn, int bx, int by, int bdx, int bdy) {
         if (!btn) {
             return;
@@ -4649,13 +5012,13 @@ void TocCalibBar::LayoutIn(int x, int y, int dx, int dy) {
         }
     };
     if (jumpToc) {
-        placeBtn(jumpToc->hwnd, pad, pad, third, btnDy);
+        placeBtn(jumpToc, pad, top, jumpWidth, btnDy);
     }
     if (done) {
-        placeBtn(done->hwnd, pad + third + gap, pad, third, btnDy);
+        placeBtn(done, dx - pad - 2 * third - gap, top, third, btnDy);
     }
     if (cancel) {
-        placeBtn(cancel->hwnd, pad + 2 * (third + gap), pad, inner - 2 * (third + gap), btnDy);
+        placeBtn(cancel, dx - pad - third, top, third, btnDy);
     }
 }
 
@@ -4664,6 +5027,10 @@ LRESULT TocCalibBar::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
         RECT rc{};
         GetClientRect(hwnd, &rc);
         HBRUSH br = CreateSolidBrush(ThemeSidebarBackgroundColor());
+        FillRect((HDC)wparam, &rc, br);
+        DeleteObject(br);
+        rc.bottom = rc.top + 1;
+        br = CreateSolidBrush(ThemeSidebarSeparatorColor(SidebarSeparatorState::Normal));
         FillRect((HDC)wparam, &rc, br);
         DeleteObject(br);
         return 1;
@@ -4692,14 +5059,8 @@ void TocCalibBar::UpdateTheme() {
     COLORREF colTxt = 0;
     ThemeSidebarColors(colBg, colTxt);
     SetColors(colTxt, colBg);
-    Button* btns[] = {jumpToc, done, cancel};
-    for (Button* b : btns) {
-        if (b) {
-            b->SetColors(colTxt, colBg);
-        }
-    }
     if (hwnd) {
-        DarkMode::setChildCtrlsTheme(hwnd);
+        if (UseDarkModeLib()) DarkMode::setDarkWndSafe(panel);
         InvalidateRect(hwnd, nullptr, TRUE);
     }
 }
@@ -4714,7 +5075,7 @@ int TocCalibBarDy(MainWindow* win) {
     if (!win || !win->hwndTocBox) {
         return 0;
     }
-    return DpiScale(win->hwndTocBox, 40);
+    return DpiScale(win->hwndTocBox, 42);
 }
 
 struct TocCalibSpinLayout {
@@ -4910,7 +5271,8 @@ static void TocCalibDrawIconBtn(HDC hdc, HWND hwnd, const RECT& rc, TbIcon icon,
 }
 
 static void TocCalibDrawPageGroup(HDC hdc, HWND hwnd, const RECT& prev, const RECT& field, const RECT& next, int value,
-                                  const char* label, bool allowEmpty, bool editing, bool enabled) {
+                                  const char* label, bool allowEmpty, bool editing, bool enabled,
+                                  bool needsConfirm = false) {
     TocCalibDrawSpinBtn(hdc, hwnd, prev, false, enabled);
     TocCalibDrawSpinBtn(hdc, hwnd, next, true, enabled);
     WCHAR buf[16];
@@ -4925,6 +5287,10 @@ static void TocCalibDrawPageGroup(HDC hdc, HWND hwnd, const RECT& prev, const RE
             text = buf;
             empty = false;
         }
+    }
+    if (empty && needsConfirm) {
+        text = L"?";
+        empty = false;
     }
     TocCalibDrawPageField(hdc, field, text, empty, editing, enabled);
 }
@@ -4956,9 +5322,9 @@ void TocCalibDrawColumns(HDC hdc, HWND hwnd, const RECT& rcRow, TocItem* item, M
     TocCalibDrawIconBtn(hdc, hwnd, L.locate, TbIcon::MapPin, true);
     TocCalibDrawIconBtn(hdc, hwnd, L.associate, TbIcon::Link, true);
     TocCalibDrawIconBtn(hdc, hwnd, L.merge, TbIcon::MergeUp, true);
-    TocCalibDrawIconBtn(hdc, hwnd, L.del, TbIcon::Close, true);
+    TocCalibDrawIconBtn(hdc, hwnd, L.del, TbIcon::Trash, true);
     TocCalibDrawPageGroup(hdc, hwnd, L.prPrev, L.prField, L.prNext, printed, printedLab, true,
-                          TocCalibEditingField(win, item, true), true);
+                          TocCalibEditingField(win, item, true), true, row && row->needsConfirm);
 }
 
 enum class TocCalibHit {
@@ -5961,13 +6327,16 @@ void ShowTocCalib(MainWindow* win) {
         return;
     }
     if (!win->tocCalibBar) {
+        DWORD tBar = ::GetTickCount();
         auto* w = new TocCalibBar();
         if (!w->Create(win)) {
             delete w;
             return;
         }
         win->tocCalibBar = w;
+        logf("TocCalib showBar create=%ums\n", ::GetTickCount() - tBar);
     }
+    DWORD tShow = ::GetTickCount();
     SetSidebarVisibility(win, true, gGlobalPrefs->showFavorites);
     HwndSetVisibility(win->tocCalibBar->hwnd, true);
     TocCalibUpdateTheme(win);
@@ -5976,6 +6345,7 @@ void ShowTocCalib(MainWindow* win) {
     FlushTocTreeWrapHeights(win);
     InvalidateTocTree(win);
     TocCalibEnterSinglePage(win);
+    logf("TocCalib showBar layout=%ums\n", ::GetTickCount() - tShow);
 }
 
 static const char* TocCalibDebugSourceName(ExtractedTocSource source) {
@@ -6028,6 +6398,257 @@ static void TocCalibWriteFlowDebug(MainWindow* win, TocCalibSession* s, const ch
         TocCalibDebugDumpEngineTree(f, tree->root->child, 1);
     }
     fclose(f);
+}
+
+// One ~40ms slice of the chunked body verification. Runs on the UI thread
+// so it can safely touch the engine; yields between slices to keep the UI
+// responsive and report progress.
+static void TocCalibVerifySlice(TocCalibVerifyJob* job);
+
+// Schedule the next verify slice with a short one-shot timer instead of a
+// self-reposting task: the pump gap lets input messages (drag!) through.
+static void TocCalibVerifyScheduleNext(TocCalibVerifyJob* job) {
+    if (job->timerWnd) {
+        SetTimer(job->timerWnd, 1, 25, nullptr);
+    } else {
+        uitask::Post(MkFunc0<TocCalibVerifyJob>(TocCalibVerifySlice, job), "TocCalibVerify");
+    }
+}
+
+static LRESULT CALLBACK TocCalibVerifyTimerProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == WM_NCCREATE) {
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)((CREATESTRUCTW*)lp)->lpCreateParams);
+    }
+    if (msg == WM_TIMER && wp == 1) {
+        KillTimer(hwnd, 1);
+        auto* job = (TocCalibVerifyJob*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+        if (job) {
+            TocCalibVerifySlice(job);
+        }
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
+static HWND TocCalibVerifyTimerWindow(TocCalibVerifyJob* job) {
+    static const wchar_t* kClass = L"SumatraTocCalibVerifyTimer";
+    static bool registered = false;
+    if (!registered) {
+        WNDCLASSEXW wc{};
+        wc.cbSize = sizeof(wc);
+        wc.lpfnWndProc = TocCalibVerifyTimerProc;
+        wc.hInstance = GetModuleHandleW(nullptr);
+        wc.lpszClassName = kClass;
+        registered = RegisterClassExW(&wc) != 0;
+    }
+    // Message-only window: receives WM_TIMER, never shown, no taskbar.
+    return CreateWindowExW(0, kClass, L"", WS_POPUP, 0, 0, 0, 0, HWND_MESSAGE, nullptr, GetModuleHandleW(nullptr), job);
+}
+
+static void TocCalibVerifySlice(TocCalibVerifyJob* job) {
+    DWORD t0 = ::GetTickCount();
+    TocCalibSession* s = job->s;
+    while (s && !job->aborted && job->row < job->total) {
+        if (job->bm25Building) {
+            // continue the incremental full-document index for this row
+            DWORD tBm = ::GetTickCount();
+            bool done = TocCalibBm25BuildChunk(s, job->pages, job->cache, &job->bm25, &job->bm25Page, 30);
+            job->bm25BuildMs += ::GetTickCount() - tBm;
+            if (!done) {
+                if (job->onProgress) {
+                    job->onProgress(job->row, job->total, job->ctx);
+                }
+                TocCalibVerifyScheduleNext(job);
+                return;
+            }
+            job->bm25Building = false;
+            TocCalibVerifyRowFull(s, job->row, job->pages, job->cache, &job->bm25);
+            job->nFull++;
+            job->row++;
+        } else {
+            TocCalibRowVerifyPhase ph = TocCalibVerifyRowNear(s, job->row, job->pages, job->cache);
+            if (ph == TocCalibRowVerifyPhase::NeedFull) {
+                job->nNeedFull++;
+                if (s->nPages > 800) {
+                    // no full-document pass for huge books; just demote
+                    TocCalibVerifyRowFull(s, job->row, job->pages, job->cache, &job->bm25);
+                    job->nFull++;
+                    job->row++;
+                } else if (job->bm25Building || job->bm25.nDocs == 0) {
+                    // start (or continue) the incremental full-document index;
+                    // it is document-wide and row-independent, so once the
+                    // build completes it is reused by every later NeedFull row
+                    // instead of being rebuilt from scratch each time.
+                    if (!job->bm25Building) {
+                        job->bm25Page = 1;
+                        job->bm25Building = true;
+                    }
+                    continue;
+                } else {
+                    TocCalibVerifyRowFull(s, job->row, job->pages, job->cache, &job->bm25);
+                    job->nFull++;
+                    job->row++;
+                }
+            } else {
+                if (ph == TocCalibRowVerifyPhase::Skip) {
+                    job->nSkip++;
+                } else {
+                    job->nNear++;
+                }
+                job->row++;
+            }
+        }
+        if (::GetTickCount() - t0 > 40) {
+            break;
+        }
+    }
+    if (!s || job->aborted) {
+        // session went away (tab closed / replaced); abandon silently
+        if (job->onDone) {
+            job->onDone(false, job->ctx);
+        }
+        if (job->timerWnd) {
+            DestroyWindow(job->timerWnd);
+        }
+        TocCalibBm25Free(&job->bm25);
+        TocCalibFreePageCache(job->cache);
+        delete job;
+        return;
+    }
+    if (job->onProgress) {
+        job->onProgress(job->row, job->total, job->ctx);
+    }
+    if (job->row < job->total) {
+        TocCalibVerifyScheduleNext(job);
+        return;
+    }
+    // Verification complete: solve + mark, commit the working outline and
+    // open the calibration bar (mirrors the tail of StartTocCalib).
+    job->s->verifyJob = nullptr;
+    MainWindow* win = job->win;
+    int nCached = 0;
+    for (Vec<EngineMupdfPageLine>* v : job->cache) {
+        if (v) {
+            nCached++;
+        }
+    }
+    logf("TocCalib verify stats rows=%d skip=%d near=%d needFull=%d full=%d bm25Build=%ums pagesCached=%d/%d elapsed=%ums\n",
+         job->total, job->nSkip, job->nNear, job->nNeedFull, job->nFull, job->bm25BuildMs, nCached, job->cache.Size(),
+         ::GetTickCount() - job->tStart);
+    DWORD tCommit = ::GetTickCount();
+    TocCalibSolveSession(s);
+    TocCalibMarkConfirm(s);
+    TocCalibWriteDebugIfCli(s);
+    DWORD tSolved = ::GetTickCount();
+    TocCalibWriteFlowDebug(win, s, "session before outline rewrite");
+    char* err = nullptr;
+    bool ok = EngineMupdfReplacePdfToc(s->engine, s->roots, &err);
+    str::Free(err);
+    DWORD tReplaced = ::GetTickCount();
+    logf("TocCalib async commit rows=%d solveMark=%ums replaceToc=%ums total=%ums\n", job->total, tSolved - tCommit,
+         tReplaced - tSolved, tReplaced - job->tStart);
+    if (ok) {
+        if (win->tocLoaded) {
+            ClearTocBox(win);
+        }
+        LoadTocTree(win);
+        TocCalibWriteFlowDebug(win, s, "engine tree after outline rewrite");
+    } else {
+        WindowTab* tab = win->CurrentTab();
+        if (tab && tab->tocCalib == s) {
+            tab->tocCalib = nullptr;
+            DeleteTocCalibSession(s);
+        }
+    }
+    DWORD tLoaded = ::GetTickCount();
+    if (ok) {
+        TocCalibBindToTree(win);
+        TocCalibWriteFlowDebug(win, s, "session after tree rebind");
+        ShowTocCalib(win);
+    }
+    DWORD tShown = ::GetTickCount();
+    logf("TocCalib async done ok=%d loadTree=%ums bind+show=%ums\n", (int)ok, tLoaded - tReplaced, tShown - tLoaded);
+    if (job->onDone) {
+        job->onDone(ok, job->ctx);
+    }
+    if (job->timerWnd) {
+        DestroyWindow(job->timerWnd);
+    }
+    TocCalibBm25Free(&job->bm25);
+    TocCalibFreePageCache(job->cache);
+    delete job;
+}
+
+bool StartTocCalibAsync(MainWindow* win, Vec<ExtractedTocItem*>& roots, EngineBase* engine, bool persistToDisk,
+                        TocCalibVerifyProgressFn onProgress, TocCalibVerifyDoneFn onDone, void* ctx) {
+    if (!win) {
+        DeleteExtractedTocItems(roots);
+        return false;
+    }
+    WindowTab* tab = win->CurrentTab();
+    if (!tab) {
+        DeleteExtractedTocItems(roots);
+        return false;
+    }
+    DeleteTocCalibSession(tab->tocCalib);
+    DWORD tSession = ::GetTickCount();
+    tab->tocCalib = TocCalibSessionFromExtracted(roots, engine, persistToDisk, true, /*deferVerify*/ true);
+    logf("TocCalib async session rows=%d build=%ums\n", tab->tocCalib ? tab->tocCalib->rows.Size() : 0,
+         ::GetTickCount() - tSession);
+    if (tab->tocCalib) {
+        // source mix: PdfLink rows are pinned and skip verification entirely,
+        // so this line explains a slow verify at a glance
+        int nPinned = 0, nBody = 0, nEst = 0, nUnknown = 0;
+        for (int i = 0; i < tab->tocCalib->rows.Size(); i++) {
+            ExtractedTocItem* it = tab->tocCalib->rows[i].item;
+            switch (it ? it->destinationSource : TocDestinationSource::Unknown) {
+                case TocDestinationSource::PdfLink:
+                    nPinned++;
+                    break;
+                case TocDestinationSource::BodyMatch:
+                    nBody++;
+                    break;
+                case TocDestinationSource::Estimated:
+                    nEst++;
+                    break;
+                default:
+                    nUnknown++;
+                    break;
+            }
+        }
+        logf("TocCalib async sources: pdfLink=%d bodyMatch=%d estimated=%d unknown=%d\n", nPinned, nBody, nEst,
+             nUnknown);
+    }
+    if (!tab->tocCalib || tab->tocCalib->rows.Size() < 1) {
+        DeleteTocCalibSession(tab->tocCalib);
+        tab->tocCalib = nullptr;
+        return false;
+    }
+    TocCalibSession* s = tab->tocCalib;
+    TocTree* cur = tab->ctrl ? tab->ctrl->GetToc() : nullptr;
+    TocCalibCloneOutline(cur, s->backup);
+    // Begin the TOC transaction: remember the engine's dirty flag so Cancel
+    // can restore it (same as StartTocCalib).
+    s->baselineModifiedToc = EngineMupdfIsPdfTocModified(engine);
+    auto* job = new TocCalibVerifyJob;
+    job->win = win;
+    job->s = s;
+    job->total = s->rows.Size();
+    job->tStart = ::GetTickCount();
+    job->onProgress = onProgress;
+    job->onDone = onDone;
+    job->ctx = ctx;
+    job->timerWnd = TocCalibVerifyTimerWindow(job);
+    s->verifyJob = job;
+    if (onProgress) {
+        onProgress(0, job->total, ctx);
+    }
+    // Calibration rewrites the rows; showing the stale tree meanwhile looks
+    // broken (rows half-bound, stale page fields). Hide it until the verify
+    // completes, when LoadTocTree + ShowTocCalib present the finished result.
+    ClearTocBox(win);
+    TocCalibVerifyScheduleNext(job);
+    return true;
 }
 
 bool StartTocCalib(MainWindow* win, Vec<ExtractedTocItem*>& roots, EngineBase* engine, bool persistToDisk,

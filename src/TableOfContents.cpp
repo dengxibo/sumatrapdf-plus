@@ -39,6 +39,7 @@
 #include "Commands.h"
 #include "AiToc.h"
 #include "ExtractPdfToc.h"
+#include "TocExtraction.h"
 #include "TocCalib.h"
 #include "AppTools.h"
 #include "TableOfContents.h"
@@ -2040,16 +2041,12 @@ bool HandlePdfTocEditCommand(MainWindow* win, int commandId) {
 // clang-format off
 static MenuDef menuDefContextToc[] = {
     {
+        _TRN("Extract Table of Contents"),
+        CmdExtractPdfToc,
+    },
+    {
         _TRN("Calibrate TOC Pages"),
         CmdPdfTocCalibrate,
-    },
-    {
-        _TRN("AI Recognize Table of Contents"),
-        CmdAiRecognizePdfToc,
-    },
-    {
-        _TRN("Extract Table of Contents Locally"),
-        CmdExtractPdfToc,
     },
     {
         _TRN("Find TOC Item in Body"),
@@ -2336,7 +2333,7 @@ static void TocContextMenu(ContextMenuEvent* ev) {
             ExecutePdfTocEditMany(win, PdfTocEditAction::Demote);
             break;
         case CmdExtractPdfToc:
-            HandleExtractPdfTocCommand(win);
+            ShowTocExtraction(win);
             break;
         case CmdAiRecognizePdfToc:
             StartAiTocProofOfConcept(win);
@@ -3109,6 +3106,13 @@ static void DrawTocItemHighlight(TreeView::CustomDrawEvent* ev, MainWindow* win)
 // While the user drags the TOC scrollbar thumb, skip per-item custom draw so
 // Win32 can scroll natively; repaint with full styling when the drag ends.
 static HWND gTocFastScrollHwnd = nullptr;
+// Time of the most recent SB_THUMBTRACK. Some themed TreeViews never send the
+// release notification (SB_ENDSCROLL), which used to leave this optimization
+// stuck on: every later custom draw bailed out and calibration columns /
+// selection fills vanished until another scroll happened to clear it. The
+// timestamp lets the painter recover: thumb-track messages keep arriving while
+// the drag moves, so a stale timestamp means the drag is over.
+static DWORD gTocFastScrollTickMs = 0;
 
 static bool TocIsEditingItem(MainWindow* win, HTREEITEM hItem);
 
@@ -3142,7 +3146,15 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
     // the system-blue selected/hot row in themed TOCs.
     if (gTocFastScrollHwnd && gTocFastScrollHwnd == ev->treeView->hwnd && !IsSidebarSplitterLiveDrag() &&
         !EngineIsProgressiveEbookLoading(engine)) {
-        return;
+        constexpr DWORD kFastScrollStaleMs = 250;
+        if (::GetTickCount() - gTocFastScrollTickMs <= kFastScrollStaleMs) {
+            return;
+        }
+        // No thumb-track for a while: the drag ended but the release
+        // notification was lost. Clear the stale state and repaint the rows
+        // that were drawn natively (without calibration columns) meanwhile.
+        gTocFastScrollHwnd = nullptr;
+        InvalidateRect(ev->treeView->hwnd, nullptr, TRUE);
     }
 
     if (cd->dwDrawStage == CDDS_PREPAINT) {
@@ -4622,7 +4634,7 @@ static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         POINT pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
         bool inHit = TocEmptyExtractHitTest(win, hwnd, pt);
         if (inHit) {
-            HandleExtractPdfTocCommand(win);
+            ShowTocExtraction(win);
             return 0;
         }
     }
@@ -4654,6 +4666,7 @@ static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         WORD code = LOWORD(wp);
         if (code == SB_THUMBTRACK && !IsSidebarSplitterLiveDrag()) {
             gTocFastScrollHwnd = hwnd;
+            gTocFastScrollTickMs = ::GetTickCount();
         } else {
             // SB_THUMBPOSITION is the release/final-position notification.
             // Some themed TreeViews don't follow it with SB_ENDSCROLL, which

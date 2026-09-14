@@ -327,6 +327,13 @@ void UpdateThemeCommandLabels() {
     }
 }
 
+// bumped whenever the resolved theme changes; see ThemeEpoch() in Theme.h
+static int gThemeEpoch = 0;
+
+int ThemeEpoch() {
+    return gThemeEpoch;
+}
+
 void SetThemeByIndex(int themeIdx) {
     ReportIf((themeIdx < 0) || (themeIdx >= gThemeCount));
     if (themeIdx >= gThemeCount) {
@@ -344,6 +351,9 @@ void SetThemeByIndex(int themeIdx) {
     gLastSystemDark = systemDark;
     int resolvedThemeIdx = GetResolvedThemeIndex();
     bool themeChanged = (prevResolvedThemeIdx != resolvedThemeIdx) || (prevThemeIdx != themeIdx);
+    if (themeChanged) {
+        gThemeEpoch++;
+    }
     str::ReplaceWithCopy(&gGlobalPrefs->theme, gCurrentTheme->name);
     if (UseDarkModeLib()) {
         if (IsSystemTheme()) {

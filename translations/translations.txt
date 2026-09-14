@@ -22644,7 +22644,6 @@ pl:Ustaw motyw 'Dark-Black'
 ru:Установить тему 'Dark-Black'
 sk:Nastaviť motív 'Dark-Black'
 tw:設定成 'Dark-Black' 主題
-
 :Show &Bookmarks
 am:Ցուցադրել &Էջանիշերը
 ar:اظهار &قوائم العناوين
@@ -32385,50 +32384,36 @@ tw:套用
 uk:Застосувати
 uz:Qo'llash
 vn:Áp dụng
-
-
 :&Reading Font
 cn:字体(&R)
 tw:字體(&R)
-
 :&Western Body Font
 cn:西文字体(&W)
 tw:西文字體(&W)
-
 :&CJK Body Font
 cn:中文字体(&C)
 tw:中文字體(&C)
-
-
 :&Reading Font
 cn:字体(&R)
 tw:字體(&R)
-
 :&Western Body Font
 cn:西文字体(&W)
 tw:西文字體(&W)
-
 :&CJK Body Font
 cn:中文字体(&C)
 tw:中文字體(&C)
-
-
 :&Reading Font
 cn:字体(&R)
 tw:字體(&R)
-
 :&Western Body Font
 cn:西文字体(&W)
 tw:西文字體(&W)
-
 :&CJK Body Font
 cn:中文字体(&C)
 tw:中文字體(&C)
-
 :&System Font
 cn:系统字体(&S)
 tw:系統字體(&S)
-
 :Add Root PDF TOC Item
 am:Ավելացնել արմատային տարր PDF բովանդակության ցանկում
 br:Adicionar item raiz ao sumário do PDF
@@ -32621,522 +32606,787 @@ nl:Dit PDF-inhoudsopgave-item en alle subitems verwijderen?
 pl:Usunąć ten element spisu treści PDF i wszystkie jego elementy podrzędne?
 sk:Odstrániť túto položku obsahu PDF a všetky jej podradené položky?
 tw:刪除這個 PDF 目錄項目及其所有子項目？
-
 :Delete this TOC item? Child items will be moved up one level.
 cn:删除这个目录项？其子项将上提一级。
 tw:刪除這個目錄項目？其子項目將上提一級。
-
-
 :&Reading Font
 cn:字体(&R)
 tw:字體(&R)
-
 :&Western Body Font
 cn:西文字体(&W)
 tw:西文字體(&W)
-
 :&CJK Body Font
 cn:中文字体(&C)
 tw:中文字體(&C)
-
 :&System Font
 cn:系统字体(&S)
 tw:系統字體(&S)
-
 :Reset Font Si&ze to Default
 cn:恢复默认字号(&Z)
 tw:恢復預設字號(&Z)
-
 :Ebook Font Size: Reset to Default
 cn:电子书字号：恢复默认
 tw:電子書字號：恢復預設
-
 :Match Case
 cn:匹配大小写
 tw:符合大小寫
-
 :Match Whole Word
 cn:全词匹配
 tw:全字匹配
-
 :Read aloud speed
 cn:朗读速度
 tw:朗讀速度
-
 :English voice:
 cn:英文语音：
 tw:英文語音：
-
 :Chinese voice:
 cn:中文语音：
 tw:中文語音：
-
 :Reset to 1.00x
 cn:重置为 1.00x
 tw:重設為 1.00x
-
 :0.25x - 2.00x; buttons change by 0.05x
 cn:0.25x - 2.00x；按钮每次调整 0.05x
 tw:0.25x - 2.00x；按鈕每次調整 0.05x
-
 :Enter a speed from 0.25x to 2.00x.
 cn:请输入 0.25x 到 2.00x 之间的速度。
 tw:請輸入 0.25x 到 2.00x 之間的速度。
-
 :Custom...
 cn:自定义...
 tw:自訂...
-
 :Applying theme or document colors, re-pagination in progress…
 cn:正在应用主题或文档颜色，全书重新分页…
 tw:正在套用主題或文件顏色，全書重新分頁…
-
 :Applying theme or document colors… chapter %d / %d
 cn:正在应用主题或文档颜色…第 %d / %d 章
 tw:正在套用主題或文件顏色…第 %d / %d 章
-
 :Applying document colors, re-rendering pages…
 cn:正在应用文档颜色，重新渲染页面…
 tw:正在套用文件顏色，重新渲染頁面…
-
 :Adjusting font size, reformatting pages…
 cn:正在调整字号，重新排版…
 tw:正在調整字級，重新排版…
-
 :Applying ebook font, reloading…
 cn:正在应用字体，重新加载…
 tw:正在套用字體，重新載入…
-
 :Applying ebook font, reformatting pages…
 cn:正在应用字体，重新排版…
 tw:正在套用字體，重新排版…
-
 :Adjusting ebook layout… chapter %d / %d
 cn:正在调整电子书版式…第 %d / %d 章
 tw:正在調整電子書版式…第 %d / %d 章
-
 :Convert to &PDF
 cn:转换为 PDF(&P)
 tw:轉換為 PDF(&P)
-
 :Convert Image to PDF
 cn:将图像转换为 PDF
 tw:將圖像轉換為 PDF
-
 :Auto OCR
 cn:自动 OCR
 tw:自動 OCR
-
 :Auto OCR (on): scanned pages are recognized for select and search
 cn:自动 OCR（开）：扫描页可选择和搜索
 tw:自動 OCR（開）：掃描頁可選取和搜尋
-
 :Auto OCR (off): turn on to recognize scanned pages as you view them
 cn:自动 OCR（关）：打开后翻页即识别扫描页
 tw:自動 OCR（關）：開啟後翻頁即識別掃描頁
-
 :OCR region
 cn:框选识别
 tw:框選識別
-
 :OCR Region
 cn:框选识别
 tw:框選識別
-
 :OCR Current Page
 cn:识别当前页
 tw:識別目前頁
-
 :OCR All Pages
 cn:全文识别
 tw:全文識別
-
 :Toggle Auto OCR
 cn:开关自动 OCR
 tw:開關自動 OCR
-
 :Cancel OCR
 cn:取消 OCR
 tw:取消 OCR
-
 :Paragraph-merged copy
 cn:段落合并复制
 tw:段落合併複製
-
 :Save as searchable PDF...
 cn:保存为可搜索 PDF...
 tw:儲存為可搜尋 PDF...
-
 :Save as searchable PDF
 cn:保存为可搜索 PDF
 tw:儲存為可搜尋 PDF
-
 :Save as Searchable PDF
 cn:保存为可搜索 PDF
 tw:儲存為可搜尋 PDF
-
 :Save as searchable PDF is only available for PDF files.
 cn:仅 PDF 文件可保存为可搜索 PDF。
 tw:僅 PDF 檔可儲存為可搜尋 PDF。
-
 :Text Annotation (Ctrl+click to lock)
 cn:文本批注（Ctrl+点击锁定）
 tw:文字註解（Ctrl+點選鎖定）
-
 :Rectangle Annotation (Ctrl+click to lock)
 cn:矩形批注（Ctrl+点击锁定）
 tw:矩形註解（Ctrl+點選鎖定）
-
 :Circle Annotation (Ctrl+click to lock)
 cn:圆形批注（Ctrl+点击锁定）
 tw:圓形註解（Ctrl+點選鎖定）
-
 :Line Annotation (Ctrl+click to lock)
 cn:直线批注（Ctrl+点击锁定）
 tw:直線註解（Ctrl+點選鎖定）
-
 :Ink Annotation (Ctrl+click to lock)
 cn:墨迹批注（Ctrl+点击锁定）
 tw:墨跡註解（Ctrl+點選鎖定）
-
 :Stamp Annotation (Ctrl+click to lock)
 cn:图章（Ctrl+点击锁定）
 tw:圖章（Ctrl+點選鎖定）
-
 :OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
 cn:未找到 OCR 模型。\n请将 onnxruntime.dll、det.onnx、rec.onnx 和 keys.txt 放到：\n%s
 tw:找不到 OCR 模型。\n請將 onnxruntime.dll、det.onnx、rec.onnx 和 keys.txt 放到：\n%s
-
 :Scanning…
 cn:正在识别…
 tw:正在識別…
-
 :Scanning… %d / %d
 cn:正在识别… %d / %d
 tw:正在識別… %d / %d
-
 :Saved.
 cn:已保存。
 tw:已儲存。
-
 :Copied.
 cn:已复制。
 tw:已複製。
-
 :Cancelled.
 cn:已取消。
 tw:已取消。
-
 :Ready to search
 cn:可以搜索了
 tw:可以搜尋了
-
 :Could not save searchable PDF.
 cn:无法保存可搜索 PDF。
 tw:無法儲存可搜尋 PDF。
-
 :Could not recognize text on this page.
 cn:无法识别此页文字。
 tw:無法識別此頁文字。
-
 :OCR is only available for PDF and similar documents.
 cn:OCR 仅适用于 PDF 及同类文档。
 tw:OCR 僅適用於 PDF 及同類文件。
-
 :OCR is not available for this document type.
 cn:此文档类型不支持 OCR。
 tw:此文件類型不支援 OCR。
-
 :No page to recognize.
 cn:没有可识别的页面。
 tw:沒有可識別的頁面。
-
 :Selection too small.
 cn:选区太小。
 tw:選取範圍太小。
-
 :No OCR text to save. Recognize pages first.
 cn:没有可保存的 OCR 文字。请先识别页面。
 tw:沒有可儲存的 OCR 文字。請先識別頁面。
-
 :Extract Table of Contents
-cn:提取目录书签
-tw:提取目錄書籤
-
+cn:提取目录
+de:Inhaltsverzeichnis extrahieren
+es:Extraer la tabla de contenidos
+fr:Extraire la table des matières
+it:Estrai il sommario
+ja:目次を抽出
+kr:목차 추출
+pt:Extrair sumário
+ru:Извлечь оглавление
+tw:擷取目錄
+:Importing TOC: calibrating bookmark destinations… %d / %d
+cn:正在导入目录：校准书签位置… %d / %d
+tw:正在匯入目錄：校準書籤位置… %d / %d
+:Scanning contents pages… %d / %d
+cn:正在扫描目录页… %d / %d
+de:Verzeichnisseiten werden gescannt… %d / %d
+es:Escaneando páginas del índice… %d / %d
+fr:Analyse des pages du sommaire… %d / %d
+ja:目次ページを走査中… %d / %d
+kr:목차 페이지 스캔 중… %d / %d
+ru:Сканирование страниц оглавления… %d / %d
+tw:正在掃描目錄頁… %d / %d
+:Calibrating bookmark targets… %d / %d
+cn:正在校准书签目标… %d / %d
+de:Lesezeichenziele werden kalibriert… %d / %d
+es:Calibrando destinos de marcadores… %d / %d
+fr:Calibrage des cibles de signets… %d / %d
+ja:しおりターゲットを校正中… %d / %d
+kr:책갈피 대상 보정 중… %d / %d
+ru:Калибровка целей закладок… %d / %d
+tw:正在校準書籤目標… %d / %d
+:Analyzing body pages… %d / %d
+cn:正在分析正文页… %d / %d
+de:Textseiten werden analysiert… %d / %d
+es:Analizando páginas del cuerpo… %d / %d
+fr:Analyse des pages du corps… %d / %d
+ja:本文ページを解析中… %d / %d
+kr:본문 페이지 분석 중… %d / %d
+ru:Анализ страниц основного текста… %d / %d
+tw:正在分析正文頁… %d / %d
+:Choose an extraction method:
+cn:请选择提取方式：
+tw:請選擇擷取方式：
+:Confirm Sending TOC Pages
+cn:确认发送目录页
+tw:確認傳送目錄頁
+:Needs internet: only TOC page images or heading candidates are uploaded.
+cn:需联网上传：仅发送目录页图片或标题候选文本。
+tw:需連線上傳：僅傳送目錄頁圖片或標題候選文字。
+:Processed locally and fast. Nothing is uploaded.
+cn:本地快速处理，全程无需上传文件。
+tw:本機快速處理，全程無需上傳檔案。
+:Extracts the structure from printed TOC pages, or from the body text structure.\nRecognized by the web AI; slower than local extraction.
+cn:支持从印刷版目录页提取结构，也可从中文正文文本结构提取内容生成目录。\n由网页版 AI 识别，处理速度相对本地识别较慢。
+tw:支援從印刷版目錄頁擷取結構，也可從中文正文文字結構擷取內容產生目錄。\n由網頁版 AI 辨識，處理速度相對本地辨識較慢。
+:Analyzes text, heading levels, numbering and link targets to build the TOC locally and fast.\nBest for official-document style PDFs; works even better when the PDF already has native text and a clickable TOC.
+cn:分析文档中的文字、标题层级、编号和跳转链接，本地快速生成目录。\n特别适用于公文类文档；对已包含原生文字且具有可跳转目录的文档，识别效果更佳。
+tw:分析文件中的文字、標題層級、編號和跳轉連結，在本機快速產生目錄。\n特別適用於公文類文件；對已包含原生文字且具有可跳轉目錄的文件，辨識效果更佳。
+:AI Recognition for Printed TOC and Body Structure
+cn:AI 识别印刷目录与正文结构
+de:KI-Erkennung für gedrucktes Verzeichnis und Textstruktur
+es:Reconocimiento IA de índice impreso y estructura del texto
+fr:Reconnaissance IA du sommaire imprimé et de la structure du texte
+ja:印刷目次と本文構造の AI 認識
+kr:인쇄 목차·본문 구조 AI 인식
+ru:ИИ-распознавание печатного оглавления и структуры текста
+tw:AI 辨識印刷目錄與正文結構
+:Generate TOC From Document Structure
+cn:从文档结构生成目录
+de:Inhaltsverzeichnis aus Dokumentstruktur erstellen
+es:Generar índice desde la estructura del documento
+fr:Générer le sommaire depuis la structure du document
+ja:文書構造から目次を生成
+kr:문서 구조에서 목차 생성
+ru:Создать оглавление по структуре документа
+tw:從文件結構產生目錄
+:Online AI Recognition
+cn:联网识别
+de:Online-KI-Erkennung
+es:Reconocimiento IA en línea
+fr:Reconnaissance IA en ligne
+ja:オンライン AI 認識
+kr:온라인 AI 인식
+ru:Онлайн-распознавание ИИ
+tw:網路辨識
+:Local Extraction
+cn:本地提取
+de:Lokale Extraktion
+es:Extracción local
+fr:Extraction locale
+ja:ローカル抽出
+kr:로컬 추출
+ru:Локальное извлечение
+tw:本地擷取
+:Clipboard is temporarily unreadable. Retrying; you can also copy the AI reply again.
+cn:剪贴板暂时不可读，正在重试。也可以再次复制 AI 回复。
+tw:剪貼簿暫時不可讀，正在重試。也可以再次複製 AI 回覆。
+:Cannot watch the clipboard. Close the window and try again. The prompt was not sent.
+cn:无法监听剪贴板，请关闭窗口后重试。提示词尚未发送。
+tw:無法監聽剪貼簿，請關閉視窗後重試。提示詞尚未傳送。
+:Failed to save images. Check disk space and try again.
+cn:图片保存失败，请检查磁盘空间后重试。
+tw:圖片儲存失敗，請檢查磁碟空間後重試。
+:Failed to render the TOC page images. Try again or adjust the pages.
+cn:目录页图片生成失败，请重试或调整页码。
+tw:目錄頁圖片產生失敗，請重試或調整頁碼。
+:Cannot create the image folder. Check disk space and try again.
+cn:无法创建图片文件夹，请检查磁盘空间后重试。
+tw:無法建立圖片資料夾，請檢查磁碟空間後重試。
+:Automatic send incomplete. Paste the clipboard content into the AI input box and send.
+cn:自动发送未完成，可在 AI 输入框粘贴剪贴板内容后发送。
+tw:自動傳送未完成，可在 AI 輸入框貼上剪貼簿內容後傳送。
+:Automatic send incomplete: the heading-candidates prompt is on the clipboard. Paste it into the AI input box and send.
+cn:自动发送未完成：标题候选提示词已放入剪贴板，可在 AI 输入框粘贴后发送。
+tw:自動傳送未完成：標題候選提示詞已放入剪貼簿，可在 AI 輸入框貼上後傳送。
+:The AI page opened, but the initial message could not be sent.
+cn:AI 网页已打开，但无法发送初始化消息。
+tw:AI 網頁已開啟，但無法傳送初始化訊息。
+:Cannot open the configured AI page.
+cn:无法打开已配置的 AI 网页。
+tw:無法開啟已設定的 AI 網頁。
+:Cannot access the clipboard. Please retry.
+cn:无法访问剪贴板，请重试。
+tw:無法存取剪貼簿，請重試。
+:Unable to paste the AI prompt into the browser.
+cn:无法将 AI 提示词粘贴到浏览器中。
+tw:無法將 AI 提示詞貼上到瀏覽器中。
+:Choose between 1 and 20 PDF pages.
+cn:选择 1 到 20 个 PDF 页码。
+tw:請選擇 1 到 20 個 PDF 頁碼。
+:AI returned invalid JSON.
+cn:AI 返回的 JSON 无效。
+tw:AI 傳回的 JSON 無效。
+:TOC import failed. Copy the full AI TOC JSON and try again.
+cn:目录导入失败，请复制完整的 AI 目录 JSON 后重试。
+tw:目錄匯入失敗，請複製完整的 AI 目錄 JSON 後重試。
+:TOC import not finished. Copy the AI reply again to retry.
+cn:目录导入未完成，可再次复制 AI 回复重试。
+tw:目錄匯入未完成，可再次複製 AI 回覆重試。
+:TOC import finished.
+cn:目录导入完成。
+tw:目錄匯入完成。
+:Importing TOC: restoring titles and page numbers…
+cn:正在导入目录：还原标题与页码…
+tw:正在匯入目錄：還原標題與頁碼…
+:Importing TOC: calibrating bookmark destinations…
+cn:正在导入目录：校准书签位置…
+tw:正在匯入目錄：校準書籤位置…
+:Importing TOC: arranging bookmark levels…
+cn:正在导入目录：整理书签层级…
+tw:正在匯入目錄：整理書籤層級…
+:Importing TOC: parsing the AI reply…
+cn:正在导入目录：解析 AI 返回内容…
+tw:正在匯入目錄：解析 AI 回傳內容…
+:Sending prompt…
+cn:正在发送提示词…
+tw:正在傳送提示詞…
+:Resending TOC pages…
+cn:正在重新发送目录页…
+tw:正在重新傳送目錄頁…
+:Resending body structure…
+cn:正在重新发送正文结构…
+tw:正在重新傳送正文結構…
+:Preparing %d TOC page images for sending…
+cn:正在准备 %d 张目录图片并发送…
+de:%d Verzeichnisseiten werden zum Senden vorbereitet…
+es:Preparando %d imágenes de páginas del índice para enviar…
+fr:Préparation de l’envoi de %d images de pages de sommaire…
+ja:目次ページ画像 %d 枚を送信準備中…
+kr:목차 페이지 이미지 %d장을 보낼 준비 중…
+ru:Подготовка к отправке изображений страниц оглавления (%d)…
+tw:正在準備 %d 張目錄圖片並傳送…
+:Send
+cn:发送
+tw:傳送
+:Resend
+cn:重新发送
+de:Erneut senden
+es:Reenviar
+fr:Renvoyer
+ja:再送信
+kr:다시 보내기
+ru:Отправить снова
+tw:重新傳送
+:Page %d
+cn:第 %d 页
+de:Seite %d
+es:Página %d
+fr:Page %d
+ja:%d ページ
+kr:%d 페이지
+ru:Страница %d
+tw:第 %d 頁
+:Send TOC Pages
+cn:发送目录页
+de:Verzeichnisseiten senden
+es:Enviar páginas del índice
+fr:Envoyer les pages du sommaire
+ja:目次ページを送信
+kr:목차 페이지 보내기
+ru:Отправить страницы оглавления
+tw:傳送目錄頁
+:The selected %d TOC page images will be sent to the configured web AI.\n\nPlease verify the pages and content before sending.
+cn:将把选中的 %d 页目录图片发送到当前配置的网页版 AI。\n\n请确认页码和内容无误后发送。
+tw:將把選取的 %d 頁目錄圖片傳送到目前設定的網頁版 AI。\n\n請確認頁碼和內容無誤後傳送。
+:Enter the PDF pages of the TOC; matching thumbnails will be checked. You can also click thumbnails directly.
+cn:请输入目录所在的 PDF 页码，缩略图将同步勾选；也可直接点选缩略图。
+tw:請輸入目錄所在的 PDF 頁碼，縮圖將同步勾選；也可直接點選縮圖。
+:The entered PDF pages will be rendered and queued for sending.
+cn:将按输入的 PDF 页码逐页取图并等待发送。
+tw:將按輸入的 PDF 頁碼逐頁取圖並等待傳送。
+:Page numbers and the thumbnails below are in sync.
+cn:页码与下方缩略图已同步。
+tw:頁碼與下方縮圖已同步。
+:e.g. 3-4, 7
+cn:例如：3-4, 7
+tw:例如：3-4, 7
+:TOC pages (PDF page numbers, not printed page numbers)
+cn:目录所在的 PDF 页码（非书本印刷页码）
+tw:目錄所在的 PDF 頁碼（非書本印刷頁碼）
+:✓ Likely TOC pages found. Please confirm the selection.
+cn:✓ 已找到疑似目录页，请确认选择。
+tw:✓ 已找到疑似目錄頁，請確認選擇。
+:No obvious body headings detected. Enter the TOC PDF page numbers below.
+cn:未检测到明显的正文标题，可在下方手动填写目录页页码。
+tw:未偵測到明顯的正文標題，可在下方手動填寫目錄頁頁碼。
+:Scan canceled.
+cn:已取消扫描。
+tw:已取消掃描。
+:Scan finished: %d likely headings found. Opening the AI page…
+cn:扫描完成，发现 %d 个疑似标题，正在打开 AI 网页…
+tw:掃描完成，發現 %d 個疑似標題，正在開啟 AI 網頁…
+:Analyzing the first pages for a printed TOC…
+cn:正在分析文档前段的印刷目录页…
+tw:正在分析文件前段的印刷目錄頁…
+:Scanning document structure
+cn:正在扫描文档结构
+tw:正在掃描文件結構
+:Scanning for TOC pages
+cn:正在扫描目录页
+tw:正在掃描目錄頁
+:Waiting for the AI reply. Click Copy when it is ready…
+cn:等待 AI 回复并复制…
+tw:等待 AI 回覆並複製…
+:The AI is recognizing the printed TOC.\r\nWhen it finishes, click Copy under the AI reply; the app reads it and imports the TOC.
+cn:AI 正在识别印刷目录。\r\n完成后，请在 AI 回复中点击“复制”，本程序会自动读取结果并导入目录。
+tw:AI 正在辨識印刷目錄。\r\n完成後，請在 AI 回覆中點擊「複製」，本程式會自動讀取結果並匯入目錄。
+:TOC pages sent to the web AI
+cn:目录页已发送到网页版 AI
+tw:目錄頁已傳送到網頁版 AI
+:The AI is organizing a TOC from the full-text structure.\r\nWhen it finishes, click Copy under the AI reply; the app reads it and imports the TOC.
+cn:AI 正在根据全文结构整理目录。\r\n完成后，请在 AI 回复中点击“复制”，本程序会自动读取结果并导入目录。
+tw:AI 正在根據全文結構整理目錄。\r\n完成後，請在 AI 回覆中點擊「複製」，本程式會自動讀取結果並匯入目錄。
+:The AI is organizing a TOC from the full-text structure.\r\nWhen it finishes, click Copy under the AI reply; the app reads it and imports the TOC.\r\nOnly locally extracted heading candidates are sent — the PDF itself is not uploaded.
+cn:AI 正在根据全文结构整理目录。\r\n完成后，请在 AI 回复中点击“复制”，本程序会自动读取结果并导入目录。\r\n仅发送本地提取的结构化标题候选，不上传整份 PDF。
+tw:AI 正在根據全文結構整理目錄。\r\n完成後，請在 AI 回覆中點擊「複製」，本程式會自動讀取結果並匯入目錄。\r\n僅傳送本機擷取的結構化標題候選，不上傳整份 PDF。
+:Body structure sent to the web AI
+cn:正文结构已发送到网页版 AI
+tw:正文結構已傳送到網頁版 AI
+:The TOC page images and prompt are on the clipboard. Paste and send them in the AI page.\r\nWhen the reply is ready, click Copy under the AI reply; the app reads it and imports the TOC.
+cn:目录页图片与提示词已放入剪贴板，可在 AI 网页粘贴发送。\r\n回复完成后，点击 AI 回复下方的“复制”，本程序会自动读取结果并导入目录。
+tw:目錄頁圖片與提示詞已放入剪貼簿，可在 AI 網頁貼上傳送。\r\n回覆完成後，點擊 AI 回覆下方的「複製」，本程式會自動讀取結果並匯入目錄。
+:The heading-candidates prompt is on the clipboard. Paste and send it in the AI page.\r\nWhen the reply is ready, click Copy under the AI reply; the app reads it and imports the TOC.
+cn:标题候选提示词已放入剪贴板，可在 AI 网页粘贴发送。\r\n回复完成后，点击 AI 回复下方的“复制”，本程序会自动读取结果并导入目录。
+tw:標題候選提示詞已放入剪貼簿，可在 AI 網頁貼上傳送。\r\n回覆完成後，點擊 AI 回覆下方的「複製」，本程式會自動讀取結果並匯入目錄。
+:Automatic send incomplete
+cn:自动发送未完成
+tw:自動傳送未完成
+:Scans the full text and extracts heading candidates locally; the AI then organizes them into a TOC.
+cn:扫描全文，在本地提取疑似标题，再由 AI 整理目录结构。
+tw:掃描全文，在本機擷取疑似標題，再由 AI 整理目錄結構。
+:Specify TOC Pages
+cn:手工指定目录页
+de:Verzeichnisseiten angeben
+es:Indicar páginas del índice
+fr:Indiquer les pages du sommaire
+ja:目次ページを指定
+kr:목차 페이지 지정
+ru:Указать страницы оглавления
+tw:手動指定目錄頁
+:Generate TOC From Body
+cn:从正文生成目录
+de:Inhaltsverzeichnis aus dem Fließtext erstellen
+es:Generar índice desde el cuerpo
+fr:Générer le sommaire depuis le corps
+ja:本文構造から目次を生成
+kr:본문 구조에서 목차 생성
+ru:Создать оглавление по структуре текста
+tw:從正文產生目錄
+:This document may not have a separate printed TOC.\r\nYou can generate one from the body structure or specify the TOC pages manually.
+cn:这份文档可能没有独立的印刷目录。\r\n你可以从正文结构生成目录，或手动指定目录页。
+tw:這份文件可能沒有獨立的印刷目錄。\r\n你可以從正文結構產生目錄，或手動指定目錄頁。
+:No printed TOC found
+cn:未找到印刷目录页
+de:Kein gedrucktes Inhaltsverzeichnis gefunden
+es:No se encontró un índice impreso
+fr:Aucun sommaire imprimé trouvé
+ja:印刷目次が見つかりません
+kr:인쇄된 목차를 찾을 수 없음
+ru:Печатное оглавление не найдено
+tw:未找到印刷目錄頁
+:Import TOC
+cn:导入目录
+de:Inhaltsverzeichnis importieren
+es:Importar índice
+fr:Importer le sommaire
+ja:目次を読み込む
+kr:목차 가져오기
+ru:Импорт оглавления
+tw:匯入目錄
+:AI Processing
+cn:AI 处理
+de:KI-Verarbeitung
+es:Procesamiento IA
+fr:Traitement IA
+ja:AI 処理
+kr:AI 처리
+ru:Обработка ИИ
+tw:AI 處理
+:Prepare Content
+cn:准备内容
+de:Inhalt vorbereiten
+es:Preparar contenido
+fr:Préparer le contenu
+ja:コンテンツを準備
+kr:내용 준비
+ru:Подготовка содержимого
+tw:準備內容
 :Extracting bookmarks… %d / %d
 cn:正在提取书签… %d / %d
 tw:正在提取書籤… %d / %d
-
 :Replace the existing PDF bookmarks with extracted headings?
 cn:用提取的标题替换现有 PDF 书签？
 tw:用提取的標題取代現有 PDF 書籤？
-
 :Bookmark extraction cancelled.
 cn:已取消提取书签。
 tw:已取消提取書籤。
-
 :This file has no text layer. Recognize the pages first, then extract bookmarks.
 cn:当前文件没有文字层。请先识别文字后再提取书签。
 tw:目前檔案沒有文字層。請先識別文字後再提取書籤。
-
 :No headings found. Recognize the pages first, then try again.
 cn:没有找到标题。请先识别文字后再试。
 tw:找不到標題。請先識別文字後再試。
-
 :Could not write the PDF table of contents.
 cn:无法写入 PDF 目录。
 tw:無法寫入 PDF 目錄。
-
 :Extracted %d bookmarks.
 cn:已提取 %d 条书签。
 tw:已提取 %d 條書籤。
-
 :Unable to extract bookmarks
 cn:无法提取书签
 tw:無法提取書籤
-
 :This file has no text layer. Recognize all pages and save a searchable PDF?
 cn:当前文件没有文字层。是否识别全部页面并另存为可搜索文件？
 tw:目前檔案沒有文字層。是否識別全部頁面並另存為可搜尋檔案？
-
 :Not now
 cn:暂不
 tw:暫不
-
 :No bookmarks
 cn:暂无书签
 tw:暫無書籤
-
 :This document has too little text to extract bookmarks. OCR scanned pages first.
 cn:文档文字太少，无法提取书签。请先对扫描页做 OCR。
 tw:文件文字太少，無法提取書籤。請先對掃描頁做 OCR。
-
 :No headings found. OCR scanned pages first, then try again.
 cn:没有找到标题。请先识别扫描页，然后再试。
 tw:找不到標題。請先識別掃描頁，然後再試。
-
 :This document looks like a scan.
 cn:这份文档看起来是扫描件。
 tw:這份文件看起來是掃描件。
-
 :There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
 cn:文字太少，无法提取书签。是否对全部页面做 OCR，并保存为可全文搜索的 PDF？
 tw:文字太少，無法提取書籤。是否對全部頁面做 OCR，並儲存為可全文搜尋的 PDF？
-
 :Don't save
 cn:不保存
 tw:不儲存
-
 :This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
 cn:当前文件没有文字层。识别全部页面后即可提取目录。可另存为可搜索 PDF，或不保存、仅识别后提取。
 tw:目前檔案沒有文字層。識別全部頁面後即可提取目錄。可另存為可搜尋 PDF，或不儲存、僅識別後提取。
-
 :Recognize all pages and save
 cn:全文识别并保存
 tw:全文識別並儲存
-
 :This PDF already has searchable text. Replace it with newly recognized text?
 cn:这个 PDF 已有可搜索文字。要用新识别的文字覆盖吗？
 tw:這個 PDF 已有可搜尋文字。要用新識別的文字覆蓋嗎？
-
 :Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
 cn:保存会修改这份已数字签名的 PDF。原签名仍在，但阅读器会提示文件已被更改。要继续吗？
 tw:儲存會修改這份已數位簽署的 PDF。原簽章仍在，但閱讀器會提示檔案已被更改。要繼續嗎？
-
 :Could not replace the original PDF. The recognized file was kept as a temporary copy.
 cn:无法覆盖原 PDF。已识别的文件保留为临时副本。
 tw:無法覆蓋原 PDF。已識別的檔案保留為暫存副本。
-
 :OCR is already running. Please wait until it finishes.
 cn:已有识别任务正在进行，请等待完成后再试。
 tw:已有識別任務正在進行，請等待完成後再試。
-
 :Saved PDF changes to '%s'
 cn:已将 PDF 更改保存到 '%s'
 tw:已將 PDF 變更儲存到 '%s'
-
 :Unsaved PDF changes in '%s'
 cn:'%s' 中有未保存的 PDF 更改
 tw:'%s' 中有未儲存的 PDF 變更
-
 :Save PDF changes?
 cn:是否保存 PDF 更改？
 tw:是否儲存 PDF 變更？
-
 :Unsaved PDF changes
 cn:未保存的 PDF 更改
 tw:未儲存的 PDF 變更
-
 :Delete %d TOC items?
 cn:删除这 %d 条目录项？
 tw:刪除這 %d 條目錄項？
-
 :Delete %d TOC items and their child items?
 cn:删除这 %d 条目录项及其所有子项？
 tw:刪除這 %d 條目錄項及其所有子項？
-
 :Delete %d TOC items? Child items will be moved up one level.
 cn:删除这 %d 条目录项？其子项将上提一级。
 tw:刪除這 %d 條目錄項？其子項目將上提一級。
-
 :Printed:
 cn:印刷:
 tw:印刷:
-
 :Calibrate TOC Pages
 cn:校准目录书签
 tw:校準目錄書籤
-
 :Calibrate TOC
 cn:校准目录书签
 tw:校準目錄書籤
-
 :Set TOC Item to Current Page
 cn:将当前页关联到选中的目录
 tw:將當前頁關聯到選中的目錄
-
 :Link page %s to selected bookmark
 cn:将第 %s 页关联到选中的目录
 tw:將第 %s 頁關聯到選中的目錄
-
 :Find TOC Item in Body
 cn:在正文中定位
 tw:在正文中定位
-
 :Find in Body and Link
 cn:在正文中定位并关联
 tw:在正文中定位並關聯
-
 :Link to current page
 cn:关联当前页
 tw:關聯當前頁
-
 :Merge with next TOC item
 cn:合并下一条
 tw:合併下一條
-
 :Could not find this heading in the body
 cn:正文中找不到这条目录
 tw:正文中找不到這條目錄
-
 :Replace TOC Item from Selection
 cn:用选中文字替换当前目录
 tw:用選中文字替換當前目錄
-
 :Remove missing files from home
 cn:从首页移除丢失的文件
 tw:從首頁移除遺失的檔案
-
-
-
 :No printed table of contents found in the first pages.
 cn:前几页没有找到印刷目录。
 tw:前幾頁沒有找到印刷目錄。
-
 :Text was found, but this file has no table of contents or chapter headings to extract.
 cn:文字已经识别。没有找到印刷目录或章节标题，无法提取书签。
 tw:文字已經識別。沒有找到印刷目錄或章節標題，無法提取書籤。
-
 :Enable Auto OCR
 cn:开启自动 OCR
 tw:開啟自動 OCR
-
 :Auto OCR is enabled
 cn:自动 OCR 已开启
 tw:自動 OCR 已開啟
-
 :Recognize Current Page
 cn:识别当前页
 tw:識別目前頁
-
 :Recognize All Scanned Pages
 cn:识别所有扫描页
 tw:識別所有掃描頁
-
 :Save as Searchable PDF...
 cn:另存为可搜索 PDF...
 tw:另存為可搜尋 PDF...
-
 :Full-document OCR Mode
 cn:全文识别模式
 tw:全文識別模式
-
 :Full-document OCR Mode: Fast
 cn:全文识别模式：极速
 tw:全文識別模式：極速
-
 :Full-document OCR Mode: High Accuracy
 cn:全文识别模式：高精度
 tw:全文識別模式：高精度
-
 :Fast (Recommended)
 cn:极速（推荐）
 tw:極速（推薦）
-
 :High Accuracy
 cn:高精度
 tw:高精度
-
 :No scanned pages to recognize.
 cn:没有需要识别的扫描页
 tw:沒有需要識別的掃描頁
-
 :No scanned pages to recognize. Use Recognize Current Page to force this page.
 cn:没有需要识别的扫描页。可用「识别当前页」强制识别。
 tw:沒有需要識別的掃描頁。可用「識別目前頁」強制識別。
-
 :Re-recognize All Pages
 cn:重新识别所有页
 tw:重新識別所有頁
-
 :Recognize All Scanned Pages (Fast)
 cn:识别所有扫描页（快速）
 tw:識別所有掃描頁（快速）
-
 :Recognize All Scanned Pages (Accurate)
 cn:识别所有扫描页（精确）
 tw:識別所有掃描頁（精確）
-
 :Auto-save
 cn:自动保存
 tw:自動儲存
-
 :Toggle Auto-save After OCR
 cn:开关识别后自动保存
 tw:開關識別後自動儲存
-
 :This file is read-only. Bookmark extraction was not started.
 cn:此文件为只读，未开始提取书签。
 tw:此檔案為唯讀，未開始提取書籤。
-
 :Extract for review
 cn:提取后预览
 tw:擷取後預覽
-
 :Extract and overwrite file
 cn:提取并覆盖文件
 tw:擷取並覆寫檔案
-
 :Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
 cn:提取的书签将先替换当前书签以供预览。只有选择“提取并覆盖文件”才会将更改保存到原文件。取消预览可恢复原书签。
 tw:擷取的書籤會先取代目前書籤供預覽。只有選擇「擷取並覆寫檔案」才會將變更儲存到原始檔案。取消預覽可還原原書籤。
-
 :Could not prepare the extracted table of contents.
 cn:无法准备提取的目录书签。
 tw:無法準備擷取的目錄書籤。
-
 :Keep for this session
 cn:保留到本次会话
 tw:保留至本次工作階段
-
 :Discard
 cn:丢弃
 tw:捨棄
-
 :AI Recognize Table of Contents
-cn:AI提取目录书签
-tw:AI擷取目錄書籤
+cn:AI 提取目录书签
+tw:AI 擷取目錄書籤
+:Rotate PDF Pages...
+cn:旋转 PDF 页面...
+tw:旋轉 PDF 頁面...
+:Rotate PDF Pages
+cn:旋转 PDF 页面
+tw:旋轉 PDF 頁面
+:Pages To Rotate:
+cn:要旋转的页面:
+tw:要旋轉的頁面:
+:Rotation Angle:
+cn:旋转角度:
+tw:旋轉角度:
+:90° Clockwise
+cn:顺时针 90°
+tw:順時針 90°
+:270° Clockwise
+cn:顺时针 270°
+tw:順時針 270°
+:Rotate Pages
+cn:旋转页面
+tw:旋轉頁面
+:Selected pages are already at that rotation.
+cn:所选页面已经是该旋转角度。
+tw:所選頁面已經是該旋轉角度。
+:Failed to save rotated PDF pages.
+cn:保存旋转后的页面失败。
+tw:儲存旋轉後的頁面失敗。
+:Rotated %d page(s) and saved to '%s'
+cn:已旋转 %d 页并保存到 '%s'
+tw:已旋轉 %d 頁並儲存到 '%s'
 
 :Extract Table of Contents Locally
-cn:本地提取目录书签
-tw:本地擷取目錄書籤
+cn:提取目录书签
+tw:擷取目錄書籤
+
+:Apply To
+cn:应用到
+tw:套用至
+
+:Current Page (Page %d)
+cn:当前页（第 %d 页）
+tw:目前頁（第 %d 頁）
+
+:All Pages (%d)
+cn:全部页面（共 %d 页）
+tw:所有頁面（共 %d 頁）
+
+:Specified Pages
+cn:指定页面
+tw:指定頁面
+
+:e.g. 2, 5-7, 13-
+cn:例如：2, 5-7, 13-
+tw:例如：2, 5-7, 13-
+
+:Rotation
+cn:旋转方向
+tw:旋轉方向
+
+:Left 90°
+cn:向左 90°
+tw:向左 90°
+
+:Right 90°
+cn:向右 90°
+tw:向右 90°
+
+:Apply Rotation
+cn:应用旋转
+tw:套用旋轉
+
+:Invalid page range.
+cn:页面范围无效。
+tw:頁面範圍無效。

@@ -57,6 +57,7 @@ enum class TbIcon {
     FullscreenExit,
     HomeHistory,
     HomeFrequent,
+    Trash,
     kMax
 };
 

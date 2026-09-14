@@ -9,5 +9,7 @@ void ShowPdfCompressDialog(MainWindow* win);
 void ShowPdfDecompressDialog(MainWindow* win);
 void ShowPdfDeletePageDialog(MainWindow* win);
 void ShowPdfExtractPagesDialog(MainWindow* win);
+void ShowPdfRotatePagesDialog(MainWindow* win);
+void RefreshPdfRotatePagesTheme();
 void ShowPdfEncryptDialog(MainWindow* win);
 void ShowPdfDecryptDialog(MainWindow* win);

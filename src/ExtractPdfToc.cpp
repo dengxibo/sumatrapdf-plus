@@ -6,6 +6,7 @@
 #include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
 #include "utils/ThreadUtil.h"
+#include "utils/Timer.h"
 #include "utils/UITask.h"
 
 #include "wingui/UIModels.h"
@@ -29,6 +30,7 @@
 #include "ExtractPdfToc.h"
 #include "ExtractBookToc.h"
 #include "TocCalib.h"
+#include "TocExtraction.h"
 #include "OcrService.h"
 #include "OcrOnnx.h"
 #include "PrintedTocModel.h"
@@ -320,7 +322,6 @@ static void StripTrailingOcrTitleJunk(char* s);
 static void TrimAtNextDiHeading(char* s);
 static void TrimAtNextEmbeddedHeading(char* s);
 static int FindNextEmbeddedHeading(const char* s);
-static void NormalizeTocNumberingParens(char** titleOut);
 static void NormalizeTocNumberingDots(char** titleOut);
 static void StripNumberingTitleSpace(char** titleOut);
 static int LastNonSpaceCp(const char* s);
@@ -867,9 +868,16 @@ static bool IsOcrYiDashCp(int cp) {
            cp == 0x2015 || cp == 0x2212 || cp == 0xFF0D || cp == 0x2500 || cp == 0xFE58;
 }
 
+static void SkipSpacesUtf8(const char* s, int len, int& i);
+
+static void SkipSpacesUtf8(const char* s, int len, int& i);
+
 // i is already past the opening （ or (. Consume 一/十一/12 then ） or ).
 static bool ConsumeParenNumberingAfterOpen(const char* s, int len, int& i) {
     int i0 = i;
+    // PDF text extraction may insert a space between the paren and the number,
+    // e.g. "（ 一）" or "( 1)". Skip it before reading the number.
+    SkipSpacesUtf8(s, len, i);
     int nInside = 0;
     int nDash = 0;
     while (i < len && nInside < 6) {
@@ -1611,6 +1619,7 @@ static HeadingMarker ParseHeadingMarker(const char* s) {
     }
     if (IsParenOpenCp(cp)) {
         int inner = i;
+        SkipSpacesUtf8(s, len, inner);
         int firstInner = inner < len ? Utf8CodepointNext(s, len, inner) : 0;
         int tmp = i;
         if (ConsumeParenNumberingAfterOpen(s, len, tmp)) {
@@ -7260,7 +7269,7 @@ static void TrimAtNextEmbeddedHeading(char* s) {
     str::TrimWSInPlace(s, str::TrimOpt::Both);
 }
 
-static void NormalizeTocNumberingParens(char** titleOut) {
+void NormalizeTocNumberingParens(char** titleOut) {
     char* s = titleOut ? *titleOut : nullptr;
     if (!s || !s[0]) {
         return;
@@ -8324,7 +8333,8 @@ static bool ExtractContractToc(const Vec<ScanLine>& lines, int nPages, Vec<Extra
 static bool ExtractPaperToc(EngineBase* engine, const Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
                             Vec<ExtractedTocItem*>& roots);
 static bool ExtractBookToc(EngineBase* engine, Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
-                           Vec<ExtractedTocItem*>& roots, bool bornDigital = false);
+                           Vec<ExtractedTocItem*>& roots, bool bornDigital = false,
+                           const TocExtractProgress* prog = nullptr);
 static void MergeDeeperArabicHeadings(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedTocItem*>& roots);
 static void MergeOfficialPrintedGapsFromBody(const Vec<ScanLine>& lines, int nPages, Vec<ExtractedTocItem*>& roots);
 
@@ -28058,7 +28068,10 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
             continue;
         }
         if (m.type == MarkerType::ChineseParen) {
-            int need = lDoc > 0 ? lDoc + 1 : 1;
+            // In official documents （一）/（二） are never top-level headings;
+            // they always sit under 一、/二、. Floor the fallback so a missing
+            // document root or 一、 spine does not push them to level 1.
+            int need = lDoc > 0 ? lDoc + 1 : 2;
             if (m.number == 1 && lDotted > 0 && lParen < 1) {
                 // GB 问答: 1. then （一） sit under the question, not beside 一、.
                 need = lDotted + 1;
@@ -28150,6 +28163,11 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
                 need = 6;
             }
             it->level = need;
+        } else if (it->level < 2) {
+            // Parent heading (一、/（一）) was dropped: a 1./2./3. in an
+            // official document is never a top-level heading; floor it so it
+            // doesn't sit beside 一、.
+            it->level = 2;
         }
         lDotted = it->level;
     }
@@ -29039,12 +29057,12 @@ static bool ExtractPaperToc(EngineBase* engine, const Vec<ScanLine>& lines, cons
 }
 
 static bool ExtractBookToc(EngineBase* engine, Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
-                           Vec<ExtractedTocItem*>& roots, bool bornDigital) {
+                           Vec<ExtractedTocItem*>& roots, bool bornDigital, const TocExtractProgress* prog) {
     char* bookDebug = nullptr;
     if (gCli && gCli->extractTocDebug && engine && engine->FilePath()) {
         bookDebug = str::Join(path::GetPathNoExtTemp(engine->FilePath()), ".book-toc-debug.txt");
     }
-    bool printed = ExtractBookPrintedToc(engine, lines, labels, nPages, roots, bookDebug);
+    bool printed = ExtractBookPrintedToc(engine, lines, labels, nPages, roots, bookDebug, prog);
     str::Free(bookDebug);
     if (printed) {
         // Scans: optional dest refine on short books. Born-digital already has a
@@ -29066,12 +29084,13 @@ static bool ExtractBookToc(EngineBase* engine, Vec<ScanLine>& lines, const Vec<c
 // the Official profile. Accept the book parser independently only when its
 // result has several printed rows and actual destination evidence.
 static bool TryStrongPrintedBookToc(EngineBase* engine, Vec<ScanLine>& lines, const Vec<char*>& labels, int nPages,
-                                    Vec<ExtractedTocItem*>& roots, bool bornDigital) {
+                                    Vec<ExtractedTocItem*>& roots, bool bornDigital,
+                                    const TocExtractProgress* prog = nullptr) {
     char* bookDebug = nullptr;
     if (gCli && gCli->extractTocDebug && engine && engine->FilePath()) {
         bookDebug = str::Join(path::GetPathNoExtTemp(engine->FilePath()), ".book-toc-debug.txt");
     }
-    bool parsed = ExtractBookPrintedToc(engine, lines, labels, nPages, roots, bookDebug);
+    bool parsed = ExtractBookPrintedToc(engine, lines, labels, nPages, roots, bookDebug, prog);
     str::Free(bookDebug);
     if (!parsed) {
         DeleteExtractedTocItems(roots);
@@ -29102,9 +29121,69 @@ static bool TryStrongPrintedBookToc(EngineBase* engine, Vec<ScanLine>& lines, co
     return true;
 }
 
+// A document that ships a usable embedded outline already contains exactly the
+// bookmarks the reader wants. Prefer it over re-parsing printed pages: outline
+// destinations are exact, while printed-page mapping can fail on repaired or
+// offset-heavy files (a transmittal sheet then leaks in as fake TOC rows).
+static bool TryEmbeddedOutlineToc(EngineBase* engine, Vec<ExtractedTocItem*>& roots, int* nOut) {
+    if (!engine || !engine->HasToc()) {
+        return false;
+    }
+    TocTree* tree = engine->GetToc();
+    if (!tree || !tree->root || !tree->root->child) {
+        return false;
+    }
+    Vec<TocItem*> pending;
+    Vec<ExtractedTocItem*> parents;
+    Vec<int> levels;
+    pending.Append(tree->root->child);
+    parents.Append(nullptr);
+    levels.Append(1);
+    int n = 0;
+    int withPage = 0;
+    while (pending.Size() > 0) {
+        TocItem* ti = pending.Pop();
+        ExtractedTocItem* parent = parents.Pop();
+        int level = levels.Pop();
+        for (; ti; ti = ti->next) {
+            auto* it = new ExtractedTocItem();
+            it->title = str::Dup(ti->title ? ti->title : "");
+            it->pageNo = ti->pageNo;
+            it->level = level;
+            it->parent = parent;
+            it->verified = ti->pageNo >= 1;
+            it->confidence = 100;
+            if (parent) {
+                parent->children.Append(it);
+            } else {
+                roots.Append(it);
+            }
+            n++;
+            if (ti->pageNo >= 1) {
+                withPage++;
+            }
+            if (ti->child) {
+                pending.Append(ti->child);
+                parents.Append(it);
+                levels.Append(level + 1);
+            }
+        }
+    }
+    if (n < 3 || withPage < 3) {
+        DeleteExtractedTocItems(roots);
+        return false;
+    }
+    if (nOut) {
+        *nOut = n;
+    }
+    logf("TOC embedded-outline used items=%d withPage=%d\n", n, withPage);
+    return true;
+}
+
 static ExtractPdfTocKind ExtractFromCollectedLines(EngineBase* engine, Vec<ScanLine>& lines, int nPages, int nText,
                                                    Vec<ExtractedTocItem*>& roots, int* nItemsOut, bool forceExtract,
-                                                   bool bornDigital, ExtractTocDocClass* clsOut = nullptr) {
+                                                   bool bornDigital, ExtractTocDocClass* clsOut = nullptr,
+                                                   const TocExtractProgress* prog = nullptr) {
     if (nItemsOut) {
         *nItemsOut = 0;
     }
@@ -29128,6 +29207,9 @@ static ExtractPdfTocKind ExtractFromCollectedLines(EngineBase* engine, Vec<ScanL
     for (int p = 1; p <= nPages; p++) {
         labels.Append(str::Dup(engine->GetPageLabeTemp(p)));
     }
+    // The embedded outline is the fallback safety net (see the end of this
+    // function): printed parsing runs first because a rich linked Contents
+    // carries more detail than a chapter-level outline.
     char* tocDebugPath = nullptr;
     if (gCli && gCli->extractTocDebug && engine && engine->FilePath()) {
         tocDebugPath = str::Join(path::GetPathNoExtTemp(engine->FilePath()), ".toc-debug.txt");
@@ -29177,7 +29259,7 @@ static ExtractPdfTocKind ExtractFromCollectedLines(EngineBase* engine, Vec<ScanL
     // the whole document to the book extractor (which emitted 2,091 entries).
     bool independentBook = cls == ExtractTocDocClass::Official &&
                            !FileNameHasOfficialKind(engine ? engine->FilePath() : nullptr) &&
-                           TryStrongPrintedBookToc(engine, lines, labels, nPages, roots, bornDigital);
+                           TryStrongPrintedBookToc(engine, lines, labels, nPages, roots, bornDigital, prog);
     logf("TOC classify final=%s independentBook=%d\n", independentBook ? "book" : clsName, (int)independentBook);
     if (independentBook) {
         cls = ExtractTocDocClass::Book;
@@ -29194,7 +29276,7 @@ static ExtractPdfTocKind ExtractFromCollectedLines(EngineBase* engine, Vec<ScanL
     } else if (cls == ExtractTocDocClass::Paper) {
         ok = ExtractPaperToc(engine, lines, labels, nPages, roots);
     } else if (cls == ExtractTocDocClass::Book) {
-        ok = ExtractBookToc(engine, lines, labels, nPages, roots, bornDigital);
+        ok = ExtractBookToc(engine, lines, labels, nPages, roots, bornDigital, prog);
     } else {
         ok = ExtractOfficialToc(engine, lines, labels, nPages, roots, tocDebugPath, bornDigital);
     }
@@ -29202,7 +29284,7 @@ static ExtractPdfTocKind ExtractFromCollectedLines(EngineBase* engine, Vec<ScanL
     int n = CountExtracted(roots);
     if ((!ok || n < 1) && cls != ExtractTocDocClass::Book && FrontHasEnglishPrintedToc(lines, nPages)) {
         DeleteExtractedTocItems(roots);
-        ok = ExtractBookToc(engine, lines, labels, nPages, roots, bornDigital);
+        ok = ExtractBookToc(engine, lines, labels, nPages, roots, bornDigital, prog);
         n = CountExtracted(roots);
     }
     for (int i = 0; i < labels.Size(); i++) {
@@ -29210,7 +29292,41 @@ static ExtractPdfTocKind ExtractFromCollectedLines(EngineBase* engine, Vec<ScanL
     }
     if (!ok || n < 1) {
         DeleteExtractedTocItems(roots);
+        if (TryEmbeddedOutlineToc(engine, roots, nItemsOut)) {
+            return ExtractPdfTocKind::Ok;
+        }
         return ExtractPdfTocKind::NoHeadings;
+    }
+    // The book printed-parse can succeed structurally yet fail to map any
+    // destination at all (no Contents links, body match misses everywhere).
+    // The embedded outline's exact destinations are then the only usable
+    // answer. As soon as the parse proved at least one destination, its own
+    // result stands — extraction exists to build bookmarks, not to echo ones
+    // the file already ships.
+    if (ok && n >= 1 && cls == ExtractTocDocClass::Book) {
+        Vec<ExtractedTocItem*> flat;
+        FlattenExtractedTocItems(roots, flat);
+        int proven = 0;
+        for (int i = 0; i < flat.Size(); i++) {
+            ExtractedTocItem* it = flat[i];
+            if (it && (it->verified || it->bodyMatched || it->destinationSource == TocDestinationSource::PdfLink)) {
+                proven++;
+            }
+        }
+        if (proven < 1) {
+            Vec<ExtractedTocItem*> outlineRoots;
+            int nOutline = 0;
+            if (TryEmbeddedOutlineToc(engine, outlineRoots, &nOutline)) {
+                DeleteExtractedTocItems(roots);
+                for (ExtractedTocItem* it : outlineRoots) {
+                    roots.Append(it);
+                }
+                if (nItemsOut) {
+                    *nItemsOut = nOutline;
+                }
+                return ExtractPdfTocKind::Ok;
+            }
+        }
     }
     if (nItemsOut) {
         *nItemsOut = n;
@@ -29443,17 +29559,36 @@ struct ExtractProgressUi {
     HWND hwnd = nullptr;
     int done = 0;
     int total = 0;
+    bool bodyPhase = false;
+    bool calibPhase = false;
+    bool tocPagePhase = false;
 };
 
 static void ExtractProgressOnUi(ExtractProgressUi* p) {
     if (p && p->hwnd && IsWindow(p->hwnd)) {
-        TempStr msg = str::FormatTemp(_TRA("Extracting bookmarks… %d / %d"), p->done, p->total);
-        NotificationCreateArgs args;
-        args.hwndParent = p->hwnd;
-        args.groupId = kNotifExtractToc;
-        args.msg = msg;
-        args.timeoutMs = kNotifNoTimeout;
-        ShowNotification(args);
+        const char* key = "Extracting bookmarks… %d / %d";
+        if (p->calibPhase) {
+            key = "Calibrating bookmark targets… %d / %d";
+        } else if (p->bodyPhase) {
+            key = "Analyzing body pages… %d / %d";
+        } else if (p->tocPagePhase) {
+            key = "Scanning contents pages… %d / %d";
+        }
+        TempStr msg = str::FormatTemp(_TRA(key), p->done, p->total);
+        // Reuse the group's notification: the chunked calibration slices fire
+        // this many times per second, and tearing down/recreating the window
+        // for each update makes the banner flicker or lose its Z-order.
+        NotificationWnd* wnd = GetNotificationForGroup(p->hwnd, kNotifExtractToc);
+        if (wnd) {
+            NotificationUpdateMessage(wnd, msg, kNotifNoTimeout, true);
+        } else {
+            NotificationCreateArgs args;
+            args.hwndParent = p->hwnd;
+            args.groupId = kNotifExtractToc;
+            args.msg = msg;
+            args.timeoutMs = kNotifNoTimeout;
+            ShowNotification(args);
+        }
     }
     delete p;
 }
@@ -29462,14 +29597,26 @@ static void ShowExtractProgress(HWND hwnd, int done, int total) {
     if (!hwnd || !IsWindow(hwnd)) {
         return;
     }
-    ExtractProgressOnUi(new ExtractProgressUi{hwnd, done, total});
+    ExtractProgressOnUi(new ExtractProgressUi{hwnd, done, total, false});
 }
 
-static void PostExtractProgress(HWND hwnd, int done, int total) {
+static void PostExtractProgress(HWND hwnd, int done, int total, bool bodyPhase = false, bool tocPagePhase = false) {
     if (!hwnd) {
         return;
     }
-    uitask::Post(MkFunc0(ExtractProgressOnUi, new ExtractProgressUi{hwnd, done, total}), "ExtractPdfTocProgress");
+    uitask::Post(MkFunc0(ExtractProgressOnUi, new ExtractProgressUi{hwnd, done, total, bodyPhase, false, tocPagePhase}),
+                 "ExtractPdfTocProgress");
+}
+
+bool TocExtractCancelled(const TocExtractProgress* prog) {
+    return prog && ExtractCancelled(prog->cancelSeq);
+}
+
+void TocExtractReportProgress(const TocExtractProgress* prog, int done, int total, bool bodyPhase) {
+    if (!prog) {
+        return;
+    }
+    PostExtractProgress(prog->hwnd, done, total, bodyPhase);
 }
 
 static bool CollectScanLineRange(EngineBase* engine, Vec<ScanLine>& lines, int* nText, int fromPage, int toPage,
@@ -29484,7 +29631,9 @@ static bool CollectScanLineRange(EngineBase* engine, Vec<ScanLine>& lines, int* 
             (*nText)++;
         }
         if (p == toPage || (p % 2) == 0) {
-            PostExtractProgress(hwndCanvas, p, nPages);
+            // The printed-TOC scan only covers the front pages (total is the
+            // scan cap, not the book), so give it its own message.
+            PostExtractProgress(hwndCanvas, p, nPages, false, true);
         }
     }
     return true;
@@ -29509,17 +29658,6 @@ static void ShowExtractDone(HWND hwnd, const char* msg, bool warning) {
     ShowNotification(args);
 }
 
-static bool ExtractPdfTocFileIsReadOnly(MainWindow* win, EngineBase* engine) {
-    const char* path = engine ? engine->FilePath() : nullptr;
-    DWORD attrs = path ? file::GetAttributes(path) : INVALID_FILE_ATTRIBUTES;
-    if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) {
-        MessageBoxW(win->hwndFrame, ToWStrTemp(_TRA("This file is read-only. Bookmark extraction was not started.")),
-                    ToWStrTemp(_TRA("Extract Table of Contents")), MB_OK | MB_ICONWARNING);
-        return true;
-    }
-    return false;
-}
-
 static EngineBase* ExtractEngineForWin(MainWindow* win) {
     DisplayModel* dm = win && win->ctrl ? win->ctrl->AsFixed() : nullptr;
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
@@ -29527,6 +29665,32 @@ static EngineBase* ExtractEngineForWin(MainWindow* win) {
 }
 
 static void ExtractApplyOnUi(ExtractWork* w);
+
+// Chunked calibration verify runs on the UI thread after the extraction
+// thread finished; its progress keeps the extraction notification alive with
+// real per-row counts (the verify pass can take a while on big scans).
+// onProgress/onDone are invoked on the UI thread by the verify job.
+static void ExtractCalibVerifyProgress(int done, int total, void* ctx) {
+    auto* hwnd = (HWND)ctx;
+    if (hwnd) {
+        ExtractProgressOnUi(new ExtractProgressUi{hwnd, done, total, false, true});
+    }
+}
+
+static void ExtractCalibVerifyDone(bool ok, void* ctx) {
+    auto* hwnd = (HWND)ctx;
+    HideExtractProgress(hwnd);
+    if (ok) {
+        return;
+    }
+    // Distinguish "outline rewrite failed" (report) from "session went away"
+    // (tab closed or replaced while verifying; stay silent).
+    MainWindow* win = FindMainWindowByHwnd(hwnd);
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    if (win && tab && tab->tocCalib) {
+        ShowExtractDone(hwnd, _TRA("Could not write the PDF table of contents."), true);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // P3 fallback: geometry-first printed-TOC extraction over captured OCR pages.
@@ -29626,10 +29790,12 @@ static void ExtractThread(ExtractWork* w) {
     int front = ExtractFrontPageCap(bornDigital, nPages);
     int to = bornDigital ? front : nPages;
     int workTotal = to;
+    TocExtractProgress prog{w->hwndCanvas, w->cancelSeq};
     Vec<ScanLine> lines;
     int nText = 0;
     logf("TOC extract start bornDigital=%d pages=%d to=%d persist=%d path=%s\n", (int)bornDigital, nPages, to,
          (int)w->persistToDisk, engine->FilePath() ? engine->FilePath() : "");
+    LARGE_INTEGER t0 = TimeGet();
     if (!CollectScanLineRange(engine, lines, &nText, 1, to, w->cancelSeq, w->hwndCanvas, workTotal)) {
         w->status = ExtractPdfTocStatus::Cancelled;
         w->nTextPages = nText;
@@ -29637,16 +29803,27 @@ static void ExtractThread(ExtractWork* w) {
         uitask::Post(MkFunc0(ExtractApplyOnUi, w), "ExtractPdfTocDone");
         return;
     }
+    logf("TOC extract stage collect=%.0fms pages=%d lines=%d textPages=%d\n", TimeSinceInMs(t0), to, lines.Size(),
+         nText);
     PtocDumpScanLinesJson(engine->FilePath(), lines, nPages, "collected");
     int nItems = 0;
     bool force = w->skipConfirm && nText >= 1;
     ExtractTocDocClass cls = ExtractTocDocClass::Official;
+    LARGE_INTEGER t1 = TimeGet();
     ExtractPdfTocKind k =
-        ExtractFromCollectedLines(engine, lines, nPages, nText, w->roots, &nItems, force, bornDigital, &cls);
+        ExtractFromCollectedLines(engine, lines, nPages, nText, w->roots, &nItems, force, bornDigital, &cls, &prog);
+    logf("TOC extract stage pipeline=%.0fms kind=%d items=%d\n", TimeSinceInMs(t1), (int)k, nItems);
     w->isBook = cls == ExtractTocDocClass::Book;
     logf("TOC extract result kind=%d textPages=%d items=%d lines=%d\n", (int)k, nText, nItems, lines.Size());
     w->nTextPages = nText;
     FreeScanLines(lines);
+    if (ExtractCancelled(w->cancelSeq)) {
+        w->status = ExtractPdfTocStatus::Cancelled;
+        DeleteExtractedTocItems(w->roots);
+        w->nItems = 0;
+        uitask::Post(MkFunc0(ExtractApplyOnUi, w), "ExtractPdfTocDone");
+        return;
+    }
     if (ExtractTryPrintedOcrFallback(engine, w->roots, k, nItems, cls)) {
         w->isBook = cls == ExtractTocDocClass::Book;
     }
@@ -29725,11 +29902,19 @@ static void ExtractApplyOnUi(ExtractWork* w) {
     }
     // The calibration bar owns the extracted tree. Save writes it to disk and
     // Cancel restores the original outline, so extraction itself is reversible.
-    bool ok = StartTocCalib(win, w->roots, w->engine, w->persistToDisk, true);
+    // The (expensive) body verify runs in UI-thread slices via
+    // StartTocCalibAsync, keeping the window responsive; the progress callback
+    // keeps the notification counting instead of a frozen "n / n".
+    // Pass the canvas HWND as the callback ctx (the callbacks cast it back to
+    // HWND directly — never allocate a HWND wrapper here: casting that pointer
+    // to HWND yields a bogus handle and IsWindow() rejects every update).
+    bool ok = StartTocCalibAsync(win, w->roots, w->engine, w->persistToDisk, ExtractCalibVerifyProgress,
+                                 ExtractCalibVerifyDone, (void*)w->hwndCanvas);
+    delete w;
     if (!ok) {
+        HideExtractProgress(canvas);
         ShowExtractDone(canvas, _TRA("Could not write the PDF table of contents."), true);
     }
-    delete w;
 }
 
 bool WriteExtractedPdfToc(MainWindow* win, EngineBase* engine, Vec<ExtractedTocItem*>& roots, bool persistToDisk) {
@@ -29810,9 +29995,7 @@ bool HandleExtractPdfTocCommand(MainWindow* win, bool skipConfirm, bool persistT
         ShowExtractProgress(win->hwndCanvas, 0, workTotal);
         return true;
     }
-    if (!skipConfirm && ExtractPdfTocFileIsReadOnly(win, engine)) {
-        return true;
-    }
+    // Extraction creates a preview; filesystem write permissions are handled when saving.
     if (!skipConfirm && !ConfirmPdfTocSignatureExtract(win, engine)) {
         return true;
     }

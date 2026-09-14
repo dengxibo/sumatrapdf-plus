@@ -1722,6 +1722,11 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
         ShutdownCommon();
         return 0;
     }
+    if (flags.testBodyToc) {
+        TestBodyTocParsing(flags);
+        ShutdownCommon();
+        return 0;
+    }
     {
         char benchPdf[MAX_PATH]{};
         DWORD nEnv = GetEnvironmentVariableA("SUMATRA_OCR_BENCH_PDF", benchPdf, dimof(benchPdf));

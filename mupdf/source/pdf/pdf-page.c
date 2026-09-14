@@ -99,6 +99,38 @@ pdf_load_page_tree_imp(fz_context *ctx, pdf_document *doc, pdf_obj *node, int id
 	return idx;
 }
 
+/* Lenient variant for damaged files: skip non-page kids and cyclic/malformed
+ * subtrees instead of throwing, keeping every valid page in document order.
+ * Depth is bounded so a runaway tree cannot loop. */
+static int
+pdf_load_page_tree_lenient_imp(fz_context *ctx, pdf_document *doc, pdf_obj *node, int idx, pdf_cycle_list *cycle_up, int depth)
+{
+	pdf_cycle_list cycle;
+	pdf_obj *type = pdf_dict_get(ctx, node, PDF_NAME(Type));
+	if (depth > 64)
+		return idx;
+	if (pdf_name_eq(ctx, type, PDF_NAME(Pages)))
+	{
+		pdf_obj *kids = pdf_dict_get(ctx, node, PDF_NAME(Kids));
+		int i, n = pdf_array_len(ctx, kids);
+		if (pdf_cycle(ctx, &cycle, cycle_up, node))
+			return idx;
+		for (i = 0; i < n && idx < doc->map_page_count; ++i)
+			idx = pdf_load_page_tree_lenient_imp(ctx, doc, pdf_array_get(ctx, kids, i), idx, &cycle, depth + 1);
+	}
+	else if (pdf_name_eq(ctx, type, PDF_NAME(Page)))
+	{
+		if (idx >= 0 && idx < doc->map_page_count)
+		{
+			doc->rev_page_map[idx].page = idx;
+			doc->rev_page_map[idx].object = pdf_to_num(ctx, node);
+			doc->fwd_page_map[idx] = pdf_keep_obj(ctx, node);
+			++idx;
+		}
+	}
+	return idx;
+}
+
 static int
 cmp_rev_page_map(const void *va, const void *vb)
 {
@@ -173,7 +205,39 @@ pdf_load_page_tree_internal(fz_context *ctx, pdf_document *doc)
 		if (in_op)
 			pdf_abandon_operation(ctx, doc);
 		pdf_drop_page_tree_internal(ctx, doc);
-		fz_rethrow(ctx);
+		/* Retry damaged page trees leniently. Partial maps are safe because
+		 * unfilled slots fall back to the slow lookup path. */
+		fz_try(ctx)
+		{
+			int idx, i;
+			doc->map_page_count = pdf_count_pages(ctx, doc);
+			if (doc->map_page_count < 1)
+				fz_throw(ctx, FZ_ERROR_FORMAT, "cannot find page tree");
+			doc->rev_page_map = Memento_label(fz_calloc(ctx, doc->map_page_count, sizeof(pdf_rev_page_map)), "pdf_rev_page_map");
+			doc->fwd_page_map = Memento_label(fz_calloc(ctx, doc->map_page_count, sizeof(pdf_obj *)), "pdf_fwd_page_map");
+			idx = pdf_load_page_tree_lenient_imp(ctx, doc, pdf_dict_getp(ctx, pdf_trailer(ctx, doc), "Root/Pages"), 0, NULL, 0);
+			if (idx < 1)
+				fz_throw(ctx, FZ_ERROR_FORMAT, "page tree contains no pages");
+			/* The strict page-tree walk failed. Force a full rewrite because an
+			 * incremental save cannot safely preserve the damaged structure. */
+			doc->repair_attempted = 1;
+			for (i = idx; i < doc->map_page_count; ++i)
+			{
+				doc->rev_page_map[i].page = i;
+				doc->rev_page_map[i].object = 0x7fffffff;
+			}
+			if (doc->map_page_count > 0)
+				qsort(doc->rev_page_map, doc->map_page_count, sizeof *doc->rev_page_map, cmp_rev_page_map);
+			fz_warn(ctx, "Page tree mapped leniently: %d of %d pages", idx, doc->map_page_count);
+		}
+		fz_catch(ctx)
+		{
+			pdf_drop_page_tree_internal(ctx, doc);
+			doc->use_page_tree_map = 0;
+			fz_rethrow_if(ctx, FZ_ERROR_SYSTEM);
+			fz_report_error(ctx);
+			fz_warn(ctx, "Page tree load failed. Falling back to slow lookup");
+		}
 	}
 }
 

@@ -1411,7 +1411,10 @@
     <ClCompile Include="..\src\PrintedTocOverlay.cpp" />
     <ClCompile Include="..\src\ExtractPdfToc.cpp" />
     <ClCompile Include="..\src\ExtractBookToc.cpp" />
+    <ClCompile Include="..\src\TocExtraction.cpp" />
     <ClCompile Include="..\src\TocCalib.cpp" />
+    <ClCompile Include="..\src\TocStructureScan.cpp" />
+    <ClCompile Include="..\src\TocAiPrompts.cpp" />
     <ClCompile Include="..\src\WordLookup.cpp" />
     <ClCompile Include="..\src\mui\Mui.cpp" />
     <ClCompile Include="..\src\mui\TextRender.cpp" />

@@ -210,14 +210,13 @@ LRESULT WndProcCanvasAbout(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, LPAR
     int y = GET_Y_LPARAM(lp);
     switch (msg) {
         case WM_CTLCOLOREDIT:
+        case WM_CTLCOLORSTATIC:
             if ((HWND)lp == win->hwndHomeSearch) {
                 HDC hdcEdit = (HDC)wp;
                 SetTextColor(hdcEdit, HomePageSearchTextColor());
                 SetBkColor(hdcEdit, ThemeControlBackgroundColor());
-                if (!win->brControlBgColor) {
-                    win->brControlBgColor = CreateSolidBrush(ThemeControlBackgroundColor());
-                }
-                return (LRESULT)win->brControlBgColor;
+                SetDCBrushColor(hdcEdit, ThemeControlBackgroundColor());
+                return (LRESULT)GetStockObject(DC_BRUSH);
             }
             break;
 

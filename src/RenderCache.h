@@ -8,6 +8,12 @@ constexpr int RENDER_DELAY_FAILED = std::numeric_limits<int>::max() - 2;
 
 #define INVALID_TILE_RES ((USHORT) - 1)
 
+// Applies the same post-render theme recolor the render cache thread does for
+// view tiles (warm eye-care gauze, legacy bitmap recolor, DjVu dark, ...), so
+// off-screen callers (e.g. the AI TOC dialog thumbnails) match the canvas.
+void ApplyRenderThemePostColors(EngineBase* engine, RenderedBitmap* bmp, int pageNo, float zoom,
+                                const RectF* pageRect, const DarkModeProfile* profile);
+
 #define MAX_PAGE_REQUESTS 8
 // keep this value reasonably low, else we'll run out of
 // GDI resources/memory when caching many larger bitmaps

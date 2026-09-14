@@ -102,6 +102,54 @@ static bool ShouldPreserveImagesInSmartMode(const DarkModeProfile* profile) {
     return profile && profile->mode == PageColorMode::PreserveImages && profile->preservePdfImages;
 }
 
+static bool ShouldUpdateBitmapColors(EngineBase* engine, const DarkModeProfile* profile);
+static bool ShouldPreserveImagesInSmartMode(const DarkModeProfile* profile);
+static bool ShouldUpdateBitmapColorsLegacy(EngineBase* engine);
+static bool ShouldPreserveImagesLegacy(EngineBase* engine);
+static void FinalizeTileSkipRects(Vec<Rect>& skipRects, Size bmpSize);
+
+void ApplyRenderThemePostColors(EngineBase* engine, RenderedBitmap* bmp, int pageNo, float zoom,
+                                const RectF* pageRect, const DarkModeProfile* profile) {
+    if (!bmp) {
+        return;
+    }
+    const DarkModeProfile* prof = profile;
+    bool legacyPost = false;
+    if (engine->kind == kindEngineDjVu && ThemeUsesDarkChrome() &&
+        GetPdfDocumentColorMode() != PdfDocumentColorMode::Light) {
+        legacyPost = true;
+        prof = nullptr;
+    } else if (prof) {
+        legacyPost = ShouldUpdateBitmapColors(engine, prof);
+    } else {
+        legacyPost = ShouldUpdateBitmapColorsLegacy(engine);
+    }
+    if (!legacyPost) {
+        return;
+    }
+    bool preserve = prof ? ShouldPreserveImagesInSmartMode(prof) : ShouldPreserveImagesLegacy(engine);
+    // Light eye-care match theme: uniform gauze over text + photos (no skip rects).
+    bool eyeCareGauze = ThemeUsesEyeCareChrome() && !ThemeUsesDarkChrome();
+    Vec<Rect> skipRects;
+    Vec<Rect>* skipRectsPtr = nullptr;
+    if (preserve && !eyeCareGauze) {
+        Size bmpSize = bmp->GetSize();
+        int enginePageNo = EngineMupdfMapDisplayPageToEngine(engine, pageNo);
+        if (enginePageNo < 1) {
+            enginePageNo = pageNo;
+        }
+        engine->GetBitmapRecolorSkipRects(enginePageNo, zoom, 0, pageRect ? *pageRect : RectF(), bmpSize, skipRects);
+        FinalizeTileSkipRects(skipRects, bmpSize);
+        if (skipRects.Size() > 0) {
+            skipRectsPtr = &skipRects;
+        }
+    }
+    COLORREF bgCol = 0;
+    COLORREF textCol = prof ? prof->foreground : ThemePageRenderColors(bgCol, true);
+    COLORREF linkCol = prof ? prof->linkColor : (ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : 0);
+    UpdateBitmapColors(bmp->GetBitmap(), textCol, bgCol, linkCol, skipRectsPtr);
+}
+
 static bool ShouldUpdateBitmapColorsLegacy(EngineBase* engine) {
     if (!IsFixedPageRecolorEngine(engine)) {
         return false;

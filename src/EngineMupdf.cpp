@@ -10277,6 +10277,26 @@ void EngineMupdfEnsurePageLinksForHitTest(EngineBase* engine, int pageNo) {
     e->GetFzPageInfo(pageNo, true, nullptr, /*loadLinks*/ true);
 }
 
+// Extraction paths run headless: pages are never rendered, so GetElements()
+// (which needs fullyLoaded pages) returns nothing. Full-load the page with
+// links and return its elements.
+Vec<IPageElement*> EngineMupdfGetPageElementsForExtraction(EngineBase* engine, int pageNo) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || pageNo < 1 || pageNo > e->pageCount) {
+        return Vec<IPageElement*>();
+    }
+    pageNo = MapJoinDisplayPageNo(e, pageNo);
+    if (pageNo < 1) {
+        return Vec<IPageElement*>();
+    }
+    FzPageInfo* pageInfo = e->GetFzPageInfo(pageNo, /*loadQuick*/ false, nullptr, /*loadLinks*/ true);
+    if (!pageInfo) {
+        return Vec<IPageElement*>();
+    }
+    BuildElementsInfo(pageInfo);
+    return pageInfo->allElements;
+}
+
 void EngineMupdfEnsurePageImagesForHitTest(EngineBase* engine, int pageNo) {
     EngineMupdf* e = AsEngineMupdf(engine);
     if (!e || pageNo < 1 || pageNo > e->pageCount) {
@@ -13230,6 +13250,13 @@ static bool EngineMupdfApplyPageRotateCw(EngineBase* engine, int pageNo, int wan
         return false;
     }
     return true;
+}
+
+bool EngineMupdfSetPageRotateCw(EngineBase* engine, int pageNo, int wantCw) {
+    if (!engine || pageNo < 1) {
+        return false;
+    }
+    return EngineMupdfApplyPageRotateCw(engine, pageNo, wantCw);
 }
 
 bool EngineMupdfEnsurePageOcrRotate(EngineBase* engine, int pageNo) {

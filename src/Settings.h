@@ -533,7 +533,7 @@ struct GlobalPrefs {
     // Searchable PDF: fast or accurate. Auto OCR uses fast mode; current
     // page and region use high accuracy.
     char* ocrFullDocumentMode;
-    // if true, copy of OCR results merges soft-wrapped lines into coherent
+    // if true, copied text merges soft-wrapped lines into coherent
     // paragraphs instead of following the original page layout
     bool ocrCopyMerged;
     // smart bookmark extraction detail: conservative, standard, or

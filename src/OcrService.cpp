@@ -395,7 +395,8 @@ static u8* CopyBitmapToRgb(HBITMAP hbmp, int* wOut, int* hOut, int* strideOut) {
     return rgb;
 }
 
-static RenderedBitmap* RenderPageForOcr(EngineBase* engine, int pageNo, const RectF* clip = nullptr) {
+static RenderedBitmap* RenderPageForOcr(EngineBase* engine, int pageNo, const RectF* clip = nullptr,
+                                        float maxSideCap = 0.f) {
     RectF mb = clip ? *clip : engine->PageMediabox(pageNo);
     if (mb.IsEmpty() || mb.dx < 2 || mb.dy < 2) {
         return nullptr;
@@ -408,7 +409,12 @@ static RenderedBitmap* RenderPageForOcr(EngineBase* engine, int pageNo, const Re
     }
     float zoom = 200.f / fileDpi;
     float maxSide = mb.dx > mb.dy ? mb.dx : mb.dy;
-    if (maxSide * zoom > 1920.f) {
+    if (maxSideCap > 0.f) {
+        // Caller-provided cap (TOC coarse pass) takes precedence.
+        if (maxSide * zoom > maxSideCap) {
+            zoom = maxSideCap / maxSide;
+        }
+    } else if (maxSide * zoom > 1920.f) {
         zoom = 1920.f / maxSide;
     }
     if (clip && maxSide * zoom < 400.f) {
@@ -2207,10 +2213,18 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
         }
         engine->MarkOcrTried(pageNo);
         OcrProfile profile = GetOcrProfileForOperation(op);
+        // TOC discovery is a structure-only coarse pass: lower det input
+        // resolution (thread-local, reset below) and a lighter raster cap
+        // (~25% fewer pixels to rasterize/copy) cut per-page time roughly in
+        // half. The AI extraction reads the original render, not this text.
+        bool tocCoarse = op == OcrOperation::Toc;
+        if (tocCoarse) {
+            OcrSetTocCoarseDet(true);
+        }
         OcrPageTiming timing{};
         LARGE_INTEGER tPage = TimeGet();
         LARGE_INTEGER tRaster = TimeGet();
-        RenderedBitmap* bmp = RenderPageForOcr(engine, pageNo);
+        RenderedBitmap* bmp = RenderPageForOcr(engine, pageNo, nullptr, tocCoarse ? 1440.f : 0.f);
         timing.rasterizeMs = TimeSinceInMs(tRaster);
         logfa("OCR[%d] bmp=%p valid=%d\n", pageNo, bmp, bmp ? bmp->IsValid() : 0);
         if (bmp && bmp->IsValid()) {
@@ -2419,6 +2433,9 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
             delete bmp;
         }
         timing.pageTotalMs = TimeSinceInMs(tPage);
+        if (tocCoarse) {
+            OcrSetTocCoarseDet(false); // thread-local: never leak past this page
+        }
         OcrLogPageTiming(pageNo, profile, timing);
         if (op == OcrOperation::AllPages || op == OcrOperation::SaveSearchable) {
             OcrAccumPageTiming(timing);

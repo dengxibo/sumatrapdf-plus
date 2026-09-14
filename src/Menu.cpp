@@ -301,6 +301,10 @@ static MenuDef menuDefView[] = {
         CmdRotateRight,
     },
     {
+        _TRN("Rotate PDF Pages..."),
+        CmdPdfRotatePages,
+    },
+    {
         kMenuSeparator,
         0,
     },
@@ -914,6 +918,10 @@ static MenuDef menuDefContext[] = {
         CmdToggleBookmarks,
     },
     {
+        _TRN("Rotate PDF Pages..."),
+        CmdPdfRotatePages,
+    },
+    {
         _TRN("Set TOC Item to Current Page"),
         CmdPdfTocSetCurrentPage,
     },
@@ -996,6 +1004,7 @@ static MenuDef menuDefContextStart[] = {
 static UINT_PTR disableIfNoDocument[] = {
     CmdRotateLeft,
     CmdRotateRight,
+    CmdPdfRotatePages,
     CmdGoToNextPage,
     CmdGoToPrevPage,
     CmdGoToFirstPage,
@@ -1564,6 +1573,7 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
         remove |= (cmdId == CmdPdfDecompress);
         remove |= (cmdId == CmdPdfDeletePages);
         remove |= (cmdId == CmdPdfExtractPages);
+        remove |= (cmdId == CmdPdfRotatePages);
         remove |= (cmdId == CmdPdShowInfo);
         remove |= (cmdId == CmdPdfBake);
     }

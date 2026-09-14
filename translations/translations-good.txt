@@ -1194,6 +1194,79 @@ tw:0.25x - 2.00x；按鈕每次調整 0.05x
 uk:0.25x - 2.00x; buttons change by 0.05x
 uz:0.25x - 2.00x; buttons change by 0.05x
 vn:0.25x - 2.00x; buttons change by 0.05x
+:270° Clockwise
+af:270° Clockwise
+am:270° Clockwise
+ar:270° Clockwise
+az:270° Clockwise
+bg:270° Clockwise
+bn:270° Clockwise
+br:270° Clockwise
+bs:270° Clockwise
+by:270° Clockwise
+ca:270° Clockwise
+ca-xv:270° Clockwise
+cn:顺时针 270°
+co:270° Clockwise
+cy:270° Clockwise
+cz:270° Clockwise
+de:270° Clockwise
+dk:270° Clockwise
+el:270° Clockwise
+es:270° Clockwise
+et:270° Clockwise
+eu:270° Clockwise
+fa:270° Clockwise
+fi:270° Clockwise
+fo:270° Clockwise
+fr:270° Clockwise
+fy-nl:270° Clockwise
+ga:270° Clockwise
+gl:270° Clockwise
+he:270° Clockwise
+hi:270° Clockwise
+hr:270° Clockwise
+hu:270° Clockwise
+id:270° Clockwise
+it:270° Clockwise
+ja:270° Clockwise
+jv:270° Clockwise
+ka:270° Clockwise
+kr:270° Clockwise
+ku:270° Clockwise
+kw:270° Clockwise
+lt:270° Clockwise
+lv:270° Clockwise
+mk:270° Clockwise
+ml:270° Clockwise
+mm:270° Clockwise
+my:270° Clockwise
+ne:270° Clockwise
+nl:270° Clockwise
+nn:270° Clockwise
+no:270° Clockwise
+pa:270° Clockwise
+pl:270° Clockwise
+pt:270° Clockwise
+ro:270° Clockwise
+ru:270° Clockwise
+sat:270° Clockwise
+si:270° Clockwise
+sk:270° Clockwise
+sl:270° Clockwise
+sn:270° Clockwise
+sp-rs:270° Clockwise
+sq:270° Clockwise
+sr-rs:270° Clockwise
+sv:270° Clockwise
+ta:270° Clockwise
+th:270° Clockwise
+tl:270° Clockwise
+tr:270° Clockwise
+tw:順時針 270°
+uk:270° Clockwise
+uz:270° Clockwise
+vn:270° Clockwise
 :32-bit
 cn:32 位
 de:32-Bit
@@ -1202,6 +1275,79 @@ tw:32 位元
 cn:64 位
 de:64-Bit
 tw:64 位元
+:90° Clockwise
+af:90° Clockwise
+am:90° Clockwise
+ar:90° Clockwise
+az:90° Clockwise
+bg:90° Clockwise
+bn:90° Clockwise
+br:90° Clockwise
+bs:90° Clockwise
+by:90° Clockwise
+ca:90° Clockwise
+ca-xv:90° Clockwise
+cn:顺时针 90°
+co:90° Clockwise
+cy:90° Clockwise
+cz:90° Clockwise
+de:90° Clockwise
+dk:90° Clockwise
+el:90° Clockwise
+es:90° Clockwise
+et:90° Clockwise
+eu:90° Clockwise
+fa:90° Clockwise
+fi:90° Clockwise
+fo:90° Clockwise
+fr:90° Clockwise
+fy-nl:90° Clockwise
+ga:90° Clockwise
+gl:90° Clockwise
+he:90° Clockwise
+hi:90° Clockwise
+hr:90° Clockwise
+hu:90° Clockwise
+id:90° Clockwise
+it:90° Clockwise
+ja:90° Clockwise
+jv:90° Clockwise
+ka:90° Clockwise
+kr:90° Clockwise
+ku:90° Clockwise
+kw:90° Clockwise
+lt:90° Clockwise
+lv:90° Clockwise
+mk:90° Clockwise
+ml:90° Clockwise
+mm:90° Clockwise
+my:90° Clockwise
+ne:90° Clockwise
+nl:90° Clockwise
+nn:90° Clockwise
+no:90° Clockwise
+pa:90° Clockwise
+pl:90° Clockwise
+pt:90° Clockwise
+ro:90° Clockwise
+ru:90° Clockwise
+sat:90° Clockwise
+si:90° Clockwise
+sk:90° Clockwise
+sl:90° Clockwise
+sn:90° Clockwise
+sp-rs:90° Clockwise
+sq:90° Clockwise
+sr-rs:90° Clockwise
+sv:90° Clockwise
+ta:90° Clockwise
+th:90° Clockwise
+tl:90° Clockwise
+tr:90° Clockwise
+tw:順時針 90°
+uk:90° Clockwise
+uz:90° Clockwise
+vn:90° Clockwise
 :: Everything
 am:: Ամբողջը
 br:: Tudo
@@ -1238,6 +1384,24 @@ nl:@ Tabs
 pl:@ Karty
 sk:@ Karty
 tw:@ 索引標籤
+:AI Processing
+cn:AI 处理
+de:KI-Verarbeitung
+es:Procesamiento IA
+fr:Traitement IA
+ja:AI 処理
+kr:AI 처리
+ru:Обработка ИИ
+tw:AI 處理
+:AI Recognition for Printed TOC and Body Structure
+cn:AI 识别印刷目录与正文结构
+de:KI-Erkennung für gedrucktes Verzeichnis und Textstruktur
+es:Reconocimiento IA de índice impreso y estructura del texto
+fr:Reconnaissance IA du sommaire imprimé et de la structure du texte
+ja:印刷目次と本文構造の AI 認識
+kr:인쇄 목차·본문 구조 AI 인식
+ru:ИИ-распознавание печатного оглавления и структуры текста
+tw:AI 辨識印刷目錄與正文結構
 :AI Recognize Table of Contents
 af:AI Recognize Table of Contents
 am:AI Recognize Table of Contents
@@ -1250,7 +1414,7 @@ bs:AI Recognize Table of Contents
 by:AI Recognize Table of Contents
 ca:AI Recognize Table of Contents
 ca-xv:AI Recognize Table of Contents
-cn:AI提取目录书签
+cn:AI 提取目录书签
 co:AI Recognize Table of Contents
 cy:AI Recognize Table of Contents
 cz:AI Recognize Table of Contents
@@ -1307,10 +1471,13 @@ ta:AI Recognize Table of Contents
 th:AI Recognize Table of Contents
 tl:AI Recognize Table of Contents
 tr:AI Recognize Table of Contents
-tw:AI擷取目錄書籤
+tw:AI 擷取目錄書籤
 uk:AI Recognize Table of Contents
 uz:AI Recognize Table of Contents
 vn:AI Recognize Table of Contents
+:AI returned invalid JSON.
+cn:AI 返回的 JSON 无效。
+tw:AI 傳回的 JSON 無效。
 :About Sumatra PDF Plus
 am:SumatraPDF-ի մասին
 br:Sobre o SumatraPDF
@@ -1601,6 +1768,79 @@ nl:Geavanceerde Opties...
 pl:Ustawienia zaawansowane...
 sk:Pokročilé možnosti…
 tw:進階設定…
+:All Pages (%d)
+af:All Pages (%d)
+am:All Pages (%d)
+ar:All Pages (%d)
+az:All Pages (%d)
+bg:All Pages (%d)
+bn:All Pages (%d)
+br:All Pages (%d)
+bs:All Pages (%d)
+by:All Pages (%d)
+ca:All Pages (%d)
+ca-xv:All Pages (%d)
+cn:全部页面（共 %d 页）
+co:All Pages (%d)
+cy:All Pages (%d)
+cz:All Pages (%d)
+de:All Pages (%d)
+dk:All Pages (%d)
+el:All Pages (%d)
+es:All Pages (%d)
+et:All Pages (%d)
+eu:All Pages (%d)
+fa:All Pages (%d)
+fi:All Pages (%d)
+fo:All Pages (%d)
+fr:All Pages (%d)
+fy-nl:All Pages (%d)
+ga:All Pages (%d)
+gl:All Pages (%d)
+he:All Pages (%d)
+hi:All Pages (%d)
+hr:All Pages (%d)
+hu:All Pages (%d)
+id:All Pages (%d)
+it:All Pages (%d)
+ja:All Pages (%d)
+jv:All Pages (%d)
+ka:All Pages (%d)
+kr:All Pages (%d)
+ku:All Pages (%d)
+kw:All Pages (%d)
+lt:All Pages (%d)
+lv:All Pages (%d)
+mk:All Pages (%d)
+ml:All Pages (%d)
+mm:All Pages (%d)
+my:All Pages (%d)
+ne:All Pages (%d)
+nl:All Pages (%d)
+nn:All Pages (%d)
+no:All Pages (%d)
+pa:All Pages (%d)
+pl:All Pages (%d)
+pt:All Pages (%d)
+ro:All Pages (%d)
+ru:All Pages (%d)
+sat:All Pages (%d)
+si:All Pages (%d)
+sk:All Pages (%d)
+sl:All Pages (%d)
+sn:All Pages (%d)
+sp-rs:All Pages (%d)
+sq:All Pages (%d)
+sr-rs:All Pages (%d)
+sv:All Pages (%d)
+ta:All Pages (%d)
+th:All Pages (%d)
+tl:All Pages (%d)
+tr:All Pages (%d)
+tw:所有頁面（共 %d 頁）
+uk:All Pages (%d)
+uz:All Pages (%d)
+vn:All Pages (%d)
 :All files
 am:Բոլոր ֆայլերը
 br:Todos os arquivos
@@ -1625,6 +1865,21 @@ nl:Alle ondersteunde documenten
 pl:Wszystkie obsługiwane pliki
 sk:Všetky podporované dokumenty
 tw:所有支援的文件
+:Analyzes text, heading levels, numbering and link targets to build the TOC locally and fast.\nBest for official-document style PDFs; works even better when the PDF already has native text and a clickable TOC.
+cn:分析文档中的文字、标题层级、编号和跳转链接，本地快速生成目录。\n特别适用于公文类文档；对已包含原生文字且具有可跳转目录的文档，识别效果更佳。
+tw:分析文件中的文字、標題層級、編號和跳轉連結，在本機快速產生目錄。\n特別適用於公文類文件；對已包含原生文字且具有可跳轉目錄的文件，辨識效果更佳。
+:Analyzing body pages… %d / %d
+cn:正在分析正文页… %d / %d
+de:Textseiten werden analysiert… %d / %d
+es:Analizando páginas del cuerpo… %d / %d
+fr:Analyse des pages du corps… %d / %d
+ja:本文ページを解析中… %d / %d
+kr:본문 페이지 분석 중… %d / %d
+ru:Анализ страниц основного текста… %d / %d
+tw:正在分析正文頁… %d / %d
+:Analyzing the first pages for a printed TOC…
+cn:正在分析文档前段的印刷目录页…
+tw:正在分析文件前段的印刷目錄頁…
 :Annotations
 am:Ծանոթագրություններ
 br:Anotações
@@ -1740,6 +1995,152 @@ it:Ridimensiona
 nl:Wijzig Formaat Toepassen
 pl:Zastosuj zmianę rozmiaru
 sk:Použiť zmenu veľkosti
+:Apply Rotation
+af:Apply Rotation
+am:Apply Rotation
+ar:Apply Rotation
+az:Apply Rotation
+bg:Apply Rotation
+bn:Apply Rotation
+br:Apply Rotation
+bs:Apply Rotation
+by:Apply Rotation
+ca:Apply Rotation
+ca-xv:Apply Rotation
+cn:应用旋转
+co:Apply Rotation
+cy:Apply Rotation
+cz:Apply Rotation
+de:Apply Rotation
+dk:Apply Rotation
+el:Apply Rotation
+es:Apply Rotation
+et:Apply Rotation
+eu:Apply Rotation
+fa:Apply Rotation
+fi:Apply Rotation
+fo:Apply Rotation
+fr:Apply Rotation
+fy-nl:Apply Rotation
+ga:Apply Rotation
+gl:Apply Rotation
+he:Apply Rotation
+hi:Apply Rotation
+hr:Apply Rotation
+hu:Apply Rotation
+id:Apply Rotation
+it:Apply Rotation
+ja:Apply Rotation
+jv:Apply Rotation
+ka:Apply Rotation
+kr:Apply Rotation
+ku:Apply Rotation
+kw:Apply Rotation
+lt:Apply Rotation
+lv:Apply Rotation
+mk:Apply Rotation
+ml:Apply Rotation
+mm:Apply Rotation
+my:Apply Rotation
+ne:Apply Rotation
+nl:Apply Rotation
+nn:Apply Rotation
+no:Apply Rotation
+pa:Apply Rotation
+pl:Apply Rotation
+pt:Apply Rotation
+ro:Apply Rotation
+ru:Apply Rotation
+sat:Apply Rotation
+si:Apply Rotation
+sk:Apply Rotation
+sl:Apply Rotation
+sn:Apply Rotation
+sp-rs:Apply Rotation
+sq:Apply Rotation
+sr-rs:Apply Rotation
+sv:Apply Rotation
+ta:Apply Rotation
+th:Apply Rotation
+tl:Apply Rotation
+tr:Apply Rotation
+tw:套用旋轉
+uk:Apply Rotation
+uz:Apply Rotation
+vn:Apply Rotation
+:Apply To
+af:Apply To
+am:Apply To
+ar:Apply To
+az:Apply To
+bg:Apply To
+bn:Apply To
+br:Apply To
+bs:Apply To
+by:Apply To
+ca:Apply To
+ca-xv:Apply To
+cn:应用到
+co:Apply To
+cy:Apply To
+cz:Apply To
+de:Apply To
+dk:Apply To
+el:Apply To
+es:Apply To
+et:Apply To
+eu:Apply To
+fa:Apply To
+fi:Apply To
+fo:Apply To
+fr:Apply To
+fy-nl:Apply To
+ga:Apply To
+gl:Apply To
+he:Apply To
+hi:Apply To
+hr:Apply To
+hu:Apply To
+id:Apply To
+it:Apply To
+ja:Apply To
+jv:Apply To
+ka:Apply To
+kr:Apply To
+ku:Apply To
+kw:Apply To
+lt:Apply To
+lv:Apply To
+mk:Apply To
+ml:Apply To
+mm:Apply To
+my:Apply To
+ne:Apply To
+nl:Apply To
+nn:Apply To
+no:Apply To
+pa:Apply To
+pl:Apply To
+pt:Apply To
+ro:Apply To
+ru:Apply To
+sat:Apply To
+si:Apply To
+sk:Apply To
+sl:Apply To
+sn:Apply To
+sp-rs:Apply To
+sq:Apply To
+sr-rs:Apply To
+sv:Apply To
+ta:Apply To
+th:Apply To
+tl:Apply To
+tr:Apply To
+tw:套用至
+uk:Apply To
+uz:Apply To
+vn:Apply To
 :Applying document colors, re-rendering pages…
 af:Applying document colors, re-rendering pages…
 am:Applying document colors, re-rendering pages…
@@ -2557,6 +2958,15 @@ nl:Automatisch
 pl:Automatyczny
 sk:Automaticky
 tw:自動
+:Automatic send incomplete
+cn:自动发送未完成
+tw:自動傳送未完成
+:Automatic send incomplete. Paste the clipboard content into the AI input box and send.
+cn:自动发送未完成，可在 AI 输入框粘贴剪贴板内容后发送。
+tw:自動傳送未完成，可在 AI 輸入框貼上剪貼簿內容後傳送。
+:Automatic send incomplete: the heading-candidates prompt is on the clipboard. Paste it into the AI input box and send.
+cn:自动发送未完成：标题候选提示词已放入剪贴板，可在 AI 输入框粘贴后发送。
+tw:自動傳送未完成：標題候選提示詞已放入剪貼簿，可在 AI 輸入框貼上後傳送。
 :Automatically check for &updates
 am:Ինքնաշխատ ստուգել &թարմացումները
 br:Procurar atualizações &automaticamente
@@ -2608,6 +3018,9 @@ it:Bit per campione
 nl:Bits per monster:
 pl:Bity na próbkę:
 sk:Bitov na jednu vzorku:
+:Body structure sent to the web AI
+cn:正文结构已发送到网页版 AI
+tw:正文結構已傳送到網頁版 AI
 :Book View
 am:Գրքի տեսքով
 br:Visualizar como Livro
@@ -2792,6 +3205,15 @@ tw:校準目錄書籤
 :Calibrate TOC Pages
 cn:校准目录书签
 tw:校準目錄書籤
+:Calibrating bookmark targets… %d / %d
+cn:正在校准书签目标… %d / %d
+de:Lesezeichenziele werden kalibriert… %d / %d
+es:Calibrando destinos de marcadores… %d / %d
+fr:Calibrage des cibles de signets… %d / %d
+ja:しおりターゲットを校正中… %d / %d
+kr:책갈피 대상 보정 중… %d / %d
+ru:Калибровка целей закладок… %d / %d
+tw:正在校準書籤目標… %d / %d
 :Camera Make:
 br:Fabricante da Câmera:
 cn:相机品牌:
@@ -2980,6 +3402,15 @@ tw:已取消。
 uk:Cancelled.
 uz:Cancelled.
 vn:Cancelled.
+:Cannot access the clipboard. Please retry.
+cn:无法访问剪贴板，请重试。
+tw:無法存取剪貼簿，請重試。
+:Cannot create the image folder. Check disk space and try again.
+cn:无法创建图片文件夹，请检查磁盘空间后重试。
+tw:無法建立圖片資料夾，請檢查磁碟空間後重試。
+:Cannot open the configured AI page.
+cn:无法打开已配置的 AI 网页。
+tw:無法開啟已設定的 AI 網頁。
 :Cannot print this file
 am:Հնարավոր չէ տպել այս ֆայլը
 br:Não pôde imprimir este arquivo
@@ -3004,6 +3435,9 @@ nl:Kan de omgekeerde zoekopdracht niet starten. Controleer de opdrachtregel in d
 pl:Nie można rozpocząć odwrotnego wyszukiwania. Proszę sprawdzić ustawienia wiersza poleceń.
 sk:Príkaz inverzné vyhľadávanie zlyhal. Skontrolujte príkazový riadok v nastaveniach.
 tw:無法進行反向搜尋。請檢查設定的命令列。
+:Cannot watch the clipboard. Close the window and try again. The prompt was not sent.
+cn:无法监听剪贴板，请关闭窗口后重试。提示词尚未发送。
+tw:無法監聽剪貼簿，請關閉視窗後重試。提示詞尚未傳送。
 :Change Background Color
 br:Mudar a Cor de Fundo
 cn:更改背景颜色
@@ -3240,6 +3674,12 @@ nl:Chinese:
 pl:Chinese:
 sk:Chinese:
 tw:中文：
+:Choose an extraction method:
+cn:请选择提取方式：
+tw:請選擇擷取方式：
+:Choose between 1 and 20 PDF pages.
+cn:选择 1 到 20 个 PDF 页码。
+tw:請選擇 1 到 20 個 PDF 頁碼。
 :Circle
 am:Շրջան
 br:Círculo
@@ -3361,6 +3801,9 @@ nl:Geschiedenis wissen...
 pl:Czyszczenie historii...
 sk:Vymazávanie histórie…
 tw:正在清除歷程記錄...
+:Clipboard is temporarily unreadable. Retrying; you can also copy the AI reply again.
+cn:剪贴板暂时不可读，正在重试。也可以再次复制 AI 回复。
+tw:剪貼簿暫時不可讀，正在重試。也可以再次複製 AI 回覆。
 :Close
 am:Փակել
 br:Fechar
@@ -3556,6 +3999,9 @@ de:Komprimierte Bits pro Pixel:
 it:Bit/Pixel compressi:
 nl:Gecomprimeerd Bits/Pixels
 pl:Skompresowane bity/piksel:
+:Confirm Sending TOC Pages
+cn:确认发送目录页
+tw:確認傳送目錄頁
 :Contents page
 cn:目录页
 tw:目錄頁
@@ -4914,6 +5360,79 @@ de:Größe der aktuellen Seite (%d):
 it:Formato pagina corrente (%d):
 nl:Huidige Pagina (%d) Grootte:
 pl:Rozmiar bieżącej strony (%d):
+:Current Page (Page %d)
+af:Current Page (Page %d)
+am:Current Page (Page %d)
+ar:Current Page (Page %d)
+az:Current Page (Page %d)
+bg:Current Page (Page %d)
+bn:Current Page (Page %d)
+br:Current Page (Page %d)
+bs:Current Page (Page %d)
+by:Current Page (Page %d)
+ca:Current Page (Page %d)
+ca-xv:Current Page (Page %d)
+cn:当前页（第 %d 页）
+co:Current Page (Page %d)
+cy:Current Page (Page %d)
+cz:Current Page (Page %d)
+de:Current Page (Page %d)
+dk:Current Page (Page %d)
+el:Current Page (Page %d)
+es:Current Page (Page %d)
+et:Current Page (Page %d)
+eu:Current Page (Page %d)
+fa:Current Page (Page %d)
+fi:Current Page (Page %d)
+fo:Current Page (Page %d)
+fr:Current Page (Page %d)
+fy-nl:Current Page (Page %d)
+ga:Current Page (Page %d)
+gl:Current Page (Page %d)
+he:Current Page (Page %d)
+hi:Current Page (Page %d)
+hr:Current Page (Page %d)
+hu:Current Page (Page %d)
+id:Current Page (Page %d)
+it:Current Page (Page %d)
+ja:Current Page (Page %d)
+jv:Current Page (Page %d)
+ka:Current Page (Page %d)
+kr:Current Page (Page %d)
+ku:Current Page (Page %d)
+kw:Current Page (Page %d)
+lt:Current Page (Page %d)
+lv:Current Page (Page %d)
+mk:Current Page (Page %d)
+ml:Current Page (Page %d)
+mm:Current Page (Page %d)
+my:Current Page (Page %d)
+ne:Current Page (Page %d)
+nl:Current Page (Page %d)
+nn:Current Page (Page %d)
+no:Current Page (Page %d)
+pa:Current Page (Page %d)
+pl:Current Page (Page %d)
+pt:Current Page (Page %d)
+ro:Current Page (Page %d)
+ru:Current Page (Page %d)
+sat:Current Page (Page %d)
+si:Current Page (Page %d)
+sk:Current Page (Page %d)
+sl:Current Page (Page %d)
+sn:Current Page (Page %d)
+sp-rs:Current Page (Page %d)
+sq:Current Page (Page %d)
+sr-rs:Current Page (Page %d)
+sv:Current Page (Page %d)
+ta:Current Page (Page %d)
+th:Current Page (Page %d)
+tl:Current Page (Page %d)
+tr:Current Page (Page %d)
+tw:目前頁（第 %d 頁）
+uk:Current Page (Page %d)
+uz:Current Page (Page %d)
+vn:Current Page (Page %d)
 :Current file
 am:Ընթացիկ ֆայլը
 br:Arquivo atual
@@ -6348,6 +6867,9 @@ nl:Wachtwoord invoeren voor %s
 pl:Podaj hasło dla %s
 sk:Zadať heslo pre %s
 tw:輸入 %s 的密碼
+:Enter the PDF pages of the TOC; matching thumbnails will be checked. You can also click thumbnails directly.
+cn:请输入目录所在的 PDF 页码，缩略图将同步勾选；也可直接点选缩略图。
+tw:請輸入目錄所在的 PDF 頁碼，縮圖將同步勾選；也可直接點選縮圖。
 :Enter the command-line to invoke when you double-click on the PDF document:
 am:Մուտքագրեք հրաման, որը կկատարվի PDF ֆայլում մկնիկի կրկնակի սեղման ժամանակ.
 br:Insira a linha de comando a invocar quando você clicar duas vezes no documento PDF:
@@ -6512,20 +7034,20 @@ bs:Extract Table of Contents
 by:Extract Table of Contents
 ca:Extract Table of Contents
 ca-xv:Extract Table of Contents
-cn:提取目录书签
+cn:提取目录
 co:Extract Table of Contents
 cy:Extract Table of Contents
 cz:Extract Table of Contents
-de:Extract Table of Contents
+de:Inhaltsverzeichnis extrahieren
 dk:Extract Table of Contents
 el:Extract Table of Contents
-es:Extract Table of Contents
+es:Extraer la tabla de contenidos
 et:Extract Table of Contents
 eu:Extract Table of Contents
 fa:Extract Table of Contents
 fi:Extract Table of Contents
 fo:Extract Table of Contents
-fr:Extract Table of Contents
+fr:Extraire la table des matières
 fy-nl:Extract Table of Contents
 ga:Extract Table of Contents
 gl:Extract Table of Contents
@@ -6534,11 +7056,11 @@ hi:Extract Table of Contents
 hr:Extract Table of Contents
 hu:Extract Table of Contents
 id:Extract Table of Contents
-it:Extract Table of Contents
-ja:Extract Table of Contents
+it:Estrai il sommario
+ja:目次を抽出
 jv:Extract Table of Contents
 ka:Extract Table of Contents
-kr:Extract Table of Contents
+kr:목차 추출
 ku:Extract Table of Contents
 kw:Extract Table of Contents
 lt:Extract Table of Contents
@@ -6553,9 +7075,9 @@ nn:Extract Table of Contents
 no:Extract Table of Contents
 pa:Extract Table of Contents
 pl:Extract Table of Contents
-pt:Extract Table of Contents
+pt:Extrair sumário
 ro:Extract Table of Contents
-ru:Extract Table of Contents
+ru:Извлечь оглавление
 sat:Extract Table of Contents
 si:Extract Table of Contents
 sk:Extract Table of Contents
@@ -6569,7 +7091,7 @@ ta:Extract Table of Contents
 th:Extract Table of Contents
 tl:Extract Table of Contents
 tr:Extract Table of Contents
-tw:提取目錄書籤
+tw:擷取目錄
 uk:Extract Table of Contents
 uz:Extract Table of Contents
 vn:Extract Table of Contents
@@ -6585,7 +7107,7 @@ bs:Extract Table of Contents Locally
 by:Extract Table of Contents Locally
 ca:Extract Table of Contents Locally
 ca-xv:Extract Table of Contents Locally
-cn:本地提取目录书签
+cn:提取目录书签
 co:Extract Table of Contents Locally
 cy:Extract Table of Contents Locally
 cz:Extract Table of Contents Locally
@@ -6642,7 +7164,7 @@ ta:Extract Table of Contents Locally
 th:Extract Table of Contents Locally
 tl:Extract Table of Contents Locally
 tr:Extract Table of Contents Locally
-tw:本地擷取目錄書籤
+tw:擷取目錄書籤
 uk:Extract Table of Contents Locally
 uz:Extract Table of Contents Locally
 vn:Extract Table of Contents Locally
@@ -7029,6 +7551,9 @@ tw:正在提取書籤… %d / %d
 uk:Extracting bookmarks… %d / %d
 uz:Extracting bookmarks… %d / %d
 vn:Extracting bookmarks… %d / %d
+:Extracts the structure from printed TOC pages, or from the body text structure.\nRecognized by the web AI; slower than local extraction.
+cn:支持从印刷版目录页提取结构，也可从中文正文文本结构提取内容生成目录。\n由网页版 AI 识别，处理速度相对本地识别较慢。
+tw:支援從印刷版目錄頁擷取結構，也可從中文正文文字結構擷取內容產生目錄。\n由網頁版 AI 辨識，處理速度相對本地辨識較慢。
 :Extremely slow (0.25×)
 am:Գերազանց դանդաղ (0.25×)
 br:Extremamente lento (0.25×)
@@ -7134,6 +7659,9 @@ nl:Naam niet kunnen wijzigen!
 pl:Błąd zmiany nazwy pliku!
 sk:Premenovanie súboru bolo neúspešné!
 tw:無法重新命名該檔案!
+:Failed to render the TOC page images. Try again or adjust the pages.
+cn:目录页图片生成失败，请重试或调整页码。
+tw:目錄頁圖片產生失敗，請重試或調整頁碼。
 :Failed to save a file
 am:Հնարավոր չէ պահել ֆայլում
 br:Falhou em salvar um arquivo.
@@ -7146,6 +7674,82 @@ nl:Fout bij opslaan bestand
 pl:Błąd zapisywania pliku
 sk:Uloženie súboru bolo neúspešné
 tw:檔案儲存失敗
+:Failed to save images. Check disk space and try again.
+cn:图片保存失败，请检查磁盘空间后重试。
+tw:圖片儲存失敗，請檢查磁碟空間後重試。
+:Failed to save rotated PDF pages.
+af:Failed to save rotated PDF pages.
+am:Failed to save rotated PDF pages.
+ar:Failed to save rotated PDF pages.
+az:Failed to save rotated PDF pages.
+bg:Failed to save rotated PDF pages.
+bn:Failed to save rotated PDF pages.
+br:Failed to save rotated PDF pages.
+bs:Failed to save rotated PDF pages.
+by:Failed to save rotated PDF pages.
+ca:Failed to save rotated PDF pages.
+ca-xv:Failed to save rotated PDF pages.
+cn:保存旋转后的页面失败。
+co:Failed to save rotated PDF pages.
+cy:Failed to save rotated PDF pages.
+cz:Failed to save rotated PDF pages.
+de:Failed to save rotated PDF pages.
+dk:Failed to save rotated PDF pages.
+el:Failed to save rotated PDF pages.
+es:Failed to save rotated PDF pages.
+et:Failed to save rotated PDF pages.
+eu:Failed to save rotated PDF pages.
+fa:Failed to save rotated PDF pages.
+fi:Failed to save rotated PDF pages.
+fo:Failed to save rotated PDF pages.
+fr:Failed to save rotated PDF pages.
+fy-nl:Failed to save rotated PDF pages.
+ga:Failed to save rotated PDF pages.
+gl:Failed to save rotated PDF pages.
+he:Failed to save rotated PDF pages.
+hi:Failed to save rotated PDF pages.
+hr:Failed to save rotated PDF pages.
+hu:Failed to save rotated PDF pages.
+id:Failed to save rotated PDF pages.
+it:Failed to save rotated PDF pages.
+ja:Failed to save rotated PDF pages.
+jv:Failed to save rotated PDF pages.
+ka:Failed to save rotated PDF pages.
+kr:Failed to save rotated PDF pages.
+ku:Failed to save rotated PDF pages.
+kw:Failed to save rotated PDF pages.
+lt:Failed to save rotated PDF pages.
+lv:Failed to save rotated PDF pages.
+mk:Failed to save rotated PDF pages.
+ml:Failed to save rotated PDF pages.
+mm:Failed to save rotated PDF pages.
+my:Failed to save rotated PDF pages.
+ne:Failed to save rotated PDF pages.
+nl:Failed to save rotated PDF pages.
+nn:Failed to save rotated PDF pages.
+no:Failed to save rotated PDF pages.
+pa:Failed to save rotated PDF pages.
+pl:Failed to save rotated PDF pages.
+pt:Failed to save rotated PDF pages.
+ro:Failed to save rotated PDF pages.
+ru:Failed to save rotated PDF pages.
+sat:Failed to save rotated PDF pages.
+si:Failed to save rotated PDF pages.
+sk:Failed to save rotated PDF pages.
+sl:Failed to save rotated PDF pages.
+sn:Failed to save rotated PDF pages.
+sp-rs:Failed to save rotated PDF pages.
+sq:Failed to save rotated PDF pages.
+sr-rs:Failed to save rotated PDF pages.
+sv:Failed to save rotated PDF pages.
+ta:Failed to save rotated PDF pages.
+th:Failed to save rotated PDF pages.
+tl:Failed to save rotated PDF pages.
+tr:Failed to save rotated PDF pages.
+tw:儲存旋轉後的頁面失敗。
+uk:Failed to save rotated PDF pages.
+uz:Failed to save rotated PDF pages.
+vn:Failed to save rotated PDF pages.
 :Failed to write the extended file extension information to the registry
 am:Հնարավոր չեղավ ֆայլի ընդլայնման մասին գրառել Գրանցատեղիում
 br:Falhou em gravar a extensão do arquivo extendido no registro
@@ -8254,6 +8858,24 @@ nl:GB
 pl:GB
 sk:GB
 tw:GB
+:Generate TOC From Body
+cn:从正文生成目录
+de:Inhaltsverzeichnis aus dem Fließtext erstellen
+es:Generar índice desde el cuerpo
+fr:Générer le sommaire depuis le corps
+ja:本文構造から目次を生成
+kr:본문 구조에서 목차 생성
+ru:Создать оглавление по структуре текста
+tw:從正文產生目錄
+:Generate TOC From Document Structure
+cn:从文档结构生成目录
+de:Inhaltsverzeichnis aus Dokumentstruktur erstellen
+es:Generar índice desde la estructura del documento
+fr:Générer le sommaire depuis la structure du document
+ja:文書構造から目次を生成
+kr:문서 구조에서 목차 생성
+ru:Создать оглавление по структуре документа
+tw:從文件結構產生目錄
 :Getting fonts information...
 br:Obtendo informações das fontes...
 cn:获取字体信息...
@@ -8545,6 +9167,30 @@ nl:Afbeeldingen
 pl:Obrazy
 sk:Obrázky
 tw:圖片
+:Import TOC
+cn:导入目录
+de:Inhaltsverzeichnis importieren
+es:Importar índice
+fr:Importer le sommaire
+ja:目次を読み込む
+kr:목차 가져오기
+ru:Импорт оглавления
+tw:匯入目錄
+:Importing TOC: arranging bookmark levels…
+cn:正在导入目录：整理书签层级…
+tw:正在匯入目錄：整理書籤層級…
+:Importing TOC: calibrating bookmark destinations…
+cn:正在导入目录：校准书签位置…
+tw:正在匯入目錄：校準書籤位置…
+:Importing TOC: calibrating bookmark destinations… %d / %d
+cn:正在导入目录：校准书签位置… %d / %d
+tw:正在匯入目錄：校準書籤位置… %d / %d
+:Importing TOC: parsing the AI reply…
+cn:正在导入目录：解析 AI 返回内容…
+tw:正在匯入目錄：解析 AI 回傳內容…
+:Importing TOC: restoring titles and page numbers…
+cn:正在导入目录：还原标题与页码…
+tw:正在匯入目錄：還原標題與頁碼…
 :Increase Font Size
 cn:放大字号
 tw:放大字號
@@ -8729,6 +9375,79 @@ nl:Interieur Kleur
 pl:Kolor wnętrza:
 sk:Farba vnútra:
 tw:內部顏色:
+:Invalid page range.
+af:Invalid page range.
+am:Invalid page range.
+ar:Invalid page range.
+az:Invalid page range.
+bg:Invalid page range.
+bn:Invalid page range.
+br:Invalid page range.
+bs:Invalid page range.
+by:Invalid page range.
+ca:Invalid page range.
+ca-xv:Invalid page range.
+cn:页面范围无效。
+co:Invalid page range.
+cy:Invalid page range.
+cz:Invalid page range.
+de:Invalid page range.
+dk:Invalid page range.
+el:Invalid page range.
+es:Invalid page range.
+et:Invalid page range.
+eu:Invalid page range.
+fa:Invalid page range.
+fi:Invalid page range.
+fo:Invalid page range.
+fr:Invalid page range.
+fy-nl:Invalid page range.
+ga:Invalid page range.
+gl:Invalid page range.
+he:Invalid page range.
+hi:Invalid page range.
+hr:Invalid page range.
+hu:Invalid page range.
+id:Invalid page range.
+it:Invalid page range.
+ja:Invalid page range.
+jv:Invalid page range.
+ka:Invalid page range.
+kr:Invalid page range.
+ku:Invalid page range.
+kw:Invalid page range.
+lt:Invalid page range.
+lv:Invalid page range.
+mk:Invalid page range.
+ml:Invalid page range.
+mm:Invalid page range.
+my:Invalid page range.
+ne:Invalid page range.
+nl:Invalid page range.
+nn:Invalid page range.
+no:Invalid page range.
+pa:Invalid page range.
+pl:Invalid page range.
+pt:Invalid page range.
+ro:Invalid page range.
+ru:Invalid page range.
+sat:Invalid page range.
+si:Invalid page range.
+sk:Invalid page range.
+sl:Invalid page range.
+sn:Invalid page range.
+sp-rs:Invalid page range.
+sq:Invalid page range.
+sr-rs:Invalid page range.
+sv:Invalid page range.
+ta:Invalid page range.
+th:Invalid page range.
+tl:Invalid page range.
+tr:Invalid page range.
+tw:頁面範圍無效。
+uk:Invalid page range.
+uz:Invalid page range.
+vn:Invalid page range.
 :Invert Colors
 am:Գույների շրջում
 br:Inverter Cores
@@ -8871,6 +9590,79 @@ nl:Start een Browser of voer een opdracht uit met selectie
 pl:Uruchom przeglądarkę lub polecenie z zaznaczeniem
 sk:Spustiť prehliadač alebo spustiť príkaz s výberom
 tw:對選取內容啟動瀏覽器或執行命令
+:Left 90°
+af:Left 90°
+am:Left 90°
+ar:Left 90°
+az:Left 90°
+bg:Left 90°
+bn:Left 90°
+br:Left 90°
+bs:Left 90°
+by:Left 90°
+ca:Left 90°
+ca-xv:Left 90°
+cn:向左 90°
+co:Left 90°
+cy:Left 90°
+cz:Left 90°
+de:Left 90°
+dk:Left 90°
+el:Left 90°
+es:Left 90°
+et:Left 90°
+eu:Left 90°
+fa:Left 90°
+fi:Left 90°
+fo:Left 90°
+fr:Left 90°
+fy-nl:Left 90°
+ga:Left 90°
+gl:Left 90°
+he:Left 90°
+hi:Left 90°
+hr:Left 90°
+hu:Left 90°
+id:Left 90°
+it:Left 90°
+ja:Left 90°
+jv:Left 90°
+ka:Left 90°
+kr:Left 90°
+ku:Left 90°
+kw:Left 90°
+lt:Left 90°
+lv:Left 90°
+mk:Left 90°
+ml:Left 90°
+mm:Left 90°
+my:Left 90°
+ne:Left 90°
+nl:Left 90°
+nn:Left 90°
+no:Left 90°
+pa:Left 90°
+pl:Left 90°
+pt:Left 90°
+ro:Left 90°
+ru:Left 90°
+sat:Left 90°
+si:Left 90°
+sk:Left 90°
+sl:Left 90°
+sn:Left 90°
+sp-rs:Left 90°
+sq:Left 90°
+sr-rs:Left 90°
+sv:Left 90°
+ta:Left 90°
+th:Left 90°
+tl:Left 90°
+tr:Left 90°
+tw:向左 90°
+uk:Left 90°
+uz:Left 90°
+vn:Left 90°
 :Let Windows Desktop Search &search PDF documents
 am:Թույլատրել Windows Desktop Search-ին &PDF ֆայլերի որոնումը
 br:Deixar a Busca da Área de Trabalho do Windows &procurar documentos PDF
@@ -9063,6 +9855,15 @@ nl:Laden %s...
 pl:Ładowanie %s ...
 sk:Načítava sa %s…
 tw:正在載入 %s ...
+:Local Extraction
+cn:本地提取
+de:Lokale Extraktion
+es:Extracción local
+fr:Extraction locale
+ja:ローカル抽出
+kr:로컬 추출
+ru:Локальное извлечение
+tw:本地擷取
 :Local smart bilingual (English + Chinese)
 af:Slim tweetalig (Engels + Chinees)
 am:Խելացի երկլեզու (անգլերեն + չինարեն)
@@ -9637,6 +10438,9 @@ nl:Navigeer Vooruit
 pl:Nawiguj do przodu
 sk:Prejsť dopredu
 tw:向前巡覽
+:Needs internet: only TOC page images or heading candidates are uploaded.
+cn:需联网上传：仅发送目录页图片或标题候选文本。
+tw:需連線上傳：僅傳送目錄頁圖片或標題候選文字。
 :New &window
 am:Նոր &պատուհան
 br:Nova &janela
@@ -10013,6 +10817,9 @@ nl:Geen zoekresultaat gevonden
 pl:Nie znaleziono wyników
 sk:Nenájdené podľa zodpovedajúcich kritérií
 tw:找不到結果
+:No obvious body headings detected. Enter the TOC PDF page numbers below.
+cn:未检测到明显的正文标题，可在下方手动填写目录页页码。
+tw:未偵測到明顯的正文標題，可在下方手動填寫目錄頁頁碼。
 :No page to recognize.
 af:No page to recognize.
 am:No page to recognize.
@@ -10086,6 +10893,15 @@ tw:沒有可識別的頁面。
 uk:No page to recognize.
 uz:No page to recognize.
 vn:No page to recognize.
+:No printed TOC found
+cn:未找到印刷目录页
+de:Kein gedrucktes Inhaltsverzeichnis gefunden
+es:No se encontró un índice impreso
+fr:Aucun sommaire imprimé trouvé
+ja:印刷目次が見つかりません
+kr:인쇄된 목차를 찾을 수 없음
+ru:Печатное оглавление не найдено
+tw:未找到印刷目錄頁
 :No printed table of contents found in the first pages.
 af:No printed table of contents found in the first pages.
 am:No printed table of contents found in the first pages.
@@ -11179,6 +11995,15 @@ tw:確定(&O)
 :Offset
 cn:偏移
 tw:偏移
+:Online AI Recognition
+cn:联网识别
+de:Online-KI-Erkennung
+es:Reconocimiento IA en línea
+fr:Reconnaissance IA en ligne
+ja:オンライン AI 認識
+kr:온라인 AI 인식
+ru:Онлайн-распознавание ИИ
+tw:網路辨識
 :Online multilingual voices
 af:Aanlyn veeltalige stemme
 am:Առցանց բազմալեզու ձայներ
@@ -12078,6 +12903,15 @@ nl:Pa&gina
 pl:&Strona...
 sk:Stra&na…
 tw:前往頁面(&G)...
+:Page %d
+cn:第 %d 页
+de:Seite %d
+es:Página %d
+fr:Page %d
+ja:%d ページ
+kr:%d 페이지
+ru:Страница %d
+tw:第 %d 頁
 :Page %s
 am:Էջ %s
 br:Página %s
@@ -12102,6 +12936,9 @@ nl:Paginanummer %u bestaat niet
 pl:Brak strony o numerze %u
 sk:Číslo strany %u neexistuje
 tw:第 %u 頁不存在
+:Page numbers and the thumbnails below are in sync.
+cn:页码与下方缩略图已同步。
+tw:頁碼與下方縮圖已同步。
 :Page scaling
 am:Էջի շարժը
 br:Ampliação da página
@@ -12144,6 +12981,79 @@ it:Estrai pagine:
 nl:Pagina's Uitpakken:
 pl:Strony do wyodrębnienia:
 sk:Strany na extrahovanie:
+:Pages To Rotate:
+af:Pages To Rotate:
+am:Pages To Rotate:
+ar:Pages To Rotate:
+az:Pages To Rotate:
+bg:Pages To Rotate:
+bn:Pages To Rotate:
+br:Pages To Rotate:
+bs:Pages To Rotate:
+by:Pages To Rotate:
+ca:Pages To Rotate:
+ca-xv:Pages To Rotate:
+cn:要旋转的页面:
+co:Pages To Rotate:
+cy:Pages To Rotate:
+cz:Pages To Rotate:
+de:Pages To Rotate:
+dk:Pages To Rotate:
+el:Pages To Rotate:
+es:Pages To Rotate:
+et:Pages To Rotate:
+eu:Pages To Rotate:
+fa:Pages To Rotate:
+fi:Pages To Rotate:
+fo:Pages To Rotate:
+fr:Pages To Rotate:
+fy-nl:Pages To Rotate:
+ga:Pages To Rotate:
+gl:Pages To Rotate:
+he:Pages To Rotate:
+hi:Pages To Rotate:
+hr:Pages To Rotate:
+hu:Pages To Rotate:
+id:Pages To Rotate:
+it:Pages To Rotate:
+ja:Pages To Rotate:
+jv:Pages To Rotate:
+ka:Pages To Rotate:
+kr:Pages To Rotate:
+ku:Pages To Rotate:
+kw:Pages To Rotate:
+lt:Pages To Rotate:
+lv:Pages To Rotate:
+mk:Pages To Rotate:
+ml:Pages To Rotate:
+mm:Pages To Rotate:
+my:Pages To Rotate:
+ne:Pages To Rotate:
+nl:Pages To Rotate:
+nn:Pages To Rotate:
+no:Pages To Rotate:
+pa:Pages To Rotate:
+pl:Pages To Rotate:
+pt:Pages To Rotate:
+ro:Pages To Rotate:
+ru:Pages To Rotate:
+sat:Pages To Rotate:
+si:Pages To Rotate:
+sk:Pages To Rotate:
+sl:Pages To Rotate:
+sn:Pages To Rotate:
+sp-rs:Pages To Rotate:
+sq:Pages To Rotate:
+sr-rs:Pages To Rotate:
+sv:Pages To Rotate:
+ta:Pages To Rotate:
+th:Pages To Rotate:
+tl:Pages To Rotate:
+tr:Pages To Rotate:
+tw:要旋轉的頁面:
+uk:Pages To Rotate:
+uz:Pages To Rotate:
+vn:Pages To Rotate:
 :Pages:
 br:Páginas
 cn:页:
@@ -12590,6 +13500,24 @@ tw:預發行
 cn:预发布版本，仅供测试！
 de:Vorabversion, nur zum Testen!
 tw:預發行版本，僅供測試！
+:Prepare Content
+cn:准备内容
+de:Inhalt vorbereiten
+es:Preparar contenido
+fr:Préparer le contenu
+ja:コンテンツを準備
+kr:내용 준비
+ru:Подготовка содержимого
+tw:準備內容
+:Preparing %d TOC page images for sending…
+cn:正在准备 %d 张目录图片并发送…
+de:%d Verzeichnisseiten werden zum Senden vorbereitet…
+es:Preparando %d imágenes de páginas del índice para enviar…
+fr:Préparation de l’envoi de %d images de pages de sommaire…
+ja:目次ページ画像 %d 枚を送信準備中…
+kr:목차 페이지 이미지 %d장을 보낼 준비 중…
+ru:Подготовка к отправке изображений страниц оглавления (%d)…
+tw:正在準備 %d 張目錄圖片並傳送…
 :Presentation Black Background
 am:Ներկայացման սև խորք
 br:Apresentação com Fundo Preto
@@ -12759,6 +13687,9 @@ nl:Probleem bij het afdrukken
 pl:Problem z drukowaniem.
 sk:Problém pri tlači.
 tw:列印問題
+:Processed locally and fast. Nothing is uploaded.
+cn:本地快速处理，全程无需上传文件。
+tw:本機快速處理，全程無需上傳檔案。
 :Promote PDF TOC Item
 am:Բարձրացնել PDF բովանդակության տարրի մակարդակը
 br:Elevar nível do item do sumário do PDF
@@ -14086,6 +15017,21 @@ vn:Replace the existing PDF bookmarks with extracted headings?
 cn:报告错误（仅限本分支）
 de:Fehler melden (nur dieser Fork)
 tw:回報錯誤（僅限本分支）
+:Resend
+cn:重新发送
+de:Erneut senden
+es:Reenviar
+fr:Renvoyer
+ja:再送信
+kr:다시 보내기
+ru:Отправить снова
+tw:重新傳送
+:Resending TOC pages…
+cn:正在重新发送目录页…
+tw:正在重新傳送目錄頁…
+:Resending body structure…
+cn:正在重新发送正文结构…
+tw:正在重新傳送正文結構…
 :Reset Font Si&ze to Default
 af:Reset Font Si&ze to Default
 am:Reset Font Si&ze to Default
@@ -14349,6 +15295,79 @@ tw:繼續
 uk:Продовжити
 uz:Davom etish
 vn:Tiếp tục
+:Right 90°
+af:Right 90°
+am:Right 90°
+ar:Right 90°
+az:Right 90°
+bg:Right 90°
+bn:Right 90°
+br:Right 90°
+bs:Right 90°
+by:Right 90°
+ca:Right 90°
+ca-xv:Right 90°
+cn:向右 90°
+co:Right 90°
+cy:Right 90°
+cz:Right 90°
+de:Right 90°
+dk:Right 90°
+el:Right 90°
+es:Right 90°
+et:Right 90°
+eu:Right 90°
+fa:Right 90°
+fi:Right 90°
+fo:Right 90°
+fr:Right 90°
+fy-nl:Right 90°
+ga:Right 90°
+gl:Right 90°
+he:Right 90°
+hi:Right 90°
+hr:Right 90°
+hu:Right 90°
+id:Right 90°
+it:Right 90°
+ja:Right 90°
+jv:Right 90°
+ka:Right 90°
+kr:Right 90°
+ku:Right 90°
+kw:Right 90°
+lt:Right 90°
+lv:Right 90°
+mk:Right 90°
+ml:Right 90°
+mm:Right 90°
+my:Right 90°
+ne:Right 90°
+nl:Right 90°
+nn:Right 90°
+no:Right 90°
+pa:Right 90°
+pl:Right 90°
+pt:Right 90°
+ro:Right 90°
+ru:Right 90°
+sat:Right 90°
+si:Right 90°
+sk:Right 90°
+sl:Right 90°
+sn:Right 90°
+sp-rs:Right 90°
+sq:Right 90°
+sr-rs:Right 90°
+sv:Right 90°
+ta:Right 90°
+th:Right 90°
+tl:Right 90°
+tr:Right 90°
+tw:向右 90°
+uk:Right 90°
+uz:Right 90°
+vn:Right 90°
 :Rotate &Left
 am:Պտտել &ձախ
 br:Girar pra &Esquerda
@@ -14385,6 +15404,225 @@ nl:Roteer naar Links
 pl:Obróć w lewo
 sk:Otočiť doľava
 tw:向左旋轉
+:Rotate PDF Pages
+af:Rotate PDF Pages
+am:Rotate PDF Pages
+ar:Rotate PDF Pages
+az:Rotate PDF Pages
+bg:Rotate PDF Pages
+bn:Rotate PDF Pages
+br:Rotate PDF Pages
+bs:Rotate PDF Pages
+by:Rotate PDF Pages
+ca:Rotate PDF Pages
+ca-xv:Rotate PDF Pages
+cn:旋转 PDF 页面
+co:Rotate PDF Pages
+cy:Rotate PDF Pages
+cz:Rotate PDF Pages
+de:Rotate PDF Pages
+dk:Rotate PDF Pages
+el:Rotate PDF Pages
+es:Rotate PDF Pages
+et:Rotate PDF Pages
+eu:Rotate PDF Pages
+fa:Rotate PDF Pages
+fi:Rotate PDF Pages
+fo:Rotate PDF Pages
+fr:Rotate PDF Pages
+fy-nl:Rotate PDF Pages
+ga:Rotate PDF Pages
+gl:Rotate PDF Pages
+he:Rotate PDF Pages
+hi:Rotate PDF Pages
+hr:Rotate PDF Pages
+hu:Rotate PDF Pages
+id:Rotate PDF Pages
+it:Rotate PDF Pages
+ja:Rotate PDF Pages
+jv:Rotate PDF Pages
+ka:Rotate PDF Pages
+kr:Rotate PDF Pages
+ku:Rotate PDF Pages
+kw:Rotate PDF Pages
+lt:Rotate PDF Pages
+lv:Rotate PDF Pages
+mk:Rotate PDF Pages
+ml:Rotate PDF Pages
+mm:Rotate PDF Pages
+my:Rotate PDF Pages
+ne:Rotate PDF Pages
+nl:Rotate PDF Pages
+nn:Rotate PDF Pages
+no:Rotate PDF Pages
+pa:Rotate PDF Pages
+pl:Rotate PDF Pages
+pt:Rotate PDF Pages
+ro:Rotate PDF Pages
+ru:Rotate PDF Pages
+sat:Rotate PDF Pages
+si:Rotate PDF Pages
+sk:Rotate PDF Pages
+sl:Rotate PDF Pages
+sn:Rotate PDF Pages
+sp-rs:Rotate PDF Pages
+sq:Rotate PDF Pages
+sr-rs:Rotate PDF Pages
+sv:Rotate PDF Pages
+ta:Rotate PDF Pages
+th:Rotate PDF Pages
+tl:Rotate PDF Pages
+tr:Rotate PDF Pages
+tw:旋轉 PDF 頁面
+uk:Rotate PDF Pages
+uz:Rotate PDF Pages
+vn:Rotate PDF Pages
+:Rotate PDF Pages...
+af:Rotate PDF Pages...
+am:Rotate PDF Pages...
+ar:Rotate PDF Pages...
+az:Rotate PDF Pages...
+bg:Rotate PDF Pages...
+bn:Rotate PDF Pages...
+br:Rotate PDF Pages...
+bs:Rotate PDF Pages...
+by:Rotate PDF Pages...
+ca:Rotate PDF Pages...
+ca-xv:Rotate PDF Pages...
+cn:旋转 PDF 页面...
+co:Rotate PDF Pages...
+cy:Rotate PDF Pages...
+cz:Rotate PDF Pages...
+de:Rotate PDF Pages...
+dk:Rotate PDF Pages...
+el:Rotate PDF Pages...
+es:Rotate PDF Pages...
+et:Rotate PDF Pages...
+eu:Rotate PDF Pages...
+fa:Rotate PDF Pages...
+fi:Rotate PDF Pages...
+fo:Rotate PDF Pages...
+fr:Rotate PDF Pages...
+fy-nl:Rotate PDF Pages...
+ga:Rotate PDF Pages...
+gl:Rotate PDF Pages...
+he:Rotate PDF Pages...
+hi:Rotate PDF Pages...
+hr:Rotate PDF Pages...
+hu:Rotate PDF Pages...
+id:Rotate PDF Pages...
+it:Rotate PDF Pages...
+ja:Rotate PDF Pages...
+jv:Rotate PDF Pages...
+ka:Rotate PDF Pages...
+kr:Rotate PDF Pages...
+ku:Rotate PDF Pages...
+kw:Rotate PDF Pages...
+lt:Rotate PDF Pages...
+lv:Rotate PDF Pages...
+mk:Rotate PDF Pages...
+ml:Rotate PDF Pages...
+mm:Rotate PDF Pages...
+my:Rotate PDF Pages...
+ne:Rotate PDF Pages...
+nl:Rotate PDF Pages...
+nn:Rotate PDF Pages...
+no:Rotate PDF Pages...
+pa:Rotate PDF Pages...
+pl:Rotate PDF Pages...
+pt:Rotate PDF Pages...
+ro:Rotate PDF Pages...
+ru:Rotate PDF Pages...
+sat:Rotate PDF Pages...
+si:Rotate PDF Pages...
+sk:Rotate PDF Pages...
+sl:Rotate PDF Pages...
+sn:Rotate PDF Pages...
+sp-rs:Rotate PDF Pages...
+sq:Rotate PDF Pages...
+sr-rs:Rotate PDF Pages...
+sv:Rotate PDF Pages...
+ta:Rotate PDF Pages...
+th:Rotate PDF Pages...
+tl:Rotate PDF Pages...
+tr:Rotate PDF Pages...
+tw:旋轉 PDF 頁面...
+uk:Rotate PDF Pages...
+uz:Rotate PDF Pages...
+vn:Rotate PDF Pages...
+:Rotate Pages
+af:Rotate Pages
+am:Rotate Pages
+ar:Rotate Pages
+az:Rotate Pages
+bg:Rotate Pages
+bn:Rotate Pages
+br:Rotate Pages
+bs:Rotate Pages
+by:Rotate Pages
+ca:Rotate Pages
+ca-xv:Rotate Pages
+cn:旋转页面
+co:Rotate Pages
+cy:Rotate Pages
+cz:Rotate Pages
+de:Rotate Pages
+dk:Rotate Pages
+el:Rotate Pages
+es:Rotate Pages
+et:Rotate Pages
+eu:Rotate Pages
+fa:Rotate Pages
+fi:Rotate Pages
+fo:Rotate Pages
+fr:Rotate Pages
+fy-nl:Rotate Pages
+ga:Rotate Pages
+gl:Rotate Pages
+he:Rotate Pages
+hi:Rotate Pages
+hr:Rotate Pages
+hu:Rotate Pages
+id:Rotate Pages
+it:Rotate Pages
+ja:Rotate Pages
+jv:Rotate Pages
+ka:Rotate Pages
+kr:Rotate Pages
+ku:Rotate Pages
+kw:Rotate Pages
+lt:Rotate Pages
+lv:Rotate Pages
+mk:Rotate Pages
+ml:Rotate Pages
+mm:Rotate Pages
+my:Rotate Pages
+ne:Rotate Pages
+nl:Rotate Pages
+nn:Rotate Pages
+no:Rotate Pages
+pa:Rotate Pages
+pl:Rotate Pages
+pt:Rotate Pages
+ro:Rotate Pages
+ru:Rotate Pages
+sat:Rotate Pages
+si:Rotate Pages
+sk:Rotate Pages
+sl:Rotate Pages
+sn:Rotate Pages
+sp-rs:Rotate Pages
+sq:Rotate Pages
+sr-rs:Rotate Pages
+sv:Rotate Pages
+ta:Rotate Pages
+th:Rotate Pages
+tl:Rotate Pages
+tr:Rotate Pages
+tw:旋轉頁面
+uk:Rotate Pages
+uz:Rotate Pages
+vn:Rotate Pages
 :Rotate Right
 am:Պտտել աջ
 br:Girar pra Direita
@@ -14397,6 +15635,225 @@ nl:Roteer naar Rechts
 pl:Obróć w prawo
 sk:Otočiť doprava
 tw:向右旋轉
+:Rotated %d page(s) and saved to '%s'
+af:Rotated %d page(s) and saved to '%s'
+am:Rotated %d page(s) and saved to '%s'
+ar:Rotated %d page(s) and saved to '%s'
+az:Rotated %d page(s) and saved to '%s'
+bg:Rotated %d page(s) and saved to '%s'
+bn:Rotated %d page(s) and saved to '%s'
+br:Rotated %d page(s) and saved to '%s'
+bs:Rotated %d page(s) and saved to '%s'
+by:Rotated %d page(s) and saved to '%s'
+ca:Rotated %d page(s) and saved to '%s'
+ca-xv:Rotated %d page(s) and saved to '%s'
+cn:已旋转 %d 页并保存到 '%s'
+co:Rotated %d page(s) and saved to '%s'
+cy:Rotated %d page(s) and saved to '%s'
+cz:Rotated %d page(s) and saved to '%s'
+de:Rotated %d page(s) and saved to '%s'
+dk:Rotated %d page(s) and saved to '%s'
+el:Rotated %d page(s) and saved to '%s'
+es:Rotated %d page(s) and saved to '%s'
+et:Rotated %d page(s) and saved to '%s'
+eu:Rotated %d page(s) and saved to '%s'
+fa:Rotated %d page(s) and saved to '%s'
+fi:Rotated %d page(s) and saved to '%s'
+fo:Rotated %d page(s) and saved to '%s'
+fr:Rotated %d page(s) and saved to '%s'
+fy-nl:Rotated %d page(s) and saved to '%s'
+ga:Rotated %d page(s) and saved to '%s'
+gl:Rotated %d page(s) and saved to '%s'
+he:Rotated %d page(s) and saved to '%s'
+hi:Rotated %d page(s) and saved to '%s'
+hr:Rotated %d page(s) and saved to '%s'
+hu:Rotated %d page(s) and saved to '%s'
+id:Rotated %d page(s) and saved to '%s'
+it:Rotated %d page(s) and saved to '%s'
+ja:Rotated %d page(s) and saved to '%s'
+jv:Rotated %d page(s) and saved to '%s'
+ka:Rotated %d page(s) and saved to '%s'
+kr:Rotated %d page(s) and saved to '%s'
+ku:Rotated %d page(s) and saved to '%s'
+kw:Rotated %d page(s) and saved to '%s'
+lt:Rotated %d page(s) and saved to '%s'
+lv:Rotated %d page(s) and saved to '%s'
+mk:Rotated %d page(s) and saved to '%s'
+ml:Rotated %d page(s) and saved to '%s'
+mm:Rotated %d page(s) and saved to '%s'
+my:Rotated %d page(s) and saved to '%s'
+ne:Rotated %d page(s) and saved to '%s'
+nl:Rotated %d page(s) and saved to '%s'
+nn:Rotated %d page(s) and saved to '%s'
+no:Rotated %d page(s) and saved to '%s'
+pa:Rotated %d page(s) and saved to '%s'
+pl:Rotated %d page(s) and saved to '%s'
+pt:Rotated %d page(s) and saved to '%s'
+ro:Rotated %d page(s) and saved to '%s'
+ru:Rotated %d page(s) and saved to '%s'
+sat:Rotated %d page(s) and saved to '%s'
+si:Rotated %d page(s) and saved to '%s'
+sk:Rotated %d page(s) and saved to '%s'
+sl:Rotated %d page(s) and saved to '%s'
+sn:Rotated %d page(s) and saved to '%s'
+sp-rs:Rotated %d page(s) and saved to '%s'
+sq:Rotated %d page(s) and saved to '%s'
+sr-rs:Rotated %d page(s) and saved to '%s'
+sv:Rotated %d page(s) and saved to '%s'
+ta:Rotated %d page(s) and saved to '%s'
+th:Rotated %d page(s) and saved to '%s'
+tl:Rotated %d page(s) and saved to '%s'
+tr:Rotated %d page(s) and saved to '%s'
+tw:已旋轉 %d 頁並儲存到 '%s'
+uk:Rotated %d page(s) and saved to '%s'
+uz:Rotated %d page(s) and saved to '%s'
+vn:Rotated %d page(s) and saved to '%s'
+:Rotation
+af:Rotation
+am:Rotation
+ar:Rotation
+az:Rotation
+bg:Rotation
+bn:Rotation
+br:Rotation
+bs:Rotation
+by:Rotation
+ca:Rotation
+ca-xv:Rotation
+cn:旋转方向
+co:Rotation
+cy:Rotation
+cz:Rotation
+de:Rotation
+dk:Rotation
+el:Rotation
+es:Rotation
+et:Rotation
+eu:Rotation
+fa:Rotation
+fi:Rotation
+fo:Rotation
+fr:Rotation
+fy-nl:Rotation
+ga:Rotation
+gl:Rotation
+he:Rotation
+hi:Rotation
+hr:Rotation
+hu:Rotation
+id:Rotation
+it:Rotation
+ja:Rotation
+jv:Rotation
+ka:Rotation
+kr:Rotation
+ku:Rotation
+kw:Rotation
+lt:Rotation
+lv:Rotation
+mk:Rotation
+ml:Rotation
+mm:Rotation
+my:Rotation
+ne:Rotation
+nl:Rotation
+nn:Rotation
+no:Rotation
+pa:Rotation
+pl:Rotation
+pt:Rotation
+ro:Rotation
+ru:Rotation
+sat:Rotation
+si:Rotation
+sk:Rotation
+sl:Rotation
+sn:Rotation
+sp-rs:Rotation
+sq:Rotation
+sr-rs:Rotation
+sv:Rotation
+ta:Rotation
+th:Rotation
+tl:Rotation
+tr:Rotation
+tw:旋轉方向
+uk:Rotation
+uz:Rotation
+vn:Rotation
+:Rotation Angle:
+af:Rotation Angle:
+am:Rotation Angle:
+ar:Rotation Angle:
+az:Rotation Angle:
+bg:Rotation Angle:
+bn:Rotation Angle:
+br:Rotation Angle:
+bs:Rotation Angle:
+by:Rotation Angle:
+ca:Rotation Angle:
+ca-xv:Rotation Angle:
+cn:旋转角度:
+co:Rotation Angle:
+cy:Rotation Angle:
+cz:Rotation Angle:
+de:Rotation Angle:
+dk:Rotation Angle:
+el:Rotation Angle:
+es:Rotation Angle:
+et:Rotation Angle:
+eu:Rotation Angle:
+fa:Rotation Angle:
+fi:Rotation Angle:
+fo:Rotation Angle:
+fr:Rotation Angle:
+fy-nl:Rotation Angle:
+ga:Rotation Angle:
+gl:Rotation Angle:
+he:Rotation Angle:
+hi:Rotation Angle:
+hr:Rotation Angle:
+hu:Rotation Angle:
+id:Rotation Angle:
+it:Rotation Angle:
+ja:Rotation Angle:
+jv:Rotation Angle:
+ka:Rotation Angle:
+kr:Rotation Angle:
+ku:Rotation Angle:
+kw:Rotation Angle:
+lt:Rotation Angle:
+lv:Rotation Angle:
+mk:Rotation Angle:
+ml:Rotation Angle:
+mm:Rotation Angle:
+my:Rotation Angle:
+ne:Rotation Angle:
+nl:Rotation Angle:
+nn:Rotation Angle:
+no:Rotation Angle:
+pa:Rotation Angle:
+pl:Rotation Angle:
+pt:Rotation Angle:
+ro:Rotation Angle:
+ru:Rotation Angle:
+sat:Rotation Angle:
+si:Rotation Angle:
+sk:Rotation Angle:
+sl:Rotation Angle:
+sn:Rotation Angle:
+sp-rs:Rotation Angle:
+sq:Rotation Angle:
+sr-rs:Rotation Angle:
+sv:Rotation Angle:
+ta:Rotation Angle:
+th:Rotation Angle:
+tl:Rotation Angle:
+tr:Rotation Angle:
+tw:旋轉角度:
+uk:Rotation Angle:
+uz:Rotation Angle:
+vn:Rotation Angle:
 :S&election
 am:Ը&նտրում
 br:S&eleção
@@ -15282,6 +16739,27 @@ tw:儲存會修改這份已數位簽署的 PDF。原簽章仍在，但閱讀器�
 uk:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
 uz:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
 vn:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+:Scan canceled.
+cn:已取消扫描。
+tw:已取消掃描。
+:Scan finished: %d likely headings found. Opening the AI page…
+cn:扫描完成，发现 %d 个疑似标题，正在打开 AI 网页…
+tw:掃描完成，發現 %d 個疑似標題，正在開啟 AI 網頁…
+:Scanning contents pages… %d / %d
+cn:正在扫描目录页… %d / %d
+de:Verzeichnisseiten werden gescannt… %d / %d
+es:Escaneando páginas del índice… %d / %d
+fr:Analyse des pages du sommaire… %d / %d
+ja:目次ページを走査中… %d / %d
+kr:목차 페이지 스캔 중… %d / %d
+ru:Сканирование страниц оглавления… %d / %d
+tw:正在掃描目錄頁… %d / %d
+:Scanning document structure
+cn:正在扫描文档结构
+tw:正在掃描文件結構
+:Scanning for TOC pages
+cn:正在扫描目录页
+tw:正在掃描目錄頁
 :Scanning…
 af:Scanning…
 am:Scanning…
@@ -15428,6 +16906,9 @@ tw:正在識別… %d / %d
 uk:Scanning… %d / %d
 uz:Scanning… %d / %d
 vn:Scanning… %d / %d
+:Scans the full text and extracts heading candidates locally; the AI then organizes them into a TOC.
+cn:扫描全文，在本地提取疑似标题，再由 AI 整理目录结构。
+tw:掃描全文，在本機擷取疑似標題，再由 AI 整理目錄結構。
 :Scene Type:
 br:Tipo de Cena:
 cn:场景类型:
@@ -15757,6 +17238,79 @@ nl:Kies de folder waar SumatraPDF geinstalleerd moet worden:
 pl:Wybierz folder, w którym należy zainstalować program SumatraPDF:
 sk:Vyberte adresár, kde sa má SumatraPDF nainštalovať:
 tw:選擇 SumatraPDF 應安裝的資料夾:
+:Selected pages are already at that rotation.
+af:Selected pages are already at that rotation.
+am:Selected pages are already at that rotation.
+ar:Selected pages are already at that rotation.
+az:Selected pages are already at that rotation.
+bg:Selected pages are already at that rotation.
+bn:Selected pages are already at that rotation.
+br:Selected pages are already at that rotation.
+bs:Selected pages are already at that rotation.
+by:Selected pages are already at that rotation.
+ca:Selected pages are already at that rotation.
+ca-xv:Selected pages are already at that rotation.
+cn:所选页面已经是该旋转角度。
+co:Selected pages are already at that rotation.
+cy:Selected pages are already at that rotation.
+cz:Selected pages are already at that rotation.
+de:Selected pages are already at that rotation.
+dk:Selected pages are already at that rotation.
+el:Selected pages are already at that rotation.
+es:Selected pages are already at that rotation.
+et:Selected pages are already at that rotation.
+eu:Selected pages are already at that rotation.
+fa:Selected pages are already at that rotation.
+fi:Selected pages are already at that rotation.
+fo:Selected pages are already at that rotation.
+fr:Selected pages are already at that rotation.
+fy-nl:Selected pages are already at that rotation.
+ga:Selected pages are already at that rotation.
+gl:Selected pages are already at that rotation.
+he:Selected pages are already at that rotation.
+hi:Selected pages are already at that rotation.
+hr:Selected pages are already at that rotation.
+hu:Selected pages are already at that rotation.
+id:Selected pages are already at that rotation.
+it:Selected pages are already at that rotation.
+ja:Selected pages are already at that rotation.
+jv:Selected pages are already at that rotation.
+ka:Selected pages are already at that rotation.
+kr:Selected pages are already at that rotation.
+ku:Selected pages are already at that rotation.
+kw:Selected pages are already at that rotation.
+lt:Selected pages are already at that rotation.
+lv:Selected pages are already at that rotation.
+mk:Selected pages are already at that rotation.
+ml:Selected pages are already at that rotation.
+mm:Selected pages are already at that rotation.
+my:Selected pages are already at that rotation.
+ne:Selected pages are already at that rotation.
+nl:Selected pages are already at that rotation.
+nn:Selected pages are already at that rotation.
+no:Selected pages are already at that rotation.
+pa:Selected pages are already at that rotation.
+pl:Selected pages are already at that rotation.
+pt:Selected pages are already at that rotation.
+ro:Selected pages are already at that rotation.
+ru:Selected pages are already at that rotation.
+sat:Selected pages are already at that rotation.
+si:Selected pages are already at that rotation.
+sk:Selected pages are already at that rotation.
+sl:Selected pages are already at that rotation.
+sn:Selected pages are already at that rotation.
+sp-rs:Selected pages are already at that rotation.
+sq:Selected pages are already at that rotation.
+sr-rs:Selected pages are already at that rotation.
+sv:Selected pages are already at that rotation.
+ta:Selected pages are already at that rotation.
+th:Selected pages are already at that rotation.
+tl:Selected pages are already at that rotation.
+tr:Selected pages are already at that rotation.
+tw:所選頁面已經是該旋轉角度。
+uk:Selected pages are already at that rotation.
+uz:Selected pages are already at that rotation.
+vn:Selected pages are already at that rotation.
 :Selection
 af:Seleksie
 am:Ընտրություն
@@ -15915,6 +17469,9 @@ nl:Selectie
 pl:Zaznaczenie:
 sk:Výber:
 tw:選取:
+:Send
+cn:发送
+tw:傳送
 :Send Document By Email...
 am:Ուղարկել փաստաթուղթը էլ. փոստով...
 br:Enviar Documento por Email...
@@ -15927,6 +17484,15 @@ nl:Verzend Document Per E-Mail
 pl:Wyślij dokument e-mailem...
 sk:Odoslať dokument e-mailom…
 tw:以電子郵件傳送文件…
+:Send TOC Pages
+cn:发送目录页
+de:Verzeichnisseiten senden
+es:Enviar páginas del índice
+fr:Envoyer les pages du sommaire
+ja:目次ページを送信
+kr:목차 페이지 보내기
+ru:Отправить страницы оглавления
+tw:傳送目錄頁
 :Send by &E-mail...
 am:Ուղարկել &էլ. փոստով
 br:Enviar por &E-mail...
@@ -15939,6 +17505,9 @@ nl:Verzend per &E-Mail...
 pl:Wyślij &e-mailem...
 sk:Odoslať e-mailo&m...
 tw:透過電子郵件傳送(&E)...
+:Sending prompt…
+cn:正在发送提示词…
+tw:正在傳送提示詞…
 :Set
 br:Configurar
 cn:设置
@@ -16655,6 +18224,88 @@ nl:Snelheid: %.2f×
 pl:Szybkość: %.2f×
 sk:Rýchlosť: %.2f×
 tw:語速：%.2f×
+:Specified Pages
+af:Specified Pages
+am:Specified Pages
+ar:Specified Pages
+az:Specified Pages
+bg:Specified Pages
+bn:Specified Pages
+br:Specified Pages
+bs:Specified Pages
+by:Specified Pages
+ca:Specified Pages
+ca-xv:Specified Pages
+cn:指定页面
+co:Specified Pages
+cy:Specified Pages
+cz:Specified Pages
+de:Specified Pages
+dk:Specified Pages
+el:Specified Pages
+es:Specified Pages
+et:Specified Pages
+eu:Specified Pages
+fa:Specified Pages
+fi:Specified Pages
+fo:Specified Pages
+fr:Specified Pages
+fy-nl:Specified Pages
+ga:Specified Pages
+gl:Specified Pages
+he:Specified Pages
+hi:Specified Pages
+hr:Specified Pages
+hu:Specified Pages
+id:Specified Pages
+it:Specified Pages
+ja:Specified Pages
+jv:Specified Pages
+ka:Specified Pages
+kr:Specified Pages
+ku:Specified Pages
+kw:Specified Pages
+lt:Specified Pages
+lv:Specified Pages
+mk:Specified Pages
+ml:Specified Pages
+mm:Specified Pages
+my:Specified Pages
+ne:Specified Pages
+nl:Specified Pages
+nn:Specified Pages
+no:Specified Pages
+pa:Specified Pages
+pl:Specified Pages
+pt:Specified Pages
+ro:Specified Pages
+ru:Specified Pages
+sat:Specified Pages
+si:Specified Pages
+sk:Specified Pages
+sl:Specified Pages
+sn:Specified Pages
+sp-rs:Specified Pages
+sq:Specified Pages
+sr-rs:Specified Pages
+sv:Specified Pages
+ta:Specified Pages
+th:Specified Pages
+tl:Specified Pages
+tr:Specified Pages
+tw:指定頁面
+uk:Specified Pages
+uz:Specified Pages
+vn:Specified Pages
+:Specify TOC Pages
+cn:手工指定目录页
+de:Verzeichnisseiten angeben
+es:Indicar páginas del índice
+fr:Indiquer les pages du sommaire
+ja:目次ページを指定
+kr:목차 페이지 지정
+ru:Указать страницы оглавления
+tw:手動指定目錄頁
 :Speed
 af:Spoed
 am:Արագություն
@@ -17329,6 +18980,21 @@ tw:系統預設
 uk:Системний за замовчуванням
 uz:Tizim standarti
 vn:Mặc định hệ thống
+:TOC import failed. Copy the full AI TOC JSON and try again.
+cn:目录导入失败，请复制完整的 AI 目录 JSON 后重试。
+tw:目錄匯入失敗，請複製完整的 AI 目錄 JSON 後重試。
+:TOC import finished.
+cn:目录导入完成。
+tw:目錄匯入完成。
+:TOC import not finished. Copy the AI reply again to retry.
+cn:目录导入未完成，可再次复制 AI 回复重试。
+tw:目錄匯入未完成，可再次複製 AI 回覆重試。
+:TOC pages (PDF page numbers, not printed page numbers)
+cn:目录所在的 PDF 页码（非书本印刷页码）
+tw:目錄所在的 PDF 頁碼（非書本印刷頁碼）
+:TOC pages sent to the web AI
+cn:目录页已发送到网页版 AI
+tw:目錄頁已傳送到網頁版 AI
 :Tab Groups
 br:Grupos de Abas
 cn:标签组
@@ -17601,10 +19267,31 @@ nl:Bedankt! SumatraPDF is geïnstalleerd.
 pl:Program SumatraPDF został zainstalowany.
 sk:Ďakujeme! SumatraPDF bol nainštalovaný.
 tw:謝謝！ SumatraPDF 已安裝。
+:The AI is organizing a TOC from the full-text structure.\r\nWhen it finishes, click Copy under the AI reply; the app reads it and imports the TOC.
+cn:AI 正在根据全文结构整理目录。\r\n完成后，请在 AI 回复中点击“复制”，本程序会自动读取结果并导入目录。
+tw:AI 正在根據全文結構整理目錄。\r\n完成後，請在 AI 回覆中點擊「複製」，本程式會自動讀取結果並匯入目錄。
+:The AI is organizing a TOC from the full-text structure.\r\nWhen it finishes, click Copy under the AI reply; the app reads it and imports the TOC.\r\nOnly locally extracted heading candidates are sent — the PDF itself is not uploaded.
+cn:AI 正在根据全文结构整理目录。\r\n完成后，请在 AI 回复中点击“复制”，本程序会自动读取结果并导入目录。\r\n仅发送本地提取的结构化标题候选，不上传整份 PDF。
+tw:AI 正在根據全文結構整理目錄。\r\n完成後，請在 AI 回覆中點擊「複製」，本程式會自動讀取結果並匯入目錄。\r\n僅傳送本機擷取的結構化標題候選，不上傳整份 PDF。
+:The AI is recognizing the printed TOC.\r\nWhen it finishes, click Copy under the AI reply; the app reads it and imports the TOC.
+cn:AI 正在识别印刷目录。\r\n完成后，请在 AI 回复中点击“复制”，本程序会自动读取结果并导入目录。
+tw:AI 正在辨識印刷目錄。\r\n完成後，請在 AI 回覆中點擊「複製」，本程式會自動讀取結果並匯入目錄。
+:The AI page opened, but the initial message could not be sent.
+cn:AI 网页已打开，但无法发送初始化消息。
+tw:AI 網頁已開啟，但無法傳送初始化訊息。
 :The Programmers
 cn:程序员
 de:Die Programmierer
 tw:程式設計師
+:The TOC page images and prompt are on the clipboard. Paste and send them in the AI page.\r\nWhen the reply is ready, click Copy under the AI reply; the app reads it and imports the TOC.
+cn:目录页图片与提示词已放入剪贴板，可在 AI 网页粘贴发送。\r\n回复完成后，点击 AI 回复下方的“复制”，本程序会自动读取结果并导入目录。
+tw:目錄頁圖片與提示詞已放入剪貼簿，可在 AI 網頁貼上傳送。\r\n回覆完成後，點擊 AI 回覆下方的「複製」，本程式會自動讀取結果並匯入目錄。
+:The entered PDF pages will be rendered and queued for sending.
+cn:将按输入的 PDF 页码逐页取图并等待发送。
+tw:將按輸入的 PDF 頁碼逐頁取圖並等待傳送。
+:The heading-candidates prompt is on the clipboard. Paste and send it in the AI page.\r\nWhen the reply is ready, click Copy under the AI reply; the app reads it and imports the TOC.
+cn:标题候选提示词已放入剪贴板，可在 AI 网页粘贴发送。\r\n回复完成后，点击 AI 回复下方的“复制”，本程序会自动读取结果并导入目录。
+tw:標題候選提示詞已放入剪貼簿，可在 AI 網頁貼上傳送。\r\n回覆完成後，點擊 AI 回覆下方的「複製」，本程式會自動讀取結果並匯入目錄。
 :The installer has been corrupted. Please download it again.\nSorry for the inconvenience!
 am:Ծրագրի տեղադրիչը վնասված է: Կրկին բեռնեք այն:\nՀայցում ենք Ձեր ներողամտությունը:
 br:O instalador está corrompido. Por favor baixe-o de novo.\nLamento pela inconveniência!
@@ -17617,6 +19304,9 @@ nl:Het installatieprogramma is beschadigd. Gelieve het opnieuw te downloaden.\nO
 pl:Plik instalacyjny jest uszkodzony. Pobierz go jeszcze raz.\nPrzepraszamy za kłopot.
 sk:Inštalačný súbor je poškodený. Prosím stiahnite si ho ešte raz. \nOspravedlňujeme sa za ťažkosti!
 tw:安裝程式已損壞。請重新下載。\n很抱歉給您帶來不便！
+:The selected %d TOC page images will be sent to the configured web AI.\n\nPlease verify the pages and content before sending.
+cn:将把选中的 %d 页目录图片发送到当前配置的网页版 AI。\n\n请确认页码和内容无误后发送。
+tw:將把選取的 %d 頁目錄圖片傳送到目前設定的網頁版 AI。\n\n請確認頁碼和內容無誤後傳送。
 :There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
 af:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
 am:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
@@ -17909,6 +19599,9 @@ tw:這份文件看起來是掃描件。
 uk:This document looks like a scan.
 uz:This document looks like a scan.
 vn:This document looks like a scan.
+:This document may not have a separate printed TOC.\r\nYou can generate one from the body structure or specify the TOC pages manually.
+cn:这份文档可能没有独立的印刷目录。\r\n你可以从正文结构生成目录，或手动指定目录页。
+tw:這份文件可能沒有獨立的印刷目錄。\r\n你可以從正文結構產生目錄，或手動指定目錄頁。
 :This document uses unsupported features (%s) and might not render properly
 am:Փաստաթուղթը օգտագործում է չաջակցվող յուրահատկություններ (%s) և հնարավոր է նորմալ չաշխատի:
 br:Este documento usa recursos não suportados (%s) e pode não renderizar apropriadamente
@@ -18870,6 +20563,9 @@ tw:無法提取書籤
 uk:Unable to extract bookmarks
 uz:Unable to extract bookmarks
 vn:Unable to extract bookmarks
+:Unable to paste the AI prompt into the browser.
+cn:无法将 AI 提示词粘贴到浏览器中。
+tw:無法將 AI 提示詞貼上到瀏覽器中。
 :Underline
 cn:下划线
 tw:底線
@@ -19313,6 +21009,9 @@ tw:語音
 uk:Голос
 uz:Ovoz
 vn:Giọng
+:Waiting for the AI reply. Click Copy when it is ready…
+cn:等待 AI 回复并复制…
+tw:等待 AI 回覆並複製…
 :Warning
 am:Զգուշացում
 br:Aviso
@@ -19843,6 +21542,82 @@ nl:niet gebruiken
 pl:nie używaj
 sk:nepoužiť
 tw:不要使用
+:e.g. 2, 5-7, 13-
+af:e.g. 2, 5-7, 13-
+am:e.g. 2, 5-7, 13-
+ar:e.g. 2, 5-7, 13-
+az:e.g. 2, 5-7, 13-
+bg:e.g. 2, 5-7, 13-
+bn:e.g. 2, 5-7, 13-
+br:e.g. 2, 5-7, 13-
+bs:e.g. 2, 5-7, 13-
+by:e.g. 2, 5-7, 13-
+ca:e.g. 2, 5-7, 13-
+ca-xv:e.g. 2, 5-7, 13-
+cn:例如：2, 5-7, 13-
+co:e.g. 2, 5-7, 13-
+cy:e.g. 2, 5-7, 13-
+cz:e.g. 2, 5-7, 13-
+de:e.g. 2, 5-7, 13-
+dk:e.g. 2, 5-7, 13-
+el:e.g. 2, 5-7, 13-
+es:e.g. 2, 5-7, 13-
+et:e.g. 2, 5-7, 13-
+eu:e.g. 2, 5-7, 13-
+fa:e.g. 2, 5-7, 13-
+fi:e.g. 2, 5-7, 13-
+fo:e.g. 2, 5-7, 13-
+fr:e.g. 2, 5-7, 13-
+fy-nl:e.g. 2, 5-7, 13-
+ga:e.g. 2, 5-7, 13-
+gl:e.g. 2, 5-7, 13-
+he:e.g. 2, 5-7, 13-
+hi:e.g. 2, 5-7, 13-
+hr:e.g. 2, 5-7, 13-
+hu:e.g. 2, 5-7, 13-
+id:e.g. 2, 5-7, 13-
+it:e.g. 2, 5-7, 13-
+ja:e.g. 2, 5-7, 13-
+jv:e.g. 2, 5-7, 13-
+ka:e.g. 2, 5-7, 13-
+kr:e.g. 2, 5-7, 13-
+ku:e.g. 2, 5-7, 13-
+kw:e.g. 2, 5-7, 13-
+lt:e.g. 2, 5-7, 13-
+lv:e.g. 2, 5-7, 13-
+mk:e.g. 2, 5-7, 13-
+ml:e.g. 2, 5-7, 13-
+mm:e.g. 2, 5-7, 13-
+my:e.g. 2, 5-7, 13-
+ne:e.g. 2, 5-7, 13-
+nl:e.g. 2, 5-7, 13-
+nn:e.g. 2, 5-7, 13-
+no:e.g. 2, 5-7, 13-
+pa:e.g. 2, 5-7, 13-
+pl:e.g. 2, 5-7, 13-
+pt:e.g. 2, 5-7, 13-
+ro:e.g. 2, 5-7, 13-
+ru:e.g. 2, 5-7, 13-
+sat:e.g. 2, 5-7, 13-
+si:e.g. 2, 5-7, 13-
+sk:e.g. 2, 5-7, 13-
+sl:e.g. 2, 5-7, 13-
+sn:e.g. 2, 5-7, 13-
+sp-rs:e.g. 2, 5-7, 13-
+sq:e.g. 2, 5-7, 13-
+sr-rs:e.g. 2, 5-7, 13-
+sv:e.g. 2, 5-7, 13-
+ta:e.g. 2, 5-7, 13-
+th:e.g. 2, 5-7, 13-
+tl:e.g. 2, 5-7, 13-
+tr:e.g. 2, 5-7, 13-
+tw:例如：2, 5-7, 13-
+uk:e.g. 2, 5-7, 13-
+uz:e.g. 2, 5-7, 13-
+vn:e.g. 2, 5-7, 13-
+:e.g. 3-4, 7
+cn:例如：3-4, 7
+tw:例如：3-4, 7
 :git commit
 cn:git 提交
 de:Git-Commit
@@ -19912,3 +21687,6 @@ it:↑ ↓ per navigare
 nl:↑ ↓ voor navigeren
 pl:↑ ↓ aby nawigować
 sk:↑ ↓ – navigovať
+:✓ Likely TOC pages found. Please confirm the selection.
+cn:✓ 已找到疑似目录页，请确认选择。
+tw:✓ 已找到疑似目錄頁，請確認選擇。

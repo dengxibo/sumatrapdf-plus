@@ -2,8 +2,14 @@
 
 ## next
 
-- OCR copy: paragraph-merged copy is on by default (`CmdToggleOcrCopyMerged` in the OCR menu, setting `OcrCopyMerged`). Copying full-page OCR results (auto OCR and Recognize All Scanned Pages) now merges soft-wrapped lines into coherent paragraphs while keeping true paragraph breaks, and a long wrapped title copies as a single line so it no longer truncates when pasted as a file name in Windows Explorer. Uncheck the menu item to restore the old line-per-layout behavior
-  OCR 复制默认按段落合并（OCR 菜单「段落合并复制」，`OcrCopyMerged`）：整页识别（自动识别 / 识别全部扫描页）复制出来的是连贯段落，不再按版面逐行断开；折行长标题复制为单行，另存文件名时不会再被回车截断。取消勾选可恢复旧的逐行行为
+- PDF repair: documents that require lenient page-tree recovery are now marked as repaired, forcing a full rewrite when AI TOC or other PDF edits are saved instead of producing an invalid incremental update.
+  PDF 修复：需要宽容页面树恢复的损坏文档现在会标记为已修复；保存 AI 目录或其他 PDF 编辑时将强制完整重写，避免生成无效的增量更新。
+
+- PDF tools: add a command for rotating a selected range of PDF pages.
+  PDF 工具：新增旋转指定 PDF 页面范围的命令。
+
+- Text copy: paragraph-merged copy is on by default (`CmdToggleOcrCopyMerged` in the OCR menu, setting `OcrCopyMerged`). Copying from OCR results or native-text PDF pages now merges soft-wrapped lines into coherent paragraphs while keeping true paragraph breaks, and a long wrapped title copies as a single line so it no longer truncates when pasted as a file name in Windows Explorer. Uncheck the menu item to restore the old line-per-layout behavior
+  文本复制默认按段落合并（OCR 菜单「段落合并复制」，`OcrCopyMerged`）：OCR 结果及原生文字 PDF 复制出来的都是连贯段落，不再按版面逐行断开；折行长标题复制为单行，另存文件名时不会再被回车截断。取消勾选可恢复旧的逐行行为
 
 - toolbar: fullscreen button moves to the far right (after Read Aloud)
   工具栏：全屏按钮移到最右侧（朗读后面）
