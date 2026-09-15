@@ -3902,6 +3902,10 @@ static NotificationWnd* ShowLoadingNotif(MainWindow* win, LoadArgs* args) {
     // Stable group id (not FilePath pointer): otherwise a second StartLoadDocument
     // for the same path cannot replace the first loading banner.
     nargs.groupId = args && args->showLoadingProgress ? kNotifEbookFontLayout : kNotifDocumentLoading;
+    // Several document loads can overlap. Each task owns its notification and
+    // removes it when that task finishes; replacing an earlier notification
+    // here would leave the earlier worker with a dangling NotificationWnd*.
+    nargs.replaceExisting = args && args->showLoadingProgress;
     // Match window UI font / DPI (GetAppBiggerFont() can pick the wrong DPI hwnd
     // during cold start when the new frame is not yet foreground).
     nargs.font = GetAppFontForHwnd(win->hwndCanvas);

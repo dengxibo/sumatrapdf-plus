@@ -581,9 +581,9 @@ static int NotifsRemoveForGroup(NotificationWnd** wnds, int nWnds, Kind groupId)
     return nRemove;
 }
 
-static bool NotifsAdd(NotificationWnd** wnds, int nWnds, NotificationWnd* wnd, Kind groupId) {
+static bool NotifsAdd(NotificationWnd** wnds, int nWnds, NotificationWnd* wnd, Kind groupId, bool replaceExisting) {
     bool skipRemove = (groupId == nullptr) || (groupId == kNotifAdHoc);
-    if (!skipRemove) {
+    if (!skipRemove && replaceExisting) {
         NotifsRemoveForGroup(wnds, nWnds, groupId);
     }
     if (gNotifsCount >= kMaxNotifs) {
@@ -596,10 +596,10 @@ static bool NotifsAdd(NotificationWnd** wnds, int nWnds, NotificationWnd* wnd, K
     return true;
 }
 
-static bool NotifsAdd(NotificationWnd* wnd, Kind groupId) {
+static bool NotifsAdd(NotificationWnd* wnd, Kind groupId, bool replaceExisting) {
     NotificationWnd* wnds[kMaxNotifs];
     int nWnds = GetForSameHwnd(wnd, wnds);
-    return NotifsAdd(wnds, nWnds, wnd, groupId);
+    return NotifsAdd(wnds, nWnds, wnd, groupId, replaceExisting);
 }
 
 NotificationWnd* NotifsGetForGroup(NotificationWnd** wnds, int nWnds, Kind groupId) {
@@ -624,7 +624,7 @@ NotificationWnd* ShowNotification(const NotificationCreateArgs& args) {
     if (wnd->delayTimerId == 0 && !IsDocumentLoadingGroup(args.groupId)) {
         BringWindowToTop(wnd->hwnd);
     }
-    bool ok = NotifsAdd(wnd, args.groupId);
+    bool ok = NotifsAdd(wnd, args.groupId, args.replaceExisting);
     if (!ok) {
         delete wnd;
         return nullptr;
@@ -657,7 +657,9 @@ NotificationWnd* ShowWarningNotification(HWND hwndParent, const char* msg, int t
 }
 
 void NotificationUpdateMessage(NotificationWnd* wnd, const char* msg, int timeoutMs, bool highlight) {
-    if (!wnd) {
+    // A notification may have been closed or replaced while a worker-thread
+    // progress update was waiting in the UI queue.
+    if (!wnd || NotificationIndexOf(wnd) < 0) {
         return;
     }
     wnd->UpdateMessage(msg, timeoutMs, highlight);

@@ -26,6 +26,7 @@ struct NotificationCreateArgs {
     int timeoutMs = 0;    // if 0 => persists until closed manually
     int delayInMs = 0;    // if > 0 => create hidden, show after delay
     float shrinkLimit = 1.0f;
+    bool replaceExisting = true;
     const char* msg = nullptr;
     NotificationWndRemoved onRemoved;
 };
