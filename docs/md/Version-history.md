@@ -3,6 +3,7 @@
 ## next
 
 - options: expand the Options dialog into General, Interface, Reading, and Advanced categories, exposing commonly used settings without editing the advanced settings file.
+- options: add OCR and AI settings, theme/document colors, dictionary, sidebar font, display quality, and expert window settings to the categorized Options dialog.
   选项：将“选项”窗口扩充为“常规、界面、阅读、高级”四个分类，常用设置无需再手工编辑高级设置文件。
 
 ## 3.7.31 (2026-09-15)

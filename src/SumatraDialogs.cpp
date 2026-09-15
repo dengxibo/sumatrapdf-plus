@@ -9,6 +9,7 @@
 #include "AppSettings.h"
 
 #include "GlobalPrefs.h"
+#include "EbookInstalledFonts.h"
 
 #include "Annotation.h"
 #include "SumatraPDF.h"
@@ -931,18 +932,75 @@ bool Dialog_ChangeScrollbar(HWND hwnd) {
     return res == IDOK;
 }
 
-static const int gSettingsGeneralControls[] = {IDC_SETTINGS_PAGE_GENERAL, IDC_CHECK_FOR_UPDATES,
-                                               IDC_REMEMBER_OPENED_FILES, IDC_REMEMBER_STATE_PER_DOCUMENT,
-                                               IDC_RESTORE_SESSION,       IDC_REUSE_INSTANCE};
-static const int gSettingsInterfaceControls[] = {
-    IDC_SETTINGS_PAGE_INTERFACE,    IDC_USE_TABS, IDC_NO_HOME_TAB,        IDC_SHOW_MENUBAR_WITH_TABS, IDC_SHOW_TOOLBAR,
-    IDC_SHOW_ANNOT_TOOLBAR_BUTTONS, IDC_TABS_MRU, IDC_SEARCH_UI_FLOATING, IDC_RESTART_REQUIRED};
-static const int gSettingsReadingControls[] = {
-    IDC_SETTINGS_PAGE_READING, IDC_DEFAULT_LAYOUT_LABEL,  IDC_DEFAULT_LAYOUT,   IDC_DEFAULT_ZOOM_LABEL,
-    IDC_DEFAULT_ZOOM,          IDC_DEFAULT_SHOW_TOC,      IDC_SCROLLBARS_LABEL, IDC_SCROLLBARS,
-    IDC_SMOOTH_SCROLL,         IDC_SCROLLBAR_SINGLE_PAGE, IDC_RELOAD_MODIFIED,  IDC_PREVENT_SLEEP_FULLSCREEN};
-static const int gSettingsAdvancedControls[] = {IDC_SETTINGS_PAGE_ADVANCED, IDC_SECTION_INVERSESEARCH,
-                                                IDC_CMDLINE_LABEL, IDC_CMDLINE, IDC_OPEN_ADVANCED_OPTIONS};
+static const int gSettingsGeneralControls[] = {
+    IDC_SETTINGS_PAGE_GENERAL, IDC_GROUP_UPDATE,          IDC_CHECK_FOR_UPDATES,
+    IDC_GROUP_SESSION,         IDC_REMEMBER_OPENED_FILES, IDC_REMEMBER_STATE_PER_DOCUMENT,
+    IDC_RESTORE_SESSION,       IDC_LAZY_LOADING,          IDC_REUSE_INSTANCE,
+    IDC_GROUP_FILE_CHANGES,    IDC_RELOAD_MODIFIED};
+static const int gSettingsInterfaceControls[] = {IDC_SETTINGS_PAGE_INTERFACE,
+                                                 IDC_GROUP_APPEARANCE,
+                                                 IDC_THEME_LABEL,
+                                                 IDC_THEME,
+                                                 IDC_DOCUMENT_COLOR_LABEL,
+                                                 IDC_DOCUMENT_COLOR,
+                                                 IDC_GROUP_TOOLBAR,
+                                                 IDC_USE_TABS,
+                                                 IDC_NO_HOME_TAB,
+                                                 IDC_SHOW_MENUBAR_WITH_TABS,
+                                                 IDC_SHOW_TOOLBAR,
+                                                 IDC_SHOW_ANNOT_TOOLBAR_BUTTONS,
+                                                 IDC_TABS_MRU,
+                                                 IDC_SEARCH_UI_FLOATING,
+                                                 IDC_GROUP_SCROLLBARS,
+                                                 IDC_SCROLLBARS_LABEL,
+                                                 IDC_SCROLLBARS,
+                                                 IDC_GROUP_SIDEBAR,
+                                                 IDC_TREE_FONT_LABEL,
+                                                 IDC_TREE_FONT_NAME,
+                                                 IDC_TREE_FONT_SIZE_LABEL,
+                                                 IDC_TREE_FONT_SIZE,
+                                                 IDC_TREE_WRAP_LABELS};
+static const int gSettingsReadingControls[] = {IDC_SETTINGS_PAGE_READING,
+                                               IDC_GROUP_DEFAULT_VIEW,
+                                               IDC_DEFAULT_LAYOUT_LABEL,
+                                               IDC_DEFAULT_LAYOUT,
+                                               IDC_DEFAULT_ZOOM_LABEL,
+                                               IDC_DEFAULT_ZOOM,
+                                               IDC_DEFAULT_SHOW_TOC,
+                                               IDC_GROUP_SCROLLING,
+                                               IDC_SMOOTH_SCROLL,
+                                               IDC_SCROLLBAR_SINGLE_PAGE,
+                                               IDC_FAST_SCROLL_OVER_SCROLLBAR,
+                                               IDC_GROUP_DISPLAY_QUALITY,
+                                               IDC_ENGINEERING_ENHANCE_LABEL,
+                                               IDC_ENGINEERING_ENHANCE,
+                                               IDC_ENABLE_ANTIALIAS,
+                                               IDC_GROUP_DICTIONARY,
+                                               IDC_ENABLE_WORD_LOOKUP,
+                                               IDC_DICTIONARY_PATH_LABEL,
+                                               IDC_DICTIONARY_PATH,
+                                               IDC_DICTIONARY_BROWSE,
+                                               IDC_GROUP_FULLSCREEN,
+                                               IDC_PREVENT_SLEEP_FULLSCREEN};
+static const int gSettingsOcrAiControls[] = {
+    IDC_SETTINGS_PAGE_OCR_AI, IDC_GROUP_OCR,      IDC_AUTO_OCR,          IDC_OCR_DESCRIPTION,
+    IDC_OCR_MODE_LABEL,       IDC_OCR_MODE,       IDC_OCR_AUTO_SAVE,     IDC_OCR_SAVE_WARNING,
+    IDC_GROUP_SMART_TOC,      IDC_TOC_MODE_LABEL, IDC_TOC_MODE,          IDC_TOC_MODE_DESCRIPTION,
+    IDC_GROUP_ASK_AI,         IDC_ENABLE_ASK_AI,  IDC_AI_PROVIDER_LABEL, IDC_AI_PROVIDER};
+static const int gSettingsAdvancedControls[] = {IDC_SETTINGS_PAGE_ADVANCED,
+                                                IDC_GROUP_WINDOW,
+                                                IDC_ESC_TO_EXIT,
+                                                IDC_FULL_PATH_IN_TITLE,
+                                                IDC_GROUP_DISPLAY,
+                                                IDC_CUSTOM_DPI_LABEL,
+                                                IDC_CUSTOM_DPI,
+                                                IDC_GROUP_PDF,
+                                                IDC_SHOW_LINKS,
+                                                IDC_SECTION_INVERSESEARCH,
+                                                IDC_CMDLINE_LABEL,
+                                                IDC_CMDLINE,
+                                                IDC_MORE_EXPERT_SETTINGS,
+                                                IDC_OPEN_ADVANCED_OPTIONS};
 
 static void ShowSettingsPage(HWND hDlg, int page) {
     struct PageControls {
@@ -951,6 +1009,7 @@ static void ShowSettingsPage(HWND hDlg, int page) {
     } pages[] = {{gSettingsGeneralControls, dimof(gSettingsGeneralControls)},
                  {gSettingsInterfaceControls, dimof(gSettingsInterfaceControls)},
                  {gSettingsReadingControls, dimof(gSettingsReadingControls)},
+                 {gSettingsOcrAiControls, dimof(gSettingsOcrAiControls)},
                  {gSettingsAdvancedControls, dimof(gSettingsAdvancedControls)}};
     page = limitValue(page, 0, dimof(pages) - 1);
     auto* prefs = (GlobalPrefs*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
@@ -975,6 +1034,34 @@ static void UpdateSettingsDependencies(HWND hDlg) {
 
     bool showToolbar = IsDlgButtonChecked(hDlg, IDC_SHOW_TOOLBAR) == BST_CHECKED;
     EnableWindow(GetDlgItem(hDlg, IDC_SHOW_ANNOT_TOOLBAR_BUTTONS), showToolbar);
+
+    bool restoreSession = IsDlgButtonChecked(hDlg, IDC_RESTORE_SESSION) == BST_CHECKED;
+    EnableWindow(GetDlgItem(hDlg, IDC_LAZY_LOADING), restoreSession);
+
+    bool wordLookup = IsDlgButtonChecked(hDlg, IDC_ENABLE_WORD_LOOKUP) == BST_CHECKED;
+    EnableWindow(GetDlgItem(hDlg, IDC_DICTIONARY_PATH_LABEL), wordLookup);
+    EnableWindow(GetDlgItem(hDlg, IDC_DICTIONARY_PATH), wordLookup);
+    EnableWindow(GetDlgItem(hDlg, IDC_DICTIONARY_BROWSE), wordLookup);
+
+    bool askAi = IsDlgButtonChecked(hDlg, IDC_ENABLE_ASK_AI) == BST_CHECKED;
+    EnableWindow(GetDlgItem(hDlg, IDC_AI_PROVIDER_LABEL), askAi);
+    EnableWindow(GetDlgItem(hDlg, IDC_AI_PROVIDER), askAi);
+}
+
+static void BrowseForDictionaryFolder(HWND hDlg) {
+    BROWSEINFOW bi{};
+    bi.hwndOwner = hDlg;
+    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+    bi.lpszTitle = ToWStrTemp(_TRA("Choose the offline dictionary folder"));
+    PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi);
+    if (!pidl) {
+        return;
+    }
+    WCHAR path[MAX_PATH]{};
+    if (SHGetPathFromIDListW(pidl, path)) {
+        HwndSetDlgItemText(hDlg, IDC_DICTIONARY_PATH, ToUtf8Temp(path));
+    }
+    CoTaskMemFree(pidl);
 }
 
 static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
@@ -1014,6 +1101,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             EnableWindow(GetDlgItem(hDlg, IDC_CHECK_FOR_UPDATES), HasPermission(Perm::InternetAccess));
             CheckDlgButton(hDlg, IDC_REMEMBER_OPENED_FILES, prefs->rememberOpenedFiles ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(hDlg, IDC_RESTORE_SESSION, prefs->restoreSession ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_LAZY_LOADING, prefs->lazyLoading ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(hDlg, IDC_REUSE_INSTANCE, prefs->reuseInstance ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(hDlg, IDC_NO_HOME_TAB, !prefs->noHomeTab ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(hDlg, IDC_SHOW_MENUBAR_WITH_TABS, prefs->showMenubarWithTabs ? BST_CHECKED : BST_UNCHECKED);
@@ -1027,11 +1115,27 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             CheckDlgButton(hDlg, IDC_RELOAD_MODIFIED, prefs->reloadModifiedDocuments ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(hDlg, IDC_PREVENT_SLEEP_FULLSCREEN,
                            prefs->preventSleepInFullscreen ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_TREE_WRAP_LABELS, prefs->treeWrapLabels ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_FAST_SCROLL_OVER_SCROLLBAR,
+                           prefs->fastScrollOverScrollbar ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_ENABLE_ANTIALIAS, !prefs->disableAntiAlias ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_ENABLE_WORD_LOOKUP,
+                           prefs->enableDoubleClickWordLookup ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_AUTO_OCR, prefs->autoOcrScanPages ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_OCR_AUTO_SAVE, prefs->ocrAutoSave ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_ENABLE_ASK_AI, prefs->enableAskAI ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_ESC_TO_EXIT, prefs->escToExit ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_FULL_PATH_IN_TITLE, prefs->fullPathInTitle ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_SHOW_LINKS, prefs->showLinks ? BST_CHECKED : BST_UNCHECKED);
+            SetDlgItemInt(hDlg, IDC_TREE_FONT_SIZE, prefs->treeFontSize, FALSE);
+            SetDlgItemInt(hDlg, IDC_CUSTOM_DPI, prefs->customScreenDPI, FALSE);
+            HwndSetDlgItemText(hDlg, IDC_DICTIONARY_PATH, prefs->offlineDictionaryPath);
 
             HWND category = GetDlgItem(hDlg, IDC_SETTINGS_CATEGORY);
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("General")));
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Interface")));
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Reading")));
+            SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("OCR and AI")));
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Advanced")));
             ListBox_SetCurSel(category, 0);
 
@@ -1043,7 +1147,142 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             int scrollbarIdx = seqstrings::StrToIdxIS(gScrollbarModeNames, prefs->scrollbars);
             CbSetCurrentSelection(scrollbars, std::max(0, scrollbarIdx));
 
+            HWND themes = GetDlgItem(hDlg, IDC_THEME);
+            int themeSelection = 0;
+            for (int i = 0; i < GetThemeCount(); i++) {
+                const char* name = GetThemeName(i);
+                CbAddString(themes, name);
+                if (str::EqI(name, prefs->theme)) {
+                    themeSelection = i;
+                }
+            }
+            CbSetCurrentSelection(themes, themeSelection);
+
+            HWND documentColors = GetDlgItem(hDlg, IDC_DOCUMENT_COLOR);
+            CbAddString(documentColors, _TRA("Keep original document colors"));
+            CbAddString(documentColors, _TRA("Match the current theme"));
+            CbSetCurrentSelection(documentColors, str::EqI(prefs->documentColorMode, "original") ? 0 : 1);
+
+            HWND treeFont = GetDlgItem(hDlg, IDC_TREE_FONT_NAME);
+            CbAddString(treeFont, _TRA("Automatic"));
+            Vec<char*> fontFamilies;
+            CollectInstalledLatinFontFamilies(&fontFamilies);
+            Vec<char*> cjkFontFamilies;
+            CollectInstalledCjkFontFamilies(&cjkFontFamilies);
+            for (char* family : cjkFontFamilies) {
+                bool exists = false;
+                for (char* existing : fontFamilies) {
+                    if (str::EqI(existing, family)) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists) {
+                    fontFamilies.Append(str::Dup(family));
+                }
+            }
+            int treeFontSelection = 0;
+            int treeFontIndex = 1;
+            for (char* family : fontFamilies) {
+                CbAddString(treeFont, family);
+                if (prefs->treeFontName && str::EqI(family, prefs->treeFontName)) {
+                    treeFontSelection = treeFontIndex;
+                }
+                treeFontIndex++;
+            }
+            if (prefs->treeFontName &&
+                (str::EqI(prefs->treeFontName, "automatic") || str::Eq(prefs->treeFontName, _TRA("Automatic")))) {
+                treeFontSelection = 0;
+            }
+            CbSetCurrentSelection(treeFont, treeFontSelection);
+            DeleteVecMembers(fontFamilies);
+            DeleteVecMembers(cjkFontFamilies);
+
+            HWND engineering = GetDlgItem(hDlg, IDC_ENGINEERING_ENHANCE);
+            CbAddString(engineering, _TRA("Off"));
+            CbAddString(engineering, _TRA("Automatic"));
+            CbAddString(engineering, _TRA("On"));
+            int engineeringSelection = str::EqI(prefs->engineeringDrawingEnhance, "on")    ? 2
+                                       : str::EqI(prefs->engineeringDrawingEnhance, "off") ? 0
+                                                                                           : 1;
+            CbSetCurrentSelection(engineering, engineeringSelection);
+
+            HWND ocrMode = GetDlgItem(hDlg, IDC_OCR_MODE);
+            CbAddString(ocrMode, _TRA("Fast"));
+            CbAddString(ocrMode, _TRA("High accuracy"));
+            CbSetCurrentSelection(ocrMode, str::EqI(prefs->ocrFullDocumentMode, "accurate") ? 1 : 0);
+
+            HWND tocMode = GetDlgItem(hDlg, IDC_TOC_MODE);
+            CbAddString(tocMode, _TRA("Conservative"));
+            CbAddString(tocMode, _TRA("Standard (recommended)"));
+            CbAddString(tocMode, _TRA("Detailed"));
+            int tocSelection = str::EqI(prefs->extractPdfTocMode, "conservative") ? 0
+                               : str::EqI(prefs->extractPdfTocMode, "detailed")   ? 2
+                                                                                  : 1;
+            CbSetCurrentSelection(tocMode, tocSelection);
+
+            HWND aiProvider = GetDlgItem(hDlg, IDC_AI_PROVIDER);
+            CbAddString(aiProvider, _TRA("Doubao"));
+            CbAddString(aiProvider, _TRA("DeepSeek"));
+            CbAddString(aiProvider, _TRA("ChatGPT"));
+            int providerSelection = str::EqI(prefs->aiChatProvider, "deepseek")  ? 1
+                                    : str::EqI(prefs->aiChatProvider, "chatgpt") ? 2
+                                                                                 : 0;
+            CbSetCurrentSelection(aiProvider, providerSelection);
+
             HwndSetText(hDlg, _TRA("SumatraPDF Options"));
+            HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_GENERAL, _TRA("General"));
+            HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_INTERFACE, _TRA("Interface"));
+            HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_READING, _TRA("Reading"));
+            HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_OCR_AI, _TRA("OCR and AI"));
+            HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_ADVANCED, _TRA("Advanced"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_UPDATE, _TRA("Updates"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_SESSION, _TRA("Startup and session"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_FILE_CHANGES, _TRA("File changes"));
+            HwndSetDlgItemText(hDlg, IDC_LAZY_LOADING, _TRA("&Lazy-load inactive tabs"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_APPEARANCE, _TRA("Appearance"));
+            HwndSetDlgItemText(hDlg, IDC_THEME_LABEL, _TRA("&Theme:"));
+            HwndSetDlgItemText(hDlg, IDC_DOCUMENT_COLOR_LABEL, _TRA("Document &colors:"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_TOOLBAR, _TRA("Tabs and toolbar"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_SCROLLBARS, _TRA("Scrollbars"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_SIDEBAR, _TRA("Contents / favorites sidebar"));
+            HwndSetDlgItemText(hDlg, IDC_TREE_FONT_LABEL, _TRA("Tree &font:"));
+            HwndSetDlgItemText(hDlg, IDC_TREE_FONT_SIZE_LABEL, _TRA("&Size:"));
+            HwndSetDlgItemText(hDlg, IDC_TREE_WRAP_LABELS, _TRA("&Wrap long titles"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_DEFAULT_VIEW, _TRA("Default view"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_SCROLLING, _TRA("Scrolling"));
+            HwndSetDlgItemText(hDlg, IDC_FAST_SCROLL_OVER_SCROLLBAR, _TRA("Fast page scrolling over the scroll&bar"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_DISPLAY_QUALITY, _TRA("Display quality"));
+            HwndSetDlgItemText(hDlg, IDC_ENGINEERING_ENHANCE_LABEL, _TRA("Engineering drawing &enhancement:"));
+            HwndSetDlgItemText(hDlg, IDC_ENABLE_ANTIALIAS, _TRA("Enable PDF &anti-aliasing"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_DICTIONARY, _TRA("Dictionary"));
+            HwndSetDlgItemText(hDlg, IDC_ENABLE_WORD_LOOKUP, _TRA("Look up words on &double-click"));
+            HwndSetDlgItemText(hDlg, IDC_DICTIONARY_PATH_LABEL, _TRA("Offline dictionary:"));
+            HwndSetDlgItemText(hDlg, IDC_DICTIONARY_BROWSE, _TRA("&Browse..."));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_FULLSCREEN, _TRA("Fullscreen"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_OCR, _TRA("OCR"));
+            HwndSetDlgItemText(hDlg, IDC_AUTO_OCR, _TRA("Automatically OCR scanned pages"));
+            HwndSetDlgItemText(hDlg, IDC_OCR_DESCRIPTION,
+                               _TRA("Recognized text can be selected, copied, searched, and read aloud."));
+            HwndSetDlgItemText(hDlg, IDC_OCR_MODE_LABEL, _TRA("Full-document OCR &mode:"));
+            HwndSetDlgItemText(hDlg, IDC_OCR_AUTO_SAVE, _TRA("Automatically &save PDF after OCR or TOC processing"));
+            HwndSetDlgItemText(hDlg, IDC_OCR_SAVE_WARNING,
+                               _TRA("Processing results may overwrite the current PDF file."));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_SMART_TOC, _TRA("Smart contents"));
+            HwndSetDlgItemText(hDlg, IDC_TOC_MODE_LABEL, _TRA("Extraction &detail:"));
+            HwndSetDlgItemText(hDlg, IDC_TOC_MODE_DESCRIPTION,
+                               _TRA("Balanced accuracy and completeness is recommended."));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_ASK_AI, _TRA("Ask AI"));
+            HwndSetDlgItemText(hDlg, IDC_ENABLE_ASK_AI, _TRA("&Enable Ask AI"));
+            HwndSetDlgItemText(hDlg, IDC_AI_PROVIDER_LABEL, _TRA("AI &service:"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_WINDOW, _TRA("Window"));
+            HwndSetDlgItemText(hDlg, IDC_ESC_TO_EXIT, _TRA("E&xit the application with Esc"));
+            HwndSetDlgItemText(hDlg, IDC_FULL_PATH_IN_TITLE, _TRA("Show the full file &path in the title bar"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_DISPLAY, _TRA("Display"));
+            HwndSetDlgItemText(hDlg, IDC_CUSTOM_DPI_LABEL, _TRA("Custom &DPI (0 = automatic):"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_PDF, _TRA("PDF"));
+            HwndSetDlgItemText(hDlg, IDC_SHOW_LINKS, _TRA("Show &link borders"));
+            HwndSetDlgItemText(hDlg, IDC_MORE_EXPERT_SETTINGS, _TRA("More expert settings"));
             HwndSetDlgItemText(hDlg, IDC_DEFAULT_LAYOUT_LABEL, _TRA("Default &Layout:"));
             HwndSetDlgItemText(hDlg, IDC_DEFAULT_ZOOM_LABEL, _TRA("Default &Zoom:"));
             HwndSetDlgItemText(hDlg, IDC_DEFAULT_SHOW_TOC, _TRA("Show the &bookmarks sidebar when available"));
@@ -1065,7 +1304,6 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             HwndSetDlgItemText(hDlg, IDC_RELOAD_MODIFIED, _TRA("Automatically &reload changed documents"));
             HwndSetDlgItemText(hDlg, IDC_PREVENT_SLEEP_FULLSCREEN,
                                _TRA("Prevent sleep in &fullscreen or presentation mode"));
-            HwndSetDlgItemText(hDlg, IDC_RESTART_REQUIRED, _TRA("Some changes require restarting the application."));
             HwndSetDlgItemText(hDlg, IDC_SECTION_INVERSESEARCH, _TRA("Set inverse search command-line"));
             HwndSetDlgItemText(hDlg, IDC_CMDLINE_LABEL, _TRA("Command invoked when you double-click a PDF document:"));
             HwndSetDlgItemText(hDlg, IDC_OPEN_ADVANCED_OPTIONS, _TRA("Open &Advanced Options File..."));
@@ -1123,6 +1361,22 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             switch (LOWORD(wp)) {
                 case IDOK: {
                     prefs = (GlobalPrefs*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
+                    BOOL treeSizeOk = FALSE;
+                    int treeFontSize = (int)GetDlgItemInt(hDlg, IDC_TREE_FONT_SIZE, &treeSizeOk, FALSE);
+                    BOOL dpiOk = FALSE;
+                    int customDpi = (int)GetDlgItemInt(hDlg, IDC_CUSTOM_DPI, &dpiOk, FALSE);
+                    if (!treeSizeOk || (treeFontSize != 0 && (treeFontSize < 6 || treeFontSize > 72))) {
+                        MessageBoxWarning(hDlg, _TRA("Tree font size must be 0 (automatic) or between 6 and 72."),
+                                          _TRA("Invalid value"));
+                        HwndSetFocus(GetDlgItem(hDlg, IDC_TREE_FONT_SIZE));
+                        return TRUE;
+                    }
+                    if (!dpiOk || (customDpi != 0 && (customDpi < 72 || customDpi > 600))) {
+                        MessageBoxWarning(hDlg, _TRA("Custom DPI must be 0 (automatic) or between 72 and 600."),
+                                          _TRA("Invalid value"));
+                        HwndSetFocus(GetDlgItem(hDlg, IDC_CUSTOM_DPI));
+                        return TRUE;
+                    }
                     prefs->defaultDisplayModeEnum =
                         (DisplayMode)(SendDlgItemMessage(hDlg, IDC_DEFAULT_LAYOUT, CB_GETCURSEL, 0, 0) +
                                       (int)DisplayMode::Automatic);
@@ -1135,6 +1389,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     prefs->checkForUpdates = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_CHECK_FOR_UPDATES));
                     prefs->rememberOpenedFiles = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_REMEMBER_OPENED_FILES));
                     prefs->restoreSession = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_RESTORE_SESSION));
+                    prefs->lazyLoading = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_LAZY_LOADING));
                     prefs->reuseInstance = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_REUSE_INSTANCE));
                     prefs->noHomeTab = (BST_CHECKED != IsDlgButtonChecked(hDlg, IDC_NO_HOME_TAB));
                     prefs->showMenubarWithTabs = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SHOW_MENUBAR_WITH_TABS));
@@ -1148,6 +1403,49 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     prefs->reloadModifiedDocuments = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_RELOAD_MODIFIED));
                     prefs->preventSleepInFullscreen =
                         (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_PREVENT_SLEEP_FULLSCREEN));
+                    prefs->treeWrapLabels = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_TREE_WRAP_LABELS));
+                    prefs->fastScrollOverScrollbar =
+                        (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_FAST_SCROLL_OVER_SCROLLBAR));
+                    prefs->disableAntiAlias = (BST_CHECKED != IsDlgButtonChecked(hDlg, IDC_ENABLE_ANTIALIAS));
+                    prefs->enableDoubleClickWordLookup =
+                        (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_ENABLE_WORD_LOOKUP));
+                    prefs->autoOcrScanPages = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_AUTO_OCR));
+                    prefs->ocrAutoSave = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_OCR_AUTO_SAVE));
+                    prefs->enableAskAI = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_ENABLE_ASK_AI));
+                    prefs->escToExit = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_ESC_TO_EXIT));
+                    prefs->fullPathInTitle = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_FULL_PATH_IN_TITLE));
+                    prefs->showLinks = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SHOW_LINKS));
+                    prefs->treeFontSize = treeFontSize;
+                    prefs->customScreenDPI = customDpi;
+
+                    int themeIdx = (int)SendDlgItemMessage(hDlg, IDC_THEME, CB_GETCURSEL, 0, 0);
+                    const char* themeName = GetThemeName(themeIdx);
+                    if (themeName) {
+                        str::ReplaceWithCopy(&prefs->theme, themeName);
+                    }
+                    int documentColorIdx = (int)SendDlgItemMessage(hDlg, IDC_DOCUMENT_COLOR, CB_GETCURSEL, 0, 0);
+                    str::ReplaceWithCopy(&prefs->documentColorMode, documentColorIdx == 0 ? "original" : "theme");
+                    int engineeringIdx = (int)SendDlgItemMessage(hDlg, IDC_ENGINEERING_ENHANCE, CB_GETCURSEL, 0, 0);
+                    const char* engineeringMode = engineeringIdx == 0 ? "off" : engineeringIdx == 2 ? "on" : "auto";
+                    str::ReplaceWithCopy(&prefs->engineeringDrawingEnhance, engineeringMode);
+                    int ocrModeIdx = (int)SendDlgItemMessage(hDlg, IDC_OCR_MODE, CB_GETCURSEL, 0, 0);
+                    str::ReplaceWithCopy(&prefs->ocrFullDocumentMode, ocrModeIdx == 1 ? "accurate" : "fast");
+                    int tocModeIdx = (int)SendDlgItemMessage(hDlg, IDC_TOC_MODE, CB_GETCURSEL, 0, 0);
+                    const char* tocMode = tocModeIdx == 0 ? "conservative" : tocModeIdx == 2 ? "detailed" : "standard";
+                    str::ReplaceWithCopy(&prefs->extractPdfTocMode, tocMode);
+                    int providerIdx = (int)SendDlgItemMessage(hDlg, IDC_AI_PROVIDER, CB_GETCURSEL, 0, 0);
+                    const char* provider = providerIdx == 1 ? "deepseek" : providerIdx == 2 ? "chatgpt" : "doubao";
+                    str::ReplaceWithCopy(&prefs->aiChatProvider, provider);
+                    int treeFontIdx = (int)SendDlgItemMessage(hDlg, IDC_TREE_FONT_NAME, CB_GETCURSEL, 0, 0);
+                    if (treeFontIdx <= 0) {
+                        str::ReplaceWithCopy(&prefs->treeFontName, "automatic");
+                    } else {
+                        char* treeFontName = HwndGetTextTemp(GetDlgItem(hDlg, IDC_TREE_FONT_NAME));
+                        str::ReplaceWithCopy(&prefs->treeFontName,
+                                             str::IsEmptyOrWhiteSpace(treeFontName) ? "automatic" : treeFontName);
+                    }
+                    char* dictionaryPath = HwndGetTextTemp(GetDlgItem(hDlg, IDC_DICTIONARY_PATH));
+                    str::ReplaceWithCopy(&prefs->offlineDictionaryPath, dictionaryPath);
                     int scrollbarIdx = (int)SendDlgItemMessage(hDlg, IDC_SCROLLBARS, CB_GETCURSEL, 0, 0);
                     const char* scrollbarMode = seqstrings::IdxToStr(gScrollbarModeNames, scrollbarIdx);
                     if (scrollbarMode) {
@@ -1173,7 +1471,14 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
 
                 case IDC_USE_TABS:
                 case IDC_SHOW_TOOLBAR:
+                case IDC_RESTORE_SESSION:
+                case IDC_ENABLE_WORD_LOOKUP:
+                case IDC_ENABLE_ASK_AI:
                     UpdateSettingsDependencies(hDlg);
+                    return TRUE;
+
+                case IDC_DICTIONARY_BROWSE:
+                    BrowseForDictionaryFolder(hDlg);
                     return TRUE;
 
                 case IDC_SETTINGS_CATEGORY:

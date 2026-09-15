@@ -312,6 +312,17 @@ void CreateThemeCommands() {
     gLastSystemDark = DarkMode::isDarkModeReg();
 }
 
+int GetThemeCount() {
+    return gThemes ? gThemes->Size() : 0;
+}
+
+const char* GetThemeName(int index) {
+    if (!gThemes || index < 0 || index >= gThemes->Size()) {
+        return nullptr;
+    }
+    return gThemes->At(index)->name;
+}
+
 void UpdateThemeCommandLabels() {
     if (gFirstSetThemeCmdId <= 0 || gLastSetThemeCmdId < gFirstSetThemeCmdId) {
         return;

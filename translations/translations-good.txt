@@ -96,6 +96,79 @@ nl:&Boekweergave
 pl:Widok o&dczytu
 sk:&Zobraziť ako knihu
 tw:書本檢視(&B)
+:&Browse...
+af:&Browse...
+am:&Browse...
+ar:&Browse...
+az:&Browse...
+bg:&Browse...
+bn:&Browse...
+br:&Browse...
+bs:&Browse...
+by:&Browse...
+ca:&Browse...
+ca-xv:&Browse...
+cn:浏览(&B)...
+co:&Browse...
+cy:&Browse...
+cz:&Browse...
+de:&Browse...
+dk:&Browse...
+el:&Browse...
+es:&Browse...
+et:&Browse...
+eu:&Browse...
+fa:&Browse...
+fi:&Browse...
+fo:&Browse...
+fr:&Browse...
+fy-nl:&Browse...
+ga:&Browse...
+gl:&Browse...
+he:&Browse...
+hi:&Browse...
+hr:&Browse...
+hu:&Browse...
+id:&Browse...
+it:&Browse...
+ja:&Browse...
+jv:&Browse...
+ka:&Browse...
+kr:&Browse...
+ku:&Browse...
+kw:&Browse...
+lt:&Browse...
+lv:&Browse...
+mk:&Browse...
+ml:&Browse...
+mm:&Browse...
+my:&Browse...
+ne:&Browse...
+nl:&Browse...
+nn:&Browse...
+no:&Browse...
+pa:&Browse...
+pl:&Browse...
+pt:&Browse...
+ro:&Browse...
+ru:&Browse...
+sat:&Browse...
+si:&Browse...
+sk:&Browse...
+sl:&Browse...
+sn:&Browse...
+sp-rs:&Browse...
+sq:&Browse...
+sr-rs:&Browse...
+sv:&Browse...
+ta:&Browse...
+th:&Browse...
+tl:&Browse...
+tr:&Browse...
+tw:瀏覽(&B)...
+uk:&Browse...
+uz:&Browse...
+vn:&Browse...
 :&CJK Body Font
 af:&CJK Body Font
 am:&CJK Body Font
@@ -265,6 +338,79 @@ nl:&Weggooien
 pl:O&drzuć zmiany
 sk:&Zrušiť zmeny
 tw:放棄變更(&D)
+:&Enable Ask AI
+af:&Enable Ask AI
+am:&Enable Ask AI
+ar:&Enable Ask AI
+az:&Enable Ask AI
+bg:&Enable Ask AI
+bn:&Enable Ask AI
+br:&Enable Ask AI
+bs:&Enable Ask AI
+by:&Enable Ask AI
+ca:&Enable Ask AI
+ca-xv:&Enable Ask AI
+cn:启用 Ask AI(&E)
+co:&Enable Ask AI
+cy:&Enable Ask AI
+cz:&Enable Ask AI
+de:&Enable Ask AI
+dk:&Enable Ask AI
+el:&Enable Ask AI
+es:&Enable Ask AI
+et:&Enable Ask AI
+eu:&Enable Ask AI
+fa:&Enable Ask AI
+fi:&Enable Ask AI
+fo:&Enable Ask AI
+fr:&Enable Ask AI
+fy-nl:&Enable Ask AI
+ga:&Enable Ask AI
+gl:&Enable Ask AI
+he:&Enable Ask AI
+hi:&Enable Ask AI
+hr:&Enable Ask AI
+hu:&Enable Ask AI
+id:&Enable Ask AI
+it:&Enable Ask AI
+ja:&Enable Ask AI
+jv:&Enable Ask AI
+ka:&Enable Ask AI
+kr:&Enable Ask AI
+ku:&Enable Ask AI
+kw:&Enable Ask AI
+lt:&Enable Ask AI
+lv:&Enable Ask AI
+mk:&Enable Ask AI
+ml:&Enable Ask AI
+mm:&Enable Ask AI
+my:&Enable Ask AI
+ne:&Enable Ask AI
+nl:&Enable Ask AI
+nn:&Enable Ask AI
+no:&Enable Ask AI
+pa:&Enable Ask AI
+pl:&Enable Ask AI
+pt:&Enable Ask AI
+ro:&Enable Ask AI
+ru:&Enable Ask AI
+sat:&Enable Ask AI
+si:&Enable Ask AI
+sk:&Enable Ask AI
+sl:&Enable Ask AI
+sn:&Enable Ask AI
+sp-rs:&Enable Ask AI
+sq:&Enable Ask AI
+sr-rs:&Enable Ask AI
+sv:&Enable Ask AI
+ta:&Enable Ask AI
+th:&Enable Ask AI
+tl:&Enable Ask AI
+tr:&Enable Ask AI
+tw:啟用 Ask AI(&E)
+uk:&Enable Ask AI
+uz:&Enable Ask AI
+vn:&Enable Ask AI
 :&Even pages only
 am:&Միայն զույգ էջերը
 br:&Só as páginas pares
@@ -430,6 +576,79 @@ nl:&Laatste Pagina
 pl:&Ostatnia strona
 sk:Posl&edná strana
 tw:最後一頁(&L)
+:&Lazy-load inactive tabs
+af:&Lazy-load inactive tabs
+am:&Lazy-load inactive tabs
+ar:&Lazy-load inactive tabs
+az:&Lazy-load inactive tabs
+bg:&Lazy-load inactive tabs
+bn:&Lazy-load inactive tabs
+br:&Lazy-load inactive tabs
+bs:&Lazy-load inactive tabs
+by:&Lazy-load inactive tabs
+ca:&Lazy-load inactive tabs
+ca-xv:&Lazy-load inactive tabs
+cn:延迟加载未激活的标签页(&L)
+co:&Lazy-load inactive tabs
+cy:&Lazy-load inactive tabs
+cz:&Lazy-load inactive tabs
+de:&Lazy-load inactive tabs
+dk:&Lazy-load inactive tabs
+el:&Lazy-load inactive tabs
+es:&Lazy-load inactive tabs
+et:&Lazy-load inactive tabs
+eu:&Lazy-load inactive tabs
+fa:&Lazy-load inactive tabs
+fi:&Lazy-load inactive tabs
+fo:&Lazy-load inactive tabs
+fr:&Lazy-load inactive tabs
+fy-nl:&Lazy-load inactive tabs
+ga:&Lazy-load inactive tabs
+gl:&Lazy-load inactive tabs
+he:&Lazy-load inactive tabs
+hi:&Lazy-load inactive tabs
+hr:&Lazy-load inactive tabs
+hu:&Lazy-load inactive tabs
+id:&Lazy-load inactive tabs
+it:&Lazy-load inactive tabs
+ja:&Lazy-load inactive tabs
+jv:&Lazy-load inactive tabs
+ka:&Lazy-load inactive tabs
+kr:&Lazy-load inactive tabs
+ku:&Lazy-load inactive tabs
+kw:&Lazy-load inactive tabs
+lt:&Lazy-load inactive tabs
+lv:&Lazy-load inactive tabs
+mk:&Lazy-load inactive tabs
+ml:&Lazy-load inactive tabs
+mm:&Lazy-load inactive tabs
+my:&Lazy-load inactive tabs
+ne:&Lazy-load inactive tabs
+nl:&Lazy-load inactive tabs
+nn:&Lazy-load inactive tabs
+no:&Lazy-load inactive tabs
+pa:&Lazy-load inactive tabs
+pl:&Lazy-load inactive tabs
+pt:&Lazy-load inactive tabs
+ro:&Lazy-load inactive tabs
+ru:&Lazy-load inactive tabs
+sat:&Lazy-load inactive tabs
+si:&Lazy-load inactive tabs
+sk:&Lazy-load inactive tabs
+sl:&Lazy-load inactive tabs
+sn:&Lazy-load inactive tabs
+sp-rs:&Lazy-load inactive tabs
+sq:&Lazy-load inactive tabs
+sr-rs:&Lazy-load inactive tabs
+sv:&Lazy-load inactive tabs
+ta:&Lazy-load inactive tabs
+th:&Lazy-load inactive tabs
+tl:&Lazy-load inactive tabs
+tr:&Lazy-load inactive tabs
+tw:延遲載入未啟用的分頁(&L)
+uk:&Lazy-load inactive tabs
+uz:&Lazy-load inactive tabs
+vn:&Lazy-load inactive tabs
 :&Light Theme
 am:Բաց թեմա
 br:Tema claro
@@ -683,6 +902,79 @@ tw:字體(&R)
 uk:&Reading Font
 uz:&Reading Font
 vn:&Reading Font
+:&Remember settings for each document
+af:&Remember settings for each document
+am:&Remember settings for each document
+ar:&Remember settings for each document
+az:&Remember settings for each document
+bg:&Remember settings for each document
+bn:&Remember settings for each document
+br:&Remember settings for each document
+bs:&Remember settings for each document
+by:&Remember settings for each document
+ca:&Remember settings for each document
+ca-xv:&Remember settings for each document
+cn:记住每个文档的设置(&R)
+co:&Remember settings for each document
+cy:&Remember settings for each document
+cz:&Remember settings for each document
+de:&Remember settings for each document
+dk:&Remember settings for each document
+el:&Remember settings for each document
+es:&Remember settings for each document
+et:&Remember settings for each document
+eu:&Remember settings for each document
+fa:&Remember settings for each document
+fi:&Remember settings for each document
+fo:&Remember settings for each document
+fr:&Remember settings for each document
+fy-nl:&Remember settings for each document
+ga:&Remember settings for each document
+gl:&Remember settings for each document
+he:&Remember settings for each document
+hi:&Remember settings for each document
+hr:&Remember settings for each document
+hu:&Remember settings for each document
+id:&Remember settings for each document
+it:&Remember settings for each document
+ja:&Remember settings for each document
+jv:&Remember settings for each document
+ka:&Remember settings for each document
+kr:&Remember settings for each document
+ku:&Remember settings for each document
+kw:&Remember settings for each document
+lt:&Remember settings for each document
+lv:&Remember settings for each document
+mk:&Remember settings for each document
+ml:&Remember settings for each document
+mm:&Remember settings for each document
+my:&Remember settings for each document
+ne:&Remember settings for each document
+nl:&Remember settings for each document
+nn:&Remember settings for each document
+no:&Remember settings for each document
+pa:&Remember settings for each document
+pl:&Remember settings for each document
+pt:&Remember settings for each document
+ro:&Remember settings for each document
+ru:&Remember settings for each document
+sat:&Remember settings for each document
+si:&Remember settings for each document
+sk:&Remember settings for each document
+sl:&Remember settings for each document
+sn:&Remember settings for each document
+sp-rs:&Remember settings for each document
+sq:&Remember settings for each document
+sr-rs:&Remember settings for each document
+sv:&Remember settings for each document
+ta:&Remember settings for each document
+th:&Remember settings for each document
+tl:&Remember settings for each document
+tr:&Remember settings for each document
+tw:記住每份文件的設定(&R)
+uk:&Remember settings for each document
+uz:&Remember settings for each document
+vn:&Remember settings for each document
 :&Remember the password for this document
 am:&Հիշել ֆայլի գաղտնաբառը
 br:&Lembrar a senha deste documento
@@ -752,6 +1044,79 @@ nl:&Opslaan in deze PDF
 pl:&Zapisz w istniejącym pliku PDF
 sk:&Uložiť do existujúceho PDF
 tw:儲存到現有的 PDF 檔(&S)
+:&Scrollbars:
+af:&Scrollbars:
+am:&Scrollbars:
+ar:&Scrollbars:
+az:&Scrollbars:
+bg:&Scrollbars:
+bn:&Scrollbars:
+br:&Scrollbars:
+bs:&Scrollbars:
+by:&Scrollbars:
+ca:&Scrollbars:
+ca-xv:&Scrollbars:
+cn:滚动条(&S)：
+co:&Scrollbars:
+cy:&Scrollbars:
+cz:&Scrollbars:
+de:&Scrollbars:
+dk:&Scrollbars:
+el:&Scrollbars:
+es:&Scrollbars:
+et:&Scrollbars:
+eu:&Scrollbars:
+fa:&Scrollbars:
+fi:&Scrollbars:
+fo:&Scrollbars:
+fr:&Scrollbars:
+fy-nl:&Scrollbars:
+ga:&Scrollbars:
+gl:&Scrollbars:
+he:&Scrollbars:
+hi:&Scrollbars:
+hr:&Scrollbars:
+hu:&Scrollbars:
+id:&Scrollbars:
+it:&Scrollbars:
+ja:&Scrollbars:
+jv:&Scrollbars:
+ka:&Scrollbars:
+kr:&Scrollbars:
+ku:&Scrollbars:
+kw:&Scrollbars:
+lt:&Scrollbars:
+lv:&Scrollbars:
+mk:&Scrollbars:
+ml:&Scrollbars:
+mm:&Scrollbars:
+my:&Scrollbars:
+ne:&Scrollbars:
+nl:&Scrollbars:
+nn:&Scrollbars:
+no:&Scrollbars:
+pa:&Scrollbars:
+pl:&Scrollbars:
+pt:&Scrollbars:
+ro:&Scrollbars:
+ru:&Scrollbars:
+sat:&Scrollbars:
+si:&Scrollbars:
+sk:&Scrollbars:
+sl:&Scrollbars:
+sn:&Scrollbars:
+sp-rs:&Scrollbars:
+sq:&Scrollbars:
+sr-rs:&Scrollbars:
+sv:&Scrollbars:
+ta:&Scrollbars:
+th:&Scrollbars:
+tl:&Scrollbars:
+tr:&Scrollbars:
+tw:捲動軸(&S)：
+uk:&Scrollbars:
+uz:&Scrollbars:
+vn:&Scrollbars:
 :&Search With Google
 am:&Որոնել Google-ով
 br:&Procurar com o Google
@@ -818,6 +1183,79 @@ nl:&Enkele Pagina
 pl:&Pojedyncza strona
 sk:Jedna &strana
 tw:單頁檢視(&S)
+:&Size:
+af:&Size:
+am:&Size:
+ar:&Size:
+az:&Size:
+bg:&Size:
+bn:&Size:
+br:&Size:
+bs:&Size:
+by:&Size:
+ca:&Size:
+ca-xv:&Size:
+cn:字号(&S)：
+co:&Size:
+cy:&Size:
+cz:&Size:
+de:&Size:
+dk:&Size:
+el:&Size:
+es:&Size:
+et:&Size:
+eu:&Size:
+fa:&Size:
+fi:&Size:
+fo:&Size:
+fr:&Size:
+fy-nl:&Size:
+ga:&Size:
+gl:&Size:
+he:&Size:
+hi:&Size:
+hr:&Size:
+hu:&Size:
+id:&Size:
+it:&Size:
+ja:&Size:
+jv:&Size:
+ka:&Size:
+kr:&Size:
+ku:&Size:
+kw:&Size:
+lt:&Size:
+lv:&Size:
+mk:&Size:
+ml:&Size:
+mm:&Size:
+my:&Size:
+ne:&Size:
+nl:&Size:
+nn:&Size:
+no:&Size:
+pa:&Size:
+pl:&Size:
+pt:&Size:
+ro:&Size:
+ru:&Size:
+sat:&Size:
+si:&Size:
+sk:&Size:
+sl:&Size:
+sn:&Size:
+sp-rs:&Size:
+sq:&Size:
+sr-rs:&Size:
+sv:&Size:
+ta:&Size:
+th:&Size:
+tl:&Size:
+tr:&Size:
+tw:字型大小(&S)：
+uk:&Size:
+uz:&Size:
+vn:&Size:
 :&Stamp
 am:&Կնիք
 br:&Carimbo
@@ -939,6 +1377,79 @@ nl:&Uiterlijk
 pl:&Motyw
 sk:Mo&tív
 tw:主題(&T)
+:&Theme:
+af:&Theme:
+am:&Theme:
+ar:&Theme:
+az:&Theme:
+bg:&Theme:
+bn:&Theme:
+br:&Theme:
+bs:&Theme:
+by:&Theme:
+ca:&Theme:
+ca-xv:&Theme:
+cn:主题(&T)：
+co:&Theme:
+cy:&Theme:
+cz:&Theme:
+de:&Theme:
+dk:&Theme:
+el:&Theme:
+es:&Theme:
+et:&Theme:
+eu:&Theme:
+fa:&Theme:
+fi:&Theme:
+fo:&Theme:
+fr:&Theme:
+fy-nl:&Theme:
+ga:&Theme:
+gl:&Theme:
+he:&Theme:
+hi:&Theme:
+hr:&Theme:
+hu:&Theme:
+id:&Theme:
+it:&Theme:
+ja:&Theme:
+jv:&Theme:
+ka:&Theme:
+kr:&Theme:
+ku:&Theme:
+kw:&Theme:
+lt:&Theme:
+lv:&Theme:
+mk:&Theme:
+ml:&Theme:
+mm:&Theme:
+my:&Theme:
+ne:&Theme:
+nl:&Theme:
+nn:&Theme:
+no:&Theme:
+pa:&Theme:
+pl:&Theme:
+pt:&Theme:
+ro:&Theme:
+ru:&Theme:
+sat:&Theme:
+si:&Theme:
+sk:&Theme:
+sl:&Theme:
+sn:&Theme:
+sp-rs:&Theme:
+sq:&Theme:
+sr-rs:&Theme:
+sv:&Theme:
+ta:&Theme:
+th:&Theme:
+tl:&Theme:
+tr:&Theme:
+tw:主題(&T)：
+uk:&Theme:
+uz:&Theme:
+vn:&Theme:
 :&Translate With Google
 am:&Թարգմանել Google-ով
 br:&Traduzir com o Google
@@ -1072,6 +1583,79 @@ nl:&Venster
 pl:&Okno
 sk:&Okno
 tw:視窗(&W)
+:&Wrap long titles
+af:&Wrap long titles
+am:&Wrap long titles
+ar:&Wrap long titles
+az:&Wrap long titles
+bg:&Wrap long titles
+bn:&Wrap long titles
+br:&Wrap long titles
+bs:&Wrap long titles
+by:&Wrap long titles
+ca:&Wrap long titles
+ca-xv:&Wrap long titles
+cn:长标题自动换行(&W)
+co:&Wrap long titles
+cy:&Wrap long titles
+cz:&Wrap long titles
+de:&Wrap long titles
+dk:&Wrap long titles
+el:&Wrap long titles
+es:&Wrap long titles
+et:&Wrap long titles
+eu:&Wrap long titles
+fa:&Wrap long titles
+fi:&Wrap long titles
+fo:&Wrap long titles
+fr:&Wrap long titles
+fy-nl:&Wrap long titles
+ga:&Wrap long titles
+gl:&Wrap long titles
+he:&Wrap long titles
+hi:&Wrap long titles
+hr:&Wrap long titles
+hu:&Wrap long titles
+id:&Wrap long titles
+it:&Wrap long titles
+ja:&Wrap long titles
+jv:&Wrap long titles
+ka:&Wrap long titles
+kr:&Wrap long titles
+ku:&Wrap long titles
+kw:&Wrap long titles
+lt:&Wrap long titles
+lv:&Wrap long titles
+mk:&Wrap long titles
+ml:&Wrap long titles
+mm:&Wrap long titles
+my:&Wrap long titles
+ne:&Wrap long titles
+nl:&Wrap long titles
+nn:&Wrap long titles
+no:&Wrap long titles
+pa:&Wrap long titles
+pl:&Wrap long titles
+pt:&Wrap long titles
+ro:&Wrap long titles
+ru:&Wrap long titles
+sat:&Wrap long titles
+si:&Wrap long titles
+sk:&Wrap long titles
+sl:&Wrap long titles
+sn:&Wrap long titles
+sp-rs:&Wrap long titles
+sq:&Wrap long titles
+sr-rs:&Wrap long titles
+sv:&Wrap long titles
+ta:&Wrap long titles
+th:&Wrap long titles
+tl:&Wrap long titles
+tr:&Wrap long titles
+tw:長標題自動換行(&W)
+uk:&Wrap long titles
+uz:&Wrap long titles
+vn:&Wrap long titles
 :&Zoom
 am:&Դիտափոխել
 br:&Zoom
@@ -1384,6 +1968,79 @@ nl:@ Tabs
 pl:@ Karty
 sk:@ Karty
 tw:@ 索引標籤
+:AI &service:
+af:AI &service:
+am:AI &service:
+ar:AI &service:
+az:AI &service:
+bg:AI &service:
+bn:AI &service:
+br:AI &service:
+bs:AI &service:
+by:AI &service:
+ca:AI &service:
+ca-xv:AI &service:
+cn:AI 服务(&S)：
+co:AI &service:
+cy:AI &service:
+cz:AI &service:
+de:AI &service:
+dk:AI &service:
+el:AI &service:
+es:AI &service:
+et:AI &service:
+eu:AI &service:
+fa:AI &service:
+fi:AI &service:
+fo:AI &service:
+fr:AI &service:
+fy-nl:AI &service:
+ga:AI &service:
+gl:AI &service:
+he:AI &service:
+hi:AI &service:
+hr:AI &service:
+hu:AI &service:
+id:AI &service:
+it:AI &service:
+ja:AI &service:
+jv:AI &service:
+ka:AI &service:
+kr:AI &service:
+ku:AI &service:
+kw:AI &service:
+lt:AI &service:
+lv:AI &service:
+mk:AI &service:
+ml:AI &service:
+mm:AI &service:
+my:AI &service:
+ne:AI &service:
+nl:AI &service:
+nn:AI &service:
+no:AI &service:
+pa:AI &service:
+pl:AI &service:
+pt:AI &service:
+ro:AI &service:
+ru:AI &service:
+sat:AI &service:
+si:AI &service:
+sk:AI &service:
+sl:AI &service:
+sn:AI &service:
+sp-rs:AI &service:
+sq:AI &service:
+sr-rs:AI &service:
+sv:AI &service:
+ta:AI &service:
+th:AI &service:
+tl:AI &service:
+tr:AI &service:
+tw:AI 服務(&S)：
+uk:AI &service:
+uz:AI &service:
+vn:AI &service:
 :AI Processing
 cn:AI 处理
 de:KI-Verarbeitung
@@ -1733,17 +2390,78 @@ uk:Adjusting font size, reformatting pages…
 uz:Adjusting font size, reformatting pages…
 vn:Adjusting font size, reformatting pages…
 :Advanced
+af:Advanced
 am:Ընդլայնված
+ar:Advanced
+az:Advanced
+bg:Advanced
+bn:Advanced
 br:Avançado
+bs:Advanced
+by:Advanced
+ca:Advanced
+ca-xv:Advanced
 cn:高级
 co:Espertu
+cy:Advanced
+cz:Advanced
 de:Erweitert
+dk:Advanced
 el:Προχωρημένα
+es:Advanced
+et:Advanced
+eu:Advanced
+fa:Advanced
+fi:Advanced
+fo:Advanced
+fr:Advanced
+fy-nl:Advanced
+ga:Advanced
+gl:Advanced
+he:Advanced
+hi:Advanced
+hr:Advanced
+hu:Advanced
+id:Advanced
 it:Avanzate
+ja:Advanced
+jv:Advanced
+ka:Advanced
+kr:Advanced
+ku:Advanced
+kw:Advanced
+lt:Advanced
+lv:Advanced
+mk:Advanced
+ml:Advanced
+mm:Advanced
+my:Advanced
+ne:Advanced
 nl:Geavanceerd
+nn:Advanced
+no:Advanced
+pa:Advanced
 pl:Zaawansowane
+pt:Advanced
+ro:Advanced
+ru:Advanced
+sat:Advanced
+si:Advanced
 sk:Pokročilé
+sl:Advanced
+sn:Advanced
+sp-rs:Advanced
+sq:Advanced
+sr-rs:Advanced
+sv:Advanced
+ta:Advanced
+th:Advanced
+tl:Advanced
+tr:Advanced
 tw:進階
+uk:Advanced
+uz:Advanced
+vn:Advanced
 :Advanced Options...
 am:Ընդլայնված ընտրանքներ...
 br:Opções Avançadas...
@@ -1865,6 +2583,79 @@ nl:Alle ondersteunde documenten
 pl:Wszystkie obsługiwane pliki
 sk:Všetky podporované dokumenty
 tw:所有支援的文件
+:Always-visible overlay scrollbars
+af:Always-visible overlay scrollbars
+am:Always-visible overlay scrollbars
+ar:Always-visible overlay scrollbars
+az:Always-visible overlay scrollbars
+bg:Always-visible overlay scrollbars
+bn:Always-visible overlay scrollbars
+br:Always-visible overlay scrollbars
+bs:Always-visible overlay scrollbars
+by:Always-visible overlay scrollbars
+ca:Always-visible overlay scrollbars
+ca-xv:Always-visible overlay scrollbars
+cn:始终显示的叠加滚动条
+co:Always-visible overlay scrollbars
+cy:Always-visible overlay scrollbars
+cz:Always-visible overlay scrollbars
+de:Always-visible overlay scrollbars
+dk:Always-visible overlay scrollbars
+el:Always-visible overlay scrollbars
+es:Always-visible overlay scrollbars
+et:Always-visible overlay scrollbars
+eu:Always-visible overlay scrollbars
+fa:Always-visible overlay scrollbars
+fi:Always-visible overlay scrollbars
+fo:Always-visible overlay scrollbars
+fr:Always-visible overlay scrollbars
+fy-nl:Always-visible overlay scrollbars
+ga:Always-visible overlay scrollbars
+gl:Always-visible overlay scrollbars
+he:Always-visible overlay scrollbars
+hi:Always-visible overlay scrollbars
+hr:Always-visible overlay scrollbars
+hu:Always-visible overlay scrollbars
+id:Always-visible overlay scrollbars
+it:Always-visible overlay scrollbars
+ja:Always-visible overlay scrollbars
+jv:Always-visible overlay scrollbars
+ka:Always-visible overlay scrollbars
+kr:Always-visible overlay scrollbars
+ku:Always-visible overlay scrollbars
+kw:Always-visible overlay scrollbars
+lt:Always-visible overlay scrollbars
+lv:Always-visible overlay scrollbars
+mk:Always-visible overlay scrollbars
+ml:Always-visible overlay scrollbars
+mm:Always-visible overlay scrollbars
+my:Always-visible overlay scrollbars
+ne:Always-visible overlay scrollbars
+nl:Always-visible overlay scrollbars
+nn:Always-visible overlay scrollbars
+no:Always-visible overlay scrollbars
+pa:Always-visible overlay scrollbars
+pl:Always-visible overlay scrollbars
+pt:Always-visible overlay scrollbars
+ro:Always-visible overlay scrollbars
+ru:Always-visible overlay scrollbars
+sat:Always-visible overlay scrollbars
+si:Always-visible overlay scrollbars
+sk:Always-visible overlay scrollbars
+sl:Always-visible overlay scrollbars
+sn:Always-visible overlay scrollbars
+sp-rs:Always-visible overlay scrollbars
+sq:Always-visible overlay scrollbars
+sr-rs:Always-visible overlay scrollbars
+sv:Always-visible overlay scrollbars
+ta:Always-visible overlay scrollbars
+th:Always-visible overlay scrollbars
+tl:Always-visible overlay scrollbars
+tr:Always-visible overlay scrollbars
+tw:永遠顯示的浮動捲動軸
+uk:Always-visible overlay scrollbars
+uz:Always-visible overlay scrollbars
+vn:Always-visible overlay scrollbars
 :Analyzes text, heading levels, numbering and link targets to build the TOC locally and fast.\nBest for official-document style PDFs; works even better when the PDF already has native text and a clickable TOC.
 cn:分析文档中的文字、标题层级、编号和跳转链接，本地快速生成目录。\n特别适用于公文类文档；对已包含原生文字且具有可跳转目录的文档，识别效果更佳。
 tw:分析文件中的文字、標題層級、編號和跳轉連結，在本機快速產生目錄。\n特別適用於公文類文件；對已包含原生文字且具有可跳轉目錄的文件，辨識效果更佳。
@@ -1892,6 +2683,79 @@ nl:Aantekeningen
 pl:Adnotacje
 sk:Anotácie
 tw:註解
+:Appearance
+af:Appearance
+am:Appearance
+ar:Appearance
+az:Appearance
+bg:Appearance
+bn:Appearance
+br:Appearance
+bs:Appearance
+by:Appearance
+ca:Appearance
+ca-xv:Appearance
+cn:外观
+co:Appearance
+cy:Appearance
+cz:Appearance
+de:Appearance
+dk:Appearance
+el:Appearance
+es:Appearance
+et:Appearance
+eu:Appearance
+fa:Appearance
+fi:Appearance
+fo:Appearance
+fr:Appearance
+fy-nl:Appearance
+ga:Appearance
+gl:Appearance
+he:Appearance
+hi:Appearance
+hr:Appearance
+hu:Appearance
+id:Appearance
+it:Appearance
+ja:Appearance
+jv:Appearance
+ka:Appearance
+kr:Appearance
+ku:Appearance
+kw:Appearance
+lt:Appearance
+lv:Appearance
+mk:Appearance
+ml:Appearance
+mm:Appearance
+my:Appearance
+ne:Appearance
+nl:Appearance
+nn:Appearance
+no:Appearance
+pa:Appearance
+pl:Appearance
+pt:Appearance
+ro:Appearance
+ru:Appearance
+sat:Appearance
+si:Appearance
+sk:Appearance
+sl:Appearance
+sn:Appearance
+sp-rs:Appearance
+sq:Appearance
+sr-rs:Appearance
+sv:Appearance
+ta:Appearance
+th:Appearance
+tl:Appearance
+tr:Appearance
+tw:外觀
+uk:Appearance
+uz:Appearance
+vn:Appearance
 :Application:
 am:Ծրագիր՝
 br:Aplicativo:
@@ -2531,17 +3395,78 @@ pl:Zapytaj &AI
 sk:Opýtať sa &AI
 tw:問問 AI(&A)
 :Ask AI
+af:Ask AI
 am:Հարցնել AI-ին
+ar:Ask AI
+az:Ask AI
+bg:Ask AI
+bn:Ask AI
 br:Perguntar ao AI
+bs:Ask AI
+by:Ask AI
+ca:Ask AI
+ca-xv:Ask AI
 cn:问问 AI
 co:Dì AI
+cy:Ask AI
+cz:Ask AI
 de:AI fragen
+dk:Ask AI
 el:Ρώτησε το AI
+es:Ask AI
+et:Ask AI
+eu:Ask AI
+fa:Ask AI
+fi:Ask AI
+fo:Ask AI
+fr:Ask AI
+fy-nl:Ask AI
+ga:Ask AI
+gl:Ask AI
+he:Ask AI
+hi:Ask AI
+hr:Ask AI
+hu:Ask AI
+id:Ask AI
 it:Chiedi a AI
+ja:Ask AI
+jv:Ask AI
+ka:Ask AI
+kr:Ask AI
+ku:Ask AI
+kw:Ask AI
+lt:Ask AI
+lv:Ask AI
+mk:Ask AI
+ml:Ask AI
+mm:Ask AI
+my:Ask AI
+ne:Ask AI
 nl:Vraag AI
+nn:Ask AI
+no:Ask AI
+pa:Ask AI
 pl:Zapytaj AI
+pt:Ask AI
+ro:Ask AI
+ru:Ask AI
+sat:Ask AI
+si:Ask AI
 sk:Opýtať sa AI
+sl:Ask AI
+sn:Ask AI
+sp-rs:Ask AI
+sq:Ask AI
+sr-rs:Ask AI
+sv:Ask AI
+ta:Ask AI
+th:Ask AI
+tl:Ask AI
+tr:Ask AI
 tw:問問 AI
+uk:Ask AI
+uz:Ask AI
+vn:Ask AI
 :Associate Common Document Formats...
 cn:将常用文档格式关联到本应用…
 tw:將常用文件格式關聯到本應用程式…
@@ -2967,6 +3892,225 @@ tw:自動傳送未完成，可在 AI 輸入框貼上剪貼簿內容後傳送。
 :Automatic send incomplete: the heading-candidates prompt is on the clipboard. Paste it into the AI input box and send.
 cn:自动发送未完成：标题候选提示词已放入剪贴板，可在 AI 输入框粘贴后发送。
 tw:自動傳送未完成：標題候選提示詞已放入剪貼簿，可在 AI 輸入框貼上後傳送。
+:Automatically &reload changed documents
+af:Automatically &reload changed documents
+am:Automatically &reload changed documents
+ar:Automatically &reload changed documents
+az:Automatically &reload changed documents
+bg:Automatically &reload changed documents
+bn:Automatically &reload changed documents
+br:Automatically &reload changed documents
+bs:Automatically &reload changed documents
+by:Automatically &reload changed documents
+ca:Automatically &reload changed documents
+ca-xv:Automatically &reload changed documents
+cn:文件变化后自动重新加载(&R)
+co:Automatically &reload changed documents
+cy:Automatically &reload changed documents
+cz:Automatically &reload changed documents
+de:Automatically &reload changed documents
+dk:Automatically &reload changed documents
+el:Automatically &reload changed documents
+es:Automatically &reload changed documents
+et:Automatically &reload changed documents
+eu:Automatically &reload changed documents
+fa:Automatically &reload changed documents
+fi:Automatically &reload changed documents
+fo:Automatically &reload changed documents
+fr:Automatically &reload changed documents
+fy-nl:Automatically &reload changed documents
+ga:Automatically &reload changed documents
+gl:Automatically &reload changed documents
+he:Automatically &reload changed documents
+hi:Automatically &reload changed documents
+hr:Automatically &reload changed documents
+hu:Automatically &reload changed documents
+id:Automatically &reload changed documents
+it:Automatically &reload changed documents
+ja:Automatically &reload changed documents
+jv:Automatically &reload changed documents
+ka:Automatically &reload changed documents
+kr:Automatically &reload changed documents
+ku:Automatically &reload changed documents
+kw:Automatically &reload changed documents
+lt:Automatically &reload changed documents
+lv:Automatically &reload changed documents
+mk:Automatically &reload changed documents
+ml:Automatically &reload changed documents
+mm:Automatically &reload changed documents
+my:Automatically &reload changed documents
+ne:Automatically &reload changed documents
+nl:Automatically &reload changed documents
+nn:Automatically &reload changed documents
+no:Automatically &reload changed documents
+pa:Automatically &reload changed documents
+pl:Automatically &reload changed documents
+pt:Automatically &reload changed documents
+ro:Automatically &reload changed documents
+ru:Automatically &reload changed documents
+sat:Automatically &reload changed documents
+si:Automatically &reload changed documents
+sk:Automatically &reload changed documents
+sl:Automatically &reload changed documents
+sn:Automatically &reload changed documents
+sp-rs:Automatically &reload changed documents
+sq:Automatically &reload changed documents
+sr-rs:Automatically &reload changed documents
+sv:Automatically &reload changed documents
+ta:Automatically &reload changed documents
+th:Automatically &reload changed documents
+tl:Automatically &reload changed documents
+tr:Automatically &reload changed documents
+tw:文件變更後自動重新載入(&R)
+uk:Automatically &reload changed documents
+uz:Automatically &reload changed documents
+vn:Automatically &reload changed documents
+:Automatically &save PDF after OCR or TOC processing
+af:Automatically &save PDF after OCR or TOC processing
+am:Automatically &save PDF after OCR or TOC processing
+ar:Automatically &save PDF after OCR or TOC processing
+az:Automatically &save PDF after OCR or TOC processing
+bg:Automatically &save PDF after OCR or TOC processing
+bn:Automatically &save PDF after OCR or TOC processing
+br:Automatically &save PDF after OCR or TOC processing
+bs:Automatically &save PDF after OCR or TOC processing
+by:Automatically &save PDF after OCR or TOC processing
+ca:Automatically &save PDF after OCR or TOC processing
+ca-xv:Automatically &save PDF after OCR or TOC processing
+cn:OCR 或目录处理完成后自动保存 PDF(&S)
+co:Automatically &save PDF after OCR or TOC processing
+cy:Automatically &save PDF after OCR or TOC processing
+cz:Automatically &save PDF after OCR or TOC processing
+de:Automatically &save PDF after OCR or TOC processing
+dk:Automatically &save PDF after OCR or TOC processing
+el:Automatically &save PDF after OCR or TOC processing
+es:Automatically &save PDF after OCR or TOC processing
+et:Automatically &save PDF after OCR or TOC processing
+eu:Automatically &save PDF after OCR or TOC processing
+fa:Automatically &save PDF after OCR or TOC processing
+fi:Automatically &save PDF after OCR or TOC processing
+fo:Automatically &save PDF after OCR or TOC processing
+fr:Automatically &save PDF after OCR or TOC processing
+fy-nl:Automatically &save PDF after OCR or TOC processing
+ga:Automatically &save PDF after OCR or TOC processing
+gl:Automatically &save PDF after OCR or TOC processing
+he:Automatically &save PDF after OCR or TOC processing
+hi:Automatically &save PDF after OCR or TOC processing
+hr:Automatically &save PDF after OCR or TOC processing
+hu:Automatically &save PDF after OCR or TOC processing
+id:Automatically &save PDF after OCR or TOC processing
+it:Automatically &save PDF after OCR or TOC processing
+ja:Automatically &save PDF after OCR or TOC processing
+jv:Automatically &save PDF after OCR or TOC processing
+ka:Automatically &save PDF after OCR or TOC processing
+kr:Automatically &save PDF after OCR or TOC processing
+ku:Automatically &save PDF after OCR or TOC processing
+kw:Automatically &save PDF after OCR or TOC processing
+lt:Automatically &save PDF after OCR or TOC processing
+lv:Automatically &save PDF after OCR or TOC processing
+mk:Automatically &save PDF after OCR or TOC processing
+ml:Automatically &save PDF after OCR or TOC processing
+mm:Automatically &save PDF after OCR or TOC processing
+my:Automatically &save PDF after OCR or TOC processing
+ne:Automatically &save PDF after OCR or TOC processing
+nl:Automatically &save PDF after OCR or TOC processing
+nn:Automatically &save PDF after OCR or TOC processing
+no:Automatically &save PDF after OCR or TOC processing
+pa:Automatically &save PDF after OCR or TOC processing
+pl:Automatically &save PDF after OCR or TOC processing
+pt:Automatically &save PDF after OCR or TOC processing
+ro:Automatically &save PDF after OCR or TOC processing
+ru:Automatically &save PDF after OCR or TOC processing
+sat:Automatically &save PDF after OCR or TOC processing
+si:Automatically &save PDF after OCR or TOC processing
+sk:Automatically &save PDF after OCR or TOC processing
+sl:Automatically &save PDF after OCR or TOC processing
+sn:Automatically &save PDF after OCR or TOC processing
+sp-rs:Automatically &save PDF after OCR or TOC processing
+sq:Automatically &save PDF after OCR or TOC processing
+sr-rs:Automatically &save PDF after OCR or TOC processing
+sv:Automatically &save PDF after OCR or TOC processing
+ta:Automatically &save PDF after OCR or TOC processing
+th:Automatically &save PDF after OCR or TOC processing
+tl:Automatically &save PDF after OCR or TOC processing
+tr:Automatically &save PDF after OCR or TOC processing
+tw:OCR 或目錄處理完成後自動儲存 PDF(&S)
+uk:Automatically &save PDF after OCR or TOC processing
+uz:Automatically &save PDF after OCR or TOC processing
+vn:Automatically &save PDF after OCR or TOC processing
+:Automatically OCR scanned pages
+af:Automatically OCR scanned pages
+am:Automatically OCR scanned pages
+ar:Automatically OCR scanned pages
+az:Automatically OCR scanned pages
+bg:Automatically OCR scanned pages
+bn:Automatically OCR scanned pages
+br:Automatically OCR scanned pages
+bs:Automatically OCR scanned pages
+by:Automatically OCR scanned pages
+ca:Automatically OCR scanned pages
+ca-xv:Automatically OCR scanned pages
+cn:自动识别没有文字层的扫描页面
+co:Automatically OCR scanned pages
+cy:Automatically OCR scanned pages
+cz:Automatically OCR scanned pages
+de:Automatically OCR scanned pages
+dk:Automatically OCR scanned pages
+el:Automatically OCR scanned pages
+es:Automatically OCR scanned pages
+et:Automatically OCR scanned pages
+eu:Automatically OCR scanned pages
+fa:Automatically OCR scanned pages
+fi:Automatically OCR scanned pages
+fo:Automatically OCR scanned pages
+fr:Automatically OCR scanned pages
+fy-nl:Automatically OCR scanned pages
+ga:Automatically OCR scanned pages
+gl:Automatically OCR scanned pages
+he:Automatically OCR scanned pages
+hi:Automatically OCR scanned pages
+hr:Automatically OCR scanned pages
+hu:Automatically OCR scanned pages
+id:Automatically OCR scanned pages
+it:Automatically OCR scanned pages
+ja:Automatically OCR scanned pages
+jv:Automatically OCR scanned pages
+ka:Automatically OCR scanned pages
+kr:Automatically OCR scanned pages
+ku:Automatically OCR scanned pages
+kw:Automatically OCR scanned pages
+lt:Automatically OCR scanned pages
+lv:Automatically OCR scanned pages
+mk:Automatically OCR scanned pages
+ml:Automatically OCR scanned pages
+mm:Automatically OCR scanned pages
+my:Automatically OCR scanned pages
+ne:Automatically OCR scanned pages
+nl:Automatically OCR scanned pages
+nn:Automatically OCR scanned pages
+no:Automatically OCR scanned pages
+pa:Automatically OCR scanned pages
+pl:Automatically OCR scanned pages
+pt:Automatically OCR scanned pages
+ro:Automatically OCR scanned pages
+ru:Automatically OCR scanned pages
+sat:Automatically OCR scanned pages
+si:Automatically OCR scanned pages
+sk:Automatically OCR scanned pages
+sl:Automatically OCR scanned pages
+sn:Automatically OCR scanned pages
+sp-rs:Automatically OCR scanned pages
+sq:Automatically OCR scanned pages
+sr-rs:Automatically OCR scanned pages
+sv:Automatically OCR scanned pages
+ta:Automatically OCR scanned pages
+th:Automatically OCR scanned pages
+tl:Automatically OCR scanned pages
+tr:Automatically OCR scanned pages
+tw:自動辨識沒有文字層的掃描頁面
+uk:Automatically OCR scanned pages
+uz:Automatically OCR scanned pages
+vn:Automatically OCR scanned pages
 :Automatically check for &updates
 am:Ինքնաշխատ ստուգել &թարմացումները
 br:Procurar atualizações &automaticamente
@@ -3009,6 +4153,79 @@ it:Appiattisci file PDF
 nl:Creëer PDF Bestand
 pl:Upiecz plik PDF
 sk:Vytvoriť súbor PDF
+:Balanced accuracy and completeness is recommended.
+af:Balanced accuracy and completeness is recommended.
+am:Balanced accuracy and completeness is recommended.
+ar:Balanced accuracy and completeness is recommended.
+az:Balanced accuracy and completeness is recommended.
+bg:Balanced accuracy and completeness is recommended.
+bn:Balanced accuracy and completeness is recommended.
+br:Balanced accuracy and completeness is recommended.
+bs:Balanced accuracy and completeness is recommended.
+by:Balanced accuracy and completeness is recommended.
+ca:Balanced accuracy and completeness is recommended.
+ca-xv:Balanced accuracy and completeness is recommended.
+cn:标准模式可平衡准确率与完整度，推荐使用。
+co:Balanced accuracy and completeness is recommended.
+cy:Balanced accuracy and completeness is recommended.
+cz:Balanced accuracy and completeness is recommended.
+de:Balanced accuracy and completeness is recommended.
+dk:Balanced accuracy and completeness is recommended.
+el:Balanced accuracy and completeness is recommended.
+es:Balanced accuracy and completeness is recommended.
+et:Balanced accuracy and completeness is recommended.
+eu:Balanced accuracy and completeness is recommended.
+fa:Balanced accuracy and completeness is recommended.
+fi:Balanced accuracy and completeness is recommended.
+fo:Balanced accuracy and completeness is recommended.
+fr:Balanced accuracy and completeness is recommended.
+fy-nl:Balanced accuracy and completeness is recommended.
+ga:Balanced accuracy and completeness is recommended.
+gl:Balanced accuracy and completeness is recommended.
+he:Balanced accuracy and completeness is recommended.
+hi:Balanced accuracy and completeness is recommended.
+hr:Balanced accuracy and completeness is recommended.
+hu:Balanced accuracy and completeness is recommended.
+id:Balanced accuracy and completeness is recommended.
+it:Balanced accuracy and completeness is recommended.
+ja:Balanced accuracy and completeness is recommended.
+jv:Balanced accuracy and completeness is recommended.
+ka:Balanced accuracy and completeness is recommended.
+kr:Balanced accuracy and completeness is recommended.
+ku:Balanced accuracy and completeness is recommended.
+kw:Balanced accuracy and completeness is recommended.
+lt:Balanced accuracy and completeness is recommended.
+lv:Balanced accuracy and completeness is recommended.
+mk:Balanced accuracy and completeness is recommended.
+ml:Balanced accuracy and completeness is recommended.
+mm:Balanced accuracy and completeness is recommended.
+my:Balanced accuracy and completeness is recommended.
+ne:Balanced accuracy and completeness is recommended.
+nl:Balanced accuracy and completeness is recommended.
+nn:Balanced accuracy and completeness is recommended.
+no:Balanced accuracy and completeness is recommended.
+pa:Balanced accuracy and completeness is recommended.
+pl:Balanced accuracy and completeness is recommended.
+pt:Balanced accuracy and completeness is recommended.
+ro:Balanced accuracy and completeness is recommended.
+ru:Balanced accuracy and completeness is recommended.
+sat:Balanced accuracy and completeness is recommended.
+si:Balanced accuracy and completeness is recommended.
+sk:Balanced accuracy and completeness is recommended.
+sl:Balanced accuracy and completeness is recommended.
+sn:Balanced accuracy and completeness is recommended.
+sp-rs:Balanced accuracy and completeness is recommended.
+sq:Balanced accuracy and completeness is recommended.
+sr-rs:Balanced accuracy and completeness is recommended.
+sv:Balanced accuracy and completeness is recommended.
+ta:Balanced accuracy and completeness is recommended.
+th:Balanced accuracy and completeness is recommended.
+tl:Balanced accuracy and completeness is recommended.
+tr:Balanced accuracy and completeness is recommended.
+tw:標準模式可平衡準確率與完整度，建議使用。
+uk:Balanced accuracy and completeness is recommended.
+uz:Balanced accuracy and completeness is recommended.
+vn:Balanced accuracy and completeness is recommended.
 :Bits Per Sample:
 br:Bits por Amostra:
 cn:采样位数
@@ -3480,6 +4697,79 @@ it:Modifica barra di scorrimento
 nl:Wijzig Scrolbalk
 pl:Zmień pasek przewijania
 sk:Zmeniť posuvník
+:ChatGPT
+af:ChatGPT
+am:ChatGPT
+ar:ChatGPT
+az:ChatGPT
+bg:ChatGPT
+bn:ChatGPT
+br:ChatGPT
+bs:ChatGPT
+by:ChatGPT
+ca:ChatGPT
+ca-xv:ChatGPT
+cn:ChatGPT
+co:ChatGPT
+cy:ChatGPT
+cz:ChatGPT
+de:ChatGPT
+dk:ChatGPT
+el:ChatGPT
+es:ChatGPT
+et:ChatGPT
+eu:ChatGPT
+fa:ChatGPT
+fi:ChatGPT
+fo:ChatGPT
+fr:ChatGPT
+fy-nl:ChatGPT
+ga:ChatGPT
+gl:ChatGPT
+he:ChatGPT
+hi:ChatGPT
+hr:ChatGPT
+hu:ChatGPT
+id:ChatGPT
+it:ChatGPT
+ja:ChatGPT
+jv:ChatGPT
+ka:ChatGPT
+kr:ChatGPT
+ku:ChatGPT
+kw:ChatGPT
+lt:ChatGPT
+lv:ChatGPT
+mk:ChatGPT
+ml:ChatGPT
+mm:ChatGPT
+my:ChatGPT
+ne:ChatGPT
+nl:ChatGPT
+nn:ChatGPT
+no:ChatGPT
+pa:ChatGPT
+pl:ChatGPT
+pt:ChatGPT
+ro:ChatGPT
+ru:ChatGPT
+sat:ChatGPT
+si:ChatGPT
+sk:ChatGPT
+sl:ChatGPT
+sn:ChatGPT
+sp-rs:ChatGPT
+sq:ChatGPT
+sr-rs:ChatGPT
+sv:ChatGPT
+ta:ChatGPT
+th:ChatGPT
+tl:ChatGPT
+tr:ChatGPT
+tw:ChatGPT
+uk:ChatGPT
+uz:ChatGPT
+vn:ChatGPT
 :Check For Updates
 am:Ստուգել թարմացումները
 br:Procurar Atualizações
@@ -3680,6 +4970,79 @@ tw:請選擇擷取方式：
 :Choose between 1 and 20 PDF pages.
 cn:选择 1 到 20 个 PDF 页码。
 tw:請選擇 1 到 20 個 PDF 頁碼。
+:Choose the offline dictionary folder
+af:Choose the offline dictionary folder
+am:Choose the offline dictionary folder
+ar:Choose the offline dictionary folder
+az:Choose the offline dictionary folder
+bg:Choose the offline dictionary folder
+bn:Choose the offline dictionary folder
+br:Choose the offline dictionary folder
+bs:Choose the offline dictionary folder
+by:Choose the offline dictionary folder
+ca:Choose the offline dictionary folder
+ca-xv:Choose the offline dictionary folder
+cn:选择离线词典文件夹
+co:Choose the offline dictionary folder
+cy:Choose the offline dictionary folder
+cz:Choose the offline dictionary folder
+de:Choose the offline dictionary folder
+dk:Choose the offline dictionary folder
+el:Choose the offline dictionary folder
+es:Choose the offline dictionary folder
+et:Choose the offline dictionary folder
+eu:Choose the offline dictionary folder
+fa:Choose the offline dictionary folder
+fi:Choose the offline dictionary folder
+fo:Choose the offline dictionary folder
+fr:Choose the offline dictionary folder
+fy-nl:Choose the offline dictionary folder
+ga:Choose the offline dictionary folder
+gl:Choose the offline dictionary folder
+he:Choose the offline dictionary folder
+hi:Choose the offline dictionary folder
+hr:Choose the offline dictionary folder
+hu:Choose the offline dictionary folder
+id:Choose the offline dictionary folder
+it:Choose the offline dictionary folder
+ja:Choose the offline dictionary folder
+jv:Choose the offline dictionary folder
+ka:Choose the offline dictionary folder
+kr:Choose the offline dictionary folder
+ku:Choose the offline dictionary folder
+kw:Choose the offline dictionary folder
+lt:Choose the offline dictionary folder
+lv:Choose the offline dictionary folder
+mk:Choose the offline dictionary folder
+ml:Choose the offline dictionary folder
+mm:Choose the offline dictionary folder
+my:Choose the offline dictionary folder
+ne:Choose the offline dictionary folder
+nl:Choose the offline dictionary folder
+nn:Choose the offline dictionary folder
+no:Choose the offline dictionary folder
+pa:Choose the offline dictionary folder
+pl:Choose the offline dictionary folder
+pt:Choose the offline dictionary folder
+ro:Choose the offline dictionary folder
+ru:Choose the offline dictionary folder
+sat:Choose the offline dictionary folder
+si:Choose the offline dictionary folder
+sk:Choose the offline dictionary folder
+sl:Choose the offline dictionary folder
+sn:Choose the offline dictionary folder
+sp-rs:Choose the offline dictionary folder
+sq:Choose the offline dictionary folder
+sr-rs:Choose the offline dictionary folder
+sv:Choose the offline dictionary folder
+ta:Choose the offline dictionary folder
+th:Choose the offline dictionary folder
+tl:Choose the offline dictionary folder
+tr:Choose the offline dictionary folder
+tw:選擇離線詞典資料夾
+uk:Choose the offline dictionary folder
+uz:Choose the offline dictionary folder
+vn:Choose the offline dictionary folder
 :Circle
 am:Շրջան
 br:Círculo
@@ -4002,6 +5365,152 @@ pl:Skompresowane bity/piksel:
 :Confirm Sending TOC Pages
 cn:确认发送目录页
 tw:確認傳送目錄頁
+:Conservative
+af:Conservative
+am:Conservative
+ar:Conservative
+az:Conservative
+bg:Conservative
+bn:Conservative
+br:Conservative
+bs:Conservative
+by:Conservative
+ca:Conservative
+ca-xv:Conservative
+cn:保守
+co:Conservative
+cy:Conservative
+cz:Conservative
+de:Conservative
+dk:Conservative
+el:Conservative
+es:Conservative
+et:Conservative
+eu:Conservative
+fa:Conservative
+fi:Conservative
+fo:Conservative
+fr:Conservative
+fy-nl:Conservative
+ga:Conservative
+gl:Conservative
+he:Conservative
+hi:Conservative
+hr:Conservative
+hu:Conservative
+id:Conservative
+it:Conservative
+ja:Conservative
+jv:Conservative
+ka:Conservative
+kr:Conservative
+ku:Conservative
+kw:Conservative
+lt:Conservative
+lv:Conservative
+mk:Conservative
+ml:Conservative
+mm:Conservative
+my:Conservative
+ne:Conservative
+nl:Conservative
+nn:Conservative
+no:Conservative
+pa:Conservative
+pl:Conservative
+pt:Conservative
+ro:Conservative
+ru:Conservative
+sat:Conservative
+si:Conservative
+sk:Conservative
+sl:Conservative
+sn:Conservative
+sp-rs:Conservative
+sq:Conservative
+sr-rs:Conservative
+sv:Conservative
+ta:Conservative
+th:Conservative
+tl:Conservative
+tr:Conservative
+tw:保守
+uk:Conservative
+uz:Conservative
+vn:Conservative
+:Contents / favorites sidebar
+af:Contents / favorites sidebar
+am:Contents / favorites sidebar
+ar:Contents / favorites sidebar
+az:Contents / favorites sidebar
+bg:Contents / favorites sidebar
+bn:Contents / favorites sidebar
+br:Contents / favorites sidebar
+bs:Contents / favorites sidebar
+by:Contents / favorites sidebar
+ca:Contents / favorites sidebar
+ca-xv:Contents / favorites sidebar
+cn:目录 / 收藏侧边栏
+co:Contents / favorites sidebar
+cy:Contents / favorites sidebar
+cz:Contents / favorites sidebar
+de:Contents / favorites sidebar
+dk:Contents / favorites sidebar
+el:Contents / favorites sidebar
+es:Contents / favorites sidebar
+et:Contents / favorites sidebar
+eu:Contents / favorites sidebar
+fa:Contents / favorites sidebar
+fi:Contents / favorites sidebar
+fo:Contents / favorites sidebar
+fr:Contents / favorites sidebar
+fy-nl:Contents / favorites sidebar
+ga:Contents / favorites sidebar
+gl:Contents / favorites sidebar
+he:Contents / favorites sidebar
+hi:Contents / favorites sidebar
+hr:Contents / favorites sidebar
+hu:Contents / favorites sidebar
+id:Contents / favorites sidebar
+it:Contents / favorites sidebar
+ja:Contents / favorites sidebar
+jv:Contents / favorites sidebar
+ka:Contents / favorites sidebar
+kr:Contents / favorites sidebar
+ku:Contents / favorites sidebar
+kw:Contents / favorites sidebar
+lt:Contents / favorites sidebar
+lv:Contents / favorites sidebar
+mk:Contents / favorites sidebar
+ml:Contents / favorites sidebar
+mm:Contents / favorites sidebar
+my:Contents / favorites sidebar
+ne:Contents / favorites sidebar
+nl:Contents / favorites sidebar
+nn:Contents / favorites sidebar
+no:Contents / favorites sidebar
+pa:Contents / favorites sidebar
+pl:Contents / favorites sidebar
+pt:Contents / favorites sidebar
+ro:Contents / favorites sidebar
+ru:Contents / favorites sidebar
+sat:Contents / favorites sidebar
+si:Contents / favorites sidebar
+sk:Contents / favorites sidebar
+sl:Contents / favorites sidebar
+sn:Contents / favorites sidebar
+sp-rs:Contents / favorites sidebar
+sq:Contents / favorites sidebar
+sr-rs:Contents / favorites sidebar
+sv:Contents / favorites sidebar
+ta:Contents / favorites sidebar
+th:Contents / favorites sidebar
+tl:Contents / favorites sidebar
+tr:Contents / favorites sidebar
+tw:目錄 / 我的最愛側欄
+uk:Contents / favorites sidebar
+uz:Contents / favorites sidebar
+vn:Contents / favorites sidebar
 :Contents page
 cn:目录页
 tw:目錄頁
@@ -5344,6 +6853,79 @@ it:Ctrl+Tab per navigare
 nl:Druk Ctrl+Tab voor navigeren
 pl:Ctrl+Tab, aby nawigować
 sk:Použite Ctrl+Tab – prechádzať
+:Ctrl+Tab uses most recently used &order
+af:Ctrl+Tab uses most recently used &order
+am:Ctrl+Tab uses most recently used &order
+ar:Ctrl+Tab uses most recently used &order
+az:Ctrl+Tab uses most recently used &order
+bg:Ctrl+Tab uses most recently used &order
+bn:Ctrl+Tab uses most recently used &order
+br:Ctrl+Tab uses most recently used &order
+bs:Ctrl+Tab uses most recently used &order
+by:Ctrl+Tab uses most recently used &order
+ca:Ctrl+Tab uses most recently used &order
+ca-xv:Ctrl+Tab uses most recently used &order
+cn:Ctrl+Tab 按最近使用顺序切换(&O)
+co:Ctrl+Tab uses most recently used &order
+cy:Ctrl+Tab uses most recently used &order
+cz:Ctrl+Tab uses most recently used &order
+de:Ctrl+Tab uses most recently used &order
+dk:Ctrl+Tab uses most recently used &order
+el:Ctrl+Tab uses most recently used &order
+es:Ctrl+Tab uses most recently used &order
+et:Ctrl+Tab uses most recently used &order
+eu:Ctrl+Tab uses most recently used &order
+fa:Ctrl+Tab uses most recently used &order
+fi:Ctrl+Tab uses most recently used &order
+fo:Ctrl+Tab uses most recently used &order
+fr:Ctrl+Tab uses most recently used &order
+fy-nl:Ctrl+Tab uses most recently used &order
+ga:Ctrl+Tab uses most recently used &order
+gl:Ctrl+Tab uses most recently used &order
+he:Ctrl+Tab uses most recently used &order
+hi:Ctrl+Tab uses most recently used &order
+hr:Ctrl+Tab uses most recently used &order
+hu:Ctrl+Tab uses most recently used &order
+id:Ctrl+Tab uses most recently used &order
+it:Ctrl+Tab uses most recently used &order
+ja:Ctrl+Tab uses most recently used &order
+jv:Ctrl+Tab uses most recently used &order
+ka:Ctrl+Tab uses most recently used &order
+kr:Ctrl+Tab uses most recently used &order
+ku:Ctrl+Tab uses most recently used &order
+kw:Ctrl+Tab uses most recently used &order
+lt:Ctrl+Tab uses most recently used &order
+lv:Ctrl+Tab uses most recently used &order
+mk:Ctrl+Tab uses most recently used &order
+ml:Ctrl+Tab uses most recently used &order
+mm:Ctrl+Tab uses most recently used &order
+my:Ctrl+Tab uses most recently used &order
+ne:Ctrl+Tab uses most recently used &order
+nl:Ctrl+Tab uses most recently used &order
+nn:Ctrl+Tab uses most recently used &order
+no:Ctrl+Tab uses most recently used &order
+pa:Ctrl+Tab uses most recently used &order
+pl:Ctrl+Tab uses most recently used &order
+pt:Ctrl+Tab uses most recently used &order
+ro:Ctrl+Tab uses most recently used &order
+ru:Ctrl+Tab uses most recently used &order
+sat:Ctrl+Tab uses most recently used &order
+si:Ctrl+Tab uses most recently used &order
+sk:Ctrl+Tab uses most recently used &order
+sl:Ctrl+Tab uses most recently used &order
+sn:Ctrl+Tab uses most recently used &order
+sp-rs:Ctrl+Tab uses most recently used &order
+sq:Ctrl+Tab uses most recently used &order
+sr-rs:Ctrl+Tab uses most recently used &order
+sv:Ctrl+Tab uses most recently used &order
+ta:Ctrl+Tab uses most recently used &order
+th:Ctrl+Tab uses most recently used &order
+tl:Ctrl+Tab uses most recently used &order
+tr:Ctrl+Tab uses most recently used &order
+tw:Ctrl+Tab 依最近使用順序切換(&O)
+uk:Ctrl+Tab uses most recently used &order
+uz:Ctrl+Tab uses most recently used &order
+vn:Ctrl+Tab uses most recently used &order
 :Current Image (%d):
 br:Imagem Atual (%d)
 cn:当前图像(%d):
@@ -5457,6 +7039,79 @@ nl:Cursorpositie
 pl:Pozycja kursora:
 sk:Pozícia kurzora:
 tw:游標位置:
+:Custom &DPI (0 = automatic):
+af:Custom &DPI (0 = automatic):
+am:Custom &DPI (0 = automatic):
+ar:Custom &DPI (0 = automatic):
+az:Custom &DPI (0 = automatic):
+bg:Custom &DPI (0 = automatic):
+bn:Custom &DPI (0 = automatic):
+br:Custom &DPI (0 = automatic):
+bs:Custom &DPI (0 = automatic):
+by:Custom &DPI (0 = automatic):
+ca:Custom &DPI (0 = automatic):
+ca-xv:Custom &DPI (0 = automatic):
+cn:自定义 DPI（0 = 自动）(&D)：
+co:Custom &DPI (0 = automatic):
+cy:Custom &DPI (0 = automatic):
+cz:Custom &DPI (0 = automatic):
+de:Custom &DPI (0 = automatic):
+dk:Custom &DPI (0 = automatic):
+el:Custom &DPI (0 = automatic):
+es:Custom &DPI (0 = automatic):
+et:Custom &DPI (0 = automatic):
+eu:Custom &DPI (0 = automatic):
+fa:Custom &DPI (0 = automatic):
+fi:Custom &DPI (0 = automatic):
+fo:Custom &DPI (0 = automatic):
+fr:Custom &DPI (0 = automatic):
+fy-nl:Custom &DPI (0 = automatic):
+ga:Custom &DPI (0 = automatic):
+gl:Custom &DPI (0 = automatic):
+he:Custom &DPI (0 = automatic):
+hi:Custom &DPI (0 = automatic):
+hr:Custom &DPI (0 = automatic):
+hu:Custom &DPI (0 = automatic):
+id:Custom &DPI (0 = automatic):
+it:Custom &DPI (0 = automatic):
+ja:Custom &DPI (0 = automatic):
+jv:Custom &DPI (0 = automatic):
+ka:Custom &DPI (0 = automatic):
+kr:Custom &DPI (0 = automatic):
+ku:Custom &DPI (0 = automatic):
+kw:Custom &DPI (0 = automatic):
+lt:Custom &DPI (0 = automatic):
+lv:Custom &DPI (0 = automatic):
+mk:Custom &DPI (0 = automatic):
+ml:Custom &DPI (0 = automatic):
+mm:Custom &DPI (0 = automatic):
+my:Custom &DPI (0 = automatic):
+ne:Custom &DPI (0 = automatic):
+nl:Custom &DPI (0 = automatic):
+nn:Custom &DPI (0 = automatic):
+no:Custom &DPI (0 = automatic):
+pa:Custom &DPI (0 = automatic):
+pl:Custom &DPI (0 = automatic):
+pt:Custom &DPI (0 = automatic):
+ro:Custom &DPI (0 = automatic):
+ru:Custom &DPI (0 = automatic):
+sat:Custom &DPI (0 = automatic):
+si:Custom &DPI (0 = automatic):
+sk:Custom &DPI (0 = automatic):
+sl:Custom &DPI (0 = automatic):
+sn:Custom &DPI (0 = automatic):
+sp-rs:Custom &DPI (0 = automatic):
+sq:Custom &DPI (0 = automatic):
+sr-rs:Custom &DPI (0 = automatic):
+sv:Custom &DPI (0 = automatic):
+ta:Custom &DPI (0 = automatic):
+th:Custom &DPI (0 = automatic):
+tl:Custom &DPI (0 = automatic):
+tr:Custom &DPI (0 = automatic):
+tw:自訂 DPI（0 = 自動）(&D)：
+uk:Custom &DPI (0 = automatic):
+uz:Custom &DPI (0 = automatic):
+vn:Custom &DPI (0 = automatic):
 :Custom &Zoom...
 am:Հարմարեցված &դիտափոխում...
 br:Zoom &Personalizado...
@@ -5469,6 +7124,79 @@ nl:Aangepaste &zoom...
 pl:&Własne powiększenie...
 sk:Vlastné &zväčšenie…
 tw:自訂縮放(&Z)...
+:Custom DPI must be 0 (automatic) or between 72 and 600.
+af:Custom DPI must be 0 (automatic) or between 72 and 600.
+am:Custom DPI must be 0 (automatic) or between 72 and 600.
+ar:Custom DPI must be 0 (automatic) or between 72 and 600.
+az:Custom DPI must be 0 (automatic) or between 72 and 600.
+bg:Custom DPI must be 0 (automatic) or between 72 and 600.
+bn:Custom DPI must be 0 (automatic) or between 72 and 600.
+br:Custom DPI must be 0 (automatic) or between 72 and 600.
+bs:Custom DPI must be 0 (automatic) or between 72 and 600.
+by:Custom DPI must be 0 (automatic) or between 72 and 600.
+ca:Custom DPI must be 0 (automatic) or between 72 and 600.
+ca-xv:Custom DPI must be 0 (automatic) or between 72 and 600.
+cn:自定义 DPI 必须为 0（自动）或 72 到 600。
+co:Custom DPI must be 0 (automatic) or between 72 and 600.
+cy:Custom DPI must be 0 (automatic) or between 72 and 600.
+cz:Custom DPI must be 0 (automatic) or between 72 and 600.
+de:Custom DPI must be 0 (automatic) or between 72 and 600.
+dk:Custom DPI must be 0 (automatic) or between 72 and 600.
+el:Custom DPI must be 0 (automatic) or between 72 and 600.
+es:Custom DPI must be 0 (automatic) or between 72 and 600.
+et:Custom DPI must be 0 (automatic) or between 72 and 600.
+eu:Custom DPI must be 0 (automatic) or between 72 and 600.
+fa:Custom DPI must be 0 (automatic) or between 72 and 600.
+fi:Custom DPI must be 0 (automatic) or between 72 and 600.
+fo:Custom DPI must be 0 (automatic) or between 72 and 600.
+fr:Custom DPI must be 0 (automatic) or between 72 and 600.
+fy-nl:Custom DPI must be 0 (automatic) or between 72 and 600.
+ga:Custom DPI must be 0 (automatic) or between 72 and 600.
+gl:Custom DPI must be 0 (automatic) or between 72 and 600.
+he:Custom DPI must be 0 (automatic) or between 72 and 600.
+hi:Custom DPI must be 0 (automatic) or between 72 and 600.
+hr:Custom DPI must be 0 (automatic) or between 72 and 600.
+hu:Custom DPI must be 0 (automatic) or between 72 and 600.
+id:Custom DPI must be 0 (automatic) or between 72 and 600.
+it:Custom DPI must be 0 (automatic) or between 72 and 600.
+ja:Custom DPI must be 0 (automatic) or between 72 and 600.
+jv:Custom DPI must be 0 (automatic) or between 72 and 600.
+ka:Custom DPI must be 0 (automatic) or between 72 and 600.
+kr:Custom DPI must be 0 (automatic) or between 72 and 600.
+ku:Custom DPI must be 0 (automatic) or between 72 and 600.
+kw:Custom DPI must be 0 (automatic) or between 72 and 600.
+lt:Custom DPI must be 0 (automatic) or between 72 and 600.
+lv:Custom DPI must be 0 (automatic) or between 72 and 600.
+mk:Custom DPI must be 0 (automatic) or between 72 and 600.
+ml:Custom DPI must be 0 (automatic) or between 72 and 600.
+mm:Custom DPI must be 0 (automatic) or between 72 and 600.
+my:Custom DPI must be 0 (automatic) or between 72 and 600.
+ne:Custom DPI must be 0 (automatic) or between 72 and 600.
+nl:Custom DPI must be 0 (automatic) or between 72 and 600.
+nn:Custom DPI must be 0 (automatic) or between 72 and 600.
+no:Custom DPI must be 0 (automatic) or between 72 and 600.
+pa:Custom DPI must be 0 (automatic) or between 72 and 600.
+pl:Custom DPI must be 0 (automatic) or between 72 and 600.
+pt:Custom DPI must be 0 (automatic) or between 72 and 600.
+ro:Custom DPI must be 0 (automatic) or between 72 and 600.
+ru:Custom DPI must be 0 (automatic) or between 72 and 600.
+sat:Custom DPI must be 0 (automatic) or between 72 and 600.
+si:Custom DPI must be 0 (automatic) or between 72 and 600.
+sk:Custom DPI must be 0 (automatic) or between 72 and 600.
+sl:Custom DPI must be 0 (automatic) or between 72 and 600.
+sn:Custom DPI must be 0 (automatic) or between 72 and 600.
+sp-rs:Custom DPI must be 0 (automatic) or between 72 and 600.
+sq:Custom DPI must be 0 (automatic) or between 72 and 600.
+sr-rs:Custom DPI must be 0 (automatic) or between 72 and 600.
+sv:Custom DPI must be 0 (automatic) or between 72 and 600.
+ta:Custom DPI must be 0 (automatic) or between 72 and 600.
+th:Custom DPI must be 0 (automatic) or between 72 and 600.
+tl:Custom DPI must be 0 (automatic) or between 72 and 600.
+tr:Custom DPI must be 0 (automatic) or between 72 and 600.
+tw:自訂 DPI 必須為 0（自動）或 72 到 600。
+uk:Custom DPI must be 0 (automatic) or between 72 and 600.
+uz:Custom DPI must be 0 (automatic) or between 72 and 600.
+vn:Custom DPI must be 0 (automatic) or between 72 and 600.
 :Custom...
 af:Custom...
 am:Custom...
@@ -5745,30 +7473,298 @@ it:Decrittografa
 nl:Decodeer PDF
 pl:Odszyfruj PDF
 sk:Dešifrovať PDF
+:DeepSeek
+af:DeepSeek
+am:DeepSeek
+ar:DeepSeek
+az:DeepSeek
+bg:DeepSeek
+bn:DeepSeek
+br:DeepSeek
+bs:DeepSeek
+by:DeepSeek
+ca:DeepSeek
+ca-xv:DeepSeek
+cn:DeepSeek
+co:DeepSeek
+cy:DeepSeek
+cz:DeepSeek
+de:DeepSeek
+dk:DeepSeek
+el:DeepSeek
+es:DeepSeek
+et:DeepSeek
+eu:DeepSeek
+fa:DeepSeek
+fi:DeepSeek
+fo:DeepSeek
+fr:DeepSeek
+fy-nl:DeepSeek
+ga:DeepSeek
+gl:DeepSeek
+he:DeepSeek
+hi:DeepSeek
+hr:DeepSeek
+hu:DeepSeek
+id:DeepSeek
+it:DeepSeek
+ja:DeepSeek
+jv:DeepSeek
+ka:DeepSeek
+kr:DeepSeek
+ku:DeepSeek
+kw:DeepSeek
+lt:DeepSeek
+lv:DeepSeek
+mk:DeepSeek
+ml:DeepSeek
+mm:DeepSeek
+my:DeepSeek
+ne:DeepSeek
+nl:DeepSeek
+nn:DeepSeek
+no:DeepSeek
+pa:DeepSeek
+pl:DeepSeek
+pt:DeepSeek
+ro:DeepSeek
+ru:DeepSeek
+sat:DeepSeek
+si:DeepSeek
+sk:DeepSeek
+sl:DeepSeek
+sn:DeepSeek
+sp-rs:DeepSeek
+sq:DeepSeek
+sr-rs:DeepSeek
+sv:DeepSeek
+ta:DeepSeek
+th:DeepSeek
+tl:DeepSeek
+tr:DeepSeek
+tw:DeepSeek
+uk:DeepSeek
+uz:DeepSeek
+vn:DeepSeek
 :Default &Layout:
+af:Default &Layout:
 am:Ծրագրային &դասավորություն՝
+ar:Default &Layout:
+az:Default &Layout:
+bg:Default &Layout:
+bn:Default &Layout:
 br:Estrutura &Padrão
+bs:Default &Layout:
+by:Default &Layout:
+ca:Default &Layout:
+ca-xv:Default &Layout:
 cn:默认布局(&L):
 co:&Accunciamentu predefinitu :
+cy:Default &Layout:
+cz:Default &Layout:
 de:&Standardlayout:
+dk:Default &Layout:
 el:Προκαθορισμένη &διαμόρφωση:
+es:Default &Layout:
+et:Default &Layout:
+eu:Default &Layout:
+fa:Default &Layout:
+fi:Default &Layout:
+fo:Default &Layout:
+fr:Default &Layout:
+fy-nl:Default &Layout:
+ga:Default &Layout:
+gl:Default &Layout:
+he:Default &Layout:
+hi:Default &Layout:
+hr:Default &Layout:
+hu:Default &Layout:
+id:Default &Layout:
 it:&Layout predefinito:
+ja:Default &Layout:
+jv:Default &Layout:
+ka:Default &Layout:
+kr:Default &Layout:
+ku:Default &Layout:
+kw:Default &Layout:
+lt:Default &Layout:
+lv:Default &Layout:
+mk:Default &Layout:
+ml:Default &Layout:
+mm:Default &Layout:
+my:Default &Layout:
+ne:Default &Layout:
 nl:Standaardopmaak:
+nn:Default &Layout:
+no:Default &Layout:
+pa:Default &Layout:
 pl:&Układ domyślny:
+pt:Default &Layout:
+ro:Default &Layout:
+ru:Default &Layout:
+sat:Default &Layout:
+si:Default &Layout:
 sk:Predvolené &zobrazenie:
+sl:Default &Layout:
+sn:Default &Layout:
+sp-rs:Default &Layout:
+sq:Default &Layout:
+sr-rs:Default &Layout:
+sv:Default &Layout:
+ta:Default &Layout:
+th:Default &Layout:
+tl:Default &Layout:
+tr:Default &Layout:
 tw:預設配置(&L):
+uk:Default &Layout:
+uz:Default &Layout:
+vn:Default &Layout:
 :Default &Zoom:
+af:Default &Zoom:
 am:Ծրագրային &չափը՝
+ar:Default &Zoom:
+az:Default &Zoom:
+bg:Default &Zoom:
+bn:Default &Zoom:
 br:Zoom &Padrão
+bs:Default &Zoom:
+by:Default &Zoom:
+ca:Default &Zoom:
+ca-xv:Default &Zoom:
 cn:默认缩放(&Z):
 co:&Ingrandamentu predefinitu :
+cy:Default &Zoom:
+cz:Default &Zoom:
 de:Standard&vergrößerung:
+dk:Default &Zoom:
 el:Προκαθορισμένο &ζουμ:
+es:Default &Zoom:
+et:Default &Zoom:
+eu:Default &Zoom:
+fa:Default &Zoom:
+fi:Default &Zoom:
+fo:Default &Zoom:
+fr:Default &Zoom:
+fy-nl:Default &Zoom:
+ga:Default &Zoom:
+gl:Default &Zoom:
+he:Default &Zoom:
+hi:Default &Zoom:
+hr:Default &Zoom:
+hu:Default &Zoom:
+id:Default &Zoom:
 it:&Zoom predefinito:
+ja:Default &Zoom:
+jv:Default &Zoom:
+ka:Default &Zoom:
+kr:Default &Zoom:
+ku:Default &Zoom:
+kw:Default &Zoom:
+lt:Default &Zoom:
+lv:Default &Zoom:
+mk:Default &Zoom:
+ml:Default &Zoom:
+mm:Default &Zoom:
+my:Default &Zoom:
+ne:Default &Zoom:
 nl:Standaard &zoom:
+nn:Default &Zoom:
+no:Default &Zoom:
+pa:Default &Zoom:
 pl:Domyślne &powiększenie:
+pt:Default &Zoom:
+ro:Default &Zoom:
+ru:Default &Zoom:
+sat:Default &Zoom:
+si:Default &Zoom:
 sk:Predvolená &veľkosť
+sl:Default &Zoom:
+sn:Default &Zoom:
+sp-rs:Default &Zoom:
+sq:Default &Zoom:
+sr-rs:Default &Zoom:
+sv:Default &Zoom:
+ta:Default &Zoom:
+th:Default &Zoom:
+tl:Default &Zoom:
+tr:Default &Zoom:
 tw:預設縮放(&Z):
+uk:Default &Zoom:
+uz:Default &Zoom:
+vn:Default &Zoom:
+:Default view
+af:Default view
+am:Default view
+ar:Default view
+az:Default view
+bg:Default view
+bn:Default view
+br:Default view
+bs:Default view
+by:Default view
+ca:Default view
+ca-xv:Default view
+cn:默认打开方式
+co:Default view
+cy:Default view
+cz:Default view
+de:Default view
+dk:Default view
+el:Default view
+es:Default view
+et:Default view
+eu:Default view
+fa:Default view
+fi:Default view
+fo:Default view
+fr:Default view
+fy-nl:Default view
+ga:Default view
+gl:Default view
+he:Default view
+hi:Default view
+hr:Default view
+hu:Default view
+id:Default view
+it:Default view
+ja:Default view
+jv:Default view
+ka:Default view
+kr:Default view
+ku:Default view
+kw:Default view
+lt:Default view
+lv:Default view
+mk:Default view
+ml:Default view
+mm:Default view
+my:Default view
+ne:Default view
+nl:Default view
+nn:Default view
+no:Default view
+pa:Default view
+pl:Default view
+pt:Default view
+ro:Default view
+ru:Default view
+sat:Default view
+si:Default view
+sk:Default view
+sl:Default view
+sn:Default view
+sp-rs:Default view
+sq:Default view
+sr-rs:Default view
+sv:Default view
+ta:Default view
+th:Default view
+tl:Default view
+tr:Default view
+tw:預設開啟方式
+uk:Default view
+uz:Default view
+vn:Default view
 :Delete
 am:Ջնջել
 br:Apagar
@@ -6047,6 +8043,152 @@ nl:Niet toegestaan:
 pl:Brak zezwoleń:
 sk:Odmietnuté povolenia:
 tw:權限不足:
+:Detailed
+af:Detailed
+am:Detailed
+ar:Detailed
+az:Detailed
+bg:Detailed
+bn:Detailed
+br:Detailed
+bs:Detailed
+by:Detailed
+ca:Detailed
+ca-xv:Detailed
+cn:详细
+co:Detailed
+cy:Detailed
+cz:Detailed
+de:Detailed
+dk:Detailed
+el:Detailed
+es:Detailed
+et:Detailed
+eu:Detailed
+fa:Detailed
+fi:Detailed
+fo:Detailed
+fr:Detailed
+fy-nl:Detailed
+ga:Detailed
+gl:Detailed
+he:Detailed
+hi:Detailed
+hr:Detailed
+hu:Detailed
+id:Detailed
+it:Detailed
+ja:Detailed
+jv:Detailed
+ka:Detailed
+kr:Detailed
+ku:Detailed
+kw:Detailed
+lt:Detailed
+lv:Detailed
+mk:Detailed
+ml:Detailed
+mm:Detailed
+my:Detailed
+ne:Detailed
+nl:Detailed
+nn:Detailed
+no:Detailed
+pa:Detailed
+pl:Detailed
+pt:Detailed
+ro:Detailed
+ru:Detailed
+sat:Detailed
+si:Detailed
+sk:Detailed
+sl:Detailed
+sn:Detailed
+sp-rs:Detailed
+sq:Detailed
+sr-rs:Detailed
+sv:Detailed
+ta:Detailed
+th:Detailed
+tl:Detailed
+tr:Detailed
+tw:詳細
+uk:Detailed
+uz:Detailed
+vn:Detailed
+:Dictionary
+af:Dictionary
+am:Dictionary
+ar:Dictionary
+az:Dictionary
+bg:Dictionary
+bn:Dictionary
+br:Dictionary
+bs:Dictionary
+by:Dictionary
+ca:Dictionary
+ca-xv:Dictionary
+cn:词典
+co:Dictionary
+cy:Dictionary
+cz:Dictionary
+de:Dictionary
+dk:Dictionary
+el:Dictionary
+es:Dictionary
+et:Dictionary
+eu:Dictionary
+fa:Dictionary
+fi:Dictionary
+fo:Dictionary
+fr:Dictionary
+fy-nl:Dictionary
+ga:Dictionary
+gl:Dictionary
+he:Dictionary
+hi:Dictionary
+hr:Dictionary
+hu:Dictionary
+id:Dictionary
+it:Dictionary
+ja:Dictionary
+jv:Dictionary
+ka:Dictionary
+kr:Dictionary
+ku:Dictionary
+kw:Dictionary
+lt:Dictionary
+lv:Dictionary
+mk:Dictionary
+ml:Dictionary
+mm:Dictionary
+my:Dictionary
+ne:Dictionary
+nl:Dictionary
+nn:Dictionary
+no:Dictionary
+pa:Dictionary
+pl:Dictionary
+pt:Dictionary
+ro:Dictionary
+ru:Dictionary
+sat:Dictionary
+si:Dictionary
+sk:Dictionary
+sl:Dictionary
+sn:Dictionary
+sp-rs:Dictionary
+sq:Dictionary
+sr-rs:Dictionary
+sv:Dictionary
+ta:Dictionary
+th:Dictionary
+tl:Dictionary
+tr:Dictionary
+tw:詞典
+uk:Dictionary
+uz:Dictionary
+vn:Dictionary
 :Discard
 af:Discard
 am:Discard
@@ -6120,6 +8262,152 @@ tw:捨棄
 uk:Discard
 uz:Discard
 vn:Discard
+:Display
+af:Display
+am:Display
+ar:Display
+az:Display
+bg:Display
+bn:Display
+br:Display
+bs:Display
+by:Display
+ca:Display
+ca-xv:Display
+cn:显示
+co:Display
+cy:Display
+cz:Display
+de:Display
+dk:Display
+el:Display
+es:Display
+et:Display
+eu:Display
+fa:Display
+fi:Display
+fo:Display
+fr:Display
+fy-nl:Display
+ga:Display
+gl:Display
+he:Display
+hi:Display
+hr:Display
+hu:Display
+id:Display
+it:Display
+ja:Display
+jv:Display
+ka:Display
+kr:Display
+ku:Display
+kw:Display
+lt:Display
+lv:Display
+mk:Display
+ml:Display
+mm:Display
+my:Display
+ne:Display
+nl:Display
+nn:Display
+no:Display
+pa:Display
+pl:Display
+pt:Display
+ro:Display
+ru:Display
+sat:Display
+si:Display
+sk:Display
+sl:Display
+sn:Display
+sp-rs:Display
+sq:Display
+sr-rs:Display
+sv:Display
+ta:Display
+th:Display
+tl:Display
+tr:Display
+tw:顯示
+uk:Display
+uz:Display
+vn:Display
+:Display quality
+af:Display quality
+am:Display quality
+ar:Display quality
+az:Display quality
+bg:Display quality
+bn:Display quality
+br:Display quality
+bs:Display quality
+by:Display quality
+ca:Display quality
+ca-xv:Display quality
+cn:显示质量
+co:Display quality
+cy:Display quality
+cz:Display quality
+de:Display quality
+dk:Display quality
+el:Display quality
+es:Display quality
+et:Display quality
+eu:Display quality
+fa:Display quality
+fi:Display quality
+fo:Display quality
+fr:Display quality
+fy-nl:Display quality
+ga:Display quality
+gl:Display quality
+he:Display quality
+hi:Display quality
+hr:Display quality
+hu:Display quality
+id:Display quality
+it:Display quality
+ja:Display quality
+jv:Display quality
+ka:Display quality
+kr:Display quality
+ku:Display quality
+kw:Display quality
+lt:Display quality
+lv:Display quality
+mk:Display quality
+ml:Display quality
+mm:Display quality
+my:Display quality
+ne:Display quality
+nl:Display quality
+nn:Display quality
+no:Display quality
+pa:Display quality
+pl:Display quality
+pt:Display quality
+ro:Display quality
+ru:Display quality
+sat:Display quality
+si:Display quality
+sk:Display quality
+sl:Display quality
+sn:Display quality
+sp-rs:Display quality
+sq:Display quality
+sr-rs:Display quality
+sv:Display quality
+ta:Display quality
+th:Display quality
+tl:Display quality
+tr:Display quality
+tw:顯示品質
+uk:Display quality
+uz:Display quality
+vn:Display quality
 :DjVu documents
 am:DjVu ֆայլեր
 br:Documentos DjVu
@@ -6153,6 +8441,79 @@ it:Documento
 nl:Document
 pl:Dokument
 sk:Dokument
+:Document &colors:
+af:Document &colors:
+am:Document &colors:
+ar:Document &colors:
+az:Document &colors:
+bg:Document &colors:
+bn:Document &colors:
+br:Document &colors:
+bs:Document &colors:
+by:Document &colors:
+ca:Document &colors:
+ca-xv:Document &colors:
+cn:文档颜色(&C)：
+co:Document &colors:
+cy:Document &colors:
+cz:Document &colors:
+de:Document &colors:
+dk:Document &colors:
+el:Document &colors:
+es:Document &colors:
+et:Document &colors:
+eu:Document &colors:
+fa:Document &colors:
+fi:Document &colors:
+fo:Document &colors:
+fr:Document &colors:
+fy-nl:Document &colors:
+ga:Document &colors:
+gl:Document &colors:
+he:Document &colors:
+hi:Document &colors:
+hr:Document &colors:
+hu:Document &colors:
+id:Document &colors:
+it:Document &colors:
+ja:Document &colors:
+jv:Document &colors:
+ka:Document &colors:
+kr:Document &colors:
+ku:Document &colors:
+kw:Document &colors:
+lt:Document &colors:
+lv:Document &colors:
+mk:Document &colors:
+ml:Document &colors:
+mm:Document &colors:
+my:Document &colors:
+ne:Document &colors:
+nl:Document &colors:
+nn:Document &colors:
+no:Document &colors:
+pa:Document &colors:
+pl:Document &colors:
+pt:Document &colors:
+ro:Document &colors:
+ru:Document &colors:
+sat:Document &colors:
+si:Document &colors:
+sk:Document &colors:
+sl:Document &colors:
+sn:Document &colors:
+sp-rs:Document &colors:
+sq:Document &colors:
+sr-rs:Document &colors:
+sv:Document &colors:
+ta:Document &colors:
+th:Document &colors:
+tl:Document &colors:
+tr:Document &colors:
+tw:文件色彩(&C)：
+uk:Document &colors:
+uz:Document &colors:
+vn:Document &colors:
 :Document Color Mode: Match theme (use current theme colors)
 am:Փաստաթղթի գունային ռեժիմ՝ համապատասխանել թեմային (հետևել ընթացիկ թեմայի գույներին)
 br:Modo de cor do documento: Seguir tema (seguir cores do tema atual)
@@ -6286,6 +8647,79 @@ tw:不儲存
 uk:Don't save
 uz:Don't save
 vn:Don't save
+:Doubao
+af:Doubao
+am:Doubao
+ar:Doubao
+az:Doubao
+bg:Doubao
+bn:Doubao
+br:Doubao
+bs:Doubao
+by:Doubao
+ca:Doubao
+ca-xv:Doubao
+cn:豆包
+co:Doubao
+cy:Doubao
+cz:Doubao
+de:Doubao
+dk:Doubao
+el:Doubao
+es:Doubao
+et:Doubao
+eu:Doubao
+fa:Doubao
+fi:Doubao
+fo:Doubao
+fr:Doubao
+fy-nl:Doubao
+ga:Doubao
+gl:Doubao
+he:Doubao
+hi:Doubao
+hr:Doubao
+hu:Doubao
+id:Doubao
+it:Doubao
+ja:Doubao
+jv:Doubao
+ka:Doubao
+kr:Doubao
+ku:Doubao
+kw:Doubao
+lt:Doubao
+lv:Doubao
+mk:Doubao
+ml:Doubao
+mm:Doubao
+my:Doubao
+ne:Doubao
+nl:Doubao
+nn:Doubao
+no:Doubao
+pa:Doubao
+pl:Doubao
+pt:Doubao
+ro:Doubao
+ru:Doubao
+sat:Doubao
+si:Doubao
+sk:Doubao
+sl:Doubao
+sn:Doubao
+sp-rs:Doubao
+sq:Doubao
+sr-rs:Doubao
+sv:Doubao
+ta:Doubao
+th:Doubao
+tl:Doubao
+tr:Doubao
+tw:豆包
+uk:Doubao
+uz:Doubao
+vn:Doubao
 :Double-Click Word Lookup (disabled)
 am:Կրկնակի սեղմումով բառային որոնում (անջ.)
 br:Pesquisa por duplo clique (desativada)
@@ -6370,6 +8804,79 @@ nl:Volledig scherm uit
 pl:W&yjdź z trybu pełnoekranowego
 sk:U&končiť zobrazenie na celú obrazovku
 tw:結束全螢幕模式(&X)
+:E&xit the application with Esc
+af:E&xit the application with Esc
+am:E&xit the application with Esc
+ar:E&xit the application with Esc
+az:E&xit the application with Esc
+bg:E&xit the application with Esc
+bn:E&xit the application with Esc
+br:E&xit the application with Esc
+bs:E&xit the application with Esc
+by:E&xit the application with Esc
+ca:E&xit the application with Esc
+ca-xv:E&xit the application with Esc
+cn:按 Esc 退出程序(&X)
+co:E&xit the application with Esc
+cy:E&xit the application with Esc
+cz:E&xit the application with Esc
+de:E&xit the application with Esc
+dk:E&xit the application with Esc
+el:E&xit the application with Esc
+es:E&xit the application with Esc
+et:E&xit the application with Esc
+eu:E&xit the application with Esc
+fa:E&xit the application with Esc
+fi:E&xit the application with Esc
+fo:E&xit the application with Esc
+fr:E&xit the application with Esc
+fy-nl:E&xit the application with Esc
+ga:E&xit the application with Esc
+gl:E&xit the application with Esc
+he:E&xit the application with Esc
+hi:E&xit the application with Esc
+hr:E&xit the application with Esc
+hu:E&xit the application with Esc
+id:E&xit the application with Esc
+it:E&xit the application with Esc
+ja:E&xit the application with Esc
+jv:E&xit the application with Esc
+ka:E&xit the application with Esc
+kr:E&xit the application with Esc
+ku:E&xit the application with Esc
+kw:E&xit the application with Esc
+lt:E&xit the application with Esc
+lv:E&xit the application with Esc
+mk:E&xit the application with Esc
+ml:E&xit the application with Esc
+mm:E&xit the application with Esc
+my:E&xit the application with Esc
+ne:E&xit the application with Esc
+nl:E&xit the application with Esc
+nn:E&xit the application with Esc
+no:E&xit the application with Esc
+pa:E&xit the application with Esc
+pl:E&xit the application with Esc
+pt:E&xit the application with Esc
+ro:E&xit the application with Esc
+ru:E&xit the application with Esc
+sat:E&xit the application with Esc
+si:E&xit the application with Esc
+sk:E&xit the application with Esc
+sl:E&xit the application with Esc
+sn:E&xit the application with Esc
+sp-rs:E&xit the application with Esc
+sq:E&xit the application with Esc
+sr-rs:E&xit the application with Esc
+sv:E&xit the application with Esc
+ta:E&xit the application with Esc
+th:E&xit the application with Esc
+tl:E&xit the application with Esc
+tr:E&xit the application with Esc
+tw:按 Esc 結束程式(&X)
+uk:E&xit the application with Esc
+uz:E&xit the application with Esc
+vn:E&xit the application with Esc
 :EPUB ebooks
 am:EPUB ebooks
 br:Ebooks EPUB
@@ -6594,6 +9101,79 @@ tw:開啟自動 OCR
 uk:Enable Auto OCR
 uz:Enable Auto OCR
 vn:Enable Auto OCR
+:Enable PDF &anti-aliasing
+af:Enable PDF &anti-aliasing
+am:Enable PDF &anti-aliasing
+ar:Enable PDF &anti-aliasing
+az:Enable PDF &anti-aliasing
+bg:Enable PDF &anti-aliasing
+bn:Enable PDF &anti-aliasing
+br:Enable PDF &anti-aliasing
+bs:Enable PDF &anti-aliasing
+by:Enable PDF &anti-aliasing
+ca:Enable PDF &anti-aliasing
+ca-xv:Enable PDF &anti-aliasing
+cn:启用 PDF 抗锯齿(&A)
+co:Enable PDF &anti-aliasing
+cy:Enable PDF &anti-aliasing
+cz:Enable PDF &anti-aliasing
+de:Enable PDF &anti-aliasing
+dk:Enable PDF &anti-aliasing
+el:Enable PDF &anti-aliasing
+es:Enable PDF &anti-aliasing
+et:Enable PDF &anti-aliasing
+eu:Enable PDF &anti-aliasing
+fa:Enable PDF &anti-aliasing
+fi:Enable PDF &anti-aliasing
+fo:Enable PDF &anti-aliasing
+fr:Enable PDF &anti-aliasing
+fy-nl:Enable PDF &anti-aliasing
+ga:Enable PDF &anti-aliasing
+gl:Enable PDF &anti-aliasing
+he:Enable PDF &anti-aliasing
+hi:Enable PDF &anti-aliasing
+hr:Enable PDF &anti-aliasing
+hu:Enable PDF &anti-aliasing
+id:Enable PDF &anti-aliasing
+it:Enable PDF &anti-aliasing
+ja:Enable PDF &anti-aliasing
+jv:Enable PDF &anti-aliasing
+ka:Enable PDF &anti-aliasing
+kr:Enable PDF &anti-aliasing
+ku:Enable PDF &anti-aliasing
+kw:Enable PDF &anti-aliasing
+lt:Enable PDF &anti-aliasing
+lv:Enable PDF &anti-aliasing
+mk:Enable PDF &anti-aliasing
+ml:Enable PDF &anti-aliasing
+mm:Enable PDF &anti-aliasing
+my:Enable PDF &anti-aliasing
+ne:Enable PDF &anti-aliasing
+nl:Enable PDF &anti-aliasing
+nn:Enable PDF &anti-aliasing
+no:Enable PDF &anti-aliasing
+pa:Enable PDF &anti-aliasing
+pl:Enable PDF &anti-aliasing
+pt:Enable PDF &anti-aliasing
+ro:Enable PDF &anti-aliasing
+ru:Enable PDF &anti-aliasing
+sat:Enable PDF &anti-aliasing
+si:Enable PDF &anti-aliasing
+sk:Enable PDF &anti-aliasing
+sl:Enable PDF &anti-aliasing
+sn:Enable PDF &anti-aliasing
+sp-rs:Enable PDF &anti-aliasing
+sq:Enable PDF &anti-aliasing
+sr-rs:Enable PDF &anti-aliasing
+sv:Enable PDF &anti-aliasing
+ta:Enable PDF &anti-aliasing
+th:Enable PDF &anti-aliasing
+tl:Enable PDF &anti-aliasing
+tr:Enable PDF &anti-aliasing
+tw:啟用 PDF 反鋸齒(&A)
+uk:Enable PDF &anti-aliasing
+uz:Enable PDF &anti-aliasing
+vn:Enable PDF &anti-aliasing
 :Encrypt PDF
 br:Criptografar PDF
 cn:加密 PDF
@@ -6612,6 +9192,79 @@ it:Crittografia:
 nl:Versleuteling:
 pl:Szyfrowanie:
 sk:Šifrovanie:
+:Engineering drawing &enhancement:
+af:Engineering drawing &enhancement:
+am:Engineering drawing &enhancement:
+ar:Engineering drawing &enhancement:
+az:Engineering drawing &enhancement:
+bg:Engineering drawing &enhancement:
+bn:Engineering drawing &enhancement:
+br:Engineering drawing &enhancement:
+bs:Engineering drawing &enhancement:
+by:Engineering drawing &enhancement:
+ca:Engineering drawing &enhancement:
+ca-xv:Engineering drawing &enhancement:
+cn:工程图纸增强(&E)：
+co:Engineering drawing &enhancement:
+cy:Engineering drawing &enhancement:
+cz:Engineering drawing &enhancement:
+de:Engineering drawing &enhancement:
+dk:Engineering drawing &enhancement:
+el:Engineering drawing &enhancement:
+es:Engineering drawing &enhancement:
+et:Engineering drawing &enhancement:
+eu:Engineering drawing &enhancement:
+fa:Engineering drawing &enhancement:
+fi:Engineering drawing &enhancement:
+fo:Engineering drawing &enhancement:
+fr:Engineering drawing &enhancement:
+fy-nl:Engineering drawing &enhancement:
+ga:Engineering drawing &enhancement:
+gl:Engineering drawing &enhancement:
+he:Engineering drawing &enhancement:
+hi:Engineering drawing &enhancement:
+hr:Engineering drawing &enhancement:
+hu:Engineering drawing &enhancement:
+id:Engineering drawing &enhancement:
+it:Engineering drawing &enhancement:
+ja:Engineering drawing &enhancement:
+jv:Engineering drawing &enhancement:
+ka:Engineering drawing &enhancement:
+kr:Engineering drawing &enhancement:
+ku:Engineering drawing &enhancement:
+kw:Engineering drawing &enhancement:
+lt:Engineering drawing &enhancement:
+lv:Engineering drawing &enhancement:
+mk:Engineering drawing &enhancement:
+ml:Engineering drawing &enhancement:
+mm:Engineering drawing &enhancement:
+my:Engineering drawing &enhancement:
+ne:Engineering drawing &enhancement:
+nl:Engineering drawing &enhancement:
+nn:Engineering drawing &enhancement:
+no:Engineering drawing &enhancement:
+pa:Engineering drawing &enhancement:
+pl:Engineering drawing &enhancement:
+pt:Engineering drawing &enhancement:
+ro:Engineering drawing &enhancement:
+ru:Engineering drawing &enhancement:
+sat:Engineering drawing &enhancement:
+si:Engineering drawing &enhancement:
+sk:Engineering drawing &enhancement:
+sl:Engineering drawing &enhancement:
+sn:Engineering drawing &enhancement:
+sp-rs:Engineering drawing &enhancement:
+sq:Engineering drawing &enhancement:
+sr-rs:Engineering drawing &enhancement:
+sv:Engineering drawing &enhancement:
+ta:Engineering drawing &enhancement:
+th:Engineering drawing &enhancement:
+tl:Engineering drawing &enhancement:
+tr:Engineering drawing &enhancement:
+tw:工程圖紙增強(&E)：
+uk:Engineering drawing &enhancement:
+uz:Engineering drawing &enhancement:
+vn:Engineering drawing &enhancement:
 :English voice
 af:Engelse stem
 am:Անգլերեն ձայ
@@ -7551,6 +10204,79 @@ tw:正在提取書籤… %d / %d
 uk:Extracting bookmarks… %d / %d
 uz:Extracting bookmarks… %d / %d
 vn:Extracting bookmarks… %d / %d
+:Extraction &detail:
+af:Extraction &detail:
+am:Extraction &detail:
+ar:Extraction &detail:
+az:Extraction &detail:
+bg:Extraction &detail:
+bn:Extraction &detail:
+br:Extraction &detail:
+bs:Extraction &detail:
+by:Extraction &detail:
+ca:Extraction &detail:
+ca-xv:Extraction &detail:
+cn:目录提取详细程度(&D)：
+co:Extraction &detail:
+cy:Extraction &detail:
+cz:Extraction &detail:
+de:Extraction &detail:
+dk:Extraction &detail:
+el:Extraction &detail:
+es:Extraction &detail:
+et:Extraction &detail:
+eu:Extraction &detail:
+fa:Extraction &detail:
+fi:Extraction &detail:
+fo:Extraction &detail:
+fr:Extraction &detail:
+fy-nl:Extraction &detail:
+ga:Extraction &detail:
+gl:Extraction &detail:
+he:Extraction &detail:
+hi:Extraction &detail:
+hr:Extraction &detail:
+hu:Extraction &detail:
+id:Extraction &detail:
+it:Extraction &detail:
+ja:Extraction &detail:
+jv:Extraction &detail:
+ka:Extraction &detail:
+kr:Extraction &detail:
+ku:Extraction &detail:
+kw:Extraction &detail:
+lt:Extraction &detail:
+lv:Extraction &detail:
+mk:Extraction &detail:
+ml:Extraction &detail:
+mm:Extraction &detail:
+my:Extraction &detail:
+ne:Extraction &detail:
+nl:Extraction &detail:
+nn:Extraction &detail:
+no:Extraction &detail:
+pa:Extraction &detail:
+pl:Extraction &detail:
+pt:Extraction &detail:
+ro:Extraction &detail:
+ru:Extraction &detail:
+sat:Extraction &detail:
+si:Extraction &detail:
+sk:Extraction &detail:
+sl:Extraction &detail:
+sn:Extraction &detail:
+sp-rs:Extraction &detail:
+sq:Extraction &detail:
+sr-rs:Extraction &detail:
+sv:Extraction &detail:
+ta:Extraction &detail:
+th:Extraction &detail:
+tl:Extraction &detail:
+tr:Extraction &detail:
+tw:目錄擷取詳細程度(&D)：
+uk:Extraction &detail:
+uz:Extraction &detail:
+vn:Extraction &detail:
 :Extracts the structure from printed TOC pages, or from the body text structure.\nRecognized by the web AI; slower than local extraction.
 cn:支持从印刷版目录页提取结构，也可从中文正文文本结构提取内容生成目录。\n由网页版 AI 识别，处理速度相对本地识别较慢。
 tw:支援從印刷版目錄頁擷取結構，也可從中文正文文字結構擷取內容產生目錄。\n由網頁版 AI 辨識，處理速度相對本地辨識較慢。
@@ -7774,6 +10500,79 @@ nl:Kan deïnstallatie-informatie niet wegschrijven in het register
 pl:Nie można zapisać informacji o usunięciu programu do rejestru
 sk:Uloženie informácií pre odinštalovanie do registrov bolo neúspešné
 tw:無法將解除安裝資訊寫入註冊表。
+:Fast
+af:Fast
+am:Fast
+ar:Fast
+az:Fast
+bg:Fast
+bn:Fast
+br:Fast
+bs:Fast
+by:Fast
+ca:Fast
+ca-xv:Fast
+cn:极速
+co:Fast
+cy:Fast
+cz:Fast
+de:Fast
+dk:Fast
+el:Fast
+es:Fast
+et:Fast
+eu:Fast
+fa:Fast
+fi:Fast
+fo:Fast
+fr:Fast
+fy-nl:Fast
+ga:Fast
+gl:Fast
+he:Fast
+hi:Fast
+hr:Fast
+hu:Fast
+id:Fast
+it:Fast
+ja:Fast
+jv:Fast
+ka:Fast
+kr:Fast
+ku:Fast
+kw:Fast
+lt:Fast
+lv:Fast
+mk:Fast
+ml:Fast
+mm:Fast
+my:Fast
+ne:Fast
+nl:Fast
+nn:Fast
+no:Fast
+pa:Fast
+pl:Fast
+pt:Fast
+ro:Fast
+ru:Fast
+sat:Fast
+si:Fast
+sk:Fast
+sl:Fast
+sn:Fast
+sp-rs:Fast
+sq:Fast
+sr-rs:Fast
+sv:Fast
+ta:Fast
+th:Fast
+tl:Fast
+tr:Fast
+tw:極速
+uk:Fast
+uz:Fast
+vn:Fast
 :Fast (1.25×)
 af:Vinnig (1.25×)
 am:Արագ (1.25×)
@@ -7932,6 +10731,79 @@ nl:Snelle browserweergave
 pl:Szybkie wyświetlanie w Internecie
 sk:Rýchle zobrazovanie z internetu
 tw:快速網頁模式
+:Fast page scrolling over the scroll&bar
+af:Fast page scrolling over the scroll&bar
+am:Fast page scrolling over the scroll&bar
+ar:Fast page scrolling over the scroll&bar
+az:Fast page scrolling over the scroll&bar
+bg:Fast page scrolling over the scroll&bar
+bn:Fast page scrolling over the scroll&bar
+br:Fast page scrolling over the scroll&bar
+bs:Fast page scrolling over the scroll&bar
+by:Fast page scrolling over the scroll&bar
+ca:Fast page scrolling over the scroll&bar
+ca-xv:Fast page scrolling over the scroll&bar
+cn:鼠标位于滚动条区域时快速翻页(&B)
+co:Fast page scrolling over the scroll&bar
+cy:Fast page scrolling over the scroll&bar
+cz:Fast page scrolling over the scroll&bar
+de:Fast page scrolling over the scroll&bar
+dk:Fast page scrolling over the scroll&bar
+el:Fast page scrolling over the scroll&bar
+es:Fast page scrolling over the scroll&bar
+et:Fast page scrolling over the scroll&bar
+eu:Fast page scrolling over the scroll&bar
+fa:Fast page scrolling over the scroll&bar
+fi:Fast page scrolling over the scroll&bar
+fo:Fast page scrolling over the scroll&bar
+fr:Fast page scrolling over the scroll&bar
+fy-nl:Fast page scrolling over the scroll&bar
+ga:Fast page scrolling over the scroll&bar
+gl:Fast page scrolling over the scroll&bar
+he:Fast page scrolling over the scroll&bar
+hi:Fast page scrolling over the scroll&bar
+hr:Fast page scrolling over the scroll&bar
+hu:Fast page scrolling over the scroll&bar
+id:Fast page scrolling over the scroll&bar
+it:Fast page scrolling over the scroll&bar
+ja:Fast page scrolling over the scroll&bar
+jv:Fast page scrolling over the scroll&bar
+ka:Fast page scrolling over the scroll&bar
+kr:Fast page scrolling over the scroll&bar
+ku:Fast page scrolling over the scroll&bar
+kw:Fast page scrolling over the scroll&bar
+lt:Fast page scrolling over the scroll&bar
+lv:Fast page scrolling over the scroll&bar
+mk:Fast page scrolling over the scroll&bar
+ml:Fast page scrolling over the scroll&bar
+mm:Fast page scrolling over the scroll&bar
+my:Fast page scrolling over the scroll&bar
+ne:Fast page scrolling over the scroll&bar
+nl:Fast page scrolling over the scroll&bar
+nn:Fast page scrolling over the scroll&bar
+no:Fast page scrolling over the scroll&bar
+pa:Fast page scrolling over the scroll&bar
+pl:Fast page scrolling over the scroll&bar
+pt:Fast page scrolling over the scroll&bar
+ro:Fast page scrolling over the scroll&bar
+ru:Fast page scrolling over the scroll&bar
+sat:Fast page scrolling over the scroll&bar
+si:Fast page scrolling over the scroll&bar
+sk:Fast page scrolling over the scroll&bar
+sl:Fast page scrolling over the scroll&bar
+sn:Fast page scrolling over the scroll&bar
+sp-rs:Fast page scrolling over the scroll&bar
+sq:Fast page scrolling over the scroll&bar
+sr-rs:Fast page scrolling over the scroll&bar
+sv:Fast page scrolling over the scroll&bar
+ta:Fast page scrolling over the scroll&bar
+th:Fast page scrolling over the scroll&bar
+tl:Fast page scrolling over the scroll&bar
+tr:Fast page scrolling over the scroll&bar
+tw:滑鼠位於捲動軸區域時快速翻頁(&B)
+uk:Fast page scrolling over the scroll&bar
+uz:Fast page scrolling over the scroll&bar
+vn:Fast page scrolling over the scroll&bar
 :Faster (1.5×)
 af:Vinniger (1.5×)
 am:Ավելի արագ (1.5×)
@@ -8146,6 +11018,79 @@ de:Dateiquelle:
 it:Origine file:
 nl:Bestand Bron:
 pl:Źródło pliku:
+:File changes
+af:File changes
+am:File changes
+ar:File changes
+az:File changes
+bg:File changes
+bn:File changes
+br:File changes
+bs:File changes
+by:File changes
+ca:File changes
+ca-xv:File changes
+cn:文件变化
+co:File changes
+cy:File changes
+cz:File changes
+de:File changes
+dk:File changes
+el:File changes
+es:File changes
+et:File changes
+eu:File changes
+fa:File changes
+fi:File changes
+fo:File changes
+fr:File changes
+fy-nl:File changes
+ga:File changes
+gl:File changes
+he:File changes
+hi:File changes
+hr:File changes
+hu:File changes
+id:File changes
+it:File changes
+ja:File changes
+jv:File changes
+ka:File changes
+kr:File changes
+ku:File changes
+kw:File changes
+lt:File changes
+lv:File changes
+mk:File changes
+ml:File changes
+mm:File changes
+my:File changes
+ne:File changes
+nl:File changes
+nn:File changes
+no:File changes
+pa:File changes
+pl:File changes
+pt:File changes
+ro:File changes
+ru:File changes
+sat:File changes
+si:File changes
+sk:File changes
+sl:File changes
+sn:File changes
+sp-rs:File changes
+sq:File changes
+sr-rs:File changes
+sv:File changes
+ta:File changes
+th:File changes
+tl:File changes
+tr:File changes
+tw:文件變更
+uk:File changes
+uz:File changes
+vn:File changes
 :File path not available
 br:O caminho do arquivo não está disponível
 cn:文件路径不可用
@@ -8627,6 +11572,79 @@ tw:從頁首
 uk:Зверху
 uz:Yuqoridan
 vn:Từ đầu
+:Full-document OCR &mode:
+af:Full-document OCR &mode:
+am:Full-document OCR &mode:
+ar:Full-document OCR &mode:
+az:Full-document OCR &mode:
+bg:Full-document OCR &mode:
+bn:Full-document OCR &mode:
+br:Full-document OCR &mode:
+bs:Full-document OCR &mode:
+by:Full-document OCR &mode:
+ca:Full-document OCR &mode:
+ca-xv:Full-document OCR &mode:
+cn:全文 OCR 模式(&M)：
+co:Full-document OCR &mode:
+cy:Full-document OCR &mode:
+cz:Full-document OCR &mode:
+de:Full-document OCR &mode:
+dk:Full-document OCR &mode:
+el:Full-document OCR &mode:
+es:Full-document OCR &mode:
+et:Full-document OCR &mode:
+eu:Full-document OCR &mode:
+fa:Full-document OCR &mode:
+fi:Full-document OCR &mode:
+fo:Full-document OCR &mode:
+fr:Full-document OCR &mode:
+fy-nl:Full-document OCR &mode:
+ga:Full-document OCR &mode:
+gl:Full-document OCR &mode:
+he:Full-document OCR &mode:
+hi:Full-document OCR &mode:
+hr:Full-document OCR &mode:
+hu:Full-document OCR &mode:
+id:Full-document OCR &mode:
+it:Full-document OCR &mode:
+ja:Full-document OCR &mode:
+jv:Full-document OCR &mode:
+ka:Full-document OCR &mode:
+kr:Full-document OCR &mode:
+ku:Full-document OCR &mode:
+kw:Full-document OCR &mode:
+lt:Full-document OCR &mode:
+lv:Full-document OCR &mode:
+mk:Full-document OCR &mode:
+ml:Full-document OCR &mode:
+mm:Full-document OCR &mode:
+my:Full-document OCR &mode:
+ne:Full-document OCR &mode:
+nl:Full-document OCR &mode:
+nn:Full-document OCR &mode:
+no:Full-document OCR &mode:
+pa:Full-document OCR &mode:
+pl:Full-document OCR &mode:
+pt:Full-document OCR &mode:
+ro:Full-document OCR &mode:
+ru:Full-document OCR &mode:
+sat:Full-document OCR &mode:
+si:Full-document OCR &mode:
+sk:Full-document OCR &mode:
+sl:Full-document OCR &mode:
+sn:Full-document OCR &mode:
+sp-rs:Full-document OCR &mode:
+sq:Full-document OCR &mode:
+sr-rs:Full-document OCR &mode:
+sv:Full-document OCR &mode:
+ta:Full-document OCR &mode:
+th:Full-document OCR &mode:
+tl:Full-document OCR &mode:
+tr:Full-document OCR &mode:
+tw:全文 OCR 模式(&M)：
+uk:Full-document OCR &mode:
+uz:Full-document OCR &mode:
+vn:Full-document OCR &mode:
 :Full-document OCR Mode
 af:Full-document OCR Mode
 am:Full-document OCR Mode
@@ -8846,6 +11864,79 @@ tw:全文識別模式：高精度
 uk:Full-document OCR Mode: High Accuracy
 uz:Full-document OCR Mode: High Accuracy
 vn:Full-document OCR Mode: High Accuracy
+:Fullscreen
+af:Fullscreen
+am:Fullscreen
+ar:Fullscreen
+az:Fullscreen
+bg:Fullscreen
+bn:Fullscreen
+br:Fullscreen
+bs:Fullscreen
+by:Fullscreen
+ca:Fullscreen
+ca-xv:Fullscreen
+cn:全屏
+co:Fullscreen
+cy:Fullscreen
+cz:Fullscreen
+de:Fullscreen
+dk:Fullscreen
+el:Fullscreen
+es:Fullscreen
+et:Fullscreen
+eu:Fullscreen
+fa:Fullscreen
+fi:Fullscreen
+fo:Fullscreen
+fr:Fullscreen
+fy-nl:Fullscreen
+ga:Fullscreen
+gl:Fullscreen
+he:Fullscreen
+hi:Fullscreen
+hr:Fullscreen
+hu:Fullscreen
+id:Fullscreen
+it:Fullscreen
+ja:Fullscreen
+jv:Fullscreen
+ka:Fullscreen
+kr:Fullscreen
+ku:Fullscreen
+kw:Fullscreen
+lt:Fullscreen
+lv:Fullscreen
+mk:Fullscreen
+ml:Fullscreen
+mm:Fullscreen
+my:Fullscreen
+ne:Fullscreen
+nl:Fullscreen
+nn:Fullscreen
+no:Fullscreen
+pa:Fullscreen
+pl:Fullscreen
+pt:Fullscreen
+ro:Fullscreen
+ru:Fullscreen
+sat:Fullscreen
+si:Fullscreen
+sk:Fullscreen
+sl:Fullscreen
+sn:Fullscreen
+sp-rs:Fullscreen
+sq:Fullscreen
+sr-rs:Fullscreen
+sv:Fullscreen
+ta:Fullscreen
+th:Fullscreen
+tl:Fullscreen
+tr:Fullscreen
+tw:全螢幕
+uk:Fullscreen
+uz:Fullscreen
+vn:Fullscreen
 :GB
 am:ԳԲ
 br:GBs
@@ -8858,6 +11949,79 @@ nl:GB
 pl:GB
 sk:GB
 tw:GB
+:General
+af:General
+am:General
+ar:General
+az:General
+bg:General
+bn:General
+br:General
+bs:General
+by:General
+ca:General
+ca-xv:General
+cn:常规
+co:General
+cy:General
+cz:General
+de:General
+dk:General
+el:General
+es:General
+et:General
+eu:General
+fa:General
+fi:General
+fo:General
+fr:General
+fy-nl:General
+ga:General
+gl:General
+he:General
+hi:General
+hr:General
+hu:General
+id:General
+it:General
+ja:General
+jv:General
+ka:General
+kr:General
+ku:General
+kw:General
+lt:General
+lv:General
+mk:General
+ml:General
+mm:General
+my:General
+ne:General
+nl:General
+nn:General
+no:General
+pa:General
+pl:General
+pt:General
+ro:General
+ru:General
+sat:General
+si:General
+sk:General
+sl:General
+sn:General
+sp-rs:General
+sq:General
+sr-rs:General
+sv:General
+ta:General
+th:General
+tl:General
+tr:General
+tw:一般
+uk:General
+uz:General
+vn:General
 :Generate TOC From Body
 cn:从正文生成目录
 de:Inhaltsverzeichnis aus dem Fließtext erstellen
@@ -9078,6 +12242,79 @@ tw:高精度
 uk:High Accuracy
 uz:High Accuracy
 vn:High Accuracy
+:High accuracy
+af:High accuracy
+am:High accuracy
+ar:High accuracy
+az:High accuracy
+bg:High accuracy
+bn:High accuracy
+br:High accuracy
+bs:High accuracy
+by:High accuracy
+ca:High accuracy
+ca-xv:High accuracy
+cn:高精度
+co:High accuracy
+cy:High accuracy
+cz:High accuracy
+de:High accuracy
+dk:High accuracy
+el:High accuracy
+es:High accuracy
+et:High accuracy
+eu:High accuracy
+fa:High accuracy
+fi:High accuracy
+fo:High accuracy
+fr:High accuracy
+fy-nl:High accuracy
+ga:High accuracy
+gl:High accuracy
+he:High accuracy
+hi:High accuracy
+hr:High accuracy
+hu:High accuracy
+id:High accuracy
+it:High accuracy
+ja:High accuracy
+jv:High accuracy
+ka:High accuracy
+kr:High accuracy
+ku:High accuracy
+kw:High accuracy
+lt:High accuracy
+lv:High accuracy
+mk:High accuracy
+ml:High accuracy
+mm:High accuracy
+my:High accuracy
+ne:High accuracy
+nl:High accuracy
+nn:High accuracy
+no:High accuracy
+pa:High accuracy
+pl:High accuracy
+pt:High accuracy
+ro:High accuracy
+ru:High accuracy
+sat:High accuracy
+si:High accuracy
+sk:High accuracy
+sl:High accuracy
+sn:High accuracy
+sp-rs:High accuracy
+sq:High accuracy
+sr-rs:High accuracy
+sv:High accuracy
+ta:High accuracy
+th:High accuracy
+tl:High accuracy
+tr:High accuracy
+tw:高精確度
+uk:High accuracy
+uz:High accuracy
+vn:High accuracy
 :Highlight
 cn:高亮
 tw:螢光標示
@@ -9363,6 +12600,79 @@ nl:32bit SumatraPDF installeren op 64bit OS
 pl:Instalowanie 32-bitowego programu SumatraPDF w 64-bitowym systemie operacyjnym
 sk:Inštalácia 32-bitovej verzie SumatraPDF na 64-bitový operačný systém
 tw:安裝 32 位元版本 SumatraPDF 於 64 位元版系統
+:Interface
+af:Interface
+am:Interface
+ar:Interface
+az:Interface
+bg:Interface
+bn:Interface
+br:Interface
+bs:Interface
+by:Interface
+ca:Interface
+ca-xv:Interface
+cn:界面
+co:Interface
+cy:Interface
+cz:Interface
+de:Interface
+dk:Interface
+el:Interface
+es:Interface
+et:Interface
+eu:Interface
+fa:Interface
+fi:Interface
+fo:Interface
+fr:Interface
+fy-nl:Interface
+ga:Interface
+gl:Interface
+he:Interface
+hi:Interface
+hr:Interface
+hu:Interface
+id:Interface
+it:Interface
+ja:Interface
+jv:Interface
+ka:Interface
+kr:Interface
+ku:Interface
+kw:Interface
+lt:Interface
+lv:Interface
+mk:Interface
+ml:Interface
+mm:Interface
+my:Interface
+ne:Interface
+nl:Interface
+nn:Interface
+no:Interface
+pa:Interface
+pl:Interface
+pt:Interface
+ro:Interface
+ru:Interface
+sat:Interface
+si:Interface
+sk:Interface
+sl:Interface
+sn:Interface
+sp-rs:Interface
+sq:Interface
+sr-rs:Interface
+sv:Interface
+ta:Interface
+th:Interface
+tl:Interface
+tr:Interface
+tw:介面
+uk:Interface
+uz:Interface
+vn:Interface
 :Interior Color:
 am:Ներքին գույնը.
 br:Cor Interior:
@@ -9448,6 +12758,79 @@ tw:頁面範圍無效。
 uk:Invalid page range.
 uz:Invalid page range.
 vn:Invalid page range.
+:Invalid value
+af:Invalid value
+am:Invalid value
+ar:Invalid value
+az:Invalid value
+bg:Invalid value
+bn:Invalid value
+br:Invalid value
+bs:Invalid value
+by:Invalid value
+ca:Invalid value
+ca-xv:Invalid value
+cn:无效值
+co:Invalid value
+cy:Invalid value
+cz:Invalid value
+de:Invalid value
+dk:Invalid value
+el:Invalid value
+es:Invalid value
+et:Invalid value
+eu:Invalid value
+fa:Invalid value
+fi:Invalid value
+fo:Invalid value
+fr:Invalid value
+fy-nl:Invalid value
+ga:Invalid value
+gl:Invalid value
+he:Invalid value
+hi:Invalid value
+hr:Invalid value
+hu:Invalid value
+id:Invalid value
+it:Invalid value
+ja:Invalid value
+jv:Invalid value
+ka:Invalid value
+kr:Invalid value
+ku:Invalid value
+kw:Invalid value
+lt:Invalid value
+lv:Invalid value
+mk:Invalid value
+ml:Invalid value
+mm:Invalid value
+my:Invalid value
+ne:Invalid value
+nl:Invalid value
+nn:Invalid value
+no:Invalid value
+pa:Invalid value
+pl:Invalid value
+pt:Invalid value
+ro:Invalid value
+ru:Invalid value
+sat:Invalid value
+si:Invalid value
+sk:Invalid value
+sl:Invalid value
+sn:Invalid value
+sp-rs:Invalid value
+sq:Invalid value
+sr-rs:Invalid value
+sv:Invalid value
+ta:Invalid value
+th:Invalid value
+tl:Invalid value
+tr:Invalid value
+tw:無效值
+uk:Invalid value
+uz:Invalid value
+vn:Invalid value
 :Invert Colors
 am:Գույների շրջում
 br:Inverter Cores
@@ -9484,6 +12867,79 @@ nl:KB
 pl:KB
 sk:KB
 tw:KB
+:Keep a &Home tab (requires restart)
+af:Keep a &Home tab (requires restart)
+am:Keep a &Home tab (requires restart)
+ar:Keep a &Home tab (requires restart)
+az:Keep a &Home tab (requires restart)
+bg:Keep a &Home tab (requires restart)
+bn:Keep a &Home tab (requires restart)
+br:Keep a &Home tab (requires restart)
+bs:Keep a &Home tab (requires restart)
+by:Keep a &Home tab (requires restart)
+ca:Keep a &Home tab (requires restart)
+ca-xv:Keep a &Home tab (requires restart)
+cn:保留主页标签（需要重启）(&H)
+co:Keep a &Home tab (requires restart)
+cy:Keep a &Home tab (requires restart)
+cz:Keep a &Home tab (requires restart)
+de:Keep a &Home tab (requires restart)
+dk:Keep a &Home tab (requires restart)
+el:Keep a &Home tab (requires restart)
+es:Keep a &Home tab (requires restart)
+et:Keep a &Home tab (requires restart)
+eu:Keep a &Home tab (requires restart)
+fa:Keep a &Home tab (requires restart)
+fi:Keep a &Home tab (requires restart)
+fo:Keep a &Home tab (requires restart)
+fr:Keep a &Home tab (requires restart)
+fy-nl:Keep a &Home tab (requires restart)
+ga:Keep a &Home tab (requires restart)
+gl:Keep a &Home tab (requires restart)
+he:Keep a &Home tab (requires restart)
+hi:Keep a &Home tab (requires restart)
+hr:Keep a &Home tab (requires restart)
+hu:Keep a &Home tab (requires restart)
+id:Keep a &Home tab (requires restart)
+it:Keep a &Home tab (requires restart)
+ja:Keep a &Home tab (requires restart)
+jv:Keep a &Home tab (requires restart)
+ka:Keep a &Home tab (requires restart)
+kr:Keep a &Home tab (requires restart)
+ku:Keep a &Home tab (requires restart)
+kw:Keep a &Home tab (requires restart)
+lt:Keep a &Home tab (requires restart)
+lv:Keep a &Home tab (requires restart)
+mk:Keep a &Home tab (requires restart)
+ml:Keep a &Home tab (requires restart)
+mm:Keep a &Home tab (requires restart)
+my:Keep a &Home tab (requires restart)
+ne:Keep a &Home tab (requires restart)
+nl:Keep a &Home tab (requires restart)
+nn:Keep a &Home tab (requires restart)
+no:Keep a &Home tab (requires restart)
+pa:Keep a &Home tab (requires restart)
+pl:Keep a &Home tab (requires restart)
+pt:Keep a &Home tab (requires restart)
+ro:Keep a &Home tab (requires restart)
+ru:Keep a &Home tab (requires restart)
+sat:Keep a &Home tab (requires restart)
+si:Keep a &Home tab (requires restart)
+sk:Keep a &Home tab (requires restart)
+sl:Keep a &Home tab (requires restart)
+sn:Keep a &Home tab (requires restart)
+sp-rs:Keep a &Home tab (requires restart)
+sq:Keep a &Home tab (requires restart)
+sr-rs:Keep a &Home tab (requires restart)
+sv:Keep a &Home tab (requires restart)
+ta:Keep a &Home tab (requires restart)
+th:Keep a &Home tab (requires restart)
+tl:Keep a &Home tab (requires restart)
+tr:Keep a &Home tab (requires restart)
+tw:保留首頁分頁（需要重新啟動）(&H)
+uk:Keep a &Home tab (requires restart)
+uz:Keep a &Home tab (requires restart)
+vn:Keep a &Home tab (requires restart)
 :Keep for this session
 af:Keep for this session
 am:Keep for this session
@@ -9557,6 +13013,79 @@ tw:保留至本次工作階段
 uk:Keep for this session
 uz:Keep for this session
 vn:Keep for this session
+:Keep original document colors
+af:Keep original document colors
+am:Keep original document colors
+ar:Keep original document colors
+az:Keep original document colors
+bg:Keep original document colors
+bn:Keep original document colors
+br:Keep original document colors
+bs:Keep original document colors
+by:Keep original document colors
+ca:Keep original document colors
+ca-xv:Keep original document colors
+cn:保留原稿颜色
+co:Keep original document colors
+cy:Keep original document colors
+cz:Keep original document colors
+de:Keep original document colors
+dk:Keep original document colors
+el:Keep original document colors
+es:Keep original document colors
+et:Keep original document colors
+eu:Keep original document colors
+fa:Keep original document colors
+fi:Keep original document colors
+fo:Keep original document colors
+fr:Keep original document colors
+fy-nl:Keep original document colors
+ga:Keep original document colors
+gl:Keep original document colors
+he:Keep original document colors
+hi:Keep original document colors
+hr:Keep original document colors
+hu:Keep original document colors
+id:Keep original document colors
+it:Keep original document colors
+ja:Keep original document colors
+jv:Keep original document colors
+ka:Keep original document colors
+kr:Keep original document colors
+ku:Keep original document colors
+kw:Keep original document colors
+lt:Keep original document colors
+lv:Keep original document colors
+mk:Keep original document colors
+ml:Keep original document colors
+mm:Keep original document colors
+my:Keep original document colors
+ne:Keep original document colors
+nl:Keep original document colors
+nn:Keep original document colors
+no:Keep original document colors
+pa:Keep original document colors
+pl:Keep original document colors
+pt:Keep original document colors
+ro:Keep original document colors
+ru:Keep original document colors
+sat:Keep original document colors
+si:Keep original document colors
+sk:Keep original document colors
+sl:Keep original document colors
+sn:Keep original document colors
+sp-rs:Keep original document colors
+sq:Keep original document colors
+sr-rs:Keep original document colors
+sv:Keep original document colors
+ta:Keep original document colors
+th:Keep original document colors
+tl:Keep original document colors
+tr:Keep original document colors
+tw:保留原稿色彩
+uk:Keep original document colors
+uz:Keep original document colors
+vn:Keep original document colors
 :Keywords:
 br:Palavras-Chave:
 cn:关键词:
@@ -10107,6 +13636,79 @@ nl:Selectie opzoeken
 pl:Wyszukaj zaznaczenie
 sk:Vyhľadať výber
 tw:查詞選取內容(&S)
+:Look up words on &double-click
+af:Look up words on &double-click
+am:Look up words on &double-click
+ar:Look up words on &double-click
+az:Look up words on &double-click
+bg:Look up words on &double-click
+bn:Look up words on &double-click
+br:Look up words on &double-click
+bs:Look up words on &double-click
+by:Look up words on &double-click
+ca:Look up words on &double-click
+ca-xv:Look up words on &double-click
+cn:双击单词时查词(&D)
+co:Look up words on &double-click
+cy:Look up words on &double-click
+cz:Look up words on &double-click
+de:Look up words on &double-click
+dk:Look up words on &double-click
+el:Look up words on &double-click
+es:Look up words on &double-click
+et:Look up words on &double-click
+eu:Look up words on &double-click
+fa:Look up words on &double-click
+fi:Look up words on &double-click
+fo:Look up words on &double-click
+fr:Look up words on &double-click
+fy-nl:Look up words on &double-click
+ga:Look up words on &double-click
+gl:Look up words on &double-click
+he:Look up words on &double-click
+hi:Look up words on &double-click
+hr:Look up words on &double-click
+hu:Look up words on &double-click
+id:Look up words on &double-click
+it:Look up words on &double-click
+ja:Look up words on &double-click
+jv:Look up words on &double-click
+ka:Look up words on &double-click
+kr:Look up words on &double-click
+ku:Look up words on &double-click
+kw:Look up words on &double-click
+lt:Look up words on &double-click
+lv:Look up words on &double-click
+mk:Look up words on &double-click
+ml:Look up words on &double-click
+mm:Look up words on &double-click
+my:Look up words on &double-click
+ne:Look up words on &double-click
+nl:Look up words on &double-click
+nn:Look up words on &double-click
+no:Look up words on &double-click
+pa:Look up words on &double-click
+pl:Look up words on &double-click
+pt:Look up words on &double-click
+ro:Look up words on &double-click
+ru:Look up words on &double-click
+sat:Look up words on &double-click
+si:Look up words on &double-click
+sk:Look up words on &double-click
+sl:Look up words on &double-click
+sn:Look up words on &double-click
+sp-rs:Look up words on &double-click
+sq:Look up words on &double-click
+sr-rs:Look up words on &double-click
+sv:Look up words on &double-click
+ta:Look up words on &double-click
+th:Look up words on &double-click
+tl:Look up words on &double-click
+tr:Look up words on &double-click
+tw:按兩下單字時查詞(&D)
+uk:Look up words on &double-click
+uz:Look up words on &double-click
+vn:Look up words on &double-click
 :Looking up
 am:በመፈለግ ላይ
 br:O klask
@@ -10301,6 +13903,79 @@ tw:全字匹配
 uk:Match Whole Word
 uz:Match Whole Word
 vn:Match Whole Word
+:Match the current theme
+af:Match the current theme
+am:Match the current theme
+ar:Match the current theme
+az:Match the current theme
+bg:Match the current theme
+bn:Match the current theme
+br:Match the current theme
+bs:Match the current theme
+by:Match the current theme
+ca:Match the current theme
+ca-xv:Match the current theme
+cn:跟随当前主题
+co:Match the current theme
+cy:Match the current theme
+cz:Match the current theme
+de:Match the current theme
+dk:Match the current theme
+el:Match the current theme
+es:Match the current theme
+et:Match the current theme
+eu:Match the current theme
+fa:Match the current theme
+fi:Match the current theme
+fo:Match the current theme
+fr:Match the current theme
+fy-nl:Match the current theme
+ga:Match the current theme
+gl:Match the current theme
+he:Match the current theme
+hi:Match the current theme
+hr:Match the current theme
+hu:Match the current theme
+id:Match the current theme
+it:Match the current theme
+ja:Match the current theme
+jv:Match the current theme
+ka:Match the current theme
+kr:Match the current theme
+ku:Match the current theme
+kw:Match the current theme
+lt:Match the current theme
+lv:Match the current theme
+mk:Match the current theme
+ml:Match the current theme
+mm:Match the current theme
+my:Match the current theme
+ne:Match the current theme
+nl:Match the current theme
+nn:Match the current theme
+no:Match the current theme
+pa:Match the current theme
+pl:Match the current theme
+pt:Match the current theme
+ro:Match the current theme
+ru:Match the current theme
+sat:Match the current theme
+si:Match the current theme
+sk:Match the current theme
+sl:Match the current theme
+sn:Match the current theme
+sp-rs:Match the current theme
+sq:Match the current theme
+sr-rs:Match the current theme
+sv:Match the current theme
+ta:Match the current theme
+th:Match the current theme
+tl:Match the current theme
+tr:Match the current theme
+tw:跟隨目前主題
+uk:Match the current theme
+uz:Match the current theme
+vn:Match the current theme
 :Max Aperture:
 br:Abertura Máxima:
 cn:最大光圈:
@@ -10354,6 +14029,79 @@ nl:Aangepast:
 pl:Zmodyfikowano:
 sk:Upravené:
 tw:修改日期:
+:More expert settings
+af:More expert settings
+am:More expert settings
+ar:More expert settings
+az:More expert settings
+bg:More expert settings
+bn:More expert settings
+br:More expert settings
+bs:More expert settings
+by:More expert settings
+ca:More expert settings
+ca-xv:More expert settings
+cn:更多专家级设置
+co:More expert settings
+cy:More expert settings
+cz:More expert settings
+de:More expert settings
+dk:More expert settings
+el:More expert settings
+es:More expert settings
+et:More expert settings
+eu:More expert settings
+fa:More expert settings
+fi:More expert settings
+fo:More expert settings
+fr:More expert settings
+fy-nl:More expert settings
+ga:More expert settings
+gl:More expert settings
+he:More expert settings
+hi:More expert settings
+hr:More expert settings
+hu:More expert settings
+id:More expert settings
+it:More expert settings
+ja:More expert settings
+jv:More expert settings
+ka:More expert settings
+kr:More expert settings
+ku:More expert settings
+kw:More expert settings
+lt:More expert settings
+lv:More expert settings
+mk:More expert settings
+ml:More expert settings
+mm:More expert settings
+my:More expert settings
+ne:More expert settings
+nl:More expert settings
+nn:More expert settings
+no:More expert settings
+pa:More expert settings
+pl:More expert settings
+pt:More expert settings
+ro:More expert settings
+ru:More expert settings
+sat:More expert settings
+si:More expert settings
+sk:More expert settings
+sl:More expert settings
+sn:More expert settings
+sp-rs:More expert settings
+sq:More expert settings
+sr-rs:More expert settings
+sv:More expert settings
+ta:More expert settings
+th:More expert settings
+tl:More expert settings
+tr:More expert settings
+tw:更多專家級設定
+uk:More expert settings
+uz:More expert settings
+vn:More expert settings
 :Move Frame Focus
 am:Տեղափոխել կադրի ֆոկուսը
 br:Mover o Foco do Frame
@@ -11133,6 +14881,79 @@ tw:沒有需要識別的掃描頁。可用「識別目前頁」強制識別。
 uk:No scanned pages to recognize. Use Recognize Current Page to force this page.
 uz:No scanned pages to recognize. Use Recognize Current Page to force this page.
 vn:No scanned pages to recognize. Use Recognize Current Page to force this page.
+:No scrollbars
+af:No scrollbars
+am:No scrollbars
+ar:No scrollbars
+az:No scrollbars
+bg:No scrollbars
+bn:No scrollbars
+br:No scrollbars
+bs:No scrollbars
+by:No scrollbars
+ca:No scrollbars
+ca-xv:No scrollbars
+cn:不显示滚动条
+co:No scrollbars
+cy:No scrollbars
+cz:No scrollbars
+de:No scrollbars
+dk:No scrollbars
+el:No scrollbars
+es:No scrollbars
+et:No scrollbars
+eu:No scrollbars
+fa:No scrollbars
+fi:No scrollbars
+fo:No scrollbars
+fr:No scrollbars
+fy-nl:No scrollbars
+ga:No scrollbars
+gl:No scrollbars
+he:No scrollbars
+hi:No scrollbars
+hr:No scrollbars
+hu:No scrollbars
+id:No scrollbars
+it:No scrollbars
+ja:No scrollbars
+jv:No scrollbars
+ka:No scrollbars
+kr:No scrollbars
+ku:No scrollbars
+kw:No scrollbars
+lt:No scrollbars
+lv:No scrollbars
+mk:No scrollbars
+ml:No scrollbars
+mm:No scrollbars
+my:No scrollbars
+ne:No scrollbars
+nl:No scrollbars
+nn:No scrollbars
+no:No scrollbars
+pa:No scrollbars
+pl:No scrollbars
+pt:No scrollbars
+ro:No scrollbars
+ru:No scrollbars
+sat:No scrollbars
+si:No scrollbars
+sk:No scrollbars
+sl:No scrollbars
+sn:No scrollbars
+sp-rs:No scrollbars
+sq:No scrollbars
+sr-rs:No scrollbars
+sv:No scrollbars
+ta:No scrollbars
+th:No scrollbars
+tl:No scrollbars
+tr:No scrollbars
+tw:不顯示捲動軸
+uk:No scrollbars
+uz:No scrollbars
+vn:No scrollbars
 :No synchronization file found
 am:Չեն գտնվել համանման ֆայլեր
 br:Nenhum arquivo de sincronização foi achado
@@ -11396,6 +15217,79 @@ nl:Aantal pagina's:
 pl:Liczba stron:
 sk:Počet strán:
 tw:頁數：
+:OCR
+af:OCR
+am:OCR
+ar:OCR
+az:OCR
+bg:OCR
+bn:OCR
+br:OCR
+bs:OCR
+by:OCR
+ca:OCR
+ca-xv:OCR
+cn:OCR
+co:OCR
+cy:OCR
+cz:OCR
+de:OCR
+dk:OCR
+el:OCR
+es:OCR
+et:OCR
+eu:OCR
+fa:OCR
+fi:OCR
+fo:OCR
+fr:OCR
+fy-nl:OCR
+ga:OCR
+gl:OCR
+he:OCR
+hi:OCR
+hr:OCR
+hu:OCR
+id:OCR
+it:OCR
+ja:OCR
+jv:OCR
+ka:OCR
+kr:OCR
+ku:OCR
+kw:OCR
+lt:OCR
+lv:OCR
+mk:OCR
+ml:OCR
+mm:OCR
+my:OCR
+ne:OCR
+nl:OCR
+nn:OCR
+no:OCR
+pa:OCR
+pl:OCR
+pt:OCR
+ro:OCR
+ru:OCR
+sat:OCR
+si:OCR
+sk:OCR
+sl:OCR
+sn:OCR
+sp-rs:OCR
+sq:OCR
+sr-rs:OCR
+sv:OCR
+ta:OCR
+th:OCR
+tl:OCR
+tr:OCR
+tw:OCR
+uk:OCR
+uz:OCR
+vn:OCR
 :OCR All Pages
 af:OCR All Pages
 am:OCR All Pages
@@ -11615,6 +15509,79 @@ tw:框選識別
 uk:OCR Region
 uz:OCR Region
 vn:OCR Region
+:OCR and AI
+af:OCR and AI
+am:OCR and AI
+ar:OCR and AI
+az:OCR and AI
+bg:OCR and AI
+bn:OCR and AI
+br:OCR and AI
+bs:OCR and AI
+by:OCR and AI
+ca:OCR and AI
+ca-xv:OCR and AI
+cn:OCR 与 AI
+co:OCR and AI
+cy:OCR and AI
+cz:OCR and AI
+de:OCR and AI
+dk:OCR and AI
+el:OCR and AI
+es:OCR and AI
+et:OCR and AI
+eu:OCR and AI
+fa:OCR and AI
+fi:OCR and AI
+fo:OCR and AI
+fr:OCR and AI
+fy-nl:OCR and AI
+ga:OCR and AI
+gl:OCR and AI
+he:OCR and AI
+hi:OCR and AI
+hr:OCR and AI
+hu:OCR and AI
+id:OCR and AI
+it:OCR and AI
+ja:OCR and AI
+jv:OCR and AI
+ka:OCR and AI
+kr:OCR and AI
+ku:OCR and AI
+kw:OCR and AI
+lt:OCR and AI
+lv:OCR and AI
+mk:OCR and AI
+ml:OCR and AI
+mm:OCR and AI
+my:OCR and AI
+ne:OCR and AI
+nl:OCR and AI
+nn:OCR and AI
+no:OCR and AI
+pa:OCR and AI
+pl:OCR and AI
+pt:OCR and AI
+ro:OCR and AI
+ru:OCR and AI
+sat:OCR and AI
+si:OCR and AI
+sk:OCR and AI
+sl:OCR and AI
+sn:OCR and AI
+sp-rs:OCR and AI
+sq:OCR and AI
+sr-rs:OCR and AI
+sv:OCR and AI
+ta:OCR and AI
+th:OCR and AI
+tl:OCR and AI
+tr:OCR and AI
+tw:OCR 與 AI
+uk:OCR and AI
+uz:OCR and AI
+vn:OCR and AI
 :OCR is already running. Please wait until it finishes.
 af:OCR is already running. Please wait until it finishes.
 am:OCR is already running. Please wait until it finishes.
@@ -11992,9 +15959,228 @@ nl:Ok
 pl:OK
 sk:Nastaviť
 tw:確定(&O)
+:Off
+af:Off
+am:Off
+ar:Off
+az:Off
+bg:Off
+bn:Off
+br:Off
+bs:Off
+by:Off
+ca:Off
+ca-xv:Off
+cn:关闭
+co:Off
+cy:Off
+cz:Off
+de:Off
+dk:Off
+el:Off
+es:Off
+et:Off
+eu:Off
+fa:Off
+fi:Off
+fo:Off
+fr:Off
+fy-nl:Off
+ga:Off
+gl:Off
+he:Off
+hi:Off
+hr:Off
+hu:Off
+id:Off
+it:Off
+ja:Off
+jv:Off
+ka:Off
+kr:Off
+ku:Off
+kw:Off
+lt:Off
+lv:Off
+mk:Off
+ml:Off
+mm:Off
+my:Off
+ne:Off
+nl:Off
+nn:Off
+no:Off
+pa:Off
+pl:Off
+pt:Off
+ro:Off
+ru:Off
+sat:Off
+si:Off
+sk:Off
+sl:Off
+sn:Off
+sp-rs:Off
+sq:Off
+sr-rs:Off
+sv:Off
+ta:Off
+th:Off
+tl:Off
+tr:Off
+tw:關閉
+uk:Off
+uz:Off
+vn:Off
+:Offline dictionary:
+af:Offline dictionary:
+am:Offline dictionary:
+ar:Offline dictionary:
+az:Offline dictionary:
+bg:Offline dictionary:
+bn:Offline dictionary:
+br:Offline dictionary:
+bs:Offline dictionary:
+by:Offline dictionary:
+ca:Offline dictionary:
+ca-xv:Offline dictionary:
+cn:离线词典：
+co:Offline dictionary:
+cy:Offline dictionary:
+cz:Offline dictionary:
+de:Offline dictionary:
+dk:Offline dictionary:
+el:Offline dictionary:
+es:Offline dictionary:
+et:Offline dictionary:
+eu:Offline dictionary:
+fa:Offline dictionary:
+fi:Offline dictionary:
+fo:Offline dictionary:
+fr:Offline dictionary:
+fy-nl:Offline dictionary:
+ga:Offline dictionary:
+gl:Offline dictionary:
+he:Offline dictionary:
+hi:Offline dictionary:
+hr:Offline dictionary:
+hu:Offline dictionary:
+id:Offline dictionary:
+it:Offline dictionary:
+ja:Offline dictionary:
+jv:Offline dictionary:
+ka:Offline dictionary:
+kr:Offline dictionary:
+ku:Offline dictionary:
+kw:Offline dictionary:
+lt:Offline dictionary:
+lv:Offline dictionary:
+mk:Offline dictionary:
+ml:Offline dictionary:
+mm:Offline dictionary:
+my:Offline dictionary:
+ne:Offline dictionary:
+nl:Offline dictionary:
+nn:Offline dictionary:
+no:Offline dictionary:
+pa:Offline dictionary:
+pl:Offline dictionary:
+pt:Offline dictionary:
+ro:Offline dictionary:
+ru:Offline dictionary:
+sat:Offline dictionary:
+si:Offline dictionary:
+sk:Offline dictionary:
+sl:Offline dictionary:
+sn:Offline dictionary:
+sp-rs:Offline dictionary:
+sq:Offline dictionary:
+sr-rs:Offline dictionary:
+sv:Offline dictionary:
+ta:Offline dictionary:
+th:Offline dictionary:
+tl:Offline dictionary:
+tr:Offline dictionary:
+tw:離線詞典：
+uk:Offline dictionary:
+uz:Offline dictionary:
+vn:Offline dictionary:
 :Offset
 cn:偏移
 tw:偏移
+:On
+af:On
+am:On
+ar:On
+az:On
+bg:On
+bn:On
+br:On
+bs:On
+by:On
+ca:On
+ca-xv:On
+cn:开启
+co:On
+cy:On
+cz:On
+de:On
+dk:On
+el:On
+es:On
+et:On
+eu:On
+fa:On
+fi:On
+fo:On
+fr:On
+fy-nl:On
+ga:On
+gl:On
+he:On
+hi:On
+hr:On
+hu:On
+id:On
+it:On
+ja:On
+jv:On
+ka:On
+kr:On
+ku:On
+kw:On
+lt:On
+lv:On
+mk:On
+ml:On
+mm:On
+my:On
+ne:On
+nl:On
+nn:On
+no:On
+pa:On
+pl:On
+pt:On
+ro:On
+ru:On
+sat:On
+si:On
+sk:On
+sl:On
+sn:On
+sp-rs:On
+sq:On
+sr-rs:On
+sv:On
+ta:On
+th:On
+tl:On
+tr:On
+tw:開啟
+uk:On
+uz:On
+vn:On
 :Online AI Recognition
 cn:联网识别
 de:Online-KI-Erkennung
@@ -12405,6 +16591,79 @@ nl:Openen
 pl:Otwórz
 sk:Otvoriť
 tw:開啟
+:Open &Advanced Options File...
+af:Open &Advanced Options File...
+am:Open &Advanced Options File...
+ar:Open &Advanced Options File...
+az:Open &Advanced Options File...
+bg:Open &Advanced Options File...
+bn:Open &Advanced Options File...
+br:Open &Advanced Options File...
+bs:Open &Advanced Options File...
+by:Open &Advanced Options File...
+ca:Open &Advanced Options File...
+ca-xv:Open &Advanced Options File...
+cn:打开高级选项文件(&A)...
+co:Open &Advanced Options File...
+cy:Open &Advanced Options File...
+cz:Open &Advanced Options File...
+de:Open &Advanced Options File...
+dk:Open &Advanced Options File...
+el:Open &Advanced Options File...
+es:Open &Advanced Options File...
+et:Open &Advanced Options File...
+eu:Open &Advanced Options File...
+fa:Open &Advanced Options File...
+fi:Open &Advanced Options File...
+fo:Open &Advanced Options File...
+fr:Open &Advanced Options File...
+fy-nl:Open &Advanced Options File...
+ga:Open &Advanced Options File...
+gl:Open &Advanced Options File...
+he:Open &Advanced Options File...
+hi:Open &Advanced Options File...
+hr:Open &Advanced Options File...
+hu:Open &Advanced Options File...
+id:Open &Advanced Options File...
+it:Open &Advanced Options File...
+ja:Open &Advanced Options File...
+jv:Open &Advanced Options File...
+ka:Open &Advanced Options File...
+kr:Open &Advanced Options File...
+ku:Open &Advanced Options File...
+kw:Open &Advanced Options File...
+lt:Open &Advanced Options File...
+lv:Open &Advanced Options File...
+mk:Open &Advanced Options File...
+ml:Open &Advanced Options File...
+mm:Open &Advanced Options File...
+my:Open &Advanced Options File...
+ne:Open &Advanced Options File...
+nl:Open &Advanced Options File...
+nn:Open &Advanced Options File...
+no:Open &Advanced Options File...
+pa:Open &Advanced Options File...
+pl:Open &Advanced Options File...
+pt:Open &Advanced Options File...
+ro:Open &Advanced Options File...
+ru:Open &Advanced Options File...
+sat:Open &Advanced Options File...
+si:Open &Advanced Options File...
+sk:Open &Advanced Options File...
+sl:Open &Advanced Options File...
+sn:Open &Advanced Options File...
+sp-rs:Open &Advanced Options File...
+sq:Open &Advanced Options File...
+sr-rs:Open &Advanced Options File...
+sv:Open &Advanced Options File...
+ta:Open &Advanced Options File...
+th:Open &Advanced Options File...
+tl:Open &Advanced Options File...
+tr:Open &Advanced Options File...
+tw:開啟進階選項檔案(&A)...
+uk:Open &Advanced Options File...
+uz:Open &Advanced Options File...
+vn:Open &Advanced Options File...
 :Open &in PDF-XChange
 am:Բացել PDF-XChange-ում
 br:Abrir &no PDF-XChange
@@ -12789,6 +17048,79 @@ nl:Open in PDF-XChange
 pl:Otwórz w PDF-XChange
 sk:Otvoriť v PDF-XChange
 tw:在 PDF-XChange 中開啟
+:Open new files in the existing &instance
+af:Open new files in the existing &instance
+am:Open new files in the existing &instance
+ar:Open new files in the existing &instance
+az:Open new files in the existing &instance
+bg:Open new files in the existing &instance
+bn:Open new files in the existing &instance
+br:Open new files in the existing &instance
+bs:Open new files in the existing &instance
+by:Open new files in the existing &instance
+ca:Open new files in the existing &instance
+ca-xv:Open new files in the existing &instance
+cn:在现有进程中打开新文件(&I)
+co:Open new files in the existing &instance
+cy:Open new files in the existing &instance
+cz:Open new files in the existing &instance
+de:Open new files in the existing &instance
+dk:Open new files in the existing &instance
+el:Open new files in the existing &instance
+es:Open new files in the existing &instance
+et:Open new files in the existing &instance
+eu:Open new files in the existing &instance
+fa:Open new files in the existing &instance
+fi:Open new files in the existing &instance
+fo:Open new files in the existing &instance
+fr:Open new files in the existing &instance
+fy-nl:Open new files in the existing &instance
+ga:Open new files in the existing &instance
+gl:Open new files in the existing &instance
+he:Open new files in the existing &instance
+hi:Open new files in the existing &instance
+hr:Open new files in the existing &instance
+hu:Open new files in the existing &instance
+id:Open new files in the existing &instance
+it:Open new files in the existing &instance
+ja:Open new files in the existing &instance
+jv:Open new files in the existing &instance
+ka:Open new files in the existing &instance
+kr:Open new files in the existing &instance
+ku:Open new files in the existing &instance
+kw:Open new files in the existing &instance
+lt:Open new files in the existing &instance
+lv:Open new files in the existing &instance
+mk:Open new files in the existing &instance
+ml:Open new files in the existing &instance
+mm:Open new files in the existing &instance
+my:Open new files in the existing &instance
+ne:Open new files in the existing &instance
+nl:Open new files in the existing &instance
+nn:Open new files in the existing &instance
+no:Open new files in the existing &instance
+pa:Open new files in the existing &instance
+pl:Open new files in the existing &instance
+pt:Open new files in the existing &instance
+ro:Open new files in the existing &instance
+ru:Open new files in the existing &instance
+sat:Open new files in the existing &instance
+si:Open new files in the existing &instance
+sk:Open new files in the existing &instance
+sl:Open new files in the existing &instance
+sn:Open new files in the existing &instance
+sp-rs:Open new files in the existing &instance
+sq:Open new files in the existing &instance
+sr-rs:Open new files in the existing &instance
+sv:Open new files in the existing &instance
+ta:Open new files in the existing &instance
+th:Open new files in the existing &instance
+tl:Open new files in the existing &instance
+tr:Open new files in the existing &instance
+tw:在現有程序中開啟新文件(&I)
+uk:Open new files in the existing &instance
+uz:Open new files in the existing &instance
+vn:Open new files in the existing &instance
 :Options...
 am:Ընտրանքներ...
 br:Opções...
@@ -12831,6 +17163,79 @@ nl:E&igenschappen
 pl:&Właściwości
 sk:&Vlastnosti
 tw:內容(&R)...
+:PDF
+af:PDF
+am:PDF
+ar:PDF
+az:PDF
+bg:PDF
+bn:PDF
+br:PDF
+bs:PDF
+by:PDF
+ca:PDF
+ca-xv:PDF
+cn:PDF
+co:PDF
+cy:PDF
+cz:PDF
+de:PDF
+dk:PDF
+el:PDF
+es:PDF
+et:PDF
+eu:PDF
+fa:PDF
+fi:PDF
+fo:PDF
+fr:PDF
+fy-nl:PDF
+ga:PDF
+gl:PDF
+he:PDF
+hi:PDF
+hr:PDF
+hu:PDF
+id:PDF
+it:PDF
+ja:PDF
+jv:PDF
+ka:PDF
+kr:PDF
+ku:PDF
+kw:PDF
+lt:PDF
+lv:PDF
+mk:PDF
+ml:PDF
+mm:PDF
+my:PDF
+ne:PDF
+nl:PDF
+nn:PDF
+no:PDF
+pa:PDF
+pl:PDF
+pt:PDF
+ro:PDF
+ru:PDF
+sat:PDF
+si:PDF
+sk:PDF
+sl:PDF
+sn:PDF
+sp-rs:PDF
+sq:PDF
+sr-rs:PDF
+sv:PDF
+ta:PDF
+th:PDF
+tl:PDF
+tr:PDF
+tw:PDF
+uk:PDF
+uz:PDF
+vn:PDF
 :PDF Document
 am:PDF ֆայլ
 br:Documento PDF
@@ -13555,6 +17960,79 @@ it:Premi una combinazione di tasti:
 nl:Gebruik een toets combinatie:
 pl:Naciśnij kombinację klawiszy:
 sk:Stlačte kombináciu klávesov:
+:Prevent sleep in &fullscreen or presentation mode
+af:Prevent sleep in &fullscreen or presentation mode
+am:Prevent sleep in &fullscreen or presentation mode
+ar:Prevent sleep in &fullscreen or presentation mode
+az:Prevent sleep in &fullscreen or presentation mode
+bg:Prevent sleep in &fullscreen or presentation mode
+bn:Prevent sleep in &fullscreen or presentation mode
+br:Prevent sleep in &fullscreen or presentation mode
+bs:Prevent sleep in &fullscreen or presentation mode
+by:Prevent sleep in &fullscreen or presentation mode
+ca:Prevent sleep in &fullscreen or presentation mode
+ca-xv:Prevent sleep in &fullscreen or presentation mode
+cn:全屏或演示模式下防止休眠(&F)
+co:Prevent sleep in &fullscreen or presentation mode
+cy:Prevent sleep in &fullscreen or presentation mode
+cz:Prevent sleep in &fullscreen or presentation mode
+de:Prevent sleep in &fullscreen or presentation mode
+dk:Prevent sleep in &fullscreen or presentation mode
+el:Prevent sleep in &fullscreen or presentation mode
+es:Prevent sleep in &fullscreen or presentation mode
+et:Prevent sleep in &fullscreen or presentation mode
+eu:Prevent sleep in &fullscreen or presentation mode
+fa:Prevent sleep in &fullscreen or presentation mode
+fi:Prevent sleep in &fullscreen or presentation mode
+fo:Prevent sleep in &fullscreen or presentation mode
+fr:Prevent sleep in &fullscreen or presentation mode
+fy-nl:Prevent sleep in &fullscreen or presentation mode
+ga:Prevent sleep in &fullscreen or presentation mode
+gl:Prevent sleep in &fullscreen or presentation mode
+he:Prevent sleep in &fullscreen or presentation mode
+hi:Prevent sleep in &fullscreen or presentation mode
+hr:Prevent sleep in &fullscreen or presentation mode
+hu:Prevent sleep in &fullscreen or presentation mode
+id:Prevent sleep in &fullscreen or presentation mode
+it:Prevent sleep in &fullscreen or presentation mode
+ja:Prevent sleep in &fullscreen or presentation mode
+jv:Prevent sleep in &fullscreen or presentation mode
+ka:Prevent sleep in &fullscreen or presentation mode
+kr:Prevent sleep in &fullscreen or presentation mode
+ku:Prevent sleep in &fullscreen or presentation mode
+kw:Prevent sleep in &fullscreen or presentation mode
+lt:Prevent sleep in &fullscreen or presentation mode
+lv:Prevent sleep in &fullscreen or presentation mode
+mk:Prevent sleep in &fullscreen or presentation mode
+ml:Prevent sleep in &fullscreen or presentation mode
+mm:Prevent sleep in &fullscreen or presentation mode
+my:Prevent sleep in &fullscreen or presentation mode
+ne:Prevent sleep in &fullscreen or presentation mode
+nl:Prevent sleep in &fullscreen or presentation mode
+nn:Prevent sleep in &fullscreen or presentation mode
+no:Prevent sleep in &fullscreen or presentation mode
+pa:Prevent sleep in &fullscreen or presentation mode
+pl:Prevent sleep in &fullscreen or presentation mode
+pt:Prevent sleep in &fullscreen or presentation mode
+ro:Prevent sleep in &fullscreen or presentation mode
+ru:Prevent sleep in &fullscreen or presentation mode
+sat:Prevent sleep in &fullscreen or presentation mode
+si:Prevent sleep in &fullscreen or presentation mode
+sk:Prevent sleep in &fullscreen or presentation mode
+sl:Prevent sleep in &fullscreen or presentation mode
+sn:Prevent sleep in &fullscreen or presentation mode
+sp-rs:Prevent sleep in &fullscreen or presentation mode
+sq:Prevent sleep in &fullscreen or presentation mode
+sr-rs:Prevent sleep in &fullscreen or presentation mode
+sv:Prevent sleep in &fullscreen or presentation mode
+ta:Prevent sleep in &fullscreen or presentation mode
+th:Prevent sleep in &fullscreen or presentation mode
+tl:Prevent sleep in &fullscreen or presentation mode
+tr:Prevent sleep in &fullscreen or presentation mode
+tw:全螢幕或簡報模式下防止休眠(&F)
+uk:Prevent sleep in &fullscreen or presentation mode
+uz:Prevent sleep in &fullscreen or presentation mode
+vn:Prevent sleep in &fullscreen or presentation mode
 :Previous Page
 am:Նախորդ էջը
 br:Página Anterior
@@ -13690,6 +18168,79 @@ tw:列印問題
 :Processed locally and fast. Nothing is uploaded.
 cn:本地快速处理，全程无需上传文件。
 tw:本機快速處理，全程無需上傳檔案。
+:Processing results may overwrite the current PDF file.
+af:Processing results may overwrite the current PDF file.
+am:Processing results may overwrite the current PDF file.
+ar:Processing results may overwrite the current PDF file.
+az:Processing results may overwrite the current PDF file.
+bg:Processing results may overwrite the current PDF file.
+bn:Processing results may overwrite the current PDF file.
+br:Processing results may overwrite the current PDF file.
+bs:Processing results may overwrite the current PDF file.
+by:Processing results may overwrite the current PDF file.
+ca:Processing results may overwrite the current PDF file.
+ca-xv:Processing results may overwrite the current PDF file.
+cn:开启后处理结果可能覆盖当前 PDF 文件。
+co:Processing results may overwrite the current PDF file.
+cy:Processing results may overwrite the current PDF file.
+cz:Processing results may overwrite the current PDF file.
+de:Processing results may overwrite the current PDF file.
+dk:Processing results may overwrite the current PDF file.
+el:Processing results may overwrite the current PDF file.
+es:Processing results may overwrite the current PDF file.
+et:Processing results may overwrite the current PDF file.
+eu:Processing results may overwrite the current PDF file.
+fa:Processing results may overwrite the current PDF file.
+fi:Processing results may overwrite the current PDF file.
+fo:Processing results may overwrite the current PDF file.
+fr:Processing results may overwrite the current PDF file.
+fy-nl:Processing results may overwrite the current PDF file.
+ga:Processing results may overwrite the current PDF file.
+gl:Processing results may overwrite the current PDF file.
+he:Processing results may overwrite the current PDF file.
+hi:Processing results may overwrite the current PDF file.
+hr:Processing results may overwrite the current PDF file.
+hu:Processing results may overwrite the current PDF file.
+id:Processing results may overwrite the current PDF file.
+it:Processing results may overwrite the current PDF file.
+ja:Processing results may overwrite the current PDF file.
+jv:Processing results may overwrite the current PDF file.
+ka:Processing results may overwrite the current PDF file.
+kr:Processing results may overwrite the current PDF file.
+ku:Processing results may overwrite the current PDF file.
+kw:Processing results may overwrite the current PDF file.
+lt:Processing results may overwrite the current PDF file.
+lv:Processing results may overwrite the current PDF file.
+mk:Processing results may overwrite the current PDF file.
+ml:Processing results may overwrite the current PDF file.
+mm:Processing results may overwrite the current PDF file.
+my:Processing results may overwrite the current PDF file.
+ne:Processing results may overwrite the current PDF file.
+nl:Processing results may overwrite the current PDF file.
+nn:Processing results may overwrite the current PDF file.
+no:Processing results may overwrite the current PDF file.
+pa:Processing results may overwrite the current PDF file.
+pl:Processing results may overwrite the current PDF file.
+pt:Processing results may overwrite the current PDF file.
+ro:Processing results may overwrite the current PDF file.
+ru:Processing results may overwrite the current PDF file.
+sat:Processing results may overwrite the current PDF file.
+si:Processing results may overwrite the current PDF file.
+sk:Processing results may overwrite the current PDF file.
+sl:Processing results may overwrite the current PDF file.
+sn:Processing results may overwrite the current PDF file.
+sp-rs:Processing results may overwrite the current PDF file.
+sq:Processing results may overwrite the current PDF file.
+sr-rs:Processing results may overwrite the current PDF file.
+sv:Processing results may overwrite the current PDF file.
+ta:Processing results may overwrite the current PDF file.
+th:Processing results may overwrite the current PDF file.
+tl:Processing results may overwrite the current PDF file.
+tr:Processing results may overwrite the current PDF file.
+tw:開啟後處理結果可能覆寫目前 PDF 文件。
+uk:Processing results may overwrite the current PDF file.
+uz:Processing results may overwrite the current PDF file.
+vn:Processing results may overwrite the current PDF file.
 :Promote PDF TOC Item
 am:Բարձրացնել PDF բովանդակության տարրի մակարդակը
 br:Elevar nível do item do sumário do PDF
@@ -14039,6 +18590,79 @@ tw:朗讀速度
 uk:Read aloud speed
 uz:Read aloud speed
 vn:Read aloud speed
+:Reading
+af:Reading
+am:Reading
+ar:Reading
+az:Reading
+bg:Reading
+bn:Reading
+br:Reading
+bs:Reading
+by:Reading
+ca:Reading
+ca-xv:Reading
+cn:阅读
+co:Reading
+cy:Reading
+cz:Reading
+de:Reading
+dk:Reading
+el:Reading
+es:Reading
+et:Reading
+eu:Reading
+fa:Reading
+fi:Reading
+fo:Reading
+fr:Reading
+fy-nl:Reading
+ga:Reading
+gl:Reading
+he:Reading
+hi:Reading
+hr:Reading
+hu:Reading
+id:Reading
+it:Reading
+ja:Reading
+jv:Reading
+ka:Reading
+kr:Reading
+ku:Reading
+kw:Reading
+lt:Reading
+lv:Reading
+mk:Reading
+ml:Reading
+mm:Reading
+my:Reading
+ne:Reading
+nl:Reading
+nn:Reading
+no:Reading
+pa:Reading
+pl:Reading
+pt:Reading
+ro:Reading
+ru:Reading
+sat:Reading
+si:Reading
+sk:Reading
+sl:Reading
+sn:Reading
+sp-rs:Reading
+sq:Reading
+sr-rs:Reading
+sv:Reading
+ta:Reading
+th:Reading
+tl:Reading
+tr:Reading
+tw:閱讀
+uk:Reading
+uz:Reading
+vn:Reading
 :Reading · %s · %s
 af:Lees · %s · %s
 am:Կարդում · %s · %s
@@ -14635,6 +19259,79 @@ tw:全文識別並儲存
 uk:Recognize all pages and save
 uz:Recognize all pages and save
 vn:Recognize all pages and save
+:Recognized text can be selected, copied, searched, and read aloud.
+af:Recognized text can be selected, copied, searched, and read aloud.
+am:Recognized text can be selected, copied, searched, and read aloud.
+ar:Recognized text can be selected, copied, searched, and read aloud.
+az:Recognized text can be selected, copied, searched, and read aloud.
+bg:Recognized text can be selected, copied, searched, and read aloud.
+bn:Recognized text can be selected, copied, searched, and read aloud.
+br:Recognized text can be selected, copied, searched, and read aloud.
+bs:Recognized text can be selected, copied, searched, and read aloud.
+by:Recognized text can be selected, copied, searched, and read aloud.
+ca:Recognized text can be selected, copied, searched, and read aloud.
+ca-xv:Recognized text can be selected, copied, searched, and read aloud.
+cn:识别后可直接选择、复制、搜索和朗读扫描页文字。
+co:Recognized text can be selected, copied, searched, and read aloud.
+cy:Recognized text can be selected, copied, searched, and read aloud.
+cz:Recognized text can be selected, copied, searched, and read aloud.
+de:Recognized text can be selected, copied, searched, and read aloud.
+dk:Recognized text can be selected, copied, searched, and read aloud.
+el:Recognized text can be selected, copied, searched, and read aloud.
+es:Recognized text can be selected, copied, searched, and read aloud.
+et:Recognized text can be selected, copied, searched, and read aloud.
+eu:Recognized text can be selected, copied, searched, and read aloud.
+fa:Recognized text can be selected, copied, searched, and read aloud.
+fi:Recognized text can be selected, copied, searched, and read aloud.
+fo:Recognized text can be selected, copied, searched, and read aloud.
+fr:Recognized text can be selected, copied, searched, and read aloud.
+fy-nl:Recognized text can be selected, copied, searched, and read aloud.
+ga:Recognized text can be selected, copied, searched, and read aloud.
+gl:Recognized text can be selected, copied, searched, and read aloud.
+he:Recognized text can be selected, copied, searched, and read aloud.
+hi:Recognized text can be selected, copied, searched, and read aloud.
+hr:Recognized text can be selected, copied, searched, and read aloud.
+hu:Recognized text can be selected, copied, searched, and read aloud.
+id:Recognized text can be selected, copied, searched, and read aloud.
+it:Recognized text can be selected, copied, searched, and read aloud.
+ja:Recognized text can be selected, copied, searched, and read aloud.
+jv:Recognized text can be selected, copied, searched, and read aloud.
+ka:Recognized text can be selected, copied, searched, and read aloud.
+kr:Recognized text can be selected, copied, searched, and read aloud.
+ku:Recognized text can be selected, copied, searched, and read aloud.
+kw:Recognized text can be selected, copied, searched, and read aloud.
+lt:Recognized text can be selected, copied, searched, and read aloud.
+lv:Recognized text can be selected, copied, searched, and read aloud.
+mk:Recognized text can be selected, copied, searched, and read aloud.
+ml:Recognized text can be selected, copied, searched, and read aloud.
+mm:Recognized text can be selected, copied, searched, and read aloud.
+my:Recognized text can be selected, copied, searched, and read aloud.
+ne:Recognized text can be selected, copied, searched, and read aloud.
+nl:Recognized text can be selected, copied, searched, and read aloud.
+nn:Recognized text can be selected, copied, searched, and read aloud.
+no:Recognized text can be selected, copied, searched, and read aloud.
+pa:Recognized text can be selected, copied, searched, and read aloud.
+pl:Recognized text can be selected, copied, searched, and read aloud.
+pt:Recognized text can be selected, copied, searched, and read aloud.
+ro:Recognized text can be selected, copied, searched, and read aloud.
+ru:Recognized text can be selected, copied, searched, and read aloud.
+sat:Recognized text can be selected, copied, searched, and read aloud.
+si:Recognized text can be selected, copied, searched, and read aloud.
+sk:Recognized text can be selected, copied, searched, and read aloud.
+sl:Recognized text can be selected, copied, searched, and read aloud.
+sn:Recognized text can be selected, copied, searched, and read aloud.
+sp-rs:Recognized text can be selected, copied, searched, and read aloud.
+sq:Recognized text can be selected, copied, searched, and read aloud.
+sr-rs:Recognized text can be selected, copied, searched, and read aloud.
+sv:Recognized text can be selected, copied, searched, and read aloud.
+ta:Recognized text can be selected, copied, searched, and read aloud.
+th:Recognized text can be selected, copied, searched, and read aloud.
+tl:Recognized text can be selected, copied, searched, and read aloud.
+tr:Recognized text can be selected, copied, searched, and read aloud.
+tw:辨識後可直接選取、複製、搜尋和朗讀掃描頁文字。
+uk:Recognized text can be selected, copied, searched, and read aloud.
+uz:Recognized text can be selected, copied, searched, and read aloud.
+vn:Recognized text can be selected, copied, searched, and read aloud.
 :Rect: x=%d y=%d dx=%d dy=%d
 am:Ուղղանկյուն` x=%d y=%d dx=%d dy=%d
 br:Retângulo: x=%d y=%d dx=%d dy=%d
@@ -14772,17 +19469,78 @@ pl:Załaduj ponownie dokument
 sk:Znovu načítať dokument
 tw:重新載入文件
 :Remember &opened files
+af:Remember &opened files
 am:Հիշել &բացված ֆայլերը
+ar:Remember &opened files
+az:Remember &opened files
+bg:Remember &opened files
+bn:Remember &opened files
 br:Lembrar dos &arquivos abertos
+bs:Remember &opened files
+by:Remember &opened files
+ca:Remember &opened files
+ca-xv:Remember &opened files
 cn:记住已打开的文件(&O)
 co:Arricurdassi di i &schedarii aperti
+cy:Remember &opened files
+cz:Remember &opened files
 de:Liste der &zuletzt geöffneten Dokumente anlegen
+dk:Remember &opened files
 el:Απο&μνημόνευση προσφάτων αρχείων
+es:Remember &opened files
+et:Remember &opened files
+eu:Remember &opened files
+fa:Remember &opened files
+fi:Remember &opened files
+fo:Remember &opened files
+fr:Remember &opened files
+fy-nl:Remember &opened files
+ga:Remember &opened files
+gl:Remember &opened files
+he:Remember &opened files
+hi:Remember &opened files
+hr:Remember &opened files
+hu:Remember &opened files
+id:Remember &opened files
 it:Ric&orda i file aperti
+ja:Remember &opened files
+jv:Remember &opened files
+ka:Remember &opened files
+kr:Remember &opened files
+ku:Remember &opened files
+kw:Remember &opened files
+lt:Remember &opened files
+lv:Remember &opened files
+mk:Remember &opened files
+ml:Remember &opened files
+mm:Remember &opened files
+my:Remember &opened files
+ne:Remember &opened files
 nl:Onthoud ge&opende bestanden
+nn:Remember &opened files
+no:Remember &opened files
+pa:Remember &opened files
 pl:Pamiętaj &otwierane pliki
+pt:Remember &opened files
+ro:Remember &opened files
+ru:Remember &opened files
+sat:Remember &opened files
+si:Remember &opened files
 sk:Zapamätať si &otvorené súbory
+sl:Remember &opened files
+sn:Remember &opened files
+sp-rs:Remember &opened files
+sq:Remember &opened files
+sr-rs:Remember &opened files
+sv:Remember &opened files
+ta:Remember &opened files
+th:Remember &opened files
+tl:Remember &opened files
+tr:Remember &opened files
 tw:記憶最近開啟的檔案(&O)
+uk:Remember &opened files
+uz:Remember &opened files
+vn:Remember &opened files
 :Remove
 br:Remover
 cn:删除
@@ -15204,6 +19962,79 @@ de:Auflösungseinheit:
 it:Unità risoluzione:
 nl:Resolutie Eenheid:
 pl:Jednostka rozdzielczości:
+:Restart required
+af:Restart required
+am:Restart required
+ar:Restart required
+az:Restart required
+bg:Restart required
+bn:Restart required
+br:Restart required
+bs:Restart required
+by:Restart required
+ca:Restart required
+ca-xv:Restart required
+cn:需要重新启动
+co:Restart required
+cy:Restart required
+cz:Restart required
+de:Restart required
+dk:Restart required
+el:Restart required
+es:Restart required
+et:Restart required
+eu:Restart required
+fa:Restart required
+fi:Restart required
+fo:Restart required
+fr:Restart required
+fy-nl:Restart required
+ga:Restart required
+gl:Restart required
+he:Restart required
+hi:Restart required
+hr:Restart required
+hu:Restart required
+id:Restart required
+it:Restart required
+ja:Restart required
+jv:Restart required
+ka:Restart required
+kr:Restart required
+ku:Restart required
+kw:Restart required
+lt:Restart required
+lv:Restart required
+mk:Restart required
+ml:Restart required
+mm:Restart required
+my:Restart required
+ne:Restart required
+nl:Restart required
+nn:Restart required
+no:Restart required
+pa:Restart required
+pl:Restart required
+pt:Restart required
+ro:Restart required
+ru:Restart required
+sat:Restart required
+si:Restart required
+sk:Restart required
+sl:Restart required
+sn:Restart required
+sp-rs:Restart required
+sq:Restart required
+sr-rs:Restart required
+sv:Restart required
+ta:Restart required
+th:Restart required
+tl:Restart required
+tr:Restart required
+tw:需要重新啟動
+uk:Restart required
+uz:Restart required
+vn:Restart required
 :Restore
 br:Restaurar
 cn:恢复
@@ -15222,6 +20053,79 @@ it:Ripristina gruppo di schede
 nl:Herstel Tab Groep
 pl:Przywróć grupę kart
 sk:Obnoviť skupinu kariet
+:Restore the last &session at startup
+af:Restore the last &session at startup
+am:Restore the last &session at startup
+ar:Restore the last &session at startup
+az:Restore the last &session at startup
+bg:Restore the last &session at startup
+bn:Restore the last &session at startup
+br:Restore the last &session at startup
+bs:Restore the last &session at startup
+by:Restore the last &session at startup
+ca:Restore the last &session at startup
+ca-xv:Restore the last &session at startup
+cn:启动时恢复上次会话(&S)
+co:Restore the last &session at startup
+cy:Restore the last &session at startup
+cz:Restore the last &session at startup
+de:Restore the last &session at startup
+dk:Restore the last &session at startup
+el:Restore the last &session at startup
+es:Restore the last &session at startup
+et:Restore the last &session at startup
+eu:Restore the last &session at startup
+fa:Restore the last &session at startup
+fi:Restore the last &session at startup
+fo:Restore the last &session at startup
+fr:Restore the last &session at startup
+fy-nl:Restore the last &session at startup
+ga:Restore the last &session at startup
+gl:Restore the last &session at startup
+he:Restore the last &session at startup
+hi:Restore the last &session at startup
+hr:Restore the last &session at startup
+hu:Restore the last &session at startup
+id:Restore the last &session at startup
+it:Restore the last &session at startup
+ja:Restore the last &session at startup
+jv:Restore the last &session at startup
+ka:Restore the last &session at startup
+kr:Restore the last &session at startup
+ku:Restore the last &session at startup
+kw:Restore the last &session at startup
+lt:Restore the last &session at startup
+lv:Restore the last &session at startup
+mk:Restore the last &session at startup
+ml:Restore the last &session at startup
+mm:Restore the last &session at startup
+my:Restore the last &session at startup
+ne:Restore the last &session at startup
+nl:Restore the last &session at startup
+nn:Restore the last &session at startup
+no:Restore the last &session at startup
+pa:Restore the last &session at startup
+pl:Restore the last &session at startup
+pt:Restore the last &session at startup
+ro:Restore the last &session at startup
+ru:Restore the last &session at startup
+sat:Restore the last &session at startup
+si:Restore the last &session at startup
+sk:Restore the last &session at startup
+sl:Restore the last &session at startup
+sn:Restore the last &session at startup
+sp-rs:Restore the last &session at startup
+sq:Restore the last &session at startup
+sr-rs:Restore the last &session at startup
+sv:Restore the last &session at startup
+ta:Restore the last &session at startup
+th:Restore the last &session at startup
+tl:Restore the last &session at startup
+tr:Restore the last &session at startup
+tw:啟動時還原上次工作階段(&S)
+uk:Restore the last &session at startup
+uz:Restore the last &session at startup
+vn:Restore the last &session at startup
 :Resume
 af:Hervat
 am:Շարունակել
@@ -17037,6 +21941,152 @@ nl:Scroll Omhoog Per Pagina
 pl:Przewiń w górę o stronę
 sk:Posúvať hore na strane
 tw:向上捲動一頁
+:Scrollbars
+af:Scrollbars
+am:Scrollbars
+ar:Scrollbars
+az:Scrollbars
+bg:Scrollbars
+bn:Scrollbars
+br:Scrollbars
+bs:Scrollbars
+by:Scrollbars
+ca:Scrollbars
+ca-xv:Scrollbars
+cn:滚动条
+co:Scrollbars
+cy:Scrollbars
+cz:Scrollbars
+de:Scrollbars
+dk:Scrollbars
+el:Scrollbars
+es:Scrollbars
+et:Scrollbars
+eu:Scrollbars
+fa:Scrollbars
+fi:Scrollbars
+fo:Scrollbars
+fr:Scrollbars
+fy-nl:Scrollbars
+ga:Scrollbars
+gl:Scrollbars
+he:Scrollbars
+hi:Scrollbars
+hr:Scrollbars
+hu:Scrollbars
+id:Scrollbars
+it:Scrollbars
+ja:Scrollbars
+jv:Scrollbars
+ka:Scrollbars
+kr:Scrollbars
+ku:Scrollbars
+kw:Scrollbars
+lt:Scrollbars
+lv:Scrollbars
+mk:Scrollbars
+ml:Scrollbars
+mm:Scrollbars
+my:Scrollbars
+ne:Scrollbars
+nl:Scrollbars
+nn:Scrollbars
+no:Scrollbars
+pa:Scrollbars
+pl:Scrollbars
+pt:Scrollbars
+ro:Scrollbars
+ru:Scrollbars
+sat:Scrollbars
+si:Scrollbars
+sk:Scrollbars
+sl:Scrollbars
+sn:Scrollbars
+sp-rs:Scrollbars
+sq:Scrollbars
+sr-rs:Scrollbars
+sv:Scrollbars
+ta:Scrollbars
+th:Scrollbars
+tl:Scrollbars
+tr:Scrollbars
+tw:捲動軸
+uk:Scrollbars
+uz:Scrollbars
+vn:Scrollbars
+:Scrolling
+af:Scrolling
+am:Scrolling
+ar:Scrolling
+az:Scrolling
+bg:Scrolling
+bn:Scrolling
+br:Scrolling
+bs:Scrolling
+by:Scrolling
+ca:Scrolling
+ca-xv:Scrolling
+cn:滚动
+co:Scrolling
+cy:Scrolling
+cz:Scrolling
+de:Scrolling
+dk:Scrolling
+el:Scrolling
+es:Scrolling
+et:Scrolling
+eu:Scrolling
+fa:Scrolling
+fi:Scrolling
+fo:Scrolling
+fr:Scrolling
+fy-nl:Scrolling
+ga:Scrolling
+gl:Scrolling
+he:Scrolling
+hi:Scrolling
+hr:Scrolling
+hu:Scrolling
+id:Scrolling
+it:Scrolling
+ja:Scrolling
+jv:Scrolling
+ka:Scrolling
+kr:Scrolling
+ku:Scrolling
+kw:Scrolling
+lt:Scrolling
+lv:Scrolling
+mk:Scrolling
+ml:Scrolling
+mm:Scrolling
+my:Scrolling
+ne:Scrolling
+nl:Scrolling
+nn:Scrolling
+no:Scrolling
+pa:Scrolling
+pl:Scrolling
+pt:Scrolling
+ro:Scrolling
+ru:Scrolling
+sat:Scrolling
+si:Scrolling
+sk:Scrolling
+sl:Scrolling
+sn:Scrolling
+sp-rs:Scrolling
+sq:Scrolling
+sr-rs:Scrolling
+sv:Scrolling
+ta:Scrolling
+th:Scrolling
+tl:Scrolling
+tr:Scrolling
+tw:捲動
+uk:Scrolling
+uz:Scrolling
+vn:Scrolling
 :Search Bookmarks
 br:Procurar Favoritos
 cn:搜索书签
@@ -17715,6 +22765,79 @@ nl:Werkbalk tonen
 pl:Pokaż pasek &narzędzi
 sk:Zobraziť panel &nástrojov
 tw:顯示工具列(&T)
+:Show &link borders
+af:Show &link borders
+am:Show &link borders
+ar:Show &link borders
+az:Show &link borders
+bg:Show &link borders
+bn:Show &link borders
+br:Show &link borders
+bs:Show &link borders
+by:Show &link borders
+ca:Show &link borders
+ca-xv:Show &link borders
+cn:显示链接边框(&L)
+co:Show &link borders
+cy:Show &link borders
+cz:Show &link borders
+de:Show &link borders
+dk:Show &link borders
+el:Show &link borders
+es:Show &link borders
+et:Show &link borders
+eu:Show &link borders
+fa:Show &link borders
+fi:Show &link borders
+fo:Show &link borders
+fr:Show &link borders
+fy-nl:Show &link borders
+ga:Show &link borders
+gl:Show &link borders
+he:Show &link borders
+hi:Show &link borders
+hr:Show &link borders
+hu:Show &link borders
+id:Show &link borders
+it:Show &link borders
+ja:Show &link borders
+jv:Show &link borders
+ka:Show &link borders
+kr:Show &link borders
+ku:Show &link borders
+kw:Show &link borders
+lt:Show &link borders
+lv:Show &link borders
+mk:Show &link borders
+ml:Show &link borders
+mm:Show &link borders
+my:Show &link borders
+ne:Show &link borders
+nl:Show &link borders
+nn:Show &link borders
+no:Show &link borders
+pa:Show &link borders
+pl:Show &link borders
+pt:Show &link borders
+ro:Show &link borders
+ru:Show &link borders
+sat:Show &link borders
+si:Show &link borders
+sk:Show &link borders
+sl:Show &link borders
+sn:Show &link borders
+sp-rs:Show &link borders
+sq:Show &link borders
+sr-rs:Show &link borders
+sv:Show &link borders
+ta:Show &link borders
+th:Show &link borders
+tl:Show &link borders
+tr:Show &link borders
+tw:顯示連結邊框(&L)
+uk:Show &link borders
+uz:Show &link borders
+vn:Show &link borders
 :Show Annotations
 am:Ցուցադրել ծանոթագրությունները
 br:Mostrar Anotações
@@ -17823,6 +22946,79 @@ it:Mostra Info PDF
 nl:Toon PDF Info
 pl:Pokaż informacje o PDF
 sk:Zobraziť informácie o PDF
+:Show a scrollbar in single-&page mode
+af:Show a scrollbar in single-&page mode
+am:Show a scrollbar in single-&page mode
+ar:Show a scrollbar in single-&page mode
+az:Show a scrollbar in single-&page mode
+bg:Show a scrollbar in single-&page mode
+bn:Show a scrollbar in single-&page mode
+br:Show a scrollbar in single-&page mode
+bs:Show a scrollbar in single-&page mode
+by:Show a scrollbar in single-&page mode
+ca:Show a scrollbar in single-&page mode
+ca-xv:Show a scrollbar in single-&page mode
+cn:单页模式显示滚动条(&P)
+co:Show a scrollbar in single-&page mode
+cy:Show a scrollbar in single-&page mode
+cz:Show a scrollbar in single-&page mode
+de:Show a scrollbar in single-&page mode
+dk:Show a scrollbar in single-&page mode
+el:Show a scrollbar in single-&page mode
+es:Show a scrollbar in single-&page mode
+et:Show a scrollbar in single-&page mode
+eu:Show a scrollbar in single-&page mode
+fa:Show a scrollbar in single-&page mode
+fi:Show a scrollbar in single-&page mode
+fo:Show a scrollbar in single-&page mode
+fr:Show a scrollbar in single-&page mode
+fy-nl:Show a scrollbar in single-&page mode
+ga:Show a scrollbar in single-&page mode
+gl:Show a scrollbar in single-&page mode
+he:Show a scrollbar in single-&page mode
+hi:Show a scrollbar in single-&page mode
+hr:Show a scrollbar in single-&page mode
+hu:Show a scrollbar in single-&page mode
+id:Show a scrollbar in single-&page mode
+it:Show a scrollbar in single-&page mode
+ja:Show a scrollbar in single-&page mode
+jv:Show a scrollbar in single-&page mode
+ka:Show a scrollbar in single-&page mode
+kr:Show a scrollbar in single-&page mode
+ku:Show a scrollbar in single-&page mode
+kw:Show a scrollbar in single-&page mode
+lt:Show a scrollbar in single-&page mode
+lv:Show a scrollbar in single-&page mode
+mk:Show a scrollbar in single-&page mode
+ml:Show a scrollbar in single-&page mode
+mm:Show a scrollbar in single-&page mode
+my:Show a scrollbar in single-&page mode
+ne:Show a scrollbar in single-&page mode
+nl:Show a scrollbar in single-&page mode
+nn:Show a scrollbar in single-&page mode
+no:Show a scrollbar in single-&page mode
+pa:Show a scrollbar in single-&page mode
+pl:Show a scrollbar in single-&page mode
+pt:Show a scrollbar in single-&page mode
+ro:Show a scrollbar in single-&page mode
+ru:Show a scrollbar in single-&page mode
+sat:Show a scrollbar in single-&page mode
+si:Show a scrollbar in single-&page mode
+sk:Show a scrollbar in single-&page mode
+sl:Show a scrollbar in single-&page mode
+sn:Show a scrollbar in single-&page mode
+sp-rs:Show a scrollbar in single-&page mode
+sq:Show a scrollbar in single-&page mode
+sr-rs:Show a scrollbar in single-&page mode
+sv:Show a scrollbar in single-&page mode
+ta:Show a scrollbar in single-&page mode
+th:Show a scrollbar in single-&page mode
+tl:Show a scrollbar in single-&page mode
+tr:Show a scrollbar in single-&page mode
+tw:單頁模式顯示捲動軸(&P)
+uk:Show a scrollbar in single-&page mode
+uz:Show a scrollbar in single-&page mode
+vn:Show a scrollbar in single-&page mode
 :Show frequently read
 am:Ցուցադրել հաճախակի բացվածները
 br:Mostrar os lidos frequentemente
@@ -17859,18 +23055,371 @@ nl:Toon in map
 pl:Pokaż w folderze
 sk:Zobraziť v priečinku
 tw:在資料夾中顯示
+:Show quick &annotation buttons
+af:Show quick &annotation buttons
+am:Show quick &annotation buttons
+ar:Show quick &annotation buttons
+az:Show quick &annotation buttons
+bg:Show quick &annotation buttons
+bn:Show quick &annotation buttons
+br:Show quick &annotation buttons
+bs:Show quick &annotation buttons
+by:Show quick &annotation buttons
+ca:Show quick &annotation buttons
+ca-xv:Show quick &annotation buttons
+cn:显示标注快捷按钮(&A)
+co:Show quick &annotation buttons
+cy:Show quick &annotation buttons
+cz:Show quick &annotation buttons
+de:Show quick &annotation buttons
+dk:Show quick &annotation buttons
+el:Show quick &annotation buttons
+es:Show quick &annotation buttons
+et:Show quick &annotation buttons
+eu:Show quick &annotation buttons
+fa:Show quick &annotation buttons
+fi:Show quick &annotation buttons
+fo:Show quick &annotation buttons
+fr:Show quick &annotation buttons
+fy-nl:Show quick &annotation buttons
+ga:Show quick &annotation buttons
+gl:Show quick &annotation buttons
+he:Show quick &annotation buttons
+hi:Show quick &annotation buttons
+hr:Show quick &annotation buttons
+hu:Show quick &annotation buttons
+id:Show quick &annotation buttons
+it:Show quick &annotation buttons
+ja:Show quick &annotation buttons
+jv:Show quick &annotation buttons
+ka:Show quick &annotation buttons
+kr:Show quick &annotation buttons
+ku:Show quick &annotation buttons
+kw:Show quick &annotation buttons
+lt:Show quick &annotation buttons
+lv:Show quick &annotation buttons
+mk:Show quick &annotation buttons
+ml:Show quick &annotation buttons
+mm:Show quick &annotation buttons
+my:Show quick &annotation buttons
+ne:Show quick &annotation buttons
+nl:Show quick &annotation buttons
+nn:Show quick &annotation buttons
+no:Show quick &annotation buttons
+pa:Show quick &annotation buttons
+pl:Show quick &annotation buttons
+pt:Show quick &annotation buttons
+ro:Show quick &annotation buttons
+ru:Show quick &annotation buttons
+sat:Show quick &annotation buttons
+si:Show quick &annotation buttons
+sk:Show quick &annotation buttons
+sl:Show quick &annotation buttons
+sn:Show quick &annotation buttons
+sp-rs:Show quick &annotation buttons
+sq:Show quick &annotation buttons
+sr-rs:Show quick &annotation buttons
+sv:Show quick &annotation buttons
+ta:Show quick &annotation buttons
+th:Show quick &annotation buttons
+tl:Show quick &annotation buttons
+tr:Show quick &annotation buttons
+tw:顯示註解快捷按鈕(&A)
+uk:Show quick &annotation buttons
+uz:Show quick &annotation buttons
+vn:Show quick &annotation buttons
 :Show the &bookmarks sidebar when available
+af:Show the &bookmarks sidebar when available
 am:Հնարավորության դեպքում ցուցադրել &Էջերը
+ar:Show the &bookmarks sidebar when available
+az:Show the &bookmarks sidebar when available
+bg:Show the &bookmarks sidebar when available
+bn:Show the &bookmarks sidebar when available
 br:Mostrar a &barra lateral dos favoritos quando disponível
+bs:Show the &bookmarks sidebar when available
+by:Show the &bookmarks sidebar when available
+ca:Show the &bookmarks sidebar when available
+ca-xv:Show the &bookmarks sidebar when available
 cn:可用时显示书签栏(&B)
 co:Affissà a &barra laterale di l’unghjette s’ella hè dispunibule
+cy:Show the &bookmarks sidebar when available
+cz:Show the &bookmarks sidebar when available
 de:&Lesezeichen-Seitenleiste anzeigen, wenn verfügbar
+dk:Show the &bookmarks sidebar when available
 el:Εμφάνιση &πλευρικής στήλης σελιδοδεικτών όπου είναι δυνατόν
+es:Show the &bookmarks sidebar when available
+et:Show the &bookmarks sidebar when available
+eu:Show the &bookmarks sidebar when available
+fa:Show the &bookmarks sidebar when available
+fi:Show the &bookmarks sidebar when available
+fo:Show the &bookmarks sidebar when available
+fr:Show the &bookmarks sidebar when available
+fy-nl:Show the &bookmarks sidebar when available
+ga:Show the &bookmarks sidebar when available
+gl:Show the &bookmarks sidebar when available
+he:Show the &bookmarks sidebar when available
+hi:Show the &bookmarks sidebar when available
+hr:Show the &bookmarks sidebar when available
+hu:Show the &bookmarks sidebar when available
+id:Show the &bookmarks sidebar when available
 it:Mostra la &barra laterale Segnalibri quando disponibile
+ja:Show the &bookmarks sidebar when available
+jv:Show the &bookmarks sidebar when available
+ka:Show the &bookmarks sidebar when available
+kr:Show the &bookmarks sidebar when available
+ku:Show the &bookmarks sidebar when available
+kw:Show the &bookmarks sidebar when available
+lt:Show the &bookmarks sidebar when available
+lv:Show the &bookmarks sidebar when available
+mk:Show the &bookmarks sidebar when available
+ml:Show the &bookmarks sidebar when available
+mm:Show the &bookmarks sidebar when available
+my:Show the &bookmarks sidebar when available
+ne:Show the &bookmarks sidebar when available
 nl:Toon de &bladwijzerwerkbalk indien beschikbaar
+nn:Show the &bookmarks sidebar when available
+no:Show the &bookmarks sidebar when available
+pa:Show the &bookmarks sidebar when available
 pl:Pokaż panel za&kładek, gdy są dostępne
+pt:Show the &bookmarks sidebar when available
+ro:Show the &bookmarks sidebar when available
+ru:Show the &bookmarks sidebar when available
+sat:Show the &bookmarks sidebar when available
+si:Show the &bookmarks sidebar when available
 sk:Zobraziť bočný panel &záložiek, pokiaľ je dostupný
+sl:Show the &bookmarks sidebar when available
+sn:Show the &bookmarks sidebar when available
+sp-rs:Show the &bookmarks sidebar when available
+sq:Show the &bookmarks sidebar when available
+sr-rs:Show the &bookmarks sidebar when available
+sv:Show the &bookmarks sidebar when available
+ta:Show the &bookmarks sidebar when available
+th:Show the &bookmarks sidebar when available
+tl:Show the &bookmarks sidebar when available
+tr:Show the &bookmarks sidebar when available
 tw:可用時顯示書籤邊欄(&B)
+uk:Show the &bookmarks sidebar when available
+uz:Show the &bookmarks sidebar when available
+vn:Show the &bookmarks sidebar when available
+:Show the &menu bar with tabs
+af:Show the &menu bar with tabs
+am:Show the &menu bar with tabs
+ar:Show the &menu bar with tabs
+az:Show the &menu bar with tabs
+bg:Show the &menu bar with tabs
+bn:Show the &menu bar with tabs
+br:Show the &menu bar with tabs
+bs:Show the &menu bar with tabs
+by:Show the &menu bar with tabs
+ca:Show the &menu bar with tabs
+ca-xv:Show the &menu bar with tabs
+cn:标签模式下显示菜单栏(&M)
+co:Show the &menu bar with tabs
+cy:Show the &menu bar with tabs
+cz:Show the &menu bar with tabs
+de:Show the &menu bar with tabs
+dk:Show the &menu bar with tabs
+el:Show the &menu bar with tabs
+es:Show the &menu bar with tabs
+et:Show the &menu bar with tabs
+eu:Show the &menu bar with tabs
+fa:Show the &menu bar with tabs
+fi:Show the &menu bar with tabs
+fo:Show the &menu bar with tabs
+fr:Show the &menu bar with tabs
+fy-nl:Show the &menu bar with tabs
+ga:Show the &menu bar with tabs
+gl:Show the &menu bar with tabs
+he:Show the &menu bar with tabs
+hi:Show the &menu bar with tabs
+hr:Show the &menu bar with tabs
+hu:Show the &menu bar with tabs
+id:Show the &menu bar with tabs
+it:Show the &menu bar with tabs
+ja:Show the &menu bar with tabs
+jv:Show the &menu bar with tabs
+ka:Show the &menu bar with tabs
+kr:Show the &menu bar with tabs
+ku:Show the &menu bar with tabs
+kw:Show the &menu bar with tabs
+lt:Show the &menu bar with tabs
+lv:Show the &menu bar with tabs
+mk:Show the &menu bar with tabs
+ml:Show the &menu bar with tabs
+mm:Show the &menu bar with tabs
+my:Show the &menu bar with tabs
+ne:Show the &menu bar with tabs
+nl:Show the &menu bar with tabs
+nn:Show the &menu bar with tabs
+no:Show the &menu bar with tabs
+pa:Show the &menu bar with tabs
+pl:Show the &menu bar with tabs
+pt:Show the &menu bar with tabs
+ro:Show the &menu bar with tabs
+ru:Show the &menu bar with tabs
+sat:Show the &menu bar with tabs
+si:Show the &menu bar with tabs
+sk:Show the &menu bar with tabs
+sl:Show the &menu bar with tabs
+sn:Show the &menu bar with tabs
+sp-rs:Show the &menu bar with tabs
+sq:Show the &menu bar with tabs
+sr-rs:Show the &menu bar with tabs
+sv:Show the &menu bar with tabs
+ta:Show the &menu bar with tabs
+th:Show the &menu bar with tabs
+tl:Show the &menu bar with tabs
+tr:Show the &menu bar with tabs
+tw:分頁模式下顯示選單列(&M)
+uk:Show the &menu bar with tabs
+uz:Show the &menu bar with tabs
+vn:Show the &menu bar with tabs
+:Show the full file &path in the title bar
+af:Show the full file &path in the title bar
+am:Show the full file &path in the title bar
+ar:Show the full file &path in the title bar
+az:Show the full file &path in the title bar
+bg:Show the full file &path in the title bar
+bn:Show the full file &path in the title bar
+br:Show the full file &path in the title bar
+bs:Show the full file &path in the title bar
+by:Show the full file &path in the title bar
+ca:Show the full file &path in the title bar
+ca-xv:Show the full file &path in the title bar
+cn:标题栏显示完整文件路径(&P)
+co:Show the full file &path in the title bar
+cy:Show the full file &path in the title bar
+cz:Show the full file &path in the title bar
+de:Show the full file &path in the title bar
+dk:Show the full file &path in the title bar
+el:Show the full file &path in the title bar
+es:Show the full file &path in the title bar
+et:Show the full file &path in the title bar
+eu:Show the full file &path in the title bar
+fa:Show the full file &path in the title bar
+fi:Show the full file &path in the title bar
+fo:Show the full file &path in the title bar
+fr:Show the full file &path in the title bar
+fy-nl:Show the full file &path in the title bar
+ga:Show the full file &path in the title bar
+gl:Show the full file &path in the title bar
+he:Show the full file &path in the title bar
+hi:Show the full file &path in the title bar
+hr:Show the full file &path in the title bar
+hu:Show the full file &path in the title bar
+id:Show the full file &path in the title bar
+it:Show the full file &path in the title bar
+ja:Show the full file &path in the title bar
+jv:Show the full file &path in the title bar
+ka:Show the full file &path in the title bar
+kr:Show the full file &path in the title bar
+ku:Show the full file &path in the title bar
+kw:Show the full file &path in the title bar
+lt:Show the full file &path in the title bar
+lv:Show the full file &path in the title bar
+mk:Show the full file &path in the title bar
+ml:Show the full file &path in the title bar
+mm:Show the full file &path in the title bar
+my:Show the full file &path in the title bar
+ne:Show the full file &path in the title bar
+nl:Show the full file &path in the title bar
+nn:Show the full file &path in the title bar
+no:Show the full file &path in the title bar
+pa:Show the full file &path in the title bar
+pl:Show the full file &path in the title bar
+pt:Show the full file &path in the title bar
+ro:Show the full file &path in the title bar
+ru:Show the full file &path in the title bar
+sat:Show the full file &path in the title bar
+si:Show the full file &path in the title bar
+sk:Show the full file &path in the title bar
+sl:Show the full file &path in the title bar
+sn:Show the full file &path in the title bar
+sp-rs:Show the full file &path in the title bar
+sq:Show the full file &path in the title bar
+sr-rs:Show the full file &path in the title bar
+sv:Show the full file &path in the title bar
+ta:Show the full file &path in the title bar
+th:Show the full file &path in the title bar
+tl:Show the full file &path in the title bar
+tr:Show the full file &path in the title bar
+tw:標題列顯示完整檔案路徑(&P)
+uk:Show the full file &path in the title bar
+uz:Show the full file &path in the title bar
+vn:Show the full file &path in the title bar
+:Show the tool&bar
+af:Show the tool&bar
+am:Show the tool&bar
+ar:Show the tool&bar
+az:Show the tool&bar
+bg:Show the tool&bar
+bn:Show the tool&bar
+br:Show the tool&bar
+bs:Show the tool&bar
+by:Show the tool&bar
+ca:Show the tool&bar
+ca-xv:Show the tool&bar
+cn:显示工具栏(&B)
+co:Show the tool&bar
+cy:Show the tool&bar
+cz:Show the tool&bar
+de:Show the tool&bar
+dk:Show the tool&bar
+el:Show the tool&bar
+es:Show the tool&bar
+et:Show the tool&bar
+eu:Show the tool&bar
+fa:Show the tool&bar
+fi:Show the tool&bar
+fo:Show the tool&bar
+fr:Show the tool&bar
+fy-nl:Show the tool&bar
+ga:Show the tool&bar
+gl:Show the tool&bar
+he:Show the tool&bar
+hi:Show the tool&bar
+hr:Show the tool&bar
+hu:Show the tool&bar
+id:Show the tool&bar
+it:Show the tool&bar
+ja:Show the tool&bar
+jv:Show the tool&bar
+ka:Show the tool&bar
+kr:Show the tool&bar
+ku:Show the tool&bar
+kw:Show the tool&bar
+lt:Show the tool&bar
+lv:Show the tool&bar
+mk:Show the tool&bar
+ml:Show the tool&bar
+mm:Show the tool&bar
+my:Show the tool&bar
+ne:Show the tool&bar
+nl:Show the tool&bar
+nn:Show the tool&bar
+no:Show the tool&bar
+pa:Show the tool&bar
+pl:Show the tool&bar
+pt:Show the tool&bar
+ro:Show the tool&bar
+ru:Show the tool&bar
+sat:Show the tool&bar
+si:Show the tool&bar
+sk:Show the tool&bar
+sl:Show the tool&bar
+sn:Show the tool&bar
+sp-rs:Show the tool&bar
+sq:Show the tool&bar
+sr-rs:Show the tool&bar
+sv:Show the tool&bar
+ta:Show the tool&bar
+th:Show the tool&bar
+tl:Show the tool&bar
+tr:Show the tool&bar
+tw:顯示工具列(&B)
+uk:Show the tool&bar
+uz:Show the tool&bar
+vn:Show the tool&bar
 :Shrink To Fit
 br:Encolher pra Ajustar
 cn:缩小至合适尺寸
@@ -18062,6 +23611,79 @@ nl:Slim Volgende Tab
 pl:Następna karta inteligentnie
 sk:Inteligentné prepínanie kariet
 tw:智慧切換下一個分頁
+:Smart auto-hide scrollbars
+af:Smart auto-hide scrollbars
+am:Smart auto-hide scrollbars
+ar:Smart auto-hide scrollbars
+az:Smart auto-hide scrollbars
+bg:Smart auto-hide scrollbars
+bn:Smart auto-hide scrollbars
+br:Smart auto-hide scrollbars
+bs:Smart auto-hide scrollbars
+by:Smart auto-hide scrollbars
+ca:Smart auto-hide scrollbars
+ca-xv:Smart auto-hide scrollbars
+cn:智能自动隐藏滚动条
+co:Smart auto-hide scrollbars
+cy:Smart auto-hide scrollbars
+cz:Smart auto-hide scrollbars
+de:Smart auto-hide scrollbars
+dk:Smart auto-hide scrollbars
+el:Smart auto-hide scrollbars
+es:Smart auto-hide scrollbars
+et:Smart auto-hide scrollbars
+eu:Smart auto-hide scrollbars
+fa:Smart auto-hide scrollbars
+fi:Smart auto-hide scrollbars
+fo:Smart auto-hide scrollbars
+fr:Smart auto-hide scrollbars
+fy-nl:Smart auto-hide scrollbars
+ga:Smart auto-hide scrollbars
+gl:Smart auto-hide scrollbars
+he:Smart auto-hide scrollbars
+hi:Smart auto-hide scrollbars
+hr:Smart auto-hide scrollbars
+hu:Smart auto-hide scrollbars
+id:Smart auto-hide scrollbars
+it:Smart auto-hide scrollbars
+ja:Smart auto-hide scrollbars
+jv:Smart auto-hide scrollbars
+ka:Smart auto-hide scrollbars
+kr:Smart auto-hide scrollbars
+ku:Smart auto-hide scrollbars
+kw:Smart auto-hide scrollbars
+lt:Smart auto-hide scrollbars
+lv:Smart auto-hide scrollbars
+mk:Smart auto-hide scrollbars
+ml:Smart auto-hide scrollbars
+mm:Smart auto-hide scrollbars
+my:Smart auto-hide scrollbars
+ne:Smart auto-hide scrollbars
+nl:Smart auto-hide scrollbars
+nn:Smart auto-hide scrollbars
+no:Smart auto-hide scrollbars
+pa:Smart auto-hide scrollbars
+pl:Smart auto-hide scrollbars
+pt:Smart auto-hide scrollbars
+ro:Smart auto-hide scrollbars
+ru:Smart auto-hide scrollbars
+sat:Smart auto-hide scrollbars
+si:Smart auto-hide scrollbars
+sk:Smart auto-hide scrollbars
+sl:Smart auto-hide scrollbars
+sn:Smart auto-hide scrollbars
+sp-rs:Smart auto-hide scrollbars
+sq:Smart auto-hide scrollbars
+sr-rs:Smart auto-hide scrollbars
+sv:Smart auto-hide scrollbars
+ta:Smart auto-hide scrollbars
+th:Smart auto-hide scrollbars
+tl:Smart auto-hide scrollbars
+tr:Smart auto-hide scrollbars
+tw:智慧型自動隱藏捲動軸
+uk:Smart auto-hide scrollbars
+uz:Smart auto-hide scrollbars
+vn:Smart auto-hide scrollbars
 :Smart bilingual (English + Chinese)
 am:Խելացի երկլեզու (անգլերեն + չինարեն)
 br:Bilíngue inteligente (inglês + chinês)
@@ -18098,6 +23720,79 @@ nl:Smart bilingual settings...
 pl:Smart bilingual settings...
 sk:Smart bilingual settings...
 tw:智慧雙語設定
+:Smart contents
+af:Smart contents
+am:Smart contents
+ar:Smart contents
+az:Smart contents
+bg:Smart contents
+bn:Smart contents
+br:Smart contents
+bs:Smart contents
+by:Smart contents
+ca:Smart contents
+ca-xv:Smart contents
+cn:智能目录
+co:Smart contents
+cy:Smart contents
+cz:Smart contents
+de:Smart contents
+dk:Smart contents
+el:Smart contents
+es:Smart contents
+et:Smart contents
+eu:Smart contents
+fa:Smart contents
+fi:Smart contents
+fo:Smart contents
+fr:Smart contents
+fy-nl:Smart contents
+ga:Smart contents
+gl:Smart contents
+he:Smart contents
+hi:Smart contents
+hr:Smart contents
+hu:Smart contents
+id:Smart contents
+it:Smart contents
+ja:Smart contents
+jv:Smart contents
+ka:Smart contents
+kr:Smart contents
+ku:Smart contents
+kw:Smart contents
+lt:Smart contents
+lv:Smart contents
+mk:Smart contents
+ml:Smart contents
+mm:Smart contents
+my:Smart contents
+ne:Smart contents
+nl:Smart contents
+nn:Smart contents
+no:Smart contents
+pa:Smart contents
+pl:Smart contents
+pt:Smart contents
+ro:Smart contents
+ru:Smart contents
+sat:Smart contents
+si:Smart contents
+sk:Smart contents
+sl:Smart contents
+sn:Smart contents
+sp-rs:Smart contents
+sq:Smart contents
+sr-rs:Smart contents
+sv:Smart contents
+ta:Smart contents
+th:Smart contents
+tl:Smart contents
+tr:Smart contents
+tw:智慧目錄
+uk:Smart contents
+uz:Smart contents
+vn:Smart contents
 :Smart start
 af:Slim begin
 am:Խելացի սկիզբ
@@ -18179,6 +23874,79 @@ de:Software:
 it:Software:
 nl:Software:
 pl:Oprogramowanie:
+:Some changes require restarting the application.
+af:Some changes require restarting the application.
+am:Some changes require restarting the application.
+ar:Some changes require restarting the application.
+az:Some changes require restarting the application.
+bg:Some changes require restarting the application.
+bn:Some changes require restarting the application.
+br:Some changes require restarting the application.
+bs:Some changes require restarting the application.
+by:Some changes require restarting the application.
+ca:Some changes require restarting the application.
+ca-xv:Some changes require restarting the application.
+cn:某些更改需要重新启动应用程序。
+co:Some changes require restarting the application.
+cy:Some changes require restarting the application.
+cz:Some changes require restarting the application.
+de:Some changes require restarting the application.
+dk:Some changes require restarting the application.
+el:Some changes require restarting the application.
+es:Some changes require restarting the application.
+et:Some changes require restarting the application.
+eu:Some changes require restarting the application.
+fa:Some changes require restarting the application.
+fi:Some changes require restarting the application.
+fo:Some changes require restarting the application.
+fr:Some changes require restarting the application.
+fy-nl:Some changes require restarting the application.
+ga:Some changes require restarting the application.
+gl:Some changes require restarting the application.
+he:Some changes require restarting the application.
+hi:Some changes require restarting the application.
+hr:Some changes require restarting the application.
+hu:Some changes require restarting the application.
+id:Some changes require restarting the application.
+it:Some changes require restarting the application.
+ja:Some changes require restarting the application.
+jv:Some changes require restarting the application.
+ka:Some changes require restarting the application.
+kr:Some changes require restarting the application.
+ku:Some changes require restarting the application.
+kw:Some changes require restarting the application.
+lt:Some changes require restarting the application.
+lv:Some changes require restarting the application.
+mk:Some changes require restarting the application.
+ml:Some changes require restarting the application.
+mm:Some changes require restarting the application.
+my:Some changes require restarting the application.
+ne:Some changes require restarting the application.
+nl:Some changes require restarting the application.
+nn:Some changes require restarting the application.
+no:Some changes require restarting the application.
+pa:Some changes require restarting the application.
+pl:Some changes require restarting the application.
+pt:Some changes require restarting the application.
+ro:Some changes require restarting the application.
+ru:Some changes require restarting the application.
+sat:Some changes require restarting the application.
+si:Some changes require restarting the application.
+sk:Some changes require restarting the application.
+sl:Some changes require restarting the application.
+sn:Some changes require restarting the application.
+sp-rs:Some changes require restarting the application.
+sq:Some changes require restarting the application.
+sr-rs:Some changes require restarting the application.
+sv:Some changes require restarting the application.
+ta:Some changes require restarting the application.
+th:Some changes require restarting the application.
+tl:Some changes require restarting the application.
+tr:Some changes require restarting the application.
+tw:某些變更需要重新啟動應用程式。
+uk:Some changes require restarting the application.
+uz:Some changes require restarting the application.
+vn:Some changes require restarting the application.
 :Sorry, that shouldn't have happened!\n\nPlease press 'Cancel', if you want to help us fix the cause of this crash.
 am:Կներեք, սա չպետք է տեղի ունենար։\n\nՍեղմեք 'Չեղարկել'՝եթե ցանկանում եք օգնել մեզ վերացնելու այս սխալը։
 br:Lamento, isso não deveria ter acontecido!\n\nPor favor pressione 'Cancelar' se você quer nos ajudar a consertar a causa deste crash.
@@ -18397,6 +24165,79 @@ tw:波浪線
 :Stamp Annotation (Ctrl+click to lock)
 cn:图章（Ctrl+点击锁定）
 tw:圖章（Ctrl+點選鎖定）
+:Standard (recommended)
+af:Standard (recommended)
+am:Standard (recommended)
+ar:Standard (recommended)
+az:Standard (recommended)
+bg:Standard (recommended)
+bn:Standard (recommended)
+br:Standard (recommended)
+bs:Standard (recommended)
+by:Standard (recommended)
+ca:Standard (recommended)
+ca-xv:Standard (recommended)
+cn:标准（推荐）
+co:Standard (recommended)
+cy:Standard (recommended)
+cz:Standard (recommended)
+de:Standard (recommended)
+dk:Standard (recommended)
+el:Standard (recommended)
+es:Standard (recommended)
+et:Standard (recommended)
+eu:Standard (recommended)
+fa:Standard (recommended)
+fi:Standard (recommended)
+fo:Standard (recommended)
+fr:Standard (recommended)
+fy-nl:Standard (recommended)
+ga:Standard (recommended)
+gl:Standard (recommended)
+he:Standard (recommended)
+hi:Standard (recommended)
+hr:Standard (recommended)
+hu:Standard (recommended)
+id:Standard (recommended)
+it:Standard (recommended)
+ja:Standard (recommended)
+jv:Standard (recommended)
+ka:Standard (recommended)
+kr:Standard (recommended)
+ku:Standard (recommended)
+kw:Standard (recommended)
+lt:Standard (recommended)
+lv:Standard (recommended)
+mk:Standard (recommended)
+ml:Standard (recommended)
+mm:Standard (recommended)
+my:Standard (recommended)
+ne:Standard (recommended)
+nl:Standard (recommended)
+nn:Standard (recommended)
+no:Standard (recommended)
+pa:Standard (recommended)
+pl:Standard (recommended)
+pt:Standard (recommended)
+ro:Standard (recommended)
+ru:Standard (recommended)
+sat:Standard (recommended)
+si:Standard (recommended)
+sk:Standard (recommended)
+sl:Standard (recommended)
+sn:Standard (recommended)
+sp-rs:Standard (recommended)
+sq:Standard (recommended)
+sr-rs:Standard (recommended)
+sv:Standard (recommended)
+ta:Standard (recommended)
+th:Standard (recommended)
+tl:Standard (recommended)
+tr:Standard (recommended)
+tw:標準（建議）
+uk:Standard (recommended)
+uz:Standard (recommended)
+vn:Standard (recommended)
 :Start Reading From Cursor Position
 af:Begin lees vanaf cursor
 am:Սկսել կարդալ կursor-ից
@@ -18628,6 +24469,79 @@ nl:Start SumatraPDF
 pl:Uruchom SumatraPDF
 sk:Spustiť SumatraPDF
 tw:啟動 SumatraPDF
+:Startup and session
+af:Startup and session
+am:Startup and session
+ar:Startup and session
+az:Startup and session
+bg:Startup and session
+bn:Startup and session
+br:Startup and session
+bs:Startup and session
+by:Startup and session
+ca:Startup and session
+ca-xv:Startup and session
+cn:启动和会话
+co:Startup and session
+cy:Startup and session
+cz:Startup and session
+de:Startup and session
+dk:Startup and session
+el:Startup and session
+es:Startup and session
+et:Startup and session
+eu:Startup and session
+fa:Startup and session
+fi:Startup and session
+fo:Startup and session
+fr:Startup and session
+fy-nl:Startup and session
+ga:Startup and session
+gl:Startup and session
+he:Startup and session
+hi:Startup and session
+hr:Startup and session
+hu:Startup and session
+id:Startup and session
+it:Startup and session
+ja:Startup and session
+jv:Startup and session
+ka:Startup and session
+kr:Startup and session
+ku:Startup and session
+kw:Startup and session
+lt:Startup and session
+lv:Startup and session
+mk:Startup and session
+ml:Startup and session
+mm:Startup and session
+my:Startup and session
+ne:Startup and session
+nl:Startup and session
+nn:Startup and session
+no:Startup and session
+pa:Startup and session
+pl:Startup and session
+pt:Startup and session
+ro:Startup and session
+ru:Startup and session
+sat:Startup and session
+si:Startup and session
+sk:Startup and session
+sl:Startup and session
+sn:Startup and session
+sp-rs:Startup and session
+sq:Startup and session
+sr-rs:Startup and session
+sv:Startup and session
+ta:Startup and session
+th:Startup and session
+tl:Startup and session
+tr:Startup and session
+tw:啟動和工作階段
+uk:Startup and session
+uz:Startup and session
+vn:Startup and session
 :Stop
 af:Stop
 am:Դադարեցնել
@@ -18818,17 +24732,78 @@ pl:Usuń SumatraPDF %s
 sk:SumatraPDF %s odinštalátor
 tw:SumatraPDF %s 解除安裝程式
 :SumatraPDF Options
+af:SumatraPDF Options
 am:Ընտրանքներ
+ar:SumatraPDF Options
+az:SumatraPDF Options
+bg:SumatraPDF Options
+bn:SumatraPDF Options
 br:Opções do SumatraPDF
+bs:SumatraPDF Options
+by:SumatraPDF Options
+ca:SumatraPDF Options
+ca-xv:SumatraPDF Options
 cn:SumatraPDF 选项
 co:Ozzioni di SumatraPDF
+cy:SumatraPDF Options
+cz:SumatraPDF Options
 de:SumatraPDF-Optionen
+dk:SumatraPDF Options
 el:Επιλογές SumatraPDF
+es:SumatraPDF Options
+et:SumatraPDF Options
+eu:SumatraPDF Options
+fa:SumatraPDF Options
+fi:SumatraPDF Options
+fo:SumatraPDF Options
+fr:SumatraPDF Options
+fy-nl:SumatraPDF Options
+ga:SumatraPDF Options
+gl:SumatraPDF Options
+he:SumatraPDF Options
+hi:SumatraPDF Options
+hr:SumatraPDF Options
+hu:SumatraPDF Options
+id:SumatraPDF Options
 it:Opzioni di SumatraPDF
+ja:SumatraPDF Options
+jv:SumatraPDF Options
+ka:SumatraPDF Options
+kr:SumatraPDF Options
+ku:SumatraPDF Options
+kw:SumatraPDF Options
+lt:SumatraPDF Options
+lv:SumatraPDF Options
+mk:SumatraPDF Options
+ml:SumatraPDF Options
+mm:SumatraPDF Options
+my:SumatraPDF Options
+ne:SumatraPDF Options
 nl:SumatraPDF Opties
+nn:SumatraPDF Options
+no:SumatraPDF Options
+pa:SumatraPDF Options
 pl:Opcje SumatraPDF
+pt:SumatraPDF Options
+ro:SumatraPDF Options
+ru:SumatraPDF Options
+sat:SumatraPDF Options
+si:SumatraPDF Options
 sk:Nastavenia SumatraPDF
+sl:SumatraPDF Options
+sn:SumatraPDF Options
+sp-rs:SumatraPDF Options
+sq:SumatraPDF Options
+sr-rs:SumatraPDF Options
+sv:SumatraPDF Options
+ta:SumatraPDF Options
+th:SumatraPDF Options
+tl:SumatraPDF Options
+tr:SumatraPDF Options
 tw:SumatraPDF 選項
+uk:SumatraPDF Options
+uz:SumatraPDF Options
+vn:SumatraPDF Options
 :SumatraPDF Update
 am:SumatraPDF-ի թարմացումներ
 br:Atualização do SumatraPDF
@@ -19004,6 +24979,79 @@ it:Gruppi di schede
 nl:Tab Groepen
 pl:Grupy kart
 sk:Skupiny kariet
+:Tabs and toolbar
+af:Tabs and toolbar
+am:Tabs and toolbar
+ar:Tabs and toolbar
+az:Tabs and toolbar
+bg:Tabs and toolbar
+bn:Tabs and toolbar
+br:Tabs and toolbar
+bs:Tabs and toolbar
+by:Tabs and toolbar
+ca:Tabs and toolbar
+ca-xv:Tabs and toolbar
+cn:标签页和工具栏
+co:Tabs and toolbar
+cy:Tabs and toolbar
+cz:Tabs and toolbar
+de:Tabs and toolbar
+dk:Tabs and toolbar
+el:Tabs and toolbar
+es:Tabs and toolbar
+et:Tabs and toolbar
+eu:Tabs and toolbar
+fa:Tabs and toolbar
+fi:Tabs and toolbar
+fo:Tabs and toolbar
+fr:Tabs and toolbar
+fy-nl:Tabs and toolbar
+ga:Tabs and toolbar
+gl:Tabs and toolbar
+he:Tabs and toolbar
+hi:Tabs and toolbar
+hr:Tabs and toolbar
+hu:Tabs and toolbar
+id:Tabs and toolbar
+it:Tabs and toolbar
+ja:Tabs and toolbar
+jv:Tabs and toolbar
+ka:Tabs and toolbar
+kr:Tabs and toolbar
+ku:Tabs and toolbar
+kw:Tabs and toolbar
+lt:Tabs and toolbar
+lv:Tabs and toolbar
+mk:Tabs and toolbar
+ml:Tabs and toolbar
+mm:Tabs and toolbar
+my:Tabs and toolbar
+ne:Tabs and toolbar
+nl:Tabs and toolbar
+nn:Tabs and toolbar
+no:Tabs and toolbar
+pa:Tabs and toolbar
+pl:Tabs and toolbar
+pt:Tabs and toolbar
+ro:Tabs and toolbar
+ru:Tabs and toolbar
+sat:Tabs and toolbar
+si:Tabs and toolbar
+sk:Tabs and toolbar
+sl:Tabs and toolbar
+sn:Tabs and toolbar
+sp-rs:Tabs and toolbar
+sq:Tabs and toolbar
+sr-rs:Tabs and toolbar
+sv:Tabs and toolbar
+ta:Tabs and toolbar
+th:Tabs and toolbar
+tl:Tabs and toolbar
+tr:Tabs and toolbar
+tw:分頁和工具列
+uk:Tabs and toolbar
+uz:Tabs and toolbar
+vn:Tabs and toolbar
 :Tagged PDF
 am:Կցված PDF
 br:PDF etiquetado
@@ -19380,6 +25428,79 @@ tw:文字太少，無法提取書籤。是否對全部頁面做 OCR，並儲存�
 uk:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
 uz:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
 vn:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
+:These changes require restarting the application. Restart now?
+af:These changes require restarting the application. Restart now?
+am:These changes require restarting the application. Restart now?
+ar:These changes require restarting the application. Restart now?
+az:These changes require restarting the application. Restart now?
+bg:These changes require restarting the application. Restart now?
+bn:These changes require restarting the application. Restart now?
+br:These changes require restarting the application. Restart now?
+bs:These changes require restarting the application. Restart now?
+by:These changes require restarting the application. Restart now?
+ca:These changes require restarting the application. Restart now?
+ca-xv:These changes require restarting the application. Restart now?
+cn:这些更改需要重新启动应用程序。现在重启吗？
+co:These changes require restarting the application. Restart now?
+cy:These changes require restarting the application. Restart now?
+cz:These changes require restarting the application. Restart now?
+de:These changes require restarting the application. Restart now?
+dk:These changes require restarting the application. Restart now?
+el:These changes require restarting the application. Restart now?
+es:These changes require restarting the application. Restart now?
+et:These changes require restarting the application. Restart now?
+eu:These changes require restarting the application. Restart now?
+fa:These changes require restarting the application. Restart now?
+fi:These changes require restarting the application. Restart now?
+fo:These changes require restarting the application. Restart now?
+fr:These changes require restarting the application. Restart now?
+fy-nl:These changes require restarting the application. Restart now?
+ga:These changes require restarting the application. Restart now?
+gl:These changes require restarting the application. Restart now?
+he:These changes require restarting the application. Restart now?
+hi:These changes require restarting the application. Restart now?
+hr:These changes require restarting the application. Restart now?
+hu:These changes require restarting the application. Restart now?
+id:These changes require restarting the application. Restart now?
+it:These changes require restarting the application. Restart now?
+ja:These changes require restarting the application. Restart now?
+jv:These changes require restarting the application. Restart now?
+ka:These changes require restarting the application. Restart now?
+kr:These changes require restarting the application. Restart now?
+ku:These changes require restarting the application. Restart now?
+kw:These changes require restarting the application. Restart now?
+lt:These changes require restarting the application. Restart now?
+lv:These changes require restarting the application. Restart now?
+mk:These changes require restarting the application. Restart now?
+ml:These changes require restarting the application. Restart now?
+mm:These changes require restarting the application. Restart now?
+my:These changes require restarting the application. Restart now?
+ne:These changes require restarting the application. Restart now?
+nl:These changes require restarting the application. Restart now?
+nn:These changes require restarting the application. Restart now?
+no:These changes require restarting the application. Restart now?
+pa:These changes require restarting the application. Restart now?
+pl:These changes require restarting the application. Restart now?
+pt:These changes require restarting the application. Restart now?
+ro:These changes require restarting the application. Restart now?
+ru:These changes require restarting the application. Restart now?
+sat:These changes require restarting the application. Restart now?
+si:These changes require restarting the application. Restart now?
+sk:These changes require restarting the application. Restart now?
+sl:These changes require restarting the application. Restart now?
+sn:These changes require restarting the application. Restart now?
+sp-rs:These changes require restarting the application. Restart now?
+sq:These changes require restarting the application. Restart now?
+sr-rs:These changes require restarting the application. Restart now?
+sv:These changes require restarting the application. Restart now?
+ta:These changes require restarting the application. Restart now?
+th:These changes require restarting the application. Restart now?
+tl:These changes require restarting the application. Restart now?
+tr:These changes require restarting the application. Restart now?
+tw:這些變更需要重新啟動應用程式。現在重新啟動嗎？
+uk:These changes require restarting the application. Restart now?
+uz:These changes require restarting the application. Restart now?
+vn:These changes require restarting the application. Restart now?
 :This PDF already has searchable text. Replace it with newly recognized text?
 af:This PDF already has searchable text. Replace it with newly recognized text?
 am:This PDF already has searchable text. Replace it with newly recognized text?
@@ -20472,6 +26593,152 @@ nl:Vertalen met &Deepl
 pl:Tłumacz za pomocą &DeepL
 sk:Preložiť pomocou &DeepL
 tw:使用 DeepL 翻譯(&D)
+:Tree &font:
+af:Tree &font:
+am:Tree &font:
+ar:Tree &font:
+az:Tree &font:
+bg:Tree &font:
+bn:Tree &font:
+br:Tree &font:
+bs:Tree &font:
+by:Tree &font:
+ca:Tree &font:
+ca-xv:Tree &font:
+cn:目录字体(&F)：
+co:Tree &font:
+cy:Tree &font:
+cz:Tree &font:
+de:Tree &font:
+dk:Tree &font:
+el:Tree &font:
+es:Tree &font:
+et:Tree &font:
+eu:Tree &font:
+fa:Tree &font:
+fi:Tree &font:
+fo:Tree &font:
+fr:Tree &font:
+fy-nl:Tree &font:
+ga:Tree &font:
+gl:Tree &font:
+he:Tree &font:
+hi:Tree &font:
+hr:Tree &font:
+hu:Tree &font:
+id:Tree &font:
+it:Tree &font:
+ja:Tree &font:
+jv:Tree &font:
+ka:Tree &font:
+kr:Tree &font:
+ku:Tree &font:
+kw:Tree &font:
+lt:Tree &font:
+lv:Tree &font:
+mk:Tree &font:
+ml:Tree &font:
+mm:Tree &font:
+my:Tree &font:
+ne:Tree &font:
+nl:Tree &font:
+nn:Tree &font:
+no:Tree &font:
+pa:Tree &font:
+pl:Tree &font:
+pt:Tree &font:
+ro:Tree &font:
+ru:Tree &font:
+sat:Tree &font:
+si:Tree &font:
+sk:Tree &font:
+sl:Tree &font:
+sn:Tree &font:
+sp-rs:Tree &font:
+sq:Tree &font:
+sr-rs:Tree &font:
+sv:Tree &font:
+ta:Tree &font:
+th:Tree &font:
+tl:Tree &font:
+tr:Tree &font:
+tw:目錄字型(&F)：
+uk:Tree &font:
+uz:Tree &font:
+vn:Tree &font:
+:Tree font size must be 0 (automatic) or between 6 and 72.
+af:Tree font size must be 0 (automatic) or between 6 and 72.
+am:Tree font size must be 0 (automatic) or between 6 and 72.
+ar:Tree font size must be 0 (automatic) or between 6 and 72.
+az:Tree font size must be 0 (automatic) or between 6 and 72.
+bg:Tree font size must be 0 (automatic) or between 6 and 72.
+bn:Tree font size must be 0 (automatic) or between 6 and 72.
+br:Tree font size must be 0 (automatic) or between 6 and 72.
+bs:Tree font size must be 0 (automatic) or between 6 and 72.
+by:Tree font size must be 0 (automatic) or between 6 and 72.
+ca:Tree font size must be 0 (automatic) or between 6 and 72.
+ca-xv:Tree font size must be 0 (automatic) or between 6 and 72.
+cn:目录字号必须为 0（自动）或 6 到 72。
+co:Tree font size must be 0 (automatic) or between 6 and 72.
+cy:Tree font size must be 0 (automatic) or between 6 and 72.
+cz:Tree font size must be 0 (automatic) or between 6 and 72.
+de:Tree font size must be 0 (automatic) or between 6 and 72.
+dk:Tree font size must be 0 (automatic) or between 6 and 72.
+el:Tree font size must be 0 (automatic) or between 6 and 72.
+es:Tree font size must be 0 (automatic) or between 6 and 72.
+et:Tree font size must be 0 (automatic) or between 6 and 72.
+eu:Tree font size must be 0 (automatic) or between 6 and 72.
+fa:Tree font size must be 0 (automatic) or between 6 and 72.
+fi:Tree font size must be 0 (automatic) or between 6 and 72.
+fo:Tree font size must be 0 (automatic) or between 6 and 72.
+fr:Tree font size must be 0 (automatic) or between 6 and 72.
+fy-nl:Tree font size must be 0 (automatic) or between 6 and 72.
+ga:Tree font size must be 0 (automatic) or between 6 and 72.
+gl:Tree font size must be 0 (automatic) or between 6 and 72.
+he:Tree font size must be 0 (automatic) or between 6 and 72.
+hi:Tree font size must be 0 (automatic) or between 6 and 72.
+hr:Tree font size must be 0 (automatic) or between 6 and 72.
+hu:Tree font size must be 0 (automatic) or between 6 and 72.
+id:Tree font size must be 0 (automatic) or between 6 and 72.
+it:Tree font size must be 0 (automatic) or between 6 and 72.
+ja:Tree font size must be 0 (automatic) or between 6 and 72.
+jv:Tree font size must be 0 (automatic) or between 6 and 72.
+ka:Tree font size must be 0 (automatic) or between 6 and 72.
+kr:Tree font size must be 0 (automatic) or between 6 and 72.
+ku:Tree font size must be 0 (automatic) or between 6 and 72.
+kw:Tree font size must be 0 (automatic) or between 6 and 72.
+lt:Tree font size must be 0 (automatic) or between 6 and 72.
+lv:Tree font size must be 0 (automatic) or between 6 and 72.
+mk:Tree font size must be 0 (automatic) or between 6 and 72.
+ml:Tree font size must be 0 (automatic) or between 6 and 72.
+mm:Tree font size must be 0 (automatic) or between 6 and 72.
+my:Tree font size must be 0 (automatic) or between 6 and 72.
+ne:Tree font size must be 0 (automatic) or between 6 and 72.
+nl:Tree font size must be 0 (automatic) or between 6 and 72.
+nn:Tree font size must be 0 (automatic) or between 6 and 72.
+no:Tree font size must be 0 (automatic) or between 6 and 72.
+pa:Tree font size must be 0 (automatic) or between 6 and 72.
+pl:Tree font size must be 0 (automatic) or between 6 and 72.
+pt:Tree font size must be 0 (automatic) or between 6 and 72.
+ro:Tree font size must be 0 (automatic) or between 6 and 72.
+ru:Tree font size must be 0 (automatic) or between 6 and 72.
+sat:Tree font size must be 0 (automatic) or between 6 and 72.
+si:Tree font size must be 0 (automatic) or between 6 and 72.
+sk:Tree font size must be 0 (automatic) or between 6 and 72.
+sl:Tree font size must be 0 (automatic) or between 6 and 72.
+sn:Tree font size must be 0 (automatic) or between 6 and 72.
+sp-rs:Tree font size must be 0 (automatic) or between 6 and 72.
+sq:Tree font size must be 0 (automatic) or between 6 and 72.
+sr-rs:Tree font size must be 0 (automatic) or between 6 and 72.
+sv:Tree font size must be 0 (automatic) or between 6 and 72.
+ta:Tree font size must be 0 (automatic) or between 6 and 72.
+th:Tree font size must be 0 (automatic) or between 6 and 72.
+tl:Tree font size must be 0 (automatic) or between 6 and 72.
+tr:Tree font size must be 0 (automatic) or between 6 and 72.
+tw:目錄字型大小必須為 0（自動）或 6 到 72。
+uk:Tree font size must be 0 (automatic) or between 6 and 72.
+uz:Tree font size must be 0 (automatic) or between 6 and 72.
+vn:Tree font size must be 0 (automatic) or between 6 and 72.
 :Un-register Windows Previewer
 br:Remover o registro do Pré-Visualizador do Windows
 cn:解除注册 Windows 预览器
@@ -20787,6 +27054,79 @@ nl:Niet opgeslagen aantekeningen in '%s'
 pl:Niezapisane adnotacje w '%s'
 sk:Neuložené anotácie v '%s'
 tw: '%s' 尚未儲存註解
+:Updates
+af:Updates
+am:Updates
+ar:Updates
+az:Updates
+bg:Updates
+bn:Updates
+br:Updates
+bs:Updates
+by:Updates
+ca:Updates
+ca-xv:Updates
+cn:更新
+co:Updates
+cy:Updates
+cz:Updates
+de:Updates
+dk:Updates
+el:Updates
+es:Updates
+et:Updates
+eu:Updates
+fa:Updates
+fi:Updates
+fo:Updates
+fr:Updates
+fy-nl:Updates
+ga:Updates
+gl:Updates
+he:Updates
+hi:Updates
+hr:Updates
+hu:Updates
+id:Updates
+it:Updates
+ja:Updates
+jv:Updates
+ka:Updates
+kr:Updates
+ku:Updates
+kw:Updates
+lt:Updates
+lv:Updates
+mk:Updates
+ml:Updates
+mm:Updates
+my:Updates
+ne:Updates
+nl:Updates
+nn:Updates
+no:Updates
+pa:Updates
+pl:Updates
+pt:Updates
+ro:Updates
+ru:Updates
+sat:Updates
+si:Updates
+sk:Updates
+sl:Updates
+sn:Updates
+sp-rs:Updates
+sq:Updates
+sr-rs:Updates
+sv:Updates
+ta:Updates
+th:Updates
+tl:Updates
+tr:Updates
+tw:更新
+uk:Updates
+uz:Updates
+vn:Updates
 :Use &tabs
 am:Ավելացնել &ներդիրներ
 br:Usar &abas
@@ -20799,6 +27139,225 @@ nl:Gebruik &tabs
 pl:Włącz wyświetlanie &kart
 sk:Povoliť &záložky
 tw:使用分頁(&T)
+:Use &tabs (requires restart)
+af:Use &tabs (requires restart)
+am:Use &tabs (requires restart)
+ar:Use &tabs (requires restart)
+az:Use &tabs (requires restart)
+bg:Use &tabs (requires restart)
+bn:Use &tabs (requires restart)
+br:Use &tabs (requires restart)
+bs:Use &tabs (requires restart)
+by:Use &tabs (requires restart)
+ca:Use &tabs (requires restart)
+ca-xv:Use &tabs (requires restart)
+cn:使用标签页（需要重启）(&T)
+co:Use &tabs (requires restart)
+cy:Use &tabs (requires restart)
+cz:Use &tabs (requires restart)
+de:Use &tabs (requires restart)
+dk:Use &tabs (requires restart)
+el:Use &tabs (requires restart)
+es:Use &tabs (requires restart)
+et:Use &tabs (requires restart)
+eu:Use &tabs (requires restart)
+fa:Use &tabs (requires restart)
+fi:Use &tabs (requires restart)
+fo:Use &tabs (requires restart)
+fr:Use &tabs (requires restart)
+fy-nl:Use &tabs (requires restart)
+ga:Use &tabs (requires restart)
+gl:Use &tabs (requires restart)
+he:Use &tabs (requires restart)
+hi:Use &tabs (requires restart)
+hr:Use &tabs (requires restart)
+hu:Use &tabs (requires restart)
+id:Use &tabs (requires restart)
+it:Use &tabs (requires restart)
+ja:Use &tabs (requires restart)
+jv:Use &tabs (requires restart)
+ka:Use &tabs (requires restart)
+kr:Use &tabs (requires restart)
+ku:Use &tabs (requires restart)
+kw:Use &tabs (requires restart)
+lt:Use &tabs (requires restart)
+lv:Use &tabs (requires restart)
+mk:Use &tabs (requires restart)
+ml:Use &tabs (requires restart)
+mm:Use &tabs (requires restart)
+my:Use &tabs (requires restart)
+ne:Use &tabs (requires restart)
+nl:Use &tabs (requires restart)
+nn:Use &tabs (requires restart)
+no:Use &tabs (requires restart)
+pa:Use &tabs (requires restart)
+pl:Use &tabs (requires restart)
+pt:Use &tabs (requires restart)
+ro:Use &tabs (requires restart)
+ru:Use &tabs (requires restart)
+sat:Use &tabs (requires restart)
+si:Use &tabs (requires restart)
+sk:Use &tabs (requires restart)
+sl:Use &tabs (requires restart)
+sn:Use &tabs (requires restart)
+sp-rs:Use &tabs (requires restart)
+sq:Use &tabs (requires restart)
+sr-rs:Use &tabs (requires restart)
+sv:Use &tabs (requires restart)
+ta:Use &tabs (requires restart)
+th:Use &tabs (requires restart)
+tl:Use &tabs (requires restart)
+tr:Use &tabs (requires restart)
+tw:使用分頁（需要重新啟動）(&T)
+uk:Use &tabs (requires restart)
+uz:Use &tabs (requires restart)
+vn:Use &tabs (requires restart)
+:Use s&mooth scrolling
+af:Use s&mooth scrolling
+am:Use s&mooth scrolling
+ar:Use s&mooth scrolling
+az:Use s&mooth scrolling
+bg:Use s&mooth scrolling
+bn:Use s&mooth scrolling
+br:Use s&mooth scrolling
+bs:Use s&mooth scrolling
+by:Use s&mooth scrolling
+ca:Use s&mooth scrolling
+ca-xv:Use s&mooth scrolling
+cn:使用平滑滚动(&M)
+co:Use s&mooth scrolling
+cy:Use s&mooth scrolling
+cz:Use s&mooth scrolling
+de:Use s&mooth scrolling
+dk:Use s&mooth scrolling
+el:Use s&mooth scrolling
+es:Use s&mooth scrolling
+et:Use s&mooth scrolling
+eu:Use s&mooth scrolling
+fa:Use s&mooth scrolling
+fi:Use s&mooth scrolling
+fo:Use s&mooth scrolling
+fr:Use s&mooth scrolling
+fy-nl:Use s&mooth scrolling
+ga:Use s&mooth scrolling
+gl:Use s&mooth scrolling
+he:Use s&mooth scrolling
+hi:Use s&mooth scrolling
+hr:Use s&mooth scrolling
+hu:Use s&mooth scrolling
+id:Use s&mooth scrolling
+it:Use s&mooth scrolling
+ja:Use s&mooth scrolling
+jv:Use s&mooth scrolling
+ka:Use s&mooth scrolling
+kr:Use s&mooth scrolling
+ku:Use s&mooth scrolling
+kw:Use s&mooth scrolling
+lt:Use s&mooth scrolling
+lv:Use s&mooth scrolling
+mk:Use s&mooth scrolling
+ml:Use s&mooth scrolling
+mm:Use s&mooth scrolling
+my:Use s&mooth scrolling
+ne:Use s&mooth scrolling
+nl:Use s&mooth scrolling
+nn:Use s&mooth scrolling
+no:Use s&mooth scrolling
+pa:Use s&mooth scrolling
+pl:Use s&mooth scrolling
+pt:Use s&mooth scrolling
+ro:Use s&mooth scrolling
+ru:Use s&mooth scrolling
+sat:Use s&mooth scrolling
+si:Use s&mooth scrolling
+sk:Use s&mooth scrolling
+sl:Use s&mooth scrolling
+sn:Use s&mooth scrolling
+sp-rs:Use s&mooth scrolling
+sq:Use s&mooth scrolling
+sr-rs:Use s&mooth scrolling
+sv:Use s&mooth scrolling
+ta:Use s&mooth scrolling
+th:Use s&mooth scrolling
+tl:Use s&mooth scrolling
+tr:Use s&mooth scrolling
+tw:使用平滑捲動(&M)
+uk:Use s&mooth scrolling
+uz:Use s&mooth scrolling
+vn:Use s&mooth scrolling
+:Use the &floating search window
+af:Use the &floating search window
+am:Use the &floating search window
+ar:Use the &floating search window
+az:Use the &floating search window
+bg:Use the &floating search window
+bn:Use the &floating search window
+br:Use the &floating search window
+bs:Use the &floating search window
+by:Use the &floating search window
+ca:Use the &floating search window
+ca-xv:Use the &floating search window
+cn:使用浮动搜索窗口(&F)
+co:Use the &floating search window
+cy:Use the &floating search window
+cz:Use the &floating search window
+de:Use the &floating search window
+dk:Use the &floating search window
+el:Use the &floating search window
+es:Use the &floating search window
+et:Use the &floating search window
+eu:Use the &floating search window
+fa:Use the &floating search window
+fi:Use the &floating search window
+fo:Use the &floating search window
+fr:Use the &floating search window
+fy-nl:Use the &floating search window
+ga:Use the &floating search window
+gl:Use the &floating search window
+he:Use the &floating search window
+hi:Use the &floating search window
+hr:Use the &floating search window
+hu:Use the &floating search window
+id:Use the &floating search window
+it:Use the &floating search window
+ja:Use the &floating search window
+jv:Use the &floating search window
+ka:Use the &floating search window
+kr:Use the &floating search window
+ku:Use the &floating search window
+kw:Use the &floating search window
+lt:Use the &floating search window
+lv:Use the &floating search window
+mk:Use the &floating search window
+ml:Use the &floating search window
+mm:Use the &floating search window
+my:Use the &floating search window
+ne:Use the &floating search window
+nl:Use the &floating search window
+nn:Use the &floating search window
+no:Use the &floating search window
+pa:Use the &floating search window
+pl:Use the &floating search window
+pt:Use the &floating search window
+ro:Use the &floating search window
+ru:Use the &floating search window
+sat:Use the &floating search window
+si:Use the &floating search window
+sk:Use the &floating search window
+sl:Use the &floating search window
+sn:Use the &floating search window
+sp-rs:Use the &floating search window
+sq:Use the &floating search window
+sr-rs:Use the &floating search window
+sv:Use the &floating search window
+ta:Use the &floating search window
+th:Use the &floating search window
+tl:Use the &floating search window
+tr:Use the &floating search window
+tw:使用浮動搜尋視窗(&F)
+uk:Use the &floating search window
+uz:Use the &floating search window
+vn:Use the &floating search window
 :User Comment:
 br:Comentãrio do Usuário:
 cn:用户注释:
@@ -21033,6 +27592,152 @@ it:Bilanciamento bianco:
 nl:Wit Balance:
 pl:Balans bieli:
 sk:Vyváženie bielej:
+:Window
+af:Window
+am:Window
+ar:Window
+az:Window
+bg:Window
+bn:Window
+br:Window
+bs:Window
+by:Window
+ca:Window
+ca-xv:Window
+cn:窗口
+co:Window
+cy:Window
+cz:Window
+de:Window
+dk:Window
+el:Window
+es:Window
+et:Window
+eu:Window
+fa:Window
+fi:Window
+fo:Window
+fr:Window
+fy-nl:Window
+ga:Window
+gl:Window
+he:Window
+hi:Window
+hr:Window
+hu:Window
+id:Window
+it:Window
+ja:Window
+jv:Window
+ka:Window
+kr:Window
+ku:Window
+kw:Window
+lt:Window
+lv:Window
+mk:Window
+ml:Window
+mm:Window
+my:Window
+ne:Window
+nl:Window
+nn:Window
+no:Window
+pa:Window
+pl:Window
+pt:Window
+ro:Window
+ru:Window
+sat:Window
+si:Window
+sk:Window
+sl:Window
+sn:Window
+sp-rs:Window
+sq:Window
+sr-rs:Window
+sv:Window
+ta:Window
+th:Window
+tl:Window
+tr:Window
+tw:視窗
+uk:Window
+uz:Window
+vn:Window
+:Windows scrollbars
+af:Windows scrollbars
+am:Windows scrollbars
+ar:Windows scrollbars
+az:Windows scrollbars
+bg:Windows scrollbars
+bn:Windows scrollbars
+br:Windows scrollbars
+bs:Windows scrollbars
+by:Windows scrollbars
+ca:Windows scrollbars
+ca-xv:Windows scrollbars
+cn:Windows 滚动条
+co:Windows scrollbars
+cy:Windows scrollbars
+cz:Windows scrollbars
+de:Windows scrollbars
+dk:Windows scrollbars
+el:Windows scrollbars
+es:Windows scrollbars
+et:Windows scrollbars
+eu:Windows scrollbars
+fa:Windows scrollbars
+fi:Windows scrollbars
+fo:Windows scrollbars
+fr:Windows scrollbars
+fy-nl:Windows scrollbars
+ga:Windows scrollbars
+gl:Windows scrollbars
+he:Windows scrollbars
+hi:Windows scrollbars
+hr:Windows scrollbars
+hu:Windows scrollbars
+id:Windows scrollbars
+it:Windows scrollbars
+ja:Windows scrollbars
+jv:Windows scrollbars
+ka:Windows scrollbars
+kr:Windows scrollbars
+ku:Windows scrollbars
+kw:Windows scrollbars
+lt:Windows scrollbars
+lv:Windows scrollbars
+mk:Windows scrollbars
+ml:Windows scrollbars
+mm:Windows scrollbars
+my:Windows scrollbars
+ne:Windows scrollbars
+nl:Windows scrollbars
+nn:Windows scrollbars
+no:Windows scrollbars
+pa:Windows scrollbars
+pl:Windows scrollbars
+pt:Windows scrollbars
+ro:Windows scrollbars
+ru:Windows scrollbars
+sat:Windows scrollbars
+si:Windows scrollbars
+sk:Windows scrollbars
+sl:Windows scrollbars
+sn:Windows scrollbars
+sp-rs:Windows scrollbars
+sq:Windows scrollbars
+sr-rs:Windows scrollbars
+sv:Windows scrollbars
+ta:Windows scrollbars
+th:Windows scrollbars
+tl:Windows scrollbars
+tr:Windows scrollbars
+tw:Windows 捲動軸
+uk:Windows scrollbars
+uz:Windows scrollbars
+vn:Windows scrollbars
 :Write bookmarks
 cn:写入书签
 tw:寫入書籤

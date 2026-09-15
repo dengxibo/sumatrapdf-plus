@@ -116,6 +116,7 @@ struct FindWindowWnd : Wnd {
     int pendingStartGlyph = 0;
     int pendingEndPage = 0;
     int pendingEndGlyph = 0;
+    int pendingNavigationTopIndex = -1;
     LONG pendingNavigationCountEpoch = 0;
 
     FindWindowWnd() = default;
@@ -188,6 +189,16 @@ static void DeferredGoToFindMatch(DeferredGoToFindMatchData* d) {
             engine->PromoteCachedTextUtf8ForSelection(d->endPage)) {
             d->findWindow->hasPendingNavigation = false;
             GoToFindMatch(win, d->startPage, d->startGlyph, d->endPage, d->endGlyph);
+            if (d->findWindow->pendingNavigationTopIndex >= 0 && d->findWindow->results) {
+                logf("find: restore top=%d after cached navigation\n", d->findWindow->pendingNavigationTopIndex);
+                SendMessageW(d->findWindow->results->hwnd, LB_SETTOPINDEX,
+                             (WPARAM)d->findWindow->pendingNavigationTopIndex, 0);
+                d->findWindow->pendingNavigationTopIndex = -1;
+            }
+            if (d->findWindow->results) {
+                SendMessageW(d->findWindow->results->hwnd, WM_SETREDRAW, TRUE, 0);
+                InvalidateRect(d->findWindow->results->hwnd, nullptr, TRUE);
+            }
             return;
         }
         if (win->ctrl) {
@@ -198,6 +209,15 @@ static void DeferredGoToFindMatch(DeferredGoToFindMatchData* d) {
     }
     d->findWindow->hasPendingNavigation = false;
     GoToFindMatch(win, d->startPage, d->startGlyph, d->endPage, d->endGlyph);
+    if (d->findWindow->pendingNavigationTopIndex >= 0 && d->findWindow->results) {
+        logf("find: restore top=%d after navigation\n", d->findWindow->pendingNavigationTopIndex);
+        SendMessageW(d->findWindow->results->hwnd, LB_SETTOPINDEX, (WPARAM)d->findWindow->pendingNavigationTopIndex, 0);
+        d->findWindow->pendingNavigationTopIndex = -1;
+    }
+    if (d->findWindow->results) {
+        SendMessageW(d->findWindow->results->hwnd, WM_SETREDRAW, TRUE, 0);
+        InvalidateRect(d->findWindow->results->hwnd, nullptr, TRUE);
+    }
 }
 
 // append a command's keyboard shortcut to its tooltip, e.g. "Find Next (F3)"
@@ -745,6 +765,19 @@ void FindWindowWnd::OnResultSelected() {
     pendingStartGlyph = fm.startGlyph;
     pendingEndPage = fm.endPage;
     pendingEndGlyph = fm.endGlyph;
+    // Preserve the viewport across the deferred navigation refresh. The native
+    // list box may apply its own ensure-visible scroll after selection changes,
+    // including on mouse-button release, so restore the index after navigation.
+    pendingNavigationTopIndex = results ? (int)SendMessageW(results->hwnd, LB_GETTOPINDEX, 0, 0) : -1;
+    if (results) {
+        // Hide the native list box's intermediate ensure-visible scroll; the
+        // deferred navigation restores the viewport before repainting.
+        SendMessageW(results->hwnd, WM_SETREDRAW, FALSE, 0);
+        if (pendingNavigationTopIndex >= 0) {
+            SendMessageW(results->hwnd, LB_SETTOPINDEX, (WPARAM)pendingNavigationTopIndex, 0);
+        }
+    }
+    logf("find: select idx=%d top=%d capture=%p\n", idx, pendingNavigationTopIndex, GetCapture());
     pendingNavigationCountEpoch = win->findCountEpoch;
     // defer document navigation so the results list can scroll/repaint first
     // (issue #5692). Coalesce rapid F3 / arrow presses to the latest selection.

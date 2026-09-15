@@ -899,7 +899,9 @@ HFONT GetAppTreeFontForDpi(int dpi) {
     }
     char* fntNameUser = gGlobalPrefs->treeFontName;
     HFONT font = nullptr;
-    if (fntNameUser && !str::EqI(fntNameUser, "automatic") && !str::EqI(fntNameUser, "auto")) {
+    bool automaticFont = !fntNameUser || str::EqI(fntNameUser, "automatic") || str::EqI(fntNameUser, "auto") ||
+                         str::Eq(fntNameUser, _TRA("Automatic"));
+    if (!automaticFont) {
         font = GetUserGuiFontForDpi(fntNameUser, fntSize, dpi);
     } else {
         NONCLIENTMETRICS ncm{};

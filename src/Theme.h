@@ -7,6 +7,8 @@ void SelectNextTheme();
 void ToggleLightDarkTheme();
 void CreateThemeCommands();
 void UpdateThemeCommandLabels();
+int GetThemeCount();
+const char* GetThemeName(int index);
 
 COLORREF ThemeDocumentColors(COLORREF&);
 COLORREF ThemePageRenderColors(COLORREF&, bool respectPdfDocColorMode = true);

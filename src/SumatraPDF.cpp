@@ -7668,6 +7668,12 @@ static void ShowOptionsDialog(HWND hwnd) {
     bool searchUIFloatingBefore = gGlobalPrefs->searchUIFloating;
     bool reloadModifiedBefore = gGlobalPrefs->reloadModifiedDocuments;
     AutoFreeStr scrollbarsBefore(str::Dup(gGlobalPrefs->scrollbars));
+    AutoFreeStr themeBefore(str::Dup(gGlobalPrefs->theme));
+    AutoFreeStr documentColorModeBefore(str::Dup(gGlobalPrefs->documentColorMode));
+    AutoFreeStr treeFontNameBefore(str::Dup(gGlobalPrefs->treeFontName));
+    int treeFontSizeBefore = gGlobalPrefs->treeFontSize;
+    int customScreenDpiBefore = gGlobalPrefs->customScreenDPI;
+    bool fullPathInTitleBefore = gGlobalPrefs->fullPathInTitle;
 
     INT_PTR dialogResult = Dialog_Settings(hwnd, gGlobalPrefs);
     if (dialogResult == IDC_OPEN_ADVANCED_OPTIONS) {
@@ -7682,12 +7688,26 @@ static void ShowOptionsDialog(HWND hwnd) {
         gFileHistory.Clear(true);
         DeleteThumbnailCacheDirectory();
     }
-    UpdateDocumentColors();
+    bool themeChanged = !str::EqI(themeBefore, gGlobalPrefs->theme);
+    bool documentColorsChanged = !str::EqI(documentColorModeBefore, gGlobalPrefs->documentColorMode);
+    if (themeChanged) {
+        SetCurrentThemeFromSettings();
+    }
+    if (documentColorsChanged && !themeChanged) {
+        SetPdfDocumentColorMode(str::EqI(gGlobalPrefs->documentColorMode, "original") ? PdfDocumentColorMode::Light
+                                                                                      : PdfDocumentColorMode::Auto);
+        UpdateDocumentColors();
+    }
     if (gGlobalPrefs->checkForUpdates != checkForUpdatesBefore) {
         RefreshAutomaticUpdateChecks();
     }
 
-    if (gGlobalPrefs->treeWrapLabels != treeWrapLabelsBefore) {
+    bool treeFontChanged =
+        treeFontSizeBefore != gGlobalPrefs->treeFontSize || !str::EqI(treeFontNameBefore, gGlobalPrefs->treeFontName);
+    if (treeFontChanged) {
+        InvalidateUiFonts();
+    }
+    if (treeFontChanged || gGlobalPrefs->treeWrapLabels != treeWrapLabelsBefore) {
         for (MainWindow* win : gWindows) {
             int frameDpi = win->frameDpi > 0 ? win->frameDpi : DpiGet(win->hwndFrame);
             if (win->tocTreeView && win->tocTreeView->hwnd) {
@@ -7701,9 +7721,16 @@ static void ShowOptionsDialog(HWND hwnd) {
         }
     }
 
-    if (gGlobalPrefs->useTabs != useTabsBefore || gGlobalPrefs->noHomeTab != noHomeTabBefore) {
+    bool restartRequired = gGlobalPrefs->useTabs != useTabsBefore || gGlobalPrefs->noHomeTab != noHomeTabBefore ||
+                           gGlobalPrefs->customScreenDPI != customScreenDpiBefore;
+    if (restartRequired) {
         SaveSettings();
-        RestartApplication();
+        int answer =
+            MessageBoxW(hwnd, ToWStrTemp(_TRA("These changes require restarting the application. Restart now?")),
+                        ToWStrTemp(_TRA("Restart required")), MB_ICONINFORMATION | MB_YESNO | MbRtlReadingMaybe());
+        if (answer == IDYES) {
+            RestartApplication();
+        }
         return;
     }
 
@@ -7726,6 +7753,9 @@ static void ShowOptionsDialog(HWND hwnd) {
             FindWindowSetDocked(win, !gGlobalPrefs->searchUIFloating);
         }
         win->RedrawAll(true);
+        if (gGlobalPrefs->fullPathInTitle != fullPathInTitleBefore) {
+            SetFrameTitleForTab(win->CurrentTab(), true);
+        }
     }
     if (!str::Eq(scrollbarsBefore, gGlobalPrefs->scrollbars)) {
         UpdateFixedPageScrollbarsVisibility();
