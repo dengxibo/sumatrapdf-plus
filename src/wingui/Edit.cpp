@@ -193,7 +193,9 @@ LRESULT Edit::OnMessageReflect(UINT msg, WPARAM wp, LPARAM lparam) {
         }
         if (!IsSpecialColor(bgColor)) {
             SetBkColor(hdc, bgColor);
-            SetBkMode(hdc, TRANSPARENT);
+            // Edit controls only repaint the characters affected by an edit. Use an opaque
+            // background so that old glyph pixels are erased when text shifts or changes.
+            SetBkMode(hdc, OPAQUE);
         }
         auto br = BackgroundBrush();
         return (LRESULT)br;
