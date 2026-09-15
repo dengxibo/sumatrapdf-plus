@@ -2,6 +2,9 @@
 
 ## next
 
+- options: expand the Options dialog into General, Interface, Reading, and Advanced categories, exposing commonly used settings without editing the advanced settings file.
+  选项：将“选项”窗口扩充为“常规、界面、阅读、高级”四个分类，常用设置无需再手工编辑高级设置文件。
+
 ## 3.7.31 (2026-09-15)
 
 - PDF repair: documents that require lenient page-tree recovery are now marked as repaired, forcing a full rewrite when AI TOC or other PDF edits are saved instead of producing an invalid incremental update.

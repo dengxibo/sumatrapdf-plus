@@ -931,27 +931,50 @@ bool Dialog_ChangeScrollbar(HWND hwnd) {
     return res == IDOK;
 }
 
-static void RemoveDialogItem(HWND hDlg, int itemId, int prevId = 0) {
-    HWND hItem = GetDlgItem(hDlg, itemId);
-    Rect itemRc = MapRectToWindow(WindowRect(hItem), HWND_DESKTOP, hDlg);
-    // shrink by the distance to the previous item
-    HWND hPrev = prevId ? GetDlgItem(hDlg, prevId) : GetWindow(hItem, GW_HWNDPREV);
-    Rect prevRc = MapRectToWindow(WindowRect(hPrev), HWND_DESKTOP, hDlg);
-    int shrink = itemRc.y - prevRc.y + itemRc.dy - prevRc.dy;
-    // move items below up, shrink container items and hide contained items
-    for (HWND item = GetWindow(hDlg, GW_CHILD); item; item = GetWindow(item, GW_HWNDNEXT)) {
-        Rect rc = MapRectToWindow(WindowRect(item), HWND_DESKTOP, hDlg);
-        if (rc.y >= itemRc.y + itemRc.dy) { // below
-            MoveWindow(item, rc.x, rc.y - shrink, rc.dx, rc.dy, TRUE);
-        } else if (rc.Intersect(itemRc) == rc) { // contained (or self)
-            ShowWindow(item, SW_HIDE);
-        } else if (itemRc.Intersect(rc) == itemRc) { // container
-            MoveWindow(item, rc.x, rc.y, rc.dx, rc.dy - shrink, TRUE);
+static const int gSettingsGeneralControls[] = {IDC_SETTINGS_PAGE_GENERAL, IDC_CHECK_FOR_UPDATES,
+                                               IDC_REMEMBER_OPENED_FILES, IDC_REMEMBER_STATE_PER_DOCUMENT,
+                                               IDC_RESTORE_SESSION,       IDC_REUSE_INSTANCE};
+static const int gSettingsInterfaceControls[] = {
+    IDC_SETTINGS_PAGE_INTERFACE,    IDC_USE_TABS, IDC_NO_HOME_TAB,        IDC_SHOW_MENUBAR_WITH_TABS, IDC_SHOW_TOOLBAR,
+    IDC_SHOW_ANNOT_TOOLBAR_BUTTONS, IDC_TABS_MRU, IDC_SEARCH_UI_FLOATING, IDC_RESTART_REQUIRED};
+static const int gSettingsReadingControls[] = {
+    IDC_SETTINGS_PAGE_READING, IDC_DEFAULT_LAYOUT_LABEL,  IDC_DEFAULT_LAYOUT,   IDC_DEFAULT_ZOOM_LABEL,
+    IDC_DEFAULT_ZOOM,          IDC_DEFAULT_SHOW_TOC,      IDC_SCROLLBARS_LABEL, IDC_SCROLLBARS,
+    IDC_SMOOTH_SCROLL,         IDC_SCROLLBAR_SINGLE_PAGE, IDC_RELOAD_MODIFIED,  IDC_PREVENT_SLEEP_FULLSCREEN};
+static const int gSettingsAdvancedControls[] = {IDC_SETTINGS_PAGE_ADVANCED, IDC_SECTION_INVERSESEARCH,
+                                                IDC_CMDLINE_LABEL, IDC_CMDLINE, IDC_OPEN_ADVANCED_OPTIONS};
+
+static void ShowSettingsPage(HWND hDlg, int page) {
+    struct PageControls {
+        const int* ids;
+        int count;
+    } pages[] = {{gSettingsGeneralControls, dimof(gSettingsGeneralControls)},
+                 {gSettingsInterfaceControls, dimof(gSettingsInterfaceControls)},
+                 {gSettingsReadingControls, dimof(gSettingsReadingControls)},
+                 {gSettingsAdvancedControls, dimof(gSettingsAdvancedControls)}};
+    page = limitValue(page, 0, dimof(pages) - 1);
+    auto* prefs = (GlobalPrefs*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
+    bool showInverseSearch = prefs && prefs->enableTeXEnhancements && CanAccessDisk();
+    for (int i = 0; i < dimof(pages); i++) {
+        for (int j = 0; j < pages[i].count; j++) {
+            int id = pages[i].ids[j];
+            bool isInverseSearch = id == IDC_SECTION_INVERSESEARCH || id == IDC_CMDLINE_LABEL || id == IDC_CMDLINE;
+            bool show = i == page && (!isInverseSearch || showInverseSearch);
+            ShowWindow(GetDlgItem(hDlg, id), show ? SW_SHOW : SW_HIDE);
         }
     }
-    // shrink the dialog
-    Rect dlgRc = WindowRect(hDlg);
-    MoveWindow(hDlg, dlgRc.x, dlgRc.y, dlgRc.dx, dlgRc.dy - shrink, TRUE);
+}
+
+static void UpdateSettingsDependencies(HWND hDlg) {
+    bool rememberFiles = IsDlgButtonChecked(hDlg, IDC_REMEMBER_OPENED_FILES) == BST_CHECKED;
+    EnableWindow(GetDlgItem(hDlg, IDC_REMEMBER_STATE_PER_DOCUMENT), rememberFiles);
+
+    bool useTabs = IsDlgButtonChecked(hDlg, IDC_USE_TABS) == BST_CHECKED;
+    EnableWindow(GetDlgItem(hDlg, IDC_NO_HOME_TAB), useTabs);
+    EnableWindow(GetDlgItem(hDlg, IDC_SHOW_MENUBAR_WITH_TABS), useTabs);
+
+    bool showToolbar = IsDlgButtonChecked(hDlg, IDC_SHOW_TOOLBAR) == BST_CHECKED;
+    EnableWindow(GetDlgItem(hDlg, IDC_SHOW_ANNOT_TOOLBAR_BUTTONS), showToolbar);
 }
 
 static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
@@ -959,7 +982,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
 
     switch (msg) {
         //[ ACCESSKEY_GROUP Settings Dialog
-        case WM_INITDIALOG:
+        case WM_INITDIALOG: {
             prefs = (GlobalPrefs*)lp;
             SetWindowLongPtr(hDlg, GWLP_USERDATA, (LONG_PTR)prefs);
             if (UseDarkModeLib()) {
@@ -990,21 +1013,62 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             CheckDlgButton(hDlg, IDC_CHECK_FOR_UPDATES, prefs->checkForUpdates ? BST_CHECKED : BST_UNCHECKED);
             EnableWindow(GetDlgItem(hDlg, IDC_CHECK_FOR_UPDATES), HasPermission(Perm::InternetAccess));
             CheckDlgButton(hDlg, IDC_REMEMBER_OPENED_FILES, prefs->rememberOpenedFiles ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_RESTORE_SESSION, prefs->restoreSession ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_REUSE_INSTANCE, prefs->reuseInstance ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_NO_HOME_TAB, !prefs->noHomeTab ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_SHOW_MENUBAR_WITH_TABS, prefs->showMenubarWithTabs ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_SHOW_TOOLBAR, prefs->showToolbar ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_SHOW_ANNOT_TOOLBAR_BUTTONS,
+                           prefs->showAnnotToolbarButtons ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_TABS_MRU, prefs->tabsMru ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_SEARCH_UI_FLOATING, prefs->searchUIFloating ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_SMOOTH_SCROLL, prefs->smoothScroll ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_SCROLLBAR_SINGLE_PAGE, prefs->scrollbarInSinglePage ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_RELOAD_MODIFIED, prefs->reloadModifiedDocuments ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_PREVENT_SLEEP_FULLSCREEN,
+                           prefs->preventSleepInFullscreen ? BST_CHECKED : BST_UNCHECKED);
+
+            HWND category = GetDlgItem(hDlg, IDC_SETTINGS_CATEGORY);
+            SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("General")));
+            SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Interface")));
+            SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Reading")));
+            SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Advanced")));
+            ListBox_SetCurSel(category, 0);
+
+            HWND scrollbars = GetDlgItem(hDlg, IDC_SCROLLBARS);
+            CbAddString(scrollbars, _TRA("Windows scrollbars"));
+            CbAddString(scrollbars, _TRA("Smart auto-hide scrollbars"));
+            CbAddString(scrollbars, _TRA("Always-visible overlay scrollbars"));
+            CbAddString(scrollbars, _TRA("No scrollbars"));
+            int scrollbarIdx = seqstrings::StrToIdxIS(gScrollbarModeNames, prefs->scrollbars);
+            CbSetCurrentSelection(scrollbars, std::max(0, scrollbarIdx));
 
             HwndSetText(hDlg, _TRA("SumatraPDF Options"));
-            HwndSetDlgItemText(hDlg, IDC_SECTION_VIEW, _TRA("View"));
             HwndSetDlgItemText(hDlg, IDC_DEFAULT_LAYOUT_LABEL, _TRA("Default &Layout:"));
             HwndSetDlgItemText(hDlg, IDC_DEFAULT_ZOOM_LABEL, _TRA("Default &Zoom:"));
             HwndSetDlgItemText(hDlg, IDC_DEFAULT_SHOW_TOC, _TRA("Show the &bookmarks sidebar when available"));
-            HwndSetDlgItemText(hDlg, IDC_REMEMBER_STATE_PER_DOCUMENT,
-                               _TRA("&Remember these settings for each document"));
-            HwndSetDlgItemText(hDlg, IDC_SECTION_ADVANCED, _TRA("Advanced"));
-            HwndSetDlgItemText(hDlg, IDC_USE_TABS, _TRA("Use &tabs"));
+            HwndSetDlgItemText(hDlg, IDC_REMEMBER_STATE_PER_DOCUMENT, _TRA("&Remember settings for each document"));
+            HwndSetDlgItemText(hDlg, IDC_USE_TABS, _TRA("Use &tabs (requires restart)"));
             HwndSetDlgItemText(hDlg, IDC_CHECK_FOR_UPDATES, _TRA("Automatically check for &updates"));
             HwndSetDlgItemText(hDlg, IDC_REMEMBER_OPENED_FILES, _TRA("Remember &opened files"));
+            HwndSetDlgItemText(hDlg, IDC_RESTORE_SESSION, _TRA("Restore the last &session at startup"));
+            HwndSetDlgItemText(hDlg, IDC_REUSE_INSTANCE, _TRA("Open new files in the existing &instance"));
+            HwndSetDlgItemText(hDlg, IDC_NO_HOME_TAB, _TRA("Keep a &Home tab (requires restart)"));
+            HwndSetDlgItemText(hDlg, IDC_SHOW_MENUBAR_WITH_TABS, _TRA("Show the &menu bar with tabs"));
+            HwndSetDlgItemText(hDlg, IDC_SHOW_TOOLBAR, _TRA("Show the tool&bar"));
+            HwndSetDlgItemText(hDlg, IDC_SHOW_ANNOT_TOOLBAR_BUTTONS, _TRA("Show quick &annotation buttons"));
+            HwndSetDlgItemText(hDlg, IDC_TABS_MRU, _TRA("Ctrl+Tab uses most recently used &order"));
+            HwndSetDlgItemText(hDlg, IDC_SEARCH_UI_FLOATING, _TRA("Use the &floating search window"));
+            HwndSetDlgItemText(hDlg, IDC_SCROLLBARS_LABEL, _TRA("&Scrollbars:"));
+            HwndSetDlgItemText(hDlg, IDC_SMOOTH_SCROLL, _TRA("Use s&mooth scrolling"));
+            HwndSetDlgItemText(hDlg, IDC_SCROLLBAR_SINGLE_PAGE, _TRA("Show a scrollbar in single-&page mode"));
+            HwndSetDlgItemText(hDlg, IDC_RELOAD_MODIFIED, _TRA("Automatically &reload changed documents"));
+            HwndSetDlgItemText(hDlg, IDC_PREVENT_SLEEP_FULLSCREEN,
+                               _TRA("Prevent sleep in &fullscreen or presentation mode"));
+            HwndSetDlgItemText(hDlg, IDC_RESTART_REQUIRED, _TRA("Some changes require restarting the application."));
             HwndSetDlgItemText(hDlg, IDC_SECTION_INVERSESEARCH, _TRA("Set inverse search command-line"));
-            HwndSetDlgItemText(hDlg, IDC_CMDLINE_LABEL,
-                               _TRA("Enter the command-line to invoke when you double-click on the PDF document:"));
+            HwndSetDlgItemText(hDlg, IDC_CMDLINE_LABEL, _TRA("Command invoked when you double-click a PDF document:"));
+            HwndSetDlgItemText(hDlg, IDC_OPEN_ADVANCED_OPTIONS, _TRA("Open &Advanced Options File..."));
             HwndSetDlgItemText(hDlg, IDOK, _TRA("OK"));
             HwndSetDlgItemText(hDlg, IDCANCEL, _TRA("Cancel"));
 
@@ -1042,17 +1106,22 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     CbSetCurrentSelection(hwndComboBox, ind);
                 }
             } else {
-                RemoveDialogItem(hDlg, IDC_SECTION_INVERSESEARCH, IDC_SECTION_ADVANCED);
+                ShowWindow(GetDlgItem(hDlg, IDC_SECTION_INVERSESEARCH), SW_HIDE);
+                ShowWindow(GetDlgItem(hDlg, IDC_CMDLINE_LABEL), SW_HIDE);
+                ShowWindow(GetDlgItem(hDlg, IDC_CMDLINE), SW_HIDE);
             }
 
+            ShowSettingsPage(hDlg, 0);
+            UpdateSettingsDependencies(hDlg);
             CenterDialog(hDlg);
-            HwndSetFocus(GetDlgItem(hDlg, IDC_DEFAULT_LAYOUT));
+            HwndSetFocus(category);
             return FALSE;
+        }
             //] ACCESSKEY_GROUP Settings Dialog
 
         case WM_COMMAND:
             switch (LOWORD(wp)) {
-                case IDOK:
+                case IDOK: {
                     prefs = (GlobalPrefs*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
                     prefs->defaultDisplayModeEnum =
                         (DisplayMode)(SendDlgItemMessage(hDlg, IDC_DEFAULT_LAYOUT, CB_GETCURSEL, 0, 0) +
@@ -1065,6 +1134,25 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     prefs->useTabs = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_USE_TABS));
                     prefs->checkForUpdates = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_CHECK_FOR_UPDATES));
                     prefs->rememberOpenedFiles = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_REMEMBER_OPENED_FILES));
+                    prefs->restoreSession = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_RESTORE_SESSION));
+                    prefs->reuseInstance = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_REUSE_INSTANCE));
+                    prefs->noHomeTab = (BST_CHECKED != IsDlgButtonChecked(hDlg, IDC_NO_HOME_TAB));
+                    prefs->showMenubarWithTabs = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SHOW_MENUBAR_WITH_TABS));
+                    prefs->showToolbar = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SHOW_TOOLBAR));
+                    prefs->showAnnotToolbarButtons =
+                        (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SHOW_ANNOT_TOOLBAR_BUTTONS));
+                    prefs->tabsMru = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_TABS_MRU));
+                    prefs->searchUIFloating = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SEARCH_UI_FLOATING));
+                    prefs->smoothScroll = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SMOOTH_SCROLL));
+                    prefs->scrollbarInSinglePage = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SCROLLBAR_SINGLE_PAGE));
+                    prefs->reloadModifiedDocuments = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_RELOAD_MODIFIED));
+                    prefs->preventSleepInFullscreen =
+                        (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_PREVENT_SLEEP_FULLSCREEN));
+                    int scrollbarIdx = (int)SendDlgItemMessage(hDlg, IDC_SCROLLBARS, CB_GETCURSEL, 0, 0);
+                    const char* scrollbarMode = seqstrings::IdxToStr(gScrollbarModeNames, scrollbarIdx);
+                    if (scrollbarMode) {
+                        str::ReplaceWithCopy(&prefs->scrollbars, scrollbarMode);
+                    }
                     if (prefs->enableTeXEnhancements && CanAccessDisk()) {
                         char* tmp = HwndGetTextTemp(GetDlgItem(hDlg, IDC_CMDLINE));
                         char* cmdLine = str::Dup(tmp);
@@ -1072,15 +1160,33 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     }
                     EndDialog(hDlg, IDOK);
                     return TRUE;
+                }
 
                 case IDCANCEL:
                     EndDialog(hDlg, IDCANCEL);
                     return TRUE;
 
                 case IDC_REMEMBER_OPENED_FILES: {
-                    bool rememberOpenedFiles = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_REMEMBER_OPENED_FILES));
-                    EnableWindow(GetDlgItem(hDlg, IDC_REMEMBER_STATE_PER_DOCUMENT), rememberOpenedFiles);
+                    UpdateSettingsDependencies(hDlg);
                 }
+                    return TRUE;
+
+                case IDC_USE_TABS:
+                case IDC_SHOW_TOOLBAR:
+                    UpdateSettingsDependencies(hDlg);
+                    return TRUE;
+
+                case IDC_SETTINGS_CATEGORY:
+                    if (HIWORD(wp) == LBN_SELCHANGE) {
+                        int page = ListBox_GetCurSel(GetDlgItem(hDlg, IDC_SETTINGS_CATEGORY));
+                        ShowSettingsPage(hDlg, page);
+                    }
+                    return TRUE;
+
+                case IDC_OPEN_ADVANCED_OPTIONS:
+                    // Close first: saving the file can reload and replace gGlobalPrefs,
+                    // invalidating the pointer held by this modal dialog.
+                    EndDialog(hDlg, IDC_OPEN_ADVANCED_OPTIONS);
                     return TRUE;
 
                 case IDC_DEFAULT_SHOW_TOC:

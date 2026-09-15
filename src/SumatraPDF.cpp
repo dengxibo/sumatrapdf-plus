@@ -7655,10 +7655,22 @@ static void ShowOptionsDialog(HWND hwnd) {
     }
 
     bool useTabsBefore = gGlobalPrefs->useTabs;
+    bool noHomeTabBefore = gGlobalPrefs->noHomeTab;
     bool checkForUpdatesBefore = gGlobalPrefs->checkForUpdates;
     bool treeWrapLabelsBefore = gGlobalPrefs->treeWrapLabels;
+    bool showToolbarBefore = gGlobalPrefs->showToolbar;
+    bool showAnnotToolbarButtonsBefore = gGlobalPrefs->showAnnotToolbarButtons;
+    bool showMenubarWithTabsBefore = gGlobalPrefs->showMenubarWithTabs;
+    bool searchUIFloatingBefore = gGlobalPrefs->searchUIFloating;
+    bool reloadModifiedBefore = gGlobalPrefs->reloadModifiedDocuments;
+    AutoFreeStr scrollbarsBefore(str::Dup(gGlobalPrefs->scrollbars));
 
-    if (IDOK != Dialog_Settings(hwnd, gGlobalPrefs)) {
+    INT_PTR dialogResult = Dialog_Settings(hwnd, gGlobalPrefs);
+    if (dialogResult == IDC_OPEN_ADVANCED_OPTIONS) {
+        OpenAdvancedOptions();
+        return;
+    }
+    if (IDOK != dialogResult) {
         return;
     }
 
@@ -7685,10 +7697,46 @@ static void ShowOptionsDialog(HWND hwnd) {
         }
     }
 
-    if (gGlobalPrefs->useTabs != useTabsBefore) {
+    if (gGlobalPrefs->useTabs != useTabsBefore || gGlobalPrefs->noHomeTab != noHomeTabBefore) {
         SaveSettings();
         RestartApplication();
         return;
+    }
+
+    bool toolbarLayoutChanged = gGlobalPrefs->showAnnotToolbarButtons != showAnnotToolbarButtonsBefore;
+    bool toolbarVisibilityChanged = gGlobalPrefs->showToolbar != showToolbarBefore;
+    bool menuVisibilityChanged = gGlobalPrefs->showMenubarWithTabs != showMenubarWithTabsBefore;
+    bool searchUiChanged = gGlobalPrefs->searchUIFloating != searchUIFloatingBefore;
+    for (MainWindow* win : gWindows) {
+        if (toolbarLayoutChanged) {
+            ReCreateToolbar(win);
+        }
+        if (toolbarVisibilityChanged || toolbarLayoutChanged) {
+            ShowOrHideToolbar(win);
+        }
+        if (menuVisibilityChanged) {
+            RebuildMenuBarForWindow(win);
+            UpdateMainWindowNativeChrome(win);
+        }
+        if (searchUiChanged && IsFindUIVisible(win)) {
+            FindWindowSetDocked(win, !gGlobalPrefs->searchUIFloating);
+        }
+        win->RedrawAll(true);
+    }
+    if (!str::Eq(scrollbarsBefore, gGlobalPrefs->scrollbars)) {
+        UpdateFixedPageScrollbarsVisibility();
+    }
+    if (gGlobalPrefs->reloadModifiedDocuments != reloadModifiedBefore) {
+        for (MainWindow* win : gWindows) {
+            for (WindowTab* tab : win->Tabs()) {
+                FileWatcherUnsubscribe(tab->watcher);
+                tab->watcher = nullptr;
+                if (gGlobalPrefs->reloadModifiedDocuments && tab->filePath && tab->IsDocLoaded()) {
+                    auto fn = MkFunc0(ScheduleReloadTab, tab);
+                    tab->watcher = FileWatcherSubscribe(tab->filePath, fn, true);
+                }
+            }
+        }
     }
     if (!SettingsUseTabs()) {
         for (MainWindow* w : gWindows) {
