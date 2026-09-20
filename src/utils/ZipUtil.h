@@ -13,9 +13,10 @@ class ZipCreator {
     size_t fileCount;
 
     bool WriteData(const void* data, size_t size);
-    bool AddFileData(const char* nameUtf8, const void* data, size_t size, u32 dosdate = 0);
 
   public:
+    // Raw bytes under nameInZip. size 0 writes an empty stored entry.
+    bool AddFileData(const char* nameUtf8, const void* data, size_t size, u32 dosdate = 0);
     explicit ZipCreator(const char* zipFilePath);
     explicit ZipCreator(ISequentialStream* stream);
     ~ZipCreator();

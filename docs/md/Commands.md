@@ -71,10 +71,14 @@ Command IDs,Keyboard shortcuts,Command Palette,Notes
 CmdBookView,Ctrl + 8,Book View,
 CmdFacingView,Ctrl + 7,Facing View,
 CmdInvertColors,Shift + I,Invert Colors,was `i` before 3.6
+CmdDisplayFilter,,Enhance Display,"toolbar toggle; per-document Auto mild/strong display enhancement"
 CmdTogglePreservePdfImages,,Toggle Preserve PDF Image Colors in Dark Mode,toggles `PreservePdfImagesInDarkMode` advanced setting
 CmdToggleJoinSplitPdfImages,,Toggle Join Split PDF Images,toggles `JoinSplitPdfImages` (hide Calibre-style strip pages)
 CmdRotateLeft,"[, Shift + Ctrl + Subtract",Rotate Left,
 CmdRotateRight,"], Shift + Ctrl + Add",Rotate Right,
+CmdDeskewPage,,Deskew Page,"straighten a slightly tilted scan page; marks dirty, bake on Save"
+CmdDeskewAllScannedPages,,Deskew All Scanned Pages,"deskew every scan-like page; marks dirty, bake on Save"
+CmdToggleOcrDeskew,,Toggle Deskew During OCR,"when on, Recognize All straightens pages before OCR"
 CmdSinglePageView,Ctrl + 6,Single Page View,
 CmdToggleContinuousView,c,Toggle Continuous View,
 CmdToggleFullscreen,"f, Shift + Ctrl + L, F11",Toggle Fullscreen,Toolbar button, ver 3.7.28+
@@ -246,7 +250,7 @@ CmdPdfRotatePages,,Rotate PDF Pages...,"rotate a selected PDF page range and sav
 CmdOcrCurrentPage,,Recognize Current Page,"recognize the current page (high accuracy), even if it already has a text layer. Memory cache only; does not change the PDF file, ver 3.8+"
 CmdOcrDocument,,Recognize All Scanned Pages (Fast),"toolbar OCR menu: clear session OCR and re-recognize every page with the fast profile; then extract bookmarks (in memory, replaces existing outline), ver 3.8+"
 CmdToggleAutoOcr,,Toggle Auto OCR,"toolbar switch for AutoOcrScanPages: OCR visible scanned pages as you view them, ver 3.8+"
-CmdOcrRegion,,OCR Region,"toolbar OCR menu: drag a rectangle to recognize and copy text, ver 3.8+"
+CmdOcrRegion,Ctrl+Shift+X,OCR Region,"toolbar OCR menu: drag a rectangle to recognize and copy text. Preferred: Alt+LMB drag (temporary). Also Ctrl+Shift+O. ver 3.8+"
 CmdOcrCancel,,Cancel OCR,"stop queued page OCR; already recognized pages are kept, ver 3.8+"
 CmdSaveSearchablePdf,,Save as Searchable PDF,"toolbar OCR menu: OCR missing scan pages with progress, then overwrite the current PDF (no Save As dialog), ver 3.8+"
 CmdOcrFullDocumentModeFast,,Full-document OCR Mode: Fast,"full-document OCR uses the fast profile (Recognize All Scanned Pages / Save as Searchable PDF). Setting OcrFullDocumentMode=fast, ver 3.8+"

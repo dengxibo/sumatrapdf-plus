@@ -75,7 +75,7 @@ Recognize scanned pages (little or no text layer) so you can **select, search, l
   即使已有文字层也会再扫一遍（乱码双层 PDF）。结果先留在本次打开的文档里。没有目录时识别后提取书签。
 - **Recognize all pages and save / 全文识别并保存** — scan with progress, then **overwrite the current PDF** (no Save As). Prompts before replacing an existing text layer or outline. PDF only.  
   显示进度后**直接覆盖当前 PDF**，不弹另存。已有文字层或目录时先询问。仅 PDF。
-- **OCR region / 框选识别** — drag a rectangle; text is copied.  
+- **OCR region / 框选识别** — `Ctrl+Shift+O`, then drag a rectangle; text is copied.  
   拖选矩形，识别结果复制到剪贴板。
 - **Cancel / 取消** — stop queued jobs; pages already done are kept.  
   取消排队中的页；已识别的页保留。

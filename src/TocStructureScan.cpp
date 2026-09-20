@@ -284,8 +284,8 @@ static int DetectNumbering(const char* s, int len, BodyNumberingKind& kind, int&
             if (cpMark == '.' || cpMark == 0xFF0E || cpMark == 0x3001) { // . ． 、
                 int afterSep = afterMark;
                 int cpNext = Utf8CodepointNext(s, len, afterSep);
-                bool followsTitle = CpIsSpace(cpNext) || cpNext >= 0x2E80 || cpNext == 0x3001 ||
-                                    cpNext == 0x201C || cpNext == 0x300C;
+                bool followsTitle =
+                    CpIsSpace(cpNext) || cpNext >= 0x2E80 || cpNext == 0x3001 || cpNext == 0x201C || cpNext == 0x300C;
                 if (followsTitle) {
                     kind = BodyNumberingKind::Arabic;
                     depth = 3;
@@ -755,9 +755,8 @@ bool RunTocStructureScan(EngineBase* engine, TocStructureScanResult& out, bool (
     // (page, y) order afterwards so the digest stays document-ordered.
     if (out.candidates.Size() > kMaxCandidates) {
         Vec<HeadingCandidate*> sorted = out.candidates;
-        std::stable_sort(sorted.begin(), sorted.end(), [](HeadingCandidate* a, HeadingCandidate* b) {
-            return a->localScore > b->localScore;
-        });
+        std::stable_sort(sorted.begin(), sorted.end(),
+                         [](HeadingCandidate* a, HeadingCandidate* b) { return a->localScore > b->localScore; });
         while (sorted.Size() > kMaxCandidates) {
             delete sorted.Last();
             sorted.RemoveAt(sorted.Size() - 1);
@@ -944,8 +943,7 @@ bool ParseBodyTocSelections(const char* text, const TocStructureScanResult& scan
 
 // --- bookmark tree construction ---------------------------------------------
 
-bool BuildBodyTocItems(TocStructureScanResult& scan, const Vec<BodyTocSelection>& sel,
-                       Vec<ExtractedTocItem*>& roots) {
+bool BuildBodyTocItems(TocStructureScanResult& scan, const Vec<BodyTocSelection>& sel, Vec<ExtractedTocItem*>& roots) {
     Vec<ExtractedTocItem*> stack;
     for (int i = 0; i < sel.Size(); i++) {
         HeadingCandidate* c = scan.FindById(sel[i].candidateId);
@@ -966,14 +964,12 @@ bool BuildBodyTocItems(TocStructureScanResult& scan, const Vec<BodyTocSelection>
         item->x = c->x;
         item->y = c->y;
         item->level = stack.Size() + 1;
-        // GB/T 9704-2012: the second hierarchy ordinal uses full-width
-        // Chinese parentheses "（一）". Source text commonly mixes half-width
-        // "(一)"; unify only the level-2 ordinal wrapper. Other levels and the
-        // rest of the title (English phrases etc.) stay verbatim, and
-        // rawTitle keeps the original text for body anchoring.
-        if (item->level == 2) {
-            NormalizeTocNumberingParens(&item->title);
-        }
+        // GB/T 9704-2012: second-hierarchy ordinals use full-width Chinese
+        // parentheses "（一）". Source text commonly mixes half-width "(一)";
+        // unify every leading （一）/（1） wrapper. rawTitle keeps the original
+        // for body anchoring. Do not limit to level==2: Relayout can change
+        // depth while the marker is still ChineseParen.
+        NormalizeTocNumberingParens(&item->title);
         item->confidence = 60;
         item->source = ExtractedTocSource::BodyInference;
         item->destinationSource = TocDestinationSource::Unknown;

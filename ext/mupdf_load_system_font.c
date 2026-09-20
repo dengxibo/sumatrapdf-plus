@@ -182,6 +182,25 @@ static struct {
     {"Kaiti TC", "KaiTi"},
     {"KaiTi", "KaiTi"},
     {"楷体", "KaiTi"},
+    {"楷体_GB2312", "KaiTi"},
+    {"仿宋", "FangSong"},
+    {"仿宋_GB2312", "FangSong"},
+    {"黑体", "SimHei"},
+    {"黑体_GB2312", "SimHei"},
+    {"宋体", "SimSun"},
+    {"宋体_GB2312", "SimSun"},
+    {"新宋体", "NSimSun"},
+    {"华文中宋", "STZhongsong"},
+    {"华文仿宋", "STFangsong"},
+    {"华文楷体", "STKaiti"},
+    {"微软雅黑", "Microsoft YaHei"},
+    {"方正小标宋简体", "FZXiaoBiaoSong-B05S"},
+    {"方正小标宋", "FZXiaoBiaoSong-B05S"},
+    {"创艺简标宋", "FZXiaoBiaoSong-B05S"},
+    {"FZXiaoBiaoSong-B05S", "FZXiaoBiaoSong-B05S"},
+    {"FZXiaoBiaoSong-B05", "FZXiaoBiaoSong-B05"},
+    {"FangSong_GB2312", "FangSong"},
+    {"KaiTi_GB2312", "KaiTi"},
 };
 
 static win_fonts g_win_fonts = {0};
@@ -1441,35 +1460,22 @@ static int is_reader_cjk_font_request(const char* fontname) {
     return 0;
 }
 
+/* Only generic CJK *song/body* faces may be remapped to EBookUI.CjkFontFamily
+ * (Source Han Serif SC, etc.). Distinctive 公文 faces — 楷体 / 仿宋 / 黑体 /
+ * 雅黑 / 标宋 — must load as themselves; remapping them made Word runs that
+ * set eastAsia="楷体" paint as Songti. */
 static int is_publisher_cjk_font_request(const char* fontname) {
-    static const char* names[] = {"STKai",
-                                  "STKaiti",
-                                  "STKaiti-Regular",
-                                  "STKai-Regular",
-                                  "STSong",
+    static const char* names[] = {"STSong",
                                   "STSongti",
                                   "STSongti-SC-Regular",
-                                  "STFangsong",
-                                  "STHeiti",
+                                  "STSongti-SC-Light",
                                   "SimSun",
                                   "NSimSun",
-                                  "KaiTi",
-                                  "KaiTi_GB2312",
-                                  "KaiTi SC",
-                                  "Kaiti SC",
-                                  "楷体",
-                                  "SimHei",
-                                  "FangSong",
                                   "Songti SC",
                                   "Songti TC",
-                                  "MKaiPRC",
-                                  "MKaiPRC-Regular",
-                                  "MKai PRC",
-                                  "PingFang SC",
-                                  "PingFangSC-Regular",
-                                  "Microsoft YaHei",
-                                  "FZFangSong-Z02",
-                                  "FZFangSong-Z02S",
+                                  "宋体",
+                                  "宋体_GB2312",
+                                  "新宋体",
                                   NULL};
     int i;
 

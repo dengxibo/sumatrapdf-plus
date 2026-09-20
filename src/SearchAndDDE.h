@@ -13,11 +13,21 @@
 //                    the sending instance (launched by Explorer for
 //                    reuseInstance) can exit immediately without waiting for
 //                    the receiver to finish loading the file.
-#define kCopyDataDdeW 0x44646557 // 'DdeW'
-#define kCopyDataOpen 0x4F70656E // 'Open'
+// - kCopyDataOpenEx : same as kCopyDataOpen but SumatraOpenCopyDataEx (adds
+//                    inCurrentTab). Prefer this from Excel VBA / automation when
+//                    replacing the document in the active tab.
+#define kCopyDataDdeW 0x44646557   // 'DdeW'
+#define kCopyDataOpen 0x4F70656E   // 'Open'
+#define kCopyDataOpenEx 0x4F706E32 // 'Opn2'
 
 struct SumatraOpenCopyData {
     u32 newWindow; // 0: reuse existing, non-zero: force new window
+    // followed by UTF-8 path, null-terminated
+};
+
+struct SumatraOpenCopyDataEx {
+    u32 newWindow;    // 0: reuse existing window, non-zero: force new window
+    u32 inCurrentTab; // 1: replace document in the current tab (ignored if newWindow != 0)
     // followed by UTF-8 path, null-terminated
 };
 

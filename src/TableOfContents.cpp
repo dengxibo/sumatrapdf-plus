@@ -1090,7 +1090,13 @@ static void SaveEmbeddedFile(WindowTab* tab, const char* srcPath, const char* fi
 static EngineBase* PdfTocEditableEngine(MainWindow* win) {
     DisplayModel* dm = win && win->ctrl ? win->ctrl->AsFixed() : nullptr;
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
-    return engine && EngineMupdfCanEditPdfToc(engine) ? engine : nullptr;
+    return engine && EngineMupdfCanEditToc(engine) ? engine : nullptr;
+}
+
+static bool TocCanExtract(MainWindow* win) {
+    DisplayModel* dm = win && win->ctrl ? win->ctrl->AsFixed() : nullptr;
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    return EngineMupdfCanExtractToc(engine);
 }
 
 static TocItem* FindTocItemById(TocItem* item, int id) {
@@ -2186,6 +2192,10 @@ static void TocContextMenu(ContextMenuEvent* ev) {
     bool canFindInBody = TocCalibIsActive(win) && canSetCurrentPage;
     if (!pdfTocEngine) {
         for (int command : pdfTocCommands) {
+            // Word has no editable PDF outline, but extraction still applies.
+            if (command == CmdExtractPdfToc && TocCanExtract(win)) {
+                continue;
+            }
             MenuRemove(popup, command);
         }
     } else if (!isPdfTocItem) {
@@ -3981,7 +3991,7 @@ static bool TocEmptyExtractActionRect(MainWindow* win, HWND hwnd, RECT* actionOu
     if (actionOut) {
         *actionOut = {};
     }
-    if (!hwnd || !win || !TocSidebarShowEmptyHint(win) || !PdfTocEditableEngine(win)) {
+    if (!hwnd || !win || !TocSidebarShowEmptyHint(win) || !TocCanExtract(win)) {
         return false;
     }
     RECT rc;
@@ -4063,7 +4073,7 @@ static void DrawTocEmptyHint(MainWindow* win, HWND hwnd, HDC hdc, const RECT& cl
     titleRc = rc;
     titleRc.bottom = titleRc.top + titleH;
     DrawTextW(hdc, title, -1, &titleRc, DT_WORDBREAK | DT_CENTER | DT_NOPREFIX);
-    bool canExtract = PdfTocEditableEngine(win) != nullptr;
+    bool canExtract = TocCanExtract(win);
     if (canExtract) {
         RECT actionRc = rc;
         actionRc.top = titleRc.bottom + DpiScale(hwnd, 8);
@@ -4630,7 +4640,7 @@ static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         TocCancelDrag(win);
         return 0;
     }
-    if (msg == WM_LBUTTONUP && TocSidebarShowEmptyHint(win) && PdfTocEditableEngine(win) && !ExtractPdfTocIsRunning()) {
+    if (msg == WM_LBUTTONUP && TocSidebarShowEmptyHint(win) && TocCanExtract(win) && !ExtractPdfTocIsRunning()) {
         POINT pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
         bool inHit = TocEmptyExtractHitTest(win, hwnd, pt);
         if (inHit) {
@@ -4638,7 +4648,7 @@ static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
             return 0;
         }
     }
-    if (msg == WM_SETCURSOR && LOWORD(lp) == HTCLIENT && TocSidebarShowEmptyHint(win) && PdfTocEditableEngine(win)) {
+    if (msg == WM_SETCURSOR && LOWORD(lp) == HTCLIENT && TocSidebarShowEmptyHint(win) && TocCanExtract(win)) {
         POINT pt;
         GetCursorPos(&pt);
         ScreenToClient(hwnd, &pt);

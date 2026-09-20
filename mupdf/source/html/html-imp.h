@@ -341,11 +341,22 @@ enum
 	BOX_TABLE_CELL,		/* table-cell: contains block */
 };
 
+/* A run of pages that share one paper size. y0 is the layout y where the
+ * run starts. page_run_n < 2 means every page uses fz_html.page_w/h. */
+typedef struct
+{
+	float y0;
+	float content_w, content_h;
+	float mt, mr, mb, ml;
+} fz_html_page_run;
+
 typedef struct
 {
 	fz_storable storable;
 	fz_pool *pool; /* pool allocator for this html tree */
 	fz_html_box *root;
+	fz_html_page_run page_run[4];
+	int page_run_n;
 } fz_html_tree;
 
 struct fz_html_s
@@ -628,6 +639,11 @@ void fz_htdoc_reparse_html(fz_context *ctx, fz_document *doc, fz_buffer *buf, fl
 void fz_reset_epub_html_font_set(fz_context *ctx, fz_document *doc);
 
 void fz_restartable_layout_html(fz_context *ctx, fz_html_tree *tree, float start_x, float start_y, float page_w, float page_h, float em, fz_html_restarter *restart);
+
+/* page_run_n < 2: uniform pages. Otherwise paper size can change at a section break. */
+int fz_html_count_pages(fz_html *html);
+int fz_html_page_number_at_y(fz_html *html, float y);
+void fz_html_page_box(fz_html *html, int page, float *y0, float *y1, float *paper_w, float *paper_h, float *margin_l, float *margin_t, float *content_w);
 
 fz_html_flow *fz_html_split_flow(fz_context *ctx, fz_pool *pool, fz_html_flow *flow, size_t offset);
 

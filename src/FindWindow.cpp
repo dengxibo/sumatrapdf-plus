@@ -111,12 +111,17 @@ struct FindWindowWnd : Wnd {
     int lastClientCy = 0;
     LONG displayedResultsEpoch = 0;
     bool displayedResultsInitialized = false;
+    // true when the on-screen list rows are already in the sorted (document
+    // order) layout of displayedResultsEpoch, so a same-count refresh can
+    // skip the full LB_RESETCONTENT rebuild (which makes the list flash)
+    bool displayedResultsSorted = false;
+    int displayedSnippetBudget = -1;
+    u32 displayedTextCacheGen = 0;
     bool hasPendingNavigation = false;
     int pendingStartPage = 0;
     int pendingStartGlyph = 0;
     int pendingEndPage = 0;
     int pendingEndGlyph = 0;
-    int pendingNavigationTopIndex = -1;
     LONG pendingNavigationCountEpoch = 0;
 
     FindWindowWnd() = default;
@@ -189,16 +194,6 @@ static void DeferredGoToFindMatch(DeferredGoToFindMatchData* d) {
             engine->PromoteCachedTextUtf8ForSelection(d->endPage)) {
             d->findWindow->hasPendingNavigation = false;
             GoToFindMatch(win, d->startPage, d->startGlyph, d->endPage, d->endGlyph);
-            if (d->findWindow->pendingNavigationTopIndex >= 0 && d->findWindow->results) {
-                logf("find: restore top=%d after cached navigation\n", d->findWindow->pendingNavigationTopIndex);
-                SendMessageW(d->findWindow->results->hwnd, LB_SETTOPINDEX,
-                             (WPARAM)d->findWindow->pendingNavigationTopIndex, 0);
-                d->findWindow->pendingNavigationTopIndex = -1;
-            }
-            if (d->findWindow->results) {
-                SendMessageW(d->findWindow->results->hwnd, WM_SETREDRAW, TRUE, 0);
-                InvalidateRect(d->findWindow->results->hwnd, nullptr, TRUE);
-            }
             return;
         }
         if (win->ctrl) {
@@ -209,15 +204,6 @@ static void DeferredGoToFindMatch(DeferredGoToFindMatchData* d) {
     }
     d->findWindow->hasPendingNavigation = false;
     GoToFindMatch(win, d->startPage, d->startGlyph, d->endPage, d->endGlyph);
-    if (d->findWindow->pendingNavigationTopIndex >= 0 && d->findWindow->results) {
-        logf("find: restore top=%d after navigation\n", d->findWindow->pendingNavigationTopIndex);
-        SendMessageW(d->findWindow->results->hwnd, LB_SETTOPINDEX, (WPARAM)d->findWindow->pendingNavigationTopIndex, 0);
-        d->findWindow->pendingNavigationTopIndex = -1;
-    }
-    if (d->findWindow->results) {
-        SendMessageW(d->findWindow->results->hwnd, WM_SETREDRAW, TRUE, 0);
-        InvalidateRect(d->findWindow->results->hwnd, nullptr, TRUE);
-    }
 }
 
 // append a command's keyboard shortcut to its tooltip, e.g. "Find Next (F3)"
@@ -588,11 +574,22 @@ void FindWindowWnd::RefreshResults(bool allowNavigation) {
     // same-count append would leave wrap-order rows in place.
     bool sortedComplete = win->findCountValid && !win->findCountPartial;
     bool canAppend = sameScan && !sortedComplete && oldCount >= 0 && oldCount < newCount;
-
-    if (!canAppend) {
+    // A same-count refresh of an already-sorted list must not run FillWithItems:
+    // its LB_RESETCONTENT wipes and refills every row, and the trailing
+    // erase invalidate makes the visible list flash (find-result click flicker).
+    // The rows only need rebuilding when the count, scan epoch, sort state or
+    // snippet width actually changed.
+    int snippetBudget = FindWindowSnippetGlyphBudget(win);
+    bool alreadySortedDisplayed = sameScan && sortedComplete && displayedResultsSorted && oldCount == newCount &&
+                                  displayedSnippetBudget == snippetBudget &&
+                                  displayedTextCacheGen == win->findCountTextCacheGeneration;
+    if (!canAppend && !alreadySortedDisplayed) {
         FillWithItems(results->hwnd, results->model);
         oldSel = -1;
         oldTop = 0;
+        displayedResultsSorted = sortedComplete;
+        displayedSnippetBudget = snippetBudget;
+        displayedTextCacheGen = win->findCountTextCacheGeneration;
     } else if (oldCount < newCount) {
         // Streamed results are append-only within one count epoch. Do not
         // WM_SETREDRAW + full InvalidateRect: that repaints every visible row
@@ -640,7 +637,7 @@ void FindWindowWnd::RefreshResults(bool allowNavigation) {
     }
     if (sel >= 0) {
         // the document already sits on a match: mirror it in the list
-        if (!canAppend || sel != oldSel) {
+        if (sel != oldSel) {
             results->SetCurrentSelection(sel);
         }
     } else if (win->findMatches.size() > 0) {
@@ -765,19 +762,6 @@ void FindWindowWnd::OnResultSelected() {
     pendingStartGlyph = fm.startGlyph;
     pendingEndPage = fm.endPage;
     pendingEndGlyph = fm.endGlyph;
-    // Preserve the viewport across the deferred navigation refresh. The native
-    // list box may apply its own ensure-visible scroll after selection changes,
-    // including on mouse-button release, so restore the index after navigation.
-    pendingNavigationTopIndex = results ? (int)SendMessageW(results->hwnd, LB_GETTOPINDEX, 0, 0) : -1;
-    if (results) {
-        // Hide the native list box's intermediate ensure-visible scroll; the
-        // deferred navigation restores the viewport before repainting.
-        SendMessageW(results->hwnd, WM_SETREDRAW, FALSE, 0);
-        if (pendingNavigationTopIndex >= 0) {
-            SendMessageW(results->hwnd, LB_SETTOPINDEX, (WPARAM)pendingNavigationTopIndex, 0);
-        }
-    }
-    logf("find: select idx=%d top=%d capture=%p\n", idx, pendingNavigationTopIndex, GetCapture());
     pendingNavigationCountEpoch = win->findCountEpoch;
     // defer document navigation so the results list can scroll/repaint first
     // (issue #5692). Coalesce rapid F3 / arrow presses to the latest selection.

@@ -60,7 +60,7 @@ static UINT_PTR gAutomaticUpdateTimerId = 0;
 static int gAutomaticUpdateFailureCount = 0;
 
 static bool CanRunAutomaticUpdateChecks() {
-    return !gIsDebugBuild && !gIsStoreBuild && HasPermission(Perm::InternetAccess) &&
+    return !gIsDebugBuild && !gIsStoreBuild && !gPluginMode && HasPermission(Perm::InternetAccess) &&
            HasPermission(Perm::SavePreferences) && gGlobalPrefs->checkForUpdates;
 }
 

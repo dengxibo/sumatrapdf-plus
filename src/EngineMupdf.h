@@ -39,6 +39,8 @@ struct FzPageInfo {
     bool elementsNeedRebuilding = true;
 
     RectF mediabox{};
+    // Small-angle scan correction in degrees (CCW). Not written into the PDF.
+    float deskewDeg = 0;
     Vec<FitzPageImageInfo*> images;
 
     // if false, only loaded page (fast)
@@ -86,6 +88,7 @@ struct FzPageInfo {
     // LaTeX / dense-text follow-theme: one recolored view bitmap per page (zoom/rotation/profile).
     RenderedBitmap* followThemePageBitmap = nullptr;
     float followThemePageBitmapZoom = 0.f;
+    float followThemePageBitmapDeskew = 0.f;
     int followThemePageBitmapRotation = 0;
     u32 followThemePageBitmapProfileHash = 0;
     fz_irect followThemePageBitmapDevBounds{};
@@ -235,6 +238,8 @@ class EngineMupdf : public EngineBase {
     volatile LONG reflowPaletteKeepsPageMap = 0;
     // Synthesized HTML for .md/.txt kept for fast theme reparse (styles are baked at parse time).
     ByteSlice reflowHtmlSource;
+    // Temp .docx from Word COM conversion of classic .doc (deleted in destructor).
+    char* convertedOfficeTempPath = nullptr;
     // Set when single-chapter HTML reparse discards cached TocItem destinations.
     bool reflowTocNeedsUiReload = false;
 
@@ -274,6 +279,10 @@ class EngineMupdf : public EngineBase {
     // the same annotation, we should be back to 0
     bool modifiedAnnotations = false;
     bool modifiedPdfToc = false;
+    // Edited DOC/DOCX outline. When active, GetToc uses this instead of heading HTML.
+    struct WordTocModel* wordToc = nullptr;
+    // True after Deskew Page until Save (or all page deskews cleared). Not auto-saved.
+    bool modifiedDeskew = false;
 
     // Smart Dark Mode engine-level image caches (Phase 6).
     DarkModeEngineCache* darkModeEngineCache = nullptr;

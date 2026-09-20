@@ -20,6 +20,7 @@
 #include "TextSelection.h"
 #include "Notifications.h"
 #include "SumatraPDF.h"
+#include "RenderCache.h"
 #include "MainWindow.h"
 #include "WindowTab.h"
 #include "Commands.h"
@@ -424,6 +425,20 @@ static RenderedBitmap* RenderPageForOcr(EngineBase* engine, int pageNo, const Re
     RenderPageArgs args(pageNo, zoom, 0, clip ? &clipCopy : nullptr, RenderTarget::Export);
     RenderedBitmap* bmp = engine->RenderPage(args);
     return bmp;
+}
+
+// Full-page OCR: deskew with the same detector as Deskew Page, then rasterize
+// the straightened page for recognition. Estimating on the high-res OCR bitmap
+// missed the ~1° scan tilt that Deskew Page finds at 1.5×.
+static RenderedBitmap* RenderPageForOcrMaybeDeskew(EngineBase* engine, int pageNo, float maxSideCap = 0.f) {
+    if (gGlobalPrefs && gGlobalPrefs->ocrDeskew && engine && engine->kind == kindEngineMupdf &&
+        EngineMupdfGetPageDeskewDeg(engine, pageNo) == 0.f) {
+        float deg = EngineMupdfDeskewPage(engine, pageNo);
+        if (deg != 0.f) {
+            logfa("OCR[%d] deskew before recognize -> %.2f deg\n", pageNo, deg);
+        }
+    }
+    return RenderPageForOcr(engine, pageNo, nullptr, maxSideCap);
 }
 
 // GB/T 9704 公文用字：仿宋汉字 1em；半角阿拉伯数字/拉丁字母约 0.5em；
@@ -1678,11 +1693,58 @@ static u8* RotateRgb90(const u8* src, int w, int h, int stride, bool clockwise, 
     return dst;
 }
 
+static u8* RotateRgb180(const u8* src, int w, int h, int stride, int* nw, int* nh, int* nstride) {
+    if (!src || w < 8 || h < 8) {
+        return nullptr;
+    }
+    int ds = w * 3;
+    u8* dst = AllocArray<u8>((size_t)ds * (size_t)h);
+    if (!dst) {
+        return nullptr;
+    }
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int dx = w - 1 - x;
+            int dy = h - 1 - y;
+            const u8* s = src + (size_t)y * (size_t)stride + (size_t)x * 3;
+            u8* d = dst + (size_t)dy * (size_t)ds + (size_t)dx * 3;
+            d[0] = s[0];
+            d[1] = s[1];
+            d[2] = s[2];
+        }
+    }
+    if (nw) {
+        *nw = w;
+    }
+    if (nh) {
+        *nh = h;
+    }
+    if (nstride) {
+        *nstride = ds;
+    }
+    return dst;
+}
+
 static Rect MapOcrRectFrom90(const Rect& r, int origW, int origH, bool clockwise) {
     if (clockwise) {
         return Rect(r.y, origH - r.x - r.dx, r.dy, r.dx);
     }
     return Rect(origW - r.y - r.dy, r.x, r.dy, r.dx);
+}
+
+static Rect MapOcrRectFrom180(const Rect& r, int origW, int origH) {
+    return Rect(origW - r.x - r.dx, origH - r.y - r.dy, r.dx, r.dy);
+}
+
+static void MapOcrBoxesFrom180(Vec<OcrBox>& boxes, int origW, int origH) {
+    for (int i = 0; i < boxes.Size(); i++) {
+        OcrBox& b = boxes[i];
+        b.rect = MapOcrRectFrom180(b.rect, origW, origH);
+        free(b.charX);
+        b.charX = nullptr;
+        b.nChar = 0;
+        b.vertical = b.rect.dy > b.rect.dx * 3 / 2 && b.rect.dy > 20;
+    }
 }
 
 static void MapOcrBoxesFrom90(Vec<OcrBox>& boxes, int origW, int origH, bool clockwise) {
@@ -2224,7 +2286,7 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
         OcrPageTiming timing{};
         LARGE_INTEGER tPage = TimeGet();
         LARGE_INTEGER tRaster = TimeGet();
-        RenderedBitmap* bmp = RenderPageForOcr(engine, pageNo, nullptr, tocCoarse ? 1440.f : 0.f);
+        RenderedBitmap* bmp = RenderPageForOcrMaybeDeskew(engine, pageNo, tocCoarse ? 1440.f : 0.f);
         timing.rasterizeMs = TimeSinceInMs(tRaster);
         logfa("OCR[%d] bmp=%p valid=%d\n", pageNo, bmp, bmp ? bmp->IsValid() : 0);
         if (bmp && bmp->IsValid()) {
@@ -2239,26 +2301,57 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
                 // RapidOrientation model pre-check: detect page direction before
                 // spending time on OCR. Recommended rotation angles (90/270) are
                 // added as rotation candidates alongside the heuristic 90/270 sweep.
+                int pdfRot = 0;
+                if (engine->kind == kindEngineMupdf) {
+                    pdfRot = EngineMupdfGetPageRotateCw(engine, pageNo);
+                }
+                bool alreadyRotated = pdfRot == 90 || pdfRot == 180 || pdfRot == 270;
                 int modelDeg = 0;
                 float modelConf = 0;
-                bool modelOk = OcrClassifyPageOrientationRgb(rgb, w, h, stride, &modelDeg, &modelConf);
+                int modelAltDeg = 0;
+                float modelAltConf = 0;
+                bool modelOk = OcrClassifyPageOrientationRgb(rgb, w, h, stride, &modelDeg, &modelConf, &modelAltDeg,
+                                                             &modelAltConf);
+                // The classifier sees the same raster as the user (PDF /Rotate already
+                // applied). A confident upright answer means the current /Rotate is
+                // doing its job — do not let a near-tie OCR score tip the page.
+                bool modelUpright = modelOk && modelDeg == 0 && modelConf >= 0.6f;
+                // Weak upright (conf<0.6) with a solid 90/270 runner-up: the page is
+                // often a sideways table under a wrong baked /Rotate. Promote the alt.
+                if (modelOk && modelDeg == 0 && modelConf < 0.6f && (modelAltDeg == 90 || modelAltDeg == 270) &&
+                    modelAltConf >= 0.25f) {
+                    logfa("OCR[%d] weak upright conf=%.2f, promoting alt %d conf=%.2f (pdfRot=%d)\n", pageNo, modelConf,
+                          modelAltDeg, modelAltConf, pdfRot);
+                    modelDeg = modelAltDeg;
+                    modelConf = modelAltConf;
+                }
                 bool hasModelHint = modelOk && (modelDeg == 90 || modelDeg == 270);
+                // 180 is a real correction (upside-down scans). It is not a 90/270
+                // hint: the sweep below only tries quarter-turns, so a confident
+                // 180 used to be dropped and the page stayed inverted.
+                bool modelAngle =
+                    modelOk && modelConf >= 0.6f && (modelDeg == 90 || modelDeg == 180 || modelDeg == 270);
                 // High-confidence orientation hint: OCR the recommended angle
                 // directly and skip the 0deg baseline pass. Saves a full det+rec
                 // (roughly half the page time) on rotated pages. Falls back to the
                 // classic 0deg-first flow when the rotated pass yields nothing.
                 bool modelFirstUsed = false;
                 bool vertical0 = false;
-                if (hasModelHint && modelConf >= 0.6f) {
+                if (modelAngle) {
                     bool cw = modelDeg == 90;
                     int nw = 0, nh = 0, ns = 0;
-                    u8* rot = RotateRgb90(rgb, w, h, stride, cw, &nw, &nh, &ns);
+                    u8* rot = (modelDeg == 180) ? RotateRgb180(rgb, w, h, stride, &nw, &nh, &ns)
+                                                : RotateRgb90(rgb, w, h, stride, cw, &nw, &nh, &ns);
                     if (rot) {
                         Vec<OcrBox> rotBoxes;
                         int rotScore = 0;
                         bool rotOk = OcrRecognizeRgbScored(rot, nw, nh, ns, rotBoxes, &rotScore, profile);
                         if (rotOk && rotScore > 0) {
-                            MapOcrBoxesFrom90(rotBoxes, w, h, cw);
+                            if (modelDeg == 180) {
+                                MapOcrBoxesFrom180(rotBoxes, w, h);
+                            } else {
+                                MapOcrBoxesFrom90(rotBoxes, w, h, cw);
+                            }
                             FreeOcrBoxes(boxes);
                             boxes = rotBoxes;
                             rotBoxes.Reset();
@@ -2284,7 +2377,21 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
                     }
                     vertical0 = OcrBoxesLookLikeVerticalBook(boxes, w, h);
                     bool shouldTryHeuristic = OcrShouldTryPageRotate(boxes, w, h);
-                    logfa("OCR[%d] vertical0=%d shouldTryHeuristic=%d\n", pageNo, vertical0, shouldTryHeuristic);
+                    // A wrong baked /Rotate turns landscape tables into portrait
+                    // "vertical books"; still try 90/270 so compose can clear it.
+                    // Skip that when the orientation model already says the raster
+                    // is upright — forcing a sweep there flips correct 公文 pages.
+                    if (alreadyRotated && !shouldTryHeuristic && !modelUpright) {
+                        shouldTryHeuristic = true;
+                        logfa("OCR[%d] force rotate try (pdfRot=%d vertical0=%d)\n", pageNo, pdfRot, vertical0);
+                    }
+                    if (modelUpright && shouldTryHeuristic) {
+                        shouldTryHeuristic = false;
+                        logfa("OCR[%d] skip rotate (model upright conf=%.2f pdfRot=%d score0=%d)\n", pageNo, modelConf,
+                              pdfRot, score0);
+                    }
+                    logfa("OCR[%d] vertical0=%d shouldTryHeuristic=%d pdfRot=%d\n", pageNo, vertical0,
+                          shouldTryHeuristic, pdfRot);
                     if (hasModelHint || shouldTryHeuristic) {
                         int bestScore = score0;
                         int bestRot = 0;
@@ -2317,7 +2424,19 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
                             bool rotOk = OcrRecognizeRgbScored(rot, nw, nh, ns, rotBoxes, &rotScore, profile);
                             // Model-recommended angle: accept if score is close to or
                             // above baseline; heuristic angles need +18 gain to override.
+                            // Already-rotated pages with a weak 0° read: accept a
+                            // near-tie so compose can undo a wrong bake. A strong
+                            // 0° read (score >= 90) must still beat +18 — a 2%
+                            // bump is not a reason to turn the page.
                             int threshold = (hasModelHint && rotDeg == modelDeg) ? 0 : 18;
+                            if (alreadyRotated && threshold > 0 && score0 < 90) {
+                                threshold = 0;
+                            } else if (threshold > 0 && score0 >= 90) {
+                                int rel = score0 / 8;
+                                if (rel > threshold) {
+                                    threshold = rel;
+                                }
+                            }
                             logfa("OCR[%d] rot %d: ocrOk=%d score=%d best=%d threshold=%d\n", pageNo, rotDeg, rotOk,
                                   rotScore, bestScore, threshold);
                             if (rotOk && rotScore > bestScore + threshold) {
@@ -2371,11 +2490,14 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
                     bool officialText = OcrBoxesLookLikeOfficialSideways(boxes);
                     bool verticalNow = OcrBoxesLookLikeVerticalBook(boxes, w, h);
                     logfa(
-                        "OCR[%d] post-check (heuristic): vertical0=%d verticalNow=%d officialName=%d officialText=%d\n",
-                        pageNo, vertical0, verticalNow, officialName, officialText);
-                    if ((vertical0 || verticalNow) && !officialName && !officialText) {
+                        "OCR[%d] post-check (heuristic): vertical0=%d verticalNow=%d officialName=%d officialText=%d "
+                        "pdfRot=%d\n",
+                        pageNo, vertical0, verticalNow, officialName, officialText, pdfRot);
+                    if ((vertical0 || verticalNow) && !officialName && !officialText && !alreadyRotated) {
                         logfa("OCR[%d] KEEP 0 deg (vertical book, was %d)\n", pageNo, usedRot);
                         usedRot = 0;
+                    } else if ((vertical0 || verticalNow) && alreadyRotated) {
+                        logfa("OCR[%d] keep rot %d despite vertical (pdfRot=%d)\n", pageNo, usedRot, pdfRot);
                     }
                 } else if (usedRot != 0) {
                     logfa("OCR[%d] post-check: rotation from model, skipping vertical0 guard\n", pageNo);
@@ -2403,7 +2525,7 @@ bool OcrRecognizeEnginePage(EngineBase* engine, int pageNo, bool forceOcr, OcrOp
                     FreeOcrBoxes(boxes);
                     if (pt.text && pt.len > 0) {
                         engine->SetCachedPageText(pageNo, pt, utf8);
-                        engine->SetOcrPageRotate(pageNo, usedRot);
+                        engine->SetOcrPageRotate(pageNo, usedRot, modelFirstUsed);
                         engine->SetOcrCacheQuality(pageNo, OcrQualityForProfile(profile));
                         logfa("OCR[%d] SetOcrPageRotate(%d)\n", pageNo, usedRot);
                         // T6: result committed; the text layer can query it right
@@ -2648,8 +2770,13 @@ static bool OcrWriteSearchablePdfToPath(EngineBase* engine, HWND hwnd, const cha
         MainWindow* win = FindMainWindowByHwnd(hwnd);
         int loaded = 0;
         if (win) {
-            SwitchCurrentTabToSavedFile(win, destPath, overwriteOpen ? tmpPath : nullptr);
-            loaded = win->IsDocLoaded() ? 1 : 0;
+            bool replaced = SwitchCurrentTabToSavedFile(win, destPath, overwriteOpen ? tmpPath : nullptr);
+            if (overwriteOpen && !replaced) {
+                str::Free(tmpPath);
+                str::Free(err);
+                return false;
+            }
+            loaded = (replaced && win->IsDocLoaded()) ? 1 : 0;
         }
         str::Free(tmpPath);
         tmpPath = nullptr;
@@ -2785,6 +2912,19 @@ static void OcrFinishUi(OcrDoneUi* d) {
         if (d->ok && d->hwndCanvas && IsWindow(d->hwndCanvas)) {
             InvalidateRect(d->hwndCanvas, nullptr, FALSE);
         }
+        // Deskew is applied on the worker before OCR. Drop cached tiles so the
+        // canvas shows the straighten, not the pre-OCR bitmap.
+        if (d->engine && d->engine->kind == kindEngineMupdf &&
+            EngineMupdfGetPageDeskewDeg(d->engine, d->pageNo) != 0.f) {
+            MainWindow* win = FindMainWindowByHwnd(d->hwndCanvas);
+            DisplayModel* dm = win ? win->AsFixed() : nullptr;
+            if (win && dm && dm->GetEngine() == d->engine && gRenderCache) {
+                gRenderCache->CancelRendering(dm);
+                gRenderCache->Invalidate(dm, d->pageNo, d->engine->PageMediabox(d->pageNo));
+                win->RedrawAll(true);
+                ToolbarUpdateStateForWindow(win, false);
+            }
+        }
         if (more) {
             OcrShowDocumentProgress(d->hwndCanvas);
         } else {
@@ -2899,12 +3039,13 @@ static void OcrFinishUi(OcrDoneUi* d) {
     }
     if (d->ok && d->engine && d->pageNo > 0) {
         int rot = d->engine->GetOcrPageRotate(d->pageNo);
-        logfa("OCR[page-done] page=%d rotate=%d ensureResult=%d\n", d->pageNo, rot,
-              rot > 0 ? EngineMupdfEnsurePageOcrRotate(d->engine, d->pageNo) : 0);
-        if (rot > 0) {
+        bool applied = rot > 0 && EngineMupdfEnsurePageOcrRotate(d->engine, d->pageNo);
+        logfa("OCR[page-done] page=%d corr=%d applied=%d\n", d->pageNo, rot, applied);
+        if (applied) {
             MainWindow* win = d->hwndCanvas && IsWindow(d->hwndCanvas) ? FindMainWindowByHwnd(d->hwndCanvas) : nullptr;
             DisplayModel* dm = win ? win->AsFixed() : nullptr;
             if (dm && dm->GetEngine() == d->engine) {
+                dm->InvalidateReflowLayoutAfterEngineReparse();
                 dm->Relayout(dm->GetZoomVirtual(), dm->GetRotation());
             }
         }
@@ -3643,6 +3784,7 @@ void OcrCancelRegionSelect(MainWindow* win) {
         return;
     }
     win->ocrRegionPending = false;
+    win->ocrRegionFromModifier = false;
     if (win->mouseAction == MouseAction::OcrRegion) {
         win->mouseAction = MouseAction::None;
         win->dragStartPending = false;
@@ -3659,6 +3801,7 @@ void OcrFinishRegionSelect(MainWindow* win, Rect screenRect) {
         return;
     }
     win->ocrRegionPending = false;
+    win->ocrRegionFromModifier = false;
     if (screenRect.dx < 0) {
         screenRect.x += screenRect.dx;
         screenRect.dx = -screenRect.dx;

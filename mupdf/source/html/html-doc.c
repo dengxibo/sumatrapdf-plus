@@ -67,8 +67,10 @@ htdoc_resolve_link(fz_context *ctx, fz_document *doc_, const char *dest)
 		float y = fz_find_html_target(ctx, doc->html, s+1);
 		if (y >= 0)
 		{
-			int page = y / doc->html->page_h;
-			return fz_make_link_dest_xyz(0, page, 0, y - page * doc->html->page_h, 0);
+			float y0 = 0;
+			int page = fz_html_page_number_at_y(doc->html, y);
+			fz_html_page_box(doc->html, page, &y0, NULL, NULL, NULL, NULL, NULL, NULL);
+			return fz_make_link_dest_xyz(0, page, 0, y - y0, 0);
 		}
 	}
 
@@ -79,8 +81,8 @@ static int
 htdoc_count_pages(fz_context *ctx, fz_document *doc_, int chapter)
 {
 	html_document *doc = (html_document*)doc_;
-	if (doc->html->tree.root->s.layout.b > 0)
-		return ceilf(doc->html->tree.root->s.layout.b / doc->html->page_h);
+	if (doc->html && doc->html->tree.root && doc->html->tree.root->s.layout.b > 0)
+		return fz_html_count_pages(doc->html);
 	return 1;
 }
 
@@ -109,10 +111,12 @@ htdoc_bound_page(fz_context *ctx, fz_page *page_, fz_box_type box)
 	html_page *page = (html_page*)page_;
 	html_document *doc = page->doc;
 	fz_rect bbox;
+	float paper_w = 0, paper_h = 0;
+	fz_html_page_box(doc->html, page->number, NULL, NULL, &paper_w, &paper_h, NULL, NULL, NULL);
 	bbox.x0 = 0;
 	bbox.y0 = 0;
-	bbox.x1 = doc->html->page_w + doc->html->page_margin[L] + doc->html->page_margin[R];
-	bbox.y1 = doc->html->page_h + doc->html->page_margin[T] + doc->html->page_margin[B];
+	bbox.x1 = paper_w;
+	bbox.y1 = paper_h;
 	return bbox;
 }
 

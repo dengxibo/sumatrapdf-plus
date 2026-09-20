@@ -26,6 +26,8 @@
 #include "Flags.h"
 #include "DisplayModel.h"
 #include "Theme.h"
+#include "AppDialogTheme.h"
+#include "AppSettings.h"
 
 #include "DarkModeSubclass.h"
 #include "Notifications.h"
@@ -1474,17 +1476,135 @@ static void PdfRotatePagesDoIt(PdfRotatePagesDialog* dlg) {
         return;
     }
 
-    TempStr notifMsg = str::FormatTemp(_TRA("Rotated %d page(s) and saved to '%s'"), rotated, path);
     DestroyWindow(dlg->hwnd);
     if (tmp) {
-        // in-place overwrite failed (file locked); the rewrite went to a
-        // sidecar temp, switch the tab over to it (replace-and-reload)
-        SwitchCurrentTabToSavedFile(win, path, tmp);
+        bool replaced = SwitchCurrentTabToSavedFile(win, path, tmp);
         str::Free(tmp);
+        if (!replaced || !IsMainWindowValid(win) || !win->IsDocLoaded()) {
+            return;
+        }
     } else {
         ReloadDocument(win, false);
     }
-    ShowTemporaryNotification(win->hwndCanvas, notifMsg, kNotif5SecsTimeOut);
+    const char* savedPath = (win->ctrl) ? win->ctrl->GetFilePath() : nullptr;
+    if (savedPath) {
+        TempStr notifMsg = str::FormatTemp(_TRA("Rotated %d page(s) and saved to '%s'"), rotated, savedPath);
+        ShowTemporaryNotification(win->hwndCanvas, notifMsg, kNotif5SecsTimeOut);
+    }
+}
+
+// 96-DPI logical pixels -> this window's DPI. Do not call DpiScale(hwnd): during
+// WM_DPICHANGED, GetDpiForWindow / the monitor under the window can still be the old one.
+static int PdfRotatePx(int logicalPx, int dpi) {
+    if (dpi <= 0) {
+        dpi = 96;
+    }
+    return MulDiv(logicalPx, dpi, 96);
+}
+
+static void PdfRotatePagesMoveChild(HWND hwnd, int x, int y, int dx, int dy) {
+    if (!hwnd) {
+        return;
+    }
+    SetWindowPos(hwnd, nullptr, x, y, dx, dy, SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+// Client size in, outer size out. Caption + frame change with DPI; a fixed
+// +32px fudge is shorter than the real non-client area on many monitors.
+static Size PdfRotatePagesOuterSize(HWND hwnd, int dpi, int clientDx, int clientDy) {
+    RECT rc = {0, 0, clientDx, clientDy};
+    DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN;
+    DWORD exStyle = WS_EX_DLGMODALFRAME;
+    if (hwnd) {
+        style = (DWORD)GetWindowLongPtrW(hwnd, GWL_STYLE);
+        exStyle = (DWORD)GetWindowLongPtrW(hwnd, GWL_EXSTYLE) | WS_EX_DLGMODALFRAME;
+    }
+
+    using SigAdjustWindowRectExForDpi = BOOL(WINAPI*)(LPRECT, DWORD, BOOL, DWORD, UINT);
+    static SigAdjustWindowRectExForDpi pfnAdjust = nullptr;
+    static bool triedAdjust = false;
+    if (!triedAdjust) {
+        triedAdjust = true;
+        HMODULE user32 = GetModuleHandleW(L"user32.dll");
+        if (user32) {
+            pfnAdjust = (SigAdjustWindowRectExForDpi)GetProcAddress(user32, "AdjustWindowRectExForDpi");
+        }
+    }
+    BOOL ok = FALSE;
+    if (pfnAdjust && dpi > 0) {
+        ok = pfnAdjust(&rc, style, FALSE, exStyle, (UINT)dpi);
+    }
+    if (!ok) {
+        AdjustWindowRectEx(&rc, style, FALSE, exStyle);
+    }
+    return {rc.right - rc.left, rc.bottom - rc.top};
+}
+
+// Positions every child and returns the outer window size for `dpi`.
+static Size PdfRotatePagesLayout(PdfRotatePagesDialog* dlg, int dpi) {
+    if (!dlg || !dlg->hwnd) {
+        return {};
+    }
+    HWND hwnd = dlg->hwnd;
+    int pad = PdfRotatePx(22, dpi);
+    int rowGap = PdfRotatePx(9, dpi);
+    int ttlGap = PdfRotatePx(8, dpi);
+    int hintGap = PdfRotatePx(5, dpi);
+    int grpGap = PdfRotatePx(20, dpi);
+    int indent = PdfRotatePx(20, dpi);
+    int clientW = PdfRotatePx(480, dpi);
+
+    Size textSize = HwndMeasureText(hwnd, "Xg", dlg->hFont);
+    int rowH = textSize.dy + PdfRotatePx(8, dpi);
+    int btnW = PdfRotatePx(75, dpi);
+    int btnH = rowH;
+    int btnGap = PdfRotatePx(4, dpi);
+
+    int y = pad;
+    int yTitle1 = y;
+    y += rowH + ttlGap;
+    int yCur = y;
+    y += rowH + rowGap;
+    int yAll = y;
+    y += rowH + rowGap;
+    int ySpec = y;
+    y += rowH + hintGap;
+    int yEdit = y;
+    y += rowH + hintGap;
+    int yHint = y;
+    y += rowH + grpGap;
+    int yTitle2 = y;
+    y += rowH + ttlGap;
+    int yDir = y;
+    y += rowH + grpGap;
+    int yBtn = y;
+    int clientH = y + btnH + pad;
+
+    int x = pad;
+    int w = clientW - 2 * pad;
+    PdfRotatePagesMoveChild(dlg->hwndApplyToLabel, x, yTitle1, w, rowH);
+    PdfRotatePagesMoveChild(dlg->hwndCurrentPage, x, yCur, w, rowH);
+    PdfRotatePagesMoveChild(dlg->hwndAllPages, x, yAll, w, rowH);
+    PdfRotatePagesMoveChild(dlg->hwndSpecified, x, ySpec, w, rowH);
+    PdfRotatePagesMoveChild(dlg->hwndPagesEdit, x + indent, yEdit, w - indent, rowH);
+    PdfRotatePagesMoveChild(dlg->hwndPagesHint, x + indent, yHint, w - indent, rowH);
+    PdfRotatePagesMoveChild(dlg->hwndRotationLabel, x, yTitle2, w, rowH);
+
+    int third = w / 3;
+    PdfRotatePagesMoveChild(dlg->hwndLeft90, x, yDir, third, rowH);
+    PdfRotatePagesMoveChild(dlg->hwnd180, x + third, yDir, third, rowH);
+    PdfRotatePagesMoveChild(dlg->hwndRight90, x + 2 * third, yDir, w - 2 * third, rowH);
+
+    WCHAR* applyTxt = _TRW("Apply Rotation");
+    int textPad = PdfRotatePx(28, dpi);
+    int applyW = std::max(btnW, HwndMeasureText(hwnd, ToUtf8Temp(applyTxt), dlg->hFont).dx + textPad);
+    WCHAR* cancelTxt = _TRW("Cancel");
+    int cancelW = std::max(btnW, HwndMeasureText(hwnd, ToUtf8Temp(cancelTxt), dlg->hFont).dx + textPad);
+    int bx = x + w - applyW;
+    PdfRotatePagesMoveChild(dlg->hwndRotateBtn, bx, yBtn, applyW, btnH);
+    PdfRotatePagesMoveChild(dlg->hwndCancelBtn, bx - cancelW - btnGap, yBtn, cancelW, btnH);
+
+    return PdfRotatePagesOuterSize(hwnd, dpi, clientW, clientH);
 }
 
 // theme-adaptive control colors: the brush returned here fills the control
@@ -1569,6 +1689,48 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
         case DM_GETDEFID:
             // Enter triggers "Apply Rotation"
             return MAKELRESULT(idRotateApply, DC_HASDEFID);
+        case WM_DPICHANGED: {
+            // Trust LOWORD(wParam). GetDpiForWindow and monitor queries lag while
+            // the window is crossing displays (see OnMainWindowDpiChanged).
+            int dpi = (int)LOWORD(wp);
+            if (dpi <= 0) {
+                dpi = 96;
+            }
+            RECT* prc = (RECT*)lp;
+            AppDialogFonts fonts;
+            fonts.CreateForDpi(dpi);
+            if (fonts.body) {
+                DeleteObject(dlg->hFont);
+                DeleteObject(dlg->hFontBold);
+                dlg->hFont = fonts.body;
+                dlg->hFontBold = fonts.semibold;
+                fonts.body = fonts.semibold = nullptr;
+                AppDialogApplyFontToChildren(hwnd, dlg->hFont);
+                HFONT title = dlg->hFontBold ? dlg->hFontBold : dlg->hFont;
+                if (dlg->hwndApplyToLabel) {
+                    SendMessageW(dlg->hwndApplyToLabel, WM_SETFONT, (WPARAM)title, TRUE);
+                }
+                if (dlg->hwndRotationLabel) {
+                    SendMessageW(dlg->hwndRotationLabel, WM_SETFONT, (WPARAM)title, TRUE);
+                }
+            }
+            // Suggested rect is a blind scale of the old outer size. Keep its
+            // origin, but size from the relaid-out client area.
+            Size outer = PdfRotatePagesLayout(dlg, dpi);
+            UINT flags = SWP_NOZORDER | SWP_NOACTIVATE;
+            int x = 0;
+            int y = 0;
+            if (prc) {
+                x = prc->left;
+                y = prc->top;
+            } else {
+                flags |= SWP_NOMOVE;
+            }
+            if (!outer.IsEmpty()) {
+                SetWindowPos(hwnd, nullptr, x, y, outer.dx, outer.dy, flags);
+            }
+            return 0;
+        }
         case WM_ACTIVATE:
             // track focus so the main loop routes Enter/Esc/Tab through
             // IsDialogMessage only while this window is the active one
@@ -1578,13 +1740,13 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
             DestroyWindow(hwnd);
             return 0;
         case WM_NCDESTROY:
+            UnregisterAppDialogForTheme(hwnd);
             if (GetCurrentModelessDialog() == hwnd) {
                 SetCurrentModelessDialog(nullptr);
             }
-            if (dlg->hFontBold) {
-                DeleteObject(dlg->hFontBold);
-                dlg->hFontBold = nullptr;
-            }
+            DeleteObject(dlg->hFontBold);
+            DeleteObject(dlg->hFont);
+            dlg->hFontBold = dlg->hFont = nullptr;
             DeleteObject(dlg->bgBrush);
             DeleteObject(dlg->ctrlBrush);
             dlg->bgBrush = dlg->ctrlBrush = nullptr;
@@ -1595,6 +1757,8 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
 
 static constexpr const WCHAR* kPdfRotatePagesWinClassName = L"SUMATRA_PDF_ROTATE_PAGES";
 static bool gPdfRotatePagesWinClassRegistered = false;
+
+static void PdfRotatePagesThemeRefreshCb(HWND hwnd, void* ctx);
 
 // compact, one-purpose dialog: apply-to scope, rotation direction, buttons
 void ShowPdfRotatePagesDialog(MainWindow* win) {
@@ -1631,152 +1795,125 @@ void ShowPdfRotatePagesDialog(MainWindow* win) {
 
     PdfRotatePagesDialog* dlg = new PdfRotatePagesDialog();
     dlg->win = win;
-    dlg->hFont = GetDefaultGuiFont();
     dlg->pageCount = pageCount;
     dlg->currentPageNo = currentPageNo;
-    LOGFONTW lfw{};
-    if (GetObjectW(dlg->hFont, sizeof(lfw), &lfw)) {
-        lfw.lfWeight = FW_BOLD;
-        dlg->hFontBold = CreateFontIndirectW(&lfw);
-    }
-
-    DlgMetrics m = GetDlgMetrics(win->hwndFrame, dlg->hFont);
-    int pad = DpiScale(win->hwndFrame, 22);    // window side padding
-    int rowGap = DpiScale(win->hwndFrame, 9);  // between options in a group
-    int ttlGap = DpiScale(win->hwndFrame, 8);  // group title to first option
-    int hintGap = DpiScale(win->hwndFrame, 5); // edit to hint text
-    int grpGap = DpiScale(win->hwndFrame, 20); // between groups
-    int indent = DpiScale(win->hwndFrame, 20); // edit/hint under "specified"
-
-    int dlgW = DpiScale(win->hwndFrame, 480);
-    // walk the rows once to derive both the window height and the control
-    // y positions, so the two can never disagree
-    int y = pad;
-    int yTitle1 = y;
-    y += m.rowH + ttlGap;
-    int yCur = y;
-    y += m.rowH + rowGap;
-    int yAll = y;
-    y += m.rowH + rowGap;
-    int ySpec = y;
-    y += m.rowH + hintGap;
-    int yEdit = y;
-    y += m.rowH + hintGap;
-    int yHint = y;
-    y += m.rowH + grpGap;
-    int yTitle2 = y;
-    y += m.rowH + ttlGap;
-    int yDir = y;
-    y += m.rowH + grpGap;
-    int yBtn = y;
-    // +32: non-client area (title bar, frame)
-    int dlgH = y + m.btnH + pad + DpiScale(win->hwndFrame, 32);
 
     HINSTANCE h = GetModuleHandleW(nullptr);
     HWND hwnd = CreateWindowExW(WS_EX_DLGMODALFRAME, kPdfRotatePagesWinClassName, _TRW("Rotate Pages"),
                                 WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT,
-                                dlgW, dlgH, win->hwndFrame, nullptr, h, dlg);
+                                CW_USEDEFAULT, CW_USEDEFAULT, win->hwndFrame, nullptr, h, dlg);
     if (!hwnd) {
-        if (dlg->hFontBold) {
-            DeleteObject(dlg->hFontBold);
-        }
         delete dlg;
         return;
     }
 
-    int x = pad;
-    int w = dlgW - 2 * pad;
+    int dpi = DpiGet(hwnd);
+    if (dpi <= 0) {
+        dpi = DpiGet(win->hwndFrame);
+    }
+    AppDialogFonts fonts;
+    fonts.CreateForDpi(dpi);
+    if (!fonts.body) {
+        DestroyWindow(hwnd);
+        delete dlg;
+        return;
+    }
+    dlg->hFont = fonts.body;
+    dlg->hFontBold = fonts.semibold;
+    fonts.body = fonts.semibold = nullptr;
     HFONT hfontTitle = dlg->hFontBold ? dlg->hFontBold : dlg->hFont;
 
-    // group: apply to
-    dlg->hwndApplyToLabel = CreateWindowExW(0, L"STATIC", _TRW("Apply To"), WS_CHILD | WS_VISIBLE | SS_LEFT, x,
-                                            yTitle1, w, m.rowH, hwnd, nullptr, h, nullptr);
+    // group: apply to. Positions come from PdfRotatePagesLayout so creation
+    // and WM_DPICHANGED cannot drift.
+    dlg->hwndApplyToLabel = CreateWindowExW(0, L"STATIC", _TRW("Apply To"), WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, 0, 0,
+                                            hwnd, nullptr, h, nullptr);
     SendMessageW(dlg->hwndApplyToLabel, WM_SETFONT, (WPARAM)hfontTitle, TRUE);
 
     WCHAR* curTxt = ToWStrTemp(str::FormatTemp(_TRA("Current Page (Page %d)"), dlg->currentPageNo));
-    dlg->hwndCurrentPage = CreateWindowExW(0, L"BUTTON", curTxt,
-                                           WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_GROUP | BS_AUTORADIOBUTTON, x, yCur,
-                                           w, m.rowH, hwnd, (HMENU)(INT_PTR)idRotateApplyToCurrent, h, nullptr);
+    dlg->hwndCurrentPage =
+        CreateWindowExW(0, L"BUTTON", curTxt, WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_GROUP | BS_AUTORADIOBUTTON, 0, 0,
+                        0, 0, hwnd, (HMENU)(INT_PTR)idRotateApplyToCurrent, h, nullptr);
     SendMessageW(dlg->hwndCurrentPage, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
     SendMessageW(dlg->hwndCurrentPage, BM_SETCHECK, BST_CHECKED, 0);
 
     WCHAR* allTxt = ToWStrTemp(str::FormatTemp(_TRA("All Pages (%d)"), dlg->pageCount));
-    dlg->hwndAllPages =
-        CreateWindowExW(0, L"BUTTON", allTxt, WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, x, yAll, w, m.rowH, hwnd,
-                        (HMENU)(INT_PTR)idRotateApplyToAll, h, nullptr);
+    dlg->hwndAllPages = CreateWindowExW(0, L"BUTTON", allTxt, WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 0, 0, 0, 0,
+                                        hwnd, (HMENU)(INT_PTR)idRotateApplyToAll, h, nullptr);
     SendMessageW(dlg->hwndAllPages, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
 
-    dlg->hwndSpecified = CreateWindowExW(0, L"BUTTON", _TRW("Specified Pages"),
-                                         WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, x, ySpec, w, m.rowH, hwnd,
-                                         (HMENU)(INT_PTR)idRotateApplyToSpecified, h, nullptr);
+    dlg->hwndSpecified =
+        CreateWindowExW(0, L"BUTTON", _TRW("Specified Pages"), WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 0, 0, 0, 0,
+                        hwnd, (HMENU)(INT_PTR)idRotateApplyToSpecified, h, nullptr);
     SendMessageW(dlg->hwndSpecified, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
 
-    dlg->hwndPagesEdit = CreateWindowExW(WS_EX_CLIENTEDGE, WC_EDITW, L"",
-                                         WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, x + indent, yEdit,
-                                         w - indent, m.rowH, hwnd, (HMENU)(INT_PTR)idRotatePagesEdit, h, nullptr);
+    dlg->hwndPagesEdit =
+        CreateWindowExW(WS_EX_CLIENTEDGE, WC_EDITW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0, 0, 0,
+                        0, hwnd, (HMENU)(INT_PTR)idRotatePagesEdit, h, nullptr);
     SendMessageW(dlg->hwndPagesEdit, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
 
-    dlg->hwndPagesHint = CreateWindowExW(0, L"STATIC", _TRW("e.g. 2, 5-7, 13-"), WS_CHILD | WS_VISIBLE | SS_LEFT,
-                                         x + indent, yHint, w - indent, m.rowH, hwnd, nullptr, h, nullptr);
+    dlg->hwndPagesHint = CreateWindowExW(0, L"STATIC", _TRW("e.g. 2, 5-7, 13-"), WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0,
+                                         0, 0, hwnd, nullptr, h, nullptr);
     SendMessageW(dlg->hwndPagesHint, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
 
     // group: rotation direction
-    dlg->hwndRotationLabel = CreateWindowExW(0, L"STATIC", _TRW("Rotation"), WS_CHILD | WS_VISIBLE | SS_LEFT, x,
-                                             yTitle2, w, m.rowH, hwnd, nullptr, h, nullptr);
+    dlg->hwndRotationLabel = CreateWindowExW(0, L"STATIC", _TRW("Rotation"), WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, 0,
+                                             0, hwnd, nullptr, h, nullptr);
     SendMessageW(dlg->hwndRotationLabel, WM_SETFONT, (WPARAM)hfontTitle, TRUE);
 
     // three options spread left/center/right; WS_GROUP on the first binds
     // them for arrow-key navigation
-    int third = w / 3;
     dlg->hwndLeft90 = CreateWindowExW(0, L"BUTTON", _TRW("Left 90°"),
-                                      WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_GROUP | BS_AUTORADIOBUTTON, x, yDir,
-                                      third, m.rowH, hwnd, (HMENU)(INT_PTR)idRotateLeft90, h, nullptr);
+                                      WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_GROUP | BS_AUTORADIOBUTTON, 0, 0, 0, 0,
+                                      hwnd, (HMENU)(INT_PTR)idRotateLeft90, h, nullptr);
     SendMessageW(dlg->hwndLeft90, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
-    dlg->hwnd180 = CreateWindowExW(0, L"BUTTON", L"180°", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, x + third, yDir,
-                                   third, m.rowH, hwnd, (HMENU)(INT_PTR)idRotate180, h, nullptr);
+    dlg->hwnd180 = CreateWindowExW(0, L"BUTTON", L"180°", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 0, 0, 0, 0, hwnd,
+                                   (HMENU)(INT_PTR)idRotate180, h, nullptr);
     SendMessageW(dlg->hwnd180, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
-    dlg->hwndRight90 = CreateWindowExW(0, L"BUTTON", _TRW("Right 90°"), WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
-                                       x + 2 * third, yDir, w - 2 * third, m.rowH, hwnd,
-                                       (HMENU)(INT_PTR)idRotateRight90, h, nullptr);
+    dlg->hwndRight90 = CreateWindowExW(0, L"BUTTON", _TRW("Right 90°"), WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 0,
+                                       0, 0, 0, hwnd, (HMENU)(INT_PTR)idRotateRight90, h, nullptr);
     SendMessageW(dlg->hwndRight90, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
     SendMessageW(dlg->hwndRight90, BM_SETCHECK, BST_CHECKED, 0);
 
     // bottom-right: [Cancel] [Apply Rotation]
     WCHAR* applyTxt = _TRW("Apply Rotation");
-    int applyW = std::max(m.btnW, HwndMeasureText(hwnd, ToUtf8Temp(applyTxt), dlg->hFont).dx + DpiScale(hwnd, 28));
-    WCHAR* cancelTxt = _TRW("Cancel");
-    int cancelW = std::max(m.btnW, HwndMeasureText(hwnd, ToUtf8Temp(cancelTxt), dlg->hFont).dx + DpiScale(hwnd, 28));
-    int bx = x + w - applyW;
-    dlg->hwndRotateBtn = CreateWindowExW(0, L"BUTTON", applyTxt,
-                                         WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON, bx, yBtn, applyW,
-                                         m.btnH, hwnd, (HMENU)(INT_PTR)idRotateApply, h, nullptr);
+    dlg->hwndRotateBtn = CreateWindowExW(0, L"BUTTON", applyTxt, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
+                                         0, 0, 0, 0, hwnd, (HMENU)(INT_PTR)idRotateApply, h, nullptr);
     SendMessageW(dlg->hwndRotateBtn, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
-    dlg->hwndCancelBtn = CreateWindowExW(0, L"BUTTON", cancelTxt, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-                                         bx - cancelW - m.btnGap, yBtn, cancelW, m.btnH, hwnd,
-                                         (HMENU)(INT_PTR)idRotateCancel, h, nullptr);
+    WCHAR* cancelTxt = _TRW("Cancel");
+    dlg->hwndCancelBtn = CreateWindowExW(0, L"BUTTON", cancelTxt, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
+                                         0, 0, 0, hwnd, (HMENU)(INT_PTR)idRotateCancel, h, nullptr);
     SendMessageW(dlg->hwndCancelBtn, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
+
+    Size outer = PdfRotatePagesLayout(dlg, dpi);
+    if (!outer.IsEmpty()) {
+        SetWindowPos(hwnd, nullptr, 0, 0, outer.dx, outer.dy, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
 
     // initial enable/disable state (edit disabled for current-page scope)
     PdfRotatePagesUpdateUi(dlg);
 
     CenterDialog(hwnd, win->hwndFrame);
-    if (UseDarkModeLib()) {
-        // dark themes: darkmodelib fills the background and custom-paints the
-        // child controls; light themes fall through to the WM_ERASEBKGND /
-        // WM_CTLCOLOR* handlers in PdfRotatePagesDlgProc (theme-brush based)
-        DarkMode::setWindowEraseBgSubclass(hwnd);
-        DarkMode::setChildCtrlsSubclassAndTheme(hwnd);
-    }
-    UpdateWindowCaptionTheme(hwnd);
+    AppDialogApplyChrome(hwnd);
+    RegisterAppDialogForTheme(hwnd, PdfRotatePagesThemeRefreshCb, dlg);
     ShowWindow(hwnd, SW_SHOW);
 }
 
-// theme switch while the modeless dialog is open: rebuild the theme brushes
-// and repaint, mirroring RefreshAiTocWindowsTheme
-void RefreshPdfRotatePagesTheme() {
-    if (!UseDarkModeLib()) {
+static void PdfRotatePagesThemeRefreshCb(HWND hwnd, void* ctx) {
+    auto* dlg = (PdfRotatePagesDialog*)ctx;
+    if (!dlg) {
         return;
     }
+    DeleteObject(dlg->bgBrush);
+    DeleteObject(dlg->ctrlBrush);
+    dlg->bgBrush = CreateSolidBrush(ThemeWindowBackgroundColor());
+    dlg->ctrlBrush = CreateSolidBrush(ThemeWindowControlBackgroundColor());
+    AppDialogApplyChrome(hwnd);
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
+}
+
+// theme switch while the modeless dialog is open: rebuild the theme brushes
+// and repaint (light and dark). Also registered via AppDialogTheme.
+void RefreshPdfRotatePagesTheme() {
     EnumThreadWindows(
         GetCurrentThreadId(),
         [](HWND hwnd, LPARAM) -> BOOL {
@@ -1784,15 +1921,7 @@ void RefreshPdfRotatePagesTheme() {
             GetClassNameW(hwnd, cls, dimof(cls));
             if (!wcscmp(cls, kPdfRotatePagesWinClassName)) {
                 auto* dlg = (PdfRotatePagesDialog*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
-                if (dlg) {
-                    DeleteObject(dlg->bgBrush);
-                    DeleteObject(dlg->ctrlBrush);
-                    dlg->bgBrush = CreateSolidBrush(ThemeWindowBackgroundColor());
-                    dlg->ctrlBrush = CreateSolidBrush(ThemeWindowControlBackgroundColor());
-                    DarkMode::setChildCtrlsSubclassAndTheme(hwnd);
-                    UpdateWindowCaptionTheme(hwnd);
-                    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
-                }
+                PdfRotatePagesThemeRefreshCb(hwnd, dlg);
             }
             return TRUE;
         },

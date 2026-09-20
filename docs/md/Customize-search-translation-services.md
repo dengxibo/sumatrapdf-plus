@@ -29,7 +29,7 @@ You can add more web services using [advanced settings](https://www.sumatrapdfre
 
 To configure an external reader:
 
-- use `Settings / Advanced Settings...` menu to open configuration file
+- use `Settings` / `Options...` → **Advanced** → `Open Advanced Options File...` to open configuration file
 - modify `SelectionHandlers` section
 
 Here's an example of adding [DuckDuckGo](https://duckduckgo.com/) search engine:

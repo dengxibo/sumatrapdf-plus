@@ -301,6 +301,14 @@ static MenuDef menuDefView[] = {
         CmdRotateRight,
     },
     {
+        _TRN("Deskew &Page"),
+        CmdDeskewPage,
+    },
+    {
+        _TRN("Deskew &All Scanned Pages"),
+        CmdDeskewAllScannedPages,
+    },
+    {
         _TRN("Rotate PDF Pages..."),
         CmdPdfRotatePages,
     },
@@ -323,6 +331,10 @@ static MenuDef menuDefView[] = {
     {
         _TRN("Show Book&marks"),
         CmdToggleBookmarks,
+    },
+    {
+        _TRN("Extract Table of Contents"),
+        CmdExtractPdfToc,
     },
     {
         _TRN("Show &Menu"),
@@ -537,10 +549,6 @@ static MenuDef menuDefSettings[] = {
     {
         _TRN("&Options..."),
         CmdOptions,
-    },
-    {
-        _TRN("&Advanced Options..."),
-        CmdAdvancedOptions,
     },
     {
         _TRN("Change Language"),
@@ -881,6 +889,14 @@ static MenuDef menuDefContext[] = {
         CmdOcrRegion,
     },
     {
+        _TRN("Deskew &Page"),
+        CmdDeskewPage,
+    },
+    {
+        _TRN("Rotate PDF Pages..."),
+        CmdPdfRotatePages,
+    },
+    {
         _TRN("Create Annotation From Selection"),
         (UINT_PTR)menuDefCreateAnnotFromSelection,
     },
@@ -916,10 +932,6 @@ static MenuDef menuDefContext[] = {
     {
         _TRN("Show &Bookmarks"),
         CmdToggleBookmarks,
-    },
-    {
-        _TRN("Rotate PDF Pages..."),
-        CmdPdfRotatePages,
     },
     {
         _TRN("Set TOC Item to Current Page"),
@@ -1004,6 +1016,8 @@ static MenuDef menuDefContextStart[] = {
 static UINT_PTR disableIfNoDocument[] = {
     CmdRotateLeft,
     CmdRotateRight,
+    CmdDeskewPage,
+    CmdDeskewAllScannedPages,
     CmdPdfRotatePages,
     CmdGoToNextPage,
     CmdGoToPrevPage,
@@ -1158,6 +1172,8 @@ UINT_PTR removeIfChm[] = {
     CmdToggleContinuousView,
     CmdRotateLeft,
     CmdRotateRight,
+    CmdDeskewPage,
+    CmdDeskewAllScannedPages,
     CmdTogglePresentationMode,
     CmdZoomFitPage,
     CmdZoomActualSize,

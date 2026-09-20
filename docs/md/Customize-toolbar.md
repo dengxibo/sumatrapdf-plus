@@ -6,7 +6,7 @@ You can add buttons to a toolbar using `Shortcuts` [advanced setting](Advanced-o
 
 To customize toolbar:
 
-- use `Settings` / `Advanced Options...` menu (or `Ctrl + K` Command Palette, type `adv` to narrow down and select `Advanced Options...` command)
+- use `Settings` / `Options...` → **Advanced** → `Open Advanced Options File...` (or `Ctrl + K` Command Palette, type `adv` to narrow down and select `Advanced Options...` command)
 - this opens default .txt editor with advanced settings file
 - find `Shortcuts` array and add new shortcut definitions
 

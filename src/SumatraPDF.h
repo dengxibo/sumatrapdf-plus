@@ -221,7 +221,7 @@ void SyncMenuBarForTabsInTitlebar(MainWindow* win);
 void SyncMainWindowForNoTabsInTitlebar(MainWindow* win);
 void DuplicateTabInNewWindow(WindowTab* tab);
 void CopyFilePath(WindowTab*);
-void SwitchCurrentTabToSavedFile(MainWindow* win, const char* destPath, const char* replaceFromTemp = nullptr);
+bool SwitchCurrentTabToSavedFile(MainWindow* win, const char* destPath, const char* replaceFromTemp = nullptr);
 
 // note: background tabs are only searched if focusTab is true
 MainWindow* FindMainWindowByFile(const char* file, bool focusTab);

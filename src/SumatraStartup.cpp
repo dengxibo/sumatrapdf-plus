@@ -99,22 +99,30 @@ static NO_INLINE bool MaybeMakePluginWindow(MainWindow* win, HWND hwndParent) {
 
     auto hwndFrame = win->hwndFrame;
 
-    // first SetParent as top-level window (may fail but primes the window manager)
-    SetParent(hwndFrame, hwndParent);
+    // Hide first so a top-level frame never paints on the desktop while we reparent
+    // (visible flash with sLister + SumatraPDF Plus; stock often embeds fast enough
+    // that the same race is hard to see).
+    ShowWindow(hwndFrame, SW_HIDE);
 
-    // strip styles and set WS_CHILD
-    long ws = GetWindowLong(hwndFrame, GWL_STYLE);
-    ws &= ~(WS_POPUP | WS_BORDER | WS_CAPTION | WS_THICKFRAME);
+    LONG_PTR ex = GetWindowLongPtr(hwndFrame, GWL_EXSTYLE);
+    ex &= ~(LONG_PTR)(WS_EX_APPWINDOW | WS_EX_WINDOWEDGE);
+    ex |= WS_EX_TOOLWINDOW;
+    SetWindowLongPtr(hwndFrame, GWL_EXSTYLE, ex);
+
+    // WS_CHILD must be set before SetParent. Parenting an overlapped window first can
+    // briefly show it as a normal top-level Sumatra window (the "flash then embed" bug).
+    LONG_PTR ws = GetWindowLongPtr(hwndFrame, GWL_STYLE);
+    ws &= ~(LONG_PTR)(WS_POPUP | WS_BORDER | WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
     ws |= WS_CHILD;
-    SetWindowLong(hwndFrame, GWL_STYLE, ws);
+    SetWindowLongPtr(hwndFrame, GWL_STYLE, ws);
 
-    // second SetParent after WS_CHILD is set
     SetParent(hwndFrame, hwndParent);
     MoveWindow(hwndFrame, ClientRect(hwndParent));
+    SetWindowPos(hwndFrame, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
     ShowWindow(hwndFrame, SW_SHOW);
     UpdateWindow(hwndFrame);
 
-    // from here on, we depend on the plugin's host to resize us
+    // Focus the child only — do not bring a top-level frame to the foreground
     HwndSetFocus(hwndFrame);
     return true;
 }
@@ -448,6 +456,11 @@ static bool SetupPluginMode(Flags& i) {
     gGlobalPrefs->reuseInstance = false;
     // don't allow tabbed navigation
     gGlobalPrefs->useTabs = false;
+    // TC lister plugins: restoring prior files / session opens extra top-level windows
+    // that flash and then get closed or reparented (TCSumatraPDF readme; Plus #32).
+    gGlobalPrefs->rememberOpenedFiles = false;
+    gGlobalPrefs->restoreSession = false;
+    gGlobalPrefs->checkForUpdates = false;
     // always display the toolbar when embedded (as there's no menubar in that case)
     gGlobalPrefs->showToolbar = true;
     // never allow esc as a shortcut to quit
@@ -1176,7 +1189,11 @@ static void LayoutAndFocusOnStartup(MainWindow* win) {
     if (win->hwndToolbar) {
         ToolbarUpdateStateForWindow(win, true);
     }
-    win->Focus();
+    // Skip Focus() in -plugin / embedded mode: SetForegroundWindow steals TC focus
+    // (upstream #3798 / #4917) and can flash a top-level frame (Plus #32).
+    if (!NeedsWindowEmbeddingHacks()) {
+        win->Focus();
+    }
 }
 
 // non-admin process cannot send DDE messages to admin process

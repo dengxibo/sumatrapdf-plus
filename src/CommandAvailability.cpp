@@ -200,6 +200,8 @@ static UINT_PTR removeIfChm[] = {
     CmdToggleContinuousView,
     CmdRotateLeft,
     CmdRotateRight,
+    CmdDeskewPage,
+    CmdDeskewAllScannedPages,
     CmdTogglePresentationMode,
     CmdZoomFitPage,
     CmdZoomActualSize,
@@ -343,7 +345,9 @@ AppCommandCtx NewAppCommandCtx(MainWindow* win, Point cursorPos) {
         ctx.isPdf = CouldBePDFDoc(ctx.tab);
         if (ctx.isPdf && engine) {
             ctx.isPdfEncrypted = EngineMupdfIsEncrypted(engine);
-            ctx.canEditPdfToc = EngineMupdfCanEditPdfToc(engine);
+        }
+        if (engine) {
+            ctx.canEditPdfToc = EngineMupdfCanEditToc(engine);
         }
         ctx.canContinueReadAloud = CanContinueReadAloud(ctx.tab);
     }
@@ -393,8 +397,12 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
     if (cmdId >= CmdPdfTocAddAfter && cmdId <= CmdPdfTocDemote) {
         return ctx.canEditPdfToc ? CommandVisibility::Show : CommandVisibility::Hide;
     }
-    if (cmdId == CmdExtractPdfToc || cmdId == CmdPdfTocCalibrate || cmdId == CmdPdfTocSetCurrentPage ||
-        cmdId == CmdPdfTocFindInBody || cmdId == CmdPdfTocReplaceFromSelection) {
+    if (cmdId == CmdExtractPdfToc) {
+        EngineBase* engine = ctx.tab ? ctx.tab->GetEngine() : nullptr;
+        return EngineMupdfCanExtractToc(engine) ? CommandVisibility::Show : CommandVisibility::Hide;
+    }
+    if (cmdId == CmdPdfTocCalibrate || cmdId == CmdPdfTocSetCurrentPage || cmdId == CmdPdfTocFindInBody ||
+        cmdId == CmdPdfTocReplaceFromSelection) {
         return ctx.canEditPdfToc ? CommandVisibility::Show : CommandVisibility::Hide;
     }
 
@@ -464,7 +472,8 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         return MapForSurface(CommandVisibility::Show, surface);
     }
 
-    if ((cmdId == CmdToggleAutoOcr || cmdId == CmdToggleOcrAutoSave || cmdId == CmdToggleOcrCopyMerged) &&
+    if ((cmdId == CmdToggleAutoOcr || cmdId == CmdToggleOcrAutoSave || cmdId == CmdToggleOcrDeskew ||
+         cmdId == CmdToggleOcrCopyMerged) &&
         !ctx.isDocLoaded) {
         return CommandVisibility::Disable;
     }
@@ -563,8 +572,8 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
     }
 
     if (cmdId == CmdOcrCurrentPage || cmdId == CmdOcrDocument || cmdId == CmdOcrReRecognizeAllPages ||
-        cmdId == CmdToggleAutoOcr || cmdId == CmdToggleOcrAutoSave || cmdId == CmdToggleOcrCopyMerged ||
-        cmdId == CmdOcrRegion || cmdId == CmdOcrCancel) {
+        cmdId == CmdToggleAutoOcr || cmdId == CmdToggleOcrAutoSave || cmdId == CmdToggleOcrDeskew ||
+        cmdId == CmdToggleOcrCopyMerged || cmdId == CmdOcrRegion || cmdId == CmdOcrCancel) {
         if (ctx.engineKind != kindEngineMupdf && ctx.engineKind != kindEngineDjVu &&
             ctx.engineKind != kindEngineImage && ctx.engineKind != kindEngineImageDir &&
             ctx.engineKind != kindEngineComicBooks && ctx.engineKind != kindEnginePostScript) {

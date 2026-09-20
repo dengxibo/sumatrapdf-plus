@@ -4374,6 +4374,79 @@ nl:Rand %d
 pl:Obramowanie: %d
 sk:Okraj: %d
 tw:邊界: %d
+:Brightness
+af:Brightness
+am:Brightness
+ar:Brightness
+az:Brightness
+bg:Brightness
+bn:Brightness
+br:Brightness
+bs:Brightness
+by:Brightness
+ca:Brightness
+ca-xv:Brightness
+cn:亮度
+co:Brightness
+cy:Brightness
+cz:Brightness
+de:Brightness
+dk:Brightness
+el:Brightness
+es:Brightness
+et:Brightness
+eu:Brightness
+fa:Brightness
+fi:Brightness
+fo:Brightness
+fr:Brightness
+fy-nl:Brightness
+ga:Brightness
+gl:Brightness
+he:Brightness
+hi:Brightness
+hr:Brightness
+hu:Brightness
+id:Brightness
+it:Brightness
+ja:Brightness
+jv:Brightness
+ka:Brightness
+kr:Brightness
+ku:Brightness
+kw:Brightness
+lt:Brightness
+lv:Brightness
+mk:Brightness
+ml:Brightness
+mm:Brightness
+my:Brightness
+ne:Brightness
+nl:Brightness
+nn:Brightness
+no:Brightness
+pa:Brightness
+pl:Brightness
+pt:Brightness
+ro:Brightness
+ru:Brightness
+sat:Brightness
+si:Brightness
+sk:Brightness
+sl:Brightness
+sn:Brightness
+sp-rs:Brightness
+sq:Brightness
+sr-rs:Brightness
+sv:Brightness
+ta:Brightness
+th:Brightness
+tl:Brightness
+tr:Brightness
+tw:亮度
+uk:Brightness
+uz:Brightness
+vn:Brightness
 :Bytes
 am:Բայթ
 br:Bytes
@@ -5635,6 +5708,79 @@ nl:Dubbele pagina doorlopend
 pl:Wiele stron - układ ciągły
 sk:Dve strany priebežne
 tw:雙頁捲動模式
+:Contrast
+af:Contrast
+am:Contrast
+ar:Contrast
+az:Contrast
+bg:Contrast
+bn:Contrast
+br:Contrast
+bs:Contrast
+by:Contrast
+ca:Contrast
+ca-xv:Contrast
+cn:对比度
+co:Contrast
+cy:Contrast
+cz:Contrast
+de:Contrast
+dk:Contrast
+el:Contrast
+es:Contrast
+et:Contrast
+eu:Contrast
+fa:Contrast
+fi:Contrast
+fo:Contrast
+fr:Contrast
+fy-nl:Contrast
+ga:Contrast
+gl:Contrast
+he:Contrast
+hi:Contrast
+hr:Contrast
+hu:Contrast
+id:Contrast
+it:Contrast
+ja:Contrast
+jv:Contrast
+ka:Contrast
+kr:Contrast
+ku:Contrast
+kw:Contrast
+lt:Contrast
+lv:Contrast
+mk:Contrast
+ml:Contrast
+mm:Contrast
+my:Contrast
+ne:Contrast
+nl:Contrast
+nn:Contrast
+no:Contrast
+pa:Contrast
+pl:Contrast
+pt:Contrast
+ro:Contrast
+ru:Contrast
+sat:Contrast
+si:Contrast
+sk:Contrast
+sl:Contrast
+sn:Contrast
+sp-rs:Contrast
+sq:Contrast
+sr-rs:Contrast
+sv:Contrast
+ta:Contrast
+th:Contrast
+tl:Contrast
+tr:Contrast
+tw:對比度
+uk:Contrast
+uz:Contrast
+vn:Contrast
 :Contribute Translation
 am:Օգնել թարգմանել
 br:Contribua com a Tradução
@@ -7692,6 +7838,79 @@ tw:預設縮放(&Z):
 uk:Default &Zoom:
 uz:Default &Zoom:
 vn:Default &Zoom:
+:Default document &colors:
+af:Default document &colors:
+am:Default document &colors:
+ar:Default document &colors:
+az:Default document &colors:
+bg:Default document &colors:
+bn:Default document &colors:
+br:Default document &colors:
+bs:Default document &colors:
+by:Default document &colors:
+ca:Default document &colors:
+ca-xv:Default document &colors:
+cn:默认文档颜色(&C)：
+co:Default document &colors:
+cy:Default document &colors:
+cz:Default document &colors:
+de:Default document &colors:
+dk:Default document &colors:
+el:Default document &colors:
+es:Default document &colors:
+et:Default document &colors:
+eu:Default document &colors:
+fa:Default document &colors:
+fi:Default document &colors:
+fo:Default document &colors:
+fr:Default document &colors:
+fy-nl:Default document &colors:
+ga:Default document &colors:
+gl:Default document &colors:
+he:Default document &colors:
+hi:Default document &colors:
+hr:Default document &colors:
+hu:Default document &colors:
+id:Default document &colors:
+it:Default document &colors:
+ja:Default document &colors:
+jv:Default document &colors:
+ka:Default document &colors:
+kr:Default document &colors:
+ku:Default document &colors:
+kw:Default document &colors:
+lt:Default document &colors:
+lv:Default document &colors:
+mk:Default document &colors:
+ml:Default document &colors:
+mm:Default document &colors:
+my:Default document &colors:
+ne:Default document &colors:
+nl:Default document &colors:
+nn:Default document &colors:
+no:Default document &colors:
+pa:Default document &colors:
+pl:Default document &colors:
+pt:Default document &colors:
+ro:Default document &colors:
+ru:Default document &colors:
+sat:Default document &colors:
+si:Default document &colors:
+sk:Default document &colors:
+sl:Default document &colors:
+sn:Default document &colors:
+sp-rs:Default document &colors:
+sq:Default document &colors:
+sr-rs:Default document &colors:
+sv:Default document &colors:
+ta:Default document &colors:
+th:Default document &colors:
+tl:Default document &colors:
+tr:Default document &colors:
+tw:預設文件色彩(&C)：
+uk:Default document &colors:
+uz:Default document &colors:
+vn:Default document &colors:
 :Default view
 af:Default view
 am:Default view
@@ -8043,6 +8262,736 @@ nl:Niet toegestaan:
 pl:Brak zezwoleń:
 sk:Odmietnuté povolenia:
 tw:權限不足:
+:Deskew &All Scanned Pages
+af:Deskew &All Scanned Pages
+am:Deskew &All Scanned Pages
+ar:Deskew &All Scanned Pages
+az:Deskew &All Scanned Pages
+bg:Deskew &All Scanned Pages
+bn:Deskew &All Scanned Pages
+br:Deskew &All Scanned Pages
+bs:Deskew &All Scanned Pages
+by:Deskew &All Scanned Pages
+ca:Deskew &All Scanned Pages
+ca-xv:Deskew &All Scanned Pages
+cn:倾斜校正全部扫描页(&A)
+co:Deskew &All Scanned Pages
+cy:Deskew &All Scanned Pages
+cz:Deskew &All Scanned Pages
+de:Deskew &All Scanned Pages
+dk:Deskew &All Scanned Pages
+el:Deskew &All Scanned Pages
+es:Deskew &All Scanned Pages
+et:Deskew &All Scanned Pages
+eu:Deskew &All Scanned Pages
+fa:Deskew &All Scanned Pages
+fi:Deskew &All Scanned Pages
+fo:Deskew &All Scanned Pages
+fr:Deskew &All Scanned Pages
+fy-nl:Deskew &All Scanned Pages
+ga:Deskew &All Scanned Pages
+gl:Deskew &All Scanned Pages
+he:Deskew &All Scanned Pages
+hi:Deskew &All Scanned Pages
+hr:Deskew &All Scanned Pages
+hu:Deskew &All Scanned Pages
+id:Deskew &All Scanned Pages
+it:Deskew &All Scanned Pages
+ja:Deskew &All Scanned Pages
+jv:Deskew &All Scanned Pages
+ka:Deskew &All Scanned Pages
+kr:Deskew &All Scanned Pages
+ku:Deskew &All Scanned Pages
+kw:Deskew &All Scanned Pages
+lt:Deskew &All Scanned Pages
+lv:Deskew &All Scanned Pages
+mk:Deskew &All Scanned Pages
+ml:Deskew &All Scanned Pages
+mm:Deskew &All Scanned Pages
+my:Deskew &All Scanned Pages
+ne:Deskew &All Scanned Pages
+nl:Deskew &All Scanned Pages
+nn:Deskew &All Scanned Pages
+no:Deskew &All Scanned Pages
+pa:Deskew &All Scanned Pages
+pl:Deskew &All Scanned Pages
+pt:Deskew &All Scanned Pages
+ro:Deskew &All Scanned Pages
+ru:Deskew &All Scanned Pages
+sat:Deskew &All Scanned Pages
+si:Deskew &All Scanned Pages
+sk:Deskew &All Scanned Pages
+sl:Deskew &All Scanned Pages
+sn:Deskew &All Scanned Pages
+sp-rs:Deskew &All Scanned Pages
+sq:Deskew &All Scanned Pages
+sr-rs:Deskew &All Scanned Pages
+sv:Deskew &All Scanned Pages
+ta:Deskew &All Scanned Pages
+th:Deskew &All Scanned Pages
+tl:Deskew &All Scanned Pages
+tr:Deskew &All Scanned Pages
+tw:傾斜校正全部掃描頁(&A)
+uk:Deskew &All Scanned Pages
+uz:Deskew &All Scanned Pages
+vn:Deskew &All Scanned Pages
+:Deskew &Page
+af:Deskew &Page
+am:Deskew &Page
+ar:Deskew &Page
+az:Deskew &Page
+bg:Deskew &Page
+bn:Deskew &Page
+br:Deskew &Page
+bs:Deskew &Page
+by:Deskew &Page
+ca:Deskew &Page
+ca-xv:Deskew &Page
+cn:倾斜校正(&P)
+co:Deskew &Page
+cy:Deskew &Page
+cz:Deskew &Page
+de:Deskew &Page
+dk:Deskew &Page
+el:Deskew &Page
+es:Deskew &Page
+et:Deskew &Page
+eu:Deskew &Page
+fa:Deskew &Page
+fi:Deskew &Page
+fo:Deskew &Page
+fr:Deskew &Page
+fy-nl:Deskew &Page
+ga:Deskew &Page
+gl:Deskew &Page
+he:Deskew &Page
+hi:Deskew &Page
+hr:Deskew &Page
+hu:Deskew &Page
+id:Deskew &Page
+it:Deskew &Page
+ja:Deskew &Page
+jv:Deskew &Page
+ka:Deskew &Page
+kr:Deskew &Page
+ku:Deskew &Page
+kw:Deskew &Page
+lt:Deskew &Page
+lv:Deskew &Page
+mk:Deskew &Page
+ml:Deskew &Page
+mm:Deskew &Page
+my:Deskew &Page
+ne:Deskew &Page
+nl:Deskew &Page
+nn:Deskew &Page
+no:Deskew &Page
+pa:Deskew &Page
+pl:Deskew &Page
+pt:Deskew &Page
+ro:Deskew &Page
+ru:Deskew &Page
+sat:Deskew &Page
+si:Deskew &Page
+sk:Deskew &Page
+sl:Deskew &Page
+sn:Deskew &Page
+sp-rs:Deskew &Page
+sq:Deskew &Page
+sr-rs:Deskew &Page
+sv:Deskew &Page
+ta:Deskew &Page
+th:Deskew &Page
+tl:Deskew &Page
+tr:Deskew &Page
+tw:傾斜校正(&P)
+uk:Deskew &Page
+uz:Deskew &Page
+vn:Deskew &Page
+:Deskew All Scanned Pages
+af:Deskew All Scanned Pages
+am:Deskew All Scanned Pages
+ar:Deskew All Scanned Pages
+az:Deskew All Scanned Pages
+bg:Deskew All Scanned Pages
+bn:Deskew All Scanned Pages
+br:Deskew All Scanned Pages
+bs:Deskew All Scanned Pages
+by:Deskew All Scanned Pages
+ca:Deskew All Scanned Pages
+ca-xv:Deskew All Scanned Pages
+cn:倾斜校正全部扫描页
+co:Deskew All Scanned Pages
+cy:Deskew All Scanned Pages
+cz:Deskew All Scanned Pages
+de:Deskew All Scanned Pages
+dk:Deskew All Scanned Pages
+el:Deskew All Scanned Pages
+es:Deskew All Scanned Pages
+et:Deskew All Scanned Pages
+eu:Deskew All Scanned Pages
+fa:Deskew All Scanned Pages
+fi:Deskew All Scanned Pages
+fo:Deskew All Scanned Pages
+fr:Deskew All Scanned Pages
+fy-nl:Deskew All Scanned Pages
+ga:Deskew All Scanned Pages
+gl:Deskew All Scanned Pages
+he:Deskew All Scanned Pages
+hi:Deskew All Scanned Pages
+hr:Deskew All Scanned Pages
+hu:Deskew All Scanned Pages
+id:Deskew All Scanned Pages
+it:Deskew All Scanned Pages
+ja:Deskew All Scanned Pages
+jv:Deskew All Scanned Pages
+ka:Deskew All Scanned Pages
+kr:Deskew All Scanned Pages
+ku:Deskew All Scanned Pages
+kw:Deskew All Scanned Pages
+lt:Deskew All Scanned Pages
+lv:Deskew All Scanned Pages
+mk:Deskew All Scanned Pages
+ml:Deskew All Scanned Pages
+mm:Deskew All Scanned Pages
+my:Deskew All Scanned Pages
+ne:Deskew All Scanned Pages
+nl:Deskew All Scanned Pages
+nn:Deskew All Scanned Pages
+no:Deskew All Scanned Pages
+pa:Deskew All Scanned Pages
+pl:Deskew All Scanned Pages
+pt:Deskew All Scanned Pages
+ro:Deskew All Scanned Pages
+ru:Deskew All Scanned Pages
+sat:Deskew All Scanned Pages
+si:Deskew All Scanned Pages
+sk:Deskew All Scanned Pages
+sl:Deskew All Scanned Pages
+sn:Deskew All Scanned Pages
+sp-rs:Deskew All Scanned Pages
+sq:Deskew All Scanned Pages
+sr-rs:Deskew All Scanned Pages
+sv:Deskew All Scanned Pages
+ta:Deskew All Scanned Pages
+th:Deskew All Scanned Pages
+tl:Deskew All Scanned Pages
+tr:Deskew All Scanned Pages
+tw:傾斜校正全部掃描頁
+uk:Deskew All Scanned Pages
+uz:Deskew All Scanned Pages
+vn:Deskew All Scanned Pages
+:Deskew Page
+af:Deskew Page
+am:Deskew Page
+ar:Deskew Page
+az:Deskew Page
+bg:Deskew Page
+bn:Deskew Page
+br:Deskew Page
+bs:Deskew Page
+by:Deskew Page
+ca:Deskew Page
+ca-xv:Deskew Page
+cn:倾斜校正
+co:Deskew Page
+cy:Deskew Page
+cz:Deskew Page
+de:Deskew Page
+dk:Deskew Page
+el:Deskew Page
+es:Deskew Page
+et:Deskew Page
+eu:Deskew Page
+fa:Deskew Page
+fi:Deskew Page
+fo:Deskew Page
+fr:Deskew Page
+fy-nl:Deskew Page
+ga:Deskew Page
+gl:Deskew Page
+he:Deskew Page
+hi:Deskew Page
+hr:Deskew Page
+hu:Deskew Page
+id:Deskew Page
+it:Deskew Page
+ja:Deskew Page
+jv:Deskew Page
+ka:Deskew Page
+kr:Deskew Page
+ku:Deskew Page
+kw:Deskew Page
+lt:Deskew Page
+lv:Deskew Page
+mk:Deskew Page
+ml:Deskew Page
+mm:Deskew Page
+my:Deskew Page
+ne:Deskew Page
+nl:Deskew Page
+nn:Deskew Page
+no:Deskew Page
+pa:Deskew Page
+pl:Deskew Page
+pt:Deskew Page
+ro:Deskew Page
+ru:Deskew Page
+sat:Deskew Page
+si:Deskew Page
+sk:Deskew Page
+sl:Deskew Page
+sn:Deskew Page
+sp-rs:Deskew Page
+sq:Deskew Page
+sr-rs:Deskew Page
+sv:Deskew Page
+ta:Deskew Page
+th:Deskew Page
+tl:Deskew Page
+tr:Deskew Page
+tw:傾斜校正
+uk:Deskew Page
+uz:Deskew Page
+vn:Deskew Page
+:Deskew during OCR
+af:Deskew during OCR
+am:Deskew during OCR
+ar:Deskew during OCR
+az:Deskew during OCR
+bg:Deskew during OCR
+bn:Deskew during OCR
+br:Deskew during OCR
+bs:Deskew during OCR
+by:Deskew during OCR
+ca:Deskew during OCR
+ca-xv:Deskew during OCR
+cn:识别时自动校正倾斜
+co:Deskew during OCR
+cy:Deskew during OCR
+cz:Deskew during OCR
+de:Deskew during OCR
+dk:Deskew during OCR
+el:Deskew during OCR
+es:Deskew during OCR
+et:Deskew during OCR
+eu:Deskew during OCR
+fa:Deskew during OCR
+fi:Deskew during OCR
+fo:Deskew during OCR
+fr:Deskew during OCR
+fy-nl:Deskew during OCR
+ga:Deskew during OCR
+gl:Deskew during OCR
+he:Deskew during OCR
+hi:Deskew during OCR
+hr:Deskew during OCR
+hu:Deskew during OCR
+id:Deskew during OCR
+it:Deskew during OCR
+ja:Deskew during OCR
+jv:Deskew during OCR
+ka:Deskew during OCR
+kr:Deskew during OCR
+ku:Deskew during OCR
+kw:Deskew during OCR
+lt:Deskew during OCR
+lv:Deskew during OCR
+mk:Deskew during OCR
+ml:Deskew during OCR
+mm:Deskew during OCR
+my:Deskew during OCR
+ne:Deskew during OCR
+nl:Deskew during OCR
+nn:Deskew during OCR
+no:Deskew during OCR
+pa:Deskew during OCR
+pl:Deskew during OCR
+pt:Deskew during OCR
+ro:Deskew during OCR
+ru:Deskew during OCR
+sat:Deskew during OCR
+si:Deskew during OCR
+sk:Deskew during OCR
+sl:Deskew during OCR
+sn:Deskew during OCR
+sp-rs:Deskew during OCR
+sq:Deskew during OCR
+sr-rs:Deskew during OCR
+sv:Deskew during OCR
+ta:Deskew during OCR
+th:Deskew during OCR
+tl:Deskew during OCR
+tr:Deskew during OCR
+tw:識別時自動校正傾斜
+uk:Deskew during OCR
+uz:Deskew during OCR
+vn:Deskew during OCR
+:Deskew is already running.
+af:Deskew is already running.
+am:Deskew is already running.
+ar:Deskew is already running.
+az:Deskew is already running.
+bg:Deskew is already running.
+bn:Deskew is already running.
+br:Deskew is already running.
+bs:Deskew is already running.
+by:Deskew is already running.
+ca:Deskew is already running.
+ca-xv:Deskew is already running.
+cn:倾斜校正已在进行。
+co:Deskew is already running.
+cy:Deskew is already running.
+cz:Deskew is already running.
+de:Deskew is already running.
+dk:Deskew is already running.
+el:Deskew is already running.
+es:Deskew is already running.
+et:Deskew is already running.
+eu:Deskew is already running.
+fa:Deskew is already running.
+fi:Deskew is already running.
+fo:Deskew is already running.
+fr:Deskew is already running.
+fy-nl:Deskew is already running.
+ga:Deskew is already running.
+gl:Deskew is already running.
+he:Deskew is already running.
+hi:Deskew is already running.
+hr:Deskew is already running.
+hu:Deskew is already running.
+id:Deskew is already running.
+it:Deskew is already running.
+ja:Deskew is already running.
+jv:Deskew is already running.
+ka:Deskew is already running.
+kr:Deskew is already running.
+ku:Deskew is already running.
+kw:Deskew is already running.
+lt:Deskew is already running.
+lv:Deskew is already running.
+mk:Deskew is already running.
+ml:Deskew is already running.
+mm:Deskew is already running.
+my:Deskew is already running.
+ne:Deskew is already running.
+nl:Deskew is already running.
+nn:Deskew is already running.
+no:Deskew is already running.
+pa:Deskew is already running.
+pl:Deskew is already running.
+pt:Deskew is already running.
+ro:Deskew is already running.
+ru:Deskew is already running.
+sat:Deskew is already running.
+si:Deskew is already running.
+sk:Deskew is already running.
+sl:Deskew is already running.
+sn:Deskew is already running.
+sp-rs:Deskew is already running.
+sq:Deskew is already running.
+sr-rs:Deskew is already running.
+sv:Deskew is already running.
+ta:Deskew is already running.
+th:Deskew is already running.
+tl:Deskew is already running.
+tr:Deskew is already running.
+tw:傾斜校正已在進行。
+uk:Deskew is already running.
+uz:Deskew is already running.
+vn:Deskew is already running.
+:Deskewed %d page(s).
+af:Deskewed %d page(s).
+am:Deskewed %d page(s).
+ar:Deskewed %d page(s).
+az:Deskewed %d page(s).
+bg:Deskewed %d page(s).
+bn:Deskewed %d page(s).
+br:Deskewed %d page(s).
+bs:Deskewed %d page(s).
+by:Deskewed %d page(s).
+ca:Deskewed %d page(s).
+ca-xv:Deskewed %d page(s).
+cn:已倾斜校正 %d 页。
+co:Deskewed %d page(s).
+cy:Deskewed %d page(s).
+cz:Deskewed %d page(s).
+de:Deskewed %d page(s).
+dk:Deskewed %d page(s).
+el:Deskewed %d page(s).
+es:Deskewed %d page(s).
+et:Deskewed %d page(s).
+eu:Deskewed %d page(s).
+fa:Deskewed %d page(s).
+fi:Deskewed %d page(s).
+fo:Deskewed %d page(s).
+fr:Deskewed %d page(s).
+fy-nl:Deskewed %d page(s).
+ga:Deskewed %d page(s).
+gl:Deskewed %d page(s).
+he:Deskewed %d page(s).
+hi:Deskewed %d page(s).
+hr:Deskewed %d page(s).
+hu:Deskewed %d page(s).
+id:Deskewed %d page(s).
+it:Deskewed %d page(s).
+ja:Deskewed %d page(s).
+jv:Deskewed %d page(s).
+ka:Deskewed %d page(s).
+kr:Deskewed %d page(s).
+ku:Deskewed %d page(s).
+kw:Deskewed %d page(s).
+lt:Deskewed %d page(s).
+lv:Deskewed %d page(s).
+mk:Deskewed %d page(s).
+ml:Deskewed %d page(s).
+mm:Deskewed %d page(s).
+my:Deskewed %d page(s).
+ne:Deskewed %d page(s).
+nl:Deskewed %d page(s).
+nn:Deskewed %d page(s).
+no:Deskewed %d page(s).
+pa:Deskewed %d page(s).
+pl:Deskewed %d page(s).
+pt:Deskewed %d page(s).
+ro:Deskewed %d page(s).
+ru:Deskewed %d page(s).
+sat:Deskewed %d page(s).
+si:Deskewed %d page(s).
+sk:Deskewed %d page(s).
+sl:Deskewed %d page(s).
+sn:Deskewed %d page(s).
+sp-rs:Deskewed %d page(s).
+sq:Deskewed %d page(s).
+sr-rs:Deskewed %d page(s).
+sv:Deskewed %d page(s).
+ta:Deskewed %d page(s).
+th:Deskewed %d page(s).
+tl:Deskewed %d page(s).
+tr:Deskewed %d page(s).
+tw:已傾斜校正 %d 頁。
+uk:Deskewed %d page(s).
+uz:Deskewed %d page(s).
+vn:Deskewed %d page(s).
+:Deskewed by %.1f degrees.
+af:Deskewed by %.1f degrees.
+am:Deskewed by %.1f degrees.
+ar:Deskewed by %.1f degrees.
+az:Deskewed by %.1f degrees.
+bg:Deskewed by %.1f degrees.
+bn:Deskewed by %.1f degrees.
+br:Deskewed by %.1f degrees.
+bs:Deskewed by %.1f degrees.
+by:Deskewed by %.1f degrees.
+ca:Deskewed by %.1f degrees.
+ca-xv:Deskewed by %.1f degrees.
+cn:已倾斜校正 %.1f 度。
+co:Deskewed by %.1f degrees.
+cy:Deskewed by %.1f degrees.
+cz:Deskewed by %.1f degrees.
+de:Deskewed by %.1f degrees.
+dk:Deskewed by %.1f degrees.
+el:Deskewed by %.1f degrees.
+es:Deskewed by %.1f degrees.
+et:Deskewed by %.1f degrees.
+eu:Deskewed by %.1f degrees.
+fa:Deskewed by %.1f degrees.
+fi:Deskewed by %.1f degrees.
+fo:Deskewed by %.1f degrees.
+fr:Deskewed by %.1f degrees.
+fy-nl:Deskewed by %.1f degrees.
+ga:Deskewed by %.1f degrees.
+gl:Deskewed by %.1f degrees.
+he:Deskewed by %.1f degrees.
+hi:Deskewed by %.1f degrees.
+hr:Deskewed by %.1f degrees.
+hu:Deskewed by %.1f degrees.
+id:Deskewed by %.1f degrees.
+it:Deskewed by %.1f degrees.
+ja:Deskewed by %.1f degrees.
+jv:Deskewed by %.1f degrees.
+ka:Deskewed by %.1f degrees.
+kr:Deskewed by %.1f degrees.
+ku:Deskewed by %.1f degrees.
+kw:Deskewed by %.1f degrees.
+lt:Deskewed by %.1f degrees.
+lv:Deskewed by %.1f degrees.
+mk:Deskewed by %.1f degrees.
+ml:Deskewed by %.1f degrees.
+mm:Deskewed by %.1f degrees.
+my:Deskewed by %.1f degrees.
+ne:Deskewed by %.1f degrees.
+nl:Deskewed by %.1f degrees.
+nn:Deskewed by %.1f degrees.
+no:Deskewed by %.1f degrees.
+pa:Deskewed by %.1f degrees.
+pl:Deskewed by %.1f degrees.
+pt:Deskewed by %.1f degrees.
+ro:Deskewed by %.1f degrees.
+ru:Deskewed by %.1f degrees.
+sat:Deskewed by %.1f degrees.
+si:Deskewed by %.1f degrees.
+sk:Deskewed by %.1f degrees.
+sl:Deskewed by %.1f degrees.
+sn:Deskewed by %.1f degrees.
+sp-rs:Deskewed by %.1f degrees.
+sq:Deskewed by %.1f degrees.
+sr-rs:Deskewed by %.1f degrees.
+sv:Deskewed by %.1f degrees.
+ta:Deskewed by %.1f degrees.
+th:Deskewed by %.1f degrees.
+tl:Deskewed by %.1f degrees.
+tr:Deskewed by %.1f degrees.
+tw:已傾斜校正 %.1f 度。
+uk:Deskewed by %.1f degrees.
+uz:Deskewed by %.1f degrees.
+vn:Deskewed by %.1f degrees.
+:Deskewing…
+af:Deskewing…
+am:Deskewing…
+ar:Deskewing…
+az:Deskewing…
+bg:Deskewing…
+bn:Deskewing…
+br:Deskewing…
+bs:Deskewing…
+by:Deskewing…
+ca:Deskewing…
+ca-xv:Deskewing…
+cn:正在倾斜校正…
+co:Deskewing…
+cy:Deskewing…
+cz:Deskewing…
+de:Deskewing…
+dk:Deskewing…
+el:Deskewing…
+es:Deskewing…
+et:Deskewing…
+eu:Deskewing…
+fa:Deskewing…
+fi:Deskewing…
+fo:Deskewing…
+fr:Deskewing…
+fy-nl:Deskewing…
+ga:Deskewing…
+gl:Deskewing…
+he:Deskewing…
+hi:Deskewing…
+hr:Deskewing…
+hu:Deskewing…
+id:Deskewing…
+it:Deskewing…
+ja:Deskewing…
+jv:Deskewing…
+ka:Deskewing…
+kr:Deskewing…
+ku:Deskewing…
+kw:Deskewing…
+lt:Deskewing…
+lv:Deskewing…
+mk:Deskewing…
+ml:Deskewing…
+mm:Deskewing…
+my:Deskewing…
+ne:Deskewing…
+nl:Deskewing…
+nn:Deskewing…
+no:Deskewing…
+pa:Deskewing…
+pl:Deskewing…
+pt:Deskewing…
+ro:Deskewing…
+ru:Deskewing…
+sat:Deskewing…
+si:Deskewing…
+sk:Deskewing…
+sl:Deskewing…
+sn:Deskewing…
+sp-rs:Deskewing…
+sq:Deskewing…
+sr-rs:Deskewing…
+sv:Deskewing…
+ta:Deskewing…
+th:Deskewing…
+tl:Deskewing…
+tr:Deskewing…
+tw:正在傾斜校正…
+uk:Deskewing…
+uz:Deskewing…
+vn:Deskewing…
+:Deskewing… %d / %d
+af:Deskewing… %d / %d
+am:Deskewing… %d / %d
+ar:Deskewing… %d / %d
+az:Deskewing… %d / %d
+bg:Deskewing… %d / %d
+bn:Deskewing… %d / %d
+br:Deskewing… %d / %d
+bs:Deskewing… %d / %d
+by:Deskewing… %d / %d
+ca:Deskewing… %d / %d
+ca-xv:Deskewing… %d / %d
+cn:正在倾斜校正… %d / %d
+co:Deskewing… %d / %d
+cy:Deskewing… %d / %d
+cz:Deskewing… %d / %d
+de:Deskewing… %d / %d
+dk:Deskewing… %d / %d
+el:Deskewing… %d / %d
+es:Deskewing… %d / %d
+et:Deskewing… %d / %d
+eu:Deskewing… %d / %d
+fa:Deskewing… %d / %d
+fi:Deskewing… %d / %d
+fo:Deskewing… %d / %d
+fr:Deskewing… %d / %d
+fy-nl:Deskewing… %d / %d
+ga:Deskewing… %d / %d
+gl:Deskewing… %d / %d
+he:Deskewing… %d / %d
+hi:Deskewing… %d / %d
+hr:Deskewing… %d / %d
+hu:Deskewing… %d / %d
+id:Deskewing… %d / %d
+it:Deskewing… %d / %d
+ja:Deskewing… %d / %d
+jv:Deskewing… %d / %d
+ka:Deskewing… %d / %d
+kr:Deskewing… %d / %d
+ku:Deskewing… %d / %d
+kw:Deskewing… %d / %d
+lt:Deskewing… %d / %d
+lv:Deskewing… %d / %d
+mk:Deskewing… %d / %d
+ml:Deskewing… %d / %d
+mm:Deskewing… %d / %d
+my:Deskewing… %d / %d
+ne:Deskewing… %d / %d
+nl:Deskewing… %d / %d
+nn:Deskewing… %d / %d
+no:Deskewing… %d / %d
+pa:Deskewing… %d / %d
+pl:Deskewing… %d / %d
+pt:Deskewing… %d / %d
+ro:Deskewing… %d / %d
+ru:Deskewing… %d / %d
+sat:Deskewing… %d / %d
+si:Deskewing… %d / %d
+sk:Deskewing… %d / %d
+sl:Deskewing… %d / %d
+sn:Deskewing… %d / %d
+sp-rs:Deskewing… %d / %d
+sq:Deskewing… %d / %d
+sr-rs:Deskewing… %d / %d
+sv:Deskewing… %d / %d
+ta:Deskewing… %d / %d
+th:Deskewing… %d / %d
+tl:Deskewing… %d / %d
+tr:Deskewing… %d / %d
+tw:正在傾斜校正… %d / %d
+uk:Deskewing… %d / %d
+uz:Deskewing… %d / %d
+vn:Deskewing… %d / %d
 :Detailed
 af:Detailed
 am:Detailed
@@ -8335,6 +9284,152 @@ tw:顯示
 uk:Display
 uz:Display
 vn:Display
+:Display &Filter...
+af:Display &Filter...
+am:Display &Filter...
+ar:Display &Filter...
+az:Display &Filter...
+bg:Display &Filter...
+bn:Display &Filter...
+br:Display &Filter...
+bs:Display &Filter...
+by:Display &Filter...
+ca:Display &Filter...
+ca-xv:Display &Filter...
+cn:显示滤镜(&F)...
+co:Display &Filter...
+cy:Display &Filter...
+cz:Display &Filter...
+de:Display &Filter...
+dk:Display &Filter...
+el:Display &Filter...
+es:Display &Filter...
+et:Display &Filter...
+eu:Display &Filter...
+fa:Display &Filter...
+fi:Display &Filter...
+fo:Display &Filter...
+fr:Display &Filter...
+fy-nl:Display &Filter...
+ga:Display &Filter...
+gl:Display &Filter...
+he:Display &Filter...
+hi:Display &Filter...
+hr:Display &Filter...
+hu:Display &Filter...
+id:Display &Filter...
+it:Display &Filter...
+ja:Display &Filter...
+jv:Display &Filter...
+ka:Display &Filter...
+kr:Display &Filter...
+ku:Display &Filter...
+kw:Display &Filter...
+lt:Display &Filter...
+lv:Display &Filter...
+mk:Display &Filter...
+ml:Display &Filter...
+mm:Display &Filter...
+my:Display &Filter...
+ne:Display &Filter...
+nl:Display &Filter...
+nn:Display &Filter...
+no:Display &Filter...
+pa:Display &Filter...
+pl:Display &Filter...
+pt:Display &Filter...
+ro:Display &Filter...
+ru:Display &Filter...
+sat:Display &Filter...
+si:Display &Filter...
+sk:Display &Filter...
+sl:Display &Filter...
+sn:Display &Filter...
+sp-rs:Display &Filter...
+sq:Display &Filter...
+sr-rs:Display &Filter...
+sv:Display &Filter...
+ta:Display &Filter...
+th:Display &Filter...
+tl:Display &Filter...
+tr:Display &Filter...
+tw:顯示濾鏡(&F)...
+uk:Display &Filter...
+uz:Display &Filter...
+vn:Display &Filter...
+:Display filter
+af:Display filter
+am:Display filter
+ar:Display filter
+az:Display filter
+bg:Display filter
+bn:Display filter
+br:Display filter
+bs:Display filter
+by:Display filter
+ca:Display filter
+ca-xv:Display filter
+cn:显示滤镜
+co:Display filter
+cy:Display filter
+cz:Display filter
+de:Display filter
+dk:Display filter
+el:Display filter
+es:Display filter
+et:Display filter
+eu:Display filter
+fa:Display filter
+fi:Display filter
+fo:Display filter
+fr:Display filter
+fy-nl:Display filter
+ga:Display filter
+gl:Display filter
+he:Display filter
+hi:Display filter
+hr:Display filter
+hu:Display filter
+id:Display filter
+it:Display filter
+ja:Display filter
+jv:Display filter
+ka:Display filter
+kr:Display filter
+ku:Display filter
+kw:Display filter
+lt:Display filter
+lv:Display filter
+mk:Display filter
+ml:Display filter
+mm:Display filter
+my:Display filter
+ne:Display filter
+nl:Display filter
+nn:Display filter
+no:Display filter
+pa:Display filter
+pl:Display filter
+pt:Display filter
+ro:Display filter
+ru:Display filter
+sat:Display filter
+si:Display filter
+sk:Display filter
+sl:Display filter
+sn:Display filter
+sp-rs:Display filter
+sq:Display filter
+sr-rs:Display filter
+sv:Display filter
+ta:Display filter
+th:Display filter
+tl:Display filter
+tr:Display filter
+tw:顯示濾鏡
+uk:Display filter
+uz:Display filter
+vn:Display filter
 :Display quality
 af:Display quality
 am:Display quality
@@ -9101,6 +10196,79 @@ tw:開啟自動 OCR
 uk:Enable Auto OCR
 uz:Enable Auto OCR
 vn:Enable Auto OCR
+:Enable Enhance Display
+af:Enable Enhance Display
+am:Enable Enhance Display
+ar:Enable Enhance Display
+az:Enable Enhance Display
+bg:Enable Enhance Display
+bn:Enable Enhance Display
+br:Enable Enhance Display
+bs:Enable Enhance Display
+by:Enable Enhance Display
+ca:Enable Enhance Display
+ca-xv:Enable Enhance Display
+cn:开启增强显示
+co:Enable Enhance Display
+cy:Enable Enhance Display
+cz:Enable Enhance Display
+de:Enable Enhance Display
+dk:Enable Enhance Display
+el:Enable Enhance Display
+es:Enable Enhance Display
+et:Enable Enhance Display
+eu:Enable Enhance Display
+fa:Enable Enhance Display
+fi:Enable Enhance Display
+fo:Enable Enhance Display
+fr:Enable Enhance Display
+fy-nl:Enable Enhance Display
+ga:Enable Enhance Display
+gl:Enable Enhance Display
+he:Enable Enhance Display
+hi:Enable Enhance Display
+hr:Enable Enhance Display
+hu:Enable Enhance Display
+id:Enable Enhance Display
+it:Enable Enhance Display
+ja:Enable Enhance Display
+jv:Enable Enhance Display
+ka:Enable Enhance Display
+kr:Enable Enhance Display
+ku:Enable Enhance Display
+kw:Enable Enhance Display
+lt:Enable Enhance Display
+lv:Enable Enhance Display
+mk:Enable Enhance Display
+ml:Enable Enhance Display
+mm:Enable Enhance Display
+my:Enable Enhance Display
+ne:Enable Enhance Display
+nl:Enable Enhance Display
+nn:Enable Enhance Display
+no:Enable Enhance Display
+pa:Enable Enhance Display
+pl:Enable Enhance Display
+pt:Enable Enhance Display
+ro:Enable Enhance Display
+ru:Enable Enhance Display
+sat:Enable Enhance Display
+si:Enable Enhance Display
+sk:Enable Enhance Display
+sl:Enable Enhance Display
+sn:Enable Enhance Display
+sp-rs:Enable Enhance Display
+sq:Enable Enhance Display
+sr-rs:Enable Enhance Display
+sv:Enable Enhance Display
+ta:Enable Enhance Display
+th:Enable Enhance Display
+tl:Enable Enhance Display
+tr:Enable Enhance Display
+tw:開啟增強顯示
+uk:Enable Enhance Display
+uz:Enable Enhance Display
+vn:Enable Enhance Display
 :Enable PDF &anti-aliasing
 af:Enable PDF &anti-aliasing
 am:Enable PDF &anti-aliasing
@@ -9423,6 +10591,152 @@ nl:English:
 pl:English:
 sk:English:
 tw:英文：
+:Enhance Display
+af:Enhance Display
+am:Enhance Display
+ar:Enhance Display
+az:Enhance Display
+bg:Enhance Display
+bn:Enhance Display
+br:Enhance Display
+bs:Enhance Display
+by:Enhance Display
+ca:Enhance Display
+ca-xv:Enhance Display
+cn:增强显示
+co:Enhance Display
+cy:Enhance Display
+cz:Enhance Display
+de:Enhance Display
+dk:Enhance Display
+el:Enhance Display
+es:Enhance Display
+et:Enhance Display
+eu:Enhance Display
+fa:Enhance Display
+fi:Enhance Display
+fo:Enhance Display
+fr:Enhance Display
+fy-nl:Enhance Display
+ga:Enhance Display
+gl:Enhance Display
+he:Enhance Display
+hi:Enhance Display
+hr:Enhance Display
+hu:Enhance Display
+id:Enhance Display
+it:Enhance Display
+ja:Enhance Display
+jv:Enhance Display
+ka:Enhance Display
+kr:Enhance Display
+ku:Enhance Display
+kw:Enhance Display
+lt:Enhance Display
+lv:Enhance Display
+mk:Enhance Display
+ml:Enhance Display
+mm:Enhance Display
+my:Enhance Display
+ne:Enhance Display
+nl:Enhance Display
+nn:Enhance Display
+no:Enhance Display
+pa:Enhance Display
+pl:Enhance Display
+pt:Enhance Display
+ro:Enhance Display
+ru:Enhance Display
+sat:Enhance Display
+si:Enhance Display
+sk:Enhance Display
+sl:Enhance Display
+sn:Enhance Display
+sp-rs:Enhance Display
+sq:Enhance Display
+sr-rs:Enhance Display
+sv:Enhance Display
+ta:Enhance Display
+th:Enhance Display
+tl:Enhance Display
+tr:Enhance Display
+tw:增強顯示
+uk:Enhance Display
+uz:Enhance Display
+vn:Enhance Display
+:Enhance Display is enabled
+af:Enhance Display is enabled
+am:Enhance Display is enabled
+ar:Enhance Display is enabled
+az:Enhance Display is enabled
+bg:Enhance Display is enabled
+bn:Enhance Display is enabled
+br:Enhance Display is enabled
+bs:Enhance Display is enabled
+by:Enhance Display is enabled
+ca:Enhance Display is enabled
+ca-xv:Enhance Display is enabled
+cn:增强显示已开启
+co:Enhance Display is enabled
+cy:Enhance Display is enabled
+cz:Enhance Display is enabled
+de:Enhance Display is enabled
+dk:Enhance Display is enabled
+el:Enhance Display is enabled
+es:Enhance Display is enabled
+et:Enhance Display is enabled
+eu:Enhance Display is enabled
+fa:Enhance Display is enabled
+fi:Enhance Display is enabled
+fo:Enhance Display is enabled
+fr:Enhance Display is enabled
+fy-nl:Enhance Display is enabled
+ga:Enhance Display is enabled
+gl:Enhance Display is enabled
+he:Enhance Display is enabled
+hi:Enhance Display is enabled
+hr:Enhance Display is enabled
+hu:Enhance Display is enabled
+id:Enhance Display is enabled
+it:Enhance Display is enabled
+ja:Enhance Display is enabled
+jv:Enhance Display is enabled
+ka:Enhance Display is enabled
+kr:Enhance Display is enabled
+ku:Enhance Display is enabled
+kw:Enhance Display is enabled
+lt:Enhance Display is enabled
+lv:Enhance Display is enabled
+mk:Enhance Display is enabled
+ml:Enhance Display is enabled
+mm:Enhance Display is enabled
+my:Enhance Display is enabled
+ne:Enhance Display is enabled
+nl:Enhance Display is enabled
+nn:Enhance Display is enabled
+no:Enhance Display is enabled
+pa:Enhance Display is enabled
+pl:Enhance Display is enabled
+pt:Enhance Display is enabled
+ro:Enhance Display is enabled
+ru:Enhance Display is enabled
+sat:Enhance Display is enabled
+si:Enhance Display is enabled
+sk:Enhance Display is enabled
+sl:Enhance Display is enabled
+sn:Enhance Display is enabled
+sp-rs:Enhance Display is enabled
+sq:Enhance Display is enabled
+sr-rs:Enhance Display is enabled
+sv:Enhance Display is enabled
+ta:Enhance Display is enabled
+th:Enhance Display is enabled
+tl:Enhance Display is enabled
+tr:Enhance Display is enabled
+tw:增強顯示已開啟
+uk:Enhance Display is enabled
+uz:Enhance Display is enabled
+vn:Enhance Display is enabled
 :Enter a speed from 0.25x to 2.00x.
 af:Enter a speed from 0.25x to 2.00x.
 am:Enter a speed from 0.25x to 2.00x.
@@ -14735,6 +16049,79 @@ nl:Geen resultaat gevonden bij regel %u in bestand %s
 pl:Nie znaleziono wyników w okolicach wiersza %u w pliku %s
 sk:Nenájdené žiadne výsledky na riadku %u v súbore %s
 tw:在第 %u 行附近（檔案 %s）找不到目標
+:No scanned pages needed deskewing.
+af:No scanned pages needed deskewing.
+am:No scanned pages needed deskewing.
+ar:No scanned pages needed deskewing.
+az:No scanned pages needed deskewing.
+bg:No scanned pages needed deskewing.
+bn:No scanned pages needed deskewing.
+br:No scanned pages needed deskewing.
+bs:No scanned pages needed deskewing.
+by:No scanned pages needed deskewing.
+ca:No scanned pages needed deskewing.
+ca-xv:No scanned pages needed deskewing.
+cn:没有需要倾斜校正的扫描页。
+co:No scanned pages needed deskewing.
+cy:No scanned pages needed deskewing.
+cz:No scanned pages needed deskewing.
+de:No scanned pages needed deskewing.
+dk:No scanned pages needed deskewing.
+el:No scanned pages needed deskewing.
+es:No scanned pages needed deskewing.
+et:No scanned pages needed deskewing.
+eu:No scanned pages needed deskewing.
+fa:No scanned pages needed deskewing.
+fi:No scanned pages needed deskewing.
+fo:No scanned pages needed deskewing.
+fr:No scanned pages needed deskewing.
+fy-nl:No scanned pages needed deskewing.
+ga:No scanned pages needed deskewing.
+gl:No scanned pages needed deskewing.
+he:No scanned pages needed deskewing.
+hi:No scanned pages needed deskewing.
+hr:No scanned pages needed deskewing.
+hu:No scanned pages needed deskewing.
+id:No scanned pages needed deskewing.
+it:No scanned pages needed deskewing.
+ja:No scanned pages needed deskewing.
+jv:No scanned pages needed deskewing.
+ka:No scanned pages needed deskewing.
+kr:No scanned pages needed deskewing.
+ku:No scanned pages needed deskewing.
+kw:No scanned pages needed deskewing.
+lt:No scanned pages needed deskewing.
+lv:No scanned pages needed deskewing.
+mk:No scanned pages needed deskewing.
+ml:No scanned pages needed deskewing.
+mm:No scanned pages needed deskewing.
+my:No scanned pages needed deskewing.
+ne:No scanned pages needed deskewing.
+nl:No scanned pages needed deskewing.
+nn:No scanned pages needed deskewing.
+no:No scanned pages needed deskewing.
+pa:No scanned pages needed deskewing.
+pl:No scanned pages needed deskewing.
+pt:No scanned pages needed deskewing.
+ro:No scanned pages needed deskewing.
+ru:No scanned pages needed deskewing.
+sat:No scanned pages needed deskewing.
+si:No scanned pages needed deskewing.
+sk:No scanned pages needed deskewing.
+sl:No scanned pages needed deskewing.
+sn:No scanned pages needed deskewing.
+sp-rs:No scanned pages needed deskewing.
+sq:No scanned pages needed deskewing.
+sr-rs:No scanned pages needed deskewing.
+sv:No scanned pages needed deskewing.
+ta:No scanned pages needed deskewing.
+th:No scanned pages needed deskewing.
+tl:No scanned pages needed deskewing.
+tr:No scanned pages needed deskewing.
+tw:沒有需要傾斜校正的掃描頁。
+uk:No scanned pages needed deskewing.
+uz:No scanned pages needed deskewing.
+vn:No scanned pages needed deskewing.
 :No scanned pages to recognize.
 af:No scanned pages to recognize.
 am:No scanned pages to recognize.
@@ -19790,6 +21177,79 @@ tw:正在重新傳送目錄頁…
 :Resending body structure…
 cn:正在重新发送正文结构…
 tw:正在重新傳送正文結構…
+:Reset
+af:Reset
+am:Reset
+ar:Reset
+az:Reset
+bg:Reset
+bn:Reset
+br:Reset
+bs:Reset
+by:Reset
+ca:Reset
+ca-xv:Reset
+cn:重置
+co:Reset
+cy:Reset
+cz:Reset
+de:Reset
+dk:Reset
+el:Reset
+es:Reset
+et:Reset
+eu:Reset
+fa:Reset
+fi:Reset
+fo:Reset
+fr:Reset
+fy-nl:Reset
+ga:Reset
+gl:Reset
+he:Reset
+hi:Reset
+hr:Reset
+hu:Reset
+id:Reset
+it:Reset
+ja:Reset
+jv:Reset
+ka:Reset
+kr:Reset
+ku:Reset
+kw:Reset
+lt:Reset
+lv:Reset
+mk:Reset
+ml:Reset
+mm:Reset
+my:Reset
+ne:Reset
+nl:Reset
+nn:Reset
+no:Reset
+pa:Reset
+pl:Reset
+pt:Reset
+ro:Reset
+ru:Reset
+sat:Reset
+si:Reset
+sk:Reset
+sl:Reset
+sn:Reset
+sp-rs:Reset
+sq:Reset
+sr-rs:Reset
+sv:Reset
+ta:Reset
+th:Reset
+tl:Reset
+tr:Reset
+tw:重設
+uk:Reset
+uz:Reset
+vn:Reset
 :Reset Font Si&ze to Default
 af:Reset Font Si&ze to Default
 am:Reset Font Si&ze to Default
@@ -21643,6 +23103,79 @@ tw:儲存會修改這份已數位簽署的 PDF。原簽章仍在，但閱讀器�
 uk:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
 uz:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
 vn:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
+:Scan
+af:Scan
+am:Scan
+ar:Scan
+az:Scan
+bg:Scan
+bn:Scan
+br:Scan
+bs:Scan
+by:Scan
+ca:Scan
+ca-xv:Scan
+cn:扫描件
+co:Scan
+cy:Scan
+cz:Scan
+de:Scan
+dk:Scan
+el:Scan
+es:Scan
+et:Scan
+eu:Scan
+fa:Scan
+fi:Scan
+fo:Scan
+fr:Scan
+fy-nl:Scan
+ga:Scan
+gl:Scan
+he:Scan
+hi:Scan
+hr:Scan
+hu:Scan
+id:Scan
+it:Scan
+ja:Scan
+jv:Scan
+ka:Scan
+kr:Scan
+ku:Scan
+kw:Scan
+lt:Scan
+lv:Scan
+mk:Scan
+ml:Scan
+mm:Scan
+my:Scan
+ne:Scan
+nl:Scan
+nn:Scan
+no:Scan
+pa:Scan
+pl:Scan
+pt:Scan
+ro:Scan
+ru:Scan
+sat:Scan
+si:Scan
+sk:Scan
+sl:Scan
+sn:Scan
+sp-rs:Scan
+sq:Scan
+sr-rs:Scan
+sv:Scan
+ta:Scan
+th:Scan
+tl:Scan
+tr:Scan
+tw:掃描件
+uk:Scan
+uz:Scan
+vn:Scan
 :Scan canceled.
 cn:已取消扫描。
 tw:已取消掃描。
@@ -22708,6 +24241,79 @@ nl:Stel thema 'Light-White' in
 pl:Ustaw motyw 'Light-White'
 sk:Nastaviť motív 'Light-White'
 tw:設定成 'Light-White' 主題
+:Sharpness
+af:Sharpness
+am:Sharpness
+ar:Sharpness
+az:Sharpness
+bg:Sharpness
+bn:Sharpness
+br:Sharpness
+bs:Sharpness
+by:Sharpness
+ca:Sharpness
+ca-xv:Sharpness
+cn:锐度
+co:Sharpness
+cy:Sharpness
+cz:Sharpness
+de:Sharpness
+dk:Sharpness
+el:Sharpness
+es:Sharpness
+et:Sharpness
+eu:Sharpness
+fa:Sharpness
+fi:Sharpness
+fo:Sharpness
+fr:Sharpness
+fy-nl:Sharpness
+ga:Sharpness
+gl:Sharpness
+he:Sharpness
+hi:Sharpness
+hr:Sharpness
+hu:Sharpness
+id:Sharpness
+it:Sharpness
+ja:Sharpness
+jv:Sharpness
+ka:Sharpness
+kr:Sharpness
+ku:Sharpness
+kw:Sharpness
+lt:Sharpness
+lv:Sharpness
+mk:Sharpness
+ml:Sharpness
+mm:Sharpness
+my:Sharpness
+ne:Sharpness
+nl:Sharpness
+nn:Sharpness
+no:Sharpness
+pa:Sharpness
+pl:Sharpness
+pt:Sharpness
+ro:Sharpness
+ru:Sharpness
+sat:Sharpness
+si:Sharpness
+sk:Sharpness
+sl:Sharpness
+sn:Sharpness
+sp-rs:Sharpness
+sq:Sharpness
+sr-rs:Sharpness
+sv:Sharpness
+ta:Sharpness
+th:Sharpness
+tl:Sharpness
+tr:Sharpness
+tw:銳度
+uk:Sharpness
+uz:Sharpness
+vn:Sharpness
 :Show &Bookmarks
 am:Ցուցադրել &Էջանիշերը
 br:Mostrar &Favoritos
@@ -23429,6 +25035,79 @@ it:Riduci per adattare
 nl:Verklein Tot Passend
 pl:Zmniejsz, aby dopasować
 sk:Prispôsobiť veľkosť
+:Si&ze (0 = auto, 6-72):
+af:Si&ze (0 = auto, 6-72):
+am:Si&ze (0 = auto, 6-72):
+ar:Si&ze (0 = auto, 6-72):
+az:Si&ze (0 = auto, 6-72):
+bg:Si&ze (0 = auto, 6-72):
+bn:Si&ze (0 = auto, 6-72):
+br:Si&ze (0 = auto, 6-72):
+bs:Si&ze (0 = auto, 6-72):
+by:Si&ze (0 = auto, 6-72):
+ca:Si&ze (0 = auto, 6-72):
+ca-xv:Si&ze (0 = auto, 6-72):
+cn:字号（0 = 自动，6–72）(&S)：
+co:Si&ze (0 = auto, 6-72):
+cy:Si&ze (0 = auto, 6-72):
+cz:Si&ze (0 = auto, 6-72):
+de:Si&ze (0 = auto, 6-72):
+dk:Si&ze (0 = auto, 6-72):
+el:Si&ze (0 = auto, 6-72):
+es:Si&ze (0 = auto, 6-72):
+et:Si&ze (0 = auto, 6-72):
+eu:Si&ze (0 = auto, 6-72):
+fa:Si&ze (0 = auto, 6-72):
+fi:Si&ze (0 = auto, 6-72):
+fo:Si&ze (0 = auto, 6-72):
+fr:Si&ze (0 = auto, 6-72):
+fy-nl:Si&ze (0 = auto, 6-72):
+ga:Si&ze (0 = auto, 6-72):
+gl:Si&ze (0 = auto, 6-72):
+he:Si&ze (0 = auto, 6-72):
+hi:Si&ze (0 = auto, 6-72):
+hr:Si&ze (0 = auto, 6-72):
+hu:Si&ze (0 = auto, 6-72):
+id:Si&ze (0 = auto, 6-72):
+it:Si&ze (0 = auto, 6-72):
+ja:Si&ze (0 = auto, 6-72):
+jv:Si&ze (0 = auto, 6-72):
+ka:Si&ze (0 = auto, 6-72):
+kr:Si&ze (0 = auto, 6-72):
+ku:Si&ze (0 = auto, 6-72):
+kw:Si&ze (0 = auto, 6-72):
+lt:Si&ze (0 = auto, 6-72):
+lv:Si&ze (0 = auto, 6-72):
+mk:Si&ze (0 = auto, 6-72):
+ml:Si&ze (0 = auto, 6-72):
+mm:Si&ze (0 = auto, 6-72):
+my:Si&ze (0 = auto, 6-72):
+ne:Si&ze (0 = auto, 6-72):
+nl:Si&ze (0 = auto, 6-72):
+nn:Si&ze (0 = auto, 6-72):
+no:Si&ze (0 = auto, 6-72):
+pa:Si&ze (0 = auto, 6-72):
+pl:Si&ze (0 = auto, 6-72):
+pt:Si&ze (0 = auto, 6-72):
+ro:Si&ze (0 = auto, 6-72):
+ru:Si&ze (0 = auto, 6-72):
+sat:Si&ze (0 = auto, 6-72):
+si:Si&ze (0 = auto, 6-72):
+sk:Si&ze (0 = auto, 6-72):
+sl:Si&ze (0 = auto, 6-72):
+sn:Si&ze (0 = auto, 6-72):
+sp-rs:Si&ze (0 = auto, 6-72):
+sq:Si&ze (0 = auto, 6-72):
+sr-rs:Si&ze (0 = auto, 6-72):
+sv:Si&ze (0 = auto, 6-72):
+ta:Si&ze (0 = auto, 6-72):
+th:Si&ze (0 = auto, 6-72):
+tl:Si&ze (0 = auto, 6-72):
+tr:Si&ze (0 = auto, 6-72):
+tw:字型大小（0 = 自動，6–72）(&S)：
+uk:Si&ze (0 = auto, 6-72):
+uz:Si&ze (0 = auto, 6-72):
+vn:Si&ze (0 = auto, 6-72):
 :Single Page
 am:Մեկ էջ
 br:Página Única
@@ -24979,6 +26658,444 @@ it:Gruppi di schede
 nl:Tab Groepen
 pl:Grupy kart
 sk:Skupiny kariet
+:Tab bar &height (0 = auto, 16-128):
+af:Tab bar &height (0 = auto, 16-128):
+am:Tab bar &height (0 = auto, 16-128):
+ar:Tab bar &height (0 = auto, 16-128):
+az:Tab bar &height (0 = auto, 16-128):
+bg:Tab bar &height (0 = auto, 16-128):
+bn:Tab bar &height (0 = auto, 16-128):
+br:Tab bar &height (0 = auto, 16-128):
+bs:Tab bar &height (0 = auto, 16-128):
+by:Tab bar &height (0 = auto, 16-128):
+ca:Tab bar &height (0 = auto, 16-128):
+ca-xv:Tab bar &height (0 = auto, 16-128):
+cn:标签栏高度（0 = 自动，16–128）(&H)：
+co:Tab bar &height (0 = auto, 16-128):
+cy:Tab bar &height (0 = auto, 16-128):
+cz:Tab bar &height (0 = auto, 16-128):
+de:Tab bar &height (0 = auto, 16-128):
+dk:Tab bar &height (0 = auto, 16-128):
+el:Tab bar &height (0 = auto, 16-128):
+es:Tab bar &height (0 = auto, 16-128):
+et:Tab bar &height (0 = auto, 16-128):
+eu:Tab bar &height (0 = auto, 16-128):
+fa:Tab bar &height (0 = auto, 16-128):
+fi:Tab bar &height (0 = auto, 16-128):
+fo:Tab bar &height (0 = auto, 16-128):
+fr:Tab bar &height (0 = auto, 16-128):
+fy-nl:Tab bar &height (0 = auto, 16-128):
+ga:Tab bar &height (0 = auto, 16-128):
+gl:Tab bar &height (0 = auto, 16-128):
+he:Tab bar &height (0 = auto, 16-128):
+hi:Tab bar &height (0 = auto, 16-128):
+hr:Tab bar &height (0 = auto, 16-128):
+hu:Tab bar &height (0 = auto, 16-128):
+id:Tab bar &height (0 = auto, 16-128):
+it:Tab bar &height (0 = auto, 16-128):
+ja:Tab bar &height (0 = auto, 16-128):
+jv:Tab bar &height (0 = auto, 16-128):
+ka:Tab bar &height (0 = auto, 16-128):
+kr:Tab bar &height (0 = auto, 16-128):
+ku:Tab bar &height (0 = auto, 16-128):
+kw:Tab bar &height (0 = auto, 16-128):
+lt:Tab bar &height (0 = auto, 16-128):
+lv:Tab bar &height (0 = auto, 16-128):
+mk:Tab bar &height (0 = auto, 16-128):
+ml:Tab bar &height (0 = auto, 16-128):
+mm:Tab bar &height (0 = auto, 16-128):
+my:Tab bar &height (0 = auto, 16-128):
+ne:Tab bar &height (0 = auto, 16-128):
+nl:Tab bar &height (0 = auto, 16-128):
+nn:Tab bar &height (0 = auto, 16-128):
+no:Tab bar &height (0 = auto, 16-128):
+pa:Tab bar &height (0 = auto, 16-128):
+pl:Tab bar &height (0 = auto, 16-128):
+pt:Tab bar &height (0 = auto, 16-128):
+ro:Tab bar &height (0 = auto, 16-128):
+ru:Tab bar &height (0 = auto, 16-128):
+sat:Tab bar &height (0 = auto, 16-128):
+si:Tab bar &height (0 = auto, 16-128):
+sk:Tab bar &height (0 = auto, 16-128):
+sl:Tab bar &height (0 = auto, 16-128):
+sn:Tab bar &height (0 = auto, 16-128):
+sp-rs:Tab bar &height (0 = auto, 16-128):
+sq:Tab bar &height (0 = auto, 16-128):
+sr-rs:Tab bar &height (0 = auto, 16-128):
+sv:Tab bar &height (0 = auto, 16-128):
+ta:Tab bar &height (0 = auto, 16-128):
+th:Tab bar &height (0 = auto, 16-128):
+tl:Tab bar &height (0 = auto, 16-128):
+tr:Tab bar &height (0 = auto, 16-128):
+tw:分頁列高度（0 = 自動，16–128）(&H)：
+uk:Tab bar &height (0 = auto, 16-128):
+uz:Tab bar &height (0 = auto, 16-128):
+vn:Tab bar &height (0 = auto, 16-128):
+:Tab bar &height:
+af:Tab bar &height:
+am:Tab bar &height:
+ar:Tab bar &height:
+az:Tab bar &height:
+bg:Tab bar &height:
+bn:Tab bar &height:
+br:Tab bar &height:
+bs:Tab bar &height:
+by:Tab bar &height:
+ca:Tab bar &height:
+ca-xv:Tab bar &height:
+cn:标签栏高度(&H)：
+co:Tab bar &height:
+cy:Tab bar &height:
+cz:Tab bar &height:
+de:Tab bar &height:
+dk:Tab bar &height:
+el:Tab bar &height:
+es:Tab bar &height:
+et:Tab bar &height:
+eu:Tab bar &height:
+fa:Tab bar &height:
+fi:Tab bar &height:
+fo:Tab bar &height:
+fr:Tab bar &height:
+fy-nl:Tab bar &height:
+ga:Tab bar &height:
+gl:Tab bar &height:
+he:Tab bar &height:
+hi:Tab bar &height:
+hr:Tab bar &height:
+hu:Tab bar &height:
+id:Tab bar &height:
+it:Tab bar &height:
+ja:Tab bar &height:
+jv:Tab bar &height:
+ka:Tab bar &height:
+kr:Tab bar &height:
+ku:Tab bar &height:
+kw:Tab bar &height:
+lt:Tab bar &height:
+lv:Tab bar &height:
+mk:Tab bar &height:
+ml:Tab bar &height:
+mm:Tab bar &height:
+my:Tab bar &height:
+ne:Tab bar &height:
+nl:Tab bar &height:
+nn:Tab bar &height:
+no:Tab bar &height:
+pa:Tab bar &height:
+pl:Tab bar &height:
+pt:Tab bar &height:
+ro:Tab bar &height:
+ru:Tab bar &height:
+sat:Tab bar &height:
+si:Tab bar &height:
+sk:Tab bar &height:
+sl:Tab bar &height:
+sn:Tab bar &height:
+sp-rs:Tab bar &height:
+sq:Tab bar &height:
+sr-rs:Tab bar &height:
+sv:Tab bar &height:
+ta:Tab bar &height:
+th:Tab bar &height:
+tl:Tab bar &height:
+tr:Tab bar &height:
+tw:分頁列高度(&H)：
+uk:Tab bar &height:
+uz:Tab bar &height:
+vn:Tab bar &height:
+:Tab bar height must be 0 (automatic) or between 16 and 128.
+af:Tab bar height must be 0 (automatic) or between 16 and 128.
+am:Tab bar height must be 0 (automatic) or between 16 and 128.
+ar:Tab bar height must be 0 (automatic) or between 16 and 128.
+az:Tab bar height must be 0 (automatic) or between 16 and 128.
+bg:Tab bar height must be 0 (automatic) or between 16 and 128.
+bn:Tab bar height must be 0 (automatic) or between 16 and 128.
+br:Tab bar height must be 0 (automatic) or between 16 and 128.
+bs:Tab bar height must be 0 (automatic) or between 16 and 128.
+by:Tab bar height must be 0 (automatic) or between 16 and 128.
+ca:Tab bar height must be 0 (automatic) or between 16 and 128.
+ca-xv:Tab bar height must be 0 (automatic) or between 16 and 128.
+cn:标签栏高度必须为 0（自动）或 16 到 128。
+co:Tab bar height must be 0 (automatic) or between 16 and 128.
+cy:Tab bar height must be 0 (automatic) or between 16 and 128.
+cz:Tab bar height must be 0 (automatic) or between 16 and 128.
+de:Tab bar height must be 0 (automatic) or between 16 and 128.
+dk:Tab bar height must be 0 (automatic) or between 16 and 128.
+el:Tab bar height must be 0 (automatic) or between 16 and 128.
+es:Tab bar height must be 0 (automatic) or between 16 and 128.
+et:Tab bar height must be 0 (automatic) or between 16 and 128.
+eu:Tab bar height must be 0 (automatic) or between 16 and 128.
+fa:Tab bar height must be 0 (automatic) or between 16 and 128.
+fi:Tab bar height must be 0 (automatic) or between 16 and 128.
+fo:Tab bar height must be 0 (automatic) or between 16 and 128.
+fr:Tab bar height must be 0 (automatic) or between 16 and 128.
+fy-nl:Tab bar height must be 0 (automatic) or between 16 and 128.
+ga:Tab bar height must be 0 (automatic) or between 16 and 128.
+gl:Tab bar height must be 0 (automatic) or between 16 and 128.
+he:Tab bar height must be 0 (automatic) or between 16 and 128.
+hi:Tab bar height must be 0 (automatic) or between 16 and 128.
+hr:Tab bar height must be 0 (automatic) or between 16 and 128.
+hu:Tab bar height must be 0 (automatic) or between 16 and 128.
+id:Tab bar height must be 0 (automatic) or between 16 and 128.
+it:Tab bar height must be 0 (automatic) or between 16 and 128.
+ja:Tab bar height must be 0 (automatic) or between 16 and 128.
+jv:Tab bar height must be 0 (automatic) or between 16 and 128.
+ka:Tab bar height must be 0 (automatic) or between 16 and 128.
+kr:Tab bar height must be 0 (automatic) or between 16 and 128.
+ku:Tab bar height must be 0 (automatic) or between 16 and 128.
+kw:Tab bar height must be 0 (automatic) or between 16 and 128.
+lt:Tab bar height must be 0 (automatic) or between 16 and 128.
+lv:Tab bar height must be 0 (automatic) or between 16 and 128.
+mk:Tab bar height must be 0 (automatic) or between 16 and 128.
+ml:Tab bar height must be 0 (automatic) or between 16 and 128.
+mm:Tab bar height must be 0 (automatic) or between 16 and 128.
+my:Tab bar height must be 0 (automatic) or between 16 and 128.
+ne:Tab bar height must be 0 (automatic) or between 16 and 128.
+nl:Tab bar height must be 0 (automatic) or between 16 and 128.
+nn:Tab bar height must be 0 (automatic) or between 16 and 128.
+no:Tab bar height must be 0 (automatic) or between 16 and 128.
+pa:Tab bar height must be 0 (automatic) or between 16 and 128.
+pl:Tab bar height must be 0 (automatic) or between 16 and 128.
+pt:Tab bar height must be 0 (automatic) or between 16 and 128.
+ro:Tab bar height must be 0 (automatic) or between 16 and 128.
+ru:Tab bar height must be 0 (automatic) or between 16 and 128.
+sat:Tab bar height must be 0 (automatic) or between 16 and 128.
+si:Tab bar height must be 0 (automatic) or between 16 and 128.
+sk:Tab bar height must be 0 (automatic) or between 16 and 128.
+sl:Tab bar height must be 0 (automatic) or between 16 and 128.
+sn:Tab bar height must be 0 (automatic) or between 16 and 128.
+sp-rs:Tab bar height must be 0 (automatic) or between 16 and 128.
+sq:Tab bar height must be 0 (automatic) or between 16 and 128.
+sr-rs:Tab bar height must be 0 (automatic) or between 16 and 128.
+sv:Tab bar height must be 0 (automatic) or between 16 and 128.
+ta:Tab bar height must be 0 (automatic) or between 16 and 128.
+th:Tab bar height must be 0 (automatic) or between 16 and 128.
+tl:Tab bar height must be 0 (automatic) or between 16 and 128.
+tr:Tab bar height must be 0 (automatic) or between 16 and 128.
+tw:分頁列高度必須為 0（自動）或 16 到 128。
+uk:Tab bar height must be 0 (automatic) or between 16 and 128.
+uz:Tab bar height must be 0 (automatic) or between 16 and 128.
+vn:Tab bar height must be 0 (automatic) or between 16 and 128.
+:Tab fo&nt size (0 = auto, 6-72):
+af:Tab fo&nt size (0 = auto, 6-72):
+am:Tab fo&nt size (0 = auto, 6-72):
+ar:Tab fo&nt size (0 = auto, 6-72):
+az:Tab fo&nt size (0 = auto, 6-72):
+bg:Tab fo&nt size (0 = auto, 6-72):
+bn:Tab fo&nt size (0 = auto, 6-72):
+br:Tab fo&nt size (0 = auto, 6-72):
+bs:Tab fo&nt size (0 = auto, 6-72):
+by:Tab fo&nt size (0 = auto, 6-72):
+ca:Tab fo&nt size (0 = auto, 6-72):
+ca-xv:Tab fo&nt size (0 = auto, 6-72):
+cn:标签字号（0 = 自动，6–72）(&N)：
+co:Tab fo&nt size (0 = auto, 6-72):
+cy:Tab fo&nt size (0 = auto, 6-72):
+cz:Tab fo&nt size (0 = auto, 6-72):
+de:Tab fo&nt size (0 = auto, 6-72):
+dk:Tab fo&nt size (0 = auto, 6-72):
+el:Tab fo&nt size (0 = auto, 6-72):
+es:Tab fo&nt size (0 = auto, 6-72):
+et:Tab fo&nt size (0 = auto, 6-72):
+eu:Tab fo&nt size (0 = auto, 6-72):
+fa:Tab fo&nt size (0 = auto, 6-72):
+fi:Tab fo&nt size (0 = auto, 6-72):
+fo:Tab fo&nt size (0 = auto, 6-72):
+fr:Tab fo&nt size (0 = auto, 6-72):
+fy-nl:Tab fo&nt size (0 = auto, 6-72):
+ga:Tab fo&nt size (0 = auto, 6-72):
+gl:Tab fo&nt size (0 = auto, 6-72):
+he:Tab fo&nt size (0 = auto, 6-72):
+hi:Tab fo&nt size (0 = auto, 6-72):
+hr:Tab fo&nt size (0 = auto, 6-72):
+hu:Tab fo&nt size (0 = auto, 6-72):
+id:Tab fo&nt size (0 = auto, 6-72):
+it:Tab fo&nt size (0 = auto, 6-72):
+ja:Tab fo&nt size (0 = auto, 6-72):
+jv:Tab fo&nt size (0 = auto, 6-72):
+ka:Tab fo&nt size (0 = auto, 6-72):
+kr:Tab fo&nt size (0 = auto, 6-72):
+ku:Tab fo&nt size (0 = auto, 6-72):
+kw:Tab fo&nt size (0 = auto, 6-72):
+lt:Tab fo&nt size (0 = auto, 6-72):
+lv:Tab fo&nt size (0 = auto, 6-72):
+mk:Tab fo&nt size (0 = auto, 6-72):
+ml:Tab fo&nt size (0 = auto, 6-72):
+mm:Tab fo&nt size (0 = auto, 6-72):
+my:Tab fo&nt size (0 = auto, 6-72):
+ne:Tab fo&nt size (0 = auto, 6-72):
+nl:Tab fo&nt size (0 = auto, 6-72):
+nn:Tab fo&nt size (0 = auto, 6-72):
+no:Tab fo&nt size (0 = auto, 6-72):
+pa:Tab fo&nt size (0 = auto, 6-72):
+pl:Tab fo&nt size (0 = auto, 6-72):
+pt:Tab fo&nt size (0 = auto, 6-72):
+ro:Tab fo&nt size (0 = auto, 6-72):
+ru:Tab fo&nt size (0 = auto, 6-72):
+sat:Tab fo&nt size (0 = auto, 6-72):
+si:Tab fo&nt size (0 = auto, 6-72):
+sk:Tab fo&nt size (0 = auto, 6-72):
+sl:Tab fo&nt size (0 = auto, 6-72):
+sn:Tab fo&nt size (0 = auto, 6-72):
+sp-rs:Tab fo&nt size (0 = auto, 6-72):
+sq:Tab fo&nt size (0 = auto, 6-72):
+sr-rs:Tab fo&nt size (0 = auto, 6-72):
+sv:Tab fo&nt size (0 = auto, 6-72):
+ta:Tab fo&nt size (0 = auto, 6-72):
+th:Tab fo&nt size (0 = auto, 6-72):
+tl:Tab fo&nt size (0 = auto, 6-72):
+tr:Tab fo&nt size (0 = auto, 6-72):
+tw:分頁字型大小（0 = 自動，6–72）(&N)：
+uk:Tab fo&nt size (0 = auto, 6-72):
+uz:Tab fo&nt size (0 = auto, 6-72):
+vn:Tab fo&nt size (0 = auto, 6-72):
+:Tab fo&nt size:
+af:Tab fo&nt size:
+am:Tab fo&nt size:
+ar:Tab fo&nt size:
+az:Tab fo&nt size:
+bg:Tab fo&nt size:
+bn:Tab fo&nt size:
+br:Tab fo&nt size:
+bs:Tab fo&nt size:
+by:Tab fo&nt size:
+ca:Tab fo&nt size:
+ca-xv:Tab fo&nt size:
+cn:标签字号(&N)：
+co:Tab fo&nt size:
+cy:Tab fo&nt size:
+cz:Tab fo&nt size:
+de:Tab fo&nt size:
+dk:Tab fo&nt size:
+el:Tab fo&nt size:
+es:Tab fo&nt size:
+et:Tab fo&nt size:
+eu:Tab fo&nt size:
+fa:Tab fo&nt size:
+fi:Tab fo&nt size:
+fo:Tab fo&nt size:
+fr:Tab fo&nt size:
+fy-nl:Tab fo&nt size:
+ga:Tab fo&nt size:
+gl:Tab fo&nt size:
+he:Tab fo&nt size:
+hi:Tab fo&nt size:
+hr:Tab fo&nt size:
+hu:Tab fo&nt size:
+id:Tab fo&nt size:
+it:Tab fo&nt size:
+ja:Tab fo&nt size:
+jv:Tab fo&nt size:
+ka:Tab fo&nt size:
+kr:Tab fo&nt size:
+ku:Tab fo&nt size:
+kw:Tab fo&nt size:
+lt:Tab fo&nt size:
+lv:Tab fo&nt size:
+mk:Tab fo&nt size:
+ml:Tab fo&nt size:
+mm:Tab fo&nt size:
+my:Tab fo&nt size:
+ne:Tab fo&nt size:
+nl:Tab fo&nt size:
+nn:Tab fo&nt size:
+no:Tab fo&nt size:
+pa:Tab fo&nt size:
+pl:Tab fo&nt size:
+pt:Tab fo&nt size:
+ro:Tab fo&nt size:
+ru:Tab fo&nt size:
+sat:Tab fo&nt size:
+si:Tab fo&nt size:
+sk:Tab fo&nt size:
+sl:Tab fo&nt size:
+sn:Tab fo&nt size:
+sp-rs:Tab fo&nt size:
+sq:Tab fo&nt size:
+sr-rs:Tab fo&nt size:
+sv:Tab fo&nt size:
+ta:Tab fo&nt size:
+th:Tab fo&nt size:
+tl:Tab fo&nt size:
+tr:Tab fo&nt size:
+tw:分頁字型大小(&N)：
+uk:Tab fo&nt size:
+uz:Tab fo&nt size:
+vn:Tab fo&nt size:
+:Tab font size must be 0 (automatic) or between 6 and 72.
+af:Tab font size must be 0 (automatic) or between 6 and 72.
+am:Tab font size must be 0 (automatic) or between 6 and 72.
+ar:Tab font size must be 0 (automatic) or between 6 and 72.
+az:Tab font size must be 0 (automatic) or between 6 and 72.
+bg:Tab font size must be 0 (automatic) or between 6 and 72.
+bn:Tab font size must be 0 (automatic) or between 6 and 72.
+br:Tab font size must be 0 (automatic) or between 6 and 72.
+bs:Tab font size must be 0 (automatic) or between 6 and 72.
+by:Tab font size must be 0 (automatic) or between 6 and 72.
+ca:Tab font size must be 0 (automatic) or between 6 and 72.
+ca-xv:Tab font size must be 0 (automatic) or between 6 and 72.
+cn:标签字号必须为 0（自动）或 6 到 72。
+co:Tab font size must be 0 (automatic) or between 6 and 72.
+cy:Tab font size must be 0 (automatic) or between 6 and 72.
+cz:Tab font size must be 0 (automatic) or between 6 and 72.
+de:Tab font size must be 0 (automatic) or between 6 and 72.
+dk:Tab font size must be 0 (automatic) or between 6 and 72.
+el:Tab font size must be 0 (automatic) or between 6 and 72.
+es:Tab font size must be 0 (automatic) or between 6 and 72.
+et:Tab font size must be 0 (automatic) or between 6 and 72.
+eu:Tab font size must be 0 (automatic) or between 6 and 72.
+fa:Tab font size must be 0 (automatic) or between 6 and 72.
+fi:Tab font size must be 0 (automatic) or between 6 and 72.
+fo:Tab font size must be 0 (automatic) or between 6 and 72.
+fr:Tab font size must be 0 (automatic) or between 6 and 72.
+fy-nl:Tab font size must be 0 (automatic) or between 6 and 72.
+ga:Tab font size must be 0 (automatic) or between 6 and 72.
+gl:Tab font size must be 0 (automatic) or between 6 and 72.
+he:Tab font size must be 0 (automatic) or between 6 and 72.
+hi:Tab font size must be 0 (automatic) or between 6 and 72.
+hr:Tab font size must be 0 (automatic) or between 6 and 72.
+hu:Tab font size must be 0 (automatic) or between 6 and 72.
+id:Tab font size must be 0 (automatic) or between 6 and 72.
+it:Tab font size must be 0 (automatic) or between 6 and 72.
+ja:Tab font size must be 0 (automatic) or between 6 and 72.
+jv:Tab font size must be 0 (automatic) or between 6 and 72.
+ka:Tab font size must be 0 (automatic) or between 6 and 72.
+kr:Tab font size must be 0 (automatic) or between 6 and 72.
+ku:Tab font size must be 0 (automatic) or between 6 and 72.
+kw:Tab font size must be 0 (automatic) or between 6 and 72.
+lt:Tab font size must be 0 (automatic) or between 6 and 72.
+lv:Tab font size must be 0 (automatic) or between 6 and 72.
+mk:Tab font size must be 0 (automatic) or between 6 and 72.
+ml:Tab font size must be 0 (automatic) or between 6 and 72.
+mm:Tab font size must be 0 (automatic) or between 6 and 72.
+my:Tab font size must be 0 (automatic) or between 6 and 72.
+ne:Tab font size must be 0 (automatic) or between 6 and 72.
+nl:Tab font size must be 0 (automatic) or between 6 and 72.
+nn:Tab font size must be 0 (automatic) or between 6 and 72.
+no:Tab font size must be 0 (automatic) or between 6 and 72.
+pa:Tab font size must be 0 (automatic) or between 6 and 72.
+pl:Tab font size must be 0 (automatic) or between 6 and 72.
+pt:Tab font size must be 0 (automatic) or between 6 and 72.
+ro:Tab font size must be 0 (automatic) or between 6 and 72.
+ru:Tab font size must be 0 (automatic) or between 6 and 72.
+sat:Tab font size must be 0 (automatic) or between 6 and 72.
+si:Tab font size must be 0 (automatic) or between 6 and 72.
+sk:Tab font size must be 0 (automatic) or between 6 and 72.
+sl:Tab font size must be 0 (automatic) or between 6 and 72.
+sn:Tab font size must be 0 (automatic) or between 6 and 72.
+sp-rs:Tab font size must be 0 (automatic) or between 6 and 72.
+sq:Tab font size must be 0 (automatic) or between 6 and 72.
+sr-rs:Tab font size must be 0 (automatic) or between 6 and 72.
+sv:Tab font size must be 0 (automatic) or between 6 and 72.
+ta:Tab font size must be 0 (automatic) or between 6 and 72.
+th:Tab font size must be 0 (automatic) or between 6 and 72.
+tl:Tab font size must be 0 (automatic) or between 6 and 72.
+tr:Tab font size must be 0 (automatic) or between 6 and 72.
+tw:分頁字型大小必須為 0（自動）或 6 到 72。
+uk:Tab font size must be 0 (automatic) or between 6 and 72.
+uz:Tab font size must be 0 (automatic) or between 6 and 72.
+vn:Tab font size must be 0 (automatic) or between 6 and 72.
 :Tabs and toolbar
 af:Tabs and toolbar
 am:Tabs and toolbar
@@ -26027,6 +28144,79 @@ tw:此檔案為唯讀，未開始提取書籤。
 uk:This file is read-only. Bookmark extraction was not started.
 uz:This file is read-only. Bookmark extraction was not started.
 vn:This file is read-only. Bookmark extraction was not started.
+:This page is not skewed.
+af:This page is not skewed.
+am:This page is not skewed.
+ar:This page is not skewed.
+az:This page is not skewed.
+bg:This page is not skewed.
+bn:This page is not skewed.
+br:This page is not skewed.
+bs:This page is not skewed.
+by:This page is not skewed.
+ca:This page is not skewed.
+ca-xv:This page is not skewed.
+cn:这一页没有需要校正的倾斜。
+co:This page is not skewed.
+cy:This page is not skewed.
+cz:This page is not skewed.
+de:This page is not skewed.
+dk:This page is not skewed.
+el:This page is not skewed.
+es:This page is not skewed.
+et:This page is not skewed.
+eu:This page is not skewed.
+fa:This page is not skewed.
+fi:This page is not skewed.
+fo:This page is not skewed.
+fr:This page is not skewed.
+fy-nl:This page is not skewed.
+ga:This page is not skewed.
+gl:This page is not skewed.
+he:This page is not skewed.
+hi:This page is not skewed.
+hr:This page is not skewed.
+hu:This page is not skewed.
+id:This page is not skewed.
+it:This page is not skewed.
+ja:This page is not skewed.
+jv:This page is not skewed.
+ka:This page is not skewed.
+kr:This page is not skewed.
+ku:This page is not skewed.
+kw:This page is not skewed.
+lt:This page is not skewed.
+lv:This page is not skewed.
+mk:This page is not skewed.
+ml:This page is not skewed.
+mm:This page is not skewed.
+my:This page is not skewed.
+ne:This page is not skewed.
+nl:This page is not skewed.
+nn:This page is not skewed.
+no:This page is not skewed.
+pa:This page is not skewed.
+pl:This page is not skewed.
+pt:This page is not skewed.
+ro:This page is not skewed.
+ru:This page is not skewed.
+sat:This page is not skewed.
+si:This page is not skewed.
+sk:This page is not skewed.
+sl:This page is not skewed.
+sn:This page is not skewed.
+sp-rs:This page is not skewed.
+sq:This page is not skewed.
+sr-rs:This page is not skewed.
+sv:This page is not skewed.
+ta:This page is not skewed.
+th:This page is not skewed.
+tl:This page is not skewed.
+tr:This page is not skewed.
+tw:這一頁沒有需要校正的傾斜。
+uk:This page is not skewed.
+uz:This page is not skewed.
+vn:This page is not skewed.
 :Thumbnail view
 am:የአነስተኛ ምስል እይታ
 br:Visualização em miniaturas
@@ -26289,6 +28479,79 @@ nl:Cursor Positie Wisselen
 pl:Przełącz pozycję kursora
 sk:Prepnúť Polohu kurzora
 tw:切換游標位置顯示
+:Toggle Deskew During OCR
+af:Toggle Deskew During OCR
+am:Toggle Deskew During OCR
+ar:Toggle Deskew During OCR
+az:Toggle Deskew During OCR
+bg:Toggle Deskew During OCR
+bn:Toggle Deskew During OCR
+br:Toggle Deskew During OCR
+bs:Toggle Deskew During OCR
+by:Toggle Deskew During OCR
+ca:Toggle Deskew During OCR
+ca-xv:Toggle Deskew During OCR
+cn:开关识别时自动校正倾斜
+co:Toggle Deskew During OCR
+cy:Toggle Deskew During OCR
+cz:Toggle Deskew During OCR
+de:Toggle Deskew During OCR
+dk:Toggle Deskew During OCR
+el:Toggle Deskew During OCR
+es:Toggle Deskew During OCR
+et:Toggle Deskew During OCR
+eu:Toggle Deskew During OCR
+fa:Toggle Deskew During OCR
+fi:Toggle Deskew During OCR
+fo:Toggle Deskew During OCR
+fr:Toggle Deskew During OCR
+fy-nl:Toggle Deskew During OCR
+ga:Toggle Deskew During OCR
+gl:Toggle Deskew During OCR
+he:Toggle Deskew During OCR
+hi:Toggle Deskew During OCR
+hr:Toggle Deskew During OCR
+hu:Toggle Deskew During OCR
+id:Toggle Deskew During OCR
+it:Toggle Deskew During OCR
+ja:Toggle Deskew During OCR
+jv:Toggle Deskew During OCR
+ka:Toggle Deskew During OCR
+kr:Toggle Deskew During OCR
+ku:Toggle Deskew During OCR
+kw:Toggle Deskew During OCR
+lt:Toggle Deskew During OCR
+lv:Toggle Deskew During OCR
+mk:Toggle Deskew During OCR
+ml:Toggle Deskew During OCR
+mm:Toggle Deskew During OCR
+my:Toggle Deskew During OCR
+ne:Toggle Deskew During OCR
+nl:Toggle Deskew During OCR
+nn:Toggle Deskew During OCR
+no:Toggle Deskew During OCR
+pa:Toggle Deskew During OCR
+pl:Toggle Deskew During OCR
+pt:Toggle Deskew During OCR
+ro:Toggle Deskew During OCR
+ru:Toggle Deskew During OCR
+sat:Toggle Deskew During OCR
+si:Toggle Deskew During OCR
+sk:Toggle Deskew During OCR
+sl:Toggle Deskew During OCR
+sn:Toggle Deskew During OCR
+sp-rs:Toggle Deskew During OCR
+sq:Toggle Deskew During OCR
+sr-rs:Toggle Deskew During OCR
+sv:Toggle Deskew During OCR
+ta:Toggle Deskew During OCR
+th:Toggle Deskew During OCR
+tl:Toggle Deskew During OCR
+tr:Toggle Deskew During OCR
+tw:開關識別時自動校正傾斜
+uk:Toggle Deskew During OCR
+uz:Toggle Deskew During OCR
+vn:Toggle Deskew During OCR
 :Toggle Double-Click Word Lookup
 am:Միացնել/անջատել կրկնակի սեղմումով բառային որոնում
 br:Ativar/Desativar pesquisa por duplo clique
@@ -28395,3 +30658,15 @@ sk:↑ ↓ – navigovať
 :✓ Likely TOC pages found. Please confirm the selection.
 cn:✓ 已找到疑似目录页，请确认选择。
 tw:✓ 已找到疑似目錄頁，請確認選擇。
+:Cannot save '%s'
+cn:无法保存“%s”
+tw:無法儲存「%s」
+:&Retry
+cn:重试(&R)
+tw:重試(&R)
+:The file is open in another program. Close it and click Retry, or save a copy to another location.
+cn:文件正被其他程序打开。请关闭后点重试，或另存为到其他位置。
+tw:檔案正被其他程式開啟。請關閉後按重試，或另存到其他位置。
+:Enhance Display is only available for PDF
+cn:增强显示仅适用于 PDF
+tw:增強顯示僅適用於 PDF

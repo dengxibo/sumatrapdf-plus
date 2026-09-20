@@ -165,6 +165,7 @@ struct UiFontsAtDpi {
     HFONT appFont = nullptr;
     HFONT menuFont = nullptr;
     HFONT treeFont = nullptr;
+    HFONT tabFont = nullptr;
     HFONT biggerFont = nullptr;
 };
 
@@ -424,6 +425,8 @@ bool LoadSettings() {
         setMin(s.dy, 0);
     }
     setMin(gprefs->tabWidth, 60);
+    setMin(gprefs->tabFontSize, 0);
+    setMinMax(gprefs->tabBarHeight, 0, 128);
     setMin(gprefs->sidebarDx, 0);
     setMin(gprefs->tocDy, 0);
     setMin(gprefs->treeFontSize, 0);
@@ -929,6 +932,36 @@ HFONT GetAppTreeFontForHwnd(HWND hwnd) {
 
 HFONT GetAppTreeFont() {
     return GetAppTreeFontForHwnd(GetDefaultUiFontHwnd());
+}
+
+HFONT GetAppTabFontForDpi(int dpi) {
+    UiFontsAtDpi* fonts = FindFontsAtDpi(dpi);
+    if (fonts && fonts->tabFont) {
+        return fonts->tabFont;
+    }
+    // Dialog allows 6–72; 0 means follow UIFontSize / Windows default.
+    int fntSize = gGlobalPrefs->tabFontSize;
+    if (fntSize < 6) {
+        return GetAppFontForDpi(dpi);
+    }
+    HFONT font = GetUserGuiFontForDpi("auto", fntSize, dpi);
+    if (!fonts) {
+        UiFontsAtDpi entry{};
+        entry.dpi = dpi;
+        entry.tabFont = font;
+        gFontsAtDpi.Append(entry);
+    } else {
+        fonts->tabFont = font;
+    }
+    return font;
+}
+
+HFONT GetAppTabFontForHwnd(HWND hwnd) {
+    return GetAppTabFontForDpi(UiFontDpiForHwnd(hwnd));
+}
+
+HFONT GetAppTabFont() {
+    return GetAppTabFontForHwnd(GetDefaultUiFontHwnd());
 }
 
 HFONT GetAppSidebarLabelFontForDpi(int dpi) {

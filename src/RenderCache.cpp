@@ -19,6 +19,7 @@
 #include "Theme.h"
 #include "PdfDarkMode.h"
 #include "PdfJoinSplitImages.h"
+#include "DisplayFilter.h"
 
 #include "utils/Log.h"
 
@@ -108,8 +109,32 @@ static bool ShouldUpdateBitmapColorsLegacy(EngineBase* engine);
 static bool ShouldPreserveImagesLegacy(EngineBase* engine);
 static void FinalizeTileSkipRects(Vec<Rect>& skipRects, Size bmpSize);
 
-void ApplyRenderThemePostColors(EngineBase* engine, RenderedBitmap* bmp, int pageNo, float zoom,
-                                const RectF* pageRect, const DarkModeProfile* profile) {
+// Enhancement reads publisher pixels only. Theme tint is painted afterwards.
+static bool EnhanceFromOriginalPage(DisplayModel* dm) {
+    return GetDisplayFilterForController(dm).IsActive();
+}
+
+static void RecolorEnhancedOriginalForTheme(RenderedBitmap* bmp) {
+    if (!bmp || !bmp->IsValid()) {
+        return;
+    }
+    // Document color mode "Original" keeps publisher colors.
+    if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
+        return;
+    }
+    COLORREF bg = 0;
+    COLORREF text = ThemePageRenderColors(bg, true);
+    COLORREF link = ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : 0;
+    // Light-White / unchanged black-on-white: nothing to remapping.
+    if ((text & 0xFFFFFF) == (WIN_COL_BLACK & 0xFFFFFF) && (bg & 0xFFFFFF) == (WIN_COL_WHITE & 0xFFFFFF)) {
+        return;
+    }
+    // Dark chrome → theme paper/ink; Light-Warm → eye-care warm paper.
+    UpdateBitmapColors(bmp->GetBitmap(), text, bg, link, nullptr);
+}
+
+void ApplyRenderThemePostColors(EngineBase* engine, RenderedBitmap* bmp, int pageNo, float zoom, const RectF* pageRect,
+                                const DarkModeProfile* profile) {
     if (!bmp) {
         return;
     }
@@ -145,7 +170,15 @@ void ApplyRenderThemePostColors(EngineBase* engine, RenderedBitmap* bmp, int pag
         }
     }
     COLORREF bgCol = 0;
-    COLORREF textCol = prof ? prof->foreground : ThemePageRenderColors(bgCol, true);
+    COLORREF textCol;
+    if (prof) {
+        // Must use pageBackground: leaving bgCol=0 made Light-Warm PreserveImages
+        // thumbs remap paper→black (text #333 on bg #000 reads as invertedRemap).
+        textCol = prof->foreground;
+        bgCol = prof->pageBackground;
+    } else {
+        textCol = ThemePageRenderColors(bgCol, true);
+    }
     COLORREF linkCol = prof ? prof->linkColor : (ThemeUsesDarkChrome() ? ThemeWindowLinkColor() : 0);
     UpdateBitmapColors(bmp->GetBitmap(), textCol, bgCol, linkCol, skipRectsPtr);
 }
@@ -292,6 +325,23 @@ bool RenderCache::Exists(DisplayModel* dm, int pageNo, int rotation, float zoom,
         DropCacheEntry(entry);
     }
     return entry != nullptr;
+}
+
+void RenderCache::ClearFilteredBitmaps() {
+    ScopedCritSec scope(&cacheAccess);
+    for (int i = 0; i < cacheCount; i++) {
+        BitmapCacheEntry* e = cache[i];
+        if (!e) {
+            continue;
+        }
+        delete e->filteredBitmap;
+        e->filteredBitmap = nullptr;
+        e->filterMode = 0;
+        e->filterBrightness = INT_MIN;
+        e->filterContrast = INT_MIN;
+        e->filterSharpness = INT_MIN;
+        e->filterVersion = 0;
+    }
 }
 
 bool RenderCache::DropCacheEntry(BitmapCacheEntry* entry) {
@@ -1029,7 +1079,9 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
         RenderPageArgs args(req.pageNo, req.zoom, req.rotation, &req.pageRect, RenderTarget::View, &req.abortCookie);
         DarkModeProfile darkProfile;
         BuildViewDarkModeProfile(engine, &darkProfile);
-        if (darkProfile.mode != PageColorMode::Normal) {
+        // Enhancement must see the original page, not theme-tinted pixels.
+        bool renderOriginal = EnhanceFromOriginalPage(req.dm);
+        if (!renderOriginal && darkProfile.mode != PageColorMode::Normal) {
             args.darkProfile = &darkProfile;
         }
         auto timeStart = TimeGet();
@@ -1052,40 +1104,43 @@ static DWORD WINAPI RenderCacheThread(LPVOID data) {
                 delete bmp;
                 continue;
             }
-            const DarkModeProfile* profile = args.darkProfile;
-            bool legacyPost = false;
-            if (engine->kind == kindEngineDjVu && ThemeUsesDarkChrome() &&
-                GetPdfDocumentColorMode() != PdfDocumentColorMode::Light) {
-                legacyPost = true;
-                profile = nullptr;
-            } else if (profile) {
-                legacyPost = ShouldUpdateBitmapColors(engine, profile);
-            } else {
-                legacyPost = ShouldUpdateBitmapColorsLegacy(engine);
-            }
-            if (legacyPost) {
-                bool preserve = profile ? ShouldPreserveImagesInSmartMode(profile) : ShouldPreserveImagesLegacy(engine);
-                // Light eye-care match theme: uniform gauze over text + photos (no skip rects).
-                bool eyeCareGauze = ThemeUsesEyeCareChrome() && !ThemeUsesDarkChrome();
-                Vec<Rect> skipRects;
-                Vec<Rect>* skipRectsPtr = nullptr;
-                if (preserve && !eyeCareGauze) {
-                    Size bmpSize = bmp->GetSize();
-                    int enginePageNo = EngineMupdfMapDisplayPageToEngine(engine, req.pageNo);
-                    if (enginePageNo < 1) {
-                        enginePageNo = req.pageNo;
-                    }
-                    engine->GetBitmapRecolorSkipRects(enginePageNo, req.zoom, req.rotation, req.pageRect, bmpSize,
-                                                      skipRects);
-                    FinalizeTileSkipRects(skipRects, bmpSize);
-                    if (skipRects.Size() > 0) {
-                        skipRectsPtr = &skipRects;
-                    }
+            if (!renderOriginal) {
+                const DarkModeProfile* profile = args.darkProfile;
+                bool legacyPost = false;
+                if (engine->kind == kindEngineDjVu && ThemeUsesDarkChrome() &&
+                    GetPdfDocumentColorMode() != PdfDocumentColorMode::Light) {
+                    legacyPost = true;
+                    profile = nullptr;
+                } else if (profile) {
+                    legacyPost = ShouldUpdateBitmapColors(engine, profile);
+                } else {
+                    legacyPost = ShouldUpdateBitmapColorsLegacy(engine);
                 }
-                COLORREF textCol = profile ? profile->foreground : cache->textColor;
-                COLORREF bgCol = profile ? profile->pageBackground : cache->backgroundColor;
-                COLORREF linkCol = profile ? profile->linkColor : cache->linkColor;
-                UpdateBitmapColors(bmp->GetBitmap(), textCol, bgCol, linkCol, skipRectsPtr);
+                if (legacyPost) {
+                    bool preserve =
+                        profile ? ShouldPreserveImagesInSmartMode(profile) : ShouldPreserveImagesLegacy(engine);
+                    // Light eye-care match theme: uniform gauze over text + photos (no skip rects).
+                    bool eyeCareGauze = ThemeUsesEyeCareChrome() && !ThemeUsesDarkChrome();
+                    Vec<Rect> skipRects;
+                    Vec<Rect>* skipRectsPtr = nullptr;
+                    if (preserve && !eyeCareGauze) {
+                        Size bmpSize = bmp->GetSize();
+                        int enginePageNo = EngineMupdfMapDisplayPageToEngine(engine, req.pageNo);
+                        if (enginePageNo < 1) {
+                            enginePageNo = req.pageNo;
+                        }
+                        engine->GetBitmapRecolorSkipRects(enginePageNo, req.zoom, req.rotation, req.pageRect, bmpSize,
+                                                          skipRects);
+                        FinalizeTileSkipRects(skipRects, bmpSize);
+                        if (skipRects.Size() > 0) {
+                            skipRectsPtr = &skipRects;
+                        }
+                    }
+                    COLORREF textCol = profile ? profile->foreground : cache->textColor;
+                    COLORREF bgCol = profile ? profile->pageBackground : cache->backgroundColor;
+                    COLORREF linkCol = profile ? profile->linkColor : cache->linkColor;
+                    UpdateBitmapColors(bmp->GetBitmap(), textCol, bgCol, linkCol, skipRectsPtr);
+                }
             }
             cache->Add(req, bmp);
             req.bmp = nullptr; // ownership transferred to cache
@@ -1169,6 +1224,31 @@ int RenderCache::PaintTile(HDC hdc, Rect bounds, DisplayModel* dm, int pageNo, T
         return renderDelay;
     }
 
+    DisplayFilterParams filter = GetDisplayFilterForController(dm);
+    // Enhance once per cached tile; scroll/repaint only BitBlts the filtered copy.
+    if (filter.IsActive() && renderedBmp) {
+        bool needRebuild = !entry->filteredBitmap || entry->filterMode != (int)filter.mode ||
+                           entry->filterBrightness != filter.brightness || entry->filterContrast != filter.contrast ||
+                           entry->filterSharpness != filter.sharpness ||
+                           entry->filterVersion != kDocumentEnhancerVersion;
+        if (needRebuild) {
+            delete entry->filteredBitmap;
+            entry->filteredBitmap = CreateDisplayFilteredBitmap(renderedBmp, filter);
+            entry->filterMode = (int)filter.mode;
+            entry->filterBrightness = filter.brightness;
+            entry->filterContrast = filter.contrast;
+            entry->filterSharpness = filter.sharpness;
+            entry->filterVersion = kDocumentEnhancerVersion;
+            // Theme tint is display-only, after the original page has been enhanced.
+            RecolorEnhancedOriginalForTheme(entry->filteredBitmap);
+        }
+        if (entry->filteredBitmap && entry->filteredBitmap->IsValid()) {
+            renderedBmp = entry->filteredBitmap;
+            hbmp = renderedBmp->GetBitmap();
+            filter = {}; // already enhanced — plain blit
+        }
+    }
+
     HDC bmpDC = CreateCompatibleDC(hdc);
     if (bmpDC) {
         Size bmpSize = renderedBmp->GetSize();
@@ -1186,9 +1266,9 @@ int RenderCache::PaintTile(HDC hdc, Rect bounds, DisplayModel* dm, int pageNo, T
             ySrc = (int)(ySrc * factor);
             int dxSrc = (int)(bounds.dx * factor);
             int dySrc = (int)(bounds.dy * factor);
-            StretchBlt(hdc, xDst, yDst, dxDst, dyDst, bmpDC, xSrc, ySrc, dxSrc, dySrc, SRCCOPY);
+            BlitWithDisplayFilter(hdc, xDst, yDst, dxDst, dyDst, bmpDC, xSrc, ySrc, dxSrc, dySrc, filter);
         } else {
-            BitBlt(hdc, xDst, yDst, dxDst, dyDst, bmpDC, xSrc, ySrc, SRCCOPY);
+            BlitWithDisplayFilter(hdc, xDst, yDst, dxDst, dyDst, bmpDC, xSrc, ySrc, dxDst, dyDst, filter);
         }
 
         SelectObject(bmpDC, prevBmp);
@@ -1241,7 +1321,20 @@ int RenderCache::Paint(HDC hdc, Rect bounds, DisplayModel* dm, int pageNo, PageI
 
         RenderPageArgs args(pageNo, zoom, rotation, &area);
         RenderedBitmap* bmp = dm->GetEngine()->RenderPage(args);
-        bool success = bmp && bmp->IsValid() && bmp->Blit(hdc, bounds);
+        bool success = false;
+        if (bmp && bmp->IsValid()) {
+            HBITMAP hbmp = bmp->GetBitmap();
+            HDC bmpDC = CreateCompatibleDC(hdc);
+            if (bmpDC && hbmp) {
+                Size bmpSize = bmp->GetSize();
+                HGDIOBJ old = SelectObject(bmpDC, hbmp);
+                DisplayFilterParams filter = GetDisplayFilterForController(dm);
+                success = BlitWithDisplayFilter(hdc, bounds.x, bounds.y, bounds.dx, bounds.dy, bmpDC, 0, 0, bmpSize.dx,
+                                                bmpSize.dy, filter);
+                SelectObject(bmpDC, old);
+                DeleteDC(bmpDC);
+            }
+        }
         delete bmp;
 
         return success ? 0 : RENDER_DELAY_FAILED;

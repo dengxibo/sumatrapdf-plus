@@ -1,0 +1,50 @@
+---
+description: SumatraPDF find UI, Ctrl+F, and tab-switch search teardown — verified fixes, not guesses
+globs: src/{SearchAndDDE,FindBar,FindWindow,SumatraStartup,Tabs,SumatraPDF}.*
+alwaysApply: false
+---
+
+# SumatraPDF find UI / Ctrl+F (verified)
+
+When debugging find bar, floating find window, Ctrl+F, or tab-switch search bugs, use runtime evidence first. Do not speculate about accelerator tables alone.
+
+## Architecture
+
+- Find UI (`findBar`, `findWindow`, `hwndFindEdit`) is **per MainWindow**, shared across tabs.
+- Owned popups (find bar/window) are **not** `IsChild(hwndFrame)`; they are found via `IsFindUIHwnd` only while `win->findBar` / `win->findWindow` exist.
+- After `DestroyFindUI`, focus may remain on a **stale HWND** that is still `IsWindow()` valid but no longer maps to any `MainWindow`.
+
+## Ctrl+F failures (root causes that were confirmed)
+
+1. **Stale focus HWND**: `FindMainWindowByHwnd(msg.hwnd)` returns null → `TranslateAcceleratorW` never runs → Ctrl+F does nothing.
+   - **Fix**: `MainWindowForAccel` falls back to `gLastActiveFrameHwnd`, then `GetForegroundWindow()`.
+   - **Fix**: `HandleGlobalFindShortcut` in `SumatraStartup.cpp` message loop (after `PreTranslateMessage`, before accelerators) calls `CmdFindFirst` / `FocusFindEditSelectAll` without relying on focus HWND.
+
+2. **Find UI destroyed immediately after open**: `LoadModelIntoTab` called `ResetFindUIForTabSwitch` on **same-tab lazy reload** (`tab == prevTab`), tearing down UI right after Ctrl+F on a loading EPUB.
+   - **Fix**: Only call `ResetFindUIForTabSwitch` when `tab != prevTab`.
+
+3. **Wrong document cleared on tab switch**: `CloseFindUI` ran after `win->ctrl` already pointed at the **new** tab, so `textSearch->Clear()` hit the wrong document.
+   - **Fix**: Call `ResetFindUIForTabSwitch` in `TCN_SELCHANGING` and at the **start** of `LoadModelIntoTab` (before `CloseDocumentInCurrentTab` / ctrl swap), while ctrl still refers to the tab being left.
+
+## Tab switch teardown (`CloseFindUI`)
+
+On real tab switch, must:
+1. Increment `findCountEpoch`, free `findCountPendingText`
+2. `AbortActiveFindWorkers` (non-blocking `AbortFinding` + `uitask::DrainQueue`)
+3. `DestroyFindUI` (delete findBar + findWindow, null `hwndFindEdit`)
+4. Reset all MainWindow find cache/state; remove find progress notifications
+5. `textSearch->Clear()` on the **leaving** tab's DisplayModel
+6. Steal focus to `hwndFrame`
+
+Entry points: `MainWindowTabSelectionChanging` (immediate) + early `LoadModelIntoTab` when `switchingTab`.
+
+## Progressive ebook search
+
+- Block search while `EngineIsProgressiveEbookLoading()` (`IsDocumentSearchReady` / `EnsureDocumentSearchReady`).
+- Do not run partial/streaming count updates during load; full count only after document is ready.
+- Removed `CountPartialTask` streaming; `ApplySearchPageLimit` always scans full page count.
+
+## Debug approach
+
+- Instrument with NDJSON logs; verify `CloseFindUI`, `FindFirst`, epoch mismatch in `CountEndTask`, and accelerator fallback paths.
+- Remove instrumentation only after user confirms fix.

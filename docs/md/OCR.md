@@ -30,7 +30,7 @@ Toolbar **Auto OCR** (before Read Aloud). Click the icon to toggle; the arrow op
 | Action | 中文 | What it does |
 | --- | --- | --- |
 | Auto OCR | 自动 OCR | Click the OCR icon to toggle. On: recognize **visible** scanned pages as you browse (high accuracy). Does **not** OCR the whole file. Default **off**. Setting: `AutoOcrScanPages`. |
-| OCR region | 框选识别 | Drag a rectangle; recognized text is copied. High accuracy. |
+| OCR region | 框选识别 | `Ctrl+Shift+O`: drag a rectangle; recognized text is copied. High accuracy. |
 | Recognize All Scanned Pages (Fast) | 识别所有扫描页（快速） | Clear this session's OCR results and re-recognize **every** page with the fast profile. Then extract bookmarks (in memory). Progress and cancel. |
 | Recognize All Scanned Pages (Accurate) | 识别所有扫描页（精确） | Same as Fast, using high accuracy. Then extract bookmarks (in memory). |
 | Auto-save | 自动保存 | Toggle. On: after Recognize All Scanned Pages, overwrite the current PDF (and extract bookmarks to disk). Extracting bookmarks also saves. Setting: `OcrAutoSave`, default **off**. |

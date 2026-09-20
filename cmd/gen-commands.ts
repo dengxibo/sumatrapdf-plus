@@ -280,6 +280,10 @@ export const commands = [
     "CmdToggleOcrCopyMerged", "Toggle Paragraph-merged Copy",
     "CmdAiRecognizePdfToc", "AI Recognize Table of Contents",
     "CmdPdfRotatePages", "Rotate PDF Pages...",
+    "CmdDeskewPage", "Deskew Page",
+    "CmdDeskewAllScannedPages", "Deskew All Scanned Pages",
+    "CmdToggleOcrDeskew", "Toggle Deskew During OCR",
+    "CmdDisplayFilter", "Enhance Display",
     "CmdNone", "Do nothing",
 ];
 

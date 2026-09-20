@@ -64,9 +64,11 @@ void OcrSetTocCoarseDet(bool enable);
 bool OcrRecognizeRgb(const u8* rgb, int w, int h, int stride, Vec<OcrBox>& boxesOut, OcrProfile profile,
                      OcrPageTiming* timing = nullptr);
 
-// RapidOrientation classifies the visual page direction (clockwise degrees).
-// Returns false when the optional model is unavailable or is not confident.
-bool OcrClassifyPageOrientationRgb(const u8* rgb, int w, int h, int stride, int* clockwiseDegrees, float* confidence);
+// RapidOrientation classifies the visual page direction. clockwiseDegrees is the
+// PDF correction (inverse of the model's current-orientation label). Optional
+// alt* return the second-best correction when the top class is a weak upright.
+bool OcrClassifyPageOrientationRgb(const u8* rgb, int w, int h, int stride, int* clockwiseDegrees, float* confidence,
+                                   int* altClockwiseDegrees = nullptr, float* altConfidence = nullptr);
 
 // How many pages we OCR at once (1–4). Same count as ONNX session slots.
 int OcrInferenceSlotCount();

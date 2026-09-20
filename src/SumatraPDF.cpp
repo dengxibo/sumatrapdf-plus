@@ -76,6 +76,7 @@
 #include "SearchAndDDE.h"
 #include "Selection.h"
 #include "SelectionToolbar.h"
+#include "DisplayFilter.h"
 #include "Screenshot.h"
 #include "ImageSaveCropResize.h"
 #include "StressTesting.h"
@@ -92,6 +93,7 @@
 #include "WordLookup.h"
 #include "OcrService.h"
 #include "AiToc.h"
+#include "AppDialogTheme.h"
 #include "PrintedTocModel.h"
 #include "ExtractPdfToc.h"
 #include "TocCalib.h"
@@ -143,15 +145,15 @@ bool NeedsWindowEmbeddingHacks() {
 }
 
 bool SettingsUseTabs() {
-    return gGlobalPrefs->useTabs && !gMyWindowWasEmbedded;
+    return gGlobalPrefs->useTabs && !NeedsWindowEmbeddingHacks();
 }
 
 bool SettingsRestoreSession() {
-    return gGlobalPrefs->restoreSession && !gMyWindowWasEmbedded;
+    return gGlobalPrefs->restoreSession && !NeedsWindowEmbeddingHacks();
 }
 
 bool SettingsRememberOpenedFiles() {
-    return gGlobalPrefs->rememberOpenedFiles && !gMyWindowWasEmbedded;
+    return gGlobalPrefs->rememberOpenedFiles && !NeedsWindowEmbeddingHacks();
 }
 
 static Kind kNotifPersistentWarning = "persistentWarning";
@@ -962,6 +964,10 @@ void UpdateTabFileDisplayStateForTab(WindowTab* tab) {
     tab->ctrl->GetDisplayState(fs);
     UpdateDisplayStateWindowRect(win, fs, false);
     UpdateSidebarDisplayState(tab, fs);
+    fs->displayFilterMode = tab->displayFilterMode;
+    fs->displayFilterBrightness = tab->displayFilterBrightness;
+    fs->displayFilterContrast = tab->displayFilterContrast;
+    fs->displayFilterSharpness = tab->displayFilterSharpness;
 }
 
 static bool gForceRtl = false;
@@ -1859,6 +1865,30 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         if (tabColParsed->parsedOk) {
             tab->tabColor = tabColParsed->col;
         }
+        tab->displayFilterMode = fs->displayFilterMode;
+        tab->displayFilterBrightness = fs->displayFilterBrightness;
+        tab->displayFilterContrast = fs->displayFilterContrast;
+        tab->displayFilterSharpness = fs->displayFilterSharpness;
+        // Migrate pre-mode FileState: non-zero sliders without a mode → was Legacy.
+        if (tab->displayFilterMode == 0 && (tab->displayFilterBrightness != 0 || tab->displayFilterContrast != 0 ||
+                                            tab->displayFilterSharpness != 0)) {
+            tab->displayFilterMode = (int)DocumentEnhancementMode::Auto;
+            tab->displayFilterBrightness = 0;
+            tab->displayFilterContrast = 0;
+            tab->displayFilterSharpness = 0;
+        }
+        // Collapse old on-states (Legacy/Reading/Scanned) into Auto.
+        if (tab->displayFilterMode == (int)DocumentEnhancementMode::Reading ||
+            tab->displayFilterMode == (int)DocumentEnhancementMode::Scanned ||
+            tab->displayFilterMode == (int)DocumentEnhancementMode::Legacy) {
+            tab->displayFilterMode = (int)DocumentEnhancementMode::Auto;
+            tab->displayFilterBrightness = 0;
+            tab->displayFilterContrast = 0;
+            tab->displayFilterSharpness = 0;
+        }
+        if (tab->displayFilterMode == (int)DocumentEnhancementMode::Auto) {
+            tab->displayFilterLastMode = (int)DocumentEnhancementMode::Auto;
+        }
     }
 
     AbortFinding(args->win, true);
@@ -2065,6 +2095,14 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         showToc = false;
     }
     SetSidebarVisibility(win, showToc, gGlobalPrefs->showFavorites);
+    // Sync reload (save-in-place) can attach the model before reflow page
+    // counting finishes. Lay out the pages already known so the canvas can scroll.
+    if (DisplayModel* dmSync = win->AsFixed()) {
+        EngineBase* syncEngine = dmSync->GetEngine();
+        if (dmSync->pagesInfo && syncEngine && dmSync->PageCount() < syncEngine->PageCount()) {
+            dmSync->OnMorePagesAvailable(true, false);
+        }
+    }
     // restore scroll state after the canvas size has been restored
     if ((args->showWin || ss.page != 1) && win->AsFixed()) {
         win->AsFixed()->SetScrollState(ss);
@@ -2560,13 +2598,24 @@ static MainWindow* CreateMainWindow() {
     const WCHAR* clsName = FRAME_CLASS_NAME;
     const WCHAR* title = ToWStrTemp(kAppName);
     DWORD style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
+    DWORD exStyle = WS_EX_APPWINDOW;
     int x = windowPos.x;
     int y = windowPos.y;
     int dx = windowPos.dx;
     int dy = windowPos.dy;
+    // Plugin / lister hosts (sLister, TCSumatraPDF) reparent us as WS_CHILD. Creating a
+    // normal WS_EX_APPWINDOW frame at the saved desktop position can flash a top-level
+    // Sumatra window before SetParent runs — Plus starts slower than stock, so the flash
+    // is much more noticeable (GitHub dengxibo/sumatrapdf-plus#32).
+    if (gPluginMode) {
+        exStyle = WS_EX_TOOLWINDOW;
+        x = -32000;
+        y = -32000;
+        dx = 64;
+        dy = 64;
+    }
     HINSTANCE h = GetModuleHandle(nullptr);
-    HWND hwndFrame =
-        CreateWindowExW(WS_EX_APPWINDOW, clsName, title, style, x, y, dx, dy, nullptr, nullptr, h, nullptr);
+    HWND hwndFrame = CreateWindowExW(exStyle, clsName, title, style, x, y, dx, dy, nullptr, nullptr, h, nullptr);
     if (!hwndFrame) {
         return nullptr;
     }
@@ -2732,7 +2781,7 @@ void ShowMainWindow(MainWindow* win, int windowState) {
 
     OnMainWindowDpiChanged(win, win->hwndFrame, nullptr, 0, true);
 
-    if (gWindows.Size() == 1 && (true || IsDebuggerPresent())) {
+    if (gWindows.Size() == 1 && !NeedsWindowEmbeddingHacks() && (true || IsDebuggerPresent())) {
         HwndToForeground(win->hwndFrame);
     }
 
@@ -3443,9 +3492,9 @@ void UpdateAfterThemeChange() {
             return TRUE;
         },
         0);
-    RefreshAiTocWindowsTheme();
-    RefreshPdfRotatePagesTheme();
+    RefreshAllAppDialogsTheme();
     RefreshWordLookupTheme();
+    RefreshDisplayFilterPanelsTheme();
     RefreshEditAnnotationsWindowsTheme();
     RefreshEbookAnnotationsWindowsTheme();
 
@@ -4780,6 +4829,10 @@ void LoadModelIntoTab(WindowTab* tab) {
         tab->lastDarkModeEpoch = gRenderCache->darkModeEpoch;
     }
     UpdateAnnotToolToolbarButtons(win);
+    UpdateDisplayFilterToolbarButton(win);
+    if (IsDisplayFilterPanelVisible(win)) {
+        HideDisplayFilterPanel(win);
+    }
 }
 
 enum class MeasurementUnit {
@@ -5379,6 +5432,116 @@ static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool 
     // HwndSetFocus(win->hwndFrame);
 }
 
+static Kind kNotifDeskew = "deskewProgress";
+static bool gDeskewAllRunning = false;
+
+struct DeskewAllJob {
+    MainWindow* win = nullptr;
+    HWND hwndCanvas = nullptr;
+    EngineBase* engine = nullptr;
+    NotificationWnd* wnd = nullptr;
+    int changed = 0;
+    int lastPage = 0;
+    int pageCount = 0;
+};
+
+struct DeskewProgressUi {
+    DeskewAllJob* job = nullptr;
+    int pageNo = 0;
+    int step = 0;
+    int pageCount = 0;
+};
+
+static void DeskewProgressOnUi(DeskewProgressUi* ui) {
+    AutoDelete del(ui);
+    DeskewAllJob* job = ui->job;
+    if (!job || !job->wnd || !IsMainWindowValid(job->win)) {
+        return;
+    }
+    int perc = CalcPerc(ui->step, ui->pageCount > 0 ? ui->pageCount : 1);
+    TempStr msg = str::FormatTemp(_TRA("Deskewing… %d / %d"), ui->step, ui->pageCount);
+    UpdateNotificationProgress(job->wnd, msg, perc);
+}
+
+static void DeskewProgressCbFn(int pageNo, int step, int pageCount, void* user) {
+    auto* job = (DeskewAllJob*)user;
+    if (!job) {
+        return;
+    }
+    auto* ui = new DeskewProgressUi;
+    ui->job = job;
+    ui->pageNo = pageNo;
+    ui->step = step;
+    ui->pageCount = pageCount;
+    uitask::Post(MkFunc0<DeskewProgressUi>(DeskewProgressOnUi, ui), "DeskewProgress");
+}
+
+static void DeskewAllFinishOnUi(DeskewAllJob* job) {
+    AutoDelete del(job);
+    gDeskewAllRunning = false;
+    if (job->engine) {
+        job->engine->Release();
+    }
+    if (!job->win || !IsMainWindowValid(job->win)) {
+        return;
+    }
+    if (job->wnd) {
+        RemoveNotification(job->wnd);
+        job->wnd = nullptr;
+    }
+    DisplayModel* dm = job->win->AsFixed();
+    if (dm && gRenderCache && job->engine) {
+        gRenderCache->CancelRendering(dm);
+        for (int p = 1; p <= job->engine->PageCount(); p++) {
+            gRenderCache->Invalidate(dm, p, job->engine->PageMediabox(p));
+        }
+    }
+    job->win->RedrawAll(true);
+    ToolbarUpdateStateForWindow(job->win, false);
+    const char* allMsg = _TRA("No scanned pages needed deskewing.");
+    if (job->changed > 0) {
+        allMsg = str::FormatTemp(_TRA("Deskewed %d page(s)."), job->changed);
+    }
+    ShowTemporaryNotification(job->hwndCanvas, allMsg);
+}
+
+static void DeskewAllWorker(DeskewAllJob* job) {
+    job->changed = EngineMupdfDeskewAllScannedPages(job->engine, DeskewProgressCbFn, job);
+    uitask::Post(MkFunc0<DeskewAllJob>(DeskewAllFinishOnUi, job), "DeskewAllFinish");
+}
+
+static void StartDeskewAllScannedPages(MainWindow* win) {
+    if (!win || !win->AsFixed() || !win->AsFixed()->GetEngine()) {
+        return;
+    }
+    if (gDeskewAllRunning) {
+        ShowTemporaryNotification(win->hwndCanvas, _TRA("Deskew is already running."));
+        return;
+    }
+    EngineBase* engine = win->AsFixed()->GetEngine();
+    if (engine->kind != kindEngineMupdf) {
+        return;
+    }
+    gDeskewAllRunning = true;
+    auto* job = new DeskewAllJob;
+    job->win = win;
+    job->hwndCanvas = win->hwndCanvas;
+    job->engine = engine;
+    job->pageCount = engine->PageCount();
+    engine->AddRef();
+
+    NotificationCreateArgs args;
+    args.hwndParent = win->hwndCanvas;
+    args.groupId = kNotifDeskew;
+    args.msg = _TRA("Deskewing…");
+    args.timeoutMs = kNotifNoTimeout;
+    job->wnd = ShowNotification(args);
+    if (job->wnd) {
+        UpdateNotificationProgress(job->wnd, _TRA("Deskewing…"), 0);
+    }
+    StartThread(MkFunc0<DeskewAllJob>(DeskewAllWorker, job), "DeskewAll");
+}
+
 static void ShowSavedAnnotationsNotification(HWND hwndParent, const char* path) {
     StrBuilder msg;
     msg.AppendFmt(_TRA("Saved PDF changes to '%s'"), path);
@@ -5438,9 +5601,20 @@ bool SaveAnnotationsToExistingFile(WindowTab* tab) {
             return false;
         }
         if (tmp) {
-            SwitchCurrentTabToSavedFile(tab->win, path, tmp);
+            MainWindow* annWin = tab->win;
+            ok = SwitchCurrentTabToSavedFile(annWin, path, tmp);
             str::Free(tmp);
+            if (!ok) {
+                if (IsMainWindowValid(annWin) && annWin->CurrentTab()) {
+                    annWin->CurrentTab()->ignoreNextAutoReload = false;
+                }
+                return false;
+            }
             replacedViaTemp = true;
+            tab = annWin->CurrentTab();
+            if (!tab) {
+                return false;
+            }
         }
     }
     if (ocr) {
@@ -5722,8 +5896,14 @@ static bool MaybeSaveAnnotations(WindowTab* tab) {
                 return false;
             }
             if (tmp) {
-                SwitchCurrentTabToSavedFile(win, path, tmp);
+                bool replaced = SwitchCurrentTabToSavedFile(win, path, tmp);
                 str::Free(tmp);
+                if (!replaced) {
+                    if (IsMainWindowValid(win) && win->CurrentTab()) {
+                        win->CurrentTab()->askedToSaveAnnotations = false;
+                    }
+                    return false;
+                }
             }
             return true;
         }
@@ -6097,7 +6277,8 @@ static bool AppendFileFilterForDoc(DocController* ctrl, StrBuilder& fileFilter) 
         fileFilter.Append(_TRA("XPS documents"));
     } else if (str::EqI(ext, ".md") || str::EqI(ext, ".markdown")) {
         fileFilter.Append(_TRA("Markdown documents"));
-    } else if (str::EqI(ext, ".docx") || str::EqI(ext, ".xlsx") || str::EqI(ext, ".pptx") || str::EqI(ext, ".hwpx")) {
+    } else if (str::EqI(ext, ".doc") || str::EqI(ext, ".docx") || str::EqI(ext, ".xlsx") || str::EqI(ext, ".pptx") ||
+               str::EqI(ext, ".hwpx")) {
         fileFilter.Append(_TRA("Office documents"));
     } else if (type == kindEngineDjVu) {
         fileFilter.Append(_TRA("DjVu documents"));
@@ -6442,38 +6623,122 @@ static bool TryReplaceFileWithTemp(const char* dest, const char* tmp) {
     return false;
 }
 
-static char* DupUniquePdfPathInDir(const char* dir, const char* destPath) {
-    if (str::IsEmpty(dir)) {
-        return nullptr;
+enum class LockedSaveAction {
+    Retry,
+    SaveAs,
+    Cancel,
+};
+
+// File is still open elsewhere (WPS, indexer). Do not write a surprise copy.
+static LockedSaveAction AskLockedSaveAction(HWND parent, const char* destPath) {
+    const char* name = path::GetBaseNameTemp(destPath);
+    TempStr mainA = str::FormatTemp(_TRA("Cannot save '%s'"), name && name[0] ? name : destPath);
+    constexpr int kSaveAsId = 100;
+    TASKDIALOG_BUTTON buttons[3]{};
+    buttons[0].nButtonID = IDRETRY;
+    buttons[0].pszButtonText = ToWStrTemp(_TRA("&Retry"));
+    buttons[1].nButtonID = kSaveAsId;
+    buttons[1].pszButtonText = ToWStrTemp(_TRA("&Save As..."));
+    buttons[2].nButtonID = IDCANCEL;
+    buttons[2].pszButtonText = ToWStrTemp(_TRA("&Cancel"));
+
+    DWORD flags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT | TDF_POSITION_RELATIVE_TO_WINDOW;
+    if (trans::IsCurrLangRtl()) {
+        flags |= TDF_RTL_LAYOUT;
     }
-    const char* baseNoExt = path::GetPathNoExtTemp(path::GetBaseNameTemp(destPath));
-    if (str::IsEmpty(baseNoExt)) {
-        baseNoExt = "saved";
+    TASKDIALOGCONFIG config{};
+    config.cbSize = sizeof(config);
+    config.hwndParent = parent;
+    config.dwFlags = flags;
+    config.pszWindowTitle = ToWStrTemp(_TRA("Save"));
+    config.pszMainInstruction = ToWStrTemp(mainA);
+    config.pszContent = ToWStrTemp(
+        _TRA("The file is open in another program. Close it and click Retry, or save a copy to another location."));
+    config.pszMainIcon = TD_WARNING_ICON;
+    config.nDefaultButton = IDRETRY;
+    config.cButtons = dimof(buttons);
+    config.pButtons = buttons;
+
+    int pressed = 0;
+    HRESULT hr = TaskDialogIndirect(&config, &pressed, nullptr, nullptr);
+    if (hr != S_OK || pressed == IDCANCEL || pressed == 0) {
+        return LockedSaveAction::Cancel;
     }
-    TempStr candidate = path::JoinTemp(dir, str::JoinTemp(baseNoExt, "-saved.pdf"));
-    candidate = MakeUniqueFilePathTemp(candidate);
-    return str::Dup(candidate);
+    if (pressed == IDRETRY) {
+        return LockedSaveAction::Retry;
+    }
+    if (pressed == kSaveAsId) {
+        return LockedSaveAction::SaveAs;
+    }
+    return LockedSaveAction::Cancel;
 }
 
-void SwitchCurrentTabToSavedFile(MainWindow* win, const char* destPath, const char* replaceFromTemp) {
+// Returns an owned path, or nullptr if the user dismissed the picker.
+static char* PromptSaveLockedCopy(HWND parent, const char* destPath) {
+    const char* ext = path::GetExtTemp(destPath);
+    if (str::IsEmpty(ext)) {
+        ext = "";
+    }
+    StrBuilder fileFilter(256);
+    if (str::EqI(ext, ".pdf")) {
+        fileFilter.Append(_TRA("PDF documents"));
+        fileFilter.Append("\1*.pdf\1");
+    } else if (str::EqI(ext, ".doc") || str::EqI(ext, ".docx") || str::EqI(ext, ".xlsx") || str::EqI(ext, ".pptx") ||
+               str::EqI(ext, ".hwpx")) {
+        fileFilter.Append(_TRA("Office documents"));
+        fileFilter.AppendFmt("\1*%s\1", ext);
+    } else if (ext[0]) {
+        fileFilter.AppendFmt("\1*%s\1", ext);
+    }
+    fileFilter.Append(_TRA("All files"));
+    fileFilter.Append("\1*.*\1");
+    str::TransCharsInPlace(fileFilter.CStr(), "\1", "\0");
+
+    WCHAR dstFileName[1024]{};
+    if (str::Leni(destPath) >= dimof(dstFileName)) {
+        str::BufSet(dstFileName, dimof(dstFileName), path::GetBaseNameTemp(destPath));
+    } else {
+        str::BufSet(dstFileName, dimof(dstFileName), destPath);
+    }
+
+    OPENFILENAME ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = parent;
+    ofn.lpstrFile = dstFileName;
+    ofn.nMaxFile = dimof(dstFileName);
+    ofn.lpstrFilter = ToWStrTemp(fileFilter);
+    ofn.nFilterIndex = 1;
+    ofn.lpstrTitle = ToWStrTemp(_TRA("&Save As..."));
+    const char* defExt = (ext[0] == '.') ? ext + 1 : ext;
+    if (defExt[0]) {
+        ofn.lpstrDefExt = ToWStrTemp(defExt);
+    }
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    if (!GetSaveFileNameW(&ofn)) {
+        return nullptr;
+    }
+    return str::Dup(ToUtf8Temp(dstFileName));
+}
+
+bool SwitchCurrentTabToSavedFile(MainWindow* win, const char* destPath, const char* replaceFromTemp) {
     if (!win || str::IsEmpty(destPath)) {
-        return;
+        return false;
     }
     bool replacing = replaceFromTemp && replaceFromTemp[0];
     if (replacing) {
         if (!file::Exists(replaceFromTemp)) {
-            return;
+            return false;
         }
     } else if (!file::Exists(destPath)) {
-        return;
+        return false;
     }
     WindowTab* tab = win->CurrentTab();
     if (!tab) {
-        return;
+        return false;
     }
     char* destOwned = str::Dup(path::NormalizeTemp(destPath));
     if (!destOwned) {
-        return;
+        return false;
     }
     defer {
         str::Free(destOwned);
@@ -6508,39 +6773,70 @@ void SwitchCurrentTabToSavedFile(MainWindow* win, const char* destPath, const ch
     CloseDocumentInCurrentTab(win, true, true);
     HwndSetFocus(win->hwndFrame);
     const char* loadPath = destNorm;
-    char* fallbackCopy = nullptr;
+    char* ownedLoad = nullptr;
+    bool cancelled = false;
     if (replacing) {
         Sleep(50);
-        if (!TryReplaceFileWithTemp(destNorm, replaceFromTemp)) {
-            fallbackCopy = DupUniquePdfPathInDir(path::GetDirTemp(destNorm), destNorm);
-            if (!fallbackCopy || !file::Copy(fallbackCopy, replaceFromTemp, false)) {
-                str::Free(fallbackCopy);
-                fallbackCopy = DupUniquePdfPathInDir(GetTempFilePathTemp(nullptr), destNorm);
-                if (fallbackCopy && !file::Copy(fallbackCopy, replaceFromTemp, false)) {
-                    str::Free(fallbackCopy);
-                    fallbackCopy = nullptr;
-                }
+        for (;;) {
+            if (!IsMainWindowValid(win)) {
+                file::Delete(replaceFromTemp);
+                return false;
             }
-            if (fallbackCopy) {
-                if (!path::IsSame(fallbackCopy, replaceFromTemp)) {
+            if (TryReplaceFileWithTemp(destNorm, replaceFromTemp)) {
+                break;
+            }
+            LockedSaveAction act = AskLockedSaveAction(win->hwndFrame, destNorm);
+            if (act == LockedSaveAction::Retry) {
+                Sleep(100);
+                continue;
+            }
+            if (act == LockedSaveAction::SaveAs) {
+                char* picked = PromptSaveLockedCopy(win->hwndFrame, destNorm);
+                if (!picked) {
+                    continue;
+                }
+                if (path::IsSame(picked, destNorm)) {
+                    str::Free(picked);
+                    continue;
+                }
+                if (!file::Copy(picked, replaceFromTemp, false)) {
+                    TempStr err = GetLastErrorStrTemp();
+                    TempStr msg = err && err[0] ? str::FormatTemp("%s\n\n%s", _TRA("Failed to save a file"), err)
+                                                : (TempStr)_TRA("Failed to save a file");
+                    MessageBoxWarning(win->hwndFrame, msg, _TRA("Save"));
+                    str::Free(picked);
+                    continue;
+                }
+                if (!path::IsSame(picked, replaceFromTemp)) {
                     file::Delete(replaceFromTemp);
                 }
-                loadPath = fallbackCopy;
-            } else {
-                loadPath = replaceFromTemp;
+                ownedLoad = picked;
+                loadPath = ownedLoad;
+                break;
             }
-            ShowWarningNotification(win->hwndCanvas,
-                                    _TRA("Could not replace the original PDF. The recognized file was kept as a "
-                                         "temporary copy."),
-                                    kNotif5SecsTimeOut);
+            file::Delete(replaceFromTemp);
+            cancelled = true;
+            break;
         }
+    }
+    if (!IsMainWindowValid(win)) {
+        str::Free(ownedLoad);
+        return false;
     }
     LoadArgs args(loadPath, win);
     args.forceReuse = true;
     args.noPlaceWindow = true;
     args.syncLoad = true;
     LoadDocument(&args);
-    str::Free(fallbackCopy);
+    str::Free(ownedLoad);
+    if (cancelled) {
+        WindowTab* cur = IsMainWindowValid(win) ? win->CurrentTab() : nullptr;
+        if (cur) {
+            cur->ignoreNextAutoReload = false;
+        }
+        return false;
+    }
+    return true;
 }
 
 void SumatraOpenPathInDefaultFileManager(const char* path) {
@@ -6892,7 +7188,7 @@ static TempWStr GetFileFilterTemp() {
         {_TRA("Images"), "*.bmp;*.dib;*.gif;*.jpg;*.jpeg;*.jxr;*.png;*.tga;*.tif;*.tiff;*.webp;*.heic;*.avif", true},
         {_TRA("Text documents"), "*.txt;*.log;*.nfo;file_id.diz;read.me;*.tcr", true},
         {_TRA("Markdown documents"), "*.md;*.markdown", true},
-        {_TRA("Office documents"), "*.docx;*.xlsx;*.pptx;*.hwpx", true},
+        {_TRA("Office documents"), "*.doc;*.docx;*.xlsx;*.pptx;*.hwpx", true},
     };
     // Prepare the file filters (use \1 instead of \0 so that the
     // double-zero terminated string isn't cut by the string handling
@@ -7672,6 +7968,8 @@ static void ShowOptionsDialog(HWND hwnd) {
     AutoFreeStr documentColorModeBefore(str::Dup(gGlobalPrefs->documentColorMode));
     AutoFreeStr treeFontNameBefore(str::Dup(gGlobalPrefs->treeFontName));
     int treeFontSizeBefore = gGlobalPrefs->treeFontSize;
+    int tabFontSizeBefore = gGlobalPrefs->tabFontSize;
+    int tabBarHeightBefore = gGlobalPrefs->tabBarHeight;
     int customScreenDpiBefore = gGlobalPrefs->customScreenDPI;
     bool fullPathInTitleBefore = gGlobalPrefs->fullPathInTitle;
 
@@ -7704,7 +8002,9 @@ static void ShowOptionsDialog(HWND hwnd) {
 
     bool treeFontChanged =
         treeFontSizeBefore != gGlobalPrefs->treeFontSize || !str::EqI(treeFontNameBefore, gGlobalPrefs->treeFontName);
-    if (treeFontChanged) {
+    bool tabChromeChanged =
+        tabFontSizeBefore != gGlobalPrefs->tabFontSize || tabBarHeightBefore != gGlobalPrefs->tabBarHeight;
+    if (treeFontChanged || tabFontSizeBefore != gGlobalPrefs->tabFontSize) {
         InvalidateUiFonts();
     }
     if (treeFontChanged || gGlobalPrefs->treeWrapLabels != treeWrapLabelsBefore) {
@@ -7718,6 +8018,16 @@ static void ShowOptionsDialog(HWND hwnd) {
                 int favDpi = win->favSidebarDpi > 0 ? win->favSidebarDpi : frameDpi;
                 ReCreateFavTreeView(win, GetAppTreeFontForDpi(favDpi), favDpi);
             }
+        }
+    }
+    if (tabChromeChanged || treeFontChanged) {
+        for (MainWindow* win : gWindows) {
+            if (win->tabsCtrl) {
+                win->tabsCtrl->SetFont(GetAppTabFontForHwnd(win->hwndFrame));
+                UpdateTabWidth(win);
+                win->tabsCtrl->LayoutTabs();
+            }
+            RelayoutWindow(win);
         }
     }
 
@@ -8345,6 +8655,11 @@ static bool FrameOnKeydown(MainWindow* win, WPARAM key, LPARAM lp) {
         }
         CancelDrag(win);
         return true;
+    }
+
+    /* Ctrl toggles annotation hand cursor — refresh without waiting for mouse move. */
+    if (VK_CONTROL == key && win->hwndCanvas && win->mouseAction == MouseAction::None) {
+        SendMessageW(win->hwndCanvas, WM_SETCURSOR, (WPARAM)win->hwndCanvas, MAKELPARAM(HTCLIENT, 0));
     }
 
     bool isCtrl = IsCtrlPressed();
@@ -10295,8 +10610,23 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             if (!win->IsDocLoaded()) {
                 return 0;
             }
-            float towards = (cmdId == CmdZoomIn) ? kZoomMax : kZoomMin;
-            auto zoom = ctrl->GetNextZoomStep(towards);
+            // Ctrl+/- steps 5% of the current zoom. Fit modes leave the preset
+            // ladder; the wheel still uses ZoomIncrement / ZoomLevels.
+            float curr = ctrl->GetZoomVirtual(true);
+            float zoom;
+            if (curr > 0) {
+                float factor = (cmdId == CmdZoomIn) ? 1.05f : (1.f / 1.05f);
+                zoom = curr * factor;
+                if (zoom < kZoomMin) {
+                    zoom = kZoomMin;
+                }
+                if (zoom > kZoomMax) {
+                    zoom = kZoomMax;
+                }
+            } else {
+                float towards = (cmdId == CmdZoomIn) ? kZoomMax : kZoomMin;
+                zoom = ctrl->GetNextZoomStep(towards);
+            }
             Point mousePos = HwndGetCursorPos(win->hwndCanvas);
             SmartZoom(win, zoom, &mousePos, true);
         } break;
@@ -10687,6 +11017,29 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             }
             break;
 
+        case CmdDeskewPage:
+            if (dm) {
+                int pageNo = dm->CurrentPageNo();
+                float deg = EngineMupdfDeskewPage(dm->GetEngine(), pageNo);
+                gRenderCache->CancelRendering(dm);
+                gRenderCache->Invalidate(dm, pageNo, dm->GetEngine()->PageMediabox(pageNo));
+                win->RedrawAll(true);
+                // Refresh tab red-dot / Save enablement; never auto-save.
+                ToolbarUpdateStateForWindow(win, false);
+                const char* deskewMsg = _TRA("This page is not skewed.");
+                if (deg != 0.f) {
+                    deskewMsg = str::FormatTemp(_TRA("Deskewed by %.1f degrees."), deg);
+                }
+                ShowTemporaryNotification(win->hwndCanvas, deskewMsg);
+            }
+            break;
+
+        case CmdDeskewAllScannedPages:
+            if (dm) {
+                StartDeskewAllScannedPages(win);
+            }
+            break;
+
         case CmdFindFirst:
             if (win->IsCurrentTabAbout()) {
                 HomePageFocusSearch(win);
@@ -10896,6 +11249,13 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         case CmdToggleOcrAutoSave:
             if (gGlobalPrefs) {
                 gGlobalPrefs->ocrAutoSave = !gGlobalPrefs->ocrAutoSave;
+                SaveSettings();
+            }
+            break;
+
+        case CmdToggleOcrDeskew:
+            if (gGlobalPrefs) {
+                gGlobalPrefs->ocrDeskew = !gGlobalPrefs->ocrDeskew;
                 SaveSettings();
             }
             break;
@@ -11196,6 +11556,11 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             UpdateControlsColors(win);
             // UpdateUiForCurrentTab(win);
             SaveSettings();
+            break;
+        }
+
+        case CmdDisplayFilter: {
+            ToggleDisplayFilterActive(win);
             break;
         }
 
@@ -12728,7 +13093,21 @@ struct Dialog_ReadAloudSmartVoices_Data {
     SmartBilingualKind kind = SmartBilingualKind::Local;
     char* originalZhVoiceId = nullptr;
     char* originalEnVoiceId = nullptr;
+    AppDialogBrushes brushes;
+    bool modeless = false;
 };
+
+static HWND gSmartVoicesHwnd = nullptr;
+
+static void SmartVoicesThemeRefreshCb(HWND hwnd, void* ctx) {
+    auto* data = (Dialog_ReadAloudSmartVoices_Data*)ctx;
+    if (!data) {
+        return;
+    }
+    data->brushes.Recreate();
+    AppDialogApplyChrome(hwnd);
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
+}
 
 static void FreeReadAloudSmartVoiceComboIds(Dialog_ReadAloudSmartVoices_Data* data) {
     if (!data) {
@@ -12941,10 +13320,12 @@ static INT_PTR CALLBACK Dialog_ReadAloudSmartVoices_Proc(HWND hDlg, UINT msg, WP
         case WM_INITDIALOG:
             data = (Dialog_ReadAloudSmartVoices_Data*)lp;
             SetWindowLongPtr(hDlg, GWLP_USERDATA, (LONG_PTR)data);
-            if (UseDarkModeLib()) {
-                DarkMode::setDarkWndSafe(hDlg);
+            data->brushes.Create();
+            AppDialogApplyChrome(hDlg);
+            if (data->modeless) {
+                RegisterAppDialogForTheme(hDlg, SmartVoicesThemeRefreshCb, data);
+                SetCurrentModelessDialog(hDlg);
             }
-            UpdateWindowCaptionTheme(hDlg);
 
             HwndSetText(hDlg, data->kind == SmartBilingualKind::Online ? _TRA("Online smart bilingual settings")
                                                                        : _TRA("Local smart bilingual settings"));
@@ -12972,6 +13353,27 @@ static INT_PTR CALLBACK Dialog_ReadAloudSmartVoices_Proc(HWND hDlg, UINT msg, WP
             HwndSetFocus(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN));
             return FALSE;
 
+        case WM_CTLCOLORDLG:
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORBTN: {
+            data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
+            if (!data) {
+                break;
+            }
+            HBRUSH br = AppDialogCtlColorBrush(msg, wp, lp, data->brushes.background);
+            if (br) {
+                return (INT_PTR)br;
+            }
+            break;
+        }
+
+        case WM_ACTIVATE:
+            data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
+            if (data && data->modeless) {
+                SetCurrentModelessDialog(LOWORD(wp) == WA_INACTIVE ? nullptr : hDlg);
+            }
+            return FALSE;
+
         case WM_COMMAND:
             switch (LOWORD(wp)) {
                 case IDOK:
@@ -12981,13 +13383,21 @@ static INT_PTR CALLBACK Dialog_ReadAloudSmartVoices_Proc(HWND hDlg, UINT msg, WP
                     ReadAloudApplySmartBilingualVoice(
                         data->kind, false, ReadAloudSmartVoiceIdFromCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN)));
                     SaveSettings();
-                    EndDialog(hDlg, IDOK);
+                    if (data->modeless) {
+                        DestroyWindow(hDlg);
+                    } else {
+                        EndDialog(hDlg, IDOK);
+                    }
                     return TRUE;
 
                 case IDCANCEL:
                     data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
                     ReadAloudRestoreSmartBilingualVoicesFromDialog(data);
-                    EndDialog(hDlg, IDCANCEL);
+                    if (data->modeless) {
+                        DestroyWindow(hDlg);
+                    } else {
+                        EndDialog(hDlg, IDCANCEL);
+                    }
                     return TRUE;
 
                 case IDC_READ_ALOUD_SMART_ZH:
@@ -13005,8 +13415,29 @@ static INT_PTR CALLBACK Dialog_ReadAloudSmartVoices_Proc(HWND hDlg, UINT msg, WP
         case WM_CLOSE:
             data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
             ReadAloudRestoreSmartBilingualVoicesFromDialog(data);
-            EndDialog(hDlg, IDCANCEL);
+            if (data && data->modeless) {
+                DestroyWindow(hDlg);
+            } else {
+                EndDialog(hDlg, IDCANCEL);
+            }
             return TRUE;
+
+        case WM_DESTROY:
+            data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
+            if (data && data->modeless) {
+                UnregisterAppDialogForTheme(hDlg);
+                if (GetCurrentModelessDialog() == hDlg) {
+                    SetCurrentModelessDialog(nullptr);
+                }
+                if (gSmartVoicesHwnd == hDlg) {
+                    gSmartVoicesHwnd = nullptr;
+                }
+                data->brushes.Destroy();
+                SetWindowLongPtr(hDlg, GWLP_USERDATA, 0);
+                FreeReadAloudSmartVoiceDialogData(data);
+                delete data;
+            }
+            break;
     }
 
     return FALSE;
@@ -13016,12 +13447,23 @@ static void ShowReadAloudSmartVoiceDialog(MainWindow* win, SmartBilingualKind ki
     if (!win) {
         return;
     }
+    if (gSmartVoicesHwnd && IsWindow(gSmartVoicesHwnd)) {
+        SetForegroundWindow(gSmartVoicesHwnd);
+        return;
+    }
 
-    Dialog_ReadAloudSmartVoices_Data data;
-    data.kind = kind;
-    CreateAppDialogBox(IDD_DIALOG_READ_ALOUD_SMART_VOICES, win->hwndFrame, Dialog_ReadAloudSmartVoices_Proc,
-                       (LPARAM)&data);
-    FreeReadAloudSmartVoiceDialogData(&data);
+    auto* data = new Dialog_ReadAloudSmartVoices_Data();
+    data->kind = kind;
+    data->modeless = true;
+    HWND hwnd = CreateAppDialogModeless(IDD_DIALOG_READ_ALOUD_SMART_VOICES, win->hwndFrame,
+                                        Dialog_ReadAloudSmartVoices_Proc, (LPARAM)data);
+    if (!hwnd) {
+        FreeReadAloudSmartVoiceDialogData(data);
+        delete data;
+        return;
+    }
+    gSmartVoicesHwnd = hwnd;
+    ShowWindow(hwnd, SW_SHOW);
 }
 
 static void FlushPendingReadAloudDialogs(MainWindow* win) {
@@ -13036,11 +13478,7 @@ static void FlushPendingReadAloudDialogs(MainWindow* win) {
     if (gPendingSpeedFocusChinese >= 0 && gGlobalPrefs) {
         bool focusChinese = gPendingSpeedFocusChinese != 0;
         gPendingSpeedFocusChinese = -2;
-        float zhRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateZh);
-        float enRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateEn);
-        if (Dialog_ReadAloudSpeed(win->hwndFrame, &enRate, &zhRate, focusChinese)) {
-            ReadAloudSaveSpeakingRatesPrefs(zhRate, enRate);
-        }
+        Dialog_ReadAloudSpeed(win->hwndFrame, focusChinese);
     }
 }
 
@@ -14700,11 +15138,7 @@ static bool HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
         if (gCaptionMenuTrackDepth > 0) {
             gPendingSpeedFocusChinese = focusChinese ? 1 : 0;
         } else if (gGlobalPrefs) {
-            float zhRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateZh);
-            float enRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateEn);
-            if (Dialog_ReadAloudSpeed(win->hwndFrame, &enRate, &zhRate, focusChinese)) {
-                ReadAloudSaveSpeakingRatesPrefs(zhRate, enRate);
-            }
+            Dialog_ReadAloudSpeed(win->hwndFrame, focusChinese);
         }
     }
     return false;
@@ -14784,6 +15218,19 @@ static void ShowOcrToolbarMenu(MainWindow* win, NMTOOLBARW* nmtb) {
     AppendMenuW(menu, canOcr ? MF_STRING : MF_STRING | MF_GRAYED, CmdOcrReRecognizeAllPages,
                 ToWStrTemp(_TRA("Recognize All Scanned Pages (Accurate)")));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    bool canDeskew = engine && engine->kind == kindEngineMupdf;
+    AppendMenuW(menu, canDeskew ? MF_STRING : MF_STRING | MF_GRAYED, CmdDeskewPage, ToWStrTemp(_TRA("Deskew Page")));
+    AppendMenuW(menu, canDeskew ? MF_STRING : MF_STRING | MF_GRAYED, CmdDeskewAllScannedPages,
+                ToWStrTemp(_TRA("Deskew All Scanned Pages")));
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    UINT deskewFlags = MF_STRING;
+    if (gGlobalPrefs && gGlobalPrefs->ocrDeskew) {
+        deskewFlags |= MF_CHECKED;
+    }
+    if (!canOcr) {
+        deskewFlags |= MF_GRAYED;
+    }
+    AppendMenuW(menu, deskewFlags, CmdToggleOcrDeskew, ToWStrTemp(_TRA("Deskew during OCR")));
     UINT autoSaveFlags = MF_STRING;
     if (gGlobalPrefs && gGlobalPrefs->ocrAutoSave) {
         autoSaveFlags |= MF_CHECKED;
@@ -14951,7 +15398,7 @@ static void RefreshWindowChromeAfterFontInvalidate(MainWindow* win) {
     }
 
     if (win->tabsCtrl) {
-        win->tabsCtrl->SetFont(GetAppFontForHwnd(win->hwndFrame));
+        win->tabsCtrl->SetFont(GetAppTabFontForHwnd(win->hwndFrame));
         UpdateTabWidth(win);
         win->tabsCtrl->LayoutTabs();
     }
@@ -15014,7 +15461,7 @@ static void ApplyMainWindowDpiMovePreview(MainWindow* win, HWND hwnd) {
     }
 
     if (win->tabsCtrl) {
-        win->tabsCtrl->SetFont(GetAppFontForDpi(win->frameDpi));
+        win->tabsCtrl->SetFont(GetAppTabFontForDpi(win->frameDpi));
         UpdateTabWidth(win);
         win->tabsCtrl->LayoutTabs();
     }
@@ -15057,7 +15504,7 @@ static void ApplyMainWindowDpiChromeRefresh(MainWindow* win, HWND hwnd) {
     }
 
     if (win->tabsCtrl) {
-        win->tabsCtrl->SetFont(GetAppFontForHwnd(hwnd));
+        win->tabsCtrl->SetFont(GetAppTabFontForHwnd(hwnd));
         UpdateTabWidth(win);
         win->tabsCtrl->LayoutTabs();
     }
@@ -15383,6 +15830,13 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
             }
             break;
 
+        case WM_KEYUP:
+            if (win && !win->isBeingClosed && VK_CONTROL == wp && win->hwndCanvas &&
+                win->mouseAction == MouseAction::None) {
+                SendMessageW(win->hwndCanvas, WM_SETCURSOR, (WPARAM)win->hwndCanvas, MAKELPARAM(HTCLIENT, 0));
+            }
+            break;
+
         case WM_SYSKEYUP:
             // pressing and releasing the Alt key focuses the menu even if
             // the wheel has been used for scrolling horizontally, so we
@@ -15574,27 +16028,20 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
             }
             return MA_ACTIVATE;
 
-        case WM_ERASEBKGND:
-            // not sure why it's needed but it causes
-            // flash of caption area in choco theme when resizing sidebar
-#if 0
-            LogRedraw("WM_ERASEBKGND", hwnd);
-            if (win && win->tabsInTitlebar && !IsCurrentThemeDefault()) {
+        case WM_ERASEBKGND: {
+            // Fill gaps between menu rebar and toolbar. Warm/Light themes previously
+            // returned TRUE without painting, so resize left white strips or a 1px
+            // system edge. Use chrome color so strips match the bars (not page bg).
+            if (win) {
                 HDC hdc = (HDC)wp;
                 RECT rc;
                 GetClientRect(hwnd, &rc);
-                HBRUSH br = CreateSolidBrush(ThemeMainWindowBackgroundColor());
+                HBRUSH br = CreateSolidBrush(ThemeChromeBackgroundColor());
                 FillRect(hdc, &rc, br);
                 DeleteObject(br);
-                if (!win->captionRect.IsEmpty()) {
-                    RECT rcCaption = ToRECT(win->captionRect);
-                    HBRUSH brCaption = CreateSolidBrush(ThemeChromeBackgroundColor());
-                    FillRect(hdc, &rcCaption, brCaption);
-                    DeleteObject(brCaption);
-                }
             }
-#endif
             return TRUE;
+        }
 
         default:
             return DefWindowProc(hwnd, msg, wp, lp);

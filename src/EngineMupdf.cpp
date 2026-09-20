@@ -13,6 +13,7 @@ void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, fl
 }
 
 #include "utils/BaseUtil.h"
+#include <math.h>
 #include "utils/Archive.h"
 #include "utils/ScopedWin.h"
 #include "utils/FileUtil.h"
@@ -30,6 +31,8 @@ void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, fl
 #include "DocController.h"
 #include "EngineBase.h"
 #include "MdConvert.h"
+#include "OfficeConvert.h"
+#include "WordToc.h"
 #include "EngineMupdf.h"
 #include "EngineAll.h"
 #include "PdfTocEditModel.h"
@@ -89,15 +92,89 @@ static float layoutA5DyPt = 680.F;
 static float layoutA4DxPt = 595.F;
 static float layoutA4DyPt = 842.F;
 
+/* OOXML pgSz is in twips (1/20 pt). Prefer the document's own paper size so
+ * landscape Word tables are not laid out into a portrait A4 clip (which chops
+ * the outer-right border past the mediabox). */
+static bool ReadDocxPageSizePt(const char* path, float* wPt, float* hPt) {
+    if (!path || !wPt || !hPt) {
+        return false;
+    }
+    TempStr ext = path::GetExtTemp(path);
+    if (!str::EqI(ext, ".docx")) {
+        return false;
+    }
+    MultiFormatArchive archive;
+    if (!archive.Open(path, ArchiveLoadMode::Lazy, nullptr, {})) {
+        return false;
+    }
+    auto* fi = archive.GetFileDataByName("word/document.xml");
+    if (!fi || !fi->data || fi->fileSizeUncompressed == 0) {
+        return false;
+    }
+    // Ensure NUL for str::Find (zip entry may not be terminated).
+    AutoFreeStr xml(str::Dup((const char*)fi->data, fi->fileSizeUncompressed));
+    if (!xml) {
+        return false;
+    }
+    const char* p = xml.Get();
+    const char* tag = str::Find(p, "<w:pgSz");
+    if (!tag) {
+        tag = str::Find(p, "<pgSz");
+    }
+    if (!tag) {
+        return false;
+    }
+    const char* tagEnd = str::Find(tag, "/>");
+    if (!tagEnd) {
+        tagEnd = str::Find(tag, ">");
+    }
+    if (!tagEnd || tagEnd - tag > 400) {
+        return false;
+    }
+    char buf[416];
+    size_t n = (size_t)(tagEnd - tag);
+    if (n >= sizeof(buf)) {
+        return false;
+    }
+    memcpy(buf, tag, n);
+    buf[n] = 0;
+
+    auto attrTwips = [&](const char* prefixed, const char* bare) -> int {
+        const char* a = str::Find(buf, prefixed);
+        if (!a) {
+            a = str::Find(buf, bare);
+        }
+        if (!a) {
+            return 0;
+        }
+        a = strchr(a, '"');
+        if (!a) {
+            return 0;
+        }
+        return atoi(a + 1);
+    };
+    int wTw = attrTwips("w:w=\"", "w=\"");
+    int hTw = attrTwips("w:h=\"", "h=\"");
+    if (wTw < 1000 || hTw < 1000) {
+        return false;
+    }
+    *wPt = (float)wTw / 20.0f;
+    *hPt = (float)hTw / 20.0f;
+    return *wPt > 72.f && *hPt > 72.f;
+}
+
 static float layoutFontEm = 11.F;
 
 static TempStr BuildEbookDarkCss(bool isEpub) {
     // EPUB: colors and backgrounds only — no layout properties (pagination must not change on theme).
+    // Office/DOCX emits black cell borders as inline CSS; without remapping they vanish on dark paper.
     COLORREF bgCol;
     ThemePageRenderColors(bgCol, true);
     TempStr bgHex = str::FormatTemp("#%02x%02x%02x", GetRValue(bgCol), GetGValue(bgCol), GetBValue(bgCol));
     COLORREF linkCol = ThemeWindowLinkColor();
     TempStr linkHex = str::FormatTemp("#%02x%02x%02x", GetRValue(linkCol), GetGValue(linkCol), GetBValue(linkCol));
+    // Mid-gray borders: visible on dark paper, not as loud as body text.
+    const char* borderHex = "#8b949e";
     if (isEpub) {
         return str::FormatTemp(R"(html {
   color-scheme: dark;
@@ -117,6 +194,16 @@ b, strong, em, i,
 body {
   background-color: %s !important;
 }
+table, td, th, tr {
+  border-color: %s !important;
+  border-top-color: %s !important;
+  border-right-color: %s !important;
+  border-bottom-color: %s !important;
+  border-left-color: %s !important;
+}
+hr {
+  border-color: %s !important;
+}
 a, a:link, a:visited, a:hover, a:active,
 .footnote-link, .noteref, .note-ref,
 .calibre_2 a, .calibre_3 a, .calibre_2 a span, .calibre_3 a span,
@@ -130,7 +217,7 @@ figcaption, caption, p.caption, div.caption, span.caption,
   color: #b8b1a6 !important;
 }
 )",
-                               bgHex, bgHex, linkHex);
+                               bgHex, bgHex, borderHex, borderHex, borderHex, borderHex, borderHex, borderHex, linkHex);
     }
     return str::FormatTemp(R"(html {
   color-scheme: dark;
@@ -150,6 +237,16 @@ b, strong, em, i,
 body {
   background-color: %s !important;
 }
+table, td, th, tr {
+  border-color: %s !important;
+  border-top-color: %s !important;
+  border-right-color: %s !important;
+  border-bottom-color: %s !important;
+  border-left-color: %s !important;
+}
+hr {
+  border-color: %s !important;
+}
 a, a:link, a:visited, a:hover, a:active,
 .footnote-link, .noteref, .note-ref,
 .calibre_2 a, .calibre_3 a, .calibre_2 a span, .calibre_3 a span,
@@ -159,7 +256,7 @@ p a, sup a, li a {
   text-decoration: none !important;
 }
 )",
-                           bgHex, bgHex, linkHex);
+                           bgHex, bgHex, borderHex, borderHex, borderHex, borderHex, borderHex, borderHex, linkHex);
 }
 
 // in mupdf_load_system_font.c
@@ -208,6 +305,7 @@ static void DropFollowThemePageBitmapCache(FzPageInfo* pi) {
     delete pi->followThemePageBitmap;
     pi->followThemePageBitmap = nullptr;
     pi->followThemePageBitmapZoom = 0.f;
+    pi->followThemePageBitmapDeskew = 0.f;
     pi->followThemePageBitmapRotation = 0;
     pi->followThemePageBitmapProfileHash = 0;
     pi->followThemePageBitmapDevBounds = fz_empty_irect;
@@ -3551,7 +3649,17 @@ EngineMupdf::~EngineMupdf() {
     str::Free(pdfPassword);
     delete pageLabels;
     delete tocTree;
+    WordTocModelFree(wordToc);
+    wordToc = nullptr;
     reflowHtmlSource.Free();
+    if (convertedOfficeTempPath) {
+        // Shared Word→docx cache may still be used by a thumbnail engine.
+        if (!IsCachedOleOfficeDocx(convertedOfficeTempPath)) {
+            file::Delete(convertedOfficeTempPath);
+        }
+        str::Free(convertedOfficeTempPath);
+        convertedOfficeTempPath = nullptr;
+    }
     {
         ScopedCritSec scope(&pendingReflowNavLock);
         str::Free(pendingReflowNavUri);
@@ -3603,7 +3711,17 @@ EngineBase* EngineMupdf::Clone() {
     }
 
     EngineMupdf* clone = new EngineMupdf();
-    bool ok = clone->Load(FilePath(), pwdUI);
+    bool ok = false;
+    if (convertedOfficeTempPath) {
+        // Reuse the Word→docx temp so Clone (thumbnails etc.) does not launch Word again.
+        ok = clone->Load(convertedOfficeTempPath, pwdUI);
+        if (ok) {
+            clone->SetFilePath(FilePath());
+            str::ReplaceWithCopy(&clone->defaultExt, path::GetExtTemp(FilePath()));
+        }
+    } else {
+        ok = clone->Load(FilePath(), pwdUI);
+    }
     if (!ok) {
         logf("EngineMupdf::Clone() failed: Load('%s') failed\n", FilePath());
         delete clone;
@@ -3761,9 +3879,16 @@ static bool IsUnsupportedOfficeFilePath(const char* path) {
     if (str::IsEmpty(ext)) {
         return false;
     }
-    // MuPDF's office handler only converts OOXML (docx/xlsx/pptx/hwpx) to HTML.
-    // Classic OLE .doc/.xls/.ppt and WPS are not supported.
-    return str::EqI(ext, ".doc") || str::EqI(ext, ".wps") || str::EqI(ext, ".xls") || str::EqI(ext, ".ppt");
+    // MuPDF's office handler converts OOXML (docx/xlsx/pptx/hwpx) to HTML.
+    // Classic .doc is opened via Word COM → temp docx in EngineMupdf::Load.
+    // .xls/.ppt/.wps remain unsupported.
+    return str::EqI(ext, ".wps") || str::EqI(ext, ".xls") || str::EqI(ext, ".ppt");
+}
+
+static bool IsClassicOleWordDocPath(const char* path) {
+    TempStr ext = path::GetExtTemp(path);
+    // .docx must not match — only bare .doc
+    return str::EqI(ext, ".doc");
 }
 
 bool EngineMupdf::Load(const char* path, PasswordUI* pwdUI) {
@@ -3781,8 +3906,21 @@ bool EngineMupdf::Load(const char* path, PasswordUI* pwdUI) {
     auto ext = path::GetExtTemp(path);
     str::ReplaceWithCopy(&defaultExt, ext);
 
+    // Classic OLE .doc: convert once via Word to a temp .docx, then open as OOXML.
+    const char* loadPath = pathA;
+    if (IsClassicOleWordDocPath(pathA)) {
+        char err[256]{};
+        char* converted = ConvertOleOfficeToDocx(pathA, err, dimof(err));
+        if (!converted) {
+            logf("EngineMupdf: .doc convert failed (%s): %s\n", err[0] ? err : "unknown", pathA);
+            return false;
+        }
+        convertedOfficeTempPath = converted;
+        loadPath = convertedOfficeTempPath;
+    }
+
     int streamNo = -1;
-    AutoFreeStr fnCopy = ParseEmbeddedStreamNumber(pathA, &streamNo);
+    AutoFreeStr fnCopy = ParseEmbeddedStreamNumber(loadPath, &streamNo);
 
     Kind kind = GuessFileTypeFromName(pathA);
     // show .txt, .xml and other text files as plain text
@@ -3840,7 +3978,9 @@ bool EngineMupdf::Load(const char* path, PasswordUI* pwdUI) {
     }
 
     fz_stream* file = FzOpenOrReadFile(ctx, fnCopy);
-    ok = LoadFromStream(file, FilePath(), pwdUI);
+    // nameHint extension drives MuPDF's handler; converted .doc must look like .docx.
+    const char* nameHint = convertedOfficeTempPath ? convertedOfficeTempPath : FilePath();
+    ok = LoadFromStream(file, nameHint, pwdUI);
     if (!ok) {
         return false;
     }
@@ -4497,6 +4637,14 @@ static TempStr BuildMarkdownTableCss(bool darkTheme, bool eyeCareLight) {
     if (darkTheme) {
         return str::DupTemp(R"(table {
   background-color: transparent !important;
+  border-color: #8b949e !important;
+}
+td, th, tr {
+  border-color: #8b949e !important;
+  border-top-color: #8b949e !important;
+  border-right-color: #8b949e !important;
+  border-bottom-color: #8b949e !important;
+  border-left-color: #8b949e !important;
 }
 thead th {
   background-color: #21262d !important;
@@ -4757,6 +4905,9 @@ static TempStr BuildMupdfReflowUserCss(const char* nameHint, const char* filePat
                                        int displayDpi) {
     ReportIf(IsMarkdownReflowDocument(nameHint, filePath));
     bool isEpub = IsEpubReflowNameHint(nameHint);
+    TempStr ext = path::GetExtTemp(nameHint);
+    bool isOffice = str::EqI(ext, ".docx") || str::EqI(ext, ".doc") || str::EqI(ext, ".xlsx") ||
+                    str::EqI(ext, ".pptx") || str::EqI(ext, ".hwpx");
     EbookTypographyKind typographyKind = GetEbookTypographyKind();
     TempStr ebookCss = nullptr;
     auto eBookUI = GetEBookUI();
@@ -4764,6 +4915,7 @@ static TempStr BuildMupdfReflowUserCss(const char* nameHint, const char* filePat
         // EPUB files ship with their own CSS (e.g. calibre stylesheets) - don't override
         // fonts or paragraph layout. Other formats get CJK fallbacks only when needed.
         // All ebooks: Literata primary; CJK glyphs fall back to songti via load_windows_fallback_font.
+        // Office (docx/…) emits real rFonts in HTML — never blanket !important Literata on span.
         static const char* kEpubFontCss = R"(html, body,
 p, span, blockquote, h1, h2, h3, h4, h5, h6, li, td, th, div,
 section, article, main, header, footer,
@@ -5374,13 +5526,15 @@ li, blockquote {
             ebookCss = str::JoinTemp(fontCss, "\n", kEpubReaderBaseCss);
             ebookCss = str::JoinTemp(ebookCss, "\n", rhythmCss);
         }
-        if (UsesNonDefaultEbookFontSize()) {
+        if (UsesNonDefaultEbookFontSize() && !isOffice) {
             TempStr sizeCss = BuildEbookForceFontSizeCss(displayDpi);
             if (sizeCss) {
                 ebookCss = ebookCss ? str::JoinTemp(ebookCss, "\n", sizeCss) : sizeCss;
             }
         }
-        if (!isEpub) {
+        // FB2/MOBI etc: force a readable face. Word/OOXML already carries 仿宋/楷体/黑体 —
+        // BuildEbookFallbackFontCss uses span{font-family:…!important} and would wipe them.
+        if (!isEpub && !isOffice) {
             TempStr fallbackCss = BuildEbookFallbackFontCss();
             ebookCss = ebookCss ? str::JoinTemp(fallbackCss, "\n", ebookCss) : fallbackCss;
         }
@@ -5469,10 +5623,16 @@ static void StyleMupdfReflowDocument(fz_context* ctx, fz_document* doc, const ch
 }
 
 static void LayoutMupdfReflowDocument(fz_context* ctx, fz_document* doc, int displayDPI, float ldx, float ldy,
-                                      float lfontDy, float* dxOut, float* dyOut) {
-    float dx = DpiScale(ldx, displayDPI);
-    float dy = DpiScale(ldy, displayDPI);
-    float fontDy = DpiScale(lfontDy, displayDPI);
+                                      float lfontDy, float* dxOut, float* dyOut, const char* nameHint) {
+    /* Office HTML uses real Word pt in @page margins. Dpi-scaling only the
+     * layout w/h (and not those margins) makes tables slightly wider than the
+     * mediabox and clips the outer-right border. Keep office in 1:1 pt. */
+    TempStr ext = nameHint ? path::GetExtTemp(nameHint) : nullptr;
+    bool isOffice = ext && (str::EqI(ext, ".docx") || str::EqI(ext, ".doc") || str::EqI(ext, ".xlsx") ||
+                            str::EqI(ext, ".pptx") || str::EqI(ext, ".hwpx"));
+    float dx = isOffice ? ldx : DpiScale(ldx, displayDPI);
+    float dy = isOffice ? ldy : DpiScale(ldy, displayDPI);
+    float fontDy = isOffice ? lfontDy : DpiScale(lfontDy, displayDPI);
     fz_layout_document(ctx, doc, dx, dy, fontDy);
     if (dxOut) {
         *dxOut = dx;
@@ -5735,7 +5895,7 @@ bool EngineMupdf::LoadFromStream(fz_stream* stm, const char* nameHint, PasswordU
         _doc = fz_open_accelerated_document_with_stream(ctx, nameHint, stm, nullptr);
         StyleMupdfReflowDocument(ctx, _doc, nameHint, FilePath(), ldxPt, ldyPt, lfontDyPt, displayDPI);
         pdfdoc = pdf_specifics(ctx, _doc);
-        LayoutMupdfReflowDocument(ctx, _doc, displayDPI, ldxPt, ldyPt, lfontDyPt, &dx, &dy);
+        LayoutMupdfReflowDocument(ctx, _doc, displayDPI, ldxPt, ldyPt, lfontDyPt, &dx, &dy, nameHint);
         reflowLayoutW = dx;
         reflowLayoutH = dy;
     }
@@ -5967,6 +6127,30 @@ static RectF LoadNonPdfPageMediabox(EngineMupdf* e, int pageIdx) {
     return LoadReflowPageMediabox(e, pageIdx + 1);
 }
 
+bool EngineMupdfIsWordDocument(EngineBase* engine);
+
+// DOCX opens as reflowable HTML and never reaches FinishNonPDFLoading.
+// Both paths must read the stored outline or a save looks like it was dropped.
+static void LoadStoredWordToc(EngineMupdf* e) {
+    if (!e || !EngineMupdfIsWordDocument(e)) {
+        return;
+    }
+    const char* docx = e->convertedOfficeTempPath ? e->convertedOfficeTempPath : e->FilePath();
+    if (!e->wordToc) {
+        e->wordToc = new WordTocModel();
+    }
+    if (!WordTocLoadStored(docx, e->wordToc)) {
+        return;
+    }
+    e->wordToc->active = true;
+    if (e->tocTree) {
+        delete e->tocTree;
+        e->tocTree = nullptr;
+    }
+    e->tocTreeStale = true;
+    logf("Word TOC: loaded stored outline (%d roots) from %s\n", e->wordToc->roots.Size(), docx ? docx : "");
+}
+
 static void FinishNonPDFLoading(EngineMupdf* e) {
     ScopedCritSec scope(&e->docLock);
 
@@ -5988,6 +6172,7 @@ static void FinishNonPDFLoading(EngineMupdf* e) {
         fz_report_error(ctx);
         fz_warn(ctx, "Couldn't load outline");
     }
+    LoadStoredWordToc(e);
 }
 
 static void GrowReflowPageCountLocked(EngineMupdf* e, int newCount) {
@@ -6022,6 +6207,9 @@ static void GrowReflowPageCount(EngineMupdf* e, int newCount) {
 
 static void GetMupdfReflowLayoutPt(const char* nameHint, float* ldxPtOut, float* ldyPtOut, float* lfontDyPtOut) {
     bool isEpub = IsEpubReflowNameHint(nameHint);
+    TempStr ext = path::GetExtTemp(nameHint);
+    bool isOffice = str::EqI(ext, ".docx") || str::EqI(ext, ".doc") || str::EqI(ext, ".xlsx") ||
+                    str::EqI(ext, ".pptx") || str::EqI(ext, ".hwpx");
     EbookTypographyKind typographyKind = GetEbookTypographyKind();
     float ldx = layoutA5DxPt;
     float ldy = layoutA5DyPt;
@@ -6033,6 +6221,17 @@ static void GetMupdfReflowLayoutPt(const char* nameHint, float* ldxPtOut, float*
         } else {
             ldx = layoutLatinEpubDxPt;
             ldy = layoutLatinEpubDyPt;
+        }
+    } else if (isOffice) {
+        // Prefer OOXML pgSz (incl. landscape). Hardcoded A4 portrait clips wide
+        // tables so the outer-right border paints past the page mediabox.
+        ldx = layoutA4DxPt;
+        ldy = 842.f; // A4
+        lfontDy = 11.f;
+        float docW = 0, docH = 0;
+        if (ReadDocxPageSizePt(nameHint, &docW, &docH)) {
+            ldx = docW;
+            ldy = docH;
         }
     } else {
         lfontDy = 8.f;
@@ -6502,7 +6701,7 @@ bool EngineMupdfApplyReflowChange(EngineBase* engine, MupdfReflowChangeKind chan
                 if (geometryChange) {
                     MaybeReportRelayoutProgress(40);
                     float dx, dy;
-                    LayoutMupdfReflowDocument(ctx, e->_doc, e->displayDPI, ldxPt, ldyPt, lfontDyPt, &dx, &dy);
+                    LayoutMupdfReflowDocument(ctx, e->_doc, e->displayDPI, ldxPt, ldyPt, lfontDyPt, &dx, &dy, nameHint);
                     e->reflowLayoutW = dx;
                     e->reflowLayoutH = dy;
                 }
@@ -7477,6 +7676,7 @@ bool EngineMupdf::FinishLoading() {
                 outline = nullptr;
             }
         }
+        LoadStoredWordToc(this);
 
         pageCount = kReflowInitialPages;
         for (int i = 0; i < kReflowInitialPages; i++) {
@@ -7743,8 +7943,35 @@ TocItem* EngineMupdf::BuildTocTree(TocItem* parent, fz_outline* outline, int& id
         if (!name) {
             name = str::Dup("");
         }
+        // Blank Heading paragraphs / empty outline nodes → empty sidebar rows.
+        // Drop leaves; promote children so structure is preserved.
+        if (str::IsEmpty(name)) {
+            str::Free(name);
+            name = nullptr;
+            outlineIdx++; /* keep index aligned with outline walk */
+            if (outline->down) {
+                TocItem* kids = BuildTocTree(parent, outline->down, idCounter, isAttachment, outlineIdx);
+                if (kids) {
+                    if (!root) {
+                        root = kids;
+                        curr = kids;
+                        while (curr && curr->next) {
+                            curr = curr->next;
+                        }
+                    } else if (curr) {
+                        curr->next = kids;
+                        while (curr->next) {
+                            curr = curr->next;
+                        }
+                    }
+                }
+            }
+            outline = outline->next;
+            continue;
+        }
 
         int pageNo = OutlinePageNoForItem(nullptr, outline, outlineIdx);
+        outlineIdx++;
         outlineIdx++;
 
         IPageDestination* dest = nullptr;
@@ -7912,6 +8139,81 @@ static void PruneRepeatedTocSubtrees(TocItem* root, int pageCount) {
     }
 }
 
+bool EngineMupdfIsWordDocument(EngineBase* engine);
+
+static TocItem* TocItemFromWordNode(PdfTocEditNode* n, TocItem* parent, int& id) {
+    int page = 1;
+    float x = 0;
+    float y = 0;
+    if (!n) {
+        return nullptr;
+    }
+    if (!WordTocParseUri(n->uri, &page, &x, &y) || page < 1) {
+        page = 1;
+    }
+    auto* dest = new PageDestinationMupdf(nullptr, nullptr);
+    dest->pageNo = page;
+    dest->uriOwned = str::Dup(n->uri ? n->uri : "");
+    if (!dest->uriOwned || !dest->uriOwned[0]) {
+        str::Free(dest->uriOwned);
+        dest->uriOwned = WordTocFormatUri(page, x, y);
+    }
+    dest->outlineX = x;
+    dest->outlineY = y;
+    char* title = str::Dup(n->title ? n->title : "");
+    TocItem* item = NewTocItemWithDestination(parent, title, dest);
+    str::Free(title);
+    item->pageNo = page;
+    item->id = ++id;
+    item->isOpenDefault = n->isOpen;
+    item->fontFlags = n->flags;
+    if (n->r || n->g || n->b) {
+        item->color = RGB(n->r, n->g, n->b);
+    }
+    TocItem* first = nullptr;
+    TocItem* prev = nullptr;
+    for (PdfTocEditNode* c : n->children) {
+        TocItem* ch = TocItemFromWordNode(c, item, id);
+        if (!ch) {
+            continue;
+        }
+        if (!first) {
+            first = ch;
+        } else if (prev) {
+            prev->next = ch;
+        }
+        prev = ch;
+    }
+    item->child = first;
+    return item;
+}
+
+static TocTree* TocTreeFromWordModel(EngineMupdf* e) {
+    int id = 0;
+    TocItem* first = nullptr;
+    TocItem* prev = nullptr;
+    if (e && e->wordToc) {
+        for (PdfTocEditNode* n : e->wordToc->roots) {
+            TocItem* item = TocItemFromWordNode(n, nullptr, id);
+            if (!item) {
+                continue;
+            }
+            if (!first) {
+                first = item;
+            } else if (prev) {
+                prev->next = item;
+            }
+            prev = item;
+        }
+    }
+    TocItem* realRoot = new TocItem();
+    realRoot->child = first;
+    for (TocItem* it = first; it; it = it->next) {
+        it->parent = realRoot;
+    }
+    return new TocTree(realRoot);
+}
+
 // TODO: maybe build in FinishLoading
 TocTree* EngineMupdf::GetToc() {
     if (tocTree && !tocTreeStale) {
@@ -7929,7 +8231,16 @@ TocTree* EngineMupdf::GetToc() {
     tocTree = nullptr;
     tocTreeStale = false;
     EngineMupdfDropRetiredOutlines(this);
+    if (wordToc && wordToc->active) {
+        tocTree = TocTreeFromWordModel(this);
+        return tocTree;
+    }
     if (outline == nullptr && attachments == nullptr) {
+        if (EngineMupdfIsWordDocument(this)) {
+            TocItem* realRoot = new TocItem();
+            tocTree = new TocTree(realRoot);
+            return tocTree;
+        }
         if (!pdfdoc) {
             return nullptr;
         }
@@ -8590,6 +8901,19 @@ static bool FollowThemePageWantsLatexFigureSkipRects(EngineMupdf* engine, fz_con
 static bool FollowThemeWholeTileBitmapBlockedForPaperScan(fz_context* ctx, EngineMupdf* engine, FzPageInfo* pageInfo,
                                                           fz_page* page);
 
+// Rotate around the page center in fitz space, after the view scale. The angle
+// is the detector's correction (already the opposite of the bitmap line tilt).
+static fz_matrix WithPageDeskew(fz_matrix ctm, fz_rect pageBox, float deg) {
+    if (deg == 0.f) {
+        return ctm;
+    }
+    float cx = (pageBox.x0 + pageBox.x1) * 0.5f;
+    float cy = (pageBox.y0 + pageBox.y1) * 0.5f;
+    fz_matrix deskew = fz_concat(fz_rotate(deg), fz_translate(-cx, -cy));
+    deskew = fz_concat(fz_translate(cx, cy), deskew);
+    return fz_concat(ctm, deskew);
+}
+
 static RenderedBitmap* GetOrBuildLaTeXFollowThemePageBitmap(EngineMupdf* engine, FzPageInfo* pageInfo, fz_context* ctx,
                                                             fz_page* page, fz_display_list* list, float zoom,
                                                             int rotation, const DarkModeProfile* darkProfile) {
@@ -8597,8 +8921,9 @@ static RenderedBitmap* GetOrBuildLaTeXFollowThemePageBitmap(EngineMupdf* engine,
         return nullptr;
     }
     u32 profileHash = PdfDarkModeComputeProfileHash(darkProfile);
+    float deskew = pageInfo->deskewDeg;
     if (pageInfo->followThemePageBitmap && pageInfo->followThemePageBitmapZoom == zoom &&
-        pageInfo->followThemePageBitmapRotation == rotation &&
+        pageInfo->followThemePageBitmapDeskew == deskew && pageInfo->followThemePageBitmapRotation == rotation &&
         pageInfo->followThemePageBitmapProfileHash == profileHash) {
         return pageInfo->followThemePageBitmap;
     }
@@ -8606,7 +8931,8 @@ static RenderedBitmap* GetOrBuildLaTeXFollowThemePageBitmap(EngineMupdf* engine,
 
     fz_rect pRect = fz_bound_page(ctx, page);
     fz_matrix ctm = engine->viewctm(page, zoom, rotation);
-    fz_irect ibounds = fz_round_rect(fz_transform_rect(pRect, ctm));
+    ctm = WithPageDeskew(ctm, pRect, deskew);
+    fz_irect ibounds = fz_round_rect(fz_transform_rect(pRect, engine->viewctm(page, zoom, rotation)));
     i64 pixels = (i64)(ibounds.x1 - ibounds.x0) * (ibounds.y1 - ibounds.y0);
     static constexpr i64 kMaxPixels = 28000000;
     if (pixels <= 0 || pixels > kMaxPixels) {
@@ -8675,6 +9001,7 @@ static RenderedBitmap* GetOrBuildLaTeXFollowThemePageBitmap(EngineMupdf* engine,
     }
     pageInfo->followThemePageBitmap = bitmap;
     pageInfo->followThemePageBitmapZoom = zoom;
+    pageInfo->followThemePageBitmapDeskew = deskew;
     pageInfo->followThemePageBitmapRotation = rotation;
     pageInfo->followThemePageBitmapProfileHash = profileHash;
     pageInfo->followThemePageBitmapDevBounds = ibounds;
@@ -9196,7 +9523,16 @@ bool EngineMupdf::CadEnhanceActive() const {
 }
 
 bool EngineMupdf::CadEnhanceUseHairlineBoost() const {
-    return cadHairlineVector;
+    if (cadRasterDominant) {
+        return false;
+    }
+    if (cadHairlineVector) {
+        return true;
+    }
+    // PDF/E / AutoCAD-metadata docs enable enhance without always flagging
+    // hairlineVector; fit-page still needs the stronger min-line floor or
+    // strokes stay ~0.6 device px and look missing.
+    return cadDetectEnable;
 }
 
 void EngineMupdf::RunCadDetection() {
@@ -9867,6 +10203,538 @@ static bool FollowThemePageShouldRasterizeThenRecolor(EngineMupdf* engine, fz_co
     return FollowThemeWholeTileBitmapBlockedForPaperScan(ctx, engine, pageInfo, page);
 }
 
+// 8-bit scan pages are stored as a palette DIB. GetBitmapPixels rejects those,
+// which made deskew report 0° and leave the page untouched.
+static HBITMAP ExpandIndexedHbmpTo32(HBITMAP hbmp) {
+    BITMAP bm{};
+    if (!GetObject(hbmp, sizeof(bm), &bm)) {
+        return nullptr;
+    }
+    if (bm.bmBitsPixel > 8 || bm.bmWidth < 80 || abs(bm.bmHeight) < 80) {
+        return nullptr;
+    }
+    int w = bm.bmWidth;
+    int h = abs(bm.bmHeight);
+    BITMAPINFO bmi{};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = w;
+    bmi.bmiHeader.biHeight = -h;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+    void* bits = nullptr;
+    HBITMAP dst = CreateDIBSection(nullptr, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (!dst || !bits) {
+        if (dst) {
+            DeleteObject(dst);
+        }
+        return nullptr;
+    }
+    HDC hdc = CreateCompatibleDC(nullptr);
+    int rows = GetDIBits(hdc, hbmp, 0, h, bits, &bmi, DIB_RGB_COLORS);
+    DeleteDC(hdc);
+    if (rows == 0) {
+        DeleteObject(dst);
+        return nullptr;
+    }
+    return dst;
+}
+
+// Several long rules that agree beat a one-bin projection spike. Fit each
+// candidate on the max vertical contrast (edge), not the darkest pixel:
+// on washed form pages darkest-in-band latches onto glyph baselines and can
+// invent a ~1.3° tilt with the wrong sign (page 10 of the 药都 form set), so
+// correction turns a nearly-level table past upright.
+static bool TryAgreedRuleSkewDeg(BitmapPixels* bp, float* outDeg) {
+    int w = bp->size.dx;
+    int h = bp->size.dy;
+    if (!bp->pixels || bp->nBytesPerPixel < 3 || w < 80 || h < 80 || h > 8000) {
+        return false;
+    }
+    int bpp = bp->nBytesPerPixel;
+    int stride = bp->nBytesPerRow;
+    auto lumAt = [&](int x, int y) -> int {
+        u8* p = bp->pixels + y * stride + x * bpp;
+        return ((int)p[0] + (int)p[1] + (int)p[2]) / 3;
+    };
+    int x0 = (w * 18) / 100;
+    int x1 = w - x0;
+    int y0 = (h * 12) / 100;
+    int y1 = (h * 88) / 100;
+    int xStep = 3;
+    if (x1 <= x0 + 40 || y1 <= y0 + 40) {
+        return false;
+    }
+    int* rowCount = new int[h];
+    memset(rowCount, 0, (size_t)h * sizeof(int));
+    for (int y = y0; y < y1; y++) {
+        int c = 0;
+        for (int x = x0; x < x1; x += xStep) {
+            int lum = lumAt(x, y);
+            if (lum >= 210) {
+                continue;
+            }
+            if (lumAt(x, y - 1) - lum > 12 || lumAt(x, y + 1) - lum > 12) {
+                c++;
+            }
+        }
+        rowCount[y] = c;
+    }
+    struct Cand {
+        int c;
+        int y;
+    };
+    Cand cand[8];
+    int nCand = 0;
+    for (int y = y0 + 1; y < y1 - 1; y++) {
+        int c = rowCount[y];
+        // Last row of a plateau counts as the peak.
+        if (c < 25 || c < rowCount[y - 1] || c <= rowCount[y + 1]) {
+            continue;
+        }
+        int closeI = -1;
+        for (int i = 0; i < nCand; i++) {
+            int dy = cand[i].y - y;
+            if (dy < 0) {
+                dy = -dy;
+            }
+            if (dy < 12) {
+                closeI = i;
+                break;
+            }
+        }
+        if (closeI >= 0) {
+            if (c > cand[closeI].c) {
+                cand[closeI].c = c;
+                cand[closeI].y = y;
+            }
+            continue;
+        }
+        if (nCand < 8) {
+            cand[nCand].c = c;
+            cand[nCand].y = y;
+            nCand++;
+            continue;
+        }
+        int worst = 0;
+        for (int i = 1; i < nCand; i++) {
+            if (cand[i].c < cand[worst].c) {
+                worst = i;
+            }
+        }
+        if (c <= cand[worst].c) {
+            continue;
+        }
+        cand[worst].c = c;
+        cand[worst].y = y;
+    }
+    delete[] rowCount;
+    float slopes[8];
+    int nSlope = 0;
+    for (int i = 0; i < nCand && nSlope < 8; i++) {
+        int yRule = cand[i].y;
+        int lo = yRule - 14;
+        int hi = yRule + 14;
+        if (lo < 1) {
+            lo = 1;
+        }
+        if (hi > h - 3) {
+            hi = h - 3;
+        }
+        // Cap samples: (x1-x0)/xStep is typically a few hundred.
+        constexpr int kMaxPts = 400;
+        int xs[kMaxPts];
+        int ys[kMaxPts];
+        int n = 0;
+        for (int x = x0; x < x1 && n < kMaxPts; x += xStep) {
+            int yb = yRule;
+            int bestG = -1;
+            for (int yy = lo; yy <= hi; yy++) {
+                int g = lumAt(x, yy) - lumAt(x, yy + 1);
+                if (g < 0) {
+                    g = -g;
+                }
+                if (g > bestG) {
+                    bestG = g;
+                    yb = yy;
+                }
+            }
+            if (bestG < 12) {
+                continue;
+            }
+            xs[n] = x;
+            ys[n] = yb;
+            n++;
+        }
+        if (n < 40) {
+            continue;
+        }
+        double sx = 0, sy = 0, sxx = 0, sxy = 0;
+        for (int k = 0; k < n; k++) {
+            sx += xs[k];
+            sy += ys[k];
+            sxx += (double)xs[k] * xs[k];
+            sxy += (double)xs[k] * ys[k];
+        }
+        double den = (double)n * sxx - sx * sx;
+        if (den == 0) {
+            continue;
+        }
+        double b = ((double)n * sxy - sx * sy) / den;
+        double a = (sy - b * sx) / (double)n;
+        double err2 = 0;
+        for (int k = 0; k < n; k++) {
+            double e = a + b * xs[k] - ys[k];
+            err2 += e * e;
+        }
+        float err = sqrtf((float)(err2 / (double)n));
+        float slope = atanf((float)b) * (180.f / 3.14159265f);
+        // Glyph-baseline false rules on washed forms sit around err 4.4–6.5°.
+        // Real table edges are usually under ~2–3°.
+        if (err > 4.f || slope > 6.f || slope < -6.f) {
+            continue;
+        }
+        slopes[nSlope++] = slope;
+    }
+    if (nSlope < 4) {
+        return false;
+    }
+    for (int i = 1; i < nSlope; i++) {
+        float v = slopes[i];
+        int j = i;
+        while (j > 0 && slopes[j - 1] > v) {
+            slopes[j] = slopes[j - 1];
+            j--;
+        }
+        slopes[j] = v;
+    }
+    int best0 = -1;
+    float bestSpread = 99.f;
+    for (int i = 0; i + 3 < nSlope; i++) {
+        float spread = slopes[i + 3] - slopes[i];
+        if (spread < bestSpread) {
+            bestSpread = spread;
+            best0 = i;
+        }
+    }
+    // Four rules within 0.6°: that cluster is the page tilt, not a noise bin.
+    if (best0 < 0 || bestSpread > 0.6f) {
+        return false;
+    }
+    float median = (slopes[best0 + 1] + slopes[best0 + 2]) * 0.5f;
+    *outDeg = -median;
+    return true;
+}
+
+// Projection-profile deskew on near-horizontal ink edges. Peak bin height on
+// horizontal edges tracks Hough better than sum-of-squares on form grids. The
+// returned angle is already the fz_rotate correction (≈ −line tilt), not the
+// raw Hough angle.
+static float EstimateBitmapSkewDeg(HBITMAP hbmp) {
+    BitmapPixels* bp = GetBitmapPixels(hbmp);
+    if (!bp || !bp->pixels || bp->nBytesPerPixel < 3 || bp->size.dx < 80 || bp->size.dy < 80) {
+        if (bp) {
+            FinalizeBitmapPixels(bp);
+        }
+        HBITMAP expanded = ExpandIndexedHbmpTo32(hbmp);
+        if (!expanded) {
+            return 0;
+        }
+        float deg = EstimateBitmapSkewDeg(expanded);
+        DeleteObject(expanded);
+        return deg;
+    }
+    int w = bp->size.dx;
+    int h = bp->size.dy;
+    int bpp = bp->nBytesPerPixel;
+    int stride = bp->nBytesPerRow;
+    auto lumAt = [&](int x, int y) -> int {
+        u8* p = bp->pixels + y * stride + x * bpp;
+        return ((int)p[0] + (int)p[1] + (int)p[2]) / 3;
+    };
+    int x0 = w / 10;
+    int x1 = w - x0;
+    int y0 = h / 5;
+    int y1 = (h * 4) / 5;
+    if (y0 < 1) {
+        y0 = 1;
+    }
+    if (y1 > h - 1) {
+        y1 = h - 1;
+    }
+    float ruleDeg = 0.f;
+    if (TryAgreedRuleSkewDeg(bp, &ruleDeg)) {
+        FinalizeBitmapPixels(bp);
+        return ruleDeg;
+    }
+    int cap = 24000;
+    int* xs = new int[cap];
+    int* ys = new int[cap];
+    int histN = h + 8;
+    int* hist = new int[histN];
+    float cx = (float)(x0 + x1) * 0.5f;
+    float cy = (float)(y0 + y1) * 0.5f;
+    // Dark strokes first. Faded form rules sit around 160–185 and never reach
+    // that pass, so the peak stays under the minimum and the page is reported
+    // straight. Later passes let those gray rules in. A peak must beat the
+    // opposite direction: a flat or two-sided bump (page 12's +1.6°) is not
+    // a correction.
+    struct InkPass {
+        int lumCut;
+        int contrast;
+    };
+    InkPass passes[] = {{150, 40}, {180, 30}, {190, 20}};
+    float chosen = 0.f;
+    for (int pass = 0; pass < (int)(sizeof(passes) / sizeof(passes[0])); pass++) {
+        int lumCut = passes[pass].lumCut;
+        int contrast = passes[pass].contrast;
+        int keepEvery = 1;
+        int seen = 0;
+        int n = 0;
+        for (int y = y0; y < y1; y++) {
+            for (int x = x0; x < x1; x += 2) {
+                int lum = lumAt(x, y);
+                if (lum >= lumCut) {
+                    continue;
+                }
+                int above = lumAt(x, y - 1);
+                int below = lumAt(x, y + 1);
+                if (above - lum < contrast && below - lum < contrast) {
+                    continue;
+                }
+                seen++;
+                if (seen % keepEvery != 0) {
+                    continue;
+                }
+                if (n >= cap) {
+                    int wri = 0;
+                    for (int i = 0; i < n; i += 2) {
+                        xs[wri] = xs[i];
+                        ys[wri] = ys[i];
+                        wri++;
+                    }
+                    n = wri;
+                    keepEvery *= 2;
+                    if (seen % keepEvery != 0) {
+                        continue;
+                    }
+                }
+                xs[n] = x;
+                ys[n] = y;
+                n++;
+            }
+        }
+        if (n < 80) {
+            continue;
+        }
+        auto peakAt = [&](float ang) -> int {
+            float rad = ang * 0.0174532925f;
+            float ca = cosf(rad);
+            float sa = sinf(rad);
+            memset(hist, 0, (size_t)histN * sizeof(int));
+            int used = 0;
+            for (int k = 0; k < n; k++) {
+                float dy = (float)ys[k] - cy;
+                float dx = (float)xs[k] - cx;
+                int yy = (int)(ca * dy + sa * dx + cy + 0.5f);
+                if (yy >= 0 && yy < histN) {
+                    hist[yy]++;
+                    used++;
+                }
+            }
+            if (used < 40) {
+                return 0;
+            }
+            int peak = 0;
+            for (int yy = 0; yy < histN; yy++) {
+                if (hist[yy] > peak) {
+                    peak = hist[yy];
+                }
+            }
+            return peak;
+        };
+        constexpr float kAngStep = 0.2f;
+        constexpr int kAngSteps = 60;
+        int bestPeak = -1;
+        float bestAng = 0.f;
+        int peak0 = peakAt(0.f);
+        for (int i = -kAngSteps; i <= kAngSteps; i++) {
+            float ang = (float)i * kAngStep;
+            int peak = (i == 0) ? peak0 : peakAt(ang);
+            if (peak > bestPeak || (peak == bestPeak && fabsf(ang) < fabsf(bestAng))) {
+                bestPeak = peak;
+                bestAng = ang;
+            }
+        }
+        int peakOpp = 0;
+        if (bestAng > 0.05f) {
+            for (int i = 1; i <= kAngSteps; i++) {
+                int peak = peakAt(-(float)i * kAngStep);
+                if (peak > peakOpp) {
+                    peakOpp = peak;
+                }
+            }
+        } else if (bestAng < -0.05f) {
+            for (int i = 1; i <= kAngSteps; i++) {
+                int peak = peakAt((float)i * kAngStep);
+                if (peak > peakOpp) {
+                    peakOpp = peak;
+                }
+            }
+        }
+        // 1.2× over upright, and 1.35× over the opposite direction.
+        if (bestPeak < 12 || bestPeak * 5 < peak0 * 6 || bestPeak * 20 < peakOpp * 27) {
+            continue;
+        }
+        chosen = bestAng;
+        break;
+    }
+    delete[] hist;
+    delete[] xs;
+    delete[] ys;
+    FinalizeBitmapPixels(bp);
+    return chosen;
+}
+
+float EngineMupdfEstimateBitmapSkewDeg(void* hbmp) {
+    return EstimateBitmapSkewDeg((HBITMAP)hbmp);
+}
+
+static float ClampDeskewDeg(float deg) {
+    if (deg > -0.35f && deg < 0.35f) {
+        return 0;
+    }
+    if (deg < -12.f) {
+        return -12.f;
+    }
+    if (deg > 12.f) {
+        return 12.f;
+    }
+    return deg;
+}
+
+static void RefreshModifiedDeskewFlag(EngineMupdf* e) {
+    if (!e) {
+        return;
+    }
+    bool any = false;
+    for (int i = 0; i < e->pages.Size(); i++) {
+        FzPageInfo* other = e->pages[i];
+        if (other && other->deskewDeg != 0.f) {
+            any = true;
+            break;
+        }
+    }
+    e->modifiedDeskew = any;
+}
+
+float EngineMupdfGetPageDeskewDeg(EngineBase* engine, int pageNo) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || pageNo < 1) {
+        return 0;
+    }
+    int enginePage = MapJoinDisplayPageNo(e, pageNo);
+    FzPageInfo* pi = e->GetFzPageInfo(enginePage, false);
+    return pi ? pi->deskewDeg : 0;
+}
+
+void EngineMupdfSetPageDeskewDeg(EngineBase* engine, int pageNo, float deg) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || pageNo < 1) {
+        return;
+    }
+    int enginePage = MapJoinDisplayPageNo(e, pageNo);
+    FzPageInfo* pi = e->GetFzPageInfo(enginePage, false);
+    if (!pi) {
+        return;
+    }
+    deg = ClampDeskewDeg(deg);
+    pi->deskewDeg = deg;
+    if (deg != 0.f) {
+        e->modifiedDeskew = true;
+    } else {
+        RefreshModifiedDeskewFlag(e);
+    }
+}
+
+float EngineMupdfDeskewPage(EngineBase* engine, int pageNo) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || pageNo < 1) {
+        return 0;
+    }
+    int enginePage = MapJoinDisplayPageNo(e, pageNo);
+    FzPageInfo* pi = e->GetFzPageInfo(enginePage, false);
+    if (!pi) {
+        return 0;
+    }
+    pi->deskewDeg = 0;
+    // ~1.5× CSS zoom (~108 dpi) keeps thin table rules sharp enough for the
+    // edge peak detector; 0.55× was too soft and collapsed real ~1° skew to 0.
+    RenderPageArgs args(pageNo, 1.5f, 0);
+    RenderedBitmap* bmp = e->RenderPage(args);
+    float deg = 0;
+    if (bmp && bmp->GetBitmap()) {
+        deg = EstimateBitmapSkewDeg(bmp->GetBitmap());
+    }
+    delete bmp;
+    deg = ClampDeskewDeg(deg);
+    pi->deskewDeg = deg;
+    if (deg != 0.f) {
+        e->modifiedDeskew = true;
+    } else {
+        RefreshModifiedDeskewFlag(e);
+    }
+    logf("deskew page %d -> %.2f deg (dirty=%d)\n", pageNo, deg, (int)e->modifiedDeskew);
+    return deg;
+}
+
+int EngineMupdfDeskewAllScannedPages(EngineBase* engine) {
+    return EngineMupdfDeskewAllScannedPages(engine, nullptr, nullptr);
+}
+
+int EngineMupdfDeskewAllScannedPages(EngineBase* engine, DeskewProgressCb progressCb, void* user) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e) {
+        return 0;
+    }
+    int n = engine->PageCount();
+    int changed = 0;
+    int step = 0;
+    for (int pageNo = 1; pageNo <= n; pageNo++) {
+        // Prefer scan-like pages; still try low-text pages (same idea as OCR queue).
+        bool tryPage = EngineMupdfIsScannedTextPage(engine, pageNo);
+        if (!tryPage) {
+            int len = 0;
+            const WCHAR* text = engine->GetTextForPage(pageNo, &len);
+            int usable = 0;
+            if (text && len > 0) {
+                for (int i = 0; i < len; i++) {
+                    WCHAR c = text[i];
+                    if (c > 32 && c != 0x3000) {
+                        usable++;
+                        if (usable >= 40) {
+                            break;
+                        }
+                    }
+                }
+            }
+            tryPage = usable < 40;
+        }
+        if (!tryPage) {
+            continue;
+        }
+        step++;
+        if (progressCb) {
+            progressCb(pageNo, step, n, user);
+        }
+        float deg = EngineMupdfDeskewPage(engine, pageNo);
+        if (deg != 0.f) {
+            changed++;
+        }
+    }
+    return changed;
+}
+
 RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     auto ctx = Ctx();
     auto pageNo = MapJoinDisplayPageNo(this, args.pageNo);
@@ -9952,6 +10820,13 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
         }
         ctm = viewctm(page, zoom, rotation);
         ibounds = fz_round_rect(fz_transform_rect(pRect, ctm));
+        // Straighten a small scan tilt inside the existing page box. A few
+        // degrees clips the corners; 90° page turns stay on /Rotate and
+        // DisplayModel::RotateBy. Center on the full page, not the tile.
+        if (pageInfo->deskewDeg != 0.f) {
+            fz_rect fullPage = pageRect ? fz_bound_page(ctx, page) : pRect;
+            ctm = WithPageDeskew(ctm, fullPage, pageInfo->deskewDeg);
+        }
 
         if (useSmartDarkList) {
             keptList = GetOrBuildPageDisplayList(pageInfo, ctx);
@@ -12061,6 +12936,67 @@ static void RewritePdfTocFromModel(fz_context* ctx, pdf_document* doc, Vec<PdfTo
     }
 }
 
+static bool WordTocMoveNoop(PdfTocEditAction action) {
+    return action == PdfTocEditAction::MoveUp || action == PdfTocEditAction::MoveDown ||
+           action == PdfTocEditAction::Promote || action == PdfTocEditAction::Demote;
+}
+
+static void CaptureWordTocFromOutline(EngineMupdf* e, fz_outline* ol, Vec<PdfTocEditNode*>& nodes) {
+    auto ctx = e->Ctx();
+    for (; ol; ol = ol->next) {
+        float x = 0;
+        float y = 0;
+        int page = 0;
+        if (ol->uri && ol->uri[0]) {
+            page = ResolveLink(ctx, e->_doc, ol->uri, &x, &y);
+        }
+        if (page < 1) {
+            int fast = FastReflowableOutlinePageNo(e, ctx, e->_doc, ol);
+            if (fast > 0) {
+                page = fast;
+            }
+        }
+        if (page < 1) {
+            page = 1;
+        }
+        auto* node = NewPdfTocEditNode(ol->title ? ol->title : "", WordTocFormatUri(page, x, y));
+        node->isOpen = ol->is_open != 0;
+        node->flags = ol->flags;
+        node->r = ol->r;
+        node->g = ol->g;
+        node->b = ol->b;
+        CaptureWordTocFromOutline(e, ol->down, node->children);
+        nodes.Append(node);
+    }
+}
+
+static bool EnsureWordTocModel(EngineMupdf* e) {
+    if (!e) {
+        return false;
+    }
+    if (!e->wordToc) {
+        e->wordToc = new WordTocModel();
+    }
+    if (e->wordToc->active) {
+        return true;
+    }
+    {
+        ScopedCritSec scope(&e->docLock);
+        CaptureWordTocFromOutline(e, e->outline, e->wordToc->roots);
+    }
+    e->wordToc->active = true;
+    return true;
+}
+
+static void MarkWordTocEdited(EngineMupdf* e) {
+    if (!e->wordToc) {
+        e->wordToc = new WordTocModel();
+    }
+    e->wordToc->active = true;
+    e->modifiedPdfToc = true;
+    e->InvalidateTocTree();
+}
+
 bool EngineMupdfCanEditPdfToc(EngineBase* engine) {
     EngineMupdf* e = AsEngineMupdf(engine);
     if (!e || !e->pdfdoc) {
@@ -12068,6 +13004,46 @@ bool EngineMupdfCanEditPdfToc(EngineBase* engine) {
     }
     ScopedCritSec scope(&e->docLock);
     return pdf_has_permission(e->Ctx(), e->pdfdoc, (fz_permission)PDF_PERM_MODIFY) != 0;
+}
+
+bool EngineMupdfCanEditToc(EngineBase* engine) {
+    if (EngineMupdfCanEditPdfToc(engine)) {
+        return true;
+    }
+    EngineMupdf* e = AsEngineMupdf(engine);
+    return e && EngineMupdfIsWordDocument(e);
+}
+
+bool EngineMupdfIsWordDocument(EngineBase* engine) {
+    if (!engine) {
+        return false;
+    }
+    const char* path = engine->FilePath();
+    if (!path) {
+        return false;
+    }
+    TempStr ext = path::GetExtTemp(path);
+    return str::EqI(ext, ".doc") || str::EqI(ext, ".docx");
+}
+
+bool EngineMupdfCanExtractToc(EngineBase* engine) {
+    if (EngineMupdfCanEditToc(engine)) {
+        return true;
+    }
+    EngineMupdf* e = AsEngineMupdf(engine);
+    return e && !e->pdfdoc && EngineMupdfIsWordDocument(engine);
+}
+
+void EngineMupdfSetTocTree(EngineBase* engine, TocTree* tree) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e) {
+        delete tree;
+        return;
+    }
+    ScopedCritSec scope(&e->tocBuildLock);
+    delete e->tocTree;
+    e->tocTree = tree;
+    e->tocTreeStale = false;
 }
 
 bool EngineMupdfPdfHasSignatures(EngineBase* engine) {
@@ -12081,8 +13057,14 @@ bool EngineMupdfPdfHasSignatures(EngineBase* engine) {
 
 char* EngineMupdfFormatPdfTocTarget(EngineBase* engine, int pageNo, float x, float y) {
     EngineMupdf* e = AsEngineMupdf(engine);
-    if (!e || !e->pdfdoc || pageNo < 1 || pageNo > e->PageCount()) {
+    if (!e || pageNo < 1 || pageNo > e->PageCount()) {
         return nullptr;
+    }
+    if (!e->pdfdoc) {
+        if (!EngineMupdfIsWordDocument(e)) {
+            return nullptr;
+        }
+        return WordTocFormatUri(pageNo, x, y);
     }
     char* uri = nullptr;
     char* result = nullptr;
@@ -12129,7 +13111,26 @@ bool EngineMupdfEditPdfToc(EngineBase* engine, PdfTocEditAction action, const Ve
     if (errorOut) {
         *errorOut = nullptr;
     }
-    if (!e || !e->pdfdoc || !EngineMupdfCanEditPdfToc(engine)) {
+    if (!e) {
+        return false;
+    }
+    if (!e->pdfdoc) {
+        if (!EngineMupdfIsWordDocument(e) || !EnsureWordTocModel(e)) {
+            return false;
+        }
+        if (!ApplyPdfTocEditToModel(e->wordToc->roots, action, path, title, uri, resultPathOut)) {
+            if (WordTocMoveNoop(action)) {
+                return true;
+            }
+            if (errorOut) {
+                *errorOut = str::Dup("invalid Word table of contents edit");
+            }
+            return false;
+        }
+        MarkWordTocEdited(e);
+        return true;
+    }
+    if (!EngineMupdfCanEditPdfToc(engine)) {
         return false;
     }
 
@@ -12181,7 +13182,47 @@ bool EngineMupdfEditPdfTocMany(EngineBase* engine, PdfTocEditAction action, cons
     if (errorOut) {
         *errorOut = nullptr;
     }
-    if (!e || !e->pdfdoc || !EngineMupdfCanEditPdfToc(engine) || paths.empty()) {
+    if (!e || paths.empty()) {
+        return false;
+    }
+    if (!e->pdfdoc) {
+        if (!EngineMupdfIsWordDocument(e) || !EnsureWordTocModel(e)) {
+            return false;
+        }
+        bool applied = false;
+        switch (action) {
+            case PdfTocEditAction::Delete:
+                applied = PdfTocEditDeleteMany(e->wordToc->roots, paths);
+                break;
+            case PdfTocEditAction::MoveUp:
+                applied = PdfTocEditMoveUpMany(e->wordToc->roots, paths, resultPathsOut);
+                break;
+            case PdfTocEditAction::MoveDown:
+                applied = PdfTocEditMoveDownMany(e->wordToc->roots, paths, resultPathsOut);
+                break;
+            case PdfTocEditAction::Promote:
+                applied = PdfTocEditPromoteMany(e->wordToc->roots, paths, resultPathsOut);
+                break;
+            case PdfTocEditAction::Demote:
+                applied = PdfTocEditDemoteMany(e->wordToc->roots, paths, resultPathsOut);
+                break;
+            default:
+                applied = false;
+                break;
+        }
+        if (!applied) {
+            if (WordTocMoveNoop(action)) {
+                return true;
+            }
+            if (errorOut) {
+                *errorOut = str::Dup("invalid Word table of contents edit");
+            }
+            return false;
+        }
+        MarkWordTocEdited(e);
+        return true;
+    }
+    if (!EngineMupdfCanEditPdfToc(engine)) {
         return false;
     }
 
@@ -12254,7 +13295,23 @@ bool EngineMupdfMovePdfTocItems(EngineBase* engine, const Vec<PdfTocPath>& srcPa
     if (errorOut) {
         *errorOut = nullptr;
     }
-    if (!e || !e->pdfdoc || !EngineMupdfCanEditPdfToc(engine) || srcPaths.empty()) {
+    if (!e || srcPaths.empty()) {
+        return false;
+    }
+    if (!e->pdfdoc) {
+        if (!EngineMupdfIsWordDocument(e) || !EnsureWordTocModel(e)) {
+            return false;
+        }
+        if (!PdfTocEditMoveMany(e->wordToc->roots, srcPaths, destPath, pos, resultPathsOut)) {
+            if (errorOut) {
+                *errorOut = str::Dup("invalid Word table of contents move");
+            }
+            return false;
+        }
+        MarkWordTocEdited(e);
+        return true;
+    }
+    if (!EngineMupdfCanEditPdfToc(engine)) {
         return false;
     }
 
@@ -12324,7 +13381,24 @@ bool EngineMupdfReplacePdfToc(EngineBase* engine, Vec<ExtractedTocItem*>& roots,
     if (errorOut) {
         *errorOut = nullptr;
     }
-    if (!e || !e->pdfdoc || !EngineMupdfCanEditPdfToc(engine)) {
+    if (!e) {
+        return false;
+    }
+    if (!e->pdfdoc) {
+        if (!EngineMupdfIsWordDocument(e)) {
+            return false;
+        }
+        if (!e->wordToc) {
+            e->wordToc = new WordTocModel();
+        }
+        DeletePdfTocEditNodes(e->wordToc->roots);
+        for (ExtractedTocItem* r : roots) {
+            e->wordToc->roots.Append(PdfTocNodeFromExtracted(engine, r));
+        }
+        MarkWordTocEdited(e);
+        return true;
+    }
+    if (!EngineMupdfCanEditPdfToc(engine)) {
         return false;
     }
 
@@ -12370,7 +13444,11 @@ bool EngineMupdfHasOutline(EngineBase* engine) {
     if (epdf->tocTree) {
         return true;
     }
-    return epdf->outline != nullptr || epdf->attachments != nullptr || EngineMupdfCanEditPdfToc(engine);
+    if (epdf->wordToc && epdf->wordToc->active) {
+        return true;
+    }
+    return epdf->outline != nullptr || epdf->attachments != nullptr || EngineMupdfCanEditPdfToc(engine) ||
+           EngineMupdfIsWordDocument(engine);
 }
 
 bool EngineMupdfFirstPageLooksFixedLayout(EngineBase* engine) {
@@ -12389,6 +13467,20 @@ bool EngineMupdfFirstPageLooksFixedLayout(EngineBase* engine) {
         return false;
     }
     return box.dx > e->reflowLayoutW * 1.15f || box.dy > e->reflowLayoutH * 1.15f;
+}
+
+/* HTML/Office reflow with a fixed page box (A4 docx, EPUB chapters). Sparse
+ * pages (e.g. a short table on page 2) must not Fit-Content zoom past Fit Page —
+ * empty page chrome is intentional, not whitespace to crop. */
+bool EngineMupdfIsFixedPageReflow(EngineBase* engine) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || e->pdfdoc) {
+        return false;
+    }
+    if (e->defaultExt && str::EqI(e->defaultExt, ".pdf")) {
+        return false;
+    }
+    return e->reflowLayoutW > 0 && e->reflowLayoutH > 0;
 }
 
 const char* EngineMupdfGetPassword(EngineBase* engine) {
@@ -12414,6 +13506,89 @@ static bool PdfSaveDocumentToPath(fz_context* ctx, pdf_document* doc, const char
         }
     }
     return ok;
+}
+
+// Wrap page contents with q / cm / Q so a display deskew becomes permanent on Save.
+// WithPageDeskew rotates in Fitz page space (y down). cm runs in PDF user space
+// (y up). pageCtm flips y, so the same angle turns the other way once written.
+// Conjugate the screen matrix into user space; a reload then matches the screen.
+static bool BakeDeskewIntoPageObj(fz_context* ctx, pdf_document* doc, pdf_obj* pageobj, float deg) {
+    if (!pageobj || deg == 0.f) {
+        return false;
+    }
+    fz_rect mbox{};
+    fz_matrix pageCtm{};
+    pdf_page_obj_transform(ctx, pageobj, &mbox, &pageCtm);
+    fz_rect fitzBox = fz_transform_rect(mbox, pageCtm);
+    float cx = (fitzBox.x0 + fitzBox.x1) * 0.5f;
+    float cy = (fitzBox.y0 + fitzBox.y1) * 0.5f;
+    fz_matrix rot = fz_concat(fz_rotate(deg), fz_translate(-cx, -cy));
+    rot = fz_concat(fz_translate(cx, cy), rot);
+    fz_matrix inv = fz_invert_matrix(pageCtm);
+    fz_matrix deskew = fz_concat(inv, rot);
+    deskew = fz_concat(deskew, pageCtm);
+
+    fz_buffer* pre = fz_new_buffer(ctx, 128);
+    fz_append_string(ctx, pre, "q\n");
+    fz_append_printf(ctx, pre, "%g %g %g %g %g %g cm\n", deskew.a, deskew.b, deskew.c, deskew.d, deskew.e, deskew.f);
+    fz_buffer* post = fz_new_buffer(ctx, 8);
+    fz_append_string(ctx, post, "Q\n");
+
+    pdf_obj* preStm = pdf_add_new_dict(ctx, doc, 0);
+    pdf_update_stream(ctx, doc, preStm, pre, 0);
+    fz_drop_buffer(ctx, pre);
+    pdf_obj* postStm = pdf_add_new_dict(ctx, doc, 0);
+    pdf_update_stream(ctx, doc, postStm, post, 0);
+    fz_drop_buffer(ctx, post);
+
+    pdf_obj* contents = pdf_dict_get(ctx, pageobj, PDF_NAME(Contents));
+    if (pdf_is_array(ctx, contents)) {
+        pdf_array_insert(ctx, contents, preStm, 0);
+        pdf_array_push(ctx, contents, postStm);
+    } else if (contents) {
+        pdf_obj* arr = pdf_new_array(ctx, doc, 3);
+        pdf_array_push(ctx, arr, preStm);
+        pdf_array_push(ctx, arr, contents);
+        pdf_array_push(ctx, arr, postStm);
+        pdf_dict_put_drop(ctx, pageobj, PDF_NAME(Contents), arr);
+    } else {
+        pdf_drop_obj(ctx, preStm);
+        pdf_drop_obj(ctx, postStm);
+        return false;
+    }
+    pdf_drop_obj(ctx, preStm);
+    pdf_drop_obj(ctx, postStm);
+    return true;
+}
+
+// Caller holds docLock. Clears per-page deskewDeg after baking so display does
+// not double-apply once content is transformed.
+static void EngineMupdfBakeDeskewIntoPdf(EngineMupdf* epdf) {
+    if (!epdf || !epdf->pdfdoc) {
+        return;
+    }
+    auto ctx = epdf->Ctx();
+    for (int i = 0; i < epdf->pages.Size(); i++) {
+        FzPageInfo* pi = epdf->pages[i];
+        if (!pi || pi->deskewDeg == 0.f) {
+            continue;
+        }
+        float deg = pi->deskewDeg;
+        bool ok = false;
+        fz_try(ctx) {
+            pdf_obj* pageobj = pdf_lookup_page_obj(ctx, epdf->pdfdoc, i);
+            ok = BakeDeskewIntoPageObj(ctx, epdf->pdfdoc, pageobj, deg);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+            ok = false;
+        }
+        if (ok) {
+            pi->deskewDeg = 0;
+            DropSingleFzPageCache(ctx, pi);
+            logf("baked deskew %.2f deg into page %d\n", deg, i + 1);
+        }
+    }
 }
 
 // Sidecar next to the open PDF (same volume as dest so replace-after-close works).
@@ -12452,6 +13627,85 @@ static char* DupPdfTempDirFallbackPath(const char* destPath) {
 // Overwriting the open file can fail (file locked, long path). If overwriteTempOut
 // is set, fall back to a full rewrite next to dest (or %TEMP% as .pdf) and let the
 // caller replace-and-reload (same pattern as OCR save).
+static bool EngineMupdfSaveWordToc(EngineMupdf* epdf, const char* path, const ShowErrorCb& showErrorFunc,
+                                   char** overwriteTempOut) {
+    if (!epdf || !epdf->wordToc || !epdf->modifiedPdfToc) {
+        return false;
+    }
+    const char* currPath = epdf->FilePath();
+    if (str::IsEmpty(path)) {
+        path = currPath;
+    }
+    if (str::IsEmpty(path)) {
+        return false;
+    }
+    const char* srcDocx = epdf->convertedOfficeTempPath ? epdf->convertedOfficeTempPath : currPath;
+    bool classic = IsClassicOleWordDocPath(currPath);
+    char* err = nullptr;
+    auto fail = [&](const char* fallback) {
+        if (showErrorFunc.IsValid()) {
+            showErrorFunc.Call(err ? err : fallback);
+        }
+        str::Free(err);
+        err = nullptr;
+    };
+    if (classic) {
+        bool ok = WordTocWriteClassicDoc(srcDocx, path, epdf->wordToc, &err);
+        if (!ok && overwriteTempOut) {
+            str::Free(err);
+            err = nullptr;
+            char* tmp = DupPdfOverwriteSidecarPath(path);
+            if (tmp && WordTocWriteClassicDoc(srcDocx, tmp, epdf->wordToc, &err)) {
+                *overwriteTempOut = tmp;
+                ok = true;
+            } else if (tmp) {
+                file::Delete(tmp);
+                str::Free(tmp);
+            }
+        }
+        if (!ok) {
+            fail("Could not write the Word table of contents.");
+            return false;
+        }
+        str::Free(err);
+        ForgetCachedOleOfficeDocx(currPath);
+        epdf->modifiedPdfToc = false;
+        return true;
+    }
+    bool same = currPath && path::IsSame(path, currPath);
+    if (!same) {
+        bool ok = WordTocWriteDocx(srcDocx, path, epdf->wordToc, &err);
+        if (!ok) {
+            fail("Could not write the Word table of contents.");
+            return false;
+        }
+        str::Free(err);
+        epdf->modifiedPdfToc = false;
+        return true;
+    }
+    char* tmp = DupPdfOverwriteSidecarPath(path);
+    if (!tmp) {
+        fail("Could not write the Word table of contents.");
+        return false;
+    }
+    bool ok = WordTocWriteDocx(srcDocx, tmp, epdf->wordToc, &err);
+    if (!ok) {
+        fail("Could not write the Word table of contents.");
+        file::Delete(tmp);
+        str::Free(tmp);
+        return false;
+    }
+    str::Free(err);
+    epdf->modifiedPdfToc = false;
+    if (!overwriteTempOut) {
+        file::Delete(tmp);
+        str::Free(tmp);
+        return false;
+    }
+    *overwriteTempOut = tmp;
+    return true;
+}
+
 bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErrorCb& showErrorFunc,
                             char** overwriteTempOut) {
     ReportIf(!engine);
@@ -12462,7 +13716,13 @@ bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErro
         return false;
     }
     EngineMupdf* epdf = AsEngineMupdf(engine);
-    if (!epdf || !epdf->pdfdoc) {
+    if (!epdf) {
+        return false;
+    }
+    if (!epdf->pdfdoc && EngineMupdfIsWordDocument(engine)) {
+        return EngineMupdfSaveWordToc(epdf, path, showErrorFunc, overwriteTempOut);
+    }
+    if (!epdf->pdfdoc) {
         return false;
     }
     if (!EngineMupdfHasUnsavedPdfChanges(engine)) {
@@ -12477,6 +13737,12 @@ bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErro
     }
     auto ctx = epdf->Ctx();
     ScopedCritSec scope(&epdf->docLock);
+
+    // Bake display-only deskew into page content streams before writing so a
+    // manual Save persists the straighten (never auto-saved on Deskew itself).
+    if (epdf->modifiedDeskew) {
+        EngineMupdfBakeDeskewIntoPdf(epdf);
+    }
 
     pdf_write_options save_opts{};
     save_opts = pdf_default_write_options2;
@@ -12495,6 +13761,7 @@ bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErro
         logf("Saved PDF changes to '%s' in  %.2f ms, incremental: %d\n", path, dur, save_opts.do_incremental);
         epdf->modifiedAnnotations = false;
         epdf->modifiedPdfToc = false;
+        epdf->modifiedDeskew = false;
         return true;
     }
     logf("Saving '%s' failed with: '%s'\n", path, mupdfErr ? mupdfErr : "");
@@ -12515,6 +13782,7 @@ bool EngineMupdfSaveUpdated(EngineBase* engine, const char* path, const ShowErro
                 logf("Saved PDF changes via temp '%s' in %.2f ms\n", tmp, dur);
                 epdf->modifiedAnnotations = false;
                 epdf->modifiedPdfToc = false;
+                epdf->modifiedDeskew = false;
                 return true;
             }
             logf("Saving temp '%s' failed with: '%s'\n", tmp, tmpErr ? tmpErr : "");
@@ -13263,11 +14531,22 @@ bool EngineMupdfEnsurePageOcrRotate(EngineBase* engine, int pageNo) {
     if (!engine || pageNo < 1) {
         return false;
     }
-    int want = engine->GetOcrPageRotate(pageNo);
-    if (want != 90 && want != 180 && want != 270) {
+    // Session value is the correction relative to the OCR raster (which already
+    // includes the page's current PDF /Rotate). Compose onto the live /Rotate
+    // instead of treating the correction as an absolute target — otherwise a
+    // page at /Rotate 90 with correction 270 becomes 270 (Δ=+180) instead of 0.
+    int corr = engine->GetOcrPageRotate(pageNo);
+    if (corr != 90 && corr != 180 && corr != 270) {
         return false;
     }
-    return EngineMupdfApplyPageRotateCw(engine, pageNo, want);
+    int pdfRot = EngineMupdfGetPageRotateCw(engine, pageNo);
+    int want = PdfNormRotateCw(pdfRot + corr);
+    logfa("EnsurePageOcrRotate: page=%d pdfRot=%d corr=%d want=%d\n", pageNo, pdfRot, corr, want);
+    bool applied = EngineMupdfApplyPageRotateCw(engine, pageNo, want);
+    // Consume the relative correction so a later save/ApplyPending does not add
+    // it again on top of the already-updated /Rotate.
+    engine->SetOcrPageRotate(pageNo, 0);
+    return applied;
 }
 
 int EngineMupdfApplyPendingOcrPageRotates(EngineBase* engine) {
@@ -13292,8 +14571,11 @@ int EngineMupdfApplyPendingOcrPageRotates(EngineBase* engine) {
     Vec<int> effective;
     Vec<int> want;
     for (int i = 0; i < nPages; i++) {
+        // Session holds a raster-relative correction; effective display angle is
+        // current PDF /Rotate composed with that correction.
         int sess = engine->GetOcrPageRotate(i + 1);
-        effective.Append(sess < 1 ? pdfRot[i] : sess);
+        int abs = sess < 1 ? pdfRot[i] : PdfNormRotateCw(pdfRot[i] + sess);
+        effective.Append(abs);
         want.Append(-1);
         u8 hzFlag = 0;
         const char* text = nullptr;
@@ -13349,8 +14631,12 @@ int EngineMupdfApplyPendingOcrPageRotates(EngineBase* engine) {
             hz = 0;
         }
     }
+    auto modelLocked = [&](int pageIndex) { return engine->OcrPageRotateModelLocked(pageIndex + 1); };
     if (hz >= 0) {
         for (int i = 0; i < nPages; i++) {
+            if (modelLocked(i)) {
+                continue;
+            }
             if (isHuizong[i] && PdfNormRotateCw(effective[i]) != PdfNormRotateCw(hz)) {
                 want[i] = hz;
                 effective[i] = hz;
@@ -13362,6 +14648,9 @@ int EngineMupdfApplyPendingOcrPageRotates(EngineBase* engine) {
     // opposite — /Rotate 0 is the sideways wide view; body needs 90/270.
     if (!landscapeMb) {
         for (int i = 0; i < nPages; i++) {
+            if (modelLocked(i)) {
+                continue;
+            }
             if (!isPortraitBody[i] || isForm[i] || isHuizong[i]) {
                 continue;
             }
@@ -13376,6 +14665,9 @@ int EngineMupdfApplyPendingOcrPageRotates(EngineBase* engine) {
     while (filled) {
         filled = false;
         for (int i = 1; i < nPages - 1; i++) {
+            if (modelLocked(i)) {
+                continue;
+            }
             if (isHuizong[i]) {
                 continue;
             }
@@ -13399,6 +14691,9 @@ int EngineMupdfApplyPendingOcrPageRotates(EngineBase* engine) {
         while (filled) {
             filled = false;
             for (int i = 0; i < nPages; i++) {
+                if (modelLocked(i)) {
+                    continue;
+                }
                 if (isHuizong[i]) {
                     continue;
                 }
@@ -13418,16 +14713,24 @@ int EngineMupdfApplyPendingOcrPageRotates(EngineBase* engine) {
     logfa("ApplyPendingOcrPageRotates: nPages=%d\n", nPages);
     for (int pageNo = 1; pageNo <= nPages; pageNo++) {
         int w = want[pageNo - 1];
+        int sess = engine->GetOcrPageRotate(pageNo);
+        int pr = (pageNo - 1 < pdfRot.Size()) ? pdfRot[pageNo - 1] : 0;
         if (w < 0) {
-            w = engine->GetOcrPageRotate(pageNo);
+            // No neighbor override: compose session correction onto PDF /Rotate.
+            if (sess < 1) {
+                continue;
+            }
+            w = PdfNormRotateCw(pr + sess);
         }
-        logfa("ApplyPendingOcrPageRotates: page=%d wantCalc=%d sessRot=%d pdfRot=%d\n", pageNo, want[pageNo - 1],
-              engine->GetOcrPageRotate(pageNo), (pageNo - 1 < pdfRot.Size()) ? pdfRot[pageNo - 1] : -1);
-        if (w < 1) {
+        logfa("ApplyPendingOcrPageRotates: page=%d wantCalc=%d sessCorr=%d pdfRot=%d apply=%d\n", pageNo,
+              want[pageNo - 1], sess, pr, w);
+        // w==0 is valid (stand the page up by clearing /Rotate).
+        if (PdfNormRotateCw(w) == PdfNormRotateCw(pr)) {
+            engine->SetOcrPageRotate(pageNo, 0);
             continue;
         }
-        engine->SetOcrPageRotate(pageNo, w);
         bool applied = EngineMupdfApplyPageRotateCw(engine, pageNo, w);
+        engine->SetOcrPageRotate(pageNo, 0); // consume relative correction
         logfa("ApplyPendingOcrPageRotates: page=%d applyRot=%d applied=%d\n", pageNo, w, applied);
         if (applied) {
             n++;
@@ -13563,8 +14866,14 @@ bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* destPath, char
             }
         }
         for (int pageNo = 1; pageNo <= nPages; pageNo++) {
-            int rot = engine->GetOcrPageRotate(pageNo);
-            if (rot > 0) {
+            // Sync /Rotate from the live engine (ApplyPending / Ensure already
+            // composed raster-relative corrections onto PDF /Rotate). Session
+            // corrections are cleared after apply, so do not read GetOcrPageRotate.
+            if (!engine->HasCachedOcrText(pageNo) && !engine->WasOcrTried(pageNo)) {
+                continue;
+            }
+            int rot = EngineMupdfGetPageRotateCw(engine, pageNo);
+            {
                 // Dump current state before applying
                 fz_try(ctx) {
                     pdf_obj* po = pdf_lookup_page_obj(ctx, doc, pageNo - 1);
@@ -13607,6 +14916,18 @@ bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* destPath, char
                 info = pdf_dict_put_dict(ctx, trailer, PDF_NAME(Info), 2);
             }
             pdf_dict_puts_drop(ctx, info, "SumatraOcrText", PDF_TRUE);
+        }
+        // Persist the same session deskew Deskew Page uses, so a reload after
+        // Recognize All does not snap back to the tilted scan.
+        for (int i = 0; i < epdf->pages.Size(); i++) {
+            FzPageInfo* pi = epdf->pages[i];
+            if (!pi || pi->deskewDeg == 0.f) {
+                continue;
+            }
+            pdf_obj* po = pdf_lookup_page_obj(ctx, doc, i);
+            if (BakeDeskewIntoPageObj(ctx, doc, po, pi->deskewDeg)) {
+                logf("searchable save baked deskew %.2f deg into page %d\n", pi->deskewDeg, i + 1);
+            }
         }
         pdf_save_document(ctx, doc, destPath, &saveOpts);
         ok = true;
@@ -13880,7 +15201,13 @@ bool EngineMupdfHasUnsavedAnnotations(EngineBase* engine) {
 
 bool EngineMupdfHasUnsavedPdfChanges(EngineBase* engine) {
     EngineMupdf* epdf = AsEngineMupdf(engine);
-    return epdf && epdf->pdfdoc && (epdf->modifiedAnnotations || epdf->modifiedPdfToc);
+    if (!epdf) {
+        return false;
+    }
+    if (!epdf->pdfdoc && epdf->modifiedPdfToc && EngineMupdfIsWordDocument(engine)) {
+        return true;
+    }
+    return epdf->pdfdoc && (epdf->modifiedAnnotations || epdf->modifiedPdfToc || epdf->modifiedDeskew);
 }
 
 bool EngineMupdfIsPdfTocModified(EngineBase* engine) {

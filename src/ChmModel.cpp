@@ -38,6 +38,11 @@ table, td, th, tr, div, p, li, span, font, pre, dt, dd {
 }
 td, th, tr, table {
   background-color: #282A36 !important;
+  border-color: #8b949e !important;
+  border-top-color: #8b949e !important;
+  border-right-color: #8b949e !important;
+  border-bottom-color: #8b949e !important;
+  border-left-color: #8b949e !important;
 }
 a, a:link, a:visited, a:hover, a:active {
   color: #BD93F9 !important;
@@ -65,6 +70,11 @@ table, td, th, tr, div, p, li, span, font, pre, dt, dd {
 }
 td, th, tr, table {
   background-color: #000000 !important;
+  border-color: #8b949e !important;
+  border-top-color: #8b949e !important;
+  border-right-color: #8b949e !important;
+  border-bottom-color: #8b949e !important;
+  border-left-color: #8b949e !important;
 }
 a, a:link, a:visited, a:hover, a:active {
   color: #93c5fd !important;

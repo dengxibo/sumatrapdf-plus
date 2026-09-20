@@ -108,6 +108,14 @@ struct WindowTab {
     // per-document tab color from FileState; kColorUnset = use default
     COLORREF tabColor = kColorUnset;
 
+    // per-document display filter; 0=off, 4=auto (1/2/3 migrate to auto on load)
+    int displayFilterMode = 0;
+    int displayFilterBrightness = 0;
+    int displayFilterContrast = 0;
+    int displayFilterSharpness = 0;
+    // last non-Off mode for toolbar toggle; default Auto
+    int displayFilterLastMode = 4;
+
     // TODO: arguably a hack
     bool ignoreNextAutoReload = false;
 

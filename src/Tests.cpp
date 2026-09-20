@@ -170,7 +170,12 @@ void TestRenderPage(const Flags& i) {
     }
 
     // Prefer setting the theme index without full UI refresh (no main windows in -render).
-    SetTheme("Dark-Black");
+    // For border visual dumps, force a light theme so black table borders are visible.
+    if (getenv("SUMATRA_DUMP_RENDER_BMP") || getenv("SUMATRA_DUMP_RENDER_TGA")) {
+        SetTheme("Light");
+    } else {
+        SetTheme("Dark-Black");
+    }
     SetPdfDocumentColorMode(PdfDocumentColorMode::Auto);
     (void)PdfDarkModeBuildPalette();
 
@@ -207,6 +212,31 @@ void TestRenderPage(const Flags& i) {
         if (bmpLight) {
             Size sz = bmpLight->GetSize();
             diag(str::FormatTemp(" size=%dx%d\n", sz.dx, sz.dy));
+            const char* dumpPath = getenv("SUMATRA_DUMP_RENDER_BMP");
+            if (!dumpPath || !dumpPath[0]) {
+                dumpPath = getenv("SUMATRA_DUMP_RENDER_TGA");
+            }
+            if (dumpPath && dumpPath[0]) {
+                ByteSlice img = SerializeBitmap(bmpLight->GetBitmap());
+                if (!img.data() || img.size() == 0) {
+                    if (img.data()) {
+                        img.Free();
+                    }
+                    img = tga::SerializeBitmap(bmpLight->GetBitmap());
+                }
+                if (img.data() && img.size() > 0) {
+                    bool ok = file::WriteFile(dumpPath, img);
+                    diag(str::FormatTemp("  dumped image %s ok=%d bytes=%zu\n", dumpPath, ok ? 1 : 0, img.size()));
+                    img.Free();
+                } else {
+                    diag("  dump image serialize failed\n");
+                }
+            }
+            if (getenv("SUMATRA_RENDER_EXIT_AFTER_DUMP")) {
+                diag("  SUMATRA_RENDER_EXIT_AFTER_DUMP set; exiting\n");
+                SafeEngineRelease(&engine);
+                return;
+            }
         } else {
             diag("\n");
         }
@@ -723,12 +753,12 @@ void TestBodyTocParsing(const Flags& ci) {
         RedirectIOToConsole();
     }
     int failures = 0;
-#define BODY_TOC_CHECK(cond, msg)                                                                                              \
-    do {                                                                                                                       \
-        if (!(cond)) {                                                                                                         \
-            logf("body-toc-test: FAIL: %s\n", msg);                                                                            \
-            failures++;                                                                                                        \
-        }                                                                                                                      \
+#define BODY_TOC_CHECK(cond, msg)                   \
+    do {                                            \
+        if (!(cond)) {                              \
+            logf("body-toc-test: FAIL: %s\n", msg); \
+            failures++;                             \
+        }                                           \
     } while (0)
 
     TocStructureScanResult scan;
@@ -749,15 +779,16 @@ void TestBodyTocParsing(const Flags& ci) {
     BODY_TOC_CHECK(!IsBodyTocJsonCandidate("no json"), "prose is not v2");
     BODY_TOC_CHECK(!IsBodyTocJsonCandidate(nullptr), "null is not v2");
 
-    const char* reply = "以下是识别结果：\n```json\n"
-                        "{\"toc\":["
-                        "{\"candidate_id\":\"C1\",\"level\":1},"
-                        "{\"candidate_id\":\"C2\",\"level\":2},"
-                        "{\"candidate_id\":\"C3\"}," // missing level -> 1
-                        "{\"candidate_id\":\"C999\",\"level\":1}," // unknown id rejected
-                        "{\"candidate_id\":\"C2\",\"level\":3}" // duplicate id dropped
-                        "],\"suspected_gaps\":[{\"after\":\"C3\",\"pdf_page\":20}]}\n"
-                        "```\n";
+    const char* reply =
+        "以下是识别结果：\n```json\n"
+        "{\"toc\":["
+        "{\"candidate_id\":\"C1\",\"level\":1},"
+        "{\"candidate_id\":\"C2\",\"level\":2},"
+        "{\"candidate_id\":\"C3\"},"               // missing level -> 1
+        "{\"candidate_id\":\"C999\",\"level\":1}," // unknown id rejected
+        "{\"candidate_id\":\"C2\",\"level\":3}"    // duplicate id dropped
+        "],\"suspected_gaps\":[{\"after\":\"C3\",\"pdf_page\":20}]}\n"
+        "```\n";
     Vec<BodyTocSelection> sel;
     BODY_TOC_CHECK(ParseBodyTocSelections(reply, scan, sel), "parse v2 reply");
     BODY_TOC_CHECK(sel.Size() == 3, "whitelist + dedup leave 3 selections");
@@ -814,16 +845,22 @@ void TestBodyTocParsing(const Flags& ci) {
             BODY_TOC_CHECK(lvl2->children.Size() == 1, "level 3 node present");
             if (lvl2->children.Size() == 1) {
                 ExtractedTocItem* lvl3 = lvl2->children[0];
-                BODY_TOC_CHECK(lvl3->level == 3 && str::Eq(lvl3->title, "(1) 试点工作"),
-                               "level 3 parens not normalized");
+                // Leading （1） wrappers are unified to GB fullwidth on every level;
+                // the body-anchoring rawTitle still keeps the OCR half-width form.
+                BODY_TOC_CHECK(lvl3->level == 3 && str::StartsWith(lvl3->title,
+                                                                   "\xEF\xBC\x88"
+                                                                   "1"
+                                                                   "\xEF\xBC\x89"),
+                               "level 3 half-width parens normalized to full-width");
             }
         }
     }
     DeleteExtractedTocItems(parenRoots);
 
     AutoFreeStr digest(BuildBodyTocDigest(scan));
-    BODY_TOC_CHECK(str::Find(digest, "id=\"C1\"") && str::Find(digest, "第一章 总则") && str::Find(digest, "pdf_page: 8"),
-                   "digest keeps id, text and page");
+    BODY_TOC_CHECK(
+        str::Find(digest, "id=\"C1\"") && str::Find(digest, "第一章 总则") && str::Find(digest, "pdf_page: 8"),
+        "digest keeps id, text and page");
 
     Vec<BodyTocSelection> bad;
     BODY_TOC_CHECK(!ParseBodyTocSelections("there is no json here", scan, bad), "prose rejected");

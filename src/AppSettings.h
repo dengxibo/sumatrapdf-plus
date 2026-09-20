@@ -39,5 +39,8 @@ HFONT GetAppBiggerFontForHwnd(HWND hwnd);
 HFONT GetAppTreeFont();
 HFONT GetAppTreeFontForHwnd(HWND hwnd);
 HFONT GetAppTreeFontForDpi(int dpi);
+HFONT GetAppTabFont();
+HFONT GetAppTabFontForHwnd(HWND hwnd);
+HFONT GetAppTabFontForDpi(int dpi);
 bool IsMenuFontSizeDefault();
 void InvalidateUiFonts();

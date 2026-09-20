@@ -493,8 +493,11 @@ class EngineBase {
     bool HasCachedOcrText(int pageNo);
     int CountOcrCachedPages();
     // Extra clockwise page /Rotate to apply for sideways OCR (0, 90, 180, 270).
-    void SetOcrPageRotate(int pageNo, int degCw);
+    // modelLocked: a confident orientation-model correction. ApplyPending must
+    // not replace it with neighbor / 办法-body heuristics.
+    void SetOcrPageRotate(int pageNo, int degCw, bool modelLocked = false);
     int GetOcrPageRotate(int pageNo);
+    bool OcrPageRotateModelLocked(int pageNo);
     void MarkUnsavedOcrText() { unsavedOcrText = true; }
     void ClearUnsavedOcrText() { unsavedOcrText = false; }
     bool HasUnsavedOcrText() const { return unsavedOcrText; }

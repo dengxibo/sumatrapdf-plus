@@ -85,8 +85,9 @@ static int LogFontHeightPx(HWND hwnd, HFONT hf) {
 }
 
 int GetTabbarHeight(HWND hwnd, float factor) {
-    int tabDy = DpiScale(hwnd, kTabBarDy);
-    HFONT hfont = GetAppFontForHwnd(hwnd);
+    int heightDip = gGlobalPrefs->tabBarHeight > 0 ? gGlobalPrefs->tabBarHeight : kTabBarDy;
+    int tabDy = DpiScale(hwnd, heightDip);
+    HFONT hfont = GetAppTabFontForHwnd(hwnd);
     int fontDyWithPadding = LogFontHeightPx(hwnd, hfont) + DpiScale(hwnd, 2);
     if (fontDyWithPadding > tabDy) {
         tabDy = fontDyWithPadding;
@@ -569,7 +570,7 @@ void CreateTabbar(MainWindow* win) {
     TabsCtrl::CreateArgs args;
     args.parent = win->hwndFrame;
     args.withToolTips = true;
-    args.font = GetAppFontForHwnd(win->hwndFrame);
+    args.font = GetAppTabFontForHwnd(win->hwndFrame);
     args.tabDefaultDx = TabDefaultDxForHwnd(win->hwndFrame);
     args.isRtl = IsUIRtl();
 

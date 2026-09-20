@@ -106,6 +106,7 @@ Kind kindFileAvif = "fileAvif";
     V(".xhtml", kindFileHTML)     \
     V(".md", kindFileMd)          \
     V(".markdown", kindFileMd)    \
+    V(".doc", kindFileOffice)     \
     V(".docx", kindFileOffice)    \
     V(".xlsx", kindFileOffice)    \
     V(".pptx", kindFileOffice)    \

@@ -6,6 +6,7 @@ enum class AnnotationType;
 struct PasswordUI;
 struct FileArgs;
 struct AnnotCreateArgs;
+struct TocTree;
 
 #include "EbookTypography.h"
 #include "PdfTocEditModel.h"
@@ -120,7 +121,12 @@ bool EngineMupdfTryCompletePendingReflowNav(EngineBase* engine, ILinkHandler* lh
 bool EngineMupdfHasPendingReflowNav(EngineBase* engine);
 bool EngineMupdfHasOutline(EngineBase* engine);
 bool EngineMupdfFirstPageLooksFixedLayout(EngineBase* engine);
+bool EngineMupdfIsFixedPageReflow(EngineBase* engine);
 bool EngineMupdfCanEditPdfToc(EngineBase* engine);
+bool EngineMupdfCanEditToc(EngineBase* engine);
+bool EngineMupdfIsWordDocument(EngineBase* engine);
+bool EngineMupdfCanExtractToc(EngineBase* engine);
+void EngineMupdfSetTocTree(EngineBase* engine, TocTree* tree);
 bool EngineMupdfPdfHasSignatures(EngineBase* engine);
 char* EngineMupdfFormatPdfTocTarget(EngineBase* engine, int pageNo, float x, float y);
 bool EngineMupdfEditPdfToc(EngineBase* engine, PdfTocEditAction action, const Vec<int>& path, const char* title,
@@ -149,6 +155,22 @@ int EngineMupdfGetPageRotateCw(EngineBase* engine, int pageNo);
 // Set this page's PDF /Rotate to an absolute value (0/90/180/270, e.g. for
 // manual page rotation). Returns true if the page was changed.
 bool EngineMupdfSetPageRotateCw(EngineBase* engine, int pageNo, int wantCw);
+// Straighten a slightly tilted scan. Returns the correction in degrees (0 if
+// the page is already level, or this is not a MuPDF document). Marks the
+// document dirty; bake into the file on Save (never auto-saved).
+float EngineMupdfDeskewPage(EngineBase* engine, int pageNo);
+// Deskew every page that looks like a scan. Returns how many pages got a
+// non-zero correction. Marks dirty when any page changes.
+// progressCb is invoked on the calling thread before each candidate page
+// (pageNo, candidateIndex 1-based, pageCount).
+using DeskewProgressCb = void (*)(int pageNo, int step, int pageCount, void* user);
+int EngineMupdfDeskewAllScannedPages(EngineBase* engine, DeskewProgressCb progressCb = nullptr, void* user = nullptr);
+// Current session deskew for this page (degrees CCW), or 0.
+float EngineMupdfGetPageDeskewDeg(EngineBase* engine, int pageNo);
+// Apply a known deskew angle without re-detecting. Marks dirty when deg != 0.
+void EngineMupdfSetPageDeskewDeg(EngineBase* engine, int pageNo, float deg);
+// Estimate skew from an already-rendered bitmap (same detector as Deskew Page).
+float EngineMupdfEstimateBitmapSkewDeg(void* hbmp);
 // Neighbors agree on 90 or 270: snap a 180° opposite page; fill a 0 hole only
 // when both neighbors were flagged this session (not a landscape 汇总表).
 int OcrResolveNeighborPageRotate(int cur, int left, int right, bool leftFromSession, bool rightFromSession);

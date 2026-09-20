@@ -606,6 +606,42 @@ const fileSettings: Field[] = [
     mkField("TabCol", Color, "", "if given, overrides the tab color for this document"),
     "3.7",
   ),
+  setVersion(
+    mkField(
+      "DisplayFilterBrightness",
+      Int,
+      0,
+      "page display brightness for this document (-100..100). 0 means no change",
+    ),
+    "3.8",
+  ),
+  setVersion(
+    mkField(
+      "DisplayFilterContrast",
+      Int,
+      0,
+      "page display contrast for this document (-100..100). 0 means no change",
+    ),
+    "3.8",
+  ),
+  setVersion(
+    mkField(
+      "DisplayFilterSharpness",
+      Int,
+      0,
+      "page display sharpness for this document (0..100). 0 means off",
+    ),
+    "3.8",
+  ),
+  setVersion(
+    mkField(
+      "DisplayFilterMode",
+      Int,
+      0,
+      "page display enhancement mode for this document (0=off, 4=auto Mild/Strong; 1/2/3 migrate to auto)",
+    ),
+    "3.8",
+  ),
   setDoc(
     mkField(
       "ReparseIdx",
@@ -877,6 +913,15 @@ const globalPrefs: Field[] = [
     ),
     "3.8",
   ),
+  setVersion(
+    mkField(
+      "OcrDeskew",
+      Bool,
+      true,
+      "if true, straighten slightly tilted scan pages before OCR (and when running Deskew All Scanned Pages heuristics)",
+    ),
+    "3.8",
+  ),
   setDoc(
     setVersion(
       mkField(
@@ -984,6 +1029,19 @@ const globalPrefs: Field[] = [
     "if true, prevents the screen from turning off when in fullscreen or presentation mode",
   ),
   mkField("TabWidth", Int, 300, "maximum width of a single tab"),
+  setVersion(
+    mkField("TabFontSize", Int, 0, "font size for the tab bar. 0 means use UIFontSize / Windows default"),
+    "3.8",
+  ),
+  setVersion(
+    mkField(
+      "TabBarHeight",
+      Int,
+      0,
+      "height of the tab bar in DIPs. 0 means automatic from font size (default ~24)",
+    ),
+    "3.8",
+  ),
   setDoc(
     setVersion(mkField("Theme", Str, "", "the name of the theme to use"), "3.5"),
     "Valid themes: Light-Warm, Light-White, System, Dark-Dracula, Dark-Black",

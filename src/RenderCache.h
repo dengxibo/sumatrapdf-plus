@@ -11,8 +11,8 @@ constexpr int RENDER_DELAY_FAILED = std::numeric_limits<int>::max() - 2;
 // Applies the same post-render theme recolor the render cache thread does for
 // view tiles (warm eye-care gauze, legacy bitmap recolor, DjVu dark, ...), so
 // off-screen callers (e.g. the AI TOC dialog thumbnails) match the canvas.
-void ApplyRenderThemePostColors(EngineBase* engine, RenderedBitmap* bmp, int pageNo, float zoom,
-                                const RectF* pageRect, const DarkModeProfile* profile);
+void ApplyRenderThemePostColors(EngineBase* engine, RenderedBitmap* bmp, int pageNo, float zoom, const RectF* pageRect,
+                                const DarkModeProfile* profile);
 
 #define MAX_PAGE_REQUESTS 8
 // keep this value reasonably low, else we'll run out of
@@ -54,6 +54,13 @@ struct BitmapCacheEntry {
 
     // owned by the BitmapCacheEntry
     RenderedBitmap* bitmap = nullptr;
+    // Display-filter result for this tile (raw bitmap stays untouched).
+    RenderedBitmap* filteredBitmap = nullptr;
+    int filterMode = 0;
+    int filterBrightness = INT_MIN;
+    int filterContrast = INT_MIN;
+    int filterSharpness = INT_MIN;
+    uint32_t filterVersion = 0;
     bool outOfDate = false;
     u32 darkModeEpoch = 0;
     int refs = 1;
@@ -67,7 +74,10 @@ struct BitmapCacheEntry {
         this->tile = tile;
         this->bitmap = bitmap;
     }
-    ~BitmapCacheEntry() { delete bitmap; }
+    ~BitmapCacheEntry() {
+        delete filteredBitmap;
+        delete bitmap;
+    }
 };
 
 /* Even though this looks a lot like a BitmapCacheEntry, we keep it
@@ -178,6 +188,8 @@ struct RenderCache {
     bool DropCacheEntryIfNotUsed(BitmapCacheEntry* entry);
     void FreePage(DisplayModel* dm, int pageNo, TilePosition* tile = nullptr);
     void FreeNotVisible();
+    // Drop display-filter copies; raw MuPDF tiles stay cached.
+    void ClearFilteredBitmaps();
 
     int PaintTile(HDC hdc, Rect bounds, DisplayModel* dm, int pageNo, TilePosition tile, Rect tileOnScreen,
                   bool renderMissing, bool* renderOutOfDateCue, bool* renderedReplacement);

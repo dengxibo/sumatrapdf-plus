@@ -670,7 +670,8 @@ int TocCalibTitleMatchScoreCtx(const TocCalibTitleCtx* ctx, const char* body) {
     }
     char bbuf[768];
     TocCalibCompact(body, bbuf, (int)sizeof(bbuf));
-    if (ctx->compact[0] && (str::Eq(bbuf, ctx->compact) || str::StartsWith(bbuf, ctx->compact) || str::Find(bbuf, ctx->compact))) {
+    if (ctx->compact[0] &&
+        (str::Eq(bbuf, ctx->compact) || str::StartsWith(bbuf, ctx->compact) || str::Find(bbuf, ctx->compact))) {
         return tg;
     }
     if (bg >= 4 && bg * 2 >= tg && ctx->compact[0] && str::StartsWith(ctx->compact, bbuf)) {
@@ -3009,6 +3010,8 @@ static void TocCalibNormalizeItemTitles(ExtractedTocItem* n) {
     if (!n) {
         return;
     }
+    NormalizeTocNumberingParens(&n->title);
+    NormalizeTocNumberingParens(&n->rawTitle);
     NormalizeTocNumberingDotsHalfwidth(&n->title);
     NormalizeTocNumberingDotsHalfwidth(&n->rawTitle);
     for (int i = 0; i < n->children.Size(); i++) {
@@ -4817,13 +4820,15 @@ static bool TocCalibWriteBookmarks(MainWindow* win) {
         }
         s->engine->ClearUnsavedOcrText();
         if (tmp) {
-            // In-place overwrite failed (file locked / permission denied);
-            // the full rewrite went to a sidecar temp. Switch the tab over
-            // to it (replace-and-reload), same pattern as annotation save.
-            // The engine is swapped, so skip the stale-session tail below.
-            SwitchCurrentTabToSavedFile(win, s->engine->FilePath(), tmp);
+            // Package was written to a sidecar because the open file is locked.
+            // Replace it, or ask the user. Do not invent a second copy.
+            const char* path = s->engine->FilePath();
+            bool replaced = SwitchCurrentTabToSavedFile(win, path, tmp);
             str::Free(tmp);
-            return true;
+            if (!replaced && IsMainWindowValid(win)) {
+                HideTocCalib(win);
+            }
+            return replaced;
         }
     }
     DeleteExtractedTocItems(s->backup);
@@ -6532,9 +6537,11 @@ static void TocCalibVerifySlice(TocCalibVerifyJob* job) {
             nCached++;
         }
     }
-    logf("TocCalib verify stats rows=%d skip=%d near=%d needFull=%d full=%d bm25Build=%ums pagesCached=%d/%d elapsed=%ums\n",
-         job->total, job->nSkip, job->nNear, job->nNeedFull, job->nFull, job->bm25BuildMs, nCached, job->cache.Size(),
-         ::GetTickCount() - job->tStart);
+    logf(
+        "TocCalib verify stats rows=%d skip=%d near=%d needFull=%d full=%d bm25Build=%ums pagesCached=%d/%d "
+        "elapsed=%ums\n",
+        job->total, job->nSkip, job->nNear, job->nNeedFull, job->nFull, job->bm25BuildMs, nCached, job->cache.Size(),
+        ::GetTickCount() - job->tStart);
     DWORD tCommit = ::GetTickCount();
     TocCalibSolveSession(s);
     TocCalibMarkConfirm(s);
@@ -6709,7 +6716,7 @@ bool StartTocCalibFromExisting(MainWindow* win) {
     }
     DisplayModel* dm = win->ctrl ? win->ctrl->AsFixed() : nullptr;
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
-    if (!engine || !EngineMupdfCanEditPdfToc(engine)) {
+    if (!engine || !EngineMupdfCanEditToc(engine)) {
         return false;
     }
     WindowTab* tab = win->CurrentTab();

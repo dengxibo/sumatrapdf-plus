@@ -52,9 +52,9 @@ enum class ExtractedTocSource {
 // Where the destination (page/x/y) of an extracted TOC entry came from.
 enum class TocDestinationSource {
     Unknown = 0,
-    Estimated = 1,  // printed page number mapped by offset, no body/link proof
-    BodyMatch = 2,  // title text found on the target body page
-    PdfLink = 3,    // clickable GoTo link on the printed Contents page
+    Estimated = 1, // printed page number mapped by offset, no body/link proof
+    BodyMatch = 2, // title text found on the target body page
+    PdfLink = 3,   // clickable GoTo link on the printed Contents page
 };
 
 struct ExtractedTocItem {

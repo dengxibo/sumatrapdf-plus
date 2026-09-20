@@ -377,6 +377,17 @@ struct FileState {
     // if given, overrides the tab color for this document
     char* tabCol;
     ParsedColor tabColParsed;
+    // page display brightness for this document (-100..100). 0 means no
+    // change
+    int displayFilterBrightness;
+    // page display contrast for this document (-100..100). 0 means no
+    // change
+    int displayFilterContrast;
+    // page display sharpness for this document (0..100). 0 means off
+    int displayFilterSharpness;
+    // page display enhancement mode for this document (0=off, 4=auto
+    // Mild/Strong; 1/2/3 migrate to auto)
+    int displayFilterMode;
     // index into an ebook's HTML data from which reparsing has to happen
     // in order to restore the last viewed page (i.e. the equivalent of
     // PageNo for the ebook UI)
@@ -529,11 +540,14 @@ struct GlobalPrefs {
     // if true, overwrite the current PDF after Recognize All Scanned Pages
     // and after extracting bookmarks
     bool ocrAutoSave;
+    // if true, straighten slightly tilted scan pages before OCR (and when
+    // running Deskew All Scanned Pages heuristics)
+    bool ocrDeskew;
     // full-document OCR mode for Recognize All Scanned Pages and Save as
     // Searchable PDF: fast or accurate. Auto OCR uses fast mode; current
     // page and region use high accuracy.
     char* ocrFullDocumentMode;
-    // if true, copied text merges soft-wrapped lines into coherent
+    // if true, copy of OCR results merges soft-wrapped lines into coherent
     // paragraphs instead of following the original page layout
     bool ocrCopyMerged;
     // smart bookmark extraction detail: conservative, standard, or
@@ -575,6 +589,11 @@ struct GlobalPrefs {
     bool preventSleepInFullscreen;
     // maximum width of a single tab
     int tabWidth;
+    // font size for the tab bar. 0 means use UIFontSize / Windows default
+    int tabFontSize;
+    // height of the tab bar in DIPs. 0 means automatic from font size
+    // (default ~24)
+    int tabBarHeight;
     // the name of the theme to use
     char* theme;
     // the dark theme to use when toggling from light mode
@@ -953,13 +972,19 @@ static const FieldInfo gFileStateFields[] = {
     {offsetof(FileState, displayR2L), SettingType::Bool, false, nullptr},
     {offsetof(FileState, bgCol), SettingType::Color, (intptr_t)"", nullptr},
     {offsetof(FileState, tabCol), SettingType::Color, (intptr_t)"", nullptr},
+    {offsetof(FileState, displayFilterBrightness), SettingType::Int, 0, "该文档页面亮度（-100..100，0=预设基线）"},
+    {offsetof(FileState, displayFilterContrast), SettingType::Int, 0, "该文档页面对比度（-100..100，0=预设基线）"},
+    {offsetof(FileState, displayFilterSharpness), SettingType::Int, 0, "该文档页面锐度（0..100，0=预设基线）"},
+    {offsetof(FileState, displayFilterMode), SettingType::Int, 0,
+     "该文档显示增强模式（0=关闭，1=旧版，2=阅读，3=扫描件）"},
     {offsetof(FileState, reparseIdx), SettingType::Int, 0, nullptr},
     {offsetof(FileState, tocState), SettingType::IntArray, 0, nullptr},
 };
 static StructInfo gFileStateInfo = {
-    sizeof(FileState), 21, gFileStateFields,
+    sizeof(FileState), 25, gFileStateFields,
     "FilePath\0Favorites\0IsPinned\0IsMissing\0OpenCount\0DecryptionKey\0UseDefaultState\0DisplayMode\0ScrollPos\0PageN"
-    "o\0Zoom\0Rotation\0WindowState\0WindowPos\0ShowToc\0SidebarDx\0DisplayR2L\0BgCol\0TabCol\0ReparseIdx\0TocState"};
+    "o\0Zoom\0Rotation\0WindowState\0WindowPos\0ShowToc\0SidebarDx\0DisplayR2L\0BgCol\0TabCol\0DisplayFilterBrightness"
+    "\0DisplayFilterContrast\0DisplayFilterSharpness\0DisplayFilterMode\0ReparseIdx\0TocState"};
 
 static const FieldInfo gPointF_1_Fields[] = {
     {offsetof(PointF, x), SettingType::Float, (intptr_t)"0", nullptr},
@@ -1018,8 +1043,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-30.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-30.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-31.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-31.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},
@@ -1055,6 +1080,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, autoOcrScanPages), SettingType::Bool, false,
      "自动识别无文字层的扫描页，便于选择和搜索；模型在 {exedir}/ocr/"},
     {offsetof(GlobalPrefs, ocrAutoSave), SettingType::Bool, false, "全文识别或提取目录完成后覆盖保存当前 PDF"},
+    {offsetof(GlobalPrefs, ocrDeskew), SettingType::Bool, true, nullptr},
     {offsetof(GlobalPrefs, ocrFullDocumentMode), SettingType::String, (intptr_t)"fast",
      "全文识别模式 fast=极速 accurate=高精度；自动 OCR 使用极速，框选/当前页使用高精度"},
     {offsetof(GlobalPrefs, ocrCopyMerged), SettingType::Bool, true, nullptr},
@@ -1076,6 +1102,8 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, fastScrollOverScrollbar), SettingType::Bool, false, "滚轮在滚动条区域时半页滚动"},
     {offsetof(GlobalPrefs, preventSleepInFullscreen), SettingType::Bool, true, "全屏/演示时阻止休眠"},
     {offsetof(GlobalPrefs, tabWidth), SettingType::Int, 300, "单个标签最大宽度"},
+    {offsetof(GlobalPrefs, tabFontSize), SettingType::Int, 0, "标签栏字号（0=自动）"},
+    {offsetof(GlobalPrefs, tabBarHeight), SettingType::Int, 0, "标签栏高度（0=自动）"},
     {offsetof(GlobalPrefs, theme), SettingType::String, (intptr_t)"", "当前主题"},
     {offsetof(GlobalPrefs, lastDarkTheme), SettingType::String, (intptr_t)"Dark-Dracula", "切换到深色模式时的主题"},
     {offsetof(GlobalPrefs, lastLightTheme), SettingType::String, (intptr_t)"Light-Warm", "切换到浅色模式时的主题"},
@@ -1156,22 +1184,23 @@ static const FieldInfo gGlobalPrefsFields[] = {
      "Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 120, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 123, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0HomePage"
     "ViewMode\0HomePageThumbnailDx\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSess"
     "ion\0ReuseInstance\0ShowMenubar\0ShowMenubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0ShowAnnotToolbarButtons"
-    "\0SearchUIFloating\0OfflineDictionaryPath\0EnableDoubleClickWordLookup\0AutoOcrScanPages\0OcrAutoSave\0OcrFullDocu"
-    "mentMode\0OcrCopyMerged\0ExtractPdfTocMode\0AiChatProvider\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAskAI\0ShowFav"
-    "orites\0ShowToc\0ShowLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0FastScrollO"
-    "verScrollbar\0PreventSleepInFullscreen\0TabWidth\0Theme\0LastDarkTheme\0LastLightTheme\0DocumentColorMode\0TocDy\0"
-    "ToolbarSize\0TreeFontName\0TreeFontSize\0TreeWrapLabels\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0"
-    "UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0C"
-    "hmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0S"
-    "hortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh\0ReadAloudSpea"
-    "kingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSmartOnlineVoiceEn"
-    "\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionD"
-    "ata\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfUpdateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
+    "\0SearchUIFloating\0OfflineDictionaryPath\0EnableDoubleClickWordLookup\0AutoOcrScanPages\0OcrAutoSave\0OcrDeskew\0"
+    "OcrFullDocumentMode\0OcrCopyMerged\0ExtractPdfTocMode\0AiChatProvider\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAsk"
+    "AI\0ShowFavorites\0ShowToc\0ShowLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0"
+    "FastScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth\0TabFontSize\0TabBarHeight\0Theme\0LastDarkTheme\0Last"
+    "LightTheme\0DocumentColorMode\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0TreeWrapLabels\0UIFontSize\0Disable"
+    "AntiAlias\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0"
+    "EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0"
+    "\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0"
+    "ReadAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnli"
+    "neVoiceZh\0ReadAloudSmartOnlineVoiceEn\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0S"
+    "earchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfUpdateCheckSnooze\0OpenCountWe"
+    "ek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)"", "主题名称"},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)"", "文字颜色"},

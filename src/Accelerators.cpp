@@ -212,6 +212,10 @@ ACCEL gBuiltInAccelerators[] = {
     {FALT | FVIRTKEY, VK_RIGHT, CmdNavigateForward},
 
     {FCONTROL | FVIRTKEY, 'O', CmdOpenFile},
+    // OCR region (框选识别): Ctrl+Shift+X (left-hand); keep Ctrl+Shift+O for compatibility.
+    // Preferred quick path is Alt+LMB drag (temporary tool; see Canvas OnMouseLeftButtonDown).
+    {FSHIFT | FCONTROL | FVIRTKEY, 'X', CmdOcrRegion},
+    {FSHIFT | FCONTROL | FVIRTKEY, 'O', CmdOcrRegion},
     {FSHIFT | FCONTROL | FVIRTKEY, VK_RIGHT, CmdOpenNextFileInFolder},
     {FSHIFT | FCONTROL | FVIRTKEY, VK_LEFT, CmdOpenPrevFileInFolder},
     {FVIRTKEY, VK_F2, CmdRenameFile},

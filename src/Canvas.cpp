@@ -857,6 +857,7 @@ void CancelDrag(MainWindow* win) {
     win->ebookAnnotationDragPending = nullptr;
     win->annotationBeingResized = false;
     win->ocrRegionPending = false;
+    win->ocrRegionFromModifier = false;
     SetCursorCached(IDC_ARROW);
 }
 
@@ -1600,6 +1601,7 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     Point pt{x, y};
 
     if (win->ocrRegionPending) {
+        win->ocrRegionFromModifier = false;
         win->annotCreateDragStart = pt;
         win->dragStart = pt;
         win->selectionRect = Rect(pt.x, pt.y, 0, 0);
@@ -1607,6 +1609,25 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
         win->dragStartPending = true;
         SetCapture(win->hwndCanvas);
         return;
+    }
+
+    // Alt+LMB drag = temporary OCR region (Shift+drag already forces document pan).
+    // Modifier is only required at mouse-down; releasing Alt mid-drag does not cancel.
+    if (IsAltPressed() && !IsCtrlPressed()) {
+        EngineBase* engine = dm->GetEngine();
+        if (engine && OcrEngineKindSupported(engine) && OcrSidecarLooksPresent()) {
+            SetAnnotCreateTool(win, 0);
+            win->ocrRegionFromModifier = true;
+            win->annotCreateDragStart = pt;
+            win->dragStart = pt;
+            win->selectionRect = Rect(pt.x, pt.y, 0, 0);
+            win->mouseAction = MouseAction::OcrRegion;
+            win->dragStartPending = true;
+            gSupressNextAltMenuTrigger = true;
+            SetCursorCached(IDC_CROSS);
+            SetCapture(win->hwndCanvas);
+            return;
+        }
     }
 
     if (win->annotCreateToolCmd != 0) {
@@ -1709,6 +1730,7 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     // - pressing Shift forces dragging
     // - pressing Ctrl forces a rectangular selection
     // - pressing Ctrl+Shift forces text selection
+    // - pressing Alt starts temporary OCR region drag (handled above)
     // - not having CopySelection permission forces dragging
     bool isShift = IsShiftPressed();
     bool isCtrl = IsCtrlPressed();
@@ -1766,7 +1788,14 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
         if (GetCapture() == win->hwndCanvas) {
             ReleaseCapture();
         }
-        ShowEditEbookAnnotationsWindow(win->CurrentTab(), annotation);
+        WindowTab* tab = win->CurrentTab();
+        tab->selectedEbookAnnotation = annotation;
+        /* Upstream: only Ctrl+click opens the editor. */
+        if (IsCtrlPressed()) {
+            ShowEditEbookAnnotationsWindow(tab, annotation);
+        } else {
+            ScheduleRepaint(win, 0);
+        }
         return;
     }
 
@@ -1807,12 +1836,21 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
     auto ma = win->mouseAction;
     if (ma == MouseAction::OcrRegion) {
         Point endCanvas{x, y};
+        bool fromModifier = win->ocrRegionFromModifier;
+        win->ocrRegionFromModifier = false;
         win->mouseAction = MouseAction::None;
         win->dragStartPending = false;
         Rect screenRect = NormalizeScreenRect(win->annotCreateDragStart, endCanvas);
         win->selectionRect = Rect();
         if (GetCapture() == win->hwndCanvas) {
             ReleaseCapture();
+        }
+        // Alt-click / no real drag: ignore silently (do not OCR, no "too small" toast).
+        bool didDrag =
+            IsDragDistance(endCanvas.x, win->annotCreateDragStart.x, endCanvas.y, win->annotCreateDragStart.y);
+        if (fromModifier && !didDrag) {
+            ScheduleRepaint(win, 0);
+            return;
         }
         OcrFinishRegionSelect(win, screenRect);
         ScheduleRepaint(win, 0);
@@ -1898,7 +1936,7 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
 
     if (EbookAnnotationsSupported(tab)) {
         EbookAnnotation* annotation = EbookAnnotationsGetAt(tab, dm, pt);
-        if (annotation) {
+        if (annotation && IsCtrlPressed()) {
             ShowEditEbookAnnotationsWindow(tab, annotation);
             return;
         }
@@ -1912,12 +1950,20 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
             PlaySoundAnnotation(annotAtClick);
             return;
         }
-        if (tab->editAnnotsWindow) {
-            SetSelectedAnnotation(tab, annotAtClick);
-        } else {
-            ShowEditAnnotationsWindow(tab, annotAtClick);
+        /* Match upstream: Ctrl+click opens editor; plain click only selects when
+         * an annotation is already selected or the editor is open. */
+        if (IsCtrlPressed()) {
+            if (tab->editAnnotsWindow) {
+                SetSelectedAnnotation(tab, annotAtClick);
+            } else {
+                ShowEditAnnotationsWindow(tab, annotAtClick);
+            }
+            return;
         }
-        return;
+        if (tab->selectedAnnotation || tab->editAnnotsWindow) {
+            SetSelectedAnnotation(tab, annotAtClick);
+            return;
+        }
     }
 
     if (link && link->GetRect().Contains(ptPage)) {
@@ -2624,6 +2670,7 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
 
         EbookAnnotationsPaintPage(win->CurrentTab(), hdc, dm, pageNo);
         PaintPdfMarkupOverlayPage(win->CurrentTab(), hdc, dm, pageNo);
+        PaintPdfMarkupNoteBadgesPage(win->CurrentTab(), hdc, dm, pageNo);
         PaintPrintedTocOverlay(hdc, dm, pageNo);
         if (win->CurrentTab() && !gRenderCache->PageNeedsMarkupOverlay(dm, pageNo)) {
             ClearPdfMarkupOverlayForPage(win->CurrentTab(), pageNo);
@@ -2793,8 +2840,11 @@ static LRESULT OnSetCursorMouseNone(MainWindow* win, HWND hwnd) {
     }
 
     if (EbookAnnotationsSupported(tab) && EbookAnnotationsHitTest(tab, dm, pt)) {
-        SetCursorCached(IDC_HAND);
-        return TRUE;
+        /* Hand only with Ctrl (same as Ctrl+click to edit). */
+        if (IsCtrlPressed() || tab->editEbookAnnotsWindow || tab->selectedEbookAnnotation) {
+            SetCursorCached(IDC_HAND);
+            return TRUE;
+        }
     }
 
     // Check if hovering over resize handle of selected annotation
@@ -2808,8 +2858,11 @@ static LRESULT OnSetCursorMouseNone(MainWindow* win, HWND hwnd) {
 
     Annotation* annot = dm->GetAnnotationAtPos(pt, selected);
     if (annot) {
-        SetCursorCached(IDC_HAND);
-        return TRUE;
+        /* Media: click plays without Ctrl. Markup: hand only with Ctrl (or while editing). */
+        if (AnnotationSupportsMediaPlayback(annot->type) || IsCtrlPressed() || selected || tab->editAnnotsWindow) {
+            SetCursorCached(IDC_HAND);
+            return TRUE;
+        }
     }
 
     int pageNo = 0;

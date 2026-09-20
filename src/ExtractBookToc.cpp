@@ -1782,9 +1782,8 @@ static void BookAppendEntry(Vec<BookTocEntry>& hits, const char* rawTitle, int p
     str::TrimWSInPlace(title, str::TrimOpt::Both);
     // A linked row is publisher-marked; accept it even if its shape looks
     // unusual (short title, no printed number).
-    if (!sl.linkPage &&
-        (!title[0] || BookLooksLikeTocHeading(title) || BookLooksLikeJunk(title) || BookLooksLikeBodyBlurb(title) ||
-         BookLooksLikePageFooter(title) || BookLineIsPageNum(title))) {
+    if (!sl.linkPage && (!title[0] || BookLooksLikeTocHeading(title) || BookLooksLikeJunk(title) ||
+                         BookLooksLikeBodyBlurb(title) || BookLooksLikePageFooter(title) || BookLineIsPageNum(title))) {
         str::Free(title);
         return;
     }
@@ -2217,9 +2216,9 @@ static bool BookSplitGluedTocLine(const char* s, char** leftOut, int* pageOut, c
                 yearFollows = Utf8CodepointNext(s, len, kcp) == 0x5E74; // 年
             }
         }
-        if (save > 0 && !yearFollows && BookTakeBarePage(s, len, save, &page, &after) && BookRangeHasLetterOrCjk(s, 0, save) &&
-            BookRangeHasLetterOrCjk(s, after, len) && !BookLeftEndsWithDi(s, save) &&
-            !BookRightStartsWithUnitWord(s, after, len)) {
+        if (save > 0 && !yearFollows && BookTakeBarePage(s, len, save, &page, &after) &&
+            BookRangeHasLetterOrCjk(s, 0, save) && BookRangeHasLetterOrCjk(s, after, len) &&
+            !BookLeftEndsWithDi(s, save) && !BookRightStartsWithUnitWord(s, after, len)) {
             // A number directly followed by a colon is a label ("附表1：...",
             // "图3：..."), not a glued printed page. Splitting there shreds the
             // title into "附表" + "：..." junk rows.
@@ -2885,7 +2884,7 @@ static void BookParseTocPage(Vec<BookLine>& page, Vec<BookTocEntry>& hits, const
             // a chapter + dash subtitle pair).
             if (dashAt >= 3) {
                 bool hasColonLabel = false;
-                for (int q = 0; q < dashAt && !hasColonLabel; ) {
+                for (int q = 0; q < dashAt && !hasColonLabel;) {
                     int qcp = Utf8CodepointNext(rows[r].title, dashAt, q);
                     if (qcp == 0xFF1A || qcp == ':') {
                         hasColonLabel = true;
@@ -2965,9 +2964,8 @@ static void BookParseTocPage(Vec<BookLine>& page, Vec<BookTocEntry>& hits, const
         if (BookLooksLikeTocHeading(row.title) || BookLooksLikePageFooter(row.title)) {
             continue;
         }
-        if (!linkPage &&
-            (BookLooksLikeJunk(row.title) || BookLooksLikeBodyBlurb(row.title) ||
-             (headingPage > 0 && row.page == headingPage && row.y < headingY))) {
+        if (!linkPage && (BookLooksLikeJunk(row.title) || BookLooksLikeBodyBlurb(row.title) ||
+                          (headingPage > 0 && row.page == headingPage && row.y < headingY))) {
             continue;
         }
         // On a publisher-linked TOC page every real entry is clickable (wrap
@@ -3818,8 +3816,8 @@ static void BookBestAnchorInVec(const Vec<ScanLine>& ls, const char* title, int 
 // classify as born-digital, so only the first ~80 pages were collected).
 // Chapter anchoring needs the whole body, so collect the remaining pages once
 // and share them (plus the per-page font stats) with every anchor pass.
-static bool BookCollectExtraScanLines(EngineBase* engine, const Vec<ScanLine>& lines, int nPages,
-                                      Vec<ScanLine>& extra, const TocExtractProgress* prog) {
+static bool BookCollectExtraScanLines(EngineBase* engine, const Vec<ScanLine>& lines, int nPages, Vec<ScanLine>& extra,
+                                      const TocExtractProgress* prog) {
     extra.Reset();
     if (!engine || nPages < 2) {
         return true;
@@ -5388,8 +5386,8 @@ static int BookNativeLinkForLine(const Vec<BookLinkHit>& links, const BookLine& 
 
 // Build TOC items from one page's native linked Contents rows. Returns the
 // number of entries appended and fills stats for page detection.
-static int BookNativeLinkedPageItems(EngineBase* engine, const Vec<ScanLine>& lines, int p,
-                                     Vec<ExtractedTocItem*>& out, BookNativeTocPageStats* stats, FILE* dbg) {
+static int BookNativeLinkedPageItems(EngineBase* engine, const Vec<ScanLine>& lines, int p, Vec<ExtractedTocItem*>& out,
+                                     BookNativeTocPageStats* stats, FILE* dbg) {
     stats->matched = 0;
     stats->distinctTargets = 0;
     Vec<BookLine> page;
@@ -5457,7 +5455,8 @@ static int BookNativeLinkedPageItems(EngineBase* engine, const Vec<ScanLine>& li
             }
         }
         if (dbg) {
-            fprintf(dbg, "NATIVE:\nRAW: %s\nLINK: -> page %d\nAFTER MINIMAL CLEAN: %s\nNUMBERING DEPTH: %d\nLEVEL: %d\n\n",
+            fprintf(dbg,
+                    "NATIVE:\nRAW: %s\nLINK: -> page %d\nAFTER MINIMAL CLEAN: %s\nNUMBERING DEPTH: %d\nLEVEL: %d\n\n",
                     raw, target, title, level, level < 1 ? 1 : level);
         }
         ExtractedTocItem* n = BookNewItem(title, target, ln.x, ln.y, level, 95, ExtractedTocSource::PrintedToc, raw);
@@ -5552,9 +5551,8 @@ static bool TryNativeLinkedBookToc(EngineBase* engine, const Vec<ScanLine>& line
             if (lines[i].srcPage != p || !lines[i].text || !BookLooksLikeTocHeading(lines[i].text)) {
                 continue;
             }
-            ExtractedTocItem* n =
-                BookNewItem(BookPrintedTocBookmarkTitle(lines[i].text), p, lines[i].x, lines[i].y, 1, 99,
-                            ExtractedTocSource::PrintedToc, lines[i].text);
+            ExtractedTocItem* n = BookNewItem(BookPrintedTocBookmarkTitle(lines[i].text), p, lines[i].x, lines[i].y, 1,
+                                              99, ExtractedTocSource::PrintedToc, lines[i].text);
             n->tocPageNo = p;
             n->tocX = lines[i].x;
             n->tocY = lines[i].y;

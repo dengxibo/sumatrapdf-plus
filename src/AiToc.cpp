@@ -41,6 +41,7 @@
 #include "Selection.h"
 #include "Translations.h"
 #include "AiToc.h"
+#include "AppDialogTheme.h"
 #include "DarkModeSubclass.h"
 #include "Theme.h"
 #include "PdfDarkMode.h"
@@ -351,25 +352,31 @@ static void AiTocApplyWaitingTexts(AiTocDialog* dlg) {
     const WCHAR* desc;
     if (dlg->waitManualPaste) {
         title = _TRW("Automatic send incomplete");
-        desc = body ? _TRW("The heading-candidates prompt is on the clipboard. Paste and send it in the AI page.\r\n"
-                           "When the reply is ready, click Copy under the AI reply; the app reads it and imports the TOC.")
-                    : _TRW("The TOC page images and prompt are on the clipboard. Paste and send them in the AI page.\r\n"
-                           "When the reply is ready, click Copy under the AI reply; the app reads it and imports the TOC.");
+        desc =
+            body ? _TRW(
+                       "The heading-candidates prompt is on the clipboard. Paste and send it in the AI page.\r\n"
+                       "When the reply is ready, click Copy under the AI reply; the app reads it and imports the TOC.")
+                 : _TRW(
+                       "The TOC page images and prompt are on the clipboard. Paste and send them in the AI page.\r\n"
+                       "When the reply is ready, click Copy under the AI reply; the app reads it and imports the TOC.");
     } else if (body) {
         title = _TRW("Body structure sent to the web AI");
         if (!dlg->bodyWaitPrivacyShown) {
             dlg->bodyWaitPrivacyShown = true;
-            desc = _TRW("The AI is organizing a TOC from the full-text structure.\r\n"
-                        "When it finishes, click Copy under the AI reply; the app reads it and imports the TOC.\r\n"
-                        "Only locally extracted heading candidates are sent — the PDF itself is not uploaded.");
+            desc = _TRW(
+                "The AI is organizing a TOC from the full-text structure.\r\n"
+                "When it finishes, click Copy under the AI reply; the app reads it and imports the TOC.\r\n"
+                "Only locally extracted heading candidates are sent — the PDF itself is not uploaded.");
         } else {
-            desc = _TRW("The AI is organizing a TOC from the full-text structure.\r\n"
-                        "When it finishes, click Copy under the AI reply; the app reads it and imports the TOC.");
+            desc = _TRW(
+                "The AI is organizing a TOC from the full-text structure.\r\n"
+                "When it finishes, click Copy under the AI reply; the app reads it and imports the TOC.");
         }
     } else {
         title = _TRW("TOC pages sent to the web AI");
-        desc = _TRW("The AI is recognizing the printed TOC.\r\n"
-                    "When it finishes, click Copy under the AI reply; the app reads it and imports the TOC.");
+        desc = _TRW(
+            "The AI is recognizing the printed TOC.\r\n"
+            "When it finishes, click Copy under the AI reply; the app reads it and imports the TOC.");
     }
     SetWindowTextW(dlg->stateTitle, title);
     SetWindowTextW(dlg->stateDesc, desc);
@@ -555,7 +562,9 @@ static void AiTocBodySendWorker(AiTocBodySendWork* work) {
         Sleep(2500);
     }
     if (!CopyTextToClipboard(work->prompt) || !PasteAndSubmitAiChatWhenReady(work->service, browser, !reused)) {
-        work->error = "Automatic send incomplete: the heading-candidates prompt is on the clipboard. Paste it into the AI input box and send.";
+        work->error =
+            "Automatic send incomplete: the heading-candidates prompt is on the clipboard. Paste it into the AI input "
+            "box and send.";
         work->browser = browser;
         return;
     }
@@ -627,19 +636,17 @@ static RenderedBitmap* RenderAiTocThumbnail(EngineBase* engine, int pageNo) {
     // The dialog displays the bitmap at 120 px wide; rendering it close to
     // that size keeps detection responsive even for a long TOC spread.
     float zoom = 360.f / longest;
-    // Dark chrome: render through the same view dark-mode profile as the
-    // main canvas. Light chrome: plain render + shared post recolor below
-    // (warm eye-care gauze), keeping the engine follow-theme path untouched.
+    // Match RenderCache: always build the view theme profile. Light-Warm Auto
+    // is PreserveImages (plain Export pixels + post gauze); dark chrome uses
+    // FollowThemeV2 / SmartDark. ApplyRenderThemePostColors must get the
+    // profile's pageBackground (not bg=0) or Warm thumbs go black.
     RenderPageArgs args(pageNo, zoom, 0, nullptr, RenderTarget::Export);
     DarkModeProfile darkProfile;
-    if (ThemeUsesDarkChrome()) {
-        BuildViewDarkModeProfile(engine, &darkProfile);
-        if (darkProfile.mode != PageColorMode::Normal) {
-            args.darkProfile = &darkProfile;
-        }
+    BuildViewDarkModeProfile(engine, &darkProfile);
+    if (darkProfile.mode != PageColorMode::Normal) {
+        args.darkProfile = &darkProfile;
     }
     RenderedBitmap* bmp = engine->RenderPage(args);
-    // Same post-render recolor as the view tiles (warm gauze, legacy recolor).
     ApplyRenderThemePostColors(engine, bmp, pageNo, zoom, &box, args.darkProfile);
     return bmp;
 }
@@ -703,7 +710,8 @@ static void AiTocPocWorker(AiTocPocWork* work) {
 static void SendAiTocPrompt(AiTocDialog* dlg) {
     if (!AddClipboardFormatListener(dlg->hwnd)) {
         AiTocApplyFallbackTexts(dlg);
-        SetWindowTextW(dlg->status, _TRW("Cannot watch the clipboard. Close the window and try again. The prompt was not sent."));
+        SetWindowTextW(dlg->status,
+                       _TRW("Cannot watch the clipboard. Close the window and try again. The prompt was not sent."));
         return;
     }
     if (!CopyTextToClipboard(kAiTocPrompt) ||
@@ -787,9 +795,8 @@ static void AiTocResendToAi(AiTocDialog* dlg) {
     }
     dlg->busy = true;
     AiTocSetState(dlg, AiTocUiState::SendingToAi);
-    SetWindowTextW(dlg->status,
-                   ToWStrTemp(str::FormatTemp(_TRA("Preparing %d TOC page images for sending…"),
-                                              dlg->confirmedPages.Size())));
+    SetWindowTextW(dlg->status, ToWStrTemp(str::FormatTemp(_TRA("Preparing %d TOC page images for sending…"),
+                                                           dlg->confirmedPages.Size())));
     StartAiTocRender(dlg->win, dlg->confirmedPages, dlg->hwnd);
 }
 
@@ -997,6 +1004,7 @@ static bool AiTocImportJson(AiTocDialog* dlg, const char* text) {
         auto* item = new ExtractedTocItem();
         item->title = str::Dup(src.title);
         item->rawTitle = str::Dup(src.title);
+        NormalizeTocNumberingParens(&item->title);
         item->printedPage = src.hasPage ? src.printedPage : 0;
         // The smoke test assumes printed page 1 follows the selected TOC
         // spread. The calibration bar remains the final authority before Save.
@@ -1120,7 +1128,8 @@ static void AiTocClipboardReady(AiTocClipboardRead* read) {
     dlg->clipboardReading = false;
     if (!dlg->submitted) return;
     if (read->retry) {
-        SetWindowTextW(dlg->status, _TRW("Clipboard is temporarily unreadable. Retrying; you can also copy the AI reply again."));
+        SetWindowTextW(dlg->status,
+                       _TRW("Clipboard is temporarily unreadable. Retrying; you can also copy the AI reply again."));
         return;
     }
     dlg->clipboardSequence = read->sequence;
@@ -1451,42 +1460,6 @@ static void AiTocThemeRenderRetry(AiTocDialog* dlg) {
     AiTocRenderVisibleThumbnails(dlg);
 }
 
-void RefreshAiTocWindowsTheme() {
-    EnumThreadWindows(
-        GetCurrentThreadId(),
-        [](HWND hwnd, LPARAM) -> BOOL {
-            if (!GetPropW(hwnd, kAiTocToken)) return TRUE;
-            auto* dlg = (AiTocDialog*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
-            DeleteObject(dlg->backgroundBrush);
-            DeleteObject(dlg->controlBrush);
-            dlg->backgroundBrush = CreateSolidBrush(ThemeWindowBackgroundColor());
-            dlg->controlBrush = CreateSolidBrush(ThemeWindowControlBackgroundColor());
-            // Thumbnail bitmaps carry theme-rendered page colors. On a theme
-            // change the cached ones are stale: drop them and re-render for
-            // the new theme before the next paint.
-            if (dlg->detectWork && dlg->thumbnailThemeEpoch != ThemeEpoch()) {
-                dlg->thumbnailThemeEpoch = ThemeEpoch();
-                for (int i = 0; i < dlg->detectWork->thumbnails.Size(); i++) {
-                    delete dlg->detectWork->thumbnails[i];
-                    dlg->detectWork->thumbnails[i] = nullptr;
-                }
-            }
-            if (UseDarkModeLib()) DarkMode::setChildCtrlsSubclassAndTheme(hwnd);
-            if (UseDarkModeLib() && dlg->thumbnailPane) DarkMode::setDarkScrollBar(dlg->thumbnailPane);
-            UpdateWindowCaptionTheme(hwnd);
-            RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
-            // Relayout re-renders any null thumbnails synchronously with the
-            // new theme's view dark-mode profile; a posted retry covers the
-            // case where that render was skipped or failed mid-theme-switch,
-            // so visible thumbnails never wait for a manual scroll.
-            AiTocLayoutThumbnails(dlg);
-            AiTocRenderVisibleThumbnails(dlg);
-            uitask::Post(MkFunc0<AiTocDialog>(AiTocThemeRenderRetry, dlg), "AiTocThemeRenderRetry");
-            return TRUE;
-        },
-        0);
-}
-
 // Thumbnail grid constants, in logical DIP. The card width is not fixed:
 // the viewport is divided evenly across 3 columns (falling back to 2 when
 // the per-column width would drop below kAiTocThumbMinWidthDip), and the
@@ -1624,30 +1597,66 @@ static void AiTocScrollThumbnails(AiTocDialog* dlg, int nextPos) {
 }
 
 // Per-DPI fonts for the dialog. Both fonts are owned by the dialog and
-// recreated whenever the monitor DPI changes (GetNonClientMetricsForDpi is
-// the project's existing per-DPI font metric helper).
+// recreated whenever the monitor DPI changes.
 static void AiTocRecreateFonts(AiTocDialog* dlg) {
-    NONCLIENTMETRICS ncm{};
-    ncm.cbSize = sizeof(ncm);
-    if (!GetNonClientMetricsForDpi(dlg->dpi, &ncm)) {
+    AppDialogFonts fonts;
+    fonts.CreateForHwnd(dlg->hwnd);
+    if (!fonts.body || !fonts.semibold) {
+        fonts.Destroy();
         return;
     }
-    // Match the resource-based Options dialog while retaining per-monitor font recreation.
-    ncm.lfMessageFont.lfHeight = -MulDiv(IsAppFontSizeDefault() ? 8 : (GetAppFontSize() * 72) / 96, dlg->dpi, 72);
-    wcscpy_s(ncm.lfMessageFont.lfFaceName, L"MS Shell Dlg");
-    ncm.lfMessageFont.lfWeight = FW_NORMAL;
-    HFONT normal = CreateFontIndirectW(&ncm.lfMessageFont);
-    ncm.lfMessageFont.lfWeight = FW_SEMIBOLD;
-    HFONT bold = CreateFontIndirectW(&ncm.lfMessageFont);
-    if (!normal || !bold) {
-        DeleteObject(normal);
-        DeleteObject(bold);
+    if (dlg->font) {
+        DeleteObject(dlg->font);
+    }
+    if (dlg->fontBold) {
+        DeleteObject(dlg->fontBold);
+    }
+    dlg->font = fonts.body;
+    dlg->fontBold = fonts.semibold;
+    fonts.body = fonts.semibold = nullptr; // ownership transferred
+}
+
+static void AiTocRefreshOneTheme(HWND hwnd, AiTocDialog* dlg) {
+    if (!dlg || !hwnd) {
         return;
     }
-    if (dlg->font) DeleteObject(dlg->font);
-    if (dlg->fontBold) DeleteObject(dlg->fontBold);
-    dlg->font = normal;
-    dlg->fontBold = bold;
+    DeleteObject(dlg->backgroundBrush);
+    DeleteObject(dlg->controlBrush);
+    dlg->backgroundBrush = CreateSolidBrush(ThemeWindowBackgroundColor());
+    dlg->controlBrush = CreateSolidBrush(ThemeWindowControlBackgroundColor());
+    if (dlg->detectWork && dlg->thumbnailThemeEpoch != ThemeEpoch()) {
+        dlg->thumbnailThemeEpoch = ThemeEpoch();
+        for (int i = 0; i < dlg->detectWork->thumbnails.Size(); i++) {
+            delete dlg->detectWork->thumbnails[i];
+            dlg->detectWork->thumbnails[i] = nullptr;
+        }
+    }
+    AppDialogApplyChrome(hwnd);
+    if (UseDarkModeLib() && dlg->thumbnailPane) {
+        DarkMode::setDarkScrollBar(dlg->thumbnailPane);
+    }
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
+    AiTocLayoutThumbnails(dlg);
+    AiTocRenderVisibleThumbnails(dlg);
+    uitask::Post(MkFunc0<AiTocDialog>(AiTocThemeRenderRetry, dlg), "AiTocThemeRenderRetry");
+}
+
+static void AiTocThemeRefreshCb(HWND hwnd, void* ctx) {
+    AiTocRefreshOneTheme(hwnd, (AiTocDialog*)ctx);
+}
+
+void RefreshAiTocWindowsTheme() {
+    EnumThreadWindows(
+        GetCurrentThreadId(),
+        [](HWND hwnd, LPARAM) -> BOOL {
+            if (!GetPropW(hwnd, kAiTocToken)) {
+                return TRUE;
+            }
+            auto* dlg = (AiTocDialog*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+            AiTocRefreshOneTheme(hwnd, dlg);
+            return TRUE;
+        },
+        0);
 }
 
 static void AiTocApplyStateFonts(AiTocDialog* dlg) {
@@ -2600,7 +2609,8 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         dlg->bodyFallback = false;
         dlg->mode = AiTocSourceMode::PrintedToc;
         AiTocEnterReview(dlg);
-        SetWindowTextW(dlg->status, _TRW("Enter the PDF pages of the TOC; matching thumbnails will be checked. You can also click thumbnails directly."));
+        SetWindowTextW(dlg->status, _TRW("Enter the PDF pages of the TOC; matching thumbnails will be checked. You can "
+                                         "also click thumbnails directly."));
         AiTocUpdateSendEnabled(dlg);
         return 0;
     }
@@ -2677,6 +2687,7 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
     if (msg == WM_COMMAND && LOWORD(wp) == IDCANCEL) DestroyWindow(hwnd);
     if (msg == WM_CLOSE) DestroyWindow(hwnd);
     if (msg == WM_NCDESTROY) {
+        UnregisterAppDialogForTheme(hwnd);
         logf("[AITOC] workflow ended at %s\n", AiTocStateName(dlg->state));
         KillTimer(hwnd, 1);
         KillTimer(hwnd, 2);
@@ -2823,16 +2834,16 @@ void StartAiTocProofOfConcept(MainWindow* win) {
     // modes, only the highlight moves with the state. SS_LEFTNOWORDWRAP: a
     // bold label wider than its box must clip, never wrap into a clipped
     // second line (looks like garbage).
-    dlg->phasePrep = CreateWindowExW(0, L"STATIC", _TRW("Prepare Content"), WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0,
-                                     0, 10, 10, hwnd, nullptr, h, nullptr);
+    dlg->phasePrep = CreateWindowExW(0, L"STATIC", _TRW("Prepare Content"), WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP,
+                                     0, 0, 10, 10, hwnd, nullptr, h, nullptr);
     dlg->phaseArrow = CreateWindowExW(0, L"STATIC", L"→", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0, 0, 10, 10, hwnd,
                                       nullptr, h, nullptr);
     dlg->phaseAi = CreateWindowExW(0, L"STATIC", _TRW("AI Processing"), WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0, 0,
                                    10, 10, hwnd, nullptr, h, nullptr);
     dlg->phaseArrow2 = CreateWindowExW(0, L"STATIC", L"→", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0, 0, 10, 10,
                                        hwnd, nullptr, h, nullptr);
-    dlg->phaseImport = CreateWindowExW(0, L"STATIC", _TRW("Import TOC"), WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0, 0,
-                                       10, 10, hwnd, nullptr, h, nullptr);
+    dlg->phaseImport = CreateWindowExW(0, L"STATIC", _TRW("Import TOC"), WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0,
+                                       0, 10, 10, hwnd, nullptr, h, nullptr);
     HWND label = CreateWindowExW(0, L"STATIC", _TRW("TOC pages (PDF page numbers, not printed page numbers)"),
                                  WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, 10, 10, hwnd, nullptr, h, nullptr);
     dlg->pagesLabel = label;
@@ -2851,8 +2862,8 @@ void StartAiTocProofOfConcept(MainWindow* win) {
     HWND cancel = CreateWindowExW(0, L"BUTTON", _TRW("Cancel"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 10, 10,
                                   hwnd, (HMENU)IDCANCEL, h, nullptr);
     SendMessageW(cancel, WM_SETFONT, (WPARAM)dlg->font, TRUE);
-    dlg->send = CreateWindowExW(0, L"BUTTON", _TRW("Send TOC Pages"), WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 0, 0, 10,
-                                10, hwnd, (HMENU)1001, h, nullptr);
+    dlg->send = CreateWindowExW(0, L"BUTTON", _TRW("Send TOC Pages"), WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 0, 0,
+                                10, 10, hwnd, (HMENU)1001, h, nullptr);
     SendMessageW(dlg->send, WM_SETFONT, (WPARAM)dlg->font, TRUE);
     EnableWindow(dlg->send, FALSE);
     // Fallback for documents without a printed TOC. Hidden until detection
@@ -2872,10 +2883,11 @@ void StartAiTocProofOfConcept(MainWindow* win) {
     // SS_LEFTNOWORDWRAP on single-line labels: bold text must clip, not wrap.
     dlg->stateTitle = CreateWindowExW(0, L"STATIC", _TRW("No printed TOC found"), WS_CHILD | SS_LEFTNOWORDWRAP, 0, 0,
                                       10, 10, hwnd, nullptr, h, nullptr);
-    dlg->stateDesc = CreateWindowExW(0, L"STATIC",
-                                     _TRW("This document may not have a separate printed TOC.\r\n"
-                                          "You can generate one from the body structure or specify the TOC pages manually."),
-                                     WS_CHILD | SS_LEFT, 0, 0, 10, 10, hwnd, nullptr, h, nullptr);
+    dlg->stateDesc =
+        CreateWindowExW(0, L"STATIC",
+                        _TRW("This document may not have a separate printed TOC.\r\n"
+                             "You can generate one from the body structure or specify the TOC pages manually."),
+                        WS_CHILD | SS_LEFT, 0, 0, 10, 10, hwnd, nullptr, h, nullptr);
     dlg->bodyTitle = CreateWindowExW(0, L"STATIC", _TRW("Generate TOC From Body"), WS_CHILD | SS_LEFTNOWORDWRAP, 0, 0,
                                      10, 10, hwnd, nullptr, h, nullptr);
     dlg->bodyDesc = CreateWindowExW(0, L"STATIC",
@@ -2894,9 +2906,9 @@ void StartAiTocProofOfConcept(MainWindow* win) {
     AiTocLayoutControls(dlg);
     if (UseDarkModeLib()) {
         DarkMode::setDarkWndNotifySafe(hwnd);
-        DarkMode::setChildCtrlsTheme(hwnd);
     }
-    UpdateWindowCaptionTheme(hwnd);
+    AppDialogApplyChrome(hwnd);
+    RegisterAppDialogForTheme(hwnd, AiTocThemeRefreshCb, dlg);
     AiTocCenterOverMainWindow(dlg);
     ShowWindow(hwnd, SW_SHOWNORMAL);
     SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);

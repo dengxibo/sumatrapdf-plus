@@ -1162,7 +1162,16 @@ TempStr MarkupTextTemp(Annotation* annot) {
         return nullptr;
     }
     StrBuilder sb;
-    for (int i = 0; i < pt.len; i++) {
+    /* Walk by UTF-8 codepoint — coords repeat per byte; including only some
+     * bytes of a CJK character produces mojibake in the list/export. */
+    for (int i = 0; i < pt.len;) {
+        int n = utf8RuneLen((const u8*)(pt.text + i));
+        if (n < 1) {
+            n = 1;
+        }
+        if (i + n > pt.len) {
+            break;
+        }
         RectF cr = ToRectF(pt.coords[i]);
         PointF center(cr.x + cr.dx / 2.f, cr.y + cr.dy / 2.f);
         bool hit = false;
@@ -1173,15 +1182,17 @@ TempStr MarkupTextTemp(Annotation* annot) {
             }
         }
         if (hit) {
-            sb.AppendChar(pt.text[i]);
+            sb.Append(pt.text + i, (size_t)n);
         }
+        i += n;
     }
     FreePageTextUtf8(&pt);
     TempStr res = sb.Get();
     if (str::IsEmptyOrWhiteSpace(res)) {
         return nullptr;
     }
-    return res;
+    // StrBuilder::Get() points at sb's buffer; DupTemp so it survives sb's destructor.
+    return str::DupTemp(res);
 }
 
 Annotation* EngineMupdfCreateAnnotation(EngineBase* engine, int pageNo, PointF pos, AnnotCreateArgs* args) {

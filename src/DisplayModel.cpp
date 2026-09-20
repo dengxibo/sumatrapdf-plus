@@ -848,7 +848,12 @@ void DisplayModel::GetDisplayState(FileState* fs) {
 
 SizeF DisplayModel::PageSizeAfterRotation(int pageNo, bool fitToContent) const {
     PageInfo* pageInfo = GetPageInfo(pageNo);
-    ReportIf(!pageInfo);
+    // Progressive reflow (docx/epub) lays out only the first batch. A restored
+    // page past that batch has no PageInfo yet; an empty size skips the zoom
+    // instead of asserting in the middle of reload.
+    if (!pageInfo) {
+        return SizeF();
+    }
 
     if (fitToContent && pageInfo->contentBox.IsEmpty()) {
         pageInfo->contentBox = engine->PageContentBox(pageNo);
@@ -973,11 +978,19 @@ PageInfo* DisplayModel::GetPageInfo(int pageNo) const {
 void DisplayModel::SetInitialViewSettings(DisplayMode newDisplayMode, int newStartPage, Size viewPort, int screenDPI) {
     totalViewPortSize = viewPort;
     dpiFactor = 1.0f * screenDPI / engine->GetFileDPI();
-    if (ValidPageNo(newStartPage)) {
+    // pagesInfo does not exist yet, so ValidPageNo() is the engine count.
+    // Progressive reflow only lays out kEbookInitialPages on this pass.
+    int layoutPages = engine->PageCount();
+    if (EngineIsProgressiveEbookLoading(engine)) {
+        layoutPages = std::min(layoutPages, kEbookInitialPages);
+    }
+    if (newStartPage >= 1 && newStartPage <= layoutPages) {
         startPage = newStartPage;
-    } else if (EngineIsProgressiveEbookLoading(engine) && newStartPage >= 1) {
+    } else if (newStartPage >= 1 && engine->PageCount() >= newStartPage) {
         pendingRestoreScroll = ScrollState(newStartPage, -1, -1);
         hasPendingRestoreScroll = true;
+        startPage = 1;
+    } else if (layoutPages >= 1) {
         startPage = 1;
     }
 
@@ -1611,6 +1624,21 @@ float DisplayModel::ZoomRealFromVirtualForPage(float zoomVirtual, int pageNo) co
     if (EngineIsProgressiveEbookLoading(engine) && zoom > 8.0f * dpiFactor) {
         zoom = dpiFactor;
     }
+    // docx/EPUB fixed page box: Fit Content on a sparse page (short table, blank
+    // lower half) must not exceed Fit Page — empty chrome is not croppable margin.
+    if (fitToContent && EngineMupdfIsFixedPageReflow(engine)) {
+        SizeF pageRow = PageSizeAfterRotation(pageNo, false);
+        pageRow.dx *= columns;
+        pageRow.dx += (double)pageSpacing.dx * (double)(columns - 1);
+        if (!RectF(PointF(), pageRow).IsEmpty()) {
+            float zoomPageX = areaForPagesDx / (float)pageRow.dx;
+            float zoomPageY = areaForPagesDy / (float)pageRow.dy;
+            float zoomPage = (zoomPageX < zoomPageY) ? zoomPageX : zoomPageY;
+            if (zoomPage > 0.01f && zoom > zoomPage) {
+                zoom = zoomPage;
+            }
+        }
+    }
     return zoom;
 }
 
@@ -1635,7 +1663,10 @@ int DisplayModel::FirstVisiblePageNo() const {
 // (in continuous layout, there's no better criteria)
 int DisplayModel::CurrentPageNo() const {
     if (!IsContinuous(GetDisplayMode())) {
-        return startPage;
+        if (ValidPageNo(startPage)) {
+            return startPage;
+        }
+        return PageCount() >= 1 ? 1 : kInvalidPageNo;
     }
 
     ReportIf(!pagesInfo);
@@ -1665,7 +1696,8 @@ int DisplayModel::CurrentPageNo() const {
         if (pageInfo && viewPort.y > pageInfo->pos.y + pageInfo->pos.dy) {
             // During progressive loading PageCount() is only the initial batch
             // (kEbookInitialPages), not the document end — stay at startPage.
-            if (EngineIsProgressiveEbookLoading(engine) && pagesInfoCount < engine->PageCount()) {
+            if (EngineIsProgressiveEbookLoading(engine) && pagesInfoCount < engine->PageCount() &&
+                ValidPageNo(startPage)) {
                 mostVisiblePage = startPage;
             } else {
                 mostVisiblePage = PageCount();
@@ -1675,7 +1707,14 @@ int DisplayModel::CurrentPageNo() const {
         }
     }
 
-    return mostVisiblePage <= engine->PageCount() ? mostVisiblePage : engine->PageCount();
+    int n = PageCount();
+    if (mostVisiblePage < 1 || mostVisiblePage > n) {
+        if (ValidPageNo(startPage)) {
+            return startPage;
+        }
+        return n >= 1 ? 1 : kInvalidPageNo;
+    }
+    return mostVisiblePage;
 }
 
 void DisplayModel::CalcZoomReal(float newZoomVirtual) {
@@ -1722,6 +1761,15 @@ void DisplayModel::CalcZoomReal(float newZoomVirtual) {
         // limit zooming in to 800% on almost empty pages
         if (newZoom > 8.0) {
             newZoom = 8.0;
+        }
+        // Word/HTML fixed page boxes: don't let a sparse page 2 (short table,
+        // blank lower half) Fit-Content past Fit Page — looks like the doc
+        // "suddenly became huge" when flipping pages.
+        if (EngineMupdfIsFixedPageReflow(engine)) {
+            float fitPageZoom = ZoomRealFromVirtualForPage(kZoomFitPage, CurrentPageNo());
+            if (fitPageZoom > 0.01f && newZoom > fitPageZoom) {
+                newZoom = fitPageZoom;
+            }
         }
         // don't zoom in by just a few pixels (throwing away a prerendered page)
         if (newZoom < zoomReal || zoomReal / newZoom < 0.95 ||
@@ -2707,6 +2755,12 @@ bool DisplayModel::GoToNextPage() {
         return true;
     }
     int firstPageInNewRow = FirstPageInARowNo(currPageNo + columns, columns, IsBookView(GetDisplayMode()));
+    // Reflow reload can show the engine page count in the toolbar while only
+    // the first page is laid out. Grow before treating this as the last page.
+    if (firstPageInNewRow > PageCount() && engine && PageCount() < engine->PageCount()) {
+        EnsurePagesInfoForPage(engine->PageCount());
+        firstPageInNewRow = FirstPageInARowNo(currPageNo + columns, columns, IsBookView(GetDisplayMode()));
+    }
     if (firstPageInNewRow > PageCount()) {
         /* we're on a last row or after it, can't go any further */
         return false;
@@ -2862,7 +2916,17 @@ void DisplayModel::ScrollYBy(int dy, bool changePage) {
     newYOff += dy;
     newYOff = limitValue(newYOff, 0, canvasSize.dy - viewPort.dy);
     if (newYOff == currYOff) {
-        return;
+        // Continuous reflow: the canvas may still be only the first laid-out
+        // page. Extend it so scrolling can reach pages the engine already counted.
+        bool moreEnginePages = engine && pagesInfo && pagesInfoCount < engine->PageCount();
+        bool layoutBehind = pagesInfo && reflowLayoutValidUpto > 0 && reflowLayoutValidUpto < pagesInfoCount;
+        if (dy > 0 && engine && (moreEnginePages || layoutBehind)) {
+            EnsurePagesInfoForPage(engine->PageCount());
+            newYOff = limitValue(currYOff + dy, 0, canvasSize.dy - viewPort.dy);
+        }
+        if (newYOff == currYOff) {
+            return;
+        }
     }
 
     currPageNo = CurrentPageNo();

@@ -235,12 +235,26 @@ static bool CadIsGrayRgb(float r, float g, float b) {
     return lum >= 0.38f && lum <= 0.88f;
 }
 
-static void cad_analysis_note_stroke(cad_analysis_device* d, const fz_stroke_state* stroke, float r, float g, float b) {
+static float CadCtmExpansion(fz_matrix ctm) {
+    float e = sqrtf(ctm.a * ctm.a + ctm.b * ctm.b);
+    float e2 = sqrtf(ctm.c * ctm.c + ctm.d * ctm.d);
+    if (e2 > e) {
+        e = e2;
+    }
+    return e > 0.0001f ? e : 1.f;
+}
+
+static void cad_analysis_note_stroke(cad_analysis_device* d, const fz_stroke_state* stroke, float r, float g, float b,
+                                     float ctmExpansion) {
     d->strokes++;
     if (CadIsGrayRgb(r, g, b)) {
         d->grayStrokes++;
     }
-    if (stroke && stroke->linewidth <= 0.25f) {
+    // linewidth 0 is PDF hairline; otherwise use CTM-scaled user width (CAD often
+    // ships linewidth=1 with a tiny text/plot matrix).
+    float lw = stroke ? stroke->linewidth : 1.f;
+    float effective = (lw <= 0.f) ? 0.f : lw * ctmExpansion;
+    if (effective <= 0.25f) {
         d->thinStrokes++;
     }
 }
@@ -249,13 +263,12 @@ static void cad_analysis_stroke_path(fz_context* ctx, fz_device* dev, const fz_p
                                      const fz_stroke_state* stroke, fz_matrix ctm, fz_colorspace* colorspace,
                                      const float* color, float alpha, fz_color_params color_params) {
     (void)path;
-    (void)ctm;
     (void)alpha;
     cad_analysis_device* d = (cad_analysis_device*)dev;
     float rgb[FZ_MAX_COLORS] = {};
     fz_colorspace* ds = fz_device_rgb(ctx);
     fz_convert_color(ctx, colorspace, color, ds, rgb, colorspace, color_params);
-    cad_analysis_note_stroke(d, stroke, rgb[0], rgb[1], rgb[2]);
+    cad_analysis_note_stroke(d, stroke, rgb[0], rgb[1], rgb[2], CadCtmExpansion(ctm));
 }
 
 static void cad_analysis_fill_path(fz_context* ctx, fz_device* dev, const fz_path* path, int even_odd, fz_matrix ctm,
@@ -284,7 +297,7 @@ static void cad_analysis_fill_text(fz_context* ctx, fz_device* dev, const fz_tex
     float rgb[FZ_MAX_COLORS] = {};
     fz_colorspace* ds = fz_device_rgb(ctx);
     fz_convert_color(ctx, colorspace, color, ds, rgb, colorspace, color_params);
-    cad_analysis_note_stroke(d, nullptr, rgb[0], rgb[1], rgb[2]);
+    cad_analysis_note_stroke(d, nullptr, rgb[0], rgb[1], rgb[2], CadCtmExpansion(ctm));
 }
 
 static void cad_analysis_stroke_text(fz_context* ctx, fz_device* dev, const fz_text* text,
@@ -487,24 +500,13 @@ CadDetectResult DetectCadPdf(fz_context* ctx, pdf_document* doc) {
         return res;
     }
 
-    if (HasPdfEMarker(ctx, doc)) {
-        res.enable = true;
-        res.reason = CadEnhanceReason::Pdfe;
-        res.score = 100;
-        return res;
-    }
-
     bool strongMetadata = false;
     int metadataScore = ScoreMetadata(ctx, doc, &strongMetadata);
     if (metadataScore <= -100) {
         return res;
     }
-    if (strongMetadata) {
-        res.enable = true;
-        res.reason = CadEnhanceReason::Metadata;
-        res.score = metadataScore;
-        return res;
-    }
+
+    bool pdfe = HasPdfEMarker(ctx, doc);
 
     int pageCount = pdf_count_pages(ctx, doc);
     float maxPageSide = 0.f;
@@ -535,9 +537,26 @@ CadDetectResult DetectCadPdf(fz_context* ctx, pdf_document* doc) {
     bool rasterDominant = false;
     bool hairlineVector = false;
     int heuristicScore = ScoreHeuristic(ctx, doc, pageCount, maxPageSide, &rasterDominant, &hairlineVector);
-    res.score = heuristicScore + metadataScore;
     res.rasterDominant = rasterDominant;
     res.hairlineVector = hairlineVector;
+
+    // PDF/E / strong CAD metadata already enable enhance, but we still need the
+    // hairline/raster flags from page analysis — otherwise min-line-width stays
+    // on the mild path and CAD plots still look hair-thin when fit-to-page.
+    if (pdfe) {
+        res.enable = true;
+        res.reason = CadEnhanceReason::Pdfe;
+        res.score = 100;
+        return res;
+    }
+    if (strongMetadata) {
+        res.enable = true;
+        res.reason = CadEnhanceReason::Metadata;
+        res.score = metadataScore;
+        return res;
+    }
+
+    res.score = heuristicScore + metadataScore;
     if (rasterDominant && res.score >= 45 && pageCount <= 30) {
         res.enable = true;
         res.reason = CadEnhanceReason::RasterImage;
@@ -551,7 +570,7 @@ CadDetectResult DetectCadPdf(fz_context* ctx, pdf_document* doc) {
         res.reason = CadEnhanceReason::Heuristic;
         return res;
     }
-    if (strongMetadata == false && metadataScore > 0 && res.score >= 45) {
+    if (metadataScore > 0 && res.score >= 45) {
         res.enable = true;
         res.reason = CadEnhanceReason::Heuristic;
         return res;

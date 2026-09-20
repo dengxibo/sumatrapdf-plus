@@ -539,7 +539,14 @@ static void RebuildList(EbookAnnotationsWindow* window) {
         text.Reset();
         int pageNo = EbookAnnotationGetPageNo(window->tab, annotation);
         text.AppendFmt(_TRA("page %d,"), pageNo);
-        text.AppendFmt(" %s", AnnotationReadableNameTemp(EbookAnnotationGetType(annotation)));
+        AnnotationType type = EbookAnnotationGetType(annotation);
+        text.AppendFmt(" %s", AnnotationReadableNameTemp(type));
+        const char* note = EbookAnnotationGetNote(annotation);
+        if (!str::IsEmptyOrWhiteSpace(note) &&
+            (type == AnnotationType::Highlight || type == AnnotationType::Underline ||
+             type == AnnotationType::Squiggly || type == AnnotationType::StrikeOut)) {
+            text.Append(" ✎");
+        }
         const char* annotationText = EbookAnnotationGetText(annotation);
         if (!str::IsEmptyOrWhiteSpace(annotationText)) {
             TempStr preview = str::DupTemp(annotationText);

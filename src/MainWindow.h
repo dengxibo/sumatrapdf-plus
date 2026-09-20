@@ -14,6 +14,7 @@ struct TreeView;
 struct TabsCtrl;
 struct TocTree;
 struct SelectionToolbar;
+struct DisplayFilterPanel;
 struct FindBarWnd;
 struct FindWindowWnd;
 struct EbookAnnotation;
@@ -260,6 +261,8 @@ struct MainWindow {
     Point annotCreateDragStart;
     Vec<PointF> annotCreateInkPoints;
     bool ocrRegionPending = false;
+    // True when OCR region drag was started with Alt+LMB (temporary tool), not sticky mode.
+    bool ocrRegionFromModifier = false;
 
     /* when moving the document by smooth scrolling, this keeps track of
        the speed at which we should scroll, which depends on the distance
@@ -450,6 +453,7 @@ struct MainWindow {
     // small floating toolbar shown after a text selection in PDF documents
     // that support annotations (controlled by Annotations.SelectionToolbar)
     SelectionToolbar* selectionToolbar = nullptr;
+    DisplayFilterPanel* displayFilterPanel = nullptr;
 
     // set at the beginning of CloseWindow() to prevent
     // processing commands while closing (e.g. reentrancy

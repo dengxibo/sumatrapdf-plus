@@ -2,9 +2,105 @@
 
 ## next
 
+- UI: page display filter (brightness / contrast / sharpness) is per-document and opened from the toolbar; paint-time only so sliders do not re-render. Presets: Reading / Scan / Reset. Saved on the file's `FileState` (`DisplayFilterBrightness` / `Contrast` / `Sharpness`). Does not affect print or copy-page-as-image.
+  界面：页面显示滤镜（亮度/对比度/锐度）按文档保存，从工具栏打开；贴屏时套用，拖滑块不重渲染。预设：阅读优化/扫描件/重置。写入该文件的 FileState。不影响打印与复制页面图。
+- UI: add `TabFontSize` (0 = follow UI font) and `TabBarHeight` (0 = automatic ~24 DIP) so the tab bar can be sized independently of global `UIFontSize`; exposed in Options → Interface → Tabs and toolbar.
+  界面：新增 `TabFontSize`（0=自动）与 `TabBarHeight`（0=自动约 24 DIP），标签栏可单独调字号/高度；选项对话框「界面 → 标签页和工具栏」可改。
+- office: honor Word table `trHeight` (atLeast/exact) as cell height floor so blank form rows are not hairline-thin; emit vertical `textDirection` cells one glyph per line; do not apply auto line-height &lt; 1 (crushed overlapping glyphs in form labels).
+  Office：表格行高 `trHeight` 生效（空白表行不再挤成一条线）；竖排单元格逐字换行；自动行距小于 1 时不再压叠字形。
+- office: 公文红头 that Word packs with `w:jc=right` + character scale (`w:w`) no longer wraps into a right-aligned mess; treat as a centered banner and fit one line. Large `w:ind left` fake-centering (文号 / 副标题) maps to true `text-align:center`.
+  Office：红头用右对齐+字符缩放压成一行时，不再折成右对齐多行；按居中条幅拟合。文号等大 left 假居中改为真正居中。
+- OCR: region select is a temporary tool — hold `Alt` and drag with the left mouse button (modifier only needed at mouse-down). Keyboard backup `Ctrl+Shift+X` (`CmdOcrRegion` / 框选识别); `Ctrl+Shift+O` kept for compatibility. Override via Advanced Settings → Shortcuts if needed. (`Shift`+drag remains document pan.)
+  OCR：框选识别改为按住 `Alt` 拖框的临时工具（仅需在按下时按住修饰键）；键盘备用 `Ctrl+Shift+X`；保留 `Ctrl+Shift+O` 兼容。`Shift`+拖仍为文档平移。
+- plugin: when launched with `-plugin` (Total Commander sLister / similar), do not flash a top-level window or steal focus before embedding; force off session restore / remembered files / update checks in plugin mode (fixes dengxibo/sumatrapdf-plus#32). Prefer [TCSumatraPDF](https://totalcmd.net/plugring/wlx_TCSumatraPDF.html) over the unmaintained sLister for F3 / Quick View.
+  插件：`-plugin` 嵌入（TC sLister 等）时不再先闪一个独立窗口再嵌进去，也不抢 TC 焦点；插件模式关闭会话恢复/历史文件/自动更新（#32）。F3 / 快速查看更推荐用 TCSumatraPDF。
+- automation: document DDE `Open` 5th arg `inCurrentTab=1` (replace file in the current tab); add `WM_COPYDATA` magic `'Opn2'` (`SumatraOpenCopyDataEx`) for Excel VBA / SendMessage to do the same without DDE.
+  自动化：文档化 DDE `Open` 第 5 参数 `inCurrentTab=1`（当前标签页替换打开）；新增 `WM_COPYDATA` 魔数 `'Opn2'`，便于 Excel VBA 用 SendMessage 在当前标签页快速预览 PDF。
+- office: when a run omits w:sz, resolve size from pPr rPr / paragraph style (basedOn) / Normal; set body CSS font-size from Normal (fixes 公文 recipient lines like 省政务服务办公室： rendering at 12pt while body runs are 16pt).
+  Office：run 未写字号时从段落样式链解析；body 默认字号取自 Normal（修复主送机关等行偏小）。
+- office: load `word/numbering.xml` and emit real list markers (`1.` / `（1）` / `一` / bullets) with left/hanging/firstLine indent instead of blind `<ul>` bullets; typed 一、/（一）/1. outline headings use `hN.Outline` so TOC keeps structure without enlarging/bolding body text; inherit \irstLine\ from paragraph styles (e.g. Normal) when the paragraph omits \w:ind\; map Word spacing/line to CSS margin and line-height.
+  Office：读取 numbering.xml，按大纲生成真实编号与悬挂缩进（不再把 numPr 一律变成无心圆点列表）；正文里手打的一、/（一）/1. 仍进书签，但不改成放大加粗标题字号；段落未写缩进时继承正文样式的首行缩进；映射 Word 段前/段后/行距到 CSS。
+- office: resolve Word table borders from `tblStyle` / `tblBorders` / `tcBorders` (`insideH`/`insideV`, `w:sz` → fractional pt) instead of forcing every cell to `1px` black; seal collapsed-border paint so shared edges do not leave 1px AA gaps.
+- office: 落款 (agency + date): keep the block right-aligned, but center the shorter date line under the agency name (Word pads with spaces; we use `padding-right` after stripping).
+  Office：落款靠右不变，日期相对单位名称居中（不再与单位右缘齐平）。
+- office: do not inject Word `lastRenderedPageBreak` page `<div>`s mid-paragraph (orphaned font-size spans made continuation text shrink / change face); same rule as mid-table — MuPDF reflow paginates.
+  Office：段落中间的 Word 分页标记不再插入 page `<div>`（会拆断字号/字体 span）；与表格内一样交给排版分页。
+- office: skip empty Word spacer paragraphs (they painted a blank line); a paragraph that only holds `sectPr` is a section break — omitted `w:type` means next page, so the following block gets `page-break-before:always` (附件 starts its own page). Do not wrap the body in `lastRenderedPageBreak` page `<div>`s.
+  Office：跳过空白占位段落（不再画出句中空行）；只含 `sectPr` 的段落是分节符，省略类型按下一页处理，下一块 `page-break-before:always`（附件另起一页）。正文不再包 `lastRenderedPageBreak` 的 page `<div>`。
+- office: a short `2.` / `4.` line with a large `w:ind left` is a real list indent, not a fake-centered title. A second `3.` run packed into the same paragraph breaks onto its own line so 附件 items share one left edge.
+  Office：短的 `2.`/`4.` 大左缩进是附件条目，不再当成假居中标题。同一段里后一个 `3.` 另起一行，附件条目左缘对齐。
+- office: keep table-cell `w:ind left` (form header labels are centered that way) and drop the default cell padding that wrapped them; a fake-centered title that only slightly overflows the measure stays one line.
+  Office：单元格保留 `w:ind left`（表头靠它居中），并去掉默认内边距以免表头换行；略超版心的假居中标题收成一行。
+- office: honor `w:ind right` so a narrow line of `1. 2. 3. 4.` wraps one marker per line; drop tracking-shim spaces (negative `w:spacing`); do not center a `2025年 月 日` line that is positioned by left indent.
+  Office：右缩进生效，`1. 2. 3. 4.` 各占一行；负字距的空格不再留洞；`2025年 月 日` 按左缩进靠右，不再居中。
+- office: center text in the first two table rows (表头). Word fakes that with `w:ind left`, which stays stuck to the left once the cell width is a percentage; also vertically center those header cells.
+  Office：表头两行文字水平、垂直居中。Word 用左缩进假居中，格子按比例变宽后字会贴在左边。
+- office: leading spaces on a heading are the indent when `w:ind` is missing (`一、` / `二、` use four spaces; `三、` uses firstLine). Keep that width as `text-indent` after the spaces are stripped for the TOC.
+  Office：一级标题有的用行首空格缩进、有的用首行缩进。空格被标题去掉后，`一、` `二、` 会比 `三、` 靠左。现在按空格宽度补回缩进。
+- office: keep a blank paragraph's line spacing (落款后的空行) so 附件1 starts on the next page. Outline headings do not add extra margin, so the signature and date stay on the previous page. A sectPr paragraph is still a page break, not a blank line.
+  Office：落款后的空行留出行距，附件1才换页。一级标题不再额外加段前段后，落款和日期留在上一页。分节空段仍是换页。
+- office: do not paint blank paragraphs that sit in front of a 落款日期. Those gaps were pushing the date onto the next page, away from the unit name. Blanks after the date (before 附件) are unchanged.
+  Office：单位落款和日期之间的空行不再撑开，日期不会被顶到下一页。日期后面、附件前面的空行仍保留。
+- office: size a Word drawing from its `wp:extent` in CSS pt, not the bitmap pixels and not HTML width/height (those are read as pt and come out a third too tall). A scaled screenshot was filling most of a page and leaving 落款 alone on the next page.
+- display: Deskew lives with OCR — toolbar OCR dropdown and the page context menu offer Deskew Page / Deskew All Scanned Pages; Recognize All can deskew before OCR (`OcrDeskew`, default on). Manual deskew marks the tab dirty (red dot) and bakes into the PDF on Save; it does not auto-save.
+  显示：倾斜校正挂在 OCR 上——工具栏 OCR 下拉和页面右键提供「倾斜校正当前页 / 全部扫描页」；全文识别可先校正再认字（`OcrDeskew`，默认开）。手动校正会标脏（小红点），保存时写入 PDF，不会自动保存。
+- display: View → Deskew Page straightens a slightly tilted scan (about 0.4° to 12°). Separate from 90° rotate and PDF `/Rotate`.
+  显示：视图菜单「倾斜校正」把略微歪斜的扫描页转正（大约 0.4° 到 12°）。与 90° 旋转和 PDF `/Rotate` 分开。
+- display: Ctrl+Plus and Ctrl+Minus zoom by 5% of the current zoom. The mouse wheel still uses ZoomIncrement, or the preset ladder when that is 0.
+  显示：Ctrl+加号和 Ctrl+减号按当前缩放的 5% 步进。滚轮仍走缩放步长；步长为 0 时用原来的固定档位。
+- office: keep Word heading and title font sizes. `h1 { font-size: 1.7em }` was wrapping form titles such as `党支部委员会…整改清单` onto a second line. Bold centered titles that are only a little wider than the page are fitted onto one line.
+  Office：Word 标题不再被 HTML 的 h1 放大。加粗居中、略超页宽的表题（如整改清单）缩到一行，和 Word 一样。
+- office: Word `.doc` / `.docx` can extract a sidebar table of contents the same way as PDF (menu and the empty-bookmark link). The result stays in the sidebar for this session; it is not written back into the Word file.
+  Office：Word 的 `.doc` / `.docx` 也可以提取目录（菜单和「暂无书签」下的链接）。结果只留在本次侧栏，不写回 Word 文件。
+- office: a later section with a different page size (函 portrait, 附件横表 landscape) keeps page 1 and lays the table on its own paper, so the grid is not squeezed until the cell borders disappear. The section after that横表 uses its own paper again, so a portrait 附件 title and a large image (QR code) stay on one page.
+  Office：后面的节如果纸张不同（函是竖版、附件是横表），第 1 页保持竖版，表格按横表排，格子线不会被挤没。横表之后的节再换回自己的纸张，竖版附件的标题和大图（二维码）留在同一页。
+  Office：图片按 Word 里的显示尺寸排。截图被放大后，落款和日期会单独掉到下一页。
+- office: an attachment line like `2.` uses `w:ind` left+hanging plus spaces in that gap so the number lines up under `1.`. Stripping the spaces for the TOC must leave the gap.
+  Office：函末「2.」用左缩进加悬挂，空格填在悬挂空隙里，这样才能和「1.」对齐。标题去掉空格后要把这段空隙留住。
+- office: sidebar TOC from HTML headings (not Word's TOC field); promote centered 公文文头 (`关于…的函/通知/请示`) and Word Title/标题 to `h1` so the document title appears in 书签.
+  Office：书签来自 HTML 标题层级（不是 Word 目录域）；居中公文文头与 Title/标题样式升为 h1，文头进入书签。
+- display: Fit Content on fixed-page reflow (docx/EPUB) no longer zooms past Fit Page on sparse pages (e.g. a short table on page 2 looking suddenly huge).
+  显示：docx/EPUB 等固定页高文档在「适合内容」下，稀疏页（如第 2 页短表）不再放大超过「适合页面」。
+- office/TOC: drop blank Heading paragraphs from the sidebar (empty `<hN>` / whitespace-only outline titles); strip leading Word space-padding on real headings.
+  Office/书签：空的 Heading 段落不再进侧栏；标题去掉 Word 前导空格填充。
+- office: do not inject `lastRenderedPageBreak` page `<div>`s inside tables (was orphaning rowspan borders and breaking HTML); use MuPDF `overflow-wrap:break-word` (not unsupported `word-wrap`); stop rowspan row-height floors from shoving later rows; do not paint cell backgrounds over suppressed shared borders.
+  Office：按 OOXML 解析表格边框（表样式 / tblBorders / tcBorders，含 insideH/V 与 w:sz→pt），不再给每个单元格强加 1px 黑边；折叠边框绘制时密封接缝，避免亚像素缺口。
+  Office：表格内不再插入 Word 分页 `<div>`（会拆坏 rowspan、产生孤立竖线）；单元格改用 MuPDF 支持的 overflow-wrap；修正 rowspan 行高地板；背景不再盖住共享边。
+- EPUB: fix HTML box generation depth accounting so deeply nested or very large single-spine chapters no longer leak parse depth (could truncate later content or fail hard during open). Soft-cap nest depth at 100 with a balanced hard limit.
+- UI: fix Warm/Light theme white gap or stray frame line between the menu bar and toolbar (rebar always paints chrome background; frame erase no longer leaves unpainted strips).
+- annotations: show a small note badge on highlights/underlines that have written contents, and mark them with ✎ in the annotations list (PDF and EPUB).
 - options: expand the Options dialog into General, Interface, Reading, and Advanced categories, exposing commonly used settings without editing the advanced settings file.
 - options: add OCR and AI settings, theme/document colors, dictionary, sidebar font, display quality, and expert window settings to the categorized Options dialog.
+- settings: remove the redundant `Settings` / `Advanced Options...` menu; open the settings file from Options → Advanced instead.
+- options: rename "Document colors" to "Default document colors" (toolbar still switches the current document).
+- extract TOC: keep `关于印发…的通知` as the first bookmark and nest the attached 实施方案 under it (do not rewrite the notice into a duplicate plan title).
+- extract TOC: fold a bare sheet title that repeats under a named `附件N-M` (e.g. `…报告（参考格式）` next to `附件2-1 …摘要`) into that attachment and drop trailing glued `摘要`.
+- extract TOC: short complete outline titles under narrative 附件 (`二、评估方式和方法` / `四、评估结论` / `一、基本情况`) are not table-column cells; truncated first-column wraps (`一、实现人社数`) still are, and salvage must not revive them.
+- extract TOC: after `（一）…4.` restart `1.` under the next `（二）` even when DP has not kept `（二）` yet; Mixed 附件 short `一、窗口设置` / `一、工作流程` stay as outline, not table cells.
+- extract TOC: body `1.规范经办流程` is not a 函末 attachment index just because it ends with 流程 — only strong sheet names (`申请表` / `一览表`) or a matching 附件 title drop ArabicDot as 附件N.
+- extract TOC: body cites like `按照…关于印发《他文》的通知（文号）要求` under a named 附件 must not become TOC parents of `一、`; do not strip the `按照…厅` lead-in into a fake notice title.
+- extract TOC: bare `附表` after numbered `附件N` stays one unnumbered bookmark — do not invent `附表4` or glue table-header cells (`财政非税`) onto the sheet name.
+- extract TOC: narrative 附件 member-unit spines (`三、省财政厅` … `二十五、商业保险公司`) are not table-column cells; salvage holes from `二、` to `二十、` and trailing `二十三`…`二十五`.
+- extract TOC: OCR-glued 红头+文号 (`…厅文件` / `吉人社发〔2020〕25号`) before `关于印发…的通知` is stripped — 文号 is not a bookmark, and the mash must not parent `一、`.
+- office: read-only viewing of classic `.doc` (via Microsoft Word COM → temporary `.docx` when Word is installed) and improved `.docx` HTML fidelity (images, bold/italic/underline, headings, lists, tables, font size/color). `.xls` / `.ppt` still unsupported.
+- office: Word sidebar TOC from heading styles (including numeric styleIds via `styles.xml`) and named bookmarks; `_Toc*` anchors preserved for navigation.
   选项：将“选项”窗口扩充为“常规、界面、阅读、高级”四个分类，常用设置无需再手工编辑高级设置文件。
+  EPUB：修复超深嵌套／超大单章 HTML 解析深度计数错误（此前会泄漏 depth，打开时可能截断或崩溃）。
+  界面：修复 Warm/浅色主题下菜单栏与工具栏之间白缝或细框线（缩放时忽隐忽现）。
+  批注：高亮/下划线若写了备注内容，页面上显示小便签角标，标注列表里带 ✎，便于区分摘抄与批注。
+  设置：去掉菜单里重复的「高级选项…」，改从「选项 → 高级」打开设置文件。
+  选项：将「文档颜色」改为「默认文档颜色」（工具栏仍负责切换当前文档）。
+  提取目录：保留「关于印发…的通知」为第一条，实施方案挂在其下，不再把通知改写成重复的方案标题。
+  提取目录：附件N-M 已带表名时，旁边重复的裸表名（如「…报告（参考格式）」）并入该附件，并去掉粘上的「摘要」。
+  提取目录：附件正文里完整的短大纲（「二、评估方式和方法」「四、评估结论」）不当成表格竖列；截断的「一、实现人社数」仍丢掉，且补洞不再救回。
+  提取目录：（一）…4. 后，下一节（二）下的 1. 要重启；Mixed 附件里「一、窗口设置」「一、工作流程」等短大纲保留。
+  提取目录：正文「1.规范经办流程」不以「流程」结尾就当成函末附件索引；只有申请表/一览表等强表名或与附件同名才并进附件N。
+  提取目录：附件正文里「按照…关于印发《他文》的通知（文号）要求」是引用依据，不得当成一、之上的大标题。
+  提取目录：正文「附表」在附件N之后仍是一条无编号书签，不编成「附表4」，也不把表头「财政非税」粘进标题。
+  提取目录：附件里成员单位职责「三、省财政厅」…「二十五、商业保险公司」不当成表格竖列；二→二十的空洞和二十三…二十五也要补全。
+  提取目录：OCR 把红头「…厅文件」和文号粘到「关于印发…的通知」前时剥掉红头文号，文号不做书签，也不再当一、的父节点。
+  Office：只读打开老版 `.doc`（本机装有 Word 时经 COM 转为临时 `.docx`）；`.docx` 显示更接近 Word（图片、加粗斜体下划线、标题、列表、表格、字号颜色）。`.xls` / `.ppt` 仍不支持。
+  Office：侧栏目录支持 Word 标题样式（含 styles.xml 里的数字 styleId）和命名书签；保留 `_Toc*` 锚点便于跳转。
 
 ## 3.7.31 (2026-09-15)
 

@@ -30,10 +30,45 @@
 
 #include <math.h>
 #include <assert.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
+#include <stdlib.h>
 
 #undef DEBUG_HARFBUZZ
 
 #undef DEBUG_DESPERATE_SPLITTING
+
+static int table_geo_enabled(void) {
+    const char* p = getenv("SUMATRA_DUMP_TABLE_GEOMETRY");
+    if (p && p[0]) return 1;
+    p = getenv("SUMATRA_DEBUG_TABLE_FRAGMENTS");
+    return p && p[0];
+}
+
+/* Rightmost x in content space still inside the page mediabox after
+ * fz_draw_html's margin translate: body is 0..page_w, right margin continues
+ * to page_w+marginR. Overflowing table R borders clamp to this edge. */
+static float g_html_paint_clip_right;
+
+static void table_geo_printf(const char* fmt, ...) {
+    static FILE* f;
+    static int inited;
+    const char* p;
+    va_list ap;
+    if (!table_geo_enabled()) return;
+    if (!inited) {
+        inited = 1;
+        p = getenv("SUMATRA_DUMP_TABLE_GEOMETRY");
+        if (!p || !p[0] || strcmp(p, "1") == 0) p = getenv("SUMATRA_DEBUG_TABLE_FRAGMENTS");
+        if (p && strcmp(p, "1") != 0) f = fopen(p, "w");
+        if (!f) f = stderr;
+    }
+    va_start(ap, fmt);
+    vfprintf(f, fmt, ap);
+    va_end(ap);
+    fflush(f);
+}
 
 /*
         Some notes on the layout code below and the concepts used.
@@ -534,6 +569,7 @@ typedef struct {
 
     hb_buffer_t* hb_buf;
     fz_html_restarter* restart;
+    fz_html_tree* tree;
 } layout_data;
 
 /* "are we in a restarting context, and still skipping?" */
@@ -557,6 +593,7 @@ static int layout_block_page_break(fz_context* ctx, layout_data* ld, float* yp, 
 static void layout_extend_bounds_to_page_bottom(layout_data* ld);
 static int layout_flow_image_page_break(fz_context* ctx, layout_data* ld, fz_html_box* flow_box, fz_html_box* img_box,
                                         int page_break);
+static void layout_apply_word_page(layout_data* ld, fz_html_box* box);
 
 static float layout_page_remainder(layout_data* ld, float y) {
     float page_h = ld->page[B] - ld->page[T];
@@ -875,12 +912,18 @@ static void layout_flow(fz_context* ctx, layout_data* ld, fz_html_box* box, fz_h
             if (intr_w > 0 && intr_h > 0) {
                 if (node->box->style->width.unit != N_AUTO)
                     est_w = fz_from_css_number(node->box->style->width, top->s.layout.em, max_w, intr_w);
+                if (node->box->style->height.unit != N_AUTO)
+                    est_h = fz_from_css_number(node->box->style->height, top->s.layout.em, max_w, intr_h);
+                else
                 est_h = intr_h * est_w / intr_w;
             }
             {
                 float page_slice = ld->page[B] - ld->page[T];
                 float avail = layout_page_remainder(ld, ld->bounds[T]);
-                if (page_slice > 0 && avail < page_slice - 1.f && est_h > avail - 40.f)
+                /* Explicit box (Word wp:extent): break only when it does not
+                 * fit. The 40pt slack is for auto-height EPUB figures. */
+                float slack = (node->box->style->height.unit == N_AUTO) ? 40.f : 0.f;
+                if (page_slice > 0 && avail < page_slice - 1.f && est_h > avail - slack)
                     layout_flow_image_page_break(ctx, ld, box, node->box, PB_ALWAYS);
             }
 
@@ -1593,6 +1636,12 @@ typedef struct {
 
     float* row_b;
     float* row_max_bottom_border;
+    /* Rowspan cells must not raise row_b[last] until that row is laid out.
+     * Early floors make layout_table jump box.b to a future y and open a gap
+     * with no shared horizontal edge (missing top border on later rows). */
+    float* row_pending_b;
+    /* Earliest row start among rowspan cells whose pending floor targets this end row. */
+    int* row_pending_start;
 } table_grid;
 
 static table_grid* new_table_grid(fz_context* ctx, float spacing) {
@@ -1608,6 +1657,8 @@ static void drop_table_grid(fz_context* ctx, table_grid* grid) {
         fz_free(ctx, grid->cells);
         fz_free(ctx, grid->row_b);
         fz_free(ctx, grid->row_max_bottom_border);
+        fz_free(ctx, grid->row_pending_b);
+        fz_free(ctx, grid->row_pending_start);
         fz_free(ctx, grid);
     }
 }
@@ -1806,6 +1857,9 @@ static column_width* table_grid_complete(fz_context* ctx, table_grid* grid, floa
     fz_try(ctx) {
         grid->row_b = fz_malloc(ctx, grid->h * sizeof(float));
         grid->row_max_bottom_border = fz_calloc(ctx, grid->h, sizeof(float));
+        grid->row_pending_b = fz_calloc(ctx, grid->h, sizeof(float));
+        grid->row_pending_start = fz_malloc(ctx, grid->h * sizeof(int));
+        for (y = 0; y < grid->h; y++) grid->row_pending_start[y] = -1;
     }
     fz_catch(ctx) {
         fz_free(ctx, colw);
@@ -1814,7 +1868,10 @@ static column_width* table_grid_complete(fz_context* ctx, table_grid* grid, floa
 
     /* Don't add any spacing in here, because we may be skipping!
      * We just want a good enough value to use for 'min'. */
-    for (y = 0; y < h; y++) grid->row_b[y] = top;
+    for (y = 0; y < h; y++) {
+        grid->row_b[y] = top;
+        grid->row_pending_b[y] = top;
+    }
 
     return colw;
 }
@@ -2013,21 +2070,33 @@ static void layout_table_row(fz_context* ctx, layout_data* ld, table_grid* grid,
         /* Advance to next column */
         x += colw[col].actual;
 
-        /* Update row_b (most importantly for this row, but ensure the others
-         * are plausibly increasing too). */
+        /* Update row_b for this row only when rowspan==1.
+         * Multi-row cells stash a pending floor for their last row; applying it
+         * early makes the next rows jump and leaves no shared H edge. */
         y = cell->s.layout.b + cell->u.block.padding[B] + cell->u.block.border[B] + cell->u.block.margin[B];
         if (border_collapse) {
             /* Half our border is shared with the next cell. */
             y -= cell->u.block.border[B] / 2;
         }
-        for (i = celly + rowspan - 1; i < grid->h; i++) {
-            if (grid->row_b[i] < y) grid->row_b[i] = y;
-            y += spacing;
+        {
+            int last = celly + rowspan - 1;
+            if (last >= grid->h) last = grid->h - 1;
+            if (last >= 0) {
+                if (rowspan <= 1) {
+                    if (grid->row_b[celly] < y) grid->row_b[celly] = y;
+                } else if (grid->row_pending_b[last] < y) {
+                    grid->row_pending_b[last] = y;
+                    if (grid->row_pending_start[last] < 0 || celly < grid->row_pending_start[last])
+                        grid->row_pending_start[last] = celly;
+                }
+            }
         }
 
         if (border_collapse) {
-            if (grid->row_max_bottom_border[celly + rowspan - 1] < cell->u.block.border[B])
-                grid->row_max_bottom_border[celly + rowspan - 1] = cell->u.block.border[B];
+            int lastb = celly + rowspan - 1;
+            if (lastb >= grid->h) lastb = grid->h - 1;
+            if (lastb >= 0 && grid->row_max_bottom_border[lastb] < cell->u.block.border[B])
+                grid->row_max_bottom_border[lastb] = cell->u.block.border[B];
         }
 
         ++col;
@@ -2046,6 +2115,89 @@ static inline int cell_rowspan(fz_html_box* cell) {
     return r;
 }
 
+static void fixup_collapsed_cell_bottoms_for_row(fz_context* ctx, table_grid* grid, int row, fz_html_box* box);
+
+/* Apply a rowspan content-height floor that ends on `last`.
+ *
+ * Small extras stay on the last covered row (preserves shared H-edge
+ * adjacency for 0.5pt collapsed borders).
+ *
+ * Large extras are spread only across the trailing *contiguous* covered
+ * rows (no page-break gap between them). Earlier rows before a mid-span
+ * jump are left alone — shifting them would desync already-finalized
+ * geometry and recreate H-edge bugs. */
+static void apply_rowspan_pending_floor(fz_context* ctx, table_grid* grid, fz_html_box* table_box, int last,
+                                        int border_collapse) {
+    float pending = grid->row_pending_b[last];
+    float cur = grid->row_b[last];
+    float extra, add, cum;
+    int start, block_start, n, i;
+    fz_html_box *row, *last_row;
+
+    if (pending <= cur + 0.01f) return;
+    extra = pending - cur;
+    start = grid->row_pending_start[last];
+    if (start < 0 || start > last) start = last;
+
+    last_row = NULL;
+    for (i = 0, row = table_box->down; row; row = row->next, i++) {
+        if (i == last) {
+            last_row = row;
+            break;
+        }
+    }
+    if (!last_row) return;
+
+    if (extra < 48.0f) {
+        grid->row_b[last] = pending;
+        last_row->s.layout.b = pending;
+        if (border_collapse) fixup_collapsed_cell_bottoms_for_row(ctx, grid, last, table_box);
+        if (table_geo_enabled())
+            table_geo_printf("ROWSPAN_FLOOR last=%d start=%d extra=%.3f mode=last_only\n", last, start, extra);
+        return;
+    }
+
+    /* Collect row pointers, then spread only across the trailing contiguous Y-run
+     * (stop at page-break gaps so earlier finalized geometry stays put). */
+    block_start = last;
+    {
+        int cap = last + 1;
+        fz_html_box** rows = fz_malloc(ctx, (size_t)cap * sizeof(fz_html_box*));
+        for (i = 0, row = table_box->down; row && i < cap; row = row->next, i++) rows[i] = row;
+        if (i <= last) {
+            fz_free(ctx, rows);
+            grid->row_b[last] = pending;
+            last_row->s.layout.b = pending;
+            if (border_collapse) fixup_collapsed_cell_bottoms_for_row(ctx, grid, last, table_box);
+            return;
+        }
+        for (i = last; i > start; i--) {
+            float gap = rows[i]->s.layout.y - rows[i - 1]->s.layout.b;
+            if (gap > 2.0f) break;
+            block_start = i - 1;
+        }
+        n = last - block_start + 1;
+        add = extra / (float)n;
+
+        if (table_geo_enabled())
+            table_geo_printf("ROWSPAN_FLOOR last=%d start=%d block=%d..%d n=%d extra=%.3f add=%.3f mode=contig\n", last,
+                             start, block_start, last, n, extra, add);
+
+        cum = 0;
+        for (i = block_start; i <= last; i++) {
+            if (cum != 0) shift_box_contents(rows[i], 0, cum);
+            rows[i]->s.layout.b += add;
+            cum += add;
+            grid->row_b[i] = rows[i]->s.layout.b;
+        }
+        fz_free(ctx, rows);
+    }
+
+    if (border_collapse) {
+        for (i = block_start; i <= last; i++) fixup_collapsed_cell_bottoms_for_row(ctx, grid, i, table_box);
+    }
+}
+
 static void fixup_collapsed_cell_bottoms_for_row(fz_context* ctx, table_grid* grid, int row, fz_html_box* box) {
     int row0;
     fz_html_box *rowbox, *cell;
@@ -2056,6 +2208,8 @@ static void fixup_collapsed_cell_bottoms_for_row(fz_context* ctx, table_grid* gr
             int rowspan = cell_rowspan(cell);
             if (row0 + rowspan - 1 != row) continue;
 
+            /* Cell *content* may be short; the border/background box must still
+             * fill the final row track (or the full rowspan span ending here). */
             y = grid->row_b[row0 + rowspan - 1] -
                 (cell->u.block.padding[B] + cell->u.block.border[B] / 2 + cell->u.block.margin[B]);
             if (cell->style->vertical_align == VA_MIDDLE || cell->style->vertical_align == VA_BOTTOM) {
@@ -2092,10 +2246,39 @@ static void fixup_cell_bottoms(fz_context* ctx, table_grid* grid, fz_html_box* b
     }
 }
 
+/* Spanned slots store no box. The owner is the nearest real cell to the left
+ * whose colspan still covers this column. */
+static table_cell* cell_owner_covering(fz_context* ctx, table_grid* grid, int x, int y, int* owner_x) {
+    int x0;
+
+    if (owner_x) *owner_x = x;
+    if (!grid || x < 0 || y < 0) return NULL;
+    for (x0 = x; x0 >= 0; x0--) {
+        table_cell* c = cell_at(ctx, grid, x0, y);
+        int span = c->colspan > 0 ? c->colspan : 1;
+        if (c->spanned || c->box == NULL) continue;
+        if (x0 + span > x) {
+            if (owner_x) *owner_x = x0;
+            return c;
+        }
+        return NULL;
+    }
+    return NULL;
+}
+
 static void collapse_table_borders(fz_context* ctx, table_grid* grid, border_collapse_info* bci) {
     int w = grid->w;
     int h = grid->h;
     int x, y, x1, y1;
+
+    /* Every real cell uses collapsed half-border layout/paint. */
+    for (y = 0; y < h; y++) {
+        for (x = 0; x < w; x++) {
+            table_cell* cell = cell_at(ctx, grid, x, y);
+            if (cell->spanned == 1 || cell->box == NULL) continue;
+            cell->box->collapsed_cell = 1;
+        }
+    }
 
     /* Collapse columns */
     bci->max_right_border = 0;
@@ -2106,8 +2289,6 @@ static void collapse_table_borders(fz_context* ctx, table_grid* grid, border_col
             float b0, b1;
 
             if (cell0->spanned == 1 || cell0->box == NULL) continue;
-
-            cell0->box->collapsed_cell = 1;
 
             x1 = x + cell0->colspan;
             if (x1 == w) {
@@ -2134,13 +2315,8 @@ static void collapse_table_borders(fz_context* ctx, table_grid* grid, border_col
         table_cell* cell0 = cell_at(ctx, grid, w - 1, y);
 
         if (cell0->spanned == 1 || cell0->box == NULL) continue;
-
-        x1 = x + cell0->colspan;
-        if (x1 == w) {
             if (bci->max_right_border < cell0->box->u.block.border[R])
                 bci->max_right_border = cell0->box->u.block.border[R];
-            continue;
-        }
     }
     bci->max_left_border = 0;
     for (y = 0; y < h; y++) {
@@ -2156,23 +2332,56 @@ static void collapse_table_borders(fz_context* ctx, table_grid* grid, border_col
             table_cell* cell0 = cell_at(ctx, grid, x, y);
             table_cell* cell1;
             float b0, b1;
+            int lower_x, upper_span, lower_span, upper_covers, lower_covers;
 
             if (cell0->spanned == 1 || cell0->box == NULL) continue;
 
             y1 = y + cell0->rowspan;
             if (y1 >= h) continue;
 
-            cell1 = cell_at(ctx, grid, x, y1);
-            if (cell1->box == NULL) continue;
+            /* A colspan that starts left of this column leaves a NULL slot.
+             * Resolving only the slot drops the shared edge on the overhang
+             * (业务系统部署类型 is 1 col; the row below is 4). */
+            lower_x = x;
+            cell1 = cell_owner_covering(ctx, grid, x, y1, &lower_x);
+            if (!cell1 || cell1->box == NULL) {
+                table_geo_printf("EDGE H bound=%d cols=%d..%d SKIP lower.box=NULL (upper rowspan=%d)\n", y1, x,
+                                 x + cell0->colspan - 1, cell0->rowspan);
+                continue;
+            }
             b0 = cell0->box->u.block.border[B];
             b1 = cell1->box->u.block.border[T];
+            upper_span = cell0->colspan > 0 ? cell0->colspan : 1;
+            lower_span = cell1->colspan > 0 ? cell1->colspan : 1;
+            upper_covers = (x <= lower_x && x + upper_span >= lower_x + lower_span);
+            lower_covers = (lower_x <= x && lower_x + lower_span >= x + upper_span);
 
-            if (b0 < b1 && b1 >= 0) {
+            if (b0 < b1 && b1 > 0 && lower_covers) {
                 cell0->box->u.block.border[B] = b1;
                 cell0->box->suppress_border |= 1 << B;
-            } else {
+                table_geo_printf(
+                    "EDGE H bound=%d cols=%d..%d upper.bottom=%.3f lower.top=%.3f winner=lower.top "
+                    "suppress=upper.bottom resolved=%.3f\n",
+                    y1, x, x + cell0->colspan - 1, b0, b1, b1);
+            } else if (upper_covers && b0 > 0) {
                 cell1->box->u.block.border[T] = b0;
                 cell1->box->suppress_border |= 1 << T;
+                table_geo_printf(
+                    "EDGE H bound=%d cols=%d..%d upper.bottom=%.3f lower.top=%.3f winner=upper.bottom "
+                    "suppress=lower.top resolved=%.3f\n",
+                    y1, x, x + cell0->colspan - 1, b0, b1, b0);
+            } else if (b0 > 0 && b1 > 0 && lower_covers) {
+                /* Narrower upper must not erase a wider lower edge. */
+                cell0->box->suppress_border |= 1 << B;
+                table_geo_printf(
+                    "EDGE H bound=%d cols=%d..%d upper.bottom=%.3f lower.top=%.3f winner=lower.top "
+                    "suppress=upper.bottom partial lower_x=%d lower_span=%d\n",
+                    y1, x, x + upper_span - 1, b0, b1, lower_x, lower_span);
+            } else {
+                table_geo_printf(
+                    "EDGE H bound=%d cols=%d..%d upper.bottom=%.3f lower.top=%.3f winner=keep-both "
+                    "upper_covers=%d lower_covers=%d lower_x=%d\n",
+                    y1, x, x + upper_span - 1, b0, b1, upper_covers, lower_covers, lower_x);
             }
         }
     }
@@ -2339,11 +2548,13 @@ static int layout_table(fz_context* ctx, layout_data* ld, fz_html_box* box) {
 
         /* Layout each row in turn. */
         for (row = box->down, y = 0; row && y < table->h; row = row->next, y++) {
-            /* Position the row, zero height for now. */
-            if (box->s.layout.b < table->row_b[y]) box->s.layout.b = table->row_b[y];
+            float row_t_before;
+            /* Position the row. Do not jump to a future rowspan floor — those
+             * are applied via row_pending_b only after this row is laid out. */
             row->s.layout.x = box->s.layout.x;
             row->s.layout.w = avail_w;
             row->s.layout.y = row->s.layout.b = box->s.layout.b;
+            row_t_before = row->s.layout.y;
 
             if (restart && restart->start != NULL) {
                 if (restart->start == row)
@@ -2360,7 +2571,19 @@ static int layout_table(fz_context* ctx, layout_data* ld, fz_html_box* box) {
                 row->s.layout.y -= table->row_max_bottom_border[y - 1] / 2;
             }
             layout_table_row(ctx, ld, table, y, row, ncol, colw, spacing, border_collapse ? &bci : NULL);
-            if (border_collapse) fixup_collapsed_cell_bottoms_for_row(ctx, table, y, box);
+
+            /* Apply deferred rowspan floors for merges that END on this row. */
+            if (table->row_pending_b[y] > table->row_b[y]) {
+                apply_rowspan_pending_floor(ctx, table, box, y, border_collapse);
+                row->s.layout.b = table->row_b[y];
+            } else if (border_collapse) {
+                fixup_collapsed_cell_bottoms_for_row(ctx, table, y, box);
+            }
+
+            if (table_geo_enabled()) {
+                table_geo_printf("ROW_GEOM y=%d row_t=%.3f row_b=%.3f pending=%.3f (before_t=%.3f)\n", y,
+                                 row->s.layout.y, row->s.layout.b, table->row_pending_b[y], row_t_before);
+            }
 
             /* If the row doesn't fit on the current page, break here and put the row on the next page.
              * Unless the row was at the very start of the page, in which case it'll overflow instead.
@@ -2368,21 +2591,123 @@ static int layout_table(fz_context* ctx, layout_data* ld, fz_html_box* box) {
              */
             if (ld->page[B] != ld->page[T]) {
                 float page_h = ld->page[B] - ld->page[T];
-                float avail = page_h - fmodf(row->s.layout.y - ld->page[T], page_h);
+                float into = fmodf(row->s.layout.y - ld->page[T], page_h);
+                float avail = page_h - into;
                 float used = row->s.layout.b - row->s.layout.y;
-                if (used > avail && avail < page_h) {
+                /* Use a half-point slack so float noise does not leave a row straddling
+                 * the page boundary (rowspan L/R would then paint through the remainder). */
+                if (used > avail + 0.5f && avail < page_h - 0.5f) {
                     if (restart) {
                         restart->end = row;
                         goto exit;
                     } else {
+                        if (table_geo_enabled())
+                            table_geo_printf("ROW_PAGE_BREAK y=%d avail=%.3f used=%.3f jump=%.3f\n", y, avail, used,
+                                             avail);
                         row->s.layout.y += avail;
                         layout_table_row(ctx, ld, table, y, row, ncol, colw, spacing, border_collapse ? &bci : NULL);
+                        if (table->row_pending_b[y] > table->row_b[y]) {
+                            apply_rowspan_pending_floor(ctx, table, box, y, border_collapse);
+                            row->s.layout.b = table->row_b[y];
+                        } else if (border_collapse) {
+                            fixup_collapsed_cell_bottoms_for_row(ctx, table, y, box);
+                        }
                     }
                 }
             }
 
             box->s.layout.b = row->s.layout.b + spacing;
             ld->used[B] = box->s.layout.b;
+
+            if (table_geo_enabled() && y > 0) {
+                /* Continuity check vs previous row bottom stored in row_b[y-1]. */
+                float gap = row->s.layout.y - table->row_b[y - 1];
+                if (border_collapse) gap += table->row_max_bottom_border[y - 1] / 2;
+                table_geo_printf("ROW_CONTIG y=%d gap_to_prev_b=%.4f (want ~0) row_t=%.3f prev_row_b=%.3f\n", y, gap,
+                                 row->s.layout.y, table->row_b[y - 1]);
+            }
+        }
+
+        if (table_geo_enabled()) {
+            table_geo_printf("LAYOUT_TABLE w=%.2f cols=%d rows=%d\n", box->s.layout.w, ncol, table->h);
+            for (col = 0; col < ncol; ++col)
+                table_geo_printf("  col[%d].actual=%.2f min=%.2f max=%.2f fixed=%d\n", col, colw[col].actual,
+                                 colw[col].min, colw[col].max, colw[col].fixed);
+            for (y = 0; y < table->h; y++) {
+                fz_html_box* rbox;
+                int ri;
+                float row_t = 0, row_b = table->row_b[y];
+                for (ri = 0, rbox = box->down; rbox && ri <= y; rbox = rbox->next, ri++) {
+                    if (ri == y) row_t = rbox->s.layout.y;
+                }
+                for (x = 0; x < table->w; x++) {
+                    table_cell* tc = cell_at(ctx, table, x, y);
+                    fz_html_box* cbox;
+                    float expect_b, got_b, expect_y, got_y;
+                    int end;
+                    if (tc->spanned || !tc->box) continue;
+                    cbox = tc->box;
+                    table_geo_printf(
+                        "  cell grid(%d,%d) span=%dx%d x=%.2f w=%.2f y=%.2f b=%.2f "
+                        "border=%.2f/%.2f/%.2f/%.2f suppress=0x%x\n",
+                        x, y, tc->colspan, tc->rowspan, cbox->s.layout.x, cbox->s.layout.w, cbox->s.layout.y,
+                        cbox->s.layout.b, cbox->u.block.border[T], cbox->u.block.border[R], cbox->u.block.border[B],
+                        cbox->u.block.border[L], cbox->suppress_border);
+                    /* Border/content box must fill the covered row track(s). */
+                    end = y + tc->rowspan - 1;
+                    if (end >= table->h) end = table->h - 1;
+                    expect_y = row_t;
+                    expect_b =
+                        table->row_b[end] - (cbox->u.block.padding[B] +
+                                             (border_collapse ? cbox->u.block.border[B] / 2 : cbox->u.block.border[B]) +
+                                             cbox->u.block.margin[B]);
+                    got_y = cbox->s.layout.y;
+                    got_b = cbox->s.layout.b;
+                    /* Top can differ with vertical-align middle/bottom (content shifted).
+                     * Bottom of the cell box must still meet the row track. */
+                    if (fabsf(got_b - expect_b) > 0.75f) {
+                        table_geo_printf(
+                            "CELL_ROW_MISMATCH grid(%d,%d) rowspan=%d cell_y=%.2f cell_b=%.2f "
+                            "expect_b=%.2f row_t=%.2f row_b=%.2f dy1=%.3f\n",
+                            x, y, tc->rowspan, got_y, got_b, expect_b, expect_y, table->row_b[end], got_b - expect_b);
+                    }
+                }
+            }
+            /* Post-layout shared H-edge geometry (the paint-time edge). */
+            for (y = 0; y < table->h - 1; y++) {
+                for (x = 0; x < table->w; x++) {
+                    table_cell* cell0 = cell_at(ctx, table, x, y);
+                    table_cell* cell1;
+                    fz_html_box *u, *l;
+                    float ux0, ux1, uy1, lx0, lx1, ly0;
+                    int y1, paint_u, paint_l;
+                    if (cell0->spanned == 1 || cell0->box == NULL) continue;
+                    y1 = y + cell0->rowspan;
+                    if (y1 >= table->h) continue;
+                    cell1 = cell_at(ctx, table, x, y1);
+                    if (!cell1->box) {
+                        table_geo_printf("EDGE_GEOM H bound=%d cols=%d..%d SKIP no-lower\n", y1, x,
+                                         x + cell0->colspan - 1);
+                        continue;
+                    }
+                    u = cell0->box;
+                    l = cell1->box;
+                    ux0 = u->s.layout.x - u->u.block.padding[L] - u->u.block.margin[L];
+                    ux1 = u->s.layout.x + u->s.layout.w + u->u.block.padding[R] + u->u.block.margin[R];
+                    uy1 = u->s.layout.b + u->u.block.padding[B] + u->u.block.margin[B];
+                    lx0 = l->s.layout.x - l->u.block.padding[L] - l->u.block.margin[L];
+                    lx1 = l->s.layout.x + l->s.layout.w + l->u.block.padding[R] + l->u.block.margin[R];
+                    ly0 = l->s.layout.y - l->u.block.padding[T] - l->u.block.margin[T];
+                    paint_u = u->u.block.border[B] > 0 && !(u->suppress_border & (1 << B));
+                    paint_l = l->u.block.border[T] > 0 && !(l->suppress_border & (1 << T));
+                    table_geo_printf(
+                        "EDGE_GEOM H bound=%d cols=%d..%d upper.y1=%.3f lower.y0=%.3f dy=%.4f "
+                        "upper.x=%.2f..%.2f lower.x=%.2f..%.2f paint_upper.bottom=%d paint_lower.top=%d "
+                        "u.bB=%.3f l.bT=%.3f u.suppress=0x%x l.suppress=0x%x\n",
+                        y1, x, x + cell0->colspan - 1, uy1, ly0, ly0 - uy1, ux0, ux1, lx0, lx1, paint_u, paint_l,
+                        u->u.block.border[B], l->u.block.border[T], u->suppress_border, l->suppress_border);
+                }
+            }
         }
 
         /* And align the cell bottoms. */
@@ -2419,6 +2744,60 @@ static int layout_table(fz_context* ctx, layout_data* ld, fz_html_box* box) {
 }
 
 /* === LAYOUT BLOCKS === */
+
+/* Word section break: id "wpage:cw:ch:mt:mr:mb:ml" starts a new paper size.
+ * Must run before pre_position so the saved bounds stay wide for later siblings. */
+static void layout_apply_word_page(layout_data* ld, fz_html_box* box) {
+    fz_html_page_run* run;
+    float w, h, mt, mr, mb, ml;
+    float y, page_h, avail, used;
+    int n;
+    if (!ld || !ld->tree || !box || !box->id) return;
+    if (strncmp(box->id, "wpage:", 6) != 0) return;
+    if (WE_ARE_SKIPPING(ld->restart)) return;
+    if (sscanf(box->id + 6, "%f:%f:%f:%f:%f:%f", &w, &h, &mt, &mr, &mb, &ml) != 6) return;
+    if (w < 72.f || h < 72.f) return;
+
+    y = ld->bounds[T];
+    page_h = ld->page[B] - ld->page[T];
+    if (page_h > 1.f) {
+        avail = page_h - fmodf(y - ld->page[T], page_h);
+        used = page_h - avail;
+        if (used > 4.f) {
+            y += avail;
+            ld->bounds[T] = y;
+            ld->used[T] = y;
+            ld->used[B] = y;
+        }
+    }
+
+    n = ld->tree->page_run_n;
+    if (n < 0) n = 0;
+    if (n > 0 && fabsf(ld->tree->page_run[n - 1].y0 - y) < 1.f) {
+        run = &ld->tree->page_run[n - 1];
+    } else if (n < 4) {
+        run = &ld->tree->page_run[n];
+        ld->tree->page_run_n = n + 1;
+    } else
+        return;
+
+    run->y0 = y;
+    run->content_w = w;
+    run->content_h = h;
+    run->mt = mt;
+    run->mr = mr;
+    run->mb = mb;
+    run->ml = ml;
+
+    ld->page[T] = y;
+    ld->page[B] = y + h;
+    ld->page[R] = ld->page[L] + w;
+    ld->bounds[T] = y;
+    ld->bounds[R] = ld->bounds[L] + w;
+    ld->bounds[B] = y + h;
+    ld->used[T] = y;
+    ld->used[B] = y;
+}
 
 /*
         Layout a BOX_BLOCK.
@@ -2474,6 +2853,7 @@ static int layout_block(fz_context* ctx, layout_data* ld, fz_html_box* box) {
         ld->used[T] = ld->bounds[T];
         ld->used[B] = ld->bounds[T];
     }
+    layout_apply_word_page(ld, box);
 
     /* Cope with positioned blocks. */
     eop |= pre_position(ctx, &position, ld, box, 0);
@@ -2794,6 +3174,7 @@ void fz_restartable_layout_html(fz_context* ctx, fz_html_tree* tree, float start
         fz_hb_unlock(ctx);
 
         ld.restart = restart;
+        ld.tree = tree;
         ld.page[T] = start_y;
         ld.page[R] = start_x + page_w;
         ld.page[B] = start_y + page_h;
@@ -2851,6 +3232,19 @@ void fz_layout_html(fz_context* ctx, fz_html* html, float w, float h, float em) 
         html->page_h = 0;
     }
 
+    html->tree.page_run_n = 0;
+    if (html->page_h > 1.f) {
+        fz_html_page_run* run = &html->tree.page_run[0];
+        html->tree.page_run_n = 1;
+        run->y0 = 0;
+        run->content_w = html->page_w;
+        run->content_h = html->page_h;
+        run->mt = html->page_margin[T];
+        run->mr = html->page_margin[R];
+        run->mb = html->page_margin[B];
+        run->ml = html->page_margin[L];
+    }
+
     fz_restartable_layout_html(ctx, &html->tree, 0, 0, html->page_w, html->page_h, em, NULL);
 
     if (h == 0) html->page_h = html->tree.root->s.layout.b;
@@ -2867,6 +3261,104 @@ void fz_layout_html(fz_context* ctx, fz_html* html, float w, float h, float em) 
 }
 
 /* === DRAW === */
+
+static int html_pages_in_span(float span, float h) {
+    int n;
+    if (span <= 0.5f) return 0;
+    if (h < 1.f) return 1;
+    /* 1pt slack so a span that is an exact multiple of h does not become n+1. */
+    n = (int)((span - 1.f) / h) + 1;
+    if (n < 1) n = 1;
+    return n;
+}
+
+static int html_run_for_page(fz_html* html, int page, int* local_out) {
+    int i, acc = 0;
+    int n = html->tree.page_run_n;
+    float end = html->tree.root ? html->tree.root->s.layout.b : 0;
+    for (i = 0; i < n; i++) {
+        fz_html_page_run* run = &html->tree.page_run[i];
+        float y1 = (i + 1 < n) ? html->tree.page_run[i + 1].y0 : end;
+        int np = html_pages_in_span(y1 - run->y0, run->content_h);
+        if (i + 1 == n && np < 1) np = 1;
+        if (page < acc + np || i + 1 == n) {
+            if (local_out) *local_out = page - acc;
+            return i;
+        }
+        acc += np;
+    }
+    if (local_out) *local_out = 0;
+    return 0;
+}
+
+int fz_html_page_number_at_y(fz_html* html, float y) {
+    int i, page = 0;
+    int n;
+    float end;
+    if (!html || html->page_h <= 0) return 0;
+    if (y < 0) y = 0;
+    if (html->tree.page_run_n < 2) return (int)(y / html->page_h);
+    n = html->tree.page_run_n;
+    end = html->tree.root ? html->tree.root->s.layout.b : y;
+    for (i = 0; i < n; i++) {
+        fz_html_page_run* run = &html->tree.page_run[i];
+        float h = run->content_h > 1.f ? run->content_h : html->page_h;
+        float y1 = (i + 1 < n) ? html->tree.page_run[i + 1].y0 : end;
+        if (y < y1 || i + 1 == n) {
+            float rel = y - run->y0;
+            if (rel < 0) rel = 0;
+            return page + (int)(rel / h);
+        }
+        page += html_pages_in_span(y1 - run->y0, h);
+    }
+    return page;
+}
+
+int fz_html_count_pages(fz_html* html) {
+    float end;
+    if (!html || !html->tree.root) return 1;
+    end = html->tree.root->s.layout.b;
+    if (end <= 0 || html->page_h <= 0) return 1;
+    if (html->tree.page_run_n < 2) return (int)ceilf(end / html->page_h);
+    return fz_html_page_number_at_y(html, end - 0.01f) + 1;
+}
+
+void fz_html_page_box(fz_html* html, int page, float* y0, float* y1, float* paper_w, float* paper_h, float* margin_l,
+                      float* margin_t, float* content_w) {
+    float ph, pw, ml, mt, mr, mb, top;
+    int local = 0;
+    int ri;
+    if (!html) return;
+    ph = html->page_h > 1.f ? html->page_h : 1.f;
+    pw = html->page_w;
+    ml = html->page_margin[L];
+    mt = html->page_margin[T];
+    mr = html->page_margin[R];
+    mb = html->page_margin[B];
+    top = page * ph;
+    if (page < 0) page = 0;
+    if (html->tree.page_run_n >= 2) {
+        ri = html_run_for_page(html, page, &local);
+        if (ri >= 0 && ri < html->tree.page_run_n) {
+            fz_html_page_run* run = &html->tree.page_run[ri];
+            if (local < 0) local = 0;
+            ph = run->content_h > 1.f ? run->content_h : ph;
+            pw = run->content_w;
+            ml = run->ml;
+            mt = run->mt;
+            mr = run->mr;
+            mb = run->mb;
+            top = run->y0 + local * ph;
+        }
+    }
+    if (y0) *y0 = top;
+    if (y1) *y1 = top + ph;
+    if (paper_w) *paper_w = pw + ml + mr;
+    if (paper_h) *paper_h = ph + mt + mb;
+    if (margin_l) *margin_l = ml;
+    if (margin_t) *margin_t = mt;
+    if (content_w) *content_w = pw;
+}
 
 static void draw_rect(fz_context* ctx, fz_device* dev, fz_matrix ctm, float page_top, fz_css_color color, float x0,
                       float y0, float x1, float y1);
@@ -3674,6 +4166,12 @@ static void draw_border(fz_context* ctx, fz_device* dev, fz_matrix ctm, fz_html_
     float* border = box->u.block.border;
     const fz_css_style* style = box->style;
     int collapsed = box->collapsed_cell;
+    /* Collapsed shared edges are painted cell-by-cell. Do not grow border width
+     * past the resolved CSS size here: downward/rightward min-device-px inflation
+     * is covered by the next cell's background (painted later) and erases entire
+     * H/V edges. Endpoint seal / device-pixel hairlines need a centered model. */
+    float seal = 0;
+    float bt = border[T], br = border[R], bb = border[B], bl = border[L];
 
     switch (edge) {
         case T:
@@ -3724,8 +4222,7 @@ static void draw_border(fz_context* ctx, fz_device* dev, fz_matrix ctm, fz_html_
                     break;
                 }
                 case BS_SOLID:
-                    draw_rect(ctx, dev, ctm, 0, style->border_color[T], x0 - border[L], y0 - border[T], x1 + border[R],
-                              y0);
+                    draw_rect(ctx, dev, ctm, 0, style->border_color[T], x0 - bl - seal, y0 - bt, x1 + br + seal, y0);
                     break;
             }
             break;
@@ -3777,8 +4274,7 @@ static void draw_border(fz_context* ctx, fz_device* dev, fz_matrix ctm, fz_html_
                     break;
                 }
                 case BS_SOLID:
-                    draw_rect(ctx, dev, ctm, 0, style->border_color[R], x1, y0 - border[T], x1 + border[R],
-                              y1 + border[B]);
+                    draw_rect(ctx, dev, ctm, 0, style->border_color[R], x1, y0 - bt - seal, x1 + br, y1 + bb + seal);
                     break;
             }
             break;
@@ -3830,8 +4326,7 @@ static void draw_border(fz_context* ctx, fz_device* dev, fz_matrix ctm, fz_html_
                     break;
                 }
                 case BS_SOLID:
-                    draw_rect(ctx, dev, ctm, 0, style->border_color[B], x0 - border[L], y1, x1 + border[R],
-                              y1 + border[B]);
+                    draw_rect(ctx, dev, ctm, 0, style->border_color[B], x0 - bl - seal, y1, x1 + br + seal, y1 + bb);
                     break;
             }
             break;
@@ -3883,15 +4378,252 @@ static void draw_border(fz_context* ctx, fz_device* dev, fz_matrix ctm, fz_html_
                     break;
                 }
                 case BS_SOLID:
-                    draw_rect(ctx, dev, ctm, 0, style->border_color[L], x0 - border[L], y0 - border[T], x0,
-                              y1 + border[B]);
+                    draw_rect(ctx, dev, ctm, 0, style->border_color[L], x0 - bl, y0 - bt - seal, x0, y1 + bb + seal);
                     break;
             }
             break;
     }
 }
 
-static void do_borders(fz_context* ctx, fz_device* dev, fz_matrix ctm, float page_top, fz_html_box* box, int suppress) {
+static void do_borders(fz_context* ctx, fz_device* dev, fz_matrix ctm, float page_top, float page_bot, fz_html_box* box,
+                       int suppress);
+
+/* Paint Word-like top/bottom closures for a table page fragment when the
+ * continuous logical table is clipped across a row-boundary page break.
+ * Collapsed shared H edges often live on the neighbor cell that sits on the
+ * other page, so neither page paints the break — leaving an open fragment.
+ * This is paint-only decoration; it does not change layout geometry. */
+static void paint_table_fragment_closures(fz_context* ctx, fz_device* dev, fz_matrix ctm, float page_top,
+                                          float page_bot, fz_html_box* table) {
+    fz_html_box *row, *first = NULL, *last = NULL, *next_after = NULL, *prev_before = NULL;
+    fz_html_box* cell;
+    float *padding, x0, x1, frag_y0, frag_y1;
+    float table_y0, table_y1;
+    float bw, half;
+    int is_first, is_last;
+    int painted_bottom_cols, painted_top_cols, total_cols;
+    const float eps = 0.05f;
+    fz_css_color color = {0, 0, 0, 0};
+    const char* frag_dbg = getenv("SUMATRA_DEBUG_TABLE_FRAGMENTS");
+
+    if (!table || table->type != BOX_TABLE || page_bot <= page_top + eps) return;
+    if (table->style->visibility != V_VISIBLE) return;
+
+    padding = table->u.block.padding;
+    table_y0 = table->s.layout.y - padding[T];
+    table_y1 = table->s.layout.b + padding[B];
+    if (table_y1 < page_top || table_y0 > page_bot) return;
+
+    for (row = table->down; row; row = row->next) {
+        float rt = row->s.layout.y;
+        float rb = row->s.layout.b;
+        if (rb <= page_top + eps) {
+            prev_before = row;
+            continue;
+        }
+        if (rt >= page_bot - eps) {
+            if (!next_after) next_after = row;
+            continue;
+        }
+        if (!first) first = row;
+        last = row;
+    }
+    if (!first || !last) return;
+
+    if (!next_after) next_after = last->next;
+
+    frag_y0 = first->s.layout.y;
+    frag_y1 = last->s.layout.b;
+    is_first = (table_y0 >= page_top - eps && table_y0 < page_bot - eps);
+    is_last = (table_y1 > page_top + eps && table_y1 <= page_bot + eps);
+
+    x0 = table->s.layout.x - padding[L];
+    x1 = table->s.layout.x + table->s.layout.w + padding[R];
+
+    /* Does the last visible row already paint a full bottom H edge on this page? */
+    painted_bottom_cols = 0;
+    total_cols = 0;
+    bw = 0;
+    for (cell = last->down; cell; cell = cell->next) {
+        float w;
+        total_cols++;
+        w = cell->u.block.border[B];
+        if (w > bw) {
+            bw = w;
+            color = cell->style->border_color[B];
+        }
+        if (w > 0 && !(cell->suppress_border & (1 << B))) painted_bottom_cols++;
+    }
+    if (next_after) {
+        for (cell = next_after->down; cell; cell = cell->next) {
+            float w = cell->u.block.border[T];
+            if (w > bw) {
+                bw = w;
+                color = cell->style->border_color[T];
+            }
+        }
+    }
+    /* Also sample leftmost/rightmost for outer extent from cell borders. */
+    for (cell = last->down; cell; cell = cell->next) {
+        float cx0 = cell->s.layout.x - cell->u.block.padding[L] - cell->u.block.margin[L];
+        float cx1 = cell->s.layout.x + cell->s.layout.w + cell->u.block.padding[R] + cell->u.block.margin[R];
+        if (cell->u.block.border[L] > 0 && !(cell->suppress_border & (1 << L))) cx0 -= cell->u.block.border[L];
+        if (cell->u.block.border[R] > 0 && !(cell->suppress_border & (1 << R))) cx1 += cell->u.block.border[R];
+        if (cx0 < x0) x0 = cx0;
+        if (cx1 > x1) x1 = cx1;
+    }
+
+    if (!is_last && bw > 0.01f && color.a > 0) {
+        /* Table continues past this page (row-boundary break). Always paint a
+         * full-width closure at the last visible row bottom: collapsed winners
+         * or rowspan holes often leave the fragment visually open even when
+         * some local cells already stroke their bottom. Overdrawing the same Y
+         * / width does not thicken; it fills gaps. */
+        int continues = (next_after != NULL) || (table_y1 > page_bot + eps);
+        if (continues) {
+            float y = frag_y1;
+            half = bw / 2;
+            if (y > page_bot) y = page_bot;
+            if (y < page_top) y = page_top;
+            draw_rect(ctx, dev, ctm, page_top, color, x0, y - half, x1, y + half);
+            if (table_geo_enabled() || (frag_dbg && frag_dbg[0]))
+                table_geo_printf(
+                    "TABLE_FRAG_CLOSURE side=bottom type=%s page=%.1f..%.1f y=%.2f x=%.2f..%.2f w=%.3f "
+                    "rgba=%d,%d,%d,%d next=%d painted=%d/%d\n",
+                    is_first ? "FIRST" : "MIDDLE", page_top, page_bot, y, x0, x1, bw, color.r, color.g, color.b,
+                    color.a, next_after ? 1 : 0, painted_bottom_cols, total_cols);
+        }
+    }
+
+    painted_top_cols = 0;
+    total_cols = 0;
+    bw = 0;
+    color.a = 0;
+    for (cell = first->down; cell; cell = cell->next) {
+        float w;
+        total_cols++;
+        w = cell->u.block.border[T];
+        if (w > bw) {
+            bw = w;
+            color = cell->style->border_color[T];
+        }
+        if (w > 0 && !(cell->suppress_border & (1 << T))) painted_top_cols++;
+    }
+    if (prev_before) {
+        for (cell = prev_before->down; cell; cell = cell->next) {
+            float w = cell->u.block.border[B];
+            if (w > bw) {
+                bw = w;
+                color = cell->style->border_color[B];
+            }
+        }
+    }
+
+    if (!is_first && bw > 0.01f && color.a > 0) {
+        /* Same rationale as bottom: full-width top closure for open fragments. */
+        float y = frag_y0;
+        half = bw / 2;
+        if (y > page_bot) y = page_bot;
+        if (y < page_top) y = page_top;
+        draw_rect(ctx, dev, ctm, page_top, color, x0, y - half, x1, y + half);
+        if (table_geo_enabled() || (frag_dbg && frag_dbg[0]))
+            table_geo_printf(
+                "TABLE_FRAG_CLOSURE side=top type=%s page=%.1f..%.1f y=%.2f x=%.2f..%.2f w=%.3f "
+                "rgba=%d,%d,%d,%d painted=%d/%d\n",
+                is_last ? "LAST" : "MIDDLE", page_top, page_bot, y, x0, x1, bw, color.r, color.g, color.b, color.a,
+                painted_top_cols, total_cols);
+    }
+}
+
+/* Clip table-cell paint to covered rows that actually sit on this page.
+ * A rowspan cell is one logical box spanning all covered rows; after a mid-span
+ * page break the box still covers the unused page remainder. Painting full L/R
+ * through that remainder is what produces orphan vertical shafts in blank space.
+ *
+ * Returns 0 if this page has no covered-row band for the cell (skip borders/bg).
+ * *is_first / *is_last refer to the logical cell top/bottom falling on this page.
+ */
+static int table_cell_page_fragment(fz_html_box* cell, float page_top, float page_bot, float pad_t, float pad_b,
+                                    float* abs_y0, float* abs_y1, int* is_first, int* is_last) {
+    fz_html_box *row0, *table, *row;
+    int rowspan, start, i;
+    float band_t, band_b;
+    float cell_y0, cell_y1;
+    const float eps = 0.05f;
+
+    cell_y0 = cell->s.layout.y - pad_t;
+    cell_y1 = cell->s.layout.b + pad_b;
+    *abs_y0 = cell_y0;
+    *abs_y1 = cell_y1;
+    *is_first = (cell_y0 >= page_top - eps);
+    *is_last = (cell_y1 <= page_bot + eps);
+
+    rowspan = cell_rowspan(cell);
+    row0 = cell->up;
+    if (!row0 || row0->type != BOX_TABLE_ROW || page_bot <= page_top + eps) {
+        if (cell_y1 < page_top || cell_y0 > page_bot) return 0;
+        if (*abs_y0 < page_top) *abs_y0 = page_top;
+        if (*abs_y1 > page_bot) *abs_y1 = page_bot;
+        return *abs_y1 > *abs_y0 + eps;
+    }
+
+    table = row0->up;
+    if (!table || rowspan <= 1) {
+        if (cell_y1 < page_top || cell_y0 > page_bot) return 0;
+        if (*abs_y0 < page_top) *abs_y0 = page_top;
+        if (*abs_y1 > page_bot) *abs_y1 = page_bot;
+        return *abs_y1 > *abs_y0 + eps;
+    }
+
+    start = -1;
+    for (i = 0, row = table->down; row; row = row->next, i++) {
+        if (row == row0) {
+            start = i;
+            break;
+        }
+    }
+    if (start < 0) {
+        if (cell_y1 < page_top || cell_y0 > page_bot) return 0;
+        if (*abs_y0 < page_top) *abs_y0 = page_top;
+        if (*abs_y1 > page_bot) *abs_y1 = page_bot;
+        return *abs_y1 > *abs_y0 + eps;
+    }
+
+    band_t = 1e30f;
+    band_b = -1e30f;
+    for (i = 0, row = table->down; row; row = row->next, i++) {
+        float rt, rb;
+        if (i < start) continue;
+        if (i >= start + rowspan) break;
+        rt = row->s.layout.y;
+        rb = row->s.layout.b;
+        /* A row that starts at/after page_bot belongs to the next page (typical
+         * after mid-table `y += avail` jumps). Including it makes band_b shoot
+         * past the unused page remainder; abs then clamps to page_bot and L/R
+         * paint orphan shafts through the blank. Same for a row that ends at
+         * or above page_top. */
+        if (rb <= page_top + eps || rt >= page_bot - eps) continue;
+        if (rt < band_t) band_t = rt;
+        if (rb > band_b) band_b = rb;
+    }
+    if (band_b < band_t) return 0; /* logical cell overlaps page, but no covered row here */
+
+    if (band_t < page_top) band_t = page_top;
+    if (band_b > page_bot) band_b = page_bot;
+
+    *abs_y0 = cell_y0 > band_t ? cell_y0 : band_t;
+    *abs_y1 = cell_y1 < band_b ? cell_y1 : band_b;
+    if (*abs_y0 < page_top) *abs_y0 = page_top;
+    if (*abs_y1 > page_bot) *abs_y1 = page_bot;
+    /* FIRST/LAST refer to the logical cell's own edges falling on this page,
+     * not merely the fragment band. */
+    *is_first = (cell_y0 >= page_top - eps && cell_y0 < page_bot - eps);
+    *is_last = (cell_y1 > page_top + eps && cell_y1 <= page_bot + eps);
+    return *abs_y1 > *abs_y0 + eps;
+}
+
+static void do_borders(fz_context* ctx, fz_device* dev, fz_matrix ctm, float page_top, float page_bot, fz_html_box* box,
+                       int suppress) {
     float cell_adjust_top = box->type == BOX_TABLE_CELL ? box->u.block.margin[T] : 0;
     float cell_adjust_right = box->type == BOX_TABLE_CELL ? box->u.block.margin[R] : 0;
     float cell_adjust_bot = box->type == BOX_TABLE_CELL ? box->u.block.margin[B] : 0;
@@ -3899,16 +4631,146 @@ static void do_borders(fz_context* ctx, fz_device* dev, fz_matrix ctm, float pag
     float* border = box->u.block.border;
     float* padding = box->u.block.padding;
     float x0 = box->s.layout.x - padding[L] - cell_adjust_left;
-    float y0 = box->s.layout.y - padding[T] - page_top - cell_adjust_top;
     float x1 = box->s.layout.x + box->s.layout.w + padding[R] + cell_adjust_right;
-    float y1 = box->s.layout.b + padding[B] - page_top + cell_adjust_bot;
+    float y0, y1;
+    float abs_y0, abs_y1;
+    const char* red_edge = getenv("SUMATRA_DEBUG_RED_H_EDGE");
+    const char* red_outer_r = getenv("SUMATRA_DEBUG_RED_OUTER_RIGHT");
+    const char* edge_overlay = getenv("SUMATRA_DEBUG_TABLE_EDGES");
+    const char* frag_dbg = getenv("SUMATRA_DEBUG_TABLE_FRAGMENTS");
+    int paint_t, paint_b, paint_r, paint_l;
+    int suppressed_t, suppressed_b;
+    int is_first = 1, is_last = 1;
+    int is_outer_right = 0;
 
     suppress |= box->suppress_border;
 
-    if (border[T] > 0 && !(suppress & (1 << T))) draw_border(ctx, dev, ctm, box, T, x0, y0, x1, y1);
-    if (border[R] > 0 && !(suppress & (1 << R))) draw_border(ctx, dev, ctm, box, R, x0, y0, x1, y1);
-    if (border[B] > 0 && !(suppress & (1 << B))) draw_border(ctx, dev, ctm, box, B, x0, y0, x1, y1);
-    if (border[L] > 0 && !(suppress & (1 << L))) draw_border(ctx, dev, ctm, box, L, x0, y0, x1, y1);
+    abs_y0 = box->s.layout.y - padding[T] - cell_adjust_top;
+    abs_y1 = box->s.layout.b + padding[B] + cell_adjust_bot;
+    if (box->type == BOX_TABLE_CELL) {
+        if (!table_cell_page_fragment(box, page_top, page_bot, padding[T] + cell_adjust_top,
+                                      padding[B] + cell_adjust_bot, &abs_y0, &abs_y1, &is_first, &is_last))
+            return;
+        if (!is_first) suppress |= 1 << T;
+        if (!is_last) suppress |= 1 << B;
+        /* Outer-right = last cell in its row with no right neighbour (row DOM order). */
+        is_outer_right = (box->next == NULL);
+        if (frag_dbg && frag_dbg[0] && cell_rowspan(box) > 1) {
+            const char* kind = is_first && is_last ? "ONLY" : is_first ? "FIRST" : is_last ? "LAST" : "MIDDLE";
+            table_geo_printf(
+                "FRAG cell=%p rowspan=%d logical=%.2f..%.2f page=%.1f..%.1f frag=%.2f..%.2f type=%s "
+                "paintTBLR=%d%d%d%d x=%.2f..%.2f\n",
+                (void*)box, cell_rowspan(box), box->s.layout.y - padding[T] - cell_adjust_top,
+                box->s.layout.b + padding[B] + cell_adjust_bot, page_top, page_bot, abs_y0, abs_y1, kind,
+                (border[T] > 0 && !(suppress & (1 << T))), (border[R] > 0 && !(suppress & (1 << R))),
+                (border[B] > 0 && !(suppress & (1 << B))), (border[L] > 0 && !(suppress & (1 << L))), x0, x1);
+        }
+    } else if (page_bot > page_top) {
+        if (abs_y0 < page_top) abs_y0 = page_top;
+        if (abs_y1 > page_bot) abs_y1 = page_bot;
+        if (abs_y1 <= abs_y0) return;
+    }
+    y0 = abs_y0 - page_top;
+    y1 = abs_y1 - page_top;
+
+    suppressed_t = (suppress & (1 << T)) != 0;
+    suppressed_b = (suppress & (1 << B)) != 0;
+    paint_t = border[T] > 0 && !suppressed_t;
+    paint_b = border[B] > 0 && !suppressed_b;
+    paint_r = border[R] > 0 && !(suppress & (1 << R));
+    paint_l = border[L] > 0 && !(suppress & (1 << L));
+
+    if (table_geo_enabled() && box->type == BOX_TABLE_CELL && (paint_t || paint_b || suppressed_t || suppressed_b)) {
+        table_geo_printf(
+            "PAINT_CELL x=%.2f..%.2f y0=%.2f y1=%.2f bT=%.3f bB=%.3f suppress=0x%x paintT=%d paintB=%d "
+            "page_top=%.2f\n",
+            x0, x1, y0, y1, border[T], border[B], suppress, paint_t, paint_b, page_top);
+        if (paint_b)
+            table_geo_printf("PAINT_H_EDGE side=bottom x0=%.2f x1=%.2f y=%.2f w=%.3f\n", x0, x1, y1, border[B]);
+        if (paint_t) table_geo_printf("PAINT_H_EDGE side=top x0=%.2f x1=%.2f y=%.2f w=%.3f\n", x0, x1, y0, border[T]);
+    }
+    if (table_geo_enabled() && box->type == BOX_TABLE_CELL && is_outer_right) {
+        float page_w_guess = 0;
+        fz_html_box* p;
+        for (p = box->up; p; p = p->up) {
+            if (p->type == BOX_TABLE) {
+                page_w_guess = p->s.layout.x + p->s.layout.w;
+                break;
+            }
+        }
+        table_geo_printf(
+            "EDGE V outer-right cell=%p x0=%.3f x1=%.3f y0=%.3f y1=%.3f bR=%.3f suppress=0x%x paint_r=%d "
+            "winner=%s rgba=%d,%d,%d,%d table_right=%.3f paint_x=%.3f..%.3f page=%.1f..%.1f\n",
+            (void*)box, x0, x1, y0, y1, border[R], suppress, paint_r,
+            paint_r                 ? "last-cell.border-right"
+            : (suppress & (1 << R)) ? "suppressed"
+                                    : "no-width",
+            box->style->border_color[R].r, box->style->border_color[R].g, box->style->border_color[R].b,
+            box->style->border_color[R].a, page_w_guess, x1, x1 + border[R], page_top, page_bot);
+    }
+
+    if (edge_overlay && edge_overlay[0] && box->type == BOX_TABLE_CELL) {
+        fz_css_color cyan = {0, 220, 255, 220};
+        fz_css_color magenta = {255, 0, 200, 220};
+        fz_css_color orange = {255, 140, 0, 200};
+        fz_css_color yellow = {255, 255, 0, 200};
+        fz_css_color lime = {80, 255, 80, 160};
+        if (paint_b) draw_rect(ctx, dev, ctm, 0, cyan, x0, y1 - 0.75f, x1, y1 + 0.75f);
+        if (paint_t) draw_rect(ctx, dev, ctm, 0, cyan, x0, y0 - 0.75f, x1, y0 + 0.75f);
+        if (paint_r) draw_rect(ctx, dev, ctm, 0, magenta, x1 - 0.75f, y0, x1 + 0.75f, y1);
+        if (paint_l) draw_rect(ctx, dev, ctm, 0, magenta, x0 - 0.75f, y0, x0 + 0.75f, y1);
+        if (suppressed_t) draw_rect(ctx, dev, ctm, 0, orange, x0, y0 - 0.5f, x1, y0 + 0.5f);
+        if (suppressed_b) draw_rect(ctx, dev, ctm, 0, orange, x0, y1 - 0.5f, x1, y1 + 0.5f);
+        if (cell_rowspan(box) > 1) {
+            draw_rect(ctx, dev, ctm, 0, yellow, x0, y0, x0 + 2, y1);
+            if (frag_dbg && frag_dbg[0]) draw_rect(ctx, dev, ctm, 0, lime, x0, y0, x1, y1);
+        }
+    }
+
+    if (red_edge && red_edge[0] && box->type == BOX_TABLE_CELL && paint_b) {
+        fz_css_color red = {255, 0, 0, 255};
+        draw_rect(ctx, dev, ctm, 0, red, x0 - 1, y1 - 1.5f, x1 + 1, y1 + 1.5f);
+        table_geo_printf("RED_H_EDGE x0=%.2f x1=%.2f y=%.2f\n", x0, x1, y1);
+    }
+    if (paint_t) draw_border(ctx, dev, ctm, box, T, x0, y0, x1, y1);
+    if (paint_r) {
+        /* Outer-right may sit past the page content edge when table min-width
+         * overflows avail_w (HTML autolayout). H edges still appear to end at
+         * the clip; the outward R stroke (x1..x1+br) is entirely clipped.
+         * Clamp to the root page content width so the perimeter stays visible. */
+        if (is_outer_right && box->type == BOX_TABLE_CELL && border[R] > 0) {
+            float page_right = g_html_paint_clip_right > 0 ? g_html_paint_clip_right : (x1 + border[R]);
+            if (x1 + border[R] > page_right + 0.01f) {
+                float br = border[R];
+                /* Keep the hairline fully inside the mediabox: a stroke on
+                 * clip_right vanishes to exclusive clipping / last-pixel AA.
+                 * Inset ~2pt so it stays visible and meets the clipped H ends. */
+                float inset = 2.0f;
+                float xr1 = page_right - inset;
+                float xr0 = xr1 - (br > 0.5f ? br : 0.5f);
+                if (xr0 < x0) xr0 = x0;
+                if (xr1 <= xr0) xr1 = xr0 + 0.5f;
+                if (table_geo_enabled())
+                    table_geo_printf("EDGE V outer-right CLAMP x1=%.3f+br -> paint=%.3f..%.3f clip_right=%.3f\n", x1,
+                                     xr0, xr1, page_right);
+                if (red_outer_r && red_outer_r[0]) {
+                    fz_css_color red = {255, 0, 0, 255};
+                    draw_rect(ctx, dev, ctm, 0, red, xr1 - 3.0f, y0, xr1, y1);
+                }
+                draw_rect(ctx, dev, ctm, 0, box->style->border_color[R], xr0, y0 - border[T], xr1, y1 + border[B]);
+            } else {
+                if (red_outer_r && red_outer_r[0]) {
+                    fz_css_color red = {255, 0, 0, 255};
+                    draw_rect(ctx, dev, ctm, 0, red, x1 - 1.5f, y0, x1 + 1.5f, y1);
+                }
+                draw_border(ctx, dev, ctm, box, R, x0, y0, x1, y1);
+            }
+        } else {
+            draw_border(ctx, dev, ctm, box, R, x0, y0, x1, y1);
+        }
+    }
+    if (paint_b) draw_border(ctx, dev, ctm, box, B, x0, y0, x1, y1);
+    if (paint_l) draw_border(ctx, dev, ctm, box, L, x0, y0, x1, y1);
 }
 
 static int draw_block_box(fz_context* ctx, fz_html_box* box, float page_top, float page_bot, fz_device* dev,
@@ -3955,18 +4817,36 @@ static int draw_block_box(fz_context* ctx, fz_html_box* box, float page_top, flo
             float bg_y0 = y0 - cell_padding_top;
             float bg_x1 = x1 + cell_adjust_right;
             float bg_y1 = y1 + cell_padding_bot;
+            int skip_bg = getenv("SUMATRA_DEBUG_NO_TABLE_BG") && box->type == BOX_TABLE_CELL;
+            int paint_bg = 1;
+            if (skip_bg && table_geo_enabled()) table_geo_printf("NO_TABLE_BG skip cell bg\n");
             if (box->type == BOX_TABLE_CELL) {
                 float* border = box->u.block.border;
                 int border_suppress = box->suppress_border;
-                float extend_l = (border_suppress & (1 << L)) ? border[L] / 2 : border[L];
-                float extend_r = (border_suppress & (1 << R)) ? border[R] / 2 : border[R];
-                float extend_t = (border_suppress & (1 << T)) ? border[T] / 2 : border[T];
-                float extend_b = (border_suppress & (1 << B)) ? border[B] / 2 : border[B];
+                float frag0, frag1;
+                int is_first, is_last;
+                /* Do not extend background into a suppressed shared edge: that
+                 * cell is drawn after its neighbour and would paint over the
+                 * winning border (entire horizontal/vertical lines vanish). */
+                float extend_l = (border_suppress & (1 << L)) ? 0 : border[L];
+                float extend_r = (border_suppress & (1 << R)) ? 0 : border[R];
+                float extend_t = (border_suppress & (1 << T)) ? 0 : border[T];
+                float extend_b = (border_suppress & (1 << B)) ? 0 : border[B];
                 bg_x0 -= extend_l;
                 bg_y0 -= extend_t;
                 bg_x1 += extend_r;
                 bg_y1 += extend_b;
+                /* Clip bg to page fragment of covered rows (same as borders). */
+                if (!table_cell_page_fragment(box, page_top, page_bot, padding[T] + cell_padding_top,
+                                              padding[B] + cell_padding_bot, &frag0, &frag1, &is_first, &is_last)) {
+                    paint_bg = 0;
+                } else {
+                    if (bg_y0 < frag0) bg_y0 = frag0;
+                    if (bg_y1 > frag1) bg_y1 = frag1;
+                    if (bg_y1 <= bg_y0) paint_bg = 0;
+                }
             }
+            if (!skip_bg && paint_bg)
             draw_rect(ctx, dev, ctm, page_top, box->style->background_color, bg_x0, bg_y0, bg_x1, bg_y1);
         }
 
@@ -3974,7 +4854,7 @@ static int draw_block_box(fz_context* ctx, fz_html_box* box, float page_top, flo
             /* Draw a selection of borders. */
             /* If we are restarting, don't do the bottom one yet. */
             suppress = restart ? (1 << B) : 0;
-            do_borders(ctx, dev, ctm, page_top, box, suppress);
+            do_borders(ctx, dev, ctm, page_top, page_bot, box, suppress);
 
             if (box->list_item) draw_list_mark(ctx, box, page_top, page_bot, dev, ctm, box->list_item);
         }
@@ -3986,6 +4866,10 @@ static int draw_block_box(fz_context* ctx, fz_html_box* box, float page_top, flo
             break;
         }
     }
+
+    /* After rows/cells paint, close open table page fragments at row breaks. */
+    if (!skipping && box->type == BOX_TABLE && box->style->visibility == V_VISIBLE)
+        paint_table_fragment_closures(ctx, dev, ctm, page_top, page_bot, box);
 
     if (box->style->visibility == V_VISIBLE && restart && restart->start == NULL) {
         /* We didn't draw (at least some of) the borders on the way down,
@@ -4005,7 +4889,7 @@ static int draw_block_box(fz_context* ctx, fz_html_box* box, float page_top, flo
         /* FIXME: background color? list mark is probably OK as we only want
          * it once. */
 
-        do_borders(ctx, dev, ctm, page_top, box, suppress);
+        do_borders(ctx, dev, ctm, page_top, page_bot, box, suppress);
     }
 
     return stopped;
@@ -4019,7 +4903,19 @@ static int draw_table_row(fz_context* ctx, fz_html_box* box, float page_top, flo
 
     float y0 = box->s.layout.y;
     float y1 = box->s.layout.b;
-    if (y0 > page_bot || y1 < page_top) return 0;
+    if (y0 > page_bot || y1 < page_top) {
+        /* Rowspan cells live under their start row. When that row is entirely
+         * above this page, still paint rowspan children whose logical box
+         * overlaps the page (MIDDLE/LAST fragments). */
+        if (y1 < page_top) {
+            for (child = box->down; child; child = child->next) {
+                if (cell_rowspan(child) <= 1) continue;
+                if (child->s.layout.b < page_top || child->s.layout.y > page_bot) continue;
+                if (draw_box(ctx, child, page_top, page_bot, dev, ctm, hb_buf, restart)) return 1;
+            }
+        }
+        return 0;
+    }
 
     /* If we're skipping, is this the place we should restart? */
     if (restart) {
@@ -4064,16 +4960,18 @@ void fz_draw_restarted_html(fz_context* ctx, fz_device* dev, fz_matrix ctm, fz_h
 }
 
 void fz_draw_html(fz_context* ctx, fz_device* dev, fz_matrix ctm, fz_html* html, int page) {
-    float page_top = page * html->page_h;
-    float page_bot = (page + 1) * html->page_h;
+    float y0 = 0, y1 = 0, paper_w = 0, paper_h = 0, ml = 0, mt = 0, cw = 0;
+    float prev_clip = g_html_paint_clip_right;
 
-    draw_rect(ctx, dev, ctm, 0, html->tree.root->style->background_color, 0, 0,
-              html->page_w + html->page_margin[L] + html->page_margin[R],
-              html->page_h + html->page_margin[T] + html->page_margin[B]);
+    fz_html_page_box(html, page, &y0, &y1, &paper_w, &paper_h, &ml, &mt, &cw);
 
-    ctm = fz_pre_translate(ctm, html->page_margin[L], html->page_margin[T]);
+    draw_rect(ctx, dev, ctm, 0, html->tree.root->style->background_color, 0, 0, paper_w, paper_h);
 
-    fz_draw_restarted_html(ctx, dev, ctm, html->tree.root, page_top, page_bot, NULL);
+    ctm = fz_pre_translate(ctm, ml, mt);
+
+    g_html_paint_clip_right = paper_w - ml;
+    fz_draw_restarted_html(ctx, dev, ctm, html->tree.root, y0, y1, NULL);
+    g_html_paint_clip_right = prev_clip;
 }
 
 void fz_draw_story(fz_context* ctx, fz_story* story, fz_device* dev, fz_matrix ctm) {

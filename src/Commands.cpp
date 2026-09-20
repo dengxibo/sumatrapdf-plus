@@ -290,6 +290,10 @@ static SeqStrings gCommandNames =
     "CmdToggleOcrCopyMerged\0"
     "CmdAiRecognizePdfToc\0"
     "CmdPdfRotatePages\0"
+    "CmdDeskewPage\0"
+    "CmdDeskewAllScannedPages\0"
+    "CmdToggleOcrDeskew\0"
+    "CmdDisplayFilter\0"
     "CmdNone\0"
     "\0";
 
@@ -570,6 +574,10 @@ static i32 gCommandIds[] = {
     CmdToggleOcrCopyMerged,
     CmdAiRecognizePdfToc,
     CmdPdfRotatePages,
+    CmdDeskewPage,
+    CmdDeskewAllScannedPages,
+    CmdToggleOcrDeskew,
+    CmdDisplayFilter,
     CmdNone,
 };
 
@@ -850,6 +858,10 @@ SeqStrings gCommandDescriptions =
     "Toggle Paragraph-merged Copy\0"
     "AI Recognize Table of Contents\0"
     "Rotate PDF Pages...\0"
+    "Deskew Page\0"
+    "Deskew All Scanned Pages\0"
+    "Toggle Deskew During OCR\0"
+    "Enhance Display\0"
     "Do nothing\0"
     "\0";
 // clang-format on

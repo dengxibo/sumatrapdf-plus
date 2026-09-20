@@ -33515,9 +33515,9 @@ tw:外觀
 cn:主题(&T)：
 tw:主題(&T)：
 
-:Document &colors:
-cn:文档颜色(&C)：
-tw:文件色彩(&C)：
+:Default document &colors:
+cn:默认文档颜色(&C)：
+tw:預設文件色彩(&C)：
 
 :Keep original document colors
 cn:保留原稿颜色
@@ -33546,6 +33546,10 @@ tw:目錄字型(&F)：
 :&Size:
 cn:字号(&S)：
 tw:字型大小(&S)：
+
+:Si&ze (0 = auto, 6-72):
+cn:字号（0 = 自动，6–72）(&S)：
+tw:字型大小（0 = 自動，6–72）(&S)：
 
 :&Wrap long titles
 cn:长标题自动换行(&W)
@@ -33734,3 +33738,119 @@ tw:DeepSeek
 :ChatGPT
 cn:ChatGPT
 tw:ChatGPT
+
+:Tab fo&nt size (0 = auto, 6-72):
+cn:标签字号（0 = 自动，6–72）(&N)：
+tw:分頁字型大小（0 = 自動，6–72）(&N)：
+
+:Tab bar &height (0 = auto, 16-128):
+cn:标签栏高度（0 = 自动，16–128）(&H)：
+tw:分頁列高度（0 = 自動，16–128）(&H)：
+
+:Tab font size must be 0 (automatic) or between 6 and 72.
+cn:标签字号必须为 0（自动）或 6 到 72。
+tw:分頁字型大小必須為 0（自動）或 6 到 72。
+
+:Tab bar height must be 0 (automatic) or between 16 and 128.
+cn:标签栏高度必须为 0（自动）或 16 到 128。
+tw:分頁列高度必須為 0（自動）或 16 到 128。
+
+:Display &Filter...
+cn:显示滤镜(&F)...
+tw:顯示濾鏡(&F)...
+
+:Display filter
+cn:显示滤镜
+tw:顯示濾鏡
+
+:Brightness
+cn:亮度
+tw:亮度
+
+:Contrast
+cn:对比度
+tw:對比度
+
+:Scan
+cn:扫描件
+tw:掃描件
+
+:Reset
+cn:重置
+tw:重設
+
+:Sharpness
+cn:锐度
+tw:銳度
+
+:Deskew &Page
+cn:倾斜校正(&P)
+tw:傾斜校正(&P)
+
+:Deskew Page
+cn:倾斜校正
+tw:傾斜校正
+
+:This page is not skewed.
+cn:这一页没有需要校正的倾斜。
+tw:這一頁沒有需要校正的傾斜。
+
+:Deskewed by %.1f degrees.
+cn:已倾斜校正 %.1f 度。
+tw:已傾斜校正 %.1f 度。
+
+:Enhance Display
+cn:增强显示
+tw:增強顯示
+
+:Enable Enhance Display
+cn:开启增强显示
+tw:開啟增強顯示
+
+:Enhance Display is enabled
+cn:增强显示已开启
+tw:增強顯示已開啟
+
+:Tab fo&nt size:
+cn:标签字号(&N)：
+tw:分頁字型大小(&N)：
+
+:Tab bar &height:
+cn:标签栏高度(&H)：
+tw:分頁列高度(&H)：
+
+:Deskew All Scanned Pages
+cn:倾斜校正全部扫描页
+tw:傾斜校正全部掃描頁
+
+:Deskew &All Scanned Pages
+cn:倾斜校正全部扫描页(&A)
+tw:傾斜校正全部掃描頁(&A)
+
+:Deskew during OCR
+cn:识别时自动校正倾斜
+tw:識別時自動校正傾斜
+
+:Toggle Deskew During OCR
+cn:开关识别时自动校正倾斜
+tw:開關識別時自動校正傾斜
+
+:No scanned pages needed deskewing.
+cn:没有需要倾斜校正的扫描页。
+tw:沒有需要傾斜校正的掃描頁。
+
+:Deskewed %d page(s).
+cn:已倾斜校正 %d 页。
+tw:已傾斜校正 %d 頁。
+
+:Deskewing…
+cn:正在倾斜校正…
+tw:正在傾斜校正…
+
+:Deskewing… %d / %d
+cn:正在倾斜校正… %d / %d
+tw:正在傾斜校正… %d / %d
+
+:Deskew is already running.
+cn:倾斜校正已在进行。
+tw:傾斜校正已在進行。

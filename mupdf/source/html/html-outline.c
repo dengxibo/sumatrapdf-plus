@@ -253,7 +253,9 @@ make_box_bookmark(fz_context *ctx, fz_html_box *box, float y, fz_html_flow **can
 fz_bookmark
 fz_make_html_bookmark(fz_context *ctx, fz_html *html, int page)
 {
-	return (fz_bookmark)make_box_bookmark(ctx, html->tree.root, page * html->page_h, NULL);
+	float y0 = 0;
+	fz_html_page_box(html, page, &y0, NULL, NULL, NULL, NULL, NULL, NULL);
+	return (fz_bookmark)make_box_bookmark(ctx, html->tree.root, y0, NULL);
 }
 
 static int
@@ -293,7 +295,7 @@ fz_lookup_html_bookmark(fz_context *ctx, fz_html *html, fz_bookmark mark)
 {
 	fz_html_flow *flow = (fz_html_flow*)mark;
 	if (flow && lookup_box_bookmark(ctx, html->tree.root, flow))
-		return (int)(flow->y / html->page_h);
+		return fz_html_page_number_at_y(html, flow->y);
 	return -1;
 }
 

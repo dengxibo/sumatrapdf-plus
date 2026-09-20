@@ -1613,6 +1613,7 @@ static bool BuildEbookAnnotationsExport(WindowTab* tab, StrBuilder& out) {
         return a.sourceStart < b.sourceStart;
     });
 
+    out.Append(UTF8_BOM);
     out.AppendFmt("# %s\n\n", tab->GetTabTitle());
     out.AppendFmt("%s: %s\n", _TRA("Source"), tab->filePath);
     out.Append(_TRA("Exported:"));
@@ -2182,6 +2183,34 @@ static void PaintEbookMarkup(WindowTab* tab, HDC hdc, Vec<Rect>& screenRects, Eb
     }
     PaintTextMarkupOverlay(hdc, tab->win->canvasRc, annotation->type, EbookAnnotationGetColor(annotation), screenRects,
                            EbookAnnotationGetOpacity(annotation));
+    if (!str::IsEmptyOrWhiteSpace(EbookAnnotationGetNote(annotation))) {
+        HWND hwndDpi = tab->win ? tab->win->hwndFrame : nullptr;
+        int size = DpiScale(hwndDpi, 11);
+        if (size < 9) {
+            size = 9;
+        }
+        Rect lineRect = screenRects.Last();
+        int x = lineRect.x + lineRect.dx - size / 2;
+        int y = lineRect.y - size / 4;
+        COLORREF color = EbookAnnotationGetColor(annotation);
+        u8 r, g, b;
+        UnpackColor(color, r, g, b);
+        Gdiplus::Graphics graphics(hdc);
+        graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+        Gdiplus::SolidBrush fill(Gdiplus::Color(230, r, g, b));
+        Gdiplus::Pen frame(Gdiplus::Color(200, 40, 40, 40), 1.f);
+        Gdiplus::SolidBrush glyph(Gdiplus::Color(220, 30, 30, 30));
+        Gdiplus::Rect bounds(x, y, size - 1, size - 1);
+        graphics.FillRectangle(&fill, bounds);
+        graphics.DrawRectangle(&frame, bounds);
+        float iconSize = (float)std::max(6, size / 2);
+        float iconX = (float)x + ((float)size - iconSize) / 2.f;
+        float iconY = (float)y + ((float)size - iconSize) / 2.f;
+        for (int row = 0; row < 8; row += 2) {
+            graphics.FillRectangle(&glyph,
+                                   Gdiplus::RectF(iconX, iconY + row * iconSize / 8.f, iconSize, iconSize / 8.f));
+        }
+    }
 }
 
 // Match MuPDF/Acrobat markup appearance (pdf-appearance.c):

@@ -33,7 +33,7 @@ Configure viewer in [output profiles](https://texniccenter.sourceforge.net/confi
   - `SumatraPDF.exe` path might be different on your computer
 - go back to the editor and using any simple .TeX press `Ctrl + Shift + F5` (Build and view)
 - SumatraPDF should have fired up with the compiled PDF
-- in SumatraPDF go To `Settings` > `Advanced Options`
+- in SumatraPDF go to `Settings` > `Options...` → **Advanced** → `Open Advanced Options File...`
 - make the following modifications and save the settings file:
 
 ```

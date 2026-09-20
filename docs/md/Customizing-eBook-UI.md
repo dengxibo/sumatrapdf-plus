@@ -13,7 +13,7 @@ There are 2 ways to customize eBook UI.
 
 ## Use advanced settings
 
-Use **Settings -> Advanced Settings** menu and find **EbookUI** section.
+Use **Settings → Options... → Advanced → Open Advanced Options File...** and find **EbookUI** section.
 
 As described in [settings](https://www.sumatrapdfreader.org/settings/settings) you can change the following aspects of eBook UI:
 
@@ -24,7 +24,7 @@ As described in [settings](https://www.sumatrapdfreader.org/settings/settings) y
 
 ## Use PDF UI for eBooks
 
-Use **Settings -> Advanced Settings** menu and find **EbookUI** section.
+Use **Settings → Options... → Advanced → Open Advanced Options File...** and find **EbookUI** section.
 
 Set **UseFixedPageUI = true**
 

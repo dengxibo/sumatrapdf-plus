@@ -4,6 +4,7 @@
 #include "utils/BaseUtil.h"
 #include "utils/WinUtil.h"
 #include "utils/Dpi.h"
+#include "utils/UITask.h"
 #include "wingui/UIModels.h"
 #include "wingui/Layout.h"
 #include "wingui/WinGui.h"
@@ -20,6 +21,7 @@
 #include "TocExtraction.h"
 #include "Notifications.h"
 #include "SumatraDialogs.h"
+#include "AppDialogTheme.h"
 #include "resource.h"
 #include "Theme.h"
 #include "Translations.h"
@@ -27,48 +29,63 @@
 
 void EngineMupdfEnsurePageLinksForHitTest(EngineBase* engine, int pageNo);
 bool EngineMupdfCanEditPdfToc(EngineBase* engine);
+bool EngineMupdfCanExtractToc(EngineBase* engine);
 
 // Resource dialogs use the existing PerMonitorV2 dialog-manager scaling.
-// title is an English translation msgid (translated when the dialog starts);
-// msgid is a static message given as an English msgid (translated on init);
-// message is a caller-built wide string (may contain dynamic content).
 struct TocDialogData {
-    const char* title;
+    const char* title = nullptr;
     const char* msgid = nullptr;
     const WCHAR* message = nullptr;
-
     bool method = false;
-    HBRUSH background = nullptr;
-    HFONT headingFont = nullptr;
-    HFONT bodyFont = nullptr;
+    AppDialogBrushes brushes;
+    // Modeless method dialog: keep engine alive until the user chooses.
+    MainWindow* win = nullptr;
+    EngineBase* engine = nullptr;
+    int pendingChoice = 0; // 100 local / 103 web; applied after DestroyWindow
 };
 
-static void TocMethodFonts(HWND hwnd, TocDialogData* data) {
-    NONCLIENTMETRICS metrics{};
-    metrics.cbSize = sizeof(metrics);
-    int dpi = DpiGetForHwnd(hwnd);
-    if (!GetNonClientMetricsForDpi(dpi, &metrics)) return;
-    metrics.lfMessageFont.lfHeight = -MulDiv(19, dpi, 144); // 9.5 pt
-    metrics.lfMessageFont.lfWeight = FW_NORMAL;
-    HFONT body = CreateFontIndirectW(&metrics.lfMessageFont);
-    metrics.lfMessageFont.lfHeight = -MulDiv(11, dpi, 72);
-    metrics.lfMessageFont.lfWeight = FW_SEMIBOLD;
-    HFONT heading = CreateFontIndirectW(&metrics.lfMessageFont);
-    if (!body || !heading) {
-        DeleteObject(body);
-        DeleteObject(heading);
+static HWND gTocMethodHwnd = nullptr;
+
+static void TocMethodThemeRefreshCb(HWND hwnd, void* ctx) {
+    auto* data = (TocDialogData*)ctx;
+    if (!data) {
         return;
     }
-    for (int id : {IDC_TOC_MESSAGE, IDC_TOC_LOCAL_SUBTITLE, IDC_TOC_WEB_SUBTITLE}) {
-        SendDlgItemMessageW(hwnd, id, WM_SETFONT, (WPARAM)heading, TRUE);
+    data->brushes.Recreate();
+    AppDialogApplyChrome(hwnd);
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
+}
+
+static void TocMethodFinishChoice(TocDialogData* data) {
+    if (!data) {
+        return;
     }
-    for (int id : {IDC_TOC_LOCAL_DESCRIPTION, IDC_TOC_WEB_DESCRIPTION, IDC_TOC_LOCAL_PRIVACY, IDC_TOC_WEB_PRIVACY}) {
-        SendDlgItemMessageW(hwnd, id, WM_SETFONT, (WPARAM)body, TRUE);
+    int choice = data->pendingChoice;
+    MainWindow* win = data->win;
+    EngineBase* engine = data->engine;
+    data->win = nullptr;
+    data->engine = nullptr;
+    delete data;
+    if (choice != 100 && choice != 103) {
+        if (engine) {
+            engine->Release();
+        }
+        return;
     }
-    DeleteObject(data->headingFont);
-    DeleteObject(data->bodyFont);
-    data->headingFont = heading;
-    data->bodyFont = body;
+    if (!IsMainWindowValid(win) || !win->AsFixed() || win->AsFixed()->GetEngine() != engine) {
+        if (engine) {
+            engine->Release();
+        }
+        return;
+    }
+    if (engine) {
+        engine->Release();
+    }
+    if (choice == 100) {
+        HandleExtractPdfTocCommand(win);
+    } else {
+        StartAiTocProofOfConcept(win);
+    }
 }
 
 static INT_PTR CALLBACK TocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -76,7 +93,7 @@ static INT_PTR CALLBACK TocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     if (msg == WM_INITDIALOG) {
         data = (TocDialogData*)lp;
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, lp);
-        data->background = CreateSolidBrush(ThemeWindowBackgroundColor());
+        data->brushes.Create();
         SetWindowTextW(hwnd, _TRW(data->title));
         SetDlgItemTextW(hwnd, IDC_TOC_MESSAGE, data->msgid ? _TRW(data->msgid) : data->message);
         SetDlgItemTextW(hwnd, IDCANCEL, _TRW("Cancel"));
@@ -96,14 +113,13 @@ static INT_PTR CALLBACK TocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             SetDlgItemTextW(hwnd, IDC_TOC_WEB_DESCRIPTION,
                             _TRW("Extracts the structure from printed TOC pages, or from the body text structure.\n"
                                  "Recognized by the web AI; slower than local extraction."));
-            SetDlgItemTextW(hwnd, IDC_TOC_LOCAL_PRIVACY,
-                            _TRW("Processed locally and fast. Nothing is uploaded."));
+            SetDlgItemTextW(hwnd, IDC_TOC_LOCAL_PRIVACY, _TRW("Processed locally and fast. Nothing is uploaded."));
             SetDlgItemTextW(hwnd, IDC_TOC_WEB_PRIVACY,
                             _TRW("Needs internet: only TOC page images or heading candidates are uploaded."));
-            TocMethodFonts(hwnd, data);
+            RegisterAppDialogForTheme(hwnd, TocMethodThemeRefreshCb, data);
+            SetCurrentModelessDialog(hwnd);
         }
-        if (UseDarkModeLib()) DarkMode::setChildCtrlsSubclassAndTheme(hwnd);
-        UpdateWindowCaptionTheme(hwnd);
+        AppDialogApplyChrome(hwnd);
         CenterDialog(hwnd);
 
         int focus = IDCANCEL;
@@ -111,98 +127,145 @@ static INT_PTR CALLBACK TocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         SetFocus(GetDlgItem(hwnd, focus));
         return FALSE;
     }
-    if (!data) return FALSE;
+    if (!data) {
+        return FALSE;
+    }
     switch (msg) {
-        case WM_DPICHANGED:
-            // Let the PMv2 dialog manager scale the resource layout first.
-            if (data->method) PostMessageW(hwnd, WM_APP + 71, 0, 0);
-            return FALSE;
-        case WM_APP + 71:
-            if (data->method) TocMethodFonts(hwnd, data);
-            return TRUE;
         case WM_CTLCOLORDLG:
         case WM_CTLCOLORSTATIC:
-        case WM_CTLCOLORBTN:
-            SetTextColor((HDC)wp, ThemeWindowTextColor());
-            SetBkColor((HDC)wp, ThemeWindowBackgroundColor());
-            return (INT_PTR)data->background;
+        case WM_CTLCOLORBTN: {
+            HBRUSH br = AppDialogCtlColorBrush(msg, wp, lp, data->brushes.background);
+            if (br) {
+                return (INT_PTR)br;
+            }
+            break;
+        }
+        case WM_ACTIVATE:
+            if (data->method) {
+                SetCurrentModelessDialog(LOWORD(wp) == WA_INACTIVE ? nullptr : hwnd);
+            }
+            return FALSE;
         case WM_COMMAND: {
             int id = LOWORD(wp);
-            if (id == IDCANCEL || id == IDOK || (data->method && (id == 100 || id == 103))) {
-                EndDialog(hwnd, id);
+            if (data->method && (id == 100 || id == 103)) {
+                data->pendingChoice = id;
+                DestroyWindow(hwnd);
+                return TRUE;
+            }
+            if (id == IDCANCEL || id == IDOK) {
+                if (data->method) {
+                    data->pendingChoice = 0;
+                    DestroyWindow(hwnd);
+                } else {
+                    EndDialog(hwnd, id);
+                }
                 return TRUE;
             }
             break;
         }
         case WM_CLOSE:
-            EndDialog(hwnd, IDCANCEL);
+            if (data->method) {
+                data->pendingChoice = 0;
+                DestroyWindow(hwnd);
+            } else {
+                EndDialog(hwnd, IDCANCEL);
+            }
             return TRUE;
         case WM_DESTROY:
-
-            DeleteObject(data->background);
-            data->background = nullptr;
-            DeleteObject(data->headingFont);
-            DeleteObject(data->bodyFont);
-            data->headingFont = data->bodyFont = nullptr;
+            if (data->method) {
+                UnregisterAppDialogForTheme(hwnd);
+                if (GetCurrentModelessDialog() == hwnd) {
+                    SetCurrentModelessDialog(nullptr);
+                }
+                if (gTocMethodHwnd == hwnd) {
+                    gTocMethodHwnd = nullptr;
+                }
+                data->brushes.Destroy();
+                SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+                // Finish after destroy so nested dialogs (AI TOC) are safe.
+                uitask::Post(MkFunc0(TocMethodFinishChoice, data), "TocMethodFinish");
+                return TRUE;
+            }
+            data->brushes.Destroy();
             break;
     }
     return FALSE;
 }
 
 bool ConfirmTocPageSend(HWND parent, const WCHAR* message) {
-    TocDialogData data{"Confirm Sending TOC Pages"};
+    TocDialogData data{};
+    data.title = "Confirm Sending TOC Pages";
     data.message = message;
     return CreateAppDialogBox(IDD_DIALOG_TOC_SEND, parent, TocDialogProc, (LPARAM)&data) == IDOK;
 }
+
 void ShowTocExtraction(MainWindow* win) {
     DisplayModel* dm = win ? win->AsFixed() : nullptr;
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
-    if (!engine || !EngineMupdfCanEditPdfToc(engine)) return;
+    if (!engine || !EngineMupdfCanExtractToc(engine)) {
+        return;
+    }
     if (TocCalibIsActive(win)) {
         ShowTocCalib(win);
         return;
     }
-    if (ExtractPdfTocIsRunning()) return;
-    // Display explanations only. Analysis starts after an explicit choice.
+    if (ExtractPdfTocIsRunning()) {
+        return;
+    }
+    if (gTocMethodHwnd && IsWindow(gTocMethodHwnd)) {
+        SetForegroundWindow(gTocMethodHwnd);
+        return;
+    }
+    auto* choice = new TocDialogData();
+    choice->title = "Extract Table of Contents";
+    choice->msgid = "Choose an extraction method:";
+    choice->method = true;
+    choice->win = win;
+    choice->engine = engine;
     engine->AddRef();
-    defer {
+    HWND hwnd = CreateAppDialogModeless(IDD_DIALOG_TOC_METHOD, win->hwndFrame, TocDialogProc, (LPARAM)choice);
+    if (!hwnd) {
         engine->Release();
-    };
-    TocDialogData choice{"Extract Table of Contents"};
-    choice.msgid = "Choose an extraction method:";
-    choice.method = true;
-    INT_PTR button = CreateAppDialogBox(IDD_DIALOG_TOC_METHOD, win->hwndFrame, TocDialogProc, (LPARAM)&choice);
-    if (button != 100 && button != 103) return;
-    if (!IsMainWindowValid(win) || !win->AsFixed() || win->AsFixed()->GetEngine() != engine) return;
-    if (button == 100)
-        HandleExtractPdfTocCommand(win);
-    else
-        StartAiTocProofOfConcept(win);
+        delete choice;
+        return;
+    }
+    gTocMethodHwnd = hwnd;
+    ShowWindow(hwnd, SW_SHOW);
 }
 
 int ApplyTocLinkEvidence(EngineBase* engine, Vec<ExtractedTocItem*>& roots) {
-    if (!engine) return 0;
+    if (!engine) {
+        return 0;
+    }
     Vec<ExtractedTocItem*> flat;
     FlattenExtractedTocItems(roots, flat);
     int matched = 0;
     for (ExtractedTocItem* it : flat) {
-        if (it->tocPageNo < 1 || it->tocPageNo > engine->PageCount() || (it->tocX == 0 && it->tocY == 0)) continue;
+        if (it->tocPageNo < 1 || it->tocPageNo > engine->PageCount() || (it->tocX == 0 && it->tocY == 0)) {
+            continue;
+        }
         EngineMupdfEnsurePageLinksForHitTest(engine, it->tocPageNo);
         Vec<IPageElement*> elements = engine->GetElements(it->tocPageNo);
         IPageDestination* found = nullptr;
         bool ambiguous = false;
         for (IPageElement* el : elements) {
             IPageDestination* dest = el && el->IsLink() ? el->AsLink() : nullptr;
-            if (!dest || dest->pageNo < 1 || dest->pageNo > engine->PageCount()) continue;
-            RectF r = el->GetRect();
-            if (it->tocX < r.x - 3 || it->tocX > r.x + r.dx + 3 || it->tocY < r.y - 3 || it->tocY > r.y + r.dy + 3)
+            if (!dest || dest->pageNo < 1 || dest->pageNo > engine->PageCount()) {
                 continue;
+            }
+            RectF r = el->GetRect();
+            if (it->tocX < r.x - 3 || it->tocX > r.x + r.dx + 3 || it->tocY < r.y - 3 || it->tocY > r.y + r.dy + 3) {
+                continue;
+            }
             if (found &&
-                (found->pageNo != dest->pageNo || found->rect.x != dest->rect.x || found->rect.y != dest->rect.y))
+                (found->pageNo != dest->pageNo || found->rect.x != dest->rect.x || found->rect.y != dest->rect.y)) {
                 ambiguous = true;
+            }
             found = dest;
         }
-        if (!found || ambiguous) continue;
+        if (!found || ambiguous) {
+            continue;
+        }
         it->pageNo = found->pageNo;
         it->x = (float)found->rect.x;
         it->y = (float)found->rect.y;
@@ -238,7 +301,9 @@ void PrepareTocExtractionResult(EngineBase* engine, Vec<ExtractedTocItem*>& root
 bool PreviewTocExtraction(MainWindow* win, EngineBase* engine, Vec<ExtractedTocItem*>& roots, bool persistToDisk,
                           HWND parent) {
     (void)parent;
-    if (!win || !engine) return false;
+    if (!win || !engine) {
+        return false;
+    }
     PrepareTocExtractionResult(engine, roots);
     return StartTocCalib(win, roots, engine, persistToDisk, true);
 }

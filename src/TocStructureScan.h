@@ -58,9 +58,9 @@ struct TocStructureScanResult {
 // Runs the whole-document scan on a worker thread. Reports progress per page;
 // isCanceled is polled between pages. Returns false when canceled (out is
 // left empty) or when engine is null.
-bool RunTocStructureScan(EngineBase* engine, TocStructureScanResult& out,
-                         bool (*isCanceled)(void*) = nullptr, void* cancelCtx = nullptr,
-                         void (*onProgress)(void*, int, int) = nullptr, void* progressCtx = nullptr);
+bool RunTocStructureScan(EngineBase* engine, TocStructureScanResult& out, bool (*isCanceled)(void*) = nullptr,
+                         void* cancelCtx = nullptr, void (*onProgress)(void*, int, int) = nullptr,
+                         void* progressCtx = nullptr);
 
 // One AI selection: candidate id + level. Facts never come from the AI.
 struct BodyTocSelection {
@@ -75,13 +75,11 @@ bool IsBodyTocJsonCandidate(const char* text);
 // Parses + validates the v2 body JSON: strips fences, schema-checks and
 // whitelists every candidate_id against the scan result. Unknown ids are
 // rejected individually; returns false when no legal selection remains.
-bool ParseBodyTocSelections(const char* text, const TocStructureScanResult& scan,
-                            Vec<BodyTocSelection>& out);
+bool ParseBodyTocSelections(const char* text, const TocStructureScanResult& scan, Vec<BodyTocSelection>& out);
 
 // Builds the bookmark tree from validated selections. Title/page/bbox all come
 // from the local candidate; PrepareTocExtractionResult() must run afterwards.
-bool BuildBodyTocItems(TocStructureScanResult& scan, const Vec<BodyTocSelection>& sel,
-                       Vec<ExtractedTocItem*>& roots);
+bool BuildBodyTocItems(TocStructureScanResult& scan, const Vec<BodyTocSelection>& sel, Vec<ExtractedTocItem*>& roots);
 
 // Assembles the <CANDIDATE> digest block embedded in the body prompt.
 char* BuildBodyTocDigest(const TocStructureScanResult& scan);

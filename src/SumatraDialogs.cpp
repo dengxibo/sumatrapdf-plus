@@ -4,6 +4,7 @@
 #include "utils/BaseUtil.h"
 #include "wingui/DialogSizer.h"
 #include "utils/WinUtil.h"
+#include "utils/Dpi.h"
 
 #include "Settings.h"
 #include "AppSettings.h"
@@ -19,7 +20,12 @@
 #include "SumatraDialogs.h"
 #include "Translations.h"
 #include "Theme.h"
+#include "AppDialogTheme.h"
 #include "DarkModeSubclass.h"
+
+// Modeless Enter/Esc routing (defined in wingui/Wnd.cpp).
+HWND GetCurrentModelessDialog();
+void SetCurrentModelessDialog(HWND);
 
 // http://msdn.microsoft.com/en-us/library/ms645398(v=VS.85).aspx
 #pragma pack(push, 1)
@@ -168,6 +174,26 @@ INT_PTR CreateAppDialogBox(int dlgId, HWND parent, DLGPROC DlgProc, LPARAM data)
     INT_PTR res = DialogBoxIndirectParamW(nullptr, tpl, parent, DlgProc, data);
     free(tpl);
     return res;
+}
+
+HWND CreateAppDialogModeless(int dlgId, HWND parent, DLGPROC DlgProc, LPARAM data) {
+    bool isRtl = IsUIRtl();
+    bool isDefaultFont = IsAppFontSizeDefault();
+    if (!isRtl && isDefaultFont) {
+        return CreateDialogParamW(nullptr, MAKEINTRESOURCE(dlgId), parent, DlgProc, data);
+    }
+
+    DLGTEMPLATE* tpl = DupTemplate(dlgId);
+    int fntSize = GetAppFontSize();
+    if (isDefaultFont) {
+        SetDlgTemplateRtl(tpl);
+    } else {
+        SetDlgTemplateExFont(tpl, isRtl, fntSize);
+    }
+
+    HWND hwnd = CreateDialogIndirectParamW(nullptr, tpl, parent, DlgProc, data);
+    free(tpl);
+    return hwnd;
 }
 
 /* For passing data to/from GetPassword dialog */
@@ -748,7 +774,21 @@ struct Dialog_ReadAloudSpeed_Data {
     float englishRate = 1.0f;
     float chineseRate = 1.0f;
     bool focusChinese = false;
+    AppDialogBrushes brushes;
+    bool modeless = false;
 };
+
+static HWND gReadAloudSpeedHwnd = nullptr;
+
+static void ReadAloudSpeedThemeRefreshCb(HWND hwnd, void* ctx) {
+    auto* data = (Dialog_ReadAloudSpeed_Data*)ctx;
+    if (!data) {
+        return;
+    }
+    data->brushes.Recreate();
+    AppDialogApplyChrome(hwnd);
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
+}
 
 static constexpr float kReadAloudSpeedMin = 0.25f;
 static constexpr float kReadAloudSpeedMax = 2.00f;
@@ -800,10 +840,12 @@ static INT_PTR CALLBACK Dialog_ReadAloudSpeed_Proc(HWND hDlg, UINT msg, WPARAM w
         case WM_INITDIALOG:
             data = (Dialog_ReadAloudSpeed_Data*)lp;
             SetWindowLongPtr(hDlg, GWLP_USERDATA, (LONG_PTR)data);
-            if (UseDarkModeLib()) {
-                DarkMode::setDarkWndSafe(hDlg);
+            data->brushes.Create();
+            AppDialogApplyChrome(hDlg);
+            if (data->modeless) {
+                RegisterAppDialogForTheme(hDlg, ReadAloudSpeedThemeRefreshCb, data);
+                SetCurrentModelessDialog(hDlg);
             }
-            UpdateWindowCaptionTheme(hDlg);
             HwndSetText(hDlg, _TRA("Read aloud speed"));
             HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SPEED_EN_LABEL, _TRA("English voice:"));
             HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SPEED_ZH_LABEL, _TRA("Chinese voice:"));
@@ -815,6 +857,34 @@ static INT_PTR CALLBACK Dialog_ReadAloudSpeed_Proc(HWND hDlg, UINT msg, WPARAM w
             HwndSetDlgItemText(hDlg, IDCANCEL, _TRA("Cancel"));
             CenterDialog(hDlg);
             HwndSetFocus(GetDlgItem(hDlg, data->focusChinese ? IDC_READ_ALOUD_SPEED_ZH : IDC_READ_ALOUD_SPEED_EN));
+            return FALSE;
+
+        case WM_CTLCOLORDLG:
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORBTN:
+        case WM_CTLCOLOREDIT: {
+            if (!data) {
+                break;
+            }
+            HBRUSH br = AppDialogCtlColorBrush(msg, wp, lp, data->brushes.background, data->brushes.control,
+                                               GetDlgItem(hDlg, IDC_READ_ALOUD_SPEED_EN));
+            // ZH edit also needs control brush
+            if (!br) {
+                break;
+            }
+            HWND ctrl = (HWND)lp;
+            if (ctrl == GetDlgItem(hDlg, IDC_READ_ALOUD_SPEED_ZH) ||
+                ctrl == GetDlgItem(hDlg, IDC_READ_ALOUD_SPEED_EN)) {
+                SetBkColor((HDC)wp, ThemeWindowControlBackgroundColor());
+                return (INT_PTR)data->brushes.control;
+            }
+            return (INT_PTR)br;
+        }
+
+        case WM_ACTIVATE:
+            if (data && data->modeless) {
+                SetCurrentModelessDialog(LOWORD(wp) == WA_INACTIVE ? nullptr : hDlg);
+            }
             return FALSE;
 
         case WM_COMMAND:
@@ -853,31 +923,70 @@ static INT_PTR CALLBACK Dialog_ReadAloudSpeed_Proc(HWND hDlg, UINT msg, WPARAM w
                                     ToWStrTemp(_TRA("Read aloud speed")), MB_OK | MB_ICONWARNING);
                         return TRUE;
                     }
-                    EndDialog(hDlg, IDOK);
+                    ReadAloudUpdateSpeakingRatesRealtime(data->chineseRate, data->englishRate);
+                    if (data->modeless) {
+                        DestroyWindow(hDlg);
+                    } else {
+                        EndDialog(hDlg, IDOK);
+                    }
                     return TRUE;
                 case IDCANCEL:
-                    EndDialog(hDlg, IDCANCEL);
+                    if (data->modeless) {
+                        DestroyWindow(hDlg);
+                    } else {
+                        EndDialog(hDlg, IDCANCEL);
+                    }
                     return TRUE;
+            }
+            break;
+
+        case WM_CLOSE:
+            if (data && data->modeless) {
+                DestroyWindow(hDlg);
+                return TRUE;
+            }
+            break;
+
+        case WM_DESTROY:
+            if (data && data->modeless) {
+                UnregisterAppDialogForTheme(hDlg);
+                if (GetCurrentModelessDialog() == hDlg) {
+                    SetCurrentModelessDialog(nullptr);
+                }
+                if (gReadAloudSpeedHwnd == hDlg) {
+                    gReadAloudSpeedHwnd = nullptr;
+                }
+                data->brushes.Destroy();
+                SetWindowLongPtr(hDlg, GWLP_USERDATA, 0);
+                delete data;
+            } else if (data) {
+                data->brushes.Destroy();
             }
             break;
     }
     return FALSE;
 }
 
-bool Dialog_ReadAloudSpeed(HWND hwnd, float* englishRateInOut, float* chineseRateInOut, bool focusChinese) {
-    if (!englishRateInOut || !chineseRateInOut) {
-        return false;
+void Dialog_ReadAloudSpeed(HWND hwnd, bool focusChinese) {
+    if (gReadAloudSpeedHwnd && IsWindow(gReadAloudSpeedHwnd)) {
+        SetForegroundWindow(gReadAloudSpeedHwnd);
+        return;
     }
-    Dialog_ReadAloudSpeed_Data data;
-    data.englishRate = ClampReadAloudSpeed(*englishRateInOut);
-    data.chineseRate = ClampReadAloudSpeed(*chineseRateInOut);
-    data.focusChinese = focusChinese;
-    if (CreateAppDialogBox(IDD_DIALOG_READ_ALOUD_SPEED, hwnd, Dialog_ReadAloudSpeed_Proc, (LPARAM)&data) != IDOK) {
-        return false;
+    if (!gGlobalPrefs) {
+        return;
     }
-    *englishRateInOut = data.englishRate;
-    *chineseRateInOut = data.chineseRate;
-    return true;
+    auto* data = new Dialog_ReadAloudSpeed_Data();
+    data->englishRate = ClampReadAloudSpeed(gGlobalPrefs->readAloudSpeakingRateEn);
+    data->chineseRate = ClampReadAloudSpeed(gGlobalPrefs->readAloudSpeakingRateZh);
+    data->focusChinese = focusChinese;
+    data->modeless = true;
+    HWND hDlg = CreateAppDialogModeless(IDD_DIALOG_READ_ALOUD_SPEED, hwnd, Dialog_ReadAloudSpeed_Proc, (LPARAM)data);
+    if (!hDlg) {
+        delete data;
+        return;
+    }
+    gReadAloudSpeedHwnd = hDlg;
+    ShowWindow(hDlg, SW_SHOW);
 }
 
 static INT_PTR CALLBACK Dialog_ChangeScrollbar_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARAM) {
@@ -951,6 +1060,10 @@ static const int gSettingsInterfaceControls[] = {IDC_SETTINGS_PAGE_INTERFACE,
                                                  IDC_SHOW_ANNOT_TOOLBAR_BUTTONS,
                                                  IDC_TABS_MRU,
                                                  IDC_SEARCH_UI_FLOATING,
+                                                 IDC_TAB_FONT_SIZE_LABEL,
+                                                 IDC_TAB_FONT_SIZE,
+                                                 IDC_TAB_BAR_HEIGHT_LABEL,
+                                                 IDC_TAB_BAR_HEIGHT,
                                                  IDC_GROUP_SCROLLBARS,
                                                  IDC_SCROLLBARS_LABEL,
                                                  IDC_SCROLLBARS,
@@ -1064,6 +1177,173 @@ static void BrowseForDictionaryFolder(HWND hDlg) {
     CoTaskMemFree(pidl);
 }
 
+static AppDialogBrushes gSettingsDialogBrushes;
+static constexpr UINT_PTR kSettingsCategorySubclassId = 1;
+static int gSettingsCategoryHover = -1;
+
+// Same row height as TOC TreeView (tmHeight + 4).
+static int SettingsCategoryItemHeight(HWND hwnd, HFONT font) {
+    HDC dc = GetDC(hwnd);
+    HFONT old = nullptr;
+    if (dc && font) {
+        old = (HFONT)SelectObject(dc, font);
+    }
+    TEXTMETRICW tm{};
+    if (dc) {
+        GetTextMetricsW(dc, &tm);
+    }
+    if (dc && old) {
+        SelectObject(dc, old);
+    }
+    if (dc) {
+        ReleaseDC(hwnd, dc);
+    }
+    int h = tm.tmHeight + 4;
+    if (h < 1) {
+        h = DpiScale(hwnd, 18);
+    }
+    return h;
+}
+
+static void SettingsCategoryListSetItemHeight(HWND category) {
+    if (!category) {
+        return;
+    }
+    HFONT font = (HFONT)SendMessageW(category, WM_GETFONT, 0, 0);
+    SendMessageW(category, LB_SETITEMHEIGHT, 0, SettingsCategoryItemHeight(category, font));
+}
+
+static void SettingsCategoryInvalidateItem(HWND category, int idx) {
+    if (!category || idx < 0) {
+        return;
+    }
+    RECT rc{};
+    if (ListBox_GetItemRect(category, idx, &rc) != LB_ERR) {
+        InvalidateRect(category, &rc, FALSE);
+    }
+}
+
+static int SettingsCategoryItemFromPoint(HWND category, POINTS pts) {
+    DWORD hit = (DWORD)SendMessageW(category, LB_ITEMFROMPOINT, 0, MAKELPARAM(pts.x, pts.y));
+    if (HIWORD(hit)) {
+        return -1;
+    }
+    int idx = (int)LOWORD(hit);
+    int n = (int)ListBox_GetCount(category);
+    if (idx < 0 || idx >= n) {
+        return -1;
+    }
+    return idx;
+}
+
+static LRESULT CALLBACK SettingsCategorySubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId,
+                                                     DWORD_PTR) {
+    switch (msg) {
+        case WM_MOUSEMOVE: {
+            POINTS pts = MAKEPOINTS(lp);
+            int idx = SettingsCategoryItemFromPoint(hwnd, pts);
+            if (idx != gSettingsCategoryHover) {
+                int old = gSettingsCategoryHover;
+                gSettingsCategoryHover = idx;
+                SettingsCategoryInvalidateItem(hwnd, old);
+                SettingsCategoryInvalidateItem(hwnd, idx);
+            }
+            TRACKMOUSEEVENT tme{};
+            tme.cbSize = sizeof(tme);
+            tme.dwFlags = TME_LEAVE;
+            tme.hwndTrack = hwnd;
+            TrackMouseEvent(&tme);
+            break;
+        }
+        case WM_MOUSELEAVE:
+            if (gSettingsCategoryHover >= 0) {
+                int old = gSettingsCategoryHover;
+                gSettingsCategoryHover = -1;
+                SettingsCategoryInvalidateItem(hwnd, old);
+            }
+            break;
+        case WM_ERASEBKGND: {
+            RECT rc{};
+            GetClientRect(hwnd, &rc);
+            COLORREF bg{};
+            COLORREF text{};
+            ThemeSidebarColors(bg, text);
+            HBRUSH br = CreateSolidBrush(bg);
+            FillRect((HDC)wp, &rc, br);
+            DeleteObject(br);
+            return TRUE;
+        }
+        case WM_NCDESTROY:
+            gSettingsCategoryHover = -1;
+            RemoveWindowSubclass(hwnd, SettingsCategorySubclassProc, subclassId);
+            break;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static void SettingsCategoryListInstallHover(HWND category) {
+    if (!category) {
+        return;
+    }
+    gSettingsCategoryHover = -1;
+    RemoveWindowSubclass(category, SettingsCategorySubclassProc, kSettingsCategorySubclassId);
+    SetWindowSubclass(category, SettingsCategorySubclassProc, kSettingsCategorySubclassId, 0);
+}
+
+// TOC-matched colors: sidebar bg/text, AccentColor selection/hover (no system blue invert).
+static void SettingsCategoryDrawItem(HWND category, DRAWITEMSTRUCT* dis) {
+    if (!dis || dis->itemID == (UINT)-1) {
+        return;
+    }
+    HDC hdc = dis->hDC;
+    RECT rc = dis->rcItem;
+    bool selected = (dis->itemState & ODS_SELECTED) != 0;
+    bool hovered = ((int)dis->itemID == gSettingsCategoryHover) && !selected;
+
+    COLORREF bg{};
+    COLORREF text{};
+    ThemeSidebarColors(bg, text);
+    if (selected) {
+        bg = AccentColor(ThemeWindowControlBackgroundColor(), 25);
+    } else if (hovered) {
+        bg = AccentColor(ThemeWindowControlBackgroundColor(), 12);
+    }
+
+    HBRUSH br = CreateSolidBrush(bg);
+    FillRect(hdc, &rc, br);
+    DeleteObject(br);
+
+    if (ThemeUsesDarkChrome() && selected) {
+        COLORREF frame = AccentColor(ThemeWindowLinkColor(), -20);
+        HPEN pen = CreatePen(PS_SOLID, 1, frame);
+        HPEN oldPen = (HPEN)SelectObject(hdc, pen);
+        HBRUSH oldBr = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+        Rectangle(hdc, rc.left, rc.top, rc.right, rc.bottom);
+        SelectObject(hdc, oldBr);
+        SelectObject(hdc, oldPen);
+        DeleteObject(pen);
+    }
+
+    WCHAR buf[256]{};
+    int n = (int)SendMessageW(category, LB_GETTEXT, dis->itemID, (LPARAM)buf);
+    if (n < 0) {
+        n = 0;
+    }
+
+    HFONT font = (HFONT)SendMessageW(category, WM_GETFONT, 0, 0);
+    HFONT oldFont = font ? (HFONT)SelectObject(hdc, font) : nullptr;
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, text);
+    RECT textRc = rc;
+    int padX = DpiScale(category, 8);
+    textRc.left += padX;
+    textRc.right -= padX;
+    DrawTextW(hdc, buf, n, &textRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+    if (oldFont) {
+        SelectObject(hdc, oldFont);
+    }
+}
+
 static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
     GlobalPrefs* prefs;
 
@@ -1072,10 +1352,8 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
         case WM_INITDIALOG: {
             prefs = (GlobalPrefs*)lp;
             SetWindowLongPtr(hDlg, GWLP_USERDATA, (LONG_PTR)prefs);
-            if (UseDarkModeLib()) {
-                DarkMode::setDarkWndSafe(hDlg);
-            }
-            UpdateWindowCaptionTheme(hDlg);
+            gSettingsDialogBrushes.Create();
+            AppDialogApplyChrome(hDlg);
             {
                 HWND hwndCb = GetDlgItem(hDlg, IDC_DEFAULT_LAYOUT);
                 // Fill the page layouts into the select box
@@ -1128,10 +1406,14 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             CheckDlgButton(hDlg, IDC_FULL_PATH_IN_TITLE, prefs->fullPathInTitle ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(hDlg, IDC_SHOW_LINKS, prefs->showLinks ? BST_CHECKED : BST_UNCHECKED);
             SetDlgItemInt(hDlg, IDC_TREE_FONT_SIZE, prefs->treeFontSize, FALSE);
+            SetDlgItemInt(hDlg, IDC_TAB_FONT_SIZE, prefs->tabFontSize, FALSE);
+            SetDlgItemInt(hDlg, IDC_TAB_BAR_HEIGHT, prefs->tabBarHeight, FALSE);
             SetDlgItemInt(hDlg, IDC_CUSTOM_DPI, prefs->customScreenDPI, FALSE);
             HwndSetDlgItemText(hDlg, IDC_DICTIONARY_PATH, prefs->offlineDictionaryPath);
 
             HWND category = GetDlgItem(hDlg, IDC_SETTINGS_CATEGORY);
+            SettingsCategoryListSetItemHeight(category);
+            SettingsCategoryListInstallHover(category);
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("General")));
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Interface")));
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Reading")));
@@ -1242,12 +1524,14 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             HwndSetDlgItemText(hDlg, IDC_LAZY_LOADING, _TRA("&Lazy-load inactive tabs"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_APPEARANCE, _TRA("Appearance"));
             HwndSetDlgItemText(hDlg, IDC_THEME_LABEL, _TRA("&Theme:"));
-            HwndSetDlgItemText(hDlg, IDC_DOCUMENT_COLOR_LABEL, _TRA("Document &colors:"));
+            HwndSetDlgItemText(hDlg, IDC_DOCUMENT_COLOR_LABEL, _TRA("Default document &colors:"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_TOOLBAR, _TRA("Tabs and toolbar"));
+            HwndSetDlgItemText(hDlg, IDC_TAB_FONT_SIZE_LABEL, _TRA("Tab fo&nt size (0 = auto, 6-72):"));
+            HwndSetDlgItemText(hDlg, IDC_TAB_BAR_HEIGHT_LABEL, _TRA("Tab bar &height (0 = auto, 16-128):"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_SCROLLBARS, _TRA("Scrollbars"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_SIDEBAR, _TRA("Contents / favorites sidebar"));
             HwndSetDlgItemText(hDlg, IDC_TREE_FONT_LABEL, _TRA("Tree &font:"));
-            HwndSetDlgItemText(hDlg, IDC_TREE_FONT_SIZE_LABEL, _TRA("&Size:"));
+            HwndSetDlgItemText(hDlg, IDC_TREE_FONT_SIZE_LABEL, _TRA("Si&ze (0 = auto, 6-72):"));
             HwndSetDlgItemText(hDlg, IDC_TREE_WRAP_LABELS, _TRA("&Wrap long titles"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_DEFAULT_VIEW, _TRA("Default view"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_SCROLLING, _TRA("Scrolling"));
@@ -1357,18 +1641,70 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
         }
             //] ACCESSKEY_GROUP Settings Dialog
 
+        case WM_MEASUREITEM: {
+            MEASUREITEMSTRUCT* mis = (MEASUREITEMSTRUCT*)lp;
+            if (mis && mis->CtlID == IDC_SETTINGS_CATEGORY) {
+                HFONT font = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
+                mis->itemHeight = (UINT)SettingsCategoryItemHeight(hDlg, font);
+                return TRUE;
+            }
+            break;
+        }
+
+        case WM_DRAWITEM: {
+            DRAWITEMSTRUCT* dis = (DRAWITEMSTRUCT*)lp;
+            if (dis && dis->CtlID == IDC_SETTINGS_CATEGORY) {
+                SettingsCategoryDrawItem(dis->hwndItem, dis);
+                return TRUE;
+            }
+            break;
+        }
+
+        case WM_CTLCOLORDLG:
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORBTN:
+        case WM_CTLCOLORLISTBOX: {
+            HBRUSH br =
+                AppDialogCtlColorBrush(msg, wp, lp, gSettingsDialogBrushes.background, gSettingsDialogBrushes.control);
+            if (br) {
+                return (INT_PTR)br;
+            }
+            break;
+        }
+
+        case WM_DESTROY:
+            gSettingsCategoryHover = -1;
+            gSettingsDialogBrushes.Destroy();
+            break;
+
         case WM_COMMAND:
             switch (LOWORD(wp)) {
                 case IDOK: {
                     prefs = (GlobalPrefs*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
                     BOOL treeSizeOk = FALSE;
                     int treeFontSize = (int)GetDlgItemInt(hDlg, IDC_TREE_FONT_SIZE, &treeSizeOk, FALSE);
+                    BOOL tabFontSizeOk = FALSE;
+                    int tabFontSize = (int)GetDlgItemInt(hDlg, IDC_TAB_FONT_SIZE, &tabFontSizeOk, FALSE);
+                    BOOL tabBarHeightOk = FALSE;
+                    int tabBarHeight = (int)GetDlgItemInt(hDlg, IDC_TAB_BAR_HEIGHT, &tabBarHeightOk, FALSE);
                     BOOL dpiOk = FALSE;
                     int customDpi = (int)GetDlgItemInt(hDlg, IDC_CUSTOM_DPI, &dpiOk, FALSE);
                     if (!treeSizeOk || (treeFontSize != 0 && (treeFontSize < 6 || treeFontSize > 72))) {
                         MessageBoxWarning(hDlg, _TRA("Tree font size must be 0 (automatic) or between 6 and 72."),
                                           _TRA("Invalid value"));
                         HwndSetFocus(GetDlgItem(hDlg, IDC_TREE_FONT_SIZE));
+                        return TRUE;
+                    }
+                    if (!tabFontSizeOk || (tabFontSize != 0 && (tabFontSize < 6 || tabFontSize > 72))) {
+                        MessageBoxWarning(hDlg, _TRA("Tab font size must be 0 (automatic) or between 6 and 72."),
+                                          _TRA("Invalid value"));
+                        HwndSetFocus(GetDlgItem(hDlg, IDC_TAB_FONT_SIZE));
+                        return TRUE;
+                    }
+                    if (!tabBarHeightOk || (tabBarHeight != 0 && (tabBarHeight < 16 || tabBarHeight > 128))) {
+                        MessageBoxWarning(hDlg, _TRA("Tab bar height must be 0 (automatic) or between 16 and 128."),
+                                          _TRA("Invalid value"));
+                        HwndSetFocus(GetDlgItem(hDlg, IDC_TAB_BAR_HEIGHT));
                         return TRUE;
                     }
                     if (!dpiOk || (customDpi != 0 && (customDpi < 72 || customDpi > 600))) {
@@ -1416,6 +1752,8 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     prefs->fullPathInTitle = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_FULL_PATH_IN_TITLE));
                     prefs->showLinks = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SHOW_LINKS));
                     prefs->treeFontSize = treeFontSize;
+                    prefs->tabFontSize = tabFontSize;
+                    prefs->tabBarHeight = tabBarHeight;
                     prefs->customScreenDPI = customDpi;
 
                     int themeIdx = (int)SendDlgItemMessage(hDlg, IDC_THEME, CB_GETCURSEL, 0, 0);

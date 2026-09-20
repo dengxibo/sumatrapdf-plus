@@ -100,6 +100,12 @@ bool ZipCreator::AddFileData(const char* nameUtf8, const void* data, size_t size
     if (size >= UINT32_MAX) {
         return false;
     }
+    if (size == 0) {
+        data = "";
+    }
+    if (!data) {
+        return false;
+    }
 
     size_t fileOffset = bytesWritten;
     u16 flags = (1 << 11); // filename is UTF-8
@@ -111,15 +117,22 @@ bool ZipCreator::AddFileData(const char* nameUtf8, const void* data, size_t size
 
     u16 method = Z_DEFLATED;
     uLongf compressedSize = (u32)size;
-    char* compressed = AllocArrayTemp<char>(size);
-    if (!compressed) {
-        return false;
-    }
-    compressedSize = zip_compress(compressed, (u32)size, data, (u32)size);
-    if (!compressedSize) {
-        method = 0; // Store
-        memcpy(compressed, data, size);
-        compressedSize = (u32)size;
+    char* compressed = nullptr;
+    if (size == 0) {
+        method = 0;
+        compressed = (char*)"";
+        compressedSize = 0;
+    } else {
+        compressed = AllocArrayTemp<char>(size);
+        if (!compressed) {
+            return false;
+        }
+        compressedSize = zip_compress(compressed, (u32)size, data, (u32)size);
+        if (!compressedSize) {
+            method = 0; // Store
+            memcpy(compressed, data, size);
+            compressedSize = (u32)size;
+        }
     }
 
     constexpr size_t kHdrSize = 30;

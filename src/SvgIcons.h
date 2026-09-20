@@ -58,6 +58,7 @@ enum class TbIcon {
     HomeHistory,
     HomeFrequent,
     Trash,
+    DisplayFilter,
     kMax
 };
 

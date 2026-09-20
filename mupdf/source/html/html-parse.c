@@ -1471,8 +1471,12 @@ static void gen2_tag(fz_context *ctx, struct genstate *g, fz_html_box *root_box,
 	int save_markup_lang;
 	char *save_href;
 
-	/* Limit recursion depth to prevent stack overflow on deeply nested HTML. */
-	if (g->depth > 500)
+	/* Limit recursion depth to prevent stack overflow on deeply nested HTML.
+	 * Soft limit (~100) truncates expansion; hard limit refuses to enter.
+	 * Use a single depth++/depth-- pair and goto end on soft truncate so
+	 * depth and markup state stay balanced. A prior rewrite double-counted
+	 * depth and returned without decrementing, which leaked depth. */
+	if (g->depth >= 200)
 		return;
 	g->depth++;
 
@@ -1490,9 +1494,8 @@ static void gen2_tag(fz_context *ctx, struct genstate *g, fz_html_box *root_box,
 			fz_warn(ctx, "Tag depth limit exceeded. Output may be truncated.");
 			g->depth_warned = 1;
 		}
-		return;
+		goto end;
 	}
-	g->depth++;
 
 	tag = fz_xml_tag(node);
 
@@ -1626,7 +1629,6 @@ static void gen2_tag(fz_context *ctx, struct genstate *g, fz_html_box *root_box,
 	}
 
 end:
-	g->depth--;
 	g->markup_dir = save_markup_dir;
 	g->markup_lang = save_markup_lang;
 	g->href = save_href;
@@ -2200,6 +2202,7 @@ xml_to_boxes(fz_context *ctx,
 	g.styles = NULL;
 	g.publisher_css = publisher_css;
 	g.depth = 0;
+	g.depth_warned = 0;
 
 	if (rtitle)
 		*rtitle = NULL;

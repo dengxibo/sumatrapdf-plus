@@ -667,7 +667,7 @@ void EngineBase::EnsurePageOcrRotateSize() {
     pageOcrRotateSize = n;
 }
 
-void EngineBase::SetOcrPageRotate(int pageNo, int degCw) {
+void EngineBase::SetOcrPageRotate(int pageNo, int degCw, bool modelLocked) {
     if (pageNo < 1 || pageNo > pageCount) {
         return;
     }
@@ -676,10 +676,16 @@ void EngineBase::SetOcrPageRotate(int pageNo, int degCw) {
     if (d >= 360) {
         d = 0;
     }
+    // Bit 15 marks a confident orientation-model correction. The angle stays
+    // in the low bits (0/90/180/270).
+    u16 stored = (u16)d;
+    if (modelLocked && d != 0) {
+        stored = (u16)(stored | 0x8000);
+    }
     ScopedCritSec scope(&textCacheLock);
     EnsurePageOcrRotateSize();
     if (pageOcrRotate && pageNo <= pageOcrRotateSize) {
-        pageOcrRotate[pageNo - 1] = (u16)d;
+        pageOcrRotate[pageNo - 1] = stored;
     }
 }
 
@@ -691,7 +697,18 @@ int EngineBase::GetOcrPageRotate(int pageNo) {
     if (!pageOcrRotate || pageNo > pageOcrRotateSize) {
         return 0;
     }
-    return (int)pageOcrRotate[pageNo - 1];
+    return (int)(pageOcrRotate[pageNo - 1] & 0x0fff);
+}
+
+bool EngineBase::OcrPageRotateModelLocked(int pageNo) {
+    if (pageNo < 1) {
+        return false;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    if (!pageOcrRotate || pageNo > pageOcrRotateSize) {
+        return false;
+    }
+    return (pageOcrRotate[pageNo - 1] & 0x8000) != 0;
 }
 
 void EngineBase::ClearOcrTried(int pageNo) {

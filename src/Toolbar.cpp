@@ -47,6 +47,7 @@ extern "C" {
 #include "OcrService.h"
 #include "PdfDarkMode.h"
 #include "DarkModeSubclass.h"
+#include "DisplayFilter.h"
 #include "wingui/Layout.h"
 #include "wingui/WinGui.h"
 
@@ -95,16 +96,17 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::EbookFontSizeIncrease, CmdEbookFontSizeIncrease, _TRN("Increase Font Size")},
     {TbIcon::None, 0, nullptr}, // separator
     {TbIcon::Search, CmdFindFirst, _TRN("Find")},
-    {TbIcon::Dictionary, CmdToggleDoubleClickWordLookup, _TRN("Toggle Double-Click Word Lookup")},
-    {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
-    {TbIcon::DocColorFollowTheme, CmdSetPdfDocumentColorModeBlack,
-     _TRN("Document Color Mode: Match theme (use current theme colors)")},
     {TbIcon::AnnotLine, CmdCreateAnnotLine, _TRN("Line Annotation (Ctrl+click to lock)")},
     {TbIcon::AnnotInk, CmdCreateAnnotInk, _TRN("Ink Annotation (Ctrl+click to lock)")},
     {TbIcon::AnnotSquare, CmdCreateAnnotSquare, _TRN("Rectangle Annotation (Ctrl+click to lock)")},
     {TbIcon::AnnotCircle, CmdCreateAnnotCircle, _TRN("Circle Annotation (Ctrl+click to lock)")},
     {TbIcon::AnnotText, CmdCreateAnnotText, _TRN("Text Annotation (Ctrl+click to lock)")},
     {TbIcon::AnnotStamp, CmdCreateAnnotStamp, _TRN("Stamp Annotation (Ctrl+click to lock)")},
+    {TbIcon::Dictionary, CmdToggleDoubleClickWordLookup, _TRN("Toggle Double-Click Word Lookup")},
+    {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
+    {TbIcon::DocColorFollowTheme, CmdSetPdfDocumentColorModeBlack,
+     _TRN("Document Color Mode: Match theme (use current theme colors)")},
+    {TbIcon::DisplayFilter, CmdDisplayFilter, _TRN("Enhance Display")},
     {TbIcon::Ocr, CmdToggleAutoOcr, _TRN("Auto OCR")},
     {TbIcon::Speak, CmdReadAloud, _TRN("Read Aloud")},
     {TbIcon::Fullscreen, CmdToggleFullscreen, _TRN("Toggle Fullscreen (F11)")},
@@ -316,6 +318,33 @@ void UpdateAutoOcrToolbarButton(MainWindow* win) {
     InvalidateRect(win->hwndToolbar, nullptr, FALSE);
 }
 
+void UpdateDisplayFilterToolbarTip(MainWindow* win) {
+    if (!win || !win->hwndToolbar) {
+        return;
+    }
+    int buttons[4];
+    int n = GetToolbarButtonsByID(CmdDisplayFilter, buttons);
+    if (n == 0) {
+        return;
+    }
+    WindowTab* tab = win->CurrentTab();
+    const char* tip = _TRN("Enable Enhance Display");
+    if (!DisplayFilterSupportedForTab(tab)) {
+        tip = _TRN("Enhance Display is only available for PDF");
+    } else if (GetDisplayFilterForTab(tab).IsActive()) {
+        tip = _TRN("Enhance Display is enabled");
+    }
+    TempStr tipTranslated = (TempStr)trans::GetTranslation(tip);
+    TBBUTTONINFOW bi{};
+    bi.cbSize = sizeof(bi);
+    bi.dwMask = TBIF_TEXT | TBIF_BYINDEX;
+    bi.pszText = ToWStrTemp(tipTranslated);
+    for (int i = 0; i < n; i++) {
+        SendMessageW(win->hwndToolbar, TB_SETBUTTONINFOW, buttons[i], (LPARAM)&bi);
+    }
+    InvalidateRect(win->hwndToolbar, nullptr, FALSE);
+}
+
 void UpdateDoubleClickWordLookupToolbarButton(MainWindow* win) {
     int buttons[4];
     int n = GetToolbarButtonsByID(CmdToggleDoubleClickWordLookup, buttons);
@@ -390,6 +419,9 @@ static bool IsCmdAvailable(MainWindow* win, int cmdId) {
         case CmdSetPdfDocumentColorModeBlack:
         case CmdSetPdfDocumentColorModeLight:
             return NeedsDocumentColorModeUI(win);
+        case CmdDisplayFilter:
+            // Keep visible; gray out for non-PDF via IsCmdEnabled.
+            return true;
         case CmdCreateAnnotText:
         case CmdCreateAnnotSquare:
         case CmdCreateAnnotCircle:
@@ -431,6 +463,8 @@ static bool IsCmdEnabled(MainWindow* win, int cmdId) {
         case CmdSetPdfDocumentColorModeBlack:
         case CmdSetPdfDocumentColorModeLight:
             return NeedsDocumentColorModeUI(win);
+        case CmdDisplayFilter:
+            return DisplayFilterSupportedForTab(win->CurrentTab());
     }
 
     auto [remove, disable] = GetCommandIdState(ctx, cmdId);
@@ -503,7 +537,7 @@ static TBBUTTON TbButtonFromButtonInfo(const ToolbarButtonInfo& bi, bool noTrans
         bi.cmdId == CmdToggleBookmarks || bi.cmdId == CmdZoomFitWidthAndContinuous ||
         bi.cmdId == CmdZoomFitPageAndSinglePage || bi.cmdId == CmdSetPdfDocumentColorModeAuto ||
         bi.cmdId == CmdSetPdfDocumentColorModeBlack || bi.cmdId == CmdSetPdfDocumentColorModeLight ||
-        bi.cmdId == CmdToggleFullscreen) {
+        bi.cmdId == CmdToggleFullscreen || bi.cmdId == CmdDisplayFilter) {
         b.fsStyle = BTNS_CHECK;
     }
     if (bi.cmdId == CmdToggleAutoOcr) {
@@ -546,6 +580,7 @@ void UpdateToolbarButtonsToolTipsForWindow(MainWindow* win) {
     }
     UpdateThemeToolbarButton(win);
     UpdatePdfDocumentColorModeToolbarButton(win);
+    UpdateDisplayFilterToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
     UpdateAutoOcrToolbarButton(win);
     UpdateFullscreenToolbarButton(win);
@@ -848,9 +883,23 @@ LRESULT PrepaintFlatToolbarItem(NMTBCUSTOMDRAW* custDraw, COLORREF bgCol) {
 
     COLORREF fillCol = ToolbarButtonFillColor(bgCol, isChecked, isSelected, isHot);
 
-    RECT fillRc = custDraw->nmcd.rc;
+    RECT itemRc = custDraw->nmcd.rc;
+    RECT fillRc = itemRc;
     if (fillCol != bgCol) {
         fillRc.top += 1;
+    }
+    // CHECK|DROPDOWN (OCR / Display Filter): pressed chrome only on the icon
+    // half — leave the ▾ arrow on the toolbar background so it does not look
+    // like one fused "shadow" block with the main button.
+    if (isDropdown && isChecked && fillCol != bgCol) {
+        HBRUSH bgBr = CreateSolidBrush(bgCol);
+        FillRect(custDraw->nmcd.hdc, &itemRc, bgBr);
+        DeleteObject(bgBr);
+        int ddDx = DpiScale(hwndToolbar, 13);
+        int mid = fillRc.right - ddDx;
+        if (mid > fillRc.left + 4) {
+            fillRc.right = mid;
+        }
     }
 
     HBRUSH br = CreateSolidBrush(fillCol);
@@ -974,11 +1023,12 @@ static LRESULT CALLBACK ToolbarNotifyWndProc(HWND hWnd, UINT uMsg, WPARAM wParam
 
 LRESULT CALLBACK ReBarWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass,
                               DWORD_PTR dwRefData) {
-    if (WM_ERASEBKGND == uMsg && ThemeColorizeControls()) {
+    if (WM_ERASEBKGND == uMsg) {
+        // Always fill with chrome color. Warm/Light themes have ColorizeControls=false;
+        // skipping the fill left a white gap / default rebar edge between menu and toolbar.
         HDC hdc = (HDC)wParam;
         RECT rect;
         GetClientRect(hWnd, &rect);
-        SetTextColor(hdc, ThemeWindowTextColor());
         COLORREF bgCol = ThemeChromeBackgroundColor();
         SetBkColor(hdc, bgCol);
         auto bgBrush = CreateSolidBrush(bgCol);
@@ -1324,6 +1374,7 @@ void UpdateAnnotToolToolbarButtons(MainWindow* win) {
 void UpdateToolbarState(MainWindow* win) {
     UpdateAnnotToolToolbarButtons(win);
     UpdatePdfDocumentColorModeToolbarButton(win);
+    UpdateDisplayFilterToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
     UpdateAutoOcrToolbarButton(win);
     UpdateFullscreenToolbarButton(win);
@@ -1853,6 +1904,7 @@ void UpdateToolbarAfterThemeChange(MainWindow* win) {
     ConfigureToolbarColors(win->hwndToolbar);
     UpdateThemeToolbarButton(win);
     UpdatePdfDocumentColorModeToolbarButton(win);
+    UpdateDisplayFilterToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
     UpdateAutoOcrToolbarButton(win);
     UpdateFullscreenToolbarButton(win);
@@ -2019,6 +2071,7 @@ void CreateToolbar(MainWindow* win) {
     UpdateToolbarFindText(win);
     UpdateThemeToolbarButton(win);
     UpdatePdfDocumentColorModeToolbarButton(win);
+    UpdateDisplayFilterToolbarButton(win);
     UpdateDoubleClickWordLookupToolbarButton(win);
     UpdateAutoOcrToolbarButton(win);
     UpdateFullscreenToolbarButton(win);

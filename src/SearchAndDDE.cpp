@@ -237,6 +237,14 @@ void OnFindBarTextChanged(MainWindow* win) {
         FindWindowRefreshResults(win); // empty the results list
         return;
     }
+    // A text-changed notification with an unchanged term must not restart the
+    // search: the results list is rebuilt from scratch on every restart, and a
+    // click on the results list kills the find edit's focus (EN_KILLFOCUS is
+    // routed to onTextChanged), which used to wipe and refill the visible list
+    // on every result click.
+    if (win->findCountText && str::Eq(ToWStrTemp(s), win->findCountText)) {
+        return;
+    }
     win->findEnterPending = true;
     win->findPendingFromPage = 0;
     win->findCountValid = false;
@@ -3462,10 +3470,11 @@ LRESULT OnDDETerminate(HWND hwnd, WPARAM wp, LPARAM) {
     return 0;
 }
 
-// Payload for async Open command carried in kCopyDataOpen WM_COPYDATA
+// Payload for async Open command carried in kCopyDataOpen / kCopyDataOpenEx
 struct OpenCopyDataAsync {
     char* path; // heap-allocated, freed by OpenCopyDataAsyncRun
     u32 newWindow;
+    u32 inCurrentTab;
 };
 
 static void OpenCopyDataAsyncRun(OpenCopyDataAsync* d) {
@@ -3494,6 +3503,10 @@ static void OpenCopyDataAsyncRun(OpenCopyDataAsync* d) {
     }
     LoadArgs args(d->path, win);
     args.activateExisting = d->newWindow == 0;
+    if (d->inCurrentTab && d->newWindow == 0) {
+        args.forceReuse = true;
+        args.activateExisting = false;
+    }
     // Match the legacy DDE Open(..., setFocus=1) behavior used by
     // shell/reuseInstance launches: opening into an existing instance should
     // bring that window to the foreground.
@@ -3504,6 +3517,19 @@ static void OpenCopyDataAsyncRun(OpenCopyDataAsync* d) {
 
     str::Free(d->path);
     delete d;
+}
+
+static bool PostOpenCopyDataAsync(const char* path, u32 newWindow, u32 inCurrentTab) {
+    if (!path || !path[0]) {
+        return false;
+    }
+    auto* d = new OpenCopyDataAsync;
+    d->path = str::Dup(path);
+    d->newWindow = newWindow;
+    d->inCurrentTab = inCurrentTab;
+    auto fn = MkFunc0<OpenCopyDataAsync>(OpenCopyDataAsyncRun, d);
+    uitask::Post(fn, "OnCopyData/Open");
+    return true;
 }
 
 LRESULT OnCopyData(HWND hwnd, WPARAM wp, LPARAM lp) {
@@ -3527,12 +3553,26 @@ LRESULT OnCopyData(HWND hwnd, WPARAM wp, LPARAM lp) {
         if (strnlen_s(path, pathMax) >= pathMax) {
             return FALSE;
         }
-        auto* d = new OpenCopyDataAsync;
-        d->path = str::Dup(path);
-        d->newWindow = data->newWindow;
-        auto fn = MkFunc0<OpenCopyDataAsync>(OpenCopyDataAsyncRun, d);
-        uitask::Post(fn, "OnCopyData/Open");
-        return TRUE;
+        return PostOpenCopyDataAsync(path, data->newWindow, 0) ? TRUE : FALSE;
+    }
+
+    if (cds->dwData == kCopyDataOpenEx) {
+        // Extended open for automation (Excel VBA etc.): can replace the
+        // document in the current tab instead of always opening a new tab.
+        if (cds->cbData < sizeof(SumatraOpenCopyDataEx) + 1) {
+            return FALSE;
+        }
+        auto* data = (const SumatraOpenCopyDataEx*)cds->lpData;
+        const char* path = (const char*)(data + 1);
+        size_t pathMax = cds->cbData - sizeof(SumatraOpenCopyDataEx);
+        if (strnlen_s(path, pathMax) >= pathMax) {
+            return FALSE;
+        }
+        u32 inTab = data->inCurrentTab;
+        if (data->newWindow != 0) {
+            inTab = 0;
+        }
+        return PostOpenCopyDataAsync(path, data->newWindow, inTab) ? TRUE : FALSE;
     }
 
     if (cds->dwData == kCopyDataDdeW) {

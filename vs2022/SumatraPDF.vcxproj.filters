@@ -261,6 +261,12 @@
     <ClInclude Include="..\src\MdConvert.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\OfficeConvert.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\OfficeConvert.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\Menu.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -336,6 +342,12 @@
     <ClInclude Include="..\src\SelectionToolbar.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\DisplayFilter.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\DocumentEnhancer.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\Settings.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -376,6 +388,9 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\TtsPronunciation.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\AppDialogTheme.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\src\Theme.h">
@@ -513,6 +528,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\Annotation.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\AppDialogTheme.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\AppSettings.cpp">
@@ -677,6 +695,12 @@
     <ClCompile Include="..\src\Notifications.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\OfficeConvert.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\WordToc.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\OverlayScrollbar.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -771,6 +795,12 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\SelectionToolbar.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\DisplayFilter.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\DocumentEnhancer.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\SimpleBrowserWindow.cpp">

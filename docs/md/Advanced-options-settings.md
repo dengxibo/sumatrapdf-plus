@@ -4,7 +4,7 @@ SumatraPDF has many [advanced settings](https://www.sumatrapdfreader.org/setting
 
 To open advanced settings file:
 
-- menu `Settings` / `Advanced options...`
+- `Settings` / `Options...` → **Advanced** → `Open Advanced Options File...`
 - or with Command Palette: `Ctrl + K`, type `adv` to narrow down to command, press `Enter` to select `Advanced Options...` command
 
 This opens a settings text file in default .txt editor. Make changes and save the file.
@@ -144,6 +144,10 @@ AutoOcrScanPages = false
 ; extracting bookmarks (introduced in version 3.8)
 OcrAutoSave = false
 
+; if true, straighten slightly tilted scan pages before OCR (and when running
+; Deskew All Scanned Pages heuristics) (introduced in version 3.8)
+OcrDeskew = true
+
 ; Valid values: fast, accurate (introduced in version 3.8)
 OcrFullDocumentMode = fast
 
@@ -205,6 +209,14 @@ PreventSleepInFullscreen = true
 
 ; maximum width of a single tab
 TabWidth = 300
+
+; font size for the tab bar. 0 means use UIFontSize / Windows default
+; (introduced in version 3.8)
+TabFontSize = 0
+
+; height of the tab bar in DIPs. 0 means automatic from font size (default ~24)
+; (introduced in version 3.8)
+TabBarHeight = 0
 
 ; Valid themes: Light-Warm, Light-White, System, Dark-Dracula, Dark-Black
 ; (introduced in version 3.5)
@@ -712,6 +724,22 @@ FileStates [
     ; if given, overrides the tab color for this document (introduced in version
     ; 3.7)
     TabCol = 
+
+    ; page display brightness for this document (-100..100). 0 means no change
+    ; (introduced in version 3.8)
+    DisplayFilterBrightness = 0
+
+    ; page display contrast for this document (-100..100). 0 means no change
+    ; (introduced in version 3.8)
+    DisplayFilterContrast = 0
+
+    ; page display sharpness for this document (0..100). 0 means off (introduced
+    ; in version 3.8)
+    DisplayFilterSharpness = 0
+
+    ; page display enhancement mode for this document (0=off, 4=auto
+    ; Mild/Strong; 1/2/3 migrate to auto) (introduced in version 3.8)
+    DisplayFilterMode = 0
 
     ; data required to restore the last read page in the ebook UI
     ReparseIdx = 0

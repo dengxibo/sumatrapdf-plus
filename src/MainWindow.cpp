@@ -44,6 +44,7 @@
 #include "Commands.h"
 #include "Selection.h"
 #include "SelectionToolbar.h"
+#include "DisplayFilter.h"
 #include "Toolbar.h"
 #include "Flags.h"
 #include "StressTesting.h"
@@ -183,6 +184,7 @@ MainWindow::~MainWindow() {
     delete cbHandler;
 
     DeleteSelectionToolbar(this);
+    DeleteDisplayFilterPanel(this);
 
     delete frameRateWnd;
     delete infotip;
@@ -407,7 +409,8 @@ Size MainWindow::GetViewPortSize() const {
     if ((style & WS_HSCROLL)) {
         size.dy += GetSystemMetrics(SM_CYHSCROLL);
     }
-    ReportIf((style & (WS_VSCROLL | WS_HSCROLL)) && !AsFixed());
+    // Scrollbar bits belong to the foreground canvas. A background tab is laid
+    // out while the current tab may be the home page (AsFixed() == nullptr).
     return size;
 }
 
@@ -468,7 +471,12 @@ static HWND FindModalOwnedBy(HWND hwndParent) {
 }
 
 void MainWindow::Focus() const {
-    HwndToForeground(hwndFrame);
+    // Do not SetForegroundWindow when embedded in a host (TC lister / -plugin): that
+    // steals keyboard focus from Total Commander (upstream #3798 / #4917) and can make
+    // a half-reparented frame flash as a top-level window.
+    if (!NeedsWindowEmbeddingHacks()) {
+        HwndToForeground(hwndFrame);
+    }
     // set focus to an owned modal dialog if there is one
     HWND hwnd = FindModalOwnedBy(hwndFrame);
     if (hwnd != nullptr) {

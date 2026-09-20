@@ -2042,12 +2042,19 @@ bool OcrRecognizeRgb(const u8* rgb, int w, int h, int stride, Vec<OcrBox>& boxes
     return ok;
 }
 
-bool OcrClassifyPageOrientationRgb(const u8* rgb, int w, int h, int stride, int* clockwiseDegrees, float* confidence) {
+bool OcrClassifyPageOrientationRgb(const u8* rgb, int w, int h, int stride, int* clockwiseDegrees, float* confidence,
+                                   int* altClockwiseDegrees, float* altConfidence) {
     if (clockwiseDegrees) {
         *clockwiseDegrees = 0;
     }
     if (confidence) {
         *confidence = 0;
+    }
+    if (altClockwiseDegrees) {
+        *altClockwiseDegrees = 0;
+    }
+    if (altConfidence) {
+        *altConfidence = 0;
     }
     if (!rgb || w < 16 || h < 16 || stride < w * 3) {
         logfa("orientModel: early return rgb=%p w=%d h=%d stride=%d\n", rgb, w, h, stride);
@@ -2062,8 +2069,9 @@ bool OcrClassifyPageOrientationRgb(const u8* rgb, int w, int h, int stride, int*
         return false;
     }
 
-    // This is exactly the preprocessing bundled with RapidOrientation: resize
-    // the short edge to 256, then take three identical centre 224x224 crops.
+    // RapidOrientation preprocess: short edge -> 256, one centre 224 crop,
+    // ImageNet norm on BGR (OpenCV imread order). Do not batch three identical
+    // crops — that only wasted work.
     int shortEdge = w < h ? w : h;
     float scale = 256.f / (float)shortEdge;
     int rw = (int)(w * scale + .5f);
@@ -2076,62 +2084,91 @@ bool OcrClassifyPageOrientationRgb(const u8* rgb, int w, int h, int stride, int*
     BilinearRgb(rgb, w, h, stride, &resized[0], rw, rh);
     int x0 = (rw - 224) / 2;
     int y0 = (rh - 224) / 2;
-    float* input = AllocArray<float>((size_t)3 * 3 * 224 * 224);
+    float* input = AllocArray<float>((size_t)3 * 224 * 224);
     if (!input) {
         return false;
     }
-    for (int n = 0; n < 3; n++) {
-        RgbToNchwNormBgr(&resized[0] + ((size_t)y0 * rw + x0) * 3, 224, 224, rw * 3, input + (size_t)n * 3 * 224 * 224);
-    }
-    int64_t shape[4] = {3, 3, 224, 224};
+    RgbToNchwNormBgr(&resized[0] + ((size_t)y0 * rw + x0) * 3, 224, 224, rw * 3, input);
+    int64_t shape[4] = {1, 3, 224, 224};
     float* output = nullptr;
     size_t outputN = 0;
     bool ok = RunTensor(gOrientation, gOrientationIn, gOrientationOut, input, shape, 4, &output, &outputN);
     free(input);
-    if (!ok || !output || outputN < 4 || outputN % 4 != 0) {
+    if (!ok || !output || outputN < 4) {
         free(output);
         return false;
     }
-    int nBatch = (int)(outputN / 4);
-    // Average the three softmax distributions. The published model labels are
-    // ordered 0, 90, 180, 270. They describe the input's current direction;
-    // PDF correction is the inverse clockwise rotation.
+    // rapid_orientation.onnx already emits a 4-class probability vector
+    // (sums to 1). Softmaxing again collapses e.g. 0.95 -> ~0.45 and made
+    // every page look like conf≈0.45, so the 0.6 model-first gate never fired.
     float probs[4]{};
-    for (int n = 0; n < nBatch; n++) {
-        float maxLogit = output[n * 4];
+    float sum = 0;
+    bool inUnit = true;
+    for (int c = 0; c < 4; c++) {
+        probs[c] = output[c];
+        sum += probs[c];
+        if (probs[c] < -0.01f || probs[c] > 1.01f) {
+            inUnit = false;
+        }
+    }
+    free(output);
+    if (!(inUnit && sum > 0.95f && sum < 1.05f)) {
+        float maxLogit = probs[0];
         for (int c = 1; c < 4; c++) {
-            if (output[n * 4 + c] > maxLogit) {
-                maxLogit = output[n * 4 + c];
+            if (probs[c] > maxLogit) {
+                maxLogit = probs[c];
             }
         }
         float denom = 0;
         for (int c = 0; c < 4; c++) {
-            denom += expf(output[n * 4 + c] - maxLogit);
+            probs[c] = expf(probs[c] - maxLogit);
+            denom += probs[c];
         }
         if (denom > 0) {
             for (int c = 0; c < 4; c++) {
-                probs[c] += expf(output[n * 4 + c] - maxLogit) / denom;
+                probs[c] /= denom;
             }
         }
     }
-    free(output);
     int best = 0;
+    int alt = 1;
     for (int c = 1; c < 4; c++) {
         if (probs[c] > probs[best]) {
+            alt = best;
             best = c;
+        } else if (c != best && probs[c] > probs[alt]) {
+            alt = c;
         }
     }
-    float conf = probs[best] / (float)nBatch;
+    if (alt == best) {
+        alt = best == 0 ? 1 : 0;
+        for (int c = 0; c < 4; c++) {
+            if (c != best && probs[c] > probs[alt]) {
+                alt = c;
+            }
+        }
+    }
+    float conf = probs[best];
+    float altConf = probs[alt];
+    // Labels are the input's current direction (0/90/180/270). PDF correction
+    // is the inverse clockwise rotation that stands the page up.
     int currentDegrees = best * 90;
     int correction = (360 - currentDegrees) % 360;
-    logfa("orientModel: current=%d bestIdx=%d conf=%.3f correction=%d probs=[%.3f %.3f %.3f %.3f]\n", currentDegrees,
-          best, conf, correction, probs[0] / (float)nBatch, probs[1] / (float)nBatch, probs[2] / (float)nBatch,
-          probs[3] / (float)nBatch);
+    int altCurrent = alt * 90;
+    int altCorrection = (360 - altCurrent) % 360;
+    logfa("orientModel: current=%d bestIdx=%d conf=%.3f correction=%d alt=%d/%.3f probs=[%.3f %.3f %.3f %.3f]\n",
+          currentDegrees, best, conf, correction, altCorrection, altConf, probs[0], probs[1], probs[2], probs[3]);
     if (clockwiseDegrees) {
         *clockwiseDegrees = correction;
     }
     if (confidence) {
         *confidence = conf;
+    }
+    if (altClockwiseDegrees) {
+        *altClockwiseDegrees = altCorrection;
+    }
+    if (altConfidence) {
+        *altConfidence = altConf;
     }
     return true;
 }

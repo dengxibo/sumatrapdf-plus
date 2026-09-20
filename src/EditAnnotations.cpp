@@ -132,6 +132,79 @@ void PaintPdfMarkupOverlayPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pa
     }
 }
 
+// Small Note pictogram (MuPDF-style bars) at the end of a markup line that has
+// written contents — so 摘抄 (highlight/underline) and 批注 (with a note) differ on page.
+static void PaintMarkupNoteBadge(HDC hdc, HWND hwndDpi, Rect lineRect, COLORREF color) {
+    if (lineRect.IsEmpty()) {
+        return;
+    }
+    int size = DpiScale(hwndDpi, 11);
+    if (size < 9) {
+        size = 9;
+    }
+    int x = lineRect.x + lineRect.dx - size / 2;
+    int y = lineRect.y - size / 4;
+    if (y < lineRect.y - size / 2) {
+        y = lineRect.y - size / 2;
+    }
+    u8 r, g, b;
+    UnpackColor(color, r, g, b);
+    Gdiplus::Graphics graphics(hdc);
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    Gdiplus::SolidBrush fill(Gdiplus::Color(230, r, g, b));
+    Gdiplus::Pen frame(Gdiplus::Color(200, 40, 40, 40), 1.f);
+    Gdiplus::SolidBrush glyph(Gdiplus::Color(220, 30, 30, 30));
+    Gdiplus::Rect bounds(x, y, size - 1, size - 1);
+    graphics.FillRectangle(&fill, bounds);
+    graphics.DrawRectangle(&frame, bounds);
+    float iconSize = (float)std::max(6, size / 2);
+    float iconX = (float)x + ((float)size - iconSize) / 2.f;
+    float iconY = (float)y + ((float)size - iconSize) / 2.f;
+    for (int row = 0; row < 8; row += 2) {
+        graphics.FillRectangle(&glyph, Gdiplus::RectF(iconX, iconY + row * iconSize / 8.f, iconSize, iconSize / 8.f));
+    }
+}
+
+void PaintPdfMarkupNoteBadgesPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pageNo) {
+    if (!tab || tab->hideAnnotations || !dm || !dm->PageVisible(pageNo)) {
+        return;
+    }
+    EngineMupdf* engine = AsEngineMupdf(dm->GetEngine());
+    if (!engine || !engine->pdfdoc) {
+        return;
+    }
+    FzPageInfo* pi = engine->GetFzPageInfoCanFail(pageNo);
+    if (!pi || pi->annotations.empty()) {
+        return;
+    }
+    HWND hwndDpi = tab->win ? tab->win->hwndFrame : nullptr;
+    for (Annotation* annot : pi->annotations) {
+        if (!IsPdfTextMarkupAnnotation(annot)) {
+            continue;
+        }
+        TempStr note = Contents(annot);
+        if (str::IsEmptyOrWhiteSpace(note)) {
+            continue;
+        }
+        Vec<RectF> pageRects = GetQuadPointsAsRect(annot);
+        if (pageRects.empty()) {
+            RectF r = GetRect(annot);
+            if (!r.IsEmpty()) {
+                pageRects.Append(r);
+            }
+        }
+        if (pageRects.empty()) {
+            continue;
+        }
+        RectF last = pageRects.Last();
+        Rect screenRect = dm->CvtToScreen(pageNo, last);
+        if (screenRect.IsEmpty()) {
+            continue;
+        }
+        PaintMarkupNoteBadge(hdc, hwndDpi, screenRect, ColorRefFromPdfColor(GetColor(annot)));
+    }
+}
+
 constexpr int borderWidthMin = 0;
 constexpr int borderWidthMax = 12;
 
@@ -568,8 +641,13 @@ static void RebuildAnnotationsListBox(EditAnnotationsWindow* ew) {
         s.AppendFmt(_TRA("page %d,"), annot->pageNo);
         TempStr name = AnnotationReadableNameTemp(annot->type);
         s.AppendFmt(" %s", name);
+        TempStr note = Contents(annot);
+        if (IsPdfTextMarkupAnnotation(annot) && !str::IsEmptyOrWhiteSpace(note)) {
+            // Mark 批注 (written note) vs plain 摘抄 (highlight/underline only).
+            s.Append(" ✎");
+        }
         TempStr markedText = MarkupTextTemp(annot);
-        TempStr previewSource = markedText ? markedText : Contents(annot);
+        TempStr previewSource = markedText ? markedText : note;
         if (!str::IsEmptyOrWhiteSpace(previewSource)) {
             TempStr preview = str::DupTemp(previewSource);
             str::NormalizeWSInPlace(preview);
@@ -666,6 +744,7 @@ static bool BuildPdfAnnotationsExport(WindowTab* tab, StrBuilder& out) {
         return a.sortX < b.sortX;
     });
 
+    out.Append(UTF8_BOM);
     out.AppendFmt("# %s\n\n", tab->GetTabTitle());
     out.AppendFmt("%s: %s\n", _TRA("Source"), tab->filePath);
     out.Append(_TRA("Exported:"));
@@ -1595,8 +1674,13 @@ static void ContentsChanged(EditAnnotationsWindow* ew) {
     txt = str::ReplaceTemp(txt, "\r\n", "\n");
     SetContents(a, txt);
     EnableSaveIfAnnotationsChanged(ew);
+    UpdateAnnotationsList(ew);
 
     MainWindow* win = ew->tab->win;
+    if (win && win->hwndCanvas) {
+        // Note badge is a canvas overlay; refresh immediately when contents appear/clear.
+        InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+    }
     if (gMainWindowRerenderTimer != 0) {
         // logf("ContentsChanged: killing existing timer for re-render of MainWindow\n");
         KillTimer(win->hwndCanvas, gMainWindowRerenderTimer);

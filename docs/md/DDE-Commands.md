@@ -28,12 +28,36 @@ Notice escaping of DDE command string: `"` and `\` with `\`.
 
 ### Open file
 
-- format: `[Open("<filePath>"[,<newWindow>,<focus>,<forceRefresh>])]`
+- format: `[Open("<filePath>"[,<newWindow>,<focus>,<forceRefresh>[,<inCurrentTab>]])]`
 - arguments:
     - if `newWindow` is 1 then a new window is created even if the file is already open
     - if `focus` is 1 then the focus is set to the window
-    - if `forceRefresh` is 1 the command forces the refresh of the file window if already open (useful for files opened over network that don't get file-change notifications)".
-- example: `[Open("c:\file.pdf",1,1,0)]`
+    - if `forceRefresh` is 1 the command forces the refresh of the file window if already open (useful for files opened over network that don't get file-change notifications)
+    - if `inCurrentTab` is 1 the file **replaces** the document in the current tab instead of opening a new tab (ignored when `newWindow` is 1). **Ver next / SumatraPDF-Plus**
+- examples:
+    - `[Open("c:\file.pdf")]`
+    - `[Open("c:\file.pdf",1,1,0)]`
+    - `[Open("c:\file.pdf",0,1,0,1)]` — open in the **current tab** (Excel VBA preview use case)
+
+### Open via `WM_COPYDATA` (SendMessage)
+
+You can also send an open request with `SendMessage(hwnd, WM_COPYDATA, ...)` to a SumatraPDF frame window (`FindWindow("SUMATRA_PDF_FRAME", NULL)`).
+
+| `COPYDATASTRUCT.dwData` | Payload | Notes |
+| --- | --- | --- |
+| `0x44646557` (`'DdeW'`) | UTF-16 null-terminated DDE command string | Full DDE grammar, including `[Open(...,1)]` |
+| `0x4F70656E` (`'Open'`) | `u32 newWindow` + UTF-8 path | Async; used by reuse-instance |
+| `0x4F706E32` (`'Opn2'`) | `u32 newWindow` + `u32 inCurrentTab` + UTF-8 path | Async; set `inCurrentTab=1` to replace the current tab |
+
+Excel VBA sketch (64-bit): find `SUMATRA_PDF_FRAME`, build a buffer `newWindow=0`, `inCurrentTab=1`, then the UTF-8 file path, put it in `COPYDATASTRUCT` with `dwData=&H4F706E32`, and `SendMessage` `WM_COPYDATA`. Returns immediately; the file loads asynchronously.
+
+Alternatively stay on DDE:
+
+```vb
+channelNumber = Application.DDEInitiate("SUMATRA", "control")
+Application.DDEExecute channelNumber, "[Open(""" & pdfPath & """,0,1,0,1)]"
+Application.DDETerminate channelNumber
+```
 
 ### Forward-search
 

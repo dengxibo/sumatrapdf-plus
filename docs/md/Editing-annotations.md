@@ -82,7 +82,7 @@ To move an annotation on the page, left click with mouse and drag to new locatio
 
 ## Customize highlight color
 
-To change default color for highlight annotation (created with keyboard shortcut `a`), use `Settings \ Advanced Options...` menu and change `Annotations` \ `HighlightColor` value. Default is yellow `#ffff00`).
+To change default color for highlight annotation (created with keyboard shortcut `a`), use `Settings` / `Options...` → **Advanced** → `Open Advanced Options File...` and change `Annotations` \ `HighlightColor` value. Default is yellow `#ffff00`).
 
 ## EPUB / MOBI annotations
 
