@@ -42,6 +42,7 @@
 #include "ExtractPdfToc.h"
 #include "ExtractBookToc.h"
 #include "TocCalib.h"
+#include "RenderCache.h"
 
 #include "utils/Log.h"
 #include "utils/UITask.h"
@@ -910,11 +911,25 @@ static bool TocCalibBm25BuildChunk(TocCalibSession* s, Vec<int>& pages, Vec<Vec<
     int p = *pNext;
     for (; p <= s->nPages; p++) {
         *pNext = p + 1;
+        // Image-only / empty text layer: stop after a short probe. Indexing every
+        // page loads fz_page for the whole book and can exhaust GDI/memory so the
+        // canvas paints blank; Find is skipped for sparse indexes anyway.
+        if (budgetMs != UINT_MAX && idx->nDocs < 1 && p > 32) {
+            *pNext = s->nPages + 1;
+            return true;
+        }
         if (TocCalibPageInToc(s, p)) {
+            if (budgetMs != UINT_MAX && ::GetTickCount() - t0 > budgetMs) {
+                return false;
+            }
             continue;
         }
         const Vec<EngineMupdfPageLine>* lines = TocCalibCachePage(s, p, pages, cache);
         if (!lines || lines->Size() < 1) {
+            // empty / image pages still cost GetPageLines; honor the slice budget
+            if (budgetMs != UINT_MAX && ::GetTickCount() - t0 > budgetMs) {
+                return false;
+            }
             continue;
         }
         char compact[4096];
@@ -947,6 +962,9 @@ static bool TocCalibBm25BuildChunk(TocCalibSession* s, Vec<int>& pages, Vec<Vec<
             compact[used] = 0;
         }
         if (used < 2) {
+            if (budgetMs != UINT_MAX && ::GetTickCount() - t0 > budgetMs) {
+                return false;
+            }
             continue;
         }
         float avgFont = fontN > 0 ? fontSum / (float)fontN : 12;
@@ -1412,6 +1430,19 @@ static TocCalibRowVerifyPhase TocCalibVerifyRowNear(TocCalibSession* s, int i, V
     return TocCalibRowVerifyPhase::NeedFull;
 }
 
+// Sparse BM25 (few pages with a text layer) means TextSearch::Find will walk
+// / OCR most of the document per title — minutes of UI freeze on a 350-page
+// scan. Near-page search is enough; skip Find in that case.
+static bool TocCalibBm25IndexSparse(const TocCalibBm25Index* idx, int nPages) {
+    if (!idx || idx->nDocs < 1) {
+        return true;
+    }
+    if (idx->nDocs < 5) {
+        return true;
+    }
+    return nPages > 0 && idx->nDocs * 20 < nPages;
+}
+
 // Full-document fallback pass for one row (BM25 index must be complete when
 // nPages <= 800; the >800 case only demotes confidence). Shared by both
 // verify drivers.
@@ -1431,6 +1462,7 @@ static void TocCalibVerifyRowFull(TocCalibSession* s, int i, Vec<int>& pages, Ve
         return;
     }
     TocCalibNearHit hit;
+    bool sparse = TocCalibBm25IndexSparse(bm25, s->nPages);
     if (TocCalibGlyphCount(title) >= 4 && TocCalibSearchBm25(s, title, pages, cache, bm25, &hit) &&
         !TocCalibPageInToc(s, hit.page)) {
         if (TocCalibApplyNearHit(it, hit.page, hit.x, hit.y, hit.score, 0)) {
@@ -1439,8 +1471,9 @@ static void TocCalibVerifyRowFull(TocCalibSession* s, int i, Vec<int>& pages, Ve
                 it->confidence = 75;
             }
         }
-    } else if (TocCalibGlyphCount(title) >= 4 && TocCalibSearchTextFindFallback(s, &s->rows[i], title, &hit) &&
-               !TocCalibPageInToc(s, hit.page) && TocCalibApplyNearHit(it, hit.page, hit.x, hit.y, hit.score, 0)) {
+    } else if (!sparse && TocCalibGlyphCount(title) >= 4 &&
+               TocCalibSearchTextFindFallback(s, &s->rows[i], title, &hit) && !TocCalibPageInToc(s, hit.page) &&
+               TocCalibApplyNearHit(it, hit.page, hit.x, hit.y, hit.score, 0)) {
         s->rows[i].identPageNo = it->pageNo;
         if (it->confidence < 75) {
             it->confidence = 75;
@@ -1485,6 +1518,9 @@ struct TocCalibVerifyJob {
     // incremental BM25 build cursor (valid while bm25Building)
     int bm25Page = 1;
     bool bm25Building = false;
+    // True once the (possibly sparse / early-aborted) index pass finishes so
+    // NeedFull rows do not restart a full-document probe when nDocs stays 0.
+    bool bm25Ready = false;
     bool aborted = false;
     // verify cost statistics (logged when the job completes)
     int nSkip = 0;
@@ -3886,6 +3922,12 @@ static int TocCalibLocatePredPage(const TocCalibSession* s, const TocCalibRow* r
     return 0;
 }
 
+static void TocCalibFindDeadlineCb(DWORD* deadline, ProgressUpdateData* data) {
+    if (deadline && data && data->wasCancelled && ::GetTickCount() >= *deadline) {
+        *data->wasCancelled = true;
+    }
+}
+
 static bool TocCalibSearchTextFind(TocCalibSession* s, const char* query, int predPage, TocCalibNearHit* out) {
     if (!s || !s->engine || !query || !query[0] || !out) {
         return false;
@@ -3900,7 +3942,12 @@ static bool TocCalibSearchTextFind(TocCalibSession* s, const char* query, int pr
     TextSearch ts(s->engine);
     ts.SetMatchCase(false);
     ts.SetMatchWholeWord(false);
-    TextSel* sel = ts.FindFirst(1, w);
+    // Cap Find so a miss on a large / OCR book cannot monopolize the UI thread
+    // (each LoadPageText may also trigger Auto-OCR).
+    DWORD deadline = ::GetTickCount() + 40;
+    ts.progressCb = MkFunc1(TocCalibFindDeadlineCb, &deadline);
+    int startPage = predPage > 0 ? predPage : 1;
+    TextSel* sel = ts.FindFirst(startPage, w);
     int nHits = 0;
     int nScan = 0;
     int bestPage = 0;
@@ -3908,6 +3955,9 @@ static bool TocCalibSearchTextFind(TocCalibSession* s, const char* query, int pr
     float bestY = 0;
     int bestDist = 0;
     while (sel && sel->len > 0 && nHits < 32 && nScan < 80) {
+        if (::GetTickCount() >= deadline) {
+            break;
+        }
         nScan++;
         int page = ts.GetSearchHitStartPageNo();
         if (page < 1 && sel->pages) {
@@ -6467,9 +6517,13 @@ static void TocCalibVerifySlice(TocCalibVerifyJob* job) {
                 return;
             }
             job->bm25Building = false;
+            job->bm25Ready = true;
             TocCalibVerifyRowFull(s, job->row, job->pages, job->cache, &job->bm25);
             job->nFull++;
             job->row++;
+            // One full-doc row per slice — Find/OCR can otherwise freeze the UI
+            // for minutes before onProgress runs (stuck at 0/N).
+            break;
         } else {
             TocCalibRowVerifyPhase ph = TocCalibVerifyRowNear(s, job->row, job->pages, job->cache);
             if (ph == TocCalibRowVerifyPhase::NeedFull) {
@@ -6479,7 +6533,8 @@ static void TocCalibVerifySlice(TocCalibVerifyJob* job) {
                     TocCalibVerifyRowFull(s, job->row, job->pages, job->cache, &job->bm25);
                     job->nFull++;
                     job->row++;
-                } else if (job->bm25Building || job->bm25.nDocs == 0) {
+                    break;
+                } else if (!job->bm25Ready && (job->bm25Building || job->bm25.nDocs == 0)) {
                     // start (or continue) the incremental full-document index;
                     // it is document-wide and row-independent, so once the
                     // build completes it is reused by every later NeedFull row
@@ -6493,6 +6548,7 @@ static void TocCalibVerifySlice(TocCalibVerifyJob* job) {
                     TocCalibVerifyRowFull(s, job->row, job->pages, job->cache, &job->bm25);
                     job->nFull++;
                     job->row++;
+                    break;
                 }
             } else {
                 if (ph == TocCalibRowVerifyPhase::Skip) {
@@ -6554,6 +6610,20 @@ static void TocCalibVerifySlice(TocCalibVerifyJob* job) {
     DWORD tReplaced = ::GetTickCount();
     logf("TocCalib async commit rows=%d solveMark=%ums replaceToc=%ums total=%ums\n", job->total, tSolved - tCommit,
          tReplaced - tSolved, tReplaced - job->tStart);
+    // Release pages loaded during BM25/near probe so paint has GDI/memory again.
+    DisplayModel* dmRefresh = win && win->ctrl ? win->ctrl->AsFixed() : nullptr;
+    int keepPage = dmRefresh ? dmRefresh->CurrentPageNo() : 1;
+    if (s->engine) {
+        EngineMupdfTrimPageCaches(s->engine, keepPage, 4);
+    }
+    if (dmRefresh && gRenderCache) {
+        gRenderCache->CancelRendering(dmRefresh);
+        gRenderCache->FreeForDisplayModel(dmRefresh);
+        dmRefresh->RenderVisibleParts();
+    }
+    if (win && win->hwndCanvas) {
+        InvalidateRect(win->hwndCanvas, nullptr, TRUE);
+    }
     if (ok) {
         if (win->tocLoaded) {
             ClearTocBox(win);

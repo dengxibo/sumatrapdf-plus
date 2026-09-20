@@ -155,10 +155,34 @@ int EngineMupdfGetPageRotateCw(EngineBase* engine, int pageNo);
 // Set this page's PDF /Rotate to an absolute value (0/90/180/270, e.g. for
 // manual page rotation). Returns true if the page was changed.
 bool EngineMupdfSetPageRotateCw(EngineBase* engine, int pageNo, int wantCw);
+// Auto-deskew decision. Uncertain is treated as NoDeskew by all callers.
+enum class DeskewDecision {
+    NoDeskew = 0,
+    Deskew = 1,
+    Uncertain = 2,
+};
+
+// Full estimator + safety-gate result. angle is non-zero only when decision is
+// Deskew. reason is a static string for diagnostics / benchmarks.
+struct DeskewEstimateResult {
+    float angle = 0.f;
+    float candidate = 0.f;
+    float confidence = 0.f;
+    float evidenceScore = 0.f;
+    float regionalConsistency = 0.f;
+    float improvementScore = 0.f;
+    DeskewDecision decision = DeskewDecision::NoDeskew;
+    const char* reason = "none";
+};
+
 // Straighten a slightly tilted scan. Returns the correction in degrees (0 if
-// the page is already level, or this is not a MuPDF document). Marks the
-// document dirty; bake into the file on Save (never auto-saved).
+// the page is already level / uncertain, or this is not a MuPDF document).
+// Marks the document dirty; bake into the file on Save (never auto-saved).
 float EngineMupdfDeskewPage(EngineBase* engine, int pageNo);
+// Measure skew without writing deskewDeg (gated detector; 0 when uncertain).
+float EngineMupdfEstimatePageDeskewDeg(EngineBase* engine, int pageNo);
+// Full page estimate for diagnostics / benchmarks (does not write deskewDeg).
+DeskewEstimateResult EngineMupdfEstimatePageDeskew(EngineBase* engine, int pageNo);
 // Deskew every page that looks like a scan. Returns how many pages got a
 // non-zero correction. Marks dirty when any page changes.
 // progressCb is invoked on the calling thread before each candidate page
@@ -167,10 +191,14 @@ using DeskewProgressCb = void (*)(int pageNo, int step, int pageCount, void* use
 int EngineMupdfDeskewAllScannedPages(EngineBase* engine, DeskewProgressCb progressCb = nullptr, void* user = nullptr);
 // Current session deskew for this page (degrees CCW), or 0.
 float EngineMupdfGetPageDeskewDeg(EngineBase* engine, int pageNo);
-// Apply a known deskew angle without re-detecting. Marks dirty when deg != 0.
-void EngineMupdfSetPageDeskewDeg(EngineBase* engine, int pageNo, float deg);
-// Estimate skew from an already-rendered bitmap (same detector as Deskew Page).
+// Apply a known deskew angle without re-detecting. When markDirty is true
+// (default), Save will bake the angle into the PDF. OCR display deskew
+// passes false so the file stays unchanged.
+void EngineMupdfSetPageDeskewDeg(EngineBase* engine, int pageNo, float deg, bool markDirty = true);
+// Gated skew estimate from a rendered bitmap (0 when uncertain / rejected).
 float EngineMupdfEstimateBitmapSkewDeg(void* hbmp);
+// Full bitmap estimate for diagnostics / benchmarks.
+DeskewEstimateResult EngineMupdfEstimateBitmapDeskew(void* hbmp);
 // Neighbors agree on 90 or 270: snap a 180° opposite page; fill a 0 hole only
 // when both neighbors were flagged this session (not a landscape 汇总表).
 int OcrResolveNeighborPageRotate(int cur, int left, int right, bool leftFromSession, bool rightFromSession);
@@ -193,6 +221,9 @@ TempStr EngineMupdfGetPdfInfo(const char* path);
 TempStr EngineMupdfGetPdfOutline(const char* path);
 void EngineMupdfInvalidateDarkMode(EngineBase* engine);
 void EngineMupdfInvalidateSearchTextCache(EngineBase* engine);
+// Drop cached fz_page / stext / display-list for pages far from keepPage.
+// Used after a full-document text probe so GDI/memory stay available for paint.
+void EngineMupdfTrimPageCaches(EngineBase* engine, int keepPage, int radius);
 using EngineMupdfThemeRecountProgressFn = void (*)(int chaptersDone, int chapterTotal, void* user);
 void EngineMupdfSetThemeRecountProgressCb(EngineMupdfThemeRecountProgressFn cb, void* user);
 using EngineMupdfRelayoutProgressFn = void (*)(int percent, void* user);

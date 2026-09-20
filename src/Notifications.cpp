@@ -154,43 +154,47 @@ HWND GetDocumentLoadingNotificationHwnd(HWND hwndFrame, HWND hwndCanvas) {
 
 void RaiseDocumentLoadingNotification(HWND hwndFrame, HWND hwndCanvas) {
     NotificationWnd* nw = GetDocumentLoadingNotification(hwndFrame, hwndCanvas);
-    if (!nw || !nw->hwnd) {
+    if (!nw || !nw->hwnd || !hwndCanvas) {
         return;
     }
-    MainWindow* win = hwndCanvas ? FindMainWindowByHwnd(hwndCanvas) : nullptr;
-    if (!win && hwndFrame) {
-        win = FindMainWindowByHwnd(hwndFrame);
+    // Always anchor on the document canvas so the banner starts at the content
+    // area. Parenting under hwndTocBox covered the bookmark tree.
+    if (GetParent(nw->hwnd) != hwndCanvas) {
+        SetParent(nw->hwnd, hwndCanvas);
     }
     const char* msg = HwndGetTextTemp(nw->hwnd);
     nw->Layout(msg);
-    if (win && win->tocVisible && win->hwndTocBox && IsWindowVisible(win->hwndTocBox)) {
-        if (GetParent(nw->hwnd) != win->hwndTocBox) {
-            SetParent(nw->hwnd, win->hwndTocBox);
-        }
+    BringWindowToTop(nw->hwnd);
+    // Pass the notification hwnd (not canvas): RelayoutNotifications walks
+    // siblings of GetParent(hwnd).
+    RelayoutNotifications(nw->hwnd);
+    // If we just moved the banner out of the TOC box, rebuild TOC chrome.
+    MainWindow* win = FindMainWindowByHwnd(hwndCanvas);
+    if (!win && hwndFrame) {
+        win = FindMainWindowByHwnd(hwndFrame);
+    }
+    if (win && win->hwndTocBox) {
         RelayoutTocContainer(win);
-    } else if (hwndCanvas) {
-        if (GetParent(nw->hwnd) != hwndCanvas) {
-            SetParent(nw->hwnd, hwndCanvas);
-        }
-        BringWindowToTop(nw->hwnd);
-        RelayoutNotifications(hwndCanvas);
     }
 }
 
 void RelayoutNotifications(HWND hwnd) {
     NotificationWnd* wnds[kMaxNotifs];
-    HWND parent = HwndGetParent(hwnd);
-    int nWnds = GetForHwnd(parent, wnds);
+    // Callers pass either a notification hwnd or the container (canvas/frame).
+    HWND container = HwndGetParent(hwnd);
+    int nWnds = GetForHwnd(container, wnds);
+    if (nWnds == 0) {
+        container = hwnd;
+        nWnds = GetForHwnd(container, wnds);
+    }
     if (nWnds == 0) {
         return;
     }
 
-    auto* first = wnds[0];
-    HWND hwndCanvas = GetParent(first->hwnd);
-    Rect frame = ClientRect(hwndCanvas);
-    bool compact = IsDocumentLoadingGroup(first->groupId);
-    int topLeftMargin = DpiScale(hwndCanvas, compact ? kLoadingTopLeftMargin : kTopLeftMargin);
-    int dyPadding = DpiScale(hwndCanvas, kPadding);
+    Rect frame = ClientRect(container);
+    bool compact = IsDocumentLoadingGroup(wnds[0]->groupId);
+    int topLeftMargin = DpiScale(container, compact ? kLoadingTopLeftMargin : kTopLeftMargin);
+    int dyPadding = DpiScale(container, kPadding);
     int y = topLeftMargin;
     for (int i = 0; i < nWnds; i++) {
         NotificationWnd* wnd = wnds[i];
@@ -198,11 +202,11 @@ void RelayoutNotifications(HWND hwnd) {
             // still in delay period, not yet visible
             continue;
         }
-        if (GetParent(wnd->hwnd) != hwndCanvas) {
+        if (GetParent(wnd->hwnd) != container) {
             continue;
         }
         Rect rect = WindowRect(wnd->hwnd);
-        rect = MapRectToWindow(rect, HWND_DESKTOP, hwndCanvas);
+        rect = MapRectToWindow(rect, HWND_DESKTOP, container);
         if (IsUIRtl()) {
             int cxVScroll = GetSystemMetrics(SM_CXVSCROLL);
             rect.x = frame.dx - rect.dx - topLeftMargin - cxVScroll;

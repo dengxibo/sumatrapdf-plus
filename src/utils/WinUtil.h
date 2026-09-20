@@ -113,6 +113,9 @@ bool LaunchAiChatBrowser(AiChatService service, bool* reusedOut = nullptr, HWND*
                          bool* navigatedOut = nullptr);
 bool PasteAndSubmitAiChatWhenReady(AiChatService service, HWND browserHwnd, bool waitForPageReady,
                                    bool dismissChromeFocus = false);
+// Cold / blank chat: send "hi!", wait until the page looks like a live conversation,
+// then return so the real TOC payload can be pasted into a stable composer.
+bool EnsureAiChatComposerReady(AiChatService service, HWND browserHwnd, bool forceColdBootstrap);
 // Pastes each image into the user-visible web AI page without submitting text.
 // Success means paste was attempted, not a server-side upload acknowledgement.
 bool PasteAiChatFilesWhenReady(AiChatService service, HWND browserHwnd, bool waitForPageReady, const StrVec& paths);

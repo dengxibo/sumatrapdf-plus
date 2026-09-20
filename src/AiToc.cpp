@@ -414,6 +414,16 @@ static void AiTocLayoutThumbnails(AiTocDialog* dlg);
 static void AiTocRenderVisibleThumbnails(AiTocDialog* dlg);
 static void AiTocApplyStateFonts(AiTocDialog* dlg);
 static void AiTocLayoutControls(AiTocDialog* dlg);
+static int AiTocS(AiTocDialog* dlg, int v);
+
+// Place scanCount immediately after the status label on the same row (used by
+// printed/body scan and by import calibration). Caller owns show/hide.
+static void AiTocPlaceScanCountAfterStatus(AiTocDialog* dlg, int statusY, int lineH, int afterX) {
+    if (!dlg->scanCount) {
+        return;
+    }
+    MoveWindow(dlg->scanCount, afterX, statusY, AiTocS(dlg, 80), lineH, FALSE);
+}
 
 static void AiTocSetImportProgress(AiTocDialog* dlg, const WCHAR* text) {
     AiTocSetState(dlg, AiTocUiState::ImportingResult);
@@ -422,15 +432,58 @@ static void AiTocSetImportProgress(AiTocDialog* dlg, const WCHAR* text) {
         AiTocApplyStateFonts(dlg);
         InvalidateRect(dlg->hwnd, nullptr, TRUE);
     }
+    // Phase messages without a live counter: hide the shared scanCount so a
+    // stale "n / m" cannot sit beside "parsing…" / "arranging…".
+    if (dlg->scanCount) {
+        ShowWindow(dlg->scanCount, SW_HIDE);
+    }
     SetWindowTextW(dlg->status, text);
-    UpdateWindow(dlg->status);
-    UpdateWindow(dlg->hwnd);
+    InvalidateRect(dlg->status, nullptr, FALSE);
+}
+
+// Live calibration counter. Keep the status prefix fixed and only rewrite
+// scanCount — updating the whole status string (or UpdateWindow on the dialog)
+// reflows the line and makes "正在导入目录：校准书签位置 n / m" shake.
+static void AiTocSetImportCalibProgress(AiTocDialog* dlg, int done, int total) {
+    AiTocSetState(dlg, AiTocUiState::ImportingResult);
+    if (!dlg->importing) {
+        dlg->importing = true;
+        AiTocApplyStateFonts(dlg);
+        InvalidateRect(dlg->hwnd, nullptr, TRUE);
+    }
+    const WCHAR* prefix = _TRW("Importing TOC: calibrating bookmark destinations…");
+    WCHAR cur[256]{};
+    GetWindowTextW(dlg->status, cur, dimof(cur));
+    if (!str::Eq(cur, prefix)) {
+        SetWindowTextW(dlg->status, prefix);
+    }
+    if (!dlg->scanCount) {
+        return;
+    }
+    SetWindowTextW(dlg->scanCount, ToWStrTemp(str::FormatTemp("%d / %d", done, total)));
+    // Position once per tick is cheap; layout may not run during import.
+    RECT statusRc{};
+    GetClientRect(dlg->status, &statusRc);
+    MapWindowPoints(dlg->status, dlg->hwnd, (POINT*)&statusRc, 2);
+    HDC dc = GetDC(dlg->hwnd);
+    HGDIOBJ oldF = SelectObject(dc, dlg->font);
+    SIZE tsz{};
+    GetTextExtentPoint32W(dc, prefix, (int)wcslen(prefix), &tsz);
+    SelectObject(dc, oldF);
+    ReleaseDC(dlg->hwnd, dc);
+    int afterX = statusRc.left + tsz.cx + AiTocS(dlg, 8);
+    AiTocPlaceScanCountAfterStatus(dlg, statusRc.top, statusRc.bottom - statusRc.top, afterX);
+    ShowWindow(dlg->scanCount, SW_SHOWNOACTIVATE);
 }
 
 static void AiTocHideImportProgress(AiTocDialog* dlg) {
     // Import aborted (invalid/empty JSON): revert the phase hint highlight.
     AiTocSetState(dlg, AiTocUiState::WaitingForAiClipboard);
     dlg->importing = false;
+    if (dlg->scanCount) {
+        ShowWindow(dlg->scanCount, SW_HIDE);
+        SetWindowTextW(dlg->scanCount, L"");
+    }
     AiTocApplyStateFonts(dlg);
 }
 
@@ -541,8 +594,8 @@ static void AiTocBodySendWorker(AiTocBodySendWork* work) {
         }
     };
     // Text-only round: put the prompt on the clipboard, open the configured
-    // chat page, bootstrap a fresh composer with "hi" on a cold browser, then
-    // paste and submit the real prompt.
+    // chat page, bootstrap a fresh/blank composer with "hi!" (wait for reply),
+    // then paste and submit the real prompt.
     if (!CopyTextToClipboard(work->prompt)) {
         work->error = "Cannot access the clipboard. Please retry.";
         return;
@@ -553,15 +606,12 @@ static void AiTocBodySendWorker(AiTocBodySendWork* work) {
         work->error = "Cannot open the configured AI page.";
         return;
     }
-    if (!reused) {
-        if (!CopyTextToClipboard("hi") || !PasteAndSubmitAiChatWhenReady(work->service, browser, true)) {
-            work->error = "The AI page opened, but the initial message could not be sent.";
-            work->browser = browser;
-            return;
-        }
-        Sleep(2500);
+    if (!EnsureAiChatComposerReady(work->service, browser, !reused)) {
+        work->error = "The AI page opened, but the initial message could not be sent.";
+        work->browser = browser;
+        return;
     }
-    if (!CopyTextToClipboard(work->prompt) || !PasteAndSubmitAiChatWhenReady(work->service, browser, !reused)) {
+    if (!CopyTextToClipboard(work->prompt) || !PasteAndSubmitAiChatWhenReady(work->service, browser, false)) {
         work->error =
             "Automatic send incomplete: the heading-candidates prompt is on the clipboard. Paste it into the AI input "
             "box and send.";
@@ -685,17 +735,13 @@ static void AiTocPocWorker(AiTocPocWork* work) {
         work->error = "Cannot open the configured AI page.";
         return;
     }
-    // Doubao's first real message initializes a fresh conversation composer.
-    // Bootstrap it before image paste; subsequent images are then attached to
-    // the stable composer just as they are in a warm browser session.
-    if (!reused) {
-        logf("AI TOC: cold browser bootstrap message\n");
-        if (!CopyTextToClipboard("hi") || !PasteAndSubmitAiChatWhenReady(work->service, browser, true)) {
-            work->error = "The AI page opened, but the initial message could not be sent.";
-            work->browser = browser;
-            return;
-        }
-        Sleep(2500);
+    // Doubao/DeepSeek/ChatGPT need a first real message before image paste is
+    // reliable on a cold or blank chat page. Send "hi!", wait for a reply, then
+    // attach TOC images to the stable composer (same as a warm session).
+    if (!EnsureAiChatComposerReady(work->service, browser, !reused)) {
+        work->error = "The AI page opened, but the initial message could not be sent.";
+        work->browser = browser;
+        return;
     }
     if (!PasteAiChatFilesWhenReady(work->service, browser, !reused, work->files)) {
         logf("AI TOC: unable to send pages to browser; temp files kept at %s\n", session);
@@ -944,15 +990,14 @@ struct AiTocImportCbCtx {
     int gen = 0;
 };
 
-// Calibration slices fire this every ~25-40 ms; the status line under the
-// phase hints becomes the live "n / m" counter for the import.
+// Calibration slices fire this every ~25-40 ms; only the "n / m" counter
+// (scanCount) updates — the status prefix stays put.
 static void AiTocImportCalibProgress(int done, int total, void* ctx) {
     auto* cb = (AiTocImportCbCtx*)ctx;
     AiTocDialog* dlg = cb ? cb->dlg : nullptr;
     if (!dlg || cb->gen != dlg->importGen) return;
     if (GetPropW(dlg->hwnd, kAiTocToken) != dlg->token) return;
-    TempStr msg = str::FormatTemp(_TRA("Importing TOC: calibrating bookmark destinations… %d / %d"), done, total);
-    AiTocSetImportProgress(dlg, ToWStrTemp(msg));
+    AiTocSetImportCalibProgress(dlg, done, total);
 }
 
 static void AiTocImportDoneCb(bool ok, void* ctx) {
@@ -1780,7 +1825,10 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
     // Fallback page sections: the two separated branches and the divider are
     // fallback-only; the state title/description also serve the unified
     // waiting page (different texts, see AiTocApplyWaitingTexts).
-    bool waitingState = dlg->state == AiTocUiState::WaitingForAiClipboard;
+    // Import reuses the waiting page chrome (title/desc/resend); only the
+    // status row swaps in a live counter.
+    bool waitingState =
+        dlg->state == AiTocUiState::WaitingForAiClipboard || dlg->state == AiTocUiState::ImportingResult;
     ShowWindow(dlg->stateTitle, (fallback || waitingState) ? SW_SHOWNOACTIVATE : SW_HIDE);
     ShowWindow(dlg->stateDesc, (fallback || waitingState) ? SW_SHOWNOACTIVATE : SW_HIDE);
     ShowWindow(dlg->bodyTitle, fallback ? SW_SHOWNOACTIVATE : SW_HIDE);
@@ -1826,33 +1874,43 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
     ShowWindow(dlg->pagesEdit, (fallback || bodyFlow || waitingState) ? SW_HIDE : SW_SHOWNOACTIVATE);
     // Status row: scanning shows "正在扫描目录页 ● ○ ○ 12 / 30" as one tight
     // cluster (counter right after the dot marquee, not far-aligned right);
-    // review shows the single "✓ 已自动勾选…" line in exactly the same place.
+    // import calibration shows "正在导入目录：校准书签位置…  n / m" with the
+    // same scanCount control so only the digits invalidate.
     bool showScanWidgets = dlg->scanning && !dlg->review && !dlg->waiting;
+    // Only reveal the shared counter once calib has written "n / m"; parsing /
+    // arranging phases keep it hidden (AiTocSetImportProgress clears it).
+    bool showImportCount = false;
+    if (dlg->importing && dlg->state == AiTocUiState::ImportingResult && !showScanWidgets && dlg->scanCount) {
+        WCHAR cnt[32]{};
+        GetWindowTextW(dlg->scanCount, cnt, 32);
+        showImportCount = cnt[0] != 0;
+    }
     MoveWindow(dlg->status, mt.m, mt.statusY, contentW, mt.lineH, TRUE);
-    ShowWindow(dlg->scanCount, showScanWidgets ? SW_SHOWNOACTIVATE : SW_HIDE);
+    ShowWindow(dlg->scanCount, (showScanWidgets || showImportCount) ? SW_SHOWNOACTIVATE : SW_HIDE);
     if (!showScanWidgets) {
         dlg->dotsRect = {};
     }
-    if (showScanWidgets) {
-        // Dot marquee rect: right after the status text on the same row, so
-        // the timer can invalidate just this tiny area.
-        WCHAR statusText[64]{};
-        GetWindowTextW(dlg->status, statusText, 64);
+    if (showScanWidgets || showImportCount) {
+        WCHAR statusText[128]{};
+        GetWindowTextW(dlg->status, statusText, 128);
         HDC dc = GetDC(hwnd);
         HGDIOBJ oldF = SelectObject(dc, dlg->font);
         SIZE tsz{};
         GetTextExtentPoint32W(dc, statusText, (int)wcslen(statusText), &tsz);
         SelectObject(dc, oldF);
         ReleaseDC(hwnd, dc);
-        int dotD = AiTocS(dlg, 7);
-        int dotGap = AiTocS(dlg, 6);
-        int dotTop = mt.statusY + (mt.lineH - dotD) / 2;
-        int dotLeft = mt.m + tsz.cx + AiTocS(dlg, 12);
-        dlg->dotsRect = {dotLeft, dotTop, dotLeft + 3 * dotD + 2 * dotGap, dotTop + dotD + 1};
-        // Counter sits right after the dots: "正在扫描目录页 ● ○ ○  12 / 30".
-        if (dlg->scanCount) {
-            MoveWindow(dlg->scanCount, dlg->dotsRect.right + AiTocS(dlg, 10), mt.statusY, AiTocS(dlg, 72), mt.lineH,
-                       TRUE);
+        if (showScanWidgets) {
+            // Dot marquee rect: right after the status text on the same row, so
+            // the timer can invalidate just this tiny area.
+            int dotD = AiTocS(dlg, 7);
+            int dotGap = AiTocS(dlg, 6);
+            int dotTop = mt.statusY + (mt.lineH - dotD) / 2;
+            int dotLeft = mt.m + tsz.cx + AiTocS(dlg, 12);
+            dlg->dotsRect = {dotLeft, dotTop, dotLeft + 3 * dotD + 2 * dotGap, dotTop + dotD + 1};
+            // Counter sits right after the dots: "正在扫描目录页 ● ○ ○  12 / 30".
+            AiTocPlaceScanCountAfterStatus(dlg, mt.statusY, mt.lineH, dlg->dotsRect.right + AiTocS(dlg, 10));
+        } else {
+            AiTocPlaceScanCountAfterStatus(dlg, mt.statusY, mt.lineH, mt.m + tsz.cx + AiTocS(dlg, 8));
         }
     }
 
@@ -2856,8 +2914,10 @@ void StartAiTocProofOfConcept(MainWindow* win) {
     dlg->status = CreateWindowExW(0, L"STATIC", _TRW("Analyzing the first pages for a printed TOC…"),
                                   WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, 10, 10, hwnd, nullptr, h, nullptr);
     SendMessageW(dlg->status, WM_SETFONT, (WPARAM)dlg->font, TRUE);
+    // SS_LEFT so growing digit widths extend rightward and do not shift the
+    // fixed status prefix (import calib) or the dot marquee (scan).
     dlg->scanCount =
-        CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 10, 10, hwnd, nullptr, h, nullptr);
+        CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, 10, 10, hwnd, nullptr, h, nullptr);
     SendMessageW(dlg->scanCount, WM_SETFONT, (WPARAM)dlg->font, TRUE);
     HWND cancel = CreateWindowExW(0, L"BUTTON", _TRW("Cancel"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 10, 10,
                                   hwnd, (HMENU)IDCANCEL, h, nullptr);

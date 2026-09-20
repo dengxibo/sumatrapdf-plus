@@ -1892,6 +1892,84 @@ bool PasteAndSubmitAiChatWhenReady(AiChatService service, HWND browserHwnd, bool
     return PasteAndSubmitBrowserChatInputWhenReady(browserHwnd, url, waitForPageReady, dismissChromeFocus);
 }
 
+// Blank/new chat titles put the product name first. Ongoing chats put a topic
+// first ("hi! - 豆包 - …", "Something - DeepSeek - …", "Ask - ChatGPT").
+static bool BrowserTitleLooksLikeBlankAiChat(const char* url, const char* titleA) {
+    if (!titleA || !*titleA) {
+        return true;
+    }
+    if (IsChatGptUrl(url)) {
+        return BrowserTitleLooksLikeChatGptHome(titleA);
+    }
+    if (IsDoubaoUrl(url)) {
+        return str::StartsWith(titleA, "豆包") || str::StartsWithI(titleA, "Doubao");
+    }
+    if (IsDeepSeekUrl(url)) {
+        return str::StartsWithI(titleA, "DeepSeek");
+    }
+    return false;
+}
+
+// After the bootstrap "hi!", wait until the tab title leaves the blank/new-chat
+// shape (or until a soft timeout). A fixed Sleep raced the model reply.
+static bool WaitForAiChatBootstrapReply(HWND hwnd, const char* url, const WCHAR* titleBefore, int timeoutMs) {
+    if (!hwnd || !url) {
+        return false;
+    }
+    const int interval = 250;
+    const int minWaitMs = 3000;
+    int elapsed = 0;
+    bool sawChange = false;
+    while (elapsed < timeoutMs) {
+        Sleep(interval);
+        elapsed += interval;
+        WCHAR title[512]{};
+        GetWindowTextW(hwnd, title, dimof(title));
+        if (titleBefore && title[0] && !str::Eq(title, titleBefore)) {
+            sawChange = true;
+        }
+        TempStr titleA = ToUtf8Temp(title);
+        bool blank = BrowserTitleLooksLikeBlankAiChat(url, titleA);
+        if (elapsed >= minWaitMs && sawChange && !blank) {
+            Sleep(800);
+            logf("AI TOC: bootstrap reply ready after %d ms (title changed)\n", elapsed + 800);
+            return true;
+        }
+        // Some builds keep a generic product title; once past a longer settle,
+        // unblock so the real TOC paste can still proceed.
+        if (elapsed >= 10000 && !blank) {
+            Sleep(500);
+            logf("AI TOC: bootstrap reply ready after %d ms (non-blank title)\n", elapsed + 500);
+            return true;
+        }
+    }
+    logf("AI TOC: bootstrap reply wait timed out after %d ms (changed=%d)\n", timeoutMs, (int)sawChange);
+    // Soft-continue: better to attempt the real send than abort the whole flow.
+    return true;
+}
+
+bool EnsureAiChatComposerReady(AiChatService service, HWND browserHwnd, bool forceColdBootstrap) {
+    const char* url = AiChatServiceUrl(service);
+    if (!url || !browserHwnd) {
+        return false;
+    }
+    WCHAR titleW[512]{};
+    GetWindowTextW(browserHwnd, titleW, dimof(titleW));
+    TempStr titleA = ToUtf8Temp(titleW);
+    bool blank = BrowserTitleLooksLikeBlankAiChat(url, titleA);
+    if (!forceColdBootstrap && !blank) {
+        logf("AI TOC: composer already warm (skip hi!)\n");
+        return true;
+    }
+    logf("AI TOC: cold/blank composer bootstrap with hi! (force=%d blank=%d)\n", (int)forceColdBootstrap, (int)blank);
+    WCHAR titleBefore[512]{};
+    GetWindowTextW(browserHwnd, titleBefore, dimof(titleBefore));
+    if (!CopyTextToClipboard("hi!") || !PasteAndSubmitAiChatWhenReady(service, browserHwnd, forceColdBootstrap)) {
+        return false;
+    }
+    return WaitForAiChatBootstrapReply(browserHwnd, url, titleBefore, 25000);
+}
+
 static bool CopyAiChatImage(const char* path, bool appendOnly = false) {
     // A shell file list (CF_HDROP) is not an image paste on every website.
     // Supply a DIB, as a screenshot paste does, with clipboard-owned storage.

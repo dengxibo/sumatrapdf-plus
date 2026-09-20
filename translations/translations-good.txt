@@ -8773,6 +8773,9 @@ tw:已傾斜校正 %d 頁。
 uk:Deskewed %d page(s).
 uz:Deskewed %d page(s).
 vn:Deskewed %d page(s).
+:Deskew cleared.
+cn:已清除倾斜校正。
+tw:已清除倾斜校正。
 :Deskewed by %.1f degrees.
 af:Deskewed by %.1f degrees.
 am:Deskewed by %.1f degrees.

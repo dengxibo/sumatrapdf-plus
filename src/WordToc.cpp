@@ -607,7 +607,9 @@ static bool ReadZipParts(const char* path, Vec<ZipPart*>& parts, char** errOut) 
     fz_archive* arch = nullptr;
     bool ok = false;
     fz_try(ctx) {
-        arch = fz_open_zip_archive(ctx, path);
+        // Prefer fz_open_archive: it is exported from libmupdf.dll (PdfFilter /
+        // PdfPreview / SumatraPDF-dll). fz_open_zip_archive is not in the .def.
+        arch = fz_open_archive(ctx, path);
         int n = fz_count_archive_entries(ctx, arch);
         for (int i = 0; i < n; i++) {
             const char* raw = fz_list_archive_entry(ctx, arch, i);

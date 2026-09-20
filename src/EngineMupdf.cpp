@@ -35,6 +35,7 @@ void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, fl
 #include "WordToc.h"
 #include "EngineMupdf.h"
 #include "EngineAll.h"
+#include "DeskewPostl.h"
 #include "PdfTocEditModel.h"
 #include "EbookBase.h"
 #include "EbookFontConfig.h"
@@ -4976,7 +4977,8 @@ html, body {
   font-family: "Source Han Serif SC", "思源宋体", "Source Han Serif", "Noto Serif CJK SC", Literata, Georgia, "NSimSun", "SimSun", "宋体", serif !important;
 }
 )";
-        static const char* kEpubReaderBaseCss = R"(html {
+        static const char* kEpubReaderBaseCss =
+            R"(html {
   color-scheme: light;
 }
 body {
@@ -5042,7 +5044,7 @@ img, svg {
   height: auto;
 }
 )"
-                                                R"(/* Calibre titlepage.xhtml: SVG jacket should fill the page width. */
+            R"(/* Calibre titlepage.xhtml: SVG jacket should fill the page width. */
 body > svg, body > div > svg {
   display: block !important;
   width: 100% !important;
@@ -6285,6 +6287,35 @@ static void DropSingleFzPageCache(fz_context* ctx, FzPageInfo* pi) {
     }
     pi->fullyLoaded = false;
     pi->elementsNeedRebuilding = true;
+}
+
+void EngineMupdfTrimPageCaches(EngineBase* engine, int keepPage, int radius) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || radius < 0) {
+        return;
+    }
+    auto ctx = e->Ctx();
+    ScopedCritSec scopePages(&e->pagesLock);
+    ScopedCritSec scopeRender(&e->renderLock);
+    int n = e->pages.Size();
+    int lo = keepPage - radius;
+    int hi = keepPage + radius;
+    if (lo < 1) {
+        lo = 1;
+    }
+    if (hi > n) {
+        hi = n;
+    }
+    for (int i = 1; i <= n; i++) {
+        if (i >= lo && i <= hi) {
+            continue;
+        }
+        FzPageInfo* pi = e->pages[i - 1];
+        if (!pi || !pi->page) {
+            continue;
+        }
+        DropSingleFzPageCache(ctx, pi);
+    }
 }
 
 // Drop cached fz pages/display lists for every UI page in a reflow chapter.
@@ -10426,11 +10457,227 @@ static bool TryAgreedRuleSkewDeg(BitmapPixels* bp, float* outDeg) {
     return true;
 }
 
-// Projection-profile deskew on near-horizontal ink edges. Peak bin height on
-// horizontal edges tracks Hough better than sum-of-squares on form grids. The
-// returned angle is already the fz_rotate correction (≈ −line tilt), not the
-// raw Hough angle.
-static float EstimateBitmapSkewDeg(HBITMAP hbmp) {
+// ---------------------------------------------------------------------------
+// Conservative deskew: Postl/Leptonica estimator + safety gate.
+// Estimator: differential line-sum variance (Postl patent / pixFindSkew).
+// Gate: dead zone, max angle, Leptonica-style confidence, improvement, region.
+// Uncertain == NoDeskew. Thresholds are centralized.
+// ---------------------------------------------------------------------------
+static constexpr float kDeskewDeadZoneDeg = 0.30f;
+static constexpr float kDeskewMaxAutoDeg = 7.f;
+// Leptonica MinAllowedConfidence is 3.0; 2.6 keeps more true skews while
+// still rejecting flat score curves on upright pages.
+static constexpr float kDeskewMinConfidence = 2.6f;
+static constexpr float kDeskewMinImprovement = 0.06f;
+static constexpr float kDeskewRegionalMaxSpread = 0.75f;
+
+static const char* DeskewDecisionName(DeskewDecision d) {
+    if (d == DeskewDecision::Deskew) {
+        return "DESKEW";
+    }
+    if (d == DeskewDecision::Uncertain) {
+        return "UNCERTAIN";
+    }
+    return "NO_DESKEW";
+}
+
+static void DeskewLogResult(const DeskewEstimateResult& r) {
+#ifdef DEBUG
+    logf(
+        "Deskew: candidate=%+.2f confidence=%.2f regional=%.2f improvement=%.1f%% "
+        "decision=%s reason=%s\n",
+        r.candidate, r.confidence, r.regionalConsistency, r.improvementScore * 100.f, DeskewDecisionName(r.decision),
+        r.reason ? r.reason : "?");
+#else
+    (void)r;
+#endif
+}
+
+static float ClampDeskewDeg(float deg) {
+    if (deg > -kDeskewDeadZoneDeg && deg < kDeskewDeadZoneDeg) {
+        return 0;
+    }
+    if (deg < -kDeskewMaxAutoDeg) {
+        return -kDeskewMaxAutoDeg;
+    }
+    if (deg > kDeskewMaxAutoDeg) {
+        return kDeskewMaxAutoDeg;
+    }
+    return deg;
+}
+
+static u8* BitmapToGrayDownsample(BitmapPixels* bp, int maxSide, int* outW, int* outH) {
+    int w = bp->size.dx;
+    int h = bp->size.dy;
+    int bpp = bp->nBytesPerPixel;
+    int stride = bp->nBytesPerRow;
+    int dw = w;
+    int dh = h;
+    int side = w > h ? w : h;
+    if (side > maxSide && side > 0) {
+        dw = (w * maxSide + side / 2) / side;
+        dh = (h * maxSide + side / 2) / side;
+    }
+    if (dw < 80 || dh < 80) {
+        *outW = 0;
+        *outH = 0;
+        return nullptr;
+    }
+    u8* gray = (u8*)malloc((size_t)dw * dh);
+    if (!gray) {
+        *outW = 0;
+        *outH = 0;
+        return nullptr;
+    }
+    for (int y = 0; y < dh; y++) {
+        int sy = (y * h) / dh;
+        u8* dst = gray + y * dw;
+        for (int x = 0; x < dw; x++) {
+            int sx = (x * w) / dw;
+            u8* p = bp->pixels + sy * stride + sx * bpp;
+            dst[x] = (u8)(((int)p[0] + (int)p[1] + (int)p[2]) / 3);
+        }
+    }
+    *outW = dw;
+    *outH = dh;
+    return gray;
+}
+
+// Postl primary candidate + light regional check on the same gray buffer.
+static void EstimateBitmapSkewCandidate(BitmapPixels* bp, DeskewEstimateResult* out) {
+    out->candidate = 0.f;
+    out->confidence = 0.f;
+    out->evidenceScore = 0.f;
+    out->regionalConsistency = 0.f;
+    out->improvementScore = 0.f;
+    out->reason = "none";
+
+    int gw = 0, gh = 0;
+    // Analysis at ~900px long side: fast and enough for ±0.1° after refinement.
+    u8* gray = BitmapToGrayDownsample(bp, 900, &gw, &gh);
+    if (!gray) {
+        out->reason = "insufficient_content";
+        return;
+    }
+
+    DeskewPostlResult whole = DeskewPostl::FindSkew(gray, gw, gh);
+    if (!whole.ok) {
+        free(gray);
+        out->reason = "insufficient_content";
+        return;
+    }
+    out->candidate = whole.angleDeg;
+    out->confidence = whole.confidence;
+    out->improvementScore = whole.improvement;
+    out->evidenceScore = whole.confidence;
+
+    // Regional consistency: top / mid / bottom bands (same gray, no re-render).
+    int bandH = gh / 3;
+    int nValid = 0;
+    float sumAbsDiff = 0.f;
+    float maxDiff = 0.f;
+    for (int b = 0; b < 3; b++) {
+        int y0 = b * bandH;
+        int y1 = (b == 2) ? gh : (b + 1) * bandH;
+        int bh = y1 - y0;
+        if (bh < 60) {
+            continue;
+        }
+        DeskewPostlResult br = DeskewPostl::FindSkew(gray + y0 * gw, gw, bh);
+        if (!br.ok || br.confidence < 1.8f) {
+            continue;
+        }
+        float d = fabsf(br.angleDeg - whole.angleDeg);
+        sumAbsDiff += d;
+        if (d > maxDiff) {
+            maxDiff = d;
+        }
+        nValid++;
+    }
+    if (nValid >= 2) {
+        float meanDiff = sumAbsDiff / (float)nValid;
+        float regional = 1.f - meanDiff / kDeskewRegionalMaxSpread;
+        if (regional < 0.f) {
+            regional = 0.f;
+        }
+        if (regional > 1.f) {
+            regional = 1.f;
+        }
+        if (maxDiff > kDeskewRegionalMaxSpread) {
+            regional = 0.f;
+        }
+        out->regionalConsistency = regional;
+    } else {
+        // Not enough regional evidence: don't veto on region alone when Postl
+        // confidence is already strong (Leptonica accepts on conf alone).
+        out->regionalConsistency = (whole.confidence >= 3.5f) ? 0.7f : 0.35f;
+    }
+
+    // Optional: agreed horizontal rules as a mild boost / disagreement flag.
+    float ruleDeg = 0.f;
+    if (TryAgreedRuleSkewDeg(bp, &ruleDeg) && fabsf(ruleDeg) >= kDeskewDeadZoneDeg) {
+        if (fabsf(ruleDeg - out->candidate) <= 0.4f) {
+            out->confidence += 0.25f;
+        } else if (fabsf(ruleDeg - out->candidate) > 1.2f && out->confidence < 4.f) {
+            out->confidence *= 0.85f;
+        }
+    }
+
+    free(gray);
+}
+
+static void ApplyDeskewSafetyGate(DeskewEstimateResult* r) {
+    float cand = r->candidate;
+    if (r->reason && str::Eq(r->reason, "insufficient_content")) {
+        r->decision = DeskewDecision::Uncertain;
+        r->angle = 0.f;
+        return;
+    }
+    if (cand > -kDeskewDeadZoneDeg && cand < kDeskewDeadZoneDeg) {
+        r->decision = DeskewDecision::NoDeskew;
+        r->angle = 0.f;
+        r->reason = "angle_dead_zone";
+        return;
+    }
+    if (fabsf(cand) > kDeskewMaxAutoDeg) {
+        r->decision = DeskewDecision::Uncertain;
+        r->angle = 0.f;
+        r->reason = "angle_out_of_range";
+        return;
+    }
+    if (r->confidence < kDeskewMinConfidence) {
+        r->decision = DeskewDecision::Uncertain;
+        r->angle = 0.f;
+        r->reason = "low_confidence";
+        return;
+    }
+    if (r->improvementScore < kDeskewMinImprovement) {
+        r->decision = DeskewDecision::Uncertain;
+        r->angle = 0.f;
+        r->reason = "no_improvement";
+        return;
+    }
+    // Strong Postl confidence (>=3.5, Leptonica's usual accept band) may pass
+    // with weaker regional evidence; otherwise require agreement.
+    float needRegional = (r->confidence >= 3.5f) ? 0.25f : 0.4f;
+    if (r->regionalConsistency < needRegional) {
+        r->decision = DeskewDecision::Uncertain;
+        r->angle = 0.f;
+        r->reason = "regional_disagreement";
+        return;
+    }
+    r->decision = DeskewDecision::Deskew;
+    r->angle = ClampDeskewDeg(cand);
+    if (r->angle == 0.f) {
+        r->decision = DeskewDecision::NoDeskew;
+        r->reason = "angle_dead_zone";
+        return;
+    }
+    r->reason = "ok";
+}
+
+static DeskewEstimateResult EstimateBitmapDeskew(HBITMAP hbmp) {
+    DeskewEstimateResult r{};
     BitmapPixels* bp = GetBitmapPixels(hbmp);
     if (!bp || !bp->pixels || bp->nBytesPerPixel < 3 || bp->size.dx < 80 || bp->size.dy < 80) {
         if (bp) {
@@ -10438,179 +10685,32 @@ static float EstimateBitmapSkewDeg(HBITMAP hbmp) {
         }
         HBITMAP expanded = ExpandIndexedHbmpTo32(hbmp);
         if (!expanded) {
-            return 0;
+            r.decision = DeskewDecision::Uncertain;
+            r.reason = "insufficient_content";
+            DeskewLogResult(r);
+            return r;
         }
-        float deg = EstimateBitmapSkewDeg(expanded);
+        r = EstimateBitmapDeskew(expanded);
         DeleteObject(expanded);
-        return deg;
+        return r;
     }
-    int w = bp->size.dx;
-    int h = bp->size.dy;
-    int bpp = bp->nBytesPerPixel;
-    int stride = bp->nBytesPerRow;
-    auto lumAt = [&](int x, int y) -> int {
-        u8* p = bp->pixels + y * stride + x * bpp;
-        return ((int)p[0] + (int)p[1] + (int)p[2]) / 3;
-    };
-    int x0 = w / 10;
-    int x1 = w - x0;
-    int y0 = h / 5;
-    int y1 = (h * 4) / 5;
-    if (y0 < 1) {
-        y0 = 1;
-    }
-    if (y1 > h - 1) {
-        y1 = h - 1;
-    }
-    float ruleDeg = 0.f;
-    if (TryAgreedRuleSkewDeg(bp, &ruleDeg)) {
-        FinalizeBitmapPixels(bp);
-        return ruleDeg;
-    }
-    int cap = 24000;
-    int* xs = new int[cap];
-    int* ys = new int[cap];
-    int histN = h + 8;
-    int* hist = new int[histN];
-    float cx = (float)(x0 + x1) * 0.5f;
-    float cy = (float)(y0 + y1) * 0.5f;
-    // Dark strokes first. Faded form rules sit around 160–185 and never reach
-    // that pass, so the peak stays under the minimum and the page is reported
-    // straight. Later passes let those gray rules in. A peak must beat the
-    // opposite direction: a flat or two-sided bump (page 12's +1.6°) is not
-    // a correction.
-    struct InkPass {
-        int lumCut;
-        int contrast;
-    };
-    InkPass passes[] = {{150, 40}, {180, 30}, {190, 20}};
-    float chosen = 0.f;
-    for (int pass = 0; pass < (int)(sizeof(passes) / sizeof(passes[0])); pass++) {
-        int lumCut = passes[pass].lumCut;
-        int contrast = passes[pass].contrast;
-        int keepEvery = 1;
-        int seen = 0;
-        int n = 0;
-        for (int y = y0; y < y1; y++) {
-            for (int x = x0; x < x1; x += 2) {
-                int lum = lumAt(x, y);
-                if (lum >= lumCut) {
-                    continue;
-                }
-                int above = lumAt(x, y - 1);
-                int below = lumAt(x, y + 1);
-                if (above - lum < contrast && below - lum < contrast) {
-                    continue;
-                }
-                seen++;
-                if (seen % keepEvery != 0) {
-                    continue;
-                }
-                if (n >= cap) {
-                    int wri = 0;
-                    for (int i = 0; i < n; i += 2) {
-                        xs[wri] = xs[i];
-                        ys[wri] = ys[i];
-                        wri++;
-                    }
-                    n = wri;
-                    keepEvery *= 2;
-                    if (seen % keepEvery != 0) {
-                        continue;
-                    }
-                }
-                xs[n] = x;
-                ys[n] = y;
-                n++;
-            }
-        }
-        if (n < 80) {
-            continue;
-        }
-        auto peakAt = [&](float ang) -> int {
-            float rad = ang * 0.0174532925f;
-            float ca = cosf(rad);
-            float sa = sinf(rad);
-            memset(hist, 0, (size_t)histN * sizeof(int));
-            int used = 0;
-            for (int k = 0; k < n; k++) {
-                float dy = (float)ys[k] - cy;
-                float dx = (float)xs[k] - cx;
-                int yy = (int)(ca * dy + sa * dx + cy + 0.5f);
-                if (yy >= 0 && yy < histN) {
-                    hist[yy]++;
-                    used++;
-                }
-            }
-            if (used < 40) {
-                return 0;
-            }
-            int peak = 0;
-            for (int yy = 0; yy < histN; yy++) {
-                if (hist[yy] > peak) {
-                    peak = hist[yy];
-                }
-            }
-            return peak;
-        };
-        constexpr float kAngStep = 0.2f;
-        constexpr int kAngSteps = 60;
-        int bestPeak = -1;
-        float bestAng = 0.f;
-        int peak0 = peakAt(0.f);
-        for (int i = -kAngSteps; i <= kAngSteps; i++) {
-            float ang = (float)i * kAngStep;
-            int peak = (i == 0) ? peak0 : peakAt(ang);
-            if (peak > bestPeak || (peak == bestPeak && fabsf(ang) < fabsf(bestAng))) {
-                bestPeak = peak;
-                bestAng = ang;
-            }
-        }
-        int peakOpp = 0;
-        if (bestAng > 0.05f) {
-            for (int i = 1; i <= kAngSteps; i++) {
-                int peak = peakAt(-(float)i * kAngStep);
-                if (peak > peakOpp) {
-                    peakOpp = peak;
-                }
-            }
-        } else if (bestAng < -0.05f) {
-            for (int i = 1; i <= kAngSteps; i++) {
-                int peak = peakAt((float)i * kAngStep);
-                if (peak > peakOpp) {
-                    peakOpp = peak;
-                }
-            }
-        }
-        // 1.2× over upright, and 1.35× over the opposite direction.
-        if (bestPeak < 12 || bestPeak * 5 < peak0 * 6 || bestPeak * 20 < peakOpp * 27) {
-            continue;
-        }
-        chosen = bestAng;
-        break;
-    }
-    delete[] hist;
-    delete[] xs;
-    delete[] ys;
+    EstimateBitmapSkewCandidate(bp, &r);
+    ApplyDeskewSafetyGate(&r);
     FinalizeBitmapPixels(bp);
-    return chosen;
+    DeskewLogResult(r);
+    return r;
+}
+
+static float EstimateBitmapSkewDeg(HBITMAP hbmp) {
+    return EstimateBitmapDeskew(hbmp).angle;
 }
 
 float EngineMupdfEstimateBitmapSkewDeg(void* hbmp) {
     return EstimateBitmapSkewDeg((HBITMAP)hbmp);
 }
 
-static float ClampDeskewDeg(float deg) {
-    if (deg > -0.35f && deg < 0.35f) {
-        return 0;
-    }
-    if (deg < -12.f) {
-        return -12.f;
-    }
-    if (deg > 12.f) {
-        return 12.f;
-    }
-    return deg;
+DeskewEstimateResult EngineMupdfEstimateBitmapDeskew(void* hbmp) {
+    return EstimateBitmapDeskew((HBITMAP)hbmp);
 }
 
 static void RefreshModifiedDeskewFlag(EngineMupdf* e) {
@@ -10620,7 +10720,7 @@ static void RefreshModifiedDeskewFlag(EngineMupdf* e) {
     bool any = false;
     for (int i = 0; i < e->pages.Size(); i++) {
         FzPageInfo* other = e->pages[i];
-        if (other && other->deskewDeg != 0.f) {
+        if (other && other->deskewDirty) {
             any = true;
             break;
         }
@@ -10638,7 +10738,7 @@ float EngineMupdfGetPageDeskewDeg(EngineBase* engine, int pageNo) {
     return pi ? pi->deskewDeg : 0;
 }
 
-void EngineMupdfSetPageDeskewDeg(EngineBase* engine, int pageNo, float deg) {
+void EngineMupdfSetPageDeskewDeg(EngineBase* engine, int pageNo, float deg, bool markDirty) {
     EngineMupdf* e = AsEngineMupdf(engine);
     if (!e || pageNo < 1) {
         return;
@@ -10650,11 +10750,44 @@ void EngineMupdfSetPageDeskewDeg(EngineBase* engine, int pageNo, float deg) {
     }
     deg = ClampDeskewDeg(deg);
     pi->deskewDeg = deg;
-    if (deg != 0.f) {
-        e->modifiedDeskew = true;
-    } else {
-        RefreshModifiedDeskewFlag(e);
+    if (markDirty) {
+        pi->deskewDirty = deg != 0.f;
+        if (deg != 0.f) {
+            e->modifiedDeskew = true;
+        } else {
+            RefreshModifiedDeskewFlag(e);
+        }
     }
+}
+
+DeskewEstimateResult EngineMupdfEstimatePageDeskew(EngineBase* engine, int pageNo) {
+    DeskewEstimateResult r{};
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || pageNo < 1) {
+        r.decision = DeskewDecision::Uncertain;
+        r.reason = "insufficient_content";
+        DeskewLogResult(r);
+        return r;
+    }
+    // Measure the uncorrected page. Override keeps a prior display deskew from
+    // affecting the probe bitmap. Zoom 1.5 keeps analysis cheap.
+    RenderPageArgs args(pageNo, 1.5f, 0);
+    args.useDeskewOverride = true;
+    args.deskewDegOverride = 0.f;
+    RenderedBitmap* bmp = e->RenderPage(args);
+    if (bmp && bmp->GetBitmap()) {
+        r = EstimateBitmapDeskew(bmp->GetBitmap());
+    } else {
+        r.decision = DeskewDecision::Uncertain;
+        r.reason = "insufficient_content";
+        DeskewLogResult(r);
+    }
+    delete bmp;
+    return r;
+}
+
+float EngineMupdfEstimatePageDeskewDeg(EngineBase* engine, int pageNo) {
+    return EngineMupdfEstimatePageDeskew(engine, pageNo).angle;
 }
 
 float EngineMupdfDeskewPage(EngineBase* engine, int pageNo) {
@@ -10667,24 +10800,17 @@ float EngineMupdfDeskewPage(EngineBase* engine, int pageNo) {
     if (!pi) {
         return 0;
     }
-    pi->deskewDeg = 0;
-    // ~1.5× CSS zoom (~108 dpi) keeps thin table rules sharp enough for the
-    // edge peak detector; 0.55× was too soft and collapsed real ~1° skew to 0.
-    RenderPageArgs args(pageNo, 1.5f, 0);
-    RenderedBitmap* bmp = e->RenderPage(args);
-    float deg = 0;
-    if (bmp && bmp->GetBitmap()) {
-        deg = EstimateBitmapSkewDeg(bmp->GetBitmap());
-    }
-    delete bmp;
-    deg = ClampDeskewDeg(deg);
+    DeskewEstimateResult est = EngineMupdfEstimatePageDeskew(engine, pageNo);
+    float deg = est.angle;
     pi->deskewDeg = deg;
+    pi->deskewDirty = deg != 0.f;
     if (deg != 0.f) {
         e->modifiedDeskew = true;
     } else {
         RefreshModifiedDeskewFlag(e);
     }
-    logf("deskew page %d -> %.2f deg (dirty=%d)\n", pageNo, deg, (int)e->modifiedDeskew);
+    logf("deskew page %d -> %.2f deg decision=%s reason=%s dirty=%d\n", pageNo, deg, DeskewDecisionName(est.decision),
+         est.reason ? est.reason : "?", (int)e->modifiedDeskew);
     return deg;
 }
 
@@ -10823,9 +10949,13 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
         // Straighten a small scan tilt inside the existing page box. A few
         // degrees clips the corners; 90° page turns stay on /Rotate and
         // DisplayModel::RotateBy. Center on the full page, not the tile.
-        if (pageInfo->deskewDeg != 0.f) {
+        float deskew = pageInfo->deskewDeg;
+        if (args.useDeskewOverride) {
+            deskew = args.deskewDegOverride;
+        }
+        if (deskew != 0.f) {
             fz_rect fullPage = pageRect ? fz_bound_page(ctx, page) : pRect;
-            ctm = WithPageDeskew(ctm, fullPage, pageInfo->deskewDeg);
+            ctm = WithPageDeskew(ctm, fullPage, deskew);
         }
 
         if (useSmartDarkList) {
@@ -13570,7 +13700,7 @@ static void EngineMupdfBakeDeskewIntoPdf(EngineMupdf* epdf) {
     auto ctx = epdf->Ctx();
     for (int i = 0; i < epdf->pages.Size(); i++) {
         FzPageInfo* pi = epdf->pages[i];
-        if (!pi || pi->deskewDeg == 0.f) {
+        if (!pi || !pi->deskewDirty || pi->deskewDeg == 0.f) {
             continue;
         }
         float deg = pi->deskewDeg;
@@ -13585,6 +13715,7 @@ static void EngineMupdfBakeDeskewIntoPdf(EngineMupdf* epdf) {
         }
         if (ok) {
             pi->deskewDeg = 0;
+            pi->deskewDirty = false;
             DropSingleFzPageCache(ctx, pi);
             logf("baked deskew %.2f deg into page %d\n", deg, i + 1);
         }
@@ -14917,11 +15048,11 @@ bool EngineMupdfSaveSearchablePdf(EngineBase* engine, const char* destPath, char
             }
             pdf_dict_puts_drop(ctx, info, "SumatraOcrText", PDF_TRUE);
         }
-        // Persist the same session deskew Deskew Page uses, so a reload after
-        // Recognize All does not snap back to the tilted scan.
+        // Persist user deskew (deskewDirty) only — OCR display deskew stays
+        // session-only and must not be written into the searchable PDF.
         for (int i = 0; i < epdf->pages.Size(); i++) {
             FzPageInfo* pi = epdf->pages[i];
-            if (!pi || pi->deskewDeg == 0.f) {
+            if (!pi || !pi->deskewDirty || pi->deskewDeg == 0.f) {
                 continue;
             }
             pdf_obj* po = pdf_lookup_page_obj(ctx, doc, i);

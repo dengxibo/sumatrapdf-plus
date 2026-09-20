@@ -6,6 +6,7 @@
 #include "AppTools.h"
 #include "EbookFontConfig.h"
 #include "EbookTypography.h"
+#include "OfficeConvert.h"
 
 struct GlobalPrefs;
 
@@ -13,6 +14,25 @@ struct GlobalPrefs;
 // EpubMeta.cpp without the full SumatraPDF settings / app-data stack.
 
 GlobalPrefs* gGlobalPrefs = nullptr;
+
+// Shell extensions must not launch Word COM. Classic .doc conversion stays in
+// the main app (OfficeConvert.cpp); filter/preview just refuse those files.
+char* ConvertOleOfficeToDocx(const char* srcPath, char* errOut, int errOutLen) {
+    (void)srcPath;
+    if (errOut && errOutLen > 0) {
+        str::BufSet(errOut, errOutLen, "Office conversion is not available here.");
+    }
+    return nullptr;
+}
+
+bool IsCachedOleOfficeDocx(const char* path) {
+    (void)path;
+    return false;
+}
+
+void ForgetCachedOleOfficeDocx(const char* srcPath) {
+    (void)srcPath;
+}
 
 TempStr GetPathInAppDataDirTemp(const char* fileName) {
     (void)fileName;

@@ -39,8 +39,11 @@ struct FzPageInfo {
     bool elementsNeedRebuilding = true;
 
     RectF mediabox{};
-    // Small-angle scan correction in degrees (CCW). Not written into the PDF.
+    // Small-angle scan correction in degrees (CCW). Display-only unless
+    // deskewDirty (user Deskew Page / Deskew All); OCR may set deskewDeg
+    // without dirty so Save does not bake it into the file.
     float deskewDeg = 0;
+    bool deskewDirty = false;
     Vec<FitzPageImageInfo*> images;
 
     // if false, only loaded page (fast)

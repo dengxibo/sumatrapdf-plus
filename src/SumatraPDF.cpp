@@ -4666,16 +4666,11 @@ void LoadModelIntoTab(WindowTab* tab) {
         CancelReflowThemeRetry(win);
     }
     if (gGlobalPrefs->lazyLoading && win->ctrl && !tab->ctrl && !tab->IsAboutTab()) {
-        NotificationCreateArgs args;
-        args.hwndParent = win->hwndCanvas;
-        args.groupId = kNotifDocumentLoading;
-        args.font = GetAppFontForHwnd(win->hwndCanvas);
-        args.msg = str::FormatTemp(_TRA("Loading %s ..."), path::GetBaseNameTemp(tab->filePath));
-        ShowNotification(args);
-        RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
-        UpdateTocFilterForDocumentLoading(win);
+        // Do not ShowNotification(kNotifDocumentLoading) here. StartLoadDocument
+        // already owns that banner (PrepareLoadingTab marks asyncLoadPending, or
+        // ReloadDocument below creates one). A second banner was never removed and
+        // stuck after the load finished (stacked "Loading …" toasts).
         ShowWindow(win->hwndFrame, SW_SHOW);
-        // display the notification ASAP
         win->RedrawAll(true);
     }
     // ShowWindow / RedrawAll can pump messages, potentially destroying win
@@ -11020,16 +11015,26 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         case CmdDeskewPage:
             if (dm) {
                 int pageNo = dm->CurrentPageNo();
-                float deg = EngineMupdfDeskewPage(dm->GetEngine(), pageNo);
+                EngineBase* engine = dm->GetEngine();
+                float cur = EngineMupdfGetPageDeskewDeg(engine, pageNo);
+                const char* deskewMsg = nullptr;
+                if (cur != 0.f) {
+                    // Undo a wrong auto/manual correction; re-running detect
+                    // would just re-apply the same bad angle.
+                    EngineMupdfSetPageDeskewDeg(engine, pageNo, 0.f);
+                    deskewMsg = _TRA("Deskew cleared.");
+                } else {
+                    float deg = EngineMupdfDeskewPage(engine, pageNo);
+                    deskewMsg = _TRA("This page is not skewed.");
+                    if (deg != 0.f) {
+                        deskewMsg = str::FormatTemp(_TRA("Deskewed by %.1f degrees."), deg);
+                    }
+                }
                 gRenderCache->CancelRendering(dm);
-                gRenderCache->Invalidate(dm, pageNo, dm->GetEngine()->PageMediabox(pageNo));
+                gRenderCache->Invalidate(dm, pageNo, engine->PageMediabox(pageNo));
                 win->RedrawAll(true);
                 // Refresh tab red-dot / Save enablement; never auto-save.
                 ToolbarUpdateStateForWindow(win, false);
-                const char* deskewMsg = _TRA("This page is not skewed.");
-                if (deg != 0.f) {
-                    deskewMsg = str::FormatTemp(_TRA("Deskewed by %.1f degrees."), deg);
-                }
                 ShowTemporaryNotification(win->hwndCanvas, deskewMsg);
             }
             break;

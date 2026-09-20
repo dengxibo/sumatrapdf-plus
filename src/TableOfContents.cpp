@@ -3909,15 +3909,6 @@ static void LayoutTocContainer(MainWindow* win) {
     place(l->hwnd, 0, y, rc.dx, labelSize.dy);
     dy -= labelSize.dy;
     y += labelSize.dy;
-    HWND loadHwnd = GetDocumentLoadingNotificationHwnd(win->hwndFrame, win->hwndCanvas);
-    bool loadInToc = loadHwnd && GetParent(loadHwnd) == hwndContainer;
-    if (loadInToc) {
-        Rect rn = WindowRect(loadHwnd);
-        int loadDy = rn.dy;
-        place(loadHwnd, 0, y, rc.dx, loadDy);
-        dy -= loadDy;
-        y += loadDy;
-    }
     int editStyleVis = 0;
     int rowDy = 0;
     if (edit && edit->hwnd) {

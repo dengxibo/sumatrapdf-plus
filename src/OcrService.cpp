@@ -397,7 +397,8 @@ static u8* CopyBitmapToRgb(HBITMAP hbmp, int* wOut, int* hOut, int* strideOut) {
 }
 
 static RenderedBitmap* RenderPageForOcr(EngineBase* engine, int pageNo, const RectF* clip = nullptr,
-                                        float maxSideCap = 0.f) {
+                                        float maxSideCap = 0.f, bool useDeskewOverride = false,
+                                        float deskewDegOverride = 0.f) {
     RectF mb = clip ? *clip : engine->PageMediabox(pageNo);
     if (mb.IsEmpty() || mb.dx < 2 || mb.dy < 2) {
         return nullptr;
@@ -423,19 +424,26 @@ static RenderedBitmap* RenderPageForOcr(EngineBase* engine, int pageNo, const Re
     }
     RectF clipCopy = mb;
     RenderPageArgs args(pageNo, zoom, 0, clip ? &clipCopy : nullptr, RenderTarget::Export);
+    args.useDeskewOverride = useDeskewOverride;
+    args.deskewDegOverride = deskewDegOverride;
     RenderedBitmap* bmp = engine->RenderPage(args);
     return bmp;
 }
 
-// Full-page OCR: deskew with the same detector as Deskew Page, then rasterize
-// the straightened page for recognition. Estimating on the high-res OCR bitmap
-// missed the ~1° scan tilt that Deskew Page finds at 1.5×.
+// Full-page OCR: straighten for recognition and for on-screen display.
+// Display deskew is session-only (markDirty=false) so Save / OCR auto-save
+// never bake the angle into the PDF file.
 static RenderedBitmap* RenderPageForOcrMaybeDeskew(EngineBase* engine, int pageNo, float maxSideCap = 0.f) {
-    if (gGlobalPrefs && gGlobalPrefs->ocrDeskew && engine && engine->kind == kindEngineMupdf &&
-        EngineMupdfGetPageDeskewDeg(engine, pageNo) == 0.f) {
-        float deg = EngineMupdfDeskewPage(engine, pageNo);
+    float existing = 0.f;
+    if (engine && engine->kind == kindEngineMupdf) {
+        existing = EngineMupdfGetPageDeskewDeg(engine, pageNo);
+    }
+    if (gGlobalPrefs && gGlobalPrefs->ocrDeskew && engine && engine->kind == kindEngineMupdf && existing == 0.f) {
+        float deg = EngineMupdfEstimatePageDeskewDeg(engine, pageNo);
         if (deg != 0.f) {
-            logfa("OCR[%d] deskew before recognize -> %.2f deg\n", pageNo, deg);
+            EngineMupdfSetPageDeskewDeg(engine, pageNo, deg, false);
+            logfa("OCR[%d] deskew display+recognize -> %.2f deg (not dirty)\n", pageNo, deg);
+            return RenderPageForOcr(engine, pageNo, nullptr, maxSideCap, true, deg);
         }
     }
     return RenderPageForOcr(engine, pageNo, nullptr, maxSideCap);
@@ -2912,19 +2920,6 @@ static void OcrFinishUi(OcrDoneUi* d) {
         if (d->ok && d->hwndCanvas && IsWindow(d->hwndCanvas)) {
             InvalidateRect(d->hwndCanvas, nullptr, FALSE);
         }
-        // Deskew is applied on the worker before OCR. Drop cached tiles so the
-        // canvas shows the straighten, not the pre-OCR bitmap.
-        if (d->engine && d->engine->kind == kindEngineMupdf &&
-            EngineMupdfGetPageDeskewDeg(d->engine, d->pageNo) != 0.f) {
-            MainWindow* win = FindMainWindowByHwnd(d->hwndCanvas);
-            DisplayModel* dm = win ? win->AsFixed() : nullptr;
-            if (win && dm && dm->GetEngine() == d->engine && gRenderCache) {
-                gRenderCache->CancelRendering(dm);
-                gRenderCache->Invalidate(dm, d->pageNo, d->engine->PageMediabox(d->pageNo));
-                win->RedrawAll(true);
-                ToolbarUpdateStateForWindow(win, false);
-            }
-        }
         if (more) {
             OcrShowDocumentProgress(d->hwndCanvas);
         } else {
@@ -3041,12 +3036,25 @@ static void OcrFinishUi(OcrDoneUi* d) {
         int rot = d->engine->GetOcrPageRotate(d->pageNo);
         bool applied = rot > 0 && EngineMupdfEnsurePageOcrRotate(d->engine, d->pageNo);
         logfa("OCR[page-done] page=%d corr=%d applied=%d\n", d->pageNo, rot, applied);
+        MainWindow* win = d->hwndCanvas && IsWindow(d->hwndCanvas) ? FindMainWindowByHwnd(d->hwndCanvas) : nullptr;
+        DisplayModel* dm = win ? win->AsFixed() : nullptr;
         if (applied) {
-            MainWindow* win = d->hwndCanvas && IsWindow(d->hwndCanvas) ? FindMainWindowByHwnd(d->hwndCanvas) : nullptr;
-            DisplayModel* dm = win ? win->AsFixed() : nullptr;
             if (dm && dm->GetEngine() == d->engine) {
                 dm->InvalidateReflowLayoutAfterEngineReparse();
                 dm->Relayout(dm->GetZoomVirtual(), dm->GetRotation());
+            }
+        }
+        // OCR may have set session-only display deskew; refresh the tile cache
+        // so the straightened page shows without marking the document dirty.
+        if (dm && dm->GetEngine() == d->engine && gRenderCache) {
+            float deskew = EngineMupdfGetPageDeskewDeg(d->engine, d->pageNo);
+            if (deskew != 0.f) {
+                gRenderCache->CancelRendering(dm);
+                gRenderCache->Invalidate(dm, d->pageNo, d->engine->PageMediabox(d->pageNo));
+                if (win) {
+                    win->RedrawAll(true);
+                    ToolbarUpdateStateForWindow(win, false);
+                }
             }
         }
     }

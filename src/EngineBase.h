@@ -385,6 +385,10 @@ struct RenderPageArgs {
     AbortCookie** cookie_out = nullptr;
     // When non-null, EngineMupdf may apply object-level Smart Dark rendering (View only).
     const DarkModeProfile* darkProfile = nullptr;
+    // When true, use deskewDegOverride instead of the page's stored deskewDeg
+    // (OCR can straighten a recognition bitmap without changing display state).
+    bool useDeskewOverride = false;
+    float deskewDegOverride = 0.f;
 
     RenderPageArgs(int pageNo, float zoom, int rotation, RectF* pageRect = nullptr,
                    RenderTarget target = RenderTarget::View, AbortCookie** cookie_out = nullptr);
