@@ -25,6 +25,11 @@ struct TocCalibMapRow {
 
 int TocCalibSolveOffset(const Vec<TocCalibMapRow>& rows);
 void TocCalibApplyOffset(Vec<TocCalibMapRow>& rows, int offset, bool force = false);
+// Estimate printed→PDF offset from page footers / headers after the TOC spread.
+// Returns -1 when no consistent arabic body anchors are found.
+int TocCalibEstimateArabicOffset(EngineBase* engine, int afterTocPdf);
+bool TocCalibTestOffsetIgnoresRoughEstimate();
+bool TocCalibTestEstimateArabicOffsetVotes();
 
 struct TocCalibItemRef {
     int tocId = 0;

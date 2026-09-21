@@ -49,7 +49,9 @@
 static const char* kAiTocPrompt =
     "你正在帮助 PDF 阅读器恢复一本扫描书籍中的印刷目录。图片按原书顺序排列。请根据视觉布局、缩进、"
     "字体、粗细、居中位置、上下留白、点线、页码和双栏关系恢复目录结构。只返回合法 JSON，不要解释或 Markdown。格式必须是"
-    "{\"items\":[{\"title\":\"章节标题\",\"page\":12,\"level\":1}]}。page 是目录中印刷的页码，"
+    "{\"items\":[{\"title\":\"章节标题\",\"page\":12,\"level\":1}]}。"
+    "page 是目录中印刷的页码：阿拉伯数字用 JSON 数字（如 12）；罗马数字或附录页码用字符串（如 \"xiv\"、\"R1\"）；"
+    "没有页码时用 null。"
     "level 从 1 "
     "开始。特别注意：目录中可能存在没有‘第X章’编号、但通过居中、加粗、字号更大、上下留白或单独成行来划分大分段的标题。"
     "这类分段标题也是一级目录项，必须单独输出，不能丢弃，也不能挂到后面的章节下面。例如‘地球和地图’、‘中国地理’、‘自然"
@@ -68,7 +70,9 @@ static const char* kAiTocPrompt =
     "page:null，但仍必须保留其父级层次；不要删除它，也不要把后续章节提升为同级。"
     "不要把无编号分段标题误当成普通说明文字，也不要把它与相邻章节合并。‘第一节’、‘第二节’等明确属于所在章节的下一级；"
     "‘课堂练习’若在章节条目缩进下也属于所在章节的下一级。"
-    "只输出目录中实际印刷的条目，按页面从上到下、从左到右的顺序输出，不要补写图片中不存在的标题。";
+    "只输出目录中实际印刷的条目，按页面从上到下、从左到右的顺序输出，不要补写图片中不存在的标题。"
+    "同一本书若同时印刷了‘按单元目录’和‘按体裁/专题索引’，只输出按阅读顺序的主目录（单元/章节），"
+    "不要把体裁索引、作者名行、专题对照表再重复导入一遍。作者名若单独成行且无页码，不要输出为独立条目。";
 
 struct AiTocPocWork {
     HWND mainHwnd = nullptr;
@@ -878,12 +882,15 @@ static bool IsAiTocJsonCandidate(const char* text) {
 struct AiTocJsonItem {
     char* title = nullptr;
     int printedPage = 0;
+    char* printedLabel = nullptr;
     bool hasPage = false;
     int level = 1;
 
     void Free() {
         str::Free(title);
         title = nullptr;
+        str::Free(printedLabel);
+        printedLabel = nullptr;
     }
 };
 
@@ -924,9 +931,19 @@ struct AiTocJsonVisitor : json::ValueVisitor {
         if (str::Eq(p, "title") && type == json::Type::String) {
             str::Free(item.title);
             item.title = str::Dup(value);
-        } else if (str::Eq(p, "page") && type == json::Type::Number) {
-            item.printedPage = ParseInt(value);
-            item.hasPage = item.printedPage > 0;
+        } else if (str::Eq(p, "page") && (type == json::Type::Number || type == json::Type::String)) {
+            // Numbers: arabic printed pages. Strings: "xxxvi", "R1", or "12".
+            // null is omitted by the visitor (hasPage stays false).
+            int pr = 0;
+            char* lab = nullptr;
+            if (TocCalibParsePrintedText(value, &pr, &lab)) {
+                str::Free(item.printedLabel);
+                item.printedLabel = lab;
+                item.printedPage = pr;
+                item.hasPage = pr > 0 || (lab && lab[0]);
+            } else {
+                str::Free(lab);
+            }
         } else if (str::Eq(p, "level") && type == json::Type::Number) {
             item.level = ParseInt(value);
         }
@@ -1034,6 +1051,13 @@ static bool AiTocImportJson(AiTocDialog* dlg, const char* text) {
     Vec<ExtractedTocItem*> roots;
     Vec<ExtractedTocItem*> stack;
     AiTocSetImportProgress(dlg, _TRW("Importing TOC: arranging bookmark levels…"));
+    // Footer-based offset after the TOC spread. Do NOT use lastToc+printed: that
+    // invents one consistent wrong offset and calibration locks onto it.
+    int arabicOffset = TocCalibEstimateArabicOffset(dlg->work->engine, dlg->work->lastPage);
+    if (arabicOffset >= 0) {
+        logf("AI TOC: footer arabic offset=%d afterToc=%d\n", arabicOffset, dlg->work->lastPage);
+    }
+    int nPages = dlg->work->engine ? dlg->work->engine->PageCount() : 0;
     for (int i = 0; i < parsed.items.Size(); i++) {
         AiTocJsonItem& src = parsed.items[i];
         if (!src.title || !src.title[0]) {
@@ -1050,15 +1074,32 @@ static bool AiTocImportJson(AiTocDialog* dlg, const char* text) {
         item->title = str::Dup(src.title);
         item->rawTitle = str::Dup(src.title);
         NormalizeTocNumberingParens(&item->title);
-        item->printedPage = src.hasPage ? src.printedPage : 0;
-        // The smoke test assumes printed page 1 follows the selected TOC
-        // spread. The calibration bar remains the final authority before Save.
-        item->pageNo = src.hasPage ? dlg->work->lastPage + src.printedPage : 0;
+        item->printedPage = src.printedPage > 0 ? src.printedPage : 0;
+        if (src.printedLabel && src.printedLabel[0]) {
+            item->printedLabel = str::Dup(src.printedLabel);
+        }
+        item->pageNo = 0;
+        if (item->printedPage > 0 && arabicOffset >= 0) {
+            item->pageNo = item->printedPage + arabicOffset;
+            if (item->pageNo < 1) {
+                item->pageNo = 1;
+            }
+            if (nPages > 0 && item->pageNo > nPages) {
+                item->pageNo = nPages;
+            }
+        } else if (item->printedLabel && item->printedLabel[0] && dlg->work->engine &&
+                   dlg->work->engine->HasPageLabels()) {
+            int byLabel = dlg->work->engine->GetPageByLabel(item->printedLabel);
+            if (byLabel > 0 && (nPages < 1 || byLabel <= nPages)) {
+                item->pageNo = byLabel;
+            }
+        }
         item->level = stack.Size() + 1;
         item->confidence = 40;
         item->destinationSource = TocDestinationSource::Estimated;
         item->source = ExtractedTocSource::PrintedToc;
-        item->tocPageNo = dlg->work->firstPage;
+        // Stamp first/last selected TOC PDF pages so calib knows the spread.
+        item->tocPageNo = (stack.Size() == 0 && roots.Size() == 0) ? dlg->work->firstPage : dlg->work->lastPage;
         if (stack.Size() > 0) {
             item->parent = stack.Last();
             item->parent->children.Append(item);
@@ -1097,7 +1138,8 @@ static bool AiTocImportJson(AiTocDialog* dlg, const char* text) {
                           _TRA("AI Recognize Table of Contents"));
         return false;
     }
-    logf("AI TOC: import started items=%d pages=%d-%d\n", stack.Size(), dlg->work->firstPage, dlg->work->lastPage);
+    logf("AI TOC: import started items=%d pages=%d-%d offset=%d\n", stack.Size(), dlg->work->firstPage,
+         dlg->work->lastPage, arabicOffset);
     return true;
 }
 

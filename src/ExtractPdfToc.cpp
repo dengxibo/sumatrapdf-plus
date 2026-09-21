@@ -21284,6 +21284,33 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         }
     }
     {
+        bool ok = TocCalibTestOffsetIgnoresRoughEstimate();
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            logf("phase2 fail calib-offset-ignores-rough\n");
+        }
+    }
+    {
+        bool ok = TocCalibTestEstimateArabicOffsetVotes();
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            logf("phase2 fail calib-offset-evidence-votes\n");
+        }
+    }
+    {
+        bool ok = TocCalibTestPrintedInput();
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            logf("phase2 fail calib-printed-input\n");
+        }
+    }
+    {
         bool ok = TocCalibTestClearTocDests();
         if (ok) {
             (*pass)++;

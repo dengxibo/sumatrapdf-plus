@@ -70,6 +70,7 @@ static bool TocCalibPrintedPlausible(int nPages, int printed) {
 
 static int TocCalibRowPdf(const TocCalibRow* row);
 static int TocCalibLabelPrinted(const TocCalibSession* s, int pdf);
+static int TocCalibParseLabelPrinted(const char* label);
 static bool TocCalibLabelIsPlainPdf(const char* label, int pdf);
 static bool TocCalibNoPrintedTitle(const char* s);
 
@@ -139,6 +140,11 @@ int TocCalibSolveOffset(const Vec<TocCalibMapRow>& rows) {
     for (int i = 0; i < rows.Size() && n < 64; i++) {
         const TocCalibMapRow& r = rows[i];
         if (!TocCalibHasPrinted(r.printedPage)) {
+            continue;
+        }
+        // Rough AI seeds (lastToc+printed) all share the same wrong offset and
+        // would lock calibration onto it. Only body/pin evidence may vote.
+        if (!(r.bodyMatched || r.verified || r.pdfPinned)) {
             continue;
         }
         int src = r.pdfPage;
@@ -1678,6 +1684,43 @@ static int TocCalibFooterPrintedOnPage(EngineBase* engine, int pdf) {
     return pr;
 }
 
+int TocCalibEstimateArabicOffset(EngineBase* engine, int afterTocPdf) {
+    if (!engine) {
+        return -1;
+    }
+    int nPages = engine->PageCount();
+    if (nPages < 1) {
+        return -1;
+    }
+    int start = afterTocPdf > 0 ? afterTocPdf + 1 : 1;
+    if (start < 1) {
+        start = 1;
+    }
+    if (start > nPages) {
+        return -1;
+    }
+    // Long front matter (roman / unnumbered) often sits between the TOC and
+    // arabic page 1. Probe far enough to reach the body (G11 ≈ +41 pages).
+    int end = start + 160;
+    if (end > nPages) {
+        end = nPages;
+    }
+    int offs[64];
+    int n = 0;
+    for (int pdf = start; pdf <= end && n < 64; pdf++) {
+        int pr = TocCalibFooterPrintedOnPage(engine, pdf);
+        if (pr < 1 || pr > 300) {
+            continue;
+        }
+        int off = pdf - pr;
+        if (off < 0) {
+            continue;
+        }
+        offs[n++] = off;
+    }
+    return TocCalibMajorityOffset(offs, n);
+}
+
 // Keep TOC-extracted printed pages. For empty body hits, use the dest page
 // label or the number printed in the header/footer (e.g. 28 on PDF 51).
 static void TocCalibSeedPrintedFromPages(TocCalibSession* s) {
@@ -1749,6 +1792,54 @@ static void TocCalibSeedPrintedFromLabels(TocCalibSession* s) {
     }
 }
 
+// Resolve roman / R-page printedLabel via PDF /PageLabels when present.
+static void TocCalibResolvePrintedLabels(TocCalibSession* s) {
+    if (!s || !s->engine || !s->engine->HasPageLabels()) {
+        return;
+    }
+    for (int i = 0; i < s->rows.Size(); i++) {
+        ExtractedTocItem* it = s->rows[i].item;
+        if (!it || TocCalibHasPrinted(it->printedPage)) {
+            continue;
+        }
+        if (!it->printedLabel || !it->printedLabel[0]) {
+            continue;
+        }
+        if (s->rows[i].pdfPinned || it->bodyMatched) {
+            continue;
+        }
+        int pdf = s->engine->GetPageByLabel(it->printedLabel);
+        if (pdf < 1 || (s->nPages > 0 && pdf > s->nPages)) {
+            continue;
+        }
+        // atoi fallback would map "4" → page 4; only accept non-digit labels
+        // here (roman / R1) so we do not treat a missing PageLabels table as a hit.
+        if (TocCalibParseLabelPrinted(it->printedLabel) > 0) {
+            continue;
+        }
+        it->pageNo = pdf;
+        s->rows[i].pdfPinned = true;
+        s->rows[i].identPageNo = pdf;
+    }
+}
+
+static void TocCalibSeedArabicOffsetFromFooters(TocCalibSession* s) {
+    if (!s || !s->engine || s->offsetLocked) {
+        return;
+    }
+    if (s->map.confidence > 0 && s->map.offset >= 0) {
+        return;
+    }
+    int after = s->tocEnd > 0 ? s->tocEnd : s->tocPage;
+    int off = TocCalibEstimateArabicOffset(s->engine, after);
+    if (off < 0) {
+        return;
+    }
+    s->map.offset = off;
+    s->map.confidence = 0.55f;
+    logf("TocCalib: footer arabic offset=%d afterToc=%d\n", off, after);
+}
+
 static void TocCalibPrepareMapping(TocCalibSession* s, bool markConfirm, bool scanBody, bool deferVerify = false) {
     if (!s) {
         return;
@@ -1761,12 +1852,18 @@ static void TocCalibPrepareMapping(TocCalibSession* s, bool markConfirm, bool sc
     } else {
         TocCalibSeedPrintedFromLabels(s);
     }
+    TocCalibResolvePrintedLabels(s);
     s->editPdf = true;
     for (int i = 0; i < s->rows.Size(); i++) {
         if (s->rows[i].item && TocCalibHasPrinted(s->rows[i].item->printedPage)) {
             s->editPdf = false;
             break;
         }
+    }
+    // Before body verify, seed offset from footers so predicted pages land near
+    // the real body (critical for 1000+ page scans where NeedFull is skipped).
+    if (scanBody) {
+        TocCalibSeedArabicOffsetFromFooters(s);
     }
     TocCalibSolveSession(s);
     if (scanBody) {
@@ -2320,6 +2417,29 @@ static bool TocCalibIsAlphaToken(const char* s) {
     return n > 0;
 }
 
+// Handbook / appendix labels: R1, R20, A12 (one letter + digits). Kept as a
+// printedLabel so GetPageByLabel / UI can resolve them; no arabic ordinal.
+static bool TocCalibIsLetterDigitLabel(const char* s) {
+    if (!s || !s[0]) {
+        return false;
+    }
+    if (!((*s >= 'A' && *s <= 'Z') || (*s >= 'a' && *s <= 'z'))) {
+        return false;
+    }
+    const char* p = s + 1;
+    if (*p < '0' || *p > '9') {
+        return false;
+    }
+    int digits = 0;
+    for (; *p >= '0' && *p <= '9'; p++) {
+        digits++;
+        if (digits > 4) {
+            return false;
+        }
+    }
+    return !*p && digits >= 1;
+}
+
 bool TocCalibParsePrintedText(const char* s, int* printedOut, char** labelOut) {
     if (printedOut) {
         *printedOut = 0;
@@ -2361,13 +2481,13 @@ bool TocCalibParsePrintedText(const char* s, int* printedOut, char** labelOut) {
         }
         return true;
     }
-    if (!TocCalibIsAlphaToken(buf)) {
-        return false;
+    if (TocCalibIsAlphaToken(buf) || TocCalibIsLetterDigitLabel(buf)) {
+        if (labelOut) {
+            *labelOut = str::Dup(buf);
+        }
+        return true;
     }
-    if (labelOut) {
-        *labelOut = str::Dup(buf);
-    }
-    return true;
+    return false;
 }
 
 bool TocCalibTestPrintedInput() {
@@ -2384,9 +2504,68 @@ bool TocCalibTestPrintedInput() {
     lab = nullptr;
     ok = ok && TocCalibParsePrintedText("xiv", &pr, &lab) && pr == 0 && lab && str::Eq(lab, "xiv");
     str::Free(lab);
+    lab = nullptr;
+    ok = ok && TocCalibParsePrintedText("R1", &pr, &lab) && pr == 0 && lab && str::Eq(lab, "R1");
+    str::Free(lab);
+    lab = nullptr;
+    ok = ok && TocCalibParsePrintedText("R20", &pr, &lab) && pr == 0 && lab && str::Eq(lab, "R20");
+    str::Free(lab);
     ok = ok && !TocCalibParsePrintedText("12a", &pr, &lab);
     ok = ok && TocCalibParseRoman("II") == 2 && TocCalibParseRoman("xiv") == 14 && TocCalibParseRoman("A") == 0;
     return ok;
+}
+
+bool TocCalibTestOffsetIgnoresRoughEstimate() {
+    // lastToc(44)+printed yields a consistent wrong offset of 44; evidence from
+    // a body hit must win so textbooks with long front matter map correctly.
+    Vec<TocCalibMapRow> rows;
+    for (int i = 0; i < 8; i++) {
+        TocCalibMapRow r;
+        r.printedPage = 4 + i * 10;
+        r.pdfPage = 44 + r.printedPage; // poisoned lastToc+printed
+        r.identPage = r.pdfPage;
+        r.bodyMatched = false;
+        rows.Append(r);
+    }
+    TocCalibMapRow hit;
+    hit.printedPage = 4;
+    hit.pdfPage = 45;
+    hit.identPage = 45;
+    hit.bodyMatched = true;
+    rows.Append(hit);
+    TocCalibMapRow hit2;
+    hit2.printedPage = 19;
+    hit2.pdfPage = 60;
+    hit2.identPage = 60;
+    hit2.bodyMatched = true;
+    rows.Append(hit2);
+    int off = TocCalibSolveOffset(rows);
+    return off == 41;
+}
+
+bool TocCalibTestEstimateArabicOffsetVotes() {
+    // Pure unit of MajorityOffset via the public estimator with no engine: the
+    // estimator needs an engine, so validate the solve path only here.
+    Vec<TocCalibMapRow> rows;
+    TocCalibMapRow a;
+    a.printedPage = 1;
+    a.pdfPage = 42;
+    a.identPage = 42;
+    a.verified = true;
+    rows.Append(a);
+    TocCalibMapRow b;
+    b.printedPage = 2;
+    b.pdfPage = 43;
+    b.identPage = 43;
+    b.verified = true;
+    rows.Append(b);
+    TocCalibMapRow c;
+    c.printedPage = 10;
+    c.pdfPage = 51;
+    c.identPage = 51;
+    c.pdfPinned = true;
+    rows.Append(c);
+    return TocCalibSolveOffset(rows) == 41;
 }
 
 bool TocCalibTestBm25Locate() {
@@ -2817,7 +2996,8 @@ void TocCalibSolveSession(TocCalibSession* s) {
         if (offset >= 0) {
             s->map.offset = offset;
             s->map.confidence = 0.9f;
-        } else {
+        } else if (!(s->map.confidence > 0 && s->map.offset >= 0)) {
+            // Keep a footer-seeded offset when body evidence is not ready yet.
             s->map.confidence = 0;
         }
     }
