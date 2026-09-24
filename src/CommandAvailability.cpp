@@ -402,7 +402,7 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         return EngineMupdfCanExtractToc(engine) ? CommandVisibility::Show : CommandVisibility::Hide;
     }
     if (cmdId == CmdPdfTocCalibrate || cmdId == CmdPdfTocSetCurrentPage || cmdId == CmdPdfTocFindInBody ||
-        cmdId == CmdPdfTocReplaceFromSelection) {
+        cmdId == CmdPdfTocApplyOffsetBelow || cmdId == CmdPdfTocReplaceFromSelection) {
         return ctx.canEditPdfToc ? CommandVisibility::Show : CommandVisibility::Hide;
     }
 

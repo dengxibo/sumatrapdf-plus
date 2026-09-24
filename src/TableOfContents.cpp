@@ -2059,6 +2059,10 @@ static MenuDef menuDefContextToc[] = {
         CmdPdfTocFindInBody,
     },
     {
+        _TRN("Apply This Page Offset Below"),
+        CmdPdfTocApplyOffsetBelow,
+    },
+    {
         _TRN("Set TOC Item to Current Page"),
         CmdPdfTocSetCurrentPage,
     },
@@ -2184,9 +2188,10 @@ static void TocContextMenu(ContextMenuEvent* ev) {
     Kind destKind = dest ? dest->GetKind() : nullptr;
     bool isPdfTocItem = pdfTocItem && pdfTocItem->dest && pdfTocItem->dest->GetKind() == kindDestinationMupdf;
     bool tocMulti = win->tocSelectedIds.Size() > 1;
-    const int pdfTocCommands[] = {CmdExtractPdfToc,  CmdPdfTocCalibrate, CmdPdfTocSetCurrentPage, CmdPdfTocFindInBody,
-                                  CmdPdfTocAddAfter, CmdPdfTocAddChild,  CmdPdfTocEdit,           CmdPdfTocDelete,
-                                  CmdPdfTocMoveUp,   CmdPdfTocMoveDown,  CmdPdfTocPromote,        CmdPdfTocDemote};
+    const int pdfTocCommands[] = {
+        CmdExtractPdfToc,  CmdPdfTocCalibrate, CmdPdfTocSetCurrentPage, CmdPdfTocFindInBody, CmdPdfTocApplyOffsetBelow,
+        CmdPdfTocAddAfter, CmdPdfTocAddChild,  CmdPdfTocEdit,           CmdPdfTocDelete,     CmdPdfTocMoveUp,
+        CmdPdfTocMoveDown, CmdPdfTocPromote,   CmdPdfTocDemote};
     bool canSetCurrentPage =
         dti && !tocMulti && destKind != kindDestinationLaunchEmbedded && destKind != kindDestinationAttachment;
     bool canFindInBody = TocCalibIsActive(win) && canSetCurrentPage;
@@ -2235,6 +2240,9 @@ static void TocContextMenu(ContextMenuEvent* ev) {
     }
     if (!canFindInBody) {
         MenuRemove(popup, CmdPdfTocFindInBody);
+    }
+    if (tocMulti || !TocCalibCanApplyOffsetBelow(win)) {
+        MenuRemove(popup, CmdPdfTocApplyOffsetBelow);
     }
 
     const char* path = nullptr;
@@ -2356,6 +2364,9 @@ static void TocContextMenu(ContextMenuEvent* ev) {
             break;
         case CmdPdfTocFindInBody:
             HandlePdfTocFindInBody(win);
+            break;
+        case CmdPdfTocApplyOffsetBelow:
+            TocCalibApplyOffsetBelow(win);
             break;
         case CmdFavoriteAdd:
             AddFavoriteFromToc(win, dti);

@@ -202,6 +202,7 @@ CmdAiRecognizePdfToc,,AI Recognize Table of Contents,"Experimental: render a sel
 CmdPdfTocCalibrate,,Calibrate TOC Pages,"PDF only, ver next: View menu, bookmark context menu, and command palette; open enhance mode to set printed pages (PDF page is read-only). Offset is majority-voted from pinned rows"
 CmdPdfTocSetCurrentPage,,Set TOC Item to Current Page,"PDF only, ver next: page context menu, bookmark context menu, and command palette; bind the selected TOC item to the current view (enhance mode pins the mapping; otherwise updates the outline dest)"
 CmdPdfTocFindInBody,,Find TOC Item in Body,"PDF only, ver next: bookmark context menu and command palette in enhance mode; BM25-lite locate of the selected heading in the body (does not change printed page). Enhance-mode row button finds and pins the dest"
+CmdPdfTocApplyOffsetBelow,,Apply This Page Offset Below,"PDF only, ver next: bookmark context menu in enhance mode; from the selected row down, set unedited rows' PDF dests to that row's PDF-minus-printed offset. Printed folios stay. Rows above and hand-edited rows stay"
 CmdPdfTocReplaceFromSelection,Ctrl + Shift + B,Replace TOC Item from Selection,"PDF only, ver next: replace the selected bookmark title and dest with the current text selection (enhance mode updates the session only)"
 CmdShowAnnotations,,Show Annotations,"ver 3.6+, for current document"
 CmdHideAnnotations,,Hide Annotations,"ver 3.6+, for current document"

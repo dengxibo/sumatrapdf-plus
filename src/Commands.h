@@ -289,7 +289,8 @@ enum {
     CmdDeskewAllScannedPages = 478,
     CmdToggleOcrDeskew = 479,
     CmdDisplayFilter = 480,
-    CmdNone = 481,
+    CmdPdfTocApplyOffsetBelow = 481,
+    CmdNone = 482,
 
     /* range for file history */
     CmdFileHistoryFirst,

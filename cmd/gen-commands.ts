@@ -284,6 +284,7 @@ export const commands = [
     "CmdDeskewAllScannedPages", "Deskew All Scanned Pages",
     "CmdToggleOcrDeskew", "Toggle Deskew During OCR",
     "CmdDisplayFilter", "Enhance Display",
+    "CmdPdfTocApplyOffsetBelow", "Apply This Page Offset Below",
     "CmdNone", "Do nothing",
 ];
 

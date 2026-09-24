@@ -21293,6 +21293,15 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         }
     }
     {
+        bool ok = TocCalibTestPiecewiseOffset();
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            logf("phase2 fail calib-piecewise-offset\n");
+        }
+    }
+    {
         bool ok = TocCalibTestEstimateArabicOffsetVotes();
         if (ok) {
             (*pass)++;

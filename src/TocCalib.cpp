@@ -22,6 +22,7 @@
 #include "DocController.h"
 #include "EngineBase.h"
 #include "EngineAll.h"
+#include "OcrService.h"
 #include "DisplayModel.h"
 #include "ProgressUpdateUI.h"
 #include "TextSelection.h"
@@ -72,6 +73,7 @@ static bool TocCalibPrintedPlausible(int nPages, int printed) {
 }
 
 static int TocCalibRowPdf(const TocCalibRow* row);
+static int TocCalibOffsetForPrinted(const TocCalibSession* s, int printed);
 static int TocCalibLabelPrinted(const TocCalibSession* s, int pdf);
 static int TocCalibParseLabelPrinted(const char* label);
 static bool TocCalibLabelIsPlainPdf(const char* label, int pdf);
@@ -1407,10 +1409,13 @@ static TocCalibRowVerifyPhase TocCalibVerifyRowNear(TocCalibSession* s, int i, V
     // footerMapped: the printed-page index already assigned destinations.
     // Do not fall back to printed+offset — that one offset is wrong when a
     // contents block splits the arabic sequence.
-    if (pred < 1 && !s->footerMapped && TocCalibPrintedPlausible(s->nPages, it->printedPage) && s->map.confidence > 0) {
-        pred = it->printedPage + s->map.offset;
-        if (pred < 1) {
-            pred = 1;
+    if (pred < 1 && !s->footerMapped && TocCalibPrintedPlausible(s->nPages, it->printedPage)) {
+        int rowOff = TocCalibOffsetForPrinted(s, it->printedPage);
+        if (rowOff >= 0) {
+            pred = it->printedPage + rowOff;
+            if (pred < 1) {
+                pred = 1;
+            }
         }
     }
     if (it->bodyMatched && it->pageNo > 0 && pred > 0) {
@@ -1921,6 +1926,7 @@ struct TocCalibUndoSnap {
     Vec<ExtractedTocItem*> extras;
     Vec<TocCalibRow> rows;
     PageMappingSegment map;
+    Vec<PageMappingSegment> offsetSegs;
     bool offsetLocked = false;
     bool editPdf = false;
 };
@@ -1990,6 +1996,9 @@ static TocCalibUndoSnap* TocCalibCaptureSnap(const TocCalibSession* s) {
     TocCalibCloneForest(s->extras, snap->extras);
     snap->map = s->map;
     snap->offsetLocked = s->offsetLocked;
+    for (int i = 0; i < s->offsetSegs.Size(); i++) {
+        snap->offsetSegs.Append(s->offsetSegs[i]);
+    }
     snap->editPdf = s->editPdf;
     Vec<ExtractedTocItem*> oldFlat;
     Vec<ExtractedTocItem*> newFlat;
@@ -2051,6 +2060,10 @@ static void TocCalibInstallSnap(TocCalibSession* s, TocCalibUndoSnap* snap) {
     }
     s->map = snap->map;
     s->offsetLocked = snap->offsetLocked;
+    s->offsetSegs.Reset();
+    for (int i = 0; i < snap->offsetSegs.Size(); i++) {
+        s->offsetSegs.Append(snap->offsetSegs[i]);
+    }
     s->editPdf = snap->editPdf;
     TocCalibCollectRows(s);
 }
@@ -2306,6 +2319,49 @@ static int TocCalibPredPdf(int printed, int offset, int nPages) {
 
 static bool TocCalibHaveOffset(const TocCalibSession* s) {
     return s && s->map.offset >= 0 && (s->map.confidence > 0 || s->offsetLocked);
+}
+
+// Offset for this folio: the latest segment that starts at or before it, else
+// the book-wide map.offset. -1 when neither is known.
+static int TocCalibOffsetForPrinted(const TocCalibSession* s, int printed) {
+    int off = -1;
+    if (TocCalibHaveOffset(s)) {
+        off = s->map.offset;
+    }
+    if (!s || printed < 1) {
+        return off;
+    }
+    int bestStart = -1;
+    for (int i = 0; i < s->offsetSegs.Size(); i++) {
+        const PageMappingSegment& seg = s->offsetSegs[i];
+        if (seg.offset < 0 || seg.printedStart < 1) {
+            continue;
+        }
+        if (seg.printedStart <= printed && seg.printedStart >= bestStart) {
+            bestStart = seg.printedStart;
+            off = seg.offset;
+        }
+    }
+    return off;
+}
+
+// A correction applies from this folio downward. Drop this start and any
+// later segment, then keep the new one.
+static void TocCalibRememberOffsetSeg(TocCalibSession* s, int printedStart, int offset) {
+    if (!s || printedStart < 1 || offset < 0) {
+        return;
+    }
+    for (int i = s->offsetSegs.Size() - 1; i >= 0; i--) {
+        if (s->offsetSegs[i].printedStart >= printedStart) {
+            s->offsetSegs.RemoveAt(i);
+        }
+    }
+    PageMappingSegment seg;
+    seg.printedStart = printedStart;
+    seg.printedEnd = 99999;
+    seg.offset = offset;
+    seg.confidence = 1;
+    s->offsetSegs.Append(seg);
 }
 
 static int TocCalibRowPdf(const TocCalibRow* row) {
@@ -3769,6 +3825,56 @@ bool TocCalibTestEstimateArabicOffsetVotes() {
     return TocCalibSolveOffset(rows) == 41;
 }
 
+bool TocCalibTestPiecewiseOffset() {
+    TocCalibSession s;
+    s.nPages = 450;
+    s.map.offset = 11;
+    s.map.confidence = 1;
+    ExtractedTocItem a;
+    ExtractedTocItem b;
+    ExtractedTocItem c;
+    ExtractedTocItem d;
+    a.title = str::Dup("甲");
+    a.printedPage = 46;
+    a.pageNo = 57;
+    b.title = str::Dup("乙");
+    b.printedPage = 63;
+    b.pageNo = 73;
+    c.title = str::Dup("丙");
+    c.printedPage = 75;
+    c.pageNo = 86;
+    d.title = str::Dup("丁");
+    d.printedPage = 210;
+    d.pageNo = 221;
+    TocCalibRow ra;
+    TocCalibRow rb;
+    TocCalibRow rc;
+    TocCalibRow rd;
+    ra.item = &a;
+    rb.item = &b;
+    rb.pdfPinned = true;
+    rc.item = &c;
+    rd.item = &d;
+    s.rows.Append(ra);
+    s.rows.Append(rb);
+    s.rows.Append(rc);
+    s.rows.Append(rd);
+    TocCalibRememberOffsetSeg(&s, 63, 10);
+    TocCalibSolveSession(&s);
+    bool ok = s.map.offset == 11;
+    ok = ok && a.printedPage == 46 && b.printedPage == 63 && c.printedPage == 75 && d.printedPage == 210;
+    ok = ok && a.pageNo == 57 && b.pageNo == 73 && c.pageNo == 85 && d.pageNo == 220;
+    TocCalibRememberOffsetSeg(&s, 206, 9);
+    TocCalibSolveSession(&s);
+    ok = ok && s.map.offset == 11 && s.offsetSegs.Size() == 2;
+    ok = ok && a.pageNo == 57 && b.pageNo == 73 && c.pageNo == 85 && d.pageNo == 219;
+    ok = ok && a.printedPage == 46 && b.printedPage == 63 && c.printedPage == 75 && d.printedPage == 210;
+    b.printedPage = 10;
+    TocCalibSolveSession(&s);
+    ok = ok && b.printedPage == 10 && b.pageNo == 73;
+    return ok;
+}
+
 bool TocCalibTestBm25Locate() {
     const char* title = "过去也不是没有厌学的孩子";
     TocCalibBm25Index idx;
@@ -4090,6 +4196,11 @@ static void TocCalibFillAllPrinted(TocCalibSession* s) {
         if (it->printedPage < 0) {
             it->printedPage = 0;
         }
+        // A pinned row already has the folio the user or the AI kept. Do not
+        // invent one from neighboring numbers.
+        if (s->rows[i].pdfPinned) {
+            continue;
+        }
         if (TocCalibHasPrinted(it->printedPage)) {
             continue;
         }
@@ -4134,10 +4245,12 @@ static void TocCalibEnforceReadingOrder(TocCalibSession* s) {
         }
         if (it->printedPage > 0) {
             if (prevPr > 0 && it->printedPage < prevPr) {
-                if (!s->rows[i].userSet) {
+                // Pinned and hand-edited folios stay. Clearing them makes the
+                // left column disagree with the number printed on the page.
+                if (!s->rows[i].userSet && !s->rows[i].pdfPinned) {
                     it->printedPage = 0;
                     it->verified = false;
-                    if (!s->rows[i].pdfPinned && s->rows[i].origPageNo > 0) {
+                    if (s->rows[i].origPageNo > 0) {
                         it->pageNo = s->rows[i].origPageNo;
                     }
                 }
@@ -4159,8 +4272,11 @@ static void TocCalibEnforceReadingOrder(TocCalibSession* s) {
         int pdf = it->pageNo;
         if (pdf > 0 && prevPdf > 0 && pdf < prevPdf) {
             int pred = 0;
-            if (it->printedPage > 0 && TocCalibHaveOffset(s)) {
-                pred = TocCalibPredPdf(it->printedPage, s->map.offset, s->nPages);
+            if (it->printedPage > 0) {
+                int rowOff = TocCalibOffsetForPrinted(s, it->printedPage);
+                if (rowOff >= 0) {
+                    pred = TocCalibPredPdf(it->printedPage, rowOff, s->nPages);
+                }
             }
             if (it->bodyMatched) {
                 // Direct body-text evidence outranks the running order when
@@ -4184,12 +4300,15 @@ void TocCalibSolveSession(TocCalibSession* s) {
     if (!s) {
         return;
     }
-    Vec<TocCalibMapRow> mapRows;
-    TocCalibRowsToMap(s, mapRows);
     int offset = s->map.offset;
-    if (s->offsetLocked && offset >= 0) {
+    if (s->offsetSegs.Size() > 0) {
+        // Missing sheets are separate segments. A majority vote would fold
+        // them back into one offset and then rewrite folios to match it.
+    } else if (s->offsetLocked && offset >= 0) {
         s->map.confidence = 1;
     } else {
+        Vec<TocCalibMapRow> mapRows;
+        TocCalibRowsToMap(s, mapRows);
         offset = TocCalibSolveOffset(mapRows);
         if (offset >= 0) {
             s->map.offset = offset;
@@ -4199,7 +4318,6 @@ void TocCalibSolveSession(TocCalibSession* s) {
             s->map.confidence = 0;
         }
     }
-    bool haveOffset = s->map.confidence > 0 && s->map.offset >= 0;
     Vec<int> pdgMap;
     bool pdgBook = TocCalibBuildPdgPrintedMap(s->engine, pdgMap);
     TocCalibFillAllPrinted(s);
@@ -4211,13 +4329,15 @@ void TocCalibSolveSession(TocCalibSession* s) {
         if (!it) {
             continue;
         }
-        if (!TocCalibPrintedPlausible(s->nPages, it->printedPage)) {
+        if (!s->rows[i].pdfPinned && !TocCalibPrintedPlausible(s->nPages, it->printedPage)) {
             // Garbage printed (OCR mangling): drop it and keep the extracted
             // pdf page instead of clamping a bogus printed+offset to nPages.
+            // Pinned rows keep the folio the user or the AI already stored.
             it->printedPage = 0;
             it->verified = false;
         }
         if (!s->rows[i].pdfPinned) {
+            int rowOff = TocCalibOffsetForPrinted(s, it->printedPage);
             int pdgPdf = pdgBook ? TocCalibPdgMapPdf(pdgMap, it->printedPage) : 0;
             int labelPdf = TocCalibPdfForPrintedLabel(s->engine, it->printedPage);
             if (pdgPdf > 0 && (s->nPages < 1 || pdgPdf <= s->nPages)) {
@@ -4229,8 +4349,8 @@ void TocCalibSolveSession(TocCalibSession* s) {
                 // A, B, i, ii; body "1" is not PDF page 1).
                 it->pageNo = labelPdf;
                 s->rows[i].identPageNo = labelPdf;
-            } else if (!pdgBook && TocCalibHasPrinted(it->printedPage) && haveOffset) {
-                it->pageNo = TocCalibPredPdf(it->printedPage, s->map.offset, s->nPages);
+            } else if (!pdgBook && TocCalibHasPrinted(it->printedPage) && rowOff >= 0) {
+                it->pageNo = TocCalibPredPdf(it->printedPage, rowOff, s->nPages);
             } else if (!TocCalibHasPrinted(it->printedPage) && s->rows[i].origPageNo > 0) {
                 it->pageNo = s->rows[i].origPageNo;
             } else if (pdgBook && TocCalibHasPrinted(it->printedPage)) {
@@ -4564,6 +4684,94 @@ TocCalibRow* TocCalibRowForTocItem(MainWindow* win, TocItem* item) {
         }
     }
     return nullptr;
+}
+
+static bool TocCalibLiveApply(MainWindow* win, bool rebuildTree);
+static void TocCalibSyncTreeDests(MainWindow* win, TocCalibSession* s);
+
+static int TocCalibRowIndex(const TocCalibSession* s, const TocCalibRow* row) {
+    if (!s || !row) {
+        return -1;
+    }
+    for (int i = 0; i < s->rows.Size(); i++) {
+        if (&s->rows[i] == row) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// pdf - printed for this row. Negative means the PDF page is before the folio.
+static bool TocCalibRowPageOffset(const TocCalibRow* row, int* offsetOut) {
+    if (!row || !row->item || !TocCalibHasPrinted(row->item->printedPage) || row->item->pageNo < 1) {
+        return false;
+    }
+    int off = row->item->pageNo - row->item->printedPage;
+    if (off < 0) {
+        return false;
+    }
+    if (offsetOut) {
+        *offsetOut = off;
+    }
+    return true;
+}
+
+bool TocCalibCanApplyOffsetBelow(MainWindow* win) {
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    TocCalibSession* s = tab ? tab->tocCalib : nullptr;
+    if (!s || !win->tocTreeView) {
+        return false;
+    }
+    TocItem* item = (TocItem*)win->tocTreeView->GetSelection();
+    TocCalibRow* row = TocCalibRowForTocItem(win, item);
+    return TocCalibRowPageOffset(row, nullptr);
+}
+
+bool TocCalibApplyOffsetBelow(MainWindow* win) {
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    TocCalibSession* s = tab ? tab->tocCalib : nullptr;
+    if (!s || !win->tocTreeView) {
+        return false;
+    }
+    TocItem* item = (TocItem*)win->tocTreeView->GetSelection();
+    TocCalibRow* anchor = TocCalibRowForTocItem(win, item);
+    int idx = TocCalibRowIndex(s, anchor);
+    int offset = 0;
+    if (idx < 0 || !TocCalibRowPageOffset(anchor, &offset)) {
+        return false;
+    }
+    TocCalibRemember(s);
+    for (int i = 0; i < s->rows.Size(); i++) {
+        ExtractedTocItem* it = s->rows[i].item;
+        if (!it) {
+            continue;
+        }
+        // Freeze rows above, and later rows the user already edited, so the
+        // next solve cannot pull them onto this new offset.
+        if (i < idx || (i > idx && s->rows[i].userSet) || !TocCalibHasPrinted(it->printedPage)) {
+            if (it->pageNo > 0) {
+                s->rows[i].pdfPinned = true;
+            }
+            continue;
+        }
+        if (i == idx) {
+            s->rows[i].pdfPinned = true;
+            continue;
+        }
+        int pdf = TocCalibPredPdf(it->printedPage, offset, s->nPages);
+        it->pageNo = pdf;
+        s->rows[i].identPageNo = pdf;
+        s->rows[i].pdfPinned = true;
+        s->rows[i].needsConfirm = false;
+        it->verified = true;
+        it->bodyMatched = false;
+    }
+    // Record the segment and patch dests. Do not run the single-offset solve:
+    // that pass rewrites printed folios so they no longer match the page.
+    TocCalibRememberOffsetSeg(s, anchor->item->printedPage, offset);
+    TocCalibSyncTreeDests(win, s);
+    InvalidateTocTree(win);
+    return true;
 }
 
 static ExtractedTocItem* TocCalibCloneTocItem(TocItem* t) {
@@ -4966,10 +5174,11 @@ static void TocCalibApplyPins(TocCalibSession* s) {
             }
             continue;
         }
-        if (s->map.confidence <= 0) {
+        int rowOff = TocCalibOffsetForPrinted(s, it->printedPage);
+        if (rowOff < 0) {
             continue;
         }
-        it->pageNo = TocCalibPredPdf(it->printedPage, s->map.offset, s->nPages);
+        it->pageNo = TocCalibPredPdf(it->printedPage, rowOff, s->nPages);
     }
 }
 
@@ -5306,8 +5515,9 @@ static int TocCalibLocatePredPage(const TocCalibSession* s, const TocCalibRow* r
     if (pdf > 0 && !TocCalibPageInToc(s, pdf)) {
         return pdf;
     }
-    if (s && row && row->item && TocCalibHasPrinted(row->item->printedPage) && TocCalibHaveOffset(s)) {
-        int pred = TocCalibPredPdf(row->item->printedPage, s->map.offset, s->nPages);
+    if (s && row && row->item && TocCalibHasPrinted(row->item->printedPage)) {
+        int rowOff = TocCalibOffsetForPrinted(s, row->item->printedPage);
+        int pred = rowOff >= 0 ? TocCalibPredPdf(row->item->printedPage, rowOff, s->nPages) : 0;
         if (pred > 0 && !TocCalibPageInToc(s, pred)) {
             return pred;
         }
@@ -6556,7 +6766,7 @@ static TocCalibSpinLayout TocCalibMakeLayout(HWND hwnd, const RECT& rcRow, bool 
     TocCalibPlaceIcon(L.merge, L.del.left - gap, midDx, midDy, yMid);
     TocCalibPlaceIcon(L.associate, L.merge.left - gap, midDx, midDy, yMid);
     TocCalibPlaceIcon(L.locate, L.associate.left - gap, locDx, locDy, yMid);
-    int arrowDx = DpiScale(hwnd, 16);
+    int arrowDx = DpiScale(hwnd, 28);
     int xPdf = L.locate.left - groupGap - fieldDx;
     TocCalibPlaceBox(L.pdfField, xPdf, yMid, fieldDx, fieldH);
     int xArrow = xPdf - gap - arrowDx;
@@ -6681,14 +6891,138 @@ static bool TocCalibUiZh() {
     return lang && (str::EqI(lang, "cn") || str::EqI(lang, "tw"));
 }
 
-static void TocCalibDrawArrow(HDC hdc, const RECT& rc) {
-    if (rc.right <= rc.left || rc.bottom <= rc.top) {
+static bool TocCalibDisplayOffset(const TocCalibRow* row, int* offOut) {
+    if (!row || !row->item || !TocCalibHasPrinted(row->item->printedPage) || row->item->pageNo < 1) {
+        return false;
+    }
+    if (offOut) {
+        *offOut = row->item->pageNo - row->item->printedPage;
+    }
+    return true;
+}
+
+// True when this folio's pdf−printed differs from the previous row that has one.
+static bool TocCalibOffsetBreaks(const TocCalibSession* s, const TocCalibRow* row, int off) {
+    int idx = TocCalibRowIndex(s, row);
+    if (idx < 1) {
+        return false;
+    }
+    for (int i = idx - 1; i >= 0; i--) {
+        int prev = 0;
+        if (!TocCalibDisplayOffset(&s->rows[i], &prev)) {
+            continue;
+        }
+        return prev != off;
+    }
+    return false;
+}
+
+// LineTo omits the end pixel, which was clipping the arrow tip and the lower stroke.
+static void TocCalibStroke(HDC hdc, int x1, int y1, int x2, int y2, COLORREF color) {
+    MoveToEx(hdc, x1, y1, nullptr);
+    LineTo(hdc, x2, y2);
+    SetPixel(hdc, x2, y2, color);
+}
+
+static void TocCalibDrawShaftArrow(HDC hdc, int x1, int x2, int y, int head, COLORREF color) {
+    if (x2 <= x1 || head < 2) {
         return;
     }
-    RECT box = rc;
+    int headUp = head / 2;
+    int headDn = head - headUp;
+    HPEN pen = CreatePen(PS_SOLID, 1, color);
+    HPEN old = (HPEN)SelectObject(hdc, pen);
+    TocCalibStroke(hdc, x1, y, x2, y, color);
+    TocCalibStroke(hdc, x2 - head, y - headUp, x2, y, color);
+    TocCalibStroke(hdc, x2, y, x2 - head, y + headDn, color);
+    SelectObject(hdc, old);
+    DeleteObject(pen);
+}
+
+// Closer to body text than the disabled gray, on both light and dark sidebars.
+static COLORREF TocCalibOffsetInk(bool emphasize) {
+    COLORREF txt = ThemeWindowTextColor();
+    if (emphasize) {
+        return txt;
+    }
+    COLORREF side = 0;
+    COLORREF sideTxt = 0;
+    ThemeSidebarColors(side, sideTxt);
+    return TocCalibBlend(txt, side, 22);
+}
+
+// +N above the shaft, with a clear gap. The pair is centered in the row.
+static void TocCalibDrawOffsetArrow(HDC hdc, HWND hwnd, const RECT& col, const RECT& row, const WCHAR* offset,
+                                    bool emphasize) {
+    if (col.right <= col.left || row.bottom <= row.top) {
+        return;
+    }
+    int rowH = row.bottom - row.top;
+    if (rowH < 4) {
+        return;
+    }
+    int inset = DpiScale(hwnd, 5);
+    int x1 = col.left + inset;
+    int x2 = col.right - inset;
+    int head = (x2 - x1) / 5;
+    if (head < 3) {
+        head = 3;
+    }
+    if (head > 5) {
+        head = 5;
+    }
+    int headUp = head / 2;
+    int headDn = head - headUp;
+    TEXTMETRIC tm{};
+    int ascent = rowH * 2 / 3;
+    if (GetTextMetrics(hdc, &tm) && tm.tmAscent > 0) {
+        ascent = tm.tmAscent;
+    }
+    int gap = DpiScale(hwnd, 3);
+    if (gap < 2) {
+        gap = 2;
+    }
+    int block = ascent + gap + head;
+    int textTop = row.top;
+    if (block < rowH) {
+        textTop = row.top + (rowH - block) / 2;
+    }
+    // Keep the whole arrowhead, including the lower stroke, inside the row.
+    int limit = row.bottom - headDn - 1;
+    int baseline = textTop + ascent;
+    int arrowY = baseline + gap + headUp;
+    if (arrowY > limit) {
+        textTop -= arrowY - limit;
+        if (textTop < row.top) {
+            textTop = row.top;
+        }
+        baseline = textTop + ascent;
+        arrowY = baseline + gap + headUp;
+        if (arrowY > limit) {
+            arrowY = limit;
+        }
+    }
+    if (arrowY - headUp < baseline + 1 && baseline + 1 + headUp <= limit) {
+        arrowY = baseline + 1 + headUp;
+    }
+    COLORREF ink = TocCalibOffsetInk(emphasize && offset && offset[0]);
     SetBkMode(hdc, TRANSPARENT);
-    SetTextColor(hdc, ThemeWindowTextDisabledColor());
-    DrawTextW(hdc, L"\u2192", -1, &box, DT_SINGLELINE | DT_CENTER | DT_VCENTER | DT_NOPREFIX);
+    if (offset && offset[0]) {
+        RECT offRc{};
+        offRc.left = col.left;
+        offRc.right = col.right;
+        offRc.top = textTop;
+        offRc.bottom = baseline + 1;
+        if (offRc.bottom > arrowY - headUp) {
+            offRc.bottom = arrowY - headUp;
+        }
+        if (offRc.bottom <= offRc.top) {
+            offRc.bottom = offRc.top + 1;
+        }
+        SetTextColor(hdc, ink);
+        DrawTextW(hdc, offset, -1, &offRc, DT_SINGLELINE | DT_CENTER | DT_TOP | DT_NOPREFIX | DT_END_ELLIPSIS);
+    }
+    TocCalibDrawShaftArrow(hdc, x1, x2, arrowY, head, ink);
 }
 
 void TocCalibDrawColumns(HDC hdc, HWND hwnd, const RECT& rcRow, TocItem* item, MainWindow* win, bool selected) {
@@ -6744,8 +7078,23 @@ void TocCalibDrawColumns(HDC hdc, HWND hwnd, const RECT& rcRow, TocItem* item, M
     TocCalibDrawIconBtn(hdc, hwnd, L.associate, TbIcon::Link, true);
     TocCalibDrawIconBtn(hdc, hwnd, L.merge, TbIcon::MergeUp, true);
     TocCalibDrawIconBtn(hdc, hwnd, L.del, TbIcon::Trash, true);
+    WCHAR offBuf[16]{};
+    const WCHAR* offText = nullptr;
+    bool offBreak = false;
+    int off = 0;
+    if (TocCalibDisplayOffset(row, &off)) {
+        if (off > 0) {
+            _snwprintf(offBuf, dimof(offBuf), L"+%d", off);
+        } else if (off < 0) {
+            _snwprintf(offBuf, dimof(offBuf), L"%d", off);
+        } else {
+            _snwprintf(offBuf, dimof(offBuf), L"+0");
+        }
+        offText = offBuf;
+        offBreak = TocCalibOffsetBreaks(s, row, off);
+    }
     TocCalibDrawPageField(hdc, L.prField, prText, prEmpty, TocCalibEditingField(win, item, true), true, false);
-    TocCalibDrawArrow(hdc, L.arrow);
+    TocCalibDrawOffsetArrow(hdc, hwnd, L.arrow, rcRow, offText, offBreak);
     TocCalibDrawPageField(hdc, L.pdfField, pdfText, pdfEmpty, TocCalibEditingField(win, item, false), true, true);
 }
 
@@ -6842,8 +7191,11 @@ static int TocCalibFindPdfForPrinted(TocCalibSession* s, int printed, int hint) 
         return 0;
     }
     int start = hint;
-    if (start < 1 && TocCalibHaveOffset(s)) {
-        start = TocCalibPredPdf(printed, s->map.offset, nPages);
+    if (start < 1) {
+        int rowOff = TocCalibOffsetForPrinted(s, printed);
+        if (rowOff >= 0) {
+            start = TocCalibPredPdf(printed, rowOff, nPages);
+        }
     }
     if (start < 1) {
         start = printed;
@@ -6868,8 +7220,9 @@ static int TocCalibFindPdfForPrinted(TocCalibSession* s, int printed, int hint) 
             return b;
         }
     }
-    if (TocCalibHaveOffset(s)) {
-        return TocCalibPredPdf(printed, s->map.offset, nPages);
+    int rowOff = TocCalibOffsetForPrinted(s, printed);
+    if (rowOff >= 0) {
+        return TocCalibPredPdf(printed, rowOff, nPages);
     }
     return 0;
 }
@@ -6914,8 +7267,9 @@ static void TocCalibSpinPrinted(TocCalibRow* row, int delta, TocCalibSession* s)
         return;
     }
     int hint = 0;
-    if (TocCalibHaveOffset(s)) {
-        hint = TocCalibPredPdf(printed, s->map.offset, s->nPages);
+    int rowOff = TocCalibOffsetForPrinted(s, printed);
+    if (rowOff >= 0) {
+        hint = TocCalibPredPdf(printed, rowOff, s->nPages);
     } else if (row->item->pageNo > 0) {
         hint = row->item->pageNo;
     }
@@ -7004,22 +7358,33 @@ static void TocCalibSyncPrintedFromDest(TocCalibSession* s, TocCalibRow* row) {
     if (!s || !row || !row->item) {
         return;
     }
+    int kept = row->item->printedPage;
+    char* keptLab = row->item->printedLabel ? str::Dup(row->item->printedLabel) : nullptr;
     TocCalibClearPrintedLabel(row->item);
     row->item->printedPage = 0;
     int pdf = row->item->pageNo;
-    if (pdf < 1 || !s->engine) {
-        return;
-    }
     int arabic = 0;
     char lab[16]{};
-    TocCalibReadFooterMark(s->engine, pdf, &arabic, lab, (int)sizeof(lab), true);
+    if (pdf >= 1 && s->engine) {
+        TocCalibReadFooterMark(s->engine, pdf, &arabic, lab, (int)sizeof(lab), true);
+    }
     if (arabic > 0) {
         row->item->printedPage = arabic;
+        str::Free(keptLab);
         return;
     }
     if (lab[0]) {
         str::ReplaceWithCopy(&row->item->printedLabel, lab);
+        str::Free(keptLab);
+        return;
     }
+    // A scan has no footer text. Keep the folio already on the row instead of
+    // clearing it and letting the single-offset solve invent another one.
+    row->item->printedPage = kept;
+    if (keptLab && keptLab[0]) {
+        str::ReplaceWithCopy(&row->item->printedLabel, keptLab);
+    }
+    str::Free(keptLab);
 }
 
 static void TocCalibApplyTypedPage(MainWindow* win, int tocId, bool printed, int value) {
@@ -7085,8 +7450,9 @@ static void TocCalibApplyTypedPage(MainWindow* win, int tocId, bool printed, int
         row->item->x = 0;
         row->item->y = 0;
         int hint = 0;
-        if (TocCalibHaveOffset(s)) {
-            hint = TocCalibPredPdf(value, s->map.offset, s->nPages);
+        int rowOff = TocCalibOffsetForPrinted(s, value);
+        if (rowOff >= 0) {
+            hint = TocCalibPredPdf(value, rowOff, s->nPages);
         } else if (row->item->pageNo > 0) {
             hint = row->item->pageNo;
         }
@@ -7677,8 +8043,44 @@ static int TocCalibPageTocScore(const Vec<EngineMupdfPageLine>* lines, bool* out
     return sc;
 }
 
+void TocCalibSetConfirmedTocPages(TocCalibSession* s, const Vec<int>& pages) {
+    if (!s) {
+        return;
+    }
+    s->confirmedTocPages.Reset();
+    for (int i = 0; i < pages.Size(); i++) {
+        int page = pages[i];
+        if (page < 1) {
+            continue;
+        }
+        if (s->nPages > 0 && page > s->nPages) {
+            continue;
+        }
+        bool seen = false;
+        for (int j = 0; j < s->confirmedTocPages.Size(); j++) {
+            if (s->confirmedTocPages[j] == page) {
+                seen = true;
+                break;
+            }
+        }
+        if (!seen) {
+            s->confirmedTocPages.Append(page);
+        }
+    }
+    if (s->confirmedTocPages.Size() < 1) {
+        return;
+    }
+    s->tocPage = s->confirmedTocPages[0];
+    s->tocEnd = s->confirmedTocPages.Last();
+}
+
 static void TocCalibEnsureTocRange(TocCalibSession* s) {
     if (!s || !s->engine) {
+        return;
+    }
+    if (s->confirmedTocPages.Size() > 0) {
+        s->tocPage = s->confirmedTocPages[0];
+        s->tocEnd = s->confirmedTocPages.Last();
         return;
     }
     Vec<int> pages;
@@ -7760,6 +8162,102 @@ static void TocCalibEnsureTocRange(TocCalibSession* s) {
     TocCalibFreePageCache(cache);
 }
 
+static bool TocCalibConfirmedHas(const TocCalibSession* s, int page) {
+    if (!s || page < 1 || s->confirmedTocPages.Size() < 1) {
+        return false;
+    }
+    for (int i = 0; i < s->confirmedTocPages.Size(); i++) {
+        if (s->confirmedTocPages[i] == page) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void TocCalibListTocSheets(TocCalibSession* s, Vec<int>& sheets) {
+    sheets.Reset();
+    if (!s) {
+        return;
+    }
+    if (s->confirmedTocPages.Size() > 0) {
+        for (int i = 0; i < s->confirmedTocPages.Size(); i++) {
+            sheets.Append(s->confirmedTocPages[i]);
+        }
+        return;
+    }
+    TocCalibEnsureTocRange(s);
+    int lo = s->tocPage;
+    int hi = s->tocEnd > 0 ? s->tocEnd : s->tocPage;
+    if (lo < 1) {
+        return;
+    }
+    if (hi < lo) {
+        hi = lo;
+    }
+    if (hi - lo > 24) {
+        hi = lo + 24;
+    }
+    for (int p = lo; p <= hi; p++) {
+        sheets.Append(p);
+    }
+}
+
+// OCR text is one blob. Exact title wins; otherwise compare with spaces and
+// punctuation removed, which is how a scanned contents line usually comes back.
+static bool TocCalibUtf8HasTitle(const char* text, const char* title, int* byteOut) {
+    if (byteOut) {
+        *byteOut = -1;
+    }
+    if (!text || !text[0] || !title || !title[0]) {
+        return false;
+    }
+    const char* hit = str::Find(text, title);
+    if (hit) {
+        if (byteOut) {
+            *byteOut = (int)(hit - text);
+        }
+        return true;
+    }
+    int cap = (int)str::Len(text) + 8;
+    if (cap < 16) {
+        cap = 16;
+    }
+    if (cap > 16000) {
+        cap = 16000;
+    }
+    char* page = AllocArray<char>(cap);
+    char titleBuf[512];
+    TocCalibCompact(text, page, cap);
+    TocCalibCompact(title, titleBuf, (int)sizeof(titleBuf));
+    bool ok = titleBuf[0] && page[0] && str::Find(page, titleBuf) != nullptr;
+    free(page);
+    return ok;
+}
+
+static bool TocCalibOcrTitleOnPage(EngineBase* engine, int page, const char* title, float* xOut, float* yOut) {
+    if (!engine || page < 1 || !title || !title[0]) {
+        return false;
+    }
+    int len = 0;
+    Rect* coords = nullptr;
+    const char* text = engine->GetTextForPageUtf8(page, &len, &coords);
+    int byteAt = -1;
+    bool hit = TocCalibUtf8HasTitle(text, title, &byteAt);
+    if (!hit && !engine->PageHasUsableText(page)) {
+        OcrRecognizeEnginePage(engine, page, true);
+        text = engine->GetTextForPageUtf8(page, &len, &coords);
+        hit = TocCalibUtf8HasTitle(text, title, &byteAt);
+    }
+    if (!hit) {
+        return false;
+    }
+    if (xOut && yOut && byteAt >= 0 && coords && byteAt < len) {
+        *xOut = (float)coords[byteAt].x;
+        *yOut = (float)coords[byteAt].y;
+    }
+    return true;
+}
+
 static bool TocCalibFindTitleOnTocPages(TocCalibSession* s, const char* title, int* pageOut, float* xOut, float* yOut) {
     if (!s || !title || !title[0] || !pageOut) {
         return false;
@@ -7767,24 +8265,25 @@ static bool TocCalibFindTitleOnTocPages(TocCalibSession* s, const char* title, i
     if (TocCalibIsContentsTitle(title)) {
         return false;
     }
-    TocCalibEnsureTocRange(s);
-    int lo = s->tocPage;
-    int hi = s->tocEnd > 0 ? s->tocEnd : s->tocPage;
-    if (lo < 1) {
+    Vec<int> sheets;
+    TocCalibListTocSheets(s, sheets);
+    if (sheets.Size() < 1) {
         return false;
-    }
-    if (hi < lo) {
-        hi = lo;
     }
     Vec<int> pages;
     Vec<Vec<EngineMupdfPageLine>*> cache;
+    Vec<int> needOcr;
     int bestSc = 0;
     int bestPage = 0;
     float bestX = 0;
     float bestY = 0;
-    for (int p = lo; p <= hi; p++) {
+    for (int si = 0; si < sheets.Size(); si++) {
+        int p = sheets[si];
         const Vec<EngineMupdfPageLine>* lines = TocCalibCachePage(s, p, pages, cache);
-        if (!lines) {
+        if (!lines || lines->Size() < 1) {
+            if (s->confirmedTocPages.Size() > 0) {
+                needOcr.Append(p);
+            }
             continue;
         }
         for (int i = 0; i < lines->Size(); i++) {
@@ -7802,17 +8301,32 @@ static bool TocCalibFindTitleOnTocPages(TocCalibSession* s, const char* title, i
         }
     }
     TocCalibFreePageCache(cache);
-    if (bestPage < 1 || bestSc < 2) {
-        return false;
+    if (bestPage > 0 && bestSc >= 2) {
+        *pageOut = bestPage;
+        if (xOut) {
+            *xOut = bestX;
+        }
+        if (yOut) {
+            *yOut = bestY;
+        }
+        return true;
     }
-    *pageOut = bestPage;
-    if (xOut) {
-        *xOut = bestX;
+    for (int i = 0; i < needOcr.Size(); i++) {
+        float x = 0;
+        float y = 0;
+        if (!TocCalibOcrTitleOnPage(s->engine, needOcr[i], title, &x, &y)) {
+            continue;
+        }
+        *pageOut = needOcr[i];
+        if (xOut) {
+            *xOut = x;
+        }
+        if (yOut) {
+            *yOut = y;
+        }
+        return true;
     }
-    if (yOut) {
-        *yOut = bestY;
-    }
-    return true;
+    return false;
 }
 
 static void TocCalibJumpToRowContents(MainWindow* win, TocCalibRow* row) {
@@ -7825,7 +8339,12 @@ static void TocCalibJumpToRowContents(MainWindow* win, TocCalibRow* row) {
     int page = 0;
     float x = 0;
     float y = 0;
-    if (it && it->tocPageNo > 0) {
+    // A stamped toc page is only a hit when it is one of the sheets the user
+    // confirmed. The old stamp was "first item = first page, everything else
+    // = last page", which skipped the per-title search.
+    bool cachedSheet =
+        it && it->tocPageNo > 0 && (s->confirmedTocPages.Size() < 1 || TocCalibConfirmedHas(s, it->tocPageNo));
+    if (cachedSheet) {
         page = it->tocPageNo;
         x = it->tocX;
         y = it->tocY;
@@ -7854,6 +8373,12 @@ static void TocCalibJumpToRowContents(MainWindow* win, TocCalibRow* row) {
 }
 
 void TocCalibJumpToContents(MainWindow* win) {
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    TocCalibSession* s = tab ? tab->tocCalib : nullptr;
+    if (s && s->confirmedTocPages.Size() > 0) {
+        TocCalibJumpToPdfPoint(win, s->confirmedTocPages[0], 0, 0);
+        return;
+    }
     TocCalibJumpToRowContents(win, TocCalibSelectedRow(win));
 }
 

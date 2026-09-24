@@ -12513,6 +12513,9 @@ tw:尋找上個選取内容
 :Find TOC Item in Body
 cn:在正文中定位
 tw:在正文中定位
+:Apply This Page Offset Below
+cn:后面都用这个页差
+tw:後面都用這個頁差
 :Find in Body and Link
 cn:在正文中定位并关联
 tw:在正文中定位並關聯

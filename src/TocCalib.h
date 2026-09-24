@@ -33,6 +33,7 @@ bool TocCalibBuildPdgPrintedMap(EngineBase* engine, Vec<int>& pdfByPrinted);
 int TocCalibPdfForPrintedLabel(EngineBase* engine, int printed);
 bool TocCalibTestPdgBodyPrinted();
 bool TocCalibTestOffsetIgnoresRoughEstimate();
+bool TocCalibTestPiecewiseOffset();
 bool TocCalibTestEstimateArabicOffsetVotes();
 
 struct TocCalibItemRef {
@@ -71,8 +72,16 @@ struct TocCalibSession {
     Vec<TocCalibUndoSnap*> undo;
     Vec<TocCalibUndoSnap*> redo;
     PageMappingSegment map;
+    // Extra pdf-printed offsets after a missing sheet. Each segment starts at
+    // printedStart and runs until the next one. map.offset covers folios
+    // before the first segment. Printed numbers are not rewritten to keep
+    // a single book-wide offset.
+    Vec<PageMappingSegment> offsetSegs;
     int tocPage = 0;
     int tocEnd = 0;
+    // PDF pages the user confirmed and sent for AI TOC. Double-click searches
+    // only these sheets. Empty means the range was guessed from the document.
+    Vec<int> confirmedTocPages;
     int nPages = 0;
     bool persistToDisk = true;
     bool offsetLocked = false;
@@ -132,6 +141,9 @@ typedef void (*TocCalibVerifyProgressFn)(int done, int total, void* ctx);
 typedef void (*TocCalibVerifyDoneFn)(bool ok, void* ctx);
 bool StartTocCalibAsync(MainWindow* win, Vec<ExtractedTocItem*>& roots, EngineBase* engine, bool persistToDisk,
                         TocCalibVerifyProgressFn onProgress, TocCalibVerifyDoneFn onDone, void* ctx);
+// Remember the TOC sheets the user already checked. tocPage/tocEnd become
+// that span, and a later text-score scan must not replace it.
+void TocCalibSetConfirmedTocPages(TocCalibSession* s, const Vec<int>& pages);
 bool StartTocCalibFromExisting(MainWindow* win);
 void ShowTocCalib(MainWindow* win);
 void HideTocCalib(MainWindow* win);
@@ -169,6 +181,12 @@ bool TocCalibTestDropMoveAndNest();
 bool TocCalibParsePrintedText(const char* s, int* printedOut, char** labelOut);
 bool TocCalibPinSelectedToView(MainWindow* win);
 bool TocCalibLocateSelectedInBody(MainWindow* win);
+// Selected calib row has a printed page and a PDF page, so later rows can
+// reuse pdf - printed. False outside enhance mode.
+bool TocCalibCanApplyOffsetBelow(MainWindow* win);
+// From the selected row downward, set printed + that offset. Rows above stay.
+// A later row the user already edited stays as they left it.
+bool TocCalibApplyOffsetBelow(MainWindow* win);
 bool TocCalibTestPrintedInput();
 bool TocCalibTestPrintedIndexLookup();
 bool TocCalibTestBm25Locate();

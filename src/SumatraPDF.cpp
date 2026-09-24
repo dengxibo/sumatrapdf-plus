@@ -11534,6 +11534,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             HandlePdfTocFindInBody(win);
             break;
 
+        case CmdPdfTocApplyOffsetBelow:
+            TocCalibApplyOffsetBelow(win);
+            break;
+
         case CmdPdfTocReplaceFromSelection:
             TryReplacePdfTocFromSelection(win);
             break;

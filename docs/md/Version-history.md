@@ -2,6 +2,12 @@
 
 ## next
 
+- 对准印刷目录：印刷页和 PDF 页中间显示页差（如 `+5`），箭头在数字下面，字号与页码相同。和上一行不同的页差用正文色，其余用灰色。没有印刷页时不显示页差。
+  Align printed TOC: the gap between the printed folio and the PDF page shows the offset (for example `+5`), with the arrow under that number, at the same size as the page digits. An offset that differs from the previous row uses normal text; the others stay gray. Rows without a folio show no offset.
+- 对准印刷目录：双击一条目录，在已经核对并发给 AI 的那几页目录里找这条标题，落到它所在的那一页，不再总是打开目录首页。底栏「目录页」和顶上的「目录」打开这份名单的第一页。扫描书只识别这几页，不重扫全书。
+  Align printed TOC: double-click a row searches only the TOC pages already checked and sent to the AI, and opens the sheet that row is printed on. The bottom TOC-page button and the top Contents entry open the first of those pages. A scan OCRs just those sheets.
+- 对准印刷目录：在一条目录上右键「后面都用这个页差」，只改这一条往下的 PDF 页，印刷页保持原样。每缺一页就多一段页差，不再收成全书一个页差，因此左边的印刷页仍与正文上印的页码一致。再缺一页时，在下一条不准的地方改一次 PDF 页，再点一次。改 PDF 页时如果读不到页脚，保留原来的印刷页。
+  Align printed TOC: “Apply This Page Offset Below” changes only the PDF dests from that row downward and leaves printed folios unchanged. Each missing sheet adds its own offset instead of collapsing the book to one, so the left-hand folio still matches the number on the page. After another missing sheet, correct the next bad row and run the command again. Editing a PDF page keeps the existing folio when that page has no footer text.
 - 对准印刷目录：导入时若后台正在识别同一页，保留该页，不再把正在渲染的页面拆掉（否则会在 `pdf_document_output_intent` 崩溃）。
   Align printed TOC: import keeps a page that background OCR is still rendering instead of dropping it, which crashed in `pdf_document_output_intent`.
 - AI 目录：超过 10 张目录页时，每批只提取本批 JSON。复制回这一批后才发下一批，程序按顺序把各批条目接上，不再让 AI 合并（合并时会编造条目）。重新发送在等待下一批时不再使用已被关掉的对话框里的文件列表。

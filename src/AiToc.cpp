@@ -1334,6 +1334,26 @@ static int AiTocFillMissingPages(ExtractedTocItem* item) {
     return item->pageNo;
 }
 
+static bool AiTocIsContentsTitle(const char* s) {
+    return s && (str::Eq(s, "目录") || str::Eq(s, "目次") || str::EqI(s, "Contents"));
+}
+
+// "目录" is the contents sheet the user already sent, not the first chapter.
+static void AiTocPointContentsAtSheet(ExtractedTocItem* item, int tocPdf) {
+    if (!item || tocPdf < 1) {
+        return;
+    }
+    if (AiTocIsContentsTitle(item->title)) {
+        item->pageNo = tocPdf;
+        item->tocPageNo = tocPdf;
+        item->x = 0;
+        item->y = 0;
+    }
+    for (int i = 0; i < item->children.Size(); i++) {
+        AiTocPointContentsAtSheet(item->children[i], tocPdf);
+    }
+}
+
 // After the AI JSON import finished, bring the main window back to the front
 // so the user lands seamlessly in SumatraPDF. Covers the main window being
 // minimized or covered by other applications (the AI browser, typically).
@@ -1479,8 +1499,6 @@ static bool AiTocImportJson(AiTocDialog* dlg, const char* text) {
         item->confidence = 40;
         item->destinationSource = TocDestinationSource::Estimated;
         item->source = ExtractedTocSource::PrintedToc;
-        // Stamp first/last selected TOC PDF pages so calib knows the spread.
-        item->tocPageNo = (stack.Size() == 0 && roots.Size() == 0) ? dlg->work->firstPage : dlg->work->lastPage;
         if (stack.Size() > 0) {
             item->parent = stack.Last();
             item->parent->children.Append(item);
@@ -1491,6 +1509,10 @@ static bool AiTocImportJson(AiTocDialog* dlg, const char* text) {
     }
     for (int i = 0; i < roots.Size(); i++) {
         AiTocFillMissingPages(roots[i]);
+    }
+    int tocSheet = dlg->work->pageNos.Size() > 0 ? dlg->work->pageNos[0] : dlg->work->firstPage;
+    for (int i = 0; i < roots.Size(); i++) {
+        AiTocPointContentsAtSheet(roots[i], tocSheet);
     }
     MainWindow* win = FindMainWindowByHwnd(dlg->work->mainHwnd);
     DisplayModel* dm = win ? win->AsFixed() : nullptr;
@@ -1518,6 +1540,10 @@ static bool AiTocImportJson(AiTocDialog* dlg, const char* text) {
         MessageBoxWarning(dlg->hwnd, "The JSON contains no importable table-of-contents items.",
                           _TRA("AI Recognize Table of Contents"));
         return false;
+    }
+    WindowTab* tab = win->CurrentTab();
+    if (tab && tab->tocCalib) {
+        TocCalibSetConfirmedTocPages(tab->tocCalib, dlg->work->pageNos);
     }
     logf("AI TOC: import started items=%d pages=%d-%d offset=%d\n", stack.Size(), dlg->work->firstPage,
          dlg->work->lastPage, arabicOffset);

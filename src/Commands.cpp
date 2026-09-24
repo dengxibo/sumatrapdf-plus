@@ -294,6 +294,7 @@ static SeqStrings gCommandNames =
     "CmdDeskewAllScannedPages\0"
     "CmdToggleOcrDeskew\0"
     "CmdDisplayFilter\0"
+    "CmdPdfTocApplyOffsetBelow\0"
     "CmdNone\0"
     "\0";
 
@@ -578,6 +579,7 @@ static i32 gCommandIds[] = {
     CmdDeskewAllScannedPages,
     CmdToggleOcrDeskew,
     CmdDisplayFilter,
+    CmdPdfTocApplyOffsetBelow,
     CmdNone,
 };
 
@@ -862,6 +864,7 @@ SeqStrings gCommandDescriptions =
     "Deskew All Scanned Pages\0"
     "Toggle Deskew During OCR\0"
     "Enhance Display\0"
+    "Apply This Page Offset Below\0"
     "Do nothing\0"
     "\0";
 // clang-format on
