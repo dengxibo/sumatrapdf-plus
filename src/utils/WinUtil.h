@@ -119,6 +119,10 @@ bool EnsureAiChatComposerReady(AiChatService service, HWND browserHwnd, bool for
 // Pastes each image into the user-visible web AI page without submitting text.
 // Success means paste was attempted, not a server-side upload acknowledgement.
 bool PasteAiChatFilesWhenReady(AiChatService service, HWND browserHwnd, bool waitForPageReady, const StrVec& paths);
+// After a chat message is submitted, wait until the tab title changes (the
+// model started a reply) and at least minWaitMs has elapsed, or until
+// timeoutMs. Always returns true so the next paste can still be attempted.
+bool WaitForAiChatTurn(HWND browserHwnd, int timeoutMs, int minWaitMs = 6000);
 // Preserve all files and the prompt for manual paste. Websites choose which
 // clipboard formats they accept; a single image additionally has a DIB format.
 bool CopyAiChatPayloadToClipboard(const StrVec& paths, const char* prompt);

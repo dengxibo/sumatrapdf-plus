@@ -1354,6 +1354,36 @@ struct CountResultsTaskData {
     }
 };
 
+// TOC locate sets findPendingFromPage so the canvas follows the first hit at or
+// after that page as soon as the scan streams it. Do not wait for Enter, a
+// results click, or the rest of the document.
+static void MaybeNavigatePendingFromPage(MainWindow* win) {
+    if (!win || win->findPendingFromPage < 1 || win->findMatches.size() < 1) {
+        return;
+    }
+    int from = win->findPendingFromPage;
+    int best = -1;
+    int bestPage = 0;
+    int bestGlyph = 0;
+    for (int i = 0; i < (int)win->findMatches.size(); i++) {
+        const FindMatch& fm = win->findMatches[i];
+        if (fm.startPage < from) {
+            continue;
+        }
+        if (best < 0 || fm.startPage < bestPage || (fm.startPage == bestPage && fm.startGlyph < bestGlyph)) {
+            best = i;
+            bestPage = fm.startPage;
+            bestGlyph = fm.startGlyph;
+        }
+    }
+    if (best < 0) {
+        return;
+    }
+    FindMatch fm = win->findMatches[best];
+    win->findPendingFromPage = 0;
+    GoToFindMatch(win, fm.startPage, fm.startGlyph, fm.endPage, fm.endGlyph);
+}
+
 static void CountResultsTask(CountResultsTaskData* d) {
     AutoDelete delData(d);
     MainWindow* win = d->win;
@@ -1369,6 +1399,7 @@ static void CountResultsTask(CountResultsTaskData* d) {
         (*d->matches)[i].snippet = nullptr;
     }
     win->findCountHasSnippets = true;
+    MaybeNavigatePendingFromPage(win);
     FindWindowRefreshResults(win, false);
     ShowMatchCount(win);
 }
@@ -1917,6 +1948,13 @@ static void StartFindCount(MainWindow* win, const WCHAR* text, bool matchCase, b
     d->seedPositions = seedPositions;
     d->seedMatches = seedMatches;
     d->snippetMaxGlyphs = FindSnippetMaxGlyphs(win);
+    // Publish the term before the worker finishes so a focus loss (EN_KILLFOCUS
+    // is routed to OnFindBarTextChanged) does not cancel this scan and clear
+    // findPendingFromPage. CountEndTask replaces this copy when it installs.
+    str::FreePtr(&win->findCountText);
+    win->findCountText = str::Dup(text);
+    win->findCountMatchCase = matchCase;
+    win->findCountMatchWholeWord = matchWholeWord;
     win->findCountThread = nullptr;
     auto fn = MkFunc0<CountThreadData>(CountThread, d);
     win->findCountThread = StartThread(fn, "FindCountThread");
@@ -2139,10 +2177,47 @@ static bool NavigateFirstMatchFromPage(MainWindow* win, int startPage) {
         return false;
     }
     int idx = FirstSortedIndexAtOrAfterPage(win->findCountPositions, startPage);
+    // No hit at/after startPage: leave navigation to FindNext wrap. Do not
+    // jump to the first hit in the whole document (TOC calib / sequential edit).
     if (idx < 0) {
-        idx = 0;
+        return false;
     }
     return GoToCachedMatchIndex(win, idx);
+}
+
+void FindBeginFromPage(MainWindow* win, int fromPage) {
+    if (!win || !HasFindText(win)) {
+        return;
+    }
+    if (!EnsureDocumentSearchReady(win)) {
+        return;
+    }
+    if (fromPage < 1) {
+        fromPage = win->ctrl ? win->ctrl->CurrentPageNo() : 1;
+    }
+    if (fromPage < 1) {
+        fromPage = 1;
+    }
+    win->findPendingFromPage = fromPage;
+    win->findEnterPending = false;
+    TempWStr text = HwndGetTextWTemp(win->hwndFindEdit);
+    bool same = win->findCountText && text && str::Eq(win->findCountText, text) &&
+                win->findCountMatchCase == win->findMatchCase &&
+                win->findCountMatchWholeWord == win->findMatchWholeWord && win->findCountValid;
+    if (same && !win->findCountPartial && win->findMatches.size() > 0) {
+        int from = win->findPendingFromPage;
+        win->findPendingFromPage = 0;
+        NavigateFirstMatchFromPage(win, from);
+        FindWindowRefreshResults(win, false);
+        return;
+    }
+    if (same && win->findMatches.size() > 0) {
+        MaybeNavigatePendingFromPage(win);
+    }
+    if (!text) {
+        return;
+    }
+    StartFindCount(win, text, win->findMatchCase, win->findMatchWholeWord);
 }
 
 static bool ViewLeftCurrentFindHit(MainWindow* win) {
@@ -2335,7 +2410,9 @@ static void FindThread(FindThreadData* ftd) {
     if (!win->findCancelled && !rect) {
         // With no further findings, start over (unless this was a new search from the beginning)
         int startPage = (TextSearch::Direction::Forward == ftd->direction) ? 1 : ctrl->PageCount();
-        if (!ftd->wasModified || ctrl->CurrentPageNo() != startPage) {
+        // findPendingFromPage: stay past the current page (TOC calib / Enter-from-
+        // here). Wrapping to page 1 would land on the printed-TOC hit first.
+        if (win->findPendingFromPage < 1 && (!ftd->wasModified || ctrl->CurrentPageNo() != startPage)) {
             loopedAround = true;
             rect = textSearch->FindFirst(startPage, ftd->text);
         }

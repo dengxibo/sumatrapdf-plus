@@ -113,11 +113,12 @@ void PdfDarkModeV2_UnitTests() {
     utassert(!PdfDarkModeV2IsSoftShadowPaint(0.9f, 0.1f, 0.1f, 0.5f)); // colored translucent
 
     // Raster soft-shadow plates (Glencoe Social Studies ONLINE callout).
-    utassert(PdfDarkModeV2LooksLikeSoftShadowPlate(0.0f, 0.0f, 0.0f, 0.60f));
-    utassert(PdfDarkModeV2LooksLikeSoftShadowPlate(0.02f, 0.03f, 0.01f, 0.80f));
-    utassert(!PdfDarkModeV2LooksLikeSoftShadowPlate(0.10f, 0.12f, 0.01f, 0.70f)); // colorful
-    utassert(!PdfDarkModeV2LooksLikeSoftShadowPlate(0.02f, 0.03f, 0.20f, 0.70f)); // ink/icon
-    utassert(!PdfDarkModeV2LooksLikeSoftShadowPlate(0.02f, 0.03f, 0.01f, 0.30f)); // dark plate
+    utassert(PdfDarkModeV2LooksLikeSoftShadowPlate(0.0f, 0.0f, 0.0f, 0.60f, 0.001f));
+    utassert(PdfDarkModeV2LooksLikeSoftShadowPlate(0.02f, 0.03f, 0.01f, 0.80f, 0.002f));
+    utassert(!PdfDarkModeV2LooksLikeSoftShadowPlate(0.10f, 0.12f, 0.01f, 0.70f, 0.001f)); // colorful
+    utassert(!PdfDarkModeV2LooksLikeSoftShadowPlate(0.02f, 0.03f, 0.20f, 0.70f, 0.001f)); // ink/icon
+    utassert(!PdfDarkModeV2LooksLikeSoftShadowPlate(0.02f, 0.03f, 0.01f, 0.30f, 0.001f)); // dark plate
+    utassert(!PdfDarkModeV2LooksLikeSoftShadowPlate(0.02f, 0.03f, 0.01f, 0.62f, 0.040f)); // grayscale portrait
 
     // Speech-bubble clusters vs portrait mats: interior paper, not the rim.
     utassert(PdfDarkModeV2PhotoRectIsCalloutCluster(0.50f, 0.01f, 5, 0.02f));

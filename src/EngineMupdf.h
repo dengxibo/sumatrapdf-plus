@@ -21,6 +21,10 @@ struct FitzPageImageInfo {
 struct FzPageInfo {
     int pageNo = 0; // 1-based
     fz_page* page = nullptr;
+    // RenderPage pins this while it holds the fz_page pointer across lock
+    // gaps. TrimPageCaches skips a pinned page so a footer scan cannot
+    // fz_drop_page out from under the OCR worker (page->doc becomes null).
+    int renderHold = 0;
 
     // each containz fz_link for this page
     Vec<PageElementDestination*> links;

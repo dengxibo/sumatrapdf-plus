@@ -123,6 +123,12 @@ bool EngineMupdfHasOutline(EngineBase* engine);
 bool EngineMupdfFirstPageLooksFixedLayout(EngineBase* engine);
 bool EngineMupdfIsFixedPageReflow(EngineBase* engine);
 bool EngineMupdfCanEditPdfToc(EngineBase* engine);
+// Stored /PageLabels text, including internal names such as "000076.pdg".
+// Empty when this page has no label. Not for toolbar display.
+const char* EngineMupdfRawPageLabelTemp(EngineBase* engine, int pageNo);
+// PDF page whose stored label equals `label` exactly. 0 if none.
+// Does not fall back to atoi (that would treat a missing label as a PDF index).
+int EngineMupdfPageForExactLabel(EngineBase* engine, const char* label);
 bool EngineMupdfCanEditToc(EngineBase* engine);
 bool EngineMupdfIsWordDocument(EngineBase* engine);
 bool EngineMupdfCanExtractToc(EngineBase* engine);

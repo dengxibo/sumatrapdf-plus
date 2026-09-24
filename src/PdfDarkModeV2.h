@@ -84,13 +84,19 @@ inline bool PdfDarkModeV2IsSoftShadowPaint(float r, float g, float b, float alph
 }
 
 // Raster drop-shadow / soft-edge plates (Glencoe callout cards): light mid-gray, no ink,
-// no chroma. V2 preserves small images, so these stay bright on a dark page unless filled
-// with theme bg. meanLum is average luminance of opaque samples.
-inline bool PdfDarkModeV2LooksLikeSoftShadowPlate(float satRatio, float chromaRatio, float inkRatio, float meanLum) {
+// no chroma, almost one gray. V2 preserves small images, so these stay bright on a dark
+// page unless filled with theme bg. meanLum is average luminance of opaque samples.
+// lumVar is the luminance variance of those samples: a grayscale portrait shares the
+// low chroma / low ink of a shadow plate, but its tonal spread is photographic.
+inline bool PdfDarkModeV2LooksLikeSoftShadowPlate(float satRatio, float chromaRatio, float inkRatio, float meanLum,
+                                                  float lumVar) {
     if (satRatio >= 0.06f || chromaRatio >= 0.10f) {
         return false;
     }
     if (inkRatio >= 0.08f) {
+        return false;
+    }
+    if (lumVar >= 0.010f) {
         return false;
     }
     return meanLum >= 0.50f && meanLum <= 0.98f;

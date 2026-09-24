@@ -21311,6 +21311,24 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         }
     }
     {
+        bool ok = TocCalibTestPrintedIndexLookup();
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            logf("phase2 fail calib-printed-index\n");
+        }
+    }
+    {
+        bool ok = TocCalibTestPdgBodyPrinted();
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            logf("phase2 fail calib-pdg-body\n");
+        }
+    }
+    {
         bool ok = TocCalibTestClearTocDests();
         if (ok) {
             (*pass)++;

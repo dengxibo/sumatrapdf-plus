@@ -3230,6 +3230,29 @@ static bool PageLabelsContainInternalPdgNames(StrVec* labels, int pageCount) {
     return false;
 }
 
+// True when the label prefixes are 超星/读秀 sheet names (000001.pdg, !00001.pdg).
+static bool PageLabelInfosLookLikePdg(fz_context* ctx, const Vec<PageLabelInfo>& data) {
+    int n = (int)data.size();
+    int samples = n < 32 ? n : 32;
+    int saw = 0;
+    int pdg = 0;
+    for (int i = 0; i < samples; i++) {
+        pdf_obj* prefix = data.at(i).prefix;
+        if (!prefix) {
+            continue;
+        }
+        TempStr text = PdfToUtf8Temp(ctx, prefix);
+        if (!text || !text[0]) {
+            continue;
+        }
+        saw++;
+        if (str::ContainsI(text, ".pdg")) {
+            pdg++;
+        }
+    }
+    return saw > 0 && pdg * 2 >= saw;
+}
+
 static TempStr FormatPageLabelTemp(const char* type, int pageNo, const char* prefix) {
     if (str::Eq(type, "D")) {
         return str::FormatTemp("%s%d", prefix, pageNo);
@@ -3339,7 +3362,9 @@ static StrVec* BuildPageLabelVec(fz_context* ctx, pdf_obj* root, int pageCount) 
         // this is the default case, no need for special treatment
         return nullptr;
     }
-    if (IsPerPagePrefixOnlyLabels(data, pageCount)) {
+    // Per-page prefixes are usually noise. 000123.pdg is the exception:
+    // the digits are the printed page of a 超星/读秀 scan.
+    if (IsPerPagePrefixOnlyLabels(data, pageCount) && !PageLabelInfosLookLikePdg(ctx, data)) {
         return nullptr;
     }
 
@@ -3371,8 +3396,9 @@ static StrVec* BuildPageLabelVec(fz_context* ctx, pdf_obj* root, int pageCount) 
 
     EnsureLabelsUnique(labels);
     if (PageLabelsContainInternalPdgNames(labels, pageCount)) {
-        delete labels;
-        return nullptr;
+        // Keep 000123.pdg so TOC import can map printed pages. The toolbar
+        // still shows the PDF index (GetPageLabeTemp hides ".pdg").
+        return labels;
     }
     return labels;
 }
@@ -6311,7 +6337,7 @@ void EngineMupdfTrimPageCaches(EngineBase* engine, int keepPage, int radius) {
             continue;
         }
         FzPageInfo* pi = e->pages[i - 1];
-        if (!pi || !pi->page) {
+        if (!pi || !pi->page || pi->renderHold > 0) {
             continue;
         }
         DropSingleFzPageCache(ctx, pi);
@@ -10899,7 +10925,25 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     if (!pageInfo || !pageInfo->page) {
         return nullptr;
     }
-    fz_page* page = pageInfo->page;
+    // GetFzPageInfo releases renderLock before returning. Pin before the next
+    // gap so TrimPageCaches (footer scan drops every other page) cannot free
+    // this fz_page while we still run it. Recheck under the lock: the page
+    // may already have been dropped between GetFzPageInfo and here.
+    fz_page* page = nullptr;
+    {
+        ScopedCritSec scopeRender(&renderLock);
+        if (!pageInfo->page) {
+            return nullptr;
+        }
+        pageInfo->renderHold++;
+        page = pageInfo->page;
+    }
+    defer {
+        ScopedCritSec scopeRender(&renderLock);
+        if (pageInfo->renderHold > 0) {
+            pageInfo->renderHold--;
+        }
+    };
 
     // AA level is per-thread-context state since Ctx() clones; no lock needed.
     if (disableAntiAlias) {
@@ -15149,6 +15193,30 @@ int EngineMupdf::GetPageByLabel(const char* label) const {
     }
 
     return pageNo;
+}
+
+const char* EngineMupdfRawPageLabelTemp(EngineBase* engine, int pageNo) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !e->pageLabels || pageNo < 1 || pageNo > e->pageLabels->Size()) {
+        return nullptr;
+    }
+    const char* label = e->pageLabels->At(pageNo - 1);
+    if (!label || !label[0]) {
+        return nullptr;
+    }
+    return label;
+}
+
+int EngineMupdfPageForExactLabel(EngineBase* engine, const char* label) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !e->pageLabels || !label || !label[0]) {
+        return 0;
+    }
+    int idx = e->pageLabels->Find(label);
+    if (idx < 0) {
+        return 0;
+    }
+    return idx + 1;
 }
 
 bool IsEngineMupdfSupportedFileType(Kind kind) {

@@ -28,6 +28,10 @@ void TocCalibApplyOffset(Vec<TocCalibMapRow>& rows, int offset, bool force = fal
 // Estimate printed→PDF offset from page footers / headers after the TOC spread.
 // Returns -1 when no consistent arabic body anchors are found.
 int TocCalibEstimateArabicOffset(EngineBase* engine, int afterTocPdf);
+bool TocCalibBuildPdgPrintedMap(EngineBase* engine, Vec<int>& pdfByPrinted);
+// PDF page whose /PageLabels entry is the decimal printed page. 0 if none.
+int TocCalibPdfForPrintedLabel(EngineBase* engine, int printed);
+bool TocCalibTestPdgBodyPrinted();
 bool TocCalibTestOffsetIgnoresRoughEstimate();
 bool TocCalibTestEstimateArabicOffsetVotes();
 
@@ -72,6 +76,13 @@ struct TocCalibSession {
     int nPages = 0;
     bool persistToDisk = true;
     bool offsetLocked = false;
+    // Footer/header scan built a printed-page index. Do not invent
+    // pageNo = printed + offset for numbers that index did not contain.
+    bool footerMapped = false;
+    // Owned printed-page index (arabic + R1/roman labels). Kept after the
+    // async footer scan so typed R20 / ResolvePrintedLabels can look up
+    // without rescanning 1800 pages.
+    struct TocCalibPrintedIndex* printedIdx = nullptr;
     bool editPdf = false;
     bool restoreDisplayMode = false;
     int savedDisplayMode = 0;
@@ -159,6 +170,7 @@ bool TocCalibParsePrintedText(const char* s, int* printedOut, char** labelOut);
 bool TocCalibPinSelectedToView(MainWindow* win);
 bool TocCalibLocateSelectedInBody(MainWindow* win);
 bool TocCalibTestPrintedInput();
+bool TocCalibTestPrintedIndexLookup();
 bool TocCalibTestBm25Locate();
 bool TocCalibTestFindQuery();
 bool TocCalibTestInterpolatePrinted();

@@ -1910,6 +1910,44 @@ static bool BrowserTitleLooksLikeBlankAiChat(const char* url, const char* titleA
     return false;
 }
 
+bool WaitForAiChatTurn(HWND hwnd, int timeoutMs, int minWaitMs) {
+    if (!hwnd) {
+        return true;
+    }
+    if (timeoutMs < 1000) {
+        timeoutMs = 1000;
+    }
+    if (minWaitMs < 0) {
+        minWaitMs = 0;
+    }
+    if (minWaitMs > timeoutMs) {
+        minWaitMs = timeoutMs;
+    }
+    WCHAR titleBefore[512]{};
+    GetWindowTextW(hwnd, titleBefore, dimof(titleBefore));
+    // The tab title often changes as soon as the user message is sent, before
+    // the composer can take the next images. Hold at least minWaitMs.
+    const int interval = 250;
+    int elapsed = 0;
+    bool sawChange = false;
+    while (elapsed < timeoutMs) {
+        Sleep(interval);
+        elapsed += interval;
+        WCHAR title[512]{};
+        GetWindowTextW(hwnd, title, dimof(title));
+        if (title[0] && !str::Eq(title, titleBefore)) {
+            sawChange = true;
+        }
+        if (sawChange && elapsed >= minWaitMs) {
+            Sleep(800);
+            logf("AI TOC: chat turn ready after %d ms\n", elapsed + 800);
+            return true;
+        }
+    }
+    logf("AI TOC: chat turn timed out after %d ms; continuing\n", timeoutMs);
+    return true;
+}
+
 // After the bootstrap "hi!", wait until the tab title leaves the blank/new-chat
 // shape (or until a soft timeout). A fixed Sleep raced the model reply.
 static bool WaitForAiChatBootstrapReply(HWND hwnd, const char* url, const WCHAR* titleBefore, int timeoutMs) {
@@ -1948,6 +1986,50 @@ static bool WaitForAiChatBootstrapReply(HWND hwnd, const char* url, const WCHAR*
     return true;
 }
 
+// Sacrificial white DIB for cold-start. Web chats often drop the first pasted
+// image; burn that slot before the real TOC pages. Paste image alone first —
+// Doubao/ChatGPT keep text when DIB+text share one clipboard paste.
+static bool CopyAiChatDummyBootstrapImage() {
+    constexpr int kW = 64;
+    constexpr int kH = 64;
+    size_t bytes = sizeof(BITMAPINFOHEADER) + (size_t)kW * kH * 4;
+    HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, bytes);
+    if (!mem) {
+        return false;
+    }
+    bool transferred = false;
+    defer {
+        if (!transferred) {
+            GlobalFree(mem);
+        }
+    };
+    auto* info = (BITMAPINFO*)GlobalLock(mem);
+    if (!info) {
+        return false;
+    }
+    info->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info->bmiHeader.biWidth = kW;
+    info->bmiHeader.biHeight = kH;
+    info->bmiHeader.biPlanes = 1;
+    info->bmiHeader.biBitCount = 32;
+    info->bmiHeader.biCompression = BI_RGB;
+    auto* pixels = (u8*)info + sizeof(BITMAPINFOHEADER);
+    for (int i = 0; i < kW * kH; i++) {
+        pixels[i * 4 + 0] = 255;
+        pixels[i * 4 + 1] = 255;
+        pixels[i * 4 + 2] = 255;
+        pixels[i * 4 + 3] = 0;
+    }
+    GlobalUnlock(mem);
+    if (!OpenClipboard(nullptr)) {
+        return false;
+    }
+    EmptyClipboard();
+    transferred = SetClipboardData(CF_DIB, mem) != nullptr;
+    CloseClipboard();
+    return transferred;
+}
+
 bool EnsureAiChatComposerReady(AiChatService service, HWND browserHwnd, bool forceColdBootstrap) {
     const char* url = AiChatServiceUrl(service);
     if (!url || !browserHwnd) {
@@ -1961,9 +2043,23 @@ bool EnsureAiChatComposerReady(AiChatService service, HWND browserHwnd, bool for
         logf("AI TOC: composer already warm (skip hi!)\n");
         return true;
     }
-    logf("AI TOC: cold/blank composer bootstrap with hi! (force=%d blank=%d)\n", (int)forceColdBootstrap, (int)blank);
+    logf("AI TOC: cold/blank composer bootstrap with dummy image then hi! (force=%d blank=%d)\n",
+         (int)forceColdBootstrap, (int)blank);
     WCHAR titleBefore[512]{};
     GetWindowTextW(browserHwnd, titleBefore, dimof(titleBefore));
+    // Same path as TOC pages: paste the image into the composer first (no
+    // Enter), then paste "hi!" and submit so both land in one message.
+    if (CopyAiChatDummyBootstrapImage()) {
+        bool centered = ShouldUseCenteredChatInput(url, browserHwnd, forceColdBootstrap);
+        if (RunAiChatPasteSubmitAndWait(browserHwnd, centered, url, forceColdBootstrap ? 15000 : 8000)) {
+            Sleep(forceColdBootstrap ? 800 : 400);
+            logf("AI TOC: dummy bootstrap image pasted\n");
+        } else {
+            logf("AI TOC: dummy bootstrap image paste timed out; continuing with hi!\n");
+        }
+    } else {
+        logf("AI TOC: dummy bootstrap image clipboard failed; hi! text only\n");
+    }
     if (!CopyTextToClipboard("hi!") || !PasteAndSubmitAiChatWhenReady(service, browserHwnd, forceColdBootstrap)) {
         return false;
     }

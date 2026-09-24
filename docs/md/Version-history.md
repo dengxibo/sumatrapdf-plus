@@ -2,6 +2,18 @@
 
 ## next
 
+- 对准印刷目录：导入时若后台正在识别同一页，保留该页，不再把正在渲染的页面拆掉（否则会在 `pdf_document_output_intent` 崩溃）。
+  Align printed TOC: import keeps a page that background OCR is still rendering instead of dropping it, which crashed in `pdf_document_output_intent`.
+- AI 目录：超过 10 张目录页时，每批只提取本批 JSON。复制回这一批后才发下一批，程序按顺序把各批条目接上，不再让 AI 合并（合并时会编造条目）。重新发送在等待下一批时不再使用已被关掉的对话框里的文件列表。
+  AI TOC: when printed TOC pages exceed 10, each batch extracts only its own JSON. The next batch is sent after that JSON is copied back, and the app joins the items in order. The AI is not asked to merge them, because that step invented entries. Resend keeps its own copy of the page images, so closing the dialog during the wait between batches no longer crashes.
+- 暗黑模式：黑白照片不再被当成教材投影底板整块涂成背景色。
+  Dark mode: grayscale photos are no longer filled with the page background as if they were textbook drop-shadow plates.
+- 对准印刷目录：校准栏并排两个页码框，中间用箭头连成「印刷页 → PDF 页」，去掉加减和栏头。空框里是浅色提示，悬停显示「印刷页码 / PDF 页码」。没有印刷页的行左框留空，点进去不会把 PDF 序号当成印刷页。改 PDF 页只改跳转目标，再按该页页脚回填或清空印刷页。
+  Align printed TOC: each row is two page boxes joined by an arrow (printed folio → PDF page), with no plus/minus and no column header. An empty box shows a faint cue; hover names the field. A row with no folio stays blank on the left, so a click cannot treat the PDF index as a printed page. Editing the PDF box sets the dest, then fills or clears the folio from that page's footer.
+- 对准印刷目录：定位把标题填进查询窗后立即开始搜索，并在当前页及之后的第一个命中出现时自动翻到该页（不必再按回车或点结果行）。
+  Align printed TOC: Locate starts the search as soon as the title is in the find box, and jumps to the first hit at or after the current page as soon as that hit is found.
+- 对准印刷目录：正文页脚被拆碎时，不再按「最长阿拉伯段」选主正文（书后技能/附录重印常更长），改为 TOC 之后最早命中；R1/R20 等handbook页脚忽略印刷目录点线假命中，取书后真实 folio；同名 R1 可共享目标；页码栏只显示印刷页/标签。
+  Align printed TOC: when body footers fragment, use the earliest post-TOC hit (not the longest run — late skills reprints often win). R1/R20 handbook folios ignore printed-TOC leader-dot false hits and prefer the real end-of-book page; duplicate R1 rows may share one PDF dest. Page field shows printed folios/labels only.
 - UI: page display filter (brightness / contrast / sharpness) is per-document and opened from the toolbar; paint-time only so sliders do not re-render. Presets: Reading / Scan / Reset. Saved on the file's `FileState` (`DisplayFilterBrightness` / `Contrast` / `Sharpness`). Does not affect print or copy-page-as-image.
   界面：页面显示滤镜（亮度/对比度/锐度）按文档保存，从工具栏打开；贴屏时套用，拖滑块不重渲染。预设：阅读优化/扫描件/重置。写入该文件的 FileState。不影响打印与复制页面图。
 - UI: add `TabFontSize` (0 = follow UI font) and `TabBarHeight` (0 = automatic ~24 DIP) so the tab bar can be sized independently of global `UIFontSize`; exposed in Options → Interface → Tabs and toolbar.

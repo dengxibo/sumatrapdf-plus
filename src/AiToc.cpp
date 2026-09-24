@@ -70,6 +70,30 @@ static const char* kAiTocPrompt =
     "page:null，但仍必须保留其父级层次；不要删除它，也不要把后续章节提升为同级。"
     "不要把无编号分段标题误当成普通说明文字，也不要把它与相邻章节合并。‘第一节’、‘第二节’等明确属于所在章节的下一级；"
     "‘课堂练习’若在章节条目缩进下也属于所在章节的下一级。"
+    "同一行里若有多个带括号页码的小条目，必须逐条拆开，禁止合并成一个标题。"
+    "例如一行「一、多元函数概念(1) 二、二元函数的极限(5) 三、二元函数的连续性(8) 习题8-1(11)」要输出四条，"
+    "而不是一条 title 里连写全部。"
+    "每个「一、」「二、」「三、」等条目单独一条 item：title 保留编号，写成「一、多元函数概念」，"
+    "不要把页码括号留在 title 里；page 取括号内的数字。半角 (1) 与全角（1）同样处理。"
+    "「习题8-1(11)」「习题 8-1（11）」也单独一条：title 为「习题8-1」（保留习题编号，去掉括号页码，题号前的空格去掉），"
+    "page 为括号内数字。"
+    "行首 * 表示选学，留在 title 里，例如「*二、全微分在近似计算中的应用」。"
+    "当目录顶层就是「第X章」时，层级固定为：章 level=1，节 level=2，节下面的「一、」「二、」和习题 level=3。"
+    "节名右侧点线后的页码是这一节自己的 page，不要用它替换节内第一条的页码。"
+    "只有章的上面还有无编号大分段标题时，才按前面的规则把章、节、节内条目整体下移一层。"
+    "书签只能显示一行普通文字，标题里的公式必须写成同一行 Unicode，整段留在同一个 title 字符串里，禁止换行把公式拆出 "
+    "JSON。"
+    "禁止 LaTeX：不要 $...$、不要反斜杠命令（如 \\lambda、\\frac、\\sqrt、\\sin、\\cos、\\int、\\sum、\\partial）。"
+    "希腊字母直接写字符（α β γ δ ε θ λ μ π σ φ ω Δ Σ Ω）。"
+    "函数名写成 sin、cos、tan、ln、log，不要加反斜杠。"
+    "单字符上标用 Unicode 上标（x²、xⁿ、y⁽ⁿ⁾）；多字符上标写成 ^( )，例如 e^(λx)、e^(n+1)。"
+    "单字符下标用 Unicode 下标（aₙ、x₁、x₂）；没有对应字符时写成 _ ，例如 P_m(x)。"
+    "导数的撇用 ′ ″ ‴，不要用英文单引号：y′、y″，不要写成 y' 或 y''。"
+    "分式写成 a/b，根号写成 √(x)，积分写成 ∫，求和写成 Σ，偏导写成 ∂，无穷写成 ∞，不等号写成 ≤ ≥ ≠。"
+    "例如「$y''=f(x,y')$型」写成「y″=f(x,y′) 型」；"
+    "「$f(x)=e^{\\lambda x}P_m(x)$型」写成「f(x)=e^(λx)P_m(x) 型」；"
+    "「$f(x)=e^{\\lambda x}[P_l(x)\\cos\\omega x+P_n(x)\\sin\\omega x]$型」写成"
+    "「f(x)=e^(λx)[P_l(x) cos ωx+P_n(x) sin ωx] 型」。"
     "只输出目录中实际印刷的条目，按页面从上到下、从左到右的顺序输出，不要补写图片中不存在的标题。"
     "同一本书若同时印刷了‘按单元目录’和‘按体裁/专题索引’，只输出按阅读顺序的主目录（单元/章节），"
     "不要把体裁索引、作者名行、专题对照表再重复导入一遍。作者名若单独成行且无页码，不要输出为独立条目。";
@@ -90,6 +114,8 @@ struct AiTocPocWork {
     AiChatService service = AiChatService::Doubao;
     int firstPage = 0;
     int lastPage = 0;
+    // Web chats accept about 10 images per message. 1 means one send.
+    int imageBatches = 1;
 
     ~AiTocPocWork() {
         if (engine) {
@@ -330,6 +356,10 @@ struct AiTocDialog {
     // Printed-TOC pages confirmed by the last 发送目录页 click; 重新发送
     // re-renders exactly these pages instead of asking the user again.
     Vec<int> confirmedPages;
+    // One JSON reply per image batch. Joined locally; the model is not asked
+    // to merge, because that step invented entries.
+    StrVec collectedBatchJson;
+    int batchesGot = 0;
     // True when the last send failed but the payload is on the clipboard and
     // the chat browser is open: the waiting page then asks for a manual paste.
     bool waitManualPaste = false;
@@ -345,6 +375,35 @@ static void AiTocSetState(AiTocDialog* dlg, AiTocUiState next) {
     }
     logf("[AITOC] %s -> %s\n", AiTocStateName(dlg->state), AiTocStateName(next));
     dlg->state = next;
+}
+
+// Each batch is copied back by the user. The app appends those JSON arrays
+// itself, so the model never rewrites an earlier batch.
+static void AiTocSetMultiBatchWaitCopy(AiTocDialog* dlg) {
+    int total = dlg->work ? dlg->work->imageBatches : 1;
+    if (total < 1) {
+        total = 1;
+    }
+    int which = dlg->batchesGot + 1;
+    if (which > total) {
+        which = total;
+    }
+    const char* lang = trans::GetCurrentLangCode();
+    bool zh = lang && (str::EqI(lang, "cn") || str::EqI(lang, "tw"));
+    if (zh) {
+        SetWindowTextW(dlg->stateTitle, L"请复制这一批的 JSON");
+        SetWindowTextW(dlg->stateDesc, ToWStrTemp(str::FormatTemp("第 %d / %d 批已发送。复制这一批回复里的 JSON。\r\n"
+                                                                  "程序按顺序自己接上各批，不再让 AI 合并。",
+                                                                  which, total)));
+        SetWindowTextW(dlg->status, ToWStrTemp(str::FormatTemp("等待第 %d / %d 批 JSON…", which, total)));
+    } else {
+        SetWindowTextW(dlg->stateTitle, _TRW("Copy this batch's JSON"));
+        SetWindowTextW(dlg->stateDesc, ToWStrTemp(str::FormatTemp(
+                                           "Batch %d of %d has been sent. Copy the JSON in that reply.\r\n"
+                                           "The app joins the batches in order. The AI is not asked to merge them.",
+                                           which, total)));
+        SetWindowTextW(dlg->status, ToWStrTemp(str::FormatTemp("Waiting for batch %d of %d JSON…", which, total)));
+    }
 }
 
 // Waiting page copy for the unified WaitingForAiClipboard state. The title /
@@ -376,6 +435,9 @@ static void AiTocApplyWaitingTexts(AiTocDialog* dlg) {
                 "The AI is organizing a TOC from the full-text structure.\r\n"
                 "When it finishes, click Copy under the AI reply; the app reads it and imports the TOC.");
         }
+    } else if (dlg->work && dlg->work->imageBatches > 1) {
+        AiTocSetMultiBatchWaitCopy(dlg);
+        return;
     } else {
         title = _TRW("TOC pages sent to the web AI");
         desc = _TRW(
@@ -705,6 +767,182 @@ static RenderedBitmap* RenderAiTocThumbnail(EngineBase* engine, int pageNo) {
     return bmp;
 }
 
+// Doubao / DeepSeek / ChatGPT reject more than about 10 images in one message.
+constexpr int kAiTocImagesPerMessage = 10;
+
+// The paste runs on a worker. The dialog may close or replace its AiTocPocWork
+// between batches, so the worker must not touch that object. Callers pass a
+// StrVec they own for the whole paste.
+struct AiTocPasteTarget {
+    HWND owner = nullptr;
+    HANDLE dialogToken = nullptr;
+    HWND browser = nullptr;
+    AiChatService service = AiChatService::Doubao;
+    StrVec* files = nullptr;
+    int* imageBatches = nullptr;
+};
+
+static bool AiTocDialogStillCurrent(HWND owner, HANDLE token) {
+    return owner && GetPropW(owner, kAiTocToken) == token;
+}
+
+static bool PasteAiTocImageSlice(AiTocPasteTarget* target, int begin, int count, bool waitForPageReady) {
+    if (!target || !target->files || !target->browser || begin < 0 || count < 1) {
+        return false;
+    }
+    int nFiles = target->files->Size();
+    if (count > nFiles || begin > nFiles - count) {
+        return false;
+    }
+    StrVec slice;
+    for (int i = 0; i < count; i++) {
+        char* path = target->files->At(begin + i);
+        if (str::IsEmpty(path)) {
+            return false;
+        }
+        slice.Append(path);
+    }
+    return PasteAiChatFilesWhenReady(target->service, target->browser, waitForPageReady, slice);
+}
+
+// One image message extracts only the pictures attached to it. Later batches
+// are sent after that JSON has been copied back. Joining is done locally.
+static TempStr AiTocExtractBatchPrompt(int from1, int to1, int total) {
+    const char* head = str::FormatTemp(
+        "这些是印刷目录图片的第 %d-%d 张（共 %d 张，按阅读顺序）。\n"
+        "请只根据本条消息里的图片提取目录，按下面的规则输出一个 items JSON。"
+        "不要回复「已收到」，不要合并其他批次，不要输出本条消息之外的条目。\n\n",
+        from1, to1, total);
+    return str::FormatTemp("%s%s", head, kAiTocPrompt);
+}
+
+static bool SubmitAiTocImageBatch(AiTocPasteTarget* target, int from1, int to1) {
+    if (!target || !target->files || !target->browser) {
+        return false;
+    }
+    TempStr prompt = AiTocExtractBatchPrompt(from1, to1, target->files->Size());
+    if (!CopyTextToClipboard(prompt) || !PasteAndSubmitAiChatWhenReady(target->service, target->browser, false)) {
+        return false;
+    }
+    logf("AI TOC: batch %d-%d submitted\n", from1, to1);
+    return true;
+}
+
+static bool AiTocPasteOneBatch(AiTocPasteTarget* target, int batchIndex, bool waitFirst, bool submitExtract) {
+    if (!target || !target->files || batchIndex < 0) {
+        return false;
+    }
+    int nFiles = target->files->Size();
+    int begin = batchIndex * kAiTocImagesPerMessage;
+    if (begin >= nFiles) {
+        return false;
+    }
+    int count = nFiles - begin;
+    if (count > kAiTocImagesPerMessage) {
+        count = kAiTocImagesPerMessage;
+    }
+    if (target->owner && !AiTocDialogStillCurrent(target->owner, target->dialogToken)) {
+        return false;
+    }
+    if (!PasteAiTocImageSlice(target, begin, count, waitFirst && batchIndex == 0)) {
+        return false;
+    }
+    if (!submitExtract) {
+        return true;
+    }
+    return SubmitAiTocImageBatch(target, begin + 1, begin + count);
+}
+
+static TempStr AiTocPromptForSend(const AiTocPocWork*) {
+    return str::DupTemp(kAiTocPrompt);
+}
+
+// Paste cached TOC page images (batched at 10 per message). Used by the first
+// send and by 重新发送 — resend must put the images back in the chat, not
+// only the text prompt. Stop between batches if the dialog was closed; the
+// next slice would otherwise read a file list the dialog already freed.
+static bool AiTocPasteImages(AiTocPasteTarget* target, bool waitFirst) {
+    if (!target || !target->browser || !target->files || target->files->Size() < 1) {
+        return false;
+    }
+    if (target->owner && !AiTocDialogStillCurrent(target->owner, target->dialogToken)) {
+        return false;
+    }
+    int nFiles = target->files->Size();
+    int batches = (nFiles + kAiTocImagesPerMessage - 1) / kAiTocImagesPerMessage;
+    if (batches < 1) {
+        batches = 1;
+    }
+    if (target->imageBatches) {
+        *target->imageBatches = batches;
+    }
+    // A single batch stays in the composer; SendAiTocPrompt submits the
+    // extraction rules with those images. Further batches go out only after
+    // the user has copied the previous batch's JSON.
+    if (batches <= 1) {
+        if (!PasteAiTocImageSlice(target, 0, nFiles, waitFirst)) {
+            return false;
+        }
+        logf("AI TOC: pasted %d TOC page images in 1 batch\n", nFiles);
+        return true;
+    }
+    if (!AiTocPasteOneBatch(target, 0, waitFirst, true)) {
+        return false;
+    }
+    logf("AI TOC: pasted batch 1 of %d (%d images)\n", batches, nFiles);
+    return true;
+}
+
+static bool AiTocPasteWorkImages(AiTocPocWork* work, bool waitFirst) {
+    if (!work) {
+        return false;
+    }
+    AiTocPasteTarget target;
+    target.owner = work->owner;
+    target.dialogToken = work->dialogToken;
+    target.browser = work->browser;
+    target.service = work->service;
+    target.files = &work->files;
+    target.imageBatches = &work->imageBatches;
+    return AiTocPasteImages(&target, waitFirst);
+}
+
+struct AiTocResendPrintedWork {
+    HWND owner = nullptr;
+    HANDLE dialogToken = nullptr;
+    // Identity of the dialog's work at start. The worker must not dereference
+    // it: the dialog can delete that object during the between-batch wait.
+    AiTocPocWork* poc = nullptr;
+    HWND browser = nullptr;
+    AiChatService service = AiChatService::Doubao;
+    StrVec files; // copies of the paths, owned here
+    int imageBatches = 1;
+    bool ok = false;
+};
+
+static void AiTocResendPrintedFinished(AiTocResendPrintedWork* w);
+
+static void AiTocResendPrintedWorker(AiTocResendPrintedWork* w) {
+    defer {
+        uitask::Post(MkFunc0<AiTocResendPrintedWork>(AiTocResendPrintedFinished, w), "AiTocResendPrintedFinished");
+    };
+    if (!w || !w->browser || w->files.Size() < 1) {
+        if (w) {
+            w->ok = false;
+        }
+        return;
+    }
+    // Paths were copied on the UI thread. Do not touch w->poc.
+    AiTocPasteTarget target;
+    target.owner = w->owner;
+    target.dialogToken = w->dialogToken;
+    target.browser = w->browser;
+    target.service = w->service;
+    target.files = &w->files;
+    target.imageBatches = &w->imageBatches;
+    w->ok = AiTocPasteImages(&target, false);
+}
+
 static void AiTocPocWorker(AiTocPocWork* work) {
     defer {
         uitask::Post(MkFunc0<AiTocPocWork>(AiTocUploadFinished, work), "AiTocUploadFinished");
@@ -747,25 +985,37 @@ static void AiTocPocWorker(AiTocPocWork* work) {
         work->browser = browser;
         return;
     }
-    if (!PasteAiChatFilesWhenReady(work->service, browser, !reused, work->files)) {
+    work->browser = browser;
+    if (!AiTocPasteWorkImages(work, !reused)) {
         logf("AI TOC: unable to send pages to browser; temp files kept at %s\n", session);
         work->error = "Automatic send incomplete. Paste the clipboard content into the AI input box and send.";
-        work->browser = browser;
         return;
     }
-    work->browser = browser;
-    logf("AI TOC: pasted %d detected TOC page images\n", work->files.Size());
+}
+
+static bool AiTocEnsureClipboardListener(HWND hwnd) {
+    if (!hwnd) {
+        return false;
+    }
+    if (AddClipboardFormatListener(hwnd)) {
+        return true;
+    }
+    // Already registered: AddClipboardFormatListener fails with
+    // ERROR_INVALID_PARAMETER. Resend / retry must not treat that as fatal.
+    return GetLastError() == ERROR_INVALID_PARAMETER;
 }
 
 static void SendAiTocPrompt(AiTocDialog* dlg) {
-    if (!AddClipboardFormatListener(dlg->hwnd)) {
-        AiTocApplyFallbackTexts(dlg);
+    if (!AiTocEnsureClipboardListener(dlg->hwnd)) {
         SetWindowTextW(dlg->status,
                        _TRW("Cannot watch the clipboard. Close the window and try again. The prompt was not sent."));
+        if (dlg->resend) {
+            EnableWindow(dlg->resend, TRUE);
+        }
         return;
     }
-    if (!CopyTextToClipboard(kAiTocPrompt) ||
-        !PasteAndSubmitAiChatWhenReady(dlg->work->service, dlg->work->browser, false)) {
+    TempStr prompt = AiTocPromptForSend(dlg->work);
+    if (!CopyTextToClipboard(prompt) || !PasteAndSubmitAiChatWhenReady(dlg->work->service, dlg->work->browser, false)) {
         RemoveClipboardFormatListener(dlg->hwnd);
         if (dlg->resend) {
             EnableWindow(dlg->resend, TRUE);
@@ -777,7 +1027,7 @@ static void SendAiTocPrompt(AiTocDialog* dlg) {
     logf("AI TOC: prompt submitted for pages %d-%d\n", dlg->work->firstPage, dlg->work->lastPage);
     // Keep the page images + prompt on the clipboard as a backup for manual
     // re-pasting; the waiting page no longer mentions it.
-    CopyAiChatPayloadToClipboard(dlg->work->files, kAiTocPrompt);
+    CopyAiChatPayloadToClipboard(dlg->work->files, prompt);
     dlg->submitted = true;
     dlg->waiting = true;
     AiTocSetState(dlg, AiTocUiState::WaitingForAiClipboard);
@@ -792,6 +1042,81 @@ static void SendAiTocPrompt(AiTocDialog* dlg) {
     }
     // The waiting copy was set above; recompute the compact height (the
     // description line count differs between manual-paste and normal texts).
+    AiTocLayoutControls(dlg);
+}
+
+static void AiTocArmPrintedBatchWait(AiTocDialog* dlg) {
+    if (!dlg || !dlg->work) {
+        return;
+    }
+    if (!AiTocEnsureClipboardListener(dlg->hwnd)) {
+        SetWindowTextW(dlg->status,
+                       _TRW("Cannot watch the clipboard. Close the window and try again. The prompt was not sent."));
+        if (dlg->resend) {
+            EnableWindow(dlg->resend, TRUE);
+        }
+        dlg->busy = false;
+        return;
+    }
+    dlg->busy = false;
+    dlg->submitted = true;
+    dlg->waiting = true;
+    dlg->waitManualPaste = false;
+    AiTocSetState(dlg, AiTocUiState::WaitingForAiClipboard);
+    dlg->clipboardSequence = GetClipboardSequenceNumber();
+    SetTimer(dlg->hwnd, 1, 750, nullptr);
+    SetTimer(dlg->hwnd, 2, 300, nullptr);
+    AiTocApplyWaitingTexts(dlg);
+    EnableWindow(dlg->send, FALSE);
+    EnableWindow(dlg->pagesEdit, FALSE);
+    if (dlg->resend) {
+        EnableWindow(dlg->resend, TRUE);
+    }
+    AiTocLayoutControls(dlg);
+}
+
+static void AiTocResendPrintedFinished(AiTocResendPrintedWork* w) {
+    if (!w) {
+        return;
+    }
+    HWND hwnd = w->owner;
+    HANDLE token = w->dialogToken;
+    bool ok = w->ok;
+    int batches = w->imageBatches;
+    AiTocPocWork* poc = w->poc;
+    delete w;
+    if (!hwnd || !IsWindow(hwnd) || GetPropW(hwnd, kAiTocToken) != token) {
+        return;
+    }
+    auto* dlg = (AiTocDialog*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    if (!dlg) {
+        return;
+    }
+    dlg->busy = false;
+    if (ok && dlg->work && dlg->work == poc) {
+        dlg->work->imageBatches = batches;
+    }
+    if (ok && dlg->work && dlg->work == poc && dlg->work->browser && dlg->work->imageBatches > 1) {
+        dlg->collectedBatchJson.Reset();
+        dlg->batchesGot = 0;
+        AiTocArmPrintedBatchWait(dlg);
+        return;
+    }
+    if (!ok || !dlg->work || dlg->work != poc || !dlg->work->browser) {
+        SetWindowTextW(dlg->status, _TRW("Automatic send incomplete. Paste the clipboard content into the AI "
+                                         "input box and send."));
+        if (dlg->resend) {
+            EnableWindow(dlg->resend, TRUE);
+        }
+        AiTocSetState(dlg, AiTocUiState::WaitingForAiClipboard);
+        AiTocLayoutControls(dlg);
+        return;
+    }
+    SetWindowTextW(dlg->status, _TRW("Sending prompt…"));
+    SendAiTocPrompt(dlg);
+    if (dlg->resend) {
+        EnableWindow(dlg->resend, !dlg->busy);
+    }
     AiTocLayoutControls(dlg);
 }
 
@@ -824,16 +1149,27 @@ static void AiTocResendToAi(AiTocDialog* dlg) {
         RunAsync(MkFunc0<AiTocBodySendWork>(AiTocBodySendWorker, sendWork), "AiTocBodyResend");
         return;
     }
-    if (dlg->work && dlg->work->browser) {
-        // Warm browser session: re-paste the prompt + images payload as-is.
+    if (dlg->work && dlg->work->browser && dlg->work->files.Size() > 0) {
+        // A full resend starts again at batch 1. JSON already copied is dropped.
+        dlg->collectedBatchJson.Reset();
+        dlg->batchesGot = 0;
+        // Warm session: re-paste the cached page images, then the prompt.
         if (dlg->resend) {
             EnableWindow(dlg->resend, FALSE);
         }
+        dlg->busy = true;
+        AiTocSetState(dlg, AiTocUiState::SendingToAi);
         SetWindowTextW(dlg->status, _TRW("Resending TOC pages…"));
-        SendAiTocPrompt(dlg);
-        if (dlg->resend) {
-            EnableWindow(dlg->resend, !dlg->busy);
+        auto* rw = new AiTocResendPrintedWork();
+        rw->owner = dlg->hwnd;
+        rw->dialogToken = dlg->token;
+        rw->poc = dlg->work;
+        rw->browser = dlg->work->browser;
+        rw->service = dlg->work->service;
+        for (int i = 0; i < dlg->work->files.Size(); i++) {
+            rw->files.Append(dlg->work->files.At(i));
         }
+        RunAsync(MkFunc0<AiTocResendPrintedWork>(AiTocResendPrintedWorker, rw), "AiTocResendPrinted");
         return;
     }
     if (dlg->confirmedPages.Size() == 0) {
@@ -951,22 +1287,49 @@ struct AiTocJsonVisitor : json::ValueVisitor {
     }
 };
 
-// AI can return structural headings such as "第一编" with page: null. Keep
-// them in the bookmark tree and initially point them at their first child.
+// AI can return structural headings such as "第一编" / "Reference Section"
+// with page: null or 0. Keep them in the tree and point them at the first
+// child that has a destination and/or a printed folio / R1 label (even when
+// the child's PDF page is resolved only later during calib).
 static int AiTocFillMissingPages(ExtractedTocItem* item) {
     int firstChildPage = 0;
     int firstChildPrintedPage = 0;
+    const char* firstChildLabel = nullptr;
     for (int i = 0; i < item->children.Size(); i++) {
         auto* child = item->children[i];
         int childPage = AiTocFillMissingPages(child);
         if (!firstChildPage && childPage > 0) {
             firstChildPage = childPage;
             firstChildPrintedPage = child->printedPage;
+            firstChildLabel = child->printedLabel;
+        }
+        if (!firstChildLabel && child->printedLabel && child->printedLabel[0]) {
+            firstChildLabel = child->printedLabel;
+            if (!(firstChildPrintedPage > 0) && child->printedPage > 0) {
+                firstChildPrintedPage = child->printedPage;
+            }
+            if (!firstChildPage && child->pageNo > 0) {
+                firstChildPage = child->pageNo;
+            }
+        }
+        if (!(firstChildPrintedPage > 0) && child->printedPage > 0) {
+            firstChildPrintedPage = child->printedPage;
+            if (!firstChildPage && child->pageNo > 0) {
+                firstChildPage = child->pageNo;
+            }
+            if (!firstChildLabel && child->printedLabel && child->printedLabel[0]) {
+                firstChildLabel = child->printedLabel;
+            }
         }
     }
     if (item->pageNo < 1 && firstChildPage > 0) {
         item->pageNo = firstChildPage;
+    }
+    if (!(item->printedPage > 0) && firstChildPrintedPage > 0) {
         item->printedPage = firstChildPrintedPage;
+    }
+    if ((!item->printedLabel || !item->printedLabel[0]) && firstChildLabel && firstChildLabel[0]) {
+        str::ReplaceWithCopy(&item->printedLabel, firstChildLabel);
     }
     return item->pageNo;
 }
@@ -1051,11 +1414,17 @@ static bool AiTocImportJson(AiTocDialog* dlg, const char* text) {
     Vec<ExtractedTocItem*> roots;
     Vec<ExtractedTocItem*> stack;
     AiTocSetImportProgress(dlg, _TRW("Importing TOC: arranging bookmark levels…"));
-    // Footer-based offset after the TOC spread. Do NOT use lastToc+printed: that
-    // invents one consistent wrong offset and calibration locks onto it.
-    int arabicOffset = TocCalibEstimateArabicOffset(dlg->work->engine, dlg->work->lastPage);
-    if (arabicOffset >= 0) {
-        logf("AI TOC: footer arabic offset=%d afterToc=%d\n", arabicOffset, dlg->work->lastPage);
+    // Seed from footers only when the file has no per-page PDG sheet names.
+    // 000076.pdg is printed page 76; adding one offset on a textless scan
+    // lands hundreds of pages away. Calib replaces either guess with the map.
+    Vec<int> pdgMap;
+    bool pdgBook = TocCalibBuildPdgPrintedMap(dlg->work->engine, pdgMap);
+    int arabicOffset = -1;
+    if (!pdgBook) {
+        arabicOffset = TocCalibEstimateArabicOffset(dlg->work->engine, dlg->work->lastPage);
+        if (arabicOffset >= 0) {
+            logf("AI TOC: footer arabic offset=%d afterToc=%d\n", arabicOffset, dlg->work->lastPage);
+        }
     }
     int nPages = dlg->work->engine ? dlg->work->engine->PageCount() : 0;
     for (int i = 0; i < parsed.items.Size(); i++) {
@@ -1079,7 +1448,17 @@ static bool AiTocImportJson(AiTocDialog* dlg, const char* text) {
             item->printedLabel = str::Dup(src.printedLabel);
         }
         item->pageNo = 0;
-        if (item->printedPage > 0 && arabicOffset >= 0) {
+        int labelPdf = 0;
+        if (!pdgBook && item->printedPage > 0) {
+            labelPdf = TocCalibPdfForPrintedLabel(dlg->work->engine, item->printedPage);
+        }
+        if (pdgBook && item->printedPage > 0) {
+            if (item->printedPage < pdgMap.Size() && pdgMap[item->printedPage] > 0) {
+                item->pageNo = pdgMap[item->printedPage];
+            }
+        } else if (labelPdf > 0) {
+            item->pageNo = labelPdf;
+        } else if (item->printedPage > 0 && arabicOffset >= 0) {
             item->pageNo = item->printedPage + arabicOffset;
             if (item->pageNo < 1) {
                 item->pageNo = 1;
@@ -1087,9 +1466,11 @@ static bool AiTocImportJson(AiTocDialog* dlg, const char* text) {
             if (nPages > 0 && item->pageNo > nPages) {
                 item->pageNo = nPages;
             }
-        } else if (item->printedLabel && item->printedLabel[0] && dlg->work->engine &&
-                   dlg->work->engine->HasPageLabels()) {
-            int byLabel = dlg->work->engine->GetPageByLabel(item->printedLabel);
+        } else if (item->printedLabel && item->printedLabel[0] && dlg->work->engine) {
+            int byLabel = 0;
+            if (dlg->work->engine->HasPageLabels()) {
+                byLabel = dlg->work->engine->GetPageByLabel(item->printedLabel);
+            }
             if (byLabel > 0 && (nPages < 1 || byLabel <= nPages)) {
                 item->pageNo = byLabel;
             }
@@ -1205,6 +1586,180 @@ struct AiTocClipboardRead {
     bool retry = false;
 };
 
+static void AppendAiTocJsonString(StrBuilder& out, const char* s) {
+    out.AppendChar('"');
+    if (s) {
+        for (const unsigned char* p = (const unsigned char*)s; *p; p++) {
+            unsigned char c = *p;
+            if (c == '"' || c == '\\') {
+                out.AppendChar('\\');
+                out.AppendChar((char)c);
+            } else if (c == '\n') {
+                out.Append("\\n");
+            } else if (c == '\r') {
+                out.Append("\\r");
+            } else if (c < 0x20) {
+                out.AppendFmt("\\u%04x", (unsigned)c);
+            } else {
+                out.AppendChar((char)c);
+            }
+        }
+    }
+    out.AppendChar('"');
+}
+
+static bool AiTocSamePrintedItem(const AiTocJsonItem& a, const AiTocJsonItem& b) {
+    if (!str::Eq(a.title ? a.title : "", b.title ? b.title : "")) {
+        return false;
+    }
+    if (a.hasPage != b.hasPage || a.printedPage != b.printedPage) {
+        return false;
+    }
+    return str::Eq(a.printedLabel ? a.printedLabel : "", b.printedLabel ? b.printedLabel : "");
+}
+
+// Concatenate each batch's items array in order. No rewriting, no invented
+// rows. An item that repeats the previous one (the same heading copied at a
+// batch boundary) is kept once.
+static TempStr AiTocConcatBatchJson(StrVec& batches) {
+    StrBuilder out;
+    out.Append("{\"items\":[");
+    bool any = false;
+    AiTocJsonItem prev{};
+    for (int b = 0; b < batches.Size(); b++) {
+        AiTocJsonVisitor parsed;
+        if (!json::Parse(batches.At(b), &parsed)) {
+            continue;
+        }
+        for (int i = 0; i < parsed.items.Size(); i++) {
+            AiTocJsonItem& it = parsed.items[i];
+            if (str::IsEmpty(it.title)) {
+                continue;
+            }
+            if (any && AiTocSamePrintedItem(prev, it)) {
+                continue;
+            }
+            if (any) {
+                out.AppendChar(',');
+            }
+            any = true;
+            out.Append("{\"title\":");
+            AppendAiTocJsonString(out, it.title);
+            out.Append(",\"page\":");
+            TempStr pageDigits = str::FormatTemp("%d", it.printedPage);
+            bool labelIsDigits = it.printedLabel && it.printedPage > 0 && str::Eq(it.printedLabel, pageDigits);
+            if (it.printedLabel && it.printedLabel[0] && !labelIsDigits) {
+                AppendAiTocJsonString(out, it.printedLabel);
+            } else if (it.hasPage && it.printedPage > 0) {
+                out.Append(pageDigits);
+            } else {
+                out.Append("null");
+            }
+            int level = it.level < 1 ? 1 : it.level;
+            out.AppendFmt(",\"level\":%d}", level);
+            str::ReplaceWithCopy(&prev.title, it.title);
+            str::ReplaceWithCopy(&prev.printedLabel, it.printedLabel);
+            prev.printedPage = it.printedPage;
+            prev.hasPage = it.hasPage;
+        }
+    }
+    prev.Free();
+    out.Append("]}");
+    if (!any) {
+        return nullptr;
+    }
+    return str::DupTemp(out.LendData());
+}
+
+struct AiTocNextBatchWork {
+    HWND owner = nullptr;
+    HANDLE dialogToken = nullptr;
+    HWND browser = nullptr;
+    AiChatService service = AiChatService::Doubao;
+    StrVec files;
+    int batchIndex = 0;
+    bool ok = false;
+};
+
+static void AiTocNextBatchFinished(AiTocNextBatchWork* w);
+
+static void AiTocNextBatchWorker(AiTocNextBatchWork* w) {
+    defer {
+        uitask::Post(MkFunc0<AiTocNextBatchWork>(AiTocNextBatchFinished, w), "AiTocNextBatchFinished");
+    };
+    if (!w || !w->browser || w->files.Size() < 1) {
+        if (w) {
+            w->ok = false;
+        }
+        return;
+    }
+    AiTocPasteTarget target;
+    target.owner = w->owner;
+    target.dialogToken = w->dialogToken;
+    target.browser = w->browser;
+    target.service = w->service;
+    target.files = &w->files;
+    w->ok = AiTocPasteOneBatch(&target, w->batchIndex, false, true);
+}
+
+static void AiTocNextBatchFinished(AiTocNextBatchWork* w) {
+    if (!w) {
+        return;
+    }
+    HWND hwnd = w->owner;
+    HANDLE token = w->dialogToken;
+    bool ok = w->ok;
+    delete w;
+    if (!hwnd || !IsWindow(hwnd) || GetPropW(hwnd, kAiTocToken) != token) {
+        return;
+    }
+    auto* dlg = (AiTocDialog*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    if (!dlg) {
+        return;
+    }
+    if (!ok) {
+        dlg->busy = false;
+        dlg->submitted = true;
+        SetWindowTextW(dlg->status, _TRW("Automatic send incomplete. Paste the clipboard content into the AI "
+                                         "input box and send."));
+        if (dlg->resend) {
+            EnableWindow(dlg->resend, TRUE);
+        }
+        return;
+    }
+    AiTocArmPrintedBatchWait(dlg);
+}
+
+static void AiTocSendNextPrintedBatch(AiTocDialog* dlg) {
+    if (!dlg->work || !dlg->work->browser || dlg->work->files.Size() < 1) {
+        return;
+    }
+    dlg->submitted = false;
+    dlg->busy = true;
+    if (dlg->resend) {
+        EnableWindow(dlg->resend, FALSE);
+    }
+    AiTocSetState(dlg, AiTocUiState::SendingToAi);
+    const char* lang = trans::GetCurrentLangCode();
+    bool zh = lang && (str::EqI(lang, "cn") || str::EqI(lang, "tw"));
+    int which = dlg->batchesGot + 1;
+    if (zh) {
+        SetWindowTextW(dlg->status, ToWStrTemp(str::FormatTemp("正在发送第 %d 批…", which)));
+    } else {
+        SetWindowTextW(dlg->status, ToWStrTemp(str::FormatTemp("Sending batch %d…", which)));
+    }
+    auto* w = new AiTocNextBatchWork();
+    w->owner = dlg->hwnd;
+    w->dialogToken = dlg->token;
+    w->browser = dlg->work->browser;
+    w->service = dlg->work->service;
+    w->batchIndex = dlg->batchesGot;
+    for (int i = 0; i < dlg->work->files.Size(); i++) {
+        w->files.Append(dlg->work->files.At(i));
+    }
+    RunAsync(MkFunc0<AiTocNextBatchWork>(AiTocNextBatchWorker, w), "AiTocNextBatch");
+}
+
 static void AiTocClipboardReady(AiTocClipboardRead* read) {
     defer {
         str::Free(read->text);
@@ -1238,6 +1793,46 @@ static void AiTocClipboardReady(AiTocClipboardRead* read) {
         return;
     }
     if (!IsAiTocJsonCandidate(start)) return;
+    if (dlg->work && dlg->work->imageBatches > 1) {
+        if (dlg->collectedBatchJson.Size() > 0 &&
+            str::Eq(dlg->collectedBatchJson.At(dlg->collectedBatchJson.Size() - 1), start)) {
+            AiTocSetMultiBatchWaitCopy(dlg);
+            return;
+        }
+        AiTocJsonVisitor probe;
+        if (!json::Parse(start, &probe)) {
+            SetWindowTextW(dlg->status, _TRW("TOC import not finished. Copy the AI reply again to retry."));
+            return;
+        }
+        bool titled = false;
+        for (int i = 0; i < probe.items.Size(); i++) {
+            if (!str::IsEmpty(probe.items[i].title)) {
+                titled = true;
+                break;
+            }
+        }
+        if (!titled) {
+            SetWindowTextW(dlg->status, _TRW("TOC import not finished. Copy the AI reply again to retry."));
+            return;
+        }
+        dlg->collectedBatchJson.Append(start);
+        dlg->batchesGot++;
+        logf("AI TOC: stored batch %d of %d\n", dlg->batchesGot, dlg->work->imageBatches);
+        if (dlg->batchesGot < dlg->work->imageBatches) {
+            AiTocSendNextPrintedBatch(dlg);
+            return;
+        }
+        TempStr merged = AiTocConcatBatchJson(dlg->collectedBatchJson);
+        if (merged && AiTocImportJson(dlg, merged)) {
+            return;
+        }
+        dlg->batchesGot--;
+        if (dlg->collectedBatchJson.Size() > 0) {
+            dlg->collectedBatchJson.RemoveAt(dlg->collectedBatchJson.Size() - 1);
+        }
+        SetWindowTextW(dlg->status, _TRW("TOC import not finished. Copy the AI reply again to retry."));
+        return;
+    }
     if (AiTocImportJson(dlg, start)) {
         return;
     }
@@ -2628,8 +3223,7 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         }
         // Prompt sent (or already on the clipboard with the chat browser open
         // for a manual paste): listen for the v2 reply and shrink to compact.
-        // AddClipboardFormatListener is a no-op when already registered.
-        AddClipboardFormatListener(hwnd);
+        AiTocEnsureClipboardListener(hwnd);
         dlg->busy = false;
         dlg->submitted = true;
         dlg->bodyMode = true;
@@ -2872,7 +3466,7 @@ static void AiTocUploadFinished(AiTocPocWork* work) {
     SetWindowTextW(dlg->send, _TRW("Send TOC Pages"));
     if (work->error) {
         if (work->files.Size() == work->pageNos.Size() && CopyAiChatPayloadToClipboard(work->files, kAiTocPrompt) &&
-            AddClipboardFormatListener(dlg->hwnd)) {
+            AiTocEnsureClipboardListener(dlg->hwnd)) {
             // Auto-send failed but the payload is on the clipboard and the
             // chat browser is open: unified waiting page in manual-paste mode.
             dlg->submitted = true;
@@ -2892,6 +3486,10 @@ static void AiTocUploadFinished(AiTocPocWork* work) {
         } else {
             SetWindowTextW(dlg->status, work->error ? _TRW(work->error) : nullptr);
         }
+    } else if (work->imageBatches > 1) {
+        dlg->collectedBatchJson.Reset();
+        dlg->batchesGot = 0;
+        AiTocArmPrintedBatchWait(dlg);
     } else {
         SetWindowTextW(dlg->status, _TRW("Sending prompt…"));
         SendAiTocPrompt(dlg);

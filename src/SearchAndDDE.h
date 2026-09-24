@@ -106,5 +106,8 @@ bool AbortFinding(MainWindow* win, bool hideMessage, bool waitForWorkers = true,
 void SuspendFindEngineAccess(MainWindow* win);
 void FindTextOnThread(MainWindow* win, TextSearch::Direction direction);
 void FindTextOnThread(MainWindow* win, TextSearch::Direction direction, const char* text, bool wasModified);
+// Start (or reuse) a search and jump to the first hit at/after fromPage
+// as soon as that hit exists. Does not wait for Enter or a results click.
+void FindBeginFromPage(MainWindow* win, int fromPage);
 extern bool gIsStartup;
 extern StrVec gDdeOpenOnStartup;

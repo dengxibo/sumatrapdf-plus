@@ -3030,6 +3030,7 @@ fz_pixmap* PdfDarkModeProcessV2SoftShadowPlatePixmap(fz_context* ctx, fz_pixmap*
 
     int paperSamples = 0, satHits = 0, chromaHits = 0, inkHits = 0;
     float lumSum = 0.f;
+    float lumSq = 0.f;
     int estStepX = w > 48 ? w / 48 : 1;
     int estStepY = h > 48 ? h / 48 : 1;
     for (int y = 0; y < h; y += estStepY) {
@@ -3039,6 +3040,7 @@ fz_pixmap* PdfDarkModeProcessV2SoftShadowPlatePixmap(fz_context* ctx, fz_pixmap*
             paperSamples++;
             float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
             lumSum += lum;
+            lumSq += lum * lum;
             float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
             float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
             float chroma = maxC - minC;
@@ -3060,7 +3062,11 @@ fz_pixmap* PdfDarkModeProcessV2SoftShadowPlatePixmap(fz_context* ctx, fz_pixmap*
     float chromaRatio = (float)chromaHits / (float)paperSamples;
     float inkRatio = (float)inkHits / (float)paperSamples;
     float meanLum = lumSum / (float)paperSamples;
-    if (!PdfDarkModeV2LooksLikeSoftShadowPlate(satRatio, chromaRatio, inkRatio, meanLum)) {
+    float lumVar = lumSq / (float)paperSamples - meanLum * meanLum;
+    if (lumVar < 0.f) {
+        lumVar = 0.f;
+    }
+    if (!PdfDarkModeV2LooksLikeSoftShadowPlate(satRatio, chromaRatio, inkRatio, meanLum, lumVar)) {
         return nullptr;
     }
 
