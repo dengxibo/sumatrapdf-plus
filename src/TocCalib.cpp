@@ -1609,10 +1609,32 @@ static void TocCalibReadFooterMark(EngineBase* engine, int pdf, int* arabicOut, 
 // Same folio rules as the printed index (tight band + trailing R1). The old
 // 0.78 loose parse swallowed credit years and skewed arabicOffset toward the
 // reference section on multi-schema books.
+// 2024 in a margin is a year. A feasibility report's own page numbers run
+// past 400, so the old hard cap dropped every later folio and the row showed
+// "?" or a leftover header digit.
+static bool TocCalibIsCalendarYear(int n) {
+    return n >= 1900 && n <= 2099;
+}
+
+static bool TocCalibFolioNumberOk(int arabic, int nPages) {
+    if (arabic < 1 || TocCalibIsCalendarYear(arabic)) {
+        return false;
+    }
+    int cap = nPages > 0 ? nPages : 400;
+    if (cap < 400) {
+        cap = 400;
+    }
+    if (cap > 9999) {
+        cap = 9999;
+    }
+    return arabic <= cap;
+}
+
 static int TocCalibFooterPrintedOnPage(EngineBase* engine, int pdf) {
     int arabic = 0;
     TocCalibReadFooterMark(engine, pdf, &arabic, nullptr, 0);
-    if (arabic < 1 || arabic == pdf || arabic > 400) {
+    int nPages = engine ? engine->PageCount() : 0;
+    if (!TocCalibFolioNumberOk(arabic, nPages)) {
         return 0;
     }
     return arabic;
@@ -1643,7 +1665,7 @@ int TocCalibEstimateArabicOffset(EngineBase* engine, int afterTocPdf) {
     int n = 0;
     for (int pdf = start; pdf <= end && n < 64; pdf++) {
         int pr = TocCalibFooterPrintedOnPage(engine, pdf);
-        if (pr < 1 || pr > 300) {
+        if (!TocCalibFolioNumberOk(pr, nPages)) {
             continue;
         }
         int off = pdf - pr;
@@ -1780,6 +1802,53 @@ static void TocCalibSeedPrintedFromPages(TocCalibSession* s) {
         }
         if (TocCalibHasPrinted(pr)) {
             it->printedPage = pr;
+        }
+    }
+    // The same digit on sheets far apart is a running header ("11" on PDF 210
+    // and 233), not a folio. A real restart (preface 1, then body 1) still
+    // begins a 1,2,3 run and is kept. Decide every row before clearing, so
+    // dropping the first copy does not hide the span from the next one.
+    Vec<int> drop;
+    for (int i = 0; i < s->rows.Size(); i++) {
+        ExtractedTocItem* it = s->rows[i].item;
+        if (!it || !TocCalibHasPrinted(it->printedPage) || it->pageNo < 1) {
+            continue;
+        }
+        int pr = it->printedPage;
+        int minPdf = 0;
+        int maxPdf = 0;
+        bool startsRun = false;
+        for (int j = 0; j < s->rows.Size(); j++) {
+            ExtractedTocItem* o = s->rows[j].item;
+            if (!o || o->printedPage != pr || o->pageNo < 1) {
+                continue;
+            }
+            if (minPdf < 1 || o->pageNo < minPdf) {
+                minPdf = o->pageNo;
+            }
+            if (o->pageNo > maxPdf) {
+                maxPdf = o->pageNo;
+            }
+        }
+        if (maxPdf - minPdf <= 4) {
+            continue;
+        }
+        for (int j = 0; j < s->rows.Size(); j++) {
+            ExtractedTocItem* o = s->rows[j].item;
+            if (!o || o->printedPage != pr + 1 || o->pageNo <= it->pageNo || o->pageNo > it->pageNo + 8) {
+                continue;
+            }
+            startsRun = true;
+            break;
+        }
+        if (!startsRun) {
+            drop.Append(i);
+        }
+    }
+    for (int i = 0; i < drop.Size(); i++) {
+        ExtractedTocItem* it = s->rows[drop[i]].item;
+        if (it) {
+            it->printedPage = 0;
         }
     }
 }
@@ -3502,9 +3571,6 @@ static void TocCalibReadFooterMark(EngineBase* engine, int pdf, int* arabicOut, 
                 continue;
             }
             pr = 0;
-        }
-        if (pr > 0 && pr == pdf) {
-            continue;
         }
         if (isFooter) {
             if (have && y < bestFooterY) {
@@ -7020,7 +7086,39 @@ static void TocCalibDrawOffsetArrow(HDC hdc, HWND hwnd, const RECT& col, const R
             offRc.bottom = offRc.top + 1;
         }
         SetTextColor(hdc, ink);
-        DrawTextW(hdc, offset, -1, &offRc, DT_SINGLELINE | DT_CENTER | DT_TOP | DT_NOPREFIX | DT_END_ELLIPSIS);
+        // "+199" in the 28px arrow column was ellipsized to "+1...", so the
+        // printed page and the PDF page looked unrelated.
+        HFONT shrink = nullptr;
+        HFONT prevFont = nullptr;
+        int len = (int)wcsnlen(offset, 16);
+        SIZE sz{};
+        if (len > 0 && GetTextExtentPoint32W(hdc, offset, len, &sz)) {
+            int colW = col.right - col.left;
+            if (sz.cx > colW && sz.cx > 0 && colW > 4) {
+                LOGFONTW lf{};
+                HFONT cur = (HFONT)GetCurrentObject(hdc, OBJ_FONT);
+                if (cur && GetObjectW(cur, sizeof(lf), &lf)) {
+                    lf.lfHeight = MulDiv(lf.lfHeight, colW, sz.cx);
+                    int minPx = DpiScale(hwnd, 8);
+                    if (lf.lfHeight < 0 && -lf.lfHeight < minPx) {
+                        lf.lfHeight = -minPx;
+                    } else if (lf.lfHeight > 0 && lf.lfHeight < minPx) {
+                        lf.lfHeight = minPx;
+                    }
+                    shrink = CreateFontIndirectW(&lf);
+                    if (shrink) {
+                        prevFont = (HFONT)SelectObject(hdc, shrink);
+                    }
+                }
+            }
+        }
+        DrawTextW(hdc, offset, len, &offRc, DT_SINGLELINE | DT_CENTER | DT_TOP | DT_NOPREFIX | DT_NOCLIP);
+        if (prevFont) {
+            SelectObject(hdc, prevFont);
+        }
+        if (shrink) {
+            DeleteObject(shrink);
+        }
     }
     TocCalibDrawShaftArrow(hdc, x1, x2, arrowY, head, ink);
 }
@@ -8384,6 +8482,10 @@ void TocCalibJumpToContents(MainWindow* win) {
 
 void TocCalibJumpToItemContents(MainWindow* win, TocItem* item) {
     TocCalibJumpToRowContents(win, TocCalibRowForTocItem(win, item));
+}
+
+bool TocCalibBarVisible(MainWindow* win) {
+    return win && win->tocCalibBar && win->tocCalibBar->IsVisible();
 }
 
 bool TocCalibIsActive(MainWindow* win) {

@@ -2,6 +2,18 @@
 
 ## next
 
+- 提取目录、校准书签时，书签栏底部不再露出一块白底。校准条还没出现时不再给它留空。
+  While bookmarks are being calibrated, the sidebar no longer shows a white strip at the bottom. That space is reserved only once the calibration bar is visible.
+- 对准印刷目录：页差显示完整数字（`+199` 不再被截成 `+1...`）。页脚页码和当前页相同、或大于 400 时仍保留。隔得很远的页面上重复出现的同一个数字（页眉）不再当成印刷页。
+  Align printed TOC: the offset shows the full number (`+199` is no longer cut down to `+1...`). A footer folio is kept when it matches the viewer page or is past 400. A digit repeated on distant pages (a running header) is not used as the printed page.
+- Word 正文标题会带上样式里的自动编号（`第1章`、`1.1`、`1.1.1`）。目录页上的条目不再混进侧边栏；同一标题上后加的书签也能跳到这一节。
+  Word headings show the numbering stored on the style (`第1章`, `1.1`, `1.1.1`). Printed contents lines stay out of the sidebar, and a later bookmark on the same heading still jumps to that section.
+- Word 正文里的目录页会画出标题和页码之间的点线（`........`），点击一条会跳到对应标题。
+  A Word document's printed contents page draws the dotted leaders between each title and its page number, and clicking an entry jumps to that heading.
+- 切换标签时不再崩溃：延迟加载和异步打开各持有一份阅读进度，完成加载时只应用一次。先前两处共用同一份状态，后一次在 `displayMode` 已被释放后仍去比较，触发访问冲突。
+  Switching tabs no longer crashes. A lazy restore and the async open each keep their own copy of the reading state, and the load is finished only once. They used to share one `TabState`, so the second finish compared `displayMode` after it had been freed.
+- 本地提取目录：`1.1` / `1.1.1` 挂在当前 `第N节` 下，没有节时挂在 `第N章` 下，再没有章时挂在 `附件N` 下。报告标题把章压到第 2 层时，`1.1` 不再和 `第1章` 并列。Word 与公文 PDF 同一套层级。
+  Local TOC extract: `1.1` / `1.1.1` nest under the open `第N节`, otherwise under `第N章`, otherwise under `附件N`. When a report title already places the chapter at level 2, `1.1` is no longer a sibling of `第1章`. Word and official PDFs share this layout.
 - 对准印刷目录：印刷页和 PDF 页中间显示页差（如 `+5`），箭头在数字下面，字号与页码相同。和上一行不同的页差用正文色，其余用灰色。没有印刷页时不显示页差。
   Align printed TOC: the gap between the printed folio and the PDF page shows the offset (for example `+5`), with the arrow under that number, at the same size as the page digits. An offset that differs from the previous row uses normal text; the others stay gray. Rows without a folio show no offset.
 - 对准印刷目录：双击一条目录，在已经核对并发给 AI 的那几页目录里找这条标题，落到它所在的那一页，不再总是打开目录首页。底栏「目录页」和顶上的「目录」打开这份名单的第一页。扫描书只识别这几页，不重扫全书。

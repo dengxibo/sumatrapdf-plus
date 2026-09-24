@@ -283,6 +283,10 @@ LoadArgs::LoadArgs(const char* origPath, MainWindow* win) {
 
 LoadArgs::~LoadArgs() {
     delete fileArgs;
+    if (tabState) {
+        FreeTabState(tabState);
+        tabState = nullptr;
+    }
 }
 
 const char* LoadArgs::FilePath() const {
@@ -307,7 +311,9 @@ LoadArgs* LoadArgs::Clone() {
     res->syncLoad = syncLoad;
     res->showLoadingProgress = showLoadingProgress;
     res->activateExisting = activateExisting;
-    res->tabState = tabState;
+    // Deep copy. The source LoadArgs still owns its TabState; sharing the
+    // pointer let one finish free it while another load still applied it.
+    res->tabState = CloneTabState(tabState);
     return res;
 }
 
@@ -2442,7 +2448,10 @@ void ReloadDocument(MainWindow* win, bool autoRefresh) {
             LoadArgs args(tab->filePath, win);
             args.forceReuse = true;
             args.noSavePrefs = true;
-            args.tabState = tab->tabState;
+            // Do not hand the tab's pointer to the load. The async clone and
+            // this stack LoadArgs each own a copy; the tab keeps its own until
+            // the finish handler applies it.
+            args.tabState = CloneTabState(tab->tabState);
             LoadDocument(&args);
         }
         return;
@@ -3783,6 +3792,45 @@ static void AttachDocumentToBackgroundTab(LoadArgs* args, WindowTab* tab) {
     }
 }
 
+// Apply saved reading state once the controller is attached.
+// tab->tabState and args->tabState may still alias on older call sites.
+// Free each object once. Without a controller, keep one copy on the tab:
+// freeing it here left the in-flight load holding a dangling displayMode.
+static void ConsumeLoadTabState(WindowTab* currTab, LoadArgs* args) {
+    if (!currTab || !args) {
+        return;
+    }
+    TabState* fromTab = currTab->tabState;
+    TabState* fromArgs = args->tabState;
+    if (fromTab && fromTab == fromArgs) {
+        fromArgs = nullptr;
+        args->tabState = nullptr;
+    }
+    if (!currTab->ctrl) {
+        if (!fromTab && fromArgs) {
+            currTab->tabState = fromArgs;
+            args->tabState = nullptr;
+        } else if (fromArgs) {
+            FreeTabState(fromArgs);
+            args->tabState = nullptr;
+        }
+        return;
+    }
+    TabState* apply = fromTab ? fromTab : fromArgs;
+    if (apply) {
+        SetTabState(currTab, apply);
+    }
+    // SetTabState can pump and a nested finish may already have freed these.
+    if (fromTab && currTab->tabState == fromTab) {
+        FreeTabState(fromTab);
+        currTab->tabState = nullptr;
+    }
+    if (fromArgs && args->tabState == fromArgs) {
+        FreeTabState(fromArgs);
+        args->tabState = nullptr;
+    }
+}
+
 MainWindow* LoadDocumentFinish(LoadArgs* args) {
     MainWindow* win = args->win;
     const char* fullPath = args->FilePath();
@@ -3867,22 +3915,9 @@ MainWindow* LoadDocumentFinish(LoadArgs* args) {
     logf("LoadDocument: after ReplaceDocumentInCurrentTab win->CurrentTab() is 0x%p, path: '%s', %d pages\n", currTab,
          path.Get(), nPages);
 #endif
-    // when lazy loading: first time remember tab state, second time is
-    // real loading so restore tab state
-    if (!currTab->ctrl && !currTab->tabState) {
-        currTab->tabState = args->tabState;
-        args->tabState = nullptr;
-    } else if (currTab->tabState) {
-        SetTabState(currTab, currTab->tabState);
-        FreeTabState(currTab->tabState);
-        currTab->tabState = nullptr;
-    } else if (args->tabState) {
-        // Non-lazy startup loads are asynchronous too. Apply the state carried
-        // by this load only after its controller has been attached.
-        SetTabState(currTab, args->tabState);
-        FreeTabState(args->tabState);
-        args->tabState = nullptr;
-    }
+    // Lazy load stores the state. A real load applies it after the controller
+    // is attached. Do not free a state SetTabState could not apply.
+    ConsumeLoadTabState(currTab, args);
     // A font-size reload uses the regular asynchronous EPUB open path. The
     // first coherent batch is now attached, so restore the saved reading
     // anchor without waiting for the remaining chapters to finish counting.
@@ -4087,6 +4122,11 @@ struct LoadDocumentAsyncData {
     EngineBase* engine = nullptr;
     WindowTab* targetTab = nullptr;
     volatile LONG displayedOnUI = 0;
+    volatile LONG asyncFinishEntered = 0;
+    // UI thread only. Early display and the worker completion both finish the
+    // load; a second entry used to apply a TabState the first entry had freed.
+    int finishDepth = 0;
+    bool releaseAfterFinish = false;
     LoadDocumentAsyncData() = default;
     ~LoadDocumentAsyncData() { delete args; }
 };
@@ -4100,7 +4140,32 @@ struct EarlyEngineDisplayTask {
     LoadDocumentAsyncData* d = nullptr;
 };
 
+static void ReleaseAsyncLoad(LoadDocumentAsyncData* d) {
+    if (!d) {
+        return;
+    }
+    if (d->finishDepth > 0) {
+        // Still inside FinishAsyncDocumentLoad, which may have pumped this
+        // completion. The outer frame deletes after it is done with d.
+        d->releaseAfterFinish = true;
+        return;
+    }
+    delete d;
+}
+
 static void FinishAsyncDocumentLoad(LoadDocumentAsyncData* d) {
+    if (!d) {
+        return;
+    }
+    // Claim before any UI that pumps, so the worker completion cannot run a
+    // second finish while this one is still applying tab state.
+    if (InterlockedExchange(&d->displayedOnUI, 1) != 0) {
+        return;
+    }
+    d->finishDepth++;
+    defer {
+        d->finishDepth--;
+    };
     auto args = d->args;
     MainWindow* win = args->win;
     if (!IsMainWindowValid(win) || win->isBeingClosed) {
@@ -4153,6 +4218,10 @@ static void EarlyEngineDisplayUI(EarlyEngineDisplayTask* task) {
             RemoveNotification(d->wndNotif);
             d->wndNotif = nullptr;
         }
+        // The worker completion ran reentrantly and left deletion to us.
+        if (d && d->releaseAfterFinish && d->finishDepth == 0) {
+            delete d;
+        }
     };
     if (!d || !task->engine) {
         return;
@@ -4176,7 +4245,6 @@ static void EarlyEngineDisplayUI(EarlyEngineDisplayTask* task) {
     d->engine = nullptr;
 
     FinishAsyncDocumentLoad(d);
-    InterlockedExchange(&d->displayedOnUI, 1);
 }
 
 void NotifyEngineDisplayReady(EngineBase* engine) {
@@ -4196,23 +4264,32 @@ void NotifyEngineDisplayReady(EngineBase* engine) {
 }
 
 static void LoadDocumentAsyncFinish(LoadDocumentAsyncData* d) {
+    if (!d) {
+        return;
+    }
+    // Re-entry from a pump inside FinishAsyncDocumentLoad. The outer call deletes d.
+    if (InterlockedExchange(&d->asyncFinishEntered, 1) != 0) {
+        return;
+    }
     if (d->wndNotif) {
         UpdateAsyncLoadingProgress(d->wndNotif, d->args, 100);
         RemoveNotification(d->wndNotif);
         d->wndNotif = nullptr;
     }
-    AutoDelete delData(d);
 
     if (InterlockedCompareExchange(&d->displayedOnUI, 0, 0) != 0) {
+        ReleaseAsyncLoad(d);
         return;
     }
 
     auto args = d->args;
     MainWindow* win = args->win;
     if (!IsMainWindowValid(win)) {
+        ReleaseAsyncLoad(d);
         return;
     }
     if (win->isBeingClosed) {
+        ReleaseAsyncLoad(d);
         return;
     }
     const char* path = args->FilePath();
@@ -4236,9 +4313,11 @@ static void LoadDocumentAsyncFinish(LoadDocumentAsyncData* d) {
         // which can pump messages and change tab selection
         WindowTab* currTab = win->CurrentTab();
         win->ctrl = currTab ? currTab->ctrl : nullptr;
+        ReleaseAsyncLoad(d);
         return;
     }
     FinishAsyncDocumentLoad(d);
+    ReleaseAsyncLoad(d);
 }
 
 // Progress notification payload posted from archive extraction (worker
@@ -4779,11 +4858,14 @@ void LoadModelIntoTab(WindowTab* tab) {
             win->ctrl->SetViewPortSize(viewPort);
         }
         if (tab->tabState) {
-            logf("SESSIONTRACE LoadModelIntoTab applying file='%s' tabStatePage=%d\n", tab->filePath,
-                 tab->tabState->pageNo);
-            SetTabState(tab, tab->tabState);
-            FreeTabState(tab->tabState);
-            tab->tabState = nullptr;
+            TabState* state = tab->tabState;
+            logf("SESSIONTRACE LoadModelIntoTab applying file='%s' tabStatePage=%d\n", tab->filePath, state->pageNo);
+            SetTabState(tab, state);
+            // A pumped load finish may already have applied and freed this state.
+            if (tab->tabState == state) {
+                FreeTabState(state);
+                tab->tabState = nullptr;
+            }
         } else if (tab->canvasRc == win->canvasRc) {
             // avoid double setting of scroll state -> it gets triggered by SetViewPortSize();
             dm->SetScrollState(dm->GetScrollState());

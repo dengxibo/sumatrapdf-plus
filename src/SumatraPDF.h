@@ -237,6 +237,8 @@ struct FileArgs;
 struct LoadArgs {
     explicit LoadArgs(const char* origPath, MainWindow* win);
     ~LoadArgs();
+    LoadArgs(const LoadArgs&) = delete;
+    LoadArgs& operator=(const LoadArgs&) = delete;
 
     const char* FilePath() const;
     void SetFilePath(const char* path);
@@ -271,6 +273,8 @@ struct LoadArgs {
 
     FileArgs* fileArgs = nullptr;
 
+    // Owned by this LoadArgs. Clone() deep-copies it. Freed in the destructor
+    // unless a finish handler has taken it (and nulled this pointer).
     TabState* tabState = nullptr;
 
   private:

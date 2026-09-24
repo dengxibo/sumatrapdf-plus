@@ -353,7 +353,7 @@ static MainWindow* LoadOnStartup(const char* filePath, const Flags& flags, bool 
 }
 
 void SetTabState(WindowTab* tab, TabState* state) {
-    if (!tab || !tab->ctrl) {
+    if (!tab || !tab->ctrl || !state) {
         return;
     }
 
@@ -378,7 +378,9 @@ void SetTabState(WindowTab* tab, TabState* state) {
         }
     }
 
-    tab->tocState = *state->tocState;
+    if (state->tocState) {
+        tab->tocState = *state->tocState;
+    }
     SetSidebarVisibility(win, state->showToc, gGlobalPrefs->showFavorites);
 
     DisplayMode displayMode = DisplayModeFromString(state->displayMode, DisplayMode::Automatic);
@@ -428,12 +430,8 @@ static void RestoreTabOnStartup(MainWindow* win, TabState* state, bool lazyLoad 
     // to whichever tab happens to be current at that time.
     args.tabState = CloneTabState(state);
     args.lazyLoad = lazyLoad;
-    if (!LoadDocument(&args)) {
-        if (args.tabState) {
-            FreeTabState(args.tabState);
-        }
-        return;
-    }
+    // LoadArgs owns tabState and frees it if the load does not take the pointer.
+    LoadDocument(&args);
 }
 
 static bool SetupPluginMode(Flags& i) {

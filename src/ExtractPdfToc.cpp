@@ -17475,6 +17475,43 @@ static void RunPrintedTocLogicTestsPhase2(int* pass, int* fail, int* failMask) {
         DeleteExtractedTocItems(roots);
     }
     {
+        // 可研: a larger title leaves 第N章 at level 2, same as Infer's 1.1.
+        // 1.1 / 1.2 must sit under that chapter, 1.4.1 under 1.4, and 3.1 under
+        // 第N节. Word local extract and official PDF share this relayout.
+        Vec<ExtractedTocItem*> flat;
+        flat.Append(NewItem("江西省数字住建系统一期项目可行性研究报告", 1, 72, 10, 1));
+        flat.Append(NewItem("附表1 关于印发", 2, 72, 10, 2));
+        flat.Append(NewItem("第1章 概述", 3, 72, 10, 2));
+        flat.Append(NewItem("1.1 项目概况", 3, 72, 20, 2));
+        flat.Append(NewItem("1.2 项目单位概况", 4, 72, 10, 2));
+        flat.Append(NewItem("1.4 主要结论与建议", 5, 72, 10, 2));
+        flat.Append(NewItem("1.4.1 建立项目的协调沟通机制", 5, 72, 20, 3));
+        flat.Append(NewItem("第2章 项目建设背景和必要性", 8, 72, 10, 2));
+        flat.Append(NewItem("2.1 项目建设背景", 8, 72, 20, 2));
+        flat.Append(NewItem("第3章 建设方案", 12, 72, 10, 2));
+        flat.Append(NewItem("第1节 总体架构", 12, 72, 20, 2));
+        flat.Append(NewItem("3.1 架构设计", 12, 72, 30, 2));
+        Vec<ExtractedTocItem*> roots;
+        BuildTreeFromFlat(flat, roots);
+        RelayoutOfficialArabicListLevels(roots);
+        ExtractedTocItem* ch1 = ExtractedFindContaining(roots, "第1章");
+        ExtractedTocItem* ch2 = ExtractedFindContaining(roots, "第2章");
+        ExtractedTocItem* sec = ExtractedFindContaining(roots, "第1节");
+        ExtractedTocItem* s14 = ch1 ? ExtractedFindContaining(ch1->children, "1.4") : nullptr;
+        bool ok = ch1 && ch2 && sec && s14 && ExtractedHasPrefix(ch1->children, "1.1") &&
+                  ExtractedHasPrefix(ch1->children, "1.2") && ExtractedHasPrefix(ch1->children, "1.4") &&
+                  ExtractedHasPrefix(s14->children, "1.4.1") && ExtractedHasPrefix(ch2->children, "2.1") &&
+                  ExtractedHasPrefix(sec->children, "3.1") && !ExtractedIsRootContaining(roots, "1.1") &&
+                  !ExtractedIsRootContaining(roots, "2.1") && !ExtractedIsRootContaining(roots, "3.1");
+        if (ok) {
+            (*pass)++;
+        } else {
+            (*fail)++;
+            LogBookExtractFail("official-chapter-decimal-under-title", roots);
+        }
+        DeleteExtractedTocItems(roots);
+    }
+    {
         // Born-digital 可研/验收 printed 目录: do not harvest body 一、 / 2.2.1.
         Vec<ExtractedTocItem*> printed;
         printed.Append(NewItem("引言", 1, 72, 10, 1));
@@ -28925,6 +28962,7 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
     int lAp = 0;
     int lForm = 0;
     int lChapter = 0;
+    int lSection = 0;
     int lDunhao = 0;
     int lArticle = 0;
     int lParen = 0;
@@ -28942,6 +28980,7 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
             lAp = 0;
             lForm = 0;
             lChapter = 0;
+            lSection = 0;
             lDunhao = 0;
             lArticle = 0;
             lParen = 0;
@@ -28972,6 +29011,7 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
             }
             it->level = need;
             lChapter = it->level;
+            lSection = 0;
             lForm = 0;
             lDunhao = 0;
             lArticle = 0;
@@ -28998,6 +29038,7 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
             }
             lForm = 0;
             lChapter = 0;
+            lSection = 0;
             lDunhao = 0;
             lArticle = 0;
             lParen = 0;
@@ -29025,6 +29066,7 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
                 need = 6;
             }
             it->level = need;
+            lSection = it->level;
             lForm = 0;
             lDunhao = 0;
             lArticle = 0;
@@ -29126,18 +29168,46 @@ static void RelayoutOfficialArabicListLevels(Vec<ExtractedTocItem*>& roots) {
         }
         ParsedNumbering num;
         ParseHeadingNumbering(it->title, &num);
-        // 1.12333电话… parses as ArabicDot rank 3 (list) even when numbering
+        // 1.12333电话… parses as ArabicDot rank 3 (list "1.") even when numbering
         // still sees two digit runs. Treating it as 1.1 would reset lParen and
-        // leave the 1. 2. 3. under （二） as siblings of （二）.
+        // leave the 1. 2. 3. under （二） as siblings of （二）. A real 1.4.1
+        // has two dots in the marker prefix; that one stays a dotted section.
         bool dottedSection = num.nComp >= 2;
-        if (dottedSection && m.type == MarkerType::ArabicDot && m.rank >= 3) {
-            dottedSection = false;
+        if (dottedSection && m.type == MarkerType::ArabicDot && m.rank >= 3 && it->title) {
+            int dots = 0;
+            int nPre = m.prefixLength > 0 ? m.prefixLength : (int)str::Len(it->title);
+            const char* ts = it->title;
+            for (int k = 0; k < nPre && ts[k]; k++) {
+                unsigned char c = (unsigned char)ts[k];
+                if (c == '.') {
+                    dots++;
+                } else if (c == 0xEF && k + 2 < nPre && (unsigned char)ts[k + 1] == 0xBC &&
+                           (unsigned char)ts[k + 2] == 0x8E) {
+                    dots++;
+                    k += 2;
+                }
+            }
+            if (dots < 2) {
+                dottedSection = false;
+            }
         }
         if (dottedSection) {
             lDunhao = 0;
             lParen = 0;
             lArticle = 0;
-            int base = lAp > 0 ? lAp : 1;
+            // 1.1 / 1.1.1 sit under the open 第N节, else 第N章, else 附件N.
+            // A document title (or a larger 附表) often leaves the chapter at
+            // level 2 while this used to count from 1, so 1.1 stayed beside 第1章
+            // and only 1.1.1 dropped one step. Word local extract and official
+            // PDFs both pass through here.
+            int base = 1;
+            if (lSection > 0) {
+                base = lSection;
+            } else if (lChapter > 0) {
+                base = lChapter;
+            } else if (lAp > 0) {
+                base = lAp;
+            }
             int need = base + num.nComp - 1;
             if (need < 1) {
                 need = 1;

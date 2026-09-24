@@ -3936,7 +3936,10 @@ static void LayoutTocContainer(MainWindow* win) {
         }
     }
     int barDy = 0;
-    if (TocCalibIsActive(win)) {
+    // Reserve the footer only while it is on screen. During bookmark
+    // calibration the session is already active, but the bar is still hidden.
+    // Leaving a gap then shows the static control's white fill.
+    if (TocCalibBarVisible(win)) {
         barDy = TocCalibBarDy(win);
         if (barDy > dy - 40) {
             barDy = dy - 40;
@@ -4735,16 +4738,23 @@ static LRESULT CALLBACK WndProcTocBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         return 0;
     }
 
-    if (msg == WM_ERASEBKGND) {
-        HDC hdc = (HDC)wp;
-        RECT rc;
-        GetClientRect(hwnd, &rc);
+    if (msg == WM_ERASEBKGND || msg == WM_PAINT) {
         TreeView* tv = win->tocTreeView;
         COLORREF bgCol = SidebarBackgroundColor(tv ? tv->bgColor : kColorUnset);
         HBRUSH br = CreateSolidBrush(bgCol);
-        FillRect(hdc, &rc, br);
+        if (msg == WM_ERASEBKGND) {
+            RECT rc;
+            GetClientRect(hwnd, &rc);
+            FillRect((HDC)wp, &rc, br);
+            DeleteObject(br);
+            return 1;
+        }
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hwnd, &ps);
+        FillRect(hdc, &ps.rcPaint, br);
         DeleteObject(br);
-        return 1;
+        EndPaint(hwnd, &ps);
+        return 0;
     }
 
     LRESULT res = 0;

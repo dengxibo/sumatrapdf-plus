@@ -150,6 +150,7 @@ void HideTocCalib(MainWindow* win);
 void TocCalibUpdateTheme(MainWindow* win);
 void DeleteTocCalibUi(MainWindow* win);
 bool TocCalibIsActive(MainWindow* win);
+bool TocCalibBarVisible(MainWindow* win);
 void RelayoutTocCalib(MainWindow* win);
 int TocCalibBarDy(MainWindow* win);
 void TocCalibOnTabSwitch(MainWindow* win);

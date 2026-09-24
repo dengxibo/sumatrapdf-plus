@@ -30,53 +30,53 @@
 
 /* Defaults are all 0's. FIXME: Very subject to change. Possibly might be removed entirely. */
 typedef struct {
-    int output_page_numbers;
-    int output_sheet_names;
-    int output_cell_markers;
-    int output_cell_row_markers;
-    int output_cell_names;
-    int output_formatting;
-    int output_filenames;
-    int output_errors;
+	int output_page_numbers;
+	int output_sheet_names;
+	int output_cell_markers;
+	int output_cell_row_markers;
+	int output_cell_names;
+	int output_formatting;
+	int output_filenames;
+	int output_errors;
 } fz_office_to_html_opts;
 
 typedef struct {
-    fz_office_to_html_opts opts;
+	fz_office_to_html_opts opts;
 
     fz_output* out;
 
-    int page;
+	int page;
 
-    /* State for if we are parsing a sheet. */
-    /* The last column label we have to send. */
+	/* State for if we are parsing a sheet. */
+	/* The last column label we have to send. */
     char* label;
-    /* Columns are numbered from 1. */
-    /* The column we are at. */
-    int col_at;
-    /* The column we last signalled. If this is 0, then we haven't
-     * even started a row yet. */
-    int col_signalled;
+	/* Columns are numbered from 1. */
+	/* The column we are at. */
+	int col_at;
+	/* The column we last signalled. If this is 0, then we haven't
+	 * even started a row yet. */
+	int col_signalled;
 
-    /* If we are currently processing a spreadsheet, store the current
-     * sheets name here. */
+	/* If we are currently processing a spreadsheet, store the current
+	 * sheets name here. */
     const char* sheet_name;
 
-    int shared_string_max;
-    int shared_string_len;
+	int shared_string_max;
+	int shared_string_len;
     char** shared_strings;
 
-    int footnotes_max;
+	int footnotes_max;
     char** footnotes;
 
     char* title;
 
-    /* Word document context for resolving images etc. */
+	/* Word document context for resolving images etc. */
     fz_archive* arch;
     const char* doc_file;
     fz_xml* doc_rels;
-    int do_pages;
-    /* 0 = none, 1 = <ul>, 2 = <ol> */
-    int list_kind;
+	int do_pages;
+	/* 0 = none, 1 = <ul>, 2 = <ol> */
+	int list_kind;
     /* >0 while emitting a table — skip text-outline inference (cell noise). */
     int in_table;
     /* >0 while emitting a paragraph/heading — do not inject page <div>s mid-flow. */
@@ -93,6 +93,13 @@ typedef struct {
     unsigned char* style_levels;
     int style_len;
     int style_cap;
+    /* Cached paragraph-style facts: TOC style, and numPr inherited from the style. */
+    char** fact_ids;
+    unsigned char* fact_toc;
+    int* fact_numid;
+    int* fact_ilvl;
+    int fact_n;
+    int fact_cap;
     /* Kept styles.xml root for table border / style lookup (owned). */
     fz_xml* styles_xml;
     /* word/numbering.xml (owned) + per-numId counters for auto markers. */
@@ -133,6 +140,14 @@ typedef struct {
     int para_seen_text;
     /* 0-based row while emitting a table cell; -1 outside tables. */
     int table_row;
+    /* Word TOC right-tab leader. 0 = ordinary tab (four spaces). '.' / '-' / '_'. */
+    int para_leader;
+    float para_tab_pt;    /* right edge of the leader, from the left content edge */
+    float para_origin_pt; /* this paragraph's first-line indent */
+    float para_advance_pt;
+    float para_font_pt;
+    /* HYPERLINK \l field anchor when the paragraph has no w:hyperlink element. */
+    char para_field_anchor[160];
 } doc_info;
 
 static int ascii_strncasecmp(const char* a, const char* b, size_t n) {
@@ -193,7 +208,7 @@ static void word_styles_set(fz_context* ctx, doc_info* info, const char* style_i
         if (!strcmp(info->style_ids[i], style_id)) {
             /* Prefer the stronger (already set) level; keep first. */
             if (info->style_levels[i] == 0) info->style_levels[i] = (unsigned char)level;
-            return;
+		return;
         }
     }
     if (info->style_len == info->style_cap) {
@@ -477,6 +492,77 @@ static int word_plain_is_only_arabic_markers(const char* p) {
     return saw;
 }
 
+/* Consume a run of ASCII digits or 一..十 (including 十二 / 二十). */
+static int word_consume_heading_numeral(const char** pp) {
+    const char* q = *pp;
+    int saw = 0;
+
+    if (!q || !q[0]) return 0;
+    if (*q >= '0' && *q <= '9') {
+        while (*q >= '0' && *q <= '9') q++;
+        *pp = q;
+        return 1;
+    }
+    for (;;) {
+        int nlen = word_chinese_numeral_bytes(q);
+        if (nlen <= 0) break;
+        q += nlen;
+        saw = 1;
+    }
+    if (!saw) return 0;
+    *pp = q;
+    return 1;
+}
+
+/*
+ * Structural depth of a heading title, independent of Word's style.
+ * 第N章/篇/编 = 1, 第N节 = 2. "1.2" = 2, "1.2.3" = 3.
+ * A trailing "1." / "2、" list item is not a section (return 0).
+ */
+static int word_structural_heading_depth(const char* text) {
+    const char* p = word_skip_leading_space(text);
+    const char* q;
+
+    if (!p || !p[0]) return 0;
+    if (strstr(p, "。") || strstr(p, "；")) return 0;
+
+    if (word_utf8_eq(p, "第")) {
+        q = word_skip_leading_space(p + 3);
+        if (!word_consume_heading_numeral(&q)) return 0;
+        q = word_skip_leading_space(q);
+        if (word_utf8_eq(q, "章") || word_utf8_eq(q, "篇") || word_utf8_eq(q, "编") || word_utf8_eq(q, "部") ||
+            word_utf8_eq(q, "回"))
+            return 1;
+        if (word_utf8_eq(q, "节")) return 2;
+        return 0;
+    }
+
+    if (*p >= '1' && *p <= '9') {
+        int comps = 0;
+        q = p;
+        while (comps < 6 && *q >= '0' && *q <= '9') {
+            while (*q >= '0' && *q <= '9') q++;
+            comps++;
+            if (*q == '.' || word_utf8_eq(q, "．")) {
+                const char* r = q + ((*q == '.') ? 1 : 3);
+                if (*r >= '0' && *r <= '9') {
+                    q = r;
+                    continue;
+                }
+                break;
+            }
+            break;
+        }
+        /* "1.2 标题" has no leftover dot; "1." / "1. 标题" is a list item. */
+        if (comps >= 2 && (*q == 0 || *q == ' ' || *q == '\t' || word_utf8_eq(q, "　") ||
+                           ((unsigned char)*q >= 0x80))) {
+            q = word_skip_leading_space(q);
+            if (q[0]) return comps;
+        }
+    }
+    return 0;
+}
+
 /*
  * Many 公文 Word files never apply Heading 1/标题 1 — outline is plain text:
  * 一、… / （一）… / 1.… / 附件. Map those to h1..h3 for the HTML outline TOC.
@@ -485,10 +571,13 @@ static int word_infer_text_heading_level(const char* text) {
     const char* p;
     int nlen;
     int digits;
+    int structural;
 
     p = word_skip_leading_space(text);
     if (!p || !p[0]) return 0;
     if (word_plain_is_only_arabic_markers(p)) return 0;
+    structural = word_structural_heading_depth(p);
+    if (structural > 0) return structural;
 
     /* 附件 / 附件： / 附件N */
     if (word_utf8_eq(p, "附件")) {
@@ -691,6 +780,17 @@ static void drop_word_styles(fz_context* ctx, doc_info* info) {
     info->style_levels = NULL;
     info->style_len = 0;
     info->style_cap = 0;
+    for (i = 0; i < info->fact_n; i++) fz_free(ctx, info->fact_ids[i]);
+    fz_free(ctx, info->fact_ids);
+    fz_free(ctx, info->fact_toc);
+    fz_free(ctx, info->fact_numid);
+    fz_free(ctx, info->fact_ilvl);
+    info->fact_ids = NULL;
+    info->fact_toc = NULL;
+    info->fact_numid = NULL;
+    info->fact_ilvl = NULL;
+    info->fact_n = 0;
+    info->fact_cap = 0;
     fz_drop_xml(ctx, info->styles_xml);
     info->styles_xml = NULL;
     fz_drop_xml(ctx, info->numbering_xml);
@@ -1324,11 +1424,32 @@ static const char* paragraph_bookmark_name(fz_xml* p) {
             const char* name = fz_xml_att_alt(n, "w:name", "name");
             if (!name || !name[0]) continue;
             if (!strcmp(name, "_GoBack")) continue;
-            if (!strncmp(name, "_Toc", 4)) return name;
-            if (name[0] != '_' && !fallback) fallback = name;
+            /* Word keeps every old TOC bookmark. The live one is the last _Toc. */
+            if (!strncmp(name, "_Toc", 4)) fallback = name;
+            else if (name[0] != '_' && !fallback) fallback = name;
         }
     }
     return fallback;
+}
+
+static void doc_escape(fz_context* ctx, fz_output* output, const char* str_);
+
+/* Other bookmarks on the same paragraph (older _Toc*, user names). */
+static void emit_extra_bookmark_anchors(fz_context* ctx, fz_xml* p, doc_info* info, const char* primary) {
+    fz_xml* n;
+    if (!p || !info) return;
+    for (n = fz_xml_down(p); n; n = fz_xml_next(n)) {
+        const char* name;
+        if (!fz_xml_is_tag(n, "bookmarkStart")) continue;
+        name = fz_xml_att_alt(n, "w:name", "name");
+        if (!name || !name[0] || !strcmp(name, "_GoBack")) continue;
+        if (!strncmp(name, "_Hlk", 4)) continue;
+        if (primary && !strcmp(name, primary)) continue;
+        if (strchr(name, '"') || strchr(name, '<')) continue;
+        fz_write_string(ctx, info->out, "<a id=\"");
+        doc_escape(ctx, info->out, name);
+        fz_write_string(ctx, info->out, "\"></a>");
+    }
 }
 
 static int is_user_word_bookmark_name(const char* name) {
@@ -1357,10 +1478,10 @@ static void doc_escape_ex(fz_context* ctx, fz_output* output, const char* str_, 
         } else if (preserve_space && c == '\t') {
             fz_write_string(ctx, output, "&nbsp;&nbsp;&nbsp;&nbsp;");
         } else {
-            /* We get utf-8 in, just parrot it out again. */
-            fz_write_byte(ctx, output, c);
-        }
-    }
+			/* We get utf-8 in, just parrot it out again. */
+			fz_write_byte(ctx, output, c);
+		}
+	}
 }
 
 static void doc_escape(fz_context* ctx, fz_output* output, const char* str_) {
@@ -1413,6 +1534,36 @@ static void doc_escape_vertical(fz_context* ctx, fz_output* output, const char* 
     }
 }
 
+/* Rough advance so a TOC tab leader fills the gap without wrapping the page number. */
+static float word_text_width_pt(const char* s, float font_pt) {
+    float w = 0;
+    if (!s || font_pt < 0.5f) return 0;
+    while (*s) {
+        unsigned char c = (unsigned char)*s++;
+        int extra = 0;
+        if (c == ' ' || c == '\t') {
+            w += font_pt * 0.33f;
+            continue;
+        }
+        if (c < 0x80) {
+            w += font_pt * 0.55f;
+            continue;
+        }
+        if ((c & 0xE0) == 0xC0)
+            extra = 1;
+        else if ((c & 0xF0) == 0xE0)
+            extra = 2;
+        else if ((c & 0xF8) == 0xF0)
+            extra = 3;
+        while (extra > 0 && *s) {
+            s++;
+            extra--;
+        }
+        w += font_pt;
+    }
+    return w;
+}
+
 static void show_text(fz_context* ctx, fz_xml* top, doc_info* info) {
     fz_xml* pos = top;
     fz_xml* next;
@@ -1436,6 +1587,10 @@ static void show_text(fz_context* ctx, fz_xml* top, doc_info* info) {
             doc_escape_vertical(ctx, info->out, text);
         else
             doc_escape_ex(ctx, info->out, text, preserve);
+        if (text && info && info->para_leader) {
+            float pt = info->para_font_pt > 0.5f ? info->para_font_pt : 12.0f;
+            info->para_advance_pt += word_text_width_pt(text, pt);
+        }
 
         if (fz_xml_is_tag(pos, "lineBreak")) {
             fz_write_string(ctx, info->out, "\n");
@@ -1444,52 +1599,52 @@ static void show_text(fz_context* ctx, fz_xml* top, doc_info* info) {
                 if (preserve)
                     fz_write_string(ctx, info->out, "&nbsp;&nbsp;&nbsp;&nbsp;");
                 else if (!(info && info->signoff_emit))
-                    fz_write_string(ctx, info->out, "\t");
-            }
+			fz_write_string(ctx, info->out, "\t");
+		}
         } else if (fz_xml_is_tag(pos, "lastRenderedPageBreak")) {
-            info->page++;
-        }
+			info->page++;
+		}
 
-        /* Always try to move down. */
-        next = fz_xml_down(pos);
+		/* Always try to move down. */
+		next = fz_xml_down(pos);
         if (next) {
-            pos = next;
-            continue;
-        }
+			pos = next;
+			continue;
+		}
 
         if (pos == top) break;
 
-        next = fz_xml_next(pos);
+		next = fz_xml_next(pos);
         if (next) {
-            pos = next;
-            continue;
-        }
+			pos = next;
+			continue;
+		}
 
         while (1) {
-            pos = fz_xml_up(pos);
+			pos = fz_xml_up(pos);
             if (pos == top) pos = NULL;
             if (pos == NULL) break;
             if (fz_xml_is_tag(pos, "p")) {
-                fz_write_string(ctx, info->out, "\n");
-            }
-            next = fz_xml_next(pos);
+				fz_write_string(ctx, info->out, "\n");
+			}
+			next = fz_xml_next(pos);
             if (next) {
-                pos = next;
-                break;
-            }
-        }
-    }
+				pos = next;
+				break;
+			}
+		}
+	}
 }
 
 static void show_footnote(fz_context* ctx, fz_xml* v, doc_info* info) {
-    int n = fz_atoi(fz_xml_att(v, "w:id"));
+	int n = fz_atoi(fz_xml_att(v, "w:id"));
 
     if (n < 0 || n >= info->footnotes_max) return;
 
     if (info->footnotes[n] == NULL || info->footnotes[n][0] == 0) return;
 
-    /* Then send the strings. */
-    doc_escape(ctx, info->out, info->footnotes[n]);
+	/* Then send the strings. */
+	doc_escape(ctx, info->out, info->footnotes[n]);
 }
 
 static char* lookup_rel(fz_context* ctx, fz_xml* rels, const char* id);
@@ -1502,11 +1657,11 @@ static int rpr_flag_on(fz_xml* rpr, const char* tag) {
     const char* val;
 
     if (!rpr) return 0;
-    n = fz_xml_find_down(rpr, tag);
+	n = fz_xml_find_down(rpr, tag);
     if (!n) return 0;
-    val = fz_xml_att_alt(n, "w:val", "val");
+	val = fz_xml_att_alt(n, "w:val", "val");
     if (val && (!strcmp(val, "0") || !strcmp(val, "false") || !strcmp(val, "off") || !strcmp(val, "none"))) return 0;
-    return 1;
+	return 1;
 }
 
 static const char* jc_to_css_align(const char* jc) {
@@ -1515,7 +1670,7 @@ static const char* jc_to_css_align(const char* jc) {
     if (!strcmp(jc, "right") || !strcmp(jc, "end")) return "right";
     if (!strcmp(jc, "both") || !strcmp(jc, "distribute")) return "justify";
     if (!strcmp(jc, "left") || !strcmp(jc, "start")) return "left";
-    return NULL;
+	return NULL;
 }
 
 /* Word w:spacing → CSS margin-top/bottom + line-height. */
@@ -1859,11 +2014,11 @@ static int word_paragraph_is_signoff(fz_xml* p, doc_info* info) {
 }
 
 static void close_word_list(fz_context* ctx, doc_info* info) {
-    if (info->list_kind == 1)
-        fz_write_string(ctx, info->out, "</ul>\n");
-    else if (info->list_kind == 2)
-        fz_write_string(ctx, info->out, "</ol>\n");
-    info->list_kind = 0;
+	if (info->list_kind == 1)
+		fz_write_string(ctx, info->out, "</ul>\n");
+	else if (info->list_kind == 2)
+		fz_write_string(ctx, info->out, "</ol>\n");
+	info->list_kind = 0;
 }
 
 static void emit_page_break(fz_context* ctx, doc_info* info) {
@@ -1876,8 +2031,8 @@ static void emit_page_break(fz_context* ctx, doc_info* info) {
     if (info->in_table > 0) return;
     if (info->in_paragraph > 0) return;
     if (info->page) fz_write_string(ctx, info->out, "\n</div>\n");
-    info->page++;
-    fz_write_printf(ctx, info->out, "<div id=\"page%d\">\n", info->page);
+	info->page++;
+	fz_write_printf(ctx, info->out, "<div id=\"page%d\">\n", info->page);
 }
 
 static void emit_drawing(fz_context* ctx, fz_xml* drawing, doc_info* info) {
@@ -1886,21 +2041,21 @@ static void emit_drawing(fz_context* ctx, fz_xml* drawing, doc_info* info) {
     const char* embed;
     char* target;
     char* path = NULL;
-    int wpx = 0, hpx = 0;
+	int wpx = 0, hpx = 0;
 
-    blip = fz_xml_find_dfs(drawing, "blip", NULL, NULL);
+	blip = fz_xml_find_dfs(drawing, "blip", NULL, NULL);
     if (!blip) return;
 
-    embed = fz_xml_att_alt(blip, "r:embed", "embed");
+	embed = fz_xml_att_alt(blip, "r:embed", "embed");
     if (!embed || !info->doc_rels || !info->doc_file) return;
 
-    target = lookup_rel(ctx, info->doc_rels, embed);
+	target = lookup_rel(ctx, info->doc_rels, embed);
     if (!target) return;
 
-    path = make_absolute_path(ctx, info->doc_file, target);
+	path = make_absolute_path(ctx, info->doc_file, target);
 
     fz_try(ctx) {
-        extent = fz_xml_find_dfs(drawing, "extent", NULL, NULL);
+		extent = fz_xml_find_dfs(drawing, "extent", NULL, NULL);
         if (extent) {
             const char* cx_s = fz_xml_att(extent, "cx");
             const char* cy_s = fz_xml_att(extent, "cy");
@@ -1909,11 +2064,11 @@ static void emit_drawing(fz_context* ctx, fz_xml* drawing, doc_info* info) {
              * and pushes 落款 onto the next page. */
             if (cx_s) wpx = (int)((fz_atoi64(cx_s) * 96) / 914400);
             if (cy_s) hpx = (int)((fz_atoi64(cy_s) * 96) / 914400);
-        }
+		}
 
-        fz_write_string(ctx, info->out, "<img src=\"");
-        doc_escape(ctx, info->out, path);
-        fz_write_string(ctx, info->out, "\" alt=\"\"");
+		fz_write_string(ctx, info->out, "<img src=\"");
+		doc_escape(ctx, info->out, path);
+		fz_write_string(ctx, info->out, "\" alt=\"\"");
         if (wpx > 0 && hpx > 0) {
             float wpt = (float)wpx * 72.0f / 96.0f;
             float hpt = (float)hpx * 72.0f / 96.0f;
@@ -2117,12 +2272,92 @@ static int word_run_is_collapsed_space(fz_xml* r) {
     return any_t && only_space;
 }
 
+/* Visible text after a TOC tab, up to the next tab. That width is the page number. */
+static float word_width_until_tab(fz_xml* n, float font_pt, int* stop) {
+    float w = 0;
+    fz_xml* c;
+    if (!n || !stop || *stop) return 0;
+    if (fz_xml_is_tag(n, "tab")) {
+        *stop = 1;
+        return 0;
+    }
+    if (fz_xml_is_tag(n, "t")) {
+        fz_xml* td = fz_xml_down(n);
+        return word_text_width_pt(td ? fz_xml_text(td) : NULL, font_pt);
+    }
+    for (c = fz_xml_down(n); c; c = fz_xml_next(c)) {
+        w += word_width_until_tab(c, font_pt, stop);
+        if (*stop) break;
+    }
+    return w;
+}
+
+static float word_page_number_width(fz_xml* run, fz_xml* tab, float font_pt) {
+    int stop = 0;
+    int after = 0;
+    float w = 0;
+    fz_xml* n;
+    fz_xml* parent;
+
+    if (!run || !tab) return 0;
+    for (n = fz_xml_down(run); n; n = fz_xml_next(n)) {
+        if (!after) {
+            if (n == tab) after = 1;
+            continue;
+        }
+        w += word_width_until_tab(n, font_pt, &stop);
+        if (stop) return w;
+    }
+    for (n = fz_xml_next(run); n && !stop; n = fz_xml_next(n))
+        w += word_width_until_tab(n, font_pt, &stop);
+    parent = fz_xml_up(run);
+    if (!stop && parent && !fz_xml_is_tag(parent, "p")) {
+        for (n = fz_xml_next(parent); n && !stop; n = fz_xml_next(n))
+            w += word_width_until_tab(n, font_pt, &stop);
+    }
+    return w;
+}
+
+/* Word w:tab with a dot/hyphen/underscore leader: fill to the right tab stop. */
+static void emit_word_tab(fz_context* ctx, doc_info* info, fz_xml* run, fz_xml* tab) {
+    float font, edge, gap, dot_w, page_w;
+    int n, i;
+    char ch;
+
+    if (!info) return;
+    if (!info->para_leader) {
+        fz_write_string(ctx, info->out, "&nbsp;&nbsp;&nbsp;&nbsp;");
+        return;
+    }
+    font = info->para_font_pt > 0.5f ? info->para_font_pt : 12.0f;
+    edge = info->para_tab_pt;
+    if (edge < 1.0f) edge = info->page_content_pt;
+    page_w = word_page_number_width(run, tab, font);
+    gap = edge - info->para_origin_pt - info->para_advance_pt - page_w;
+    /* One space after the title, then periods. Slightly wide dots so the line does not wrap. */
+    if (info->para_advance_pt > 0.5f) gap -= font * 0.5f;
+    dot_w = font * 0.55f;
+    if (dot_w < 1.0f) dot_w = 1.0f;
+    n = (int)(gap / dot_w);
+    if (n < 4) n = 4;
+    if (n > 160) n = 160;
+    if (info->para_advance_pt > 0.5f) {
+        fz_write_string(ctx, info->out, "&#160;");
+        info->para_advance_pt += font * 0.5f;
+    }
+    ch = (char)info->para_leader;
+    if (ch != '.' && ch != '-' && ch != '_') ch = '.';
+    for (i = 0; i < n; i++)
+        fz_write_byte(ctx, info->out, (unsigned char)ch);
+    info->para_advance_pt += n * dot_w;
+}
+
 static void emit_run(fz_context* ctx, fz_xml* r, doc_info* info) {
     fz_xml* rpr;
     fz_xml* n;
     fz_xml* sz_n;
     fz_xml* color_n;
-    int bold = 0, italic = 0, underline = 0, strike = 0;
+	int bold = 0, italic = 0, underline = 0, strike = 0;
     int opened_color = 0;
     int opened_size = 0;
     int opened_font = 0;
@@ -2136,13 +2371,13 @@ static void emit_run(fz_context* ctx, fz_xml* r, doc_info* info) {
      * A modest space run between CJK is WPS's saved line end, not a word space. */
     if (word_run_is_collapsed_space(r) || word_run_is_cjk_linebreak_space(r)) return;
 
-    rpr = fz_xml_find_down(r, "rPr");
+	rpr = fz_xml_find_down(r, "rPr");
     if (rpr) {
         fz_xml* rstyle = fz_xml_find_down(rpr, "rStyle");
-        bold = rpr_flag_on(rpr, "b") || rpr_flag_on(rpr, "bCs");
-        italic = rpr_flag_on(rpr, "i") || rpr_flag_on(rpr, "iCs");
-        underline = rpr_flag_on(rpr, "u");
-        strike = rpr_flag_on(rpr, "strike") || rpr_flag_on(rpr, "dstrike");
+		bold = rpr_flag_on(rpr, "b") || rpr_flag_on(rpr, "bCs");
+		italic = rpr_flag_on(rpr, "i") || rpr_flag_on(rpr, "iCs");
+		underline = rpr_flag_on(rpr, "u");
+		strike = rpr_flag_on(rpr, "strike") || rpr_flag_on(rpr, "dstrike");
         if (rstyle) {
             const char* val = fz_xml_att_alt(rstyle, "w:val", "val");
             if (val && !strcmp(val, "VerbatimChar")) inline_style = "tt";
@@ -2178,6 +2413,7 @@ static void emit_run(fz_context* ctx, fz_xml* r, doc_info* info) {
         }
     }
     if (info && info->force_run_font_pt > 12.0f) font_pt = info->force_run_font_pt;
+    if (info && font_pt > 0.5f) info->para_font_pt = font_pt;
 
     if (east || latin) {
         fz_write_string(ctx, info->out, "<span style='");
@@ -2226,7 +2462,7 @@ static void emit_run(fz_context* ctx, fz_xml* r, doc_info* info) {
                 if (d > 0 && (word_utf8_eq(mk + d, "、") || word_utf8_eq(mk + d, "．")) && mk[d + 3] == 0) marker = 1;
             }
             if (marker && info && info->para_seen_text) fz_write_string(ctx, info->out, "<br/>\n");
-            show_text(ctx, n, info);
+			show_text(ctx, n, info);
             if (info && mk && mk[0]) info->para_seen_text = 1;
         } else if (fz_xml_is_tag(n, "br") || fz_xml_is_tag(n, "lineBreak")) {
             /* Soft wrap only. Page/column breaks are Word pagination — MuPDF reflows. */
@@ -2234,18 +2470,22 @@ static void emit_run(fz_context* ctx, fz_xml* r, doc_info* info) {
             if (bt && (!strcmp(bt, "page") || !strcmp(bt, "column")))
                 emit_page_break(ctx, info);
             else
-                fz_write_string(ctx, info->out, "<br/>\n");
-        } else if (fz_xml_is_tag(n, "tab"))
-            fz_write_string(ctx, info->out, "&nbsp;&nbsp;&nbsp;&nbsp;");
-        else if (fz_xml_is_tag(n, "drawing"))
-            emit_drawing(ctx, n, info);
+			fz_write_string(ctx, info->out, "<br/>\n");
+        } else if (fz_xml_is_tag(n, "tab")) {
+            if (info && info->para_leader)
+                emit_word_tab(ctx, info, r, n);
+            else
+                fz_write_string(ctx, info->out, "&nbsp;&nbsp;&nbsp;&nbsp;");
+        }
+		else if (fz_xml_is_tag(n, "drawing"))
+			emit_drawing(ctx, n, info);
         else if (fz_xml_is_tag(n, "pict") || fz_xml_is_tag(n, "object"))
             emit_pict(ctx, n, info);
-        else if (fz_xml_is_tag(n, "footnoteReference"))
-            show_footnote(ctx, n, info);
-        else if (fz_xml_is_tag(n, "lastRenderedPageBreak"))
-            emit_page_break(ctx, info);
-    }
+		else if (fz_xml_is_tag(n, "footnoteReference"))
+			show_footnote(ctx, n, info);
+		else if (fz_xml_is_tag(n, "lastRenderedPageBreak"))
+			emit_page_break(ctx, info);
+	}
 
     if (strike) fz_write_string(ctx, info->out, "</s>");
     if (underline) fz_write_string(ctx, info->out, "</u>");
@@ -2257,25 +2497,53 @@ static void emit_run(fz_context* ctx, fz_xml* r, doc_info* info) {
     if (opened_font) fz_write_string(ctx, info->out, "</span>");
 }
 
+/* Returns 1 when an opening <a> was written. Caller closes it. */
+static int emit_word_anchor(fz_context* ctx, doc_info* info, const char* anchor) {
+    if (!info || !anchor || !anchor[0]) return 0;
+    if (!strcmp(anchor, "_GoBack") || strchr(anchor, '"') || strchr(anchor, '<')) return 0;
+    fz_write_string(ctx, info->out, "<a href=\"#");
+    doc_escape(ctx, info->out, anchor);
+    /* Keep the printed TOC black. text-decoration:none so the dot leader is not struck through. */
+    fz_write_string(ctx, info->out, "\" style=\"text-decoration:none;color:#000000\">");
+    return 1;
+}
+
 static void emit_paragraph_children(fz_context* ctx, fz_xml* parent, doc_info* info) {
     fz_xml* n;
+    int opened_field = 0;
+
+    /* HYPERLINK \\l field: one link around the cached title, leader and page number. */
+    if (info && info->para_field_anchor[0]) {
+        char anchor[160];
+        fz_strlcpy(anchor, info->para_field_anchor, sizeof anchor);
+        info->para_field_anchor[0] = 0;
+        opened_field = emit_word_anchor(ctx, info, anchor);
+    }
 
     for (n = fz_xml_down(parent); n; n = fz_xml_next(n)) {
         if (fz_xml_is_tag(n, "pPr") || fz_xml_is_tag(n, "bookmarkStart") || fz_xml_is_tag(n, "bookmarkEnd") ||
-            fz_xml_is_tag(n, "proofErr"))
-            continue;
-        if (fz_xml_is_tag(n, "r"))
-            emit_run(ctx, n, info);
-        else if (fz_xml_is_tag(n, "hyperlink") || fz_xml_is_tag(n, "ins") || fz_xml_is_tag(n, "del") ||
-                 fz_xml_is_tag(n, "smartTag") || fz_xml_is_tag(n, "sdt") || fz_xml_is_tag(n, "sdtContent"))
+			fz_xml_is_tag(n, "proofErr"))
+			continue;
+		if (fz_xml_is_tag(n, "r"))
+			emit_run(ctx, n, info);
+        else if (fz_xml_is_tag(n, "hyperlink")) {
+            const char* anchor = fz_xml_att_alt(n, "w:anchor", "anchor");
+            int opened = emit_word_anchor(ctx, info, anchor);
             emit_paragraph_children(ctx, n, info);
-        else if (fz_xml_is_tag(n, "drawing"))
-            emit_drawing(ctx, n, info);
+            if (opened) fz_write_string(ctx, info->out, "</a>");
+        } else if (fz_xml_is_tag(n, "ins") || fz_xml_is_tag(n, "del") || fz_xml_is_tag(n, "smartTag") ||
+                 fz_xml_is_tag(n, "sdt") || fz_xml_is_tag(n, "sdtContent"))
+			emit_paragraph_children(ctx, n, info);
+		else if (fz_xml_is_tag(n, "drawing"))
+			emit_drawing(ctx, n, info);
         else if (fz_xml_is_tag(n, "pict") || fz_xml_is_tag(n, "object"))
             emit_pict(ctx, n, info);
-        else if (fz_xml_is_tag(n, "footnoteReference"))
-            show_footnote(ctx, n, info);
-    }
+		else if (fz_xml_is_tag(n, "footnoteReference"))
+			show_footnote(ctx, n, info);
+		else if (fz_xml_is_tag(n, "lastRenderedPageBreak"))
+			emit_page_break(ctx, info);
+	}
+    if (opened_field) fz_write_string(ctx, info->out, "</a>");
 }
 
 /* 落款日期: short line with 年, 月 and 日, not a sentence or a parenthetical. */
@@ -2310,6 +2578,251 @@ static int word_date_follows_soon(fz_xml* p) {
     return 0;
 }
 
+/* Leader on a paragraph tab stop: dot / middleDot / hyphen / underscore. Right tab wins. */
+static void word_paragraph_tab_leader(fz_xml* ppr, int* leader, float* tab_pt) {
+    fz_xml* tabs;
+    fz_xml* tab;
+    if (leader) *leader = 0;
+    if (tab_pt) *tab_pt = 0;
+    if (!ppr || !leader || !tab_pt) return;
+    tabs = fz_xml_find_down(ppr, "tabs");
+    if (!tabs) return;
+    for (tab = fz_xml_down(tabs); tab; tab = fz_xml_next(tab)) {
+        const char* lead;
+        const char* val;
+        const char* pos;
+        int ch = 0;
+        if (!fz_xml_is_tag(tab, "tab")) continue;
+        lead = fz_xml_att_alt(tab, "w:leader", "leader");
+        val = fz_xml_att_alt(tab, "w:val", "val");
+        pos = fz_xml_att_alt(tab, "w:pos", "pos");
+        if (!lead) continue;
+        if (!strcmp(lead, "dot") || !strcmp(lead, "middleDot"))
+            ch = '.';
+        else if (!strcmp(lead, "hyphen"))
+            ch = '-';
+        else if (!strcmp(lead, "underscore"))
+            ch = '_';
+        if (!ch) continue;
+        *leader = ch;
+        if (pos && pos[0]) *tab_pt = (float)fz_atoi(pos) / 20.0f;
+        if (val && !strcmp(val, "right")) return;
+    }
+}
+
+static int word_name_is_toc(const char* name) {
+    if (!name || !name[0]) return 0;
+    if (!ascii_strncasecmp(name, "toc", 3)) return 1;
+    /* UTF-8 目录 */
+    if (!strncmp(name, "目录", 6)) return 1;
+    return 0;
+}
+
+static fz_xml* word_style_by_id(doc_info* info, const char* style_id) {
+    fz_xml* root;
+    fz_xml* child;
+    if (!info || !info->styles_xml || !style_id || !style_id[0]) return NULL;
+    root = fz_xml_find_dfs(info->styles_xml, "styles", NULL, NULL);
+    for (child = fz_xml_down(root ? root : info->styles_xml); child; child = fz_xml_next(child)) {
+        const char* sid;
+        if (!fz_xml_is_tag(child, "style")) continue;
+        sid = fz_xml_att_alt(child, "w:styleId", "styleId");
+        if (sid && !strcmp(sid, style_id)) return child;
+    }
+    return NULL;
+}
+
+/* TOC style, and numbering inherited from the style (numId 0 stops the walk). */
+static void word_style_fact(fz_context* ctx, doc_info* info, const char* style_id, int* is_toc, int* num_id, int* ilvl) {
+    int i;
+    int toc = 0;
+    int nid = 0;
+    int lv = 0;
+    const char* sid;
+    int guard = 0;
+
+    if (is_toc) *is_toc = 0;
+    if (num_id) *num_id = 0;
+    if (ilvl) *ilvl = 0;
+    if (!info || !style_id || !style_id[0]) return;
+    for (i = 0; i < info->fact_n; i++) {
+        if (!strcmp(info->fact_ids[i], style_id)) {
+            if (is_toc) *is_toc = info->fact_toc[i];
+            if (num_id) *num_id = info->fact_numid[i];
+            if (ilvl) *ilvl = info->fact_ilvl[i];
+            return;
+        }
+    }
+    if (word_name_is_toc(style_id)) toc = 1;
+    sid = style_id;
+    while (sid && sid[0] && guard < 8) {
+        fz_xml* st = word_style_by_id(info, sid);
+        fz_xml* name_n;
+        fz_xml* ppr;
+        fz_xml* numpr;
+        fz_xml* based;
+        const char* name = NULL;
+        const char* next = NULL;
+        guard++;
+        if (!st) break;
+        name_n = fz_xml_find_down(st, "name");
+        if (name_n) name = fz_xml_att_alt(name_n, "w:val", "val");
+        if (!toc && word_name_is_toc(name)) toc = 1;
+        ppr = fz_xml_find_down(st, "pPr");
+        numpr = ppr ? fz_xml_find_down(ppr, "numPr") : NULL;
+        if (numpr) {
+            fz_xml* idn = fz_xml_find_down(numpr, "numId");
+            fz_xml* iln = fz_xml_find_down(numpr, "ilvl");
+            const char* iv = idn ? fz_xml_att_alt(idn, "w:val", "val") : NULL;
+            const char* ilv = iln ? fz_xml_att_alt(iln, "w:val", "val") : NULL;
+            nid = iv ? fz_atoi(iv) : 0;
+            if (nid > 0 && ilv) lv = fz_atoi(ilv);
+            if (lv < 0) lv = 0;
+            if (lv >= WORD_NUM_ILVL_MAX) lv = WORD_NUM_ILVL_MAX - 1;
+            break;
+        }
+        based = fz_xml_find_down(st, "basedOn");
+        if (based) next = fz_xml_att_alt(based, "w:val", "val");
+        sid = next;
+    }
+    if (info->fact_n == info->fact_cap) {
+        int ncap = info->fact_cap ? info->fact_cap * 2 : 32;
+        info->fact_ids = fz_realloc(ctx, info->fact_ids, sizeof(char*) * ncap);
+        info->fact_toc = fz_realloc(ctx, info->fact_toc, ncap);
+        info->fact_numid = fz_realloc(ctx, info->fact_numid, sizeof(int) * ncap);
+        info->fact_ilvl = fz_realloc(ctx, info->fact_ilvl, sizeof(int) * ncap);
+        info->fact_cap = ncap;
+    }
+    info->fact_ids[info->fact_n] = fz_strdup(ctx, style_id);
+    info->fact_toc[info->fact_n] = (unsigned char)(toc ? 1 : 0);
+    info->fact_numid[info->fact_n] = nid;
+    info->fact_ilvl[info->fact_n] = lv;
+    info->fact_n++;
+    if (is_toc) *is_toc = toc;
+    if (num_id) *num_id = nid;
+    if (ilvl) *ilvl = lv;
+}
+
+/* Paragraph tabs, else the TOC style (and its basedOn chain). */
+static void word_begin_para_leader(doc_info* info, fz_xml* ppr, const char* style_id, float left_pt, float hanging_pt,
+                                   float right_pt) {
+    int leader = 0;
+    float tab_pt = 0;
+    int is_toc = 0;
+    const char* sid = style_id;
+    int guard = 0;
+
+    if (!info) return;
+    info->para_leader = 0;
+    info->para_tab_pt = 0;
+    info->para_origin_pt = 0;
+    info->para_advance_pt = 0;
+    if (info->para_font_pt < 0.5f)
+        info->para_font_pt = info->doc_body_font_pt > 0.5f ? info->doc_body_font_pt : 12.0f;
+    if (ppr) word_paragraph_tab_leader(ppr, &leader, &tab_pt);
+    if (word_name_is_toc(style_id)) is_toc = 1;
+    while (sid && sid[0] && guard < 8) {
+        fz_xml* st = word_style_by_id(info, sid);
+        fz_xml* name_n;
+        fz_xml* sppr;
+        fz_xml* based;
+        const char* name = NULL;
+        const char* next = NULL;
+        guard++;
+        if (!st) break;
+        name_n = fz_xml_find_down(st, "name");
+        if (name_n) name = fz_xml_att_alt(name_n, "w:val", "val");
+        if (word_name_is_toc(name) || word_name_is_toc(sid)) is_toc = 1;
+        if (!leader) {
+            sppr = fz_xml_find_down(st, "pPr");
+            if (sppr) word_paragraph_tab_leader(sppr, &leader, &tab_pt);
+        }
+        based = fz_xml_find_down(st, "basedOn");
+        if (based) next = fz_xml_att_alt(based, "w:val", "val");
+        sid = next;
+    }
+    if (!leader && is_toc) {
+        leader = '.';
+        tab_pt = 0;
+    }
+    if (!leader) return;
+    {
+        float limit = info->page_content_pt - right_pt;
+        float origin = left_pt - hanging_pt;
+        if (limit < 72.0f) limit = info->page_content_pt;
+        if (limit < 72.0f) limit = 440.0f;
+        if (tab_pt < 1.0f || tab_pt > limit) tab_pt = limit;
+        if (origin < 0) origin = 0;
+        info->para_leader = leader;
+        info->para_tab_pt = tab_pt;
+        info->para_origin_pt = origin;
+    }
+}
+
+static void word_end_para_leader(doc_info* info) {
+    if (!info) return;
+    info->para_leader = 0;
+    info->para_advance_pt = 0;
+    info->para_field_anchor[0] = 0;
+}
+
+/* instrText HYPERLINK \\l "anchor" when Word did not wrap the line in w:hyperlink. */
+static int word_copy_hyperlink_anchor(const char* s, char* buf, int cap) {
+    const char* p;
+    const char* local;
+    int i = 0;
+    if (!buf || cap < 2) return 0;
+    buf[0] = 0;
+    if (!s) return 0;
+    p = strstr(s, "HYPERLINK");
+    if (!p) return 0;
+    p += 9;
+    local = strstr(p, "\\l");
+    if (!local) local = strstr(p, "\\L");
+    if (!local) return 0;
+    p = local + 2;
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p == '"') {
+        p++;
+        while (*p && *p != '"' && i < cap - 1) buf[i++] = *p++;
+    } else {
+        while (*p && *p != ' ' && *p != '"' && *p != '\\' && i < cap - 1) buf[i++] = *p++;
+    }
+    buf[i] = 0;
+    if (i == 0 || !strcmp(buf, "_GoBack")) {
+        buf[0] = 0;
+        return 0;
+    }
+    return 1;
+}
+
+static void word_note_field_anchor(doc_info* info, fz_xml* p) {
+    char instr[512];
+    int nlen = 0;
+    fz_xml* n;
+    if (!info) return;
+    info->para_field_anchor[0] = 0;
+    if (!p) return;
+    if (fz_xml_find_dfs_top(fz_xml_down(p), "hyperlink", NULL, NULL, p)) return;
+    instr[0] = 0;
+    n = fz_xml_find_dfs_top(fz_xml_down(p), "instrText", NULL, NULL, p);
+    while (n && nlen < (int)sizeof(instr) - 1) {
+        fz_xml* t = fz_xml_down(n);
+        const char* s = t ? fz_xml_text(t) : NULL;
+        if (s) {
+            int L = (int)strlen(s);
+            if (nlen + L >= (int)sizeof(instr)) L = (int)sizeof(instr) - 1 - nlen;
+            if (L > 0) {
+                memcpy(instr + nlen, s, (size_t)L);
+                nlen += L;
+                instr[nlen] = 0;
+            }
+        }
+        n = fz_xml_find_next_dfs_top(n, "instrText", NULL, NULL, p);
+    }
+    word_copy_hyperlink_anchor(instr, info->para_field_anchor, (int)sizeof info->para_field_anchor);
+}
+
 static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
     fz_xml* ppr;
     fz_xml* pstyle;
@@ -2334,6 +2847,7 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
     float line_mult = 0;
     float line_pt = 0;
     int num_id = 0;
+    int num_off = 0;
     int ilvl = 0;
     char marker[96];
     int have_marker = 0;
@@ -2378,11 +2892,11 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
     }
 
     marker[0] = 0;
-    ppr = fz_xml_find_down(p, "pPr");
+	ppr = fz_xml_find_down(p, "pPr");
     if (ppr) {
-        pstyle = fz_xml_find_down(ppr, "pStyle");
+		pstyle = fz_xml_find_down(ppr, "pStyle");
         if (pstyle) style_val = fz_xml_att_alt(pstyle, "w:val", "val");
-        jc = fz_xml_find_down(ppr, "jc");
+		jc = fz_xml_find_down(ppr, "jc");
         if (jc) align = jc_to_css_align(fz_xml_att_alt(jc, "w:val", "val"));
         word_ppr_text_indent(ppr, &indent_em, &indent_pt, &left_pt, &hanging_pt);
         {
@@ -2405,6 +2919,19 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
             if (lv) ilvl = fz_atoi(lv);
             if (ilvl < 0) ilvl = 0;
             if (ilvl >= WORD_NUM_ILVL_MAX) ilvl = WORD_NUM_ILVL_MAX - 1;
+            /* numId 0 on the paragraph turns style numbering off. */
+            if (iv && num_id == 0) num_off = 1;
+        }
+    }
+    /* Heading styles keep 第1章 / 1.1 / 1.1.1 on the style, not on each paragraph. */
+    if (!num_off && num_id <= 0 && style_val && info) {
+        int style_toc = 0;
+        int style_num = 0;
+        int style_ilvl = 0;
+        word_style_fact(ctx, info, style_val, &style_toc, &style_num, &style_ilvl);
+        if (style_num > 0 && !style_toc) {
+            num_id = style_num;
+            ilvl = style_ilvl;
         }
     }
 
@@ -2458,7 +2985,10 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
         char plain[512];
         word_paragraph_plain_text(p, plain, (int)sizeof plain);
         if (heading_level == 0 && info && info->in_table == 0) {
-            heading_level = word_infer_text_heading_level(plain);
+            int style_toc = 0;
+            if (style_val) word_style_fact(ctx, info, style_val, &style_toc, NULL, NULL);
+            /* Printed TOC lines (toc 1 / TOC1) are links, not a second outline. */
+            if (!style_toc) heading_level = word_infer_text_heading_level(plain);
             if (heading_level > 0) outline_inferred = 1;
             if (heading_level == 0 && word_looks_like_official_doc_title(plain, align)) heading_level = 1;
             /* Word pads 落款 with spaces; HTML width ≠ Word, so right-align instead. */
@@ -2514,6 +3044,13 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
             heading_level = 0;
             outline_inferred = 0;
         }
+        /* Word often paints 第1章 and 1.1 with the same Heading style, so the
+         * HTML outline keeps them as siblings. Deepen from the visible number
+         * (1.1 → h2, 1.1.1 → h3) without lifting a style that is already deeper. */
+        if (heading_level > 0 && info && info->in_table == 0) {
+            int structural = word_structural_heading_depth(plain);
+            if (structural > heading_level && structural <= 6) heading_level = structural;
+        }
     }
 
     /* Center/right + firstLine shifts the block off true center (Word leftover). */
@@ -2564,28 +3101,28 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
     } else if (style_val) {
         if (!strcmp(style_val, "Heading1") || !strcmp(style_val, "heading 1") || !strcmp(style_val, "标题1") ||
             !strcmp(style_val, "标题 1"))
-            tag = "h1";
+			tag = "h1";
         else if (!strcmp(style_val, "Heading2") || !strcmp(style_val, "heading 2") || !strcmp(style_val, "标题2") ||
                  !strcmp(style_val, "标题 2"))
-            tag = "h2";
+			tag = "h2";
         else if (!strcmp(style_val, "Heading3") || !strcmp(style_val, "heading 3") || !strcmp(style_val, "标题3") ||
                  !strcmp(style_val, "标题 3"))
-            tag = "h3";
+			tag = "h3";
         else if (!strcmp(style_val, "Heading4") || !strcmp(style_val, "heading 4") || !strcmp(style_val, "标题4") ||
                  !strcmp(style_val, "标题 4"))
-            tag = "h4";
+			tag = "h4";
         else if (!strcmp(style_val, "Heading5") || !strcmp(style_val, "heading 5") || !strcmp(style_val, "标题5") ||
                  !strcmp(style_val, "标题 5"))
-            tag = "h5";
+			tag = "h5";
         else if (!strcmp(style_val, "Heading6") || !strcmp(style_val, "heading 6") || !strcmp(style_val, "标题6") ||
                  !strcmp(style_val, "标题 6"))
-            tag = "h6";
-        else if (!strcmp(style_val, "SourceCode"))
-            tag = "pre";
+			tag = "h6";
+		else if (!strcmp(style_val, "SourceCode"))
+			tag = "pre";
         else if (!strcmp(style_val, "ListBullet") || !strcmp(style_val, "ListParagraph"))
-            list = 1;
-        else if (!strcmp(style_val, "ListNumber"))
-            list = 2;
+			list = 1;
+		else if (!strcmp(style_val, "ListNumber"))
+			list = 2;
         else if (!strcmp(style_val, "Title") || !strcmp(style_val, "标题")) {
             char plain[512];
             word_paragraph_plain_text(p, plain, (int)sizeof plain);
@@ -2601,10 +3138,10 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
                 if (info) info->skip_leading_ws = 1;
             }
         } else if (!strcmp(style_val, "BodyText") || !strcmp(style_val, "Normal") || !strcmp(style_val, "正文"))
-            cls = NULL;
-        else
-            cls = style_val;
-    }
+			cls = NULL;
+		else
+			cls = style_val;
+	}
 
     /* Named Word bookmark (Insert → Bookmark) without a heading style: TOC entry. */
     if (bm_name && is_user_word_bookmark_name(bm_name) && !strcmp(tag, "p") && list == 0) {
@@ -2653,30 +3190,34 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
             }
         } else if (list == 0 && !strcmp(tag, "p")) {
             /* numbering.xml missing/unresolved: keep old list fallback. */
-            list = 1;
+		list = 1;
         }
     }
 
     if (list && !have_marker) {
         if (info->list_kind != list) {
-            close_word_list(ctx, info);
-            if (list == 1)
-                fz_write_string(ctx, info->out, "<ul>\n");
-            else
-                fz_write_string(ctx, info->out, "<ol>\n");
-            info->list_kind = list;
-        }
-        fz_write_string(ctx, info->out, "<li>");
+			close_word_list(ctx, info);
+			if (list == 1)
+				fz_write_string(ctx, info->out, "<ul>\n");
+			else
+				fz_write_string(ctx, info->out, "<ol>\n");
+			info->list_kind = list;
+		}
+		fz_write_string(ctx, info->out, "<li>");
         if (bm_name && !is_user_word_bookmark_name(bm_name)) {
             fz_write_string(ctx, info->out, "<a id=\"");
             doc_escape(ctx, info->out, bm_name);
             fz_write_string(ctx, info->out, "\"></a>");
         }
+        emit_extra_bookmark_anchors(ctx, p, info, bm_name);
         if (info) {
             info->in_paragraph++;
             info->para_seen_text = 0;
+            word_note_field_anchor(info, p);
+            word_begin_para_leader(info, ppr, style_val, left_pt, hanging_pt, right_pt);
         }
-        emit_paragraph_children(ctx, p, info);
+		emit_paragraph_children(ctx, p, info);
+        word_end_para_leader(info);
         if (info && info->in_paragraph > 0) info->in_paragraph--;
         if (info) {
             info->run_default_font_pt = 0;
@@ -2684,11 +3225,11 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
             info->run_default_ea[0] = 0;
             info->run_default_latin[0] = 0;
         }
-        fz_write_string(ctx, info->out, "</li>\n");
-        return;
-    }
+		fz_write_string(ctx, info->out, "</li>\n");
+		return;
+	}
 
-    close_word_list(ctx, info);
+	close_word_list(ctx, info);
 
     /* 一、/二、 are indented with four spaces; 三、 uses w:ind firstLine.
      * Headings strip those spaces (TOC). Put the width back.
@@ -2728,7 +3269,7 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
     if (cls && !strcmp(cls, "Outline")) /* Use 1em (not font-size:inherit — MuPDF ignores inherit for font-size). */
         style_n += fz_snprintf(style_css + style_n, (int)sizeof style_css - style_n,
                                "%sfont-size:1em;font-weight:normal", style_n ? ";" : "");
-    if (align)
+	if (align)
         style_n += fz_snprintf(style_css + style_n, (int)sizeof style_css - style_n, "%stext-align:%s",
                                style_n ? ";" : "", align);
     if (signoff && info && info->signoff_pad_em > 0.01f)
@@ -2779,17 +3320,28 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
     }
     if (cls) fz_write_printf(ctx, info->out, " class=\"%s\"", cls);
     if (style_css[0]) fz_write_printf(ctx, info->out, " style=\"%s\"", style_css);
-    fz_write_string(ctx, info->out, ">");
+	fz_write_string(ctx, info->out, ">");
+    emit_extra_bookmark_anchors(ctx, p, info, bm_name);
+    if (info) {
+        word_note_field_anchor(info, p);
+        word_begin_para_leader(info, ppr, style_val, left_pt, hanging_pt, right_pt);
+    }
     if (have_marker) {
         fz_write_string(ctx, info->out, "<span class=\"w-num\">");
         doc_escape(ctx, info->out, marker);
         fz_write_string(ctx, info->out, "</span>");
+        if (info && info->para_leader) {
+            float pt = info->para_font_pt > 0.5f ? info->para_font_pt
+                                                 : (info->doc_body_font_pt > 0.5f ? info->doc_body_font_pt : 12.0f);
+            info->para_advance_pt += word_text_width_pt(marker, pt);
+        }
     }
     if (info) {
         info->in_paragraph++;
         info->para_seen_text = 0;
     }
-    emit_paragraph_children(ctx, p, info);
+	emit_paragraph_children(ctx, p, info);
+    word_end_para_leader(info);
     if (info && info->in_paragraph > 0) info->in_paragraph--;
     if (info) {
         info->run_default_font_pt = 0;
@@ -2797,7 +3349,7 @@ static void emit_paragraph(fz_context* ctx, fz_xml* p, doc_info* info) {
         info->run_default_ea[0] = 0;
         info->run_default_latin[0] = 0;
     }
-    fz_write_printf(ctx, info->out, "</%s>\n", tag);
+	fz_write_printf(ctx, info->out, "</%s>\n", tag);
     if (info && (signoff || (tag[0] == 'h' && tag[1] >= '1' && tag[1] <= '6'))) {
         info->signoff_emit = 0;
         info->skip_leading_ws = 0;
@@ -3169,16 +3721,16 @@ static void emit_table_cell(fz_context* ctx, fz_xml* tc, doc_info* info, int row
     }
     for (n = fz_xml_down(tc); n; n = fz_xml_next(n)) {
         if (fz_xml_is_tag(n, "tcPr")) continue;
-        if (fz_xml_is_tag(n, "p"))
-            emit_paragraph(ctx, n, info);
-        else if (fz_xml_is_tag(n, "tbl"))
-            emit_table(ctx, n, info);
-    }
+		if (fz_xml_is_tag(n, "p"))
+			emit_paragraph(ctx, n, info);
+		else if (fz_xml_is_tag(n, "tbl"))
+			emit_table(ctx, n, info);
+	}
     if (info) {
         info->emit_vertical_breaks = saved_vertical;
         info->table_row = saved_row;
-    }
-    fz_write_string(ctx, info->out, "</td>");
+	}
+	fz_write_string(ctx, info->out, "</td>");
 }
 
 /* Word w:trHeight (twips). hRule atLeast/exact → pt floor for the row. */
@@ -3209,7 +3761,7 @@ static void emit_table_row(fz_context* ctx, fz_xml* tr, doc_info* info, int row_
     int col = 0;
     float row_h = word_tr_min_height_pt(tr);
 
-    fz_write_string(ctx, info->out, "<tr>");
+	fz_write_string(ctx, info->out, "<tr>");
     for (n = fz_xml_down(tr); n; n = fz_xml_next(n)) {
         int vm;
         int gs;
@@ -3221,13 +3773,13 @@ static void emit_table_row(fz_context* ctx, fz_xml* tr, doc_info* info, int row_
         if (vm == 2) {
             /* Continuation of a vertical merge — already covered by rowspan. */
             col += gs;
-            continue;
+			continue;
         }
         rs = (vm == 1) ? word_vmerge_rowspan(tr, col) : 1;
         emit_table_cell(ctx, n, info, rs, gs, col, row_i, n_rows, n_cols, table_b, grid_w, ngrid, grid_sum, row_h);
         col += gs;
-    }
-    fz_write_string(ctx, info->out, "</tr>\n");
+	}
+	fz_write_string(ctx, info->out, "</tr>\n");
 }
 
 static int word_tbl_grid_widths(fz_xml* tbl, int* widths, int max_n, int* sum_out) {
@@ -3264,7 +3816,7 @@ static void emit_table(fz_context* ctx, fz_xml* tbl, doc_info* info) {
     word_tbl_border_set table_b;
     const char* dump_geo = getenv("SUMATRA_DUMP_TABLE_GEOMETRY");
 
-    close_word_list(ctx, info);
+	close_word_list(ctx, info);
     if (info) info->in_table++;
     ngrid = word_tbl_grid_widths(tbl, grid_w, (int)(sizeof grid_w / sizeof grid_w[0]), &grid_sum);
     n_rows = word_tbl_count_rows(tbl);
@@ -3284,7 +3836,7 @@ static void emit_table(fz_context* ctx, fz_xml* tbl, doc_info* info) {
         fz_write_string(ctx, info->out, "<table style=\"page-break-before:always\">\n");
         info->pending_page_break = 0;
     } else
-        fz_write_string(ctx, info->out, "<table>\n");
+	fz_write_string(ctx, info->out, "<table>\n");
     row_i = 0;
     for (n = fz_xml_down(tbl); n; n = fz_xml_next(n)) {
         if (fz_xml_is_tag(n, "tblPr") || fz_xml_is_tag(n, "tblGrid")) continue;
@@ -3303,7 +3855,7 @@ static void emit_table(fz_context* ctx, fz_xml* tbl, doc_info* info) {
                         fz_write_printf(ctx, fz_stddbg(ctx), "  cell col=%d span=%d vMerge=continue (skip td)\n", col,
                                         gs);
                         col += gs;
-                        continue;
+			continue;
                     }
                     rs = (vm == 1) ? word_vmerge_rowspan(n, col) : 1;
                     for (ii = 0; ii < gs && col + ii < ngrid; ii++) wsum += grid_w[col + ii];
@@ -3316,8 +3868,8 @@ static void emit_table(fz_context* ctx, fz_xml* tbl, doc_info* info) {
             emit_table_row(ctx, n, info, row_i, n_rows, n_cols, &table_b, ngrid > 0 ? grid_w : NULL, ngrid, grid_sum);
             row_i++;
         }
-    }
-    fz_write_string(ctx, info->out, "</table>\n");
+	}
+	fz_write_string(ctx, info->out, "</table>\n");
     if (info && info->in_table > 0) info->in_table--;
 }
 
@@ -3356,18 +3908,18 @@ static void emit_word_body(fz_context* ctx, fz_xml* body, doc_info* info) {
                         info->signoff_pad_em = 0;
                     }
                     n = paras[count - 1];
-                    continue;
+			continue;
                 }
             }
-            emit_paragraph(ctx, n, info);
+			emit_paragraph(ctx, n, info);
         } else if (fz_xml_is_tag(n, "tbl"))
-            emit_table(ctx, n, info);
+			emit_table(ctx, n, info);
         else if (fz_xml_is_tag(n, "sdt")) {
             fz_xml* content = fz_xml_find_down(n, "sdtContent");
             if (content) emit_word_body(ctx, content, info);
-        }
-    }
-    close_word_list(ctx, info);
+		}
+	}
+	close_word_list(ctx, info);
 }
 
 /* Fallback DFS walker for non-Word packages (pptx slides, hwpx, etc.). */
@@ -3377,106 +3929,106 @@ static void process_doc_stream_fallback(fz_context* ctx, fz_xml* xml, doc_info* 
     const char* paragraph_style = NULL;
     const char* inline_style = NULL;
 
-    /* First off, see if we can do page numbers. */
+	/* First off, see if we can do page numbers. */
     if (do_pages) {
-        pos = fz_xml_find_dfs(xml, "lastRenderedPageBreak", NULL, NULL);
+		pos = fz_xml_find_dfs(xml, "lastRenderedPageBreak", NULL, NULL);
         if (pos) {
-            fz_write_string(ctx, info->out, "<div id=\"page1\">\n");
-            info->page = 1;
-        }
-    }
+			fz_write_string(ctx, info->out, "<div id=\"page1\">\n");
+			info->page = 1;
+		}
+	}
 
-    pos = xml;
+	pos = xml;
     while (pos) {
         if (fz_xml_is_tag(pos, "t")) {
-            show_text(ctx, pos, info);
+			show_text(ctx, pos, info);
         } else if (fz_xml_is_tag(pos, "br")) {
-            if (paragraph_style && strcmp(paragraph_style, "pre"))
-                fz_write_printf(ctx, info->out, "<br/>\n");
-            else
-                fz_write_printf(ctx, info->out, "\n");
+			if (paragraph_style && strcmp(paragraph_style, "pre"))
+				fz_write_printf(ctx, info->out, "<br/>\n");
+			else
+				fz_write_printf(ctx, info->out, "\n");
         } else if (fz_xml_is_tag(pos, "footnoteReference")) {
-            show_footnote(ctx, pos, info);
+			show_footnote(ctx, pos, info);
         } else if (fz_xml_is_tag(pos, "tabs")) {
-            /* Skip tab definitions. */
+			/* Skip tab definitions. */
         } else if (fz_xml_is_tag(pos, "pStyle")) {
-            paragraph_style = fz_xml_att(pos, "w:val");
+			paragraph_style = fz_xml_att(pos, "w:val");
             if (paragraph_style) {
-                if (!strcmp(paragraph_style, "BodyText"))
-                    paragraph_style = NULL;
-                else if (!strcmp(paragraph_style, "Heading1"))
-                    paragraph_style = "h1";
-                else if (!strcmp(paragraph_style, "Heading2"))
-                    paragraph_style = "h2";
-                else if (!strcmp(paragraph_style, "Heading3"))
-                    paragraph_style = "h3";
-                else if (!strcmp(paragraph_style, "Heading4"))
-                    paragraph_style = "h4";
-                else if (!strcmp(paragraph_style, "Heading5"))
-                    paragraph_style = "h5";
-                else if (!strcmp(paragraph_style, "Heading6"))
-                    paragraph_style = "h6";
-                else if (!strcmp(paragraph_style, "SourceCode"))
-                    paragraph_style = "pre";
-                else
-                    paragraph_style = NULL;
+				if (!strcmp(paragraph_style, "BodyText"))
+					paragraph_style = NULL;
+				else if (!strcmp(paragraph_style, "Heading1"))
+					paragraph_style = "h1";
+				else if (!strcmp(paragraph_style, "Heading2"))
+					paragraph_style = "h2";
+				else if (!strcmp(paragraph_style, "Heading3"))
+					paragraph_style = "h3";
+				else if (!strcmp(paragraph_style, "Heading4"))
+					paragraph_style = "h4";
+				else if (!strcmp(paragraph_style, "Heading5"))
+					paragraph_style = "h5";
+				else if (!strcmp(paragraph_style, "Heading6"))
+					paragraph_style = "h6";
+				else if (!strcmp(paragraph_style, "SourceCode"))
+					paragraph_style = "pre";
+				else
+					paragraph_style = NULL;
 
                 if (paragraph_style) fz_write_printf(ctx, info->out, "<%s>", paragraph_style);
-            }
+			}
         } else if (fz_xml_is_tag(pos, "rStyle")) {
-            inline_style = fz_xml_att(pos, "w:val");
+			inline_style = fz_xml_att(pos, "w:val");
             if (inline_style) {
-                if (!strcmp(inline_style, "VerbatimChar"))
-                    inline_style = "tt";
-                else
-                    inline_style = NULL;
+				if (!strcmp(inline_style, "VerbatimChar"))
+					inline_style = "tt";
+				else
+					inline_style = NULL;
                 if (inline_style) fz_write_printf(ctx, info->out, "<%s>", inline_style);
             }
         } else {
             fz_xml* down;
-            if (fz_xml_is_tag(pos, "lineBreak"))
-                fz_write_string(ctx, info->out, "\n");
-            else if (fz_xml_is_tag(pos, "p"))
-                fz_write_string(ctx, info->out, "<p>");
-            else if (fz_xml_is_tag(pos, "tab"))
-                fz_write_string(ctx, info->out, "\t");
+			if (fz_xml_is_tag(pos, "lineBreak"))
+				fz_write_string(ctx, info->out, "\n");
+			else if (fz_xml_is_tag(pos, "p"))
+				fz_write_string(ctx, info->out, "<p>");
+			else if (fz_xml_is_tag(pos, "tab"))
+				fz_write_string(ctx, info->out, "\t");
             else if (do_pages && fz_xml_is_tag(pos, "lastRenderedPageBreak")) {
                 emit_page_break(ctx, info);
-            }
-            down = fz_xml_down(pos);
+			}
+			down = fz_xml_down(pos);
             if (down) {
-                pos = down;
-                continue;
-            }
-        }
-        next = fz_xml_next(pos);
+				pos = down;
+				continue;
+			}
+		}
+		next = fz_xml_next(pos);
         if (next) {
-            pos = next;
-            continue;
-        }
+			pos = next;
+			continue;
+		}
 
         while (1) {
-            pos = fz_xml_up(pos);
+			pos = fz_xml_up(pos);
             if (pos == NULL) break;
             if (fz_xml_is_tag(pos, "p")) {
                 if (paragraph_style) {
-                    fz_write_printf(ctx, info->out, "</%s>", paragraph_style);
-                    paragraph_style = NULL;
-                }
-                fz_write_string(ctx, info->out, "</p>\n");
+					fz_write_printf(ctx, info->out, "</%s>", paragraph_style);
+					paragraph_style = NULL;
+				}
+				fz_write_string(ctx, info->out, "</p>\n");
             } else if (fz_xml_is_tag(pos, "r")) {
                 if (inline_style) {
-                    fz_write_printf(ctx, info->out, "</%s>", inline_style);
-                    inline_style = NULL;
-                }
-            }
-            next = fz_xml_next(pos);
+					fz_write_printf(ctx, info->out, "</%s>", inline_style);
+					inline_style = NULL;
+				}
+			}
+			next = fz_xml_next(pos);
             if (next) {
-                pos = next;
-                break;
-            }
-        }
-    }
+				pos = next;
+				break;
+			}
+		}
+	}
 
     if (do_pages && info->page) fz_write_string(ctx, info->out, "\n</div>\n");
 }
@@ -3485,25 +4037,25 @@ static void process_doc_stream(fz_context* ctx, fz_xml* xml, doc_info* info, int
     fz_xml* body;
 
 #ifdef DEBUG_OFFICE_TO_HTML
-    fz_write_printf(ctx, fz_stddbg(ctx), "process_doc_stream:\n");
-    fz_output_xml(ctx, fz_stddbg(ctx), xml, 0);
+	fz_write_printf(ctx, fz_stddbg(ctx), "process_doc_stream:\n");
+	fz_output_xml(ctx, fz_stddbg(ctx), xml, 0);
 #endif
 
-    info->do_pages = do_pages;
-    info->list_kind = 0;
+	info->do_pages = do_pages;
+	info->list_kind = 0;
 
-    body = fz_xml_find_dfs(xml, "body", NULL, NULL);
+	body = fz_xml_find_dfs(xml, "body", NULL, NULL);
     if (body) {
         if (do_pages && fz_xml_find_dfs(body, "lastRenderedPageBreak", NULL, NULL)) {
-            fz_write_string(ctx, info->out, "<div id=\"page1\">\n");
-            info->page = 1;
-        }
-        emit_word_body(ctx, body, info);
+			fz_write_string(ctx, info->out, "<div id=\"page1\">\n");
+			info->page = 1;
+		}
+		emit_word_body(ctx, body, info);
         if (do_pages && info->page) fz_write_string(ctx, info->out, "\n</div>\n");
-        return;
-    }
+		return;
+	}
 
-    process_doc_stream_fallback(ctx, xml, info, do_pages);
+	process_doc_stream_fallback(ctx, xml, info, do_pages);
 }
 
 static void process_item(fz_context* ctx, fz_archive* arch, const char* file, doc_info* info, int do_pages) {
@@ -3518,7 +4070,7 @@ static void process_rootfile(fz_context* ctx, fz_archive* arch, const char* file
     fz_xml* xml = fz_parse_xml_archive_entry(ctx, arch, file, 0);
 
     fz_try(ctx) {
-        /* FIXME: Should really search for these just inside 'spine'. */
+		/* FIXME: Should really search for these just inside 'spine'. */
         fz_xml* pos = fz_xml_find_dfs(xml, "itemref", NULL, NULL);
         while (pos) {
             char* idref = fz_xml_att(pos, "idref");
@@ -3527,40 +4079,40 @@ static void process_rootfile(fz_context* ctx, fz_archive* arch, const char* file
                 char* type = fz_xml_att(item, "media-type");
                 char* href = fz_xml_att(item, "href");
                 if (type && href && !strcmp(type, "application/xml")) {
-                    process_item(ctx, arch, href, info, 1);
-                }
-                item = fz_xml_find_next_dfs(pos, "item", "id", idref);
-            }
-            pos = fz_xml_find_next_dfs(pos, "itemref", NULL, NULL);
-        }
-    }
+					process_item(ctx, arch, href, info, 1);
+				}
+				item = fz_xml_find_next_dfs(pos, "item", "id", idref);
+			}
+			pos = fz_xml_find_next_dfs(pos, "itemref", NULL, NULL);
+		}
+	}
     fz_always(ctx) fz_drop_xml(ctx, xml);
     fz_catch(ctx) fz_rethrow(ctx);
 }
 
 /* XLSX support */
 static char* make_rel_name(fz_context* ctx, const char* file) {
-    size_t z = strlen(file);
+	size_t z = strlen(file);
     char* s = fz_malloc(ctx, z + 12);
     char* t;
     const char* p;
     const char* slash = file;
 
-    for (p = file; *p != 0; p++)
+	for (p = file; *p != 0; p++)
         if (*p == '/') slash = p + 1;
 
-    t = s;
+	t = s;
     if (slash != file) {
-        memcpy(t, file, slash - file);
-        t += slash - file;
-    }
-    memcpy(t, "_rels/", 6);
-    t += 6;
-    memcpy(t, file + (slash - file), z - (slash - file));
-    t += z - (slash - file);
-    memcpy(t, ".rels", 6);
+		memcpy(t, file, slash - file);
+		t += slash - file;
+	}
+	memcpy(t, "_rels/", 6);
+	t += 6;
+	memcpy(t, file + (slash - file), z - (slash - file));
+	t += z - (slash - file);
+	memcpy(t, ".rels", 6);
 
-    return s;
+	return s;
 }
 
 static char* lookup_rel(fz_context* ctx, fz_xml* rels, const char* id) {
@@ -3568,70 +4120,70 @@ static char* lookup_rel(fz_context* ctx, fz_xml* rels, const char* id) {
 
     if (id == NULL) return NULL;
 
-    pos = fz_xml_find_dfs(rels, "Relationship", NULL, NULL);
+	pos = fz_xml_find_dfs(rels, "Relationship", NULL, NULL);
     while (pos) {
         char* id2 = fz_xml_att(pos, "Id");
 
         if (id2 && !strcmp(id, id2)) return fz_xml_att(pos, "Target");
 
-        pos = fz_xml_find_next_dfs(pos, "Relationship", NULL, NULL);
-    }
+		pos = fz_xml_find_next_dfs(pos, "Relationship", NULL, NULL);
+	}
 
-    return NULL;
+	return NULL;
 }
 
 static void send_cell_formatting(fz_context* ctx, doc_info* info) {
     if (info->col_signalled == 0) {
-        fz_write_string(ctx, info->out, "<tr>\n");
-        info->col_signalled = 1;
+		fz_write_string(ctx, info->out, "<tr>\n");
+		info->col_signalled = 1;
         if (info->col_at > 1) fz_write_string(ctx, info->out, "<td>");
-    }
+	}
 
-    /* Send the label */
+	/* Send the label */
     while (info->col_signalled < info->col_at) {
-        fz_write_string(ctx, info->out, "</td>");
-        info->col_signalled++;
+		fz_write_string(ctx, info->out, "</td>");
+		info->col_signalled++;
         if (info->col_signalled < info->col_at) fz_write_string(ctx, info->out, "<td>");
-    }
-    if (info->sheet_name && info->sheet_name[0])
-        fz_write_printf(ctx, info->out, "<td id=\"%s!%s\">", info->sheet_name, info->label);
-    else
-        fz_write_printf(ctx, info->out, "<td id=\"%s\">", info->label);
+	}
+	if (info->sheet_name && info->sheet_name[0])
+		fz_write_printf(ctx, info->out, "<td id=\"%s!%s\">", info->sheet_name, info->label);
+	else
+		fz_write_printf(ctx, info->out, "<td id=\"%s\">", info->label);
 }
 
 static void show_shared_string(fz_context* ctx, fz_xml* v, doc_info* info) {
     const char* t = fz_xml_text(fz_xml_down(v));
-    int n = fz_atoi(t);
+	int n = fz_atoi(t);
 
     if (n < 0 || n >= info->shared_string_len) return;
 
     if (info->shared_strings[n] == NULL || info->shared_strings[n][0] == 0) return;
 
-    send_cell_formatting(ctx, info);
-    /* Then send the strings. */
-    doc_escape(ctx, info->out, info->shared_strings[n]);
+	send_cell_formatting(ctx, info);
+	/* Then send the strings. */
+	doc_escape(ctx, info->out, info->shared_strings[n]);
 }
 
 static int col_from_label(const char* label) {
-    int col = 0;
-    int len = 26;
-    int base = 0;
+	int col = 0;
+	int len = 26;
+	int base = 0;
 
-    /* If we can't read the column, return 0. */
+	/* If we can't read the column, return 0. */
     if (label == NULL || *label < 'A' || *label > 'Z') return 0;
 
-    /*	Each section (A-Z, AA-ZZ, AAA-ZZZ etc) is of len 'len', and starts
-     *	at base index 'base'. Each section is 26 times as long, and starts
-     *	at base + len from the previous section.
-     *
-     *	A:	col = 26 * 0 + 0 + 0
-     *	AA:	col = (26 * 0 + 0 + 0) * 26 + 0 + 26 = 26
-     *	AAA:	col = (((26 * 0 + 0 + 0) * 26 + 0 + 26)*26 + 0 + 26*26 = 26 + 26 * 26
-     */
+	/*	Each section (A-Z, AA-ZZ, AAA-ZZZ etc) is of len 'len', and starts
+	 *	at base index 'base'. Each section is 26 times as long, and starts
+	 *	at base + len from the previous section.
+	 *
+	 *	A:	col = 26 * 0 + 0 + 0
+	 *	AA:	col = (26 * 0 + 0 + 0) * 26 + 0 + 26 = 26
+	 *	AAA:	col = (((26 * 0 + 0 + 0) * 26 + 0 + 26)*26 + 0 + 26*26 = 26 + 26 * 26
+	 */
     do {
-        col = 26 * col + (*label++) - 'A' + base;
-        base += len;
-        len *= 26;
+		col = 26 * col + (*label++) - 'A' + base;
+		base += len;
+		len *= 26;
     } while (*label >= 'A' && *label <= 'Z');
 
     return col + 1;
@@ -3645,59 +4197,59 @@ static void show_cell_text(fz_context* ctx, fz_xml* top, doc_info* info) {
         char* text = fz_xml_text(pos);
 
         if (text) {
-            send_cell_formatting(ctx, info);
-            doc_escape(ctx, info->out, text);
-        }
+			send_cell_formatting(ctx, info);
+			doc_escape(ctx, info->out, text);
+		}
 
-        /* Always try to move down. */
-        next = fz_xml_down(pos);
+		/* Always try to move down. */
+		next = fz_xml_down(pos);
         if (next) {
-            /* We can move down, easy! */
-            pos = next;
-            continue;
-        }
+			/* We can move down, easy! */
+			pos = next;
+			continue;
+		}
 
         if (pos == top) break;
 
-        /* We can't move down, try moving to next. */
-        next = fz_xml_next(pos);
+		/* We can't move down, try moving to next. */
+		next = fz_xml_next(pos);
         if (next) {
-            /* We can move to next, easy! */
-            pos = next;
-            continue;
-        }
+			/* We can move to next, easy! */
+			pos = next;
+			continue;
+		}
 
-        /* If we can't go down, or next, pop up until we
-         * find somewhere we can go next from. */
+		/* If we can't go down, or next, pop up until we
+		 * find somewhere we can go next from. */
         while (1) {
-            /* OK. So move up. */
-            pos = fz_xml_up(pos);
-            /* Check for hitting the top. */
+			/* OK. So move up. */
+			pos = fz_xml_up(pos);
+			/* Check for hitting the top. */
             if (pos == top) pos = NULL;
             if (pos == NULL) break;
-            next = fz_xml_next(pos);
+			next = fz_xml_next(pos);
             if (next) {
-                pos = next;
-                break;
-            }
-        }
-    }
+				pos = next;
+				break;
+			}
+		}
+	}
 }
 
 static void arrived_at_cell(fz_context* ctx, doc_info* info, const char* label) {
-    int col;
+	int col;
 
-    /* If we have a label queued, and no label is given here, then we're
-     * processing a 'cell' callback after having had a 'cellname'
-     * callback. So don't signal it twice! */
+	/* If we have a label queued, and no label is given here, then we're
+	 * processing a 'cell' callback after having had a 'cellname'
+	 * callback. So don't signal it twice! */
     if (label == NULL && info->label) return;
 
-    col = label ? col_from_label(label) : 0;
+	col = label ? col_from_label(label) : 0;
 
-    fz_free(ctx, info->label);
-    info->label = NULL;
-    info->label = label ? fz_strdup(ctx, label) : NULL;
-    info->col_at = col;
+	fz_free(ctx, info->label);
+	info->label = NULL;
+	info->label = label ? fz_strdup(ctx, label) : NULL;
+	info->col_at = col;
 }
 
 static void show_cell(fz_context* ctx, fz_xml* cell, doc_info* info) {
@@ -3705,136 +4257,136 @@ static void show_cell(fz_context* ctx, fz_xml* cell, doc_info* info) {
     fz_xml* v = fz_xml_find_down(cell, "v");
     const char* r = fz_xml_att(cell, "r");
 
-    arrived_at_cell(ctx, info, r);
-    if (t && t[0] == 's' && t[1] == 0)
-        show_shared_string(ctx, v, info);
-    else
-        show_cell_text(ctx, v, info);
+	arrived_at_cell(ctx, info, r);
+	if (t && t[0] == 's' && t[1] == 0)
+		show_shared_string(ctx, v, info);
+	else
+		show_cell_text(ctx, v, info);
 }
 
 static void new_row(fz_context* ctx, doc_info* info) {
     if (info->col_signalled) {
-        /* We've sent at least one cell. So need to close the
-         * td and tr */
-        fz_write_string(ctx, info->out, "</td>\n</tr>\n");
+		/* We've sent at least one cell. So need to close the
+		 * td and tr */
+		fz_write_string(ctx, info->out, "</td>\n</tr>\n");
     } else {
-        /* We've not sent anything for this row. Keep the counts
-         * correct. */
-        fz_write_string(ctx, info->out, "<tr></tr>\n");
-    }
-    info->col_at = 1;
-    info->col_signalled = 0;
-    fz_free(ctx, info->label);
-    info->label = NULL;
+		/* We've not sent anything for this row. Keep the counts
+		 * correct. */
+		fz_write_string(ctx, info->out, "<tr></tr>\n");
+	}
+	info->col_at = 1;
+	info->col_signalled = 0;
+	fz_free(ctx, info->label);
+	info->label = NULL;
 }
 
 static void process_sheet(fz_context* ctx, fz_archive* arch, const char* name, const char* file, doc_info* info) {
     fz_xml* xml = fz_parse_xml_archive_entry(ctx, arch, file, 1);
 
 #ifdef DEBUG_OFFICE_TO_HTML
-    fz_write_printf(ctx, fz_stddbg(ctx), "process_sheet:\n");
-    fz_output_xml(ctx, fz_stddbg(ctx), xml, 0);
+	fz_write_printf(ctx, fz_stddbg(ctx), "process_sheet:\n");
+	fz_output_xml(ctx, fz_stddbg(ctx), xml, 0);
 #endif
 
-    fz_write_printf(ctx, info->out, "<table id=\"%s\">\n", name);
+	fz_write_printf(ctx, info->out, "<table id=\"%s\">\n", name);
 
-    info->sheet_name = name;
-    info->col_at = 0;
-    info->col_signalled = 0;
+	info->sheet_name = name;
+	info->col_at = 0;
+	info->col_signalled = 0;
 
     fz_try(ctx) {
         fz_xml* pos = xml;
         fz_xml* next;
 
         while (pos) {
-            /* When we arrive on a node, check if it's a cell. */
+			/* When we arrive on a node, check if it's a cell. */
             if (fz_xml_is_tag(pos, "c")) {
-                show_cell(ctx, pos, info);
-                /* Do NOT go down, we've already dealt with that. */
+				show_cell(ctx, pos, info);
+				/* Do NOT go down, we've already dealt with that. */
             } else {
-                /* Try to move down. */
-                next = fz_xml_down(pos);
+				/* Try to move down. */
+				next = fz_xml_down(pos);
                 if (next) {
-                    /* We can move down, easy! */
-                    pos = next;
-                    continue;
-                }
-            }
-            /* Try moving to next. */
-            next = fz_xml_next(pos);
+					/* We can move down, easy! */
+					pos = next;
+					continue;
+				}
+			}
+			/* Try moving to next. */
+			next = fz_xml_next(pos);
             if (next) {
-                /* We can move to next, easy! */
-                pos = next;
-                continue;
-            }
+				/* We can move to next, easy! */
+				pos = next;
+				continue;
+			}
 
-            /* If we can't go down, or next, pop up until we
-             * find somewhere we can go next from. */
+			/* If we can't go down, or next, pop up until we
+			 * find somewhere we can go next from. */
             while (1) {
-                /* OK. So move up. */
-                pos = fz_xml_up(pos);
-                /* Check for hitting the top. */
+				/* OK. So move up. */
+				pos = fz_xml_up(pos);
+				/* Check for hitting the top. */
                 if (pos == NULL) break;
 
-                /* We've returned to a node. See if it's a 'row'. */
+				/* We've returned to a node. See if it's a 'row'. */
                 if (fz_xml_is_tag(pos, "row")) new_row(ctx, info);
 
-                next = fz_xml_next(pos);
+				next = fz_xml_next(pos);
                 if (next) {
-                    pos = next;
-                    break;
-                }
-            }
-        }
+					pos = next;
+					break;
+				}
+			}
+		}
         if (info->col_signalled) fz_write_printf(ctx, info->out, "</td>\n</tr>\n");
-        fz_write_printf(ctx, info->out, "</table>\n");
-    }
+		fz_write_printf(ctx, info->out, "</table>\n");
+	}
     fz_always(ctx) fz_drop_xml(ctx, xml);
     fz_catch(ctx) fz_rethrow(ctx);
 }
 
 static void process_slide(fz_context* ctx, fz_archive* arch, const char* file, doc_info* info) {
-    fz_write_printf(ctx, info->out, "<div id=\"slide%d\">\n", info->page++);
-    process_item(ctx, arch, file, info, 0);
-    fz_write_printf(ctx, info->out, "</div>\n");
+	fz_write_printf(ctx, info->out, "<div id=\"slide%d\">\n", info->page++);
+	process_item(ctx, arch, file, info, 0);
+	fz_write_printf(ctx, info->out, "</div>\n");
 }
 
 static char* make_absolute_path(fz_context* ctx, const char* abs, const char* rel) {
     const char* a = abs;
     const char* aslash = a;
-    int up = 0;
-    size_t z1, z2;
+	int up = 0;
+	size_t z1, z2;
     char* s;
 
     if (rel == NULL) return NULL;
     if (abs == NULL || *rel == '/') return fz_strdup(ctx, rel);
 
-    for (a = abs; *a != 0; a++)
+	for (a = abs; *a != 0; a++)
         if (*a == '/') aslash = a + 1;
 
     while (rel[0] == '.') {
-        if (rel[1] == '/')
-            rel += 2;
-        else if (rel[1] == '.' && rel[2] == '/')
-            rel += 3, up++;
-        else
-            fz_throw(ctx, FZ_ERROR_FORMAT, "Unresolvable path");
-    }
+		if (rel[1] == '/')
+			rel += 2;
+		else if (rel[1] == '.' && rel[2] == '/')
+			rel += 3, up++;
+		else
+			fz_throw(ctx, FZ_ERROR_FORMAT, "Unresolvable path");
+	}
     if (rel[0] == 0) fz_throw(ctx, FZ_ERROR_FORMAT, "Unresolvable path");
 
     while (up) {
         while (aslash != abs && aslash[-1] != '/') aslash--;
 
-        up--;
-    }
+		up--;
+	}
 
-    z1 = aslash - abs;
-    z2 = strlen(rel);
-    s = fz_malloc(ctx, z1 + z2 + 1);
+	z1 = aslash - abs;
+	z2 = strlen(rel);
+	s = fz_malloc(ctx, z1 + z2 + 1);
     if (z1) memcpy(s, abs, z1);
     memcpy(s + z1, rel, z2 + 1);
 
-    return s;
+	return s;
 }
 
 static char* collate_t_content(fz_context* ctx, fz_xml* top) {
@@ -3843,74 +4395,74 @@ static char* collate_t_content(fz_context* ctx, fz_xml* top) {
     fz_xml* pos = fz_xml_down(top);
 
     while (pos != top) {
-        /* Capture all the 't' content. */
+		/* Capture all the 't' content. */
         if (fz_xml_is_tag(pos, "t")) {
-            /* Remember the content. */
+			/* Remember the content. */
             char* s = fz_xml_text(fz_xml_down(pos));
 
             if (s == NULL) {
-                /* Do nothing */
+				/* Do nothing */
             } else if (val == NULL)
-                val = fz_strdup(ctx, s);
+				val = fz_strdup(ctx, s);
             else {
                 char* val2;
-                size_t z1 = strlen(val);
-                size_t z2 = strlen(s) + 1;
+				size_t z1 = strlen(val);
+				size_t z2 = strlen(s) + 1;
                 fz_try(ctx) {
-                    val2 = fz_malloc(ctx, z1 + z2);
-                }
+					val2 = fz_malloc(ctx, z1 + z2);
+				}
                 fz_catch(ctx) {
-                    fz_free(ctx, val);
-                    fz_rethrow(ctx);
-                }
-                memcpy(val2, val, z1);
-                memcpy(val2 + z1, s, z2);
-                fz_free(ctx, val);
-                val = val2;
-            }
-            /* Do NOT go down, we've already dealt with that. */
+					fz_free(ctx, val);
+					fz_rethrow(ctx);
+				}
+				memcpy(val2, val, z1);
+				memcpy(val2 + z1, s, z2);
+				fz_free(ctx, val);
+				val = val2;
+			}
+			/* Do NOT go down, we've already dealt with that. */
         } else if (fz_xml_is_tag(pos, "rPr") || fz_xml_is_tag(pos, "rPh")) {
-            /* We do not want the 't' content from within these. */
+			/* We do not want the 't' content from within these. */
         } else {
-            /* Try to move down. */
-            next = fz_xml_down(pos);
+			/* Try to move down. */
+			next = fz_xml_down(pos);
             if (next) {
-                /* We can move down, easy! */
-                pos = next;
-                continue;
-            }
-        }
-        /* Try moving to next. */
-        next = fz_xml_next(pos);
+				/* We can move down, easy! */
+				pos = next;
+				continue;
+			}
+		}
+		/* Try moving to next. */
+		next = fz_xml_next(pos);
         if (next) {
-            /* We can move to next, easy! */
-            pos = next;
-            continue;
-        }
+			/* We can move to next, easy! */
+			pos = next;
+			continue;
+		}
 
-        /* If we can't go down, or next, pop up until we
-         * find somewhere we can go next from. */
+		/* If we can't go down, or next, pop up until we
+		 * find somewhere we can go next from. */
         while (1) {
-            /* OK. So move up. */
-            pos = fz_xml_up(pos);
-            /* Check for hitting the top. */
+			/* OK. So move up. */
+			pos = fz_xml_up(pos);
+			/* Check for hitting the top. */
             if (pos == top) break;
-            next = fz_xml_next(pos);
+			next = fz_xml_next(pos);
             if (next) {
-                pos = next;
-                break;
-            }
-        }
-    }
+				pos = next;
+				break;
+			}
+		}
+	}
 
-    return val;
+	return val;
 }
 
 static fz_xml* try_parse_xml_archive_entry(fz_context* ctx, fz_archive* arch, const char* filename,
                                            int preserve_white) {
     if (!fz_has_archive_entry(ctx, arch, filename)) return NULL;
 
-    return fz_parse_xml_archive_entry(ctx, arch, filename, preserve_white);
+	return fz_parse_xml_archive_entry(ctx, arch, filename, preserve_white);
 }
 
 static void load_shared_strings(fz_context* ctx, fz_archive* arch, fz_xml* rels, doc_info* info, const char* file) {
@@ -3923,39 +4475,39 @@ static void load_shared_strings(fz_context* ctx, fz_archive* arch, fz_xml* rels,
 
     if (ss_file == NULL) return;
 
-    fz_var(xml);
-    fz_var(str);
-    fz_var(resolved);
+	fz_var(xml);
+	fz_var(str);
+	fz_var(resolved);
 
     fz_try(ctx) {
-        resolved = make_absolute_path(ctx, file, ss_file);
-        xml = fz_parse_xml_archive_entry(ctx, arch, resolved, 1);
+		resolved = make_absolute_path(ctx, file, ss_file);
+		xml = fz_parse_xml_archive_entry(ctx, arch, resolved, 1);
 
-        pos = fz_xml_find_dfs(xml, "si", NULL, NULL);
+		pos = fz_xml_find_dfs(xml, "si", NULL, NULL);
         while (pos) {
-            int n = info->shared_string_len;
-            str = collate_t_content(ctx, pos);
+			int n = info->shared_string_len;
+			str = collate_t_content(ctx, pos);
 
             if (n == info->shared_string_max) {
-                int max = info->shared_string_max;
-                int newmax = max ? max * 2 : 1024;
+				int max = info->shared_string_max;
+				int newmax = max ? max * 2 : 1024;
                 char** arr = fz_realloc(ctx, info->shared_strings, sizeof(*arr) * newmax);
-                memset(&arr[max], 0, sizeof(*arr) * (newmax - max));
-                info->shared_strings = arr;
-                info->shared_string_max = newmax;
-            }
+				memset(&arr[max], 0, sizeof(*arr) * (newmax - max));
+				info->shared_strings = arr;
+				info->shared_string_max = newmax;
+			}
 
-            info->shared_strings[n] = str;
-            str = NULL;
-            info->shared_string_len++;
-            pos = fz_xml_find_next_dfs(pos, "si", NULL, NULL);
-        }
-    }
+			info->shared_strings[n] = str;
+			str = NULL;
+			info->shared_string_len++;
+			pos = fz_xml_find_next_dfs(pos, "si", NULL, NULL);
+		}
+	}
     fz_always(ctx) {
-        fz_drop_xml(ctx, xml);
-        fz_free(ctx, resolved);
-        fz_free(ctx, str);
-    }
+		fz_drop_xml(ctx, xml);
+		fz_free(ctx, resolved);
+		fz_free(ctx, str);
+	}
     fz_catch(ctx) fz_rethrow(ctx);
 }
 
@@ -3964,46 +4516,46 @@ static void load_footnotes(fz_context* ctx, fz_archive* arch, fz_xml* rels, doc_
     fz_xml* xml = NULL;
     char* str = NULL;
 
-    fz_var(xml);
-    fz_var(str);
-    fz_var(resolved);
+	fz_var(xml);
+	fz_var(str);
+	fz_var(resolved);
 
     fz_try(ctx) {
         fz_xml* pos;
 
-        resolved = make_absolute_path(ctx, file, "footnotes.xml");
-        xml = try_parse_xml_archive_entry(ctx, arch, resolved, 1);
+		resolved = make_absolute_path(ctx, file, "footnotes.xml");
+		xml = try_parse_xml_archive_entry(ctx, arch, resolved, 1);
         if (xml == NULL) break;
 
-        pos = fz_xml_find_dfs(xml, "footnote", NULL, NULL);
+		pos = fz_xml_find_dfs(xml, "footnote", NULL, NULL);
         while (pos) {
-            int n = fz_atoi(fz_xml_att(pos, "w:id"));
+			int n = fz_atoi(fz_xml_att(pos, "w:id"));
 
-            str = collate_t_content(ctx, pos);
+			str = collate_t_content(ctx, pos);
 
             if (str && n >= 0) {
                 if (n >= info->footnotes_max) {
-                    int max = info->footnotes_max;
-                    int newmax = max ? max * 2 : 1024;
+					int max = info->footnotes_max;
+					int newmax = max ? max * 2 : 1024;
                     char** arr;
                     if (newmax < n) newmax = n + 1;
-                    arr = fz_realloc(ctx, info->footnotes, sizeof(*arr) * newmax);
-                    memset(&arr[max], 0, sizeof(*arr) * (newmax - max));
-                    info->footnotes = arr;
-                    info->footnotes_max = newmax;
-                }
+					arr = fz_realloc(ctx, info->footnotes, sizeof(*arr) * newmax);
+					memset(&arr[max], 0, sizeof(*arr) * (newmax - max));
+					info->footnotes = arr;
+					info->footnotes_max = newmax;
+				}
 
-                info->footnotes[n] = str;
-                str = NULL;
-            }
-            pos = fz_xml_find_next_dfs(pos, "footnote", NULL, NULL);
-        }
-    }
+				info->footnotes[n] = str;
+				str = NULL;
+			}
+			pos = fz_xml_find_next_dfs(pos, "footnote", NULL, NULL);
+		}
+	}
     fz_always(ctx) {
-        fz_drop_xml(ctx, xml);
-        fz_free(ctx, resolved);
-        fz_free(ctx, str);
-    }
+		fz_drop_xml(ctx, xml);
+		fz_free(ctx, resolved);
+		fz_free(ctx, str);
+	}
     fz_catch(ctx) fz_rethrow(ctx);
 }
 
@@ -4015,80 +4567,80 @@ static void process_office_document(fz_context* ctx, fz_archive* arch, const cha
 
     if (file == NULL) return;
 
-    file_rels = make_rel_name(ctx, file);
+	file_rels = make_rel_name(ctx, file);
 
-    fz_var(resolved_rel);
+	fz_var(resolved_rel);
 
-    fz_var(rels);
-    fz_var(xml);
+	fz_var(rels);
+	fz_var(xml);
 
     fz_try(ctx) {
         fz_xml* pos;
 
-        rels = fz_parse_xml_archive_entry(ctx, arch, file_rels, 0);
-        xml = fz_parse_xml_archive_entry(ctx, arch, file, 1);
+		rels = fz_parse_xml_archive_entry(ctx, arch, file_rels, 0);
+		xml = fz_parse_xml_archive_entry(ctx, arch, file, 1);
 
-        /* XLSX */
-        pos = fz_xml_find_dfs(xml, "sheet", NULL, NULL);
+		/* XLSX */
+		pos = fz_xml_find_dfs(xml, "sheet", NULL, NULL);
         if (pos) {
-            load_shared_strings(ctx, arch, rels, info, file);
+			load_shared_strings(ctx, arch, rels, info, file);
             while (pos) {
                 char* name = fz_xml_att(pos, "name");
                 char* id = fz_xml_att(pos, "r:id");
                 char* sheet = lookup_rel(ctx, rels, id);
 
                 if (sheet) {
-                    resolved_rel = make_absolute_path(ctx, file, sheet);
-                    process_sheet(ctx, arch, name, resolved_rel, info);
-                    fz_free(ctx, resolved_rel);
-                    resolved_rel = NULL;
-                }
-                pos = fz_xml_find_next_dfs(pos, "sheet", NULL, NULL);
-            }
-            break;
-        }
+					resolved_rel = make_absolute_path(ctx, file, sheet);
+					process_sheet(ctx, arch, name, resolved_rel, info);
+					fz_free(ctx, resolved_rel);
+					resolved_rel = NULL;
+				}
+				pos = fz_xml_find_next_dfs(pos, "sheet", NULL, NULL);
+			}
+			break;
+		}
 
-        /* Let's try it as a powerpoint */
-        pos = fz_xml_find_dfs(xml, "sldId", NULL, NULL);
+		/* Let's try it as a powerpoint */
+		pos = fz_xml_find_dfs(xml, "sldId", NULL, NULL);
         if (pos) {
             while (pos) {
                 char* id = fz_xml_att(pos, "r:id");
                 char* sheet = lookup_rel(ctx, rels, id);
 
                 if (sheet) {
-                    resolved_rel = make_absolute_path(ctx, file, sheet);
-                    process_slide(ctx, arch, resolved_rel, info);
-                    fz_free(ctx, resolved_rel);
-                    resolved_rel = NULL;
-                }
-                pos = fz_xml_find_next_dfs(pos, "sldId", NULL, NULL);
-            }
-            break;
-        }
+					resolved_rel = make_absolute_path(ctx, file, sheet);
+					process_slide(ctx, arch, resolved_rel, info);
+					fz_free(ctx, resolved_rel);
+					resolved_rel = NULL;
+				}
+				pos = fz_xml_find_next_dfs(pos, "sldId", NULL, NULL);
+			}
+			break;
+		}
 
-        /* Let's try it as word. */
-        {
-            info->arch = arch;
-            info->doc_file = file;
-            info->doc_rels = rels;
+		/* Let's try it as word. */
+		{
+			info->arch = arch;
+			info->doc_file = file;
+			info->doc_rels = rels;
             load_word_theme_fonts(ctx, arch, info);
             load_word_styles(ctx, arch, info, file);
             if (info->default_pstyle && info->doc_body_font_pt < 0.5f)
                 info->doc_body_font_pt = word_style_resolve_font_pt(info, info->default_pstyle);
             load_word_numbering(ctx, arch, info, file);
-            load_footnotes(ctx, arch, rels, info, file);
+			load_footnotes(ctx, arch, rels, info, file);
             /* do_pages=0: ignore Word lastRenderedPageBreak page <div>s. Mid-paragraph
              * breaks already no-op, but empty/spacer paras at page edges still left gaps;
              * MuPDF reflow paginates the continuous HTML. */
             process_doc_stream(ctx, xml, info, 0);
-        }
-    }
+		}
+	}
     fz_always(ctx) {
-        fz_drop_xml(ctx, xml);
-        fz_drop_xml(ctx, rels);
-        fz_free(ctx, resolved_rel);
-        fz_free(ctx, file_rels);
-    }
+		fz_drop_xml(ctx, xml);
+		fz_drop_xml(ctx, rels);
+		fz_free(ctx, resolved_rel);
+		fz_free(ctx, file_rels);
+	}
     fz_catch(ctx) fz_rethrow(ctx);
 }
 
@@ -4096,24 +4648,24 @@ static void process_office_document_properties(fz_context* ctx, fz_archive* arch
     fz_xml* xml = NULL;
     char* title;
 
-    fz_var(xml);
+	fz_var(xml);
 
     fz_try(ctx) {
         fz_xml* pos;
 
-        xml = fz_parse_xml_archive_entry(ctx, arch, file, 1);
+		xml = fz_parse_xml_archive_entry(ctx, arch, file, 1);
 
-        pos = fz_xml_find_dfs(xml, "title", NULL, NULL);
-        title = fz_xml_text(fz_xml_down(pos));
+		pos = fz_xml_find_dfs(xml, "title", NULL, NULL);
+		title = fz_xml_text(fz_xml_down(pos));
         if (title) {
-            fz_write_string(ctx, info->out, "<title>");
-            doc_escape(ctx, info->out, title);
-            fz_write_string(ctx, info->out, "</title>");
-        }
-    }
+			fz_write_string(ctx, info->out, "<title>");
+			doc_escape(ctx, info->out, title);
+			fz_write_string(ctx, info->out, "</title>");
+		}
+	}
     fz_always(ctx) {
-        fz_drop_xml(ctx, xml);
-    }
+		fz_drop_xml(ctx, xml);
+	}
     fz_catch(ctx) fz_rethrow(ctx);
 }
 
@@ -4128,55 +4680,55 @@ static fz_buffer* fz_office_to_html(fz_context* ctx, fz_html_font_set* set, fz_b
     const char* schema = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
     const char* schema_props = "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties";
     doc_info info = {0};
-    int i;
+	int i;
 
-    fz_var(archive);
-    fz_var(stream);
-    fz_var(buffer_out);
-    fz_var(xml);
-    fz_var(rels);
+	fz_var(archive);
+	fz_var(stream);
+	fz_var(buffer_out);
+	fz_var(xml);
+	fz_var(rels);
 
     if (opts) info.opts = *opts;
 
     fz_try(ctx) {
         if (buffer_in) {
-            stream = fz_open_buffer(ctx, buffer_in);
-            archive = fz_open_archive_with_stream(ctx, stream);
+			stream = fz_open_buffer(ctx, buffer_in);
+			archive = fz_open_archive_with_stream(ctx, stream);
         } else
-            archive = fz_keep_archive(ctx, dir);
-        buffer_out = fz_new_buffer(ctx, 1024);
-        info.out = fz_new_output_with_buffer(ctx, buffer_out);
+			archive = fz_keep_archive(ctx, dir);
+		buffer_out = fz_new_buffer(ctx, 1024);
+		info.out = fz_new_output_with_buffer(ctx, buffer_out);
 
-        /* Is it an HWPX ?*/
-        xml = try_parse_xml_archive_entry(ctx, archive, "META-INF/container.xml", 0);
+		/* Is it an HWPX ?*/
+		xml = try_parse_xml_archive_entry(ctx, archive, "META-INF/container.xml", 0);
         if (xml) {
-            pos = fz_xml_find_dfs(xml, "rootfile", "media-type", "application/hwpml-package+xml");
+			pos = fz_xml_find_dfs(xml, "rootfile", "media-type", "application/hwpml-package+xml");
             if (!pos) fz_throw(ctx, FZ_ERROR_FORMAT, "Archive not hwpx.");
 
             while (pos) {
                 const char* file = fz_xml_att(pos, "full-path");
-                process_rootfile(ctx, archive, file, &info);
-                pos = fz_xml_find_next_dfs(pos, "rootfile", "media-type", "application/hwpml-package+xml");
-            }
-            fz_close_output(ctx, info.out);
-            break;
-        }
+				process_rootfile(ctx, archive, file, &info);
+				pos = fz_xml_find_next_dfs(pos, "rootfile", "media-type", "application/hwpml-package+xml");
+			}
+			fz_close_output(ctx, info.out);
+			break;
+		}
 
-        /* Try other types */
-        {
+		/* Try other types */
+		{
             float page_mt, page_mr, page_mb, page_ml, page_w, page_h;
             const char* office_doc = NULL;
 
-            xml = try_parse_xml_archive_entry(ctx, archive, "_rels/.rels", 0);
+			xml = try_parse_xml_archive_entry(ctx, archive, "_rels/.rels", 0);
 
-            fz_write_string(ctx, info.out, "<html>\n");
-            fz_write_string(ctx, info.out, "<head>\n");
+			fz_write_string(ctx, info.out, "<html>\n");
+			fz_write_string(ctx, info.out, "<head>\n");
 
-            pos = fz_xml_find_dfs(xml, "Relationship", "Type", schema_props);
+			pos = fz_xml_find_dfs(xml, "Relationship", "Type", schema_props);
             if (pos) {
                 const char* file = fz_xml_att(pos, "Target");
-                process_office_document_properties(ctx, archive, file, &info);
-            }
+				process_office_document_properties(ctx, archive, file, &info);
+			}
 
             /* Match Word printable width so centered titles wrap like in Word
              * (titles often have no <w:br/> — only page margins force the break). */
@@ -4213,7 +4765,7 @@ static fz_buffer* fz_office_to_html(fz_context* ctx, fz_html_font_set* set, fz_b
                     "\"Times New Roman\",serif;font-size:%.1fpt;line-height:1.55;margin:0;padding:0;color:#222;}\n",
                     body_pt);
             }
-            fz_write_string(ctx, info.out,
+			fz_write_string(ctx, info.out,
                             /* Word already sets run sizes. h1{1.7em} wrapped titles such as
                              * 整改清单 onto a second line that Word keeps on one line. */
                             "h1,h2,h3,h4,h5,h6{font-size:1em;font-weight:inherit;line-height:inherit;margin:0;}\n"
@@ -4234,49 +4786,49 @@ static fz_buffer* fz_office_to_html(fz_context* ctx, fz_html_font_set* set, fz_b
                             "pre{font-family:Consolas,\"Courier New\",monospace;white-space:pre-wrap;"
                             "background:#f6f6f6;padding:.6em .8em;border-radius:3px;}\n"
                             "h6.WordBookmark{font-size:0.95em;font-weight:600;color:#444;margin:.8em 0 .3em;}\n"
-                            "</style>\n");
-            fz_write_string(ctx, info.out, "</head>\n");
+				"</style>\n");
+			fz_write_string(ctx, info.out, "</head>\n");
 
-            fz_write_string(ctx, info.out, "<body>\n");
-            pos = fz_xml_find_dfs(xml, "Relationship", "Type", schema);
+			fz_write_string(ctx, info.out, "<body>\n");
+			pos = fz_xml_find_dfs(xml, "Relationship", "Type", schema);
             if (!pos) fz_throw(ctx, FZ_ERROR_FORMAT, "Archive not docx.");
 
             while (pos) {
                 const char* file = fz_xml_att(pos, "Target");
                 if (file) process_office_document(ctx, archive, file, &info);
-                pos = fz_xml_find_next_dfs(pos, "Relationship", "Type", schema);
-            }
+				pos = fz_xml_find_next_dfs(pos, "Relationship", "Type", schema);
+			}
 
-            fz_write_string(ctx, info.out, "</body>\n</html>\n");
-        }
+			fz_write_string(ctx, info.out, "</body>\n</html>\n");
+		}
 
-        fz_close_output(ctx, info.out);
-    }
+		fz_close_output(ctx, info.out);
+	}
     fz_always(ctx) {
-        fz_drop_xml(ctx, rels);
-        fz_drop_xml(ctx, xml);
+		fz_drop_xml(ctx, rels);
+		fz_drop_xml(ctx, xml);
         for (i = 0; i < info.shared_string_len; ++i) fz_free(ctx, info.shared_strings[i]);
-        fz_free(ctx, info.shared_strings);
+		fz_free(ctx, info.shared_strings);
         for (i = 0; i < info.footnotes_max; ++i) fz_free(ctx, info.footnotes[i]);
-        fz_free(ctx, info.footnotes);
+		fz_free(ctx, info.footnotes);
         drop_word_styles(ctx, &info);
-        fz_drop_output(ctx, info.out);
-        fz_free(ctx, info.label);
-        fz_drop_archive(ctx, archive);
-        fz_drop_stream(ctx, stream);
-    }
+		fz_drop_output(ctx, info.out);
+		fz_free(ctx, info.label);
+		fz_drop_archive(ctx, archive);
+		fz_drop_stream(ctx, stream);
+	}
     fz_catch(ctx) {
-        fz_drop_buffer(ctx, buffer_out);
-        fz_rethrow(ctx);
-    }
+		fz_drop_buffer(ctx, buffer_out);
+		fz_rethrow(ctx);
+	}
 
 #ifdef DEBUG_OFFICE_TO_HTML
-    {
+	{
         unsigned char* storage;
-        size_t len = fz_buffer_storage(ctx, buffer_out, &storage);
-        fz_write_printf(ctx, fz_stddbg(ctx), "fz_office_to_html: Output buffer, len=%zd:\n", len);
-        fz_write_buffer(ctx, fz_stddbg(ctx), buffer_out);
-    }
+		size_t len = fz_buffer_storage(ctx, buffer_out, &storage);
+		fz_write_printf(ctx, fz_stddbg(ctx), "fz_office_to_html: Output buffer, len=%zd:\n", len);
+		fz_write_buffer(ctx, fz_stddbg(ctx), buffer_out);
+	}
 #endif
 
     /* Optional dump for browser A/B: set SUMATRA_DUMP_OFFICE_HTML=<path.html> */
@@ -4295,7 +4847,7 @@ static fz_buffer* fz_office_to_html(fz_context* ctx, fz_html_font_set* set, fz_b
         }
     }
 
-    return buffer_out;
+	return buffer_out;
 }
 
 /* Office document handler */
@@ -4303,7 +4855,7 @@ static fz_buffer* fz_office_to_html(fz_context* ctx, fz_html_font_set* set, fz_b
 static fz_buffer* office_to_html(fz_context* ctx, fz_html_font_set* set, fz_buffer* buf, fz_archive* zip) {
     fz_office_to_html_opts opts = {0};
 
-    return fz_office_to_html(ctx, set, buf, zip, &opts);
+	return fz_office_to_html(ctx, set, buf, zip, &opts);
 }
 
 static const fz_htdoc_format_t fz_htdoc_office = {"Office document", office_to_html, 0, 1, FZ_HTML_FLAVOR_DEFAULT};
@@ -4339,13 +4891,13 @@ static fz_document* office_open_document(fz_context* ctx, const fz_document_hand
 static const char* office_extensions[] = {"docx", "xlsx", "pptx", "hwpx", NULL};
 
 static const char* office_mimetypes[] = {
-    // DOCX
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    // XLSX
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    // PPTX
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    // HWPX
+	// DOCX
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	// XLSX
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	// PPTX
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+	// HWPX
     "application/haansofthwpx", "application/vnd.hancom.hwpx", NULL};
 
 /* We are only ever 75% sure here, to allow a 'better' handler, such as sodochandler
@@ -4354,44 +4906,44 @@ static int office_recognize_doc_content(fz_context* ctx, const fz_document_handl
                                         fz_archive* zip, void** state,
                                         fz_document_recognize_state_free_fn** free_state) {
     fz_archive* arch = NULL;
-    int ret = 0;
+	int ret = 0;
     fz_xml* xml = NULL;
 
     if (state) *state = NULL;
     if (free_state) *free_state = NULL;
 
-    fz_var(arch);
-    fz_var(ret);
-    fz_var(xml);
+	fz_var(arch);
+	fz_var(ret);
+	fz_var(xml);
 
     fz_try(ctx) {
         if (stream) {
-            arch = fz_try_open_archive_with_stream(ctx, stream);
+			arch = fz_try_open_archive_with_stream(ctx, stream);
             if (arch == NULL) break;
         } else
-            arch = fz_keep_archive(ctx, zip);
+			arch = fz_keep_archive(ctx, zip);
 
-        xml = fz_try_parse_xml_archive_entry(ctx, arch, "META-INF/container.xml", 0);
+		xml = fz_try_parse_xml_archive_entry(ctx, arch, "META-INF/container.xml", 0);
         if (xml) {
             if (fz_xml_find_dfs(xml, "rootfile", "media-type", "application/hwpml-package+xml")) ret = 75; /* HWPX */
-            break;
-        }
-        xml = fz_try_parse_xml_archive_entry(ctx, arch, "_rels/.rels", 0);
+			break;
+		}
+		xml = fz_try_parse_xml_archive_entry(ctx, arch, "_rels/.rels", 0);
         if (xml) {
             if (fz_xml_find_dfs(xml, "Relationship", "Type",
                                 "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument")) {
-                ret = 75; /* DOCX | PPTX | XLSX */
-            }
-            break;
-        }
-    }
+				ret = 75; /* DOCX | PPTX | XLSX */
+			}
+			break;
+		}
+	}
     fz_always(ctx) {
-        fz_drop_xml(ctx, xml);
-        fz_drop_archive(ctx, arch);
-    }
+		fz_drop_xml(ctx, xml);
+		fz_drop_archive(ctx, arch);
+	}
     fz_catch(ctx) fz_rethrow(ctx);
 
-    return ret;
+	return ret;
 }
 
 fz_document_handler office_document_handler = {NULL, office_open_document, office_extensions, office_mimetypes,
