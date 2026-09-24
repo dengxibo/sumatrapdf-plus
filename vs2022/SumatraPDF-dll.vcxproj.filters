@@ -590,6 +590,9 @@
     <ClCompile Include="..\src\EngineMupdf.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\DeskewPostl.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\WordToc.cpp">
       <Filter>src</Filter>
     </ClCompile>

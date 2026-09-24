@@ -55,6 +55,7 @@
     <ClCompile Include="..\src\EngineEbook.cpp" />
     <ClCompile Include="..\src\EngineImages.cpp" />
     <ClCompile Include="..\src\EngineMupdf.cpp" />
+    <ClCompile Include="..\src\DeskewPostl.cpp" />
     <ClCompile Include="..\src\EngineNotifyNoOp.cpp" />
     <ClCompile Include="..\src\FzImgReader.cpp" />
     <ClCompile Include="..\src\GumboHelpers.cpp" />

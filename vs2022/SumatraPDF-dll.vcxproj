@@ -1270,6 +1270,7 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <ClCompile Include="..\src\EngineEbook.cpp" />
     <ClCompile Include="..\src\EngineImages.cpp" />
     <ClCompile Include="..\src\EngineMupdf.cpp" />
+    <ClCompile Include="..\src\DeskewPostl.cpp" />
     <ClCompile Include="..\src\PdfTocEditModel.cpp" />
     <ClCompile Include="..\src\EnginePs.cpp" />
     <ClCompile Include="..\src\EpubMeta.cpp" />

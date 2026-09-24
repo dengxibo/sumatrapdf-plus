@@ -983,6 +983,7 @@
     <ClCompile Include="..\src\EngineEbook.cpp" />
     <ClCompile Include="..\src\EngineImages.cpp" />
     <ClCompile Include="..\src\EngineMupdf.cpp" />
+    <ClCompile Include="..\src\DeskewPostl.cpp" />
     <ClCompile Include="..\src\WordToc.cpp" />
     <ClCompile Include="..\src\PdfTocEditModel.cpp" />
     <ClCompile Include="..\src\EngineNotifyNoOp.cpp" />
