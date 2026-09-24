@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "page": 2,
+  "imgW": 1275,
+  "imgH": 1650,
+  "profile": 1,
+  "boxes": [
+    { "text": "Contents", "x": 540, "y": 150, "dx": 195, "dy": 42 },
+    { "text": "Preface", "x": 180, "y": 320, "dx": 190, "dy": 34 },
+    { "text": "iii", "x": 1080, "y": 320, "dx": 35, "dy": 30 },
+    { "text": "Acknowledgments", "x": 180, "y": 400, "dx": 340, "dy": 34 },
+    { "text": "vii", "x": 1060, "y": 400, "dx": 55, "dy": 30 },
+    { "text": "Chapter 1 Introduction", "x": 180, "y": 500, "dx": 480, "dy": 36 },
+    { "text": "1", "x": 1105, "y": 500, "dx": 20, "dy": 32 },
+    { "text": "1.1 C++ and .NET Background", "x": 220, "y": 560, "dx": 520, "dy": 32 },
+    { "text": "4", "x": 1100, "y": 560, "dx": 25, "dy": 30 },
+    { "text": "1.2 3D Reconstruction", "x": 220, "y": 620, "dx": 400, "dy": 32 },
+    { "text": "11", "x": 1085, "y": 620, "dx": 40, "dy": 30 },
+    { "text": "List of Abbreviations", "x": 180, "y": 720, "dx": 430, "dy": 36 },
+    { "text": "xiv", "x": 1070, "y": 720, "dx": 45, "dy": 30 }
+  ]
+}
