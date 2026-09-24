@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.31
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.31/SumatraPDF-Plus.exe
-Notes: Extract bookmarks rebuilt with geometry-first printed-TOC pipeline and auto-repair of stale outlines; AI TOC import shows live calibration progress; paragraph-merged copy on by default; OCR switches to PP-OCRv6 Tiny/Small on ONNX Runtime 1.20; new rotate-pages command; session reload restores saved reading position; find results highlight the actual match.
-NotesZh: 提取目录改为几何优先的印刷目录管线，自动修复失准官方书签；AI 目录导入实时显示校准进度；复制默认按段落合并；OCR 切换到 PP-OCRv6 Tiny/Small（ONNX Runtime 1.20）；新增旋转页面命令；会话重开可靠恢复阅读位置；搜索结果单独高亮命中词。
+Latest: 3.7.32
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.32/SumatraPDF-Plus.exe
+Notes: Align printed TOC shows the page offset between the two boxes and can apply a later offset without rewriting printed folios; AI TOC joins each batch itself; toolbar Enhance Display strengthens faint scans; Options dialog is categorized; Word layout is closer to official documents.
+NotesZh: 对准印刷目录在两个页码框之间显示页差，缺页后可只改后面的 PDF 页；AI 目录分批提取后由程序自行接上；工具栏「增强显示」加强淡色扫描件；选项窗口分为常规、界面、阅读、高级；Word 公文版式更接近原稿。
