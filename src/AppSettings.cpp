@@ -40,6 +40,7 @@
 #include "Theme.h"
 #include "EbookFontMenu.h"
 #include "TextToSpeech.h"
+#include "AiTocApi.h"
 
 #include "utils/Log.h"
 #include <Notifications.h>
@@ -132,6 +133,110 @@ static void MigrateAiChatProvider(const char* settingsRaw) {
     }
     str::ReplaceWithCopy(&gGlobalPrefs->aiChatProvider, "deepseek");
     gGlobalPrefs->aiChatUseDeepSeekInsteadOfDoubao = false;
+}
+
+// AI TOC API (the autoContents pipeline ported to C++): fill empty fields
+// from an autoContents config file so users who already run autoContents
+// do not have to re-enter the same values. Users without autoContents
+// configure the same fields manually in Settings.
+static void AutoFillAiTocApiFromFile() {
+    if (!gGlobalPrefs) {
+        return;
+    }
+    bool needBase = str::IsEmptyOrWhiteSpace(gGlobalPrefs->aiTocApiBaseUrl);
+    bool needKey = str::IsEmptyOrWhiteSpace(gGlobalPrefs->aiTocApiKey);
+    bool needModel = str::IsEmptyOrWhiteSpace(gGlobalPrefs->aiTocApiModel);
+    // Only import a complete configuration. Mixing saved fields with a
+    // different provider's key caused cross-provider HTTP 401 failures.
+    if (!needBase || !needKey || !needModel || !str::IsEmptyOrWhiteSpace(gGlobalPrefs->aiTocApiProfiles)) {
+        return;
+    }
+    TempStr exeDir = GetSelfExeDirTemp();
+    Vec<char*> candidates;
+    candidates.Append(str::Dup(path::JoinTemp(exeDir, "ai-toc-api.json")));
+    candidates.Append(str::Dup(path::JoinTemp(exeDir, "autoContents\\static\\llm_config.json")));
+    // Walk up from the exe dir: covers out\dbg64 builds (repo root's parent
+    // holds the autoContents checkout) as well as portable exe copies placed
+    // inside or next to an autoContents checkout (e.g. a menutest dir).
+    for (int depth = 1; depth <= 4; depth++) {
+        StrBuilder rel;
+        rel.Append(exeDir);
+        for (int k = 0; k < depth; k++) {
+            rel.Append("\\..");
+        }
+        const char* relBase = rel.Get();
+        candidates.Append(str::Dup(str::FormatTemp("%s\\autoContents-main\\static\\llm_config.json", relBase)));
+        candidates.Append(str::Dup(str::FormatTemp("%s\\autoContents\\static\\llm_config.json", relBase)));
+        candidates.Append(str::Dup(str::FormatTemp("%s\\static\\llm_config.json", relBase)));
+    }
+    {
+        char* profile = nullptr;
+        size_t sz = 0;
+        if (_dupenv_s(&profile, &sz, "USERPROFILE") == 0 && profile && profile[0]) {
+            candidates.Append(str::Dup(path::JoinTemp(profile, "autoContents\\static\\llm_config.json")));
+        }
+        free(profile);
+    }
+    for (int i = 0; i < candidates.Size(); i++) {
+        char* baseUrl = nullptr;
+        char* key = nullptr;
+        char* model = nullptr;
+        if (!AiTocApiLoadConfigFile(candidates[i], &baseUrl, &key, &model)) {
+            str::Free(baseUrl);
+            str::Free(key);
+            str::Free(model);
+            continue;
+        }
+        bool used = false;
+        if (needKey && key && key[0]) {
+            str::ReplaceWithCopy(&gGlobalPrefs->aiTocApiKey, key);
+            needKey = false;
+            used = true;
+        }
+        if (needBase && baseUrl && baseUrl[0]) {
+            str::ReplaceWithCopy(&gGlobalPrefs->aiTocApiBaseUrl, baseUrl);
+            needBase = false;
+            used = true;
+        }
+        if (needModel && model && model[0]) {
+            str::ReplaceWithCopy(&gGlobalPrefs->aiTocApiModel, model);
+            needModel = false;
+            used = true;
+        }
+        str::Free(baseUrl);
+        str::Free(key);
+        str::Free(model);
+        if (used) {
+            logf("AutoFillAiTocApiFromFile: filled AI TOC API settings from %s\n", candidates[i]);
+            break;
+        }
+    }
+    for (int i = 0; i < candidates.Size(); i++) {
+        str::Free(candidates[i]);
+    }
+    candidates.Reset();
+}
+
+// Defaults for the AI TOC API settings, applied only to a fresh profile
+// (all three fields empty). Never fill a default base URL when a key or model
+// from another provider is already present - that mixture sent an intern-ai
+// key to DashScope and produced confusing cross-provider HTTP 401 errors.
+static void NormalizeAiTocApiPrefs() {
+    if (!gGlobalPrefs) {
+        return;
+    }
+    gGlobalPrefs->aiTocApiConcurrency = limitValue(gGlobalPrefs->aiTocApiConcurrency, 1, 8);
+    if (!str::IsEmptyOrWhiteSpace(gGlobalPrefs->aiTocApiProfiles)) {
+        return;
+    }
+    bool hasBase = !str::IsEmptyOrWhiteSpace(gGlobalPrefs->aiTocApiBaseUrl);
+    bool hasKey = !str::IsEmptyOrWhiteSpace(gGlobalPrefs->aiTocApiKey);
+    bool hasModel = !str::IsEmptyOrWhiteSpace(gGlobalPrefs->aiTocApiModel);
+    if (hasBase || hasKey || hasModel) {
+        return;
+    }
+    str::ReplaceWithCopy(&gGlobalPrefs->aiTocApiBaseUrl, "https://dashscope.aliyuncs.com/compatible-mode/v1");
+    str::ReplaceWithCopy(&gGlobalPrefs->aiTocApiModel, "qwen3.5-397b-a17b");
 }
 
 static void NormalizeDocumentColorModePref() {
@@ -372,6 +477,8 @@ bool LoadSettings() {
         prefsData.Free();
     }
     MigrateAiChatProvider(settingsRaw.Get());
+    AutoFillAiTocApiFromFile();
+    NormalizeAiTocApiPrefs();
     MigrateDocumentColorMode(settingsRaw.Get());
 
     if (trans::ValidateLangCode(gprefs->uiLanguage)) {

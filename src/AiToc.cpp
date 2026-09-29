@@ -28,6 +28,7 @@
 #include "TableOfContents.h"
 #include "TocStructureScan.h"
 #include "TocAiPrompts.h"
+#include "AiTocApi.h"
 #include "OcrService.h"
 #include "DisplayModel.h"
 #include "RenderCache.h"
@@ -114,6 +115,9 @@ struct AiTocPocWork {
     AiChatService service = AiChatService::Doubao;
     int firstPage = 0;
     int lastPage = 0;
+    // AI page-offset sampling results (API flow), -1 when not computed.
+    int aiArabicOffset = -1;
+    int aiRomanOffset = -1;
     // Web chats accept about 10 images per message. 1 means one send.
     int imageBatches = 1;
 
@@ -216,6 +220,7 @@ enum class AiTocUiState {
     ScanningBodyStructure, // whole-document heading-candidate scan
     SendingToAi,           // rendering/uploading pages or submitting the digest
     WaitingForAiClipboard, // sent; waiting for the user to copy the AI reply
+    ApiRecognizing,        // sent to the OpenAI-compatible API; waiting for the reply
     ImportingResult,       // clipboard JSON detected, parsing + calibrating
 };
 
@@ -233,6 +238,8 @@ static const char* AiTocStateName(AiTocUiState s) {
             return "SendingToAi";
         case AiTocUiState::WaitingForAiClipboard:
             return "WaitingForAiClipboard";
+        case AiTocUiState::ApiRecognizing:
+            return "ApiRecognizing";
         case AiTocUiState::ImportingResult:
             return "ImportingResult";
     }
@@ -250,6 +257,15 @@ struct AiTocDialog {
     HWND pagesLabel = nullptr;
     HWND status = nullptr;
     HWND send = nullptr;
+    // [Recognize via API]: runs the autoContents-style two-stage
+    // recognition over the configured HTTP API instead of the web chat.
+    HWND apiBtn = nullptr;
+    // Fallback-page button: AI detection of the printed-TOC page range.
+    HWND aiDetectBtn = nullptr;
+    HWND detectProgress = nullptr;
+    HWND detectProgressCount = nullptr;
+    int detectProgressTotal = 0;
+    bool apiMode = false;
     // "从正文生成目录" fallback button, shown only when no printed TOC
     // pages were detected.
     HWND bodyBtn = nullptr;
@@ -470,6 +486,7 @@ static constexpr UINT kMsgAiTocDetectProgress = WM_APP + 73;
 static constexpr UINT kMsgAiTocBodyProgress = WM_APP + 74;
 static constexpr UINT kMsgAiTocBodyScanned = WM_APP + 75;
 static constexpr UINT kMsgAiTocBodySent = WM_APP + 76;
+static constexpr UINT kMsgAiTocApiDetectProgress = WM_APP + 77;
 static bool gAiTocClassesRegistered = false;
 
 static void AiTocPocWorker(AiTocPocWork* work);
@@ -560,6 +577,390 @@ static AiChatService AiTocActiveService() {
     return AiChatService::Doubao;
 }
 
+// ---------------------------------------------------------------------------
+// AI TOC recognition through the OpenAI-compatible API (autoContents port)
+
+static bool AiTocApiConfigured() {
+    AiTocApiConfig cfg;
+    cfg.baseUrl = gGlobalPrefs ? gGlobalPrefs->aiTocApiBaseUrl : nullptr;
+    cfg.key = gGlobalPrefs ? gGlobalPrefs->aiTocApiKey : nullptr;
+    cfg.model = gGlobalPrefs ? gGlobalPrefs->aiTocApiModel : nullptr;
+    cfg.concurrency = gGlobalPrefs ? gGlobalPrefs->aiTocApiConcurrency : 4;
+    return AiTocApiIsConfigured(cfg);
+}
+
+static void AiTocFillApiConfig(AiTocApiConfig* cfg) {
+    cfg->baseUrl = gGlobalPrefs ? gGlobalPrefs->aiTocApiBaseUrl : nullptr;
+    cfg->key = gGlobalPrefs ? gGlobalPrefs->aiTocApiKey : nullptr;
+    cfg->model = gGlobalPrefs ? gGlobalPrefs->aiTocApiModel : nullptr;
+    cfg->concurrency = gGlobalPrefs ? gGlobalPrefs->aiTocApiConcurrency : 4;
+}
+
+static void AiTocSnapshotApiConfig(AiTocApiConfig* cfg) {
+    AiTocApiConfig current;
+    AiTocFillApiConfig(&current);
+    cfg->baseUrl = str::Dup(current.baseUrl);
+    cfg->key = str::Dup(current.key);
+    cfg->model = str::Dup(current.model);
+    cfg->concurrency = current.concurrency;
+}
+
+static bool AiTocImportJson(AiTocDialog* dlg, const char* text);
+static void AiTocUpdateSendEnabled(AiTocDialog* dlg);
+static void AiTocEnterReview(AiTocDialog* dlg);
+
+// The API round: owned by the worker until AiTocApiFinished runs on the UI
+// thread (same token pattern as the web-AI work items).
+struct AiTocApiWork {
+    MainWindow* win = nullptr;
+    HWND owner = nullptr;
+    HANDLE dialogToken = nullptr;
+    EngineBase* engine = nullptr;
+    Vec<int> pageNos;
+    AiTocApiConfig cfg;
+    char* json = nullptr;
+    char* error = nullptr;
+    int arabicOffset = -1;
+    int romanOffset = -1;
+
+    ~AiTocApiWork() {
+        if (engine) {
+            engine->Release();
+        }
+        str::Free(json);
+        str::Free(error);
+        str::Free((char*)cfg.baseUrl);
+        str::Free((char*)cfg.key);
+        str::Free((char*)cfg.model);
+    }
+};
+
+static bool AiTocApiRunCanceled(void* ctx) {
+    auto* w = (AiTocApiWork*)ctx;
+    return !w->owner || GetPropW(w->owner, kAiTocToken) != w->dialogToken;
+}
+
+struct AiTocApiProgressUi {
+    HWND owner = nullptr;
+    HANDLE dialogToken = nullptr;
+    AiTocApiStage stage = AiTocApiStage::Render;
+    int done = 0;
+    int total = 0;
+};
+
+static void AiTocApiProgressApply(AiTocApiProgressUi* m) {
+    if (!m->owner || !IsWindow(m->owner) || GetPropW(m->owner, kAiTocToken) != m->dialogToken) {
+        delete m;
+        return;
+    }
+    auto* dlg = (AiTocDialog*)GetWindowLongPtrW(m->owner, GWLP_USERDATA);
+    if (dlg && dlg->state == AiTocUiState::ApiRecognizing) {
+        switch (m->stage) {
+            case AiTocApiStage::Render:
+                SetWindowTextW(dlg->status, _TRW("Preparing TOC page images..."));
+                break;
+            case AiTocApiStage::Extract:
+                SetWindowTextW(dlg->status, _TRW("Extracting TOC titles and pages..."));
+                break;
+            case AiTocApiStage::Levels:
+                SetWindowTextW(dlg->status, _TRW("Determining TOC levels..."));
+                break;
+            case AiTocApiStage::Offset:
+                SetWindowTextW(dlg->status, _TRW("Calibrating printed page offsets..."));
+                break;
+        }
+        if (dlg->scanCount && m->total > 0) {
+            SetWindowTextW(dlg->scanCount, ToWStrTemp(str::FormatTemp("%d / %d", m->done, m->total)));
+            RECT statusRc{};
+            GetClientRect(dlg->status, &statusRc);
+            MapWindowPoints(dlg->status, dlg->hwnd, (POINT*)&statusRc, 2);
+            HDC dc = GetDC(dlg->hwnd);
+            HGDIOBJ oldF = SelectObject(dc, dlg->font);
+            SIZE tsz{};
+            WCHAR cur[128]{};
+            GetWindowTextW(dlg->status, cur, 128);
+            GetTextExtentPoint32W(dc, cur, (int)wcslen(cur), &tsz);
+            SelectObject(dc, oldF);
+            ReleaseDC(dlg->hwnd, dc);
+            AiTocPlaceScanCountAfterStatus(dlg, statusRc.top, statusRc.bottom - statusRc.top,
+                                           statusRc.left + tsz.cx + AiTocS(dlg, 8));
+            ShowWindow(dlg->scanCount, SW_SHOWNOACTIVATE);
+        }
+    }
+    delete m;
+}
+
+static void AiTocApiProgressCb(void* ctx, AiTocApiStage stage, int done, int total) {
+    auto* w = (AiTocApiWork*)ctx;
+    if (!w->owner || GetPropW(w->owner, kAiTocToken) != w->dialogToken) {
+        return;
+    }
+    auto* m = new AiTocApiProgressUi();
+    m->owner = w->owner;
+    m->dialogToken = w->dialogToken;
+    m->stage = stage;
+    m->done = done;
+    m->total = total;
+    uitask::Post(MkFunc0<AiTocApiProgressUi>(AiTocApiProgressApply, m), "AiTocApiProgress");
+}
+
+static void AiTocApplyApiWaitTexts(AiTocDialog* dlg) {
+    SetWindowTextW(dlg->stateTitle, _TRW("Recognizing TOC via API"));
+    SetWindowTextW(dlg->stateDesc, _TRW("The selected page images are sent to the configured API.\r\n"
+                                        "The TOC is imported automatically when the reply arrives."));
+    SetWindowTextW(dlg->status, _TRW("Contacting the API..."));
+    if (dlg->scanCount) {
+        SetWindowTextW(dlg->scanCount, L"");
+    }
+}
+
+static void AiTocApiRestoreAfterFailure(AiTocDialog* dlg, const char* errText) {
+    dlg->apiMode = false;
+    dlg->waiting = false;
+    dlg->submitted = false;
+    dlg->busy = false;
+    dlg->importing = false;
+    AiTocSetState(dlg, AiTocUiState::ConfirmPrintedToc);
+    if (dlg->scanCount) {
+        ShowWindow(dlg->scanCount, SW_HIDE);
+        SetWindowTextW(dlg->scanCount, L"");
+    }
+    SetWindowTextW(dlg->status, _TRW(errText ? errText : "The AI TOC request failed."));
+    EnableWindow(dlg->pagesEdit, TRUE);
+    AiTocApplyStateFonts(dlg);
+    AiTocUpdateSendEnabled(dlg);
+    AiTocLayoutControls(dlg);
+    InvalidateRect(dlg->hwnd, nullptr, TRUE);
+}
+
+static void AiTocApiFinished(AiTocApiWork* w) {
+    HWND owner = w->owner;
+    HANDLE token = w->dialogToken;
+    if (!owner || !IsWindow(owner) || GetPropW(owner, kAiTocToken) != token) {
+        delete w;
+        return;
+    }
+    auto* dlg = (AiTocDialog*)GetWindowLongPtrW(owner, GWLP_USERDATA);
+    if (!dlg) {
+        delete w;
+        return;
+    }
+    if (!w->json) {
+        char* errText = w->error;
+        w->error = nullptr;
+        AiTocApiRestoreAfterFailure(dlg, errText);
+        str::Free(errText);
+        delete w;
+        return;
+    }
+    // Hand engine + pages to a work item the import path understands;
+    // AiTocImportJson uses dlg->work for page mapping and calibration.
+    delete dlg->work;
+    auto* poc = new AiTocPocWork();
+    poc->mainHwnd = dlg->ownerHwnd;
+    poc->owner = owner;
+    poc->dialogToken = token;
+    poc->engine = w->engine;
+    w->engine = nullptr;
+    for (int i = 0; i < w->pageNos.Size(); i++) {
+        poc->pageNos.Append(w->pageNos[i]);
+    }
+    poc->firstPage = w->pageNos.Size() > 0 ? w->pageNos[0] : 0;
+    poc->lastPage = w->pageNos.Size() > 0 ? w->pageNos.Last() : 0;
+    poc->aiArabicOffset = w->arabicOffset;
+    poc->aiRomanOffset = w->romanOffset;
+    dlg->work = poc;
+    char* json = w->json;
+    w->json = nullptr;
+    delete w;
+    dlg->busy = false;
+    if (!AiTocImportJson(dlg, json)) {
+        AiTocApiRestoreAfterFailure(dlg, "The AI reply contains no importable TOC items.");
+    }
+    str::Free(json);
+}
+
+static void AiTocApiWorker(AiTocApiWork* w) {
+    defer {
+        uitask::Post(MkFunc0<AiTocApiWork>(AiTocApiFinished, w), "AiTocApiFinished");
+    };
+    char* json = nullptr;
+    char* err = nullptr;
+    int arabic = -1;
+    int roman = -1;
+    if (!AiTocApiRunRecognition(w->engine, w->pageNos, w->cfg, AiTocApiRunCanceled, w, AiTocApiProgressCb, w, &json,
+                                &arabic, &roman, &err)) {
+        w->error = err ? err : str::Dup("The AI TOC recognition failed.");
+        return;
+    }
+    w->json = json;
+    w->arabicOffset = arabic;
+    w->romanOffset = roman;
+}
+
+static void AiTocStartApiRecognition(AiTocDialog* dlg, const Vec<int>& pages, EngineBase* engine) {
+    if (!dlg || !engine || pages.Size() == 0) {
+        return;
+    }
+    auto* w = new AiTocApiWork();
+    w->win = dlg->win;
+    w->owner = dlg->hwnd;
+    w->dialogToken = dlg->token;
+    w->engine = engine;
+    engine->AddRef();
+    for (int i = 0; i < pages.Size(); i++) {
+        w->pageNos.Append(pages[i]);
+    }
+    AiTocSnapshotApiConfig(&w->cfg);
+    dlg->mode = AiTocSourceMode::PrintedToc;
+    dlg->apiMode = true;
+    dlg->waitManualPaste = false;
+    dlg->busy = true;
+    dlg->submitted = true;
+    dlg->waiting = true;
+    dlg->confirmedPages.Reset();
+    for (int i = 0; i < pages.Size(); i++) {
+        dlg->confirmedPages.Append(pages[i]);
+    }
+    RemovePropW(dlg->hwnd, kAiTocDetectToken);
+    AiTocSetState(dlg, AiTocUiState::ApiRecognizing);
+    AiTocApplyApiWaitTexts(dlg);
+    EnableWindow(dlg->send, FALSE);
+    if (dlg->apiBtn) {
+        EnableWindow(dlg->apiBtn, FALSE);
+    }
+    EnableWindow(dlg->pagesEdit, FALSE);
+    AiTocApplyStateFonts(dlg);
+    InvalidateRect(dlg->hwnd, nullptr, TRUE);
+    AiTocLayoutControls(dlg);
+    logf("[AITOC] API recognition started pages=%d\n", pages.Size());
+    RunAsync(MkFunc0<AiTocApiWork>(AiTocApiWorker, w), "AiTocApi");
+}
+
+// --- AI detection of the printed-TOC page range (fallback page) ------------
+
+struct AiTocApiDetectWork {
+    HWND owner = nullptr;
+    HANDLE dialogToken = nullptr;
+    EngineBase* engine = nullptr;
+    AiTocApiConfig cfg;
+    Vec<int> pages;
+    char* error = nullptr;
+
+    ~AiTocApiDetectWork() {
+        if (engine) {
+            engine->Release();
+        }
+        str::Free(error);
+        str::Free((char*)cfg.baseUrl);
+        str::Free((char*)cfg.key);
+        str::Free((char*)cfg.model);
+    }
+};
+
+static bool AiTocApiDetectCanceled(void* ctx) {
+    auto* w = (AiTocApiDetectWork*)ctx;
+    return !w->owner || GetPropW(w->owner, kAiTocToken) != w->dialogToken;
+}
+
+static void AiTocApiDetectProgressCb(void* ctx, AiTocApiStage stage, int done, int total) {
+    auto* w = (AiTocApiDetectWork*)ctx;
+    if (!w->owner || GetPropW(w->owner, kAiTocToken) != w->dialogToken) {
+        return;
+    }
+    PostMessageW(w->owner, kMsgAiTocApiDetectProgress, (WPARAM)MAKELONG(done, total), 0);
+}
+
+static void AiTocApiDetectFinished(AiTocApiDetectWork* w) {
+    HWND owner = w->owner;
+    HANDLE token = w->dialogToken;
+    if (!owner || !IsWindow(owner) || GetPropW(owner, kAiTocToken) != token) {
+        delete w;
+        return;
+    }
+    auto* dlg = (AiTocDialog*)GetWindowLongPtrW(owner, GWLP_USERDATA);
+    if (!dlg) {
+        delete w;
+        return;
+    }
+    dlg->busy = false;
+    EnableWindow(dlg->manualBtn, TRUE);
+    EnableWindow(dlg->bodyBtn, TRUE);
+    if (dlg->aiDetectBtn) {
+        EnableWindow(dlg->aiDetectBtn, TRUE);
+    }
+    if (w->pages.Size() == 0) {
+        SetWindowTextW(dlg->status, _TRW(w->error ? w->error : "No printed TOC pages were detected by the API."));
+        AiTocLayoutControls(dlg);
+        delete w;
+        return;
+    }
+    delete dlg->detectWork;
+    auto* det = new AiTocDetectWork();
+    det->win = dlg->win;
+    det->engine = w->engine;
+    w->engine = nullptr;
+    det->notifyHwnd = owner;
+    det->dialogToken = token;
+    int first = w->pages[0];
+    int last = w->pages.Last();
+    int nPages = det->engine ? det->engine->PageCount() : 0;
+    for (int pageNo = 1; pageNo <= nPages; pageNo++) {
+        det->pageNos.Append(pageNo);
+        det->initiallySelected.Append(pageNo >= first && pageNo <= last);
+        det->thumbnails.Append(nullptr);
+    }
+    dlg->detectWork = det;
+    dlg->bodyFallback = false;
+    dlg->manualPages = false;
+    dlg->mode = AiTocSourceMode::PrintedToc;
+    AiTocEnterReview(dlg);
+    AiTocUpdateSendEnabled(dlg);
+    delete w;
+}
+
+static void AiTocApiDetectWorker(AiTocApiDetectWork* w) {
+    defer {
+        uitask::Post(MkFunc0<AiTocApiDetectWork>(AiTocApiDetectFinished, w), "AiTocApiDetectFinished");
+    };
+    char* err = nullptr;
+    Vec<int> pages;
+    if (!AiTocApiDetectTocPages(w->engine, w->cfg, AiTocApiDetectCanceled, w, AiTocApiDetectProgressCb, w, pages,
+                                &err)) {
+        w->error = err ? err : str::Dup("TOC page detection failed.");
+        return;
+    }
+    for (int i = 0; i < pages.Size(); i++) {
+        w->pages.Append(pages[i]);
+    }
+}
+
+static void AiTocStartApiDetect(AiTocDialog* dlg) {
+    DisplayModel* dm = dlg->win ? dlg->win->AsFixed() : nullptr;
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (!engine) {
+        return;
+    }
+    auto* w = new AiTocApiDetectWork();
+    w->owner = dlg->hwnd;
+    w->dialogToken = dlg->token;
+    w->engine = engine;
+    engine->AddRef();
+    AiTocSnapshotApiConfig(&w->cfg);
+    dlg->busy = true;
+    dlg->detectProgressTotal = 0;
+    SendMessageW(dlg->detectProgress, PBM_SETRANGE32, 0, 100);
+    SendMessageW(dlg->detectProgress, PBM_SETPOS, 0, 0);
+    SetWindowTextW(dlg->detectProgressCount, L"0 / 0");
+    EnableWindow(dlg->manualBtn, FALSE);
+    EnableWindow(dlg->bodyBtn, FALSE);
+    if (dlg->aiDetectBtn) {
+        EnableWindow(dlg->aiDetectBtn, FALSE);
+    }
+    SetWindowTextW(dlg->status, _TRW("Detecting TOC pages via API..."));
+    AiTocLayoutControls(dlg);
+    RunAsync(MkFunc0<AiTocApiDetectWork>(AiTocApiDetectWorker, w), "AiTocApiDetect");
+}
 static void StartAiTocRender(MainWindow* win, const Vec<int>& pageNos, HWND owner) {
     DisplayModel* dm = win ? win->AsFixed() : nullptr;
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
@@ -1220,6 +1621,10 @@ struct AiTocJsonItem {
     int printedPage = 0;
     char* printedLabel = nullptr;
     bool hasPage = false;
+    // API flow: a pre-mapped PDF page (roman offset applied). Used only
+    // when no local mapping strategy produced a destination.
+    int pdfPage = 0;
+    bool hasPdfPage = false;
     int level = 1;
 
     void Free() {
@@ -1279,6 +1684,12 @@ struct AiTocJsonVisitor : json::ValueVisitor {
                 item.hasPage = pr > 0 || (lab && lab[0]);
             } else {
                 str::Free(lab);
+            }
+        } else if (str::Eq(p, "pdf_page") && type == json::Type::Number) {
+            int v = ParseInt(value);
+            if (v > 0) {
+                item.pdfPage = v;
+                item.hasPdfPage = true;
             }
         } else if (str::Eq(p, "level") && type == json::Type::Number) {
             item.level = ParseInt(value);
@@ -1442,7 +1853,10 @@ static bool AiTocImportJson(AiTocDialog* dlg, const char* text) {
     int arabicOffset = -1;
     if (!pdgBook) {
         arabicOffset = TocCalibEstimateArabicOffset(dlg->work->engine, dlg->work->lastPage);
-        if (arabicOffset >= 0) {
+        if (arabicOffset < 0 && dlg->work->aiArabicOffset >= 0) {
+            arabicOffset = dlg->work->aiArabicOffset;
+            logf("AI TOC: using AI arabic offset=%d\n", arabicOffset);
+        } else if (arabicOffset >= 0) {
             logf("AI TOC: footer arabic offset=%d afterToc=%d\n", arabicOffset, dlg->work->lastPage);
         }
     }
@@ -1494,6 +1908,10 @@ static bool AiTocImportJson(AiTocDialog* dlg, const char* text) {
             if (byLabel > 0 && (nPages < 1 || byLabel <= nPages)) {
                 item->pageNo = byLabel;
             }
+        }
+        // API flow: roman / label items mapped by the AI roman offset.
+        if (item->pageNo == 0 && src.hasPdfPage && src.pdfPage > 0 && (nPages < 1 || src.pdfPage <= nPages)) {
+            item->pageNo = src.pdfPage;
         }
         item->level = stack.Size() + 1;
         item->confidence = 40;
@@ -1931,6 +2349,42 @@ static int AiTocSelectedCount(AiTocDialog* dlg) {
     return n;
 }
 
+// Collects the confirmed TOC pages: the checked thumbnails when present,
+// otherwise the pages edit. Shows the shared warning and returns false
+// when the selection is not within 1..20.
+static bool AiTocCollectSelectedPages(AiTocDialog* dlg, Vec<int>& pages) {
+    DisplayModel* dm = dlg->win ? dlg->win->AsFixed() : nullptr;
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (dlg->detectWork && dlg->detectWork->pageNos.Size() > 0) {
+        for (int i = 0; i < dlg->detectWork->pageNos.Size(); i++) {
+            if (i < dlg->detectWork->initiallySelected.Size() && dlg->detectWork->initiallySelected[i]) {
+                pages.Append(dlg->detectWork->pageNos[i]);
+            }
+        }
+    } else if (engine) {
+        Str pageText = GetWindowTextTemp(dlg->pagesEdit);
+        Vec<PageRange> ranges;
+        if (!ParsePageRanges(pageText.s, ranges)) {
+            MessageBoxWarning(dlg->hwnd, _TRA("Choose between 1 and 20 PDF pages."),
+                              _TRA("AI Recognize Table of Contents"));
+            return false;
+        }
+        for (int i = 0; i < ranges.Size(); i++) {
+            int first = ranges[i].start > 1 ? ranges[i].start : 1;
+            int last = ranges[i].end < engine->PageCount() ? ranges[i].end : engine->PageCount();
+            for (int pageNo = first; pageNo <= last && pages.Size() <= 20; pageNo++) {
+                pages.Append(pageNo);
+            }
+        }
+    }
+    if (pages.Size() == 0 || pages.Size() > 20) {
+        MessageBoxWarning(dlg->hwnd, _TRA("Choose between 1 and 20 PDF pages."),
+                          _TRA("AI Recognize Table of Contents"));
+        return false;
+    }
+    return true;
+}
+
 static void AiTocUpdateSendEnabled(AiTocDialog* dlg) {
     bool canSend = AiTocSelectedCount(dlg) > 0;
     if (dlg->detectWork && dlg->detectWork->pageNos.Size() == 0) {
@@ -1941,6 +2395,9 @@ static void AiTocUpdateSendEnabled(AiTocDialog* dlg) {
         canSend = false;
     }
     EnableWindow(dlg->send, canSend);
+    if (dlg->apiBtn) {
+        EnableWindow(dlg->apiBtn, canSend);
+    }
 }
 
 // Esc cancels the dialog even when the pages edit has focus.
@@ -2072,7 +2529,7 @@ static void AiTocComputeLayout(AiTocDialog* dlg, bool expanded, bool fallback, A
         // Waiting body: the bold state title + description replace the manual
         // pages section (same rows), then the status row. The description line
         // count follows the current text (privacy note adds a third line).
-        if (dlg->state == AiTocUiState::WaitingForAiClipboard) {
+        if (dlg->state == AiTocUiState::WaitingForAiClipboard || dlg->state == AiTocUiState::ApiRecognizing) {
             mt.stateTitleY = mt.labelY;
             mt.stateDescY = mt.editY;
             mt.statusY = mt.stateDescY + mt.lineH * mt.descLines + AiTocS(dlg, 10);
@@ -2115,7 +2572,7 @@ static void AiTocCenterOverMainWindow(AiTocDialog* dlg) {
         x = owner.left + ((owner.right - owner.left) - width) / 2;
         y = owner.top + ((owner.bottom - owner.top) - height) / 2;
     }
-    SetWindowPos(dlg->hwnd, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
+    SetWindowPos(dlg->hwnd, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 // Which phase label the current workflow stage highlights. Derived solely
@@ -2131,6 +2588,7 @@ static bool AiTocPhaseActive(AiTocDialog* dlg, HWND phase) {
             return phase == dlg->phasePrep;
         case AiTocUiState::SendingToAi:
         case AiTocUiState::WaitingForAiClipboard:
+        case AiTocUiState::ApiRecognizing:
             return phase == dlg->phaseAi;
         case AiTocUiState::ImportingResult:
             return phase == dlg->phaseImport;
@@ -2385,7 +2843,7 @@ static void AiTocApplyFonts(AiTocDialog* dlg) {
     HWND ctrls[] = {dlg->phasePrep,  dlg->phaseArrow, dlg->phaseAi,   dlg->phaseArrow2, dlg->phaseImport,
                     dlg->pagesLabel, dlg->pagesEdit,  dlg->status,    dlg->scanCount,   dlg->send,
                     dlg->resend,     dlg->bodyBtn,    dlg->manualBtn, dlg->stateTitle,  dlg->stateDesc,
-                    dlg->bodyTitle,  dlg->bodyDesc};
+                    dlg->bodyTitle,  dlg->bodyDesc,   dlg->apiBtn,    dlg->aiDetectBtn, dlg->detectProgressCount};
     for (HWND c : ctrls) {
         if (c) SendMessageW(c, WM_SETFONT, (WPARAM)dlg->font, TRUE);
     }
@@ -2490,8 +2948,8 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
     // waiting page (different texts, see AiTocApplyWaitingTexts).
     // Import reuses the waiting page chrome (title/desc/resend); only the
     // status row swaps in a live counter.
-    bool waitingState =
-        dlg->state == AiTocUiState::WaitingForAiClipboard || dlg->state == AiTocUiState::ImportingResult;
+    bool waitingState = dlg->state == AiTocUiState::WaitingForAiClipboard ||
+                        dlg->state == AiTocUiState::ApiRecognizing || dlg->state == AiTocUiState::ImportingResult;
     ShowWindow(dlg->stateTitle, (fallback || waitingState) ? SW_SHOWNOACTIVATE : SW_HIDE);
     ShowWindow(dlg->stateDesc, (fallback || waitingState) ? SW_SHOWNOACTIVATE : SW_HIDE);
     ShowWindow(dlg->bodyTitle, fallback ? SW_SHOWNOACTIVATE : SW_HIDE);
@@ -2512,6 +2970,18 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
         if (dlg->manualBtn) {
             MoveWindow(dlg->manualBtn, mt.w - mt.m - mt.branchBtnW, mt.manualBtnY, mt.branchBtnW, mt.btnH, TRUE);
             ShowWindow(dlg->manualBtn, SW_SHOWNOACTIVATE);
+        }
+        if (dlg->aiDetectBtn && AiTocApiConfigured()) {
+            int gap = AiTocS(dlg, 8);
+            int aiX = mt.w - mt.m - mt.branchBtnW * 2 - gap;
+            MoveWindow(dlg->aiDetectBtn, aiX, mt.manualBtnY, mt.branchBtnW, mt.btnH, TRUE);
+            int countW = AiTocS(dlg, 52);
+            int progressW = std::max(1, aiX - mt.m - gap * 2 - countW);
+            int progressH = AiTocS(dlg, 15);
+            int progressY = mt.manualBtnY + (mt.btnH - progressH) / 2;
+            MoveWindow(dlg->detectProgress, mt.m, progressY, progressW, progressH, TRUE);
+            MoveWindow(dlg->detectProgressCount, mt.m + progressW + gap, mt.manualBtnY + (mt.btnH - mt.lineH) / 2,
+                       countW, mt.lineH, TRUE);
         }
         // 从正文生成目录: same size as 手工指定目录页, vertically centered
         // with a small downward offset from its description (text left,
@@ -2582,6 +3052,9 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
     dlg->sepY = btnTop - AiTocS(dlg, 10);
     MoveWindow(GetDlgItem(hwnd, IDCANCEL), mt.w - mt.m - btnW, btnTop, btnW, mt.btnH, TRUE);
     MoveWindow(dlg->send, mt.w - mt.m - btnW * 2 - mt.btnGap, btnTop, btnW, mt.btnH, TRUE);
+    if (dlg->apiBtn) {
+        MoveWindow(dlg->apiBtn, mt.w - mt.m - btnW * 3 - mt.btnGap * 2, btnTop, btnW, mt.btnH, TRUE);
+    }
     // Fallback page keeps only 取消 in the footer: both branch actions are
     // content buttons. Hide the send button entirely once the body branch is
     // running: the body flow sends automatically and must not invite manual
@@ -2589,14 +3062,24 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
     if (dlg->send) {
         ShowWindow(dlg->send, !fallback && !bodyFlow && !waitingState ? SW_SHOWNOACTIVATE : SW_HIDE);
     }
+    if (dlg->apiBtn) {
+        ShowWindow(dlg->apiBtn, !fallback && !bodyFlow && !waitingState ? SW_SHOWNOACTIVATE : SW_HIDE);
+    }
     if (dlg->manualBtn) {
         ShowWindow(dlg->manualBtn, fallback ? SW_SHOWNOACTIVATE : SW_HIDE);
     }
+    if (dlg->aiDetectBtn) {
+        bool showAiDetect = fallback && AiTocApiConfigured();
+        ShowWindow(dlg->aiDetectBtn, showAiDetect ? SW_SHOWNOACTIVATE : SW_HIDE);
+    }
+    bool showDetectProgress = fallback && dlg->busy;
+    ShowWindow(dlg->detectProgress, showDetectProgress ? SW_SHOWNOACTIVATE : SW_HIDE);
+    ShowWindow(dlg->detectProgressCount, showDetectProgress ? SW_SHOWNOACTIVATE : SW_HIDE);
     // [重新发送] lives on the unified waiting page only, left of 取消; it
     // resubmits the cached payload without re-scanning.
     if (dlg->resend) {
         MoveWindow(dlg->resend, mt.w - mt.m - btnW * 2 - mt.btnGap, btnTop, btnW, mt.btnH, TRUE);
-        ShowWindow(dlg->resend, waitingState ? SW_SHOWNOACTIVATE : SW_HIDE);
+        ShowWindow(dlg->resend, (waitingState && !dlg->apiMode) ? SW_SHOWNOACTIVATE : SW_HIDE);
     }
 
     if (dlg->thumbnailPane) {
@@ -3158,6 +3641,23 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         dlg->settingPages = false;
         return 0;
     }
+    if (msg == kMsgAiTocApiDetectProgress && dlg->busy && dlg->state == AiTocUiState::ChooseFallback) {
+        SetWindowTextW(dlg->status, _TRW("Detecting TOC pages via API..."));
+        int done = LOWORD(wp);
+        int total = HIWORD(wp);
+        if (total > 0 && total >= dlg->detectProgressTotal) {
+            if (total > dlg->detectProgressTotal) {
+                dlg->detectProgressTotal = total;
+                SendMessageW(dlg->detectProgress, PBM_SETRANGE32, 0, total);
+            }
+            int shown = (int)SendMessageW(dlg->detectProgress, PBM_GETPOS, 0, 0);
+            if (done >= shown) {
+                SendMessageW(dlg->detectProgress, PBM_SETPOS, done, 0);
+                SetWindowTextW(dlg->detectProgressCount, ToWStrTemp(str::FormatTemp("%d / %d", done, total)));
+            }
+        }
+        return 0;
+    }
     if (msg == kMsgAiTocDetectProgress && !dlg->detectWork && !dlg->manualPages && !dlg->busy && !dlg->submitted) {
         SetWindowTextW(dlg->status, _TRW("Scanning for TOC pages"));
         SetWindowTextW(dlg->scanCount, ToWStrTemp(str::FormatTemp("%d / %d", (int)wp, (int)lp)));
@@ -3304,7 +3804,7 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         AiTocScrollThumbnails(dlg, dlg->thumbnailScroll - (delta / WHEEL_DELTA) * 90);
         return 0;
     }
-    if ((msg == WM_CLIPBOARDUPDATE || (msg == WM_TIMER && wp == 1)) && dlg->submitted) {
+    if ((msg == WM_CLIPBOARDUPDATE || (msg == WM_TIMER && wp == 1)) && dlg->submitted && !dlg->apiMode) {
         DWORD sequence = GetClipboardSequenceNumber();
         if (!dlg->clipboardReading && sequence != dlg->clipboardSequence) {
             dlg->clipboardReading = true;
@@ -3334,34 +3834,44 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         AiTocUpdateSendEnabled(dlg);
         return 0;
     }
+    if (msg == WM_COMMAND && LOWORD(wp) == 1005 && HIWORD(wp) == BN_CLICKED && !dlg->busy && !dlg->submitted &&
+        !dlg->bodyScanning) {
+        Vec<int> pages;
+        if (!AiTocCollectSelectedPages(dlg, pages)) {
+            return 0;
+        }
+        if (!AiTocApiConfigured()) {
+            MessageBoxWarning(hwnd,
+                              _TRA("Configure the AI table of contents API (base URL, key and model) on the OCR and "
+                                   "AI settings page first."),
+                              _TRA("AI Recognize Table of Contents"));
+            return 0;
+        }
+        DisplayModel* dm = dlg->win ? dlg->win->AsFixed() : nullptr;
+        EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+        if (!engine) {
+            return 0;
+        }
+        dlg->mode = AiTocSourceMode::PrintedToc;
+        AiTocStartApiRecognition(dlg, pages, engine);
+        return 0;
+    }
+    if (msg == WM_COMMAND && LOWORD(wp) == 1006 && HIWORD(wp) == BN_CLICKED && !dlg->busy && !dlg->submitted) {
+        if (!AiTocApiConfigured()) {
+            MessageBoxWarning(hwnd,
+                              _TRA("Configure the AI table of contents API (base URL, key and model) on the OCR and "
+                                   "AI settings page first."),
+                              _TRA("AI Recognize Table of Contents"));
+            return 0;
+        }
+        AiTocStartApiDetect(dlg);
+        return 0;
+    }
     if (msg == WM_COMMAND && LOWORD(wp) == 1001 && HIWORD(wp) == BN_CLICKED && !dlg->busy && !dlg->submitted) {
         DisplayModel* dm = dlg->win ? dlg->win->AsFixed() : nullptr;
         EngineBase* engine = dm ? dm->GetEngine() : nullptr;
         Vec<int> pages;
-        if (dlg->detectWork && dlg->detectWork->pageNos.Size() > 0) {
-            for (int i = 0; i < dlg->detectWork->pageNos.Size(); i++) {
-                if (i < dlg->detectWork->initiallySelected.Size() && dlg->detectWork->initiallySelected[i]) {
-                    pages.Append(dlg->detectWork->pageNos[i]);
-                }
-            }
-        } else if (engine) {
-            Str pageText = GetWindowTextTemp(dlg->pagesEdit);
-            Vec<PageRange> ranges;
-            if (!ParsePageRanges(pageText.s, ranges)) {
-                MessageBoxWarning(hwnd, _TRA("Choose between 1 and 20 PDF pages."),
-                                  _TRA("AI Recognize Table of Contents"));
-                return 0;
-            }
-            for (int i = 0; i < ranges.Size(); i++) {
-                int first = ranges[i].start > 1 ? ranges[i].start : 1;
-                int last = ranges[i].end < engine->PageCount() ? ranges[i].end : engine->PageCount();
-                for (int pageNo = first; pageNo <= last && pages.Size() <= 20; pageNo++) {
-                    pages.Append(pageNo);
-                }
-            }
-        }
-        if (pages.Size() == 0 || pages.Size() > 20) {
-            MessageBoxWarning(hwnd, _TRA("Choose between 1 and 20 PDF pages."), _TRA("AI Recognize Table of Contents"));
+        if (!AiTocCollectSelectedPages(dlg, pages)) {
             return 0;
         }
         WCHAR confirmation[512]{};
@@ -3537,10 +4047,9 @@ void StartAiTocProofOfConcept(MainWindow* win) {
     // Deliberately ownerless (parent = nullptr): clicking the dialog must not
     // pull the main window above other applications. Lifecycle is guarded by
     // the ownerHwnd watchdog timer instead of the owner-destroy mechanism.
-    HWND hwnd =
-        CreateWindowExW(WS_EX_DLGMODALFRAME | WS_EX_TOPMOST, kAiTocDialogClass, _TRW("AI Recognize Table of Contents"),
-                        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT, 520,
-                        190, nullptr, nullptr, h, dlg);
+    HWND hwnd = CreateWindowExW(WS_EX_DLGMODALFRAME, kAiTocDialogClass, _TRW("AI Recognize Table of Contents"),
+                                WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT,
+                                520, 190, nullptr, nullptr, h, dlg);
     if (!hwnd) {
         delete dlg;
         return;
@@ -3592,6 +4101,12 @@ void StartAiTocProofOfConcept(MainWindow* win) {
                                 10, 10, hwnd, (HMENU)1001, h, nullptr);
     SendMessageW(dlg->send, WM_SETFONT, (WPARAM)dlg->font, TRUE);
     EnableWindow(dlg->send, FALSE);
+    // [Recognize via API]: same page selection as 发送目录页, but runs the
+    // autoContents-style recognition over the OpenAI-compatible API.
+    dlg->apiBtn = CreateWindowExW(0, L"BUTTON", _TRW("Recognize via API"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0,
+                                  10, 10, hwnd, (HMENU)1005, h, nullptr);
+    SendMessageW(dlg->apiBtn, WM_SETFONT, (WPARAM)dlg->font, TRUE);
+    EnableWindow(dlg->apiBtn, FALSE);
     // Fallback for documents without a printed TOC. Hidden until detection
     // confirms there is no contents spread.
     dlg->bodyBtn = CreateWindowExW(0, L"BUTTON", _TRW("Generate TOC From Body"), WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10,
@@ -3624,6 +4139,16 @@ void StartAiTocProofOfConcept(MainWindow* win) {
     // grid) instead of the former inline manual section on the fallback page.
     dlg->manualBtn = CreateWindowExW(0, L"BUTTON", _TRW("Specify TOC Pages"), WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10,
                                      hwnd, (HMENU)1004, h, nullptr);
+    // [AI Detect TOC Pages]: fallback-page action that detects the printed
+    // TOC page range through the API (sliding windows + voting).
+    dlg->aiDetectBtn = CreateWindowExW(0, L"BUTTON", _TRW("AI Detect TOC Pages"), WS_CHILD | BS_PUSHBUTTON, 0, 0, 10,
+                                       10, hwnd, (HMENU)1006, h, nullptr);
+    SendMessageW(dlg->aiDetectBtn, WM_SETFONT, (WPARAM)dlg->font, TRUE);
+    ShowWindow(dlg->aiDetectBtn, SW_HIDE);
+    dlg->detectProgress =
+        CreateWindowExW(0, PROGRESS_CLASSW, nullptr, WS_CHILD | PBS_SMOOTH, 0, 0, 10, 10, hwnd, nullptr, h, nullptr);
+    dlg->detectProgressCount =
+        CreateWindowExW(0, L"STATIC", L"", WS_CHILD | SS_LEFTNOWORDWRAP, 0, 0, 10, 10, hwnd, nullptr, h, nullptr);
 
     // Scanning starts immediately: the marquee widgets participate in the
     // layout, so the flag must be set before the first AiTocLayoutControls.
@@ -3637,7 +4162,6 @@ void StartAiTocProofOfConcept(MainWindow* win) {
     RegisterAppDialogForTheme(hwnd, AiTocThemeRefreshCb, dlg);
     AiTocCenterOverMainWindow(dlg);
     ShowWindow(hwnd, SW_SHOWNORMAL);
-    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
     // Scanning marquee: 300 ms per phase, invalidating only the dots rect.
     SetTimer(hwnd, 2, 300, nullptr);
     // Ownerless-dialog watchdog: die together with the main frame.

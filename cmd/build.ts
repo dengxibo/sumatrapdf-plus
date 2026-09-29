@@ -1,5 +1,5 @@
-import { join } from "node:path";
-import { detectVisualStudio2026, runLogged, copyDistributionFonts, copyOpenccData, copyOcrSidecar } from "./util";
+import { join, resolve, sep } from "node:path";
+import { detectVisualStudio, runLogged, copyDistributionFonts, copyOpenccData, copyOcrSidecar } from "./util";
 import { clearDirPreserveSettings } from "./clean";
 
 let clean = false;
@@ -17,15 +17,20 @@ async function main() {
     }
   }
 
-  const { msbuildPath } = detectVisualStudio2026();
+  // detectVisualStudio() accepts VS2022 and VS2026 (fork machines often
+  // only have the VS2022 BuildTools installed).
+  const { msbuildPath } = detectVisualStudio();
   const sln = String.raw`vs2022\SumatraPDF.sln`;
   // const t = `/t:SumatraPDF;test_util`;
-  const p = `/p:Configuration=Debug;Platform=x64`;
+  const outDirArg = process.argv.indexOf("--out-dir");
+  const outDir = outDirArg >= 0 && process.argv[outDirArg + 1] ? process.argv[outDirArg + 1] : join("out", "dbg64");
+  const outputProperty = outDirArg >= 0 ? `;OutDir=${resolve(outDir)}${sep}` : "";
+  const p = `/p:Configuration=Debug;Platform=x64${outputProperty}`;
   await runLogged(msbuildPath, [sln, t, p, `/m`]);
 
-  copyDistributionFonts(join("out", "dbg64"));
-  copyOpenccData(join("out", "dbg64"));
-  copyOcrSidecar(join("out", "dbg64"));
+  copyDistributionFonts(outDir);
+  copyOpenccData(outDir);
+  copyOcrSidecar(outDir);
   // await runLogged(resolve(join(outDir, "test_util.exe")), [], outDir);
 
   const elapsed = ((performance.now() - timeStart) / 1000).toFixed(1);

@@ -5,6 +5,9 @@
 #include "wingui/DialogSizer.h"
 #include "utils/WinUtil.h"
 #include "utils/Dpi.h"
+#include "utils/ThreadUtil.h"
+#include "utils/UITask.h"
+#include "utils/JsonParser.h"
 
 #include "Settings.h"
 #include "AppSettings.h"
@@ -22,6 +25,7 @@
 #include "Theme.h"
 #include "AppDialogTheme.h"
 #include "DarkModeSubclass.h"
+#include "AiTocApi.h"
 
 // Modeless Enter/Esc routing (defined in wingui/Wnd.cpp).
 HWND GetCurrentModelessDialog();
@@ -1095,11 +1099,39 @@ static const int gSettingsReadingControls[] = {IDC_SETTINGS_PAGE_READING,
                                                IDC_DICTIONARY_BROWSE,
                                                IDC_GROUP_FULLSCREEN,
                                                IDC_PREVENT_SLEEP_FULLSCREEN};
-static const int gSettingsOcrAiControls[] = {
-    IDC_SETTINGS_PAGE_OCR_AI, IDC_GROUP_OCR,      IDC_AUTO_OCR,          IDC_OCR_DESCRIPTION,
-    IDC_OCR_MODE_LABEL,       IDC_OCR_MODE,       IDC_OCR_AUTO_SAVE,     IDC_OCR_SAVE_WARNING,
-    IDC_GROUP_SMART_TOC,      IDC_TOC_MODE_LABEL, IDC_TOC_MODE,          IDC_TOC_MODE_DESCRIPTION,
-    IDC_GROUP_ASK_AI,         IDC_ENABLE_ASK_AI,  IDC_AI_PROVIDER_LABEL, IDC_AI_PROVIDER};
+static const int gSettingsOcrAiControls[] = {IDC_SETTINGS_PAGE_OCR_AI,
+                                             IDC_GROUP_OCR,
+                                             IDC_AUTO_OCR,
+                                             IDC_OCR_DESCRIPTION,
+                                             IDC_OCR_MODE_LABEL,
+                                             IDC_OCR_MODE,
+                                             IDC_OCR_AUTO_SAVE,
+                                             IDC_OCR_SAVE_WARNING,
+                                             IDC_GROUP_SMART_TOC,
+                                             IDC_TOC_MODE_LABEL,
+                                             IDC_TOC_MODE,
+                                             IDC_TOC_MODE_DESCRIPTION,
+                                             IDC_GROUP_ASK_AI,
+                                             IDC_ENABLE_ASK_AI,
+                                             IDC_AI_PROVIDER_LABEL,
+                                             IDC_AI_PROVIDER,
+                                             IDC_GROUP_AITOC_API,
+                                             IDC_AITOC_API_BASEURL_LABEL,
+                                             IDC_AITOC_API_BASEURL,
+                                             IDC_AITOC_API_KEY_LABEL,
+                                             IDC_AITOC_API_KEY,
+                                             IDC_AITOC_API_MODEL_LABEL,
+                                             IDC_AITOC_API_MODEL,
+                                             IDC_AITOC_API_TEST,
+                                             IDC_AITOC_API_PROFILE_LABEL,
+                                             IDC_AITOC_API_PROFILE,
+                                             IDC_AITOC_API_ADD,
+                                             IDC_AITOC_API_REMOVE,
+                                             IDC_AITOC_API_NAME_LABEL,
+                                             IDC_AITOC_API_NAME,
+                                             IDC_AITOC_API_FETCH_MODELS,
+                                             IDC_AITOC_API_CONCURRENCY_LABEL,
+                                             IDC_AITOC_API_CONCURRENCY};
 static const int gSettingsAdvancedControls[] = {IDC_SETTINGS_PAGE_ADVANCED,
                                                 IDC_GROUP_WINDOW,
                                                 IDC_ESC_TO_EXIT,
@@ -1136,6 +1168,335 @@ static void ShowSettingsPage(HWND hDlg, int page) {
             ShowWindow(GetDlgItem(hDlg, id), show ? SW_SHOW : SW_HIDE);
         }
     }
+}
+
+static constexpr const WCHAR* kAiTocSettingsStateProp = L"AiTocSettingsState";
+static LONG gAiTocSettingsToken = 0;
+
+struct AiTocUiProfile {
+    char* name = nullptr;
+    char* baseUrl = nullptr;
+    char* key = nullptr;
+    char* model = nullptr;
+    int concurrency = 4;
+
+    void Free() {
+        str::Free(name);
+        str::Free(baseUrl);
+        str::Free(key);
+        str::Free(model);
+    }
+};
+
+struct AiTocSettingsState {
+    Vec<AiTocUiProfile> profiles;
+    Vec<char*> models;
+    int current = 0;
+    unsigned fetchGeneration = 0;
+    LONG token = 0;
+    bool loading = false;
+
+    ~AiTocSettingsState() {
+        for (auto& profile : profiles) {
+            profile.Free();
+        }
+        for (auto* model : models) {
+            str::Free(model);
+        }
+        profiles.Reset();
+        models.Reset();
+    }
+};
+
+static AiTocSettingsState* GetAiTocSettingsState(HWND hDlg) {
+    return (AiTocSettingsState*)GetPropW(hDlg, kAiTocSettingsStateProp);
+}
+
+struct AiTocProfilesVisitor : json::ValueVisitor {
+    AiTocSettingsState* state;
+    int active = 0;
+
+    explicit AiTocProfilesVisitor(AiTocSettingsState* s) : state(s) {}
+
+    bool Visit(const char* path, const char* value, json::Type type) override {
+        if (str::Eq(path, "/active") && type == json::Type::Number) {
+            active = atoi(value);
+            return true;
+        }
+        if (!str::StartsWith(path, "/profiles[")) {
+            return true;
+        }
+        const char* p = path + str::Len("/profiles[");
+        char* end = nullptr;
+        long idx = strtol(p, &end, 10);
+        if (end == p || idx < 0 || idx >= 100 || !end || *end++ != ']' || *end++ != '/') {
+            return true;
+        }
+        while (state->profiles.Size() <= idx) {
+            state->profiles.Append(AiTocUiProfile{});
+        }
+        auto& profile = state->profiles[idx];
+        if (type == json::Type::String) {
+            if (str::Eq(end, "name")) {
+                str::ReplaceWithCopy(&profile.name, value);
+            } else if (str::Eq(end, "base_url")) {
+                str::ReplaceWithCopy(&profile.baseUrl, value);
+            } else if (str::Eq(end, "api_key")) {
+                str::ReplaceWithCopy(&profile.key, value);
+            } else if (str::Eq(end, "model")) {
+                str::ReplaceWithCopy(&profile.model, value);
+            }
+        } else if (type == json::Type::Number && str::Eq(end, "concurrency")) {
+            profile.concurrency = limitValue(atoi(value), 1, 8);
+        }
+        return true;
+    }
+};
+
+static void AiTocJsonString(StrBuilder& out, const char* s) {
+    out.AppendChar('"');
+    if (s) {
+        for (const u8* p = (const u8*)s; *p; p++) {
+            u8 c = *p;
+            if (c == '"') {
+                out.Append("\\\"");
+            } else if (c == '\\') {
+                out.Append("\\\\");
+            } else if (c < 0x20) {
+                out.AppendFmt("\\u%04x", (int)c);
+            } else {
+                out.AppendChar((char)c);
+            }
+        }
+    }
+    out.AppendChar('"');
+}
+
+static void AiTocClearModels(AiTocSettingsState* state) {
+    for (auto* model : state->models) {
+        str::Free(model);
+    }
+    state->models.Reset();
+}
+
+static void AiTocPopulateModels(HWND hDlg, bool filterByText, bool openDropdown) {
+    auto* state = GetAiTocSettingsState(hDlg);
+    if (!state || state->loading) {
+        return;
+    }
+    HWND combo = GetDlgItem(hDlg, IDC_AITOC_API_MODEL);
+    AutoFree selected(str::Dup(HwndGetTextTemp(combo)));
+    // Rebuilding a CBS_DROPDOWN also clears its edit. Restore both text and
+    // caret so typing a search query feels like editing a normal field.
+    LPARAM editSelection = SendMessageW(combo, CB_GETEDITSEL, 0, 0);
+    state->loading = true;
+    SendMessageW(combo, CB_RESETCONTENT, 0, 0);
+    int matches = 0;
+    for (auto* model : state->models) {
+        if (!filterByText || !selected.data || !*selected.data || str::FindI(model, selected.data)) {
+            CbAddString(combo, model);
+            matches++;
+        }
+    }
+    HwndSetText(combo, selected.data ? selected.data : "");
+    if (openDropdown) {
+        SendMessageW(combo, CB_SHOWDROPDOWN, matches > 0 ? TRUE : FALSE, 0);
+    }
+    SendMessageW(combo, CB_SETEDITSEL, 0, editSelection);
+    state->loading = false;
+}
+
+static void AiTocSaveVisibleProfile(HWND hDlg) {
+    auto* state = GetAiTocSettingsState(hDlg);
+    if (!state || state->loading || state->current < 0 || state->current >= state->profiles.Size()) {
+        return;
+    }
+    auto& p = state->profiles[state->current];
+    str::ReplaceWithCopy(&p.name, HwndGetTextTemp(GetDlgItem(hDlg, IDC_AITOC_API_NAME)));
+    str::ReplaceWithCopy(&p.baseUrl, HwndGetTextTemp(GetDlgItem(hDlg, IDC_AITOC_API_BASEURL)));
+    str::ReplaceWithCopy(&p.key, HwndGetTextTemp(GetDlgItem(hDlg, IDC_AITOC_API_KEY)));
+    str::ReplaceWithCopy(&p.model, HwndGetTextTemp(GetDlgItem(hDlg, IDC_AITOC_API_MODEL)));
+    BOOL valid = FALSE;
+    UINT n = GetDlgItemInt(hDlg, IDC_AITOC_API_CONCURRENCY, &valid, FALSE);
+    p.concurrency = valid ? limitValue((int)n, 1, 8) : 4;
+    if (str::IsEmptyOrWhiteSpace(p.name)) {
+        str::ReplaceWithCopy(&p.name, str::FormatTemp("Platform %d", state->current + 1));
+    }
+}
+
+static void AiTocRefreshProfileSelector(HWND hDlg) {
+    auto* state = GetAiTocSettingsState(hDlg);
+    HWND combo = GetDlgItem(hDlg, IDC_AITOC_API_PROFILE);
+    SendMessageW(combo, CB_RESETCONTENT, 0, 0);
+    for (int i = 0; i < state->profiles.Size(); i++) {
+        const char* name = state->profiles[i].name;
+        CbAddString(combo, name && *name ? name : str::FormatTemp("Platform %d", i + 1));
+    }
+    CbSetCurrentSelection(combo, state->current);
+    EnableWindow(GetDlgItem(hDlg, IDC_AITOC_API_REMOVE), state->profiles.Size() > 1);
+}
+
+static void AiTocShowProfile(HWND hDlg) {
+    auto* state = GetAiTocSettingsState(hDlg);
+    if (!state || state->current < 0 || state->current >= state->profiles.Size()) {
+        return;
+    }
+    auto& p = state->profiles[state->current];
+    state->loading = true;
+    HwndSetDlgItemText(hDlg, IDC_AITOC_API_NAME, p.name ? p.name : "");
+    HwndSetDlgItemText(hDlg, IDC_AITOC_API_BASEURL, p.baseUrl ? p.baseUrl : "");
+    HwndSetDlgItemText(hDlg, IDC_AITOC_API_KEY, p.key ? p.key : "");
+    HwndSetDlgItemText(hDlg, IDC_AITOC_API_MODEL, p.model ? p.model : "");
+    SetDlgItemInt(hDlg, IDC_AITOC_API_CONCURRENCY, p.concurrency, FALSE);
+    state->loading = false;
+    AiTocClearModels(state);
+    state->fetchGeneration++;
+    AiTocPopulateModels(hDlg, false, false);
+    AiTocRefreshProfileSelector(hDlg);
+    EnableWindow(GetDlgItem(hDlg, IDC_AITOC_API_FETCH_MODELS), TRUE);
+}
+
+static void AiTocInitProfiles(HWND hDlg, GlobalPrefs* prefs) {
+    auto* state = new AiTocSettingsState();
+    state->token = InterlockedIncrement(&gAiTocSettingsToken);
+    if (!str::IsEmptyOrWhiteSpace(prefs->aiTocApiProfiles)) {
+        AiTocProfilesVisitor visitor(state);
+        if (json::Parse(prefs->aiTocApiProfiles, &visitor)) {
+            state->current = visitor.active;
+        } else {
+            for (auto& profile : state->profiles) {
+                profile.Free();
+            }
+            state->profiles.Reset();
+        }
+    }
+    if (state->profiles.IsEmpty()) {
+        AiTocUiProfile p;
+        p.name = str::Dup("Default");
+        p.baseUrl = str::Dup(prefs->aiTocApiBaseUrl);
+        p.key = str::Dup(prefs->aiTocApiKey);
+        p.model = str::Dup(prefs->aiTocApiModel);
+        p.concurrency = limitValue(prefs->aiTocApiConcurrency, 1, 8);
+        state->profiles.Append(p);
+    }
+    state->current = limitValue(state->current, 0, state->profiles.Size() - 1);
+    SetPropW(hDlg, kAiTocSettingsStateProp, state);
+    AiTocShowProfile(hDlg);
+}
+
+static void AiTocCommitProfiles(HWND hDlg, GlobalPrefs* prefs) {
+    auto* state = GetAiTocSettingsState(hDlg);
+    if (!state) {
+        return;
+    }
+    AiTocSaveVisibleProfile(hDlg);
+    auto& active = state->profiles[state->current];
+    str::ReplaceWithCopy(&prefs->aiTocApiBaseUrl, active.baseUrl ? active.baseUrl : "");
+    str::ReplaceWithCopy(&prefs->aiTocApiKey, active.key ? active.key : "");
+    str::ReplaceWithCopy(&prefs->aiTocApiModel, active.model ? active.model : "");
+    prefs->aiTocApiConcurrency = active.concurrency;
+    StrBuilder out;
+    out.AppendFmt("{\"active\":%d,\"profiles\":[", state->current);
+    for (int i = 0; i < state->profiles.Size(); i++) {
+        auto& p = state->profiles[i];
+        if (i) {
+            out.AppendChar(',');
+        }
+        out.Append("{\"name\":");
+        AiTocJsonString(out, p.name);
+        out.Append(",\"base_url\":");
+        AiTocJsonString(out, p.baseUrl);
+        out.Append(",\"api_key\":");
+        AiTocJsonString(out, p.key);
+        out.Append(",\"model\":");
+        AiTocJsonString(out, p.model);
+        out.AppendFmt(",\"concurrency\":%d}", p.concurrency);
+    }
+    out.Append("]}");
+    str::ReplaceWithCopy(&prefs->aiTocApiProfiles, out.Get());
+}
+
+struct AiTocFetchModelsReq {
+    HWND hwnd = nullptr;
+    LONG token = 0;
+    unsigned generation = 0;
+    char* baseUrl = nullptr;
+    char* key = nullptr;
+    Vec<char*> models;
+    char* error = nullptr;
+
+    ~AiTocFetchModelsReq() {
+        str::Free(baseUrl);
+        str::Free(key);
+        str::Free(error);
+        for (auto* model : models) {
+            str::Free(model);
+        }
+        models.Reset();
+    }
+};
+
+static void AiTocFetchModelsFinished(AiTocFetchModelsReq* req) {
+    if (IsWindow(req->hwnd)) {
+        auto* state = GetAiTocSettingsState(req->hwnd);
+        if (state && state->token == req->token && state->fetchGeneration == req->generation) {
+            EnableWindow(GetDlgItem(req->hwnd, IDC_AITOC_API_FETCH_MODELS), TRUE);
+            if (req->error) {
+                MessageBoxW(req->hwnd, ToWStrTemp(req->error), ToWStrTemp(_TRA("Get models")), MB_ICONWARNING);
+            } else {
+                AiTocClearModels(state);
+                for (auto* model : req->models) {
+                    state->models.Append(str::Dup(model));
+                }
+                const char* current = HwndGetTextTemp(GetDlgItem(req->hwnd, IDC_AITOC_API_MODEL));
+                bool selectedModel = false;
+                for (auto* model : state->models) {
+                    if (str::EqI(model, current)) {
+                        selectedModel = true;
+                        break;
+                    }
+                }
+                AiTocPopulateModels(req->hwnd, !selectedModel, true);
+            }
+        }
+    }
+    delete req;
+}
+
+static void AiTocFetchModelsWorker(AiTocFetchModelsReq* req) {
+    AiTocApiFetchModels(req->baseUrl, req->key, req->models, &req->error);
+    uitask::Post(MkFunc0<AiTocFetchModelsReq>(AiTocFetchModelsFinished, req), "AiTocFetchModels");
+}
+
+struct AiTocApiTestReq {
+    HWND hwnd = nullptr;
+    LONG token = 0;
+    char* baseUrl = nullptr;
+    char* key = nullptr;
+    char* model = nullptr;
+    char* msg = nullptr;
+    bool ok = false;
+};
+
+static void AiTocApiTestFinished(AiTocApiTestReq* req) {
+    auto* state = IsWindow(req->hwnd) ? GetAiTocSettingsState(req->hwnd) : nullptr;
+    HWND owner = state && state->token == req->token ? req->hwnd : nullptr;
+    const WCHAR* caption = ToWStrTemp(_TRA("AI table of contents"));
+    if (req->msg && owner) {
+        MessageBoxW(owner, ToWStrTemp(req->msg), caption, req->ok ? MB_ICONINFORMATION : MB_ICONWARNING);
+    }
+    str::Free(req->msg);
+    str::Free(req->baseUrl);
+    str::Free(req->key);
+    str::Free(req->model);
+    delete req;
+}
+
+static void AiTocApiTestWorker(AiTocApiTestReq* req) {
+    char* msg = nullptr;
+    req->ok = AiTocApiTestConnection(req->baseUrl, req->key, req->model, &msg);
+    req->msg = msg;
+    uitask::Post(MkFunc0<AiTocApiTestReq>(AiTocApiTestFinished, req), "AiTocApiTest");
 }
 
 static void UpdateSettingsDependencies(HWND hDlg) {
@@ -1411,6 +1772,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             SetDlgItemInt(hDlg, IDC_TAB_BAR_HEIGHT, prefs->tabBarHeight, FALSE);
             SetDlgItemInt(hDlg, IDC_CUSTOM_DPI, prefs->customScreenDPI, FALSE);
             HwndSetDlgItemText(hDlg, IDC_DICTIONARY_PATH, prefs->offlineDictionaryPath);
+            AiTocInitProfiles(hDlg, prefs);
 
             HWND category = GetDlgItem(hDlg, IDC_SETTINGS_CATEGORY);
             SettingsCategoryListSetItemHeight(category);
@@ -1560,6 +1922,17 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             HwndSetDlgItemText(hDlg, IDC_GROUP_ASK_AI, _TRA("Ask AI"));
             HwndSetDlgItemText(hDlg, IDC_ENABLE_ASK_AI, _TRA("&Enable Ask AI"));
             HwndSetDlgItemText(hDlg, IDC_AI_PROVIDER_LABEL, _TRA("AI &service:"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_AITOC_API, _TRA("AI table of contents (API)"));
+            HwndSetDlgItemText(hDlg, IDC_AITOC_API_PROFILE_LABEL, _TRA("&Platform:"));
+            HwndSetDlgItemText(hDlg, IDC_AITOC_API_ADD, _TRA("&Add"));
+            HwndSetDlgItemText(hDlg, IDC_AITOC_API_REMOVE, _TRA("&Remove"));
+            HwndSetDlgItemText(hDlg, IDC_AITOC_API_NAME_LABEL, _TRA("&Name:"));
+            HwndSetDlgItemText(hDlg, IDC_AITOC_API_BASEURL_LABEL, _TRA("API &base URL:"));
+            HwndSetDlgItemText(hDlg, IDC_AITOC_API_KEY_LABEL, _TRA("API &key:"));
+            HwndSetDlgItemText(hDlg, IDC_AITOC_API_MODEL_LABEL, _TRA("&Model:"));
+            HwndSetDlgItemText(hDlg, IDC_AITOC_API_FETCH_MODELS, _TRA("&Get models"));
+            HwndSetDlgItemText(hDlg, IDC_AITOC_API_CONCURRENCY_LABEL, _TRA("&Parallel (1-8):"));
+            HwndSetDlgItemText(hDlg, IDC_AITOC_API_TEST, _TRA("&Test"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_WINDOW, _TRA("Window"));
             HwndSetDlgItemText(hDlg, IDC_ESC_TO_EXIT, _TRA("E&xit the application with Esc"));
             HwndSetDlgItemText(hDlg, IDC_FULL_PATH_IN_TITLE, _TRA("Show the full file &path in the title bar"));
@@ -1674,6 +2047,8 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
         }
 
         case WM_DESTROY:
+            delete GetAiTocSettingsState(hDlg);
+            RemovePropW(hDlg, kAiTocSettingsStateProp);
             gSettingsCategoryHover = -1;
             gSettingsDialogBrushes.Destroy();
             break;
@@ -1785,6 +2160,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     }
                     char* dictionaryPath = HwndGetTextTemp(GetDlgItem(hDlg, IDC_DICTIONARY_PATH));
                     str::ReplaceWithCopy(&prefs->offlineDictionaryPath, dictionaryPath);
+                    AiTocCommitProfiles(hDlg, prefs);
                     int scrollbarIdx = (int)SendDlgItemMessage(hDlg, IDC_SCROLLBARS, CB_GETCURSEL, 0, 0);
                     const char* scrollbarMode = seqstrings::IdxToStr(gScrollbarModeNames, scrollbarIdx);
                     if (scrollbarMode) {
@@ -1819,6 +2195,102 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                 case IDC_DICTIONARY_BROWSE:
                     BrowseForDictionaryFolder(hDlg);
                     return TRUE;
+
+                case IDC_AITOC_API_PROFILE:
+                    if (HIWORD(wp) == CBN_SELCHANGE) {
+                        auto* state = GetAiTocSettingsState(hDlg);
+                        int next = ComboBox_GetCurSel(GetDlgItem(hDlg, IDC_AITOC_API_PROFILE));
+                        if (state && next >= 0 && next < state->profiles.Size() && next != state->current) {
+                            AiTocSaveVisibleProfile(hDlg);
+                            state->current = next;
+                            AiTocShowProfile(hDlg);
+                        }
+                    }
+                    return TRUE;
+
+                case IDC_AITOC_API_ADD: {
+                    auto* state = GetAiTocSettingsState(hDlg);
+                    if (!state) {
+                        return TRUE;
+                    }
+                    AiTocSaveVisibleProfile(hDlg);
+                    AiTocUiProfile p;
+                    p.name = str::Format("Platform %d", state->profiles.Size() + 1);
+                    state->profiles.Append(p);
+                    state->current = state->profiles.Size() - 1;
+                    AiTocShowProfile(hDlg);
+                    SetFocus(GetDlgItem(hDlg, IDC_AITOC_API_NAME));
+                    return TRUE;
+                }
+
+                case IDC_AITOC_API_REMOVE: {
+                    auto* state = GetAiTocSettingsState(hDlg);
+                    if (!state || state->profiles.Size() <= 1) {
+                        return TRUE;
+                    }
+                    state->profiles[state->current].Free();
+                    state->profiles.RemoveAt(state->current);
+                    state->current = std::min(state->current, state->profiles.Size() - 1);
+                    AiTocShowProfile(hDlg);
+                    return TRUE;
+                }
+
+                case IDC_AITOC_API_NAME:
+                    if (HIWORD(wp) == EN_KILLFOCUS) {
+                        AiTocSaveVisibleProfile(hDlg);
+                        AiTocRefreshProfileSelector(hDlg);
+                    }
+                    return TRUE;
+
+                case IDC_AITOC_API_BASEURL:
+                case IDC_AITOC_API_KEY:
+                    if (HIWORD(wp) == EN_CHANGE) {
+                        auto* state = GetAiTocSettingsState(hDlg);
+                        if (state && !state->loading) {
+                            state->fetchGeneration++;
+                            AiTocClearModels(state);
+                            AiTocPopulateModels(hDlg, false, false);
+                            EnableWindow(GetDlgItem(hDlg, IDC_AITOC_API_FETCH_MODELS), TRUE);
+                        }
+                    }
+                    return TRUE;
+
+                case IDC_AITOC_API_MODEL:
+                    if (HIWORD(wp) == CBN_EDITCHANGE) {
+                        auto* state = GetAiTocSettingsState(hDlg);
+                        if (state && !state->models.IsEmpty()) {
+                            AiTocPopulateModels(hDlg, true, true);
+                        }
+                    }
+                    return TRUE;
+
+                case IDC_AITOC_API_FETCH_MODELS: {
+                    auto* state = GetAiTocSettingsState(hDlg);
+                    if (!state) {
+                        return TRUE;
+                    }
+                    auto* req = new AiTocFetchModelsReq();
+                    req->hwnd = hDlg;
+                    req->token = state->token;
+                    req->generation = ++state->fetchGeneration;
+                    req->baseUrl = str::Dup(HwndGetTextTemp(GetDlgItem(hDlg, IDC_AITOC_API_BASEURL)));
+                    req->key = str::Dup(HwndGetTextTemp(GetDlgItem(hDlg, IDC_AITOC_API_KEY)));
+                    EnableWindow(GetDlgItem(hDlg, IDC_AITOC_API_FETCH_MODELS), FALSE);
+                    RunAsync(MkFunc0<AiTocFetchModelsReq>(AiTocFetchModelsWorker, req), "AiTocFetchModels");
+                    return TRUE;
+                }
+
+                case IDC_AITOC_API_TEST: {
+                    auto* req = new AiTocApiTestReq();
+                    req->hwnd = hDlg;
+                    auto* state = GetAiTocSettingsState(hDlg);
+                    req->token = state ? state->token : 0;
+                    req->baseUrl = str::Dup(HwndGetTextTemp(GetDlgItem(hDlg, IDC_AITOC_API_BASEURL)));
+                    req->key = str::Dup(HwndGetTextTemp(GetDlgItem(hDlg, IDC_AITOC_API_KEY)));
+                    req->model = str::Dup(HwndGetTextTemp(GetDlgItem(hDlg, IDC_AITOC_API_MODEL)));
+                    RunAsync(MkFunc0<AiTocApiTestReq>(AiTocApiTestWorker, req), "AiTocApiTest");
+                    return TRUE;
+                }
 
                 case IDC_SETTINGS_CATEGORY:
                     if (HIWORD(wp) == LBN_SELCHANGE) {

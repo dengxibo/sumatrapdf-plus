@@ -21,6 +21,8 @@ Windows 下的 PDF / 电子书阅读器，针对中文 EPUB/MOBI、离线查词�
 
 - **OCR** — offline RapidOCR / PP-OCR for **scanned pages**. Auto OCR while reading, recognize all pages, save a searchable PDF, or drag a region; then search, select, look up, read aloud, and extract bookmarks. Keep `{exe}\ocr\`.  
   **OCR** — **扫描页本地识别**（RapidOCR / PP-OCR）。翻页自动识别、全文识别、保存可搜索 PDF、框选识别；之后可搜索、选中、查词、朗读、提取书签。模型在 `{exe}\ocr\`。
+- **AI table of contents (API)** — recognize printed contents in scanned PDFs with a vision model. Save multiple provider profiles, filter fetched models directly in the model field, and set the request concurrency. [Setup and usage](docs/ai-toc-api.md).
+  **AI 目录识别（API）** — 用视觉模型识别扫描 PDF 的印刷目录；可保存多套平台配置、直接在模型框筛选已获取的模型、设置请求并发数。[配置与使用说明](docs/ai-toc-api.md)。
 - **Smart PDF dark mode** — Original / Match theme for PDF and ebooks; toolbar Light / Dark (Light-Warm, Light-White).  
   **智能暗黑** — 原稿 / 匹配主题（PDF、EPUB、MOBI 等）；工具栏亮/暗主题（暖色护眼、中性浅色）。
 - **Read Aloud (TTS)** — word-by-word highlight; start from top, cursor, or selection; pause/continue; voice and speed 0.25×–2.0×.  

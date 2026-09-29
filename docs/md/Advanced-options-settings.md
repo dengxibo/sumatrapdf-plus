@@ -162,6 +162,21 @@ ExtractPdfTocMode = standard
 ; Valid values: doubao, deepseek, chatgpt (introduced in version 3.7)
 AiChatProvider = doubao
 
+; AI table of contents API base URL
+AiTocApiBaseUrl = 
+
+; AI table of contents API key
+AiTocApiKey = 
+
+; AI table of contents model
+AiTocApiModel = 
+
+; saved AI table of contents API profiles (JSON)
+AiTocApiProfiles = 
+
+; maximum simultaneous AI table of contents requests (1-8)
+AiTocApiConcurrency = 4
+
 ; deprecated: use AiChatProvider instead; if true and AiChatProvider is not in
 ; settings, migrates to deepseek (introduced in version 3.7)
 AiChatUseDeepSeekInsteadOfDoubao = false
@@ -750,6 +765,10 @@ FileStates [
     ; page display enhancement mode for this document (0=off, 4=auto
     ; Mild/Strong; 1/2/3 migrate to auto) (introduced in version 3.8)
     DisplayFilterMode = 0
+
+    ; whether automatic OCR is enabled for this document after a manual toggle
+    ; (introduced in version 3.8)
+    AutoOcrOn = false
 
     ; data required to restore the last read page in the ebook UI
     ReparseIdx = 0
