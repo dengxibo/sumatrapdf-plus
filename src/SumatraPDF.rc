@@ -78,10 +78,10 @@ IDR_MANUAL_PAK          RCDATA               "..\\docs\\manual.dat"
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
 IDI_SUMATRAPDF          ICON "..\\gfx\\SumatraPDF-smaller.ico"
-// for compath with pre 3.4 registry association for pre-win10
-// have icon as ,1, which is index of this icon. unless we delete
-// those old registry on install, the icon would change
-2                       ICON "..\\gfx\\gfxalt\\PdfDoc.ico"
+// Document-type icons (resource id = registry DefaultIcon ,-N). See RegisterForOpenWith.
+// Icon 2 stays at index ,1 for pre-3.4 registry compat; use pdf-32bit (same sash style as
+// epub/cbx/chm) so Explorer file icons stay readable at 16–48px — not PdfDoc's tiny badge.
+2                       ICON "..\\gfx\\gfxalt\\pdf-32bit.ico"
 3                       ICON "..\\gfx\\gfxalt\\epub-32bit.ico"
 4                       ICON "..\\gfx\\gfxalt\\cbx-32bit.ico"
 5                       ICON "..\\gfx\\gfxalt\\chm-32bit.ico"

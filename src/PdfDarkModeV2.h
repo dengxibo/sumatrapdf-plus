@@ -167,6 +167,54 @@ inline bool PdfDarkModeV2RemainLooksLikeFailedRectFlood(float remainSolidity, fl
     return true;
 }
 
+// Soft color studio (RAZ Getting Dressed): flood cleared a lot of the card but left
+// bright paper blobs (hair specular / white tee). Prefer the clean opaque card —
+// a chewed cutout reads as a white "skullcap". edgeWhite can be 0.93–0.96 on large
+// mats; do not exclude those.
+// Do NOT abort on gray AA fringe alone: Zoo fur / scale edges always fringe that way
+// after a good flood, and aborting leaves the original white rectangle.
+inline bool PdfDarkModeV2RemainLooksLikeChewedSoftStudio(float edgeWhiteRatio, float remainSoftWhiteRatio,
+                                                         float remainChromaRatio, float fringeGrayRatio) {
+    if (edgeWhiteRatio < 0.35f || edgeWhiteRatio > 0.97f) {
+        return false;
+    }
+    if (remainChromaRatio < 0.08f) {
+        return false; // not a colorful photo cutout
+    }
+    // Soft-white holes are required (hair/tee). Fringe without them is a clean Zoo cutout.
+    if (remainSoftWhiteRatio < 0.012f) {
+        return false;
+    }
+    // Soft-white remnant after a real flood → highlight / clothing holes.
+    if (edgeWhiteRatio >= 0.45f) {
+        return true;
+    }
+    if (remainSoftWhiteRatio >= 0.025f && fringeGrayRatio >= 0.05f) {
+        return true;
+    }
+    return false;
+}
+
+// Soft studio photo books (RAZ Getting Dressed): white mats crush page sat so the
+// full-page "line art" gate misfires. Solid paper border + photo midtone spread
+// means PictureBook, not 连环画 binarize.
+inline bool PdfDarkModeV2LineArtGateIsSoftStudioPhotoBook(bool lineArtGate, float paperRatio, float lumVar,
+                                                          float borderPaperRatio) {
+    if (!lineArtGate) {
+        return false;
+    }
+    if (paperRatio < 0.70f || lumVar < 0.040f || borderPaperRatio < 0.90f) {
+        return false;
+    }
+    return true;
+}
+
+// Center of image is soft-white (tee / foam / mat showing through). Color studio
+// cutout will chew it — keep the opaque card. Zoo fur is chromatic in the center.
+inline bool PdfDarkModeV2ColorStudioHasSoftWhiteCenter(float centerSoftWhiteRatio) {
+    return centerSoftWhiteRatio >= 0.06f;
+}
+
 // Small colorful atlas icons (flags/maps/UNIT) often have white only in the corners,
 // so side-band paper ratios stay below the usual 3-side badge gate.
 inline bool PdfDarkModeV2ShouldKnockOutSmallIconCornerMat(int w, int h, int paperSides, float edgeWhiteRatio,

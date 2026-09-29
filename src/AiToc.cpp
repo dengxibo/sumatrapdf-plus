@@ -36,6 +36,7 @@
 #include "MainWindow.h"
 #include "WindowTab.h"
 #include "SumatraDialogs.h"
+#include "SumatraConfig.h"
 #include "Flags.h"
 #include "ImageSaveCropResize.h"
 #include "Notifications.h"
@@ -506,6 +507,28 @@ static void AiTocPlaceScanCountAfterStatus(AiTocDialog* dlg, int statusY, int li
         return;
     }
     MoveWindow(dlg->scanCount, afterX, statusY, AiTocS(dlg, 80), lineH, FALSE);
+}
+
+// Footer buttons ("Recognize via Web AI", …) must fit their translated label;
+// a fixed DIP width clips English and German.
+static int AiTocMeasureButtonWidth(AiTocDialog* dlg, HWND btn) {
+    int minW = AiTocS(dlg, 72);
+    if (!btn || !dlg->hwnd) {
+        return minW;
+    }
+    WCHAR text[160]{};
+    GetWindowTextW(btn, text, (int)dimof(text));
+    if (!text[0]) {
+        return minW;
+    }
+    HDC dc = GetDC(dlg->hwnd);
+    HGDIOBJ oldF = SelectObject(dc, dlg->font);
+    SIZE sz{};
+    GetTextExtentPoint32W(dc, text, (int)wcslen(text), &sz);
+    SelectObject(dc, oldF);
+    ReleaseDC(dlg->hwnd, dc);
+    int w = sz.cx + AiTocS(dlg, 28);
+    return w > minW ? w : minW;
 }
 
 static void AiTocSetImportProgress(AiTocDialog* dlg, const WCHAR* text) {
@@ -3048,22 +3071,40 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
     }
 
     int btnTop = oldClient.bottom - mt.btnBottomMargin - mt.btnH;
-    int btnW = AiTocS(dlg, 108); // "网页 AI 识别" / "Recognize via Web AI"
     dlg->sepY = btnTop - AiTocS(dlg, 10);
-    MoveWindow(GetDlgItem(hwnd, IDCANCEL), mt.w - mt.m - btnW, btnTop, btnW, mt.btnH, TRUE);
-    MoveWindow(dlg->send, mt.w - mt.m - btnW * 2 - mt.btnGap, btnTop, btnW, mt.btnH, TRUE);
-    if (dlg->apiBtn) {
-        MoveWindow(dlg->apiBtn, mt.w - mt.m - btnW * 3 - mt.btnGap * 2, btnTop, btnW, mt.btnH, TRUE);
+    HWND cancelBtn = GetDlgItem(hwnd, IDCANCEL);
+    int cancelW = AiTocMeasureButtonWidth(dlg, cancelBtn);
+    int sendW = AiTocMeasureButtonWidth(dlg, dlg->send);
+    int apiW = AiTocMeasureButtonWidth(dlg, dlg->apiBtn);
+    int resendW = AiTocMeasureButtonWidth(dlg, dlg->resend);
+    // Pack footer actions from the right so long English labels are not clipped.
+    int footerX = mt.w - mt.m;
+    footerX -= cancelW;
+    MoveWindow(cancelBtn, footerX, btnTop, cancelW, mt.btnH, TRUE);
+    bool showSend = !fallback && !bodyFlow && !waitingState;
+    bool showApi = showSend && dlg->apiBtn;
+    bool showResend = waitingState && !dlg->apiMode && dlg->resend;
+    if (showSend && dlg->send) {
+        footerX -= mt.btnGap + sendW;
+        MoveWindow(dlg->send, footerX, btnTop, sendW, mt.btnH, TRUE);
+    }
+    if (showApi) {
+        footerX -= mt.btnGap + apiW;
+        MoveWindow(dlg->apiBtn, footerX, btnTop, apiW, mt.btnH, TRUE);
+    }
+    if (showResend) {
+        footerX -= mt.btnGap + resendW;
+        MoveWindow(dlg->resend, footerX, btnTop, resendW, mt.btnH, TRUE);
     }
     // Fallback page keeps only 取消 in the footer: both branch actions are
     // content buttons. Hide the send button entirely once the body branch is
     // running: the body flow sends automatically and must not invite manual
     // resending.
     if (dlg->send) {
-        ShowWindow(dlg->send, !fallback && !bodyFlow && !waitingState ? SW_SHOWNOACTIVATE : SW_HIDE);
+        ShowWindow(dlg->send, showSend ? SW_SHOWNOACTIVATE : SW_HIDE);
     }
     if (dlg->apiBtn) {
-        ShowWindow(dlg->apiBtn, !fallback && !bodyFlow && !waitingState ? SW_SHOWNOACTIVATE : SW_HIDE);
+        ShowWindow(dlg->apiBtn, showApi ? SW_SHOWNOACTIVATE : SW_HIDE);
     }
     if (dlg->manualBtn) {
         ShowWindow(dlg->manualBtn, fallback ? SW_SHOWNOACTIVATE : SW_HIDE);
@@ -3078,8 +3119,7 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
     // [重新发送] lives on the unified waiting page only, left of 取消; it
     // resubmits the cached payload without re-scanning.
     if (dlg->resend) {
-        MoveWindow(dlg->resend, mt.w - mt.m - btnW * 2 - mt.btnGap, btnTop, btnW, mt.btnH, TRUE);
-        ShowWindow(dlg->resend, (waitingState && !dlg->apiMode) ? SW_SHOWNOACTIVATE : SW_HIDE);
+        ShowWindow(dlg->resend, showResend ? SW_SHOWNOACTIVATE : SW_HIDE);
     }
 
     if (dlg->thumbnailPane) {
@@ -3981,7 +4021,10 @@ static void RegisterAiTocClasses() {
     wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
     wc.lpszClassName = kAiTocDialogClass;
     wc.lpfnWndProc = AiTocDialogProc;
+    WCHAR* iconName = MAKEINTRESOURCEW(GetAppIconID());
+    wc.hIcon = LoadIconW(h, iconName);
     RegisterClassExW(&wc);
+    wc.hIcon = nullptr;
     wc.lpszClassName = kAiTocThumbPaneClass;
     wc.lpfnWndProc = AiTocThumbPaneProc;
     RegisterClassExW(&wc);
@@ -4053,6 +4096,10 @@ void StartAiTocProofOfConcept(MainWindow* win) {
     if (!hwnd) {
         delete dlg;
         return;
+    }
+    HICON appIcon = LoadIconW(h, MAKEINTRESOURCEW(GetAppIconID()));
+    if (appIcon) {
+        HwndSetIcon(hwnd, appIcon);
     }
     dlg->token = (HANDLE)++gAiTocToken;
     SetPropW(hwnd, kAiTocToken, dlg->token);

@@ -138,6 +138,26 @@ void PdfDarkModeV2_UnitTests() {
     // RAZ The Zoo: flood cleared most of the card — keep cutout even if blocky.
     utassert(!PdfDarkModeV2RemainLooksLikeFailedRectFlood(0.92f, 0.80f, 0.30f, 0.55f));
 
+    // Soft color studio (Getting Dressed): soft-white remnant → abort.
+    utassert(PdfDarkModeV2RemainLooksLikeChewedSoftStudio(0.60f, 0.02f, 0.20f, 0.06f));
+    utassert(PdfDarkModeV2RemainLooksLikeChewedSoftStudio(0.40f, 0.03f, 0.25f, 0.12f));  // soft-white + fringe
+    utassert(PdfDarkModeV2RemainLooksLikeChewedSoftStudio(0.94f, 0.015f, 0.20f, 0.02f)); // large mat + specular
+    // Zoo fur AA fringe without soft-white holes → keep the cutout.
+    utassert(!PdfDarkModeV2RemainLooksLikeChewedSoftStudio(0.55f, 0.005f, 0.20f, 0.15f));
+    utassert(!PdfDarkModeV2RemainLooksLikeChewedSoftStudio(0.80f, 0.008f, 0.25f, 0.20f));
+    utassert(!PdfDarkModeV2RemainLooksLikeChewedSoftStudio(0.55f, 0.005f, 0.20f, 0.03f)); // clean animal cutout
+    utassert(!PdfDarkModeV2RemainLooksLikeChewedSoftStudio(0.30f, 0.06f, 0.20f, 0.20f));  // mat barely flooded
+    utassert(!PdfDarkModeV2RemainLooksLikeChewedSoftStudio(0.60f, 0.06f, 0.02f, 0.20f));  // gray cutout
+    utassert(!PdfDarkModeV2RemainLooksLikeChewedSoftStudio(0.98f, 0.06f, 0.20f, 0.20f));  // empty chip
+
+    // Soft studio RAZ pages must not take the line-art full-page gate.
+    utassert(PdfDarkModeV2LineArtGateIsSoftStudioPhotoBook(true, 0.82f, 0.048f, 1.00f));
+    utassert(PdfDarkModeV2LineArtGateIsSoftStudioPhotoBook(true, 0.84f, 0.047f, 0.95f));
+    utassert(!PdfDarkModeV2LineArtGateIsSoftStudioPhotoBook(false, 0.82f, 0.048f, 1.00f));
+    utassert(!PdfDarkModeV2LineArtGateIsSoftStudioPhotoBook(true, 0.60f, 0.048f, 1.00f)); // not mat-heavy
+    utassert(!PdfDarkModeV2LineArtGateIsSoftStudioPhotoBook(true, 0.82f, 0.030f, 1.00f)); // flat line-art
+    utassert(!PdfDarkModeV2LineArtGateIsSoftStudioPhotoBook(true, 0.82f, 0.048f, 0.50f)); // no paper border
+
     // White-mat knockout gate: UNIT/Atlas badges + circle icons vs open-sky / B&W photos.
     utassert(PdfDarkModeV2ShouldKnockOutWhiteMat(4, 0.22f, 0.18f, 0.25f));
     utassert(PdfDarkModeV2ShouldKnockOutWhiteMat(3, 0.15f, 0.10f, 0.08f));

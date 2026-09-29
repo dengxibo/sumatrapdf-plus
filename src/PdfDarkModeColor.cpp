@@ -818,14 +818,15 @@ static float* dm_pb_build_local_var_plane(const float* lum, int w, int h) {
     return var;
 }
 
-// Narrow photo-texture gate: moderate local variance + low chroma mid/high tones.
-// Flat paper (very low var) and ink/glyph edges (very high / bimodal var) stay out.
+// Narrow photo-texture gate: moderate local variance + low chroma.
+// Dark hair/fur must qualify — lum < 0.36 forced crown hair through SharpDocument
+// (ink→theme text = white skullcap on Match-theme). Flat paper / glyph AA stay out.
 static bool dm_pb_rgb_is_photo_texture(float r, float g, float b, float localVar) {
     float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
     float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
     float chroma = maxC - minC;
     float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-    if (chroma >= 0.18f || lum < 0.36f || lum > 0.96f) {
+    if (chroma >= 0.18f || lum < 0.08f || lum > 0.96f) {
         return false;
     }
     // Fur/fabric/tile grain sits in a moderate band; flat JPEG paper is lower; AA text higher.
@@ -2428,37 +2429,6 @@ static u8* dm_pb_build_mat_halo(const u8* edgeWhiteMask, int w, int h) {
     return matHalo;
 }
 
-static bool dm_pb_mask_near(const u8* mask, int w, int h, int x, int y, int r) {
-    if (!mask || r < 0 || w <= 0 || h <= 0) {
-        return false;
-    }
-    int x0 = x - r;
-    int y0 = y - r;
-    int x1 = x + r;
-    int y1 = y + r;
-    if (x0 < 0) {
-        x0 = 0;
-    }
-    if (y0 < 0) {
-        y0 = 0;
-    }
-    if (x1 >= w) {
-        x1 = w - 1;
-    }
-    if (y1 >= h) {
-        y1 = h - 1;
-    }
-    for (int yy = y0; yy <= y1; yy++) {
-        const u8* row = mask + yy * w;
-        for (int xx = x0; xx <= x1; xx++) {
-            if (row[xx]) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
 // Per-tile ratio of strict flat paper. Text overlapping a sparse line-art rect sits in
 // tiles that are mostly paper; drawing strokes (pale wings) sit in tiles that are not.
 static float* dm_pb_build_tile_paper_ratio(fz_context* ctx, fz_pixmap* pix, fz_colorspace* cs, fz_colorspace* rgb,
@@ -2554,15 +2524,6 @@ static bool dm_pb_tile_is_glyph_stroke(const float* tileLum, int tilesW, int til
     return minW <= 3;
 }
 
-static bool dm_pb_any_sparse_rect(const DmPbPhotoRect* rects, int nRects) {
-    for (int i = 0; i < nRects; i++) {
-        if (rects[i].sparse) {
-            return true;
-        }
-    }
-    return false;
-}
-
 fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette,
                                                const DarkImageAnalysis* imgAnalysis) {
     if (!ctx || !src || !src->samples) {
@@ -2638,9 +2599,9 @@ fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, 
     const int kPaperTile = 24;
     int paperTilesW = (w + kPaperTile - 1) / kPaperTile;
     int paperTilesH = (h + kPaperTile - 1) / kPaperTile;
-    float* tilePaper = dm_pb_any_sparse_rect(photoRects, nPhotoRects)
-                           ? dm_pb_build_tile_paper_ratio(ctx, src, cs, rgb, components, w, h, kPaperTile)
-                           : nullptr;
+    // Always build: color-studio pages need paper-tile gates so dark hair is not
+    // SharpDocument-whitened (Getting Dressed). Sparse glyph detection uses it too.
+    float* tilePaper = dm_pb_build_tile_paper_ratio(ctx, src, cs, rgb, components, w, h, kPaperTile);
 
     bool fastRgb = cs == rgb || fz_colorspace_is_rgb(ctx, cs);
     bool fastGray = components == 1 || fz_colorspace_is_gray(ctx, cs);
@@ -2865,20 +2826,26 @@ fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, 
                         sparseBgOnly = true;
                     }
                 } else {
-                    // Preserve photo interiors (including specular highlights). Remap flat
-                    // edge-connected white (mat) plus a halo around it: glyphs overlapping
-                    // the rect live on the mat and must get normal text treatment.
+                    // Preserve photo interiors (including dark hair). Remap flat white mat
+                    // — including flood pockets that read as a white "skullcap" on dark pages.
+                    // White clothing on the subject sits on low-paper tiles and stays.
                     bool edgeMat = edgeWhiteMask && edgeWhiteMask[y * w + x];
-                    bool haloTxt = matHalo && matHalo[y * w + x];
-                    if (!edgeMat && !haloTxt) {
-                        continue;
-                    }
-                    // Oval poles: keep dark photo pixels that are not sitting on the mat.
-                    // Wrapped text sits on flooded mat (nearMat) and still inverts.
-                    if (haloTxt && !edgeMat) {
+                    float lvP = localVar ? localVar[y * w + x] : 0.f;
+                    bool flatMat =
+                        dm_pb_is_photo_rect_margin_paper_rgb(r, g, b) && !dm_pb_rgb_is_photo_texture(r, g, b, lvP);
+                    float tilePr =
+                        tilePaper ? dm_pb_sample_tile_map(tilePaper, paperTilesW, paperTilesH, kPaperTile, x, y) : 0.f;
+                    bool matPocket = flatMat && matHalo && matHalo[y * w + x];
+                    if (!edgeMat && !matPocket) {
+                        bool haloTxt = matHalo && matHalo[y * w + x];
+                        if (!haloTxt || !tilePaper) {
+                            continue;
+                        }
                         float lumH = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-                        bool nearMat = dm_pb_mask_near(edgeWhiteMask, w, h, x, y, 2);
-                        if (PdfDarkModeV2PhotoHaloKeepDarkPixel(lumH, nearMat)) {
+                        float maxS = r > g ? (r > b ? r : b) : (g > b ? g : b);
+                        float minS = r < g ? (r < b ? r : b) : (g < b ? g : b);
+                        bool glyphOnPaper = lumH < 0.55f && (maxS - minS) < 0.14f && tilePr >= 0.55f;
+                        if (!glyphOnPaper) {
                             continue;
                         }
                     }
@@ -2918,6 +2885,17 @@ fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, 
                     float lv = localVar ? localVar[y * w + x] : 0.f;
                     if (dm_pb_rgb_is_photo_texture(r, g, b, lv)) {
                         continue;
+                    }
+                    // Dark low-chroma on a non-paper tile is photo (hair/eyes/shadows).
+                    // SharpDocument would paint it theme-white. Body text sits on paper
+                    // tiles (high tilePaper) and still remaps.
+                    if (srcLum < 0.48f && chroma < 0.15f) {
+                        float pr = tilePaper
+                                       ? dm_pb_sample_tile_map(tilePaper, paperTilesW, paperTilesH, kPaperTile, x, y)
+                                       : 1.f;
+                        if (pr < 0.42f) {
+                            continue;
+                        }
                     }
                     if (ApplySharpDocumentInkPaper(r, g, b, palette, &nr, &ng, &nb)) {
                         remap = true;
@@ -3502,6 +3480,12 @@ fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, c
     // text-scan binarize below would flatten the photograph.
     bool textPage = paperRatio >= 0.70f && satRatio < 0.08f && lumVar < 0.040f;
     bool lineArtPage = satRatio < 0.06f && chromaRatio < 0.12f && paperRatio >= 0.45f && lumVar < 0.050f;
+    // RAZ Getting Dressed pp.5–8: white studio mats crush page sat (~0.03) so the
+    // line-art gate fired and later paths whitened dark hair. Real 连环画 rarely has
+    // a solid paper border plus photographic midtone spread.
+    if (PdfDarkModeV2LineArtGateIsSoftStudioPhotoBook(lineArtPage, paperRatio, lumVar, st.borderPaperRatio)) {
+        lineArtPage = false;
+    }
     if (!textPage && !lineArtPage && lumVar >= 0.018f && paperRatio >= 0.08f) {
         v2Perf.branch = "picturebook-early";
         return PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
@@ -3645,9 +3629,9 @@ fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, c
     const int kPaperTile = 24;
     int paperTilesW = (w + kPaperTile - 1) / kPaperTile;
     int paperTilesH = (h + kPaperTile - 1) / kPaperTile;
-    float* tilePaper = dm_pb_any_sparse_rect(photoRects, nPhotoRects)
-                           ? dm_pb_build_tile_paper_ratio(ctx, src, cs, rgb, components, w, h, kPaperTile)
-                           : nullptr;
+    // Always build: color-studio pages need paper-tile gates so dark hair is not
+    // SharpDocument-whitened (Getting Dressed). Sparse glyph detection uses it too.
+    float* tilePaper = dm_pb_build_tile_paper_ratio(ctx, src, cs, rgb, components, w, h, kPaperTile);
 
     bool fastRgb = cs == rgb || fz_colorspace_is_rgb(ctx, cs);
     bool fastGray = components == 1 || fz_colorspace_is_gray(ctx, cs);
@@ -3694,15 +3678,24 @@ fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, c
                         sparseBgOnly = true;
                     }
                 } else {
+                    // Same as PictureBook: keep photo interiors; remap mat pockets / edge mat.
                     bool edgeMat = edgeWhiteMask && edgeWhiteMask[y * w + x];
-                    bool haloTxt = matHalo && matHalo[y * w + x];
-                    if (!edgeMat && !haloTxt) {
-                        continue; // keep photo interior
-                    }
-                    if (haloTxt && !edgeMat) {
+                    float lvP = localVar ? localVar[y * w + x] : 0.f;
+                    bool flatMat =
+                        dm_pb_is_photo_rect_margin_paper_rgb(r, g, b) && !dm_pb_rgb_is_photo_texture(r, g, b, lvP);
+                    float tilePr =
+                        tilePaper ? dm_pb_sample_tile_map(tilePaper, paperTilesW, paperTilesH, kPaperTile, x, y) : 0.f;
+                    bool matPocket = flatMat && matHalo && matHalo[y * w + x];
+                    if (!edgeMat && !matPocket) {
+                        bool haloTxt = matHalo && matHalo[y * w + x];
+                        if (!haloTxt || !tilePaper) {
+                            continue;
+                        }
                         float lumH = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-                        bool nearMat = dm_pb_mask_near(edgeWhiteMask, w, h, x, y, 2);
-                        if (PdfDarkModeV2PhotoHaloKeepDarkPixel(lumH, nearMat)) {
+                        float maxS = r > g ? (r > b ? r : b) : (g > b ? g : b);
+                        float minS = r < g ? (r < b ? r : b) : (g < b ? g : b);
+                        bool glyphOnPaper = lumH < 0.55f && (maxS - minS) < 0.14f && tilePr >= 0.55f;
+                        if (!glyphOnPaper) {
                             continue;
                         }
                     }
@@ -3712,6 +3705,17 @@ fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, c
             float lv = localVar ? localVar[y * w + x] : 0.f;
             if (!sparseBgOnly && dm_pb_rgb_is_photo_texture(r, g, b, lv)) {
                 continue;
+            }
+            float srcLum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+            float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+            float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+            float chroma = maxC - minC;
+            if (!sparseBgOnly && srcLum < 0.48f && chroma < 0.15f) {
+                float pr =
+                    tilePaper ? dm_pb_sample_tile_map(tilePaper, paperTilesW, paperTilesH, kPaperTile, x, y) : 1.f;
+                if (pr < 0.42f) {
+                    continue;
+                }
             }
             // Steep ink/paper for near-gray document pixels. Saturated pixels are
             // photograph color — leave them. Okular here turned gray photos into
@@ -3925,16 +3929,26 @@ static void dm_v2_box_erode(const u8* src, u8* dst, int w, int h, int rad, u8* t
     free(prefY);
 }
 
-// Grayscale cutouts (a zebra on white): light fur is not the mat. Close the
-// non-white subject so narrow white stripes stay inside, then only near-pure
-// white outside that silhouette can flood from the border.
-static void dm_v2_seal_gray_subject(u8* paper, int w, int h) {
-    int rad = (w < h ? w : h) / 60;
-    if (rad < 6) {
-        rad = 6;
-    }
-    if (rad > 10) {
-        rad = 10;
+// Close the non-paper subject so light fur / white hats / highlights that sit
+// inside the silhouette are not treated as mat. Grayscale zebras use a tighter
+// radius; soft color studio cards (RAZ Getting Dressed) use a wider close so a
+// white skullcap touching the mat is sealed by the face/hair before flood.
+static void dm_v2_seal_subject(u8* paper, int w, int h, bool wideSeal) {
+    int rad = (w < h ? w : h) / (wideSeal ? 40 : 60);
+    if (wideSeal) {
+        if (rad < 8) {
+            rad = 8;
+        }
+        if (rad > 18) {
+            rad = 18;
+        }
+    } else {
+        if (rad < 6) {
+            rad = 6;
+        }
+        if (rad > 10) {
+            rad = 10;
+        }
     }
     if (w < rad * 4 || h < rad * 4) {
         return;
@@ -3967,9 +3981,13 @@ static void dm_v2_seal_gray_subject(u8* paper, int w, int h) {
     free(closed);
 }
 
+// strictPaper: grayscale cutouts only mark near-pure white as mat (fur stays subject).
+// sealSubject: morphological close of non-paper so interior whites are not floodable.
+// wideSeal: larger close radius for soft color studio photos (white hat on rim).
 static u8* dm_v2_build_border_edge_white_mask(fz_context* ctx, fz_pixmap* pix, fz_colorspace* cs, fz_colorspace* rgb,
                                               int components, int w, int h, int* outMasked, int* outPaperSides,
-                                              bool sealGraySubject, bool iconPastelMat, bool stripMat = false) {
+                                              bool strictPaper, bool sealSubject, bool wideSeal, bool iconPastelMat,
+                                              bool stripMat = false) {
     if (outMasked) {
         *outMasked = 0;
     }
@@ -3993,15 +4011,15 @@ static u8* dm_v2_build_border_edge_white_mask(fz_context* ctx, fz_pixmap* pix, f
             float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
             float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
             float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
-            bool isPaper = sealGraySubject ? ((maxC - minC) < 0.08f && lum > 0.94f)
-                                           : dm_v2_is_white_mat_paper_rgb(r, g, b, iconPastelMat, stripMat);
+            bool isPaper = strictPaper ? ((maxC - minC) < 0.08f && lum > 0.94f)
+                                       : dm_v2_is_white_mat_paper_rgb(r, g, b, iconPastelMat, stripMat);
             if (isPaper) {
                 paper[y * w + x] = 1;
             }
         }
     }
-    if (sealGraySubject) {
-        dm_v2_seal_gray_subject(paper, w, h);
+    if (sealSubject) {
+        dm_v2_seal_subject(paper, w, h, wideSeal);
     }
 
     auto sidePaperRatio = [&](int x0, int y0, int x1, int y1) -> float {
@@ -4470,8 +4488,13 @@ fz_pixmap* PdfDarkModeProcessV2WhiteMatPixmap(fz_context* ctx, fz_pixmap* src, c
     // DecorativeStripMat gate (which needs the flooded edge ratio).
     const bool stripMatGeom =
         minDimProbe >= 6 && minDimProbe <= 96 && maxDimProbe >= minDimProbe * 5 && (i64)w * (i64)h <= (i64)128 * 1024;
+    // Seal only grayscale cutouts (zebra stripes). Soft color studio portraits
+    // (Getting Dressed) are full-page → PictureBook; do not wide-seal Zoo cards —
+    // that left vertical white mat islands beside the chimp and aborted the snake
+    // (light scales read as soft-white clothing).
     u8* edgeMask = dm_v2_build_border_edge_white_mask(ctx, src, cs, rgb, components, w, h, &masked, &paperSides,
-                                                      grayCutout, iconPastelMat, stripMatGeom);
+                                                      /*strictPaper=*/grayCutout, /*sealSubject=*/grayCutout,
+                                                      /*wideSeal=*/false, iconPastelMat, stripMatGeom);
     if (!edgeMask) {
         return nullptr;
     }

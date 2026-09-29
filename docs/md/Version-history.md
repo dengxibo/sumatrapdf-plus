@@ -2,6 +2,23 @@
 
 ## next
 
+## 3.7.34 (2026-09-29)
+
+- 跟随主题：RAZ 影棚绘本（如 Getting Dressed）不再因整页白底被当成连环画，黑发也不再被涂成主题白；动物园这类白卡动物图继续抠掉白底，浅色鳞片和毛边不会把整张卡退回白矩形。
+  Match theme: soft studio photo books (such as Getting Dressed) are no longer treated as line art because of a full-page white mat, and dark hair is no longer painted theme-white. Zoo-style animal cards still knock out the white mat; light scales and fur AA no longer abort the cutout back to a white rectangle.
+- Explorer 里 PDF 文件关联图标改用与 epub/chm 同风格的 `pdf-32bit` 色带图标，小尺寸不再糊成一团（issue #83）。
+  The PDF file-association icon in Explorer uses the same sash-style `pdf-32bit` artwork as epub/chm, so it stays readable at 16–32px (issue #83).
+- AI 提取目录：可配置网页 AI API（密钥用 Windows DPAPI 加密存放）；新增 AutoOcrOn 等设置；对话框底栏按钮按翻译文案自动加宽，并显示应用图标。
+  AI TOC: optional web AI API profiles with keys stored via Windows DPAPI; AutoOcrOn and related settings; footer buttons size to their translated labels, and the dialog shows the app icon.
+- 连续适合页面时，向上滚轮翻到上一页底部。以前 `GoToPrevPage(bottom)` 把整页高度加在上一页顶上，视口仍停在当前页。
+  In continuous fit-page view, wheel-up lands on the bottom of the previous page. `GoToPrevPage(bottom)` used to add a full page height to the previous page top and leave the view on the current page.
+- 跟随主题白底 flood：泡沫高光、填色矩形与椭圆照片不再被内部 flood 啃掉；啃边的户外场景会 abort，影棚白卡仍可抠底。
+  Match-theme white-mat flood: foam highlights, filled rectangles, and ellipse/circle photos are not chewed by an interior flood; nibbled outdoor scenes abort while studio cards still knock out.
+- 智能反色：人脸粘贴用带边距的 landmark 框，侧脸鼻子和低头的眼睛不再留下反色缺口；教材布局大图跳过重 remap，远距离目录跳转优先渲染当前页。
+  Smart invert: face paste uses padded landmark bounds so profile noses and looking-down eyes are not left inverted; layout-textbook photos skip heavy remaps, and far TOC jumps prioritize the visible page.
+- 发布构建复制 OCR 侧车时一并带上人脸模型文件。
+  Release builds that copy the OCR sidecar also include the face-model files.
+
 ## 3.7.33 (2026-09-28)
 
 - 魔法棒（增强显示）按下去只记在当前这本书上。关掉再打开，淡色扫描书还是按下的，别的书还是关的。换一本书，按钮跟着那本书变。
