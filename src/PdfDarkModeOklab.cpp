@@ -119,13 +119,14 @@ void MapRgbToDarkThemeOklab(float r, float g, float b, const DarkModePalette& pa
         outB = src.b * scale;
     }
 
-    // Pull extreme highlights down slightly on dark backgrounds.
-    if (src.L > 0.82f && chroma < 0.06f) {
-        float paperMix = (src.L - 0.82f) / 0.18f;
-        if (paperMix > 1.f) {
-            paperMix = 1.f;
-        }
-        outL = outL * (1.f - 0.35f * paperMix) + bg.L * (0.35f * paperMix);
+    // Pull extreme highlights onto the theme page color (Dracula #282A36), not a
+    // neutral gray at bg.L — that reads as pure black next to a chromatic canvas.
+    // JPEG-softened figure paper (~170–245) must snap too, not only pure white.
+    if (src.L > 0.70f && chroma < 0.08f) {
+        outRgb[0] = palette.bgR;
+        outRgb[1] = palette.bgG;
+        outRgb[2] = palette.bgB;
+        return;
     }
 
     OklabColor out{outL, outA, outB};
@@ -456,8 +457,29 @@ static float ToneThemeLightness(float srcL, float textL, float bgL) {
     return outL;
 }
 
+// Soft-mask diagrams (Easy RL): mid-gray fills must become light ink on dark paper,
+// not muddy midtones that later snap to paper and vanish (ghost robot icons).
+static thread_local int gToneSoftMaskDiagram = 0;
+
+static float ToneDiagramLightness(float srcL, float textL, float bgL) {
+    // Only near-white → paper. Dark and mid-gray fills (robot bodies, strokes)
+    // become bright text so they don't disappear into Dracula paper.
+    float t = (srcL - 0.32f) / 0.50f;
+    if (t < 0.f) {
+        t = 0.f;
+    }
+    if (t > 1.f) {
+        t = 1.f;
+    }
+    t = t * t * (3.f - 2.f * t);
+    return textL + t * (bgL - textL);
+}
+
 // Same grade as MapRgbToDarkThemeOklab, including the near-white paper pull.
 static float ToneInvertLightness(float srcL, float chroma, float textL, float bgL) {
+    if (gToneSoftMaskDiagram) {
+        return ToneDiagramLightness(srcL, textL, bgL);
+    }
     float outL = ToneThemeLightness(srcL, textL, bgL);
     if (srcL > 0.82f && chroma < 0.06f) {
         float paperMix = (srcL - 0.82f) / 0.18f;
@@ -1291,13 +1313,28 @@ static void MildFaceRgb(float r, float g, float b, float* out) {
     OklabToSrgb(lab, &out[0], &out[1], &out[2]);
 }
 
-static void WriteDarkPixel(unsigned char* px, const OklabColor& text, const OklabColor& bg) {
+static void WriteDarkPixel(unsigned char* px, const OklabColor& text, const OklabColor& bg, float paperR, float paperG,
+                           float paperB) {
     OklabColor lab = SrgbToOklab(px[0] / 255.f, px[1] / 255.f, px[2] / 255.f);
     float chroma = OklabChroma(lab);
+    // Near-white / light-gray paper (JPEG often ~170–230) must become the theme
+    // page color (Dracula #282A36). Mapping only pure white leaves a darker
+    // charcoal rectangle that looks black next to the canvas.
+    float paperL = gToneSoftMaskDiagram ? 0.88f : 0.70f;
+    if (lab.L > paperL && chroma < 0.08f) {
+        px[0] = (unsigned char)(paperR * 255.f + 0.5f);
+        px[1] = (unsigned char)(paperG * 255.f + 0.5f);
+        px[2] = (unsigned char)(paperB * 255.f + 0.5f);
+        return;
+    }
     float outL = ToneInvertLightness(lab.L, chroma, text.L, bg.L);
     float outC = chroma;
     if (outC > 0.38f) {
         outC = 0.38f;
+    }
+    // Soft-mask diagrams: keep colored arrows/cells vivid on dark paper.
+    if (gToneSoftMaskDiagram && chroma > 0.04f && outL < (text.L * 0.55f + bg.L * 0.45f)) {
+        outL = text.L * 0.55f + bg.L * 0.45f;
     }
     float outA = 0.f;
     float outB = 0.f;
@@ -1314,6 +1351,161 @@ static void WriteDarkPixel(unsigned char* px, const OklabColor& text, const Okla
     px[2] = (unsigned char)(b * 255.f + 0.5f);
 }
 
+// Pull remapped pixels that landed next to the theme paper onto the exact paper
+// RGB. Trilinear LUT and mid-gray paper both leave a few levels of charcoal that
+// read as a black box under Dracula.
+static void SnapNearPaperPixels(unsigned char* samples, int w, int h, int n, int stride, float paperR, float paperG,
+                                float paperB) {
+    int pr = (int)(paperR * 255.f + 0.5f);
+    int pg = (int)(paperG * 255.f + 0.5f);
+    int pb = (int)(paperB * 255.f + 0.5f);
+    for (int y = 0; y < h; y++) {
+        unsigned char* row = samples + (size_t)y * stride;
+        for (int x = 0; x < w; x++) {
+            unsigned char* px = row + (size_t)x * n;
+            int dr = px[0] - pr;
+            int dg = px[1] - pg;
+            int db = px[2] - pb;
+            if (dr < 0) {
+                dr = -dr;
+            }
+            if (dg < 0) {
+                dg = -dg;
+            }
+            if (db < 0) {
+                db = -db;
+            }
+            int manhattan = dr + dg + db;
+            if (manhattan == 0 || manhattan > 28) {
+                continue;
+            }
+            int hi = px[0];
+            int lo = px[0];
+            if (px[1] > hi) {
+                hi = px[1];
+            }
+            if (px[1] < lo) {
+                lo = px[1];
+            }
+            if (px[2] > hi) {
+                hi = px[2];
+            }
+            if (px[2] < lo) {
+                lo = px[2];
+            }
+            if (hi - lo > 22) {
+                continue;
+            }
+            px[0] = (unsigned char)pr;
+            px[1] = (unsigned char)pg;
+            px[2] = (unsigned char)pb;
+        }
+    }
+}
+
+// Soft-mask LaTeX / Easy RL diagrams: OKLab tone leaves milky anti-aliased fringes
+// and muddy mid-gray fills that look soft/ghostly on dark paper. Snap near-neutral
+// pixels hard to paper or text; lift dim chromatic ink so arrows/cells stay vivid.
+static void CrispSoftMaskDiagramAfterTone(unsigned char* samples, int w, int h, int n, int stride, float paperR,
+                                          float paperG, float paperB, float textR, float textG, float textB) {
+    int pr = (int)(paperR * 255.f + 0.5f);
+    int pg = (int)(paperG * 255.f + 0.5f);
+    int pb = (int)(paperB * 255.f + 0.5f);
+    int tr = (int)(textR * 255.f + 0.5f);
+    int tg = (int)(textG * 255.f + 0.5f);
+    int tb = (int)(textB * 255.f + 0.5f);
+    int paperLuma = pr + pg + pb;
+    int textLuma = tr + tg + tb;
+    for (int y = 0; y < h; y++) {
+        unsigned char* row = samples + (size_t)y * stride;
+        for (int x = 0; x < w; x++) {
+            unsigned char* px = row + (size_t)x * n;
+            int hi = px[0];
+            int lo = px[0];
+            if (px[1] > hi) {
+                hi = px[1];
+            }
+            if (px[1] < lo) {
+                lo = px[1];
+            }
+            if (px[2] > hi) {
+                hi = px[2];
+            }
+            if (px[2] < lo) {
+                lo = px[2];
+            }
+            int span = hi - lo;
+            int dr = px[0] - pr;
+            int dg = px[1] - pg;
+            int db = px[2] - pb;
+            if (dr < 0) {
+                dr = -dr;
+            }
+            if (dg < 0) {
+                dg = -dg;
+            }
+            if (db < 0) {
+                db = -db;
+            }
+            int dPaper = dr + dg + db;
+            dr = px[0] - tr;
+            dg = px[1] - tg;
+            db = px[2] - tb;
+            if (dr < 0) {
+                dr = -dr;
+            }
+            if (dg < 0) {
+                dg = -dg;
+            }
+            if (db < 0) {
+                db = -db;
+            }
+            int dText = dr + dg + db;
+            if (span <= 30) {
+                // Neutral: hard paper/ink decision restores AA stroke edges.
+                if (dPaper == 0 || dText == 0) {
+                    continue;
+                }
+                int luma = px[0] + px[1] + px[2];
+                float t = 0.5f;
+                if (textLuma != paperLuma) {
+                    t = (float)(luma - paperLuma) / (float)(textLuma - paperLuma);
+                }
+                // Bias toward text — mid-gray fills were ink, not paper.
+                if (dPaper <= 36 || t < 0.28f) {
+                    px[0] = (unsigned char)pr;
+                    px[1] = (unsigned char)pg;
+                    px[2] = (unsigned char)pb;
+                } else {
+                    px[0] = (unsigned char)tr;
+                    px[1] = (unsigned char)tg;
+                    px[2] = (unsigned char)tb;
+                }
+                continue;
+            }
+            // Chromatic ink sunk toward paper: lift lightness toward text, keep hue.
+            if (dPaper < 90) {
+                float lift = (90.f - (float)dPaper) / 90.f;
+                if (lift > 0.55f) {
+                    lift = 0.55f;
+                }
+                for (int c = 0; c < 3; c++) {
+                    int src = px[c];
+                    int dst = (c == 0) ? tr : (c == 1) ? tg : tb;
+                    int v = (int)(src + (dst - src) * lift * 0.65f + 0.5f);
+                    if (v < 0) {
+                        v = 0;
+                    }
+                    if (v > 255) {
+                        v = 255;
+                    }
+                    px[c] = (unsigned char)v;
+                }
+            }
+        }
+    }
+}
+
 // One OKLab conversion per pixel is most of smart-invert time (about 85 ms for a
 // 533x824 picture, several times that at the 1600px decode cap). The grade depends
 // only on the source RGB and the theme text/background lightness, so a 64^3 cube
@@ -1324,12 +1516,20 @@ static const int kToneLutN = 64;
 struct ToneLut {
     float textL = -1.f;
     float bgL = -1.f;
+    float paperR = -1.f;
+    float paperG = -1.f;
+    float paperB = -1.f;
+    int version = 0;
+    int diagram = 0;
     u8* data = nullptr;
 };
 
 static ToneLut gToneLut;
+static ToneLut gToneDiagramLut;
+static const int kToneLutAlgoVersion = 4; // soft-mask diagram steep mid→text curve
 static INIT_ONCE gToneLutOnce = INIT_ONCE_STATIC_INIT;
 static CRITICAL_SECTION gToneLutCs;
+static thread_local const u8* gToneLutActiveData = nullptr;
 
 static BOOL CALLBACK ToneLutInitCs(PINIT_ONCE, PVOID, PVOID*) {
     InitializeCriticalSection(&gToneLutCs);
@@ -1340,27 +1540,35 @@ static int ToneLutOffset(int r, int g, int b) {
     return ((r * kToneLutN + g) * kToneLutN + b) * 3;
 }
 
-static bool EnsureToneLut(const OklabColor& text, const OklabColor& bg, double* buildMs) {
+static bool EnsureToneLut(const OklabColor& text, const OklabColor& bg, float paperR, float paperG, float paperB,
+                          bool diagram, double* buildMs) {
     if (buildMs) {
         *buildMs = 0;
     }
     InitOnceExecuteOnce(&gToneLutOnce, ToneLutInitCs, nullptr, nullptr);
     EnterCriticalSection(&gToneLutCs);
-    bool same = gToneLut.data && fabsf(gToneLut.textL - text.L) < 1e-5f && fabsf(gToneLut.bgL - bg.L) < 1e-5f;
+    ToneLut* lut = diagram ? &gToneDiagramLut : &gToneLut;
+    bool same = lut->data && lut->version == kToneLutAlgoVersion && lut->diagram == (diagram ? 1 : 0) &&
+                fabsf(lut->textL - text.L) < 1e-5f && fabsf(lut->bgL - bg.L) < 1e-5f &&
+                fabsf(lut->paperR - paperR) < 1e-5f && fabsf(lut->paperG - paperG) < 1e-5f &&
+                fabsf(lut->paperB - paperB) < 1e-5f;
     if (same) {
+        gToneLutActiveData = lut->data;
         LeaveCriticalSection(&gToneLutCs);
         return true;
     }
-    u8* data = gToneLut.data;
+    u8* data = lut->data;
     if (!data) {
         data = (u8*)malloc((size_t)kToneLutN * kToneLutN * kToneLutN * 3);
         if (!data) {
             LeaveCriticalSection(&gToneLutCs);
             return false;
         }
-        gToneLut.data = data;
+        lut->data = data;
     }
     LARGE_INTEGER buildStart = TimeGet();
+    int prevDiagram = gToneSoftMaskDiagram;
+    gToneSoftMaskDiagram = diagram ? 1 : 0;
     // WriteDarkPixel overwrites its input, so each lattice color needs its own buffer.
     // Reusing one buffer fed the previous output back in and the cube was garbage.
     for (int r = 0; r < kToneLutN; r++) {
@@ -1372,7 +1580,7 @@ static bool EnsureToneLut(const OklabColor& text, const OklabColor& bg, double* 
                 px[0] = r8;
                 px[1] = g8;
                 px[2] = (unsigned char)((b * 255) / (kToneLutN - 1));
-                WriteDarkPixel(px, text, bg);
+                WriteDarkPixel(px, text, bg, paperR, paperG, paperB);
                 u8* slot = data + ToneLutOffset(r, g, b);
                 slot[0] = px[0];
                 slot[1] = px[1];
@@ -1380,8 +1588,15 @@ static bool EnsureToneLut(const OklabColor& text, const OklabColor& bg, double* 
             }
         }
     }
-    gToneLut.textL = text.L;
-    gToneLut.bgL = bg.L;
+    gToneSoftMaskDiagram = prevDiagram;
+    lut->textL = text.L;
+    lut->bgL = bg.L;
+    lut->paperR = paperR;
+    lut->paperG = paperG;
+    lut->paperB = paperB;
+    lut->version = kToneLutAlgoVersion;
+    lut->diagram = diagram ? 1 : 0;
+    gToneLutActiveData = lut->data;
     if (buildMs) {
         *buildMs = TimeSinceInMs(buildStart);
     }
@@ -1395,7 +1610,8 @@ struct ToneApplyStats {
 };
 
 static void ApplyTonePixels(unsigned char* samples, int w, int h, int n, int stride, const OklabColor& text,
-                            const OklabColor& bg, bool useLut, bool measure, ToneApplyStats* stats) {
+                            const OklabColor& bg, float paperR, float paperG, float paperB, bool useLut, bool nearest,
+                            bool measure, ToneApplyStats* stats) {
     for (int y = 0; y < h; y++) {
         unsigned char* row = samples + (size_t)y * stride;
         for (int x = 0; x < w; x++) {
@@ -1406,71 +1622,91 @@ static void ApplyTonePixels(unsigned char* samples, int w, int h, int n, int str
                 exact[0] = px[0];
                 exact[1] = px[1];
                 exact[2] = px[2];
-                WriteDarkPixel(exact, text, bg);
+                WriteDarkPixel(exact, text, bg, paperR, paperG, paperB);
             }
             if (useLut) {
-                // Trilinear inside the loop. A separate call per pixel dominated Debug
-                // builds; nearest-neighbor on this cube was up to 24 levels off.
-                const u8* data = gToneLut.data;
+                const u8* data = gToneLutActiveData ? gToneLutActiveData : gToneLut.data;
                 const float scale = (kToneLutN - 1) / 255.f;
-                float rf = px[0] * scale;
-                float gf = px[1] * scale;
-                float bf = px[2] * scale;
-                int r0 = (int)rf;
-                int g0 = (int)gf;
-                int b0 = (int)bf;
-                if (r0 >= kToneLutN - 1) {
-                    r0 = kToneLutN - 1;
-                }
-                if (g0 >= kToneLutN - 1) {
-                    g0 = kToneLutN - 1;
-                }
-                if (b0 >= kToneLutN - 1) {
-                    b0 = kToneLutN - 1;
-                }
-                float fr = rf - (float)r0;
-                float fg = gf - (float)g0;
-                float fb = bf - (float)b0;
-                if (fr < 0.f) {
-                    fr = 0.f;
-                }
-                if (fg < 0.f) {
-                    fg = 0.f;
-                }
-                if (fb < 0.f) {
-                    fb = 0.f;
-                }
-                int r1 = r0 < kToneLutN - 1 ? r0 + 1 : r0;
-                int g1 = g0 < kToneLutN - 1 ? g0 + 1 : g0;
-                int b1 = b0 < kToneLutN - 1 ? b0 + 1 : b0;
-                const u8* c000 = data + ToneLutOffset(r0, g0, b0);
-                const u8* c100 = data + ToneLutOffset(r1, g0, b0);
-                const u8* c010 = data + ToneLutOffset(r0, g1, b0);
-                const u8* c110 = data + ToneLutOffset(r1, g1, b0);
-                const u8* c001 = data + ToneLutOffset(r0, g0, b1);
-                const u8* c101 = data + ToneLutOffset(r1, g0, b1);
-                const u8* c011 = data + ToneLutOffset(r0, g1, b1);
-                const u8* c111 = data + ToneLutOffset(r1, g1, b1);
-                float ir = 1.f - fr;
-                float ig = 1.f - fg;
-                float ib = 1.f - fb;
-                for (int c = 0; c < 3; c++) {
-                    float v00 = c000[c] * ir + c100[c] * fr;
-                    float v10 = c010[c] * ir + c110[c] * fr;
-                    float v01 = c001[c] * ir + c101[c] * fr;
-                    float v11 = c011[c] * ir + c111[c] * fr;
-                    float v = (v00 * ig + v10 * fg) * ib + (v01 * ig + v11 * fg) * fb;
-                    int iv = (int)(v + 0.5f);
-                    if (iv < 0) {
-                        iv = 0;
+                if (nearest) {
+                    // Soft-mask / no-face diagrams: nearest is several times faster
+                    // than trilinear and paper already snaps to exact theme RGB.
+                    int r0 = (int)(px[0] * scale + 0.5f);
+                    int g0 = (int)(px[1] * scale + 0.5f);
+                    int b0 = (int)(px[2] * scale + 0.5f);
+                    if (r0 >= kToneLutN) {
+                        r0 = kToneLutN - 1;
                     }
-                    if (iv > 255) {
-                        iv = 255;
+                    if (g0 >= kToneLutN) {
+                        g0 = kToneLutN - 1;
                     }
-                    px[c] = (unsigned char)iv;
+                    if (b0 >= kToneLutN) {
+                        b0 = kToneLutN - 1;
+                    }
+                    const u8* slot = data + ToneLutOffset(r0, g0, b0);
+                    px[0] = slot[0];
+                    px[1] = slot[1];
+                    px[2] = slot[2];
+                } else {
+                    // Trilinear for photo grades where face restore needs smooth tone.
+                    float rf = px[0] * scale;
+                    float gf = px[1] * scale;
+                    float bf = px[2] * scale;
+                    int r0 = (int)rf;
+                    int g0 = (int)gf;
+                    int b0 = (int)bf;
+                    if (r0 >= kToneLutN - 1) {
+                        r0 = kToneLutN - 1;
+                    }
+                    if (g0 >= kToneLutN - 1) {
+                        g0 = kToneLutN - 1;
+                    }
+                    if (b0 >= kToneLutN - 1) {
+                        b0 = kToneLutN - 1;
+                    }
+                    float fr = rf - (float)r0;
+                    float fg = gf - (float)g0;
+                    float fb = bf - (float)b0;
+                    if (fr < 0.f) {
+                        fr = 0.f;
+                    }
+                    if (fg < 0.f) {
+                        fg = 0.f;
+                    }
+                    if (fb < 0.f) {
+                        fb = 0.f;
+                    }
+                    int r1 = r0 < kToneLutN - 1 ? r0 + 1 : r0;
+                    int g1 = g0 < kToneLutN - 1 ? g0 + 1 : g0;
+                    int b1 = b0 < kToneLutN - 1 ? b0 + 1 : b0;
+                    const u8* c000 = data + ToneLutOffset(r0, g0, b0);
+                    const u8* c100 = data + ToneLutOffset(r1, g0, b0);
+                    const u8* c010 = data + ToneLutOffset(r0, g1, b0);
+                    const u8* c110 = data + ToneLutOffset(r1, g1, b0);
+                    const u8* c001 = data + ToneLutOffset(r0, g0, b1);
+                    const u8* c101 = data + ToneLutOffset(r1, g0, b1);
+                    const u8* c011 = data + ToneLutOffset(r0, g1, b1);
+                    const u8* c111 = data + ToneLutOffset(r1, g1, b1);
+                    float ir = 1.f - fr;
+                    float ig = 1.f - fg;
+                    float ib = 1.f - fb;
+                    for (int c = 0; c < 3; c++) {
+                        float v00 = c000[c] * ir + c100[c] * fr;
+                        float v10 = c010[c] * ir + c110[c] * fr;
+                        float v01 = c001[c] * ir + c101[c] * fr;
+                        float v11 = c011[c] * ir + c111[c] * fr;
+                        float v = (v00 * ig + v10 * fg) * ib + (v01 * ig + v11 * fg) * fb;
+                        int iv = (int)(v + 0.5f);
+                        if (iv < 0) {
+                            iv = 0;
+                        }
+                        if (iv > 255) {
+                            iv = 255;
+                        }
+                        px[c] = (unsigned char)iv;
+                    }
                 }
             } else {
-                WriteDarkPixel(px, text, bg);
+                WriteDarkPixel(px, text, bg, paperR, paperG, paperB);
             }
             if (sample) {
                 for (int c = 0; c < 3; c++) {
@@ -1578,6 +1814,14 @@ static bool TonePerfOn() {
     return on == 1;
 }
 
+static bool TonePerfDeltaOn() {
+    static int on = -1;
+    if (on < 0) {
+        on = GetEnvironmentVariableA("SUMATRA_TONE_PERF_DELTA", nullptr, 0) > 0 ? 1 : 0;
+    }
+    return on == 1;
+}
+
 bool PdfDarkModeToneThemeVariant(unsigned char* samples, int w, int h, int n, int stride,
                                  const DarkModePalette& palette, int variant) {
     if (!samples || w < 8 || h < 8 || n < 3 || stride < w * n) {
@@ -1585,6 +1829,7 @@ bool PdfDarkModeToneThemeVariant(unsigned char* samples, int w, int h, int n, in
     }
     LARGE_INTEGER toneStart = TimeGet();
     bool perf = TonePerfOn();
+    bool measureDelta = perf && TonePerfDeltaOn();
     size_t count = (size_t)w * (size_t)h;
     if (count > 6000000) {
         return false;
@@ -1592,13 +1837,30 @@ bool PdfDarkModeToneThemeVariant(unsigned char* samples, int w, int h, int n, in
     FaceBlendSpec spec = FaceBlendSpecForVariant(variant);
     OklabColor text = SrgbToOklab(palette.textR, palette.textG, palette.textB);
     OklabColor bg = SrgbToOklab(palette.bgR, palette.bgG, palette.bgB);
+    float paperR = palette.bgR;
+    float paperG = palette.bgG;
+    float paperB = palette.bgB;
     double lutBuildMs = 0;
-    bool useLut = EnsureToneLut(text, bg, &lutBuildMs);
+    bool useLut = EnsureToneLut(text, bg, paperR, paperG, paperB, /*diagram=*/variant == 0, &lutBuildMs);
     bool faces = (spec.faceBlend > 0.f || spec.eyeBlend > 0.f || spec.mouthBlend > 0.f) &&
                  ImageWantsFaceRestore(samples, w, h, n, stride);
     ToneApplyStats stats;
     if (!faces) {
-        ApplyTonePixels(samples, w, h, n, stride, text, bg, useLut, perf, &stats);
+        // Soft-mask diagrams use the steep mid→text LUT (built above when variant==0).
+        bool diagram = variant == 0;
+        if (diagram) {
+            gToneSoftMaskDiagram = 1;
+        }
+        ApplyTonePixels(samples, w, h, n, stride, text, bg, paperR, paperG, paperB, useLut, /*nearest=*/true,
+                        measureDelta, &stats);
+        if (diagram) {
+            gToneSoftMaskDiagram = 0;
+        }
+        SnapNearPaperPixels(samples, w, h, n, stride, paperR, paperG, paperB);
+        if (diagram) {
+            CrispSoftMaskDiagramAfterTone(samples, w, h, n, stride, paperR, paperG, paperB, palette.textR,
+                                          palette.textG, palette.textB);
+        }
         if (perf) {
             logf("tone-grade %dx%d faces=0 lut=%.2f grade=%.2f maxDelta=%d samples=%d ms\n", w, h, lutBuildMs,
                  TimeSinceInMs(toneStart), stats.maxDelta, stats.samples);
@@ -1622,7 +1884,9 @@ bool PdfDarkModeToneThemeVariant(unsigned char* samples, int w, int h, int n, in
             dst[x * 3 + 2] = px[2];
         }
     }
-    ApplyTonePixels(samples, w, h, n, stride, text, bg, useLut, perf, &stats);
+    ApplyTonePixels(samples, w, h, n, stride, text, bg, paperR, paperG, paperB, useLut, /*nearest=*/false, measureDelta,
+                    &stats);
+    SnapNearPaperPixels(samples, w, h, n, stride, paperR, paperG, paperB);
     LARGE_INTEGER faceStart = TimeGet();
     BuildFaceBlendWeight(orig, w, h, w * 3, spec, weight);
     double faceMs = TimeSinceInMs(faceStart);

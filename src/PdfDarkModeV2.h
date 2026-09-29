@@ -48,6 +48,166 @@ inline void MapRgbDarkModeV2PageImage(float r, float g, float b, const DarkModeP
     MapRgbDarkModeV2(r, g, b, palette, outRgb);
 }
 
+// Layout textbooks skip white-mat on medium/large photo tiles. Small badges/icons
+// and thin shadow strips stay eligible for knockout (Exploring Our World atlas).
+inline bool PdfDarkModeV2LayoutTextbookSkipFigureRemap(int w, int h, float coverage) {
+    if (w <= 0 || h <= 0) {
+        return true;
+    }
+    const int minDim = w < h ? w : h;
+    const int maxDim = w > h ? w : h;
+    const long long area = (long long)w * (long long)h;
+    if (minDim > 0 && minDim < 16 && maxDim >= 24 && area <= (long long)64 * 1024) {
+        return false;
+    }
+    // Tall/narrow Guide-to-Reading wave dividers (e.g. 34×697): white only on the
+    // open side — must not take the photo-tile fast path.
+    if (minDim >= 6 && minDim <= 96 && maxDim >= minDim * 5 && area <= (long long)128 * 1024) {
+        return false;
+    }
+    // Include ~390-wide title pills / UNIT mats; skip only larger photo tiles.
+    if (maxDim <= 512 && area <= (long long)220 * 1024 && coverage < 0.22f) {
+        return false;
+    }
+    return true;
+}
+
+// Tall colorful divider strips: paper usually on only 1–2 open sides (right of wave).
+inline bool PdfDarkModeV2ShouldKnockOutDecorativeStripMat(int w, int h, int paperSides, float edgeWhiteRatio,
+                                                          float satRatio, float chromaRatio) {
+    if (w <= 0 || h <= 0) {
+        return false;
+    }
+    const int minDim = w < h ? w : h;
+    const int maxDim = w > h ? w : h;
+    if (minDim < 6 || minDim > 96) {
+        return false;
+    }
+    if (maxDim < minDim * 5) {
+        return false;
+    }
+    if (edgeWhiteRatio < 0.04f || edgeWhiteRatio > 0.90f) {
+        return false;
+    }
+    if (satRatio < 0.04f && chromaRatio < 0.06f) {
+        return false;
+    }
+    return paperSides >= 1 && paperSides <= 2;
+}
+
+// Near-solid cream/white spacer chips (Visual Summary 6×63 gutter between CHAPTER and
+// title). The usual white-mat gates reject edgeWhiteRatio > 0.92 as "pure white fragment".
+inline bool PdfDarkModeV2ShouldKnockOutAlmostPaperChip(int w, int h, int paperSides, float edgeWhiteRatio,
+                                                       float satRatio, float chromaRatio) {
+    if (w <= 0 || h <= 0) {
+        return false;
+    }
+    if (edgeWhiteRatio < 0.90f) {
+        return false;
+    }
+    if (paperSides < 2) {
+        return false;
+    }
+    const int minDim = w < h ? w : h;
+    const int maxDim = w > h ? w : h;
+    if (minDim > 24 || maxDim < 16 || maxDim > 220) {
+        return false;
+    }
+    const long long area = (long long)w * (long long)h;
+    if (area > (long long)24 * 220) {
+        return false;
+    }
+    // Cream textbook paper carries mild chroma; keep pure white photo chips out unless
+    // the chip is a hairline spacer.
+    if (chromaRatio >= 0.06f || satRatio >= 0.05f) {
+        return true;
+    }
+    return minDim <= 10;
+}
+
+// After cream mat flood, remaining soft-gray drop shadows (no ink / no hue) read as
+// narrow bright bands on a dark page. Photos keep chroma or luminance spread.
+inline bool PdfDarkModeV2RemainLooksLikeSoftShadowOnly(float remainChromaRatio, float remainInkRatio,
+                                                       float remainLumVar) {
+    if (remainChromaRatio >= 0.08f) {
+        return false;
+    }
+    if (remainInkRatio >= 0.05f) {
+        return false;
+    }
+    if (remainLumVar >= 0.012f) {
+        return false;
+    }
+    return true;
+}
+
+// Soft studio photos (RAZ "My bear"): edge flood only nibbles the rim, so the
+// opaque remainder is still a paper-heavy near-rectangle with jagged bites.
+// Abort knockout and keep the original card — cheaper than a second flood, and
+// one linear mask pass (~1 byte/px) after the flood already paid for itself.
+// remainSolidity = remainCount / remainBboxArea; remainBboxCoverage = bbox / image;
+// remainPaperRatio = near-white fraction among remain samples.
+// edgeWhiteRatio: when flood already cleared most of the mat, keep the cutout
+// even if the subject bbox is fairly rectangular (sitting animal / soft AA).
+inline bool PdfDarkModeV2RemainLooksLikeFailedRectFlood(float remainSolidity, float remainBboxCoverage,
+                                                        float remainPaperRatio, float edgeWhiteRatio = 0.f) {
+    if (remainSolidity < 0.88f) {
+        return false;
+    }
+    if (remainBboxCoverage < 0.72f) {
+        return false; // real silhouette cutouts shrink the remain bbox
+    }
+    if (remainPaperRatio < 0.22f) {
+        return false; // mat already gone; leftover is subject tone
+    }
+    // Substantial flood progress: keep alpha even if remainder is still blocky.
+    if (edgeWhiteRatio >= 0.45f) {
+        return false;
+    }
+    return true;
+}
+
+// Small colorful atlas icons (flags/maps/UNIT) often have white only in the corners,
+// so side-band paper ratios stay below the usual 3-side badge gate.
+inline bool PdfDarkModeV2ShouldKnockOutSmallIconCornerMat(int w, int h, int paperSides, float edgeWhiteRatio,
+                                                          float satRatio, float chromaRatio) {
+    if (w <= 0 || h <= 0) {
+        return false;
+    }
+    if (satRatio < 0.07f && chromaRatio < 0.10f) {
+        return false;
+    }
+    if (edgeWhiteRatio < 0.015f || edgeWhiteRatio > 0.55f) {
+        return false;
+    }
+    const int maxDim = w > h ? w : h;
+    const long long area = (long long)w * (long long)h;
+    if (maxDim > 220 || area > (long long)220 * 220) {
+        return false;
+    }
+    // Corner-only mats can report paperSides == 0; thin rims often report 1–2.
+    return paperSides <= 2;
+}
+
+// RAZ studio cutouts (ape / chimp / snake on white) are often 1500–2500 px on a side.
+// The old 1200² cap skipped them → opaque white cards on Match-theme dark pages.
+inline constexpr i64 kPdfDarkModeV2WhiteMatMaxArea = (i64)2800 * 2800;
+
+inline bool PdfDarkModeV2WhiteMatDimsAllowed(int w, int h, bool thinWide) {
+    if ((!thinWide && (w < 8 || h < 8)) || w <= 0 || h <= 0) {
+        return false;
+    }
+    return (i64)w * (i64)h <= kPdfDarkModeV2WhiteMatMaxArea;
+}
+
+// Layout-textbook fast path skips full-page photo tiles. Paper-heavy picture-book
+// pages (white margins + color art / text) still need PictureBook remapping.
+inline bool PdfDarkModeV2LayoutFullPageNeedsPictureBookRemap(const DarkImageFeatures& f) {
+    // High paper alone is enough: RAZ-A PDFdo pages are mostly white with a small
+    // illustration; sat/chroma on a 128px thumb can dip under older dual gates.
+    return f.highLuminanceRatio >= 0.35f;
+}
+
 // White JPEG mat / soft drop-shadow plates. Unit-tested; used by ProcessV2WhiteMat.
 // inkRatio = fraction of near-black pixels (icons have ink; pure shadow plates do not).
 inline bool PdfDarkModeV2ShouldKnockOutWhiteMat(int paperSides, float edgeWhiteRatio, float satRatio, float chromaRatio,
@@ -55,9 +215,27 @@ inline bool PdfDarkModeV2ShouldKnockOutWhiteMat(int paperSides, float edgeWhiteR
     if (edgeWhiteRatio < 0.03f) {
         return false;
     }
-    // Colorful badge/icon in a square: need a multi-side mat frame (not open sky).
+    // Colorful badge/icon / studio animal on a white card.
     if (satRatio >= 0.07f || chromaRatio >= 0.10f) {
-        return paperSides >= 3 && edgeWhiteRatio <= 0.92f;
+        // Empty white chips / almost-pure fragments: no real subject ink.
+        const float matCap = (inkRatio >= 0.04f) ? 0.97f : 0.92f;
+        if (edgeWhiteRatio > matCap) {
+            return false;
+        }
+        if (paperSides >= 3) {
+            return true;
+        }
+        // Sitting studio subjects often touch the bottom edge (feet) → 2 paper sides.
+        // Tiny subject on a large card can also report only 1 long paper side while
+        // inkRatio proves a real animal (RAZ The Zoo); open sky stays out via
+        // edgeWhite≈0.30 + paperSides==1 (unit-tested).
+        if (paperSides >= 2 && edgeWhiteRatio >= 0.40f) {
+            return true;
+        }
+        if (paperSides >= 1 && inkRatio >= 0.04f && edgeWhiteRatio >= 0.45f) {
+            return true;
+        }
+        return false;
     }
     // Soft drop-shadow plates are often L-shaped (only 1–2 sides of the image bbox).
     if (inkRatio < 0.08f && paperSides >= 1 && edgeWhiteRatio >= 0.15f && edgeWhiteRatio <= 0.98f) {

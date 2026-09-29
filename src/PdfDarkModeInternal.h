@@ -79,6 +79,9 @@ fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, c
 // V2 small images: knock out JPEG white mats around colorful badges (UNIT / Atlas headers).
 // Returns nullptr when knockout does not apply (caller keeps the original image).
 fz_pixmap* PdfDarkModeProcessV2WhiteMatPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette);
+// Cheap border probe (scaled decode): studio animal cards on white (RAZ The Zoo) so
+// layout-textbook fast-remap does not skip white-mat on InDesign picture books.
+bool PdfDarkModeV2QuickStudioWhiteMatCandidate(fz_context* ctx, fz_image* image);
 // Soft gray raster drop-shadow plates (Glencoe callouts) → solid theme bg.
 fz_pixmap* PdfDarkModeProcessV2SoftShadowPlatePixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette);
 // Soft-cream notebook pages: gentle paper softening only (no steep ink remap).

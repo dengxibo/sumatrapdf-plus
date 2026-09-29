@@ -2151,8 +2151,8 @@ static bool dm_pb_frame_margin(float r, float g, float b) {
 
 // First-to-last dark pixels on a row. Small gaps where the drawing touches the
 // stroke still count, as long as most of that span is ink.
-static bool dm_pb_frame_row_span(fz_context* ctx, fz_pixmap* pix, fz_colorspace* cs, fz_colorspace* rgb,
-                                int components, int y, int* outA, int* outB) {
+static bool dm_pb_frame_row_span(fz_context* ctx, fz_pixmap* pix, fz_colorspace* cs, fz_colorspace* rgb, int components,
+                                 int y, int* outA, int* outB) {
     int w = pix->w;
     int a = -1;
     int b = -1;
@@ -3383,8 +3383,8 @@ static fz_pixmap* dm_pb_process_picture_islands(fz_context* ctx, fz_pixmap* src,
                     px[1] = (unsigned char)bg;
                     px[2] = (unsigned char)bb;
                 } else if (fastGray) {
-                    int v = (int)((0.2126f * palette.bgR + 0.7152f * palette.bgG + 0.0722f * palette.bgB) * 255.f +
-                                  0.5f);
+                    int v =
+                        (int)((0.2126f * palette.bgR + 0.7152f * palette.bgG + 0.0722f * palette.bgB) * 255.f + 0.5f);
                     if (v < 0) {
                         v = 0;
                     }
@@ -3484,8 +3484,7 @@ fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, c
         int w;
         int h;
         const char* branch;
-        V2FullPerf(int ww, int hh) : t(TimeGet()), w(ww), h(hh), branch("pixel") {
-        }
+        V2FullPerf(int ww, int hh) : t(TimeGet()), w(ww), h(hh), branch("pixel") {}
         ~V2FullPerf() {
             if (PdfDarkModePagePerfOn()) {
                 logf("page-perf v2-full %dx%d branch=%s %.1f ms\n", w, h, branch, TimeSinceInMs(t));
@@ -3532,8 +3531,8 @@ fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, c
     // sat/chroma; grayscale historical photos (Dust Bowl) use found photo islands.
     if (imgAnalysis && PdfDarkModeFeaturesLookLikeBwLineArtScan(imgAnalysis->features)) {
         bool insetPhoto = PdfDarkModeFullResStatsLookLikeInsetPhotoOnPaper(paperRatio, satRatio, chromaRatio, lumVar);
-        bool seekGray = dm_pb_should_seek_photo_rects(satRatio, chromaRatio, paperRatio, lumVar, st.borderPaperRatio,
-                                                     imgAnalysis);
+        bool seekGray =
+            dm_pb_should_seek_photo_rects(satRatio, chromaRatio, paperRatio, lumVar, st.borderPaperRatio, imgAnalysis);
         // Small colorful photo on a very white page (Jazz Greats TOC gold trumpet):
         // full-page sat/lumVar are crushed by the paper so every gate above fails and the
         // page fell to gov-paper binarize (red/ink stencil). Real 连环画 / text scans have
@@ -3761,12 +3760,66 @@ fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, c
     return dst;
 }
 
-static bool dm_v2_is_white_mat_paper_rgb(float r, float g, float b) {
+static bool dm_v2_is_white_mat_paper_rgb(float r, float g, float b, bool iconPastelMat, bool stripMat = false) {
     float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
     float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
     float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    float chroma = maxC - minC;
     // Include soft textbook drop-shadow grays (often ~0.82–0.95), not only pure white.
-    return (maxC - minC) < 0.10f && lum > 0.82f;
+    if (chroma < 0.10f && lum > 0.82f) {
+        return true;
+    }
+    // Warm cream JPEG/CMYK mats around Glencoe badges (R,G ahead of B).
+    if (lum > 0.88f && chroma < 0.22f && r + 0.02f >= b && g + 0.02f >= b) {
+        return true;
+    }
+    // Tiny atlas map chips: light cyan ocean / pale fills that frame the landmass.
+    // Only for small icons — larger photos keep sky. Cream sidebar mats (SECTION tile)
+    // need a slightly higher chroma cap than cool ocean chips.
+    if (iconPastelMat && lum > 0.72f && chroma < 0.40f) {
+        return true;
+    }
+    // Tall Guide-to-Reading wave: JPEG AA on the open (white) side is light cyan
+    // against the blue stroke — not warm cream, so the checks above miss it and a
+    // straight white/cyan column survives at the image’s right edge.
+    if (stripMat && lum > 0.78f && chroma < 0.28f && b + 0.02f >= r) {
+        return true;
+    }
+    return false;
+}
+
+// 0 = solid subject, 1 = pure paper. Used for soft (anti-aliased) alpha cutout.
+static float dm_v2_paper_amount_rgb(float r, float g, float b, bool iconPastelMat, bool stripMat = false) {
+    float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+    float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    float chroma = maxC - minC;
+    auto clamp01 = [](float v) -> float {
+        if (v < 0.f) {
+            return 0.f;
+        }
+        if (v > 1.f) {
+            return 1.f;
+        }
+        return v;
+    };
+    if (chroma < 0.12f && lum > 0.78f) {
+        return clamp01((lum - 0.72f) / 0.26f);
+    }
+    if (lum > 0.86f && chroma < 0.24f && r + 0.02f >= b && g + 0.02f >= b) {
+        return clamp01((lum - 0.80f) / 0.18f) * clamp01(1.f - (chroma - 0.08f) / 0.20f);
+    }
+    if (iconPastelMat && lum > 0.70f && chroma < 0.42f) {
+        return clamp01((lum - 0.68f) / 0.28f) * clamp01(1.f - (chroma - 0.08f) / 0.38f);
+    }
+    if (stripMat && lum > 0.74f && chroma < 0.32f && b + 0.02f >= r) {
+        return clamp01((lum - 0.70f) / 0.26f);
+    }
+    // JPEG AA fringe: light but not quite paper.
+    if (lum > 0.80f && chroma < 0.22f) {
+        return clamp01((lum - 0.80f) / 0.18f) * 0.65f;
+    }
+    return 0.f;
 }
 
 // Binary box dilate. tmp is w*h scratch.
@@ -3916,7 +3969,7 @@ static void dm_v2_seal_gray_subject(u8* paper, int w, int h) {
 
 static u8* dm_v2_build_border_edge_white_mask(fz_context* ctx, fz_pixmap* pix, fz_colorspace* cs, fz_colorspace* rgb,
                                               int components, int w, int h, int* outMasked, int* outPaperSides,
-                                              bool sealGraySubject) {
+                                              bool sealGraySubject, bool iconPastelMat, bool stripMat = false) {
     if (outMasked) {
         *outMasked = 0;
     }
@@ -3941,7 +3994,7 @@ static u8* dm_v2_build_border_edge_white_mask(fz_context* ctx, fz_pixmap* pix, f
             float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
             float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
             bool isPaper = sealGraySubject ? ((maxC - minC) < 0.08f && lum > 0.94f)
-                                           : dm_v2_is_white_mat_paper_rgb(r, g, b);
+                                           : dm_v2_is_white_mat_paper_rgb(r, g, b, iconPastelMat, stripMat);
             if (isPaper) {
                 paper[y * w + x] = 1;
             }
@@ -4065,6 +4118,51 @@ static u8* dm_v2_build_border_edge_white_mask(fz_context* ctx, fz_pixmap* pix, f
     }
     free(q);
     free(paper);
+    // Tall wave strips: dilate flood 1px into remaining light cyan AA so a straight
+    // column at the open edge does not survive beside the blue stroke.
+    if (stripMat && qn > 0) {
+        u8* dil = AllocArray<u8>(w * h);
+        if (dil) {
+            memcpy(dil, mask, (size_t)w * (size_t)h);
+            int added = 0;
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    if (mask[y * w + x]) {
+                        continue;
+                    }
+                    bool adjFlood = false;
+                    for (int dy = -1; dy <= 1 && !adjFlood; dy++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            int xx = x + dx;
+                            int yy = y + dy;
+                            if (xx < 0 || yy < 0 || xx >= w || yy >= h) {
+                                continue;
+                            }
+                            if (mask[yy * w + xx]) {
+                                adjFlood = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!adjFlood) {
+                        continue;
+                    }
+                    float r, g, b;
+                    dm_pb_sample_rgb(ctx, pix, cs, rgb, components, x, y, &r, &g, &b);
+                    if (dm_v2_paper_amount_rgb(r, g, b, false, true) >= 0.35f) {
+                        dil[y * w + x] = 1;
+                        added++;
+                    }
+                }
+            }
+            memcpy(mask, dil, (size_t)w * (size_t)h);
+            free(dil);
+            if (outMasked) {
+                *outMasked = qn + added;
+            }
+            return mask;
+        }
+    }
     if (outMasked) {
         *outMasked = qn;
     }
@@ -4195,22 +4293,125 @@ fz_pixmap* PdfDarkModeProcessV2SoftShadowPlatePixmap(fz_context* ctx, fz_pixmap*
     return dst;
 }
 
+bool PdfDarkModeV2QuickStudioWhiteMatCandidate(fz_context* ctx, fz_image* image) {
+    if (!ctx || !image || image->mask) {
+        return false;
+    }
+    int iw = image->w;
+    int ih = image->h;
+    if (iw < 120 || ih < 120) {
+        return false;
+    }
+    // Studio cards are mid-size; giant scans / tiny chips stay on other paths.
+    if ((i64)iw * (i64)ih > kPdfDarkModeV2WhiteMatMaxArea) {
+        return false;
+    }
+    fz_pixmap* src = nullptr;
+    bool ok = false;
+    fz_var(src);
+    fz_try(ctx) {
+        // Border-only decision: decode tiny so layout textbooks do not pay full
+        // white-mat cost on every photo tile (Exploring Our World atlas).
+        const int maxSide = 96;
+        int maxDim = iw > ih ? iw : ih;
+        float s = maxDim > maxSide ? (float)maxSide / (float)maxDim : 1.f;
+        fz_matrix ctm = fz_scale(s, s);
+        src = fz_get_pixmap_from_image(ctx, image, nullptr, &ctm, nullptr, nullptr);
+        if (!src || !src->samples || src->w < 16 || src->h < 16) {
+            fz_throw(ctx, FZ_ERROR_GENERIC, "studio-mat probe decode failed");
+        }
+        fz_colorspace* cs = src->colorspace ? src->colorspace : fz_device_rgb(ctx);
+        fz_colorspace* rgb = fz_device_rgb(ctx);
+        int components = fz_colorspace_n(ctx, cs);
+        int w = src->w;
+        int h = src->h;
+        auto isPaper = [&](int x, int y) -> bool {
+            float r, g, b;
+            dm_pb_sample_rgb(ctx, src, cs, rgb, components, x, y, &r, &g, &b);
+            float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+            float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+            float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+            return (maxC - minC) < 0.10f && lum > 0.90f;
+        };
+        auto sideRatio = [&](int x0, int y0, int x1, int y1) -> float {
+            int n = 0, hit = 0;
+            for (int y = y0; y < y1; y++) {
+                for (int x = x0; x < x1; x++) {
+                    n++;
+                    if (isPaper(x, y)) {
+                        hit++;
+                    }
+                }
+            }
+            return n > 0 ? (float)hit / (float)n : 0.f;
+        };
+        int bandX = w > 32 ? w / 16 : 2;
+        int bandY = h > 32 ? h / 16 : 2;
+        if (bandX < 1) {
+            bandX = 1;
+        }
+        if (bandY < 1) {
+            bandY = 1;
+        }
+        int paperSides = 0;
+        if (sideRatio(0, 0, w, bandY) >= 0.55f) {
+            paperSides++;
+        }
+        if (sideRatio(0, h - bandY, w, h) >= 0.55f) {
+            paperSides++;
+        }
+        if (sideRatio(0, 0, bandX, h) >= 0.55f) {
+            paperSides++;
+        }
+        if (sideRatio(w - bandX, 0, w, h) >= 0.55f) {
+            paperSides++;
+        }
+        if (paperSides < 3) {
+            fz_throw(ctx, FZ_ERROR_GENERIC, "studio-mat probe: rim not paper");
+        }
+        // Interior must have subject (not a blank white chip).
+        int ink = 0, samples = 0;
+        int x0 = w / 4, x1 = w - w / 4;
+        int y0 = h / 4, y1 = h - h / 4;
+        for (int y = y0; y < y1; y += 2) {
+            for (int x = x0; x < x1; x += 2) {
+                samples++;
+                if (!isPaper(x, y)) {
+                    ink++;
+                }
+            }
+        }
+        float inkRatio = samples > 0 ? (float)ink / (float)samples : 0.f;
+        // Upper bound omitted: a tight subject can fill the probe window (ink≈1).
+        // Blank white chips fail via inkRatio≈0; real photos fail via paperSides.
+        ok = inkRatio >= 0.08f;
+    }
+    fz_always(ctx) {
+        if (src) {
+            fz_drop_pixmap(ctx, src);
+        }
+    }
+    fz_catch(ctx) {
+        ok = false;
+    }
+    return ok;
+}
+
 fz_pixmap* PdfDarkModeProcessV2WhiteMatPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette) {
     if (!ctx || !src || !src->samples) {
         return nullptr;
     }
+    (void)palette; // cutout is alpha; surrounding paper shows through
     fz_colorspace* cs = src->colorspace ? src->colorspace : fz_device_rgb(ctx);
     fz_colorspace* rgb = fz_device_rgb(ctx);
     int components = fz_colorspace_n(ctx, cs);
-    int n = src->n;
     int w = src->w;
     int h = src->h;
-    int stride = src->stride;
     // Use 64-bit area — int w*h overflows on large pixmaps and bypassed the cap (AV).
     // Allow thin wide strips (callout shadow plates under Glencoe banners).
     bool thinWide = (h >= 2 && h < 8 && w >= 24 && w >= h * 6) || (w >= 2 && w < 8 && h >= 24 && h >= w * 6);
-    if ((!thinWide && (w < 8 || h < 8)) || (i64)w * (i64)h > (i64)1200 * 1200) {
-        // Tiny noise or huge photos: skip (badges are small/medium).
+    if (!PdfDarkModeV2WhiteMatDimsAllowed(w, h, thinWide)) {
+        // Tiny noise or huge full-bleed photos: skip. Studio cutouts up to ~2800² OK.
         return nullptr;
     }
 
@@ -4259,8 +4460,18 @@ fz_pixmap* PdfDarkModeProcessV2WhiteMatPixmap(fz_context* ctx, fz_pixmap* src, c
 
     int masked = 0;
     int paperSides = 0;
+    const int maxDimProbe = w > h ? w : h;
+    const int minDimProbe = w < h ? w : h;
+    // Wide short title pills ("Visual Summary") exceed the 180px icon cap but still sit
+    // on cream + soft gray drop shadow that must knock out on dark pages.
+    const bool titlePillMat = h >= 24 && h <= 96 && w >= 140 && w <= 480 && (i64)w * (i64)h <= (i64)480 * 96;
+    const bool iconPastelMat = (maxDimProbe <= 180 && (i64)w * (i64)h <= (i64)180 * 180) || titlePillMat;
+    // Geometry-only strip candidate: cyan-as-paper must run during flood, before the
+    // DecorativeStripMat gate (which needs the flooded edge ratio).
+    const bool stripMatGeom =
+        minDimProbe >= 6 && minDimProbe <= 96 && maxDimProbe >= minDimProbe * 5 && (i64)w * (i64)h <= (i64)128 * 1024;
     u8* edgeMask = dm_v2_build_border_edge_white_mask(ctx, src, cs, rgb, components, w, h, &masked, &paperSides,
-                                                      grayCutout);
+                                                      grayCutout, iconPastelMat, stripMatGeom);
     if (!edgeMask) {
         return nullptr;
     }
@@ -4270,74 +4481,236 @@ fz_pixmap* PdfDarkModeProcessV2WhiteMatPixmap(fz_context* ctx, fz_pixmap* src, c
     if (!knock && grayCutout && paperSides >= 3 && edgeWhiteRatio >= 0.35f && edgeWhiteRatio <= 0.92f) {
         knock = true;
     }
+    // Color studio cutout (RAZ animals): large white card, small subject → edgeWhite
+    // often 0.93–0.96 (old 0.92 cap treated it as an empty white chip).
+    if (!knock && !grayCutout && (satRatio >= 0.07f || chromaRatio >= 0.10f) && inkRatio >= 0.03f && lumVar >= 0.04f &&
+        paperSides >= 1 && edgeWhiteRatio >= 0.35f && edgeWhiteRatio <= 0.97f) {
+        knock = true;
+    }
+    if (!knock &&
+        PdfDarkModeV2ShouldKnockOutSmallIconCornerMat(w, h, paperSides, edgeWhiteRatio, satRatio, chromaRatio)) {
+        knock = true;
+    }
+    bool stripKnock =
+        PdfDarkModeV2ShouldKnockOutDecorativeStripMat(w, h, paperSides, edgeWhiteRatio, satRatio, chromaRatio);
+    if (!knock && stripKnock) {
+        knock = true;
+    }
+    // Pastel ocean fills on atlas map chips: edge ratio is high once cyan counts as paper.
+    if (!knock && iconPastelMat && (satRatio >= 0.07f || chromaRatio >= 0.10f) && edgeWhiteRatio >= 0.08f &&
+        edgeWhiteRatio <= 0.92f && paperSides >= 1) {
+        knock = true;
+    }
+    if (!knock && PdfDarkModeV2ShouldKnockOutAlmostPaperChip(w, h, paperSides, edgeWhiteRatio, satRatio, chromaRatio)) {
+        knock = true;
+    }
     if (!knock) {
         free(edgeMask);
         return nullptr;
     }
+    const bool stripMat = stripKnock || stripMatGeom;
 
-    fz_pixmap* dst = fz_new_pixmap(ctx, cs, w, h, src->seps, src->alpha);
-    fz_copy_pixmap_rect(ctx, dst, src, fz_make_irect(0, 0, w, h), nullptr);
-
-    bool fastRgb = cs == rgb || fz_colorspace_is_rgb(ctx, cs);
-    bool fastGray = components == 1 || fz_colorspace_is_gray(ctx, cs);
-    int br = (int)(palette.bgR * 255.f + 0.5f);
-    int bg = (int)(palette.bgG * 255.f + 0.5f);
-    int bb = (int)(palette.bgB * 255.f + 0.5f);
-    if (br < 0) {
-        br = 0;
-    }
-    if (br > 255) {
-        br = 255;
-    }
-    if (bg < 0) {
-        bg = 0;
-    }
-    if (bg > 255) {
-        bg = 255;
-    }
-    if (bb < 0) {
-        bb = 0;
-    }
-    if (bb > 255) {
-        bb = 255;
-    }
-    float bgLum = 0.2126f * palette.bgR + 0.7152f * palette.bgG + 0.0722f * palette.bgB;
-    int bgGray = (int)(bgLum * 255.f + 0.5f);
-    if (bgGray < 0) {
-        bgGray = 0;
-    }
-    if (bgGray > 255) {
-        bgGray = 255;
-    }
-
-    for (int y = 0; y < h; y++) {
-        unsigned char* row = dst->samples + y * stride;
-        for (int x = 0; x < w; x++) {
-            if (!edgeMask[y * w + x]) {
+    // Cream + soft drop-shadow plates (Visual Summary card frames): after the cream
+    // floods away, mid-gray shadow blobs stay opaque and read as narrow bright bands.
+    // If the non-flood remainder has no real ink/hue (unlike a photo cutout), clear it.
+    int remainN = 0, remainChroma = 0, remainInk = 0, remainPaper = 0;
+    float remainLumSum = 0.f, remainLumSq = 0.f;
+    int remStepX = w > 64 ? w / 64 : 1;
+    int remStepY = h > 64 ? h / 64 : 1;
+    for (int y = 0; y < h; y += remStepY) {
+        for (int x = 0; x < w; x += remStepX) {
+            if (edgeMask[y * w + x]) {
                 continue;
             }
-            unsigned char* px = row + x * n;
-            if (fastRgb) {
-                px[0] = (unsigned char)br;
-                px[1] = (unsigned char)bg;
-                px[2] = (unsigned char)bb;
-            } else if (fastGray) {
-                px[0] = (unsigned char)bgGray;
-            } else {
-                float out[FZ_MAX_COLORS] = {palette.bgR, palette.bgG, palette.bgB};
-                float back[FZ_MAX_COLORS] = {};
-                fz_convert_color(ctx, rgb, out, cs, back, cs, fz_default_color_params);
-                for (int c = 0; c < components && c < FZ_MAX_COLORS; c++) {
-                    int v = (int)(back[c] * 255.f + 0.5f);
-                    if (v < 0) {
-                        v = 0;
-                    }
-                    if (v > 255) {
-                        v = 255;
-                    }
-                    px[c] = (unsigned char)v;
+            float r, g, b;
+            dm_pb_sample_rgb(ctx, src, cs, rgb, components, x, y, &r, &g, &b);
+            float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+            float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+            float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+            float chroma = maxC - minC;
+            remainN++;
+            remainLumSum += lum;
+            remainLumSq += lum * lum;
+            if (chroma >= 0.16f) {
+                remainChroma++;
+            }
+            if (lum < 0.22f) {
+                remainInk++;
+            }
+            // Near-pure mat white still inside the opaque remainder (not light fur).
+            if (chroma < 0.08f && lum > 0.92f) {
+                remainPaper++;
+            }
+        }
+    }
+    float remainChromaRatio = remainN > 0 ? (float)remainChroma / (float)remainN : 0.f;
+    float remainInkRatio = remainN > 0 ? (float)remainInk / (float)remainN : 0.f;
+    float remainPaperRatio = remainN > 0 ? (float)remainPaper / (float)remainN : 0.f;
+    float remainMean = remainN > 0 ? remainLumSum / (float)remainN : 0.f;
+    float remainLumVar = remainN > 0 ? remainLumSq / (float)remainN - remainMean * remainMean : 0.f;
+    if (remainLumVar < 0.f) {
+        remainLumVar = 0.f;
+    }
+    const bool clearShadowRemain =
+        remainN > 0 && edgeWhiteRatio >= 0.35f && maxDimProbe <= 220 &&
+        PdfDarkModeV2RemainLooksLikeSoftShadowOnly(remainChromaRatio, remainInkRatio, remainLumVar);
+
+    // Soft-edge studio cards: flood only chewed the rim → jagged white rectangle.
+    // Abort before writing alpha; keep the original opaque image (clean card).
+    // Icons / strips / chips skip — their remain is meant to be small and rectangular.
+    if (!clearShadowRemain && !iconPastelMat && !stripMat && maxDimProbe > 220 && remainN > 0) {
+        int remCount = 0;
+        int minX = w, minY = h, maxX = -1, maxY = -1;
+        for (int y = 0; y < h; y++) {
+            const u8* row = edgeMask + (size_t)y * (size_t)w;
+            for (int x = 0; x < w; x++) {
+                if (row[x]) {
+                    continue;
+                }
+                remCount++;
+                if (x < minX) {
+                    minX = x;
+                }
+                if (y < minY) {
+                    minY = y;
+                }
+                if (x > maxX) {
+                    maxX = x;
+                }
+                if (y > maxY) {
+                    maxY = y;
                 }
             }
+        }
+        if (remCount > 0 && maxX >= minX && maxY >= minY) {
+            const float bboxArea = (float)(maxX - minX + 1) * (float)(maxY - minY + 1);
+            const float imgArea = (float)w * (float)h;
+            const float solidity = bboxArea > 0.f ? (float)remCount / bboxArea : 0.f;
+            const float coverage = imgArea > 0.f ? bboxArea / imgArea : 0.f;
+            if (PdfDarkModeV2RemainLooksLikeFailedRectFlood(solidity, coverage, remainPaperRatio, edgeWhiteRatio)) {
+                free(edgeMask);
+                return nullptr;
+            }
+        }
+    }
+
+    // Always cut to alpha — never paint theme bg. Theme-colored mats look black on
+    // yellow sidebars / olive Visual Summary paper (SECTION 2 / CHAPTER badges).
+    // Soft alpha only on the AA fringe; flooded paper is fully clear so the
+    // surrounding page color shows through.
+    fz_pixmap* dst = fz_new_pixmap(ctx, rgb, w, h, nullptr, 1);
+    fz_clear_pixmap(ctx, dst);
+    if (clearShadowRemain || edgeWhiteRatio >= 0.98f) {
+        // Fully paper / paper+shadow chip: nothing to keep.
+        free(edgeMask);
+        return dst;
+    }
+    int dstN = dst->n;
+    int dstStride = dst->stride;
+    auto nearFlood = [&](int x, int y) -> bool {
+        for (int dy = -2; dy <= 2; dy++) {
+            for (int dx = -2; dx <= 2; dx++) {
+                if (dx == 0 && dy == 0) {
+                    continue;
+                }
+                int xx = x + dx;
+                int yy = y + dy;
+                if (xx < 0 || yy < 0 || xx >= w || yy >= h) {
+                    continue;
+                }
+                if (edgeMask[yy * w + xx]) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+    for (int y = 0; y < h; y++) {
+        unsigned char* drow = dst->samples + (size_t)y * (size_t)dstStride;
+        for (int x = 0; x < w; x++) {
+            unsigned char* px = drow + (size_t)x * (size_t)dstN;
+            if (edgeMask[y * w + x]) {
+                px[0] = px[1] = px[2] = 0;
+                px[3] = 0;
+                continue;
+            }
+            float r, g, b;
+            dm_pb_sample_rgb(ctx, src, cs, rgb, components, x, y, &r, &g, &b);
+            float paperAmt = dm_v2_paper_amount_rgb(r, g, b, iconPastelMat, stripMat);
+            float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+            float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+            float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+            float chroma = maxC - minC;
+            // Title/badge cream plates: neutral mid-gray drop shadow under glyphs is not
+            // border-connected once letters seal pockets — clear by color, keep hue.
+            if (iconPastelMat && edgeWhiteRatio >= 0.35f && chroma < 0.14f && lum > 0.42f && lum < 0.92f) {
+                px[0] = px[1] = px[2] = 0;
+                px[3] = 0;
+                continue;
+            }
+            // Mid-gray JPEG fringe next to the mat (oval photo cutouts).
+            if (paperAmt < 0.18f && nearFlood(x, y) && lum > 0.62f && chroma < 0.28f) {
+                paperAmt = (lum - 0.55f) / 0.40f;
+                if (paperAmt > 1.f) {
+                    paperAmt = 1.f;
+                }
+                if (paperAmt < 0.f) {
+                    paperAmt = 0.f;
+                }
+            }
+            // Soft drop-shadow gray glued to cream mats.
+            if (paperAmt < 0.20f && nearFlood(x, y) && chroma < 0.16f && lum > 0.40f && lum < 0.90f) {
+                float shadowClear = (lum - 0.35f) / 0.45f;
+                if (shadowClear > 1.f) {
+                    shadowClear = 1.f;
+                }
+                if (shadowClear > paperAmt) {
+                    paperAmt = shadowClear;
+                }
+            }
+            float a = 1.f;
+            if (nearFlood(x, y)) {
+                float clear = paperAmt;
+                // Circle/oval AA against former white: light mix pixels that still
+                // look like subject chroma but read as a pale halo on dark paper.
+                if (lum > 0.68f) {
+                    float lightClear = (lum - 0.68f) / 0.30f;
+                    if (lightClear > 1.f) {
+                        lightClear = 1.f;
+                    }
+                    if (lightClear > clear) {
+                        clear = lightClear;
+                    }
+                }
+                // Wave open-side cyan AA: steeper clear so a 1px white column dies.
+                if (stripMat && lum > 0.70f && (chroma < 0.40f || b >= r)) {
+                    float stripClear = (lum - 0.65f) / 0.28f;
+                    if (stripClear > 1.f) {
+                        stripClear = 1.f;
+                    }
+                    if (stripClear > clear) {
+                        clear = stripClear;
+                    }
+                }
+                if (clear > 0.08f) {
+                    a = 1.f - clear;
+                    if (a < 0.f) {
+                        a = 0.f;
+                    }
+                }
+            }
+            if (a < 0.02f) {
+                px[0] = px[1] = px[2] = 0;
+                px[3] = 0;
+                continue;
+            }
+            if (a > 0.98f) {
+                a = 1.f;
+            }
+            px[0] = (unsigned char)(r * a * 255.f + 0.5f);
+            px[1] = (unsigned char)(g * a * 255.f + 0.5f);
+            px[2] = (unsigned char)(b * a * 255.f + 0.5f);
+            px[3] = (unsigned char)(a * 255.f + 0.5f);
         }
     }
     free(edgeMask);

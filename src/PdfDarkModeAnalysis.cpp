@@ -697,8 +697,12 @@ bool PdfDarkModePdfMetadataSuggestsImageConversionPictureBook(fz_context* ctx, p
     if (!info) {
         return false;
     }
+    // Adobe "Image Conversion" and PDFdo.com RAZ packs: one full-bleed raster per
+    // page. Must not take the layout-textbook "draw original" fast path.
     return PdfDarkModeInfoFieldContainsI(ctx, info, PDF_NAME(Producer), "image conversion") ||
-           PdfDarkModeInfoFieldContainsI(ctx, info, PDF_NAME(Creator), "image conversion");
+           PdfDarkModeInfoFieldContainsI(ctx, info, PDF_NAME(Creator), "image conversion") ||
+           PdfDarkModeInfoFieldContainsI(ctx, info, PDF_NAME(Producer), "pdfdo") ||
+           PdfDarkModeInfoFieldContainsI(ctx, info, PDF_NAME(Creator), "pdfdo");
 }
 
 static FollowThemeScanProbe PdfDarkModeClassifyFollowThemeProbe(const pdf_scan_probe_device* probe,

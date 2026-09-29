@@ -76,6 +76,23 @@ static bool v2_is_light_marker(float r, float g, float b) {
     return lum > 0.62f && (maxC - minC) > 0.18f;
 }
 
+// Light cyan/cream plates under atlas map silhouettes (Exploring Our World table).
+// Okular invert leaves a pale rectangle on dark table cells — skip the fill instead.
+static bool v2_is_atlas_pastel_plate(float r, float g, float b) {
+    float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    float chroma = maxC - minC;
+    float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+    if (lum <= 0.78f || chroma >= 0.36f) {
+        return false;
+    }
+    // Warm highlighter yellows/oranges stay on the marker path — not ocean plates.
+    if (r > b + 0.08f && g > b + 0.05f && chroma > 0.20f) {
+        return false;
+    }
+    return true;
+}
+
 // Map paint for paths/text; neutralize soft drop shadows that would become white fringes.
 // marker: fills and strokes. Light highlight colors are parked darker. Text stays
 // on the ordinary invert so black glyphs become light.
@@ -116,6 +133,19 @@ static float v2_image_coverage(fz_matrix ctm, const RectF& pageBounds) {
         return 0.f;
     }
     return (img.dx * img.dy) / (pageBounds.dx * pageBounds.dy);
+}
+
+static float v2_path_coverage(fz_context* ctx, const fz_path* path, fz_matrix ctm, const RectF& pageBounds) {
+    if (!path || pageBounds.IsEmpty()) {
+        return 1.f;
+    }
+    fz_rect bounds = fz_bound_path(ctx, path, nullptr, ctm);
+    RectF box(bounds.x0, bounds.y0, bounds.x1 - bounds.x0, bounds.y1 - bounds.y0);
+    box = box.Intersect(pageBounds);
+    if (box.IsEmpty() || pageBounds.dx <= 0.f || pageBounds.dy <= 0.f) {
+        return 0.f;
+    }
+    return (box.dx * box.dy) / (pageBounds.dx * pageBounds.dy);
 }
 
 // 公文 scans often sit inside the media box (coverage 0.4–0.75) and were treated as
@@ -540,8 +570,15 @@ static fz_image* v2_build_masked_ink_image(fz_context* ctx, fz_image* srcImage, 
     fz_try(ctx) {
         src = fz_get_pixmap_from_image(ctx, srcImage, nullptr, nullptr, nullptr, nullptr);
         if (src && src->samples) {
-            fz_colorspace* cs = src->colorspace ? src->colorspace : fz_device_rgb(ctx);
-            dst = fz_new_pixmap(ctx, cs, src->w, src->h, src->seps, src->alpha);
+            fz_colorspace* deviceRgb = fz_device_rgb(ctx);
+            // CalRGB (Easy RL) must become DeviceRGB before writing theme paper bytes;
+            // otherwise #282A36 is re-decoded to a darker charcoal and no longer matches.
+            if (src->colorspace && src->colorspace != deviceRgb) {
+                fz_pixmap* rgb = fz_convert_pixmap(ctx, src, deviceRgb, nullptr, nullptr, fz_default_color_params, 1);
+                fz_drop_pixmap(ctx, src);
+                src = rgb;
+            }
+            dst = fz_new_pixmap(ctx, deviceRgb, src->w, src->h, src->seps, src->alpha);
             fz_copy_pixmap_rect(ctx, dst, src, fz_make_irect(0, 0, src->w, src->h), nullptr);
             v2_remap_ink_plate(ctx, dst, palette);
             // Keep the JBIG2 / ImageMask stencil so only ink paints over the background plate.
@@ -632,6 +669,15 @@ static void v2_fill_path(fz_context* ctx, fz_device* dev, const fz_path* path, i
     if (perf) {
         gV2Perf.pathCalls++;
         opStart = TimeGet();
+    }
+    float rgb[FZ_MAX_COLORS] = {};
+    fz_convert_color(ctx, colorspace, color, fz_device_rgb(ctx), rgb, colorspace, color_params);
+    // Tiny atlas map ocean/cream plates: skip so the dark table cell shows through.
+    if (v2_is_atlas_pastel_plate(rgb[0], rgb[1], rgb[2]) && v2_path_coverage(ctx, path, ctm, d->pageBounds) < 0.04f) {
+        if (perf) {
+            gV2Perf.pathMs += TimeSinceInMs(opStart);
+        }
+        return;
     }
     float mapped[FZ_MAX_COLORS] = {};
     v2_map_paint(ctx, d, colorspace, color, alpha, color_params, mapped, true);
@@ -824,12 +870,21 @@ static void v2_fill_shade(fz_context* ctx, fz_device* dev, fz_shade* shd, fz_mat
     }
 }
 
-// Manual menu choice. Masked ink plates stay on the automatic path: rebuilding
-// them without the mask paints an opaque plate over the text.
+// Manual menu choice. 1-bit ImageMask ink plates (MRC) stay on the automatic
+// path: rebuilding them without the stencil paints an opaque plate over text.
+// Soft masks (Easy RL textbook figures) remapped under Tone keep their SMask.
+static bool v2_mask_is_mrc_stencil(fz_image* image) {
+    fz_image* mask = image ? image->mask : nullptr;
+    if (!mask) {
+        return false;
+    }
+    return mask->imagemask || mask->bpc <= 1;
+}
+
 static bool v2_fill_image_with_strategy(fz_context* ctx, pdf_dark_mode_v2_device* d, fz_image* image, fz_matrix ctm,
                                         float alpha, fz_color_params color_params) {
     PdfImageDarkStrategy strategy = GetPdfImageDarkStrategy();
-    if (strategy == PdfImageDarkStrategy::Auto || image->mask || v2_image_is_paint_chip(image)) {
+    if (strategy == PdfImageDarkStrategy::Auto || v2_image_is_paint_chip(image) || v2_mask_is_mrc_stencil(image)) {
         return false;
     }
     if (strategy == PdfImageDarkStrategy::Original) {
@@ -847,7 +902,12 @@ static bool v2_fill_image_with_strategy(fz_context* ctx, pdf_dark_mode_v2_device
     fz_image* built = nullptr;
     fz_image* draw = cached;
     if (!draw) {
-        built = PdfDarkModeRecolorImage(ctx, image, *d->palette);
+        // Remap at least as sharp as the on-screen tile (plus headroom for modest zoom).
+        int aw = (int)(sqrtf(ctm.a * ctm.a + ctm.b * ctm.b) + 0.5f);
+        int ah = (int)(sqrtf(ctm.c * ctm.c + ctm.d * ctm.d) + 0.5f);
+        int prefer = aw > ah ? aw : ah;
+        prefer = (prefer * 5 + 3) / 4;
+        built = PdfDarkModeRecolorImage(ctx, image, *d->palette, prefer);
         draw = built ? built : image;
         if (built && d->engineCache) {
             PdfDarkModeEngineCacheStoreProcessed(ctx, d->engineCache, image, d->profileHash,
@@ -884,8 +944,7 @@ static void v2_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_m
         float coverage;
         const char* branch;
         int cache;
-        FillPerf(fz_image* img) : t(TimeGet()), image(img), coverage(0), branch("?"), cache(0) {
-        }
+        FillPerf(fz_image* img) : t(TimeGet()), image(img), coverage(0), branch("?"), cache(0) {}
         ~FillPerf() {
             if (!PdfDarkModePagePerfOn() || !image) {
                 return;
@@ -944,9 +1003,12 @@ static void v2_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_m
     if (coverage < kV2FullPageCoverage && !largeOffice) {
         // InDesign/iText textbooks slice one photo into dozens of JPEGs. White-mat
         // walks every pixel of each slice (and often decodes it twice). That is the
-        // multi-second "Please wait - rendering..." on a TOC jump. These books already
-        // keep picture colors; draw the slice as stored.
-        if (PdfDarkModeEngineCacheLayoutTextbookFastRemap(d->engineCache)) {
+        // multi-second "Please wait - rendering..." on a TOC jump. Keep picture
+        // colors for those tiles, but still knock out small badge/icon mats —
+        // and InDesign RAZ studio cards (The Zoo ape/chimp) that have a white rim.
+        if (PdfDarkModeEngineCacheLayoutTextbookFastRemap(d->engineCache) &&
+            PdfDarkModeV2LayoutTextbookSkipFigureRemap(image->w, image->h, coverage) &&
+            !PdfDarkModeV2QuickStudioWhiteMatCandidate(ctx, image)) {
             fillPerf.branch = "layout";
             fz_fill_image(ctx, d->inner, image, ctm, alpha, color_params);
             return;
@@ -1027,9 +1089,14 @@ static void v2_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_m
     // slices above. Running it through the full-page picture-book pass walks
     // every pixel (several seconds in a debug build) even though automatic
     // mode keeps the photo. Text and office scans still take that pass.
+    //
+    // Exception: paper-heavy picture-book pages (RAZ "In and Out" / PDFdo.com
+    // packs: white margins + color art). Those must not stay original or the
+    // whole page remains a white card on Match-theme.
     if (PdfDarkModeEngineCacheLayoutTextbookFastRemap(d->engineCache)) {
         DarkImageAnalysis analysis = PdfDarkModeAnalyzeImage(ctx, image, coverage, true);
-        if (!v2_office_scan_may_decode_at_view(analysis)) {
+        if (!v2_office_scan_may_decode_at_view(analysis) &&
+            !PdfDarkModeV2LayoutFullPageNeedsPictureBookRemap(analysis.features)) {
             fillPerf.branch = "layout";
             fz_fill_image(ctx, d->inner, image, ctm, alpha, color_params);
             return;
@@ -1214,7 +1281,8 @@ fz_device* PdfDarkModeWrapV2Device(fz_context* ctx, fz_device* inner, const Dark
     d->profileHash = profileHash;
     d->clipTop = 0;
     d->clipExtra = 0;
-    d->clipStack[0] = fz_make_rect(pageBounds.x, pageBounds.y, pageBounds.x + pageBounds.dx, pageBounds.y + pageBounds.dy);
+    d->clipStack[0] =
+        fz_make_rect(pageBounds.x, pageBounds.y, pageBounds.x + pageBounds.dx, pageBounds.y + pageBounds.dy);
 
     d->super.close_device = v2_close;
     d->super.drop_device = v2_drop;

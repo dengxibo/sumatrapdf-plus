@@ -56,7 +56,30 @@ void PdfDarkModeOklab_UnitTests() {
     utassert(out[0] > 0.5f && out[1] > 0.5f && out[2] > 0.5f);
 
     MapRgbToDarkThemeOklab(1.f, 1.f, 1.f, palette, out);
-    utassert(out[0] < 0.35f && out[1] < 0.35f && out[2] < 0.40f);
+    utassert(fabsf(out[0] - palette.bgR) < 1e-5f && fabsf(out[1] - palette.bgG) < 1e-5f &&
+             fabsf(out[2] - palette.bgB) < 1e-5f);
+
+    // Dracula paper must stay chromatic gray-black, not a neutral #2A2A2A.
+    DarkModePalette dracula = palette;
+    dracula.bgR = 40.f / 255.f;
+    dracula.bgG = 42.f / 255.f;
+    dracula.bgB = 54.f / 255.f;
+    unsigned char plate[8 * 8 * 3];
+    for (int i = 0; i < 8 * 8; i++) {
+        plate[i * 3] = 255;
+        plate[i * 3 + 1] = 255;
+        plate[i * 3 + 2] = 255;
+    }
+    utassert(PdfDarkModeToneThemeVariant(plate, 8, 8, 3, 8 * 3, dracula, 0));
+    utassert(plate[0] == 40 && plate[1] == 42 && plate[2] == 54);
+    // JPEG-softened figure paper must snap too (was a visible charcoal rectangle).
+    for (int i = 0; i < 8 * 8; i++) {
+        plate[i * 3] = 180;
+        plate[i * 3 + 1] = 180;
+        plate[i * 3 + 2] = 180;
+    }
+    utassert(PdfDarkModeToneThemeVariant(plate, 8, 8, 3, 8 * 3, dracula, 0));
+    utassert(plate[0] == 40 && plate[1] == 42 && plate[2] == 54);
 
     float midOut[3] = {};
     MapRgbToDarkThemeOklab(0.5f, 0.5f, 0.5f, palette, midOut);

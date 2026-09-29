@@ -180,7 +180,7 @@ PdfImageDarkStrategy GetPdfImageDarkStrategy();
 void SetPdfImageDarkStrategy(PdfImageDarkStrategy strategy);
 DarkModePalette PdfDarkModeThemePalette();
 // OKLab tone map: hue stays, lightness is reseated onto the theme.
-fz_image* PdfDarkModeRecolorImage(fz_context* ctx, fz_image* src, const DarkModePalette& palette);
+fz_image* PdfDarkModeRecolorImage(fz_context* ctx, fz_image* src, const DarkModePalette& palette, int preferMaxDim = 0);
 // FollowThemeV2 automatic image treatment, without a page matrix. Null means draw the source unchanged.
 fz_image* PdfDarkModeAutoProcessImage(fz_context* ctx, fz_image* src, const DarkModePalette& palette);
 const char* PdfDocumentColorModeDescription(PdfDocumentColorMode mode);
@@ -245,7 +245,7 @@ bool PdfDarkModePdfMetadataSuggestsPaperCaptureDoc(fz_context* ctx, pdf_document
 bool PdfDarkModePdfMetadataSuggestsFullPageScanDoc(fz_context* ctx, pdf_document* doc);
 // Print-to-PDF / Acrobat Elements / PScript scans (multi-layer image pages, no text layer).
 bool PdfDarkModePdfMetadataSuggestsPrintToPdfScanDoc(fz_context* ctx, pdf_document* doc);
-// RAZ / Adobe Image Conversion: one full-bleed raster per page with embedded photos.
+// RAZ / Adobe Image Conversion / PDFdo.com: one full-bleed raster per page with art.
 bool PdfDarkModePdfMetadataSuggestsImageConversionPictureBook(fz_context* ctx, pdf_document* doc);
 
 void PdfDarkModeInvalidatePage(fz_context* ctx, FzPageInfo* pageInfo);

@@ -163,7 +163,6 @@ void TabsCtrl::LayoutTabs() {
 
     int x = isRtl ? rect.dx : 0;
     int xEnd;
-    TooltipInfo* tools = AllocArrayTemp<TooltipInfo>(nTabs);
     for (int i = 0; i < nTabs; i++) {
         TabInfo* ti = GetTab(i);
         int dx = ti->isPinned ? ti->r.dx : docDx;
@@ -189,17 +188,7 @@ void TabsCtrl::LayoutTabs() {
         } else {
             ti->titlePos = {x + textPad, y};
         }
-        if (withToolTips) {
-            tools[i].s = ti->tooltip;
-            tools[i].id = i;
-            tools[i].r = ti->r;
-        }
         x = xEnd;
-    }
-    if (withToolTips) {
-        HWND ttHwnd = GetToolTipsHwnd();
-        TooltipRemoveAll(ttHwnd);
-        TooltipAddTools(ttHwnd, hwnd, tools, nTabs);
     }
 
     // Native WC_TABCONTROL assumes every tab is TCM_SETITEMSIZE wide. Home is
@@ -213,6 +202,30 @@ void TabsCtrl::LayoutTabs() {
     HWND hwndUpDown = FindWindowExW(hwnd, nullptr, UPDOWN_CLASSW, nullptr);
     if (hwndUpDown) {
         ShowWindow(hwndUpDown, SW_HIDE);
+    }
+
+    // After SetItemSize: TabCtrl would otherwise leave equal-width tip hit-rects
+    // that don't match Home/pinned painting (wrong path). Per-tab tools so moving
+    // between tabs switches the tip instead of sticking on one client-wide tool.
+    if (withToolTips) {
+        HWND ttHwnd = GetToolTipsHwnd();
+        TooltipRemoveAll(ttHwnd);
+        TooltipInfo* tools = AllocArrayTemp<TooltipInfo>(nTabs);
+        int nTools = 0;
+        for (int i = 0; i < nTabs; i++) {
+            TabInfo* tab = GetTab(i);
+            if (!tab->tooltip || !tab->tooltip[0]) {
+                continue;
+            }
+            tools[nTools].s = tab->tooltip;
+            tools[nTools].id = i;
+            tools[nTools].r = tab->r;
+            nTools++;
+        }
+        if (nTools > 0) {
+            TooltipAddTools(ttHwnd, hwnd, tools, nTools);
+            SendMessageW(ttHwnd, TTM_SETMAXTIPWIDTH, 0, DpiScale(hwnd, 600));
+        }
     }
 }
 
@@ -627,10 +640,6 @@ LRESULT TabsCtrl::OnNotifyReflect(WPARAM wp, LPARAM lp) {
 
         case TCN_SELCHANGE:
             TriggerSelectionChanged(this);
-            break;
-
-        case TTN_GETDISPINFOA:
-        case TTN_GETDISPINFOW:
             break;
     }
     return 0;

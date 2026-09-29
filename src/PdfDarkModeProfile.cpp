@@ -97,7 +97,9 @@ u32 PdfDarkModeComputeProfileHash(const DarkModeProfile* profile) {
     h = mix(h, ThemeUsesEyeCareChrome() ? 1 : 0);
     // Bump when FollowThemeV2 page-image algorithm changes (invalidates tile/image caches).
     if (profile->mode == PageColorMode::FollowThemeV2) {
-        h = mix(h, 72u); // face paste: oval+nose silhouette convex hull (scale 1.08)
+        h = mix(h, 96u); // Auto: PDFdo.com RAZ packs = picture-book (not layout-skip)
+
+
     }
     return h;
 }

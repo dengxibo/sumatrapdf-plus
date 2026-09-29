@@ -276,35 +276,63 @@ static bool dm_picture_book_embedded_photo_page(fz_context* ctx, fz_image* srcIm
     return PdfDarkModeImageDecodeLooksLikeGrayscalePortrait(ctx, srcImage);
 }
 
-static fz_pixmap* dm_tone_theme_pixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette) {
+// variant: same as PdfDarkModeToneThemeVariant (0 = tone only, no face restore).
+static fz_pixmap* dm_tone_theme_pixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette, int variant) {
     if (!src || !src->samples) {
         return src;
     }
     // Face restore runs on RGB samples. A CMYK cover used to take the per-pixel
     // tone path and leave every face inverted.
+    // Easy RL CalRGB plates store sRGB bytes under a CalRGB tag. Retag to
+    // DeviceRGB (no CMS) and tone in place when we uniquely own the pixmap —
+    // skips both the CMS convert (~15 ms) and an extra alloc+copy.
     fz_pixmap* rgbSrc = nullptr;
     fz_pixmap* dst = nullptr;
     fz_var(rgbSrc);
     fz_var(dst);
     fz_try(ctx) {
-        fz_colorspace* cs = src->colorspace ? src->colorspace : fz_device_rgb(ctx);
-        bool fastRgb = cs == fz_device_rgb(ctx) || fz_colorspace_is_rgb(ctx, cs);
-        fz_pixmap* work = src;
-        if (!fastRgb) {
-            rgbSrc = fz_convert_pixmap(ctx, src, fz_device_rgb(ctx), nullptr, nullptr, fz_default_color_params, 1);
-            work = rgbSrc;
-        }
-        int w = work->w;
-        int h = work->h;
-        fz_colorspace* outCs = work->colorspace ? work->colorspace : fz_device_rgb(ctx);
-        dst = fz_new_pixmap(ctx, outCs, w, h, work->seps, work->alpha);
-        fz_copy_pixmap_rect(ctx, dst, work, fz_make_irect(0, 0, w, h), nullptr);
-        if (rgbSrc) {
-            fz_drop_pixmap(ctx, rgbSrc);
+        fz_colorspace* deviceRgb = fz_device_rgb(ctx);
+        fz_colorspace* cs = src->colorspace ? src->colorspace : deviceRgb;
+        const bool canRetag = src->n >= 3 && cs != deviceRgb && !fz_colorspace_is_cmyk(ctx, cs);
+        const bool unique = src->storable.refs == 1;
+        if ((cs == deviceRgb || canRetag) && unique) {
+            if (canRetag) {
+                fz_drop_colorspace(ctx, src->colorspace);
+                src->colorspace = fz_keep_colorspace(ctx, deviceRgb);
+            }
+            bool ok = PdfDarkModeToneThemeVariant(src->samples, src->w, src->h, src->n, src->stride, palette, variant);
+            if (!ok) {
+                dm_transform_pixmap_rgb(ctx, src, palette, dm_oklab_theme_pixel);
+            }
+            dst = fz_keep_pixmap(ctx, src);
+        } else if (canRetag) {
+            rgbSrc = fz_new_pixmap(ctx, deviceRgb, src->w, src->h, src->seps, src->alpha);
+            fz_copy_pixmap_rect(ctx, rgbSrc, src, fz_make_irect(0, 0, src->w, src->h), nullptr);
+            bool ok = PdfDarkModeToneThemeVariant(rgbSrc->samples, rgbSrc->w, rgbSrc->h, rgbSrc->n, rgbSrc->stride,
+                                                  palette, variant);
+            if (!ok) {
+                dm_transform_pixmap_rgb(ctx, rgbSrc, palette, dm_oklab_theme_pixel);
+            }
+            dst = rgbSrc;
             rgbSrc = nullptr;
-        }
-        if (!PdfDarkModeToneThemeRgbSamples(dst->samples, w, h, dst->n, dst->stride, palette)) {
-            dm_transform_pixmap_rgb(ctx, dst, palette, dm_oklab_theme_pixel);
+        } else if (cs != deviceRgb) {
+            rgbSrc = fz_convert_pixmap(ctx, src, deviceRgb, nullptr, nullptr, fz_default_color_params, 1);
+            bool ok = PdfDarkModeToneThemeVariant(rgbSrc->samples, rgbSrc->w, rgbSrc->h, rgbSrc->n, rgbSrc->stride,
+                                                  palette, variant);
+            if (!ok) {
+                dm_transform_pixmap_rgb(ctx, rgbSrc, palette, dm_oklab_theme_pixel);
+            }
+            dst = rgbSrc;
+            rgbSrc = nullptr;
+        } else {
+            int w = src->w;
+            int h = src->h;
+            dst = fz_new_pixmap(ctx, deviceRgb, w, h, src->seps, src->alpha);
+            fz_copy_pixmap_rect(ctx, dst, src, fz_make_irect(0, 0, w, h), nullptr);
+            bool ok = PdfDarkModeToneThemeVariant(dst->samples, w, h, dst->n, dst->stride, palette, variant);
+            if (!ok) {
+                dm_transform_pixmap_rgb(ctx, dst, palette, dm_oklab_theme_pixel);
+            }
         }
     }
     fz_always(ctx) {
@@ -352,11 +380,83 @@ static fz_pixmap* dm_load_src_pixmap(fz_context* ctx, fz_image* srcImage, int ma
         return fz_get_pixmap_from_image(ctx, srcImage, nullptr, nullptr, nullptr, nullptr);
     }
     float s = (float)maxDim / (float)(w > h ? w : h);
-    fz_matrix ctm = fz_scale(s, s);
-    return fz_get_pixmap_from_image(ctx, srcImage, nullptr, &ctm, nullptr, nullptr);
+    int dw = (int)(w * s + 0.5f);
+    int dh = (int)(h * s + 0.5f);
+    if (dw < 1) {
+        dw = 1;
+    }
+    if (dh < 1) {
+        dh = 1;
+    }
+    // CTM maps the unit image box to destination pixels (not a fractional scale).
+    // Soft-mask + Matte images also refuse JPEG l2factor; scale the pixmap if still large.
+    fz_matrix ctm = fz_scale((float)dw, (float)dh);
+    fz_pixmap* pix = fz_get_pixmap_from_image(ctx, srcImage, nullptr, &ctm, nullptr, nullptr);
+    if (pix && (pix->w > maxDim || pix->h > maxDim)) {
+        fz_pixmap* scaled = fz_scale_pixmap(ctx, pix, 0, 0, (float)dw, (float)dh, nullptr);
+        if (scaled) {
+            fz_drop_pixmap(ctx, pix);
+            pix = scaled;
+        }
+    }
+    return pix;
 }
 
-fz_image* PdfDarkModeRecolorImage(fz_context* ctx, fz_image* srcImage, const DarkModePalette& palette) {
+// Easy RL / LaTeX soft masks are often solid opaque (every sample 255). Keeping a
+// multi-megapixel SMask on the remapped plate forces paint to resample it every
+// time. A tiny compressed stream relative to pixel count means a flat mask —
+// do not fully decode it just to discover that.
+static bool dm_soft_mask_is_fully_opaque(fz_context* ctx, fz_image* mask) {
+    if (!ctx || !mask || mask->w < 64 || mask->h < 64) {
+        return false;
+    }
+    size_t pixels = (size_t)mask->w * (size_t)mask->h;
+    fz_compressed_buffer* cbuf = fz_compressed_image_buffer(ctx, mask);
+    if (cbuf) {
+        size_t bytes = fz_compressed_buffer_size(cbuf);
+        // Solid white 8.7MP Easy RL mask is ~12KB. Soft-edge masks need far more.
+        if (bytes > 0 && pixels > 100000 && bytes * 40 < pixels) {
+            return true;
+        }
+        // Known compressed size that is not tiny → real soft edges; skip decode.
+        if (bytes > 0) {
+            return false;
+        }
+    }
+    // Unknown stream size: tiny probe only (never decode native megapixel masks).
+    fz_pixmap* pix = nullptr;
+    bool opaque = false;
+    fz_var(pix);
+    fz_try(ctx) {
+        const int probe = 32;
+        fz_matrix ctm = fz_scale((float)probe, (float)probe);
+        pix = fz_get_pixmap_from_image(ctx, mask, nullptr, &ctm, nullptr, nullptr);
+        if (!pix || !pix->samples || pix->w < 1 || pix->h < 1) {
+            fz_throw(ctx, FZ_ERROR_GENERIC, "empty soft-mask probe");
+        }
+        opaque = true;
+        int n = pix->n > 0 ? pix->n : 1;
+        for (int y = 0; y < pix->h && opaque; y++) {
+            const unsigned char* row = pix->samples + (size_t)y * (size_t)pix->stride;
+            for (int x = 0; x < pix->w; x++) {
+                if (row[x * n] < 250) {
+                    opaque = false;
+                    break;
+                }
+            }
+        }
+    }
+    fz_always(ctx) {
+        fz_drop_pixmap(ctx, pix);
+    }
+    fz_catch(ctx) {
+        return false;
+    }
+    return opaque;
+}
+
+fz_image* PdfDarkModeRecolorImage(fz_context* ctx, fz_image* srcImage, const DarkModePalette& palette,
+                                  int preferMaxDim) {
     if (!ctx || !srcImage) {
         return nullptr;
     }
@@ -369,12 +469,29 @@ fz_image* PdfDarkModeRecolorImage(fz_context* ctx, fz_image* srcImage, const Dar
     fz_var(result);
     fz_var(asImage);
     fz_try(ctx) {
-        src = dm_load_src_pixmap(ctx, srcImage, 1600);
-        if (src && src->colorspace && fz_colorspace_is_gray(ctx, src->colorspace)) {
-            fz_pixmap* rgbSrc =
-                fz_convert_pixmap(ctx, src, fz_device_rgb(ctx), nullptr, nullptr, fz_default_color_params, 1);
-            fz_drop_pixmap(ctx, src);
-            src = rgbSrc;
+        // Soft-mask figures (Easy RL / LaTeX SMask): tone the color plate and keep the
+        // SMask only when it actually punches transparency. Cap decode — native
+        // multi-MP diagrams dominate first paint under Tone.
+        // Never run gov-paper / face: these are diagrams, and analyze at fake 0.95 cov
+        // wrongly binarizes white figure backgrounds.
+        fz_image* softMask = nullptr;
+        if (srcImage->mask && !srcImage->mask->imagemask && srcImage->mask->bpc > 1) {
+            softMask = srcImage->mask;
+        }
+        // Soft-mask Flate plates still fully inflate; output size barely changes decode
+        // time. Remapping at 512 then upscaling on screen looked soft vs the original
+        // (which paints at display/native res). Prefer display CTM size, floor high.
+        const int kSoftMaskDecodeFloor = 1800;
+        const int kSoftMaskDecodeCap = 2400;
+        const int kToneDecodeMax = 1400;
+        int decodeMaxDim = softMask ? kSoftMaskDecodeFloor : kToneDecodeMax;
+        if (preferMaxDim > decodeMaxDim) {
+            decodeMaxDim = preferMaxDim;
+        }
+        if (softMask && decodeMaxDim > kSoftMaskDecodeCap) {
+            decodeMaxDim = kSoftMaskDecodeCap;
+        } else if (!softMask && decodeMaxDim > 1600) {
+            decodeMaxDim = 1600;
         }
         LARGE_INTEGER recolorStart = TimeGet();
         static int tonePerfFlag = -1;
@@ -382,9 +499,28 @@ fz_image* PdfDarkModeRecolorImage(fz_context* ctx, fz_image* srcImage, const Dar
             tonePerfFlag = GetEnvironmentVariableA("SUMATRA_TONE_PERF", nullptr, 0) > 0 ? 1 : 0;
         }
         bool tonePerf = tonePerfFlag == 1;
+        double decodeMs = 0;
         double analyzeMs = 0;
+        double toneMs = 0;
+        double maskProbeMs = 0;
+        LARGE_INTEGER t0 = TimeGet();
+        // Soft-mask plates with a PDF Matte entry refuse JPEG l2factor while the mask
+        // is attached (full decode then scale ≈ 30 ms). Detach for decode only;
+        // diagrams are mostly opaque and paper is remapped to the theme anyway.
+        fz_image* savedMask = nullptr;
+        if (softMask) {
+            savedMask = srcImage->mask;
+            srcImage->mask = nullptr;
+        }
+        src = dm_load_src_pixmap(ctx, srcImage, decodeMaxDim);
+        if (savedMask) {
+            srcImage->mask = savedMask;
+        }
+        // CalRGB/Gray → DeviceRGB happens inside dm_tone_theme_pixmap (in-place
+        // after one convert). Do not convert here — that forced a second copy.
+        decodeMs = TimeSinceInMs(t0);
         bool document = false;
-        if (src && (srcImage->w >= 700 || srcImage->h >= 700)) {
+        if (!softMask && src && (srcImage->w >= 700 || srcImage->h >= 700)) {
             // Classify the pixmap we already decoded. Analyzing srcImage decodes
             // the JPEG again (about 80 ms on an 800px EPUB picture).
             LARGE_INTEGER a0 = TimeGet();
@@ -395,23 +531,50 @@ fz_image* PdfDarkModeRecolorImage(fz_context* ctx, fz_image* srcImage, const Dar
             analyzeMs = TimeSinceInMs(a0);
             document = dm_smart_invert_use_document_processor(ctx, srcImage, &analysis, 0.95f);
         }
+        t0 = TimeGet();
         if (document) {
+            if (src && src->colorspace && src->colorspace != fz_device_rgb(ctx)) {
+                fz_pixmap* rgbSrc =
+                    fz_convert_pixmap(ctx, src, fz_device_rgb(ctx), nullptr, nullptr, fz_default_color_params, 1);
+                fz_drop_pixmap(ctx, src);
+                src = rgbSrc;
+            }
             processed = PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, palette);
         } else {
-            processed = dm_tone_theme_pixmap(ctx, src, palette);
+            // Soft-mask diagrams: variant 0 = tone only (no face ONNX).
+            // CalRGB/Gray → DeviceRGB is done inside dm_tone_theme_pixmap.
+            int variant = softMask ? 0 : 4;
+            processed = dm_tone_theme_pixmap(ctx, src, palette, variant);
+        }
+        toneMs = TimeSinceInMs(t0);
+        fz_image* maskOut = softMask;
+        if (softMask) {
+            t0 = TimeGet();
+            if (dm_soft_mask_is_fully_opaque(ctx, softMask)) {
+                maskOut = nullptr;
+            }
+            maskProbeMs = TimeSinceInMs(t0);
         }
         if (tonePerf) {
-            logf("tone-recolor src=%dx%d decode=%dx%d document=%d analyze=%.2f total=%.2f ms\n", srcImage->w,
-                 srcImage->h, src ? src->w : 0, src ? src->h : 0, document ? 1 : 0, analyzeMs,
-                 TimeSinceInMs(recolorStart));
+            logf(
+                "tone-recolor src=%dx%d decode=%dx%d soft=%d keepMask=%d document=%d decode=%.1f analyze=%.1f "
+                "tone=%.1f maskProbe=%.1f total=%.1f ms\n",
+                srcImage->w, srcImage->h, src ? src->w : 0, src ? src->h : 0, softMask ? 1 : 0, maskOut ? 1 : 0,
+                document ? 1 : 0, decodeMs, analyzeMs, toneMs, maskProbeMs, TimeSinceInMs(recolorStart));
         }
-        if (!processed || processed == src) {
+        if (!processed) {
             fz_drop_pixmap(ctx, src);
             src = nullptr;
         } else {
-            fz_drop_pixmap(ctx, src);
+            if (processed != src) {
+                fz_drop_pixmap(ctx, src);
+            }
             src = nullptr;
-            result = fz_new_image_from_pixmap(ctx, processed, nullptr);
+            // Line-art diagrams: no bilinear when the remapped tile is stretched a little.
+            if (softMask) {
+                processed->flags &= ~FZ_PIXMAP_FLAG_INTERPOLATE;
+            }
+            result = fz_new_image_from_pixmap(ctx, processed, maskOut);
             fz_drop_pixmap(ctx, processed);
             processed = nullptr;
         }
@@ -479,7 +642,7 @@ static fz_image* dm_build_processed_image(fz_context* ctx, fz_image* srcImage, D
         PdfImageDarkStrategy forced = GetPdfImageDarkStrategy();
         if (forced == PdfImageDarkStrategy::Tone &&
             !dm_smart_invert_use_document_processor(ctx, srcImage, imgAnalysis, pageCoverage)) {
-            processed = dm_tone_theme_pixmap(ctx, src, palette);
+            processed = dm_tone_theme_pixmap(ctx, src, palette, 4);
         } else if (policy == DarkImagePolicy::Preserve) {
             if (pageCoverage >= kMaxPreserveImagePageCoverage) {
                 // Soft-cream notebooks: classifier SoftCream → gentle soften only.

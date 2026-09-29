@@ -94,16 +94,94 @@ void PdfDarkModeV2_UnitTests() {
     MapRgbDarkModeV2PageImage(0.85f, 0.15f, 0.12f, palette, out);
     utassert(out[0] > out[1] && out[0] > out[2]);
 
+    // Layout textbook fast path: skip photo tiles, keep badge/flag cutout.
+    utassert(!PdfDarkModeV2LayoutTextbookSkipFigureRemap(80, 64, 0.01f));   // flag chip
+    utassert(!PdfDarkModeV2LayoutTextbookSkipFigureRemap(142, 142, 0.03f)); // UNIT badge
+    utassert(!PdfDarkModeV2LayoutTextbookSkipFigureRemap(390, 68, 0.04f));  // title pill
+    utassert(!PdfDarkModeV2LayoutTextbookSkipFigureRemap(5, 578, 0.02f));   // thin shadow
+    utassert(!PdfDarkModeV2LayoutTextbookSkipFigureRemap(34, 697, 0.01f));  // Guide wave
+    utassert(PdfDarkModeV2LayoutTextbookSkipFigureRemap(640, 480, 0.08f));  // photo tile
+    utassert(PdfDarkModeV2LayoutTextbookSkipFigureRemap(600, 800, 0.55f));
+
+    // Corner-only mats on small atlas icons (flag/map/UNIT) — sides stay low.
+    utassert(PdfDarkModeV2ShouldKnockOutSmallIconCornerMat(94, 41, 1, 0.026f, 0.97f, 0.98f));
+    utassert(PdfDarkModeV2ShouldKnockOutSmallIconCornerMat(34, 53, 1, 0.024f, 0.93f, 0.94f));
+    utassert(PdfDarkModeV2ShouldKnockOutSmallIconCornerMat(129, 76, 0, 0.050f, 0.88f, 0.90f));
+    utassert(!PdfDarkModeV2ShouldKnockOutSmallIconCornerMat(640, 480, 1, 0.05f, 0.40f, 0.50f)); // photo
+    utassert(!PdfDarkModeV2ShouldKnockOutSmallIconCornerMat(80, 64, 1, 0.005f, 0.90f, 0.90f));  // no mat
+
+    // Tall Guide-to-Reading wave: white only on the open side (aspect >= 5).
+    utassert(PdfDarkModeV2ShouldKnockOutDecorativeStripMat(34, 697, 1, 0.19f, 0.81f, 0.83f));
+    utassert(PdfDarkModeV2ShouldKnockOutDecorativeStripMat(33, 253, 1, 0.12f, 0.70f, 0.75f));
+    utassert(!PdfDarkModeV2ShouldKnockOutDecorativeStripMat(38, 101, 2, 0.27f, 0.73f, 0.76f)); // aspect < 5
+    utassert(!PdfDarkModeV2ShouldKnockOutDecorativeStripMat(68, 87, 3, 0.27f, 0.64f, 0.68f));  // not a strip
+    utassert(!PdfDarkModeV2ShouldKnockOutDecorativeStripMat(34, 697, 1, 0.19f, 0.02f, 0.03f)); // gray photo
+
+    // Visual Summary cream gutter (6×63) is almost all paper — usual 0.92 cap rejects it.
+    utassert(PdfDarkModeV2ShouldKnockOutAlmostPaperChip(6, 63, 4, 1.00f, 1.00f, 1.00f));
+    utassert(PdfDarkModeV2ShouldKnockOutAlmostPaperChip(8, 80, 3, 0.96f, 0.80f, 0.90f));
+    utassert(!PdfDarkModeV2ShouldKnockOutAlmostPaperChip(68, 87, 4, 0.95f, 0.20f, 0.25f)); // badge, not a chip
+    utassert(!PdfDarkModeV2ShouldKnockOutAlmostPaperChip(6, 63, 4, 0.50f, 1.00f, 1.00f));  // not almost-paper
+
+    // Cream flood leftovers that are only soft gray shadow (not photo cutouts).
+    utassert(PdfDarkModeV2RemainLooksLikeSoftShadowOnly(0.02f, 0.01f, 0.002f));
+    utassert(!PdfDarkModeV2RemainLooksLikeSoftShadowOnly(0.20f, 0.01f, 0.002f)); // teal jacket edge
+    utassert(!PdfDarkModeV2RemainLooksLikeSoftShadowOnly(0.02f, 0.10f, 0.002f)); // ink
+    utassert(!PdfDarkModeV2RemainLooksLikeSoftShadowOnly(0.02f, 0.01f, 0.040f)); // photo tone spread
+
+    // Soft studio photo: edge flood left a paper-heavy near-rectangle → abort.
+    utassert(PdfDarkModeV2RemainLooksLikeFailedRectFlood(0.94f, 0.88f, 0.40f));
+    utassert(PdfDarkModeV2RemainLooksLikeFailedRectFlood(0.90f, 0.75f, 0.25f));
+    utassert(!PdfDarkModeV2RemainLooksLikeFailedRectFlood(0.70f, 0.90f, 0.40f)); // silhouette holey
+    utassert(!PdfDarkModeV2RemainLooksLikeFailedRectFlood(0.95f, 0.50f, 0.40f)); // mat mostly gone
+    utassert(!PdfDarkModeV2RemainLooksLikeFailedRectFlood(0.95f, 0.90f, 0.05f)); // subject only
+    // RAZ The Zoo: flood cleared most of the card — keep cutout even if blocky.
+    utassert(!PdfDarkModeV2RemainLooksLikeFailedRectFlood(0.92f, 0.80f, 0.30f, 0.55f));
+
     // White-mat knockout gate: UNIT/Atlas badges + circle icons vs open-sky / B&W photos.
     utassert(PdfDarkModeV2ShouldKnockOutWhiteMat(4, 0.22f, 0.18f, 0.25f));
     utassert(PdfDarkModeV2ShouldKnockOutWhiteMat(3, 0.15f, 0.10f, 0.08f));
-    utassert(PdfDarkModeV2ShouldKnockOutWhiteMat(4, 0.70f, 0.20f, 0.25f));         // circle "2" in square
-    utassert(PdfDarkModeV2ShouldKnockOutWhiteMat(4, 0.75f, 0.02f, 0.03f, 0.02f));  // soft drop-shadow plate
-    utassert(PdfDarkModeV2ShouldKnockOutWhiteMat(2, 0.40f, 0.02f, 0.03f, 0.02f));  // L-shaped shadow
+    utassert(PdfDarkModeV2ShouldKnockOutWhiteMat(4, 0.70f, 0.20f, 0.25f));        // circle "2" in square
+    utassert(PdfDarkModeV2ShouldKnockOutWhiteMat(4, 0.75f, 0.02f, 0.03f, 0.02f)); // soft drop-shadow plate
+    utassert(PdfDarkModeV2ShouldKnockOutWhiteMat(2, 0.40f, 0.02f, 0.03f, 0.02f)); // L-shaped shadow
+    // RAZ The Zoo: colorful animal on a white card, feet may touch the bottom edge.
+    utassert(PdfDarkModeV2ShouldKnockOutWhiteMat(2, 0.55f, 0.25f, 0.30f, 0.08f));
+    // Small subject on a large white JPEG: flooded mat >0.92 but ink proves a cutout.
+    utassert(PdfDarkModeV2ShouldKnockOutWhiteMat(3, 0.94f, 0.25f, 0.30f, 0.05f));
+    utassert(PdfDarkModeV2ShouldKnockOutWhiteMat(1, 0.50f, 0.25f, 0.30f, 0.06f));
     utassert(!PdfDarkModeV2ShouldKnockOutWhiteMat(1, 0.30f, 0.20f, 0.25f));        // colorful + one side = sky
+    utassert(!PdfDarkModeV2ShouldKnockOutWhiteMat(2, 0.20f, 0.20f, 0.25f));        // colorful, mat too thin
     utassert(!PdfDarkModeV2ShouldKnockOutWhiteMat(4, 0.01f, 0.20f, 0.25f));        // no mat
-    utassert(!PdfDarkModeV2ShouldKnockOutWhiteMat(4, 0.95f, 0.20f, 0.25f));        // almost pure white fragment
+    utassert(!PdfDarkModeV2ShouldKnockOutWhiteMat(4, 0.95f, 0.20f, 0.25f));        // almost pure white, no ink
     utassert(!PdfDarkModeV2ShouldKnockOutWhiteMat(4, 0.20f, 0.02f, 0.04f, 0.20f)); // B&W photo/ink
+
+    // Dims: RAZ studio cutouts (~1600×1200) must be eligible; giant scans still skip.
+    utassert(PdfDarkModeV2WhiteMatDimsAllowed(1600, 1200, false));
+    utassert(PdfDarkModeV2WhiteMatDimsAllowed(2400, 2400, false));
+    utassert(!PdfDarkModeV2WhiteMatDimsAllowed(3000, 3000, false));
+    utassert(!PdfDarkModeV2WhiteMatDimsAllowed(4, 4, false));
+
+    // Layout fast-path: full-bleed photo stays original; paper-heavy pages remapped.
+    DarkImageFeatures photoBleed{};
+    photoBleed.highLuminanceRatio = 0.20f;
+    photoBleed.saturatedPixelRatio = 0.40f;
+    photoBleed.chromaticPixelRatio = 0.50f;
+    utassert(!PdfDarkModeV2LayoutFullPageNeedsPictureBookRemap(photoBleed));
+    DarkImageFeatures razCover{};
+    razCover.highLuminanceRatio = 0.72f;
+    razCover.saturatedPixelRatio = 0.12f;
+    razCover.chromaticPixelRatio = 0.18f;
+    utassert(PdfDarkModeV2LayoutFullPageNeedsPictureBookRemap(razCover));
+    DarkImageFeatures grayScan{};
+    grayScan.highLuminanceRatio = 0.90f;
+    grayScan.saturatedPixelRatio = 0.01f;
+    grayScan.chromaticPixelRatio = 0.02f;
+    utassert(PdfDarkModeV2LayoutFullPageNeedsPictureBookRemap(grayScan));
+    DarkImageFeatures pondPage{};
+    pondPage.highLuminanceRatio = 0.53f;
+    pondPage.saturatedPixelRatio = 0.02f;
+    pondPage.chromaticPixelRatio = 0.03f;
+    utassert(PdfDarkModeV2LayoutFullPageNeedsPictureBookRemap(pondPage));
 
     // Soft shadow paints must not Okular-invert into light fringes.
     utassert(PdfDarkModeV2IsSoftShadowPaint(0.f, 0.f, 0.f, 0.35f));
