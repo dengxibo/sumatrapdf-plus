@@ -159,6 +159,10 @@ void TocCalibRebind(MainWindow* win);
 TocCalibRow* TocCalibRowForTocItem(MainWindow* win, TocItem* item);
 bool TocCalibRenameItem(MainWindow* win, TocItem* item, const char* title);
 int TocCalibColumnsDx(HWND hwnd);
+
+// Minimum sidebar width that keeps printed/pdf fields and a readable title
+// visible during bookmark calibration (avoids the "one glyph title" squeeze).
+int TocCalibPreferredSidebarDx(HWND hwnd);
 void TocCalibDrawColumns(HDC hdc, HWND hwnd, const RECT& rcRow, TocItem* item, MainWindow* win, bool selected);
 bool TocCalibHandleRowClick(MainWindow* win, TocItem* item, int x, int y, const RECT& rcRow);
 bool TocCalibHandleTreeClick(MainWindow* win, HWND hwnd, POINT pt);

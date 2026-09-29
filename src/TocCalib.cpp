@@ -6880,6 +6880,15 @@ int TocCalibColumnsDx(HWND hwnd) {
     return rc.right - L.prField.left + pad;
 }
 
+int TocCalibPreferredSidebarDx(HWND hwnd) {
+    // Fixed control cluster from TocCalibMakeLayout (does not depend on current width)
+    // + room for a short Chinese title + vertical scrollbar.
+    int columns = DpiScale(hwnd, 48 + 4 + 28 + 4 + 48 + 6 + 16 * 4 + 4 * 4 + 8);
+    int title = DpiScale(hwnd, 160);
+    int sbar = GetSystemMetrics(SM_CXVSCROLL) + DpiScale(hwnd, 8);
+    return columns + title + sbar;
+}
+
 static bool TocCalibPtInRect(const RECT& rc, int x, int y) {
     return x >= rc.left && x < rc.right && y >= rc.top && y < rc.bottom;
 }
@@ -8579,6 +8588,12 @@ void ShowTocCalib(MainWindow* win) {
     }
     DWORD tShow = ::GetTickCount();
     SetSidebarVisibility(win, true, gGlobalPrefs->showFavorites);
+    // Row controls need ~200 DIP; a narrow saved sidebarDx leaves only one
+    // glyph of title and makes the right-edge icons sit inside the splitter
+    // hit zone (looks like the panel "snaps back" on scroll/click).
+    if (win->tocTreeView && win->tocTreeView->hwnd) {
+        EnsureSidebarDxAtLeast(win, TocCalibPreferredSidebarDx(win->tocTreeView->hwnd));
+    }
     HwndSetVisibility(win->tocCalibBar->hwnd, true);
     TocCalibUpdateTheme(win);
     RelayoutTocContainer(win);

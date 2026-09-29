@@ -401,6 +401,9 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         EngineBase* engine = ctx.tab ? ctx.tab->GetEngine() : nullptr;
         return EngineMupdfCanExtractToc(engine) ? CommandVisibility::Show : CommandVisibility::Hide;
     }
+    if (cmdId == CmdAiRecognizePdfToc) {
+        return ctx.isPdf ? CommandVisibility::Show : CommandVisibility::Hide;
+    }
     if (cmdId == CmdPdfTocCalibrate || cmdId == CmdPdfTocSetCurrentPage || cmdId == CmdPdfTocFindInBody ||
         cmdId == CmdPdfTocApplyOffsetBelow || cmdId == CmdPdfTocReplaceFromSelection) {
         return ctx.canEditPdfToc ? CommandVisibility::Show : CommandVisibility::Hide;

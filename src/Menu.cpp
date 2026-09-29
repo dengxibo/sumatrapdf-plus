@@ -337,6 +337,10 @@ static MenuDef menuDefView[] = {
         CmdExtractPdfToc,
     },
     {
+        _TRN("AI Recognize Table of Contents"),
+        CmdAiRecognizePdfToc,
+    },
+    {
         _TRN("Show &Menu"),
         CmdToggleMenuBar,
     },

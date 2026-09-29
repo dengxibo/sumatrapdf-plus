@@ -10,3 +10,11 @@ bool VerifySHA1Signature(const void* data, size_t dataLen, const char* hexSignat
 
 // extracts the content (e.g. PDF) from a PKCS#7 / .p7m wrapper using Win32 crypto APIs
 ByteSlice ExtractP7m(ByteSlice d);
+
+// Windows DPAPI helpers for secrets persisted in settings. Encrypted form is
+// "dpapi:" + base64(CryptProtectData blob), bound to the current Windows user.
+bool IsDpapiProtectedString(const char* s);
+// Newly allocated. Empty/null -> "". Already protected -> copy. Failure -> nullptr.
+char* ProtectStringDpapi(const char* plain);
+// Newly allocated plaintext. Unprefixed (legacy) -> copy. Failure -> nullptr.
+char* UnprotectStringDpapi(const char* stored);

@@ -162,3 +162,74 @@ ByteSlice ExtractP7m(ByteSlice d) {
     }
     return {content, cbContent};
 }
+
+static constexpr const char* kDpapiPrefix = "dpapi:";
+
+bool IsDpapiProtectedString(const char* s) {
+    return s && str::StartsWith(s, kDpapiPrefix) && s[str::Len(kDpapiPrefix)] != 0;
+}
+
+char* ProtectStringDpapi(const char* plain) {
+    if (!plain || !plain[0]) {
+        return str::Dup("");
+    }
+    if (IsDpapiProtectedString(plain)) {
+        return str::Dup(plain);
+    }
+    DATA_BLOB in{};
+    DATA_BLOB out{};
+    in.pbData = (BYTE*)plain;
+    in.cbData = (DWORD)str::Len(plain);
+    if (!CryptProtectData(&in, L"SumatraPDF-Plus secret", nullptr, nullptr, nullptr, 0, &out)) {
+        return nullptr;
+    }
+    DWORD b64Chars = 0;
+    if (!CryptBinaryToStringA(out.pbData, out.cbData, CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, nullptr, &b64Chars) ||
+        b64Chars == 0) {
+        LocalFree(out.pbData);
+        return nullptr;
+    }
+    char* b64 = AllocArray<char>(b64Chars);
+    if (!CryptBinaryToStringA(out.pbData, out.cbData, CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, b64, &b64Chars)) {
+        free(b64);
+        LocalFree(out.pbData);
+        return nullptr;
+    }
+    LocalFree(out.pbData);
+    char* res = str::Join(kDpapiPrefix, b64);
+    free(b64);
+    return res;
+}
+
+char* UnprotectStringDpapi(const char* stored) {
+    if (!stored) {
+        return str::Dup("");
+    }
+    if (!IsDpapiProtectedString(stored)) {
+        return str::Dup(stored);
+    }
+    const char* b64 = stored + str::Len(kDpapiPrefix);
+    DWORD blobLen = 0;
+    if (!CryptStringToBinaryA(b64, 0, CRYPT_STRING_BASE64, nullptr, &blobLen, nullptr, nullptr) || blobLen == 0) {
+        return nullptr;
+    }
+    BYTE* blob = AllocArray<BYTE>(blobLen);
+    if (!CryptStringToBinaryA(b64, 0, CRYPT_STRING_BASE64, blob, &blobLen, nullptr, nullptr)) {
+        free(blob);
+        return nullptr;
+    }
+    DATA_BLOB in{};
+    DATA_BLOB out{};
+    in.pbData = blob;
+    in.cbData = blobLen;
+    BOOL ok = CryptUnprotectData(&in, nullptr, nullptr, nullptr, nullptr, 0, &out);
+    free(blob);
+    if (!ok) {
+        return nullptr;
+    }
+    char* plain = AllocArray<char>(out.cbData + 1);
+    memcpy(plain, out.pbData, out.cbData);
+    plain[out.cbData] = 0;
+    LocalFree(out.pbData);
+    return plain;
+}

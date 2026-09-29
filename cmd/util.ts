@@ -6,7 +6,7 @@ const clangFormatRelPath = String.raw`VC\Tools\Llvm\bin\clang-format.exe`;
 const clangTidyRelPath = String.raw`VC\Tools\Llvm\bin\clang-tidy.exe`;
 const llvmPdbutilRelPath = String.raw`VC\Tools\Llvm\bin\llvm-pdbutil.exe`;
 
-const vsEditions = ["Community", "Professional", "Enterprise"];
+const vsEditions = ["Community", "Professional", "Enterprise", "BuildTools"];
 
 export interface VisualStudioInfo {
   vsRoot: string;
@@ -63,11 +63,18 @@ function findVsRootVer(ver: string): string {
 
   // try known Program Files locations
   const programFiles = process.env["ProgramFiles"] ?? String.raw`C:\Program Files`;
-  const vsBase = join(programFiles, "Microsoft Visual Studio", ver);
-  for (const edition of vsEditions) {
-    const vsRoot = join(vsBase, edition);
-    if (existsSync(join(vsRoot, msBuildRelPath))) {
-      return vsRoot;
+  const programFilesX86 =
+    process.env["ProgramFiles(x86)"] ?? String.raw`C:\Program Files (x86)`;
+  const vsBases = [
+    join(programFiles, "Microsoft Visual Studio", ver),
+    join(programFilesX86, "Microsoft Visual Studio", ver),
+  ];
+  for (const vsBase of vsBases) {
+    for (const edition of vsEditions) {
+      const vsRoot = join(vsBase, edition);
+      if (existsSync(join(vsRoot, msBuildRelPath))) {
+        return vsRoot;
+      }
     }
   }
   return "";

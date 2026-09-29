@@ -9097,7 +9097,16 @@ bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM
     RECT rc{};
     GetWindowRect(win->sidebarSplitter->hwnd, &rc);
     int tolerance = DpiScale(win->hwndFrame, 5);
-    if (pt.y < rc.top || pt.y >= rc.bottom || pt.x < rc.left - tolerance || pt.x >= rc.right + tolerance) {
+    int leftTol = tolerance;
+    int rightTol = tolerance;
+    // Bookmark-calibration row buttons sit flush against the splitter. A left
+    // tolerance that reaches into the TreeView steals LBUTTONDOWN into a width
+    // drag — while scrolling or clicking icons the sidebar then follows the
+    // cursor and looks like it "snapped back".
+    if (sourceHwnd && win->tocTreeView && sourceHwnd == win->tocTreeView->hwnd) {
+        leftTol = 0;
+    }
+    if (pt.y < rc.top || pt.y >= rc.bottom || pt.x < rc.left - leftTol || pt.x >= rc.right + rightTol) {
         return false;
     }
     SetCursorCached(IDC_SIZEWE);
@@ -9113,6 +9122,21 @@ bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM
         return GetCapture() == win->sidebarSplitter->hwnd;
     }
     return true;
+}
+
+void EnsureSidebarDxAtLeast(MainWindow* win, int minDx) {
+    if (!win || !win->hwndTocBox || !win->hwndFrame || minDx <= 0) {
+        return;
+    }
+    Rect rFrame = ClientRect(win->hwndFrame);
+    Rect rToc = ClientRect(win->hwndTocBox);
+    int maxDx = std::max(minDx, rFrame.dx / 2);
+    if (rToc.dx >= minDx) {
+        return;
+    }
+    int dx = limitValue(minDx, kSidebarMinDx, maxDx);
+    gGlobalPrefs->sidebarDx = dx;
+    RelayoutFrame(win, false, dx);
 }
 
 // TOC drag perf profiling (SUMATRA_TOC_DRAG_LOG=1): aggregate relayout
@@ -9240,6 +9264,10 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
     Rect rFrame = ClientRect(win->hwndFrame);
     Rect rToc = ClientRect(win->hwndTocBox);
     int minDx = std::min(kSidebarMinDx, rToc.dx);
+    if (TocCalibIsActive(win) && win->tocTreeView && win->tocTreeView->hwnd) {
+        // Keep printed/pdf fields + title readable while calibrating.
+        minDx = std::max(minDx, TocCalibPreferredSidebarDx(win->tocTreeView->hwnd));
+    }
     int maxDx = std::max(rFrame.dx / 2, rToc.dx);
     bool inRange = sidebarDx >= minDx && sidebarDx <= maxDx;
     if (!inRange) {
@@ -9262,6 +9290,7 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
             gTocDragPerf = {};
             gTocDragStartDx = rToc.dx;
         }
+        gGlobalPrefs->sidebarDx = sidebarDx;
         ScheduleSidebarRelayout(win, sidebarDx);
         return;
     }
@@ -9272,6 +9301,7 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
     // legitimately > maxDx here. Skipping the finalization leaves the layout
     // at the last in-range mouse position (and stale TOC wrap heights).
     int finalDx = limitValue(sidebarDx, minDx, maxDx);
+    gGlobalPrefs->sidebarDx = finalDx;
     if (gSidebarSplitterWrapSuspended) {
         // Supersede any queued intermediate width. The posted message becomes
         // a harmless no-op after this synchronous final pass.
@@ -12238,7 +12268,7 @@ static void ClearAllHighlights(MainWindow* win) {
 static int gCaptionMenuTrackDepth = 0;
 static int gPendingSmartBilingualKind = -1; // -1 = none; else SmartBilingualKind
 static int gPendingMultilingualSettings = 0;
-static int gPendingSpeedFocusChinese = -2;  // -2 = none; 0/1 = focus English/Chinese
+static int gPendingSpeedFocusChinese = -2; // -2 = none; 0/1 = focus English/Chinese
 static void FlushPendingReadAloudDialogs(MainWindow* win);
 
 static void TrackCaptionPopupMenu(MainWindow* win, HMENU menu, Rect btnRect) {
@@ -15647,7 +15677,11 @@ static void ShowDocumentImageDarkMenu(MainWindow* win, NMTOOLBARW* nmtb) {
     if (!menu) {
         return;
     }
-    bool enabled = ThemeUsesDarkChrome() && NeedsDocumentColorModeUI(win);
+    // Image strategy only applies while Match-theme is on (toolbar button pressed)
+    // under a dark chrome theme. Leave the dropdown items grayed when the button
+    // is up (document colors = original).
+    bool followTheme = GetPdfDocumentColorMode() != PdfDocumentColorMode::Light;
+    bool enabled = ThemeUsesDarkChrome() && NeedsDocumentColorModeUI(win) && followTheme;
     PdfImageDarkStrategy current = SavedImageDarkStrategy();
     AppendImageDarkItem(menu, CmdSetDocumentImageDarkAuto, "Images: Automatic", PdfImageDarkStrategy::Auto, current,
                         enabled);

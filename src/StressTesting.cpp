@@ -102,6 +102,15 @@ static void TonePerfPreparePrefs() {
     str::ReplaceWithCopy(&gGlobalPrefs->documentImageDarkStrategy, "tone");
     logf("tone-perf theme=Dark-Dracula color=%s image=%s\n", gGlobalPrefs->documentColorMode,
          gGlobalPrefs->documentImageDarkStrategy);
+    // Build the tone LUT once so the first soft-mask figure is not charged ~40 ms.
+    DarkModePalette warm = PdfDarkModeThemePalette();
+    unsigned char plate[8 * 8 * 3];
+    for (int i = 0; i < 8 * 8 * 3; i++) {
+        plate[i] = 255;
+    }
+    LARGE_INTEGER t0 = TimeGet();
+    PdfDarkModeToneThemeVariant(plate, 8, 8, 3, 8 * 3, warm, 0);
+    logf("tone-perf lut-warm %.1f ms paper=%d,%d,%d\n", TimeSinceInMs(t0), plate[0], plate[1], plate[2]);
 }
 
 static void BenchLoadRender(EngineBase* engine, int pagenum) {

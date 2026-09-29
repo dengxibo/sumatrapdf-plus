@@ -49,4 +49,23 @@ void CryptoUtilTest() {
     utassert(ExtractP7m(ByteSlice()).empty());
     utassert(ExtractP7m(ByteSlice((const u8*)"not a p7m", 9)).empty());
     utassert(ExtractP7m(ByteSlice((const u8*)"%PDF-1.4", 8)).empty());
+
+    // DPAPI round-trip (bound to the current Windows user)
+    {
+        AutoFreeStr emptyProt(ProtectStringDpapi(""));
+        utassert(emptyProt && emptyProt[0] == 0);
+        AutoFreeStr emptyPlain(UnprotectStringDpapi(""));
+        utassert(emptyPlain && emptyPlain[0] == 0);
+
+        const char* secret = "sk-test$only-键";
+        AutoFreeStr protectedStr(ProtectStringDpapi(secret));
+        utassert(protectedStr && IsDpapiProtectedString(protectedStr));
+        utassert(!str::Find(protectedStr, secret));
+        AutoFreeStr again(ProtectStringDpapi(protectedStr));
+        utassert(again && str::Eq(again, protectedStr));
+        AutoFreeStr roundTrip(UnprotectStringDpapi(protectedStr));
+        utassert(roundTrip && str::Eq(roundTrip, secret));
+        AutoFreeStr legacy(UnprotectStringDpapi(secret));
+        utassert(legacy && str::Eq(legacy, secret));
+    }
 }

@@ -642,6 +642,15 @@ const fileSettings: Field[] = [
     ),
     "3.8",
   ),
+  setVersion(
+    mkField(
+      "AutoOcrOn",
+      Bool,
+      false,
+      "toolbar auto OCR for this document. Never inferred from a missing text layer; the user turns it on per file",
+    ),
+    "3.8",
+  ),
   setDoc(
     mkField(
       "ReparseIdx",
@@ -969,6 +978,11 @@ const globalPrefs: Field[] = [
     ),
     "Valid values: doubao, deepseek, chatgpt",
   ),
+  mkField("AiTocApiBaseUrl", Str, "", "AI table of contents API base URL"),
+  mkField("AiTocApiKey", Str, "", "AI table of contents API key"),
+  mkField("AiTocApiModel", Str, "", "AI table of contents model"),
+  mkField("AiTocApiProfiles", Str, "", "saved AI table of contents API profiles (JSON)"),
+  mkField("AiTocApiConcurrency", Int, 4, "maximum simultaneous AI table of contents requests (1-8)"),
   setVersion(
     mkField(
       "AiChatUseDeepSeekInsteadOfDoubao",

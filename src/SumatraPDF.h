@@ -19,6 +19,8 @@ extern bool gOcrAutoBench;
 extern char* gCopyBenchOutPath;
 bool IsSidebarSplitterLiveDrag();
 bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM lp);
+// Grow the ToC sidebar to at least minDx (clamped to half the frame). No-op if already wide enough.
+void EnsureSidebarDxAtLeast(MainWindow* win, int minDx);
 
 constexpr const char* kWebsiteURL = "https://www.sumatrapdfreader.org/";
 constexpr const char* kManualURL = "https://www.sumatrapdfreader.org/manual";

@@ -25177,15 +25177,15 @@ nl:Verzend Document Per E-Mail
 pl:Wyślij dokument e-mailem...
 sk:Odoslať dokument e-mailom…
 tw:以電子郵件傳送文件…
-:Send TOC Pages
-cn:发送目录页
-de:Verzeichnisseiten senden
-es:Enviar páginas del índice
-fr:Envoyer les pages du sommaire
-ja:目次ページを送信
-kr:목차 페이지 보내기
-ru:Отправить страницы оглавления
-tw:傳送目錄頁
+:Recognize via Web AI
+cn:网页 AI 识别
+de:Über Web-KI erkennen
+es:Reconocer con IA web
+fr:Reconnaître via l'IA web
+ja:ウェブAIで認識
+kr:웹 AI로 인식
+ru:Распознать через веб-ИИ
+tw:網頁 AI 辨識
 :Send by &E-mail...
 am:Ուղարկել &էլ. փոստով
 br:Enviar por &E-mail...
@@ -31771,3 +31771,93 @@ sk:↑ ↓ – navigovať
 :✓ Likely TOC pages found. Please confirm the selection.
 cn:✓ 已找到疑似目录页，请确认选择。
 tw:✓ 已找到疑似目錄頁，請確認選擇。
+:Recognize via API
+cn:API 识别
+tw:API 辨識
+:AI Detect TOC Pages
+cn:AI 检测目录页
+tw:AI 偵測目錄頁
+:Recognizing TOC via API
+cn:正在通过 API 识别目录
+tw:正在透過 API 辨識目錄
+:The selected page images are sent to the configured API.\r\nThe TOC is imported automatically when the reply arrives.
+cn:所选目录页图片将发送到已配置的 API。\r\n收到回复后将自动导入目录。
+tw:所選目錄頁圖片將傳送到已設定的 API。\r\n收到回覆後將自動匯入目錄。
+:Contacting the API...
+cn:正在连接 API…
+tw:正在連線 API…
+:Preparing TOC page images...
+cn:正在准备目录页图片…
+tw:正在準備目錄頁圖片…
+:Extracting TOC titles and pages...
+cn:正在提取目录标题与页码…
+tw:正在擷取目錄標題與頁碼…
+:Determining TOC levels...
+cn:正在判定目录层级…
+tw:正在判定目錄層級…
+:Calibrating printed page offsets...
+cn:正在校准印刷页码偏移…
+tw:正在校準印刷頁碼偏移…
+:Detecting TOC pages via API...
+cn:正在通过 API 检测目录页…
+tw:正在透過 API 偵測目錄頁…
+:The AI TOC request failed.
+cn:AI 识别目录请求失败。
+tw:AI 辨識目錄請求失敗。
+:The AI reply contains no importable TOC items.
+cn:AI 回复中没有可导入的目录条目。
+tw:AI 回覆中沒有可匯入的目錄項目。
+:No printed TOC pages were detected by the API.
+cn:API 未能检测到印刷目录页。
+tw:API 未能偵測到印刷目錄頁。
+:Configure the AI table of contents API (base URL, key and model) on the OCR and AI settings page first.
+cn:请先在「OCR 和 AI」设置页配置 AI 目录识别 API（地址、密钥、模型）。
+tw:請先在「OCR 和 AI」設定頁配置 AI 目錄辨識 API（位址、金鑰、模型）。
+:The AI TOC recognition failed.
+cn:AI 目录识别失败。
+tw:AI 目錄辨識失敗。
+:The AI TOC API is not configured (set base URL, key and model in Settings).
+cn:尚未配置 AI 目录识别 API（请在设置中填写地址、密钥和模型）。
+tw:尚未設定 AI 目錄辨識 API（請在設定中填寫位址、金鑰和模型）。
+:TOC page detection failed.
+cn:目录页检测失败。
+tw:目錄頁偵測失敗。
+:AI table of contents (API)
+cn:AI 目录识别（API）
+tw:AI 目錄辨識（API）
+:API &base URL:
+cn:API 地址(&B)：
+tw:API 位址(&B)：
+:API &key:
+cn:API 密钥(&K)：
+tw:API 金鑰(&K)：
+:&Model:
+cn:模型(&M)：
+tw:模型(&M)：
+:&Test
+cn:测试(&T)
+tw:測試(&T)
+:AI table of contents
+cn:AI 目录识别
+tw:AI 目錄辨識
+:&Platform:
+cn:平台(&P)：
+tw:平台(&P)：
+:&Add
+cn:添加(&A)
+tw:新增(&A)
+:&Remove
+cn:删除(&R)
+tw:移除(&R)
+:&Name:
+cn:名称(&N)：
+tw:名稱(&N)：
+:&Get models
+cn:获取模型(&G)
+tw:取得模型(&G)
+:Get models
+cn:获取模型
+tw:取得模型
+:&Parallel (1-8):
+cn:并发数(1-8)(&P)：
+tw:並行數(1-8)(&P)：

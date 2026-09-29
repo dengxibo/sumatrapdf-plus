@@ -173,10 +173,25 @@ void TestRenderPage(const Flags& i) {
     // For border visual dumps, force a light theme so black table borders are visible.
     if (getenv("SUMATRA_DUMP_RENDER_BMP") || getenv("SUMATRA_DUMP_RENDER_TGA")) {
         SetTheme("Light");
+    } else if (getenv("SUMATRA_DUMP_DARK_BMP")) {
+        SetTheme("Dark-Dracula");
+        SetPdfDocumentColorMode(PdfDocumentColorMode::Auto);
+        // Default Tone (soft-mask diagrams). SUMATRA_DUMP_IMAGE_DARK=auto|original for cutout checks.
+        PdfImageDarkStrategy dumpImg = PdfImageDarkStrategy::Tone;
+        if (const char* imgDark = getenv("SUMATRA_DUMP_IMAGE_DARK")) {
+            if (str::EqI(imgDark, "auto")) {
+                dumpImg = PdfImageDarkStrategy::Auto;
+            } else if (str::EqI(imgDark, "original")) {
+                dumpImg = PdfImageDarkStrategy::Original;
+            }
+        }
+        SetPdfImageDarkStrategy(dumpImg);
     } else {
         SetTheme("Dark-Black");
     }
-    SetPdfDocumentColorMode(PdfDocumentColorMode::Auto);
+    if (!getenv("SUMATRA_DUMP_DARK_BMP")) {
+        SetPdfDocumentColorMode(PdfDocumentColorMode::Auto);
+    }
     (void)PdfDarkModeBuildPalette();
 
     float zoom = 1.f; // RenderPage expects scale (1 = 100%), not virtual zoom percent
@@ -290,6 +305,21 @@ void TestRenderPage(const Flags& i) {
             diag(str::FormatTemp("  afterRender pageProbe=%s(%d)\n",
                                  FollowThemePageProbeLabel(EngineMupdfGetFollowThemePageProbe(engine, pageNo)),
                                  EngineMupdfGetFollowThemePageProbe(engine, pageNo)));
+            const char* darkDump = getenv("SUMATRA_DUMP_DARK_BMP");
+            if (darkDump && darkDump[0]) {
+                ByteSlice img = SerializeBitmap(bmp->GetBitmap());
+                if (!img.data() || img.size() == 0) {
+                    if (img.data()) {
+                        img.Free();
+                    }
+                    img = tga::SerializeBitmap(bmp->GetBitmap());
+                }
+                if (img.data() && img.size() > 0) {
+                    bool ok = file::WriteFile(darkDump, img);
+                    diag(str::FormatTemp("  dumped dark image %s ok=%d bytes=%zu\n", darkDump, ok ? 1 : 0, img.size()));
+                    img.Free();
+                }
+            }
         }
         delete bmp;
         int nPages = engine->PageCount();

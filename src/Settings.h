@@ -389,7 +389,7 @@ struct FileState {
     // Mild/Strong; 1/2/3 migrate to auto)
     int displayFilterMode;
     // toolbar auto OCR for this document. Never inferred from a missing
-    // text layer; the user turns it on per file.
+    // text layer; the user turns it on per file
     bool autoOcrOn;
     // index into an ebook's HTML data from which reparsing has to happen
     // in order to restore the last viewed page (i.e. the equivalent of
@@ -558,6 +558,16 @@ struct GlobalPrefs {
     char* extractPdfTocMode;
     // Ask AI provider: doubao (豆包), deepseek, or chatgpt
     char* aiChatProvider;
+    // AI table of contents API base URL
+    char* aiTocApiBaseUrl;
+    // AI table of contents API key
+    char* aiTocApiKey;
+    // AI table of contents model
+    char* aiTocApiModel;
+    // saved AI table of contents API profiles (JSON)
+    char* aiTocApiProfiles;
+    // maximum simultaneous AI table of contents requests (1-8)
+    int aiTocApiConcurrency;
     // deprecated: use AiChatProvider instead; if true and AiChatProvider
     // is not in settings, migrates to deepseek
     bool aiChatUseDeepSeekInsteadOfDoubao;
@@ -986,7 +996,7 @@ static const FieldInfo gFileStateFields[] = {
     {offsetof(FileState, displayFilterSharpness), SettingType::Int, 0, "该文档页面锐度（0..100，0=预设基线）"},
     {offsetof(FileState, displayFilterMode), SettingType::Int, 0,
      "该文档显示增强模式（0=关闭，1=旧版，2=阅读，3=扫描件）"},
-    {offsetof(FileState, autoOcrOn), SettingType::Bool, false, "该文档是否打开自动 OCR（只记手动开关）"},
+    {offsetof(FileState, autoOcrOn), SettingType::Bool, false, nullptr},
     {offsetof(FileState, reparseIdx), SettingType::Int, 0, nullptr},
     {offsetof(FileState, tocState), SettingType::IntArray, 0, nullptr},
 };
@@ -1053,8 +1063,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-32.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-32.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-33.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-33.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},
@@ -1088,7 +1098,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, offlineDictionaryPath), SettingType::String, 0, "离线词典目录"},
     {offsetof(GlobalPrefs, enableDoubleClickWordLookup), SettingType::Bool, true, "双击查离线词典"},
     {offsetof(GlobalPrefs, autoOcrScanPages), SettingType::Bool, false,
-     "已不用。自动 OCR 不再因扫描件打开，开关记在各文档上"},
+     "自动识别无文字层的扫描页，便于选择和搜索；模型在 {exedir}/ocr/"},
     {offsetof(GlobalPrefs, ocrAutoSave), SettingType::Bool, false, "全文识别或提取目录完成后覆盖保存当前 PDF"},
     {offsetof(GlobalPrefs, ocrDeskew), SettingType::Bool, true, nullptr},
     {offsetof(GlobalPrefs, ocrFullDocumentMode), SettingType::String, (intptr_t)"fast",
@@ -1098,6 +1108,11 @@ static const FieldInfo gGlobalPrefsFields[] = {
      "智能提取目录详细程度 conservative/standard/detailed"},
     {offsetof(GlobalPrefs, aiChatProvider), SettingType::String, (intptr_t)"doubao",
      "Ask AI 提供商 doubao/deepseek/chatgpt"},
+    {offsetof(GlobalPrefs, aiTocApiBaseUrl), SettingType::String, (intptr_t)"", nullptr},
+    {offsetof(GlobalPrefs, aiTocApiKey), SettingType::String, (intptr_t)"", nullptr},
+    {offsetof(GlobalPrefs, aiTocApiModel), SettingType::String, (intptr_t)"", nullptr},
+    {offsetof(GlobalPrefs, aiTocApiProfiles), SettingType::String, (intptr_t)"", nullptr},
+    {offsetof(GlobalPrefs, aiTocApiConcurrency), SettingType::Int, 4, nullptr},
     {offsetof(GlobalPrefs, aiChatUseDeepSeekInsteadOfDoubao), SettingType::Bool, false, "已弃用，请用 AiChatProvider"},
     {offsetof(GlobalPrefs, enableAskAI), SettingType::Bool, true, "显示 Ask AI 入口"},
     {offsetof(GlobalPrefs, showFavorites), SettingType::Bool, false, "默认显示收藏侧边栏"},
@@ -1196,23 +1211,24 @@ static const FieldInfo gGlobalPrefsFields[] = {
      "Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 125, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 130, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0HomePage"
     "ViewMode\0HomePageThumbnailDx\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSess"
     "ion\0ReuseInstance\0ShowMenubar\0ShowMenubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0ShowAnnotToolbarButtons"
     "\0SearchUIFloating\0OfflineDictionaryPath\0EnableDoubleClickWordLookup\0AutoOcrScanPages\0OcrAutoSave\0OcrDeskew\0"
-    "OcrFullDocumentMode\0OcrCopyMerged\0ExtractPdfTocMode\0AiChatProvider\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAsk"
-    "AI\0ShowFavorites\0ShowToc\0ShowLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0"
-    "FastScrollOverScrollbar\0PreventSleepInFullscreen\0TabWidth\0TabFontSize\0TabBarHeight\0Theme\0LastDarkTheme\0Last"
-    "LightTheme\0DocumentColorMode\0DocumentImageDarkStrategy\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0TreeWrap"
-    "Labels\0UIFontSize\0DisableAntiAlias\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomI"
-    "ncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0Forward"
-    "Search\0\0PrinterDefaults\0\0Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoice"
-    "Id\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmart"
-    "VoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSmartOnlineVoiceEn\0ReadAloudMultilingualVoice\0\0\0DefaultPassword"
-    "s\0UiLanguage\0VersionToSkip\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0Time"
-    "OfLastUpdateCheck\0TimeOfUpdateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
+    "OcrFullDocumentMode\0OcrCopyMerged\0ExtractPdfTocMode\0AiChatProvider\0AiTocApiBaseUrl\0AiTocApiKey\0AiTocApiModel"
+    "\0AiTocApiProfiles\0AiTocApiConcurrency\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAskAI\0ShowFavorites\0ShowToc\0Sh"
+    "owLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0FastScrollOverScrollbar\0Preve"
+    "ntSleepInFullscreen\0TabWidth\0TabFontSize\0TabBarHeight\0Theme\0LastDarkTheme\0LastLightTheme\0DocumentColorMode"
+    "\0DocumentImageDarkStrategy\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0TreeWrapLabels\0UIFontSize\0DisableAn"
+    "tiAlias\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EB"
+    "ookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0"
+    "Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0Re"
+    "adAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnline"
+    "VoiceZh\0ReadAloudSmartOnlineVoiceEn\0ReadAloudMultilingualVoice\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip"
+    "\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfUpd"
+    "ateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)"", "主题名称"},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)"", "文字颜色"},

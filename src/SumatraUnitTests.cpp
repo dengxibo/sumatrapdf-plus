@@ -9,9 +9,11 @@
 #include "utils/WinUtil.h"
 #include "utils/StrFormat.h"
 #include "utils/ScopedWin.h"
+#include "utils/SettingsUtil.h"
 
 #include "wingui/UIModels.h"
 
+#define INCLUDE_SETTINGSSTRUCTS_METADATA
 #include "Settings.h"
 #include "DocController.h"
 #include "EngineBase.h"
@@ -360,6 +362,26 @@ static void charconv_test() {
     }
 }
 
+static void AiTocSettingsRoundTripTest() {
+    auto* prefs = (GlobalPrefs*)DeserializeStruct(&gGlobalPrefsInfo, nullptr);
+    const char* profiles =
+        R"({"active":1,"profiles":[{"name":"First","base_url":"https://example.test/v1","api_key":"test$only","model":"vision-a","concurrency":1},{"name":"第二平台","base_url":"https://other.test/v1","api_key":"other","model":"vision-b","concurrency":3}]})";
+    str::ReplaceWithCopy(&prefs->aiTocApiProfiles, profiles);
+    str::ReplaceWithCopy(&prefs->aiTocApiBaseUrl, "https://other.test/v1");
+    str::ReplaceWithCopy(&prefs->aiTocApiKey, "other");
+    str::ReplaceWithCopy(&prefs->aiTocApiModel, "vision-b");
+    prefs->aiTocApiConcurrency = 3;
+    AutoFree saved((char*)SerializeStruct(&gGlobalPrefsInfo, prefs).data());
+    auto* restored = (GlobalPrefs*)DeserializeStruct(&gGlobalPrefsInfo, saved.data);
+    utassert(str::Eq(restored->aiTocApiProfiles, profiles));
+    utassert(str::Eq(restored->aiTocApiBaseUrl, "https://other.test/v1"));
+    utassert(str::Eq(restored->aiTocApiKey, "other"));
+    utassert(str::Eq(restored->aiTocApiModel, "vision-b"));
+    utassert(restored->aiTocApiConcurrency == 3);
+    FreeStruct(&gGlobalPrefsInfo, restored);
+    FreeStruct(&gGlobalPrefsInfo, prefs);
+}
+
 void SumatraPDF_UnitTests() {
     parseCommandsTest();
     colorTest();
@@ -369,4 +391,5 @@ void SumatraPDF_UnitTests() {
     charconv_test();
     hexstrTest();
     UpdateCheckPolicyTest();
+    AiTocSettingsRoundTripTest();
 }
