@@ -383,6 +383,23 @@ inline bool PdfDarkModeV2PhotoRectRowLooksLikeInkOnPaper(float chromaRatio, floa
     return true;
 }
 
+// Dark low-chroma on a low-paper tile: hair/eyes inside a photo rect must not be
+// SharpDocument-whitened. Large title glyph fills (Guess That President) also make
+// tilePaper low — those sit *outside* photo rects and must still invert to theme text.
+inline bool PdfDarkModeV2ShouldKeepDarkNonPaperTile(float srcLum, float chroma, float tilePaperRatio,
+                                                    bool inPhotoRect) {
+    if (!inPhotoRect) {
+        return false;
+    }
+    if (srcLum >= 0.48f || chroma >= 0.15f) {
+        return false;
+    }
+    if (tilePaperRatio >= 0.42f) {
+        return false;
+    }
+    return true;
+}
+
 // 12px box halo around oval mats painted rectangular notches into the photo.
 // 3px is enough for wrapped-text AA on the mat; photo interiors stay protected.
 inline bool PdfDarkModeV2PhotoHaloKeepDarkPixel(float lum, bool nearMat) {

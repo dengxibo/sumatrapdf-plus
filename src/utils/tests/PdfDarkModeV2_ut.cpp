@@ -282,4 +282,10 @@ void PdfDarkModeV2_UnitTests() {
     utassert(!PdfDarkModeV2PhotoHaloKeepDarkPixel(0.40f, true));  // near-mat gray uses ink/paper map
     utassert(!PdfDarkModeV2PhotoHaloKeepDarkPixel(0.90f, true));  // white mat
     utassert(!PdfDarkModeV2PhotoHaloKeepDarkPixel(0.80f, false)); // light AA still remaps
+
+    // Dark non-paper tiles: hair inside a photo; fat title fills outside must invert.
+    utassert(PdfDarkModeV2ShouldKeepDarkNonPaperTile(0.20f, 0.05f, 0.20f, true));
+    utassert(!PdfDarkModeV2ShouldKeepDarkNonPaperTile(0.20f, 0.05f, 0.20f, false)); // title outside photo
+    utassert(!PdfDarkModeV2ShouldKeepDarkNonPaperTile(0.20f, 0.05f, 0.55f, true));  // body text on paper
+    utassert(!PdfDarkModeV2ShouldKeepDarkNonPaperTile(0.60f, 0.05f, 0.20f, true));  // not dark
 }

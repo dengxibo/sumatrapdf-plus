@@ -97,7 +97,7 @@ u32 PdfDarkModeComputeProfileHash(const DarkModeProfile* profile) {
     h = mix(h, ThemeUsesEyeCareChrome() ? 1 : 0);
     // Bump when FollowThemeV2 page-image algorithm changes (invalidates tile/image caches).
     if (profile->mode == PageColorMode::FollowThemeV2) {
-        h = mix(h, 100u); // Auto: Zoo white-mat — no soft-studio seal/abort on cards
+        h = mix(h, 101u); // Auto: title ink outside photo rects still SharpDocuments
     }
     return h;
 }

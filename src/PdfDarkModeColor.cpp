@@ -2886,14 +2886,15 @@ fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, 
                     if (dm_pb_rgb_is_photo_texture(r, g, b, lv)) {
                         continue;
                     }
-                    // Dark low-chroma on a non-paper tile is photo (hair/eyes/shadows).
-                    // SharpDocument would paint it theme-white. Body text sits on paper
-                    // tiles (high tilePaper) and still remaps.
+                    // Dark low-chroma on a non-paper tile is photo hair — only inside
+                    // photo rects. Fat title fills (Guess That President) crush tilePaper
+                    // the same way and must still SharpDocument to theme white.
                     if (srcLum < 0.48f && chroma < 0.15f) {
                         float pr = tilePaper
                                        ? dm_pb_sample_tile_map(tilePaper, paperTilesW, paperTilesH, kPaperTile, x, y)
                                        : 1.f;
-                        if (pr < 0.42f) {
+                        bool inPhoto = nPhotoRects > 0 && dm_pb_point_in_photo_rects(x, y, photoRects, nPhotoRects);
+                        if (PdfDarkModeV2ShouldKeepDarkNonPaperTile(srcLum, chroma, pr, inPhoto)) {
                             continue;
                         }
                     }
@@ -3713,7 +3714,8 @@ fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, c
             if (!sparseBgOnly && srcLum < 0.48f && chroma < 0.15f) {
                 float pr =
                     tilePaper ? dm_pb_sample_tile_map(tilePaper, paperTilesW, paperTilesH, kPaperTile, x, y) : 1.f;
-                if (pr < 0.42f) {
+                bool inPhoto = nPhotoRects > 0 && dm_pb_point_in_photo_rects(x, y, photoRects, nPhotoRects);
+                if (PdfDarkModeV2ShouldKeepDarkNonPaperTile(srcLum, chroma, pr, inPhoto)) {
                     continue;
                 }
             }
