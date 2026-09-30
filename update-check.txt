@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.34
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.34/SumatraPDF-Plus.exe
-Notes: Match-theme keeps studio photo books and Zoo animal cards clean; PDF file icons use the sash style; AI TOC can call an API with DPAPI-stored keys; continuous fit-page wheel-up turns the previous page.
-NotesZh: 跟随主题下影棚绘本与动物园白底卡片更干净；PDF 文件图标改用色带样式；AI 目录可走 API 并用 DPAPI 存密钥；连续适合页面时向上滚轮翻到上一页。
+Latest: 3.7.35
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.35/SumatraPDF-Plus.exe
+Notes: Unified Read Aloud for TTS and EPUB 3 narration; word follow inside SMIL phrases; start from the current page; 0.5x book audio; TOC API button after typed pages.
+NotesZh: 朗读统一：系统语音与 EPUB 3 有声书同一条控制，SMIL 一段里按词跟随；从当前页开始；有声书 0.5x；手动输入页码后 API 按钮可点。
