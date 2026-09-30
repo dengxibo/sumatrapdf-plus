@@ -43,10 +43,6 @@ constexpr u8 kSelectionDefaultAlpha = 0x5f;
 constexpr u8 kSelectionHighlightAlpha = kSelectionDefaultAlpha;
 
 COLORREF GetSelectionHighlightColor();
-// Read-aloud follow highlight: always yellow, independent of SelectionColor.
-inline COLORREF GetReadAloudHighlightColor() {
-    return RGB(255, 255, 0);
-}
 
 // Find-match highlights on the page; defaults to yellow in a fresh settings file.
 COLORREF GetFindMatchHighlightColor();

@@ -975,6 +975,8 @@ EXPORTS
 	fz_purge_stored_html
 	fz_purge_stored_html_chapter
 	fz_reset_epub_html_font_set
+	fz_epub_chapter_for_path
+	fz_epub_fragment_rects
 	fz_font_is_bold
 	pdf_new_sanitize_filter
 	pdf_filter_page_contents

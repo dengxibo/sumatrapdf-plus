@@ -682,6 +682,26 @@ path_from_idref(char *path, fz_xml *manifest, const char *base_uri, const char *
 	return fz_cleanname(fz_urldecode(path));
 }
 
+/* properties is a space-separated token list (EPUB 3.3: "nav scripted", "nav svg", ...) */
+static int
+has_property_token(const char *list, const char *prop)
+{
+	size_t n = strlen(prop);
+	const char *p = list;
+	while (p && *p)
+	{
+		const char *start;
+		while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+			p++;
+		start = p;
+		while (*p && *p != ' ' && *p != '\t' && *p != '\n' && *p != '\r')
+			p++;
+		if ((size_t)(p - start) == n && !memcmp(start, prop, n))
+			return 1;
+	}
+	return 0;
+}
+
 static const char *
 rel_path_from_prop(fz_xml *manifest, const char *prop)
 {
@@ -692,7 +712,7 @@ rel_path_from_prop(fz_xml *manifest, const char *prop)
 	while (item)
 	{
 		const char *id = fz_xml_att(item, "properties");
-		if (id && !strcmp(id, prop))
+		if (id && has_property_token(id, prop))
 			return fz_xml_att(item, "href");
 		item = fz_xml_find_next(item, "item");
 	}
@@ -1016,7 +1036,7 @@ epub_parse_header(fz_context *ctx, epub_document *doc)
 
 		package = fz_xml_find(fz_xml_root(content_opf), "package");
 		version = fz_xml_att(package, "version");
-		if (!version || strcmp(version, "2.0"))
+		if (!version || (strncmp(version, "2.", 2) && strncmp(version, "3.", 2)))
 			fz_warn(ctx, "unknown epub version: %s", version ? version : "<none>");
 
 		metadata = fz_xml_find_down(package, "metadata");
@@ -1288,6 +1308,80 @@ fz_reset_epub_html_font_set(fz_context *ctx, fz_document *doc_)
 	fz_drop_html_font_set(ctx, doc->set);
 	doc->set = fz_new_html_font_set(ctx);
 	doc->user_css_sum = checksum_css(ctx, doc->super.user_css);
+}
+
+static epub_document *
+as_epub_document(fz_context *ctx, fz_document *doc_)
+{
+	char format[16];
+	if (!ctx || !doc_)
+		return NULL;
+	if (!doc_->lookup_metadata || !doc_->lookup_metadata(ctx, doc_, FZ_META_FORMAT, format, sizeof format))
+		return NULL;
+	if (strcmp(format, "EPUB") != 0)
+		return NULL;
+	return (epub_document *)doc_;
+}
+
+/* SumatraPDF Plus: spine index of the chapter whose archive path is path, or -1. */
+int
+fz_epub_chapter_for_path(fz_context *ctx, fz_document *doc_, const char *path)
+{
+	epub_document *doc = as_epub_document(ctx, doc_);
+	int i;
+	if (!doc || !path)
+		return -1;
+	/* an OPF in the container root gives chapter paths like "/c1.xhtml" */
+	while (*path == '/')
+		path++;
+	for (i = 0; i < doc->spine_len; ++i)
+	{
+		const char *p = doc->spine[i]->path;
+		size_t lp, lq;
+		while (*p == '/')
+			p++;
+		if (!fz_strcasecmp(p, path))
+			return i;
+		/* OPF href and MuPDF archive path may differ by a folder prefix */
+		lp = strlen(p);
+		lq = strlen(path);
+		if (lp > lq && p[lp - lq - 1] == '/' && !fz_strcasecmp(p + (lp - lq), path))
+			return i;
+		if (lq > lp && path[lq - lp - 1] == '/' && !fz_strcasecmp(path + (lq - lp), p))
+			return i;
+	}
+	return -1;
+}
+
+/* SumatraPDF Plus: archive path of spine[chapter], or NULL. */
+const char *
+fz_epub_chapter_path(fz_context *ctx, fz_document *doc_, int chapter)
+{
+	epub_document *doc = as_epub_document(ctx, doc_);
+	if (!doc || chapter < 0 || chapter >= doc->spine_len)
+		return NULL;
+	return doc->spine[chapter]->path;
+}
+
+/* SumatraPDF Plus: line rectangles of the element with the given id in a chapter, laid
+ * out with the current layout. pages[i] is the page within the chapter, rects[i] is in
+ * that page's coordinates. Returns the number of rects. */
+int
+fz_epub_fragment_rects(fz_context *ctx, fz_document *doc_, int chapter, const char *id, int *pages, fz_rect *rects, int max)
+{
+	epub_document *doc = as_epub_document(ctx, doc_);
+	fz_html *html;
+	int n = 0;
+	if (!doc || chapter < 0 || chapter >= doc->spine_len || !id || !*id)
+		return 0;
+	html = epub_get_laid_out_html(ctx, doc, doc->spine[chapter]);
+	fz_try(ctx)
+		n = fz_html_target_rects(ctx, html, id, pages, rects, max);
+	fz_always(ctx)
+		fz_drop_html(ctx, html);
+	fz_catch(ctx)
+		fz_rethrow(ctx);
+	return n;
 }
 
 static const char *epub_extensions[] =

@@ -1326,6 +1326,48 @@ const globalPrefs: Field[] = [
     ),
     "3.7",
   ),
+  setVersion(
+    mkField(
+      "ReadAloudHighlightColor",
+      Color,
+      mkRGB(0xff, 0xff, 0x00),
+      "color used to highlight the text being read aloud (text-to-speech and EPUB 3 narration)",
+    ),
+    "3.7",
+  ),
+  setVersion(
+    mkField(
+      "ReadAloudAutoFollow",
+      Bool,
+      true,
+      "if true, the view scrolls to keep the text being read aloud visible",
+    ),
+    "3.7",
+  ),
+  setVersion(
+    mkField(
+      "NarrationUseBookAudio",
+      Bool,
+      true,
+      "if true, EPUB 3 books with media overlays are read aloud with the publisher's recorded narration " +
+        "instead of text-to-speech",
+    ),
+    "3.7",
+  ),
+  setVersion(
+    mkField(
+      "NarrationUseBookHighlightColor",
+      Bool,
+      true,
+      "if true, EPUB 3 narration highlights the current phrase with the book's own " +
+        "media:active-class color when it defines one",
+    ),
+    "3.7",
+  ),
+  setVersion(
+    mkField("NarrationSpeed", Float, 1.0, "playback speed of EPUB 3 narration audio; 1.0 is normal speed"),
+    "3.7",
+  ),
   mkEmptyLine(),
 
   mkComment("You're not expected to change those manually"),

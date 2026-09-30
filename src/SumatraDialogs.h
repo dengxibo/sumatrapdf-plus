@@ -8,12 +8,13 @@ char* Dialog_Find(HWND hwnd, const char* previousSearch, bool* matchCase);
 char* Dialog_GetPassword(HWND hwnd, const char* fileName, bool* rememberPassword, bool* showPassword);
 const char* Dialog_ChangeLanguge(HWND hwnd, const char* currLangCode);
 bool Dialog_CustomZoom(HWND hwnd, bool forChm, float* currZoomInOut);
-void Dialog_ReadAloudSpeed(HWND hwnd, bool focusChinese);
 INT_PTR CreateAppDialogBox(int dlgId, HWND parent, DLGPROC dlgProc, LPARAM data);
 // Modeless counterpart (CreateDialog*); caller DestroyWindow, not EndDialog.
 HWND CreateAppDialogModeless(int dlgId, HWND parent, DLGPROC dlgProc, LPARAM data);
 bool Dialog_ChangeScrollbar(HWND hwnd);
-INT_PTR Dialog_Settings(HWND hwnd, GlobalPrefs* prefs);
+// pages in the order of the category list
+constexpr int kSettingsPageReadAloud = 3;
+INT_PTR Dialog_Settings(HWND hwnd, GlobalPrefs* prefs, int initialPage = 0);
 bool Dialog_AddFavorite(HWND hwnd, const char* pageNo, AutoFreeStr& favName);
 bool Dialog_PdfTocTitle(HWND hwnd, const char* dialogTitle, const char* prompt, AutoFreeStr& title,
                         bool* setTargetToCurrentView);

@@ -1155,6 +1155,11 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <ClInclude Include="..\src\Print.h" />
     <ClInclude Include="..\src\ProgressUpdateUI.h" />
     <ClInclude Include="..\src\ReadAloudHighlight.h" />
+    <ClInclude Include="..\src\EpubMediaOverlay.h" />
+    <ClInclude Include="..\src\MediaOverlayAudio.h" />
+    <ClInclude Include="..\src\MediaOverlayPlayer.h" />
+    <ClInclude Include="..\src\ReadAloudBar.h" />
+    <ClInclude Include="..\src\ReadAloudFollow.h" />
     <ClInclude Include="..\src\RegistryPreview.h" />
     <ClInclude Include="..\src\RegistrySearchFilter.h" />
     <ClInclude Include="..\src\RenderCache.h" />
@@ -1315,6 +1320,11 @@ cd ../out/rel64_prefast_asan &amp; ..\..\bin\MakeLZSA.exe InstallerData.dat libm
     <ClCompile Include="..\src\PdfTools.cpp" />
     <ClCompile Include="..\src\Print.cpp" />
     <ClCompile Include="..\src\ReadAloudHighlight.cpp" />
+    <ClCompile Include="..\src\EpubMediaOverlay.cpp" />
+    <ClCompile Include="..\src\MediaOverlayAudio.cpp" />
+    <ClCompile Include="..\src\MediaOverlayPlayer.cpp" />
+    <ClCompile Include="..\src\ReadAloudBar.cpp" />
+    <ClCompile Include="..\src\ReadAloudFollow.cpp" />
     <ClCompile Include="..\src\RegistryInstaller.cpp" />
     <ClCompile Include="..\src\RegistryPreview.cpp" />
     <ClCompile Include="..\src\RegistrySearchFilter.cpp" />

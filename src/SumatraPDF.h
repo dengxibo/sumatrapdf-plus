@@ -191,7 +191,14 @@ constexpr const char* kTtsMultilingualVoiceId = "online:multilingual";
 
 void RebuildReadAloudMenu(MainWindow* win, HMENU menu, bool useContextMenuCursorPoint = false);
 bool HandleReadAloudMenuCommand(MainWindow* win, int cmdId);
-void ReadAloudUpdateSpeakingRatesRealtime(float zhRate, float enRate);
+// Settings > Read Aloud page; changes are applied on OK only
+void ReadAloudSettingsPageInit(HWND hDlg);
+void ReadAloudSettingsPageOnCommand(HWND hDlg, int id, int code);
+bool ReadAloudSettingsPageDrawItem(DRAWITEMSTRUCT* dis);
+// id of the first control with an invalid value, 0 if all are valid
+int ReadAloudSettingsPageInvalidControl(HWND hDlg);
+void ReadAloudSettingsPageApply(HWND hDlg);
+void ReadAloudSettingsPageDestroy();
 bool CanCloseWindow(MainWindow* win);
 void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose);
 void SetSidebarVisibility(MainWindow* win, bool tocVisible, bool showFavorites, bool relayout = true);

@@ -108,6 +108,15 @@ bool EngineMupdfIsReflowableLoadingInProgress(EngineBase* engine);
 bool EngineMupdfIsReflowWarmActive(EngineBase* engine);
 bool EngineMupdfGetReflowPageChapter(EngineBase* engine, int pageNo, int* chapterOut, int* chapterStartPageOut);
 bool EngineMupdfGetReflowChapterPageRange(EngineBase* engine, int chapter, int* startPageOut, int* endPageOut);
+// Line rectangles (page coordinates) of element #fragmentId in the EPUB content document at
+// archive path docPath, from MuPDF's current layout. Returns false when docPath is not a spine
+// document. chapterPageOut is the first page of that document (0 if not counted yet).
+bool EngineMupdfEpubFragmentRects(EngineBase* engine, const char* docPath, const char* fragmentId, Vec<int>& pagesOut,
+                                  Vec<RectF>& rectsOut, int* chapterPageOut);
+// MuPDF chapter (spine) index of the content document at archive path docPath, -1 if none.
+int EngineMupdfEpubChapterForPath(EngineBase* engine, const char* docPath);
+// archive path of a MuPDF EPUB chapter; valid while the engine lives
+const char* EngineMupdfEpubPathForChapter(EngineBase* engine, int chapter);
 bool EngineIsProgressiveEbookLoading(EngineBase* engine);
 int EngineMupdfFastOutlinePageNo(EngineBase* engine, IPageDestination* dest);
 int EngineMupdfTocItemPageNoForSync(EngineBase* engine, IPageDestination* dest, int bakedPageNo);

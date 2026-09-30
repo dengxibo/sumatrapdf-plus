@@ -774,225 +774,6 @@ bool Dialog_CustomZoom(HWND hwnd, bool forChm, float* currZoomInOut) {
     return true;
 }
 
-struct Dialog_ReadAloudSpeed_Data {
-    float englishRate = 1.0f;
-    float chineseRate = 1.0f;
-    bool focusChinese = false;
-    AppDialogBrushes brushes;
-    bool modeless = false;
-};
-
-static HWND gReadAloudSpeedHwnd = nullptr;
-
-static void ReadAloudSpeedThemeRefreshCb(HWND hwnd, void* ctx) {
-    auto* data = (Dialog_ReadAloudSpeed_Data*)ctx;
-    if (!data) {
-        return;
-    }
-    data->brushes.Recreate();
-    AppDialogApplyChrome(hwnd);
-    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
-}
-
-static constexpr float kReadAloudSpeedMin = 0.25f;
-static constexpr float kReadAloudSpeedMax = 2.00f;
-static constexpr float kReadAloudSpeedStep = 0.05f;
-
-static float ClampReadAloudSpeed(float rate) {
-    if (rate < kReadAloudSpeedMin) {
-        return kReadAloudSpeedMin;
-    }
-    if (rate > kReadAloudSpeedMax) {
-        return kReadAloudSpeedMax;
-    }
-    return rate;
-}
-
-static void SetReadAloudSpeedEdit(HWND hDlg, int id, float rate) {
-    HwndSetDlgItemText(hDlg, id, str::FormatTemp("%.2f", ClampReadAloudSpeed(rate)));
-}
-
-static bool GetReadAloudSpeedEdit(HWND hDlg, int id, float* rateOut) {
-    TempStr s = HwndGetTextTemp(GetDlgItem(hDlg, id));
-    float rate = 0.0f;
-    if (!s || !str::Parse(s, "%f%$", &rate) || rate < kReadAloudSpeedMin || rate > kReadAloudSpeedMax) {
-        return false;
-    }
-    *rateOut = rate;
-    return true;
-}
-
-static void StepReadAloudSpeedEdit(HWND hDlg, int id, float delta) {
-    float rate = 1.0f;
-    GetReadAloudSpeedEdit(hDlg, id, &rate);
-    rate = ClampReadAloudSpeed(rate + delta);
-    SetReadAloudSpeedEdit(hDlg, id, rate);
-}
-
-static void ReadAloudSpeedApplyCurrentRates(HWND hDlg) {
-    float enRate = 1.0f;
-    float zhRate = 1.0f;
-    if (GetReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_EN, &enRate) &&
-        GetReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_ZH, &zhRate)) {
-        ReadAloudUpdateSpeakingRatesRealtime(zhRate, enRate);
-    }
-}
-
-static INT_PTR CALLBACK Dialog_ReadAloudSpeed_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
-    auto* data = (Dialog_ReadAloudSpeed_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
-    switch (msg) {
-        case WM_INITDIALOG:
-            data = (Dialog_ReadAloudSpeed_Data*)lp;
-            SetWindowLongPtr(hDlg, GWLP_USERDATA, (LONG_PTR)data);
-            data->brushes.Create();
-            AppDialogApplyChrome(hDlg);
-            if (data->modeless) {
-                RegisterAppDialogForTheme(hDlg, ReadAloudSpeedThemeRefreshCb, data);
-                SetCurrentModelessDialog(hDlg);
-            }
-            HwndSetText(hDlg, _TRA("Read aloud speed"));
-            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SPEED_EN_LABEL, _TRA("English voice:"));
-            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SPEED_ZH_LABEL, _TRA("Chinese voice:"));
-            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SPEED_HINT, _TRA("0.25x - 2.00x; buttons change by 0.05x"));
-            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SPEED_EN, str::FormatTemp("%.2f", data->englishRate));
-            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SPEED_ZH, str::FormatTemp("%.2f", data->chineseRate));
-            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SPEED_RESET, _TRA("Reset to 1.00x"));
-            HwndSetDlgItemText(hDlg, IDOK, _TRA("OK"));
-            HwndSetDlgItemText(hDlg, IDCANCEL, _TRA("Cancel"));
-            CenterDialog(hDlg);
-            HwndSetFocus(GetDlgItem(hDlg, data->focusChinese ? IDC_READ_ALOUD_SPEED_ZH : IDC_READ_ALOUD_SPEED_EN));
-            return FALSE;
-
-        case WM_CTLCOLORDLG:
-        case WM_CTLCOLORSTATIC:
-        case WM_CTLCOLORBTN:
-        case WM_CTLCOLOREDIT: {
-            if (!data) {
-                break;
-            }
-            HBRUSH br = AppDialogCtlColorBrush(msg, wp, lp, data->brushes.background, data->brushes.control,
-                                               GetDlgItem(hDlg, IDC_READ_ALOUD_SPEED_EN));
-            // ZH edit also needs control brush
-            if (!br) {
-                break;
-            }
-            HWND ctrl = (HWND)lp;
-            if (ctrl == GetDlgItem(hDlg, IDC_READ_ALOUD_SPEED_ZH) ||
-                ctrl == GetDlgItem(hDlg, IDC_READ_ALOUD_SPEED_EN)) {
-                SetBkColor((HDC)wp, ThemeWindowControlBackgroundColor());
-                return (INT_PTR)data->brushes.control;
-            }
-            return (INT_PTR)br;
-        }
-
-        case WM_ACTIVATE:
-            if (data && data->modeless) {
-                SetCurrentModelessDialog(LOWORD(wp) == WA_INACTIVE ? nullptr : hDlg);
-            }
-            return FALSE;
-
-        case WM_COMMAND:
-            switch (LOWORD(wp)) {
-                case IDC_READ_ALOUD_SPEED_EN_DECREASE:
-                    StepReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_EN, -kReadAloudSpeedStep);
-                    ReadAloudSpeedApplyCurrentRates(hDlg);
-                    return TRUE;
-                case IDC_READ_ALOUD_SPEED_EN_INCREASE:
-                    StepReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_EN, kReadAloudSpeedStep);
-                    ReadAloudSpeedApplyCurrentRates(hDlg);
-                    return TRUE;
-                case IDC_READ_ALOUD_SPEED_ZH_DECREASE:
-                    StepReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_ZH, -kReadAloudSpeedStep);
-                    ReadAloudSpeedApplyCurrentRates(hDlg);
-                    return TRUE;
-                case IDC_READ_ALOUD_SPEED_ZH_INCREASE:
-                    StepReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_ZH, kReadAloudSpeedStep);
-                    ReadAloudSpeedApplyCurrentRates(hDlg);
-                    return TRUE;
-                case IDC_READ_ALOUD_SPEED_RESET:
-                    SetReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_EN, 1.0f);
-                    SetReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_ZH, 1.0f);
-                    ReadAloudSpeedApplyCurrentRates(hDlg);
-                    return TRUE;
-                case IDC_READ_ALOUD_SPEED_EN:
-                case IDC_READ_ALOUD_SPEED_ZH:
-                    if (HIWORD(wp) == EN_CHANGE) {
-                        ReadAloudSpeedApplyCurrentRates(hDlg);
-                    }
-                    return TRUE;
-                case IDOK:
-                    if (!GetReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_EN, &data->englishRate) ||
-                        !GetReadAloudSpeedEdit(hDlg, IDC_READ_ALOUD_SPEED_ZH, &data->chineseRate)) {
-                        MessageBoxW(hDlg, ToWStrTemp(_TRA("Enter a speed from 0.25x to 2.00x.")),
-                                    ToWStrTemp(_TRA("Read aloud speed")), MB_OK | MB_ICONWARNING);
-                        return TRUE;
-                    }
-                    ReadAloudUpdateSpeakingRatesRealtime(data->chineseRate, data->englishRate);
-                    if (data->modeless) {
-                        DestroyWindow(hDlg);
-                    } else {
-                        EndDialog(hDlg, IDOK);
-                    }
-                    return TRUE;
-                case IDCANCEL:
-                    if (data->modeless) {
-                        DestroyWindow(hDlg);
-                    } else {
-                        EndDialog(hDlg, IDCANCEL);
-                    }
-                    return TRUE;
-            }
-            break;
-
-        case WM_CLOSE:
-            if (data && data->modeless) {
-                DestroyWindow(hDlg);
-                return TRUE;
-            }
-            break;
-
-        case WM_DESTROY:
-            if (data && data->modeless) {
-                UnregisterAppDialogForTheme(hDlg);
-                if (GetCurrentModelessDialog() == hDlg) {
-                    SetCurrentModelessDialog(nullptr);
-                }
-                if (gReadAloudSpeedHwnd == hDlg) {
-                    gReadAloudSpeedHwnd = nullptr;
-                }
-                data->brushes.Destroy();
-                SetWindowLongPtr(hDlg, GWLP_USERDATA, 0);
-                delete data;
-            } else if (data) {
-                data->brushes.Destroy();
-            }
-            break;
-    }
-    return FALSE;
-}
-
-void Dialog_ReadAloudSpeed(HWND hwnd, bool focusChinese) {
-    if (gReadAloudSpeedHwnd && IsWindow(gReadAloudSpeedHwnd)) {
-        SetForegroundWindow(gReadAloudSpeedHwnd);
-        return;
-    }
-    if (!gGlobalPrefs) {
-        return;
-    }
-    auto* data = new Dialog_ReadAloudSpeed_Data();
-    data->englishRate = ClampReadAloudSpeed(gGlobalPrefs->readAloudSpeakingRateEn);
-    data->chineseRate = ClampReadAloudSpeed(gGlobalPrefs->readAloudSpeakingRateZh);
-    data->focusChinese = focusChinese;
-    data->modeless = true;
-    HWND hDlg = CreateAppDialogModeless(IDD_DIALOG_READ_ALOUD_SPEED, hwnd, Dialog_ReadAloudSpeed_Proc, (LPARAM)data);
-    if (!hDlg) {
-        delete data;
-        return;
-    }
-    gReadAloudSpeedHwnd = hDlg;
-    ShowWindow(hDlg, SW_SHOW);
-}
-
 static INT_PTR CALLBACK Dialog_ChangeScrollbar_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARAM) {
     switch (msg) {
         case WM_INITDIALOG: {
@@ -1099,6 +880,34 @@ static const int gSettingsReadingControls[] = {IDC_SETTINGS_PAGE_READING,
                                                IDC_DICTIONARY_BROWSE,
                                                IDC_GROUP_FULLSCREEN,
                                                IDC_PREVENT_SLEEP_FULLSCREEN};
+static const int gSettingsReadAloudControls[] = {IDC_SETTINGS_PAGE_READ_ALOUD,
+                                                 IDC_GROUP_RA_VOICE,
+                                                 IDC_RA_VOICE_MODE_LABEL,
+                                                 IDC_RA_VOICE_MODE,
+                                                 IDC_RA_VOICE_ZH_LABEL,
+                                                 IDC_RA_VOICE_ZH,
+                                                 IDC_RA_VOICE_EN_LABEL,
+                                                 IDC_RA_VOICE_EN,
+                                                 IDC_RA_VOICE_MULTI_LABEL,
+                                                 IDC_RA_VOICE_MULTI,
+                                                 IDC_RA_PREVIEW,
+                                                 IDC_GROUP_RA_SPEED,
+                                                 IDC_RA_SPEED_ZH_LABEL,
+                                                 IDC_RA_SPEED_ZH,
+                                                 IDC_RA_SPEED_EN_LABEL,
+                                                 IDC_RA_SPEED_EN,
+                                                 IDC_RA_SPEED_HINT,
+                                                 IDC_GROUP_RA_HIGHLIGHT,
+                                                 IDC_RA_HIGHLIGHT_COLOR_LABEL,
+                                                 IDC_RA_HIGHLIGHT_COLOR,
+                                                 IDC_RA_HIGHLIGHT_RESET,
+                                                 IDC_RA_AUTO_FOLLOW,
+                                                 IDC_GROUP_RA_NARRATION,
+                                                 IDC_RA_NARRATION_USE_AUDIO,
+                                                 IDC_RA_NARRATION_HINT,
+                                                 IDC_RA_NARRATION_USE_COLOR,
+                                                 IDC_RA_NARRATION_SPEED_LABEL,
+                                                 IDC_RA_NARRATION_SPEED};
 static const int gSettingsOcrAiControls[] = {IDC_SETTINGS_PAGE_OCR_AI,
                                              IDC_GROUP_OCR,
                                              IDC_AUTO_OCR,
@@ -1147,6 +956,68 @@ static const int gSettingsAdvancedControls[] = {IDC_SETTINGS_PAGE_ADVANCED,
                                                 IDC_MORE_EXPERT_SETTINGS,
                                                 IDC_OPEN_ADVANCED_OPTIONS};
 
+static int gSettingsInitialPage = 0;
+
+// long translations (German, Russian) need wider labels: move the controls
+// right of the labels over, keeping the right edge of the group
+static void FitSettingsReadAloudLabels(HWND hDlg) {
+    static const int labelIds[] = {IDC_RA_VOICE_MODE_LABEL,      IDC_RA_VOICE_ZH_LABEL,       IDC_RA_VOICE_EN_LABEL,
+                                   IDC_RA_VOICE_MULTI_LABEL,     IDC_RA_SPEED_ZH_LABEL,       IDC_RA_SPEED_EN_LABEL,
+                                   IDC_RA_HIGHLIGHT_COLOR_LABEL, IDC_RA_NARRATION_SPEED_LABEL};
+    static const int fieldIds[] = {IDC_RA_VOICE_MODE,      IDC_RA_VOICE_ZH,       IDC_RA_VOICE_EN,
+                                   IDC_RA_VOICE_MULTI,     IDC_RA_PREVIEW,        IDC_RA_SPEED_ZH,
+                                   IDC_RA_SPEED_EN,        IDC_RA_SPEED_HINT,     IDC_RA_HIGHLIGHT_COLOR,
+                                   IDC_RA_HIGHLIGHT_RESET, IDC_RA_NARRATION_SPEED};
+    HWND first = GetDlgItem(hDlg, labelIds[0]);
+    HDC hdc = GetDC(hDlg);
+    if (!first || !hdc) {
+        return;
+    }
+    HFONT font = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
+    HFONT oldFont = font ? (HFONT)SelectObject(hdc, font) : nullptr;
+    int need = 0;
+    for (int id : labelIds) {
+        TempWStr s = HwndGetTextWTemp(GetDlgItem(hDlg, id));
+        RECT rc{};
+        DrawTextW(hdc, s, -1, &rc, DT_CALCRECT | DT_SINGLELINE);
+        need = std::max(need, (int)(rc.right - rc.left));
+    }
+    if (oldFont) {
+        SelectObject(hdc, oldFont);
+    }
+    ReleaseDC(hDlg, hdc);
+
+    Rect label = MapRectToWindow(WindowRect(first), HWND_DESKTOP, hDlg);
+    int gap = DpiScale(hDlg, 6);
+    int shift =
+        label.x + need + gap - MapRectToWindow(WindowRect(GetDlgItem(hDlg, IDC_RA_VOICE_MODE)), HWND_DESKTOP, hDlg).x;
+    if (shift <= 0) {
+        return;
+    }
+    int right = MapRectToWindow(WindowRect(GetDlgItem(hDlg, IDC_RA_VOICE_MODE)), HWND_DESKTOP, hDlg).Right();
+    for (int id : labelIds) {
+        HWND h = GetDlgItem(hDlg, id);
+        Rect r = MapRectToWindow(WindowRect(h), HWND_DESKTOP, hDlg);
+        SetWindowPos(h, nullptr, r.x, r.y, r.dx + shift, r.dy, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    for (int id : fieldIds) {
+        HWND h = GetDlgItem(hDlg, id);
+        Rect r = MapRectToWindow(WindowRect(h), HWND_DESKTOP, hDlg);
+        int dx = r.dx;
+        // full-width combos keep the right edge; short ones just move
+        if (r.Right() >= right - 1) {
+            dx -= shift;
+        } else if (r.Right() + shift > right) {
+            dx = std::max(right - (r.x + shift), DpiScale(hDlg, 40));
+        }
+        // a combo's window height is its dropped-down height
+        WCHAR cls[32]{};
+        GetClassNameW(h, cls, dimof(cls));
+        int dy = str::EqI(cls, L"ComboBox") ? DpiScale(hDlg, 300) : r.dy;
+        SetWindowPos(h, nullptr, r.x + shift, r.y, dx, dy, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+}
+
 static void ShowSettingsPage(HWND hDlg, int page) {
     struct PageControls {
         const int* ids;
@@ -1154,6 +1025,7 @@ static void ShowSettingsPage(HWND hDlg, int page) {
     } pages[] = {{gSettingsGeneralControls, dimof(gSettingsGeneralControls)},
                  {gSettingsInterfaceControls, dimof(gSettingsInterfaceControls)},
                  {gSettingsReadingControls, dimof(gSettingsReadingControls)},
+                 {gSettingsReadAloudControls, dimof(gSettingsReadAloudControls)},
                  {gSettingsOcrAiControls, dimof(gSettingsOcrAiControls)},
                  {gSettingsAdvancedControls, dimof(gSettingsAdvancedControls)}};
     page = limitValue(page, 0, dimof(pages) - 1);
@@ -1780,9 +1652,10 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("General")));
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Interface")));
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Reading")));
+            SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Read Aloud")));
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("OCR and AI")));
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Advanced")));
-            ListBox_SetCurSel(category, 0);
+            ListBox_SetCurSel(category, gSettingsInitialPage);
 
             HWND scrollbars = GetDlgItem(hDlg, IDC_SCROLLBARS);
             CbAddString(scrollbars, _TRA("Windows scrollbars"));
@@ -1879,7 +1752,29 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_GENERAL, _TRA("General"));
             HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_INTERFACE, _TRA("Interface"));
             HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_READING, _TRA("Reading"));
+            HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_READ_ALOUD, _TRA("Read Aloud"));
             HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_OCR_AI, _TRA("OCR and AI"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_RA_VOICE, _TRA("Voice"));
+            HwndSetDlgItemText(hDlg, IDC_RA_VOICE_MODE_LABEL, _TRA("&Voice:"));
+            HwndSetDlgItemText(hDlg, IDC_RA_VOICE_ZH_LABEL, _TRA("&Chinese voice:"));
+            HwndSetDlgItemText(hDlg, IDC_RA_VOICE_EN_LABEL, _TRA("&English voice:"));
+            HwndSetDlgItemText(hDlg, IDC_RA_VOICE_MULTI_LABEL, _TRA("&Multilingual voice:"));
+            HwndSetDlgItemText(hDlg, IDC_RA_PREVIEW, _TRA("&Preview"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_RA_SPEED, _TRA("Speed"));
+            HwndSetDlgItemText(hDlg, IDC_RA_SPEED_ZH_LABEL, _TRA("C&hinese:"));
+            HwndSetDlgItemText(hDlg, IDC_RA_SPEED_EN_LABEL, _TRA("E&nglish:"));
+            HwndSetDlgItemText(hDlg, IDC_RA_SPEED_HINT, _TRA("0.25x to 2.00x"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_RA_HIGHLIGHT, _TRA("Highlight and follow"));
+            HwndSetDlgItemText(hDlg, IDC_RA_HIGHLIGHT_COLOR_LABEL, _TRA("Highlight co&lor:"));
+            HwndSetDlgItemText(hDlg, IDC_RA_HIGHLIGHT_RESET, _TRA("&Reset"));
+            HwndSetDlgItemText(hDlg, IDC_RA_AUTO_FOLLOW, _TRA("&Follow the text being read"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_RA_NARRATION, _TRA("Narrated books (EPUB 3)"));
+            HwndSetDlgItemText(hDlg, IDC_RA_NARRATION_USE_AUDIO,
+                               _TRA("Play the book's recorded narration when &available"));
+            HwndSetDlgItemText(hDlg, IDC_RA_NARRATION_HINT,
+                               _TRA("When off, narrated books are read with the voice above."));
+            HwndSetDlgItemText(hDlg, IDC_RA_NARRATION_USE_COLOR, _TRA("Use the book's highlight c&olor"));
+            HwndSetDlgItemText(hDlg, IDC_RA_NARRATION_SPEED_LABEL, _TRA("Narration spee&d:"));
             HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_ADVANCED, _TRA("Advanced"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_UPDATE, _TRA("Updates"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_SESSION, _TRA("Startup and session"));
@@ -2007,7 +1902,9 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                 ShowWindow(GetDlgItem(hDlg, IDC_CMDLINE), SW_HIDE);
             }
 
-            ShowSettingsPage(hDlg, 0);
+            ReadAloudSettingsPageInit(hDlg);
+            FitSettingsReadAloudLabels(hDlg);
+            ShowSettingsPage(hDlg, gSettingsInitialPage);
             UpdateSettingsDependencies(hDlg);
             CenterDialog(hDlg);
             HwndSetFocus(category);
@@ -2031,6 +1928,9 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                 SettingsCategoryDrawItem(dis->hwndItem, dis);
                 return TRUE;
             }
+            if (ReadAloudSettingsPageDrawItem(dis)) {
+                return TRUE;
+            }
             break;
         }
 
@@ -2047,6 +1947,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
         }
 
         case WM_DESTROY:
+            ReadAloudSettingsPageDestroy();
             delete GetAiTocSettingsState(hDlg);
             RemovePropW(hDlg, kAiTocSettingsStateProp);
             gSettingsCategoryHover = -1;
@@ -2089,6 +1990,14 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                         HwndSetFocus(GetDlgItem(hDlg, IDC_CUSTOM_DPI));
                         return TRUE;
                     }
+                    if (int badId = ReadAloudSettingsPageInvalidControl(hDlg)) {
+                        ListBox_SetCurSel(GetDlgItem(hDlg, IDC_SETTINGS_CATEGORY), kSettingsPageReadAloud);
+                        ShowSettingsPage(hDlg, kSettingsPageReadAloud);
+                        MessageBoxWarning(hDlg, _TRA("Enter a speed from 0.25x to 2.00x."), _TRA("Invalid value"));
+                        HwndSetFocus(GetDlgItem(hDlg, badId));
+                        return TRUE;
+                    }
+                    ReadAloudSettingsPageApply(hDlg);
                     prefs->defaultDisplayModeEnum =
                         (DisplayMode)(SendDlgItemMessage(hDlg, IDC_DEFAULT_LAYOUT, CB_GETCURSEL, 0, 0) +
                                       (int)DisplayMode::Automatic);
@@ -2309,14 +2218,28 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                 case IDC_REMEMBER_STATE_PER_DOCUMENT:
                 case IDC_CHECK_FOR_UPDATES:
                     return TRUE;
+
+                case IDC_RA_VOICE_MODE:
+                case IDC_RA_VOICE_ZH:
+                case IDC_RA_VOICE_EN:
+                case IDC_RA_SPEED_ZH:
+                case IDC_RA_SPEED_EN:
+                case IDC_RA_PREVIEW:
+                case IDC_RA_HIGHLIGHT_COLOR:
+                case IDC_RA_HIGHLIGHT_RESET:
+                    ReadAloudSettingsPageOnCommand(hDlg, LOWORD(wp), HIWORD(wp));
+                    return TRUE;
             }
             break;
     }
     return FALSE;
 }
 
-INT_PTR Dialog_Settings(HWND hwnd, GlobalPrefs* prefs) {
-    return CreateAppDialogBox(IDD_DIALOG_SETTINGS, hwnd, Dialog_Settings_Proc, (LPARAM)prefs);
+INT_PTR Dialog_Settings(HWND hwnd, GlobalPrefs* prefs, int initialPage) {
+    gSettingsInitialPage = initialPage;
+    INT_PTR res = CreateAppDialogBox(IDD_DIALOG_SETTINGS, hwnd, Dialog_Settings_Proc, (LPARAM)prefs);
+    gSettingsInitialPage = 0;
+    return res;
 }
 
 #ifndef ID_APPLY_NOW

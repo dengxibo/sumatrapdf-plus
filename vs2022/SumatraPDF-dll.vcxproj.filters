@@ -707,6 +707,21 @@
     <ClCompile Include="..\src\ReadAloudHighlight.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\EpubMediaOverlay.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\MediaOverlayAudio.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\MediaOverlayPlayer.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ReadAloudBar.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ReadAloudFollow.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\RegistryInstaller.cpp">
       <Filter>src</Filter>
     </ClCompile>

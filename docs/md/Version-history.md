@@ -2,6 +2,31 @@
 
 ## next
 
+## 3.7.35 (2026-09-30)
+
+- 有声书跟读：SMIL 一段里按词高亮（按字母/汉字分时间），不再整段黄底。词级 SMIL 不变。
+  Narration follow: inside a SMIL phrase the current word is highlighted by letter/character time, not the whole paragraph. Word-level SMIL is unchanged.
+- 朗读条：播放中显示暂停图标；点倍速立刻作用于当前录音或系统语音。系统语音朗读（含暂停）不显示 ±10 秒，避免播放/暂停时控制条跳动。
+  Read Aloud bar: Play becomes Pause while speaking; a speed tap applies to the current recording or text-to-speech right away. Text-to-speech (including while paused) does not show ±10 s, so the bar does not jump between play and pause.
+- EPUB 3 有声书：从当前页或光标处开始，只在这一处有录音时放录音；没有录音的章节用系统语音从这里读，不再跳回第一章。
+  EPUB 3 narration: start from the current page or cursor plays the recording only if that location has audio; later chapters without overlays use text-to-speech from here, and no longer jump to chapter 1.
+- EPUB 3 有声书倍速增加 0.5x（朗读条和设置页），方便听慢一点。
+  EPUB 3 narration speed presets include 0.5x on the bar and in Settings.
+- 朗读统一：工具栏喇叭、菜单栏「朗读」和底部朗读条是同一套控制。书里有录音就放录音，没有就用系统语音。设置里新增「朗读」分类页（语音、语速、高亮色、自动跟随、是否使用书内录音和书内高亮色）。从当前页或光标处开始，在有声书里不再误走系统语音。
+  Read Aloud is one feature: the speaker button, the Read Aloud menu and the bottom bar share the same controls. A book with recorded narration plays that audio; otherwise text-to-speech is used. Settings has a Read Aloud page (voice, speed, highlight colour, auto-follow, and whether to use the book's audio and highlight colour). Start from top or from the cursor no longer falls back to TTS on a narrated book.
+- EPUB 3 有声书（Media Overlays）：书里自带真人朗读时，底部出现朗读条。点「朗读」或朗读条上的播放键，就放书里的录音，正在读的句子会高亮，页面自动跟着翻，一章读完接着读下一章。高亮颜色用书里定义的 `media:active-class`，没有就用朗读的黄色。朗读条上有上一句/下一句、后退/前进 10 秒、0.5–2 倍速和时间。手动滚走后停止跟随，点「跟随」或滚回来就接着跟。`linear="no"` 的章节不会被连播进去；没有录音的句子用系统语音读。录音只从书内读取，远程地址和指向书外的路径一律不放。普通 EPUB 不受影响。
+  EPUB 3 narrated books (Media Overlays): when a book ships its own narration, a narration bar appears at the bottom. Read Aloud, or Play on the bar, plays the book's audio, highlights the sentence being read, turns pages to follow it and continues into the next chapter. The highlight uses the book's `media:active-class` colour, or the Read Aloud yellow. The bar has previous/next phrase, back/forward 10 s, 0.5–2x speed and elapsed time. Scrolling away stops following; Follow, or scrolling back, resumes it. Spine items with `linear="no"` are not played through; phrases without audio are spoken with text-to-speech. Audio is only read from inside the book: remote URLs and paths leaving the book are not played. EPUBs without narration are unchanged.
+  播放中调字号会保留读到的位置；录音文件缺失的句子改用系统语音；读完后高亮消失，再按播放从当前页开始；窗口很窄时朗读条自动收起时间、倍速和 ±10 秒按钮；深色主题和近白色的出版方高亮色会自动调整，保证看得清。
+  Changing the font size during playback keeps the position; phrases whose audio file is missing are spoken with text-to-speech; at the end the highlight is cleared and Play starts from the current page; in a narrow window the bar hides time, speed and ±10 s; dark themes and near-white publisher colours are adjusted so the highlight stays readable.
+- 修复固定版式 EPUB 在渐进加载时追加的页面被排成 0×0、无法翻到（如 SVG 页）；平滑滚动遇到无法到达的目标位置不再一直空转。
+  Fixed-layout EPUB: a page appended during progressive loading was laid out as 0x0 and could not be reached (e.g. an SVG page). Smooth scrolling no longer spins forever on an unreachable target.
+- Ctrl+滚轮再次尊重高级设置：`ZoomIncrement = 0`（默认）按 `ZoomLevels` 档位步进；大于 0 时按该百分比相对缩放（并仍限制连滚过冲）。此前滚轮被写死为约 10% 相对缩放，改 `ZoomLevels` 无效。
+  Ctrl+wheel again honors Advanced Options: `ZoomIncrement = 0` (default) steps through `ZoomLevels`; a positive value uses that percent relative zoom (still rate-limited). The wheel had been hard-coded to ~10% relative, so changing `ZoomLevels` did nothing.
+- 提取目录：没找到印刷目录、自己输入页码后，网页 AI API 按钮也可点（以前只有网页 AI 那个键能用）。
+  Extract TOC: after typing page numbers when no printed TOC was found, the web AI API button is enabled (previously only the web-AI button worked).
+- 跟随主题：扫描标题上的色块不再被当成照片头发保护而留下；照片里的黑发仍然不涂成主题白。
+  Match theme: fat scanned titles SharpDocument to theme white again, without undoing photo hair protection.
+
 ## 3.7.34 (2026-09-29)
 
 - 跟随主题：RAZ 影棚绘本（如 Getting Dressed）不再因整页白底被当成连环画，黑发也不再被涂成主题白；动物园这类白卡动物图继续抠掉白底，浅色鳞片和毛边不会把整张卡退回白矩形。

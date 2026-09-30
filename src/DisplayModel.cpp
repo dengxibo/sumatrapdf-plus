@@ -300,6 +300,8 @@ static int VisiblePageScanTo(const DisplayModel* dm, int fromPage) {
     return lastPage;
 }
 
+static float getZoomSafe(DisplayModel* dm, int pageNo, const PageInfo* pageInfo);
+
 // Layout reflowed continuous pages (validUpto+1 .. toPage) without a full relayout.
 // toPage <= 0 means layout through pagesInfoCount.
 static bool LayoutReflowPagesUpto(DisplayModel* dm, int toPage) {
@@ -342,6 +344,12 @@ static bool LayoutReflowPagesUpto(DisplayModel* dm, int toPage) {
         }
         SizeF pageSize = dm->PageSizeAfterRotation(p);
         float zoom = dm->GetZoomReal(p);
+        if (zoom < 0.01f) {
+            // appended after the last CalcZoomReal (progressive load): a zero zoom lays the
+            // page out as 0x0 and it can never be scrolled to
+            zoom = getZoomSafe(dm, p, pi);
+            pi->zoomReal = zoom;
+        }
         Rect pos;
         pos.dx = (int)(pageSize.dx * zoom + 0.499);
         pos.dy = (int)(pageSize.dy * zoom + 0.499);

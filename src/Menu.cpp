@@ -49,6 +49,7 @@
 #include "ImageSaveCropResize.h"
 #include "Menu.h"
 #include "ReadAloudHighlight.h"
+#include "MediaOverlayPlayer.h"
 #include "TextToSpeech.h"
 
 #include "utils/Log.h"
@@ -746,7 +747,7 @@ static MenuDef menuDefMenubar[] = {
         (UINT_PTR)menuDefMainSelection,
     },
     {
-        _TRN("Read Aloud (TTS)"),
+        _TRN("&Read Aloud"),
         (UINT_PTR)menuDefReadAloud,
     },
     {
@@ -2150,8 +2151,8 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
 
     MenuSetEnabled(popup, CmdReadAloudFromCursor, win->contextMenuPtValid);
 
-    bool isSpeaking = TtsIsSpeaking();
-    bool canContinue = CanContinueReadAloud(tab);
+    bool isSpeaking = TtsIsSpeaking() || MediaOverlayIsPlayingInTab(tab);
+    bool canContinue = CanContinueReadAloud(tab) || MediaOverlayHasSessionInTab(tab);
     if (isSpeaking) {
         ModifyMenuW(popup, CmdPauseReadAloud, MF_BYCOMMAND | MF_STRING, (UINT_PTR)CmdPauseReadAloud,
                     ToWStrTemp(_TRA("Pause Reading")));

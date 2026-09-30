@@ -48,6 +48,9 @@ nl:&Ware grootte
 pl:&Rozmiar rzeczywisty
 sk:&Aktuálna veľkosť
 tw:實際大小(&A)
+:&Add
+cn:添加(&A)
+tw:新增(&A)
 :&Advanced Options...
 am:&Ընդլայնված ընտրանքներ..
 br:&Opções Avançadas…
@@ -266,6 +269,79 @@ nl:&Invoegteken
 pl:&Kareta
 sk:&Vsuvka
 tw:插入符號(&C)
+:&Chinese voice:
+af:&Chinese voice:
+am:&Chinese voice:
+ar:&Chinese voice:
+az:&Chinese voice:
+bg:&Chinese voice:
+bn:&Chinese voice:
+br:&Chinese voice:
+bs:&Chinese voice:
+by:&Chinese voice:
+ca:&Chinese voice:
+ca-xv:&Chinese voice:
+cn:中文语音(&C)：
+co:&Chinese voice:
+cy:&Chinese voice:
+cz:&Chinese voice:
+de:&Chinese voice:
+dk:&Chinese voice:
+el:&Chinese voice:
+es:&Chinese voice:
+et:&Chinese voice:
+eu:&Chinese voice:
+fa:&Chinese voice:
+fi:&Chinese voice:
+fo:&Chinese voice:
+fr:&Chinese voice:
+fy-nl:&Chinese voice:
+ga:&Chinese voice:
+gl:&Chinese voice:
+he:&Chinese voice:
+hi:&Chinese voice:
+hr:&Chinese voice:
+hu:&Chinese voice:
+id:&Chinese voice:
+it:&Chinese voice:
+ja:&Chinese voice:
+jv:&Chinese voice:
+ka:&Chinese voice:
+kr:&Chinese voice:
+ku:&Chinese voice:
+kw:&Chinese voice:
+lt:&Chinese voice:
+lv:&Chinese voice:
+mk:&Chinese voice:
+ml:&Chinese voice:
+mm:&Chinese voice:
+my:&Chinese voice:
+ne:&Chinese voice:
+nl:&Chinese voice:
+nn:&Chinese voice:
+no:&Chinese voice:
+pa:&Chinese voice:
+pl:&Chinese voice:
+pt:&Chinese voice:
+ro:&Chinese voice:
+ru:&Chinese voice:
+sat:&Chinese voice:
+si:&Chinese voice:
+sk:&Chinese voice:
+sl:&Chinese voice:
+sn:&Chinese voice:
+sp-rs:&Chinese voice:
+sq:&Chinese voice:
+sr-rs:&Chinese voice:
+sv:&Chinese voice:
+ta:&Chinese voice:
+th:&Chinese voice:
+tl:&Chinese voice:
+tr:&Chinese voice:
+tw:中文語音(&C)：
+uk:&Chinese voice:
+uz:&Chinese voice:
+vn:&Chinese voice:
 :&Close
 am:&Փակել
 br:&Fechar
@@ -411,6 +487,79 @@ tw:啟用 Ask AI(&E)
 uk:&Enable Ask AI
 uz:&Enable Ask AI
 vn:&Enable Ask AI
+:&English voice:
+af:&English voice:
+am:&English voice:
+ar:&English voice:
+az:&English voice:
+bg:&English voice:
+bn:&English voice:
+br:&English voice:
+bs:&English voice:
+by:&English voice:
+ca:&English voice:
+ca-xv:&English voice:
+cn:英文语音(&E)：
+co:&English voice:
+cy:&English voice:
+cz:&English voice:
+de:&English voice:
+dk:&English voice:
+el:&English voice:
+es:&English voice:
+et:&English voice:
+eu:&English voice:
+fa:&English voice:
+fi:&English voice:
+fo:&English voice:
+fr:&English voice:
+fy-nl:&English voice:
+ga:&English voice:
+gl:&English voice:
+he:&English voice:
+hi:&English voice:
+hr:&English voice:
+hu:&English voice:
+id:&English voice:
+it:&English voice:
+ja:&English voice:
+jv:&English voice:
+ka:&English voice:
+kr:&English voice:
+ku:&English voice:
+kw:&English voice:
+lt:&English voice:
+lv:&English voice:
+mk:&English voice:
+ml:&English voice:
+mm:&English voice:
+my:&English voice:
+ne:&English voice:
+nl:&English voice:
+nn:&English voice:
+no:&English voice:
+pa:&English voice:
+pl:&English voice:
+pt:&English voice:
+ro:&English voice:
+ru:&English voice:
+sat:&English voice:
+si:&English voice:
+sk:&English voice:
+sl:&English voice:
+sn:&English voice:
+sp-rs:&English voice:
+sq:&English voice:
+sr-rs:&English voice:
+sv:&English voice:
+ta:&English voice:
+th:&English voice:
+tl:&English voice:
+tr:&English voice:
+tw:英文語音(&E)：
+uk:&English voice:
+uz:&English voice:
+vn:&English voice:
 :&Even pages only
 am:&Միայն զույգ էջերը
 br:&Só as páginas pares
@@ -483,6 +632,79 @@ nl:Pagina's in afdrukgebied passen
 pl:Dopasuj strony do rozmiaru &wydruku
 sk:&Prispôsobiť strany na tlačiteľnú plochu
 tw:縮放頁面以符合可列印區域(&F)
+:&Follow the text being read
+af:&Follow the text being read
+am:&Follow the text being read
+ar:&Follow the text being read
+az:&Follow the text being read
+bg:&Follow the text being read
+bn:&Follow the text being read
+br:&Follow the text being read
+bs:&Follow the text being read
+by:&Follow the text being read
+ca:&Follow the text being read
+ca-xv:&Follow the text being read
+cn:朗读时自动跟随(&F)
+co:&Follow the text being read
+cy:&Follow the text being read
+cz:&Follow the text being read
+de:&Follow the text being read
+dk:&Follow the text being read
+el:&Follow the text being read
+es:&Follow the text being read
+et:&Follow the text being read
+eu:&Follow the text being read
+fa:&Follow the text being read
+fi:&Follow the text being read
+fo:&Follow the text being read
+fr:&Follow the text being read
+fy-nl:&Follow the text being read
+ga:&Follow the text being read
+gl:&Follow the text being read
+he:&Follow the text being read
+hi:&Follow the text being read
+hr:&Follow the text being read
+hu:&Follow the text being read
+id:&Follow the text being read
+it:&Follow the text being read
+ja:&Follow the text being read
+jv:&Follow the text being read
+ka:&Follow the text being read
+kr:&Follow the text being read
+ku:&Follow the text being read
+kw:&Follow the text being read
+lt:&Follow the text being read
+lv:&Follow the text being read
+mk:&Follow the text being read
+ml:&Follow the text being read
+mm:&Follow the text being read
+my:&Follow the text being read
+ne:&Follow the text being read
+nl:&Follow the text being read
+nn:&Follow the text being read
+no:&Follow the text being read
+pa:&Follow the text being read
+pl:&Follow the text being read
+pt:&Follow the text being read
+ro:&Follow the text being read
+ru:&Follow the text being read
+sat:&Follow the text being read
+si:&Follow the text being read
+sk:&Follow the text being read
+sl:&Follow the text being read
+sn:&Follow the text being read
+sp-rs:&Follow the text being read
+sq:&Follow the text being read
+sr-rs:&Follow the text being read
+sv:&Follow the text being read
+ta:&Follow the text being read
+th:&Follow the text being read
+tl:&Follow the text being read
+tr:&Follow the text being read
+tw:朗讀時自動跟隨(&F)
+uk:&Follow the text being read
+uz:&Follow the text being read
+vn:&Follow the text being read
 :&Free Text
 am:&Ազատ գրվածք
 br:&Texto Livre
@@ -495,6 +717,9 @@ nl:&Vrije Tekst
 pl:&Dowolny tekst
 sk:&Voľný text
 tw:自由文字(&F)
+:&Get models
+cn:获取模型(&G)
+tw:取得模型(&G)
 :&Go To
 am:&Անցում
 br:&Ir para
@@ -697,6 +922,85 @@ nl:Hoofd-/kleine letters toepassen
 pl:&Uwzględnij wielkość liter
 sk:Rozlišovať veľké/&malé písmená
 tw:符合大小寫(&M)
+:&Model:
+cn:模型(&M)：
+tw:模型(&M)：
+:&Multilingual voice:
+af:&Multilingual voice:
+am:&Multilingual voice:
+ar:&Multilingual voice:
+az:&Multilingual voice:
+bg:&Multilingual voice:
+bn:&Multilingual voice:
+br:&Multilingual voice:
+bs:&Multilingual voice:
+by:&Multilingual voice:
+ca:&Multilingual voice:
+ca-xv:&Multilingual voice:
+cn:多语言语音(&M)：
+co:&Multilingual voice:
+cy:&Multilingual voice:
+cz:&Multilingual voice:
+de:&Multilingual voice:
+dk:&Multilingual voice:
+el:&Multilingual voice:
+es:&Multilingual voice:
+et:&Multilingual voice:
+eu:&Multilingual voice:
+fa:&Multilingual voice:
+fi:&Multilingual voice:
+fo:&Multilingual voice:
+fr:&Multilingual voice:
+fy-nl:&Multilingual voice:
+ga:&Multilingual voice:
+gl:&Multilingual voice:
+he:&Multilingual voice:
+hi:&Multilingual voice:
+hr:&Multilingual voice:
+hu:&Multilingual voice:
+id:&Multilingual voice:
+it:&Multilingual voice:
+ja:&Multilingual voice:
+jv:&Multilingual voice:
+ka:&Multilingual voice:
+kr:&Multilingual voice:
+ku:&Multilingual voice:
+kw:&Multilingual voice:
+lt:&Multilingual voice:
+lv:&Multilingual voice:
+mk:&Multilingual voice:
+ml:&Multilingual voice:
+mm:&Multilingual voice:
+my:&Multilingual voice:
+ne:&Multilingual voice:
+nl:&Multilingual voice:
+nn:&Multilingual voice:
+no:&Multilingual voice:
+pa:&Multilingual voice:
+pl:&Multilingual voice:
+pt:&Multilingual voice:
+ro:&Multilingual voice:
+ru:&Multilingual voice:
+sat:&Multilingual voice:
+si:&Multilingual voice:
+sk:&Multilingual voice:
+sl:&Multilingual voice:
+sn:&Multilingual voice:
+sp-rs:&Multilingual voice:
+sq:&Multilingual voice:
+sr-rs:&Multilingual voice:
+sv:&Multilingual voice:
+ta:&Multilingual voice:
+th:&Multilingual voice:
+tl:&Multilingual voice:
+tr:&Multilingual voice:
+tw:多語言語音(&M)：
+uk:&Multilingual voice:
+uz:&Multilingual voice:
+vn:&Multilingual voice:
+:&Name:
+cn:名称(&N)：
+tw:名稱(&N)：
 :&Next Page
 am:&Հաջորդ էջ
 br:&Página Seguinte
@@ -769,6 +1073,9 @@ nl:&Opties...
 pl:&Opcje...
 sk:&Možnosti...
 tw:選項(&O)...
+:&Parallel (1-8):
+cn:并发数(1-8)(&P)：
+tw:並行數(1-8)(&P)：
 :&Password:
 am:&Գաղտնաբառը
 br:&Senha:
@@ -793,6 +1100,82 @@ nl:Document &Vastpinnen
 pl:&Przypnij dokument
 sk:&Pripnúť dokument
 tw:釘選文件(&P)
+:&Platform:
+cn:平台(&P)：
+tw:平台(&P)：
+:&Preview
+af:&Preview
+am:&Preview
+ar:&Preview
+az:&Preview
+bg:&Preview
+bn:&Preview
+br:&Preview
+bs:&Preview
+by:&Preview
+ca:&Preview
+ca-xv:&Preview
+cn:试听(&P)
+co:&Preview
+cy:&Preview
+cz:&Preview
+de:&Preview
+dk:&Preview
+el:&Preview
+es:&Preview
+et:&Preview
+eu:&Preview
+fa:&Preview
+fi:&Preview
+fo:&Preview
+fr:&Preview
+fy-nl:&Preview
+ga:&Preview
+gl:&Preview
+he:&Preview
+hi:&Preview
+hr:&Preview
+hu:&Preview
+id:&Preview
+it:&Preview
+ja:&Preview
+jv:&Preview
+ka:&Preview
+kr:&Preview
+ku:&Preview
+kw:&Preview
+lt:&Preview
+lv:&Preview
+mk:&Preview
+ml:&Preview
+mm:&Preview
+my:&Preview
+ne:&Preview
+nl:&Preview
+nn:&Preview
+no:&Preview
+pa:&Preview
+pl:&Preview
+pt:&Preview
+ro:&Preview
+ru:&Preview
+sat:&Preview
+si:&Preview
+sk:&Preview
+sl:&Preview
+sn:&Preview
+sp-rs:&Preview
+sq:&Preview
+sr-rs:&Preview
+sv:&Preview
+ta:&Preview
+th:&Preview
+tl:&Preview
+tr:&Preview
+tw:試聽(&P)
+uk:&Preview
+uz:&Preview
+vn:&Preview
 :&Previous Page
 am:&Նախորդ էջ
 br:&Página Anterior
@@ -829,6 +1212,79 @@ nl:Afdrukken... (niet toegestaan)
 pl:&Drukuj... (odmówiono)
 sk:&Tlač... (odmietnutá)
 tw:列印(&P)... (已中斷)
+:&Read Aloud
+af:&Read Aloud
+am:&Read Aloud
+ar:&Read Aloud
+az:&Read Aloud
+bg:&Read Aloud
+bn:&Read Aloud
+br:&Read Aloud
+bs:&Read Aloud
+by:&Read Aloud
+ca:&Read Aloud
+ca-xv:&Read Aloud
+cn:朗读(&R)
+co:&Read Aloud
+cy:&Read Aloud
+cz:&Read Aloud
+de:&Read Aloud
+dk:&Read Aloud
+el:&Read Aloud
+es:&Read Aloud
+et:&Read Aloud
+eu:&Read Aloud
+fa:&Read Aloud
+fi:&Read Aloud
+fo:&Read Aloud
+fr:&Read Aloud
+fy-nl:&Read Aloud
+ga:&Read Aloud
+gl:&Read Aloud
+he:&Read Aloud
+hi:&Read Aloud
+hr:&Read Aloud
+hu:&Read Aloud
+id:&Read Aloud
+it:&Read Aloud
+ja:&Read Aloud
+jv:&Read Aloud
+ka:&Read Aloud
+kr:&Read Aloud
+ku:&Read Aloud
+kw:&Read Aloud
+lt:&Read Aloud
+lv:&Read Aloud
+mk:&Read Aloud
+ml:&Read Aloud
+mm:&Read Aloud
+my:&Read Aloud
+ne:&Read Aloud
+nl:&Read Aloud
+nn:&Read Aloud
+no:&Read Aloud
+pa:&Read Aloud
+pl:&Read Aloud
+pt:&Read Aloud
+ro:&Read Aloud
+ru:&Read Aloud
+sat:&Read Aloud
+si:&Read Aloud
+sk:&Read Aloud
+sl:&Read Aloud
+sn:&Read Aloud
+sp-rs:&Read Aloud
+sq:&Read Aloud
+sr-rs:&Read Aloud
+sv:&Read Aloud
+ta:&Read Aloud
+th:&Read Aloud
+tl:&Read Aloud
+tr:&Read Aloud
+tw:朗讀(&R)
+uk:&Read Aloud
+uz:&Read Aloud
+vn:&Read Aloud
 :&Reading Font
 af:&Reading Font
 am:&Reading Font
@@ -999,6 +1455,9 @@ nl:&Bewaar deze instellingen voor elk document
 pl:Pamiętaj ustawienia dla &każdego dokumentu
 sk:&Zapamätať si tieto nastavenia pre každý dokument
 tw:記憶每個文件的設定值(&R)
+:&Remove
+cn:删除(&R)
+tw:移除(&R)
 :&Remove From History
 am:&Հեռացնել պատմությունից
 br:&Remover do Histórico
@@ -1356,6 +1815,9 @@ tw:系統字體(&S)
 uk:&System Font
 uz:&System Font
 vn:&System Font
+:&Test
+cn:测试(&T)
+tw:測試(&T)
 :&Text
 am:&Գրվածք
 br:&Texto
@@ -1501,6 +1963,79 @@ nl:&Beeld
 pl:&Widok
 sk:&Zobraziť
 tw:檢視(&V)
+:&Voice:
+af:&Voice:
+am:&Voice:
+ar:&Voice:
+az:&Voice:
+bg:&Voice:
+bn:&Voice:
+br:&Voice:
+bs:&Voice:
+by:&Voice:
+ca:&Voice:
+ca-xv:&Voice:
+cn:语音(&V)：
+co:&Voice:
+cy:&Voice:
+cz:&Voice:
+de:&Voice:
+dk:&Voice:
+el:&Voice:
+es:&Voice:
+et:&Voice:
+eu:&Voice:
+fa:&Voice:
+fi:&Voice:
+fo:&Voice:
+fr:&Voice:
+fy-nl:&Voice:
+ga:&Voice:
+gl:&Voice:
+he:&Voice:
+hi:&Voice:
+hr:&Voice:
+hu:&Voice:
+id:&Voice:
+it:&Voice:
+ja:&Voice:
+jv:&Voice:
+ka:&Voice:
+kr:&Voice:
+ku:&Voice:
+kw:&Voice:
+lt:&Voice:
+lv:&Voice:
+mk:&Voice:
+ml:&Voice:
+mm:&Voice:
+my:&Voice:
+ne:&Voice:
+nl:&Voice:
+nn:&Voice:
+no:&Voice:
+pa:&Voice:
+pl:&Voice:
+pt:&Voice:
+ro:&Voice:
+ru:&Voice:
+sat:&Voice:
+si:&Voice:
+sk:&Voice:
+sl:&Voice:
+sn:&Voice:
+sp-rs:&Voice:
+sq:&Voice:
+sr-rs:&Voice:
+sv:&Voice:
+ta:&Voice:
+th:&Voice:
+tl:&Voice:
+tr:&Voice:
+tw:語音(&V)：
+uk:&Voice:
+uz:&Voice:
+vn:&Voice:
 :&Western Body Font
 af:&Western Body Font
 am:&Western Body Font
@@ -1781,6 +2316,79 @@ tw:0.25x - 2.00x；按鈕每次調整 0.05x
 uk:0.25x - 2.00x; buttons change by 0.05x
 uz:0.25x - 2.00x; buttons change by 0.05x
 vn:0.25x - 2.00x; buttons change by 0.05x
+:0.25x to 2.00x
+af:0.25x to 2.00x
+am:0.25x to 2.00x
+ar:0.25x to 2.00x
+az:0.25x to 2.00x
+bg:0.25x to 2.00x
+bn:0.25x to 2.00x
+br:0.25x to 2.00x
+bs:0.25x to 2.00x
+by:0.25x to 2.00x
+ca:0.25x to 2.00x
+ca-xv:0.25x to 2.00x
+cn:0.25x 到 2.00x
+co:0.25x to 2.00x
+cy:0.25x to 2.00x
+cz:0.25x to 2.00x
+de:0.25x to 2.00x
+dk:0.25x to 2.00x
+el:0.25x to 2.00x
+es:0.25x to 2.00x
+et:0.25x to 2.00x
+eu:0.25x to 2.00x
+fa:0.25x to 2.00x
+fi:0.25x to 2.00x
+fo:0.25x to 2.00x
+fr:0.25x to 2.00x
+fy-nl:0.25x to 2.00x
+ga:0.25x to 2.00x
+gl:0.25x to 2.00x
+he:0.25x to 2.00x
+hi:0.25x to 2.00x
+hr:0.25x to 2.00x
+hu:0.25x to 2.00x
+id:0.25x to 2.00x
+it:0.25x to 2.00x
+ja:0.25x to 2.00x
+jv:0.25x to 2.00x
+ka:0.25x to 2.00x
+kr:0.25x to 2.00x
+ku:0.25x to 2.00x
+kw:0.25x to 2.00x
+lt:0.25x to 2.00x
+lv:0.25x to 2.00x
+mk:0.25x to 2.00x
+ml:0.25x to 2.00x
+mm:0.25x to 2.00x
+my:0.25x to 2.00x
+ne:0.25x to 2.00x
+nl:0.25x to 2.00x
+nn:0.25x to 2.00x
+no:0.25x to 2.00x
+pa:0.25x to 2.00x
+pl:0.25x to 2.00x
+pt:0.25x to 2.00x
+ro:0.25x to 2.00x
+ru:0.25x to 2.00x
+sat:0.25x to 2.00x
+si:0.25x to 2.00x
+sk:0.25x to 2.00x
+sl:0.25x to 2.00x
+sn:0.25x to 2.00x
+sp-rs:0.25x to 2.00x
+sq:0.25x to 2.00x
+sr-rs:0.25x to 2.00x
+sv:0.25x to 2.00x
+ta:0.25x to 2.00x
+th:0.25x to 2.00x
+tl:0.25x to 2.00x
+tr:0.25x to 2.00x
+tw:0.25x 到 2.00x
+uk:0.25x to 2.00x
+uz:0.25x to 2.00x
+vn:0.25x to 2.00x
 :270° Clockwise
 af:270° Clockwise
 am:270° Clockwise
@@ -2044,6 +2652,9 @@ tw:AI 服務(&S)：
 uk:AI &service:
 uz:AI &service:
 vn:AI &service:
+:AI Detect TOC Pages
+cn:AI 检测目录页
+tw:AI 偵測目錄頁
 :AI Processing
 cn:AI 处理
 de:KI-Verarbeitung
@@ -2138,6 +2749,18 @@ vn:AI Recognize Table of Contents
 :AI returned invalid JSON.
 cn:AI 返回的 JSON 无效。
 tw:AI 傳回的 JSON 無效。
+:AI table of contents
+cn:AI 目录识别
+tw:AI 目錄辨識
+:AI table of contents (API)
+cn:AI 目录识别（API）
+tw:AI 目錄辨識（API）
+:API &base URL:
+cn:API 地址(&B)：
+tw:API 位址(&B)：
+:API &key:
+cn:API 密钥(&K)：
+tw:API 金鑰(&K)：
 :About Sumatra PDF Plus
 am:SumatraPDF-ի մասին
 br:Sobre o SumatraPDF
@@ -2246,152 +2869,6 @@ nl:Voeg toe aan Favorieten
 pl:Dodaj do ulubionych
 sk:Pridať k obľúbeným
 tw:加到我的最愛
-:Manually Adjust Pages
-af:Pas bladsye handmatig aan
-am:Էջերը ձեռքով կարգավորել
-ar:ضبط الصفحات يدوياً
-az:Səhifələri əl ilə tənzimlə
-bg:Ръчно коригиране на страниците
-bn:পৃষ্ঠা ম্যানুয়ালি সামঞ্জস্য করুন
-br:Ajustar páginas manualmente
-bs:Ručno prilagodi stranice
-by:Наладзіць старонкі ўручную
-ca:Ajusta les pàgines manualment
-ca-xv:Ajusta les pàgines manualment
-cn:手动调整页面
-co:Aghjustà e pagine manualmente
-cy:Addasu tudalennau â llaw
-cz:Ručně upravit stránky
-de:Seiten manuell anpassen
-dk:Juster sider manuelt
-el:Μη αυτόματη προσαρμογή σελίδων
-es:Ajustar páginas manualmente
-et:Kohanda lehti käsitsi
-eu:Doitu orriak eskuz
-fa:تنظیم دستی صفحه‌ها
-fi:Säädä sivuja manuaalisesti
-fo:Still síður við hond
-fr:Ajuster les pages manuellement
-fy-nl:Siden mei de hân oanpasse
-ga:Coigeartaigh leathanaigh de láimh
-gl:Axustar as páxinas manualmente
-he:התאמת עמודים ידנית
-hi:पृष्ठ मैन्युअल रूप से समायोजित करें
-hr:Ručno prilagodi stranice
-hu:Oldalak kézi módosítása
-id:Sesuaikan halaman secara manual
-it:Regola le pagine manualmente
-ja:ページを手動で調整
-jv:Atur kaca kanthi manual
-ka:გვერდების ხელით მორგება
-kr:페이지 수동 조정
-ku:پەڕەکان بە دەستی ڕێکبخە
-kw:Aswiya folennow gans dorn
-lt:Rankiniu būdu koreguoti puslapius
-lv:Manuāli pielāgot lapas
-mk:Рачно прилагоди страници
-ml:പേജുകൾ സ്വമേധയാ ക്രമീകരിക്കുക
-mm:စာမျက်နှာများကို ကိုယ်တိုင်ချိန်ညှိရန်
-my:Laraskan halaman secara manual
-ne:पृष्ठहरू म्यानुअल रूपमा समायोजन गर्नुहोस्
-nl:Pagina's handmatig aanpassen
-nn:Juster sider manuelt
-no:Juster sider manuelt
-pa:ਪੰਨਿਆਂ ਨੂੰ ਹੱਥੀਂ ਵਿਵਸਥਿਤ ਕਰੋ
-pl:Ręcznie dostosuj strony
-pt:Ajustar páginas manualmente
-ro:Ajustați paginile manual
-ru:Настроить страницы вручную
-sat:ᱥᱟᱦᱴᱟ ᱠᱚ ᱛᱤ ᱛᱮ ᱥᱚᱡᱷᱮ
-si:පිටු අතින් සකසන්න
-sk:Ručne upraviť strany
-sl:Ročno prilagodi strani
-sn:Gadzirisa mapeji nemaoko
-sp-rs:Ručno prilagodi stranice
-sq:Rregullo faqet manualisht
-sr-rs:Ручно прилагоди странице
-sv:Justera sidor manuellt
-ta:பக்கங்களை கைமுறையாக சரிசெய்
-th:ปรับหน้าด้วยตนเอง
-tl:Ayusin nang manu-mano ang mga pahina
-tr:Sayfaları elle ayarla
-tw:手動調整頁面
-uk:Налаштувати сторінки вручну
-uz:Sahifalarni qo'lda sozlash
-vn:Điều chỉnh trang thủ công
-:Manually Adjust Pages...
-af:Pas bladsye handmatig aan...
-am:Էջերը ձեռքով կարգավորել...
-ar:ضبط الصفحات يدوياً...
-az:Səhifələri əl ilə tənzimlə...
-bg:Ръчно коригиране на страниците...
-bn:পৃষ্ঠা ম্যানুয়ালি সামঞ্জস্য করুন...
-br:Ajustar páginas manualmente...
-bs:Ručno prilagodi stranice...
-by:Наладзіць старонкі ўручную...
-ca:Ajusta les pàgines manualment...
-ca-xv:Ajusta les pàgines manualment...
-cn:手动调整页面...
-co:Aghjustà e pagine manualmente...
-cy:Addasu tudalennau â llaw...
-cz:Ručně upravit stránky...
-de:Seiten manuell anpassen...
-dk:Juster sider manuelt...
-el:Μη αυτόματη προσαρμογή σελίδων...
-es:Ajustar páginas manualmente...
-et:Kohanda lehti käsitsi...
-eu:Doitu orriak eskuz...
-fa:تنظیم دستی صفحه‌ها...
-fi:Säädä sivuja manuaalisesti...
-fo:Still síður við hond...
-fr:Ajuster les pages manuellement...
-fy-nl:Siden mei de hân oanpasse...
-ga:Coigeartaigh leathanaigh de láimh...
-gl:Axustar as páxinas manualmente...
-he:התאמת עמודים ידנית...
-hi:पृष्ठ मैन्युअल रूप से समायोजित करें...
-hr:Ručno prilagodi stranice...
-hu:Oldalak kézi módosítása...
-id:Sesuaikan halaman secara manual...
-it:Regola le pagine manualmente...
-ja:ページを手動で調整...
-jv:Atur kaca kanthi manual...
-ka:გვერდების ხელით მორგება...
-kr:페이지 수동 조정...
-ku:پەڕەکان بە دەستی ڕێکبخە...
-kw:Aswiya folennow gans dorn...
-lt:Rankiniu būdu koreguoti puslapius...
-lv:Manuāli pielāgot lapas...
-mk:Рачно прилагоди страници...
-ml:പേജുകൾ സ്വമേധയാ ക്രമീകരിക്കുക...
-mm:စာမျက်နှာများကို ကိုယ်တိုင်ချိန်ညှိရန်...
-my:Laraskan halaman secara manual...
-ne:पृष्ठहरू म्यानुअल रूपमा समायोजन गर्नुहोस्...
-nl:Pagina's handmatig aanpassen...
-nn:Juster sider manuelt...
-no:Juster sider manuelt...
-pa:ਪੰਨਿਆਂ ਨੂੰ ਹੱਥੀਂ ਵਿਵਸਥਿਤ ਕਰੋ...
-pl:Ręcznie dostosuj strony...
-pt:Ajustar páginas manualmente...
-ro:Ajustați paginile manual...
-ru:Настроить страницы вручную...
-sat:ᱥᱟᱦᱴᱟ ᱠᱚ ᱛᱤ ᱛᱮ ᱥᱚᱡᱷᱮ...
-si:පිටු අතින් සකසන්න...
-sk:Ručne upraviť strany...
-sl:Ročno prilagodi strani...
-sn:Gadzirisa mapeji nemaoko...
-sp-rs:Ručno prilagodi stranice...
-sq:Rregullo faqet manualisht...
-sr-rs:Ручно прилагоди странице...
-sv:Justera sidor manuellt...
-ta:பக்கங்களை கைமுறையாக சரிசெய்...
-th:ปรับหน้าด้วยตนเอง...
-tl:Ayusin nang manu-mano ang mga pahina...
-tr:Sayfaları elle ayarla...
-tw:手動調整頁面...
-uk:Налаштувати сторінки вручну...
-uz:Sahifalarni qo'lda sozlash...
-vn:Điều chỉnh trang thủ công...
 :Adjusted %d page(s) and saved to '%s'
 af:Adjusted %d page(s) and saved to '%s'
 am:Adjusted %d page(s) and saved to '%s'
@@ -4830,6 +5307,79 @@ nl:Bytes
 pl:bajtów
 sk:Bajtov
 tw:位元組
+:C&hinese:
+af:C&hinese:
+am:C&hinese:
+ar:C&hinese:
+az:C&hinese:
+bg:C&hinese:
+bn:C&hinese:
+br:C&hinese:
+bs:C&hinese:
+by:C&hinese:
+ca:C&hinese:
+ca-xv:C&hinese:
+cn:中文(&H)：
+co:C&hinese:
+cy:C&hinese:
+cz:C&hinese:
+de:C&hinese:
+dk:C&hinese:
+el:C&hinese:
+es:C&hinese:
+et:C&hinese:
+eu:C&hinese:
+fa:C&hinese:
+fi:C&hinese:
+fo:C&hinese:
+fr:C&hinese:
+fy-nl:C&hinese:
+ga:C&hinese:
+gl:C&hinese:
+he:C&hinese:
+hi:C&hinese:
+hr:C&hinese:
+hu:C&hinese:
+id:C&hinese:
+it:C&hinese:
+ja:C&hinese:
+jv:C&hinese:
+ka:C&hinese:
+kr:C&hinese:
+ku:C&hinese:
+kw:C&hinese:
+lt:C&hinese:
+lv:C&hinese:
+mk:C&hinese:
+ml:C&hinese:
+mm:C&hinese:
+my:C&hinese:
+ne:C&hinese:
+nl:C&hinese:
+nn:C&hinese:
+no:C&hinese:
+pa:C&hinese:
+pl:C&hinese:
+pt:C&hinese:
+ro:C&hinese:
+ru:C&hinese:
+sat:C&hinese:
+si:C&hinese:
+sk:C&hinese:
+sl:C&hinese:
+sn:C&hinese:
+sp-rs:C&hinese:
+sq:C&hinese:
+sr-rs:C&hinese:
+sv:C&hinese:
+ta:C&hinese:
+th:C&hinese:
+tl:C&hinese:
+tr:C&hinese:
+tw:中文(&H)：
+uk:C&hinese:
+uz:C&hinese:
+vn:C&hinese:
 :C&opy To Clipboard
 br:C&opiar para a Área de Transferência
 cn:复制到剪贴板(&O)
@@ -4875,6 +5425,9 @@ ja:しおりターゲットを校正中… %d / %d
 kr:책갈피 대상 보정 중… %d / %d
 ru:Калибровка целей закладок… %d / %d
 tw:正在校準書籤目標… %d / %d
+:Calibrating printed page offsets...
+cn:正在校准印刷页码偏移…
+tw:正在校準印刷頁碼偏移…
 :Camera Make:
 br:Fabricante da Câmera:
 cn:相机品牌:
@@ -5809,6 +6362,9 @@ de:Komprimierte Bits pro Pixel:
 it:Bit/Pixel compressi:
 nl:Gecomprimeerd Bits/Pixels
 pl:Skompresowane bity/piksel:
+:Configure the AI table of contents API (base URL, key and model) on the OCR and AI settings page first.
+cn:请先在「OCR 和 AI」设置页配置 AI 目录识别 API（地址、密钥、模型）。
+tw:請先在「OCR 和 AI」設定頁配置 AI 目錄辨識 API（位址、金鑰、模型）。
 :Confirm Sending TOC Pages
 cn:确认发送目录页
 tw:確認傳送目錄頁
@@ -5885,6 +6441,9 @@ tw:保守
 uk:Conservative
 uz:Conservative
 vn:Conservative
+:Contacting the API...
+cn:正在连接 API…
+tw:正在連線 API…
 :Contents / favorites sidebar
 af:Contents / favorites sidebar
 am:Contents / favorites sidebar
@@ -9442,6 +10001,12 @@ tw:詳細
 uk:Detailed
 uz:Detailed
 vn:Detailed
+:Detecting TOC pages via API...
+cn:正在通过 API 检测目录页…
+tw:正在透過 API 偵測目錄頁…
+:Determining TOC levels...
+cn:正在判定目录层级…
+tw:正在判定目錄層級…
 :Dictionary
 af:Dictionary
 am:Dictionary
@@ -10252,6 +10817,79 @@ nl:Update downloaden...
 pl:Pobieranie aktualizacji...
 sk:Sťahuje sa aktualizácia…
 tw:正在下載更新...
+:E&nglish:
+af:E&nglish:
+am:E&nglish:
+ar:E&nglish:
+az:E&nglish:
+bg:E&nglish:
+bn:E&nglish:
+br:E&nglish:
+bs:E&nglish:
+by:E&nglish:
+ca:E&nglish:
+ca-xv:E&nglish:
+cn:英文(&N)：
+co:E&nglish:
+cy:E&nglish:
+cz:E&nglish:
+de:E&nglish:
+dk:E&nglish:
+el:E&nglish:
+es:E&nglish:
+et:E&nglish:
+eu:E&nglish:
+fa:E&nglish:
+fi:E&nglish:
+fo:E&nglish:
+fr:E&nglish:
+fy-nl:E&nglish:
+ga:E&nglish:
+gl:E&nglish:
+he:E&nglish:
+hi:E&nglish:
+hr:E&nglish:
+hu:E&nglish:
+id:E&nglish:
+it:E&nglish:
+ja:E&nglish:
+jv:E&nglish:
+ka:E&nglish:
+kr:E&nglish:
+ku:E&nglish:
+kw:E&nglish:
+lt:E&nglish:
+lv:E&nglish:
+mk:E&nglish:
+ml:E&nglish:
+mm:E&nglish:
+my:E&nglish:
+ne:E&nglish:
+nl:E&nglish:
+nn:E&nglish:
+no:E&nglish:
+pa:E&nglish:
+pl:E&nglish:
+pt:E&nglish:
+ro:E&nglish:
+ru:E&nglish:
+sat:E&nglish:
+si:E&nglish:
+sk:E&nglish:
+sl:E&nglish:
+sn:E&nglish:
+sp-rs:E&nglish:
+sq:E&nglish:
+sr-rs:E&nglish:
+sv:E&nglish:
+ta:E&nglish:
+th:E&nglish:
+tl:E&nglish:
+tr:E&nglish:
+tw:英文(&N)：
+uk:E&nglish:
+uz:E&nglish:
+vn:E&nglish:
 :E&xit
 am:Փ&ակել
 br:S&air
@@ -11825,6 +12463,9 @@ tw:擷取的書籤會先取代目前書籤供預覽。只有選擇「擷取並�
 uk:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
 uz:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
 vn:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
+:Extracting TOC titles and pages...
+cn:正在提取目录标题与页码…
+tw:正在擷取目錄標題與頁碼…
 :Extracting bookmarks… %d / %d
 af:Extracting bookmarks… %d / %d
 am:Extracting bookmarks… %d / %d
@@ -13953,6 +14594,9 @@ ja:文書構造から目次を生成
 kr:문서 구조에서 목차 생성
 ru:Создать оглавление по структуре документа
 tw:從文件結構產生目錄
+:Get models
+cn:获取模型
+tw:取得模型
 :Getting fonts information...
 br:Obtendo informações das fontes...
 cn:获取字体信息...
@@ -14231,6 +14875,152 @@ vn:High accuracy
 :Highlight
 cn:高亮
 tw:螢光標示
+:Highlight and follow
+af:Highlight and follow
+am:Highlight and follow
+ar:Highlight and follow
+az:Highlight and follow
+bg:Highlight and follow
+bn:Highlight and follow
+br:Highlight and follow
+bs:Highlight and follow
+by:Highlight and follow
+ca:Highlight and follow
+ca-xv:Highlight and follow
+cn:高亮与跟随
+co:Highlight and follow
+cy:Highlight and follow
+cz:Highlight and follow
+de:Highlight and follow
+dk:Highlight and follow
+el:Highlight and follow
+es:Highlight and follow
+et:Highlight and follow
+eu:Highlight and follow
+fa:Highlight and follow
+fi:Highlight and follow
+fo:Highlight and follow
+fr:Highlight and follow
+fy-nl:Highlight and follow
+ga:Highlight and follow
+gl:Highlight and follow
+he:Highlight and follow
+hi:Highlight and follow
+hr:Highlight and follow
+hu:Highlight and follow
+id:Highlight and follow
+it:Highlight and follow
+ja:Highlight and follow
+jv:Highlight and follow
+ka:Highlight and follow
+kr:Highlight and follow
+ku:Highlight and follow
+kw:Highlight and follow
+lt:Highlight and follow
+lv:Highlight and follow
+mk:Highlight and follow
+ml:Highlight and follow
+mm:Highlight and follow
+my:Highlight and follow
+ne:Highlight and follow
+nl:Highlight and follow
+nn:Highlight and follow
+no:Highlight and follow
+pa:Highlight and follow
+pl:Highlight and follow
+pt:Highlight and follow
+ro:Highlight and follow
+ru:Highlight and follow
+sat:Highlight and follow
+si:Highlight and follow
+sk:Highlight and follow
+sl:Highlight and follow
+sn:Highlight and follow
+sp-rs:Highlight and follow
+sq:Highlight and follow
+sr-rs:Highlight and follow
+sv:Highlight and follow
+ta:Highlight and follow
+th:Highlight and follow
+tl:Highlight and follow
+tr:Highlight and follow
+tw:醒目顯示與跟隨
+uk:Highlight and follow
+uz:Highlight and follow
+vn:Highlight and follow
+:Highlight co&lor:
+af:Highlight co&lor:
+am:Highlight co&lor:
+ar:Highlight co&lor:
+az:Highlight co&lor:
+bg:Highlight co&lor:
+bn:Highlight co&lor:
+br:Highlight co&lor:
+bs:Highlight co&lor:
+by:Highlight co&lor:
+ca:Highlight co&lor:
+ca-xv:Highlight co&lor:
+cn:高亮颜色(&L)：
+co:Highlight co&lor:
+cy:Highlight co&lor:
+cz:Highlight co&lor:
+de:Highlight co&lor:
+dk:Highlight co&lor:
+el:Highlight co&lor:
+es:Highlight co&lor:
+et:Highlight co&lor:
+eu:Highlight co&lor:
+fa:Highlight co&lor:
+fi:Highlight co&lor:
+fo:Highlight co&lor:
+fr:Highlight co&lor:
+fy-nl:Highlight co&lor:
+ga:Highlight co&lor:
+gl:Highlight co&lor:
+he:Highlight co&lor:
+hi:Highlight co&lor:
+hr:Highlight co&lor:
+hu:Highlight co&lor:
+id:Highlight co&lor:
+it:Highlight co&lor:
+ja:Highlight co&lor:
+jv:Highlight co&lor:
+ka:Highlight co&lor:
+kr:Highlight co&lor:
+ku:Highlight co&lor:
+kw:Highlight co&lor:
+lt:Highlight co&lor:
+lv:Highlight co&lor:
+mk:Highlight co&lor:
+ml:Highlight co&lor:
+mm:Highlight co&lor:
+my:Highlight co&lor:
+ne:Highlight co&lor:
+nl:Highlight co&lor:
+nn:Highlight co&lor:
+no:Highlight co&lor:
+pa:Highlight co&lor:
+pl:Highlight co&lor:
+pt:Highlight co&lor:
+ro:Highlight co&lor:
+ru:Highlight co&lor:
+sat:Highlight co&lor:
+si:Highlight co&lor:
+sk:Highlight co&lor:
+sl:Highlight co&lor:
+sn:Highlight co&lor:
+sp-rs:Highlight co&lor:
+sq:Highlight co&lor:
+sr-rs:Highlight co&lor:
+sv:Highlight co&lor:
+ta:Highlight co&lor:
+th:Highlight co&lor:
+tl:Highlight co&lor:
+tr:Highlight co&lor:
+tw:醒目顯示顏色(&L)：
+uk:Highlight co&lor:
+uz:Highlight co&lor:
+vn:Highlight co&lor:
 :Hint: Use the F3 key for finding again
 am:Որոնումը կրկնելու համար օգտագործեք F3 կոճակը
 br:Dica: Use a tecla F3 pra achar de novo
@@ -15962,6 +16752,152 @@ nl:Handleiding op Website
 pl:Instrukcja obsługi na stronie internetowej
 sk:Manuál na webovej stránke
 tw:線上說明
+:Manually Adjust Pages
+af:Pas bladsye handmatig aan
+am:Էջերը ձեռքով կարգավորել
+ar:ضبط الصفحات يدوياً
+az:Səhifələri əl ilə tənzimlə
+bg:Ръчно коригиране на страниците
+bn:পৃষ্ঠা ম্যানুয়ালি সামঞ্জস্য করুন
+br:Ajustar páginas manualmente
+bs:Ručno prilagodi stranice
+by:Наладзіць старонкі ўручную
+ca:Ajusta les pàgines manualment
+ca-xv:Ajusta les pàgines manualment
+cn:手动调整页面
+co:Aghjustà e pagine manualmente
+cy:Addasu tudalennau â llaw
+cz:Ručně upravit stránky
+de:Seiten manuell anpassen
+dk:Juster sider manuelt
+el:Μη αυτόματη προσαρμογή σελίδων
+es:Ajustar páginas manualmente
+et:Kohanda lehti käsitsi
+eu:Doitu orriak eskuz
+fa:تنظیم دستی صفحه‌ها
+fi:Säädä sivuja manuaalisesti
+fo:Still síður við hond
+fr:Ajuster les pages manuellement
+fy-nl:Siden mei de hân oanpasse
+ga:Coigeartaigh leathanaigh de láimh
+gl:Axustar as páxinas manualmente
+he:התאמת עמודים ידנית
+hi:पृष्ठ मैन्युअल रूप से समायोजित करें
+hr:Ručno prilagodi stranice
+hu:Oldalak kézi módosítása
+id:Sesuaikan halaman secara manual
+it:Regola le pagine manualmente
+ja:ページを手動で調整
+jv:Atur kaca kanthi manual
+ka:გვერდების ხელით მორგება
+kr:페이지 수동 조정
+ku:پەڕەکان بە دەستی ڕێکبخە
+kw:Aswiya folennow gans dorn
+lt:Rankiniu būdu koreguoti puslapius
+lv:Manuāli pielāgot lapas
+mk:Рачно прилагоди страници
+ml:പേജുകൾ സ്വമേധയാ ക്രമീകരിക്കുക
+mm:စာမျက်နှာများကို ကိုယ်တိုင်ချိန်ညှိရန်
+my:Laraskan halaman secara manual
+ne:पृष्ठहरू म्यानुअल रूपमा समायोजन गर्नुहोस्
+nl:Pagina's handmatig aanpassen
+nn:Juster sider manuelt
+no:Juster sider manuelt
+pa:ਪੰਨਿਆਂ ਨੂੰ ਹੱਥੀਂ ਵਿਵਸਥਿਤ ਕਰੋ
+pl:Ręcznie dostosuj strony
+pt:Ajustar páginas manualmente
+ro:Ajustați paginile manual
+ru:Настроить страницы вручную
+sat:ᱥᱟᱦᱴᱟ ᱠᱚ ᱛᱤ ᱛᱮ ᱥᱚᱡᱷᱮ
+si:පිටු අතින් සකසන්න
+sk:Ručne upraviť strany
+sl:Ročno prilagodi strani
+sn:Gadzirisa mapeji nemaoko
+sp-rs:Ručno prilagodi stranice
+sq:Rregullo faqet manualisht
+sr-rs:Ручно прилагоди странице
+sv:Justera sidor manuellt
+ta:பக்கங்களை கைமுறையாக சரிசெய்
+th:ปรับหน้าด้วยตนเอง
+tl:Ayusin nang manu-mano ang mga pahina
+tr:Sayfaları elle ayarla
+tw:手動調整頁面
+uk:Налаштувати сторінки вручну
+uz:Sahifalarni qo'lda sozlash
+vn:Điều chỉnh trang thủ công
+:Manually Adjust Pages...
+af:Pas bladsye handmatig aan...
+am:Էջերը ձեռքով կարգավորել...
+ar:ضبط الصفحات يدوياً...
+az:Səhifələri əl ilə tənzimlə...
+bg:Ръчно коригиране на страниците...
+bn:পৃষ্ঠা ম্যানুয়ালি সামঞ্জস্য করুন...
+br:Ajustar páginas manualmente...
+bs:Ručno prilagodi stranice...
+by:Наладзіць старонкі ўручную...
+ca:Ajusta les pàgines manualment...
+ca-xv:Ajusta les pàgines manualment...
+cn:手动调整页面...
+co:Aghjustà e pagine manualmente...
+cy:Addasu tudalennau â llaw...
+cz:Ručně upravit stránky...
+de:Seiten manuell anpassen...
+dk:Juster sider manuelt...
+el:Μη αυτόματη προσαρμογή σελίδων...
+es:Ajustar páginas manualmente...
+et:Kohanda lehti käsitsi...
+eu:Doitu orriak eskuz...
+fa:تنظیم دستی صفحه‌ها...
+fi:Säädä sivuja manuaalisesti...
+fo:Still síður við hond...
+fr:Ajuster les pages manuellement...
+fy-nl:Siden mei de hân oanpasse...
+ga:Coigeartaigh leathanaigh de láimh...
+gl:Axustar as páxinas manualmente...
+he:התאמת עמודים ידנית...
+hi:पृष्ठ मैन्युअल रूप से समायोजित करें...
+hr:Ručno prilagodi stranice...
+hu:Oldalak kézi módosítása...
+id:Sesuaikan halaman secara manual...
+it:Regola le pagine manualmente...
+ja:ページを手動で調整...
+jv:Atur kaca kanthi manual...
+ka:გვერდების ხელით მორგება...
+kr:페이지 수동 조정...
+ku:پەڕەکان بە دەستی ڕێکبخە...
+kw:Aswiya folennow gans dorn...
+lt:Rankiniu būdu koreguoti puslapius...
+lv:Manuāli pielāgot lapas...
+mk:Рачно прилагоди страници...
+ml:പേജുകൾ സ്വമേധയാ ക്രമീകരിക്കുക...
+mm:စာမျက်နှာများကို ကိုယ်တိုင်ချိန်ညှိရန်...
+my:Laraskan halaman secara manual...
+ne:पृष्ठहरू म्यानुअल रूपमा समायोजन गर्नुहोस्...
+nl:Pagina's handmatig aanpassen...
+nn:Juster sider manuelt...
+no:Juster sider manuelt...
+pa:ਪੰਨਿਆਂ ਨੂੰ ਹੱਥੀਂ ਵਿਵਸਥਿਤ ਕਰੋ...
+pl:Ręcznie dostosuj strony...
+pt:Ajustar páginas manualmente...
+ro:Ajustați paginile manual...
+ru:Настроить страницы вручную...
+sat:ᱥᱟᱦᱴᱟ ᱠᱚ ᱛᱤ ᱛᱮ ᱥᱚᱡᱷᱮ...
+si:පිටු අතින් සකසන්න...
+sk:Ručne upraviť strany...
+sl:Ročno prilagodi strani...
+sn:Gadzirisa mapeji nemaoko...
+sp-rs:Ručno prilagodi stranice...
+sq:Rregullo faqet manualisht...
+sr-rs:Ручно прилагоди странице...
+sv:Justera sidor manuellt...
+ta:பக்கங்களை கைமுறையாக சரிசெய்...
+th:ปรับหน้าด้วยตนเอง...
+tl:Ayusin nang manu-mano ang mga pahina...
+tr:Sayfaları elle ayarla...
+tw:手動調整頁面...
+uk:Налаштувати сторінки вручну...
+uz:Sahifalarni qo'lda sozlash...
+vn:Điều chỉnh trang thủ công...
 :Match Case
 af:Match Case
 am:Match Case
@@ -16367,6 +17303,152 @@ nl:Verplaats Tab naar Rechts
 pl:Przesuń kartę w prawo
 sk:Presunúť kartu doprava
 tw:向右移動分頁
+:Narrated books (EPUB 3)
+af:Narrated books (EPUB 3)
+am:Narrated books (EPUB 3)
+ar:Narrated books (EPUB 3)
+az:Narrated books (EPUB 3)
+bg:Narrated books (EPUB 3)
+bn:Narrated books (EPUB 3)
+br:Narrated books (EPUB 3)
+bs:Narrated books (EPUB 3)
+by:Narrated books (EPUB 3)
+ca:Narrated books (EPUB 3)
+ca-xv:Narrated books (EPUB 3)
+cn:有声书（EPUB 3）
+co:Narrated books (EPUB 3)
+cy:Narrated books (EPUB 3)
+cz:Narrated books (EPUB 3)
+de:Narrated books (EPUB 3)
+dk:Narrated books (EPUB 3)
+el:Narrated books (EPUB 3)
+es:Narrated books (EPUB 3)
+et:Narrated books (EPUB 3)
+eu:Narrated books (EPUB 3)
+fa:Narrated books (EPUB 3)
+fi:Narrated books (EPUB 3)
+fo:Narrated books (EPUB 3)
+fr:Narrated books (EPUB 3)
+fy-nl:Narrated books (EPUB 3)
+ga:Narrated books (EPUB 3)
+gl:Narrated books (EPUB 3)
+he:Narrated books (EPUB 3)
+hi:Narrated books (EPUB 3)
+hr:Narrated books (EPUB 3)
+hu:Narrated books (EPUB 3)
+id:Narrated books (EPUB 3)
+it:Narrated books (EPUB 3)
+ja:Narrated books (EPUB 3)
+jv:Narrated books (EPUB 3)
+ka:Narrated books (EPUB 3)
+kr:Narrated books (EPUB 3)
+ku:Narrated books (EPUB 3)
+kw:Narrated books (EPUB 3)
+lt:Narrated books (EPUB 3)
+lv:Narrated books (EPUB 3)
+mk:Narrated books (EPUB 3)
+ml:Narrated books (EPUB 3)
+mm:Narrated books (EPUB 3)
+my:Narrated books (EPUB 3)
+ne:Narrated books (EPUB 3)
+nl:Narrated books (EPUB 3)
+nn:Narrated books (EPUB 3)
+no:Narrated books (EPUB 3)
+pa:Narrated books (EPUB 3)
+pl:Narrated books (EPUB 3)
+pt:Narrated books (EPUB 3)
+ro:Narrated books (EPUB 3)
+ru:Narrated books (EPUB 3)
+sat:Narrated books (EPUB 3)
+si:Narrated books (EPUB 3)
+sk:Narrated books (EPUB 3)
+sl:Narrated books (EPUB 3)
+sn:Narrated books (EPUB 3)
+sp-rs:Narrated books (EPUB 3)
+sq:Narrated books (EPUB 3)
+sr-rs:Narrated books (EPUB 3)
+sv:Narrated books (EPUB 3)
+ta:Narrated books (EPUB 3)
+th:Narrated books (EPUB 3)
+tl:Narrated books (EPUB 3)
+tr:Narrated books (EPUB 3)
+tw:有聲書（EPUB 3）
+uk:Narrated books (EPUB 3)
+uz:Narrated books (EPUB 3)
+vn:Narrated books (EPUB 3)
+:Narration spee&d:
+af:Narration spee&d:
+am:Narration spee&d:
+ar:Narration spee&d:
+az:Narration spee&d:
+bg:Narration spee&d:
+bn:Narration spee&d:
+br:Narration spee&d:
+bs:Narration spee&d:
+by:Narration spee&d:
+ca:Narration spee&d:
+ca-xv:Narration spee&d:
+cn:录音倍速(&D)：
+co:Narration spee&d:
+cy:Narration spee&d:
+cz:Narration spee&d:
+de:Narration spee&d:
+dk:Narration spee&d:
+el:Narration spee&d:
+es:Narration spee&d:
+et:Narration spee&d:
+eu:Narration spee&d:
+fa:Narration spee&d:
+fi:Narration spee&d:
+fo:Narration spee&d:
+fr:Narration spee&d:
+fy-nl:Narration spee&d:
+ga:Narration spee&d:
+gl:Narration spee&d:
+he:Narration spee&d:
+hi:Narration spee&d:
+hr:Narration spee&d:
+hu:Narration spee&d:
+id:Narration spee&d:
+it:Narration spee&d:
+ja:Narration spee&d:
+jv:Narration spee&d:
+ka:Narration spee&d:
+kr:Narration spee&d:
+ku:Narration spee&d:
+kw:Narration spee&d:
+lt:Narration spee&d:
+lv:Narration spee&d:
+mk:Narration spee&d:
+ml:Narration spee&d:
+mm:Narration spee&d:
+my:Narration spee&d:
+ne:Narration spee&d:
+nl:Narration spee&d:
+nn:Narration spee&d:
+no:Narration spee&d:
+pa:Narration spee&d:
+pl:Narration spee&d:
+pt:Narration spee&d:
+ro:Narration spee&d:
+ru:Narration spee&d:
+sat:Narration spee&d:
+si:Narration spee&d:
+sk:Narration spee&d:
+sl:Narration spee&d:
+sn:Narration spee&d:
+sp-rs:Narration spee&d:
+sq:Narration spee&d:
+sr-rs:Narration spee&d:
+sv:Narration spee&d:
+ta:Narration spee&d:
+th:Narration spee&d:
+tl:Narration spee&d:
+tr:Narration spee&d:
+tw:錄音倍速(&D)：
+uk:Narration spee&d:
+uz:Narration spee&d:
+vn:Narration spee&d:
 :Navigate Back
 am:Հետ գնալ
 br:Navegar pra Trás
@@ -16442,6 +17524,79 @@ nl:Volgende Tab
 pl:Następna karta
 sk:Ďalšia karta
 tw:下一個分頁
+:Next sentence
+af:Next sentence
+am:Next sentence
+ar:Next sentence
+az:Next sentence
+bg:Next sentence
+bn:Next sentence
+br:Next sentence
+bs:Next sentence
+by:Next sentence
+ca:Next sentence
+ca-xv:Next sentence
+cn:下一句
+co:Next sentence
+cy:Next sentence
+cz:Next sentence
+de:Next sentence
+dk:Next sentence
+el:Next sentence
+es:Next sentence
+et:Next sentence
+eu:Next sentence
+fa:Next sentence
+fi:Next sentence
+fo:Next sentence
+fr:Next sentence
+fy-nl:Next sentence
+ga:Next sentence
+gl:Next sentence
+he:Next sentence
+hi:Next sentence
+hr:Next sentence
+hu:Next sentence
+id:Next sentence
+it:Next sentence
+ja:Next sentence
+jv:Next sentence
+ka:Next sentence
+kr:Next sentence
+ku:Next sentence
+kw:Next sentence
+lt:Next sentence
+lv:Next sentence
+mk:Next sentence
+ml:Next sentence
+mm:Next sentence
+my:Next sentence
+ne:Next sentence
+nl:Next sentence
+nn:Next sentence
+no:Next sentence
+pa:Next sentence
+pl:Next sentence
+pt:Next sentence
+ro:Next sentence
+ru:Next sentence
+sat:Next sentence
+si:Next sentence
+sk:Next sentence
+sl:Next sentence
+sn:Next sentence
+sp-rs:Next sentence
+sq:Next sentence
+sr-rs:Next sentence
+sv:Next sentence
+ta:Next sentence
+th:Next sentence
+tl:Next sentence
+tr:Next sentence
+tw:下一句
+uk:Next sentence
+uz:Next sentence
+vn:Next sentence
 :No
 am:Ոչ
 br:Não
@@ -16855,6 +18010,9 @@ ja:印刷目次が見つかりません
 kr:인쇄된 목차를 찾을 수 없음
 ru:Печатное оглавление не найдено
 tw:未找到印刷目錄頁
+:No printed TOC pages were detected by the API.
+cn:API 未能检测到印刷目录页。
+tw:API 未能偵測到印刷目錄頁。
 :No printed table of contents found in the first pages.
 af:No printed table of contents found in the first pages.
 am:No printed table of contents found in the first pages.
@@ -20250,6 +21408,152 @@ de:Y-Pixel-Abmessung:
 it:Dimensioni Pixel Y:
 nl:Pixel Y Afmetingen:
 pl:Wymiar Y pikseli:
+:Play / Pause reading
+af:Play / Pause reading
+am:Play / Pause reading
+ar:Play / Pause reading
+az:Play / Pause reading
+bg:Play / Pause reading
+bn:Play / Pause reading
+br:Play / Pause reading
+bs:Play / Pause reading
+by:Play / Pause reading
+ca:Play / Pause reading
+ca-xv:Play / Pause reading
+cn:播放 / 暂停朗读
+co:Play / Pause reading
+cy:Play / Pause reading
+cz:Play / Pause reading
+de:Play / Pause reading
+dk:Play / Pause reading
+el:Play / Pause reading
+es:Play / Pause reading
+et:Play / Pause reading
+eu:Play / Pause reading
+fa:Play / Pause reading
+fi:Play / Pause reading
+fo:Play / Pause reading
+fr:Play / Pause reading
+fy-nl:Play / Pause reading
+ga:Play / Pause reading
+gl:Play / Pause reading
+he:Play / Pause reading
+hi:Play / Pause reading
+hr:Play / Pause reading
+hu:Play / Pause reading
+id:Play / Pause reading
+it:Play / Pause reading
+ja:Play / Pause reading
+jv:Play / Pause reading
+ka:Play / Pause reading
+kr:Play / Pause reading
+ku:Play / Pause reading
+kw:Play / Pause reading
+lt:Play / Pause reading
+lv:Play / Pause reading
+mk:Play / Pause reading
+ml:Play / Pause reading
+mm:Play / Pause reading
+my:Play / Pause reading
+ne:Play / Pause reading
+nl:Play / Pause reading
+nn:Play / Pause reading
+no:Play / Pause reading
+pa:Play / Pause reading
+pl:Play / Pause reading
+pt:Play / Pause reading
+ro:Play / Pause reading
+ru:Play / Pause reading
+sat:Play / Pause reading
+si:Play / Pause reading
+sk:Play / Pause reading
+sl:Play / Pause reading
+sn:Play / Pause reading
+sp-rs:Play / Pause reading
+sq:Play / Pause reading
+sr-rs:Play / Pause reading
+sv:Play / Pause reading
+ta:Play / Pause reading
+th:Play / Pause reading
+tl:Play / Pause reading
+tr:Play / Pause reading
+tw:播放 / 暫停朗讀
+uk:Play / Pause reading
+uz:Play / Pause reading
+vn:Play / Pause reading
+:Play the book's recorded narration when &available
+af:Play the book's recorded narration when &available
+am:Play the book's recorded narration when &available
+ar:Play the book's recorded narration when &available
+az:Play the book's recorded narration when &available
+bg:Play the book's recorded narration when &available
+bn:Play the book's recorded narration when &available
+br:Play the book's recorded narration when &available
+bs:Play the book's recorded narration when &available
+by:Play the book's recorded narration when &available
+ca:Play the book's recorded narration when &available
+ca-xv:Play the book's recorded narration when &available
+cn:有书内录音时播放录音(&A)
+co:Play the book's recorded narration when &available
+cy:Play the book's recorded narration when &available
+cz:Play the book's recorded narration when &available
+de:Play the book's recorded narration when &available
+dk:Play the book's recorded narration when &available
+el:Play the book's recorded narration when &available
+es:Play the book's recorded narration when &available
+et:Play the book's recorded narration when &available
+eu:Play the book's recorded narration when &available
+fa:Play the book's recorded narration when &available
+fi:Play the book's recorded narration when &available
+fo:Play the book's recorded narration when &available
+fr:Play the book's recorded narration when &available
+fy-nl:Play the book's recorded narration when &available
+ga:Play the book's recorded narration when &available
+gl:Play the book's recorded narration when &available
+he:Play the book's recorded narration when &available
+hi:Play the book's recorded narration when &available
+hr:Play the book's recorded narration when &available
+hu:Play the book's recorded narration when &available
+id:Play the book's recorded narration when &available
+it:Play the book's recorded narration when &available
+ja:Play the book's recorded narration when &available
+jv:Play the book's recorded narration when &available
+ka:Play the book's recorded narration when &available
+kr:Play the book's recorded narration when &available
+ku:Play the book's recorded narration when &available
+kw:Play the book's recorded narration when &available
+lt:Play the book's recorded narration when &available
+lv:Play the book's recorded narration when &available
+mk:Play the book's recorded narration when &available
+ml:Play the book's recorded narration when &available
+mm:Play the book's recorded narration when &available
+my:Play the book's recorded narration when &available
+ne:Play the book's recorded narration when &available
+nl:Play the book's recorded narration when &available
+nn:Play the book's recorded narration when &available
+no:Play the book's recorded narration when &available
+pa:Play the book's recorded narration when &available
+pl:Play the book's recorded narration when &available
+pt:Play the book's recorded narration when &available
+ro:Play the book's recorded narration when &available
+ru:Play the book's recorded narration when &available
+sat:Play the book's recorded narration when &available
+si:Play the book's recorded narration when &available
+sk:Play the book's recorded narration when &available
+sl:Play the book's recorded narration when &available
+sn:Play the book's recorded narration when &available
+sp-rs:Play the book's recorded narration when &available
+sq:Play the book's recorded narration when &available
+sr-rs:Play the book's recorded narration when &available
+sv:Play the book's recorded narration when &available
+ta:Play the book's recorded narration when &available
+th:Play the book's recorded narration when &available
+tl:Play the book's recorded narration when &available
+tr:Play the book's recorded narration when &available
+tw:有書內錄音時播放錄音(&A)
+uk:Play the book's recorded narration when &available
+uz:Play the book's recorded narration when &available
+vn:Play the book's recorded narration when &available
 :Please close %s to proceed!
 am:Շարունակելուց առաջ փակեք %s-ը:
 br:Por favor feche o %s pra prosseguir!
@@ -20420,6 +21724,9 @@ ja:目次ページ画像 %d 枚を送信準備中…
 kr:목차 페이지 이미지 %d장을 보낼 준비 중…
 ru:Подготовка к отправке изображений страниц оглавления (%d)…
 tw:正在準備 %d 張目錄圖片並傳送…
+:Preparing TOC page images...
+cn:正在准备目录页图片…
+tw:正在準備目錄頁圖片…
 :Presentation Black Background
 am:Ներկայացման սև խորք
 br:Apresentação com Fundo Preto
@@ -20554,6 +21861,79 @@ nl:Vorige Tab
 pl:Poprzednia karta
 sk:Predchádzajúca karta
 tw:上一個分頁
+:Previous sentence
+af:Previous sentence
+am:Previous sentence
+ar:Previous sentence
+az:Previous sentence
+bg:Previous sentence
+bn:Previous sentence
+br:Previous sentence
+bs:Previous sentence
+by:Previous sentence
+ca:Previous sentence
+ca-xv:Previous sentence
+cn:上一句
+co:Previous sentence
+cy:Previous sentence
+cz:Previous sentence
+de:Previous sentence
+dk:Previous sentence
+el:Previous sentence
+es:Previous sentence
+et:Previous sentence
+eu:Previous sentence
+fa:Previous sentence
+fi:Previous sentence
+fo:Previous sentence
+fr:Previous sentence
+fy-nl:Previous sentence
+ga:Previous sentence
+gl:Previous sentence
+he:Previous sentence
+hi:Previous sentence
+hr:Previous sentence
+hu:Previous sentence
+id:Previous sentence
+it:Previous sentence
+ja:Previous sentence
+jv:Previous sentence
+ka:Previous sentence
+kr:Previous sentence
+ku:Previous sentence
+kw:Previous sentence
+lt:Previous sentence
+lv:Previous sentence
+mk:Previous sentence
+ml:Previous sentence
+mm:Previous sentence
+my:Previous sentence
+ne:Previous sentence
+nl:Previous sentence
+nn:Previous sentence
+no:Previous sentence
+pa:Previous sentence
+pl:Previous sentence
+pt:Previous sentence
+ro:Previous sentence
+ru:Previous sentence
+sat:Previous sentence
+si:Previous sentence
+sk:Previous sentence
+sl:Previous sentence
+sn:Previous sentence
+sp-rs:Previous sentence
+sq:Previous sentence
+sr-rs:Previous sentence
+sv:Previous sentence
+ta:Previous sentence
+th:Previous sentence
+tl:Previous sentence
+tr:Previous sentence
+tw:上一句
+uk:Previous sentence
+uz:Previous sentence
+vn:Previous sentence
 :Print
 am:Տպել
 br:Imprimir
@@ -21014,6 +22394,152 @@ tw:朗讀 (TTS)
 uk:Читати вголос (TTS)
 uz:Ovozli o'qish (TTS)
 vn:Đọc to (TTS)
+:Read Aloud Settings
+af:Read Aloud Settings
+am:Read Aloud Settings
+ar:Read Aloud Settings
+az:Read Aloud Settings
+bg:Read Aloud Settings
+bn:Read Aloud Settings
+br:Read Aloud Settings
+bs:Read Aloud Settings
+by:Read Aloud Settings
+ca:Read Aloud Settings
+ca-xv:Read Aloud Settings
+cn:朗读设置
+co:Read Aloud Settings
+cy:Read Aloud Settings
+cz:Read Aloud Settings
+de:Read Aloud Settings
+dk:Read Aloud Settings
+el:Read Aloud Settings
+es:Read Aloud Settings
+et:Read Aloud Settings
+eu:Read Aloud Settings
+fa:Read Aloud Settings
+fi:Read Aloud Settings
+fo:Read Aloud Settings
+fr:Read Aloud Settings
+fy-nl:Read Aloud Settings
+ga:Read Aloud Settings
+gl:Read Aloud Settings
+he:Read Aloud Settings
+hi:Read Aloud Settings
+hr:Read Aloud Settings
+hu:Read Aloud Settings
+id:Read Aloud Settings
+it:Read Aloud Settings
+ja:Read Aloud Settings
+jv:Read Aloud Settings
+ka:Read Aloud Settings
+kr:Read Aloud Settings
+ku:Read Aloud Settings
+kw:Read Aloud Settings
+lt:Read Aloud Settings
+lv:Read Aloud Settings
+mk:Read Aloud Settings
+ml:Read Aloud Settings
+mm:Read Aloud Settings
+my:Read Aloud Settings
+ne:Read Aloud Settings
+nl:Read Aloud Settings
+nn:Read Aloud Settings
+no:Read Aloud Settings
+pa:Read Aloud Settings
+pl:Read Aloud Settings
+pt:Read Aloud Settings
+ro:Read Aloud Settings
+ru:Read Aloud Settings
+sat:Read Aloud Settings
+si:Read Aloud Settings
+sk:Read Aloud Settings
+sl:Read Aloud Settings
+sn:Read Aloud Settings
+sp-rs:Read Aloud Settings
+sq:Read Aloud Settings
+sr-rs:Read Aloud Settings
+sv:Read Aloud Settings
+ta:Read Aloud Settings
+th:Read Aloud Settings
+tl:Read Aloud Settings
+tr:Read Aloud Settings
+tw:朗讀設定
+uk:Read Aloud Settings
+uz:Read Aloud Settings
+vn:Read Aloud Settings
+:Read Aloud Settings...
+af:Read Aloud Settings...
+am:Read Aloud Settings...
+ar:Read Aloud Settings...
+az:Read Aloud Settings...
+bg:Read Aloud Settings...
+bn:Read Aloud Settings...
+br:Read Aloud Settings...
+bs:Read Aloud Settings...
+by:Read Aloud Settings...
+ca:Read Aloud Settings...
+ca-xv:Read Aloud Settings...
+cn:朗读设置...
+co:Read Aloud Settings...
+cy:Read Aloud Settings...
+cz:Read Aloud Settings...
+de:Read Aloud Settings...
+dk:Read Aloud Settings...
+el:Read Aloud Settings...
+es:Read Aloud Settings...
+et:Read Aloud Settings...
+eu:Read Aloud Settings...
+fa:Read Aloud Settings...
+fi:Read Aloud Settings...
+fo:Read Aloud Settings...
+fr:Read Aloud Settings...
+fy-nl:Read Aloud Settings...
+ga:Read Aloud Settings...
+gl:Read Aloud Settings...
+he:Read Aloud Settings...
+hi:Read Aloud Settings...
+hr:Read Aloud Settings...
+hu:Read Aloud Settings...
+id:Read Aloud Settings...
+it:Read Aloud Settings...
+ja:Read Aloud Settings...
+jv:Read Aloud Settings...
+ka:Read Aloud Settings...
+kr:Read Aloud Settings...
+ku:Read Aloud Settings...
+kw:Read Aloud Settings...
+lt:Read Aloud Settings...
+lv:Read Aloud Settings...
+mk:Read Aloud Settings...
+ml:Read Aloud Settings...
+mm:Read Aloud Settings...
+my:Read Aloud Settings...
+ne:Read Aloud Settings...
+nl:Read Aloud Settings...
+nn:Read Aloud Settings...
+no:Read Aloud Settings...
+pa:Read Aloud Settings...
+pl:Read Aloud Settings...
+pt:Read Aloud Settings...
+ro:Read Aloud Settings...
+ru:Read Aloud Settings...
+sat:Read Aloud Settings...
+si:Read Aloud Settings...
+sk:Read Aloud Settings...
+sl:Read Aloud Settings...
+sn:Read Aloud Settings...
+sp-rs:Read Aloud Settings...
+sq:Read Aloud Settings...
+sr-rs:Read Aloud Settings...
+sv:Read Aloud Settings...
+ta:Read Aloud Settings...
+th:Read Aloud Settings...
+tl:Read Aloud Settings...
+tr:Read Aloud Settings...
+tw:朗讀設定...
+uk:Read Aloud Settings...
+uz:Read Aloud Settings...
+vn:Read Aloud Settings...
 :Read aloud speed
 af:Read aloud speed
 am:Read aloud speed
@@ -21756,6 +23282,18 @@ tw:全文識別並儲存
 uk:Recognize all pages and save
 uz:Recognize all pages and save
 vn:Recognize all pages and save
+:Recognize via API
+cn:API 识别
+tw:API 辨識
+:Recognize via Web AI
+cn:网页 AI 识别
+de:Über Web-KI erkennen
+es:Reconocer con IA web
+fr:Reconnaître via l'IA web
+ja:ウェブAIで認識
+kr:웹 AI로 인식
+ru:Распознать через веб-ИИ
+tw:網頁 AI 辨識
 :Recognized text can be selected, copied, searched, and read aloud.
 af:Recognized text can be selected, copied, searched, and read aloud.
 am:Recognized text can be selected, copied, searched, and read aloud.
@@ -21829,6 +23367,9 @@ tw:辨識後可直接選取、複製、搜尋和朗讀掃描頁文字。
 uk:Recognized text can be selected, copied, searched, and read aloud.
 uz:Recognized text can be selected, copied, searched, and read aloud.
 vn:Recognized text can be selected, copied, searched, and read aloud.
+:Recognizing TOC via API
+cn:正在通过 API 识别目录
+tw:正在透過 API 辨識目錄
 :Rect: x=%d y=%d dx=%d dy=%d
 am:Ուղղանկյուն` x=%d y=%d dx=%d dy=%d
 br:Retângulo: x=%d y=%d dx=%d dy=%d
@@ -25177,15 +26718,6 @@ nl:Verzend Document Per E-Mail
 pl:Wyślij dokument e-mailem...
 sk:Odoslať dokument e-mailom…
 tw:以電子郵件傳送文件…
-:Recognize via Web AI
-cn:网页 AI 识别
-de:Über Web-KI erkennen
-es:Reconocer con IA web
-fr:Reconnaître via l'IA web
-ja:ウェブAIで認識
-kr:웹 AI로 인식
-ru:Распознать через веб-ИИ
-tw:網頁 AI 辨識
 :Send by &E-mail...
 am:Ուղարկել &էլ. փոստով
 br:Enviar por &E-mail...
@@ -27753,6 +29285,9 @@ tw:目錄匯入完成。
 :TOC import not finished. Copy the AI reply again to retry.
 cn:目录导入未完成，可再次复制 AI 回复重试。
 tw:目錄匯入未完成，可再次複製 AI 回覆重試。
+:TOC page detection failed.
+cn:目录页检测失败。
+tw:目錄頁偵測失敗。
 :TOC pages (PDF page numbers, not printed page numbers)
 cn:目录所在的 PDF 页码（非书本印刷页码）
 tw:目錄所在的 PDF 頁碼（非書本印刷頁碼）
@@ -28542,6 +30077,15 @@ nl:Bedankt! SumatraPDF is geïnstalleerd.
 pl:Program SumatraPDF został zainstalowany.
 sk:Ďakujeme! SumatraPDF bol nainštalovaný.
 tw:謝謝！ SumatraPDF 已安裝。
+:The AI TOC API is not configured (set base URL, key and model in Settings).
+cn:尚未配置 AI 目录识别 API（请在设置中填写地址、密钥和模型）。
+tw:尚未設定 AI 目錄辨識 API（請在設定中填寫位址、金鑰和模型）。
+:The AI TOC recognition failed.
+cn:AI 目录识别失败。
+tw:AI 目錄辨識失敗。
+:The AI TOC request failed.
+cn:AI 识别目录请求失败。
+tw:AI 辨識目錄請求失敗。
 :The AI is organizing a TOC from the full-text structure.\r\nWhen it finishes, click Copy under the AI reply; the app reads it and imports the TOC.
 cn:AI 正在根据全文结构整理目录。\r\n完成后，请在 AI 回复中点击“复制”，本程序会自动读取结果并导入目录。
 tw:AI 正在根據全文結構整理目錄。\r\n完成後，請在 AI 回覆中點擊「複製」，本程式會自動讀取結果並匯入目錄。
@@ -28554,6 +30098,9 @@ tw:AI 正在辨識印刷目錄。\r\n完成後，請在 AI 回覆中點擊「複
 :The AI page opened, but the initial message could not be sent.
 cn:AI 网页已打开，但无法发送初始化消息。
 tw:AI 網頁已開啟，但無法傳送初始化訊息。
+:The AI reply contains no importable TOC items.
+cn:AI 回复中没有可导入的目录条目。
+tw:AI 回覆中沒有可匯入的目錄項目。
 :The Programmers
 cn:程序员
 de:Die Programmierer
@@ -28585,6 +30132,9 @@ tw:安裝程式已損壞。請重新下載。\n很抱歉給您帶來不便！
 :The selected %d TOC page images will be sent to the configured web AI.\n\nPlease verify the pages and content before sending.
 cn:将把选中的 %d 页目录图片发送到当前配置的网页版 AI。\n\n请确认页码和内容无误后发送。
 tw:將把選取的 %d 頁目錄圖片傳送到目前設定的網頁版 AI。\n\n請確認頁碼和內容無誤後傳送。
+:The selected page images are sent to the configured API.\r\nThe TOC is imported automatically when the reply arrives.
+cn:所选目录页图片将发送到已配置的 API。\r\n收到回复后将自动导入目录。
+tw:所選目錄頁圖片將傳送到已設定的 API。\r\n收到回覆後將自動匯入目錄。
 :There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
 af:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
 am:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
@@ -30734,6 +32284,79 @@ tw:使用浮動搜尋視窗(&F)
 uk:Use the &floating search window
 uz:Use the &floating search window
 vn:Use the &floating search window
+:Use the book's highlight c&olor
+af:Use the book's highlight c&olor
+am:Use the book's highlight c&olor
+ar:Use the book's highlight c&olor
+az:Use the book's highlight c&olor
+bg:Use the book's highlight c&olor
+bn:Use the book's highlight c&olor
+br:Use the book's highlight c&olor
+bs:Use the book's highlight c&olor
+by:Use the book's highlight c&olor
+ca:Use the book's highlight c&olor
+ca-xv:Use the book's highlight c&olor
+cn:使用书内高亮色(&O)
+co:Use the book's highlight c&olor
+cy:Use the book's highlight c&olor
+cz:Use the book's highlight c&olor
+de:Use the book's highlight c&olor
+dk:Use the book's highlight c&olor
+el:Use the book's highlight c&olor
+es:Use the book's highlight c&olor
+et:Use the book's highlight c&olor
+eu:Use the book's highlight c&olor
+fa:Use the book's highlight c&olor
+fi:Use the book's highlight c&olor
+fo:Use the book's highlight c&olor
+fr:Use the book's highlight c&olor
+fy-nl:Use the book's highlight c&olor
+ga:Use the book's highlight c&olor
+gl:Use the book's highlight c&olor
+he:Use the book's highlight c&olor
+hi:Use the book's highlight c&olor
+hr:Use the book's highlight c&olor
+hu:Use the book's highlight c&olor
+id:Use the book's highlight c&olor
+it:Use the book's highlight c&olor
+ja:Use the book's highlight c&olor
+jv:Use the book's highlight c&olor
+ka:Use the book's highlight c&olor
+kr:Use the book's highlight c&olor
+ku:Use the book's highlight c&olor
+kw:Use the book's highlight c&olor
+lt:Use the book's highlight c&olor
+lv:Use the book's highlight c&olor
+mk:Use the book's highlight c&olor
+ml:Use the book's highlight c&olor
+mm:Use the book's highlight c&olor
+my:Use the book's highlight c&olor
+ne:Use the book's highlight c&olor
+nl:Use the book's highlight c&olor
+nn:Use the book's highlight c&olor
+no:Use the book's highlight c&olor
+pa:Use the book's highlight c&olor
+pl:Use the book's highlight c&olor
+pt:Use the book's highlight c&olor
+ro:Use the book's highlight c&olor
+ru:Use the book's highlight c&olor
+sat:Use the book's highlight c&olor
+si:Use the book's highlight c&olor
+sk:Use the book's highlight c&olor
+sl:Use the book's highlight c&olor
+sn:Use the book's highlight c&olor
+sp-rs:Use the book's highlight c&olor
+sq:Use the book's highlight c&olor
+sr-rs:Use the book's highlight c&olor
+sv:Use the book's highlight c&olor
+ta:Use the book's highlight c&olor
+th:Use the book's highlight c&olor
+tl:Use the book's highlight c&olor
+tr:Use the book's highlight c&olor
+tw:使用書內醒目顯示色(&O)
+uk:Use the book's highlight c&olor
+uz:Use the book's highlight c&olor
+vn:Use the book's highlight c&olor
 :User Comment:
 br:Comentãrio do Usuário:
 cn:用户注释:
@@ -30959,6 +32582,79 @@ nl:Waarschuwing
 pl:Uwaga
 sk:Upozornenie
 tw:警告
+:When off, narrated books are read with the voice above.
+af:When off, narrated books are read with the voice above.
+am:When off, narrated books are read with the voice above.
+ar:When off, narrated books are read with the voice above.
+az:When off, narrated books are read with the voice above.
+bg:When off, narrated books are read with the voice above.
+bn:When off, narrated books are read with the voice above.
+br:When off, narrated books are read with the voice above.
+bs:When off, narrated books are read with the voice above.
+by:When off, narrated books are read with the voice above.
+ca:When off, narrated books are read with the voice above.
+ca-xv:When off, narrated books are read with the voice above.
+cn:关闭后，有声书改用上面的系统语音朗读。
+co:When off, narrated books are read with the voice above.
+cy:When off, narrated books are read with the voice above.
+cz:When off, narrated books are read with the voice above.
+de:When off, narrated books are read with the voice above.
+dk:When off, narrated books are read with the voice above.
+el:When off, narrated books are read with the voice above.
+es:When off, narrated books are read with the voice above.
+et:When off, narrated books are read with the voice above.
+eu:When off, narrated books are read with the voice above.
+fa:When off, narrated books are read with the voice above.
+fi:When off, narrated books are read with the voice above.
+fo:When off, narrated books are read with the voice above.
+fr:When off, narrated books are read with the voice above.
+fy-nl:When off, narrated books are read with the voice above.
+ga:When off, narrated books are read with the voice above.
+gl:When off, narrated books are read with the voice above.
+he:When off, narrated books are read with the voice above.
+hi:When off, narrated books are read with the voice above.
+hr:When off, narrated books are read with the voice above.
+hu:When off, narrated books are read with the voice above.
+id:When off, narrated books are read with the voice above.
+it:When off, narrated books are read with the voice above.
+ja:When off, narrated books are read with the voice above.
+jv:When off, narrated books are read with the voice above.
+ka:When off, narrated books are read with the voice above.
+kr:When off, narrated books are read with the voice above.
+ku:When off, narrated books are read with the voice above.
+kw:When off, narrated books are read with the voice above.
+lt:When off, narrated books are read with the voice above.
+lv:When off, narrated books are read with the voice above.
+mk:When off, narrated books are read with the voice above.
+ml:When off, narrated books are read with the voice above.
+mm:When off, narrated books are read with the voice above.
+my:When off, narrated books are read with the voice above.
+ne:When off, narrated books are read with the voice above.
+nl:When off, narrated books are read with the voice above.
+nn:When off, narrated books are read with the voice above.
+no:When off, narrated books are read with the voice above.
+pa:When off, narrated books are read with the voice above.
+pl:When off, narrated books are read with the voice above.
+pt:When off, narrated books are read with the voice above.
+ro:When off, narrated books are read with the voice above.
+ru:When off, narrated books are read with the voice above.
+sat:When off, narrated books are read with the voice above.
+si:When off, narrated books are read with the voice above.
+sk:When off, narrated books are read with the voice above.
+sl:When off, narrated books are read with the voice above.
+sn:When off, narrated books are read with the voice above.
+sp-rs:When off, narrated books are read with the voice above.
+sq:When off, narrated books are read with the voice above.
+sr-rs:When off, narrated books are read with the voice above.
+sv:When off, narrated books are read with the voice above.
+ta:When off, narrated books are read with the voice above.
+th:When off, narrated books are read with the voice above.
+tl:When off, narrated books are read with the voice above.
+tr:When off, narrated books are read with the voice above.
+tw:關閉後，有聲書改用上面的系統語音朗讀。
+uk:When off, narrated books are read with the voice above.
+uz:When off, narrated books are read with the voice above.
+vn:When off, narrated books are read with the voice above.
 :White Balance:
 br:Equilíbrio dos Brancos:
 cn:白平衡:
@@ -31771,93 +33467,3 @@ sk:↑ ↓ – navigovať
 :✓ Likely TOC pages found. Please confirm the selection.
 cn:✓ 已找到疑似目录页，请确认选择。
 tw:✓ 已找到疑似目錄頁，請確認選擇。
-:Recognize via API
-cn:API 识别
-tw:API 辨識
-:AI Detect TOC Pages
-cn:AI 检测目录页
-tw:AI 偵測目錄頁
-:Recognizing TOC via API
-cn:正在通过 API 识别目录
-tw:正在透過 API 辨識目錄
-:The selected page images are sent to the configured API.\r\nThe TOC is imported automatically when the reply arrives.
-cn:所选目录页图片将发送到已配置的 API。\r\n收到回复后将自动导入目录。
-tw:所選目錄頁圖片將傳送到已設定的 API。\r\n收到回覆後將自動匯入目錄。
-:Contacting the API...
-cn:正在连接 API…
-tw:正在連線 API…
-:Preparing TOC page images...
-cn:正在准备目录页图片…
-tw:正在準備目錄頁圖片…
-:Extracting TOC titles and pages...
-cn:正在提取目录标题与页码…
-tw:正在擷取目錄標題與頁碼…
-:Determining TOC levels...
-cn:正在判定目录层级…
-tw:正在判定目錄層級…
-:Calibrating printed page offsets...
-cn:正在校准印刷页码偏移…
-tw:正在校準印刷頁碼偏移…
-:Detecting TOC pages via API...
-cn:正在通过 API 检测目录页…
-tw:正在透過 API 偵測目錄頁…
-:The AI TOC request failed.
-cn:AI 识别目录请求失败。
-tw:AI 辨識目錄請求失敗。
-:The AI reply contains no importable TOC items.
-cn:AI 回复中没有可导入的目录条目。
-tw:AI 回覆中沒有可匯入的目錄項目。
-:No printed TOC pages were detected by the API.
-cn:API 未能检测到印刷目录页。
-tw:API 未能偵測到印刷目錄頁。
-:Configure the AI table of contents API (base URL, key and model) on the OCR and AI settings page first.
-cn:请先在「OCR 和 AI」设置页配置 AI 目录识别 API（地址、密钥、模型）。
-tw:請先在「OCR 和 AI」設定頁配置 AI 目錄辨識 API（位址、金鑰、模型）。
-:The AI TOC recognition failed.
-cn:AI 目录识别失败。
-tw:AI 目錄辨識失敗。
-:The AI TOC API is not configured (set base URL, key and model in Settings).
-cn:尚未配置 AI 目录识别 API（请在设置中填写地址、密钥和模型）。
-tw:尚未設定 AI 目錄辨識 API（請在設定中填寫位址、金鑰和模型）。
-:TOC page detection failed.
-cn:目录页检测失败。
-tw:目錄頁偵測失敗。
-:AI table of contents (API)
-cn:AI 目录识别（API）
-tw:AI 目錄辨識（API）
-:API &base URL:
-cn:API 地址(&B)：
-tw:API 位址(&B)：
-:API &key:
-cn:API 密钥(&K)：
-tw:API 金鑰(&K)：
-:&Model:
-cn:模型(&M)：
-tw:模型(&M)：
-:&Test
-cn:测试(&T)
-tw:測試(&T)
-:AI table of contents
-cn:AI 目录识别
-tw:AI 目錄辨識
-:&Platform:
-cn:平台(&P)：
-tw:平台(&P)：
-:&Add
-cn:添加(&A)
-tw:新增(&A)
-:&Remove
-cn:删除(&R)
-tw:移除(&R)
-:&Name:
-cn:名称(&N)：
-tw:名稱(&N)：
-:&Get models
-cn:获取模型(&G)
-tw:取得模型(&G)
-:Get models
-cn:获取模型
-tw:取得模型
-:&Parallel (1-8):
-cn:并发数(1-8)(&P)：
-tw:並行數(1-8)(&P)：

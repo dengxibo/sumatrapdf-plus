@@ -118,6 +118,9 @@
 #include "DarkModeSubclass.h"
 #include "TextToSpeech.h"
 #include "ReadAloudHighlight.h"
+#include "ReadAloudFollow.h"
+#include "ReadAloudBar.h"
+#include "MediaOverlayPlayer.h"
 
 #include "utils/Log.h"
 
@@ -244,6 +247,9 @@ static bool ReadAloudResolveReadFromCursorPoint(MainWindow* win, Point* ptOut);
 static void ReadAloudStopRememberPos();
 static void ReadAloudPlaybackStop();
 static void ReadAloudPrepareRestart(WindowTab* tab, MainWindow* win);
+static void ReadAloudStartFromTop(MainWindow* win, WindowTab* tab);
+static void ReadAloudStartFromCursor(MainWindow* win, WindowTab* tab);
+static void ReadAloudStartSelection(MainWindow* win, WindowTab* tab);
 static void ResetReadAloudStateForTab(WindowTab* tab);
 static void StopReadAloudIfSourceTab(WindowTab* tab);
 static void StopReadAloudIfSourceWindow(MainWindow* win);
@@ -6051,6 +6057,7 @@ void CloseTab(WindowTab* tab, bool quitIfLast) {
 
     // Stop eventual TTS reading
     StopReadAloudIfSourceTab(tab);
+    MediaOverlayOnTabDocumentGone(tab);
     // Embedded PDF Sound/RichMedia/Screen (and dictionary) audio is a global player.
     LookupAudioStop();
 
@@ -6266,6 +6273,7 @@ void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose) {
 
     // Stop eventual TTS reading
     StopReadAloudIfSourceWindow(win);
+    MediaOverlayOnWindowClosing(win);
     LookupAudioStop();
 
     bool canCloseWindow = true;
@@ -8044,7 +8052,7 @@ static void OpenAdvancedOptions() {
     LaunchFileIfExists(path);
 }
 
-static void ShowOptionsDialog(HWND hwnd) {
+static void ShowOptionsDialog(HWND hwnd, int initialPage = 0) {
     if (!HasPermission(Perm::SavePreferences)) {
         return;
     }
@@ -8068,7 +8076,7 @@ static void ShowOptionsDialog(HWND hwnd) {
     int customScreenDpiBefore = gGlobalPrefs->customScreenDPI;
     bool fullPathInTitleBefore = gGlobalPrefs->fullPathInTitle;
 
-    INT_PTR dialogResult = Dialog_Settings(hwnd, gGlobalPrefs);
+    INT_PTR dialogResult = Dialog_Settings(hwnd, gGlobalPrefs, initialPage);
     if (dialogResult == IDC_OPEN_ADVANCED_OPTIONS) {
         OpenAdvancedOptions();
         return;
@@ -8193,8 +8201,8 @@ void MaybeRedrawHomePage() {
     }
 }
 
-static void ShowOptionsDialog(MainWindow* win) {
-    ShowOptionsDialog(win->hwndFrame);
+static void ShowOptionsDialog(MainWindow* win, int initialPage = 0) {
+    ShowOptionsDialog(win->hwndFrame, initialPage);
     MaybeRedrawHomePage();
 }
 
@@ -10836,6 +10844,18 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             bool isSpeaking = TtsIsSpeaking();
             bool canContinue = CanContinueReadAloud(tab);
 
+            // EPUB 3 media overlays: the publisher's narration when this location has it
+            if (MediaOverlayTabHasNarration(tab)) {
+                if (isSpeaking) {
+                    ReadAloudStopRememberPos();
+                }
+                if (MediaOverlayHandleReadAloud(tab)) {
+                    ToolbarUpdateStateForWindow(win, true);
+                    break;
+                }
+            }
+            MediaOverlayStop();
+
             if (isSpeaking) {
                 ReadAloudStopRememberPos();
                 ToolbarUpdateStateForWindow(win, true);
@@ -10848,12 +10868,18 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         }
 
         case CmdPauseReadAloud: {
+            MediaOverlayPause();
             ReadAloudStopRememberPos();
             ToolbarUpdateStateForWindow(win, true);
             break;
         }
 
         case CmdContinueReadAloud: {
+            if (MediaOverlayTabHasNarration(tab) && !MediaOverlayIsPlayingInTab(tab) &&
+                MediaOverlayHandleReadAloud(tab)) {
+                ToolbarUpdateStateForWindow(win, true);
+                break;
+            }
             if (!TtsIsSpeaking()) {
                 ReadAloudContinueInTab(tab);
             }
@@ -10861,38 +10887,21 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         }
 
         case CmdStopReadAloud:
+            MediaOverlayStop();
             ReadAloudPlaybackStop();
             break;
 
-        case CmdReadAloudFromTopPage: {
-            if (!tab) {
-                break;
-            }
-            ReadAloudPrepareRestart(tab, win);
-            ReadAloudFromViewportTopInTab(tab);
+        case CmdReadAloudFromTopPage:
+            ReadAloudStartFromTop(win, tab);
             break;
-        }
 
-        case CmdReadAloudSelection: {
-            if (!tab) {
-                break;
-            }
-            ReadAloudPrepareRestart(tab, win);
-            ReadAloudSelectionInTab(tab);
+        case CmdReadAloudSelection:
+            ReadAloudStartSelection(win, tab);
             break;
-        }
 
-        case CmdReadAloudFromCursor: {
-            if (!tab) {
-                break;
-            }
-            Point readPt;
-            if (ReadAloudResolveReadFromCursorPoint(win, &readPt)) {
-                ReadAloudPrepareRestart(tab, win);
-                ReadAloudFromCursorInTab(tab, readPt);
-            }
+        case CmdReadAloudFromCursor:
+            ReadAloudStartFromCursor(win, tab);
             break;
-        }
 
         case CmdSaveAnnotations: {
             SaveAnnotationsToExistingFile(tab);
@@ -12261,14 +12270,11 @@ static void ClearAllHighlights(MainWindow* win) {
     }
 }
 
-// Modal TTS dialogs must not open via an extra PostMessage hop after a popup menu:
+// Modal dialogs must not open via an extra PostMessage hop after a popup menu:
 // that loses foreground activation, so DialogBox disables the frame while the
 // dialog stays behind it (freeze + beep). Queue while the menu is live; flush
 // with a direct DialogBox call right after TrackPopupMenu returns.
 static int gCaptionMenuTrackDepth = 0;
-static int gPendingSmartBilingualKind = -1; // -1 = none; else SmartBilingualKind
-static int gPendingMultilingualSettings = 0;
-static int gPendingSpeedFocusChinese = -2; // -2 = none; 0/1 = focus English/Chinese
 static void FlushPendingReadAloudDialogs(MainWindow* win);
 
 static void TrackCaptionPopupMenu(MainWindow* win, HMENU menu, Rect btnRect) {
@@ -13360,141 +13366,6 @@ static void ReadAloudApplySmartBilingualVoice(SmartBilingualKind kind, bool isZh
     }
 }
 
-struct Dialog_ReadAloudSmartVoices_Data {
-    Vec<char*> ownedVoiceIds;
-    SmartBilingualKind kind = SmartBilingualKind::Local;
-    char* originalZhVoiceId = nullptr;
-    char* originalEnVoiceId = nullptr;
-    AppDialogBrushes brushes;
-    bool modeless = false;
-};
-
-static HWND gSmartVoicesHwnd = nullptr;
-
-static void SmartVoicesThemeRefreshCb(HWND hwnd, void* ctx) {
-    auto* data = (Dialog_ReadAloudSmartVoices_Data*)ctx;
-    if (!data) {
-        return;
-    }
-    data->brushes.Recreate();
-    AppDialogApplyChrome(hwnd);
-    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
-}
-
-static void FreeReadAloudSmartVoiceComboIds(Dialog_ReadAloudSmartVoices_Data* data) {
-    if (!data) {
-        return;
-    }
-    for (char* id : data->ownedVoiceIds) {
-        str::Free(id);
-    }
-    data->ownedVoiceIds.Reset();
-}
-
-static void FreeReadAloudSmartVoiceDialogData(Dialog_ReadAloudSmartVoices_Data* data) {
-    if (!data) {
-        return;
-    }
-    FreeReadAloudSmartVoiceComboIds(data);
-    str::FreePtr(&data->originalZhVoiceId);
-    str::FreePtr(&data->originalEnVoiceId);
-}
-
-static void ReadAloudRestoreSmartBilingualVoicesFromDialog(Dialog_ReadAloudSmartVoices_Data* data) {
-    if (!data) {
-        return;
-    }
-
-    char** zhPref = SmartBilingualZhPref(data->kind);
-    char** enPref = SmartBilingualEnPref(data->kind);
-    bool changed = false;
-    const char* originalZh = data->originalZhVoiceId ? data->originalZhVoiceId : "";
-    const char* originalEn = data->originalEnVoiceId ? data->originalEnVoiceId : "";
-
-    if (zhPref && !str::Eq(*zhPref, originalZh)) {
-        str::ReplaceWithCopy(zhPref, originalZh);
-        changed = true;
-    }
-    if (enPref && !str::Eq(*enPref, originalEn)) {
-        str::ReplaceWithCopy(enPref, originalEn);
-        changed = true;
-    }
-    if (!changed) {
-        return;
-    }
-
-    InvalidateSmartBilingualVoiceCache();
-    if (IsSmartBilingualKindActive(data->kind)) {
-        ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
-    }
-}
-
-static void FillReadAloudSmartVoiceCombo(HWND combo, Vec<TtsVoiceInfo>& voices, const char* langPrefix,
-                                         const char* selectedId, Dialog_ReadAloudSmartVoices_Data* data) {
-    if (!combo || !data) {
-        return;
-    }
-    SendMessageW(combo, CB_RESETCONTENT, 0, 0);
-
-    int maxDropWidth = 0;
-    HDC hdc = GetDC(combo);
-    HFONT hFont = (HFONT)SendMessageW(combo, WM_GETFONT, 0, 0);
-    HFONT hOld = hFont && hdc ? (HFONT)SelectObject(hdc, hFont) : nullptr;
-
-    for (TtsVoiceInfo& voice : voices) {
-        if (!IsSmartBilingualVoiceMatch(voice, data->kind)) {
-            continue;
-        }
-        if (!VoiceLangStartsWith(voice, langPrefix)) {
-            continue;
-        }
-
-        TempStr detail = str::FormatTemp("%s - %s", voice.name, TtsLangIdToLocaleNameTemp(voice.lang));
-        int idx = (int)SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)ToWStrTemp(detail));
-        if (idx < 0) {
-            continue;
-        }
-
-        if (hdc) {
-            WCHAR* wdetail = ToWStrTemp(detail);
-            SIZE sz{};
-            GetTextExtentPoint32W(hdc, wdetail, (int)str::Len(wdetail), &sz);
-            if ((int)sz.cx + DpiScale(combo, 24) > maxDropWidth) {
-                maxDropWidth = (int)sz.cx + DpiScale(combo, 24);
-            }
-        }
-
-        char* id = str::Dup(voice.id);
-        data->ownedVoiceIds.Append(id);
-        SendMessageW(combo, CB_SETITEMDATA, idx, (LPARAM)id);
-        if (str::Eq(voice.id, selectedId)) {
-            SendMessageW(combo, CB_SETCURSEL, idx, 0);
-        }
-    }
-
-    if (hOld && hdc) {
-        SelectObject(hdc, hOld);
-    }
-    if (hdc) {
-        ReleaseDC(combo, hdc);
-    }
-
-    if (maxDropWidth > 0) {
-        SendMessageW(combo, CB_SETDROPPEDWIDTH, maxDropWidth, 0);
-    }
-}
-
-static const char* ReadAloudSmartVoiceIdFromCombo(HWND combo) {
-    if (!combo) {
-        return nullptr;
-    }
-    int idx = (int)SendMessageW(combo, CB_GETCURSEL, 0, 0);
-    if (idx < 0) {
-        return nullptr;
-    }
-    return (const char*)SendMessageW(combo, CB_GETITEMDATA, idx, 0);
-}
-
 static constexpr float kReadAloudSpeedPresets[] = {0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f};
 
 static bool ReadAloudSpeakingRatesEqual(float a, float b) {
@@ -13509,463 +13380,14 @@ static float ReadAloudClampSpeakingRate(float rate) {
     return rate > 0 ? rate : 1.0f;
 }
 
-// Center the label+combo rows in the dialog; keep OK/Cancel right-aligned from the RC.
-static void LayoutReadAloudSmartVoiceRows(HWND hDlg) {
-    HWND hwndLabels[2] = {GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN_LABEL),
-                          GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH_LABEL)};
-    HWND hwndCombos[2] = {GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN), GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH)};
-    if (!hwndLabels[0] || !hwndLabels[1] || !hwndCombos[0] || !hwndCombos[1]) {
-        return;
-    }
-
-    RECT rcClient{};
-    GetClientRect(hDlg, &rcClient);
-    int clientW = rcClient.right - rcClient.left;
-
-    int labelW = 0;
-    HDC hdc = GetDC(hDlg);
-    HFONT hFont = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
-    HFONT hOld = hFont && hdc ? (HFONT)SelectObject(hdc, hFont) : nullptr;
-    for (HWND hwndLabel : hwndLabels) {
-        TempWStr text = HwndGetTextWTemp(hwndLabel);
-        if (!text || !hdc) {
-            continue;
-        }
-        SIZE sz{};
-        GetTextExtentPoint32W(hdc, text, (int)str::Len(text), &sz);
-        if ((int)sz.cx > labelW) {
-            labelW = (int)sz.cx;
-        }
-    }
-    if (hOld && hdc) {
-        SelectObject(hdc, hOld);
-    }
-    if (hdc) {
-        ReleaseDC(hDlg, hdc);
-    }
-
-    labelW += DpiScale(hDlg, 4);
-    int gap = DpiScale(hDlg, 6);
-
-    RECT rcCombo{};
-    GetWindowRect(hwndCombos[0], &rcCombo);
-    MapWindowPoints(nullptr, hDlg, (POINT*)&rcCombo, 2);
-    int comboW = rcCombo.right - rcCombo.left;
-
-    int blockW = labelW + gap + comboW;
-    int left = (clientW - blockW) / 2;
-    int minMargin = DpiScale(hDlg, 8);
-    if (left < minMargin) {
-        left = minMargin;
-    }
-
-    for (int i = 0; i < 2; i++) {
-        RECT rcC{};
-        GetWindowRect(hwndCombos[i], &rcC);
-        MapWindowPoints(nullptr, hDlg, (POINT*)&rcC, 2);
-
-        // Align label to the closed combo field (not the dropdown list height).
-        int comboY = rcC.top;
-        int comboH = rcC.bottom - rcC.top;
-        COMBOBOXINFO cbi{};
-        cbi.cbSize = sizeof(cbi);
-        if (GetComboBoxInfo(hwndCombos[i], &cbi)) {
-            RECT rcItem = cbi.rcItem;
-            MapWindowPoints(hwndCombos[i], hDlg, (POINT*)&rcItem, 2);
-            comboY = rcItem.top;
-            comboH = rcItem.bottom - rcItem.top;
-        }
-
-        // Same top/height as the combo, with SS_CENTERIMAGE so text sits on the midline.
-        LONG_PTR style = GetWindowLongPtr(hwndLabels[i], GWL_STYLE);
-        SetWindowLongPtr(hwndLabels[i], GWL_STYLE, style | SS_RIGHT | SS_CENTERIMAGE);
-        SetWindowPos(hwndLabels[i], nullptr, left, comboY, labelW, comboH, SWP_NOZORDER | SWP_NOACTIVATE);
-        SetWindowPos(hwndCombos[i], nullptr, left + labelW + gap, rcC.top, comboW, rcC.bottom - rcC.top,
-                     SWP_NOZORDER | SWP_NOACTIVATE);
-    }
-}
-
-static INT_PTR CALLBACK Dialog_ReadAloudSmartVoices_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
-    Dialog_ReadAloudSmartVoices_Data* data = nullptr;
-
-    switch (msg) {
-        case WM_INITDIALOG:
-            data = (Dialog_ReadAloudSmartVoices_Data*)lp;
-            SetWindowLongPtr(hDlg, GWLP_USERDATA, (LONG_PTR)data);
-            data->brushes.Create();
-            AppDialogApplyChrome(hDlg);
-            if (data->modeless) {
-                RegisterAppDialogForTheme(hDlg, SmartVoicesThemeRefreshCb, data);
-                SetCurrentModelessDialog(hDlg);
-            }
-
-            HwndSetText(hDlg, data->kind == SmartBilingualKind::Online ? _TRA("Online smart bilingual settings")
-                                                                       : _TRA("Local smart bilingual settings"));
-            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SMART_ZH_LABEL, _TRA("Chinese voice"));
-            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_SMART_EN_LABEL, _TRA("English voice"));
-            HwndSetDlgItemText(hDlg, IDOK, _TRA("OK"));
-            HwndSetDlgItemText(hDlg, IDCANCEL, _TRA("Cancel"));
-
-            {
-                char** zhPref = SmartBilingualZhPref(data->kind);
-                char** enPref = SmartBilingualEnPref(data->kind);
-                data->originalZhVoiceId = str::Dup(zhPref && *zhPref ? *zhPref : "");
-                data->originalEnVoiceId = str::Dup(enPref && *enPref ? *enPref : "");
-
-                Vec<TtsVoiceInfo> voices = TtsGetVoices();
-                const char* zhSel = zhPref ? *zhPref : nullptr;
-                const char* enSel = enPref ? *enPref : nullptr;
-                FillReadAloudSmartVoiceCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH), voices, "zh", zhSel, data);
-                FillReadAloudSmartVoiceCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN), voices, "en", enSel, data);
-                TtsFreeVoices(voices);
-            }
-
-            LayoutReadAloudSmartVoiceRows(hDlg);
-            CenterDialog(hDlg);
-            HwndSetFocus(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN));
-            return FALSE;
-
-        case WM_CTLCOLORDLG:
-        case WM_CTLCOLORSTATIC:
-        case WM_CTLCOLORBTN: {
-            data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
-            if (!data) {
-                break;
-            }
-            HBRUSH br = AppDialogCtlColorBrush(msg, wp, lp, data->brushes.background);
-            if (br) {
-                return (INT_PTR)br;
-            }
-            break;
-        }
-
-        case WM_ACTIVATE:
-            data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
-            if (data && data->modeless) {
-                SetCurrentModelessDialog(LOWORD(wp) == WA_INACTIVE ? nullptr : hDlg);
-            }
-            return FALSE;
-
-        case WM_COMMAND:
-            switch (LOWORD(wp)) {
-                case IDOK:
-                    data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
-                    ReadAloudApplySmartBilingualVoice(
-                        data->kind, true, ReadAloudSmartVoiceIdFromCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_ZH)));
-                    ReadAloudApplySmartBilingualVoice(
-                        data->kind, false, ReadAloudSmartVoiceIdFromCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_SMART_EN)));
-                    SaveSettings();
-                    if (data->modeless) {
-                        DestroyWindow(hDlg);
-                    } else {
-                        EndDialog(hDlg, IDOK);
-                    }
-                    return TRUE;
-
-                case IDCANCEL:
-                    data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
-                    ReadAloudRestoreSmartBilingualVoicesFromDialog(data);
-                    if (data->modeless) {
-                        DestroyWindow(hDlg);
-                    } else {
-                        EndDialog(hDlg, IDCANCEL);
-                    }
-                    return TRUE;
-
-                case IDC_READ_ALOUD_SMART_ZH:
-                case IDC_READ_ALOUD_SMART_EN:
-                    if (HIWORD(wp) == CBN_SELCHANGE) {
-                        data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
-                        bool isZh = LOWORD(wp) == IDC_READ_ALOUD_SMART_ZH;
-                        HWND combo = GetDlgItem(hDlg, LOWORD(wp));
-                        ReadAloudApplySmartBilingualVoice(data->kind, isZh, ReadAloudSmartVoiceIdFromCombo(combo));
-                    }
-                    return TRUE;
-            }
-            break;
-
-        case WM_CLOSE:
-            data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
-            ReadAloudRestoreSmartBilingualVoicesFromDialog(data);
-            if (data && data->modeless) {
-                DestroyWindow(hDlg);
-            } else {
-                EndDialog(hDlg, IDCANCEL);
-            }
-            return TRUE;
-
-        case WM_DESTROY:
-            data = (Dialog_ReadAloudSmartVoices_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
-            if (data && data->modeless) {
-                UnregisterAppDialogForTheme(hDlg);
-                if (GetCurrentModelessDialog() == hDlg) {
-                    SetCurrentModelessDialog(nullptr);
-                }
-                if (gSmartVoicesHwnd == hDlg) {
-                    gSmartVoicesHwnd = nullptr;
-                }
-                data->brushes.Destroy();
-                SetWindowLongPtr(hDlg, GWLP_USERDATA, 0);
-                FreeReadAloudSmartVoiceDialogData(data);
-                delete data;
-            }
-            break;
-    }
-
-    return FALSE;
-}
-
-static void ShowReadAloudSmartVoiceDialog(MainWindow* win, SmartBilingualKind kind) {
-    if (!win) {
-        return;
-    }
-    if (gSmartVoicesHwnd && IsWindow(gSmartVoicesHwnd)) {
-        SetForegroundWindow(gSmartVoicesHwnd);
-        return;
-    }
-
-    auto* data = new Dialog_ReadAloudSmartVoices_Data();
-    data->kind = kind;
-    data->modeless = true;
-    HWND hwnd = CreateAppDialogModeless(IDD_DIALOG_READ_ALOUD_SMART_VOICES, win->hwndFrame,
-                                        Dialog_ReadAloudSmartVoices_Proc, (LPARAM)data);
-    if (!hwnd) {
-        FreeReadAloudSmartVoiceDialogData(data);
-        delete data;
-        return;
-    }
-    gSmartVoicesHwnd = hwnd;
-    ShowWindow(hwnd, SW_SHOW);
-}
-
-struct Dialog_ReadAloudMultilingual_Data {
-    Vec<char*> ownedVoiceIds;
-    char* originalVoiceId = nullptr;
-    AppDialogBrushes brushes;
-};
-
-static HWND gMultilingualHwnd = nullptr;
-
-static void FreeReadAloudMultilingualDialogData(Dialog_ReadAloudMultilingual_Data* data) {
-    if (!data) {
-        return;
-    }
-    for (char* id : data->ownedVoiceIds) {
-        str::Free(id);
-    }
-    data->ownedVoiceIds.Reset();
-    str::FreePtr(&data->originalVoiceId);
-}
-
-static void MultilingualThemeRefreshCb(HWND hwnd, void* ctx) {
-    auto* data = (Dialog_ReadAloudMultilingual_Data*)ctx;
-    if (!data) {
-        return;
-    }
-    data->brushes.Recreate();
-    AppDialogApplyChrome(hwnd);
-    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
-}
-
-static void FillReadAloudMultilingualCombo(HWND combo, const char* selectedId,
-                                           Dialog_ReadAloudMultilingual_Data* data) {
-    if (!combo || !data) {
-        return;
-    }
-    SendMessageW(combo, CB_RESETCONTENT, 0, 0);
-    Vec<TtsVoiceInfo> voices = TtsGetVoices();
-    int maxDropWidth = 0;
-    HDC hdc = GetDC(combo);
-    HFONT hFont = (HFONT)SendMessageW(combo, WM_GETFONT, 0, 0);
-    HFONT hOld = hFont && hdc ? (HFONT)SelectObject(hdc, hFont) : nullptr;
-    for (TtsVoiceInfo& voice : voices) {
-        if (!IsMultilingualTtsVoice(voice)) {
-            continue;
-        }
-        TempStr detail = str::FormatTemp("%s - %s", voice.name, TtsLangIdToLocaleNameTemp(voice.lang));
-        int idx = (int)SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)ToWStrTemp(detail));
-        if (idx < 0) {
-            continue;
-        }
-        if (hdc) {
-            WCHAR* wdetail = ToWStrTemp(detail);
-            SIZE sz{};
-            GetTextExtentPoint32W(hdc, wdetail, (int)str::Len(wdetail), &sz);
-            if ((int)sz.cx + DpiScale(combo, 24) > maxDropWidth) {
-                maxDropWidth = (int)sz.cx + DpiScale(combo, 24);
-            }
-        }
-        char* id = str::Dup(voice.id);
-        data->ownedVoiceIds.Append(id);
-        SendMessageW(combo, CB_SETITEMDATA, idx, (LPARAM)id);
-        if (str::Eq(voice.id, selectedId)) {
-            SendMessageW(combo, CB_SETCURSEL, idx, 0);
-        }
-    }
-    TtsFreeVoices(voices);
-    if (hOld && hdc) {
-        SelectObject(hdc, hOld);
-    }
-    if (hdc) {
-        ReleaseDC(combo, hdc);
-    }
-    if (SendMessageW(combo, CB_GETCURSEL, 0, 0) < 0 && SendMessageW(combo, CB_GETCOUNT, 0, 0) > 0) {
-        SendMessageW(combo, CB_SETCURSEL, 0, 0);
-    }
-    if (maxDropWidth > 0) {
-        SendMessageW(combo, CB_SETDROPPEDWIDTH, maxDropWidth, 0);
-    }
-}
-
-static void ReadAloudRestoreMultilingualVoice(const char* original) {
-    if (!gGlobalPrefs) {
-        return;
-    }
-    const char* cur = gGlobalPrefs->readAloudMultilingualVoice ? gGlobalPrefs->readAloudMultilingualVoice : "";
-    const char* want = original ? original : "";
-    if (str::Eq(cur, want)) {
-        return;
-    }
-    str::ReplaceWithCopy(&gGlobalPrefs->readAloudMultilingualVoice, want);
-    if (IsMultilingualModeSelected() && !str::IsEmpty(want)) {
-        TtsSetVoiceById(want);
-        ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
-    }
-}
-
-static INT_PTR CALLBACK Dialog_ReadAloudMultilingual_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
-    Dialog_ReadAloudMultilingual_Data* data = nullptr;
-    switch (msg) {
-        case WM_INITDIALOG:
-            data = (Dialog_ReadAloudMultilingual_Data*)lp;
-            SetWindowLongPtr(hDlg, GWLP_USERDATA, (LONG_PTR)data);
-            data->brushes.Create();
-            AppDialogApplyChrome(hDlg);
-            RegisterAppDialogForTheme(hDlg, MultilingualThemeRefreshCb, data);
-            SetCurrentModelessDialog(hDlg);
-            HwndSetText(hDlg, _TRA("Online multilingual voice settings"));
-            HwndSetDlgItemText(hDlg, IDC_READ_ALOUD_MULTI_LABEL, _TRA("Voice"));
-            HwndSetDlgItemText(hDlg, IDOK, _TRA("OK"));
-            HwndSetDlgItemText(hDlg, IDCANCEL, _TRA("Cancel"));
-            data->originalVoiceId = str::Dup(gGlobalPrefs && gGlobalPrefs->readAloudMultilingualVoice
-                                                 ? gGlobalPrefs->readAloudMultilingualVoice
-                                                 : "");
-            FillReadAloudMultilingualCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_MULTI), data->originalVoiceId, data);
-            CenterDialog(hDlg);
-            HwndSetFocus(GetDlgItem(hDlg, IDC_READ_ALOUD_MULTI));
-            return FALSE;
-        case WM_CTLCOLORDLG:
-        case WM_CTLCOLORSTATIC:
-        case WM_CTLCOLORBTN: {
-            data = (Dialog_ReadAloudMultilingual_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
-            if (!data) {
-                break;
-            }
-            HBRUSH br = AppDialogCtlColorBrush(msg, wp, lp, data->brushes.background);
-            if (br) {
-                return (INT_PTR)br;
-            }
-            break;
-        }
-        case WM_ACTIVATE:
-            SetCurrentModelessDialog(LOWORD(wp) == WA_INACTIVE ? nullptr : hDlg);
-            return FALSE;
-        case WM_COMMAND:
-            switch (LOWORD(wp)) {
-                case IDOK:
-                    data = (Dialog_ReadAloudMultilingual_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
-                    ReadAloudApplyMultilingualVoice(
-                        ReadAloudSmartVoiceIdFromCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_MULTI)));
-                    SaveSettings();
-                    DestroyWindow(hDlg);
-                    return TRUE;
-                case IDCANCEL:
-                    data = (Dialog_ReadAloudMultilingual_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
-                    if (data) {
-                        ReadAloudRestoreMultilingualVoice(data->originalVoiceId);
-                    }
-                    DestroyWindow(hDlg);
-                    return TRUE;
-                case IDC_READ_ALOUD_MULTI:
-                    if (HIWORD(wp) == CBN_SELCHANGE) {
-                        ReadAloudApplyMultilingualVoice(
-                            ReadAloudSmartVoiceIdFromCombo(GetDlgItem(hDlg, IDC_READ_ALOUD_MULTI)));
-                    }
-                    return TRUE;
-            }
-            break;
-        case WM_CLOSE:
-            data = (Dialog_ReadAloudMultilingual_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
-            if (data) {
-                ReadAloudRestoreMultilingualVoice(data->originalVoiceId);
-            }
-            DestroyWindow(hDlg);
-            return TRUE;
-        case WM_DESTROY:
-            data = (Dialog_ReadAloudMultilingual_Data*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
-            UnregisterAppDialogForTheme(hDlg);
-            if (GetCurrentModelessDialog() == hDlg) {
-                SetCurrentModelessDialog(nullptr);
-            }
-            if (gMultilingualHwnd == hDlg) {
-                gMultilingualHwnd = nullptr;
-            }
-            if (data) {
-                data->brushes.Destroy();
-                SetWindowLongPtr(hDlg, GWLP_USERDATA, 0);
-                FreeReadAloudMultilingualDialogData(data);
-                delete data;
-            }
-            break;
-    }
-    return FALSE;
-}
-
-static void ShowReadAloudMultilingualDialog(MainWindow* win) {
-    if (!win) {
-        return;
-    }
-    if (gMultilingualHwnd && IsWindow(gMultilingualHwnd)) {
-        SetForegroundWindow(gMultilingualHwnd);
-        return;
-    }
-    auto* data = new Dialog_ReadAloudMultilingual_Data();
-    HWND hwnd = CreateAppDialogModeless(IDD_DIALOG_READ_ALOUD_MULTILINGUAL, win->hwndFrame,
-                                        Dialog_ReadAloudMultilingual_Proc, (LPARAM)data);
-    if (!hwnd) {
-        FreeReadAloudMultilingualDialogData(data);
-        delete data;
-        return;
-    }
-    gMultilingualHwnd = hwnd;
-    ShowWindow(hwnd, SW_SHOW);
-}
-
-static void FlushPendingReadAloudDialogs(MainWindow* win) {
-    if (!win) {
-        return;
-    }
-    if (gPendingSmartBilingualKind >= 0) {
-        auto kind = (SmartBilingualKind)gPendingSmartBilingualKind;
-        gPendingSmartBilingualKind = -1;
-        ShowReadAloudSmartVoiceDialog(win, kind);
-    }
-    if (gPendingMultilingualSettings) {
-        gPendingMultilingualSettings = 0;
-        ShowReadAloudMultilingualDialog(win);
-    }
-    if (gPendingSpeedFocusChinese >= 0 && gGlobalPrefs) {
-        bool focusChinese = gPendingSpeedFocusChinese != 0;
-        gPendingSpeedFocusChinese = -2;
-        Dialog_ReadAloudSpeed(win->hwndFrame, focusChinese);
-    }
-}
-
 enum class ReadAloudLang {
     Unknown,
     Zh,
     En,
 };
+
+// language of the chunk being spoken; its speaking rate is the one the read-aloud bar shows
+static ReadAloudLang gReadAloudChunkLang = ReadAloudLang::Unknown;
 
 static bool ResolveActiveSmartBilingualVoices() {
     SmartBilingualKind kind;
@@ -14039,31 +13461,6 @@ static void ReadAloudApplyRateForLang(ReadAloudLang lang) {
     if (!ReadAloudSpeakingRatesEqual(TtsGetSpeakingRate(), rate)) {
         TtsSetSpeakingRate(rate);
     }
-}
-
-static int ReadAloudSpeedPresetIndex(float rate) {
-    for (int i = 0; i < (int)dimof(kReadAloudSpeedPresets); i++) {
-        if (ReadAloudSpeakingRatesEqual(rate, kReadAloudSpeedPresets[i])) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-static const char* ReadAloudSpeedPresetShortLabel(int index) {
-    static const char* labels[] = {"0.25×", "0.5×", "0.75×", "1.0×", "1.25×", "1.5×", "2.0×"};
-    if (index < 0 || index >= (int)dimof(labels)) {
-        return "1.0×";
-    }
-    return labels[index];
-}
-
-static TempStr ReadAloudSpeedLabel(float rate) {
-    int index = ReadAloudSpeedPresetIndex(rate);
-    if (index >= 0) {
-        return str::DupTemp(ReadAloudSpeedPresetShortLabel(index));
-    }
-    return str::FormatTemp("%.2f×", rate);
 }
 
 static bool ReadAloudIsCjkPunctuationCp(char32_t cp) {
@@ -14308,27 +13705,6 @@ static void ReadAloudSaveVoicePref(const char* voiceId) {
     ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
 }
 
-static const char* ReadAloudSpeedPresetLabel(int index) {
-    switch (index) {
-        case 0:
-            return _TRA("Slowest (0.25×)");
-        case 1:
-            return _TRA("Very slow (0.5×)");
-        case 2:
-            return _TRA("Slow (0.75×)");
-        case 3:
-            return _TRA("Normal (1.0×)");
-        case 4:
-            return _TRA("Fast (1.25×)");
-        case 5:
-            return _TRA("Faster (1.5×)");
-        case 6:
-            return _TRA("Fastest (2.0×)");
-        default:
-            return "";
-    }
-}
-
 // WinRT speech synthesis is too slow for whole-document requests; speak in chunks.
 static constexpr int kReadAloudMaxChunkLen = 1024;
 
@@ -14486,6 +13862,7 @@ static void ReadAloudFinishSession(WindowTab* tab, MainWindow* win) {
     if (win) {
         ToolbarUpdateStateForWindow(win, true);
     }
+    ReadAloudBarUpdate(tab->win ? tab->win : win);
 }
 
 struct DeferredReadAloudResyncData {
@@ -14599,6 +13976,7 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
         rateLang = ReadAloudLangFromVoiceId(TtsGetVoiceId());
     }
     ReadAloudApplyRateForLang(rateLang);
+    gReadAloudChunkLang = rateLang;
     if (start >= end) {
         return false;
     }
@@ -14606,6 +13984,8 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
     int chunkLen = end - start;
     TempStr chunk = str::DupTemp(tab->readAloudText + start, (size_t)chunkLen);
 
+    // one voice at a time: text-to-speech replaces EPUB narration
+    MediaOverlayStop();
     if (!TtsSpeakUtf8(chunk)) {
         ReadAloudShowNotif(tab, errMsg);
         return false;
@@ -14615,6 +13995,7 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
     tab->readAloudChunkEnd = end;
     ToolbarUpdateStateForWindow(tab->win, true);
     InvalidateRect(tab->win->hwndCanvas, nullptr, FALSE);
+    ReadAloudBarUpdate(tab->win);
     return true;
 }
 
@@ -14665,24 +14046,6 @@ static void ReadAloudSaveSpeakingRatesPrefs(float zhRate, float enRate) {
     ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
 }
 
-void ReadAloudUpdateSpeakingRatesRealtime(float zhRate, float enRate) {
-    if (!gGlobalPrefs) {
-        return;
-    }
-    zhRate = ReadAloudClampSpeakingRate(zhRate);
-    enRate = ReadAloudClampSpeakingRate(enRate);
-    if (ReadAloudSpeakingRatesEqual(gGlobalPrefs->readAloudSpeakingRateZh, zhRate) &&
-        ReadAloudSpeakingRatesEqual(gGlobalPrefs->readAloudSpeakingRateEn, enRate)) {
-        return;
-    }
-    gGlobalPrefs->readAloudSpeakingRateZh = zhRate;
-    gGlobalPrefs->readAloudSpeakingRateEn = enRate;
-    gGlobalPrefs->readAloudSpeakingRate = (zhRate + enRate) / 2.0f;
-    ReadAloudApplyRateForLang(ReadAloudLangFromVoiceId(TtsGetVoiceId()));
-    SaveSettings();
-    ReadAloudRestartSpeakingFromCurrentPosition(gReadAloudSourceTab);
-}
-
 static void ReadAloudSaveSpeakingRatePref(bool isZh, float rate) {
     float zhRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateZh);
     float enRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateEn);
@@ -14692,6 +14055,548 @@ static void ReadAloudSaveSpeakingRatePref(bool isZh, float rate) {
         enRate = rate;
     }
     ReadAloudSaveSpeakingRatesPrefs(zhRate, enRate);
+}
+
+//--- Settings > Read Aloud page
+
+static constexpr float kNarrationSpeedPresets[] = {0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f};
+static constexpr float kReadAloudMinRate = 0.25f;
+static constexpr float kReadAloudMaxRate = 2.0f;
+static constexpr COLORREF kReadAloudDefaultHighlight = RGB(255, 255, 0);
+
+// Changes are kept here and applied on OK; combo item data points into ownedIds.
+struct ReadAloudSettingsPage {
+    Vec<char*> ownedIds;
+    SmartBilingualKind shownKind = SmartBilingualKind::Local;
+    char* pendingZh[2] = {};
+    char* pendingEn[2] = {};
+    COLORREF highlightColor = kReadAloudDefaultHighlight;
+    bool previewZh = false;
+    bool previewing = false;
+};
+
+static ReadAloudSettingsPage* gReadAloudPage = nullptr;
+static COLORREF gReadAloudCustomColors[16] = {};
+static bool gPendingReadAloudSettings = false;
+
+static int ReadAloudPageComboAdd(HWND combo, const char* text, const char* id) {
+    int idx = (int)SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)ToWStrTemp(text));
+    if (idx >= 0) {
+        char* s = str::Dup(id ? id : "");
+        gReadAloudPage->ownedIds.Append(s);
+        SendMessageW(combo, CB_SETITEMDATA, idx, (LPARAM)s);
+    }
+    return idx;
+}
+
+static const char* ReadAloudPageComboId(HWND combo) {
+    int idx = (int)SendMessageW(combo, CB_GETCURSEL, 0, 0);
+    if (idx < 0) {
+        return nullptr;
+    }
+    LRESULT data = SendMessageW(combo, CB_GETITEMDATA, idx, 0);
+    return data == CB_ERR ? nullptr : (const char*)data;
+}
+
+static int ReadAloudPageComboCount(HWND combo) {
+    return (int)SendMessageW(combo, CB_GETCOUNT, 0, 0);
+}
+
+static void ReadAloudPageComboSelectId(HWND combo, const char* id) {
+    int n = ReadAloudPageComboCount(combo);
+    for (int i = 0; i < n; i++) {
+        LRESULT data = SendMessageW(combo, CB_GETITEMDATA, i, 0);
+        if (data != CB_ERR && data && str::Eq((const char*)data, id ? id : "")) {
+            SendMessageW(combo, CB_SETCURSEL, i, 0);
+            return;
+        }
+    }
+    if (n > 0) {
+        SendMessageW(combo, CB_SETCURSEL, 0, 0);
+    }
+}
+
+// voice names are long ("Microsoft Xiaoxiao Online (Natural) - Chinese (Mainland)")
+static void ReadAloudPageFitDropWidth(HWND combo) {
+    int n = ReadAloudPageComboCount(combo);
+    HDC hdc = GetDC(combo);
+    if (!hdc) {
+        return;
+    }
+    HFONT font = (HFONT)SendMessageW(combo, WM_GETFONT, 0, 0);
+    HFONT oldFont = font ? (HFONT)SelectObject(hdc, font) : nullptr;
+    int maxDx = 0;
+    WCHAR buf[512];
+    for (int i = 0; i < n; i++) {
+        int len = (int)SendMessageW(combo, CB_GETLBTEXTLEN, i, 0);
+        if (len <= 0 || len >= (int)dimof(buf)) {
+            continue;
+        }
+        SendMessageW(combo, CB_GETLBTEXT, i, (LPARAM)buf);
+        SIZE sz{};
+        GetTextExtentPoint32W(hdc, buf, len, &sz);
+        maxDx = std::max(maxDx, (int)sz.cx);
+    }
+    if (oldFont) {
+        SelectObject(hdc, oldFont);
+    }
+    ReleaseDC(combo, hdc);
+    int dx = maxDx + DpiScale(combo, 24);
+    if (dx > WindowRect(combo).dx) {
+        SendMessageW(combo, CB_SETDROPPEDWIDTH, dx, 0);
+    }
+}
+
+static TempStr ReadAloudVoiceLabelTemp(const TtsVoiceInfo& voice) {
+    return str::FormatTemp("%s - %s", voice.name, TtsLangIdToLocaleNameTemp(voice.lang));
+}
+
+static const char* ReadAloudPageModeId(HWND hDlg) {
+    const char* id = ReadAloudPageComboId(GetDlgItem(hDlg, IDC_RA_VOICE_MODE));
+    return id ? id : "";
+}
+
+static void ReadAloudPageFillSmartCombos(HWND hDlg) {
+    ReadAloudSettingsPage* p = gReadAloudPage;
+    int k = (int)p->shownKind;
+    struct {
+        int id;
+        const char* lang;
+        const char* sel;
+    } rows[] = {{IDC_RA_VOICE_ZH, "zh", p->pendingZh[k]}, {IDC_RA_VOICE_EN, "en", p->pendingEn[k]}};
+    Vec<TtsVoiceInfo> voices = TtsGetVoices();
+    for (auto& row : rows) {
+        HWND combo = GetDlgItem(hDlg, row.id);
+        SendMessageW(combo, CB_RESETCONTENT, 0, 0);
+        for (TtsVoiceInfo& voice : voices) {
+            if (IsSmartBilingualVoiceMatch(voice, p->shownKind) && VoiceLangStartsWith(voice, row.lang)) {
+                ReadAloudPageComboAdd(combo, ReadAloudVoiceLabelTemp(voice), voice.id);
+            }
+        }
+        ReadAloudPageComboSelectId(combo, row.sel);
+        ReadAloudPageFitDropWidth(combo);
+    }
+    TtsFreeVoices(voices);
+}
+
+static void ReadAloudPageStoreSmartCombos(HWND hDlg) {
+    ReadAloudSettingsPage* p = gReadAloudPage;
+    int k = (int)p->shownKind;
+    if (const char* zh = ReadAloudPageComboId(GetDlgItem(hDlg, IDC_RA_VOICE_ZH))) {
+        str::ReplaceWithCopy(&p->pendingZh[k], zh);
+    }
+    if (const char* en = ReadAloudPageComboId(GetDlgItem(hDlg, IDC_RA_VOICE_EN))) {
+        str::ReplaceWithCopy(&p->pendingEn[k], en);
+    }
+}
+
+// only the rows that belong to the chosen voice are enabled
+static void ReadAloudPageUpdateVoiceRows(HWND hDlg, bool refill) {
+    ReadAloudSettingsPage* p = gReadAloudPage;
+    const char* mode = ReadAloudPageModeId(hDlg);
+    SmartBilingualKind kind;
+    bool isSmart = TryGetSmartBilingualKind(mode, &kind);
+    if (isSmart && kind != p->shownKind) {
+        ReadAloudPageStoreSmartCombos(hDlg);
+        p->shownKind = kind;
+        refill = true;
+    }
+    if (refill) {
+        ReadAloudPageFillSmartCombos(hDlg);
+    }
+    bool isMulti = str::Eq(mode, kTtsMultilingualVoiceId);
+    struct {
+        int labelId;
+        int comboId;
+        bool on;
+    } rows[] = {{IDC_RA_VOICE_ZH_LABEL, IDC_RA_VOICE_ZH, isSmart},
+                {IDC_RA_VOICE_EN_LABEL, IDC_RA_VOICE_EN, isSmart},
+                {IDC_RA_VOICE_MULTI_LABEL, IDC_RA_VOICE_MULTI, isMulti}};
+    for (auto& row : rows) {
+        HWND combo = GetDlgItem(hDlg, row.comboId);
+        bool on = row.on && ReadAloudPageComboCount(combo) > 0;
+        EnableWindow(GetDlgItem(hDlg, row.labelId), on);
+        EnableWindow(combo, on);
+    }
+}
+
+static void ReadAloudPageFillRateCombo(HWND combo, const float* presets, int nPresets, float current, bool editable) {
+    int sel = -1;
+    for (int i = 0; i < nPresets; i++) {
+        CbAddString(combo, str::FormatTemp("%.2fx", presets[i]));
+        if (ReadAloudSpeakingRatesEqual(presets[i], current)) {
+            sel = i;
+        }
+    }
+    if (sel >= 0) {
+        CbSetCurrentSelection(combo, sel);
+    } else if (editable) {
+        HwndSetText(combo, str::FormatTemp("%.2fx", current));
+    } else {
+        CbAddString(combo, str::FormatTemp("%.2fx", current));
+        CbSetCurrentSelection(combo, nPresets);
+    }
+}
+
+// accepts "1.25", "1.25x", "1,25 ×"
+static bool ReadAloudPageParseRate(HWND combo, float* rateOut) {
+    char* s = str::DupTemp(HwndGetTextTemp(combo));
+    if (!s) {
+        return false;
+    }
+    for (char* c = s; *c; c++) {
+        if (*c == ',') {
+            *c = '.';
+        }
+    }
+    char* end = nullptr;
+    double v = strtod(s, &end);
+    if (end == s) {
+        return false;
+    }
+    while (*end == ' ') {
+        end++;
+    }
+    if (*end == 'x' || *end == 'X') {
+        end++;
+    } else if (str::StartsWith(end, "\xC3\x97")) {
+        end += 2;
+    }
+    while (*end == ' ') {
+        end++;
+    }
+    if (*end || v < kReadAloudMinRate - 0.001 || v > kReadAloudMaxRate + 0.001) {
+        return false;
+    }
+    *rateOut = (float)v;
+    return true;
+}
+
+void ReadAloudSettingsPageInit(HWND hDlg) {
+    ReadAloudSettingsPageDestroy();
+    if (!gGlobalPrefs) {
+        return;
+    }
+    gReadAloudPage = new ReadAloudSettingsPage();
+    ReadAloudSettingsPage* p = gReadAloudPage;
+
+    NormalizeMultilingualVoicePref();
+    const char* cur = gGlobalPrefs->readAloudVoiceId ? gGlobalPrefs->readAloudVoiceId : "";
+    bool haveLocal = TtsSmartBilingualAvailable(SmartBilingualKind::Local);
+    bool haveOnline = TtsSmartBilingualAvailable(SmartBilingualKind::Online);
+    bool haveMulti = TtsMultilingualAvailable();
+
+    HWND mode = GetDlgItem(hDlg, IDC_RA_VOICE_MODE);
+    ReadAloudPageComboAdd(mode, _TRA("System default"), "");
+    if (haveLocal) {
+        ReadAloudPageComboAdd(mode, _TRA("Local smart bilingual (English + Chinese)"), kTtsSmartBilingualVoiceId);
+    }
+    if (haveOnline) {
+        ReadAloudPageComboAdd(mode, _TRA("Online smart bilingual (English + Chinese)"),
+                              kTtsSmartOnlineBilingualVoiceId);
+    }
+    if (haveMulti) {
+        ReadAloudPageComboAdd(mode, _TRA("Online multilingual voices"), kTtsMultilingualVoiceId);
+    }
+
+    Vec<TtsVoiceInfo> voices = TtsGetVoices();
+    SmartBilingualKind curKind;
+    bool curIsSmart = TryGetSmartBilingualKind(cur, &curKind);
+    bool curListed = str::IsEmpty(cur) ||
+                     (curIsSmart && (curKind == SmartBilingualKind::Local ? haveLocal : haveOnline)) ||
+                     (str::Eq(cur, kTtsMultilingualVoiceId) && haveMulti);
+    if (!curListed) {
+        // a single voice picked from the command palette
+        for (TtsVoiceInfo& voice : voices) {
+            if (str::Eq(voice.id, cur)) {
+                ReadAloudPageComboAdd(mode, ReadAloudVoiceLabelTemp(voice), voice.id);
+                break;
+            }
+        }
+    }
+    ReadAloudPageComboSelectId(mode, cur);
+    ReadAloudPageFitDropWidth(mode);
+
+    for (int k = 0; k < 2; k++) {
+        char** zh = SmartBilingualZhPref((SmartBilingualKind)k);
+        char** en = SmartBilingualEnPref((SmartBilingualKind)k);
+        p->pendingZh[k] = str::Dup(zh && *zh ? *zh : "");
+        p->pendingEn[k] = str::Dup(en && *en ? *en : "");
+    }
+    if (curIsSmart) {
+        p->shownKind = curKind;
+    } else {
+        p->shownKind = (haveOnline && !haveLocal) ? SmartBilingualKind::Online : SmartBilingualKind::Local;
+    }
+    const char* uiLang = trans::GetCurrentLangCode();
+    p->previewZh = str::Eq(uiLang, "cn") || str::Eq(uiLang, "tw");
+
+    HWND multi = GetDlgItem(hDlg, IDC_RA_VOICE_MULTI);
+    for (TtsVoiceInfo& voice : voices) {
+        if (IsMultilingualTtsVoice(voice)) {
+            ReadAloudPageComboAdd(multi, ReadAloudVoiceLabelTemp(voice), voice.id);
+        }
+    }
+    ReadAloudPageComboSelectId(multi, gGlobalPrefs->readAloudMultilingualVoice);
+    ReadAloudPageFitDropWidth(multi);
+    TtsFreeVoices(voices);
+
+    ReadAloudPageFillRateCombo(GetDlgItem(hDlg, IDC_RA_SPEED_ZH), kReadAloudSpeedPresets,
+                               (int)dimof(kReadAloudSpeedPresets),
+                               ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateZh), true);
+    ReadAloudPageFillRateCombo(GetDlgItem(hDlg, IDC_RA_SPEED_EN), kReadAloudSpeedPresets,
+                               (int)dimof(kReadAloudSpeedPresets),
+                               ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateEn), true);
+
+    ParsedColor* col = GetPrefsColor(gGlobalPrefs->readAloudHighlightColor);
+    p->highlightColor = (col && col->parsedOk) ? col->col : kReadAloudDefaultHighlight;
+    CheckDlgButton(hDlg, IDC_RA_AUTO_FOLLOW, gGlobalPrefs->readAloudAutoFollow ? BST_CHECKED : BST_UNCHECKED);
+    CheckDlgButton(hDlg, IDC_RA_NARRATION_USE_AUDIO, gGlobalPrefs->narrationUseBookAudio ? BST_CHECKED : BST_UNCHECKED);
+    CheckDlgButton(hDlg, IDC_RA_NARRATION_USE_COLOR,
+                   gGlobalPrefs->narrationUseBookHighlightColor ? BST_CHECKED : BST_UNCHECKED);
+    float narrationSpeed = gGlobalPrefs->narrationSpeed;
+    if (narrationSpeed < kReadAloudMinRate || narrationSpeed > 4.0f) {
+        narrationSpeed = 1.0f;
+    }
+    ReadAloudPageFillRateCombo(GetDlgItem(hDlg, IDC_RA_NARRATION_SPEED), kNarrationSpeedPresets,
+                               (int)dimof(kNarrationSpeedPresets), narrationSpeed, false);
+
+    ReadAloudPageUpdateVoiceRows(hDlg, true);
+}
+
+static void ReadAloudPageStopPreview() {
+    ReadAloudSettingsPage* p = gReadAloudPage;
+    if (!p || !p->previewing) {
+        return;
+    }
+    p->previewing = false;
+    TtsStop();
+    ReadAloudApplyVoiceFromSettings();
+}
+
+static void ReadAloudPagePreview(HWND hDlg) {
+    ReadAloudSettingsPage* p = gReadAloudPage;
+    const char* mode = ReadAloudPageModeId(hDlg);
+    const char* voiceId = mode;
+    bool zh = p->previewZh;
+    bool bilingual = TryGetSmartBilingualKind(mode, nullptr);
+    if (bilingual) {
+        voiceId = ReadAloudPageComboId(GetDlgItem(hDlg, zh ? IDC_RA_VOICE_ZH : IDC_RA_VOICE_EN));
+        if (!voiceId) {
+            zh = !zh;
+            voiceId = ReadAloudPageComboId(GetDlgItem(hDlg, zh ? IDC_RA_VOICE_ZH : IDC_RA_VOICE_EN));
+        }
+    } else if (str::Eq(mode, kTtsMultilingualVoiceId)) {
+        voiceId = ReadAloudPageComboId(GetDlgItem(hDlg, IDC_RA_VOICE_MULTI));
+    } else if (!str::IsEmpty(mode)) {
+        zh = ReadAloudLangFromVoiceId(mode) == ReadAloudLang::Zh;
+        bilingual = true;
+    }
+    if (!voiceId) {
+        voiceId = "";
+    }
+
+    if (gReadAloudSourceTab) {
+        ReadAloudStopRememberPos();
+    } else {
+        TtsStop();
+    }
+    MediaOverlayPause();
+
+    float rate = 1.0f;
+    ReadAloudPageParseRate(GetDlgItem(hDlg, zh ? IDC_RA_SPEED_ZH : IDC_RA_SPEED_EN), &rate);
+    TtsSetVoiceById(voiceId);
+    TtsSetSpeakingRate(rate);
+    // a bilingual voice speaks its own language; other voices read the UI language
+    const char* text = _TRA("This is how the selected voice sounds.");
+    if (bilingual) {
+        text = zh ? "\xE8\xBF\x99\xE6\x98\xAF\xE6\x89\x80\xE9\x80\x89\xE5\xA3\xB0\xE9\x9F\xB3\xE7\x9A\x84\xE8\xAF\x95"
+                    "\xE5\x90\xAC\xE3\x80\x82"
+                  : "This is how the selected voice sounds.";
+    }
+    p->previewing = TtsSpeakUtf8(text);
+}
+
+static void ReadAloudPageChooseColor(HWND hDlg) {
+    ReadAloudSettingsPage* p = gReadAloudPage;
+    CHOOSECOLORW cc{};
+    cc.lStructSize = sizeof(cc);
+    cc.hwndOwner = hDlg;
+    cc.rgbResult = p->highlightColor;
+    cc.lpCustColors = gReadAloudCustomColors;
+    cc.Flags = CC_RGBINIT | CC_FULLOPEN | CC_ANYCOLOR;
+    if (ChooseColorW(&cc)) {
+        p->highlightColor = cc.rgbResult;
+        InvalidateRect(GetDlgItem(hDlg, IDC_RA_HIGHLIGHT_COLOR), nullptr, TRUE);
+    }
+}
+
+void ReadAloudSettingsPageOnCommand(HWND hDlg, int id, int code) {
+    if (!gReadAloudPage) {
+        return;
+    }
+    switch (id) {
+        case IDC_RA_VOICE_MODE:
+            if (code == CBN_SELCHANGE) {
+                ReadAloudPageUpdateVoiceRows(hDlg, false);
+            }
+            break;
+        case IDC_RA_VOICE_ZH:
+        case IDC_RA_VOICE_EN:
+            if (code == CBN_SELCHANGE || code == CBN_SETFOCUS) {
+                gReadAloudPage->previewZh = id == IDC_RA_VOICE_ZH;
+            }
+            break;
+        case IDC_RA_SPEED_ZH:
+        case IDC_RA_SPEED_EN:
+            if (code == CBN_SETFOCUS) {
+                gReadAloudPage->previewZh = id == IDC_RA_SPEED_ZH;
+            }
+            break;
+        case IDC_RA_PREVIEW:
+            if (code == BN_CLICKED) {
+                ReadAloudPagePreview(hDlg);
+            }
+            break;
+        case IDC_RA_HIGHLIGHT_COLOR:
+            if (code == BN_CLICKED) {
+                ReadAloudPageChooseColor(hDlg);
+            }
+            break;
+        case IDC_RA_HIGHLIGHT_RESET:
+            if (code == BN_CLICKED) {
+                gReadAloudPage->highlightColor = kReadAloudDefaultHighlight;
+                InvalidateRect(GetDlgItem(hDlg, IDC_RA_HIGHLIGHT_COLOR), nullptr, TRUE);
+            }
+            break;
+    }
+}
+
+bool ReadAloudSettingsPageDrawItem(DRAWITEMSTRUCT* dis) {
+    if (!dis || dis->CtlID != IDC_RA_HIGHLIGHT_COLOR || !gReadAloudPage) {
+        return false;
+    }
+    HDC hdc = dis->hDC;
+    RECT rc = dis->rcItem;
+    HBRUSH bg = CreateSolidBrush(ThemeWindowControlBackgroundColor());
+    FillRect(hdc, &rc, bg);
+    DeleteObject(bg);
+
+    bool focused = (dis->itemState & ODS_FOCUS) != 0;
+    COLORREF frameCol = focused ? ThemeWindowLinkColor() : ThemeWindowTextDisabledColor();
+    HPEN pen = CreatePen(PS_SOLID, DpiScale(dis->hwndItem, focused ? 2 : 1), frameCol);
+    HBRUSH swatch = CreateSolidBrush(gReadAloudPage->highlightColor);
+    HPEN oldPen = (HPEN)SelectObject(hdc, pen);
+    HBRUSH oldBr = (HBRUSH)SelectObject(hdc, swatch);
+    int inset = DpiScale(dis->hwndItem, 2);
+    int pressed = (dis->itemState & ODS_SELECTED) ? DpiScale(dis->hwndItem, 1) : 0;
+    Rectangle(hdc, rc.left + inset + pressed, rc.top + inset + pressed, rc.right - inset + pressed,
+              rc.bottom - inset + pressed);
+    SelectObject(hdc, oldBr);
+    SelectObject(hdc, oldPen);
+    DeleteObject(swatch);
+    DeleteObject(pen);
+    return true;
+}
+
+int ReadAloudSettingsPageInvalidControl(HWND hDlg) {
+    float rate = 0;
+    if (!ReadAloudPageParseRate(GetDlgItem(hDlg, IDC_RA_SPEED_ZH), &rate)) {
+        return IDC_RA_SPEED_ZH;
+    }
+    if (!ReadAloudPageParseRate(GetDlgItem(hDlg, IDC_RA_SPEED_EN), &rate)) {
+        return IDC_RA_SPEED_EN;
+    }
+    return 0;
+}
+
+void ReadAloudSettingsPageApply(HWND hDlg) {
+    ReadAloudSettingsPage* p = gReadAloudPage;
+    if (!p || !gGlobalPrefs) {
+        return;
+    }
+    ReadAloudPageStopPreview();
+
+    ReadAloudPageStoreSmartCombos(hDlg);
+    for (int k = 0; k < 2; k++) {
+        if (!str::IsEmpty(p->pendingZh[k])) {
+            ReadAloudApplySmartBilingualVoice((SmartBilingualKind)k, true, p->pendingZh[k]);
+        }
+        if (!str::IsEmpty(p->pendingEn[k])) {
+            ReadAloudApplySmartBilingualVoice((SmartBilingualKind)k, false, p->pendingEn[k]);
+        }
+    }
+    const char* multi = ReadAloudPageComboId(GetDlgItem(hDlg, IDC_RA_VOICE_MULTI));
+    if (!str::IsEmpty(multi)) {
+        ReadAloudApplyMultilingualVoice(multi);
+    }
+    ReadAloudSaveVoicePref(ReadAloudPageModeId(hDlg));
+
+    float zhRate = 1.0f;
+    float enRate = 1.0f;
+    if (ReadAloudPageParseRate(GetDlgItem(hDlg, IDC_RA_SPEED_ZH), &zhRate) &&
+        ReadAloudPageParseRate(GetDlgItem(hDlg, IDC_RA_SPEED_EN), &enRate)) {
+        ReadAloudSaveSpeakingRatesPrefs(zhRate, enRate);
+    }
+
+    TempStr col = SerializeColorTemp(p->highlightColor);
+    if (!str::EqI(gGlobalPrefs->readAloudHighlightColor, col)) {
+        str::ReplaceWithCopy(&gGlobalPrefs->readAloudHighlightColor, col);
+        gGlobalPrefs->readAloudHighlightColorParsed = ParsedColor{};
+    }
+    gGlobalPrefs->readAloudAutoFollow = IsDlgButtonChecked(hDlg, IDC_RA_AUTO_FOLLOW) == BST_CHECKED;
+    bool useAudio = IsDlgButtonChecked(hDlg, IDC_RA_NARRATION_USE_AUDIO) == BST_CHECKED;
+    if (!useAudio && gGlobalPrefs->narrationUseBookAudio) {
+        MediaOverlayStop();
+    }
+    gGlobalPrefs->narrationUseBookAudio = useAudio;
+    gGlobalPrefs->narrationUseBookHighlightColor = IsDlgButtonChecked(hDlg, IDC_RA_NARRATION_USE_COLOR) == BST_CHECKED;
+    int speedIdx = (int)SendDlgItemMessageW(hDlg, IDC_RA_NARRATION_SPEED, CB_GETCURSEL, 0, 0);
+    if (speedIdx >= 0 && speedIdx < (int)dimof(kNarrationSpeedPresets) &&
+        !ReadAloudSpeakingRatesEqual(kNarrationSpeedPresets[speedIdx], gGlobalPrefs->narrationSpeed)) {
+        MediaOverlaySetRate(kNarrationSpeedPresets[speedIdx]);
+    }
+
+    for (MainWindow* win : gWindows) {
+        ReadAloudBarUpdate(win);
+        ToolbarUpdateStateForWindow(win, true);
+    }
+}
+
+void ReadAloudSettingsPageDestroy() {
+    ReadAloudSettingsPage* p = gReadAloudPage;
+    if (!p) {
+        return;
+    }
+    ReadAloudPageStopPreview();
+    for (char* id : p->ownedIds) {
+        str::Free(id);
+    }
+    for (int k = 0; k < 2; k++) {
+        str::Free(p->pendingZh[k]);
+        str::Free(p->pendingEn[k]);
+    }
+    delete p;
+    gReadAloudPage = nullptr;
+}
+
+static void ShowReadAloudSettings(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    if (gCaptionMenuTrackDepth > 0) {
+        gPendingReadAloudSettings = true;
+        return;
+    }
+    ShowOptionsDialog(win, kSettingsPageReadAloud);
+}
+
+static void FlushPendingReadAloudDialogs(MainWindow* win) {
+    if (!win || !gPendingReadAloudSettings) {
+        return;
+    }
+    gPendingReadAloudSettings = false;
+    ShowOptionsDialog(win, kSettingsPageReadAloud);
 }
 
 // Text cleanup for speech
@@ -14878,6 +14783,7 @@ static void ResetReadAloudStateForTab(WindowTab* tab) {
         return;
     }
     StopReadAloudIfSourceTab(tab);
+    MediaOverlayOnTabDocumentUnloaded(tab);
     str::FreePtr(&tab->readAloudText);
     tab->readAloudResumePos = -1;
     if (tab->win) {
@@ -14925,6 +14831,7 @@ static void ReadAloudStopRememberPos() {
     if (tab && tab->win) {
         ReadAloudHighlightTimerStop(tab->win);
         InvalidateRect(tab->win->hwndCanvas, nullptr, FALSE);
+        ReadAloudBarUpdate(tab->win);
     }
 }
 
@@ -14940,6 +14847,48 @@ static void ReadAloudPlaybackStop() {
         TtsStop();
     }
     ReadAloudFinishSession(tab, tab->win);
+}
+
+// recorded narration only when this location has an overlay; otherwise TTS from here
+static void ReadAloudStartFromTop(MainWindow* win, WindowTab* tab) {
+    if (!tab) {
+        return;
+    }
+    if (MediaOverlayTabHasNarration(tab)) {
+        ReadAloudPlaybackStop();
+        if (MediaOverlayStartFromViewport(tab)) {
+            ToolbarUpdateStateForWindow(win, true);
+            return;
+        }
+    }
+    ReadAloudPrepareRestart(tab, win);
+    ReadAloudFromViewportTopInTab(tab);
+}
+
+static void ReadAloudStartFromCursor(MainWindow* win, WindowTab* tab) {
+    Point readPt;
+    if (!tab || !ReadAloudResolveReadFromCursorPoint(win, &readPt)) {
+        return;
+    }
+    if (MediaOverlayTabHasNarration(tab)) {
+        ReadAloudPlaybackStop();
+        if (MediaOverlayStartAtPoint(tab, readPt)) {
+            ToolbarUpdateStateForWindow(win, true);
+            return;
+        }
+    }
+    ReadAloudPrepareRestart(tab, win);
+    ReadAloudFromCursorInTab(tab, readPt);
+}
+
+// narration cannot play an arbitrary selection, so the selection is always spoken with TTS
+static void ReadAloudStartSelection(MainWindow* win, WindowTab* tab) {
+    if (!tab) {
+        return;
+    }
+    MediaOverlayPause();
+    ReadAloudPrepareRestart(tab, win);
+    ReadAloudSelectionInTab(tab);
 }
 
 static void ReadAloudShowNotif(WindowTab* tab, const char* msg) {
@@ -15205,6 +15154,176 @@ void ReadAloudContinueInTab(WindowTab* tab) {
     }
 }
 
+// byte offsets in text where a sentence starts: 0 and after each run of sentence-ending punctuation
+static void ReadAloudCollectSentenceStarts(const char* text, int len, Vec<int>& starts) {
+    starts.Append(0);
+    const char* s = text;
+    const char* end = text + len;
+    bool afterEnd = false;
+    while (s < end) {
+        const char* cpStart = s;
+        char32_t cp = 0;
+        if (!ReadAloudDecodeUtf8One(s, &cp)) {
+            break;
+        }
+        bool space = cp == ' ' || cp == '\t' || cp == '\r' || cp == '\n' || cp == 0x3000;
+        if (ReadAloudIsSentenceEndCp(cp)) {
+            afterEnd = true;
+        } else if (afterEnd && !space) {
+            starts.Append((int)(cpStart - text));
+            afterEnd = false;
+        }
+    }
+}
+
+// the current spoken position (relative to readAloudText)
+static int ReadAloudCurrentTextPos(WindowTab* tab) {
+    if (TtsIsSpeaking() && GetReadAloudSourceTab() == tab) {
+        TtsProcessEvents();
+        int pos = TtsGetSpokenPosUtf8();
+        return tab->readAloudChunkStart + std::max(pos, 0);
+    }
+    if (tab->readAloudResumePos > 0) {
+        return tab->readAloudResumePos - tab->readAloudHighlightBase;
+    }
+    return tab->readAloudChunkStart;
+}
+
+// restarts speaking at the previous (dir < 0) or next sentence. Like media players, "previous"
+// first goes back to the start of the current sentence unless it has only just begun.
+static void ReadAloudStepSentence(WindowTab* tab, int dir) {
+    if (!tab || !tab->win || str::IsEmpty(tab->readAloudText)) {
+        return;
+    }
+    int textLen = str::Leni(tab->readAloudText);
+    int cur = std::clamp(ReadAloudCurrentTextPos(tab), 0, textLen);
+    Vec<int> starts;
+    ReadAloudCollectSentenceStarts(tab->readAloudText, textLen, starts);
+    int target = -1;
+    if (dir > 0) {
+        for (int s : starts) {
+            if (s > cur) {
+                target = s;
+                break;
+            }
+        }
+        if (target < 0) {
+            if (!ReadAloudHasMoreDocumentPages(tab)) {
+                return;
+            }
+            target = textLen;
+        }
+    } else {
+        constexpr int kJustStartedBytes = 6;
+        int curIdx = 0;
+        for (int i = 0; i < starts.Size(); i++) {
+            if (starts[i] <= cur) {
+                curIdx = i;
+            }
+        }
+        bool justStarted = cur - starts[curIdx] < kJustStartedBytes;
+        target = justStarted && curIdx > 0 ? starts[curIdx - 1] : starts[curIdx];
+    }
+    if (TtsIsSpeaking()) {
+        TtsStop();
+    }
+    TtsProcessEvents();
+    tab->readAloudChunkStart = target;
+    tab->readAloudChunkEnd = target;
+    tab->readAloudResumePos = -1;
+    tab->readAloudAutoScrollHold = false;
+    ReadAloudSetSourceTab(tab);
+    ReadAloudHighlightTimerStart(tab->win);
+    if (!ReadAloudSpeakChunk(tab, _TRA("No text available to read aloud"))) {
+        ReadAloudFinishSession(tab, tab->win);
+    }
+}
+
+static WindowTab* ReadAloudBarTab(MainWindow* win) {
+    WindowTab* tab = gReadAloudSessionTab ? gReadAloudSessionTab : gReadAloudSourceTab;
+    if (!tab || !win || tab != win->CurrentTab() || str::IsEmpty(tab->readAloudText)) {
+        return nullptr;
+    }
+    return tab;
+}
+
+static constexpr float kReadAloudBarRates[] = {0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f};
+
+// the speaking-rate pref that applies to the chunk being read
+static bool ReadAloudChunkRateIsEnglish() {
+    if (gReadAloudChunkLang == ReadAloudLang::En) {
+        return true;
+    }
+    if (gReadAloudChunkLang == ReadAloudLang::Zh) {
+        return false;
+    }
+    return IsSmartBilingualVoicePref() && ResolveActiveSmartBilingualVoices() && gSmartBilingualEnVoiceId &&
+           !gSmartBilingualZhVoiceId;
+}
+
+struct TtsBarSource : ReadAloudBarSource {
+    const char* Name() override { return "tts"; }
+    bool Wanted(MainWindow* win) override {
+        WindowTab* tab = ReadAloudBarTab(win);
+        return tab && ((TtsIsSpeaking() && GetReadAloudSourceTab() == tab) || CanContinueReadAloud(tab));
+    }
+    bool IsPlaying(MainWindow* win) override {
+        WindowTab* tab = ReadAloudBarTab(win);
+        return tab && TtsIsSpeaking() && GetReadAloudSourceTab() == tab;
+    }
+    bool CanSeek(MainWindow*) override { return false; }
+    bool HasTime(MainWindow*) override { return false; }
+    TempStr TimeLabelTemp(MainWindow*) override { return (TempStr) ""; }
+    double Rate(MainWindow*) override {
+        return ReadAloudRateForLang(ReadAloudChunkRateIsEnglish() ? ReadAloudLang::En : ReadAloudLang::Zh);
+    }
+    bool IsFollowing(MainWindow* win) override {
+        WindowTab* tab = ReadAloudBarTab(win);
+        if (!IsPlaying(win)) {
+            return true;
+        }
+        return ReadAloudFollowEnabled() && tab->readAloudAutoScroll;
+    }
+    const char* PrevTooltip() override { return _TRA("Previous sentence"); }
+    const char* NextTooltip() override { return _TRA("Next sentence"); }
+    const char* PlayTooltip() override { return _TRA("Play / Pause reading"); }
+    const char* CloseTooltip() override { return _TRA("Stop Reading"); }
+    void Prev(MainWindow* win) override { ReadAloudStepSentence(ReadAloudBarTab(win), -1); }
+    void Next(MainWindow* win) override { ReadAloudStepSentence(ReadAloudBarTab(win), 1); }
+    void TogglePlay(MainWindow* win) override {
+        WindowTab* tab = ReadAloudBarTab(win);
+        if (IsPlaying(win)) {
+            ReadAloudStopRememberPos();
+        } else if (tab) {
+            ReadAloudContinueInTab(tab);
+        }
+        ToolbarUpdateStateForWindow(win, true);
+    }
+    void Skip(MainWindow*, int) override {}
+    void NextRate(MainWindow*) override {
+        bool en = ReadAloudChunkRateIsEnglish();
+        float cur = ReadAloudRateForLang(en ? ReadAloudLang::En : ReadAloudLang::Zh);
+        float next = kReadAloudBarRates[0];
+        for (float r : kReadAloudBarRates) {
+            if (r > cur + 0.01f) {
+                next = r;
+                break;
+            }
+        }
+        ReadAloudSaveSpeakingRatePref(!en, next);
+    }
+    void Follow(MainWindow* win) override { ReadAloudFollowNow(win); }
+    void Close(MainWindow* win) override {
+        ReadAloudPlaybackStop();
+        ToolbarUpdateStateForWindow(win, true);
+    }
+};
+
+ReadAloudBarSource* TextToSpeechBarSource() {
+    static TtsBarSource src;
+    return &src;
+}
+
 WindowTab* GetReadAloudSourceTab() {
     return gReadAloudSourceTab;
 }
@@ -15234,122 +15353,6 @@ static TempStr TtsLangIdToLocaleNameTemp(const char* lang) {
     }
 
     return ToUtf8Temp(localeName);
-}
-
-static void BuildReadAloudVoiceMenuItems(HMENU voiceMenu) {
-    if (!voiceMenu) {
-        return;
-    }
-
-    // the saved pref, not the engine voice: in smart bilingual mode the engine
-    // voice changes per chunk but the menu should show the smart mode as selected
-    const char* currentVoiceId = TtsGetVoiceId();
-    if (gGlobalPrefs && gGlobalPrefs->readAloudVoiceId) {
-        currentVoiceId = gGlobalPrefs->readAloudVoiceId;
-    }
-    SmartBilingualKind activeSmartKind;
-    bool isSmartBilingual = TryGetSmartBilingualKind(currentVoiceId, &activeSmartKind);
-
-    UINT defaultFlags = MF_STRING;
-    if (str::IsEmpty(currentVoiceId)) {
-        defaultFlags |= MF_CHECKED;
-    }
-
-    AppendMenuW(voiceMenu, defaultFlags, CmdTtsVoiceDefault, ToWStrTemp(_TRA("System default")));
-
-    if (TtsSmartBilingualAvailable(SmartBilingualKind::Local)) {
-        AppendMenuW(voiceMenu, MF_SEPARATOR, 0, nullptr);
-        UINT smartFlags = MF_STRING;
-        if (isSmartBilingual && activeSmartKind == SmartBilingualKind::Local) {
-            smartFlags |= MF_CHECKED;
-        }
-        AppendMenuW(voiceMenu, smartFlags, CmdTtsVoiceSmartBilingual,
-                    ToWStrTemp(_TRA("Local smart bilingual (English + Chinese)")));
-        AppendMenuW(voiceMenu, MF_STRING, CmdTtsSmartBilingualSettings,
-                    ToWStrTemp(_TRA("Local smart bilingual settings...")));
-    }
-    if (TtsSmartBilingualAvailable(SmartBilingualKind::Online)) {
-        AppendMenuW(voiceMenu, MF_SEPARATOR, 0, nullptr);
-        UINT smartFlags = MF_STRING;
-        if (isSmartBilingual && activeSmartKind == SmartBilingualKind::Online) {
-            smartFlags |= MF_CHECKED;
-        }
-        AppendMenuW(voiceMenu, smartFlags, CmdTtsVoiceSmartOnlineBilingual,
-                    ToWStrTemp(_TRA("Online smart bilingual (English + Chinese)")));
-        AppendMenuW(voiceMenu, MF_STRING, CmdTtsSmartOnlineBilingualSettings,
-                    ToWStrTemp(_TRA("Online smart bilingual settings...")));
-    }
-
-    // One choice plus settings, same shape as the bilingual items. A voice
-    // saved by the old submenu is folded into that choice here.
-    NormalizeMultilingualVoicePref();
-    if (gGlobalPrefs && gGlobalPrefs->readAloudVoiceId) {
-        currentVoiceId = gGlobalPrefs->readAloudVoiceId;
-    }
-    if (TtsMultilingualAvailable()) {
-        AppendMenuW(voiceMenu, MF_SEPARATOR, 0, nullptr);
-        UINT multiFlags = MF_STRING;
-        if (str::Eq(currentVoiceId, kTtsMultilingualVoiceId)) {
-            multiFlags |= MF_CHECKED;
-        }
-        AppendMenuW(voiceMenu, multiFlags, CmdTtsVoiceMultilingual, ToWStrTemp(_TRA("Online multilingual voices")));
-        AppendMenuW(voiceMenu, MF_STRING, CmdTtsMultilingualSettings,
-                    ToWStrTemp(_TRA("Online multilingual voice settings...")));
-    }
-
-    RemoveBadMenuSeparators(voiceMenu);
-}
-
-static void AppendReadAloudSpeedPresetItems(HMENU menu, UINT cmdFirst, float currentRate) {
-    for (int i = 0; i < (int)dimof(kReadAloudSpeedPresets); i++) {
-        UINT flags = MF_STRING;
-        if (ReadAloudSpeakingRatesEqual(currentRate, kReadAloudSpeedPresets[i])) {
-            flags |= MF_CHECKED;
-        }
-        AppendMenuW(menu, flags, cmdFirst + (UINT)i, ToWStrTemp(ReadAloudSpeedPresetLabel(i)));
-    }
-}
-
-static void BuildReadAloudSpeedMenuItems(HMENU speedMenu) {
-    if (!speedMenu || !gGlobalPrefs) {
-        return;
-    }
-
-    int presetCount = (int)dimof(kReadAloudSpeedPresets);
-    ReportIf(presetCount != (int)(CmdTtsSpeedZhLast - CmdTtsSpeedZhFirst + 1));
-    ReportIf(presetCount != (int)(CmdTtsSpeedEnLast - CmdTtsSpeedEnFirst + 1));
-
-    float zhRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateZh);
-    float enRate = ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateEn);
-
-    HMENU zhMenu = CreatePopupMenu();
-    HMENU enMenu = CreatePopupMenu();
-    if (!zhMenu || !enMenu) {
-        if (zhMenu) {
-            DestroyMenu(zhMenu);
-        }
-        if (enMenu) {
-            DestroyMenu(enMenu);
-        }
-        return;
-    }
-    AppendReadAloudSpeedPresetItems(zhMenu, CmdTtsSpeedZhFirst, zhRate);
-    AppendReadAloudSpeedPresetItems(enMenu, CmdTtsSpeedEnFirst, enRate);
-
-    bool zhIsCustom = (ReadAloudSpeedPresetIndex(zhRate) < 0);
-    bool enIsCustom = (ReadAloudSpeedPresetIndex(enRate) < 0);
-
-    AppendMenuW(zhMenu, MF_SEPARATOR, 0, nullptr);
-    UINT zhCustomFlags = MF_STRING | (zhIsCustom ? MF_CHECKED : 0);
-    AppendMenuW(zhMenu, zhCustomFlags, CmdTtsSpeedZhCustom, ToWStrTemp(_TRA("Custom...")));
-    AppendMenuW(enMenu, MF_SEPARATOR, 0, nullptr);
-    UINT enCustomFlags = MF_STRING | (enIsCustom ? MF_CHECKED : 0);
-    AppendMenuW(enMenu, enCustomFlags, CmdTtsSpeedEnCustom, ToWStrTemp(_TRA("Custom...")));
-
-    TempStr zhTitle = str::FormatTemp("%s (%s)", _TRA("Chinese voice"), ReadAloudSpeedLabel(zhRate));
-    TempStr enTitle = str::FormatTemp("%s (%s)", _TRA("English voice"), ReadAloudSpeedLabel(enRate));
-    AppendMenuW(speedMenu, MF_POPUP | MF_STRING, (UINT_PTR)enMenu, ToWStrTemp(enTitle));
-    AppendMenuW(speedMenu, MF_POPUP | MF_STRING, (UINT_PTR)zhMenu, ToWStrTemp(zhTitle));
 }
 
 static bool ReadAloudIsPointOnCanvas(MainWindow* win, Point pt) {
@@ -15453,8 +15456,8 @@ static void BuildReadAloudMenuItems(HMENU menu, MainWindow* win, bool useContext
     }
 
     WindowTab* currTab = win ? win->CurrentTab() : nullptr;
-    bool isSpeaking = TtsIsSpeaking();
-    bool canContinue = CanContinueReadAloud(currTab);
+    bool isSpeaking = TtsIsSpeaking() || MediaOverlayIsPlayingInTab(currTab);
+    bool canContinue = CanContinueReadAloud(currTab) || MediaOverlayHasSessionInTab(currTab);
     bool hasSelection =
         currTab && win->showSelection && currTab->selectionOnPage && currTab->selectionOnPage->size() > 0;
     bool canReadFromCursor = win && win->contextMenuPtValid;
@@ -15474,18 +15477,7 @@ static void BuildReadAloudMenuItems(HMENU menu, MainWindow* win, bool useContext
     AppendMenuW(menu, hasSelection ? MF_STRING : MF_STRING | MF_GRAYED, CmdTtsMenuReadSelection,
                 ToWStrTemp(_TRA("Start Reading Selection")));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-
-    HMENU voiceMenu = CreatePopupMenu();
-    if (voiceMenu) {
-        BuildReadAloudVoiceMenuItems(voiceMenu);
-        AppendMenuW(menu, MF_POPUP | MF_STRING, (UINT_PTR)voiceMenu, ToWStrTemp(_TRA("Voice")));
-    }
-
-    HMENU speedMenu = CreatePopupMenu();
-    if (speedMenu) {
-        BuildReadAloudSpeedMenuItems(speedMenu);
-        AppendMenuW(menu, MF_POPUP | MF_STRING, (UINT_PTR)speedMenu, ToWStrTemp(_TRA("Speed")));
-    }
+    AppendMenuW(menu, MF_STRING, CmdReadAloudSettings, ToWStrTemp(_TRA("Read Aloud Settings...")));
 }
 
 void RebuildReadAloudMenu(MainWindow* win, HMENU menu, bool useContextMenuCursorPoint) {
@@ -15509,59 +15501,44 @@ static bool HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
     WindowTab* currTab = win->CurrentTab();
 
     if (selected == CmdTtsMenuPauseReading) {
-        ReadAloudStopRememberPos();
+        if (!MediaOverlayPause()) {
+            ReadAloudStopRememberPos();
+        }
         ToolbarUpdateStateForWindow(win, true);
     } else if (selected == CmdTtsMenuStopReading) {
+        if (MediaOverlayHasSessionInTab(currTab)) {
+            MediaOverlayStop();
+        }
         ReadAloudPlaybackStop();
+        ToolbarUpdateStateForWindow(win, true);
     } else if (selected == CmdTtsMenuReadCurrentPage) {
-        if (currTab) {
-            ReadAloudPrepareRestart(currTab, win);
-            ReadAloudFromViewportTopInTab(currTab);
-        }
+        ReadAloudStartFromTop(win, currTab);
     } else if (selected == CmdTtsMenuReadFromCursor) {
-        if (currTab) {
-            Point readPt;
-            if (ReadAloudResolveReadFromCursorPoint(win, &readPt)) {
-                ReadAloudPrepareRestart(currTab, win);
-                ReadAloudFromCursorInTab(currTab, readPt);
-            }
-        }
+        ReadAloudStartFromCursor(win, currTab);
     } else if (selected == CmdTtsMenuContinueReading) {
         if (TtsIsSpeaking()) {
             TtsStop();
         }
-        ReadAloudContinueInTab(currTab);
-    } else if (selected == CmdTtsMenuReadSelection) {
-        if (currTab) {
-            ReadAloudPrepareRestart(currTab, win);
-            ReadAloudSelectionInTab(currTab);
+        if (MediaOverlayHasSessionInTab(currTab) && !MediaOverlayIsPlayingInTab(currTab)) {
+            MediaOverlayHandleReadAloud(currTab);
+            ToolbarUpdateStateForWindow(win, true);
+        } else {
+            ReadAloudContinueInTab(currTab);
         }
+    } else if (selected == CmdTtsMenuReadSelection) {
+        ReadAloudStartSelection(win, currTab);
     } else if (selected == CmdTtsVoiceDefault) {
         ReadAloudSaveVoicePref("");
     } else if (selected == CmdTtsVoiceSmartBilingual) {
         ReadAloudSaveVoicePref(kTtsSmartBilingualVoiceId);
-    } else if (selected == CmdTtsSmartBilingualSettings) {
-        if (gCaptionMenuTrackDepth > 0) {
-            gPendingSmartBilingualKind = (int)SmartBilingualKind::Local;
-        } else {
-            ShowReadAloudSmartVoiceDialog(win, SmartBilingualKind::Local);
-        }
     } else if (selected == CmdTtsVoiceSmartOnlineBilingual) {
         ReadAloudSaveVoicePref(kTtsSmartOnlineBilingualVoiceId);
-    } else if (selected == CmdTtsSmartOnlineBilingualSettings) {
-        if (gCaptionMenuTrackDepth > 0) {
-            gPendingSmartBilingualKind = (int)SmartBilingualKind::Online;
-        } else {
-            ShowReadAloudSmartVoiceDialog(win, SmartBilingualKind::Online);
-        }
     } else if (selected == CmdTtsVoiceMultilingual) {
         ReadAloudSaveVoicePref(kTtsMultilingualVoiceId);
-    } else if (selected == CmdTtsMultilingualSettings) {
-        if (gCaptionMenuTrackDepth > 0) {
-            gPendingMultilingualSettings = 1;
-        } else {
-            ShowReadAloudMultilingualDialog(win);
-        }
+    } else if (selected == CmdReadAloudSettings || selected == CmdTtsSmartBilingualSettings ||
+               selected == CmdTtsSmartOnlineBilingualSettings || selected == CmdTtsMultilingualSettings ||
+               selected == CmdTtsSpeedZhCustom || selected == CmdTtsSpeedEnCustom) {
+        ShowReadAloudSettings(win);
     } else if (selected >= CmdTtsVoiceFirst && selected <= CmdTtsVoiceLast) {
         Vec<TtsVoiceInfo> voices = TtsGetVoices();
         int voiceIndex = (int)(selected - CmdTtsVoiceFirst);
@@ -15578,13 +15555,6 @@ static bool HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
         int speedIndex = (int)(selected - CmdTtsSpeedEnFirst);
         if (speedIndex >= 0 && speedIndex < (int)dimof(kReadAloudSpeedPresets)) {
             ReadAloudSaveSpeakingRatePref(false, kReadAloudSpeedPresets[speedIndex]);
-        }
-    } else if (selected == CmdTtsSpeedZhCustom || selected == CmdTtsSpeedEnCustom) {
-        bool focusChinese = selected == CmdTtsSpeedZhCustom;
-        if (gCaptionMenuTrackDepth > 0) {
-            gPendingSpeedFocusChinese = focusChinese ? 1 : 0;
-        } else if (gGlobalPrefs) {
-            Dialog_ReadAloudSpeed(win->hwndFrame, focusChinese);
         }
     }
     return false;
@@ -15624,7 +15594,7 @@ bool HandleReadAloudMenuCommand(MainWindow* win, int cmdId) {
         (cmdId >= CmdTtsVoiceFirst && cmdId <= CmdTtsVoiceLast) ||
         (cmdId >= CmdTtsSpeedZhFirst && cmdId <= CmdTtsSpeedZhLast) ||
         (cmdId >= CmdTtsSpeedEnFirst && cmdId <= CmdTtsSpeedEnLast) || cmdId == CmdTtsSpeedZhCustom ||
-        cmdId == CmdTtsSpeedEnCustom) {
+        cmdId == CmdTtsSpeedEnCustom || cmdId == CmdReadAloudSettings) {
         HandleReadAloudMenuSelection(win, (UINT)cmdId);
         return true;
     }

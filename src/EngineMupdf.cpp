@@ -10,6 +10,10 @@ void fz_purge_stored_html(fz_context* ctx, void* doc);
 void fz_purge_stored_html_chapter(fz_context* ctx, void* doc, int chapter);
 void fz_reset_epub_html_font_set(fz_context* ctx, fz_document* doc);
 void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, float w, float h, float em);
+int fz_epub_chapter_for_path(fz_context* ctx, fz_document* doc, const char* path);
+const char* fz_epub_chapter_path(fz_context* ctx, fz_document* doc, int chapter);
+int fz_epub_fragment_rects(fz_context* ctx, fz_document* doc, int chapter, const char* id, int* pages, fz_rect* rects,
+                           int max);
 }
 
 #include "utils/BaseUtil.h"
@@ -10977,8 +10981,7 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
         const char* path;
         LARGE_INTEGER t;
         bool on;
-        PageRenderPerf(int p) : pageNo(p), zoom(0), path("none"), t(TimeGet()), on(PdfDarkModePagePerfOn()) {
-        }
+        PageRenderPerf(int p) : pageNo(p), zoom(0), path("none"), t(TimeGet()), on(PdfDarkModePagePerfOn()) {}
         ~PageRenderPerf() {
             if (on) {
                 logf("page-perf render page=%d zoom=%.2f path=%s %.1f ms\n", pageNo, zoom, path, TimeSinceInMs(t));
@@ -11593,6 +11596,102 @@ static int ResolveMupdfLinkPageNo1(EngineMupdf* e, const char* uri, fz_link_dest
         *ldestOut = ldest;
     }
     return pageNo1;
+}
+
+int EngineMupdfEpubChapterForPath(EngineBase* engine, const char* docPath) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || e->pdfdoc || !str::EqI(engine->defaultExt, ".epub") || str::IsEmpty(docPath)) {
+        return -1;
+    }
+    int chapter = -1;
+    AcquireReflowUiDocLock(e);
+    defer {
+        ReleaseReflowUiDocLock(e);
+    };
+    fz_context* ctx = e->Ctx();
+    fz_var(chapter);
+    fz_try(ctx) {
+        chapter = fz_epub_chapter_for_path(ctx, e->_doc, docPath);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        chapter = -1;
+    }
+    return chapter;
+}
+
+const char* EngineMupdfEpubPathForChapter(EngineBase* engine, int chapter) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || e->pdfdoc || !str::EqI(engine->defaultExt, ".epub") || chapter < 0) {
+        return nullptr;
+    }
+    const char* path = nullptr;
+    AcquireReflowUiDocLock(e);
+    defer {
+        ReleaseReflowUiDocLock(e);
+    };
+    fz_context* ctx = e->Ctx();
+    fz_var(path);
+    fz_try(ctx) {
+        path = fz_epub_chapter_path(ctx, e->_doc, chapter);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        path = nullptr;
+    }
+    return path;
+}
+
+bool EngineMupdfEpubFragmentRects(EngineBase* engine, const char* docPath, const char* fragmentId, Vec<int>& pagesOut,
+                                  Vec<RectF>& rectsOut, int* chapterPageOut) {
+    pagesOut.Reset();
+    rectsOut.Reset();
+    if (chapterPageOut) {
+        *chapterPageOut = 0;
+    }
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || e->pdfdoc || !str::EqI(engine->defaultExt, ".epub") || str::IsEmpty(docPath)) {
+        return false;
+    }
+    constexpr int kMaxRects = 256;
+    int pages[kMaxRects];
+    fz_rect rects[kMaxRects];
+    int n = 0;
+    int chapter = -1;
+    AcquireReflowUiDocLock(e);
+    {
+        defer {
+            ReleaseReflowUiDocLock(e);
+        };
+        fz_context* ctx = e->Ctx();
+        fz_var(n);
+        fz_var(chapter);
+        fz_try(ctx) {
+            chapter = fz_epub_chapter_for_path(ctx, e->_doc, docPath);
+            if (chapter >= 0 && !str::IsEmpty(fragmentId)) {
+                n = fz_epub_fragment_rects(ctx, e->_doc, chapter, fragmentId, pages, rects, kMaxRects);
+            }
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+            n = 0;
+        }
+    }
+    if (chapter < 0) {
+        return false;
+    }
+    if (chapterPageOut) {
+        *chapterPageOut = ReflowPageNoFromChapter(e, chapter, 0);
+    }
+    for (int i = 0; i < n; i++) {
+        int pageNo = ReflowPageNoFromChapter(e, chapter, pages[i]);
+        if (pageNo <= 0 || pageNo > e->pageCount) {
+            continue;
+        }
+        pagesOut.Append(pageNo);
+        rectsOut.Append(ToRectF(rects[i]));
+    }
+    return true;
 }
 
 static const char* MupdfDestUri(PageDestinationMupdf* link) {

@@ -25,6 +25,10 @@
 #include "Selection.h"
 #include "SumatraPDF.h"
 #include "ReadAloudHighlight.h"
+#include "MediaOverlayPlayer.h"
+#include "ReadAloudFollow.h"
+#include "ReadAloudBar.h"
+#include "Theme.h"
 
 struct ReadAloudRawByte {
     char c = 0;
@@ -1177,12 +1181,6 @@ static bool ReadAloudGetCurrentWordAbsRange(WindowTab* tab, int* startAbsOut, in
     return true;
 }
 
-// Reading-band layout: follow target is 10% from the top (page turn and same-page scroll).
-// Reading progresses downward, so lines above 78% are intentional context — only
-// scroll when the anchor drops below 78%.
-static constexpr float kReadAloudOuterBottomRatio = 0.78f;
-static constexpr float kReadAloudTargetRatio = 0.10f;
-
 static bool ReadAloudCollectAnchorPageRect(WindowTab* tab, int wordStartAbs, int wordEndAbs, int* pageNoOut,
                                            RectF* pageRectOut) {
     if (!tab || !pageNoOut || !pageRectOut || !tab->readAloudHighlight) {
@@ -1265,94 +1263,6 @@ static bool ReadAloudGetCurrentAnchor(WindowTab* tab, DisplayModel* dm, int* pag
     return true;
 }
 
-static int ReadAloudScrollYForAnchorAtRatio(DisplayModel* dm, int pageNo, const RectF& anchorPageRect, float ratio) {
-    if (!dm || pageNo <= 0 || anchorPageRect.IsEmpty()) {
-        return 0;
-    }
-
-    dm->EnsurePagesInfoForPage(pageNo);
-    PageInfo* pi = dm->GetPageInfo(pageNo);
-    if (!pi) {
-        return 0;
-    }
-
-    float zoom = dm->GetZoomReal(pageNo);
-    if (zoom <= 0) {
-        zoom = 1.f;
-    }
-    RectF tr = dm->GetEngine()->Transform(anchorPageRect, pageNo, zoom, dm->GetRotation());
-    int centerY = (int)(tr.y + tr.dy / 2);
-    int targetY = (int)(dm->GetViewPort().dy * ratio);
-    return std::max(0, centerY - targetY);
-}
-
-static int ReadAloudClampViewY(DisplayModel* dm, int viewY) {
-    if (!dm) {
-        return 0;
-    }
-    int maxY = dm->canvasSize.dy - dm->GetViewPort().dy;
-    if (maxY < 0) {
-        maxY = 0;
-    }
-    return limitValue(viewY, 0, maxY);
-}
-
-static int ReadAloudTargetViewYForPage(DisplayModel* dm, int pageNo, const RectF& pageRect, float ratio) {
-    int scrollY = ReadAloudScrollYForAnchorAtRatio(dm, pageNo, pageRect, ratio);
-    dm->EnsurePagesInfoForPage(pageNo);
-    PageInfo* pi = dm->GetPageInfo(pageNo);
-    if (!pi) {
-        return dm->yOffset();
-    }
-    if (IsContinuous(dm->GetDisplayMode())) {
-        return ReadAloudClampViewY(dm, pi->pos.y - dm->windowMargin.top + scrollY);
-    }
-    return ReadAloudClampViewY(dm, scrollY);
-}
-
-static void ReadAloudAnimateViewYTo(MainWindow* win, DisplayModel* dm, int targetViewY) {
-    if (!win || !dm || !win->hwndCanvas) {
-        return;
-    }
-
-    targetViewY = ReadAloudClampViewY(dm, targetViewY);
-    int current = dm->yOffset();
-    if (current == targetViewY) {
-        return;
-    }
-
-    constexpr int kMinAnimateDeltaPx = 12;
-    if (std::abs(targetViewY - current) < kMinAnimateDeltaPx) {
-        win->readAloudScrollFromCode = true;
-        dm->ScrollYTo(targetViewY);
-        win->readAloudScrollFromCode = false;
-        return;
-    }
-
-    win->scrollTargetY = targetViewY;
-    win->readAloudScrollFromCode = true;
-    SetTimer(win->hwndCanvas, kSmoothScrollTimerID, USER_TIMER_MINIMUM, nullptr);
-}
-
-static void ReadAloudScrollScreenAnchorToRatio(MainWindow* win, DisplayModel* dm, const Rect& anchorScreen,
-                                               float ratio) {
-    if (!win || !dm || anchorScreen.IsEmpty()) {
-        return;
-    }
-
-    Size viewPort = dm->GetViewPort().Size();
-    if (viewPort.dy <= 0) {
-        return;
-    }
-
-    float centerY = anchorScreen.y + anchorScreen.dy / 2.0f;
-    int targetY = (int)(viewPort.dy * ratio);
-    int sy = (int)(centerY - targetY);
-    if (sy != 0) {
-        ReadAloudAnimateViewYTo(win, dm, dm->yOffset() + sy);
-    }
-}
-
 static float ReadAloudAnchorLineCenterY(const RectF& pageRect) {
     return pageRect.y + pageRect.dy / 2.0f;
 }
@@ -1369,16 +1279,6 @@ static bool ReadAloudIsSameAnchorLine(int pageNo, const RectF& pageRect, int hol
     return std::abs(centerY - holdLineY) <= tolerance;
 }
 
-static bool ReadAloudAnchorNeedsViewSync(const Rect& anchorScreen, Size viewSize) {
-    if (anchorScreen.IsEmpty() || viewSize.dx <= 0 || viewSize.dy <= 0) {
-        return false;
-    }
-
-    float centerY = anchorScreen.y + anchorScreen.dy / 2.0f;
-    float ratio = centerY / viewSize.dy;
-    return ratio > kReadAloudOuterBottomRatio;
-}
-
 static bool ReadAloudAnchorVisibleInCanvas(MainWindow* win, const Rect& anchorScreen) {
     if (!win || anchorScreen.IsEmpty()) {
         return false;
@@ -1386,41 +1286,12 @@ static bool ReadAloudAnchorVisibleInCanvas(MainWindow* win, const Rect& anchorSc
     return !anchorScreen.Intersect(win->canvasRc).IsEmpty();
 }
 
-static void ReadAloudSyncViewToAnchor(MainWindow* win, WindowTab* tab, DisplayModel* dm, int pageNo,
-                                      const RectF& pageRect, const Rect& anchorScreen) {
-    DisplayMode mode = dm->GetDisplayMode();
-    bool anchorOnScreen = ReadAloudAnchorVisibleInCanvas(win, anchorScreen);
-
-    if (!dm->PageVisible(pageNo)) {
-        win->readAloudScrollFromCode = true;
-        defer {
-            win->readAloudScrollFromCode = false;
-        };
-        int scrollY = ReadAloudScrollYForAnchorAtRatio(dm, pageNo, pageRect, kReadAloudTargetRatio);
-        dm->GoToPage(pageNo, scrollY, false);
-        return;
-    }
-
-    if (!IsContinuous(mode) && !anchorOnScreen) {
-        win->readAloudScrollFromCode = true;
-        defer {
-            win->readAloudScrollFromCode = false;
-        };
-        int scrollY = ReadAloudScrollYForAnchorAtRatio(dm, pageNo, pageRect, kReadAloudTargetRatio);
-        dm->GoToPage(pageNo, scrollY, false);
-        return;
-    }
-
-    if (anchorOnScreen) {
-        ReadAloudScrollScreenAnchorToRatio(win, dm, anchorScreen, kReadAloudTargetRatio);
-        return;
-    }
-
-    int targetViewY = ReadAloudTargetViewYForPage(dm, pageNo, pageRect, kReadAloudTargetRatio);
-    ReadAloudAnimateViewYTo(win, dm, targetViewY);
+static void ReadAloudSyncViewToAnchor(MainWindow* win, DisplayModel* dm, int pageNo, const RectF& pageRect) {
+    ReadAloudFollowScrollTo(win, dm, pageNo, pageRect);
 }
 
 void ReadAloudOnUserViewChanged(MainWindow* win) {
+    MediaOverlayOnUserViewChanged(win);
     if (!win || win->readAloudScrollFromCode || !TtsIsSpeaking()) {
         return;
     }
@@ -1448,7 +1319,25 @@ void ReadAloudOnUserViewChanged(MainWindow* win) {
     // override and disable auto-scroll before the next timer tick can act.
     if (dm->PageVisible(pageNo) && !ReadAloudAnchorVisibleInCanvas(win, anchorScreen)) {
         tab->readAloudAutoScroll = false;
+        ReadAloudBarUpdate(win);
     }
+}
+
+void ReadAloudFollowNow(MainWindow* win) {
+    WindowTab* tab = GetReadAloudSourceTab();
+    DisplayModel* dm = tab && tab->win == win ? tab->AsFixed() : nullptr;
+    if (!dm) {
+        return;
+    }
+    int pageNo = 0;
+    RectF pageRect;
+    Rect anchorScreen;
+    tab->readAloudAutoScroll = true;
+    tab->readAloudAutoScrollHold = false;
+    if (ReadAloudGetCurrentAnchor(tab, dm, &pageNo, &pageRect, &anchorScreen)) {
+        ReadAloudSyncViewToAnchor(win, dm, pageNo, pageRect);
+    }
+    ReadAloudBarUpdate(win);
 }
 
 void ReadAloudUpdateAutoScroll(MainWindow* win) {
@@ -1457,7 +1346,7 @@ void ReadAloudUpdateAutoScroll(MainWindow* win) {
     }
 
     WindowTab* tab = GetReadAloudSourceTab();
-    if (!tab || tab->win != win || win->CurrentTab() != tab || !tab->readAloudAutoScroll) {
+    if (!tab || tab->win != win || win->CurrentTab() != tab || !ReadAloudFollowEnabled()) {
         return;
     }
 
@@ -1473,14 +1362,21 @@ void ReadAloudUpdateAutoScroll(MainWindow* win) {
         return;
     }
 
-    Size viewSize = dm->GetViewPort().Size();
+    if (!tab->readAloudAutoScroll) {
+        // the reader scrolled the spoken text back into view: resume following
+        if (!win->readAloudScrollFromCode && ReadAloudFollowFullyVisible(dm, pageNo, pageRect)) {
+            tab->readAloudAutoScroll = true;
+            tab->readAloudAutoScrollHold = false;
+            ReadAloudBarUpdate(win);
+        }
+        return;
+    }
 
-    // 竖版 columns keep a mid-screen Y, so the 78% downward threshold never
-    // fires. When TTS has already moved to a page that is not on screen,
-    // turn/scroll to it immediately (single-page, facing, and fit-page).
+    // When TTS has already moved to a page that is not on screen, turn/scroll to it
+    // immediately (single-page, facing, and fit-page).
     if (!dm->PageVisible(pageNo)) {
         tab->readAloudAutoScrollHold = false;
-        ReadAloudSyncViewToAnchor(win, tab, dm, pageNo, pageRect, anchorScreen);
+        ReadAloudSyncViewToAnchor(win, dm, pageNo, pageRect);
         return;
     }
 
@@ -1504,11 +1400,12 @@ void ReadAloudUpdateAutoScroll(MainWindow* win) {
         }
     }
 
-    if (!ReadAloudAnchorNeedsViewSync(anchorScreen, viewSize)) {
+    // smooth scroll we started is still animating
+    if (win->readAloudScrollFromCode || ReadAloudFollowInSafeZone(dm, pageNo, pageRect)) {
         return;
     }
 
-    ReadAloudSyncViewToAnchor(win, tab, dm, pageNo, pageRect, anchorScreen);
+    ReadAloudSyncViewToAnchor(win, dm, pageNo, pageRect);
 }
 
 static bool ReadAloudSourceTabIsCurrentTab(MainWindow* win) {
@@ -1563,8 +1460,47 @@ void PaintReadAloudHighlight(MainWindow* win, HDC hdc) {
         return;
     }
 
-    PaintFindMatchHighlightRectangles(hdc, win->canvasRc, screenRects, GetReadAloudHighlightColor(),
+    PaintFindMatchHighlightRectangles(hdc, win->canvasRc, screenRects, ReadAloudResolveHighlightColor(false, 0),
                                       kSelectionHighlightAlpha);
+}
+
+static float ReadAloudColorLum(COLORREF c) {
+    return 0.2126f * GetRValue(c) / 255.f + 0.7152f * GetGValue(c) / 255.f + 0.0722f * GetBValue(c) / 255.f;
+}
+
+// mixes in white until the luminance reaches minLum, keeping the hue
+static COLORREF ReadAloudLightenColor(COLORREF c, float minLum) {
+    float lum = ReadAloudColorLum(c);
+    if (lum >= minLum) {
+        return c;
+    }
+    float t = (minLum - lum) / (1.f - lum);
+    auto mix = [t](BYTE v) {
+        float f = v / 255.f;
+        return (BYTE)std::clamp((int)((f + (1.f - f) * t) * 255.f + 0.5f), 0, 255);
+    };
+    return RGB(mix(GetRValue(c)), mix(GetGValue(c)), mix(GetBValue(c)));
+}
+
+COLORREF ReadAloudResolveHighlightColor(bool hasBookColor, COLORREF bookColor) {
+    constexpr float kNearWhiteLum = 0.9f;
+    constexpr float kDarkThemeMinLum = 0.6f;
+    COLORREF col = RGB(255, 255, 0);
+    if (gGlobalPrefs) {
+        if (ParsedColor* parsed = GetPrefsColor(gGlobalPrefs->readAloudHighlightColor); parsed && parsed->parsedOk) {
+            col = parsed->col;
+        }
+    }
+    bool useBook = hasBookColor && (!gGlobalPrefs || gGlobalPrefs->narrationUseBookHighlightColor);
+    // a near-white band is invisible on light pages and only greys the text
+    if (useBook && ReadAloudColorLum(bookColor) <= kNearWhiteLum) {
+        col = bookColor;
+    }
+    // dark themes draw the band as a marker under dark text: a dark colour would hide it
+    if (ThemeUsesDarkChrome()) {
+        col = ReadAloudLightenColor(col, kDarkThemeMinLum);
+    }
+    return col;
 }
 
 static void ReadAloudEnsureLayoutSynced(WindowTab* tab, MainWindow* win) {
@@ -1910,7 +1846,9 @@ bool RefreshReadAloudHighlightAfterLayoutChange(WindowTab* tab, MainWindow* win,
         Rect anchorScreen;
         if (ReadAloudGetCurrentAnchor(tab, dm, &pageNo, &pageRect, &anchorScreen)) {
             tab->readAloudAutoScrollHold = false;
-            ReadAloudSyncViewToAnchor(win, tab, dm, pageNo, pageRect, anchorScreen);
+            if (ReadAloudFollowEnabled()) {
+                ReadAloudSyncViewToAnchor(win, dm, pageNo, pageRect);
+            }
         }
     }
 

@@ -1,4 +1,4 @@
-# Read Aloud (TTS)
+# Read Aloud
 
 **Available in [pre-release 3.7](https://www.sumatrapdfreader.org/prerelease)**
 
@@ -11,11 +11,13 @@ Supported for fixed-layout and reflowable documents (PDF, EPUB, MOBI, etc.) that
 1. Install SumatraPDF 3.7 (or newer pre-release build).
 2. **Configure a natural voice** — see [Voice setup](#voice-setup) below. Without this step, Windows default voices (e.g. legacy SAPI voices) sound robotic.
 3. Open a document.
-4. Use **Read Aloud (TTS)** from the toolbar, menu, or command palette (`Ctrl + K` → `Read Aloud`).
+4. Use **Read Aloud** from the toolbar, menu, or command palette (`Ctrl + K` → `Read Aloud`).
 5. Choose **Start Reading From Top**, **Start Reading From Cursor Position**, or **Start Reading Selection**.
-6. Pick a voice under **Read Aloud (TTS) → Voice**.
+6. Pick a voice in **Read Aloud → Read Aloud Settings...**.
 
-While reading, the current word is highlighted. Use **Pause Reading**, **Continue Reading**, and **Stop Reading** from the same menu.
+While reading, the current word is highlighted and a read-aloud bar appears at the bottom of the page: previous / next sentence, play / pause, speed, settings (gear) and close. **Pause Reading**, **Continue Reading**, and **Stop Reading** are also in the Read Aloud menu.
+
+EPUB 3 books with recorded narration (Media Overlays) use the same menu and the same bar: Read Aloud plays the book's own audio. Turn this off with **Play the book's recorded narration when available** in the settings page to read such books with the voice instead.
 
 ## Commands
 
@@ -27,10 +29,16 @@ While reading, the current word is highlighted. Use **Pause Reading**, **Continu
 | `CmdPauseReadAloud` | Pause Reading |
 | `CmdContinueReadAloud` | Continue Reading |
 | `CmdStopReadAloud` | Stop Reading |
+| `CmdReadAloudSettings` | Read Aloud Settings... (Settings, Read Aloud page) |
 
-Voice selection is available from **Read Aloud (TTS) → Voice** (system default plus installed voices).
+All options are on one page: **Settings → Read Aloud** (also **Read Aloud → Read Aloud Settings...** and the gear on the read-aloud bar):
 
-Speaking rate presets are available from **Read Aloud (TTS) → Speed** (0.5× through 2.0×).
+- **Voice**: system default, local or online smart bilingual (a Chinese and an English voice, picked per sentence), or an online multilingual voice. **Preview** speaks a short sample.
+- **Speed**: separate Chinese and English speed, 0.25x to 2.00x.
+- **Highlight and follow**: highlight colour, and whether the page follows the text being read.
+- **Narrated books (EPUB 3)**: play the book's recorded narration, use the book's highlight colour, narration speed.
+
+Changes take effect when you press OK.
 
 Advanced setting `ReadAloudVoiceId` stores the chosen voice id (WinRT voice id or SAPI token id). Advanced setting `ReadAloudSpeakingRate` stores the speaking rate multiplier (1.0 is normal). See [Advanced options / settings](Advanced-options-settings.md).
 
@@ -61,7 +69,7 @@ Best quality; works **without network** after setup.
 6. Unzip each MSIX file (treat it as a ZIP) into its **own subfolder** under `C:\TTS`.
 7. In the installer, set **Local voice path** to the parent folder (`C:\TTS`), not the subfolder.
 8. Click **Close**. Restart SumatraPDF completely.
-9. **Read Aloud (TTS) → Voice** — select **Microsoft Xiaoxiao**, **Microsoft Yunxi**, or another installed natural voice.
+9. **Settings → Read Aloud → Voice** — select **Microsoft Xiaoxiao**, **Microsoft Yunxi**, or another installed natural voice.
 
 Notes:
 
@@ -78,7 +86,7 @@ No MSIX download; voices are fetched online when reading.
 3. Check **Enable Microsoft Edge online voices**.
 4. Optionally adjust **Included languages** (default: follow user's preferred languages).
 5. Click **Close**. Restart SumatraPDF.
-6. **Read Aloud (TTS) → Voice** — choose an Edge online voice.
+6. **Settings → Read Aloud → Voice** — choose an Edge online voice.
 
 **Azure online voices** require a subscription key (`Enable Azure online voices` + **Set Azure key...**); most users can ignore this.
 

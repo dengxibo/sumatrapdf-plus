@@ -57,8 +57,16 @@ void ReadAloudHighlightTimerStop(MainWindow* win);
 
 void ReadAloudOnUserViewChanged(MainWindow* win);
 void ReadAloudUpdateAutoScroll(MainWindow* win);
+// the Follow button: scroll to the text being spoken and keep following it
+void ReadAloudFollowNow(MainWindow* win);
 
 bool ReadAloudGetProgressPage(WindowTab* tab, int* pageOut, int* pageCountOut);
+
+// Colour of the band under the text being read aloud (text-to-speech and EPUB 3 narration).
+// Starts from ReadAloudHighlightColor; a book's media:active-class colour replaces it when
+// NarrationUseBookHighlightColor allows, unless it is near-white. Dark themes lighten the band
+// so the text drawn over it stays readable.
+COLORREF ReadAloudResolveHighlightColor(bool hasBookColor, COLORREF bookColor);
 
 void PaintReadAloudHighlight(MainWindow* win, HDC hdc);
 // Rebuild read-aloud glyph coordinates after relayout (e.g. theme/document color change).

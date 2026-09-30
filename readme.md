@@ -25,8 +25,8 @@ Windows 下的 PDF / 电子书阅读器，针对中文 EPUB/MOBI、离线查词�
   **AI 目录识别（API）** — 用视觉模型识别扫描 PDF 的印刷目录；可保存多套平台配置、直接在模型框筛选已获取的模型、设置请求并发数。[配置与使用说明](docs/ai-toc-api.md)。
 - **Smart PDF dark mode** — Original / Match theme for PDF and ebooks; toolbar Light / Dark (Light-Warm, Light-White).  
   **智能暗黑** — 原稿 / 匹配主题（PDF、EPUB、MOBI 等）；工具栏亮/暗主题（暖色护眼、中性浅色）。
-- **Read Aloud (TTS)** — word-by-word highlight; start from top, cursor, or selection; pause/continue; voice and speed 0.25×–2.0×.  
-  **朗读 (TTS)** — 逐词高亮；从页首/光标/选中开始；暂停/继续；可选语音与语速。
+- **Read Aloud** — one bar for TTS and EPUB 3 recorded narration; word highlight; start from top, cursor, or selection.  
+  **朗读** — 系统语音与 EPUB 3 有声书同一条控制；逐词高亮；从页首/光标/选中开始。
 - **Offline dictionary** — double-click a word; `.idx`/`.dat` in `{exe}\dict\`.  
   **离线查词** — 双击词语；词典放在 `{exe}\dict\`。
 - **Chinese EPUB/MOBI** — mixed text/image layout; TOC navigation; faster open for large EPUB/MOBI/AZW.  
@@ -59,8 +59,8 @@ Product name: **Sumatra PDF Plus**. Executable: `SumatraPDF-Plus.exe`.
   可通过工具栏切换亮/暗主题和查词开关。
 4. Click **Auto OCR** to recognize scanned pages as you view them, or use the dropdown for recognize-all / save / region.
   点击**自动 OCR** 可在翻页时识别扫描页；下拉菜单可全文识别、保存可搜索 PDF、或框选识别。
-5. Click the **speaker** icon (after OCR) or open **Read Aloud (TTS)** in the menu bar to read aloud.
-  点击工具栏**喇叭**图标（在 OCR 之后），或菜单栏 **Read Aloud (TTS)** 开始朗读。
+5. Click the **speaker** icon or open **Read Aloud** in the menu bar to read aloud.
+  点击工具栏**喇叭**，或菜单栏 **朗读 / Read Aloud** 开始朗读。
 
 ---
 
@@ -90,20 +90,22 @@ Advanced setting: `AutoOcrScanPages` (default `false`).
 
 ---
 
-## Read Aloud (TTS) · 朗读
+## Read Aloud · 朗读
 
-Read documents aloud with **word-by-word highlighting** synced to speech. Works on PDF, EPUB, MOBI, and other formats with extractable text.  
-**逐词高亮**跟随朗读进度，支持 PDF、EPUB、MOBI 等可提取文本的格式。
+One Read Aloud entry, one bottom bar, one Settings page. Text-to-speech **highlights the current word**. EPUB 3 books with recorded narration play that audio on the same bar (word follow inside each SMIL phrase).  
+一个入口、一条朗读条、一个设置页。系统语音**逐词高亮**。EPUB 3 有声书在同一条上放书里的录音（SMIL 片段内按词跟随）。
 
 **How to use / 使用方法**
 
-- **Toolbar / 工具栏** — speaker icon after Auto OCR; click to start/pause/continue; dropdown for voice, speed, and start options  
-  OCR 按钮后的**喇叭**；单击开始/暂停/继续；下拉菜单可选语音、语速与起始方式
-- **Menu bar / 菜单栏** — **Read Aloud (TTS)** → start from top, cursor, or selection; **Voice** and **Speed** submenus  
-  **Read Aloud (TTS)** → 从页首/光标/选中开始；**Voice** 选语音、**Speed** 选调速
+- **Toolbar / 工具栏** — speaker icon; click to start/pause/continue; dropdown for start options and settings  
+  **喇叭**；单击开始/暂停/继续；下拉可选起始方式和设置
+- **Menu bar / 菜单栏** — **Read Aloud** → start from top, cursor, or selection; **Read Aloud Settings...**  
+  **朗读** → 从页首/光标/选中开始；**朗读设置**
+- **Bar / 朗读条** — previous/next, play/pause, speed; narrated books also have ±10 s and time  
+  上一句/下一句、播放/暂停、倍速；有声书另有 ±10 秒和时间
 - **Right-click / 右键** — **Start Reading From Cursor Position**; **Pause Reading** / **Continue Reading** while active  
   **从光标处开始朗读**；朗读中可**暂停朗读** / **继续朗读**
-- **Speed presets / 语速** — 0.25×, 0.5×, 0.75×, 1.0×, 1.25×, 1.5×, 2.0×
+- **Speed / 语速** — TTS 0.25×–2.0×; EPUB 3 narration 0.5×–2.0×
 
 **Natural voices / 自然语音**
 

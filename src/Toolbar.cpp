@@ -50,6 +50,7 @@ extern "C" {
 #include "DisplayFilter.h"
 #include "wingui/Layout.h"
 #include "wingui/WinGui.h"
+#include "MediaOverlayPlayer.h"
 
 #include "utils/Log.h"
 
@@ -625,7 +626,7 @@ void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility) {
         UpdateToolbarButtonStateByIdx(hwnd, i, isEnabled, TBSTATE_ENABLED);
 
         if (cmdId == CmdReadAloud || cmdId == CmdPauseReadAloud) {
-            bool speaking = TtsIsSpeaking();
+            bool speaking = TtsIsSpeaking() || MediaOverlayIsPlayingInTab(win->CurrentTab());
             SetToolbarButtonImageByIdx(hwnd, i, speaking ? TbIcon::PauseSpeaking : TbIcon::Speak);
             const char* tip = _TRA("Read Aloud");
             if (speaking) {

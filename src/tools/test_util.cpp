@@ -2,6 +2,7 @@
 #include "utils/WinDynCalls.h"
 #include "utils/FileUtil.h"
 #include "PrintedTocPageDetector.h"
+#include "EpubMediaOverlay.h"
 
 // must be last due to assert() over-write
 #include "utils/UtAssert.h"
@@ -37,6 +38,7 @@ extern void PdfDarkModeImageClassifier_UnitTests();
 extern void PdfTocEditModel_UnitTests();
 extern void PrintedTocModel_UnitTests();
 extern void TtsPronunciation_UnitTests();
+extern void EpubMediaOverlay_UnitTests();
 extern void VecTest();
 extern void WinUtilTest();
 extern void StrFormatTest();
@@ -48,6 +50,38 @@ void GetPrintersInfo(struct StrBuilder&) {
 
 void MaybeDelayedWarningNotification(const char*, ...) {
     // a stub to make this compile
+}
+
+// Media Overlays timeline of an unpacked EPUB directory, for checking the parser against real books.
+static int EpubMoDumpUnpacked(const char* dir) {
+    ByteSlice container = file::ReadFile(path::JoinTemp(dir, "META-INF", "container.xml"));
+    char* opfPath = container ? EpubParseContainerXml((const char*)container.data(), container.size()) : nullptr;
+    container.Free();
+    if (!opfPath) {
+        printf("no META-INF/container.xml rootfile\n");
+        return 1;
+    }
+    ByteSlice opf = file::ReadFile(path::JoinTemp(dir, opfPath));
+    EpubPackage pkg;
+    bool ok = opf && EpubParsePackage(&pkg, opfPath, (const char*)opf.data(), opf.size());
+    opf.Free();
+    str::Free(opfPath);
+    if (!ok) {
+        printf("cannot parse package document\n");
+        return 1;
+    }
+    for (EpubMoDocument* doc : pkg.overlays) {
+        ByteSlice smil = file::ReadFile(path::JoinTemp(dir, doc->smilPath));
+        if (!smil || !EpubParseSmil(&pkg, doc, (const char*)smil.data(), smil.size())) {
+            doc->failed = true;
+            pkg.AddDiag("cannot read or parse %s", doc->smilPath);
+        }
+        smil.Free();
+    }
+    StrBuilder out;
+    EpubMoDumpTimeline(&pkg, out);
+    fwrite(out.CStr(), 1, out.size(), stdout);
+    return 0;
 }
 
 int main(int argc, char** argv) {
@@ -72,6 +106,9 @@ int main(int argc, char** argv) {
         auto interval = DetectTocPageInterval(features);
         WriteTocPageDiagnostics(argv[4], features, interval);
         return 0;
+    }
+    if (argc == 3 && str::Eq(argv[1], "--epub-mo-dump")) {
+        return EpubMoDumpUnpacked(argv[2]);
     }
     printf("Running unit tests\n");
     fflush(stdout);
@@ -103,6 +140,7 @@ int main(int argc, char** argv) {
     PdfTocEditModel_UnitTests();
     PrintedTocModel_UnitTests();
     TtsPronunciation_UnitTests();
+    EpubMediaOverlay_UnitTests();
     VecTest();
     WinUtilTest();
     SumatraPDF_UnitTests();

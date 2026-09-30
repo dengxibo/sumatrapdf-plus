@@ -288,6 +288,7 @@ export const commands = [
     "CmdSetDocumentImageDarkAuto", "Images: Automatic",
     "CmdSetDocumentImageDarkOriginal", "Images: Keep Original Colors",
     "CmdSetDocumentImageDarkTone", "Images: Smart Invert",
+    "CmdReadAloudSettings", "Read Aloud Settings...",
     "CmdNone", "Do nothing",
 ];
 

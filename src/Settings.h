@@ -717,6 +717,20 @@ struct GlobalPrefs {
     // voice id used by online multilingual Read Aloud; empty or unset
     // means auto-pick the first multilingual voice
     char* readAloudMultilingualVoice;
+    // color used to highlight the text being read aloud (text-to-speech
+    // and EPUB 3 narration)
+    char* readAloudHighlightColor;
+    ParsedColor readAloudHighlightColorParsed;
+    // if true, the view scrolls to keep the text being read aloud visible
+    bool readAloudAutoFollow;
+    // if true, EPUB 3 books with media overlays are read aloud with the
+    // publisher's recorded narration instead of text-to-speech
+    bool narrationUseBookAudio;
+    // if true, EPUB 3 narration highlights the current phrase with the
+    // book's own media:active-class color when it defines one
+    bool narrationUseBookHighlightColor;
+    // playback speed of EPUB 3 narration audio; 1.0 is normal speed
+    float narrationSpeed;
     // passwords to try when opening a password protected document
     Vec<char*>* defaultPasswords;
     // ISO code of the current UI language
@@ -1063,8 +1077,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-33.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-33.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-34.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-34.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},
@@ -1189,6 +1203,11 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, readAloudSmartOnlineVoiceZh), SettingType::String, 0, "在线智能中文语音"},
     {offsetof(GlobalPrefs, readAloudSmartOnlineVoiceEn), SettingType::String, 0, "在线智能英文语音"},
     {offsetof(GlobalPrefs, readAloudMultilingualVoice), SettingType::String, 0, "在线多语言语音"},
+    {offsetof(GlobalPrefs, readAloudHighlightColor), SettingType::Color, (intptr_t)"#ffff00", "朗读高亮色"},
+    {offsetof(GlobalPrefs, readAloudAutoFollow), SettingType::Bool, true, "朗读时自动跟随"},
+    {offsetof(GlobalPrefs, narrationUseBookAudio), SettingType::Bool, true, "有声书使用书内录音"},
+    {offsetof(GlobalPrefs, narrationUseBookHighlightColor), SettingType::Bool, true, "有声书使用书内高亮色"},
+    {offsetof(GlobalPrefs, narrationSpeed), SettingType::Float, (intptr_t)"1", "有声书播放倍速"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {(size_t)-1, SettingType::Comment, (intptr_t)"You're not expected to change those manually",
      "You're not expected to change those manually"},
@@ -1211,7 +1230,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
      "Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 130, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 135, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0HomePage"
     "ViewMode\0HomePageThumbnailDx\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSess"
@@ -1226,9 +1245,10 @@ static const StructInfo gGlobalPrefsInfo = {
     "ookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0"
     "Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0Re"
     "adAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnline"
-    "VoiceZh\0ReadAloudSmartOnlineVoiceEn\0ReadAloudMultilingualVoice\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip"
-    "\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfUpd"
-    "ateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
+    "VoiceZh\0ReadAloudSmartOnlineVoiceEn\0ReadAloudMultilingualVoice\0ReadAloudHighlightColor\0ReadAloudAutoFollow\0Na"
+    "rrationUseBookAudio\0NarrationUseBookHighlightColor\0NarrationSpeed\0\0\0DefaultPasswords\0UiLanguage\0VersionToSk"
+    "ip\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfU"
+    "pdateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)"", "主题名称"},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)"", "文字颜色"},

@@ -66,6 +66,7 @@
 #include "Translations.h"
 #include "OcrService.h"
 #include "PrintedTocOverlay.h"
+#include "MediaOverlayPlayer.h"
 
 #include "utils/Log.h"
 
@@ -2745,6 +2746,7 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
     UpdateSelectionToolbarPosition(win);
 
     PaintReadAloudHighlight(win, hdc);
+    MediaOverlayOnCanvasPaint(win, hdc);
 
     if (win->fwdSearchMark.show) {
         PaintForwardSearchMark(win, hdc);
@@ -2958,17 +2960,20 @@ float ScaleZoomBy(MainWindow* win, float factor) {
     return factor * zoomVirt;
 }
 
-static bool gWheelZoomRelative = true;
-
-constexpr float kWheelZoomPerNotch = 1.10f;
 constexpr float kWheelZoomMaxNotchesPerMsg = 2.f;
 constexpr float kWheelZoomVelocityMs = 300.f;
 constexpr UINT kWheelZoomDebounceMs = 32;
 
+// Relative Ctrl+wheel: ZoomIncrement percent per notch (Advanced Options).
 static float WheelZoomFactorFromDelta(short delta, DWORD msgTime, DWORD* lastMsgTime) {
+    float incr = gGlobalPrefs ? gGlobalPrefs->zoomIncrement : 10.f;
+    if (incr <= 0.f) {
+        incr = 10.f;
+    }
+    float perNotch = 1.f + (incr / 100.f);
     float notches = (float)delta / (float)WHEEL_DELTA;
     notches = limitValue(notches, -kWheelZoomMaxNotchesPerMsg, kWheelZoomMaxNotchesPerMsg);
-    float factor = powf(kWheelZoomPerNotch, notches);
+    float factor = powf(perNotch, notches);
 
     double elapsedMs = 100.0;
     if (*lastMsgTime != 0) {
@@ -3063,11 +3068,10 @@ static void ApplyPendingWheelZoom(MainWindow* win) {
     }
 }
 
-// Ctrl+wheel / right-button+wheel zoom. One WHEEL_DELTA notch is ~10%.
-// Fast flicks used to explode (6000% / 20%): only exact ±120 was slowed, and
-// deltas that arrived <150ms apart stacked from the gesture start without bound.
-// Rapid ticks are coalesced: apply the net target once after a short idle so
-// 1→2→3→4 becomes 1→4, and a reverse before apply cancels the overshoot.
+// Ctrl+wheel / right-button+wheel zoom.
+// ZoomIncrement <= 0: one notch walks ZoomLevels (or the built-in ladder).
+// ZoomIncrement > 0: relative percent steps, coalesced / rate-limited so a flick
+// does not jump to 6400% or 20%.
 static void ZoomByMouseWheel(MainWindow* win, WPARAM wp) {
     // don't show the context menu when zooming with the right mouse-button down
     win->dragStartPending = false;
@@ -3077,8 +3081,10 @@ static void ZoomByMouseWheel(MainWindow* win, WPARAM wp) {
 
     short delta = GET_WHEEL_DELTA_WPARAM(wp);
     Point pt = HwndGetCursorPos(win->hwndCanvas);
-    if (!gWheelZoomRelative) {
-        // before 3.6 we were scrolling by steps
+    if (!win->ctrl) {
+        return;
+    }
+    if (!gGlobalPrefs || gGlobalPrefs->zoomIncrement <= 0) {
         float newZoom = win->ctrl->GetNextZoomStep(delta < 0 ? kZoomMin : kZoomMax);
         SmartZoom(win, newZoom, &pt, false);
         return;
@@ -3981,6 +3987,12 @@ static void OnTimer(MainWindow* win, HWND hwnd, WPARAM timerId) {
                 // Round away from zero
                 int dy = step < 0 ? (int)floor(step) : (int)ceil(step);
                 dm->ScrollYTo(current + dy);
+                if (dm->yOffset() == current) {
+                    // target is out of reach (clamped scroll range, relayout); stop instead of spinning
+                    KillTimer(hwnd, kSmoothScrollTimerID);
+                    win->readAloudScrollFromCode = false;
+                    break;
+                }
                 if (!readAloudScroll) {
                     ReadAloudOnUserViewChanged(win);
                 }

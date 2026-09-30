@@ -293,7 +293,8 @@ enum {
     CmdSetDocumentImageDarkAuto = 482,
     CmdSetDocumentImageDarkOriginal = 483,
     CmdSetDocumentImageDarkTone = 484,
-    CmdNone = 485,
+    CmdReadAloudSettings = 485,
+    CmdNone = 486,
 
     /* range for file history */
     CmdFileHistoryFirst,

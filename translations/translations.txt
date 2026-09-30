@@ -33994,3 +33994,91 @@ tw:取得模型
 :&Parallel (1-8):
 cn:并发数(1-8)(&P)：
 tw:並行數(1-8)(&P)：
+
+:&Read Aloud
+cn:朗读(&R)
+tw:朗讀(&R)
+
+:Read Aloud Settings...
+cn:朗读设置...
+tw:朗讀設定...
+
+:Read Aloud Settings
+cn:朗读设置
+tw:朗讀設定
+
+:&Voice:
+cn:语音(&V)：
+tw:語音(&V)：
+
+:&Chinese voice:
+cn:中文语音(&C)：
+tw:中文語音(&C)：
+
+:&English voice:
+cn:英文语音(&E)：
+tw:英文語音(&E)：
+
+:&Multilingual voice:
+cn:多语言语音(&M)：
+tw:多語言語音(&M)：
+
+:&Preview
+cn:试听(&P)
+tw:試聽(&P)
+
+:C&hinese:
+cn:中文(&H)：
+tw:中文(&H)：
+
+:E&nglish:
+cn:英文(&N)：
+tw:英文(&N)：
+
+:0.25x to 2.00x
+cn:0.25x 到 2.00x
+tw:0.25x 到 2.00x
+
+:Highlight and follow
+cn:高亮与跟随
+tw:醒目顯示與跟隨
+
+:Highlight co&lor:
+cn:高亮颜色(&L)：
+tw:醒目顯示顏色(&L)：
+
+:&Follow the text being read
+cn:朗读时自动跟随(&F)
+tw:朗讀時自動跟隨(&F)
+
+:Narrated books (EPUB 3)
+cn:有声书（EPUB 3）
+tw:有聲書（EPUB 3）
+
+:Play the book's recorded narration when &available
+cn:有书内录音时播放录音(&A)
+tw:有書內錄音時播放錄音(&A)
+
+:When off, narrated books are read with the voice above.
+cn:关闭后，有声书改用上面的系统语音朗读。
+tw:關閉後，有聲書改用上面的系統語音朗讀。
+
+:Use the book's highlight c&olor
+cn:使用书内高亮色(&O)
+tw:使用書內醒目顯示色(&O)
+
+:Narration spee&d:
+cn:录音倍速(&D)：
+tw:錄音倍速(&D)：
+
+:Previous sentence
+cn:上一句
+tw:上一句
+
+:Next sentence
+cn:下一句
+tw:下一句
+
+:Play / Pause reading
+cn:播放 / 暂停朗读
+tw:播放 / 暫停朗讀

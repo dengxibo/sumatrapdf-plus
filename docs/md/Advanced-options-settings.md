@@ -648,6 +648,26 @@ ReadAloudSmartOnlineVoiceEn =
 ; auto-pick the first multilingual voice (introduced in version 3.7)
 ReadAloudMultilingualVoice =
 
+; color used to highlight the text being read aloud (text-to-speech and EPUB 3
+; narration) (introduced in version 3.7)
+ReadAloudHighlightColor = #ffff00
+
+; if true, the view scrolls to keep the text being read aloud visible
+; (introduced in version 3.7)
+ReadAloudAutoFollow = true
+
+; if true, EPUB 3 books with media overlays are read aloud with the publisher's
+; recorded narration instead of text-to-speech (introduced in version 3.7)
+NarrationUseBookAudio = true
+
+; if true, EPUB 3 narration highlights the current phrase with the book's own
+; media:active-class color when it defines one (introduced in version 3.7)
+NarrationUseBookHighlightColor = true
+
+; playback speed of EPUB 3 narration audio; 1.0 is normal speed (introduced in
+; version 3.7)
+NarrationSpeed = 1
+
 ; a whitespace separated list of passwords to try when opening a password
 ; protected document (passwords containing spaces must be quoted) (introduced in
 ; version 2.4)

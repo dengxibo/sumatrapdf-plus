@@ -206,6 +206,157 @@ fz_find_html_target(fz_context *ctx, fz_html *html, const char *id)
 	return find_box_target(html->tree.root, id);
 }
 
+/* SumatraPDF Plus: element id -> line rectangles, for EPUB media overlay highlighting. */
+
+static fz_html_box *
+find_box_by_id(fz_html_box *box, const char *id)
+{
+	fz_html_box *found;
+	while (box)
+	{
+		if (box->id && !strcmp(id, box->id))
+			return box;
+		if (box->down)
+		{
+			found = find_box_by_id(box->down, id);
+			if (found)
+				return found;
+		}
+		if (box->type == BOX_FLOW)
+		{
+			fz_html_flow *flow;
+			for (flow = box->u.flow.head; flow; flow = flow->next)
+			{
+				fz_html_box *b;
+				for (b = flow->box; b && b != box; b = b->up)
+					if (b->id && !strcmp(id, b->id))
+						return b;
+			}
+		}
+		box = box->next;
+	}
+	return NULL;
+}
+
+static int
+box_is_within(fz_html_box *b, fz_html_box *target)
+{
+	for (; b; b = b->up)
+		if (b == target)
+			return 1;
+	return 0;
+}
+
+typedef struct
+{
+	fz_html *html;
+	fz_html_box *target;
+	int *pages;
+	fz_rect *rects;
+	int max;
+	int n;
+	int open; /* last rect can still grow along the current line */
+	float line_y;
+} target_rects_state;
+
+static void
+add_flow_rect(target_rects_state *st, fz_html_flow *flow)
+{
+	float y0 = 0, ml = 0, mt = 0;
+	float top, bottom;
+	int page;
+	fz_rect r;
+
+	if (flow->w <= 0 && flow->type != FLOW_IMAGE)
+		return;
+	if (flow->type == FLOW_IMAGE)
+	{
+		top = flow->y;
+		bottom = flow->y + flow->h;
+	}
+	else
+	{
+		/* words: y is the baseline and h the em size (see layout_line) */
+		top = flow->y - flow->h * 0.9f;
+		bottom = flow->y + flow->h * 0.3f;
+	}
+	page = fz_html_page_number_at_y(st->html, (top + bottom) * 0.5f);
+	fz_html_page_box(st->html, page, &y0, NULL, NULL, NULL, &ml, &mt, NULL);
+	r.x0 = flow->x + ml;
+	r.x1 = flow->x + flow->w + ml;
+	r.y0 = top - y0 + mt;
+	r.y1 = bottom - y0 + mt;
+
+	if (st->open && st->n > 0 && st->pages[st->n - 1] == page && flow->y == st->line_y)
+	{
+		st->rects[st->n - 1] = fz_union_rect(st->rects[st->n - 1], r);
+		return;
+	}
+	if (st->n >= st->max)
+		return;
+	st->pages[st->n] = page;
+	st->rects[st->n] = r;
+	st->n++;
+	st->open = 1;
+	st->line_y = flow->y;
+}
+
+static void
+collect_target_rects(target_rects_state *st, fz_html_box *box, int siblings)
+{
+	while (box)
+	{
+		if (box->type == BOX_FLOW)
+		{
+			fz_html_flow *flow;
+			st->open = 0;
+			for (flow = box->u.flow.head; flow; flow = flow->next)
+			{
+				if (!box_is_within(flow->box, st->target))
+				{
+					st->open = 0;
+					continue;
+				}
+				if (flow->type == FLOW_WORD || flow->type == FLOW_IMAGE)
+					add_flow_rect(st, flow);
+			}
+			st->open = 0;
+		}
+		else if (box->down)
+			collect_target_rects(st, box->down, 1);
+		if (!siblings)
+			break;
+		box = box->next;
+	}
+}
+
+/* Returns the number of rects written. Rects are in page coordinates of the chapter page given in pages[i]. */
+int
+fz_html_target_rects(fz_context *ctx, fz_html *html, const char *id, int *pages, fz_rect *rects, int max)
+{
+	target_rects_state st = { 0 };
+	fz_html_box *scan;
+
+	if (!html || !id || !*id || max <= 0)
+		return 0;
+	st.target = find_box_by_id(html->tree.root, id);
+	if (!st.target)
+		return 0;
+	st.html = html;
+	st.pages = pages;
+	st.rects = rects;
+	st.max = max;
+
+	scan = st.target;
+	if (scan->type == BOX_INLINE)
+		while (scan && scan->type != BOX_FLOW)
+			scan = scan->up;
+	if (!scan)
+		return 0;
+	collect_target_rects(&st, scan, 0);
+	return st.n;
+}
+
 static fz_html_flow *
 make_flow_bookmark(fz_context *ctx, fz_html_flow *flow, float y, fz_html_flow **candidate)
 {

@@ -629,6 +629,7 @@ static void AiTocSnapshotApiConfig(AiTocApiConfig* cfg) {
 }
 
 static bool AiTocImportJson(AiTocDialog* dlg, const char* text);
+static void AiTocEnableSendButtons(AiTocDialog* dlg, bool enabled);
 static void AiTocUpdateSendEnabled(AiTocDialog* dlg);
 static void AiTocEnterReview(AiTocDialog* dlg);
 
@@ -848,10 +849,7 @@ static void AiTocStartApiRecognition(AiTocDialog* dlg, const Vec<int>& pages, En
     RemovePropW(dlg->hwnd, kAiTocDetectToken);
     AiTocSetState(dlg, AiTocUiState::ApiRecognizing);
     AiTocApplyApiWaitTexts(dlg);
-    EnableWindow(dlg->send, FALSE);
-    if (dlg->apiBtn) {
-        EnableWindow(dlg->apiBtn, FALSE);
-    }
+    AiTocEnableSendButtons(dlg, FALSE);
     EnableWindow(dlg->pagesEdit, FALSE);
     AiTocApplyStateFonts(dlg);
     InvalidateRect(dlg->hwnd, nullptr, TRUE);
@@ -1127,7 +1125,7 @@ static void StartAiBodyStructureScan(AiTocDialog* dlg) {
     dlg->scanning = true; // reuse the scanning marquee
     SetTimer(dlg->hwnd, 2, 300, nullptr);
     EnableWindow(dlg->bodyBtn, FALSE);
-    EnableWindow(dlg->send, FALSE);
+    AiTocEnableSendButtons(dlg, FALSE);
     EnableWindow(dlg->pagesEdit, FALSE);
     SetWindowTextW(dlg->status, _TRW("Scanning document structure"));
     SetWindowTextW(dlg->scanCount, L"0 / 0");
@@ -1459,7 +1457,7 @@ static void SendAiTocPrompt(AiTocDialog* dlg) {
     SetTimer(dlg->hwnd, 1, 750, nullptr);
     SetTimer(dlg->hwnd, 2, 300, nullptr); // light dot marquee while waiting
     AiTocApplyWaitingTexts(dlg);
-    EnableWindow(dlg->send, FALSE);
+    AiTocEnableSendButtons(dlg, FALSE);
     EnableWindow(dlg->pagesEdit, FALSE);
     if (dlg->resend) {
         EnableWindow(dlg->resend, TRUE);
@@ -1491,7 +1489,7 @@ static void AiTocArmPrintedBatchWait(AiTocDialog* dlg) {
     SetTimer(dlg->hwnd, 1, 750, nullptr);
     SetTimer(dlg->hwnd, 2, 300, nullptr);
     AiTocApplyWaitingTexts(dlg);
-    EnableWindow(dlg->send, FALSE);
+    AiTocEnableSendButtons(dlg, FALSE);
     EnableWindow(dlg->pagesEdit, FALSE);
     if (dlg->resend) {
         EnableWindow(dlg->resend, TRUE);
@@ -2408,19 +2406,25 @@ static bool AiTocCollectSelectedPages(AiTocDialog* dlg, Vec<int>& pages) {
     return true;
 }
 
+static void AiTocEnableSendButtons(AiTocDialog* dlg, bool enabled) {
+    if (dlg->send) {
+        EnableWindow(dlg->send, enabled);
+    }
+    if (dlg->apiBtn) {
+        EnableWindow(dlg->apiBtn, enabled);
+    }
+}
+
 static void AiTocUpdateSendEnabled(AiTocDialog* dlg) {
     bool canSend = AiTocSelectedCount(dlg) > 0;
-    if (dlg->detectWork && dlg->detectWork->pageNos.Size() == 0) {
+    if (!canSend) {
         Str pageText = GetWindowTextTemp(dlg->pagesEdit);
         canSend = pageText.s && *pageText.s;
     }
-    if (dlg->busy || dlg->submitted) {
+    if (dlg->busy || dlg->submitted || dlg->state == AiTocUiState::ChooseFallback) {
         canSend = false;
     }
-    EnableWindow(dlg->send, canSend);
-    if (dlg->apiBtn) {
-        EnableWindow(dlg->apiBtn, canSend);
-    }
+    AiTocEnableSendButtons(dlg, canSend);
 }
 
 // Esc cancels the dialog even when the pages edit has focus.
@@ -2659,7 +2663,10 @@ static constexpr int kAiTocThumbMinWidthDip = 120;
 static constexpr int kAiTocThumbCols = 3;
 // Owner-drawn thumbnail STATICs carry id base + page index so both click
 // handling and painting can recover the row they belong to.
-static constexpr int kAiTocImgBaseId = 1000;
+// Well above the dialog command IDs (1001–1006). When no printed TOC is
+// found every page is listed, so 1000+pageIndex used to collide with
+// Recognize via API (1005) and the other footer buttons.
+static constexpr int kAiTocImgBaseId = 20000;
 
 static void AiTocCreateThumbnailSlot(AiTocDialog* dlg) {
     // SS_NOTIFY makes the thumbnail itself clickable, matching the home-page
@@ -3632,8 +3639,7 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         KillTimer(hwnd, 2);
         RemovePropW(hwnd, kAiTocDetectToken);
         if (!dlg->busy && !dlg->submitted) {
-            Str pageText = GetWindowTextTemp(dlg->pagesEdit);
-            EnableWindow(dlg->send, pageText.s && *pageText.s);
+            AiTocUpdateSendEnabled(dlg);
             SetWindowTextW(dlg->status, _TRW("The entered PDF pages will be rendered and queued for sending."));
         }
         return 0;
@@ -3667,7 +3673,7 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
             AiTocSetState(dlg, AiTocUiState::ChooseFallback);
             SetWindowTextW(dlg->status, L"");
             SetWindowTextW(dlg->scanCount, L"");
-            EnableWindow(dlg->send, FALSE);
+            AiTocEnableSendButtons(dlg, FALSE);
             if (dlg->bodyBtn) {
                 EnableWindow(dlg->bodyBtn, TRUE);
             }
@@ -3726,7 +3732,7 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
             delete work;
             AiTocSetState(dlg, AiTocUiState::ChooseFallback);
             EnableWindow(dlg->bodyBtn, TRUE);
-            EnableWindow(dlg->send, TRUE);
+            AiTocEnableSendButtons(dlg, TRUE);
             EnableWindow(dlg->pagesEdit, TRUE);
             SetWindowTextW(dlg->status,
                            canceled ? _TRW("Scan canceled.")
@@ -3779,7 +3785,7 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
             dlg->busy = false;
             AiTocSetState(dlg, AiTocUiState::ChooseFallback);
             EnableWindow(dlg->bodyBtn, TRUE);
-            EnableWindow(dlg->send, TRUE);
+            AiTocEnableSendButtons(dlg, TRUE);
             EnableWindow(dlg->pagesEdit, TRUE);
             AiTocApplyFallbackTexts(dlg); // stale waiting texts may be on screen
             SetWindowTextW(dlg->status, _TRW(error));
@@ -3798,7 +3804,7 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         AiTocSetState(dlg, AiTocUiState::WaitingForAiClipboard);
         dlg->clipboardSequence = GetClipboardSequenceNumber();
         SetTimer(hwnd, 1, 750, nullptr);
-        EnableWindow(dlg->send, FALSE);
+        AiTocEnableSendButtons(dlg, FALSE);
         EnableWindow(dlg->pagesEdit, FALSE);
         EnableWindow(dlg->bodyBtn, FALSE);
         if (dlg->resend) {
@@ -3931,7 +3937,7 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         dlg->busy = true;
         AiTocSetState(dlg, AiTocUiState::SendingToAi);
         RemovePropW(hwnd, kAiTocDetectToken);
-        EnableWindow(dlg->send, FALSE);
+        AiTocEnableSendButtons(dlg, FALSE);
         EnableWindow(dlg->pagesEdit, FALSE);
         // Immediate visual feedback for "sent": hide the thumbnail grid and
         // shrink the dialog (top/left anchored) so the document behind it is
@@ -4041,7 +4047,7 @@ static void AiTocUploadFinished(AiTocPocWork* work) {
     dlg->work = work;
     dlg->busy = false;
     EnableWindow(dlg->pagesEdit, work->error && !work->browser);
-    EnableWindow(dlg->send, TRUE);
+    AiTocEnableSendButtons(dlg, TRUE);
     SetWindowTextW(dlg->send, _TRW("Recognize via Web AI"));
     if (work->error) {
         if (work->files.Size() == work->pageNos.Size() && CopyAiChatPayloadToClipboard(work->files, kAiTocPrompt) &&
@@ -4054,7 +4060,7 @@ static void AiTocUploadFinished(AiTocPocWork* work) {
             AiTocSetState(dlg, AiTocUiState::WaitingForAiClipboard);
             dlg->clipboardSequence = GetClipboardSequenceNumber();
             SetTimer(dlg->hwnd, 1, 750, nullptr);
-            EnableWindow(dlg->send, FALSE);
+            AiTocEnableSendButtons(dlg, FALSE);
             if (dlg->resend) {
                 EnableWindow(dlg->resend, TRUE);
             }
@@ -4147,13 +4153,13 @@ void StartAiTocProofOfConcept(MainWindow* win) {
     dlg->send = CreateWindowExW(0, L"BUTTON", _TRW("Recognize via Web AI"), WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 0,
                                 0, 10, 10, hwnd, (HMENU)1001, h, nullptr);
     SendMessageW(dlg->send, WM_SETFONT, (WPARAM)dlg->font, TRUE);
-    EnableWindow(dlg->send, FALSE);
     // [Recognize via API]: same page selection as 网页 AI 识别, but runs the
     // autoContents-style recognition over the OpenAI-compatible API.
-    dlg->apiBtn = CreateWindowExW(0, L"BUTTON", _TRW("Recognize via API"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0,
-                                  10, 10, hwnd, (HMENU)1005, h, nullptr);
+    dlg->apiBtn =
+        CreateWindowExW(0, L"BUTTON", _TRW("Recognize via API"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
+                        0, 10, 10, hwnd, (HMENU)1005, h, nullptr);
     SendMessageW(dlg->apiBtn, WM_SETFONT, (WPARAM)dlg->font, TRUE);
-    EnableWindow(dlg->apiBtn, FALSE);
+    AiTocEnableSendButtons(dlg, FALSE);
     // Fallback for documents without a printed TOC. Hidden until detection
     // confirms there is no contents spread.
     dlg->bodyBtn = CreateWindowExW(0, L"BUTTON", _TRW("Generate TOC From Body"), WS_CHILD | BS_PUSHBUTTON, 0, 0, 10, 10,
