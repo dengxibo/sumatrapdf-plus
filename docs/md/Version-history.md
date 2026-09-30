@@ -2,6 +2,8 @@
 
 ## next
 
+- 修复教材 PDF 矩阵外括号再次显示为普通方括号（[#35](https://github.com/dengxibo/sumatrapdf-plus/issues/35) 回归）：`ABCDEF+Symbol` 子集名仍走内置 Base14 Symbol，不用 Windows Symbol.ttf。
+  Fix matrix outer brackets again rendering as plain square brackets ([#35](https://github.com/dengxibo/sumatrapdf-plus/issues/35) regression): subset names like `ABCDEF+Symbol` use built-in Base14 Symbol, not Windows Symbol.ttf.
 ## 3.7.35 (2026-09-30)
 
 - 有声书跟读：SMIL 一段里按词高亮（按字母/汉字分时间），不再整段黄底。词级 SMIL 不变。

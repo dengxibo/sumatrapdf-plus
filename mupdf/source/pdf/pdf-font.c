@@ -136,6 +136,19 @@ static int is_dynalab(char *name)
 	return 0;
 }
 
+/* PDF 1.7 9.6.4: subset fonts are tagged "ABCDEF+" before the original name.
+ * Non-embedded subsets of base-14 fonts (e.g. YFLGZT+Symbol) must still match
+ * the builtin so extensible matrix brackets (bracketlefttp/ex/bt) draw.
+ * Artifex bug 709661 / sumatrapdf #4655 / sumatrapdf-plus #35. */
+static const char *skip_subset_prefix(const char *name)
+{
+	int i;
+	for (i = 0; i < 6; ++i)
+		if (name[i] < 'A' || name[i] > 'Z')
+			return name;
+	return (name[6] == '+' && name[7] != 0) ? name + 7 : name;
+}
+
 static int strcmp_ignore_space(const char *a, const char *b)
 {
 	while (1)
@@ -158,9 +171,10 @@ static int strcmp_ignore_space(const char *a, const char *b)
 const char *pdf_clean_font_name(const char *fontname)
 {
 	int i, k;
+	const char *s = skip_subset_prefix(fontname);
 	for (i = 0; i < (int)nelem(base_font_names); i++)
 		for (k = 0; base_font_names[i][k]; k++)
-			if (!strcmp_ignore_space(base_font_names[i][k], fontname))
+			if (!strcmp_ignore_space(base_font_names[i][k], s))
 				return base_font_names[i][0];
 	return fontname;
 }
@@ -358,11 +372,8 @@ pdf_make_font_family(fz_context *ctx, fz_font *font)
 	if (font->flags.ft_substitute || font->t3procs)
 	{
 		/* Remove "ABCDEF+" prefix and "-Bold" suffix. */
-		char *p = strchr(font->name, '+');
-		if (p)
-			fz_strlcpy(font->family, p+1, sizeof font->family);
-		else
-			fz_strlcpy(font->family, font->name, sizeof font->family);
+		char *p;
+		fz_strlcpy(font->family, skip_subset_prefix(font->name), sizeof font->family);
 		p = strrchr(font->family, '-');
 		if (p)
 			*p = 0;
@@ -381,7 +392,11 @@ pdf_load_builtin_font(fz_context *ctx, pdf_font_desc *fontdesc, const char *font
 	if (clean_name == fontname)
 		clean_name = "Times-Roman";
 
-	fontdesc->font = fz_load_system_font(ctx, fontname, 0, 0, !has_descriptor);
+	/* URW base14 Symbol has extensible matrix bracket glyphs (bracketlefttp
+	 * etc.); Windows Symbol.ttf does not. Prefer builtin for those faces. */
+	fontdesc->font = NULL;
+	if (strcmp(clean_name, "Symbol") && strcmp(clean_name, "ZapfDingbats"))
+		fontdesc->font = fz_load_system_font(ctx, fontname, 0, 0, !has_descriptor);
 	if (!fontdesc->font)
 	{
 		const unsigned char *data;
