@@ -110,6 +110,19 @@ void PdfDarkModeV2_UnitTests() {
     utassert(!PdfDarkModeV2ShouldKnockOutSmallIconCornerMat(640, 480, 1, 0.05f, 0.40f, 0.50f)); // photo
     utassert(!PdfDarkModeV2ShouldKnockOutSmallIconCornerMat(80, 64, 1, 0.005f, 0.90f, 0.90f));  // no mat
 
+    // Warm sidebar parchment is artwork. Low-chroma cream mats and cyan ocean still knock out.
+    utassert(PdfDarkModeV2IsWarmDecorativeParchment(0.94f, 0.88f, 0.63f));  // Guide plate
+    utassert(!PdfDarkModeV2IsWarmDecorativeParchment(0.94f, 0.94f, 0.82f)); // Visual Summary cream
+    utassert(!PdfDarkModeV2IsWarmDecorativeParchment(0.70f, 0.85f, 0.95f)); // cyan ocean
+    utassert(!PdfDarkModeV2IsWarmDecorativeParchment(0.0f, 0.63f, 0.31f));  // green display type
+    utassert(PdfDarkModeV2IsWarmStripArtwork(247.f / 255.f, 246.f / 255.f, 204.f / 255.f));
+    utassert(!PdfDarkModeV2IsWarmStripArtwork(1.f, 1.f, 1.f));
+    utassert(!PdfDarkModeV2IsWarmStripArtwork(170.f / 255.f, 198.f / 255.f, 215.f / 255.f));
+    utassert(PdfDarkModeV2IsWarmNeutralShadow(0.69f, 0.63f, 0.50f));  // badge JPEG shadow
+    utassert(PdfDarkModeV2IsWarmNeutralShadow(0.56f, 0.56f, 0.44f));  // glyph drop shadow
+    utassert(!PdfDarkModeV2IsWarmNeutralShadow(0.0f, 0.63f, 0.31f));  // green ink
+    utassert(!PdfDarkModeV2IsWarmNeutralShadow(0.05f, 0.31f, 0.50f)); // blue stroke
+
     // Tall Guide-to-Reading wave: white only on the open side (aspect >= 5).
     utassert(PdfDarkModeV2ShouldKnockOutDecorativeStripMat(34, 697, 1, 0.19f, 0.81f, 0.83f));
     utassert(PdfDarkModeV2ShouldKnockOutDecorativeStripMat(33, 253, 1, 0.12f, 0.70f, 0.75f));
@@ -118,6 +131,15 @@ void PdfDarkModeV2_UnitTests() {
     utassert(!PdfDarkModeV2ShouldKnockOutDecorativeStripMat(34, 697, 1, 0.19f, 0.02f, 0.03f)); // gray photo
 
     // Visual Summary cream gutter (6×63) is almost all paper — usual 0.92 cap rejects it.
+    utassert(PdfDarkModeV2ShouldKnockOutAlmostPaperChip(3, 89, 4, 1.f, 0.f, 0.f));
+    utassert(PdfDarkModeV2ShouldKnockOutAlmostPaperChip(11, 129, 4, 1.f, 0.f, 0.f));  // white column
+    utassert(!PdfDarkModeV2ShouldKnockOutAlmostPaperChip(16, 80, 4, 1.f, 0.f, 0.f));  // not tall enough
+    utassert(!PdfDarkModeV2ShouldKnockOutAlmostPaperChip(20, 140, 4, 1.f, 0.f, 0.f)); // wider than a gutter
+    utassert(PdfDarkModeV2ShouldKnockOutBlankWhiteGutter(30, 349, 4, 1.f, 0.f, 0.f));
+    utassert(PdfDarkModeV2ShouldKnockOutBlankWhiteGutter(44, 70, 4, 1.f, 0.f, 0.f));
+    utassert(!PdfDarkModeV2ShouldKnockOutBlankWhiteGutter(35, 102, 2, 0.70f, 0.20f, 0.30f));
+    utassert(!PdfDarkModeV2ShouldKnockOutBlankWhiteGutter(200, 200, 4, 1.f, 0.f, 0.f));
+    utassert(!PdfDarkModeV2ShouldKnockOutBlankWhiteGutter(30, 349, 4, 1.f, 0.10f, 0.10f));
     utassert(PdfDarkModeV2ShouldKnockOutAlmostPaperChip(6, 63, 4, 1.00f, 1.00f, 1.00f));
     utassert(PdfDarkModeV2ShouldKnockOutAlmostPaperChip(8, 80, 3, 0.96f, 0.80f, 0.90f));
     utassert(!PdfDarkModeV2ShouldKnockOutAlmostPaperChip(68, 87, 4, 0.95f, 0.20f, 0.25f)); // badge, not a chip
@@ -234,6 +256,17 @@ void PdfDarkModeV2_UnitTests() {
     utassert(!PdfDarkModeV2PhotoRectIsLightIllustrationWash(0.20f, 0.00f, 0.40f, 0.04f));
     utassert(!PdfDarkModeV2PhotoRectIsLightIllustrationWash(0.20f, 0.00f, 0.835f, 0.22f));
 
+    // Fog / snow / white fur: light-tone ramp, both mid bands, almost no ink.
+    utassert(PdfDarkModeV2LooksLikeHighKeyPhotograph(0.60f, 0.010f, 0.008f, 0.13f, 0.48f));
+    utassert(PdfDarkModeV2LooksLikeHighKeyPhotograph(0.56f, 0.016f, 0.009f, 0.16f, 0.42f));
+    // Mostly-white text page: light mass is the paper spike, not a ramp.
+    utassert(!PdfDarkModeV2LooksLikeHighKeyPhotograph(0.06f, 0.037f, 0.016f, 0.04f, 0.03f));
+    // One-level gray photocopy, and a text page with a real ink spike.
+    utassert(!PdfDarkModeV2LooksLikeHighKeyPhotograph(0.70f, 0.002f, 0.020f, 0.02f, 0.68f));
+    utassert(!PdfDarkModeV2LooksLikeHighKeyPhotograph(0.40f, 0.020f, 0.12f, 0.15f, 0.25f));
+    // Blank gutter stats are not a photograph (no midtone mass).
+    utassert(!PdfDarkModeV2LooksLikeHighKeyPhotograph(0.02f, 0.001f, 0.00f, 0.00f, 0.01f));
+
     // Mostly gray full-bleed photo (RAZ geese): keep original, do not Okular it.
     utassert(PdfDarkModeV2ShouldKeepOriginalPhotograph(0.12f, 0.045f));
     utassert(!PdfDarkModeV2ShouldKeepOriginalPhotograph(0.80f, 0.045f));
@@ -268,6 +301,27 @@ void PdfDarkModeV2_UnitTests() {
     utassert(!PdfDarkModeV2LooksLikeSoftMaskPaintChip(2, 2, 2, 2));
     utassert(!PdfDarkModeV2LooksLikeSoftMaskPaintChip(64, 64, 64, 64));
     utassert(!PdfDarkModeV2LooksLikeSoftMaskPaintChip(2, 2, 0, 218));
+
+    // Same photo, stacked slices: overlap in x. Side-by-side cut-outs do not.
+    // White page: glass rim and egg shell are not paper; the margin and body ink are not edges.
+    utassert(PdfDarkModeV2IsPaleCutoutEdgePixel(0.90f, 0.06f, 1.00f, 0.00f));
+    utassert(PdfDarkModeV2IsPaleCutoutEdgePixel(0.965f, 0.02f, 1.00f, 0.00f));
+    utassert(!PdfDarkModeV2IsPaleCutoutEdgePixel(0.995f, 0.01f, 1.00f, 0.00f));
+    utassert(!PdfDarkModeV2IsPaleCutoutEdgePixel(0.20f, 0.02f, 1.00f, 0.00f));
+    // Cream paper matches itself, so the margin does not become a preserved halo.
+    utassert(!PdfDarkModeV2IsPaleCutoutEdgePixel(0.93f, 0.04f, 0.93f, 0.04f));
+    utassert(PdfDarkModeV2IsPaleCutoutEdgePixel(0.84f, 0.08f, 0.93f, 0.04f));
+    utassert(PdfDarkModeV2IsGlyphFringePixel(0.60f, 0.01f, true));
+    utassert(!PdfDarkModeV2IsGlyphFringePixel(0.90f, 0.08f, true)); // glass rim beside an arrow
+    utassert(!PdfDarkModeV2IsGlyphFringePixel(0.60f, 0.01f, false));
+    utassert(PdfDarkModeV2IsCutoutHighlightFringe(23, 49));
+    utassert(!PdfDarkModeV2IsCutoutHighlightFringe(22, 49));
+    utassert(!PdfDarkModeV2IsCutoutHighlightFringe(0, 49));
+
+    utassert(PdfDarkModeV2PhotoRectsShareObjectX(100, 400, 200, 500));
+    utassert(PdfDarkModeV2PhotoRectsShareObjectX(20, 800, 200, 800));
+    utassert(!PdfDarkModeV2PhotoRectsShareObjectX(165, 413, 748, 1115));
+    utassert(!PdfDarkModeV2PhotoRectsShareObjectX(10, 10, 0, 100));
 
     // RAZ SPRAK p.2 title row vs illustration / B&W portrait (Lincoln suit has little paper).
     utassert(PdfDarkModeV2PhotoRectRowLooksLikeInkOnPaper(0.02f, 0.04f, 0.70f));

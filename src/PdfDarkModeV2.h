@@ -72,6 +72,63 @@ inline bool PdfDarkModeV2LayoutTextbookSkipFigureRemap(int w, int h, float cover
     return true;
 }
 
+// Sidebar / display-type plates (Guide to Reading, section-badge slices) are warm
+// parchment, chroma about 0.25–0.40. That is the artwork. Knocking it out leaves a
+// black rectangle where no matching plate sits behind the tile. Low-chroma cream
+// mats (Visual Summary pills, chroma under 0.22) and cool cyan ocean fills stay mats.
+inline bool PdfDarkModeV2IsWarmDecorativeParchment(float r, float g, float b) {
+    float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    float chroma = maxC - minC;
+    float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+    if (lum < 0.72f || chroma < 0.22f || chroma >= 0.48f) {
+        return false;
+    }
+    // Cool cyan is an atlas mat, not parchment.
+    if (b + 0.02f >= r || b + 0.02f >= g) {
+        return false;
+    }
+    return true;
+}
+
+// Parchment and its JPEG fringe on the artwork side of a colored divider.
+// Neutral white and cool cyan (the open page side of the wave) are not this.
+inline bool PdfDarkModeV2IsWarmStripArtwork(float r, float g, float b) {
+    float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    float chroma = maxC - minC;
+    float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+    if (lum < 0.62f || chroma < 0.06f || chroma >= 0.50f) {
+        return false;
+    }
+    if (b + 0.02f >= r || b + 0.02f >= g) {
+        return false;
+    }
+    return true;
+}
+
+// JPEG drop shadow under display type: warm gray, not green/blue/red ink.
+// Clearing it keeps the colored glyphs; leaving it paints a black letter fill.
+inline bool PdfDarkModeV2IsWarmNeutralShadow(float r, float g, float b) {
+    float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    float chroma = maxC - minC;
+    float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+    if (lum < 0.40f || lum > 0.92f || chroma >= 0.24f) {
+        return false;
+    }
+    if (b > r + 0.02f || b > g + 0.02f) {
+        return false;
+    }
+    if (g > r + 0.15f && g > b + 0.15f) {
+        return false;
+    }
+    if (r > g + 0.15f && r > b + 0.15f) {
+        return false;
+    }
+    return true;
+}
+
 // Tall colorful divider strips: paper usually on only 1–2 open sides (right of wave).
 inline bool PdfDarkModeV2ShouldKnockOutDecorativeStripMat(int w, int h, int paperSides, float edgeWhiteRatio,
                                                           float satRatio, float chromaRatio) {
@@ -118,11 +175,36 @@ inline bool PdfDarkModeV2ShouldKnockOutAlmostPaperChip(int w, int h, int paperSi
         return false;
     }
     // Cream textbook paper carries mild chroma; keep pure white photo chips out unless
-    // the chip is a hairline spacer.
+    // the chip is a hairline spacer or a tall pure-white column (11×129 gutter beside
+    // a divider). Square chips stay.
     if (chromaRatio >= 0.06f || satRatio >= 0.05f) {
         return true;
     }
-    return minDim <= 10;
+    if (minDim <= 10) {
+        return true;
+    }
+    return minDim <= 16 && maxDim >= minDim * 6;
+}
+
+// Blank white gutter beside a divider (30×349 column, 44×70 cap). No hue, paper
+// on every side, so it is not a photo. A colored slice (globe edge) stays out.
+inline bool PdfDarkModeV2ShouldKnockOutBlankWhiteGutter(int w, int h, int paperSides, float edgeWhiteRatio,
+                                                        float satRatio, float chromaRatio) {
+    if (w <= 0 || h <= 0) {
+        return false;
+    }
+    if (edgeWhiteRatio < 0.96f || paperSides < 3) {
+        return false;
+    }
+    if (satRatio >= 0.04f || chromaRatio >= 0.05f) {
+        return false;
+    }
+    const int minDim = w < h ? w : h;
+    const int maxDim = w > h ? w : h;
+    if (minDim > 48 || maxDim > 720) {
+        return false;
+    }
+    return (long long)w * (long long)h <= (long long)48 * 720;
 }
 
 // After cream mat flood, remaining soft-gray drop shadows (no ink / no hue) read as
@@ -366,6 +448,71 @@ inline bool PdfDarkModeV2PhotoRectIsLightIllustrationWash(float insetPaperRatio,
     return true;
 }
 
+// Horizontal slices of one photo overlap in x, so their boxes should become one rect
+// (a light corner such as sky is then inside the union). Side-by-side cut-outs on the
+// same row do not overlap; unioning them clips the taller object where the shorter
+// one ends, and that strip is ink-inverted (RAZ sweater cuff).
+// Page margin vs a pale cut-out edge (glass rim, egg shell, glass-dish corner).
+// The edge is outside the dense photo box, so the ink map turns it black. It matches
+// the page only when both luminance and chroma sit on the page's own paper; cream
+// paper therefore does not grow a halo, and a whiter glass lip still qualifies.
+inline bool PdfDarkModeV2PixelMatchesPagePaper(float lum, float chroma, float pageLum, float pageChroma) {
+    float dLum = lum > pageLum ? lum - pageLum : pageLum - lum;
+    if (dLum >= 0.030f) {
+        return false;
+    }
+    if (chroma >= pageChroma + 0.050f) {
+        return false;
+    }
+    return lum > 0.80f;
+}
+
+// Body ink stays on the ink path. Everything else that is not the page paper can
+// belong to a cut-out sticking out of the photo.
+inline bool PdfDarkModeV2IsPaleCutoutEdgePixel(float lum, float chroma, float pageLum, float pageChroma) {
+    if (PdfDarkModeV2PixelMatchesPagePaper(lum, chroma, pageLum, pageChroma)) {
+        return false;
+    }
+    if (lum < 0.42f && chroma < 0.14f) {
+        return false;
+    }
+    return true;
+}
+
+// Gray fringe of a glyph. The cut-out flood must not climb it into a caption.
+// A glass rim next to an arrow still qualifies as the object: it has chroma.
+inline bool PdfDarkModeV2IsGlyphFringePixel(float lum, float chroma, bool touchesInk) {
+    if (!touchesInk) {
+        return false;
+    }
+    if (chroma >= 0.04f || lum >= 0.92f || lum < 0.42f) {
+        return false;
+    }
+    return true;
+}
+
+// Specular lip: same color as the page, but the neighborhood is the cut-out rather
+// than the open margin. 45% of the window already kept as edge.
+inline bool PdfDarkModeV2IsCutoutHighlightFringe(int maskCount, int windowCount) {
+    if (windowCount <= 0 || maskCount <= 0) {
+        return false;
+    }
+    return maskCount * 20 >= windowCount * 9;
+}
+
+inline bool PdfDarkModeV2PhotoRectsShareObjectX(int ax0, int ax1, int bx0, int bx1) {
+    int ov0 = ax0 > bx0 ? ax0 : bx0;
+    int ov1 = ax1 < bx1 ? ax1 : bx1;
+    int ov = ov1 > ov0 ? ov1 - ov0 : 0;
+    int wa = ax1 - ax0;
+    int wb = bx1 - bx0;
+    if (wa <= 0 || wb <= 0) {
+        return false;
+    }
+    int shortW = wa < wb ? wa : wb;
+    return ov * 5 >= shortW * 2;
+}
+
 // Color-page photo rects often swallow a display-type title on paper above the art
 // (RAZ SPRAK p.2). Those rows are paper + black ink, not continuous-tone photo.
 inline bool PdfDarkModeV2PhotoRectRowLooksLikeInkOnPaper(float chromaRatio, float midtoneRatio, float paperRatio) {
@@ -410,6 +557,25 @@ inline bool PdfDarkModeV2PhotoHaloKeepDarkPixel(float lum, bool nearMat) {
         return true;
     }
     return false;
+}
+
+// High-key photograph (fog, snow, white fur). Light pixels span a ramp, so page
+// lumVar stays small and the text / aged-paper gates treat the picture as a scan.
+// Flat office paper sits in one band; its light-tone variance is tiny. Real text
+// pages keep an ink spike. Blank gutters are not this: they have no midtone mass.
+inline bool PdfDarkModeV2LooksLikeHighKeyPhotograph(float lightToneRatio, float lightToneVar, float inkRatio,
+                                                    float lowMidRatio, float highMidRatio) {
+    if (lightToneRatio < 0.22f || lightToneVar < 0.008f) {
+        return false;
+    }
+    if (inkRatio >= 0.05f) {
+        return false;
+    }
+    // One gray level (a photocopy) fills only one band. Fog, fur, and snow span both.
+    if (lowMidRatio < 0.04f || highMidRatio < 0.15f) {
+        return false;
+    }
+    return true;
 }
 
 // Edge-to-edge photograph, including a mostly gray one with a few saturated

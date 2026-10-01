@@ -105,6 +105,11 @@ static void FreeDictSense(DictSense* s) {
     s->definitions.Reset();
 }
 
+struct LookupFlowHit {
+    Rect rc;
+    char* word = nullptr;
+};
+
 struct WordLookupWnd : Wnd {
     WordLookupWnd() = default;
     ~WordLookupWnd() override;
@@ -155,11 +160,22 @@ struct WordLookupWnd : Wnd {
     u64 audioOffset = 0;
     u32 audioSize = 0;
     char* audioExt = nullptr;
+    Vec<LookupFlowHit> flowHits;
+    int lookupGen = 0;
 };
 
 static WordLookupWnd* gWordLookupWnd = nullptr;
 static void StopCurrentLookupAudio(bool clearSpeakerAnim = true);
 static void PositionWordLookup(WordLookupWnd* wnd, Point screenPos);
+static void RelookupInPopup(WordLookupWnd* wnd, const char* word);
+
+static void ClearLookupFlowHits(Vec<LookupFlowHit>& hits) {
+    for (int i = 0; i < hits.Size(); i++) {
+        str::Free(hits[i].word);
+        hits[i].word = nullptr;
+    }
+    hits.Reset();
+}
 
 static bool LookupShouldResumeReadAloud(const WordLookupWnd* wnd) {
     return kWordLookupResumeReadAloud && wnd && wnd->resumeReadAloudOnClose;
@@ -305,6 +321,7 @@ static void UpdateLookupWindowRgn(WordLookupWnd* wnd) {
 }
 
 WordLookupWnd::~WordLookupWnd() {
+    ClearLookupFlowHits(flowHits);
     StopCurrentLookupAudio();
     if (hwnd) {
         KillTimer(hwnd, kSpeakerHoverTimerId);
@@ -1348,6 +1365,106 @@ static int CalcFontLineDy(HDC hdc, HFONT font) {
     return tm.tmHeight + tm.tmExternalLeading;
 }
 
+// Invisible hit boxes for English words in text that DrawText already painted.
+// Double-click looks the word up. Nothing here is drawn.
+static void CollectLookupFlowHits(HDC hdc, HFONT font, const char* txt, int x, int y, int right, int limitY,
+                                  Vec<LookupFlowHit>* hits) {
+    if (!hits || str::IsEmpty(txt) || right <= x) {
+        return;
+    }
+    TempWStr ws = ToWStrTemp(txt);
+    int n = str::Leni(ws);
+    if (n <= 0) {
+        return;
+    }
+    HFONT useFont = font ? font : GetAppFont();
+    HFONT oldFont = (HFONT)SelectObject(hdc, useFont);
+    RECT lineRc{0, 0, 10000, 0};
+    DrawTextW(hdc, L"Mg", 2, &lineRc, DT_CALCRECT | DT_NOPREFIX | DT_SINGLELINE);
+    int lineH = RectDy(lineRc);
+    if (lineH < 1) {
+        lineH = 1;
+    }
+    int left = x;
+    int cx = x;
+    int cy = y;
+    auto newLine = [&]() {
+        cx = left;
+        cy += lineH;
+    };
+    int i = 0;
+    while (i < n) {
+        WCHAR c = ws[i];
+        if (c == '\r') {
+            i++;
+            continue;
+        }
+        if (c == '\n') {
+            newLine();
+            i++;
+            continue;
+        }
+        int start = i;
+        bool lookup = false;
+        if (c == ' ' || c == '\t') {
+            i++;
+        } else if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
+            lookup = true;
+            i++;
+            while (i < n) {
+                WCHAR d = ws[i];
+                bool wordCh =
+                    (d >= 'A' && d <= 'Z') || (d >= 'a' && d <= 'z') || (d >= '0' && d <= '9') || d == '\'' || d == '-';
+                if (!wordCh) {
+                    break;
+                }
+                i++;
+            }
+        } else {
+            i++;
+        }
+        int len = i - start;
+        SIZE sz{};
+        GetTextExtentPoint32W(hdc, ws + start, len, &sz);
+        int pieceDx = (int)sz.cx;
+        bool isSpace = ws[start] == ' ' || ws[start] == '\t';
+        if (isSpace) {
+            if (cx == left) {
+                continue;
+            }
+            if (cx + pieceDx > right) {
+                newLine();
+                continue;
+            }
+        } else if (cx > left && cx + pieceDx > right) {
+            newLine();
+        }
+        if (lookup && len > 0 && cy < limitY) {
+            char* word = ToUtf8(ws + start, (size_t)len);
+            if (word) {
+                LookupFlowHit hit;
+                hit.rc = Rect(cx, cy, pieceDx > 0 ? pieceDx : 1, lineH);
+                hit.word = word;
+                hits->Append(hit);
+            }
+        }
+        cx += pieceDx;
+    }
+    SelectObject(hdc, oldFont);
+}
+
+static int HitTestLookupFlow(WordLookupWnd* wnd, Point pt) {
+    if (!wnd) {
+        return -1;
+    }
+    for (int i = 0; i < wnd->flowHits.Size(); i++) {
+        if (wnd->flowHits[i].rc.Contains(pt)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 static int DrawLookupText(HDC hdc, HFONT font, const char* txt, RECT* r, COLORREF col, UINT fmt) {
     if (str::IsEmpty(txt)) {
         return 0;
@@ -1809,6 +1926,7 @@ void WordLookupWnd::SelectTab(int tab) {
 
 void WordLookupWnd::SetLoading(const char* word) {
     isLoading = true;
+    ClearLookupFlowHits(flowHits);
     speakerPlaying = false;
     speakerWaveTick = 0;
     speakerPlayFrames = 0;
@@ -1831,6 +1949,7 @@ void WordLookupWnd::SetLoading(const char* word) {
 void WordLookupWnd::SetResults(const char* word, DictSense* newSenses, int newNSenses, OfflineDictionary* newAudioDict,
                                u64 newAudioOffset, u32 newAudioSize, const char* newAudioExt) {
     isLoading = false;
+    ClearLookupFlowHits(flowHits);
     str::ReplaceWithCopy(&queryWord, word);
     if (senses) {
         for (int i = 0; i < nSenses; i++) {
@@ -1952,6 +2071,7 @@ bool WordLookupWnd::Create(MainWindow* winIn, const char* word, Point screenPos)
 }
 
 void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
+    ClearLookupFlowHits(flowHits);
     DoubleBuffer buffer(hwnd, ToRect(ps->rcPaint));
     HDC dc = buffer.GetDC();
     COLORREF colBg = FloatingPopupBg();
@@ -2055,6 +2175,7 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
         char* defs = BuildDefinitionsText(sense);
         if (defs) {
             RECT r{x, y, right, bottom};
+            CollectLookupFlowHits(dc, font, defs, x, y, right, bottom, &flowHits);
             y += DrawLookupText(dc, font, defs, &r, FloatingPopupTextColor(), DT_WORDBREAK | DT_EDITCONTROL);
             str::Free(defs);
         }
@@ -2070,6 +2191,7 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
             y += DpiScale(hwnd, 12);
 
             RECT r{x, y, right, bottom};
+            CollectLookupFlowHits(dc, font, example, x, y, right, bottom, &flowHits);
             DrawLookupText(dc, font, example, &r, FloatingPopupMutedTextColor(), DT_WORDBREAK | DT_EDITCONTROL);
         }
         str::Free(example);
@@ -2157,10 +2279,22 @@ LRESULT WordLookupWnd::WndProc(HWND hwndIn, UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             break;
+        case WM_LBUTTONDBLCLK: {
+            Point pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            int hit = HitTestLookupFlow(this, pt);
+            if (hit >= 0 && flowHits[hit].word) {
+                RelookupInPopup(this, flowHits[hit].word);
+                return 0;
+            }
+            break;
+        }
         case WM_LBUTTONDOWN: {
             Point pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
             if (closeBtnPos.Contains(pt) || speakerBtnPos.Contains(pt) || HitTestLookupTab(this, pt) >= 0) {
                 break;
+            }
+            if (HitTestLookupFlow(this, pt) >= 0) {
+                return 0;
             }
             userPositioned = true;
             ReleaseCapture();
@@ -2320,6 +2454,103 @@ static void CollapseWhitespaceInCjkLookupText(char* copy) {
     *r = 0;
 }
 
+static int LookupUtf8SeqLen(const char* p) {
+    unsigned char c = (unsigned char)*p;
+    int n = 1;
+    if ((c & 0xE0) == 0xC0) {
+        n = 2;
+    } else if ((c & 0xF0) == 0xE0) {
+        n = 3;
+    } else if ((c & 0xF8) == 0xF0) {
+        n = 4;
+    }
+    for (int i = 1; i < n; i++) {
+        if (!p[i] || ((unsigned char)p[i] & 0xC0) != 0x80) {
+            return 1;
+        }
+    }
+    return n;
+}
+
+static uint32_t LookupUtf8Decode(const char* p, int n) {
+    auto b = [](char c) { return (uint32_t)(unsigned char)c; };
+    if (n == 2) {
+        return ((b(p[0]) & 0x1F) << 6) | (b(p[1]) & 0x3F);
+    }
+    if (n == 3) {
+        return ((b(p[0]) & 0x0F) << 12) | ((b(p[1]) & 0x3F) << 6) | (b(p[2]) & 0x3F);
+    }
+    if (n == 4) {
+        return ((b(p[0]) & 0x07) << 18) | ((b(p[1]) & 0x3F) << 12) | ((b(p[2]) & 0x3F) << 6) | (b(p[3]) & 0x3F);
+    }
+    return b(p[0]);
+}
+
+// Periods, commas, quotes, and the same marks in fullwidth form are not part of the word.
+static bool IsLookupPunctCodepoint(uint32_t cp) {
+    if (cp == ' ' || cp == '\'' || cp == '-') {
+        return false;
+    }
+    if ((cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z') || (cp >= '0' && cp <= '9')) {
+        return false;
+    }
+    if (cp < 0x80) {
+        return true;
+    }
+    if ((cp >= 0x00C0 && cp <= 0x024F) || (cp >= 0x1E00 && cp <= 0x1EFF)) {
+        return false;
+    }
+    if ((cp >= 0x3400 && cp <= 0x9FFF) || (cp >= 0xF900 && cp <= 0xFAFF)) {
+        return false;
+    }
+    if ((cp >= 0x2000 && cp <= 0x206F) || (cp >= 0x3000 && cp <= 0x303F) || (cp >= 0xFF01 && cp <= 0xFF20) ||
+        (cp >= 0xFF3B && cp <= 0xFF40) || (cp >= 0xFF5B && cp <= 0xFF65) || cp == 0x00B7 || cp == 0x2026 ||
+        cp == 0x00A0) {
+        return true;
+    }
+    return false;
+}
+
+static void StripEnglishLookupPunctuation(char* s) {
+    if (str::IsEmpty(s)) {
+        return;
+    }
+    char* w = s;
+    const char* r = s;
+    while (*r) {
+        int n = LookupUtf8SeqLen(r);
+        uint32_t cp = LookupUtf8Decode(r, n);
+        if (IsLookupPunctCodepoint(cp)) {
+            r += n;
+            continue;
+        }
+        for (int i = 0; i < n; i++) {
+            *w++ = *r++;
+        }
+    }
+    *w = 0;
+    w = s;
+    r = s;
+    bool lastSpace = false;
+    while (*r) {
+        if (*r == ' ') {
+            if (lastSpace || w == s) {
+                r++;
+                continue;
+            }
+            lastSpace = true;
+            *w++ = *r++;
+            continue;
+        }
+        lastSpace = false;
+        *w++ = *r++;
+    }
+    if (w > s && w[-1] == ' ') {
+        w--;
+    }
+    *w = 0;
+}
+
 static TempStr NormalizeSelectionForLookupTemp(const char* text) {
     if (str::IsEmpty(text)) {
         return nullptr;
@@ -2350,6 +2581,9 @@ static TempStr NormalizeSelectionForLookupTemp(const char* text) {
     }
 
     CollapseWhitespaceInCjkLookupText(copy);
+    if (!IsChineseLookupWord(copy)) {
+        StripEnglishLookupPunctuation(copy);
+    }
 
     if (IsChineseLookupWord(copy)) {
         int nChars = 0;
@@ -2473,11 +2707,13 @@ bool LookupSelectionInTab(MainWindow* win, WindowTab* tab) {
 struct LookupFinishData {
     LookupResult* result = nullptr;
     WordLookupWnd* wnd = nullptr;
+    int gen = 0;
 };
 
 static void OnLookupFinish(LookupFinishData* d) {
     LookupResult* res = d->result;
     WordLookupWnd* lw = d->wnd;
+    int gen = d->gen;
     delete d;
 
     defer {
@@ -2492,7 +2728,7 @@ static void OnLookupFinish(LookupFinishData* d) {
         delete res;
     };
 
-    if (!gWordLookupWnd || gWordLookupWnd != lw) {
+    if (!gWordLookupWnd || gWordLookupWnd != lw || lw->lookupGen != gen) {
         return;
     }
 
@@ -2509,19 +2745,43 @@ static void OnLookupFinish(LookupFinishData* d) {
 struct FetchLookupData {
     char* word = nullptr;
     WordLookupWnd* wnd = nullptr;
+    int gen = 0;
 };
 
 static void FetchWordLookupAsync(FetchLookupData* d) {
     LookupResult* res = FetchWordLookup(d->word);
     WordLookupWnd* lookupWnd = d->wnd;
+    int gen = d->gen;
     str::Free(d->word);
     delete d;
 
     auto* finish = new LookupFinishData();
     finish->result = res;
     finish->wnd = lookupWnd;
+    finish->gen = gen;
     auto uiFn = MkFunc0<LookupFinishData>(OnLookupFinish, finish);
     uitask::Post(uiFn, "WordLookupResult");
+}
+
+static void RelookupInPopup(WordLookupWnd* wnd, const char* word) {
+    if (!wnd || str::IsEmpty(word) || !IsLookupWord(word)) {
+        return;
+    }
+    char* owned = str::Dup(word);
+    if (wnd->speakerPlaying) {
+        TtsStop();
+    }
+    StopCurrentLookupAudio();
+    wnd->speakerPlaying = false;
+    wnd->userPositioned = true;
+    wnd->lookupGen++;
+    wnd->SetLoading(owned);
+    auto* fetchData = new FetchLookupData();
+    fetchData->word = owned;
+    fetchData->wnd = wnd;
+    fetchData->gen = wnd->lookupGen;
+    auto fn = MkFunc0<FetchLookupData>(FetchWordLookupAsync, fetchData);
+    RunAsync(fn, "WordLookupFetch");
 }
 
 // stext / DrawInstr bboxes use line or em-box height; shrink selection chrome only.
@@ -2931,9 +3191,11 @@ void ShowWordLookup(MainWindow* win, const char* word, Point screenPos) {
         return;
     }
 
+    wnd->lookupGen = 1;
     auto* fetchData = new FetchLookupData();
     fetchData->word = str::Dup(trimmed);
     fetchData->wnd = wnd;
+    fetchData->gen = wnd->lookupGen;
     auto fn = MkFunc0<FetchLookupData>(FetchWordLookupAsync, fetchData);
     RunAsync(fn, "WordLookupFetch");
     HideSelectionToolbar(win);

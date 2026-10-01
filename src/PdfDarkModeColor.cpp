@@ -743,7 +743,7 @@ struct DmPbPhotoRect {
 static constexpr int kDmPbMaxPhotoRects = 8;
 
 static int dm_pb_find_photo_rects(fz_context* ctx, fz_pixmap* pix, DmPbPhotoRect* outRects, int maxRects,
-                                  const float* lumPlane);
+                                  const float* lumPlane, bool keepHighKeyPhoto = false);
 static bool dm_pb_sample_rgb(fz_context* ctx, fz_pixmap* pix, fz_colorspace* cs, fz_colorspace* rgb, int components,
                              int x, int y, float* outR, float* outG, float* outB);
 
@@ -836,8 +836,15 @@ static bool dm_pb_rgb_is_photo_texture(float r, float g, float b, float localVar
 // Dense-band content: non-paper, or paper-colored pixels that still look like photo grain
 // (light fur / white clothes). Flat cream/white margins stay paper so text pages do not
 // collapse into one giant photo rect.
-static bool dm_pb_is_dense_content_rgb(float r, float g, float b, const float* lum, int w, int h, int x, int y) {
-    if (!dm_pb_is_paper_rgb(r, g, b)) {
+static bool dm_pb_is_dense_content_rgb(float r, float g, float b, const float* lum, int w, int h, int x, int y,
+                                       bool highKeyPhoto = false) {
+    float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    float chroma = maxC - minC;
+    float pixLum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+    // High-key fog / fur is light but not blank paper. Only near-pure white stays a margin.
+    bool paper = highKeyPhoto ? (chroma < 0.06f && pixLum > 0.97f) : dm_pb_is_paper_rgb(r, g, b);
+    if (!paper) {
         return true;
     }
     return dm_pb_lum_var_3x3(lum, w, h, x, y) >= 0.00055f;
@@ -850,11 +857,18 @@ struct DmPbPageStats {
     float chromaRatio = 0.f;
     float lumVar = 0.f;
     float redInkRatio = 0.f;
+    // High-key photos: light ramp (0.42–0.97), split into a darker and a lighter band.
+    float lightToneRatio = 0.f;
+    float lightToneVar = 0.f;
+    float inkRatio = 0.f;
+    float lowMidRatio = 0.f;
+    float highMidRatio = 0.f;
 };
 static DmPbPageStats dm_pb_estimate_page_stats(fz_context* ctx, fz_pixmap* src, fz_colorspace* cs, fz_colorspace* rgb,
                                                int components);
 static bool dm_pb_should_seek_photo_rects(float satRatio, float chromaRatio, float paperRatio, float lumVar,
-                                          float borderPaperRatio, const DarkImageAnalysis* imgAnalysis);
+                                          float borderPaperRatio, const DarkImageAnalysis* imgAnalysis,
+                                          bool highKeyPhoto = false);
 static bool dm_pb_pixmap_has_picture_island(fz_context* ctx, fz_pixmap* pix);
 
 // Flat near-white used for oval-portrait rectangular mats (not specular highlights).
@@ -871,7 +885,8 @@ static bool dm_pb_is_photo_rect_margin_paper_rgb(float r, float g, float b) {
 // edge-connected; forehead/soap highlights sit inside tonal skin and are not.
 static u8* dm_pb_build_edge_connected_margin_mask(fz_context* ctx, fz_pixmap* pix, fz_colorspace* cs,
                                                   fz_colorspace* rgb, int components, int w, int h,
-                                                  const DmPbPhotoRect* rects, int nRects, const float* localVar) {
+                                                  const DmPbPhotoRect* rects, int nRects, const float* localVar,
+                                                  bool highKeyPhoto = false) {
     if (!pix || !rects || nRects <= 0 || w <= 0 || h <= 0) {
         return nullptr;
     }
@@ -898,8 +913,14 @@ static u8* dm_pb_build_edge_connected_margin_mask(fz_context* ctx, fz_pixmap* pi
                 float rv, gv, bv;
                 dm_pb_sample_rgb(ctx, pix, cs, rgb, components, x, y, &rv, &gv, &bv);
                 // Flat mat only — textured near-white (fur / fabric) must stay photo-protected.
+                // High-key fog sits at 0.88–0.96; the usual mat test would flood it to black.
                 float lv = localVar ? localVar[y * w + x] : 0.f;
-                if (dm_pb_is_photo_rect_margin_paper_rgb(rv, gv, bv) && !dm_pb_rgb_is_photo_texture(rv, gv, bv, lv)) {
+                float maxC = rv > gv ? (rv > bv ? rv : bv) : (gv > bv ? gv : bv);
+                float minC = rv < gv ? (rv < bv ? rv : bv) : (gv < bv ? gv : bv);
+                float lum = 0.2126f * rv + 0.7152f * gv + 0.0722f * bv;
+                bool marginPaper = highKeyPhoto ? ((maxC - minC) < 0.05f && lum > 0.97f)
+                                                : dm_pb_is_photo_rect_margin_paper_rgb(rv, gv, bv);
+                if (marginPaper && !dm_pb_rgb_is_photo_texture(rv, gv, bv, lv)) {
                     paper[y * w + x] = 1;
                 }
             }
@@ -1074,6 +1095,321 @@ static u8* dm_pb_build_edge_connected_margin_mask(fz_context* ctx, fz_pixmap* pi
     }
     free(paper);
     return mask;
+}
+
+// Pale cut-out edges sit just outside the dense photo box (a glass rim above the
+// photo, an eggshell past the side, rounded corners of a glass dish). Row density
+// never claims them because they are close to white, and the ink map turns the
+// protrusion black. Grow outward through pixels that are not the page's own paper
+// and not body ink. Flat page white stops the grow, so captions across the margin
+// stay on the ink path. A specular lip that matches the page color is kept only
+// when it is surrounded by that edge.
+static void dm_pb_estimate_border_page_paper(fz_context* ctx, fz_pixmap* pix, fz_colorspace* cs, fz_colorspace* rgb,
+                                             int components, int w, int h, float* outLum, float* outChroma) {
+    *outLum = 0.985f;
+    *outChroma = 0.012f;
+    float lums[256];
+    float chs[256];
+    int n = 0;
+    int stepX = w > 400 ? w / 80 : 2;
+    int stepY = h > 400 ? h / 80 : 2;
+    if (stepX < 1) {
+        stepX = 1;
+    }
+    if (stepY < 1) {
+        stepY = 1;
+    }
+    auto consider = [&](int x, int y) {
+        if (n >= 256 || x < 0 || y < 0 || x >= w || y >= h) {
+            return;
+        }
+        float r, g, b;
+        dm_pb_sample_rgb(ctx, pix, cs, rgb, components, x, y, &r, &g, &b);
+        float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+        float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+        float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+        float chroma = maxC - minC;
+        if (lum < 0.80f || chroma > 0.18f) {
+            return;
+        }
+        lums[n] = lum;
+        chs[n] = chroma;
+        n++;
+    };
+    int insetX = w / 80;
+    int insetY = h / 80;
+    if (insetX < 1) {
+        insetX = 1;
+    }
+    if (insetY < 1) {
+        insetY = 1;
+    }
+    for (int x = 0; x < w && n < 256; x += stepX) {
+        consider(x, insetY);
+        consider(x, h - 1 - insetY);
+    }
+    for (int y = 0; y < h && n < 256; y += stepY) {
+        consider(insetX, y);
+        consider(w - 1 - insetX, y);
+    }
+    if (n < 16) {
+        return;
+    }
+    for (int i = 1; i < n; i++) {
+        float v = lums[i];
+        int j = i;
+        while (j > 0 && lums[j - 1] > v) {
+            lums[j] = lums[j - 1];
+            j--;
+        }
+        lums[j] = v;
+    }
+    for (int i = 1; i < n; i++) {
+        float v = chs[i];
+        int j = i;
+        while (j > 0 && chs[j - 1] > v) {
+            chs[j] = chs[j - 1];
+            j--;
+        }
+        chs[j] = v;
+    }
+    *outLum = lums[n / 2];
+    *outChroma = chs[n / 2];
+}
+
+static u8* dm_pb_build_pale_cutout_edge_mask(fz_context* ctx, fz_pixmap* pix, fz_colorspace* cs, fz_colorspace* rgb,
+                                             int components, int w, int h, const DmPbPhotoRect* rects, int nRects) {
+    if (!pix || !rects || nRects <= 0 || w <= 0 || h <= 0) {
+        return nullptr;
+    }
+    float pageLum = 0.985f;
+    float pageChroma = 0.012f;
+    dm_pb_estimate_border_page_paper(ctx, pix, cs, rgb, components, w, h, &pageLum, &pageChroma);
+    u8* edge = AllocArray<u8>(w * h);
+    if (!edge) {
+        return nullptr;
+    }
+    auto inSolid = [&](int x, int y) -> bool {
+        for (int i = 0; i < nRects; i++) {
+            const DmPbPhotoRect& r = rects[i];
+            if (r.sparse || r.framed) {
+                continue;
+            }
+            if (x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1) {
+                return true;
+            }
+        }
+        return false;
+    };
+    // Classify once. A curved rim (the lip of a glass) is one connected edge, but the
+    // path around it is longer than the straight protrusion, so a short hop cap cuts
+    // the far side off and that piece inverts to black. Glyph-gray next to ink is not
+    // part of the object, which keeps the longer walk off captions.
+    u8* allow = AllocArray<u8>((size_t)w * h);
+    u8* inkNear = AllocArray<u8>((size_t)w * h);
+    int* q = AllocArray<int>((size_t)w * h);
+    u16* dist = AllocArray<u16>((size_t)w * h);
+    if (!allow || !inkNear || !q || !dist) {
+        free(allow);
+        free(inkNear);
+        free(q);
+        free(dist);
+        free(edge);
+        return nullptr;
+    }
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            float r, g, b;
+            dm_pb_sample_rgb(ctx, pix, cs, rgb, components, x, y, &r, &g, &b);
+            float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+            float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+            float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+            float chroma = maxC - minC;
+            int i = y * w + x;
+            if (lum < 0.42f && chroma < 0.14f) {
+                inkNear[i] = 1;
+            } else if (PdfDarkModeV2IsPaleCutoutEdgePixel(lum, chroma, pageLum, pageChroma)) {
+                allow[i] = 1;
+            }
+        }
+    }
+    u8* grown = AllocArray<u8>((size_t)w * h);
+    if (!grown) {
+        free(allow);
+        free(inkNear);
+        free(q);
+        free(dist);
+        free(edge);
+        return nullptr;
+    }
+    for (int pass = 0; pass < 2; pass++) {
+        memset(grown, 0, (size_t)w * h);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                if (!inkNear[y * w + x]) {
+                    continue;
+                }
+                const int nx[5] = {x, x - 1, x + 1, x, x};
+                const int ny[5] = {y, y, y, y - 1, y + 1};
+                for (int k = 0; k < 5; k++) {
+                    int xx = nx[k];
+                    int yy = ny[k];
+                    if (xx < 0 || yy < 0 || xx >= w || yy >= h) {
+                        continue;
+                    }
+                    grown[yy * w + xx] = 1;
+                }
+            }
+        }
+        memcpy(inkNear, grown, (size_t)w * h);
+    }
+    free(grown);
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int i = y * w + x;
+            if (!allow[i] || !inkNear[i]) {
+                continue;
+            }
+            float r, g, b;
+            dm_pb_sample_rgb(ctx, pix, cs, rgb, components, x, y, &r, &g, &b);
+            float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+            float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+            float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+            if (PdfDarkModeV2IsGlyphFringePixel(lum, maxC - minC, true)) {
+                allow[i] = 0;
+            }
+        }
+    }
+    free(inkNear);
+    int qn = 0;
+    // Backstop only. Page paper and glyph fringe are what actually stop the walk.
+    int cap = (w > h ? w : h) / 3;
+    if (cap < 8) {
+        cap = 8;
+    }
+    auto trySeed = [&](int x, int y) {
+        if (x < 0 || y < 0 || x >= w || y >= h || edge[y * w + x] || inSolid(x, y)) {
+            return;
+        }
+        if (!allow[y * w + x]) {
+            return;
+        }
+        edge[y * w + x] = 1;
+        dist[y * w + x] = 1;
+        q[qn++] = y * w + x;
+    };
+    for (int i = 0; i < nRects; i++) {
+        const DmPbPhotoRect& r = rects[i];
+        if (r.sparse || r.framed) {
+            continue;
+        }
+        int x0 = r.x0 < 0 ? 0 : r.x0;
+        int y0 = r.y0 < 0 ? 0 : r.y0;
+        int x1 = r.x1 > w ? w : r.x1;
+        int y1 = r.y1 > h ? h : r.y1;
+        for (int x = x0; x < x1; x++) {
+            trySeed(x, y0 - 1);
+            trySeed(x, y1);
+        }
+        for (int y = y0; y < y1; y++) {
+            trySeed(x0 - 1, y);
+            trySeed(x1, y);
+        }
+    }
+    for (int qi = 0; qi < qn; qi++) {
+        int idx = q[qi];
+        int d = (int)dist[idx];
+        if (d >= cap) {
+            continue;
+        }
+        int x = idx % w;
+        int y = idx / w;
+        const int nx[4] = {x - 1, x + 1, x, x};
+        const int ny[4] = {y, y, y - 1, y + 1};
+        for (int k = 0; k < 4; k++) {
+            int xx = nx[k];
+            int yy = ny[k];
+            if (xx < 0 || yy < 0 || xx >= w || yy >= h) {
+                continue;
+            }
+            int nidx = yy * w + xx;
+            if (edge[nidx] || inSolid(xx, yy) || !allow[nidx]) {
+                continue;
+            }
+            edge[nidx] = 1;
+            dist[nidx] = (u16)(d + 1);
+            q[qn++] = nidx;
+        }
+    }
+    free(allow);
+    free(dist);
+    free(q);
+    // Specular lip of the cut-out matches the page color, so the flood stopped on it.
+    // Keep it when the surrounding window is already the edge. A straight photo border
+    // has only a thin edge outside the rect, and the open margin fails this test.
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            if (edge[y * w + x] != 1) {
+                continue;
+            }
+            const int nx[4] = {x - 1, x + 1, x, x};
+            const int ny[4] = {y, y, y - 1, y + 1};
+            for (int k = 0; k < 4; k++) {
+                int xx = nx[k];
+                int yy = ny[k];
+                if (xx < 0 || yy < 0 || xx >= w || yy >= h) {
+                    continue;
+                }
+                int nidx = yy * w + xx;
+                if (edge[nidx] || inSolid(xx, yy)) {
+                    continue;
+                }
+                float rv, gv, bv;
+                dm_pb_sample_rgb(ctx, pix, cs, rgb, components, xx, yy, &rv, &gv, &bv);
+                float maxC = rv > gv ? (rv > bv ? rv : bv) : (gv > bv ? gv : bv);
+                float minC = rv < gv ? (rv < bv ? rv : bv) : (gv < bv ? gv : bv);
+                float lum = 0.2126f * rv + 0.7152f * gv + 0.0722f * bv;
+                if (!PdfDarkModeV2PixelMatchesPagePaper(lum, maxC - minC, pageLum, pageChroma)) {
+                    continue;
+                }
+                int xA = xx - 3;
+                int yA = yy - 3;
+                int xB = xx + 4;
+                int yB = yy + 4;
+                if (xA < 0) {
+                    xA = 0;
+                }
+                if (yA < 0) {
+                    yA = 0;
+                }
+                if (xB > w) {
+                    xB = w;
+                }
+                if (yB > h) {
+                    yB = h;
+                }
+                int maskN = 0;
+                int winN = 0;
+                for (int sy = yA; sy < yB; sy++) {
+                    for (int sx = xA; sx < xB; sx++) {
+                        winN++;
+                        if (edge[sy * w + sx] == 1) {
+                            maskN++;
+                        }
+                    }
+                }
+                if (PdfDarkModeV2IsCutoutHighlightFringe(maskN, winN)) {
+                    edge[nidx] = 2;
+                }
+            }
+        }
+    }
+    for (int i = 0; i < w * h; i++) {
+        if (edge[i] == 2) {
+            edge[i] = 1;
+        }
+    }
+    return edge;
 }
 
 static bool dm_pb_sample_rgb(fz_context* ctx, fz_pixmap* pix, fz_colorspace* cs, fz_colorspace* rgb, int components,
@@ -1329,7 +1665,7 @@ void PdfDarkModeAppendImagePhotoSkipDevRects(fz_context* ctx, fz_image* image, c
 // Scan each dense Y-band in horizontal slices so a portrait hanging below a color photo
 // still gets its own rect (axis-aligned union would swallow caption text into "preserve").
 static int dm_pb_find_photo_rects(fz_context* ctx, fz_pixmap* pix, DmPbPhotoRect* outRects, int maxRects,
-                                  const float* lumPlane) {
+                                  const float* lumPlane, bool keepHighKeyPhoto) {
     if (!ctx || !pix || !pix->samples || !outRects || maxRects <= 0 || pix->w < 8 || pix->h < 8) {
         return 0;
     }
@@ -1359,7 +1695,7 @@ static int dm_pb_find_photo_rects(fz_context* ctx, fz_pixmap* pix, DmPbPhotoRect
             float r, g, b;
             dm_pb_sample_rgb(ctx, pix, cs, rgb, components, x, y, &r, &g, &b);
             samples++;
-            if (dm_pb_is_dense_content_rgb(r, g, b, lum, w, h, x, y)) {
+            if (dm_pb_is_dense_content_rgb(r, g, b, lum, w, h, x, y, keepHighKeyPhoto)) {
                 dense++;
             }
         }
@@ -1451,7 +1787,7 @@ static int dm_pb_find_photo_rects(fz_context* ctx, fz_pixmap* pix, DmPbPhotoRect
                         float r, g, b;
                         dm_pb_sample_rgb(ctx, pix, cs, rgb, components, x, yy, &r, &g, &b);
                         samples++;
-                        if (dm_pb_is_dense_content_rgb(r, g, b, lum, w, h, x, yy)) {
+                        if (dm_pb_is_dense_content_rgb(r, g, b, lum, w, h, x, yy, keepHighKeyPhoto)) {
                             dense++;
                         }
                     }
@@ -1478,34 +1814,42 @@ static int dm_pb_find_photo_rects(fz_context* ctx, fz_pixmap* pix, DmPbPhotoRect
                 }
                 free(colDense);
             }
-            // Same dense band, several horizontal slices: keep one bbox. Stacked wide
-            // slices are otherwise refused by the caption-merge skip, so a light sky in
-            // the top-left of the photo (Prehistoric Trade p.3) stays outside every rect
-            // and remaps to theme background.
-            if (nRects > bandRectStart + 1) {
-                int ux0 = outRects[bandRectStart].x0;
-                int uy0 = outRects[bandRectStart].y0;
-                int ux1 = outRects[bandRectStart].x1;
-                int uy1 = outRects[bandRectStart].y1;
-                for (int i = bandRectStart + 1; i < nRects; i++) {
-                    if (outRects[i].x0 < ux0) {
-                        ux0 = outRects[i].x0;
-                    }
-                    if (outRects[i].y0 < uy0) {
-                        uy0 = outRects[i].y0;
-                    }
-                    if (outRects[i].x1 > ux1) {
-                        ux1 = outRects[i].x1;
-                    }
-                    if (outRects[i].y1 > uy1) {
-                        uy1 = outRects[i].y1;
+            // Stacked slices of one photo share an x-range: fold them into one bbox so a
+            // light corner (Prehistoric Trade p.3 sky) is covered. Side-by-side cut-outs
+            // do not share x; merging them clips the taller one (sweater cuff below the
+            // shirts) and that strip is ink-inverted.
+            {
+                bool merged = true;
+                while (merged) {
+                    merged = false;
+                    for (int i = bandRectStart; i < nRects && !merged; i++) {
+                        for (int j = i + 1; j < nRects; j++) {
+                            DmPbPhotoRect& a = outRects[i];
+                            DmPbPhotoRect& b = outRects[j];
+                            if (!PdfDarkModeV2PhotoRectsShareObjectX(a.x0, a.x1, b.x0, b.x1)) {
+                                continue;
+                            }
+                            if (b.x0 < a.x0) {
+                                a.x0 = b.x0;
+                            }
+                            if (b.y0 < a.y0) {
+                                a.y0 = b.y0;
+                            }
+                            if (b.x1 > a.x1) {
+                                a.x1 = b.x1;
+                            }
+                            if (b.y1 > a.y1) {
+                                a.y1 = b.y1;
+                            }
+                            for (int k = j; k < nRects - 1; k++) {
+                                outRects[k] = outRects[k + 1];
+                            }
+                            nRects--;
+                            merged = true;
+                            break;
+                        }
                     }
                 }
-                outRects[bandRectStart].x0 = ux0;
-                outRects[bandRectStart].y0 = uy0;
-                outRects[bandRectStart].x1 = ux1;
-                outRects[bandRectStart].y1 = uy1;
-                nRects = bandRectStart + 1;
             }
         }
     }
@@ -1529,7 +1873,7 @@ static int dm_pb_find_photo_rects(fz_context* ctx, fz_pixmap* pix, DmPbPhotoRect
                     float r, g, b;
                     dm_pb_sample_rgb(ctx, pix, cs, rgb, components, x, y, &r, &g, &b);
                     samples++;
-                    if (dm_pb_is_dense_content_rgb(r, g, b, lum, w, h, x, y)) {
+                    if (dm_pb_is_dense_content_rgb(r, g, b, lum, w, h, x, y, keepHighKeyPhoto)) {
                         dense++;
                     }
                 }
@@ -1556,7 +1900,7 @@ static int dm_pb_find_photo_rects(fz_context* ctx, fz_pixmap* pix, DmPbPhotoRect
                         float r, g, b;
                         dm_pb_sample_rgb(ctx, pix, cs, rgb, components, x, yy, &r, &g, &b);
                         samples++;
-                        if (dm_pb_is_dense_content_rgb(r, g, b, lum, w, h, x, yy)) {
+                        if (dm_pb_is_dense_content_rgb(r, g, b, lum, w, h, x, yy, keepHighKeyPhoto)) {
                             dense++;
                         }
                     }
@@ -1607,7 +1951,7 @@ static int dm_pb_find_photo_rects(fz_context* ctx, fz_pixmap* pix, DmPbPhotoRect
                 float rv, gv, bv;
                 dm_pb_sample_rgb(ctx, pix, cs, rgb, components, xx, yy, &rv, &gv, &bv);
                 samples++;
-                if (dm_pb_is_dense_content_rgb(rv, gv, bv, lum, w, h, xx, yy)) {
+                if (dm_pb_is_dense_content_rgb(rv, gv, bv, lum, w, h, xx, yy, keepHighKeyPhoto)) {
                     dense++;
                 }
             }
@@ -1791,10 +2135,13 @@ static int dm_pb_find_photo_rects(fz_context* ctx, fz_pixmap* pix, DmPbPhotoRect
             }
             // Sparse line art (Meganeura: tex 0.25, chroma 0.33) never trips the callout
             // gate; only mis-harvested text columns do (insP 0.85, tex 0.01) — drop them.
-            if (PdfDarkModeV2PhotoRectIsCalloutCluster(insetPaper, textureRatio, tonalBins, chromaRatio)) {
+            // Smooth fog / snow / white fur has little 3×3 grain, so the callout and
+            // cream-wash tests would drop the rect and SharpDocument would binarize it.
+            if (!keepHighKeyPhoto &&
+                PdfDarkModeV2PhotoRectIsCalloutCluster(insetPaper, textureRatio, tonalBins, chromaRatio)) {
                 continue;
             }
-            if (!r.sparse &&
+            if (!keepHighKeyPhoto && !r.sparse &&
                 PdfDarkModeV2PhotoRectIsLightIllustrationWash(insetPaper, textureRatio, meanLum, chromaRatio)) {
                 continue;
             }
@@ -1984,6 +2331,12 @@ static DmPbPageStats dm_pb_estimate_page_stats(fz_context* ctx, fz_pixmap* src, 
     int satHits = 0;
     int chromaHits = 0;
     int redInkHits = 0;
+    int inkHits = 0;
+    int lowMidHits = 0;
+    int highMidHits = 0;
+    int lightToneHits = 0;
+    float lightToneSum = 0.f;
+    float lightToneSqSum = 0.f;
     float lumSum = 0.f;
     float lumSqSum = 0.f;
     int estStepX = w > 64 ? w / 64 : 1;
@@ -2020,6 +2373,20 @@ static DmPbPageStats dm_pb_estimate_page_stats(fz_context* ctx, fz_pixmap* src, 
             if (chroma >= 0.11f && r >= g + 0.15f && r >= b + 0.15f) {
                 redInkHits++;
             }
+            if (lum < 0.28f) {
+                inkHits++;
+            }
+            if (lum >= 0.35f && lum < 0.72f) {
+                lowMidHits++;
+            }
+            if (lum >= 0.72f && lum < 0.97f) {
+                highMidHits++;
+            }
+            if (lum > 0.42f && lum < 0.97f) {
+                lightToneHits++;
+                lightToneSum += lum;
+                lightToneSqSum += lum * lum;
+            }
         }
     }
     if (paperSamples <= 0) {
@@ -2032,6 +2399,17 @@ static DmPbPageStats dm_pb_estimate_page_stats(fz_context* ctx, fz_pixmap* src, 
     st.redInkRatio = (float)redInkHits / (float)paperSamples;
     float lumMean = lumSum / (float)paperSamples;
     st.lumVar = lumSqSum / (float)paperSamples - lumMean * lumMean;
+    st.inkRatio = (float)inkHits / (float)paperSamples;
+    st.lowMidRatio = (float)lowMidHits / (float)paperSamples;
+    st.highMidRatio = (float)highMidHits / (float)paperSamples;
+    st.lightToneRatio = (float)lightToneHits / (float)paperSamples;
+    if (lightToneHits > 0) {
+        float lightMean = lightToneSum / (float)lightToneHits;
+        st.lightToneVar = lightToneSqSum / (float)lightToneHits - lightMean * lightMean;
+        if (st.lightToneVar < 0.f) {
+            st.lightToneVar = 0.f;
+        }
+    }
     return st;
 }
 
@@ -2039,7 +2417,13 @@ static DmPbPageStats dm_pb_estimate_page_stats(fz_context* ctx, fz_pixmap* src, 
 // satRatio < 0.04 so they need an extra path — but paper-heavy 连环画 line art must never get
 // partial photo-rect protect (leaves white rectangular patches on an otherwise inverted page).
 static bool dm_pb_should_seek_photo_rects(float satRatio, float chromaRatio, float paperRatio, float lumVar,
-                                          float borderPaperRatio, const DarkImageAnalysis* imgAnalysis) {
+                                          float borderPaperRatio, const DarkImageAnalysis* imgAnalysis,
+                                          bool highKeyPhoto) {
+    // Fog / snow / white fur: the aged-paper and line-art gates below see a light
+    // page and refuse rects, then SharpDocument binarizes the photograph.
+    if (highKeyPhoto) {
+        return true;
+    }
     // Inset B&W portrait on a paper-heavy RAZ page (Historic Peacemakers Betty Williams):
     // the photo is small so full-page lumVar stays modest (~0.04). 128px thumbs often look
     // like 连环画 / text scans and would veto seeking below — ApplySharp then remaps the
@@ -2545,11 +2929,14 @@ fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, 
     float chromaRatio = st.chromaRatio;
     float lumVar = st.lumVar;
     float redInkRatio = st.redInkRatio;
+    bool highKey = PdfDarkModeV2LooksLikeHighKeyPhotograph(st.lightToneRatio, st.lightToneVar, st.inkRatio,
+                                                           st.lowMidRatio, st.highMidRatio);
     bool officeDivert =
         PdfDarkModeFullResStatsLookLikeOfficeScanForGovPaper(paperRatio, satRatio, chromaRatio, lumVar, redInkRatio) &&
         !PdfDarkModeFullResStatsLookLikeInsetPhotoOnPaper(paperRatio, satRatio, chromaRatio, lumVar) &&
         !PdfDarkModeFullResStatsLookLikeColorIllustrationNotLineArt(satRatio, chromaRatio);
-    if (officeDivert) {
+    // A gray fog / white-fur page can match the faded-photocopy gate. Keep the tones.
+    if (officeDivert && !highKey) {
         DarkModePalette govPalette = PdfDarkModeGovernmentPaperPalette(palette);
         return PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, govPalette);
     }
@@ -2567,8 +2954,9 @@ fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, 
     int nPhotoRects = 0;
     // Colorful pages + B&W documentary portraits: protect photo rects. B&W ink lines (连环画)
     // register as dense via luminance contrast but have no color — full-page remap only.
-    if (dm_pb_should_seek_photo_rects(satRatio, chromaRatio, paperRatio, lumVar, st.borderPaperRatio, imgAnalysis)) {
-        nPhotoRects = dm_pb_find_photo_rects(ctx, src, photoRects, kDmPbMaxPhotoRects, lumPlane);
+    if (dm_pb_should_seek_photo_rects(satRatio, chromaRatio, paperRatio, lumVar, st.borderPaperRatio, imgAnalysis,
+                                      highKey)) {
+        nPhotoRects = dm_pb_find_photo_rects(ctx, src, photoRects, kDmPbMaxPhotoRects, lumPlane, highKey);
     }
     // Black frame: the drawing inside stays original. Flood stays outside the stroke.
     nPhotoRects = dm_pb_append_ink_frame(ctx, src, photoRects, nPhotoRects, kDmPbMaxPhotoRects);
@@ -2591,9 +2979,11 @@ fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, 
     }
 
     u8* edgeWhiteMask = nullptr;
+    u8* paleEdgeMask = nullptr;
     if (nPhotoRects > 0) {
         edgeWhiteMask = dm_pb_build_edge_connected_margin_mask(ctx, src, cs, rgb, components, w, h, photoRects,
-                                                               nPhotoRects, localVar);
+                                                               nPhotoRects, localVar, highKey);
+        paleEdgeMask = dm_pb_build_pale_cutout_edge_mask(ctx, src, cs, rgb, components, w, h, photoRects, nPhotoRects);
     }
     u8* matHalo = dm_pb_build_mat_halo(edgeWhiteMask, w, h);
     const int kPaperTile = 24;
@@ -2798,6 +3188,10 @@ fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, 
                 g = srcRgb[1];
                 b = srcRgb[2];
             }
+            // Pale cut-out sticking out of the photo box: keep the original color.
+            if (paleEdgeMask && paleEdgeMask[y * w + x]) {
+                continue;
+            }
             bool sparseBgOnly = false;
             if (nPhotoRects > 0 && dm_pb_point_in_photo_rects(x, y, photoRects, nPhotoRects)) {
                 // Closed black frame: original pixels, including light walls and white
@@ -2938,6 +3332,7 @@ fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, 
     free(tileLum);
     free(matHalo);
     free(edgeWhiteMask);
+    free(paleEdgeMask);
     free(localVar);
     free(lumPlane);
     return dst;
@@ -3487,8 +3882,16 @@ fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, c
     if (PdfDarkModeV2LineArtGateIsSoftStudioPhotoBook(lineArtPage, paperRatio, lumVar, st.borderPaperRatio)) {
         lineArtPage = false;
     }
-    if (!textPage && !lineArtPage && lumVar >= 0.018f && paperRatio >= 0.08f) {
-        v2Perf.branch = "picturebook-early";
+    // Fog, snow, white fur: light ramp looks like a text scan (high paper, low lumVar)
+    // and the island path below ink-remaps everything outside a chroma blob.
+    bool highKey = PdfDarkModeV2LooksLikeHighKeyPhotograph(st.lightToneRatio, st.lightToneVar, st.inkRatio,
+                                                           st.lowMidRatio, st.highMidRatio);
+    if (highKey) {
+        textPage = false;
+        lineArtPage = false;
+    }
+    if (highKey || (!textPage && !lineArtPage && lumVar >= 0.018f && paperRatio >= 0.08f)) {
+        v2Perf.branch = highKey ? "picturebook-highkey" : "picturebook-early";
         return PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
     }
     // Mostly-white text scans with a localized color drawing never reach the photo
@@ -3622,9 +4025,11 @@ fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, c
     fz_copy_pixmap_rect(ctx, dst, src, fz_make_irect(0, 0, w, h), nullptr);
 
     u8* edgeWhiteMask = nullptr;
+    u8* paleEdgeMask = nullptr;
     if (nPhotoRects > 0) {
         edgeWhiteMask = dm_pb_build_edge_connected_margin_mask(ctx, src, cs, rgb, components, w, h, photoRects,
                                                                nPhotoRects, localVar);
+        paleEdgeMask = dm_pb_build_pale_cutout_edge_mask(ctx, src, cs, rgb, components, w, h, photoRects, nPhotoRects);
     }
     u8* matHalo = dm_pb_build_mat_halo(edgeWhiteMask, w, h);
     const int kPaperTile = 24;
@@ -3658,6 +4063,9 @@ fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, c
                 r = srcRgb[0];
                 g = srcRgb[1];
                 b = srcRgb[2];
+            }
+            if (paleEdgeMask && paleEdgeMask[y * w + x]) {
+                continue;
             }
             bool sparseBgOnly = false;
             if (nPhotoRects > 0 && dm_pb_point_in_photo_rects(x, y, photoRects, nPhotoRects)) {
@@ -3761,28 +4169,38 @@ fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, c
     free(tilePaper);
     free(matHalo);
     free(edgeWhiteMask);
+    free(paleEdgeMask);
     free(localVar);
     free(lumPlane);
     return dst;
 }
 
-static bool dm_v2_is_white_mat_paper_rgb(float r, float g, float b, bool iconPastelMat, bool stripMat = false) {
+static bool dm_v2_is_white_mat_paper_rgb(float r, float g, float b, bool iconPastelMat, bool stripMat = false,
+                                         bool keepWarmArt = false) {
     float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
     float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
     float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
     float chroma = maxC - minC;
+    // Divider parchment and its fringe are the plate, even when a cream test would
+    // call them paper. Knocking them out leaves a black wave beside the stroke.
+    if (keepWarmArt && (PdfDarkModeV2IsWarmStripArtwork(r, g, b) || PdfDarkModeV2IsWarmDecorativeParchment(r, g, b))) {
+        return false;
+    }
     // Include soft textbook drop-shadow grays (often ~0.82–0.95), not only pure white.
-    if (chroma < 0.10f && lum > 0.82f) {
+    // Divider parchment fringe is warm; neutral white on the open side still counts.
+    if (chroma < 0.10f && lum > 0.82f && !(stripMat && PdfDarkModeV2IsWarmStripArtwork(r, g, b))) {
         return true;
     }
     // Warm cream JPEG/CMYK mats around Glencoe badges (R,G ahead of B).
-    if (lum > 0.88f && chroma < 0.22f && r + 0.02f >= b && g + 0.02f >= b) {
+    // On a divider strip that cream test also matches parchment AA beside the stroke.
+    // Clearing it leaves a black wave. Neutral white (chroma under 0.06) still mats.
+    if (lum > 0.88f && chroma < 0.22f && r + 0.02f >= b && g + 0.02f >= b && !(stripMat && chroma >= 0.06f)) {
         return true;
     }
     // Tiny atlas map chips: light cyan ocean / pale fills that frame the landmass.
-    // Only for small icons — larger photos keep sky. Cream sidebar mats (SECTION tile)
-    // need a slightly higher chroma cap than cool ocean chips.
-    if (iconPastelMat && lum > 0.72f && chroma < 0.40f) {
+    // Only for small icons — larger photos keep sky. Warm parchment plates are the
+    // artwork (sidebar, display type); knocking them out leaves a black hole.
+    if (iconPastelMat && lum > 0.72f && chroma < 0.40f && !PdfDarkModeV2IsWarmDecorativeParchment(r, g, b)) {
         return true;
     }
     // Tall Guide-to-Reading wave: JPEG AA on the open (white) side is light cyan
@@ -3809,13 +4227,17 @@ static float dm_v2_paper_amount_rgb(float r, float g, float b, bool iconPastelMa
         }
         return v;
     };
+    // Divider artwork side: keep parchment and the fringe into the colored stroke.
+    if (stripMat && PdfDarkModeV2IsWarmStripArtwork(r, g, b)) {
+        return 0.f;
+    }
     if (chroma < 0.12f && lum > 0.78f) {
         return clamp01((lum - 0.72f) / 0.26f);
     }
     if (lum > 0.86f && chroma < 0.24f && r + 0.02f >= b && g + 0.02f >= b) {
         return clamp01((lum - 0.80f) / 0.18f) * clamp01(1.f - (chroma - 0.08f) / 0.20f);
     }
-    if (iconPastelMat && lum > 0.70f && chroma < 0.42f) {
+    if (iconPastelMat && lum > 0.70f && chroma < 0.42f && !PdfDarkModeV2IsWarmDecorativeParchment(r, g, b)) {
         return clamp01((lum - 0.68f) / 0.28f) * clamp01(1.f - (chroma - 0.08f) / 0.38f);
     }
     if (stripMat && lum > 0.74f && chroma < 0.32f && b + 0.02f >= r) {
@@ -3989,14 +4411,16 @@ static void dm_v2_seal_subject(u8* paper, int w, int h, bool wideSeal) {
 static u8* dm_v2_build_border_edge_white_mask(fz_context* ctx, fz_pixmap* pix, fz_colorspace* cs, fz_colorspace* rgb,
                                               int components, int w, int h, int* outMasked, int* outPaperSides,
                                               bool strictPaper, bool sealSubject, bool wideSeal, bool iconPastelMat,
-                                              bool stripMat = false) {
+                                              bool stripMat = false, bool keepWarmArt = false) {
     if (outMasked) {
         *outMasked = 0;
     }
     if (outPaperSides) {
         *outPaperSides = 0;
     }
-    if (!pix || !pix->samples || w < 4 || h < 4) {
+    // Hairline spacers (3×89 white sliver beside a display title) are under 4px
+    // on one axis. Knock those out. Reject only specks that are short both ways.
+    if (!pix || !pix->samples || w < 1 || h < 1 || (w < 4 && h < 24) || (h < 4 && w < 24)) {
         return nullptr;
     }
     u8* paper = AllocArray<u8>(w * h);
@@ -4014,7 +4438,7 @@ static u8* dm_v2_build_border_edge_white_mask(fz_context* ctx, fz_pixmap* pix, f
             float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
             float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
             bool isPaper = strictPaper ? ((maxC - minC) < 0.08f && lum > 0.94f)
-                                       : dm_v2_is_white_mat_paper_rgb(r, g, b, iconPastelMat, stripMat);
+                                       : dm_v2_is_white_mat_paper_rgb(r, g, b, iconPastelMat, stripMat, keepWarmArt);
             if (isPaper) {
                 paper[y * w + x] = 1;
             }
@@ -4435,7 +4859,7 @@ fz_pixmap* PdfDarkModeProcessV2WhiteMatPixmap(fz_context* ctx, fz_pixmap* src, c
         return nullptr;
     }
 
-    int paperSamples = 0, satHits = 0, chromaHits = 0, inkHits = 0;
+    int paperSamples = 0, satHits = 0, chromaHits = 0, inkHits = 0, hueInkHits = 0;
     float lumSum = 0.f;
     float lumSq = 0.f;
     int estStepX = w > 48 ? w / 48 : 1;
@@ -4460,11 +4884,18 @@ fz_pixmap* PdfDarkModeProcessV2WhiteMatPixmap(fz_context* ctx, fz_pixmap* src, c
             if (lum < 0.22f) {
                 inkHits++;
             }
+            // Saturated stroke in the same image (blue wave, green display type).
+            // Its warm shade is artwork. A glyph drop-shadow plate has no such ink.
+            if (chroma >= 0.45f && lum >= 0.15f && lum <= 0.75f) {
+                hueInkHits++;
+            }
         }
     }
     float satRatio = paperSamples > 0 ? (float)satHits / (float)paperSamples : 0.f;
     float chromaRatio = paperSamples > 0 ? (float)chromaHits / (float)paperSamples : 0.f;
     float inkRatio = paperSamples > 0 ? (float)inkHits / (float)paperSamples : 0.f;
+    float hueInkRatio = paperSamples > 0 ? (float)hueInkHits / (float)paperSamples : 0.f;
+    const bool coloredStroke = hueInkRatio >= 0.03f;
     float meanLum = paperSamples > 0 ? lumSum / (float)paperSamples : 0.f;
     float lumVar = paperSamples > 0 ? lumSq / (float)paperSamples - meanLum * meanLum : 0.f;
     if (lumVar < 0.f) {
@@ -4494,9 +4925,10 @@ fz_pixmap* PdfDarkModeProcessV2WhiteMatPixmap(fz_context* ctx, fz_pixmap* src, c
     // (Getting Dressed) are full-page → PictureBook; do not wide-seal Zoo cards —
     // that left vertical white mat islands beside the chimp and aborted the snake
     // (light scales read as soft-white clothing).
+    const bool keepWarmArt = stripMatGeom || (iconPastelMat && coloredStroke);
     u8* edgeMask = dm_v2_build_border_edge_white_mask(ctx, src, cs, rgb, components, w, h, &masked, &paperSides,
                                                       /*strictPaper=*/grayCutout, /*sealSubject=*/grayCutout,
-                                                      /*wideSeal=*/false, iconPastelMat, stripMatGeom);
+                                                      /*wideSeal=*/false, iconPastelMat, stripMatGeom, keepWarmArt);
     if (!edgeMask) {
         return nullptr;
     }
@@ -4527,6 +4959,10 @@ fz_pixmap* PdfDarkModeProcessV2WhiteMatPixmap(fz_context* ctx, fz_pixmap* src, c
         knock = true;
     }
     if (!knock && PdfDarkModeV2ShouldKnockOutAlmostPaperChip(w, h, paperSides, edgeWhiteRatio, satRatio, chromaRatio)) {
+        knock = true;
+    }
+    if (!knock &&
+        PdfDarkModeV2ShouldKnockOutBlankWhiteGutter(w, h, paperSides, edgeWhiteRatio, satRatio, chromaRatio)) {
         knock = true;
     }
     if (!knock) {
@@ -4668,7 +5104,11 @@ fz_pixmap* PdfDarkModeProcessV2WhiteMatPixmap(fz_context* ctx, fz_pixmap* src, c
             float chroma = maxC - minC;
             // Title/badge cream plates: neutral mid-gray drop shadow under glyphs is not
             // border-connected once letters seal pockets — clear by color, keep hue.
-            if (iconPastelMat && edgeWhiteRatio >= 0.35f && chroma < 0.14f && lum > 0.42f && lum < 0.92f) {
+            // Warm JPEG shadows (chroma ~0.19) are the black letter-fill / badge blot.
+            // Glyph drop-shadow plates have no saturated stroke. A wave slice does:
+            // clearing its warm shade punches a black line on the parchment side.
+            if (iconPastelMat && !coloredStroke && edgeWhiteRatio >= 0.35f && lum > 0.42f && lum < 0.92f &&
+                (chroma < 0.14f || PdfDarkModeV2IsWarmNeutralShadow(r, g, b))) {
                 px[0] = px[1] = px[2] = 0;
                 px[3] = 0;
                 continue;
@@ -4694,7 +5134,31 @@ fz_pixmap* PdfDarkModeProcessV2WhiteMatPixmap(fz_context* ctx, fz_pixmap* src, c
                 }
             }
             float a = 1.f;
-            if (nearFlood(x, y)) {
+            // Parchment side of a divider: the fringe into the colored stroke is artwork.
+            // Fading it lets the dark page show through as a black wave. The open side
+            // is neutral white / cool cyan and still clears. Short badge slices are not
+            // tall enough to be strips, but they carry the same stroke.
+            const bool dividerArt = stripMat || (iconPastelMat && coloredStroke);
+            bool keepStripShade = dividerArt && (PdfDarkModeV2IsWarmStripArtwork(r, g, b) ||
+                                                 PdfDarkModeV2IsWarmDecorativeParchment(r, g, b));
+            if (dividerArt && !keepStripShade && lum > 0.50f && lum < 0.98f && chroma < 0.50f) {
+                for (int dy = -1; dy <= 1 && !keepStripShade; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        int xx = x + dx;
+                        int yy = y + dy;
+                        if (xx < 0 || yy < 0 || xx >= w || yy >= h || (dx == 0 && dy == 0)) {
+                            continue;
+                        }
+                        float nr, ng, nb;
+                        dm_pb_sample_rgb(ctx, src, cs, rgb, components, xx, yy, &nr, &ng, &nb);
+                        if (PdfDarkModeV2IsWarmStripArtwork(nr, ng, nb)) {
+                            keepStripShade = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (nearFlood(x, y) && !keepStripShade) {
                 float clear = paperAmt;
                 // Circle/oval AA against former white: light mix pixels that still
                 // look like subject chroma but read as a pale halo on dark paper.

@@ -2,6 +2,18 @@
 
 ## next
 
+- 暗色模式下，雾、雪、白毛这类高调照片保持连续色调，不再被当成扫描件做成只有黑白的剪影。页边和正文仍是深底浅字，空白竖条和正文扫描不受影响。
+  In dark mode, high-key photographs such as fog, snow, and white fur keep their tones instead of being flattened into a black-and-white silhouette. Page margins and body text stay light on the dark page. Blank gutters and text scans are unchanged.
+- 暗色模式下，抠图的淡色边缘会沿物体收完，杯口这种弯过去的一圈不再因为路程稍长被切掉一块。紧贴文字的灰色描边不会被收进去，标题和正文仍是深底浅字。
+  In dark mode, a pale cut-out edge is followed for the whole connected object, so a curved rim such as the lip of a glass is not clipped where the path runs long. Gray pixels touching body text are left alone, and headings stay light on the dark page.
+- 暗色模式下，抠图伸出照片密实区域的淡色边缘（玻璃杯沿、蛋壳、玻璃盘角）仍保持原色，不再被切掉后反成黑块。页面空白和正文文字不受影响。
+  In dark mode, pale edges that stick out of a photo, such as a glass rim, an eggshell, or a glass-dish corner, stay in their original color instead of being clipped and inverted to black. Page margins and body text are unchanged.
+- 暗色模式下，同一行并排的抠图不再合成一个大框。较矮的那一张不再把另一张多出来的一截（如毛衣袖口）切出去反色，高光也不会被反成黑块。上下叠在一起的同一张照片仍合成一个框。
+  In dark mode, side-by-side cut-outs on the same row stay separate rectangles. The taller one is no longer clipped where the shorter one ends, so a strip such as a sweater cuff is not inverted and its highlights do not turn black. Stacked slices of the same photo still merge into one rectangle.
+- 选中的英文带上句号、逗号这类标点时，查词不再变灰，标点会自动去掉。查词窗口外观不变；双击释义或例句里的英文单词会改查这个词，没有悬停提示。
+  Look Up stays available when a selected English word includes a period or comma; that punctuation is removed. The lookup window looks the same. Double-clicking an English word in the definition or example looks that word up, with no hover cue.
+- 内嵌录音的喇叭在句末、后面没有正文时，高亮绑到喇叭前面的文字，不再从喇叭往下找而把前面的句子丢掉。喇叭后面还有正文时，仍从喇叭所在位置开始。
+  When an embedded-audio speaker sits at the end of the text and nothing follows it, the highlight follows the words in front of the icon. A speaker that still has text after it starts the highlight there.
 - EPUB 改变字号后直接停在当前阅读窗口第一行的文字上，重排过程中不再先闪出封面。
   Changing the EPUB font size stays on the first line of the current reading window. The cover is not shown while the book reflows.
 - 选项里的朗读页不再有中文速度、英语速度和内嵌速度。语速只在朗读条上调整。
@@ -12,8 +24,8 @@
   Automatically OCR scanned pages (`AutoOcrScanPages`) now defaults to on when the setting is missing. A saved off value stays off.
 - 有声书倍速与朗读语速对齐，最慢一档为 0.25x（朗读条）。
   Narrated-book speed matches the Read Aloud range. The slowest preset is 0.25x, on the bar.
-- 有内嵌录音的 PDF（喇叭、Sound / RichMedia / Screen）用朗读条做整页播放：播放、暂停、倍速、上下一页录音。工具栏上的喇叭在这一页有录音时也播放这段录音。高亮从喇叭图标所在的位置开始，跳过图下较小的说明和页边页码；录音按语音能量对齐剩下的正文，句间停顿不会把高亮提前推走。没有文字层时先识别这一页。
-  PDFs with embedded audio use the Read Aloud bar for page playback: play, pause, speed, and previous or next page recording. The toolbar speaker plays that recording when the page has one. Highlight starts at the speaker icon and skips smaller captions under pictures and page numbers in the margin. The clip is aligned to the remaining text by speech energy, and pauses do not push the highlight ahead. A page with no text layer is recognized first.
+- 有内嵌录音的 PDF（喇叭、Sound / RichMedia / Screen）用朗读条做整页播放：播放、暂停、倍速、上下一页录音。工具栏上的喇叭在这一页有录音时也播放这段录音。喇叭后面还有正文时，高亮从喇叭图标所在的位置开始；句末喇叭绑到前面的文字。跳过图下较小的说明和页边页码；录音按语音能量对齐剩下的正文，句间停顿不会把高亮提前推走。没有文字层时先识别这一页。
+  PDFs with embedded audio use the Read Aloud bar for page playback: play, pause, speed, and previous or next page recording. The toolbar speaker plays that recording when the page has one. When text follows the speaker, highlight starts there; a speaker at the end of the text follows the words in front. It skips smaller captions under pictures and page numbers in the margin. The clip is aligned to the remaining text by speech energy, and pauses do not push the highlight ahead. A page with no text layer is recognized first.
 - 朗读条倍速改为点开菜单直接选择，系统语音和有声书都从 0.25x 到 2x，不再逐档循环。菜单底色跟浮层一样，随暖色、白色、Dracula、纯黑四种主题变化。
   The Read Aloud bar speed opens a menu. Text-to-speech and narrated books both offer 0.25x through 2x. The menu background follows the floating panels in Warm, White, Dracula, and Black.
 - 朗读条中文「跟随」与同一行的图标、倍速垂直对齐。汉字字面偏高，绘制时下移约一字高的十分之一。关闭按钮改用与播放图标同尺寸的叉，不再用标题栏那个更大的叉。

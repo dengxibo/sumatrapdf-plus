@@ -363,6 +363,25 @@ static bool PdfWordAboveSpeaker(const PdfHlWord& w, const RectF& speaker, float 
     return wordBottom < speaker.y - body * 0.25f;
 }
 
+// 0: not after the icon. 1: starts to its right on the same line. 2: a later line.
+// The sentence that ends at a trailing icon is not after it.
+static int PdfWordAfterSpeaker(const PdfHlWord& w, const RectF& speaker, float body) {
+    float wordCy = w.r.y + w.r.dy * 0.5f;
+    float spCy = speaker.y + speaker.dy * 0.5f;
+    float band = body > speaker.dy ? body : speaker.dy;
+    float dy = wordCy - spCy;
+    if (dy < 0) {
+        dy = -dy;
+    }
+    if (dy <= band * 0.75f) {
+        return w.r.x >= speaker.x + speaker.dx * 0.45f ? 1 : 0;
+    }
+    if (w.r.y > speaker.y + speaker.dy - body * 0.15f) {
+        return 2;
+    }
+    return 0;
+}
+
 static void PdfKeepWords(const Vec<PdfHlWord>& src) {
     gWords.Reset();
     gWordWeight = 0;
@@ -461,7 +480,27 @@ static void PdfBuildWords(WindowTab* tab, int pageNo) {
     }
     Vec<PdfHlWord> fromSpeaker;
     bool haveSpeaker = gPdf && gPdf->hasSpeaker && !gPdf->speaker.IsEmpty();
+    bool anyAfter = false;
     if (haveSpeaker) {
+        // A lone page number under the last line is not body text after the icon.
+        int belowWeight = 0;
+        for (int i = 0; i < bodyWords.Size(); i++) {
+            int where = PdfWordAfterSpeaker(bodyWords[i], gPdf->speaker, body);
+            if (where == 1) {
+                anyAfter = true;
+                break;
+            }
+            if (where == 2) {
+                belowWeight += bodyWords[i].weight;
+            }
+        }
+        if (!anyAfter && belowWeight >= 4) {
+            anyAfter = true;
+        }
+    }
+    // The icon leads into the words after it. A trailing icon has nothing
+    // after it, so the recording belongs to the text in front.
+    if (haveSpeaker && anyAfter) {
         for (int i = 0; i < bodyWords.Size(); i++) {
             if (!PdfWordAboveSpeaker(bodyWords[i], gPdf->speaker, body)) {
                 fromSpeaker.Append(bodyWords[i]);
@@ -469,7 +508,7 @@ static void PdfBuildWords(WindowTab* tab, int pageNo) {
         }
     }
     int droppedAbove = 0;
-    if (fromSpeaker.Size() > 0) {
+    if (anyAfter && fromSpeaker.Size() > 0) {
         droppedAbove = bodyWords.Size() - fromSpeaker.Size();
         PdfKeepWords(fromSpeaker);
     } else {
@@ -480,8 +519,8 @@ static void PdfBuildWords(WindowTab* tab, int pageNo) {
             gWords[i].r = ExpandOcrXHeightBand(gWords[i].r, gWords[i].weight);
         }
     }
-    logf("PdfAudio: page %d words=%d body=%.1f drop caption=%d pageNo=%d aboveSpeaker=%d\n", pageNo, gWords.Size(),
-         body, droppedCaption, droppedPageNo, droppedAbove);
+    logf("PdfAudio: page %d words=%d body=%.1f drop caption=%d pageNo=%d aboveSpeaker=%d afterSpeaker=%d\n", pageNo,
+         gWords.Size(), body, droppedCaption, droppedPageNo, droppedAbove, anyAfter ? 1 : 0);
 }
 
 static void PdfAnalyzeSpeech(const u8* data, size_t size) {
