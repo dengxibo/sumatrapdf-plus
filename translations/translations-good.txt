@@ -4971,6 +4971,79 @@ nl:Automatisch controleren op &updates
 pl:&Szukaj aktualizacji automatycznie
 sk:Automaticky kontrolovať &aktualizácie
 tw:自動檢查是否有新版本(&U)
+:Back 10 seconds
+af:Back 10 seconds
+am:Back 10 seconds
+ar:Back 10 seconds
+az:Back 10 seconds
+bg:Back 10 seconds
+bn:Back 10 seconds
+br:Back 10 seconds
+bs:Back 10 seconds
+by:Back 10 seconds
+ca:Back 10 seconds
+ca-xv:Back 10 seconds
+cn:后退 10 秒
+co:Back 10 seconds
+cy:Back 10 seconds
+cz:Back 10 seconds
+de:Back 10 seconds
+dk:Back 10 seconds
+el:Back 10 seconds
+es:Back 10 seconds
+et:Back 10 seconds
+eu:Back 10 seconds
+fa:Back 10 seconds
+fi:Back 10 seconds
+fo:Back 10 seconds
+fr:Back 10 seconds
+fy-nl:Back 10 seconds
+ga:Back 10 seconds
+gl:Back 10 seconds
+he:Back 10 seconds
+hi:Back 10 seconds
+hr:Back 10 seconds
+hu:Back 10 seconds
+id:Back 10 seconds
+it:Back 10 seconds
+ja:Back 10 seconds
+jv:Back 10 seconds
+ka:Back 10 seconds
+kr:Back 10 seconds
+ku:Back 10 seconds
+kw:Back 10 seconds
+lt:Back 10 seconds
+lv:Back 10 seconds
+mk:Back 10 seconds
+ml:Back 10 seconds
+mm:Back 10 seconds
+my:Back 10 seconds
+ne:Back 10 seconds
+nl:Back 10 seconds
+nn:Back 10 seconds
+no:Back 10 seconds
+pa:Back 10 seconds
+pl:Back 10 seconds
+pt:Back 10 seconds
+ro:Back 10 seconds
+ru:Back 10 seconds
+sat:Back 10 seconds
+si:Back 10 seconds
+sk:Back 10 seconds
+sl:Back 10 seconds
+sn:Back 10 seconds
+sp-rs:Back 10 seconds
+sq:Back 10 seconds
+sr-rs:Back 10 seconds
+sv:Back 10 seconds
+ta:Back 10 seconds
+th:Back 10 seconds
+tl:Back 10 seconds
+tr:Back 10 seconds
+tw:後退 10 秒
+uk:Back 10 seconds
+uz:Back 10 seconds
+vn:Back 10 seconds
 :Background Color:
 am:Խորքի գույնը.
 br:Cor de Fundo:
@@ -11375,6 +11448,79 @@ it:Crittografia:
 nl:Versleuteling:
 pl:Szyfrowanie:
 sk:Šifrovanie:
+:End of narration
+af:End of narration
+am:End of narration
+ar:End of narration
+az:End of narration
+bg:End of narration
+bn:End of narration
+br:End of narration
+bs:End of narration
+by:End of narration
+ca:End of narration
+ca-xv:End of narration
+cn:朗读结束
+co:End of narration
+cy:End of narration
+cz:End of narration
+de:End of narration
+dk:End of narration
+el:End of narration
+es:End of narration
+et:End of narration
+eu:End of narration
+fa:End of narration
+fi:End of narration
+fo:End of narration
+fr:End of narration
+fy-nl:End of narration
+ga:End of narration
+gl:End of narration
+he:End of narration
+hi:End of narration
+hr:End of narration
+hu:End of narration
+id:End of narration
+it:End of narration
+ja:End of narration
+jv:End of narration
+ka:End of narration
+kr:End of narration
+ku:End of narration
+kw:End of narration
+lt:End of narration
+lv:End of narration
+mk:End of narration
+ml:End of narration
+mm:End of narration
+my:End of narration
+ne:End of narration
+nl:End of narration
+nn:End of narration
+no:End of narration
+pa:End of narration
+pl:End of narration
+pt:End of narration
+ro:End of narration
+ru:End of narration
+sat:End of narration
+si:End of narration
+sk:End of narration
+sl:End of narration
+sn:End of narration
+sp-rs:End of narration
+sq:End of narration
+sr-rs:End of narration
+sv:End of narration
+ta:End of narration
+th:End of narration
+tl:End of narration
+tr:End of narration
+tw:朗讀結束
+uk:End of narration
+uz:End of narration
+vn:End of narration
 :Engineering drawing &enhancement:
 af:Engineering drawing &enhancement:
 am:Engineering drawing &enhancement:
@@ -13920,6 +14066,79 @@ it:Lunghezza focale:
 nl:Brandpunt afstand:
 pl:Ogniskowa:
 sk:Ohnisková vzdialenosť:
+:Follow
+af:Follow
+am:Follow
+ar:Follow
+az:Follow
+bg:Follow
+bn:Follow
+br:Follow
+bs:Follow
+by:Follow
+ca:Follow
+ca-xv:Follow
+cn:跟随
+co:Follow
+cy:Follow
+cz:Follow
+de:Follow
+dk:Follow
+el:Follow
+es:Follow
+et:Follow
+eu:Follow
+fa:Follow
+fi:Follow
+fo:Follow
+fr:Follow
+fy-nl:Follow
+ga:Follow
+gl:Follow
+he:Follow
+hi:Follow
+hr:Follow
+hu:Follow
+id:Follow
+it:Follow
+ja:Follow
+jv:Follow
+ka:Follow
+kr:Follow
+ku:Follow
+kw:Follow
+lt:Follow
+lv:Follow
+mk:Follow
+ml:Follow
+mm:Follow
+my:Follow
+ne:Follow
+nl:Follow
+nn:Follow
+no:Follow
+pa:Follow
+pl:Follow
+pt:Follow
+ro:Follow
+ru:Follow
+sat:Follow
+si:Follow
+sk:Follow
+sl:Follow
+sn:Follow
+sp-rs:Follow
+sq:Follow
+sr-rs:Follow
+sv:Follow
+ta:Follow
+th:Follow
+tl:Follow
+tr:Follow
+tw:跟隨
+uk:Follow
+uz:Follow
+vn:Follow
 :Follow system theme
 am:Հետևել համակարգի ձևավորմանը
 br:Seguir tema do sistema
@@ -13944,6 +14163,79 @@ nl:Lettertypen:
 pl:Czcionki:
 sk:Písma:
 tw:字型:
+:Forward 10 seconds
+af:Forward 10 seconds
+am:Forward 10 seconds
+ar:Forward 10 seconds
+az:Forward 10 seconds
+bg:Forward 10 seconds
+bn:Forward 10 seconds
+br:Forward 10 seconds
+bs:Forward 10 seconds
+by:Forward 10 seconds
+ca:Forward 10 seconds
+ca-xv:Forward 10 seconds
+cn:前进 10 秒
+co:Forward 10 seconds
+cy:Forward 10 seconds
+cz:Forward 10 seconds
+de:Forward 10 seconds
+dk:Forward 10 seconds
+el:Forward 10 seconds
+es:Forward 10 seconds
+et:Forward 10 seconds
+eu:Forward 10 seconds
+fa:Forward 10 seconds
+fi:Forward 10 seconds
+fo:Forward 10 seconds
+fr:Forward 10 seconds
+fy-nl:Forward 10 seconds
+ga:Forward 10 seconds
+gl:Forward 10 seconds
+he:Forward 10 seconds
+hi:Forward 10 seconds
+hr:Forward 10 seconds
+hu:Forward 10 seconds
+id:Forward 10 seconds
+it:Forward 10 seconds
+ja:Forward 10 seconds
+jv:Forward 10 seconds
+ka:Forward 10 seconds
+kr:Forward 10 seconds
+ku:Forward 10 seconds
+kw:Forward 10 seconds
+lt:Forward 10 seconds
+lv:Forward 10 seconds
+mk:Forward 10 seconds
+ml:Forward 10 seconds
+mm:Forward 10 seconds
+my:Forward 10 seconds
+ne:Forward 10 seconds
+nl:Forward 10 seconds
+nn:Forward 10 seconds
+no:Forward 10 seconds
+pa:Forward 10 seconds
+pl:Forward 10 seconds
+pt:Forward 10 seconds
+ro:Forward 10 seconds
+ru:Forward 10 seconds
+sat:Forward 10 seconds
+si:Forward 10 seconds
+sk:Forward 10 seconds
+sl:Forward 10 seconds
+sn:Forward 10 seconds
+sp-rs:Forward 10 seconds
+sq:Forward 10 seconds
+sr-rs:Forward 10 seconds
+sv:Forward 10 seconds
+ta:Forward 10 seconds
+th:Forward 10 seconds
+tl:Forward 10 seconds
+tr:Forward 10 seconds
+tw:前進 10 秒
+uk:Forward 10 seconds
+uz:Forward 10 seconds
+vn:Forward 10 seconds
 :Found text at page %s
 am:Գրվածքը գտնվել է %s էջում
 br:Achou o texto na página %s
@@ -14726,6 +15018,79 @@ nl:'Eerder Weergegeven' verbergen
 pl:Ukryj ostatnio otwierane
 sk:Skryť často čítané dokumenty
 tw:隱藏經常開啟的檔案
+:Hide narration controls
+af:Hide narration controls
+am:Hide narration controls
+ar:Hide narration controls
+az:Hide narration controls
+bg:Hide narration controls
+bn:Hide narration controls
+br:Hide narration controls
+bs:Hide narration controls
+by:Hide narration controls
+ca:Hide narration controls
+ca-xv:Hide narration controls
+cn:隐藏朗读条
+co:Hide narration controls
+cy:Hide narration controls
+cz:Hide narration controls
+de:Hide narration controls
+dk:Hide narration controls
+el:Hide narration controls
+es:Hide narration controls
+et:Hide narration controls
+eu:Hide narration controls
+fa:Hide narration controls
+fi:Hide narration controls
+fo:Hide narration controls
+fr:Hide narration controls
+fy-nl:Hide narration controls
+ga:Hide narration controls
+gl:Hide narration controls
+he:Hide narration controls
+hi:Hide narration controls
+hr:Hide narration controls
+hu:Hide narration controls
+id:Hide narration controls
+it:Hide narration controls
+ja:Hide narration controls
+jv:Hide narration controls
+ka:Hide narration controls
+kr:Hide narration controls
+ku:Hide narration controls
+kw:Hide narration controls
+lt:Hide narration controls
+lv:Hide narration controls
+mk:Hide narration controls
+ml:Hide narration controls
+mm:Hide narration controls
+my:Hide narration controls
+ne:Hide narration controls
+nl:Hide narration controls
+nn:Hide narration controls
+no:Hide narration controls
+pa:Hide narration controls
+pl:Hide narration controls
+pt:Hide narration controls
+ro:Hide narration controls
+ru:Hide narration controls
+sat:Hide narration controls
+si:Hide narration controls
+sk:Hide narration controls
+sl:Hide narration controls
+sn:Hide narration controls
+sp-rs:Hide narration controls
+sq:Hide narration controls
+sr-rs:Hide narration controls
+sv:Hide narration controls
+ta:Hide narration controls
+th:Hide narration controls
+tl:Hide narration controls
+tr:Hide narration controls
+tw:隱藏朗讀列
+uk:Hide narration controls
+uz:Hide narration controls
+vn:Hide narration controls
 :High Accuracy
 af:High Accuracy
 am:High Accuracy
@@ -17376,6 +17741,79 @@ tw:有聲書（EPUB 3）
 uk:Narrated books (EPUB 3)
 uz:Narrated books (EPUB 3)
 vn:Narrated books (EPUB 3)
+:Narration could not be loaded
+af:Narration could not be loaded
+am:Narration could not be loaded
+ar:Narration could not be loaded
+az:Narration could not be loaded
+bg:Narration could not be loaded
+bn:Narration could not be loaded
+br:Narration could not be loaded
+bs:Narration could not be loaded
+by:Narration could not be loaded
+ca:Narration could not be loaded
+ca-xv:Narration could not be loaded
+cn:无法加载录音
+co:Narration could not be loaded
+cy:Narration could not be loaded
+cz:Narration could not be loaded
+de:Narration could not be loaded
+dk:Narration could not be loaded
+el:Narration could not be loaded
+es:Narration could not be loaded
+et:Narration could not be loaded
+eu:Narration could not be loaded
+fa:Narration could not be loaded
+fi:Narration could not be loaded
+fo:Narration could not be loaded
+fr:Narration could not be loaded
+fy-nl:Narration could not be loaded
+ga:Narration could not be loaded
+gl:Narration could not be loaded
+he:Narration could not be loaded
+hi:Narration could not be loaded
+hr:Narration could not be loaded
+hu:Narration could not be loaded
+id:Narration could not be loaded
+it:Narration could not be loaded
+ja:Narration could not be loaded
+jv:Narration could not be loaded
+ka:Narration could not be loaded
+kr:Narration could not be loaded
+ku:Narration could not be loaded
+kw:Narration could not be loaded
+lt:Narration could not be loaded
+lv:Narration could not be loaded
+mk:Narration could not be loaded
+ml:Narration could not be loaded
+mm:Narration could not be loaded
+my:Narration could not be loaded
+ne:Narration could not be loaded
+nl:Narration could not be loaded
+nn:Narration could not be loaded
+no:Narration could not be loaded
+pa:Narration could not be loaded
+pl:Narration could not be loaded
+pt:Narration could not be loaded
+ro:Narration could not be loaded
+ru:Narration could not be loaded
+sat:Narration could not be loaded
+si:Narration could not be loaded
+sk:Narration could not be loaded
+sl:Narration could not be loaded
+sn:Narration could not be loaded
+sp-rs:Narration could not be loaded
+sq:Narration could not be loaded
+sr-rs:Narration could not be loaded
+sv:Narration could not be loaded
+ta:Narration could not be loaded
+th:Narration could not be loaded
+tl:Narration could not be loaded
+tr:Narration could not be loaded
+tw:無法載入錄音
+uk:Narration could not be loaded
+uz:Narration could not be loaded
+vn:Narration could not be loaded
 :Narration spee&d:
 af:Narration spee&d:
 am:Narration spee&d:
@@ -17524,6 +17962,79 @@ nl:Volgende Tab
 pl:Następna karta
 sk:Ďalšia karta
 tw:下一個分頁
+:Next phrase
+af:Next phrase
+am:Next phrase
+ar:Next phrase
+az:Next phrase
+bg:Next phrase
+bn:Next phrase
+br:Next phrase
+bs:Next phrase
+by:Next phrase
+ca:Next phrase
+ca-xv:Next phrase
+cn:下一句
+co:Next phrase
+cy:Next phrase
+cz:Next phrase
+de:Next phrase
+dk:Next phrase
+el:Next phrase
+es:Next phrase
+et:Next phrase
+eu:Next phrase
+fa:Next phrase
+fi:Next phrase
+fo:Next phrase
+fr:Next phrase
+fy-nl:Next phrase
+ga:Next phrase
+gl:Next phrase
+he:Next phrase
+hi:Next phrase
+hr:Next phrase
+hu:Next phrase
+id:Next phrase
+it:Next phrase
+ja:Next phrase
+jv:Next phrase
+ka:Next phrase
+kr:Next phrase
+ku:Next phrase
+kw:Next phrase
+lt:Next phrase
+lv:Next phrase
+mk:Next phrase
+ml:Next phrase
+mm:Next phrase
+my:Next phrase
+ne:Next phrase
+nl:Next phrase
+nn:Next phrase
+no:Next phrase
+pa:Next phrase
+pl:Next phrase
+pt:Next phrase
+ro:Next phrase
+ru:Next phrase
+sat:Next phrase
+si:Next phrase
+sk:Next phrase
+sl:Next phrase
+sn:Next phrase
+sp-rs:Next phrase
+sq:Next phrase
+sr-rs:Next phrase
+sv:Next phrase
+ta:Next phrase
+th:Next phrase
+tl:Next phrase
+tr:Next phrase
+tw:下一句
+uk:Next phrase
+uz:Next phrase
+vn:Next phrase
 :Next sentence
 af:Next sentence
 am:Next sentence
@@ -21408,6 +21919,79 @@ de:Y-Pixel-Abmessung:
 it:Dimensioni Pixel Y:
 nl:Pixel Y Afmetingen:
 pl:Wymiar Y pikseli:
+:Play / Pause narration
+af:Play / Pause narration
+am:Play / Pause narration
+ar:Play / Pause narration
+az:Play / Pause narration
+bg:Play / Pause narration
+bn:Play / Pause narration
+br:Play / Pause narration
+bs:Play / Pause narration
+by:Play / Pause narration
+ca:Play / Pause narration
+ca-xv:Play / Pause narration
+cn:播放 / 暂停朗读
+co:Play / Pause narration
+cy:Play / Pause narration
+cz:Play / Pause narration
+de:Play / Pause narration
+dk:Play / Pause narration
+el:Play / Pause narration
+es:Play / Pause narration
+et:Play / Pause narration
+eu:Play / Pause narration
+fa:Play / Pause narration
+fi:Play / Pause narration
+fo:Play / Pause narration
+fr:Play / Pause narration
+fy-nl:Play / Pause narration
+ga:Play / Pause narration
+gl:Play / Pause narration
+he:Play / Pause narration
+hi:Play / Pause narration
+hr:Play / Pause narration
+hu:Play / Pause narration
+id:Play / Pause narration
+it:Play / Pause narration
+ja:Play / Pause narration
+jv:Play / Pause narration
+ka:Play / Pause narration
+kr:Play / Pause narration
+ku:Play / Pause narration
+kw:Play / Pause narration
+lt:Play / Pause narration
+lv:Play / Pause narration
+mk:Play / Pause narration
+ml:Play / Pause narration
+mm:Play / Pause narration
+my:Play / Pause narration
+ne:Play / Pause narration
+nl:Play / Pause narration
+nn:Play / Pause narration
+no:Play / Pause narration
+pa:Play / Pause narration
+pl:Play / Pause narration
+pt:Play / Pause narration
+ro:Play / Pause narration
+ru:Play / Pause narration
+sat:Play / Pause narration
+si:Play / Pause narration
+sk:Play / Pause narration
+sl:Play / Pause narration
+sn:Play / Pause narration
+sp-rs:Play / Pause narration
+sq:Play / Pause narration
+sr-rs:Play / Pause narration
+sv:Play / Pause narration
+ta:Play / Pause narration
+th:Play / Pause narration
+tl:Play / Pause narration
+tr:Play / Pause narration
+tw:播放 / 暫停朗讀
+uk:Play / Pause narration
+uz:Play / Pause narration
+vn:Play / Pause narration
 :Play / Pause reading
 af:Play / Pause reading
 am:Play / Pause reading
@@ -21554,6 +22138,79 @@ tw:有書內錄音時播放錄音(&A)
 uk:Play the book's recorded narration when &available
 uz:Play the book's recorded narration when &available
 vn:Play the book's recorded narration when &available
+:Playback speed
+af:Playback speed
+am:Playback speed
+ar:Playback speed
+az:Playback speed
+bg:Playback speed
+bn:Playback speed
+br:Playback speed
+bs:Playback speed
+by:Playback speed
+ca:Playback speed
+ca-xv:Playback speed
+cn:播放速度
+co:Playback speed
+cy:Playback speed
+cz:Playback speed
+de:Playback speed
+dk:Playback speed
+el:Playback speed
+es:Playback speed
+et:Playback speed
+eu:Playback speed
+fa:Playback speed
+fi:Playback speed
+fo:Playback speed
+fr:Playback speed
+fy-nl:Playback speed
+ga:Playback speed
+gl:Playback speed
+he:Playback speed
+hi:Playback speed
+hr:Playback speed
+hu:Playback speed
+id:Playback speed
+it:Playback speed
+ja:Playback speed
+jv:Playback speed
+ka:Playback speed
+kr:Playback speed
+ku:Playback speed
+kw:Playback speed
+lt:Playback speed
+lv:Playback speed
+mk:Playback speed
+ml:Playback speed
+mm:Playback speed
+my:Playback speed
+ne:Playback speed
+nl:Playback speed
+nn:Playback speed
+no:Playback speed
+pa:Playback speed
+pl:Playback speed
+pt:Playback speed
+ro:Playback speed
+ru:Playback speed
+sat:Playback speed
+si:Playback speed
+sk:Playback speed
+sl:Playback speed
+sn:Playback speed
+sp-rs:Playback speed
+sq:Playback speed
+sr-rs:Playback speed
+sv:Playback speed
+ta:Playback speed
+th:Playback speed
+tl:Playback speed
+tr:Playback speed
+tw:播放速度
+uk:Playback speed
+uz:Playback speed
+vn:Playback speed
 :Please close %s to proceed!
 am:Շարունակելուց առաջ փակեք %s-ը:
 br:Por favor feche o %s pra prosseguir!
@@ -21861,6 +22518,79 @@ nl:Vorige Tab
 pl:Poprzednia karta
 sk:Predchádzajúca karta
 tw:上一個分頁
+:Previous phrase
+af:Previous phrase
+am:Previous phrase
+ar:Previous phrase
+az:Previous phrase
+bg:Previous phrase
+bn:Previous phrase
+br:Previous phrase
+bs:Previous phrase
+by:Previous phrase
+ca:Previous phrase
+ca-xv:Previous phrase
+cn:上一句
+co:Previous phrase
+cy:Previous phrase
+cz:Previous phrase
+de:Previous phrase
+dk:Previous phrase
+el:Previous phrase
+es:Previous phrase
+et:Previous phrase
+eu:Previous phrase
+fa:Previous phrase
+fi:Previous phrase
+fo:Previous phrase
+fr:Previous phrase
+fy-nl:Previous phrase
+ga:Previous phrase
+gl:Previous phrase
+he:Previous phrase
+hi:Previous phrase
+hr:Previous phrase
+hu:Previous phrase
+id:Previous phrase
+it:Previous phrase
+ja:Previous phrase
+jv:Previous phrase
+ka:Previous phrase
+kr:Previous phrase
+ku:Previous phrase
+kw:Previous phrase
+lt:Previous phrase
+lv:Previous phrase
+mk:Previous phrase
+ml:Previous phrase
+mm:Previous phrase
+my:Previous phrase
+ne:Previous phrase
+nl:Previous phrase
+nn:Previous phrase
+no:Previous phrase
+pa:Previous phrase
+pl:Previous phrase
+pt:Previous phrase
+ro:Previous phrase
+ru:Previous phrase
+sat:Previous phrase
+si:Previous phrase
+sk:Previous phrase
+sl:Previous phrase
+sn:Previous phrase
+sp-rs:Previous phrase
+sq:Previous phrase
+sr-rs:Previous phrase
+sv:Previous phrase
+ta:Previous phrase
+th:Previous phrase
+tl:Previous phrase
+tr:Previous phrase
+tw:上一句
+uk:Previous phrase
+uz:Previous phrase
+vn:Previous phrase
 :Previous sentence
 af:Previous sentence
 am:Previous sentence
@@ -26125,6 +26855,79 @@ nl:Scroll Omhoog Per Pagina
 pl:Przewiń w górę o stronę
 sk:Posúvať hore na strane
 tw:向上捲動一頁
+:Scroll to the text being read
+af:Scroll to the text being read
+am:Scroll to the text being read
+ar:Scroll to the text being read
+az:Scroll to the text being read
+bg:Scroll to the text being read
+bn:Scroll to the text being read
+br:Scroll to the text being read
+bs:Scroll to the text being read
+by:Scroll to the text being read
+ca:Scroll to the text being read
+ca-xv:Scroll to the text being read
+cn:滚动到正在朗读的文字
+co:Scroll to the text being read
+cy:Scroll to the text being read
+cz:Scroll to the text being read
+de:Scroll to the text being read
+dk:Scroll to the text being read
+el:Scroll to the text being read
+es:Scroll to the text being read
+et:Scroll to the text being read
+eu:Scroll to the text being read
+fa:Scroll to the text being read
+fi:Scroll to the text being read
+fo:Scroll to the text being read
+fr:Scroll to the text being read
+fy-nl:Scroll to the text being read
+ga:Scroll to the text being read
+gl:Scroll to the text being read
+he:Scroll to the text being read
+hi:Scroll to the text being read
+hr:Scroll to the text being read
+hu:Scroll to the text being read
+id:Scroll to the text being read
+it:Scroll to the text being read
+ja:Scroll to the text being read
+jv:Scroll to the text being read
+ka:Scroll to the text being read
+kr:Scroll to the text being read
+ku:Scroll to the text being read
+kw:Scroll to the text being read
+lt:Scroll to the text being read
+lv:Scroll to the text being read
+mk:Scroll to the text being read
+ml:Scroll to the text being read
+mm:Scroll to the text being read
+my:Scroll to the text being read
+ne:Scroll to the text being read
+nl:Scroll to the text being read
+nn:Scroll to the text being read
+no:Scroll to the text being read
+pa:Scroll to the text being read
+pl:Scroll to the text being read
+pt:Scroll to the text being read
+ro:Scroll to the text being read
+ru:Scroll to the text being read
+sat:Scroll to the text being read
+si:Scroll to the text being read
+sk:Scroll to the text being read
+sl:Scroll to the text being read
+sn:Scroll to the text being read
+sp-rs:Scroll to the text being read
+sq:Scroll to the text being read
+sr-rs:Scroll to the text being read
+sv:Scroll to the text being read
+ta:Scroll to the text being read
+th:Scroll to the text being read
+tl:Scroll to the text being read
+tr:Scroll to the text being read
+tw:捲動到正在朗讀的文字
+uk:Scroll to the text being read
+uz:Scroll to the text being read
+vn:Scroll to the text being read
 :Scrollbars
 af:Scrollbars
 am:Scrollbars

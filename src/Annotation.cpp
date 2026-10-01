@@ -22,6 +22,7 @@ extern "C" {
 #include "GlobalPrefs.h"
 #include "Commands.h"
 #include "LookupAudio.h"
+#include "PdfPageAudio.h"
 
 #include "utils/Log.h"
 
@@ -1651,14 +1652,7 @@ static u8* PdfSoundPcmToWav(fz_context* ctx, const u8* pcm, size_t pcmSize, pdf_
     return wav;
 }
 
-static bool PdfPlaySoundBytes(u8* data, size_t size, const char* ext) {
-    if (!data || size == 0) {
-        return false;
-    }
-    return LookupAudioPlayOwned(data, size, ext);
-}
-
-static bool PlaySoundAnnotationInner(fz_context* ctx, Annotation* annot) {
+static bool CopySoundAnnotationAudio(fz_context* ctx, Annotation* annot, u8** dataOut, size_t* sizeOut) {
     pdf_annot* pdfannot = annot->pdfannot;
     pdf_obj* annotObj = pdf_annot_obj(ctx, pdfannot);
     pdf_obj* sound = PdfResolveSoundObject(ctx, annotObj);
@@ -1696,7 +1690,9 @@ static bool PlaySoundAnnotationInner(fz_context* ctx, Annotation* annot) {
         }
         memcpy(owned, data + offset, playSize);
         fz_drop_buffer(ctx, buf);
-        return PdfPlaySoundBytes(owned, playSize, "wav");
+        *dataOut = owned;
+        *sizeOut = playSize;
+        return true;
     }
     if (PdfSoundLooksLikeMp3(data, size)) {
         u8* owned = AllocArray<u8>(size);
@@ -1706,7 +1702,9 @@ static bool PlaySoundAnnotationInner(fz_context* ctx, Annotation* annot) {
         }
         memcpy(owned, data, size);
         fz_drop_buffer(ctx, buf);
-        return PdfPlaySoundBytes(owned, size, "mp3");
+        *dataOut = owned;
+        *sizeOut = size;
+        return true;
     }
 
     size_t wavSize = 0;
@@ -1715,7 +1713,9 @@ static bool PlaySoundAnnotationInner(fz_context* ctx, Annotation* annot) {
     if (!wav) {
         return false;
     }
-    return PdfPlaySoundBytes(wav, wavSize, "wav");
+    *dataOut = wav;
+    *sizeOut = wavSize;
+    return true;
 }
 
 static bool PdfFilenameExtIsVideo(const char* ext) {
@@ -1910,7 +1910,7 @@ static char* PdfRichMediaPreferredAudioFilename(fz_context* ctx, pdf_obj* annotO
     return str::Dup(source, len);
 }
 
-static bool PlayRichMediaAnnotationInner(fz_context* ctx, pdf_obj* annotObj) {
+static bool CopyRichMediaAnnotationAudio(fz_context* ctx, pdf_obj* annotObj, u8** dataOut, size_t* sizeOut) {
     pdf_obj* content = pdf_dict_gets(ctx, annotObj, "RichMediaContent");
     if (!content) {
         return false;
@@ -1933,9 +1933,10 @@ static bool PlayRichMediaAnnotationInner(fz_context* ctx, pdf_obj* annotObj) {
     if (!fc.data) {
         return false;
     }
-    bool ok = PdfPlaySoundBytes(fc.data, fc.size, fc.ext);
+    *dataOut = fc.data;
+    *sizeOut = fc.size;
     str::Free(fc.ext);
-    return ok;
+    return true;
 }
 
 static bool PdfObjNameEquals(fz_context* ctx, pdf_obj* obj, const char* name) {
@@ -2029,7 +2030,7 @@ static pdf_obj* PdfScreenResolveFilespec(fz_context* ctx, pdf_obj* annotObj) {
     return pdf_dict_get(ctx, rendition, PDF_NAME(D));
 }
 
-static bool PlayScreenAnnotationInner(fz_context* ctx, pdf_obj* annotObj) {
+static bool CopyScreenAnnotationAudio(fz_context* ctx, pdf_obj* annotObj, u8** dataOut, size_t* sizeOut) {
     pdf_obj* fs = PdfScreenResolveFilespec(ctx, annotObj);
     if (!fs) {
         return false;
@@ -2040,9 +2041,10 @@ static bool PlayScreenAnnotationInner(fz_context* ctx, pdf_obj* annotObj) {
     if (!fc.data) {
         return false;
     }
-    bool ok = PdfPlaySoundBytes(fc.data, fc.size, fc.ext);
+    *dataOut = fc.data;
+    *sizeOut = fc.size;
     str::Free(fc.ext);
-    return ok;
+    return true;
 }
 
 bool AnnotationSupportsMediaPlayback(AnnotationType tp) {
@@ -2053,10 +2055,36 @@ static u64 PdfMediaPlayToken(EngineMupdf* engine, int objNum) {
     return ((u64)(uintptr_t)engine) ^ (((u64)(u32)objNum << 1) | 1ull);
 }
 
-bool PlaySoundAnnotation(Annotation* annot) {
+u64 AnnotationEmbeddedAudioToken(Annotation* annot) {
     if (!annot || !annot->pdfannot || !annot->engine) {
+        return 0;
+    }
+    EngineMupdf* engine = annot->engine;
+    fz_context* ctx = engine->Ctx();
+    if (!ctx) {
+        return 0;
+    }
+    int objNum = 0;
+    ScopedCritSec cs(&engine->docLock);
+    fz_try(ctx) {
+        objNum = pdf_to_num(ctx, pdf_annot_obj(ctx, annot->pdfannot));
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        return 0;
+    }
+    if (objNum <= 0) {
+        return 0;
+    }
+    return PdfMediaPlayToken(engine, objNum);
+}
+
+bool AnnotationCopyEmbeddedAudio(Annotation* annot, u8** dataOut, size_t* sizeOut) {
+    if (!annot || !dataOut || !sizeOut || !annot->pdfannot || !annot->engine) {
         return false;
     }
+    *dataOut = nullptr;
+    *sizeOut = 0;
     if (!AnnotationSupportsMediaPlayback(annot->type)) {
         return false;
     }
@@ -2065,34 +2093,19 @@ bool PlaySoundAnnotation(Annotation* annot) {
     if (!ctx || !engine->pdfdoc) {
         return false;
     }
-    ScopedCritSec cs(&engine->docLock);
-    int objNum = 0;
-    fz_try(ctx) {
-        pdf_obj* annotObj = pdf_annot_obj(ctx, annot->pdfannot);
-        objNum = pdf_to_num(ctx, annotObj);
-    }
-    fz_catch(ctx) {
-        fz_report_error(ctx);
-        return false;
-    }
-    u64 token = PdfMediaPlayToken(engine, objNum);
-    // Second click on the same speaker stops playback immediately.
-    if (LookupAudioIsPlaying() && LookupAudioPlayToken() == token) {
-        LookupAudioStop();
-        return true;
-    }
     bool ok = false;
+    ScopedCritSec cs(&engine->docLock);
     fz_try(ctx) {
         pdf_obj* annotObj = pdf_annot_obj(ctx, annot->pdfannot);
         switch (annot->type) {
             case AnnotationType::Sound:
-                ok = PlaySoundAnnotationInner(ctx, annot);
+                ok = CopySoundAnnotationAudio(ctx, annot, dataOut, sizeOut);
                 break;
             case AnnotationType::RichMedia:
-                ok = PlayRichMediaAnnotationInner(ctx, annotObj);
+                ok = CopyRichMediaAnnotationAudio(ctx, annotObj, dataOut, sizeOut);
                 break;
             case AnnotationType::Screen:
-                ok = PlayScreenAnnotationInner(ctx, annotObj);
+                ok = CopyScreenAnnotationAudio(ctx, annotObj, dataOut, sizeOut);
                 break;
             default:
                 break;
@@ -2102,8 +2115,31 @@ bool PlaySoundAnnotation(Annotation* annot) {
         fz_report_error(ctx);
         ok = false;
     }
-    if (ok) {
-        LookupAudioSetPlayToken(token);
+    if (!ok) {
+        free(*dataOut);
+        *dataOut = nullptr;
+        *sizeOut = 0;
     }
-    return ok;
+    return ok && *dataOut != nullptr && *sizeOut > 0;
+}
+
+bool PlaySoundAnnotation(Annotation* annot) {
+    if (!annot || !AnnotationSupportsMediaPlayback(annot->type)) {
+        return false;
+    }
+    u64 token = AnnotationEmbeddedAudioToken(annot);
+    if (token != 0 && PdfPageAudioIsThisClip(token)) {
+        PdfPageAudioStop();
+        return true;
+    }
+    if (token != 0 && LookupAudioIsPlaying() && LookupAudioPlayToken() == token) {
+        LookupAudioStop();
+        return true;
+    }
+    u8* data = nullptr;
+    size_t size = 0;
+    if (!AnnotationCopyEmbeddedAudio(annot, &data, &size)) {
+        return false;
+    }
+    return PdfPageAudioPlayClip(annot, data, size);
 }

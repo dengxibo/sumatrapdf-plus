@@ -89,7 +89,7 @@ HWND TreeView::Create(const CreateArgs& args) {
             HFONT prev = (HFONT)SelectObject(hdc, args.font);
             TEXTMETRIC tm{};
             GetTextMetrics(hdc, &tm);
-            itemH = tm.tmHeight + 4;
+            itemH = tm.tmHeight + 2;
             SelectObject(hdc, prev);
             ReleaseDC(hwnd, hdc);
         }

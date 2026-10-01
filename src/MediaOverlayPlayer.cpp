@@ -39,6 +39,7 @@
 #include "EpubMediaOverlay.h"
 #include "MediaOverlayAudio.h"
 #include "MediaOverlayPlayer.h"
+#include "PdfPageAudio.h"
 #include "ReadAloudHighlight.h"
 #include "ReadAloudFollow.h"
 #include "ReadAloudBar.h"
@@ -50,8 +51,6 @@ constexpr i64 kMoContiguousUs = 40 * 1000;
 constexpr i64 kMoSkipUs = 10 * 1000 * 1000;
 constexpr UINT kMoTickMs = 40;
 constexpr DWORD kMoRelayoutCheckMs = 400;
-// auto-follow keeps the active fragment between these fractions of the viewport height
-static const double kMoRates[] = {0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0};
 
 // playback trace for automated testing, enabled with the SUMATRA_MO_TRACE environment variable
 static bool MoTraceOn() {
@@ -186,17 +185,6 @@ static MoSession* gMo = nullptr;
 static double MoRate() {
     double r = gGlobalPrefs ? gGlobalPrefs->narrationSpeed : 1.0;
     return (r >= 0.25 && r <= 4.0) ? r : 1.0;
-}
-
-// the next preset after the current speed, wrapping to the slowest
-static double MoNextRate() {
-    double r = MoRate();
-    for (double v : kMoRates) {
-        if (v > r + 0.01) {
-            return v;
-        }
-    }
-    return kMoRates[0];
 }
 
 static void MoSetRate(double r) {
@@ -736,7 +724,11 @@ static void MoCollectWords() {
         }
     }
     MoFlushHlWord(&cur);
+    bool ocr = engine->HasCachedOcrText(gMo->hlPages.Size() > 0 ? gMo->hlPages[0] : 0);
     for (int i = 0; i < gMo->hlWords.Size(); i++) {
+        if (ocr) {
+            gMo->hlWords[i].r = ExpandOcrXHeightBand(gMo->hlWords[i].r, gMo->hlWords[i].weight);
+        }
         gMo->hlWordWeight += gMo->hlWords[i].weight;
     }
     if (gMo->hlWords.Size() > 0) {
@@ -1373,6 +1365,7 @@ static void MoSessionStop() {
 }
 
 static void MoSessionNew(WindowTab* tab, MoTabEntry* entry) {
+    PdfPageAudioAbandon();
     MoSessionStop();
     LookupAudioStop();
     gMo = new MoSession();
@@ -1695,8 +1688,8 @@ struct MoBarSource : ReadAloudBarSource {
             gMo->scrollPending = gMo->follow;
         }
     }
-    void NextRate(MainWindow*) override {
-        MoSetRate(MoNextRate());
+    void SetRate(MainWindow*, double rate) override {
+        MoSetRate(rate);
         MoUpdateBars();
     }
     void Follow(MainWindow* win) override {
@@ -1815,6 +1808,17 @@ bool MediaOverlayPause() {
         return false;
     }
     MoPauseInternal();
+    MoUpdateBars();
+    return true;
+}
+
+bool MediaOverlayResumePaused() {
+    if (!gMo || gMo->playing) {
+        return false;
+    }
+    bool follow = gMo->follow;
+    MoPlay();
+    gMo->follow = follow;
     MoUpdateBars();
     return true;
 }

@@ -56,6 +56,8 @@ void ReadAloudHighlightTimerStart(MainWindow* win);
 void ReadAloudHighlightTimerStop(MainWindow* win);
 
 void ReadAloudOnUserViewChanged(MainWindow* win);
+// the reader moved the view (page turn, drag). Stop a follow animation so it cannot scroll back.
+void ReadAloudUserTookTheView(MainWindow* win);
 void ReadAloudUpdateAutoScroll(MainWindow* win);
 // the Follow button: scroll to the text being spoken and keep following it
 void ReadAloudFollowNow(MainWindow* win);

@@ -121,6 +121,7 @@
 #include "ReadAloudFollow.h"
 #include "ReadAloudBar.h"
 #include "MediaOverlayPlayer.h"
+#include "PdfPageAudio.h"
 
 #include "utils/Log.h"
 
@@ -595,6 +596,7 @@ static EbookPagesProgressTask* gPendingEbookProgress = nullptr;
 static bool gEbookProgressScheduled = false;
 
 static void EbookPagesProgressUI(EbookPagesProgressTask* task);
+static void FinishFontReloadPlacement(MainWindow* win, WindowTab* tab, DisplayModel* dm);
 
 static void PostPendingEbookProgress() {
     if (!gPendingEbookProgress) {
@@ -637,6 +639,9 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
         return;
     }
     dm->TryApplyPendingRestoreScroll();
+    if (tab->fontReloadAnchor || tab->holdPaintForFontReload) {
+        FinishFontReloadPlacement(tab->win, tab, dm);
+    }
     MainWindow* win = tab->win;
     EngineBase* engine = dm->GetEngine();
     if (engine && win->linkHandler) {
@@ -1123,6 +1128,7 @@ struct ControllerCallbackHandler : DocControllerCallback {
 
     void Repaint() override { ScheduleRepaint(win, 0); }
     void PageNoChanged(DocController* ctrl, int pageNo) override;
+    void OnUserPageTurn(DocController* ctrl) override;
     void ZoomChanged(DocController* ctrl, float zoomVirtual) override;
     void UpdateScrollbars(Size canvas) override;
     void RequestRendering(int pageNo, bool prioritize = false) override;
@@ -1561,6 +1567,10 @@ void ControllerCallbackHandler::PageNoChanged(DocController* ctrl, int pageNo) {
         return;
     }
     UpdatePageInfoHelper(win->ctrl, wnd, pageNo);
+}
+
+void ControllerCallbackHandler::OnUserPageTurn(DocController*) {
+    ReadAloudUserTookTheView(win);
 }
 
 // TODO: remove when we figure out why this ctrl->GetFilePath() is not always same as path
@@ -2231,6 +2241,245 @@ static void ClearTabFontReloadScroll(WindowTab* tab) {
     tab->restoreScrollXAfterFontReload = -1;
     tab->restoreScrollYAfterFontReload = -1;
     tab->restoreInPageScrollRatioAfterFontReload = -1.f;
+    str::FreePtr(&tab->fontReloadAnchor);
+    tab->fontReloadChapter = -1;
+    tab->holdPaintForFontReload = false;
+}
+
+static bool FontReloadSkipChar(WCHAR c) {
+    return c == L' ' || c == L'\t' || c == L'\n' || c == L'\r' || c == 0x00A0 || c == 0x3000 || c == 0x00AD ||
+           c == 0x200B;
+}
+
+static bool FontReloadStartsLine(const WCHAR* text, Rect* coords, int i) {
+    if (i <= 0) {
+        return true;
+    }
+    if (text[i] == L'\n' || text[i] == L'\r') {
+        return false;
+    }
+    if (text[i - 1] == L'\n' || text[i - 1] == L'\r') {
+        return true;
+    }
+    if (!coords) {
+        return false;
+    }
+    int h = coords[i - 1].dy > 0 ? coords[i - 1].dy : 8;
+    return coords[i].y - coords[i - 1].y > h / 2;
+}
+
+// Whitespace-stripped text of the first line that meets the viewport, plus
+// enough of the following lines to make the phrase unique after a reflow.
+static char* CaptureViewportFirstLineUtf8(DisplayModel* dm, int* chapterOut) {
+    if (chapterOut) {
+        *chapterOut = -1;
+    }
+    if (!dm || !dm->engine) {
+        return nullptr;
+    }
+    int page = dm->FirstVisiblePageNo();
+    if (!dm->ValidPageNo(page)) {
+        page = dm->CurrentPageNo();
+    }
+    if (!dm->ValidPageNo(page)) {
+        return nullptr;
+    }
+    int chapter = -1;
+    int chapterStart = 0;
+    if (EngineMupdfGetReflowPageChapter(dm->engine, page, &chapter, &chapterStart) && chapterOut) {
+        *chapterOut = chapter;
+    }
+
+    WCHAR buf[80];
+    int n = 0;
+    int meaningful = 0;
+    // CvtToScreen is already in canvas-window coordinates.
+    int viewTop = 0;
+    int viewBot = dm->viewPort.dy;
+    int lastPage = std::min(page + 1, dm->PageCount());
+    for (int pageNo = page; pageNo <= lastPage && meaningful < 32; pageNo++) {
+        int textLen = 0;
+        Rect* coords = nullptr;
+        const WCHAR* text = dm->engine->GetTextForPage(pageNo, &textLen, &coords);
+        if (!text || textLen <= 0 || !coords) {
+            continue;
+        }
+        int i = 0;
+        while (i < textLen && meaningful < 32) {
+            while (i < textLen && (text[i] == L'\n' || text[i] == L'\r')) {
+                i++;
+            }
+            if (i >= textLen) {
+                break;
+            }
+            int lineStart = i;
+            i++;
+            while (i < textLen && text[i] != L'\n' && text[i] != L'\r' && !FontReloadStartsLine(text, coords, i)) {
+                i++;
+            }
+            Rect line = coords[lineStart];
+            for (int g = lineStart + 1; g < i; g++) {
+                if (coords[g].dx != 0 || coords[g].dy != 0) {
+                    line = line.Union(coords[g]);
+                }
+            }
+            Rect screen = dm->CvtToScreen(pageNo, ToRectF(line));
+            if (screen.y + screen.dy <= viewTop + 1) {
+                continue;
+            }
+            if (n == 0 && screen.y >= viewBot) {
+                pageNo = lastPage;
+                break;
+            }
+            for (int g = lineStart; g < i && meaningful < 32 && n < (int)dimof(buf) - 1; g++) {
+                WCHAR c = text[g];
+                if (FontReloadSkipChar(c)) {
+                    continue;
+                }
+                buf[n++] = c;
+                meaningful++;
+            }
+        }
+    }
+    if (meaningful < 4) {
+        return nullptr;
+    }
+    buf[n] = 0;
+    return str::Dup(ToUtf8Temp(buf));
+}
+
+static void CaptureFontReloadAnchor(WindowTab* tab) {
+    if (!tab || !str::IsEmpty(tab->fontReloadAnchor)) {
+        return;
+    }
+    int chapter = -1;
+    char* anchor = CaptureViewportFirstLineUtf8(tab->AsFixed(), &chapter);
+    if (!anchor) {
+        return;
+    }
+    tab->fontReloadAnchor = anchor;
+    tab->fontReloadChapter = chapter;
+}
+
+// Scroll so the captured line sits at the top of the viewport. Returns false
+// when the chapter is not laid out yet and the caller should try again.
+static bool TryPlaceFontReloadAnchor(WindowTab* tab, DisplayModel* dm) {
+    if (!tab || !dm || !dm->engine || str::IsEmpty(tab->fontReloadAnchor)) {
+        return false;
+    }
+    WCHAR* needle = ToWStrTemp(tab->fontReloadAnchor);
+    int needleLen = needle ? (int)str::Len(needle) : 0;
+    if (needleLen < 4) {
+        str::FreePtr(&tab->fontReloadAnchor);
+        return false;
+    }
+
+    int startPage = 1;
+    int endPage = dm->PageCount();
+    bool rangeComplete = true;
+    if (tab->fontReloadChapter >= 0) {
+        int chStart = 0;
+        int chEnd = 0;
+        if (!EngineMupdfGetReflowChapterPageRange(dm->engine, tab->fontReloadChapter, &chStart, &chEnd)) {
+            if (EngineIsProgressiveEbookLoading(dm->engine)) {
+                return false;
+            }
+            str::FreePtr(&tab->fontReloadAnchor);
+            return false;
+        }
+        startPage = chStart;
+        endPage = chEnd;
+        int nextStart = 0;
+        int nextEnd = 0;
+        rangeComplete =
+            EngineMupdfGetReflowChapterPageRange(dm->engine, tab->fontReloadChapter + 1, &nextStart, &nextEnd);
+        if (rangeComplete) {
+            endPage = nextStart - 1;
+        }
+    }
+    int laidOut = dm->PageCount();
+    if (dm->reflowLayoutValidUpto > 0) {
+        laidOut = std::min(laidOut, dm->reflowLayoutValidUpto);
+    }
+    int searchTo = std::min(endPage, laidOut);
+    for (int pageNo = startPage; pageNo <= searchTo; pageNo++) {
+        int textLen = 0;
+        Rect* coords = nullptr;
+        const WCHAR* text = dm->engine->GetTextForPage(pageNo, &textLen, &coords);
+        if (!text || textLen < needleLen || !coords) {
+            continue;
+        }
+        WCHAR* norm = AllocArray<WCHAR>((size_t)textLen + 1);
+        int* map = AllocArray<int>((size_t)textLen);
+        int m = 0;
+        for (int i = 0; i < textLen; i++) {
+            if (FontReloadSkipChar(text[i])) {
+                continue;
+            }
+            norm[m] = text[i];
+            map[m] = i;
+            m++;
+        }
+        norm[m] = 0;
+        const WCHAR* hit = m >= needleLen ? wcsstr(norm, needle) : nullptr;
+        int glyph = hit ? map[(int)(hit - norm)] : -1;
+        free(norm);
+        free(map);
+        if (glyph < 0 || glyph >= textLen) {
+            continue;
+        }
+        if (dm->reflowLayoutValidUpto > 0 && pageNo > dm->reflowLayoutValidUpto) {
+            return false;
+        }
+        Point screen = dm->CvtToScreen(pageNo, PointF((float)coords[glyph].x, (float)coords[glyph].y));
+        PageInfo* pi = dm->GetPageInfo(pageNo);
+        if (!pi) {
+            continue;
+        }
+        // Page-local y. Continuous mode adds windowMargin itself, so the line
+        // lands at the top of the reading area with the usual inset.
+        int pageLocalY = screen.y - (pi->pos.y - dm->viewPort.y);
+        int scrollY = pageLocalY;
+        if (!IsContinuous(dm->GetDisplayMode())) {
+            scrollY = pageLocalY + pi->pos.y - dm->windowMargin.top;
+        }
+        if (scrollY < 0) {
+            scrollY = 0;
+        }
+        dm->GoToPage(pageNo, scrollY, false, -1);
+        return true;
+    }
+    if (!rangeComplete && EngineIsProgressiveEbookLoading(dm->engine)) {
+        return false;
+    }
+    if (searchTo < endPage) {
+        return false;
+    }
+    str::FreePtr(&tab->fontReloadAnchor);
+    return false;
+}
+
+static void ApplyFontReloadScroll(MainWindow* win, DisplayModel* dm, const FontReloadScrollAnchor& anchor);
+
+static void FinishFontReloadPlacement(MainWindow* win, WindowTab* tab, DisplayModel* dm) {
+    if (!tab) {
+        return;
+    }
+    bool placed = TryPlaceFontReloadAnchor(tab, dm);
+    if (!placed && tab->fontReloadAnchor) {
+        return;
+    }
+    if (!placed && dm) {
+        ApplyFontReloadScroll(win, dm, FontReloadScrollFromTab(tab));
+        if (dm->hasPendingRestoreScroll) {
+            return;
+        }
+    }
+    tab->holdPaintForFontReload = false;
+    ClearTabFontReloadScroll(tab);
+    if (dm && win && tab == win->CurrentTab()) {
+        dm->RepaintDisplay();
+    }
 }
 
 static void ApplyFontReloadScroll(MainWindow* win, DisplayModel* dm, const FontReloadScrollAnchor& anchor) {
@@ -2342,16 +2591,18 @@ static void FinishEbookFontAsyncReload(MainWindow* win, WindowTab* tab, bool loa
     if (!IsEbookFontAsyncReload(tab)) {
         return;
     }
-    FontReloadScrollAnchor anchor = FontReloadScrollFromTab(tab);
+    // Drop the reload flag now so a focus change cannot start a second reload.
+    // The text anchor and the page-ratio fallback stay until the line is placed.
+    tab->reloadForEbookFontChange = false;
+    tab->reloadForEbookFontSizeChange = false;
     if (loaded) {
         DisplayModel* dm = tab->AsFixed();
-        ApplyFontReloadScroll(win, dm, anchor);
+        FinishFontReloadPlacement(win, tab, dm);
         RemapAnchorsAfterReflow(tab, win);
-        if (dm && tab == win->CurrentTab()) {
-            dm->RepaintDisplay();
-        }
+    } else {
+        tab->holdPaintForFontReload = false;
+        ClearTabFontReloadScroll(tab);
     }
-    ClearTabFontReloadScroll(tab);
 }
 
 static void StartEbookFontAsyncReload(MainWindow* win, WindowTab* tab, const FontReloadScrollAnchor& anchor,
@@ -2361,6 +2612,10 @@ static void StartEbookFontAsyncReload(MainWindow* win, WindowTab* tab, const Fon
         gRenderCache->CancelRendering(dm);
         gRenderCache->FreeForDisplayModel(dm);
     }
+    CaptureFontReloadAnchor(tab);
+    // The new document opens at the cover. Hold the current frame until the
+    // first visible line has been found again.
+    tab->holdPaintForFontReload = true;
     SaveTabFontReloadScroll(tab, anchor, fontSizeChange);
     tab->reloadOnFocus = false;
     LoadArgs args(tab->filePath, win);
@@ -3732,12 +3987,14 @@ static void AttachDocumentToBackgroundTab(LoadArgs* args, WindowTab* tab) {
         if (ocrFs && !ocrFs->useDefaultState) {
             tab->autoOcrOn = ocrFs->autoOcrOn;
         }
+        EnableAutoOcrIfTextlessScanPdf(tab);
         FileState* filterFs = ocrFs;
         if (filterFs && filterFs->useDefaultState) {
             filterFs = nullptr;
         }
         RestoreDisplayFilterForTab(tab, filterFs);
     } else {
+        EnableAutoOcrIfTextlessScanPdf(tab);
         RestoreDisplayFilterForTab(tab, nullptr);
     }
     StampTabReflowThemeEpoch(tab);
@@ -3986,6 +4243,10 @@ MainWindow* LoadDocumentFinish(LoadArgs* args) {
     }
 
     if (win->ctrl) {
+        WindowTab* ocrTab = win->CurrentTab();
+        if (ocrTab && EnableAutoOcrIfTextlessScanPdf(ocrTab)) {
+            UpdateAutoOcrToolbarButton(win);
+        }
         OcrScheduleForPage(win, win->ctrl->CurrentPageNo());
     }
 
@@ -5131,6 +5392,7 @@ void UpdateAfterEbookLayoutChange() {
             if (tab == current) {
                 ApplyEbookFontSizeChangeToTab(win, tab);
             } else {
+                CaptureFontReloadAnchor(tab);
                 SaveTabFontReloadScroll(tab, CaptureFontReloadScroll(tab), true);
                 tab->reloadOnFocus = true;
             }
@@ -6058,6 +6320,7 @@ void CloseTab(WindowTab* tab, bool quitIfLast) {
     // Stop eventual TTS reading
     StopReadAloudIfSourceTab(tab);
     MediaOverlayOnTabDocumentGone(tab);
+    PdfPageAudioOnTabGone(tab);
     // Embedded PDF Sound/RichMedia/Screen (and dictionary) audio is a global player.
     LookupAudioStop();
 
@@ -6274,6 +6537,7 @@ void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose) {
     // Stop eventual TTS reading
     StopReadAloudIfSourceWindow(win);
     MediaOverlayOnWindowClosing(win);
+    PdfPageAudioOnWindowClosing(win);
     LookupAudioStop();
 
     bool canCloseWindow = true;
@@ -7495,6 +7759,7 @@ static LRESULT CALLBACK SidebarScrollbarMaskProc(HWND hwnd, UINT msg, WPARAM wp,
         HDC hdc = BeginPaint(hwnd, &ps);
         AutoDeleteBrush brush = CreateSolidBrush(ThemeSidebarBackgroundColor());
         FillRect(hdc, &ps.rcPaint, brush);
+        PaintTocSelectionEdgeOnScrollbarMask(hwnd, hdc);
         EndPaint(hwnd, &ps);
         return 0;
     }
@@ -7542,7 +7807,7 @@ static void SetSidebarTreeScrollbarMasksVisible(MainWindow* win, bool visible) {
         RECT rc{};
         GetWindowRect(tree, &rc);
         MapWindowPoints(HWND_DESKTOP, parent, (POINT*)&rc, 2);
-        int width = GetSystemMetrics(SM_CXVSCROLL) + 2;
+        int width = GetSystemMetrics(SM_CXVSCROLL) + kSidebarScrollbarMaskClientOverlap;
         bool rtl = (GetWindowLongPtrW(tree, GWL_EXSTYLE) & WS_EX_LAYOUTRTL) != 0;
         int x = rtl ? rc.left : rc.right - width;
         SetWindowPos(mask, HWND_TOP, x, rc.top, width, rc.bottom - rc.top,
@@ -8075,6 +8340,7 @@ static void ShowOptionsDialog(HWND hwnd, int initialPage = 0) {
     int tabBarHeightBefore = gGlobalPrefs->tabBarHeight;
     int customScreenDpiBefore = gGlobalPrefs->customScreenDPI;
     bool fullPathInTitleBefore = gGlobalPrefs->fullPathInTitle;
+    bool autoOcrScanPagesBefore = gGlobalPrefs->autoOcrScanPages;
 
     INT_PTR dialogResult = Dialog_Settings(hwnd, gGlobalPrefs, initialPage);
     if (dialogResult == IDC_OPEN_ADVANCED_OPTIONS) {
@@ -8083,6 +8349,18 @@ static void ShowOptionsDialog(HWND hwnd, int initialPage = 0) {
     }
     if (IDOK != dialogResult) {
         return;
+    }
+
+    if (!autoOcrScanPagesBefore && gGlobalPrefs->autoOcrScanPages) {
+        if (MainWindow* ocrWin = FindMainWindowByHwnd(hwnd)) {
+            WindowTab* ocrTab = ocrWin->CurrentTab();
+            if (ocrTab && EnableAutoOcrIfTextlessScanPdf(ocrTab)) {
+                UpdateAutoOcrToolbarButton(ocrWin);
+                if (ocrWin->ctrl) {
+                    OcrScheduleForPage(ocrWin, ocrWin->ctrl->CurrentPageNo());
+                }
+            }
+        }
     }
 
     if (!SettingsRememberOpenedFiles()) {
@@ -9113,6 +9391,31 @@ bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM
     // cursor and looks like it "snapped back".
     if (sourceHwnd && win->tocTreeView && sourceHwnd == win->tocTreeView->hwnd) {
         leftTol = 0;
+        // <-> and the click share one strip. On a scrollbar that strip is the
+        // bar's edge against the splitter. With no scrollbar the separator is
+        // one pixel, so the same strip sits on the tree's right edge: wherever
+        // the double-arrow is shown, the press starts a width drag.
+        // Calibration row icons sit on that edge; leave them clickable.
+        if ((GetWindowLongPtrW(sourceHwnd, GWL_EXSTYLE) & WS_EX_LAYOUTRTL) == 0) {
+            SCROLLBARINFO sbi{};
+            sbi.cbSize = sizeof(sbi);
+            bool barVisible = GetScrollBarInfo(sourceHwnd, OBJID_VSCROLL, &sbi) &&
+                              !(sbi.rgstate[0] & (STATE_SYSTEM_INVISIBLE | STATE_SYSTEM_OFFSCREEN));
+            if (barVisible && PtInRect(&sbi.rcScrollBar, pt) &&
+                std::abs(sbi.rcScrollBar.right - rc.left) <= tolerance) {
+                leftTol = tolerance;
+            } else if (!barVisible && !TocCalibBarVisible(win)) {
+                leftTol = tolerance;
+            }
+        }
+    }
+    // <-> is already up: this press drags the sidebar. Same 5px strip as the
+    // scrollbar edge. Do not widen hover — that covers the scrollbar thumb
+    // and replaces its cursor.
+    if ((msg == WM_LBUTTONDOWN || msg == WM_NCLBUTTONDOWN) && GetCursor() == GetCachedCursor(IDC_SIZEWE)) {
+        if (leftTol < tolerance) {
+            leftTol = tolerance;
+        }
     }
     if (pt.y < rc.top || pt.y >= rc.bottom || pt.x < rc.left - leftTol || pt.x >= rc.right + rightTol) {
         return false;
@@ -10856,6 +11159,16 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             }
             MediaOverlayStop();
 
+            if (PdfPageAudioOwnsToolbarSpeaker(tab)) {
+                if (isSpeaking) {
+                    ReadAloudStopRememberPos();
+                }
+                PdfPageAudioHandleReadAloud(tab);
+                ToolbarUpdateStateForWindow(win, true);
+                break;
+            }
+            PdfPageAudioStop();
+
             if (isSpeaking) {
                 ReadAloudStopRememberPos();
                 ToolbarUpdateStateForWindow(win, true);
@@ -10868,13 +11181,19 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         }
 
         case CmdPauseReadAloud: {
-            MediaOverlayPause();
-            ReadAloudStopRememberPos();
+            if (!(PdfPageAudioIsPlayingInTab(tab) && PdfPageAudioHandleReadAloud(tab))) {
+                MediaOverlayPause();
+                ReadAloudStopRememberPos();
+            }
             ToolbarUpdateStateForWindow(win, true);
             break;
         }
 
         case CmdContinueReadAloud: {
+            if (PdfPageAudioCanContinueInTab(tab) && PdfPageAudioHandleReadAloud(tab)) {
+                ToolbarUpdateStateForWindow(win, true);
+                break;
+            }
             if (MediaOverlayTabHasNarration(tab) && !MediaOverlayIsPlayingInTab(tab) &&
                 MediaOverlayHandleReadAloud(tab)) {
                 ToolbarUpdateStateForWindow(win, true);
@@ -10888,7 +11207,11 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
 
         case CmdStopReadAloud:
             MediaOverlayStop();
+            PdfPageAudioStop();
             ReadAloudPlaybackStop();
+            if (win) {
+                ToolbarUpdateStateForWindow(win, true);
+            }
             break;
 
         case CmdReadAloudFromTopPage:
@@ -13657,6 +13980,20 @@ static void ReadAloudApplyVoiceFromSettings() {
     ReadAloudApplyRateForLang(ReadAloudLangFromVoiceId(voiceId));
 }
 
+// True when the synthesizer is already on the voice this mode should use.
+// Smart bilingual picks a voice per chunk, so it is handled there.
+static bool ReadAloudSynthesizerMatchesSettings() {
+    if (!gGlobalPrefs || IsSmartBilingualVoicePref()) {
+        return true;
+    }
+    const char* mode = gGlobalPrefs->readAloudVoiceId ? gGlobalPrefs->readAloudVoiceId : "";
+    const char* want = mode;
+    if (str::Eq(mode, kTtsMultilingualVoiceId)) {
+        want = gGlobalPrefs->readAloudMultilingualVoice ? gGlobalPrefs->readAloudMultilingualVoice : "";
+    }
+    return str::EqI(TtsGetVoiceId(), want ? want : "");
+}
+
 static void ReadAloudRestartSpeakingFromCurrentPosition(WindowTab* tab) {
     if (!tab || !TtsIsSpeaking() || str::IsEmpty(tab->readAloudText)) {
         return;
@@ -13959,6 +14296,11 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
 
     int end;
     ReadAloudLang rateLang = ReadAloudLang::Unknown;
+    // Dictionary lookup may have pointed the synthesizer at another voice.
+    // Put the configured voice back before this chunk, including the system default.
+    if (!IsSmartBilingualVoicePref() && !ReadAloudSynthesizerMatchesSettings()) {
+        ReadAloudApplyVoiceFromSettings();
+    }
     if (IsSmartBilingualVoicePref() && ResolveActiveSmartBilingualVoices()) {
         ReadAloudLang lang = ReadAloudLang::Unknown;
         if (ReadAloudSmartBilingualHasBothVoices()) {
@@ -13984,8 +14326,9 @@ static bool ReadAloudSpeakChunk(WindowTab* tab, const char* errMsg) {
     int chunkLen = end - start;
     TempStr chunk = str::DupTemp(tab->readAloudText + start, (size_t)chunkLen);
 
-    // one voice at a time: text-to-speech replaces EPUB narration
+    // one voice at a time: text-to-speech replaces EPUB narration and page audio
     MediaOverlayStop();
+    PdfPageAudioStop();
     if (!TtsSpeakUtf8(chunk)) {
         ReadAloudShowNotif(tab, errMsg);
         return false;
@@ -14059,9 +14402,6 @@ static void ReadAloudSaveSpeakingRatePref(bool isZh, float rate) {
 
 //--- Settings > Read Aloud page
 
-static constexpr float kNarrationSpeedPresets[] = {0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f};
-static constexpr float kReadAloudMinRate = 0.25f;
-static constexpr float kReadAloudMaxRate = 2.0f;
 static constexpr COLORREF kReadAloudDefaultHighlight = RGB(255, 255, 0);
 
 // Changes are kept here and applied on OK; combo item data points into ownedIds.
@@ -14220,58 +14560,6 @@ static void ReadAloudPageUpdateVoiceRows(HWND hDlg, bool refill) {
     }
 }
 
-static void ReadAloudPageFillRateCombo(HWND combo, const float* presets, int nPresets, float current, bool editable) {
-    int sel = -1;
-    for (int i = 0; i < nPresets; i++) {
-        CbAddString(combo, str::FormatTemp("%.2fx", presets[i]));
-        if (ReadAloudSpeakingRatesEqual(presets[i], current)) {
-            sel = i;
-        }
-    }
-    if (sel >= 0) {
-        CbSetCurrentSelection(combo, sel);
-    } else if (editable) {
-        HwndSetText(combo, str::FormatTemp("%.2fx", current));
-    } else {
-        CbAddString(combo, str::FormatTemp("%.2fx", current));
-        CbSetCurrentSelection(combo, nPresets);
-    }
-}
-
-// accepts "1.25", "1.25x", "1,25 ×"
-static bool ReadAloudPageParseRate(HWND combo, float* rateOut) {
-    char* s = str::DupTemp(HwndGetTextTemp(combo));
-    if (!s) {
-        return false;
-    }
-    for (char* c = s; *c; c++) {
-        if (*c == ',') {
-            *c = '.';
-        }
-    }
-    char* end = nullptr;
-    double v = strtod(s, &end);
-    if (end == s) {
-        return false;
-    }
-    while (*end == ' ') {
-        end++;
-    }
-    if (*end == 'x' || *end == 'X') {
-        end++;
-    } else if (str::StartsWith(end, "\xC3\x97")) {
-        end += 2;
-    }
-    while (*end == ' ') {
-        end++;
-    }
-    if (*end || v < kReadAloudMinRate - 0.001 || v > kReadAloudMaxRate + 0.001) {
-        return false;
-    }
-    *rateOut = (float)v;
-    return true;
-}
-
 void ReadAloudSettingsPageInit(HWND hDlg) {
     ReadAloudSettingsPageDestroy();
     if (!gGlobalPrefs) {
@@ -14341,25 +14629,12 @@ void ReadAloudSettingsPageInit(HWND hDlg) {
     ReadAloudPageFitDropWidth(multi);
     TtsFreeVoices(voices);
 
-    ReadAloudPageFillRateCombo(GetDlgItem(hDlg, IDC_RA_SPEED_ZH), kReadAloudSpeedPresets,
-                               (int)dimof(kReadAloudSpeedPresets),
-                               ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateZh), true);
-    ReadAloudPageFillRateCombo(GetDlgItem(hDlg, IDC_RA_SPEED_EN), kReadAloudSpeedPresets,
-                               (int)dimof(kReadAloudSpeedPresets),
-                               ReadAloudClampSpeakingRate(gGlobalPrefs->readAloudSpeakingRateEn), true);
-
     ParsedColor* col = GetPrefsColor(gGlobalPrefs->readAloudHighlightColor);
     p->highlightColor = (col && col->parsedOk) ? col->col : kReadAloudDefaultHighlight;
     CheckDlgButton(hDlg, IDC_RA_AUTO_FOLLOW, gGlobalPrefs->readAloudAutoFollow ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(hDlg, IDC_RA_NARRATION_USE_AUDIO, gGlobalPrefs->narrationUseBookAudio ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(hDlg, IDC_RA_NARRATION_USE_COLOR,
                    gGlobalPrefs->narrationUseBookHighlightColor ? BST_CHECKED : BST_UNCHECKED);
-    float narrationSpeed = gGlobalPrefs->narrationSpeed;
-    if (narrationSpeed < kReadAloudMinRate || narrationSpeed > 4.0f) {
-        narrationSpeed = 1.0f;
-    }
-    ReadAloudPageFillRateCombo(GetDlgItem(hDlg, IDC_RA_NARRATION_SPEED), kNarrationSpeedPresets,
-                               (int)dimof(kNarrationSpeedPresets), narrationSpeed, false);
 
     ReadAloudPageUpdateVoiceRows(hDlg, true);
 }
@@ -14403,8 +14678,8 @@ static void ReadAloudPagePreview(HWND hDlg) {
     }
     MediaOverlayPause();
 
-    float rate = 1.0f;
-    ReadAloudPageParseRate(GetDlgItem(hDlg, zh ? IDC_RA_SPEED_ZH : IDC_RA_SPEED_EN), &rate);
+    float rate =
+        ReadAloudClampSpeakingRate(zh ? gGlobalPrefs->readAloudSpeakingRateZh : gGlobalPrefs->readAloudSpeakingRateEn);
     TtsSetVoiceById(voiceId);
     TtsSetSpeakingRate(rate);
     // a bilingual voice speaks its own language; other voices read the UI language
@@ -14445,12 +14720,6 @@ void ReadAloudSettingsPageOnCommand(HWND hDlg, int id, int code) {
         case IDC_RA_VOICE_EN:
             if (code == CBN_SELCHANGE || code == CBN_SETFOCUS) {
                 gReadAloudPage->previewZh = id == IDC_RA_VOICE_ZH;
-            }
-            break;
-        case IDC_RA_SPEED_ZH:
-        case IDC_RA_SPEED_EN:
-            if (code == CBN_SETFOCUS) {
-                gReadAloudPage->previewZh = id == IDC_RA_SPEED_ZH;
             }
             break;
         case IDC_RA_PREVIEW:
@@ -14499,14 +14768,7 @@ bool ReadAloudSettingsPageDrawItem(DRAWITEMSTRUCT* dis) {
     return true;
 }
 
-int ReadAloudSettingsPageInvalidControl(HWND hDlg) {
-    float rate = 0;
-    if (!ReadAloudPageParseRate(GetDlgItem(hDlg, IDC_RA_SPEED_ZH), &rate)) {
-        return IDC_RA_SPEED_ZH;
-    }
-    if (!ReadAloudPageParseRate(GetDlgItem(hDlg, IDC_RA_SPEED_EN), &rate)) {
-        return IDC_RA_SPEED_EN;
-    }
+int ReadAloudSettingsPageInvalidControl(HWND) {
     return 0;
 }
 
@@ -14532,13 +14794,6 @@ void ReadAloudSettingsPageApply(HWND hDlg) {
     }
     ReadAloudSaveVoicePref(ReadAloudPageModeId(hDlg));
 
-    float zhRate = 1.0f;
-    float enRate = 1.0f;
-    if (ReadAloudPageParseRate(GetDlgItem(hDlg, IDC_RA_SPEED_ZH), &zhRate) &&
-        ReadAloudPageParseRate(GetDlgItem(hDlg, IDC_RA_SPEED_EN), &enRate)) {
-        ReadAloudSaveSpeakingRatesPrefs(zhRate, enRate);
-    }
-
     TempStr col = SerializeColorTemp(p->highlightColor);
     if (!str::EqI(gGlobalPrefs->readAloudHighlightColor, col)) {
         str::ReplaceWithCopy(&gGlobalPrefs->readAloudHighlightColor, col);
@@ -14551,11 +14806,6 @@ void ReadAloudSettingsPageApply(HWND hDlg) {
     }
     gGlobalPrefs->narrationUseBookAudio = useAudio;
     gGlobalPrefs->narrationUseBookHighlightColor = IsDlgButtonChecked(hDlg, IDC_RA_NARRATION_USE_COLOR) == BST_CHECKED;
-    int speedIdx = (int)SendDlgItemMessageW(hDlg, IDC_RA_NARRATION_SPEED, CB_GETCURSEL, 0, 0);
-    if (speedIdx >= 0 && speedIdx < (int)dimof(kNarrationSpeedPresets) &&
-        !ReadAloudSpeakingRatesEqual(kNarrationSpeedPresets[speedIdx], gGlobalPrefs->narrationSpeed)) {
-        MediaOverlaySetRate(kNarrationSpeedPresets[speedIdx]);
-    }
 
     for (MainWindow* win : gWindows) {
         ReadAloudBarUpdate(win);
@@ -15247,8 +15497,6 @@ static WindowTab* ReadAloudBarTab(MainWindow* win) {
     return tab;
 }
 
-static constexpr float kReadAloudBarRates[] = {0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f};
-
 // the speaking-rate pref that applies to the chunk being read
 static bool ReadAloudChunkRateIsEnglish() {
     if (gReadAloudChunkLang == ReadAloudLang::En) {
@@ -15300,17 +15548,9 @@ struct TtsBarSource : ReadAloudBarSource {
         ToolbarUpdateStateForWindow(win, true);
     }
     void Skip(MainWindow*, int) override {}
-    void NextRate(MainWindow*) override {
+    void SetRate(MainWindow*, double rate) override {
         bool en = ReadAloudChunkRateIsEnglish();
-        float cur = ReadAloudRateForLang(en ? ReadAloudLang::En : ReadAloudLang::Zh);
-        float next = kReadAloudBarRates[0];
-        for (float r : kReadAloudBarRates) {
-            if (r > cur + 0.01f) {
-                next = r;
-                break;
-            }
-        }
-        ReadAloudSaveSpeakingRatePref(!en, next);
+        ReadAloudSaveSpeakingRatePref(!en, (float)rate);
     }
     void Follow(MainWindow* win) override { ReadAloudFollowNow(win); }
     void Close(MainWindow* win) override {
@@ -15456,8 +15696,10 @@ static void BuildReadAloudMenuItems(HMENU menu, MainWindow* win, bool useContext
     }
 
     WindowTab* currTab = win ? win->CurrentTab() : nullptr;
-    bool isSpeaking = TtsIsSpeaking() || MediaOverlayIsPlayingInTab(currTab);
-    bool canContinue = CanContinueReadAloud(currTab) || MediaOverlayHasSessionInTab(currTab);
+    bool isSpeaking = TtsIsSpeaking() || MediaOverlayIsPlayingInTab(currTab) || PdfPageAudioIsPlayingInTab(currTab);
+    bool canContinue = PdfPageAudioCanContinueInTab(currTab) ||
+                       (!PdfPageAudioVisiblePageHas(currTab) &&
+                        (CanContinueReadAloud(currTab) || MediaOverlayHasSessionInTab(currTab)));
     bool hasSelection =
         currTab && win->showSelection && currTab->selectionOnPage && currTab->selectionOnPage->size() > 0;
     bool canReadFromCursor = win && win->contextMenuPtValid;
@@ -15501,7 +15743,7 @@ static bool HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
     WindowTab* currTab = win->CurrentTab();
 
     if (selected == CmdTtsMenuPauseReading) {
-        if (!MediaOverlayPause()) {
+        if (!(PdfPageAudioIsPlayingInTab(currTab) && PdfPageAudioHandleReadAloud(currTab)) && !MediaOverlayPause()) {
             ReadAloudStopRememberPos();
         }
         ToolbarUpdateStateForWindow(win, true);
@@ -15509,6 +15751,7 @@ static bool HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
         if (MediaOverlayHasSessionInTab(currTab)) {
             MediaOverlayStop();
         }
+        PdfPageAudioStop();
         ReadAloudPlaybackStop();
         ToolbarUpdateStateForWindow(win, true);
     } else if (selected == CmdTtsMenuReadCurrentPage) {
@@ -15519,7 +15762,9 @@ static bool HandleReadAloudMenuSelection(MainWindow* win, UINT selected) {
         if (TtsIsSpeaking()) {
             TtsStop();
         }
-        if (MediaOverlayHasSessionInTab(currTab) && !MediaOverlayIsPlayingInTab(currTab)) {
+        if (PdfPageAudioCanContinueInTab(currTab) && PdfPageAudioHandleReadAloud(currTab)) {
+            ToolbarUpdateStateForWindow(win, true);
+        } else if (MediaOverlayHasSessionInTab(currTab) && !MediaOverlayIsPlayingInTab(currTab)) {
             MediaOverlayHandleReadAloud(currTab);
             ToolbarUpdateStateForWindow(win, true);
         } else {

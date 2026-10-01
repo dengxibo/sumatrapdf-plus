@@ -26,10 +26,13 @@
 #include "Theme.h"
 #include "Translations.h"
 #include "LookupAudio.h"
+#include "LookupTtsVoice.h"
 #include "FloatingPopupStyle.h"
 #include "Selection.h"
 #include "SelectionToolbar.h"
 #include "TextToSpeech.h"
+#include "MediaOverlayPlayer.h"
+#include "PdfPageAudio.h"
 #include "Toolbar.h"
 #include "WindowTab.h"
 #include "WordLookup.h"
@@ -138,6 +141,8 @@ struct WordLookupWnd : Wnd {
     bool closeBtnHover = false;
     bool speakerBtnHover = false;
     bool resumeReadAloudOnClose = false;
+    bool resumePdfAudioOnClose = false;
+    bool resumeMediaOverlayOnClose = false;
     WindowTab* readAloudTab = nullptr;
     float speakerHoverAnim = 0.f;
     bool speakerPlaying = false;
@@ -161,17 +166,29 @@ static bool LookupShouldResumeReadAloud(const WordLookupWnd* wnd) {
 }
 
 static void WordLookupResumeReadAloudIfNeeded(WordLookupWnd* wnd) {
-    if (!LookupShouldResumeReadAloud(wnd)) {
+    if (!wnd) {
         return;
     }
     WindowTab* tab = wnd->readAloudTab;
+    bool tts = LookupShouldResumeReadAloud(wnd);
+    bool pdf = wnd->resumePdfAudioOnClose;
+    bool narration = wnd->resumeMediaOverlayOnClose;
     wnd->resumeReadAloudOnClose = false;
+    wnd->resumePdfAudioOnClose = false;
+    wnd->resumeMediaOverlayOnClose = false;
     wnd->readAloudTab = nullptr;
-    if (tab && CanContinueReadAloud(tab)) {
+    if (!tab) {
+        return;
+    }
+    if (tts && CanContinueReadAloud(tab)) {
         ReadAloudContinueInTab(tab);
-        if (tab->win) {
-            ToolbarUpdateStateForWindow(tab->win, true);
-        }
+    } else if (pdf) {
+        PdfPageAudioResumeAfterLookup(tab);
+    } else if (narration) {
+        MediaOverlayResumePaused();
+    }
+    if ((tts || pdf || narration) && tab->win) {
+        ToolbarUpdateStateForWindow(tab->win, true);
     }
 }
 
@@ -1158,20 +1175,51 @@ static const char* LookupChinesePinyin(DictSense* sense) {
     return nullptr;
 }
 
+// Offline entries store British and American as "BrE/ /AmE", without outer
+// slashes. The popup adds one pair. When the two readings are the same, that
+// draws /kɔːz/ /kɔːz/. Keep a single reading in that case.
+static TempStr FormatEnglishPhoneticTemp(const char* ipa) {
+    if (str::IsEmpty(ipa)) {
+        return nullptr;
+    }
+    const char* sep = str::Find(ipa, "/ /");
+    if (sep && sep > ipa) {
+        size_t leftLen = (size_t)(sep - ipa);
+        const char* right = sep + 3;
+        if (str::Len(right) == leftLen && str::EqN(ipa, right, leftLen)) {
+            TempStr one = str::DupTemp(ipa, leftLen);
+            return str::FormatTemp("/%s/", one);
+        }
+    }
+    return str::FormatTemp("/%s/", ipa);
+}
+
 static TempStr LookupPhoneticLineTemp(WordLookupWnd* wnd, DictSense* sense, const char* title) {
     if (!sense || str::IsEmpty(title)) {
         return nullptr;
     }
-    // When polyphone pinyin tabs are shown, the tabs are the only pinyin UI — no second line.
-    if (wnd && !wnd->isLoading && wnd->nSenses > 1) {
-        return nullptr;
+    // Polyphone tabs (qiào / shāo) already show the reading. Part-of-speech tabs
+    // (n. / v. / 名 / 动) do not, so the phonetic line stays.
+    if (wnd && !wnd->isLoading && wnd->nSenses > 1 && wnd->senses) {
+        bool tabsAreReadings = true;
+        int nTabs = std::min(wnd->nSenses, kMaxLookupTabs);
+        for (int i = 0; i < nTabs; i++) {
+            const char* label = wnd->senses[i].label;
+            if (str::IsEmpty(label) || IsPosAbbrevLabel(label)) {
+                tabsAreReadings = false;
+                break;
+            }
+        }
+        if (tabsAreReadings) {
+            return nullptr;
+        }
     }
     if (IsChineseLookupWord(title)) {
         const char* py = LookupChinesePinyin(sense);
         return py ? str::DupTemp(py) : nullptr;
     }
     if (sense->ipa && sense->ipa[0]) {
-        return str::FormatTemp("/%s/", sense->ipa);
+        return FormatEnglishPhoneticTemp(sense->ipa);
     }
     return nullptr;
 }
@@ -1523,138 +1571,27 @@ static bool LookupShowsSpeaker(WordLookupWnd* wnd, DictSense* sense) {
     return wnd->isLoading || HasAudioMeta(sense);
 }
 
-static bool LookupTtsVoiceLangIsZh(const TtsVoiceInfo& voice) {
-    return voice.lang && (str::StartsWithI(voice.lang, "zh") || str::StartsWithI(voice.lang, "cmn"));
-}
-
-static bool LookupTtsVoiceLangIsEn(const TtsVoiceInfo& voice) {
-    return voice.lang && str::StartsWithI(voice.lang, "en");
-}
-
-// Prefer the user's Chinese read-aloud voice so lookup matches document TTS.
-static bool LookupEnsureChineseTtsVoice() {
-    auto tryId = [](const char* id) -> bool {
-        if (str::IsEmpty(id)) {
-            return false;
-        }
-        return TtsSetVoiceById(id);
-    };
-    if (gGlobalPrefs) {
-        const char* selected = gGlobalPrefs->readAloudVoiceId;
-        if (str::Eq(selected, kTtsSmartBilingualVoiceId)) {
-            // The two smart modes have separate Chinese preferences. Do not
-            // let a stale local preference override the active online mode.
-            if (tryId(gGlobalPrefs->readAloudSmartVoiceZh)) {
-                logf("Lookup TTS Chinese voice: active local smart preference\n");
-                return true;
-            }
-        } else if (str::Eq(selected, kTtsSmartOnlineBilingualVoiceId)) {
-            if (tryId(gGlobalPrefs->readAloudSmartOnlineVoiceZh)) {
-                logf("Lookup TTS Chinese voice: active online smart preference\n");
-                return true;
-            }
-        } else if (str::Eq(selected, kTtsMultilingualVoiceId)) {
-            Vec<TtsVoiceInfo> voices = TtsGetVoices();
-            bool ok = false;
-            for (TtsVoiceInfo& v : voices) {
-                if (str::Eq(v.id, gGlobalPrefs->readAloudMultilingualVoice) && LookupTtsVoiceLangIsZh(v)) {
-                    ok = tryId(v.id);
-                    break;
-                }
-            }
-            TtsFreeVoices(voices);
-            if (ok) {
-                logf("Lookup TTS Chinese voice: active multilingual preference\n");
-                return true;
-            }
-        } else if (!str::IsEmpty(selected)) {
-            // A single selected voice is shared by lookup and read-aloud only
-            // when it is actually Chinese; never force a configured English
-            // voice onto a Chinese dictionary entry.
-            // Only accept if it looks Chinese — check via voice list.
-            Vec<TtsVoiceInfo> voices = TtsGetVoices();
-            bool ok = false;
-            for (TtsVoiceInfo& v : voices) {
-                if (str::Eq(v.id, selected) && LookupTtsVoiceLangIsZh(v)) {
-                    ok = tryId(v.id);
-                    break;
-                }
-            }
-            TtsFreeVoices(voices);
-            if (ok) {
-                logf("Lookup TTS Chinese voice: selected read-aloud voice\n");
-                return true;
-            }
-        }
+// Speak with the voice Read Aloud is actually using. Do not scan for "any Chinese"
+// or "any English" voice: that replaces the synthesizer voice, and the next read-aloud
+// chunk keeps it.
+static bool LookupApplyReadAloudVoice(bool chinese) {
+    if (!gGlobalPrefs) {
+        return false;
     }
-    Vec<TtsVoiceInfo> voices = TtsGetVoices();
-    bool ok = false;
-    for (TtsVoiceInfo& v : voices) {
-        if (LookupTtsVoiceLangIsZh(v) && tryId(v.id)) {
-            ok = true;
-            logf("Lookup TTS Chinese voice: fallback Chinese voice\n");
-            break;
-        }
+    LookupTtsVoicePrefs prefs;
+    prefs.mode = gGlobalPrefs->readAloudVoiceId;
+    prefs.multilingual = gGlobalPrefs->readAloudMultilingualVoice;
+    prefs.localZh = gGlobalPrefs->readAloudSmartVoiceZh;
+    prefs.localEn = gGlobalPrefs->readAloudSmartVoiceEn;
+    prefs.onlineZh = gGlobalPrefs->readAloudSmartOnlineVoiceZh;
+    prefs.onlineEn = gGlobalPrefs->readAloudSmartOnlineVoiceEn;
+    const char* id = LookupPickVoiceId(prefs, chinese);
+    if (!id) {
+        logf("Lookup TTS: mode has no %s voice; leaving synthesizer unchanged\n", chinese ? "Chinese" : "English");
+        return false;
     }
-    TtsFreeVoices(voices);
-    return ok;
-}
-
-static bool LookupEnsureEnglishTtsVoice() {
-    auto tryId = [](const char* id) -> bool {
-        if (str::IsEmpty(id)) {
-            return false;
-        }
-        return TtsSetVoiceById(id);
-    };
-    if (gGlobalPrefs) {
-        if (tryId(gGlobalPrefs->readAloudSmartVoiceEn)) {
-            return true;
-        }
-        if (tryId(gGlobalPrefs->readAloudSmartOnlineVoiceEn)) {
-            return true;
-        }
-        if (str::Eq(gGlobalPrefs->readAloudVoiceId, kTtsMultilingualVoiceId)) {
-            Vec<TtsVoiceInfo> voices = TtsGetVoices();
-            bool ok = false;
-            for (TtsVoiceInfo& v : voices) {
-                if (str::Eq(v.id, gGlobalPrefs->readAloudMultilingualVoice) && LookupTtsVoiceLangIsEn(v)) {
-                    ok = tryId(v.id);
-                    break;
-                }
-            }
-            TtsFreeVoices(voices);
-            if (ok) {
-                return true;
-            }
-        }
-        if (!str::IsEmpty(gGlobalPrefs->readAloudVoiceId) &&
-            !str::Eq(gGlobalPrefs->readAloudVoiceId, kTtsSmartBilingualVoiceId) &&
-            !str::Eq(gGlobalPrefs->readAloudVoiceId, kTtsSmartOnlineBilingualVoiceId) &&
-            !str::Eq(gGlobalPrefs->readAloudVoiceId, kTtsMultilingualVoiceId)) {
-            Vec<TtsVoiceInfo> voices = TtsGetVoices();
-            bool ok = false;
-            for (TtsVoiceInfo& v : voices) {
-                if (str::Eq(v.id, gGlobalPrefs->readAloudVoiceId) && LookupTtsVoiceLangIsEn(v)) {
-                    ok = tryId(v.id);
-                    break;
-                }
-            }
-            TtsFreeVoices(voices);
-            if (ok) {
-                return true;
-            }
-        }
-    }
-    Vec<TtsVoiceInfo> voices = TtsGetVoices();
-    bool ok = false;
-    for (TtsVoiceInfo& v : voices) {
-        if (LookupTtsVoiceLangIsEn(v) && tryId(v.id)) {
-            ok = true;
-            break;
-        }
-    }
-    TtsFreeVoices(voices);
+    bool ok = TtsSetVoiceById(id);
+    logf("Lookup TTS %s voice id='%s' ok=%d\n", chinese ? "Chinese" : "English", id, (int)ok);
     return ok;
 }
 
@@ -1669,7 +1606,7 @@ static bool SpeakLookupChineseWithTts(WordLookupWnd* wnd) {
     }
     // Prefer the selected sense pinyin so polyphone tabs (qiào / shāo) speak differently.
     LookupAudioStop();
-    LookupEnsureChineseTtsVoice();
+    LookupApplyReadAloudVoice(true);
     if (gGlobalPrefs) {
         TtsSetSpeakingRate(gGlobalPrefs->readAloudSpeakingRateZh);
     }
@@ -1701,7 +1638,7 @@ static bool SpeakLookupEnglishWithTts(WordLookupWnd* wnd) {
         return false;
     }
     LookupAudioStop();
-    LookupEnsureEnglishTtsVoice();
+    LookupApplyReadAloudVoice(false);
     if (gGlobalPrefs) {
         TtsSetSpeakingRate(gGlobalPrefs->readAloudSpeakingRateEn);
     }
@@ -1791,6 +1728,15 @@ static void ResizeLookupForPaint(WordLookupWnd* wnd) {
     SetWindowPos(wnd->hwnd, nullptr, 0, 0, dx, dy, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
+// Switching part of speech only changes the height. The top edge stays where it is.
+static void ResizeLookupPinnedToWord(WordLookupWnd* wnd) {
+    if (!wnd || !wnd->hwnd) {
+        return;
+    }
+    ResizeLookupForPaint(wnd);
+    wnd->UpdateChrome();
+}
+
 static bool PlayLookupAudio(WordLookupWnd* wnd) {
     if (!wnd || !wnd->audioDict || wnd->audioSize == 0) {
         return false;
@@ -1853,8 +1799,7 @@ void WordLookupWnd::SelectTab(int tab) {
     speakerPlayFrames = 0;
     currTab = tab;
     tabHover = -1;
-    ResizeLookupForPaint(this);
-    PositionWordLookup(this, anchorPos);
+    ResizeLookupPinnedToWord(this);
     HwndScheduleRepaint(hwnd);
     // Switching polyphone pinyin should immediately play the new reading.
     if (IsChineseLookupWord(queryWord)) {
@@ -2948,10 +2893,18 @@ void ShowWordLookup(MainWindow* win, const char* word, Point screenPos) {
 
     WindowTab* tab = win->CurrentTab();
     bool shouldResumeOnClose = false;
-    if (kWordLookupResumeReadAloud && tab && TtsIsSpeaking() && GetReadAloudSourceTab() == tab) {
-        ReadAloudPauseRememberPos();
-        shouldResumeOnClose = CanContinueReadAloud(tab);
-        if (shouldResumeOnClose) {
+    bool shouldResumePdf = false;
+    bool shouldResumeNarration = false;
+    if (kWordLookupResumeReadAloud && tab) {
+        if (TtsIsSpeaking() && GetReadAloudSourceTab() == tab) {
+            ReadAloudPauseRememberPos();
+            shouldResumeOnClose = CanContinueReadAloud(tab);
+        } else if (PdfPageAudioPauseForLookup(tab)) {
+            shouldResumePdf = true;
+        } else if (MediaOverlayIsPlayingInTab(tab) && MediaOverlayPause()) {
+            shouldResumeNarration = true;
+        }
+        if (shouldResumeOnClose || shouldResumePdf || shouldResumeNarration) {
             ToolbarUpdateStateForWindow(win, true);
         }
     }
@@ -2965,15 +2918,17 @@ void ShowWordLookup(MainWindow* win, const char* word, Point screenPos) {
 
     auto wnd = new WordLookupWnd();
     gWordLookupWnd = wnd;
+    if (shouldResumeOnClose || shouldResumePdf || shouldResumeNarration) {
+        wnd->resumeReadAloudOnClose = shouldResumeOnClose;
+        wnd->resumePdfAudioOnClose = shouldResumePdf;
+        wnd->resumeMediaOverlayOnClose = shouldResumeNarration;
+        wnd->readAloudTab = tab;
+    }
     if (!wnd->Create(win, trimmed, screenPt)) {
+        WordLookupResumeReadAloudIfNeeded(wnd);
         gWordLookupWnd = nullptr;
         delete wnd;
         return;
-    }
-
-    if (shouldResumeOnClose) {
-        wnd->resumeReadAloudOnClose = true;
-        wnd->readAloudTab = tab;
     }
 
     auto* fetchData = new FetchLookupData();

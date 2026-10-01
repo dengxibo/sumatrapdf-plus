@@ -44,6 +44,7 @@
 #include "Translations.h"
 #include "AiToc.h"
 #include "AppDialogTheme.h"
+#include "resource.h"
 #include "DarkModeSubclass.h"
 #include "Theme.h"
 #include "PdfDarkMode.h"
@@ -2912,6 +2913,23 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
         safeBottom = mi.rcWork.bottom - AiTocS(dlg, 16);
     }
 
+    // The manual-pages button belongs only on the fallback choice page. Hide it
+    // before the window grows, or it paints over the confirm page and vanishes
+    // only after the rest of the layout finishes.
+    if (!fallback) {
+        if (dlg->manualBtn) {
+            ShowWindow(dlg->manualBtn, SW_HIDE);
+        }
+        if (dlg->bodyBtn) {
+            ShowWindow(dlg->bodyBtn, SW_HIDE);
+        }
+        if (dlg->aiDetectBtn) {
+            ShowWindow(dlg->aiDetectBtn, SW_HIDE);
+        }
+        ShowWindow(dlg->detectProgress, SW_HIDE);
+        ShowWindow(dlg->detectProgressCount, SW_HIDE);
+    }
+
     RECT outer{}, oldClient{};
     GetWindowRect(hwnd, &outer);
     GetClientRect(hwnd, &oldClient);
@@ -3091,13 +3109,14 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
     bool showSend = !fallback && !bodyFlow && !waitingState;
     bool showApi = showSend && dlg->apiBtn;
     bool showResend = waitingState && !dlg->apiMode && dlg->resend;
-    if (showSend && dlg->send) {
-        footerX -= mt.btnGap + sendW;
-        MoveWindow(dlg->send, footerX, btnTop, sendW, mt.btnH, TRUE);
-    }
+    // Pack from the right: Cancel, then API, then Web AI.
     if (showApi) {
         footerX -= mt.btnGap + apiW;
         MoveWindow(dlg->apiBtn, footerX, btnTop, apiW, mt.btnH, TRUE);
+    }
+    if (showSend && dlg->send) {
+        footerX -= mt.btnGap + sendW;
+        MoveWindow(dlg->send, footerX, btnTop, sendW, mt.btnH, TRUE);
     }
     if (showResend) {
         footerX -= mt.btnGap + resendW;
@@ -3560,6 +3579,63 @@ static HBRUSH AiTocHairlineBrush() {
     return CreateSolidBrush(ThemeUsesDarkChrome() ? RGB(68, 70, 76) : RGB(206, 208, 214));
 }
 
+struct AiTocNoticeData {
+    const WCHAR* title = nullptr;
+    const WCHAR* text = nullptr;
+    AppDialogBrushes brushes;
+};
+
+static INT_PTR CALLBACK AiTocNoticeProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    auto* data = (AiTocNoticeData*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    if (msg == WM_INITDIALOG) {
+        data = (AiTocNoticeData*)lp;
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, lp);
+        data->brushes.Create();
+        SetWindowTextW(hwnd, data->title);
+        SetDlgItemTextW(hwnd, IDC_TOC_MESSAGE, data->text);
+        SetDlgItemTextW(hwnd, IDOK, _TRW("OK"));
+        AppDialogApplyChrome(hwnd);
+        CenterDialog(hwnd);
+        return TRUE;
+    }
+    if (!data) {
+        return FALSE;
+    }
+    switch (msg) {
+        case WM_CTLCOLORDLG:
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORBTN: {
+            HBRUSH br = AppDialogCtlColorBrush(msg, wp, lp, data->brushes.background);
+            if (br) {
+                return (INT_PTR)br;
+            }
+            break;
+        }
+        case WM_COMMAND:
+            if (LOWORD(wp) == IDOK || LOWORD(wp) == IDCANCEL) {
+                EndDialog(hwnd, IDOK);
+                return TRUE;
+            }
+            break;
+        case WM_CLOSE:
+            EndDialog(hwnd, IDOK);
+            return TRUE;
+        case WM_DESTROY:
+            data->brushes.Destroy();
+            break;
+    }
+    return FALSE;
+}
+
+static void AiTocShowApiConfigNotice(HWND owner) {
+    AiTocNoticeData data;
+    data.title = _TRW("AI Recognize Table of Contents");
+    data.text = _TRW(
+        "Configure the AI table of contents API (base URL, key and model) on the OCR and "
+        "AI settings page first.");
+    CreateAppDialogBox(IDD_DIALOG_AI_TOC_NOTICE, owner, AiTocNoticeProc, (LPARAM)&data);
+}
+
 static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     AiTocDialog* dlg = nullptr;
     if (msg == WM_CREATE) {
@@ -3887,10 +3963,7 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
             return 0;
         }
         if (!AiTocApiConfigured()) {
-            MessageBoxWarning(hwnd,
-                              _TRA("Configure the AI table of contents API (base URL, key and model) on the OCR and "
-                                   "AI settings page first."),
-                              _TRA("AI Recognize Table of Contents"));
+            AiTocShowApiConfigNotice(hwnd);
             return 0;
         }
         DisplayModel* dm = dlg->win ? dlg->win->AsFixed() : nullptr;
@@ -3904,10 +3977,7 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
     }
     if (msg == WM_COMMAND && LOWORD(wp) == 1006 && HIWORD(wp) == BN_CLICKED && !dlg->busy && !dlg->submitted) {
         if (!AiTocApiConfigured()) {
-            MessageBoxWarning(hwnd,
-                              _TRA("Configure the AI table of contents API (base URL, key and model) on the OCR and "
-                                   "AI settings page first."),
-                              _TRA("AI Recognize Table of Contents"));
+            AiTocShowApiConfigNotice(hwnd);
             return 0;
         }
         AiTocStartApiDetect(dlg);

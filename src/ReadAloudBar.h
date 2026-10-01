@@ -31,7 +31,7 @@ struct ReadAloudBarSource {
     virtual void Next(MainWindow* win) = 0;
     virtual void TogglePlay(MainWindow* win) = 0;
     virtual void Skip(MainWindow* win, int dir) = 0;
-    virtual void NextRate(MainWindow* win) = 0;
+    virtual void SetRate(MainWindow* win, double rate) = 0;
     virtual void Follow(MainWindow* win) = 0;
     virtual void Close(MainWindow* win) = 0;
 };

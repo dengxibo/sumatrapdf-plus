@@ -15,7 +15,7 @@ Supported for fixed-layout and reflowable documents (PDF, EPUB, MOBI, etc.) that
 5. Choose **Start Reading From Top**, **Start Reading From Cursor Position**, or **Start Reading Selection**.
 6. Pick a voice in **Read Aloud → Read Aloud Settings...**.
 
-While reading, the current word is highlighted and a read-aloud bar appears at the bottom of the page: previous / next sentence, play / pause, speed, settings (gear) and close. **Pause Reading**, **Continue Reading**, and **Stop Reading** are also in the Read Aloud menu.
+While reading, the current word is highlighted and a read-aloud bar appears at the bottom of the page: previous / next sentence, play / pause, speed, settings (gear) and close. Scrolling the spoken text off screen stops following; **Follow**, or scrolling it back into view, resumes it. **Pause Reading**, **Continue Reading**, and **Stop Reading** are also in the Read Aloud menu.
 
 EPUB 3 books with recorded narration (Media Overlays) use the same menu and the same bar: Read Aloud plays the book's own audio. Turn this off with **Play the book's recorded narration when available** in the settings page to read such books with the voice instead.
 
@@ -34,9 +34,10 @@ EPUB 3 books with recorded narration (Media Overlays) use the same menu and the 
 All options are on one page: **Settings → Read Aloud** (also **Read Aloud → Read Aloud Settings...** and the gear on the read-aloud bar):
 
 - **Voice**: system default, local or online smart bilingual (a Chinese and an English voice, picked per sentence), or an online multilingual voice. **Preview** speaks a short sample.
-- **Speed**: separate Chinese and English speed, 0.25x to 2.00x.
 - **Highlight and follow**: highlight colour, and whether the page follows the text being read.
-- **Narrated books (EPUB 3)**: play the book's recorded narration, use the book's highlight colour, narration speed.
+- **Narrated books (EPUB 3)**: play the book's recorded narration, and use the book's highlight colour.
+
+Speaking speed for text-to-speech and for a book's recorded narration is on the read-aloud bar (0.25x to 2x).
 
 Changes take effect when you press OK.
 

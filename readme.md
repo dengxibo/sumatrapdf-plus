@@ -71,8 +71,8 @@ Recognize scanned pages (little or no text layer) so you can **select, search, l
 
 **How to use / 使用方法**
 
-- **Toolbar / 工具栏** — **Auto OCR** (before the speaker). Click to toggle recognition as you view or search scanned pages (default **off**). Dropdown: **Recognize all pages**, **Recognize all pages and save**, **OCR region**.  
-  **自动 OCR**（在喇叭按钮前）。单击后翻页即识别扫描页（默认**关**）。下拉：**全文识别**、**全文识别并保存**、**框选识别**。
+- **Toolbar / 工具栏** — **Auto OCR** (before the speaker). Click to toggle recognition as you view or search scanned pages (default **on**). Dropdown: **Recognize all pages**, **Recognize all pages and save**, **OCR region**.  
+  **自动 OCR**（在喇叭按钮前）。单击后翻页即识别扫描页（默认**开**）。下拉：**全文识别**、**全文识别并保存**、**框选识别**。
 - **Recognize all pages / 全文识别** — re-OCRs every page even if a text layer already exists (garbled dual-layer PDFs). Results stay in memory for this session. If there is no outline, bookmarks are extracted after OCR.  
   即使已有文字层也会再扫一遍（乱码双层 PDF）。结果先留在本次打开的文档里。没有目录时识别后提取书签。
 - **Recognize all pages and save / 全文识别并保存** — scan with progress, then **overwrite the current PDF** (no Save As). Prompts before replacing an existing text layer or outline. PDF only.  
@@ -85,8 +85,8 @@ Recognize scanned pages (little or no text layer) so you can **select, search, l
 Keep the `ocr` folder next to the exe. Details: [docs/md/OCR.md](docs/md/OCR.md).  
 请保留 exe 同目录的 `ocr` 文件夹。详见 [docs/md/OCR.md](docs/md/OCR.md)。
 
-Advanced setting: `AutoOcrScanPages` (default `false`).  
-高级设置：`AutoOcrScanPages`（默认 `false`）。
+Advanced setting: `AutoOcrScanPages` (default `true` when the key is missing).  
+高级设置：`AutoOcrScanPages`（设置里没有这一项时默认 `true`）。
 
 ---
 

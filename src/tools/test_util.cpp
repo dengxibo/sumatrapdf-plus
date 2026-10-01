@@ -23,6 +23,7 @@ extern void HtmlPrettyPrintTest();
 extern void HtmlPullParser_UnitTests();
 extern void JsonTest();
 extern void OcrTextMerge_UnitTests();
+extern void LookupTtsVoice_UnitTests();
 extern void EbookImagePaper_UnitTests();
 extern void FlattenedCutout_UnitTests();
 extern void SettingsUtilTest();
@@ -124,6 +125,7 @@ int main(int argc, char** argv) {
     HtmlPullParser_UnitTests();
     JsonTest();
     OcrTextMerge_UnitTests();
+    LookupTtsVoice_UnitTests();
     EbookImagePaper_UnitTests();
     FlattenedCutout_UnitTests();
     SettingsUtilTest();

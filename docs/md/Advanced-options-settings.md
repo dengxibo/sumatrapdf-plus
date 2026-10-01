@@ -63,7 +63,7 @@ InverseSearchCmdLine =
 
 ; when restoring session, delay loading of documents until their tab is selected
 ; (introduced in version 3.6)
-LazyLoading = false
+LazyLoading = true
 
 ; background color of the non-document windows, traditionally yellow
 MainWindowBackground = #80fff200
@@ -138,7 +138,7 @@ EnableDoubleClickWordLookup = true
 ; if true, automatically OCR scanned pages with little or no text so they can be
 ; selected and searched. Models live in {exedir}/ocr/ (introduced in version
 ; 3.8)
-AutoOcrScanPages = false
+AutoOcrScanPages = true
 
 ; if true, overwrite the current PDF after Recognize All Scanned Pages and after
 ; extracting bookmarks (introduced in version 3.8)
@@ -271,7 +271,7 @@ TreeFontSize = 0
 ; if true, bookmark and favorites tree labels wrap to multiple lines; if false,
 ; single line with ellipsis and full text in tooltip on hover (introduced in
 ; version 3.7)
-TreeWrapLabels = true
+TreeWrapLabels = false
 
 ; over-ride application font size. 0 means Windows default (introduced in
 ; version 3.6)

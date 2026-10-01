@@ -33,6 +33,26 @@ static bool IsHanCp(int cp) {
            (cp >= 0x20000 && cp <= 0x2FA1F);
 }
 
+bool OcrJoinNeedsSpace(const char* left, const char* right) {
+    if (!left || !left[0] || !right || !right[0]) {
+        return false;
+    }
+    int prev = LastCodepoint(left, (int)str::Len(left));
+    int next = FirstCodepoint(right);
+    // Soft-hyphen / end-of-line hyphen: keep letters glued ("Califor-" + "nia").
+    if (prev == '-' || prev == 0x00AD || prev == 0x2010 || prev == 0x2011) {
+        return false;
+    }
+    if (IsAsciiAlnum(prev) && IsAsciiAlnum(next)) {
+        return true;
+    }
+    // Mixed Latin / Cyrillic / etc. around alnum still needs a separator.
+    if (!IsHanCp(prev) && !IsHanCp(next) && (IsAsciiAlnum(prev) || IsAsciiAlnum(next))) {
+        return true;
+    }
+    return false;
+}
+
 bool OcrTextEndsWithTerminalPunct(const char* s) {
     if (!s || !s[0]) {
         return false;
@@ -287,14 +307,8 @@ static bool ShouldJoinLines(const OcrMergeLine& a, const OcrMergeLine& b, const 
 
 static void AppendJoined(StrBuilder& sb, const char* s) {
     // CJK text flows without a separator; Latin words need one space.
-    if (sb.Size() > 0 && s && s[0]) {
-        int prev = LastCodepoint(sb.LendData(), (int)sb.Size());
-        int next = FirstCodepoint(s);
-        if (IsAsciiAlnum(prev) && IsAsciiAlnum(next)) {
-            sb.Append(" ");
-        } else if (!IsHanCp(prev) && !IsHanCp(next) && (IsAsciiAlnum(prev) || IsAsciiAlnum(next))) {
-            sb.Append(" ");
-        }
+    if (sb.Size() > 0 && s && s[0] && OcrJoinNeedsSpace(sb.LendData(), s)) {
+        sb.Append(" ");
     }
     sb.Append(s);
 }

@@ -77,6 +77,7 @@ WindowTab::~WindowTab() {
     str::FreePtr(&filePath);
     str::FreePtr(&frameTitle);
     str::FreePtr(&readAloudText);
+    str::FreePtr(&fontReloadAnchor);
     if (readAloudHighlight) {
         ReadAloudHighlightFree(readAloudHighlight);
         delete readAloudHighlight;
@@ -151,7 +152,7 @@ void WindowTab::MoveDocBy(int dx, int dy) const {
     }
 
     if (win && !win->readAloudScrollFromCode) {
-        ReadAloudOnUserViewChanged(win);
+        ReadAloudUserTookTheView(win);
     }
 }
 

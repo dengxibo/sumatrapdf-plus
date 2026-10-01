@@ -1011,16 +1011,15 @@ HFONT GetAppTreeFontForDpi(int dpi) {
     if (fonts && fonts->treeFont) {
         return fonts->treeFont;
     }
-    bool userTreeFontSize = gGlobalPrefs->treeFontSize >= kMinFontSize;
     int fntSize = gGlobalPrefs->treeFontSize;
     if (fntSize < kMinFontSize) {
         fntSize = gGlobalPrefs->uIFontSize;
     }
     if (fntSize < kMinFontSize) {
         fntSize = GetAppMenuFontSizeForDpi(dpi);
-        if (!userTreeFontSize) {
-            fntSize += 2;
-        }
+        // Slightly larger than the menu face keeps sidebar titles readable;
+        // row height padding is separate (HwndSetTreeFontForDpi).
+        fntSize += 2;
     }
     char* fntNameUser = gGlobalPrefs->treeFontName;
     HFONT font = nullptr;

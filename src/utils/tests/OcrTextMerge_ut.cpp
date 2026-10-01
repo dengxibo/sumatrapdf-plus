@@ -95,6 +95,24 @@ static void SoftWrapMergeTest() {
         "\xe7\xac\xac\xe4\xb8\x89\xe8\xa1\x8c\xe8\xbf\x98\xe6\x98\xaf\xe5\x90\x8c\xe4\xb8\x80\xe6\xae\xb5");
 }
 
+// English soft wraps need a space so "from"+"California" is not one word.
+static void EnglishSoftWrapSpaceTest() {
+    utassert(OcrJoinNeedsSpace("from", "California"));
+    utassert(!OcrJoinNeedsSpace("from", "。"));
+    utassert(!OcrJoinNeedsSpace("汉字", "继续"));
+    utassert(!OcrJoinNeedsSpace("Califor-", "nia"));
+
+    Vec<OcrMergeLine> lines;
+    AddLine(lines, "named me Cali because I'm a calico cat from", 100, 100, 400, 16);
+    AddLine(lines, "California. We live in a little house on a quiet", 100, 120, 400, 16);
+    AddLine(lines, "street where everybody knows everybody.", 100, 140, 280, 16);
+    StrVec out;
+    OcrMergeLayoutLines(out, lines, false);
+    ExpectParas(out,
+                "named me Cali because I'm a calico cat from California. We live in a little house on a quiet street "
+                "where everybody knows everybody.");
+}
+
 // first-line indent starts a new paragraph
 static void IndentBreakTest() {
     Vec<OcrMergeLine> lines;
@@ -370,6 +388,7 @@ void OcrTextMerge_UnitTests() {
     TerminalPunctTests();
     EmptyAndSingleTests();
     SoftWrapMergeTest();
+    EnglishSoftWrapSpaceTest();
     IndentBreakTest();
     TerminalPunctBreakTest();
     LargeGapBreakTest();

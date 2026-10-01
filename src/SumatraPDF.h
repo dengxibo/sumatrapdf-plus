@@ -18,6 +18,9 @@ extern bool gOcrAutoBench;
 // select-all text via the merged-copy path into this file and exit
 extern char* gCopyBenchOutPath;
 bool IsSidebarSplitterLiveDrag();
+// The live-resize mask covers the native scrollbar plus this many client pixels,
+// so a themed bar cannot peek out. The selection stroke sits on that edge.
+constexpr int kSidebarScrollbarMaskClientOverlap = 2;
 bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM lp);
 // Grow the ToC sidebar to at least minDx (clamped to half the frame). No-op if already wide enough.
 void EnsureSidebarDxAtLeast(MainWindow* win, int minDx);

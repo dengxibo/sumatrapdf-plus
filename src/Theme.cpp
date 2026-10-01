@@ -396,7 +396,11 @@ void SetThemeByIndex(int themeIdx) {
             ThemePageRenderColors(viewBg);
             DarkMode::setViewBackgroundColor(viewBg);
         } else {
-            DarkMode::setViewBackgroundColor(ThemeWindowControlBackgroundColor());
+            // Cream / off-white for native Edit/Combo (Warm). Without this they stay
+            // pure COLOR_WINDOW white and glare against the rest of the chrome.
+            DarkMode::setViewBackgroundColor(ctrlBg);
+            DarkMode::setSysColor(COLOR_WINDOW, ctrlBg);
+            DarkMode::setSysColor(COLOR_WINDOWTEXT, ThemeWindowTextColor());
         }
         DarkMode::calculateTreeViewStyle();
 

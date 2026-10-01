@@ -978,6 +978,7 @@
     <ClCompile Include="..\src\utils\tests\HtmlPullParser_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\JsonParser_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\OcrTextMerge_ut.cpp" />
+    <ClCompile Include="..\src\utils\tests\LookupTtsVoice_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\EbookImagePaper_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\FlattenedCutout_ut.cpp" />
     <ClCompile Include="..\src\utils\tests\PrintedTocModel_ut.cpp" />

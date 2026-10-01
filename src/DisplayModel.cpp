@@ -2772,6 +2772,7 @@ bool DisplayModel::GoToNextPage() {
     if (ValidPageNo(currPageNo - columns) && PageVisible(currPageNo - columns) &&
         GetPageInfo(currPageNo)->visibleRatio < 1.0) {
         GoToPage(currPageNo, false);
+        cb->OnUserPageTurn(this);
         return true;
     }
     int firstPageInNewRow = FirstPageInARowNo(currPageNo + columns, columns, IsBookView(GetDisplayMode()));
@@ -2786,6 +2787,7 @@ bool DisplayModel::GoToNextPage() {
         return false;
     }
     GoToPage(firstPageInNewRow, false);
+    cb->OnUserPageTurn(this);
     return true;
 }
 
@@ -2829,6 +2831,7 @@ bool DisplayModel::GoToPrevPage(int scrollY) {
             showedMore = viewPort.y != yBefore;
         }
         if (showedMore) {
+            cb->OnUserPageTurn(this);
             return true;
         }
     }
@@ -2854,6 +2857,7 @@ bool DisplayModel::GoToPrevPage(int scrollY) {
     }
 
     GoToPage(firstPageInNewRow, scrollY);
+    cb->OnUserPageTurn(this);
     return true;
 }
 

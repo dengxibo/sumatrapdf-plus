@@ -45,6 +45,12 @@ struct WindowTab {
     double restoreScrollXAfterFontReload = -1;
     double restoreScrollYAfterFontReload = -1;
     float restoreInPageScrollRatioAfterFontReload = -1.f;
+    // First visible line (whitespace removed) and its spine chapter, so a font
+    // reflow can return to that text instead of the old page number.
+    char* fontReloadAnchor = nullptr;
+    int fontReloadChapter = -1;
+    // Keep the previous frame on screen until that line is in place.
+    bool holdPaintForFontReload = false;
     u32 lastDarkModeEpoch = 0;
     // CSS/theme generation last applied to this reflowable document.
     u32 reflowThemeEpoch = 0;

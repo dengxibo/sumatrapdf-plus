@@ -2604,6 +2604,34 @@ static int TocGetItemLabelLeft(HWND hwnd, HTREEITEM hItem) {
     return indent * (TocTreeItemLevel(hwnd, hItem) + 1);
 }
 
+// Scrollbar mask is a sibling of the tree. Its left edge in the tree's client
+// coordinates is the last pixel the tree can still show while the mask is up.
+static int TocVisibleClientRight(HWND hwnd, int clientRight) {
+    MainWindow* win = FindMainWindowByHwnd(hwnd);
+    if (!win || clientRight <= 8) {
+        return clientRight;
+    }
+    HWND mask = nullptr;
+    if (win->tocTreeView && win->tocTreeView->hwnd == hwnd) {
+        mask = win->hwndTocScrollbarMask;
+    } else if (win->favTreeView && win->favTreeView->hwnd == hwnd) {
+        mask = win->hwndFavScrollbarMask;
+    }
+    if (!mask || !IsWindowVisible(mask)) {
+        return clientRight;
+    }
+    RECT rcMask{};
+    if (!GetWindowRect(mask, &rcMask)) {
+        return clientRight;
+    }
+    MapWindowPoints(HWND_DESKTOP, hwnd, (POINT*)&rcMask, 2);
+    // Right-half overlap only, so a left-side mask cannot shrink the row.
+    if (rcMask.left <= clientRight / 2 || rcMask.left >= clientRight) {
+        return clientRight;
+    }
+    return rcMask.left;
+}
+
 static void DrawTreeWrappedLabel(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, const WCHAR* textW, MainWindow* win,
                                  int fontFlags) {
     if (!textW || !*textW) {
@@ -2629,7 +2657,8 @@ static void DrawTreeWrappedLabel(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, const
     }
     RECT rcClient;
     GetClientRect(hwnd, &rcClient);
-    rcLabel.right = rcClient.right - 2;
+    int visibleRight = TocVisibleClientRight(hwnd, rcClient.right);
+    rcLabel.right = visibleRight - 2;
     if (TocCalibIsActive(win)) {
         rcLabel.right -= TocCalibColumnsDx(hwnd);
         if (rcLabel.right < rcLabel.left + 24) {
@@ -2651,7 +2680,7 @@ static void DrawTreeWrappedLabel(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, const
 
     if (!skipBgFill) {
         RECT rcFill = rcLabel;
-        rcFill.right = rcClient.right;
+        rcFill.right = visibleRight;
         HBRUSH br = CreateSolidBrush(bgCol);
         FillRect(cd->hdc, &rcFill, br);
         DeleteObject(br);
@@ -2698,7 +2727,7 @@ static int TocMinItemLabelHeight(HDC hdc) {
     if (!GetTextMetrics(hdc, &tm)) {
         return 18;
     }
-    return tm.tmHeight + 4;
+    return tm.tmHeight + 2;
 }
 
 static int TocMeasureWrappedLabelHeight(HDC hdc, const WCHAR* text, int maxWidth, int minHeight) {
@@ -2707,7 +2736,7 @@ static int TocMeasureWrappedLabelHeight(HDC hdc, const WCHAR* text, int maxWidth
     }
     RECT rc = {0, 0, maxWidth, 0};
     DrawTextW(hdc, text, -1, &rc, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX | DT_LEFT | DT_EDITCONTROL);
-    int h = rc.bottom - rc.top + 4;
+    int h = rc.bottom - rc.top + 2;
     return h < minHeight ? minHeight : h;
 }
 
@@ -2854,6 +2883,13 @@ static void GetTocItemRowRect(HWND hwnd, HTREEITEM hItem, NMCUSTOMDRAW* cd, RECT
     if (rcRow.right < rcClient.right) {
         rcRow.right = rcClient.right;
     }
+    // The scrollbar mask is sized from the system scrollbar metric, which can
+    // be wider than this window's bar. A fixed inset leaves the right stroke
+    // under the mask. Stop the row at the mask's real left edge.
+    int visibleRight = TocVisibleClientRight(hwnd, rcClient.right);
+    if (visibleRight < rcRow.right && visibleRight - rcRow.left > 8) {
+        rcRow.right = visibleRight;
+    }
 }
 
 static void DrawTocExpandGlyph(HDC hdc, HWND hwnd, HTREEITEM hItem, const RECT& rcRow) {
@@ -2915,8 +2951,19 @@ static void DrawTocHotTrackFill(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem) {
 static void DrawTocSelectionFrame(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem) {
     RECT rcRow;
     GetTocItemRowRect(hwnd, hItem, cd, rcRow);
+    RECT rcClient{};
+    GetClientRect(hwnd, &rcClient);
+    // Rectangle omits its right edge, so +1 puts that stroke on rcRow.right.
+    // While the mask overlaps the client, rcRow.right is already the mask's
+    // left edge; inflating again would push the stroke under the mask.
+    bool maskOverlaps = rcRow.right < rcClient.right;
     RECT rcFrame = rcRow;
-    InflateRect(&rcFrame, 1, 0);
+    rcFrame.left -= 1;
+    if (!maskOverlaps) {
+        rcFrame.right += 1;
+    }
+    int saved = SaveDC(cd->hdc);
+    SelectClipRgn(cd->hdc, nullptr);
     COLORREF borderCol = TocSelectionBorderColor();
     HPEN pen = CreatePen(PS_SOLID, 1, borderCol);
     HPEN oldPen = (HPEN)SelectObject(cd->hdc, pen);
@@ -2926,15 +2973,22 @@ static void DrawTocSelectionFrame(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem) 
     SelectObject(cd->hdc, oldPen);
     DeleteObject(pen);
 
-    // Cover inactive-selection blue caps on the full row left/right edges.
-    HPEN edgePen = CreatePen(PS_SOLID, 2, borderCol);
-    oldPen = (HPEN)SelectObject(cd->hdc, edgePen);
+    // Cover inactive-selection blue caps on the full row edges. A centered 2px
+    // pen on the mask boundary straddles the mask and disappears; the mask
+    // paints that outer pixel.
+    HPEN leftPen = CreatePen(PS_SOLID, 2, borderCol);
+    oldPen = (HPEN)SelectObject(cd->hdc, leftPen);
     MoveToEx(cd->hdc, rcRow.left, rcRow.top, nullptr);
     LineTo(cd->hdc, rcRow.left, rcRow.bottom);
+    SelectObject(cd->hdc, oldPen);
+    DeleteObject(leftPen);
+    HPEN rightPen = CreatePen(PS_SOLID, maskOverlaps ? 1 : 2, borderCol);
+    oldPen = (HPEN)SelectObject(cd->hdc, rightPen);
     MoveToEx(cd->hdc, rcRow.right - 1, rcRow.top, nullptr);
     LineTo(cd->hdc, rcRow.right - 1, rcRow.bottom);
     SelectObject(cd->hdc, oldPen);
-    DeleteObject(edgePen);
+    DeleteObject(rightPen);
+    RestoreDC(cd->hdc, saved);
 }
 
 static COLORREF TocItemTextColor(TocItem* tocItem, MainWindow* win, TreeView* treeView) {
@@ -2958,6 +3012,48 @@ static bool TocDrawItemSelected(MainWindow* win, TocItem* tocItem, NMCUSTOMDRAW*
         return TocItemIsMultiSelected(win, tocItem);
     }
     return cd && (cd->uItemState & CDIS_SELECTED) != 0;
+}
+
+void PaintTocSelectionEdgeOnScrollbarMask(HWND mask, HDC hdc) {
+    if (!mask || !hdc || !ThemeUsesDarkChrome()) {
+        return;
+    }
+    MainWindow* win = FindMainWindowByHwnd(mask);
+    if (!win || !win->tocTreeView || !win->tocTreeView->hwnd || mask != win->hwndTocScrollbarMask) {
+        return;
+    }
+    HWND tree = win->tocTreeView->hwnd;
+    RECT rcClient{};
+    GetClientRect(tree, &rcClient);
+    COLORREF col = TocSelectionBorderColor();
+    HPEN pen = CreatePen(PS_SOLID, 1, col);
+    HPEN oldPen = (HPEN)SelectObject(hdc, pen);
+    HTREEITEM h = TreeView_GetFirstVisible(tree);
+    int guard = 0;
+    while (h && guard++ < 256) {
+        RECT rcItem{};
+        if (!TreeView_GetItemRect(tree, h, &rcItem, FALSE) || rcItem.top >= rcClient.bottom) {
+            break;
+        }
+        TocItem* tocItem = (TocItem*)win->tocTreeView->GetTreeItemByHandle(h);
+        NMCUSTOMDRAW cd{};
+        cd.rc = rcItem;
+        if ((TreeView_GetItemState(tree, h, TVIS_SELECTED) & TVIS_SELECTED) != 0) {
+            cd.uItemState |= CDIS_SELECTED;
+        }
+        if (TocDrawItemSelected(win, tocItem, &cd)) {
+            RECT rcRow = rcItem;
+            GetTocItemRowRect(tree, h, &cd, rcRow);
+            MapWindowPoints(tree, mask, (POINT*)&rcRow, 2);
+            // Outer pixel of the right stroke. The tree paints the pixel just
+            // left of the mask; together they close the box on the mask edge.
+            MoveToEx(hdc, 0, rcRow.top, nullptr);
+            LineTo(hdc, 0, rcRow.bottom);
+        }
+        h = TreeView_GetNextVisible(tree, h);
+    }
+    SelectObject(hdc, oldPen);
+    DeleteObject(pen);
 }
 
 static void SetTocItemDrawColors(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, TocItem* tocItem, MainWindow* win) {
@@ -3194,20 +3290,14 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
                 ev->result = CDRF_DODEFAULT;
                 return;
             }
-            bool isSelected = TocDrawItemSelected(win, tocItem, cd);
-            bool isHot = (cd->uItemState & CDIS_HOT) != 0;
             SetTocItemDrawColors(tvcd, ev->treeView, tocItem, win);
             if (TocIsEditingItem(win, (HTREEITEM)cd->dwItemSpec)) {
                 tvcd->clrText = tvcd->clrTextBk;
             }
-            // Hot rows (any theme) need postpaint so the shared full-row hover
-            // fill (DrawTocHotTrackFill) replaces the system's pale-blue hot
-            // highlight with the same gray used by calibration mode.
-            if (isSelected || isHot || TocCalibIsActive(win)) {
-                ev->result = CDRF_NOTIFYPOSTPAINT;
-                return;
-            }
-            ev->result = CDRF_DODEFAULT;
+            // Every row is custom-drawn so a title that does not fit ends with
+            // the same ellipsis. Native TreeView paint only hard-clips, which
+            // made the ellipsis appear on the selected row alone.
+            ev->result = CDRF_NOTIFYPOSTPAINT;
             return;
         }
         if (cd->dwDrawStage == CDDS_ITEMPOSTPAINT) {
@@ -3232,7 +3322,7 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
                 if (tocItem && !TocIsEditingItem(win, hItem)) {
                     DrawTocWrappedLabel(tvcd, ev->treeView, tocItem, win);
                 }
-            } else if (TocCalibIsActive(win) && tocItem && knownTree && win && win->tocLoaded && !win->isBeingClosed &&
+            } else if (tocItem && knownTree && win && win->tocLoaded && !win->isBeingClosed &&
                        !TocIsEditingItem(win, hItem)) {
                 DrawTocWrappedLabel(tvcd, ev->treeView, tocItem, win);
             }

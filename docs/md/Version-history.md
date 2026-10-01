@@ -2,8 +2,60 @@
 
 ## next
 
+- EPUB 改变字号后直接停在当前阅读窗口第一行的文字上，重排过程中不再先闪出封面。
+  Changing the EPUB font size stays on the first line of the current reading window. The cover is not shown while the book reflows.
+- 选项里的朗读页不再有中文速度、英语速度和内嵌速度。语速只在朗读条上调整。
+  The Read Aloud settings page no longer has Chinese speed, English speed, or embedded narration speed. Speed is changed on the read-aloud bar.
+- 朗读条可以拖到页面上的其他位置。这次显示期间停在拖到的地方；关掉后再打开，回到底部居中。位置不写入设置。
+  The Read Aloud bar can be dragged elsewhere on the page. It stays there while it remains open. The next time it opens, it sits at the bottom center again. The position is not saved.
+- 「自动识别没有文字层的扫描页面」（`AutoOcrScanPages`）系统默认改为开启。设置里没有这一项时生效；已经保存为关闭的保持关闭。
+  Automatically OCR scanned pages (`AutoOcrScanPages`) now defaults to on when the setting is missing. A saved off value stays off.
+- 有声书倍速与朗读语速对齐，最慢一档为 0.25x（朗读条）。
+  Narrated-book speed matches the Read Aloud range. The slowest preset is 0.25x, on the bar.
+- 有内嵌录音的 PDF（喇叭、Sound / RichMedia / Screen）用朗读条做整页播放：播放、暂停、倍速、上下一页录音。工具栏上的喇叭在这一页有录音时也播放这段录音。高亮从喇叭图标所在的位置开始，跳过图下较小的说明和页边页码；录音按语音能量对齐剩下的正文，句间停顿不会把高亮提前推走。没有文字层时先识别这一页。
+  PDFs with embedded audio use the Read Aloud bar for page playback: play, pause, speed, and previous or next page recording. The toolbar speaker plays that recording when the page has one. Highlight starts at the speaker icon and skips smaller captions under pictures and page numbers in the margin. The clip is aligned to the remaining text by speech energy, and pauses do not push the highlight ahead. A page with no text layer is recognized first.
+- 朗读条倍速改为点开菜单直接选择，系统语音和有声书都从 0.25x 到 2x，不再逐档循环。菜单底色跟浮层一样，随暖色、白色、Dracula、纯黑四种主题变化。
+  The Read Aloud bar speed opens a menu. Text-to-speech and narrated books both offer 0.25x through 2x. The menu background follows the floating panels in Warm, White, Dracula, and Black.
+- 朗读条中文「跟随」与同一行的图标、倍速垂直对齐。汉字字面偏高，绘制时下移约一字高的十分之一。关闭按钮改用与播放图标同尺寸的叉，不再用标题栏那个更大的叉。
+  The Read Aloud bar Chinese Follow label lines up with the icons and speed. Han glyphs sit high in the em box, so the label is shifted down by about a tenth of the font height. The close button uses the same-size X as the playback icons, not the larger title-bar X.
+- 选项对话框左侧分类：行距略加大；选中框上下留白一致，字不再贴着下沿。
+  Options categories on the left have a little more space between rows. The selection box pads the label equally above and below.
+- 查词喇叭按当前朗读模式发音，不再改掉后面的朗读音色。在线多语言（如 Brian）查没有音标的词时，不再先切到已保存的本地英文女声；系统默认、本地中英、在线中英也只使用该模式自己的音色。下一次朗读会把合成器设回当前模式。
+  The dictionary speaker uses the active Read Aloud voice and no longer leaves a different voice selected. With Online multilingual (for example Brian), a word with no phonetic no longer switches to a saved local English voice. System default, local bilingual, and online bilingual each use only that mode’s voice. The next Read Aloud chunk restores the configured voice.
 - 修复教材 PDF 矩阵外括号再次显示为普通方括号（[#35](https://github.com/dengxibo/sumatrapdf-plus/issues/35) 回归）：`ABCDEF+Symbol` 子集名仍走内置 Base14 Symbol，不用 Windows Symbol.ttf。
   Fix matrix outer brackets again rendering as plain square brackets ([#35](https://github.com/dengxibo/sumatrapdf-plus/issues/35) regression): subset names like `ABCDEF+Symbol` use built-in Base14 Symbol, not Windows Symbol.ttf.
+
+- 选项对话框「OCR 和 AI」页恢复「自动识别没有文字层的扫描页面」。打开后，遇到没有文字层的扫描版 PDF 会自动打开自动 OCR。
+  Options → OCR and AI again has Automatically OCR scanned pages. When on, opening a PDF with no text layer turns Auto OCR on.
+- 书签栏较窄时，放不下的标题都在末尾加省略号，不只选中的那一行。能完整显示的标题不加。
+  When the bookmark column is narrow, every title that does not fit ends with an ellipsis, not only the selected row. Titles that fit are unchanged.
+- 暗色主题下拖书签分隔条时，选中条目的框右边会被藏滚动条的遮罩盖住一竖。这条竖线改画在遮罩左缘上，框保持闭合。
+  In dark theme, dragging the bookmark splitter hides the scrollbar with a mask that used to cover the selected row's right stroke. That stroke is now drawn on the mask's left edge, so the box stays closed.
+- 取词：英式和美式音标相同时只显示一次，不再出现 `/kɔːz/ /kɔːz/`。两边不同时仍都保留。
+  Word lookup shows one phonetic when the British and American readings match, instead of `/kɔːz/ /kɔːz/`. Different readings are still both shown.
+- 取词：一个词有多个词性时仍显示音标。多音字标签本身就是读音，不再重复一行。
+  Word lookup shows the phonetic line when a word has several parts of speech. Polyphone tabs already show the reading, so that line stays hidden there.
+- OCR 英文扫描页折行拼接时插入空格，双击取词和复制不再把 from/California 粘成一词。
+  English OCR soft wraps insert a space, so double-click lookup and copy no longer glue fromCalifornia into one word.
+- 选项对话框去掉「全文 OCR 模式」（与工具栏快速/精确重复）；OCR 页其余分区上移重排。
+  Options no longer has Full-document OCR mode (toolbar Fast/Accurate already choose it). The OCR page is reflowed so nothing leaves a blank gap.
+- 书签默认不换行；选项默认开启延迟加载未激活标签页。
+  Bookmarks default to single-line titles. Options defaults Lazy-load inactive tabs on.
+- Light-Warm 下选项对话框输入框改用主题米色，不再刺眼的纯白。
+  On Light-Warm, Options dialog edit fields use the theme cream instead of pure white.
+- 书签行距只收紧上下留白，字号与字体不变（仍比菜单略大 2 像素）。
+  Bookmark row spacing is tighter via padding only; font face and size stay the same (still 2px above the menu size).
+- 选项对话框「界面」页里，Theme 和 Default document colors 的下拉框同宽、左右对齐。
+  On Options → Interface, the Theme and Default document colors dropdowns are the same width and line up.
+- 书签分隔条：出现 ↔ 光标时按下就拖侧栏宽度。悬停范围与滚动条那条相同，不盖住滚动条滑块。
+  Bookmark splitter: a press while the ↔ cursor is showing drags the sidebar width. The hover strip matches the scrollbar edge and does not cover the thumb.
+- 选项对话框「OCR 和 AI」页里，AI 服务下拉框与分区底边留出空隙。
+  On Options → OCR and AI, the AI service dropdown sits clear of the section border.
+- 取词卡换词性时，上沿固定，只伸缩下沿。
+  Switching part of speech on a word card keeps the top edge fixed and resizes the bottom.
+- 朗读条「跟随」支持翻译（中文显示「跟随」）。朗读时页面仍会跟着读；你自己翻页或把正在读的文字滚出安全区后，跟随停下并出现「跟随」，系统语音和有声书一样。
+  The Read Aloud bar Follow button is translated (Chinese: 跟随). Playback still turns pages to follow the text. Turning the page yourself, or scrolling the spoken text out of view, stops following and shows Follow, for both text-to-speech and narrated books.
+
 ## 3.7.35 (2026-09-30)
 
 - 有声书跟读：SMIL 一段里按词高亮（按字母/汉字分时间），不再整段黄底。词级 SMIL 不变。

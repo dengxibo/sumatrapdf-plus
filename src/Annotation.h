@@ -144,6 +144,11 @@ AnnotationType CmdIdToAnnotationType(int cmdId);
 // Play embedded audio from a PDF Sound/RichMedia/Screen annotation. Returns false if no playable sound.
 bool PlaySoundAnnotation(Annotation* annot);
 
+// Copies the annotation's audio. Caller frees *dataOut with free().
+bool AnnotationCopyEmbeddedAudio(Annotation* annot, u8** dataOut, size_t* sizeOut);
+// Stable id for the clip, or 0 when the annotation has no PDF object.
+u64 AnnotationEmbeddedAudioToken(Annotation* annot);
+
 bool AnnotationSupportsMediaPlayback(AnnotationType tp);
 
 const char* DefaultStampIconName();

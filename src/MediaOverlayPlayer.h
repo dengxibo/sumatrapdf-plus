@@ -22,6 +22,8 @@ bool MediaOverlayHandleReadAloud(WindowTab* tab);
 bool MediaOverlayStartFromViewport(WindowTab* tab);
 bool MediaOverlayStartAtPoint(WindowTab* tab, Point screenPt);
 bool MediaOverlayPause();
+// Continue a paused narration session. False when nothing is paused.
+bool MediaOverlayResumePaused();
 void MediaOverlayStop();
 // narration playback speed, saved in prefs
 void MediaOverlaySetRate(double rate);

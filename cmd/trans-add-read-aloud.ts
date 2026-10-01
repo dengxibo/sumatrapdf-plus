@@ -39,6 +39,17 @@ const stringsToAdd: Record<string, { cn: string; tw: string }> = {
   "Previous sentence": { cn: "上一句", tw: "上一句" },
   "Next sentence": { cn: "下一句", tw: "下一句" },
   "Play / Pause reading": { cn: "播放 / 暂停朗读", tw: "播放 / 暫停朗讀" },
+  "Follow": { cn: "跟随", tw: "跟隨" },
+  "Scroll to the text being read": { cn: "滚动到正在朗读的文字", tw: "捲動到正在朗讀的文字" },
+  "Previous phrase": { cn: "上一句", tw: "上一句" },
+  "Next phrase": { cn: "下一句", tw: "下一句" },
+  "Play / Pause narration": { cn: "播放 / 暂停朗读", tw: "播放 / 暫停朗讀" },
+  "Hide narration controls": { cn: "隐藏朗读条", tw: "隱藏朗讀列" },
+  "Back 10 seconds": { cn: "后退 10 秒", tw: "後退 10 秒" },
+  "Forward 10 seconds": { cn: "前进 10 秒", tw: "前進 10 秒" },
+  "Playback speed": { cn: "播放速度", tw: "播放速度" },
+  "End of narration": { cn: "朗读结束", tw: "朗讀結束" },
+  "Narration could not be loaded": { cn: "无法加载录音", tw: "無法載入錄音" },
 };
 
 function readLangCodes(): string[] {

@@ -20,6 +20,9 @@ struct OcrMergeGlyph {
 // s ends with sentence-final punctuation (。！？；…等) after trailing spaces
 bool OcrTextEndsWithTerminalPunct(const char* s);
 
+// Soft-wrap join between UTF-8 fragments: Latin needs a space; CJK does not.
+bool OcrJoinNeedsSpace(const char* left, const char* right);
+
 // Appends paragraph lines to out (each a merged run of consecutive visual
 // lines). vertical=true expects columns in reading order (right to left).
 void OcrMergeLayoutLines(StrVec& out, const Vec<OcrMergeLine>& lines, bool vertical);

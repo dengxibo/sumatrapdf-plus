@@ -67,6 +67,7 @@
 #include "OcrService.h"
 #include "PrintedTocOverlay.h"
 #include "MediaOverlayPlayer.h"
+#include "PdfPageAudio.h"
 
 #include "utils/Log.h"
 
@@ -592,11 +593,13 @@ static void OnVScroll(MainWindow* win, WPARAM wp) {
     // scroll the window and update it
     if (si.nPos != currPos || msg == SB_THUMBTRACK) {
         if (gGlobalPrefs->smoothScroll) {
+            // this scroll belongs to the reader, even if a follow animation owned the timer
+            win->readAloudScrollFromCode = false;
             win->scrollTargetY = si.nPos;
             SetTimer(win->hwndCanvas, kSmoothScrollTimerID, USER_TIMER_MINIMUM, nullptr);
         } else {
             win->AsFixed()->ScrollYTo(si.nPos);
-            ReadAloudOnUserViewChanged(win);
+            ReadAloudUserTookTheView(win);
         }
     } else if (msg == SB_LINEUP || msg == SB_PAGEUP || msg == SB_HALF_PAGEUP || msg == SB_TOP) {
         TurnPageAtScrollEdge(win, true);
@@ -2747,6 +2750,7 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
 
     PaintReadAloudHighlight(win, hdc);
     MediaOverlayOnCanvasPaint(win, hdc);
+    PdfPageAudioOnCanvasPaint(win, hdc);
 
     if (win->fwdSearchMark.show) {
         PaintForwardSearchMark(win, hdc);
@@ -2763,6 +2767,20 @@ static void OnPaintDocument(MainWindow* win) {
     auto t = TimeGet();
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(win->hwndCanvas, &ps);
+
+    WindowTab* paintTab = win->CurrentTab();
+    if (paintTab && paintTab->holdPaintForFontReload) {
+        // Font reflow republishes the book at page 1 before the reading position
+        // is known. Keep the frame the reader already has until that line is placed.
+        if (win->buffer && win->buffer->HasBitmap()) {
+            win->buffer->Flush(hdc, &ps.rcPaint);
+        } else {
+            AutoDeleteBrush bg = CreateSolidBrush(ThemeMainWindowBackgroundColor());
+            FillRect(hdc, &ps.rcPaint, bg);
+        }
+        EndPaint(win->hwndCanvas, &ps);
+        return;
+    }
 
     if (IsSidebarSplitterLiveDrag()) {
         // The canvas window follows the splitter, while its expensive model
@@ -3256,7 +3274,7 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
                 dm->ScrollXBy(scrollBy);
             } else {
                 dm->ScrollYBy(scrollBy, true);
-                ReadAloudOnUserViewChanged(win);
+                ReadAloudUserTookTheView(win);
             }
             return 0;
         }

@@ -28,6 +28,7 @@
 #include "Translations.h"
 #include "OcrOnnx.h"
 #include "OcrService.h"
+#include "PdfPageAudio.h"
 #include "OcrTextMerge.h"
 #include "PrintedTocModel.h"
 #include "ExtractPdfToc.h"
@@ -185,13 +186,62 @@ bool OcrAutoEnabled(MainWindow* win) {
     return tab && tab->autoOcrOn;
 }
 
+bool OcrPageLooksScanned(EngineBase* engine, int pageNo);
+
 void ApplyAutoOcrDefaultForTab(WindowTab* tab) {
-    // Auto OCR is manual. Opening a scan must not turn it on. The caller
-    // restores the per-document flag after this, when that file has one.
+    // Auto OCR is manual unless AutoOcrScanPages is on. The caller restores the
+    // per-document flag after this, then EnableAutoOcrIfTextlessScanPdf may
+    // turn it on for a PDF that has no text layer.
     if (!tab) {
         return;
     }
     tab->autoOcrOn = false;
+}
+
+bool EnableAutoOcrIfTextlessScanPdf(WindowTab* tab) {
+    if (!tab || tab->autoOcrOn || !gGlobalPrefs || !gGlobalPrefs->autoOcrScanPages) {
+        return false;
+    }
+    if (!OcrSidecarLooksPresent()) {
+        return false;
+    }
+    DisplayModel* dm = tab->AsFixed();
+    EngineBase* engine = dm ? dm->GetEngine() : nullptr;
+    if (!engine || !str::EqI(engine->defaultExt, ".pdf")) {
+        return false;
+    }
+    int n = engine->PageCount();
+    if (n < 1) {
+        return false;
+    }
+    int cur = dm->CurrentPageNo();
+    int sample[3] = {cur > 0 ? cur : 1, 1, n};
+    bool saw = false;
+    for (int i = 0; i < 3; i++) {
+        int pageNo = sample[i];
+        if (pageNo < 1 || pageNo > n) {
+            continue;
+        }
+        bool dup = false;
+        for (int j = 0; j < i; j++) {
+            if (sample[j] == pageNo) {
+                dup = true;
+                break;
+            }
+        }
+        if (dup) {
+            continue;
+        }
+        saw = true;
+        if (!OcrPageLooksScanned(engine, pageNo)) {
+            return false;
+        }
+    }
+    if (!saw) {
+        return false;
+    }
+    tab->autoOcrOn = true;
+    return true;
 }
 
 bool OcrDeferExtractUntilDocumentReady(MainWindow* win, bool persistToDisk) {
@@ -2149,6 +2199,19 @@ static void BoxesToPageText(const Vec<OcrBox>& boxes, const u8* rgb, int imgW, i
         if (!join) {
             utf.Append("\n");
             utfCoords.Append(Rect());
+        } else if (OcrJoinNeedsSpace(b.text, boxes[next].text)) {
+            // Soft-wrapped English lines must keep a word space so SelectWordAt
+            // and copy see "from California", not "fromCalifornia".
+            utf.Append(" ");
+            Rect spaceR = pageR;
+            if (vert) {
+                spaceR.y = pageR.y + pageR.dy;
+                spaceR.dy = 1;
+            } else {
+                spaceR.x = pageR.x + pageR.dx;
+                spaceR.dx = 1;
+            }
+            utfCoords.Append(spaceR);
         }
     }
     free(lefts);
@@ -3048,6 +3111,7 @@ static void OcrFinishUi(OcrDoneUi* d) {
     }
     if (d->engine && d->pageNo > 0) {
         ReadAloudOnOcrPageReady(d->engine, d->pageNo);
+        PdfPageAudioOnOcrPageReady(d->engine, d->pageNo);
     }
     if (d->regionJob) {
         if (d->ok) {

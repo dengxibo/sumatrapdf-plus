@@ -51,6 +51,7 @@ extern "C" {
 #include "wingui/Layout.h"
 #include "wingui/WinGui.h"
 #include "MediaOverlayPlayer.h"
+#include "PdfPageAudio.h"
 
 #include "utils/Log.h"
 
@@ -626,12 +627,15 @@ void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility) {
         UpdateToolbarButtonStateByIdx(hwnd, i, isEnabled, TBSTATE_ENABLED);
 
         if (cmdId == CmdReadAloud || cmdId == CmdPauseReadAloud) {
-            bool speaking = TtsIsSpeaking() || MediaOverlayIsPlayingInTab(win->CurrentTab());
+            WindowTab* tab = win->CurrentTab();
+            bool speaking = TtsIsSpeaking() || MediaOverlayIsPlayingInTab(tab) || PdfPageAudioIsPlayingInTab(tab);
             SetToolbarButtonImageByIdx(hwnd, i, speaking ? TbIcon::PauseSpeaking : TbIcon::Speak);
             const char* tip = _TRA("Read Aloud");
             if (speaking) {
                 tip = _TRA("Pause Reading");
-            } else if (CanContinueReadAloud(win->CurrentTab())) {
+            } else if (PdfPageAudioCanContinueInTab(tab) ||
+                       (!PdfPageAudioVisiblePageHas(tab) &&
+                        (CanContinueReadAloud(tab) || MediaOverlayHasSessionInTab(tab)))) {
                 tip = _TRA("Continue Reading");
             }
             TBBUTTONINFOW tbi{};

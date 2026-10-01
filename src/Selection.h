@@ -50,6 +50,11 @@ COLORREF GetFindMatchHighlightColor();
 // Scale a highlight rect to the given band ratio (page coordinates).
 RectF ScaleHighlightBandRect(RectF r, float bandRatio);
 
+// OCR line boxes hug the x-height, so a marker through "that" misses the top of t/h
+// and the tail of g/y. weight is the number of letters in the box (CJK weight 2).
+// A box that is already about an em tall is left alone.
+RectF ExpandOcrXHeightBand(RectF r, int weight);
+
 // Merge two highlight rects on the same line (horizontal span, uniform band height).
 RectF MergeHighlightLineRect(RectF a, RectF b);
 

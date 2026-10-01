@@ -50,6 +50,7 @@
 #include "Menu.h"
 #include "ReadAloudHighlight.h"
 #include "MediaOverlayPlayer.h"
+#include "PdfPageAudio.h"
 #include "TextToSpeech.h"
 
 #include "utils/Log.h"
@@ -2151,8 +2152,10 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
 
     MenuSetEnabled(popup, CmdReadAloudFromCursor, win->contextMenuPtValid);
 
-    bool isSpeaking = TtsIsSpeaking() || MediaOverlayIsPlayingInTab(tab);
-    bool canContinue = CanContinueReadAloud(tab) || MediaOverlayHasSessionInTab(tab);
+    bool isSpeaking = TtsIsSpeaking() || MediaOverlayIsPlayingInTab(tab) || PdfPageAudioIsPlayingInTab(tab);
+    bool canContinue =
+        PdfPageAudioCanContinueInTab(tab) ||
+        (!PdfPageAudioVisiblePageHas(tab) && (CanContinueReadAloud(tab) || MediaOverlayHasSessionInTab(tab)));
     if (isSpeaking) {
         ModifyMenuW(popup, CmdPauseReadAloud, MF_BYCOMMAND | MF_STRING, (UINT_PTR)CmdPauseReadAloud,
                     ToWStrTemp(_TRA("Pause Reading")));

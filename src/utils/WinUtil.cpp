@@ -4638,7 +4638,7 @@ void HwndSetTreeFontForDpi(HWND hwndTree, HFONT font, int dpi) {
     if (!GetTextMetricsW(dc, &tm)) {
         return;
     }
-    int itemH = tm.tmHeight + tm.tmExternalLeading + MulDiv(4, dpi, 96);
+    int itemH = tm.tmHeight + tm.tmExternalLeading + MulDiv(2, dpi, 96);
     SendMessageW(hwndTree, TVM_SETITEMHEIGHT, (WPARAM)itemH, 0);
 }
 

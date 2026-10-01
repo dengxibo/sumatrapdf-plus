@@ -137,7 +137,8 @@ HBRUSH AppDialogCtlColorBrush(UINT msg, WPARAM wp, LPARAM lp, HBRUSH bgBrush, HB
     }
     HDC dc = (HDC)wp;
     HWND ctrl = (HWND)lp;
-    bool recessed = (editHwnd && ctrl == editHwnd && ctrlBrush) || (msg == WM_CTLCOLORLISTBOX && ctrlBrush);
+    bool recessed = (msg == WM_CTLCOLOREDIT && ctrlBrush) || (editHwnd && ctrl == editHwnd && ctrlBrush) ||
+                    (msg == WM_CTLCOLORLISTBOX && ctrlBrush);
     SetTextColor(dc, ThemeWindowTextColor());
     SetBkColor(dc, recessed ? ThemeWindowControlBackgroundColor() : ThemeWindowBackgroundColor());
     return recessed ? ctrlBrush : bgBrush;

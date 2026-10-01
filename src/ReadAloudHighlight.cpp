@@ -26,6 +26,7 @@
 #include "SumatraPDF.h"
 #include "ReadAloudHighlight.h"
 #include "MediaOverlayPlayer.h"
+#include "PdfPageAudio.h"
 #include "ReadAloudFollow.h"
 #include "ReadAloudBar.h"
 #include "Theme.h"
@@ -1263,35 +1264,14 @@ static bool ReadAloudGetCurrentAnchor(WindowTab* tab, DisplayModel* dm, int* pag
     return true;
 }
 
-static float ReadAloudAnchorLineCenterY(const RectF& pageRect) {
-    return pageRect.y + pageRect.dy / 2.0f;
-}
-
-static bool ReadAloudIsSameAnchorLine(int pageNo, const RectF& pageRect, int holdPageNo, float holdLineY) {
-    if (holdPageNo <= 0 || holdLineY < 0) {
-        return false;
-    }
-    if (pageNo != holdPageNo) {
-        return false;
-    }
-    float centerY = ReadAloudAnchorLineCenterY(pageRect);
-    float tolerance = std::max(pageRect.dy * 0.75f, 8.f);
-    return std::abs(centerY - holdLineY) <= tolerance;
-}
-
-static bool ReadAloudAnchorVisibleInCanvas(MainWindow* win, const Rect& anchorScreen) {
-    if (!win || anchorScreen.IsEmpty()) {
-        return false;
-    }
-    return !anchorScreen.Intersect(win->canvasRc).IsEmpty();
-}
-
 static void ReadAloudSyncViewToAnchor(MainWindow* win, DisplayModel* dm, int pageNo, const RectF& pageRect) {
     ReadAloudFollowScrollTo(win, dm, pageNo, pageRect);
 }
 
 void ReadAloudOnUserViewChanged(MainWindow* win) {
     MediaOverlayOnUserViewChanged(win);
+    PdfPageAudioOnUserViewChanged(win);
+    // follow scrolls set this and do not notify. A notification with it set is our own scroll.
     if (!win || win->readAloudScrollFromCode || !TtsIsSpeaking()) {
         return;
     }
@@ -1309,18 +1289,25 @@ void ReadAloudOnUserViewChanged(MainWindow* win) {
     int pageNo = 0;
     RectF pageRect;
     Rect anchorScreen;
-    if (!ReadAloudGetCurrentAnchor(tab, dm, &pageNo, &pageRect, &anchorScreen)) {
-        tab->readAloudAutoScroll = false;
-        return;
-    }
-
-    // A newly spoken page is expected to be outside the canvas until
-    // ReadAloudUpdateAutoScroll turns to it. Do not treat that as a user
-    // override and disable auto-scroll before the next timer tick can act.
-    if (dm->PageVisible(pageNo) && !ReadAloudAnchorVisibleInCanvas(win, anchorScreen)) {
+    // Outside the safe zone, including on another page: stop and show Follow.
+    // Leaving this until the text is fully off screen lets the follow timer pull the page back.
+    if (!ReadAloudGetCurrentAnchor(tab, dm, &pageNo, &pageRect, &anchorScreen) ||
+        !ReadAloudFollowInSafeZone(dm, pageNo, pageRect)) {
         tab->readAloudAutoScroll = false;
         ReadAloudBarUpdate(win);
     }
+}
+
+void ReadAloudUserTookTheView(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    // drop an in-progress follow scroll so it cannot pull the page back
+    win->readAloudScrollFromCode = false;
+    if (DisplayModel* dm = win->AsFixed()) {
+        win->scrollTargetY = dm->yOffset();
+    }
+    ReadAloudOnUserViewChanged(win);
 }
 
 void ReadAloudFollowNow(MainWindow* win) {
@@ -1363,8 +1350,8 @@ void ReadAloudUpdateAutoScroll(MainWindow* win) {
     }
 
     if (!tab->readAloudAutoScroll) {
-        // the reader scrolled the spoken text back into view: resume following
-        if (!win->readAloudScrollFromCode && ReadAloudFollowFullyVisible(dm, pageNo, pageRect)) {
+        // the reader brought the spoken text back into the safe zone: resume following
+        if (!win->readAloudScrollFromCode && ReadAloudFollowInSafeZone(dm, pageNo, pageRect)) {
             tab->readAloudAutoScroll = true;
             tab->readAloudAutoScrollHold = false;
             ReadAloudBarUpdate(win);
@@ -1372,39 +1359,18 @@ void ReadAloudUpdateAutoScroll(MainWindow* win) {
         return;
     }
 
-    // When TTS has already moved to a page that is not on screen, turn/scroll to it
-    // immediately (single-page, facing, and fit-page).
-    if (!dm->PageVisible(pageNo)) {
-        tab->readAloudAutoScrollHold = false;
-        ReadAloudSyncViewToAnchor(win, dm, pageNo, pageRect);
-        return;
-    }
-
-    // After start/resume, keep the view stable on the first visible line. TTS advances
-    // spokenPos within a word immediately, so word-index comparisons are unreliable here.
-    if (tab->readAloudAutoScrollHold) {
-        float lineY = ReadAloudAnchorLineCenterY(pageRect);
-        if (tab->readAloudAutoScrollHoldPageNo < 0) {
-            if (!ReadAloudAnchorVisibleInCanvas(win, anchorScreen)) {
-                tab->readAloudAutoScrollHold = false;
-            } else {
-                tab->readAloudAutoScrollHoldPageNo = pageNo;
-                tab->readAloudAutoScrollHoldLineY = lineY;
-                return;
-            }
-        } else if (ReadAloudIsSameAnchorLine(pageNo, pageRect, tab->readAloudAutoScrollHoldPageNo,
-                                             tab->readAloudAutoScrollHoldLineY)) {
-            return;
-        } else {
-            tab->readAloudAutoScrollHold = false;
-        }
-    }
-
     // smooth scroll we started is still animating
-    if (win->readAloudScrollFromCode || ReadAloudFollowInSafeZone(dm, pageNo, pageRect)) {
+    if (win->readAloudScrollFromCode) {
         return;
     }
 
+    // Playback moved the word out of the safe zone, or onto a page that is not shown.
+    // A reader scroll already cleared readAloudAutoScroll above, so this does not undo it.
+    if (ReadAloudFollowInSafeZone(dm, pageNo, pageRect)) {
+        return;
+    }
+
+    tab->readAloudAutoScrollHold = false;
     ReadAloudSyncViewToAnchor(win, dm, pageNo, pageRect);
 }
 

@@ -25,6 +25,9 @@ void ClearTocBoxForTabSwitch(MainWindow*);
 void RestoreTocTreeForTab(MainWindow*);
 void ToggleTocBox(MainWindow*);
 void LoadTocTree(MainWindow*);
+// Dark-theme selection box: the live-resize scrollbar mask covers the tree's
+// right stroke. Paint that stroke on the mask's left edge so the box stays closed.
+void PaintTocSelectionEdgeOnScrollbarMask(HWND mask, HDC hdc);
 void ReloadPdfTocTree(MainWindow* win);
 
 // Capture TOC expand + first-visible before ClearTocBox/LoadTocTree; restore after.

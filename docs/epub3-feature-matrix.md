@@ -46,7 +46,7 @@ the UI, **Partial**, **No**. The references are EPUB 3.3 and EPUB Reading System
 | Start from the current viewport | Yes | also after pausing and scrolling elsewhere: Play restarts from the viewport |
 | End of narration | Yes | highlight cleared; Play starts again from the viewport |
 | Auto follow, pause on manual scroll, resume | Yes | Follow button, and scrolling the highlight back into view resumes following |
-| Speed 0.5x-2x | Yes | pitch preserved by Media Foundation; saved as `NarrationSpeed` |
+| Speed 0.25x-2x | Yes | pitch preserved by Media Foundation; saved as `NarrationSpeed` |
 | Previous / next phrase, back / forward 10 s | Yes | Previous within 1.5 s of a phrase start goes to the previous phrase, otherwise restarts it; ±10 s crosses into the next document |
 | Audio formats: MP3, AAC/MP4, Ogg, WAV | Yes (MP3, MP4) / Impl (others) | sniffed; Ogg depends on the installed codec |
 | Missing audio, missing fragment, `..` path, remote URL | Yes | diagnostics, playback continues to the end |

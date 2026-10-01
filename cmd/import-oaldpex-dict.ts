@@ -225,13 +225,27 @@ def find_entry_blocks(soup):
         return blocks[:8]
     return [t for t in soup.find_all("div") if has_class(t, "entry")][:8]
 
+def collapse_same_ipa(s):
+    # OALD often puts the same transcription in both the British and American
+    # phon spans. first_text() on a parent whose class contains "phon" joins
+    # them as "kɔːz/ /kɔːz". Keep one reading when the two halves match.
+    s = clean_text(s).strip().strip("/")
+    sep = "/ /"
+    i = s.find(sep)
+    if i < 0:
+        return s
+    left, right = s[:i].strip(), s[i + len(sep) :].strip()
+    if left and left == right:
+        return left
+    return s
+
 def entry_ipa(block, fallback=""):
     phon = block.find("span", class_=lambda c: c and "phon" in c.split())
     if phon:
         t = clean_text(phon.get_text(" "))
         if t:
-            return t.strip("/")
-    return fallback
+            return collapse_same_ipa(t)
+    return collapse_same_ipa(fallback)
 
 def find_main_senses(block):
     senses_ol = block.find("ol", class_=lambda c: c and "senses_multiple" in c)
@@ -308,8 +322,7 @@ def extract_entry(key, value):
     for tag in soup(["script", "style"]):
         tag.decompose()
     display = first_text(soup, ("headword", "hwd", "hw")) or headword
-    ipa = first_text(soup, ("phon", "ipa", "pron", "pron-g"))
-    ipa = ipa.strip("/")
+    ipa = collapse_same_ipa(first_text(soup, ("phon", "ipa", "pron", "pron-g")))
     blocks = []
     seen_labels = set()
     for block in find_entry_blocks(soup):
@@ -330,7 +343,7 @@ def extract_entry(key, value):
     return {
         "word": headword,
         "display": display,
-        "ipa": ipa.strip("/"),
+        "ipa": collapse_same_ipa(ipa),
         "senses": blocks[:8],
         "aliases": extract_aliases(soup, headword),
         "audioRefs": extract_audio_refs(soup),

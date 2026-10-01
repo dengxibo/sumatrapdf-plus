@@ -8,6 +8,7 @@
 #include "utils/ThreadUtil.h"
 #include "utils/UITask.h"
 #include "utils/JsonParser.h"
+#include "utils/WinDynCalls.h"
 
 #include "Settings.h"
 #include "AppSettings.h"
@@ -891,12 +892,6 @@ static const int gSettingsReadAloudControls[] = {IDC_SETTINGS_PAGE_READ_ALOUD,
                                                  IDC_RA_VOICE_MULTI_LABEL,
                                                  IDC_RA_VOICE_MULTI,
                                                  IDC_RA_PREVIEW,
-                                                 IDC_GROUP_RA_SPEED,
-                                                 IDC_RA_SPEED_ZH_LABEL,
-                                                 IDC_RA_SPEED_ZH,
-                                                 IDC_RA_SPEED_EN_LABEL,
-                                                 IDC_RA_SPEED_EN,
-                                                 IDC_RA_SPEED_HINT,
                                                  IDC_GROUP_RA_HIGHLIGHT,
                                                  IDC_RA_HIGHLIGHT_COLOR_LABEL,
                                                  IDC_RA_HIGHLIGHT_COLOR,
@@ -905,15 +900,11 @@ static const int gSettingsReadAloudControls[] = {IDC_SETTINGS_PAGE_READ_ALOUD,
                                                  IDC_GROUP_RA_NARRATION,
                                                  IDC_RA_NARRATION_USE_AUDIO,
                                                  IDC_RA_NARRATION_HINT,
-                                                 IDC_RA_NARRATION_USE_COLOR,
-                                                 IDC_RA_NARRATION_SPEED_LABEL,
-                                                 IDC_RA_NARRATION_SPEED};
+                                                 IDC_RA_NARRATION_USE_COLOR};
 static const int gSettingsOcrAiControls[] = {IDC_SETTINGS_PAGE_OCR_AI,
                                              IDC_GROUP_OCR,
                                              IDC_AUTO_OCR,
                                              IDC_OCR_DESCRIPTION,
-                                             IDC_OCR_MODE_LABEL,
-                                             IDC_OCR_MODE,
                                              IDC_OCR_AUTO_SAVE,
                                              IDC_OCR_SAVE_WARNING,
                                              IDC_GROUP_SMART_TOC,
@@ -961,13 +952,10 @@ static int gSettingsInitialPage = 0;
 // long translations (German, Russian) need wider labels: move the controls
 // right of the labels over, keeping the right edge of the group
 static void FitSettingsReadAloudLabels(HWND hDlg) {
-    static const int labelIds[] = {IDC_RA_VOICE_MODE_LABEL,      IDC_RA_VOICE_ZH_LABEL,       IDC_RA_VOICE_EN_LABEL,
-                                   IDC_RA_VOICE_MULTI_LABEL,     IDC_RA_SPEED_ZH_LABEL,       IDC_RA_SPEED_EN_LABEL,
-                                   IDC_RA_HIGHLIGHT_COLOR_LABEL, IDC_RA_NARRATION_SPEED_LABEL};
-    static const int fieldIds[] = {IDC_RA_VOICE_MODE,      IDC_RA_VOICE_ZH,       IDC_RA_VOICE_EN,
-                                   IDC_RA_VOICE_MULTI,     IDC_RA_PREVIEW,        IDC_RA_SPEED_ZH,
-                                   IDC_RA_SPEED_EN,        IDC_RA_SPEED_HINT,     IDC_RA_HIGHLIGHT_COLOR,
-                                   IDC_RA_HIGHLIGHT_RESET, IDC_RA_NARRATION_SPEED};
+    static const int labelIds[] = {IDC_RA_VOICE_MODE_LABEL, IDC_RA_VOICE_ZH_LABEL, IDC_RA_VOICE_EN_LABEL,
+                                   IDC_RA_VOICE_MULTI_LABEL, IDC_RA_HIGHLIGHT_COLOR_LABEL};
+    static const int fieldIds[] = {IDC_RA_VOICE_MODE, IDC_RA_VOICE_ZH,        IDC_RA_VOICE_EN,       IDC_RA_VOICE_MULTI,
+                                   IDC_RA_PREVIEW,    IDC_RA_HIGHLIGHT_COLOR, IDC_RA_HIGHLIGHT_RESET};
     HWND first = GetDlgItem(hDlg, labelIds[0]);
     HDC hdc = GetDC(hDlg);
     if (!first || !hdc) {
@@ -1035,8 +1023,7 @@ static void ShowSettingsPage(HWND hDlg, int page) {
         for (int j = 0; j < pages[i].count; j++) {
             int id = pages[i].ids[j];
             bool isInverseSearch = id == IDC_SECTION_INVERSESEARCH || id == IDC_CMDLINE_LABEL || id == IDC_CMDLINE;
-            // Global "OCR scanned pages" is retired. The switch is per document.
-            bool show = i == page && id != IDC_AUTO_OCR && (!isInverseSearch || showInverseSearch);
+            bool show = i == page && (!isInverseSearch || showInverseSearch);
             ShowWindow(GetDlgItem(hDlg, id), show ? SW_SHOW : SW_HIDE);
         }
     }
@@ -1415,7 +1402,11 @@ static AppDialogBrushes gSettingsDialogBrushes;
 static constexpr UINT_PTR kSettingsCategorySubclassId = 1;
 static int gSettingsCategoryHover = -1;
 
-// Same row height as TOC TreeView (tmHeight + 4).
+// Extra pixels around the label so rows are not packed against each other.
+static int SettingsCategoryRowExtra(HWND hwnd) {
+    return DpiScale(hwnd, 8);
+}
+
 static int SettingsCategoryItemHeight(HWND hwnd, HFONT font) {
     HDC dc = GetDC(hwnd);
     HFONT old = nullptr;
@@ -1432,9 +1423,9 @@ static int SettingsCategoryItemHeight(HWND hwnd, HFONT font) {
     if (dc) {
         ReleaseDC(hwnd, dc);
     }
-    int h = tm.tmHeight + 4;
+    int h = tm.tmHeight + SettingsCategoryRowExtra(hwnd);
     if (h < 1) {
-        h = DpiScale(hwnd, 18);
+        h = DpiScale(hwnd, 22);
     }
     return h;
 }
@@ -1534,25 +1525,33 @@ static void SettingsCategoryDrawItem(HWND category, DRAWITEMSTRUCT* dis) {
     bool selected = (dis->itemState & ODS_SELECTED) != 0;
     bool hovered = ((int)dis->itemID == gSettingsCategoryHover) && !selected;
 
-    COLORREF bg{};
+    COLORREF rowBg{};
     COLORREF text{};
-    ThemeSidebarColors(bg, text);
-    if (selected) {
-        bg = AccentColor(ThemeWindowControlBackgroundColor(), 25);
-    } else if (hovered) {
-        bg = AccentColor(ThemeWindowControlBackgroundColor(), 12);
+    ThemeSidebarColors(rowBg, text);
+    HBRUSH rowBr = CreateSolidBrush(rowBg);
+    FillRect(hdc, &rc, rowBr);
+    DeleteObject(rowBr);
+
+    // Leave a gap between rows. The highlight sits inside that gap so it does not touch the next label.
+    int gap = DpiScale(category, 2);
+    RECT box = rc;
+    box.top += gap;
+    box.bottom -= gap;
+    if (box.bottom <= box.top) {
+        box = rc;
     }
-
-    HBRUSH br = CreateSolidBrush(bg);
-    FillRect(hdc, &rc, br);
-    DeleteObject(br);
-
+    if (selected || hovered) {
+        COLORREF boxBg = AccentColor(ThemeWindowControlBackgroundColor(), selected ? 25 : 12);
+        HBRUSH boxBr = CreateSolidBrush(boxBg);
+        FillRect(hdc, &box, boxBr);
+        DeleteObject(boxBr);
+    }
     if (ThemeUsesDarkChrome() && selected) {
         COLORREF frame = AccentColor(ThemeWindowLinkColor(), -20);
         HPEN pen = CreatePen(PS_SOLID, 1, frame);
         HPEN oldPen = (HPEN)SelectObject(hdc, pen);
         HBRUSH oldBr = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
-        Rectangle(hdc, rc.left, rc.top, rc.right, rc.bottom);
+        Rectangle(hdc, box.left, box.top, box.right, box.bottom);
         SelectObject(hdc, oldBr);
         SelectObject(hdc, oldPen);
         DeleteObject(pen);
@@ -1568,14 +1567,35 @@ static void SettingsCategoryDrawItem(HWND category, DRAWITEMSTRUCT* dis) {
     HFONT oldFont = font ? (HFONT)SelectObject(hdc, font) : nullptr;
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, text);
-    RECT textRc = rc;
+    TEXTMETRICW tm{};
+    GetTextMetricsW(hdc, &tm);
+    RECT textRc = box;
     int padX = DpiScale(category, 8);
     textRc.left += padX;
     textRc.right -= padX;
+    // DT_VCENTER centers the em box. Internal leading sits above the glyphs, so the
+    // letters look low in the highlight. Shift up by half of that leading.
+    int nudge = tm.tmInternalLeading / 2;
+    if (nudge > 0) {
+        textRc.top -= nudge;
+        textRc.bottom -= nudge;
+    }
     DrawTextW(hdc, buf, n, &textRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
     if (oldFont) {
         SelectObject(hdc, oldFont);
     }
+}
+
+static BOOL CALLBACK SoftenSettingsInputTheme(HWND hwnd, LPARAM) {
+    WCHAR cls[32]{};
+    GetClassNameW(hwnd, cls, dimof(cls));
+    // Untheme Edit/Combo so Warm CTLCOLOR cream shows instead of pure white.
+    if (str::EqI(cls, L"Edit") || str::EqI(cls, L"ComboBox")) {
+        if (DynSetWindowTheme) {
+            DynSetWindowTheme(hwnd, L"", L"");
+        }
+    }
+    return TRUE;
 }
 
 static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
@@ -1588,6 +1608,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             SetWindowLongPtr(hDlg, GWLP_USERDATA, (LONG_PTR)prefs);
             gSettingsDialogBrushes.Create();
             AppDialogApplyChrome(hDlg);
+            EnumChildWindows(hDlg, SoftenSettingsInputTheme, 0);
             {
                 HWND hwndCb = GetDlgItem(hDlg, IDC_DEFAULT_LAYOUT);
                 // Fill the page layouts into the select box
@@ -1725,11 +1746,6 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                                                                                            : 1;
             CbSetCurrentSelection(engineering, engineeringSelection);
 
-            HWND ocrMode = GetDlgItem(hDlg, IDC_OCR_MODE);
-            CbAddString(ocrMode, _TRA("Fast"));
-            CbAddString(ocrMode, _TRA("High accuracy"));
-            CbSetCurrentSelection(ocrMode, str::EqI(prefs->ocrFullDocumentMode, "accurate") ? 1 : 0);
-
             HWND tocMode = GetDlgItem(hDlg, IDC_TOC_MODE);
             CbAddString(tocMode, _TRA("Conservative"));
             CbAddString(tocMode, _TRA("Standard (recommended)"));
@@ -1760,10 +1776,6 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             HwndSetDlgItemText(hDlg, IDC_RA_VOICE_EN_LABEL, _TRA("&English voice:"));
             HwndSetDlgItemText(hDlg, IDC_RA_VOICE_MULTI_LABEL, _TRA("&Multilingual voice:"));
             HwndSetDlgItemText(hDlg, IDC_RA_PREVIEW, _TRA("&Preview"));
-            HwndSetDlgItemText(hDlg, IDC_GROUP_RA_SPEED, _TRA("Speed"));
-            HwndSetDlgItemText(hDlg, IDC_RA_SPEED_ZH_LABEL, _TRA("C&hinese:"));
-            HwndSetDlgItemText(hDlg, IDC_RA_SPEED_EN_LABEL, _TRA("E&nglish:"));
-            HwndSetDlgItemText(hDlg, IDC_RA_SPEED_HINT, _TRA("0.25x to 2.00x"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_RA_HIGHLIGHT, _TRA("Highlight and follow"));
             HwndSetDlgItemText(hDlg, IDC_RA_HIGHLIGHT_COLOR_LABEL, _TRA("Highlight co&lor:"));
             HwndSetDlgItemText(hDlg, IDC_RA_HIGHLIGHT_RESET, _TRA("&Reset"));
@@ -1774,7 +1786,6 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             HwndSetDlgItemText(hDlg, IDC_RA_NARRATION_HINT,
                                _TRA("When off, narrated books are read with the voice above."));
             HwndSetDlgItemText(hDlg, IDC_RA_NARRATION_USE_COLOR, _TRA("Use the book's highlight c&olor"));
-            HwndSetDlgItemText(hDlg, IDC_RA_NARRATION_SPEED_LABEL, _TRA("Narration spee&d:"));
             HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_ADVANCED, _TRA("Advanced"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_UPDATE, _TRA("Updates"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_SESSION, _TRA("Startup and session"));
@@ -1806,7 +1817,6 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             HwndSetDlgItemText(hDlg, IDC_AUTO_OCR, _TRA("Automatically OCR scanned pages"));
             HwndSetDlgItemText(hDlg, IDC_OCR_DESCRIPTION,
                                _TRA("Recognized text can be selected, copied, searched, and read aloud."));
-            HwndSetDlgItemText(hDlg, IDC_OCR_MODE_LABEL, _TRA("Full-document OCR &mode:"));
             HwndSetDlgItemText(hDlg, IDC_OCR_AUTO_SAVE, _TRA("Automatically &save PDF after OCR or TOC processing"));
             HwndSetDlgItemText(hDlg, IDC_OCR_SAVE_WARNING,
                                _TRA("Processing results may overwrite the current PDF file."));
@@ -1937,6 +1947,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
         case WM_CTLCOLORDLG:
         case WM_CTLCOLORSTATIC:
         case WM_CTLCOLORBTN:
+        case WM_CTLCOLOREDIT:
         case WM_CTLCOLORLISTBOX: {
             HBRUSH br =
                 AppDialogCtlColorBrush(msg, wp, lp, gSettingsDialogBrushes.background, gSettingsDialogBrushes.control);
@@ -2051,8 +2062,6 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     int engineeringIdx = (int)SendDlgItemMessage(hDlg, IDC_ENGINEERING_ENHANCE, CB_GETCURSEL, 0, 0);
                     const char* engineeringMode = engineeringIdx == 0 ? "off" : engineeringIdx == 2 ? "on" : "auto";
                     str::ReplaceWithCopy(&prefs->engineeringDrawingEnhance, engineeringMode);
-                    int ocrModeIdx = (int)SendDlgItemMessage(hDlg, IDC_OCR_MODE, CB_GETCURSEL, 0, 0);
-                    str::ReplaceWithCopy(&prefs->ocrFullDocumentMode, ocrModeIdx == 1 ? "accurate" : "fast");
                     int tocModeIdx = (int)SendDlgItemMessage(hDlg, IDC_TOC_MODE, CB_GETCURSEL, 0, 0);
                     const char* tocMode = tocModeIdx == 0 ? "conservative" : tocModeIdx == 2 ? "detailed" : "standard";
                     str::ReplaceWithCopy(&prefs->extractPdfTocMode, tocMode);
@@ -2222,8 +2231,6 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                 case IDC_RA_VOICE_MODE:
                 case IDC_RA_VOICE_ZH:
                 case IDC_RA_VOICE_EN:
-                case IDC_RA_SPEED_ZH:
-                case IDC_RA_SPEED_EN:
                 case IDC_RA_PREVIEW:
                 case IDC_RA_HIGHLIGHT_COLOR:
                 case IDC_RA_HIGHLIGHT_RESET:

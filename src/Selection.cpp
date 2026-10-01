@@ -63,6 +63,21 @@ RectF ScaleHighlightBandRect(RectF r, float bandRatio) {
     return r;
 }
 
+RectF ExpandOcrXHeightBand(RectF r, int weight) {
+    if (r.IsEmpty() || r.dy <= 1.f || r.dx <= 1.f || weight <= 0) {
+        return r;
+    }
+    float avgW = r.dx / (float)weight;
+    if (avgW < 1.f || r.dy >= avgW * 1.45f) {
+        return r;
+    }
+    float up = r.dy * 0.65f;
+    float down = r.dy * 0.42f;
+    r.y -= up;
+    r.dy += up + down;
+    return r;
+}
+
 RectF MergeHighlightLineRect(RectF a, RectF b) {
     if (a.IsEmpty()) {
         return b;

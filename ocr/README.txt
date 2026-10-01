@@ -69,6 +69,6 @@ Models are RapidOCR ONNX builds of Baidu Paddle PP-OCR (Chinese).
 
 Do not ship PP-OCRv6 medium, Python, or PaddlePaddle.
 
-Advanced setting: AutoOcrScanPages (default false). Set true or use the toolbar
-switch to turn on automatic recognition; File menu still has "OCR current page"
-/ "OCR all pages".
+Advanced setting: AutoOcrScanPages (default true when the key is missing).
+Set false or use the toolbar switch to turn off automatic recognition; File
+menu still has "OCR current page" / "OCR all pages".

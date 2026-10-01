@@ -779,6 +779,9 @@
     <ClCompile Include="..\src\MediaOverlayPlayer.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\PdfPageAudio.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\ReadAloudBar.cpp">
       <Filter>src</Filter>
     </ClCompile>

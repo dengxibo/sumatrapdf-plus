@@ -778,7 +778,7 @@ const globalPrefs: Field[] = [
     mkField(
       "LazyLoading",
       Bool,
-      false,
+      true,
       "when restoring session, delay loading of documents until their tab is selected",
     ),
     "3.6",
@@ -908,7 +908,7 @@ const globalPrefs: Field[] = [
     mkField(
       "AutoOcrScanPages",
       Bool,
-      false,
+      true,
       "if true, automatically OCR scanned pages with little or no text so they can be selected and searched. Models live in {exedir}/ocr/",
     ),
     "3.8",
@@ -1117,7 +1117,7 @@ const globalPrefs: Field[] = [
     mkField(
       "TreeWrapLabels",
       Bool,
-      true,
+      false,
       "if true, bookmark and favorites tree labels wrap to multiple lines; " +
         "if false, single line with ellipsis and full text in tooltip on hover",
     ),

@@ -71,7 +71,7 @@
   请保留 exe 同目录的 ocr 文件夹（含 onnxruntime.dll 与 .onnx 模型）。
   只复制 exe、不带 ocr，OCR 不可用。
 
-  工具栏「自动 OCR」（在朗读按钮前，默认关闭）：
+  工具栏「自动 OCR」（在朗读按钮前，默认开启）：
   · 单击：打开后翻页即识别当前扫描页（设置 AutoOcrScanPages）
   · 下拉「全文识别」：整本再识别一遍（已有文字层也会重扫，适合乱码双层 PDF）；
     结果先留在本次打开的文档里，不自动写回文件。没有目录时识别后提取书签。
@@ -98,7 +98,7 @@
   UseTabs = true                  标签页模式
   ShowMenubarWithTabs = false     标签模式下菜单栏（UseTabs=true 时以此为准）
   RestoreSession = true           启动恢复上次会话
-  AutoOcrScanPages = false        自动识别扫描页（默认关；模型在 ocr 文件夹）
+  AutoOcrScanPages = true         自动识别扫描页（没有这一项时默认开；模型在 ocr 文件夹）
   Annotations [ SelectionToolbar ]  划词后浮动工具栏
 
   完整说明见 SumatraPDF-settings-annotated.txt

@@ -16,6 +16,9 @@ bool OcrEngineKindSupported(EngineBase* engine);
 // scheduling gates all read this; never use it as a feature-availability test.
 bool OcrAutoEnabled(MainWindow* win);
 void ApplyAutoOcrDefaultForTab(WindowTab* tab);
+// When AutoOcrScanPages is on, turn Auto OCR on for a PDF whose sampled pages have no text layer.
+// Returns true if this call enabled it.
+bool EnableAutoOcrIfTextlessScanPdf(WindowTab* tab);
 bool OcrDeferExtractUntilDocumentReady(MainWindow* win, bool persistToDisk);
 bool OcrDocumentHasFileTextLayer(EngineBase* engine);
 bool OcrPageLooksScanned(EngineBase* engine, int pageNo);

@@ -1173,6 +1173,7 @@
     <ClInclude Include="..\src\EpubMediaOverlay.h" />
     <ClInclude Include="..\src\MediaOverlayAudio.h" />
     <ClInclude Include="..\src\MediaOverlayPlayer.h" />
+    <ClInclude Include="..\src\PdfPageAudio.h" />
     <ClInclude Include="..\src\ReadAloudBar.h" />
     <ClInclude Include="..\src\ReadAloudFollow.h" />
     <ClInclude Include="..\src\RegistryPreview.h" />
@@ -1359,6 +1360,7 @@
     <ClCompile Include="..\src\EpubMediaOverlay.cpp" />
     <ClCompile Include="..\src\MediaOverlayAudio.cpp" />
     <ClCompile Include="..\src\MediaOverlayPlayer.cpp" />
+    <ClCompile Include="..\src\PdfPageAudio.cpp" />
     <ClCompile Include="..\src\ReadAloudBar.cpp" />
     <ClCompile Include="..\src\ReadAloudFollow.cpp" />
     <ClCompile Include="..\src\RegistryInstaller.cpp" />
