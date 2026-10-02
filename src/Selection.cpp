@@ -252,6 +252,18 @@ Vec<SelectionOnPage>* SelectionOnPage::FromTextSelect(TextSel* textSel) {
     return sel;
 }
 
+void ClearSelectionIfCurrent(MainWindow* win, Vec<SelectionOnPage>* sel) {
+    if (!win || !sel || !IsMainWindowValid(win) || !win->IsDocLoaded()) {
+        return;
+    }
+    WindowTab* tab = win->CurrentTab();
+    if (!tab || tab->selectionOnPage != sel) {
+        return;
+    }
+    DeleteOldSelectionInfo(win, true);
+    ScheduleRepaint(win, 0);
+}
+
 void DeleteOldSelectionInfo(MainWindow* win, bool alsoTextSel) {
     HideSelectionToolbar(win);
     win->showSelection = false;

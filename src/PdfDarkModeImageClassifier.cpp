@@ -85,9 +85,11 @@ static bool PdfDarkModeExtractFeatures(fz_context* ctx, fz_image* image, float p
         if (blockH < 1) {
             blockH = 1;
         }
-        int samplesPerBlock = (blockW * blockH > 0) ? (kMaxImageSamples / (kGridBlocks * kGridBlocks)) + 1 : 1;
-        if (samplesPerBlock < 1) {
-            samplesPerBlock = 1;
+        // A per-axis step of ~10 filled the 1000-sample cap on the first row of
+        // blocks, so a gray header hid the cream body and the page stayed original.
+        int perSide = 1;
+        while ((perSide + 1) * (perSide + 1) * kGridBlocks * kGridBlocks <= kMaxImageSamples) {
+            perSide++;
         }
 
         float blockLum[kGridBlocks * kGridBlocks] = {};
@@ -99,8 +101,8 @@ static bool PdfDarkModeExtractFeatures(fz_context* ctx, fz_image* image, float p
                 int y0 = by * blockH;
                 int x1 = bx == kGridBlocks - 1 ? pix->w : x0 + blockW;
                 int y1 = by == kGridBlocks - 1 ? pix->h : y0 + blockH;
-                int stepX = (x1 - x0) > samplesPerBlock ? (x1 - x0) / samplesPerBlock : 1;
-                int stepY = (y1 - y0) > samplesPerBlock ? (y1 - y0) / samplesPerBlock : 1;
+                int stepX = (x1 - x0) > perSide ? (x1 - x0) / perSide : 1;
+                int stepY = (y1 - y0) > perSide ? (y1 - y0) / perSide : 1;
                 for (int y = y0; y < y1 && n < kMaxImageSamples; y += stepY) {
                     for (int x = x0; x < x1 && n < kMaxImageSamples; x += stepX) {
                         float r, g, b, a;

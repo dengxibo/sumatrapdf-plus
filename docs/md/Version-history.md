@@ -1,7 +1,37 @@
 # Version history
 
-## next
+## 3.7.36 (2026-10-02)
 
+- 选区工具栏点「复制」后，选区高亮会消失。查词、翻译、问问 AI 的窗口关掉后，打开它们时的那一段选区也会消失。
+  Copy on the selection toolbar clears the highlight. Closing Lookup, Translate, or Ask AI clears the selection those windows were opened with.
+- 切换明亮/暗黑主题时，翻译和问问 AI 浮层先把窗口和里面的文字框准备好，再和主窗口一起换上新颜色。
+  Switching light and dark prepares the translation and Ask AI popup first, then paints it together with the main window.
+- 第一次打开问问 AI 后再切换明亮/暗黑主题，界面不再卡住十几秒。回答框只改滚动条颜色，不再套用整套 Explorer 主题。
+  Switching light and dark after opening Ask AI for the first time no longer stalls. The answer box only restyles its scrollbar, instead of loading the full Explorer text-services theme.
+- 暗黑主题下，翻译和问问 AI 的正文区、输入框更贴近浮层底色。「发送」平时与浮层同色，只留淡边，悬停时再铺浅底。
+  In dark themes, the translation and Ask AI text areas and the input sit closer to the popup background. Send matches that background with a light border, and fills only while hovered.
+- 划词翻译的译文和问问 AI 的回答比界面字体大 2 磅。标题、按钮、原文摘录和输入框仍用界面字体。
+  The translation and the Ask AI answer are two points larger than the UI font. The title, buttons, source excerpt, and input stay at the UI size.
+- 选项 → AI 的模型是一个普通输入框，旁边的「选择」向 API 查询名单，在可滚动的列表里点一个填回去。名单里没有的模型仍可直接输入。列表上方可以按名称片段搜索。语音合成、语音识别、实时语音、图片生成和向量模型不列入名单。
+  Options → AI keeps the model as a plain text field. Choose asks the API for names and fills the field from a scrolling list. A name that is not in the list can still be typed. A search box above the list filters by part of a name. Speech synthesis, speech recognition, realtime audio, image generation, and embedding models are left off the list.
+- 划词翻译目标语支持多国语言（简繁中文、英、日、韩、法、德、西、俄等）。自动模式跟随界面语言，源语与目标相近时对调（中英日韩）。
+  Selection translate supports many target languages (Simplified/Traditional Chinese, English, Japanese, Korean, French, German, Spanish, Russian, and more). Auto follows the UI language and flips when the source matches (Chinese, English, Japanese, Korean).
+- 选项对话框把「OCR 和 AI」拆成「OCR」和「AI」两个分类。OCR 管扫描识别和智能目录详细程度；AI 管 Ask AI、划词翻译和 API。
+  Options splits OCR and AI into two categories. OCR covers scan recognition and smart-contents detail; AI covers Ask AI, selection translate, and the API.
+- 划词翻译：选区工具栏和菜单增加「翻译」。优先火山翻译；未配置或失败时，若已配置 AI API 则用大模型只出译文；都没有则提示去配置，菜单里的 Google / DeepL 网页翻译仍可用。目标语默认跟界面语言，源语接近目标时在中英之间对调（`TranslateTargetMode`：`auto` / `ui` / `zh` / `en`）。
+  Selection translate: the selection toolbar and menu have Translate. Volcengine is preferred; if it is missing or fails and an AI API is configured, the model returns a translation only. With neither, the panel asks you to configure settings; Google / DeepL web translate remain in the menu. The target language follows the UI by default and flips between Chinese and English when the source matches (`TranslateTargetMode`: `auto` / `ui` / `zh` / `en`).
+- Ask AI：已配置 AI API 时在应用内浮层对选区问答，不再默认打开浏览器；未配置 API 时仍打开豆包 / DeepSeek / ChatGPT 网页。浮层可继续追问当前选区。
+  Ask AI: with an AI API configured, questions about the selection open an in-app panel instead of the browser. Without an API, Doubao / DeepSeek / ChatGPT web chat is unchanged. The panel can continue the conversation for the current selection.
+- 连续模式下改缩放（如工具栏「页宽连续」、适合宽度 / 页面、开关侧栏或改窗口大小导致的重新适配）不再跳到页面中下部或别的页：以页面为锚点保持位置，从单页切换过来时停在本页顶端。PDF、EPUB 等固定版式文档都受益。
+  Changing zoom in continuous mode (Fit Width and Continuous toolbar button, Fit Width / Fit Page, or a refit after toggling the sidebar or resizing the window) no longer jumps to the middle of the page or to another page. The position is kept relative to the page; switching from single page keeps the page top in view. Applies to PDF, EPUB and other fixed-layout documents.
+- 选项 → AI 的火山 Secret Key 旁增加「测试」按钮，直接显示火山返回的错误码和信息。
+  Options → AI has a Test button next to the Volc Secret Key; failures show Volcengine's error code and message.
+- 翻译 / 问答浮层：修复点关闭会退出程序；标题栏可拖动，右下角可调大小，按内容自动长高；显示语向和引擎（火山 / AI）；一键复制译文；回车发送、Esc 关闭，输入时不再触发阅读器快捷键；未配置 AI API 时给出可点击的去设置提示；四个主题配色统一；AI 回答的 Markdown（标题、粗体、列表、引用、代码、表格）按格式显示。
+  Translate / Ask AI panel: closing it no longer exits the app. Drag by the header, resize from the bottom-right, and it grows with its content. It shows the language direction and engine (Volcengine / AI) and has Copy. Enter sends and Esc closes; typing no longer triggers reader shortcuts. Without an AI API, a clickable hint opens settings. Colors match all four themes. AI answers render Markdown (headings, bold, lists, quotes, code, tables).
+- 页内喇叭只负责播放。正在播放时再点同一只喇叭会从头再放，不再停止。停止仍用朗读条或工具栏。
+  An in-page speaker only starts playback. Clicking the same speaker while it is playing starts the clip again instead of stopping. Stop with the read-aloud bar or the toolbar.
+- 暗色模式下，教材整页的奶油色底图会换成主题背景，正文仍是矢量浅字，彩色标题和地图保持原色。取样不再只看图像顶部的灰条，所以这类底图不会整页留在浅色上。
+  In dark mode, a textbook's full-page cream plate becomes the theme background. Body text stays vector and light, and colored headers and maps keep their colors. Sampling covers the whole image, so a gray band at the top no longer leaves the page in its original colors.
 - 暗色模式下，雾、雪、白毛这类高调照片保持连续色调，不再被当成扫描件做成只有黑白的剪影。页边和正文仍是深底浅字，空白竖条和正文扫描不受影响。
   In dark mode, high-key photographs such as fog, snow, and white fur keep their tones instead of being flattened into a black-and-white silhouette. Page margins and body text stay light on the dark page. Blank gutters and text scans are unchanged.
 - 暗色模式下，抠图的淡色边缘会沿物体收完，杯口这种弯过去的一圈不再因为路程稍长被切掉一块。紧贴文字的灰色描边不会被收进去，标题和正文仍是深底浅字。

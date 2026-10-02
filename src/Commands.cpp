@@ -241,6 +241,7 @@ static SeqStrings gCommandNames =
     "CmdSearchSelectionWithYoudaoDict\0"
     "CmdToggleLightDarkTheme\0"
     "CmdAnalyzeSelectionWithDoubao\0"
+    "CmdTranslateSelection\0"
     "CmdToggleDoubleClickWordLookup\0"
     "CmdTogglePreservePdfImages\0"
     "CmdToggleJoinSplitPdfImages\0"
@@ -530,6 +531,7 @@ static i32 gCommandIds[] = {
     CmdSearchSelectionWithYoudaoDict,
     CmdToggleLightDarkTheme,
     CmdAnalyzeSelectionWithDoubao,
+    CmdTranslateSelection,
     CmdToggleDoubleClickWordLookup,
     CmdTogglePreservePdfImages,
     CmdToggleJoinSplitPdfImages,
@@ -819,6 +821,7 @@ SeqStrings gCommandDescriptions =
     "Search Selection with Youdao Dictionary\0"
     "Toggle light/dark theme\0"
     "Ask AI\0"
+    "Translate Selection\0"
     "Toggle Double-Click Word Lookup\0"
     "Toggle Preserve PDF Image Colors in Dark Mode\0"
     "Toggle Join Split PDF Images\0"

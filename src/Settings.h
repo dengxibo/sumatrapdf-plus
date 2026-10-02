@@ -574,6 +574,19 @@ struct GlobalPrefs {
     // if false, hide Ask AI (online chat) in the selection toolbar,
     // context menu, and command palette
     bool enableAskAI;
+    // if false, hide Translate in the selection toolbar, context menu, and
+    // command palette
+    bool enableInlineTranslate;
+    // Volcengine Translate access key (Access Key ID); stored
+    // DPAPI-protected when possible
+    char* translateVolcAccessKey;
+    // Volcengine Translate secret key; stored DPAPI-protected when
+    // possible
+    char* translateVolcSecretKey;
+    // inline translate target language: auto (UI language, flip when
+    // source matches), ui, or a language code (zh, zh-Hant, en, ja, ko,
+    // fr, de, es, ru, ...)
+    char* translateTargetMode;
     // if true, we show the Favorites sidebar
     bool showFavorites;
     // if true, we show table of contents (Bookmarks) sidebar if it's
@@ -1129,6 +1142,13 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, aiTocApiConcurrency), SettingType::Int, 4, nullptr},
     {offsetof(GlobalPrefs, aiChatUseDeepSeekInsteadOfDoubao), SettingType::Bool, false, "已弃用，请用 AiChatProvider"},
     {offsetof(GlobalPrefs, enableAskAI), SettingType::Bool, true, "显示 Ask AI 入口"},
+    {offsetof(GlobalPrefs, enableInlineTranslate), SettingType::Bool, true, "显示划词翻译入口"},
+    {offsetof(GlobalPrefs, translateVolcAccessKey), SettingType::String, (intptr_t)"",
+     "火山翻译 Access Key（可 DPAPI 加密）"},
+    {offsetof(GlobalPrefs, translateVolcSecretKey), SettingType::String, (intptr_t)"",
+     "火山翻译 Secret Key（可 DPAPI 加密）"},
+    {offsetof(GlobalPrefs, translateTargetMode), SettingType::String, (intptr_t)"auto",
+     "划词翻译目标语 auto/ui/zh/zh-Hant/en/ja/ko/…"},
     {offsetof(GlobalPrefs, showFavorites), SettingType::Bool, false, "默认显示收藏侧边栏"},
     {offsetof(GlobalPrefs, showToc), SettingType::Bool, true, "默认显示目录侧边栏"},
     {offsetof(GlobalPrefs, showLinks), SettingType::Bool, false, "为链接绘制蓝色边框"},
@@ -1230,25 +1250,26 @@ static const FieldInfo gGlobalPrefsFields[] = {
      "Settings below are not recognized by the current version"},
 };
 static const StructInfo gGlobalPrefsInfo = {
-    sizeof(GlobalPrefs), 135, gGlobalPrefsFields,
+    sizeof(GlobalPrefs), 139, gGlobalPrefsFields,
     "\0\0CheckForUpdates\0CustomScreenDPI\0DefaultDisplayMode\0DefaultZoom\0EnableTeXEnhancements\0EscToExit\0FullPathI"
     "nTitle\0InverseSearchCmdLine\0LazyLoading\0MainWindowBackground\0NoHomeTab\0HomePageSortByFrequentlyRead\0HomePage"
     "ViewMode\0HomePageThumbnailDx\0ReloadModifiedDocuments\0RememberOpenedFiles\0RememberStatePerDocument\0RestoreSess"
     "ion\0ReuseInstance\0ShowMenubar\0ShowMenubarWithTabs\0ShowTips\0CustomColors\0ShowToolbar\0ShowAnnotToolbarButtons"
     "\0SearchUIFloating\0OfflineDictionaryPath\0EnableDoubleClickWordLookup\0AutoOcrScanPages\0OcrAutoSave\0OcrDeskew\0"
     "OcrFullDocumentMode\0OcrCopyMerged\0ExtractPdfTocMode\0AiChatProvider\0AiTocApiBaseUrl\0AiTocApiKey\0AiTocApiModel"
-    "\0AiTocApiProfiles\0AiTocApiConcurrency\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAskAI\0ShowFavorites\0ShowToc\0Sh"
-    "owLinks\0ShowStartPage\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0FastScrollOverScrollbar\0Preve"
-    "ntSleepInFullscreen\0TabWidth\0TabFontSize\0TabBarHeight\0Theme\0LastDarkTheme\0LastLightTheme\0DocumentColorMode"
-    "\0DocumentImageDarkStrategy\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0TreeWrapLabels\0UIFontSize\0DisableAn"
-    "tiAlias\0EngineeringDrawingEnhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EB"
-    "ookUI\0\0ComicBookUI\0\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0"
-    "Fullscreen\0\0SelectionHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0Re"
-    "adAloudSpeakingRateZh\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnline"
-    "VoiceZh\0ReadAloudSmartOnlineVoiceEn\0ReadAloudMultilingualVoice\0ReadAloudHighlightColor\0ReadAloudAutoFollow\0Na"
-    "rrationUseBookAudio\0NarrationUseBookHighlightColor\0NarrationSpeed\0\0\0DefaultPasswords\0UiLanguage\0VersionToSk"
-    "ip\0WindowState\0WindowPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfU"
-    "pdateCheckSnooze\0OpenCountWeek\0PropWinPos\0\0"};
+    "\0AiTocApiProfiles\0AiTocApiConcurrency\0AiChatUseDeepSeekInsteadOfDoubao\0EnableAskAI\0EnableInlineTranslate\0Tra"
+    "nslateVolcAccessKey\0TranslateVolcSecretKey\0TranslateTargetMode\0ShowFavorites\0ShowToc\0ShowLinks\0ShowStartPage"
+    "\0SidebarDx\0Scrollbars\0ScrollbarInSinglePage\0SmoothScroll\0FastScrollOverScrollbar\0PreventSleepInFullscreen\0T"
+    "abWidth\0TabFontSize\0TabBarHeight\0Theme\0LastDarkTheme\0LastLightTheme\0DocumentColorMode\0DocumentImageDarkStra"
+    "tegy\0TocDy\0ToolbarSize\0TreeFontName\0TreeFontSize\0TreeWrapLabels\0UIFontSize\0DisableAntiAlias\0EngineeringDra"
+    "wingEnhance\0UseSysColors\0UseTabs\0TabsMru\0ZoomLevels\0ZoomIncrement\0\0FixedPageUI\0\0EBookUI\0\0ComicBookUI\0"
+    "\0ImageUI\0\0ChmUI\0\0Annotations\0\0ExternalViewers\0\0ForwardSearch\0\0PrinterDefaults\0\0Fullscreen\0\0Selectio"
+    "nHandlers\0\0Shortcuts\0\0Themes\0\0TabGroups\0\0ReadAloudVoiceId\0ReadAloudSpeakingRate\0ReadAloudSpeakingRateZh"
+    "\0ReadAloudSpeakingRateEn\0ReadAloudSmartVoiceZh\0ReadAloudSmartVoiceEn\0ReadAloudSmartOnlineVoiceZh\0ReadAloudSma"
+    "rtOnlineVoiceEn\0ReadAloudMultilingualVoice\0ReadAloudHighlightColor\0ReadAloudAutoFollow\0NarrationUseBookAudio\0"
+    "NarrationUseBookHighlightColor\0NarrationSpeed\0\0\0DefaultPasswords\0UiLanguage\0VersionToSkip\0WindowState\0Wind"
+    "owPos\0SearchUIWindowPos\0FileStates\0SessionData\0ReopenOnce\0TimeOfLastUpdateCheck\0TimeOfUpdateCheckSnooze\0Ope"
+    "nCountWeek\0PropWinPos\0\0"};
 static const FieldInfo gTheme_1_Fields[] = {
     {offsetof(Theme, name), SettingType::String, (intptr_t)"", "主题名称"},
     {offsetof(Theme, textColor), SettingType::Color, (intptr_t)"", "文字颜色"},

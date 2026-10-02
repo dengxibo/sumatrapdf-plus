@@ -518,11 +518,12 @@ static fz_image* v2_build_page_image(fz_context* ctx, fz_image* srcImage, const 
             src = fz_get_pixmap_from_image(ctx, srcImage, nullptr, nullptr, nullptr, nullptr);
         }
         decodeMs = TimeSinceInMs(d0);
-        // A gray destination cannot represent a chromatic theme background. Promote
-        // before remapping so Dracula and similar palettes retain their exact tint.
-        if (src && src->colorspace && fz_colorspace_is_gray(ctx, src->colorspace)) {
-            fz_pixmap* rgbSrc =
-                fz_convert_pixmap(ctx, src, fz_device_rgb(ctx), nullptr, nullptr, fz_default_color_params, 1);
+        // Gray and CMYK cannot store a chromatic theme background. Indexed textbook
+        // plates decode to CMYK; writing the theme color back into that space leaves
+        // the original cream. Promote before remapping.
+        fz_colorspace* deviceRgb = fz_device_rgb(ctx);
+        if (src && src->colorspace && src->colorspace != deviceRgb && !fz_colorspace_is_rgb(ctx, src->colorspace)) {
+            fz_pixmap* rgbSrc = fz_convert_pixmap(ctx, src, deviceRgb, nullptr, nullptr, fz_default_color_params, 1);
             fz_drop_pixmap(ctx, src);
             src = rgbSrc;
         }

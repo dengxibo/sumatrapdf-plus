@@ -27,6 +27,8 @@
 #include "AppDialogTheme.h"
 #include "DarkModeSubclass.h"
 #include "AiTocApi.h"
+#include "InlineTranslateLang.h"
+#include "InlineTranslate.h"
 
 // Modeless Enter/Esc routing (defined in wingui/Wnd.cpp).
 HWND GetCurrentModelessDialog();
@@ -901,37 +903,41 @@ static const int gSettingsReadAloudControls[] = {IDC_SETTINGS_PAGE_READ_ALOUD,
                                                  IDC_RA_NARRATION_USE_AUDIO,
                                                  IDC_RA_NARRATION_HINT,
                                                  IDC_RA_NARRATION_USE_COLOR};
-static const int gSettingsOcrAiControls[] = {IDC_SETTINGS_PAGE_OCR_AI,
-                                             IDC_GROUP_OCR,
-                                             IDC_AUTO_OCR,
-                                             IDC_OCR_DESCRIPTION,
-                                             IDC_OCR_AUTO_SAVE,
-                                             IDC_OCR_SAVE_WARNING,
-                                             IDC_GROUP_SMART_TOC,
-                                             IDC_TOC_MODE_LABEL,
-                                             IDC_TOC_MODE,
-                                             IDC_TOC_MODE_DESCRIPTION,
-                                             IDC_GROUP_ASK_AI,
-                                             IDC_ENABLE_ASK_AI,
-                                             IDC_AI_PROVIDER_LABEL,
-                                             IDC_AI_PROVIDER,
-                                             IDC_GROUP_AITOC_API,
-                                             IDC_AITOC_API_BASEURL_LABEL,
-                                             IDC_AITOC_API_BASEURL,
-                                             IDC_AITOC_API_KEY_LABEL,
-                                             IDC_AITOC_API_KEY,
-                                             IDC_AITOC_API_MODEL_LABEL,
-                                             IDC_AITOC_API_MODEL,
-                                             IDC_AITOC_API_TEST,
-                                             IDC_AITOC_API_PROFILE_LABEL,
-                                             IDC_AITOC_API_PROFILE,
-                                             IDC_AITOC_API_ADD,
-                                             IDC_AITOC_API_REMOVE,
-                                             IDC_AITOC_API_NAME_LABEL,
-                                             IDC_AITOC_API_NAME,
-                                             IDC_AITOC_API_FETCH_MODELS,
-                                             IDC_AITOC_API_CONCURRENCY_LABEL,
-                                             IDC_AITOC_API_CONCURRENCY};
+static const int gSettingsOcrControls[] = {
+    IDC_SETTINGS_PAGE_OCR_AI, IDC_GROUP_OCR,       IDC_AUTO_OCR,       IDC_OCR_DESCRIPTION, IDC_OCR_AUTO_SAVE,
+    IDC_OCR_SAVE_WARNING,     IDC_GROUP_SMART_TOC, IDC_TOC_MODE_LABEL, IDC_TOC_MODE,        IDC_TOC_MODE_DESCRIPTION};
+static const int gSettingsAiControls[] = {IDC_SETTINGS_PAGE_AI,
+                                          IDC_GROUP_ASK_AI,
+                                          IDC_ENABLE_ASK_AI,
+                                          IDC_AI_PROVIDER_LABEL,
+                                          IDC_AI_PROVIDER,
+                                          IDC_GROUP_INLINE_TRANSLATE,
+                                          IDC_ENABLE_INLINE_TRANSLATE,
+                                          IDC_TRANSLATE_TARGET_LABEL,
+                                          IDC_TRANSLATE_TARGET,
+                                          IDC_TRANSLATE_VOLC_AK_LABEL,
+                                          IDC_TRANSLATE_VOLC_AK,
+                                          IDC_TRANSLATE_VOLC_SK_LABEL,
+                                          IDC_TRANSLATE_VOLC_SK,
+                                          IDC_TRANSLATE_VOLC_TEST,
+                                          IDC_TRANSLATE_HINT,
+                                          IDC_GROUP_AITOC_API,
+                                          IDC_AITOC_API_BASEURL_LABEL,
+                                          IDC_AITOC_API_BASEURL,
+                                          IDC_AITOC_API_KEY_LABEL,
+                                          IDC_AITOC_API_KEY,
+                                          IDC_AITOC_API_MODEL_LABEL,
+                                          IDC_AITOC_API_MODEL,
+                                          IDC_AITOC_API_TEST,
+                                          IDC_AITOC_API_PROFILE_LABEL,
+                                          IDC_AITOC_API_PROFILE,
+                                          IDC_AITOC_API_ADD,
+                                          IDC_AITOC_API_REMOVE,
+                                          IDC_AITOC_API_NAME_LABEL,
+                                          IDC_AITOC_API_NAME,
+                                          IDC_AITOC_API_FETCH_MODELS,
+                                          IDC_AITOC_API_CONCURRENCY_LABEL,
+                                          IDC_AITOC_API_CONCURRENCY};
 static const int gSettingsAdvancedControls[] = {IDC_SETTINGS_PAGE_ADVANCED,
                                                 IDC_GROUP_WINDOW,
                                                 IDC_ESC_TO_EXIT,
@@ -951,14 +957,110 @@ static int gSettingsInitialPage = 0;
 
 // long translations (German, Russian) need wider labels: move the controls
 // right of the labels over, keeping the right edge of the group
+// Grow label column and shift fields so translated (often Chinese) labels fit.
+static void FitSettingsLabelColumn(HWND hDlg, const int* labelIds, int labelCount, const int* fieldIds, int fieldCount,
+                                   int refFieldId, int gapDlg = 6) {
+    HWND firstLabel = GetDlgItem(hDlg, labelIds[0]);
+    HWND refField = GetDlgItem(hDlg, refFieldId);
+    HDC hdc = GetDC(hDlg);
+    if (!firstLabel || !refField || !hdc) {
+        return;
+    }
+    HFONT font = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
+    HFONT oldFont = font ? (HFONT)SelectObject(hdc, font) : nullptr;
+    int need = 0;
+    for (int i = 0; i < labelCount; i++) {
+        TempWStr s = HwndGetTextWTemp(GetDlgItem(hDlg, labelIds[i]));
+        RECT rc{};
+        DrawTextW(hdc, s, -1, &rc, DT_CALCRECT | DT_SINGLELINE);
+        need = std::max(need, (int)(rc.right - rc.left));
+    }
+    if (oldFont) {
+        SelectObject(hdc, oldFont);
+    }
+    ReleaseDC(hDlg, hdc);
+
+    Rect label = MapRectToWindow(WindowRect(firstLabel), HWND_DESKTOP, hDlg);
+    Rect field = MapRectToWindow(WindowRect(refField), HWND_DESKTOP, hDlg);
+    int gap = DpiScale(hDlg, gapDlg);
+    int shift = label.x + need + gap - field.x;
+    if (shift <= 0) {
+        return;
+    }
+    int right = field.Right();
+    for (int i = 0; i < labelCount; i++) {
+        HWND h = GetDlgItem(hDlg, labelIds[i]);
+        Rect r = MapRectToWindow(WindowRect(h), HWND_DESKTOP, hDlg);
+        SetWindowPos(h, nullptr, r.x, r.y, r.dx + shift, r.dy, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    for (int i = 0; i < fieldCount; i++) {
+        HWND h = GetDlgItem(hDlg, fieldIds[i]);
+        Rect r = MapRectToWindow(WindowRect(h), HWND_DESKTOP, hDlg);
+        int dx = r.dx;
+        // full-width controls keep the right edge; short ones just move
+        if (r.Right() >= right - 1) {
+            dx -= shift;
+        } else if (r.Right() + shift > right) {
+            dx = std::max(right - (r.x + shift), DpiScale(hDlg, 40));
+        }
+        // a combo's window height is its dropped-down height
+        WCHAR cls[32]{};
+        GetClassNameW(h, cls, dimof(cls));
+        int dy = str::EqI(cls, L"ComboBox") ? DpiScale(hDlg, 300) : r.dy;
+        SetWindowPos(h, nullptr, r.x + shift, r.y, dx, dy, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+}
+
+static void FitSettingsInterfaceLabels(HWND hDlg) {
+    static const int labelIds[] = {IDC_THEME_LABEL, IDC_DOCUMENT_COLOR_LABEL, IDC_SCROLLBARS_LABEL};
+    static const int fieldIds[] = {IDC_THEME, IDC_DOCUMENT_COLOR, IDC_SCROLLBARS};
+    FitSettingsLabelColumn(hDlg, labelIds, dimof(labelIds), fieldIds, dimof(fieldIds), IDC_THEME);
+}
+
+static void FitSettingsReadingLabels(HWND hDlg) {
+    static const int labelIds[] = {IDC_DEFAULT_LAYOUT_LABEL, IDC_DEFAULT_ZOOM_LABEL, IDC_DICTIONARY_PATH_LABEL};
+    static const int fieldIds[] = {IDC_DEFAULT_LAYOUT, IDC_DEFAULT_ZOOM, IDC_DICTIONARY_PATH, IDC_DICTIONARY_BROWSE};
+    FitSettingsLabelColumn(hDlg, labelIds, dimof(labelIds), fieldIds, dimof(fieldIds), IDC_DEFAULT_LAYOUT);
+}
+
+static void FitSettingsOcrLabels(HWND hDlg) {
+    static const int labelIds[] = {IDC_TOC_MODE_LABEL};
+    static const int fieldIds[] = {IDC_TOC_MODE};
+    FitSettingsLabelColumn(hDlg, labelIds, dimof(labelIds), fieldIds, dimof(fieldIds), IDC_TOC_MODE);
+}
+
 static void FitSettingsReadAloudLabels(HWND hDlg) {
     static const int labelIds[] = {IDC_RA_VOICE_MODE_LABEL, IDC_RA_VOICE_ZH_LABEL, IDC_RA_VOICE_EN_LABEL,
                                    IDC_RA_VOICE_MULTI_LABEL, IDC_RA_HIGHLIGHT_COLOR_LABEL};
     static const int fieldIds[] = {IDC_RA_VOICE_MODE, IDC_RA_VOICE_ZH,        IDC_RA_VOICE_EN,       IDC_RA_VOICE_MULTI,
                                    IDC_RA_PREVIEW,    IDC_RA_HIGHLIGHT_COLOR, IDC_RA_HIGHLIGHT_RESET};
-    HWND first = GetDlgItem(hDlg, labelIds[0]);
+    FitSettingsLabelColumn(hDlg, labelIds, dimof(labelIds), fieldIds, dimof(fieldIds), IDC_RA_VOICE_MODE);
+}
+
+// Align AI page label/field columns after translation (Chinese labels are wider).
+static void FitSettingsAiLabels(HWND hDlg) {
+    static const int labelIds[] = {
+        IDC_AI_PROVIDER_LABEL,           IDC_TRANSLATE_TARGET_LABEL,  IDC_TRANSLATE_VOLC_AK_LABEL,
+        IDC_TRANSLATE_VOLC_SK_LABEL,     IDC_AITOC_API_PROFILE_LABEL, IDC_AITOC_API_NAME_LABEL,
+        IDC_AITOC_API_BASEURL_LABEL,     IDC_AITOC_API_KEY_LABEL,     IDC_AITOC_API_MODEL_LABEL,
+        IDC_AITOC_API_CONCURRENCY_LABEL,
+    };
+    // Fields that share the main value column (right edge of AI provider combo).
+    static const int fullFieldIds[] = {
+        IDC_AI_PROVIDER,    IDC_TRANSLATE_TARGET,  IDC_TRANSLATE_VOLC_AK,
+        IDC_AITOC_API_NAME, IDC_AITOC_API_BASEURL, IDC_AITOC_API_KEY,
+    };
+    // Fields that leave room for a right-side button.
+    static const int midFieldIds[] = {IDC_TRANSLATE_VOLC_SK, IDC_AITOC_API_PROFILE, IDC_AITOC_API_MODEL,
+                                      IDC_AITOC_API_CONCURRENCY};
+
+    HWND firstLabel = GetDlgItem(hDlg, labelIds[0]);
+    HWND firstField = GetDlgItem(hDlg, IDC_AI_PROVIDER);
+    if (!firstLabel || !firstField) {
+        return;
+    }
     HDC hdc = GetDC(hDlg);
-    if (!first || !hdc) {
+    if (!hdc) {
         return;
     }
     HFONT font = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
@@ -975,33 +1077,40 @@ static void FitSettingsReadAloudLabels(HWND hDlg) {
     }
     ReleaseDC(hDlg, hdc);
 
-    Rect label = MapRectToWindow(WindowRect(first), HWND_DESKTOP, hDlg);
-    int gap = DpiScale(hDlg, 6);
-    int shift =
-        label.x + need + gap - MapRectToWindow(WindowRect(GetDlgItem(hDlg, IDC_RA_VOICE_MODE)), HWND_DESKTOP, hDlg).x;
-    if (shift <= 0) {
+    Rect label = MapRectToWindow(WindowRect(firstLabel), HWND_DESKTOP, hDlg);
+    Rect field = MapRectToWindow(WindowRect(firstField), HWND_DESKTOP, hDlg);
+    int gap = DpiScale(hDlg, 8);
+    int shift = label.x + need + gap - field.x;
+    if (shift == 0) {
         return;
     }
-    int right = MapRectToWindow(WindowRect(GetDlgItem(hDlg, IDC_RA_VOICE_MODE)), HWND_DESKTOP, hDlg).Right();
+    // Growing labels: push fields right. Shrinking: leave RC spacing.
+    if (shift < 0) {
+        return;
+    }
+    int fullRight = field.Right();
     for (int id : labelIds) {
         HWND h = GetDlgItem(hDlg, id);
         Rect r = MapRectToWindow(WindowRect(h), HWND_DESKTOP, hDlg);
         SetWindowPos(h, nullptr, r.x, r.y, r.dx + shift, r.dy, SWP_NOZORDER | SWP_NOACTIVATE);
     }
-    for (int id : fieldIds) {
+    for (int id : fullFieldIds) {
         HWND h = GetDlgItem(hDlg, id);
         Rect r = MapRectToWindow(WindowRect(h), HWND_DESKTOP, hDlg);
-        int dx = r.dx;
-        // full-width combos keep the right edge; short ones just move
-        if (r.Right() >= right - 1) {
-            dx -= shift;
-        } else if (r.Right() + shift > right) {
-            dx = std::max(right - (r.x + shift), DpiScale(hDlg, 40));
-        }
-        // a combo's window height is its dropped-down height
+        int dx = std::max(fullRight - (r.x + shift), DpiScale(hDlg, 80));
         WCHAR cls[32]{};
         GetClassNameW(h, cls, dimof(cls));
         int dy = str::EqI(cls, L"ComboBox") ? DpiScale(hDlg, 300) : r.dy;
+        SetWindowPos(h, nullptr, r.x + shift, r.y, dx, dy, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    for (int id : midFieldIds) {
+        HWND h = GetDlgItem(hDlg, id);
+        Rect r = MapRectToWindow(WindowRect(h), HWND_DESKTOP, hDlg);
+        WCHAR cls[32]{};
+        GetClassNameW(h, cls, dimof(cls));
+        int dy = str::EqI(cls, L"ComboBox") ? DpiScale(hDlg, 300) : r.dy;
+        // Keep the right edge so the field never runs under its button.
+        int dx = std::max(r.dx - shift, DpiScale(hDlg, 60));
         SetWindowPos(h, nullptr, r.x + shift, r.y, dx, dy, SWP_NOZORDER | SWP_NOACTIVATE);
     }
 }
@@ -1014,7 +1123,8 @@ static void ShowSettingsPage(HWND hDlg, int page) {
                  {gSettingsInterfaceControls, dimof(gSettingsInterfaceControls)},
                  {gSettingsReadingControls, dimof(gSettingsReadingControls)},
                  {gSettingsReadAloudControls, dimof(gSettingsReadAloudControls)},
-                 {gSettingsOcrAiControls, dimof(gSettingsOcrAiControls)},
+                 {gSettingsOcrControls, dimof(gSettingsOcrControls)},
+                 {gSettingsAiControls, dimof(gSettingsAiControls)},
                  {gSettingsAdvancedControls, dimof(gSettingsAdvancedControls)}};
     page = limitValue(page, 0, dimof(pages) - 1);
     auto* prefs = (GlobalPrefs*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
@@ -1054,8 +1164,14 @@ struct AiTocSettingsState {
     unsigned fetchGeneration = 0;
     LONG token = 0;
     bool loading = false;
+    HWND fetchTip = nullptr;
+    WCHAR* fetchTipText = nullptr;
 
     ~AiTocSettingsState() {
+        if (fetchTip) {
+            DestroyWindow(fetchTip);
+        }
+        str::Free(fetchTipText);
         for (auto& profile : profiles) {
             profile.Free();
         }
@@ -1138,31 +1254,36 @@ static void AiTocClearModels(AiTocSettingsState* state) {
     state->models.Reset();
 }
 
-static void AiTocPopulateModels(HWND hDlg, bool filterByText, bool openDropdown) {
-    auto* state = GetAiTocSettingsState(hDlg);
-    if (!state || state->loading) {
+static void AiTocAddTip(HWND tip, HWND owner, HWND ctrl, WCHAR* text) {
+    if (!tip || !ctrl || !text) {
         return;
     }
-    HWND combo = GetDlgItem(hDlg, IDC_AITOC_API_MODEL);
-    AutoFree selected(str::Dup(HwndGetTextTemp(combo)));
-    // Rebuilding a CBS_DROPDOWN also clears its edit. Restore both text and
-    // caret so typing a search query feels like editing a normal field.
-    LPARAM editSelection = SendMessageW(combo, CB_GETEDITSEL, 0, 0);
-    state->loading = true;
-    SendMessageW(combo, CB_RESETCONTENT, 0, 0);
-    int matches = 0;
-    for (auto* model : state->models) {
-        if (!filterByText || !selected.data || !*selected.data || str::FindI(model, selected.data)) {
-            CbAddString(combo, model);
-            matches++;
-        }
+    TOOLINFOW ti{};
+    ti.cbSize = sizeof(ti);
+    ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+    ti.hwnd = owner;
+    ti.uId = (UINT_PTR)ctrl;
+    ti.lpszText = text;
+    SendMessageW(tip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
+}
+
+static void AiTocAddFetchModelsTip(HWND hDlg) {
+    auto* state = GetAiTocSettingsState(hDlg);
+    if (!state || state->fetchTip) {
+        return;
     }
-    HwndSetText(combo, selected.data ? selected.data : "");
-    if (openDropdown) {
-        SendMessageW(combo, CB_SHOWDROPDOWN, matches > 0 ? TRUE : FALSE, 0);
+    HWND tip =
+        CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP, CW_USEDEFAULT,
+                        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hDlg, nullptr, GetModuleHandle(nullptr), nullptr);
+    if (!tip) {
+        return;
     }
-    SendMessageW(combo, CB_SETEDITSEL, 0, editSelection);
-    state->loading = false;
+    SetWindowPos(tip, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    SendMessageW(tip, TTM_SETMAXTIPWIDTH, 0, 320);
+    state->fetchTipText = str::Dup(
+        ToWStrTemp(_TRA("Ask the API for model names and put the one you pick in the box. You can also type a name.")));
+    state->fetchTip = tip;
+    AiTocAddTip(tip, hDlg, GetDlgItem(hDlg, IDC_AITOC_API_FETCH_MODELS), state->fetchTipText);
 }
 
 static void AiTocSaveVisibleProfile(HWND hDlg) {
@@ -1210,7 +1331,6 @@ static void AiTocShowProfile(HWND hDlg) {
     state->loading = false;
     AiTocClearModels(state);
     state->fetchGeneration++;
-    AiTocPopulateModels(hDlg, false, false);
     AiTocRefreshProfileSelector(hDlg);
     EnableWindow(GetDlgItem(hDlg, IDC_AITOC_API_FETCH_MODELS), TRUE);
 }
@@ -1241,6 +1361,7 @@ static void AiTocInitProfiles(HWND hDlg, GlobalPrefs* prefs) {
     state->current = limitValue(state->current, 0, state->profiles.Size() - 1);
     SetPropW(hDlg, kAiTocSettingsStateProp, state);
     AiTocShowProfile(hDlg);
+    AiTocAddFetchModelsTip(hDlg);
 }
 
 static void AiTocCommitProfiles(HWND hDlg, GlobalPrefs* prefs) {
@@ -1295,27 +1416,193 @@ struct AiTocFetchModelsReq {
     }
 };
 
+struct AiModelPickData {
+    Vec<char*>* models = nullptr;
+    const char* current = nullptr;
+    char* chosen = nullptr;
+};
+
+static void AiModelPickFill(HWND hDlg, const char* filter) {
+    auto* data = (AiModelPickData*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
+    HWND list = GetDlgItem(hDlg, IDC_AI_MODEL_LIST);
+    int keepSrc = -1;
+    int sel = (int)SendMessageW(list, LB_GETCURSEL, 0, 0);
+    if (sel >= 0) {
+        LRESULT src = SendMessageW(list, LB_GETITEMDATA, sel, 0);
+        if (src != LB_ERR) {
+            keepSrc = (int)src;
+        }
+    }
+    SendMessageW(list, LB_RESETCONTENT, 0, 0);
+    int selectShown = -1;
+    if (data && data->models) {
+        for (int i = 0; i < data->models->Size(); i++) {
+            const char* name = data->models->At(i);
+            if (filter && *filter && !str::ContainsI(name, filter)) {
+                continue;
+            }
+            int idx = (int)SendMessageW(list, LB_ADDSTRING, 0, (LPARAM)ToWStrTemp(name));
+            if (idx < 0) {
+                continue;
+            }
+            SendMessageW(list, LB_SETITEMDATA, idx, (LPARAM)i);
+            bool keep = keepSrc == i;
+            bool current = keepSrc < 0 && data->current && str::EqI(name, data->current);
+            if (keep || (selectShown < 0 && current)) {
+                selectShown = idx;
+            }
+        }
+    }
+    if (selectShown >= 0) {
+        SendMessageW(list, LB_SETCURSEL, selectShown, 0);
+    }
+    EnableWindow(GetDlgItem(hDlg, IDOK), selectShown >= 0);
+}
+
+static void AiModelPickApplySelection(HWND hDlg) {
+    auto* data = (AiModelPickData*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
+    HWND list = GetDlgItem(hDlg, IDC_AI_MODEL_LIST);
+    int sel = (int)SendMessageW(list, LB_GETCURSEL, 0, 0);
+    if (!data || !data->models || sel < 0) {
+        return;
+    }
+    LRESULT src = SendMessageW(list, LB_GETITEMDATA, sel, 0);
+    if (src == LB_ERR || src < 0 || src >= data->models->Size()) {
+        return;
+    }
+    str::ReplaceWithCopy(&data->chosen, data->models->At((int)src));
+    EndDialog(hDlg, IDOK);
+}
+
+static INT_PTR CALLBACK Dialog_AiModelPick_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == WM_INITDIALOG) {
+        auto* data = (AiModelPickData*)lp;
+        SetWindowLongPtr(hDlg, GWLP_USERDATA, (LONG_PTR)data);
+        if (UseDarkModeLib()) {
+            DarkMode::setDarkWndSafe(hDlg);
+        }
+        UpdateWindowCaptionTheme(hDlg);
+        HwndSetText(hDlg, _TRA("Choose a model"));
+        HwndSetDlgItemText(hDlg, IDOK, _TRA("OK"));
+        HwndSetDlgItemText(hDlg, IDCANCEL, _TRA("Cancel"));
+        HWND search = GetDlgItem(hDlg, IDC_AI_MODEL_SEARCH);
+        SendMessageW(search, EM_SETCUEBANNER, TRUE, (LPARAM)ToWStrTemp(_TRA("Search models")));
+        AiModelPickFill(hDlg, nullptr);
+        CenterDialog(hDlg);
+        HwndSetFocus(search);
+        return FALSE;
+    }
+    switch (msg) {
+        case WM_COMMAND:
+            switch (LOWORD(wp)) {
+                case IDC_AI_MODEL_SEARCH:
+                    if (HIWORD(wp) == EN_CHANGE) {
+                        char* filter = str::Dup(HwndGetTextTemp(GetDlgItem(hDlg, IDC_AI_MODEL_SEARCH)));
+                        if (filter) {
+                            str::TrimWSInPlace(filter, str::TrimOpt::Both);
+                        }
+                        AiModelPickFill(hDlg, filter);
+                        str::Free(filter);
+                    }
+                    return TRUE;
+                case IDC_AI_MODEL_LIST:
+                    if (HIWORD(wp) == LBN_SELCHANGE) {
+                        int sel = (int)SendMessageW(GetDlgItem(hDlg, IDC_AI_MODEL_LIST), LB_GETCURSEL, 0, 0);
+                        EnableWindow(GetDlgItem(hDlg, IDOK), sel >= 0);
+                    } else if (HIWORD(wp) == LBN_DBLCLK) {
+                        AiModelPickApplySelection(hDlg);
+                    }
+                    return TRUE;
+                case IDOK:
+                    AiModelPickApplySelection(hDlg);
+                    return TRUE;
+                case IDCANCEL:
+                    EndDialog(hDlg, IDCANCEL);
+                    return TRUE;
+            }
+            break;
+    }
+    return FALSE;
+}
+
+// Speech, image-generation, and embedding models are not chat completions.
+// Match a whole name segment so "asr" does not hide an unrelated model.
+static bool AiModelNameHasSegment(const char* name, const char* segment) {
+    if (!name || !segment || !*segment) {
+        return false;
+    }
+    size_t n = str::Len(segment);
+    const char* p = name;
+    while (*p) {
+        const char* start = p;
+        while (*p && *p != '-' && *p != '_' && *p != '/') {
+            p++;
+        }
+        if ((size_t)(p - start) == n && str::EqNI(start, segment, n)) {
+            return true;
+        }
+        if (*p) {
+            p++;
+        }
+    }
+    return false;
+}
+
+static bool AiModelNameUnsupported(const char* name) {
+    static const char* segments[] = {"tts",        "asr",    "realtime",   "livetranslate", "image",
+                                     "embedding",  "rerank", "paraformer", "cosyvoice",     "sambert",
+                                     "sensevoice", "wanx",   "mt"};
+    for (const char* segment : segments) {
+        if (AiModelNameHasSegment(name, segment)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int CmpFetchedModelName(const void* a, const void* b) {
+    const char* sa = *(char* const*)a;
+    const char* sb = *(char* const*)b;
+    if (!sa || !sb) {
+        return (sa ? 1 : 0) - (sb ? 1 : 0);
+    }
+    return str::CmpNatural(sa, sb);
+}
+
 static void AiTocFetchModelsFinished(AiTocFetchModelsReq* req) {
     if (IsWindow(req->hwnd)) {
         auto* state = GetAiTocSettingsState(req->hwnd);
         if (state && state->token == req->token && state->fetchGeneration == req->generation) {
             EnableWindow(GetDlgItem(req->hwnd, IDC_AITOC_API_FETCH_MODELS), TRUE);
             if (req->error) {
-                MessageBoxW(req->hwnd, ToWStrTemp(req->error), ToWStrTemp(_TRA("Get models")), MB_ICONWARNING);
+                MessageBoxW(req->hwnd, ToWStrTemp(req->error), ToWStrTemp(_TRA("Choose a model")), MB_ICONWARNING);
             } else {
                 AiTocClearModels(state);
                 for (auto* model : req->models) {
+                    if (AiModelNameUnsupported(model)) {
+                        continue;
+                    }
                     state->models.Append(str::Dup(model));
                 }
-                const char* current = HwndGetTextTemp(GetDlgItem(req->hwnd, IDC_AITOC_API_MODEL));
-                bool selectedModel = false;
-                for (auto* model : state->models) {
-                    if (str::EqI(model, current)) {
-                        selectedModel = true;
-                        break;
+                if (state->models.IsEmpty()) {
+                    MessageBoxW(req->hwnd,
+                                ToWStrTemp(_TRA("None of the models from the API can be used here. Type a chat model "
+                                                "name instead.")),
+                                ToWStrTemp(_TRA("Choose a model")), MB_ICONINFORMATION);
+                } else {
+                    state->models.Sort(CmpFetchedModelName);
+                    AiModelPickData pick;
+                    pick.models = &state->models;
+                    char* current = str::Dup(HwndGetTextTemp(GetDlgItem(req->hwnd, IDC_AITOC_API_MODEL)));
+                    pick.current = current;
+                    if (CreateAppDialogBox(IDD_DIALOG_AI_MODEL_PICK, req->hwnd, Dialog_AiModelPick_Proc,
+                                           (LPARAM)&pick) == IDOK &&
+                        pick.chosen) {
+                        HwndSetDlgItemText(req->hwnd, IDC_AITOC_API_MODEL, pick.chosen);
                     }
+                    str::Free(current);
+                    str::Free(pick.chosen);
                 }
-                AiTocPopulateModels(req->hwnd, !selectedModel, true);
             }
         }
     }
@@ -1358,6 +1645,43 @@ static void AiTocApiTestWorker(AiTocApiTestReq* req) {
     uitask::Post(MkFunc0<AiTocApiTestReq>(AiTocApiTestFinished, req), "AiTocApiTest");
 }
 
+struct VolcTranslateTestReq {
+    HWND hwnd = nullptr;
+    LONG token = 0;
+    char* ak = nullptr;
+    char* sk = nullptr;
+    char* result = nullptr;
+    char* err = nullptr;
+    bool ok = false;
+};
+
+static void VolcTranslateTestFinished(VolcTranslateTestReq* req) {
+    auto* state = IsWindow(req->hwnd) ? GetAiTocSettingsState(req->hwnd) : nullptr;
+    HWND owner = state && state->token == req->token ? req->hwnd : nullptr;
+    if (owner) {
+        EnableWindow(GetDlgItem(owner, IDC_TRANSLATE_VOLC_TEST), TRUE);
+        const WCHAR* caption = ToWStrTemp(_TRA("Volcengine Translate"));
+        TempStr msg = nullptr;
+        if (req->ok) {
+            msg = str::FormatTemp("%s\n\nHello, world. \xE2\x86\x92 %s", _TRA("Volcengine Translate works."),
+                                  req->result ? req->result : "");
+        } else {
+            msg = str::FormatTemp("%s\n\n%s", _TRA("Volcengine Translate failed:"), req->err ? req->err : "");
+        }
+        MessageBoxW(owner, ToWStrTemp(msg), caption, req->ok ? MB_ICONINFORMATION : MB_ICONWARNING);
+    }
+    str::Free(req->ak);
+    str::Free(req->sk);
+    str::Free(req->result);
+    str::Free(req->err);
+    delete req;
+}
+
+static void VolcTranslateTestWorker(VolcTranslateTestReq* req) {
+    req->ok = InlineTranslateVolcTest(req->ak, req->sk, &req->result, &req->err);
+    uitask::Post(MkFunc0<VolcTranslateTestReq>(VolcTranslateTestFinished, req), "VolcTranslateTest");
+}
+
 static void UpdateSettingsDependencies(HWND hDlg) {
     bool rememberFiles = IsDlgButtonChecked(hDlg, IDC_REMEMBER_OPENED_FILES) == BST_CHECKED;
     EnableWindow(GetDlgItem(hDlg, IDC_REMEMBER_STATE_PER_DOCUMENT), rememberFiles);
@@ -1380,6 +1704,16 @@ static void UpdateSettingsDependencies(HWND hDlg) {
     bool askAi = IsDlgButtonChecked(hDlg, IDC_ENABLE_ASK_AI) == BST_CHECKED;
     EnableWindow(GetDlgItem(hDlg, IDC_AI_PROVIDER_LABEL), askAi);
     EnableWindow(GetDlgItem(hDlg, IDC_AI_PROVIDER), askAi);
+
+    bool inlineTr = IsDlgButtonChecked(hDlg, IDC_ENABLE_INLINE_TRANSLATE) == BST_CHECKED;
+    EnableWindow(GetDlgItem(hDlg, IDC_TRANSLATE_TARGET_LABEL), inlineTr);
+    EnableWindow(GetDlgItem(hDlg, IDC_TRANSLATE_TARGET), inlineTr);
+    EnableWindow(GetDlgItem(hDlg, IDC_TRANSLATE_VOLC_AK_LABEL), inlineTr);
+    EnableWindow(GetDlgItem(hDlg, IDC_TRANSLATE_VOLC_AK), inlineTr);
+    EnableWindow(GetDlgItem(hDlg, IDC_TRANSLATE_VOLC_SK_LABEL), inlineTr);
+    EnableWindow(GetDlgItem(hDlg, IDC_TRANSLATE_VOLC_SK), inlineTr);
+    EnableWindow(GetDlgItem(hDlg, IDC_TRANSLATE_VOLC_TEST), inlineTr);
+    EnableWindow(GetDlgItem(hDlg, IDC_TRANSLATE_HINT), inlineTr);
 }
 
 static void BrowseForDictionaryFolder(HWND hDlg) {
@@ -1657,6 +1991,10 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             CheckDlgButton(hDlg, IDC_AUTO_OCR, prefs->autoOcrScanPages ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(hDlg, IDC_OCR_AUTO_SAVE, prefs->ocrAutoSave ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(hDlg, IDC_ENABLE_ASK_AI, prefs->enableAskAI ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hDlg, IDC_ENABLE_INLINE_TRANSLATE,
+                           prefs->enableInlineTranslate ? BST_CHECKED : BST_UNCHECKED);
+            HwndSetDlgItemText(hDlg, IDC_TRANSLATE_VOLC_AK, prefs->translateVolcAccessKey);
+            HwndSetDlgItemText(hDlg, IDC_TRANSLATE_VOLC_SK, prefs->translateVolcSecretKey);
             CheckDlgButton(hDlg, IDC_ESC_TO_EXIT, prefs->escToExit ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(hDlg, IDC_FULL_PATH_IN_TITLE, prefs->fullPathInTitle ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(hDlg, IDC_SHOW_LINKS, prefs->showLinks ? BST_CHECKED : BST_UNCHECKED);
@@ -1674,7 +2012,8 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Interface")));
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Reading")));
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Read Aloud")));
-            SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("OCR and AI")));
+            SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("OCR")));
+            SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("AI")));
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Advanced")));
             ListBox_SetCurSel(category, gSettingsInitialPage);
 
@@ -1764,12 +2103,21 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                                                                                  : 0;
             CbSetCurrentSelection(aiProvider, providerSelection);
 
+            HWND translateTarget = GetDlgItem(hDlg, IDC_TRANSLATE_TARGET);
+            int nTargets = 0;
+            const TranslateTargetOption* targets = GetTranslateTargetOptions(&nTargets);
+            for (int i = 0; i < nTargets; i++) {
+                CbAddString(translateTarget, _TRA(targets[i].label));
+            }
+            CbSetCurrentSelection(translateTarget, FindTranslateTargetOptionIndex(prefs->translateTargetMode));
+
             HwndSetText(hDlg, _TRA("SumatraPDF Options"));
             HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_GENERAL, _TRA("General"));
             HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_INTERFACE, _TRA("Interface"));
             HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_READING, _TRA("Reading"));
             HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_READ_ALOUD, _TRA("Read Aloud"));
-            HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_OCR_AI, _TRA("OCR and AI"));
+            HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_OCR_AI, _TRA("OCR"));
+            HwndSetDlgItemText(hDlg, IDC_SETTINGS_PAGE_AI, _TRA("AI"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_RA_VOICE, _TRA("Voice"));
             HwndSetDlgItemText(hDlg, IDC_RA_VOICE_MODE_LABEL, _TRA("&Voice:"));
             HwndSetDlgItemText(hDlg, IDC_RA_VOICE_ZH_LABEL, _TRA("&Chinese voice:"));
@@ -1824,10 +2172,17 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             HwndSetDlgItemText(hDlg, IDC_TOC_MODE_LABEL, _TRA("Extraction &detail:"));
             HwndSetDlgItemText(hDlg, IDC_TOC_MODE_DESCRIPTION,
                                _TRA("Balanced accuracy and completeness is recommended."));
-            HwndSetDlgItemText(hDlg, IDC_GROUP_ASK_AI, _TRA("Ask AI"));
-            HwndSetDlgItemText(hDlg, IDC_ENABLE_ASK_AI, _TRA("&Enable Ask AI"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_ASK_AI, _TRA("Web AI"));
+            HwndSetDlgItemText(hDlg, IDC_ENABLE_ASK_AI, _TRA("&Enable Web AI"));
             HwndSetDlgItemText(hDlg, IDC_AI_PROVIDER_LABEL, _TRA("AI &service:"));
-            HwndSetDlgItemText(hDlg, IDC_GROUP_AITOC_API, _TRA("AI table of contents (API)"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_INLINE_TRANSLATE, _TRA("Translate"));
+            HwndSetDlgItemText(hDlg, IDC_ENABLE_INLINE_TRANSLATE, _TRA("Enable &inline translate"));
+            HwndSetDlgItemText(hDlg, IDC_TRANSLATE_TARGET_LABEL, _TRA("Target &language:"));
+            HwndSetDlgItemText(hDlg, IDC_TRANSLATE_VOLC_AK_LABEL, _TRA("Volc &Access Key:"));
+            HwndSetDlgItemText(hDlg, IDC_TRANSLATE_VOLC_SK_LABEL, _TRA("Volc &Secret Key:"));
+            HwndSetDlgItemText(hDlg, IDC_TRANSLATE_HINT,
+                               _TRA("Without Volc keys, translation uses the AI API below when configured."));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_AITOC_API, _TRA("AI API (Q&A, translate fallback, TOC)"));
             HwndSetDlgItemText(hDlg, IDC_AITOC_API_PROFILE_LABEL, _TRA("&Platform:"));
             HwndSetDlgItemText(hDlg, IDC_AITOC_API_ADD, _TRA("&Add"));
             HwndSetDlgItemText(hDlg, IDC_AITOC_API_REMOVE, _TRA("&Remove"));
@@ -1835,9 +2190,10 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             HwndSetDlgItemText(hDlg, IDC_AITOC_API_BASEURL_LABEL, _TRA("API &base URL:"));
             HwndSetDlgItemText(hDlg, IDC_AITOC_API_KEY_LABEL, _TRA("API &key:"));
             HwndSetDlgItemText(hDlg, IDC_AITOC_API_MODEL_LABEL, _TRA("&Model:"));
-            HwndSetDlgItemText(hDlg, IDC_AITOC_API_FETCH_MODELS, _TRA("&Get models"));
+            HwndSetDlgItemText(hDlg, IDC_AITOC_API_FETCH_MODELS, _TRA("&Choose..."));
             HwndSetDlgItemText(hDlg, IDC_AITOC_API_CONCURRENCY_LABEL, _TRA("&Parallel (1-8):"));
             HwndSetDlgItemText(hDlg, IDC_AITOC_API_TEST, _TRA("&Test"));
+            HwndSetDlgItemText(hDlg, IDC_TRANSLATE_VOLC_TEST, _TRA("&Test"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_WINDOW, _TRA("Window"));
             HwndSetDlgItemText(hDlg, IDC_ESC_TO_EXIT, _TRA("E&xit the application with Esc"));
             HwndSetDlgItemText(hDlg, IDC_FULL_PATH_IN_TITLE, _TRA("Show the full file &path in the title bar"));
@@ -1913,7 +2269,11 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             }
 
             ReadAloudSettingsPageInit(hDlg);
+            FitSettingsInterfaceLabels(hDlg);
+            FitSettingsReadingLabels(hDlg);
             FitSettingsReadAloudLabels(hDlg);
+            FitSettingsOcrLabels(hDlg);
+            FitSettingsAiLabels(hDlg);
             ShowSettingsPage(hDlg, gSettingsInitialPage);
             UpdateSettingsDependencies(hDlg);
             CenterDialog(hDlg);
@@ -2044,6 +2404,21 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     prefs->autoOcrScanPages = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_AUTO_OCR));
                     prefs->ocrAutoSave = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_OCR_AUTO_SAVE));
                     prefs->enableAskAI = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_ENABLE_ASK_AI));
+                    prefs->enableInlineTranslate =
+                        (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_ENABLE_INLINE_TRANSLATE));
+                    {
+                        char* ak = HwndGetTextTemp(GetDlgItem(hDlg, IDC_TRANSLATE_VOLC_AK));
+                        char* sk = HwndGetTextTemp(GetDlgItem(hDlg, IDC_TRANSLATE_VOLC_SK));
+                        str::ReplaceWithCopy(&prefs->translateVolcAccessKey, ak);
+                        str::ReplaceWithCopy(&prefs->translateVolcSecretKey, sk);
+                        int targetIdx = (int)SendDlgItemMessage(hDlg, IDC_TRANSLATE_TARGET, CB_GETCURSEL, 0, 0);
+                        int nTargets = 0;
+                        const TranslateTargetOption* targets = GetTranslateTargetOptions(&nTargets);
+                        if (targetIdx < 0 || targetIdx >= nTargets) {
+                            targetIdx = 0;
+                        }
+                        str::ReplaceWithCopy(&prefs->translateTargetMode, targets[targetIdx].mode);
+                    }
                     prefs->escToExit = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_ESC_TO_EXIT));
                     prefs->fullPathInTitle = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_FULL_PATH_IN_TITLE));
                     prefs->showLinks = (BST_CHECKED == IsDlgButtonChecked(hDlg, IDC_SHOW_LINKS));
@@ -2107,6 +2482,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                 case IDC_RESTORE_SESSION:
                 case IDC_ENABLE_WORD_LOOKUP:
                 case IDC_ENABLE_ASK_AI:
+                case IDC_ENABLE_INLINE_TRANSLATE:
                     UpdateSettingsDependencies(hDlg);
                     return TRUE;
 
@@ -2167,17 +2543,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                         if (state && !state->loading) {
                             state->fetchGeneration++;
                             AiTocClearModels(state);
-                            AiTocPopulateModels(hDlg, false, false);
                             EnableWindow(GetDlgItem(hDlg, IDC_AITOC_API_FETCH_MODELS), TRUE);
-                        }
-                    }
-                    return TRUE;
-
-                case IDC_AITOC_API_MODEL:
-                    if (HIWORD(wp) == CBN_EDITCHANGE) {
-                        auto* state = GetAiTocSettingsState(hDlg);
-                        if (state && !state->models.IsEmpty()) {
-                            AiTocPopulateModels(hDlg, true, true);
                         }
                     }
                     return TRUE;
@@ -2195,6 +2561,29 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     req->key = str::Dup(HwndGetTextTemp(GetDlgItem(hDlg, IDC_AITOC_API_KEY)));
                     EnableWindow(GetDlgItem(hDlg, IDC_AITOC_API_FETCH_MODELS), FALSE);
                     RunAsync(MkFunc0<AiTocFetchModelsReq>(AiTocFetchModelsWorker, req), "AiTocFetchModels");
+                    return TRUE;
+                }
+
+                case IDC_TRANSLATE_VOLC_TEST: {
+                    char* ak = HwndGetTextTemp(GetDlgItem(hDlg, IDC_TRANSLATE_VOLC_AK));
+                    char* sk = HwndGetTextTemp(GetDlgItem(hDlg, IDC_TRANSLATE_VOLC_SK));
+                    str::TrimWSInPlace(ak, str::TrimOpt::Both);
+                    str::TrimWSInPlace(sk, str::TrimOpt::Both);
+                    if (str::IsEmpty(ak) || str::IsEmpty(sk)) {
+                        MessageBoxW(hDlg, ToWStrTemp(_TRA("Enter both the Access Key and Secret Key first.")),
+                                    ToWStrTemp(_TRA("Volcengine Translate")), MB_ICONWARNING);
+                        HwndSetFocus(
+                            GetDlgItem(hDlg, str::IsEmpty(ak) ? IDC_TRANSLATE_VOLC_AK : IDC_TRANSLATE_VOLC_SK));
+                        return TRUE;
+                    }
+                    auto* req = new VolcTranslateTestReq();
+                    req->hwnd = hDlg;
+                    auto* state = GetAiTocSettingsState(hDlg);
+                    req->token = state ? state->token : 0;
+                    req->ak = str::Dup(ak);
+                    req->sk = str::Dup(sk);
+                    EnableWindow(GetDlgItem(hDlg, IDC_TRANSLATE_VOLC_TEST), FALSE);
+                    RunAsync(MkFunc0<VolcTranslateTestReq>(VolcTranslateTestWorker, req), "VolcTranslateTest");
                     return TRUE;
                 }
 

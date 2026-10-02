@@ -185,6 +185,23 @@ AiChatUseDeepSeekInsteadOfDoubao = false
 ; and command palette (introduced in version 3.7)
 EnableAskAI = true
 
+; if false, hide Translate in the selection toolbar, context menu, and command
+; palette (introduced in version 3.7)
+EnableInlineTranslate = true
+
+; Volcengine Translate access key (Access Key ID); stored DPAPI-protected when
+; possible (introduced in version 3.7)
+TranslateVolcAccessKey = 
+
+; Volcengine Translate secret key; stored DPAPI-protected when possible
+; (introduced in version 3.7)
+TranslateVolcSecretKey = 
+
+; inline translate target language: auto (UI language, flip when source
+; matches), ui, or a language code (zh, zh-Hant, en, ja, ko, fr, de, es, ru,
+; ...) (introduced in version 3.7)
+TranslateTargetMode = auto
+
 ; if true, we show the Favorites sidebar
 ShowFavorites = false
 

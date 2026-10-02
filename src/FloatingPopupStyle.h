@@ -12,6 +12,7 @@ COLORREF FloatingPopupSeparatorColor();
 COLORREF FloatingPopupTextColor();
 COLORREF FloatingPopupMutedTextColor();
 COLORREF FloatingPopupAccentColor();
+COLORREF FloatingPopupFieldBg();
 COLORREF FloatingPopupHoverBg(COLORREF bg);
 COLORREF FloatingPopupCloseHoverBg(COLORREF bg);
 COLORREF BlendFloatingPopupColors(COLORREF from, COLORREF to, float t);

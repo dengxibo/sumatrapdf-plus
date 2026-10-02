@@ -59,6 +59,7 @@
 #include "SearchAndDDE.h"
 #include "FindBar.h"
 #include "FindWindow.h"
+#include "InlineTranslate.h"
 #include "Selection.h"
 #include "SumatraDialogs.h"
 #include "SumatraProperties.h"
@@ -700,6 +701,9 @@ bool PumpAppMessage(MSG& msg) {
     if (msg.message == WM_QUIT) {
         PostQuitMessage((int)msg.wParam);
         return false;
+    }
+    if (InlineTranslatePopupPreTranslate(msg)) {
+        return true;
     }
     // Route Ctrl+F before control-specific handling. During an active search
     // followed by a tab switch, the old popup/edit can otherwise consume the

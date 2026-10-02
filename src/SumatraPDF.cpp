@@ -91,6 +91,8 @@
 #include "FindBar.h"
 #include "FindWindow.h"
 #include "WordLookup.h"
+#include "AiTocApi.h"
+#include "InlineTranslate.h"
 #include "OcrService.h"
 #include "AiToc.h"
 #include "AppDialogTheme.h"
@@ -3765,6 +3767,9 @@ void UpdateAfterThemeChange() {
         0);
     RefreshAllAppDialogsTheme();
     RefreshWordLookupTheme();
+    // Prepare the translation / Ask AI popup while the frame is still frozen,
+    // but do not paint it yet. Its controls update together with the frame below.
+    RefreshInlineTranslatePopupTheme();
     RefreshDisplayFilterPanelsTheme();
     RefreshEditAnnotationsWindowsTheme();
     RefreshEbookAnnotationsWindowsTheme();
@@ -3774,6 +3779,7 @@ void UpdateAfterThemeChange() {
         RedrawWindow(frozenFrame, nullptr, nullptr,
                      RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME | RDW_UPDATENOW);
     }
+    FinishInlineTranslatePopupTheme();
 }
 
 static void RenameFileInHistory(const char* oldPath, const char* newPath) {
@@ -5753,6 +5759,7 @@ static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool 
     RemoveNotificationsForGroup(win->hwndCanvas, kNotifZoom);
 
     CloseWordLookup();
+    CloseInlineTranslatePopup();
 
     // TODO: this can cause a mouse capture to stick around when called from LoadModelIntoTab (cf. OnSelectionStop)
     win->mouseAction = MouseAction::None;
@@ -8484,6 +8491,12 @@ static void ShowOptionsDialog(MainWindow* win, int initialPage = 0) {
     MaybeRedrawHomePage();
 }
 
+void ShowOptionsDialogAtPage(MainWindow* win, int page) {
+    if (win) {
+        ShowOptionsDialog(win, page);
+    }
+}
+
 // toggles 'show pages continuously' state
 static void ToggleContinuousView(MainWindow* win) {
     if (!win->IsDocLoaded()) {
@@ -10168,6 +10181,16 @@ static void AnalyzeSelectionWithDoubao(WindowTab* tab) {
         return;
     }
 
+    // Prefer in-app API panel when AiToc API is configured; otherwise open web chat.
+    AiTocApiConfig cfg;
+    cfg.baseUrl = gGlobalPrefs->aiTocApiBaseUrl;
+    cfg.key = gGlobalPrefs->aiTocApiKey;
+    cfg.model = gGlobalPrefs->aiTocApiModel;
+    if (AiTocApiIsConfigured(cfg)) {
+        AskAiSelectionInTab(tab->win, tab, selText, prompt);
+        return;
+    }
+
     AiChatService service = ActiveAiChatService();
     LaunchAiChatWithPromptAsync(service, prompt);
 
@@ -10197,6 +10220,8 @@ static void CopySelectionInTabToClipboard(WindowTab* tab) {
     }
     if (tab->selectionOnPage) {
         CopySelectionToClipboard(tab->win);
+        DeleteOldSelectionInfo(tab->win, true);
+        ScheduleRepaint(tab->win, 0);
         return;
     }
     if (tab->AsFixed()) {
@@ -11814,6 +11839,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             AnalyzeSelectionWithDoubao(tab);
             break;
 
+        case CmdTranslateSelection:
+            TranslateSelectionInTab(win, tab);
+            break;
+
         case CmdLookupSelection:
             LookupSelectionInTab(win, tab);
             break;
@@ -12415,7 +12444,7 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         case CmdToggleDoubleClickWordLookup:
             gGlobalPrefs->enableDoubleClickWordLookup = !gGlobalPrefs->enableDoubleClickWordLookup;
             if (!gGlobalPrefs->enableDoubleClickWordLookup) {
-                CloseWordLookup();
+                CloseWordLookup(true);
             }
             UpdateDoubleClickWordLookupToolbarButton(win);
             SaveSettings();

@@ -231,6 +231,7 @@ export const commands = [
     "CmdSearchSelectionWithYoudaoDict", "Search Selection with Youdao Dictionary",
     "CmdToggleLightDarkTheme", "Toggle light/dark theme",
     "CmdAnalyzeSelectionWithDoubao", "Ask AI",
+    "CmdTranslateSelection", "Translate Selection",
     "CmdToggleDoubleClickWordLookup", "Toggle Double-Click Word Lookup",
     "CmdTogglePreservePdfImages", "Toggle Preserve PDF Image Colors in Dark Mode",
     "CmdToggleJoinSplitPdfImages", "Toggle Join Split PDF Images",

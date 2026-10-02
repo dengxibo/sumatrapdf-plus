@@ -56,6 +56,22 @@ COLORREF FloatingPopupAccentColor() {
     return ThemeWindowLinkColor();
 }
 
+// Recessed edit / chat field fill. Dark themes stay close to the popup so the
+// field, the input, and the chrome read as one surface.
+COLORREF FloatingPopupFieldBg() {
+    if (ThemeUsesBlackChrome()) {
+        return AccentColor(ThemeWindowControlBackgroundColor(), 6);
+    }
+    if (ThemeUsesDarkChrome()) {
+        return AccentColor(ThemeWindowControlBackgroundColor(), 4);
+    }
+    if (ThemeUsesOriginalPageColors()) {
+        return AccentColor(ThemeWindowBackgroundColor(), -6);
+    }
+    // Warm: cream field, not stark white against parchment chrome.
+    return BlendFloatingPopupColors(FloatingPopupBg(), RGB(0xFF, 0xFA, 0xF0), 0.65f);
+}
+
 COLORREF FloatingPopupHoverBg(COLORREF bg) {
     if (ThemeUsesDarkChrome()) {
         return AccentColor(ThemeWindowControlBackgroundColor(), 15);

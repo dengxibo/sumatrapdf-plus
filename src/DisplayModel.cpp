@@ -2478,9 +2478,31 @@ void DisplayModel::RenderVisibleParts() {
     }
 }
 
+// pos is current for this page (incremental reflow lays out lazily past reflowLayoutValidUpto)
+static bool PageIsLaidOut(DisplayModel* dm, int pageNo) {
+    PageInfo* pi = dm->GetPageInfo(pageNo);
+    if (!pi || pi->pos.dy <= 0) {
+        return false;
+    }
+    return !(IsReflowContinuousSingleColumn(dm) && dm->reflowLayoutValidUpto > 0 &&
+             pageNo > dm->reflowLayoutValidUpto);
+}
+
 void DisplayModel::SetViewPortSize(Size newViewPortSize) {
     ScrollState ss;
     Point savedCanvasOrigin = viewPort.TL();
+    // Fit Width / Fit Page change zoom with the viewport. Margins and page gaps
+    // don't scale, so keep the top edge relative to its page, not the canvas.
+    int topPage = kInvalidPageNo;
+    float topFrac = 0;
+    if (pagesInfo && IsContinuous(displayMode)) {
+        int first = FirstVisiblePageNo();
+        if (ValidPageNo(first) && PageIsLaidOut(this, first)) {
+            Rect pos = GetPageInfo(first)->pos;
+            topPage = first;
+            topFrac = (float)(viewPort.y - pos.y) / (float)pos.dy;
+        }
+    }
 
     bool isDocReady = pagesInfo && ValidPageNo(startPage) && zoomReal > 0;
     if (isDocReady) {
@@ -2506,7 +2528,12 @@ void DisplayModel::SetViewPortSize(Size newViewPortSize) {
             // Continuous EPUB: GetScrollState() often has y=-1; SetScrollState snaps to
             // page top and drops the in-page scroll offset (e.g. closing the TOC).
             if (IsContinuous(displayMode) && ss.x < 0 && ss.y < 0) {
-                viewPort.y = limitValue(savedCanvasOrigin.y, 0, std::max(0, canvasSize.dy - viewPort.dy));
+                int y = savedCanvasOrigin.y;
+                if (ValidPageNo(topPage) && PageIsLaidOut(this, topPage)) {
+                    Rect pos = GetPageInfo(topPage)->pos;
+                    y = pos.y + (int)(topFrac * pos.dy);
+                }
+                viewPort.y = limitValue(y, 0, std::max(0, canvasSize.dy - viewPort.dy));
                 PageInfo* cur = GetPageInfo(ss.page >= 1 ? ss.page : CurrentPageNo());
                 bool pageFits =
                     ColumnsFromDisplayMode(displayMode) == 1 && cur && cur->pos.dx > 0 && cur->pos.dx <= viewPort.dx;
@@ -3016,39 +3043,67 @@ void DisplayModel::SetZoomVirtual(float zoomLevel, Point* fixPt) {
 
     ScrollState ss = GetScrollState();
 
-    Point oldCanvasOrigin = viewPort.TL();
-    float oldZoomReal = zoomReal;
-
     if (scrollToFitPage) {
         ss.page = CurrentPageNo();
         // SetScrollState's first call to GoToPage will already scroll to fit
         ss.x = ss.y = -1;
     }
 
+    // Continuous zoom keeps a point on a page under the same screen point.
+    // Anchor on the page, not on canvas coordinates: margins and page gaps don't
+    // scale, so scaling viewPort.y drifts by (pages above) * gap * (scale - 1) and
+    // lands deep in the document. Without a cursor, the current page's top stays
+    // put when it is on screen (switching from single page shows the page from its
+    // top, not its middle); otherwise the viewport center is the anchor.
+    bool continuousReflow = IsContinuous(displayMode) && !scrollToFitPage;
+    int anchorPage = kInvalidPageNo;
+    float anchorFracX = 0.5f;
+    float anchorFracY = 0;
+    int anchorX = fixPt ? fixPt->x : viewPort.dx / 2;
+    int anchorY = fixPt ? fixPt->y : viewPort.dy / 2;
+    if (continuousReflow) {
+        if (!fixPt) {
+            int cur = CurrentPageNo();
+            PageInfo* pi = GetPageInfo(cur);
+            int top = pi ? pi->pos.y - viewPort.y : -1;
+            if (pi && pi->pos.dy > 0 && top >= 0 && top < viewPort.dy) {
+                anchorPage = cur;
+                anchorY = top;
+                anchorFracY = 0;
+            }
+        }
+        if (!ValidPageNo(anchorPage)) {
+            anchorPage = GetPageNoByPoint(Point(anchorX, anchorY));
+            if (!ValidPageNo(anchorPage)) {
+                anchorPage = CurrentPageNo();
+            }
+            PageInfo* pi = GetPageInfo(anchorPage);
+            if (pi && pi->pos.dy > 0) {
+                anchorFracY = (float)(viewPort.y + anchorY - pi->pos.y) / (float)pi->pos.dy;
+            }
+        }
+        PageInfo* pi = GetPageInfo(anchorPage);
+        if (pi && pi->pos.dx > 0) {
+            anchorFracX = (float)(viewPort.x + anchorX - pi->pos.x) / (float)pi->pos.dx;
+        }
+    }
+
     Relayout(zoomLevel, rotation);
 
-    bool continuousReflow = IsContinuous(displayMode) && !scrollToFitPage;
-    if (continuousReflow) {
-        // Anchor zoom on the cursor (or viewport center). Scaling viewPort.y in
-        // Relayout or fixPt via CvtToScreen breaks when the anchor page is off-screen
-        // (pageOnScreen is only updated for visible pages in RecalcVisibleParts).
-        float scale = (oldZoomReal > 0 && zoomReal > 0) ? zoomReal / oldZoomReal : 1.f;
-        Size vp = totalViewPortSize;
-        int anchorX = fixPt ? fixPt->x : vp.dx / 2;
-        int anchorY = fixPt ? fixPt->y : vp.dy / 2;
-        viewPort.x = (int)((oldCanvasOrigin.x + anchorX) * scale) - anchorX;
-        viewPort.y = (int)((oldCanvasOrigin.y + anchorY) * scale) - anchorY;
-        viewPort.x = limitValue(viewPort.x, 0, std::max(0, canvasSize.dx - viewPort.dx));
-        viewPort.y = limitValue(viewPort.y, 0, std::max(0, canvasSize.dy - viewPort.dy));
-        RecalcVisibleParts();
-        RenderVisibleParts();
-        cb->UpdateScrollbars(canvasSize);
-        int pageNo = CurrentPageNo();
-        if (ValidPageNo(pageNo)) {
-            cb->PageNoChanged(this, pageNo);
+    PageInfo* anchorPi = continuousReflow ? GetPageInfo(anchorPage) : nullptr;
+    bool anchorLaidOut = anchorPi && PageIsLaidOut(this, anchorPage);
+    if (continuousReflow && anchorPi && !anchorLaidOut) {
+        // page not laid out at the new zoom yet (incremental reflow): GoToPage defers,
+        // so estimate the in-page offset from the page size at the new zoom
+        int estDy = (int)(PageSizeAfterRotation(anchorPage).dy * GetZoomReal(anchorPage));
+        int scrollY = (int)(anchorFracY * estDy) - anchorY + windowMargin.top;
+        GoToPage(anchorPage, scrollY, false, -1);
+    } else if (continuousReflow) {
+        if (anchorPi) {
+            Rect pos = anchorPi->pos;
+            viewPort.x = pos.x + (int)(anchorFracX * pos.dx) - anchorX;
+            viewPort.y = pos.y + (int)(anchorFracY * pos.dy) - anchorY;
         }
-        RepaintDisplay();
-    } else if (IsContinuous(displayMode) && ss.x < 0 && ss.y < 0) {
         viewPort.x = limitValue(viewPort.x, 0, std::max(0, canvasSize.dx - viewPort.dx));
         viewPort.y = limitValue(viewPort.y, 0, std::max(0, canvasSize.dy - viewPort.dy));
         RecalcVisibleParts();

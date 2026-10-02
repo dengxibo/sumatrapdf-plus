@@ -93,6 +93,7 @@ static UINT_PTR gNoDocWhitelist[] = {
 
 static UINT_PTR gDisableIfNoSelection[] = {
     CmdCopySelection,
+    CmdTranslateSelection,
     CmdTranslateSelectionWithDeepL,
     CmdTranslateSelectionWithGoogle,
     CmdSearchSelectionWithWikipedia,
@@ -108,6 +109,7 @@ static UINT_PTR gDisableIfNoSelection[] = {
 
 static UINT_PTR removeIfNoInternetPerms[] = {
     CmdCheckUpdate,
+    CmdTranslateSelection,
     CmdTranslateSelectionWithGoogle,
     CmdTranslateSelectionWithDeepL,
     CmdSearchSelectionWithGoogle,
@@ -140,6 +142,7 @@ static UINT_PTR removeIfNoPrefsPerms[] = {
 };
 
 static UINT_PTR removeIfNoCopyPerms[] = {
+    CmdTranslateSelection,
     CmdTranslateSelectionWithGoogle,
     CmdTranslateSelectionWithDeepL,
     CmdSearchSelectionWithGoogle,

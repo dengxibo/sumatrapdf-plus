@@ -24,6 +24,7 @@
 #include "Theme.h"
 #include "FloatingPopupStyle.h"
 #include "WordLookup.h"
+#include "InlineTranslate.h"
 #include "SumatraPDF.h"
 #include "SelectionToolbar.h"
 #include "EbookAnnotations.h"
@@ -35,6 +36,7 @@ struct SelectionToolbarButton {
     const char* label; // English literal, translated via _TRA at paint time
     bool enabled = true;
     Rect rc; // position within the toolbar client area
+    bool groupStart = false; // a separator is drawn before it
 };
 
 struct SelectionToolbar {
@@ -50,32 +52,39 @@ struct SelectionToolbar {
     Rect lastPlaced;    // last screen rect we moved the window to (avoids redundant SetWindowPos)
     Rect lastSelBounds; // last canvas-space selection bounds used for placement
     DWORD lastPositionUpdateTick = 0;
-    SelectionToolbarButton buttons[8];
+    SelectionToolbarButton buttons[10];
     int nButtons = 0;
 };
 
+// Groups, left to right:
+// - Copy: the most common action, always first (as in system text menus)
+// - reading aids, light to heavy: Look Up, Translate, Ask AI; then Read Aloud (listening)
+// - annotations: they change the document, so they come last
 static void InitButtons(SelectionToolbar* tb, MainWindow* win) {
     int i = 0;
-    if (gGlobalPrefs->enableAskAI) {
-        tb->buttons[i++] = {CmdAnalyzeSelectionWithDoubao, "Ask AI", true, {}};
-    }
+    auto add = [&](int cmdId, const char* label, bool enabled, bool groupStart) {
+        bool sep = groupStart && i > 0;
+        tb->buttons[i++] = {cmdId, label, enabled, {}, sep};
+    };
+    add(CmdCopySelection, "Copy", true, false);
+
     bool lookupEnabled = CanLookupSelectionInTab(tb->tab ? tb->tab : win->CurrentTab());
-    tb->buttons[i++] = {CmdLookupSelection, "Look Up", lookupEnabled, {}};
-    tb->buttons[i++] = {CmdReadAloudSelection, "Read Aloud", HasPermission(Perm::CopySelection), {}};
-    tb->buttons[i++] = {CmdCopySelection, "Copy", true, {}};
+    add(CmdLookupSelection, "Look Up", lookupEnabled, true);
+    if (gGlobalPrefs->enableInlineTranslate) {
+        add(CmdTranslateSelection, "Translate", true, false);
+    }
+    if (gGlobalPrefs->enableAskAI) {
+        add(CmdAnalyzeSelectionWithDoubao, "Ask AI", true, false);
+    }
+    add(CmdReadAloudSelection, "Read Aloud", HasPermission(Perm::CopySelection), false);
 
     DisplayModel* dm = win->AsFixed();
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
-    if (engine && EngineSupportsAnnotations(engine)) {
-        tb->buttons[i++] = {CmdCreateAnnotHighlight, "Highlight", true, {}};
-        tb->buttons[i++] = {CmdCreateAnnotUnderline, "Underline", true, {}};
-        tb->buttons[i++] = {CmdCreateAnnotSquiggly, "Squiggly", true, {}};
-        tb->buttons[i++] = {CmdCreateAnnotStrikeOut, "Strike Out", true, {}};
-    } else if (EbookAnnotationsSupported(win->CurrentTab())) {
-        tb->buttons[i++] = {CmdCreateAnnotHighlight, "Highlight", true, {}};
-        tb->buttons[i++] = {CmdCreateAnnotUnderline, "Underline", true, {}};
-        tb->buttons[i++] = {CmdCreateAnnotSquiggly, "Squiggly", true, {}};
-        tb->buttons[i++] = {CmdCreateAnnotStrikeOut, "Strike Out", true, {}};
+    if ((engine && EngineSupportsAnnotations(engine)) || EbookAnnotationsSupported(win->CurrentTab())) {
+        add(CmdCreateAnnotHighlight, "Highlight", true, true);
+        add(CmdCreateAnnotUnderline, "Underline", true, false);
+        add(CmdCreateAnnotSquiggly, "Squiggly", true, false);
+        add(CmdCreateAnnotStrikeOut, "Strike Out", true, false);
     }
     tb->nButtons = i;
 }
@@ -84,6 +93,7 @@ constexpr int kBtnPadX = 8; // horizontal padding inside a button
 constexpr int kBtnPadY = 4; // vertical padding inside a button
 constexpr int kMargin = 5;  // margin around the row of buttons
 constexpr int kBtnGap = 2;  // gap between buttons
+constexpr int kGroupGap = 5; // space on each side of a group separator
 // compact variant of the dictionary popup chrome (same palette, smaller scale)
 constexpr int kToolbarCornerRadius = 10;
 constexpr int kToolbarButtonRadius = 6;
@@ -128,11 +138,17 @@ static void LayoutToolbar(SelectionToolbar* tb) {
     int margin = DpiScale(hwnd, kMargin);
     int gap = DpiScale(hwnd, kBtnGap);
 
+    int groupGap = DpiScale(hwnd, kGroupGap);
+
     int x = margin;
     int maxDy = 0;
     int n = tb->nButtons;
     for (int i = 0; i < n; i++) {
         SelectionToolbarButton& b = tb->buttons[i];
+        if (b.groupStart) {
+            // gap already added after the previous button; separator line is 1px
+            x += groupGap * 2 + 1 - gap;
+        }
         TempStr txt = ToolbarButtonLabelTemp(b);
         Size s = HwndMeasureText(hwnd, txt, tb->font);
         int dx = s.dx + 2 * padX;
@@ -178,8 +194,16 @@ static void PaintToolbar(SelectionToolbar* tb, HDC hdc) {
 
     ScopedSelectObject selFont(hdc, tb->font);
     SetBkMode(hdc, TRANSPARENT);
+    COLORREF sepCol = FloatingPopupSeparatorColor();
+    int sepInset = DpiScale(hwnd, 6);
     for (int i = 0; i < tb->nButtons; i++) {
         SelectionToolbarButton& b = tb->buttons[i];
+        if (b.groupStart) {
+            int sx = b.rc.x - DpiScale(hwnd, kGroupGap) - 1;
+            RECT line{sx, b.rc.y + sepInset, sx + 1, b.rc.y + b.rc.dy - sepInset};
+            ScopedGdiObj<HBRUSH> sepBr(CreateSolidBrush(sepCol));
+            FillRect(hdc, &line, sepBr);
+        }
         bool isHot = b.enabled && (i == tb->hotIndex);
         if (isHot) {
             FillFloatingPopupRoundedRect(hdc, b.rc, btnRadius, hoverBg);

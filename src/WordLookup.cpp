@@ -36,6 +36,7 @@
 #include "Toolbar.h"
 #include "WindowTab.h"
 #include "WordLookup.h"
+#include "InlineTranslate.h"
 #include "CharConv.h"
 
 // Experimental: pause read-aloud when opening word lookup, resume on close.
@@ -57,7 +58,7 @@ constexpr int kPopupDx = 340;
 constexpr int kCardPad = 20;
 constexpr int kCardPadTop = 12;
 constexpr int kCardPadBottom = 14;
-constexpr int kCloseBtnSz = 20;
+constexpr int kCloseBtnSz = 16;
 constexpr UINT_PTR kSpeakerHoverTimerId = 9101;
 constexpr int kSpeakerHoverTimerMs = 16;
 constexpr float kSpeakerHoverAnimStep = 0.18f;
@@ -162,6 +163,9 @@ struct WordLookupWnd : Wnd {
     char* audioExt = nullptr;
     Vec<LookupFlowHit> flowHits;
     int lookupGen = 0;
+    bool closeRequested = false;
+    bool clearSelectionOnClose = false;
+    Vec<SelectionOnPage>* sourceSelection = nullptr;
 };
 
 static WordLookupWnd* gWordLookupWnd = nullptr;
@@ -345,12 +349,16 @@ WordLookupWnd::~WordLookupWnd() {
     }
 }
 
-static void SafeDeleteWordLookupWnd() {
-    if (!gWordLookupWnd) {
+static void SafeDeleteWordLookupWnd(WordLookupWnd* wnd) {
+    if (!wnd) {
         return;
     }
-    WordLookupWnd* wnd = gWordLookupWnd;
-    gWordLookupWnd = nullptr;
+    if (gWordLookupWnd == wnd) {
+        gWordLookupWnd = nullptr;
+    }
+    MainWindow* win = wnd->win;
+    Vec<SelectionOnPage>* sel = wnd->sourceSelection;
+    bool clearSelection = wnd->clearSelectionOnClose;
     // Stop lookup TTS (Chinese or English fallback) before resuming document read-aloud.
     if (wnd->speakerPlaying) {
         TtsStop();
@@ -358,18 +366,32 @@ static void SafeDeleteWordLookupWnd() {
     }
     WordLookupResumeReadAloudIfNeeded(wnd);
     delete wnd;
+    // Keep the highlight while a translation or Ask AI popup still shows this passage.
+    if (clearSelection && !IsInlineTranslatePopupVisible()) {
+        ClearSelectionIfCurrent(win, sel);
+    }
 }
 
-static void ScheduleDeleteWordLookupWnd() {
-    if (!gWordLookupWnd) {
+static void RequestCloseWordLookup(WordLookupWnd* wnd, bool clearSelection) {
+    if (!wnd) {
         return;
     }
-    auto fn = MkFunc0Void(SafeDeleteWordLookupWnd);
+    if (wnd->closeRequested) {
+        // A document close must not wipe a selection the user did not dismiss.
+        if (!clearSelection) {
+            wnd->clearSelectionOnClose = false;
+        }
+        return;
+    }
+    // Only the popup still on screen owns the highlight. A replaced one must not clear it.
+    wnd->clearSelectionOnClose = clearSelection && wnd == gWordLookupWnd;
+    wnd->closeRequested = true;
+    auto fn = MkFunc0(SafeDeleteWordLookupWnd, wnd);
     uitask::Post(fn, "SafeDeleteWordLookupWnd");
 }
 
-void CloseWordLookup() {
-    ScheduleDeleteWordLookupWnd();
+void CloseWordLookup(bool clearSelection) {
+    RequestCloseWordLookup(gWordLookupWnd, clearSelection);
 }
 
 bool IsWordLookupVisible() {
@@ -2306,7 +2328,7 @@ LRESULT WordLookupWnd::WndProc(HWND hwndIn, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_LBUTTONUP: {
             Point pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
             if (closeBtnPos.Contains(pt)) {
-                ScheduleDeleteWordLookupWnd();
+                RequestCloseWordLookup(this, true);
                 return 0;
             }
             if (speakerBtnPos.Contains(pt)) {
@@ -2322,13 +2344,13 @@ LRESULT WordLookupWnd::WndProc(HWND hwndIn, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_KEYDOWN:
             if (wp == VK_ESCAPE) {
-                ScheduleDeleteWordLookupWnd();
+                RequestCloseWordLookup(this, true);
                 return 0;
             }
             break;
         case WM_ACTIVATE:
             if (wp == WA_INACTIVE && !isLoading) {
-                ScheduleDeleteWordLookupWnd();
+                RequestCloseWordLookup(this, true);
                 return 0;
             }
             break;
@@ -3178,6 +3200,7 @@ void ShowWordLookup(MainWindow* win, const char* word, Point screenPos) {
 
     auto wnd = new WordLookupWnd();
     gWordLookupWnd = wnd;
+    wnd->sourceSelection = tab ? tab->selectionOnPage : nullptr;
     if (shouldResumeOnClose || shouldResumePdf || shouldResumeNarration) {
         wnd->resumeReadAloudOnClose = shouldResumeOnClose;
         wnd->resumePdfAudioOnClose = shouldResumePdf;

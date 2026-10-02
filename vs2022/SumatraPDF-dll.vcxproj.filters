@@ -842,6 +842,12 @@
     <ClCompile Include="..\src\WordLookup.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\InlineTranslateLang.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\InlineTranslate.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\OcrOnnx.cpp">
       <Filter>src</Filter>
     </ClCompile>

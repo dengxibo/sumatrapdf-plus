@@ -2681,6 +2681,81 @@ bool AiTocApiTestConnection(const char* baseUrl, const char* key, const char* mo
     return true;
 }
 
+static void BuildTextChatBody(const AiTocApiConfig& cfg, const AiTocChatMessage* msgs, int nMsgs, bool disableThinking,
+                              StrBuilder& out) {
+    out.Append("{\"model\": ");
+    AppendJsonEscaped(out, cfg.model ? cfg.model : "");
+    out.Append(", \"messages\": [");
+    for (int i = 0; i < nMsgs; i++) {
+        if (i > 0) {
+            out.Append(", ");
+        }
+        out.Append("{\"role\": ");
+        AppendJsonEscaped(out, msgs[i].role ? msgs[i].role : "user");
+        out.Append(", \"content\": ");
+        AppendJsonEscaped(out, msgs[i].content ? msgs[i].content : "");
+        out.AppendChar('}');
+    }
+    out.Append("], \"temperature\": 0.3");
+    if (disableThinking) {
+        out.Append(", \"enable_thinking\": false");
+    }
+    out.AppendChar('}');
+}
+
+bool AiTocApiChat(const AiTocApiConfig& cfg, const AiTocChatMessage* msgs, int nMsgs, int timeoutMs, char** contentOut,
+                  char** errOut) {
+    *contentOut = nullptr;
+    *errOut = nullptr;
+    if (!AiTocApiIsConfigured(cfg)) {
+        *errOut = str::Dup("The AI API is not configured (set base URL, key and model in Settings).");
+        return false;
+    }
+    if (!msgs || nMsgs <= 0) {
+        *errOut = str::Dup("No chat messages.");
+        return false;
+    }
+    TempStr url = ChatCompletionsUrlTemp(cfg.baseUrl);
+    bool disableThinking = !IsThinkingUnsupported(cfg);
+    HttpPostResult res;
+    for (;;) {
+        StrBuilder body;
+        BuildTextChatBody(cfg, msgs, nMsgs, disableThinking, body);
+        if (!HttpJsonRaw(url, cfg.key, "POST", body.Get(), timeoutMs, res, errOut)) {
+            return false;
+        }
+        const char* reply = res.body.Get();
+        if (disableThinking && (res.status == 400 || res.status == 422) && reply &&
+            str::FindI(reply, "enable_thinking")) {
+            RememberThinkingUnsupported(cfg);
+            disableThinking = false;
+            res.body.Reset();
+            res.status = 0;
+            continue;
+        }
+        break;
+    }
+    if (res.status < 200 || res.status >= 300) {
+        ChatResponseVisitor errVis;
+        if (res.body.Get()) {
+            json::Parse(res.body.Get(), &errVis);
+        }
+        if (errVis.errMsg.size() > 0) {
+            *errOut = str::Dup(errVis.errMsg.Get());
+        } else {
+            *errOut = str::Format("API HTTP %u.", (unsigned)res.status);
+        }
+        return false;
+    }
+    ChatResponseVisitor vis;
+    if (!res.body.Get() || !json::Parse(res.body.Get(), &vis) || vis.content.size() == 0) {
+        *errOut = str::Dup("The API response had no content.");
+        return false;
+    }
+    *contentOut = str::Dup(vis.content.Get());
+    return true;
+}
+
 struct ModelsResponseVisitor : json::ValueVisitor {
     Vec<char*> models;
     char* error = nullptr;

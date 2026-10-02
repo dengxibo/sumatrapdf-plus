@@ -3841,6 +3841,77 @@ static fz_pixmap* dm_pb_process_picture_islands(fz_context* ctx, fz_pixmap* src,
     return dst;
 }
 
+// Flat cream/white textbook plates: low-chroma paper becomes the theme background.
+// A saturated spot (a small logo baked into the plate) stays. Body text is vectors
+// drawn on top, so this does not resample glyphs.
+static fz_pixmap* dm_v2_flatten_blank_paper(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette) {
+    if (!ctx || !src || !src->samples) {
+        return nullptr;
+    }
+    fz_colorspace* rgb = fz_device_rgb(ctx);
+    fz_pixmap* dst = nullptr;
+    fz_var(dst);
+    fz_try(ctx) {
+        bool alreadyRgb = src->colorspace == rgb || fz_colorspace_is_rgb(ctx, src->colorspace);
+        if (alreadyRgb) {
+            dst = fz_new_pixmap(ctx, src->colorspace ? src->colorspace : rgb, src->w, src->h, src->seps, src->alpha);
+            fz_copy_pixmap_rect(ctx, dst, src, fz_make_irect(0, 0, src->w, src->h), nullptr);
+        } else {
+            dst = fz_convert_pixmap(ctx, src, rgb, nullptr, nullptr, fz_default_color_params, 1);
+        }
+        if (!dst || !dst->samples || dst->n < 3) {
+            fz_throw(ctx, FZ_ERROR_GENERIC, "blank paper pixmap");
+        }
+        int n = dst->n;
+        int stride = dst->stride;
+        int bgR = (int)(palette.bgR * 255.f + 0.5f);
+        int bgG = (int)(palette.bgG * 255.f + 0.5f);
+        int bgB = (int)(palette.bgB * 255.f + 0.5f);
+        if (bgR < 0) {
+            bgR = 0;
+        }
+        if (bgG < 0) {
+            bgG = 0;
+        }
+        if (bgB < 0) {
+            bgB = 0;
+        }
+        if (bgR > 255) {
+            bgR = 255;
+        }
+        if (bgG > 255) {
+            bgG = 255;
+        }
+        if (bgB > 255) {
+            bgB = 255;
+        }
+        for (int y = 0; y < dst->h; y++) {
+            unsigned char* row = dst->samples + (size_t)y * stride;
+            for (int x = 0; x < dst->w; x++) {
+                unsigned char* px = row + (size_t)x * n;
+                float r = px[0] / 255.f;
+                float g = px[1] / 255.f;
+                float b = px[2] / 255.f;
+                float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+                float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+                if (maxC - minC >= 0.18f) {
+                    continue;
+                }
+                px[0] = (unsigned char)bgR;
+                px[1] = (unsigned char)bgG;
+                px[2] = (unsigned char)bgB;
+            }
+        }
+    }
+    fz_catch(ctx) {
+        if (dst) {
+            fz_drop_pixmap(ctx, dst);
+        }
+        return nullptr;
+    }
+    return dst;
+}
+
 fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette,
                                               const DarkImageAnalysis* imgAnalysis) {
     if (!ctx || !src || !src->samples) {
@@ -3893,6 +3964,15 @@ fz_pixmap* PdfDarkModeProcessV2FullPagePixmap(fz_context* ctx, fz_pixmap* src, c
     if (highKey || (!textPage && !lineArtPage && lumVar >= 0.018f && paperRatio >= 0.08f)) {
         v2Perf.branch = highKey ? "picturebook-highkey" : "picturebook-early";
         return PdfDarkModeProcessPictureBookPixmap(ctx, src, palette, imgAnalysis);
+    }
+    // Cream textbook plates (Our World Today assessments): no photo, no baked ink.
+    // Picture-book remap blends the tint back in, so the page stays cream under light text.
+    if (PdfDarkModeV2IsBlankPaperPlate(paperRatio, satRatio, st.inkRatio, lumVar)) {
+        fz_pixmap* flat = dm_v2_flatten_blank_paper(ctx, src, palette);
+        if (flat) {
+            v2Perf.branch = "blank-paper";
+            return flat;
+        }
     }
     // Mostly-white text scans with a localized color drawing never reach the photo
     // path above. Eyes or a small patch of color on a real photograph must not take

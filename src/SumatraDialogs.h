@@ -14,6 +14,7 @@ HWND CreateAppDialogModeless(int dlgId, HWND parent, DLGPROC dlgProc, LPARAM dat
 bool Dialog_ChangeScrollbar(HWND hwnd);
 // pages in the order of the category list
 constexpr int kSettingsPageReadAloud = 3;
+constexpr int kSettingsPageAi = 5;
 INT_PTR Dialog_Settings(HWND hwnd, GlobalPrefs* prefs, int initialPage = 0);
 bool Dialog_AddFavorite(HWND hwnd, const char* pageNo, AutoFreeStr& favName);
 bool Dialog_PdfTocTitle(HWND hwnd, const char* dialogTitle, const char* prompt, AutoFreeStr& title,
@@ -49,6 +50,9 @@ struct Print_Advanced_Data {
 HPROPSHEETPAGE CreatePrintAdvancedPropSheet(Print_Advanced_Data* data, ScopedMem<DLGTEMPLATE>& dlgTemplate);
 
 struct MainWindow;
+
+// defined in SumatraPDF.cpp
+void ShowOptionsDialogAtPage(MainWindow* win, int page);
 
 struct BgColorResult {
     COLORREF color;

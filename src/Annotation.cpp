@@ -2128,10 +2128,6 @@ bool PlaySoundAnnotation(Annotation* annot) {
         return false;
     }
     u64 token = AnnotationEmbeddedAudioToken(annot);
-    if (token != 0 && PdfPageAudioIsThisClip(token)) {
-        PdfPageAudioStop();
-        return true;
-    }
     if (token != 0 && LookupAudioIsPlaying() && LookupAudioPlayToken() == token) {
         LookupAudioStop();
         return true;

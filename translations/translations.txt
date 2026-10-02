@@ -34134,3 +34134,447 @@ tw:朗讀結束
 :Narration could not be loaded
 cn:无法加载录音
 tw:無法載入錄音
+
+:AI
+cn:AI
+tw:AI
+
+:Translate
+cn:翻译
+tw:翻譯
+
+:Enable &inline translate
+cn:启用划词翻译(&I)
+tw:啟用劃詞翻譯(&I)
+
+:Target &language:
+cn:目标语言(&L)：
+tw:目標語言(&L)：
+
+:Volc &Access Key:
+cn:火山 Access Key(&A)：
+tw:火山 Access Key(&A)：
+
+:Volc &Secret Key:
+cn:火山 Secret Key(&S)：
+tw:火山 Secret Key(&S)：
+
+:Without Volc keys, translation uses the AI API below when configured.
+cn:未配置火山密钥时，若已配置下方 AI API，则用大模型翻译。
+tw:未設定火山金鑰時，若已設定下方 AI API，則用大模型翻譯。
+
+:AI API (Ask AI, translate fallback, TOC)
+cn:AI API（Ask AI、翻译托底、目录）
+tw:AI API（Ask AI、翻譯備援、目錄）
+
+:Auto (follow UI, flip when source matches)
+cn:自动（跟随界面语言，源语相同时对调）
+tw:自動（跟隨介面語言，來源語相同時對調）
+
+:UI language
+cn:界面语言
+tw:介面語言
+
+:Chinese (Simplified)
+cn:简体中文
+tw:簡體中文
+
+:Chinese (Traditional)
+cn:繁体中文
+tw:繁體中文
+
+:Japanese
+cn:日语
+tw:日語
+
+:Korean
+cn:韩语
+tw:韓語
+
+:French
+cn:法语
+tw:法語
+
+:German
+cn:德语
+tw:德語
+
+:Spanish
+cn:西班牙语
+tw:西班牙語
+
+:Russian
+cn:俄语
+tw:俄語
+
+:Portuguese
+cn:葡萄牙语
+tw:葡萄牙語
+
+:Italian
+cn:意大利语
+tw:義大利語
+
+:Vietnamese
+cn:越南语
+tw:越南語
+
+:Thai
+cn:泰语
+tw:泰語
+
+:Arabic
+cn:阿拉伯语
+tw:阿拉伯語
+
+:Indonesian
+cn:印尼语
+tw:印尼語
+
+:Hindi
+cn:印地语
+tw:印地語
+
+:Turkish
+cn:土耳其语
+tw:土耳其語
+
+:Dutch
+cn:荷兰语
+tw:荷蘭語
+
+:Polish
+cn:波兰语
+tw:波蘭語
+
+:Swedish
+cn:瑞典语
+tw:瑞典語
+
+:Ukrainian
+cn:乌克兰语
+tw:烏克蘭語
+
+:Malay
+cn:马来语
+tw:馬來語
+
+:English
+cn:英语
+tw:英語
+
+:Chinese
+cn:中文
+tw:中文
+:Web AI
+cn:网页 AI
+tw:網頁 AI
+af:Web AI
+am:Web AI
+ar:Web AI
+az:Web AI
+bg:Web AI
+bn:Web AI
+br:Web AI
+bs:Web AI
+by:Web AI
+ca:Web AI
+ca-xv:Web AI
+co:Web AI
+cy:Web AI
+cz:Web AI
+de:Web AI
+dk:Web AI
+el:Web AI
+es:Web AI
+et:Web AI
+eu:Web AI
+fa:Web AI
+fi:Web AI
+fo:Web AI
+fr:Web AI
+fy-nl:Web AI
+ga:Web AI
+gl:Web AI
+he:Web AI
+hi:Web AI
+hr:Web AI
+hu:Web AI
+id:Web AI
+it:Web AI
+ja:Web AI
+jv:Web AI
+ka:Web AI
+kr:Web AI
+ku:Web AI
+kw:Web AI
+lt:Web AI
+lv:Web AI
+mk:Web AI
+ml:Web AI
+mm:Web AI
+my:Web AI
+ne:Web AI
+nl:Web AI
+nn:Web AI
+no:Web AI
+pa:Web AI
+pl:Web AI
+pt:Web AI
+ro:Web AI
+ru:Web AI
+si:Web AI
+sk:Web AI
+sl:Web AI
+sn:Web AI
+sp-rs:Web AI
+sq:Web AI
+sr-rs:Web AI
+sv:Web AI
+ta:Web AI
+th:Web AI
+tl:Web AI
+tr:Web AI
+uk:Web AI
+uz:Web AI
+vn:Web AI
+:&Enable Web AI
+cn:启用网页 AI(&E)
+tw:啟用網頁 AI(&E)
+af:&Enable Web AI
+am:&Enable Web AI
+ar:&Enable Web AI
+az:&Enable Web AI
+bg:&Enable Web AI
+bn:&Enable Web AI
+br:&Enable Web AI
+bs:&Enable Web AI
+by:&Enable Web AI
+ca:&Enable Web AI
+ca-xv:&Enable Web AI
+co:&Enable Web AI
+cy:&Enable Web AI
+cz:&Enable Web AI
+de:&Enable Web AI
+dk:&Enable Web AI
+el:&Enable Web AI
+es:&Enable Web AI
+et:&Enable Web AI
+eu:&Enable Web AI
+fa:&Enable Web AI
+fi:&Enable Web AI
+fo:&Enable Web AI
+fr:&Enable Web AI
+fy-nl:&Enable Web AI
+ga:&Enable Web AI
+gl:&Enable Web AI
+he:&Enable Web AI
+hi:&Enable Web AI
+hr:&Enable Web AI
+hu:&Enable Web AI
+id:&Enable Web AI
+it:&Enable Web AI
+ja:&Enable Web AI
+jv:&Enable Web AI
+ka:&Enable Web AI
+kr:&Enable Web AI
+ku:&Enable Web AI
+kw:&Enable Web AI
+lt:&Enable Web AI
+lv:&Enable Web AI
+mk:&Enable Web AI
+ml:&Enable Web AI
+mm:&Enable Web AI
+my:&Enable Web AI
+ne:&Enable Web AI
+nl:&Enable Web AI
+nn:&Enable Web AI
+no:&Enable Web AI
+pa:&Enable Web AI
+pl:&Enable Web AI
+pt:&Enable Web AI
+ro:&Enable Web AI
+ru:&Enable Web AI
+si:&Enable Web AI
+sk:&Enable Web AI
+sl:&Enable Web AI
+sn:&Enable Web AI
+sp-rs:&Enable Web AI
+sq:&Enable Web AI
+sr-rs:&Enable Web AI
+sv:&Enable Web AI
+ta:&Enable Web AI
+th:&Enable Web AI
+tl:&Enable Web AI
+tr:&Enable Web AI
+uk:&Enable Web AI
+uz:&Enable Web AI
+vn:&Enable Web AI
+:AI API (Q&A, translate fallback, TOC)
+cn:AI API（问答、翻译托底、目录）
+tw:AI API（問答、翻譯備援、目錄）
+af:AI API (Q&A, translate fallback, TOC)
+am:AI API (Q&A, translate fallback, TOC)
+ar:AI API (Q&A, translate fallback, TOC)
+az:AI API (Q&A, translate fallback, TOC)
+bg:AI API (Q&A, translate fallback, TOC)
+bn:AI API (Q&A, translate fallback, TOC)
+br:AI API (Q&A, translate fallback, TOC)
+bs:AI API (Q&A, translate fallback, TOC)
+by:AI API (Q&A, translate fallback, TOC)
+ca:AI API (Q&A, translate fallback, TOC)
+ca-xv:AI API (Q&A, translate fallback, TOC)
+co:AI API (Q&A, translate fallback, TOC)
+cy:AI API (Q&A, translate fallback, TOC)
+cz:AI API (Q&A, translate fallback, TOC)
+de:AI API (Q&A, translate fallback, TOC)
+dk:AI API (Q&A, translate fallback, TOC)
+el:AI API (Q&A, translate fallback, TOC)
+es:AI API (Q&A, translate fallback, TOC)
+et:AI API (Q&A, translate fallback, TOC)
+eu:AI API (Q&A, translate fallback, TOC)
+fa:AI API (Q&A, translate fallback, TOC)
+fi:AI API (Q&A, translate fallback, TOC)
+fo:AI API (Q&A, translate fallback, TOC)
+fr:AI API (Q&A, translate fallback, TOC)
+fy-nl:AI API (Q&A, translate fallback, TOC)
+ga:AI API (Q&A, translate fallback, TOC)
+gl:AI API (Q&A, translate fallback, TOC)
+he:AI API (Q&A, translate fallback, TOC)
+hi:AI API (Q&A, translate fallback, TOC)
+hr:AI API (Q&A, translate fallback, TOC)
+hu:AI API (Q&A, translate fallback, TOC)
+id:AI API (Q&A, translate fallback, TOC)
+it:AI API (Q&A, translate fallback, TOC)
+ja:AI API (Q&A, translate fallback, TOC)
+jv:AI API (Q&A, translate fallback, TOC)
+ka:AI API (Q&A, translate fallback, TOC)
+kr:AI API (Q&A, translate fallback, TOC)
+ku:AI API (Q&A, translate fallback, TOC)
+kw:AI API (Q&A, translate fallback, TOC)
+lt:AI API (Q&A, translate fallback, TOC)
+lv:AI API (Q&A, translate fallback, TOC)
+mk:AI API (Q&A, translate fallback, TOC)
+ml:AI API (Q&A, translate fallback, TOC)
+mm:AI API (Q&A, translate fallback, TOC)
+my:AI API (Q&A, translate fallback, TOC)
+ne:AI API (Q&A, translate fallback, TOC)
+nl:AI API (Q&A, translate fallback, TOC)
+nn:AI API (Q&A, translate fallback, TOC)
+no:AI API (Q&A, translate fallback, TOC)
+pa:AI API (Q&A, translate fallback, TOC)
+pl:AI API (Q&A, translate fallback, TOC)
+pt:AI API (Q&A, translate fallback, TOC)
+ro:AI API (Q&A, translate fallback, TOC)
+ru:AI API (Q&A, translate fallback, TOC)
+si:AI API (Q&A, translate fallback, TOC)
+sk:AI API (Q&A, translate fallback, TOC)
+sl:AI API (Q&A, translate fallback, TOC)
+sn:AI API (Q&A, translate fallback, TOC)
+sp-rs:AI API (Q&A, translate fallback, TOC)
+sq:AI API (Q&A, translate fallback, TOC)
+sr-rs:AI API (Q&A, translate fallback, TOC)
+sv:AI API (Q&A, translate fallback, TOC)
+ta:AI API (Q&A, translate fallback, TOC)
+th:AI API (Q&A, translate fallback, TOC)
+tl:AI API (Q&A, translate fallback, TOC)
+tr:AI API (Q&A, translate fallback, TOC)
+uk:AI API (Q&A, translate fallback, TOC)
+uz:AI API (Q&A, translate fallback, TOC)
+vn:AI API (Q&A, translate fallback, TOC)
+
+:Translating…
+cn:正在翻译…
+tw:正在翻譯…
+
+:Thinking…
+cn:正在思考…
+tw:正在思考…
+
+:You:
+cn:你：
+tw:你：
+
+:AI:
+cn:AI：
+tw:AI：
+
+:Copied
+cn:已复制
+tw:已複製
+
+:Set up Volcengine Translate or an AI API in Settings → AI
+cn:请在 选项 → AI 中配置火山翻译或 AI API
+tw:請在 選項 → AI 中設定火山翻譯或 AI API
+
+:Set up an AI API in Settings → AI to ask follow-up questions
+cn:在 选项 → AI 中配置 AI API 后即可追问
+tw:在 選項 → AI 中設定 AI API 後即可追問
+
+:Ask about the selected text…
+cn:就选中的文字提问…
+tw:就選取的文字提問…
+
+:Explain the selected text
+cn:解释选中的文字
+tw:解釋選取的文字
+
+:Translation failed.
+cn:翻译失败。
+tw:翻譯失敗。
+
+:The AI request failed.
+cn:AI 请求失败。
+tw:AI 請求失敗。
+
+:Volcengine Translate
+cn:火山翻译
+tw:火山翻譯
+
+:Volcengine Translate works.
+cn:火山翻译连接正常。
+tw:火山翻譯連線正常。
+
+:Volcengine Translate failed:
+cn:火山翻译测试失败：
+tw:火山翻譯測試失敗：
+
+:Enter both the Access Key and Secret Key first.
+cn:请先填写 Access Key 和 Secret Key。
+tw:請先填寫 Access Key 和 Secret Key。
+
+:Ask the API for its model list and show it in the dropdown. You can also type a model name.
+cn:向当前 API 查询模型列表并显示在下拉框中。也可以直接输入模型名。
+tw:向目前 API 查詢模型清單並顯示在下拉清單中。也可以直接輸入模型名稱。
+
+:&Query
+cn:查询(&Q)
+tw:查詢(&Q)
+
+:Query
+cn:查询
+tw:查詢
+
+:Leave this empty and click Query to list every model. Type part of a name to list only matches. A model name can also be typed in full.
+cn:留空后点「查询」列出全部模型，其余的用滚动条查看。输入名称的一部分则只列出匹配项。也可以直接输入完整模型名。
+tw:留空後按「查詢」列出全部模型，其餘的用捲軸查看。輸入名稱的一部分則只列出相符項。也可以直接輸入完整模型名稱。
+
+:&Choose...
+cn:选择(&C)...
+tw:選擇(&C)...
+
+:Choose a model
+cn:选择模型
+tw:選擇模型
+
+:Search models
+cn:搜索模型
+tw:搜尋模型
+
+:None of the models from the API can be used here. Type a chat model name instead.
+cn:接口返回的模型都不能用于这里。请直接输入一个对话模型名。
+tw:介面傳回的模型都不能用於這裡。請直接輸入一個對話模型名稱。
+
+:Ask the API for model names and put the one you pick in the box. You can also type a name.
+cn:向 API 查询模型名单，把选中的填进框里。也可以直接输入模型名。
+tw:向 API 查詢模型名單，把選中的填進框裡。也可以直接輸入模型名稱。

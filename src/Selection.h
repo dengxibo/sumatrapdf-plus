@@ -75,6 +75,8 @@ void NormalizeHighlightUniformHeight(Vec<RectF>& rects);
 void NormalizeNearbyHighlightHeights(Vec<RectF>& rects);
 
 void DeleteOldSelectionInfo(MainWindow* win, bool alsoTextSel = false);
+// Drops the highlight when it is still this selection. A newer selection is left alone.
+void ClearSelectionIfCurrent(MainWindow* win, Vec<SelectionOnPage>* sel);
 void PaintTransparentRectangles(HDC hdc, Rect screenRc, Vec<Rect>& rects, COLORREF selectionColor,
                                 u8 alpha = kSelectionDefaultAlpha, int pad = 2);
 // Find highlights: alpha overlay in light mode; marker-style (yellow band, dark text) in dark mode.

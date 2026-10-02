@@ -1001,6 +1001,43 @@ const globalPrefs: Field[] = [
     ),
     "3.7",
   ),
+  setVersion(
+    mkField(
+      "EnableInlineTranslate",
+      Bool,
+      true,
+      "if false, hide Translate in the selection toolbar, context menu, and command palette",
+    ),
+    "3.7",
+  ),
+  setVersion(
+    mkField(
+      "TranslateVolcAccessKey",
+      Str,
+      "",
+      "Volcengine Translate access key (Access Key ID); stored DPAPI-protected when possible",
+    ),
+    "3.7",
+  ),
+  setVersion(
+    mkField(
+      "TranslateVolcSecretKey",
+      Str,
+      "",
+      "Volcengine Translate secret key; stored DPAPI-protected when possible",
+    ),
+    "3.7",
+  ),
+  setVersion(
+    mkField(
+      "TranslateTargetMode",
+      Str,
+      "auto",
+      "inline translate target language: auto (UI language, flip when source matches), ui, or a language code " +
+        "(zh, zh-Hant, en, ja, ko, fr, de, es, ru, ...)",
+    ),
+    "3.7",
+  ),
   mkField("ShowFavorites", Bool, false, "if true, we show the Favorites sidebar"),
   mkField(
     "ShowToc",

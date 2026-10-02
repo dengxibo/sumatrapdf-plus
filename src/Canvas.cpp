@@ -3695,7 +3695,7 @@ static LRESULT WndProcCanvasFixedPageUI(MainWindow* win, HWND hwnd, UINT msg, WP
             return 0;
 
         case WM_LBUTTONDOWN:
-            CloseWordLookup();
+            CloseWordLookup(true);
             OnMouseLeftButtonDown(win, x, y, wp);
             return 0;
 
@@ -3731,24 +3731,24 @@ static LRESULT WndProcCanvasFixedPageUI(MainWindow* win, HWND hwnd, UINT msg, WP
             return 0;
 
         case WM_VSCROLL:
-            CloseWordLookup();
+            CloseWordLookup(true);
             OnVScroll(win, wp);
             return 0;
 
         case WM_HSCROLL:
-            CloseWordLookup();
+            CloseWordLookup(true);
             OnHScroll(win, wp);
             return 0;
 
         case WM_MOUSEWHEEL:
-            CloseWordLookup();
+            CloseWordLookup(true);
             if (MenuWheelScrollHandleWheel(wp)) {
                 return 0;
             }
             return CanvasOnMouseWheel(win, msg, wp, lp);
 
         case WM_MOUSEHWHEEL:
-            CloseWordLookup();
+            CloseWordLookup(true);
             return CanvasOnMouseHWheel(win, msg, wp, lp);
 
         case WM_SETCURSOR:

@@ -1215,6 +1215,8 @@
     <ClInclude Include="..\src\PrintedTocPageDetector.h" />
     <ClInclude Include="..\src\PrintedTocOverlay.h" />
     <ClInclude Include="..\src\WordLookup.h" />
+    <ClInclude Include="..\src\InlineTranslateLang.h" />
+    <ClInclude Include="..\src\InlineTranslate.h" />
     <ClInclude Include="..\src\mui\Mui.h" />
     <ClInclude Include="..\src\mui\TextRender.h" />
     <ClInclude Include="..\src\resource.h" />
@@ -1443,6 +1445,8 @@
     <ClCompile Include="..\src\TocStructureScan.cpp" />
     <ClCompile Include="..\src\TocAiPrompts.cpp" />
     <ClCompile Include="..\src\WordLookup.cpp" />
+    <ClCompile Include="..\src\InlineTranslateLang.cpp" />
+    <ClCompile Include="..\src\InlineTranslate.cpp" />
     <ClCompile Include="..\src\mui\Mui.cpp" />
     <ClCompile Include="..\src\mui\TextRender.cpp" />
     <ClCompile Include="..\src\regress\Regress.cpp">

@@ -46,6 +46,15 @@ bool AiTocApiDetectTocPages(EngineBase* engine, const AiTocApiConfig& cfg, AiToc
 // Sends a minimal chat request to verify the endpoint/key/model. Blocking.
 bool AiTocApiTestConnection(const char* baseUrl, const char* key, const char* model, char** msgOut);
 
+// Text-only OpenAI-compatible chat/completions. Blocking; call from a worker.
+// roles: "system" / "user" / "assistant". On success *contentOut is newly allocated.
+struct AiTocChatMessage {
+    const char* role = nullptr;
+    const char* content = nullptr;
+};
+bool AiTocApiChat(const AiTocApiConfig& cfg, const AiTocChatMessage* msgs, int nMsgs, int timeoutMs, char** contentOut,
+                  char** errOut);
+
 // Queries the provider's OpenAI-compatible GET /models endpoint. Some
 // providers do not expose it; callers should keep manual model entry usable.
 bool AiTocApiFetchModels(const char* baseUrl, const char* key, Vec<char*>& modelsOut, char** errorOut);

@@ -10,7 +10,8 @@ bool ShowChineseWordLookupAt(MainWindow* win, TextSelection* ts, EngineBase* eng
                              Point screenPos);
 bool ShowEbookWordLookupAt(MainWindow* win, DisplayModel* dm, int pageNo, PointF pagePt, Point screenPos);
 void ShowWordLookup(MainWindow* win, const char* word, Point screenPos);
-void CloseWordLookup();
+// clearSelection drops the document highlight when the user dismisses the popup.
+void CloseWordLookup(bool clearSelection = false);
 bool IsWordLookupVisible();
 void RefreshWordLookupTheme();
 bool IsOfflineDictionaryAvailable();

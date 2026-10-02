@@ -660,6 +660,10 @@ static MenuDef menuDefHelp[] = {
 //[ ACCESSKEY_GROUP Context Menu (Selection)
 static MenuDef menuDefSelection[] = {
     {
+        _TRN("&Translate"),
+        CmdTranslateSelection,
+    },
+    {
         _TRN("Ask &AI"),
         CmdAnalyzeSelectionWithDoubao,
     },
@@ -684,6 +688,10 @@ static MenuDef menuDefSelection[] = {
 
 //[ ACCESSKEY_GROUP Menu (Selection)
 static MenuDef menuDefMainSelection[] = {
+    {
+        _TRN("&Translate"),
+        CmdTranslateSelection,
+    },
     {
         _TRN("Ask &AI"),
         CmdAnalyzeSelectionWithDoubao,
@@ -1063,6 +1071,7 @@ static UINT_PTR disableIfDirectoryOrBrokenPDF[] = {
 
 UINT_PTR disableIfNoSelection[] = {
     CmdCopySelection,
+    CmdTranslateSelection,
     CmdAnalyzeSelectionWithDoubao,
     CmdLookupSelection,
     CmdCreateAnnotHighlight,
@@ -1090,6 +1099,7 @@ static UINT_PTR menusNoTranslate[] = {
 
 UINT_PTR removeIfNoInternetPerms[] = {
     CmdCheckUpdate,
+    CmdTranslateSelection,
     CmdAnalyzeSelectionWithDoubao,
     CmdHelpVisitWebsite,
     CmdHelpOpenManualOnWebsite,
@@ -1116,6 +1126,7 @@ UINT_PTR removeIfNoPrefsPerms[] = {
 };
 
 UINT_PTR removeIfNoCopyPerms[] = {
+    CmdTranslateSelection,
     CmdAnalyzeSelectionWithDoubao,
     CmdLookupSelection,
     CmdSelectAll,
@@ -1501,6 +1512,9 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
     if (!gGlobalPrefs->enableAskAI && cmdId == CmdAnalyzeSelectionWithDoubao) {
         centralizedRemove = true;
     }
+    if (!gGlobalPrefs->enableInlineTranslate && cmdId == CmdTranslateSelection) {
+        centralizedRemove = true;
+    }
     if (ctx && ctx->supportsEbookAnnotations) {
         if (cmdId == CmdDeleteAnnotation && ctx->ebookAnnotationUnderCursor) {
             centralizedDisable = false;
@@ -1526,6 +1540,9 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
         remove |= cmdIdInList(removeIfNoInternetPerms);
     }
     if (!gGlobalPrefs->enableAskAI && cmdId == CmdAnalyzeSelectionWithDoubao) {
+        remove = true;
+    }
+    if (!gGlobalPrefs->enableInlineTranslate && cmdId == CmdTranslateSelection) {
         remove = true;
     }
     if (!HasPermission(Perm::FullscreenAccess)) {

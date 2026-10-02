@@ -578,6 +578,17 @@ inline bool PdfDarkModeV2LooksLikeHighKeyPhotograph(float lightToneRatio, float 
     return true;
 }
 
+// Full-page textbook plate that is only tinted paper (a gray rule at the top, no
+// photo, no baked ink). SharpDocument blends that tint back in and the page stays
+// cream; flatten it to the theme background instead. Fog and white fur fail this
+// (they have saturation or a real luminance spread).
+inline bool PdfDarkModeV2IsBlankPaperPlate(float paperRatio, float satRatio, float inkRatio, float lumVar) {
+    if (paperRatio < 0.85f || satRatio >= 0.02f || inkRatio >= 0.01f || lumVar >= 0.025f) {
+        return false;
+    }
+    return true;
+}
+
 // Edge-to-edge photograph, including a mostly gray one with a few saturated
 // subjects (RAZ "These geese"). Okular on those saturated pixels paints false
 // color. White-margin pages stay on the paper path so the margin can go dark.

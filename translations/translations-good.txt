@@ -155,7 +155,6 @@ pl:&Browse...
 pt:&Browse...
 ro:&Browse...
 ru:&Browse...
-sat:&Browse...
 si:&Browse...
 sk:&Browse...
 sl:&Browse...
@@ -228,7 +227,6 @@ pl:&CJK Body Font
 pt:&CJK Body Font
 ro:&CJK Body Font
 ru:&CJK Body Font
-sat:&CJK Body Font
 si:&CJK Body Font
 sk:&CJK Body Font
 sl:&CJK Body Font
@@ -325,7 +323,6 @@ pl:&Chinese voice:
 pt:&Chinese voice:
 ro:&Chinese voice:
 ru:&Chinese voice:
-sat:&Chinese voice:
 si:&Chinese voice:
 sk:&Chinese voice:
 sl:&Chinese voice:
@@ -470,7 +467,6 @@ pl:&Enable Ask AI
 pt:&Enable Ask AI
 ro:&Enable Ask AI
 ru:&Enable Ask AI
-sat:&Enable Ask AI
 si:&Enable Ask AI
 sk:&Enable Ask AI
 sl:&Enable Ask AI
@@ -487,6 +483,78 @@ tw:啟用 Ask AI(&E)
 uk:&Enable Ask AI
 uz:&Enable Ask AI
 vn:&Enable Ask AI
+:&Enable Web AI
+af:&Enable Web AI
+am:&Enable Web AI
+ar:&Enable Web AI
+az:&Enable Web AI
+bg:&Enable Web AI
+bn:&Enable Web AI
+br:&Enable Web AI
+bs:&Enable Web AI
+by:&Enable Web AI
+ca:&Enable Web AI
+ca-xv:&Enable Web AI
+cn:启用网页 AI(&E)
+co:&Enable Web AI
+cy:&Enable Web AI
+cz:&Enable Web AI
+de:&Enable Web AI
+dk:&Enable Web AI
+el:&Enable Web AI
+es:&Enable Web AI
+et:&Enable Web AI
+eu:&Enable Web AI
+fa:&Enable Web AI
+fi:&Enable Web AI
+fo:&Enable Web AI
+fr:&Enable Web AI
+fy-nl:&Enable Web AI
+ga:&Enable Web AI
+gl:&Enable Web AI
+he:&Enable Web AI
+hi:&Enable Web AI
+hr:&Enable Web AI
+hu:&Enable Web AI
+id:&Enable Web AI
+it:&Enable Web AI
+ja:&Enable Web AI
+jv:&Enable Web AI
+ka:&Enable Web AI
+kr:&Enable Web AI
+ku:&Enable Web AI
+kw:&Enable Web AI
+lt:&Enable Web AI
+lv:&Enable Web AI
+mk:&Enable Web AI
+ml:&Enable Web AI
+mm:&Enable Web AI
+my:&Enable Web AI
+ne:&Enable Web AI
+nl:&Enable Web AI
+nn:&Enable Web AI
+no:&Enable Web AI
+pa:&Enable Web AI
+pl:&Enable Web AI
+pt:&Enable Web AI
+ro:&Enable Web AI
+ru:&Enable Web AI
+si:&Enable Web AI
+sk:&Enable Web AI
+sl:&Enable Web AI
+sn:&Enable Web AI
+sp-rs:&Enable Web AI
+sq:&Enable Web AI
+sr-rs:&Enable Web AI
+sv:&Enable Web AI
+ta:&Enable Web AI
+th:&Enable Web AI
+tl:&Enable Web AI
+tr:&Enable Web AI
+tw:啟用網頁 AI(&E)
+uk:&Enable Web AI
+uz:&Enable Web AI
+vn:&Enable Web AI
 :&English voice:
 af:&English voice:
 am:&English voice:
@@ -543,7 +611,6 @@ pl:&English voice:
 pt:&English voice:
 ro:&English voice:
 ru:&English voice:
-sat:&English voice:
 si:&English voice:
 sk:&English voice:
 sl:&English voice:
@@ -688,7 +755,6 @@ pl:&Follow the text being read
 pt:&Follow the text being read
 ro:&Follow the text being read
 ru:&Follow the text being read
-sat:&Follow the text being read
 si:&Follow the text being read
 sk:&Follow the text being read
 sl:&Follow the text being read
@@ -857,7 +923,6 @@ pl:&Lazy-load inactive tabs
 pt:&Lazy-load inactive tabs
 ro:&Lazy-load inactive tabs
 ru:&Lazy-load inactive tabs
-sat:&Lazy-load inactive tabs
 si:&Lazy-load inactive tabs
 sk:&Lazy-load inactive tabs
 sl:&Lazy-load inactive tabs
@@ -981,7 +1046,6 @@ pl:&Multilingual voice:
 pt:&Multilingual voice:
 ro:&Multilingual voice:
 ru:&Multilingual voice:
-sat:&Multilingual voice:
 si:&Multilingual voice:
 sk:&Multilingual voice:
 sl:&Multilingual voice:
@@ -1159,7 +1223,6 @@ pl:&Preview
 pt:&Preview
 ro:&Preview
 ru:&Preview
-sat:&Preview
 si:&Preview
 sk:&Preview
 sl:&Preview
@@ -1268,7 +1331,6 @@ pl:&Read Aloud
 pt:&Read Aloud
 ro:&Read Aloud
 ru:&Read Aloud
-sat:&Read Aloud
 si:&Read Aloud
 sk:&Read Aloud
 sl:&Read Aloud
@@ -1341,7 +1403,6 @@ pl:&Reading Font
 pt:&Reading Font
 ro:&Reading Font
 ru:&Reading Font
-sat:&Reading Font
 si:&Reading Font
 sk:&Reading Font
 sl:&Reading Font
@@ -1414,7 +1475,6 @@ pl:&Remember settings for each document
 pt:&Remember settings for each document
 ro:&Remember settings for each document
 ru:&Remember settings for each document
-sat:&Remember settings for each document
 si:&Remember settings for each document
 sk:&Remember settings for each document
 sl:&Remember settings for each document
@@ -1562,7 +1622,6 @@ pl:&Scrollbars:
 pt:&Scrollbars:
 ro:&Scrollbars:
 ru:&Scrollbars:
-sat:&Scrollbars:
 si:&Scrollbars:
 sk:&Scrollbars:
 sl:&Scrollbars:
@@ -1701,7 +1760,6 @@ pl:&Size:
 pt:&Size:
 ro:&Size:
 ru:&Size:
-sat:&Size:
 si:&Size:
 sk:&Size:
 sl:&Size:
@@ -1798,7 +1856,6 @@ pl:&System Font
 pt:&System Font
 ro:&System Font
 ru:&System Font
-sat:&System Font
 si:&System Font
 sk:&System Font
 sl:&System Font
@@ -1898,7 +1955,6 @@ pl:&Theme:
 pt:&Theme:
 ro:&Theme:
 ru:&Theme:
-sat:&Theme:
 si:&Theme:
 sk:&Theme:
 sl:&Theme:
@@ -2019,7 +2075,6 @@ pl:&Voice:
 pt:&Voice:
 ro:&Voice:
 ru:&Voice:
-sat:&Voice:
 si:&Voice:
 sk:&Voice:
 sl:&Voice:
@@ -2092,7 +2147,6 @@ pl:&Western Body Font
 pt:&Western Body Font
 ro:&Western Body Font
 ru:&Western Body Font
-sat:&Western Body Font
 si:&Western Body Font
 sk:&Western Body Font
 sl:&Western Body Font
@@ -2177,7 +2231,6 @@ pl:&Wrap long titles
 pt:&Wrap long titles
 ro:&Wrap long titles
 ru:&Wrap long titles
-sat:&Wrap long titles
 si:&Wrap long titles
 sk:&Wrap long titles
 sl:&Wrap long titles
@@ -2299,7 +2352,6 @@ pl:0.25x - 2.00x; buttons change by 0.05x
 pt:0.25x - 2.00x; buttons change by 0.05x
 ro:0.25x - 2.00x; buttons change by 0.05x
 ru:0.25x - 2.00x; buttons change by 0.05x
-sat:0.25x - 2.00x; buttons change by 0.05x
 si:0.25x - 2.00x; buttons change by 0.05x
 sk:0.25x - 2.00x; buttons change by 0.05x
 sl:0.25x - 2.00x; buttons change by 0.05x
@@ -2372,7 +2424,6 @@ pl:0.25x to 2.00x
 pt:0.25x to 2.00x
 ro:0.25x to 2.00x
 ru:0.25x to 2.00x
-sat:0.25x to 2.00x
 si:0.25x to 2.00x
 sk:0.25x to 2.00x
 sl:0.25x to 2.00x
@@ -2445,7 +2496,6 @@ pl:270° Clockwise
 pt:270° Clockwise
 ro:270° Clockwise
 ru:270° Clockwise
-sat:270° Clockwise
 si:270° Clockwise
 sk:270° Clockwise
 sl:270° Clockwise
@@ -2526,7 +2576,6 @@ pl:90° Clockwise
 pt:90° Clockwise
 ro:90° Clockwise
 ru:90° Clockwise
-sat:90° Clockwise
 si:90° Clockwise
 sk:90° Clockwise
 sl:90° Clockwise
@@ -2579,6 +2628,78 @@ nl:@ Tabs
 pl:@ Karty
 sk:@ Karty
 tw:@ 索引標籤
+:AI
+af:AI
+am:AI
+ar:AI
+az:AI
+bg:AI
+bn:AI
+br:AI
+bs:AI
+by:AI
+ca:AI
+ca-xv:AI
+cn:AI
+co:AI
+cy:AI
+cz:AI
+de:AI
+dk:AI
+el:AI
+es:AI
+et:AI
+eu:AI
+fa:AI
+fi:AI
+fo:AI
+fr:AI
+fy-nl:AI
+ga:AI
+gl:AI
+he:AI
+hi:AI
+hr:AI
+hu:AI
+id:AI
+it:AI
+ja:AI
+jv:AI
+ka:AI
+kr:AI
+ku:AI
+kw:AI
+lt:AI
+lv:AI
+mk:AI
+ml:AI
+mm:AI
+my:AI
+ne:AI
+nl:AI
+nn:AI
+no:AI
+pa:AI
+pl:AI
+pt:AI
+ro:AI
+ru:AI
+si:AI
+sk:AI
+sl:AI
+sn:AI
+sp-rs:AI
+sq:AI
+sr-rs:AI
+sv:AI
+ta:AI
+th:AI
+tl:AI
+tr:AI
+tw:AI
+uk:AI
+uz:AI
+vn:AI
 :AI &service:
 af:AI &service:
 am:AI &service:
@@ -2635,7 +2756,6 @@ pl:AI &service:
 pt:AI &service:
 ro:AI &service:
 ru:AI &service:
-sat:AI &service:
 si:AI &service:
 sk:AI &service:
 sl:AI &service:
@@ -2652,6 +2772,150 @@ tw:AI 服務(&S)：
 uk:AI &service:
 uz:AI &service:
 vn:AI &service:
+:AI API (Ask AI, translate fallback, TOC)
+af:AI API (Ask AI, translate fallback, TOC)
+am:AI API (Ask AI, translate fallback, TOC)
+ar:AI API (Ask AI, translate fallback, TOC)
+az:AI API (Ask AI, translate fallback, TOC)
+bg:AI API (Ask AI, translate fallback, TOC)
+bn:AI API (Ask AI, translate fallback, TOC)
+br:AI API (Ask AI, translate fallback, TOC)
+bs:AI API (Ask AI, translate fallback, TOC)
+by:AI API (Ask AI, translate fallback, TOC)
+ca:AI API (Ask AI, translate fallback, TOC)
+ca-xv:AI API (Ask AI, translate fallback, TOC)
+cn:AI API（Ask AI、翻译托底、目录）
+co:AI API (Ask AI, translate fallback, TOC)
+cy:AI API (Ask AI, translate fallback, TOC)
+cz:AI API (Ask AI, translate fallback, TOC)
+de:AI API (Ask AI, translate fallback, TOC)
+dk:AI API (Ask AI, translate fallback, TOC)
+el:AI API (Ask AI, translate fallback, TOC)
+es:AI API (Ask AI, translate fallback, TOC)
+et:AI API (Ask AI, translate fallback, TOC)
+eu:AI API (Ask AI, translate fallback, TOC)
+fa:AI API (Ask AI, translate fallback, TOC)
+fi:AI API (Ask AI, translate fallback, TOC)
+fo:AI API (Ask AI, translate fallback, TOC)
+fr:AI API (Ask AI, translate fallback, TOC)
+fy-nl:AI API (Ask AI, translate fallback, TOC)
+ga:AI API (Ask AI, translate fallback, TOC)
+gl:AI API (Ask AI, translate fallback, TOC)
+he:AI API (Ask AI, translate fallback, TOC)
+hi:AI API (Ask AI, translate fallback, TOC)
+hr:AI API (Ask AI, translate fallback, TOC)
+hu:AI API (Ask AI, translate fallback, TOC)
+id:AI API (Ask AI, translate fallback, TOC)
+it:AI API (Ask AI, translate fallback, TOC)
+ja:AI API (Ask AI, translate fallback, TOC)
+jv:AI API (Ask AI, translate fallback, TOC)
+ka:AI API (Ask AI, translate fallback, TOC)
+kr:AI API (Ask AI, translate fallback, TOC)
+ku:AI API (Ask AI, translate fallback, TOC)
+kw:AI API (Ask AI, translate fallback, TOC)
+lt:AI API (Ask AI, translate fallback, TOC)
+lv:AI API (Ask AI, translate fallback, TOC)
+mk:AI API (Ask AI, translate fallback, TOC)
+ml:AI API (Ask AI, translate fallback, TOC)
+mm:AI API (Ask AI, translate fallback, TOC)
+my:AI API (Ask AI, translate fallback, TOC)
+ne:AI API (Ask AI, translate fallback, TOC)
+nl:AI API (Ask AI, translate fallback, TOC)
+nn:AI API (Ask AI, translate fallback, TOC)
+no:AI API (Ask AI, translate fallback, TOC)
+pa:AI API (Ask AI, translate fallback, TOC)
+pl:AI API (Ask AI, translate fallback, TOC)
+pt:AI API (Ask AI, translate fallback, TOC)
+ro:AI API (Ask AI, translate fallback, TOC)
+ru:AI API (Ask AI, translate fallback, TOC)
+si:AI API (Ask AI, translate fallback, TOC)
+sk:AI API (Ask AI, translate fallback, TOC)
+sl:AI API (Ask AI, translate fallback, TOC)
+sn:AI API (Ask AI, translate fallback, TOC)
+sp-rs:AI API (Ask AI, translate fallback, TOC)
+sq:AI API (Ask AI, translate fallback, TOC)
+sr-rs:AI API (Ask AI, translate fallback, TOC)
+sv:AI API (Ask AI, translate fallback, TOC)
+ta:AI API (Ask AI, translate fallback, TOC)
+th:AI API (Ask AI, translate fallback, TOC)
+tl:AI API (Ask AI, translate fallback, TOC)
+tr:AI API (Ask AI, translate fallback, TOC)
+tw:AI API（Ask AI、翻譯備援、目錄）
+uk:AI API (Ask AI, translate fallback, TOC)
+uz:AI API (Ask AI, translate fallback, TOC)
+vn:AI API (Ask AI, translate fallback, TOC)
+:AI API (Q&A, translate fallback, TOC)
+af:AI API (Q&A, translate fallback, TOC)
+am:AI API (Q&A, translate fallback, TOC)
+ar:AI API (Q&A, translate fallback, TOC)
+az:AI API (Q&A, translate fallback, TOC)
+bg:AI API (Q&A, translate fallback, TOC)
+bn:AI API (Q&A, translate fallback, TOC)
+br:AI API (Q&A, translate fallback, TOC)
+bs:AI API (Q&A, translate fallback, TOC)
+by:AI API (Q&A, translate fallback, TOC)
+ca:AI API (Q&A, translate fallback, TOC)
+ca-xv:AI API (Q&A, translate fallback, TOC)
+cn:AI API（问答、翻译托底、目录）
+co:AI API (Q&A, translate fallback, TOC)
+cy:AI API (Q&A, translate fallback, TOC)
+cz:AI API (Q&A, translate fallback, TOC)
+de:AI API (Q&A, translate fallback, TOC)
+dk:AI API (Q&A, translate fallback, TOC)
+el:AI API (Q&A, translate fallback, TOC)
+es:AI API (Q&A, translate fallback, TOC)
+et:AI API (Q&A, translate fallback, TOC)
+eu:AI API (Q&A, translate fallback, TOC)
+fa:AI API (Q&A, translate fallback, TOC)
+fi:AI API (Q&A, translate fallback, TOC)
+fo:AI API (Q&A, translate fallback, TOC)
+fr:AI API (Q&A, translate fallback, TOC)
+fy-nl:AI API (Q&A, translate fallback, TOC)
+ga:AI API (Q&A, translate fallback, TOC)
+gl:AI API (Q&A, translate fallback, TOC)
+he:AI API (Q&A, translate fallback, TOC)
+hi:AI API (Q&A, translate fallback, TOC)
+hr:AI API (Q&A, translate fallback, TOC)
+hu:AI API (Q&A, translate fallback, TOC)
+id:AI API (Q&A, translate fallback, TOC)
+it:AI API (Q&A, translate fallback, TOC)
+ja:AI API (Q&A, translate fallback, TOC)
+jv:AI API (Q&A, translate fallback, TOC)
+ka:AI API (Q&A, translate fallback, TOC)
+kr:AI API (Q&A, translate fallback, TOC)
+ku:AI API (Q&A, translate fallback, TOC)
+kw:AI API (Q&A, translate fallback, TOC)
+lt:AI API (Q&A, translate fallback, TOC)
+lv:AI API (Q&A, translate fallback, TOC)
+mk:AI API (Q&A, translate fallback, TOC)
+ml:AI API (Q&A, translate fallback, TOC)
+mm:AI API (Q&A, translate fallback, TOC)
+my:AI API (Q&A, translate fallback, TOC)
+ne:AI API (Q&A, translate fallback, TOC)
+nl:AI API (Q&A, translate fallback, TOC)
+nn:AI API (Q&A, translate fallback, TOC)
+no:AI API (Q&A, translate fallback, TOC)
+pa:AI API (Q&A, translate fallback, TOC)
+pl:AI API (Q&A, translate fallback, TOC)
+pt:AI API (Q&A, translate fallback, TOC)
+ro:AI API (Q&A, translate fallback, TOC)
+ru:AI API (Q&A, translate fallback, TOC)
+si:AI API (Q&A, translate fallback, TOC)
+sk:AI API (Q&A, translate fallback, TOC)
+sl:AI API (Q&A, translate fallback, TOC)
+sn:AI API (Q&A, translate fallback, TOC)
+sp-rs:AI API (Q&A, translate fallback, TOC)
+sq:AI API (Q&A, translate fallback, TOC)
+sr-rs:AI API (Q&A, translate fallback, TOC)
+sv:AI API (Q&A, translate fallback, TOC)
+ta:AI API (Q&A, translate fallback, TOC)
+th:AI API (Q&A, translate fallback, TOC)
+tl:AI API (Q&A, translate fallback, TOC)
+tr:AI API (Q&A, translate fallback, TOC)
+tw:AI API（問答、翻譯備援、目錄）
+uk:AI API (Q&A, translate fallback, TOC)
+uz:AI API (Q&A, translate fallback, TOC)
+vn:AI API (Q&A, translate fallback, TOC)
 :AI Detect TOC Pages
 cn:AI 检测目录页
 tw:AI 偵測目錄頁
@@ -2729,7 +2993,6 @@ pl:AI Recognize Table of Contents
 pt:AI Recognize Table of Contents
 ro:AI Recognize Table of Contents
 ru:AI Recognize Table of Contents
-sat:AI Recognize Table of Contents
 si:AI Recognize Table of Contents
 sk:AI Recognize Table of Contents
 sl:AI Recognize Table of Contents
@@ -2755,6 +3018,78 @@ tw:AI 目錄辨識
 :AI table of contents (API)
 cn:AI 目录识别（API）
 tw:AI 目錄辨識（API）
+:AI:
+af:AI:
+am:AI:
+ar:AI:
+az:AI:
+bg:AI:
+bn:AI:
+br:AI:
+bs:AI:
+by:AI:
+ca:AI:
+ca-xv:AI:
+cn:AI：
+co:AI:
+cy:AI:
+cz:AI:
+de:AI:
+dk:AI:
+el:AI:
+es:AI:
+et:AI:
+eu:AI:
+fa:AI:
+fi:AI:
+fo:AI:
+fr:AI:
+fy-nl:AI:
+ga:AI:
+gl:AI:
+he:AI:
+hi:AI:
+hr:AI:
+hu:AI:
+id:AI:
+it:AI:
+ja:AI:
+jv:AI:
+ka:AI:
+kr:AI:
+ku:AI:
+kw:AI:
+lt:AI:
+lv:AI:
+mk:AI:
+ml:AI:
+mm:AI:
+my:AI:
+ne:AI:
+nl:AI:
+nn:AI:
+no:AI:
+pa:AI:
+pl:AI:
+pt:AI:
+ro:AI:
+ru:AI:
+si:AI:
+sk:AI:
+sl:AI:
+sn:AI:
+sp-rs:AI:
+sq:AI:
+sr-rs:AI:
+sv:AI:
+ta:AI:
+th:AI:
+tl:AI:
+tr:AI:
+tw:AI：
+uk:AI:
+uz:AI:
+vn:AI:
 :API &base URL:
 cn:API 地址(&B)：
 tw:API 位址(&B)：
@@ -2925,7 +3260,6 @@ pl:Adjusted %d page(s) and saved to '%s'
 pt:Adjusted %d page(s) and saved to '%s'
 ro:Adjusted %d page(s) and saved to '%s'
 ru:Adjusted %d page(s) and saved to '%s'
-sat:Adjusted %d page(s) and saved to '%s'
 si:Adjusted %d page(s) and saved to '%s'
 sk:Adjusted %d page(s) and saved to '%s'
 sl:Adjusted %d page(s) and saved to '%s'
@@ -2998,7 +3332,6 @@ pl:Adjusting ebook layout… chapter %d / %d
 pt:Adjusting ebook layout… chapter %d / %d
 ro:Adjusting ebook layout… chapter %d / %d
 ru:Adjusting ebook layout… chapter %d / %d
-sat:Adjusting ebook layout… chapter %d / %d
 si:Adjusting ebook layout… chapter %d / %d
 sk:Adjusting ebook layout… chapter %d / %d
 sl:Adjusting ebook layout… chapter %d / %d
@@ -3071,7 +3404,6 @@ pl:Adjusting font size, reformatting pages…
 pt:Adjusting font size, reformatting pages…
 ro:Adjusting font size, reformatting pages…
 ru:Adjusting font size, reformatting pages…
-sat:Adjusting font size, reformatting pages…
 si:Adjusting font size, reformatting pages…
 sk:Adjusting font size, reformatting pages…
 sl:Adjusting font size, reformatting pages…
@@ -3144,7 +3476,6 @@ pl:Zaawansowane
 pt:Advanced
 ro:Advanced
 ru:Advanced
-sat:Advanced
 si:Advanced
 sk:Pokročilé
 sl:Advanced
@@ -3241,7 +3572,6 @@ pl:All Pages (%d)
 pt:All Pages (%d)
 ro:All Pages (%d)
 ru:All Pages (%d)
-sat:All Pages (%d)
 si:All Pages (%d)
 sk:All Pages (%d)
 sl:All Pages (%d)
@@ -3338,7 +3668,6 @@ pl:Always-visible overlay scrollbars
 pt:Always-visible overlay scrollbars
 ro:Always-visible overlay scrollbars
 ru:Always-visible overlay scrollbars
-sat:Always-visible overlay scrollbars
 si:Always-visible overlay scrollbars
 sk:Always-visible overlay scrollbars
 sl:Always-visible overlay scrollbars
@@ -3438,7 +3767,6 @@ pl:Any Angle
 pt:Any Angle
 ro:Any Angle
 ru:Any Angle
-sat:Any Angle
 si:Any Angle
 sk:Any Angle
 sl:Any Angle
@@ -3511,7 +3839,6 @@ pl:Appearance
 pt:Appearance
 ro:Appearance
 ru:Appearance
-sat:Appearance
 si:Appearance
 sk:Appearance
 sl:Appearance
@@ -3596,7 +3923,6 @@ pl:Zastosuj
 pt:Aplicar
 ro:Aplică
 ru:Применить
-sat:Apply
 si:යොදන්න
 sk:Použiť
 sl:Uporabi
@@ -3687,7 +4013,6 @@ pl:Apply Rotation
 pt:Apply Rotation
 ro:Apply Rotation
 ru:Apply Rotation
-sat:Apply Rotation
 si:Apply Rotation
 sk:Apply Rotation
 sl:Apply Rotation
@@ -3763,7 +4088,6 @@ pl:Apply To
 pt:Apply To
 ro:Apply To
 ru:Apply To
-sat:Apply To
 si:Apply To
 sk:Apply To
 sl:Apply To
@@ -3836,7 +4160,6 @@ pl:Applying document colors, re-rendering pages…
 pt:Applying document colors, re-rendering pages…
 ro:Applying document colors, re-rendering pages…
 ru:Applying document colors, re-rendering pages…
-sat:Applying document colors, re-rendering pages…
 si:Applying document colors, re-rendering pages…
 sk:Applying document colors, re-rendering pages…
 sl:Applying document colors, re-rendering pages…
@@ -3909,7 +4232,6 @@ pl:Applying ebook font, reformatting pages…
 pt:Applying ebook font, reformatting pages…
 ro:Applying ebook font, reformatting pages…
 ru:Applying ebook font, reformatting pages…
-sat:Applying ebook font, reformatting pages…
 si:Applying ebook font, reformatting pages…
 sk:Applying ebook font, reformatting pages…
 sl:Applying ebook font, reformatting pages…
@@ -3982,7 +4304,6 @@ pl:Applying ebook font, reloading…
 pt:Applying ebook font, reloading…
 ro:Applying ebook font, reloading…
 ru:Applying ebook font, reloading…
-sat:Applying ebook font, reloading…
 si:Applying ebook font, reloading…
 sk:Applying ebook font, reloading…
 sl:Applying ebook font, reloading…
@@ -4055,7 +4376,6 @@ pl:Applying theme or document colors, re-pagination in progress…
 pt:Applying theme or document colors, re-pagination in progress…
 ro:Applying theme or document colors, re-pagination in progress…
 ru:Applying theme or document colors, re-pagination in progress…
-sat:Applying theme or document colors, re-pagination in progress…
 si:Applying theme or document colors, re-pagination in progress…
 sk:Applying theme or document colors, re-pagination in progress…
 sl:Applying theme or document colors, re-pagination in progress…
@@ -4128,7 +4448,6 @@ pl:Applying theme or document colors… chapter %d / %d
 pt:Applying theme or document colors… chapter %d / %d
 ro:Applying theme or document colors… chapter %d / %d
 ru:Applying theme or document colors… chapter %d / %d
-sat:Applying theme or document colors… chapter %d / %d
 si:Applying theme or document colors… chapter %d / %d
 sk:Applying theme or document colors… chapter %d / %d
 sl:Applying theme or document colors… chapter %d / %d
@@ -4145,6 +4464,78 @@ tw:正在套用主題或文件顏色…第 %d / %d 章
 uk:Applying theme or document colors… chapter %d / %d
 uz:Applying theme or document colors… chapter %d / %d
 vn:Applying theme or document colors… chapter %d / %d
+:Arabic
+af:Arabic
+am:Arabic
+ar:Arabic
+az:Arabic
+bg:Arabic
+bn:Arabic
+br:Arabic
+bs:Arabic
+by:Arabic
+ca:Arabic
+ca-xv:Arabic
+cn:阿拉伯语
+co:Arabic
+cy:Arabic
+cz:Arabic
+de:Arabic
+dk:Arabic
+el:Arabic
+es:Arabic
+et:Arabic
+eu:Arabic
+fa:Arabic
+fi:Arabic
+fo:Arabic
+fr:Arabic
+fy-nl:Arabic
+ga:Arabic
+gl:Arabic
+he:Arabic
+hi:Arabic
+hr:Arabic
+hu:Arabic
+id:Arabic
+it:Arabic
+ja:Arabic
+jv:Arabic
+ka:Arabic
+kr:Arabic
+ku:Arabic
+kw:Arabic
+lt:Arabic
+lv:Arabic
+mk:Arabic
+ml:Arabic
+mm:Arabic
+my:Arabic
+ne:Arabic
+nl:Arabic
+nn:Arabic
+no:Arabic
+pa:Arabic
+pl:Arabic
+pt:Arabic
+ro:Arabic
+ru:Arabic
+si:Arabic
+sk:Arabic
+sl:Arabic
+sn:Arabic
+sp-rs:Arabic
+sq:Arabic
+sr-rs:Arabic
+sv:Arabic
+ta:Arabic
+th:Arabic
+tl:Arabic
+tr:Arabic
+tw:阿拉伯語
+uk:Arabic
+uz:Arabic
+vn:Arabic
 :Are you sure you want to uninstall SumatraPDF?
 am:Համոզվա՞ծ եք, որ ցանկանում եք ջնջել SumatraPDF-ը:
 br:Você tem certeza que você quer desinstalar o SumatraPDF?
@@ -4225,7 +4616,6 @@ pl:Zapytaj AI
 pt:Ask AI
 ro:Ask AI
 ru:Ask AI
-sat:Ask AI
 si:Ask AI
 sk:Opýtať sa AI
 sl:Ask AI
@@ -4242,6 +4632,78 @@ tw:問問 AI
 uk:Ask AI
 uz:Ask AI
 vn:Ask AI
+:Ask about the selected text…
+af:Ask about the selected text…
+am:Ask about the selected text…
+ar:Ask about the selected text…
+az:Ask about the selected text…
+bg:Ask about the selected text…
+bn:Ask about the selected text…
+br:Ask about the selected text…
+bs:Ask about the selected text…
+by:Ask about the selected text…
+ca:Ask about the selected text…
+ca-xv:Ask about the selected text…
+cn:就选中的文字提问…
+co:Ask about the selected text…
+cy:Ask about the selected text…
+cz:Ask about the selected text…
+de:Ask about the selected text…
+dk:Ask about the selected text…
+el:Ask about the selected text…
+es:Ask about the selected text…
+et:Ask about the selected text…
+eu:Ask about the selected text…
+fa:Ask about the selected text…
+fi:Ask about the selected text…
+fo:Ask about the selected text…
+fr:Ask about the selected text…
+fy-nl:Ask about the selected text…
+ga:Ask about the selected text…
+gl:Ask about the selected text…
+he:Ask about the selected text…
+hi:Ask about the selected text…
+hr:Ask about the selected text…
+hu:Ask about the selected text…
+id:Ask about the selected text…
+it:Ask about the selected text…
+ja:Ask about the selected text…
+jv:Ask about the selected text…
+ka:Ask about the selected text…
+kr:Ask about the selected text…
+ku:Ask about the selected text…
+kw:Ask about the selected text…
+lt:Ask about the selected text…
+lv:Ask about the selected text…
+mk:Ask about the selected text…
+ml:Ask about the selected text…
+mm:Ask about the selected text…
+my:Ask about the selected text…
+ne:Ask about the selected text…
+nl:Ask about the selected text…
+nn:Ask about the selected text…
+no:Ask about the selected text…
+pa:Ask about the selected text…
+pl:Ask about the selected text…
+pt:Ask about the selected text…
+ro:Ask about the selected text…
+ru:Ask about the selected text…
+si:Ask about the selected text…
+sk:Ask about the selected text…
+sl:Ask about the selected text…
+sn:Ask about the selected text…
+sp-rs:Ask about the selected text…
+sq:Ask about the selected text…
+sr-rs:Ask about the selected text…
+sv:Ask about the selected text…
+ta:Ask about the selected text…
+th:Ask about the selected text…
+tl:Ask about the selected text…
+tr:Ask about the selected text…
+tw:就選取的文字提問…
+uk:Ask about the selected text…
+uz:Ask about the selected text…
+vn:Ask about the selected text…
 :Associate Common Document Formats...
 cn:将常用文档格式关联到本应用…
 tw:將常用文件格式關聯到本應用程式…
@@ -4281,6 +4743,78 @@ nl:Auteur: %s
 pl:Autor: %s
 sk:Autor: %s
 tw:作者: %s
+:Auto (follow UI, flip when source matches)
+af:Auto (follow UI, flip when source matches)
+am:Auto (follow UI, flip when source matches)
+ar:Auto (follow UI, flip when source matches)
+az:Auto (follow UI, flip when source matches)
+bg:Auto (follow UI, flip when source matches)
+bn:Auto (follow UI, flip when source matches)
+br:Auto (follow UI, flip when source matches)
+bs:Auto (follow UI, flip when source matches)
+by:Auto (follow UI, flip when source matches)
+ca:Auto (follow UI, flip when source matches)
+ca-xv:Auto (follow UI, flip when source matches)
+cn:自动（跟随界面语言，源语相同时对调）
+co:Auto (follow UI, flip when source matches)
+cy:Auto (follow UI, flip when source matches)
+cz:Auto (follow UI, flip when source matches)
+de:Auto (follow UI, flip when source matches)
+dk:Auto (follow UI, flip when source matches)
+el:Auto (follow UI, flip when source matches)
+es:Auto (follow UI, flip when source matches)
+et:Auto (follow UI, flip when source matches)
+eu:Auto (follow UI, flip when source matches)
+fa:Auto (follow UI, flip when source matches)
+fi:Auto (follow UI, flip when source matches)
+fo:Auto (follow UI, flip when source matches)
+fr:Auto (follow UI, flip when source matches)
+fy-nl:Auto (follow UI, flip when source matches)
+ga:Auto (follow UI, flip when source matches)
+gl:Auto (follow UI, flip when source matches)
+he:Auto (follow UI, flip when source matches)
+hi:Auto (follow UI, flip when source matches)
+hr:Auto (follow UI, flip when source matches)
+hu:Auto (follow UI, flip when source matches)
+id:Auto (follow UI, flip when source matches)
+it:Auto (follow UI, flip when source matches)
+ja:Auto (follow UI, flip when source matches)
+jv:Auto (follow UI, flip when source matches)
+ka:Auto (follow UI, flip when source matches)
+kr:Auto (follow UI, flip when source matches)
+ku:Auto (follow UI, flip when source matches)
+kw:Auto (follow UI, flip when source matches)
+lt:Auto (follow UI, flip when source matches)
+lv:Auto (follow UI, flip when source matches)
+mk:Auto (follow UI, flip when source matches)
+ml:Auto (follow UI, flip when source matches)
+mm:Auto (follow UI, flip when source matches)
+my:Auto (follow UI, flip when source matches)
+ne:Auto (follow UI, flip when source matches)
+nl:Auto (follow UI, flip when source matches)
+nn:Auto (follow UI, flip when source matches)
+no:Auto (follow UI, flip when source matches)
+pa:Auto (follow UI, flip when source matches)
+pl:Auto (follow UI, flip when source matches)
+pt:Auto (follow UI, flip when source matches)
+ro:Auto (follow UI, flip when source matches)
+ru:Auto (follow UI, flip when source matches)
+si:Auto (follow UI, flip when source matches)
+sk:Auto (follow UI, flip when source matches)
+sl:Auto (follow UI, flip when source matches)
+sn:Auto (follow UI, flip when source matches)
+sp-rs:Auto (follow UI, flip when source matches)
+sq:Auto (follow UI, flip when source matches)
+sr-rs:Auto (follow UI, flip when source matches)
+sv:Auto (follow UI, flip when source matches)
+ta:Auto (follow UI, flip when source matches)
+th:Auto (follow UI, flip when source matches)
+tl:Auto (follow UI, flip when source matches)
+tr:Auto (follow UI, flip when source matches)
+tw:自動（跟隨介面語言，來源語相同時對調）
+uk:Auto (follow UI, flip when source matches)
+uz:Auto (follow UI, flip when source matches)
+vn:Auto (follow UI, flip when source matches)
 :Auto Crop
 af:Auto Crop
 am:Auto Crop
@@ -4337,7 +4871,6 @@ pl:Auto Crop
 pt:Auto Crop
 ro:Auto Crop
 ru:Auto Crop
-sat:Auto Crop
 si:Auto Crop
 sk:Auto Crop
 sl:Auto Crop
@@ -4410,7 +4943,6 @@ pl:Auto OCR
 pt:Auto OCR
 ro:Auto OCR
 ru:Auto OCR
-sat:Auto OCR
 si:Auto OCR
 sk:Auto OCR
 sl:Auto OCR
@@ -4483,7 +5015,6 @@ pl:Auto OCR (off): turn on to recognize scanned pages as you view them
 pt:Auto OCR (off): turn on to recognize scanned pages as you view them
 ro:Auto OCR (off): turn on to recognize scanned pages as you view them
 ru:Auto OCR (off): turn on to recognize scanned pages as you view them
-sat:Auto OCR (off): turn on to recognize scanned pages as you view them
 si:Auto OCR (off): turn on to recognize scanned pages as you view them
 sk:Auto OCR (off): turn on to recognize scanned pages as you view them
 sl:Auto OCR (off): turn on to recognize scanned pages as you view them
@@ -4556,7 +5087,6 @@ pl:Auto OCR (on): scanned pages are recognized for select and search
 pt:Auto OCR (on): scanned pages are recognized for select and search
 ro:Auto OCR (on): scanned pages are recognized for select and search
 ru:Auto OCR (on): scanned pages are recognized for select and search
-sat:Auto OCR (on): scanned pages are recognized for select and search
 si:Auto OCR (on): scanned pages are recognized for select and search
 sk:Auto OCR (on): scanned pages are recognized for select and search
 sl:Auto OCR (on): scanned pages are recognized for select and search
@@ -4629,7 +5159,6 @@ pl:Auto OCR is enabled
 pt:Auto OCR is enabled
 ro:Auto OCR is enabled
 ru:Auto OCR is enabled
-sat:Auto OCR is enabled
 si:Auto OCR is enabled
 sk:Auto OCR is enabled
 sl:Auto OCR is enabled
@@ -4702,7 +5231,6 @@ pl:Auto-save
 pt:Auto-save
 ro:Auto-save
 ru:Auto-save
-sat:Auto-save
 si:Auto-save
 sk:Auto-save
 sl:Auto-save
@@ -4796,7 +5324,6 @@ pl:Automatically &reload changed documents
 pt:Automatically &reload changed documents
 ro:Automatically &reload changed documents
 ru:Automatically &reload changed documents
-sat:Automatically &reload changed documents
 si:Automatically &reload changed documents
 sk:Automatically &reload changed documents
 sl:Automatically &reload changed documents
@@ -4869,7 +5396,6 @@ pl:Automatically &save PDF after OCR or TOC processing
 pt:Automatically &save PDF after OCR or TOC processing
 ro:Automatically &save PDF after OCR or TOC processing
 ru:Automatically &save PDF after OCR or TOC processing
-sat:Automatically &save PDF after OCR or TOC processing
 si:Automatically &save PDF after OCR or TOC processing
 sk:Automatically &save PDF after OCR or TOC processing
 sl:Automatically &save PDF after OCR or TOC processing
@@ -4942,7 +5468,6 @@ pl:Automatically OCR scanned pages
 pt:Automatically OCR scanned pages
 ro:Automatically OCR scanned pages
 ru:Automatically OCR scanned pages
-sat:Automatically OCR scanned pages
 si:Automatically OCR scanned pages
 sk:Automatically OCR scanned pages
 sl:Automatically OCR scanned pages
@@ -5027,7 +5552,6 @@ pl:Back 10 seconds
 pt:Back 10 seconds
 ro:Back 10 seconds
 ru:Back 10 seconds
-sat:Back 10 seconds
 si:Back 10 seconds
 sk:Back 10 seconds
 sl:Back 10 seconds
@@ -5130,7 +5654,6 @@ pl:Balanced accuracy and completeness is recommended.
 pt:Balanced accuracy and completeness is recommended.
 ro:Balanced accuracy and completeness is recommended.
 ru:Balanced accuracy and completeness is recommended.
-sat:Balanced accuracy and completeness is recommended.
 si:Balanced accuracy and completeness is recommended.
 sk:Balanced accuracy and completeness is recommended.
 sl:Balanced accuracy and completeness is recommended.
@@ -5239,7 +5762,6 @@ pl:Bookmark extraction cancelled.
 pt:Bookmark extraction cancelled.
 ro:Bookmark extraction cancelled.
 ru:Bookmark extraction cancelled.
-sat:Bookmark extraction cancelled.
 si:Bookmark extraction cancelled.
 sk:Bookmark extraction cancelled.
 sl:Bookmark extraction cancelled.
@@ -5351,7 +5873,6 @@ pl:Brightness
 pt:Brightness
 ro:Brightness
 ru:Brightness
-sat:Brightness
 si:Brightness
 sk:Brightness
 sl:Brightness
@@ -5436,7 +5957,6 @@ pl:C&hinese:
 pt:C&hinese:
 ro:C&hinese:
 ru:C&hinese:
-sat:C&hinese:
 si:C&hinese:
 sk:C&hinese:
 sl:C&hinese:
@@ -5599,7 +6119,6 @@ pl:Cancel OCR
 pt:Cancel OCR
 ro:Cancel OCR
 ru:Cancel OCR
-sat:Cancel OCR
 si:Cancel OCR
 sk:Cancel OCR
 sl:Cancel OCR
@@ -5672,7 +6191,6 @@ pl:Cancelled.
 pt:Cancelled.
 ro:Cancelled.
 ru:Cancelled.
-sat:Cancelled.
 si:Cancelled.
 sk:Cancelled.
 sl:Cancelled.
@@ -5826,7 +6344,6 @@ pl:ChatGPT
 pt:ChatGPT
 ro:ChatGPT
 ru:ChatGPT
-sat:ChatGPT
 si:ChatGPT
 sk:ChatGPT
 sl:ChatGPT
@@ -5879,6 +6396,222 @@ nl:Controleer op Update...
 pl:Szukanie aktualizacji...
 sk:Kontrolujú sa aktualizácie…
 tw:檢查更新中...
+:Chinese
+af:Chinese
+am:Chinese
+ar:Chinese
+az:Chinese
+bg:Chinese
+bn:Chinese
+br:Chinese
+bs:Chinese
+by:Chinese
+ca:Chinese
+ca-xv:Chinese
+cn:中文
+co:Chinese
+cy:Chinese
+cz:Chinese
+de:Chinese
+dk:Chinese
+el:Chinese
+es:Chinese
+et:Chinese
+eu:Chinese
+fa:Chinese
+fi:Chinese
+fo:Chinese
+fr:Chinese
+fy-nl:Chinese
+ga:Chinese
+gl:Chinese
+he:Chinese
+hi:Chinese
+hr:Chinese
+hu:Chinese
+id:Chinese
+it:Chinese
+ja:Chinese
+jv:Chinese
+ka:Chinese
+kr:Chinese
+ku:Chinese
+kw:Chinese
+lt:Chinese
+lv:Chinese
+mk:Chinese
+ml:Chinese
+mm:Chinese
+my:Chinese
+ne:Chinese
+nl:Chinese
+nn:Chinese
+no:Chinese
+pa:Chinese
+pl:Chinese
+pt:Chinese
+ro:Chinese
+ru:Chinese
+si:Chinese
+sk:Chinese
+sl:Chinese
+sn:Chinese
+sp-rs:Chinese
+sq:Chinese
+sr-rs:Chinese
+sv:Chinese
+ta:Chinese
+th:Chinese
+tl:Chinese
+tr:Chinese
+tw:中文
+uk:Chinese
+uz:Chinese
+vn:Chinese
+:Chinese (Simplified)
+af:Chinese (Simplified)
+am:Chinese (Simplified)
+ar:Chinese (Simplified)
+az:Chinese (Simplified)
+bg:Chinese (Simplified)
+bn:Chinese (Simplified)
+br:Chinese (Simplified)
+bs:Chinese (Simplified)
+by:Chinese (Simplified)
+ca:Chinese (Simplified)
+ca-xv:Chinese (Simplified)
+cn:简体中文
+co:Chinese (Simplified)
+cy:Chinese (Simplified)
+cz:Chinese (Simplified)
+de:Chinese (Simplified)
+dk:Chinese (Simplified)
+el:Chinese (Simplified)
+es:Chinese (Simplified)
+et:Chinese (Simplified)
+eu:Chinese (Simplified)
+fa:Chinese (Simplified)
+fi:Chinese (Simplified)
+fo:Chinese (Simplified)
+fr:Chinese (Simplified)
+fy-nl:Chinese (Simplified)
+ga:Chinese (Simplified)
+gl:Chinese (Simplified)
+he:Chinese (Simplified)
+hi:Chinese (Simplified)
+hr:Chinese (Simplified)
+hu:Chinese (Simplified)
+id:Chinese (Simplified)
+it:Chinese (Simplified)
+ja:Chinese (Simplified)
+jv:Chinese (Simplified)
+ka:Chinese (Simplified)
+kr:Chinese (Simplified)
+ku:Chinese (Simplified)
+kw:Chinese (Simplified)
+lt:Chinese (Simplified)
+lv:Chinese (Simplified)
+mk:Chinese (Simplified)
+ml:Chinese (Simplified)
+mm:Chinese (Simplified)
+my:Chinese (Simplified)
+ne:Chinese (Simplified)
+nl:Chinese (Simplified)
+nn:Chinese (Simplified)
+no:Chinese (Simplified)
+pa:Chinese (Simplified)
+pl:Chinese (Simplified)
+pt:Chinese (Simplified)
+ro:Chinese (Simplified)
+ru:Chinese (Simplified)
+si:Chinese (Simplified)
+sk:Chinese (Simplified)
+sl:Chinese (Simplified)
+sn:Chinese (Simplified)
+sp-rs:Chinese (Simplified)
+sq:Chinese (Simplified)
+sr-rs:Chinese (Simplified)
+sv:Chinese (Simplified)
+ta:Chinese (Simplified)
+th:Chinese (Simplified)
+tl:Chinese (Simplified)
+tr:Chinese (Simplified)
+tw:簡體中文
+uk:Chinese (Simplified)
+uz:Chinese (Simplified)
+vn:Chinese (Simplified)
+:Chinese (Traditional)
+af:Chinese (Traditional)
+am:Chinese (Traditional)
+ar:Chinese (Traditional)
+az:Chinese (Traditional)
+bg:Chinese (Traditional)
+bn:Chinese (Traditional)
+br:Chinese (Traditional)
+bs:Chinese (Traditional)
+by:Chinese (Traditional)
+ca:Chinese (Traditional)
+ca-xv:Chinese (Traditional)
+cn:繁体中文
+co:Chinese (Traditional)
+cy:Chinese (Traditional)
+cz:Chinese (Traditional)
+de:Chinese (Traditional)
+dk:Chinese (Traditional)
+el:Chinese (Traditional)
+es:Chinese (Traditional)
+et:Chinese (Traditional)
+eu:Chinese (Traditional)
+fa:Chinese (Traditional)
+fi:Chinese (Traditional)
+fo:Chinese (Traditional)
+fr:Chinese (Traditional)
+fy-nl:Chinese (Traditional)
+ga:Chinese (Traditional)
+gl:Chinese (Traditional)
+he:Chinese (Traditional)
+hi:Chinese (Traditional)
+hr:Chinese (Traditional)
+hu:Chinese (Traditional)
+id:Chinese (Traditional)
+it:Chinese (Traditional)
+ja:Chinese (Traditional)
+jv:Chinese (Traditional)
+ka:Chinese (Traditional)
+kr:Chinese (Traditional)
+ku:Chinese (Traditional)
+kw:Chinese (Traditional)
+lt:Chinese (Traditional)
+lv:Chinese (Traditional)
+mk:Chinese (Traditional)
+ml:Chinese (Traditional)
+mm:Chinese (Traditional)
+my:Chinese (Traditional)
+ne:Chinese (Traditional)
+nl:Chinese (Traditional)
+nn:Chinese (Traditional)
+no:Chinese (Traditional)
+pa:Chinese (Traditional)
+pl:Chinese (Traditional)
+pt:Chinese (Traditional)
+ro:Chinese (Traditional)
+ru:Chinese (Traditional)
+si:Chinese (Traditional)
+sk:Chinese (Traditional)
+sl:Chinese (Traditional)
+sn:Chinese (Traditional)
+sp-rs:Chinese (Traditional)
+sq:Chinese (Traditional)
+sr-rs:Chinese (Traditional)
+sv:Chinese (Traditional)
+ta:Chinese (Traditional)
+th:Chinese (Traditional)
+tl:Chinese (Traditional)
+tr:Chinese (Traditional)
+tw:繁體中文
+uk:Chinese (Traditional)
+uz:Chinese (Traditional)
+vn:Chinese (Traditional)
 :Chinese voice
 af:Chinese stem
 am:Չինական ձայ
@@ -5935,7 +6668,6 @@ pl:Chinese voice
 pt:Chinese voice
 ro:Chinese voice
 ru:Китайский голос
-sat:Chinese voice
 si:Chinese voice
 sk:Chinese voice
 sl:Chinese voice
@@ -6008,7 +6740,6 @@ pl:Chinese voice:
 pt:Chinese voice:
 ro:Chinese voice:
 ru:Chinese voice:
-sat:Chinese voice:
 si:Chinese voice:
 sk:Chinese voice:
 sl:Chinese voice:
@@ -6099,7 +6830,6 @@ pl:Choose the offline dictionary folder
 pt:Choose the offline dictionary folder
 ro:Choose the offline dictionary folder
 ru:Choose the offline dictionary folder
-sat:Choose the offline dictionary folder
 si:Choose the offline dictionary folder
 sk:Choose the offline dictionary folder
 sl:Choose the offline dictionary folder
@@ -6184,7 +6914,6 @@ pl:Circle Annotation (Ctrl+click to lock)
 pt:Circle Annotation (Ctrl+click to lock)
 ro:Circle Annotation (Ctrl+click to lock)
 ru:Circle Annotation (Ctrl+click to lock)
-sat:Circle Annotation (Ctrl+click to lock)
 si:Circle Annotation (Ctrl+click to lock)
 sk:Circle Annotation (Ctrl+click to lock)
 sl:Circle Annotation (Ctrl+click to lock)
@@ -6497,7 +7226,6 @@ pl:Conservative
 pt:Conservative
 ro:Conservative
 ru:Conservative
-sat:Conservative
 si:Conservative
 sk:Conservative
 sl:Conservative
@@ -6573,7 +7301,6 @@ pl:Contents / favorites sidebar
 pt:Contents / favorites sidebar
 ro:Contents / favorites sidebar
 ru:Contents / favorites sidebar
-sat:Contents / favorites sidebar
 si:Contents / favorites sidebar
 sk:Contents / favorites sidebar
 sl:Contents / favorites sidebar
@@ -6661,7 +7388,6 @@ pl:Kontynuuj czytanie
 pt:Continuar leitura
 ro:Continuă citirea
 ru:Продолжить чтение
-sat:ᱯᱟᱲᱦᱟᱣ ᱜᱟᱹᱜᱤ
 si:කියවීම දිගටම
 sk:Pokračovať v čítaní
 sl:Nadaljuj branje
@@ -6770,7 +7496,6 @@ pl:Contrast
 pt:Contrast
 ro:Contrast
 ru:Contrast
-sat:Contrast
 si:Contrast
 sk:Contrast
 sl:Contrast
@@ -6855,7 +7580,6 @@ pl:Konwertuj obraz do PDF
 pt:Convert Image to PDF
 ro:Convert Image to PDF
 ru:Конвертировать изображение в PDF
-sat:Convert Image to PDF
 si:Convert Image to PDF
 sk:Konvertovať obrázok do PDF
 sl:Convert Image to PDF
@@ -6928,7 +7652,6 @@ pl:Konwertuj do &PDF
 pt:Converter para &PDF
 ro:Convert to &PDF
 ru:Конвертировать в &PDF
-sat:Convert to &PDF
 si:Convert to &PDF
 sk:Konvertovať do &PDF
 sl:Convert to &PDF
@@ -6945,6 +7668,78 @@ tw:轉換為 PDF(&P)
 uk:Convert to &PDF
 uz:Convert to &PDF
 vn:Convert to &PDF
+:Copied
+af:Copied
+am:Copied
+ar:Copied
+az:Copied
+bg:Copied
+bn:Copied
+br:Copied
+bs:Copied
+by:Copied
+ca:Copied
+ca-xv:Copied
+cn:已复制
+co:Copied
+cy:Copied
+cz:Copied
+de:Copied
+dk:Copied
+el:Copied
+es:Copied
+et:Copied
+eu:Copied
+fa:Copied
+fi:Copied
+fo:Copied
+fr:Copied
+fy-nl:Copied
+ga:Copied
+gl:Copied
+he:Copied
+hi:Copied
+hr:Copied
+hu:Copied
+id:Copied
+it:Copied
+ja:Copied
+jv:Copied
+ka:Copied
+kr:Copied
+ku:Copied
+kw:Copied
+lt:Copied
+lv:Copied
+mk:Copied
+ml:Copied
+mm:Copied
+my:Copied
+ne:Copied
+nl:Copied
+nn:Copied
+no:Copied
+pa:Copied
+pl:Copied
+pt:Copied
+ro:Copied
+ru:Copied
+si:Copied
+sk:Copied
+sl:Copied
+sn:Copied
+sp-rs:Copied
+sq:Copied
+sr-rs:Copied
+sv:Copied
+ta:Copied
+th:Copied
+tl:Copied
+tr:Copied
+tw:已複製
+uk:Copied
+uz:Copied
+vn:Copied
 :Copied.
 af:Copied.
 am:Copied.
@@ -7001,7 +7796,6 @@ pl:Copied.
 pt:Copied.
 ro:Copied.
 ru:Copied.
-sat:Copied.
 si:Copied.
 sk:Copied.
 sl:Copied.
@@ -7173,7 +7967,6 @@ pl:Kopiowanie tekstu jest niedozwolone
 pt:Copiar texto não é permitido
 ro:Copierea textului nu este permisă
 ru:Копирование текста запрещено
-sat:ᱚᱱᱟ ᱱᱚᱠᱚᱞ ᱵᱟᱭ ᱦᱩᱭ
 si:පෙළ පිටපත් කිරීම අවසර නැත
 sk:Kopírovanie textu nie je povolené
 sl:Kopiranje besedila ni dovoljeno
@@ -7285,7 +8078,6 @@ pl:Could not prepare the extracted table of contents.
 pt:Could not prepare the extracted table of contents.
 ro:Could not prepare the extracted table of contents.
 ru:Could not prepare the extracted table of contents.
-sat:Could not prepare the extracted table of contents.
 si:Could not prepare the extracted table of contents.
 sk:Could not prepare the extracted table of contents.
 sl:Could not prepare the extracted table of contents.
@@ -7358,7 +8150,6 @@ pl:Could not recognize text on this page.
 pt:Could not recognize text on this page.
 ro:Could not recognize text on this page.
 ru:Could not recognize text on this page.
-sat:Could not recognize text on this page.
 si:Could not recognize text on this page.
 sk:Could not recognize text on this page.
 sl:Could not recognize text on this page.
@@ -7431,7 +8222,6 @@ pl:Could not replace the original PDF. The recognized file was kept as a tempora
 pt:Could not replace the original PDF. The recognized file was kept as a temporary copy.
 ro:Could not replace the original PDF. The recognized file was kept as a temporary copy.
 ru:Could not replace the original PDF. The recognized file was kept as a temporary copy.
-sat:Could not replace the original PDF. The recognized file was kept as a temporary copy.
 si:Could not replace the original PDF. The recognized file was kept as a temporary copy.
 sk:Could not replace the original PDF. The recognized file was kept as a temporary copy.
 sl:Could not replace the original PDF. The recognized file was kept as a temporary copy.
@@ -7504,7 +8294,6 @@ pl:Could not save searchable PDF.
 pt:Could not save searchable PDF.
 ro:Could not save searchable PDF.
 ru:Could not save searchable PDF.
-sat:Could not save searchable PDF.
 si:Could not save searchable PDF.
 sk:Could not save searchable PDF.
 sl:Could not save searchable PDF.
@@ -7577,7 +8366,6 @@ pl:Could not write the PDF table of contents.
 pt:Could not write the PDF table of contents.
 ro:Could not write the PDF table of contents.
 ru:Could not write the PDF table of contents.
-sat:Could not write the PDF table of contents.
 si:Could not write the PDF table of contents.
 sk:Could not write the PDF table of contents.
 sl:Could not write the PDF table of contents.
@@ -8061,7 +8849,6 @@ pl:Ctrl+Tab uses most recently used &order
 pt:Ctrl+Tab uses most recently used &order
 ro:Ctrl+Tab uses most recently used &order
 ru:Ctrl+Tab uses most recently used &order
-sat:Ctrl+Tab uses most recently used &order
 si:Ctrl+Tab uses most recently used &order
 sk:Ctrl+Tab uses most recently used &order
 sl:Ctrl+Tab uses most recently used &order
@@ -8150,7 +8937,6 @@ pl:Current Page (Page %d)
 pt:Current Page (Page %d)
 ro:Current Page (Page %d)
 ru:Current Page (Page %d)
-sat:Current Page (Page %d)
 si:Current Page (Page %d)
 sk:Current Page (Page %d)
 sl:Current Page (Page %d)
@@ -8247,7 +9033,6 @@ pl:Custom &DPI (0 = automatic):
 pt:Custom &DPI (0 = automatic):
 ro:Custom &DPI (0 = automatic):
 ru:Custom &DPI (0 = automatic):
-sat:Custom &DPI (0 = automatic):
 si:Custom &DPI (0 = automatic):
 sk:Custom &DPI (0 = automatic):
 sl:Custom &DPI (0 = automatic):
@@ -8332,7 +9117,6 @@ pl:Custom DPI must be 0 (automatic) or between 72 and 600.
 pt:Custom DPI must be 0 (automatic) or between 72 and 600.
 ro:Custom DPI must be 0 (automatic) or between 72 and 600.
 ru:Custom DPI must be 0 (automatic) or between 72 and 600.
-sat:Custom DPI must be 0 (automatic) or between 72 and 600.
 si:Custom DPI must be 0 (automatic) or between 72 and 600.
 sk:Custom DPI must be 0 (automatic) or between 72 and 600.
 sl:Custom DPI must be 0 (automatic) or between 72 and 600.
@@ -8405,7 +9189,6 @@ pl:Custom...
 pt:Custom...
 ro:Custom...
 ru:Custom...
-sat:Custom...
 si:Custom...
 sk:Custom...
 sl:Custom...
@@ -8681,7 +9464,6 @@ pl:DeepSeek
 pt:DeepSeek
 ro:DeepSeek
 ru:DeepSeek
-sat:DeepSeek
 si:DeepSeek
 sk:DeepSeek
 sl:DeepSeek
@@ -8754,7 +9536,6 @@ pl:&Układ domyślny:
 pt:Default &Layout:
 ro:Default &Layout:
 ru:Default &Layout:
-sat:Default &Layout:
 si:Default &Layout:
 sk:Predvolené &zobrazenie:
 sl:Default &Layout:
@@ -8827,7 +9608,6 @@ pl:Domyślne &powiększenie:
 pt:Default &Zoom:
 ro:Default &Zoom:
 ru:Default &Zoom:
-sat:Default &Zoom:
 si:Default &Zoom:
 sk:Predvolená &veľkosť
 sl:Default &Zoom:
@@ -8900,7 +9680,6 @@ pl:Default document &colors:
 pt:Default document &colors:
 ro:Default document &colors:
 ru:Default document &colors:
-sat:Default document &colors:
 si:Default document &colors:
 sk:Default document &colors:
 sl:Default document &colors:
@@ -8973,7 +9752,6 @@ pl:Default view
 pt:Default view
 ro:Default view
 ru:Default view
-sat:Default view
 si:Default view
 sk:Default view
 sl:Default view
@@ -9058,7 +9836,6 @@ pl:Delete %d TOC items and their child items?
 pt:Delete %d TOC items and their child items?
 ro:Delete %d TOC items and their child items?
 ru:Delete %d TOC items and their child items?
-sat:Delete %d TOC items and their child items?
 si:Delete %d TOC items and their child items?
 sk:Delete %d TOC items and their child items?
 sl:Delete %d TOC items and their child items?
@@ -9131,7 +9908,6 @@ pl:Delete %d TOC items?
 pt:Delete %d TOC items?
 ro:Delete %d TOC items?
 ru:Delete %d TOC items?
-sat:Delete %d TOC items?
 si:Delete %d TOC items?
 sk:Delete %d TOC items?
 sl:Delete %d TOC items?
@@ -9324,7 +10100,6 @@ pl:Deskew &All Scanned Pages
 pt:Deskew &All Scanned Pages
 ro:Deskew &All Scanned Pages
 ru:Deskew &All Scanned Pages
-sat:Deskew &All Scanned Pages
 si:Deskew &All Scanned Pages
 sk:Deskew &All Scanned Pages
 sl:Deskew &All Scanned Pages
@@ -9397,7 +10172,6 @@ pl:Deskew &Page
 pt:Deskew &Page
 ro:Deskew &Page
 ru:Deskew &Page
-sat:Deskew &Page
 si:Deskew &Page
 sk:Deskew &Page
 sl:Deskew &Page
@@ -9470,7 +10244,6 @@ pl:Deskew All Scanned Pages
 pt:Deskew All Scanned Pages
 ro:Deskew All Scanned Pages
 ru:Deskew All Scanned Pages
-sat:Deskew All Scanned Pages
 si:Deskew All Scanned Pages
 sk:Deskew All Scanned Pages
 sl:Deskew All Scanned Pages
@@ -9543,7 +10316,6 @@ pl:Deskew Page
 pt:Deskew Page
 ro:Deskew Page
 ru:Deskew Page
-sat:Deskew Page
 si:Deskew Page
 sk:Deskew Page
 sl:Deskew Page
@@ -9619,7 +10391,6 @@ pl:Deskew during OCR
 pt:Deskew during OCR
 ro:Deskew during OCR
 ru:Deskew during OCR
-sat:Deskew during OCR
 si:Deskew during OCR
 sk:Deskew during OCR
 sl:Deskew during OCR
@@ -9692,7 +10463,6 @@ pl:Deskew is already running.
 pt:Deskew is already running.
 ro:Deskew is already running.
 ru:Deskew is already running.
-sat:Deskew is already running.
 si:Deskew is already running.
 sk:Deskew is already running.
 sl:Deskew is already running.
@@ -9765,7 +10535,6 @@ pl:Deskewed %d page(s).
 pt:Deskewed %d page(s).
 ro:Deskewed %d page(s).
 ru:Deskewed %d page(s).
-sat:Deskewed %d page(s).
 si:Deskewed %d page(s).
 sk:Deskewed %d page(s).
 sl:Deskewed %d page(s).
@@ -9838,7 +10607,6 @@ pl:Deskewed by %.1f degrees.
 pt:Deskewed by %.1f degrees.
 ro:Deskewed by %.1f degrees.
 ru:Deskewed by %.1f degrees.
-sat:Deskewed by %.1f degrees.
 si:Deskewed by %.1f degrees.
 sk:Deskewed by %.1f degrees.
 sl:Deskewed by %.1f degrees.
@@ -9911,7 +10679,6 @@ pl:Deskewing…
 pt:Deskewing…
 ro:Deskewing…
 ru:Deskewing…
-sat:Deskewing…
 si:Deskewing…
 sk:Deskewing…
 sl:Deskewing…
@@ -9984,7 +10751,6 @@ pl:Deskewing… %d / %d
 pt:Deskewing… %d / %d
 ro:Deskewing… %d / %d
 ru:Deskewing… %d / %d
-sat:Deskewing… %d / %d
 si:Deskewing… %d / %d
 sk:Deskewing… %d / %d
 sl:Deskewing… %d / %d
@@ -10057,7 +10823,6 @@ pl:Detailed
 pt:Detailed
 ro:Detailed
 ru:Detailed
-sat:Detailed
 si:Detailed
 sk:Detailed
 sl:Detailed
@@ -10136,7 +10901,6 @@ pl:Dictionary
 pt:Dictionary
 ro:Dictionary
 ru:Dictionary
-sat:Dictionary
 si:Dictionary
 sk:Dictionary
 sl:Dictionary
@@ -10209,7 +10973,6 @@ pl:Discard
 pt:Discard
 ro:Discard
 ru:Discard
-sat:Discard
 si:Discard
 sk:Discard
 sl:Discard
@@ -10282,7 +11045,6 @@ pl:Display
 pt:Display
 ro:Display
 ru:Display
-sat:Display
 si:Display
 sk:Display
 sl:Display
@@ -10355,7 +11117,6 @@ pl:Display &Filter...
 pt:Display &Filter...
 ro:Display &Filter...
 ru:Display &Filter...
-sat:Display &Filter...
 si:Display &Filter...
 sk:Display &Filter...
 sl:Display &Filter...
@@ -10428,7 +11189,6 @@ pl:Display filter
 pt:Display filter
 ro:Display filter
 ru:Display filter
-sat:Display filter
 si:Display filter
 sk:Display filter
 sl:Display filter
@@ -10501,7 +11261,6 @@ pl:Display quality
 pt:Display quality
 ro:Display quality
 ru:Display quality
-sat:Display quality
 si:Display quality
 sk:Display quality
 sl:Display quality
@@ -10607,7 +11366,6 @@ pl:Document &colors:
 pt:Document &colors:
 ro:Document &colors:
 ru:Document &colors:
-sat:Document &colors:
 si:Document &colors:
 sk:Document &colors:
 sl:Document &colors:
@@ -10740,7 +11498,6 @@ pl:Don't save
 pt:Don't save
 ro:Don't save
 ru:Don't save
-sat:Don't save
 si:Don't save
 sk:Don't save
 sl:Don't save
@@ -10813,7 +11570,6 @@ pl:Doubao
 pt:Doubao
 ro:Doubao
 ru:Doubao
-sat:Doubao
 si:Doubao
 sk:Doubao
 sl:Doubao
@@ -10890,6 +11646,78 @@ nl:Update downloaden...
 pl:Pobieranie aktualizacji...
 sk:Sťahuje sa aktualizácia…
 tw:正在下載更新...
+:Dutch
+af:Dutch
+am:Dutch
+ar:Dutch
+az:Dutch
+bg:Dutch
+bn:Dutch
+br:Dutch
+bs:Dutch
+by:Dutch
+ca:Dutch
+ca-xv:Dutch
+cn:荷兰语
+co:Dutch
+cy:Dutch
+cz:Dutch
+de:Dutch
+dk:Dutch
+el:Dutch
+es:Dutch
+et:Dutch
+eu:Dutch
+fa:Dutch
+fi:Dutch
+fo:Dutch
+fr:Dutch
+fy-nl:Dutch
+ga:Dutch
+gl:Dutch
+he:Dutch
+hi:Dutch
+hr:Dutch
+hu:Dutch
+id:Dutch
+it:Dutch
+ja:Dutch
+jv:Dutch
+ka:Dutch
+kr:Dutch
+ku:Dutch
+kw:Dutch
+lt:Dutch
+lv:Dutch
+mk:Dutch
+ml:Dutch
+mm:Dutch
+my:Dutch
+ne:Dutch
+nl:Dutch
+nn:Dutch
+no:Dutch
+pa:Dutch
+pl:Dutch
+pt:Dutch
+ro:Dutch
+ru:Dutch
+si:Dutch
+sk:Dutch
+sl:Dutch
+sn:Dutch
+sp-rs:Dutch
+sq:Dutch
+sr-rs:Dutch
+sv:Dutch
+ta:Dutch
+th:Dutch
+tl:Dutch
+tr:Dutch
+tw:荷蘭語
+uk:Dutch
+uz:Dutch
+vn:Dutch
 :E&nglish:
 af:E&nglish:
 am:E&nglish:
@@ -10946,7 +11774,6 @@ pl:E&nglish:
 pt:E&nglish:
 ro:E&nglish:
 ru:E&nglish:
-sat:E&nglish:
 si:E&nglish:
 sk:E&nglish:
 sl:E&nglish:
@@ -11043,7 +11870,6 @@ pl:E&xit the application with Esc
 pt:E&xit the application with Esc
 ro:E&xit the application with Esc
 ru:E&xit the application with Esc
-sat:E&xit the application with Esc
 si:E&xit the application with Esc
 sk:E&xit the application with Esc
 sl:E&xit the application with Esc
@@ -11134,7 +11960,6 @@ pl:Ebook Font Size: Reset to Default
 pt:Ebook Font Size: Reset to Default
 ro:Ebook Font Size: Reset to Default
 ru:Ebook Font Size: Reset to Default
-sat:Ebook Font Size: Reset to Default
 si:Ebook Font Size: Reset to Default
 sk:Ebook Font Size: Reset to Default
 sl:Ebook Font Size: Reset to Default
@@ -11211,6 +12036,78 @@ nl:Insluiten...
 pl:Osadź...
 sk:Vložiť…
 tw:内嵌…
+:Enable &inline translate
+af:Enable &inline translate
+am:Enable &inline translate
+ar:Enable &inline translate
+az:Enable &inline translate
+bg:Enable &inline translate
+bn:Enable &inline translate
+br:Enable &inline translate
+bs:Enable &inline translate
+by:Enable &inline translate
+ca:Enable &inline translate
+ca-xv:Enable &inline translate
+cn:启用划词翻译(&I)
+co:Enable &inline translate
+cy:Enable &inline translate
+cz:Enable &inline translate
+de:Enable &inline translate
+dk:Enable &inline translate
+el:Enable &inline translate
+es:Enable &inline translate
+et:Enable &inline translate
+eu:Enable &inline translate
+fa:Enable &inline translate
+fi:Enable &inline translate
+fo:Enable &inline translate
+fr:Enable &inline translate
+fy-nl:Enable &inline translate
+ga:Enable &inline translate
+gl:Enable &inline translate
+he:Enable &inline translate
+hi:Enable &inline translate
+hr:Enable &inline translate
+hu:Enable &inline translate
+id:Enable &inline translate
+it:Enable &inline translate
+ja:Enable &inline translate
+jv:Enable &inline translate
+ka:Enable &inline translate
+kr:Enable &inline translate
+ku:Enable &inline translate
+kw:Enable &inline translate
+lt:Enable &inline translate
+lv:Enable &inline translate
+mk:Enable &inline translate
+ml:Enable &inline translate
+mm:Enable &inline translate
+my:Enable &inline translate
+ne:Enable &inline translate
+nl:Enable &inline translate
+nn:Enable &inline translate
+no:Enable &inline translate
+pa:Enable &inline translate
+pl:Enable &inline translate
+pt:Enable &inline translate
+ro:Enable &inline translate
+ru:Enable &inline translate
+si:Enable &inline translate
+sk:Enable &inline translate
+sl:Enable &inline translate
+sn:Enable &inline translate
+sp-rs:Enable &inline translate
+sq:Enable &inline translate
+sr-rs:Enable &inline translate
+sv:Enable &inline translate
+ta:Enable &inline translate
+th:Enable &inline translate
+tl:Enable &inline translate
+tr:Enable &inline translate
+tw:啟用劃詞翻譯(&I)
+uk:Enable &inline translate
+uz:Enable &inline translate
+vn:Enable &inline translate
 :Enable Auto OCR
 af:Enable Auto OCR
 am:Enable Auto OCR
@@ -11267,7 +12164,6 @@ pl:Enable Auto OCR
 pt:Enable Auto OCR
 ro:Enable Auto OCR
 ru:Enable Auto OCR
-sat:Enable Auto OCR
 si:Enable Auto OCR
 sk:Enable Auto OCR
 sl:Enable Auto OCR
@@ -11340,7 +12236,6 @@ pl:Enable Enhance Display
 pt:Enable Enhance Display
 ro:Enable Enhance Display
 ru:Enable Enhance Display
-sat:Enable Enhance Display
 si:Enable Enhance Display
 sk:Enable Enhance Display
 sl:Enable Enhance Display
@@ -11413,7 +12308,6 @@ pl:Enable PDF &anti-aliasing
 pt:Enable PDF &anti-aliasing
 ro:Enable PDF &anti-aliasing
 ru:Enable PDF &anti-aliasing
-sat:Enable PDF &anti-aliasing
 si:Enable PDF &anti-aliasing
 sk:Enable PDF &anti-aliasing
 sl:Enable PDF &anti-aliasing
@@ -11504,7 +12398,6 @@ pl:End of narration
 pt:End of narration
 ro:End of narration
 ru:End of narration
-sat:End of narration
 si:End of narration
 sk:End of narration
 sl:End of narration
@@ -11577,7 +12470,6 @@ pl:Engineering drawing &enhancement:
 pt:Engineering drawing &enhancement:
 ro:Engineering drawing &enhancement:
 ru:Engineering drawing &enhancement:
-sat:Engineering drawing &enhancement:
 si:Engineering drawing &enhancement:
 sk:Engineering drawing &enhancement:
 sl:Engineering drawing &enhancement:
@@ -11594,6 +12486,78 @@ tw:工程圖紙增強(&E)：
 uk:Engineering drawing &enhancement:
 uz:Engineering drawing &enhancement:
 vn:Engineering drawing &enhancement:
+:English
+af:English
+am:English
+ar:English
+az:English
+bg:English
+bn:English
+br:English
+bs:English
+by:English
+ca:English
+ca-xv:English
+cn:英语
+co:English
+cy:English
+cz:English
+de:English
+dk:English
+el:English
+es:English
+et:English
+eu:English
+fa:English
+fi:English
+fo:English
+fr:English
+fy-nl:English
+ga:English
+gl:English
+he:English
+hi:English
+hr:English
+hu:English
+id:English
+it:English
+ja:English
+jv:English
+ka:English
+kr:English
+ku:English
+kw:English
+lt:English
+lv:English
+mk:English
+ml:English
+mm:English
+my:English
+ne:English
+nl:English
+nn:English
+no:English
+pa:English
+pl:English
+pt:English
+ro:English
+ru:English
+si:English
+sk:English
+sl:English
+sn:English
+sp-rs:English
+sq:English
+sr-rs:English
+sv:English
+ta:English
+th:English
+tl:English
+tr:English
+tw:英語
+uk:English
+uz:English
+vn:English
 :English voice
 af:Engelse stem
 am:Անգլերեն ձայ
@@ -11650,7 +12614,6 @@ pl:English voice
 pt:English voice
 ro:English voice
 ru:Английский голос
-sat:English voice
 si:English voice
 sk:English voice
 sl:English voice
@@ -11723,7 +12686,6 @@ pl:English voice:
 pt:English voice:
 ro:English voice:
 ru:English voice:
-sat:English voice:
 si:English voice:
 sk:English voice:
 sl:English voice:
@@ -11808,7 +12770,6 @@ pl:Enhance Display
 pt:Enhance Display
 ro:Enhance Display
 ru:Enhance Display
-sat:Enhance Display
 si:Enhance Display
 sk:Enhance Display
 sl:Enhance Display
@@ -11881,7 +12842,6 @@ pl:Enhance Display is enabled
 pt:Enhance Display is enabled
 ro:Enhance Display is enabled
 ru:Enhance Display is enabled
-sat:Enhance Display is enabled
 si:Enhance Display is enabled
 sk:Enhance Display is enabled
 sl:Enhance Display is enabled
@@ -11957,7 +12917,6 @@ pl:Enter a speed from 0.25x to 2.00x.
 pt:Enter a speed from 0.25x to 2.00x.
 ro:Enter a speed from 0.25x to 2.00x.
 ru:Enter a speed from 0.25x to 2.00x.
-sat:Enter a speed from 0.25x to 2.00x.
 si:Enter a speed from 0.25x to 2.00x.
 sk:Enter a speed from 0.25x to 2.00x.
 sl:Enter a speed from 0.25x to 2.00x.
@@ -11974,6 +12933,78 @@ tw:請輸入 0.25x 到 2.00x 之間的速度。
 uk:Enter a speed from 0.25x to 2.00x.
 uz:Enter a speed from 0.25x to 2.00x.
 vn:Enter a speed from 0.25x to 2.00x.
+:Enter both the Access Key and Secret Key first.
+af:Enter both the Access Key and Secret Key first.
+am:Enter both the Access Key and Secret Key first.
+ar:Enter both the Access Key and Secret Key first.
+az:Enter both the Access Key and Secret Key first.
+bg:Enter both the Access Key and Secret Key first.
+bn:Enter both the Access Key and Secret Key first.
+br:Enter both the Access Key and Secret Key first.
+bs:Enter both the Access Key and Secret Key first.
+by:Enter both the Access Key and Secret Key first.
+ca:Enter both the Access Key and Secret Key first.
+ca-xv:Enter both the Access Key and Secret Key first.
+cn:请先填写 Access Key 和 Secret Key。
+co:Enter both the Access Key and Secret Key first.
+cy:Enter both the Access Key and Secret Key first.
+cz:Enter both the Access Key and Secret Key first.
+de:Enter both the Access Key and Secret Key first.
+dk:Enter both the Access Key and Secret Key first.
+el:Enter both the Access Key and Secret Key first.
+es:Enter both the Access Key and Secret Key first.
+et:Enter both the Access Key and Secret Key first.
+eu:Enter both the Access Key and Secret Key first.
+fa:Enter both the Access Key and Secret Key first.
+fi:Enter both the Access Key and Secret Key first.
+fo:Enter both the Access Key and Secret Key first.
+fr:Enter both the Access Key and Secret Key first.
+fy-nl:Enter both the Access Key and Secret Key first.
+ga:Enter both the Access Key and Secret Key first.
+gl:Enter both the Access Key and Secret Key first.
+he:Enter both the Access Key and Secret Key first.
+hi:Enter both the Access Key and Secret Key first.
+hr:Enter both the Access Key and Secret Key first.
+hu:Enter both the Access Key and Secret Key first.
+id:Enter both the Access Key and Secret Key first.
+it:Enter both the Access Key and Secret Key first.
+ja:Enter both the Access Key and Secret Key first.
+jv:Enter both the Access Key and Secret Key first.
+ka:Enter both the Access Key and Secret Key first.
+kr:Enter both the Access Key and Secret Key first.
+ku:Enter both the Access Key and Secret Key first.
+kw:Enter both the Access Key and Secret Key first.
+lt:Enter both the Access Key and Secret Key first.
+lv:Enter both the Access Key and Secret Key first.
+mk:Enter both the Access Key and Secret Key first.
+ml:Enter both the Access Key and Secret Key first.
+mm:Enter both the Access Key and Secret Key first.
+my:Enter both the Access Key and Secret Key first.
+ne:Enter both the Access Key and Secret Key first.
+nl:Enter both the Access Key and Secret Key first.
+nn:Enter both the Access Key and Secret Key first.
+no:Enter both the Access Key and Secret Key first.
+pa:Enter both the Access Key and Secret Key first.
+pl:Enter both the Access Key and Secret Key first.
+pt:Enter both the Access Key and Secret Key first.
+ro:Enter both the Access Key and Secret Key first.
+ru:Enter both the Access Key and Secret Key first.
+si:Enter both the Access Key and Secret Key first.
+sk:Enter both the Access Key and Secret Key first.
+sl:Enter both the Access Key and Secret Key first.
+sn:Enter both the Access Key and Secret Key first.
+sp-rs:Enter both the Access Key and Secret Key first.
+sq:Enter both the Access Key and Secret Key first.
+sr-rs:Enter both the Access Key and Secret Key first.
+sv:Enter both the Access Key and Secret Key first.
+ta:Enter both the Access Key and Secret Key first.
+th:Enter both the Access Key and Secret Key first.
+tl:Enter both the Access Key and Secret Key first.
+tr:Enter both the Access Key and Secret Key first.
+tw:請先填寫 Access Key 和 Secret Key。
+uk:Enter both the Access Key and Secret Key first.
+uz:Enter both the Access Key and Secret Key first.
+vn:Enter both the Access Key and Secret Key first.
 :Enter password
 am:Գրեք գաղտնաբառը
 br:Insira a senha
@@ -12102,6 +13133,78 @@ nl:Alle Uitvouwen
 pl:Rozwiń wszystko
 sk:Rozbaliť všetko
 tw:全部展開
+:Explain the selected text
+af:Explain the selected text
+am:Explain the selected text
+ar:Explain the selected text
+az:Explain the selected text
+bg:Explain the selected text
+bn:Explain the selected text
+br:Explain the selected text
+bs:Explain the selected text
+by:Explain the selected text
+ca:Explain the selected text
+ca-xv:Explain the selected text
+cn:解释选中的文字
+co:Explain the selected text
+cy:Explain the selected text
+cz:Explain the selected text
+de:Explain the selected text
+dk:Explain the selected text
+el:Explain the selected text
+es:Explain the selected text
+et:Explain the selected text
+eu:Explain the selected text
+fa:Explain the selected text
+fi:Explain the selected text
+fo:Explain the selected text
+fr:Explain the selected text
+fy-nl:Explain the selected text
+ga:Explain the selected text
+gl:Explain the selected text
+he:Explain the selected text
+hi:Explain the selected text
+hr:Explain the selected text
+hu:Explain the selected text
+id:Explain the selected text
+it:Explain the selected text
+ja:Explain the selected text
+jv:Explain the selected text
+ka:Explain the selected text
+kr:Explain the selected text
+ku:Explain the selected text
+kw:Explain the selected text
+lt:Explain the selected text
+lv:Explain the selected text
+mk:Explain the selected text
+ml:Explain the selected text
+mm:Explain the selected text
+my:Explain the selected text
+ne:Explain the selected text
+nl:Explain the selected text
+nn:Explain the selected text
+no:Explain the selected text
+pa:Explain the selected text
+pl:Explain the selected text
+pt:Explain the selected text
+ro:Explain the selected text
+ru:Explain the selected text
+si:Explain the selected text
+sk:Explain the selected text
+sl:Explain the selected text
+sn:Explain the selected text
+sp-rs:Explain the selected text
+sq:Explain the selected text
+sr-rs:Explain the selected text
+sv:Explain the selected text
+ta:Explain the selected text
+th:Explain the selected text
+tl:Explain the selected text
+tr:Explain the selected text
+tw:解釋選取的文字
+uk:Explain the selected text
+uz:Explain the selected text
+vn:Explain the selected text
 :Export Notes
 br:Exportar Notas
 cn:导出笔记
@@ -12209,7 +13312,6 @@ pl:Extract Table of Contents
 pt:Extrair sumário
 ro:Extract Table of Contents
 ru:Извлечь оглавление
-sat:Extract Table of Contents
 si:Extract Table of Contents
 sk:Extract Table of Contents
 sl:Extract Table of Contents
@@ -12282,7 +13384,6 @@ pl:Extract Table of Contents Locally
 pt:Extract Table of Contents Locally
 ro:Extract Table of Contents Locally
 ru:Extract Table of Contents Locally
-sat:Extract Table of Contents Locally
 si:Extract Table of Contents Locally
 sk:Extract Table of Contents Locally
 sl:Extract Table of Contents Locally
@@ -12373,7 +13474,6 @@ pl:Extract and overwrite file
 pt:Extract and overwrite file
 ro:Extract and overwrite file
 ru:Extract and overwrite file
-sat:Extract and overwrite file
 si:Extract and overwrite file
 sk:Extract and overwrite file
 sl:Extract and overwrite file
@@ -12446,7 +13546,6 @@ pl:Extract for review
 pt:Extract for review
 ro:Extract for review
 ru:Extract for review
-sat:Extract for review
 si:Extract for review
 sk:Extract for review
 sl:Extract for review
@@ -12519,7 +13618,6 @@ pl:Extracted %d bookmarks.
 pt:Extracted %d bookmarks.
 ro:Extracted %d bookmarks.
 ru:Extracted %d bookmarks.
-sat:Extracted %d bookmarks.
 si:Extracted %d bookmarks.
 sk:Extracted %d bookmarks.
 sl:Extracted %d bookmarks.
@@ -12592,7 +13690,6 @@ pl:Extracted bookmarks will replace the current bookmarks for review. Choose 'Ex
 pt:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
 ro:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
 ru:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
-sat:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
 si:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
 sk:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
 sl:Extracted bookmarks will replace the current bookmarks for review. Choose 'Extract and overwrite file' only if you want to save those changes to the original file. You can cancel review to restore the original bookmarks.
@@ -12668,7 +13765,6 @@ pl:Extracting bookmarks… %d / %d
 pt:Extracting bookmarks… %d / %d
 ro:Extracting bookmarks… %d / %d
 ru:Extracting bookmarks… %d / %d
-sat:Extracting bookmarks… %d / %d
 si:Extracting bookmarks… %d / %d
 sk:Extracting bookmarks… %d / %d
 sl:Extracting bookmarks… %d / %d
@@ -12741,7 +13837,6 @@ pl:Extraction &detail:
 pt:Extraction &detail:
 ro:Extraction &detail:
 ru:Extraction &detail:
-sat:Extraction &detail:
 si:Extraction &detail:
 sk:Extraction &detail:
 sl:Extraction &detail:
@@ -12940,7 +14035,6 @@ pl:Failed to save rotated PDF pages.
 pt:Failed to save rotated PDF pages.
 ro:Failed to save rotated PDF pages.
 ru:Failed to save rotated PDF pages.
-sat:Failed to save rotated PDF pages.
 si:Failed to save rotated PDF pages.
 sk:Failed to save rotated PDF pages.
 sl:Failed to save rotated PDF pages.
@@ -13013,7 +14107,6 @@ pl:Failed to save the adjusted pages.
 pt:Failed to save the adjusted pages.
 ro:Failed to save the adjusted pages.
 ru:Failed to save the adjusted pages.
-sat:Failed to save the adjusted pages.
 si:Failed to save the adjusted pages.
 sk:Failed to save the adjusted pages.
 sl:Failed to save the adjusted pages.
@@ -13110,7 +14203,6 @@ pl:Fast
 pt:Fast
 ro:Fast
 ru:Fast
-sat:Fast
 si:Fast
 sk:Fast
 sl:Fast
@@ -13183,7 +14275,6 @@ pl:Szybko (1.25×)
 pt:Rápido (1.25×)
 ro:Rapid (1.25×)
 ru:Быстро (1.25×)
-sat:Fast (1.25×)
 si:Fast (1.25×)
 sk:Rýchlo (1.25×)
 sl:Hitro (1.25×)
@@ -13256,7 +14347,6 @@ pl:Fast (Recommended)
 pt:Fast (Recommended)
 ro:Fast (Recommended)
 ru:Fast (Recommended)
-sat:Fast (Recommended)
 si:Fast (Recommended)
 sk:Fast (Recommended)
 sl:Fast (Recommended)
@@ -13341,7 +14431,6 @@ pl:Fast page scrolling over the scroll&bar
 pt:Fast page scrolling over the scroll&bar
 ro:Fast page scrolling over the scroll&bar
 ru:Fast page scrolling over the scroll&bar
-sat:Fast page scrolling over the scroll&bar
 si:Fast page scrolling over the scroll&bar
 sk:Fast page scrolling over the scroll&bar
 sl:Fast page scrolling over the scroll&bar
@@ -13414,7 +14503,6 @@ pl:Szybciej (1.5×)
 pt:Mais rápido (1.5×)
 ro:Mai rapid (1.5×)
 ru:Быстрее (1.5×)
-sat:Faster (1.5×)
 si:Faster (1.5×)
 sk:Rýchlejšie (1.5×)
 sl:Hitreje (1.5×)
@@ -13487,7 +14575,6 @@ pl:Najszybciej (2.0×)
 pt:Mais rápido ainda (2.0×)
 ro:Cel mai rapid (2.0×)
 ru:Максимальная (2.0×)
-sat:Fastest (2.0×)
 si:Fastest (2.0×)
 sk:Najrýchlejšie (2.0×)
 sl:Najhitreje (2.0×)
@@ -13628,7 +14715,6 @@ pl:File changes
 pt:File changes
 ro:File changes
 ru:File changes
-sat:File changes
 si:File changes
 sk:File changes
 sl:File changes
@@ -13958,7 +15044,6 @@ pl:Flip Horizontal
 pt:Flip Horizontal
 ro:Flip Horizontal
 ru:Flip Horizontal
-sat:Flip Horizontal
 si:Flip Horizontal
 sk:Flip Horizontal
 sl:Flip Horizontal
@@ -14031,7 +15116,6 @@ pl:Flip Vertical
 pt:Flip Vertical
 ro:Flip Vertical
 ru:Flip Vertical
-sat:Flip Vertical
 si:Flip Vertical
 sk:Flip Vertical
 sl:Flip Vertical
@@ -14122,7 +15206,6 @@ pl:Follow
 pt:Follow
 ro:Follow
 ru:Follow
-sat:Follow
 si:Follow
 sk:Follow
 sl:Follow
@@ -14219,7 +15302,6 @@ pl:Forward 10 seconds
 pt:Forward 10 seconds
 ro:Forward 10 seconds
 ru:Forward 10 seconds
-sat:Forward 10 seconds
 si:Forward 10 seconds
 sk:Forward 10 seconds
 sl:Forward 10 seconds
@@ -14260,6 +15342,78 @@ nl:Tekst gevonden op pagina %s (opnieuw)
 pl:Znaleziono tekst na stronie %s (znowu)
 sk:Text bol nájdený na strane %s (znova)
 tw:於第 %s 頁找到目標（已從頭尋找）
+:French
+af:French
+am:French
+ar:French
+az:French
+bg:French
+bn:French
+br:French
+bs:French
+by:French
+ca:French
+ca-xv:French
+cn:法语
+co:French
+cy:French
+cz:French
+de:French
+dk:French
+el:French
+es:French
+et:French
+eu:French
+fa:French
+fi:French
+fo:French
+fr:French
+fy-nl:French
+ga:French
+gl:French
+he:French
+hi:French
+hr:French
+hu:French
+id:French
+it:French
+ja:French
+jv:French
+ka:French
+kr:French
+ku:French
+kw:French
+lt:French
+lv:French
+mk:French
+ml:French
+mm:French
+my:French
+ne:French
+nl:French
+nn:French
+no:French
+pa:French
+pl:French
+pt:French
+ro:French
+ru:French
+si:French
+sk:French
+sl:French
+sn:French
+sp-rs:French
+sq:French
+sr-rs:French
+sv:French
+ta:French
+th:French
+tl:French
+tr:French
+tw:法語
+uk:French
+uz:French
+vn:French
 :Frequently Read
 am:Հաճախ ընթերցվածներ
 br:Lidos Frequentemente
@@ -14328,7 +15482,6 @@ pl:Od kursora
 pt:Do cursor
 ro:De la cursor
 ru:С курсора
-sat:ᱠᱩᱨᱥᱚᱨ ᱠᱷᱚᱱ
 si:කර්සරයෙන්
 sk:Od kurzora
 sl:Od kazalca
@@ -14401,7 +15554,6 @@ pl:Od góry
 pt:Do topo
 ro:De sus
 ru:С начала
-sat:ᱪᱮᱛᱟᱣ ᱠᱷᱚᱱ
 si:ඉහළින්
 sk:Od začiatku
 sl:Od vrha
@@ -14474,7 +15626,6 @@ pl:Full-document OCR &mode:
 pt:Full-document OCR &mode:
 ro:Full-document OCR &mode:
 ru:Full-document OCR &mode:
-sat:Full-document OCR &mode:
 si:Full-document OCR &mode:
 sk:Full-document OCR &mode:
 sl:Full-document OCR &mode:
@@ -14547,7 +15698,6 @@ pl:Full-document OCR Mode
 pt:Full-document OCR Mode
 ro:Full-document OCR Mode
 ru:Full-document OCR Mode
-sat:Full-document OCR Mode
 si:Full-document OCR Mode
 sk:Full-document OCR Mode
 sl:Full-document OCR Mode
@@ -14620,7 +15770,6 @@ pl:Full-document OCR Mode: Fast
 pt:Full-document OCR Mode: Fast
 ro:Full-document OCR Mode: Fast
 ru:Full-document OCR Mode: Fast
-sat:Full-document OCR Mode: Fast
 si:Full-document OCR Mode: Fast
 sk:Full-document OCR Mode: Fast
 sl:Full-document OCR Mode: Fast
@@ -14693,7 +15842,6 @@ pl:Full-document OCR Mode: High Accuracy
 pt:Full-document OCR Mode: High Accuracy
 ro:Full-document OCR Mode: High Accuracy
 ru:Full-document OCR Mode: High Accuracy
-sat:Full-document OCR Mode: High Accuracy
 si:Full-document OCR Mode: High Accuracy
 sk:Full-document OCR Mode: High Accuracy
 sl:Full-document OCR Mode: High Accuracy
@@ -14766,7 +15914,6 @@ pl:Fullscreen
 pt:Fullscreen
 ro:Fullscreen
 ru:Fullscreen
-sat:Fullscreen
 si:Fullscreen
 sk:Fullscreen
 sl:Fullscreen
@@ -14851,7 +15998,6 @@ pl:General
 pt:General
 ro:General
 ru:General
-sat:General
 si:General
 sk:General
 sl:General
@@ -14886,6 +16032,78 @@ ja:文書構造から目次を生成
 kr:문서 구조에서 목차 생성
 ru:Создать оглавление по структуре документа
 tw:從文件結構產生目錄
+:German
+af:German
+am:German
+ar:German
+az:German
+bg:German
+bn:German
+br:German
+bs:German
+by:German
+ca:German
+ca-xv:German
+cn:德语
+co:German
+cy:German
+cz:German
+de:German
+dk:German
+el:German
+es:German
+et:German
+eu:German
+fa:German
+fi:German
+fo:German
+fr:German
+fy-nl:German
+ga:German
+gl:German
+he:German
+hi:German
+hr:German
+hu:German
+id:German
+it:German
+ja:German
+jv:German
+ka:German
+kr:German
+ku:German
+kw:German
+lt:German
+lv:German
+mk:German
+ml:German
+mm:German
+my:German
+ne:German
+nl:German
+nn:German
+no:German
+pa:German
+pl:German
+pt:German
+ro:German
+ru:German
+si:German
+sk:German
+sl:German
+sn:German
+sp-rs:German
+sq:German
+sr-rs:German
+sv:German
+ta:German
+th:German
+tl:German
+tr:German
+tw:德語
+uk:German
+uz:German
+vn:German
 :Get models
 cn:获取模型
 tw:取得模型
@@ -15074,7 +16292,6 @@ pl:Hide narration controls
 pt:Hide narration controls
 ro:Hide narration controls
 ru:Hide narration controls
-sat:Hide narration controls
 si:Hide narration controls
 sk:Hide narration controls
 sl:Hide narration controls
@@ -15147,7 +16364,6 @@ pl:High Accuracy
 pt:High Accuracy
 ro:High Accuracy
 ru:High Accuracy
-sat:High Accuracy
 si:High Accuracy
 sk:High Accuracy
 sl:High Accuracy
@@ -15220,7 +16436,6 @@ pl:High accuracy
 pt:High accuracy
 ro:High accuracy
 ru:High accuracy
-sat:High accuracy
 si:High accuracy
 sk:High accuracy
 sl:High accuracy
@@ -15296,7 +16511,6 @@ pl:Highlight and follow
 pt:Highlight and follow
 ro:Highlight and follow
 ru:Highlight and follow
-sat:Highlight and follow
 si:Highlight and follow
 sk:Highlight and follow
 sl:Highlight and follow
@@ -15369,7 +16583,6 @@ pl:Highlight co&lor:
 pt:Highlight co&lor:
 ro:Highlight co&lor:
 ru:Highlight co&lor:
-sat:Highlight co&lor:
 si:Highlight co&lor:
 sk:Highlight co&lor:
 sl:Highlight co&lor:
@@ -15386,6 +16599,78 @@ tw:醒目顯示顏色(&L)：
 uk:Highlight co&lor:
 uz:Highlight co&lor:
 vn:Highlight co&lor:
+:Hindi
+af:Hindi
+am:Hindi
+ar:Hindi
+az:Hindi
+bg:Hindi
+bn:Hindi
+br:Hindi
+bs:Hindi
+by:Hindi
+ca:Hindi
+ca-xv:Hindi
+cn:印地语
+co:Hindi
+cy:Hindi
+cz:Hindi
+de:Hindi
+dk:Hindi
+el:Hindi
+es:Hindi
+et:Hindi
+eu:Hindi
+fa:Hindi
+fi:Hindi
+fo:Hindi
+fr:Hindi
+fy-nl:Hindi
+ga:Hindi
+gl:Hindi
+he:Hindi
+hi:Hindi
+hr:Hindi
+hu:Hindi
+id:Hindi
+it:Hindi
+ja:Hindi
+jv:Hindi
+ka:Hindi
+kr:Hindi
+ku:Hindi
+kw:Hindi
+lt:Hindi
+lv:Hindi
+mk:Hindi
+ml:Hindi
+mm:Hindi
+my:Hindi
+ne:Hindi
+nl:Hindi
+nn:Hindi
+no:Hindi
+pa:Hindi
+pl:Hindi
+pt:Hindi
+ro:Hindi
+ru:Hindi
+si:Hindi
+sk:Hindi
+sl:Hindi
+sn:Hindi
+sp-rs:Hindi
+sq:Hindi
+sr-rs:Hindi
+sv:Hindi
+ta:Hindi
+th:Hindi
+tl:Hindi
+tr:Hindi
+tw:印地語
+uk:Hindi
+uz:Hindi
+vn:Hindi
 :Hint: Use the F3 key for finding again
 am:Որոնումը կրկնելու համար օգտագործեք F3 կոճակը
 br:Dica: Use a tecla F3 pra achar de novo
@@ -15528,7 +16813,6 @@ pl:Images: Automatic
 pt:Images: Automatic
 ro:Images: Automatic
 ru:Images: Automatic
-sat:Images: Automatic
 si:Images: Automatic
 sk:Images: Automatic
 sl:Images: Automatic
@@ -15601,7 +16885,6 @@ pl:Images: Keep Original Colors
 pt:Images: Keep Original Colors
 ro:Images: Keep Original Colors
 ru:Images: Keep Original Colors
-sat:Images: Keep Original Colors
 si:Images: Keep Original Colors
 sk:Images: Keep Original Colors
 sl:Images: Keep Original Colors
@@ -15674,7 +16957,6 @@ pl:Images: Simple Invert
 pt:Images: Simple Invert
 ro:Images: Simple Invert
 ru:Images: Simple Invert
-sat:Images: Simple Invert
 si:Images: Simple Invert
 sk:Images: Simple Invert
 sl:Images: Simple Invert
@@ -15747,7 +17029,6 @@ pl:Obrazy: Inteligentne odwrócenie
 pt:Imagens: Inversão inteligente
 ro:Imagini: Inversare inteligentă
 ru:Изображения: Умная инверсия
-sat:ᱪᱤᱛᱟᱹᱨ: ᱥᱢᱟᱨᱴ ᱩᱞᱴᱟᱹ
 si:රූප: ස්මාර්ට් ප්‍රතිලෝම
 sk:Obrázky: Inteligentná inverzia
 sl:Slike: Pametna inverzija
@@ -15791,6 +17072,78 @@ tw:正在匯入目錄：還原標題與頁碼…
 :Increase Font Size
 cn:放大字号
 tw:放大字號
+:Indonesian
+af:Indonesian
+am:Indonesian
+ar:Indonesian
+az:Indonesian
+bg:Indonesian
+bn:Indonesian
+br:Indonesian
+bs:Indonesian
+by:Indonesian
+ca:Indonesian
+ca-xv:Indonesian
+cn:印尼语
+co:Indonesian
+cy:Indonesian
+cz:Indonesian
+de:Indonesian
+dk:Indonesian
+el:Indonesian
+es:Indonesian
+et:Indonesian
+eu:Indonesian
+fa:Indonesian
+fi:Indonesian
+fo:Indonesian
+fr:Indonesian
+fy-nl:Indonesian
+ga:Indonesian
+gl:Indonesian
+he:Indonesian
+hi:Indonesian
+hr:Indonesian
+hu:Indonesian
+id:Indonesian
+it:Indonesian
+ja:Indonesian
+jv:Indonesian
+ka:Indonesian
+kr:Indonesian
+ku:Indonesian
+kw:Indonesian
+lt:Indonesian
+lv:Indonesian
+mk:Indonesian
+ml:Indonesian
+mm:Indonesian
+my:Indonesian
+ne:Indonesian
+nl:Indonesian
+nn:Indonesian
+no:Indonesian
+pa:Indonesian
+pl:Indonesian
+pt:Indonesian
+ro:Indonesian
+ru:Indonesian
+si:Indonesian
+sk:Indonesian
+sl:Indonesian
+sn:Indonesian
+sp-rs:Indonesian
+sq:Indonesian
+sr-rs:Indonesian
+sv:Indonesian
+ta:Indonesian
+th:Indonesian
+tl:Indonesian
+tr:Indonesian
+tw:印尼語
+uk:Indonesian
+uz:Indonesian
+vn:Indonesian
 :Ink
 am:Թանաք
 br:Tinta
@@ -15859,7 +17212,6 @@ pl:Ink Annotation (Ctrl+click to lock)
 pt:Ink Annotation (Ctrl+click to lock)
 ro:Ink Annotation (Ctrl+click to lock)
 ru:Ink Annotation (Ctrl+click to lock)
-sat:Ink Annotation (Ctrl+click to lock)
 si:Ink Annotation (Ctrl+click to lock)
 sk:Ink Annotation (Ctrl+click to lock)
 sl:Ink Annotation (Ctrl+click to lock)
@@ -16016,7 +17368,6 @@ pl:Interface
 pt:Interface
 ro:Interface
 ru:Interface
-sat:Interface
 si:Interface
 sk:Interface
 sl:Interface
@@ -16101,7 +17452,6 @@ pl:Invalid page range.
 pt:Invalid page range.
 ro:Invalid page range.
 ru:Invalid page range.
-sat:Invalid page range.
 si:Invalid page range.
 sk:Invalid page range.
 sl:Invalid page range.
@@ -16174,7 +17524,6 @@ pl:Invalid value
 pt:Invalid value
 ro:Invalid value
 ru:Invalid value
-sat:Invalid value
 si:Invalid value
 sk:Invalid value
 sl:Invalid value
@@ -16215,6 +17564,150 @@ nl:Omgekeerde Zoekfunctie
 pl:Wywołaj odwrotne wyszukiwanie
 sk:Použiť inverzné vyhľadávanie
 tw:叫用反向搜尋
+:Italian
+af:Italian
+am:Italian
+ar:Italian
+az:Italian
+bg:Italian
+bn:Italian
+br:Italian
+bs:Italian
+by:Italian
+ca:Italian
+ca-xv:Italian
+cn:意大利语
+co:Italian
+cy:Italian
+cz:Italian
+de:Italian
+dk:Italian
+el:Italian
+es:Italian
+et:Italian
+eu:Italian
+fa:Italian
+fi:Italian
+fo:Italian
+fr:Italian
+fy-nl:Italian
+ga:Italian
+gl:Italian
+he:Italian
+hi:Italian
+hr:Italian
+hu:Italian
+id:Italian
+it:Italian
+ja:Italian
+jv:Italian
+ka:Italian
+kr:Italian
+ku:Italian
+kw:Italian
+lt:Italian
+lv:Italian
+mk:Italian
+ml:Italian
+mm:Italian
+my:Italian
+ne:Italian
+nl:Italian
+nn:Italian
+no:Italian
+pa:Italian
+pl:Italian
+pt:Italian
+ro:Italian
+ru:Italian
+si:Italian
+sk:Italian
+sl:Italian
+sn:Italian
+sp-rs:Italian
+sq:Italian
+sr-rs:Italian
+sv:Italian
+ta:Italian
+th:Italian
+tl:Italian
+tr:Italian
+tw:義大利語
+uk:Italian
+uz:Italian
+vn:Italian
+:Japanese
+af:Japanese
+am:Japanese
+ar:Japanese
+az:Japanese
+bg:Japanese
+bn:Japanese
+br:Japanese
+bs:Japanese
+by:Japanese
+ca:Japanese
+ca-xv:Japanese
+cn:日语
+co:Japanese
+cy:Japanese
+cz:Japanese
+de:Japanese
+dk:Japanese
+el:Japanese
+es:Japanese
+et:Japanese
+eu:Japanese
+fa:Japanese
+fi:Japanese
+fo:Japanese
+fr:Japanese
+fy-nl:Japanese
+ga:Japanese
+gl:Japanese
+he:Japanese
+hi:Japanese
+hr:Japanese
+hu:Japanese
+id:Japanese
+it:Japanese
+ja:Japanese
+jv:Japanese
+ka:Japanese
+kr:Japanese
+ku:Japanese
+kw:Japanese
+lt:Japanese
+lv:Japanese
+mk:Japanese
+ml:Japanese
+mm:Japanese
+my:Japanese
+ne:Japanese
+nl:Japanese
+nn:Japanese
+no:Japanese
+pa:Japanese
+pl:Japanese
+pt:Japanese
+ro:Japanese
+ru:Japanese
+si:Japanese
+sk:Japanese
+sl:Japanese
+sn:Japanese
+sp-rs:Japanese
+sq:Japanese
+sr-rs:Japanese
+sv:Japanese
+ta:Japanese
+th:Japanese
+tl:Japanese
+tr:Japanese
+tw:日語
+uk:Japanese
+uz:Japanese
+vn:Japanese
 :KB
 am:ԿԲ
 br:KBs
@@ -16283,7 +17776,6 @@ pl:Keep a &Home tab (requires restart)
 pt:Keep a &Home tab (requires restart)
 ro:Keep a &Home tab (requires restart)
 ru:Keep a &Home tab (requires restart)
-sat:Keep a &Home tab (requires restart)
 si:Keep a &Home tab (requires restart)
 sk:Keep a &Home tab (requires restart)
 sl:Keep a &Home tab (requires restart)
@@ -16356,7 +17848,6 @@ pl:Keep for this session
 pt:Keep for this session
 ro:Keep for this session
 ru:Keep for this session
-sat:Keep for this session
 si:Keep for this session
 sk:Keep for this session
 sl:Keep for this session
@@ -16429,7 +17920,6 @@ pl:Keep original document colors
 pt:Keep original document colors
 ro:Keep original document colors
 ru:Keep original document colors
-sat:Keep original document colors
 si:Keep original document colors
 sk:Keep original document colors
 sl:Keep original document colors
@@ -16455,6 +17945,78 @@ it:Parole chiave:
 nl:Sleutelwoorden:
 pl:Słowa kluczowe:
 sk:Kľúčové slová:
+:Korean
+af:Korean
+am:Korean
+ar:Korean
+az:Korean
+bg:Korean
+bn:Korean
+br:Korean
+bs:Korean
+by:Korean
+ca:Korean
+ca-xv:Korean
+cn:韩语
+co:Korean
+cy:Korean
+cz:Korean
+de:Korean
+dk:Korean
+el:Korean
+es:Korean
+et:Korean
+eu:Korean
+fa:Korean
+fi:Korean
+fo:Korean
+fr:Korean
+fy-nl:Korean
+ga:Korean
+gl:Korean
+he:Korean
+hi:Korean
+hr:Korean
+hu:Korean
+id:Korean
+it:Korean
+ja:Korean
+jv:Korean
+ka:Korean
+kr:Korean
+ku:Korean
+kw:Korean
+lt:Korean
+lv:Korean
+mk:Korean
+ml:Korean
+mm:Korean
+my:Korean
+ne:Korean
+nl:Korean
+nn:Korean
+no:Korean
+pa:Korean
+pl:Korean
+pt:Korean
+ro:Korean
+ru:Korean
+si:Korean
+sk:Korean
+sl:Korean
+sn:Korean
+sp-rs:Korean
+sq:Korean
+sr-rs:Korean
+sv:Korean
+ta:Korean
+th:Korean
+tl:Korean
+tr:Korean
+tw:韓語
+uk:Korean
+uz:Korean
+vn:Korean
 :Last Page
 am:Վերջին էջ
 br:Última Página
@@ -16535,7 +18097,6 @@ pl:Left 90°
 pt:Left 90°
 ro:Left 90°
 ru:Left 90°
-sat:Left 90°
 si:Left 90°
 sk:Left 90°
 sl:Left 90°
@@ -16664,7 +18225,6 @@ pl:Line Annotation (Ctrl+click to lock)
 pt:Line Annotation (Ctrl+click to lock)
 ro:Line Annotation (Ctrl+click to lock)
 ru:Line Annotation (Ctrl+click to lock)
-sat:Line Annotation (Ctrl+click to lock)
 si:Line Annotation (Ctrl+click to lock)
 sk:Line Annotation (Ctrl+click to lock)
 sl:Line Annotation (Ctrl+click to lock)
@@ -16809,7 +18369,6 @@ pl:Inteligentny dwujęzyczny (angielski + chiński)
 pt:Bilingue inteligente (inglês + chinês)
 ro:Bilingv inteligent (engleză + chineză)
 ru:Локальный умный двуязычный (английский + китайский)
-sat:Local smart bilingual (English + Chinese)
 si:ස්මාර්ට් ද්විභාෂා (ඉංග්‍රීසි + චීන)
 sk:Inteligentný dvojjazyčný (angličtina + čínština)
 sl:Pametno dvojezično (angleščina + kitajščina)
@@ -16882,7 +18441,6 @@ pl:Local smart bilingual settings
 pt:Local smart bilingual settings
 ro:Local smart bilingual settings
 ru:Настройки локального умного двуязычного режима
-sat:Local smart bilingual settings
 si:Local smart bilingual settings
 sk:Local smart bilingual settings
 sl:Local smart bilingual settings
@@ -16955,7 +18513,6 @@ pl:Local smart bilingual settings...
 pt:Local smart bilingual settings...
 ro:Local smart bilingual settings...
 ru:Настройки локального умного двуязычного режима
-sat:Local smart bilingual settings...
 si:Local smart bilingual settings...
 sk:Local smart bilingual settings...
 sl:Local smart bilingual settings...
@@ -17052,7 +18609,6 @@ pl:Look up words on &double-click
 pt:Look up words on &double-click
 ro:Look up words on &double-click
 ru:Look up words on &double-click
-sat:Look up words on &double-click
 si:Look up words on &double-click
 sk:Look up words on &double-click
 sl:Look up words on &double-click
@@ -17093,6 +18649,78 @@ nl:MB
 pl:MB
 sk:MB
 tw:MB
+:Malay
+af:Malay
+am:Malay
+ar:Malay
+az:Malay
+bg:Malay
+bn:Malay
+br:Malay
+bs:Malay
+by:Malay
+ca:Malay
+ca-xv:Malay
+cn:马来语
+co:Malay
+cy:Malay
+cz:Malay
+de:Malay
+dk:Malay
+el:Malay
+es:Malay
+et:Malay
+eu:Malay
+fa:Malay
+fi:Malay
+fo:Malay
+fr:Malay
+fy-nl:Malay
+ga:Malay
+gl:Malay
+he:Malay
+hi:Malay
+hr:Malay
+hu:Malay
+id:Malay
+it:Malay
+ja:Malay
+jv:Malay
+ka:Malay
+kr:Malay
+ku:Malay
+kw:Malay
+lt:Malay
+lv:Malay
+mk:Malay
+ml:Malay
+mm:Malay
+my:Malay
+ne:Malay
+nl:Malay
+nn:Malay
+no:Malay
+pa:Malay
+pl:Malay
+pt:Malay
+ro:Malay
+ru:Malay
+si:Malay
+sk:Malay
+sl:Malay
+sn:Malay
+sp-rs:Malay
+sq:Malay
+sr-rs:Malay
+sv:Malay
+ta:Malay
+th:Malay
+tl:Malay
+tr:Malay
+tw:馬來語
+uk:Malay
+uz:Malay
+vn:Malay
 :Man&ga Mode
 am:Man&ga եղանակ
 br:Mod&o Mangá
@@ -17173,7 +18801,6 @@ pl:Ręcznie dostosuj strony
 pt:Ajustar páginas manualmente
 ro:Ajustați paginile manual
 ru:Настроить страницы вручную
-sat:ᱥᱟᱦᱴᱟ ᱠᱚ ᱛᱤ ᱛᱮ ᱥᱚᱡᱷᱮ
 si:පිටු අතින් සකසන්න
 sk:Ručne upraviť strany
 sl:Ročno prilagodi strani
@@ -17246,7 +18873,6 @@ pl:Ręcznie dostosuj strony...
 pt:Ajustar páginas manualmente...
 ro:Ajustați paginile manual...
 ru:Настроить страницы вручную...
-sat:ᱥᱟᱦᱴᱟ ᱠᱚ ᱛᱤ ᱛᱮ ᱥᱚᱡᱷᱮ...
 si:පිටු අතින් සකසන්න...
 sk:Ručne upraviť strany...
 sl:Ročno prilagodi strani...
@@ -17319,7 +18945,6 @@ pl:Match Case
 pt:Match Case
 ro:Match Case
 ru:Match Case
-sat:Match Case
 si:Match Case
 sk:Match Case
 sl:Match Case
@@ -17392,7 +19017,6 @@ pl:Match Whole Word
 pt:Match Whole Word
 ro:Match Whole Word
 ru:Match Whole Word
-sat:Match Whole Word
 si:Match Whole Word
 sk:Match Whole Word
 sl:Match Whole Word
@@ -17465,7 +19089,6 @@ pl:Match the current theme
 pt:Match the current theme
 ro:Match the current theme
 ru:Match the current theme
-sat:Match the current theme
 si:Match the current theme
 sk:Match the current theme
 sl:Match the current theme
@@ -17591,7 +19214,6 @@ pl:More expert settings
 pt:More expert settings
 ro:More expert settings
 ru:More expert settings
-sat:More expert settings
 si:More expert settings
 sk:More expert settings
 sl:More expert settings
@@ -17724,7 +19346,6 @@ pl:Narrated books (EPUB 3)
 pt:Narrated books (EPUB 3)
 ro:Narrated books (EPUB 3)
 ru:Narrated books (EPUB 3)
-sat:Narrated books (EPUB 3)
 si:Narrated books (EPUB 3)
 sk:Narrated books (EPUB 3)
 sl:Narrated books (EPUB 3)
@@ -17797,7 +19418,6 @@ pl:Narration could not be loaded
 pt:Narration could not be loaded
 ro:Narration could not be loaded
 ru:Narration could not be loaded
-sat:Narration could not be loaded
 si:Narration could not be loaded
 sk:Narration could not be loaded
 sl:Narration could not be loaded
@@ -17870,7 +19490,6 @@ pl:Narration spee&d:
 pt:Narration spee&d:
 ro:Narration spee&d:
 ru:Narration spee&d:
-sat:Narration spee&d:
 si:Narration spee&d:
 sk:Narration spee&d:
 sl:Narration spee&d:
@@ -18018,7 +19637,6 @@ pl:Next phrase
 pt:Next phrase
 ro:Next phrase
 ru:Next phrase
-sat:Next phrase
 si:Next phrase
 sk:Next phrase
 sl:Next phrase
@@ -18091,7 +19709,6 @@ pl:Next sentence
 pt:Next sentence
 ro:Next sentence
 ru:Next sentence
-sat:Next sentence
 si:Next sentence
 sk:Next sentence
 sl:Next sentence
@@ -18176,7 +19793,6 @@ pl:No OCR text to save. Recognize pages first.
 pt:No OCR text to save. Recognize pages first.
 ro:No OCR text to save. Recognize pages first.
 ru:No OCR text to save. Recognize pages first.
-sat:No OCR text to save. Recognize pages first.
 si:No OCR text to save. Recognize pages first.
 sk:No OCR text to save. Recognize pages first.
 sl:No OCR text to save. Recognize pages first.
@@ -18249,7 +19865,6 @@ pl:No bookmarks
 pt:No bookmarks
 ro:No bookmarks
 ru:No bookmarks
-sat:No bookmarks
 si:No bookmarks
 sk:No bookmarks
 sl:No bookmarks
@@ -18334,7 +19949,6 @@ pl:No headings found. OCR scanned pages first, then try again.
 pt:No headings found. OCR scanned pages first, then try again.
 ro:No headings found. OCR scanned pages first, then try again.
 ru:No headings found. OCR scanned pages first, then try again.
-sat:No headings found. OCR scanned pages first, then try again.
 si:No headings found. OCR scanned pages first, then try again.
 sk:No headings found. OCR scanned pages first, then try again.
 sl:No headings found. OCR scanned pages first, then try again.
@@ -18407,7 +20021,6 @@ pl:No headings found. Recognize the pages first, then try again.
 pt:No headings found. Recognize the pages first, then try again.
 ro:No headings found. Recognize the pages first, then try again.
 ru:No headings found. Recognize the pages first, then try again.
-sat:No headings found. Recognize the pages first, then try again.
 si:No headings found. Recognize the pages first, then try again.
 sk:No headings found. Recognize the pages first, then try again.
 sl:No headings found. Recognize the pages first, then try again.
@@ -18495,7 +20108,6 @@ pl:No page to recognize.
 pt:No page to recognize.
 ro:No page to recognize.
 ru:No page to recognize.
-sat:No page to recognize.
 si:No page to recognize.
 sk:No page to recognize.
 sl:No page to recognize.
@@ -18580,7 +20192,6 @@ pl:No printed table of contents found in the first pages.
 pt:No printed table of contents found in the first pages.
 ro:No printed table of contents found in the first pages.
 ru:No printed table of contents found in the first pages.
-sat:No printed table of contents found in the first pages.
 si:No printed table of contents found in the first pages.
 sk:No printed table of contents found in the first pages.
 sl:No printed table of contents found in the first pages.
@@ -18665,7 +20276,6 @@ pl:No scanned pages needed deskewing.
 pt:No scanned pages needed deskewing.
 ro:No scanned pages needed deskewing.
 ru:No scanned pages needed deskewing.
-sat:No scanned pages needed deskewing.
 si:No scanned pages needed deskewing.
 sk:No scanned pages needed deskewing.
 sl:No scanned pages needed deskewing.
@@ -18738,7 +20348,6 @@ pl:No scanned pages to recognize.
 pt:No scanned pages to recognize.
 ro:No scanned pages to recognize.
 ru:No scanned pages to recognize.
-sat:No scanned pages to recognize.
 si:No scanned pages to recognize.
 sk:No scanned pages to recognize.
 sl:No scanned pages to recognize.
@@ -18811,7 +20420,6 @@ pl:No scanned pages to recognize. Use Recognize Current Page to force this page.
 pt:No scanned pages to recognize. Use Recognize Current Page to force this page.
 ro:No scanned pages to recognize. Use Recognize Current Page to force this page.
 ru:No scanned pages to recognize. Use Recognize Current Page to force this page.
-sat:No scanned pages to recognize. Use Recognize Current Page to force this page.
 si:No scanned pages to recognize. Use Recognize Current Page to force this page.
 sk:No scanned pages to recognize. Use Recognize Current Page to force this page.
 sl:No scanned pages to recognize. Use Recognize Current Page to force this page.
@@ -18884,7 +20492,6 @@ pl:No scrollbars
 pt:No scrollbars
 ro:No scrollbars
 ru:No scrollbars
-sat:No scrollbars
 si:No scrollbars
 sk:No scrollbars
 sl:No scrollbars
@@ -18981,7 +20588,6 @@ pl:Brak tekstu do odczytania
 pt:Nenhum texto disponível para leitura
 ro:Nu există text de citit
 ru:Нет текста для чтения
-sat:ᱯᱟᱲᱦᱟᱣ ᱞᱟᱹᱜᱤᱫ ᱚᱱᱟ ᱵᱟᱹᱱᱤ
 si:කියවීමට පෙළ නැත
 sk:Nie je k dispozícii text na čítanie
 sl:Ni besedila za branje
@@ -19054,7 +20660,6 @@ pl:Normalnie (1.0×)
 pt:Normal (1.0×)
 ro:Normal (1.0×)
 ru:Обычная (1.0×)
-sat:Normal (1.0×)
 si:Normal (1.0×)
 sk:Normálne (1.0×)
 sl:Normalno (1.0×)
@@ -19127,7 +20732,6 @@ pl:Not now
 pt:Not now
 ro:Not now
 ru:Not now
-sat:Not now
 si:Not now
 sk:Not now
 sl:Not now
@@ -19200,7 +20804,6 @@ pl:Nothing to change.
 pt:Nothing to change.
 ro:Nothing to change.
 ru:Nothing to change.
-sat:Nothing to change.
 si:Nothing to change.
 sk:Nothing to change.
 sl:Nothing to change.
@@ -19293,7 +20896,6 @@ pl:OCR
 pt:OCR
 ro:OCR
 ru:OCR
-sat:OCR
 si:OCR
 sk:OCR
 sl:OCR
@@ -19366,7 +20968,6 @@ pl:OCR All Pages
 pt:OCR All Pages
 ro:OCR All Pages
 ru:OCR All Pages
-sat:OCR All Pages
 si:OCR All Pages
 sk:OCR All Pages
 sl:OCR All Pages
@@ -19439,7 +21040,6 @@ pl:OCR Current Page
 pt:OCR Current Page
 ro:OCR Current Page
 ru:OCR Current Page
-sat:OCR Current Page
 si:OCR Current Page
 sk:OCR Current Page
 sl:OCR Current Page
@@ -19512,7 +21112,6 @@ pl:OCR Region
 pt:OCR Region
 ro:OCR Region
 ru:OCR Region
-sat:OCR Region
 si:OCR Region
 sk:OCR Region
 sl:OCR Region
@@ -19585,7 +21184,6 @@ pl:OCR and AI
 pt:OCR and AI
 ro:OCR and AI
 ru:OCR and AI
-sat:OCR and AI
 si:OCR and AI
 sk:OCR and AI
 sl:OCR and AI
@@ -19658,7 +21256,6 @@ pl:OCR is already running. Please wait until it finishes.
 pt:OCR is already running. Please wait until it finishes.
 ro:OCR is already running. Please wait until it finishes.
 ru:OCR is already running. Please wait until it finishes.
-sat:OCR is already running. Please wait until it finishes.
 si:OCR is already running. Please wait until it finishes.
 sk:OCR is already running. Please wait until it finishes.
 sl:OCR is already running. Please wait until it finishes.
@@ -19731,7 +21328,6 @@ pl:OCR is not available for this document type.
 pt:OCR is not available for this document type.
 ro:OCR is not available for this document type.
 ru:OCR is not available for this document type.
-sat:OCR is not available for this document type.
 si:OCR is not available for this document type.
 sk:OCR is not available for this document type.
 sl:OCR is not available for this document type.
@@ -19804,7 +21400,6 @@ pl:OCR is only available for PDF and similar documents.
 pt:OCR is only available for PDF and similar documents.
 ro:OCR is only available for PDF and similar documents.
 ru:OCR is only available for PDF and similar documents.
-sat:OCR is only available for PDF and similar documents.
 si:OCR is only available for PDF and similar documents.
 sk:OCR is only available for PDF and similar documents.
 sl:OCR is only available for PDF and similar documents.
@@ -19877,7 +21472,6 @@ pl:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt i
 pt:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
 ro:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
 ru:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
-sat:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
 si:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
 sk:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
 sl:OCR models not found.\nPut onnxruntime.dll, det.onnx, rec.onnx and keys.txt in:\n%s
@@ -19950,7 +21544,6 @@ pl:OCR region
 pt:OCR region
 ro:OCR region
 ru:OCR region
-sat:OCR region
 si:OCR region
 sk:OCR region
 sl:OCR region
@@ -20035,7 +21628,6 @@ pl:Off
 pt:Off
 ro:Off
 ru:Off
-sat:Off
 si:Off
 sk:Off
 sl:Off
@@ -20108,7 +21700,6 @@ pl:Offline dictionary:
 pt:Offline dictionary:
 ro:Offline dictionary:
 ru:Offline dictionary:
-sat:Offline dictionary:
 si:Offline dictionary:
 sk:Offline dictionary:
 sl:Offline dictionary:
@@ -20184,7 +21775,6 @@ pl:On
 pt:On
 ro:On
 ru:On
-sat:On
 si:On
 sk:On
 sl:On
@@ -20266,7 +21856,6 @@ pl:Online multilingual voice settings
 pt:Online multilingual voice settings
 ro:Online multilingual voice settings
 ru:Online multilingual voice settings
-sat:Online multilingual voice settings
 si:Online multilingual voice settings
 sk:Online multilingual voice settings
 sl:Online multilingual voice settings
@@ -20339,7 +21928,6 @@ pl:Online multilingual voice settings...
 pt:Online multilingual voice settings...
 ro:Online multilingual voice settings...
 ru:Online multilingual voice settings...
-sat:Online multilingual voice settings...
 si:Online multilingual voice settings...
 sk:Online multilingual voice settings...
 sl:Online multilingual voice settings...
@@ -20412,7 +22000,6 @@ pl:Wielojęzyczne głosy online
 pt:Vozes multilingues online
 ro:Voci multilingve online
 ru:Многоязычные онлайн-голоса
-sat:Online multilingual voices
 si:මාර්ගගත බහුභාෂා හඬ
 sk:Online viacjazyčné hlasy
 sl:Večjezični spletni glasovi
@@ -20485,7 +22072,6 @@ pl:Online smart bilingual (English + Chinese)
 pt:Online smart bilingual (English + Chinese)
 ro:Online smart bilingual (English + Chinese)
 ru:Онлайн умный двуязычный (английский + китайский)
-sat:Online smart bilingual (English + Chinese)
 si:Online smart bilingual (English + Chinese)
 sk:Online smart bilingual (English + Chinese)
 sl:Online smart bilingual (English + Chinese)
@@ -20558,7 +22144,6 @@ pl:Online smart bilingual settings
 pt:Online smart bilingual settings
 ro:Online smart bilingual settings
 ru:Настройки онлайн умного двуязычного режима
-sat:Online smart bilingual settings
 si:Online smart bilingual settings
 sk:Online smart bilingual settings
 sl:Online smart bilingual settings
@@ -20631,7 +22216,6 @@ pl:Online smart bilingual settings...
 pt:Online smart bilingual settings...
 ro:Online smart bilingual settings...
 ru:Настройки онлайн умного двуязычного режима...
-sat:Online smart bilingual settings...
 si:Online smart bilingual settings...
 sk:Online smart bilingual settings...
 sl:Online smart bilingual settings...
@@ -20704,7 +22288,6 @@ pl:Głosy online
 pt:Vozes online
 ro:Voci online
 ru:Онлайн-голоса
-sat:Online voices
 si:මාර්ගගත හඬ
 sk:Online hlasy
 sl:Spletni glasovi
@@ -20813,7 +22396,6 @@ pl:Open &Advanced Options File...
 pt:Open &Advanced Options File...
 ro:Open &Advanced Options File...
 ru:Open &Advanced Options File...
-sat:Open &Advanced Options File...
 si:Open &Advanced Options File...
 sk:Open &Advanced Options File...
 sl:Open &Advanced Options File...
@@ -21270,7 +22852,6 @@ pl:Open new files in the existing &instance
 pt:Open new files in the existing &instance
 ro:Open new files in the existing &instance
 ru:Open new files in the existing &instance
-sat:Open new files in the existing &instance
 si:Open new files in the existing &instance
 sk:Open new files in the existing &instance
 sl:Open new files in the existing &instance
@@ -21385,7 +22966,6 @@ pl:PDF
 pt:PDF
 ro:PDF
 ru:PDF
-sat:PDF
 si:PDF
 sk:PDF
 sl:PDF
@@ -21608,7 +23188,6 @@ pl:Pages To Rotate:
 pt:Pages To Rotate:
 ro:Pages To Rotate:
 ru:Pages To Rotate:
-sat:Pages To Rotate:
 si:Pages To Rotate:
 sk:Pages To Rotate:
 sl:Pages To Rotate:
@@ -21702,7 +23281,6 @@ pl:Kopiuj z łączonymi akapitami
 pt:Copiar com parágrafos unificados
 ro:Copiere cu paragrafe unificate
 ru:Копировать с объединением абзацев
-sat:Paragraph-merged copy
 si:Paragraph-merged copy
 sk:Kopírovať so zlúčenými odstavcami
 sl:Kopiraj s združenimi odstavki
@@ -21801,7 +23379,6 @@ pl:Pauza
 pt:Pausar
 ro:Pauză
 ru:Пауза
-sat:ᱛᱷᱟᱹᱜ
 si:නවත්වන්න
 sk:Pauza
 sl:Premor
@@ -21874,7 +23451,6 @@ pl:Wstrzymaj czytanie
 pt:Pausar leitura
 ro:Pauzează citirea
 ru:Приостановить чтение
-sat:ᱯᱟᱲᱦᱟᱣ ᱛᱷᱟᱹᱜ
 si:කියවීම නවත්වන්න
 sk:Pozastaviť čítanie
 sl:Premor branja
@@ -21975,7 +23551,6 @@ pl:Play / Pause narration
 pt:Play / Pause narration
 ro:Play / Pause narration
 ru:Play / Pause narration
-sat:Play / Pause narration
 si:Play / Pause narration
 sk:Play / Pause narration
 sl:Play / Pause narration
@@ -22048,7 +23623,6 @@ pl:Play / Pause reading
 pt:Play / Pause reading
 ro:Play / Pause reading
 ru:Play / Pause reading
-sat:Play / Pause reading
 si:Play / Pause reading
 sk:Play / Pause reading
 sl:Play / Pause reading
@@ -22121,7 +23695,6 @@ pl:Play the book's recorded narration when &available
 pt:Play the book's recorded narration when &available
 ro:Play the book's recorded narration when &available
 ru:Play the book's recorded narration when &available
-sat:Play the book's recorded narration when &available
 si:Play the book's recorded narration when &available
 sk:Play the book's recorded narration when &available
 sl:Play the book's recorded narration when &available
@@ -22194,7 +23767,6 @@ pl:Playback speed
 pt:Playback speed
 ro:Playback speed
 ru:Playback speed
-sat:Playback speed
 si:Playback speed
 sk:Playback speed
 sl:Playback speed
@@ -22295,6 +23867,78 @@ tw:Plus 問題回報
 cn:Plus 源码
 de:Plus-Quellcode
 tw:Plus 原始碼
+:Polish
+af:Polish
+am:Polish
+ar:Polish
+az:Polish
+bg:Polish
+bn:Polish
+br:Polish
+bs:Polish
+by:Polish
+ca:Polish
+ca-xv:Polish
+cn:波兰语
+co:Polish
+cy:Polish
+cz:Polish
+de:Polish
+dk:Polish
+el:Polish
+es:Polish
+et:Polish
+eu:Polish
+fa:Polish
+fi:Polish
+fo:Polish
+fr:Polish
+fy-nl:Polish
+ga:Polish
+gl:Polish
+he:Polish
+hi:Polish
+hr:Polish
+hu:Polish
+id:Polish
+it:Polish
+ja:Polish
+jv:Polish
+ka:Polish
+kr:Polish
+ku:Polish
+kw:Polish
+lt:Polish
+lv:Polish
+mk:Polish
+ml:Polish
+mm:Polish
+my:Polish
+ne:Polish
+nl:Polish
+nn:Polish
+no:Polish
+pa:Polish
+pl:Polish
+pt:Polish
+ro:Polish
+ru:Polish
+si:Polish
+sk:Polish
+sl:Polish
+sn:Polish
+sp-rs:Polish
+sq:Polish
+sr-rs:Polish
+sv:Polish
+ta:Polish
+th:Polish
+tl:Polish
+tr:Polish
+tw:波蘭語
+uk:Polish
+uz:Polish
+vn:Polish
 :Poly Line
 am:Բազմագիծ
 br:Poli-Linha
@@ -22331,6 +23975,78 @@ nl:Popup: %d O R
 pl:Wyskakujące okienko: %d 0 R
 sk:Vyskakovacie okno: %d 0 R
 tw:彈出視窗: %d 0 R
+:Portuguese
+af:Portuguese
+am:Portuguese
+ar:Portuguese
+az:Portuguese
+bg:Portuguese
+bn:Portuguese
+br:Portuguese
+bs:Portuguese
+by:Portuguese
+ca:Portuguese
+ca-xv:Portuguese
+cn:葡萄牙语
+co:Portuguese
+cy:Portuguese
+cz:Portuguese
+de:Portuguese
+dk:Portuguese
+el:Portuguese
+es:Portuguese
+et:Portuguese
+eu:Portuguese
+fa:Portuguese
+fi:Portuguese
+fo:Portuguese
+fr:Portuguese
+fy-nl:Portuguese
+ga:Portuguese
+gl:Portuguese
+he:Portuguese
+hi:Portuguese
+hr:Portuguese
+hu:Portuguese
+id:Portuguese
+it:Portuguese
+ja:Portuguese
+jv:Portuguese
+ka:Portuguese
+kr:Portuguese
+ku:Portuguese
+kw:Portuguese
+lt:Portuguese
+lv:Portuguese
+mk:Portuguese
+ml:Portuguese
+mm:Portuguese
+my:Portuguese
+ne:Portuguese
+nl:Portuguese
+nn:Portuguese
+no:Portuguese
+pa:Portuguese
+pl:Portuguese
+pt:Portuguese
+ro:Portuguese
+ru:Portuguese
+si:Portuguese
+sk:Portuguese
+sl:Portuguese
+sn:Portuguese
+sp-rs:Portuguese
+sq:Portuguese
+sr-rs:Portuguese
+sv:Portuguese
+ta:Portuguese
+th:Portuguese
+tl:Portuguese
+tr:Portuguese
+tw:葡萄牙語
+uk:Portuguese
+uz:Portuguese
+vn:Portuguese
 :Postscript documents
 am:Հետգրվածքային ֆայլեր
 br:Documentos Postscript
@@ -22477,7 +24193,6 @@ pl:Prevent sleep in &fullscreen or presentation mode
 pt:Prevent sleep in &fullscreen or presentation mode
 ro:Prevent sleep in &fullscreen or presentation mode
 ru:Prevent sleep in &fullscreen or presentation mode
-sat:Prevent sleep in &fullscreen or presentation mode
 si:Prevent sleep in &fullscreen or presentation mode
 sk:Prevent sleep in &fullscreen or presentation mode
 sl:Prevent sleep in &fullscreen or presentation mode
@@ -22574,7 +24289,6 @@ pl:Previous phrase
 pt:Previous phrase
 ro:Previous phrase
 ru:Previous phrase
-sat:Previous phrase
 si:Previous phrase
 sk:Previous phrase
 sl:Previous phrase
@@ -22647,7 +24361,6 @@ pl:Previous sentence
 pt:Previous sentence
 ro:Previous sentence
 ru:Previous sentence
-sat:Previous sentence
 si:Previous sentence
 sk:Previous sentence
 sl:Previous sentence
@@ -22831,7 +24544,6 @@ pl:Processing results may overwrite the current PDF file.
 pt:Processing results may overwrite the current PDF file.
 ro:Processing results may overwrite the current PDF file.
 ru:Processing results may overwrite the current PDF file.
-sat:Processing results may overwrite the current PDF file.
 si:Processing results may overwrite the current PDF file.
 sk:Processing results may overwrite the current PDF file.
 sl:Processing results may overwrite the current PDF file.
@@ -22961,7 +24673,6 @@ pl:Re-recognize All Pages
 pt:Re-recognize All Pages
 ro:Re-recognize All Pages
 ru:Re-recognize All Pages
-sat:Re-recognize All Pages
 si:Re-recognize All Pages
 sk:Re-recognize All Pages
 sl:Re-recognize All Pages
@@ -23034,7 +24745,6 @@ pl:Czytaj na głos
 pt:Ler em voz alta
 ro:Citește cu voce tare
 ru:Читать вслух
-sat:ᱡᱚᱨ ᱛᱮ ᱯᱟᱲᱦᱟᱣ
 si:හඬ නගා කියවන්න
 sk:Prečítať nahlas
 sl:Glasno branje
@@ -23107,7 +24817,6 @@ pl:Czytaj na głos (TTS)
 pt:Ler em voz alta (TTS)
 ro:Citește cu voce tare (TTS)
 ru:Читать вслух (TTS)
-sat:ᱡᱚᱨ ᱛᱮ ᱯᱟᱲᱦᱟᱣ (TTS)
 si:හඬ නගා කියවන්න (TTS)
 sk:Prečítať nahlas (TTS)
 sl:Glasno branje (TTS)
@@ -23180,7 +24889,6 @@ pl:Read Aloud Settings
 pt:Read Aloud Settings
 ro:Read Aloud Settings
 ru:Read Aloud Settings
-sat:Read Aloud Settings
 si:Read Aloud Settings
 sk:Read Aloud Settings
 sl:Read Aloud Settings
@@ -23253,7 +24961,6 @@ pl:Read Aloud Settings...
 pt:Read Aloud Settings...
 ro:Read Aloud Settings...
 ru:Read Aloud Settings...
-sat:Read Aloud Settings...
 si:Read Aloud Settings...
 sk:Read Aloud Settings...
 sl:Read Aloud Settings...
@@ -23326,7 +25033,6 @@ pl:Read aloud speed
 pt:Read aloud speed
 ro:Read aloud speed
 ru:Read aloud speed
-sat:Read aloud speed
 si:Read aloud speed
 sk:Read aloud speed
 sl:Read aloud speed
@@ -23399,7 +25105,6 @@ pl:Reading
 pt:Reading
 ro:Reading
 ru:Reading
-sat:Reading
 si:Reading
 sk:Reading
 sl:Reading
@@ -23472,7 +25177,6 @@ pl:Czytanie · %s · %s
 pt:A ler · %s · %s
 ro:Citire · %s · %s
 ru:Чтение · %s · %s
-sat:ᱯᱟᱲᱦᱟᱣ · %s · %s
 si:කියවමින් · %s · %s
 sk:Čítanie · %s · %s
 sl:Branje · %s · %s
@@ -23545,7 +25249,6 @@ pl:Czytanie · %s · strona %d z %d · %s
 pt:A ler · %s · página %d de %d · %s
 ro:Citire · %s · pagina %d din %d · %s
 ru:Чтение · %s · страница %d из %d · %s
-sat:ᱯᱟᱲᱦᱟᱣ · %s · ᱥᱟᱦᱤᱱ %d/%d · %s
 si:කියවමින් · %s · පිටු %d/%d · %s
 sk:Čítanie · %s · strana %d z %d · %s
 sl:Branje · %s · stran %d od %d · %s
@@ -23618,7 +25321,6 @@ pl:Ready to search
 pt:Ready to search
 ro:Ready to search
 ru:Ready to search
-sat:Ready to search
 si:Ready to search
 sk:Ready to search
 sl:Ready to search
@@ -23703,7 +25405,6 @@ pl:Recognize All Scanned Pages
 pt:Recognize All Scanned Pages
 ro:Recognize All Scanned Pages
 ru:Recognize All Scanned Pages
-sat:Recognize All Scanned Pages
 si:Recognize All Scanned Pages
 sk:Recognize All Scanned Pages
 sl:Recognize All Scanned Pages
@@ -23776,7 +25477,6 @@ pl:Recognize All Scanned Pages (Accurate)
 pt:Recognize All Scanned Pages (Accurate)
 ro:Recognize All Scanned Pages (Accurate)
 ru:Recognize All Scanned Pages (Accurate)
-sat:Recognize All Scanned Pages (Accurate)
 si:Recognize All Scanned Pages (Accurate)
 sk:Recognize All Scanned Pages (Accurate)
 sl:Recognize All Scanned Pages (Accurate)
@@ -23849,7 +25549,6 @@ pl:Recognize All Scanned Pages (Fast)
 pt:Recognize All Scanned Pages (Fast)
 ro:Recognize All Scanned Pages (Fast)
 ru:Recognize All Scanned Pages (Fast)
-sat:Recognize All Scanned Pages (Fast)
 si:Recognize All Scanned Pages (Fast)
 sk:Recognize All Scanned Pages (Fast)
 sl:Recognize All Scanned Pages (Fast)
@@ -23922,7 +25621,6 @@ pl:Recognize Current Page
 pt:Recognize Current Page
 ro:Recognize Current Page
 ru:Recognize Current Page
-sat:Recognize Current Page
 si:Recognize Current Page
 sk:Recognize Current Page
 sl:Recognize Current Page
@@ -23995,7 +25693,6 @@ pl:Recognize all pages and save
 pt:Recognize all pages and save
 ro:Recognize all pages and save
 ru:Recognize all pages and save
-sat:Recognize all pages and save
 si:Recognize all pages and save
 sk:Recognize all pages and save
 sl:Recognize all pages and save
@@ -24080,7 +25777,6 @@ pl:Recognized text can be selected, copied, searched, and read aloud.
 pt:Recognized text can be selected, copied, searched, and read aloud.
 ro:Recognized text can be selected, copied, searched, and read aloud.
 ru:Recognized text can be selected, copied, searched, and read aloud.
-sat:Recognized text can be selected, copied, searched, and read aloud.
 si:Recognized text can be selected, copied, searched, and read aloud.
 sk:Recognized text can be selected, copied, searched, and read aloud.
 sl:Recognized text can be selected, copied, searched, and read aloud.
@@ -24168,7 +25864,6 @@ pl:Rectangle Annotation (Ctrl+click to lock)
 pt:Rectangle Annotation (Ctrl+click to lock)
 ro:Rectangle Annotation (Ctrl+click to lock)
 ru:Rectangle Annotation (Ctrl+click to lock)
-sat:Rectangle Annotation (Ctrl+click to lock)
 si:Rectangle Annotation (Ctrl+click to lock)
 sk:Rectangle Annotation (Ctrl+click to lock)
 sl:Rectangle Annotation (Ctrl+click to lock)
@@ -24292,7 +25987,6 @@ pl:Pamiętaj &otwierane pliki
 pt:Remember &opened files
 ro:Remember &opened files
 ru:Remember &opened files
-sat:Remember &opened files
 si:Remember &opened files
 sk:Zapamätať si &otvorené súbory
 sl:Remember &opened files
@@ -24398,7 +26092,6 @@ pl:Usuń brakujące pliki ze strony startowej
 pt:Remove missing files from home
 ro:Remove missing files from home
 ru:Remove missing files from home
-sat:Remove missing files from home
 si:Remove missing files from home
 sk:Odstrániť chýbajúce súbory z úvodnej stránky
 sl:Remove missing files from home
@@ -24522,7 +26215,6 @@ pl:Replace the existing PDF bookmarks with extracted headings?
 pt:Replace the existing PDF bookmarks with extracted headings?
 ro:Replace the existing PDF bookmarks with extracted headings?
 ru:Replace the existing PDF bookmarks with extracted headings?
-sat:Replace the existing PDF bookmarks with extracted headings?
 si:Replace the existing PDF bookmarks with extracted headings?
 sk:Replace the existing PDF bookmarks with extracted headings?
 sl:Replace the existing PDF bookmarks with extracted headings?
@@ -24614,7 +26306,6 @@ pl:Reset
 pt:Reset
 ro:Reset
 ru:Reset
-sat:Reset
 si:Reset
 sk:Reset
 sl:Reset
@@ -24687,7 +26378,6 @@ pl:Reset Font Si&ze to Default
 pt:Reset Font Si&ze to Default
 ro:Reset Font Si&ze to Default
 ru:Reset Font Si&ze to Default
-sat:Reset Font Si&ze to Default
 si:Reset Font Si&ze to Default
 sk:Reset Font Si&ze to Default
 sl:Reset Font Si&ze to Default
@@ -24760,7 +26450,6 @@ pl:Reset to 1.00x
 pt:Reset to 1.00x
 ro:Reset to 1.00x
 ru:Reset to 1.00x
-sat:Reset to 1.00x
 si:Reset to 1.00x
 sk:Reset to 1.00x
 sl:Reset to 1.00x
@@ -24859,7 +26548,6 @@ pl:Restart required
 pt:Restart required
 ro:Restart required
 ru:Restart required
-sat:Restart required
 si:Restart required
 sk:Restart required
 sl:Restart required
@@ -24950,7 +26638,6 @@ pl:Restore the last &session at startup
 pt:Restore the last &session at startup
 ro:Restore the last &session at startup
 ru:Restore the last &session at startup
-sat:Restore the last &session at startup
 si:Restore the last &session at startup
 sk:Restore the last &session at startup
 sl:Restore the last &session at startup
@@ -25023,7 +26710,6 @@ pl:Wznów
 pt:Retomar
 ro:Reia
 ru:Продолжить
-sat:ᱜᱟᱹᱜᱤ
 si:නැවත
 sk:Pokračovať
 sl:Nadaljuj
@@ -25096,7 +26782,6 @@ pl:Right 90°
 pt:Right 90°
 ro:Right 90°
 ru:Right 90°
-sat:Right 90°
 si:Right 90°
 sk:Right 90°
 sl:Right 90°
@@ -25205,7 +26890,6 @@ pl:Rotate PDF Pages
 pt:Rotate PDF Pages
 ro:Rotate PDF Pages
 ru:Rotate PDF Pages
-sat:Rotate PDF Pages
 si:Rotate PDF Pages
 sk:Rotate PDF Pages
 sl:Rotate PDF Pages
@@ -25278,7 +26962,6 @@ pl:Rotate PDF Pages...
 pt:Rotate PDF Pages...
 ro:Rotate PDF Pages...
 ru:Rotate PDF Pages...
-sat:Rotate PDF Pages...
 si:Rotate PDF Pages...
 sk:Rotate PDF Pages...
 sl:Rotate PDF Pages...
@@ -25351,7 +27034,6 @@ pl:Rotate Pages
 pt:Rotate Pages
 ro:Rotate Pages
 ru:Rotate Pages
-sat:Rotate Pages
 si:Rotate Pages
 sk:Rotate Pages
 sl:Rotate Pages
@@ -25436,7 +27118,6 @@ pl:Rotated %d page(s) and saved to '%s'
 pt:Rotated %d page(s) and saved to '%s'
 ro:Rotated %d page(s) and saved to '%s'
 ru:Rotated %d page(s) and saved to '%s'
-sat:Rotated %d page(s) and saved to '%s'
 si:Rotated %d page(s) and saved to '%s'
 sk:Rotated %d page(s) and saved to '%s'
 sl:Rotated %d page(s) and saved to '%s'
@@ -25509,7 +27190,6 @@ pl:Rotation
 pt:Rotation
 ro:Rotation
 ru:Rotation
-sat:Rotation
 si:Rotation
 sk:Rotation
 sl:Rotation
@@ -25582,7 +27262,6 @@ pl:Rotation Angle:
 pt:Rotation Angle:
 ro:Rotation Angle:
 ru:Rotation Angle:
-sat:Rotation Angle:
 si:Rotation Angle:
 sk:Rotation Angle:
 sl:Rotation Angle:
@@ -25599,6 +27278,78 @@ tw:旋轉角度:
 uk:Rotation Angle:
 uz:Rotation Angle:
 vn:Rotation Angle:
+:Russian
+af:Russian
+am:Russian
+ar:Russian
+az:Russian
+bg:Russian
+bn:Russian
+br:Russian
+bs:Russian
+by:Russian
+ca:Russian
+ca-xv:Russian
+cn:俄语
+co:Russian
+cy:Russian
+cz:Russian
+de:Russian
+dk:Russian
+el:Russian
+es:Russian
+et:Russian
+eu:Russian
+fa:Russian
+fi:Russian
+fo:Russian
+fr:Russian
+fy-nl:Russian
+ga:Russian
+gl:Russian
+he:Russian
+hi:Russian
+hr:Russian
+hu:Russian
+id:Russian
+it:Russian
+ja:Russian
+jv:Russian
+ka:Russian
+kr:Russian
+ku:Russian
+kw:Russian
+lt:Russian
+lv:Russian
+mk:Russian
+ml:Russian
+mm:Russian
+my:Russian
+ne:Russian
+nl:Russian
+nn:Russian
+no:Russian
+pa:Russian
+pl:Russian
+pt:Russian
+ro:Russian
+ru:Russian
+si:Russian
+sk:Russian
+sl:Russian
+sn:Russian
+sp-rs:Russian
+sq:Russian
+sr-rs:Russian
+sv:Russian
+ta:Russian
+th:Russian
+tl:Russian
+tr:Russian
+tw:俄語
+uk:Russian
+uz:Russian
+vn:Russian
 :S&election
 am:Ը&նտրում
 br:S&eleção
@@ -25778,7 +27529,6 @@ pl:Save PDF changes?
 pt:Save PDF changes?
 ro:Save PDF changes?
 ru:Save PDF changes?
-sat:Save PDF changes?
 si:Save PDF changes?
 sk:Save PDF changes?
 sl:Save PDF changes?
@@ -25884,7 +27634,6 @@ pl:Save as Searchable PDF
 pt:Save as Searchable PDF
 ro:Save as Searchable PDF
 ru:Save as Searchable PDF
-sat:Save as Searchable PDF
 si:Save as Searchable PDF
 sk:Save as Searchable PDF
 sl:Save as Searchable PDF
@@ -25957,7 +27706,6 @@ pl:Save as Searchable PDF...
 pt:Save as Searchable PDF...
 ro:Save as Searchable PDF...
 ru:Save as Searchable PDF...
-sat:Save as Searchable PDF...
 si:Save as Searchable PDF...
 sk:Save as Searchable PDF...
 sl:Save as Searchable PDF...
@@ -26030,7 +27778,6 @@ pl:Save as searchable PDF
 pt:Save as searchable PDF
 ro:Save as searchable PDF
 ru:Save as searchable PDF
-sat:Save as searchable PDF
 si:Save as searchable PDF
 sk:Save as searchable PDF
 sl:Save as searchable PDF
@@ -26103,7 +27850,6 @@ pl:Save as searchable PDF is only available for PDF files.
 pt:Save as searchable PDF is only available for PDF files.
 ro:Save as searchable PDF is only available for PDF files.
 ru:Save as searchable PDF is only available for PDF files.
-sat:Save as searchable PDF is only available for PDF files.
 si:Save as searchable PDF is only available for PDF files.
 sk:Save as searchable PDF is only available for PDF files.
 sl:Save as searchable PDF is only available for PDF files.
@@ -26176,7 +27922,6 @@ pl:Save as searchable PDF...
 pt:Save as searchable PDF...
 ro:Save as searchable PDF...
 ru:Save as searchable PDF...
-sat:Save as searchable PDF...
 si:Save as searchable PDF...
 sk:Save as searchable PDF...
 sl:Save as searchable PDF...
@@ -26297,7 +28042,6 @@ pl:Saved PDF changes to '%s'
 pt:Saved PDF changes to '%s'
 ro:Saved PDF changes to '%s'
 ru:Saved PDF changes to '%s'
-sat:Saved PDF changes to '%s'
 si:Saved PDF changes to '%s'
 sk:Saved PDF changes to '%s'
 sl:Saved PDF changes to '%s'
@@ -26382,7 +28126,6 @@ pl:Saved.
 pt:Saved.
 ro:Saved.
 ru:Saved.
-sat:Saved.
 si:Saved.
 sk:Saved.
 sl:Saved.
@@ -26467,7 +28210,6 @@ pl:Saving this PDF will change it after it was digitally signed. The existing si
 pt:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
 ro:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
 ru:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
-sat:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
 si:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
 sk:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
 sl:Saving this PDF will change it after it was digitally signed. The existing signature will remain, but viewers will report that the document was modified. Continue?
@@ -26540,7 +28282,6 @@ pl:Scan
 pt:Scan
 ro:Scan
 ru:Scan
-sat:Scan
 si:Scan
 sk:Scan
 sl:Scan
@@ -26634,7 +28375,6 @@ pl:Scanning…
 pt:Scanning…
 ro:Scanning…
 ru:Scanning…
-sat:Scanning…
 si:Scanning…
 sk:Scanning…
 sl:Scanning…
@@ -26707,7 +28447,6 @@ pl:Scanning… %d / %d
 pt:Scanning… %d / %d
 ro:Scanning… %d / %d
 ru:Scanning… %d / %d
-sat:Scanning… %d / %d
 si:Scanning… %d / %d
 sk:Scanning… %d / %d
 sl:Scanning… %d / %d
@@ -26911,7 +28650,6 @@ pl:Scroll to the text being read
 pt:Scroll to the text being read
 ro:Scroll to the text being read
 ru:Scroll to the text being read
-sat:Scroll to the text being read
 si:Scroll to the text being read
 sk:Scroll to the text being read
 sl:Scroll to the text being read
@@ -26984,7 +28722,6 @@ pl:Scrollbars
 pt:Scrollbars
 ro:Scrollbars
 ru:Scrollbars
-sat:Scrollbars
 si:Scrollbars
 sk:Scrollbars
 sl:Scrollbars
@@ -27057,7 +28794,6 @@ pl:Scrolling
 pt:Scrolling
 ro:Scrolling
 ru:Scrolling
-sat:Scrolling
 si:Scrolling
 sk:Scrolling
 sl:Scrolling
@@ -27331,7 +29067,6 @@ pl:Selected pages are already at that rotation.
 pt:Selected pages are already at that rotation.
 ro:Selected pages are already at that rotation.
 ru:Selected pages are already at that rotation.
-sat:Selected pages are already at that rotation.
 si:Selected pages are already at that rotation.
 sk:Selected pages are already at that rotation.
 sl:Selected pages are already at that rotation.
@@ -27404,7 +29139,6 @@ pl:Zaznaczenie
 pt:Seleção
 ro:Selecție
 ru:Выделение
-sat:ᱵᱟᱪᱷᱟᱣ
 si:තෝරාගැනීම
 sk:Výber
 sl:Izbor
@@ -27477,7 +29211,6 @@ pl:Selection too small.
 pt:Selection too small.
 ro:Selection too small.
 ru:Selection too small.
-sat:Selection too small.
 si:Selection too small.
 sk:Selection too small.
 sl:Selection too small.
@@ -27686,6 +29419,150 @@ nl:Stel thema 'Light-White' in
 pl:Ustaw motyw 'Light-White'
 sk:Nastaviť motív 'Light-White'
 tw:設定成 'Light-White' 主題
+:Set up Volcengine Translate or an AI API in Settings → AI
+af:Set up Volcengine Translate or an AI API in Settings → AI
+am:Set up Volcengine Translate or an AI API in Settings → AI
+ar:Set up Volcengine Translate or an AI API in Settings → AI
+az:Set up Volcengine Translate or an AI API in Settings → AI
+bg:Set up Volcengine Translate or an AI API in Settings → AI
+bn:Set up Volcengine Translate or an AI API in Settings → AI
+br:Set up Volcengine Translate or an AI API in Settings → AI
+bs:Set up Volcengine Translate or an AI API in Settings → AI
+by:Set up Volcengine Translate or an AI API in Settings → AI
+ca:Set up Volcengine Translate or an AI API in Settings → AI
+ca-xv:Set up Volcengine Translate or an AI API in Settings → AI
+cn:请在 选项 → AI 中配置火山翻译或 AI API
+co:Set up Volcengine Translate or an AI API in Settings → AI
+cy:Set up Volcengine Translate or an AI API in Settings → AI
+cz:Set up Volcengine Translate or an AI API in Settings → AI
+de:Set up Volcengine Translate or an AI API in Settings → AI
+dk:Set up Volcengine Translate or an AI API in Settings → AI
+el:Set up Volcengine Translate or an AI API in Settings → AI
+es:Set up Volcengine Translate or an AI API in Settings → AI
+et:Set up Volcengine Translate or an AI API in Settings → AI
+eu:Set up Volcengine Translate or an AI API in Settings → AI
+fa:Set up Volcengine Translate or an AI API in Settings → AI
+fi:Set up Volcengine Translate or an AI API in Settings → AI
+fo:Set up Volcengine Translate or an AI API in Settings → AI
+fr:Set up Volcengine Translate or an AI API in Settings → AI
+fy-nl:Set up Volcengine Translate or an AI API in Settings → AI
+ga:Set up Volcengine Translate or an AI API in Settings → AI
+gl:Set up Volcengine Translate or an AI API in Settings → AI
+he:Set up Volcengine Translate or an AI API in Settings → AI
+hi:Set up Volcengine Translate or an AI API in Settings → AI
+hr:Set up Volcengine Translate or an AI API in Settings → AI
+hu:Set up Volcengine Translate or an AI API in Settings → AI
+id:Set up Volcengine Translate or an AI API in Settings → AI
+it:Set up Volcengine Translate or an AI API in Settings → AI
+ja:Set up Volcengine Translate or an AI API in Settings → AI
+jv:Set up Volcengine Translate or an AI API in Settings → AI
+ka:Set up Volcengine Translate or an AI API in Settings → AI
+kr:Set up Volcengine Translate or an AI API in Settings → AI
+ku:Set up Volcengine Translate or an AI API in Settings → AI
+kw:Set up Volcengine Translate or an AI API in Settings → AI
+lt:Set up Volcengine Translate or an AI API in Settings → AI
+lv:Set up Volcengine Translate or an AI API in Settings → AI
+mk:Set up Volcengine Translate or an AI API in Settings → AI
+ml:Set up Volcengine Translate or an AI API in Settings → AI
+mm:Set up Volcengine Translate or an AI API in Settings → AI
+my:Set up Volcengine Translate or an AI API in Settings → AI
+ne:Set up Volcengine Translate or an AI API in Settings → AI
+nl:Set up Volcengine Translate or an AI API in Settings → AI
+nn:Set up Volcengine Translate or an AI API in Settings → AI
+no:Set up Volcengine Translate or an AI API in Settings → AI
+pa:Set up Volcengine Translate or an AI API in Settings → AI
+pl:Set up Volcengine Translate or an AI API in Settings → AI
+pt:Set up Volcengine Translate or an AI API in Settings → AI
+ro:Set up Volcengine Translate or an AI API in Settings → AI
+ru:Set up Volcengine Translate or an AI API in Settings → AI
+si:Set up Volcengine Translate or an AI API in Settings → AI
+sk:Set up Volcengine Translate or an AI API in Settings → AI
+sl:Set up Volcengine Translate or an AI API in Settings → AI
+sn:Set up Volcengine Translate or an AI API in Settings → AI
+sp-rs:Set up Volcengine Translate or an AI API in Settings → AI
+sq:Set up Volcengine Translate or an AI API in Settings → AI
+sr-rs:Set up Volcengine Translate or an AI API in Settings → AI
+sv:Set up Volcengine Translate or an AI API in Settings → AI
+ta:Set up Volcengine Translate or an AI API in Settings → AI
+th:Set up Volcengine Translate or an AI API in Settings → AI
+tl:Set up Volcengine Translate or an AI API in Settings → AI
+tr:Set up Volcengine Translate or an AI API in Settings → AI
+tw:請在 選項 → AI 中設定火山翻譯或 AI API
+uk:Set up Volcengine Translate or an AI API in Settings → AI
+uz:Set up Volcengine Translate or an AI API in Settings → AI
+vn:Set up Volcengine Translate or an AI API in Settings → AI
+:Set up an AI API in Settings → AI to ask follow-up questions
+af:Set up an AI API in Settings → AI to ask follow-up questions
+am:Set up an AI API in Settings → AI to ask follow-up questions
+ar:Set up an AI API in Settings → AI to ask follow-up questions
+az:Set up an AI API in Settings → AI to ask follow-up questions
+bg:Set up an AI API in Settings → AI to ask follow-up questions
+bn:Set up an AI API in Settings → AI to ask follow-up questions
+br:Set up an AI API in Settings → AI to ask follow-up questions
+bs:Set up an AI API in Settings → AI to ask follow-up questions
+by:Set up an AI API in Settings → AI to ask follow-up questions
+ca:Set up an AI API in Settings → AI to ask follow-up questions
+ca-xv:Set up an AI API in Settings → AI to ask follow-up questions
+cn:在 选项 → AI 中配置 AI API 后即可追问
+co:Set up an AI API in Settings → AI to ask follow-up questions
+cy:Set up an AI API in Settings → AI to ask follow-up questions
+cz:Set up an AI API in Settings → AI to ask follow-up questions
+de:Set up an AI API in Settings → AI to ask follow-up questions
+dk:Set up an AI API in Settings → AI to ask follow-up questions
+el:Set up an AI API in Settings → AI to ask follow-up questions
+es:Set up an AI API in Settings → AI to ask follow-up questions
+et:Set up an AI API in Settings → AI to ask follow-up questions
+eu:Set up an AI API in Settings → AI to ask follow-up questions
+fa:Set up an AI API in Settings → AI to ask follow-up questions
+fi:Set up an AI API in Settings → AI to ask follow-up questions
+fo:Set up an AI API in Settings → AI to ask follow-up questions
+fr:Set up an AI API in Settings → AI to ask follow-up questions
+fy-nl:Set up an AI API in Settings → AI to ask follow-up questions
+ga:Set up an AI API in Settings → AI to ask follow-up questions
+gl:Set up an AI API in Settings → AI to ask follow-up questions
+he:Set up an AI API in Settings → AI to ask follow-up questions
+hi:Set up an AI API in Settings → AI to ask follow-up questions
+hr:Set up an AI API in Settings → AI to ask follow-up questions
+hu:Set up an AI API in Settings → AI to ask follow-up questions
+id:Set up an AI API in Settings → AI to ask follow-up questions
+it:Set up an AI API in Settings → AI to ask follow-up questions
+ja:Set up an AI API in Settings → AI to ask follow-up questions
+jv:Set up an AI API in Settings → AI to ask follow-up questions
+ka:Set up an AI API in Settings → AI to ask follow-up questions
+kr:Set up an AI API in Settings → AI to ask follow-up questions
+ku:Set up an AI API in Settings → AI to ask follow-up questions
+kw:Set up an AI API in Settings → AI to ask follow-up questions
+lt:Set up an AI API in Settings → AI to ask follow-up questions
+lv:Set up an AI API in Settings → AI to ask follow-up questions
+mk:Set up an AI API in Settings → AI to ask follow-up questions
+ml:Set up an AI API in Settings → AI to ask follow-up questions
+mm:Set up an AI API in Settings → AI to ask follow-up questions
+my:Set up an AI API in Settings → AI to ask follow-up questions
+ne:Set up an AI API in Settings → AI to ask follow-up questions
+nl:Set up an AI API in Settings → AI to ask follow-up questions
+nn:Set up an AI API in Settings → AI to ask follow-up questions
+no:Set up an AI API in Settings → AI to ask follow-up questions
+pa:Set up an AI API in Settings → AI to ask follow-up questions
+pl:Set up an AI API in Settings → AI to ask follow-up questions
+pt:Set up an AI API in Settings → AI to ask follow-up questions
+ro:Set up an AI API in Settings → AI to ask follow-up questions
+ru:Set up an AI API in Settings → AI to ask follow-up questions
+si:Set up an AI API in Settings → AI to ask follow-up questions
+sk:Set up an AI API in Settings → AI to ask follow-up questions
+sl:Set up an AI API in Settings → AI to ask follow-up questions
+sn:Set up an AI API in Settings → AI to ask follow-up questions
+sp-rs:Set up an AI API in Settings → AI to ask follow-up questions
+sq:Set up an AI API in Settings → AI to ask follow-up questions
+sr-rs:Set up an AI API in Settings → AI to ask follow-up questions
+sv:Set up an AI API in Settings → AI to ask follow-up questions
+ta:Set up an AI API in Settings → AI to ask follow-up questions
+th:Set up an AI API in Settings → AI to ask follow-up questions
+tl:Set up an AI API in Settings → AI to ask follow-up questions
+tr:Set up an AI API in Settings → AI to ask follow-up questions
+tw:在 選項 → AI 中設定 AI API 後即可追問
+uk:Set up an AI API in Settings → AI to ask follow-up questions
+uz:Set up an AI API in Settings → AI to ask follow-up questions
+vn:Set up an AI API in Settings → AI to ask follow-up questions
 :Sharpness
 af:Sharpness
 am:Sharpness
@@ -27742,7 +29619,6 @@ pl:Sharpness
 pt:Sharpness
 ro:Sharpness
 ru:Sharpness
-sat:Sharpness
 si:Sharpness
 sk:Sharpness
 sl:Sharpness
@@ -27872,7 +29748,6 @@ pl:Show &link borders
 pt:Show &link borders
 ro:Show &link borders
 ru:Show &link borders
-sat:Show &link borders
 si:Show &link borders
 sk:Show &link borders
 sl:Show &link borders
@@ -28053,7 +29928,6 @@ pl:Show a scrollbar in single-&page mode
 pt:Show a scrollbar in single-&page mode
 ro:Show a scrollbar in single-&page mode
 ru:Show a scrollbar in single-&page mode
-sat:Show a scrollbar in single-&page mode
 si:Show a scrollbar in single-&page mode
 sk:Show a scrollbar in single-&page mode
 sl:Show a scrollbar in single-&page mode
@@ -28162,7 +30036,6 @@ pl:Show quick &annotation buttons
 pt:Show quick &annotation buttons
 ro:Show quick &annotation buttons
 ru:Show quick &annotation buttons
-sat:Show quick &annotation buttons
 si:Show quick &annotation buttons
 sk:Show quick &annotation buttons
 sl:Show quick &annotation buttons
@@ -28235,7 +30108,6 @@ pl:Pokaż panel za&kładek, gdy są dostępne
 pt:Show the &bookmarks sidebar when available
 ro:Show the &bookmarks sidebar when available
 ru:Show the &bookmarks sidebar when available
-sat:Show the &bookmarks sidebar when available
 si:Show the &bookmarks sidebar when available
 sk:Zobraziť bočný panel &záložiek, pokiaľ je dostupný
 sl:Show the &bookmarks sidebar when available
@@ -28308,7 +30180,6 @@ pl:Show the &menu bar with tabs
 pt:Show the &menu bar with tabs
 ro:Show the &menu bar with tabs
 ru:Show the &menu bar with tabs
-sat:Show the &menu bar with tabs
 si:Show the &menu bar with tabs
 sk:Show the &menu bar with tabs
 sl:Show the &menu bar with tabs
@@ -28381,7 +30252,6 @@ pl:Show the full file &path in the title bar
 pt:Show the full file &path in the title bar
 ro:Show the full file &path in the title bar
 ru:Show the full file &path in the title bar
-sat:Show the full file &path in the title bar
 si:Show the full file &path in the title bar
 sk:Show the full file &path in the title bar
 sl:Show the full file &path in the title bar
@@ -28454,7 +30324,6 @@ pl:Show the tool&bar
 pt:Show the tool&bar
 ro:Show the tool&bar
 ru:Show the tool&bar
-sat:Show the tool&bar
 si:Show the tool&bar
 sk:Show the tool&bar
 sl:Show the tool&bar
@@ -28536,7 +30405,6 @@ pl:Si&ze (0 = auto, 6-72):
 pt:Si&ze (0 = auto, 6-72):
 ro:Si&ze (0 = auto, 6-72):
 ru:Si&ze (0 = auto, 6-72):
-sat:Si&ze (0 = auto, 6-72):
 si:Si&ze (0 = auto, 6-72):
 sk:Si&ze (0 = auto, 6-72):
 sl:Si&ze (0 = auto, 6-72):
@@ -28633,7 +30501,6 @@ pl:Wolno (0.75×)
 pt:Lento (0.75×)
 ro:Lent (0.75×)
 ru:Медленно (0.75×)
-sat:Slow (0.75×)
 si:Slow (0.75×)
 sk:Pomalu (0.75×)
 sl:Počasi (0.75×)
@@ -28706,7 +30573,6 @@ pl:Najwolniej (0.25×)
 pt:Mais lento (0.25×)
 ro:Cel mai lent (0.25×)
 ru:Максимально медленно (0.25×)
-sat:Slowest (0.25×)
 si:Slowest (0.25×)
 sk:Najpomalšie (0.25×)
 sl:Najpočasneje (0.25×)
@@ -28791,7 +30657,6 @@ pl:Smart auto-hide scrollbars
 pt:Smart auto-hide scrollbars
 ro:Smart auto-hide scrollbars
 ru:Smart auto-hide scrollbars
-sat:Smart auto-hide scrollbars
 si:Smart auto-hide scrollbars
 sk:Smart auto-hide scrollbars
 sl:Smart auto-hide scrollbars
@@ -28900,7 +30765,6 @@ pl:Smart contents
 pt:Smart contents
 ro:Smart contents
 ru:Smart contents
-sat:Smart contents
 si:Smart contents
 sk:Smart contents
 sl:Smart contents
@@ -28973,7 +30837,6 @@ pl:Inteligentny start
 pt:Início inteligente
 ro:Pornire inteligentă
 ru:Умный старт
-sat:Smart start
 si:Smart start
 sk:Inteligentný štart
 sl:Pameten začetek
@@ -29054,7 +30917,6 @@ pl:Some changes require restarting the application.
 pt:Some changes require restarting the application.
 ro:Some changes require restarting the application.
 ru:Some changes require restarting the application.
-sat:Some changes require restarting the application.
 si:Some changes require restarting the application.
 sk:Some changes require restarting the application.
 sl:Some changes require restarting the application.
@@ -29104,6 +30966,78 @@ it:Spazio per modalità adesiva
 nl:Ruimte voor plak modus
 pl:Spacja dla trybu lepkiego
 sk:Medzerník pre trvalý režim
+:Spanish
+af:Spanish
+am:Spanish
+ar:Spanish
+az:Spanish
+bg:Spanish
+bn:Spanish
+br:Spanish
+bs:Spanish
+by:Spanish
+ca:Spanish
+ca-xv:Spanish
+cn:西班牙语
+co:Spanish
+cy:Spanish
+cz:Spanish
+de:Spanish
+dk:Spanish
+el:Spanish
+es:Spanish
+et:Spanish
+eu:Spanish
+fa:Spanish
+fi:Spanish
+fo:Spanish
+fr:Spanish
+fy-nl:Spanish
+ga:Spanish
+gl:Spanish
+he:Spanish
+hi:Spanish
+hr:Spanish
+hu:Spanish
+id:Spanish
+it:Spanish
+ja:Spanish
+jv:Spanish
+ka:Spanish
+kr:Spanish
+ku:Spanish
+kw:Spanish
+lt:Spanish
+lv:Spanish
+mk:Spanish
+ml:Spanish
+mm:Spanish
+my:Spanish
+ne:Spanish
+nl:Spanish
+nn:Spanish
+no:Spanish
+pa:Spanish
+pl:Spanish
+pt:Spanish
+ro:Spanish
+ru:Spanish
+si:Spanish
+sk:Spanish
+sl:Spanish
+sn:Spanish
+sp-rs:Spanish
+sq:Spanish
+sr-rs:Spanish
+sv:Spanish
+ta:Spanish
+th:Spanish
+tl:Spanish
+tr:Spanish
+tw:西班牙語
+uk:Spanish
+uz:Spanish
+vn:Spanish
 :Speaking rate: %.2f×
 am:Արագություն՝ %.2f×
 br:Velocidade: %.2f×
@@ -29172,7 +31106,6 @@ pl:Specified Pages
 pt:Specified Pages
 ro:Specified Pages
 ru:Specified Pages
-sat:Specified Pages
 si:Specified Pages
 sk:Specified Pages
 sl:Specified Pages
@@ -29254,7 +31187,6 @@ pl:Szybkość
 pt:Velocidade
 ro:Viteză
 ru:Скорость
-sat:Speed
 si:වේගය
 sk:Rýchlosť
 sl:Hitrost
@@ -29345,7 +31277,6 @@ pl:Standard (recommended)
 pt:Standard (recommended)
 ro:Standard (recommended)
 ru:Standard (recommended)
-sat:Standard (recommended)
 si:Standard (recommended)
 sk:Standard (recommended)
 sl:Standard (recommended)
@@ -29418,7 +31349,6 @@ pl:Zacznij czytać od kursora
 pt:Começar a ler do cursor
 ro:Începe citirea de la cursor
 ru:Начать чтение с курсора
-sat:ᱠᱩᱨᱥᱚᱨ ᱠᱷᱚᱱ ᱯᱟᱲᱦᱟᱣ
 si:කර්සරයෙන් කියවීම ආරම්භ කරන්න
 sk:Začať čítať od kurzora
 sl:Začni brati od kazalca
@@ -29491,7 +31421,6 @@ pl:Zacznij czytać od góry
 pt:Começar a ler do topo
 ro:Începe citirea de sus
 ru:Начать чтение с начала
-sat:ᱪᱮᱛᱟᱣ ᱠᱷᱚᱱ ᱯᱟᱲᱦᱟᱣ ᱮᱛᱚᱜ
 si:ඉහළින් කියවීම ආරම්භ කරන්න
 sk:Začať čítať od začiatku
 sl:Začni brati od vrha
@@ -29564,7 +31493,6 @@ pl:Czytaj zaznaczenie
 pt:Ler seleção
 ro:Citește selecția
 ru:Читать выделенное
-sat:ᱵᱟᱪᱷᱟᱣ ᱯᱟᱲᱦᱟᱣ
 si:තෝරාගත් කියවන්න
 sk:Prečítať výber
 sl:Preberi izbor
@@ -29649,7 +31577,6 @@ pl:Startup and session
 pt:Startup and session
 ro:Startup and session
 ru:Startup and session
-sat:Startup and session
 si:Startup and session
 sk:Startup and session
 sl:Startup and session
@@ -29722,7 +31649,6 @@ pl:Zatrzymaj
 pt:Parar
 ro:Oprește
 ru:Стоп
-sat:ᱵᱚᱸᱫ
 si:නවත්වන්න
 sk:Zastaviť
 sl:Ustavi
@@ -29795,7 +31721,6 @@ pl:Zatrzymaj czytanie
 pt:Parar leitura
 ro:Oprește citirea
 ru:Остановить чтение
-sat:ᱯᱟᱲᱦᱟᱣ ᱵᱚᱸᱫ
 si:කියවීම නවත්වන්න
 sk:Zastaviť čítanie
 sl:Ustavi branje
@@ -29911,7 +31836,6 @@ pl:Opcje SumatraPDF
 pt:SumatraPDF Options
 ro:SumatraPDF Options
 ru:SumatraPDF Options
-sat:SumatraPDF Options
 si:SumatraPDF Options
 sk:Nastavenia SumatraPDF
 sl:SumatraPDF Options
@@ -29988,6 +31912,78 @@ tw:SumatraPDF 手冊（上游）
 cn:SumatraPDF 网站（上游）
 de:SumatraPDF-Website (Upstream)
 tw:SumatraPDF 網站（上游）
+:Swedish
+af:Swedish
+am:Swedish
+ar:Swedish
+az:Swedish
+bg:Swedish
+bn:Swedish
+br:Swedish
+bs:Swedish
+by:Swedish
+ca:Swedish
+ca-xv:Swedish
+cn:瑞典语
+co:Swedish
+cy:Swedish
+cz:Swedish
+de:Swedish
+dk:Swedish
+el:Swedish
+es:Swedish
+et:Swedish
+eu:Swedish
+fa:Swedish
+fi:Swedish
+fo:Swedish
+fr:Swedish
+fy-nl:Swedish
+ga:Swedish
+gl:Swedish
+he:Swedish
+hi:Swedish
+hr:Swedish
+hu:Swedish
+id:Swedish
+it:Swedish
+ja:Swedish
+jv:Swedish
+ka:Swedish
+kr:Swedish
+ku:Swedish
+kw:Swedish
+lt:Swedish
+lv:Swedish
+mk:Swedish
+ml:Swedish
+mm:Swedish
+my:Swedish
+ne:Swedish
+nl:Swedish
+nn:Swedish
+no:Swedish
+pa:Swedish
+pl:Swedish
+pt:Swedish
+ro:Swedish
+ru:Swedish
+si:Swedish
+sk:Swedish
+sl:Swedish
+sn:Swedish
+sp-rs:Swedish
+sq:Swedish
+sr-rs:Swedish
+sv:Swedish
+ta:Swedish
+th:Swedish
+tl:Swedish
+tr:Swedish
+tw:瑞典語
+uk:Swedish
+uz:Swedish
+vn:Swedish
 :Synchronization file cannot be opened
 am:Հնարավոր չէ բացել համաժամեցման ֆայլը
 br:O arquivo de sincronização não pôde ser aberto
@@ -30062,7 +32058,6 @@ pl:Domyślny systemowy
 pt:Predefinição do sistema
 ro:Implicit sistem
 ru:Системный по умолчанию
-sat:ᱥᱤᱥᱴᱟᱢ ᱰᱤᱯᱷᱚᱞᱴ
 si:පද්ධති පෙරනිමිය
 sk:Systémové predvolené
 sl:Sistemsko privzeto
@@ -30162,7 +32157,6 @@ pl:Tab bar &height (0 = auto, 16-128):
 pt:Tab bar &height (0 = auto, 16-128):
 ro:Tab bar &height (0 = auto, 16-128):
 ru:Tab bar &height (0 = auto, 16-128):
-sat:Tab bar &height (0 = auto, 16-128):
 si:Tab bar &height (0 = auto, 16-128):
 sk:Tab bar &height (0 = auto, 16-128):
 sl:Tab bar &height (0 = auto, 16-128):
@@ -30235,7 +32229,6 @@ pl:Tab bar &height:
 pt:Tab bar &height:
 ro:Tab bar &height:
 ru:Tab bar &height:
-sat:Tab bar &height:
 si:Tab bar &height:
 sk:Tab bar &height:
 sl:Tab bar &height:
@@ -30308,7 +32301,6 @@ pl:Tab bar height must be 0 (automatic) or between 16 and 128.
 pt:Tab bar height must be 0 (automatic) or between 16 and 128.
 ro:Tab bar height must be 0 (automatic) or between 16 and 128.
 ru:Tab bar height must be 0 (automatic) or between 16 and 128.
-sat:Tab bar height must be 0 (automatic) or between 16 and 128.
 si:Tab bar height must be 0 (automatic) or between 16 and 128.
 sk:Tab bar height must be 0 (automatic) or between 16 and 128.
 sl:Tab bar height must be 0 (automatic) or between 16 and 128.
@@ -30381,7 +32373,6 @@ pl:Tab fo&nt size (0 = auto, 6-72):
 pt:Tab fo&nt size (0 = auto, 6-72):
 ro:Tab fo&nt size (0 = auto, 6-72):
 ru:Tab fo&nt size (0 = auto, 6-72):
-sat:Tab fo&nt size (0 = auto, 6-72):
 si:Tab fo&nt size (0 = auto, 6-72):
 sk:Tab fo&nt size (0 = auto, 6-72):
 sl:Tab fo&nt size (0 = auto, 6-72):
@@ -30454,7 +32445,6 @@ pl:Tab fo&nt size:
 pt:Tab fo&nt size:
 ro:Tab fo&nt size:
 ru:Tab fo&nt size:
-sat:Tab fo&nt size:
 si:Tab fo&nt size:
 sk:Tab fo&nt size:
 sl:Tab fo&nt size:
@@ -30527,7 +32517,6 @@ pl:Tab font size must be 0 (automatic) or between 6 and 72.
 pt:Tab font size must be 0 (automatic) or between 6 and 72.
 ro:Tab font size must be 0 (automatic) or between 6 and 72.
 ru:Tab font size must be 0 (automatic) or between 6 and 72.
-sat:Tab font size must be 0 (automatic) or between 6 and 72.
 si:Tab font size must be 0 (automatic) or between 6 and 72.
 sk:Tab font size must be 0 (automatic) or between 6 and 72.
 sl:Tab font size must be 0 (automatic) or between 6 and 72.
@@ -30600,7 +32589,6 @@ pl:Tabs and toolbar
 pt:Tabs and toolbar
 ro:Tabs and toolbar
 ru:Tabs and toolbar
-sat:Tabs and toolbar
 si:Tabs and toolbar
 sk:Tabs and toolbar
 sl:Tabs and toolbar
@@ -30638,6 +32626,78 @@ it:Cattura schermata
 nl:Maak Screenshot
 pl:Zrób zrzut ekranu
 sk:Urobiť snímku obrazovky
+:Target &language:
+af:Target &language:
+am:Target &language:
+ar:Target &language:
+az:Target &language:
+bg:Target &language:
+bn:Target &language:
+br:Target &language:
+bs:Target &language:
+by:Target &language:
+ca:Target &language:
+ca-xv:Target &language:
+cn:目标语言(&L)：
+co:Target &language:
+cy:Target &language:
+cz:Target &language:
+de:Target &language:
+dk:Target &language:
+el:Target &language:
+es:Target &language:
+et:Target &language:
+eu:Target &language:
+fa:Target &language:
+fi:Target &language:
+fo:Target &language:
+fr:Target &language:
+fy-nl:Target &language:
+ga:Target &language:
+gl:Target &language:
+he:Target &language:
+hi:Target &language:
+hr:Target &language:
+hu:Target &language:
+id:Target &language:
+it:Target &language:
+ja:Target &language:
+jv:Target &language:
+ka:Target &language:
+kr:Target &language:
+ku:Target &language:
+kw:Target &language:
+lt:Target &language:
+lv:Target &language:
+mk:Target &language:
+ml:Target &language:
+mm:Target &language:
+my:Target &language:
+ne:Target &language:
+nl:Target &language:
+nn:Target &language:
+no:Target &language:
+pa:Target &language:
+pl:Target &language:
+pt:Target &language:
+ro:Target &language:
+ru:Target &language:
+si:Target &language:
+sk:Target &language:
+sl:Target &language:
+sn:Target &language:
+sp-rs:Target &language:
+sq:Target &language:
+sr-rs:Target &language:
+sv:Target &language:
+ta:Target &language:
+th:Target &language:
+tl:Target &language:
+tr:Target &language:
+tw:目標語言(&L)：
+uk:Target &language:
+uz:Target &language:
+vn:Target &language:
 :Text Alignment:
 am:Գրվածքի հավասարեցում
 br:Alinhamento do Texto:
@@ -30706,7 +32766,6 @@ pl:Text Annotation (Ctrl+click to lock)
 pt:Text Annotation (Ctrl+click to lock)
 ro:Text Annotation (Ctrl+click to lock)
 ru:Text Annotation (Ctrl+click to lock)
-sat:Text Annotation (Ctrl+click to lock)
 si:Text Annotation (Ctrl+click to lock)
 sk:Text Annotation (Ctrl+click to lock)
 sl:Text Annotation (Ctrl+click to lock)
@@ -30839,7 +32898,6 @@ pl:Text was found, but this file has no table of contents or chapter headings to
 pt:Text was found, but this file has no table of contents or chapter headings to extract.
 ro:Text was found, but this file has no table of contents or chapter headings to extract.
 ru:Text was found, but this file has no table of contents or chapter headings to extract.
-sat:Text was found, but this file has no table of contents or chapter headings to extract.
 si:Text was found, but this file has no table of contents or chapter headings to extract.
 sk:Text was found, but this file has no table of contents or chapter headings to extract.
 sl:Text was found, but this file has no table of contents or chapter headings to extract.
@@ -30856,6 +32914,78 @@ tw:文字已經識別。沒有找到印刷目錄或章節標題，無法提取�
 uk:Text was found, but this file has no table of contents or chapter headings to extract.
 uz:Text was found, but this file has no table of contents or chapter headings to extract.
 vn:Text was found, but this file has no table of contents or chapter headings to extract.
+:Thai
+af:Thai
+am:Thai
+ar:Thai
+az:Thai
+bg:Thai
+bn:Thai
+br:Thai
+bs:Thai
+by:Thai
+ca:Thai
+ca-xv:Thai
+cn:泰语
+co:Thai
+cy:Thai
+cz:Thai
+de:Thai
+dk:Thai
+el:Thai
+es:Thai
+et:Thai
+eu:Thai
+fa:Thai
+fi:Thai
+fo:Thai
+fr:Thai
+fy-nl:Thai
+ga:Thai
+gl:Thai
+he:Thai
+hi:Thai
+hr:Thai
+hu:Thai
+id:Thai
+it:Thai
+ja:Thai
+jv:Thai
+ka:Thai
+kr:Thai
+ku:Thai
+kw:Thai
+lt:Thai
+lv:Thai
+mk:Thai
+ml:Thai
+mm:Thai
+my:Thai
+ne:Thai
+nl:Thai
+nn:Thai
+no:Thai
+pa:Thai
+pl:Thai
+pt:Thai
+ro:Thai
+ru:Thai
+si:Thai
+sk:Thai
+sl:Thai
+sn:Thai
+sp-rs:Thai
+sq:Thai
+sr-rs:Thai
+sv:Thai
+ta:Thai
+th:Thai
+tl:Thai
+tr:Thai
+tw:泰語
+uk:Thai
+uz:Thai
+vn:Thai
 :Thank you for choosing SumatraPDF!
 am:Շնորհակալություն SumatraPDF-ը նախընտրելու համար:
 br:Obrigado por escolher o SumatraPDF!
@@ -30904,6 +33034,78 @@ tw:AI 網頁已開啟，但無法傳送初始化訊息。
 :The AI reply contains no importable TOC items.
 cn:AI 回复中没有可导入的目录条目。
 tw:AI 回覆中沒有可匯入的目錄項目。
+:The AI request failed.
+af:The AI request failed.
+am:The AI request failed.
+ar:The AI request failed.
+az:The AI request failed.
+bg:The AI request failed.
+bn:The AI request failed.
+br:The AI request failed.
+bs:The AI request failed.
+by:The AI request failed.
+ca:The AI request failed.
+ca-xv:The AI request failed.
+cn:AI 请求失败。
+co:The AI request failed.
+cy:The AI request failed.
+cz:The AI request failed.
+de:The AI request failed.
+dk:The AI request failed.
+el:The AI request failed.
+es:The AI request failed.
+et:The AI request failed.
+eu:The AI request failed.
+fa:The AI request failed.
+fi:The AI request failed.
+fo:The AI request failed.
+fr:The AI request failed.
+fy-nl:The AI request failed.
+ga:The AI request failed.
+gl:The AI request failed.
+he:The AI request failed.
+hi:The AI request failed.
+hr:The AI request failed.
+hu:The AI request failed.
+id:The AI request failed.
+it:The AI request failed.
+ja:The AI request failed.
+jv:The AI request failed.
+ka:The AI request failed.
+kr:The AI request failed.
+ku:The AI request failed.
+kw:The AI request failed.
+lt:The AI request failed.
+lv:The AI request failed.
+mk:The AI request failed.
+ml:The AI request failed.
+mm:The AI request failed.
+my:The AI request failed.
+ne:The AI request failed.
+nl:The AI request failed.
+nn:The AI request failed.
+no:The AI request failed.
+pa:The AI request failed.
+pl:The AI request failed.
+pt:The AI request failed.
+ro:The AI request failed.
+ru:The AI request failed.
+si:The AI request failed.
+sk:The AI request failed.
+sl:The AI request failed.
+sn:The AI request failed.
+sp-rs:The AI request failed.
+sq:The AI request failed.
+sr-rs:The AI request failed.
+sv:The AI request failed.
+ta:The AI request failed.
+th:The AI request failed.
+tl:The AI request failed.
+tr:The AI request failed.
+tw:AI 請求失敗。
+uk:The AI request failed.
+uz:The AI request failed.
+vn:The AI request failed.
 :The Programmers
 cn:程序员
 de:Die Programmierer
@@ -30994,7 +33196,6 @@ pl:There is too little text to extract bookmarks. OCR all pages and save a searc
 pt:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
 ro:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
 ru:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
-sat:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
 si:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
 sk:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
 sl:There is too little text to extract bookmarks. OCR all pages and save a searchable PDF?
@@ -31067,7 +33268,6 @@ pl:These changes require restarting the application. Restart now?
 pt:These changes require restarting the application. Restart now?
 ro:These changes require restarting the application. Restart now?
 ru:These changes require restarting the application. Restart now?
-sat:These changes require restarting the application. Restart now?
 si:These changes require restarting the application. Restart now?
 sk:These changes require restarting the application. Restart now?
 sl:These changes require restarting the application. Restart now?
@@ -31084,6 +33284,78 @@ tw:這些變更需要重新啟動應用程式。現在重新啟動嗎？
 uk:These changes require restarting the application. Restart now?
 uz:These changes require restarting the application. Restart now?
 vn:These changes require restarting the application. Restart now?
+:Thinking…
+af:Thinking…
+am:Thinking…
+ar:Thinking…
+az:Thinking…
+bg:Thinking…
+bn:Thinking…
+br:Thinking…
+bs:Thinking…
+by:Thinking…
+ca:Thinking…
+ca-xv:Thinking…
+cn:正在思考…
+co:Thinking…
+cy:Thinking…
+cz:Thinking…
+de:Thinking…
+dk:Thinking…
+el:Thinking…
+es:Thinking…
+et:Thinking…
+eu:Thinking…
+fa:Thinking…
+fi:Thinking…
+fo:Thinking…
+fr:Thinking…
+fy-nl:Thinking…
+ga:Thinking…
+gl:Thinking…
+he:Thinking…
+hi:Thinking…
+hr:Thinking…
+hu:Thinking…
+id:Thinking…
+it:Thinking…
+ja:Thinking…
+jv:Thinking…
+ka:Thinking…
+kr:Thinking…
+ku:Thinking…
+kw:Thinking…
+lt:Thinking…
+lv:Thinking…
+mk:Thinking…
+ml:Thinking…
+mm:Thinking…
+my:Thinking…
+ne:Thinking…
+nl:Thinking…
+nn:Thinking…
+no:Thinking…
+pa:Thinking…
+pl:Thinking…
+pt:Thinking…
+ro:Thinking…
+ru:Thinking…
+si:Thinking…
+sk:Thinking…
+sl:Thinking…
+sn:Thinking…
+sp-rs:Thinking…
+sq:Thinking…
+sr-rs:Thinking…
+sv:Thinking…
+ta:Thinking…
+th:Thinking…
+tl:Thinking…
+tr:Thinking…
+tw:正在思考…
+uk:Thinking…
+uz:Thinking…
+vn:Thinking…
 :This PDF already has searchable text. Replace it with newly recognized text?
 af:This PDF already has searchable text. Replace it with newly recognized text?
 am:This PDF already has searchable text. Replace it with newly recognized text?
@@ -31140,7 +33412,6 @@ pl:This PDF already has searchable text. Replace it with newly recognized text?
 pt:This PDF already has searchable text. Replace it with newly recognized text?
 ro:This PDF already has searchable text. Replace it with newly recognized text?
 ru:This PDF already has searchable text. Replace it with newly recognized text?
-sat:This PDF already has searchable text. Replace it with newly recognized text?
 si:This PDF already has searchable text. Replace it with newly recognized text?
 sk:This PDF already has searchable text. Replace it with newly recognized text?
 sl:This PDF already has searchable text. Replace it with newly recognized text?
@@ -31213,7 +33484,6 @@ pl:This document has too little text to extract bookmarks. OCR scanned pages fir
 pt:This document has too little text to extract bookmarks. OCR scanned pages first.
 ro:This document has too little text to extract bookmarks. OCR scanned pages first.
 ru:This document has too little text to extract bookmarks. OCR scanned pages first.
-sat:This document has too little text to extract bookmarks. OCR scanned pages first.
 si:This document has too little text to extract bookmarks. OCR scanned pages first.
 sk:This document has too little text to extract bookmarks. OCR scanned pages first.
 sl:This document has too little text to extract bookmarks. OCR scanned pages first.
@@ -31286,7 +33556,6 @@ pl:This document looks like a scan.
 pt:This document looks like a scan.
 ro:This document looks like a scan.
 ru:This document looks like a scan.
-sat:This document looks like a scan.
 si:This document looks like a scan.
 sk:This document looks like a scan.
 sl:This document looks like a scan.
@@ -31374,7 +33643,6 @@ pl:This file has no text layer. Recognize all pages and save a searchable PDF?
 pt:This file has no text layer. Recognize all pages and save a searchable PDF?
 ro:This file has no text layer. Recognize all pages and save a searchable PDF?
 ru:This file has no text layer. Recognize all pages and save a searchable PDF?
-sat:This file has no text layer. Recognize all pages and save a searchable PDF?
 si:This file has no text layer. Recognize all pages and save a searchable PDF?
 sk:This file has no text layer. Recognize all pages and save a searchable PDF?
 sl:This file has no text layer. Recognize all pages and save a searchable PDF?
@@ -31447,7 +33715,6 @@ pl:This file has no text layer. Recognize all pages to extract bookmarks. Save a
 pt:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
 ro:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
 ru:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
-sat:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
 si:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
 sk:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
 sl:This file has no text layer. Recognize all pages to extract bookmarks. Save a searchable PDF, or recognize without saving.
@@ -31520,7 +33787,6 @@ pl:This file has no text layer. Recognize the pages first, then extract bookmark
 pt:This file has no text layer. Recognize the pages first, then extract bookmarks.
 ro:This file has no text layer. Recognize the pages first, then extract bookmarks.
 ru:This file has no text layer. Recognize the pages first, then extract bookmarks.
-sat:This file has no text layer. Recognize the pages first, then extract bookmarks.
 si:This file has no text layer. Recognize the pages first, then extract bookmarks.
 sk:This file has no text layer. Recognize the pages first, then extract bookmarks.
 sl:This file has no text layer. Recognize the pages first, then extract bookmarks.
@@ -31593,7 +33859,6 @@ pl:This file is read-only. Bookmark extraction was not started.
 pt:This file is read-only. Bookmark extraction was not started.
 ro:This file is read-only. Bookmark extraction was not started.
 ru:This file is read-only. Bookmark extraction was not started.
-sat:This file is read-only. Bookmark extraction was not started.
 si:This file is read-only. Bookmark extraction was not started.
 sk:This file is read-only. Bookmark extraction was not started.
 sl:This file is read-only. Bookmark extraction was not started.
@@ -31666,7 +33931,6 @@ pl:This page is not skewed.
 pt:This page is not skewed.
 ro:This page is not skewed.
 ru:This page is not skewed.
-sat:This page is not skewed.
 si:This page is not skewed.
 sk:This page is not skewed.
 sl:This page is not skewed.
@@ -31819,7 +34083,6 @@ pl:Toggle Auto OCR
 pt:Toggle Auto OCR
 ro:Toggle Auto OCR
 ru:Toggle Auto OCR
-sat:Toggle Auto OCR
 si:Toggle Auto OCR
 sk:Toggle Auto OCR
 sl:Toggle Auto OCR
@@ -31892,7 +34155,6 @@ pl:Toggle Auto-save After OCR
 pt:Toggle Auto-save After OCR
 ro:Toggle Auto-save After OCR
 ru:Toggle Auto-save After OCR
-sat:Toggle Auto-save After OCR
 si:Toggle Auto-save After OCR
 sk:Toggle Auto-save After OCR
 sl:Toggle Auto-save After OCR
@@ -32001,7 +34263,6 @@ pl:Toggle Deskew During OCR
 pt:Toggle Deskew During OCR
 ro:Toggle Deskew During OCR
 ru:Toggle Deskew During OCR
-sat:Toggle Deskew During OCR
 si:Toggle Deskew During OCR
 sk:Toggle Deskew During OCR
 sl:Toggle Deskew During OCR
@@ -32262,6 +34523,78 @@ nl:Licht/donker thema wisselen
 pl:Przełącz jasny/ciemny motyw
 sk:Prepnúť svetlý/tmavý motív
 tw:切換亮/暗主題
+:Translate
+af:Translate
+am:Translate
+ar:Translate
+az:Translate
+bg:Translate
+bn:Translate
+br:Translate
+bs:Translate
+by:Translate
+ca:Translate
+ca-xv:Translate
+cn:翻译
+co:Translate
+cy:Translate
+cz:Translate
+de:Translate
+dk:Translate
+el:Translate
+es:Translate
+et:Translate
+eu:Translate
+fa:Translate
+fi:Translate
+fo:Translate
+fr:Translate
+fy-nl:Translate
+ga:Translate
+gl:Translate
+he:Translate
+hi:Translate
+hr:Translate
+hu:Translate
+id:Translate
+it:Translate
+ja:Translate
+jv:Translate
+ka:Translate
+kr:Translate
+ku:Translate
+kw:Translate
+lt:Translate
+lv:Translate
+mk:Translate
+ml:Translate
+mm:Translate
+my:Translate
+ne:Translate
+nl:Translate
+nn:Translate
+no:Translate
+pa:Translate
+pl:Translate
+pt:Translate
+ro:Translate
+ru:Translate
+si:Translate
+sk:Translate
+sl:Translate
+sn:Translate
+sp-rs:Translate
+sq:Translate
+sr-rs:Translate
+sv:Translate
+ta:Translate
+th:Translate
+tl:Translate
+tr:Translate
+tw:翻譯
+uk:Translate
+uz:Translate
+vn:Translate
 :Translate Selection With DeepL
 am:Թարգմանել ընտրվածը DeepL-ով
 br:Traduzir a Seleção com o DeepL
@@ -32322,6 +34655,150 @@ nl:Vertalen met &Deepl
 pl:Tłumacz za pomocą &DeepL
 sk:Preložiť pomocou &DeepL
 tw:使用 DeepL 翻譯(&D)
+:Translating…
+af:Translating…
+am:Translating…
+ar:Translating…
+az:Translating…
+bg:Translating…
+bn:Translating…
+br:Translating…
+bs:Translating…
+by:Translating…
+ca:Translating…
+ca-xv:Translating…
+cn:正在翻译…
+co:Translating…
+cy:Translating…
+cz:Translating…
+de:Translating…
+dk:Translating…
+el:Translating…
+es:Translating…
+et:Translating…
+eu:Translating…
+fa:Translating…
+fi:Translating…
+fo:Translating…
+fr:Translating…
+fy-nl:Translating…
+ga:Translating…
+gl:Translating…
+he:Translating…
+hi:Translating…
+hr:Translating…
+hu:Translating…
+id:Translating…
+it:Translating…
+ja:Translating…
+jv:Translating…
+ka:Translating…
+kr:Translating…
+ku:Translating…
+kw:Translating…
+lt:Translating…
+lv:Translating…
+mk:Translating…
+ml:Translating…
+mm:Translating…
+my:Translating…
+ne:Translating…
+nl:Translating…
+nn:Translating…
+no:Translating…
+pa:Translating…
+pl:Translating…
+pt:Translating…
+ro:Translating…
+ru:Translating…
+si:Translating…
+sk:Translating…
+sl:Translating…
+sn:Translating…
+sp-rs:Translating…
+sq:Translating…
+sr-rs:Translating…
+sv:Translating…
+ta:Translating…
+th:Translating…
+tl:Translating…
+tr:Translating…
+tw:正在翻譯…
+uk:Translating…
+uz:Translating…
+vn:Translating…
+:Translation failed.
+af:Translation failed.
+am:Translation failed.
+ar:Translation failed.
+az:Translation failed.
+bg:Translation failed.
+bn:Translation failed.
+br:Translation failed.
+bs:Translation failed.
+by:Translation failed.
+ca:Translation failed.
+ca-xv:Translation failed.
+cn:翻译失败。
+co:Translation failed.
+cy:Translation failed.
+cz:Translation failed.
+de:Translation failed.
+dk:Translation failed.
+el:Translation failed.
+es:Translation failed.
+et:Translation failed.
+eu:Translation failed.
+fa:Translation failed.
+fi:Translation failed.
+fo:Translation failed.
+fr:Translation failed.
+fy-nl:Translation failed.
+ga:Translation failed.
+gl:Translation failed.
+he:Translation failed.
+hi:Translation failed.
+hr:Translation failed.
+hu:Translation failed.
+id:Translation failed.
+it:Translation failed.
+ja:Translation failed.
+jv:Translation failed.
+ka:Translation failed.
+kr:Translation failed.
+ku:Translation failed.
+kw:Translation failed.
+lt:Translation failed.
+lv:Translation failed.
+mk:Translation failed.
+ml:Translation failed.
+mm:Translation failed.
+my:Translation failed.
+ne:Translation failed.
+nl:Translation failed.
+nn:Translation failed.
+no:Translation failed.
+pa:Translation failed.
+pl:Translation failed.
+pt:Translation failed.
+ro:Translation failed.
+ru:Translation failed.
+si:Translation failed.
+sk:Translation failed.
+sl:Translation failed.
+sn:Translation failed.
+sp-rs:Translation failed.
+sq:Translation failed.
+sr-rs:Translation failed.
+sv:Translation failed.
+ta:Translation failed.
+th:Translation failed.
+tl:Translation failed.
+tr:Translation failed.
+tw:翻譯失敗。
+uk:Translation failed.
+uz:Translation failed.
+vn:Translation failed.
 :Tree &font:
 af:Tree &font:
 am:Tree &font:
@@ -32378,7 +34855,6 @@ pl:Tree &font:
 pt:Tree &font:
 ro:Tree &font:
 ru:Tree &font:
-sat:Tree &font:
 si:Tree &font:
 sk:Tree &font:
 sl:Tree &font:
@@ -32451,7 +34927,6 @@ pl:Tree font size must be 0 (automatic) or between 6 and 72.
 pt:Tree font size must be 0 (automatic) or between 6 and 72.
 ro:Tree font size must be 0 (automatic) or between 6 and 72.
 ru:Tree font size must be 0 (automatic) or between 6 and 72.
-sat:Tree font size must be 0 (automatic) or between 6 and 72.
 si:Tree font size must be 0 (automatic) or between 6 and 72.
 sk:Tree font size must be 0 (automatic) or between 6 and 72.
 sl:Tree font size must be 0 (automatic) or between 6 and 72.
@@ -32468,6 +34943,222 @@ tw:目錄字型大小必須為 0（自動）或 6 到 72。
 uk:Tree font size must be 0 (automatic) or between 6 and 72.
 uz:Tree font size must be 0 (automatic) or between 6 and 72.
 vn:Tree font size must be 0 (automatic) or between 6 and 72.
+:Turkish
+af:Turkish
+am:Turkish
+ar:Turkish
+az:Turkish
+bg:Turkish
+bn:Turkish
+br:Turkish
+bs:Turkish
+by:Turkish
+ca:Turkish
+ca-xv:Turkish
+cn:土耳其语
+co:Turkish
+cy:Turkish
+cz:Turkish
+de:Turkish
+dk:Turkish
+el:Turkish
+es:Turkish
+et:Turkish
+eu:Turkish
+fa:Turkish
+fi:Turkish
+fo:Turkish
+fr:Turkish
+fy-nl:Turkish
+ga:Turkish
+gl:Turkish
+he:Turkish
+hi:Turkish
+hr:Turkish
+hu:Turkish
+id:Turkish
+it:Turkish
+ja:Turkish
+jv:Turkish
+ka:Turkish
+kr:Turkish
+ku:Turkish
+kw:Turkish
+lt:Turkish
+lv:Turkish
+mk:Turkish
+ml:Turkish
+mm:Turkish
+my:Turkish
+ne:Turkish
+nl:Turkish
+nn:Turkish
+no:Turkish
+pa:Turkish
+pl:Turkish
+pt:Turkish
+ro:Turkish
+ru:Turkish
+si:Turkish
+sk:Turkish
+sl:Turkish
+sn:Turkish
+sp-rs:Turkish
+sq:Turkish
+sr-rs:Turkish
+sv:Turkish
+ta:Turkish
+th:Turkish
+tl:Turkish
+tr:Turkish
+tw:土耳其語
+uk:Turkish
+uz:Turkish
+vn:Turkish
+:UI language
+af:UI language
+am:UI language
+ar:UI language
+az:UI language
+bg:UI language
+bn:UI language
+br:UI language
+bs:UI language
+by:UI language
+ca:UI language
+ca-xv:UI language
+cn:界面语言
+co:UI language
+cy:UI language
+cz:UI language
+de:UI language
+dk:UI language
+el:UI language
+es:UI language
+et:UI language
+eu:UI language
+fa:UI language
+fi:UI language
+fo:UI language
+fr:UI language
+fy-nl:UI language
+ga:UI language
+gl:UI language
+he:UI language
+hi:UI language
+hr:UI language
+hu:UI language
+id:UI language
+it:UI language
+ja:UI language
+jv:UI language
+ka:UI language
+kr:UI language
+ku:UI language
+kw:UI language
+lt:UI language
+lv:UI language
+mk:UI language
+ml:UI language
+mm:UI language
+my:UI language
+ne:UI language
+nl:UI language
+nn:UI language
+no:UI language
+pa:UI language
+pl:UI language
+pt:UI language
+ro:UI language
+ru:UI language
+si:UI language
+sk:UI language
+sl:UI language
+sn:UI language
+sp-rs:UI language
+sq:UI language
+sr-rs:UI language
+sv:UI language
+ta:UI language
+th:UI language
+tl:UI language
+tr:UI language
+tw:介面語言
+uk:UI language
+uz:UI language
+vn:UI language
+:Ukrainian
+af:Ukrainian
+am:Ukrainian
+ar:Ukrainian
+az:Ukrainian
+bg:Ukrainian
+bn:Ukrainian
+br:Ukrainian
+bs:Ukrainian
+by:Ukrainian
+ca:Ukrainian
+ca-xv:Ukrainian
+cn:乌克兰语
+co:Ukrainian
+cy:Ukrainian
+cz:Ukrainian
+de:Ukrainian
+dk:Ukrainian
+el:Ukrainian
+es:Ukrainian
+et:Ukrainian
+eu:Ukrainian
+fa:Ukrainian
+fi:Ukrainian
+fo:Ukrainian
+fr:Ukrainian
+fy-nl:Ukrainian
+ga:Ukrainian
+gl:Ukrainian
+he:Ukrainian
+hi:Ukrainian
+hr:Ukrainian
+hu:Ukrainian
+id:Ukrainian
+it:Ukrainian
+ja:Ukrainian
+jv:Ukrainian
+ka:Ukrainian
+kr:Ukrainian
+ku:Ukrainian
+kw:Ukrainian
+lt:Ukrainian
+lv:Ukrainian
+mk:Ukrainian
+ml:Ukrainian
+mm:Ukrainian
+my:Ukrainian
+ne:Ukrainian
+nl:Ukrainian
+nn:Ukrainian
+no:Ukrainian
+pa:Ukrainian
+pl:Ukrainian
+pt:Ukrainian
+ro:Ukrainian
+ru:Ukrainian
+si:Ukrainian
+sk:Ukrainian
+sl:Ukrainian
+sn:Ukrainian
+sp-rs:Ukrainian
+sq:Ukrainian
+sr-rs:Ukrainian
+sv:Ukrainian
+ta:Ukrainian
+th:Ukrainian
+tl:Ukrainian
+tr:Ukrainian
+tw:烏克蘭語
+uk:Ukrainian
+uz:Ukrainian
+vn:Ukrainian
 :Un-register Windows Previewer
 br:Remover o registro do Pré-Visualizador do Windows
 cn:解除注册 Windows 预览器
@@ -32542,7 +35233,6 @@ pl:Unable to extract bookmarks
 pt:Unable to extract bookmarks
 ro:Unable to extract bookmarks
 ru:Unable to extract bookmarks
-sat:Unable to extract bookmarks
 si:Unable to extract bookmarks
 sk:Unable to extract bookmarks
 sl:Unable to extract bookmarks
@@ -32669,7 +35359,6 @@ pl:Unsaved PDF changes
 pt:Unsaved PDF changes
 ro:Unsaved PDF changes
 ru:Unsaved PDF changes
-sat:Unsaved PDF changes
 si:Unsaved PDF changes
 sk:Unsaved PDF changes
 sl:Unsaved PDF changes
@@ -32742,7 +35431,6 @@ pl:Unsaved PDF changes in '%s'
 pt:Unsaved PDF changes in '%s'
 ro:Unsaved PDF changes in '%s'
 ru:Unsaved PDF changes in '%s'
-sat:Unsaved PDF changes in '%s'
 si:Unsaved PDF changes in '%s'
 sk:Unsaved PDF changes in '%s'
 sl:Unsaved PDF changes in '%s'
@@ -32839,7 +35527,6 @@ pl:Updates
 pt:Updates
 ro:Updates
 ru:Updates
-sat:Updates
 si:Updates
 sk:Updates
 sl:Updates
@@ -32924,7 +35611,6 @@ pl:Use &tabs (requires restart)
 pt:Use &tabs (requires restart)
 ro:Use &tabs (requires restart)
 ru:Use &tabs (requires restart)
-sat:Use &tabs (requires restart)
 si:Use &tabs (requires restart)
 sk:Use &tabs (requires restart)
 sl:Use &tabs (requires restart)
@@ -32997,7 +35683,6 @@ pl:Use s&mooth scrolling
 pt:Use s&mooth scrolling
 ro:Use s&mooth scrolling
 ru:Use s&mooth scrolling
-sat:Use s&mooth scrolling
 si:Use s&mooth scrolling
 sk:Use s&mooth scrolling
 sl:Use s&mooth scrolling
@@ -33070,7 +35755,6 @@ pl:Use the &floating search window
 pt:Use the &floating search window
 ro:Use the &floating search window
 ru:Use the &floating search window
-sat:Use the &floating search window
 si:Use the &floating search window
 sk:Use the &floating search window
 sl:Use the &floating search window
@@ -33143,7 +35827,6 @@ pl:Use the book's highlight c&olor
 pt:Use the book's highlight c&olor
 ro:Use the book's highlight c&olor
 ru:Use the book's highlight c&olor
-sat:Use the book's highlight c&olor
 si:Use the book's highlight c&olor
 sk:Use the book's highlight c&olor
 sl:Use the book's highlight c&olor
@@ -33232,7 +35915,6 @@ pl:Bardzo wolno (0.5×)
 pt:Muito lento (0.5×)
 ro:Foarte lent (0.5×)
 ru:Очень медленно (0.5×)
-sat:Very slow (0.5×)
 si:Very slow (0.5×)
 sk:Veľmi pomaly (0.5×)
 sl:Zelo počasi (0.5×)
@@ -33249,6 +35931,78 @@ tw:極慢 (0.5×)
 uk:Дуже повільно (0.5×)
 uz:Juda sekin (0.5×)
 vn:Rất chậm (0.5×)
+:Vietnamese
+af:Vietnamese
+am:Vietnamese
+ar:Vietnamese
+az:Vietnamese
+bg:Vietnamese
+bn:Vietnamese
+br:Vietnamese
+bs:Vietnamese
+by:Vietnamese
+ca:Vietnamese
+ca-xv:Vietnamese
+cn:越南语
+co:Vietnamese
+cy:Vietnamese
+cz:Vietnamese
+de:Vietnamese
+dk:Vietnamese
+el:Vietnamese
+es:Vietnamese
+et:Vietnamese
+eu:Vietnamese
+fa:Vietnamese
+fi:Vietnamese
+fo:Vietnamese
+fr:Vietnamese
+fy-nl:Vietnamese
+ga:Vietnamese
+gl:Vietnamese
+he:Vietnamese
+hi:Vietnamese
+hr:Vietnamese
+hu:Vietnamese
+id:Vietnamese
+it:Vietnamese
+ja:Vietnamese
+jv:Vietnamese
+ka:Vietnamese
+kr:Vietnamese
+ku:Vietnamese
+kw:Vietnamese
+lt:Vietnamese
+lv:Vietnamese
+mk:Vietnamese
+ml:Vietnamese
+mm:Vietnamese
+my:Vietnamese
+ne:Vietnamese
+nl:Vietnamese
+nn:Vietnamese
+no:Vietnamese
+pa:Vietnamese
+pl:Vietnamese
+pt:Vietnamese
+ro:Vietnamese
+ru:Vietnamese
+si:Vietnamese
+sk:Vietnamese
+sl:Vietnamese
+sn:Vietnamese
+sp-rs:Vietnamese
+sq:Vietnamese
+sr-rs:Vietnamese
+sv:Vietnamese
+ta:Vietnamese
+th:Vietnamese
+tl:Vietnamese
+tr:Vietnamese
+tw:越南語
+uk:Vietnamese
+uz:Vietnamese
+vn:Vietnamese
 :View
 am:Տեսք
 br:Visualizar
@@ -33353,7 +36107,6 @@ pl:Głos
 pt:Voz
 ro:Voce
 ru:Голос
-sat:ᱥᱟᱲᱮ
 si:හඬ
 sk:Hlas
 sl:Glas
@@ -33370,6 +36123,366 @@ tw:語音
 uk:Голос
 uz:Ovoz
 vn:Giọng
+:Volc &Access Key:
+af:Volc &Access Key:
+am:Volc &Access Key:
+ar:Volc &Access Key:
+az:Volc &Access Key:
+bg:Volc &Access Key:
+bn:Volc &Access Key:
+br:Volc &Access Key:
+bs:Volc &Access Key:
+by:Volc &Access Key:
+ca:Volc &Access Key:
+ca-xv:Volc &Access Key:
+cn:火山 Access Key(&A)：
+co:Volc &Access Key:
+cy:Volc &Access Key:
+cz:Volc &Access Key:
+de:Volc &Access Key:
+dk:Volc &Access Key:
+el:Volc &Access Key:
+es:Volc &Access Key:
+et:Volc &Access Key:
+eu:Volc &Access Key:
+fa:Volc &Access Key:
+fi:Volc &Access Key:
+fo:Volc &Access Key:
+fr:Volc &Access Key:
+fy-nl:Volc &Access Key:
+ga:Volc &Access Key:
+gl:Volc &Access Key:
+he:Volc &Access Key:
+hi:Volc &Access Key:
+hr:Volc &Access Key:
+hu:Volc &Access Key:
+id:Volc &Access Key:
+it:Volc &Access Key:
+ja:Volc &Access Key:
+jv:Volc &Access Key:
+ka:Volc &Access Key:
+kr:Volc &Access Key:
+ku:Volc &Access Key:
+kw:Volc &Access Key:
+lt:Volc &Access Key:
+lv:Volc &Access Key:
+mk:Volc &Access Key:
+ml:Volc &Access Key:
+mm:Volc &Access Key:
+my:Volc &Access Key:
+ne:Volc &Access Key:
+nl:Volc &Access Key:
+nn:Volc &Access Key:
+no:Volc &Access Key:
+pa:Volc &Access Key:
+pl:Volc &Access Key:
+pt:Volc &Access Key:
+ro:Volc &Access Key:
+ru:Volc &Access Key:
+si:Volc &Access Key:
+sk:Volc &Access Key:
+sl:Volc &Access Key:
+sn:Volc &Access Key:
+sp-rs:Volc &Access Key:
+sq:Volc &Access Key:
+sr-rs:Volc &Access Key:
+sv:Volc &Access Key:
+ta:Volc &Access Key:
+th:Volc &Access Key:
+tl:Volc &Access Key:
+tr:Volc &Access Key:
+tw:火山 Access Key(&A)：
+uk:Volc &Access Key:
+uz:Volc &Access Key:
+vn:Volc &Access Key:
+:Volc &Secret Key:
+af:Volc &Secret Key:
+am:Volc &Secret Key:
+ar:Volc &Secret Key:
+az:Volc &Secret Key:
+bg:Volc &Secret Key:
+bn:Volc &Secret Key:
+br:Volc &Secret Key:
+bs:Volc &Secret Key:
+by:Volc &Secret Key:
+ca:Volc &Secret Key:
+ca-xv:Volc &Secret Key:
+cn:火山 Secret Key(&S)：
+co:Volc &Secret Key:
+cy:Volc &Secret Key:
+cz:Volc &Secret Key:
+de:Volc &Secret Key:
+dk:Volc &Secret Key:
+el:Volc &Secret Key:
+es:Volc &Secret Key:
+et:Volc &Secret Key:
+eu:Volc &Secret Key:
+fa:Volc &Secret Key:
+fi:Volc &Secret Key:
+fo:Volc &Secret Key:
+fr:Volc &Secret Key:
+fy-nl:Volc &Secret Key:
+ga:Volc &Secret Key:
+gl:Volc &Secret Key:
+he:Volc &Secret Key:
+hi:Volc &Secret Key:
+hr:Volc &Secret Key:
+hu:Volc &Secret Key:
+id:Volc &Secret Key:
+it:Volc &Secret Key:
+ja:Volc &Secret Key:
+jv:Volc &Secret Key:
+ka:Volc &Secret Key:
+kr:Volc &Secret Key:
+ku:Volc &Secret Key:
+kw:Volc &Secret Key:
+lt:Volc &Secret Key:
+lv:Volc &Secret Key:
+mk:Volc &Secret Key:
+ml:Volc &Secret Key:
+mm:Volc &Secret Key:
+my:Volc &Secret Key:
+ne:Volc &Secret Key:
+nl:Volc &Secret Key:
+nn:Volc &Secret Key:
+no:Volc &Secret Key:
+pa:Volc &Secret Key:
+pl:Volc &Secret Key:
+pt:Volc &Secret Key:
+ro:Volc &Secret Key:
+ru:Volc &Secret Key:
+si:Volc &Secret Key:
+sk:Volc &Secret Key:
+sl:Volc &Secret Key:
+sn:Volc &Secret Key:
+sp-rs:Volc &Secret Key:
+sq:Volc &Secret Key:
+sr-rs:Volc &Secret Key:
+sv:Volc &Secret Key:
+ta:Volc &Secret Key:
+th:Volc &Secret Key:
+tl:Volc &Secret Key:
+tr:Volc &Secret Key:
+tw:火山 Secret Key(&S)：
+uk:Volc &Secret Key:
+uz:Volc &Secret Key:
+vn:Volc &Secret Key:
+:Volcengine Translate
+af:Volcengine Translate
+am:Volcengine Translate
+ar:Volcengine Translate
+az:Volcengine Translate
+bg:Volcengine Translate
+bn:Volcengine Translate
+br:Volcengine Translate
+bs:Volcengine Translate
+by:Volcengine Translate
+ca:Volcengine Translate
+ca-xv:Volcengine Translate
+cn:火山翻译
+co:Volcengine Translate
+cy:Volcengine Translate
+cz:Volcengine Translate
+de:Volcengine Translate
+dk:Volcengine Translate
+el:Volcengine Translate
+es:Volcengine Translate
+et:Volcengine Translate
+eu:Volcengine Translate
+fa:Volcengine Translate
+fi:Volcengine Translate
+fo:Volcengine Translate
+fr:Volcengine Translate
+fy-nl:Volcengine Translate
+ga:Volcengine Translate
+gl:Volcengine Translate
+he:Volcengine Translate
+hi:Volcengine Translate
+hr:Volcengine Translate
+hu:Volcengine Translate
+id:Volcengine Translate
+it:Volcengine Translate
+ja:Volcengine Translate
+jv:Volcengine Translate
+ka:Volcengine Translate
+kr:Volcengine Translate
+ku:Volcengine Translate
+kw:Volcengine Translate
+lt:Volcengine Translate
+lv:Volcengine Translate
+mk:Volcengine Translate
+ml:Volcengine Translate
+mm:Volcengine Translate
+my:Volcengine Translate
+ne:Volcengine Translate
+nl:Volcengine Translate
+nn:Volcengine Translate
+no:Volcengine Translate
+pa:Volcengine Translate
+pl:Volcengine Translate
+pt:Volcengine Translate
+ro:Volcengine Translate
+ru:Volcengine Translate
+si:Volcengine Translate
+sk:Volcengine Translate
+sl:Volcengine Translate
+sn:Volcengine Translate
+sp-rs:Volcengine Translate
+sq:Volcengine Translate
+sr-rs:Volcengine Translate
+sv:Volcengine Translate
+ta:Volcengine Translate
+th:Volcengine Translate
+tl:Volcengine Translate
+tr:Volcengine Translate
+tw:火山翻譯
+uk:Volcengine Translate
+uz:Volcengine Translate
+vn:Volcengine Translate
+:Volcengine Translate failed:
+af:Volcengine Translate failed:
+am:Volcengine Translate failed:
+ar:Volcengine Translate failed:
+az:Volcengine Translate failed:
+bg:Volcengine Translate failed:
+bn:Volcengine Translate failed:
+br:Volcengine Translate failed:
+bs:Volcengine Translate failed:
+by:Volcengine Translate failed:
+ca:Volcengine Translate failed:
+ca-xv:Volcengine Translate failed:
+cn:火山翻译测试失败：
+co:Volcengine Translate failed:
+cy:Volcengine Translate failed:
+cz:Volcengine Translate failed:
+de:Volcengine Translate failed:
+dk:Volcengine Translate failed:
+el:Volcengine Translate failed:
+es:Volcengine Translate failed:
+et:Volcengine Translate failed:
+eu:Volcengine Translate failed:
+fa:Volcengine Translate failed:
+fi:Volcengine Translate failed:
+fo:Volcengine Translate failed:
+fr:Volcengine Translate failed:
+fy-nl:Volcengine Translate failed:
+ga:Volcengine Translate failed:
+gl:Volcengine Translate failed:
+he:Volcengine Translate failed:
+hi:Volcengine Translate failed:
+hr:Volcengine Translate failed:
+hu:Volcengine Translate failed:
+id:Volcengine Translate failed:
+it:Volcengine Translate failed:
+ja:Volcengine Translate failed:
+jv:Volcengine Translate failed:
+ka:Volcengine Translate failed:
+kr:Volcengine Translate failed:
+ku:Volcengine Translate failed:
+kw:Volcengine Translate failed:
+lt:Volcengine Translate failed:
+lv:Volcengine Translate failed:
+mk:Volcengine Translate failed:
+ml:Volcengine Translate failed:
+mm:Volcengine Translate failed:
+my:Volcengine Translate failed:
+ne:Volcengine Translate failed:
+nl:Volcengine Translate failed:
+nn:Volcengine Translate failed:
+no:Volcengine Translate failed:
+pa:Volcengine Translate failed:
+pl:Volcengine Translate failed:
+pt:Volcengine Translate failed:
+ro:Volcengine Translate failed:
+ru:Volcengine Translate failed:
+si:Volcengine Translate failed:
+sk:Volcengine Translate failed:
+sl:Volcengine Translate failed:
+sn:Volcengine Translate failed:
+sp-rs:Volcengine Translate failed:
+sq:Volcengine Translate failed:
+sr-rs:Volcengine Translate failed:
+sv:Volcengine Translate failed:
+ta:Volcengine Translate failed:
+th:Volcengine Translate failed:
+tl:Volcengine Translate failed:
+tr:Volcengine Translate failed:
+tw:火山翻譯測試失敗：
+uk:Volcengine Translate failed:
+uz:Volcengine Translate failed:
+vn:Volcengine Translate failed:
+:Volcengine Translate works.
+af:Volcengine Translate works.
+am:Volcengine Translate works.
+ar:Volcengine Translate works.
+az:Volcengine Translate works.
+bg:Volcengine Translate works.
+bn:Volcengine Translate works.
+br:Volcengine Translate works.
+bs:Volcengine Translate works.
+by:Volcengine Translate works.
+ca:Volcengine Translate works.
+ca-xv:Volcengine Translate works.
+cn:火山翻译连接正常。
+co:Volcengine Translate works.
+cy:Volcengine Translate works.
+cz:Volcengine Translate works.
+de:Volcengine Translate works.
+dk:Volcengine Translate works.
+el:Volcengine Translate works.
+es:Volcengine Translate works.
+et:Volcengine Translate works.
+eu:Volcengine Translate works.
+fa:Volcengine Translate works.
+fi:Volcengine Translate works.
+fo:Volcengine Translate works.
+fr:Volcengine Translate works.
+fy-nl:Volcengine Translate works.
+ga:Volcengine Translate works.
+gl:Volcengine Translate works.
+he:Volcengine Translate works.
+hi:Volcengine Translate works.
+hr:Volcengine Translate works.
+hu:Volcengine Translate works.
+id:Volcengine Translate works.
+it:Volcengine Translate works.
+ja:Volcengine Translate works.
+jv:Volcengine Translate works.
+ka:Volcengine Translate works.
+kr:Volcengine Translate works.
+ku:Volcengine Translate works.
+kw:Volcengine Translate works.
+lt:Volcengine Translate works.
+lv:Volcengine Translate works.
+mk:Volcengine Translate works.
+ml:Volcengine Translate works.
+mm:Volcengine Translate works.
+my:Volcengine Translate works.
+ne:Volcengine Translate works.
+nl:Volcengine Translate works.
+nn:Volcengine Translate works.
+no:Volcengine Translate works.
+pa:Volcengine Translate works.
+pl:Volcengine Translate works.
+pt:Volcengine Translate works.
+ro:Volcengine Translate works.
+ru:Volcengine Translate works.
+si:Volcengine Translate works.
+sk:Volcengine Translate works.
+sl:Volcengine Translate works.
+sn:Volcengine Translate works.
+sp-rs:Volcengine Translate works.
+sq:Volcengine Translate works.
+sr-rs:Volcengine Translate works.
+sv:Volcengine Translate works.
+ta:Volcengine Translate works.
+th:Volcengine Translate works.
+tl:Volcengine Translate works.
+tr:Volcengine Translate works.
+tw:火山翻譯連線正常。
+uk:Volcengine Translate works.
+uz:Volcengine Translate works.
+vn:Volcengine Translate works.
 :Waiting for the AI reply. Click Copy when it is ready…
 cn:等待 AI 回复并复制…
 tw:等待 AI 回覆並複製…
@@ -33385,6 +36498,78 @@ nl:Waarschuwing
 pl:Uwaga
 sk:Upozornenie
 tw:警告
+:Web AI
+af:Web AI
+am:Web AI
+ar:Web AI
+az:Web AI
+bg:Web AI
+bn:Web AI
+br:Web AI
+bs:Web AI
+by:Web AI
+ca:Web AI
+ca-xv:Web AI
+cn:网页 AI
+co:Web AI
+cy:Web AI
+cz:Web AI
+de:Web AI
+dk:Web AI
+el:Web AI
+es:Web AI
+et:Web AI
+eu:Web AI
+fa:Web AI
+fi:Web AI
+fo:Web AI
+fr:Web AI
+fy-nl:Web AI
+ga:Web AI
+gl:Web AI
+he:Web AI
+hi:Web AI
+hr:Web AI
+hu:Web AI
+id:Web AI
+it:Web AI
+ja:Web AI
+jv:Web AI
+ka:Web AI
+kr:Web AI
+ku:Web AI
+kw:Web AI
+lt:Web AI
+lv:Web AI
+mk:Web AI
+ml:Web AI
+mm:Web AI
+my:Web AI
+ne:Web AI
+nl:Web AI
+nn:Web AI
+no:Web AI
+pa:Web AI
+pl:Web AI
+pt:Web AI
+ro:Web AI
+ru:Web AI
+si:Web AI
+sk:Web AI
+sl:Web AI
+sn:Web AI
+sp-rs:Web AI
+sq:Web AI
+sr-rs:Web AI
+sv:Web AI
+ta:Web AI
+th:Web AI
+tl:Web AI
+tr:Web AI
+tw:網頁 AI
+uk:Web AI
+uz:Web AI
+vn:Web AI
 :When off, narrated books are read with the voice above.
 af:When off, narrated books are read with the voice above.
 am:When off, narrated books are read with the voice above.
@@ -33441,7 +36626,6 @@ pl:When off, narrated books are read with the voice above.
 pt:When off, narrated books are read with the voice above.
 ro:When off, narrated books are read with the voice above.
 ru:When off, narrated books are read with the voice above.
-sat:When off, narrated books are read with the voice above.
 si:When off, narrated books are read with the voice above.
 sk:When off, narrated books are read with the voice above.
 sl:When off, narrated books are read with the voice above.
@@ -33523,7 +36707,6 @@ pl:Window
 pt:Window
 ro:Window
 ru:Window
-sat:Window
 si:Window
 sk:Window
 sl:Window
@@ -33596,7 +36779,6 @@ pl:Windows scrollbars
 pt:Windows scrollbars
 ro:Windows scrollbars
 ru:Windows scrollbars
-sat:Windows scrollbars
 si:Windows scrollbars
 sk:Windows scrollbars
 sl:Windows scrollbars
@@ -33613,6 +36795,78 @@ tw:Windows 捲動軸
 uk:Windows scrollbars
 uz:Windows scrollbars
 vn:Windows scrollbars
+:Without Volc keys, translation uses the AI API below when configured.
+af:Without Volc keys, translation uses the AI API below when configured.
+am:Without Volc keys, translation uses the AI API below when configured.
+ar:Without Volc keys, translation uses the AI API below when configured.
+az:Without Volc keys, translation uses the AI API below when configured.
+bg:Without Volc keys, translation uses the AI API below when configured.
+bn:Without Volc keys, translation uses the AI API below when configured.
+br:Without Volc keys, translation uses the AI API below when configured.
+bs:Without Volc keys, translation uses the AI API below when configured.
+by:Without Volc keys, translation uses the AI API below when configured.
+ca:Without Volc keys, translation uses the AI API below when configured.
+ca-xv:Without Volc keys, translation uses the AI API below when configured.
+cn:未配置火山密钥时，若已配置下方 AI API，则用大模型翻译。
+co:Without Volc keys, translation uses the AI API below when configured.
+cy:Without Volc keys, translation uses the AI API below when configured.
+cz:Without Volc keys, translation uses the AI API below when configured.
+de:Without Volc keys, translation uses the AI API below when configured.
+dk:Without Volc keys, translation uses the AI API below when configured.
+el:Without Volc keys, translation uses the AI API below when configured.
+es:Without Volc keys, translation uses the AI API below when configured.
+et:Without Volc keys, translation uses the AI API below when configured.
+eu:Without Volc keys, translation uses the AI API below when configured.
+fa:Without Volc keys, translation uses the AI API below when configured.
+fi:Without Volc keys, translation uses the AI API below when configured.
+fo:Without Volc keys, translation uses the AI API below when configured.
+fr:Without Volc keys, translation uses the AI API below when configured.
+fy-nl:Without Volc keys, translation uses the AI API below when configured.
+ga:Without Volc keys, translation uses the AI API below when configured.
+gl:Without Volc keys, translation uses the AI API below when configured.
+he:Without Volc keys, translation uses the AI API below when configured.
+hi:Without Volc keys, translation uses the AI API below when configured.
+hr:Without Volc keys, translation uses the AI API below when configured.
+hu:Without Volc keys, translation uses the AI API below when configured.
+id:Without Volc keys, translation uses the AI API below when configured.
+it:Without Volc keys, translation uses the AI API below when configured.
+ja:Without Volc keys, translation uses the AI API below when configured.
+jv:Without Volc keys, translation uses the AI API below when configured.
+ka:Without Volc keys, translation uses the AI API below when configured.
+kr:Without Volc keys, translation uses the AI API below when configured.
+ku:Without Volc keys, translation uses the AI API below when configured.
+kw:Without Volc keys, translation uses the AI API below when configured.
+lt:Without Volc keys, translation uses the AI API below when configured.
+lv:Without Volc keys, translation uses the AI API below when configured.
+mk:Without Volc keys, translation uses the AI API below when configured.
+ml:Without Volc keys, translation uses the AI API below when configured.
+mm:Without Volc keys, translation uses the AI API below when configured.
+my:Without Volc keys, translation uses the AI API below when configured.
+ne:Without Volc keys, translation uses the AI API below when configured.
+nl:Without Volc keys, translation uses the AI API below when configured.
+nn:Without Volc keys, translation uses the AI API below when configured.
+no:Without Volc keys, translation uses the AI API below when configured.
+pa:Without Volc keys, translation uses the AI API below when configured.
+pl:Without Volc keys, translation uses the AI API below when configured.
+pt:Without Volc keys, translation uses the AI API below when configured.
+ro:Without Volc keys, translation uses the AI API below when configured.
+ru:Without Volc keys, translation uses the AI API below when configured.
+si:Without Volc keys, translation uses the AI API below when configured.
+sk:Without Volc keys, translation uses the AI API below when configured.
+sl:Without Volc keys, translation uses the AI API below when configured.
+sn:Without Volc keys, translation uses the AI API below when configured.
+sp-rs:Without Volc keys, translation uses the AI API below when configured.
+sq:Without Volc keys, translation uses the AI API below when configured.
+sr-rs:Without Volc keys, translation uses the AI API below when configured.
+sv:Without Volc keys, translation uses the AI API below when configured.
+ta:Without Volc keys, translation uses the AI API below when configured.
+th:Without Volc keys, translation uses the AI API below when configured.
+tl:Without Volc keys, translation uses the AI API below when configured.
+tr:Without Volc keys, translation uses the AI API below when configured.
+tw:未設定火山金鑰時，若已設定下方 AI API，則用大模型翻譯。
+uk:Without Volc keys, translation uses the AI API below when configured.
+uz:Without Volc keys, translation uses the AI API below when configured.
+vn:Without Volc keys, translation uses the AI API below when configured.
 :Write bookmarks
 cn:写入书签
 tw:寫入書籤
@@ -33712,6 +36966,78 @@ nl:U installeert 32bit SumatraPDF op 64bit besturingssysteem.\nWilt u de\n64bit 
 pl:Instalujesz 32-bitowy program SumatraPDF w 64-bitowym systemie operacyjnym.\nCzy chcesz pobrać\nwersję 64-bitową?
 sk:Inštalujete 32-bitovú verziu SumatraPDF na 64-bitový operačný systém.\nChcete stiahnuť\n64-bitovú verziu?
 tw:您正在一台 64 位元的電腦上安裝 32 位元的 SumatraPDF。\n您想下載 64 位元的版本嗎?
+:You:
+af:You:
+am:You:
+ar:You:
+az:You:
+bg:You:
+bn:You:
+br:You:
+bs:You:
+by:You:
+ca:You:
+ca-xv:You:
+cn:你：
+co:You:
+cy:You:
+cz:You:
+de:You:
+dk:You:
+el:You:
+es:You:
+et:You:
+eu:You:
+fa:You:
+fi:You:
+fo:You:
+fr:You:
+fy-nl:You:
+ga:You:
+gl:You:
+he:You:
+hi:You:
+hr:You:
+hu:You:
+id:You:
+it:You:
+ja:You:
+jv:You:
+ka:You:
+kr:You:
+ku:You:
+kw:You:
+lt:You:
+lv:You:
+mk:You:
+ml:You:
+mm:You:
+my:You:
+ne:You:
+nl:You:
+nn:You:
+no:You:
+pa:You:
+pl:You:
+pt:You:
+ro:You:
+ru:You:
+si:You:
+sk:You:
+sl:You:
+sn:You:
+sp-rs:You:
+sq:You:
+sr-rs:You:
+sv:You:
+ta:You:
+th:You:
+tl:You:
+tr:You:
+tw:你：
+uk:You:
+uz:You:
+vn:You:
 :Zoom
 am:Դիտափոխել
 br:Zoom
@@ -34093,7 +37419,6 @@ pl:dokument
 pt:documento
 ro:document
 ru:документ
-sat:ᱫᱚᱞᱤ
 si:ලේඛනය
 sk:dokument
 sl:dokument
@@ -34178,7 +37503,6 @@ pl:e.g. 2, 5-7, 13-
 pt:e.g. 2, 5-7, 13-
 ro:e.g. 2, 5-7, 13-
 ru:e.g. 2, 5-7, 13-
-sat:e.g. 2, 5-7, 13-
 si:e.g. 2, 5-7, 13-
 sk:e.g. 2, 5-7, 13-
 sl:e.g. 2, 5-7, 13-
@@ -34270,3 +37594,30 @@ sk:↑ ↓ – navigovať
 :✓ Likely TOC pages found. Please confirm the selection.
 cn:✓ 已找到疑似目录页，请确认选择。
 tw:✓ 已找到疑似目錄頁，請確認選擇。
+:Ask the API for its model list and show it in the dropdown. You can also type a model name.
+cn:向当前 API 查询模型列表并显示在下拉框中。也可以直接输入模型名。
+tw:向目前 API 查詢模型清單並顯示在下拉清單中。也可以直接輸入模型名稱。
+:&Query
+cn:查询(&Q)
+tw:查詢(&Q)
+:Query
+cn:查询
+tw:查詢
+:Leave this empty and click Query to list every model. Type part of a name to list only matches. A model name can also be typed in full.
+cn:留空后点「查询」列出全部模型，其余的用滚动条查看。输入名称的一部分则只列出匹配项。也可以直接输入完整模型名。
+tw:留空後按「查詢」列出全部模型，其餘的用捲軸查看。輸入名稱的一部分則只列出相符項。也可以直接輸入完整模型名稱。
+:&Choose...
+cn:选择(&C)...
+tw:選擇(&C)...
+:Choose a model
+cn:选择模型
+tw:選擇模型
+:Search models
+cn:搜索模型
+tw:搜尋模型
+:None of the models from the API can be used here. Type a chat model name instead.
+cn:接口返回的模型都不能用于这里。请直接输入一个对话模型名。
+tw:介面傳回的模型都不能用於這裡。請直接輸入一個對話模型名稱。
+:Ask the API for model names and put the one you pick in the box. You can also type a name.
+cn:向 API 查询模型名单，把选中的填进框里。也可以直接输入模型名。
+tw:向 API 查詢模型名單，把選中的填進框裡。也可以直接輸入模型名稱。

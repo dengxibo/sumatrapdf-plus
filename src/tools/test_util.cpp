@@ -40,6 +40,7 @@ extern void PdfTocEditModel_UnitTests();
 extern void PrintedTocModel_UnitTests();
 extern void TtsPronunciation_UnitTests();
 extern void EpubMediaOverlay_UnitTests();
+extern void InlineTranslateLang_UnitTests();
 extern void VecTest();
 extern void WinUtilTest();
 extern void StrFormatTest();
@@ -143,6 +144,7 @@ int main(int argc, char** argv) {
     PrintedTocModel_UnitTests();
     TtsPronunciation_UnitTests();
     EpubMediaOverlay_UnitTests();
+    InlineTranslateLang_UnitTests();
     VecTest();
     WinUtilTest();
     SumatraPDF_UnitTests();

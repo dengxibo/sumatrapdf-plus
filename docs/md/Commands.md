@@ -285,7 +285,8 @@ CmdSearchSelectionWithBing,,Search Selection with Bing,
 CmdSearchSelectionWithGoogle,,Search Selection with Google,
 CmdSearchSelectionWithWikipedia,,Search Selection with Wikipedia,ver 3.6+
 CmdSearchSelectionWithGoogleScholar,,Search Selection with Google Scholar,ver 3.6+
-CmdAnalyzeSelectionWithDoubao,,Ask AI,Selection context menu; copies text and opens AI web chat (Doubao, DeepSeek, or ChatGPT via AiChatProvider), ver 3.7+
+CmdAnalyzeSelectionWithDoubao,,Ask AI,Selection context menu and selection toolbar; with AiToc API configured opens an in-app Q&A panel on the selection, otherwise opens web chat (Doubao, DeepSeek, or ChatGPT via AiChatProvider), ver 3.7+
+CmdTranslateSelection,,Translate Selection,Selection context menu and selection toolbar; Volcengine Translate when keys are set, otherwise AiToc API pure-translate fallback; shows an in-app panel, ver 3.7+
 CmdLookupSelection,,Look Up Selection,Selection context menu and selection toolbar; offline dictionary lookup for selected text, ver 3.7+
 CmdSendByEmail,,Send Document By Email...,
 CmdInvokeInverseSearch,,Invoke Inverse Search,ver 3.6+

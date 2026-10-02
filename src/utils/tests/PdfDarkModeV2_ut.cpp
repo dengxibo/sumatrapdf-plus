@@ -266,6 +266,11 @@ void PdfDarkModeV2_UnitTests() {
     utassert(!PdfDarkModeV2LooksLikeHighKeyPhotograph(0.40f, 0.020f, 0.12f, 0.15f, 0.25f));
     // Blank gutter stats are not a photograph (no midtone mass).
     utassert(!PdfDarkModeV2LooksLikeHighKeyPhotograph(0.02f, 0.001f, 0.00f, 0.00f, 0.01f));
+    // Cream textbook plate: flat, no ink. Fog (sat 0.04) and a text scan (ink) stay out.
+    utassert(PdfDarkModeV2IsBlankPaperPlate(0.93f, 0.00f, 0.00f, 0.011f));
+    utassert(!PdfDarkModeV2IsBlankPaperPlate(0.84f, 0.043f, 0.007f, 0.024f));
+    utassert(!PdfDarkModeV2IsBlankPaperPlate(0.90f, 0.00f, 0.06f, 0.010f));
+    utassert(!PdfDarkModeV2IsBlankPaperPlate(0.90f, 0.00f, 0.00f, 0.040f));
 
     // Mostly gray full-bleed photo (RAZ geese): keep original, do not Okular it.
     utassert(PdfDarkModeV2ShouldKeepOriginalPhotograph(0.12f, 0.045f));

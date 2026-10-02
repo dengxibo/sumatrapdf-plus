@@ -41,6 +41,7 @@
 #include "EbookFontMenu.h"
 #include "TextToSpeech.h"
 #include "AiTocApi.h"
+#include "InlineTranslate.h"
 
 #include "utils/Log.h"
 #include <Notifications.h>
@@ -480,6 +481,7 @@ bool LoadSettings() {
     AutoFillAiTocApiFromFile();
     NormalizeAiTocApiPrefs();
     AiTocApiUnprotectPrefsSecrets(gprefs);
+    InlineTranslateUnprotectPrefsSecrets(gprefs);
     MigrateDocumentColorMode(settingsRaw.Get());
 
     if (trans::ValidateLangCode(gprefs->uiLanguage)) {
@@ -749,11 +751,15 @@ bool SaveSettings() {
     }
     char* plainAiTocKey = nullptr;
     char* plainAiTocProfiles = nullptr;
+    char* plainVolcAk = nullptr;
+    char* plainVolcSk = nullptr;
     AiTocApiProtectPrefsSecretsForSave(gGlobalPrefs, &plainAiTocKey, &plainAiTocProfiles);
+    InlineTranslateProtectPrefsSecretsForSave(gGlobalPrefs, &plainVolcAk, &plainVolcSk);
     ByteSlice prevPrefs = file::ReadFile(path);
     const char* prevPrefsData = (char*)prevPrefs.data();
     ByteSlice prefs = SerializeGlobalPrefs(gGlobalPrefs, prevPrefsData);
     AiTocApiRestorePrefsSecretsAfterSave(gGlobalPrefs, plainAiTocKey, plainAiTocProfiles);
+    InlineTranslateRestorePrefsSecretsAfterSave(gGlobalPrefs, plainVolcAk, plainVolcSk);
     defer {
         str::Free(prevPrefs.data());
         str::Free(prefs.data());
