@@ -13,6 +13,7 @@
 
 #include "Settings.h"
 #include "AppSettings.h"
+#include "AppDialogTheme.h"
 #include "DocController.h"
 #include "EngineBase.h"
 #include "EngineAll.h"
@@ -212,6 +213,7 @@ struct ListBoxModelCP : ListBoxModel {
 struct CommandPaletteWnd : Wnd {
     ~CommandPaletteWnd() override = default;
     HFONT font = nullptr;
+    int dpi = 96;
     MainWindow* win = nullptr;
 
     Edit* editQuery = nullptr;
@@ -987,6 +989,26 @@ static void ScheduleDeleteAndExecCommand(i32 cmdId = 0) {
 
 LRESULT CommandPaletteWnd::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
+        case WM_DPICHANGED: {
+            int dpi = RoundUp((int)LOWORD(wp), 4);
+            if (dpi < 72) {
+                dpi = 96;
+            }
+            if (dpi != this->dpi) {
+                this->dpi = dpi;
+                font = GetAppBiggerFontForDpi(dpi);
+                AppDialogApplyFontToChildren(hwnd, font);
+                if (listBox) {
+                    listBox->font = font;
+                }
+            }
+            RECT* prc = (RECT*)lp;
+            if (prc) {
+                SetWindowPos(hwnd, nullptr, prc->left, prc->top, prc->right - prc->left, prc->bottom - prc->top,
+                             SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            return 0;
+        }
         case WM_ACTIVATE:
             if (wp == WA_INACTIVE) {
                 ScheduleDeleteAndExecCommand();
@@ -1613,6 +1635,11 @@ static Static* CreateStatic(HWND parent, HFONT font, const char* s) {
 }
 
 bool CommandPaletteWnd::Create(MainWindow* win, const char* prefix, int smartTabAdvance) {
+    dpi = win && win->hwndFrame ? DpiGet(win->hwndFrame) : 96;
+    if (dpi < 72) {
+        dpi = 96;
+    }
+    auto palPx = [this](int x) { return MulDiv(x, dpi, 96); };
     if (str::Eq(prefix, kPalettePrefixTabs)) {
         smartTabMode = smartTabAdvance != 0;
     }
@@ -1647,7 +1674,7 @@ bool CommandPaletteWnd::Create(MainWindow* win, const char* prefix, int smartTab
         args.isRtl = IsUIRtl();
         auto c = new Edit();
         c->SetColors(colTxt, colBg);
-        c->maxDx = 150;
+        c->maxDx = palPx(150);
         HWND ok = c->Create(args);
         ReportIf(!ok);
         c->onTextChanged = MkMethod0<CommandPaletteWnd, &CommandPaletteWnd::QueryChanged>(this);
@@ -1659,7 +1686,7 @@ bool CommandPaletteWnd::Create(MainWindow* win, const char* prefix, int smartTab
         auto hbox = new HBox();
         hbox->alignMain = MainAxisAlign::MainCenter;
         hbox->alignCross = CrossAxisAlign::CrossCenter;
-        auto pad = Insets{0, 8, 0, 8};
+        auto pad = Insets{0, palPx(8), 0, palPx(8)};
         {
             auto c = CreateStatic(hwnd, font, _TRA("# File History"));
             c->SetColors(colTxt, colBg);
@@ -1729,7 +1756,7 @@ bool CommandPaletteWnd::Create(MainWindow* win, const char* prefix, int smartTab
         auto hbox = new HBox();
         hbox->alignMain = MainAxisAlign::MainCenter;
         hbox->alignCross = CrossAxisAlign::CrossCenter;
-        auto pad = Insets{0, 8, 0, 8};
+        auto pad = Insets{0, palPx(8), 0, palPx(8)};
         for (int i = 0; i < 3; i++) {
             auto c = CreateStatic(hwnd, font, strings[i]);
             c->SetColors(colTxt, colBg);
@@ -1739,17 +1766,16 @@ bool CommandPaletteWnd::Create(MainWindow* win, const char* prefix, int smartTab
         vbox->AddChild(hbox);
     }
 
-    auto padding = new Padding(vbox, DpiScaledInsets(hwnd, 4, 8));
+    auto padding = new Padding(vbox, DpiScaledInsets(win->hwndFrame, 4, 8));
     layout = padding;
 
     auto rc = ClientRect(win->hwndFrame);
-    int dy = rc.dy - 72;
-    if (dy < 480) {
-        dy = 480;
+    int dy = rc.dy - palPx(72);
+    if (dy < palPx(480)) {
+        dy = palPx(480);
     }
-    int dx = rc.dx - 256;
-    dx = limitValue(dx, 640, 1024);
-    limitValue(dx, 640, 1024);
+    int dx = rc.dx - palPx(256);
+    dx = limitValue(dx, palPx(640), palPx(1024));
     LayoutAndSizeToContent(layout, dx, dy, hwnd);
     PositionCommandPalette(hwnd, win->hwndFrame);
 
@@ -1775,7 +1801,7 @@ void RunCommandPalette(MainWindow* win, const char* prefix, int smartTabAdvance)
     auto wnd = new CommandPaletteWnd();
     auto fn = MkFunc1Void<Wnd::DestroyEvent*>(OnDestroy);
     wnd->onDestroy = fn;
-    wnd->font = GetAppBiggerFont();
+    wnd->font = GetAppBiggerFontForHwnd(win->hwndFrame);
     wnd->win = win;
     bool ok = wnd->Create(win, prefix, smartTabAdvance);
     ReportIf(!ok);

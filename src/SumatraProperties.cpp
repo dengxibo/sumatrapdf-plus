@@ -6,6 +6,7 @@
 #include "utils/ScopedWin.h"
 #include "utils/FileUtil.h"
 #include "utils/WinUtil.h"
+#include "utils/Dpi.h"
 #include "utils/ThreadUtil.h"
 #include "utils/UITask.h"
 
@@ -46,6 +47,8 @@ struct PropertiesLayout {
     HWND hwndParent = nullptr;
     HWND hwndEdit = nullptr;
     Button* btnCopyToClipboard = nullptr;
+    HFONT font = nullptr;
+    int dpi = 96;
     StrBuilder propsText;
     Point initialPos;
 
@@ -548,6 +551,54 @@ static void CopyPropertiesToClipboard(PropertiesLayout* pl) {
     CopyTextToClipboard(pl->propsText.CStr());
 }
 
+static int PropPx(const PropertiesLayout* pl, int x) {
+    int dpi = (pl && pl->dpi >= 72) ? pl->dpi : 96;
+    return MulDiv(x, dpi, 96);
+}
+
+static int PropMetric(const PropertiesLayout* pl, int metric) {
+    int v = GetSystemMetrics(metric);
+    int sys = DpiGet(nullptr);
+    int dpi = (pl && pl->dpi >= 72) ? pl->dpi : sys;
+    if (sys >= 72 && dpi >= 72 && sys != dpi) {
+        v = MulDiv(v, dpi, sys);
+    }
+    return v;
+}
+
+static HFONT CreatePropsFont(int dpi) {
+    LOGFONTW lf{};
+    lf.lfHeight = -MulDiv(14, dpi < 72 ? 96 : dpi, 72);
+    lf.lfWeight = FW_NORMAL;
+    lf.lfCharSet = DEFAULT_CHARSET;
+    lf.lfQuality = CLEARTYPE_QUALITY;
+    wcscpy_s(lf.lfFaceName, L"Consolas");
+    return CreateFontIndirectW(&lf);
+}
+
+static void ApplyPropsFont(PropertiesLayout* pl, int dpi) {
+    if (!pl || dpi < 72 || (pl->dpi == dpi && pl->font)) {
+        return;
+    }
+    HFONT next = CreatePropsFont(dpi);
+    if (!next) {
+        return;
+    }
+    HFONT prev = pl->font;
+    pl->font = next;
+    pl->dpi = dpi;
+    if (pl->hwndEdit) {
+        SendMessageW(pl->hwndEdit, WM_SETFONT, (WPARAM)next, FALSE);
+    }
+    HFONT ui = GetAppFontForDpi(dpi);
+    if (pl->btnCopyToClipboard && pl->btnCopyToClipboard->hwnd) {
+        SendMessageW(pl->btnCopyToClipboard->hwnd, WM_SETFONT, (WPARAM)ui, FALSE);
+    }
+    if (prev) {
+        DeleteObject(prev);
+    }
+}
+
 static void SizeToContent(PropertiesLayout* pl) {
     HWND hwnd = pl->hwnd;
     HWND hwndEdit = pl->hwndEdit;
@@ -570,7 +621,7 @@ static void SizeToContent(PropertiesLayout* pl) {
         nLines++;
         text = nl ? nl + 1 : text + lineLen;
     }
-    maxLineDx += 16;
+    maxLineDx += PropPx(pl, 16);
 
     TEXTMETRICW tm{};
     GetTextMetricsW(hdcEdit, &tm);
@@ -580,15 +631,15 @@ static void SizeToContent(PropertiesLayout* pl) {
     ReleaseDC(hwndEdit, hdcEdit);
 
     // add padding for scrollbar, border, window frame
-    int editPadding = GetSystemMetrics(SM_CXVSCROLL) + 2 * GetSystemMetrics(SM_CXEDGE) + 16;
-    int frameDx = GetSystemMetrics(SM_CXFRAME) * 2;
+    int editPadding = PropMetric(pl, SM_CXVSCROLL) + 2 * PropMetric(pl, SM_CXEDGE) + PropPx(pl, 16);
+    int frameDx = PropMetric(pl, SM_CXFRAME) * 2;
     int wantedClientDx = maxLineDx + editPadding;
     int wantedDx = wantedClientDx + frameDx;
 
     // calculate height to fit all lines
-    int editBorderDy = 2 * GetSystemMetrics(SM_CYEDGE);
-    int frameDy = GetSystemMetrics(SM_CYFRAME) * 2 + GetSystemMetrics(SM_CYCAPTION);
-    int wantedDy = (nLines + 3) * lineHeight + editBorderDy + kButtonAreaDy + frameDy;
+    int editBorderDy = 2 * PropMetric(pl, SM_CYEDGE);
+    int frameDy = PropMetric(pl, SM_CYFRAME) * 2 + PropMetric(pl, SM_CYCAPTION);
+    int wantedDy = (nLines + 3) * lineHeight + editBorderDy + PropPx(pl, kButtonAreaDy) + frameDy;
 
     // cap at 80% of screen
     Rect work = GetWorkAreaRect(WindowRect(hwnd), hwnd);
@@ -603,11 +654,11 @@ static void SizeToContent(PropertiesLayout* pl) {
 
 static void LayoutButtons(PropertiesLayout* pl) {
     Rect cRc = ClientRect(pl->hwnd);
-    int btnY = cRc.dy - kButtonAreaDy + kButtonPadding;
+    int btnY = cRc.dy - PropPx(pl, kButtonAreaDy) + PropPx(pl, kButtonPadding);
 
     if (pl->btnCopyToClipboard) {
         auto sz = pl->btnCopyToClipboard->GetIdealSize();
-        int x = cRc.dx - kButtonPadding - sz.dx;
+        int x = cRc.dx - PropPx(pl, kButtonPadding) - sz.dx;
         Rect rc{x, btnY, sz.dx, sz.dy};
         pl->btnCopyToClipboard->SetBounds(rc);
     }
@@ -648,12 +699,29 @@ LRESULT CALLBACK WndProcProperties(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_CREATE:
             break;
 
+        case WM_DPICHANGED:
+            pl = FindPropertyWindowByHwnd(hwnd);
+            if (pl) {
+                int dpi = RoundUp((int)LOWORD(wp), 4);
+                if (dpi < 72) {
+                    dpi = 96;
+                }
+                ApplyPropsFont(pl, dpi);
+                RECT* prc = (RECT*)lp;
+                if (prc) {
+                    SetWindowPos(hwnd, nullptr, prc->left, prc->top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                }
+                SizeToContent(pl);
+                LayoutButtons(pl);
+            }
+            return 0;
+
         case WM_SIZE:
             pl = FindPropertyWindowByHwnd(hwnd);
             if (pl && pl->hwndEdit) {
                 int dx = LOWORD(lp);
                 int dy = HIWORD(lp);
-                int editDy = dy - kButtonAreaDy;
+                int editDy = dy - PropPx(pl, kButtonAreaDy);
                 MoveWindow(pl->hwndEdit, 0, 0, dx, editDy, TRUE);
                 LayoutButtons(pl);
                 RECT rc = {0, editDy, dx, dy};
@@ -679,6 +747,10 @@ LRESULT CALLBACK WndProcProperties(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 }
             }
             gPropertiesWindows.Remove(pl);
+            if (pl->font) {
+                DeleteObject(pl->font);
+                pl->font = nullptr;
+            }
             delete pl;
             break;
 
@@ -764,12 +836,22 @@ void ShowProperties(HWND parent, DocController* ctrl) {
     ReportIf(!wcex.hIcon);
     RegisterClassEx(&wcex);
 
+    int dpi = parent ? DpiGet(parent) : 96;
+    if (dpi < 72) {
+        dpi = 96;
+    }
+    layoutData->dpi = dpi;
+    layoutData->font = CreatePropsFont(dpi);
+
     DWORD dwStyle = WS_OVERLAPPEDWINDOW;
     auto title = ToWStrTemp(_TRA("Document Properties"));
-    HWND hwnd = CreateWindowExW(0, kPropertiesWinClassName, title, dwStyle, CW_USEDEFAULT, CW_USEDEFAULT, 500, 400,
-                                nullptr, nullptr, h, nullptr);
+    HWND hwnd = CreateWindowExW(0, kPropertiesWinClassName, title, dwStyle, CW_USEDEFAULT, CW_USEDEFAULT,
+                                MulDiv(500, dpi, 96), MulDiv(400, dpi, 96), nullptr, nullptr, h, nullptr);
     if (!hwnd) {
         gPropertiesWindows.Remove(layoutData);
+        if (layoutData->font) {
+            DeleteObject(layoutData->font);
+        }
         delete layoutData;
         return;
     }
@@ -782,7 +864,7 @@ void ShowProperties(HWND parent, DocController* ctrl) {
 
     // create the edit control
     Rect cRc = ClientRect(hwnd);
-    int editDy = cRc.dy - kButtonAreaDy;
+    int editDy = cRc.dy - PropPx(layoutData, kButtonAreaDy);
     DWORD editStyle =
         WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_AUTOHSCROLL;
     HWND hwndEdit =
@@ -794,11 +876,8 @@ void ShowProperties(HWND parent, DocController* ctrl) {
     }
     SetWindowLongPtr(hwndEdit, GWLP_WNDPROC, (LONG_PTR)WndProcPropertiesEdit);
 
-    HDC hdc = GetDC(hwnd);
-    HFONT font = CreateSimpleFont(hdc, "Consolas", 14);
-    ReleaseDC(hwnd, hdc);
-    if (font) {
-        SendMessageW(hwndEdit, WM_SETFONT, (WPARAM)font, TRUE);
+    if (layoutData->font) {
+        SendMessageW(hwndEdit, WM_SETFONT, (WPARAM)layoutData->font, TRUE);
     }
 
     SetEditText(hwndEdit, layoutData->propsText.CStr());
@@ -809,6 +888,7 @@ void ShowProperties(HWND parent, DocController* ctrl) {
     {
         Button::CreateArgs args;
         args.parent = hwnd;
+        args.font = GetAppFontForDpi(layoutData->dpi);
         args.text = _TRA("Copy To Clipboard");
         args.isRtl = isRtl;
 

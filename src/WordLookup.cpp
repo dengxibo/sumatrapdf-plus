@@ -139,6 +139,7 @@ struct WordLookupWnd : Wnd {
     HFONT font = nullptr;
     HFONT headwordFont = nullptr;
     HFONT posFont = nullptr;
+    int dpi = 0;
     bool fontOwned = false;
     bool headwordFontOwned = false;
     Rect closeBtnPos;
@@ -171,6 +172,8 @@ struct WordLookupWnd : Wnd {
 static WordLookupWnd* gWordLookupWnd = nullptr;
 static void StopCurrentLookupAudio(bool clearSpeakerAnim = true);
 static void PositionWordLookup(WordLookupWnd* wnd, Point screenPos);
+
+static void ApplyLookupFonts(WordLookupWnd* wnd, int dpi);
 static void RelookupInPopup(WordLookupWnd* wnd, const char* word);
 
 static void ClearLookupFlowHits(Vec<LookupFlowHit>& hits) {
@@ -222,6 +225,16 @@ static HFONT CreateBoldFontFrom(HFONT base) {
     return CreateFontIndirectW(&lf);
 }
 
+static int LookupPx(HWND hwnd, int x) {
+    int dpi = 96;
+    if (gWordLookupWnd && gWordLookupWnd->dpi >= 72 && (!hwnd || hwnd == gWordLookupWnd->hwnd)) {
+        dpi = gWordLookupWnd->dpi;
+    } else if (hwnd) {
+        dpi = DpiGet(hwnd);
+    }
+    return MulDiv(x, dpi, 96);
+}
+
 static HFONT CreateScaledFontFrom(HFONT base, int pct, int weight = 0) {
     if (!base) {
         return nullptr;
@@ -233,6 +246,40 @@ static HFONT CreateScaledFontFrom(HFONT base, int pct, int weight = 0) {
         lf.lfWeight = weight;
     }
     return CreateFontIndirectW(&lf);
+}
+
+static void ApplyLookupFonts(WordLookupWnd* wnd, int dpi) {
+    if (!wnd || dpi < 72 || (wnd->dpi == dpi && wnd->font)) {
+        return;
+    }
+    if (wnd->fontOwned && wnd->font) {
+        DeleteObject(wnd->font);
+    }
+    if (wnd->headwordFontOwned && wnd->headwordFont) {
+        DeleteObject(wnd->headwordFont);
+    }
+    if (wnd->posFont) {
+        DeleteObject(wnd->posFont);
+        wnd->posFont = nullptr;
+    }
+    wnd->font = nullptr;
+    wnd->headwordFont = nullptr;
+    wnd->fontOwned = false;
+    wnd->headwordFontOwned = false;
+    wnd->dpi = dpi;
+    HFONT base = GetAppFontForDpi(dpi);
+    wnd->font = CreateScaledFontFrom(base, 132);
+    wnd->fontOwned = wnd->font && wnd->font != base;
+    if (!wnd->font) {
+        wnd->font = base;
+    }
+    HFONT bigger = GetAppBiggerFontForDpi(dpi);
+    wnd->headwordFont = CreateScaledFontFrom(bigger, 115);
+    wnd->headwordFontOwned = wnd->headwordFont && wnd->headwordFont != bigger;
+    if (!wnd->headwordFont) {
+        wnd->headwordFont = bigger;
+    }
+    wnd->posFont = CreateBoldFontFrom(wnd->font);
 }
 
 static const char* AbbreviateFl(const char* fl) {
@@ -1514,7 +1561,7 @@ static int CalcLookupTabsDy(HWND hwnd, HDC hdc, WordLookupWnd* wnd) {
         return 0;
     }
     int lineDy = CalcFontLineDy(hdc, wnd->font);
-    return lineDy + DpiScale(hwnd, 7);
+    return lineDy + LookupPx(hwnd, 7);
 }
 
 static void ClearLookupTabRects(WordLookupWnd* wnd) {
@@ -1555,10 +1602,10 @@ static int DrawLookupTabs(HWND hwnd, HDC dc, WordLookupWnd* wnd, int x, int y, i
     }
 
     int tabDy = CalcLookupTabsDy(hwnd, dc, wnd);
-    int gap = DpiScale(hwnd, 6);
-    int padX = DpiScale(hwnd, 9);
-    int minDx = DpiScale(hwnd, 34);
-    int radius = DpiScale(hwnd, 8);
+    int gap = LookupPx(hwnd, 6);
+    int padX = LookupPx(hwnd, 9);
+    int minDx = LookupPx(hwnd, 34);
+    int radius = LookupPx(hwnd, 8);
     int currX = x;
 
     HFONT oldFont = (HFONT)SelectObject(dc, wnd->font ? wnd->font : GetAppFont());
@@ -1634,11 +1681,11 @@ static void DrawLookupSpeakerIcon(HWND hwnd, HDC dc, const Rect& rc, bool audioR
         g.FillEllipse(&br, (Gdiplus::REAL)rc.x, (Gdiplus::REAL)rc.y, (Gdiplus::REAL)(rc.dx - 1),
                       (Gdiplus::REAL)(rc.dy - 1));
     }
-    int pad = DpiScale(hwnd, 5);
+    int pad = LookupPx(hwnd, 5);
     Rect ir = rc;
     ir.SubLR(pad, pad);
     ir.SubTB(pad, pad);
-    Gdiplus::REAL penW = (Gdiplus::REAL)DpiScale(hwnd, 1) * 1.5f;
+    Gdiplus::REAL penW = (Gdiplus::REAL)LookupPx(hwnd, 1) * 1.5f;
     Gdiplus::Pen pen(LookupGdipColor(col), penW);
     pen.SetStartCap(Gdiplus::LineCapRound);
     pen.SetEndCap(Gdiplus::LineCapRound);
@@ -1793,29 +1840,29 @@ static bool SpeakLookupEnglishWithTts(WordLookupWnd* wnd) {
 }
 
 static int CalcLookupTitleRowDy(HWND hwnd, HDC hdc, WordLookupWnd* wnd, HFONT titleFont, DictSense* sense) {
-    int pad = DpiScale(hwnd, kCardPad);
-    int contentDx = DpiScale(hwnd, kPopupDx) - 2 * pad;
-    int iconSz = DpiScale(hwnd, 22);
+    int pad = LookupPx(hwnd, kCardPad);
+    int contentDx = LookupPx(hwnd, kPopupDx) - 2 * pad;
+    int iconSz = LookupPx(hwnd, 22);
     bool showSpeaker = LookupShowsSpeaker(wnd, sense);
     const char* title = (sense && sense->headword) ? sense->headword : wnd->queryWord;
-    int titleMaxDx = contentDx - DpiScale(hwnd, kCloseBtnSz + 14);
+    int titleMaxDx = contentDx - LookupPx(hwnd, kCloseBtnSz + 14);
     if (showSpeaker) {
-        titleMaxDx -= iconSz + DpiScale(hwnd, 8);
+        titleMaxDx -= iconSz + LookupPx(hwnd, 8);
     }
     int titleLineDy = CalcFontLineDy(hdc, titleFont);
     int titleDy = CalcTextDy(hdc, titleFont, title, titleMaxDx, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     int rowDy = showSpeaker ? std::max(titleLineDy, iconSz) : titleLineDy;
     rowDy = std::max(rowDy, titleDy);
-    return rowDy + DpiScale(hwnd, 2);
+    return rowDy + LookupPx(hwnd, 2);
 }
 
 static int CalcLookupWindowDy(WordLookupWnd* wnd) {
     HWND hwnd = wnd->hwnd;
     HDC hdc = GetDC(hwnd);
-    int pad = DpiScale(hwnd, kCardPad);
-    int padTop = DpiScale(hwnd, kCardPadTop);
-    int padBottom = DpiScale(hwnd, kCardPadBottom);
-    int contentDx = DpiScale(hwnd, kPopupDx) - 2 * pad;
+    int pad = LookupPx(hwnd, kCardPad);
+    int padTop = LookupPx(hwnd, kCardPadTop);
+    int padBottom = LookupPx(hwnd, kCardPadBottom);
+    int contentDx = LookupPx(hwnd, kPopupDx) - 2 * pad;
     int dy = padTop;
     int lineDy = CalcFontLineDy(hdc, wnd->font);
     DictSense* sense = CurrentSense(wnd);
@@ -1824,21 +1871,21 @@ static int CalcLookupWindowDy(WordLookupWnd* wnd) {
     dy += CalcLookupTitleRowDy(hwnd, hdc, wnd, titleFont, sense);
     TempStr phoneticLine = LookupPhoneticLineTemp(wnd, sense, wnd->queryWord);
     if (phoneticLine) {
-        dy += CalcTextDy(hdc, wnd->font, phoneticLine, contentDx, DT_SINGLELINE) + DpiScale(hwnd, 4);
+        dy += CalcTextDy(hdc, wnd->font, phoneticLine, contentDx, DT_SINGLELINE) + LookupPx(hwnd, 4);
     }
     int tabsDy = CalcLookupTabsDy(hwnd, hdc, wnd);
     if (tabsDy > 0) {
-        dy += tabsDy + DpiScale(hwnd, 6);
+        dy += tabsDy + LookupPx(hwnd, 6);
     }
     if (sense && sense->fl && LookupTabCount(wnd) == 0) {
         dy += CalcTextDy(hdc, wnd->posFont ? wnd->posFont : wnd->font, AbbreviateFl(sense->fl), contentDx,
                          DT_SINGLELINE) +
-              DpiScale(hwnd, 8);
+              LookupPx(hwnd, 8);
     }
 
     if (wnd->isLoading) {
         TempStr lookingUpText = LookingUpTextTemp(2);
-        dy += CalcTextDy(hdc, wnd->font, lookingUpText, contentDx, DT_WORDBREAK | DT_EDITCONTROL) + DpiScale(hwnd, 4);
+        dy += CalcTextDy(hdc, wnd->font, lookingUpText, contentDx, DT_WORDBREAK | DT_EDITCONTROL) + LookupPx(hwnd, 4);
     } else if (!sense) {
         TempStr noDefText = str::FormatTemp(_TRA("No definition for \"%s\"."), wnd->queryWord);
         dy += CalcTextDy(hdc, wnd->font, noDefText, contentDx, DT_WORDBREAK | DT_EDITCONTROL) + lineDy;
@@ -1848,21 +1895,21 @@ static int CalcLookupWindowDy(WordLookupWnd* wnd) {
         str::Free(defs);
         char* example = BuildExampleText(sense);
         if (example) {
-            dy += DpiScale(hwnd, 22);
+            dy += LookupPx(hwnd, 22);
             dy += std::min(CalcTextDy(hdc, wnd->font, example, contentDx, DT_WORDBREAK | DT_EDITCONTROL),
-                           DpiScale(hwnd, kExampleMaxDy));
+                           LookupPx(hwnd, kExampleMaxDy));
             str::Free(example);
         }
     }
     dy += padBottom;
     ReleaseDC(hwnd, hdc);
-    dy = std::max(dy, DpiScale(hwnd, sense ? 112 : 88));
-    dy = std::min(dy, DpiScale(hwnd, kPaintMaxContentDy));
+    dy = std::max(dy, LookupPx(hwnd, sense ? 112 : 88));
+    dy = std::min(dy, LookupPx(hwnd, kPaintMaxContentDy));
     return dy;
 }
 
 static void ResizeLookupForPaint(WordLookupWnd* wnd) {
-    int dx = DpiScale(wnd->hwnd, kPopupDx);
+    int dx = LookupPx(wnd->hwnd, kPopupDx);
     int dy = CalcLookupWindowDy(wnd);
     SetWindowPos(wnd->hwnd, nullptr, 0, 0, dx, dy, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
@@ -1889,9 +1936,9 @@ static bool PlayLookupAudio(WordLookupWnd* wnd) {
 
 void WordLookupWnd::LayoutCloseButton() {
     Rect card = LookupCardRect(hwnd);
-    int pad = DpiScale(hwnd, kCardPad);
-    int padTop = DpiScale(hwnd, kCardPadTop);
-    int sz = DpiScale(hwnd, kCloseBtnSz);
+    int pad = LookupPx(hwnd, kCardPad);
+    int padTop = LookupPx(hwnd, kCardPadTop);
+    int sz = LookupPx(hwnd, kCloseBtnSz);
     closeBtnPos = Rect(card.x + card.dx - pad - sz, card.y + padTop, sz, sz);
 }
 
@@ -2018,7 +2065,7 @@ static void PositionWordLookup(WordLookupWnd* wnd, Point screenPos) {
     Rect rc = WindowRect(hwnd);
     int dx = rc.dx;
     int dy = rc.dy;
-    int gap = DpiScale(hwnd, kPopupGap);
+    int gap = LookupPx(hwnd, kPopupGap);
 
     int x = rc.x;
     int y = rc.y;
@@ -2029,7 +2076,7 @@ static void PositionWordLookup(WordLookupWnd* wnd, Point screenPos) {
             int aboveSpace = screenPos.y - work.y;
             showBelow = belowSpace >= aboveSpace;
         }
-        x = screenPos.x - DpiScale(hwnd, 42);
+        x = screenPos.x - LookupPx(hwnd, 42);
         y = showBelow ? screenPos.y + gap : screenPos.y - dy - gap;
     }
     if (x + dx > work.x + work.dx) {
@@ -2053,19 +2100,15 @@ static void PositionWordLookup(WordLookupWnd* wnd, Point screenPos) {
 
 bool WordLookupWnd::Create(MainWindow* winIn, const char* word, Point screenPos) {
     win = winIn;
-    font = CreateScaledFontFrom(GetAppFont(), 132);
-    if (font) {
-        fontOwned = font != GetAppFont();
-    } else {
-        font = GetAppFont();
+    int dpi = 96;
+    HMONITOR mon = MonitorFromPoint({screenPos.x, screenPos.y}, MONITOR_DEFAULTTONEAREST);
+    int monDpi = DpiGetForMonitor(mon);
+    if (monDpi >= 72) {
+        dpi = RoundUp(monDpi, 4);
+    } else if (winIn && winIn->hwndFrame) {
+        dpi = DpiGet(winIn->hwndFrame);
     }
-    headwordFont = CreateScaledFontFrom(GetAppBiggerFont(), 115);
-    if (headwordFont) {
-        headwordFontOwned = headwordFont != GetAppBiggerFont();
-    } else {
-        headwordFont = GetAppBiggerFont();
-    }
-    posFont = CreateBoldFontFrom(font);
+    ApplyLookupFonts(this, dpi);
 
     COLORREF colTxt = FloatingPopupTextColor();
     COLORREF colBg = FloatingPopupBg();
@@ -2099,7 +2142,7 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
     COLORREF colBg = FloatingPopupBg();
     COLORREF borderCol = FloatingPopupBorderColor();
     Rect card = LookupCardRect(hwnd);
-    int radius = DpiScale(hwnd, kFloatingPopupCornerRadius);
+    int radius = LookupPx(hwnd, kFloatingPopupCornerRadius);
 
     COLORREF outerBg = ThemeWindowBackgroundColor();
     HBRUSH outerBr = CreateSolidBrush(outerBg);
@@ -2118,13 +2161,13 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
     borderPath.CloseFigure();
     borderG.DrawPath(&borderPen, &borderPath);
 
-    int pad = DpiScale(hwnd, kCardPad);
-    int padTop = DpiScale(hwnd, kCardPadTop);
-    int padBottom = DpiScale(hwnd, kCardPadBottom);
+    int pad = LookupPx(hwnd, kCardPad);
+    int padTop = LookupPx(hwnd, kCardPadTop);
+    int padBottom = LookupPx(hwnd, kCardPadBottom);
     int x = card.x + pad;
     int y = card.y + padTop;
     int right = card.x + card.dx - pad;
-    int topRight = right - DpiScale(hwnd, kCloseBtnSz + 14);
+    int topRight = right - LookupPx(hwnd, kCloseBtnSz + 14);
     int bottom = card.y + card.dy - padBottom;
     DictSense* sense = CurrentSense(this);
     const char* title = sense && sense->headword ? sense->headword : queryWord;
@@ -2133,10 +2176,10 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
                                      (sense && IsAudioReady(sense)));
     bool showSpeaker = LookupShowsSpeaker(this, sense);
 
-    int iconSz = DpiScale(hwnd, 22);
+    int iconSz = LookupPx(hwnd, 22);
     int titleLineDy = CalcFontLineDy(dc, titleFont);
     int titleRowDy = showSpeaker ? std::max(titleLineDy, iconSz) : titleLineDy;
-    int titleRight = showSpeaker ? topRight - iconSz - DpiScale(hwnd, 8) : topRight;
+    int titleRight = showSpeaker ? topRight - iconSz - LookupPx(hwnd, 8) : topRight;
     RECT titleR{x, y, titleRight, y + titleRowDy};
     int titleDy = DrawLookupText(dc, titleFont, title, &titleR, FloatingPopupTextColor(),
                                  DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
@@ -2149,36 +2192,36 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
     int maxTitleDx = (int)(titleR.right - titleR.left);
     int titleDx = (int)titleR.left + std::min((int)titleSz.cx, maxTitleDx);
     if (showSpeaker) {
-        int speakerX = titleDx + DpiScale(hwnd, 6);
-        int maxSpeakerX = topRight - iconSz - DpiScale(hwnd, 2);
+        int speakerX = titleDx + LookupPx(hwnd, 6);
+        int maxSpeakerX = topRight - iconSz - LookupPx(hwnd, 2);
         if (speakerX > maxSpeakerX) {
             speakerX = maxSpeakerX;
         }
-        int speakerY = y + (titleRowDy - iconSz) / 2 + DpiScale(hwnd, 1);
+        int speakerY = y + (titleRowDy - iconSz) / 2 + LookupPx(hwnd, 1);
         speakerBtnPos = Rect(speakerX, speakerY, iconSz, iconSz);
-        speakerBtnPos.Inflate(DpiScale(hwnd, 3), DpiScale(hwnd, 3));
+        speakerBtnPos.Inflate(LookupPx(hwnd, 3), LookupPx(hwnd, 3));
         DrawLookupSpeakerIcon(hwnd, dc, speakerBtnPos, audioReady, speakerHoverAnim, speakerPlaying, speakerWaveTick);
     }
-    y += std::max(std::max(titleDy, titleRowDy), titleLineDy) + DpiScale(hwnd, 2);
+    y += std::max(std::max(titleDy, titleRowDy), titleLineDy) + LookupPx(hwnd, 2);
 
     TempStr phoneticLine = LookupPhoneticLineTemp(this, sense, title ? title : "");
     if (phoneticLine && y < bottom) {
         RECT r{x, y, right, bottom};
         y +=
             DrawLookupText(dc, font, phoneticLine, &r, FloatingPopupMutedTextColor(), DT_SINGLELINE | DT_END_ELLIPSIS) +
-            DpiScale(hwnd, 4);
+            LookupPx(hwnd, 4);
     }
 
     int tabsDy = DrawLookupTabs(hwnd, dc, this, x, y, right);
     if (tabsDy > 0) {
-        y += tabsDy + DpiScale(hwnd, 6);
+        y += tabsDy + LookupPx(hwnd, 6);
     }
 
     if (sense && sense->fl && y < bottom && LookupTabCount(this) == 0) {
         RECT r{x, y, right, bottom};
         y += DrawLookupText(dc, posFont ? posFont : font, AbbreviateFl(sense->fl), &r, FloatingPopupAccentColor(),
                             DT_SINGLELINE | DT_END_ELLIPSIS) +
-             DpiScale(hwnd, 8);
+             LookupPx(hwnd, 8);
     }
 
     const char* statusText = nullptr;
@@ -2202,15 +2245,15 @@ void WordLookupWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
             str::Free(defs);
         }
         char* example = BuildExampleText(sense);
-        if (example && y + DpiScale(hwnd, 28) < bottom) {
-            y += DpiScale(hwnd, 11);
+        if (example && y + LookupPx(hwnd, 28) < bottom) {
+            y += LookupPx(hwnd, 11);
             HPEN sepPen = CreatePen(PS_SOLID, 1, FloatingPopupSeparatorColor());
             HGDIOBJ oldSep = SelectObject(dc, sepPen);
             MoveToEx(dc, x, y, nullptr);
             LineTo(dc, right, y);
             SelectObject(dc, oldSep);
             DeleteObject(sepPen);
-            y += DpiScale(hwnd, 12);
+            y += LookupPx(hwnd, 12);
 
             RECT r{x, y, right, bottom};
             CollectLookupFlowHits(dc, font, example, x, y, right, bottom, &flowHits);
@@ -2354,6 +2397,20 @@ LRESULT WordLookupWnd::WndProc(HWND hwndIn, UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             break;
+        case WM_DPICHANGED: {
+            int dpi = RoundUp((int)LOWORD(wp), 4);
+            if (dpi < 72) {
+                dpi = 96;
+            }
+            ApplyLookupFonts(this, dpi);
+            ResizeLookupForPaint(this);
+            RECT* prc = (RECT*)lp;
+            if (prc) {
+                SetWindowPos(hwndIn, nullptr, prc->left, prc->top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            InvalidateRect(hwndIn, nullptr, FALSE);
+            return 0;
+        }
     }
     return WndProcDefault(hwndIn, msg, wp, lp);
 }

@@ -9,3 +9,7 @@ int DpiScale(HWND, int);
 void DpiScale(HWND, int&, int&);
 
 int DpiScale(HDC, int x);
+
+// Move every child by newDpi/oldDpi. Used when a window keeps pixel positions
+// from an earlier layout and then crosses monitors.
+void DpiResizeChildren(HWND parent, int oldDpi, int newDpi);

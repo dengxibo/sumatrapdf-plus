@@ -53,6 +53,7 @@ struct RabBar {
     HFONT iconFont = nullptr;
     bool haveIcons = false;
     int dpi = 0;
+    int layoutDpi = 0; // WM_DPICHANGED dpi; GetDpiForWindow can still be the old monitor
     Rect btn[kRabBtnCount];
     bool visibleBtn[kRabBtnCount]{};
     int hot = -1;
@@ -416,7 +417,11 @@ static const char* RabTooltip(RabBar* bar, int i) {
 }
 
 static void RabEnsureFonts(RabBar* bar) {
-    int dpi = DpiGet(bar->hwnd);
+    int dpi = bar->layoutDpi;
+    bar->layoutDpi = 0;
+    if (dpi < 72) {
+        dpi = DpiGet(bar->hwnd);
+    }
     if (bar->font && bar->dpi == dpi) {
         return;
     }
@@ -759,6 +764,22 @@ static LRESULT CALLBACK RabWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return DefWindowProcW(hwnd, msg, wp, lp);
     }
     switch (msg) {
+        case WM_DPICHANGED: {
+            int dpi = RoundUp((int)LOWORD(wp), 4);
+            if (dpi < 72) {
+                dpi = 96;
+            }
+            bar->layoutDpi = dpi;
+            RECT* prc = (RECT*)lp;
+            if (prc) {
+                SetWindowPos(hwnd, nullptr, prc->left, prc->top, prc->right - prc->left, prc->bottom - prc->top,
+                             SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            if (bar->win) {
+                ReadAloudBarUpdate(bar->win);
+            }
+            return 0;
+        }
         case WM_PAINT:
             RabPaint(bar);
             return 0;

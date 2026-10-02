@@ -647,6 +647,7 @@ struct InlineTranslatePopup {
     bool chatIsRich = false;
     bool chatScrollPending = false;
     int chatScrollCp = 0;
+    int dpi = 0; // monitor the popup is laid out for; 0 until the first placement
     int generation = 0;
     Vec<SelectionOnPage>* sourceSelection = nullptr;
     PopupHot hot = PopupHot::None;
@@ -1115,14 +1116,14 @@ static void RtfAppendColorEntry(StrBuilder& sb, COLORREF c) {
     sb.AppendFmt("\\red%d\\green%d\\blue%d;", GetRValue(c), GetGValue(c), GetBValue(c));
 }
 
-static int FontHalfPoints(HWND hwnd, HFONT font) {
+static int FontHalfPoints(HFONT font, int dpi) {
     LOGFONTW lf{};
     if (!font || !GetObjectW(font, sizeof(lf), &lf) || lf.lfHeight == 0) {
         return 18;
     }
-    HDC hdc = GetDC(hwnd);
-    int dpi = GetDeviceCaps(hdc, LOGPIXELSY);
-    ReleaseDC(hwnd, hdc);
+    if (dpi < 72) {
+        dpi = 96;
+    }
     int px = lf.lfHeight < 0 ? -lf.lfHeight : lf.lfHeight * 4 / 5;
     return std::max(MulDiv(px, 144, dpi), 12);
 }
@@ -1133,7 +1134,8 @@ static void BuildChatRtf(InlineTranslatePopup* p, RtfDoc& doc, int stopAtTurn) {
     LOGFONTW lf{};
     HFONT reading = p->bodyFont ? p->bodyFont : p->font;
     GetObjectW(reading, sizeof(lf), &lf);
-    doc.halfPt = FontHalfPoints(p->hwndChat, reading);
+    int dpi = p->dpi >= 72 ? p->dpi : DpiGet(p->hwnd);
+    doc.halfPt = FontHalfPoints(reading, dpi);
     COLORREF codeBg = BlendFloatingPopupColors(FloatingPopupFieldBg(), FloatingPopupTextColor(), 0.10f);
 
     StrBuilder& sb = doc.sb;
@@ -1321,6 +1323,14 @@ static void SyncEditScrollbar(HWND edit, int contentH, int visibleH) {
     ShowScrollBar(edit, SB_VERT, contentH > visibleH);
 }
 
+// Prefer the DPI we chose for this monitor. GetDpiForWindow still reports the
+// primary monitor until the popup is shown or WM_DPICHANGED arrives.
+static int Px(HWND hwnd, int x) {
+    auto* p = hwnd ? (InlineTranslatePopup*)GetWindowLongPtrW(hwnd, GWLP_USERDATA) : nullptr;
+    int dpi = (p && p->dpi >= 72) ? p->dpi : DpiGet(hwnd);
+    return MulDiv(x, dpi, 96);
+}
+
 static void LayoutPopup(InlineTranslatePopup* p) {
     if (!p || !p->hwnd || p->inLayout) {
         return;
@@ -1331,10 +1341,10 @@ static void LayoutPopup(InlineTranslatePopup* p) {
     };
     HWND h = p->hwnd;
     Rect rc = ClientRect(h);
-    int pad = DpiScale(h, kPopupPad);
-    int gap = DpiScale(h, kPopupGap);
-    int fx = DpiScale(h, kFieldPadX);
-    int fy = DpiScale(h, kFieldPadY);
+    int pad = Px(h, kPopupPad);
+    int gap = Px(h, kPopupGap);
+    int fx = Px(h, kFieldPadX);
+    int fy = Px(h, kFieldPadY);
     int lineH = FontLineHeight(h, p->font);
     HFONT reading = p->bodyFont ? p->bodyFont : p->font;
     int readLine = FontLineHeight(h, reading);
@@ -1347,19 +1357,19 @@ static void LayoutPopup(InlineTranslatePopup* p) {
     bool aiOk = InlineTranslateAiApiIsConfigured();
     bool showCopy = showTrans && p->translation && !p->translating;
 
-    int headerH = DpiScale(h, kHeaderH);
+    int headerH = Px(h, kHeaderH);
     p->headerRc = Rect(pad, pad, contentW, headerH);
-    int closeSz = DpiScale(h, kCloseBtn);
+    int closeSz = Px(h, kCloseBtn);
     p->closeRc = Rect(rc.dx - pad - closeSz, pad + (headerH - closeSz) / 2, closeSz, closeSz);
     if (showCopy) {
-        int btnH = DpiScale(h, 22);
+        int btnH = Px(h, 22);
         int copyW = std::max(MeasureTextWidth(h, p->font, _TRA("Copied")), MeasureTextWidth(h, p->font, _TRA("Copy")));
-        copyW += DpiScale(h, 2 * kBtnPadX);
-        p->copyRc = Rect(p->closeRc.x - DpiScale(h, 6) - copyW, pad + (headerH - btnH) / 2, copyW, btnH);
+        copyW += Px(h, 2 * kBtnPadX);
+        p->copyRc = Rect(p->closeRc.x - Px(h, 6) - copyW, pad + (headerH - btnH) / 2, copyW, btnH);
     } else {
         p->copyRc = Rect();
     }
-    int y = pad + headerH + DpiScale(h, 4);
+    int y = pad + headerH + Px(h, 4);
 
     p->origRc = Rect();
     if (!str::IsEmptyOrWhiteSpace(p->selection)) {
@@ -1368,7 +1378,7 @@ static void LayoutPopup(InlineTranslatePopup* p) {
         y += origH + gap;
     }
 
-    int rowH = DpiScale(h, kInputRowH);
+    int rowH = Px(h, kInputRowH);
     int hintH = aiOk ? 0 : std::min(MeasureTextHeight(h, p->font, HintText(p), contentW), lineH * 2);
     int bottomH = aiOk ? rowH : hintH;
 
@@ -1388,8 +1398,8 @@ static void LayoutPopup(InlineTranslatePopup* p) {
 
     if (!p->userSized) {
         Rect work = MonitorWorkArea(h);
-        int maxH = std::min(DpiScale(h, kPopupMaxH), work.dy);
-        int want = limitValue(fixedH + transNat + chatNat, DpiScale(h, kPopupMinH), maxH);
+        int maxH = std::min(Px(h, kPopupMaxH), work.dy);
+        int want = limitValue(fixedH + transNat + chatNat, Px(h, kPopupMinH), maxH);
         if (want != rc.dy) {
             ResizePopupHeight(p, want);
             UpdateFloatingPopupWindowRgn(h, kFloatingPopupCornerRadius);
@@ -1429,9 +1439,9 @@ static void LayoutPopup(InlineTranslatePopup* p) {
 
     y = rc.dy - pad - bottomH;
     if (aiOk) {
-        int sendW = std::max(DpiScale(h, kSendW), MeasureTextWidth(h, p->font, _TRA("Send")) + DpiScale(h, 28));
-        p->inputRc = Rect(pad, y, contentW - sendW - DpiScale(h, 8), rowH);
-        int editH = lineH + DpiScale(h, 2);
+        int sendW = std::max(Px(h, kSendW), MeasureTextWidth(h, p->font, _TRA("Send")) + Px(h, 28));
+        p->inputRc = Rect(pad, y, contentW - sendW - Px(h, 8), rowH);
+        int editH = lineH + Px(h, 2);
         MoveWindow(p->hwndInput, p->inputRc.x + fx, p->inputRc.y + (rowH - editH) / 2, p->inputRc.dx - fx * 2, editH,
                    TRUE);
         p->sendRc = Rect(rc.dx - pad - sendW, y, sendW, rowH);
@@ -1450,7 +1460,7 @@ static void DrawFieldBox(HDC hdc, HWND hwnd, const Rect& r, bool focused) {
     if (r.IsEmpty()) {
         return;
     }
-    int radius = DpiScale(hwnd, kFieldRadius);
+    int radius = Px(hwnd, kFieldRadius);
     FillFloatingPopupRoundedRect(hdc, r, radius, FloatingPopupFieldBg());
     COLORREF border = focused ? FloatingPopupAccentColor() : FloatingPopupSeparatorColor();
     StrokeFloatingPopupRoundedRect(hdc, r, radius, border);
@@ -1464,7 +1474,7 @@ static void DrawPopupButton(HDC hdc, HWND hwnd, const Rect& r, const char* label
         return;
     }
     COLORREF bg = FloatingPopupBg();
-    int radius = DpiScale(hwnd, kBtnRadius);
+    int radius = Px(hwnd, kBtnRadius);
     bool hover = hot && enabled;
     if (outlined) {
         // Same surface as the popup. A field fill made Send a second, lighter block.
@@ -1523,7 +1533,7 @@ static void PaintPopup(InlineTranslatePopup* p, HDC hdcWnd) {
     RECT full = ToRECT(rc);
     ScopedGdiObj<HBRUSH> bgBrush(CreateSolidBrush(bg));
     FillRect(hdc, &full, bgBrush);
-    int radius = DpiScale(h, kFloatingPopupCornerRadius);
+    int radius = Px(h, kFloatingPopupCornerRadius);
     FillFloatingPopupRoundedRect(hdc, rc, radius, bg);
     StrokeFloatingPopupRoundedRect(hdc, rc, radius, FloatingPopupBorderColor());
 
@@ -1532,7 +1542,7 @@ static void PaintPopup(InlineTranslatePopup* p, HDC hdcWnd) {
 
     // header: title, subtitle, copy, close
     const char* title = p->mode == PopupMode::AskAi ? _TRA("Ask AI") : _TRA("Translate");
-    int rightLimit = (p->copyRc.IsEmpty() ? p->closeRc.x : p->copyRc.x) - DpiScale(h, 8);
+    int rightLimit = (p->copyRc.IsEmpty() ? p->closeRc.x : p->copyRc.x) - Px(h, 8);
     RECT titleRc{p->headerRc.x, p->headerRc.y, rightLimit, p->headerRc.y + p->headerRc.dy};
     SetTextColor(hdc, txt);
     DrawTextW(hdc, ToWStrTemp(title), -1, &titleRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
@@ -1542,7 +1552,7 @@ static void PaintPopup(InlineTranslatePopup* p, HDC hdcWnd) {
     TempStr subtitle = HeaderSubtitleTemp(p);
     if (!str::IsEmptyOrWhiteSpace(subtitle)) {
         RECT subRc = titleRc;
-        subRc.left = measured.right + DpiScale(h, 10);
+        subRc.left = measured.right + Px(h, 10);
         if (subRc.left < subRc.right) {
             SetTextColor(hdc, muted);
             DrawTextW(hdc, ToWStrTemp(subtitle), -1, &subRc,
@@ -1713,20 +1723,29 @@ void FinishInlineTranslatePopupTheme() {
     ThawPopupRedraw(gPopup);
 }
 
+static void ApplyPopupFonts(InlineTranslatePopup* p, int dpi);
+
 static void PositionPopupNear(InlineTranslatePopup* p, Point anchor) {
     HWND h = p->hwnd;
+    HMONITOR mon = MonitorFromPoint({anchor.x, anchor.y}, MONITOR_DEFAULTTONEAREST);
+    int dpi = DpiGetForMonitor(mon);
+    if (dpi < 72) {
+        dpi = DpiGet(h);
+    }
+    dpi = RoundUp(dpi, 4);
+    ApplyPopupFonts(p, dpi);
     MONITORINFO mi{};
     mi.cbSize = sizeof(mi);
-    GetMonitorInfoW(MonitorFromPoint({anchor.x, anchor.y}, MONITOR_DEFAULTTONEAREST), &mi);
+    GetMonitorInfoW(mon, &mi);
     Rect work = ToRect(mi.rcWork);
-    int w = std::min(DpiScale(h, kPopupMaxW), work.dx);
-    w = std::max(w, std::min(DpiScale(h, kPopupMinW), work.dx));
-    int hgt = DpiScale(h, kPopupMinH);
-    int gap = DpiScale(h, 16);
+    int w = std::min(Px(h, kPopupMaxW), work.dx);
+    w = std::max(w, std::min(Px(h, kPopupMinW), work.dx));
+    int hgt = Px(h, kPopupMinH);
+    int gap = Px(h, 16);
     int x = anchor.x - w / 2;
     int y = anchor.y + gap;
     // decide side by the space a grown popup will need, not the initial height
-    int expected = DpiScale(h, 320);
+    int expected = Px(h, 320);
     p->placedAbove = y + expected > work.y + work.dy && anchor.y - gap - expected >= work.y;
     if (p->placedAbove) {
         y = anchor.y - gap - hgt;
@@ -1798,15 +1817,13 @@ static HFONT CreateTitleFont(HFONT base) {
 
 // Two points larger than the UI font, for the translation and the AI answer.
 // A fixed step, not a percentage, so a large UI font is not scaled again.
-static HFONT CreateReadingFont(HFONT base, HWND dpiHwnd) {
+static HFONT CreateReadingFont(HFONT base, int dpi) {
     LOGFONTW lf{};
     if (!base || !GetObjectW(base, sizeof(lf), &lf)) {
         return nullptr;
     }
-    HDC hdc = GetDC(dpiHwnd);
-    int dpi = hdc ? GetDeviceCaps(hdc, LOGPIXELSY) : 96;
-    if (hdc) {
-        ReleaseDC(dpiHwnd, hdc);
+    if (dpi < 72) {
+        dpi = 96;
     }
     int bump = std::max(MulDiv(2, dpi, 72), 1);
     if (lf.lfHeight < 0) {
@@ -1819,13 +1836,46 @@ static HFONT CreateReadingFont(HFONT base, HWND dpiHwnd) {
     return CreateFontIndirectW(&lf);
 }
 
+static void ApplyPopupFonts(InlineTranslatePopup* p, int dpi) {
+    if (!p || !p->hwnd || dpi < 72 || (p->dpi == dpi && p->font && p->bodyFont)) {
+        return;
+    }
+    p->dpi = dpi;
+    if (p->titleFont) {
+        DeleteObject(p->titleFont);
+        p->titleFont = nullptr;
+    }
+    if (p->bodyFont) {
+        DeleteObject(p->bodyFont);
+        p->bodyFont = nullptr;
+    }
+    p->font = GetAppFontForDpi(dpi);
+    p->titleFont = CreateTitleFont(p->font);
+    p->bodyFont = CreateReadingFont(p->font, dpi);
+    HFONT reading = p->bodyFont ? p->bodyFont : p->font;
+    if (p->hwndTrans) {
+        SendMessageW(p->hwndTrans, WM_SETFONT, (WPARAM)reading, FALSE);
+    }
+    if (p->hwndChat) {
+        SendMessageW(p->hwndChat, WM_SETFONT, (WPARAM)reading, FALSE);
+    }
+    if (p->hwndInput) {
+        SendMessageW(p->hwndInput, WM_SETFONT, (WPARAM)p->font, FALSE);
+    }
+    if (p->chatIsRich && (p->turns.Size() > 0 || p->asking)) {
+        RebuildChatView(p);
+    }
+}
+
 static InlineTranslatePopup* CreatePopup(MainWindow* win) {
     RegisterPopupClass();
     auto* p = new InlineTranslatePopup();
     p->win = win;
-    p->font = GetAppFont();
+    int dpi = DpiGet(win->hwndFrame);
+    p->dpi = dpi;
+    p->font = GetAppFontForDpi(dpi);
     p->titleFont = CreateTitleFont(p->font);
-    p->bodyFont = CreateReadingFont(p->font, win->hwndFrame);
+    p->bodyFont = CreateReadingFont(p->font, dpi);
     // owned by the frame: stays above it, hides with it, no TOPMOST over other apps
     p->hwnd = CreateWindowExW(WS_EX_TOOLWINDOW, kInlineTranslateClassName, L"", WS_POPUP | WS_CLIPCHILDREN, 0, 0, 0, 0,
                               win->hwndFrame, nullptr, GetModuleHandle(nullptr), p);
@@ -2160,7 +2210,7 @@ static LRESULT PopupNcHitTest(InlineTranslatePopup* p, LPARAM lp) {
     POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
     ScreenToClient(p->hwnd, &pt);
     Rect rc = ClientRect(p->hwnd);
-    int grip = DpiScale(p->hwnd, kResizeGrip);
+    int grip = Px(p->hwnd, kResizeGrip);
     bool right = pt.x >= rc.dx - grip;
     bool bottom = pt.y >= rc.dy - grip;
     if (right && bottom) {
@@ -2236,8 +2286,23 @@ static LRESULT CALLBACK InlineTranslateWndProc(HWND hwnd, UINT msg, WPARAM wp, L
             break;
         case WM_GETMINMAXINFO: {
             auto* mmi = (MINMAXINFO*)lp;
-            mmi->ptMinTrackSize.x = DpiScale(hwnd, kPopupMinW);
-            mmi->ptMinTrackSize.y = DpiScale(hwnd, kPopupMinH);
+            mmi->ptMinTrackSize.x = Px(hwnd, kPopupMinW);
+            mmi->ptMinTrackSize.y = Px(hwnd, kPopupMinH);
+            return 0;
+        }
+        case WM_DPICHANGED: {
+            int dpi = (int)LOWORD(wp);
+            if (dpi < 72) {
+                dpi = 96;
+            }
+            dpi = RoundUp(dpi, 4);
+            ApplyPopupFonts(p, dpi);
+            auto* prc = (RECT*)lp;
+            SetWindowPos(hwnd, nullptr, prc->left, prc->top, prc->right - prc->left, prc->bottom - prc->top,
+                         SWP_NOZORDER | SWP_NOACTIVATE);
+            if (IsWindowVisible(hwnd)) {
+                LayoutPopup(p);
+            }
             return 0;
         }
         case WM_SIZE:

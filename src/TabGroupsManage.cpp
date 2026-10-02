@@ -25,6 +25,7 @@
 #include "Translations.h"
 #include "SumatraConfig.h"
 #include "Theme.h"
+#include "AppDialogTheme.h"
 #include "DarkModeSubclass.h"
 #include "TabGroupsManage.h"
 
@@ -74,6 +75,9 @@ struct TabGroupsDialog {
     Button* btnCancel = nullptr;
     TabGroupDialogMode mode = TabGroupDialogMode::Save;
     MainWindow* win = nullptr;
+    HFONT hFont = nullptr;
+    int dpi = 96;
+    bool fontOwned = false;
 };
 
 static Vec<TabGroupsDialog*> gTabGroupsDialogs;
@@ -92,20 +96,64 @@ static void PopulateListBox(TabGroupsDialog* d) {
     d->listBox->SetModel(d->model);
 }
 
+static int TabPx(const TabGroupsDialog* d, int x) {
+    int dpi = (d && d->dpi >= 72) ? d->dpi : 96;
+    return MulDiv(x, dpi, 96);
+}
+
+static void ApplyTabGroupFont(TabGroupsDialog* d, int dpi) {
+    if (!d || dpi < 72 || (d->dpi == dpi && d->hFont)) {
+        return;
+    }
+    AppDialogFonts fonts;
+    fonts.CreateForDpi(dpi);
+    if (!fonts.body) {
+        return;
+    }
+    HFONT prev = d->fontOwned ? d->hFont : nullptr;
+    d->hFont = fonts.body;
+    fonts.body = nullptr;
+    d->fontOwned = true;
+    d->dpi = dpi;
+    if (d->hwndEdit) {
+        SendMessageW(d->hwndEdit, WM_SETFONT, (WPARAM)d->hFont, FALSE);
+    }
+    if (d->listBox && d->listBox->hwnd) {
+        d->listBox->font = d->hFont;
+        SendMessageW(d->listBox->hwnd, WM_SETFONT, (WPARAM)d->hFont, FALSE);
+    }
+    if (d->btnOk && d->btnOk->hwnd) {
+        SendMessageW(d->btnOk->hwnd, WM_SETFONT, (WPARAM)d->hFont, FALSE);
+    }
+    if (d->btnDelete && d->btnDelete->hwnd) {
+        SendMessageW(d->btnDelete->hwnd, WM_SETFONT, (WPARAM)d->hFont, FALSE);
+    }
+    if (d->btnCancel && d->btnCancel->hwnd) {
+        SendMessageW(d->btnCancel->hwnd, WM_SETFONT, (WPARAM)d->hFont, FALSE);
+    }
+    if (prev) {
+        DeleteObject(prev);
+    }
+}
+
 static void LayoutControls(TabGroupsDialog* d) {
     Rect rc = ClientRect(d->hwnd);
-    int y = kPadding;
-    int x = kPadding;
-    int dx = rc.dx - 2 * kPadding;
+    int pad = TabPx(d, kPadding);
+    int editH = TabPx(d, kEditHeight);
+    int btnArea = TabPx(d, kButtonAreaDy);
+    int btnPad = TabPx(d, kButtonPadding);
+    int y = pad;
+    int x = pad;
+    int dx = rc.dx - 2 * pad;
 
     if (d->mode == TabGroupDialogMode::Save && d->hwndEdit) {
-        MoveWindow(d->hwndEdit, x, y, dx, kEditHeight, TRUE);
-        y += kEditHeight + kPadding;
+        MoveWindow(d->hwndEdit, x, y, dx, editH, TRUE);
+        y += editH + pad;
     }
 
-    int lbDy = rc.dy - y - kButtonAreaDy;
-    if (lbDy < 20) {
-        lbDy = 20;
+    int lbDy = rc.dy - y - btnArea;
+    if (lbDy < TabPx(d, 20)) {
+        lbDy = TabPx(d, 20);
     }
     if (d->listBox) {
         MoveWindow(d->listBox->hwnd, x, y, dx, lbDy, TRUE);
@@ -115,15 +163,15 @@ static void LayoutControls(TabGroupsDialog* d) {
     // buttons at the bottom right: [Save/Open] [Delete] [Cancel]
     Size okSize = d->btnOk->GetIdealSize();
     Size cancelSize = d->btnCancel->GetIdealSize();
-    int btnY = rc.dy - kButtonPadding - okSize.dy;
-    int btnX = rc.dx - kButtonPadding - cancelSize.dx;
+    int btnY = rc.dy - btnPad - okSize.dy;
+    int btnX = rc.dx - btnPad - cancelSize.dx;
     MoveWindow(d->btnCancel->hwnd, btnX, btnY, cancelSize.dx, cancelSize.dy, TRUE);
     if (d->btnDelete) {
         Size deleteSize = d->btnDelete->GetIdealSize();
-        btnX -= kButtonPadding + deleteSize.dx;
+        btnX -= btnPad + deleteSize.dx;
         MoveWindow(d->btnDelete->hwnd, btnX, btnY, deleteSize.dx, deleteSize.dy, TRUE);
     }
-    btnX -= kButtonPadding + okSize.dx;
+    btnX -= btnPad + okSize.dx;
     MoveWindow(d->btnOk->hwnd, btnX, btnY, okSize.dx, okSize.dy, TRUE);
 }
 
@@ -335,6 +383,22 @@ static LRESULT CALLBACK WndProcTabGroups(HWND hwnd, UINT msg, WPARAM wp, LPARAM 
             }
             return 0;
 
+        case WM_DPICHANGED:
+            if (d) {
+                int dpi = RoundUp((int)LOWORD(wp), 4);
+                if (dpi < 72) {
+                    dpi = 96;
+                }
+                ApplyTabGroupFont(d, dpi);
+                RECT* prc = (RECT*)lp;
+                if (prc) {
+                    SetWindowPos(hwnd, nullptr, prc->left, prc->top, prc->right - prc->left, prc->bottom - prc->top,
+                                 SWP_NOZORDER | SWP_NOACTIVATE);
+                }
+                LayoutControls(d);
+            }
+            return 0;
+
         case WM_COMMAND:
             break;
 
@@ -357,6 +421,9 @@ static LRESULT CALLBACK WndProcTabGroups(HWND hwnd, UINT msg, WPARAM wp, LPARAM 
                 delete d->btnOk;
                 delete d->btnDelete;
                 delete d->btnCancel;
+                if (d->fontOwned && d->hFont) {
+                    DeleteObject(d->hFont);
+                }
                 delete d;
             }
             return 0;
@@ -416,9 +483,13 @@ static void ShowTabGroupsDialog(MainWindow* win, TabGroupDialogMode mode) {
     const char* titleStr = (mode == TabGroupDialogMode::Save) ? _TRA("Save Tab Group") : _TRA("Restore Tab Group");
     auto title = ToWStrTemp(titleStr);
 
+    int dpi = DpiGet(win->hwndFrame);
+    if (dpi < 72) {
+        dpi = 96;
+    }
     DWORD dwStyle = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
-    HWND hwnd = CreateWindowExW(0, kTabGroupsWinClassName, title, dwStyle, CW_USEDEFAULT, CW_USEDEFAULT, 400, 350,
-                                nullptr, nullptr, h, nullptr);
+    HWND hwnd = CreateWindowExW(0, kTabGroupsWinClassName, title, dwStyle, CW_USEDEFAULT, CW_USEDEFAULT,
+                                MulDiv(400, dpi, 96), MulDiv(350, dpi, 96), nullptr, nullptr, h, nullptr);
     if (!hwnd) {
         return;
     }
@@ -432,7 +503,8 @@ static void ShowTabGroupsDialog(MainWindow* win, TabGroupDialogMode mode) {
 
     HwndSetRtl(hwnd, isRtl);
 
-    HFONT hFont = GetDefaultGuiFont();
+    ApplyTabGroupFont(d, dpi);
+    HFONT hFont = d->hFont ? d->hFont : GetDefaultGuiFont();
 
     // edit control (only in save mode)
     if (mode == TabGroupDialogMode::Save) {
@@ -475,6 +547,7 @@ static void ShowTabGroupsDialog(MainWindow* win, TabGroupDialogMode mode) {
         const char* okText = (mode == TabGroupDialogMode::Save) ? _TRA("Save") : _TRA("Restore");
         Button::CreateArgs args;
         args.parent = hwnd;
+        args.font = hFont;
         args.text = okText;
         args.isRtl = isRtl;
         auto b = new Button();
@@ -485,6 +558,7 @@ static void ShowTabGroupsDialog(MainWindow* win, TabGroupDialogMode mode) {
     {
         Button::CreateArgs args;
         args.parent = hwnd;
+        args.font = hFont;
         args.text = _TRA("Delete");
         args.isRtl = isRtl;
         auto b = new Button();
@@ -496,6 +570,7 @@ static void ShowTabGroupsDialog(MainWindow* win, TabGroupDialogMode mode) {
     {
         Button::CreateArgs args;
         args.parent = hwnd;
+        args.font = hFont;
         args.text = _TRA("Cancel");
         args.isRtl = isRtl;
         auto b = new Button();

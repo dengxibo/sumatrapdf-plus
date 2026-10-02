@@ -35,7 +35,7 @@ struct SelectionToolbarButton {
     int cmdId;
     const char* label; // English literal, translated via _TRA at paint time
     bool enabled = true;
-    Rect rc; // position within the toolbar client area
+    Rect rc;                 // position within the toolbar client area
     bool groupStart = false; // a separator is drawn before it
 };
 
@@ -45,6 +45,7 @@ struct SelectionToolbar {
     HWND hwnd = nullptr;
     HFONT font = nullptr;
     bool fontOwned = false;
+    int dpi = 0;
     int hotIndex = -1;
     int pressedIndex = -1;
     bool trackingMouse = false;
@@ -89,10 +90,10 @@ static void InitButtons(SelectionToolbar* tb, MainWindow* win) {
     tb->nButtons = i;
 }
 
-constexpr int kBtnPadX = 8; // horizontal padding inside a button
-constexpr int kBtnPadY = 4; // vertical padding inside a button
-constexpr int kMargin = 5;  // margin around the row of buttons
-constexpr int kBtnGap = 2;  // gap between buttons
+constexpr int kBtnPadX = 8;  // horizontal padding inside a button
+constexpr int kBtnPadY = 4;  // vertical padding inside a button
+constexpr int kMargin = 5;   // margin around the row of buttons
+constexpr int kBtnGap = 2;   // gap between buttons
 constexpr int kGroupGap = 5; // space on each side of a group separator
 // compact variant of the dictionary popup chrome (same palette, smaller scale)
 constexpr int kToolbarCornerRadius = 10;
@@ -120,6 +121,34 @@ static bool IsActivelySelecting(MainWindow* win) {
     return ma == MouseAction::Selecting || ma == MouseAction::SelectingText;
 }
 
+static int SelPx(const SelectionToolbar* tb, int x) {
+    int dpi = 96;
+    if (tb && tb->dpi >= 72) {
+        dpi = tb->dpi;
+    } else if (tb && tb->hwnd) {
+        dpi = DpiGet(tb->hwnd);
+    }
+    return MulDiv(x, dpi, 96);
+}
+
+static void ApplyToolbarDpi(SelectionToolbar* tb, int dpi) {
+    if (!tb || dpi < 72 || (tb->dpi == dpi && tb->font)) {
+        return;
+    }
+    if (tb->fontOwned && tb->font) {
+        DeleteObject(tb->font);
+        tb->font = nullptr;
+    }
+    tb->dpi = dpi;
+    tb->fontOwned = false;
+    HFONT base = GetAppFontForDpi(dpi);
+    tb->font = CreateScaledFontFrom(base, kToolbarFontPct);
+    tb->fontOwned = tb->font && tb->font != base;
+    if (!tb->font) {
+        tb->font = base;
+    }
+}
+
 static int SelectionBoundsSlack(HWND hwnd) {
     return DpiScale(hwnd, 3);
 }
@@ -133,12 +162,12 @@ static bool SelectionBoundsChanged(Rect a, Rect b, int slack) {
 
 static void LayoutToolbar(SelectionToolbar* tb) {
     HWND hwnd = tb->hwnd;
-    int padX = DpiScale(hwnd, kBtnPadX);
-    int padY = DpiScale(hwnd, kBtnPadY);
-    int margin = DpiScale(hwnd, kMargin);
-    int gap = DpiScale(hwnd, kBtnGap);
+    int padX = SelPx(tb, kBtnPadX);
+    int padY = SelPx(tb, kBtnPadY);
+    int margin = SelPx(tb, kMargin);
+    int gap = SelPx(tb, kBtnGap);
 
-    int groupGap = DpiScale(hwnd, kGroupGap);
+    int groupGap = SelPx(tb, kGroupGap);
 
     int x = margin;
     int maxDy = 0;
@@ -186,8 +215,8 @@ static void PaintToolbar(SelectionToolbar* tb, HDC hdc) {
     COLORREF textCol = FloatingPopupTextColor();
     COLORREF mutedCol = FloatingPopupMutedTextColor();
     COLORREF hoverBg = FloatingPopupHoverBg(bgCol);
-    int cornerRadius = DpiScale(hwnd, kToolbarCornerRadius);
-    int btnRadius = DpiScale(hwnd, kToolbarButtonRadius);
+    int cornerRadius = SelPx(tb, kToolbarCornerRadius);
+    int btnRadius = SelPx(tb, kToolbarButtonRadius);
 
     FillFloatingPopupRoundedRect(hdc, rc, cornerRadius, bgCol);
     StrokeFloatingPopupRoundedRect(hdc, rc, cornerRadius, borderCol);
@@ -195,11 +224,11 @@ static void PaintToolbar(SelectionToolbar* tb, HDC hdc) {
     ScopedSelectObject selFont(hdc, tb->font);
     SetBkMode(hdc, TRANSPARENT);
     COLORREF sepCol = FloatingPopupSeparatorColor();
-    int sepInset = DpiScale(hwnd, 6);
+    int sepInset = SelPx(tb, 6);
     for (int i = 0; i < tb->nButtons; i++) {
         SelectionToolbarButton& b = tb->buttons[i];
         if (b.groupStart) {
-            int sx = b.rc.x - DpiScale(hwnd, kGroupGap) - 1;
+            int sx = b.rc.x - SelPx(tb, kGroupGap) - 1;
             RECT line{sx, b.rc.y + sepInset, sx + 1, b.rc.y + b.rc.dy - sepInset};
             ScopedGdiObj<HBRUSH> sepBr(CreateSolidBrush(sepCol));
             FillRect(hdc, &line, sepBr);
@@ -243,6 +272,19 @@ static LRESULT CALLBACK WndProcSelectionToolbar(HWND hwnd, UINT msg, WPARAM wp, 
     switch (msg) {
         case WM_ERASEBKGND:
             return TRUE;
+
+        case WM_DPICHANGED: {
+            int dpi = RoundUp((int)LOWORD(wp), 4);
+            if (dpi < 72) {
+                dpi = 96;
+            }
+            ApplyToolbarDpi(tb, dpi);
+            LayoutToolbar(tb);
+            SetWindowPos(hwnd, nullptr, 0, 0, tb->size.dx, tb->size.dy, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+            UpdateFloatingPopupWindowRgn(hwnd, SelPx(tb, kToolbarCornerRadius));
+            HwndScheduleRepaint(hwnd);
+            return 0;
+        }
 
         case WM_MOUSEACTIVATE:
             return MA_NOACTIVATE;
@@ -372,7 +414,7 @@ static bool SelTbCanShowToolbar(MainWindow* win) {
 static void PositionToolbar(SelectionToolbar* tb, const Rect& sel) {
     MainWindow* win = tb->win;
     Rect canvas = win->canvasRc;
-    int gap = DpiScale(tb->hwnd, 6);
+    int gap = SelPx(tb, 6);
     int w = tb->size.dx;
     int h = tb->size.dy;
 
@@ -422,7 +464,7 @@ static void PositionToolbar(SelectionToolbar* tb, const Rect& sel) {
     }
     tb->lastPlaced = screenPlaced;
     SetWindowPos(tb->hwnd, HWND_TOP, sx, sy, w, h, SWP_NOACTIVATE | SWP_NOOWNERZORDER);
-    UpdateFloatingPopupWindowRgn(tb->hwnd, kToolbarCornerRadius);
+    UpdateFloatingPopupWindowRgn(tb->hwnd, SelPx(tb, kToolbarCornerRadius));
 }
 
 static SelectionToolbar* GetOrCreateToolbar(MainWindow* win) {
@@ -432,8 +474,7 @@ static SelectionToolbar* GetOrCreateToolbar(MainWindow* win) {
     RegisterSelectionToolbarClass();
     auto tb = new SelectionToolbar();
     tb->win = win;
-    tb->font = CreateScaledFontFrom(GetAppFont(), kToolbarFontPct);
-    tb->fontOwned = tb->font && tb->font != GetAppFont();
+    ApplyToolbarDpi(tb, DpiGet(win->hwndFrame));
     DWORD style = WS_POPUP;
     DWORD styleEx = WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
     HWND hwnd = CreateWindowEx(styleEx, kSelectionToolbarClassName, nullptr, style, 0, 0, 0, 0, win->hwndFrame, nullptr,
@@ -474,6 +515,7 @@ void ShowSelectionToolbar(MainWindow* win) {
     tb->lastPositionUpdateTick = GetTickCount();
     tb->lastSelBounds = sel;
     InitButtons(tb, win);
+    ApplyToolbarDpi(tb, DpiGet(win->hwndFrame));
     LayoutToolbar(tb);
     PositionToolbar(tb, sel);
     ShowWindow(tb->hwnd, SW_SHOWNOACTIVATE);
@@ -523,6 +565,7 @@ void UpdateSelectionToolbarPosition(MainWindow* win) {
     tb->lastSelBounds = sel;
 
     InitButtons(tb, win);
+    ApplyToolbarDpi(tb, DpiGet(win->hwndFrame));
     LayoutToolbar(tb);
     PositionToolbar(tb, sel);
     if (tb->lastPlaced != prevPlaced) {

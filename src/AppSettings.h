@@ -36,6 +36,7 @@ HFONT GetAppSidebarLabelFontForHwnd(HWND hwnd);
 HFONT GetAppSidebarLabelFontForDpi(int dpi);
 HFONT GetAppBiggerFont();
 HFONT GetAppBiggerFontForHwnd(HWND hwnd);
+HFONT GetAppBiggerFontForDpi(int dpi);
 HFONT GetAppTreeFont();
 HFONT GetAppTreeFontForHwnd(HWND hwnd);
 HFONT GetAppTreeFontForDpi(int dpi);

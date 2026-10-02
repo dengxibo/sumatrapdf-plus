@@ -92,6 +92,49 @@ static int CalcDlgHeight(HWND hwnd, const DlgMetrics& m, int nRows) {
     return 2 * m.padding + nRows * m.rowH + (nRows - 1) * m.rowGap + DpiScale(hwnd, 32);
 }
 
+static HFONT CreatePdfToolFont(int dpi) {
+    AppDialogFonts fonts;
+    fonts.CreateForDpi(dpi);
+    HFONT body = fonts.body;
+    fonts.body = nullptr;
+    return body;
+}
+
+// `ready` stays false until children exist, so a WM_DPICHANGED delivered
+// during CreateWindow does not scale an empty window.
+static void PdfToolHandleDpi(HWND hwnd, int* dpiSlot, HFONT* fontSlot, bool* fontOwned, bool ready, WPARAM wp,
+                             LPARAM lp) {
+    if (!ready || !dpiSlot || !fontSlot) {
+        return;
+    }
+    int dpi = RoundUp((int)LOWORD(wp), 4);
+    if (dpi < 72) {
+        dpi = 96;
+    }
+    int old = *dpiSlot;
+    if (dpi != old && old >= 72) {
+        HFONT next = CreatePdfToolFont(dpi);
+        if (next) {
+            HFONT prev = *fontSlot;
+            *fontSlot = next;
+            AppDialogApplyFontToChildren(hwnd, next);
+            if (fontOwned && *fontOwned && prev) {
+                DeleteObject(prev);
+            }
+            if (fontOwned) {
+                *fontOwned = true;
+            }
+        }
+        DpiResizeChildren(hwnd, old, dpi);
+        *dpiSlot = dpi;
+    }
+    RECT* prc = (RECT*)lp;
+    if (prc) {
+        SetWindowPos(hwnd, nullptr, prc->left, prc->top, prc->right - prc->left, prc->bottom - prc->top,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+}
+
 struct PdfBakeDialog {
     HWND hwnd = nullptr;
     HWND hwndPathLabel = nullptr;
@@ -100,6 +143,9 @@ struct PdfBakeDialog {
     HWND hwndBakeBtn = nullptr;
     HWND hwndCancelBtn = nullptr;
     HFONT hFont = nullptr;
+    int dpi = 96;
+    bool fontOwned = false;
+    bool dpiReady = false;
     char* srcPath = nullptr;
     MainWindow* win = nullptr;
 };
@@ -183,11 +229,18 @@ static LRESULT CALLBACK PdfBakeDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
             }
             break;
         }
+        case WM_DPICHANGED:
+            PdfToolHandleDpi(hwnd, &dlg->dpi, &dlg->hFont, &dlg->fontOwned, dlg->dpiReady, wp, lp);
+            return 0;
         case WM_CLOSE:
             DestroyWindow(hwnd);
             return 0;
-        case WM_DESTROY:
-            return 0;
+        case WM_NCDESTROY:
+            if (dlg->fontOwned && dlg->hFont) {
+                DeleteObject(dlg->hFont);
+                dlg->hFont = nullptr;
+            }
+            return DefWindowProc(hwnd, msg, wp, lp);
     }
     return DefWindowProc(hwnd, msg, wp, lp);
 }
@@ -224,7 +277,15 @@ void ShowPdfBakeDialog(MainWindow* win) {
     PdfBakeDialog* dlg = new PdfBakeDialog();
     dlg->srcPath = str::Dup(tab->filePath);
     dlg->win = win;
-    dlg->hFont = GetDefaultGuiFont();
+    dlg->dpi = DpiGet(win->hwndFrame);
+    if (dlg->dpi < 72) {
+        dlg->dpi = 96;
+    }
+    dlg->hFont = CreatePdfToolFont(dlg->dpi);
+    dlg->fontOwned = dlg->hFont != nullptr;
+    if (!dlg->hFont) {
+        dlg->hFont = GetDefaultGuiFont();
+    }
 
     DlgMetrics m = GetDlgMetrics(win->hwndFrame, dlg->hFont);
     int minW = DpiScale(win->hwndFrame, 500);
@@ -280,6 +341,7 @@ void ShowPdfBakeDialog(MainWindow* win) {
         DarkMode::setWindowEraseBgSubclass(hwnd);
     }
     UpdateWindowCaptionTheme(hwnd);
+    dlg->dpiReady = true;
     ShowWindow(hwnd, SW_SHOW);
 }
 
@@ -295,6 +357,9 @@ struct PdfExtractTextDialog {
     HWND hwndExtractBtn = nullptr;
     HWND hwndCancelBtn = nullptr;
     HFONT hFont = nullptr;
+    int dpi = 96;
+    bool fontOwned = false;
+    bool dpiReady = false;
     char* srcPath = nullptr;
     MainWindow* win = nullptr;
 };
@@ -422,11 +487,18 @@ static LRESULT CALLBACK PdfExtractTextDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
             }
             break;
         }
+        case WM_DPICHANGED:
+            PdfToolHandleDpi(hwnd, &dlg->dpi, &dlg->hFont, &dlg->fontOwned, dlg->dpiReady, wp, lp);
+            return 0;
         case WM_CLOSE:
             DestroyWindow(hwnd);
             return 0;
-        case WM_DESTROY:
-            return 0;
+        case WM_NCDESTROY:
+            if (dlg->fontOwned && dlg->hFont) {
+                DeleteObject(dlg->hFont);
+                dlg->hFont = nullptr;
+            }
+            return DefWindowProc(hwnd, msg, wp, lp);
     }
     return DefWindowProc(hwnd, msg, wp, lp);
 }
@@ -460,7 +532,15 @@ void ShowPdfExtractTextDialog(MainWindow* win) {
     PdfExtractTextDialog* dlg = new PdfExtractTextDialog();
     dlg->srcPath = str::Dup(tab->filePath);
     dlg->win = win;
-    dlg->hFont = GetDefaultGuiFont();
+    dlg->dpi = DpiGet(win->hwndFrame);
+    if (dlg->dpi < 72) {
+        dlg->dpi = 96;
+    }
+    dlg->hFont = CreatePdfToolFont(dlg->dpi);
+    dlg->fontOwned = dlg->hFont != nullptr;
+    if (!dlg->hFont) {
+        dlg->hFont = GetDefaultGuiFont();
+    }
 
     DlgMetrics m = GetDlgMetrics(win->hwndFrame, dlg->hFont);
     int minW = DpiScale(win->hwndFrame, 500);
@@ -535,6 +615,7 @@ void ShowPdfExtractTextDialog(MainWindow* win) {
         DarkMode::setWindowEraseBgSubclass(hwnd);
     }
     UpdateWindowCaptionTheme(hwnd);
+    dlg->dpiReady = true;
     ShowWindow(hwnd, SW_SHOW);
 }
 
@@ -548,6 +629,9 @@ struct PdfCompressDialog {
     HWND hwndCompressBtn = nullptr;
     HWND hwndCancelBtn = nullptr;
     HFONT hFont = nullptr;
+    int dpi = 96;
+    bool fontOwned = false;
+    bool dpiReady = false;
     char* srcPath = nullptr;
     MainWindow* win = nullptr;
 };
@@ -633,11 +717,18 @@ static LRESULT CALLBACK PdfCompressDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARA
             }
             break;
         }
+        case WM_DPICHANGED:
+            PdfToolHandleDpi(hwnd, &dlg->dpi, &dlg->hFont, &dlg->fontOwned, dlg->dpiReady, wp, lp);
+            return 0;
         case WM_CLOSE:
             DestroyWindow(hwnd);
             return 0;
-        case WM_DESTROY:
-            return 0;
+        case WM_NCDESTROY:
+            if (dlg->fontOwned && dlg->hFont) {
+                DeleteObject(dlg->hFont);
+                dlg->hFont = nullptr;
+            }
+            return DefWindowProc(hwnd, msg, wp, lp);
     }
     return DefWindowProc(hwnd, msg, wp, lp);
 }
@@ -674,7 +765,15 @@ void ShowPdfCompressDialog(MainWindow* win) {
     PdfCompressDialog* dlg = new PdfCompressDialog();
     dlg->srcPath = str::Dup(tab->filePath);
     dlg->win = win;
-    dlg->hFont = GetDefaultGuiFont();
+    dlg->dpi = DpiGet(win->hwndFrame);
+    if (dlg->dpi < 72) {
+        dlg->dpi = 96;
+    }
+    dlg->hFont = CreatePdfToolFont(dlg->dpi);
+    dlg->fontOwned = dlg->hFont != nullptr;
+    if (!dlg->hFont) {
+        dlg->hFont = GetDefaultGuiFont();
+    }
 
     DlgMetrics m = GetDlgMetrics(win->hwndFrame, dlg->hFont);
     int minW = DpiScale(win->hwndFrame, 500);
@@ -730,6 +829,7 @@ void ShowPdfCompressDialog(MainWindow* win) {
         DarkMode::setWindowEraseBgSubclass(hwnd);
     }
     UpdateWindowCaptionTheme(hwnd);
+    dlg->dpiReady = true;
     ShowWindow(hwnd, SW_SHOW);
 }
 
@@ -743,6 +843,9 @@ struct PdfDecompressDialog {
     HWND hwndDecompressBtn = nullptr;
     HWND hwndCancelBtn = nullptr;
     HFONT hFont = nullptr;
+    int dpi = 96;
+    bool fontOwned = false;
+    bool dpiReady = false;
     char* srcPath = nullptr;
     MainWindow* win = nullptr;
 };
@@ -825,11 +928,18 @@ static LRESULT CALLBACK PdfDecompressDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             }
             break;
         }
+        case WM_DPICHANGED:
+            PdfToolHandleDpi(hwnd, &dlg->dpi, &dlg->hFont, &dlg->fontOwned, dlg->dpiReady, wp, lp);
+            return 0;
         case WM_CLOSE:
             DestroyWindow(hwnd);
             return 0;
-        case WM_DESTROY:
-            return 0;
+        case WM_NCDESTROY:
+            if (dlg->fontOwned && dlg->hFont) {
+                DeleteObject(dlg->hFont);
+                dlg->hFont = nullptr;
+            }
+            return DefWindowProc(hwnd, msg, wp, lp);
     }
     return DefWindowProc(hwnd, msg, wp, lp);
 }
@@ -866,7 +976,15 @@ void ShowPdfDecompressDialog(MainWindow* win) {
     PdfDecompressDialog* dlg = new PdfDecompressDialog();
     dlg->srcPath = str::Dup(tab->filePath);
     dlg->win = win;
-    dlg->hFont = GetDefaultGuiFont();
+    dlg->dpi = DpiGet(win->hwndFrame);
+    if (dlg->dpi < 72) {
+        dlg->dpi = 96;
+    }
+    dlg->hFont = CreatePdfToolFont(dlg->dpi);
+    dlg->fontOwned = dlg->hFont != nullptr;
+    if (!dlg->hFont) {
+        dlg->hFont = GetDefaultGuiFont();
+    }
 
     DlgMetrics m = GetDlgMetrics(win->hwndFrame, dlg->hFont);
     int minW = DpiScale(win->hwndFrame, 500);
@@ -921,6 +1039,7 @@ void ShowPdfDecompressDialog(MainWindow* win) {
         DarkMode::setWindowEraseBgSubclass(hwnd);
     }
     UpdateWindowCaptionTheme(hwnd);
+    dlg->dpiReady = true;
     ShowWindow(hwnd, SW_SHOW);
 }
 
@@ -937,6 +1056,9 @@ struct PdfDeletePageDialog {
     HWND hwndDeleteBtn = nullptr; // also used as "Extract Pages" button
     HWND hwndCancelBtn = nullptr;
     HFONT hFont = nullptr;
+    int dpi = 96;
+    bool fontOwned = false;
+    bool dpiReady = false;
     char* srcPath = nullptr;
     bool isExtract = false;
     MainWindow* win = nullptr;
@@ -1205,11 +1327,18 @@ static LRESULT CALLBACK PdfDeletePageDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             }
             break;
         }
+        case WM_DPICHANGED:
+            PdfToolHandleDpi(hwnd, &dlg->dpi, &dlg->hFont, &dlg->fontOwned, dlg->dpiReady, wp, lp);
+            return 0;
         case WM_CLOSE:
             DestroyWindow(hwnd);
             return 0;
-        case WM_DESTROY:
-            return 0;
+        case WM_NCDESTROY:
+            if (dlg->fontOwned && dlg->hFont) {
+                DeleteObject(dlg->hFont);
+                dlg->hFont = nullptr;
+            }
+            return DefWindowProc(hwnd, msg, wp, lp);
     }
     return DefWindowProc(hwnd, msg, wp, lp);
 }
@@ -1252,7 +1381,15 @@ static void ShowPdfPageRangeDialog(MainWindow* win, bool isExtract) {
     PdfDeletePageDialog* dlg = new PdfDeletePageDialog();
     dlg->srcPath = str::Dup(tab->filePath);
     dlg->win = win;
-    dlg->hFont = GetDefaultGuiFont();
+    dlg->dpi = DpiGet(win->hwndFrame);
+    if (dlg->dpi < 72) {
+        dlg->dpi = 96;
+    }
+    dlg->hFont = CreatePdfToolFont(dlg->dpi);
+    dlg->fontOwned = dlg->hFont != nullptr;
+    if (!dlg->hFont) {
+        dlg->hFont = GetDefaultGuiFont();
+    }
     dlg->pageCount = pageCount;
     dlg->isExtract = isExtract;
 
@@ -1349,6 +1486,7 @@ static void ShowPdfPageRangeDialog(MainWindow* win, bool isExtract) {
         DarkMode::setWindowEraseBgSubclass(hwnd);
     }
     UpdateWindowCaptionTheme(hwnd);
+    dlg->dpiReady = true;
     ShowWindow(hwnd, SW_SHOW);
 }
 
@@ -2203,8 +2341,9 @@ void ShowPdfRotatePagesDialog(MainWindow* win) {
     SendMessageW(dlg->hwndAny, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
     SendMessageW(dlg->hwndAny, BM_SETCHECK, BST_CHECKED, 0);
 
-    dlg->hwndSlider = CreateWindowExW(0, TRACKBAR_CLASS, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_HORZ | TBS_NOTICKS,
-                                      0, 0, 0, 0, hwnd, nullptr, h, nullptr);
+    dlg->hwndSlider =
+        CreateWindowExW(0, TRACKBAR_CLASS, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_HORZ | TBS_NOTICKS, 0, 0, 0, 0,
+                        hwnd, nullptr, h, nullptr);
     SendMessageW(dlg->hwndSlider, TBM_SETRANGEMIN, FALSE, (LPARAM)-1800);
     SendMessageW(dlg->hwndSlider, TBM_SETRANGEMAX, TRUE, (LPARAM)1800);
     SendMessageW(dlg->hwndSlider, TBM_SETLINESIZE, 0, 1);
@@ -2213,8 +2352,8 @@ void ShowPdfRotatePagesDialog(MainWindow* win) {
 
     dlg->syncing = true;
     dlg->hwndAngleEdit =
-        CreateWindowExW(WS_EX_CLIENTEDGE, WC_EDITW, L"0.0", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0, 0, 0,
-                        0, hwnd, (HMENU)(INT_PTR)idRotateAngleEdit, h, nullptr);
+        CreateWindowExW(WS_EX_CLIENTEDGE, WC_EDITW, L"0.0", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0, 0,
+                        0, 0, hwnd, (HMENU)(INT_PTR)idRotateAngleEdit, h, nullptr);
     SendMessageW(dlg->hwndAngleEdit, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
     dlg->syncing = false;
 
@@ -2225,8 +2364,8 @@ void ShowPdfRotatePagesDialog(MainWindow* win) {
     dlg->hwndLeft90 = CreateWindowExW(0, L"BUTTON", _TRW("Left 90°"), WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 0, 0,
                                       0, 0, hwnd, (HMENU)(INT_PTR)idRotateLeft90, h, nullptr);
     SendMessageW(dlg->hwndLeft90, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
-    dlg->hwndRight90 = CreateWindowExW(0, L"BUTTON", _TRW("Right 90°"), WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 0, 0,
-                                       0, 0, hwnd, (HMENU)(INT_PTR)idRotateRight90, h, nullptr);
+    dlg->hwndRight90 = CreateWindowExW(0, L"BUTTON", _TRW("Right 90°"), WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 0,
+                                       0, 0, 0, hwnd, (HMENU)(INT_PTR)idRotateRight90, h, nullptr);
     SendMessageW(dlg->hwndRight90, WM_SETFONT, (WPARAM)dlg->hFont, TRUE);
     dlg->hwnd180 = CreateWindowExW(0, L"BUTTON", L"180°", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 0, 0, 0, 0, hwnd,
                                    (HMENU)(INT_PTR)idRotate180, h, nullptr);
@@ -2311,6 +2450,9 @@ struct PdfEncryptDialog {
     HWND hwndEncryptBtn = nullptr;
     HWND hwndCancelBtn = nullptr;
     HFONT hFont = nullptr;
+    int dpi = 96;
+    bool fontOwned = false;
+    bool dpiReady = false;
     char* srcPath = nullptr;
     MainWindow* win = nullptr;
 };
@@ -2412,11 +2554,18 @@ static LRESULT CALLBACK PdfEncryptDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM
             }
             break;
         }
+        case WM_DPICHANGED:
+            PdfToolHandleDpi(hwnd, &dlg->dpi, &dlg->hFont, &dlg->fontOwned, dlg->dpiReady, wp, lp);
+            return 0;
         case WM_CLOSE:
             DestroyWindow(hwnd);
             return 0;
-        case WM_DESTROY:
-            return 0;
+        case WM_NCDESTROY:
+            if (dlg->fontOwned && dlg->hFont) {
+                DeleteObject(dlg->hFont);
+                dlg->hFont = nullptr;
+            }
+            return DefWindowProc(hwnd, msg, wp, lp);
     }
     return DefWindowProc(hwnd, msg, wp, lp);
 }
@@ -2458,7 +2607,15 @@ void ShowPdfEncryptDialog(MainWindow* win) {
     PdfEncryptDialog* dlg = new PdfEncryptDialog();
     dlg->srcPath = str::Dup(tab->filePath);
     dlg->win = win;
-    dlg->hFont = GetDefaultGuiFont();
+    dlg->dpi = DpiGet(win->hwndFrame);
+    if (dlg->dpi < 72) {
+        dlg->dpi = 96;
+    }
+    dlg->hFont = CreatePdfToolFont(dlg->dpi);
+    dlg->fontOwned = dlg->hFont != nullptr;
+    if (!dlg->hFont) {
+        dlg->hFont = GetDefaultGuiFont();
+    }
 
     DlgMetrics m = GetDlgMetrics(win->hwndFrame, dlg->hFont);
     int minW = DpiScale(win->hwndFrame, 500);
@@ -2531,6 +2688,7 @@ void ShowPdfEncryptDialog(MainWindow* win) {
         DarkMode::setWindowEraseBgSubclass(hwnd);
     }
     UpdateWindowCaptionTheme(hwnd);
+    dlg->dpiReady = true;
     ShowWindow(hwnd, SW_SHOW);
     SetFocus(dlg->hwndPasswordEdit);
 }
@@ -2545,6 +2703,9 @@ struct PdfDecryptDialog {
     HWND hwndDecryptBtn = nullptr;
     HWND hwndCancelBtn = nullptr;
     HFONT hFont = nullptr;
+    int dpi = 96;
+    bool fontOwned = false;
+    bool dpiReady = false;
     char* srcPath = nullptr;
     char* password = nullptr;
     MainWindow* win = nullptr;
@@ -2633,11 +2794,18 @@ static LRESULT CALLBACK PdfDecryptDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM
             }
             break;
         }
+        case WM_DPICHANGED:
+            PdfToolHandleDpi(hwnd, &dlg->dpi, &dlg->hFont, &dlg->fontOwned, dlg->dpiReady, wp, lp);
+            return 0;
         case WM_CLOSE:
             DestroyWindow(hwnd);
             return 0;
-        case WM_DESTROY:
-            return 0;
+        case WM_NCDESTROY:
+            if (dlg->fontOwned && dlg->hFont) {
+                DeleteObject(dlg->hFont);
+                dlg->hFont = nullptr;
+            }
+            return DefWindowProc(hwnd, msg, wp, lp);
     }
     return DefWindowProc(hwnd, msg, wp, lp);
 }
@@ -2685,7 +2853,15 @@ void ShowPdfDecryptDialog(MainWindow* win) {
     dlg->srcPath = str::Dup(tab->filePath);
     dlg->password = str::Dup(pwd);
     dlg->win = win;
-    dlg->hFont = GetDefaultGuiFont();
+    dlg->dpi = DpiGet(win->hwndFrame);
+    if (dlg->dpi < 72) {
+        dlg->dpi = 96;
+    }
+    dlg->hFont = CreatePdfToolFont(dlg->dpi);
+    dlg->fontOwned = dlg->hFont != nullptr;
+    if (!dlg->hFont) {
+        dlg->hFont = GetDefaultGuiFont();
+    }
 
     DlgMetrics m = GetDlgMetrics(win->hwndFrame, dlg->hFont);
     int minW = DpiScale(win->hwndFrame, 500);
@@ -2742,5 +2918,6 @@ void ShowPdfDecryptDialog(MainWindow* win) {
         DarkMode::setWindowEraseBgSubclass(hwnd);
     }
     UpdateWindowCaptionTheme(hwnd);
+    dlg->dpiReady = true;
     ShowWindow(hwnd, SW_SHOW);
 }

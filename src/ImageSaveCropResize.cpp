@@ -5,6 +5,7 @@
 #include "utils/ScopedWin.h"
 #include "utils/FileUtil.h"
 #include "utils/WinUtil.h"
+#include "utils/Dpi.h"
 #include "utils/GdiPlusUtil.h"
 #include "utils/GuessFileType.h"
 #include "FzImgReader.h"
@@ -14,6 +15,8 @@
 #include "wingui/WinGui.h"
 
 #include "Settings.h"
+#include "AppSettings.h"
+#include "AppDialogTheme.h"
 #include "GlobalPrefs.h"
 #include "DocController.h"
 #include "EngineBase.h"
@@ -176,6 +179,8 @@ struct ImageEditWindow {
     int dragNewH = 0;
 
     HFONT hFont = nullptr;
+    int dpi = 96;
+    bool fontOwned = false;
 
     ImageEditWindow() = default;
     ~ImageEditWindow() {
@@ -185,8 +190,59 @@ struct ImageEditWindow {
         delete btnCrop;
         delete btnResize;
         delete dropFormat;
+        if (fontOwned && hFont) {
+            DeleteObject(hFont);
+        }
     }
 };
+
+static int ImgPx(const ImageEditWindow* ew, int x) {
+    int dpi = (ew && ew->dpi >= 72) ? ew->dpi : 96;
+    return MulDiv(x, dpi, 96);
+}
+
+static void ApplyImageFont(ImageEditWindow* ew, int dpi) {
+    if (!ew || dpi < 72 || (ew->dpi == dpi && ew->hFont)) {
+        return;
+    }
+    AppDialogFonts fonts;
+    fonts.CreateForDpi(dpi);
+    if (!fonts.body) {
+        return;
+    }
+    HFONT prev = ew->fontOwned ? ew->hFont : nullptr;
+    ew->hFont = fonts.body;
+    fonts.body = nullptr;
+    ew->fontOwned = true;
+    ew->dpi = dpi;
+    if (ew->hwndPathLabel) {
+        SendMessageW(ew->hwndPathLabel, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
+    }
+    if (ew->hwndDestEdit) {
+        SendMessageW(ew->hwndDestEdit, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
+    }
+    if (ew->hwndBrowseBtn) {
+        SendMessageW(ew->hwndBrowseBtn, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
+    }
+    if (ew->hwndInfoLabel) {
+        SendMessageW(ew->hwndInfoLabel, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
+    }
+    if (ew->btnSave && ew->btnSave->hwnd) {
+        SendMessageW(ew->btnSave->hwnd, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
+    }
+    if (ew->btnCrop && ew->btnCrop->hwnd) {
+        SendMessageW(ew->btnCrop->hwnd, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
+    }
+    if (ew->btnResize && ew->btnResize->hwnd) {
+        SendMessageW(ew->btnResize->hwnd, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
+    }
+    if (ew->dropFormat && ew->dropFormat->hwnd) {
+        SendMessageW(ew->dropFormat->hwnd, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
+    }
+    if (prev) {
+        DeleteObject(prev);
+    }
+}
 
 static Vec<ImageEditWindow*> gImageEditWindows;
 
@@ -332,22 +388,25 @@ static void InvalidateImageArea(ImageEditWindow* ew) {
 }
 
 static int GetControlAreaDy(ImageEditWindow* ew) {
-    return ew->fromRenderedBitmap ? (kControlAreaDy - kPathLabelRowDy) : kControlAreaDy;
+    int full = ImgPx(ew, kControlAreaDy);
+    int pathRow = ImgPx(ew, kPathLabelRowDy);
+    return ew->fromRenderedBitmap ? (full - pathRow) : full;
 }
 
 static void CalcImageLayout(ImageEditWindow* ew) {
     Rect cRc = ClientRect(ew->hwnd);
     ew->imgAreaH = cRc.dy - GetControlAreaDy(ew);
-    if (ew->imgAreaH < 10) {
-        ew->imgAreaH = 10;
+    if (ew->imgAreaH < ImgPx(ew, 10)) {
+        ew->imgAreaH = ImgPx(ew, 10);
     }
 
     // fit image within image area with padding
-    int availW = cRc.dx - 2 * kImagePadding;
-    int availH = ew->imgAreaH - 2 * kImagePadding;
+    int pad = ImgPx(ew, kImagePadding);
+    int availW = cRc.dx - 2 * pad;
+    int availH = ew->imgAreaH - 2 * pad;
     if (availW <= 0 || availH <= 0 || ew->imgW <= 0 || ew->imgH <= 0) {
-        ew->imgDisplayX = kImagePadding;
-        ew->imgDisplayY = kImagePadding;
+        ew->imgDisplayX = pad;
+        ew->imgDisplayY = pad;
         ew->imgDisplayW = 0;
         ew->imgDisplayH = 0;
         return;
@@ -364,8 +423,8 @@ static void CalcImageLayout(ImageEditWindow* ew) {
     ew->imgDisplayW = (int)(ew->imgW * scale);
     ew->imgDisplayH = (int)(ew->imgH * scale);
     // center in available area
-    ew->imgDisplayX = kImagePadding + (availW - ew->imgDisplayW) / 2;
-    ew->imgDisplayY = kImagePadding + (availH - ew->imgDisplayH) / 2;
+    ew->imgDisplayX = pad + (availW - ew->imgDisplayW) / 2;
+    ew->imgDisplayY = pad + (availH - ew->imgDisplayH) / 2;
 }
 
 // Grow the window if the new-size rectangle exceeds the image display area (resize mode only).
@@ -373,8 +432,8 @@ static void CalcImageLayout(ImageEditWindow* ew) {
 // but stops at screen edges.
 static void GrowWindowIfNeeded(ImageEditWindow* ew, DragEdge edge) {
     // calculate how much display space the new size needs
-    int neededDispW = ImageToDisplayW(ew, ew->newW) + 2 * kImagePadding;
-    int neededDispH = ImageToDisplayH(ew, ew->newH) + 2 * kImagePadding;
+    int neededDispW = ImageToDisplayW(ew, ew->newW) + 2 * ImgPx(ew, kImagePadding);
+    int neededDispH = ImageToDisplayH(ew, ew->newH) + 2 * ImgPx(ew, kImagePadding);
 
     Rect cRc = ClientRect(ew->hwnd);
     int availW = cRc.dx;
@@ -652,7 +711,7 @@ static void PaintCropImage(ImageEditWindow* ew, HDC hdc) {
     g.DrawRectangle(&pen, cropDispX, cropDispY, cropDispR - cropDispX, cropDispB - cropDispY);
 
     // draw drag handles at corners and edge midpoints
-    int hs = kDragHandleSize;
+    int hs = ImgPx(ew, kDragHandleSize);
     int hh = hs / 2;
     int midX = (cropDispX + cropDispR) / 2;
     int midY = (cropDispY + cropDispB) / 2;
@@ -714,7 +773,7 @@ static void PaintResizeImage(ImageEditWindow* ew, HDC hdc) {
     g.DrawRectangle(&pen, newLeft, newTop, dispNewW, dispNewH);
 
     // draw drag handles
-    int hs = kDragHandleSize;
+    int hs = ImgPx(ew, kDragHandleSize);
     int hh = hs / 2;
     int midX = newLeft + dispNewW / 2;
     int midY = newTop + dispNewH / 2;
@@ -741,9 +800,13 @@ static void PaintResizeImage(ImageEditWindow* ew, HDC hdc) {
 
 static void LayoutControls(ImageEditWindow* ew) {
     Rect cRc = ClientRect(ew->hwnd);
-    int y = ew->imgAreaH + kRowPadding;
-    int x = kButtonPadding;
-    int w = cRc.dx - 2 * kButtonPadding;
+    int rowPad = ImgPx(ew, kRowPadding);
+    int btnPad = ImgPx(ew, kButtonPadding);
+    int labelH = ImgPx(ew, 16);
+    int editH = ImgPx(ew, 22);
+    int y = ew->imgAreaH + rowPad;
+    int x = btnPad;
+    int w = cRc.dx - 2 * btnPad;
 
     // row 1: file path label — skip if from RenderedBitmap
     if (!ew->fromRenderedBitmap) {
@@ -751,19 +814,20 @@ static void LayoutControls(ImageEditWindow* ew) {
         LRESULT margins = SendMessageW(ew->hwndDestEdit, EM_GETMARGINS, 0, 0);
         int editLeftMargin = LOWORD(margins);
         int labelShift = editBorder + editLeftMargin;
-        MoveWindow(ew->hwndPathLabel, x + labelShift, y, w - labelShift, 16, TRUE);
-        y += 16 + kRowPadding;
+        MoveWindow(ew->hwndPathLabel, x + labelShift, y, w - labelShift, labelH, TRUE);
+        y += labelH + rowPad;
     }
 
     // row 2: dest edit + browse button
-    int browseW = 30;
-    MoveWindow(ew->hwndDestEdit, x, y, w - browseW - 4, 22, TRUE);
-    MoveWindow(ew->hwndBrowseBtn, x + w - browseW, y, browseW, 22, TRUE);
-    y += 22 + kRowPadding;
+    int browseW = ImgPx(ew, 30);
+    int gap = ImgPx(ew, 4);
+    MoveWindow(ew->hwndDestEdit, x, y, w - browseW - gap, editH, TRUE);
+    MoveWindow(ew->hwndBrowseBtn, x + w - browseW, y, browseW, editH, TRUE);
+    y += editH + rowPad;
 
     // row 3: info label, cancel, save
     // layout buttons first to know where info label must stop
-    int bx = cRc.dx - kButtonPadding;
+    int bx = cRc.dx - btnPad;
     if (ew->btnSave) {
         // right-to-left: Resize, Crop, [Format], Save
         if (ew->btnResize) {
@@ -773,18 +837,18 @@ static void LayoutControls(ImageEditWindow* ew) {
         }
         if (ew->btnCrop) {
             Size szCrop = ew->btnCrop->GetIdealSize();
-            bx -= szCrop.dx + 4;
+            bx -= szCrop.dx + gap;
             ew->btnCrop->SetBounds({bx, y, szCrop.dx, szCrop.dy});
         }
         if (ew->dropFormat) {
             Size szDrop = ew->dropFormat->GetIdealSize();
-            bx -= szDrop.dx + 4;
+            bx -= szDrop.dx + gap;
             Size szRef = ew->btnResize ? ew->btnResize->GetIdealSize() : ew->btnSave->GetIdealSize();
             int dropY = y + (szRef.dy - szDrop.dy) / 2;
             ew->dropFormat->SetBounds({bx, dropY, szDrop.dx, szDrop.dy});
         }
         Size szSave = ew->btnSave->GetIdealSize();
-        bx -= szSave.dx + 4;
+        bx -= szSave.dx + gap;
         ew->btnSave->SetBounds({bx, y, szSave.dx, szSave.dy});
     }
 
@@ -797,12 +861,13 @@ static void LayoutControls(ImageEditWindow* ew) {
     GetTextExtentPoint32A(hdc, buf, textLen, &textSize);
     SelectObject(hdc, oldFont);
     ReleaseDC(ew->hwndInfoLabel, hdc);
-    int maxLabelW = bx - x - 8;
-    int labelW = std::min((int)textSize.cx + 8, maxLabelW);
+    int textPad = ImgPx(ew, 8);
+    int maxLabelW = bx - x - textPad;
+    int labelW = std::min((int)textSize.cx + textPad, maxLabelW);
     if (labelW < 0) {
         labelW = 0;
     }
-    MoveWindow(ew->hwndInfoLabel, x, y + 4, labelW, 16, TRUE);
+    MoveWindow(ew->hwndInfoLabel, x, y + gap, labelW, labelH, TRUE);
 }
 
 static void OnBrowse(ImageEditWindow* ew) {
@@ -1284,6 +1349,26 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_CREATE:
             break;
+
+        case WM_DPICHANGED: {
+            ew = FindImageEditWindowByHwnd(hwnd);
+            if (ew) {
+                int dpi = RoundUp((int)LOWORD(wp), 4);
+                if (dpi < 72) {
+                    dpi = 96;
+                }
+                ApplyImageFont(ew, dpi);
+                RECT* prc = (RECT*)lp;
+                if (prc) {
+                    SetWindowPos(hwnd, nullptr, prc->left, prc->top, prc->right - prc->left, prc->bottom - prc->top,
+                                 SWP_NOZORDER | SWP_NOACTIVATE);
+                }
+                CalcImageLayout(ew);
+                LayoutControls(ew);
+                InvalidateRect(hwnd, nullptr, TRUE);
+            }
+            return 0;
+        }
 
         case WM_SIZE: {
             ew = FindImageEditWindowByHwnd(hwnd);
@@ -1782,16 +1867,23 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
     wcex.hIcon = LoadIconW(h, iconName);
     RegisterClassEx(&wcex);
 
+    int dpi = DpiGet(win->hwndFrame);
+    if (dpi < 72) {
+        dpi = 96;
+    }
+    ew->dpi = dpi;
     // calculate window size: image at 100% + padding + control area, clamped to screen
-    int wantW = imgW + 2 * kImagePadding;
-    int controlDy = fromRenderedBitmap ? (kControlAreaDy - kPathLabelRowDy) : kControlAreaDy;
-    int wantH = imgH + 2 * kImagePadding + controlDy;
+    int pad = ImgPx(ew, kImagePadding);
+    int wantW = imgW + 2 * pad;
+    int controlDy = GetControlAreaDy(ew);
+    int wantH = imgH + 2 * pad + controlDy;
     // add window chrome
     RECT rc = {0, 0, wantW, wantH};
     AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
     int winW = rc.right - rc.left;
-    if (winW < kMinWindowWidth) {
-        winW = kMinWindowWidth;
+    int minW = ImgPx(ew, kMinWindowWidth);
+    if (winW < minW) {
+        winW = minW;
     }
     int winH = rc.bottom - rc.top;
     // clamp to screen
@@ -1824,8 +1916,7 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
     ew->hwnd = hwnd;
     ew->hwndParent = win->hwndFrame;
 
-    // create font
-    ew->hFont = GetDefaultGuiFont();
+    ApplyImageFont(ew, ew->dpi);
 
     // create child controls
     // row 1: file path label (read-only) — hidden when from RenderedBitmap
@@ -1865,6 +1956,7 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
         auto* btn = new Button();
         Button::CreateArgs args;
         args.parent = hwnd;
+        args.font = ew->hFont;
         args.text = _TRA("Save");
         btn->Create(args);
         btn->onClick = MkFunc0<ImageEditWindow>(OnSave, ew);
@@ -1874,6 +1966,7 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
         auto* btn = new Button();
         Button::CreateArgs args;
         args.parent = hwnd;
+        args.font = ew->hFont;
         args.text = _TRA("Crop");
         btn->Create(args);
         btn->onClick = MkFunc0<ImageEditWindow>(OnCropButton, ew);
@@ -1883,6 +1976,7 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
         auto* btn = new Button();
         Button::CreateArgs args;
         args.parent = hwnd;
+        args.font = ew->hFont;
         args.text = _TRA("Resize");
         btn->Create(args);
         btn->onClick = MkFunc0<ImageEditWindow>(OnResizeButton, ew);
@@ -1894,6 +1988,7 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
         auto* dd = new DropDown();
         DropDown::CreateArgs args;
         args.parent = hwnd;
+        args.font = ew->hFont;
         dd->Create(args);
         StrVec items;
         int wantFmtIdx = selectPdf ? kPdfFormatIdx : kDefaultFormatIdx;

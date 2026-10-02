@@ -2,6 +2,11 @@
 
 ## 3.7.36 (2026-10-02)
 
+- 查词、划词工具栏、朗读条、命令面板、文档属性、标签组、截图、图片裁剪，以及烘焙、提取、压缩、加密这些 PDF 窗口，都按所在屏幕的缩放显示。拖到另一块屏幕时会跟着变。
+  Lookup, the selection toolbar, the read-aloud bar, the command palette, document properties, tab groups, screenshot, image crop, and the PDF bake, extract, compress, and encrypt windows follow the screen they are on, and update when dragged to another screen.
+- 翻译和问问 AI 浮层按所在屏幕的缩放显示文字和窗口大小。拖到另一块屏幕时会跟着变。
+  The translation and Ask AI popup sizes its text and window for the screen it is on, and updates when dragged to another screen.
+
 - 选区工具栏点「复制」后，选区高亮会消失。查词、翻译、问问 AI 的窗口关掉后，打开它们时的那一段选区也会消失。
   Copy on the selection toolbar clears the highlight. Closing Lookup, Translate, or Ask AI clears the selection those windows were opened with.
 - 切换明亮/暗黑主题时，翻译和问问 AI 浮层先把窗口和里面的文字框准备好，再和主窗口一起换上新颜色。

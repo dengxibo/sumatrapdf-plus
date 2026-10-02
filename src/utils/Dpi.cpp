@@ -145,3 +145,22 @@ int DpiScale(HDC hdc, int x) {
     int res = MulDiv(x, dpi, 96);
     return res;
 }
+
+void DpiResizeChildren(HWND parent, int oldDpi, int newDpi) {
+    if (!parent || oldDpi < 72 || newDpi < 72 || oldDpi == newDpi) {
+        return;
+    }
+    HWND child = GetWindow(parent, GW_CHILD);
+    while (child) {
+        HWND next = GetWindow(child, GW_HWNDNEXT);
+        RECT r{};
+        GetWindowRect(child, &r);
+        MapWindowPoints(HWND_DESKTOP, parent, (LPPOINT)&r, 2);
+        int x = MulDiv(r.left, newDpi, oldDpi);
+        int y = MulDiv(r.top, newDpi, oldDpi);
+        int dx = MulDiv(r.right - r.left, newDpi, oldDpi);
+        int dy = MulDiv(r.bottom - r.top, newDpi, oldDpi);
+        SetWindowPos(child, nullptr, x, y, dx, dy, SWP_NOZORDER | SWP_NOACTIVATE);
+        child = next;
+    }
+}

@@ -19,6 +19,7 @@
 #include "Settings.h"
 #include "GlobalPrefs.h"
 #include "AppSettings.h"
+#include "AppDialogTheme.h"
 #include "MainWindow.h"
 #include "Theme.h"
 #include "DarkModeSubclass.h"
@@ -720,7 +721,7 @@ static void PaintOverlayLayered(HWND hwnd, ScreenshotOverlayData* data) {
     HGDIOBJ oldTemp = SelectObject(hdcTemp, hbmTemp);
 
     // select GUI font for text drawing
-    HFONT guiFont = GetDefaultGuiFont();
+    HFONT guiFont = GetAppFontForDpi(DpiGetForMonitorOfHwnd(hwnd));
     HGDIOBJ oldFont = SelectObject(hdcTemp, guiFont);
 
     // white background for the temp surface
@@ -1224,6 +1225,8 @@ struct SetHotkeyDialog {
     HWND hwndRemoveBtn = nullptr;
     HWND hwndCancelBtn = nullptr;
     HFONT hFont = nullptr;
+    int dpi = 96;
+    bool dpiReady = false;
     HWND hwndOwner = nullptr;
     char* currentHotkey = nullptr; // current hotkey string, or nullptr if none
     char* newHotkey = nullptr;     // newly captured hotkey string
@@ -1340,6 +1343,28 @@ static LRESULT CALLBACK SetHotkeyDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM 
             }
             break;
         }
+        case WM_DPICHANGED: {
+            if (!dlg->dpiReady) {
+                return 0;
+            }
+            int dpi = RoundUp((int)LOWORD(wp), 4);
+            if (dpi < 72) {
+                dpi = 96;
+            }
+            int old = dlg->dpi;
+            if (dpi != old) {
+                dlg->hFont = GetAppFontForDpi(dpi);
+                AppDialogApplyFontToChildren(hwnd, dlg->hFont);
+                DpiResizeChildren(hwnd, old, dpi);
+                dlg->dpi = dpi;
+            }
+            RECT* prc = (RECT*)lp;
+            if (prc) {
+                SetWindowPos(hwnd, nullptr, prc->left, prc->top, prc->right - prc->left, prc->bottom - prc->top,
+                             SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            return 0;
+        }
         case WM_CLOSE:
             DestroyWindow(hwnd);
             return 0;
@@ -1388,14 +1413,18 @@ void ShowSetScreenshotHotkeyDialog(HWND hwndOwner) {
 
     SetHotkeyDialog* dlg = new SetHotkeyDialog();
     dlg->hwndOwner = hwndOwner;
-    dlg->hFont = GetDefaultGuiFont();
+    dlg->dpi = hwndOwner ? DpiGet(hwndOwner) : 96;
+    if (dlg->dpi < 72) {
+        dlg->dpi = 96;
+    }
+    dlg->hFont = GetAppFontForDpi(dlg->dpi);
     const char* existing = FindScreenshotShortcut();
     if (existing) {
         dlg->currentHotkey = str::Dup(existing);
     }
 
-    int dlgW = 350;
-    int dlgH = 140;
+    int dlgW = MulDiv(350, dlg->dpi, 96);
+    int dlgH = MulDiv(140, dlg->dpi, 96);
 
     HINSTANCE h = GetModuleHandleW(nullptr);
     HWND hwnd = CreateWindowExW(WS_EX_DLGMODALFRAME, kSetHotkeyWinClassName, _TRW("Set Screenshot Hotkey"),
@@ -1406,12 +1435,12 @@ void ShowSetScreenshotHotkeyDialog(HWND hwndOwner) {
         return;
     }
 
-    int padding = 10;
+    int padding = MulDiv(10, dlg->dpi, 96);
     int x = padding;
     int y = padding;
-    int w = dlgW - 2 * padding - 16;
-    int rowH = 22;
-    int rowGap = 6;
+    int w = dlgW - 2 * padding - MulDiv(16, dlg->dpi, 96);
+    int rowH = MulDiv(22, dlg->dpi, 96);
+    int rowGap = MulDiv(6, dlg->dpi, 96);
 
     // row 1: "Current hotkey:" label
     dlg->hwndCurrentLabel = CreateWindowExW(0, L"STATIC", _TRW("Press a key combination:"),
@@ -1428,8 +1457,8 @@ void ShowSetScreenshotHotkeyDialog(HWND hwndOwner) {
     y += rowH + rowGap;
 
     // row 3: Set + Remove + Cancel buttons (right-aligned)
-    int btnW = 75;
-    int btnH = 24;
+    int btnW = MulDiv(75, dlg->dpi, 96);
+    int btnH = MulDiv(24, dlg->dpi, 96);
     int bx = x + w - btnW;
     dlg->hwndCancelBtn = CreateWindowExW(0, L"BUTTON", _TRW("Cancel"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, bx, y,
                                          btnW, btnH, hwnd, nullptr, h, nullptr);
@@ -1445,6 +1474,7 @@ void ShowSetScreenshotHotkeyDialog(HWND hwndOwner) {
 
     EnableWindow(dlg->hwndSetBtn, FALSE);
     EnableWindow(dlg->hwndRemoveBtn, dlg->currentHotkey != nullptr);
+    dlg->dpiReady = true;
 
     CenterDialog(hwnd, hwndOwner);
 
