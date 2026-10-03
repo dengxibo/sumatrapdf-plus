@@ -35,6 +35,7 @@
 #include "CommandAvailability.h"
 #include "ExternalViewers.h"
 #include "Favorites.h"
+#include "SidebarThumbs.h"
 #include "FileThumbnails.h"
 #include "Selection.h"
 #include "WordLookup.h"
@@ -73,6 +74,9 @@ struct BuildMenuCtx {
     bool hasToc = false;
     int pageCount = 0;
     bool isReflowableEbook = false;
+    // Home-page file menu. These commands have no open document, so the
+    // usual "hide when nothing is loaded" filter must not drop them.
+    bool homeFileMenu = false;
     BuildMenuCtx() = default;
     ~BuildMenuCtx() = default;
 };
@@ -243,11 +247,11 @@ MenuDef menuDefEbookCjkFonts[] = {
 MenuDef menuDefEbookReadingFont[] = {
     {
         _TRN("&Western Body Font"),
-        (UINT_PTR)menuDefEbookLatinFonts,
+        CmdPickEbookLatinFont,
     },
     {
         _TRN("&CJK Body Font"),
-        (UINT_PTR)menuDefEbookCjkFonts,
+        CmdPickEbookCjkFont,
     },
     {
         kMenuSeparator,
@@ -333,6 +337,10 @@ static MenuDef menuDefView[] = {
     {
         _TRN("Show Book&marks"),
         CmdToggleBookmarks,
+    },
+    {
+        _TRN("Show &Thumbnails"),
+        CmdToggleThumbnails,
     },
     {
         _TRN("Extract Table of Contents"),
@@ -948,6 +956,10 @@ static MenuDef menuDefContext[] = {
         CmdToggleBookmarks,
     },
     {
+        _TRN("Show &Thumbnails"),
+        CmdToggleThumbnails,
+    },
+    {
         _TRN("Set TOC Item to Current Page"),
         CmdPdfTocSetCurrentPage,
     },
@@ -1013,8 +1025,12 @@ static MenuDef menuDefContextStart[] = {
         0,
     },
     {
-        _TRN("&Remove From History"),
+        _TRN("&Remove From History\tDel"),
         CmdForgetSelectedDocument,
+    },
+    {
+        _TRN("Delete File"),
+        CmdDeleteFile,
     },
     {
         nullptr,
@@ -1273,6 +1289,57 @@ static void AppendRecentFilesToMenu(HMENU m) {
     }
 }
 
+// In single-page view the canvas beside the sheet still belongs to that page.
+// A right-click there should offer the same menu as a click on the paper.
+static int PageNoForCanvasContextMenu(DisplayModel* dm, Point pt) {
+    if (!dm) {
+        return -1;
+    }
+    int pageNo = dm->GetPageNoByPoint(pt);
+    if (pageNo > 0) {
+        return pageNo;
+    }
+    if (dm->GetDisplayMode() != DisplayMode::SinglePage) {
+        return pageNo;
+    }
+    int cur = dm->CurrentPageNo();
+    return cur > 0 ? cur : pageNo;
+}
+
+// A click in the single-page margin is not inside the sheet. Pull it onto the
+// page edge so "create annotation under cursor" still has a page point.
+static Point ClampCanvasPointOntoPage(DisplayModel* dm, Point pt, int pageNo) {
+    if (!dm || pageNo <= 0 || dm->GetPageNoByPoint(pt) > 0) {
+        return pt;
+    }
+    PageInfo* pi = dm->GetPageInfo(pageNo);
+    if (!pi || pi->pageOnScreen.IsEmpty()) {
+        return pt;
+    }
+    Rect r = pi->pageOnScreen;
+    int right = r.x + r.dx - 1;
+    int bottom = r.y + r.dy - 1;
+    if (right < r.x) {
+        right = r.x;
+    }
+    if (bottom < r.y) {
+        bottom = r.y;
+    }
+    int x = pt.x;
+    int y = pt.y;
+    if (x < r.x) {
+        x = r.x;
+    } else if (x > right) {
+        x = right;
+    }
+    if (y < r.y) {
+        y = r.y;
+    } else if (y > bottom) {
+        y = bottom;
+    }
+    return Point{x, y};
+}
+
 BuildMenuCtx* NewBuildMenuCtx(WindowTab* tab, Point pt) {
     auto ctx = new BuildMenuCtx;
     if (!tab) {
@@ -1298,7 +1365,7 @@ BuildMenuCtx* NewBuildMenuCtx(WindowTab* tab, Point pt) {
 
     DisplayModel* dm = tab->AsFixed();
     if (dm) {
-        int pageNoUnderCursor = dm->GetPageNoByPoint(pt);
+        int pageNoUnderCursor = PageNoForCanvasContextMenu(dm, pt);
         if (pageNoUnderCursor > 0) {
             ctx->isCursorOnPage = true;
         }
@@ -1488,6 +1555,11 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
     // MenuDef submenu templates (pointers) are not commands; don't filter them
     // through command visibility (would drop the whole menubar on the home tab).
     if (cmdId > (UINT_PTR)CmdLast + 10000) {
+        return {false, false};
+    }
+    if (ctx && ctx->homeFileMenu &&
+        (cmdId == CmdOpenSelectedDocument || cmdId == CmdShowInFolder || cmdId == CmdPinSelectedDocument ||
+         cmdId == CmdForgetSelectedDocument || cmdId == CmdDeleteFile)) {
         return {false, false};
     }
     AppCommandCtx appCtx;
@@ -1927,12 +1999,14 @@ static void MenuUpdateStateForWindow(MainWindow* win) {
 
     bool enabled = win->IsDocLoaded() && tab && tab->ctrl->HasToc();
     MenuSetEnabled(win->menu, CmdToggleBookmarks, enabled);
+    MenuSetEnabled(win->menu, CmdToggleThumbnails, SidebarViewAvailable(win, SidebarView::Thumbnails));
 
     bool documentSpecific = win->IsDocLoaded();
-    bool checked = documentSpecific ? win->tocVisible : gGlobalPrefs->showToc;
-    MenuSetChecked(win->menu, CmdToggleBookmarks, checked);
-
-    MenuSetChecked(win->menu, CmdFavoriteToggle, gGlobalPrefs->showFavorites);
+    SidebarView sideView = CurrentSidebarView(win);
+    bool column = documentSpecific && win->tocVisible;
+    MenuSetChecked(win->menu, CmdToggleBookmarks, column && sideView == SidebarView::Bookmarks);
+    MenuSetChecked(win->menu, CmdToggleThumbnails, column && sideView == SidebarView::Thumbnails);
+    MenuSetChecked(win->menu, CmdFavoriteToggle, column && sideView == SidebarView::Favorites);
     MenuSetChecked(win->menu, CmdToggleToolbar, gGlobalPrefs->showToolbar);
     MenuSetChecked(win->menu, CmdToggleMenuBar, gGlobalPrefs->showMenubar);
     // CmdChangeScrollbar doesn't need a check mark - it opens a dialog
@@ -1998,6 +2072,7 @@ void OnAboutContextMenu(MainWindow* win, int x, int y) {
         POINT emptyPt = {x, y};
         MapWindowPoints(win->hwndCanvas, HWND_DESKTOP, &emptyPt, 1);
         MarkMenuOwnerDraw(emptyPopup);
+        SetForegroundWindow(win->hwndFrame);
         INT emptyCmd = TrackPopupMenu(emptyPopup, TPM_RETURNCMD | TPM_RIGHTBUTTON, emptyPt.x, emptyPt.y, 0,
                                       win->hwndFrame, nullptr);
         FreeMenuOwnerDrawInfoData(emptyPopup);
@@ -2008,24 +2083,38 @@ void OnAboutContextMenu(MainWindow* win, int x, int y) {
         return;
     }
 
-    HMENU popup = BuildMenuFromDef(menuDefContextStart, CreatePopupMenu(), nullptr);
+    TempStr ownedPath = str::DupTemp(fs->filePath);
+    bool multi = HomePagePathIsSelected(win, ownedPath) && HomePageSelectedCount(win) > 1;
+    if (!multi) {
+        HomePageSelectOnly(win, ownedPath);
+    }
+
+    auto menuCtx = new BuildMenuCtx;
+    menuCtx->homeFileMenu = true;
+    HMENU popup = BuildMenuFromDef(menuDefContextStart, CreatePopupMenu(), menuCtx);
+    DeleteBuildMenuCtx(menuCtx);
     MenuSetChecked(popup, CmdPinSelectedDocument, fs->isPinned);
     POINT pt = {x, y};
     MapWindowPoints(win->hwndCanvas, HWND_DESKTOP, &pt, 1);
     MarkMenuOwnerDraw(popup);
+    SetForegroundWindow(win->hwndFrame);
     INT cmd = TrackPopupMenu(popup, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, win->hwndFrame, nullptr);
     FreeMenuOwnerDrawInfoData(popup);
     DestroyMenu(popup);
 
     if (CmdOpenSelectedDocument == cmd) {
-        LoadArgs args(path, win);
-        SetUserOpenActivateExisting(args);
-        LoadDocument(&args);
+        if (multi) {
+            HomePageOpenSelection(win);
+        } else {
+            LoadArgs args(ownedPath, win);
+            SetUserOpenActivateExisting(args);
+            LoadDocument(&args);
+        }
         return;
     }
 
     if (CmdShowInFolder == cmd) {
-        SumatraOpenPathInDefaultFileManager(path);
+        SumatraOpenPathInDefaultFileManager(ownedPath);
         return;
     }
 
@@ -2039,19 +2128,21 @@ void OnAboutContextMenu(MainWindow* win, int x, int y) {
     }
 
     if (CmdForgetSelectedDocument == cmd) {
-        TempStr filePath = str::DupTemp(fs->filePath);
-        if (!fs->favorites->IsEmpty()) {
-            // only hide documents with favorites
-            gFileHistory.MarkFileInexistent(fs->filePath, true);
+        if (multi) {
+            HomePageRemoveSelectionFromHistory(win);
         } else {
-            gFileHistory.Remove(fs);
-            DeleteFileState(fs);
+            HomePageRemovePathFromHistory(win, ownedPath);
+            HomePageClearSelection(win);
+            SaveSettings();
+            win->DeleteToolTip();
+            HomePageInvalidateScrollCache(win);
+            win->RedrawAll(true);
         }
-        DeleteThumbnailForFile(filePath);
-        SaveSettings();
-        win->DeleteToolTip();
-        HomePageInvalidateScrollCache(win);
-        win->RedrawAll(true);
+        return;
+    }
+
+    if (CmdDeleteFile == cmd) {
+        HomePageDeleteSelectionToTrash(win);
         return;
     }
 }
@@ -2107,7 +2198,7 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
         InsertMenuItemW(popup, 0, TRUE, &mii);
     }
 
-    int pageNoUnderCursor = dm->GetPageNoByPoint(cursorPos);
+    int pageNoUnderCursor = PageNoForCanvasContextMenu(dm, cursorPos);
     PointF ptOnPage = dm->CvtFromScreen(cursorPos, pageNoUnderCursor);
     EngineBase* engine = dm->GetEngine();
 
@@ -2189,7 +2280,9 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
 
     MenuUpdatePrintItem(win, popup, true);
     MenuSetEnabled(popup, CmdToggleBookmarks, win->ctrl->HasToc());
-    MenuSetChecked(popup, CmdToggleBookmarks, win->tocVisible);
+    MenuSetChecked(popup, CmdToggleBookmarks, win->tocVisible && CurrentSidebarView(win) == SidebarView::Bookmarks);
+    MenuSetEnabled(popup, CmdToggleThumbnails, SidebarViewAvailable(win, SidebarView::Thumbnails));
+    MenuSetChecked(popup, CmdToggleThumbnails, win->tocVisible && CurrentSidebarView(win) == SidebarView::Thumbnails);
     if (win->tocSelectedIds.Size() != 1) {
         MenuRemove(popup, CmdPdfTocSetCurrentPage);
     } else if (pageNoUnderCursor > 0) {
@@ -2198,8 +2291,8 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
                     str::FormatTemp(_TRA("Link page %s to selected bookmark"), pageLabel));
     }
 
-    MenuSetEnabled(popup, CmdFavoriteToggle, HasFavorites());
-    MenuSetChecked(popup, CmdFavoriteToggle, gGlobalPrefs->showFavorites);
+    MenuSetEnabled(popup, CmdFavoriteToggle, SidebarViewAvailable(win, SidebarView::Favorites));
+    MenuSetChecked(popup, CmdFavoriteToggle, win->tocVisible && CurrentSidebarView(win) == SidebarView::Favorites);
 
     if (ctx->annotationUnderCursor) {
         // change from generic "Edit Annotations" to more specific
@@ -2283,7 +2376,8 @@ void OnWindowContextMenu(MainWindow* win, int x, int y) {
     LPARAM lpArg = MAKELPARAM(x, y);
     AnnotationType annotType = CmdIdToAnnotationType(cmdId);
     if (annotType != AnnotationType::Unknown) {
-        HwndSendCommand(win->hwndFrame, cmdId, lpArg);
+        Point onPage = ClampCanvasPointOntoPage(dm, cursorPos, pageNoUnderCursor);
+        HwndSendCommand(win->hwndFrame, cmdId, MAKELPARAM(onPage.x, onPage.y));
         return;
     }
     switch (cmdId) {

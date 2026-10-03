@@ -1,6 +1,8 @@
 /* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
+#pragma once
+
 // must match order in gAllIcons
 enum class TbIcon {
     Text = -2,
@@ -59,6 +61,10 @@ enum class TbIcon {
     HomeFrequent,
     Trash,
     DisplayFilter,
+    SidebarBookmarks,
+    SidebarFavorites,
+    FavAdd,
+    FavRemove,
     kMax
 };
 

@@ -128,8 +128,8 @@ bool ReflowEbookUsesThemeBitmapRecolor() {
     return ThemeUsesEyeCareChrome();
 }
 
-static void ApplyDocumentColorModeToReflowMupdfProfile(DarkModeProfile* profile) {
-    switch (GetPdfDocumentColorMode()) {
+static void ApplyDocumentColorModeToReflowMupdfProfile(DarkModeProfile* profile, PdfDocumentColorMode mode) {
+    switch (mode) {
         case PdfDocumentColorMode::Light:
             profile->mode = PageColorMode::Normal;
             break;
@@ -140,9 +140,10 @@ static void ApplyDocumentColorModeToReflowMupdfProfile(DarkModeProfile* profile)
     }
 }
 
-static void ApplyDocumentColorModeToFixedPageProfile(EngineBase* engine, DarkModeProfile* profile) {
+static void ApplyDocumentColorModeToFixedPageProfile(EngineBase* engine, DarkModeProfile* profile,
+                                                     PdfDocumentColorMode mode) {
     // Original (Light): always publisher pixels — must win over follow-theme probe pending.
-    if (GetPdfDocumentColorMode() == PdfDocumentColorMode::Light) {
+    if (mode == PdfDocumentColorMode::Light) {
         profile->mode = PageColorMode::Normal;
         return;
     }
@@ -158,7 +159,7 @@ static void ApplyDocumentColorModeToFixedPageProfile(EngineBase* engine, DarkMod
         }
         return;
     }
-    switch (GetPdfDocumentColorMode()) {
+    switch (mode) {
         case PdfDocumentColorMode::Light:
             profile->mode = PageColorMode::Normal;
             break;
@@ -206,10 +207,30 @@ void BuildViewDarkModeProfile(EngineBase* engine, DarkModeProfile* profile) {
     profile->palette = BuildPaletteFromColors(textCol, bgCol, profile->linkColor);
 
     if (IsFixedPageMupdfEngine(engine) || IsFixedPageDjVuEngine(engine)) {
-        ApplyDocumentColorModeToFixedPageProfile(engine, profile);
+        ApplyDocumentColorModeToFixedPageProfile(engine, profile, GetPdfDocumentColorMode());
     } else if (IsReflowableMupdfEbookEngine(engine)) {
-        ApplyDocumentColorModeToReflowMupdfProfile(profile);
+        ApplyDocumentColorModeToReflowMupdfProfile(profile, GetPdfDocumentColorMode());
     }
 
+    profile->hash = PdfDarkModeComputeProfileHash(profile);
+}
+
+void BuildSidebarThumbDarkModeProfile(EngineBase* engine, DarkModeProfile* profile) {
+    ReportIf(!profile);
+    if (!profile) {
+        return;
+    }
+    BuildViewDarkModeProfile(engine, profile);
+    // Thumbnails follow the app theme even when the open document stays on original colors.
+    if (IsFixedPageMupdfEngine(engine) || IsFixedPageDjVuEngine(engine) || (engine && engine->IsImageCollection())) {
+        ApplyDocumentColorModeToFixedPageProfile(engine, profile, PdfDocumentColorMode::Auto);
+    } else if (IsReflowableMupdfEbookEngine(engine)) {
+        // Do not re-paginate. Recolor the already laid-out page toward the theme.
+        if (ThemeUsesOriginalPageColors() && !ThemeUsesDarkChrome()) {
+            profile->mode = PageColorMode::Normal;
+        } else {
+            profile->mode = PageColorMode::LegacyInvert;
+        }
+    }
     profile->hash = PdfDarkModeComputeProfileHash(profile);
 }

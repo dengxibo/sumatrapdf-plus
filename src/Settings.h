@@ -317,6 +317,9 @@ struct Favorite {
     // label for this page (only present if logical and physical page
     // numbers are not the same)
     char* pageLabel;
+    // sequence number assigned when this favorite was added. Lower numbers
+    // sort first in the added-order view
+    int addedSeq;
     // id of this favorite in the menu (assigned by AppendFavMenuItems)
     int menuId;
 };
@@ -366,6 +369,9 @@ struct FileState {
     // if true, we show table of contents (Bookmarks) sidebar if it's
     // present in the document
     bool showToc;
+    // which sidebar view was showing for this document: bookmarks,
+    // thumbnails, or favorites
+    char* sidebarView;
     // width of the left sidebar panel containing the table of contents
     int sidebarDx;
     // if true, the document is displayed right-to-left in facing and book
@@ -981,8 +987,9 @@ static const FieldInfo gFavoriteFields[] = {
     {offsetof(Favorite, name), SettingType::String, 0, nullptr},
     {offsetof(Favorite, pageNo), SettingType::Int, 0, nullptr},
     {offsetof(Favorite, pageLabel), SettingType::String, 0, nullptr},
+    {offsetof(Favorite, addedSeq), SettingType::Int, 0, nullptr},
 };
-static const StructInfo gFavoriteInfo = {sizeof(Favorite), 3, gFavoriteFields, "Name\0PageNo\0PageLabel"};
+static const StructInfo gFavoriteInfo = {sizeof(Favorite), 4, gFavoriteFields, "Name\0PageNo\0PageLabel\0AddedSeq"};
 
 static const FieldInfo gPointFFields[] = {
     {offsetof(PointF, x), SettingType::Float, (intptr_t)"0", nullptr},
@@ -1014,6 +1021,7 @@ static const FieldInfo gFileStateFields[] = {
     {offsetof(FileState, windowState), SettingType::Int, 0, nullptr},
     {offsetof(FileState, windowPos), SettingType::Compact, (intptr_t)&gRect_2_Info, nullptr},
     {offsetof(FileState, showToc), SettingType::Bool, true, nullptr},
+    {offsetof(FileState, sidebarView), SettingType::String, (intptr_t)"bookmarks", nullptr},
     {offsetof(FileState, sidebarDx), SettingType::Int, 0, nullptr},
     {offsetof(FileState, displayR2L), SettingType::Bool, false, nullptr},
     {offsetof(FileState, bgCol), SettingType::Color, (intptr_t)"", nullptr},
@@ -1028,10 +1036,10 @@ static const FieldInfo gFileStateFields[] = {
     {offsetof(FileState, tocState), SettingType::IntArray, 0, nullptr},
 };
 static StructInfo gFileStateInfo = {
-    sizeof(FileState), 26, gFileStateFields,
+    sizeof(FileState), 27, gFileStateFields,
     "FilePath\0Favorites\0IsPinned\0IsMissing\0OpenCount\0DecryptionKey\0UseDefaultState\0DisplayMode\0ScrollPos\0PageN"
-    "o\0Zoom\0Rotation\0WindowState\0WindowPos\0ShowToc\0SidebarDx\0DisplayR2L\0BgCol\0TabCol\0DisplayFilterBrightness"
-    "\0DisplayFilterContrast\0DisplayFilterSharpness\0DisplayFilterMode\0AutoOcrOn\0ReparseIdx\0TocState"};
+    "o\0Zoom\0Rotation\0WindowState\0WindowPos\0ShowToc\0SidebarView\0SidebarDx\0DisplayR2L\0BgCol\0TabCol\0DisplayFilt"
+    "erBrightness\0DisplayFilterContrast\0DisplayFilterSharpness\0DisplayFilterMode\0AutoOcrOn\0ReparseIdx\0TocState"};
 
 static const FieldInfo gPointF_1_Fields[] = {
     {offsetof(PointF, x), SettingType::Float, (intptr_t)"0", nullptr},
@@ -1090,8 +1098,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-35.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-35.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-36.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-36.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},
@@ -1101,7 +1109,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, escToExit), SettingType::Bool, false, "true=按 Esc 直接关闭窗口"},
     {offsetof(GlobalPrefs, fullPathInTitle), SettingType::Bool, false, "标题栏显示完整路径"},
     {offsetof(GlobalPrefs, inverseSearchCmdLine), SettingType::String, 0, "LaTeX 反向搜索命令行"},
-    {offsetof(GlobalPrefs, lazyLoading), SettingType::Bool, true, "恢复会话时延迟加载未选中标签页"},
+    {offsetof(GlobalPrefs, lazyLoading), SettingType::Bool, false, "恢复会话时延迟加载未选中标签页"},
     {offsetof(GlobalPrefs, mainWindowBackground), SettingType::Color, (intptr_t)"#80fff200",
      "文档外侧空白区域底色 #AARRGGBB"},
     {offsetof(GlobalPrefs, noHomeTab), SettingType::Bool, false, "标签模式下不显示首页标签"},

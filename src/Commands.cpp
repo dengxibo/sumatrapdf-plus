@@ -300,6 +300,9 @@ static SeqStrings gCommandNames =
     "CmdSetDocumentImageDarkOriginal\0"
     "CmdSetDocumentImageDarkTone\0"
     "CmdReadAloudSettings\0"
+    "CmdToggleThumbnails\0"
+    "CmdPickEbookLatinFont\0"
+    "CmdPickEbookCjkFont\0"
     "CmdNone\0"
     "\0";
 
@@ -590,6 +593,9 @@ static i32 gCommandIds[] = {
     CmdSetDocumentImageDarkOriginal,
     CmdSetDocumentImageDarkTone,
     CmdReadAloudSettings,
+    CmdToggleThumbnails,
+    CmdPickEbookLatinFont,
+    CmdPickEbookCjkFont,
     CmdNone,
 };
 
@@ -880,6 +886,9 @@ SeqStrings gCommandDescriptions =
     "Images: Keep Original Colors\0"
     "Images: Smart Invert\0"
     "Read Aloud Settings...\0"
+    "Show Thumbnails\0"
+    "Western Body Font\0"
+    "CJK Body Font\0"
     "Do nothing\0"
     "\0";
 // clang-format on

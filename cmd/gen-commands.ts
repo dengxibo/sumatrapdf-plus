@@ -290,6 +290,9 @@ export const commands = [
     "CmdSetDocumentImageDarkOriginal", "Images: Keep Original Colors",
     "CmdSetDocumentImageDarkTone", "Images: Smart Invert",
     "CmdReadAloudSettings", "Read Aloud Settings...",
+    "CmdToggleThumbnails", "Show Thumbnails",
+    "CmdPickEbookLatinFont", "Western Body Font",
+    "CmdPickEbookCjkFont", "CJK Body Font",
     "CmdNone", "Do nothing",
 ];
 

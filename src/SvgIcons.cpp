@@ -515,6 +515,35 @@ static const char* gIconDisplayFilter =
   <path d="M19.2 15H20.8" />
 </svg>)";
 
+// https://github.com/tabler/tabler-icons/blob/main/icons/outline/bookmark.svg
+static const char* gIconSidebarBookmarks =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M18 7v14l-6 -4l-6 4v-14a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4z" />
+</svg>)";
+
+// Plus: add the current page to favorites. Same stroke as the header chevrons.
+static const char* gIconFavAdd =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M12 5l0 14" />
+  <path d="M5 12l14 0" />
+</svg>)";
+
+// Minus: remove the selected favorite.
+static const char* gIconFavRemove =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M5 12l14 0" />
+</svg>)";
+
+// https://github.com/tabler/tabler-icons/blob/main/icons/outline/star.svg
+static const char* gIconSidebarFavorites =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873z" />
+</svg>)";
+
 // must match order in enum class TbIcon
 // clang-format off
 static const char* gIcons[] = {
@@ -572,6 +601,10 @@ static const char* gIcons[] = {
     gIconHomeFrequent,
     gIconTrash,
     gIconDisplayFilter,
+    gIconSidebarBookmarks,
+    gIconSidebarFavorites,
+    gIconFavAdd,
+    gIconFavRemove,
 };
 // clang-format on
 

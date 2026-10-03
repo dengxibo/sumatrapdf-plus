@@ -79,25 +79,6 @@ static bool IsLink(const char* url) {
     return false;
 }
 
-static void RemoveHomePageFile(MainWindow* win, const char* path) {
-    FileState* fs = gFileHistory.FindByPath(path);
-    if (!fs) {
-        return;
-    }
-    TempStr filePath = str::DupTemp(fs->filePath);
-    if (!fs->favorites->IsEmpty()) {
-        gFileHistory.MarkFileInexistent(fs->filePath, true);
-    } else {
-        gFileHistory.Remove(fs);
-        DeleteFileState(fs);
-    }
-    DeleteThumbnailForFile(filePath);
-    SaveSettings();
-    win->DeleteToolTip();
-    HomePageInvalidateScrollCache(win);
-    win->RedrawAll(true);
-}
-
 static void ToggleHomePageFilePin(MainWindow* win, const char* path) {
     FileState* fs = gFileHistory.FindByPath(path);
     if (!fs) {
@@ -118,7 +99,7 @@ static void ResetHomePageScroll(MainWindow* win) {
     win->RedrawAll(true);
 }
 
-static void OnMouseLeftButtonUpAbout(MainWindow* win, int x, int y, WPARAM) {
+static void OnMouseLeftButtonUpAbout(MainWindow* win, int x, int y, WPARAM wp) {
     char* url = GetStaticLinkAtTemp(win->staticLinks, x, y, nullptr);
     char* prevUrl = win->urlOnLastButtonDown;
     bool clickedURL = url && str::Eq(url, prevUrl);
@@ -142,7 +123,11 @@ static void OnMouseLeftButtonUpAbout(MainWindow* win, int x, int y, WPARAM) {
         gGlobalPrefs->homePageSortByFrequentlyRead = !gGlobalPrefs->homePageSortByFrequentlyRead;
         ResetHomePageScroll(win);
     } else if (str::StartsWith(url, kLinkHomePageRemoveFile)) {
-        RemoveHomePageFile(win, url + str::Len(kLinkHomePageRemoveFile));
+        HomePageRemovePathFromHistory(win, url + str::Len(kLinkHomePageRemoveFile));
+        SaveSettings();
+        win->DeleteToolTip();
+        HomePageInvalidateScrollCache(win);
+        win->RedrawAll(true);
     } else if (str::StartsWith(url, kLinkHomePagePinFile)) {
         ToggleHomePageFilePin(win, url + str::Len(kLinkHomePagePinFile));
     } else if (str::Eq(url, kLinkNextTip)) {
@@ -159,6 +144,17 @@ static void OnMouseLeftButtonUpAbout(MainWindow* win, int x, int y, WPARAM) {
         // assume it's a thumbnail of a document
         auto path = url;
         ReportIf(!path);
+        bool ctrl = (wp & MK_CONTROL) != 0;
+        bool shift = (wp & MK_SHIFT) != 0;
+        if (ctrl && !shift) {
+            HomePageToggleSelected(win, path);
+            return;
+        }
+        if (shift) {
+            HomePageSelectRangeTo(win, path);
+            return;
+        }
+        HomePageSelectOnly(win, path);
         LoadArgs args(path, win);
         SetUserOpenActivateExisting(args);
         StartLoadDocument(&args);
@@ -172,12 +168,16 @@ static void OnMouseRightButtonDownAbout(MainWindow* win, int x, int y, WPARAM) {
     win->dragStart = Point(x, y);
 }
 
-static void OnMouseRightButtonUpAbout(MainWindow* win, int x, int y, WPARAM) {
+static void OnMouseRightButtonUpAbout(MainWindow* win, HWND hwnd, int x, int y, WPARAM) {
     int isDrag = IsDragDistance(x, win->dragStart.x, y, win->dragStart.y);
     if (isDrag) {
         return;
     }
-    OnAboutContextMenu(win, x, y);
+    // TrackPopupMenu inside the button-up closes at once. Post the context
+    // menu so it opens after this message returns.
+    POINT ptScreen = {x, y};
+    ClientToScreen(hwnd, &ptScreen);
+    PostMessageW(hwnd, WM_CONTEXTMENU, (WPARAM)hwnd, MAKELPARAM(ptScreen.x, ptScreen.y));
 }
 
 static LRESULT OnSetCursorAbout(MainWindow* win, HWND hwnd) {
@@ -244,7 +244,7 @@ LRESULT WndProcCanvasAbout(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, LPAR
             return 0;
 
         case WM_RBUTTONUP:
-            OnMouseRightButtonUpAbout(win, x, y, wp);
+            OnMouseRightButtonUpAbout(win, hwnd, x, y, wp);
             return 0;
 
         case WM_SETCURSOR:

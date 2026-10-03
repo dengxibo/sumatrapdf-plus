@@ -1369,6 +1369,7 @@ const sumatraFiles: FileGroup[] = [
       "EngineDump.cpp",
       "ExternalViewers.*",
       "Favorites.*",
+      "SidebarThumbs.*",
       "FileHistory.*",
       "FileThumbnails.*",
       "Flags.*",

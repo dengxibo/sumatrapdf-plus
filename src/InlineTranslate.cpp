@@ -159,6 +159,49 @@ static const char* TargetLangDisplayName(const char* code) {
     return TranslateCodeDisplayName(code);
 }
 
+static AiChatService ActiveWebAiService() {
+    const char* p = gGlobalPrefs ? gGlobalPrefs->aiChatProvider : nullptr;
+    if (str::EqI(p, "deepseek")) {
+        return AiChatService::DeepSeek;
+    }
+    if (str::EqI(p, "chatgpt")) {
+        return AiChatService::ChatGPT;
+    }
+    return AiChatService::Doubao;
+}
+
+static bool WebAiTranslateEnabled() {
+    return gGlobalPrefs && gGlobalPrefs->enableAskAI && HasPermission(Perm::InternetAccess);
+}
+
+// A missing key and a rejected Authorization header are the same for the reader:
+// there is no translation API to call, so the web chat should do it.
+static bool TranslateErrorMeansUnusableApi(const char* err) {
+    if (str::IsEmpty(err)) {
+        return false;
+    }
+    return str::FindI(err, "Authorization") || str::FindI(err, "not configured") ||
+           str::FindI(err, "InvalidAccessKey") || str::FindI(err, "SignatureDoesNotMatch") ||
+           str::FindI(err, "InvalidCredential");
+}
+
+static void SendSelectionToWebAi(MainWindow* win, const char* text, const char* targetLang) {
+    if (!WebAiTranslateEnabled() || str::IsEmptyOrWhiteSpace(text)) {
+        return;
+    }
+    const char* langName = TargetLangDisplayName(targetLang);
+    TempStr prompt = str::FormatTemp("%s %s:\n%s", _TRA("Please translate the following text into"),
+                                     langName ? langName : "the target language", text);
+    LaunchAiChatWithPromptAsync(ActiveWebAiService(), prompt);
+    if (win && win->hwndCanvas) {
+        NotificationCreateArgs args;
+        args.hwndParent = win->hwndCanvas;
+        args.msg = _TRA("Question sent to AI.");
+        args.timeoutMs = 5000;
+        ShowNotification(args);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // short translation cache
 
@@ -1995,6 +2038,7 @@ struct TranslateJob {
     const char* engine = nullptr;
     char* result = nullptr;
     char* error = nullptr;
+    bool fallbackWeb = false;
 };
 
 static void TranslateJobFinished(TranslateJob* job) {
@@ -2013,6 +2057,16 @@ static void TranslateJobFinished(TranslateJob* job) {
         return;
     }
     p->translating = false;
+    if (job->fallbackWeb) {
+        MainWindow* win = p->win;
+        char* text = str::Dup(job->text);
+        char* target = str::Dup(job->target);
+        CloseInlineTranslatePopup(false);
+        SendSelectionToWebAi(win, text, target);
+        str::Free(text);
+        str::Free(target);
+        return;
+    }
     if (job->result) {
         str::ReplacePtr(&p->translation, job->result);
         job->result = nullptr;
@@ -2047,6 +2101,9 @@ static void TranslateJobWorker(TranslateJob* job) {
         str::Free(volcErr);
         if (job->result) {
             CacheStore(job->text, job->target, job->result);
+        } else if (WebAiTranslateEnabled() &&
+                   ((!haveVolc && !AiTocApiIsConfigured(job->cfg)) || TranslateErrorMeansUnusableApi(job->error))) {
+            job->fallbackWeb = true;
         }
     }
     uitask::Post(MkFunc0(TranslateJobFinished, job), "InlineTranslateDone");
@@ -2432,6 +2489,13 @@ void TranslateSelectionInTab(MainWindow* win, WindowTab* tab) {
         return;
     }
     HideSelectionToolbar(win);
+    if (!InlineTranslateVolcIsConfigured() && !InlineTranslateAiApiIsConfigured() && WebAiTranslateEnabled()) {
+        char* text = NormalizeSelectionText(sel);
+        const char* dst = ResolveTranslateTarget(text, gGlobalPrefs->translateTargetMode, trans::GetCurrentLangCode());
+        SendSelectionToWebAi(win, text, dst);
+        str::Free(text);
+        return;
+    }
     InlineTranslatePopup* p = BeginPopupSession(win, sel, PopupMode::Translate);
     if (!p) {
         return;

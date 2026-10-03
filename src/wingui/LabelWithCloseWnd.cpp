@@ -12,6 +12,7 @@
 #include "wingui/WinGui.h"
 
 #include "AppTools.h"
+#include "CaptionGlyphs.h"
 #include "SvgIcons.h"
 #include "Theme.h"
 #include "Toolbar.h"
@@ -28,6 +29,10 @@
 #define kHeaderActionDy 20
 #define kHeaderActionGapDx 1
 #define kHeaderCloseGapDx 8
+#define kViewBtnDx 16
+#define kViewBtnDy 16
+#define kViewBtnIcon 16
+#define kViewBtnGapDx 4
 
 static void DrawHeaderAction(HDC hdc, const Rect& r, int kind, bool isHover, bool isPressed, COLORREF bgCol,
                              COLORREF iconCol) {
@@ -57,6 +62,51 @@ static void DrawHeaderAction(HDC hdc, const Rect& r, int kind, bool isHover, boo
     DrawSvgIcon(hdc, iconRc, icon, iconCol, iconBgCol);
 }
 
+static void DrawChromeIconButton(HDC hdc, HWND hwnd, const Rect& vr, TbIcon icon, bool enabled, bool hot, bool pressed,
+                                 COLORREF bgCol, COLORREF iconCol) {
+    if (vr.IsEmpty()) {
+        return;
+    }
+    COLORREF iconBg = bgCol;
+    if (pressed || hot) {
+        // Same step as a checked toolbar button.
+        if (pressed) {
+            if (ThemeUsesBlackChrome()) {
+                iconBg = AccentColor(bgCol, 20, 42);
+            } else if (ThemeUsesDarkChrome()) {
+                iconBg = AccentColor(bgCol, 8, 32);
+            } else {
+                iconBg = AccentColor(bgCol, 24);
+            }
+        } else if (ThemeUsesBlackChrome()) {
+            iconBg = AccentColor(bgCol, 16, 34);
+        } else if (ThemeUsesDarkChrome()) {
+            iconBg = AccentColor(bgCol, 12, 28);
+        } else {
+            iconBg = AccentColor(bgCol, 10);
+        }
+        int pad = std::max(1, DpiScale(hwnd, 2));
+        int radius = std::max(2, DpiScale(hwnd, 3) + pad);
+        AutoDeleteBrush brush(CreateSolidBrush(iconBg));
+        HRGN rgn =
+            CreateRoundRectRgn(vr.x - pad, vr.y - pad, vr.x + vr.dx + pad, vr.y + vr.dy + pad, radius * 2, radius * 2);
+        FillRgn(hdc, rgn, brush);
+        if (pressed) {
+            COLORREF edge = ThemeUsesBlackChrome()  ? AccentColor(bgCol, 20, 58)
+                            : ThemeUsesDarkChrome() ? AccentColor(bgCol, 16, 48)
+                                                    : AccentColor(bgCol, 42);
+            AutoDeleteBrush edgeBr(CreateSolidBrush(edge));
+            int edgePx = std::max(1, DpiScale(hwnd, 1));
+            FrameRgn(hdc, rgn, edgeBr, edgePx, edgePx);
+        }
+        DeleteObject(rgn);
+    }
+    int iconSz = std::min(DpiScale(hwnd, kViewBtnIcon), std::min(vr.dx, vr.dy));
+    Rect iconRc(vr.x + (vr.dx - iconSz) / 2, vr.y + (vr.dy - iconSz) / 2, iconSz, iconSz);
+    COLORREF col = enabled ? iconCol : ThemeWindowTextDisabledColor();
+    DrawSvgIcon(hdc, iconRc, icon, col, iconBg);
+}
+
 static void PaintHDC(LabelWithCloseWnd* w, HDC hdc, const PAINTSTRUCT& ps) {
     HBRUSH br = w->BackgroundBrush();
     FillRect(hdc, &ps.rcPaint, br);
@@ -81,9 +131,11 @@ static void PaintHDC(LabelWithCloseWnd* w, HDC hdc, const PAINTSTRUCT& ps) {
     if (HwndIsRtl(w->hwnd)) {
         fmt |= DT_RTLREADING;
     }
-    char* s = HwndGetTextTemp(w->hwnd);
-    RECT rs{x, y, x + cr.dx, y + cr.dy};
-    HdcDrawText(hdc, s, &rs, fmt);
+    if (w->nViewButtons == 0) {
+        char* s = HwndGetTextTemp(w->hwnd);
+        RECT rs{x, y, x + cr.dx, y + cr.dy};
+        HdcDrawText(hdc, s, &rs, fmt);
+    }
 
     // Text might be too long and invade header action area. We just re-paint
     // the background, which is not the pretties but works.
@@ -93,6 +145,9 @@ static void PaintHDC(LabelWithCloseWnd* w, HDC hdc, const PAINTSTRUCT& ps) {
     // TODO: make this work in rtl
     if (!isRtl) {
         x = w->firstActionPos.x;
+        if (x == 0 && w->nRightButtons > 0) {
+            x = w->rightBtnPos[0].x;
+        }
         if (x == 0) {
             x = w->closeBtnPos.x - DpiScale(w->hwnd, kButtonSpaceDx);
         }
@@ -103,16 +158,16 @@ static void PaintHDC(LabelWithCloseWnd* w, HDC hdc, const PAINTSTRUCT& ps) {
     Point curPos = HwndGetCursorPos(w->hwnd);
     // TODO: hack
     UnmirrorRtl(w->hwnd, curPos);
-    // Darker than kColCloseX so the four header marks read on beige; still
-    // softer than full window text. Same ink for next / prev / calibrate / close.
+    // Chevrons stay on the header ink. The close mark matches the window and
+    // tab X: a 10px caption glyph in the same gray, not a 2px stroke.
     COLORREF iconCol = AccentColor(ThemeWindowTextColor(), ThemeUsesDarkChrome() ? 22 : 36);
-    DrawCloseButtonArgs args;
-    args.hdc = hdc;
-    args.r = w->closeBtnPos;
-    args.isHover = w->closeBtnPos.Contains(curPos);
-    args.colX = iconCol;
-    // args.noMirror = true;
-    DrawCloseButton(args);
+    {
+        HWND hwnd = w->hwnd;
+        int iconPx = DpiScale(hwnd, 10);
+        const Rect& r = w->closeBtnPos;
+        Rect glyph(r.x + (r.dx - iconPx) / 2, r.y + (r.dy - iconPx) / 2, iconPx, iconPx);
+        DrawCaptionSysButtonGlyph(hdc, CaptionSysButtonKind::Close, glyph, kColCloseX, iconPx);
+    }
 
     DrawHeaderAction(hdc, w->firstActionPos, 1, w->firstActionPos.Contains(curPos), w->pressedAction == 1, w->bgColor,
                      iconCol);
@@ -120,6 +175,31 @@ static void PaintHDC(LabelWithCloseWnd* w, HDC hdc, const PAINTSTRUCT& ps) {
                      iconCol);
     DrawHeaderAction(hdc, w->thirdActionPos, 3, w->thirdActionPos.Contains(curPos), w->pressedAction == 3, w->bgColor,
                      iconCol);
+
+    HWND hwnd = w->hwnd;
+    for (int i = 0; i < w->nViewButtons; i++) {
+        const Rect& vr = w->viewBtnPos[i];
+        bool hot = vr.Contains(curPos) && w->viewBtns[i].enabled;
+        bool pressed = w->viewBtns[i].selected || w->pressedAction == 11 + i;
+        DrawChromeIconButton(hdc, hwnd, vr, w->viewBtns[i].icon, w->viewBtns[i].enabled, hot, pressed, w->bgColor,
+                             iconCol);
+    }
+    for (int i = 0; i < w->nRightButtons; i++) {
+        const Rect& vr = w->rightBtnPos[i];
+        if (!w->rightBtns[i].chromeWell) {
+            if (vr.dx <= 0 || vr.dy <= 0) {
+                continue;
+            }
+            int iconSz = std::min(DpiScale(hwnd, 16), std::min(vr.dx, vr.dy));
+            Rect iconRc(vr.x + (vr.dx - iconSz) / 2, vr.y + (vr.dy - iconSz) / 2, iconSz, iconSz);
+            DrawSvgIcon(hdc, iconRc, w->rightBtns[i].icon, iconCol, w->bgColor);
+            continue;
+        }
+        bool hot = vr.Contains(curPos) && w->rightBtns[i].enabled;
+        bool pressed = w->rightBtns[i].selected || w->pressedAction == 21 + i;
+        DrawChromeIconButton(hdc, hwnd, vr, w->rightBtns[i].icon, w->rightBtns[i].enabled, hot, pressed, w->bgColor,
+                             iconCol);
+    }
 
     if (w->font) {
         SelectObject(hdc, prevFont);
@@ -207,17 +287,43 @@ LRESULT LabelWithCloseWnd::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             secondAction.Call();
         } else if (action == 3 && thirdActionPos.Contains(cursorPos)) {
             thirdAction.Call();
+        } else if (action >= 11 && action <= 13) {
+            int idx = action - 11;
+            if (idx < nViewButtons && viewBtns[idx].enabled && viewBtnPos[idx].Contains(cursorPos)) {
+                viewBtns[idx].onClick.Call();
+            }
+        } else if (action >= 21 && action <= 23) {
+            int idx = action - 21;
+            if (idx < nRightButtons && rightBtns[idx].enabled && rightBtnPos[idx].Contains(cursorPos)) {
+                rightBtns[idx].onClick.Call();
+            }
         }
         return 0;
     }
 
     if (WM_LBUTTONDOWN == msg) {
-        if (firstActionPos.Contains(cursorPos)) {
-            pressedAction = 1;
-        } else if (secondActionPos.Contains(cursorPos)) {
-            pressedAction = 2;
-        } else if (thirdActionPos.Contains(cursorPos)) {
-            pressedAction = 3;
+        for (int i = 0; i < nViewButtons; i++) {
+            if (viewBtns[i].enabled && viewBtnPos[i].Contains(cursorPos)) {
+                pressedAction = 11 + i;
+                break;
+            }
+        }
+        if (pressedAction == 0) {
+            for (int i = 0; i < nRightButtons; i++) {
+                if (rightBtns[i].enabled && rightBtnPos[i].Contains(cursorPos)) {
+                    pressedAction = 21 + i;
+                    break;
+                }
+            }
+        }
+        if (pressedAction == 0) {
+            if (firstActionPos.Contains(cursorPos)) {
+                pressedAction = 1;
+            } else if (secondActionPos.Contains(cursorPos)) {
+                pressedAction = 2;
+            } else if (thirdActionPos.Contains(cursorPos)) {
+                pressedAction = 3;
+            }
         }
         if (pressedAction != 0) {
             SetCapture(hwnd);
@@ -284,6 +390,92 @@ void LabelWithCloseWnd::ClearThirdHeaderAction() {
     Layout();
 }
 
+void LabelWithCloseWnd::SetViewButtons(const LabelViewButton* buttons, int count) {
+    if (count < 0) {
+        count = 0;
+    }
+    if (count > 3) {
+        count = 3;
+    }
+    nViewButtons = count;
+    for (int i = 0; i < count; i++) {
+        viewBtns[i] = buttons[i];
+    }
+    if (!actionsTooltip && count > 0) {
+        Tooltip::CreateArgs args;
+        args.parent = hwnd;
+        LOGFONTW lf{};
+        GetObjectW(GetDefaultGuiFont(), sizeof(lf), &lf);
+        lf.lfUnderline = FALSE;
+        actionsTooltipFont = CreateFontIndirectW(&lf);
+        args.font = actionsTooltipFont;
+        args.isRtl = HwndIsRtl(hwnd);
+        actionsTooltip = new Tooltip();
+        actionsTooltip->Create(args);
+    }
+    if (actionsTooltip) {
+        for (int i = 0; i < count; i++) {
+            const char* tip = viewBtns[i].tooltip ? trans::GetTranslation(viewBtns[i].tooltip) : "";
+            if (viewBtnTooltipId[i] < 0) {
+                viewBtnTooltipId[i] = actionsTooltip->Add(tip, viewBtnPos[i], false);
+            } else {
+                actionsTooltip->Update(viewBtnTooltipId[i], tip, viewBtnPos[i], false);
+            }
+        }
+    }
+    Layout();
+}
+
+void LabelWithCloseWnd::SetRightButtons(const LabelViewButton* buttons, int count) {
+    if (count < 0) {
+        count = 0;
+    }
+    if (count > 3) {
+        count = 3;
+    }
+    nRightButtons = count;
+    for (int i = 0; i < count; i++) {
+        rightBtns[i] = buttons[i];
+    }
+    if (!actionsTooltip && count > 0) {
+        Tooltip::CreateArgs args;
+        args.parent = hwnd;
+        LOGFONTW lf{};
+        GetObjectW(GetDefaultGuiFont(), sizeof(lf), &lf);
+        lf.lfUnderline = FALSE;
+        actionsTooltipFont = CreateFontIndirectW(&lf);
+        args.font = actionsTooltipFont;
+        args.isRtl = HwndIsRtl(hwnd);
+        actionsTooltip = new Tooltip();
+        actionsTooltip->Create(args);
+    }
+    if (actionsTooltip) {
+        for (int i = 0; i < 3; i++) {
+            const char* tip = "";
+            if (i < count && rightBtns[i].tooltip) {
+                tip = trans::GetTranslation(rightBtns[i].tooltip);
+            }
+            if (rightBtnTooltipId[i] < 0) {
+                if (i >= count) {
+                    continue;
+                }
+                rightBtnTooltipId[i] = actionsTooltip->Add(tip, rightBtnPos[i], false);
+            } else {
+                actionsTooltip->Update(rightBtnTooltipId[i], tip, i < count ? rightBtnPos[i] : Rect(), false);
+            }
+        }
+    }
+    Layout();
+}
+
+void LabelWithCloseWnd::SetHeaderActionsVisible(bool visible) {
+    if (headerActionsVisible == visible) {
+        return;
+    }
+    headerActionsVisible = visible;
+    Layout();
+}
+
 void LabelWithCloseWnd::SetLabel(const char* label) {
     HwndSetText(this->hwnd, label);
     this->Layout();
@@ -308,26 +500,62 @@ void LabelWithCloseWnd::Layout() {
     firstActionPos = {};
     secondActionPos = {};
     thirdActionPos = {};
-    if (firstAction.IsValid() && secondAction.IsValid()) {
+    int viewDx = DpiScale(hwnd, kViewBtnDx);
+    int viewDy = DpiScale(hwnd, kViewBtnDy);
+    int viewGap = DpiScale(hwnd, kViewBtnGapDx);
+    int closeGapDx = DpiScale(hwnd, kHeaderCloseGapDx);
+    for (int i = 0; i < 3; i++) {
+        rightBtnPos[i] = {};
+    }
+    // Plain favorites buttons sit in the chevron slots: same size, gap, and
+    // distance from the close mark as the expand and collapse arrows.
+    bool plainRight = nRightButtons > 0 && !rightBtns[0].chromeWell;
+    int rbDx = plainRight ? DpiScale(hwnd, kHeaderActionDx) : viewDx;
+    int rbDy = plainRight ? DpiScale(hwnd, kHeaderActionDy) : viewDy;
+    int rbGap = plainRight ? DpiScale(hwnd, kHeaderActionGapDx) : viewGap;
+    int rightY = 0;
+    if (dy > rbDy) {
+        rightY = (dy - rbDy) / 2;
+    }
+    // Left edge (LTR) or right edge (RTL) that the chevrons sit against.
+    int anchorX = closeBtnPos.x;
+    int anchorRight = closeBtnPos.x + closeBtnPos.dx;
+    if (nRightButtons > 0) {
+        if (isRtl) {
+            int bx = closeBtnPos.x + closeBtnPos.dx + closeGapDx;
+            for (int i = 0; i < nRightButtons; i++) {
+                rightBtnPos[i] = Rect(bx, rightY, rbDx, rbDy);
+                bx += rbDx + rbGap;
+            }
+            anchorRight = rightBtnPos[nRightButtons - 1].x + rbDx;
+        } else {
+            int bx = closeBtnPos.x - closeGapDx - rbDx;
+            for (int i = nRightButtons - 1; i >= 0; i--) {
+                rightBtnPos[i] = Rect(bx, rightY, rbDx, rbDy);
+                bx -= rbDx + rbGap;
+            }
+            anchorX = rightBtnPos[0].x;
+        }
+    }
+    if (headerActionsVisible && firstAction.IsValid() && secondAction.IsValid()) {
         int actionDx = DpiScale(hwnd, kHeaderActionDx);
         int actionDy = DpiScale(hwnd, kHeaderActionDy);
         int gapDx = DpiScale(hwnd, kHeaderActionGapDx);
-        int closeGapDx = DpiScale(hwnd, kHeaderCloseGapDx);
         int actionY = (dy - actionDy) / 2;
         if (isRtl) {
             if (thirdAction.IsValid()) {
-                thirdActionPos = Rect(closeBtnPos.x + closeBtnPos.dx + closeGapDx, actionY, actionDx, actionDy);
+                thirdActionPos = Rect(anchorRight + closeGapDx, actionY, actionDx, actionDy);
                 secondActionPos = Rect(thirdActionPos.x + actionDx + gapDx, actionY, actionDx, actionDy);
             } else {
-                secondActionPos = Rect(closeBtnPos.x + closeBtnPos.dx + closeGapDx, actionY, actionDx, actionDy);
+                secondActionPos = Rect(anchorRight + closeGapDx, actionY, actionDx, actionDy);
             }
             firstActionPos = Rect(secondActionPos.x + actionDx + gapDx, actionY, actionDx, actionDy);
         } else {
             if (thirdAction.IsValid()) {
-                thirdActionPos = Rect(closeBtnPos.x - closeGapDx - actionDx, actionY, actionDx, actionDy);
+                thirdActionPos = Rect(anchorX - closeGapDx - actionDx, actionY, actionDx, actionDy);
                 secondActionPos = Rect(thirdActionPos.x - gapDx - actionDx, actionY, actionDx, actionDy);
             } else {
-                secondActionPos = Rect(closeBtnPos.x - closeGapDx - actionDx, actionY, actionDx, actionDy);
+                secondActionPos = Rect(anchorX - closeGapDx - actionDx, actionY, actionDx, actionDy);
             }
             firstActionPos = Rect(secondActionPos.x - gapDx - actionDx, actionY, actionDx, actionDy);
         }
@@ -341,6 +569,46 @@ void LabelWithCloseWnd::Layout() {
                                        thirdAction.IsValid() ? HeaderActionTooltipTemp(thirdActionTooltip) : "",
                                        thirdActionPos, false);
             }
+        }
+    } else if (actionsTooltip) {
+        if (firstActionTooltipId >= 0) {
+            actionsTooltip->Update(firstActionTooltipId, "", Rect(), false);
+        }
+        if (secondActionTooltipId >= 0) {
+            actionsTooltip->Update(secondActionTooltipId, "", Rect(), false);
+        }
+        if (thirdActionTooltipId >= 0) {
+            actionsTooltip->Update(thirdActionTooltipId, "", Rect(), false);
+        }
+    }
+    int left = isRtl ? closeBtnPos.x + closeBtnPos.dx + DpiScale(hwnd, kHeaderActionGapDx) : padXScaled;
+    int viewY = (dy - viewDy) / 2;
+    for (int i = 0; i < nViewButtons; i++) {
+        viewBtnPos[i] = Rect(left, viewY, viewDx, viewDy);
+        left += viewDx + viewGap;
+    }
+    for (int i = nViewButtons; i < 3; i++) {
+        viewBtnPos[i] = {};
+    }
+    if (actionsTooltip) {
+        for (int i = 0; i < nViewButtons; i++) {
+            if (viewBtnTooltipId[i] >= 0) {
+                actionsTooltip->Update(viewBtnTooltipId[i],
+                                       viewBtns[i].tooltip ? trans::GetTranslation(viewBtns[i].tooltip) : "",
+                                       viewBtnPos[i], false);
+            }
+        }
+        for (int i = 0; i < 3; i++) {
+            if (rightBtnTooltipId[i] < 0) {
+                continue;
+            }
+            const char* tip = "";
+            Rect rc;
+            if (i < nRightButtons && rightBtns[i].tooltip) {
+                tip = trans::GetTranslation(rightBtns[i].tooltip);
+                rc = rightBtnPos[i];
+            }
+            actionsTooltip->Update(rightBtnTooltipId[i], tip, rc, false);
         }
     }
     // logf("closeBtnPos: (%d,%d) size: (%d, %d)\n", x, y, btnDx, btnDy);

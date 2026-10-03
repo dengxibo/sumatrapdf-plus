@@ -15,6 +15,7 @@ void UpdateEbookFontMenuRadioState(HMENU menu);
 bool IsReflowableEbookTabForFontMenu(WindowTab* tab);
 
 void UpdateAfterEbookFontChange();
+void ShowEbookFontPicker(HWND owner, bool cjk);
 
 extern int gFirstEbookLatinFontCmdId;
 extern int gLastEbookLatinFontCmdId;

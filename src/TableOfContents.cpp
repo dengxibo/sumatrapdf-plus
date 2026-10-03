@@ -35,6 +35,7 @@
 #include "Selection.h"
 #include "Favorites.h"
 #include "WindowTab.h"
+#include "ReadAloudHighlight.h"
 #include "resource.h"
 #include "Commands.h"
 #include "AiToc.h"
@@ -43,6 +44,7 @@
 #include "TocCalib.h"
 #include "AppTools.h"
 #include "TableOfContents.h"
+#include "SidebarThumbs.h"
 #include "Translations.h"
 #include "Tabs.h"
 #include "Menu.h"
@@ -164,6 +166,43 @@ void TreeWrapLabelsConfigureCreateArgs(TreeView::CreateArgs& args) {
     args.unevenItemHeight = TreeWrapLabelsEnabled();
 }
 
+static int TocVisibleClientRight(HWND hwnd, int clientRight);
+
+// Comctl's own "is the label clipped" test is wrong under TVS_NOHSCROLL, so
+// measure the title against the visible row. Tips are only for that case.
+static bool TocLabelIsTruncated(TreeView* treeView, TreeItem ti, const char* labelText) {
+    if (!treeView || !ti || !labelText || !*labelText || TreeWrapLabelsEnabled()) {
+        return false;
+    }
+    RECT rcLabel{};
+    if (!treeView->GetItemRect(ti, true, rcLabel)) {
+        return false;
+    }
+    HWND hwnd = treeView->hwnd;
+    HDC hdc = GetDC(hwnd);
+    if (!hdc) {
+        return false;
+    }
+    HFONT font = (HFONT)SendMessageW(hwnd, WM_GETFONT, 0, 0);
+    HFONT old = font ? (HFONT)SelectObject(hdc, font) : nullptr;
+    WCHAR* ws = ToWStrTemp(labelText);
+    SIZE sz{};
+    GetTextExtentPoint32W(hdc, ws, str::Leni(ws), &sz);
+    if (old) {
+        SelectObject(hdc, old);
+    }
+    ReleaseDC(hwnd, hdc);
+    RECT rcClient{};
+    GetClientRect(hwnd, &rcClient);
+    int right = TocVisibleClientRight(hwnd, rcClient.right);
+    MainWindow* win = FindMainWindowByHwnd(hwnd);
+    if (win && win->tocTreeView == treeView && TocCalibIsActive(win)) {
+        right -= TocCalibColumnsDx(hwnd);
+    }
+    int avail = right - rcLabel.left - DpiScale(hwnd, 6);
+    return sz.cx > avail;
+}
+
 void TreeItemTooltipIfTruncated(TreeView::GetTooltipEvent* ev) {
     if (!ev || !ev->treeView || !ev->treeItem || TreeWrapLabelsEnabled()) {
         return;
@@ -217,65 +256,43 @@ static void TocCustomizeTooltip(TreeView::GetTooltipEvent* ev) {
         }
         return;
     }
-    IPageDestination* link = tocItem->GetPageDestination();
-    if (!link) {
+    char* labelText = tm->Text(ti);
+    bool truncated = TocLabelIsTruncated(treeView, ti, labelText);
+    auto nm = ev->info;
+    HWND tip = TreeView_GetToolTips(treeView->hwnd);
+    // A full title needs no tip. An empty infotip is treated as the label, so
+    // hide the tooltip window as well.
+    if (!truncated) {
+        if (nm && nm->pszText && nm->cchTextMax > 0) {
+            nm->pszText[0] = 0;
+        }
+        if (tip) {
+            SendMessageW(tip, TTM_POP, 0, 0);
+            SendMessageW(tip, TTM_ACTIVATE, FALSE, 0);
+        }
         return;
     }
-    char* path = PageDestGetValue(link);
-    if (!path) {
-        path = tocItem->title;
+    if (tip) {
+        SendMessageW(tip, TTM_ACTIVATE, TRUE, 0);
     }
-    if (!path) {
+    if (!nm || !labelText) {
         return;
     }
-    auto k = link->GetKind();
-    // TODO: TocItem from Chm contain other types
-    // we probably shouldn't set TocItem::dest there
-    if (k == kindDestinationScrollTo) {
-        return;
-    }
-    if (k == kindDestinationNone) {
-        return;
-    }
-
-    bool isOk = (k == kindDestinationLaunchURL) || (k == kindDestinationLaunchFile) ||
-                (k == kindDestinationLaunchEmbedded) || (k == kindDestinationMupdf) || (k == kindDestinationDjVu) ||
-                (k == kindDestinationAttachment);
-    ReportIf(!isOk);
 
     StrBuilder infotip;
+    infotip.Append(labelText);
 
-    char* labelText = tm->Text(ti);
-    bool truncated = false;
-    // Display the item's full label when single-line mode truncates it
-    if (!TreeWrapLabelsEnabled()) {
-        RECT rcLine, rcLabel;
-        treeView->GetItemRect(ev->treeItem, false, rcLine);
-        treeView->GetItemRect(ev->treeItem, true, rcLabel);
-        truncated = rcLabel.right > rcLine.right + 2;
-        if (truncated && labelText) {
-            infotip.Append(labelText);
-        }
-    }
-
-    // When PageDestGetValue is empty, path falls back to tocItem->title 鈥?same as
-    // labelText 鈥?so don't append it again after the truncated-label line.
-    bool pathSameAsLabel = labelText && path && str::Eq(labelText, path);
-    if (!truncated || !pathSameAsLabel) {
-        if (truncated && infotip.size() > 0) {
-            infotip.Append("\r\n");
-        }
+    IPageDestination* link = tocItem->GetPageDestination();
+    char* path = link ? PageDestGetValue(link) : nullptr;
+    auto k = link ? link->GetKind() : nullptr;
+    bool showPath = path && !str::Eq(labelText, path) && k != kindDestinationScrollTo && k != kindDestinationNone;
+    if (showPath) {
+        infotip.Append("\r\n");
         if (kindDestinationLaunchEmbedded == k || kindDestinationAttachment == k) {
-            TempStr tmp = str::FormatTemp(_TRA("Attachment: %s"), path);
-            infotip.Append(tmp);
+            infotip.Append(str::FormatTemp(_TRA("Attachment: %s"), path));
         } else {
             infotip.Append(path);
         }
-    }
-
-    auto nm = ev->info;
-    if (!nm || infotip.size() == 0) {
-        return;
     }
     str::BufSet(nm->pszText, nm->cchTextMax, infotip.Get());
 }
@@ -576,6 +593,12 @@ static void GoToTocLink(GoToTocLinkData* d) {
         return;
     }
 
+    // A toc jump is a page turn. Follow must not pull the view back to the
+    // spoken word; the toolbar Follow button does that.
+    defer {
+        ReadAloudUserTookTheView(win);
+    };
+
     win->tocKeepSelection = true;
     defer {
         win->tocKeepSelection = false;
@@ -712,17 +735,7 @@ void ClearTocBoxForTabSwitch(MainWindow* win) {
 }
 
 void ToggleTocBox(MainWindow* win) {
-    if (!win->IsDocLoaded()) {
-        return;
-    }
-    if (win->tocVisible) {
-        SetSidebarVisibility(win, false, gGlobalPrefs->showFavorites);
-        return;
-    }
-    SetSidebarVisibility(win, true, gGlobalPrefs->showFavorites);
-    if (win->tocVisible && win->tocTreeView) {
-        HwndSetFocus(win->tocTreeView->hwnd);
-    }
+    ShowOrToggleSidebarView(win, SidebarView::Bookmarks);
 }
 
 static int TocItemPageNoForMatch(TocItem* item, EngineBase* engine) {
@@ -884,6 +897,7 @@ static TocItem* FindVisibleParentTreeItem(TreeView* treeView, TocItem* ti) {
 }
 
 void UpdateTocSelection(MainWindow* win, int currPageNo) {
+    SidebarThumbsSyncCurrentPage(win);
     if (!win->tocLoaded || !win->tocVisible || win->tocKeepSelection) {
         return;
     }
@@ -2632,6 +2646,31 @@ static int TocVisibleClientRight(HWND hwnd, int clientRight) {
     return rcMask.left;
 }
 
+// Dark-mode Explorer often never sets CDIS_HOT, so the light-theme hover
+// fade never starts. Treat the row under the cursor as hot in that case.
+static bool TocDrawRowIsHot(HWND hwnd, HTREEITEM hItem, NMCUSTOMDRAW* cd) {
+    if (cd && (cd->uItemState & CDIS_HOT) != 0) {
+        return true;
+    }
+    if (!ThemeUsesDarkChrome() || !hwnd || !hItem) {
+        return false;
+    }
+    POINT pt{};
+    if (!GetCursorPos(&pt) || !ScreenToClient(hwnd, &pt)) {
+        return false;
+    }
+    RECT rcClient{};
+    GetClientRect(hwnd, &rcClient);
+    if (!PtInRect(&rcClient, pt)) {
+        return false;
+    }
+    TVHITTESTINFO ht{};
+    ht.pt = pt;
+    TreeView_HitTest(hwnd, &ht);
+    UINT onRow = TVHT_ONITEM | TVHT_ONITEMINDENT | TVHT_ONITEMBUTTON | TVHT_ONITEMRIGHT;
+    return ht.hItem == hItem && (ht.flags & onRow) != 0;
+}
+
 static void DrawTreeWrappedLabel(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, const WCHAR* textW, MainWindow* win,
                                  int fontFlags) {
     if (!textW || !*textW) {
@@ -2659,7 +2698,8 @@ static void DrawTreeWrappedLabel(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, const
     GetClientRect(hwnd, &rcClient);
     int visibleRight = TocVisibleClientRight(hwnd, rcClient.right);
     rcLabel.right = visibleRight - 2;
-    if (TocCalibIsActive(win)) {
+    bool favTree = win && win->favTreeView == treeView;
+    if (!favTree && TocCalibIsActive(win)) {
         rcLabel.right -= TocCalibColumnsDx(hwnd);
         if (rcLabel.right < rcLabel.left + 24) {
             rcLabel.right = rcLabel.left + 24;
@@ -2667,9 +2707,11 @@ static void DrawTreeWrappedLabel(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, const
     }
 
     NMCUSTOMDRAW* cd = &tvcd->nmcd;
-    TocItem* tocItemForSel = (TocItem*)treeView->GetTreeItemByHandle(hItem);
-    bool isSelected = TocDrawItemSelected(win, tocItemForSel, cd);
-    bool isHot = (cd->uItemState & CDIS_HOT) != 0;
+    // Favorites rows are not TocItems. Casting them into the bookmark
+    // multi-select set paints the wrong row, or skips the hover fill.
+    bool isSelected = favTree ? ((cd->uItemState & CDIS_SELECTED) != 0)
+                              : TocDrawItemSelected(win, (TocItem*)treeView->GetTreeItemByHandle(hItem), cd);
+    bool isHot = TocDrawRowIsHot(hwnd, hItem, cd);
     COLORREF textCol = tvcd->clrText;
     COLORREF bgCol = tvcd->clrTextBk;
     // Skip the row background fill whenever a full-row hover/selection fill was
@@ -2857,6 +2899,17 @@ static COLORREF TocSelectionBgColor() {
 }
 
 static COLORREF TocHotTrackBgColor() {
+    // Light themes darken the control color by 12 and the row reads as a hover.
+    // The same step on a near-black sidebar stays invisible, so mix toward the
+    // reading text until the lift matches that light-theme contrast.
+    if (ThemeUsesDarkChrome()) {
+        COLORREF bg = ThemeSidebarBackgroundColor();
+        COLORREF text = ThemeReadingTextColor();
+        int part = ThemeUsesBlackChrome() ? 22 : 18;
+        auto mix = [part](int a, int b) { return (a * (100 - part) + b * part) / 100; };
+        return RGB(mix(GetRValue(bg), GetRValue(text)), mix(GetGValue(bg), GetGValue(text)),
+                   mix(GetBValue(bg), GetBValue(text)));
+    }
     return AccentColor(ThemeWindowControlBackgroundColor(), 12);
 }
 
@@ -2958,12 +3011,38 @@ static void DrawTocSelectionFrame(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem) 
     // left edge; inflating again would push the stroke under the mask.
     bool maskOverlaps = rcRow.right < rcClient.right;
     RECT rcFrame = rcRow;
-    rcFrame.left -= 1;
+    // Keep the left stroke inside the client. A rect at -1, or a pen centered
+    // on x=0, loses that edge and the corner looks open.
+    if (rcFrame.left < rcClient.left) {
+        rcFrame.left = rcClient.left;
+    }
     if (!maskOverlaps) {
         rcFrame.right += 1;
     }
     int saved = SaveDC(cd->hdc);
     SelectClipRgn(cd->hdc, nullptr);
+    // A collapse paint often clips to the expander. Open the clip to the row.
+    // If the buffer itself is only that button, ask for another paint of the
+    // whole row once redraw is enabled (bulk collapse drops invalidates).
+    HRGN rowRgn = CreateRectRgn(rcFrame.left, rcFrame.top, rcFrame.right, rcFrame.bottom);
+    if (rowRgn) {
+        SelectClipRgn(cd->hdc, rowRgn);
+        DeleteObject(rowRgn);
+    }
+    RECT rcClip{};
+    int clipKind = GetClipBox(cd->hdc, &rcClip);
+    bool clipNarrow = (clipKind == SIMPLEREGION || clipKind == COMPLEXREGION) && rcClip.right < rcRow.right - 8;
+    static HWND sNarrowHwnd = nullptr;
+    static HTREEITEM sNarrowItem = nullptr;
+    if (!clipNarrow) {
+        if (sNarrowHwnd == hwnd && sNarrowItem == hItem) {
+            sNarrowItem = nullptr;
+        }
+    } else if (sNarrowHwnd != hwnd || sNarrowItem != hItem) {
+        sNarrowHwnd = hwnd;
+        sNarrowItem = hItem;
+        InvalidateRect(hwnd, &rcRow, FALSE);
+    }
     COLORREF borderCol = TocSelectionBorderColor();
     HPEN pen = CreatePen(PS_SOLID, 1, borderCol);
     HPEN oldPen = (HPEN)SelectObject(cd->hdc, pen);
@@ -2973,13 +3052,16 @@ static void DrawTocSelectionFrame(NMCUSTOMDRAW* cd, HWND hwnd, HTREEITEM hItem) 
     SelectObject(cd->hdc, oldPen);
     DeleteObject(pen);
 
-    // Cover inactive-selection blue caps on the full row edges. A centered 2px
-    // pen on the mask boundary straddles the mask and disappears; the mask
-    // paints that outer pixel.
-    HPEN leftPen = CreatePen(PS_SOLID, 2, borderCol);
+    // Second pixel sits fully inside, so the left edge stays a solid stroke
+    // instead of a clipped half-pixel.
+    HPEN leftPen = CreatePen(PS_SOLID, 1, borderCol);
     oldPen = (HPEN)SelectObject(cd->hdc, leftPen);
     MoveToEx(cd->hdc, rcRow.left, rcRow.top, nullptr);
     LineTo(cd->hdc, rcRow.left, rcRow.bottom);
+    if (rcRow.left + 1 < rcRow.right) {
+        MoveToEx(cd->hdc, rcRow.left + 1, rcRow.top, nullptr);
+        LineTo(cd->hdc, rcRow.left + 1, rcRow.bottom);
+    }
     SelectObject(cd->hdc, oldPen);
     DeleteObject(leftPen);
     HPEN rightPen = CreatePen(PS_SOLID, maskOverlaps ? 1 : 2, borderCol);
@@ -3005,13 +3087,78 @@ static COLORREF TocItemTextColor(TocItem* tocItem, MainWindow* win, TreeView* tr
 }
 
 static bool TocDrawItemSelected(MainWindow* win, TocItem* tocItem, NMCUSTOMDRAW* cd) {
-    if (win && win->tocSelectionOwned) {
-        return TocItemIsMultiSelected(win, tocItem);
+    bool caret = cd && (cd->uItemState & CDIS_SELECTED) != 0;
+    if (win && (win->tocSelectionOwned || !win->tocSelectedIds.empty())) {
+        if (TocItemIsMultiSelected(win, tocItem)) {
+            return true;
+        }
+        // Collapsing a parent moves the tree caret onto that visible row.
+        // tocSelectedIds still names the hidden child, so the caret was
+        // skipped and only the theme's button sliver remained.
+        return caret;
     }
-    if (win && !win->tocSelectedIds.empty()) {
-        return TocItemIsMultiSelected(win, tocItem);
+    return caret;
+}
+
+// Collapse/expand invalidates the expander, not the whole row. The selection
+// box is then blitted only where that strip overlaps it, so just the left
+// stroke survives. Mark the full row dirty around the toggle.
+static void InvalidateTocItemRow(HWND hwnd, HTREEITEM hItem) {
+    if (!hwnd || !hItem) {
+        return;
     }
-    return cd && (cd->uItemState & CDIS_SELECTED) != 0;
+    RECT rc{};
+    if (!TreeView_GetItemRect(hwnd, hItem, &rc, FALSE)) {
+        return;
+    }
+    RECT rcClient{};
+    GetClientRect(hwnd, &rcClient);
+    rc.left = rcClient.left;
+    rc.right = rcClient.right;
+    if (rc.top > rcClient.top) {
+        rc.top -= 1;
+    }
+    if (rc.bottom < rcClient.bottom) {
+        rc.bottom += 1;
+    }
+    InvalidateRect(hwnd, &rc, FALSE);
+}
+
+// Custom-draw's buffer only keeps the update strip. Draw the box again on the
+// window so a partial collapse paint still shows the full outline.
+static void PaintTocSelectionFrames(MainWindow* win, HWND hwnd) {
+    if (!ThemeUsesDarkChrome() || !win || !hwnd || !win->tocTreeView || win->tocTreeView->hwnd != hwnd) {
+        return;
+    }
+    if (!win->tocLoaded || win->isBeingClosed || !win->tocTreeView->treeModel) {
+        return;
+    }
+    HDC hdc = GetDC(hwnd);
+    if (!hdc) {
+        return;
+    }
+    RECT rcClient{};
+    GetClientRect(hwnd, &rcClient);
+    HTREEITEM h = TreeView_GetFirstVisible(hwnd);
+    int guard = 0;
+    while (h && guard++ < 256) {
+        RECT rcItem{};
+        if (!TreeView_GetItemRect(hwnd, h, &rcItem, FALSE) || rcItem.top >= rcClient.bottom) {
+            break;
+        }
+        TocItem* tocItem = (TocItem*)win->tocTreeView->GetTreeItemByHandle(h);
+        NMCUSTOMDRAW cd{};
+        cd.hdc = hdc;
+        cd.rc = rcItem;
+        if ((TreeView_GetItemState(hwnd, h, TVIS_SELECTED) & TVIS_SELECTED) != 0) {
+            cd.uItemState |= CDIS_SELECTED;
+        }
+        if (TocDrawItemSelected(win, tocItem, &cd)) {
+            DrawTocSelectionFrame(&cd, hwnd, h);
+        }
+        h = TreeView_GetNextVisible(hwnd, h);
+    }
+    ReleaseDC(hwnd, hdc);
 }
 
 void PaintTocSelectionEdgeOnScrollbarMask(HWND mask, HDC hdc) {
@@ -3019,10 +3166,21 @@ void PaintTocSelectionEdgeOnScrollbarMask(HWND mask, HDC hdc) {
         return;
     }
     MainWindow* win = FindMainWindowByHwnd(mask);
-    if (!win || !win->tocTreeView || !win->tocTreeView->hwnd || mask != win->hwndTocScrollbarMask) {
+    if (!win) {
         return;
     }
-    HWND tree = win->tocTreeView->hwnd;
+    TreeView* tv = nullptr;
+    bool favTree = false;
+    if (win->tocTreeView && win->tocTreeView->hwnd && mask == win->hwndTocScrollbarMask) {
+        tv = win->tocTreeView;
+    } else if (win->favTreeView && win->favTreeView->hwnd && mask == win->hwndFavScrollbarMask) {
+        tv = win->favTreeView;
+        favTree = true;
+    }
+    if (!tv) {
+        return;
+    }
+    HWND tree = tv->hwnd;
     RECT rcClient{};
     GetClientRect(tree, &rcClient);
     COLORREF col = TocSelectionBorderColor();
@@ -3035,13 +3193,19 @@ void PaintTocSelectionEdgeOnScrollbarMask(HWND mask, HDC hdc) {
         if (!TreeView_GetItemRect(tree, h, &rcItem, FALSE) || rcItem.top >= rcClient.bottom) {
             break;
         }
-        TocItem* tocItem = (TocItem*)win->tocTreeView->GetTreeItemByHandle(h);
         NMCUSTOMDRAW cd{};
         cd.rc = rcItem;
         if ((TreeView_GetItemState(tree, h, TVIS_SELECTED) & TVIS_SELECTED) != 0) {
             cd.uItemState |= CDIS_SELECTED;
         }
-        if (TocDrawItemSelected(win, tocItem, &cd)) {
+        bool selected = false;
+        if (favTree) {
+            selected = (cd.uItemState & CDIS_SELECTED) != 0;
+        } else {
+            TocItem* tocItem = (TocItem*)tv->GetTreeItemByHandle(h);
+            selected = TocDrawItemSelected(win, tocItem, &cd);
+        }
+        if (selected) {
             RECT rcRow = rcItem;
             GetTocItemRowRect(tree, h, &cd, rcRow);
             MapWindowPoints(tree, mask, (POINT*)&rcRow, 2);
@@ -3059,7 +3223,7 @@ void PaintTocSelectionEdgeOnScrollbarMask(HWND mask, HDC hdc) {
 static void SetTocItemDrawColors(NMTVCUSTOMDRAW* tvcd, TreeView* treeView, TocItem* tocItem, MainWindow* win) {
     NMCUSTOMDRAW* cd = &tvcd->nmcd;
     bool isSelected = TocDrawItemSelected(win, tocItem, cd);
-    bool isHot = (cd->uItemState & CDIS_HOT) != 0;
+    bool isHot = TocDrawRowIsHot(treeView->hwnd, (HTREEITEM)cd->dwItemSpec, cd);
     COLORREF bgCol = SidebarBackgroundColor(treeView->bgColor);
 
     if (isSelected) {
@@ -3313,7 +3477,8 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
                 if (ThemeUsesDarkChrome()) {
                     DrawTocSelectionFrame(cd, ev->treeView->hwnd, hItem);
                 }
-            } else if ((cd->uItemState & CDIS_HOT) && knownTree && win && win->tocLoaded && !win->isBeingClosed) {
+            } else if (TocDrawRowIsHot(ev->treeView->hwnd, hItem, cd) && knownTree && win && win->tocLoaded &&
+                       !win->isBeingClosed) {
                 // Hot row: postpaint was requested (calibration columns or selection),
                 // so paint our own full-row hover fill for BOTH themes. In light theme
                 // the label repaint below would otherwise erase the default theme
@@ -3375,8 +3540,8 @@ void OnTocCustomDraw(TreeView::CustomDrawEvent* ev) {
         TocItem* tocItem = (TocItem*)ev->treeItem;
         bool knownTree = win && IsKnownTocTreeModel(win, ev->treeView->treeModel);
         bool isSelected = TocDrawItemSelected(win, tocItem, cd);
-        bool isHot = (cd->uItemState & CDIS_HOT) != 0;
         HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
+        bool isHot = TocDrawRowIsHot(ev->treeView->hwnd, hItem, cd);
         if (knownTree && win && win->tocLoaded && !win->isBeingClosed) {
             if (isSelected) {
                 DrawTocSelectionFill(cd, ev->treeView->hwnd, hItem);
@@ -4010,6 +4175,7 @@ static void LayoutTocContainer(MainWindow* win) {
     y += labelSize.dy;
     int editStyleVis = 0;
     int rowDy = 0;
+    bool bookmarksOn = win->tocVisible && CurrentSidebarView(win) == SidebarView::Bookmarks;
     if (edit && edit->hwnd) {
         editStyleVis = (GetWindowLongW(edit->hwnd, GWL_STYLE) & WS_VISIBLE) ? 1 : 0;
         Size editSize = edit->GetIdealSize();
@@ -4027,7 +4193,7 @@ static void LayoutTocContainer(MainWindow* win) {
     // Reserve the footer only while it is on screen. During bookmark
     // calibration the session is already active, but the bar is still hidden.
     // Leaving a gap then shows the static control's white fill.
-    if (TocCalibBarVisible(win)) {
+    if (bookmarksOn && TocCalibBarVisible(win)) {
         barDy = TocCalibBarDy(win);
         if (barDy > dy - 40) {
             barDy = dy - 40;
@@ -4037,12 +4203,25 @@ static void LayoutTocContainer(MainWindow* win) {
         }
         dy -= barDy;
     }
-    if (treeView && treeView->hwnd) {
+    auto styleVisible = [](HWND hwnd) { return hwnd && (GetWindowLongW(hwnd, GWL_STYLE) & WS_VISIBLE) != 0; };
+    bool thumbsOn = styleVisible(win->hwndSidebarThumbs);
+    bool favsOn = win->favTreeView && win->favTreeView->hwnd && GetParent(win->favTreeView->hwnd) == hwndContainer &&
+                  styleVisible(win->favTreeView->hwnd);
+    // Bookmarks, thumbnails, and favorites share this rectangle. Advancing y
+    // after the tree pushes the other two below the column.
+    if (treeView && treeView->hwnd && styleVisible(treeView->hwnd)) {
         place(treeView->hwnd, 0, y, rc.dx, dy);
-        y += dy;
     }
-    if (barDy > 0) {
+    if (barDy > 0 && !thumbsOn && !favsOn) {
         RelayoutTocCalib(win);
+    }
+    if (thumbsOn) {
+        place(win->hwndSidebarThumbs, 0, y, rc.dx, dy);
+        SetWindowPos(win->hwndSidebarThumbs, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+    if (favsOn) {
+        place(win->favTreeView->hwnd, 0, y, rc.dx, dy);
+        SetWindowPos(win->favTreeView->hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
 }
 
@@ -4533,6 +4712,9 @@ static bool TocTreeHandleMouse(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, 
         ht.pt = pt;
         TreeView_HitTest(hwnd, &ht);
         if (ht.flags & TVHT_ONITEMBUTTON) {
+            // Mark the whole row before the tree paints the expander, so the
+            // selection box is not clipped down to the button.
+            InvalidateTocItemRow(hwnd, ht.hItem);
             return false;
         }
         TocItem* item = ht.hItem ? (TocItem*)tv->GetTreeItemByHandle(ht.hItem) : nullptr;
@@ -4686,6 +4868,27 @@ static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         HandleSidebarSplitterHit(win, hwnd, msg, lp)) {
         return msg == WM_SETCURSOR ? TRUE : 0;
     }
+    // Dark-mode hot-tracking does not repaint on its own. Invalidate when the
+    // row under the cursor changes so the hover fill can follow the pointer.
+    if (ThemeUsesDarkChrome() && (msg == WM_MOUSEMOVE || msg == WM_MOUSELEAVE)) {
+        static HTREEITEM sHot = nullptr;
+        static HWND sHwnd = nullptr;
+        HTREEITEM hot = nullptr;
+        if (msg == WM_MOUSEMOVE) {
+            TVHITTESTINFO ht{};
+            ht.pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            TreeView_HitTest(hwnd, &ht);
+            UINT onRow = TVHT_ONITEM | TVHT_ONITEMINDENT | TVHT_ONITEMBUTTON | TVHT_ONITEMRIGHT;
+            if (ht.hItem && (ht.flags & onRow)) {
+                hot = ht.hItem;
+            }
+        }
+        if (sHwnd != hwnd || sHot != hot) {
+            sHwnd = hwnd;
+            sHot = hot;
+            InvalidateRect(hwnd, nullptr, FALSE);
+        }
+    }
     if (msg == WM_ERASEBKGND && TocSidebarShowEmptyHint(win)) {
         return 1;
     }
@@ -4704,6 +4907,7 @@ static LRESULT CALLBACK WndProcTocTree(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
     }
     if (msg == WM_PAINT) {
         LRESULT r = DefSubclassProc(hwnd, msg, wp, lp);
+        PaintTocSelectionFrames(win, hwnd);
         DrawTocDropIndicator(win, hwnd);
         return r;
     }
@@ -4813,6 +5017,17 @@ static LRESULT CALLBACK WndProcTocBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
     }
 
     if (msg == WM_CONTEXTMENU && win->tocTreeView) {
+        // The favorites tree is reparented into this box. Its right-click must
+        // stay the favorites menu; this handler would build the bookmark one.
+        HWND src = (HWND)wp;
+        if (win->favTreeView && win->favTreeView->hwnd &&
+            (src == win->favTreeView->hwnd || IsChild(win->favTreeView->hwnd, src))) {
+            return 0;
+        }
+        if (CurrentSidebarView(win) == SidebarView::Favorites && win->favTreeView && win->favTreeView->hwnd &&
+            IsWindowVisible(win->favTreeView->hwnd)) {
+            return 0;
+        }
         POINT ptScreen = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
         POINT ptWindow = ptScreen;
         if (ptScreen.x != -1 || ptScreen.y != -1) {
@@ -4824,6 +5039,16 @@ static LRESULT CALLBACK WndProcTocBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         ev.mouseWindow = Point(ptWindow.x, ptWindow.y);
         TocContextMenu(&ev);
         return 0;
+    }
+
+    if (msg == WM_NOTIFY && win->tocTreeView && win->tocTreeView->hwnd) {
+        NMHDR* hdr = (NMHDR*)lp;
+        if (hdr && hdr->hwndFrom == win->tocTreeView->hwnd &&
+            (hdr->code == TVN_ITEMEXPANDINGW || hdr->code == TVN_ITEMEXPANDEDW || hdr->code == TVN_ITEMEXPANDINGA ||
+             hdr->code == TVN_ITEMEXPANDEDA)) {
+            NMTREEVIEWW* nm = (NMTREEVIEWW*)lp;
+            InvalidateTocItemRow(win->tocTreeView->hwnd, nm->itemNew.hItem);
+        }
     }
 
     if (msg == WM_ERASEBKGND || msg == WM_PAINT) {
@@ -4879,7 +5104,9 @@ static LRESULT CALLBACK WndProcTocBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
 
         case WM_COMMAND:
             if (LOWORD(wp) == IDC_TOC_LABEL_WITH_CLOSE) {
-                ToggleTocBox(win);
+                // The X closes the column. Bookmarks, thumbnails, and favorites
+                // all use this header, so it must not switch back to bookmarks.
+                SetSidebarVisibility(win, false, false);
             }
             break;
     }
@@ -5120,7 +5347,7 @@ void TocFilterChanged(MainWindow* win) {
 }
 
 static void OnTocFilterTextChanged(MainWindow* win) {
-    TocFilterChanged(win);
+    ApplySidebarFindEdit(win);
 }
 
 static LRESULT CALLBACK WndProcTocFilterEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId,
@@ -5136,7 +5363,13 @@ static LRESULT CALLBACK WndProcTocFilterEdit(HWND hwnd, UINT msg, WPARAM wp, LPA
                 return 0;
             }
             // if already empty, move focus to tree
-            SetFocus(win->tocTreeView->hwnd);
+            if (CurrentSidebarView(win) == SidebarView::Thumbnails && win->hwndSidebarThumbs) {
+                SetFocus(win->hwndSidebarThumbs);
+            } else if (CurrentSidebarView(win) == SidebarView::Favorites && win->favTreeView) {
+                SetFocus(win->favTreeView->hwnd);
+            } else if (win->tocTreeView) {
+                SetFocus(win->tocTreeView->hwnd);
+            }
             return 0;
         }
     }
@@ -5152,7 +5385,8 @@ void UpdateTocFilterForDocumentLoading(MainWindow* win) {
     if (!win || !win->tocFilterEdit || !win->tocFilterEdit->hwnd) {
         return;
     }
-    bool show = win->tocVisible && TocSidebarHasBookmarkItems(win);
+    SidebarView view = CurrentSidebarView(win);
+    bool show = win->tocVisible && (view != SidebarView::Bookmarks || TocSidebarHasBookmarkItems(win));
     HwndSetVisibility(win->tocFilterEdit->hwnd, show);
     RelayoutTocContainer(win);
 }
@@ -5259,9 +5493,119 @@ void FlushFavTreeWrapHeights(MainWindow* win) {
     }
 }
 
+static COLORREF FavItemTextColor(TreeView* treeView) {
+    if (ThemeUsesDarkChrome()) {
+        return ThemeReadingTextColor();
+    }
+    if (!treeView || IsSpecialColor(treeView->textColor)) {
+        return GetSysColor(COLOR_WINDOWTEXT);
+    }
+    return treeView->textColor;
+}
+
+static void SetFavItemDrawColors(NMTVCUSTOMDRAW* tvcd, TreeView* treeView) {
+    NMCUSTOMDRAW* cd = &tvcd->nmcd;
+    bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+    bool isHot = (cd->uItemState & CDIS_HOT) != 0;
+    tvcd->clrText = FavItemTextColor(treeView);
+    if (isSelected) {
+        tvcd->clrTextBk = TocSelectionBgColor();
+    } else if (isHot) {
+        tvcd->clrTextBk = TocHotTrackBgColor();
+    } else {
+        tvcd->clrTextBk = SidebarBackgroundColor(treeView->bgColor);
+    }
+}
+
+// Explorer draws its own blue selection after item postpaint. Paint the row
+// here and skip that default item paint. Bookmarks use the same fills.
+static void PaintOneFavRow(TreeView* treeView, HTREEITEM hItem, HDC hdc, bool isSelected, bool isHot) {
+    if (!treeView || !treeView->treeModel || !hItem || !hdc) {
+        return;
+    }
+    TreeItem ti = treeView->GetTreeItemByHandle(hItem);
+    if (!ti) {
+        return;
+    }
+    char* text = treeView->treeModel->Text(ti);
+    if (!text) {
+        return;
+    }
+    HWND hwnd = treeView->hwnd;
+    NMTVCUSTOMDRAW tvcd{};
+    tvcd.nmcd.hdc = hdc;
+    tvcd.nmcd.dwItemSpec = (DWORD_PTR)hItem;
+    tvcd.nmcd.hdr.hwndFrom = hwnd;
+    if (isSelected) {
+        tvcd.nmcd.uItemState |= CDIS_SELECTED;
+    } else if (isHot) {
+        tvcd.nmcd.uItemState |= CDIS_HOT;
+    }
+    SetFavItemDrawColors(&tvcd, treeView);
+    int saved = SaveDC(hdc);
+    SelectClipRgn(hdc, nullptr);
+    HFONT font = (HFONT)SendMessageW(hwnd, WM_GETFONT, 0, 0);
+    if (font) {
+        SelectObject(hdc, font);
+    }
+    if (isSelected) {
+        DrawTocSelectionFill(&tvcd.nmcd, hwnd, hItem);
+    } else if (isHot) {
+        DrawTocHotTrackFill(&tvcd.nmcd, hwnd, hItem);
+    } else {
+        RECT rcRow{};
+        GetTocItemRowRect(hwnd, hItem, &tvcd.nmcd, rcRow);
+        HBRUSH br = CreateSolidBrush(SidebarBackgroundColor(treeView->bgColor));
+        FillRect(hdc, &rcRow, br);
+        DeleteObject(br);
+        DrawTocExpandGlyph(hdc, hwnd, hItem, rcRow);
+    }
+    DrawTreeWrappedLabel(&tvcd, treeView, ToWStrTemp(text), FindMainWindowByHwnd(hwnd), 0);
+    if (ThemeUsesDarkChrome() && isSelected) {
+        DrawTocSelectionFrame(&tvcd.nmcd, hwnd, hItem);
+    }
+    RestoreDC(hdc, saved);
+}
+
+void PaintFavTreeRowsOverTheme(HWND hwnd, HDC hdc) {
+    if (!hwnd || !hdc) {
+        return;
+    }
+    MainWindow* win = FindMainWindowByHwnd(hwnd);
+    TreeView* treeView = win ? win->favTreeView : nullptr;
+    if (!treeView || treeView->hwnd != hwnd || !treeView->treeModel) {
+        return;
+    }
+    HTREEITEM hot = nullptr;
+    POINT pt{};
+    if (GetCursorPos(&pt) && ScreenToClient(hwnd, &pt)) {
+        RECT rcClient{};
+        GetClientRect(hwnd, &rcClient);
+        if (PtInRect(&rcClient, pt)) {
+            TVHITTESTINFO ht{};
+            ht.pt = pt;
+            TreeView_HitTest(hwnd, &ht);
+            UINT onRow = TVHT_ONITEM | TVHT_ONITEMINDENT | TVHT_ONITEMBUTTON | TVHT_ONITEMRIGHT;
+            if (ht.hItem && (ht.flags & onRow)) {
+                hot = ht.hItem;
+            }
+        }
+    }
+    HTREEITEM h = TreeView_GetFirstVisible(hwnd);
+    int guard = 0;
+    while (h && guard++ < 256) {
+        bool isSelected = (TreeView_GetItemState(hwnd, h, TVIS_SELECTED) & TVIS_SELECTED) != 0;
+        bool isHot = h == hot && !isSelected;
+        if (isSelected || isHot) {
+            PaintOneFavRow(treeView, h, hdc, isSelected, isHot);
+        }
+        h = TreeView_GetNextVisible(hwnd, h);
+    }
+}
+
 void FavTreeWrapOnCustomDraw(TreeView::CustomDrawEvent* ev) {
     ev->result = CDRF_DODEFAULT;
-    if (!TreeWrapLabelsEnabled()) {
+    if (!ev || !ev->treeView || !ev->nm) {
         return;
     }
     NMTVCUSTOMDRAW* tvcd = ev->nm;
@@ -5270,36 +5614,23 @@ void FavTreeWrapOnCustomDraw(TreeView::CustomDrawEvent* ev) {
         ev->result = CDRF_NOTIFYITEMDRAW;
         return;
     }
-    if (cd->dwDrawStage == CDDS_ITEMPREPAINT) {
-        if (!ev->treeItem || !ev->treeView->treeModel) {
-            return;
-        }
-        char* text = ev->treeView->treeModel->Text(ev->treeItem);
-        (void)text;
-        ev->result = CDRF_NOTIFYPOSTPAINT;
+    if (cd->dwDrawStage != CDDS_ITEMPREPAINT) {
         return;
     }
-    if (cd->dwDrawStage == CDDS_ITEMPOSTPAINT) {
-        if (!ev->treeItem || !ev->treeView->treeModel) {
-            return;
-        }
-        bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
-        bool isHot = (cd->uItemState & CDIS_HOT) != 0;
-        HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
-        if (isSelected) {
-            HWND hwnd = ev->treeView->hwnd;
-            tvcd->clrText = ThemeUsesDarkChrome() ? ThemeReadingTextColor() : ThemeWindowTextColor();
-            tvcd->clrTextBk = TocSelectedRowFillColor(hwnd);
-            DrawTocSelectionFill(cd, hwnd, hItem);
-        } else if (ThemeUsesDarkChrome() && isHot) {
-            tvcd->clrText = ThemeReadingTextColor();
-            tvcd->clrTextBk = TocHotTrackBgColor();
-            DrawTocHotTrackFill(cd, ev->treeView->hwnd, hItem);
-        }
-        char* text = ev->treeView->treeModel->Text(ev->treeItem);
-        DrawTreeWrappedLabel(tvcd, ev->treeView, ToWStrTemp(text), nullptr, 0);
-        ev->result = CDRF_DODEFAULT;
+    if (!ev->treeItem || !ev->treeView->treeModel) {
+        return;
     }
+    HTREEITEM hItem = (HTREEITEM)cd->dwItemSpec;
+    HWND hwnd = ev->treeView->hwnd;
+    bool isSelected = (cd->uItemState & CDIS_SELECTED) != 0;
+    if (!isSelected && hwnd && (TreeView_GetItemState(hwnd, hItem, TVIS_SELECTED) & TVIS_SELECTED)) {
+        isSelected = true;
+    }
+    bool isHot = !isSelected && (cd->uItemState & CDIS_HOT) != 0;
+    // Skip the themed item paint. It draws the system blue bar after postpaint
+    // and replaces the label with white highlight text.
+    PaintOneFavRow(ev->treeView, hItem, cd->hdc, isSelected, isHot);
+    ev->result = CDRF_SKIPDEFAULT;
 }
 
 void CreateToc(MainWindow* win) {
@@ -5352,4 +5683,6 @@ void CreateToc(MainWindow* win) {
     SubclassToc(win);
 
     UpdateControlsColors(win);
+    CreateSidebarThumbs(win);
+    UpdateSidebarViewButtons(win);
 }

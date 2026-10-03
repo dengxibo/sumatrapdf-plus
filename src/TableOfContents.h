@@ -6,6 +6,9 @@ bool TreeWrapLabelsEnabled();
 void TreeWrapLabelsConfigureCreateArgs(TreeView::CreateArgs& args);
 void TreeItemTooltipIfTruncated(TreeView::GetTooltipEvent* ev);
 void FavTreeWrapOnCustomDraw(TreeView::CustomDrawEvent* ev);
+// Theme selection is painted after custom draw. Call after the tree's WM_PAINT
+// so hover and selection match the bookmarks column.
+void PaintFavTreeRowsOverTheme(HWND hwnd, HDC hdc);
 void FavTreeWrapRecalcHeights(MainWindow* win);
 void ScheduleTocTreeWrapHeights(MainWindow* win);
 void ScheduleFavTreeWrapHeights(MainWindow* win);

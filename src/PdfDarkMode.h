@@ -172,6 +172,8 @@ bool DarkModeProfileUsesFollowThemeDirect(const DarkModeProfile* profile);
 bool DarkModeProfileUsesFollowThemeV2(const DarkModeProfile* profile);
 bool DarkModeProfileUsesLegacyPostProcess(const DarkModeProfile* profile);
 void BuildViewDarkModeProfile(EngineBase* engine, DarkModeProfile* profile);
+// Sidebar page thumbnails follow the app theme and ignore document color mode.
+void BuildSidebarThumbDarkModeProfile(EngineBase* engine, DarkModeProfile* profile);
 u32 PdfDarkModeComputeProfileHash(const DarkModeProfile* profile);
 PdfDocumentColorMode GetPdfDocumentColorMode();
 void SetPdfDocumentColorMode(PdfDocumentColorMode mode);

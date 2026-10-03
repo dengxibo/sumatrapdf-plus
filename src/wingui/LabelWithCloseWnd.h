@@ -1,7 +1,19 @@
 /* Copyright 2022 the SumatraPDF project authors (see AUTHORS file).
    License: Simplified BSD (see COPYING.BSD) */
 
+#include "SvgIcons.h"
+
 struct Tooltip;
+
+struct LabelViewButton {
+    TbIcon icon = TbIcon::None;
+    const char* tooltip = nullptr; // _TRN key
+    bool selected = false;
+    bool enabled = true;
+    // False: same ink as the header chevrons, tooltip only, no hover well.
+    bool chromeWell = true;
+    Func0 onClick;
+};
 
 struct LabelWithCloseWnd : Wnd {
     struct CreateArgs {
@@ -28,6 +40,9 @@ struct LabelWithCloseWnd : Wnd {
     void ClearThirdHeaderAction();
     void UpdateActionsTooltipTheme();
     void UpdateHeaderActionTooltips();
+    void SetViewButtons(const LabelViewButton* buttons, int count);
+    void SetRightButtons(const LabelViewButton* buttons, int count);
+    void SetHeaderActionsVisible(bool visible);
     void Layout();
 
     Size GetIdealSize();
@@ -38,6 +53,15 @@ struct LabelWithCloseWnd : Wnd {
     Rect firstActionPos{};
     Rect secondActionPos{};
     Rect thirdActionPos{};
+    Rect viewBtnPos[3]{};
+    LabelViewButton viewBtns[3]{};
+    int nViewButtons = 0;
+    int viewBtnTooltipId[3]{-1, -1, -1};
+    Rect rightBtnPos[3]{};
+    LabelViewButton rightBtns[3]{};
+    int nRightButtons = 0;
+    int rightBtnTooltipId[3]{-1, -1, -1};
+    bool headerActionsVisible = true;
 
     // in points
     int padX = 0;

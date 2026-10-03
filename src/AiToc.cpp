@@ -3323,7 +3323,7 @@ static COLORREF AiTocOverlayFillColor(bool dark) {
     return dark ? RGB(56, 59, 66) : AccentColor(ThemeMainWindowBackgroundColor(), 10);
 }
 
-// Plain "第 N 页" tag at the bottom-center of the card: solid theme control
+// Plain page-number tag at the bottom-center of the card: solid theme control
 // background, hairline frame, regular small text — a native label, not a
 // rounded web-style pill.
 static void AiTocDrawPageLabel(HDC hdc, const RECT& rcCard, AiTocDialog* dlg, int pageNo) {
@@ -3331,7 +3331,7 @@ static void AiTocDrawPageLabel(HDC hdc, const RECT& rcCard, AiTocDialog* dlg, in
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                              DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI");
     HGDIOBJ oldFont = SelectObject(hdc, font);
-    TempStr label = str::FormatTemp(_TRA("Page %d"), pageNo);
+    TempStr label = str::FormatTemp("%d", pageNo);
     RECT textRc = {0, 0, 0, 0};
     DrawTextW(hdc, ToWStrTemp(label), -1, &textRc, DT_NOPREFIX | DT_CALCRECT | DT_SINGLELINE);
     int padX = DpiScale(dlg->thumbnailPane, 8);

@@ -43,6 +43,19 @@ void HomePageScheduleSearchFilter(MainWindow* win);
 void HomePageApplySearchFilter(MainWindow* win);
 void HomePageRemoveMissingFiles(MainWindow* win);
 void HomePageUpdateHover(MainWindow* win, int x, int y);
+void HomePageClearSelection(MainWindow* win);
+void HomePageSelectOnly(MainWindow* win, const char* path);
+void HomePageToggleSelected(MainWindow* win, const char* path);
+void HomePageSelectRangeTo(MainWindow* win, const char* path);
+void HomePageSelectAllFiles(MainWindow* win);
+bool HomePagePathIsSelected(MainWindow* win, const char* path);
+int HomePageSelectedCount(MainWindow* win);
+void HomePageRemovePathFromHistory(MainWindow* win, const char* path);
+void HomePageRemoveSelectionFromHistory(MainWindow* win);
+bool HomePageConfirmDeleteFiles(HWND hwnd, int count);
+bool HomePageDeletePathToTrash(MainWindow* win, const char* path);
+void HomePageDeleteSelectionToTrash(MainWindow* win);
+void HomePageOpenSelection(MainWindow* win);
 
 #define kHomeSearchDebounceTimerId 0x103
 void HomePageOnLanguageChangedAll();

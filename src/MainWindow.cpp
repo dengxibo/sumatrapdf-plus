@@ -165,6 +165,7 @@ MainWindow::~MainWindow() {
     delete buffer;
     delete tabSelectionHistory;
     DeleteVecMembers(staticLinks);
+    HomePageClearSelection(this);
     auto tabs = Tabs();
     DeleteVecMembers(tabs);
     {

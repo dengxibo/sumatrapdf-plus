@@ -34578,3 +34578,47 @@ tw:介面傳回的模型都不能用於這裡。請直接輸入一個對話模�
 :Ask the API for model names and put the one you pick in the box. You can also type a name.
 cn:向 API 查询模型名单，把选中的填进框里。也可以直接输入模型名。
 tw:向 API 查詢模型名單，把選中的填進框裡。也可以直接輸入模型名稱。
+
+:Thumbnails
+cn:缩略图
+tw:縮圖
+
+:Show Thumbnails
+cn:显示缩略图
+tw:顯示縮圖
+
+:Show &Thumbnails
+cn:显示缩略图(&T)
+tw:顯示縮圖(&T)
+
+:Search fonts
+cn:搜索字体
+tw:搜尋字型
+
+:Delete this file? It will be moved to the Recycle Bin.
+cn:删除这个文件？它会移到回收站。
+tw:刪除這個檔案？它會移到資源回收筒。
+
+:Delete these %d files? They will be moved to the Recycle Bin.
+cn:删除这 %d 个文件？它们会移到回收站。
+tw:刪除這 %d 個檔案？它們會移到資源回收筒。
+
+:&Remove From History\tDel
+cn:从历史记录删除(&R)\tDel
+tw:從歷程記錄中移除(&R)\tDel
+
+:Search Favorites
+cn:搜索收藏
+tw:搜尋收藏
+
+:Add current page to favorites
+cn:将当前页加入收藏夹
+tw:將目前頁面加入收藏夾
+
+:Sort by book title
+cn:按书名标题排序
+tw:按書名標題排序
+
+:Sort by added order
+cn:按添加顺序排序
+tw:按加入順序排序

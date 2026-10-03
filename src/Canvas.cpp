@@ -3784,15 +3784,7 @@ static LRESULT WndProcCanvasFixedPageUI(MainWindow* win, HWND hwnd, UINT msg, WP
                 return 0;
             }
             return DefWindowProc(hwnd, msg, wp, lp);
-
-        case WM_NCPAINT:
-            // Do not call ShowScrollBar here. Visibility is owned by
-            // UpdateScrollbars; ShowScrollBar mid-NCPAINT breaks native
-            // scrollbar track hold-to-page auto-repeat (and can re-enter
-            // uxtheme under dark themes). Match upstream behavior.
-            goto def;
     }
-def:
     return DefWindowProc(hwnd, msg, wp, lp);
 }
 
@@ -4460,10 +4452,12 @@ LRESULT CALLBACK WndProcCanvas(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     // messages that require win
     switch (msg) {
-        case WM_NCLBUTTONDOWN:
+        case WM_NCLBUTTONDOWN: {
             // Native track/arrow hold-to-repeat uses WM_TIMER. TOC paint storms used to
             // starve those timers; heights are recalculated outside paint now.
-            return DefWindowProc(hwnd, msg, wp, lp);
+            LRESULT r = DefWindowProc(hwnd, msg, wp, lp);
+            return r;
+        }
 
         case WM_TIMER:
             OnTimer(win, hwnd, wp);

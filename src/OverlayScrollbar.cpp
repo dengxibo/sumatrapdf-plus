@@ -1008,6 +1008,13 @@ void OverlayScrollbarSetMode(OverlayScrollbar* sb, OverlayScrollbar::Mode mode) 
     }
 }
 
+void OverlayScrollbarRedraw(OverlayScrollbar* sb) {
+    if (!sb || !IsVisible(sb)) {
+        return;
+    }
+    PaintScrollbar(sb);
+}
+
 bool IsOverlayScrollbarVisible(OverlayScrollbar* sb) {
     return sb && IsVisible(sb);
 }

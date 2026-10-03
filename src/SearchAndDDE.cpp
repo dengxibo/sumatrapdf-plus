@@ -7,6 +7,7 @@
 #include "utils/UITask.h"
 #include "utils/WinUtil.h"
 #include "utils/ThreadUtil.h"
+#include "utils/Dpi.h"
 
 #include "wingui/UIModels.h"
 

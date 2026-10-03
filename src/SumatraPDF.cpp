@@ -86,6 +86,7 @@
 #include "SumatraProperties.h"
 #include "TabGroupsManage.h"
 #include "TableOfContents.h"
+#include "SidebarThumbs.h"
 #include "Tabs.h"
 #include "Toolbar.h"
 #include "FindBar.h"
@@ -961,6 +962,7 @@ static void UpdateSidebarDisplayState(WindowTab* tab, FileState* fs) {
     ReportIf(!tab);
     MainWindow* win = tab->win;
     fs->showToc = tab->showToc;
+    str::ReplaceWithCopy(&fs->sidebarView, SidebarViewToStr((SidebarView)tab->sidebarView));
     if (win->tocLoaded && tab == win->CurrentTab()) {
         TocTree* tocTree = tab->ctrl->GetToc();
         UpdateTocExpansionState(tab->tocState, win->tocTreeView, tocTree);
@@ -1892,6 +1894,7 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
             showToc = tab->showToc;
         } else {
             showToc = fs->showToc;
+            LoadTabSidebarView(tab);
         }
         ParsedColor* bgParsed = GetPrefsColor(fs->bgCol);
         if (bgParsed->parsedOk) {
@@ -2112,7 +2115,14 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         return;
     }
     if (win->IsDocLoaded() && win->ctrl && !win->ctrl->HasToc()) {
-        showToc = false;
+        SidebarView saved = (SidebarView)tab->sidebarView;
+        if (saved == SidebarView::Bookmarks) {
+            if (showToc && SidebarViewAvailable(win, SidebarView::Thumbnails)) {
+                tab->sidebarView = (int)SidebarView::Thumbnails;
+            } else if (!SidebarViewAvailable(win, SidebarView::Favorites)) {
+                showToc = false;
+            }
+        }
     }
     SetSidebarVisibility(win, showToc, gGlobalPrefs->showFavorites);
     // Sync reload (save-in-place) can attach the model before reflow page
@@ -3752,6 +3762,7 @@ void UpdateAfterThemeChange() {
         }
         UpdateMainWindowNativeChrome(win);
         UpdateControlsColors(win);
+        SidebarThumbsOnThemeChanged(win);
         UpdateWindowFrameBorderColor(win);
         uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN;
         RedrawWindow(win->hwndFrame, nullptr, nullptr, flags);
@@ -4014,8 +4025,14 @@ static void AttachDocumentToBackgroundTab(LoadArgs* args, WindowTab* tab) {
         } else {
             tab->showToc = fs->showToc;
         }
-    } else if (tab->ctrl && !tab->ctrl->HasToc()) {
-        tab->showToc = false;
+    }
+    LoadTabSidebarView(tab);
+    if (tab->ctrl && !tab->ctrl->HasToc() && (SidebarView)tab->sidebarView == SidebarView::Bookmarks) {
+        if (tab->showToc && SidebarViewAvailable(win, SidebarView::Thumbnails)) {
+            tab->sidebarView = (int)SidebarView::Thumbnails;
+        } else {
+            tab->showToc = false;
+        }
     }
 
     // Associate the saved state with this background tab before initializing
@@ -5595,6 +5612,9 @@ void UpdateDocumentColors(bool rerender, bool updateReflowDocuments) {
     if (rerender) {
         DocumentColorRerenderUiScope rerenderUi;
         RerenderEverything();
+    }
+    for (MainWindow* win : gWindows) {
+        SidebarThumbsOnThemeChanged(win);
     }
 }
 
@@ -7244,7 +7264,13 @@ static void DeleteCurrentFile(MainWindow* win) {
     if (!file::Exists(path)) {
         return;
     }
+    if (!HomePageConfirmDeleteFiles(win->hwndFrame, 1)) {
+        return;
+    }
     CloseCurrentTab(win, false);
+    if (FindTabByFile(path)) {
+        return;
+    }
     file::DeleteFileToTrash(path);
     DeleteThumbnailForFile(path);
     FileState* fs = gFileHistory.FindByPath(path);
@@ -7783,9 +7809,17 @@ static void SetSidebarTreeScrollbarMasksVisible(MainWindow* win, bool visible) {
     HWND* masks[] = {&win->hwndTocScrollbarMask, &win->hwndFavScrollbarMask};
     for (int i = 0; i < dimof(trees); i++) {
         HWND tree = trees[i];
-        HWND parent = parents[i];
         HWND& mask = *masks[i];
         if (!tree || !IsWindow(tree)) {
+            continue;
+        }
+        // A hidden tree keeps its old width. Masking that rect paints a
+        // vertical band through the view that actually grew (favorites).
+        HWND parent = IsWindowVisible(tree) ? GetParent(tree) : parents[i];
+        if (visible && (!IsWindowVisible(tree) || !WindowHasVisibleVScrollbar(tree))) {
+            if (mask) {
+                ShowWindow(mask, SW_HIDE);
+            }
             continue;
         }
         if (!visible) {
@@ -7807,6 +7841,11 @@ static void SetSidebarTreeScrollbarMasksVisible(MainWindow* win, bool visible) {
             if (mask) {
                 SetWindowSubclass(mask, SidebarScrollbarMaskProc, 1, 0);
             }
+        } else if (GetParent(mask) != parent) {
+            // Favorites is reparented into the bookmarks column. A mask left
+            // on the hidden favorites box never covers that tree, and the
+            // bookmarks mask then sits on the stale hidden tree width.
+            SetParent(mask, parent);
         }
         if (!mask) {
             continue;
@@ -7896,7 +7935,14 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
     // ScheduledSidebarRelayout coalesces the mouse flood and presents one
     // complete frame immediately, so repaint starvation isn't an issue here.
     bool liveSidebarDrag = (sidebarDx > 0) && gSidebarSplitterWrapSuspended;
+    // NOCOPYBITS keeps the tree scrollbar from smearing, but it also leaves
+    // the pixels just uncovered by a rightward drag black until the next
+    // paint. The canvas keeps its bits so the page slides with the splitter.
     uint livePosFlags = liveSidebarDrag ? (SWP_NOCOPYBITS | SWP_NOREDRAW) : 0;
+    int oldTocDx = 0;
+    if (liveSidebarDrag && win->hwndTocBox) {
+        oldTocDx = ClientRect(win->hwndTocBox).dx;
+    }
 
     OverlayScrollbarHide(win->overlayScrollV);
     OverlayScrollbarHide(win->overlayScrollH);
@@ -7973,8 +8019,8 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
         ShowWindow(win->hwndReBar, win->isToolbarVisible ? SW_SHOW : SW_HIDE);
     }
 
-    // ToC and Favorites sidebars at the left
-    bool favVisible = gGlobalPrefs->showFavorites && !gPluginMode && CanAccessDisk();
+    // One sidebar column. Favorites is a view inside hwndTocBox, not a second pane.
+    bool favVisible = false;
     bool tocVisible = win->tocVisible;
     if (tocVisible || favVisible) {
         Size toc = ClientRect(win->hwndTocBox).Size();
@@ -8028,9 +8074,28 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
         rc.dx -= toc.dx + splitterDx;
     }
 
-    dh.MoveWindow(win->hwndCanvas, rc.x, rc.y, rc.dx, rc.dy, TRUE, livePosFlags);
+    // Copy the page. Dropping those bits is what opens a black band on the
+    // canvas side while the sidebar grows to the right.
+    dh.MoveWindow(win->hwndCanvas, rc.x, rc.y, rc.dx, rc.dy, TRUE, 0);
 
     dh.End();
+
+    if (liveSidebarDrag && tocVisible && win->hwndTocBox && sidebarDx > oldTocDx) {
+        // The column grew into what was the page. Those pixels are black
+        // until a paint, which is the band beside the favorites list.
+        HDC hdc = GetDC(win->hwndTocBox);
+        if (hdc) {
+            RECT strip{};
+            GetClientRect(win->hwndTocBox, &strip);
+            strip.left = oldTocDx;
+            if (strip.left < strip.right) {
+                AutoDeleteBrush br = CreateSolidBrush(ThemeSidebarBackgroundColor());
+                FillRect(hdc, &strip, br);
+            }
+            ReleaseDC(win->hwndTocBox, hdc);
+        }
+        RedrawWindow(win->hwndTocBox, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+    }
 
     if (!liveSidebarDrag && GetDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas)) {
         RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
@@ -9058,6 +9123,10 @@ static bool FrameOnKeydown(MainWindow* win, WPARAM key, LPARAM lp) {
 
     bool isCtrl = IsCtrlPressed();
     bool isShift = IsShiftPressed();
+    if (VK_DELETE == key && win->IsCurrentTabAbout() && !HwndIsFocused(win->hwndHomeSearch)) {
+        HomePageRemoveSelectionFromHistory(win);
+        return true;
+    }
     if (!win->IsDocLoaded()) {
         return false;
     }
@@ -9398,34 +9467,41 @@ bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM
     int tolerance = DpiScale(win->hwndFrame, 5);
     int leftTol = tolerance;
     int rightTol = tolerance;
+    bool resizeCursor = GetCursor() == GetCachedCursor(IDC_SIZEWE);
+    bool press = msg == WM_LBUTTONDOWN || msg == WM_NCLBUTTONDOWN;
     // Bookmark-calibration row buttons sit flush against the splitter. A left
-    // tolerance that reaches into the TreeView steals LBUTTONDOWN into a width
-    // drag — while scrolling or clicking icons the sidebar then follows the
-    // cursor and looks like it "snapped back".
-    if (sourceHwnd && win->tocTreeView && sourceHwnd == win->tocTreeView->hwnd) {
-        leftTol = 0;
-        // <-> and the click share one strip. On a scrollbar that strip is the
-        // bar's edge against the splitter. With no scrollbar the separator is
-        // one pixel, so the same strip sits on the tree's right edge: wherever
-        // the double-arrow is shown, the press starts a width drag.
-        // Calibration row icons sit on that edge; leave them clickable.
-        if ((GetWindowLongPtrW(sourceHwnd, GWL_EXSTYLE) & WS_EX_LAYOUTRTL) == 0) {
-            SCROLLBARINFO sbi{};
-            sbi.cbSize = sizeof(sbi);
-            bool barVisible = GetScrollBarInfo(sourceHwnd, OBJID_VSCROLL, &sbi) &&
-                              !(sbi.rgstate[0] & (STATE_SYSTEM_INVISIBLE | STATE_SYSTEM_OFFSCREEN));
-            if (barVisible && PtInRect(&sbi.rcScrollBar, pt) &&
-                std::abs(sbi.rcScrollBar.right - rc.left) <= tolerance) {
-                leftTol = tolerance;
-            } else if (!barVisible && !TocCalibBarVisible(win)) {
-                leftTol = tolerance;
-            }
-        }
+    // tolerance that reaches into that row steals the icon click into a width
+    // drag. The rest of the column keeps the drag strip.
+    bool onCalibRow = false;
+    if (TocCalibBarVisible(win) && win->hwndTocBox) {
+        RECT tocRc{};
+        GetWindowRect(win->hwndTocBox, &tocRc);
+        int barDy = TocCalibBarDy(win);
+        onCalibRow = pt.y >= tocRc.bottom - barDy && pt.y < tocRc.bottom;
     }
-    // <-> is already up: this press drags the sidebar. Same 5px strip as the
-    // scrollbar edge. Do not widen hover — that covers the scrollbar thumb
-    // and replaces its cursor.
-    if ((msg == WM_LBUTTONDOWN || msg == WM_NCLBUTTONDOWN) && GetCursor() == GetCachedCursor(IDC_SIZEWE)) {
+    bool sidebarTree = sourceHwnd && ((win->tocTreeView && sourceHwnd == win->tocTreeView->hwnd) ||
+                                      (win->favTreeView && sourceHwnd == win->favTreeView->hwnd));
+    if (sidebarTree && !onCalibRow && (GetWindowLongPtrW(sourceHwnd, GWL_EXSTYLE) & WS_EX_LAYOUTRTL) == 0) {
+        leftTol = 0;
+        // One strip, whether or not a scrollbar is up. With a bar, it is the
+        // bar's outer edge against the splitter (not the thumb). With no bar,
+        // the separator is one pixel, so the same strip sits on the tree's
+        // right edge. The pixel between the bar and that line is part of the
+        // strip: the <-> cursor is already showing there.
+        SCROLLBARINFO sbi{};
+        sbi.cbSize = sizeof(sbi);
+        bool barVisible = GetScrollBarInfo(sourceHwnd, OBJID_VSCROLL, &sbi) &&
+                          !(sbi.rgstate[0] & (STATE_SYSTEM_INVISIBLE | STATE_SYSTEM_OFFSCREEN));
+        if (!barVisible || std::abs(sbi.rcScrollBar.right - rc.left) <= tolerance) {
+            leftTol = tolerance;
+        }
+    } else if (sidebarTree) {
+        leftTol = 0;
+    }
+    // WM_SETCURSOR arrives before the press and would put the arrow back,
+    // so the following click no longer sees <->. While that cursor is up,
+    // keep this same strip and let the press drag.
+    if (resizeCursor && !onCalibRow && (press || msg == WM_SETCURSOR || msg == WM_MOUSEMOVE || msg == WM_NCMOUSEMOVE)) {
         if (leftTol < tolerance) {
             leftTol = tolerance;
         }
@@ -9847,8 +9923,9 @@ void SetSidebarVisibility(MainWindow* win, bool tocVisible, bool showFavorites, 
         showFavorites = false;
     }
 
-    if (!win->IsDocLoaded() || !win->ctrl->HasToc()) {
+    if (!win->IsDocLoaded()) {
         tocVisible = false;
+        showFavorites = false;
     }
 
     if (PM_BLACK_SCREEN == win->presentation || PM_WHITE_SCREEN == win->presentation) {
@@ -9856,7 +9933,22 @@ void SetSidebarVisibility(MainWindow* win, bool tocVisible, bool showFavorites, 
         showFavorites = false;
     }
 
-    if (tocVisible && !win->tocLoaded) {
+    bool column = tocVisible || showFavorites;
+    WindowTab* tab = win->CurrentTab();
+    if (column && tab) {
+        if (showFavorites && !tocVisible) {
+            tab->sidebarView = (int)SidebarView::Favorites;
+        }
+        SidebarView view = FallbackSidebarView(win, (SidebarView)tab->sidebarView);
+        if (!SidebarViewAvailable(win, view)) {
+            column = false;
+        } else {
+            tab->sidebarView = (int)view;
+        }
+    }
+
+    bool bookmarksOn = column && tab && (SidebarView)tab->sidebarView == SidebarView::Bookmarks;
+    if (bookmarksOn && !win->tocLoaded) {
         // Defer TreeView population so the first page can paint before a large
         // bookmark list is inserted. GetToc() is preferably pre-warmed on the
         // load thread (see LoadDocumentAsync); this post only attaches the UI.
@@ -9864,25 +9956,27 @@ void SetSidebarVisibility(MainWindow* win, bool tocVisible, bool showFavorites, 
         uitask::Post(fn, "DeferredLoadToc");
     }
 
-    if (showFavorites) {
-        PopulateFavTreeIfNeeded(win);
-    }
-
-    if (!win->CurrentTab()) {
-        ReportIf(tocVisible);
+    if (!tab) {
+        ReportIf(column);
     } else if (!win->presentation) {
-        win->CurrentTab()->showToc = tocVisible;
+        tab->showToc = column;
     } else if (PM_ENABLED == win->presentation) {
-        win->CurrentTab()->showTocPresentation = tocVisible;
+        tab->showTocPresentation = column;
     }
-    win->tocVisible = tocVisible;
+    win->tocVisible = column;
 
-    // TODO: make this a per-window setting as well?
-    gGlobalPrefs->showFavorites = showFavorites;
-    SetToolbarButtonCheckedState(win, CmdToggleBookmarks, tocVisible);
+    // Favorites lives in the same column. A true flag here splits the sidebar in two.
+    gGlobalPrefs->showFavorites = false;
+    bool thumbsOn = column && tab && (SidebarView)tab->sidebarView == SidebarView::Thumbnails;
+    bool favsOn = column && tab && (SidebarView)tab->sidebarView == SidebarView::Favorites;
+    SetToolbarButtonCheckedState(win, CmdToggleBookmarks, bookmarksOn);
+    SetToolbarButtonCheckedState(win, CmdToggleThumbnails, thumbsOn);
+    SetToolbarButtonCheckedState(win, CmdFavoriteToggle, favsOn);
 
-    if ((!tocVisible && HwndIsFocused(win->tocTreeView->hwnd)) ||
-        (!showFavorites && HwndIsFocused(win->favTreeView->hwnd))) {
+    bool focusInToc = win->tocTreeView && HwndIsFocused(win->tocTreeView->hwnd);
+    bool focusInFav = win->favTreeView && HwndIsFocused(win->favTreeView->hwnd);
+    bool focusInThumbs = win->hwndSidebarThumbs && HwndIsFocused(win->hwndSidebarThumbs);
+    if (!column && (focusInToc || focusInFav || focusInThumbs)) {
         HwndSetFocus(win->hwndFrame);
     }
 
@@ -9893,27 +9987,19 @@ void SetSidebarVisibility(MainWindow* win, bool tocVisible, bool showFavorites, 
         RelayoutFrame(win, false);
     }
 
-    HwndSetVisibility(win->sidebarSplitter->hwnd, tocVisible || showFavorites);
-    HwndSetVisibility(win->hwndTocBox, tocVisible);
+    HwndSetVisibility(win->sidebarSplitter->hwnd, column);
+    HwndSetVisibility(win->hwndTocBox, column);
     win->sidebarSplitter->isLive = true;
 
-    HwndSetVisibility(win->favSplitter->hwnd, tocVisible && showFavorites);
-    HwndSetVisibility(win->hwndFavBox, showFavorites);
-    win->favSplitter->isLive = true;
+    HwndSetVisibility(win->favSplitter->hwnd, false);
+    HwndSetVisibility(win->hwndFavBox, false);
+    win->favSplitter->isLive = false;
 
-    if (relayout) {
-        if (tocVisible) {
-            RedrawWindow(win->hwndTocBox, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
-        }
-        if (showFavorites) {
-            RedrawWindow(win->hwndFavBox, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
-        }
-        if (tocVisible || showFavorites) {
-            InvalidateRect(win->sidebarSplitter->hwnd, nullptr, TRUE);
-        }
-        if (tocVisible && showFavorites) {
-            InvalidateRect(win->favSplitter->hwnd, nullptr, TRUE);
-        }
+    ApplySidebarViewLayout(win);
+
+    if (relayout && column) {
+        RedrawWindow(win->hwndTocBox, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
+        InvalidateRect(win->sidebarSplitter->hwnd, nullptr, TRUE);
         UpdateTocFilterForDocumentLoading(win);
         if (GetDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas)) {
             RaiseDocumentLoadingNotification(win->hwndFrame, win->hwndCanvas);
@@ -10816,6 +10902,14 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             return 0;
         }
 
+        case CmdPickEbookLatinFont:
+            ShowEbookFontPicker(win->hwndFrame, false);
+            return 0;
+
+        case CmdPickEbookCjkFont:
+            ShowEbookFontPicker(win->hwndFrame, true);
+            return 0;
+
         case CmdSetEbookLatinFont: {
             const char* family = GetCommandStringArg(cmd, kCmdArgFontFamily, nullptr);
             if (!family || !HasPermission(Perm::SavePreferences)) {
@@ -11310,6 +11404,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         case CmdToggleBookmarks:
         case CmdToggleTableOfContents:
             ToggleTocBox(win);
+            break;
+
+        case CmdToggleThumbnails:
+            ShowOrToggleSidebarView(win, SidebarView::Thumbnails);
             break;
 
         case CmdScrollUpHalfPage: {

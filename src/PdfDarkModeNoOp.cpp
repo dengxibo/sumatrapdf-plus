@@ -45,6 +45,10 @@ void BuildViewDarkModeProfile(EngineBase* engine, DarkModeProfile* profile) {
     }
 }
 
+void BuildSidebarThumbDarkModeProfile(EngineBase* engine, DarkModeProfile* profile) {
+    BuildViewDarkModeProfile(engine, profile);
+}
+
 u32 PdfDarkModeComputeProfileHash(const DarkModeProfile* profile) {
     (void)profile;
     return 0;

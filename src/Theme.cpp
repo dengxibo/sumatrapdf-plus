@@ -815,6 +815,14 @@ COLORREF ThemeWindowLinkColor() {
     return col;
 }
 
+COLORREF ThemeSelectionFrameColor() {
+    if (ThemeUsesDarkChrome()) {
+        return ThemeWindowLinkColor();
+    }
+    // #0020a0 is fully saturated and reads as a loud indigo stroke on paper.
+    return RGB(0x5A, 0x7C, 0x9E);
+}
+
 COLORREF ThemeNotificationsBackgroundColor() {
     auto col = ThemeWindowBackgroundColor();
     return AdjustLightness2(col, 10);

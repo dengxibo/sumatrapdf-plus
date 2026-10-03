@@ -771,23 +771,18 @@ static bool IsToolbarSeparatorAtIndex(HWND hwnd, int idx, TBBUTTON* outTb) {
 }
 
 static COLORREF ToolbarButtonFillColor(COLORREF bgCol, bool isChecked, bool isSelected, bool isHot) {
-    if (isChecked) {
+    // Checked and pressed wells match the sidebar Favorites star: the same
+    // lightness step, so the dark-theme button reads as clearly.
+    if (isChecked || (isSelected && ThemeUsesDarkChrome())) {
         if (ThemeUsesBlackChrome()) {
             return AccentColor(bgCol, 20, 42);
         }
         if (ThemeUsesDarkChrome()) {
-            return AccentColor(bgCol, 8, 28);
+            return AccentColor(bgCol, 8, 32);
         }
         return AccentColor(bgCol, 24);
     }
-    if (isSelected) {
-        if (ThemeUsesBlackChrome()) {
-            return AccentColor(bgCol, 16, 36);
-        }
-        if (ThemeUsesDarkChrome()) {
-            return AccentColor(bgCol, 6, 14);
-        }
-    } else if (isHot) {
+    if (isHot) {
         if (ThemeUsesBlackChrome()) {
             return AccentColor(bgCol, 12, 28);
         }
@@ -912,12 +907,13 @@ LRESULT PrepaintFlatToolbarItem(NMTBCUSTOMDRAW* custDraw, COLORREF bgCol) {
     DeleteObject(br);
 
     // Split dropdowns (OCR) get two native frames if we outline; fill is enough for "on".
-    if (isChecked && !isDropdown) {
+    // The edge is the same rim as the selected Favorites star.
+    if ((isChecked || isSelected) && !isDropdown && fillCol != bgCol) {
         COLORREF borderCol;
         if (ThemeUsesBlackChrome()) {
-            borderCol = AccentColor(bgCol, 20, 36);
+            borderCol = AccentColor(bgCol, 20, 58);
         } else {
-            borderCol = ThemeUsesDarkChrome() ? AccentColor(bgCol, 16, 28) : AccentColor(bgCol, 38);
+            borderCol = ThemeUsesDarkChrome() ? AccentColor(bgCol, 16, 48) : AccentColor(bgCol, 38);
         }
         HBRUSH borderBr = CreateSolidBrush(borderCol);
         FrameRect(custDraw->nmcd.hdc, &fillRc, borderBr);

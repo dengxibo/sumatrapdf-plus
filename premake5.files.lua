@@ -787,6 +787,7 @@ function sumatrapdf_files()
     "EngineDump.cpp",
     "ExternalViewers.*",
     "Favorites.*",
+    "SidebarThumbs.*",
     "FileHistory.*",
     "FileThumbnails.*",
     "Flags.*",

@@ -39,6 +39,8 @@ COLORREF ThemeFindEditBackgroundColor();
 // recessed background for annotation note edit fields
 COLORREF ThemeAnnotationContentsEditBackgroundColor();
 COLORREF ThemeWindowLinkColor();
+// Selection strokes. Light themes use a muted slate so the box stays quiet.
+COLORREF ThemeSelectionFrameColor();
 COLORREF ThemeNotificationsBackgroundColor();
 COLORREF ThemeNotificationsTextColor();
 COLORREF ThemeNotificationsHighlightColor();

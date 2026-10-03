@@ -168,7 +168,11 @@ struct MainWindow {
     UINT_PTR tocTreeSubclassId = 0;
 
     LabelWithCloseWnd* tocLabelWithClose = nullptr;
+    HWND hwndSidebarThumbs = nullptr;
     Edit* tocFilterEdit = nullptr;
+    // Search text kept per sidebar view: 0 bookmarks, 1 thumbnails, 2 favorites.
+    AutoFreeStr sidebarFindText[3];
+    int sidebarFindBound = -1;
     TreeView* tocTreeView = nullptr;
     TocTree* tocFilteredTree = nullptr;
     TocCalibBar* tocCalibBar = nullptr;
@@ -298,6 +302,8 @@ struct MainWindow {
     bool homePageBlitScrollReady = false;
     AutoFreeStr homePageHoverPath;
     Vec<FileState*> homePageFileStates;
+    Vec<char*> homePageSelPaths;
+    int homePageSelAnchor = -1;
     StrVec homePageFilterWords;
     Vec<u8> homePageHighlighted;
     UINT_PTR homePageScrollTimer = 0;

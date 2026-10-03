@@ -26,6 +26,7 @@
 #include "SumatraConfig.h"
 #include "SumatraPDF.h"
 #include "MainWindow.h"
+#include "HomePage.h"
 #include "WindowTab.h"
 #include "Selection.h"
 #include "SelectionToolbar.h"
@@ -819,6 +820,15 @@ void CopySelectionToClipboard(MainWindow* win) {
 }
 
 void OnSelectAll(MainWindow* win, bool textOnly) {
+    if (win && win->IsCurrentTabAbout()) {
+        if (HwndIsFocused(win->hwndHomeSearch)) {
+            Edit_SetSel(win->hwndHomeSearch, 0, -1);
+            return;
+        }
+        HomePageSelectAllFiles(win);
+        return;
+    }
+
     if (!HasPermission(Perm::CopySelection)) {
         return;
     }

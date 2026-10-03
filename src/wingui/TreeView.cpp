@@ -298,11 +298,22 @@ void TreeView::SetColors(COLORREF textCol, COLORREF bgCol) {
     }
 }
 
+static void TreeViewRedrawAfterBulkExpand(HWND hwnd) {
+    // WM_SETREDRAW FALSE drops invalidates made while expanding or collapsing.
+    // ResumeRedraw turns drawing back on but does not paint, so a selection
+    // box updated only on the expander would stay that way.
+    if (!hwnd) {
+        return;
+    }
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+}
+
 void TreeView::ExpandAll() {
     SuspendRedraw();
     auto root = TreeView_GetRoot(this->hwnd);
     TreeViewExpandRecursively(this->hwnd, root, TVE_EXPAND, false);
     ResumeRedraw();
+    TreeViewRedrawAfterBulkExpand(this->hwnd);
 }
 
 void TreeView::CollapseAll() {
@@ -310,6 +321,7 @@ void TreeView::CollapseAll() {
     auto root = TreeView_GetRoot(this->hwnd);
     TreeViewExpandRecursively(this->hwnd, root, TVE_COLLAPSE, false);
     ResumeRedraw();
+    TreeViewRedrawAfterBulkExpand(this->hwnd);
 }
 
 // TreeView_DeleteAllItems during scrollbar thumb tracking leaves mouse capture

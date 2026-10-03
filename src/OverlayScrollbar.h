@@ -84,3 +84,4 @@ void OverlayScrollbarHide(OverlayScrollbar* sb);
 void OverlayScrollbarSetMode(OverlayScrollbar* sb, OverlayScrollbar::Mode mode);
 // returns true if scrollbar is visible (thin, thick, or always thick)
 bool IsOverlayScrollbarVisible(OverlayScrollbar* sb);
+void OverlayScrollbarRedraw(OverlayScrollbar* sb);

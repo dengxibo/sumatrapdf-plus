@@ -1,5 +1,58 @@
 # Version history
 
+## 3.7.37 (2026-10-04)
+
+- 没配火山翻译或 AI 接口时，划词翻译发给网页 AI。密钥被拒绝时也一样。
+  When Volcengine Translate and the AI API are not set up, translating a selection sends it to the web AI. An authorization failure does the same.
+- 书虫这类整页漫画，每一幅图单独成页，图和下一幅之间不再夹一页空白。
+  Full-page comic panels, such as in the Bookworms omnibus, each stay on their own page, with no blank page between them.
+- 朗读时点其他目录条目会留在那一页。要回到朗读位置，用朗读条上的跟随按钮。
+  During read-aloud, choosing another bookmark stays on that page. The Follow button on the read-aloud bar returns to the spoken place.
+- 侧栏标题上书签、缩略图、收藏三个图标的间距是 4 像素。
+  The Bookmarks, Thumbnails, and Favorites icons in the sidebar title are 4 pixels apart.
+- 主页封面的选中框再向外移开一点，不再贴着封面的灰影。
+  The home-page cover selection box sits a little farther out, clear of the cover's gray shadow.
+- 明亮主题下，主页和侧栏缩略图的选中框改成低饱和的灰蓝。
+  In light themes, selection boxes on the home page and sidebar thumbnails use a muted slate blue.
+- 主页第一行缩略图的选中框上边也会画出来。
+  The selection box on the first row of home-page thumbnails includes its top edge.
+- 主页缩略图的选中框画在封面外面的底色上，封面是蓝色时也能看出已选中。
+  A selected home-page thumbnail draws its box on the page background outside the cover, so a blue cover still shows as selected.
+- 主页列表的选中框左边也会封上，缩略图不再盖住这一条边。
+  The home-page list selection box includes its left edge. The thumbnail no longer covers that side.
+- 删除文件的确认框跟界面语言走，标题、说明和「是」「否」都使用当前语言。
+  The delete-file confirmation follows the interface language, including the title, the message, and Yes and No.
+- 主页右键会弹出菜单。列表方式下，暗色选中框留在本行内，与相邻条目分开。
+  A right-click on the home page opens its menu. In list view, the dark-theme selection box stays inside its row and clear of the next row.
+- 单页显示时，在页面两侧空白处右键，菜单与点在纸面上相同，包括当前页的收藏和在光标位置创建批注。
+  In single-page view, a right-click in the blank area beside the page shows the same menu as a click on the page, including that page's favorite and creating an annotation at the cursor.
+- 折叠或展开书签后，暗色选中框仍框住整行，不再只在左边留一条。
+  Collapsing or expanding a bookmark keeps the dark-theme selection box around the whole row.
+- 选项里「延迟加载未激活的标签页」默认关闭。
+  Options defaults Lazy-load inactive tabs off.
+- 目录栏标题左侧是书签、缩略图、收藏三个图标，点一个就在同一栏里切换。当前看的是哪一种，记在这份文档上，换标签会恢复。没有目录时书签图标变灰；没有页面时缩略图图标变灰。右侧关闭叉和窗口、标签页是同一套细叉。
+  The sidebar title has Bookmarks, Thumbnails, and Favorites icons. Clicking one switches that column. The view is remembered per document and restored when switching tabs. Bookmarks is dimmed when there is no table of contents. Thumbnails is dimmed when there are no pages. The close mark on the right is the same thin glyph as the window and tab close buttons.
+- 缩略图点一下跳到那一页。上色和印刷目录确认页的缩略图相同，跟当前正文的主题颜色走，底部只标数字页码。印刷目录确认页的缩略图同样只标数字。流式 EPUB 用已经排好的页，不为缩略图重算页数。加载时在后台出图，格子不跟着晃，当前页不变时也不把列表拽回去。
+  A thumbnail click jumps to that page. Colors match the printed-TOC page picker, following the open document's theme colors, and the tag is the page number alone. The printed-TOC picker uses the same number. Reflowable EPUBs use the pages already laid out. Thumbnails render in the background while loading, so the grid does not shake, and the list is not pulled back while the current page stays the same.
+- 暗色主题下，工具栏按钮按下或保持选中时的底和边，跟侧栏收藏星标选中时一样，比原来更清楚。
+  In dark themes, a pressed or checked toolbar button uses the same well and edge as the selected Favorites star in the sidebar.
+- 暗色主题下，书签和收藏的悬停会像亮色那样把整行变色。书签提示只在标题被栏截断时出现。
+  In dark themes, bookmark and favorites rows change color on hover the way they do in light themes. A bookmark tip appears only when the title is cut off by the column.
+- 收藏栏标题右侧是加号和减号，位置、大小、笔画和颜色与书签栏的展开、收起箭头相同，只有提示，没有悬停底色。加号把当前页加入收藏，减号去掉当前页的收藏；选中了某一条时减号删这一条。书签和缩略图不显示这两个按钮。侧栏的关闭叉在书签、缩略图、收藏下都关掉这一栏，悬停不再画红圈。
+  The Favorites title has a plus and a minus in the same place, size, stroke, and color as the bookmark expand and collapse arrows. They show a tip only, with no hover well. Plus adds the current page. Minus removes that page's favorite, or the highlighted row when one is selected. Bookmarks and thumbnails do not show those buttons. The sidebar X closes the column from bookmarks, thumbnails, and favorites, and no longer draws a red circle on hover.
+- 向右拖收藏夹分隔条时，新露出的一竖条会马上用侧栏底色补上，页面跟着走，不再闪一条黑带。
+  Dragging the Favorites splitter to the right fills the newly uncovered strip with the sidebar color immediately, and the page moves with it, so a black band no longer flashes there.
+- 收藏列表的悬停和选中，在四种主题下都跟书签条目同一套：整行底色、暗色选中框，文字不改成系统蓝底白字。打开收藏不会自动圈住第一行，选中框左边是连上的。点一行就跳到那一页，侧栏仍停在收藏；点展开按钮只展开。截断标题的提示在条目右下一点，样式和配色与书签提示相同。右键是「从收藏中删除」。
+  Favorites rows use the same hover and selection as bookmark entries in all four themes: full-row fill, a dark-theme selection box, and text that stays off the system blue highlight. Opening Favorites does not select the first row, and the selection box includes its left edge. A click on a row jumps to that page and leaves the sidebar on Favorites. The expand button only expands. A truncated title's tip sits just to the lower right of the row, with the same look as a bookmark tip. Right-click offers Remove from favorites.
+- 书签、缩略图、收藏都有搜索框。书签和缩略图共用一次按标题的搜索，切换时文字和筛出来的页都留着。缩略图只显示标题对得上的那些页。收藏按名称另筛。
+  Bookmarks, thumbnails, and favorites each keep a search box. Bookmarks and thumbnails share one title search; switching keeps the text and the matching pages. Thumbnails show the pages of the matching headings. Favorites filter by name on their own.
+- 主页支持 Ctrl+单击加减、Shift+单击连选、Ctrl+A 全选。搜索框有焦点时 Ctrl+A 仍只选中搜索文字。右键在多选上可以全部打开、全部移出历史，删除文件只确认一次。
+  The home page supports Ctrl+click to toggle, Shift+click to select a range, and Ctrl+A to select every file. With the search box focused, Ctrl+A still selects only the search text. A right-click on a multi-selection can open all, remove all from history, and delete files with one confirmation.
+- 主页和文件菜单的「删除文件」会先确认，文件进入回收站。取消则不动。「从历史记录删除」和 Del 不确认。
+  Delete File on the home page and in the File menu asks first, then moves the file to the Recycle Bin. Cancel does nothing. Remove From History and Del do not ask.
+- 设置 → 阅读字体里的西文、中文正文字体，改成和其他对话框一样的小窗口：标题栏可以关闭，搜索框下面是字体名单，滚动条只在名单上，底部是确定和取消。单击只选中，确定或双击才换字体。每一行用该字体画自己的名字，颜色跟着当前主题。
+  Settings → Reading Font opens Western and CJK body fonts in a dialog with a title bar, a search box, a font list whose scrollbar stays on the list, and OK and Cancel. A click selects a row; OK or a double-click applies it. Each row is drawn in that font, and the window follows the current theme.
+
 ## 3.7.36 (2026-10-02)
 
 - 查词、划词工具栏、朗读条、命令面板、文档属性、标签组、截图、图片裁剪，以及烘焙、提取、压缩、加密这些 PDF 窗口，都按所在屏幕的缩放显示。拖到另一块屏幕时会跟着变。

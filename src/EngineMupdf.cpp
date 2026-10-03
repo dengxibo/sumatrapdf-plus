@@ -5592,11 +5592,17 @@ li, blockquote {
         if (panelH < 400.f) {
             panelH = 400.f;
         }
-        TempStr comicCss = str::FormatTemp(R"(/* Sumatra: comic panels - one per reflow page, fill page height */
+        TempStr comicCss = str::FormatTemp(R"(/* Sumatra: comic panels - one per reflow page, fill page height.
+   page-break-after on the link plus the paragraph's top margin makes MuPDF
+   skip a whole blank page between panels. The next panel's page-break-before
+   is enough. */
+p.picture, p.picture1 {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
 p.picture > a, p.picture1 > a {
   display: block !important;
   page-break-before: always !important;
-  page-break-after: always !important;
   page-break-inside: avoid !important;
   width: 100%% !important;
   margin: 0 !important;

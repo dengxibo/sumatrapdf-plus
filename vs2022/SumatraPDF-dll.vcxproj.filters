@@ -614,6 +614,9 @@
     <ClCompile Include="..\src\Favorites.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\SidebarThumbs.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\FileHistory.cpp">
       <Filter>src</Filter>
     </ClCompile>

@@ -63,7 +63,7 @@ InverseSearchCmdLine =
 
 ; when restoring session, delay loading of documents until their tab is selected
 ; (introduced in version 3.6)
-LazyLoading = true
+LazyLoading = false
 
 ; background color of the non-document windows, traditionally yellow
 MainWindowBackground = #80fff200
@@ -724,6 +724,10 @@ FileStates [
         ; label for this page (only present if logical and physical page numbers
         ; are not the same)
         PageLabel =
+
+        ; sequence number assigned when this favorite was added. Lower numbers
+        ; sort first in the added-order view
+        AddedSeq = 0
       ]
     ]
 
@@ -771,6 +775,10 @@ FileStates [
     ; if true, we show table of contents (Bookmarks) sidebar if it's present in
     ; the document
     ShowToc = true
+
+    ; which sidebar view was showing for this document: bookmarks, thumbnails,
+    ; or favorites
+    SidebarView = bookmarks
 
     ; width of the left sidebar panel containing the table of contents
     SidebarDx = 0

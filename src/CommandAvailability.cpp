@@ -661,6 +661,9 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
     if ((cmdId == CmdToggleBookmarks) || (cmdId == CmdToggleTableOfContents)) {
         return ctx.hasToc ? CommandVisibility::Show : CommandVisibility::Hide;
     }
+    if (cmdId == CmdToggleThumbnails) {
+        return ctx.pageCount > 0 ? CommandVisibility::Show : CommandVisibility::Hide;
+    }
 
     if (cmdId == CmdPauseReadAloud) {
         return ctx.isSpeaking ? CommandVisibility::Show : CommandVisibility::Hide;

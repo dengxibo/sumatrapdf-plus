@@ -322,6 +322,7 @@ struct Edit : Wnd {
     ~Edit() override;
 
     HWND Create(const CreateArgs&);
+    void SetCueText(const char* s);
     LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) override;
     LRESULT OnMessageReflect(UINT msg, WPARAM wparam, LPARAM lparam) override;
     bool OnCommand(WPARAM wparam, LPARAM lparam) override;

@@ -295,7 +295,10 @@ enum {
     CmdSetDocumentImageDarkOriginal = 484,
     CmdSetDocumentImageDarkTone = 485,
     CmdReadAloudSettings = 486,
-    CmdNone = 487,
+    CmdToggleThumbnails = 487,
+    CmdPickEbookLatinFont = 488,
+    CmdPickEbookCjkFont = 489,
+    CmdNone = 490,
 
     /* range for file history */
     CmdFileHistoryFirst,

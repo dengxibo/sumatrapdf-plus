@@ -1023,7 +1023,8 @@ static int HomePageListGapDx(HWND hwnd) {
 }
 
 static int HomePageListRowSpacing(HWND hwnd) {
-    return DpiScale(hwnd, 2);
+    // Room for the selection stroke so it does not meet the next row.
+    return DpiScale(hwnd, 6);
 }
 
 static int HomePageListRowDy(HWND hwnd) {
@@ -1532,12 +1533,15 @@ static void LayoutHomeListItem(HWND hwnd, HDC hdc, const Rect& row, FileState* f
         }
     }
 
-    Rect rcThumb(row.x, row.y + (row.dy - thumbDy) / 2, thumbDx, thumbDy);
+    // Keep the thumbnail inside the selection stroke. It used to start on the
+    // row edge and was painted over the left side of the box.
+    int edge = DpiScale(hwnd, 8);
+    Rect rcThumb(row.x + edge, row.y + (row.dy - thumbDy) / 2, thumbDx, thumbDy);
     int textX = rcThumb.x + rcThumb.dx + gapDx;
     int textRight = sizeDx > 0 ? rcSize.x : pillX;
     int textDx = textRight - gapDx - textX;
     if (isRtl) {
-        rcThumb.x = row.x + row.dx - rcThumb.dx;
+        rcThumb.x = row.x + row.dx - rcThumb.dx - edge;
         textX = (sizeDx > 0 ? rcSize.x + rcSize.dx : pillX + pillDx) + gapDx;
         textDx = rcThumb.x - gapDx - textX;
     }
@@ -1855,6 +1859,20 @@ static void HomePageVisibleIndexRange(int nFiles, int scrollY, int visibleDy, in
     *lastOut = last;
 }
 
+// Space between the card edge and the selection stroke. The drop shadow
+// reaches 3 DIP down, so 2 DIP left the stroke sitting on that gray.
+static int HomePageThumbSelectionGap(HWND hwnd) {
+    return DpiScale(hwnd, 4);
+}
+
+// How far the selection stroke extends past the card. The first row starts at
+// the clip, so the clip must include this or the top edge is cut off.
+static int HomePageThumbSelectionOutset(HWND hwnd) {
+    int gap = HomePageThumbSelectionGap(hwnd);
+    int penW = std::max(2, DpiScale(hwnd, 3));
+    return gap + penW + 1;
+}
+
 void LayoutHomePage(HomePageLayout& l) {
     EnsureTipsParsed();
 
@@ -2069,7 +2087,14 @@ void LayoutHomePage(HomePageLayout& l) {
     int thumbsBottomY = rc.dy - tipHeight - kThumbsMiddleMargin;
     int thumbsVisibleDy = std::max(0, thumbsBottomY - thumbsTopY);
 
-    l.rcThumbsArea = {0, thumbsTopY, rc.dx, thumbsVisibleDy};
+    // The selection stroke sits above the first card. The gap under the search
+    // box has room for it; the clip used to start on the card and cut that edge.
+    int selOut = HomePageThumbSelectionOutset(dpiHwnd);
+    int clipTop = thumbsTopY - selOut;
+    if (clipTop < 0) {
+        clipTop = 0;
+    }
+    l.rcThumbsArea = {0, clipTop, rc.dx, thumbsVisibleDy + (thumbsTopY - clipTop)};
 
     int nFiles = fileStates.Size();
     int contentDy = 0;
@@ -2324,6 +2349,19 @@ static void DrawThumbnailCard(HDC hdc, const Rect& page, FileState* fs, Rendered
     DrawRoundedRectBorder(hdc, page, kThumbCornerRadius, borderPen);
 }
 
+// The link-colored stroke used to sit on the cover. A blue cover hid it.
+// Draw it on the page background, just outside the card.
+static void DrawHomeThumbSelection(HWND hwnd, HDC hdc, const Rect& page) {
+    int gap = HomePageThumbSelectionGap(hwnd);
+    int penW = std::max(2, DpiScale(hwnd, 3));
+    int inflate = gap + (penW + 1) / 2;
+    Rect frame = page;
+    frame.Inflate(inflate, inflate);
+    int radius = kThumbCornerRadius + inflate;
+    AutoDeletePen selPen(CreatePen(PS_SOLID, penW, ThemeSelectionFrameColor()));
+    DrawRoundedRectBorder(hdc, frame, radius, selPen);
+}
+
 // Scale to fill dest and crop overflow (CSS background-size: cover).
 static Rect CoverRectInRect(Size src, Rect dst) {
     if (src.dx <= 0 || src.dy <= 0 || dst.dx <= 0 || dst.dy <= 0) {
@@ -2341,8 +2379,24 @@ static Rect CoverRectInRect(Size src, Rect dst) {
     return {dst.x + (dst.dx - dx) / 2, dst.y + (dst.dy - dy) / 2, dx, dy};
 }
 
+bool HomePagePathIsSelected(MainWindow* win, const char* path) {
+    if (!win || !path) {
+        return false;
+    }
+    for (char* p : win->homePageSelPaths) {
+        if (str::EqI(p, path)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int HomePageSelectedCount(MainWindow* win) {
+    return win ? win->homePageSelPaths.Size() : 0;
+}
+
 static void DrawListItemRow(HWND hwnd, HDC hdc, const ThumbnailLayout& item, StrVec& filterWords, Vec<u8>& highlighted,
-                            bool isRtl, COLORREF backgroundColor, bool hovered) {
+                            bool isRtl, COLORREF backgroundColor, bool hovered, bool selected) {
     FileState* fs = item.fs;
     if (!fs) {
         return;
@@ -2356,8 +2410,8 @@ static void DrawListItemRow(HWND hwnd, HDC hdc, const ThumbnailLayout& item, Str
     TempStr fileSize = FileSizeForHomeListTemp(path);
 
     const Rect& row = item.rcListRow;
-    if (hovered) {
-        int radius = DpiScale(hwnd, 8);
+    int radius = DpiScale(hwnd, 8);
+    if (hovered || selected) {
         COLORREF hoverCol = AccentColor(backgroundColor, ThemeUsesDarkChrome() ? -14 : 14);
         FillRoundedRect(hdc, row, radius, hoverCol);
         backgroundColor = hoverCol;
@@ -2412,6 +2466,23 @@ static void DrawListItemRow(HWND hwnd, HDC hdc, const ThumbnailLayout& item, Str
     }
 
     DrawHomeThumbActions(hdc, hwnd, fs, item.rcListRemove, item.rcListPin, true, true);
+
+    if (selected) {
+        int penW = std::max(1, DpiScale(hwnd, 2));
+        AutoDeletePen selPen(CreatePen(PS_SOLID, penW, ThemeSelectionFrameColor()));
+        // Centered pen. A half-width inset keeps the stroke on the bar, including
+        // the left edge, without meeting the next row.
+        Rect frame = row;
+        int inset = (penW + 1) / 2;
+        frame.Inflate(-inset, -inset);
+        int frameRadius = radius - inset;
+        if (frameRadius < 2) {
+            frameRadius = 2;
+        }
+        if (frame.dx > 4 && frame.dy > 4) {
+            DrawRoundedRectBorder(hdc, frame, frameRadius, selPen);
+        }
+    }
 }
 
 static void DrawHomeIconBtn(HDC hdc, const Rect& rc, TbIcon icon) {
@@ -2502,7 +2573,8 @@ static void DrawHomePageLayout(HomePageLayout& l) {
     if (listView) {
         for (const ThumbnailLayout& item : l.thumbnails) {
             DrawListItemRow(l.win->hwndCanvas, hdc, item, l.filterWords, l.highlighted, isRtl, backgroundColor,
-                            HomePageThumbIsHovered(win, item.fs));
+                            HomePageThumbIsHovered(win, item.fs),
+                            HomePagePathIsSelected(win, item.fs ? item.fs->filePath : nullptr));
         }
     } else {
         for (const ThumbnailLayout& thumb : l.thumbnails) {
@@ -2510,7 +2582,11 @@ static void DrawHomePageLayout(HomePageLayout& l) {
             const Rect& page = thumb.rcPage;
 
             RenderedBitmap* thumbImg = LoadThumbnail(fs);
+            bool selected = fs && HomePagePathIsSelected(win, fs->filePath);
             DrawThumbnailCard(hdc, page, fs, thumbImg, penThumbBorder);
+            if (selected) {
+                DrawHomeThumbSelection(win->hwndCanvas, hdc, page);
+            }
 
             const Rect& rect = thumb.rcText;
             char* path = fs->filePath;
@@ -2631,6 +2707,8 @@ static void HomePageOffsetThumbLinks(MainWindow* win, int dy) {
     }
 }
 
+static int HomePageIndexForPath(MainWindow* win, const char* path);
+
 static void HomePageUpdateScrollCache(MainWindow* win, HomePageLayout& l) {
     win->homePageThumbsArea = l.rcThumbsArea;
     win->homePageThumbsStartX = l.thumbsStartX;
@@ -2645,6 +2723,15 @@ static void HomePageUpdateScrollCache(MainWindow* win, HomePageLayout& l) {
     win->homePageFileStates.Reset();
     for (FileState* fs : l.fileStates) {
         win->homePageFileStates.Append(fs);
+    }
+    for (int i = win->homePageSelPaths.Size() - 1; i >= 0; i--) {
+        if (HomePageIndexForPath(win, win->homePageSelPaths[i]) < 0) {
+            str::Free(win->homePageSelPaths[i]);
+            win->homePageSelPaths.RemoveAt(i);
+        }
+    }
+    if (win->homePageSelAnchor >= win->homePageFileStates.Size()) {
+        win->homePageSelAnchor = win->homePageFileStates.Size() - 1;
     }
     win->homePageFilterWords.Reset();
     for (int i = 0; i < l.filterWords.Size(); i++) {
@@ -2741,14 +2828,19 @@ static void HomePageDrawListItemAt(MainWindow* win, HDC hdc, FileState* fs, int 
     ThumbnailLayout item;
     LayoutHomeListItem(win->hwndCanvas, hdc, HomePageItemRect(win, idx, scrollY), fs, IsUIRtl(), item);
     DrawListItemRow(win->hwndCanvas, hdc, item, win->homePageFilterWords, win->homePageHighlighted, IsUIRtl(),
-                    ThemeMainWindowBackgroundColor(), HomePageThumbIsHovered(win, fs));
+                    ThemeMainWindowBackgroundColor(), HomePageThumbIsHovered(win, fs),
+                    HomePagePathIsSelected(win, fs->filePath));
 }
 
 static void HomePageDrawThumbnailAt(MainWindow* win, HDC hdc, FileState* fs, int idx, int scrollY, HPEN borderPen,
                                     bool fastDraw) {
     Rect rcPage = HomePageItemRect(win, idx, scrollY);
     RenderedBitmap* thumbImg = LoadThumbnail(fs);
+    bool selected = HomePagePathIsSelected(win, fs->filePath);
     DrawThumbnailCard(hdc, rcPage, fs, thumbImg, borderPen, fastDraw);
+    if (selected) {
+        DrawHomeThumbSelection(win->hwndCanvas, hdc, rcPage);
+    }
 
     HFONT fontText = HomePageThumbLabelFont(win->hwndCanvas);
     int labelDy = HomePageThumbLabelDy(win->hwndCanvas, hdc, fontText);
@@ -2779,12 +2871,233 @@ static int HomePageIndexForPath(MainWindow* win, const char* path) {
     return -1;
 }
 
+void HomePageClearSelection(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    for (char* p : win->homePageSelPaths) {
+        str::Free(p);
+    }
+    win->homePageSelPaths.Reset();
+    win->homePageSelAnchor = -1;
+}
+
+void HomePageSelectOnly(MainWindow* win, const char* path) {
+    if (!win) {
+        return;
+    }
+    HomePageClearSelection(win);
+    if (path && *path) {
+        win->homePageSelPaths.Append(str::Dup(path));
+        win->homePageSelAnchor = HomePageIndexForPath(win, path);
+    }
+    win->RedrawAll(true);
+}
+
+void HomePageToggleSelected(MainWindow* win, const char* path) {
+    if (!win || !path) {
+        return;
+    }
+    for (int i = 0; i < win->homePageSelPaths.Size(); i++) {
+        if (str::EqI(win->homePageSelPaths[i], path)) {
+            str::Free(win->homePageSelPaths[i]);
+            win->homePageSelPaths.RemoveAt(i);
+            win->homePageSelAnchor = HomePageIndexForPath(win, path);
+            win->RedrawAll(true);
+            return;
+        }
+    }
+    win->homePageSelPaths.Append(str::Dup(path));
+    win->homePageSelAnchor = HomePageIndexForPath(win, path);
+    win->RedrawAll(true);
+}
+
+void HomePageSelectRangeTo(MainWindow* win, const char* path) {
+    if (!win || !path) {
+        return;
+    }
+    int idx = HomePageIndexForPath(win, path);
+    if (idx < 0) {
+        return;
+    }
+    int anchor = win->homePageSelAnchor;
+    if (anchor < 0 || anchor >= win->homePageFileStates.Size()) {
+        anchor = idx;
+    }
+    int lo = std::min(anchor, idx);
+    int hi = std::max(anchor, idx);
+    for (char* p : win->homePageSelPaths) {
+        str::Free(p);
+    }
+    win->homePageSelPaths.Reset();
+    for (int i = lo; i <= hi; i++) {
+        win->homePageSelPaths.Append(str::Dup(win->homePageFileStates[i]->filePath));
+    }
+    win->homePageSelAnchor = anchor;
+    win->RedrawAll(true);
+}
+
+void HomePageSelectAllFiles(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    for (char* p : win->homePageSelPaths) {
+        str::Free(p);
+    }
+    win->homePageSelPaths.Reset();
+    for (FileState* fs : win->homePageFileStates) {
+        if (fs && fs->filePath) {
+            win->homePageSelPaths.Append(str::Dup(fs->filePath));
+        }
+    }
+    win->homePageSelAnchor = win->homePageFileStates.Size() > 0 ? 0 : -1;
+    win->RedrawAll(true);
+}
+
+void HomePageRemovePathFromHistory(MainWindow* win, const char* path) {
+    FileState* fs = gFileHistory.FindByPath(path);
+    if (!fs) {
+        return;
+    }
+    TempStr filePath = str::DupTemp(fs->filePath);
+    if (!fs->favorites->IsEmpty()) {
+        gFileHistory.MarkFileInexistent(fs->filePath, true);
+    } else {
+        gFileHistory.Remove(fs);
+        DeleteFileState(fs);
+    }
+    DeleteThumbnailForFile(filePath);
+}
+
+void HomePageRemoveSelectionFromHistory(MainWindow* win) {
+    if (!win || win->homePageSelPaths.Size() == 0) {
+        return;
+    }
+    Vec<char*> paths;
+    for (char* p : win->homePageSelPaths) {
+        paths.Append(str::Dup(p));
+    }
+    for (char* p : paths) {
+        HomePageRemovePathFromHistory(win, p);
+        str::Free(p);
+    }
+    HomePageClearSelection(win);
+    SaveSettings();
+    win->DeleteToolTip();
+    HomePageInvalidateScrollCache(win);
+    win->RedrawAll(true);
+}
+
+bool HomePageConfirmDeleteFiles(HWND hwnd, int count) {
+    if (count <= 0) {
+        return false;
+    }
+    const char* msg =
+        count == 1 ? _TRA("Delete this file? It will be moved to the Recycle Bin.")
+                   : str::FormatTemp(_TRA("Delete these %d files? They will be moved to the Recycle Bin."), count);
+    // System Yes/No follows the Windows language. These buttons follow the app language.
+    TASKDIALOG_BUTTON buttons[2]{};
+    buttons[0].nButtonID = IDYES;
+    buttons[0].pszButtonText = ToWStrTemp(_TRA("Yes"));
+    buttons[1].nButtonID = IDNO;
+    buttons[1].pszButtonText = ToWStrTemp(_TRA("No"));
+    DWORD flags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT | TDF_POSITION_RELATIVE_TO_WINDOW;
+    if (trans::IsCurrLangRtl()) {
+        flags |= TDF_RTL_LAYOUT;
+    }
+    TASKDIALOGCONFIG config{};
+    config.cbSize = sizeof(config);
+    config.hwndParent = hwnd;
+    config.dwFlags = flags;
+    config.pszWindowTitle = ToWStrTemp(_TRA("Delete File"));
+    config.pszContent = ToWStrTemp(msg);
+    config.pszMainIcon = TD_WARNING_ICON;
+    config.nDefaultButton = IDNO;
+    config.cButtons = dimof(buttons);
+    config.pButtons = buttons;
+    int pressed = 0;
+    HRESULT hr = TaskDialogIndirect(&config, &pressed, nullptr, nullptr);
+    return hr == S_OK && pressed == IDYES;
+}
+
+bool HomePageDeletePathToTrash(MainWindow* win, const char* path) {
+    if (!path || !CanAccessDisk()) {
+        return false;
+    }
+    TempStr owned = str::DupTemp(path);
+    WindowTab* tab = FindTabByFile(owned);
+    if (tab) {
+        CloseTab(tab, false);
+        if (FindTabByFile(owned)) {
+            return false;
+        }
+    }
+    if (file::Exists(owned)) {
+        file::DeleteFileToTrash(owned);
+    }
+    DeleteThumbnailForFile(owned);
+    FileState* fs = gFileHistory.FindByPath(owned);
+    if (fs) {
+        gFileHistory.Remove(fs);
+        DeleteFileState(fs);
+    }
+    return IsMainWindowValid(win);
+}
+
+void HomePageDeleteSelectionToTrash(MainWindow* win) {
+    if (!win || win->homePageSelPaths.Size() == 0) {
+        return;
+    }
+    int count = win->homePageSelPaths.Size();
+    if (!HomePageConfirmDeleteFiles(win->hwndFrame, count)) {
+        return;
+    }
+    Vec<char*> paths;
+    for (char* p : win->homePageSelPaths) {
+        paths.Append(str::Dup(p));
+    }
+    for (char* p : paths) {
+        if (!IsMainWindowValid(win)) {
+            str::Free(p);
+            continue;
+        }
+        HomePageDeletePathToTrash(win, p);
+        str::Free(p);
+    }
+    if (!IsMainWindowValid(win)) {
+        return;
+    }
+    HomePageClearSelection(win);
+    SaveSettings();
+    win->DeleteToolTip();
+    HomePageInvalidateScrollCache(win);
+    win->RedrawAll(true);
+}
+
+void HomePageOpenSelection(MainWindow* win) {
+    if (!win) {
+        return;
+    }
+    Vec<char*> paths;
+    for (char* p : win->homePageSelPaths) {
+        paths.Append(str::Dup(p));
+    }
+    for (char* p : paths) {
+        if (IsMainWindowValid(win)) {
+            LoadArgs args(p, win);
+            SetUserOpenActivateExisting(args);
+            StartLoadDocument(&args);
+        }
+        str::Free(p);
+    }
+}
+
 static void HomePageFlushThumbIdx(MainWindow* win, int idx) {
     if (idx < 0 || idx >= win->homePageFileStates.Size() || !win->buffer) {
         return;
     }
     Rect rcPage = HomePageItemRect(win, idx, win->homePageScrollY);
-    int pad = DpiScale(win->hwndCanvas, 6);
+    int pad = std::max(DpiScale(win->hwndCanvas, 6), HomePageThumbSelectionOutset(win->hwndCanvas));
     Rect flush = rcPage;
     flush.Inflate(pad, pad);
     flush = flush.Intersect(win->homePageThumbsArea);

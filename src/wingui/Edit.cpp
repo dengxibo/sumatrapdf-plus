@@ -68,6 +68,10 @@ void Edit::SetCursorPositionAtEnd() {
     SetCursorPosition(pos);
 }
 
+void Edit::SetCueText(const char* s) {
+    EditSetCueText(hwnd, s ? s : "");
+}
+
 HWND Edit::Create(const CreateArgs& args) {
     // https://docs.microsoft.com/en-us/windows/win32/controls/edit-control-styles
     CreateControlArgs cargs;

@@ -508,6 +508,14 @@ const favorite: Field[] = [
     null,
     "label for this page (only present if logical and physical page numbers are not the same)",
   ),
+  setExpert(
+    mkField(
+      "AddedSeq",
+      Int,
+      0,
+      "sequence number assigned when this favorite was added. Lower numbers sort first in the added-order view",
+    ),
+  ),
   notSaved(mkField("MenuId", Int, 0, "id of this favorite in the menu (assigned by AppendFavMenuItems)")),
 ];
 
@@ -589,6 +597,12 @@ const fileSettings: Field[] = [
     Bool,
     true,
     "if true, we show table of contents (Bookmarks) sidebar if it's present " + "in the document",
+  ),
+  mkField(
+    "SidebarView",
+    Str,
+    "bookmarks",
+    "which sidebar view was showing for this document: bookmarks, thumbnails, or favorites",
   ),
   mkField("SidebarDx", Int, 0, "width of the left sidebar panel containing the table of contents"),
   mkField(
@@ -778,7 +792,7 @@ const globalPrefs: Field[] = [
     mkField(
       "LazyLoading",
       Bool,
-      true,
+      false,
       "when restoring session, delay loading of documents until their tab is selected",
     ),
     "3.6",
