@@ -5067,6 +5067,10 @@ void LoadModelIntoTab(WindowTab* tab) {
 
     win->currentTabTemp = tab;
     win->ctrl = tab->ctrl;
+    // CurrentTab() is the tab we just showed. Pause a PDF clip that belongs to another tab.
+    if (switchingTab) {
+        PdfPageAudioPauseIfNotCurrent();
+    }
 
     DisplayModel* dmSwitch = tab->ctrl ? tab->ctrl->AsFixed() : nullptr;
     if (dmSwitch && switchingTab && dmSwitch->ShouldDeferLayoutSyncOnTabFocus()) {

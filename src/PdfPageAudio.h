@@ -37,3 +37,5 @@ void PdfPageAudioOnOcrPageReady(EngineBase* engine, int pageNo);
 void PdfPageAudioOnUserViewChanged(MainWindow* win);
 void PdfPageAudioOnTabGone(WindowTab* tab);
 void PdfPageAudioOnWindowClosing(MainWindow* win);
+// Pause when this clip's tab is no longer the one on screen. Same as TTS and EPUB narration.
+void PdfPageAudioPauseIfNotCurrent();

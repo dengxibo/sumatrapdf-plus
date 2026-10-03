@@ -199,11 +199,31 @@ static TempStr PdfFmtTimeTemp(i64 us) {
     return str::FormatTemp("%d:%02d", (int)(s / 60), (int)(s % 60));
 }
 
+static void PdfPausePlaying() {
+    if (!gPdf || !gPdf->playing) {
+        return;
+    }
+    MoAudioPause();
+    gPdf->playing = false;
+    PdfKillTimer();
+    PdfUpdateBar(gPdf->tab);
+}
+
+static bool PdfSessionIsCurrent() {
+    return gPdf && gPdf->tab && gPdf->tab->win && gPdf->tab->win->CurrentTab() == gPdf->tab;
+}
+
 static VOID CALLBACK PdfTimerProc(HWND, UINT, UINT_PTR, DWORD) {
     if (!gPdf) {
         return;
     }
     MoAudioTick();
+    // Narration belongs to the tab on screen. TTS pauses in CloseDocumentInCurrentTab;
+    // EPUB media-overlay pauses here when the session tab is no longer current.
+    if (!PdfSessionIsCurrent()) {
+        PdfPausePlaying();
+        return;
+    }
     if (gPdf->playing && (MoAudioEnded() || MoAudioHasError())) {
         gPdf->playing = false;
         PdfKillTimer();
@@ -960,11 +980,14 @@ bool PdfPageAudioPauseForLookup(WindowTab* tab) {
     if (!PdfPageAudioIsPlayingInTab(tab)) {
         return false;
     }
-    MoAudioPause();
-    gPdf->playing = false;
-    PdfKillTimer();
-    PdfUpdateBar(tab);
+    PdfPausePlaying();
     return true;
+}
+
+void PdfPageAudioPauseIfNotCurrent() {
+    if (!PdfSessionIsCurrent()) {
+        PdfPausePlaying();
+    }
 }
 
 bool PdfPageAudioResumeAfterLookup(WindowTab* tab) {

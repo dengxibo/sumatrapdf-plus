@@ -5591,14 +5591,15 @@ void PaintFavTreeRowsOverTheme(HWND hwnd, HDC hdc) {
             }
         }
     }
+    // Native TreeView paint hard-clips a title that does not fit, and only the
+    // selected row gets an ellipsis. Bookmarks custom-draw every row with
+    // DT_END_ELLIPSIS. Stamp every visible favorite the same way.
     HTREEITEM h = TreeView_GetFirstVisible(hwnd);
     int guard = 0;
     while (h && guard++ < 256) {
         bool isSelected = (TreeView_GetItemState(hwnd, h, TVIS_SELECTED) & TVIS_SELECTED) != 0;
         bool isHot = h == hot && !isSelected;
-        if (isSelected || isHot) {
-            PaintOneFavRow(treeView, h, hdc, isSelected, isHot);
-        }
+        PaintOneFavRow(treeView, h, hdc, isSelected, isHot);
         h = TreeView_GetNextVisible(hwnd, h);
     }
 }

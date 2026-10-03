@@ -2,6 +2,10 @@
 
 ## 3.7.37 (2026-10-04)
 
+- 收藏夹标题超出宽度时，行尾显示省略号，和书签栏一样。
+  A favorite title that does not fit ends with an ellipsis, the same as a bookmark.
+- 切换标签时，PDF 内嵌音频会暂停，和朗读、EPUB3 内嵌音频一样。回到该标签后可以接着播。
+  Switching tabs pauses PDF embedded audio, the same as read-aloud and EPUB 3 embedded audio. Coming back to that tab can resume it.
 - 没配火山翻译或 AI 接口时，划词翻译发给网页 AI。密钥被拒绝时也一样。
   When Volcengine Translate and the AI API are not set up, translating a selection sends it to the web AI. An authorization failure does the same.
 - 书虫这类整页漫画，每一幅图单独成页，图和下一幅之间不再夹一页空白。
