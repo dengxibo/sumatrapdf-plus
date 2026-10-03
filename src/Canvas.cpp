@@ -2564,6 +2564,12 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
     }
     shouldPaint = true;
 
+    // The overview gutter is outside the document viewport. Clip every page
+    // and overlay layer so horizontal scrolling cannot paint text into it.
+    int savedDC = SaveDC(hdc);
+    IntersectClipRect(hdc, canvas.x, canvas.y, canvas.x + std::max(0, canvas.dx - FindPositionGutterWidth(win)),
+                      canvas.y + canvas.dy);
+
     if (!paintOnBlackWithoutShadow && colDocBg != kColorUnset && nGCols > 0) {
         COLORREF colors[3];
         colors[0] = ParseColor(gcols->at(0), WIN_COL_WHITE);
@@ -2760,6 +2766,8 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
         PaintUnreachablePageLinks(win, hdc, dm);
         DebugShowLinks(dm, hdc);
     }
+    RestoreDC(hdc, savedDC);
+    PaintFindPositionMarks(win, hdc);
     return shouldPaint;
 }
 
