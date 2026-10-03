@@ -16,6 +16,8 @@
 #define INCLUDE_SETTINGSSTRUCTS_METADATA
 #include "Settings.h"
 #include "DocController.h"
+#include "MainWindow.h"
+#include "Canvas.h"
 #include "EngineBase.h"
 #include "GlobalPrefs.h"
 #include "Flags.h"
@@ -382,7 +384,24 @@ static void AiTocSettingsRoundTripTest() {
     FreeStruct(&gGlobalPrefsInfo, prefs);
 }
 
+static void WheelScrollPixelsTest() {
+    int remainder = 0;
+    int total = 0;
+    for (int i = 0; i < 120; i++) {
+        int pixels = WheelScrollPixels(-1, 16, 40, remainder);
+        utassert(pixels == 0 || pixels == 1);
+        total += pixels;
+    }
+    utassert(total == 48 && remainder == 0);
+    utassert(WheelScrollPixels(120, 16, 40, remainder) == -48);
+    utassert(WheelScrollPixels(-120, 32, 40, remainder) == 96);
+    utassert(WheelScrollPixels(-1, 16, 40, remainder) == 0);
+    utassert(WheelScrollPixels(1, 16, 40, remainder) == 0 && remainder == 0);
+    utassert(WheelScrollPixels(-120 * 4, 16, 40, remainder) == 192);
+}
+
 void SumatraPDF_UnitTests() {
+    WheelScrollPixelsTest();
     parseCommandsTest();
     colorTest();
     BenchRangeTest();

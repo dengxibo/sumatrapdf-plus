@@ -401,6 +401,8 @@ void MainWindow::UpdateCanvasSize() {
 
 Size MainWindow::GetViewPortSize() const {
     Size size = canvasRc.Size();
+    // Reserve a separate search overview gutter, including at fit-width zoom.
+    size.dx = std::max(0, size.dx - FindPositionGutterWidth(this));
     // can be empty transiently during RelayoutFrame / EndDeferWindowPos
 
     DWORD style = GetWindowLong(hwndCanvas, GWL_STYLE);
