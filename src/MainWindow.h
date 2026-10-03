@@ -357,6 +357,7 @@ struct MainWindow {
     struct OverlayScrollbar* overlayScrollH = nullptr;
 
     int wheelAccumDelta = 0;
+    int wheelPixelRemainder = 0;
     // Touchpad and trackpoint scrolling repeat while held. One page per press.
     DWORD edgePageTurnTick = 0;
     // Ctrl/right-button wheel zoom: coalesce a flick into one SetZoomVirtual

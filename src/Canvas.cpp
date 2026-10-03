@@ -3325,6 +3325,31 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
         }
     }
 
+    if (dm && vScroll && IsContinuous(dm->GetDisplayMode()) &&
+        (!gGlobalPrefs->smoothScroll || delta % WHEEL_DELTA != 0)) {
+        // Precision touchpads already provide eased, high-frequency deltas.
+        // Do not quantize them to lines or apply a second smooth-scroll timer.
+        int combinedDelta = delta;
+        MSG queued;
+        for (int n = 0; n < 64 && PeekMessage(&queued, nullptr, WM_MOUSEWHEEL, WM_MOUSEWHEEL, PM_NOREMOVE); n++) {
+            if (queued.hwnd != win->hwndCanvas || LOWORD(queued.wParam) != LOWORD(wp) ||
+                ((GET_WHEEL_DELTA_WPARAM(queued.wParam) < 0) != (delta < 0))) {
+                break;
+            }
+            PeekMessage(&queued, nullptr, WM_MOUSEWHEEL, WM_MOUSEWHEEL, PM_REMOVE);
+            combinedDelta += GET_WHEEL_DELTA_WPARAM(queued.wParam);
+        }
+        int pixels =
+            WheelScrollPixels(combinedDelta, DpiScale(win->hwndCanvas, 16), gDeltaPerLine, win->wheelPixelRemainder);
+        KillTimer(win->hwndCanvas, kSmoothScrollTimerID);
+        win->readAloudScrollFromCode = false;
+        if (pixels != 0) {
+            dm->ScrollYBy(pixels, false);
+            ReadAloudUserTookTheView(win);
+        }
+        return 0;
+    }
+
     win->wheelAccumDelta += delta;
     int prevScrollPos = GetScrollPos(win->hwndCanvas, SB_VERT);
 
