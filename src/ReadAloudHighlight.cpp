@@ -685,6 +685,19 @@ bool ReadAloudGetCursorStart(DisplayModel* dm, Point screenPt, int* startPageOut
         return false;
     }
 
+    // A Latin word is several letters. A click on "h" in "the" still starts at
+    // "the". One Han character is already the unit, so CJK stays on that glyph.
+    EngineBase* engine = dm->GetEngine();
+    int textLen = 0;
+    const WCHAR* text = engine ? engine->GetTextForPage(pageNo, &textLen) : nullptr;
+    if (text && glyph >= 0 && glyph < textLen && isWordChar(text[glyph]) && !isCjkWordChar(text[glyph]) &&
+        (unsigned short)text[glyph] < 0x2E80) {
+        while (glyph > 0 && isWordChar(text[glyph - 1]) && !isCjkWordChar(text[glyph - 1]) &&
+               (unsigned short)text[glyph - 1] < 0x2E80) {
+            glyph--;
+        }
+    }
+
     *startPageOut = pageNo;
     *startGlyphOut = glyph;
     return true;

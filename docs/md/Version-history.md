@@ -4,6 +4,8 @@
 
 ## 3.7.37 (2026-10-04)
 
+- 从光标处朗读时，点在英文单词的任意字母上，都从该单词的开头读起。汉字仍从点中的那个字开始。
+  Read aloud from the cursor starts at the beginning of an English word, whichever letter was clicked. A Chinese character still starts at the character that was clicked.
 - 查找界面打开时，滚动条左侧留一条位置刻度。蓝色是全部命中，橙色是当前命中。关掉查找后，页面宽度恢复。
   While the find UI is open, a position strip sits beside the scrollbar. Blue ticks are every hit, and the orange tick is the current hit. Closing find gives that width back to the page.
 - 连续视图里，触控板不足一格的滚动按像素累计。鼠标滚轮一格仍按行滚动，滚到头会翻页。
