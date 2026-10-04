@@ -319,6 +319,100 @@ inline bool PdfDarkModeV2ShouldKnockOutSmallIconCornerMat(int w, int h, int pape
     return paperSides <= 2;
 }
 
+// Size-independent twin of the corner gate above: the flooded border must be neutral,
+// mostly pure white (a soft gray drop-shadow rim is fine) and the rest smooth ink-free
+// art. Photo skies, clouds and textured scans fail one of these. A mat corner shows paper
+// on two sides; white touching one side of flat art is a map region or a strip, not a mat.
+inline bool PdfDarkModeV2ShouldKnockOutFlatArtCornerMat(int paperSides, int floodSamples, float floodPureRatio,
+                                                        float floodNeutralRatio, float artLumVar, float artInkRatio) {
+    if (paperSides < 2 || floodSamples < 8) {
+        return false;
+    }
+    if (floodPureRatio < 0.65f || floodNeutralRatio < 0.90f) {
+        return false;
+    }
+    return artLumVar <= 0.012f && artInkRatio <= 0.01f;
+}
+
+// Cream / pastel page paper. White paper is left to the white-mat gates above.
+inline bool PdfDarkModeV2PaperIsTinted(float r, float g, float b) {
+    float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    return maxC - minC >= 0.035f;
+}
+
+// Shade k when (r,g,b) reads as paper * k (k = 1 is the paper itself, k < 1 a drop
+// shadow on it). Returns 0 when the pixel is another color. White cards on cream
+// paper fall outside the tolerance, as do photo highlights.
+inline float PdfDarkModeV2PaperShade(float r, float g, float b, float pr, float pg, float pb) {
+    float pp = pr * pr + pg * pg + pb * pb;
+    if (pp <= 0.f) {
+        return 0.f;
+    }
+    float k = (r * pr + g * pg + b * pb) / pp;
+    if (k < 0.55f || k > 1.04f) {
+        return 0.f;
+    }
+    float dr = r - k * pr;
+    float dg = g - k * pg;
+    float db = b - k * pb;
+    float dev = dr < 0.f ? -dr : dr;
+    dev = (dg < 0.f ? -dg : dg) > dev ? (dg < 0.f ? -dg : dg) : dev;
+    dev = (db < 0.f ? -db : db) > dev ? (db < 0.f ? -db : db) : dev;
+    if (dev > 0.04f) {
+        return 0.f;
+    }
+    return k > 1.f ? 1.f : k;
+}
+
+// Light chromatic fill (yellow Guide plate, highlighter, pastel sidebar). Neutral
+// cream/white paper stays out so body text on a darkened page still inverts.
+// Chroma floor matches warm parchment: Visual Summary cream (≈0.16) is page paper.
+inline bool PdfDarkModeV2LooksLikeColoredTextPlate(float r, float g, float b) {
+    float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    float chroma = maxC - minC;
+    float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+    return lum >= 0.55f && lum <= 0.98f && chroma >= 0.22f;
+}
+
+// Large vector fills of cream/white textbook paper (Visual Summary page wash).
+inline bool PdfDarkModeV2LooksLikeTintedPagePaper(float r, float g, float b) {
+    float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    float chroma = maxC - minC;
+    float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+    return lum >= 0.75f && chroma < 0.22f;
+}
+
+// Wide short cream title plate ("Visual Summary"): almost all paper + a glyph
+// drop shadow. The usual colorful-mat cap rejects edgeWhite > 0.92 as empty.
+inline bool PdfDarkModeV2ShouldKnockOutTitlePillPaper(int w, int h, int paperSides, float edgeWhiteRatio,
+                                                      float inkRatio) {
+    if (h < 24 || h > 96 || w < 140 || w > 520) {
+        return false;
+    }
+    if ((long long)w * (long long)h > (long long)520 * 96) {
+        return false;
+    }
+    if (paperSides < 2 || edgeWhiteRatio < 0.35f || inkRatio >= 0.08f) {
+        return false;
+    }
+    return true;
+}
+
+// Rasterized text on page paper: much of the paper edge is dark ink.
+inline bool PdfDarkModeV2PaperRimLooksLikeText(int rimPixels, int rimInkPixels) {
+    return rimPixels > 0 && rimInkPixels * 4 >= rimPixels;
+}
+
+// At least a tenth of the tile border must be the page paper itself. A photo that
+// only nicks cream in a corner stays out; a badge or title plate sitting on cream
+// has paper along the open sides.
+inline bool PdfDarkModeV2PagePaperBorderLooksLikeMat(int borderPaper, int borderN) {
+    return borderN > 0 && borderPaper * 10 >= borderN;
+}
+
 // RAZ studio cutouts (ape / chimp / snake on white) are often 1500–2500 px on a side.
 // The old 1200² cap skipped them → opaque white cards on Match-theme dark pages.
 inline constexpr i64 kPdfDarkModeV2WhiteMatMaxArea = (i64)2800 * 2800;
@@ -604,8 +698,13 @@ inline bool PdfDarkModeV2ShouldKeepOriginalPhotograph(float paperRatio, float lu
 // or walls for page paper and produces cut-out halos. White-margin RAZ/photo-book
 // pages stay on the existing paper + protected-photo path.
 inline bool PdfDarkModeV2ShouldPreserveFullBleedPhoto(float borderPaperRatio, float satRatio, float chromaRatio,
-                                                      float lumVar) {
+                                                      float lumVar, float paperRatio = 0.f) {
     if (borderPaperRatio >= 0.50f || satRatio < 0.12f || chromaRatio < 0.20f || lumVar < 0.025f) {
+        return false;
+    }
+    // Colored frame around textbook columns. The border is art, but most of the
+    // page is still flat paper and must go dark under light text.
+    if (paperRatio >= 0.45f) {
         return false;
     }
     // Cream 连环画 paper (runtime 红楼梦 p.7 sat=0.163 chroma=0.697): yellow-paper

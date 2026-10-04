@@ -26,7 +26,158 @@ typedef struct {
     fz_rect clipStack[24];
     int clipTop;
     int clipExtra;
+    // Images / plates drawn in original colors (photos, yellow Guide sidebars).
+    // Text and shapes on them keep their original colors.
+    fz_rect keptPhotos[16];
+    int nKeptPhotos;
+    // Full-page backgrounds darkened on this page. Their paper color is estimated only
+    // when a slice lands on one (state: 0 = not yet, 1 = cream / pastel, -1 = none).
+    fz_image* paperImages[4];
+    fz_rect paperRects[4];
+    float paperRgb[4][3];
+    int paperState[4];
+    int nPapers;
 } pdf_dark_mode_v2_device;
+
+static constexpr float kV2KeptPhotoMinCoverage = 0.05f;
+
+static void v2_remember_kept_plate(pdf_dark_mode_v2_device* d, fz_rect r, float coverage) {
+    if (coverage < kV2KeptPhotoMinCoverage || d->nKeptPhotos >= (int)dimof(d->keptPhotos)) {
+        return;
+    }
+    if (fz_is_empty_rect(r) || fz_is_infinite_rect(r)) {
+        return;
+    }
+    d->keptPhotos[d->nKeptPhotos++] = r;
+}
+
+static void v2_remember_kept_photo(pdf_dark_mode_v2_device* d, fz_matrix ctm, float coverage) {
+    v2_remember_kept_plate(d, fz_transform_rect(fz_unit_rect, ctm), coverage);
+}
+
+// A chapter-opener photo is often clipped around its title and badge. Those holes are
+// filled by flattened-transparency slices: clouds, sky, and the title's drop shadow.
+// Knocking the white out of a slice, or inverting text laid on it, shows the dark page
+// through the photo. Anything drawn on top of a kept photo keeps the original colors.
+static bool v2_over_kept_photo(const pdf_dark_mode_v2_device* d, fz_rect r) {
+    if (d->nKeptPhotos <= 0 || fz_is_empty_rect(r) || fz_is_infinite_rect(r)) {
+        return false;
+    }
+    float area = (r.x1 - r.x0) * (r.y1 - r.y0);
+    if (area <= 0.f) {
+        return false;
+    }
+    for (int i = 0; i < d->nKeptPhotos; i++) {
+        fz_rect in = fz_intersect_rect(r, d->keptPhotos[i]);
+        if (fz_is_empty_rect(in)) {
+            continue;
+        }
+        float inArea = (in.x1 - in.x0) * (in.y1 - in.y0);
+        if (inArea >= area * 0.9f) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void v2_remember_page_paper(fz_context* ctx, pdf_dark_mode_v2_device* d, fz_image* image, fz_matrix ctm) {
+    if (d->nPapers >= (int)dimof(d->paperRects)) {
+        return;
+    }
+    d->paperImages[d->nPapers] = fz_keep_image(ctx, image);
+    d->paperRects[d->nPapers] = fz_transform_rect(fz_unit_rect, ctm);
+    d->paperState[d->nPapers] = 0;
+    d->nPapers++;
+}
+
+static void v2_remember_page_paper_color(pdf_dark_mode_v2_device* d, fz_rect r, const float rgb[3]) {
+    if (d->nPapers >= (int)dimof(d->paperRects) || fz_is_empty_rect(r) || fz_is_infinite_rect(r)) {
+        return;
+    }
+    d->paperImages[d->nPapers] = nullptr;
+    d->paperRects[d->nPapers] = r;
+    d->paperRgb[d->nPapers][0] = rgb[0];
+    d->paperRgb[d->nPapers][1] = rgb[1];
+    d->paperRgb[d->nPapers][2] = rgb[2];
+    d->paperState[d->nPapers] = 1;
+    d->nPapers++;
+}
+
+static void v2_drop_page_papers(fz_context* ctx, pdf_dark_mode_v2_device* d) {
+    for (int i = 0; i < d->nPapers; i++) {
+        if (d->paperImages[i]) {
+            fz_drop_image(ctx, d->paperImages[i]);
+        }
+        d->paperImages[i] = nullptr;
+    }
+    d->nPapers = 0;
+}
+
+// Flattened-transparency slices of a cream page background (badge, title plate, strips
+// along a tilted photo) carry that cream. The background itself turns dark, so the
+// slice's paper must go too. Returns the paper of the background under r, if any.
+static const float* v2_page_paper_under(fz_context* ctx, pdf_dark_mode_v2_device* d, fz_rect r) {
+    if (d->nPapers <= 0 || fz_is_empty_rect(r) || fz_is_infinite_rect(r)) {
+        return nullptr;
+    }
+    float area = (r.x1 - r.x0) * (r.y1 - r.y0);
+    if (area <= 0.f) {
+        return nullptr;
+    }
+    for (int i = d->nPapers - 1; i >= 0; i--) {
+        fz_rect in = fz_intersect_rect(r, d->paperRects[i]);
+        if (fz_is_empty_rect(in)) {
+            continue;
+        }
+        if ((in.x1 - in.x0) * (in.y1 - in.y0) < area * 0.9f) {
+            continue;
+        }
+        if (d->paperState[i] == 0) {
+            if (!d->paperImages[i]) {
+                d->paperState[i] = -1;
+            } else {
+                d->paperState[i] = PdfDarkModeV2EstimateTintedPaper(ctx, d->paperImages[i], d->paperRgb[i]) ? 1 : -1;
+            }
+        }
+        return d->paperState[i] > 0 ? d->paperRgb[i] : nullptr;
+    }
+    return nullptr;
+}
+
+static fz_image* v2_build_page_paper_tile_image(fz_context* ctx, fz_image* srcImage, const float paper[3]) {
+    if (srcImage->mask || srcImage->w > kV2MaxDecodeDim || srcImage->h > kV2MaxDecodeDim) {
+        return nullptr;
+    }
+    fz_pixmap* src = nullptr;
+    fz_pixmap* dst = nullptr;
+    fz_image* result = nullptr;
+    fz_var(src);
+    fz_var(dst);
+    fz_var(result);
+    fz_try(ctx) {
+        src = fz_get_pixmap_from_image(ctx, srcImage, nullptr, nullptr, nullptr, nullptr);
+        if (src && src->samples && src->colorspace && !fz_colorspace_is_rgb(ctx, src->colorspace)) {
+            fz_pixmap* conv =
+                fz_convert_pixmap(ctx, src, fz_device_rgb(ctx), nullptr, nullptr, fz_default_color_params, 1);
+            fz_drop_pixmap(ctx, src);
+            src = conv;
+        }
+        if (src && src->samples) {
+            dst = PdfDarkModeProcessV2PagePaperTilePixmap(ctx, src, paper);
+            if (dst) {
+                result = fz_new_image_from_pixmap(ctx, dst, nullptr);
+            }
+        }
+    }
+    fz_always(ctx) {
+        fz_drop_pixmap(ctx, dst);
+        fz_drop_pixmap(ctx, src);
+    }
+    fz_catch(ctx) {
+        result = nullptr;
+    }
+    return result;
+}
 
 static void v2_push_clip(pdf_dark_mode_v2_device* d, fz_rect scissor) {
     fz_rect next = fz_intersect_rect(d->clipStack[d->clipTop], scissor);
@@ -656,6 +807,7 @@ static void v2_close(fz_context* ctx, fz_device* dev) {
 
 static void v2_drop(fz_context* ctx, fz_device* dev) {
     pdf_dark_mode_v2_device* d = (pdf_dark_mode_v2_device*)dev;
+    v2_drop_page_papers(ctx, d);
     if (d->inner) {
         fz_drop_device(ctx, d->inner);
         d->inner = nullptr;
@@ -680,9 +832,27 @@ static void v2_fill_path(fz_context* ctx, fz_device* dev, const fz_path* path, i
         }
         return;
     }
+    if (v2_over_kept_photo(d, fz_bound_path(ctx, path, nullptr, ctm))) {
+        fz_fill_path(ctx, d->inner, path, even_odd, ctm, colorspace, color, alpha, color_params);
+        if (perf) {
+            gV2Perf.pathMs += TimeSinceInMs(opStart);
+        }
+        return;
+    }
     float mapped[FZ_MAX_COLORS] = {};
     v2_map_paint(ctx, d, colorspace, color, alpha, color_params, mapped, true);
     fz_fill_path(ctx, d->inner, path, even_odd, ctm, fz_device_rgb(ctx), mapped, alpha, color_params);
+    fz_rect bound = fz_bound_path(ctx, path, nullptr, ctm);
+    float pathCov = v2_path_coverage(ctx, path, ctm, d->pageBounds);
+    // Full-page cream/white wash (Visual Summary): the fill remaps to theme, but
+    // title pills and card frames still carry that paper and must knock it out.
+    if (pathCov >= 0.45f && PdfDarkModeV2LooksLikeTintedPagePaper(rgb[0], rgb[1], rgb[2])) {
+        v2_remember_page_paper_color(d, bound, rgb);
+    } else if (pathCov < 0.40f && !v2_is_light_marker(rgb[0], rgb[1], rgb[2]) &&
+               PdfDarkModeV2LooksLikeColoredTextPlate(rgb[0], rgb[1], rgb[2])) {
+        // A smaller light chromatic plate that we did not darken as a highlight.
+        v2_remember_kept_plate(d, bound, pathCov);
+    }
     if (perf) {
         gV2Perf.pathMs += TimeSinceInMs(opStart);
     }
@@ -692,6 +862,10 @@ static void v2_stroke_path(fz_context* ctx, fz_device* dev, const fz_path* path,
                            fz_matrix ctm, fz_colorspace* colorspace, const float* color, float alpha,
                            fz_color_params color_params) {
     pdf_dark_mode_v2_device* d = (pdf_dark_mode_v2_device*)dev;
+    if (v2_over_kept_photo(d, fz_bound_path(ctx, path, stroke, ctm))) {
+        fz_stroke_path(ctx, d->inner, path, stroke, ctm, colorspace, color, alpha, color_params);
+        return;
+    }
     float mapped[FZ_MAX_COLORS] = {};
     v2_map_paint(ctx, d, colorspace, color, alpha, color_params, mapped, true);
     fz_stroke_path(ctx, d->inner, path, stroke, ctm, fz_device_rgb(ctx), mapped, alpha, color_params);
@@ -706,6 +880,13 @@ static void v2_fill_text(fz_context* ctx, fz_device* dev, const fz_text* text, f
         gV2Perf.textCalls++;
         opStart = TimeGet();
     }
+    if (v2_over_kept_photo(d, fz_bound_text(ctx, text, nullptr, ctm))) {
+        fz_fill_text(ctx, d->inner, text, ctm, colorspace, color, alpha, color_params);
+        if (perf) {
+            gV2Perf.textMs += TimeSinceInMs(opStart);
+        }
+        return;
+    }
     float mapped[FZ_MAX_COLORS] = {};
     v2_map_paint(ctx, d, colorspace, color, alpha, color_params, mapped, false);
     fz_fill_text(ctx, d->inner, text, ctm, fz_device_rgb(ctx), mapped, alpha, color_params);
@@ -718,6 +899,10 @@ static void v2_stroke_text(fz_context* ctx, fz_device* dev, const fz_text* text,
                            fz_matrix ctm, fz_colorspace* colorspace, const float* color, float alpha,
                            fz_color_params color_params) {
     pdf_dark_mode_v2_device* d = (pdf_dark_mode_v2_device*)dev;
+    if (v2_over_kept_photo(d, fz_bound_text(ctx, text, stroke, ctm))) {
+        fz_stroke_text(ctx, d->inner, text, stroke, ctm, colorspace, color, alpha, color_params);
+        return;
+    }
     float mapped[FZ_MAX_COLORS] = {};
     v2_map_paint(ctx, d, colorspace, color, alpha, color_params, mapped, false);
     fz_stroke_text(ctx, d->inner, text, stroke, ctm, fz_device_rgb(ctx), mapped, alpha, color_params);
@@ -960,6 +1145,11 @@ static void v2_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_m
         return;
     }
     float coverage = v2_image_coverage(ctm, d->pageBounds);
+    if (coverage < kV2FullPageCoverage && v2_over_kept_photo(d, fz_transform_rect(fz_unit_rect, ctm))) {
+        fillPerf.branch = "on-photo";
+        fz_fill_image(ctx, d->inner, image, ctm, alpha, color_params);
+        return;
+    }
     bool largeOffice = v2_large_office_scan_image(ctx, image, coverage);
 
     // Word 红头/标题: 2×2 color + glyph SMask. Must not take the "small photo" path.
@@ -1002,6 +1192,37 @@ static void v2_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_m
     // Small/medium images: knock out JPEG white mats around colorful badges (UNIT / Atlas).
     // Full-page path below handles scans; do not Okular-wash ordinary photos here.
     if (coverage < kV2FullPageCoverage && !largeOffice) {
+        if (const float* paper = v2_page_paper_under(ctx, d, fz_transform_rect(fz_unit_rect, ctm))) {
+            fz_image* cached = nullptr;
+            if (d->engineCache) {
+                cached = PdfDarkModeEngineCacheLookupProcessed(ctx, d->engineCache, image, d->profileHash,
+                                                               DarkImagePolicy::Preserve,
+                                                               DarkImageKind::LightBackgroundArtwork);
+            }
+            fz_image* draw = cached;
+            fillPerf.cache = cached ? 1 : 0;
+            if (!draw) {
+                draw = v2_build_page_paper_tile_image(ctx, image, paper);
+                if (draw && d->engineCache) {
+                    PdfDarkModeEngineCacheStoreProcessed(ctx, d->engineCache, image, d->profileHash,
+                                                         DarkImagePolicy::Preserve,
+                                                         DarkImageKind::LightBackgroundArtwork, draw);
+                }
+            }
+            if (draw) {
+                fillPerf.branch = "page-paper";
+                fz_try(ctx) {
+                    fz_fill_image(ctx, d->inner, draw, ctm, alpha, color_params);
+                }
+                fz_always(ctx) {
+                    fz_drop_image(ctx, draw);
+                }
+                fz_catch(ctx) {
+                    fz_fill_image(ctx, d->inner, image, ctm, alpha, color_params);
+                }
+                return;
+            }
+        }
         // InDesign/iText textbooks slice one photo into dozens of JPEGs. White-mat
         // walks every pixel of each slice (and often decodes it twice). That is the
         // multi-second "Please wait - rendering..." on a TOC jump. Keep picture
@@ -1012,6 +1233,7 @@ static void v2_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_m
             !PdfDarkModeV2QuickStudioWhiteMatCandidate(ctx, image)) {
             fillPerf.branch = "layout";
             fz_fill_image(ctx, d->inner, image, ctm, alpha, color_params);
+            v2_remember_kept_photo(d, ctm, coverage);
             return;
         }
         fillPerf.branch = "mat";
@@ -1045,10 +1267,13 @@ static void v2_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_m
         fz_catch(ctx) {
             fz_fill_image(ctx, d->inner, image, ctm, alpha, color_params);
         }
+        if (coverage >= kV2KeptPhotoMinCoverage && PdfDarkModeV2EstimateColoredTextPlate(ctx, image)) {
+            v2_remember_kept_photo(d, ctm, coverage);
+        }
         return;
     }
 
-    // MRC text plate: color JPEG + 1-bit ImageMask. Must keep the mask (rebuilding from a
+    // MRC text plate: color JPEG + 1-bit ImageMask. Must keep the mask (rebuilding from a)
     // pixmap without it paints an opaque dark plate over the page and hides all text).
     if (image->mask) {
         fillPerf.branch = "mask";
@@ -1100,6 +1325,7 @@ static void v2_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_m
             !PdfDarkModeV2LayoutFullPageNeedsPictureBookRemap(analysis.features)) {
             fillPerf.branch = "layout";
             fz_fill_image(ctx, d->inner, image, ctm, alpha, color_params);
+            v2_remember_kept_photo(d, ctm, coverage);
             return;
         }
     }
@@ -1141,12 +1367,17 @@ static void v2_fill_image(fz_context* ctx, fz_device* dev, fz_image* image, fz_m
     fz_catch(ctx) {
         fz_fill_image(ctx, d->inner, image, ctm, alpha, color_params);
     }
+    v2_remember_page_paper(ctx, d, image, ctm);
 }
 
 static void v2_fill_image_mask(fz_context* ctx, fz_device* dev, fz_image* image, fz_matrix ctm,
                                fz_colorspace* colorspace, const float* color, float alpha,
                                fz_color_params color_params) {
     pdf_dark_mode_v2_device* d = (pdf_dark_mode_v2_device*)dev;
+    if (v2_over_kept_photo(d, fz_transform_rect(fz_unit_rect, ctm))) {
+        fz_fill_image_mask(ctx, d->inner, image, ctm, colorspace, color, alpha, color_params);
+        return;
+    }
     float mapped[FZ_MAX_COLORS] = {};
     v2_map_paint(ctx, d, colorspace, color, alpha, color_params, mapped, false);
     fz_fill_image_mask(ctx, d->inner, image, ctm, fz_device_rgb(ctx), mapped, alpha, color_params);

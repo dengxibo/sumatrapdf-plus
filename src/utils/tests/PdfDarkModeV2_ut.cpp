@@ -110,7 +110,39 @@ void PdfDarkModeV2_UnitTests() {
     utassert(!PdfDarkModeV2ShouldKnockOutSmallIconCornerMat(640, 480, 1, 0.05f, 0.40f, 0.50f)); // photo
     utassert(!PdfDarkModeV2ShouldKnockOutSmallIconCornerMat(80, 64, 1, 0.005f, 0.90f, 0.90f));  // no mat
 
+    // Flat badge disc sliced on a white square: any size, but pure mat + smooth art only.
+    utassert(PdfDarkModeV2ShouldKnockOutFlatArtCornerMat(2, 426, 0.894f, 0.934f, 0.0010f, 0.f));
+    utassert(PdfDarkModeV2ShouldKnockOutFlatArtCornerMat(2, 588, 0.784f, 0.985f, 0.0010f, 0.f));  // soft shadow rim
+    utassert(!PdfDarkModeV2ShouldKnockOutFlatArtCornerMat(1, 467, 0.974f, 0.981f, 0.0005f, 0.f)); // map land region
+    utassert(!PdfDarkModeV2ShouldKnockOutFlatArtCornerMat(2, 332, 0.012f, 0.060f, 0.0124f, 0.f)); // colored rim
+    utassert(!PdfDarkModeV2ShouldKnockOutFlatArtCornerMat(2, 400, 0.90f, 0.95f, 0.0382f, 0.08f)); // photo subject
+    utassert(!PdfDarkModeV2ShouldKnockOutFlatArtCornerMat(2, 4, 1.f, 1.f, 0.001f, 0.f));          // no mat
+
+    // Cream page paper under a flattened badge / title plate.
+    utassert(PdfDarkModeV2PaperIsTinted(1.f, 0.968f, 0.903f));
+    utassert(!PdfDarkModeV2PaperIsTinted(1.f, 1.f, 1.f));
+    utassert(PdfDarkModeV2PaperShade(1.f, 0.968f, 0.903f, 1.f, 0.968f, 0.903f) >= 0.9f);
+    utassert(PdfDarkModeV2PaperShade(0.7f, 0.678f, 0.632f, 1.f, 0.968f, 0.903f) > 0.f); // drop shadow
+    utassert(PdfDarkModeV2PaperShade(0.9f, 0.2f, 0.2f, 1.f, 0.968f, 0.903f) == 0.f);    // red badge
+    utassert(PdfDarkModeV2PagePaperBorderLooksLikeMat(20, 200));
+    utassert(!PdfDarkModeV2PagePaperBorderLooksLikeMat(0, 200));   // shadow plate, no paper
+    utassert(!PdfDarkModeV2PagePaperBorderLooksLikeMat(37, 1092)); // photo nicking cream
+    utassert(!PdfDarkModeV2PaperRimLooksLikeText(100, 10));
+    utassert(PdfDarkModeV2PaperRimLooksLikeText(100, 25)); // rasterized text
+
     // Warm sidebar parchment is artwork. Low-chroma cream mats and cyan ocean still knock out.
+    utassert(PdfDarkModeV2LooksLikeColoredTextPlate(0.986f, 0.935f, 0.703f)); // Guide yellow
+    utassert(PdfDarkModeV2LooksLikeColoredTextPlate(0.94f, 0.88f, 0.63f));
+    utassert(!PdfDarkModeV2LooksLikeColoredTextPlate(1.f, 0.968f, 0.903f)); // cream paper
+    utassert(!PdfDarkModeV2LooksLikeColoredTextPlate(1.f, 0.987f, 0.837f)); // Visual Summary wash
+    utassert(PdfDarkModeV2LooksLikeTintedPagePaper(1.f, 0.987f, 0.837f));
+    utassert(PdfDarkModeV2LooksLikeTintedPagePaper(1.f, 1.f, 1.f));
+    utassert(!PdfDarkModeV2LooksLikeTintedPagePaper(0.986f, 0.935f, 0.703f)); // Guide yellow
+    utassert(PdfDarkModeV2ShouldKnockOutTitlePillPaper(367, 63, 4, 0.92f, 0.f));
+    utassert(!PdfDarkModeV2ShouldKnockOutTitlePillPaper(367, 63, 4, 0.92f, 0.20f)); // baked text
+    utassert(!PdfDarkModeV2ShouldKnockOutTitlePillPaper(80, 40, 4, 0.92f, 0.f));    // not a pill
+    utassert(!PdfDarkModeV2LooksLikeColoredTextPlate(1.f, 1.f, 1.f));
+    utassert(!PdfDarkModeV2LooksLikeColoredTextPlate(0.14f, 0.12f, 0.13f)); // ink
     utassert(PdfDarkModeV2IsWarmDecorativeParchment(0.94f, 0.88f, 0.63f));  // Guide plate
     utassert(!PdfDarkModeV2IsWarmDecorativeParchment(0.94f, 0.94f, 0.82f)); // Visual Summary cream
     utassert(!PdfDarkModeV2IsWarmDecorativeParchment(0.70f, 0.85f, 0.95f)); // cyan ocean
@@ -278,7 +310,8 @@ void PdfDarkModeV2_UnitTests() {
     utassert(!PdfDarkModeV2ShouldKeepOriginalPhotograph(0.10f, 0.008f));
 
     // Full-bleed photo: colorful continuous tone with no white-paper frame.
-    utassert(PdfDarkModeV2ShouldPreserveFullBleedPhoto(0.15f, 0.55f, 0.64f, 0.080f));
+    utassert(PdfDarkModeV2ShouldPreserveFullBleedPhoto(0.15f, 0.55f, 0.64f, 0.080f, 0.12f));
+    utassert(!PdfDarkModeV2ShouldPreserveFullBleedPhoto(0.01f, 0.33f, 0.33f, 0.085f, 0.67f)); // framed text page
     // Photo inset on white paper (photo book / every tested RAZ page): keep rect protection.
     utassert(!PdfDarkModeV2ShouldPreserveFullBleedPhoto(1.00f, 0.55f, 0.64f, 0.080f));
     // Borderless flat artwork and low-color scans are not automatically photos.

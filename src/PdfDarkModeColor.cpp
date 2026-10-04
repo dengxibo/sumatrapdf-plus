@@ -2941,7 +2941,7 @@ fz_pixmap* PdfDarkModeProcessPictureBookPixmap(fz_context* ctx, fz_pixmap* src, 
         return PdfDarkModeProcessGovernmentPaperPixmap(ctx, src, govPalette);
     }
 
-    if (PdfDarkModeV2ShouldPreserveFullBleedPhoto(st.borderPaperRatio, satRatio, chromaRatio, lumVar)) {
+    if (PdfDarkModeV2ShouldPreserveFullBleedPhoto(st.borderPaperRatio, satRatio, chromaRatio, lumVar, paperRatio)) {
         fz_pixmap* dst = fz_new_pixmap(ctx, cs, w, h, src->seps, src->alpha);
         fz_copy_pixmap_rect(ctx, dst, src, fz_make_irect(0, 0, w, h), nullptr);
         return dst;
@@ -4921,6 +4921,326 @@ bool PdfDarkModeV2QuickStudioWhiteMatCandidate(fz_context* ctx, fz_image* image)
     return ok;
 }
 
+bool PdfDarkModeV2EstimateTintedPaper(fz_context* ctx, fz_image* image, float paper[3]) {
+    if (!ctx || !image || image->w < 64 || image->h < 64) {
+        return false;
+    }
+    fz_pixmap* src = nullptr;
+    bool ok = false;
+    fz_var(src);
+    fz_try(ctx) {
+        const int maxSide = 128;
+        int maxDim = image->w > image->h ? image->w : image->h;
+        float s = maxDim > maxSide ? (float)maxSide / (float)maxDim : 1.f;
+        fz_matrix ctm = fz_scale(s, s);
+        src = fz_get_pixmap_from_image(ctx, image, nullptr, &ctm, nullptr, nullptr);
+        if (src && src->samples && src->colorspace && !fz_colorspace_is_rgb(ctx, src->colorspace)) {
+            fz_pixmap* conv =
+                fz_convert_pixmap(ctx, src, fz_device_rgb(ctx), nullptr, nullptr, fz_default_color_params, 1);
+            fz_drop_pixmap(ctx, src);
+            src = conv;
+        }
+        if (src && src->samples && src->w >= 16 && src->h >= 16) {
+            fz_colorspace* cs = src->colorspace ? src->colorspace : fz_device_rgb(ctx);
+            fz_colorspace* rgb = fz_device_rgb(ctx);
+            int components = fz_colorspace_n(ctx, cs);
+            // 5 bits per channel: JPEG noise stays in one bin, cream and white do not.
+            int* bins = (int*)calloc(32 * 32 * 32, sizeof(int));
+            if (!bins) {
+                fz_throw(ctx, FZ_ERROR_GENERIC, "paper histogram alloc failed");
+            }
+            int total = 0, best = -1, bestN = 0;
+            for (int y = 0; y < src->h; y++) {
+                for (int x = 0; x < src->w; x++) {
+                    float r, g, b;
+                    dm_pb_sample_rgb(ctx, src, cs, rgb, components, x, y, &r, &g, &b);
+                    int key = ((int)(r * 31.f + 0.5f) << 10) | ((int)(g * 31.f + 0.5f) << 5) | (int)(b * 31.f + 0.5f);
+                    total++;
+                    if (++bins[key] > bestN) {
+                        bestN = bins[key];
+                        best = key;
+                    }
+                }
+            }
+            free(bins);
+            if (best >= 0 && bestN * 2 >= total) {
+                paper[0] = (float)(best >> 10) / 31.f;
+                paper[1] = (float)((best >> 5) & 31) / 31.f;
+                paper[2] = (float)(best & 31) / 31.f;
+                float lum = 0.2126f * paper[0] + 0.7152f * paper[1] + 0.0722f * paper[2];
+                ok = lum >= 0.75f && PdfDarkModeV2PaperIsTinted(paper[0], paper[1], paper[2]);
+            }
+        }
+    }
+    fz_always(ctx) {
+        if (src) {
+            fz_drop_pixmap(ctx, src);
+        }
+    }
+    fz_catch(ctx) {
+        ok = false;
+    }
+    return ok;
+}
+
+bool PdfDarkModeV2EstimateColoredTextPlate(fz_context* ctx, fz_image* image) {
+    if (!ctx || !image || image->w < 24 || image->h < 24) {
+        return false;
+    }
+    fz_pixmap* src = nullptr;
+    bool ok = false;
+    fz_var(src);
+    fz_try(ctx) {
+        const int maxSide = 64;
+        int maxDim = image->w > image->h ? image->w : image->h;
+        float s = maxDim > maxSide ? (float)maxSide / (float)maxDim : 1.f;
+        fz_matrix ctm = fz_scale(s, s);
+        src = fz_get_pixmap_from_image(ctx, image, nullptr, &ctm, nullptr, nullptr);
+        if (src && src->samples && src->colorspace && !fz_colorspace_is_rgb(ctx, src->colorspace)) {
+            fz_pixmap* conv =
+                fz_convert_pixmap(ctx, src, fz_device_rgb(ctx), nullptr, nullptr, fz_default_color_params, 1);
+            fz_drop_pixmap(ctx, src);
+            src = conv;
+        }
+        if (src && src->samples && src->w >= 8 && src->h >= 8) {
+            fz_colorspace* cs = src->colorspace ? src->colorspace : fz_device_rgb(ctx);
+            fz_colorspace* rgb = fz_device_rgb(ctx);
+            int components = fz_colorspace_n(ctx, cs);
+            int plate = 0, total = 0;
+            int stepX = src->w > 32 ? src->w / 32 : 1;
+            int stepY = src->h > 32 ? src->h / 32 : 1;
+            for (int y = 0; y < src->h; y += stepY) {
+                for (int x = 0; x < src->w; x += stepX) {
+                    float r, g, b;
+                    dm_pb_sample_rgb(ctx, src, cs, rgb, components, x, y, &r, &g, &b);
+                    total++;
+                    if (PdfDarkModeV2LooksLikeColoredTextPlate(r, g, b)) {
+                        plate++;
+                    }
+                }
+            }
+            ok = total > 0 && plate * 2 >= total;
+        }
+    }
+    fz_always(ctx) {
+        if (src) {
+            fz_drop_pixmap(ctx, src);
+        }
+    }
+    fz_catch(ctx) {
+        ok = false;
+    }
+    return ok;
+}
+
+fz_pixmap* PdfDarkModeProcessV2PagePaperTilePixmap(fz_context* ctx, fz_pixmap* src, const float paper[3]) {
+    if (!ctx || !src || !src->samples || src->w < 2 || src->h < 2) {
+        return nullptr;
+    }
+    const int w = src->w;
+    const int h = src->h;
+    if ((i64)w * (i64)h > kPdfDarkModeV2WhiteMatMaxArea) {
+        return nullptr;
+    }
+    fz_colorspace* cs = src->colorspace ? src->colorspace : fz_device_rgb(ctx);
+    fz_colorspace* rgb = fz_device_rgb(ctx);
+    int components = fz_colorspace_n(ctx, cs);
+    const size_t n = (size_t)w * (size_t)h;
+    // Per pixel: shade k of the paper (0 = not paper-colored).
+    float* shade = (float*)malloc(n * sizeof(float));
+    u8* flood = (u8*)calloc(n, 1);
+    int* queue = (int*)malloc(n * sizeof(int));
+    if (!shade || !flood || !queue) {
+        free(shade);
+        free(flood);
+        free(queue);
+        return nullptr;
+    }
+    unsigned char* rgbBytes = (unsigned char*)malloc(n * 3);
+    if (!rgbBytes) {
+        free(shade);
+        free(flood);
+        free(queue);
+        return nullptr;
+    }
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            float r, g, b;
+            dm_pb_sample_rgb(ctx, src, cs, rgb, components, x, y, &r, &g, &b);
+            size_t i = (size_t)y * (size_t)w + (size_t)x;
+            rgbBytes[i * 3 + 0] = (unsigned char)(r * 255.f + 0.5f);
+            rgbBytes[i * 3 + 1] = (unsigned char)(g * 255.f + 0.5f);
+            rgbBytes[i * 3 + 2] = (unsigned char)(b * 255.f + 0.5f);
+            shade[i] = PdfDarkModeV2PaperShade(r, g, b, paper[0], paper[1], paper[2]);
+        }
+    }
+    int head = 0, tail = 0, borderN = 0, borderPaper = 0;
+    auto seed = [&](int x, int y) {
+        size_t i = (size_t)y * (size_t)w + (size_t)x;
+        borderN++;
+        if (shade[i] >= 0.9f) {
+            borderPaper++;
+        }
+        if (shade[i] > 0.f && !flood[i]) {
+            flood[i] = 1;
+            queue[tail++] = (int)i;
+        }
+    };
+    for (int x = 0; x < w; x++) {
+        seed(x, 0);
+        seed(x, h - 1);
+    }
+    for (int y = 1; y < h - 1; y++) {
+        seed(0, y);
+        seed(w - 1, y);
+    }
+    if (!PdfDarkModeV2PagePaperBorderLooksLikeMat(borderPaper, borderN)) {
+        free(shade);
+        free(flood);
+        free(queue);
+        free(rgbBytes);
+        return nullptr;
+    }
+    while (head < tail) {
+        int i = queue[head++];
+        int x = i % w;
+        int y = i / w;
+        const int nb[4] = {x > 0 ? i - 1 : -1, x + 1 < w ? i + 1 : -1, y > 0 ? i - w : -1, y + 1 < h ? i + w : -1};
+        for (int k = 0; k < 4; k++) {
+            int j = nb[k];
+            if (j >= 0 && !flood[j] && shade[j] > 0.f) {
+                flood[j] = 1;
+                queue[tail++] = j;
+            }
+        }
+    }
+    // Dark ink glued to the paper is rasterized text: knocking its paper out would leave
+    // dark glyphs on the dark page. Ink inside a colored badge does not touch the paper.
+    int rimN = 0, rimInk = 0;
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            size_t i = (size_t)y * (size_t)w + (size_t)x;
+            if (flood[i]) {
+                continue;
+            }
+            bool rim = (x > 0 && flood[i - 1]) || (x + 1 < w && flood[i + 1]) || (y > 0 && flood[i - w]) ||
+                       (y + 1 < h && flood[i + w]);
+            if (!rim) {
+                continue;
+            }
+            rimN++;
+            const unsigned char* p = rgbBytes + i * 3;
+            float lum = (0.2126f * p[0] + 0.7152f * p[1] + 0.0722f * p[2]) / 255.f;
+            if (lum < 0.3f) {
+                rimInk++;
+            }
+        }
+    }
+    fz_pixmap* dst = nullptr;
+    if (!PdfDarkModeV2PaperRimLooksLikeText(rimN, rimInk)) {
+        fz_try(ctx) {
+            dst = fz_new_pixmap(ctx, rgb, w, h, nullptr, 1);
+        }
+        fz_catch(ctx) {
+            dst = nullptr;
+        }
+    }
+    if (dst) {
+        // Two rings next to the flood (1): 2 = touches paper, 3 = one pixel further in.
+        for (u8 from = 1; from <= 2; from++) {
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    size_t i = (size_t)y * (size_t)w + (size_t)x;
+                    if (flood[i]) {
+                        continue;
+                    }
+                    bool touches = (x > 0 && flood[i - 1] == from) || (x + 1 < w && flood[i + 1] == from) ||
+                                   (y > 0 && flood[i - w] == from) || (y + 1 < h && flood[i + w] == from);
+                    if (touches) {
+                        flood[i] = (u8)(from + 1);
+                    }
+                }
+            }
+        }
+        for (int y = 0; y < h; y++) {
+            unsigned char* drow = dst->samples + (size_t)y * (size_t)dst->stride;
+            for (int x = 0; x < w; x++) {
+                size_t i = (size_t)y * (size_t)w + (size_t)x;
+                unsigned char* px = drow + (size_t)x * (size_t)dst->n;
+                if (flood[i] >= 2) {
+                    // Anti-aliased edge = art blended with paper. Unmix with the art color
+                    // just inside so no cream halo is left around the cutout.
+                    float cr = 0.f, cg = 0.f, cb = 0.f;
+                    int cn = 0;
+                    for (int dy = -3; dy <= 3; dy++) {
+                        for (int dx = -3; dx <= 3; dx++) {
+                            int xx = x + dx;
+                            int yy = y + dy;
+                            if (xx < 0 || yy < 0 || xx >= w || yy >= h) {
+                                continue;
+                            }
+                            size_t j = (size_t)yy * (size_t)w + (size_t)xx;
+                            if (flood[j]) {
+                                continue;
+                            }
+                            cr += rgbBytes[j * 3 + 0];
+                            cg += rgbBytes[j * 3 + 1];
+                            cb += rgbBytes[j * 3 + 2];
+                            cn++;
+                        }
+                    }
+                    float pr = rgbBytes[i * 3 + 0], pg = rgbBytes[i * 3 + 1], pb = rgbBytes[i * 3 + 2];
+                    float a = 1.f;
+                    if (cn > 0) {
+                        cr /= cn;
+                        cg /= cn;
+                        cb /= cn;
+                        float Pr = paper[0] * 255.f, Pg = paper[1] * 255.f, Pb = paper[2] * 255.f;
+                        float vr = cr - Pr, vg = cg - Pg, vb = cb - Pb;
+                        float vv = vr * vr + vg * vg + vb * vb;
+                        if (vv > 400.f) {
+                            a = ((pr - Pr) * vr + (pg - Pg) * vg + (pb - Pb) * vb) / vv;
+                            a = a < 0.f ? 0.f : (a > 1.f ? 1.f : a);
+                        }
+                        // Premultiplied: what is left after taking (1 - a) of the paper out.
+                        pr -= (1.f - a) * Pr;
+                        pg -= (1.f - a) * Pg;
+                        pb -= (1.f - a) * Pb;
+                    }
+                    auto clampByte = [a](float v) -> unsigned char {
+                        float hi = a * 255.f;
+                        v = v < 0.f ? 0.f : (v > hi ? hi : v);
+                        return (unsigned char)(v + 0.5f);
+                    };
+                    px[0] = clampByte(pr);
+                    px[1] = clampByte(pg);
+                    px[2] = clampByte(pb);
+                    px[3] = (unsigned char)(a * 255.f + 0.5f);
+                    continue;
+                }
+                if (flood[i]) {
+                    // Paper becomes clear; a shadow on the paper (paper * k) stays a
+                    // shadow on the dark page: black at 1 - k.
+                    float a = 1.f - shade[i];
+                    a = a < 0.f ? 0.f : (a > 1.f ? 1.f : a);
+                    px[0] = px[1] = px[2] = 0;
+                    px[3] = (unsigned char)(a * 255.f + 0.5f);
+                    continue;
+                }
+                px[0] = rgbBytes[i * 3 + 0];
+                px[1] = rgbBytes[i * 3 + 1];
+                px[2] = rgbBytes[i * 3 + 2];
+                px[3] = 255;
+            }
+        }
+    }
+    free(shade);
+    free(flood);
+    free(queue);
+    free(rgbBytes);
+    return dst;
+}
+
 fz_pixmap* PdfDarkModeProcessV2WhiteMatPixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette) {
     if (!ctx || !src || !src->samples) {
         return nullptr;
@@ -5045,6 +5365,48 @@ fz_pixmap* PdfDarkModeProcessV2WhiteMatPixmap(fz_context* ctx, fz_pixmap* src, c
         PdfDarkModeV2ShouldKnockOutBlankWhiteGutter(w, h, paperSides, edgeWhiteRatio, satRatio, chromaRatio)) {
         knock = true;
     }
+    // Flat color art (badge disc, gradient button) sliced or set on a white square: each
+    // slice only shows one corner of the mat, so side ratios stay below the badge gate.
+    if (!knock && !grayCutout && (satRatio >= 0.07f || chromaRatio >= 0.10f) && edgeWhiteRatio >= 0.015f &&
+        edgeWhiteRatio <= 0.55f) {
+        int floodN = 0, floodPure = 0, artN = 0, artInk = 0, floodNeutral = 0;
+        float artLumSum = 0.f, artLumSq = 0.f;
+        for (int y = 0; y < h; y += estStepY) {
+            for (int x = 0; x < w; x += estStepX) {
+                float r, g, b;
+                dm_pb_sample_rgb(ctx, src, cs, rgb, components, x, y, &r, &g, &b);
+                float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+                float maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+                float minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+                if (edgeMask[y * w + x]) {
+                    floodN++;
+                    if (lum >= 0.95f && maxC - minC <= 0.05f) {
+                        floodPure++;
+                    }
+                    if (maxC - minC <= 0.06f) {
+                        floodNeutral++;
+                    }
+                    continue;
+                }
+                artN++;
+                artLumSum += lum;
+                artLumSq += lum * lum;
+                if (lum < 0.22f) {
+                    artInk++;
+                }
+            }
+        }
+        float floodPureRatio = floodN > 0 ? (float)floodPure / (float)floodN : 0.f;
+        float floodNeutralRatio = floodN > 0 ? (float)floodNeutral / (float)floodN : 0.f;
+        float artMean = artN > 0 ? artLumSum / (float)artN : 0.f;
+        float artLumVar = artN > 0 ? artLumSq / (float)artN - artMean * artMean : 1.f;
+        float artInkRatio = artN > 0 ? (float)artInk / (float)artN : 1.f;
+        knock = PdfDarkModeV2ShouldKnockOutFlatArtCornerMat(paperSides, floodN, floodPureRatio, floodNeutralRatio,
+                                                            artLumVar, artInkRatio);
+    }
+    if (!knock && PdfDarkModeV2ShouldKnockOutTitlePillPaper(w, h, paperSides, edgeWhiteRatio, inkRatio)) {
+        knock = true;
+    }
     if (!knock) {
         free(edgeMask);
         return nullptr;
@@ -5093,7 +5455,7 @@ fz_pixmap* PdfDarkModeProcessV2WhiteMatPixmap(fz_context* ctx, fz_pixmap* src, c
         remainLumVar = 0.f;
     }
     const bool clearShadowRemain =
-        remainN > 0 && edgeWhiteRatio >= 0.35f && maxDimProbe <= 220 &&
+        remainN > 0 && edgeWhiteRatio >= 0.35f && (maxDimProbe <= 220 || titlePillMat) &&
         PdfDarkModeV2RemainLooksLikeSoftShadowOnly(remainChromaRatio, remainInkRatio, remainLumVar);
 
     // Soft-edge studio cards: flood only chewed the rim → jagged white rectangle.

@@ -1,5 +1,20 @@
 # Version history
 
+## next
+
+- 暗色匹配主题下，叠在整页照片上的切片、文字和色块保持原色。章节首页的云朵和标题阴影不再被抠成黑块，白色标题不再反成深色；地图上的地名和图例也能看清。
+  In dark Match-theme, slices, text, and shapes laid on a full-page photo keep their original colors. Chapter-opener clouds and title shadows no longer turn into black blots, and a white title stays white. Place names and legends on maps stay readable.
+- 暗色匹配主题下，放在白色方块上的纯色圆章、渐变按钮等平面图形，即使被切成几块，周围的白底也会抠掉，不再留下白色矩形。
+  In dark Match-theme, the white square around flat color art (a badge disc, a gradient button) is knocked out even when the art is sliced into pieces, so no white rectangle is left.
+- 暗色匹配主题下，奶油色整页底变暗之后，叠在上面的徽章、标题板和按钮条会带上同一块奶油色。这些切片里的纸色会一起抠掉，不再留下白色圆角卡片或色条。
+  In dark Match-theme, after a cream full-page background turns dark, flattened badges, title plates, and button strips that still carry that cream have the paper knocked out, so no white rounded card or bar is left.
+- 暗色匹配主题下，浅黄、高亮一类彩色底如果保持原色，落在上面的字和线也不反色。黄底黑字的导读栏不再变成黄底白字。
+  In dark Match-theme, when a light chromatic plate (a yellow sidebar, a highlight) keeps its original color, text and strokes on it stay original too. Black type on a yellow Guide-to-Reading bar is no longer inverted to white.
+- 暗色匹配主题下，课文里整页奶油色若是矢量铺底，叠在上面的标题板、卡片框也会把纸色换掉。Visual Summary 后面不再留一块浅色圆角底。
+  In dark Match-theme, when a chapter wash is a cream vector fill, title plates and card frames on it also remap that paper. The light rounded block behind Visual Summary is no longer left as-is.
+- 暗色匹配主题下，彩色边框里的课文白纸会换成主题底色，字改成浅色。不再整页保持原样。
+  In dark Match-theme, the white paper inside a colored textbook frame becomes the theme background and the type goes light, instead of leaving the whole page in its original colors.
+
 ## 3.7.37 (2026-10-04)
 
 - 收藏夹标题超出宽度时，行尾显示省略号，和书签栏一样。
