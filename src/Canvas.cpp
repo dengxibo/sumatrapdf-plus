@@ -4047,10 +4047,18 @@ static void OnTimer(MainWindow* win, HWND hwnd, WPARAM timerId) {
 
 static void GetDropFilesResolved(HDROP hDrop, bool dragFinish, StrVec& files) {
     int nFiles = DragQueryFile(hDrop, DRAGQUERY_NUMFILES, nullptr, 0);
-    WCHAR pathW[MAX_PATH]{};
     char* path = nullptr;
     for (int i = 0; i < nFiles; i++) {
-        DragQueryFile(hDrop, i, pathW, dimof(pathW));
+        // A MAX_PATH buffer drops the tail of a longer path. This file is 263
+        // characters, so ".pdf" was cut off and the drop reported file-not-found.
+        UINT cch = DragQueryFile(hDrop, i, nullptr, 0);
+        if (cch == 0) {
+            continue;
+        }
+        WCHAR* pathW = AllocArrayTemp<WCHAR>((size_t)cch + 1);
+        if (DragQueryFile(hDrop, i, pathW, cch + 1) == 0) {
+            continue;
+        }
         path = ToUtf8Temp(pathW);
         if (str::EndsWithI(path, ".lnk")) {
             char* resolved = ResolveLnkTemp(path);

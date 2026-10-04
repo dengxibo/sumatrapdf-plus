@@ -4,6 +4,8 @@
 
 ## 3.7.37 (2026-10-04)
 
+- 打开文件时粘贴、或从资源管理器拖入超过 260 个字符的路径，不再把文件名截断后提示找不到文件。
+  Pasting or dropping a path longer than 260 characters no longer cuts off the file name and reports that the file is missing.
 - 暗色匹配主题下，半透明渐变和带蒙版的图在变色之后仍按原来的透明度合成。
   In dark Match-theme, translucent gradients and masked images keep their transparency after recoloring.
 - 从光标处朗读时，点在英文单词的任意字母上，都从该单词的开头读起。汉字仍从点中的那个字开始。

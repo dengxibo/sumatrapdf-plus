@@ -7622,6 +7622,26 @@ static TempWStr GetFileFilterTemp() {
     return ToWStrTemp(fileFilter);
 }
 
+// cmb13. The Explorer open dialog caps this edit at MAX_PATH - 1, so pasting a
+// longer path loses the tail and the dialog says the file is missing.
+constexpr int kOpenFileNameEditId = 1148;
+
+static HHOOK gOpenFileNameCbt = nullptr;
+
+static LRESULT CALLBACK OpenFileNameCbtProc(int code, WPARAM wp, LPARAM lp) {
+    if (code == HCBT_CREATEWND) {
+        HWND hwnd = (HWND)wp;
+        WCHAR cls[32]{};
+        auto* created = (CBT_CREATEWNDW*)lp;
+        int id = created && created->lpcs ? (int)(INT_PTR)created->lpcs->hMenu : 0;
+        if (id == kOpenFileNameEditId && GetClassNameW(hwnd, cls, dimof(cls)) && str::Eq(cls, L"Edit")) {
+            // WM_CREATE sets the limit to MAX_PATH - 1 after this hook returns.
+            PostMessageW(hwnd, EM_SETLIMITTEXT, 32767, 0);
+        }
+    }
+    return CallNextHookEx(gOpenFileNameCbt, code, wp, lp);
+}
+
 static void OpenFile(MainWindow* win) {
     if (!CanAccessDisk()) {
         return;
@@ -7657,7 +7677,14 @@ static void OpenFile(MainWindow* win) {
     AutoFreeWStr file = AllocArray<WCHAR>(ofn.nMaxFile);
     ofn.lpstrFile = file;
 
-    if (!GetOpenFileNameW(&ofn)) {
+    // Thread hook: only window creation on this thread, and only while the dialog is up.
+    gOpenFileNameCbt = SetWindowsHookExW(WH_CBT, OpenFileNameCbtProc, nullptr, GetCurrentThreadId());
+    BOOL ok = GetOpenFileNameW(&ofn);
+    if (gOpenFileNameCbt) {
+        UnhookWindowsHookEx(gOpenFileNameCbt);
+        gOpenFileNameCbt = nullptr;
+    }
+    if (!ok) {
         return;
     }
 
