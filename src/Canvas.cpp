@@ -2564,6 +2564,12 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
     }
     shouldPaint = true;
 
+    // The overview gutter is outside the document viewport. Clip every page
+    // and overlay layer so horizontal scrolling cannot paint text into it.
+    int savedDC = SaveDC(hdc);
+    IntersectClipRect(hdc, canvas.x, canvas.y, canvas.x + std::max(0, canvas.dx - FindPositionGutterWidth(win)),
+                      canvas.y + canvas.dy);
+
     if (!paintOnBlackWithoutShadow && colDocBg != kColorUnset && nGCols > 0) {
         COLORREF colors[3];
         colors[0] = ParseColor(gcols->at(0), WIN_COL_WHITE);
@@ -2760,6 +2766,8 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
         PaintUnreachablePageLinks(win, hdc, dm);
         DebugShowLinks(dm, hdc);
     }
+    RestoreDC(hdc, savedDC);
+    PaintFindPositionMarks(win, hdc);
     return shouldPaint;
 }
 
@@ -3315,6 +3323,31 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
                 return 0;
             }
         }
+    }
+
+    if (dm && vScroll && IsContinuous(dm->GetDisplayMode()) &&
+        (!gGlobalPrefs->smoothScroll || delta % WHEEL_DELTA != 0)) {
+        // Precision touchpads already provide eased, high-frequency deltas.
+        // Do not quantize them to lines or apply a second smooth-scroll timer.
+        int combinedDelta = delta;
+        MSG queued;
+        for (int n = 0; n < 64 && PeekMessage(&queued, nullptr, WM_MOUSEWHEEL, WM_MOUSEWHEEL, PM_NOREMOVE); n++) {
+            if (queued.hwnd != win->hwndCanvas || LOWORD(queued.wParam) != LOWORD(wp) ||
+                ((GET_WHEEL_DELTA_WPARAM(queued.wParam) < 0) != (delta < 0))) {
+                break;
+            }
+            PeekMessage(&queued, nullptr, WM_MOUSEWHEEL, WM_MOUSEWHEEL, PM_REMOVE);
+            combinedDelta += GET_WHEEL_DELTA_WPARAM(queued.wParam);
+        }
+        int pixels =
+            WheelScrollPixels(combinedDelta, DpiScale(win->hwndCanvas, 16), gDeltaPerLine, win->wheelPixelRemainder);
+        KillTimer(win->hwndCanvas, kSmoothScrollTimerID);
+        win->readAloudScrollFromCode = false;
+        if (pixels != 0) {
+            dm->ScrollYBy(pixels, false);
+            ReadAloudUserTookTheView(win);
+        }
+        return 0;
     }
 
     win->wheelAccumDelta += delta;

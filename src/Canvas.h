@@ -3,6 +3,13 @@
 
 void UpdateDeltaPerLine();
 
+// Preserve subpixel input rather than waiting for a complete scroll line.
+inline int WheelScrollPixels(int delta, int lineHeight, int deltaPerLine, int& remainder) {
+    int scaled = remainder + delta * lineHeight;
+    remainder = scaled % deltaPerLine;
+    return -(scaled / deltaPerLine);
+}
+
 LRESULT CALLBACK WndProcCanvas(HWND, UINT, WPARAM, LPARAM);
 LRESULT WndProcCanvasAbout(MainWindow*, HWND, UINT, WPARAM, LPARAM);
 bool IsDragDistance(int x1, int x2, int y1, int y2);

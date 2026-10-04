@@ -37,6 +37,7 @@
 #include "FindWindow.h"
 #include "SumatraDialogs.h"
 #include "Translations.h"
+#include "Theme.h"
 
 #include "OcrService.h"
 
@@ -1403,6 +1404,7 @@ static void CountResultsTask(CountResultsTaskData* d) {
     MaybeNavigatePendingFromPage(win);
     FindWindowRefreshResults(win, false);
     ShowMatchCount(win);
+    ScheduleRepaint(win, 0);
 }
 
 static void MaybePostCountResults(CountThreadData* d, Vec<FindMatch>* matches, bool force) {
@@ -2716,6 +2718,133 @@ void PaintAllFindMatches(MainWindow* win, HDC hdc) {
     }
     if (currentRects.size() > 0) {
         PaintFindMatchHighlightRectangles(hdc, win->canvasRc, currentRects, currentCol, currentAlpha);
+    }
+}
+
+int FindPositionGutterWidth(const MainWindow* win) {
+    if (ScrollbarsAreHidden() || win->presentation != PM_DISABLED) {
+        return 0;
+    }
+    int width = DpiScale(win->hwndCanvas, 12);
+    if (ScrollbarsUseOverlay()) {
+        int scrollWidth = GetSystemMetrics(SM_CXVSCROLL);
+        width += scrollWidth > 0 ? scrollWidth : DpiScale(win->hwndCanvas, 16);
+    }
+    return width;
+}
+
+// Draw in a reserved gutter beside the scrollbar, outside the document viewport.
+// Keep it reserved even with no query so starting/clearing search never moves text.
+void PaintFindPositionMarks(MainWindow* win, HDC hdc) {
+    int gutterWidth = FindPositionGutterWidth(win);
+    if (gutterWidth == 0) {
+        return;
+    }
+    Rect gutter = win->canvasRc;
+    gutter.x += std::max(0, gutter.dx - gutterWidth);
+    gutter.dx = std::min(gutter.dx, gutterWidth);
+    AutoDeleteBrush bg = CreateSolidBrush(ThemeControlBackgroundColor());
+    RECT gutterRc = ToRECT(gutter);
+    FillRect(hdc, &gutterRc, bg);
+    DisplayModel* dm = win->AsFixed();
+    if (!dm || !IsFindUIVisible(win) || !win->hwndFindEdit || HwndGetTextLen(win->hwndFindEdit) == 0 ||
+        ScrollbarsAreHidden() || win->presentation != PM_DISABLED) {
+        return;
+    }
+    EngineBase* engine = dm->GetEngine();
+    int pageCount = dm->PageCount();
+    if (!engine || pageCount < 1) {
+        return;
+    }
+    int inset = DpiScale(win->hwndCanvas, 2);
+    if (ScrollbarsUseOverlay()) {
+        int scrollWidth = GetSystemMetrics(SM_CXVSCROLL);
+        inset += scrollWidth > 0 ? scrollWidth : DpiScale(win->hwndCanvas, 16);
+    }
+    int width = DpiScale(win->hwndCanvas, 6);
+    int margin = DpiScale(win->hwndCanvas, 18);
+    Rect track(win->canvasRc.x + win->canvasRc.dx - inset - width, win->canvasRc.y + margin, width,
+               win->canvasRc.dy - 2 * margin);
+    if (track.dy <= 0 || track.x < win->canvasRc.x) {
+        return;
+    }
+    Vec<u8> rows;
+    if (!rows.AppendBlanks(track.dy)) {
+        return;
+    }
+    int cachedPage = 0;
+    int textLen = 0;
+    Rect* coords = nullptr;
+    auto mark = [&](int pageNo, int glyph, u8 kind) {
+        if (!dm->ValidPageNo(pageNo)) {
+            return;
+        }
+        PageInfo* pi = dm->GetPageInfo(pageNo);
+        if (!pi) {
+            return;
+        }
+        if (cachedPage != pageNo) {
+            cachedPage = pageNo;
+            textLen = 0;
+            coords = nullptr;
+            // Search already cached this text. Never extract another page or
+            // run OCR from a paint; use the page center if its cache was cleared.
+            if (engine->PromoteCachedTextUtf8ForSelection(pageNo)) {
+                engine->TryGetTextForPage(pageNo, &textLen, &coords);
+            }
+        }
+        double pageRatio = 0.5;
+        bool haveGlyph = coords && glyph >= 0 && glyph < textLen && !coords[glyph].IsEmpty();
+        if (haveGlyph) {
+            RectF box = engine->Transform(pi->_mediaBox, pageNo, 1.f, dm->GetRotation());
+            RectF hit = engine->Transform(ToRectF(coords[glyph]), pageNo, 1.f, dm->GetRotation());
+            if (box.dy > 0) {
+                pageRatio = std::clamp((hit.y + hit.dy * 0.5 - box.y) / box.dy, 0.0, 1.0);
+            }
+        }
+        double ratio = (pageNo - 1 + pageRatio) / pageCount;
+        if (IsContinuous(dm->GetDisplayMode()) && dm->GetCanvasSize().dy > 0) {
+            double y = pi->pos.y + pi->pos.dy * pageRatio;
+            ratio = y / dm->GetCanvasSize().dy;
+        }
+        int row = (int)(std::clamp(ratio, 0.0, 1.0) * (track.dy - 1));
+        rows[row] = std::max(rows[row], kind);
+    };
+    // The complete position cache has no results-list limit (the list caps at
+    // 5,000). During scanning, use the results streamed to the UI so far.
+    if (win->findCountValid && win->findCountEngine == engine) {
+        for (u64 key : win->findCountPositions) {
+            mark((int)(key >> 32), (int)(key & 0xffffffff), 1);
+        }
+    } else {
+        for (const FindMatch& fm : win->findMatches) {
+            mark(fm.startPage, fm.startGlyph, 1);
+        }
+    }
+    TextSearch* ts = dm->textSearch;
+    if (!win->findEnterPending && ts && ts->result.len > 0) {
+        mark(ts->startPage, ts->startGlyph, 2);
+    }
+    bool haveMarks = false;
+    for (u8 row : rows) {
+        haveMarks |= row != 0;
+    }
+    if (!haveMarks) {
+        return;
+    }
+    AutoDeleteBrush other = CreateSolidBrush(RGB(0, 145, 230));
+    AutoDeleteBrush current = CreateSolidBrush(RGB(255, 90, 35));
+    int height = std::min(track.dy, DpiScale(win->hwndCanvas, 2));
+    // Merge coincident hits in pixel space, painting the current hit last.
+    for (u8 kind = 1; kind <= 2; kind++) {
+        for (int y = 0; y < track.dy; y++) {
+            if (rows[y] != kind) {
+                continue;
+            }
+            int top = track.y + std::min(y, track.dy - height);
+            RECT tick{track.x, top, track.x + track.dx, top + height};
+            FillRect(hdc, &tick, kind == 2 ? current : other);
+        }
     }
 }
 

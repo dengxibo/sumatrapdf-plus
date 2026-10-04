@@ -58,6 +58,8 @@ void ShowForwardSearchResult(MainWindow* win, const char* fileName, int line, in
                              Vec<Rect>& rects);
 void PaintForwardSearchMark(MainWindow* win, HDC hdc);
 void PaintAllFindMatches(MainWindow* win, HDC hdc);
+int FindPositionGutterWidth(const MainWindow* win);
+void PaintFindPositionMarks(MainWindow* win, HDC hdc);
 void OnFindViewLayoutChanged(MainWindow* win);
 
 // when true, paint every visible search match (current match uses FindMatchColor,
