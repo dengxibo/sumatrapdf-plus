@@ -544,6 +544,13 @@ static const char* gIconSidebarFavorites =
   <path d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873z" />
 </svg>)";
 
+// Quill outline. Same 1px stroke as the stamp and the other annotation buttons.
+static const char* gIconAnnotSignature =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M16 9.6l.8 .8c-.8 2.4-3.2 4.8-6.4 5.2c-2.2 .2-3.4 1.8-4 4.4h-1.6c.8 -4.8 2.4 -16 14.4 -16c-.8 2.4-1.6 4-2.4 4.8z" />
+</svg>)";
+
 // must match order in enum class TbIcon
 // clang-format off
 static const char* gIcons[] = {
@@ -605,6 +612,7 @@ static const char* gIcons[] = {
     gIconSidebarFavorites,
     gIconFavAdd,
     gIconFavRemove,
+    gIconAnnotSignature,
 };
 // clang-format on
 

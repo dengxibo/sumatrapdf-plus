@@ -293,6 +293,7 @@ export const commands = [
     "CmdToggleThumbnails", "Show Thumbnails",
     "CmdPickEbookLatinFont", "Western Body Font",
     "CmdPickEbookCjkFont", "CJK Body Font",
+    "CmdAddHandwrittenSignature", "Add Handwritten Signature",
     "CmdNone", "Do nothing",
 ];
 

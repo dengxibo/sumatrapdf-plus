@@ -234,6 +234,9 @@
     <ClInclude Include="..\src\GumboHelpers.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\HandwrittenSignature.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\HomePage.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -642,6 +645,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\GumboHelpers.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\HandwrittenSignature.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\HomePage.cpp">

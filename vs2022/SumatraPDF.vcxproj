@@ -1145,6 +1145,7 @@
     <ClInclude Include="..\src\FzImgReader.h" />
     <ClInclude Include="..\src\GlobalPrefs.h" />
     <ClInclude Include="..\src\GumboHelpers.h" />
+    <ClInclude Include="..\src\HandwrittenSignature.h" />
     <ClInclude Include="..\src\HomePage.h" />
     <ClInclude Include="..\src\HtmlFormatter.h" />
     <ClInclude Include="..\src\ImageSaveCropResize.h" />
@@ -1320,6 +1321,7 @@
     <ClCompile Include="..\src\FzImgReader.cpp" />
     <ClCompile Include="..\src\GlobalPrefs.cpp" />
     <ClCompile Include="..\src\GumboHelpers.cpp" />
+    <ClCompile Include="..\src\HandwrittenSignature.cpp" />
     <ClCompile Include="..\src\HomePage.cpp" />
     <ClCompile Include="..\src\HtmlFormatter.cpp" />
     <ClCompile Include="..\src\ImageSaveCropResize.cpp" />

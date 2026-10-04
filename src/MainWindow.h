@@ -258,6 +258,19 @@ struct MainWindow {
     int resizeHandle = 0; // ResizeHandle enum casted to int
     bool annotationBeingResized = false;
     RectF annotationOriginalRect;
+    // While a resize drag is active, at most one page render is in flight.
+    // Further moves only move the frame until that render finishes.
+    int annotResizeSerial = 0;
+    int annotResizeSubmitted = 0;
+    bool annotResizeFlight = false;
+    // Live shape drawn in the frame. The page bitmap stays as it was at
+    // mouse-down so a slow dark render cannot leave the circle behind the frame.
+    bool annotResizePreview = false;
+    Annotation* annotResizePreviewAnnot = nullptr;
+    HBITMAP annotResizeBg = nullptr;
+    Rect annotResizeBgRect;
+    HBITMAP annotResizeShape = nullptr;
+    Rect annotResizeShapeRect;
 
     // Toolbar quick-annotation tool (CmdCreateAnnotSquare etc.; 0 = inactive)
     int annotCreateToolCmd = 0;

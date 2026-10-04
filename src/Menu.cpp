@@ -827,6 +827,10 @@ static MenuDef menuDefCreateAnnotUnderCursor[] = {
         CmdCreateAnnotStamp,
     },
     {
+        _TRN("Si&gnature..."),
+        CmdAddHandwrittenSignature,
+    },
+    {
         _TRN("&Caret"),
         CmdCreateAnnotCaret,
     },
@@ -1195,6 +1199,7 @@ UINT_PTR removeIfAnnotsNotSupported[] = {
     CmdToggleShowAnnotations,
     (UINT_PTR)menuDefCreateAnnotFromSelection,
     (UINT_PTR)menuDefCreateAnnotUnderCursor,
+    CmdAddHandwrittenSignature,
     0,
 };
 

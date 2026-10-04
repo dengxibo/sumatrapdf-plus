@@ -4393,6 +4393,9 @@ static LPWSTR knownCursorIds[] = {IDC_ARROW,  IDC_IBEAM,    IDC_HAND,     IDC_SI
                                   IDC_SIZENS, IDC_SIZENWSE, IDC_SIZENESW, IDC_NO,      IDC_CROSS};
 
 static HCURSOR cachedCursors[dimof(knownCursorIds)]{};
+// True when cachedCursors[i] came from CreateIconIndirect and must be destroyed.
+// LoadCursor cursors are shared and must not be passed to DestroyCursor.
+static bool cachedCursorOwned[dimof(knownCursorIds)]{};
 
 static int GetCursorIndex(LPWSTR cursorId) {
     int n = (int)dimof(knownCursorIds);
@@ -4428,6 +4431,9 @@ static void LogCursor(LPWSTR) {
 }
 #endif
 
+// The size-cursor glyph sits in the corner of the 32x32 bitmap. The system
+// hotspot is already the center of that arrow. Moving it to the bitmap center
+// draws the arrow up and to the left of the pointer.
 HCURSOR GetCachedCursor(LPWSTR cursorId) {
     int i = GetCursorIndex(cursorId);
     ReportIf(i < 0);
@@ -4436,6 +4442,7 @@ HCURSOR GetCachedCursor(LPWSTR cursorId) {
     }
     if (nullptr == cachedCursors[i]) {
         cachedCursors[i] = LoadCursor(nullptr, cursorId);
+        cachedCursorOwned[i] = false;
         ReportIf(cachedCursors[i] == nullptr);
     }
     return cachedCursors[i];
@@ -4454,10 +4461,11 @@ void SetCursorCached(LPWSTR cursorId) {
 void DeleteCachedCursors() {
     for (int i = 0; i < dimof(knownCursorIds); i++) {
         HCURSOR cur = cachedCursors[i];
-        if (cur) {
+        if (cur && cachedCursorOwned[i]) {
             DestroyCursor(cur);
-            cachedCursors[i] = nullptr;
         }
+        cachedCursors[i] = nullptr;
+        cachedCursorOwned[i] = false;
     }
 }
 

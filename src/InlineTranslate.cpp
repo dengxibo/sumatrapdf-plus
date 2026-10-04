@@ -1359,7 +1359,11 @@ static void ResizePopupHeight(InlineTranslatePopup* p, int dy) {
     if (y < work.y) {
         y = work.y;
     }
-    SetWindowPos(p->hwnd, nullptr, wr.x, y, wr.dx, dy, SWP_NOZORDER | SWP_NOACTIVATE);
+    UINT flags = SWP_NOZORDER | SWP_NOACTIVATE;
+    if (p->deferPaint) {
+        flags |= SWP_NOREDRAW;
+    }
+    SetWindowPos(p->hwnd, nullptr, wr.x, y, wr.dx, dy, flags);
 }
 
 static void SyncEditScrollbar(HWND edit, int contentH, int visibleH) {
@@ -1445,7 +1449,7 @@ static void LayoutPopup(InlineTranslatePopup* p) {
         int want = limitValue(fixedH + transNat + chatNat, Px(h, kPopupMinH), maxH);
         if (want != rc.dy) {
             ResizePopupHeight(p, want);
-            UpdateFloatingPopupWindowRgn(h, kFloatingPopupCornerRadius);
+            UpdateFloatingPopupWindowRgn(h, kFloatingPopupCornerRadius, !p->deferPaint);
             rc = ClientRect(h);
         }
     }
@@ -2076,6 +2080,11 @@ static void TranslateJobFinished(TranslateJob* job) {
         str::ReplaceWithCopy(&p->transError, err);
     }
     RefreshTranslationView(p);
+    // Stay hidden until there is something to show. A missing API falls back
+    // to the browser above and must not flash this window first.
+    if (!IsWindowVisible(p->hwnd)) {
+        ShowPopup(p);
+    }
 }
 
 static void TranslateJobWorker(TranslateJob* job) {
@@ -2152,6 +2161,23 @@ static void AskJobAppend(AskJob* job, const char* role, const char* content) {
     job->msgs.Append(m);
 }
 
+// Replace the chat and resize in one paint. Otherwise the answer is drawn into
+// the small "Thinking…" window, then the window jumps to the new height.
+static void PresentChatUpdate(InlineTranslatePopup* p) {
+    if (!p || !p->hwnd) {
+        return;
+    }
+    bool live = (GetWindowLongPtrW(p->hwnd, GWL_STYLE) & WS_VISIBLE) != 0;
+    if (live) {
+        FreezePopupRedraw(p);
+    }
+    RebuildChatView(p);
+    LayoutPopup(p);
+    if (live) {
+        ThawPopupRedraw(p);
+    }
+}
+
 static void AskJobFinished(AskJob* job) {
     defer {
         job->FreeAll();
@@ -2171,8 +2197,7 @@ static void AskJobFinished(AskJob* job) {
         turn.content = str::Format("%s %s", _TRA("The AI request failed."), job->error ? job->error : "");
     }
     p->turns.Append(turn);
-    RebuildChatView(p);
-    LayoutPopup(p);
+    PresentChatUpdate(p);
 }
 
 static void AskJobWorker(AskJob* job) {
@@ -2212,8 +2237,7 @@ static void StartAsk(InlineTranslatePopup* p, const char* content, const char* d
         AskJobAppend(job, t.role, t.content);
     }
     RunAsync(MkFunc0(AskJobWorker, job), "InlineAskAi");
-    RebuildChatView(p);
-    LayoutPopup(p);
+    PresentChatUpdate(p);
 }
 
 static void OnSendClicked(InlineTranslatePopup* p) {
@@ -2363,7 +2387,7 @@ static LRESULT CALLBACK InlineTranslateWndProc(HWND hwnd, UINT msg, WPARAM wp, L
             return 0;
         }
         case WM_SIZE:
-            UpdateFloatingPopupWindowRgn(hwnd, kFloatingPopupCornerRadius);
+            UpdateFloatingPopupWindowRgn(hwnd, kFloatingPopupCornerRadius, !p->deferPaint);
             LayoutPopup(p);
             return 0;
         case WM_MOUSEMOVE: {
@@ -2406,6 +2430,13 @@ static LRESULT CALLBACK InlineTranslateWndProc(HWND hwnd, UINT msg, WPARAM wp, L
                 return 0;
             }
             break;
+        case WM_ACTIVATE:
+            // Clicking another app deactivates a focused translation popup.
+            if (LOWORD(wp) == WA_INACTIVE && p->mode == PopupMode::Translate && !p->closing) {
+                PostClosePopup();
+                return 0;
+            }
+            break;
         case WM_CLOSE:
             PostClosePopup();
             return 0;
@@ -2425,9 +2456,40 @@ static LRESULT CALLBACK InlineTranslateWndProc(HWND hwnd, UINT msg, WPARAM wp, L
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
+// A click or scroll outside the translation popup dismisses it, as word lookup does.
+static bool TranslateDismissOutside(InlineTranslatePopup* p, const MSG& msg) {
+    if (p->mode != PopupMode::Translate) {
+        return false;
+    }
+    bool clearSelection = false;
+    switch (msg.message) {
+        case WM_LBUTTONDOWN:
+        case WM_MBUTTONDOWN:
+        case WM_NCLBUTTONDOWN:
+        case WM_NCMBUTTONDOWN:
+        case WM_MOUSEWHEEL:
+        case WM_MOUSEHWHEEL:
+            clearSelection = true;
+            break;
+        case WM_RBUTTONDOWN:
+        case WM_NCRBUTTONDOWN:
+            break;
+        default:
+            return false;
+    }
+    if (msg.hwnd == p->hwnd || IsChild(p->hwnd, msg.hwnd)) {
+        return false;
+    }
+    CloseInlineTranslatePopup(clearSelection);
+    return true;
+}
+
 bool InlineTranslatePopupPreTranslate(MSG& msg) {
     InlineTranslatePopup* p = gPopup;
     if (!p || !p->hwnd || !IsWindowVisible(p->hwnd)) {
+        return false;
+    }
+    if (TranslateDismissOutside(p, msg)) {
         return false;
     }
     if (msg.message < WM_KEYFIRST || msg.message > WM_KEYLAST) {
@@ -2512,7 +2574,6 @@ void TranslateSelectionInTab(MainWindow* win, WindowTab* tab) {
         return;
     }
     StartTranslate(p);
-    ShowPopup(p);
 }
 
 void AskAiSelectionInTab(MainWindow* win, WindowTab* tab, const char* selection, const char* initialPrompt) {

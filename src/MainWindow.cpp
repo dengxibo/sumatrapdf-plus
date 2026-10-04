@@ -46,6 +46,7 @@
 #include "SelectionToolbar.h"
 #include "DisplayFilter.h"
 #include "Toolbar.h"
+#include "HandwrittenSignature.h"
 #include "Flags.h"
 #include "StressTesting.h"
 #include "Translations.h"
@@ -134,6 +135,8 @@ MainWindow::~MainWindow() {
 
     DeleteObject(brMovePattern);
     DeleteObject(bmpMovePattern);
+    DeleteObject(annotResizeBg);
+    DeleteObject(annotResizeShape);
     DeleteObject(brControlBgColor);
 
     // release our copy of UIA provider
@@ -224,6 +227,7 @@ void SetAnnotCreateTool(MainWindow* win, int cmdId) {
     if (!win) {
         return;
     }
+    HandwrittenSignatureCancelPlace(win);
     if (cmdId == 0 || win->annotCreateToolCmd == cmdId) {
         win->annotCreateToolCmd = 0;
         win->annotCreateToolLocked = false;

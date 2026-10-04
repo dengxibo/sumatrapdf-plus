@@ -805,6 +805,7 @@ void DisplayModel::RenderFinished(PageRenderRequest* req) {
             pageInfo->failedToRender = true;
         }
         if (IsDisplayModelCurrentTab(this)) {
+            ContinueAnnotationResizeRender(this, req->pageNo);
             RepaintDisplay();
         }
         return;
@@ -819,6 +820,9 @@ void DisplayModel::RenderFinished(PageRenderRequest* req) {
     // Repaint the active tab for every completed request; predictive renders
     // are bounded and this makes completed pages appear immediately.
     if (IsDisplayModelCurrentTab(this)) {
+        // Drop the live resize shape before this paint, so the finished tile
+        // is not drawn under a second copy of the circle.
+        ContinueAnnotationResizeRender(this, req->pageNo);
         RepaintDisplay();
         // The visible page is in the cache now. Prefetch its neighbors so the
         // next slow scroll is ready, without having blocked this paint.
@@ -2484,8 +2488,7 @@ static bool PageIsLaidOut(DisplayModel* dm, int pageNo) {
     if (!pi || pi->pos.dy <= 0) {
         return false;
     }
-    return !(IsReflowContinuousSingleColumn(dm) && dm->reflowLayoutValidUpto > 0 &&
-             pageNo > dm->reflowLayoutValidUpto);
+    return !(IsReflowContinuousSingleColumn(dm) && dm->reflowLayoutValidUpto > 0 && pageNo > dm->reflowLayoutValidUpto);
 }
 
 void DisplayModel::SetViewPortSize(Size newViewPortSize) {

@@ -298,7 +298,8 @@ enum {
     CmdToggleThumbnails = 487,
     CmdPickEbookLatinFont = 488,
     CmdPickEbookCjkFont = 489,
-    CmdNone = 490,
+    CmdAddHandwrittenSignature = 490,
+    CmdNone = 491,
 
     /* range for file history */
     CmdFileHistoryFirst,

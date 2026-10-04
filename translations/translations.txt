@@ -34622,3 +34622,51 @@ tw:按書名標題排序
 :Sort by added order
 cn:按添加顺序排序
 tw:按加入順序排序
+
+:Si&gnature...
+cn:手写签名(&G)
+tw:手寫簽名(&G)
+
+:Handwritten Signature
+cn:手写签名
+tw:手寫簽名
+
+:Draw your signature here
+cn:在这里书写签名
+tw:在這裡書寫簽名
+
+:Hold and drag to set the size. A click places it so you can move or resize it. Click the page to leave edit mode. Ctrl+click opens the annotation editor. Esc cancels.
+cn:按住拖动调整大小，单击直接放置，放上后即可移动和缩放。点页面空白处退出编辑。按住 Ctrl 再单击打开标注栏。按 Esc 取消。
+tw:按住拖動調整大小，單擊直接放置，放上後即可移動和縮放。點頁面空白處退出編輯。按住 Ctrl 再單擊打開標注欄。按 Esc 取消。
+
+:This document can't store a signature.
+cn:这份文档无法保存签名。
+tw:這份文件無法保存簽名。
+
+:Couldn't add the signature.
+cn:无法添加签名。
+tw:無法加入簽名。
+
+:Clear
+cn:清除
+tw:清除
+
+:Add Handwritten Signature
+cn:添加手写签名
+tw:新增手寫簽名
+
+:Open Image
+cn:打开图片
+tw:打開圖片
+
+:Paste or drop an image
+cn:可以粘贴或拖入一张图片
+tw:可以貼上或拖入一張圖片
+
+:Darkness
+cn:深浅
+tw:深淺
+
+:Couldn't read that image.
+cn:无法读取这张图片。
+tw:無法讀取這張圖片。

@@ -4,6 +4,7 @@
 struct AnnotCreateArgs;
 class EngineBase;
 struct MainWindow;
+struct DisplayModel;
 
 #include "OverlayScrollbar.h"
 
@@ -320,6 +321,8 @@ void DeleteMainWindow(MainWindow* win);
 void SwitchToDisplayMode(MainWindow* win, DisplayMode displayMode, bool keepContinuous = false);
 void MainWindowRerender(MainWindow* win, bool includeNonClientArea = false);
 void MainWindowRerenderAnnotationChange(MainWindow* win, int pageNo, Annotation* overlayAnnot = nullptr);
+// A resize-drag render finished. Start the next one if the frame moved again.
+void ContinueAnnotationResizeRender(DisplayModel* dm, int pageNo);
 LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 void ShutdownCleanup();
 bool DocIsSupportedFileType(Kind);

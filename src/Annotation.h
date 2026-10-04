@@ -92,6 +92,9 @@ int PageNo(Annotation*);
 RectF GetBounds(Annotation*);
 RectF GetRect(Annotation*);
 void SetRect(Annotation*, RectF);
+// The annotation by itself, at the page zoom. 32bpp top-down BGRA, premultiplied
+// alpha. Caller DeleteObject. nullptr if it cannot be drawn quickly.
+HBITMAP RenderAnnotationPreviewBitmap(Annotation* annot, float zoom, int rotation);
 void SetLine(Annotation*, PointF a, PointF b);
 void SetQuadPointsAsRect(Annotation*, const Vec<RectF>&);
 // Vec<Annotation*> FilterAnnotationsForPage(Vec<Annotation*>* annots, int pageNo);
@@ -131,6 +134,7 @@ void SetLineStartStyles(Annotation*, int start);
 void DeleteAnnotation(Annotation*);
 bool AnnotationCanBeMoved(AnnotationType);
 bool AnnotationCanBeResized(AnnotationType);
+bool AnnotationContentsEqual(Annotation*, const char* text);
 bool AnnotationSupportsColor(AnnotationType);
 bool IsPdfTextMarkupAnnotation(AnnotationType);
 bool IsPdfTextMarkupAnnotation(Annotation* annot);

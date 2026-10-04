@@ -97,6 +97,10 @@ Annotation* EngineMupdfCreateAnnotation(EngineBase*, int pageNo, PointF pos, Ann
 Annotation* EngineMupdfCreateAnnotationInRect(EngineBase*, int pageNo, RectF rect, AnnotCreateArgs* args);
 Annotation* EngineMupdfCreateAnnotationInkStroke(EngineBase*, int pageNo, PointF* pts, int count,
                                                  AnnotCreateArgs* args);
+Annotation* EngineMupdfCreateAnnotationInkStrokes(EngineBase*, int pageNo, PointF* pts, const int* counts, int nstrokes,
+                                                  AnnotCreateArgs* args, float borderWidth);
+// Photo signature: a stamp whose appearance is the PNG, with contents "Signature".
+Annotation* EngineMupdfCreateAnnotationStampPng(EngineBase*, int pageNo, RectF rect, const ByteSlice& png);
 void EngineMupdfGetAnnotations(EngineBase*, Vec<Annotation*>&);
 bool EngineMupdfHasUnsavedAnnotations(EngineBase*);
 bool EngineMupdfHasUnsavedPdfChanges(EngineBase*);

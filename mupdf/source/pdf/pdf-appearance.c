@@ -28,6 +28,7 @@
 #include <float.h>
 #include <limits.h>
 #include <string.h>
+
 #include <time.h>
 
 #include <stdio.h>
@@ -3722,8 +3723,15 @@ void pdf_annot_pop_and_discard_local_xref(fz_context *ctx, pdf_annot *annot)
 	if (doc->local_xref)
 		fz_write_printf(ctx, fz_stddbg(ctx), "pop and discard local_xref for annot\n");
 #endif
-	--doc->local_xref_nesting;
-	assert(doc->local_xref_nesting == 0);
+	/* A resynthesis that starts while another appearance update still holds the
+	 * local xref must only undo its own push. Discarding here asserts. */
+	if (doc->local_xref_nesting > 1)
+	{
+		--doc->local_xref_nesting;
+		return;
+	}
+	if (doc->local_xref_nesting > 0)
+		--doc->local_xref_nesting;
 	pdf_drop_local_xref_and_resources(ctx, doc);
 }
 

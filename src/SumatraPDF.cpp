@@ -94,6 +94,7 @@
 #include "WordLookup.h"
 #include "AiTocApi.h"
 #include "InlineTranslate.h"
+#include "HandwrittenSignature.h"
 #include "OcrService.h"
 #include "AiToc.h"
 #include "AppDialogTheme.h"
@@ -5336,7 +5337,11 @@ void MainWindowRerenderAnnotationChange(MainWindow* win, int pageNo, Annotation*
         gRenderCache->CancelRendering(dm);
     }
     dm->RenderVisibleParts();
-    win->RedrawAll(true);
+    if (win->annotationBeingResized || win->annotResizePreview) {
+        InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+    } else {
+        win->RedrawAll(true);
+    }
 }
 
 static void RerenderEverything() {
@@ -5784,6 +5789,7 @@ static void CloseDocumentInCurrentTab(MainWindow* win, bool keepUIEnabled, bool 
 
     CloseWordLookup();
     CloseInlineTranslatePopup();
+    HandwrittenSignatureCancelPlace(win);
 
     // TODO: this can cause a mouse capture to stick around when called from LoadModelIntoTab (cf. OnSelectionStop)
     win->mouseAction = MouseAction::None;
@@ -9140,6 +9146,9 @@ static bool FrameOnKeydown(MainWindow* win, WPARAM key, LPARAM lp) {
     }
 
     if (VK_ESCAPE == key) {
+        if (HandwrittenSignatureIsPlacing(win)) {
+            HandwrittenSignatureCancelPlace(win);
+        }
         if (win->ocrRegionPending || win->mouseAction == MouseAction::OcrRegion) {
             OcrCancelRegionSelect(win);
         }
@@ -12424,6 +12433,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                 openAnnotationEdit = IsShiftPressed();
             }
         } break;
+
+        case CmdAddHandwrittenSignature:
+            HandwrittenSignatureOpen(win);
+            return 0;
 
             // Note: duplicated in OnWindowContextMenu because slightly different handling
         case CmdCreateAnnotText:

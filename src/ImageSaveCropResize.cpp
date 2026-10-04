@@ -5,6 +5,7 @@
 #include "utils/ScopedWin.h"
 #include "utils/FileUtil.h"
 #include "utils/WinUtil.h"
+#include "utils/WinDynCalls.h"
 #include "utils/Dpi.h"
 #include "utils/GdiPlusUtil.h"
 #include "utils/GuessFileType.h"
@@ -30,7 +31,6 @@
 #include "Commands.h"
 #include "SumatraConfig.h"
 #include "Theme.h"
-#include "DarkModeSubclass.h"
 #include "Translations.h"
 #include "ImageSaveCropResize.h"
 
@@ -134,10 +134,17 @@ struct ImageEditWindow {
     HWND hwndPathLabel = nullptr;
     HWND hwndDestEdit = nullptr;
     HWND hwndBrowseBtn = nullptr;
-    HWND hwndInfoLabel = nullptr;
+    // Size line is not a control. A STATIC (even a hidden one) plus the window
+    // background brush paints a second plate under the glyphs.
+    char* infoText = nullptr;
+    Rect infoRc;
+    HBRUSH chromeBrush = nullptr;
+    COLORREF chromeColor = 0;
     Button* btnSave = nullptr;
     Button* btnCrop = nullptr;   // "Crop" or "Apply Crop"
     Button* btnResize = nullptr; // "Resize" or "Apply Resize"
+    Button* btnRotateLeft = nullptr;
+    Button* btnRotateRight = nullptr;
     DropDown* dropFormat = nullptr;
     Vec<int> formatIndices; // maps dropdown index to gImageFormats index
 
@@ -181,18 +188,30 @@ struct ImageEditWindow {
     HFONT hFont = nullptr;
     int dpi = 96;
     bool fontOwned = false;
+    AppDialogBrushes brushes;
+
+    // Signature photos: Apply Crop returns the bitmap and closes this window.
+    ImageCropDoneFn cropDone = nullptr;
+    void* cropDoneUser = nullptr;
 
     ImageEditWindow() = default;
     ~ImageEditWindow() {
         delete srcBitmap;
         free(filePath);
+        str::Free(infoText);
+        if (chromeBrush) {
+            DeleteObject(chromeBrush);
+        }
         delete btnSave;
         delete btnCrop;
         delete btnResize;
+        delete btnRotateLeft;
+        delete btnRotateRight;
         delete dropFormat;
         if (fontOwned && hFont) {
             DeleteObject(hFont);
         }
+        brushes.Destroy();
     }
 };
 
@@ -224,9 +243,6 @@ static void ApplyImageFont(ImageEditWindow* ew, int dpi) {
     if (ew->hwndBrowseBtn) {
         SendMessageW(ew->hwndBrowseBtn, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
     }
-    if (ew->hwndInfoLabel) {
-        SendMessageW(ew->hwndInfoLabel, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
-    }
     if (ew->btnSave && ew->btnSave->hwnd) {
         SendMessageW(ew->btnSave->hwnd, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
     }
@@ -235,6 +251,12 @@ static void ApplyImageFont(ImageEditWindow* ew, int dpi) {
     }
     if (ew->btnResize && ew->btnResize->hwnd) {
         SendMessageW(ew->btnResize->hwnd, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
+    }
+    if (ew->btnRotateLeft && ew->btnRotateLeft->hwnd) {
+        SendMessageW(ew->btnRotateLeft->hwnd, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
+    }
+    if (ew->btnRotateRight && ew->btnRotateRight->hwnd) {
+        SendMessageW(ew->btnRotateRight->hwnd, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
     }
     if (ew->dropFormat && ew->dropFormat->hwnd) {
         SendMessageW(ew->dropFormat->hwnd, WM_SETFONT, (WPARAM)ew->hFont, FALSE);
@@ -367,6 +389,34 @@ static TempStr FormatResizeInfoTemp(int srcW, int srcH, int newW, int newH) {
     return str::FormatTemp("%d x %d => %d x %d (%.2f%% x %.2f%%)", srcW, srcH, newW, newH, pctW, pctH);
 }
 
+// Title-bar / dialog chrome. The window background (#ebe6da on Light-Warm) is a
+// darker plate; filling the size line with it looks like a label chip.
+static HBRUSH ImageEditChromeBrush(ImageEditWindow* ew) {
+    COLORREF col = ThemeChromeBackgroundColor();
+    if (!ew->chromeBrush || ew->chromeColor != col) {
+        if (ew->chromeBrush) {
+            DeleteObject(ew->chromeBrush);
+        }
+        ew->chromeBrush = CreateSolidBrush(col);
+        ew->chromeColor = col;
+    }
+    return ew->chromeBrush;
+}
+
+static void FillControlStrip(ImageEditWindow* ew, HDC hdc) {
+    if (!ew || !hdc || ew->imgAreaH <= 0) {
+        return;
+    }
+    RECT crc{};
+    GetClientRect(ew->hwnd, &crc);
+    RECT ctrlRc{0, ew->imgAreaH, crc.right, crc.bottom};
+    HBRUSH bg = ImageEditChromeBrush(ew);
+    if (!bg) {
+        bg = GetSysColorBrush(COLOR_BTNFACE);
+    }
+    FillRect(hdc, &ctrlRc, bg);
+}
+
 static void UpdateInfoLabel(ImageEditWindow* ew) {
     TempStr s;
     if (ew->mode == ImageEditMode::Save) {
@@ -376,7 +426,39 @@ static void UpdateInfoLabel(ImageEditWindow* ew) {
     } else {
         s = FormatResizeInfoTemp(ew->imgW, ew->imgH, ew->newW, ew->newH);
     }
-    SetWindowTextA(ew->hwndInfoLabel, s);
+    str::ReplaceWithCopy(&ew->infoText, s);
+    if (!ew->hwnd) {
+        return;
+    }
+    LayoutControls(ew);
+    RECT rc{ew->infoRc.x, ew->infoRc.y, ew->infoRc.x + ew->infoRc.dx, ew->infoRc.y + ew->infoRc.dy};
+    RECT client{};
+    GetClientRect(ew->hwnd, &client);
+    rc.right = client.right;
+    if (rc.bottom < rc.top + 1) {
+        rc.bottom = rc.top + 1;
+    }
+    InvalidateRect(ew->hwnd, &rc, TRUE);
+}
+
+// Glyphs only. The dialog chrome is already in the DC; do not fill behind the text.
+static void PaintInfoLabel(ImageEditWindow* ew, HDC hdc) {
+    if (!ew || !ew->infoText || !ew->infoText[0] || !hdc) {
+        return;
+    }
+    if (ew->infoRc.dx <= 0 || ew->infoRc.dy <= 0) {
+        return;
+    }
+    WCHAR* text = ToWStrTemp(ew->infoText);
+    if (!text || !text[0]) {
+        return;
+    }
+    RECT rc{ew->infoRc.x, ew->infoRc.y, ew->infoRc.x + ew->infoRc.dx, ew->infoRc.y + ew->infoRc.dy};
+    HFONT old = (HFONT)SelectObject(hdc, ew->hFont);
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, ThemeWindowTextColor());
+    DrawTextW(hdc, text, -1, &rc, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_NOPREFIX | DT_END_ELLIPSIS);
+    SelectObject(hdc, old);
 }
 
 // invalidate only the image area, not the control area below
@@ -627,20 +709,20 @@ static HCURSOR GetCursorForEdge(DragEdge edge) {
     switch (edge) {
         case DragEdge::Left:
         case DragEdge::Right:
-            return LoadCursor(nullptr, IDC_SIZEWE);
+            return GetCachedCursor(IDC_SIZEWE);
         case DragEdge::Top:
         case DragEdge::Bottom:
-            return LoadCursor(nullptr, IDC_SIZENS);
+            return GetCachedCursor(IDC_SIZENS);
         case DragEdge::TopLeft:
         case DragEdge::BottomRight:
-            return LoadCursor(nullptr, IDC_SIZENWSE);
+            return GetCachedCursor(IDC_SIZENWSE);
         case DragEdge::TopRight:
         case DragEdge::BottomLeft:
-            return LoadCursor(nullptr, IDC_SIZENESW);
+            return GetCachedCursor(IDC_SIZENESW);
         case DragEdge::Move:
-            return LoadCursor(nullptr, IDC_SIZEALL);
+            return GetCachedCursor(IDC_SIZEALL);
         default:
-            return LoadCursor(nullptr, IDC_ARROW);
+            return GetCachedCursor(IDC_ARROW);
     }
 }
 
@@ -825,8 +907,18 @@ static void LayoutControls(ImageEditWindow* ew) {
     MoveWindow(ew->hwndBrowseBtn, x + w - browseW, y, browseW, editH, TRUE);
     y += editH + rowPad;
 
-    // row 3: info label, cancel, save
-    // layout buttons first to know where info label must stop
+    // row 3: rotate on the left, save / crop / resize on the right
+    int leftX = x;
+    if (ew->btnRotateLeft) {
+        Size sz = ew->btnRotateLeft->GetIdealSize();
+        ew->btnRotateLeft->SetBounds({leftX, y, sz.dx, sz.dy});
+        leftX += sz.dx + gap;
+    }
+    if (ew->btnRotateRight) {
+        Size sz = ew->btnRotateRight->GetIdealSize();
+        ew->btnRotateRight->SetBounds({leftX, y, sz.dx, sz.dy});
+        leftX += sz.dx + gap;
+    }
     int bx = cRc.dx - btnPad;
     if (ew->btnSave) {
         // right-to-left: Resize, Crop, [Format], Save
@@ -852,22 +944,127 @@ static void LayoutControls(ImageEditWindow* ew) {
         ew->btnSave->SetBounds({bx, y, szSave.dx, szSave.dy});
     }
 
-    // size info label to its text, but don't overlap buttons
-    HDC hdc = GetDC(ew->hwndInfoLabel);
-    HFONT oldFont = (HFONT)SelectObject(hdc, ew->hFont);
-    char buf[256];
-    int textLen = GetWindowTextA(ew->hwndInfoLabel, buf, dimof(buf));
-    SIZE textSize{};
-    GetTextExtentPoint32A(hdc, buf, textLen, &textSize);
-    SelectObject(hdc, oldFont);
-    ReleaseDC(ew->hwndInfoLabel, hdc);
-    int textPad = ImgPx(ew, 8);
-    int maxLabelW = bx - x - textPad;
-    int labelW = std::min((int)textSize.cx + textPad, maxLabelW);
+    // One line, with a clear gap after Rotate Right. A tight box wraps the
+    // tail (" , 0") and the next line shows up as dots under the first digits.
+    int rowH = labelH;
+    if (ew->btnRotateLeft) {
+        rowH = ew->btnRotateLeft->GetIdealSize().dy;
+    } else if (ew->btnSave) {
+        rowH = ew->btnSave->GetIdealSize().dy;
+    }
+    int infoGap = ImgPx(ew, 14);
+    int textW = 0;
+    if (ew->infoText && ew->infoText[0]) {
+        HDC hdc = GetDC(ew->hwnd);
+        HFONT oldFont = (HFONT)SelectObject(hdc, ew->hFont);
+        RECT trc{0, 0, 0, 0};
+        WCHAR* infoW = ToWStrTemp(ew->infoText);
+        DrawTextW(hdc, infoW, -1, &trc, DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
+        textW = trc.right - trc.left;
+        SelectObject(hdc, oldFont);
+        ReleaseDC(ew->hwnd, hdc);
+    }
+    int textPad = ImgPx(ew, 16);
+    int infoLeft = leftX + infoGap;
+    int infoRight = bx - infoGap;
+    int maxLabelW = infoRight - infoLeft;
+    int labelW = textW + textPad;
+    if (maxLabelW >= 0 && labelW > maxLabelW) {
+        labelW = maxLabelW;
+    }
     if (labelW < 0) {
         labelW = 0;
     }
-    MoveWindow(ew->hwndInfoLabel, x, y + gap, labelW, labelH, TRUE);
+    ew->infoRc = {infoLeft, y, labelW, rowH};
+}
+
+static bool IsCropChanged(ImageEditWindow* ew);
+static void UpdateModeButtons(ImageEditWindow* ew);
+
+static void ClampCropToImage(ImageEditWindow* ew) {
+    if (ew->imgW < 1 || ew->imgH < 1) {
+        return;
+    }
+    if (ew->cropX < 0) {
+        ew->cropX = 0;
+    }
+    if (ew->cropY < 0) {
+        ew->cropY = 0;
+    }
+    if (ew->cropX >= ew->imgW) {
+        ew->cropX = 0;
+    }
+    if (ew->cropY >= ew->imgH) {
+        ew->cropY = 0;
+    }
+    if (ew->cropW < 1 || ew->cropX + ew->cropW > ew->imgW) {
+        ew->cropW = ew->imgW - ew->cropX;
+    }
+    if (ew->cropH < 1 || ew->cropY + ew->cropH > ew->imgH) {
+        ew->cropH = ew->imgH - ew->cropY;
+    }
+}
+
+// clockwise is Rotate Right. The crop rectangle turns with the picture.
+static void RotateSource(ImageEditWindow* ew, bool clockwise) {
+    if (!ew->srcBitmap) {
+        return;
+    }
+    int oldW = ew->imgW;
+    int oldH = ew->imgH;
+    if (oldW < 1 || oldH < 1) {
+        return;
+    }
+    bool fullCrop = !IsCropChanged(ew);
+    int cx = ew->cropX;
+    int cy = ew->cropY;
+    int cw = ew->cropW;
+    int ch = ew->cropH;
+    bool sizeMatched = ew->newW == oldW && ew->newH == oldH;
+    ew->srcBitmap->RotateFlip(clockwise ? Gdiplus::Rotate90FlipNone : Gdiplus::Rotate270FlipNone);
+    ew->imgW = (int)ew->srcBitmap->GetWidth();
+    ew->imgH = (int)ew->srcBitmap->GetHeight();
+    if (fullCrop) {
+        ew->cropX = 0;
+        ew->cropY = 0;
+        ew->cropW = ew->imgW;
+        ew->cropH = ew->imgH;
+    } else if (clockwise) {
+        ew->cropX = oldH - cy - ch;
+        ew->cropY = cx;
+        ew->cropW = ch;
+        ew->cropH = cw;
+    } else {
+        ew->cropX = cy;
+        ew->cropY = oldW - cx - cw;
+        ew->cropW = ch;
+        ew->cropH = cw;
+    }
+    ClampCropToImage(ew);
+    if (sizeMatched) {
+        ew->newW = ew->imgW;
+        ew->newH = ew->imgH;
+    } else {
+        int t = ew->newW;
+        ew->newW = ew->newH;
+        ew->newH = t;
+    }
+    ew->isDragging = false;
+    ew->dragEdge = DragEdge::None;
+    ew->hoverEdge = DragEdge::None;
+    CalcImageLayout(ew);
+    UpdateModeButtons(ew);
+    UpdateInfoLabel(ew);
+    LayoutControls(ew);
+    InvalidateImageArea(ew);
+}
+
+static void OnRotateLeft(ImageEditWindow* ew) {
+    RotateSource(ew, false);
+}
+
+static void OnRotateRight(ImageEditWindow* ew) {
+    RotateSource(ew, true);
 }
 
 static void OnBrowse(ImageEditWindow* ew) {
@@ -1070,7 +1267,12 @@ static void OnSave(ImageEditWindow* ew) {
     GetWindowTextW(ew->hwndDestEdit, rawDestW, MAX_PATH);
     TempStr rawDest = ToUtf8Temp(rawDestW);
     if (str::IsEmpty(rawDest)) {
-        return;
+        OnBrowse(ew);
+        GetWindowTextW(ew->hwndDestEdit, rawDestW, MAX_PATH);
+        rawDest = ToUtf8Temp(rawDestW);
+        if (str::IsEmpty(rawDest)) {
+            return;
+        }
     }
 
     // ensure extension matches selected format
@@ -1125,6 +1327,12 @@ static void OnSave(ImageEditWindow* ew) {
 
     if (!saved) {
         MessageBoxWarning(ew->hwnd, "Failed to save image", "Save Image");
+        return;
+    }
+    UpdateSaveButtonText(ew);
+
+    // A signature photo still has to come back through Apply Crop. Saving only writes the file.
+    if (ew->cropDone) {
         return;
     }
 
@@ -1186,9 +1394,12 @@ static bool IsResizeChanged(ImageEditWindow* ew) {
 static void UpdateModeButtons(ImageEditWindow* ew) {
     if (ew->mode == ImageEditMode::Crop) {
         ew->btnCrop->SetText(_TRA("Apply Crop"));
-        ew->btnCrop->SetIsEnabled(IsCropChanged(ew));
-        ew->btnResize->SetText(_TRA("Resize"));
-        ew->btnResize->SetIsEnabled(true);
+        // A signature crop can accept the whole picture, so Apply stays enabled.
+        ew->btnCrop->SetIsEnabled(IsCropChanged(ew) || ew->cropDone != nullptr);
+        if (ew->btnResize) {
+            ew->btnResize->SetText(_TRA("Resize"));
+            ew->btnResize->SetIsEnabled(true);
+        }
     } else if (ew->mode == ImageEditMode::Resize) {
         ew->btnCrop->SetText(_TRA("Crop"));
         ew->btnCrop->SetIsEnabled(true);
@@ -1283,8 +1494,35 @@ static void SwitchToResizeMode(ImageEditWindow* ew) {
     SetFocus(ew->hwnd);
 }
 
+static Bitmap* CloneCropResult(ImageEditWindow* ew) {
+    if (!ew || !ew->srcBitmap || ew->cropW <= 0 || ew->cropH <= 0) {
+        return nullptr;
+    }
+    if (!IsCropChanged(ew)) {
+        return ew->srcBitmap->Clone(0, 0, ew->imgW, ew->imgH, PixelFormat32bppARGB);
+    }
+    Gdiplus::Rect srcRect(ew->cropX, ew->cropY, ew->cropW, ew->cropH);
+    return ew->srcBitmap->Clone(srcRect, PixelFormat32bppARGB);
+}
+
 static void OnCropButton(ImageEditWindow* ew) {
     if (ew->mode == ImageEditMode::Crop) {
+        if (ew->cropDone) {
+            Bitmap* cropped = CloneCropResult(ew);
+            ImageCropDoneFn fn = ew->cropDone;
+            void* user = ew->cropDoneUser;
+            ew->cropDone = nullptr;
+            ew->cropDoneUser = nullptr;
+            if (cropped && fn) {
+                fn(cropped, user);
+            } else {
+                delete cropped;
+            }
+            if (ew->hwnd) {
+                DestroyWindow(ew->hwnd);
+            }
+            return;
+        }
         ApplyCrop(ew);
     } else {
         SwitchToCropMode(ew);
@@ -1377,6 +1615,10 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 LayoutControls(ew);
                 if (ew->mode == ImageEditMode::Crop) {
                     InvalidateImageArea(ew);
+                    RECT crc{};
+                    GetClientRect(hwnd, &crc);
+                    RECT ctrl{0, ew->imgAreaH, crc.right, crc.bottom};
+                    InvalidateRect(hwnd, &ctrl, TRUE);
                 } else {
                     InvalidateRect(hwnd, nullptr, TRUE);
                 }
@@ -1409,6 +1651,8 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             SelectObject(memDC, oldBmp);
             DeleteObject(memBmp);
             DeleteDC(memDC);
+            FillControlStrip(ew, hdc);
+            PaintInfoLabel(ew, hdc);
             EndPaint(hwnd, &ps);
             return 0;
         }
@@ -1418,17 +1662,26 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (!ew) return 0;
             // paint control area background, skip image area (double-buffered)
             HDC hdc = (HDC)wp;
-            RECT crc;
-            GetClientRect(hwnd, &crc);
-            RECT ctrlRc = {0, ew->imgAreaH, crc.right, crc.bottom};
-            FillRect(hdc, &ctrlRc, GetSysColorBrush(COLOR_BTNFACE));
+            FillControlStrip(ew, hdc);
+            PaintInfoLabel(ew, hdc);
             return 1;
         }
 
-        case WM_CTLCOLORSTATIC: {
-            HDC hdcStatic = (HDC)wp;
-            SetBkMode(hdcStatic, TRANSPARENT);
-            return (LRESULT)GetSysColorBrush(COLOR_BTNFACE);
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORBTN:
+        case WM_CTLCOLOREDIT:
+        case WM_CTLCOLORDLG: {
+            ew = FindImageEditWindowByHwnd(hwnd);
+            if (!ew) {
+                break;
+            }
+            HBRUSH chrome = ImageEditChromeBrush(ew);
+            HBRUSH br = AppDialogCtlColorBrush(msg, wp, lp, chrome ? chrome : ew->brushes.background,
+                                               ew->brushes.control, ew->hwndDestEdit);
+            if (br) {
+                return (LRESULT)br;
+            }
+            return DefWindowProc(hwnd, msg, wp, lp);
         }
 
         case WM_MOUSEMOVE: {
@@ -1774,6 +2027,7 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_DESTROY:
             ew = FindImageEditWindowByHwnd(hwnd);
             if (ew) {
+                UnregisterAppDialogForTheme(hwnd);
                 gImageEditWindows.Remove(ew);
                 delete ew;
             }
@@ -1785,10 +2039,34 @@ LRESULT CALLBACK WndProcImageEdit(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return 0;
 }
 
-void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePath, RenderedBitmap* rbmp,
-                         bool selectPdf) {
-    if (!win) {
+static void ImageEditApplyFieldTheme(ImageEditWindow* ew) {
+    if (!ew || !ew->hwndDestEdit || !DynSetWindowTheme) {
         return;
+    }
+    // A themed EDIT ignores WM_CTLCOLOREDIT and stays COLOR_WINDOW, which is
+    // white on Warm. An empty theme lets the field brush show through.
+    if (ThemeUsesDarkChrome()) {
+        DynSetWindowTheme(ew->hwndDestEdit, nullptr, nullptr);
+    } else {
+        DynSetWindowTheme(ew->hwndDestEdit, L"", L"");
+    }
+}
+
+static void ImageEditThemeRefreshCb(HWND hwnd, void* ctx) {
+    auto* ew = (ImageEditWindow*)ctx;
+    if (!ew) {
+        return;
+    }
+    ew->brushes.Recreate();
+    AppDialogApplyChrome(hwnd);
+    ImageEditApplyFieldTheme(ew);
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
+}
+
+HWND ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePath, RenderedBitmap* rbmp,
+                         bool selectPdf, ImageCropDoneFn cropDone, void* cropDoneUser) {
+    if (!win) {
+        return nullptr;
     }
 
     ProbeImageFormats();
@@ -1800,34 +2078,34 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
         // create GDI+ bitmap from RenderedBitmap
         HBITMAP hbmp = rbmp->GetBitmap();
         if (!hbmp) {
-            return;
+            return nullptr;
         }
         bmp = new Bitmap(hbmp, nullptr);
         if (!bmp || bmp->GetWidth() == 0) {
             delete bmp;
-            return;
+            return nullptr;
         }
     } else {
         // load from current tab's file
         if (!filePath) {
             WindowTab* tab = win->CurrentTab();
             if (!tab || !tab->filePath) {
-                return;
+                return nullptr;
             }
             Kind engineType = tab->GetEngineType();
             if (engineType != kindEngineImage) {
-                return;
+                return nullptr;
             }
             filePath = tab->filePath;
         }
         ByteSlice data = file::ReadFile(filePath);
         if (data.empty()) {
-            return;
+            return nullptr;
         }
         bmp = BitmapFromData(data);
         data.Free();
         if (!bmp) {
-            return;
+            return nullptr;
         }
     }
 
@@ -1835,11 +2113,13 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
     int imgH = (int)bmp->GetHeight();
     if (imgW <= 0 || imgH <= 0) {
         delete bmp;
-        return;
+        return nullptr;
     }
 
     auto* ew = new ImageEditWindow();
     ew->mode = mode;
+    ew->cropDone = cropDone;
+    ew->cropDoneUser = cropDoneUser;
     ew->fromRenderedBitmap = fromRenderedBitmap;
     ew->filePath = filePath ? str::Dup(filePath) : nullptr;
     ew->srcBitmap = bmp;
@@ -1895,8 +2175,14 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
     if (winW > screenW) {
         winW = screenW;
     }
-    if (winH > screenH) {
-        winH = screenH;
+    // A phone photo is taller than the screen. Open at two thirds so the
+    // window does not sit edge to edge; the picture scales to fit.
+    int maxH = screenH * 2 / 3;
+    if (maxH < ImgPx(ew, 360)) {
+        maxH = screenH;
+    }
+    if (winH > maxH) {
+        winH = maxH;
     }
 
     const WCHAR* title = L"Save Image";
@@ -1910,7 +2196,7 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
     if (!hwnd) {
         gImageEditWindows.Remove(ew);
         delete ew;
-        return;
+        return nullptr;
     }
 
     ew->hwnd = hwnd;
@@ -1947,9 +2233,8 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
     } else {
         infoStr = FormatResizeInfoTemp(imgW, imgH, imgW, imgH);
     }
-    ew->hwndInfoLabel = CreateWindowExW(0, L"STATIC", ToWStrTemp(infoStr), WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, 0, 0,
-                                        hwnd, nullptr, h, nullptr);
-    SendMessageW(ew->hwndInfoLabel, WM_SETFONT, (WPARAM)ew->hFont, TRUE);
+    // No STATIC: its background is the window color, a plate under the glyphs.
+    str::ReplaceWithCopy(&ew->infoText, infoStr);
 
     // buttons
     {
@@ -1972,7 +2257,8 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
         btn->onClick = MkFunc0<ImageEditWindow>(OnCropButton, ew);
         ew->btnCrop = btn;
     }
-    {
+    // A signature photo is sized when it is placed. Resize only confuses that step.
+    if (!cropDone) {
         auto* btn = new Button();
         Button::CreateArgs args;
         args.parent = hwnd;
@@ -1981,6 +2267,26 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
         btn->Create(args);
         btn->onClick = MkFunc0<ImageEditWindow>(OnResizeButton, ew);
         ew->btnResize = btn;
+    }
+    {
+        auto* btn = new Button();
+        Button::CreateArgs args;
+        args.parent = hwnd;
+        args.font = ew->hFont;
+        args.text = _TRA("Rotate Left");
+        btn->Create(args);
+        btn->onClick = MkFunc0<ImageEditWindow>(OnRotateLeft, ew);
+        ew->btnRotateLeft = btn;
+    }
+    {
+        auto* btn = new Button();
+        Button::CreateArgs args;
+        args.parent = hwnd;
+        args.font = ew->hFont;
+        args.text = _TRA("Rotate Right");
+        btn->Create(args);
+        btn->onClick = MkFunc0<ImageEditWindow>(OnRotateRight, ew);
+        ew->btnRotateRight = btn;
     }
 
     // format dropdown
@@ -2020,10 +2326,32 @@ void ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
 
     CenterDialog(hwnd, win->hwndFrame);
     HwndEnsureVisible(hwnd);
-    if (UseDarkModeLib()) {
-        DarkMode::setDarkWndSafe(hwnd);
-        DarkMode::setWindowEraseBgSubclass(hwnd);
-    }
-    UpdateWindowCaptionTheme(hwnd);
+    ew->brushes.Create();
+    AppDialogApplyChrome(hwnd);
+    ImageEditApplyFieldTheme(ew);
+    RegisterAppDialogForTheme(hwnd, ImageEditThemeRefreshCb, ew);
     ShowWindow(hwnd, SW_SHOW);
+    return hwnd;
+}
+
+HWND ShowImageCropForBitmap(MainWindow* win, Gdiplus::Bitmap* src, ImageCropDoneFn fn, void* user) {
+    if (!win || !src || !fn) {
+        return nullptr;
+    }
+    int w = (int)src->GetWidth();
+    int h = (int)src->GetHeight();
+    if (w <= 0 || h <= 0) {
+        return nullptr;
+    }
+    HBITMAP hbmp = nullptr;
+    if (src->GetHBITMAP(Gdiplus::Color(255, 255, 255, 255), &hbmp) != Gdiplus::Ok || !hbmp) {
+        if (hbmp) {
+            DeleteObject(hbmp);
+        }
+        return nullptr;
+    }
+    auto* rb = new RenderedBitmap(hbmp, Size(w, h));
+    HWND hwnd = ShowImageEditWindow(win, ImageEditMode::Crop, nullptr, rb, false, fn, user);
+    delete rb;
+    return hwnd;
 }

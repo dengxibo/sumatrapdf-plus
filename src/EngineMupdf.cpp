@@ -317,6 +317,20 @@ static void DropFollowThemePageBitmapCache(FzPageInfo* pi) {
     pi->followThemePageBitmapDevBounds = fz_empty_irect;
 }
 
+// Caller holds renderLock.
+static void DropAnnotRenderCacheUnderRenderLock(fz_context* ctx, FzPageInfo* pi) {
+    if (!pi) {
+        return;
+    }
+    if (pi->displayList) {
+        fz_drop_display_list(ctx, pi->displayList);
+        pi->displayList = nullptr;
+    }
+    PdfDarkModeInvalidatePage(ctx, pi);
+    DropFollowThemePageBitmapCache(pi);
+    InterlockedExchange(&pi->annotRenderCacheStale, 0);
+}
+
 static void SyncFollowThemeLayoutTextbookFastRemap(EngineMupdf* engine, fz_context* ctx) {
     if (!engine || !engine->darkModeEngineCache) {
         return;
@@ -11088,6 +11102,9 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
     {
         ReflowUiDocLock docGuard(this, reflowLoading);
         ReflowRenderLock renderGuard(this, reflowLoading);
+        if (InterlockedCompareExchange(&pageInfo->annotRenderCacheStale, 0, 0) != 0) {
+            DropAnnotRenderCacheUnderRenderLock(ctx, pageInfo);
+        }
 
         if (pageRect) {
             pRect = ToFzRect(*pageRect);
@@ -16089,15 +16106,17 @@ NO_INLINE void MarkNotificationAsModified(EngineMupdf* e, Annotation* annot, Ann
     // cached display list / dark-mode bitmaps captured the old annotations.
     // Light mode rerenders from the page; Match-theme keeps a full-page bitmap
     // keyed only by zoom/rotation, so skip that cache or new shapes/stamps stay invisible.
+    // A dark-mode replay holds renderLock for the whole page. Waiting here on
+    // every drag move freezes the window. Mark the cache stale and let the
+    // render thread drop it when it next takes the lock.
     {
         auto ctx = e->Ctx();
-        ScopedCritSec rl(&e->renderLock);
-        if (pageInfo->displayList) {
-            fz_drop_display_list(ctx, pageInfo->displayList);
-            pageInfo->displayList = nullptr;
+        if (TryEnterCriticalSection(&e->renderLock)) {
+            DropAnnotRenderCacheUnderRenderLock(ctx, pageInfo);
+            LeaveCriticalSection(&e->renderLock);
+        } else {
+            InterlockedExchange(&pageInfo->annotRenderCacheStale, 1);
         }
-        PdfDarkModeInvalidatePage(ctx, pageInfo);
-        DropFollowThemePageBitmapCache(pageInfo);
     }
 }
 

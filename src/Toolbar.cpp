@@ -35,6 +35,7 @@ extern "C" {
 #include "Menu.h"
 #include "SearchAndDDE.h"
 #include "Toolbar.h"
+#include "HandwrittenSignature.h"
 #include "FindBar.h"
 #include "TextToSpeech.h"
 #include "EbookFontConfig.h"
@@ -103,7 +104,7 @@ static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::AnnotSquare, CmdCreateAnnotSquare, _TRN("Rectangle Annotation (Ctrl+click to lock)")},
     {TbIcon::AnnotCircle, CmdCreateAnnotCircle, _TRN("Circle Annotation (Ctrl+click to lock)")},
     {TbIcon::AnnotText, CmdCreateAnnotText, _TRN("Text Annotation (Ctrl+click to lock)")},
-    {TbIcon::AnnotStamp, CmdCreateAnnotStamp, _TRN("Stamp Annotation (Ctrl+click to lock)")},
+    {TbIcon::AnnotSignature, CmdAddHandwrittenSignature, _TRN("Handwritten Signature")},
     {TbIcon::Dictionary, CmdToggleDoubleClickWordLookup, _TRN("Toggle Double-Click Word Lookup")},
     {TbIcon::DisplayFilter, CmdDisplayFilter, _TRN("Enhance Display")},
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
@@ -429,7 +430,7 @@ static bool IsCmdAvailable(MainWindow* win, int cmdId) {
         case CmdCreateAnnotCircle:
         case CmdCreateAnnotLine:
         case CmdCreateAnnotInk:
-        case CmdCreateAnnotStamp:
+        case CmdAddHandwrittenSignature:
             if (!gGlobalPrefs->showAnnotToolbarButtons) {
                 return false;
             }
@@ -1364,10 +1365,10 @@ void UpdateAnnotToolToolbarButtons(MainWindow* win) {
     SetToolbarButtonCheckedState(win, CmdCreateAnnotCircle, false);
     SetToolbarButtonCheckedState(win, CmdCreateAnnotLine, false);
     SetToolbarButtonCheckedState(win, CmdCreateAnnotInk, false);
-    SetToolbarButtonCheckedState(win, CmdCreateAnnotStamp, false);
+    SetToolbarButtonCheckedState(win, CmdAddHandwrittenSignature, HandwrittenSignatureIsPlacing(win));
     int active = win->annotCreateToolCmd;
     if (active == CmdCreateAnnotText || active == CmdCreateAnnotSquare || active == CmdCreateAnnotCircle ||
-        active == CmdCreateAnnotLine || active == CmdCreateAnnotInk || active == CmdCreateAnnotStamp) {
+        active == CmdCreateAnnotLine || active == CmdCreateAnnotInk) {
         SetToolbarButtonCheckedState(win, active, true);
     }
 }

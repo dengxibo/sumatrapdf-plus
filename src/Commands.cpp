@@ -303,6 +303,7 @@ static SeqStrings gCommandNames =
     "CmdToggleThumbnails\0"
     "CmdPickEbookLatinFont\0"
     "CmdPickEbookCjkFont\0"
+    "CmdAddHandwrittenSignature\0"
     "CmdNone\0"
     "\0";
 
@@ -596,6 +597,7 @@ static i32 gCommandIds[] = {
     CmdToggleThumbnails,
     CmdPickEbookLatinFont,
     CmdPickEbookCjkFont,
+    CmdAddHandwrittenSignature,
     CmdNone,
 };
 
@@ -889,6 +891,7 @@ SeqStrings gCommandDescriptions =
     "Show Thumbnails\0"
     "Western Body Font\0"
     "CJK Body Font\0"
+    "Add Handwritten Signature\0"
     "Do nothing\0"
     "\0";
 // clang-format on

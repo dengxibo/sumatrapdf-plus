@@ -199,6 +199,77 @@ RectF GetRect(Annotation* annot) {
     return annot->bounds;
 }
 
+HBITMAP RenderAnnotationPreviewBitmap(Annotation* annot, float zoom, int rotation) {
+    if (!annot || !annot->engine || !annot->pdfannot || zoom <= 0.f) {
+        return nullptr;
+    }
+    EngineMupdf* e = annot->engine;
+    fz_context* ctx = e->Ctx();
+    ScopedCritSec cs(&e->docLock);
+    fz_pixmap* pix = nullptr;
+    HBITMAP hbmp = nullptr;
+    fz_var(pix);
+    fz_try(ctx) {
+        fz_matrix ctm = e->viewctm(annot->pageNo, zoom, rotation);
+        pix = pdf_new_pixmap_from_annot(ctx, annot->pdfannot, ctm, fz_device_rgb(ctx), nullptr, 1);
+        if (pix && pix->n >= 2 && pix->alpha) {
+            int w = fz_pixmap_width(ctx, pix);
+            int h = fz_pixmap_height(ctx, pix);
+            int comps = pix->n - 1;
+            if (w > 0 && h > 0 && w <= 8000 && h <= 8000 && (comps == 1 || comps == 3)) {
+                BITMAPINFO bmi{};
+                bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+                bmi.bmiHeader.biWidth = w;
+                bmi.bmiHeader.biHeight = -h;
+                bmi.bmiHeader.biPlanes = 1;
+                bmi.bmiHeader.biBitCount = 32;
+                bmi.bmiHeader.biCompression = BI_RGB;
+                void* bits = nullptr;
+                hbmp = CreateDIBSection(nullptr, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+                if (hbmp && bits) {
+                    u8* dst = (u8*)bits;
+                    const u8* src = fz_pixmap_samples(ctx, pix);
+                    int stride = pix->stride;
+                    for (int y = 0; y < h; y++) {
+                        const u8* row = src + (ptrdiff_t)y * stride;
+                        u8* out = dst + (ptrdiff_t)y * w * 4;
+                        for (int x = 0; x < w; x++) {
+                            const u8* p = row + x * pix->n;
+                            u8 r, g, b, a;
+                            if (comps == 1) {
+                                r = g = b = p[0];
+                                a = p[1];
+                            } else {
+                                r = p[0];
+                                g = p[1];
+                                b = p[2];
+                                a = p[3];
+                            }
+                            // MuPDF draw output is premultiplied; AlphaBlend wants the same, BGRA.
+                            out[0] = b;
+                            out[1] = g;
+                            out[2] = r;
+                            out[3] = a;
+                            out += 4;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    fz_always(ctx) {
+        fz_drop_pixmap(ctx, pix);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        if (hbmp) {
+            DeleteObject(hbmp);
+            hbmp = nullptr;
+        }
+    }
+    return hbmp;
+}
+
 void SetLine(Annotation* annot, PointF a, PointF b) {
     EngineMupdf* e = annot->engine;
     auto pdfannot = annot->pdfannot;
@@ -227,6 +298,73 @@ void SetLine(Annotation* annot, PointF a, PointF b) {
         return;
     }
     MarkNotificationAsModified(e, annot);
+}
+
+// Ink rects are derived from the stroke list, so moving the box has to move the strokes.
+static void MoveInkListToRect(fz_context* ctx, pdf_annot* annot, RectF oldR, RectF newR) {
+    int nstrokes = pdf_annot_ink_list_count(ctx, annot);
+    if (nstrokes < 1) {
+        return;
+    }
+    int* counts = nullptr;
+    fz_point* pts = nullptr;
+    fz_var(counts);
+    fz_var(pts);
+    fz_try(ctx) {
+        counts = (int*)fz_malloc(ctx, sizeof(int) * (size_t)nstrokes);
+        int total = 0;
+        for (int i = 0; i < nstrokes; i++) {
+            int n = pdf_annot_ink_list_stroke_count(ctx, annot, i);
+            if (n < 0) {
+                n = 0;
+            }
+            counts[i] = n;
+            total += n;
+        }
+        if (total >= 1) {
+            pts = (fz_point*)fz_malloc(ctx, sizeof(fz_point) * (size_t)total);
+            int dst = 0;
+            bool canMap = oldR.dx > 0.01f && oldR.dy > 0.01f && newR.dx > 0.01f && newR.dy > 0.01f;
+            for (int i = 0; i < nstrokes; i++) {
+                for (int k = 0; k < counts[i]; k++) {
+                    fz_point p = pdf_annot_ink_list_stroke_vertex(ctx, annot, i, k);
+                    if (canMap) {
+                        float u = (p.x - oldR.x) / oldR.dx;
+                        float v = (p.y - oldR.y) / oldR.dy;
+                        p.x = newR.x + u * newR.dx;
+                        p.y = newR.y + v * newR.dy;
+                    }
+                    pts[dst++] = p;
+                }
+            }
+            pdf_set_annot_ink_list(ctx, annot, nstrokes, counts, pts);
+        }
+    }
+    fz_always(ctx) {
+        fz_free(ctx, pts);
+        fz_free(ctx, counts);
+    }
+    fz_catch(ctx) {
+        fz_rethrow(ctx);
+    }
+}
+
+bool AnnotationContentsEqual(Annotation* annot, const char* text) {
+    if (!annot || !annot->pdfannot || !annot->engine || !text) {
+        return false;
+    }
+    EngineMupdf* e = annot->engine;
+    auto ctx = e->Ctx();
+    ScopedCritSec cs(&e->docLock);
+    const char* s = nullptr;
+    fz_try(ctx) {
+        s = pdf_annot_contents(ctx, annot->pdfannot);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        return false;
+    }
+    return str::Eq(s, text);
 }
 
 void SetRect(Annotation* annot, RectF r) {
@@ -263,6 +401,8 @@ void SetRect(Annotation* annot, RectF r) {
                     p2 = {rc.x1, rc.y1};
                 }
                 pdf_set_annot_line(ctx, a, p1, p2);
+            } else if (annot->type == AnnotationType::Ink) {
+                MoveInkListToRect(ctx, a, annot->bounds, r);
             } else {
                 pdf_set_annot_rect(ctx, a, rc);
             }
@@ -1385,14 +1525,39 @@ Annotation* EngineMupdfCreateAnnotationInRect(EngineBase* engine, int pageNo, Re
     return annot;
 }
 
-Annotation* EngineMupdfCreateAnnotationInkStroke(EngineBase* engine, int pageNo, PointF* pts, int count,
-                                                 AnnotCreateArgs* args) {
-    if (!pts || count < 2) {
+Annotation* EngineMupdfCreateAnnotationInkStrokes(EngineBase* engine, int pageNo, PointF* pts, const int* counts,
+                                                  int nstrokes, AnnotCreateArgs* args, float borderWidth) {
+    if (!engine || !pts || !counts || nstrokes < 1 || !args) {
+        return nullptr;
+    }
+    Vec<PointF> flat;
+    Vec<int> validCounts;
+    int src = 0;
+    for (int i = 0; i < nstrokes; i++) {
+        int n = counts[i];
+        if (n < 0) {
+            return nullptr;
+        }
+        if (n >= 2) {
+            for (int k = 0; k < n; k++) {
+                flat.Append(pts[src + k]);
+            }
+            validCounts.Append(n);
+        }
+        src += n;
+    }
+    if (validCounts.Size() < 1) {
         return nullptr;
     }
     EngineMupdf* epdf = AsEngineMupdf(engine);
+    if (!epdf) {
+        return nullptr;
+    }
     fz_context* ctx = epdf->Ctx();
     auto pageInfo = epdf->GetFzPageInfo(pageNo, true);
+    if (!pageInfo || !pageInfo->page) {
+        return nullptr;
+    }
     pdf_annot* annot = nullptr;
     {
         ScopedCritSec cs(&epdf->docLock);
@@ -1410,15 +1575,20 @@ Annotation* EngineMupdfCreateAnnotationInkStroke(EngineBase* engine, int pageNo,
                     pdf_set_annot_author(ctx, annot, author);
                 }
             }
-            int nstrokes = 1;
-            int strokeCounts[1] = {count};
-            fz_point* fzpts = (fz_point*)fz_malloc(ctx, sizeof(fz_point) * (size_t)count);
-            for (int i = 0; i < count; i++) {
-                fzpts[i].x = pts[i].x;
-                fzpts[i].y = pts[i].y;
+            int nFlat = flat.Size();
+            fz_point* fzpts = (fz_point*)fz_malloc(ctx, sizeof(fz_point) * (size_t)nFlat);
+            for (int i = 0; i < nFlat; i++) {
+                fzpts[i].x = flat.at(i).x;
+                fzpts[i].y = flat.at(i).y;
             }
-            pdf_set_annot_ink_list(ctx, annot, nstrokes, strokeCounts, fzpts);
+            pdf_set_annot_ink_list(ctx, annot, validCounts.Size(), validCounts.LendData(), fzpts);
             fz_free(ctx, fzpts);
+            if (borderWidth >= 0) {
+                float black[3] = {0, 0, 0};
+                pdf_set_annot_color(ctx, annot, 3, black);
+                pdf_set_annot_border_width(ctx, annot, borderWidth);
+                pdf_set_annot_contents(ctx, annot, "Signature");
+            }
             pdf_update_annot(ctx, annot);
         }
         fz_catch(ctx) {
@@ -1438,6 +1608,81 @@ Annotation* EngineMupdfCreateAnnotationInkStroke(EngineBase* engine, int pageNo,
         SetColor(res, args->col.pdfCol);
     }
     pdf_drop_annot(ctx, annot);
+    return res;
+}
+
+Annotation* EngineMupdfCreateAnnotationInkStroke(EngineBase* engine, int pageNo, PointF* pts, int count,
+                                                 AnnotCreateArgs* args) {
+    if (!pts || count < 2) {
+        return nullptr;
+    }
+    int strokeCounts[1] = {count};
+    return EngineMupdfCreateAnnotationInkStrokes(engine, pageNo, pts, strokeCounts, 1, args, -1.f);
+}
+
+Annotation* EngineMupdfCreateAnnotationStampPng(EngineBase* engine, int pageNo, RectF rect, const ByteSlice& png) {
+    if (!engine || png.empty() || rect.dx < 1.f || rect.dy < 1.f) {
+        return nullptr;
+    }
+    EngineMupdf* epdf = AsEngineMupdf(engine);
+    if (!epdf) {
+        return nullptr;
+    }
+    fz_context* ctx = epdf->Ctx();
+    auto pageInfo = epdf->GetFzPageInfo(pageNo, true);
+    if (!pageInfo || !pageInfo->page) {
+        return nullptr;
+    }
+    pdf_annot* annot = nullptr;
+    {
+        ScopedCritSec cs(&epdf->docLock);
+        fz_image* img = nullptr;
+        fz_buffer* buf = nullptr;
+        fz_var(img);
+        fz_var(buf);
+        fz_try(ctx) {
+            auto page = pdf_page_from_fz_page(ctx, pageInfo->page);
+            annot = pdf_create_annot(ctx, page, PDF_ANNOT_STAMP);
+            pdf_set_annot_modification_date(ctx, annot, time(nullptr));
+            if (pdf_annot_has_author(ctx, annot)) {
+                char* defAuthor = gGlobalPrefs->annotations.defaultAuthor;
+                if (!str::Eq(defAuthor, "(none)")) {
+                    const char* author = getuser();
+                    if (!str::IsEmptyOrWhiteSpace(defAuthor)) {
+                        author = defAuthor;
+                    }
+                    pdf_set_annot_author(ctx, annot, author);
+                }
+            }
+            fz_rect rc = ToFzRect(rect);
+            pdf_set_annot_rect(ctx, annot, rc);
+            buf = fz_new_buffer_from_copied_data(ctx, png.data(), png.size());
+            img = fz_new_image_from_buffer(ctx, buf);
+            pdf_set_annot_stamp_image(ctx, annot, img);
+            pdf_set_annot_contents(ctx, annot, "Signature");
+            pdf_update_annot(ctx, annot);
+        }
+        fz_always(ctx) {
+            fz_drop_image(ctx, img);
+            fz_drop_buffer(ctx, buf);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+            if (annot) {
+                pdf_drop_annot(ctx, annot);
+                annot = nullptr;
+            }
+        }
+    }
+    if (!annot) {
+        return nullptr;
+    }
+    auto res = MakeAnnotationWrapper(epdf, annot, pageNo);
+    MarkNotificationAsModified(epdf, res, AnnotationChange::Add);
+    pdf_drop_annot(ctx, annot);
+    if (res) {
+        res->bounds = rect;
+    }
     return res;
 }
 

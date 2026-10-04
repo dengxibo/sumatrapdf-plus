@@ -32,4 +32,4 @@ COLORREF FloatingToolButtonPressedBg();
 
 void FillFloatingPopupRoundedRect(HDC hdc, const Rect& rc, int radius, COLORREF col);
 void StrokeFloatingPopupRoundedRect(HDC hdc, const Rect& rc, int radius, COLORREF col);
-void UpdateFloatingPopupWindowRgn(HWND hwnd, int cornerRadius);
+void UpdateFloatingPopupWindowRgn(HWND hwnd, int cornerRadius, bool redraw = true);

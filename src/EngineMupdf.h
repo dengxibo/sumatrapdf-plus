@@ -61,6 +61,9 @@ struct FzPageInfo {
     // races inside mupdf's image store on concurrent decode. So renderLock
     // is engine-wide, not per-page.
     fz_display_list* displayList = nullptr;
+    // UI sets this when renderLock is held by a dark-mode replay. The render
+    // thread drops the stale list under that lock instead of blocking the UI.
+    LONG annotRenderCacheStale = 0;
 
     // object-level PDF dark mode page analysis (immutable after build)
     DarkModePageAnalysis* darkModeAnalysis = nullptr;

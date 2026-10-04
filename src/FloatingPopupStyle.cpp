@@ -285,7 +285,7 @@ void StrokeFloatingPopupRoundedRect(HDC hdc, const Rect& rc, int radius, COLORRE
     g.DrawPath(&pen, &path);
 }
 
-void UpdateFloatingPopupWindowRgn(HWND hwnd, int cornerRadius) {
+void UpdateFloatingPopupWindowRgn(HWND hwnd, int cornerRadius, bool redraw) {
     if (!hwnd) {
         return;
     }
@@ -298,7 +298,7 @@ void UpdateFloatingPopupWindowRgn(HWND hwnd, int cornerRadius) {
     }
     int radius = DpiScale(hwnd, cornerRadius);
     HRGN rgn = CreateRoundRectRgn(card.x, card.y, card.x + card.dx + 1, card.y + card.dy + 1, radius, radius);
-    if (!SetWindowRgn(hwnd, rgn, TRUE)) {
+    if (!SetWindowRgn(hwnd, rgn, redraw ? TRUE : FALSE)) {
         DeleteObject(rgn);
     }
 }

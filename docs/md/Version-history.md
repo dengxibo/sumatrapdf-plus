@@ -2,6 +2,35 @@
 
 ## next
 
+## 3.7.38 (2026-10-04)
+
+- 暗黑主题下调整标注大小，不再留下原来图形或选框的残影。
+  Resizing an annotation in a dark theme no longer leaves a ghost of the old shape or of the selection frame.
+- 裁剪窗口的尺寸文字保持一行，直接画在对话框底色上，不再垫一层窗口背景色，并和「向右转」拉开距离。
+  The size line in the crop window stays on one line, drawn on the dialog color with no window-background plate under it, and with space after Rotate Right.
+- 拖动标注外框时，圆、方块等图形跟着外框走，不再等整页重画完才跟上。
+  While dragging an annotation frame, the circle, square, and other shapes stay with the frame instead of waiting for the whole page to redraw.
+- 记住的签名图片改存到 sumatrapdfcache 子目录，不再直接放在程序数据目录里。以前放在外面的图片仍能读到，下次保存会挪进去。
+  The remembered signature image is stored in the sumatrapdfcache folder, not directly in the program data directory. A picture left outside is still read, and the next save moves it in.
+- 没有配置翻译接口时，划词翻译直接打开浏览器，不再先闪一下翻译窗口。
+  With no translation API configured, translating a selection opens the browser directly, without flashing the translation window first.
+- 暗黑主题下拖动标注不再卡住，窗口也不再整屏闪。页面重绘还在进行时，不再让窗口干等，也不再把工具栏和页面一起擦掉重画。
+  Dragging an annotation in a dark theme no longer freezes the window or flashes the whole window. A page redraw that is still running no longer blocks the window, and the toolbar is not erased along with the page.
+- 手写签名可以用手机照片。在签名窗口里选文件、粘贴，或从微信拖进来。裁剪窗口里可以左转、右转，没有调整尺寸，打开时高度约为屏幕的三分之二。路径空着时，保存会先弹出文件对话框。白纸由系统自动去掉，签名窗口没有深浅滑块。按钮是「打开图片」。签名窗口和裁剪窗口的外框跟随四套主题，签字区仍是白纸。按住拖动放到页面上。
+  A handwritten signature can be a phone photo. Pick a file, paste, or drag it in from WeChat on the signature window. The crop window can rotate left or right, has no resize control, and it opens at about two thirds of the screen height. Save asks for a file when the path is empty. The paper is removed automatically, with no darkness slider. The button says Open Image. The signature window and the crop window follow the four themes around the paper, and the writing area stays white. Hold and drag to place it on the page.
+- 翻译弹窗点到窗口外面会关掉，和查词一样。
+  The translation popup closes when you click outside it, the same as word lookup.
+- Ask AI 的回答一次性画到窗口上，窗口不再先闪一下再变高。
+  An Ask AI answer is drawn in one step, so the window no longer flashes before it grows.
+- 工具栏和页面菜单可以手写签名：写一次，按住拖动确定大小。放上页面后即处于编辑状态，可以拖动和缩放。点页面空白处退出编辑。签名和其他标注一样，不必按住 Ctrl 才能点选。按住 Ctrl 再单击仍会打开标注栏。
+  The toolbar and the page menu can add a handwritten signature: draw it once, then hold and drag to set its size. It is selected as soon as it is placed, so it can be moved or resized. Clicking empty page leaves edit mode. A signature is selected with a click, the same as other annotations, without holding Ctrl. Ctrl+click still opens the annotation editor.
+- 缩放标注时，双箭头的正中落在外框线上。拖动外框时，框里的图形会跟着刷新，不再一直停在松开鼠标之前的样子。
+  When resizing an annotation, the center of the double-arrow stays on the frame. The shape inside the frame keeps updating during the drag instead of waiting until the button is released.
+- 工具栏上的手写签名改为羽毛笔图标。线条粗细与旁边的标注按钮一致，图形略收进按钮里。
+  The handwritten-signature toolbar button is a quill. The stroke matches the other annotation buttons, and the drawing sits a little inside the button.
+- 盖章从工具栏拿掉，仍可在页面右键菜单里使用。
+  The stamp button is no longer on the toolbar. It remains in the page context menu.
+
 ## 3.7.37 (2026-10-04)
 
 - 打开文件时粘贴、或从资源管理器拖入超过 260 个字符的路径，不再把文件名截断后提示找不到文件。

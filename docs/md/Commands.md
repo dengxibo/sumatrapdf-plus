@@ -187,7 +187,8 @@ CmdCreateAnnotPopup,,Create Popup Annotation,
 CmdCreateAnnotRedact,,Create Redact Annotation,
 CmdCreateAnnotSquare,,Create Square Annotation,
 CmdCreateAnnotSquiggly,,Create Squiggly Annotation,
-CmdCreateAnnotStamp,,Create Stamp Annotation,toolbar stamp (click to place built-in Draft/Approved/…)
+CmdCreateAnnotStamp,,Create Stamp Annotation,page context menu (click to place built-in Draft/Approved/…)
+CmdAddHandwrittenSignature,,Add Handwritten Signature,toolbar button and page menu: draw a signature, then click the page to place it as ink
 CmdCreateAnnotStrikeOut,,Create Strike Out Annotation,
 CmdCreateAnnotText,,Create Text Annotation,
 CmdCreateAnnotUnderline,"u, U",Create Underline Annotation,
