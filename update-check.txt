@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.36
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.36/SumatraPDF-Plus.exe
-Notes: Selection translate and in-app Ask AI; copy and closing those windows clear the highlight; floating windows follow the screen they are on.
-NotesZh: 划词翻译和问问 AI；复制或关掉这些窗口后选区消失；浮层按所在屏幕缩放。
+Latest: 3.7.37
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.37/SumatraPDF-Plus.exe
+Notes: Sidebar switches among bookmarks, thumbnails, and favorites; find shows a hit strip beside the scrollbar; Match-theme darkens framed textbook paper and keeps photos; read-aloud from the cursor starts at the English word.
+NotesZh: 侧栏可在书签、缩略图、收藏之间切换；查找时滚动条旁显示命中刻度；跟随主题把课文白纸变暗并保留照片；从光标朗读英文时从整个单词开始。
