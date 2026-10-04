@@ -2,6 +2,12 @@
 
 ## next
 
+## 3.7.37 (2026-10-04)
+
+- 查找界面打开时，滚动条左侧留一条位置刻度。蓝色是全部命中，橙色是当前命中。关掉查找后，页面宽度恢复。
+  While the find UI is open, a position strip sits beside the scrollbar. Blue ticks are every hit, and the orange tick is the current hit. Closing find gives that width back to the page.
+- 连续视图里，触控板不足一格的滚动按像素累计。鼠标滚轮一格仍按行滚动，滚到头会翻页。
+  In continuous view, a precision-touchpad delta smaller than one notch accumulates into pixels. A full mouse-wheel notch still scrolls by lines, and turns the page at the edge.
 - 暗色匹配主题下，叠在整页照片上的切片、文字和色块保持原色。章节首页的云朵和标题阴影不再被抠成黑块，白色标题不再反成深色；地图上的地名和图例也能看清。
   In dark Match-theme, slices, text, and shapes laid on a full-page photo keep their original colors. Chapter-opener clouds and title shadows no longer turn into black blots, and a white title stays white. Place names and legends on maps stay readable.
 - 暗色匹配主题下，放在白色方块上的纯色圆章、渐变按钮等平面图形，即使被切成几块，周围的白底也会抠掉，不再留下白色矩形。
@@ -14,9 +20,6 @@
   In dark Match-theme, when a chapter wash is a cream vector fill, title plates and card frames on it also remap that paper. The light rounded block behind Visual Summary is no longer left as-is.
 - 暗色匹配主题下，彩色边框里的课文白纸会换成主题底色，字改成浅色。不再整页保持原样。
   In dark Match-theme, the white paper inside a colored textbook frame becomes the theme background and the type goes light, instead of leaving the whole page in its original colors.
-
-## 3.7.37 (2026-10-04)
-
 - 收藏夹标题超出宽度时，行尾显示省略号，和书签栏一样。
   A favorite title that does not fit ends with an ellipsis, the same as a bookmark.
 - 切换标签时，PDF 内嵌音频会暂停，和朗读、EPUB3 内嵌音频一样。回到该标签后可以接着播。

@@ -354,6 +354,20 @@ ChmModel* MainWindow::AsChm() const {
 void MainWindow::UpdateCanvasSize() {
     Rect rc = ClientRect(hwndCanvas);
     if (buffer && canvasRc == rc) {
+        // The find gutter changes the page width without resizing the canvas window.
+        DisplayModel* dm = AsFixed();
+        if (dm) {
+            Size view = GetViewPortSize();
+            Rect vp = dm->GetViewPort();
+            if (vp.dx != view.dx || vp.dy != view.dy) {
+                dm->SetViewPortSize(view);
+                OnFindViewLayoutChanged(this);
+                ScheduleRepaint(this, 0);
+                if (ClientRect(hwndCanvas) != rc) {
+                    UpdateCanvasSize();
+                }
+            }
+        }
         return;
     }
     canvasRc = rc;

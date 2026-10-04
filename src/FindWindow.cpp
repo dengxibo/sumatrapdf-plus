@@ -1449,6 +1449,7 @@ void ShowFindWindow(MainWindow* win) {
     Rect rc = ClientRect(w->hwnd);
     w->lastClientCx = rc.dx;
     w->lastClientCy = rc.dy;
+    bool opening = !IsWindowVisible(w->hwnd);
     ShowWindow(w->hwnd, SW_SHOW);
     // build/refresh snippet text for the current results-list width
     if (win->findMatches.size() > 0) {
@@ -1464,6 +1465,9 @@ void ShowFindWindow(MainWindow* win) {
         RequestFindCount(win);
     }
     RefreshFindUIStatus(win);
+    if (opening) {
+        win->UpdateCanvasSize();
+    }
 }
 
 void HideFindWindow(MainWindow* win, bool keepSearchState) {
@@ -1474,9 +1478,13 @@ void HideFindWindow(MainWindow* win, bool keepSearchState) {
     if (!win->findWindow) {
         return;
     }
+    bool wasVisible = IsWindowVisible(win->findWindow->hwnd);
     win->findWindow->SavePos();
     ShowWindow(win->findWindow->hwnd, SW_HIDE);
     FindBarResyncActiveEdit(win);
+    if (wasVisible) {
+        win->UpdateCanvasSize();
+    }
 }
 
 bool IsFindWindowVisible(MainWindow* win) {

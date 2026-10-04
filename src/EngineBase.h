@@ -476,6 +476,9 @@ class EngineBase {
     // Build the UTF-16 selection cache from text already extracted by the
     // UTF-8 search path. Never invokes the document engine.
     bool PromoteCachedTextUtf8ForSelection(int pageNo);
+    // One glyph from text already cached for this page. glyph is a UTF-16 code
+    // unit. Does not extract text or build the UTF-16 selection cache.
+    bool PeekCachedGlyphRect(int pageNo, int glyph, Rect* out);
     bool TryGetTextForPage(int pageNo, int* lenOut = nullptr, Rect** coordsOut = nullptr);
     const WCHAR* GetTextForPage(int pageNo, int* lenOut = nullptr, Rect** coordsOut = nullptr);
     bool TryGetTextForPageUtf8(int pageNo, int* lenOut = nullptr, Rect** coordsOut = nullptr,

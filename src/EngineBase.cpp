@@ -482,6 +482,51 @@ bool EngineBase::PromoteCachedTextUtf8ForSelection(int pageNo) {
     return dst->text != nullptr;
 }
 
+bool EngineBase::PeekCachedGlyphRect(int pageNo, int glyph, Rect* out) {
+    if (!out || pageNo < 1 || pageNo > pageCount || glyph < 0) {
+        return false;
+    }
+    ScopedCritSec scope(&textCacheLock);
+    if (pagesText && pageNo <= pagesTextSize) {
+        PageText* pt = &pagesText[pageNo - 1];
+        if (pt->text && pt->coords && glyph < pt->len && !pt->coords[glyph].IsEmpty()) {
+            *out = pt->coords[glyph];
+            return true;
+        }
+    }
+    if (!pagesTextUtf8 || pageNo > pagesTextUtf8Size) {
+        return false;
+    }
+    PageTextUtf8* src = &pagesTextUtf8[pageNo - 1];
+    if (!src->text || !src->coords || src->len <= 0) {
+        return false;
+    }
+    int srcByteLen = src->len;
+    int srcByteIdx = 0;
+    int unit = 0;
+    while (srcByteIdx < srcByteLen) {
+        int runeByteIdx = srcByteIdx;
+        int rune = Utf8CodepointNext(src->text, srcByteLen, srcByteIdx);
+        if (srcByteIdx <= runeByteIdx) {
+            break;
+        }
+        bool hit = unit == glyph;
+        int units = (rune >= 0x10000 && rune <= 0x10ffff) ? 2 : 1;
+        if (!hit && units == 2) {
+            hit = unit + 1 == glyph;
+        }
+        if (hit) {
+            if (src->coords[runeByteIdx].IsEmpty()) {
+                return false;
+            }
+            *out = src->coords[runeByteIdx];
+            return true;
+        }
+        unit += units;
+    }
+    return false;
+}
+
 void EngineBase::ClearTextCache() {
     ScopedCritSec scope(&textCacheLock);
     if (!pagesText && !pagesTextUtf8) {

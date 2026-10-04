@@ -3325,10 +3325,10 @@ static LRESULT CanvasOnMouseWheel(MainWindow* win, UINT msg, WPARAM wp, LPARAM l
         }
     }
 
-    if (dm && vScroll && IsContinuous(dm->GetDisplayMode()) &&
-        (!gGlobalPrefs->smoothScroll || delta % WHEEL_DELTA != 0)) {
-        // Precision touchpads already provide eased, high-frequency deltas.
-        // Do not quantize them to lines or apply a second smooth-scroll timer.
+    if (dm && vScroll && IsContinuous(dm->GetDisplayMode()) && (delta % WHEEL_DELTA) != 0) {
+        // A precision touchpad sends eased deltas smaller than one notch.
+        // A full mouse notch stays on the line-scroll path below, including
+        // turning the page when the view is already at the edge.
         int combinedDelta = delta;
         MSG queued;
         for (int n = 0; n < 64 && PeekMessage(&queued, nullptr, WM_MOUSEWHEEL, WM_MOUSEWHEEL, PM_NOREMOVE); n++) {

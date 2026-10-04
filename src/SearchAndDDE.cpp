@@ -386,6 +386,7 @@ void CloseFindUI(MainWindow* win) {
     if (!win->hwndFindEdit && !win->findThread && !win->findCountThread && !win->findBar && !win->findWindow) {
         return;
     }
+    bool restorePageWidth = FindPositionGutterWidth(win) > 0;
     // drop pending work before any abort that pumps messages (CountEndTask must
     // not restart a scan for the previous tab while we're switching)
     str::FreePtr(&win->findCountPendingText);
@@ -426,6 +427,9 @@ void CloseFindUI(MainWindow* win) {
     ClearFindMatches(win);
     ClearFindSearchProgressCb(win);
     RemoveNotificationsForGroup(win->hwndCanvas, kNotifFindProgress);
+    if (restorePageWidth) {
+        win->UpdateCanvasSize();
+    }
     // ctrl still points at the tab being left when called from SelectionChanging
     // or early LoadModelIntoTab; clear its highlights before switching documents
     if (DisplayModel* dm = win->AsFixed()) {
@@ -2722,7 +2726,12 @@ void PaintAllFindMatches(MainWindow* win, HDC hdc) {
 }
 
 int FindPositionGutterWidth(const MainWindow* win) {
-    if (ScrollbarsAreHidden() || win->presentation != PM_DISABLED) {
+    // Only while find is open, so fit-width stays full the rest of the time.
+    // An empty query still reserves the strip: the first character must not shift the page.
+    if (!win || !win->AsFixed() || win->presentation != PM_DISABLED || ScrollbarsAreHidden()) {
+        return 0;
+    }
+    if (!IsFindUIVisible(const_cast<MainWindow*>(win))) {
         return 0;
     }
     int width = DpiScale(win->hwndCanvas, 12);
@@ -2733,8 +2742,8 @@ int FindPositionGutterWidth(const MainWindow* win) {
     return width;
 }
 
-// Draw in a reserved gutter beside the scrollbar, outside the document viewport.
-// Keep it reserved even with no query so starting/clearing search never moves text.
+// Draw in a gutter beside the scrollbar, outside the document viewport.
+// The gutter exists only while the find UI is visible.
 void PaintFindPositionMarks(MainWindow* win, HDC hdc) {
     int gutterWidth = FindPositionGutterWidth(win);
     if (gutterWidth == 0) {
@@ -2756,13 +2765,18 @@ void PaintFindPositionMarks(MainWindow* win, HDC hdc) {
     if (!engine || pageCount < 1) {
         return;
     }
-    int inset = DpiScale(win->hwndCanvas, 2);
+    // Ticks meet the client edge. The scrollbar's own border stays; covering it flickers when the thumb resizes.
+    int inset = 0;
+    int margin = 0;
     if (ScrollbarsUseOverlay()) {
         int scrollWidth = GetSystemMetrics(SM_CXVSCROLL);
         inset += scrollWidth > 0 ? scrollWidth : DpiScale(win->hwndCanvas, 16);
+    } else {
+        // Classic scrollbar arrows sit outside the thumb's travel.
+        int arrow = GetSystemMetrics(SM_CYVSCROLL);
+        margin = arrow > 0 ? arrow : DpiScale(win->hwndCanvas, 16);
     }
     int width = DpiScale(win->hwndCanvas, 6);
-    int margin = DpiScale(win->hwndCanvas, 18);
     Rect track(win->canvasRc.x + win->canvasRc.dx - inset - width, win->canvasRc.y + margin, width,
                win->canvasRc.dy - 2 * margin);
     if (track.dy <= 0 || track.x < win->canvasRc.x) {
@@ -2772,9 +2786,6 @@ void PaintFindPositionMarks(MainWindow* win, HDC hdc) {
     if (!rows.AppendBlanks(track.dy)) {
         return;
     }
-    int cachedPage = 0;
-    int textLen = 0;
-    Rect* coords = nullptr;
     auto mark = [&](int pageNo, int glyph, u8 kind) {
         if (!dm->ValidPageNo(pageNo)) {
             return;
@@ -2783,21 +2794,13 @@ void PaintFindPositionMarks(MainWindow* win, HDC hdc) {
         if (!pi) {
             return;
         }
-        if (cachedPage != pageNo) {
-            cachedPage = pageNo;
-            textLen = 0;
-            coords = nullptr;
-            // Search already cached this text. Never extract another page or
-            // run OCR from a paint; use the page center if its cache was cleared.
-            if (engine->PromoteCachedTextUtf8ForSelection(pageNo)) {
-                engine->TryGetTextForPage(pageNo, &textLen, &coords);
-            }
-        }
+        // Cached glyph only. A missing cache uses the page center, so paint
+        // never extracts a page or copies its text into the selection cache.
         double pageRatio = 0.5;
-        bool haveGlyph = coords && glyph >= 0 && glyph < textLen && !coords[glyph].IsEmpty();
-        if (haveGlyph) {
+        Rect glyphRc;
+        if (engine->PeekCachedGlyphRect(pageNo, glyph, &glyphRc)) {
             RectF box = engine->Transform(pi->_mediaBox, pageNo, 1.f, dm->GetRotation());
-            RectF hit = engine->Transform(ToRectF(coords[glyph]), pageNo, 1.f, dm->GetRotation());
+            RectF hit = engine->Transform(ToRectF(glyphRc), pageNo, 1.f, dm->GetRotation());
             if (box.dy > 0) {
                 pageRatio = std::clamp((hit.y + hit.dy * 0.5 - box.y) / box.dy, 0.0, 1.0);
             }
@@ -2834,7 +2837,8 @@ void PaintFindPositionMarks(MainWindow* win, HDC hdc) {
     }
     AutoDeleteBrush other = CreateSolidBrush(RGB(0, 145, 230));
     AutoDeleteBrush current = CreateSolidBrush(RGB(255, 90, 35));
-    int height = std::min(track.dy, DpiScale(win->hwndCanvas, 2));
+    // 1 device pixel is hard to see. 2 stays a hairline and does not grow with DPI.
+    int height = 2;
     // Merge coincident hits in pixel space, painting the current hit last.
     for (u8 kind = 1; kind <= 2; kind++) {
         for (int y = 0; y < track.dy; y++) {
