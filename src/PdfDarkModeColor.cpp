@@ -5662,6 +5662,7 @@ fz_pixmap* PdfDarkModeProcessSoftCreamPixmap(fz_context* ctx, fz_pixmap* src, co
 
     fz_pixmap* dst = fz_new_pixmap(ctx, cs, w, h, src->seps, src->alpha);
     fz_copy_pixmap_rect(ctx, dst, src, fz_make_irect(0, 0, w, h), nullptr);
+    PdfDarkModeUnpremultiplyPixmap(dst);
 
     bool fastRgb = cs == rgb || fz_colorspace_is_rgb(ctx, cs);
     bool fastGray = components == 1 || fz_colorspace_is_gray(ctx, cs);
@@ -5724,6 +5725,7 @@ fz_pixmap* PdfDarkModeProcessSoftCreamPixmap(fz_context* ctx, fz_pixmap* src, co
             }
         }
     }
+    PdfDarkModePremultiplyPixmap(dst);
     return dst;
 }
 

@@ -327,6 +327,7 @@ static void v2_transform_pixmap(fz_context* ctx, fz_pixmap* pix, const DarkModeP
     if (!pix || !pix->samples) {
         return;
     }
+    PdfDarkModeUnpremultiplyPixmap(pix);
     fz_colorspace* cs = pix->colorspace ? pix->colorspace : fz_device_rgb(ctx);
     fz_colorspace* rgb = fz_device_rgb(ctx);
     int components = fz_colorspace_n(ctx, cs);
@@ -389,6 +390,7 @@ static void v2_transform_pixmap(fz_context* ctx, fz_pixmap* pix, const DarkModeP
             }
         }
     }
+    PdfDarkModePremultiplyPixmap(pix);
 }
 
 // MRC / OCR text plates are dark ink (mean lum ~0.15–0.25) drawn through a 1-bit ImageMask.
@@ -398,6 +400,7 @@ static void v2_remap_ink_plate(fz_context* ctx, fz_pixmap* pix, const DarkModePa
     if (!pix || !pix->samples) {
         return;
     }
+    PdfDarkModeUnpremultiplyPixmap(pix);
     fz_colorspace* cs = pix->colorspace ? pix->colorspace : fz_device_rgb(ctx);
     fz_colorspace* rgb = fz_device_rgb(ctx);
     int components = fz_colorspace_n(ctx, cs);
@@ -460,6 +463,7 @@ static void v2_remap_ink_plate(fz_context* ctx, fz_pixmap* pix, const DarkModePa
             }
         }
     }
+    PdfDarkModePremultiplyPixmap(pix);
 }
 
 // Photographs that are not inverted still cannot keep a studio-white card.
@@ -468,9 +472,11 @@ static void v2_press_highlights_pixmap(fz_pixmap* pix) {
     if (!pix || !pix->samples || pix->w <= 0 || pix->h <= 0) {
         return;
     }
+    PdfDarkModeUnpremultiplyPixmap(pix);
     int n = pix->n;
     int comps = n - pix->alpha;
     if (comps < 1 || n < 1) {
+        PdfDarkModePremultiplyPixmap(pix);
         return;
     }
     for (int y = 0; y < pix->h; y++) {
@@ -506,6 +512,7 @@ static void v2_press_highlights_pixmap(fz_pixmap* pix) {
             }
         }
     }
+    PdfDarkModePremultiplyPixmap(pix);
 }
 
 static fz_image* v2_build_white_mat_image(fz_context* ctx, fz_image* srcImage, const DarkModePalette& palette) {
@@ -912,6 +919,7 @@ static void v2_recolor_shade_pixmap(fz_pixmap* pix, const DarkModePalette& palet
     if (!pix || !pix->samples || pix->n < 3) {
         return;
     }
+    PdfDarkModeUnpremultiplyPixmap(pix);
     int n = pix->n;
     int samples = 0;
     int shadowish = 0;
@@ -964,6 +972,7 @@ static void v2_recolor_shade_pixmap(fz_pixmap* pix, const DarkModePalette& palet
             px[2] = (unsigned char)(vb < 0 ? 0 : (vb > 255 ? 255 : vb));
         }
     }
+    PdfDarkModePremultiplyPixmap(pix);
 }
 
 // Gradients are not path fills. Leaving them alone keeps a bright swoosh on a

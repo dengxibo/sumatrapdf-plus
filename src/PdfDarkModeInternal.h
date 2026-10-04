@@ -121,3 +121,64 @@ fz_image* PdfDarkModeGetCachedShade(fz_context* ctx, DarkModePageAnalysis* analy
                                     float alpha, fz_irect bounds, const DarkModePalette& palette);
 
 void PdfDarkModeClearPixmapToThemeBackground(fz_context* ctx, fz_pixmap* pix, const DarkModePalette& palette);
+
+// MuPDF pixmaps store premultiplied alpha. Recolor loops read and write straight
+// RGB; without this pair a translucent pixel can end up with color > alpha, and
+// the next masked-image composite hits the debug assert in draw-paint.c.
+static inline void PdfDarkModeUnpremultiplyPixmap(fz_pixmap* pix) {
+    if (!pix || !pix->alpha || !pix->samples || pix->n < 2 || pix->w <= 0 || pix->h <= 0) {
+        return;
+    }
+    int n = pix->n;
+    int comps = n - 1;
+    for (int y = 0; y < pix->h; y++) {
+        unsigned char* row = pix->samples + (size_t)y * (size_t)pix->stride;
+        for (int x = 0; x < pix->w; x++) {
+            unsigned char* px = row + (size_t)x * (size_t)n;
+            unsigned char a = px[comps];
+            if (a == 255) {
+                continue;
+            }
+            if (a == 0) {
+                for (int c = 0; c < comps; c++) {
+                    px[c] = 0;
+                }
+                continue;
+            }
+            for (int c = 0; c < comps; c++) {
+                int v = ((int)px[c] * 255 + (a >> 1)) / (int)a;
+                if (v > 255) {
+                    v = 255;
+                }
+                px[c] = (unsigned char)v;
+            }
+        }
+    }
+}
+
+static inline void PdfDarkModePremultiplyPixmap(fz_pixmap* pix) {
+    if (!pix || !pix->alpha || !pix->samples || pix->n < 2 || pix->w <= 0 || pix->h <= 0) {
+        return;
+    }
+    int n = pix->n;
+    int comps = n - 1;
+    for (int y = 0; y < pix->h; y++) {
+        unsigned char* row = pix->samples + (size_t)y * (size_t)pix->stride;
+        for (int x = 0; x < pix->w; x++) {
+            unsigned char* px = row + (size_t)x * (size_t)n;
+            unsigned char a = px[comps];
+            if (a == 255) {
+                continue;
+            }
+            if (a == 0) {
+                for (int c = 0; c < comps; c++) {
+                    px[c] = 0;
+                }
+                continue;
+            }
+            for (int c = 0; c < comps; c++) {
+                px[c] = (unsigned char)(((int)px[c] * (int)a + 127) / 255);
+            }
+        }
+    }
+}

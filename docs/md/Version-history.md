@@ -4,6 +4,8 @@
 
 ## 3.7.37 (2026-10-04)
 
+- 暗色匹配主题下，半透明渐变和带蒙版的图在变色之后仍按原来的透明度合成。
+  In dark Match-theme, translucent gradients and masked images keep their transparency after recoloring.
 - 从光标处朗读时，点在英文单词的任意字母上，都从该单词的开头读起。汉字仍从点中的那个字开始。
   Read aloud from the cursor starts at the beginning of an English word, whichever letter was clicked. A Chinese character still starts at the character that was clicked.
 - 查找界面打开时，滚动条左侧留一条位置刻度。蓝色是全部命中，橙色是当前命中。关掉查找后，页面宽度恢复。

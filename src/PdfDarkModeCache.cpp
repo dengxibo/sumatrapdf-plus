@@ -139,6 +139,7 @@ static void dm_transform_pixmap_rgb(fz_context* ctx, fz_pixmap* pix, const DarkM
     if (!pix || !pix->samples) {
         return;
     }
+    PdfDarkModeUnpremultiplyPixmap(pix);
     fz_colorspace* cs = pix->colorspace ? pix->colorspace : fz_device_rgb(ctx);
     fz_colorspace* rgb = fz_device_rgb(ctx);
     int components = fz_colorspace_n(ctx, cs);
@@ -201,6 +202,7 @@ static void dm_transform_pixmap_rgb(fz_context* ctx, fz_pixmap* pix, const DarkM
             }
         }
     }
+    PdfDarkModePremultiplyPixmap(pix);
 }
 
 static void dm_preserve_pixel(float r, float g, float b, const DarkModePalette& palette, float* outR, float* outG,
@@ -277,6 +279,22 @@ static bool dm_picture_book_embedded_photo_page(fz_context* ctx, fz_image* srcIm
 }
 
 // variant: same as PdfDarkModeToneThemeVariant (0 = tone only, no face restore).
+static void dm_apply_tone_pixmap(fz_context* ctx, fz_pixmap* pix, const DarkModePalette& palette, int variant) {
+    if (!pix) {
+        return;
+    }
+    PdfDarkModeUnpremultiplyPixmap(pix);
+    bool ok = PdfDarkModeToneThemeVariant(pix->samples, pix->w, pix->h, pix->n, pix->stride, palette, variant);
+    if (!ok) {
+        // Tone returns before writing when it declines. Restore premultiplication
+        // so the fallback, which unpremultiplies again, sees the original bytes.
+        PdfDarkModePremultiplyPixmap(pix);
+        dm_transform_pixmap_rgb(ctx, pix, palette, dm_oklab_theme_pixel);
+        return;
+    }
+    PdfDarkModePremultiplyPixmap(pix);
+}
+
 static fz_pixmap* dm_tone_theme_pixmap(fz_context* ctx, fz_pixmap* src, const DarkModePalette& palette, int variant) {
     if (!src || !src->samples) {
         return src;
@@ -300,28 +318,17 @@ static fz_pixmap* dm_tone_theme_pixmap(fz_context* ctx, fz_pixmap* src, const Da
                 fz_drop_colorspace(ctx, src->colorspace);
                 src->colorspace = fz_keep_colorspace(ctx, deviceRgb);
             }
-            bool ok = PdfDarkModeToneThemeVariant(src->samples, src->w, src->h, src->n, src->stride, palette, variant);
-            if (!ok) {
-                dm_transform_pixmap_rgb(ctx, src, palette, dm_oklab_theme_pixel);
-            }
+            dm_apply_tone_pixmap(ctx, src, palette, variant);
             dst = fz_keep_pixmap(ctx, src);
         } else if (canRetag) {
             rgbSrc = fz_new_pixmap(ctx, deviceRgb, src->w, src->h, src->seps, src->alpha);
             fz_copy_pixmap_rect(ctx, rgbSrc, src, fz_make_irect(0, 0, src->w, src->h), nullptr);
-            bool ok = PdfDarkModeToneThemeVariant(rgbSrc->samples, rgbSrc->w, rgbSrc->h, rgbSrc->n, rgbSrc->stride,
-                                                  palette, variant);
-            if (!ok) {
-                dm_transform_pixmap_rgb(ctx, rgbSrc, palette, dm_oklab_theme_pixel);
-            }
+            dm_apply_tone_pixmap(ctx, rgbSrc, palette, variant);
             dst = rgbSrc;
             rgbSrc = nullptr;
         } else if (cs != deviceRgb) {
             rgbSrc = fz_convert_pixmap(ctx, src, deviceRgb, nullptr, nullptr, fz_default_color_params, 1);
-            bool ok = PdfDarkModeToneThemeVariant(rgbSrc->samples, rgbSrc->w, rgbSrc->h, rgbSrc->n, rgbSrc->stride,
-                                                  palette, variant);
-            if (!ok) {
-                dm_transform_pixmap_rgb(ctx, rgbSrc, palette, dm_oklab_theme_pixel);
-            }
+            dm_apply_tone_pixmap(ctx, rgbSrc, palette, variant);
             dst = rgbSrc;
             rgbSrc = nullptr;
         } else {
@@ -329,10 +336,7 @@ static fz_pixmap* dm_tone_theme_pixmap(fz_context* ctx, fz_pixmap* src, const Da
             int h = src->h;
             dst = fz_new_pixmap(ctx, deviceRgb, w, h, src->seps, src->alpha);
             fz_copy_pixmap_rect(ctx, dst, src, fz_make_irect(0, 0, w, h), nullptr);
-            bool ok = PdfDarkModeToneThemeVariant(dst->samples, w, h, dst->n, dst->stride, palette, variant);
-            if (!ok) {
-                dm_transform_pixmap_rgb(ctx, dst, palette, dm_oklab_theme_pixel);
-            }
+            dm_apply_tone_pixmap(ctx, dst, palette, variant);
         }
     }
     fz_always(ctx) {
