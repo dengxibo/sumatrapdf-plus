@@ -33,3 +33,41 @@
 - 提示词共用及格式包装的离线回归测试已通过；实际识别结果仍受模型、图片质量和批次上下文影响，并不保证 Web/API 输出逐条相同。
 - 已有自定义字号等高级设置保持有效，新默认值不覆盖用户配置。
 - Windows x64 Release EXE。基于 SumatraPDF 的非官方 Plus 版本，GPLv3；未签名的 EXE 可能触发 Windows SmartScreen 提示。
+
+---
+
+## English release notes
+
+This release focuses on annotation editing, Ask AI, TOC recognition, and consistent UI styling across the four application themes.
+
+### Annotations and sidebar
+
+- PDF and EPUB annotation editors share the same layout. Delete appears at the right edge of a hovered or selected annotation row. Export Notes stays on the left; Save and Save as stay on the right, with flexible space between the groups.
+- EPUB annotations now use manual saving. Creating, editing, or deleting an annotation no longer immediately writes the annotation store. Closing a document with unsaved annotation changes prompts you to save. Annotations remain in the existing external store; the EPUB document itself is not rewritten.
+- Rectangles use rounded corners, including while drawing. Shape previews and stroke widths are more consistent between PDF and EPUB.
+- New free-text annotations default to font size 21 and border width 1. Color selectors show swatches, and line-ending selectors show shape previews.
+- The toolbar includes a stamp tool. Unsupported toolbar actions remain visible but disabled instead of being hidden.
+- Switching away from TOC editing restores normal sidebar resizing: the TOC editor's minimum width no longer constrains other sidebar pages. Thumbnail panes no longer display TOC-edit context menus.
+
+### Ask AI and TOC recognition
+
+- Ask AI lives in the sidebar and supports follow-up questions within the current document. Enter sends, Shift+Enter inserts a line break, and the composer grows to a maximum of five visible lines.
+- The model picker beside the heading lists models from the current API provider. Your selection is session-only: it does not change the model saved in Options or the model used for API-based TOC recognition.
+- The redundant “Current document” label has been removed. The conversation shows the complete question and selected passage. The AI entry uses a minimal robot icon.
+- Web AI and API printed-TOC recognition now share core rules for headings without page numbers, hierarchy, multiple entries on one line, mathematical expressions, and filtering the main TOC. Web AI retains JSON output; the API retains its staged CSV workflow.
+- The API no longer sends the full extraction prompt twice or immediately guesses missing page numbers after extraction. Missing numbers remain null, and entries retain TOC reading order for subsequent calibration.
+- Adjusted spacing between API recognition progress text and its counter.
+
+### Interface and reading
+
+- Multiple native and custom dialogs share application fonts, font sizes, button-sizing rules, and panel colors across all four themes. These include font selection, settings, TOC extraction, favorites, page adjustment, and the PDF save prompt.
+- The custom PDF save prompt includes a transparent-background, theme-aware information icon. The favorite dialog's label height and spacing above the input field have been corrected.
+- Dracula and Dark menus use distinct theme colors. Consistent dark-menu rendering reduces opening flicker and hover-related text shifts; the model menu uses the same handling.
+- Quick Find stays at the right side of the toolbar, with Detailed Search in a floating panel. Font-search layout and sidebar selection backgrounds have also been refined.
+- Improved dark-theme PDF annotation colors, drawing feedback, dragging and resizing, and handwritten-signature support for EPUB.
+
+### Validation and compatibility
+
+- Offline regression tests for shared prompt rules and output-format wrappers passed. Actual recognition still depends on the model, image quality, and batch context; Web and API results are not guaranteed to match item for item.
+- Existing custom settings, including font sizes, remain effective. New defaults do not overwrite user configuration.
+- Windows x64 Release EXE. This is an unofficial Plus version based on SumatraPDF, licensed under GPLv3. The unsigned executable may trigger a Windows SmartScreen warning.
