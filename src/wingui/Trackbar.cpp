@@ -36,8 +36,10 @@ HWND Trackbar::Create(const CreateArgs& args) {
     cargs.isRtl = args.isRtl;
 
     DWORD dwStyle = WS_CHILD | WS_VISIBLE | WS_TABSTOP;
-    dwStyle |= TBS_AUTOTICKS; // tick marks for each increment
-    dwStyle |= TBS_TOOLTIPS;  // show current value when dragging in a tooltip
+    if (args.withTicks) {
+        dwStyle |= TBS_AUTOTICKS;
+    }
+    dwStyle |= TBS_TOOLTIPS; // show current value when dragging in a tooltip
     if (args.isHorizontal) {
         dwStyle |= TBS_HORZ;
         idealSize.dx = 32;

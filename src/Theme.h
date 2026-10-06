@@ -26,6 +26,12 @@ COLORREF ThemeSidebarSeparatorColor(SidebarSeparatorState state);
 COLORREF ThemeMainWindowBackgroundColor();
 COLORREF ThemeControlBackgroundColor();
 COLORREF ThemeChromeBackgroundColor();
+// Independent floating surfaces; dark menus must not reuse WindowBackground.
+struct MenuThemeColors {
+    COLORREF surface, border, text, secondaryText, disabledText;
+    COLORREF hover, selected, pressed, separator, arrow, check;
+};
+MenuThemeColors ThemeMenuColors();
 COLORREF ThemeThumbnailBackgroundColor();
 COLORREF ThemeThumbnailBorderColor();
 COLORREF ThemeWindowBackgroundColor();
@@ -38,6 +44,13 @@ COLORREF ThemeWindowControlBackgroundColor();
 COLORREF ThemeFindEditBackgroundColor();
 // recessed background for annotation note edit fields
 COLORREF ThemeAnnotationContentsEditBackgroundColor();
+// Annotation inspector. Derived from the sidebar tokens so each theme keeps
+// its own paper, warm, or dark step without the sidebar hard-coding colors.
+COLORREF ThemeInspectorSecondaryTextColor();
+COLORREF ThemeInspectorHoverBackgroundColor();
+COLORREF ThemeInspectorSelectedBackgroundColor();
+COLORREF ThemeInspectorSelectedTextColor();
+COLORREF ThemeInspectorSeparatorColor();
 COLORREF ThemeWindowLinkColor();
 // Selection strokes. Light themes use a muted slate so the box stays quiet.
 COLORREF ThemeSelectionFrameColor();

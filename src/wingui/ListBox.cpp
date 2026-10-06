@@ -48,8 +48,12 @@ HWND ListBox::Create(const CreateArgs& args) {
     idealSize = {DpiScale(args.parent, 120), DpiScale(args.parent, 32)};
 
     // https://docs.microsoft.com/en-us/windows/win32/controls/list-box-styles
-    cargs.style = WS_CHILD | WS_TABSTOP | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL;
+    // Owner-drawn rows paint their own text, so a horizontal bar is unused.
+    cargs.style = WS_CHILD | WS_TABSTOP | WS_VISIBLE | WS_VSCROLL;
     cargs.style |= LBS_NOINTEGRALHEIGHT | LBS_NOTIFY;
+    if (!onDrawItem.IsValid()) {
+        cargs.style |= WS_HSCROLL;
+    }
     if (onDrawItem.IsValid()) {
         cargs.style |= LBS_OWNERDRAWFIXED;
     }
@@ -128,6 +132,7 @@ void ListBox::SetModel(ListBoxModel* model) {
         delete this->model;
     }
     this->model = model;
+    hotItem = -1;
     if (model != nullptr) {
         FillWithItems(this->hwnd, model);
     }
@@ -142,6 +147,40 @@ void ListBox::UpdateItemHeightForDpi() {
     Size sz = HwndMeasureText(hwnd, "Ag", font);
     int itemHeight = sz.dy + DpiScale(hwnd, itemHeightExtra);
     SendMessageW(hwnd, LB_SETITEMHEIGHT, 0, itemHeight);
+}
+
+LRESULT ListBox::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (onDrawItem.IsValid() && (msg == WM_MOUSEMOVE || msg == WM_MOUSELEAVE)) {
+        int idx = -1;
+        if (msg == WM_MOUSEMOVE) {
+            int y = (int)(short)HIWORD(lp);
+            LRESULT hit = SendMessageW(hwnd, LB_ITEMFROMPOINT, 0, MAKELPARAM(1, y));
+            if (HIWORD(hit) == 0) {
+                idx = (int)LOWORD(hit);
+            }
+            TRACKMOUSEEVENT tme{sizeof(tme), TME_LEAVE, hwnd, 0};
+            TrackMouseEvent(&tme);
+        }
+        if (idx != hotItem) {
+            // Only the rows that change hover fill need a repaint. Invalidating
+            // the whole list redraws every owner-draw row (GDI+ bars, text) and
+            // reads as neighboring items jittering.
+            int prev = hotItem;
+            hotItem = idx;
+            auto invalidateItem = [hwnd](int i) {
+                if (i < 0) {
+                    return;
+                }
+                RECT rc{};
+                if (SendMessageW(hwnd, LB_GETITEMRECT, (WPARAM)i, (LPARAM)&rc) != LB_ERR) {
+                    InvalidateRect(hwnd, &rc, FALSE);
+                }
+            };
+            invalidateItem(prev);
+            invalidateItem(idx);
+        }
+    }
+    return Wnd::WndProc(hwnd, msg, wp, lp);
 }
 
 bool ListBox::OnCommand(WPARAM wparam, LPARAM lparam) {
@@ -196,6 +235,8 @@ LRESULT ListBox::OnMessageReflect(UINT msg, WPARAM wp, LPARAM lparam) {
         ev.itemRect = dis->rcItem;
         ev.itemIndex = (int)dis->itemID;
         ev.selected = (dis->itemState & ODS_SELECTED) != 0;
+        ev.focused = (dis->itemState & ODS_FOCUS) != 0;
+        ev.hot = ev.itemIndex == hotItem;
         onDrawItem.Call(&ev);
         return TRUE;
     }

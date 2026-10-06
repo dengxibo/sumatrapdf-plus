@@ -34,6 +34,13 @@ void RefreshAllAppDialogsTheme();
 
 // DarkModeLib child theming + caption colors (safe when DarkModeLib is off).
 void AppDialogApplyChrome(HWND hwnd);
+// Shared annotation-sidebar panel layer and application font for native dialogs.
+COLORREF AppDialogPanelBackgroundColor();
+void AppDialogUseStandardControls(HWND hwnd);
+
+// Warm chrome replaces paper-white Win11 push buttons and drop-down lists.
+// Safe on other themes: it removes the custom paint when eye-care chrome is off.
+void AppDialogSyncWarmPushButtons(HWND hwnd);
 
 // For WM_CTLCOLOR*: sets text/bk colors and returns the brush to use, or null.
 HBRUSH AppDialogCtlColorBrush(UINT msg, WPARAM wp, LPARAM lp, HBRUSH bgBrush, HBRUSH ctrlBrush = nullptr,

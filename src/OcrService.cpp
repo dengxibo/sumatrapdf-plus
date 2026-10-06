@@ -18,6 +18,7 @@
 #include "GlobalPrefs.h"
 #include "DisplayModel.h"
 #include "TextSelection.h"
+#include "EditAnnotations.h"
 #include "Notifications.h"
 #include "SumatraPDF.h"
 #include "RenderCache.h"
@@ -2950,6 +2951,15 @@ static void OcrFinishUi(OcrDoneUi* d) {
         str::Free(d->regionText);
         delete d;
         return;
+    }
+    if (d->ok && d->hwndCanvas && IsWindow(d->hwndCanvas)) {
+        MainWindow* win = FindMainWindowByHwnd(d->hwndCanvas);
+        WindowTab* tab = win ? win->CurrentTab() : nullptr;
+        if (tab && tab->GetEngine() == d->engine) {
+            // Refresh cached excerpts after existing OCR completes; this does
+            // not request recognition or change annotation selection.
+            NotifyAnnotationsChanged(tab->editAnnotsWindow);
+        }
     }
     if (d->documentJob) {
         bool more = false;

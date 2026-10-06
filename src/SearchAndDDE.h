@@ -81,7 +81,7 @@ bool FindFlushPendingSearch(MainWindow* win);
 // the current page (queued until the count finishes). Returns true if handled.
 bool FindEnterFromCurrentPageIfNeeded(MainWindow* win);
 // navigate to and select a match chosen from the floating results list
-void GoToFindMatch(MainWindow* win, int startPage, int startGlyph, int endPage, int endGlyph);
+void GoToFindMatch(MainWindow* win, int startPage, int startGlyph, int endPage, int endGlyph, bool addNavPt = true);
 // start (or refresh) the deferred full-document match count
 void RequestFindCount(MainWindow* win);
 // clear the find box and in-flight/cached search state when switching tabs

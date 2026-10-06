@@ -4,6 +4,21 @@
 struct MainWindow;
 struct FindBarWnd;
 
+// Permanent right-side toolbar search box. The docked overlay code is still
+// here, but Ctrl+F no longer opens it.
+HWND ToolbarFindEdit(MainWindow* win);
+void CreateToolbarFind(MainWindow* win);
+void ToolbarFindLayout(MainWindow* win);
+void ToolbarFindUpdateTheme(MainWindow* win);
+void ToolbarFindSetStatus(MainWindow* win, const char* s);
+void ToolbarFindFlashStatus(MainWindow* win, bool flash);
+TempStr ToolbarFindStatusText(MainWindow* win);
+void ToolbarFindSetText(MainWindow* win, const char* s, bool suppress);
+void ToolbarFindFocus(MainWindow* win);
+// Hide the detailed search window, keep the query, and focus the toolbar box
+// or the document.
+void ToolbarFindCloseDetailed(MainWindow* win, bool focusToolbarEdit);
+
 // Chrome-style floating search bar. Created on first Ctrl+F (or toolbar search);
 // owns win->hwndFindEdit while open. Destroyed on tab switch / Esc / close.
 FindBarWnd* CreateFindBar(MainWindow* win);

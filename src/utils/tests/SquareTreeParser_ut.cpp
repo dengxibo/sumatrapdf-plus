@@ -54,6 +54,18 @@ void SquareTreeTest() {
         utassert(str::Eq(root->GetValue("Color"), "#abcdef"));
         delete root;
     }
+    {
+        SquareTreeNode* root = ParseSquareTree(UTF8_BOM "DefaultAuthor = # comment only");
+        utassert(root && 1 == root->data.size());
+        utassert(str::Eq(root->GetValue("DefaultAuthor"), ""));
+        delete root;
+    }
+    {
+        SquareTreeNode* root = ParseSquareTree(UTF8_BOM "DefaultAuthor = # comment only # comment only");
+        utassert(root && 1 == root->data.size());
+        utassert(str::Eq(root->GetValue("DefaultAuthor"), ""));
+        delete root;
+    }
 
     static const char* nodeData[] = {
         UTF8_BOM "node [\nkey = value\n]",      UTF8_BOM "node[ # ignore comment\n\tkey: value\n] # end of node\n",

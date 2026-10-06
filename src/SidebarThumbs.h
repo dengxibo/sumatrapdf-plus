@@ -9,6 +9,8 @@ enum class SidebarView {
     Bookmarks = 0,
     Thumbnails = 1,
     Favorites = 2,
+    Ai = 3,
+    Annotations = 4,
 };
 
 SidebarView SidebarViewFromStr(const char* s);
@@ -22,6 +24,8 @@ void RememberTabSidebarView(WindowTab* tab);
 
 // Show this view, or hide the column if it is already showing.
 void ShowOrToggleSidebarView(MainWindow* win, SidebarView view);
+// Show this view. Does not hide the column when it is already showing.
+void ShowSidebarPage(MainWindow* win, SidebarView view);
 void ApplySidebarViewLayout(MainWindow* win);
 void UpdateSidebarViewButtons(MainWindow* win);
 

@@ -4675,6 +4675,9 @@ sk:Použiť zmenu veľkosti
 :Associate Common Document Formats...
 cn:将常用文档格式关联到本应用…
 tw:將常用文件格式關聯到本應用程式…
+:Ask a question…
+cn:输入问题…
+tw:輸入問題…
 :Ask &AI
 af:Vra &AI
 am:Հարցնել &AI-ին
@@ -34670,3 +34673,47 @@ tw:深淺
 :Couldn't read that image.
 cn:无法读取这张图片。
 tw:無法讀取這張圖片。
+
+:Note
+cn:笔记
+tw:筆記
+
+:Details
+cn:详细信息
+tw:詳細資訊
+
+:Color
+cn:颜色
+tw:顏色
+
+:Save to this PDF
+cn:保存到当前 PDF
+tw:儲存到目前的 PDF
+
+:Save as…
+cn:另存为…
+tw:另存新檔…
+
+:Saved automatically
+cn:已自动保存
+tw:已自動儲存
+
+:Retry saving annotations
+cn:重试保存标注
+tw:重試儲存標註
+
+:Save annotation copy…
+cn:另存标注副本…
+tw:另存標註副本…
+
+:Copy translation
+cn:复制翻译
+tw:複製翻譯
+
+:Export
+cn:导出
+tw:匯出
+
+:Saved
+cn:已保存
+tw:已儲存

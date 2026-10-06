@@ -9,6 +9,9 @@
 #include "Layout.h"
 
 bool gEnableDebugLayout = false;
+// Live sidebar drag: position children without painting so ComboBox/trackbar
+// internals are not erased mid-layout. The coalesced UPDATENOW presents one frame.
+bool gLayoutSuspendPaint = false;
 
 void dbglayoutf(const char* fmt, ...) {
     if (!gEnableDebugLayout) {
@@ -924,8 +927,11 @@ void HBox::SetBounds(Rect bounds) {
     ILayout* previous = nullptr;
     for (int i = 0; i < n; i++) {
         auto& v = children[i];
+        if (IsCollapsed(v.layout)) {
+            continue;
+        }
         if (IsPacked(alignMain)) {
-            if (i > 0) {
+            if (previous) {
                 posX += CalculateHGap(previous, v.layout);
             }
             previous = v.layout;

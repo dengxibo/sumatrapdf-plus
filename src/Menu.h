@@ -14,6 +14,10 @@ constexpr const char* kMenuSeparator = "-----";
 void FreeAllMenuDrawInfos();
 void FreeMenuOwnerDrawInfo(MenuOwnerDrawInfo*);
 void MarkMenuOwnerDraw(HMENU, bool isMenuBar = false, bool recurseSubmenus = true);
+// Kept as a no-op. Warm menus stay system-drawn; InstallWarmMenuColorHook tints them.
+void ApplyEyeCarePopupMenuTheme();
+void InstallWarmMenuColorHook();
+void InstallDarkMenuBarTheme(HWND hwnd);
 bool ShouldOwnerDrawMenus();
 void FreeMenuOwnerDrawInfoData(HMENU, bool recurseSubmenus = true);
 void MenuCustomDrawMesureItem(HWND, MEASUREITEMSTRUCT*);

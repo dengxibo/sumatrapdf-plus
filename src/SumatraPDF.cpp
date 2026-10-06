@@ -187,6 +187,8 @@ bool gOcrAutoBench = false;
 char* gCopyBenchOutPath = nullptr;
 
 static void RelayoutFrame(MainWindow* win, bool updateToolbars = true, int sidebarDx = -1);
+static void PaintToolbarContentHairline(MainWindow* win, HDC hdc);
+static void SyncSidebarColumnWidth(MainWindow* win);
 static bool gSidebarSplitterWrapSuspended = false;
 static bool gSidebarWidthDragScrollbarsHidden = false;
 static constexpr UINT WM_SIDEBAR_RELAYOUT = WM_APP + 0x423;
@@ -930,7 +932,11 @@ void RememberDefaultWindowPosition(MainWindow* win) {
         gGlobalPrefs->windowState = WIN_STATE_NORMAL;
     }
 
-    gGlobalPrefs->sidebarDx = WindowRect(win->hwndTocBox).dx;
+    if (win->sidebarWidthIsAi && win->plainSidebarDx > 0) {
+        gGlobalPrefs->sidebarDx = win->plainSidebarDx;
+    } else if (!win->sidebarWidthIsAi) {
+        gGlobalPrefs->sidebarDx = WindowRect(win->hwndTocBox).dx;
+    }
 
     if (IsIconic(win->hwndFrame) || win->presentation) {
         return;
@@ -1480,6 +1486,9 @@ void ControllerCallbackHandler::UpdateScrollbars(Size canvas) {
         // Windows or hidden scrollbars.
         OverlayScrollbarShow(win->overlayScrollV, false);
     }
+    // Showing or hiding the bar changes the page's right edge. The search
+    // field tracks that inner edge.
+    ToolbarFindLayout(win);
 }
 
 static TempStr BuildZoomString(float zoomLevel) {
@@ -3012,6 +3021,7 @@ static MainWindow* CreateMainWindow() {
         DarkMode::removeTabCtrlSubclass(win->tabsCtrl->hwnd);
         SyncCanvasScrollBarTheme(win);
         DarkMode::setWindowMenuBarSubclass(win->hwndFrame);
+        InstallDarkMenuBarTheme(win->hwndFrame);
         // TODO: this over-rides the font in the control
         // this will only happen with themes
         // could custom paint instead of using DarkMode
@@ -3750,6 +3760,7 @@ void UpdateAfterThemeChange() {
                 DarkMode::setDarkTitleBarEx(win->hwndFrame, true);
                 DarkMode::setChildCtrlsTheme(win->hwndFrame);
                 DarkMode::setWindowMenuBarSubclass(win->hwndFrame);
+                InstallDarkMenuBarTheme(win->hwndFrame);
                 // DarkMode::setDarkTooltips(win->infotip->hwnd, (int)DarkMode::ToolTipsType::tooltip);
             } else {
                 DarkMode::setDarkTitleBarEx(win->hwndFrame, false);
@@ -3762,6 +3773,7 @@ void UpdateAfterThemeChange() {
             SyncCanvasScrollBarTheme(win);
         }
         UpdateMainWindowNativeChrome(win);
+        ToolbarFindUpdateTheme(win);
         UpdateControlsColors(win);
         SidebarThumbsOnThemeChanged(win);
         UpdateWindowFrameBorderColor(win);
@@ -5042,6 +5054,7 @@ void LoadModelIntoTab(WindowTab* tab) {
         if (win->hwndFindEdit || win->findThread || win->findCountThread) {
             ResetFindUIForTabSwitch(win);
         }
+        ParkAskAiSidebar(prevTab);
         // Embedded PDF Sound/RichMedia/Screen audio is global; stop when leaving the tab.
         LookupAudioStop();
         if (prevTab) {
@@ -5160,6 +5173,7 @@ void LoadModelIntoTab(WindowTab* tab) {
     } else {
         SetSidebarVisibility(win, tab->showToc, gGlobalPrefs->showFavorites);
     }
+    BindAskAiSidebar(tab);
 
     if (dm) {
         if (tab->canvasRc != win->canvasRc) {
@@ -5288,6 +5302,14 @@ void UpdateCursorPositionHelper(MainWindow* win, Point pos, NotificationWnd* wnd
 }
 
 // re-render the document currently displayed in this window
+void RefreshAnnotationOverlay(MainWindow* win) {
+    if (!win || !win->hwndCanvas) {
+        return;
+    }
+    InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+    UpdateWindow(win->hwndCanvas);
+}
+
 void MainWindowRerender(MainWindow* win, bool includeNonClientArea) {
     DisplayModel* dm = win->AsFixed();
     if (!dm) {
@@ -5307,8 +5329,27 @@ void MainWindowRerender(MainWindow* win, bool includeNonClientArea) {
     }
 }
 
+static bool AnnotationWantsPendingOverlay(Annotation* annot) {
+    if (!annot) {
+        return false;
+    }
+    if (IsPdfTextMarkupAnnotation(annot)) {
+        return true;
+    }
+    switch (annot->type) {
+        case AnnotationType::Ink:
+        case AnnotationType::Line:
+        case AnnotationType::Square:
+        case AnnotationType::Circle:
+        case AnnotationType::FreeText:
+            return true;
+        default:
+            return false;
+    }
+}
+
 static void AddPdfMarkupOverlay(WindowTab* tab, int pageNo, Annotation* annot) {
-    if (!tab || !annot || pageNo <= 0 || !IsPdfTextMarkupAnnotation(annot)) {
+    if (!tab || !annot || pageNo <= 0 || !AnnotationWantsPendingOverlay(annot)) {
         return;
     }
     for (auto& entry : tab->pdfMarkupOverlays) {
@@ -5318,6 +5359,13 @@ static void AddPdfMarkupOverlay(WindowTab* tab, int pageNo, Annotation* annot) {
         }
     }
     tab->pdfMarkupOverlays.Append({pageNo, annot});
+}
+
+void MarkPdfAnnotationStandIn(WindowTab* tab, Annotation* annot) {
+    if (!tab || !annot || annot->pageNo <= 0) {
+        return;
+    }
+    AddPdfMarkupOverlay(tab, annot->pageNo, annot);
 }
 
 // Refresh a page in the background; optionally draw text markup as overlay until tiles catch up.
@@ -5497,7 +5545,7 @@ static void ApplyPendingEbookFontSizeChange() {
         steps -= dir;
     }
     WindowTab* tab = win->CurrentTab();
-    if (!tab || !IsReflowableEbookTabForFontMenu(tab)) {
+    if (!tab || !SupportsEbookFontSizeChange(tab)) {
         gEbookFontSizeTaskPosted = false;
         ScheduleEbookFontSizeChangeIfNeeded();
         return;
@@ -5517,7 +5565,7 @@ void RequestEbookFontSizeChange(MainWindow* win, int direction) {
         return;
     }
     WindowTab* tab = win->CurrentTab();
-    if (!tab || !IsReflowableEbookTabForFontMenu(tab)) {
+    if (!tab || !SupportsEbookFontSizeChange(tab)) {
         return;
     }
     if (direction > 0 && !CanIncreaseEbookFontSize()) {
@@ -5536,7 +5584,7 @@ static void RequestEbookFontSizeReset(MainWindow* win) {
         return;
     }
     WindowTab* tab = win->CurrentTab();
-    if (!tab || !IsReflowableEbookTabForFontMenu(tab)) {
+    if (!tab || !SupportsEbookFontSizeChange(tab)) {
         return;
     }
     if (gEbookFontSizeTask.timerHwnd && IsWindow(gEbookFontSizeTask.timerHwnd)) {
@@ -6162,72 +6210,173 @@ enum class SaveChoice {
     Cancel,
 };
 
+struct SaveAnnotationsDialogData {
+    const char* filePath;
+    Rect infoIcon;
+    HFONT bodyFont = nullptr; // cached application font, same as annotation sidebar
+    HFONT headingFont = nullptr;
+    AppDialogBrushes brushes;
+};
+
+static void LayoutSaveAnnotationsDialog(HWND hwnd, SaveAnnotationsDialogData* data, int dpi) {
+    DeleteObject(data->headingFont);
+    data->bodyFont = GetAppFontForDpi(dpi);
+    LOGFONTW lf{};
+    if (GetObjectW(data->bodyFont, sizeof(lf), &lf) == sizeof(lf)) {
+        lf.lfWeight = FW_SEMIBOLD;
+        data->headingFont = CreateFontIndirectW(&lf);
+    }
+    AppDialogApplyFontToChildren(hwnd, data->bodyFont);
+    SendMessageW(GetDlgItem(hwnd, IDC_SAVE_ANNOT_MESSAGE), WM_SETFONT,
+                 (WPARAM)(data->headingFont ? data->headingFont : data->bodyFont), TRUE);
+    SendMessageW(GetDlgItem(hwnd, IDC_SAVE_ANNOT_EXISTING), WM_SETFONT,
+                 (WPARAM)(data->headingFont ? data->headingFont : data->bodyFont), TRUE);
+    int pad = MulDiv(12, dpi, 96), gap = MulDiv(8, dpi, 96);
+    const int ids[] = {IDC_SAVE_ANNOT_EXISTING, IDC_SAVE_ANNOT_NEW, IDC_SAVE_ANNOT_DISCARD, IDCANCEL};
+    Size sizes[4]{};
+    int contentWidth = 0, buttonHeight = 0;
+    for (int i = 0; i < dimof(ids); i++) {
+        sizes[i] = ButtonGetIdealSize(GetDlgItem(hwnd, ids[i]));
+        contentWidth += sizes[i].dx;
+        buttonHeight = std::max(buttonHeight, sizes[i].dy);
+    }
+    contentWidth += gap * 3;
+    HWND message = GetDlgItem(hwnd, IDC_SAVE_ANNOT_MESSAGE);
+    HDC dc = GetDC(message);
+    HGDIOBJ oldFont = SelectObject(dc, GetWindowFont(message));
+    int iconSize = MulDiv(32, dpi, 96);
+    int textInset = iconSize + MulDiv(12, dpi, 96);
+    RECT textRect{0, 0, std::max(1, contentWidth - textInset), 0};
+    DrawTextW(dc, HwndGetTextWTemp(message), -1, &textRect, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
+    SelectObject(dc, oldFont);
+    ReleaseDC(message, dc);
+    int messageHeight = std::max(RectDy(textRect), MulDiv(24, dpi, 96));
+    int questionHeight = HwndMeasureText(hwnd, _TRA("Save PDF changes?"), data->bodyFont).dy;
+    int buttonY = pad + messageHeight + gap + questionHeight + pad;
+    RECT client{}, window{};
+    GetClientRect(hwnd, &client);
+    GetWindowRect(hwnd, &window);
+    SetWindowPos(hwnd, nullptr, 0, 0, contentWidth + pad * 2 + RectDx(window) - RectDx(client),
+                 buttonY + buttonHeight + pad + RectDy(window) - RectDy(client),
+                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    data->infoIcon = Rect(pad, pad, iconSize, iconSize);
+    MoveWindow(message, pad + textInset, pad, contentWidth - textInset, messageHeight, TRUE);
+    MoveWindow(GetDlgItem(hwnd, IDC_SAVE_ANNOT_QUESTION), pad + textInset, pad + messageHeight + gap,
+               contentWidth - textInset, questionHeight, TRUE);
+    int x = pad;
+    for (int i = 0; i < dimof(ids); i++) {
+        MoveWindow(GetDlgItem(hwnd, ids[i]), x, buttonY, sizes[i].dx, buttonHeight, TRUE);
+        x += sizes[i].dx + gap;
+    }
+}
+
+static void RefreshSaveAnnotationsDialogTheme(HWND hwnd, void* ctx) {
+    auto data = (SaveAnnotationsDialogData*)ctx;
+    data->brushes.Recreate();
+    AppDialogApplyChrome(hwnd);
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+}
+
+static INT_PTR CALLBACK SaveAnnotationsDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    auto data = (SaveAnnotationsDialogData*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    if (msg == WM_INITDIALOG) {
+        data = (SaveAnnotationsDialogData*)lp;
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, lp);
+        HwndSetRtl(hwnd, trans::IsCurrLangRtl());
+        data->brushes.Create();
+        HwndSetText(hwnd, _TRA("Unsaved PDF changes"));
+        TempStr message = str::FormatTemp(_TRA("Unsaved PDF changes in '%s'"), path::GetBaseNameTemp(data->filePath));
+        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_MESSAGE, message);
+        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_QUESTION, _TRA("Save PDF changes?"));
+        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_EXISTING, _TRA("&Save to existing PDF"));
+        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_NEW, _TRA("Save to &new PDF"));
+        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_DISCARD, _TRA("&Discard changes"));
+        HwndSetDlgItemText(hwnd, IDCANCEL, _TRA("&Cancel"));
+        LayoutSaveAnnotationsDialog(hwnd, data, DpiGet(hwnd));
+        RegisterAppDialogForTheme(hwnd, RefreshSaveAnnotationsDialogTheme, data);
+        AppDialogApplyChrome(hwnd);
+        CenterDialog(hwnd);
+        HwndSetFocus(GetDlgItem(hwnd, IDCANCEL));
+        return FALSE;
+    }
+    if (!data) return FALSE;
+    // Use the sidebar's panel layer, not the options-dialog/document background.
+    HBRUSH panel = ThemeUsesDarkChrome() ? data->brushes.background : data->brushes.control;
+    if (msg == WM_CTLCOLORDLG || msg == WM_CTLCOLORSTATIC || msg == WM_CTLCOLORBTN) {
+        HDC dc = (HDC)wp;
+        SetTextColor(dc, ThemeWindowTextColor());
+        SetBkColor(dc, ThemeUsesDarkChrome() ? ThemeWindowBackgroundColor() : ThemeWindowControlBackgroundColor());
+        return (INT_PTR)panel;
+    }
+    switch (msg) {
+        case WM_PAINT: {
+            PAINTSTRUCT paint{};
+            HDC dc = BeginPaint(hwnd, &paint);
+            Gdiplus::Graphics graphics(dc);
+            graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+            const Rect& r = data->infoIcon;
+            float scale = (float)r.dx / 32.f;
+            graphics.TranslateTransform((float)r.x, (float)r.y);
+            graphics.ScaleTransform(scale, scale);
+            COLORREF color = ThemeWindowLinkColor();
+            Gdiplus::Color ink(255, GetRValue(color), GetGValue(color), GetBValue(color));
+            Gdiplus::Pen pen(ink, 1.55f);
+            pen.SetStartCap(Gdiplus::LineCapRound);
+            pen.SetEndCap(Gdiplus::LineCapRound);
+            graphics.DrawEllipse(&pen, 2.f, 2.f, 28.f, 28.f);
+            graphics.DrawLine(&pen, 16.f, 14.f, 16.f, 23.f);
+            Gdiplus::SolidBrush dot(ink);
+            graphics.FillEllipse(&dot, 14.8f, 8.3f, 2.4f, 2.4f);
+            EndPaint(hwnd, &paint);
+            return TRUE;
+        }
+        case WM_ERASEBKGND:
+            return AppDialogHandleEraseBkgnd(wp, hwnd, panel);
+        case WM_DPICHANGED: {
+            auto rect = (RECT*)lp;
+            SetWindowPos(hwnd, nullptr, rect->left, rect->top, RectDx(*rect), RectDy(*rect),
+                         SWP_NOZORDER | SWP_NOACTIVATE);
+            LayoutSaveAnnotationsDialog(hwnd, data, HIWORD(wp));
+            return TRUE;
+        }
+        case WM_COMMAND:
+            if (HIWORD(wp) == BN_CLICKED) {
+                int id = LOWORD(wp);
+                if (id == IDC_SAVE_ANNOT_EXISTING || id == IDC_SAVE_ANNOT_NEW || id == IDC_SAVE_ANNOT_DISCARD ||
+                    id == IDCANCEL) {
+                    EndDialog(hwnd, id);
+                    return TRUE;
+                }
+            }
+            break;
+        case WM_CLOSE:
+            EndDialog(hwnd, IDCANCEL);
+            return TRUE;
+        case WM_DESTROY:
+            UnregisterAppDialogForTheme(hwnd);
+            break;
+    }
+    return FALSE;
+}
+
 SaveChoice ShouldSaveAnnotationsDialog(HWND hwndParent, const char* filePath) {
-    TempStr fileName = (TempStr)path::GetBaseNameTemp(filePath);
-    TempStr mainInstrA = str::FormatTemp(_TRA("Unsaved PDF changes in '%s'"), fileName);
-    TempWStr mainInstr = ToWStrTemp(mainInstrA);
-    auto content = _TRA("Save PDF changes?");
-
-    constexpr int kBtnIdDiscard = 100;
-    constexpr int kBtnIdSaveToExisting = 101;
-    constexpr int kBtnIdSaveToNew = 102;
-    // constexpr int kBtnIdCancel = 103;
-    TASKDIALOGCONFIG dialogConfig{};
-    TASKDIALOG_BUTTON buttons[4];
-
-    buttons[0].nButtonID = kBtnIdSaveToExisting;
-    auto s = _TRA("&Save to existing PDF");
-    buttons[0].pszButtonText = ToWStrTemp(s);
-    buttons[1].nButtonID = kBtnIdSaveToNew;
-    s = _TRA("Save to &new PDF");
-    buttons[1].pszButtonText = ToWStrTemp(s);
-    buttons[2].nButtonID = kBtnIdDiscard;
-    s = _TRA("&Discard changes");
-    buttons[2].pszButtonText = ToWStrTemp(s);
-    buttons[3].nButtonID = IDCANCEL;
-    s = _TRA("&Cancel");
-    buttons[3].pszButtonText = ToWStrTemp(s);
-
-    DWORD flags =
-        TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT | TDF_ENABLE_HYPERLINKS | TDF_POSITION_RELATIVE_TO_WINDOW;
-    if (trans::IsCurrLangRtl()) {
-        flags |= TDF_RTL_LAYOUT;
-    }
-    dialogConfig.cbSize = sizeof(TASKDIALOGCONFIG);
-    s = _TRA("Unsaved PDF changes");
-    dialogConfig.pszWindowTitle = ToWStrTemp(s);
-    dialogConfig.pszMainInstruction = mainInstr;
-    dialogConfig.pszContent = ToWStrTemp(content);
-    dialogConfig.nDefaultButton = IDCANCEL;
-    dialogConfig.dwFlags = flags;
-    dialogConfig.cxWidth = 0;
-    dialogConfig.pfCallback = nullptr;
-    dialogConfig.dwCommonButtons = 0;
-    dialogConfig.cButtons = dimof(buttons);
-    dialogConfig.pButtons = &buttons[0];
-    dialogConfig.pszMainIcon = TD_INFORMATION_ICON;
-    dialogConfig.hwndParent = hwndParent;
-
-    int buttonPressedId = 0;
-
-    auto hr = TaskDialogIndirect(&dialogConfig, &buttonPressedId, nullptr, nullptr);
-    ReportIf(hr == E_INVALIDARG);
-    bool discard = (hr != S_OK) || (buttonPressedId == kBtnIdDiscard);
-    if (discard) {
-        return SaveChoice::Discard;
-    }
-    switch (buttonPressedId) {
-        case kBtnIdSaveToExisting:
+    SaveAnnotationsDialogData data{};
+    data.filePath = filePath;
+    INT_PTR result = DialogBoxParamW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDD_DIALOG_SAVE_ANNOTATIONS),
+                                     hwndParent, SaveAnnotationsDialogProc, (LPARAM)&data);
+    DeleteObject(data.headingFont);
+    data.brushes.Destroy();
+    switch (result) {
+        case IDC_SAVE_ANNOT_EXISTING:
             return SaveChoice::SaveExisting;
-        case kBtnIdSaveToNew:
+        case IDC_SAVE_ANNOT_NEW:
             return SaveChoice::SaveNew;
-        case kBtnIdDiscard:
+        case IDC_SAVE_ANNOT_DISCARD:
             return SaveChoice::Discard;
-        case IDCANCEL:
+        default:
+            // Failure to create the prompt must never discard unsaved changes.
             return SaveChoice::Cancel;
     }
-    ReportIf(true);
-    return SaveChoice::Cancel;
 }
 
 // if returns true, can proceed with closing
@@ -6241,6 +6390,20 @@ static bool MaybeSaveAnnotations(WindowTab* tab) {
     // Could determine in CloseCurrentTab() if will CloseWindow() and
     // not ask
     if (tab->askedToSaveAnnotations) {
+        return true;
+    }
+
+    if (EbookAnnotationsSupported(tab)) {
+        FlushEbookAnnotationEdits(tab);
+        if (!EbookAnnotationsHasUnsavedChanges(tab)) return true;
+        MainWindow* win = tab->win;
+        TempStr message = str::FormatTemp(_TRA("Unsaved annotations in '%s'"), path::GetBaseNameTemp(tab->filePath));
+        int choice = MessageBoxW(win->hwndFrame, ToWStrTemp(message), ToWStrTemp(_TRA("Unsaved annotations")),
+                                 MB_YESNOCANCEL | MB_ICONQUESTION);
+        if (!IsMainWindowValid(win)) return true;
+        if (choice == IDCANCEL || choice == 0) return false;
+        if (choice == IDYES && !EbookAnnotationsRetrySave(tab)) return false;
+        tab->askedToSaveAnnotations = true;
         return true;
     }
 
@@ -8044,13 +8207,18 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
         rc.dy -= menuBarDy;
     }
     if (win->isToolbarVisible) {
-        if (updateToolbars) {
-            Rect rcRebar = WindowRect(win->hwndReBar);
-            dh.SetWindowPos(win->hwndReBar, nullptr, rc.x, rc.y, rc.dx, rcRebar.dy, SWP_NOZORDER);
+        int barDy = (int)SendMessageW(win->hwndReBar, RB_GETBARHEIGHT, 0, 0);
+        if (barDy <= 0) {
+            barDy = WindowRect(win->hwndReBar).dy;
         }
-        Rect rcRebar = WindowRect(win->hwndReBar);
-        rc.y += rcRebar.dy;
-        rc.dy -= rcRebar.dy;
+        // One device pixel, same weight as the search field's 1px stroke.
+        // The toolbar child fills the rebar, so the line has to sit in the frame.
+        int sep = 1;
+        if (updateToolbars) {
+            dh.SetWindowPos(win->hwndReBar, nullptr, rc.x, rc.y, rc.dx, barDy, SWP_NOZORDER);
+        }
+        rc.y += barDy + sep;
+        rc.dy -= barDy + sep;
     }
     if (updateToolbars) {
         ShowWindow(win->hwndReBar, win->isToolbarVisible ? SW_SHOW : SW_HIDE);
@@ -8113,7 +8281,7 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
 
     // Copy the page. Dropping those bits is what opens a black band on the
     // canvas side while the sidebar grows to the right.
-    dh.MoveWindow(win->hwndCanvas, rc.x, rc.y, rc.dx, rc.dy, TRUE, 0);
+    dh.MoveWindow(win->hwndCanvas, rc.x, rc.y, rc.dx, rc.dy, TRUE, livePosFlags);
 
     dh.End();
 
@@ -8208,6 +8376,9 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
         // (and SetSidebarVisibility relies on this for initialization)
         UpdateTocSelection(win, win->ctrl->CurrentPageNo());
     }
+    if (sidebarDx == -1 && !liveSidebarDrag && tocVisible) {
+        SyncSidebarColumnWidth(win);
+    }
 
     // reposition overlay scrollbars after relayout (they were hidden at the
     // start to prevent stale positioning); skip during fullscreen transitions
@@ -8222,6 +8393,10 @@ static void RelayoutFrame(MainWindow* win, bool updateToolbars, int sidebarDx) {
         if (NeedsFindUI(win)) {
             UpdateToolbarFindText(win);
         }
+    }
+    // Canvas and the vertical scrollbar are in place. Line the search field up.
+    if (win->hwndToolbarFind) {
+        ToolbarFindLayout(win);
     }
 }
 
@@ -8549,8 +8724,12 @@ static void ShowOptionsDialog(HWND hwnd, int initialPage = 0) {
             RebuildMenuBarForWindow(win);
             UpdateMainWindowNativeChrome(win);
         }
-        if (searchUiChanged && IsFindUIVisible(win)) {
-            FindWindowSetDocked(win, !gGlobalPrefs->searchUIFloating);
+        if (searchUiChanged) {
+            if (gGlobalPrefs->searchUIFloating) {
+                ShowDetailedSearchWindow(win);
+            } else if (IsFindWindowVisible(win)) {
+                ToolbarFindCloseDetailed(win, false);
+            }
         }
         win->RedrawAll(true);
         if (gGlobalPrefs->fullPathInTitle != fullPathInTitleBefore) {
@@ -9343,8 +9522,11 @@ static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs*
         args->content = GetSelectedTextTemp(tab, "\r\n", isTextOnlySelection);
     }
 
-    int nCreated = 0;
-    Annotation* annot = nullptr;
+    struct CreatedMarkup {
+        int pageNo = 0;
+        Annotation* annot = nullptr;
+    };
+    Vec<CreatedMarkup> created;
     for (auto pageNo : pageNos) {
         Vec<RectF> rects;
         for (auto& sel : *s) {
@@ -9353,14 +9535,14 @@ static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs*
             }
             rects.Append(sel.rect);
         }
-        annot = EngineMupdfCreateAnnotation(engine, pageNo, PointF{}, args);
+        Annotation* annot = EngineMupdfCreateAnnotation(engine, pageNo, PointF{}, args);
         if (!annot) {
             // TODO: leaking if created annots before
             return nullptr;
         }
         SetQuadPointsAsRect(annot, rects);
         annot->bounds = GetBounds(annot);
-        MainWindowRerenderAnnotationChange(win, pageNo, IsPdfTextMarkupAnnotation(annot) ? annot : nullptr);
+        created.Append(CreatedMarkup{pageNo, annot});
     }
     UpdateAnnotationsList(tab->editAnnotsWindow);
 
@@ -9368,8 +9550,16 @@ static Annotation* MakeAnnotationsFromSelection(WindowTab* tab, AnnotCreateArgs*
     if (args->copyToClipboard) {
         CopySelectionToClipboard(win);
     }
+    // Drop the blue selection before the first paint, the way EPUB markup does.
+    // Drawing the bright mark on top of the selection and then wiping the blue
+    // blends the two colors for a frame.
     DeleteOldSelectionInfo(win, true);
     ToolbarUpdateStateForWindow(win, true);
+    Annotation* annot = nullptr;
+    for (auto& item : created) {
+        annot = item.annot;
+        MainWindowRerenderAnnotationChange(win, item.pageNo, IsPdfTextMarkupAnnotation(annot) ? annot : nullptr);
+    }
     return annot;
 }
 
@@ -9504,14 +9694,15 @@ bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM
     }
     RECT rc{};
     GetWindowRect(win->sidebarSplitter->hwnd, &rc);
-    int tolerance = DpiScale(win->hwndFrame, 5);
-    int leftTol = tolerance;
-    int rightTol = tolerance;
-    bool resizeCursor = GetCursor() == GetCachedCursor(IDC_SIZEWE);
-    bool press = msg == WM_LBUTTONDOWN || msg == WM_NCLBUTTONDOWN;
+    // The <-> hotspot is the pointer, in the middle of the arrow. Either tip
+    // is SizeWeCursorReachPx() away, so a click on the tip misses a 1px line.
+    // The drag strip is that whole glyph, on every sidebar page.
+    int reach = SizeWeCursorReachPx();
+    int leftTol = reach;
+    int rightTol = reach;
     // Bookmark-calibration row buttons sit flush against the splitter. A left
     // tolerance that reaches into that row steals the icon click into a width
-    // drag. The rest of the column keeps the drag strip.
+    // drag. The line itself still drags.
     bool onCalibRow = false;
     if (TocCalibBarVisible(win) && win->hwndTocBox) {
         RECT tocRc{};
@@ -9519,32 +9710,8 @@ bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM
         int barDy = TocCalibBarDy(win);
         onCalibRow = pt.y >= tocRc.bottom - barDy && pt.y < tocRc.bottom;
     }
-    bool sidebarTree = sourceHwnd && ((win->tocTreeView && sourceHwnd == win->tocTreeView->hwnd) ||
-                                      (win->favTreeView && sourceHwnd == win->favTreeView->hwnd));
-    if (sidebarTree && !onCalibRow && (GetWindowLongPtrW(sourceHwnd, GWL_EXSTYLE) & WS_EX_LAYOUTRTL) == 0) {
+    if (onCalibRow) {
         leftTol = 0;
-        // One strip, whether or not a scrollbar is up. With a bar, it is the
-        // bar's outer edge against the splitter (not the thumb). With no bar,
-        // the separator is one pixel, so the same strip sits on the tree's
-        // right edge. The pixel between the bar and that line is part of the
-        // strip: the <-> cursor is already showing there.
-        SCROLLBARINFO sbi{};
-        sbi.cbSize = sizeof(sbi);
-        bool barVisible = GetScrollBarInfo(sourceHwnd, OBJID_VSCROLL, &sbi) &&
-                          !(sbi.rgstate[0] & (STATE_SYSTEM_INVISIBLE | STATE_SYSTEM_OFFSCREEN));
-        if (!barVisible || std::abs(sbi.rcScrollBar.right - rc.left) <= tolerance) {
-            leftTol = tolerance;
-        }
-    } else if (sidebarTree) {
-        leftTol = 0;
-    }
-    // WM_SETCURSOR arrives before the press and would put the arrow back,
-    // so the following click no longer sees <->. While that cursor is up,
-    // keep this same strip and let the press drag.
-    if (resizeCursor && !onCalibRow && (press || msg == WM_SETCURSOR || msg == WM_MOUSEMOVE || msg == WM_NCMOUSEMOVE)) {
-        if (leftTol < tolerance) {
-            leftTol = tolerance;
-        }
     }
     if (pt.y < rc.top || pt.y >= rc.bottom || pt.x < rc.left - leftTol || pt.x >= rc.right + rightTol) {
         return false;
@@ -9562,6 +9729,68 @@ bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM
         return GetCapture() == win->sidebarSplitter->hwnd;
     }
     return true;
+}
+
+void SetSidebarColumnDx(MainWindow* win, int dx) {
+    if (!win || !win->hwndFrame || dx <= 0) {
+        return;
+    }
+    Rect rFrame = ClientRect(win->hwndFrame);
+    int maxDx = std::max(kSidebarMinDx, rFrame.dx / 2);
+    int requested = dx;
+    dx = limitValue(dx, kSidebarMinDx, maxDx);
+    if (win->sidebarWidthIsAi) {
+        // A narrow frame clamps the column. Don't remember that clamp as the AI width.
+        if (requested <= maxDx) {
+            win->aiSidebarDx = dx;
+        }
+    } else {
+        gGlobalPrefs->sidebarDx = dx;
+        win->plainSidebarDx = dx;
+    }
+    RelayoutFrame(win, false, dx);
+}
+
+// Bookmarks and AI keep separate widths. The AI width stays in this session.
+static void SyncSidebarColumnWidth(MainWindow* win) {
+    if (!win || !win->hwndTocBox || !win->hwndFrame || !win->tocVisible) {
+        return;
+    }
+    bool ai = CurrentSidebarView(win) == SidebarView::Ai;
+    if (ai && win->sidebarWidthIsAi) {
+        int curNow = ClientRect(win->hwndTocBox).dx;
+        int minAi = DpiScale(win->hwndFrame, 280);
+        int maxDx = std::max(kSidebarMinDx, ClientRect(win->hwndFrame).dx / 2);
+        if (curNow > 0 && curNow < minAi && maxDx >= minAi) {
+            int want = win->aiSidebarDx >= minAi ? win->aiSidebarDx : DpiScale(win->hwndFrame, 400);
+            SetSidebarColumnDx(win, want);
+        }
+        return;
+    }
+    if (ai == win->sidebarWidthIsAi) {
+        return;
+    }
+    int cur = ClientRect(win->hwndTocBox).dx;
+    if (win->sidebarWidthIsAi && cur > 0) {
+        win->aiSidebarDx = cur;
+    }
+    if (!win->sidebarWidthIsAi && cur > 0) {
+        win->plainSidebarDx = cur;
+    }
+    win->sidebarWidthIsAi = ai;
+    int want = 0;
+    if (ai) {
+        want = win->aiSidebarDx > 0 ? win->aiSidebarDx : DpiScale(win->hwndFrame, 400);
+        int minAi = DpiScale(win->hwndFrame, 280);
+        if (want < minAi) {
+            want = minAi;
+        }
+    } else {
+        want = win->plainSidebarDx > 0 ? win->plainSidebarDx : gGlobalPrefs->sidebarDx;
+    }
+    if (want > 0 && want != cur) {
+        SetSidebarColumnDx(win, want);
+    }
 }
 
 void EnsureSidebarDxAtLeast(MainWindow* win, int minDx) {
@@ -9704,7 +9933,11 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
     Rect rFrame = ClientRect(win->hwndFrame);
     Rect rToc = ClientRect(win->hwndTocBox);
     int minDx = std::min(kSidebarMinDx, rToc.dx);
-    if (TocCalibIsActive(win) && win->tocTreeView && win->tocTreeView->hwnd) {
+    if (CurrentSidebarView(win) == SidebarView::Ai) {
+        minDx = std::max(minDx, DpiScale(win->hwndFrame, 280));
+    }
+    if (CurrentSidebarView(win) == SidebarView::Bookmarks && TocCalibIsActive(win) && win->tocTreeView &&
+        win->tocTreeView->hwnd) {
         // Keep printed/pdf fields + title readable while calibrating.
         minDx = std::max(minDx, TocCalibPreferredSidebarDx(win->tocTreeView->hwnd));
     }
@@ -9730,7 +9963,12 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
             gTocDragPerf = {};
             gTocDragStartDx = rToc.dx;
         }
-        gGlobalPrefs->sidebarDx = sidebarDx;
+        if (win->sidebarWidthIsAi) {
+            win->aiSidebarDx = sidebarDx;
+        } else {
+            gGlobalPrefs->sidebarDx = sidebarDx;
+            win->plainSidebarDx = sidebarDx;
+        }
         ScheduleSidebarRelayout(win, sidebarDx);
         return;
     }
@@ -9741,7 +9979,12 @@ static void OnSidebarSplitterMove(Splitter::MoveEvent* ev) {
     // legitimately > maxDx here. Skipping the finalization leaves the layout
     // at the last in-range mouse position (and stale TOC wrap heights).
     int finalDx = limitValue(sidebarDx, minDx, maxDx);
-    gGlobalPrefs->sidebarDx = finalDx;
+    if (win->sidebarWidthIsAi) {
+        win->aiSidebarDx = finalDx;
+    } else {
+        gGlobalPrefs->sidebarDx = finalDx;
+        win->plainSidebarDx = finalDx;
+    }
     if (gSidebarSplitterWrapSuspended) {
         // Supersede any queued intermediate width. The posted message becomes
         // a harmless no-op after this synchronous final pass.
@@ -10004,6 +10247,9 @@ void SetSidebarVisibility(MainWindow* win, bool tocVisible, bool showFavorites, 
         tab->showTocPresentation = column;
     }
     win->tocVisible = column;
+    if (column) {
+        SyncSidebarColumnWidth(win);
+    }
 
     // Favorites lives in the same column. A true flag here splits the sidebar in two.
     gGlobalPrefs->showFavorites = false;
@@ -10742,7 +10988,7 @@ static void SetAnnotCreateArgs(AnnotCreateArgs& args, CustomCommand* cmd) {
     ParsedColor* col = nullptr;
     ParsedColor* bgCol = nullptr;
     auto typ = args.annotType;
-    if (typ == AnnotationType::Text) {
+    if (typ == AnnotationType::Text || typ == AnnotationType::Caret) {
         col = GetParsedColor(a.textIconColor, a.textIconColorParsed);
     } else if (typ == AnnotationType::Underline) {
         col = GetParsedColor(a.underlineColor, a.underlineColorParsed);
@@ -10786,7 +11032,7 @@ static COLORREF GetEbookAnnotationColor(AnnotationType type, const AnnotCreateAr
         return RGB(0, 0, 0);
     }
     if (type == AnnotationType::Caret) {
-        return RGB(0, 0, 255);
+        return GetDefaultAnnotationColor(AnnotationType::Text);
     }
     if (type == AnnotationType::Stamp || type == AnnotationType::Line || type == AnnotationType::Square ||
         type == AnnotationType::Circle || type == AnnotationType::Ink) {
@@ -11977,6 +12223,10 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
             AnalyzeSelectionWithDoubao(tab);
             break;
 
+        case CmdOpenAskAi:
+            OpenEmptyAskAi(win);
+            break;
+
         case CmdTranslateSelection:
             TranslateSelectionInTab(win, tab);
             break;
@@ -12385,16 +12635,31 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
 
         case CmdDeleteAnnotation: {
             if (!tab) return 0;
+            // The context menu passes the right-click point. By the time Delete
+            // runs, the cursor is on the menu, so a signature that is not the
+            // selected annotation would otherwise be missed.
+            Point click{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            bool fromContextMenu = lp != 0;
             if (EbookAnnotationsSupported(tab) && dm) {
-                Point pt = HwndGetCursorPos(win->hwndCanvas);
+                Point pt = fromContextMenu ? click : HwndGetCursorPos(win->hwndCanvas);
                 if (EbookAnnotationsDeleteAt(tab, dm, pt)) {
                     UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow);
-                    MainWindowRerender(win);
+                    // Ebook marks are drawn on top of the page. Repainting the
+                    // current tile drops the deleted one immediately.
+                    RefreshAnnotationOverlay(win);
                     return 0;
                 }
             }
-            Annotation* annot = tab->selectedAnnotation;
-            if (!annot) annot = GetAnnotionUnderCursor(tab, nullptr);
+            Annotation* annot = nullptr;
+            if (fromContextMenu && dm) {
+                annot = dm->GetAnnotationAtPos(click, nullptr);
+            }
+            if (!annot) {
+                annot = tab->selectedAnnotation;
+            }
+            if (!annot) {
+                annot = GetAnnotionUnderCursor(tab, nullptr);
+            }
             if (!annot) return 0;
             DeleteAnnotationAndUpdateUI(tab, annot);
             return 0;
@@ -12491,10 +12756,11 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
                     win->ebookAnnotationBeingDragged = nullptr;
                     win->ebookAnnotationDragPending = nullptr;
                     ClearMouseState(win);
-                    if (annotType != AnnotationType::FreeText) {
+                    bool enterEdit = annotType == AnnotationType::Stamp || annotType == AnnotationType::FreeText;
+                    if (annotType == AnnotationType::Stamp) {
                         tab->selectedEbookAnnotation = annotation;
                     }
-                    UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, annotation);
+                    UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, enterEdit ? annotation : nullptr);
                     MainWindowRerender(win);
                     if (annotType == AnnotationType::FreeText) {
                         ShowEditEbookAnnotationsWindow(tab, annotation, EditAnnotFocus::Edit);
@@ -12636,8 +12902,14 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
         } break;
     }
 
-    // mark as selected so it can be moved / resized
-    SetSelectedAnnotation(tab, lastCreatedAnnot);
+    // Stamp stays selected so it can be moved. Other new marks are finished;
+    // they are not put into edit mode.
+    if (lastCreatedAnnot->type == AnnotationType::Stamp) {
+        SetSelectedAnnotation(tab, lastCreatedAnnot);
+        return 0;
+    }
+    MainWindowRerenderAnnotationChange(win, lastCreatedAnnot->pageNo, lastCreatedAnnot);
+    ToolbarUpdateStateForWindow(win, false);
     return 0;
 }
 
@@ -13231,6 +13503,8 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
                 HBRUSH brBorder = CreateSolidBrush(ThemeChromeBackgroundColor());
                 FillRect(hdc, &ps.rcPaint, brBorder);
                 DeleteObject(brBorder);
+                // The chrome fill above covers the 1px gap under the toolbar.
+                PaintToolbarContentHairline(win, hdc);
             }
 
             EndPaint(hwnd, &ps);
@@ -13529,6 +13803,7 @@ static LRESULT CustomCaptionFrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
                     DarkMode::setDarkTitleBarEx(hMenuWnd, false);
                 }
             }
+            ApplyEyeCarePopupMenuTheme();
             if (gMenuAccelPressed) {
                 HWND hMenu = FindWindow(UNDOCUMENTED_MENU_CLASS_NAME, nullptr);
                 if (hMenu) {
@@ -16478,6 +16753,47 @@ static void FinishDeferredMainWindowDpiRefresh(MainWindow* win, HWND hwnd) {
 
 static UINT gTaskbarCreatedMsg = RegisterWindowMessageW(L"TaskbarCreated");
 
+// 1px strip under the menu/toolbar. Same stroke as the idle search field.
+static COLORREF ToolbarContentHairlineColor() {
+    return AccentColor(ThemeChromeBackgroundColor(), 36);
+}
+
+static void PaintToolbarContentHairline(MainWindow* win, HDC hdc) {
+    if (!hdc || !win || !win->isToolbarVisible || !win->hwndReBar || !IsWindowVisible(win->hwndReBar)) {
+        return;
+    }
+    RECT bar{};
+    if (!GetWindowRect(win->hwndReBar, &bar)) {
+        return;
+    }
+    POINT origin{0, 0};
+    ClientToScreen(win->hwndFrame, &origin);
+    int sep = 1;
+    RECT client{};
+    GetClientRect(win->hwndFrame, &client);
+    // Only across the page. The sidebar and the vertical scrollbar stay clear.
+    int lineLeft = client.left;
+    int lineRight = client.right;
+    if (win->hwndCanvas && IsWindowVisible(win->hwndCanvas)) {
+        RECT page{};
+        if (GetClientRect(win->hwndCanvas, &page) && page.right > page.left) {
+            MapWindowPoints(win->hwndCanvas, win->hwndFrame, (LPPOINT)&page, 2);
+            lineLeft = page.left;
+            lineRight = page.right;
+        }
+    }
+    RECT line{lineLeft, bar.bottom - origin.y, lineRight, bar.bottom - origin.y + sep};
+    if (line.right <= line.left || line.top < client.top || line.top >= client.bottom) {
+        return;
+    }
+    if (line.bottom > client.bottom) {
+        line.bottom = client.bottom;
+    }
+    HBRUSH br = CreateSolidBrush(ToolbarContentHairlineColor());
+    FillRect(hdc, &line, br);
+    DeleteObject(br);
+}
+
 LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     MainWindow* win = FindMainWindowByHwnd(hwnd);
 
@@ -16533,8 +16849,8 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
             if (win) {
                 win->deferDpiChromeRefresh = true;
                 win->dpiChromeRefreshPending = false;
-                CloseEditAnnotationsWindowsForDpiMove(win);
-                CloseEbookAnnotationsWindowsForDpiMove(win);
+                // Keep the annotations panel up. Closing it here made it vanish
+                // for the whole time the main window was being moved or resized.
             }
             return 0;
 
@@ -16618,6 +16934,7 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
                     DarkMode::setDarkTitleBarEx(hMenuWnd, false);
                 }
             }
+            ApplyEyeCarePopupMenuTheme();
             // TODO: should I just build the menu from scratch every time?
             if (win) {
                 UpdateAppMenu(win, (HMENU)wp);
@@ -16930,6 +17247,7 @@ LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
                 HBRUSH br = CreateSolidBrush(ThemeChromeBackgroundColor());
                 FillRect(hdc, &rc, br);
                 DeleteObject(br);
+                PaintToolbarContentHairline(win, hdc);
             }
             return TRUE;
         }

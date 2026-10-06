@@ -497,7 +497,7 @@ static bool AllowCommand(const CommandPaletteBuildCtx& ctx, i32 cmdId) {
     if (!HasPermission(Perm::InternetAccess)) {
         remove |= IsCmdInMenuList(cmdId, removeIfNoInternetPerms);
     }
-    if (!gGlobalPrefs->enableAskAI && cmdId == CmdAnalyzeSelectionWithDoubao) {
+    if (!gGlobalPrefs->enableAskAI && (cmdId == CmdAnalyzeSelectionWithDoubao || cmdId == CmdOpenAskAi)) {
         remove = true;
     }
     if (!HasPermission(Perm::FullscreenAccess)) {
@@ -1469,7 +1469,9 @@ void DrawMaybeHighlightedText(DrawMaybeHighlightedTextArgs& args) {
 
     // draw highlight background rectangles for matches
     ParsedColor* parsedCol = GetPrefsColor(gGlobalPrefs->fixedPageUI.findMatchColor);
-    COLORREF highlightCol = parsedCol->parsedOk ? parsedCol->col : RGB(255, 255, 0);
+    COLORREF highlightCol = args.highlightColor != CLR_INVALID
+                                ? args.highlightColor
+                                : (parsedCol->parsedOk ? parsedCol->col : RGB(255, 255, 0));
     HBRUSH hbrHighlight = CreateSolidBrush(highlightCol);
     HBRUSH hbrSecondary =
         args.secondaryHighlightColor != CLR_INVALID ? CreateSolidBrush(args.secondaryHighlightColor) : nullptr;

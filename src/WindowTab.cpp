@@ -26,6 +26,7 @@
 #include "EbookAnnotations.h"
 #include "EditEbookAnnotations.h"
 #include "TocCalib.h"
+#include "InlineTranslate.h"
 
 #include "utils/Log.h"
 
@@ -82,7 +83,9 @@ WindowTab::~WindowTab() {
         ReadAloudHighlightFree(readAloudHighlight);
         delete readAloudHighlight;
     }
+    FreeTabAskAiState(this);
     FreeTabState(tabState);
+    ClearPdfDeletedAnnotCovers(this);
 }
 
 bool WindowTab::IsDocLoaded() const {

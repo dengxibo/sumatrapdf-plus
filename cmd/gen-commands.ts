@@ -294,6 +294,7 @@ export const commands = [
     "CmdPickEbookLatinFont", "Western Body Font",
     "CmdPickEbookCjkFont", "CJK Body Font",
     "CmdAddHandwrittenSignature", "Add Handwritten Signature",
+    "CmdOpenAskAi", "Open Ask AI",
     "CmdNone", "Do nothing",
 ];
 

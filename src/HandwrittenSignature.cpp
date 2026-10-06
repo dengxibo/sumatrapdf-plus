@@ -27,6 +27,8 @@
 #include "EditAnnotations.h"
 #include "Toolbar.h"
 #include "HandwrittenSignature.h"
+#include "EbookAnnotations.h"
+#include "EditEbookAnnotations.h"
 #include "ImageSaveCropResize.h"
 #include "Theme.h"
 #include "AppDialogTheme.h"
@@ -42,6 +44,49 @@ constexpr int kPadOkId = 102;
 constexpr int kPadCancelId = 103;
 constexpr int kPadPhotoId = 104;
 constexpr WCHAR kPadClassName[] = L"SumatraHandwrittenSignature";
+
+// The pad is a sheet of the theme, not a white card. Ink is the theme's
+// reading color so a dark theme does not put black strokes on a bright page.
+static COLORREF SignaturePaperColor() {
+    COLORREF paper = ThemeWindowControlBackgroundColor();
+    if (ThemeUsesBlackChrome()) {
+        // Control bg is #050505, which disappears into the black dialog.
+        paper = AccentColor(paper, 18);
+    }
+    return paper;
+}
+
+static COLORREF SignatureInkColor() {
+    if (ThemeUsesDarkChrome()) {
+        return ThemeReadingTextColor();
+    }
+    return ThemeWindowTextColor();
+}
+
+static COLORREF SignatureGuideColor() {
+    return AccentColor(SignaturePaperColor(), ThemeUsesDarkChrome() ? 36 : 32);
+}
+
+static COLORREF SignatureHintColor() {
+    return AccentColor(SignaturePaperColor(), ThemeUsesDarkChrome() ? 58 : 52);
+}
+
+// Drag preview sits on the page, which may already be recolored. Match that
+// page so the stroke stays visible. The stored stamp is still black ink.
+static COLORREF SignatureOnPageInkColor() {
+    COLORREF pageBg = 0;
+    ThemePageRenderColors(pageBg, true);
+    if (IsLightColor(pageBg)) {
+        return RGB(0, 0, 0);
+    }
+    return ThemeReadingTextColor();
+}
+
+static COLORREF SignatureOnPageFrameColor() {
+    COLORREF pageBg = 0;
+    ThemePageRenderColors(pageBg, true);
+    return AccentColor(pageBg, 48);
+}
 
 static bool gPlacing = false;
 static MainWindow* gPlaceWin = nullptr;
@@ -190,9 +235,28 @@ static bool ParseIntToken(const char* s, int& out) {
     return true;
 }
 
+// Strokes sit beside the photo in sumatrapdfcache. Older builds wrote
+// handwritten-signature.txt in the app-data root.
+static TempStr SignatureStrokePath() {
+    TempStr dir = GetPathInAppDataDirTemp("sumatrapdfcache");
+    if (!dir) {
+        return nullptr;
+    }
+    return path::JoinTemp(dir, "handwritten-signature.txt");
+}
+
+static TempStr SignatureStrokePathLegacy() {
+    return GetPathInAppDataDirTemp("handwritten-signature.txt");
+}
+
 static void LoadSignatureFile(SigPad* pad) {
-    TempStr path = GetPathInAppDataDirTemp("handwritten-signature.txt");
-    if (!path) {
+    TempStr path = SignatureStrokePath();
+    bool legacy = false;
+    if (!path || !file::Exists(path)) {
+        path = SignatureStrokePathLegacy();
+        legacy = path && file::Exists(path);
+    }
+    if (!path || !file::Exists(path)) {
         return;
     }
     ByteSlice data = file::ReadFile(path);
@@ -260,11 +324,18 @@ static void LoadSignatureFile(SigPad* pad) {
         pad->loadedCounts.Append(got);
     }
     str::Free(text);
+    if (legacy && pad->loadedCounts.Size() > 0) {
+        TempStr dest = SignatureStrokePath();
+        TempStr src = SignatureStrokePathLegacy();
+        if (dest && src && dir::CreateForFile(dest) && file::Copy(dest, src, false)) {
+            file::Delete(src);
+        }
+    }
 }
 
 static void SaveSignatureFile(const Vec<PointF>& pts, const Vec<int>& counts, float aspect) {
-    TempStr path = GetPathInAppDataDirTemp("handwritten-signature.txt");
-    if (!path) {
+    TempStr path = SignatureStrokePath();
+    if (!path || !dir::CreateForFile(path)) {
         return;
     }
     StrBuilder sb;
@@ -289,7 +360,12 @@ static void SaveSignatureFile(const Vec<PointF>& pts, const Vec<int>& counts, fl
         }
     }
     ByteSlice slice((const u8*)sb.Get(), sb.size());
-    file::WriteFile(path, slice);
+    if (file::WriteFile(path, slice)) {
+        TempStr old = SignatureStrokePathLegacy();
+        if (old && file::Exists(old)) {
+            file::Delete(old);
+        }
+    }
 }
 
 static bool CropSignature(Vec<PointF>& pts, Vec<int>& counts, float padW, float padH, float& aspect) {
@@ -654,7 +730,7 @@ SigPad::~SigPad() {
     FreePhoto(this);
 }
 
-static HBITMAP DibFromLocked(const Gdiplus::BitmapData& src, int w, int h, int threshold) {
+static HBITMAP DibFromLocked(const Gdiplus::BitmapData& src, int w, int h, int threshold, COLORREF ink) {
     BITMAPINFO bmi{};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth = w;
@@ -682,7 +758,9 @@ static HBITMAP DibFromLocked(const Gdiplus::BitmapData& src, int w, int h, int t
             if (lum < 0 || lum >= threshold) {
                 out[0] = out[1] = out[2] = out[3] = 0;
             } else {
-                out[0] = out[1] = out[2] = 0;
+                out[0] = GetBValue(ink);
+                out[1] = GetGValue(ink);
+                out[2] = GetRValue(ink);
                 out[3] = 255;
             }
             out += 4;
@@ -702,7 +780,7 @@ static void RebuildPhotoPreview(SigPad* pad) {
     }
     int w = (int)pad->photoSrc->GetWidth();
     int h = (int)pad->photoSrc->GetHeight();
-    pad->photoDib = DibFromLocked(data, w, h, pad->threshold);
+    pad->photoDib = DibFromLocked(data, w, h, pad->threshold, SignatureInkColor());
     pad->photoSrc->UnlockBits(&data);
     if (pad->photoDib) {
         pad->photoW = w;
@@ -1287,9 +1365,10 @@ static void PaintPad(SigPad* pad, HDC hdc, const RECT& client) {
     if (owned) {
         DeleteObject(owned);
     }
-    HBRUSH white = (HBRUSH)GetStockObject(WHITE_BRUSH);
-    FillRect(hdc, &pad->padRc, white);
-    HPEN border = CreatePen(PS_SOLID, 1, RGB(180, 180, 180));
+    HBRUSH paper = CreateSolidBrush(SignaturePaperColor());
+    FillRect(hdc, &pad->padRc, paper);
+    DeleteObject(paper);
+    HPEN border = CreatePen(PS_SOLID, 1, SignatureGuideColor());
     HGDIOBJ oldPen = SelectObject(hdc, border);
     HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(NULL_BRUSH));
     Rectangle(hdc, pad->padRc.left, pad->padRc.top, pad->padRc.right, pad->padRc.bottom);
@@ -1327,7 +1406,7 @@ static void PaintPad(SigPad* pad, HDC hdc, const RECT& client) {
     }
     int baseY = pad->padRc.bottom - DpiScale(pad->hwnd, 36);
     if (baseY > pad->padRc.top + 8) {
-        HPEN basePen = CreatePen(PS_SOLID, 1, RGB(190, 190, 190));
+        HPEN basePen = CreatePen(PS_SOLID, 1, SignatureGuideColor());
         SelectObject(hdc, basePen);
         int inset = DpiScale(pad->hwnd, 16);
         MoveToEx(hdc, pad->padRc.left + inset, baseY, nullptr);
@@ -1337,7 +1416,7 @@ static void PaintPad(SigPad* pad, HDC hdc, const RECT& client) {
     }
     if (pad->pts.Size() == 0) {
         SetBkMode(hdc, TRANSPARENT);
-        SetTextColor(hdc, RGB(140, 140, 140));
+        SetTextColor(hdc, SignatureHintColor());
         HFONT font = GetAppFontForHwnd(pad->hwnd);
         HGDIOBJ oldFont = nullptr;
         if (font) {
@@ -1359,7 +1438,7 @@ static void PaintPad(SigPad* pad, HDC hdc, const RECT& client) {
     if (penW < 2) {
         penW = 2;
     }
-    LOGBRUSH lb{BS_SOLID, RGB(0, 0, 0), 0};
+    LOGBRUSH lb{BS_SOLID, SignatureInkColor(), 0};
     HPEN ink = ExtCreatePen(PS_GEOMETRIC | PS_SOLID | PS_ENDCAP_ROUND | PS_JOIN_ROUND, penW, &lb, 0, nullptr);
     SelectObject(hdc, ink);
     int src = 0;
@@ -1441,18 +1520,36 @@ static void ClearPad(SigPad* pad) {
     ClearPhoto(pad);
 }
 
+// Re-enable the document before the pad goes away. While it is still disabled,
+// Windows activates another owned window, and the annotations panel then
+// switches back to the tab it belongs to.
+static void ClosePad(SigPad* pad, bool accepted) {
+    if (!pad || !pad->hwnd) {
+        return;
+    }
+    pad->accepted = accepted;
+    HWND owner = GetWindow(pad->hwnd, GW_OWNER);
+    if (owner) {
+        EnableWindow(owner, TRUE);
+        SetActiveWindow(owner);
+    }
+    DestroyWindow(pad->hwnd);
+    if (owner && IsWindow(owner)) {
+        SetForegroundWindow(owner);
+        SetFocus(owner);
+    }
+}
+
 static void AcceptPad(SigPad* pad) {
     if (!HasStroke(pad->counts) && !pad->hasPhoto) {
         return;
     }
     EndStroke(pad);
-    pad->accepted = true;
-    DestroyWindow(pad->hwnd);
+    ClosePad(pad, true);
 }
 
 static void CancelPad(SigPad* pad) {
-    pad->accepted = false;
-    DestroyWindow(pad->hwnd);
+    ClosePad(pad, false);
 }
 
 static void PadRecreateThemeBrush(SigPad* pad) {
@@ -1621,8 +1718,7 @@ static LRESULT CALLBACK PadWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             break;
         case WM_CLOSE:
-            pad->accepted = false;
-            DestroyWindow(hwnd);
+            CancelPad(pad);
             return 0;
         case WM_DESTROY:
             UnregisterAppDialogForTheme(hwnd);
@@ -1842,7 +1938,10 @@ void HandwrittenSignatureOpen(MainWindow* win) {
     }
     DisplayModel* dm = win->AsFixed();
     EngineBase* engine = dm ? dm->GetEngine() : nullptr;
-    if (!engine || !EngineSupportsAnnotations(engine)) {
+    WindowTab* tab = win->CurrentTab();
+    bool pdfOk = engine && EngineSupportsAnnotations(engine);
+    bool ebookOk = tab && EbookAnnotationsSupported(tab);
+    if (!pdfOk && !ebookOk) {
         NotifyCantStore(win);
         return;
     }
@@ -1866,7 +1965,7 @@ void HandwrittenSignatureOpen(MainWindow* win) {
         if (saved) {
             Gdiplus::BitmapData data{};
             if (LockArgb(photo, data)) {
-                dib = DibFromLocked(data, w, h, 256);
+                dib = DibFromLocked(data, w, h, 256, SignatureOnPageInkColor());
                 photo->UnlockBits(&data);
             }
         }
@@ -2001,7 +2100,10 @@ static bool CommitSignatureBox(MainWindow* win, int left, int top, int sw, int s
         return true;
     }
     EngineBase* engine = dm->GetEngine();
-    if (!engine || !EngineSupportsAnnotations(engine)) {
+    WindowTab* tab = win->CurrentTab();
+    bool pdfOk = engine && EngineSupportsAnnotations(engine);
+    bool ebookOk = tab && EbookAnnotationsSupported(tab);
+    if (!pdfOk && !ebookOk) {
         NotifyCantStore(win);
         HandwrittenSignatureCancelPlace(win);
         return true;
@@ -2015,6 +2117,21 @@ static bool CommitSignatureBox(MainWindow* win, int left, int top, int sw, int s
         }
         TempStr pngPath = SignaturePngPath();
         ByteSlice png = file::ReadFile(pngPath);
+        if (ebookOk && !pdfOk) {
+            EbookAnnotation* ebookAnnot =
+                EbookAnnotationsCreateSignatureImage(tab, dm, pageNo, rect, png.data(), png.Size());
+            png.Free();
+            HandwrittenSignatureCancelPlace(win);
+            if (!ebookAnnot) {
+                ShowTemporaryNotification(win->hwndCanvas, _TRA("Couldn't add the signature."), kNotif5SecsTimeOut);
+                return true;
+            }
+            tab->selectedEbookAnnotation = ebookAnnot;
+            ShowEditEbookAnnotationsWindow(tab, ebookAnnot);
+            MainWindowRerender(win);
+            ToolbarUpdateStateForWindow(win, true);
+            return true;
+        }
         Annotation* annot = EngineMupdfCreateAnnotationStampPng(engine, pageNo, rect, png);
         png.Free();
         HandwrittenSignatureCancelPlace(win);
@@ -2022,7 +2139,6 @@ static bool CommitSignatureBox(MainWindow* win, int left, int top, int sw, int s
             ShowTemporaryNotification(win->hwndCanvas, _TRA("Couldn't add the signature."), kNotif5SecsTimeOut);
             return true;
         }
-        WindowTab* tab = win->CurrentTab();
         if (tab) {
             UpdateAnnotationsList(tab->editAnnotsWindow);
             SetSelectedAnnotation(tab, annot);
@@ -2065,6 +2181,20 @@ static bool CommitSignatureBox(MainWindow* win, int left, int top, int sw, int s
         HandwrittenSignatureCancelPlace(win);
         return true;
     }
+    if (ebookOk && !pdfOk) {
+        EbookAnnotation* ebookAnnot = EbookAnnotationsCreateInkStrokes(
+            tab, dm, pageNo, flat.LendData(), counts.LendData(), counts.Size(), RGB(0, 0, 0), 2);
+        HandwrittenSignatureCancelPlace(win);
+        if (!ebookAnnot) {
+            ShowTemporaryNotification(win->hwndCanvas, _TRA("Couldn't add the signature."), kNotif5SecsTimeOut);
+            return true;
+        }
+        tab->selectedEbookAnnotation = ebookAnnot;
+        ShowEditEbookAnnotationsWindow(tab, ebookAnnot);
+        MainWindowRerender(win);
+        ToolbarUpdateStateForWindow(win, true);
+        return true;
+    }
     AnnotCreateArgs args;
     args.annotType = AnnotationType::Ink;
     Annotation* annot = EngineMupdfCreateAnnotationInkStrokes(engine, pageNo, flat.LendData(), counts.LendData(),
@@ -2074,7 +2204,6 @@ static bool CommitSignatureBox(MainWindow* win, int left, int top, int sw, int s
         ShowTemporaryNotification(win->hwndCanvas, _TRA("Couldn't add the signature."), kNotif5SecsTimeOut);
         return true;
     }
-    WindowTab* tab = win->CurrentTab();
     if (tab) {
         UpdateAnnotationsList(tab->editAnnotsWindow);
         // Selected immediately so the new signature can be moved and resized.
@@ -2172,7 +2301,7 @@ void HandwrittenSignaturePaintPreview(HDC hdc, MainWindow* win) {
     if (!PreviewBox(win, left, top, sw, sh)) {
         return;
     }
-    HPEN border = CreatePen(PS_SOLID, 1, RGB(80, 80, 80));
+    HPEN border = CreatePen(PS_SOLID, 1, SignatureOnPageFrameColor());
     HGDIOBJ oldPen = SelectObject(hdc, border);
     HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(NULL_BRUSH));
     if (gPlaceIsPhoto && gPlacePhoto && gPlacePhotoW > 0 && gPlacePhotoH > 0) {
@@ -2193,7 +2322,7 @@ void HandwrittenSignaturePaintPreview(HDC hdc, MainWindow* win) {
     }
     Rectangle(hdc, left, top, left + sw, top + sh);
     int penW = 2;
-    LOGBRUSH lb{BS_SOLID, RGB(0, 0, 0), 0};
+    LOGBRUSH lb{BS_SOLID, SignatureOnPageInkColor(), 0};
     HPEN ink = ExtCreatePen(PS_GEOMETRIC | PS_SOLID | PS_ENDCAP_ROUND | PS_JOIN_ROUND, penW, &lb, 0, nullptr);
     if (ink) {
         SelectObject(hdc, ink);

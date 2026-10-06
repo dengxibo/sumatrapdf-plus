@@ -775,18 +775,28 @@ pdf_write_square_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf, f
 			rd.y0 = exp;
 		if (rd.y1 < exp)
 			rd.y1 = exp;
-	}
-	else
-	{
-		fz_append_printf(ctx, buf, "%g %g %g %g re\n", x, y, w, h);
-	}
-	maybe_stroke_and_fill(ctx, buf, sc, ic);
+        } else {
+            /* A small document-space radius, capped for tiny rectangles. Keep the
+             * original inset/stroke bounds and persist the shape in the PDF AP. */
+            float r = fz_min(6.0f, fz_min(w, h) / 4.0f);
+            float k = r * 0.55228475f;
+            fz_append_printf(ctx, buf, "%g %g m %g %g l\n", x + r, y, x + w - r, y);
+            fz_append_printf(ctx, buf, "%g %g %g %g %g %g c\n", x + w - r + k, y, x + w, y + r - k, x + w, y + r);
+            fz_append_printf(ctx, buf, "%g %g l\n", x + w, y + h - r);
+            fz_append_printf(ctx, buf, "%g %g %g %g %g %g c\n", x + w, y + h - r + k, x + w - r + k, y + h, x + w - r,
+                             y + h);
+            fz_append_printf(ctx, buf, "%g %g l\n", x + r, y + h);
+            fz_append_printf(ctx, buf, "%g %g %g %g %g %g c\n", x + r - k, y + h, x, y + h - r + k, x, y + h - r);
+            fz_append_printf(ctx, buf, "%g %g l\n", x, y + r);
+            fz_append_printf(ctx, buf, "%g %g %g %g %g %g c h\n", x, y + r - k, x + r - k, y, x + r, y);
+        }
+        maybe_stroke_and_fill(ctx, buf, sc, ic);
 
-	pdf_dict_put_rect(ctx, annot->obj, PDF_NAME(RD), rd);
-	rect->x0 = x - rd.x0;
-	rect->y0 = y - rd.y0;
-	rect->x1 = x + w + rd.x1;
-	rect->y1 = y + h + rd.y1;
+        pdf_dict_put_rect(ctx, annot->obj, PDF_NAME(RD), rd);
+        rect->x0 = x - rd.x0;
+        rect->y0 = y - rd.y0;
+        rect->x1 = x + w + rd.x1;
+        rect->y1 = y + h + rd.y1;
 }
 
 static void
@@ -1339,22 +1349,199 @@ pdf_write_redact_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf, f
 	}
 }
 
+/* Quarter-circle corners. k = 0.5523 * r. */
+static void
+append_round_rect(fz_context *ctx, fz_buffer *buf, float x, float y, float w, float h, float r)
+{
+	float x1 = x + w;
+	float y1 = y + h;
+	float k = 0.5523f * r;
+
+	fz_append_printf(ctx, buf, "%g %g m\n", x + r, y);
+	fz_append_printf(ctx, buf, "%g %g l\n", x1 - r, y);
+	fz_append_printf(ctx, buf, "%g %g %g %g %g %g c\n", x1 - r + k, y, x1, y + r - k, x1, y + r);
+	fz_append_printf(ctx, buf, "%g %g l\n", x1, y1 - r);
+	fz_append_printf(ctx, buf, "%g %g %g %g %g %g c\n", x1, y1 - r + k, x1 - r + k, y1, x1 - r, y1);
+	fz_append_printf(ctx, buf, "%g %g l\n", x + r, y1);
+	fz_append_printf(ctx, buf, "%g %g %g %g %g %g c\n", x + r - k, y1, x, y1 - r + k, x, y1 - r);
+	fz_append_printf(ctx, buf, "%g %g l\n", x, y + r);
+	fz_append_printf(ctx, buf, "%g %g %g %g %g %g c\n", x, y + r - k, x + r - k, y, x + r, y);
+	fz_append_string(ctx, buf, "h\n");
+}
+
+static void
+append_circle(fz_context *ctx, fz_buffer *buf, float cx, float cy, float r)
+{
+	float k = 0.5523f * r;
+
+	fz_append_printf(ctx, buf, "%g %g m\n", cx + r, cy);
+	fz_append_printf(ctx, buf, "%g %g %g %g %g %g c\n", cx + r, cy + k, cx + k, cy + r, cx, cy + r);
+	fz_append_printf(ctx, buf, "%g %g %g %g %g %g c\n", cx - k, cy + r, cx - r, cy + k, cx - r, cy);
+	fz_append_printf(ctx, buf, "%g %g %g %g %g %g c\n", cx - r, cy - k, cx - k, cy - r, cx, cy - r);
+	fz_append_printf(ctx, buf, "%g %g %g %g %g %g c\n", cx + k, cy - r, cx + r, cy - k, cx + r, cy);
+	fz_append_string(ctx, buf, "h\n");
+}
+
+static int
+pdf_is_text_note_icon(const char *name)
+{
+	return !strcmp(name, "Comment") || !strcmp(name, "Note") || !strcmp(name, "Help") ||
+		!strcmp(name, "Key") || !strcmp(name, "NewParagraph") || !strcmp(name, "Paragraph") ||
+		!strcmp(name, "Insert") || !strcmp(name, "Caret");
+}
+
+/* Map a glyph's box onto the note page (height 10, centered on 8,8).
+ * Stroked marks use a smaller path box so the 0.85 stroke's outer edge
+ * lands on that same box, and the width is divided back out of the scale. */
+static void
+pdf_begin_fitted_glyph(fz_context *ctx, fz_buffer *buf, float x0, float y0, float x1, float y1, int stroked)
+{
+	float w = x1 - x0;
+	float h = y1 - y0;
+	float maxd = w > h ? w : h;
+	float target = stroked ? 9.15f : 10.f;
+	float s = target / maxd;
+	float cx = (x0 + x1) * 0.5f;
+	float cy = (y0 + y1) * 0.5f;
+	fz_append_printf(ctx, buf, "q\n%g 0 0 %g %g %g cm\n", s, s, 8.f - s * cx, 8.f - s * cy);
+	if (stroked)
+		fz_append_printf(ctx, buf, "%g w\n1 J\n1 j\n", 0.85f / s);
+}
+
+/* SumatraPDF: text notes are a quiet color chip plus a line glyph.
+ * The note border and pilcrow stems are about 0.85 wide. Every line icon
+ * uses that same width, and each mark is fitted to the note's box. */
+static void
+pdf_write_text_note_glyph(fz_context *ctx, fz_buffer *buf, const char *name)
+{
+	fz_append_string(ctx, buf, "0.85 w\n1 J\n1 j\n");
+	if (!strcmp(name, "Comment"))
+	{
+		pdf_begin_fitted_glyph(ctx, buf, 4.1f, 3.3f, 12.0f, 11.2f, 1);
+		append_round_rect(ctx, buf, 4.2f, 5.6f, 7.8f, 5.6f, 1.45f);
+		fz_append_string(ctx, buf, "S\n");
+		fz_append_string(ctx, buf, "5.5 5.6 m\n4.1 3.3 l\n7.5 5.6 l\nS\n");
+		fz_append_string(ctx, buf, "Q\n");
+	}
+	else if (!strcmp(name, "Help"))
+	{
+		pdf_begin_fitted_glyph(ctx, buf, 6.0f, 5.2f, 10.5f, 13.0f, 1);
+		fz_append_string(ctx, buf, "6.0 10.7 m\n");
+		fz_append_string(ctx, buf, "6.0 12.2 6.9 13.0 8.1 13.0 c\n");
+		fz_append_string(ctx, buf, "9.5 13.0 10.5 12.1 10.5 10.7 c\n");
+		fz_append_string(ctx, buf, "10.5 9.4 9.2 8.9 8.1 8.1 c\n");
+		fz_append_string(ctx, buf, "8.1 7.3 l\nS\n");
+		fz_append_string(ctx, buf, "7.6 5.2 m\n8.6 5.2 l\nS\n");
+		fz_append_string(ctx, buf, "Q\n");
+	}
+	else if (!strcmp(name, "Key"))
+	{
+		pdf_begin_fitted_glyph(ctx, buf, 4.2f, 4.5f, 12.45f, 12.65f, 1);
+		append_circle(ctx, buf, 10.4f, 10.6f, 2.05f);
+		fz_append_string(ctx, buf, "S\n");
+		fz_append_string(ctx, buf, "8.9 9.2 m\n4.2 4.5 l\nS\n");
+		fz_append_string(ctx, buf, "5.6 5.9 m\n7.0 4.5 l\nS\n");
+		fz_append_string(ctx, buf, "Q\n");
+	}
+	else if (!strcmp(name, "NewParagraph"))
+	{
+		pdf_begin_fitted_glyph(ctx, buf, 4.3f, 3.8f, 10.7f, 11.8f, 1);
+		fz_append_string(ctx, buf, "10.7 11.8 m\n10.7 6.0 l\n4.3 6.0 l\nS\n");
+		fz_append_string(ctx, buf, "4.3 6.0 m\n6.5 8.2 l\nS\n");
+		fz_append_string(ctx, buf, "4.3 6.0 m\n6.5 3.8 l\nS\n");
+		fz_append_string(ctx, buf, "Q\n");
+	}
+	else if (!strcmp(name, "Paragraph"))
+	{
+		pdf_begin_fitted_glyph(ctx, buf, 3.91f, 3.f, 12.09f, 13.f, 0);
+		/* Filled pilcrow: bowl, two stems, top bar, with the bowl cut out. */
+		fz_append_string(ctx, buf, "6.64 13 m\n");
+		fz_append_string(ctx, buf, "5.14 13 3.91 11.77 3.91 10.27 c\n");
+		fz_append_string(ctx, buf, "3.91 8.77 5.14 7.55 6.64 7.55 c\n");
+		fz_append_string(ctx, buf, "8.45 7.55 l\n8.45 3 l\n9.36 3 l\n9.36 12.09 l\n");
+		fz_append_string(ctx, buf, "10.27 12.09 l\n10.27 3 l\n11.18 3 l\n11.18 12.09 l\n");
+		fz_append_string(ctx, buf, "12.09 12.09 l\n12.09 13 l\nh\n");
+		fz_append_string(ctx, buf, "6.64 12.09 m\n8.45 12.09 l\n8.45 8.45 l\n6.64 8.45 l\n");
+		fz_append_string(ctx, buf, "5.63 8.45 4.82 9.26 4.82 10.27 c\n");
+		fz_append_string(ctx, buf, "4.82 11.28 5.63 12.09 6.64 12.09 c\nh\n");
+		fz_append_string(ctx, buf, "f*\nQ\n");
+	}
+	else if (!strcmp(name, "Insert"))
+	{
+		/* Serifs are wider than the old 3.8 so the beam matches the other marks. */
+		pdf_begin_fitted_glyph(ctx, buf, 4.6f, 3.4f, 11.4f, 12.6f, 1);
+		fz_append_string(ctx, buf, "8 3.4 m\n8 12.6 l\nS\n");
+		fz_append_string(ctx, buf, "4.6 12.6 m\n11.4 12.6 l\nS\n");
+		fz_append_string(ctx, buf, "4.6 3.4 m\n11.4 3.4 l\nS\n");
+		fz_append_string(ctx, buf, "Q\n");
+	}
+	else if (!strcmp(name, "Caret"))
+	{
+		pdf_begin_fitted_glyph(ctx, buf, 4.0f, 3.8f, 12.0f, 12.6f, 1);
+		fz_append_string(ctx, buf, "4.0 3.8 m\n8 12.6 l\n12.0 3.8 l\nS\n");
+		fz_append_string(ctx, buf, "Q\n");
+	}
+	else
+	{
+		pdf_begin_fitted_glyph(ctx, buf, 3.83f, 3.f, 12.17f, 13.f, 0);
+		/* Note: rounded page with three text bars. Inner path cuts the page. */
+		fz_append_string(ctx, buf,
+			"11.33 13 m\n4.67 13 l\n"
+			"4.21 13 3.83 12.63 3.83 12.17 c\n"
+			"3.83 3.83 l\n"
+			"3.83 3.37 4.21 3 4.67 3 c\n"
+			"11.33 3 l\n"
+			"11.79 3 12.17 3.37 12.17 3.83 c\n"
+			"12.17 12.17 l\n"
+			"12.17 12.63 11.79 13 11.33 13 c\nh\n"
+			"11.33 4.25 m\n"
+			"11.33 4.02 11.15 3.83 10.92 3.83 c\n"
+			"5.08 3.83 l\n"
+			"4.85 3.83 4.67 4.02 4.67 4.25 c\n"
+			"4.67 11.75 l\n"
+			"4.67 11.98 4.85 12.17 5.08 12.17 c\n"
+			"10.92 12.17 l\n"
+			"11.15 12.17 11.33 11.98 11.33 11.75 c\nh\n"
+			"10.08 10.08 m\n10.08 9.85 9.90 9.67 9.67 9.67 c\n6.33 9.67 l\n"
+			"6.10 9.67 5.92 9.85 5.92 10.08 c\n"
+			"5.92 10.31 6.10 10.50 6.33 10.50 c\n9.67 10.50 l\n"
+			"9.90 10.50 10.08 10.31 10.08 10.08 c\nh\n"
+			"10.08 8 m\n10.08 7.77 9.90 7.58 9.67 7.58 c\n6.33 7.58 l\n"
+			"6.10 7.58 5.92 7.77 5.92 8 c\n"
+			"5.92 8.23 6.10 8.42 6.33 8.42 c\n9.67 8.42 l\n"
+			"9.90 8.42 10.08 8.23 10.08 8 c\nh\n"
+			"10.08 5.92 m\n10.08 5.69 9.90 5.50 9.67 5.50 c\n6.33 5.50 l\n"
+			"6.10 5.50 5.92 5.69 5.92 5.92 c\n"
+			"5.92 6.15 6.10 6.33 6.33 6.33 c\n9.67 6.33 l\n"
+			"9.90 6.33 10.08 6.15 10.08 5.92 c\nh\n"
+			"f*\nQ\n");
+	}
+}
+
 static void
 pdf_write_caret_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf, fz_rect *rect, fz_rect *bbox, pdf_obj **res)
 {
 	float xc = (rect->x0 + rect->x1) / 2;
 	float yc = (rect->y0 + rect->y1) / 2;
+	float side = 22.f;
 
+	/* Same plate and chevron as a text note whose icon is Caret. */
 	pdf_write_opacity(ctx, annot, buf, res);
-	pdf_write_fill_color_appearance(ctx, annot, buf);
-
-	fz_append_string(ctx, buf, "0 0 m\n");
-	fz_append_string(ctx, buf, "10 0 10 7 10 14 c\n");
-	fz_append_string(ctx, buf, "10 7 10 0 20 0 c\n");
+	if (!pdf_write_fill_color_appearance(ctx, annot, buf))
+		fz_append_string(ctx, buf, "1 g\n");
+	fz_append_string(ctx, buf, "q\n1.375 0 0 1.375 0 0 cm\n");
+	append_round_rect(ctx, buf, 0.35f, 0.35f, 15.3f, 15.3f, 2.7f);
 	fz_append_string(ctx, buf, "f\n");
+	if (pdf_is_dark_fill_color(ctx, annot))
+		fz_append_string(ctx, buf, "1 RG\n1 rg\n");
+	else
+		fz_append_string(ctx, buf, "0.16 0.16 0.16 RG\n0.16 0.16 0.16 rg\n");
+	fz_append_string(ctx, buf, "q\n1.28 0 0 1.28 -2.24 -2.24 cm\n");
+	pdf_write_text_note_glyph(ctx, buf, "Caret");
+	fz_append_string(ctx, buf, "Q\nQ\n");
 
-	*rect = fz_make_rect(xc - 10, yc - 7, xc + 10, yc + 7);
-	*bbox = fz_make_rect(0, 0, 20, 14);
+	*rect = fz_make_rect(xc - side / 2, yc - side / 2, xc + side / 2, yc + side / 2);
+	*bbox = fz_make_rect(0, 0, side, side);
 }
 
 static void
@@ -1370,6 +1557,32 @@ pdf_write_icon_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf, fz_
 	if (!pdf_write_fill_color_appearance(ctx, annot, buf))
 		fz_append_string(ctx, buf, "1 g\n");
 
+	name = pdf_annot_icon_name(ctx, annot);
+
+	/* Text notes: color chip and a line glyph. NoZoom displays the appearance
+	 * bbox in points, so 22 (was 16) is one size larger on the page. */
+	if (pdf_is_text_note_icon(name) || pdf_annot_type(ctx, annot) == PDF_ANNOT_TEXT)
+	{
+		float side = 22.f;
+		x = rect->x0;
+		y = rect->y1 - side;
+		fz_append_string(ctx, buf, "q\n1.375 0 0 1.375 0 0 cm\n");
+		append_round_rect(ctx, buf, 0.35f, 0.35f, 15.3f, 15.3f, 2.7f);
+		fz_append_string(ctx, buf, "f\n");
+		if (pdf_is_dark_fill_color(ctx, annot))
+			fz_append_string(ctx, buf, "1 RG\n1 rg\n");
+		else
+			fz_append_string(ctx, buf, "0.16 0.16 0.16 RG\n0.16 0.16 0.16 rg\n");
+		/* Glyphs were drawn small inside the chip. Scale about the center so
+		 * the line mark fills the plate the way the old pictogram filled its square. */
+		fz_append_string(ctx, buf, "q\n1.28 0 0 1.28 -2.24 -2.24 cm\n");
+		pdf_write_text_note_glyph(ctx, buf, name);
+		fz_append_string(ctx, buf, "Q\nQ\n");
+		*rect = fz_make_rect(x, y, x + side, y + side);
+		*bbox = fz_make_rect(0, 0, side, side);
+		return;
+	}
+
 	fz_append_string(ctx, buf, "1 w\n0.5 0.5 15 15 re\nb\n");
 	fz_append_string(ctx, buf, "1 0 0 -1 4 12 cm\n");
 
@@ -1377,8 +1590,6 @@ pdf_write_icon_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf, fz_
 		fz_append_string(ctx, buf, "1 g\n");
 	else
 		fz_append_string(ctx, buf, "0 g\n");
-
-	name = pdf_annot_icon_name(ctx, annot);
 
 	/* Text names */
 	if (!strcmp(name, "Comment"))
@@ -1494,7 +1705,6 @@ pdf_write_stamp_appearance_rubber(fz_context *ctx, pdf_annot *annot, fz_buffer *
 	pdf_obj *res_font;
 	pdf_obj *name;
 	float w, h, xs, ys, fit_w, fit_h;
-	fz_matrix rotate;
 	int page_rot;
 
 	name = pdf_dict_get(ctx, annot->obj, PDF_NAME(Name));
@@ -1502,18 +1712,11 @@ pdf_write_stamp_appearance_rubber(fz_context *ctx, pdf_annot *annot, fz_buffer *
 		name = PDF_NAME(Draft);
 
 	page_rot = pdf_page_rotate_for_stamp(ctx, annot);
-	/* Tilt around the art center; expand BBox so the corners are not clipped. */
-	rotate = fz_translate(95, 25);
-	rotate = fz_pre_rotate(rotate, 8.f);
-	rotate = fz_pre_translate(rotate, -95, -25);
-	{
-		fz_rect ink = fz_make_rect(1, 1, 189, 47);
-		ink = fz_transform_rect(ink, rotate);
-		ink = fz_expand_rect(ink, 2);
-		fit_w = ink.x1 - ink.x0;
-		fit_h = ink.y1 - ink.y0;
-		*bbox = ink;
-	}
+	/* Upright 190x50 rubber stamp. Do not apply the traditional 8° tilt:
+	 * the annotation rect stays axis-aligned, so the art should too. */
+	fit_w = 190;
+	fit_h = 50;
+	*bbox = fz_make_rect(0, 0, 190, 50);
 	if (page_rot == 90 || page_rot == 270)
 	{
 		float t = fit_w;
@@ -1538,7 +1741,6 @@ pdf_write_stamp_appearance_rubber(fz_context *ctx, pdf_annot *annot, fz_buffer *
 		pdf_write_opacity(ctx, annot, buf, res);
 		pdf_write_fill_color_appearance(ctx, annot, buf);
 		pdf_write_stroke_color_appearance(ctx, annot, buf);
-		fz_append_printf(ctx, buf, "%M cm\n", &rotate);
 		fz_append_string(ctx, buf, "2 w\n2 2 186 44 re\nS\n");
 
 		if (name == PDF_NAME(Approved))
@@ -1604,6 +1806,8 @@ static void
 pdf_write_stamp_appearance_image(fz_context *ctx, pdf_annot *annot, fz_buffer *buf, fz_rect *rect, fz_rect *bbox, fz_matrix *matrix, pdf_obj **res, pdf_obj *img)
 {
 	pdf_obj *res_xobj;
+	int page_rot;
+	fz_matrix cm;
 
 	if (!*res)
 		*res = pdf_new_dict(ctx, annot->page->doc, 1);
@@ -1612,6 +1816,21 @@ pdf_write_stamp_appearance_image(fz_context *ctx, pdf_annot *annot, fz_buffer *b
 
 	pdf_write_opacity(ctx, annot, buf, res);
 
+	/* /I Do paints the bitmap upright in the unit square. pdf_set_annot_rect
+	 * stores that square in unrotated user space, and the page CTM then
+	 * applies /Rotate for display. On a 90/270 page the rect comes back
+	 * axis-aligned, but the bitmap inside it is turned on its side.
+	 * Rotate the unit square by +page_rot and park it back in [0,1]. */
+	page_rot = pdf_page_rotate_for_stamp(ctx, annot);
+	cm = fz_identity;
+	if (page_rot == 90)
+		cm = fz_make_matrix(0, 1, -1, 0, 1, 0);
+	else if (page_rot == 180)
+		cm = fz_make_matrix(-1, 0, 0, -1, 1, 1);
+	else if (page_rot == 270)
+		cm = fz_make_matrix(0, -1, 1, 0, 0, 1);
+	if (page_rot == 90 || page_rot == 180 || page_rot == 270)
+		fz_append_printf(ctx, buf, "%M cm\n", &cm);
 	fz_append_string(ctx, buf, "/I Do\n");
 
 	*bbox = fz_unit_rect;
@@ -1907,20 +2126,32 @@ break_string(fz_context *ctx, fz_text_language lang, fz_font *font, float size, 
 {
 	struct text_walk_state state;
 	const char *space = NULL;
-	float space_x, x = 0;
+	const char *prev = text;
+	float space_x = 0, prev_x = 0, x = 0;
 	init_text_walk(ctx, &state, lang, font, text, NULL);
 	while (next_text_walk(ctx, &state))
 	{
+		float next;
 		if (state.u == '\n' || state.u == '\r')
 			break;
-		if (state.u == ' ')
+		if (state.u == ' ' || state.u == 0x3000)
 		{
 			space = state.text + state.n;
 			space_x = x;
 		}
-		x += state.w * size;
-		if (space && x > maxw)
-			return *endp = space, space_x;
+		next = x + state.w * size;
+		/* SumatraPDF: CJK has no spaces. Break before the glyph that does not
+		 * fit, so resizing a free-text box reflows the line. A space on the
+		 * line still wins. Always keep at least one glyph. */
+		if (next > maxw && prev > text)
+		{
+			if (space)
+				return *endp = space, space_x;
+			return *endp = prev, prev_x;
+		}
+		prev = state.text + state.n;
+		prev_x = next;
+		x = next;
 	}
 	return *endp = state.text + state.n, x;
 }
@@ -2328,7 +2559,7 @@ write_rich_content(fz_context *ctx, pdf_annot *annot, fz_buffer *buf, pdf_obj **
 	 * We know a clipping rectangle will have been set to the proper rectangle
 	 * so we can allow text to flow out the bottom of the rectangle rather than
 	 * just missing it out. This matches adobe. */
-	fz_rect content_box = fz_make_rect(b, b, w - b*2, h + size * 2);
+	fz_rect content_box = fz_make_rect(b, b, w - b, h + size * 2);
 
 	fz_buffer *inbuf = fz_new_buffer_from_copied_data(ctx, (const unsigned char *)rc, strlen(rc)+1);
 	fz_story *story = NULL;
@@ -2600,7 +2831,7 @@ pdf_write_free_text_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf
 	const char *font;
 	float size, color[4];
 	const char *text;
-	float w, h, b;
+	float w, h, b, pad;
 	int q, r, n;
 	int lang;
 	fz_rect rd;
@@ -2646,6 +2877,9 @@ pdf_write_free_text_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf
 	ic = pdf_write_fill_color_appearance(ctx, annot, buf);
 	write_color0(ctx, buf, n, color, 1);
 	b = pdf_write_border_appearance(ctx, annot, buf);
+	/* A zero border is stored as a hairline by older builds. Treat that as none. */
+	if (b < 0.5f)
+		b = 0;
 
 	// Draw Callout line
 	if (pdf_name_eq(ctx, pdf_dict_get(ctx, annot->obj, PDF_NAME(IT)), PDF_NAME(FreeTextCallout)))
@@ -2687,8 +2921,18 @@ pdf_write_free_text_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf
 	if (b > 0)
 		fz_append_printf(ctx, buf, "%g %g %g %g re\nS\n", text_box.x0 + b/2, text_box.y0 + b/2, w - b, h - b);
 
-	// Clip text to box
-	fz_append_printf(ctx, buf, "%g %g %g %g re\nW\nn\n", text_box.x0 + b, text_box.y0 + b, w - b * 2, h - b * 2);
+	/* Inset the text by the border plus a margin that scales with the font size. */
+	pad = b + (size > 0 ? size : 12) * 0.4f;
+	{
+		float side = w < h ? w : h;
+		if (pad > side * 0.45f)
+			pad = side * 0.45f;
+		if (pad < 0)
+			pad = 0;
+	}
+
+	// Clip text to the padded box
+	fz_append_printf(ctx, buf, "%g %g %g %g re\nW\nn\n", text_box.x0 + pad, text_box.y0 + pad, w - pad * 2, h - pad * 2);
 
 	// Recompute Rect and RD to account for Callout line
 	rd.x0 = text_box.x0 - rect->x0;
@@ -2733,7 +2977,7 @@ pdf_write_free_text_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf
 	if (rc)
 	{
 		fz_try(ctx)
-			write_rich_content(ctx, annot, buf, res, rc ? rc : text, ds, size, w, h, b * 2, 1);
+			write_rich_content(ctx, annot, buf, res, rc ? rc : text, ds, size, w, h, pad, 1);
 		fz_always(ctx)
 			fz_free(ctx, free_rc);
 		fz_catch(ctx)
@@ -2742,7 +2986,7 @@ pdf_write_free_text_appearance(fz_context *ctx, pdf_annot *annot, fz_buffer *buf
 	else
 #endif
 	{
-		write_variable_text(ctx, annot, buf, res, lang, text, font, size, n, color, q, w, h, b*2,
+		write_variable_text(ctx, annot, buf, res, lang, text, font, size, n, color, q, w, h, pad,
 			0.8f, 1.2f, 1, 0, 0);
 	}
 

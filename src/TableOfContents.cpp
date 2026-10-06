@@ -45,6 +45,8 @@
 #include "AppTools.h"
 #include "TableOfContents.h"
 #include "SidebarThumbs.h"
+#include "EditAnnotations.h"
+#include "EditEbookAnnotations.h"
 #include "Translations.h"
 #include "Tabs.h"
 #include "Menu.h"
@@ -4223,6 +4225,20 @@ static void LayoutTocContainer(MainWindow* win) {
         place(win->favTreeView->hwnd, 0, y, rc.dx, dy);
         SetWindowPos(win->favTreeView->hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
+    bool aiOn = styleVisible(win->hwndAiSidebar);
+    if (aiOn) {
+        place(win->hwndAiSidebar, 0, y, rc.dx, dy);
+        SetWindowPos(win->hwndAiSidebar, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+    WindowTab* annotTab = win->CurrentTab();
+    HWND annotHwnd = EditAnnotationsSidebarHwnd(annotTab);
+    if (!annotHwnd) {
+        annotHwnd = EbookAnnotationsSidebarHwnd(annotTab);
+    }
+    if (styleVisible(annotHwnd)) {
+        place(annotHwnd, 0, y, rc.dx, dy);
+        SetWindowPos(annotHwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
 }
 
 void RelayoutTocContainer(MainWindow* win) {
@@ -5016,6 +5032,11 @@ static LRESULT CALLBACK WndProcTocBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         return msg == WM_SETCURSOR ? TRUE : 0;
     }
 
+    if (msg == WM_CONTEXTMENU && CurrentSidebarView(win) == SidebarView::Thumbnails) {
+        // The thumbnail view shares this container, but not its TOC editing menu.
+        return 0;
+    }
+
     if (msg == WM_CONTEXTMENU && win->tocTreeView) {
         // The favorites tree is reparented into this box. Its right-click must
         // stay the favorites menu; this handler would build the bookmark one.
@@ -5386,7 +5407,8 @@ void UpdateTocFilterForDocumentLoading(MainWindow* win) {
         return;
     }
     SidebarView view = CurrentSidebarView(win);
-    bool show = win->tocVisible && (view != SidebarView::Bookmarks || TocSidebarHasBookmarkItems(win));
+    bool show = win->tocVisible && view != SidebarView::Ai && view != SidebarView::Annotations &&
+                (view != SidebarView::Bookmarks || TocSidebarHasBookmarkItems(win));
     HwndSetVisibility(win->tocFilterEdit->hwnd, show);
     RelayoutTocContainer(win);
 }

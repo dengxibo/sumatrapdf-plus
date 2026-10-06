@@ -162,12 +162,41 @@ DLGTEMPLATE* GetRtLDlgTemplate(int dlgId) {
     return tpl;
 }
 
+struct AppDialogInit {
+    DLGPROC proc;
+    LPARAM data;
+};
+
+static INT_PTR CALLBACK AppDialogDispatch(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    constexpr const wchar_t* prop = L"SumatraAppDialogProc";
+    DLGPROC proc = (DLGPROC)GetPropW(hwnd, prop);
+    if (msg == WM_INITDIALOG) {
+        auto* init = (AppDialogInit*)lp;
+        proc = init->proc;
+        SetPropW(hwnd, prop, (HANDLE)proc);
+        INT_PTR result = proc(hwnd, msg, wp, init->data);
+        if (IsWindow(hwnd)) {
+            // Run after dialog-specific initialization/themes. Include editable
+            // combos and child pages, without changing each dialog's behavior.
+            AppDialogUseStandardControls(hwnd);
+            AppDialogApplyChrome(hwnd);
+        }
+        return result;
+    }
+    INT_PTR result = proc ? proc(hwnd, msg, wp, lp) : FALSE;
+    if (msg == WM_NCDESTROY) {
+        RemovePropW(hwnd, prop);
+    }
+    return result;
+}
+
 // creates a dialog box that dynamically gets a right-to-left layout if needed
 INT_PTR CreateAppDialogBox(int dlgId, HWND parent, DLGPROC DlgProc, LPARAM data) {
+    AppDialogInit init{DlgProc, data};
     bool isRtl = IsUIRtl();
     bool isDefaultFont = IsAppFontSizeDefault();
     if (!isRtl && isDefaultFont) {
-        return DialogBoxParam(nullptr, MAKEINTRESOURCE(dlgId), parent, DlgProc, data);
+        return DialogBoxParam(nullptr, MAKEINTRESOURCE(dlgId), parent, AppDialogDispatch, (LPARAM)&init);
     }
 
     DLGTEMPLATE* tpl = DupTemplate(dlgId);
@@ -178,16 +207,17 @@ INT_PTR CreateAppDialogBox(int dlgId, HWND parent, DLGPROC DlgProc, LPARAM data)
         SetDlgTemplateExFont(tpl, isRtl, fntSize);
     }
 
-    INT_PTR res = DialogBoxIndirectParamW(nullptr, tpl, parent, DlgProc, data);
+    INT_PTR res = DialogBoxIndirectParamW(nullptr, tpl, parent, AppDialogDispatch, (LPARAM)&init);
     free(tpl);
     return res;
 }
 
 HWND CreateAppDialogModeless(int dlgId, HWND parent, DLGPROC DlgProc, LPARAM data) {
+    AppDialogInit init{DlgProc, data};
     bool isRtl = IsUIRtl();
     bool isDefaultFont = IsAppFontSizeDefault();
     if (!isRtl && isDefaultFont) {
-        return CreateDialogParamW(nullptr, MAKEINTRESOURCE(dlgId), parent, DlgProc, data);
+        return CreateDialogParamW(nullptr, MAKEINTRESOURCE(dlgId), parent, AppDialogDispatch, (LPARAM)&init);
     }
 
     DLGTEMPLATE* tpl = DupTemplate(dlgId);
@@ -198,7 +228,7 @@ HWND CreateAppDialogModeless(int dlgId, HWND parent, DLGPROC DlgProc, LPARAM dat
         SetDlgTemplateExFont(tpl, isRtl, fntSize);
     }
 
-    HWND hwnd = CreateDialogIndirectParamW(nullptr, tpl, parent, DlgProc, data);
+    HWND hwnd = CreateDialogIndirectParamW(nullptr, tpl, parent, AppDialogDispatch, (LPARAM)&init);
     free(tpl);
     return hwnd;
 }
@@ -882,7 +912,10 @@ static const int gSettingsReadingControls[] = {IDC_SETTINGS_PAGE_READING,
                                                IDC_DICTIONARY_PATH,
                                                IDC_DICTIONARY_BROWSE,
                                                IDC_GROUP_FULLSCREEN,
-                                               IDC_PREVENT_SLEEP_FULLSCREEN};
+                                               IDC_PREVENT_SLEEP_FULLSCREEN,
+                                               IDC_GROUP_ANNOT_AUTHOR,
+                                               IDC_DEFAULT_AUTHOR_LABEL,
+                                               IDC_DEFAULT_AUTHOR};
 static const int gSettingsReadAloudControls[] = {IDC_SETTINGS_PAGE_READ_ALOUD,
                                                  IDC_GROUP_RA_VOICE,
                                                  IDC_RA_VOICE_MODE_LABEL,
@@ -1018,8 +1051,10 @@ static void FitSettingsInterfaceLabels(HWND hDlg) {
 }
 
 static void FitSettingsReadingLabels(HWND hDlg) {
-    static const int labelIds[] = {IDC_DEFAULT_LAYOUT_LABEL, IDC_DEFAULT_ZOOM_LABEL, IDC_DICTIONARY_PATH_LABEL};
-    static const int fieldIds[] = {IDC_DEFAULT_LAYOUT, IDC_DEFAULT_ZOOM, IDC_DICTIONARY_PATH, IDC_DICTIONARY_BROWSE};
+    static const int labelIds[] = {IDC_DEFAULT_LAYOUT_LABEL, IDC_DEFAULT_ZOOM_LABEL, IDC_DICTIONARY_PATH_LABEL,
+                                   IDC_DEFAULT_AUTHOR_LABEL};
+    static const int fieldIds[] = {IDC_DEFAULT_LAYOUT, IDC_DEFAULT_ZOOM, IDC_DICTIONARY_PATH, IDC_DICTIONARY_BROWSE,
+                                   IDC_DEFAULT_AUTHOR};
     FitSettingsLabelColumn(hDlg, labelIds, dimof(labelIds), fieldIds, dimof(fieldIds), IDC_DEFAULT_LAYOUT);
 }
 
@@ -2003,6 +2038,9 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             SetDlgItemInt(hDlg, IDC_TAB_BAR_HEIGHT, prefs->tabBarHeight, FALSE);
             SetDlgItemInt(hDlg, IDC_CUSTOM_DPI, prefs->customScreenDPI, FALSE);
             HwndSetDlgItemText(hDlg, IDC_DICTIONARY_PATH, prefs->offlineDictionaryPath);
+            HwndSetDlgItemText(hDlg, IDC_DEFAULT_AUTHOR, prefs->annotations.defaultAuthor);
+            SendMessageW(GetDlgItem(hDlg, IDC_DEFAULT_AUTHOR), EM_SETCUEBANNER, TRUE,
+                         (LPARAM)ToWStrTemp(_TRA("Windows user name")));
             AiTocInitProfiles(hDlg, prefs);
 
             HWND category = GetDlgItem(hDlg, IDC_SETTINGS_CATEGORY);
@@ -2161,6 +2199,8 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             HwndSetDlgItemText(hDlg, IDC_DICTIONARY_PATH_LABEL, _TRA("Offline dictionary:"));
             HwndSetDlgItemText(hDlg, IDC_DICTIONARY_BROWSE, _TRA("&Browse..."));
             HwndSetDlgItemText(hDlg, IDC_GROUP_FULLSCREEN, _TRA("Fullscreen"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_ANNOT_AUTHOR, _TRA("Annotations"));
+            HwndSetDlgItemText(hDlg, IDC_DEFAULT_AUTHOR_LABEL, _TRA("Default &author:"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_OCR, _TRA("OCR"));
             HwndSetDlgItemText(hDlg, IDC_AUTO_OCR, _TRA("Automatically OCR scanned pages"));
             HwndSetDlgItemText(hDlg, IDC_OCR_DESCRIPTION,
@@ -2453,6 +2493,9 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     }
                     char* dictionaryPath = HwndGetTextTemp(GetDlgItem(hDlg, IDC_DICTIONARY_PATH));
                     str::ReplaceWithCopy(&prefs->offlineDictionaryPath, dictionaryPath);
+                    char* defaultAuthor = HwndGetTextTemp(GetDlgItem(hDlg, IDC_DEFAULT_AUTHOR));
+                    str::TrimWSInPlace(defaultAuthor, str::TrimOpt::Both);
+                    str::ReplaceWithCopy(&prefs->annotations.defaultAuthor, defaultAuthor);
                     AiTocCommitProfiles(hDlg, prefs);
                     int scrollbarIdx = (int)SendDlgItemMessage(hDlg, IDC_SCROLLBARS, CB_GETCURSEL, 0, 0);
                     const char* scrollbarMode = seqstrings::IdxToStr(gScrollbarModeNames, scrollbarIdx);
@@ -2764,6 +2807,43 @@ static INT_PTR CALLBACK Dialog_AddFav_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARA
         HwndSetDlgItemText(hDlg, IDC_ADD_PAGE_STATIC, prompt);
         HwndSetDlgItemText(hDlg, IDOK, _TRA("OK"));
         HwndSetDlgItemText(hDlg, IDCANCEL, _TRA("Cancel"));
+        AppDialogUseStandardControls(hDlg);
+        AppDialogApplyChrome(hDlg);
+        // The application font is taller than the resource's 8-DLU label.
+        // Measure it after applying the shared font and keep the edit below it.
+        HWND label = GetDlgItem(hDlg, IDC_ADD_PAGE_STATIC);
+        HWND edit = GetDlgItem(hDlg, IDC_FAV_NAME_EDIT);
+        HDC dc = GetDC(label);
+        HFONT font = (HFONT)SendMessageW(label, WM_GETFONT, 0, 0);
+        HGDIOBJ oldFont = font ? SelectObject(dc, font) : nullptr;
+        TEXTMETRICW metrics{};
+        GetTextMetricsW(dc, &metrics);
+        if (oldFont) SelectObject(dc, oldFont);
+        ReleaseDC(label, dc);
+        RECT labelRect{}, editRect{};
+        GetWindowRect(label, &labelRect);
+        GetWindowRect(edit, &editRect);
+        MapWindowPoints(nullptr, hDlg, (POINT*)&labelRect, 2);
+        MapWindowPoints(nullptr, hDlg, (POINT*)&editRect, 2);
+        int labelHeight = std::max((int)(labelRect.bottom - labelRect.top),
+                                   (int)(metrics.tmHeight + metrics.tmExternalLeading) + DpiScale(hDlg, 2));
+        MoveWindow(label, labelRect.left, labelRect.top, labelRect.right - labelRect.left, labelHeight, TRUE);
+        int editTop = std::max((int)editRect.top, (int)labelRect.top + labelHeight + DpiScale(hDlg, 6));
+        MoveWindow(edit, editRect.left, editTop, editRect.right - editRect.left, editRect.bottom - editRect.top, TRUE);
+        // Use the same native action metrics as the annotation inspector.
+        // Keep the existing dialog width and right-aligned OK/Cancel order.
+        HWND ok = GetDlgItem(hDlg, IDOK);
+        HWND cancel = GetDlgItem(hDlg, IDCANCEL);
+        Size okSize = ButtonGetIdealSize(ok);
+        Size cancelSize = ButtonGetIdealSize(cancel);
+        int buttonWidth = std::max(okSize.dx, cancelSize.dx);
+        int buttonHeight = std::max(okSize.dy, cancelSize.dy);
+        RECT client{};
+        GetClientRect(hDlg, &client);
+        int pad = DpiScale(hDlg, 12), gap = DpiScale(hDlg, 8);
+        int y = std::max(0, (int)client.bottom - pad - buttonHeight);
+        MoveWindow(cancel, client.right - pad - buttonWidth, y, buttonWidth, buttonHeight, TRUE);
+        MoveWindow(ok, client.right - pad - buttonWidth * 2 - gap, y, buttonWidth, buttonHeight, TRUE);
         HWND setCurrent = GetDlgItem(hDlg, IDC_PDF_TOC_SET_CURRENT);
         if (data->showSetCurrentView) {
             HwndSetText(setCurrent, _TRA("Set target to current view"));

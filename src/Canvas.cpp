@@ -403,8 +403,9 @@ enum class ResizeHandle {
 
 // The dotted frame is drawn this far outside the annotation.
 constexpr int kAnnotFrameOutset = 4;
-// Hit band around that frame line. The system size-cursor's arrow is about
-// 22px, so a wider band lets the arrow sit inside the box.
+// White resize squares. Hit testing uses this same rectangle, then pads it.
+constexpr int kAnnotHandleSize = 6;
+// Extra pixels around each square and along the frame line.
 constexpr int kResizeFrameSlop = 6;
 
 // Smooth scrolling factor. This is a value between 0 and 1.
@@ -682,6 +683,38 @@ static void DrawMovePattern(MainWindow* win, Point pt, Size size) {
     ReleaseDC(hwnd, hdc);
 }
 
+static void BeginAnnotResizePreview(MainWindow* win, Annotation* annot);
+static void ClearAnnotResizePreview(MainWindow* win);
+
+// The black square is a PATINVERT on the window DC, so the next paint wipes
+// it and it flickers. A captured bitmap follows the cursor instead. The
+// square remains only when that capture fails.
+static void DragAnnotationMove(MainWindow* win, int x, int y, Annotation* annot) {
+    if (annot && !win->annotResizePreview && !win->annotMovePreviewFailed) {
+        BeginAnnotResizePreview(win, annot);
+        if (!win->annotResizePreview) {
+            win->annotMovePreviewFailed = true;
+        }
+    }
+    bool live = !annot || win->annotResizePreview;
+    if (live) {
+        win->annotMoveDest = Rect(x + win->annotationBeingMovedOffset.x, y + win->annotationBeingMovedOffset.y,
+                                  win->annotationBeingMovedSize.dx, win->annotationBeingMovedSize.dy);
+        win->annotMovePreview = true;
+        SetCursorCached(IDC_SIZEALL);
+        InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+        return;
+    }
+    Point cur{x, y};
+    if (!win->annotMovePatternOn) {
+        DrawMovePattern(win, cur, win->annotationBeingMovedSize);
+        win->annotMovePatternOn = true;
+        return;
+    }
+    DrawMovePattern(win, win->dragPrevPos, win->annotationBeingMovedSize);
+    DrawMovePattern(win, cur, win->annotationBeingMovedSize);
+}
+
 static void StartMouseDrag(MainWindow* win, int x, int y, bool right = false) {
     SetCapture(win->hwndCanvas);
     win->mouseAction = MouseAction::Dragging;
@@ -692,27 +725,77 @@ static void StartMouseDrag(MainWindow* win, int x, int y, bool right = false) {
     }
 }
 
+// Dotted selection frame in canvas pixels. Empty if the page is not on screen.
+static Rect AnnotationFrameOnScreen(MainWindow* win, Annotation* annot) {
+    if (!win || !annot) {
+        return Rect();
+    }
+    DisplayModel* dm = win->AsFixed();
+    if (!dm || !dm->PageVisible(annot->pageNo)) {
+        return Rect();
+    }
+    Rect rect = dm->CvtToScreen(annot->pageNo, GetRect(annot));
+    if (win->annotMovePreview && win->annotResizePreviewAnnot == annot) {
+        rect = win->annotMoveDest;
+    }
+    if (rect.IsEmpty()) {
+        return Rect();
+    }
+    rect.Inflate(kAnnotFrameOutset, kAnnotFrameOutset);
+    return rect;
+}
+
+static bool AnnotationFrameContains(MainWindow* win, Point pt, Annotation* annot) {
+    Rect frame = AnnotationFrameOnScreen(win, annot);
+    return !frame.IsEmpty() && frame.Contains(pt);
+}
+
+// Top-left of the white square drawn on this handle. `frame` is already inflated.
+static Rect AnnotHandleRect(Rect frame, ResizeHandle handle) {
+    int hs = kAnnotHandleSize;
+    int hh = hs / 2;
+    int x = frame.x - hh;
+    int y = frame.y - hh;
+    if (handle == ResizeHandle::Top || handle == ResizeHandle::Bottom) {
+        x = frame.x + frame.dx / 2 - hh;
+    }
+    if (handle == ResizeHandle::TopRight || handle == ResizeHandle::Right || handle == ResizeHandle::BottomRight) {
+        x = frame.x + frame.dx - hh;
+    }
+    if (handle == ResizeHandle::Left || handle == ResizeHandle::Right) {
+        y = frame.y + frame.dy / 2 - hh;
+    }
+    if (handle == ResizeHandle::BottomLeft || handle == ResizeHandle::Bottom || handle == ResizeHandle::BottomRight) {
+        y = frame.y + frame.dy - hh;
+    }
+    return Rect(x, y, hs, hs);
+}
+
 // Get the resize handle at the given point for the selected annotation
 static ResizeHandle GetResizeHandleAt(MainWindow* win, Point pt, Annotation* annot) {
-    if (!annot) {
+    Rect frame = AnnotationFrameOnScreen(win, annot);
+    if (frame.IsEmpty()) {
         return ResizeHandle::None;
     }
 
-    DisplayModel* dm = win->AsFixed();
-    if (!dm) {
-        return ResizeHandle::None;
+    // The whole drawn square, plus a few pixels of padding. A hit band drawn
+    // through the center leaves the corners of the square dead.
+    ResizeHandle handles[] = {
+        ResizeHandle::TopLeft, ResizeHandle::TopRight, ResizeHandle::BottomRight, ResizeHandle::BottomLeft,
+        ResizeHandle::Top,     ResizeHandle::Right,    ResizeHandle::Bottom,      ResizeHandle::Left,
+    };
+    for (ResizeHandle handle : handles) {
+        Rect hit = AnnotHandleRect(frame, handle);
+        hit.Inflate(kResizeFrameSlop, kResizeFrameSlop);
+        if (hit.Contains(pt)) {
+            return handle;
+        }
     }
 
-    int pageNo = annot->pageNo;
-    if (!dm->PageVisible(pageNo)) {
-        return ResizeHandle::None;
-    }
-
-    Rect rect = dm->CvtToScreen(pageNo, GetRect(annot));
-    int frameLeft = rect.x - kAnnotFrameOutset;
-    int frameRight = rect.x + rect.dx + kAnnotFrameOutset;
-    int frameTop = rect.y - kAnnotFrameOutset;
-    int frameBottom = rect.y + rect.dy + kAnnotFrameOutset;
+    int frameLeft = frame.x;
+    int frameRight = frame.x + frame.dx;
+    int frameTop = frame.y;
+    int frameBottom = frame.y + frame.dy;
     int slop = kResizeFrameSlop;
 
     bool nearLeft = pt.x >= frameLeft - slop && pt.x <= frameLeft + slop;
@@ -794,16 +877,29 @@ static bool StopDraggingAnnotation(MainWindow* win, int x, int y, bool aborted) 
     if (!annot) {
         return false;
     }
-    DrawMovePattern(win, win->dragPrevPos, win->annotationBeingMovedSize);
+    bool live = win->annotResizePreview;
+    if (win->annotMovePatternOn) {
+        DrawMovePattern(win, win->dragPrevPos, win->annotationBeingMovedSize);
+    }
+    win->annotMovePatternOn = false;
+    win->annotMovePreviewFailed = false;
 
     win->annotationBeingDragged = nullptr;
     if (aborted) {
+        win->annotMovePreview = false;
+        if (live) {
+            ClearAnnotResizePreview(win);
+            InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+        }
         return true;
     }
 
     DisplayModel* dm = win->AsFixed();
     x += win->annotationBeingMovedOffset.x;
     y += win->annotationBeingMovedOffset.y;
+    if (live) {
+        win->annotMoveDest = Rect(x, y, win->annotationBeingMovedSize.dx, win->annotationBeingMovedSize.dy);
+    }
     Point pt{x, y};
     int pageNo = dm->GetPageNoByPoint(pt);
     // we can only move annotation within the same page
@@ -816,9 +912,21 @@ static bool StopDraggingAnnotation(MainWindow* win, int x, int y, bool aborted) 
         // logf("prev rect: x=%.2f, y=%.2f, dx=%.2f, dy=%.2f\n", ar.x, ar.y, ar.dx, ar.dy);
         // logf(" new rect: x=%.2f, y=%.2f, dx=%.2f, dy=%.2f\n", r.x, r.y, r.dx, r.dy);
         SetRect(annot, r);
+        if (live) {
+            // Keep the captured shape until the moved page tile is on screen.
+            win->annotResizeShapeRect = dm->CvtToScreen(pageNo, GetRect(annot));
+            win->annotResizeFlight = true;
+        }
+        win->annotMovePreview = false;
         NotifyAnnotationsChanged(win->CurrentTab()->editAnnotsWindow);
         MainWindowRerenderAnnotationChange(win, annot->pageNo, IsPdfTextMarkupAnnotation(annot) ? annot : nullptr);
         ToolbarUpdateStateForWindow(win, true);
+    } else {
+        win->annotMovePreview = false;
+        if (live) {
+            ClearAnnotResizePreview(win);
+            InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+        }
     }
     return true;
 }
@@ -828,9 +936,15 @@ static bool StopDraggingEbookAnnotation(MainWindow* win, int x, int y, bool abor
     if (!annotation || win->annotationBeingResized) {
         return false;
     }
-    DrawMovePattern(win, win->dragPrevPos, win->annotationBeingMovedSize);
+    if (win->annotMovePatternOn) {
+        DrawMovePattern(win, win->dragPrevPos, win->annotationBeingMovedSize);
+    }
+    win->annotMovePatternOn = false;
+    win->annotMovePreviewFailed = false;
+    win->annotMovePreview = false;
     win->ebookAnnotationBeingDragged = nullptr;
     if (aborted) {
+        InvalidateRect(win->hwndCanvas, nullptr, FALSE);
         return true;
     }
     DisplayModel* dm = win->AsFixed();
@@ -838,6 +952,7 @@ static bool StopDraggingEbookAnnotation(MainWindow* win, int x, int y, bool abor
     int pageNo = 0;
     RectF bounds;
     if (!EbookAnnotationGetPageBounds(tab, dm, annotation, &pageNo, &bounds)) {
+        InvalidateRect(win->hwndCanvas, nullptr, FALSE);
         return true;
     }
     Point topLeft{x + win->annotationBeingMovedOffset.x, y + win->annotationBeingMovedOffset.y};
@@ -846,7 +961,9 @@ static bool StopDraggingEbookAnnotation(MainWindow* win, int x, int y, bool abor
         moved.dx = bounds.dx;
         moved.dy = bounds.dy;
         EbookAnnotationSetPageBounds(tab, dm, annotation, pageNo, moved, true);
-        MainWindowRerender(win);
+        RefreshAnnotationOverlay(win);
+    } else {
+        InvalidateRect(win->hwndCanvas, nullptr, FALSE);
     }
     return true;
 }
@@ -995,13 +1112,17 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
         if (!IsDragDistance(x, win->dragStart.x, y, win->dragStart.y)) {
             return;
         }
+        // Ctrl+click only enters edit mode. A move before that must not drag.
+        WindowTab* tab = win->CurrentTab();
+        if (!tab || tab->selectedEbookAnnotation != win->ebookAnnotationDragPending) {
+            return;
+        }
         EbookAnnotation* annotation = win->ebookAnnotationDragPending;
         win->ebookAnnotationDragPending = nullptr;
         win->dragStartPending = false;
         StartEbookAnnotationDrag(win, annotation, win->dragStart);
         Point dragPoint{x, y};
-        DrawMovePattern(win, win->dragStart, win->annotationBeingMovedSize);
-        DrawMovePattern(win, dragPoint, win->annotationBeingMovedSize);
+        DragAnnotationMove(win, x, y, nullptr);
         win->mouseAction = MouseAction::Dragging;
         win->dragPrevPos = dragPoint;
         return;
@@ -1015,7 +1136,6 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
         win->linkOnLastButtonDown = nullptr;
     }
 
-    Point prevPos = win->dragPrevPos;
     switch (win->mouseAction) {
         case MouseAction::None: {
             Annotation* annot = dm->GetAnnotationAtPos(pos, nullptr);
@@ -1115,9 +1235,7 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
                     InvalidateRect(win->hwndCanvas, nullptr, FALSE);
                     PumpAnnotationResizeRender(win);
                 } else {
-                    Size size = win->annotationBeingMovedSize;
-                    DrawMovePattern(win, prevPos, size);
-                    DrawMovePattern(win, pos, size);
+                    DragAnnotationMove(win, x, y, nullptr);
                 }
                 break;
             }
@@ -1140,9 +1258,7 @@ static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
                         PumpAnnotationResizeRender(win);
                     }
                 } else {
-                    Size size = win->annotationBeingMovedSize;
-                    DrawMovePattern(win, prevPos, size);
-                    DrawMovePattern(win, pos, size);
+                    DragAnnotationMove(win, x, y, annot);
                 }
             } else {
                 win->MoveDocBy(win->dragPrevPos.x - x, win->dragPrevPos.y - y);
@@ -1173,7 +1289,11 @@ static void StartAnnotationDrag(MainWindow* win, Annotation* annot, Point& pt) {
     int offsetX = rScreen.x - pt.x;
     int offsetY = rScreen.y - pt.y;
     win->annotationBeingMovedOffset = Point{offsetX, offsetY};
-    DrawMovePattern(win, pt, win->annotationBeingMovedSize);
+    win->annotMoveGrab = Point{rScreen.x, rScreen.y};
+    win->annotMoveDest = rScreen;
+    win->annotMovePreview = false;
+    win->annotMovePatternOn = false;
+    win->annotMovePreviewFailed = false;
 }
 
 static void StartEbookAnnotationDrag(MainWindow* win, EbookAnnotation* annotation, Point pt) {
@@ -1192,7 +1312,11 @@ static void StartEbookAnnotationDrag(MainWindow* win, EbookAnnotation* annotatio
     Rect screen = dm->CvtToScreen(pageNo, bounds);
     win->annotationBeingMovedSize = screen.Size();
     win->annotationBeingMovedOffset = {screen.x - pt.x, screen.y - pt.y};
-    DrawMovePattern(win, pt, win->annotationBeingMovedSize);
+    win->annotMoveGrab = Point{screen.x, screen.y};
+    win->annotMoveDest = screen;
+    win->annotMovePreview = false;
+    win->annotMovePatternOn = false;
+    win->annotMovePreviewFailed = false;
 }
 
 static RectF CalculateResizedEbookRect(MainWindow* win, int x, int y) {
@@ -1282,7 +1406,7 @@ static bool StopEbookAnnotationResize(MainWindow* win, bool aborted) {
         bounds = win->annotationOriginalRect;
     }
     EbookAnnotationSetPageBounds(win->CurrentTab(), win->AsFixed(), annotation, pageNo, bounds, !aborted);
-    MainWindowRerender(win);
+    RefreshAnnotationOverlay(win);
     return true;
 }
 
@@ -1337,8 +1461,8 @@ void ContinueAnnotationResizeRender(DisplayModel* dm, int pageNo) {
     }
 }
 
-// The dotted frame stays under the cursor. The press may land a few pixels
-// off the line; tracking the click offset left the arrow inside the box.
+// The edge follows the mouse delta. Snapping the line onto the cursor made a
+// press on the corner of a handle jump, so only the center pixel felt usable.
 static RectF CalculateResizedRect(MainWindow* win, int x, int y) {
     DisplayModel* dm = win->AsFixed();
     Annotation* annot = win->annotationBeingDragged;
@@ -1357,11 +1481,13 @@ static RectF CalculateResizedRect(MainWindow* win, int x, int y) {
         handle == ResizeHandle::BottomLeft || handle == ResizeHandle::Bottom || handle == ResizeHandle::BottomRight;
 
     Rect s = dm->CvtToScreen(pageNo, orig);
+    int dx = x - win->dragStart.x;
+    int dy = y - win->dragStart.y;
     int right = s.x + s.dx;
     int bottom = s.y + s.dy;
     const int minPx = 8;
     if (moveLeft) {
-        int edge = x + kAnnotFrameOutset;
+        int edge = s.x + dx;
         if (edge > right - minPx) {
             edge = right - minPx;
         }
@@ -1369,14 +1495,14 @@ static RectF CalculateResizedRect(MainWindow* win, int x, int y) {
         s.x = edge;
     }
     if (moveRight) {
-        int edge = x - kAnnotFrameOutset;
+        int edge = right + dx;
         if (edge < s.x + minPx) {
             edge = s.x + minPx;
         }
         s.dx = edge - s.x;
     }
     if (moveTop) {
-        int edge = y + kAnnotFrameOutset;
+        int edge = s.y + dy;
         if (edge > bottom - minPx) {
             edge = bottom - minPx;
         }
@@ -1384,7 +1510,7 @@ static RectF CalculateResizedRect(MainWindow* win, int x, int y) {
         s.y = edge;
     }
     if (moveBottom) {
-        int edge = y - kAnnotFrameOutset;
+        int edge = bottom + dy;
         if (edge < s.y + minPx) {
             edge = s.y + minPx;
         }
@@ -1690,6 +1816,7 @@ static void ClearAnnotResizePreview(MainWindow* win) {
     win->annotResizeShapeRect = Rect();
     win->annotResizePreview = false;
     win->annotResizePreviewAnnot = nullptr;
+    win->annotMovePreview = false;
 }
 
 static void BeginAnnotResizePreview(MainWindow* win, Annotation* annot) {
@@ -1755,11 +1882,12 @@ static void PaintAnnotationResizePreview(MainWindow* win, HDC hdc, DisplayModel*
     if (!dm->PageVisible(pageNo)) {
         return;
     }
-    Rect screen = dm->CvtToScreen(pageNo, GetRect(annot));
+    Rect screen = win->annotMovePreview ? win->annotMoveDest : dm->CvtToScreen(pageNo, GetRect(annot));
     if (screen.IsEmpty()) {
         return;
     }
-    if (!win->annotResizeShape || !SameRect(win->annotResizeShapeRect, screen)) {
+    // Move reuses the bitmap from mouse-down. Resize rebuilds it when the frame changes.
+    if (!win->annotResizeShape || (!win->annotMovePreview && !SameRect(win->annotResizeShapeRect, screen))) {
         HBITMAP fresh = RenderAnnotationPreviewBitmap(annot, dm->GetZoomSafe(pageNo), dm->GetRotation());
         if (fresh) {
             if (win->annotResizeShape) {
@@ -1797,6 +1925,7 @@ static void StartAnnotationResize(MainWindow* win, Annotation* annot, Point& pt,
     win->annotationBeingResized = true;
     win->resizeHandle = (int)handle;
     win->dragStart = pt;
+    win->dragStartPending = false;
     RectF r = GetRect(annot);
     win->annotationOriginalRect = r;
     win->annotResizeSerial = 0;
@@ -1858,15 +1987,82 @@ static Rect NormalizeScreenRect(Point a, Point b) {
     return Rect(x0, y0, x1 - x0, y1 - y0);
 }
 
+// The rubber-band is a fixed screen stroke. The saved annotation is in PDF
+// points, so the same 1pt default becomes a thicker line once the page is
+// zoomed. Store the width that lands at this screen thickness.
+static float kAnnotPreviewStrokePx = 2.f;
+
+static float PreviewStrokePoints(DisplayModel* dm, int pageNo) {
+    float zoom = dm ? dm->GetZoomReal(pageNo) : 1.f;
+    if (zoom < 0.05f) {
+        zoom = 1.f;
+    }
+    float pts = kAnnotPreviewStrokePx / zoom;
+    if (pts < 0.15f) {
+        pts = 0.15f;
+    }
+    if (pts > 24.f) {
+        pts = 24.f;
+    }
+    return pts;
+}
+
+// Screen inset of the stroke center for a square or circle. PDF keeps that
+// center 0.5pt inside the drag rect when the border width changes. Ebook
+// strokes are centered half a line-width inside the rect.
+static float PreviewShapeCenterInset(MainWindow* win, DisplayModel* dm, bool ebook) {
+    if (ebook) {
+        float stroke = (float)std::max(1, DpiScale(win->hwndFrame, 2));
+        return stroke / 2.f;
+    }
+    int pageNo = dm ? dm->GetPageNoByPoint(win->annotCreateDragStart) : 0;
+    float zoom = (dm && dm->ValidPageNo(pageNo)) ? dm->GetZoomReal(pageNo) : 1.f;
+    if (zoom < 0.05f) {
+        zoom = 1.f;
+    }
+    return 0.5f * zoom;
+}
+
+static float PreviewShapeStrokePx(MainWindow* win, bool ebook) {
+    if (ebook) {
+        return (float)std::max(1, DpiScale(win->hwndFrame, 2));
+    }
+    return kAnnotPreviewStrokePx;
+}
+
 static void PaintAnnotCreatePreview(MainWindow* win, DisplayModel* dm, HDC hdc) {
     bool ocrDrag = win->mouseAction == MouseAction::OcrRegion;
     if (win->mouseAction != MouseAction::CreatingAnnotation && !ocrDrag) {
         return;
     }
     int cmdId = win->annotCreateToolCmd;
+    AnnotationType type = CmdIdToAnnotationType(cmdId);
+    bool ebook = false;
+    if (WindowTab* tab = win->CurrentTab()) {
+        ebook = EbookAnnotationsSupported(tab);
+    }
+    bool stroked = type == AnnotationType::Square || type == AnnotationType::Circle || type == AnnotationType::Line ||
+                   type == AnnotationType::Ink;
+    COLORREF rgb = RGB(255, 140, 0);
+    float strokePx = 2.f;
+    if (ocrDrag) {
+        rgb = RGB(40, 120, 220);
+    } else if (stroked) {
+        rgb = ebook ? GetDefaultEbookPointAnnotationColor(type) : RGB(255, 0, 0);
+        strokePx = PreviewShapeStrokePx(win, ebook);
+    }
+    u8 r, g, b;
+    UnpackColor(rgb, r, g, b);
     Gdiplus::Graphics gs(hdc);
-    Gdiplus::Color col = ocrDrag ? Gdiplus::Color(200, 40, 120, 220) : Gdiplus::Color(200, 255, 140, 0);
-    Gdiplus::Pen pen(col, 2);
+    gs.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    Gdiplus::Color col(ocrDrag ? 200 : 255, r, g, b);
+    Gdiplus::Pen pen(col, strokePx);
+    if (type == AnnotationType::Ink) {
+        pen.SetStartCap(Gdiplus::LineCapRound);
+        pen.SetEndCap(Gdiplus::LineCapRound);
+        pen.SetLineJoin(Gdiplus::LineJoinRound);
+    }
+    float shapeInset = stroked ? PreviewShapeCenterInset(win, dm, ebook) : strokePx / 2.f;
 
     if (cmdId == CmdCreateAnnotText) {
         return;
@@ -1929,10 +2125,29 @@ static void PaintAnnotCreatePreview(MainWindow* win, DisplayModel* dm, HDC hdc) 
         gs.DrawRectangle(&pen, rc.x, rc.y, rc.dx, rc.dy);
         return;
     }
+    float x = (float)rc.x + shapeInset;
+    float y = (float)rc.y + shapeInset;
+    float w = std::max(1.f, (float)rc.dx - 2.f * shapeInset);
+    float h = std::max(1.f, (float)rc.dy - 2.f * shapeInset);
     if (cmdId == CmdCreateAnnotCircle) {
-        gs.DrawEllipse(&pen, rc.x, rc.y, rc.dx, rc.dy);
+        gs.DrawEllipse(&pen, x, y, w, h);
     } else if (cmdId == CmdCreateAnnotSquare) {
-        gs.DrawRectangle(&pen, rc.x, rc.y, rc.dx, rc.dy);
+        if (dm) {
+            int pageNo = dm->GetPageNoByPoint(Point{rc.x + rc.dx / 2, rc.y + rc.dy / 2});
+            float zoom =
+                ebook ? (float)DpiScale(win->hwndFrame, 6) / 6.f : (pageNo > 0 ? dm->GetZoomSafe(pageNo) : 1.f);
+            float radius = std::min(6.f * zoom, std::min(w, h) / 4.f);
+            float diameter = radius * 2.f;
+            Gdiplus::GraphicsPath path;
+            path.AddArc(x, y, diameter, diameter, 180.f, 90.f);
+            path.AddArc(x + w - diameter, y, diameter, diameter, 270.f, 90.f);
+            path.AddArc(x + w - diameter, y + h - diameter, diameter, diameter, 0.f, 90.f);
+            path.AddArc(x, y + h - diameter, diameter, diameter, 90.f, 90.f);
+            path.CloseFigure();
+            gs.DrawPath(&pen, &path);
+        } else {
+            gs.DrawRectangle(&pen, x, y, w, h);
+        }
     }
 }
 
@@ -1960,9 +2175,8 @@ static void FinishEbookAnnotCreateDrag(MainWindow* win, WindowTab* tab, DisplayM
         if (!annotation) {
             return;
         }
-        tab->selectedEbookAnnotation = annotation;
-        UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, annotation);
-        MainWindowRerender(win);
+        UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow);
+        RefreshAnnotationOverlay(win);
         ReleaseAnnotCreateToolIfUnlocked(win);
         return;
     }
@@ -1980,7 +2194,7 @@ static void FinishEbookAnnotCreateDrag(MainWindow* win, WindowTab* tab, DisplayM
         }
         tab->selectedEbookAnnotation = annotation;
         UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, annotation);
-        MainWindowRerender(win);
+        RefreshAnnotationOverlay(win);
         ReleaseAnnotCreateToolIfUnlocked(win);
         return;
     }
@@ -1999,9 +2213,8 @@ static void FinishEbookAnnotCreateDrag(MainWindow* win, WindowTab* tab, DisplayM
         if (!annotation) {
             return;
         }
-        tab->selectedEbookAnnotation = annotation;
-        UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, annotation);
-        MainWindowRerender(win);
+        UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow);
+        RefreshAnnotationOverlay(win);
         ReleaseAnnotCreateToolIfUnlocked(win);
         return;
     }
@@ -2013,9 +2226,8 @@ static void FinishEbookAnnotCreateDrag(MainWindow* win, WindowTab* tab, DisplayM
     if (!annotation) {
         return;
     }
-    tab->selectedEbookAnnotation = annotation;
-    UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow, annotation);
-    MainWindowRerender(win);
+    UpdateEbookAnnotationsList(tab->editEbookAnnotsWindow);
+    RefreshAnnotationOverlay(win);
     ReleaseAnnotCreateToolIfUnlocked(win);
 }
 
@@ -2090,8 +2302,14 @@ static void FinishAnnotCreateDrag(MainWindow* win, Point endCanvas) {
     if (!annot) {
         return;
     }
-    SetSelectedAnnotation(tab, annot);
+    if (type == AnnotationType::Ink || type == AnnotationType::Line || type == AnnotationType::Square ||
+        type == AnnotationType::Circle) {
+        SetBorderWidthFloat(annot, PreviewStrokePoints(dm, pageNo));
+    }
     UpdateAnnotationsList(tab->editAnnotsWindow);
+    if (type == AnnotationType::Stamp || type == AnnotationType::FreeText) {
+        SetSelectedAnnotation(tab, annot);
+    }
     MainWindowRerenderAnnotationChange(win, pageNo, annot);
     ToolbarUpdateStateForWindow(win, true);
     ReleaseAnnotCreateToolIfUnlocked(win);
@@ -2192,21 +2410,37 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
             return;
         }
     } else if (ebookAnnotation && AnnotationCanBeMoved(EbookAnnotationGetType(ebookAnnotation))) {
-        tab->selectedEbookAnnotation = ebookAnnotation;
-        win->ebookAnnotationDragPending = ebookAnnotation;
-        win->dragStartPending = true;
-        win->dragStart = pt;
-        SetCapture(win->hwndCanvas);
-        return;
+        // Drag only the mark already in edit. The sidebar staying open is not
+        // edit mode. Ctrl+click enters edit on mouse-up.
+        bool editing = tab->selectedEbookAnnotation == ebookAnnotation;
+        if (editing) {
+            tab->selectedEbookAnnotation = ebookAnnotation;
+            win->ebookAnnotationDragPending = ebookAnnotation;
+            win->dragStartPending = true;
+            win->dragStart = pt;
+            SetCapture(win->hwndCanvas);
+            return;
+        }
+        if (IsCtrlPressed()) {
+            win->ebookAnnotationDragPending = ebookAnnotation;
+            win->dragStartPending = true;
+            win->dragStart = pt;
+            SetCapture(win->hwndCanvas);
+            return;
+        }
+    }
+    if (tab->selectedEbookAnnotation && ebookResizeHandle == ResizeHandle::None &&
+        ebookAnnotation != tab->selectedEbookAnnotation && !IsCtrlPressed()) {
+        ClearSelectedEbookAnnotation(tab);
     }
     Annotation* annot = dm->GetAnnotationAtPos(pt, tab->selectedAnnotation);
     bool isMoveableAnnot = annot && AnnotationCanBeMoved(annot->type);
     if (isMoveableAnnot) {
         if (annot == tab->selectedAnnotation) {
             // dragging the selected annotation. do nothing here, just start dragging in mouse move
-        } else if (tab->editAnnotsWindow || tab->selectedAnnotation) {
-            // clicking on a different annotation while edit annotations window is open. or
-            // other annotation is selected, select the clicked annotation and start dragging yet
+        } else if (tab->selectedAnnotation) {
+            // Another mark is already in edit. Switch to this one and drag it.
+            // The sidebar staying open is not enough; Ctrl+click or the list enters edit.
             SetSelectedAnnotation(tab, annot);
         } else {
             isMoveableAnnot = false;
@@ -2224,8 +2458,21 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
     if (resizeHandle != ResizeHandle::None) {
         StartAnnotationResize(win, tab->selectedAnnotation, pt, resizeHandle);
         return;
-    } else if (isMoveableAnnot) {
-        StartAnnotationDrag(win, annot, pt);
+    }
+    // Move the selected box from anywhere inside the dotted frame, then stop.
+    // A transparent free text sits on page text. Falling through starts a text
+    // selection, and Ctrl was the only way past that into a real move.
+    bool inSelectedFrame = tab->selectedAnnotation && AnnotationCanBeMoved(tab->selectedAnnotation->type) &&
+                           AnnotationFrameContains(win, pt, tab->selectedAnnotation);
+    if (inSelectedFrame || isMoveableAnnot) {
+        Annotation* moving = inSelectedFrame ? tab->selectedAnnotation : annot;
+        StartAnnotationDrag(win, moving, pt);
+        win->dragStartPending = true;
+        win->dragStart = pt;
+        win->textDragPending = false;
+        win->linkOnLastButtonDown = nullptr;
+        StartMouseDrag(win, x, y);
+        return;
     } else {
         // A click that misses the selected annotation and its handles leaves
         // size-edit. Upstream does this on mouse-down so a small page pan
@@ -2254,10 +2501,6 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
         return;
     }
 
-    if (!win->ebookAnnotationBeingDragged && EbookAnnotationsSupported(tab) && EbookAnnotationsHitTest(tab, dm, pt)) {
-        StartMouseDrag(win, x, y);
-        return;
-    }
     if (win->ebookAnnotationBeingDragged) {
         SetCapture(win->hwndCanvas);
         win->mouseAction = MouseAction::Dragging;
@@ -2327,14 +2570,20 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
 
     if (win->ebookAnnotationDragPending) {
         EbookAnnotation* annotation = win->ebookAnnotationDragPending;
+        bool alreadyEditing = win->CurrentTab() && win->CurrentTab()->selectedEbookAnnotation == annotation;
         win->ebookAnnotationDragPending = nullptr;
         win->dragStartPending = false;
         if (GetCapture() == win->hwndCanvas) {
             ReleaseCapture();
         }
         WindowTab* tab = win->CurrentTab();
+        if (!alreadyEditing) {
+            tab->selectedEbookAnnotation = annotation;
+            ShowEditEbookAnnotationsWindow(tab, annotation);
+            return;
+        }
         tab->selectedEbookAnnotation = annotation;
-        /* Upstream: only Ctrl+click opens the editor. */
+        /* Already editing: Ctrl+click opens the editor. A plain click stays selected. */
         if (IsCtrlPressed()) {
             ShowEditEbookAnnotationsWindow(tab, annotation);
         } else {
@@ -2494,8 +2743,8 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
             PlaySoundAnnotation(annotAtClick);
             return;
         }
-        /* Match upstream: Ctrl+click opens editor; plain click only selects when
-         * an annotation is already selected or the editor is open. */
+        // Ctrl+click enters edit. A plain click only switches while a mark is
+        // already selected. The sidebar page stays open and is not edit mode.
         if (IsCtrlPressed()) {
             if (tab->editAnnotsWindow) {
                 SetSelectedAnnotation(tab, annotAtClick);
@@ -2504,7 +2753,7 @@ static void OnMouseLeftButtonUp(MainWindow* win, int x, int y, WPARAM key) {
             }
             return;
         }
-        if (tab->selectedAnnotation || tab->editAnnotsWindow) {
+        if (tab->selectedAnnotation) {
             SetSelectedAnnotation(tab, annotAtClick);
             return;
         }
@@ -2927,55 +3176,45 @@ NO_INLINE static void PaintCurrentEditAnnotationMark(WindowTab* tab, HDC hdc, Di
         dm->ScrollScreenToRect(pageNo, rect);
         tab->didScrollToSelectedAnnotation = true;
     }
-    rect.Inflate(kAnnotFrameOutset, kAnnotFrameOutset);
+    Rect frame = AnnotationFrameOnScreen(tab->win, annot);
+    if (frame.IsEmpty()) {
+        return;
+    }
 
     Gdiplus::Graphics gs(hdc);
+    // UnitDisplay follows the monitor DPI and draws the squares away from the
+    // pixel hit test. Mouse coordinates are canvas pixels.
+    gs.SetPageUnit(Gdiplus::UnitPixel);
 
     if (gDrawOldStyleAnnotationRect) {
         Gdiplus::Color col = GdiRgbFromCOLORREF(0xff3333); // blue
         Gdiplus::Color colHatch2((Gdiplus::ARGB)Gdiplus::Color::Yellow);
         Gdiplus::HatchBrush br(Gdiplus::HatchStyleCross, colHatch2, col);
         Gdiplus::Pen pen(&br, 4);
-        gs.DrawRectangle(&pen, rect.x, rect.y, rect.dx, rect.dy);
+        gs.DrawRectangle(&pen, frame.x, frame.y, frame.dx, frame.dy);
     } else {
         Gdiplus::Color blue(255, 0, 80, 200);
         Gdiplus::Pen pen(blue, 2);
         pen.SetDashStyle(Gdiplus::DashStyleDot);
-        gs.DrawRectangle(&pen, rect.x, rect.y, rect.dx, rect.dy);
+        gs.DrawRectangle(&pen, frame.x, frame.y, frame.dx, frame.dy);
     }
 
     if (!canResize) {
         return;
     }
 
-    // Draw resize handles
+    // Draw resize handles. Same rectangles GetResizeHandleAt() tests.
     Gdiplus::SolidBrush handleBrush(Gdiplus::Color(255, 255, 255, 255)); // White
     Gdiplus::Pen handlePen(Gdiplus::Color(255, 0, 0, 0), 1);             // Black
-    int hs = 6;                                                          // handle size
-    int hh = hs / 2;                                                     // half handle
-
-    int left = rect.x - hh;
-    int midX = rect.x + rect.dx / 2 - hh;
-    int right = rect.x + rect.dx - hh;
-    int top = rect.y - hh;
-    int midY = rect.y + rect.dy / 2 - hh;
-    int bottom = rect.y + rect.dy - hh;
-
-    auto drawHandle = [&](int x, int y) {
-        gs.FillRectangle(&handleBrush, x, y, hs, hs);
-        gs.DrawRectangle(&handlePen, x, y, hs, hs);
+    ResizeHandle handles[] = {
+        ResizeHandle::TopLeft,     ResizeHandle::Top,    ResizeHandle::TopRight,   ResizeHandle::Right,
+        ResizeHandle::BottomRight, ResizeHandle::Bottom, ResizeHandle::BottomLeft, ResizeHandle::Left,
     };
-
-    // corners
-    drawHandle(left, top);
-    drawHandle(right, top);
-    drawHandle(right, bottom);
-    drawHandle(left, bottom);
-    // edges
-    drawHandle(midX, top);
-    drawHandle(right, midY);
-    drawHandle(midX, bottom);
-    drawHandle(left, midY);
+    for (ResizeHandle handle : handles) {
+        Rect hr = AnnotHandleRect(frame, handle);
+        gs.FillRectangle(&handleBrush, hr.x, hr.y, hr.dx, hr.dy);
+        gs.DrawRectangle(&handlePen, hr.x, hr.y, hr.dx, hr.dy);
+    }
 }
 
 static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
@@ -3219,12 +3458,28 @@ static bool DrawDocument(MainWindow* win, HDC hdc, RECT* rcArea) {
         }
 
         EbookAnnotationsPaintPage(win->CurrentTab(), hdc, dm, pageNo);
-        PaintPdfMarkupOverlayPage(win->CurrentTab(), hdc, dm, pageNo);
+        // Drop the stand-in once the fresh tile already contains the change.
+        // Painting a new stroke on that same frame draws it twice. A deleted
+        // mark stays in the old bitmap, so its cover stays until that tile is gone.
+        WindowTab* overlayTab = win->CurrentTab();
+        bool pageStale = false;
+        bool haveStandIn =
+            overlayTab && (!overlayTab->pdfMarkupOverlays.empty() || !overlayTab->pdfDeletedAnnotCovers.empty());
+        if (haveStandIn) {
+            pageStale = gRenderCache->PageNeedsMarkupOverlay(dm, pageNo);
+            if (!pageStale) {
+                ClearPdfMarkupOverlayForPage(overlayTab, pageNo);
+                ClearPdfDeletedAnnotCoversForPage(overlayTab, pageNo);
+            }
+        }
+        if (pageStale && overlayTab && !overlayTab->pdfMarkupOverlays.empty()) {
+            PaintPdfMarkupOverlayPage(overlayTab, hdc, dm, pageNo);
+        }
+        if (pageStale) {
+            PaintPdfDeletedAnnotCoversPage(overlayTab, hdc, dm, pageNo);
+        }
         PaintPdfMarkupNoteBadgesPage(win->CurrentTab(), hdc, dm, pageNo);
         PaintPrintedTocOverlay(hdc, dm, pageNo);
-        if (win->CurrentTab() && !gRenderCache->PageNeedsMarkupOverlay(dm, pageNo)) {
-            ClearPdfMarkupOverlayForPage(win->CurrentTab(), pageNo);
-        }
 
         if (!renderOutOfDateCue) {
             continue;
@@ -3424,6 +3679,10 @@ static LRESULT OnSetCursorMouseNone(MainWindow* win, HWND hwnd) {
             SetCursorCached(GetCursorForResizeHandle(handle));
             return TRUE;
         }
+    }
+    if (selected && AnnotationCanBeMoved(selected->type) && AnnotationFrameContains(win, pt, selected)) {
+        SetCursorCached(IDC_HAND);
+        return TRUE;
     }
 
     Annotation* annot = dm->GetAnnotationAtPos(pt, selected);
@@ -4308,6 +4567,17 @@ static LRESULT WndProcCanvasFixedPageUI(MainWindow* win, HWND hwnd, UINT msg, WP
             if (wp == VK_ESCAPE && HandwrittenSignatureIsPlacing(win)) {
                 HandwrittenSignatureCancelPlace(win);
                 return 0;
+            }
+            if (wp == VK_ESCAPE) {
+                WindowTab* keyTab = win->CurrentTab();
+                if (keyTab && keyTab->selectedAnnotation) {
+                    SetSelectedAnnotation(keyTab, nullptr);
+                    return 0;
+                }
+                if (keyTab && keyTab->selectedEbookAnnotation) {
+                    ClearSelectedEbookAnnotation(keyTab);
+                    return 0;
+                }
             }
             return DefWindowProc(hwnd, msg, wp, lp);
 

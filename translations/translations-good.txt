@@ -3711,6 +3711,12 @@ nl:Aantekeningen
 pl:Adnotacje
 sk:Anotácie
 tw:註解
+:Default &author:
+cn:默认作者(&A):
+tw:預設作者(&A):
+:Windows user name
+cn:Windows 用户名
+tw:Windows 使用者名稱
 :Any Angle
 af:Any Angle
 am:Any Angle
@@ -4548,6 +4554,9 @@ nl:Weet u zeker dat u SumatraPDF wilt verwijderen?
 pl:Czy na pewno chcesz usunąć SumatraPDF?
 sk:Naozaj chcete odinštalovat SumatraPDF?
 tw:您確定要解除安裝 SumatraPDF 嗎？
+:Ask a question…
+cn:输入问题…
+tw:輸入問題…
 :Ask &AI
 am:Հարցնել &AI-ին
 br:Perguntar ao &AI
@@ -29635,6 +29644,9 @@ tw:銳度
 uk:Sharpness
 uz:Sharpness
 vn:Sharpness
+:Show Sidebar
+cn:显示侧栏
+tw:顯示側欄
 :Show &Bookmarks
 am:Ցուցադրել &Էջանիշերը
 br:Mostrar &Favoritos
@@ -35711,7 +35723,7 @@ bs:Use the &floating search window
 by:Use the &floating search window
 ca:Use the &floating search window
 ca-xv:Use the &floating search window
-cn:使用浮动搜索窗口(&F)
+cn:Ctrl+F 打开详细搜索窗口(&F)
 co:Use the &floating search window
 cy:Use the &floating search window
 cz:Use the &floating search window
@@ -37712,3 +37724,87 @@ tw:深淺
 :Couldn't read that image.
 cn:无法读取这张图片。
 tw:無法讀取這張圖片。
+
+:Find in document...
+cn:在文档中查找...
+tw:在文件中尋找...
+
+:Detailed Search
+cn:详细搜索
+tw:詳細搜尋
+
+:Clear search text
+cn:清除搜索文字
+tw:清除搜尋文字
+
+:Back to toolbar
+cn:返回工具栏
+tw:返回工具列
+
+:Select text in the document and choose Ask AI, or ask a question below.
+cn:在文档中选中文字并选择 Ask AI，或在下方提问。
+tw:在文件中選取文字並選擇 Ask AI，或在下方提問。
+
+:Ask a follow-up...
+cn:继续提问…
+tw:繼續提問…
+
+:Ask about this document...
+cn:问问这篇文档…
+tw:詢問這份文件…
+
+:Selection · Page %d
+cn:选中 · 第 %d 页
+tw:選取 · 第 %d 頁
+
+:Current document
+cn:当前文档
+tw:目前文件
+
+:You
+cn:你
+tw:你
+
+:Note
+cn:笔记
+tw:筆記
+
+:Details
+cn:详细信息
+tw:詳細資訊
+
+:Color
+cn:颜色
+tw:顏色
+
+:Save to this PDF
+cn:保存到当前 PDF
+tw:儲存到目前的 PDF
+
+:Save as…
+cn:另存为…
+tw:另存新檔…
+
+:Saved automatically
+cn:已自动保存
+tw:已自動儲存
+
+:Retry saving annotations
+cn:重试保存标注
+tw:重試儲存標註
+
+:Save annotation copy…
+cn:另存标注副本…
+tw:另存標註副本…
+
+:Copy translation
+cn:复制翻译
+tw:複製翻譯
+
+:Export
+cn:导出
+tw:匯出
+
+:Saved
+cn:已保存
+tw:已儲存

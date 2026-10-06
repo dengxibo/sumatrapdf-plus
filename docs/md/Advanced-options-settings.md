@@ -123,8 +123,8 @@ ShowToolbar = true
 ; toolbar (introduced in version 3.8)
 ShowAnnotToolbarButtons = true
 
-; if true, the find UI is a floating, movable window with a results list instead
-; of the compact toolbar overlay (introduced in version 3.7)
+; if true, Ctrl+F opens the detailed search window; the toolbar search box is
+; always shown (introduced in version 3.7)
 SearchUIFloating = false
 
 ; directory containing SumatraDict.* dictionary files. If empty, {exedir}/dict
@@ -335,6 +335,11 @@ FixedPageUI [
     ; opacity (introduced in version 2.4)
     SelectionColor = #99c1da
 
+    ; height of the selection, find, and read-aloud highlight relative to the
+    ; glyph band; 0.5-1.5, default 1.35; smaller values make the band thinner;
+    ; out of range uses 1.35
+    SelectionHeightRatio = 1.35
+
     ; top, right, bottom and left margin (in that order) between window and
     ; document
     WindowMargin = 2 4 2 4
@@ -473,7 +478,7 @@ Annotations [
     FreeTextOpacity = 100
 
     ; size of free text annotation (introduced in version 3.5)
-    FreeTextSize = 12
+    FreeTextSize = 21
 
     ; width of free text annotation border (introduced in version 3.5)
     FreeTextBorderWidth = 1
@@ -481,8 +486,8 @@ Annotations [
     ; text icon annotation color
     TextIconColor = 
 
-    ; type of text annotation icon: comment, help, insert, key, new paragraph,
-    ; note, paragraph. If not set: note.
+    ; type of text annotation icon: comment, caret, help, insert, key, new
+    ; paragraph, note, paragraph. If not set: comment.
     TextIconType = 
 
     ; default author for created annotations, use (none) to not add an author at

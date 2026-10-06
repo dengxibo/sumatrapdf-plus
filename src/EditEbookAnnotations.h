@@ -8,9 +8,14 @@ struct MainWindow;
 enum class EditAnnotFocus;
 
 void ShowEditEbookAnnotationsWindow(WindowTab* tab, EbookAnnotation* annotation = nullptr);
-void ShowEditEbookAnnotationsWindow(WindowTab* tab, EbookAnnotation* annotation, EditAnnotFocus focus);
+void ShowEditEbookAnnotationsWindow(WindowTab* tab, EbookAnnotation* annotation, EditAnnotFocus focus,
+                                    bool revealInSidebar = true);
+HWND EbookAnnotationsSidebarHwnd(WindowTab* tab);
+void SyncEbookAnnotationsSidebar(MainWindow* win, bool show);
 bool CloseAndDeleteEditEbookAnnotationsWindow(WindowTab* tab);
+void FlushEbookAnnotationEdits(WindowTab* tab);
 void UpdateEbookAnnotationsList(EbookAnnotationsWindow* window, EbookAnnotation* preferredSelection = nullptr);
+void ClearSelectedEbookAnnotation(WindowTab* tab);
 void RefreshEbookAnnotationsWindowsTheme();
 void DockOpenEbookAnnotationsWindows(MainWindow* win);
 void CloseEbookAnnotationsWindowsForDpiMove(MainWindow* win);

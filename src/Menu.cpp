@@ -23,6 +23,7 @@
 #include "FileHistory.h"
 #include "Theme.h"
 #include "DarkModeSubclass.h"
+#include "../ext/darkmodelib/src/UAHMenuBar.h"
 #include "GlobalPrefs.h"
 #include "Annotation.h"
 #include "SumatraConfig.h"
@@ -87,6 +88,7 @@ struct MenuOwnerDrawInfo {
     // copy of MENUITEMINFO fields
     uint fType = 0;
     uint fState = 0;
+    bool hasSubMenu = false;
     HBITMAP hbmpChecked = nullptr;
     HBITMAP hbmpUnchecked = nullptr;
     HBITMAP hbmpItem = nullptr;
@@ -307,18 +309,6 @@ static MenuDef menuDefView[] = {
         CmdRotateRight,
     },
     {
-        _TRN("Deskew &Page"),
-        CmdDeskewPage,
-    },
-    {
-        _TRN("Deskew &All Scanned Pages"),
-        CmdDeskewAllScannedPages,
-    },
-    {
-        _TRN("Manually Adjust Pages..."),
-        CmdPdfRotatePages,
-    },
-    {
         kMenuSeparator,
         0,
     },
@@ -341,14 +331,6 @@ static MenuDef menuDefView[] = {
     {
         _TRN("Show &Thumbnails"),
         CmdToggleThumbnails,
-    },
-    {
-        _TRN("Extract Table of Contents"),
-        CmdExtractPdfToc,
-    },
-    {
-        _TRN("AI Recognize Table of Contents"),
-        CmdAiRecognizePdfToc,
     },
     {
         _TRN("Show &Menu"),
@@ -697,22 +679,6 @@ static MenuDef menuDefSelection[] = {
 //[ ACCESSKEY_GROUP Menu (Selection)
 static MenuDef menuDefMainSelection[] = {
     {
-        _TRN("&Translate"),
-        CmdTranslateSelection,
-    },
-    {
-        _TRN("Ask &AI"),
-        CmdAnalyzeSelectionWithDoubao,
-    },
-    {
-        _TRN("Look Up &Selection"),
-        CmdLookupSelection,
-    },
-    {
-        kMenuSeparator,
-        0,
-    },
-    {
         _TRN("&Copy To Clipboard"),
         CmdCopySelection,
     },
@@ -831,10 +797,6 @@ static MenuDef menuDefCreateAnnotUnderCursor[] = {
         CmdAddHandwrittenSignature,
     },
     {
-        _TRN("&Caret"),
-        CmdCreateAnnotCaret,
-    },
-    {
         _TRN("Line"),
         CmdCreateAnnotLine,
     },
@@ -905,6 +867,10 @@ static MenuDef menuDefContext[] = {
     {
         kMenuSeparator,
         0,
+    },
+    {
+        _TRN("Ask &AI"),
+        CmdOpenAskAi,
     },
     {
         _TRN("&Copy Selection"),
@@ -1121,6 +1087,7 @@ UINT_PTR removeIfNoInternetPerms[] = {
     CmdCheckUpdate,
     CmdTranslateSelection,
     CmdAnalyzeSelectionWithDoubao,
+    CmdOpenAskAi,
     CmdHelpVisitWebsite,
     CmdHelpOpenManualOnWebsite,
     CmdHelpOpenKeyboardShortcuts,
@@ -1586,7 +1553,10 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
     CommandVisibility visibility = GetCommandVisibility((int)cmdId, appCtx, CommandSurface::Menu);
     bool centralizedRemove = CommandShouldRemove(visibility);
     bool centralizedDisable = CommandShouldDisable(visibility);
-    if (!gGlobalPrefs->enableAskAI && cmdId == CmdAnalyzeSelectionWithDoubao) {
+    if (!gGlobalPrefs->enableAskAI && (cmdId == CmdAnalyzeSelectionWithDoubao || cmdId == CmdOpenAskAi)) {
+        centralizedRemove = true;
+    }
+    if (cmdId == CmdOpenAskAi && !HasPermission(Perm::InternetAccess)) {
         centralizedRemove = true;
     }
     if (!gGlobalPrefs->enableInlineTranslate && cmdId == CmdTranslateSelection) {
@@ -1602,7 +1572,7 @@ std::pair<bool, bool> GetCommandIdState(BuildMenuCtx* ctx, UINT_PTR cmdId) {
             cmdId == CmdCreateAnnotUnderline || cmdId == CmdCreateAnnotSquiggly || cmdId == CmdCreateAnnotStrikeOut ||
             cmdId == CmdCreateAnnotText || cmdId == CmdCreateAnnotFreeText || cmdId == CmdCreateAnnotStamp ||
             cmdId == CmdCreateAnnotCaret || cmdId == CmdCreateAnnotLine || cmdId == CmdCreateAnnotSquare ||
-            cmdId == CmdCreateAnnotCircle || cmdId == CmdCreateAnnotInk ||
+            cmdId == CmdCreateAnnotCircle || cmdId == CmdCreateAnnotInk || cmdId == CmdAddHandwrittenSignature ||
             cmdId == (UINT_PTR)menuDefCreateAnnotFromSelection || cmdId == (UINT_PTR)menuDefCreateAnnotUnderCursor;
         if (isEbookAnnotationCommand) {
             centralizedRemove = false;
@@ -2534,19 +2504,61 @@ bool ShouldOwnerDrawMenus() {
     return ThemeColorizeControls() || ThemeUsesDarkChrome() || ThemeUsesEyeCareChrome();
 }
 
-// Match upstream: disable custom owner-draw menus and let darkmodelib / the OS
-// theme popups (including submenu chevrons).
-#if 1
-void MarkMenuOwnerDraw(HMENU, bool, bool) {
-    // our painting isn't good enough so disable for now
-    // rely on darkmodelib for menu theming, which only does light / dark theme from os
+// Dark popup text must never alternate between native and composed coordinates.
+// Keep the menu bar and both light themes on their existing rendering paths.
+void MarkMenuOwnerDraw(HMENU menu, bool isMenuBar, bool recurseSubmenus) {
+    if (!ThemeUsesDarkChrome() || !menu) return;
+    static HBRUSH background = nullptr;
+    static COLORREF backgroundColor = kColorUnset;
+    COLORREF color = ThemeMenuColors().surface;
+    if (!background || color != backgroundColor) {
+        if (background) DeleteObject(background);
+        background = CreateSolidBrush(color);
+        backgroundColor = color;
+    }
+    if (!isMenuBar) {
+        MENUINFO info{sizeof(info)};
+        info.fMask = MIM_BACKGROUND | MIM_STYLE;
+        GetMenuInfo(menu, &info);
+        info.hbrBack = background;
+        info.dwStyle |= MNS_NOCHECK;
+        SetMenuInfo(menu, &info);
+    }
+    for (int i = 0; i < GetMenuItemCount(menu); i++) {
+        WCHAR text[1024]{};
+        MENUITEMINFOW item{sizeof(item)};
+        item.fMask = MIIM_STRING | MIIM_FTYPE | MIIM_STATE | MIIM_DATA | MIIM_SUBMENU;
+        item.dwTypeData = text;
+        item.cch = dimof(text);
+        if (!GetMenuItemInfoW(menu, i, TRUE, &item)) continue;
+        if (!isMenuBar && !(item.fType & MFT_OWNERDRAW)) {
+            // Preserve foreign item data instead of claiming another owner's item.
+            if (!item.dwItemData) {
+                auto data = AllocStruct<MenuOwnerDrawInfo>();
+                data->text = str::Leni(text) ? ToUtf8(text) : nullptr;
+                data->fState = item.fState;
+                data->fType = item.fType | MFT_OWNERDRAW;
+                data->hasSubMenu = item.hSubMenu != nullptr;
+                g_menuDrawInfos.Append(data);
+                item.fMask = MIIM_FTYPE | MIIM_DATA;
+                item.fType |= MFT_OWNERDRAW;
+                item.dwItemData = (ULONG_PTR)data;
+                SetMenuItemInfoW(menu, i, TRUE, &item);
+            }
+        }
+        if (recurseSubmenus && item.hSubMenu) MarkMenuOwnerDraw(item.hSubMenu, false, true);
+    }
 }
-#else
+
+#if 0
 static bool MenuItemIsOwnerDrawn(const MENUITEMINFOW& mii) {
     return (mii.fType & MFT_OWNERDRAW) != 0 && mii.dwItemData != 0;
 }
 
 void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar, bool recurseSubmenus) {
+    if (!ThemeUsesEyeCareChrome() || !hmenu) {
+        return;
+    }
     // darkmodelib handles the menu bar via setWindowMenuBarSubclass
     // but doesn't handle popup/context menus, so we owner-draw those
     if (isMenuBar && UseDarkModeLib() && DarkMode::isEnabled()) {
@@ -2619,6 +2631,7 @@ void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar, bool recurseSubmenus) {
             auto modi = (MenuOwnerDrawInfo*)mii.dwItemData;
             modi->fState = mii.fState;
             modi->fType = mii.fType | MFT_OWNERDRAW;
+            modi->hasSubMenu = mii.hSubMenu != nullptr;
             modi->hbmpItem = mii.hbmpItem;
             modi->hbmpChecked = mii.hbmpChecked;
             modi->hbmpUnchecked = mii.hbmpUnchecked;
@@ -2638,6 +2651,7 @@ void MarkMenuOwnerDraw(HMENU hmenu, bool isMenuBar, bool recurseSubmenus) {
         g_menuDrawInfos.Append(modi);
         modi->fState = mii.fState;
         modi->fType = mii.fType;
+        modi->hasSubMenu = hSubMenu != nullptr;
         modi->hbmpItem = mii.hbmpItem;
         modi->hbmpChecked = mii.hbmpChecked;
         modi->hbmpUnchecked = mii.hbmpUnchecked;
@@ -2724,8 +2738,637 @@ void MenuCustomDrawMesureItem(HWND hwnd, MEASUREITEMSTRUCT* mis) {
 
     int cxMenuCheckMark = GetMenuCheckMarkCx(hwnd);
     mis->itemHeight += padY * 2;
-    // Match upstream: Windows reserves popup-arrow gutter for MF_POPUP items.
+    if (modi->hasSubMenu) {
+        dx += DpiScale(hwnd, 16);
+    }
     mis->itemWidth = uint(dx + cxMenuCheckMark + (padX * 2));
+}
+
+static void DrawMenuChevron(HWND hwnd, HDC hdc, const RECT& rcItem, COLORREF col) {
+    int arm = std::max(3, DpiScale(hwnd, 4));
+    int x = rcItem.right - DpiScale(hwnd, 12);
+    int midY = rcItem.top + RectDy(rcItem) / 2;
+    HPEN pen = CreatePen(PS_SOLID, 1, col);
+    HGDIOBJ old = SelectObject(hdc, pen);
+    MoveToEx(hdc, x - arm, midY - arm, nullptr);
+    LineTo(hdc, x, midY);
+    LineTo(hdc, x - arm, midY + arm);
+    SelectObject(hdc, old);
+    DeleteObject(pen);
+}
+
+void ApplyEyeCarePopupMenuTheme() {}
+
+static LRESULT CALLBACK DarkMenuBarProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR) {
+    if (msg == WM_NCDESTROY) {
+        RemoveWindowSubclass(hwnd, DarkMenuBarProc, id);
+    }
+    if (!ThemeUsesDarkChrome()) {
+        return DefSubclassProc(hwnd, msg, wp, lp);
+    }
+    auto colors = ThemeMenuColors();
+    if (msg == WM_UAHDRAWMENU) {
+        auto menu = (UAHMENU*)lp;
+        MENUBARINFO info{sizeof(info)};
+        RECT window{};
+        if (GetMenuBarInfo(hwnd, OBJID_MENU, 0, &info) && GetWindowRect(hwnd, &window)) {
+            OffsetRect(&info.rcBar, -window.left, -window.top);
+            info.rcBar.top--;
+            HBRUSH brush = CreateSolidBrush(ThemeChromeBackgroundColor());
+            FillRect(menu->hdc, &info.rcBar, brush);
+            DeleteObject(brush);
+            return 0;
+        }
+    } else if (msg == WM_UAHDRAWMENUITEM) {
+        auto menu = (UAHDRAWMENUITEM*)lp;
+        auto& item = menu->dis;
+        bool disabled = (item.itemState & (ODS_DISABLED | ODS_GRAYED | ODS_INACTIVE)) != 0;
+        COLORREF bg = ThemeChromeBackgroundColor();
+        if (item.itemState & ODS_SELECTED) {
+            bg = colors.selected;
+        } else if (item.itemState & ODS_HOTLIGHT) {
+            bg = colors.hover;
+        }
+        HBRUSH brush = CreateSolidBrush(bg);
+        FillRect(menu->um.hdc, &item.rcItem, brush);
+        DeleteObject(brush);
+        WCHAR text[256]{};
+        GetMenuStringW(menu->um.hmenu, menu->umi.iPosition, text, dimof(text), MF_BYPOSITION);
+        int saved = SaveDC(menu->um.hdc);
+        SetBkMode(menu->um.hdc, TRANSPARENT);
+        SetTextColor(menu->um.hdc, disabled ? colors.disabledText : colors.text);
+        HFONT font = GetAppMenuFontForHwnd(hwnd);
+        SelectObject(menu->um.hdc, font);
+        UINT flags = DT_CENTER | DT_SINGLELINE | DT_VCENTER;
+        if (item.itemState & ODS_NOACCEL) {
+            flags |= DT_HIDEPREFIX;
+        }
+        DrawTextW(menu->um.hdc, text, -1, &item.rcItem, flags);
+        RestoreDC(menu->um.hdc, saved);
+        return 0;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+void InstallDarkMenuBarTheme(HWND hwnd) {
+    SetWindowSubclass(hwnd, DarkMenuBarProc, 0xA122, 0);
+}
+
+// Windows has only one dark popup-menu palette, not separate Dracula/Black
+// palettes. Tint native popup backgrounds with the application theme, as for
+// Warm. Include menu-loop hover draws, which do not go through WM_PAINT.
+constexpr UINT_PTR kWarmMenuSubclassId = 0xA11C;
+
+static HHOOK gWarmMenuCbtHook = nullptr;
+static volatile LONG gWarmMenuPopups = 0;
+static thread_local int gWarmMenuDrawDepth = 0;
+constexpr UINT kPaintDarkMenuMessage = WM_APP + 0x312;
+static const WCHAR* kDarkMenuPaintPending = L"SumatraDarkMenuPaintPending";
+
+static void QueueDarkMenuPaint(HWND hwnd) {
+    if (!GetPropW(hwnd, kDarkMenuPaintPending)) {
+        SetPropW(hwnd, kDarkMenuPaintPending, (HANDLE)1);
+        PostMessageW(hwnd, kPaintDarkMenuMessage, 0, 0);
+    }
+}
+
+static int MenuChannelMin(int a, int b, int c) {
+    int m = a < b ? a : b;
+    return c < m ? c : m;
+}
+
+static int MenuChannelAbs(int a, int b) {
+    return a > b ? a - b : b - a;
+}
+
+// System light-menu pixels are near-gray or a light blue hover. Warm chrome
+// is biased toward red, so a second pass leaves it alone.
+static bool IsSystemLightMenuPixel(int r, int g, int b) {
+    int mn = MenuChannelMin(r, g, b);
+    if (mn < 222) {
+        return false;
+    }
+    if (MenuChannelAbs(r, g) <= 8 && MenuChannelAbs(g, b) <= 8 && MenuChannelAbs(r, b) <= 8) {
+        return true;
+    }
+    return b > r + 10 && b >= g && (b - r) < 48;
+}
+
+// Keep HMENU's native measurement, placement, scrolling and input handling.
+// Paint its already-laid-out rows, rather than tinting arbitrary gray pixels
+// (which cannot distinguish separators, disabled text or selection states).
+static bool PaintDarkMenuPopup(HWND hwnd, HDC targetDc) {
+    constexpr UINT kGetMenuHandle = 0x01E1; // MN_GETHMENU, native #32768 menu window
+    HMENU menu = (HMENU)SendMessageW(hwnd, kGetMenuHandle, 0, 0);
+    if (!menu || !IsMenu(menu)) {
+        return false;
+    }
+    int count = GetMenuItemCount(menu);
+    if (count <= 0) {
+        return false;
+    }
+    // Native layout is briefly unavailable during flyout creation/animation.
+    // Never erase the surface until all native row rectangles are available.
+    for (int i = 0; i < count; i++) {
+        RECT row{};
+        if (!GetMenuItemRect(nullptr, menu, i, &row)) {
+            return false;
+        }
+    }
+    RECT window{};
+    GetWindowRect(hwnd, &window);
+    RECT bounds{0, 0, RectDx(window), RectDy(window)};
+    // Never clear the on-screen surface row by row. Native menus (and Warm's
+    // tint) do not expose such intermediate frames. Compose the entire dark
+    // surface off-screen and publish it in one transfer.
+    HDC dc = CreateCompatibleDC(targetDc);
+    HBITMAP bufferBitmap = CreateCompatibleBitmap(targetDc, bounds.right, bounds.bottom);
+    if (!dc || !bufferBitmap) {
+        if (dc) DeleteDC(dc);
+        if (bufferBitmap) DeleteObject(bufferBitmap);
+        return false;
+    }
+    HGDIOBJ oldBitmap = SelectObject(dc, bufferBitmap);
+    auto colors = ThemeMenuColors();
+    HBRUSH surface = CreateSolidBrush(colors.surface);
+    FillRect(dc, &bounds, surface);
+    DeleteObject(surface);
+    int saved = SaveDC(dc);
+    SetBkMode(dc, TRANSPARENT);
+    // Native popups use the system menu font; do not change typography.
+    NONCLIENTMETRICSW metrics{sizeof(metrics)};
+    SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0);
+    HFONT font = CreateFontIndirectW(&metrics.lfMenuFont);
+    SelectObject(dc, font);
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    int gutter = GetSystemMetrics(SM_CXMENUCHECK) + DpiScale(hwnd, 12);
+    int inset = DpiScale(hwnd, 8);
+    for (int i = 0; i < count; i++) {
+        RECT screenRow{};
+        if (!GetMenuItemRect(nullptr, menu, i, &screenRow)) {
+            continue;
+        }
+        RECT row = screenRow;
+        OffsetRect(&row, -window.left, -window.top);
+        WCHAR text[1024]{};
+        MENUITEMINFOW item{sizeof(item)};
+        item.fMask = MIIM_STRING | MIIM_STATE | MIIM_FTYPE | MIIM_SUBMENU | MIIM_BITMAP;
+        item.dwTypeData = text;
+        item.cch = dimof(text);
+        if (!GetMenuItemInfoW(menu, i, TRUE, &item)) {
+            continue;
+        }
+        bool disabled = (item.fState & MFS_DISABLED) != 0;
+        bool active = (item.fState & MFS_HILITE) != 0;
+        COLORREF bg = colors.surface;
+        if (active) {
+            bool hovered = PtInRect(&screenRow, cursor) != FALSE;
+            // Native MFS_HILITE stays set on the parent while its flyout is
+            // open. Keyboard and submenu-parent selection use the active tone.
+            bg = hovered && !item.hSubMenu ? colors.hover : colors.selected;
+            if (hovered && !disabled && (GetKeyState(VK_LBUTTON) & 0x8000)) {
+                bg = colors.pressed;
+            }
+        }
+        HBRUSH brush = CreateSolidBrush(bg);
+        FillRect(dc, &row, brush);
+        DeleteObject(brush);
+        if (item.fType & MFT_SEPARATOR) {
+            HPEN pen = CreatePen(PS_SOLID, 1, colors.separator);
+            HGDIOBJ old = SelectObject(dc, pen);
+            int y = (row.top + row.bottom) / 2;
+            MoveToEx(dc, row.left + gutter, y, nullptr);
+            LineTo(dc, row.right - inset, y);
+            SelectObject(dc, old);
+            DeleteObject(pen);
+            continue;
+        }
+        WCHAR* shortcut = wcschr(text, L'\t');
+        if (shortcut) {
+            *shortcut++ = 0;
+        }
+        RECT label = row;
+        label.left += gutter;
+        label.right -= gutter;
+        SetTextColor(dc, disabled ? colors.disabledText : colors.text);
+        DrawTextW(dc, text, -1, &label, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+        if (shortcut) {
+            SetTextColor(dc, disabled ? colors.disabledText : colors.secondaryText);
+            DrawTextW(dc, shortcut, -1, &label, DT_SINGLELINE | DT_VCENTER | DT_RIGHT | DT_NOPREFIX);
+        }
+        if (item.fState & MFS_CHECKED) {
+            RECT check = row;
+            check.right = check.left + gutter;
+            SetTextColor(dc, disabled ? colors.disabledText : colors.check);
+            DrawTextW(dc, item.fType & MFT_RADIOCHECK ? L"\x25CF" : L"\x2713", 1, &check,
+                      DT_SINGLELINE | DT_VCENTER | DT_CENTER | DT_NOPREFIX);
+        } else if (item.hbmpItem && (UINT_PTR)item.hbmpItem > 12) {
+            BITMAP bitmap{};
+            if (GetObjectW(item.hbmpItem, sizeof(bitmap), &bitmap)) {
+                DrawStateW(dc, nullptr, nullptr, (LPARAM)item.hbmpItem, 0, row.left + inset,
+                           row.top + (RectDy(row) - bitmap.bmHeight) / 2, bitmap.bmWidth, bitmap.bmHeight,
+                           DST_BITMAP | (disabled ? DSS_DISABLED : DSS_NORMAL));
+            }
+        }
+        if (item.hSubMenu) {
+            DrawMenuChevron(hwnd, dc, row, disabled ? colors.disabledText : colors.arrow);
+        }
+    }
+    HBRUSH border = CreateSolidBrush(colors.border);
+    FrameRect(dc, &bounds, border);
+    DeleteObject(border);
+    RestoreDC(dc, saved);
+    DeleteObject(font);
+    // Menu-loop DCs can be client DCs; WM_PAINT uses the window DC. Match
+    // their actual origin so hover updates do not shift the composed rows.
+    POINT origin{};
+    int targetX = 0;
+    int targetY = 0;
+    if (WindowFromDC(targetDc) == hwnd && GetDCOrgEx(targetDc, &origin)) {
+        targetX = window.left - origin.x;
+        targetY = window.top - origin.y;
+    }
+    BitBlt(targetDc, targetX, targetY, bounds.right, bounds.bottom, dc, 0, 0, SRCCOPY);
+    SelectObject(dc, oldBitmap);
+    DeleteObject(bufferBitmap);
+    DeleteDC(dc);
+    return true;
+}
+
+static void RecolorMenuDc(HDC hdc, int x, int y, int w, int h) {
+    if (!hdc || w <= 1 || h <= 1 || w > 4096 || h > 4096) {
+        return;
+    }
+    if (ThemeUsesDarkChrome()) {
+        HWND popup = WindowFromDC(hdc);
+        if (popup) {
+            PaintDarkMenuPopup(popup, hdc);
+        }
+        return;
+    }
+    BITMAPINFO bi{};
+    bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
+    bi.bmiHeader.biWidth = w;
+    bi.bmiHeader.biHeight = -h;
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+    void* bits = nullptr;
+    HDC mem = CreateCompatibleDC(hdc);
+    HBITMAP bmp = mem ? CreateDIBSection(mem, &bi, DIB_RGB_COLORS, &bits, nullptr, 0) : nullptr;
+    if (!mem || !bmp || !bits) {
+        if (bmp) {
+            DeleteObject(bmp);
+        }
+        if (mem) {
+            DeleteDC(mem);
+        }
+        return;
+    }
+    HGDIOBJ old = SelectObject(mem, bmp);
+    BitBlt(mem, 0, 0, w, h, hdc, x, y, SRCCOPY);
+    COLORREF fill = ThemeChromeBackgroundColor();
+    COLORREF hot = AccentColor(fill, 18);
+    auto* px = (BYTE*)bits;
+    int n = w * h;
+    for (int i = 0; i < n; i++) {
+        int b = px[0];
+        int g = px[1];
+        int r = px[2];
+        if (IsSystemLightMenuPixel(r, g, b)) {
+            COLORREF c = (r >= 246 && g >= 246 && b >= 246) ? fill : hot;
+            px[0] = GetBValue(c);
+            px[1] = GetGValue(c);
+            px[2] = GetRValue(c);
+        }
+        px += 4;
+    }
+    BitBlt(hdc, x, y, w, h, mem, 0, 0, SRCCOPY);
+    SelectObject(mem, old);
+    DeleteObject(bmp);
+    DeleteDC(mem);
+}
+
+static bool IsMenuPopupHwnd(HWND hwnd) {
+    WCHAR cls[16]{};
+    int n = GetClassNameW(hwnd, cls, dimof(cls));
+    return n > 0 && str::Eq(cls, L"#32768");
+}
+
+static bool MenuDcNeedsWarm(HDC hdc) {
+    if (gWarmMenuDrawDepth > 0 || gWarmMenuPopups <= 0 || !hdc ||
+        !(ThemeUsesEyeCareChrome() || ThemeUsesDarkChrome())) {
+        return false;
+    }
+    HWND popup = WindowFromDC(hdc);
+    if (!IsMenuPopupHwnd(popup)) {
+        return false;
+    }
+    if (ThemeUsesDarkChrome()) {
+        // Dark draws are replaced before the native transfer, not tinted
+        // afterwards. Only Warm uses this post-transfer correction path.
+        return false;
+    }
+    return true;
+}
+
+static void RecolorWarmMenuWindow(HWND hwnd) {
+    if (gWarmMenuDrawDepth > 0 || !(ThemeUsesEyeCareChrome() || ThemeUsesDarkChrome())) {
+        return;
+    }
+    RECT wr{};
+    if (!GetWindowRect(hwnd, &wr)) {
+        return;
+    }
+    int w = wr.right - wr.left;
+    int h = wr.bottom - wr.top;
+    HDC hdc = GetWindowDC(hwnd);
+    if (!hdc) {
+        return;
+    }
+    gWarmMenuDrawDepth++;
+    RecolorMenuDc(hdc, 0, 0, w, h);
+    gWarmMenuDrawDepth--;
+    ReleaseDC(hwnd, hdc);
+}
+
+static LRESULT CALLBACK WarmMenuSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR) {
+    if (msg == kPaintDarkMenuMessage) {
+        RemovePropW(hwnd, kDarkMenuPaintPending);
+        RecolorWarmMenuWindow(hwnd);
+        return 0;
+    }
+    if (msg == WM_NCDESTROY) {
+        RemovePropW(hwnd, kDarkMenuPaintPending);
+        RemoveWindowSubclass(hwnd, WarmMenuSubclassProc, id);
+        return DefSubclassProc(hwnd, msg, wp, lp);
+    }
+    if (ThemeUsesDarkChrome() && msg == WM_ERASEBKGND) {
+        // The buffered paint supplies every pixel; a separate native erase
+        // would still expose a blank frame before the composed menu arrives.
+        return 1;
+    }
+    if (ThemeUsesDarkChrome() && gWarmMenuDrawDepth == 0 && msg == WM_PAINT) {
+        // Own the paint pass, rather than showing native pixels first and
+        // replacing them asynchronously. Native HMENU still owns layout/input.
+        PAINTSTRUCT ps{};
+        BeginPaint(hwnd, &ps);
+        HDC dc = GetWindowDC(hwnd);
+        gWarmMenuDrawDepth++;
+        bool painted = dc && PaintDarkMenuPopup(hwnd, dc);
+        gWarmMenuDrawDepth--;
+        if (dc) ReleaseDC(hwnd, dc);
+        EndPaint(hwnd, &ps);
+        if (painted) return 0;
+        // Layout may not exist during popup creation; let Windows finish it.
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return DefSubclassProc(hwnd, msg, wp, lp);
+    }
+    if (ThemeUsesDarkChrome() && gWarmMenuDrawDepth == 0 && (msg == WM_PRINT || msg == WM_PRINTCLIENT) && wp) {
+        // Windows' menu opening animation uses this off-screen print path.
+        gWarmMenuDrawDepth++;
+        bool painted = PaintDarkMenuPopup(hwnd, (HDC)wp);
+        gWarmMenuDrawDepth--;
+        if (painted) return 0;
+    }
+    // Hover repaints from the menu loop, not only WM_PAINT. Queries do not draw.
+    bool skip = msg == WM_NCHITTEST || msg == WM_SETCURSOR || msg == WM_MOUSEACTIVATE || msg == WM_GETOBJECT;
+    LRESULT r = DefSubclassProc(hwnd, msg, wp, lp);
+    if (!skip) {
+        if (ThemeUsesDarkChrome()) {
+            // Hover drawing is detected by the GDI hook. Read-only queries,
+            // idle notifications and unrelated messages must not repaint.
+            constexpr UINT kNativeSelectItem = 0x01E5; // MN_SELECTITEM
+            if (gWarmMenuDrawDepth == 0 &&
+                (msg == WM_MOUSEMOVE || msg == WM_NCMOUSEMOVE || msg == kNativeSelectItem || msg == WM_KEYDOWN)) {
+                // Complete native state handling, then publish one frame in
+                // window coordinates. Native hover also draws text directly,
+                // bypassing the hooked bitmap/background transfers.
+                RecolorWarmMenuWindow(hwnd);
+            } else if (gWarmMenuDrawDepth == 0 && (msg == WM_NCPAINT || msg == WM_WINDOWPOSCHANGED)) {
+                QueueDarkMenuPaint(hwnd);
+            }
+        } else {
+            RecolorWarmMenuWindow(hwnd);
+        }
+    }
+    if (msg == WM_PRINT || msg == WM_PRINTCLIENT) {
+        HDC hdc = (HDC)wp;
+        RECT rc{};
+        if (hdc && (ThemeUsesEyeCareChrome() || ThemeUsesDarkChrome()) && GetClipBox(hdc, &rc) != ERROR &&
+            rc.right > rc.left && rc.bottom > rc.top) {
+            gWarmMenuDrawDepth++;
+            RecolorMenuDc(hdc, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
+            gWarmMenuDrawDepth--;
+        }
+    }
+    return r;
+}
+
+using MenuBitBltFn = BOOL(WINAPI*)(HDC, int, int, int, int, HDC, int, int, DWORD);
+using MenuPatBltFn = BOOL(WINAPI*)(HDC, int, int, int, int, DWORD);
+using MenuStretchBltFn = BOOL(WINAPI*)(HDC, int, int, int, int, HDC, int, int, int, int, DWORD);
+using MenuAlphaBlendFn = BOOL(WINAPI*)(HDC, int, int, int, int, HDC, int, int, int, int, BLENDFUNCTION);
+using MenuFillRectFn = int(WINAPI*)(HDC, const RECT*, HBRUSH);
+using MenuExtTextOutFn = BOOL(WINAPI*)(HDC, int, int, UINT, const RECT*, LPCWSTR, UINT, const INT*);
+using MenuTextOutFn = BOOL(WINAPI*)(HDC, int, int, LPCWSTR, int);
+
+static MenuBitBltFn gMenuBitBlt = nullptr;
+static MenuPatBltFn gMenuPatBlt = nullptr;
+static MenuStretchBltFn gMenuStretchBlt = nullptr;
+static MenuAlphaBlendFn gMenuAlphaBlend = nullptr;
+static MenuFillRectFn gMenuFillRect = nullptr;
+static MenuExtTextOutFn gMenuExtTextOut = nullptr;
+static MenuTextOutFn gMenuTextOut = nullptr;
+
+static bool ReplaceDarkMenuTransfer(HDC dc) {
+    if (!ThemeUsesDarkChrome() || gWarmMenuDrawDepth > 0 || gWarmMenuPopups <= 0 || !dc) {
+        return false;
+    }
+    HWND popup = WindowFromDC(dc);
+    if (!IsMenuPopupHwnd(popup)) {
+        return false;
+    }
+    // Native menu-loop hover/selection draws bypass WM_PAINT. Replace their
+    // transfer with the composed frame, rather than exposing native colors
+    // until a posted repaint runs. Fall back while geometry is unavailable.
+    gWarmMenuDrawDepth++;
+    // Never inherit native row DC clipping/viewport offsets. All composed
+    // frames use the same window DC as the initial paint.
+    HDC windowDc = GetWindowDC(popup);
+    bool painted = windowDc && PaintDarkMenuPopup(popup, windowDc);
+    if (windowDc) ReleaseDC(popup, windowDc);
+    gWarmMenuDrawDepth--;
+    return painted;
+}
+
+static BOOL WINAPI WarmMenuBitBlt(HDC hdc, int x, int y, int cx, int cy, HDC src, int x1, int y1, DWORD rop) {
+    if (ReplaceDarkMenuTransfer(hdc)) return TRUE;
+    BOOL ok = gMenuBitBlt(hdc, x, y, cx, cy, src, x1, y1, rop);
+    if (ok && cx > 0 && cy > 0 && MenuDcNeedsWarm(hdc)) {
+        gWarmMenuDrawDepth++;
+        RecolorMenuDc(hdc, x, y, cx, cy);
+        gWarmMenuDrawDepth--;
+    }
+    return ok;
+}
+
+static BOOL WINAPI WarmMenuPatBlt(HDC hdc, int x, int y, int cx, int cy, DWORD rop) {
+    if (ReplaceDarkMenuTransfer(hdc)) return TRUE;
+    BOOL ok = gMenuPatBlt(hdc, x, y, cx, cy, rop);
+    if (ok && cx > 0 && cy > 0 && MenuDcNeedsWarm(hdc)) {
+        gWarmMenuDrawDepth++;
+        RecolorMenuDc(hdc, x, y, cx, cy);
+        gWarmMenuDrawDepth--;
+    }
+    return ok;
+}
+
+static BOOL WINAPI WarmMenuStretchBlt(HDC hdc, int x, int y, int cx, int cy, HDC src, int x1, int y1, int cx1, int cy1,
+                                      DWORD rop) {
+    if (ReplaceDarkMenuTransfer(hdc)) return TRUE;
+    BOOL ok = gMenuStretchBlt(hdc, x, y, cx, cy, src, x1, y1, cx1, cy1, rop);
+    if (ok && cx > 0 && cy > 0 && MenuDcNeedsWarm(hdc)) {
+        gWarmMenuDrawDepth++;
+        RecolorMenuDc(hdc, x, y, cx, cy);
+        gWarmMenuDrawDepth--;
+    }
+    return ok;
+}
+
+static BOOL WINAPI WarmMenuAlphaBlend(HDC hdc, int x, int y, int cx, int cy, HDC src, int x1, int y1, int cx1, int cy1,
+                                      BLENDFUNCTION blend) {
+    if (ReplaceDarkMenuTransfer(hdc)) return TRUE;
+    BOOL ok = gMenuAlphaBlend(hdc, x, y, cx, cy, src, x1, y1, cx1, cy1, blend);
+    if (ok && cx > 0 && cy > 0 && MenuDcNeedsWarm(hdc)) {
+        gWarmMenuDrawDepth++;
+        RecolorMenuDc(hdc, x, y, cx, cy);
+        gWarmMenuDrawDepth--;
+    }
+    return ok;
+}
+
+static int WINAPI WarmMenuFillRect(HDC hdc, const RECT* rc, HBRUSH br) {
+    if (ReplaceDarkMenuTransfer(hdc)) return 1;
+    int ok = gMenuFillRect(hdc, rc, br);
+    if (ok && rc && MenuDcNeedsWarm(hdc)) {
+        int w = rc->right - rc->left;
+        int h = rc->bottom - rc->top;
+        if (w > 0 && h > 0) {
+            gWarmMenuDrawDepth++;
+            RecolorMenuDc(hdc, rc->left, rc->top, w, h);
+            gWarmMenuDrawDepth--;
+        }
+    }
+    return ok;
+}
+
+// Native menu-loop text draws can bypass bitmap/background transfers. Letting
+// them through after the composed frame exposes the native text origin for a
+// moment (particularly noticeable while rapidly sweeping a context menu).
+static BOOL WINAPI ThemedMenuExtTextOut(HDC dc, int x, int y, UINT options, const RECT* rect, LPCWSTR text, UINT count,
+                                        const INT* advances) {
+    if (ReplaceDarkMenuTransfer(dc)) return TRUE;
+    return gMenuExtTextOut(dc, x, y, options, rect, text, count, advances);
+}
+
+static BOOL WINAPI ThemedMenuTextOut(HDC dc, int x, int y, LPCWSTR text, int count) {
+    if (ReplaceDarkMenuTransfer(dc)) return TRUE;
+    return gMenuTextOut(dc, x, y, text, count);
+}
+
+// 14-byte absolute jump: mov r11, imm64; jmp r11. steal must cover whole instructions.
+static void* InstallMenuPrologueHook(void* target, void* hookFn, int steal) {
+    if (!target || !hookFn || steal < 13 || steal > 48) {
+        return nullptr;
+    }
+    BYTE* tramp = (BYTE*)VirtualAlloc(nullptr, 64, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (!tramp) {
+        return nullptr;
+    }
+    memcpy(tramp, target, (size_t)steal);
+    tramp[steal] = 0x49;
+    tramp[steal + 1] = 0xBB;
+    *(void**)(tramp + steal + 2) = (BYTE*)target + steal;
+    tramp[steal + 10] = 0x41;
+    tramp[steal + 11] = 0xFF;
+    tramp[steal + 12] = 0xE3;
+    DWORD old = 0;
+    if (!VirtualProtect(target, (size_t)steal, PAGE_EXECUTE_READWRITE, &old)) {
+        VirtualFree(tramp, 0, MEM_RELEASE);
+        return nullptr;
+    }
+    BYTE* code = (BYTE*)target;
+    code[0] = 0x49;
+    code[1] = 0xBB;
+    *(void**)(code + 2) = hookFn;
+    code[10] = 0x41;
+    code[11] = 0xFF;
+    code[12] = 0xE3;
+    for (int i = 13; i < steal; i++) {
+        code[i] = 0x90;
+    }
+    VirtualProtect(target, (size_t)steal, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), tramp, (size_t)steal + 16);
+    FlushInstructionCache(GetCurrentProcess(), target, (size_t)steal);
+    return tramp;
+}
+
+static void* HookExportIfPrologue(HMODULE mod, const char* name, const BYTE* prologue, int prologueLen, void* hookFn,
+                                  int steal) {
+    if (!mod || prologueLen < 13 || steal < prologueLen) {
+        return nullptr;
+    }
+    void* target = (void*)GetProcAddress(mod, name);
+    if (!target || memcmp(target, prologue, (size_t)prologueLen) != 0) {
+        return nullptr;
+    }
+    return InstallMenuPrologueHook(target, hookFn, steal);
+}
+
+static void InstallWarmMenuGdiHooks() {
+    // Shared gdi32/msimg32 save-reg prologue through the first push.
+    static const BYTE kSavePush[] = {0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C,
+                                     0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x57};
+    static const BYTE kFill[] = {0x48, 0x83, 0xEC, 0x58, 0x4D, 0x8B, 0xD0, 0x49, 0xFF, 0xC8, 0x49, 0x83, 0xF8, 0x1E};
+
+    HMODULE gdi = GetModuleHandleW(L"gdi32.dll");
+    HMODULE user = GetModuleHandleW(L"user32.dll");
+    HMODULE img = LoadLibraryW(L"msimg32.dll");
+    gMenuBitBlt = (MenuBitBltFn)HookExportIfPrologue(gdi, "BitBlt", kSavePush, (int)sizeof(kSavePush),
+                                                     (void*)WarmMenuBitBlt, (int)sizeof(kSavePush));
+    gMenuPatBlt = (MenuPatBltFn)HookExportIfPrologue(gdi, "PatBlt", kSavePush, (int)sizeof(kSavePush),
+                                                     (void*)WarmMenuPatBlt, (int)sizeof(kSavePush));
+    gMenuStretchBlt = (MenuStretchBltFn)HookExportIfPrologue(gdi, "StretchBlt", kSavePush, (int)sizeof(kSavePush),
+                                                             (void*)WarmMenuStretchBlt, (int)sizeof(kSavePush));
+    gMenuAlphaBlend = (MenuAlphaBlendFn)HookExportIfPrologue(img, "AlphaBlend", kSavePush, (int)sizeof(kSavePush),
+                                                             (void*)WarmMenuAlphaBlend, (int)sizeof(kSavePush));
+    gMenuFillRect = (MenuFillRectFn)HookExportIfPrologue(user, "FillRect", kFill, (int)sizeof(kFill),
+                                                         (void*)WarmMenuFillRect, (int)sizeof(kFill));
+    gMenuExtTextOut = (MenuExtTextOutFn)HookExportIfPrologue(gdi, "ExtTextOutW", kSavePush, (int)sizeof(kSavePush),
+                                                             (void*)ThemedMenuExtTextOut, (int)sizeof(kSavePush));
+    gMenuTextOut = (MenuTextOutFn)HookExportIfPrologue(gdi, "TextOutW", kSavePush, (int)sizeof(kSavePush),
+                                                       (void*)ThemedMenuTextOut, (int)sizeof(kSavePush));
+}
+
+static LRESULT CALLBACK WarmMenuCbtProc(int code, WPARAM wp, LPARAM lp) {
+    HWND hwnd = (HWND)wp;
+    if (code == HCBT_CREATEWND && IsMenuPopupHwnd(hwnd)) {
+        InterlockedIncrement(&gWarmMenuPopups);
+        SetWindowSubclass(hwnd, WarmMenuSubclassProc, kWarmMenuSubclassId, 0);
+    } else if (code == HCBT_DESTROYWND && IsMenuPopupHwnd(hwnd)) {
+        InterlockedDecrement(&gWarmMenuPopups);
+    }
+    return CallNextHookEx(gWarmMenuCbtHook, code, wp, lp);
+}
+
+void InstallWarmMenuColorHook() {
+    if (gWarmMenuCbtHook) {
+        return;
+    }
+    InstallWarmMenuGdiHooks();
+    gWarmMenuCbtHook = SetWindowsHookExW(WH_CBT, WarmMenuCbtProc, nullptr, GetCurrentThreadId());
 }
 
 // https://gist.github.com/kjk/1df108aa126b7d8e298a5092550a53b7
@@ -2748,6 +3391,17 @@ static UINT MenuItemStateFromDrawItem(const DRAWITEMSTRUCT* dis, UINT fallbackSt
 void MenuCustomDrawItem(HWND hwnd, DRAWITEMSTRUCT* dis) {
     if (ODT_MENU != dis->CtlType) {
         return;
+    }
+    if (ThemeUsesDarkChrome()) {
+        HWND popup = WindowFromDC(dis->hDC);
+        if (IsMenuPopupHwnd(popup)) {
+            // Match WM_PAINT exactly, including its font and fixed gutters.
+            // Owner-draw prevents native hover text from leaking through.
+            gWarmMenuDrawDepth++;
+            bool painted = PaintDarkMenuPopup(popup, dis->hDC);
+            gWarmMenuDrawDepth--;
+            if (painted) return;
+        }
     }
     auto modi = (MenuOwnerDrawInfo*)dis->itemData;
     if (!modi) {
@@ -2829,7 +3483,7 @@ void MenuCustomDrawItem(HWND hwnd, DRAWITEMSTRUCT* dis) {
         int sx = rc.left + cxCheckMark;
         int y = rc.top + (rcDy / 2);
         int ex = rc.right - padX;
-        auto pen = CreatePen(PS_SOLID, 1, txtCol);
+        auto pen = CreatePen(PS_SOLID, 1, AccentColor(bgCol, 36));
         auto prevPen = SelectObject(hdc, pen);
         MoveToEx(hdc, sx, y, nullptr);
         LineTo(hdc, ex, y);
@@ -2855,7 +3509,11 @@ void MenuCustomDrawItem(HWND hwnd, DRAWITEMSTRUCT* dis) {
         ws = ToWStrTemp(shortcutText);
         rc = dis->rcItem;
         rc.top += padY;
-        rc.right -= (padX + (cxCheckMark / 2));
+        int rightInset = padX + (cxCheckMark / 2);
+        if (modi->hasSubMenu) {
+            rightInset += DpiScale(hwnd, 16);
+        }
+        rc.right -= rightInset;
         DrawTextExW(hdc, ws, -1, &rc, DT_RIGHT, nullptr);
     }
 
@@ -2876,6 +3534,9 @@ void MenuCustomDrawItem(HWND hwnd, DRAWITEMSTRUCT* dis) {
             // Same system check bitmap as non-owner-draw menus (light mode).
             DrawMenuCheckMark(hwnd, hdc, rc, cxCheckMark);
         }
+    }
+    if (modi->hasSubMenu) {
+        DrawMenuChevron(hwnd, hdc, dis->rcItem, txtCol);
     }
 }
 

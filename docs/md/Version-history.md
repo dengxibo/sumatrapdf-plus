@@ -2,6 +2,136 @@
 
 ## next
 
+## 3.7.39 (2026-10-07)
+
+- PDF / EPUB 标注编辑侧栏统一行内删除和固定底部操作栏；导出笔记靠左，保存及另存为靠右。EPUB 标注改为手动保存，关闭时提示未保存修改。
+  PDF and EPUB share inline annotation deletion and a fixed footer: export on the left, save actions on the right. EPUB annotations now use explicit saving with a close-time unsaved-change prompt.
+- 网页及 API 印刷目录识别共用核心提示词；保留 JSON / CSV 阶段包装，缺失页码保留 null，API 保留目录阅读顺序。
+  Web and API printed-TOC recognition share semantic prompt rules while retaining JSON/CSV stage wrappers. Missing pages stay null and API extraction preserves reading order.
+- 问问 AI 可临时选择模型，不改变选项里的模型或 API 目录识别配置；完整提问和选中文字显示在对话中，入口使用简洁机器人图标。
+  Ask AI has a session-only model picker independent of the TOC model settings, shows the complete request and selected passage in the conversation, and uses a minimal robot icon.
+- 对话框统一应用字体、原生按钮尺寸与四主题面板配色；自制 PDF 保存提示增加主题信息图标，收藏夹提示文字按实际行高布局。
+  Dialogs share application fonts, native button metrics and four-theme panel colors. The PDF save prompt adds a themed information icon; the favorite prompt uses measured text height.
+- 暗色菜单使用一致绘制路径减少闪烁及悬停跳动；缩略图不再显示目录编辑右键菜单。目录编辑的最小宽度限制不再影响其他侧栏。
+  Dark menus use consistent rendering to reduce flicker and hover shifts. Thumbnail panes no longer show TOC-edit menus, and TOC-edit minimum widths no longer constrain other sidebar pages.
+- 颜色及线段端点选项增加预览；PDF / EPUB 矩形与绘制预览统一圆角，自由文本默认字号为 21、边框为 1；不支持的工具栏功能显示为禁用。
+  Color and line-ending choices include previews. PDF/EPUB rectangles and drawing previews use rounded corners; new free text defaults to size 21 and border 1. Unsupported toolbar actions remain visible but disabled.
+
+- 新建文本批注默认图标改为 Comment（气泡），不再是 Note。设置里 `Annotations.TextIconType` 未写时也按 Comment。
+  New text annotations default to the Comment bubble icon, not Note. An unset `Annotations.TextIconType` also means Comment.
+- 新建盖章默认改为 Final，不再是 Draft。编辑器里选过的类型仍会记住并复用。
+  New stamps default to Final, not Draft. The last type chosen in the editor is still remembered.
+- Ask AI 侧栏不再在模型名旁边放一个 ×，关侧栏只用侧栏自己的关闭。输入时 Enter 发送，Shift+Enter 换行，输入框最高五行，发出去以后回到一行。发送是纸飞机，不再是向上的箭头。暗色滚动条的轨道和侧栏同一颜色。工具栏上的 AI 图标改成一个对话气泡。
+  The Ask AI sidebar no longer puts a × beside the model name. The sidebar’s own close hides it. Enter sends, Shift+Enter starts a new line, the field grows to five lines and returns to one after sending. Send is a paper plane, not an up arrow. In a dark theme the scrollbar track matches the sidebar. The toolbar AI icon is one speech bubble.
+- 详细查找改成和弹词同一类的浮动面板：没有「查找」标题栏，也没有会随窗口激活变红或变灰的系统关闭按钮。右上角是普通的 ×，点到正文后面板不会变灰。
+  Detailed Search is a floating palette in the same family as Look Up. The “Find” title bar is gone, and so is the system close button that turned red or gray with window activation. The corner × stays neutral, and clicking the page does not gray the palette out.
+- PDF 高亮在明亮主题下不再铺一块黑底。暗黑主题下用标注本来的亮色，字改成深色，不再把黄色和页底混成发脏的颜色。
+  A PDF highlight no longer paints a black band in a light theme. In a dark theme it uses the mark's own bright color, with dark letters, instead of mixing the yellow into the page.
+- PDF 标注侧栏里删掉当前一条后，会自动选中下一条，和 EPUB 一样。删的是最后一条时，选中新的最后一条。
+  Deleting the current PDF annotation in the sidebar selects the next one, as EPUB already does. Deleting the last one selects the new last one.
+- Quick Find 打开详细查找改成三个小点，点击区域仍是普通按钮大小。详细查找窗口不再显示「返回工具栏」，查找框本来就留在工具栏上。
+  Quick Find opens Detailed Search from three small dots. The click target stays a normal button size. Detailed Search no longer shows “Back to toolbar”, because the find field stays in the toolbar.
+- Quick Find 的「… / 总数」会自己变成「第几个 / 总数」，不用先点下一处。点上一处或下一处都会换到另一个命中；计数还在算时点的箭头，算完后按那一次跳转，不会只把序号补出来。
+  Quick Find turns “… / total” into “n / total” on its own, without a Next click. Previous and Next always move to another hit. An arrow clicked while the count is still running is applied when the count finishes, instead of only filling in the number.
+- Ask AI 侧栏改成阅读辅助：标题、对话、底部输入三层。对话直接铺在侧栏背景上，不再套一圈外框。标题和模型名分开，模型名较淡，窄的时候会缩略。选中文字时只显示一行「选中 · 第 N 页」。回答按窄栏排版，用户问题只有很浅的底。滚到上面时，生成结果不会把视图拉回底部。
+  The Ask AI sidebar is a reading assistant: header, conversation, and a composer that stays at the bottom. The conversation sits on the sidebar background, without an outer frame. The title and the model name are separate, and the model name fades and shortens when the sidebar is narrow. A selection shows one line, “Selection · Page N”. Answers are set for a narrow column, and a question has only a light background. Scrolling up keeps the view there while an answer arrives.
+- 顶部 Quick Find 改成工具栏最右侧的一个输入框。放大镜固定在最右边，结果数完整显示，上一处 / 下一处用详细查找同一套图标。点下一处会跳到这一处并高亮当前命中。Ctrl+F 停在这个框里。
+  Quick Find is a field at the right of the toolbar. The magnifier stays at the right end, the result count is shown in full, and previous / next use the same icons as Detailed Find. Next moves to that hit and highlights it. Ctrl+F stays in this field.
+- 标注编辑留在侧栏里时，点页面空白处或按 Esc 就退出这一条的编辑。侧栏开着不再让单击自动进入编辑；Ctrl+单击，或在列表里点一行，才会再进入。
+  With the annotation editor in the sidebar, click empty page or press Esc to leave the current mark. An open sidebar no longer makes a plain click enter edit. Ctrl+click, or a row in the list, enters it again.
+- 侧栏分隔线按双箭头光标的热点来拖。箭头两头对着分隔线也能拉动，标注、Ask AI、书签和缩略图用同一条热区。
+  The sidebar splitter follows the <-> cursor hotspot. Either tip of the arrow can drag the line. Annotations, Ask AI, bookmarks, and thumbnails share that strip.
+- 自由文本框拉窄或拉宽时，中文会按新的宽度自动换行，不再在框边被裁掉。
+  Resizing a free-text box reflows Chinese onto the new width, instead of clipping it at the frame.
+- 标注编辑改到侧栏。标题栏上的铅笔图标点一下就切过来，不再单独弹出一个窗口挡住页面。PDF 和 EPUB 都用这一页。
+  The annotation editor moved into the sidebar. The pencil icon in the header switches to it, instead of a separate window covering the page. PDF and EPUB share that page.
+- 暗黑主题下，PDF 高亮只给页面底色上一层原来的颜色，字仍是亮色。自由文本的黑字和白底跟着主题，红字、黄底这类自选颜色保持不变。
+  In a dark theme, a PDF highlight tints the page background with its own color and leaves the words light. Free-text black and white follow the theme; a chosen color, such as red type or a yellow fill, stays as it is.
+- 暗黑主题下，PDF 的高亮、下划线、删除线、直线、墨迹、方框、椭圆和文字批注只保留标注本身的颜色。页面上的字和底色仍是暗色，不再被一块白底盖住。
+  In a dark theme, PDF highlights, underlines, strikeouts, lines, ink, squares, circles, and text notes keep the mark's own color. The page text and background stay dark, instead of a white rectangle covering them.
+- 暗黑主题下，PDF 里的录音喇叭（Sound、RichMedia、Screen）不再带一块白底。图标仍是原来的颜色，白底跟着页面变成暗色。
+  In a dark theme, an embedded PDF speaker (Sound, RichMedia, Screen) no longer sits on a white chip. The icon keeps its color, and the light backing follows the page.
+- 自由文本框四周按字号留出空白。边框设为 0 时，PDF 和 EPUB 都不画外框；以前 PDF 会留下一条细线。
+  Free text keeps a margin on every side that scales with the font size. A border of 0 draws no frame on PDF or EPUB; PDF used to keep a hairline.
+- 在标注窗口里改自由文本，页面上的字马上跟着变，不再等整页重画完才出现。
+  Editing free text in the annotations window updates the words on the page immediately, instead of waiting until the whole page finishes redrawing.
+- 一个标签开着标注窗口时，到另一个标签确认手写签名，不会再被切回原来的标签。
+  With the annotations window open on one tab, confirming a handwritten signature on another tab no longer switches back to the first tab.
+- 标注编辑收在侧栏里，拖动主窗口时不会先消失，点文档也不会把它盖住。
+  The annotation editor stays in the sidebar, so moving the main window no longer hides it, and clicking the document no longer covers it.
+- EPUB 里单击标注不再进入编辑，也不会把它拖走。Ctrl+单击才进入编辑，之后才能拖动或拉缩放方块。
+  In an EPUB, a plain click no longer edits or drags an annotation. Ctrl+click enters edit mode, and only then can the mark be dragged or resized.
+- 暗黑主题下，PDF 的文字批注图标保持原来的黄底和深色图形。页面上只要有这种批注，原先整页的原色回贴会中断，图标就被反成浅色线。EPUB 本来就是原色。
+  In a dark theme, a PDF text-note icon keeps its original yellow chip and dark glyph. A text note on the page used to stop the original-color restore for that page, so the icon was left as light lines. EPUB already kept the original color.
+- 暗黑主题下手写签名跟着页面反色，黑笔变成主题文字色，浅底变成页面底色。文字批注、高亮、下划线、普通墨迹和印章仍保持原来的颜色。
+  In a dark theme, a handwritten signature is recolored with the page: black ink becomes the theme text color and a light backing becomes the page color. Text notes, highlights, underlines, ordinary ink, and stamps keep their original colors.
+- EPUB 的盖章和 PDF 用同一块章面：字留在红框里，整枚章按比例放进选中框，不再把文字拉变形后冲出边框。
+  EPUB rubber stamps use the same artwork as PDF. The words stay inside the red frame, and the stamp keeps its proportions inside the selection box instead of stretching until the label spills out.
+- PDF 的自由文本框可以在框内任意位置拖动，不用按住 Ctrl。四周的白方块整块都能抓住缩放，不再只有正中心几个像素有效。EPUB 原本就是这样。
+  A PDF free-text box moves from anywhere inside it, without holding Ctrl. The whole white handle square resizes, not only a few pixels at its center. EPUB already worked this way.
+- 暗黑主题下，文字批注、高亮、下划线、墨迹、印章这些标注保持原来的颜色。页面照常反色，标注不再被压暗或改成主题色。
+  In a dark theme, text notes, highlights, underlines, ink, and stamps keep their original colors. The page is still recolored; the annotations are not darkened or shifted to the theme.
+- Word 文档（doc、docx）的工具栏不再显示手写签名。EPUB 可以用同一个手写签名：画好或贴上图片后拖到页面上，和盖章、墨迹一样记在旁边的标注里。
+  The handwritten-signature toolbar button is hidden for Word documents (doc, docx). The same command works in EPUB: draw or paste a signature, then drag it onto the page. It is stored with the other ebook annotations, the same way stamps and ink are.
+- 文字批注的黄底色块本来就是同一大小。问号、插入、钥匙、换段和折角按便笺、段落符的外框放大并居中，线宽不变。插入的横杠加宽，避免只剩一条细线。
+  The text-note chips were already one size. Help, insert, key, new paragraph, and the caret are scaled and centered to the note and paragraph box, at the same line weight. The insert mark’s bars are wider so it is no longer a thin stroke.
+- 标注编辑窗口里可以直接改这一条的作者，只改当前标注。以后新建用的默认作者在选项 → 阅读 → 标注里填写：留空用 Windows 用户名，填 `(none)` 则新建时不写作者。不用再改设置文件。
+  The annotation editor can change the author of the current mark only. The default for new annotations is set in Options → Reading → Annotations: empty uses the Windows user name, and `(none)` leaves new annotations without an author. The settings file does not have to be edited.
+- 评论、新段落、插入符、插入、问号和钥匙的线条收细，粗细和浓淡向便笺的边、段落符的笔画看齐。便笺和段落符仍是原来的实心图形。
+  Comment, new paragraph, caret, insert, help, and key use a finer line, matched to the note’s border and the paragraph mark’s strokes. The note and the paragraph stay the previous solid drawings.
+- 右键菜单里不再单列插入符。它改成文字批注的一种图标，和批注、问号、便笺放在一起，仍是黄底色块上的细折角。
+  Caret is no longer its own item in the right-click menu. It is an icon of the text note, next to comment, help, and note, and still a thin chevron on the color chip.
+- 右键删除标注后，标注马上从页面上消失。页面还在后台重画，但不用再等那一两秒才看到它没掉。
+  Delete Annotation takes the mark off the page immediately. The page still redraws in the background, without leaving the mark on screen until that finishes.
+- 画完墨迹、直线、方框或圆后，笔迹留在页面上，不再先消失再等页面重画完才回来。
+  After drawing ink, a line, a square, or a circle, the stroke stays on the page. It no longer vanishes until the page finishes redrawing.
+- 右键菜单可以删掉光标下的签名和其他标注，不必先进入编辑。删除用的是右键时的位置，不再看菜单弹出后的鼠标。
+  Delete Annotation on the right-click menu removes the signature or other annotation under the cursor without entering edit mode. It uses the right-click position, not where the mouse is after the menu opens.
+- 工具栏侧栏按钮的提示改为「显示侧栏」。它开关的是整条侧栏，不只是书签。
+  The toolbar sidebar button tooltip now says “Show Sidebar”. The button toggles the whole sidebar, not only bookmarks.
+- 画完方框、圆、直线、墨迹、高亮和文字批注后，标注直接留在页面上，不再自动进入编辑。印章、签名和自由文本仍会进入编辑，方便接着调整。
+  After drawing a square, circle, line, ink mark, highlight, or text note, the annotation stays on the page and is not opened for editing. Stamps, signatures, and free text still enter edit mode so they can be adjusted.
+- 插入符改成和便笺同一套：22 点圆角色块，上面是细折角，线宽与问号、便笺相同。颜色跟便笺一样，默认是黄底深色图形。不再是又宽又扁的蓝色开口折线，也不是粗黑的实心折角。
+  The caret matches the note: a 22pt rounded color chip with a thin chevron at the same line weight as the question mark and the note. It uses the note color, a yellow chip with a dark glyph by default, instead of a wide blue stroke or a heavy filled wedge.
+- 文字批注的七个图标换成细线图形：圆角色块上画批注、问号、钥匙、换段、段落、插入和便笺，不再是黑框黄底里的实心小图案。色块铺满原来的方框，图形再大一号：批注在页面上是 22 点，原来是 16 点。段落是实心段落符。便笺是圆角页面加三行字。打开已有文件时按新样子显示，不改文件里存的外观，改过图标或颜色之后才会写回去。
+  Text notes use a new set of line icons: comment, help, key, new paragraph, paragraph, insert, and note, drawn on a rounded color chip instead of a filled pictogram in a black frame. The chip fills the old square, and the mark is one size larger on the page: 22pt, where it was 16pt. Paragraph is a filled pilcrow. Note is a rounded page with three lines. Existing files show the new marks without rewriting the stored appearance; the file changes only after the icon or color is edited.
+- 电子书上画完墨迹、方框、圆或直线后，笔迹留在页面上，选中虚框同时出现。不再整页重画，红线不会先消失再回来。
+  After drawing ink, a square, a circle, or a line on an ebook, the stroke stays on the page and the selection frame appears with it. The page is not rendered again, so the mark no longer vanishes and then comes back.
+- 画方框、圆、直线和墨迹时，拖动中的线就是松手后的颜色和粗细。方框和圆的线画在框内，位置和落笔后一样，不再是半透明的橙色预览。
+  While drawing a square, circle, line, or ink mark, the preview uses the color and thickness of the finished stroke. Square and circle lines sit inside the drag rectangle, in the same place as after the pen lifts, instead of a translucent orange preview.
+- 墨迹、直线、方框和圆圈在拖动时是多细，松手后还是多细。不再按固定 1 磅写进页面，放大阅读时落笔不会突然变粗。
+  Ink, line, square, and circle keep the thickness shown while dragging. The stroke is no longer stored as a fixed 1pt, so it does not jump thicker when the pen lifts on a zoomed page.
+- Ask AI 改到左侧栏，和书签、缩略图、收藏同一排。选中文字后点 Ask AI 会打开这一页并在当前文档里继续问，不再弹出大聊天窗。翻译仍是选区旁边的小弹窗，里面只显示译文，不重复原文，也没有输入框。
+  Ask AI is a page in the left sidebar, next to bookmarks, thumbnails, and favorites. Choosing Ask AI on a selection opens that page and continues the conversation for the current document, instead of a large chat popup. Translate stays a small popup beside the selection. It shows only the translation, not the source text, and it has no input box.
+- 查找固定在工具栏最右侧，不再是中间的放大镜，也不再弹出贴在按钮旁的小条。空着显示「在文档中查找…」和放大镜；输入后显示当前/总数、上一个、下一个、详细搜索和清除。Esc 回到文档并保留关键词，× 才清除。↗ 打开原来的悬浮搜索窗，关键词跟着走。SearchUIFloating 为 true 时 Ctrl+F 仍打开这个窗口；为 false 时只把焦点放到工具栏搜索框。搜索算法没有改。
+  Find sits at the right end of the toolbar. The middle magnifier and the small overlay next to it are no longer the entry. Empty, it shows “Find in document...” and a magnifier; with a query it shows the count, previous, next, detailed search, and clear. Esc returns to the document and keeps the query; × clears it. ↗ opens the existing floating search window with the same query. When SearchUIFloating is true, Ctrl+F still opens that window; when false, Ctrl+F only focuses the toolbar box. The search engine is unchanged.
+- 手写签名的纸面和笔迹跟随四套主题。暖色是米色纸深色字，纯白仍是白纸黑字，两套暗色是深色纸浅色字。放进 PDF 的仍是透明底上的黑字。
+  The handwritten signature pad uses the theme for paper and ink: warm beige with dark ink, white paper in the white theme, and a dark sheet with light ink in both dark themes. The stamp stored in the PDF stays black ink on a transparent background.
+- 拖动标注时，签名、图章、形状、线条和墨迹跟着光标走，松手才写入页面。不再用那个闪烁的黑色方块来标落点。
+  Dragging an annotation moves the signature, stamp, shape, line, or ink with the cursor. The page is updated on mouse-up, without the flickering black square that only marked the drop point.
+- 识别目录对话框里，「从正文生成目录」下面的说明按旁边按钮留出的宽度换行，整句都能看见，不再只剩一行、后半句被挡住。
+  In the recognize-TOC dialog, the note under Generate TOC From Body wraps in the width beside the button, so the whole sentence stays visible instead of a single clipped line.
+- 识别目录对话框里，「从正文生成目录」只比文字略宽一点，圆角不再压住字。「AI 检测目录页」和「手工指定目录页」保持原来的宽度。
+  In the recognize-TOC dialog, Generate TOC From Body is only slightly wider than its label, so the rounded ends no longer sit on the text. AI Detect TOC Pages and Specify TOC Pages stay at their previous width.
+- 页面带有 90° 或 270° 旋转时，手写签名图片不再被转着放上去。未旋转的页面仍按原样。
+  A handwritten signature image stays upright on a page whose /Rotate is 90° or 270°. Pages without that rotation are unchanged.
+- 暗黑主题下，识别目录对话框在缩略图出来前，页码说明和页码输入框不再是两道白条，改成和对话框一样的暗底，文字能看清。
+  In a dark theme, the TOC-page label and page field in the recognize-TOC dialog are no longer two white bars before the thumbnails appear. They use the dialog's dark fill, and the text stays readable.
+- 护眼暖色主题的菜单仍由系统绘制。白底和悬停都换成工具栏暖色，鼠标移过不会再跳回白块。箭头、勾选和子菜单结构不变。纯白和暗色主题不动。
+  Warm-theme menus stay system menus. The white fill and the hover both use the toolbar warm color, so moving the pointer does not turn a row white. Chevrons, checks, and submenu structure stay as the system draws them. White and dark themes are unchanged.
+- 工具栏在打开/打印、前进、旋转、缩放和标注之间有浅分隔线。翻页和历史连在一起，目录、版式和旋转连在一起，缩放和字号连在一起。
+  The toolbar has light separators between open/print, forward, rotate, zoom, and annotations. Page turns and history stay together, bookmarks with layout and rotate stay together, and so do zoom and font size.
+- 护眼暖色主题下，对话框按钮不再用纯白，改成和底色接近的米色，圆角外面也不再留一圈白边。纯白主题仍用系统按钮。
+  In the warm theme, dialog buttons use a beige fill close to the dialog instead of pure white, with no white rim outside the rounded face. The white theme keeps the system button.
+- Ask AI 选中的原文改成一行带引号的浅色提示。回答里的列表缩进收短，段与段、列表、小标题的间距分开。发送箭头改细，不再比输入文字更抢眼。
+  Ask AI shows the selection as one light quoted line. Lists in the answer indent less, and paragraph, list, and heading gaps are distinct. The send arrow is a thin stroke, quieter than the input text.
+- Ask AI 的回答直接铺在窗口上，不再套一层输入框；问题框和发送合成一条，发送是箭头，空内容时变淡。
+  Ask AI answers sit on the popup surface instead of inside a field box. The question and send share one composer; send is an arrow that stays muted while the box is empty.
+- 在页面上右键可以打开空的 Ask AI，不附带页面或选中文字，也不自动发问。
+  Right-clicking the page opens an empty Ask AI panel, without attaching the page or the selection and without sending a question.
+- 选区、查找和朗读共用一条高亮高度。高级设置 FixedPageUI.SelectionHeightRatio 为 0.5–1.5，默认 1.35，越小越薄。
+  Selection, find, and read-aloud share one highlight height. FixedPageUI.SelectionHeightRatio is 0.5–1.5, default 1.35; smaller values make the band thinner.
+
 ## 3.7.38 (2026-10-04)
 
 - 暗黑主题下调整标注大小，不再留下原来图形或选框的残影。

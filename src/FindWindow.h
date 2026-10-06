@@ -9,6 +9,9 @@ struct FindWindowWnd;
 FindWindowWnd* CreateFindWindow(MainWindow* win);
 void DeleteFindWindow(MainWindow* win);
 void ShowFindWindow(MainWindow* win);
+// Open the existing floating window as Detailed Search. Does not change
+// SearchUIFloating. Copies the toolbar query.
+void ShowDetailedSearchWindow(MainWindow* win);
 // Ctrl+F / toolbar search: show the find UI or raise the existing window without restarting search.
 void FindWindowActivateForShortcut(MainWindow* win);
 void HideFindWindow(MainWindow* win, bool keepSearchState = false);

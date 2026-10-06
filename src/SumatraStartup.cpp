@@ -705,6 +705,20 @@ bool PumpAppMessage(MSG& msg) {
     if (InlineTranslatePopupPreTranslate(msg)) {
         return true;
     }
+    // The splitter is one pixel. The <-> arrow is wider than that, and its
+    // hotspot is the middle. Annotations, Ask AI, bookmarks, and thumbnails
+    // all use this strip, including clicks that land on a child control.
+    bool splitterCursor = false;
+    if (msg.message == WM_LBUTTONDOWN || msg.message == WM_NCLBUTTONDOWN || msg.message == WM_MOUSEMOVE ||
+        msg.message == WM_NCMOUSEMOVE || msg.message == WM_SETCURSOR) {
+        MainWindow* splitterWin = FindMainWindowByHwnd(msg.hwnd);
+        if (HandleSidebarSplitterHit(splitterWin, msg.hwnd, msg.message, msg.lParam)) {
+            if (msg.message == WM_LBUTTONDOWN || msg.message == WM_NCLBUTTONDOWN) {
+                return true;
+            }
+            splitterCursor = true;
+        }
+    }
     // Route Ctrl+F before control-specific handling. During an active search
     // followed by a tab switch, the old popup/edit can otherwise consume the
     // shortcut before it reaches the newly active document. Annotation edits
@@ -727,6 +741,11 @@ bool PumpAppMessage(MSG& msg) {
     }
     TranslateMessage(&msg);
     DispatchMessage(&msg);
+    // The control under the arrow sets its own cursor during dispatch.
+    // Put <-> back when the pointer is inside the drag strip.
+    if (splitterCursor) {
+        SetCursorCached(IDC_SIZEWE);
+    }
     uitask::DrainQueue();
     ResetTempAllocator();
     return true;
@@ -2046,6 +2065,7 @@ ContinueOpenWindow:
     // https://github.com/sumatrapdfreader/sumatrapdf/issues/5456
     uitask::Post(MkFunc0(LayoutAndFocusOnStartup, win), "LayoutAndFocusOnStartup");
 
+    InstallWarmMenuColorHook();
     exitCode = RunMessageLoop();
     SafeCloseHandle(&hMutex);
     gInstanceMutex = nullptr;

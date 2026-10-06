@@ -29,12 +29,15 @@ struct SelectionOnPage {
 
 // Highlight band height as a fraction of font size (engine stores coords at kHighlightBandBaseRatio).
 constexpr float kHighlightBandBaseRatio = 1.0f;
-// Leave a modest vertical margin around glyph ink. Keep all interactive
-// highlights on the same band geometry so selection, reading, and search do
-// not appear to jump in height when switching actions.
+// Leave a modest vertical margin around glyph ink. Selection, find, and
+// read-aloud paint with HighlightBandRatio() so they stay the same height.
+// These three defaults match. Ebook annotation hit-testing keeps
+// kSelectionHighlightBandRatio and does not follow the setting.
 constexpr float kSelectionHighlightBandRatio = 1.35f;
 constexpr float kReadAloudHighlightBandRatio = 1.35f;
 constexpr float kFindHighlightBandRatio = 1.35f;
+static_assert(kSelectionHighlightBandRatio == kReadAloudHighlightBandRatio);
+static_assert(kSelectionHighlightBandRatio == kFindHighlightBandRatio);
 // OCR cells tend to sit slightly above the visible glyph baseline. Shift the
 // common band down so most of the extra breathing room is below the glyph.
 constexpr float kHighlightBandCenterOffsetRatio = 0.075f;
@@ -49,6 +52,10 @@ COLORREF GetFindMatchHighlightColor();
 
 // Scale a highlight rect to the given band ratio (page coordinates).
 RectF ScaleHighlightBandRect(RectF r, float bandRatio);
+
+// FixedPageUI.SelectionHeightRatio, clamped to 0.5–1.5. Out of range is 1.35.
+// Selection, find, and read-aloud all use this.
+float HighlightBandRatio();
 
 // OCR line boxes hug the x-height, so a marker through "that" misses the top of t/h
 // and the tail of g/y. weight is the number of letters in the box (CJK weight 2).

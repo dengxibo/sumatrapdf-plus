@@ -95,12 +95,18 @@ void SetRect(Annotation*, RectF);
 // The annotation by itself, at the page zoom. 32bpp top-down BGRA, premultiplied
 // alpha. Caller DeleteObject. nullptr if it cannot be drawn quickly.
 HBITMAP RenderAnnotationPreviewBitmap(Annotation* annot, float zoom, int rotation);
+HBITMAP RenderAnnotationIconPreviewBitmap(EngineMupdf* engine, int pageNo, AnnotationType type, COLORREF color,
+                                          const char* iconName, int size, int lineEnding = -1, bool lineStart = false);
+HBITMAP RenderAnnotationIconPreviewBitmap(Annotation* annot, const char* iconName, int size, int lineEnding = -1,
+                                          bool lineStart = false);
 void SetLine(Annotation*, PointF a, PointF b);
 void SetQuadPointsAsRect(Annotation*, const Vec<RectF>&);
 // Vec<Annotation*> FilterAnnotationsForPage(Vec<Annotation*>* annots, int pageNo);
 
 // EditAnnotations.cpp
 const char* Author(Annotation*);
+bool AnnotationHasAuthor(Annotation*);
+bool SetAuthor(Annotation*, const char*);
 time_t ModificationDate(Annotation*);
 int PopupId(Annotation*); // -1 if not exist
 TempStr AnnotationReadableNameTemp(AnnotationType tp);
@@ -114,6 +120,11 @@ PdfColor GetColor(Annotation*);      // kColorUnset if no color
 PdfColor InteriorColor(Annotation*); // kColorUnset if no color
 int Quadding(Annotation*);
 int BorderWidth(Annotation*);
+float BorderWidthF(Annotation*);
+// Older builds stored a free-text border of 0 as a 0.15 hairline. Rewrite that to 0.
+bool ClearFreeTextHairlineBorder(Annotation*);
+bool GetLinePoints(Annotation*, PointF& a, PointF& b);
+void GetInkStrokes(Annotation*, Vec<PointF>& points, Vec<int>& counts);
 const char* IconName(Annotation*); // empty() if no icon
 int Opacity(Annotation*);
 void GetLineEndingStyles(Annotation*, int* start, int* end);
@@ -126,6 +137,7 @@ bool SetColor(Annotation*, PdfColor);
 bool SetInteriorColor(Annotation*, PdfColor);
 bool SetQuadding(Annotation*, int);
 void SetBorderWidth(Annotation*, int);
+void SetBorderWidthFloat(Annotation*, float);
 void SetOpacity(Annotation*, int);
 void SetIconName(Annotation*, const char*);
 void SetLineEndStyles(Annotation*, int end);

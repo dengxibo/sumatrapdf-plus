@@ -90,7 +90,7 @@ You can also annotate EPUB and MOBI/AZW ebooks. Select text and use the same hig
 
 Markup style and default colors match PDF annotations (`Annotations` \ `HighlightColor`, `UnderlineColor`, `SquigglyColor`, `StrikeOutColor`). Use `Edit Annotations` to list annotations, edit notes, change colors, or delete them. Selecting the same range and highlighting again toggles the annotation off.
 
-Annotation author is the reader (Windows user name, or `Annotations.DefaultAuthor` if set), not the book author. Use **Export Notes** in the annotation editor to save all annotations to a Markdown file (page, excerpt, note, author, and date).
+Annotation author is the reader, not the book author. Set the default in **Options → Reading → Annotations**. Leave it empty to use the Windows user name, or type `(none)` to leave the author off new annotations. The annotation editor’s Author field changes only the selected annotation. Use **Export Notes** in the annotation editor to save all annotations to a Markdown file (page, excerpt, note, author, and date).
 
 ## Missing features
 

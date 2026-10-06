@@ -9,6 +9,7 @@
 #include "utils/ThreadUtil.h"
 #include "utils/UITask.h"
 #include "utils/WinUtil.h"
+#include "utils/WinDynCalls.h"
 #include "utils/Log.h"
 
 #include "wingui/UIModels.h"
@@ -48,58 +49,6 @@
 #include "DarkModeSubclass.h"
 #include "Theme.h"
 #include "PdfDarkMode.h"
-
-static const char* kAiTocPrompt =
-    "你正在帮助 PDF 阅读器恢复一本扫描书籍中的印刷目录。图片按原书顺序排列。请根据视觉布局、缩进、"
-    "字体、粗细、居中位置、上下留白、点线、页码和双栏关系恢复目录结构。只返回合法 JSON，不要解释或 Markdown。格式必须是"
-    "{\"items\":[{\"title\":\"章节标题\",\"page\":12,\"level\":1}]}。"
-    "page 是目录中印刷的页码：阿拉伯数字用 JSON 数字（如 12）；罗马数字或附录页码用字符串（如 \"xiv\"、\"R1\"）；"
-    "没有页码时用 null。"
-    "level 从 1 "
-    "开始。特别注意：目录中可能存在没有‘第X章’编号、但通过居中、加粗、字号更大、上下留白或单独成行来划分大分段的标题。"
-    "这类分段标题也是一级目录项，必须单独输出，不能丢弃，也不能挂到后面的章节下面。例如‘地球和地图’、‘中国地理’、‘自然"
-    "地理’等，"
-    "即使没有章节编号，也应输出为 level:1，并使用该标题右侧对应的页码。"
-    "层级必须按目录的视觉分组关系判断，而不是只看‘第X章’文字：如果一个无编号的大标题（如‘地球和地图’）位于若干章之前并"
-    "作为总分段标题，"
-    "则它是父级 level:1；属于该分段的‘第一章 地球’、‘第二章 地图’必须改为 "
-    "level:2；这些章下面的‘第一节’、‘第二节’必须改为 level:3。"
-    "同理，‘中国地理’是 level:1，它下面的‘第一章 疆域和行政区划’、‘第二章 人口和民族’、‘第三章 地形’等必须是 level:2，"
-    "这些章下面的‘第一节’、‘课堂练习’必须是 "
-    "level:3。不要因为章节文字本身通常是一级，就忽略目录中更高层的无编号分段标题。"
-    "例如本目录应形成：地球和地图(1) → 第一章 地球(2) → 第一节 地球的形状和经纬网(3)；"
-    "地球和地图(1) → 第二章 地图(2) → 课堂练习(3)；中国地理(1) → 第一章 疆域和行政区划(2)。"
-    "如果无编号分段标题右侧没有印刷页码，可以暂时输出 "
-    "page:null，但仍必须保留其父级层次；不要删除它，也不要把后续章节提升为同级。"
-    "不要把无编号分段标题误当成普通说明文字，也不要把它与相邻章节合并。‘第一节’、‘第二节’等明确属于所在章节的下一级；"
-    "‘课堂练习’若在章节条目缩进下也属于所在章节的下一级。"
-    "同一行里若有多个带括号页码的小条目，必须逐条拆开，禁止合并成一个标题。"
-    "例如一行「一、多元函数概念(1) 二、二元函数的极限(5) 三、二元函数的连续性(8) 习题8-1(11)」要输出四条，"
-    "而不是一条 title 里连写全部。"
-    "每个「一、」「二、」「三、」等条目单独一条 item：title 保留编号，写成「一、多元函数概念」，"
-    "不要把页码括号留在 title 里；page 取括号内的数字。半角 (1) 与全角（1）同样处理。"
-    "「习题8-1(11)」「习题 8-1（11）」也单独一条：title 为「习题8-1」（保留习题编号，去掉括号页码，题号前的空格去掉），"
-    "page 为括号内数字。"
-    "行首 * 表示选学，留在 title 里，例如「*二、全微分在近似计算中的应用」。"
-    "当目录顶层就是「第X章」时，层级固定为：章 level=1，节 level=2，节下面的「一、」「二、」和习题 level=3。"
-    "节名右侧点线后的页码是这一节自己的 page，不要用它替换节内第一条的页码。"
-    "只有章的上面还有无编号大分段标题时，才按前面的规则把章、节、节内条目整体下移一层。"
-    "书签只能显示一行普通文字，标题里的公式必须写成同一行 Unicode，整段留在同一个 title 字符串里，禁止换行把公式拆出 "
-    "JSON。"
-    "禁止 LaTeX：不要 $...$、不要反斜杠命令（如 \\lambda、\\frac、\\sqrt、\\sin、\\cos、\\int、\\sum、\\partial）。"
-    "希腊字母直接写字符（α β γ δ ε θ λ μ π σ φ ω Δ Σ Ω）。"
-    "函数名写成 sin、cos、tan、ln、log，不要加反斜杠。"
-    "单字符上标用 Unicode 上标（x²、xⁿ、y⁽ⁿ⁾）；多字符上标写成 ^( )，例如 e^(λx)、e^(n+1)。"
-    "单字符下标用 Unicode 下标（aₙ、x₁、x₂）；没有对应字符时写成 _ ，例如 P_m(x)。"
-    "导数的撇用 ′ ″ ‴，不要用英文单引号：y′、y″，不要写成 y' 或 y''。"
-    "分式写成 a/b，根号写成 √(x)，积分写成 ∫，求和写成 Σ，偏导写成 ∂，无穷写成 ∞，不等号写成 ≤ ≥ ≠。"
-    "例如「$y''=f(x,y')$型」写成「y″=f(x,y′) 型」；"
-    "「$f(x)=e^{\\lambda x}P_m(x)$型」写成「f(x)=e^(λx)P_m(x) 型」；"
-    "「$f(x)=e^{\\lambda x}[P_l(x)\\cos\\omega x+P_n(x)\\sin\\omega x]$型」写成"
-    "「f(x)=e^(λx)[P_l(x) cos ωx+P_n(x) sin ωx] 型」。"
-    "只输出目录中实际印刷的条目，按页面从上到下、从左到右的顺序输出，不要补写图片中不存在的标题。"
-    "同一本书若同时印刷了‘按单元目录’和‘按体裁/专题索引’，只输出按阅读顺序的主目录（单元/章节），"
-    "不要把体裁索引、作者名行、专题对照表再重复导入一遍。作者名若单独成行且无页码，不要输出为独立条目。";
 
 struct AiTocPocWork {
     HWND mainHwnd = nullptr;
@@ -507,7 +456,14 @@ static void AiTocPlaceScanCountAfterStatus(AiTocDialog* dlg, int statusY, int li
     if (!dlg->scanCount) {
         return;
     }
-    MoveWindow(dlg->scanCount, afterX, statusY, AiTocS(dlg, 80), lineH, FALSE);
+    // The status static must not paint underneath the separate live counter.
+    // It otherwise erases the digits when either control repaints.
+    RECT rc{};
+    GetWindowRect(dlg->status, &rc);
+    MapWindowPoints(nullptr, dlg->hwnd, (POINT*)&rc, 2);
+    int gap = AiTocS(dlg, 16);
+    MoveWindow(dlg->status, rc.left, statusY, std::max(1, afterX - (int)rc.left - gap), lineH, TRUE);
+    MoveWindow(dlg->scanCount, afterX, statusY, AiTocS(dlg, 80), lineH, TRUE);
 }
 
 // Footer buttons ("Recognize via Web AI", …) must fit their translated label;
@@ -578,7 +534,7 @@ static void AiTocSetImportCalibProgress(AiTocDialog* dlg, int done, int total) {
     GetTextExtentPoint32W(dc, prefix, (int)wcslen(prefix), &tsz);
     SelectObject(dc, oldF);
     ReleaseDC(dlg->hwnd, dc);
-    int afterX = statusRc.left + tsz.cx + AiTocS(dlg, 8);
+    int afterX = statusRc.left + tsz.cx + AiTocS(dlg, 24);
     AiTocPlaceScanCountAfterStatus(dlg, statusRc.top, statusRc.bottom - statusRc.top, afterX);
     ShowWindow(dlg->scanCount, SW_SHOWNOACTIVATE);
 }
@@ -694,22 +650,23 @@ static void AiTocApiProgressApply(AiTocApiProgressUi* m) {
                 SetWindowTextW(dlg->status, _TRW("Calibrating printed page offsets..."));
                 break;
         }
-        if (dlg->scanCount && m->total > 0) {
-            SetWindowTextW(dlg->scanCount, ToWStrTemp(str::FormatTemp("%d / %d", m->done, m->total)));
+        // API progress uses one static: its prefix and counter cannot overlap,
+        // and two em spaces keep the counter nearby without right alignment.
+        ShowWindow(dlg->scanCount, SW_HIDE);
+        SetWindowTextW(dlg->scanCount, L"");
+        if (m->total > 0) {
+            WCHAR prefix[256]{};
+            GetWindowTextW(dlg->status, prefix, dimof(prefix));
+            const WCHAR* text =
+                ToWStrTemp(str::FormatTemp("%s\xE3\x80\x80\xE3\x80\x80%d / %d", ToUtf8Temp(prefix), m->done, m->total));
+            SetWindowTextW(dlg->status, text);
             RECT statusRc{};
-            GetClientRect(dlg->status, &statusRc);
-            MapWindowPoints(dlg->status, dlg->hwnd, (POINT*)&statusRc, 2);
-            HDC dc = GetDC(dlg->hwnd);
-            HGDIOBJ oldF = SelectObject(dc, dlg->font);
-            SIZE tsz{};
-            WCHAR cur[128]{};
-            GetWindowTextW(dlg->status, cur, 128);
-            GetTextExtentPoint32W(dc, cur, (int)wcslen(cur), &tsz);
-            SelectObject(dc, oldF);
-            ReleaseDC(dlg->hwnd, dc);
-            AiTocPlaceScanCountAfterStatus(dlg, statusRc.top, statusRc.bottom - statusRc.top,
-                                           statusRc.left + tsz.cx + AiTocS(dlg, 8));
-            ShowWindow(dlg->scanCount, SW_SHOWNOACTIVATE);
+            GetWindowRect(dlg->status, &statusRc);
+            MapWindowPoints(nullptr, dlg->hwnd, (POINT*)&statusRc, 2);
+            RECT client{};
+            GetClientRect(dlg->hwnd, &client);
+            MoveWindow(dlg->status, statusRc.left, statusRc.top, client.right - AiTocS(dlg, 22) - statusRc.left,
+                       statusRc.bottom - statusRc.top, TRUE);
         }
     }
     delete m;
@@ -1236,7 +1193,7 @@ static TempStr AiTocExtractBatchPrompt(int from1, int to1, int total) {
         "请只根据本条消息里的图片提取目录，按下面的规则输出一个 items JSON。"
         "不要回复「已收到」，不要合并其他批次，不要输出本条消息之外的条目。\n\n",
         from1, to1, total);
-    return str::FormatTemp("%s%s", head, kAiTocPrompt);
+    return str::FormatTemp("%s%s", head, BuildPrintedTocPromptTemp(PrintedTocPromptFormat::Json));
 }
 
 static bool SubmitAiTocImageBatch(AiTocPasteTarget* target, int from1, int to1) {
@@ -1277,7 +1234,7 @@ static bool AiTocPasteOneBatch(AiTocPasteTarget* target, int batchIndex, bool wa
 }
 
 static TempStr AiTocPromptForSend(const AiTocPocWork*) {
-    return str::DupTemp(kAiTocPrompt);
+    return str::DupTemp(BuildPrintedTocPromptTemp(PrintedTocPromptFormat::Json));
 }
 
 // Paste cached TOC page images (batched at 10 per message). Used by the first
@@ -2430,13 +2387,120 @@ static void AiTocUpdateSendEnabled(AiTocDialog* dlg) {
 
 // Esc cancels the dialog even when the pages edit has focus.
 static WNDPROC gAiTocEditOrigProc = nullptr;
+static WNDPROC gAiTocLabelOrigProc = nullptr;
+
+static AiTocDialog* AiTocDlgFromChild(HWND hwnd) {
+    HWND parent = GetParent(hwnd);
+    if (!parent) {
+        return nullptr;
+    }
+    return (AiTocDialog*)GetWindowLongPtrW(parent, GWLP_USERDATA);
+}
+
+// The sunken client edge stays a light gray trench. In dark chrome, paint that
+// non-client band with the same hairline used under the button row.
+static void AiTocPaintDarkEditFrame(HWND hwnd) {
+    HDC hdc = GetWindowDC(hwnd);
+    if (!hdc) {
+        return;
+    }
+    RECT win{};
+    GetWindowRect(hwnd, &win);
+    RECT client{};
+    GetClientRect(hwnd, &client);
+    MapWindowPoints(hwnd, nullptr, (LPPOINT)&client, 2);
+    OffsetRect(&client, -win.left, -win.top);
+    OffsetRect(&win, -win.left, -win.top);
+    HRGN winRgn = CreateRectRgnIndirect(&win);
+    HRGN clientRgn = CreateRectRgnIndirect(&client);
+    CombineRgn(winRgn, winRgn, clientRgn, RGN_DIFF);
+    SelectClipRgn(hdc, winRgn);
+    HBRUSH br = CreateSolidBrush(RGB(68, 70, 76));
+    FillRect(hdc, &win, br);
+    DeleteObject(br);
+    SelectClipRgn(hdc, nullptr);
+    DeleteObject(winRgn);
+    DeleteObject(clientRgn);
+    ReleaseDC(hwnd, hdc);
+}
 
 static LRESULT CALLBACK AiTocEditProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_KEYDOWN && wp == VK_ESCAPE) {
         SendMessageW(GetParent(hwnd), WM_COMMAND, MAKEWPARAM(IDCANCEL, BN_CLICKED), (LPARAM)hwnd);
         return 0;
     }
+    // A themed EDIT ignores WM_CTLCOLOREDIT and fills COLOR_WINDOW. On dark
+    // chrome that is pure white, and the light theme text disappears into it.
+    if (ThemeUsesDarkChrome()) {
+        if (msg == WM_ERASEBKGND) {
+            AiTocDialog* dlg = AiTocDlgFromChild(hwnd);
+            if (dlg && dlg->controlBrush) {
+                RECT rc{};
+                GetClientRect(hwnd, &rc);
+                FillRect((HDC)wp, &rc, dlg->controlBrush);
+                return 1;
+            }
+        }
+        if (msg == WM_NCPAINT) {
+            AiTocPaintDarkEditFrame(hwnd);
+            return 0;
+        }
+    }
     return CallWindowProcW(gAiTocEditOrigProc, hwnd, msg, wp, lp);
+}
+
+// The page-number label is a plain STATIC. With a visual style it fills white
+// while the text stays the dark-theme near-white, so the row reads as a blank
+// white bar until the thumbnails arrive.
+static LRESULT CALLBACK AiTocLabelProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (ThemeUsesDarkChrome() && (msg == WM_PAINT || msg == WM_ERASEBKGND)) {
+        AiTocDialog* dlg = AiTocDlgFromChild(hwnd);
+        if (dlg && dlg->backgroundBrush) {
+            if (msg == WM_ERASEBKGND) {
+                RECT rc{};
+                GetClientRect(hwnd, &rc);
+                FillRect((HDC)wp, &rc, dlg->backgroundBrush);
+                return 1;
+            }
+            PAINTSTRUCT ps{};
+            HDC hdc = BeginPaint(hwnd, &ps);
+            RECT rc{};
+            GetClientRect(hwnd, &rc);
+            FillRect(hdc, &rc, dlg->backgroundBrush);
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, ThemeWindowTextColor());
+            HFONT font = (HFONT)SendMessageW(hwnd, WM_GETFONT, 0, 0);
+            HGDIOBJ old = font ? SelectObject(hdc, font) : nullptr;
+            WStr text = ToWStrTemp(GetWindowTextTemp(hwnd));
+            if (text.s) {
+                DrawTextW(hdc, text.s, -1, &rc, DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+            }
+            if (old) {
+                SelectObject(hdc, old);
+            }
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+    }
+    return CallWindowProcW(gAiTocLabelOrigProc, hwnd, msg, wp, lp);
+}
+
+// Drop the Explorer/CFD theme on the page field so the dark control brush
+// shows through. AppDialogApplyChrome puts that theme back, so this runs after it.
+static void AiTocApplyPageFieldChrome(AiTocDialog* dlg) {
+    if (!dlg || !DynSetWindowTheme) {
+        return;
+    }
+    bool dark = ThemeUsesDarkChrome();
+    const WCHAR* theme = dark ? L"" : nullptr;
+    if (dlg->pagesLabel) {
+        DynSetWindowTheme(dlg->pagesLabel, theme, theme);
+        InvalidateRect(dlg->pagesLabel, nullptr, TRUE);
+    }
+    if (dlg->pagesEdit) {
+        DynSetWindowTheme(dlg->pagesEdit, theme, theme);
+        RedrawWindow(dlg->pagesEdit, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME);
+    }
 }
 
 // All layout metrics for one dialog state, in physical px (computed from
@@ -2465,16 +2529,40 @@ struct AiTocLayoutMetrics {
     int manualBtnY = 0;
     int bodyTitleY = 0;
     int bodyDescY = 0;
+    int bodyDescH = 0;
     int bodyBtnY = 0;
     // Actual line count of the shared stateDesc control (re-read from its
     // current text on every pass): sizing the static larger than its text
     // lets its empty rows erase the status line below (z-order).
     int descLines = 0;
-    // Shared width of the two content buttons ("Specify TOC Pages" /
-    // "Generate TOC From Body"): ideal-size of the widest label, so no
-    // language clips inside a fixed box. Both always match.
+    // Width of "AI Detect TOC Pages" and "Specify TOC Pages": the widest
+    // label's ideal size, with no extra. "Generate TOC From Body" is that
+    // same ideal plus a few DIP so its rounded ends clear the glyphs.
     int branchBtnW = 0;
+    int bodyBtnW = 0;
 };
+
+// Height of a wrapping static at the width it will actually get. A one-line
+// box clips the tail ("into a TOC.") once the button takes the right side.
+static int AiTocWrappedTextHeight(AiTocDialog* dlg, HWND label, int width, int minH) {
+    if (!dlg || !label || !dlg->hwnd || width < 8) {
+        return minH;
+    }
+    WCHAR text[512]{};
+    GetWindowTextW(label, text, dimof(text));
+    if (!text[0]) {
+        return minH;
+    }
+    HDC dc = GetDC(dlg->hwnd);
+    HFONT font = dlg->font ? dlg->font : (HFONT)SendMessageW(label, WM_GETFONT, 0, 0);
+    HGDIOBJ old = SelectObject(dc, font ? font : (HFONT)GetStockObject(DEFAULT_GUI_FONT));
+    RECT rc{0, 0, width, 0};
+    DrawTextW(dc, text, -1, &rc, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
+    SelectObject(dc, old);
+    ReleaseDC(dlg->hwnd, dc);
+    int h = rc.bottom - rc.top + 2;
+    return h > minH ? h : minH;
+}
 
 // Pure math pass: stack the fixed header top-down (identical in Scanning and
 // Review — the header is the visual anchor), then add the state-specific body
@@ -2483,10 +2571,16 @@ struct AiTocLayoutMetrics {
 static void AiTocComputeLayout(AiTocDialog* dlg, bool expanded, bool fallback, AiTocLayoutMetrics& mt) {
     mt.w = AiTocS(dlg, 660);
     mt.m = AiTocS(dlg, 22);
-    mt.lineH = AiTocS(dlg, 17);
+    HDC dc = GetDC(dlg->hwnd);
+    HGDIOBJ oldFont = SelectObject(dc, dlg->font);
+    TEXTMETRICW tm{};
+    GetTextMetricsW(dc, &tm);
+    SelectObject(dc, oldFont);
+    ReleaseDC(dlg->hwnd, dc);
+    mt.lineH = std::max(AiTocS(dlg, 17), (int)(tm.tmHeight + tm.tmExternalLeading + AiTocS(dlg, 2)));
     mt.phaseH = AiTocS(dlg, 20);
     mt.editH = AiTocS(dlg, 26);
-    mt.btnH = AiTocS(dlg, 23);
+    mt.btnH = dlg->send ? ButtonGetIdealSize(dlg->send).dy : AiTocS(dlg, 23);
     mt.btnGap = AiTocS(dlg, 8);
     // The stateDesc control is shared by the fallback page and the waiting
     // page; its height must follow the text that is currently set, otherwise
@@ -2500,15 +2594,31 @@ static void AiTocComputeLayout(AiTocDialog* dlg, bool expanded, bool fallback, A
             mt.descLines++;
         }
     }
-    // Content buttons size to their own label (BCM_GETIDEALSIZE): the wider
-    // body-branch label wins and Specify TOC Pages matches it, per design.
-    mt.branchBtnW = AiTocS(dlg, 122);
-    for (HWND b : {dlg->manualBtn, dlg->bodyBtn}) {
+    // Ideal size is the label plus the system's own margin. The two buttons
+    // above stay at that width. Generate TOC From Body adds a little more:
+    // the warm button's 8 DIP corners eat the thin margin and sit on the
+    // glyphs, and 64 DIP made every button on this page too wide.
+    auto idealW = [&](HWND b) -> int {
+        int floor = AiTocS(dlg, 122);
         SIZE sz{};
-        if (b && SendMessageW(b, BCM_GETIDEALSIZE, 0, (LPARAM)&sz) && sz.cx > mt.branchBtnW) {
-            mt.branchBtnW = sz.cx;
+        if (b && SendMessageW(b, BCM_GETIDEALSIZE, 0, (LPARAM)&sz) && sz.cx > floor) {
+            return sz.cx;
         }
+        return floor;
+    };
+    int manualW = idealW(dlg->manualBtn);
+    int detectW = idealW(dlg->aiDetectBtn);
+    int bodyW = idealW(dlg->bodyBtn);
+    mt.branchBtnW = manualW > detectW ? manualW : detectW;
+    if (bodyW > mt.branchBtnW) {
+        mt.branchBtnW = bodyW;
     }
+    mt.bodyBtnW = bodyW + AiTocS(dlg, 16);
+    int bodyTextW = (mt.w - 2 * mt.m) - (mt.bodyBtnW + AiTocS(dlg, 12));
+    if (bodyTextW < AiTocS(dlg, 80)) {
+        bodyTextW = AiTocS(dlg, 80);
+    }
+    mt.bodyDescH = AiTocWrappedTextHeight(dlg, dlg->bodyDesc, bodyTextW, mt.lineH);
     int y = AiTocS(dlg, 18);
     mt.phaseY = y;
     y += mt.phaseH + AiTocS(dlg, 16);
@@ -2536,10 +2646,15 @@ static void AiTocComputeLayout(AiTocDialog* dlg, bool expanded, bool fallback, A
         mt.bodyTitleY = y;
         y += mt.lineH + AiTocS(dlg, 7);
         mt.bodyDescY = y;
-        // 从正文生成目录 button: no row of its own; place it just below the
-        // description baseline for a more balanced second branch.
-        mt.bodyBtnY = mt.bodyDescY + AiTocS(dlg, 5);
-        y += mt.lineH + AiTocS(dlg, 14);
+        int descH = mt.bodyDescH > mt.lineH ? mt.bodyDescH : mt.lineH;
+        // Button stays on the right of the description. Center it on the
+        // text block so a wrapped second line is not covered.
+        mt.bodyBtnY = mt.bodyDescY + (descH - mt.btnH) / 2;
+        if (mt.bodyBtnY < mt.bodyDescY) {
+            mt.bodyBtnY = mt.bodyDescY;
+        }
+        int blockH = descH > mt.btnH ? descH : mt.btnH;
+        y += blockH + AiTocS(dlg, 14);
         mt.statusY = y;
         y += mt.lineH;
         mt.clientH = y + AiTocS(dlg, 20) + footerReserve;
@@ -2636,7 +2751,7 @@ static LRESULT AiTocColorControl(AiTocDialog* dlg, HDC dc, HWND control) {
         text = AiTocMutedTextColor();
     }
     SetTextColor(dc, text);
-    SetBkColor(dc, edit ? ThemeWindowControlBackgroundColor() : ThemeWindowBackgroundColor());
+    SetBkColor(dc, edit ? ThemeWindowControlBackgroundColor() : AppDialogPanelBackgroundColor());
     return (LRESULT)(edit ? dlg->controlBrush : dlg->backgroundBrush);
 }
 
@@ -2819,7 +2934,7 @@ static void AiTocRefreshOneTheme(HWND hwnd, AiTocDialog* dlg) {
     }
     DeleteObject(dlg->backgroundBrush);
     DeleteObject(dlg->controlBrush);
-    dlg->backgroundBrush = CreateSolidBrush(ThemeWindowBackgroundColor());
+    dlg->backgroundBrush = CreateSolidBrush(AppDialogPanelBackgroundColor());
     dlg->controlBrush = CreateSolidBrush(ThemeWindowControlBackgroundColor());
     if (dlg->detectWork && dlg->thumbnailThemeEpoch != ThemeEpoch()) {
         dlg->thumbnailThemeEpoch = ThemeEpoch();
@@ -2829,6 +2944,7 @@ static void AiTocRefreshOneTheme(HWND hwnd, AiTocDialog* dlg) {
         }
     }
     AppDialogApplyChrome(hwnd);
+    AiTocApplyPageFieldChrome(dlg);
     if (UseDarkModeLib() && dlg->thumbnailPane) {
         DarkMode::setDarkScrollBar(dlg->thumbnailPane);
     }
@@ -3009,9 +3125,13 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
         // statics sit above the button in z-order and would erase its bottom
         // edge on the first paint (hover then "fixed" it). Reserve the shared
         // button column (+gap) so the rects never intersect.
-        int bodyTextW = contentW - (mt.branchBtnW + AiTocS(dlg, 12));
+        int bodyTextW = contentW - (mt.bodyBtnW + AiTocS(dlg, 12));
+        if (bodyTextW < AiTocS(dlg, 80)) {
+            bodyTextW = AiTocS(dlg, 80);
+        }
         MoveWindow(dlg->bodyTitle, mt.m, mt.bodyTitleY, bodyTextW, mt.lineH, TRUE);
-        MoveWindow(dlg->bodyDesc, mt.m, mt.bodyDescY, bodyTextW, mt.lineH, TRUE);
+        int descH = mt.bodyDescH > mt.lineH ? mt.bodyDescH : mt.lineH;
+        MoveWindow(dlg->bodyDesc, mt.m, mt.bodyDescY, bodyTextW, descH, TRUE);
         // 手工指定目录页 sits at the bottom-right of the intro block, visually
         // answering the "或手动指定目录页" sentence above it; its row mirrors
         // the body branch's button row for a balanced two-branch rhythm.
@@ -3031,11 +3151,11 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
             MoveWindow(dlg->detectProgressCount, mt.m + progressW + gap, mt.manualBtnY + (mt.btnH - mt.lineH) / 2,
                        countW, mt.lineH, TRUE);
         }
-        // 从正文生成目录: same size as 手工指定目录页, vertically centered
+        // 从正文生成目录: a little wider than its label, vertically centered
         // with a small downward offset from its description (text left,
         // action right).
         if (dlg->bodyBtn) {
-            MoveWindow(dlg->bodyBtn, mt.w - mt.m - mt.branchBtnW, mt.bodyBtnY, mt.branchBtnW, mt.btnH, TRUE);
+            MoveWindow(dlg->bodyBtn, mt.w - mt.m - mt.bodyBtnW, mt.bodyBtnY, mt.bodyBtnW, mt.btnH, TRUE);
             ShowWindow(dlg->bodyBtn, SW_SHOWNOACTIVATE);
         }
     } else if (waitingState) {
@@ -3075,7 +3195,7 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
         WCHAR statusText[128]{};
         GetWindowTextW(dlg->status, statusText, 128);
         HDC dc = GetDC(hwnd);
-        HGDIOBJ oldF = SelectObject(dc, dlg->font);
+        HGDIOBJ oldF = SelectObject(dc, (HFONT)SendMessageW(dlg->status, WM_GETFONT, 0, 0));
         SIZE tsz{};
         GetTextExtentPoint32W(dc, statusText, (int)wcslen(statusText), &tsz);
         SelectObject(dc, oldF);
@@ -3091,7 +3211,7 @@ static void AiTocLayoutControls(AiTocDialog* dlg) {
             // Counter sits right after the dots: "正在扫描目录页 ● ○ ○  12 / 30".
             AiTocPlaceScanCountAfterStatus(dlg, mt.statusY, mt.lineH, dlg->dotsRect.right + AiTocS(dlg, 10));
         } else {
-            AiTocPlaceScanCountAfterStatus(dlg, mt.statusY, mt.lineH, mt.m + tsz.cx + AiTocS(dlg, 8));
+            AiTocPlaceScanCountAfterStatus(dlg, mt.statusY, mt.lineH, mt.m + tsz.cx + AiTocS(dlg, 24));
         }
     }
 
@@ -3641,7 +3761,7 @@ static LRESULT CALLBACK AiTocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
     if (msg == WM_CREATE) {
         dlg = (AiTocDialog*)((CREATESTRUCTW*)lp)->lpCreateParams;
         dlg->hwnd = hwnd;
-        dlg->backgroundBrush = CreateSolidBrush(ThemeWindowBackgroundColor());
+        dlg->backgroundBrush = CreateSolidBrush(AppDialogPanelBackgroundColor());
         dlg->controlBrush = CreateSolidBrush(ThemeWindowControlBackgroundColor());
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)dlg);
         return 0;
@@ -4120,7 +4240,8 @@ static void AiTocUploadFinished(AiTocPocWork* work) {
     AiTocEnableSendButtons(dlg, TRUE);
     SetWindowTextW(dlg->send, _TRW("Recognize via Web AI"));
     if (work->error) {
-        if (work->files.Size() == work->pageNos.Size() && CopyAiChatPayloadToClipboard(work->files, kAiTocPrompt) &&
+        if (work->files.Size() == work->pageNos.Size() &&
+            CopyAiChatPayloadToClipboard(work->files, BuildPrintedTocPromptTemp(PrintedTocPromptFormat::Json)) &&
             AiTocEnsureClipboardListener(dlg->hwnd)) {
             // Auto-send failed but the payload is on the clipboard and the
             // chat browser is open: unified waiting page in manual-paste mode.
@@ -4204,6 +4325,7 @@ void StartAiTocProofOfConcept(MainWindow* win) {
                                  WS_CHILD | WS_VISIBLE | SS_LEFT, 0, 0, 10, 10, hwnd, nullptr, h, nullptr);
     dlg->pagesLabel = label;
     SendMessageW(label, WM_SETFONT, (WPARAM)dlg->font, TRUE);
+    gAiTocLabelOrigProc = (WNDPROC)SetWindowLongPtrW(label, GWLP_WNDPROC, (LONG_PTR)AiTocLabelProc);
     dlg->pagesEdit = CreateWindowExW(WS_EX_CLIENTEDGE, WC_EDITW, L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 0, 0, 10,
                                      10, hwnd, nullptr, h, nullptr);
     SendMessageW(dlg->pagesEdit, WM_SETFONT, (WPARAM)dlg->font, TRUE);
@@ -4282,6 +4404,7 @@ void StartAiTocProofOfConcept(MainWindow* win) {
         DarkMode::setDarkWndNotifySafe(hwnd);
     }
     AppDialogApplyChrome(hwnd);
+    AiTocApplyPageFieldChrome(dlg);
     RegisterAppDialogForTheme(hwnd, AiTocThemeRefreshCb, dlg);
     AiTocCenterOverMainWindow(dlg);
     ShowWindow(hwnd, SW_SHOWNORMAL);

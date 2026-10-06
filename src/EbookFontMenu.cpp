@@ -3,6 +3,7 @@
 
 #include "utils/BaseUtil.h"
 #include "utils/Dpi.h"
+#include "utils/FileUtil.h"
 #include "utils/GdiPlusUtil.h"
 #include "utils/ScopedWin.h"
 #include "utils/WinUtil.h"
@@ -50,6 +51,36 @@ bool IsReflowableEbookTabForFontMenu(WindowTab* tab) {
     }
     return engine->kind == kindEngineMobi || engine->kind == kindEngineEpub || engine->kind == kindEngineFb2 ||
            engine->kind == kindEnginePdb || engine->kind == kindEngineHtml || engine->kind == kindEngineTxt;
+}
+
+static bool IsExtWithoutFontSize(const char* ext) {
+    // Office keeps author sizes; Markdown layout ignores reader font-size CSS.
+    return ext &&
+           (str::EqI(ext, ".docx") || str::EqI(ext, ".doc") || str::EqI(ext, ".xlsx") || str::EqI(ext, ".pptx") ||
+            str::EqI(ext, ".hwpx") || str::EqI(ext, ".md") || str::EqI(ext, ".markdown"));
+}
+
+bool SupportsEbookFontSizeChange(WindowTab* tab) {
+    if (!IsReflowableEbookTabForFontMenu(tab)) {
+        return false;
+    }
+    EngineBase* engine = tab->GetEngine();
+    if (!engine) {
+        return false;
+    }
+    // Prefer path extension so classic .doc converted to a temp .docx still
+    // counts as Word (no reader font-size override).
+    const char* ext = engine->defaultExt;
+    if (engine->FilePath()) {
+        TempStr pathExt = path::GetExtTemp(engine->FilePath());
+        if (pathExt && pathExt[0]) {
+            ext = pathExt;
+        }
+    }
+    if (IsExtWithoutFontSize(ext) || EngineMupdfIsWordDocument(engine)) {
+        return false;
+    }
+    return true;
 }
 
 static void SortFamilyNames(Vec<char*>* families) {
@@ -438,15 +469,14 @@ static void FontPickerMoveSel(FontPickerWnd* p, int delta) {
 // A step away from the window color. ControlBackgroundColor is a near-white
 // card, which reads as a white slab on Warm parchment and on Light-White.
 static COLORREF FontPickerFieldColor() {
-    COLORREF bg = ThemeWindowBackgroundColor();
-    if (ThemeUsesDarkChrome()) {
-        return AccentColor(bg, 14);
-    }
-    return AccentColor(bg, 8);
+    // Must match the CTLCOLOR background, not a separate accented brush:
+    // single-line EDIT paints its text band with SetBkColor and the remaining
+    // client height with the returned brush. Different colors leave a stripe.
+    return ThemeWindowControlBackgroundColor();
 }
 
 static COLORREF FontPickerSelColor() {
-    COLORREF bg = ThemeWindowBackgroundColor();
+    COLORREF bg = AppDialogPanelBackgroundColor();
     // Negative AccentColor on a light color walks toward white.
     if (ThemeUsesDarkChrome()) {
         return AccentColor(bg, 22);
@@ -459,6 +489,11 @@ static void FontPickerApplyControlTheme(FontPickerWnd* p) {
         return;
     }
     if (p->hwndSearch) {
+        if (UseDarkModeLib()) {
+            // The search proc owns the outer frame and centered text band;
+            // don't let the generic edit border outline that inner band.
+            DarkMode::removeCustomBorderForListBoxOrEditCtrlSubclass(p->hwndSearch);
+        }
         // A themed EDIT ignores WM_CTLCOLOREDIT and paints COLOR_WINDOW, which
         // is white on Warm. An empty theme lets the field brush show through.
         // Dark chrome keeps the theme so the box matches the other dialogs.
@@ -491,7 +526,7 @@ static void FontPickerApplyControlTheme(FontPickerWnd* p) {
 static void FontPickerRecreateThemeBrushes(FontPickerWnd* p) {
     DeleteObject(p->bgBrush);
     DeleteObject(p->ctrlBrush);
-    p->bgBrush = CreateSolidBrush(ThemeWindowBackgroundColor());
+    p->bgBrush = CreateSolidBrush(AppDialogPanelBackgroundColor());
     p->ctrlBrush = CreateSolidBrush(FontPickerFieldColor());
 }
 
@@ -545,8 +580,10 @@ static Size FontPickerLayout(FontPickerWnd* p, int dpi) {
     int pad = MulDiv(12, dpi, 96);
     int gap = MulDiv(8, dpi, 96);
     int searchH = MulDiv(24, dpi, 96);
-    int btnH = MulDiv(23, dpi, 96);
-    int btnW = MulDiv(75, dpi, 96);
+    Size okSize = ButtonGetIdealSize(p->hwndOk);
+    Size cancelSize = ButtonGetIdealSize(p->hwndCancel);
+    int btnH = std::max(okSize.dy, cancelSize.dy);
+    int btnW = std::max(MulDiv(75, dpi, 96), std::max(okSize.dx, cancelSize.dx));
     p->rowDy = MulDiv(24, dpi, 96);
     int clientW = MulDiv(320, dpi, 96);
     int listH = p->rowDy * 12;
@@ -637,6 +674,36 @@ static void FontPickerScrollList(FontPickerWnd* p, int lines) {
 
 static LRESULT CALLBACK FontPickerSearchProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     auto* p = (FontPickerWnd*)GetWindowLongPtr(GetParent(hwnd), GWLP_USERDATA);
+    if (p && p->prevSearchProc && msg == WM_NCCALCSIZE) {
+        LRESULT result = CallWindowProcW(p->prevSearchProc, hwnd, msg, wp, lp);
+        RECT* client = wp ? &((NCCALCSIZE_PARAMS*)lp)->rgrc[0] : (RECT*)lp;
+        int textH = HwndMeasureText(hwnd, "Ag", p->uiFont).dy;
+        int available = client->bottom - client->top;
+        if (textH > 0 && available > textH) {
+            client->top += (available - textH) / 2;
+            client->bottom = client->top + textH;
+        }
+        return result;
+    }
+    if (p && msg == WM_NCPAINT) {
+        HDC dc = GetWindowDC(hwnd);
+        if (dc) {
+            RECT window{};
+            GetWindowRect(hwnd, &window);
+            RECT client{};
+            GetClientRect(hwnd, &client);
+            POINT origin{};
+            ClientToScreen(hwnd, &origin);
+            OffsetRect(&client, origin.x - window.left, origin.y - window.top);
+            ExcludeClipRect(dc, client.left, client.top, client.right, client.bottom);
+            RECT frame{0, 0, window.right - window.left, window.bottom - window.top};
+            FillRect(dc, &frame, p->ctrlBrush);
+            ScopedGdiObj<HBRUSH> border(CreateSolidBrush(ThemeInspectorSeparatorColor()));
+            FrameRect(dc, &frame, border);
+            ReleaseDC(hwnd, dc);
+        }
+        return 0;
+    }
     if (p && msg == WM_KEYDOWN) {
         if (wp == VK_DOWN) {
             FontPickerMoveSel(p, 1);
@@ -944,8 +1011,10 @@ void ShowEbookFontPicker(HWND owner, bool cjk) {
     p->uiFontBold = fonts.semibold;
     fonts.body = fonts.semibold = nullptr;
 
-    p->hwndSearch = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
-                                    0, 0, 0, 0, hwnd, (HMENU)100, inst, nullptr);
+    // FontPickerSearchProc paints the outer frame. A native WS_BORDER also
+    // outlines the centered text band on focus changes, creating a second box.
+    p->hwndSearch = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0, 0, 0, 0,
+                                    hwnd, (HMENU)100, inst, nullptr);
     SendMessageW(p->hwndSearch, WM_SETFONT, (WPARAM)p->uiFont, TRUE);
     p->prevSearchProc = (WNDPROC)SetWindowLongPtrW(p->hwndSearch, GWLP_WNDPROC, (LONG_PTR)FontPickerSearchProc);
     SendMessageW(p->hwndSearch, EM_SETCUEBANNER, TRUE, (LPARAM)ToWStrTemp(_TRA("Search fonts")));

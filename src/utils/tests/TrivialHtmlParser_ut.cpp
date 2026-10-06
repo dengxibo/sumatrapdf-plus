@@ -224,9 +224,11 @@ static void HtmlParserFile() {
     if (!d) {
         return;
     }
+    defer {
+        d.Free();
+    };
     HtmlParser p;
     HtmlElement* root = p.ParseInPlace(d);
-    d.Free();
     utassert(root);
     utassert(709 == p.ElementsCount());
     utassert(955 == p.TotalAttrCount());

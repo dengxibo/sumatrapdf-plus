@@ -533,6 +533,13 @@ void Wnd::SetBounds(Rect bounds) {
     bounds.dy -= (insets.bottom + insets.top);
 
     auto r = ToRECT(bounds);
+    if (gLayoutSuspendPaint) {
+        // Do not CopyBits or erase here. A live splitter drag otherwise smears
+        // combo/trackbar internals, then the next paint fights the leftover.
+        ::SetWindowPos(hwnd, nullptr, r.left, r.top, RectDx(r), RectDy(r),
+                       SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOCOPYBITS);
+        return;
+    }
     ::MoveWindow(hwnd, &r);
     // TODO: optimize if doesn't change position
     ::InvalidateRect(hwnd, nullptr, TRUE);
@@ -1362,17 +1369,24 @@ void DrawCloseButton(const DrawCloseButtonArgs& args) {
         g.FillEllipse(&b, r.x, r.y, r.dx - 2, r.dy - 2);
     }
 
-    // draw 'x'
+    // draw 'x'. A fixed 4px/6px inset assumes a ~16px button. On a ~10px
+    // glyph both endpoints land on the same pixel and the mark becomes a dot.
+    int side = std::min(r.dx, r.dy);
+    if (side < 2) {
+        return;
+    }
+    int inset = side >= 16 ? 4 : std::max(2, side / 5);
+    int endInset = side >= 16 ? 6 : inset;
+    float penW = side >= 16 ? 2.f : std::max(1.25f, side / 8.f);
     c.SetFromCOLORREF(args.isHover ? args.colXHover : args.colX);
     g.TranslateTransform((float)r.x, (float)r.y);
-    Gdiplus::Pen p(c, 2);
-    if (isHover) {
-        g.DrawLine(&p, Gdiplus::Point(4, 4), Gdiplus::Point(r.dx - 6, r.dy - 6));
-        g.DrawLine(&p, Gdiplus::Point(r.dx - 6, 4), Gdiplus::Point(4, r.dy - 6));
-    } else {
-        g.DrawLine(&p, Gdiplus::Point(4, 5), Gdiplus::Point(r.dx - 6, r.dy - 5));
-        g.DrawLine(&p, Gdiplus::Point(r.dx - 6, 5), Gdiplus::Point(4, r.dy - 5));
-    }
+    Gdiplus::Pen p(c, penW);
+    p.SetStartCap(Gdiplus::LineCapRound);
+    p.SetEndCap(Gdiplus::LineCapRound);
+    int y0 = isHover ? inset : inset + (side >= 16 ? 1 : 0);
+    int y1 = r.dy - endInset;
+    g.DrawLine(&p, Gdiplus::Point(inset, y0), Gdiplus::Point(r.dx - endInset, y1));
+    g.DrawLine(&p, Gdiplus::Point(r.dx - endInset, y0), Gdiplus::Point(inset, y1));
 }
 
 void DrawCloseButton2(const DrawCloseButtonArgs& args) {

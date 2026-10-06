@@ -53,10 +53,10 @@ struct LabelWithCloseWnd : Wnd {
     Rect firstActionPos{};
     Rect secondActionPos{};
     Rect thirdActionPos{};
-    Rect viewBtnPos[3]{};
-    LabelViewButton viewBtns[3]{};
+    Rect viewBtnPos[5]{};
+    LabelViewButton viewBtns[5]{};
     int nViewButtons = 0;
-    int viewBtnTooltipId[3]{-1, -1, -1};
+    int viewBtnTooltipId[5]{-1, -1, -1, -1, -1};
     Rect rightBtnPos[3]{};
     LabelViewButton rightBtns[3]{};
     int nRightButtons = 0;

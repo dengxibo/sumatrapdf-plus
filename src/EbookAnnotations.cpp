@@ -68,6 +68,12 @@ struct EbookAnnotation {
     time_t created = 0;
     time_t modified = 0;
     Vec<PointF> inkPoints;
+    // Stroke lengths. Empty means inkPoints is one stroke (older files).
+    Vec<int> inkCounts;
+    // File name only, under the annotations directory. Not a path.
+    char* imageFile = nullptr;
+    Gdiplus::Bitmap* imageBmp = nullptr;
+    bool imageLoadFailed = false;
 
     ~EbookAnnotation() {
         str::Free(exact);
@@ -77,6 +83,8 @@ struct EbookAnnotation {
         str::Free(icon);
         str::Free(textFont);
         str::Free(author);
+        str::Free(imageFile);
+        delete imageBmp;
     }
 };
 
@@ -88,6 +96,8 @@ struct EbookChapterTextCache {
 };
 
 struct EbookAnnotations {
+    bool lastSaveFailed = false;
+    bool dirty = false;
     char* sourcePath = nullptr;
     char* storagePath = nullptr;
     i64 sourceSize = -1;
@@ -111,13 +121,13 @@ static bool IsEbookPointAnnotationType(AnnotationType type) {
 static SizeF GetDefaultEbookPointAnnotationSize(AnnotationType type) {
     switch (type) {
         case AnnotationType::Text:
-            return {16, 16};
+            return {22, 22};
         case AnnotationType::FreeText:
             return {200, 100};
         case AnnotationType::Stamp:
             return GetDefaultStampSize();
         case AnnotationType::Caret:
-            return {18, 15};
+            return {22, 22};
         case AnnotationType::Line:
         case AnnotationType::Square:
         case AnnotationType::Circle:
@@ -215,7 +225,7 @@ static const char* GetDefaultEbookTextIconTemp() {
     str::RemoveCharsInPlace(icon, " ");
     int idx = seqstrings::StrToIdxIS(gAnnotationTextIcons, icon);
     if (idx < 0) {
-        return "Note";
+        return "Comment";
     }
     return seqstrings::IdxToStr(gAnnotationTextIcons, idx);
 }
@@ -230,6 +240,8 @@ static void AppendUtcDateTime(StrBuilder& s, time_t secs) {
     strftime(buf, sizeof buf, "%Y-%m-%d %H:%M UTC", &tm);
     s.Append(buf);
 }
+
+static bool EbookImageFileNameOk(const char* name);
 
 static bool ParseAnnotationPath(const char* path, int* idxOut, const char** propertyOut) {
     const char* prefix = "/annotations[";
@@ -347,6 +359,18 @@ struct EbookAnnotationsJsonVisitor : json::ValueVisitor {
                 } else {
                     annotation->inkPoints.at(pointIdx).y = coord;
                 }
+            } else if (str::StartsWith(property, "inkCounts/[")) {
+                const char* idxStart = property + str::Len("inkCounts/[");
+                int strokeIdx = 0;
+                str::Parse(idxStart, "%d", &strokeIdx);
+                int count = 0;
+                str::Parse(value, "%d", &count);
+                if (strokeIdx >= 0 && count > 0) {
+                    while ((int)annotation->inkCounts.len <= strokeIdx) {
+                        annotation->inkCounts.Append(0);
+                    }
+                    annotation->inkCounts.at(strokeIdx) = count;
+                }
             }
         } else if (type == json::Type::String) {
             if (str::Eq(property, "type")) {
@@ -385,6 +409,10 @@ struct EbookAnnotationsJsonVisitor : json::ValueVisitor {
                 str::ReplaceWithCopy(&annotation->note, value);
             } else if (str::Eq(property, "icon")) {
                 str::ReplaceWithCopy(&annotation->icon, value);
+            } else if (str::Eq(property, "image")) {
+                if (EbookImageFileNameOk(value)) {
+                    str::ReplaceWithCopy(&annotation->imageFile, value);
+                }
             } else if (str::Eq(property, "textFont")) {
                 str::ReplaceWithCopy(&annotation->textFont, value);
             } else if (str::Eq(property, "author")) {
@@ -394,6 +422,50 @@ struct EbookAnnotationsJsonVisitor : json::ValueVisitor {
         return true;
     }
 };
+
+static bool EbookImageFileNameOk(const char* name) {
+    if (!name || !name[0] || str::Len(name) > 64 || !str::EndsWithI(name, ".png")) {
+        return false;
+    }
+    for (const char* p = name; *p; p++) {
+        char c = *p;
+        bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' ||
+                  c == '_';
+        if (!ok) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static char* SaveEbookSignaturePng(const u8* png, int pngLen) {
+    if (!png || pngLen < 8 || !dir::CreateAll(GetEbookAnnotationsDirTemp())) {
+        return nullptr;
+    }
+    u8 digest[16]{};
+    CalcMD5Digest(png, pngLen, digest);
+    AutoFreeStr hex(str::MemToHex(digest, dimof(digest)));
+    char* name = str::Join("sig-", hex, ".png");
+    TempStr path = path::JoinTemp(GetEbookAnnotationsDirTemp(), name);
+    if (!file::Exists(path) && !file::WriteFile(path, ByteSlice(png, (size_t)pngLen))) {
+        str::Free(name);
+        return nullptr;
+    }
+    return name;
+}
+
+static void ForgetEbookSignatureImage(EbookAnnotations* annotations, EbookAnnotation* annotation) {
+    if (!annotations || !annotation || !EbookImageFileNameOk(annotation->imageFile)) {
+        return;
+    }
+    for (size_t i = 0; i < annotations->items.size(); i++) {
+        EbookAnnotation* other = annotations->items.at(i);
+        if (other != annotation && other->imageFile && str::Eq(other->imageFile, annotation->imageFile)) {
+            return;
+        }
+    }
+    file::Delete(path::JoinTemp(GetEbookAnnotationsDirTemp(), annotation->imageFile));
+}
 
 static void RemoveInvalidAnnotations(EbookAnnotations* annotations) {
     for (int i = (int)annotations->items.size() - 1; i >= 0; i--) {
@@ -475,7 +547,15 @@ static void AppendJsonString(StrBuilder& out, const char* value) {
     out.AppendChar('"');
 }
 
+// Mutations stay in memory until the user explicitly saves.
 static bool SaveEbookAnnotations(EbookAnnotations* annotations) {
+    if (!annotations) return false;
+    annotations->dirty = true;
+    return true;
+}
+
+static bool PersistEbookAnnotations(EbookAnnotations* annotations) {
+    if (annotations) annotations->lastSaveFailed = true;
     if (!annotations || !annotations->storagePath || !CanAccessDisk()) {
         return false;
     }
@@ -573,6 +653,20 @@ static bool SaveEbookAnnotations(EbookAnnotations* annotations) {
                 out.AppendFmt("%.3f", (double)pt.y);
             }
             out.AppendChar(']');
+            if (annotation->inkCounts.len > 0) {
+                out.Append(",\n      \"inkCounts\": [");
+                for (size_t idx = 0; idx < annotation->inkCounts.len; idx++) {
+                    if (idx != 0) {
+                        out.Append(", ");
+                    }
+                    out.AppendFmt("%d", annotation->inkCounts.at(idx));
+                }
+                out.AppendChar(']');
+            }
+        }
+        if (!str::IsEmpty(annotation->imageFile)) {
+            out.Append(",\n      \"image\": ");
+            AppendJsonString(out, annotation->imageFile);
         }
         if (!str::IsEmpty(annotation->author)) {
             out.Append(",\n      \"author\": ");
@@ -602,6 +696,8 @@ static bool SaveEbookAnnotations(EbookAnnotations* annotations) {
         file::Delete(tempPath);
         return false;
     }
+    annotations->lastSaveFailed = false;
+    annotations->dirty = false;
     return true;
 }
 
@@ -995,6 +1091,116 @@ EbookAnnotation* EbookAnnotationsCreateInkStroke(WindowTab* tab, DisplayModel* d
     return annotation;
 }
 
+static EbookAnnotation* CreateEbookAnnotationOnPage(WindowTab* tab, DisplayModel* dm, int pageNo, RectF pageRect,
+                                                    AnnotationType type, COLORREF color) {
+    PointF candidates[5] = {
+        {pageRect.x + pageRect.dx * 0.5f, pageRect.y + pageRect.dy * 0.5f},
+        {pageRect.x + 1.f, pageRect.y + 1.f},
+        {pageRect.x + std::max(1.f, pageRect.dx - 1.f), pageRect.y + 1.f},
+        {pageRect.x + 1.f, pageRect.y + std::max(1.f, pageRect.dy - 1.f)},
+        {pageRect.x + std::max(1.f, pageRect.dx - 1.f), pageRect.y + std::max(1.f, pageRect.dy - 1.f)},
+    };
+    for (PointF pagePoint : candidates) {
+        Point screen = dm->CvtToScreen(pageNo, pagePoint);
+        EbookAnnotation* annotation = EbookAnnotationsCreateAt(tab, dm, screen, type, color);
+        if (annotation) {
+            return annotation;
+        }
+    }
+    return nullptr;
+}
+
+EbookAnnotation* EbookAnnotationsCreateInkStrokes(WindowTab* tab, DisplayModel* dm, int pageNo, PointF* points,
+                                                  const int* counts, int nStrokes, COLORREF color, int borderWidth) {
+    if (!tab || !dm || !points || !counts || nStrokes < 1 || !dm->ValidPageNo(pageNo)) {
+        return nullptr;
+    }
+    int total = 0;
+    float minX = 0;
+    float minY = 0;
+    float maxX = 0;
+    float maxY = 0;
+    bool any = false;
+    int src = 0;
+    for (int i = 0; i < nStrokes; i++) {
+        int n = counts[i];
+        if (n >= 2) {
+            for (int k = 0; k < n; k++) {
+                PointF pt = points[src + k];
+                if (!any) {
+                    minX = maxX = pt.x;
+                    minY = maxY = pt.y;
+                    any = true;
+                } else {
+                    minX = std::min(minX, pt.x);
+                    minY = std::min(minY, pt.y);
+                    maxX = std::max(maxX, pt.x);
+                    maxY = std::max(maxY, pt.y);
+                }
+            }
+            total += n;
+        }
+        if (n > 0) {
+            src += n;
+        }
+    }
+    if (!any || total < 2) {
+        return nullptr;
+    }
+    RectF box{minX, minY, std::max(1.f, maxX - minX), std::max(1.f, maxY - minY)};
+    EbookAnnotation* annotation = CreateEbookAnnotationOnPage(tab, dm, pageNo, box, AnnotationType::Ink, color);
+    if (!annotation) {
+        return nullptr;
+    }
+    annotation->inkPoints.Reset();
+    annotation->inkCounts.Reset();
+    src = 0;
+    for (int i = 0; i < nStrokes; i++) {
+        int n = counts[i];
+        if (n >= 2) {
+            for (int k = 0; k < n; k++) {
+                annotation->inkPoints.Append(points[src + k]);
+            }
+            annotation->inkCounts.Append(n);
+        }
+        if (n > 0) {
+            src += n;
+        }
+    }
+    annotation->borderWidth = borderWidth > 0 ? borderWidth : 2;
+    TouchEbookAnnotationModified(annotation);
+    EbookAnnotations* annotations = EnsureEbookAnnotations(tab);
+    if (!annotations || !SaveEbookAnnotations(annotations)) {
+        EbookAnnotationsDelete(tab, annotation);
+        return nullptr;
+    }
+    return annotation;
+}
+
+EbookAnnotation* EbookAnnotationsCreateSignatureImage(WindowTab* tab, DisplayModel* dm, int pageNo, RectF pageRect,
+                                                      const u8* png, int pngLen) {
+    if (!tab || !dm || !png || pngLen < 8 || !dm->ValidPageNo(pageNo) || pageRect.dx < 1.f || pageRect.dy < 1.f) {
+        return nullptr;
+    }
+    EbookAnnotation* annotation =
+        CreateEbookAnnotationOnPage(tab, dm, pageNo, pageRect, AnnotationType::Stamp, RGB(0, 0, 0));
+    if (!annotation) {
+        return nullptr;
+    }
+    char* name = SaveEbookSignaturePng(png, pngLen);
+    if (!name) {
+        EbookAnnotationsDelete(tab, annotation);
+        return nullptr;
+    }
+    str::ReplaceWithCopy(&annotation->imageFile, name);
+    str::Free(name);
+    if (!EbookAnnotationSetPageBounds(tab, dm, annotation, pageNo, pageRect, true)) {
+        EbookAnnotationsDelete(tab, annotation);
+        return nullptr;
+    }
+    return annotation;
+}
+
 EbookAnnotation* EbookAnnotationsCreateText(WindowTab* tab, DisplayModel* dm, Point canvasPoint, COLORREF color) {
     return EbookAnnotationsCreateAt(tab, dm, canvasPoint, AnnotationType::Text, color);
 }
@@ -1165,6 +1371,22 @@ bool EbookAnnotationSetPageBounds(WindowTab* tab, DisplayModel* dm, EbookAnnotat
     if (!annotations || !dm || !annotation || !IsEbookPointAnnotationType(annotation->type)) {
         return false;
     }
+    // Ink is stored as page points. A move used to write offset/width, which
+    // the stroke does not read, so the line snapped back on mouse-up.
+    if (save && annotation->type == AnnotationType::Ink && annotation->inkPoints.len > 0) {
+        RectF cur;
+        if (!GetPointAnnotationPageBounds(annotations, dm->GetEngine(), annotation, pageNo, &cur)) {
+            return false;
+        }
+        float dx = bounds.x - cur.x;
+        float dy = bounds.y - cur.y;
+        for (size_t i = 0; i < annotation->inkPoints.len; i++) {
+            annotation->inkPoints.at(i).x += dx;
+            annotation->inkPoints.at(i).y += dy;
+        }
+        TouchEbookAnnotationModified(annotation);
+        return SaveEbookAnnotations(annotations);
+    }
     Vec<RectF> anchorRects;
     if (!GetAnnotationPageRects(annotations, dm->GetEngine(), annotation, pageNo, anchorRects) || anchorRects.empty()) {
         return false;
@@ -1243,6 +1465,7 @@ bool EbookAnnotationsDeleteAt(WindowTab* tab, DisplayModel* dm, Point canvasPoin
         annotations->items.InsertAt(idx, annotation);
         return false;
     }
+    ForgetEbookSignatureImage(annotations, annotation);
     delete annotation;
     return true;
 }
@@ -1261,6 +1484,7 @@ bool EbookAnnotationsDelete(WindowTab* tab, EbookAnnotation* annotation) {
         annotations->items.InsertAt(idx, annotation);
         return false;
     }
+    ForgetEbookSignatureImage(annotations, annotation);
     delete annotation;
     return true;
 }
@@ -1277,6 +1501,37 @@ void EbookAnnotationsGetAll(WindowTab* tab, Vec<EbookAnnotation*>& annotationsOu
 
 AnnotationType EbookAnnotationGetType(EbookAnnotation* annotation) {
     return annotation ? annotation->type : AnnotationType::Unknown;
+}
+
+int EbookAnnotationGetChapter(EbookAnnotation* annotation) {
+    return annotation ? annotation->chapter : -1;
+}
+
+bool EbookAnnotationsLastSaveFailed(WindowTab* tab) {
+    EbookAnnotations* annotations = EnsureEbookAnnotations(tab);
+    return annotations && annotations->lastSaveFailed;
+}
+
+bool EbookAnnotationsRetrySave(WindowTab* tab) {
+    return PersistEbookAnnotations(EnsureEbookAnnotations(tab));
+}
+
+bool EbookAnnotationsHasUnsavedChanges(WindowTab* tab) {
+    auto annotations = tab ? tab->ebookAnnotations : nullptr;
+    return annotations && annotations->dirty;
+}
+
+bool EbookAnnotationsSaveCopy(WindowTab* tab, HWND parent) {
+    EbookAnnotations* annotations = EnsureEbookAnnotations(tab);
+    if (!annotations || !PersistEbookAnnotations(annotations)) return false;
+    auto data = file::ReadFile(annotations->storagePath);
+    if (data.empty()) return false;
+    TempStr destination = path::JoinTemp(
+        path::GetDirTemp(tab->filePath),
+        str::JoinTemp(path::GetBaseNameTemp(path::GetPathNoExtTemp(tab->filePath)), "-annotations.json"));
+    bool saved = SaveDataToFile(parent, destination, data);
+    str::Free(data.data());
+    return saved;
 }
 
 const char* EbookAnnotationGetText(EbookAnnotation* annotation) {
@@ -1297,7 +1552,7 @@ const char* EbookAnnotationGetIcon(EbookAnnotation* annotation) {
     if (annotation->icon) {
         return annotation->icon;
     }
-    return annotation->type == AnnotationType::Stamp ? "Draft" : "Note";
+    return annotation->type == AnnotationType::Stamp ? "Final" : "Comment";
 }
 
 const char* EbookAnnotationGetAuthor(EbookAnnotation* annotation) {
@@ -1317,7 +1572,7 @@ COLORREF GetDefaultEbookPointAnnotationColor(AnnotationType type) {
         return RGB(0, 0, 0);
     }
     if (type == AnnotationType::Caret) {
-        return RGB(0, 0, 255);
+        return GetDefaultAnnotationColor(AnnotationType::Text);
     }
     if (type == AnnotationType::Stamp || type == AnnotationType::Line || type == AnnotationType::Square ||
         type == AnnotationType::Circle || type == AnnotationType::Ink) {
@@ -1347,6 +1602,25 @@ COLORREF EbookAnnotationGetColor(EbookAnnotation* annotation) {
 
 int EbookAnnotationGetOpacity(EbookAnnotation* annotation) {
     return annotation ? std::clamp(annotation->opacity, 0, 100) : 100;
+}
+
+bool EbookAnnotationSetAuthor(WindowTab* tab, EbookAnnotation* annotation, const char* author) {
+    EbookAnnotations* annotations = EnsureEbookAnnotations(tab);
+    if (!annotations || !annotation || annotations->items.Find(annotation) < 0) {
+        return false;
+    }
+    const char* next = str::IsEmptyOrWhiteSpace(author) ? nullptr : author;
+    if (str::Eq(annotation->author, next) || (str::IsEmpty(annotation->author) && !next)) {
+        return true;
+    }
+    AutoFreeStr previous(annotation->author);
+    annotation->author = next ? str::Dup(next) : nullptr;
+    TouchEbookAnnotationModified(annotation);
+    if (!SaveEbookAnnotations(annotations)) {
+        annotation->author = previous.StealData();
+        return false;
+    }
+    return true;
 }
 
 bool EbookAnnotationSetNote(WindowTab* tab, EbookAnnotation* annotation, const char* note) {
@@ -1701,6 +1975,22 @@ bool EbookAnnotationsExportNotes(WindowTab* tab, HWND hwndParent) {
     return true;
 }
 
+// A handwritten-signature PNG is black ink on transparency. On a dark page it
+// uses the same text↔paper map as the ink strokes.
+static bool EbookSignatureInkShouldFollowPage(COLORREF& textColor, COLORREF& bgColor) {
+    PdfDocumentColorMode docMode = GetPdfDocumentColorMode();
+    bool pageUsesThemeColors =
+        docMode != PdfDocumentColorMode::Light && (ThemeUsesDarkChrome() || !ThemeUsesOriginalPageColors());
+    if (!pageUsesThemeColors) {
+        return false;
+    }
+    textColor = ThemePageRenderColors(bgColor, true);
+    u8 tr, tg, tb, br, bgg, bb;
+    UnpackColor(textColor, tr, tg, tb);
+    UnpackColor(bgColor, br, bgg, bb);
+    return (int)tr + (int)tg + (int)tb > (int)br + (int)bgg + (int)bb;
+}
+
 // PDF annotations are rendered into the page bitmap. EPUB annotations are an
 // overlay, so near-gray colors still follow the page black↔text / white↔bg map.
 // Saturated markup (PDF default red, yellow highlight) is left unchanged,
@@ -1741,11 +2031,11 @@ static int GetEbookStampIconIndex(EbookAnnotation* annotation) {
     }
     const char* name = annotation->icon;
     if (str::IsEmpty(name)) {
-        name = "Draft";
+        name = "Final";
     }
     int idx = seqstrings::StrToIdxIS(gStampIcons, name);
     if (idx < 0) {
-        idx = seqstrings::StrToIdxIS(gStampIcons, "Draft");
+        idx = seqstrings::StrToIdxIS(gStampIcons, "Final");
     }
     return idx;
 }
@@ -1755,116 +2045,176 @@ static void PaintEbookTextMarker(WindowTab* tab, HDC hdc, Rect anchor, COLORREF 
     Rect marker(anchor.x, anchor.y, size, size);
     u8 r, g, b;
     UnpackColor(color, r, g, b);
-    COLORREF borderColor = MapEbookAnnotationColor(RGB(45, 45, 45));
-    u8 borderR, borderG, borderB;
-    UnpackColor(borderColor, borderR, borderG, borderB);
+    int luma = (30 * (int)r + 59 * (int)g + 11 * (int)b) / 100;
+    COLORREF glyphColor = luma < 140 ? RGB(255, 255, 255) : RGB(40, 40, 40);
+    u8 gr, gg, gb;
+    UnpackColor(glyphColor, gr, gg, gb);
     Gdiplus::Graphics graphics(hdc);
     graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-    // Match MuPDF's Text-annotation appearance: an opaque colored square
-    // with a compact black pictogram, rather than a generic toolbar glyph.
+    float side = (float)size;
+    float radius = side * 0.2f;
+    Gdiplus::GraphicsPath plate;
+    float x0 = (float)marker.x;
+    float y0 = (float)marker.y;
+    float d = radius * 2.f;
+    plate.AddArc(x0, y0, d, d, 180, 90);
+    plate.AddArc(x0 + side - d, y0, d, d, 270, 90);
+    plate.AddArc(x0 + side - d, y0 + side - d, d, d, 0, 90);
+    plate.AddArc(x0, y0 + side - d, d, d, 90, 90);
+    plate.CloseFigure();
     Gdiplus::SolidBrush fill(Gdiplus::Color(255, r, g, b));
-    Gdiplus::SolidBrush glyph(Gdiplus::Color(255, borderR, borderG, borderB));
-    // Keep the EPUB outline lighter than the PDF appearance's stroked frame.
-    Gdiplus::Pen pen(Gdiplus::Color(170, borderR, borderG, borderB), .75f);
-    Gdiplus::Rect bounds(marker.x, marker.y, marker.dx - 1, marker.dy - 1);
-    graphics.FillRectangle(&fill, bounds);
-    graphics.DrawRectangle(&pen, bounds);
+    graphics.FillPath(&fill, &plate);
 
-    float centerX = (float)marker.x + marker.dx / 2.f;
-    float centerY = (float)marker.y + marker.dy / 2.f;
-    // These are MuPDF's PDF Text-annotation pictograms from
-    // source/pdf/annotation-icons.h, mapped from its 8x8 coordinate system
-    // into the centered inner square of this GDI+ overlay marker.
-    float iconSize = (float)std::max(8, size / 2);
-    float iconX = centerX - iconSize / 2.f;
-    float iconY = centerY - iconSize / 2.f;
-    auto p = [&](float x, float y) { return Gdiplus::PointF(iconX + x * iconSize / 8.f, iconY + y * iconSize / 8.f); };
+    // Note border and pilcrow stems are about 0.85 in the 16-box. Line icons use that width.
+    float glyphW = 0.85f;
+    float sw = std::max(0.9f, side * (glyphW * 1.28f / 16.f));
+    Gdiplus::Pen pen(Gdiplus::Color(255, gr, gg, gb), sw);
+    pen.SetStartCap(Gdiplus::LineCapRound);
+    pen.SetEndCap(Gdiplus::LineCapRound);
+    pen.SetLineJoin(Gdiplus::LineJoinRound);
+    // Same 1.28 scale as the PDF note appearance, about the center of the 16 box.
+    constexpr float kGlyph = 1.28f;
+    auto Su = [&](float v) { return 8.f + (v - 8.f) * kGlyph; };
+    auto P = [&](float u, float v) {
+        return Gdiplus::PointF(x0 + Su(u) * side / 16.f, y0 + (16.f - Su(v)) * side / 16.f);
+    };
+    // Same fit as pdf_begin_fitted_glyph: note page is height 10 on (8,8).
+    // Stroked marks use 9.15 so the stroke's outer edge matches that box.
+    struct GlyphFit {
+        float s = 1.f;
+        float cx = 8.f;
+        float cy = 8.f;
+    } fit;
+    auto G = [&](float u, float v) { return P(fit.s * (u - fit.cx) + 8.f, fit.s * (v - fit.cy) + 8.f); };
+    auto LineG = [&](float x1, float y1, float x2, float y2) { graphics.DrawLine(&pen, G(x1, y1), G(x2, y2)); };
+    auto FitTo = [&](float ax, float ay, float bx, float by, bool stroked) {
+        float maxd = std::max(bx - ax, by - ay);
+        fit.s = (stroked ? 9.15f : 10.f) / maxd;
+        fit.cx = (ax + bx) * 0.5f;
+        fit.cy = (ay + by) * 0.5f;
+    };
     if (str::EqI(icon, "Comment")) {
-        Gdiplus::PointF bubble[] = {p(.09f, 0), p(0, .09f), p(0, 6),         p(6, 6),
-                                    p(8, 8),    p(8, .08f), p(7.91f, -.01f), p(.1f, -.01f)};
-        graphics.FillPolygon(&glyph, bubble, dimof(bubble));
+        FitTo(4.1f, 3.3f, 12.0f, 11.2f, true);
+        Gdiplus::GraphicsPath bubble;
+        Gdiplus::PointF bubbleAt = G(4.2f, 11.2f);
+        float bx = bubbleAt.X;
+        float by = bubbleAt.Y;
+        float bw = 7.8f * fit.s * kGlyph * side / 16.f;
+        float bh = 5.6f * fit.s * kGlyph * side / 16.f;
+        float br = 1.45f * fit.s * kGlyph * side / 16.f;
+        float bd = br * 2.f;
+        bubble.AddArc(bx, by, bd, bd, 180, 90);
+        bubble.AddArc(bx + bw - bd, by, bd, bd, 270, 90);
+        bubble.AddArc(bx + bw - bd, by + bh - bd, bd, bd, 0, 90);
+        bubble.AddArc(bx, by + bh - bd, bd, bd, 90, 90);
+        bubble.CloseFigure();
+        graphics.DrawPath(&pen, &bubble);
+        LineG(5.5f, 5.6f, 4.1f, 3.3f);
+        LineG(4.1f, 3.3f, 7.5f, 5.6f);
     } else if (str::EqI(icon, "Help")) {
-        Gdiplus::GraphicsPath helpPath;
-        helpPath.StartFigure();
-        helpPath.AddBezier(p(2.47f, 0), p(1.62f, 0), p(.99f, .26f), p(.59f, .66f));
-        helpPath.AddBezier(p(.59f, .66f), p(.19f, 1.06f), p(.05f, 1.56f), p(0, 1.94f));
-        helpPath.AddLine(p(0, 1.94f), p(1, 2.07f));
-        helpPath.AddBezier(p(1, 2.07f), p(1.04f, 1.82f), p(1.12f, 1.57f), p(1.31f, 1.38f));
-        helpPath.AddBezier(p(1.31f, 1.38f), p(1.5f, 1.19f), p(1.8f, 1), p(2.47f, 1));
-        helpPath.AddBezier(p(2.47f, 1), p(3.13f, 1), p(3.49f, 1.16f), p(3.69f, 1.34f));
-        helpPath.AddBezier(p(3.69f, 1.34f), p(3.89f, 1.52f), p(3.97f, 1.74f), p(3.97f, 2));
-        helpPath.AddBezier(p(3.97f, 2), p(3.97f, 2.83f), p(3.63f, 3.06f), p(3.13f, 3.5f));
-        helpPath.AddBezier(p(3.13f, 3.5f), p(2.63f, 3.94f), p(1.97f, 4.58f), p(1.97f, 5.75f));
-        helpPath.AddLine(p(1.97f, 5.75f), p(1.97f, 6));
-        helpPath.AddLine(p(1.97f, 6), p(2.97f, 6));
-        helpPath.AddLine(p(2.97f, 6), p(2.97f, 5.75f));
-        helpPath.AddBezier(p(2.97f, 5.75f), p(2.97f, 4.92f), p(3.28f, 4.69f), p(3.78f, 4.25f));
-        helpPath.AddBezier(p(3.78f, 4.25f), p(4.28f, 3.81f), p(4.97f, 3.17f), p(4.97f, 2));
-        helpPath.AddBezier(p(4.97f, 2), p(4.97f, 1.52f), p(4.8f, .98f), p(4.38f, .59f));
-        helpPath.AddBezier(p(4.38f, .59f), p(3.95f, .2f), p(3.31f, 0), p(2.47f, 0));
-        helpPath.CloseFigure();
-        helpPath.AddRectangle(Gdiplus::RectF(p(1.97f, 7).X, p(1.97f, 7).Y, iconSize / 8.f, iconSize / 8.f));
-        graphics.FillPath(&glyph, &helpPath);
+        FitTo(6.0f, 5.2f, 10.5f, 13.0f, true);
+        graphics.DrawBezier(&pen, G(6.0f, 10.7f), G(6.0f, 12.2f), G(6.9f, 13.0f), G(8.1f, 13.0f));
+        graphics.DrawBezier(&pen, G(8.1f, 13.0f), G(9.5f, 13.0f), G(10.5f, 12.1f), G(10.5f, 10.7f));
+        graphics.DrawBezier(&pen, G(10.5f, 10.7f), G(10.5f, 9.4f), G(9.2f, 8.9f), G(8.1f, 8.1f));
+        LineG(8.1f, 8.1f, 8.1f, 7.3f);
+        LineG(7.6f, 5.2f, 8.6f, 5.2f);
     } else if (str::EqI(icon, "Key")) {
-        Gdiplus::GraphicsPath keyPath;
-        keyPath.SetFillMode(Gdiplus::FillModeAlternate);
-        keyPath.StartFigure();
-        keyPath.AddBezier(p(5.5f, 0), p(4.12f, 0), p(3, 1.12f), p(3, 2.5f));
-        keyPath.AddBezier(p(3, 2.5f), p(3, 2.66f), p(3, 2.82f), p(3.03f, 2.97f));
-        keyPath.AddLine(p(3.03f, 2.97f), p(0, 6));
-        keyPath.AddLine(p(0, 6), p(0, 8));
-        keyPath.AddLine(p(0, 8), p(3, 8));
-        keyPath.AddLine(p(3, 8), p(3, 6));
-        keyPath.AddLine(p(3, 6), p(5, 6));
-        keyPath.AddLine(p(5, 6), p(5, 5));
-        keyPath.AddLine(p(5, 5), p(5.03f, 4.97f));
-        keyPath.AddBezier(p(5.03f, 4.97f), p(5.18f, 5), p(5.34f, 5), p(5.5f, 5));
-        keyPath.AddBezier(p(5.5f, 5), p(6.88f, 5), p(8, 3.88f), p(8, 2.5f));
-        keyPath.AddBezier(p(8, 2.5f), p(8, 1.12f), p(6.88f, 0), p(5.5f, 0));
-        keyPath.CloseFigure();
-        keyPath.StartFigure();
-        keyPath.AddBezier(p(6, 1), p(6.55f, 1), p(7, 1.45f), p(7, 2));
-        keyPath.AddBezier(p(7, 2), p(7, 2.55f), p(6.55f, 3), p(6, 3));
-        keyPath.AddBezier(p(6, 3), p(5.45f, 3), p(5, 2.55f), p(5, 2));
-        keyPath.AddBezier(p(5, 2), p(5, 1.45f), p(5.45f, 1), p(6, 1));
-        keyPath.CloseFigure();
-        graphics.FillPath(&glyph, &keyPath);
+        FitTo(4.2f, 4.5f, 12.45f, 12.65f, true);
+        Gdiplus::PointF keyAt = G(8.35f, 12.65f);
+        float keyD = 4.1f * fit.s * kGlyph * side / 16.f;
+        graphics.DrawEllipse(&pen, keyAt.X, keyAt.Y, keyD, keyD);
+        LineG(8.9f, 9.2f, 4.2f, 4.5f);
+        LineG(5.6f, 5.9f, 7.0f, 4.5f);
     } else if (str::EqI(icon, "Insert")) {
-        Gdiplus::PointF triangle[] = {p(8, 5), p(4, 0), p(0, 5)};
-        graphics.FillPolygon(&glyph, triangle, dimof(triangle));
+        FitTo(4.6f, 3.4f, 11.4f, 12.6f, true);
+        LineG(8.f, 3.4f, 8.f, 12.6f);
+        LineG(4.6f, 12.6f, 11.4f, 12.6f);
+        LineG(4.6f, 3.4f, 11.4f, 3.4f);
     } else if (str::EqI(icon, "NewParagraph")) {
-        Gdiplus::PointF triangle[] = {p(8, 8), p(4, 0), p(0, 8)};
-        graphics.FillPolygon(&glyph, triangle, dimof(triangle));
+        FitTo(4.3f, 3.8f, 10.7f, 11.8f, true);
+        LineG(10.7f, 11.8f, 10.7f, 6.0f);
+        LineG(10.7f, 6.0f, 4.3f, 6.0f);
+        LineG(4.3f, 6.0f, 6.5f, 8.2f);
+        LineG(4.3f, 6.0f, 6.5f, 3.8f);
+    } else if (str::EqI(icon, "Caret")) {
+        FitTo(4.0f, 3.8f, 12.0f, 12.6f, true);
+        Gdiplus::GraphicsPath chevron;
+        chevron.AddLine(G(4.0f, 3.8f), G(8.f, 12.6f));
+        chevron.AddLine(G(8.f, 12.6f), G(12.0f, 3.8f));
+        graphics.DrawPath(&pen, &chevron);
     } else if (str::EqI(icon, "Paragraph")) {
-        Gdiplus::GraphicsPath paragraphPath;
-        paragraphPath.StartFigure();
-        paragraphPath.AddLine(p(7, 0), p(2, 0));
-        paragraphPath.AddBezier(p(2, 0), p(1, 0), p(0, 1), p(0, 2));
-        paragraphPath.AddBezier(p(0, 2), p(0, 3), p(1, 4), p(2, 4));
-        paragraphPath.AddLine(p(2, 4), p(3, 4));
-        paragraphPath.AddLine(p(3, 4), p(3, 8));
-        paragraphPath.AddLine(p(3, 8), p(4, 8));
-        paragraphPath.AddLine(p(4, 8), p(4, 1));
-        paragraphPath.AddLine(p(4, 1), p(5, 1));
-        paragraphPath.AddLine(p(5, 1), p(5, 8));
-        paragraphPath.AddLine(p(5, 8), p(6, 8));
-        paragraphPath.AddLine(p(6, 8), p(6, 1));
-        paragraphPath.AddLine(p(6, 1), p(7, 1));
-        paragraphPath.CloseFigure();
-        graphics.FillPath(&glyph, &paragraphPath);
+        FitTo(3.91f, 3.f, 12.09f, 13.f, false);
+        Gdiplus::GraphicsPath pilcrow(Gdiplus::FillModeAlternate);
+        pilcrow.StartFigure();
+        pilcrow.AddBezier(G(6.64f, 13.f), G(5.14f, 13.f), G(3.91f, 11.77f), G(3.91f, 10.27f));
+        pilcrow.AddBezier(G(3.91f, 10.27f), G(3.91f, 8.77f), G(5.14f, 7.55f), G(6.64f, 7.55f));
+        pilcrow.AddLine(G(6.64f, 7.55f), G(8.45f, 7.55f));
+        pilcrow.AddLine(G(8.45f, 7.55f), G(8.45f, 3.f));
+        pilcrow.AddLine(G(8.45f, 3.f), G(9.36f, 3.f));
+        pilcrow.AddLine(G(9.36f, 3.f), G(9.36f, 12.09f));
+        pilcrow.AddLine(G(9.36f, 12.09f), G(10.27f, 12.09f));
+        pilcrow.AddLine(G(10.27f, 12.09f), G(10.27f, 3.f));
+        pilcrow.AddLine(G(10.27f, 3.f), G(11.18f, 3.f));
+        pilcrow.AddLine(G(11.18f, 3.f), G(11.18f, 12.09f));
+        pilcrow.AddLine(G(11.18f, 12.09f), G(12.09f, 12.09f));
+        pilcrow.AddLine(G(12.09f, 12.09f), G(12.09f, 13.f));
+        pilcrow.CloseFigure();
+        pilcrow.StartFigure();
+        pilcrow.AddLine(G(6.64f, 12.09f), G(8.45f, 12.09f));
+        pilcrow.AddLine(G(8.45f, 12.09f), G(8.45f, 8.45f));
+        pilcrow.AddLine(G(8.45f, 8.45f), G(6.64f, 8.45f));
+        pilcrow.AddBezier(G(6.64f, 8.45f), G(5.63f, 8.45f), G(4.82f, 9.26f), G(4.82f, 10.27f));
+        pilcrow.AddBezier(G(4.82f, 10.27f), G(4.82f, 11.28f), G(5.63f, 12.09f), G(6.64f, 12.09f));
+        pilcrow.CloseFigure();
+        Gdiplus::SolidBrush glyphBrush(Gdiplus::Color(255, gr, gg, gb));
+        graphics.FillPath(&glyphBrush, &pilcrow);
     } else {
-        // Note: four one-unit bars, matching MuPDF's icon_note path.
-        for (int y = 0; y < 8; y += 2) {
-            graphics.FillRectangle(&glyph, Gdiplus::RectF(iconX, iconY + y * iconSize / 8.f, iconSize, iconSize / 8.f));
-        }
+        FitTo(3.83f, 3.f, 12.17f, 13.f, false);
+        Gdiplus::GraphicsPath page(Gdiplus::FillModeAlternate);
+        page.StartFigure();
+        page.AddLine(G(11.33f, 13.f), G(4.67f, 13.f));
+        page.AddBezier(G(4.67f, 13.f), G(4.21f, 13.f), G(3.83f, 12.63f), G(3.83f, 12.17f));
+        page.AddLine(G(3.83f, 12.17f), G(3.83f, 3.83f));
+        page.AddBezier(G(3.83f, 3.83f), G(3.83f, 3.37f), G(4.21f, 3.f), G(4.67f, 3.f));
+        page.AddLine(G(4.67f, 3.f), G(11.33f, 3.f));
+        page.AddBezier(G(11.33f, 3.f), G(11.79f, 3.f), G(12.17f, 3.37f), G(12.17f, 3.83f));
+        page.AddLine(G(12.17f, 3.83f), G(12.17f, 12.17f));
+        page.AddBezier(G(12.17f, 12.17f), G(12.17f, 12.63f), G(11.79f, 13.f), G(11.33f, 13.f));
+        page.CloseFigure();
+        page.StartFigure();
+        page.AddBezier(G(11.33f, 4.25f), G(11.33f, 4.02f), G(11.15f, 3.83f), G(10.92f, 3.83f));
+        page.AddLine(G(10.92f, 3.83f), G(5.08f, 3.83f));
+        page.AddBezier(G(5.08f, 3.83f), G(4.85f, 3.83f), G(4.67f, 4.02f), G(4.67f, 4.25f));
+        page.AddLine(G(4.67f, 4.25f), G(4.67f, 11.75f));
+        page.AddBezier(G(4.67f, 11.75f), G(4.67f, 11.98f), G(4.85f, 12.17f), G(5.08f, 12.17f));
+        page.AddLine(G(5.08f, 12.17f), G(10.92f, 12.17f));
+        page.AddBezier(G(10.92f, 12.17f), G(11.15f, 12.17f), G(11.33f, 11.98f), G(11.33f, 11.75f));
+        page.AddLine(G(11.33f, 11.75f), G(11.33f, 4.25f));
+        page.CloseFigure();
+        auto bar = [&](float y, float yb, float yt) {
+            page.StartFigure();
+            page.AddBezier(G(10.08f, y), G(10.08f, y - 0.23f), G(9.90f, yb), G(9.67f, yb));
+            page.AddLine(G(9.67f, yb), G(6.33f, yb));
+            page.AddBezier(G(6.33f, yb), G(6.10f, yb), G(5.92f, y - 0.23f), G(5.92f, y));
+            page.AddBezier(G(5.92f, y), G(5.92f, y + 0.23f), G(6.10f, yt), G(6.33f, yt));
+            page.AddLine(G(6.33f, yt), G(9.67f, yt));
+            page.AddBezier(G(9.67f, yt), G(9.90f, yt), G(10.08f, y + 0.23f), G(10.08f, y));
+            page.CloseFigure();
+        };
+        bar(10.08f, 9.67f, 10.50f);
+        bar(8.f, 7.58f, 8.42f);
+        bar(5.92f, 5.50f, 6.33f);
+        Gdiplus::SolidBrush glyphBrush(Gdiplus::Color(255, gr, gg, gb));
+        graphics.FillPath(&glyphBrush, &page);
     }
 }
 
 static void PaintEbookPointAnnotation(WindowTab* tab, HDC hdc, Rect marker, EbookAnnotation* annotation) {
     AnnotationType type = annotation->type;
     COLORREF color = EbookAnnotationGetColor(annotation);
-    if (type == AnnotationType::Text) {
-        PaintEbookTextMarker(tab, hdc, marker, MapEbookAnnotationColor(color), EbookAnnotationGetIcon(annotation));
+    if (type == AnnotationType::Text || type == AnnotationType::Caret) {
+        const char* icon = type == AnnotationType::Caret ? "Caret" : EbookAnnotationGetIcon(annotation);
+        PaintEbookTextMarker(tab, hdc, marker, MapEbookAnnotationColor(color), icon);
         return;
     }
 
@@ -1913,11 +2263,16 @@ static void PaintEbookPointAnnotation(WindowTab* tab, HDC hdc, Rect marker, Eboo
         const WCHAR* family = str::Eq(fontName, "Cour")   ? L"Courier New"
                               : str::Eq(fontName, "TiRo") ? L"Times New Roman"
                                                           : L"Arial";
-        Gdiplus::Font font(family, (float)DpiScale(tab->win->hwndFrame, fontSize), Gdiplus::FontStyleRegular,
-                           Gdiplus::UnitPixel);
+        float fontPx = (float)DpiScale(tab->win->hwndFrame, fontSize);
+        Gdiplus::Font font(family, fontPx, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
         Gdiplus::SolidBrush textBrush(Gdiplus::Color(alpha, tr, tg, tb));
-        Gdiplus::RectF textBounds((float)marker.x + borderWidth, (float)marker.y + borderWidth,
-                                  (float)marker.dx - borderWidth * 2, (float)marker.dy - borderWidth * 2);
+        float pad = borderWidth + fontPx * 0.4f;
+        float side = (float)std::min(marker.dx, marker.dy);
+        if (pad > side * 0.45f) {
+            pad = side * 0.45f;
+        }
+        Gdiplus::RectF textBounds((float)marker.x + pad, (float)marker.y + pad, (float)marker.dx - pad * 2,
+                                  (float)marker.dy - pad * 2);
         Gdiplus::StringFormat format;
         format.SetAlignment(EbookAnnotationGetFreeTextAlignment(annotation) == 1   ? Gdiplus::StringAlignmentCenter
                             : EbookAnnotationGetFreeTextAlignment(annotation) == 2 ? Gdiplus::StringAlignmentFar
@@ -1926,103 +2281,156 @@ static void PaintEbookPointAnnotation(WindowTab* tab, HDC hdc, Rect marker, Eboo
         return;
     }
     if (type == AnnotationType::Stamp) {
-        // Direct port of pdf_write_stamp_appearance_rubber().
-        Gdiplus::GraphicsState state = graphics.Save();
-        float cx = (float)marker.x + marker.dx / 2.f;
-        float cy = (float)marker.y + marker.dy / 2.f;
-        graphics.TranslateTransform(cx, cy);
-        graphics.RotateTransform(8.f);
-        graphics.TranslateTransform(-cx, -cy);
-        // Keep the tilted frame inside the marker (same 8° as the PDF appearance).
-        float tiltPad = marker.dx * 0.07f + marker.dy * 0.02f;
-        float inset = std::max(std::max(2.f, lineWidth * 2.f), tiltPad);
-        Gdiplus::RectF stamp((float)marker.x + inset, (float)marker.y + inset, (float)marker.dx - inset * 2,
-                             (float)marker.dy - inset * 2);
-        Gdiplus::Pen stampPen(Gdiplus::Color(255, r, g, b), lineWidth * 2.f);
-        graphics.DrawRectangle(&stampPen, stamp);
-        Gdiplus::SolidBrush textBrush(Gdiplus::Color(255, r, g, b));
-        Gdiplus::StringFormat format;
-        format.SetAlignment(Gdiplus::StringAlignmentCenter);
-        format.SetLineAlignment(Gdiplus::StringAlignmentCenter);
-        auto drawStampLine = [&](const WCHAR* text, float y, float height) {
-            // MuPDF measures against the 190x50 stamp appearance; y is from
-            // its PDF bottom edge, hence the vertical conversion here.
-            float top = (float)marker.y + (50.f - y - height) * marker.dy / 50.f;
-            float h = height * marker.dy / 50.f;
-            Gdiplus::Font font(L"Times New Roman", h, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-            Gdiplus::RectF line((float)marker.x, top, (float)marker.dx, h);
-            graphics.DrawString(text, -1, &font, line, &format, &textBrush);
+        if (annotation->imageFile && !annotation->imageLoadFailed) {
+            if (!annotation->imageBmp) {
+                if (!EbookImageFileNameOk(annotation->imageFile)) {
+                    annotation->imageLoadFailed = true;
+                } else {
+                    TempStr path = path::JoinTemp(GetEbookAnnotationsDirTemp(), annotation->imageFile);
+                    Gdiplus::Bitmap* bmp = Gdiplus::Bitmap::FromFile(ToWStrTemp(path));
+                    if (bmp && bmp->GetLastStatus() == Gdiplus::Ok) {
+                        annotation->imageBmp = bmp;
+                    } else {
+                        delete bmp;
+                        annotation->imageLoadFailed = true;
+                    }
+                }
+            }
+            if (annotation->imageBmp) {
+                COLORREF textColor = 0;
+                COLORREF bgColor = 0;
+                if (EbookSignatureInkShouldFollowPage(textColor, bgColor)) {
+                    u8 tr, tg, tb, br, bgg, bb;
+                    UnpackColor(textColor, tr, tg, tb);
+                    UnpackColor(bgColor, br, bgg, bb);
+                    Gdiplus::ColorMatrix cm{};
+                    cm.m[0][0] = ((int)br - (int)tr) / 255.f;
+                    cm.m[1][1] = ((int)bgg - (int)tg) / 255.f;
+                    cm.m[2][2] = ((int)bb - (int)tb) / 255.f;
+                    cm.m[3][3] = 1.f;
+                    cm.m[4][0] = tr / 255.f;
+                    cm.m[4][1] = tg / 255.f;
+                    cm.m[4][2] = tb / 255.f;
+                    cm.m[4][4] = 1.f;
+                    Gdiplus::ImageAttributes attr;
+                    attr.SetColorMatrix(&cm);
+                    graphics.DrawImage(
+                        annotation->imageBmp,
+                        Gdiplus::RectF((float)marker.x, (float)marker.y, (float)marker.dx, (float)marker.dy), 0.f, 0.f,
+                        (float)annotation->imageBmp->GetWidth(), (float)annotation->imageBmp->GetHeight(),
+                        Gdiplus::UnitPixel, &attr);
+                } else {
+                    graphics.DrawImage(annotation->imageBmp, (float)marker.x, (float)marker.y, (float)marker.dx,
+                                       (float)marker.dy);
+                }
+                return;
+            }
+        }
+        // Same art as pdf_write_stamp_appearance_rubber(): 190x50, border
+        // 2,2,186x44, text on the PDF baseline. Horizontal — no 8° tilt.
+        constexpr float kFitW = 190.f;
+        constexpr float kFitH = 50.f;
+        float scale = std::min((float)marker.dx / kFitW, (float)marker.dy / kFitH);
+        if (scale < 0.05f) {
+            scale = 0.05f;
+        }
+        float destW = kFitW * scale;
+        float destH = kFitH * scale;
+        float destX = (float)marker.x + ((float)marker.dx - destW) / 2.f;
+        float destY = (float)marker.y + ((float)marker.dy - destH) / 2.f;
+        Gdiplus::Matrix xform(scale, 0.f, 0.f, scale, destX, destY);
+        struct StampLine {
+            const WCHAR* text;
+            float baseline;
+            float size;
         };
-        int stampIdx = GetEbookStampIconIndex(annotation);
-        switch (stampIdx) {
+        StampLine lines[2] = {};
+        int nLines = 1;
+        switch (GetEbookStampIconIndex(annotation)) {
             case 0:
-                drawStampLine(L"APPROVED", 13, 30);
+                lines[0] = {L"APPROVED", 13.f, 30.f};
                 break;
             case 1:
-                drawStampLine(L"AS IS", 13, 30);
+                lines[0] = {L"AS IS", 13.f, 30.f};
                 break;
             case 2:
-                drawStampLine(L"CONFIDENTIAL", 17, 20);
+                lines[0] = {L"CONFIDENTIAL", 17.f, 20.f};
                 break;
             case 3:
-                drawStampLine(L"DEPARTMENTAL", 17, 20);
-                break;
-            case 4:
-                drawStampLine(L"DRAFT", 13, 30);
+                lines[0] = {L"DEPARTMENTAL", 17.f, 20.f};
                 break;
             case 5:
-                drawStampLine(L"EXPERIMENTAL", 17, 20);
+                lines[0] = {L"EXPERIMENTAL", 17.f, 20.f};
                 break;
             case 6:
-                drawStampLine(L"EXPIRED", 13, 30);
+                lines[0] = {L"EXPIRED", 13.f, 30.f};
                 break;
             case 7:
-                drawStampLine(L"FINAL", 13, 30);
+                lines[0] = {L"FINAL", 13.f, 30.f};
                 break;
             case 8:
-                drawStampLine(L"FOR COMMENT", 17, 20);
+                lines[0] = {L"FOR COMMENT", 17.f, 20.f};
                 break;
             case 9:
-                drawStampLine(L"FOR PUBLIC", 26, 18);
-                drawStampLine(L"RELEASE", 8.5f, 18);
+                lines[0] = {L"FOR PUBLIC", 26.f, 18.f};
+                lines[1] = {L"RELEASE", 8.5f, 18.f};
+                nLines = 2;
                 break;
             case 10:
-                drawStampLine(L"NOT APPROVED", 17, 20);
+                lines[0] = {L"NOT APPROVED", 17.f, 20.f};
                 break;
             case 11:
-                drawStampLine(L"NOT FOR", 26, 18);
-                drawStampLine(L"PUBLIC RELEASE", 8.5f, 18);
+                lines[0] = {L"NOT FOR", 26.f, 18.f};
+                lines[1] = {L"PUBLIC RELEASE", 8.5f, 18.f};
+                nLines = 2;
                 break;
             case 12:
-                drawStampLine(L"SOLD", 13, 30);
+                lines[0] = {L"SOLD", 13.f, 30.f};
                 break;
             case 13:
-                drawStampLine(L"TOP SECRET", 14, 26);
+                lines[0] = {L"TOP SECRET", 14.f, 26.f};
                 break;
+            case 4:
             default:
-                drawStampLine(L"DRAFT", 13, 30);
+                lines[0] = {L"DRAFT", 13.f, 30.f};
                 break;
+        }
+        Gdiplus::GraphicsState state = graphics.Save();
+        graphics.SetPageUnit(Gdiplus::UnitPixel);
+        graphics.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAlias);
+        Gdiplus::FontFamily times(L"Times New Roman");
+        const Gdiplus::FontFamily* family =
+            times.GetLastStatus() == Gdiplus::Ok ? &times : Gdiplus::FontFamily::GenericSerif();
+        int em = family->GetEmHeight(Gdiplus::FontStyleBold);
+        int cellAscent = family->GetCellAscent(Gdiplus::FontStyleBold);
+        if (em <= 0) {
+            em = 2048;
+        }
+        Gdiplus::StringFormat fmt(Gdiplus::StringFormat::GenericTypographic());
+        fmt.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap | Gdiplus::StringFormatFlagsNoClip |
+                           Gdiplus::StringFormatFlagsMeasureTrailingSpaces);
+        float textX[2] = {};
+        for (int i = 0; i < nLines; i++) {
+            Gdiplus::Font font(family, lines[i].size, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+            Gdiplus::RectF measured;
+            graphics.MeasureString(lines[i].text, -1, &font, Gdiplus::PointF(0, 0), &fmt, &measured);
+            textX[i] = (190.f - measured.Width) / 2.f;
+        }
+        graphics.SetTransform(&xform);
+        Gdiplus::Pen stampPen(Gdiplus::Color(255, r, g, b), 2.f);
+        graphics.DrawRectangle(&stampPen, 2.f, 4.f, 186.f, 44.f);
+        Gdiplus::SolidBrush textBrush(Gdiplus::Color(255, r, g, b));
+        for (int i = 0; i < nLines; i++) {
+            Gdiplus::Font font(family, lines[i].size, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+            float ascent = lines[i].size * (float)cellAscent / (float)em;
+            float top = (50.f - lines[i].baseline) - ascent;
+            graphics.DrawString(lines[i].text, -1, &font, Gdiplus::PointF(textX[i], top), &fmt, &textBrush);
         }
         graphics.Restore(state);
         return;
     }
-    if (type == AnnotationType::Caret) {
-        // The PDF caret is a filled, curved 20x14 appearance rather than
-        // two stroked segments (pdf_write_caret_appearance).
-        float x = (float)marker.x + marker.dx / 2.f;
-        float bottom = (float)marker.BR().y;
-        float top = (float)marker.y;
-        Gdiplus::GraphicsPath caret;
-        caret.StartFigure();
-        caret.AddBezier((float)marker.x, bottom, x, bottom, x, (top + bottom) / 2.f, x, top);
-        caret.AddBezier(x, top, x, (top + bottom) / 2.f, x, bottom, (float)marker.BR().x, bottom);
-        caret.CloseFigure();
-        Gdiplus::SolidBrush brush(Gdiplus::Color(255, r, g, b));
-        graphics.FillPath(&brush, &caret);
-        return;
-    }
     if (type == AnnotationType::Line) {
-        float width = (float)DpiScale(tab->win->hwndFrame, EbookAnnotationGetBorderWidth(annotation));
+        float width = (float)DpiScale(tab->win->hwndFrame, 2 * EbookAnnotationGetBorderWidth(annotation));
         Gdiplus::Pen linePen(Gdiplus::Color(255, r, g, b), std::max(1.f, width));
         Gdiplus::PointF a, z;
         if (annotation->lineTLBR) {
@@ -2095,28 +2503,39 @@ static void PaintEbookPointAnnotation(WindowTab* tab, HDC hdc, Rect marker, Eboo
         // Match pdf_write_square_appearance(): the rectangle is filled only
         // when an interior color exists, and the border's center stays inside
         // the annotation rectangle by half of its stroke width.
-        float width = (float)DpiScale(tab->win->hwndFrame, EbookAnnotationGetBorderWidth(annotation));
+        float width = (float)DpiScale(tab->win->hwndFrame, 2 * EbookAnnotationGetBorderWidth(annotation));
         if (width > 0.f) {
             Gdiplus::Pen squarePen(Gdiplus::Color(255, r, g, b), width);
             float half = width / 2.f;
             Gdiplus::RectF square((float)marker.x + half, (float)marker.y + half,
                                   std::max(1.f, (float)marker.dx - width), std::max(1.f, (float)marker.dy - width));
+            // Same six-unit corner radius as the PDF appearance and drag preview.
+            // EPUB point annotation dimensions use DPI-scaled logical units.
+            float radius =
+                std::min((float)DpiScale(tab->win->hwndFrame, 6), std::min(square.Width, square.Height) / 4.f);
+            float diameter = radius * 2.f;
+            Gdiplus::GraphicsPath outline;
+            outline.AddArc(square.X, square.Y, diameter, diameter, 180.f, 90.f);
+            outline.AddArc(square.GetRight() - diameter, square.Y, diameter, diameter, 270.f, 90.f);
+            outline.AddArc(square.GetRight() - diameter, square.GetBottom() - diameter, diameter, diameter, 0.f, 90.f);
+            outline.AddArc(square.X, square.GetBottom() - diameter, diameter, diameter, 90.f, 90.f);
+            outline.CloseFigure();
             COLORREF interior = 0;
             if (EbookAnnotationGetInteriorColor(annotation, &interior)) {
                 interior = MapEbookAnnotationColor(interior);
                 u8 ir, ig, ib;
                 UnpackColor(interior, ir, ig, ib);
                 Gdiplus::SolidBrush fill(Gdiplus::Color(255, ir, ig, ib));
-                graphics.FillRectangle(&fill, square);
+                graphics.FillPath(&fill, &outline);
             }
-            graphics.DrawRectangle(&squarePen, square);
+            graphics.DrawPath(&squarePen, &outline);
         }
         return;
     }
     if (type == AnnotationType::Circle) {
         // Match pdf_write_circle_appearance(): center the stroke inside the
         // annotation rectangle and paint only if an interior color is set.
-        float width = (float)DpiScale(tab->win->hwndFrame, EbookAnnotationGetBorderWidth(annotation));
+        float width = (float)DpiScale(tab->win->hwndFrame, 2 * EbookAnnotationGetBorderWidth(annotation));
         if (width > 0.f) {
             Gdiplus::Pen circlePen(Gdiplus::Color(255, r, g, b), width);
             float half = width / 2.f;
@@ -2135,7 +2554,8 @@ static void PaintEbookPointAnnotation(WindowTab* tab, HDC hdc, Rect marker, Eboo
     }
 }
 
-static void PaintEbookInkStroke(WindowTab* tab, HDC hdc, DisplayModel* dm, int pageNo, EbookAnnotation* annotation) {
+static void PaintEbookInkStroke(WindowTab* tab, HDC hdc, DisplayModel* dm, int pageNo, EbookAnnotation* annotation,
+                                Point shift) {
     if (!tab || !dm || !annotation || annotation->inkPoints.len < 2) {
         return;
     }
@@ -2147,16 +2567,38 @@ static void PaintEbookInkStroke(WindowTab* tab, HDC hdc, DisplayModel* dm, int p
     graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
     Gdiplus::Pen pen(Gdiplus::Color(255, r, g, b), std::max(1.f, width));
     pen.SetLineCap(Gdiplus::LineCapRound, Gdiplus::LineCapRound, Gdiplus::DashCapRound);
-    Point prevScreen = dm->CvtToScreen(pageNo, annotation->inkPoints.at(0));
-    for (size_t i = 1; i < annotation->inkPoints.len; i++) {
-        Point curScreen = dm->CvtToScreen(pageNo, annotation->inkPoints.at(i));
-        graphics.DrawLine(&pen, prevScreen.x, prevScreen.y, curScreen.x, curScreen.y);
-        prevScreen = curScreen;
+    auto drawStroke = [&](int begin, int n) {
+        if (n < 2 || begin < 0 || begin + n > (int)annotation->inkPoints.len) {
+            return;
+        }
+        Point prevScreen = dm->CvtToScreen(pageNo, annotation->inkPoints.at(begin));
+        prevScreen.x += shift.x;
+        prevScreen.y += shift.y;
+        for (int k = 1; k < n; k++) {
+            Point curScreen = dm->CvtToScreen(pageNo, annotation->inkPoints.at(begin + k));
+            curScreen.x += shift.x;
+            curScreen.y += shift.y;
+            graphics.DrawLine(&pen, prevScreen.x, prevScreen.y, curScreen.x, curScreen.y);
+            prevScreen = curScreen;
+        }
+    };
+    if (annotation->inkCounts.len == 0) {
+        drawStroke(0, (int)annotation->inkPoints.len);
+        return;
+    }
+    int src = 0;
+    for (size_t i = 0; i < annotation->inkCounts.len; i++) {
+        int n = annotation->inkCounts.at(i);
+        drawStroke(src, n);
+        if (n > 0) {
+            src += n;
+        }
     }
 }
 
 static void PaintEbookPointAnnotationSelection(HDC hdc, Rect marker, AnnotationType type) {
-    marker.Inflate(type == AnnotationType::Text ? 1 : 4, type == AnnotationType::Text ? 1 : 4);
+    marker.Inflate(type == AnnotationType::Text || type == AnnotationType::Caret ? 1 : 4,
+                   type == AnnotationType::Text || type == AnnotationType::Caret ? 1 : 4);
     Gdiplus::Graphics graphics(hdc);
     Gdiplus::Pen pen(Gdiplus::Color(255, 0, 80, 200), 2.f);
     pen.SetDashStyle(Gdiplus::DashStyleDot);
@@ -2303,6 +2745,14 @@ void PaintTextMarkupOverlay(HDC hdc, Rect canvasRc, AnnotationType type, COLORRE
     }
 }
 
+static Point EbookAnnotDragShift(WindowTab* tab, EbookAnnotation* annotation) {
+    MainWindow* win = tab ? tab->win : nullptr;
+    if (!win || !annotation || !win->annotMovePreview || win->ebookAnnotationBeingDragged != annotation) {
+        return Point{0, 0};
+    }
+    return Point{win->annotMoveDest.x - win->annotMoveGrab.x, win->annotMoveDest.y - win->annotMoveGrab.y};
+}
+
 void EbookAnnotationsPaintPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pageNo) {
     if (!tab || tab->hideAnnotations || !dm || !dm->PageVisible(pageNo)) {
         return;
@@ -2314,15 +2764,18 @@ void EbookAnnotationsPaintPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pa
 
     EngineBase* engine = dm->GetEngine();
     for (EbookAnnotation* annotation : annotations->items) {
+        Point shift = EbookAnnotDragShift(tab, annotation);
         if (annotation->type == AnnotationType::Ink) {
             if (annotation->inkPoints.len >= 2) {
                 RectF bounds;
                 if (!GetPointAnnotationPageBounds(annotations, engine, annotation, pageNo, &bounds)) {
                     continue;
                 }
-                PaintEbookInkStroke(tab, hdc, dm, pageNo, annotation);
+                PaintEbookInkStroke(tab, hdc, dm, pageNo, annotation, shift);
                 if (tab->editEbookAnnotsWindow && tab->selectedEbookAnnotation == annotation) {
                     Rect screenRect = dm->CvtToScreen(pageNo, bounds);
+                    screenRect.x += shift.x;
+                    screenRect.y += shift.y;
                     PaintEbookPointAnnotationSelection(hdc, screenRect, annotation->type);
                 }
             }
@@ -2334,6 +2787,8 @@ void EbookAnnotationsPaintPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pa
                 Vec<Rect> screenRects;
                 Rect screenRect = dm->CvtToScreen(pageNo, bounds);
                 if (!screenRect.IsEmpty()) {
+                    screenRect.x += shift.x;
+                    screenRect.y += shift.y;
                     screenRects.Append(screenRect);
                     PaintEbookMarkup(tab, hdc, screenRects, annotation);
                     if (tab->editEbookAnnotsWindow && tab->selectedEbookAnnotation == annotation) {
@@ -2354,6 +2809,8 @@ void EbookAnnotationsPaintPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pa
             // still uses a slightly scaled band in FindEbookAnnotationAt.
             Rect screenRect = dm->CvtToScreen(pageNo, rect);
             if (!screenRect.IsEmpty()) {
+                screenRect.x += shift.x;
+                screenRect.y += shift.y;
                 screenRects.Append(screenRect);
             }
         }

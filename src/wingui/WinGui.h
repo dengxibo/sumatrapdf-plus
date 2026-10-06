@@ -313,6 +313,9 @@ struct Edit : Wnd {
     };
 
     TextChangedHandler onTextChanged;
+    // EN_KILLFOCUS, after onTextChanged. The parent does not see that notify
+    // once the edit handles it.
+    Func0 onLostFocus;
 
     // set before Create()
     int idealSizeLines = 1;
@@ -354,6 +357,8 @@ struct ListBox : Wnd {
         RECT itemRect{};
         int itemIndex = -1;
         bool selected = false;
+        bool focused = false;
+        bool hot = false;
     };
 
     using SelectionChangedHandler = Func0;
@@ -368,12 +373,14 @@ struct ListBox : Wnd {
     Size idealSize = {};
     int idealSizeLines = 0;
     int itemHeightExtra = 4;
+    int hotItem = -1;
 
     ListBox();
     ~ListBox() override;
 
     HWND Create(const CreateArgs&);
 
+    LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) override;
     LRESULT OnMessageReflect(UINT msg, WPARAM wparam, LPARAM lparam) override;
     bool OnCommand(WPARAM wparam, LPARAM lparam) override;
 
@@ -489,6 +496,9 @@ struct Trackbar : Wnd {
         int rangeMax = 5;
         HFONT font = nullptr;
         bool isRtl = false;
+        // DarkMode custom-draws the channel; AUTOTICKS falls back to the
+        // system (often pure white) tick/channel paint on dark chrome.
+        bool withTicks = false;
     };
 
     struct PositionChangingEvent {

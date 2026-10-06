@@ -1759,64 +1759,51 @@ static void paintCombobox(HWND hWnd, HDC hdc, dmlib_subclass::ComboBoxData& comb
 	const HPEN hPen = getEdgePenFromState(isDisabled, isHot || hasFocus || comboBoxData.m_cbStyle == CBS_SIMPLE);
 	const auto holdPen = dmlib_paint::GdiObject{ hdc, hPen, true};
 
-	// Drop down arrow part
-	if (comboBoxData.m_cbStyle != CBS_SIMPLE)
-	{
-		if (hasTheme
-			&& (DarkMode::isExperimentalSupported()
-				|| !DarkMode::isDarkDmTypeUsed()))
-		{
-			const RECT rcThemedArrow{ rcArrow.left, rcArrow.top - 1, rcArrow.right, rcArrow.bottom - 1 };
-			::DrawThemeBackground(hTheme, hdc, CP_DROPDOWNBUTTONRIGHT, isDisabled ? CBXSR_DISABLED : CBXSR_NORMAL, &rcThemedArrow, nullptr);
-		}
-		else
-		{
-			::SetTextColor(hdc, getColorFromState(isDisabled, isHot));
-			static constexpr UINT dtFlags = DT_NOPREFIX | DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOCLIP;
-			::DrawText(hdc, dmlib_glyph::kArrowDown, -1, &rcArrow, dtFlags);
-		}
-	}
+        // Drop down arrow part
+        if (comboBoxData.m_cbStyle != CBS_SIMPLE) {
+            // Match the light-theme combo painter: one font-rendered chevron,
+            // independent of Windows visual-style arrow variants.
+            {
+                ::SetTextColor(hdc, getColorFromState(isDisabled, isHot));
+                static constexpr UINT dtFlags = DT_NOPREFIX | DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOCLIP;
+                ::DrawText(hdc, dmlib_glyph::kArrowDown, -1, &rcArrow, dtFlags);
+            }
+        }
 
-	// Frame part
-	if (comboBoxData.m_cbStyle == CBS_DROPDOWNLIST)
-	{
-		::ExcludeClipRect(hdc, rcClient.left + 1, rcClient.top + 1, rcClient.right - 1, rcClient.bottom - 1);
-	}
-	else
-	{
-		::ExcludeClipRect(hdc, cbi.rcItem.left, cbi.rcItem.top, cbi.rcItem.right, cbi.rcItem.bottom);
+        // Frame part
+        if (comboBoxData.m_cbStyle == CBS_DROPDOWNLIST) {
+            ::ExcludeClipRect(hdc, rcClient.left + 1, rcClient.top + 1, rcClient.right - 1, rcClient.bottom - 1);
+        } else {
+            ::ExcludeClipRect(hdc, cbi.rcItem.left, cbi.rcItem.top, cbi.rcItem.right, cbi.rcItem.bottom);
 
-		if (comboBoxData.m_cbStyle == CBS_SIMPLE && cbi.hwndList != nullptr)
-		{
-			RECT rcItem{ cbi.rcItem };
-			::MapWindowPoints(cbi.hwndItem, hWnd, reinterpret_cast<LPPOINT>(&rcItem), 2);
-			rcClient.bottom = rcItem.bottom;
-		}
+            if (comboBoxData.m_cbStyle == CBS_SIMPLE && cbi.hwndList != nullptr) {
+                RECT rcItem{cbi.rcItem};
+                ::MapWindowPoints(cbi.hwndItem, hWnd, reinterpret_cast<LPPOINT>(&rcItem), 2);
+                rcClient.bottom = rcItem.bottom;
+            }
 
-		RECT rcInner{ rcClient };
-		::InflateRect(&rcInner, -1, -1);
+            RECT rcInner{rcClient};
+            ::InflateRect(&rcInner, -1, -1);
 
-		if (comboBoxData.m_cbStyle == CBS_DROPDOWN)
-		{
-			const std::array<POINT, 2> edge{ {
-				{ rcArrow.left - 1, rcArrow.top },
-				{ rcArrow.left - 1, rcArrow.bottom }
-			} };
-			::Polyline(hdc, edge.data(), static_cast<int>(edge.size()));
+            if (comboBoxData.m_cbStyle == CBS_DROPDOWN) {
+                const std::array<POINT, 2> edge{{{rcArrow.left - 1, rcArrow.top}, {rcArrow.left - 1, rcArrow.bottom}}};
+                ::Polyline(hdc, edge.data(), static_cast<int>(edge.size()));
 
-			::ExcludeClipRect(hdc, rcArrow.left - 1, rcArrow.top, rcArrow.right, rcArrow.bottom);
+                ::ExcludeClipRect(hdc, rcArrow.left - 1, rcArrow.top, rcArrow.right, rcArrow.bottom);
 
-			rcInner.right = rcArrow.left - 1;
-		}
+                rcInner.right = rcArrow.left - 1;
+            }
 
-		HPEN hInnerPen = ::CreatePen(PS_SOLID, 1, isDisabled ? DarkMode::getDlgBackgroundColor() : DarkMode::getBackgroundColor());
-		dmlib_paint::paintFrameRect(hdc, rcInner, hInnerPen);
-		::DeleteObject(hInnerPen);
-		::InflateRect(&rcInner, -1, -1);
-		::FillRect(hdc, &rcInner, isDisabled ? DarkMode::getDlgBackgroundBrush() : DarkMode::getCtrlBackgroundBrush());
-	}
+            HPEN hInnerPen = ::CreatePen(
+                PS_SOLID, 1, isDisabled ? DarkMode::getDlgBackgroundColor() : DarkMode::getBackgroundColor());
+            dmlib_paint::paintFrameRect(hdc, rcInner, hInnerPen);
+            ::DeleteObject(hInnerPen);
+            ::InflateRect(&rcInner, -1, -1);
+            ::FillRect(hdc, &rcInner,
+                       isDisabled ? DarkMode::getDlgBackgroundBrush() : DarkMode::getCtrlBackgroundBrush());
+        }
 
-	static const int roundness = DarkMode::isAtLeastWindows11() ? dmlib_paint::kWin11CornerRoundness : 0;
+        static const int roundness = DarkMode::isAtLeastWindows11() ? dmlib_paint::kWin11CornerRoundness : 0;
 	dmlib_paint::paintRoundFrameRect(hdc, rcClient, hPen, roundness, roundness);
 }
 

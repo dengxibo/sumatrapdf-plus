@@ -38,6 +38,7 @@
 #include "Toolbar.h"
 #include "SvgIcons.h"
 #include "Theme.h"
+#include "AppDialogTheme.h"
 #include "DarkModeSubclass.h"
 #include "Flags.h"
 #include "ExtractPdfToc.h"
@@ -6671,10 +6672,11 @@ void TocCalibBar::LayoutIn(int x, int y, int dx, int dy) {
     if (inner < 40) {
         inner = 40;
     }
-    RECT buttonUnits{0, 0, 50, 14};
-    MapDialogRect(panel, &buttonUnits);
-    int btnDy = buttonUnits.bottom;
-    int third = std::max(1, std::min((int)buttonUnits.right, (inner - 2 * gap) / 3));
+    Size saveSize = ButtonGetIdealSize(done);
+    Size cancelSize = ButtonGetIdealSize(cancel);
+    Size jumpSize = ButtonGetIdealSize(jumpToc);
+    int btnDy = std::max(jumpSize.dy, std::max(saveSize.dy, cancelSize.dy));
+    int third = std::max(1, std::min(std::max(saveSize.dx, cancelSize.dx), (inner - 2 * gap) / 3));
     int top = std::max(0, (dy - btnDy) / 2);
     int jumpWidth = jumpToc ? ButtonGetIdealSize(jumpToc).dx : third;
     jumpWidth = std::max(1, std::min(jumpWidth, inner - 2 * third - 2 * gap));
@@ -6737,7 +6739,8 @@ void TocCalibBar::UpdateTheme() {
     ThemeSidebarColors(colBg, colTxt);
     SetColors(colTxt, colBg);
     if (hwnd) {
-        if (UseDarkModeLib()) DarkMode::setDarkWndSafe(panel);
+        AppDialogUseStandardControls(panel);
+        AppDialogApplyChrome(panel);
         InvalidateRect(hwnd, nullptr, TRUE);
     }
 }
@@ -6924,8 +6927,7 @@ static void TocCalibDrawPageField(HDC hdc, const RECT& rc, const WCHAR* text, bo
         bg = TocCalibBlend(bg, side, 42);
     }
     COLORREF txt = (!enabled || empty) ? ThemeWindowTextDisabledColor() : ThemeWindowTextColor();
-    COLORREF bd = AccentColor(ThemeWindowTextColor(), ThemeUsesDarkChrome() ? 0 : (!enabled || empty ? 58 : 40),
-                              ThemeUsesDarkChrome() ? (!enabled || empty ? 42 : 28) : 0);
+    COLORREF bd = ThemeInspectorSeparatorColor();
     HBRUSH br = CreateSolidBrush(bg);
     FillRect(hdc, &rc, br);
     DeleteObject(br);

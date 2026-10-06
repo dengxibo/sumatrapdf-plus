@@ -7,6 +7,14 @@
 
 #pragma once
 
+enum class PrintedTocPromptFormat {
+    Json,
+    ExtractCsv,
+    LevelsCsv
+};
+// Shared semantic rules; only the stage/output-format wrapper differs.
+TempStr BuildPrintedTocPromptTemp(PrintedTocPromptFormat format);
+
 // First-round prompt: classify the whole-document candidate digest. Returns a
 // newly allocated UTF-8 string. totalPages is the physical PDF page count;
 // candidateDigest is the <CANDIDATE> block from BuildBodyTocDigest().

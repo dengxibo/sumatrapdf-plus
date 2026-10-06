@@ -15,6 +15,12 @@ EbookAnnotation* EbookAnnotationsCreateDragShape(WindowTab* tab, DisplayModel* d
                                                  AnnotationType type);
 EbookAnnotation* EbookAnnotationsCreateInkStroke(WindowTab* tab, DisplayModel* dm, int pageNo, PointF* points,
                                                  int nPoints, COLORREF color);
+// One annotation, several strokes. counts[i] is the point count of stroke i.
+EbookAnnotation* EbookAnnotationsCreateInkStrokes(WindowTab* tab, DisplayModel* dm, int pageNo, PointF* points,
+                                                  const int* counts, int nStrokes, COLORREF color, int borderWidth);
+// Photo signature: a stamp-sized mark that paints the PNG instead of a rubber stamp.
+EbookAnnotation* EbookAnnotationsCreateSignatureImage(WindowTab* tab, DisplayModel* dm, int pageNo, RectF pageRect,
+                                                      const u8* png, int pngLen);
 EbookAnnotation* EbookAnnotationsCreateText(WindowTab* tab, DisplayModel* dm, Point canvasPoint, COLORREF color);
 EbookAnnotation* EbookAnnotationsGetAt(WindowTab* tab, DisplayModel* dm, Point canvasPoint);
 bool EbookAnnotationsHitTest(WindowTab* tab, DisplayModel* dm, Point canvasPoint);
@@ -26,6 +32,11 @@ bool EbookAnnotationSetPageBounds(WindowTab* tab, DisplayModel* dm, EbookAnnotat
                                   RectF bounds, bool save);
 void EbookAnnotationsGetAll(WindowTab* tab, Vec<EbookAnnotation*>& annotationsOut);
 AnnotationType EbookAnnotationGetType(EbookAnnotation* annotation);
+int EbookAnnotationGetChapter(EbookAnnotation* annotation);
+bool EbookAnnotationsSaveCopy(WindowTab* tab, HWND parent);
+bool EbookAnnotationsLastSaveFailed(WindowTab* tab);
+bool EbookAnnotationsRetrySave(WindowTab* tab);
+bool EbookAnnotationsHasUnsavedChanges(WindowTab* tab);
 const char* EbookAnnotationGetText(EbookAnnotation* annotation);
 const char* EbookAnnotationGetNote(EbookAnnotation* annotation);
 const char* EbookAnnotationGetIcon(EbookAnnotation* annotation);
@@ -36,6 +47,7 @@ COLORREF GetDefaultEbookPointAnnotationColor(AnnotationType type);
 COLORREF EbookAnnotationGetColor(EbookAnnotation* annotation);
 int EbookAnnotationGetOpacity(EbookAnnotation* annotation);
 bool EbookAnnotationSetNote(WindowTab* tab, EbookAnnotation* annotation, const char* note);
+bool EbookAnnotationSetAuthor(WindowTab* tab, EbookAnnotation* annotation, const char* author);
 bool EbookAnnotationSetIcon(WindowTab* tab, EbookAnnotation* annotation, const char* icon);
 bool EbookAnnotationSetColor(WindowTab* tab, EbookAnnotation* annotation, COLORREF color);
 bool EbookAnnotationSetOpacity(WindowTab* tab, EbookAnnotation* annotation, int opacity);

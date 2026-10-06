@@ -16,7 +16,10 @@ enum class EditAnnotFocus {
     List,
 };
 
-void ShowEditAnnotationsWindow(WindowTab*, Annotation*, EditAnnotFocus focus = EditAnnotFocus::Default);
+void ShowEditAnnotationsWindow(WindowTab*, Annotation*, EditAnnotFocus focus = EditAnnotFocus::Default,
+                               bool revealInSidebar = true);
+HWND EditAnnotationsSidebarHwnd(WindowTab* tab);
+void SyncEditAnnotationsSidebar(MainWindow* win, bool show);
 bool CloseAndDeleteEditAnnotationsWindow(WindowTab*);
 void DeleteAnnotationAndUpdateUI(WindowTab*, Annotation*);
 void SetSelectedAnnotation(WindowTab*, Annotation*, bool isNew = false, EditAnnotFocus focus = EditAnnotFocus::Default);
@@ -31,6 +34,9 @@ void PaintPdfMarkupOverlayPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pa
 void PaintPdfMarkupNoteBadgesPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pageNo);
 void ClearPdfMarkupOverlayForPage(WindowTab* tab, int pageNo);
 void RemovePdfMarkupOverlayAnnot(WindowTab* tab, Annotation* annot);
+void ClearPdfDeletedAnnotCovers(WindowTab* tab);
+void ClearPdfDeletedAnnotCoversForPage(WindowTab* tab, int pageNo);
+void PaintPdfDeletedAnnotCoversPage(WindowTab* tab, HDC hdc, DisplayModel* dm, int pageNo);
 bool IsPdfAnnotContentsEditFocused(HWND msgHwnd = nullptr);
 
 const char* GetPdfAnnotationColorNames();

@@ -8985,6 +8985,762 @@ static bool FollowThemePageWantsLatexFigureSkipRects(EngineMupdf* engine, fz_con
 static bool FollowThemeWholeTileBitmapBlockedForPaperScan(fz_context* ctx, EngineMupdf* engine, FzPageInfo* pageInfo,
                                                           fz_page* page);
 
+// Text notes, highlights, ink, lines, and stamps keep their own colors. Draw the
+// annotation appearance onto the dark page. Copying the light-page pixels inside
+// the bounds paints the white paper and the black glyphs behind the mark.
+// A handwritten signature is black ink meant to read like text, so it stays on
+// the dark remap. Sound, rich media, and screen icons stay on that remap too:
+// their white chip is page chrome, not a mark.
+static bool PdfAnnotIsHandwrittenSignature(fz_context* ctx, pdf_annot* annot) {
+    if (!ctx || !annot) {
+        return false;
+    }
+    const char* contents = pdf_annot_contents(ctx, annot);
+    return str::Eq(contents, "Signature");
+}
+
+static bool PdfAnnotKeptInOriginalColor(fz_context* ctx, pdf_annot* annot) {
+    if (!ctx || !annot) {
+        return false;
+    }
+    enum pdf_annot_type tp = pdf_annot_type(ctx, annot);
+    // Only marks whose appearance is the mark itself. Widgets, redactions,
+    // watermarks, and media chrome follow the page remap. Replaying those
+    // would paint their white backing back onto the dark page.
+    switch (tp) {
+        case PDF_ANNOT_TEXT:
+        case PDF_ANNOT_FREE_TEXT:
+        case PDF_ANNOT_LINE:
+        case PDF_ANNOT_SQUARE:
+        case PDF_ANNOT_CIRCLE:
+        case PDF_ANNOT_POLYGON:
+        case PDF_ANNOT_POLY_LINE:
+        case PDF_ANNOT_HIGHLIGHT:
+        case PDF_ANNOT_UNDERLINE:
+        case PDF_ANNOT_SQUIGGLY:
+        case PDF_ANNOT_STRIKE_OUT:
+        case PDF_ANNOT_STAMP:
+        case PDF_ANNOT_CARET:
+        case PDF_ANNOT_INK:
+        case PDF_ANNOT_FILE_ATTACHMENT:
+            break;
+        default:
+            return false;
+    }
+    int flags = pdf_annot_flags(ctx, annot);
+    if (flags & (PDF_ANNOT_IS_HIDDEN | PDF_ANNOT_IS_INVISIBLE | PDF_ANNOT_IS_NO_VIEW)) {
+        return false;
+    }
+    if (PdfAnnotIsHandwrittenSignature(ctx, annot)) {
+        return false;
+    }
+    return true;
+}
+
+// Same text↔paper map as UpdateBitmapColors, including the dark-page sharpen
+// so anti-aliased black ink does not leave a gray halo.
+static u8 MapPdfSignatureDarkSample(int src, int textC, int bgC) {
+    int diff = bgC - textC;
+    int x = src * diff + 128;
+    x += x >> 8;
+    x >>= 8;
+    int v = textC + x;
+    if (v < 0) {
+        v = 0;
+    }
+    if (v > 255) {
+        v = 255;
+    }
+    return (u8)v;
+}
+
+static void MapPdfSignatureDarkRgb(u8 sr, u8 sg, u8 sb, u8 tr, u8 tg, u8 tb, u8 br, u8 bgg, u8 bb, u8* dr, u8* dg,
+                                   u8* db) {
+    int maxC = sr > sg ? (sr > sb ? sr : sb) : (sg > sb ? sg : sb);
+    int minC = sr < sg ? (sr < sb ? sr : sb) : (sg < sb ? sg : sb);
+    int srcR = sr;
+    int srcG = sg;
+    int srcB = sb;
+    if (maxC - minC <= 28) {
+        int srcLum = (int(sr) * 54 + int(sg) * 183 + int(sb) * 19) >> 8;
+        int t;
+        if (srcLum < 128) {
+            t = (srcLum * srcLum) / 128;
+        } else {
+            int inv = 255 - srcLum;
+            t = 255 - (inv * inv) / 127;
+        }
+        srcR = srcG = srcB = t;
+    }
+    *dr = MapPdfSignatureDarkSample(srcR, tr, br);
+    *dg = MapPdfSignatureDarkSample(srcG, tg, bgg);
+    *db = MapPdfSignatureDarkSample(srcB, tb, bb);
+}
+
+static bool PdfSignatureDarkRemapColors(u8* textR, u8* textG, u8* textB, u8* bgR, u8* bgG, u8* bgB) {
+    COLORREF bg = 0;
+    COLORREF text = ThemePageRenderColors(bg, true);
+    u8 tr, tg, tb, br, bgg, bb;
+    UnpackColor(text, tr, tg, tb);
+    UnpackColor(bg, br, bgg, bb);
+    if ((int)tr + (int)tg + (int)tb <= (int)br + (int)bgg + (int)bb) {
+        return false;
+    }
+    *textR = tr;
+    *textG = tg;
+    *textB = tb;
+    *bgR = br;
+    *bgG = bgg;
+    *bgB = bb;
+    return true;
+}
+
+// QuadPoints is only valid on highlight, underline, strikeout, and similar marks.
+// pdf_annot_quad_point_count throws for a text note. That throw used to abort the
+// whole original-color restore, so the note icon stayed on the dark remap.
+static void AppendOnePdfAnnotDeviceRect(fz_context* ctx, pdf_annot* annot, fz_matrix ctm, Vec<fz_irect>& rects,
+                                        bool signaturesOnly) {
+    bool signature = PdfAnnotIsHandwrittenSignature(ctx, annot);
+    if (signaturesOnly) {
+        if (!signature) {
+            return;
+        }
+        enum pdf_annot_type tp = pdf_annot_type(ctx, annot);
+        if (tp == PDF_ANNOT_POPUP || tp == PDF_ANNOT_LINK) {
+            return;
+        }
+        int flags = pdf_annot_flags(ctx, annot);
+        if (flags & (PDF_ANNOT_IS_HIDDEN | PDF_ANNOT_IS_INVISIBLE | PDF_ANNOT_IS_NO_VIEW)) {
+            return;
+        }
+    } else if (!PdfAnnotKeptInOriginalColor(ctx, annot)) {
+        return;
+    }
+    if (pdf_annot_has_quad_points(ctx, annot)) {
+        int nq = pdf_annot_quad_point_count(ctx, annot);
+        for (int i = 0; i < nq; i++) {
+            fz_rect r = fz_rect_from_quad(pdf_annot_quad_point(ctx, annot, i));
+            if (fz_is_empty_rect(r)) {
+                continue;
+            }
+            rects.Append(fz_expand_irect(fz_round_rect(fz_transform_rect(r, ctm)), 2));
+        }
+        return;
+    }
+    fz_rect r = pdf_bound_annot(ctx, annot);
+    if (fz_is_empty_rect(r)) {
+        return;
+    }
+    rects.Append(fz_expand_irect(fz_round_rect(fz_transform_rect(r, ctm)), 2));
+}
+
+static void AppendPdfAnnotDeviceRects(fz_context* ctx, fz_page* page, fz_matrix ctm, Vec<fz_irect>& rects,
+                                      bool signaturesOnly) {
+    pdf_page* pdfpage = page ? pdf_page_from_fz_page(ctx, page) : nullptr;
+    if (!pdfpage) {
+        return;
+    }
+    for (pdf_annot* annot = pdf_first_annot(ctx, pdfpage); annot; annot = pdf_next_annot(ctx, annot)) {
+        fz_try(ctx) {
+            AppendOnePdfAnnotDeviceRect(ctx, annot, ctm, rects, signaturesOnly);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+        }
+    }
+}
+
+static bool PdfAnnotRectCoversPage(fz_irect r, int w, int h) {
+    if (w <= 0 || h <= 0) {
+        return true;
+    }
+    i64 area = (i64)(r.x1 - r.x0) * (i64)(r.y1 - r.y0);
+    i64 page = (i64)w * (i64)h;
+    return area * 2 > page;
+}
+
+static int DarkAnnotLum(int r, int g, int b) {
+    return (r * 54 + g * 183 + b * 19) >> 8;
+}
+
+static void ThemeAnnotColors(u8* textR, u8* textG, u8* textB, u8* bgR, u8* bgG, u8* bgB) {
+    COLORREF bg = 0;
+    COLORREF text = ThemePageRenderColors(bg, true);
+    UnpackColor(text, *textR, *textG, *textB);
+    UnpackColor(bg, *bgR, *bgG, *bgB);
+}
+
+// Black and white follow the theme. A chosen color (red text, yellow fill) stays.
+static void MapFreeTextAppearanceRgb(u8 r, u8 g, u8 b, u8 tr, u8 tg, u8 tb, u8 br, u8 bgg, u8 bb, u8* outR, u8* outG,
+                                     u8* outB) {
+    int maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    int minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    if (maxC - minC >= 40) {
+        *outR = r;
+        *outG = g;
+        *outB = b;
+        return;
+    }
+    auto mapChannel = [](int src, int text, int background) -> int {
+        int x = src * (background - text) + 128;
+        x += x >> 8;
+        int v = text + (x >> 8);
+        if (v < 0) {
+            v = 0;
+        }
+        if (v > 255) {
+            v = 255;
+        }
+        return v;
+    };
+    *outR = (u8)mapChannel(r, tr, br);
+    *outG = (u8)mapChannel(g, tg, bgg);
+    *outB = (u8)mapChannel(b, tb, bb);
+}
+
+// 0 paints the marker. 255 paints near-black ink.
+// White/gray text is neutral and light. Multiply of that text onto yellow is the
+// same hue as the marker, only darker — a light-page census then multiplies again
+// and the glyphs stay pale yellow.
+static int HighlightLightMarkerGlyph(int r, int g, int b, int markerLum) {
+    int maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    int minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    int chroma = maxC - minC;
+    int lum = DarkAnnotLum(r, g, b);
+    if (chroma < 42 && lum > 80) {
+        int t = lum - 80;
+        if (t > 160) {
+            t = 160;
+        }
+        return t * 255 / 160;
+    }
+    int drop = markerLum - lum;
+    if (chroma >= 42 && drop > 6) {
+        int t = drop - 6;
+        if (t > 18) {
+            t = 18;
+        }
+        return t * 255 / 18;
+    }
+    return 0;
+}
+
+// Warm follow-theme keeps dark type on cream paper. Dark themes invert that,
+// so the type is the light pixels. ThemePageRenderColors is the same pair
+// UpdateBitmapColors uses.
+static bool HighlightPageTextIsLight() {
+    COLORREF bg = 0;
+    COLORREF text = ThemePageRenderColors(bg, true);
+    u8 tr, tg, tb, br, bgg, bb;
+    UnpackColor(text, tr, tg, tb);
+    UnpackColor(bg, br, bgg, bb);
+    return (int)tr + (int)tg + (int)tb > (int)br + (int)bgg + (int)bb;
+}
+
+// Light paper: PDF Multiply, so a yellow mark stays yellow and the glyphs stay dark.
+// A dark page cannot Multiply (yellow on black turns olive). Paint the mark's own
+// color, and draw the glyphs dark so they stay readable on that bright color.
+static void PaintHighlightDeviceRect(fz_pixmap* dest, fz_irect r, u8 hr, u8 hg, u8 hb, float opacity) {
+    if (!dest || !dest->samples || dest->n < 3 || opacity <= 0.f) {
+        return;
+    }
+    fz_irect box = fz_make_irect(dest->x, dest->y, dest->x + dest->w, dest->y + dest->h);
+    r = fz_intersect_irect(r, box);
+    if (fz_is_empty_irect(r)) {
+        return;
+    }
+    int op = (int)(opacity * 255.f + 0.5f);
+    if (op < 1) {
+        return;
+    }
+    if (op > 255) {
+        op = 255;
+    }
+    int n = dest->n;
+    int markerLum = DarkAnnotLum(hr, hg, hb);
+    // A yellow band is light even on a dark page. Counting those pixels says
+    // "light paper" and Multiply then leaves the type pale yellow.
+    // Warm follow-theme is the other way around: the type stays dark. Treating
+    // every light pixel as a glyph paints the dark cores yellow and the lighter
+    // fringe black, so the letters look hollow.
+    bool lightMarker = markerLum > 140;
+    bool glyphsAreLight = lightMarker && HighlightPageTextIsLight();
+    int ink = glyphsAreLight ? 16 : 245;
+    int lightN = 0;
+    int darkN = 0;
+    if (!lightMarker) {
+        for (int y = r.y0; y < r.y1; y++) {
+            int py = y - dest->y;
+            if (py < 0 || py >= dest->h) {
+                continue;
+            }
+            u8* row = dest->samples + (size_t)py * (size_t)dest->stride;
+            for (int x = r.x0; x < r.x1; x++) {
+                int px = x - dest->x;
+                if (px < 0 || px >= dest->w) {
+                    continue;
+                }
+                u8* dp = row + (size_t)px * (size_t)n;
+                int lum = DarkAnnotLum(dp[0], dp[1], dp[2]);
+                if (lum >= 180) {
+                    lightN++;
+                } else if (lum <= 70) {
+                    darkN++;
+                }
+            }
+        }
+    }
+    bool darkPage = glyphsAreLight || darkN > lightN;
+    for (int y = r.y0; y < r.y1; y++) {
+        int py = y - dest->y;
+        if (py < 0 || py >= dest->h) {
+            continue;
+        }
+        u8* row = dest->samples + (size_t)py * (size_t)dest->stride;
+        for (int x = r.x0; x < r.x1; x++) {
+            int px = x - dest->x;
+            if (px < 0 || px >= dest->w) {
+                continue;
+            }
+            u8* dp = row + (size_t)px * (size_t)n;
+            int outR;
+            int outG;
+            int outB;
+            if (glyphsAreLight) {
+                int glyph = HighlightLightMarkerGlyph(dp[0], dp[1], dp[2], markerLum);
+                outR = (int)hr + (ink - (int)hr) * glyph / 255;
+                outG = (int)hg + (ink - (int)hg) * glyph / 255;
+                outB = (int)hb + (ink - (int)hb) * glyph / 255;
+            } else if (!darkPage) {
+                outR = (int)dp[0] * (int)hr / 255;
+                outG = (int)dp[1] * (int)hg / 255;
+                outB = (int)dp[2] * (int)hb / 255;
+            } else {
+                int lum = DarkAnnotLum(dp[0], dp[1], dp[2]);
+                int glyph = lum - 40;
+                if (glyph < 0) {
+                    glyph = 0;
+                }
+                if (glyph > 160) {
+                    glyph = 160;
+                }
+                glyph = glyph * 255 / 160;
+                outR = (int)hr + (ink - (int)hr) * glyph / 255;
+                outG = (int)hg + (ink - (int)hg) * glyph / 255;
+                outB = (int)hb + (ink - (int)hb) * glyph / 255;
+            }
+            dp[0] = (u8)((int)dp[0] + (outR - (int)dp[0]) * op / 255);
+            dp[1] = (u8)((int)dp[1] + (outG - (int)dp[1]) * op / 255);
+            dp[2] = (u8)((int)dp[2] + (outB - (int)dp[2]) * op / 255);
+        }
+    }
+}
+
+static void PaintDarkHighlightAnnot(fz_context* ctx, pdf_annot* annot, fz_matrix ctm, fz_pixmap* dest) {
+    if (!ctx || !annot || !dest) {
+        return;
+    }
+    int n = 0;
+    float col[4] = {1.f, 1.f, 0.f, 0.f};
+    float opacity = 1.f;
+    int nq = 0;
+    bool quads = false;
+    fz_try(ctx) {
+        pdf_annot_color(ctx, annot, &n, col);
+        opacity = pdf_annot_opacity(ctx, annot);
+        quads = pdf_annot_has_quad_points(ctx, annot) != 0;
+        if (quads) {
+            nq = pdf_annot_quad_point_count(ctx, annot);
+        }
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        return;
+    }
+    u8 hr = 255, hg = 255, hb = 0;
+    if (n >= 3) {
+        hr = (u8)(col[0] * 255.f + 0.5f);
+        hg = (u8)(col[1] * 255.f + 0.5f);
+        hb = (u8)(col[2] * 255.f + 0.5f);
+    } else if (n == 1) {
+        hr = hg = hb = (u8)(col[0] * 255.f + 0.5f);
+    }
+    if (nq < 1) {
+        fz_rect pageRect = fz_empty_rect;
+        fz_try(ctx) {
+            pageRect = pdf_bound_annot(ctx, annot);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+            return;
+        }
+        fz_rect devRect = fz_transform_rect(pageRect, ctm);
+        PaintHighlightDeviceRect(dest, fz_round_rect(devRect), hr, hg, hb, opacity);
+        return;
+    }
+    for (int i = 0; i < nq; i++) {
+        fz_quad q{};
+        bool ok = false;
+        fz_try(ctx) {
+            q = pdf_annot_quad_point(ctx, annot, i);
+            ok = true;
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+        }
+        if (!ok) {
+            continue;
+        }
+        q.ul = fz_transform_point(q.ul, ctm);
+        q.ur = fz_transform_point(q.ur, ctm);
+        q.ll = fz_transform_point(q.ll, ctm);
+        q.lr = fz_transform_point(q.lr, ctm);
+        PaintHighlightDeviceRect(dest, fz_round_rect(fz_rect_from_quad(q)), hr, hg, hb, opacity);
+    }
+}
+
+// Replay the free-text appearance, then map black/white onto the theme. Colored
+// text and fills stay. A straight pdf_run_annot leaves black type on the dark page.
+static void PaintDarkFreeTextAnnot(fz_context* ctx, pdf_annot* annot, fz_matrix ctm, fz_pixmap* dest) {
+    if (!ctx || !annot || !dest || !dest->samples || dest->n < 3) {
+        return;
+    }
+    u8 tr, tg, tb, br, bgg, bb;
+    ThemeAnnotColors(&tr, &tg, &tb, &br, &bgg, &bb);
+    fz_pixmap* layer = nullptr;
+    fz_device* dev = nullptr;
+    fz_var(layer);
+    fz_var(dev);
+    fz_try(ctx) {
+        fz_rect pageRect = pdf_bound_annot(ctx, annot);
+        fz_rect devRect = fz_transform_rect(pageRect, ctm);
+        fz_irect ib = fz_expand_irect(fz_round_rect(devRect), 2);
+        layer = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx), ib, nullptr, 1);
+        fz_clear_pixmap(ctx, layer);
+        dev = fz_new_draw_device(ctx, ctm, layer);
+        pdf_run_annot(ctx, annot, dev, fz_identity, nullptr);
+        fz_close_device(ctx, dev);
+        dev = nullptr;
+    }
+    fz_always(ctx) {
+        fz_drop_device(ctx, dev);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        fz_drop_pixmap(ctx, layer);
+        return;
+    }
+    if (!layer || !layer->samples) {
+        fz_drop_pixmap(ctx, layer);
+        return;
+    }
+    int ln = layer->n;
+    int dn = dest->n;
+    for (int y = 0; y < layer->h; y++) {
+        int dy = layer->y + y - dest->y;
+        if (dy < 0 || dy >= dest->h) {
+            continue;
+        }
+        u8* srow = layer->samples + (size_t)y * (size_t)layer->stride;
+        u8* drow = dest->samples + (size_t)dy * (size_t)dest->stride;
+        for (int x = 0; x < layer->w; x++) {
+            int dx = layer->x + x - dest->x;
+            if (dx < 0 || dx >= dest->w) {
+                continue;
+            }
+            u8* sp = srow + (size_t)x * (size_t)ln;
+            int a = ln > 3 ? sp[3] : 255;
+            if (a <= 0) {
+                continue;
+            }
+            int r = sp[0] * 255 / a;
+            int g = sp[1] * 255 / a;
+            int b = sp[2] * 255 / a;
+            if (r > 255) {
+                r = 255;
+            }
+            if (g > 255) {
+                g = 255;
+            }
+            if (b > 255) {
+                b = 255;
+            }
+            u8 orr, og, ob;
+            MapFreeTextAppearanceRgb((u8)r, (u8)g, (u8)b, tr, tg, tb, br, bgg, bb, &orr, &og, &ob);
+            u8* dp = drow + (size_t)dx * (size_t)dn;
+            dp[0] = (u8)((orr * a + dp[0] * (255 - a) + 127) / 255);
+            dp[1] = (u8)((og * a + dp[1] * (255 - a) + 127) / 255);
+            dp[2] = (u8)((ob * a + dp[2] * (255 - a) + 127) / 255);
+        }
+    }
+    fz_drop_pixmap(ctx, layer);
+}
+
+// Draw kept annotations in their own colors on top of the dark page. Strokes
+// paint only the line. Highlight and free text are handled apart from Multiply
+// and black type, which both disappear into a dark page.
+static void ReplayKeptPdfAnnots(fz_context* ctx, fz_page* page, fz_matrix ctm, fz_pixmap* dest, fz_cookie* cookie) {
+    pdf_page* pdfpage = page ? pdf_page_from_fz_page(ctx, page) : nullptr;
+    if (!ctx || !pdfpage || !dest) {
+        return;
+    }
+    fz_device* dev = nullptr;
+    fz_var(dev);
+    fz_try(ctx) {
+        dev = fz_new_draw_device(ctx, ctm, dest);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        return;
+    }
+    if (!dev) {
+        return;
+    }
+    for (pdf_annot* annot = pdf_first_annot(ctx, pdfpage); annot; annot = pdf_next_annot(ctx, annot)) {
+        if (cookie && cookie->abort) {
+            break;
+        }
+        bool keep = false;
+        fz_try(ctx) {
+            keep = PdfAnnotKeptInOriginalColor(ctx, annot);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+        }
+        if (!keep) {
+            continue;
+        }
+        enum pdf_annot_type tp = PDF_ANNOT_UNKNOWN;
+        fz_try(ctx) {
+            tp = pdf_annot_type(ctx, annot);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+        }
+        if (tp == PDF_ANNOT_HIGHLIGHT) {
+            PaintDarkHighlightAnnot(ctx, annot, ctm, dest);
+            continue;
+        }
+        if (tp == PDF_ANNOT_FREE_TEXT) {
+            PaintDarkFreeTextAnnot(ctx, annot, ctm, dest);
+            continue;
+        }
+        fz_try(ctx) {
+            pdf_run_annot(ctx, annot, dev, fz_identity, cookie);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+        }
+    }
+    fz_try(ctx) {
+        fz_close_device(ctx, dev);
+    }
+    fz_always(ctx) {
+        fz_drop_device(ctx, dev);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+}
+
+// original was drawn in RGB before the dark remap. hbmp is the BGRA copy that
+// UpdateBitmapColors already recolored. Marks are drawn onto that dark copy.
+// The light pixmap is only used to recolor handwritten signatures.
+static void RestorePdfAnnotOriginalColorsOnBitmap(fz_context* ctx, fz_page* page, fz_matrix ctm, fz_pixmap* original,
+                                                  HBITMAP hbmp) {
+    if (!ctx || !page || !original || !original->samples || !hbmp || original->n < 3) {
+        return;
+    }
+    Vec<fz_irect> signatures;
+    AppendPdfAnnotDeviceRects(ctx, page, ctm, signatures, true);
+    DIBSECTION ds{};
+    if (!GetObject(hbmp, sizeof(ds), &ds) || !ds.dsBm.bmBits || ds.dsBm.bmBitsPixel != 32) {
+        return;
+    }
+    bool topDown = ds.dsBmih.biHeight < 0;
+    int bw = ds.dsBm.bmWidth;
+    int bh = ds.dsBm.bmHeight;
+    int dstStride = ds.dsBm.bmWidthBytes;
+    u8* bits = (u8*)ds.dsBm.bmBits;
+    int comps = original->n - original->alpha;
+    if (comps < 3) {
+        return;
+    }
+    fz_irect box = fz_make_irect(original->x, original->y, original->x + original->w, original->y + original->h);
+    if (bw == original->w && bh == original->h) {
+        fz_pixmap* dark = nullptr;
+        fz_var(dark);
+        fz_try(ctx) {
+            dark = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx), box, nullptr, 1);
+            for (int py = 0; py < original->h; py++) {
+                int by = topDown ? py : (bh - 1 - py);
+                u8* srow = bits + (size_t)by * (size_t)dstStride;
+                u8* drow = dark->samples + (size_t)py * (size_t)dark->stride;
+                for (int px = 0; px < original->w; px++) {
+                    u8* sp = srow + (size_t)px * 4;
+                    u8* dp = drow + (size_t)px * (size_t)dark->n;
+                    dp[0] = sp[2];
+                    dp[1] = sp[1];
+                    dp[2] = sp[0];
+                    dp[3] = 255;
+                }
+            }
+            ReplayKeptPdfAnnots(ctx, page, ctm, dark, nullptr);
+            for (int py = 0; py < original->h; py++) {
+                int by = topDown ? py : (bh - 1 - py);
+                u8* srow = dark->samples + (size_t)py * (size_t)dark->stride;
+                u8* drow = bits + (size_t)by * (size_t)dstStride;
+                for (int px = 0; px < original->w; px++) {
+                    u8* sp = srow + (size_t)px * (size_t)dark->n;
+                    u8* dp = drow + (size_t)px * 4;
+                    dp[0] = sp[2];
+                    dp[1] = sp[1];
+                    dp[2] = sp[0];
+                    dp[3] = 255;
+                }
+            }
+        }
+        fz_always(ctx) {
+            fz_drop_pixmap(ctx, dark);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+        }
+    }
+    u8 tr, tg, tb, br, bgg, bb;
+    if (!PdfSignatureDarkRemapColors(&tr, &tg, &tb, &br, &bgg, &bb)) {
+        return;
+    }
+    for (fz_irect r : signatures) {
+        r = fz_intersect_irect(r, box);
+        if (fz_is_empty_irect(r) || PdfAnnotRectCoversPage(r, original->w, original->h)) {
+            continue;
+        }
+        for (int y = r.y0; y < r.y1; y++) {
+            int py = y - original->y;
+            int by = topDown ? py : (bh - 1 - py);
+            if (py < 0 || py >= original->h || by < 0 || by >= bh) {
+                continue;
+            }
+            u8* srow = original->samples + (size_t)py * (size_t)original->stride;
+            u8* drow = bits + (size_t)by * (size_t)dstStride;
+            for (int x = r.x0; x < r.x1; x++) {
+                int px = x - original->x;
+                if (px < 0 || px >= original->w || px >= bw) {
+                    continue;
+                }
+                u8* sp = srow + (size_t)px * (size_t)original->n;
+                u8* dp = drow + (size_t)px * 4;
+                MapPdfSignatureDarkRgb(sp[0], sp[1], sp[2], tr, tg, tb, br, bgg, bb, &dp[2], &dp[1], &dp[0]);
+                dp[3] = original->alpha ? sp[comps] : 255;
+            }
+        }
+    }
+}
+
+static void RestorePdfAnnotOriginalColorsOnPixmap(fz_context* ctx, fz_page* page, fz_matrix ctm, fz_pixmap* original,
+                                                  fz_pixmap* dark) {
+    if (!ctx || !page || !original || !dark) {
+        return;
+    }
+    ReplayKeptPdfAnnots(ctx, page, ctm, dark, nullptr);
+    Vec<fz_irect> signatures;
+    AppendPdfAnnotDeviceRects(ctx, page, ctm, signatures, true);
+    u8 tr, tg, tb, br, bgg, bb;
+    if (signatures.empty() || !original->samples || !dark->samples || original->n < 3 || dark->n < 3 ||
+        !PdfSignatureDarkRemapColors(&tr, &tg, &tb, &br, &bgg, &bb)) {
+        return;
+    }
+    fz_irect ob = fz_make_irect(original->x, original->y, original->x + original->w, original->y + original->h);
+    fz_irect db = fz_make_irect(dark->x, dark->y, dark->x + dark->w, dark->y + dark->h);
+    for (fz_irect r : signatures) {
+        r = fz_intersect_irect(fz_intersect_irect(r, ob), db);
+        if (fz_is_empty_irect(r) || PdfAnnotRectCoversPage(r, original->w, original->h)) {
+            continue;
+        }
+        for (int y = r.y0; y < r.y1; y++) {
+            int sy = y - original->y;
+            int dy = y - dark->y;
+            if (sy < 0 || dy < 0 || sy >= original->h || dy >= dark->h) {
+                continue;
+            }
+            u8* srow = original->samples + (size_t)sy * (size_t)original->stride;
+            u8* drow = dark->samples + (size_t)dy * (size_t)dark->stride;
+            for (int x = r.x0; x < r.x1; x++) {
+                int sx = x - original->x;
+                int dx = x - dark->x;
+                if (sx < 0 || dx < 0 || sx >= original->w || dx >= dark->w) {
+                    continue;
+                }
+                u8* sp = srow + (size_t)sx * (size_t)original->n;
+                u8* dp = drow + (size_t)dx * (size_t)dark->n;
+                MapPdfSignatureDarkRgb(sp[0], sp[1], sp[2], tr, tg, tb, br, bgg, bb, &dp[0], &dp[1], &dp[2]);
+            }
+        }
+    }
+}
+
+// Plain replay of the same display list (page + annotations) for the regions we
+// paste back. Object-level dark mode has already recolored `dark` in place.
+static void RestorePdfAnnotOriginalColorsFromPage(fz_context* ctx, fz_page* page, pdf_page* pdfpage, fz_matrix ctm,
+                                                  fz_irect ibounds, fz_pixmap* dark, const char* usage,
+                                                  fz_cookie* cookie) {
+    if (!ctx || !page || !pdfpage || !dark || !pdf_first_annot(ctx, pdfpage)) {
+        return;
+    }
+    fz_pixmap* original = nullptr;
+    fz_device* dev = nullptr;
+    fz_var(original);
+    fz_var(dev);
+    fz_try(ctx) {
+        original = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx), ibounds, nullptr, 1);
+        fz_clear_pixmap_with_value(ctx, original, 0xff);
+        dev = fz_new_draw_device(ctx, ctm, original);
+        pdf_run_page_with_usage(ctx, pdfpage, dev, fz_identity, usage ? usage : "View", cookie);
+        fz_close_device(ctx, dev);
+        dev = nullptr;
+        RestorePdfAnnotOriginalColorsOnPixmap(ctx, page, ctm, original, dark);
+    }
+    fz_always(ctx) {
+        fz_drop_device(ctx, dev);
+        fz_drop_pixmap(ctx, original);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+}
+
+static void RestorePdfAnnotOriginalColorsFromList(fz_context* ctx, fz_page* page, fz_display_list* list, fz_matrix ctm,
+                                                  fz_irect ibounds, fz_pixmap* dark, fz_cookie* cookie) {
+    if (!ctx || !page || !list || !dark) {
+        return;
+    }
+    pdf_page* pdfpage = pdf_page_from_fz_page(ctx, page);
+    if (!pdfpage || !pdf_first_annot(ctx, pdfpage)) {
+        return;
+    }
+    fz_pixmap* original = nullptr;
+    fz_device* dev = nullptr;
+    fz_var(original);
+    fz_var(dev);
+    fz_try(ctx) {
+        original = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx), ibounds, nullptr, 1);
+        fz_clear_pixmap_with_value(ctx, original, 0xff);
+        dev = fz_new_draw_device(ctx, ctm, original);
+        fz_run_display_list(ctx, list, dev, fz_identity, fz_infinite_rect, cookie);
+        fz_close_device(ctx, dev);
+        dev = nullptr;
+        RestorePdfAnnotOriginalColorsOnPixmap(ctx, page, ctm, original, dark);
+    }
+    fz_always(ctx) {
+        fz_drop_device(ctx, dev);
+        fz_drop_pixmap(ctx, original);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+}
+
 // Rotate around the page center in fitz space, after the view scale. The angle
 // is the detector's correction (already the opposite of the bitmap line tilt).
 static fz_matrix WithPageDeskew(fz_matrix ctm, fz_rect pageBox, float deg) {
@@ -9067,6 +9823,9 @@ static RenderedBitmap* GetOrBuildLaTeXFollowThemePageBitmap(EngineMupdf* engine,
             }
             UpdateBitmapColors(bitmap->GetBitmap(), darkProfile->foreground, darkProfile->pageBackground,
                                darkProfile->linkColor, skipPtr);
+            if (!engine->hideAnnotations) {
+                RestorePdfAnnotOriginalColorsOnBitmap(ctx, page, ctm, pix, bitmap->GetBitmap());
+            }
         }
     }
     fz_always(ctx) {
@@ -11203,6 +11962,9 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                         }
                         UpdateBitmapColors(bitmap->GetBitmap(), darkProfile->foreground, darkProfile->pageBackground,
                                            darkProfile->linkColor, skipPtr);
+                        if (!hideAnnotations) {
+                            RestorePdfAnnotOriginalColorsOnBitmap(ctx, page, ctm, pix, bitmap->GetBitmap());
+                        }
                     }
                 }
             } else {
@@ -11221,6 +11983,9 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                     PdfCadEnhancePixmap(ctx, pix, zoom, true);
                 }
                 JoinSplitBlitOntoPixmap(ctx, this, pageNo, pix, ctm);
+                if (!hideAnnotations) {
+                    RestorePdfAnnotOriginalColorsFromList(ctx, page, keptList, ctm, ibounds, pix, fzcookie);
+                }
                 bitmap = NewRenderedFzPixmap(ctx, pix);
             }
         }
@@ -11327,6 +12092,9 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                     pix = bin;
                 }
             }
+            if (!hideAnnotations && darkProfile && !followBitmapRecolor && !paperScanBinarize) {
+                RestorePdfAnnotOriginalColorsFromPage(ctx, page, pdfpage, ctm, ibounds, pix, usage, fzcookie);
+            }
             bitmap = NewRenderedFzPixmap(ctx, pix);
             if (bitmap && followBitmapRecolor && darkProfile && !paperScanBinarize) {
                 Vec<Rect> skipRects;
@@ -11340,6 +12108,9 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                 }
                 UpdateBitmapColors(bitmap->GetBitmap(), darkProfile->foreground, darkProfile->pageBackground,
                                    darkProfile->linkColor, skipPtr);
+                if (!hideAnnotations && !paperScanBinarize) {
+                    RestorePdfAnnotOriginalColorsOnBitmap(ctx, page, ctm, pix, bitmap->GetBitmap());
+                }
             }
         }
         fz_always(ctx) {
@@ -11389,6 +12160,9 @@ RenderedBitmap* EngineMupdf::RenderPage(RenderPageArgs& args) {
                     }
                     UpdateBitmapColors(bitmap->GetBitmap(), darkProfile->foreground, darkProfile->pageBackground,
                                        darkProfile->linkColor, skipPtr);
+                    if (!hideAnnotations) {
+                        RestorePdfAnnotOriginalColorsOnBitmap(ctx, page, ctm, pix, bitmap->GetBitmap());
+                    }
                 }
             }
             fz_always(ctx) {

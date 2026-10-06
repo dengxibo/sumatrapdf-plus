@@ -24,6 +24,7 @@
 #include "Commands.h"
 #include "CharConv.h"
 #include "UpdateCheckPolicy.h"
+#include "TocAiPrompts.h"
 
 #include <float.h>
 #include <math.h>
@@ -364,6 +365,25 @@ static void charconv_test() {
     }
 }
 
+static bool FloatNear(float a, float b) {
+    float d = a - b;
+    if (d < 0) {
+        d = -d;
+    }
+    return d < 0.001f;
+}
+
+static void SelectionHeightSettingsTest() {
+    auto* prefs = (GlobalPrefs*)DeserializeStruct(&gGlobalPrefsInfo, nullptr);
+    utassert(FloatNear(prefs->fixedPageUI.selectionHeightRatio, 1.35f));
+    prefs->fixedPageUI.selectionHeightRatio = 0.85f;
+    AutoFree saved((char*)SerializeStruct(&gGlobalPrefsInfo, prefs).data());
+    auto* restored = (GlobalPrefs*)DeserializeStruct(&gGlobalPrefsInfo, saved.data);
+    utassert(FloatNear(restored->fixedPageUI.selectionHeightRatio, 0.85f));
+    FreeStruct(&gGlobalPrefsInfo, restored);
+    FreeStruct(&gGlobalPrefsInfo, prefs);
+}
+
 static void AiTocSettingsRoundTripTest() {
     auto* prefs = (GlobalPrefs*)DeserializeStruct(&gGlobalPrefsInfo, nullptr);
     const char* profiles =
@@ -400,7 +420,40 @@ static void WheelScrollPixelsTest() {
     utassert(WheelScrollPixels(-120 * 4, 16, 40, remainder) == 192);
 }
 
+static void PrintedTocPromptTest() {
+    // Own copies: building the next prompt must not invalidate the one under test.
+    AutoFreeStr web(str::Dup(BuildPrintedTocPromptTemp(PrintedTocPromptFormat::Json)));
+    AutoFreeStr extract(str::Dup(BuildPrintedTocPromptTemp(PrintedTocPromptFormat::ExtractCsv)));
+    AutoFreeStr levels(str::Dup(BuildPrintedTocPromptTemp(PrintedTocPromptFormat::LevelsCsv)));
+    const char* split = str::Find(web.Get(), "\n\n");
+    utassert(split != nullptr);
+    if (!split) return;
+    size_t coreLen = split - web.Get();
+    utassert(coreLen > 1000);
+    utassert(strncmp(web.Get(), extract.Get(), coreLen) == 0);
+    utassert(strncmp(web.Get(), levels.Get(), coreLen) == 0);
+    utassert(str::Find(extract.Get(), "\n\n") == extract.Get() + coreLen);
+    utassert(str::Find(levels.Get(), "\n\n") == levels.Get() + coreLen);
+    utassert(str::Find(web.Get(), "不要猜测缺失页码") != nullptr);
+    utassert(str::Find(web.Get(), "禁止 LaTeX") != nullptr);
+    utassert(str::Find(web.Get(), "必须逐条拆开") != nullptr);
+    utassert(str::Find(web.Get(), "只输出按阅读顺序的主目录") != nullptr);
+    utassert(str::Find(split, "只返回合法 JSON") != nullptr);
+    utassert(str::Find(extract.Get() + coreLen, "title,page_number") != nullptr);
+    utassert(str::Find(extract.Get() + coreLen, "不输出层级") != nullptr);
+    utassert(str::Find(levels.Get() + coreLen, "title,page_number,level") != nullptr);
+    utassert(str::Find(levels.Get() + coreLen, "保持输入标题数量、顺序和页码（包括 null）") != nullptr);
+    utassert(str::Find(extract.Get() + coreLen, "items") == nullptr);
+    utassert(str::Find(levels.Get() + coreLen, "items") == nullptr);
+    AutoFreeStr body(BuildBodyTocPrompt(42, "<CANDIDATE id=\"C00012\">测试标题</CANDIDATE>"));
+    utassert(str::Find(body.Get(), "PDF_TOTAL_PAGES=42") != nullptr);
+    utassert(str::Find(body.Get(), "C00012") != nullptr);
+    utassert(str::Find(body.Get(), "<candidates>") != nullptr);
+    utassert(str::Find(body.Get(), "title,page_number") == nullptr);
+}
+
 void SumatraPDF_UnitTests() {
+    PrintedTocPromptTest();
     WheelScrollPixelsTest();
     parseCommandsTest();
     colorTest();
@@ -411,4 +464,5 @@ void SumatraPDF_UnitTests() {
     hexstrTest();
     UpdateCheckPolicyTest();
     AiTocSettingsRoundTripTest();
+    SelectionHeightSettingsTest();
 }

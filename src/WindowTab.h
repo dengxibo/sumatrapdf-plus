@@ -11,6 +11,7 @@ struct MainWindow;
 struct TocCalibSession;
 struct StrBuilder;
 struct ReadAloudHighlightMap;
+struct PdfDeletedAnnotCover;
 
 /* Data related to a single document loaded into a tab/window */
 /* (none of these depend on MainWindow, so that a WindowTab could
@@ -30,8 +31,11 @@ struct WindowTab {
     // state of the table of contents
     bool showToc = false;
     bool showTocPresentation = false;
-    // SidebarView: 0 bookmarks, 1 thumbnails, 2 favorites
+    // SidebarView: 0 bookmarks, 1 thumbnails, 2 favorites, 3 AI
     int sidebarView = 0;
+    // Runtime Ask AI conversation for this tab. Owned by InlineTranslate.cpp.
+    // Not written to settings.
+    void* askAiState = nullptr;
     // an array of ids for ToC items that have been expanded/collapsed by user
     Vec<int> tocState;
     // canvas dimensions when the document was last visible
@@ -105,6 +109,11 @@ struct WindowTab {
         Annotation* annot = nullptr;
     };
     Vec<PdfMarkupOverlayAnnot> pdfMarkupOverlays;
+
+    // Deleted marks stay in the old page bitmap until that tile is rendered again.
+    // These covers hide them on the next paint. Owned pointers; free with
+    // ClearPdfDeletedAnnotCovers.
+    Vec<PdfDeletedAnnotCover*> pdfDeletedAnnotCovers;
 
     HWND hwndPDFInfo = nullptr;
     HWND hwndPDFOutline = nullptr;

@@ -120,6 +120,26 @@ static INT_PTR CALLBACK TocDialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             SetCurrentModelessDialog(hwnd);
         }
         AppDialogApplyChrome(hwnd);
+        AppDialogUseStandardControls(hwnd);
+        // Same native measured button dimensions as annotation actions, while
+        // retaining each group's right alignment and the existing page layout.
+        const int buttons[] = {100, 103, IDCANCEL, IDOK};
+        int methodWidth = 0;
+        if (data->method) {
+            methodWidth =
+                std::max(ButtonGetIdealSize(GetDlgItem(hwnd, 100)).dx, ButtonGetIdealSize(GetDlgItem(hwnd, 103)).dx);
+        }
+        for (int id : buttons) {
+            HWND button = GetDlgItem(hwnd, id);
+            if (!button) continue;
+            RECT rect{};
+            GetWindowRect(button, &rect);
+            MapWindowPoints(nullptr, hwnd, (POINT*)&rect, 2);
+            Size size = ButtonGetIdealSize(button);
+            int width = data->method && (id == 100 || id == 103) ? methodWidth : size.dx;
+            int centerY = (rect.top + rect.bottom) / 2;
+            MoveWindow(button, rect.right - width, centerY - size.dy / 2, width, size.dy, TRUE);
+        }
         CenterDialog(hwnd);
 
         int focus = IDCANCEL;

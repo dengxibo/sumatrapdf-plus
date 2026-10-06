@@ -25,6 +25,7 @@ constexpr int kSidebarScrollbarMaskClientOverlap = 2;
 bool HandleSidebarSplitterHit(MainWindow* win, HWND sourceHwnd, UINT msg, LPARAM lp);
 // Grow the ToC sidebar to at least minDx (clamped to half the frame). No-op if already wide enough.
 void EnsureSidebarDxAtLeast(MainWindow* win, int minDx);
+void SetSidebarColumnDx(MainWindow* win, int dx);
 
 constexpr const char* kWebsiteURL = "https://www.sumatrapdfreader.org/";
 constexpr const char* kManualURL = "https://www.sumatrapdfreader.org/manual";
@@ -320,7 +321,12 @@ void RebuildMenuBarForWindow(MainWindow* win);
 void DeleteMainWindow(MainWindow* win);
 void SwitchToDisplayMode(MainWindow* win, DisplayMode displayMode, bool keepContinuous = false);
 void MainWindowRerender(MainWindow* win, bool includeNonClientArea = false);
+// Repaint annotation overlays on the current page bitmap. Does not drop
+// cached tiles, so a newly drawn stroke stays on screen.
+void RefreshAnnotationOverlay(MainWindow* win);
 void MainWindowRerenderAnnotationChange(MainWindow* win, int pageNo, Annotation* overlayAnnot = nullptr);
+// Keep a stand-in on the page until the tile that includes this annotation is ready.
+void MarkPdfAnnotationStandIn(WindowTab* tab, Annotation* annot);
 // A resize-drag render finished. Start the next one if the frame moved again.
 void ContinueAnnotationResizeRender(DisplayModel* dm, int pageNo);
 LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);

@@ -66,6 +66,8 @@ enum class TbIcon {
     FavAdd,
     FavRemove,
     AnnotSignature,
+    SidebarAi,
+    SidebarAnnotations,
     kMax
 };
 

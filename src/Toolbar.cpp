@@ -35,6 +35,7 @@ extern "C" {
 #include "Menu.h"
 #include "SearchAndDDE.h"
 #include "Toolbar.h"
+#include "FloatingPopupStyle.h"
 #include "HandwrittenSignature.h"
 #include "FindBar.h"
 #include "TextToSpeech.h"
@@ -80,32 +81,32 @@ constexpr int WarningMsgId = (int)CmdLast + 17;
 static ToolbarButtonInfo gToolbarButtons[] = {
     {TbIcon::Open, CmdOpenFile, _TRN("Open")},
     {TbIcon::Print, CmdPrint, _TRN("Print")},
-    {TbIcon::None, 0, nullptr},          // separator
+    {TbIcon::None, 0, nullptr},
     {TbIcon::None, PageInfoId, nullptr}, // text box for page number + show current page / no of pages
     {TbIcon::PagePrev, CmdGoToPrevPage, _TRN("Previous Page")},
     {TbIcon::PageNext, CmdGoToNextPage, _TRN("Next Page")},
-    {TbIcon::None, 0, nullptr}, // separator
     {TbIcon::NavigateBack, CmdNavigateBack, _TRN("Navigate Back")},
     {TbIcon::NavigateForward, CmdNavigateForward, _TRN("Navigate Forward")},
-    {TbIcon::None, 0, nullptr}, // separator
-    {TbIcon::Bookmark, CmdToggleBookmarks, _TRN("Show &Bookmarks")},
+    {TbIcon::None, 0, nullptr},
+    {TbIcon::Bookmark, CmdToggleBookmarks, _TRN("Show Sidebar")},
     {TbIcon::LayoutContinuous, CmdZoomFitWidthAndContinuous, _TRN("Fit Width and Show Pages Continuously")},
     {TbIcon::LayoutSinglePage, CmdZoomFitPageAndSinglePage, _TRN("Fit a Single Page")},
     {TbIcon::RotateLeft, CmdRotateLeft, _TRN("Rotate &Left")},
     {TbIcon::RotateRight, CmdRotateRight, _TRN("Rotate &Right")},
+    {TbIcon::None, 0, nullptr},
     {TbIcon::ZoomOut, CmdZoomOut, _TRN("Zoom Out")},
     {TbIcon::ZoomIn, CmdZoomIn, _TRN("Zoom In")},
     {TbIcon::EbookFontSizeDecrease, CmdEbookFontSizeDecrease, _TRN("Decrease Font Size")},
     {TbIcon::EbookFontSizeIncrease, CmdEbookFontSizeIncrease, _TRN("Increase Font Size")},
-    {TbIcon::None, 0, nullptr}, // separator
-    {TbIcon::Search, CmdFindFirst, _TRN("Find")},
+    {TbIcon::None, 0, nullptr},
     {TbIcon::AnnotLine, CmdCreateAnnotLine, _TRN("Line Annotation (Ctrl+click to lock)")},
     {TbIcon::AnnotInk, CmdCreateAnnotInk, _TRN("Ink Annotation (Ctrl+click to lock)")},
-    {TbIcon::AnnotSquare, CmdCreateAnnotSquare, _TRN("Rectangle Annotation (Ctrl+click to lock)")},
     {TbIcon::AnnotCircle, CmdCreateAnnotCircle, _TRN("Circle Annotation (Ctrl+click to lock)")},
+    {TbIcon::AnnotSquare, CmdCreateAnnotSquare, _TRN("Rectangle Annotation (Ctrl+click to lock)")},
     {TbIcon::AnnotText, CmdCreateAnnotText, _TRN("Text Annotation (Ctrl+click to lock)")},
+    {TbIcon::AnnotStamp, CmdCreateAnnotStamp, _TRN("Stamp")},
     {TbIcon::AnnotSignature, CmdAddHandwrittenSignature, _TRN("Handwritten Signature")},
-    {TbIcon::Dictionary, CmdToggleDoubleClickWordLookup, _TRN("Toggle Double-Click Word Lookup")},
+    {TbIcon::None, 0, nullptr},
     {TbIcon::DisplayFilter, CmdDisplayFilter, _TRN("Enhance Display")},
     {TbIcon::ThemeMoon, CmdToggleLightDarkTheme, _TRN("Toggle &Light/Dark Theme")},
     {TbIcon::DocColorFollowTheme, CmdSetPdfDocumentColorModeBlack,
@@ -430,6 +431,7 @@ static bool IsCmdAvailable(MainWindow* win, int cmdId) {
         case CmdCreateAnnotCircle:
         case CmdCreateAnnotLine:
         case CmdCreateAnnotInk:
+        case CmdCreateAnnotStamp:
         case CmdAddHandwrittenSignature:
             if (!gGlobalPrefs->showAnnotToolbarButtons) {
                 return false;
@@ -459,9 +461,9 @@ static bool IsCmdEnabled(MainWindow* win, int cmdId) {
         case CmdToggleLightDarkTheme:
             return true;
         case CmdEbookFontSizeDecrease:
-            return IsReflowableEbookTabForFontMenu(win->CurrentTab()) && CanDecreaseEbookFontSize();
+            return SupportsEbookFontSizeChange(win->CurrentTab()) && CanDecreaseEbookFontSize();
         case CmdEbookFontSizeIncrease:
-            return IsReflowableEbookTabForFontMenu(win->CurrentTab()) && CanIncreaseEbookFontSize();
+            return SupportsEbookFontSizeChange(win->CurrentTab()) && CanIncreaseEbookFontSize();
         case CmdSetPdfDocumentColorModeAuto:
         case CmdSetPdfDocumentColorModeBlack:
         case CmdSetPdfDocumentColorModeLight:
@@ -522,11 +524,15 @@ static bool IsCmdEnabled(MainWindow* win, int cmdId) {
     }
 }
 
-static TBBUTTON TbButtonFromButtonInfo(const ToolbarButtonInfo& bi, bool noTranslate = false) {
+static TBBUTTON TbButtonFromButtonInfo(const ToolbarButtonInfo& bi, bool noTranslate = false, int sepDx = 8) {
     TBBUTTON b{};
     b.idCommand = bi.cmdId;
     if (SkipBuiltInButton(bi)) {
         b.fsStyle = BTNS_SEP;
+        // Page-number slot is also TbIcon::None; only real group gaps get a width.
+        if (bi.cmdId == 0 && sepDx > 0) {
+            b.iBitmap = sepDx;
+        }
         return b;
     }
     b.iBitmap = (int)bi.bmpIndex;
@@ -618,13 +624,17 @@ void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility) {
         auto& tb = GetToolbarButtonInfoByIdx(i);
         int cmdId = tb.cmdId;
         if (setButtonsVisibility && cmdId != WarningMsgId && cmdId != 0) {
-            bool hide = !IsCmdAvailable(win, cmdId);
+            // Document capabilities affect enabled state, not toolbar geometry.
+            // Still honor the explicit preference to hide annotation tools.
+            bool annotationTool =
+                (cmdId >= CmdCreateAnnotFirst && cmdId <= CmdCreateAnnotLast) || cmdId == CmdAddHandwrittenSignature;
+            bool hide = annotationTool && !gGlobalPrefs->showAnnotToolbarButtons;
             UpdateToolbarButtonStateByIdx(hwnd, i, hide, TBSTATE_HIDDEN);
         }
         if (SkipBuiltInButton(tb)) {
             continue;
         }
-        bool isEnabled = IsCmdEnabled(win, cmdId);
+        bool isEnabled = IsCmdAvailable(win, cmdId) && IsCmdEnabled(win, cmdId);
         UpdateToolbarButtonStateByIdx(hwnd, i, isEnabled, TBSTATE_ENABLED);
 
         if (cmdId == CmdReadAloud || cmdId == CmdPauseReadAloud) {
@@ -645,6 +655,33 @@ void ToolbarUpdateStateForWindow(MainWindow* win, bool setButtonsVisibility) {
             tbi.pszText = (WCHAR*)ToWStrTemp(tip);
             SendMessageW(hwnd, TB_SETBUTTONINFO, i, (LPARAM)&tbi);
         }
+    }
+
+    if (setButtonsVisibility) {
+        // Hidden groups must not leave multiple separator slots between the
+        // remaining buttons. Recompute from button visibility on every tab switch.
+        int separator = -1;
+        bool hasButton = false;
+        for (int i = 0; i < n; i++) {
+            auto& tb = GetToolbarButtonInfoByIdx(i);
+            if (tb.cmdId == 0 && SkipBuiltInButton(tb)) {
+                UpdateToolbarButtonStateByIdx(hwnd, i, true, TBSTATE_HIDDEN);
+                if (hasButton && separator < 0) {
+                    separator = i;
+                }
+                continue;
+            }
+            TBBUTTON button{};
+            if (!SendMessageW(hwnd, TB_GETBUTTON, i, (LPARAM)&button) || (button.fsState & TBSTATE_HIDDEN)) {
+                continue;
+            }
+            if (separator >= 0) {
+                UpdateToolbarButtonStateByIdx(hwnd, separator, false, TBSTATE_HIDDEN);
+                separator = -1;
+            }
+            hasButton = true;
+        }
+        SendMessageW(hwnd, TB_AUTOSIZE, 0, 0);
     }
 
     // reposition the floating find bar over the search icon (and hide it if the
@@ -942,7 +979,104 @@ static LRESULT PrepaintToolbarSeparatorItem(NMTBCUSTOMDRAW* custDraw) {
     return TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND | TBCDRF_NOEDGES | CDRF_SKIPDEFAULT | CDRF_NOTIFYPOSTPAINT;
 }
 
+static bool IsToolbarGroupSeparator(HWND hwnd, int idx) {
+    TBBUTTON tb{};
+    if (!IsToolbarSeparatorAtIndex(hwnd, idx, &tb)) {
+        return false;
+    }
+    return tb.idCommand == 0;
+}
+
+// Draw only the first separator between two visible buttons, so a hidden
+// group (annotations off, for example) does not leave a double line.
+static bool ShouldDrawToolbarGroupSeparator(HWND hwnd, int idx) {
+    if (!IsToolbarGroupSeparator(hwnd, idx) || IsToolbarButtonHidden(hwnd, idx)) {
+        return false;
+    }
+    auto nearest = [&](int start, int delta) -> int {
+        int count = (int)SendMessageW(hwnd, TB_BUTTONCOUNT, 0, 0);
+        for (int j = start; j >= 0 && j < count; j += delta) {
+            if (IsToolbarButtonHidden(hwnd, j) || IsToolbarGroupSeparator(hwnd, j)) {
+                continue;
+            }
+            return j;
+        }
+        return -1;
+    };
+    int left = nearest(idx - 1, -1);
+    int right = nearest(idx + 1, 1);
+    if (left < 0 || right < 0) {
+        return false;
+    }
+    for (int j = left + 1; j < idx; j++) {
+        if (IsToolbarGroupSeparator(hwnd, j) && !IsToolbarButtonHidden(hwnd, j)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void DrawToolbarGroupSeparatorLine(HWND hwnd, HDC hdc, const RECT& rc) {
+    int h = rc.bottom - rc.top;
+    int w = rc.right - rc.left;
+    if (h < 6 || w < 1) {
+        return;
+    }
+    // A fixed 9 DIP inset was taller than the icon row, so the line was skipped.
+    int inset = h / 5;
+    if (inset < 2) {
+        inset = 2;
+    }
+    if (inset * 2 > h - 4) {
+        inset = 2;
+    }
+    int y1 = rc.top + inset;
+    int y2 = rc.bottom - inset;
+    int x = rc.left + w / 2;
+    int thick = DpiScale(hwnd, 1);
+    if (thick < 1) {
+        thick = 1;
+    }
+    COLORREF bgCol = ThemeChromeBackgroundColor();
+    HPEN pen = CreatePen(PS_SOLID, thick, AccentColor(bgCol, 64));
+    HGDIOBJ old = SelectObject(hdc, pen);
+    MoveToEx(hdc, x, y1, nullptr);
+    LineTo(hdc, x, y2);
+    SelectObject(hdc, old);
+    DeleteObject(pen);
+}
+
+static void DrawToolbarGroupSeparator(HWND hwnd, HDC hdc, const RECT& rc) {
+    COLORREF bgCol = ThemeChromeBackgroundColor();
+    HBRUSH br = CreateSolidBrush(bgCol);
+    FillRect(hdc, &rc, br);
+    DeleteObject(br);
+    DrawToolbarGroupSeparatorLine(hwnd, hdc, rc);
+}
+
+// Drawn after the toolbar's own paint. Custom-draw fills the slot with the
+// chrome color and the system groove can land on top of an earlier line.
+static void PaintToolbarGroupSeparatorLines(HWND hwnd, HDC hdc) {
+    int count = (int)SendMessageW(hwnd, TB_BUTTONCOUNT, 0, 0);
+    for (int i = 0; i < count; i++) {
+        if (!ShouldDrawToolbarGroupSeparator(hwnd, i)) {
+            continue;
+        }
+        RECT rc{};
+        if (!SendMessageW(hwnd, TB_GETITEMRECT, i, (LPARAM)&rc)) {
+            continue;
+        }
+        DrawToolbarGroupSeparatorLine(hwnd, hdc, rc);
+    }
+}
+
 static void PostpaintToolbarSeparatorItem(NMTBCUSTOMDRAW* custDraw) {
+    HWND hwnd = custDraw->nmcd.hdr.hwndFrom;
+    int idx = (int)custDraw->nmcd.dwItemSpec;
+    if (ShouldDrawToolbarGroupSeparator(hwnd, idx)) {
+        DrawToolbarGroupSeparator(hwnd, custDraw->nmcd.hdc, custDraw->nmcd.rc);
+        return;
+    }
     // light mode still draws BTNS_SEP grooves after ITEMPREPAINT; overpaint in POSTPAINT
     COLORREF bgCol = ThemeChromeBackgroundColor();
     HBRUSH br = CreateSolidBrush(bgCol);
@@ -962,7 +1096,12 @@ static void PaintToolbarSeparatorBackgrounds(HWND hwnd, HDC hdc) {
             continue;
         }
         RECT rc{};
-        if (SendMessageW(hwnd, TB_GETITEMRECT, i, (LPARAM)&rc)) {
+        if (!SendMessageW(hwnd, TB_GETITEMRECT, i, (LPARAM)&rc)) {
+            continue;
+        }
+        if (ShouldDrawToolbarGroupSeparator(hwnd, i)) {
+            DrawToolbarGroupSeparator(hwnd, hdc, rc);
+        } else {
             FillRect(hdc, &rc, br);
         }
     }
@@ -1063,28 +1202,100 @@ LRESULT CALLBACK ReBarWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
     return DefSubclassProc(hWnd, uMsg, wParam, lParam);
 }
 
+// Windows text boxes use a 4px corner. The ellipse passed to RoundRect is the diameter.
+static int ToolbarFieldCornerEllipse(HWND hwnd, int height) {
+    int d = DpiScale(hwnd, 8);
+    if (height > 4 && d > height - 2) {
+        d = height - 2;
+    }
+    if (d < 4) {
+        d = 4;
+    }
+    return d;
+}
+
+static COLORREF ToolbarEditFillColor() {
+    return ThemeChromeBackgroundColor();
+}
+
+static HBRUSH ToolbarEditFillBrush() {
+    static HBRUSH brush = nullptr;
+    static COLORREF color = CLR_INVALID;
+    COLORREF newColor = ToolbarEditFillColor();
+    if (color != newColor) {
+        if (brush) {
+            DeleteObject(brush);
+        }
+        brush = CreateSolidBrush(newColor);
+        color = newColor;
+    }
+    return brush;
+}
+
+// The edit is a sibling laid over this static. Clip it to the same round rect
+// so its square fill does not cover the corners.
+static void ClipEditToRoundField(HWND field, HWND edit) {
+    if (!field || !edit) {
+        return;
+    }
+    RECT fieldRc{};
+    RECT editRc{};
+    if (!GetWindowRect(field, &fieldRc) || !GetWindowRect(edit, &editRc)) {
+        return;
+    }
+    int height = fieldRc.bottom - fieldRc.top;
+    int ellipse = ToolbarFieldCornerEllipse(field, height);
+    int left = fieldRc.left - editRc.left;
+    int top = fieldRc.top - editRc.top;
+    int right = fieldRc.right - editRc.left;
+    int bottom = fieldRc.bottom - editRc.top;
+    HRGN rgn = CreateRoundRectRgn(left, top, right + 1, bottom + 1, ellipse, ellipse);
+    if (!rgn) {
+        return;
+    }
+    if (!SetWindowRgn(edit, rgn, TRUE)) {
+        DeleteObject(rgn);
+    }
+}
+
+static void PaintToolbarRoundField(HWND hwnd, HDC hdc, bool focused) {
+    RECT rc{};
+    GetClientRect(hwnd, &rc);
+    COLORREF chrome = ThemeChromeBackgroundColor();
+    HBRUSH chromeBr = CreateSolidBrush(chrome);
+    FillRect(hdc, &rc, chromeBr);
+    DeleteObject(chromeBr);
+
+    COLORREF fill = ToolbarEditFillColor();
+    COLORREF border = AccentColor(chrome, focused ? 72 : 36);
+    int arc = ToolbarFieldCornerEllipse(hwnd, rc.bottom - rc.top);
+    Rect box(rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
+    FillFloatingPopupRoundedRect(hdc, box, arc, fill);
+    StrokeFloatingPopupRoundedRect(hdc, box, arc, border);
+}
+
 static WNDPROC DefWndProcEditBg = nullptr;
 static LRESULT CALLBACK WndProcEditBg(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-    LRESULT res = CallWindowProc(DefWndProcEditBg, hwnd, msg, wp, lp);
-    if (msg == WM_PAINT) {
-        HDC hdc = GetDC(hwnd);
-        RECT rc;
-        GetClientRect(hwnd, &rc);
-        COLORREF bgCol2 = ThemeChromeBackgroundColor();
-        COLORREF col = AccentColor(bgCol2, 40);
-        HBRUSH br = CreateSolidBrush(col);
-        FrameRect(hdc, &rc, br);
-        DeleteObject(br);
-        ReleaseDC(hwnd, hdc);
+    if (msg == WM_ERASEBKGND) {
+        return 1;
     }
-    return res;
+    if (msg == WM_PAINT) {
+        MainWindow* win = FindMainWindowByHwnd(hwnd);
+        bool focused = win && HwndIsFocused(win->hwndPageEdit);
+        PAINTSTRUCT ps{};
+        HDC hdc = BeginPaint(hwnd, &ps);
+        PaintToolbarRoundField(hwnd, hdc, focused);
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    return CallWindowProc(DefWndProcEditBg, hwnd, msg, wp, lp);
 }
 
 static WNDPROC DefWndProcToolbar = nullptr;
 
 static bool ShowEbookFontSizeContextMenu(HWND hwnd, LPARAM lp) {
     MainWindow* win = FindMainWindowByHwnd(hwnd);
-    if (!win || !IsReflowableEbookTabForFontMenu(win->CurrentTab())) {
+    if (!win || !SupportsEbookFontSizeChange(win->CurrentTab())) {
         return false;
     }
 
@@ -1124,6 +1335,23 @@ static bool ShowEbookFontSizeContextMenu(HWND hwnd, LPARAM lp) {
 }
 
 static LRESULT CALLBACK WndProcToolbar(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == WM_WINDOWPOSCHANGED || msg == WM_SIZE) {
+        MainWindow* win = FindMainWindowByHwnd(hwnd);
+        if (win) {
+            ToolbarFindLayout(win);
+        }
+    }
+    if (msg == WM_PAINT || msg == WM_PRINTCLIENT) {
+        LRESULT res = CallWindowProc(DefWndProcToolbar, hwnd, msg, wp, lp);
+        HDC hdc = (msg == WM_PRINTCLIENT) ? (HDC)wp : GetDC(hwnd);
+        if (hdc) {
+            PaintToolbarGroupSeparatorLines(hwnd, hdc);
+            if (msg == WM_PAINT) {
+                ReleaseDC(hwnd, hdc);
+            }
+        }
+        return res;
+    }
     if (WM_CONTEXTMENU == msg && ShowEbookFontSizeContextMenu(hwnd, lp)) {
         return 0;
     }
@@ -1139,9 +1367,9 @@ static LRESULT CALLBACK WndProcToolbar(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
             bool isEditCtrl = (win->hwndFindEdit == hwndCtrl || win->hwndPageEdit == hwndCtrl);
             SetTextColor(hdc, ThemeWindowTextColor());
             SetBkMode(hdc, TRANSPARENT);
-            if ((isBgCtrl || isEditCtrl) && !ThemeColorizeControls()) {
-                SetBkColor(hdc, RGB(0xff, 0xff, 0xff));
-                return (LRESULT)GetStockObject(WHITE_BRUSH);
+            if (isBgCtrl || isEditCtrl) {
+                SetBkColor(hdc, ToolbarEditFillColor());
+                return (LRESULT)ToolbarEditFillBrush();
             }
             return (LRESULT)win->brControlBgColor;
         }
@@ -1353,6 +1581,7 @@ static bool LayoutToolbarFindControls(MainWindow* win, Size size, int findDy, in
 
 void UpdateToolbarFindText(MainWindow* win) {
     FindBarReposition(win);
+    ToolbarFindLayout(win);
 }
 
 void UpdateAnnotToolToolbarButtons(MainWindow* win) {
@@ -1478,6 +1707,10 @@ static LRESULT CALLBACK WndProcPageBox(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
                 AdvanceFocus(win);
                 return 1;
         }
+    } else if (msg == WM_SETFOCUS || msg == WM_KILLFOCUS) {
+        if (win->hwndPageBg) {
+            InvalidateRect(win->hwndPageBg, nullptr, FALSE);
+        }
     } else if (WM_ERASEBKGND == msg) {
         RECT r;
         Edit_GetRect(hwnd, &r);
@@ -1591,6 +1824,7 @@ void UpdateToolbarPageText(MainWindow* win, int pageCount, bool updateOnly) {
     y = (pageWndRect.dy - size.dy + 1) / 2 + currY;
     int dx = pageWndRect.dx - 2 * padding;
     MoveWindow(win->hwndPageEdit, x, y, dx, size.dy, FALSE);
+    ClipEditToRoundField(win->hwndPageBg, win->hwndPageEdit);
     // in right-to-left layout, the total comes "before" the current page number
     if (IsUIRtl()) {
         currX -= size2.dx;
@@ -1891,10 +2125,9 @@ static void SyncToolbarRebarChrome(MainWindow* win) {
     // Keep borderless like the menu rebar: WS_BORDER draws a visible 1px line
     // below the toolbar when layout is correct after theme/tab switches.
     LONG style = GetWindowLong(win->hwndReBar, GWL_STYLE);
-    bool hadBorders = (style & (WS_BORDER | RBS_BANDBORDERS)) != 0;
-    if (hadBorders) {
-        style &= ~(WS_BORDER | RBS_BANDBORDERS);
-        SetWindowLong(win->hwndReBar, GWL_STYLE, style);
+    LONG newStyle = style & ~(WS_BORDER | RBS_BANDBORDERS);
+    if (style != newStyle) {
+        SetWindowLong(win->hwndReBar, GWL_STYLE, newStyle);
         SetWindowPos(win->hwndReBar, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
         SendMessageW(win->hwndToolbar, TB_AUTOSIZE, 0, 0);
     }
@@ -1910,6 +2143,7 @@ void UpdateToolbarAfterThemeChange(MainWindow* win) {
     UpdateDoubleClickWordLookupToolbarButton(win);
     UpdateAutoOcrToolbarButton(win);
     UpdateFullscreenToolbarButton(win);
+    ToolbarFindUpdateTheme(win);
     if (win->hwndReBar) {
         InvalidateRect(win->hwndReBar, nullptr, TRUE);
     }
@@ -1941,7 +2175,9 @@ void CreateToolbar(MainWindow* win) {
     SendMessageW(win->hwndReBar, RB_SETBARINFO, 0, (LPARAM)&rbi);
     SendMessageW(win->hwndReBar, RB_SETBKCOLOR, 0, ThemeChromeBackgroundColor());
 
-    style = WS_CHILD | WS_CLIPSIBLINGS | TBSTYLE_TOOLTIPS | TBSTYLE_FLAT;
+    // Clip the page box and the find field. Without this, a toolbar fill paints
+    // over those children and the query disappears until the edit paints again.
+    style = WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | TBSTYLE_TOOLTIPS | TBSTYLE_FLAT;
     style |= TBSTYLE_LIST | CCS_NODIVIDER | CCS_NOPARENTALIGN;
     exStyle = 0;
     if (isRtl) exStyle |= WS_EX_LAYOUTRTL;
@@ -1979,9 +2215,10 @@ void CreateToolbar(MainWindow* win) {
     SendMessageW(hwndToolbar, TB_SETEXTENDEDSTYLE, 0, exstyle);
 
     TBBUTTON tbButtons[kButtonsCount];
+    int sepDx = DpiScale(hwndParent, 12);
     for (int i = 0; i < kButtonsCount; i++) {
         const ToolbarButtonInfo& bi = gToolbarButtons[i];
-        tbButtons[i] = TbButtonFromButtonInfo(bi);
+        tbButtons[i] = TbButtonFromButtonInfo(bi, false, sepDx);
     }
     SendMessageW(hwndToolbar, TB_ADDBUTTONS, kButtonsCount, (LPARAM)tbButtons);
 
@@ -2064,6 +2301,7 @@ void CreateToolbar(MainWindow* win) {
     HwndSetFont(hwndToolbar, font);
 
     CreatePageBox(win, font, iconSize);
+    CreateToolbarFind(win);
     if (!DefWndProcToolbar) {
         DefWndProcToolbar = (WNDPROC)GetWindowLongPtr(win->hwndToolbar, GWLP_WNDPROC);
     }

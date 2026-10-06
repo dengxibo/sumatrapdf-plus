@@ -305,6 +305,12 @@ const fixedPageUI: Field[] = [
     ),
     "2.4",
   ),
+  mkField(
+    "SelectionHeightRatio",
+    Float,
+    1.35,
+    "height of the selection, find, and read-aloud highlight relative to the glyph band; 0.5-1.5, default 1.35; smaller values make the band thinner; out of range uses 1.35",
+  ),
   mkCompactStruct(
     "WindowMargin",
     windowMarginFixedPageUI,
@@ -470,14 +476,14 @@ const annotations: Field[] = [
     ),
     "3.6",
   ),
-  setVersion(mkField("FreeTextSize", Int, 12, "size of free text annotation"), "3.5"),
+  setVersion(mkField("FreeTextSize", Int, 21, "size of free text annotation"), "3.5"),
   setVersion(mkField("FreeTextBorderWidth", Int, 1, "width of free text annotation border"), "3.5"),
   mkField("TextIconColor", Color, "", "text icon annotation color"),
   mkField(
     "TextIconType",
     Str,
     "",
-    "type of text annotation icon: comment, help, insert, key, new paragraph, note, paragraph. If not set: note.",
+    "type of text annotation icon: comment, caret, help, insert, key, new paragraph, note, paragraph. If not set: comment.",
   ),
   setVersion(
     mkField(
@@ -896,7 +902,7 @@ const globalPrefs: Field[] = [
       "SearchUIFloating",
       Bool,
       false,
-      "if true, the find UI is a floating, movable window with a results list instead of the compact toolbar overlay",
+      "if true, Ctrl+F opens the detailed search window; the toolbar search box is always shown",
     ),
     "3.7",
   ),

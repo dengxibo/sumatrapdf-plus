@@ -345,6 +345,17 @@ int ThemeEpoch() {
     return gThemeEpoch;
 }
 
+MenuThemeColors ThemeMenuColors() {
+    if (ThemeUsesBlackChrome()) {
+        return {RGB(23, 23, 23),    RGB(51, 51, 51),    RGB(242, 242, 242), RGB(184, 184, 184),
+                RGB(111, 111, 111), RGB(36, 36, 36),    RGB(44, 44, 44),    RGB(52, 52, 52),
+                RGB(48, 48, 48),    RGB(200, 200, 200), RGB(224, 224, 224)};
+    }
+    return {RGB(52, 55, 70),    RGB(66, 68, 80),    RGB(248, 248, 242), RGB(200, 202, 211),
+            RGB(122, 128, 152), RGB(59, 62, 77),    RGB(68, 71, 90),    RGB(75, 78, 98),
+            RGB(70, 73, 87),    RGB(215, 216, 222), RGB(189, 147, 249)};
+}
+
 void SetThemeByIndex(int themeIdx) {
     ReportIf((themeIdx < 0) || (themeIdx >= gThemeCount));
     if (themeIdx >= gThemeCount) {
@@ -803,10 +814,59 @@ COLORREF ThemeFindEditBackgroundColor() {
 
 COLORREF ThemeAnnotationContentsEditBackgroundColor() {
     if (ThemeUsesDarkChrome()) {
-        // Darker than the panel so the field reads as recessed/sunken.
-        return AccentColor(ThemeWindowControlBackgroundColor(), 0, -24);
+        // Same fill DarkModeLib uses for Options edits (setCtrlBackgroundColor /
+        // ThemeChromeBackgroundColor), not a deeper pure-black recess.
+        return ThemeChromeBackgroundColor();
     }
     return AccentColor(ThemeWindowControlBackgroundColor(), 8);
+}
+
+COLORREF ThemeInspectorSecondaryTextColor() {
+    COLORREF text = ThemeWindowTextColor();
+    // Light text is dimmed. Dark text is lifted toward gray. Either way it
+    // sits one step under the primary inspector title.
+    if (ThemeUsesDarkChrome()) {
+        return AccentColor(text, 28);
+    }
+    return AccentColor(text, 36);
+}
+
+COLORREF ThemeInspectorHoverBackgroundColor() {
+    // Dark chrome: Options dialog page color (BackgroundColor), not the
+    // lightened sidebar chrome (#2F313F) or the deeper control card.
+    COLORREF bg = ThemeUsesDarkChrome() ? ThemeWindowBackgroundColor() : ThemeWindowControlBackgroundColor();
+    if (ThemeUsesDarkChrome()) {
+        return AccentColor(bg, 0, 8);
+    }
+    return AccentColor(bg, 6);
+}
+
+COLORREF ThemeInspectorSelectedBackgroundColor() {
+    COLORREF bg = ThemeUsesDarkChrome() ? ThemeWindowBackgroundColor() : ThemeWindowControlBackgroundColor();
+    if (ThemeUsesBlackChrome()) {
+        return AccentColor(bg, 0, 18);
+    }
+    if (ThemeUsesDarkChrome()) {
+        return AccentColor(bg, 0, 14);
+    }
+    return AccentColor(bg, 12);
+}
+
+COLORREF ThemeInspectorSelectedTextColor() {
+    return ThemeWindowTextColor();
+}
+
+COLORREF ThemeInspectorSeparatorColor() {
+    COLORREF bg = ThemeUsesDarkChrome() ? ThemeWindowBackgroundColor() : ThemeWindowControlBackgroundColor();
+    if (ThemeUsesBlackChrome()) {
+        return AccentColor(bg, 0, 16);
+    }
+    if (ThemeUsesDarkChrome()) {
+        // Match Options dialog edge (link-tint), not a near-white hairline.
+        return AccentColor(ThemeWindowLinkColor(), -20);
+    }
+    // Light-Warm darkens toward a warm gray. Light-White does the same on white.
+    return AccentColor(bg, 18);
 }
 
 COLORREF ThemeWindowLinkColor() {

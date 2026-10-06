@@ -16,6 +16,7 @@ extern "C" {
 
 #include "Annotation.h"
 #include "Settings.h"
+#include "Theme.h"
 #include "DocController.h"
 #include "EngineBase.h"
 #include "EngineMupdf.h"
@@ -40,13 +41,13 @@ static_assert((int)AnnotationType::Sound == (int)PDF_ANNOT_SOUND);
 static_assert((int)AnnotationType::Unknown == (int)PDF_ANNOT_UNKNOWN);
 
 // clang-format off
-const char* gAnnotationTextIcons = "Comment\0Help\0Insert\0Key\0NewParagraph\0Note\0Paragraph\0";
+const char* gAnnotationTextIcons = "Comment\0Caret\0Help\0Insert\0Key\0NewParagraph\0Note\0Paragraph\0";
 const char* gStampIcons =
     "Approved\0AsIs\0Confidential\0Departmental\0Draft\0Experimental\0Expired\0Final\0ForComment\0"
     "ForPublicRelease\0NotApproved\0NotForPublicRelease\0Sold\0TopSecret\0";
 // clang-format on
 
-static char gLastStampIcon[32] = "Draft";
+static char gLastStampIcon[32] = "Final";
 
 void RememberStampIconName(const char* name) {
     if (str::IsEmpty(name)) {
@@ -60,7 +61,7 @@ void RememberStampIconName(const char* name) {
 
 const char* DefaultStampIconName() {
     if (str::IsEmpty(gLastStampIcon)) {
-        return "Draft";
+        return "Final";
     }
     return gLastStampIcon;
 }
@@ -227,6 +228,30 @@ HBITMAP RenderAnnotationPreviewBitmap(Annotation* annot, float zoom, int rotatio
                 void* bits = nullptr;
                 hbmp = CreateDIBSection(nullptr, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
                 if (hbmp && bits) {
+                    const char* contents = pdf_annot_contents(ctx, annot->pdfannot);
+                    bool remapSignature = str::Eq(contents, "Signature");
+                    u8 tr = 0, tg = 0, tb = 0, br = 255, bgg = 255, bb = 255;
+                    if (remapSignature) {
+                        COLORREF bg = 0;
+                        COLORREF text = ThemePageRenderColors(bg, true);
+                        UnpackColor(text, tr, tg, tb);
+                        UnpackColor(bg, br, bgg, bb);
+                        remapSignature = (int)tr + (int)tg + (int)tb > (int)br + (int)bgg + (int)bb;
+                    }
+                    auto mapSample = [](int src, int textC, int bgC) -> u8 {
+                        int diff = bgC - textC;
+                        int x = src * diff + 128;
+                        x += x >> 8;
+                        x >>= 8;
+                        int v = textC + x;
+                        if (v < 0) {
+                            v = 0;
+                        }
+                        if (v > 255) {
+                            v = 255;
+                        }
+                        return (u8)v;
+                    };
                     u8* dst = (u8*)bits;
                     const u8* src = fz_pixmap_samples(ctx, pix);
                     int stride = pix->stride;
@@ -244,6 +269,30 @@ HBITMAP RenderAnnotationPreviewBitmap(Annotation* annot, float zoom, int rotatio
                                 g = p[1];
                                 b = p[2];
                                 a = p[3];
+                            }
+                            if (remapSignature && a) {
+                                int ur = (int)r * 255 / a;
+                                int ug = (int)g * 255 / a;
+                                int ub = (int)b * 255 / a;
+                                int maxC = ur > ug ? (ur > ub ? ur : ub) : (ug > ub ? ug : ub);
+                                int minC = ur < ug ? (ur < ub ? ur : ub) : (ug < ub ? ug : ub);
+                                int srcR = ur;
+                                int srcG = ug;
+                                int srcB = ub;
+                                if (maxC - minC <= 28) {
+                                    int srcLum = (ur * 54 + ug * 183 + ub * 19) >> 8;
+                                    int t;
+                                    if (srcLum < 128) {
+                                        t = (srcLum * srcLum) / 128;
+                                    } else {
+                                        int inv = 255 - srcLum;
+                                        t = 255 - (inv * inv) / 127;
+                                    }
+                                    srcR = srcG = srcB = t;
+                                }
+                                r = (u8)((int)mapSample(srcR, tr, br) * a / 255);
+                                g = (u8)((int)mapSample(srcG, tg, bgg) * a / 255);
+                                b = (u8)((int)mapSample(srcB, tb, bb) * a / 255);
                             }
                             // MuPDF draw output is premultiplied; AlphaBlend wants the same, BGRA.
                             out[0] = b;
@@ -268,6 +317,79 @@ HBITMAP RenderAnnotationPreviewBitmap(Annotation* annot, float zoom, int rotatio
         }
     }
     return hbmp;
+}
+
+static HBITMAP RenderAnnotationIconPreviewImpl(EngineMupdf* engine, int pageNo, AnnotationType type, COLORREF swatch,
+                                               const char* iconName, int size, int lineEnding, bool lineStart,
+                                               Annotation* sourceColor) {
+    if (!engine || !iconName || size < 1) {
+        return nullptr;
+    }
+    fz_context* ctx = engine->Ctx();
+    ScopedCritSec lock(&engine->docLock);
+    pdf_document* doc = nullptr;
+    pdf_obj* pageObj = nullptr;
+    pdf_page* page = nullptr;
+    HBITMAP bitmap = nullptr;
+    fz_var(doc);
+    fz_var(pageObj);
+    fz_var(page);
+    fz_var(bitmap);
+    fz_try(ctx) {
+        // Generate the actual MuPDF appearance in a disposable document, never
+        // by changing the user's annotation or its dirty/save state.
+        doc = pdf_create_document(ctx);
+        pageObj = pdf_add_page(ctx, doc, {0, 0, 100, 100}, 0, nullptr, nullptr);
+        pdf_insert_page(ctx, doc, -1, pageObj);
+        page = pdf_load_page(ctx, doc, 0);
+        pdf_annot* icon = pdf_create_annot(ctx, page, (enum pdf_annot_type)type);
+        if (lineEnding >= 0) {
+            pdf_set_annot_line(ctx, icon, {20, 30}, {50, 30});
+            pdf_set_annot_border(ctx, icon, 1.5f);
+            pdf_set_annot_line_ending_styles(ctx, icon, (enum pdf_line_ending)(lineStart ? lineEnding : 0),
+                                             (enum pdf_line_ending)(lineStart ? 0 : lineEnding));
+        } else {
+            pdf_set_annot_rect(ctx, icon, {10, 10, 34, 34});
+            pdf_set_annot_icon_name(ctx, icon, iconName);
+        }
+        u8 r, g, b;
+        UnpackColor(swatch, r, g, b);
+        float color[4] = {r / 255.f, g / 255.f, b / 255.f, 0};
+        int n = 3;
+        if (sourceColor) pdf_annot_color(ctx, sourceColor->pdfannot, &n, color);
+        pdf_set_annot_color(ctx, icon, n, color);
+        pdf_update_annot(ctx, icon);
+        fz_rect bounds = pdf_bound_annot(ctx, icon);
+        float extent = std::max(bounds.x1 - bounds.x0, bounds.y1 - bounds.y0);
+        if (extent > 0) {
+            Annotation preview;
+            preview.engine = engine;
+            preview.pageNo = pageNo;
+            preview.pdfannot = icon;
+            bitmap = RenderAnnotationPreviewBitmap(&preview, size / extent, 0);
+        }
+    }
+    fz_always(ctx) {
+        pdf_drop_page(ctx, page);
+        pdf_drop_obj(ctx, pageObj);
+        pdf_drop_document(ctx, doc);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    return bitmap;
+}
+
+HBITMAP RenderAnnotationIconPreviewBitmap(EngineMupdf* engine, int pageNo, AnnotationType type, COLORREF color,
+                                          const char* iconName, int size, int lineEnding, bool lineStart) {
+    return RenderAnnotationIconPreviewImpl(engine, pageNo, type, color, iconName, size, lineEnding, lineStart, nullptr);
+}
+
+HBITMAP RenderAnnotationIconPreviewBitmap(Annotation* source, const char* iconName, int size, int lineEnding,
+                                          bool lineStart) {
+    if (!source) return nullptr;
+    return RenderAnnotationIconPreviewImpl(source->engine, source->pageNo, source->type, 0, iconName, size, lineEnding,
+                                           lineStart, source);
 }
 
 void SetLine(Annotation* annot, PointF a, PointF b) {
@@ -422,6 +544,50 @@ void SetRect(Annotation* annot, RectF r) {
     annot->bounds = r;
     // must be called outside docLock to avoid deadlock with pagesLock
     MarkNotificationAsModified(e, annot);
+}
+
+bool AnnotationHasAuthor(Annotation* annot) {
+    if (!annot || !annot->engine || !annot->pdfannot) {
+        return false;
+    }
+    EngineMupdf* e = annot->engine;
+    auto ctx = e->Ctx();
+    ScopedCritSec cs(&e->docLock);
+    int res = 0;
+    fz_try(ctx) {
+        res = pdf_annot_has_author(ctx, annot->pdfannot);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        res = 0;
+    }
+    return res != 0;
+}
+
+bool SetAuthor(Annotation* annot, const char* sv) {
+    if (!annot || !annot->engine || !annot->pdfannot || !AnnotationHasAuthor(annot)) {
+        return false;
+    }
+    const char* curr = Author(annot);
+    const char* next = sv ? sv : "";
+    const char* prev = curr ? curr : "";
+    if (str::Eq(next, prev)) {
+        return false;
+    }
+    EngineMupdf* e = annot->engine;
+    {
+        auto ctx = e->Ctx();
+        ScopedCritSec cs(&e->docLock);
+        fz_try(ctx) {
+            pdf_set_annot_author(ctx, annot->pdfannot, next);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+            return false;
+        }
+    }
+    MarkNotificationAsModified(e, annot);
+    return true;
 }
 
 const char* Author(Annotation* annot) {
@@ -1100,7 +1266,10 @@ void GetLineEndingStyles(Annotation* annot, int* start, int* end) {
     *end = (int)leEnd;
 }
 
-int BorderWidth(Annotation* annot) {
+float BorderWidthF(Annotation* annot) {
+    if (!annot || !annot->engine || !annot->pdfannot) {
+        return 1.f;
+    }
     EngineMupdf* e = annot->engine;
     auto a = annot->pdfannot;
     auto ctx = e->Ctx();
@@ -1113,14 +1282,87 @@ int BorderWidth(Annotation* annot) {
         fz_report_error(ctx);
         logf("BorderWidth: pdf_annot_border() failed\n");
     }
-
-    return (int)res;
+    // Free text uses 0 for no frame, matching EPUB. Other marks keep a hairline
+    // so a zero-width stroke does not vanish.
+    if (annot->type == AnnotationType::FreeText) {
+        if (res < 0.5f) {
+            res = 0;
+        }
+    } else if (res < 0.15f) {
+        res = 0.15f;
+    }
+    return res;
 }
 
-void SetBorderWidth(Annotation* annot, int newWidth) {
+int BorderWidth(Annotation* annot) {
+    return (int)BorderWidthF(annot);
+}
+
+bool GetLinePoints(Annotation* annot, PointF& a, PointF& b) {
+    if (!annot || !annot->engine || !annot->pdfannot || annot->type != AnnotationType::Line) {
+        return false;
+    }
+    EngineMupdf* e = annot->engine;
+    auto ctx = e->Ctx();
+    ScopedCritSec cs(&e->docLock);
+    fz_point p1{}, p2{};
+    bool ok = false;
+    fz_try(ctx) {
+        pdf_annot_line(ctx, annot->pdfannot, &p1, &p2);
+        ok = true;
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    if (!ok) {
+        return false;
+    }
+    a = PointF(p1.x, p1.y);
+    b = PointF(p2.x, p2.y);
+    return true;
+}
+
+void GetInkStrokes(Annotation* annot, Vec<PointF>& points, Vec<int>& counts) {
+    points.Reset();
+    counts.Reset();
+    if (!annot || !annot->engine || !annot->pdfannot || annot->type != AnnotationType::Ink) {
+        return;
+    }
+    EngineMupdf* e = annot->engine;
+    auto ctx = e->Ctx();
+    ScopedCritSec cs(&e->docLock);
+    fz_try(ctx) {
+        int nstrokes = pdf_annot_ink_list_count(ctx, annot->pdfannot);
+        for (int i = 0; i < nstrokes; i++) {
+            int n = pdf_annot_ink_list_stroke_count(ctx, annot->pdfannot, i);
+            if (n < 1) {
+                continue;
+            }
+            counts.Append(n);
+            for (int k = 0; k < n; k++) {
+                fz_point p = pdf_annot_ink_list_stroke_vertex(ctx, annot->pdfannot, i, k);
+                points.Append(PointF(p.x, p.y));
+            }
+        }
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+        points.Reset();
+        counts.Reset();
+    }
+}
+
+static void SetBorderWidthFloatImpl(Annotation* annot, float newWidth) {
     ReportIf(!annot);
     if (!annot) {
         return;
+    }
+    if (annot->type == AnnotationType::FreeText) {
+        if (newWidth < 0.5f) {
+            newWidth = 0;
+        }
+    } else if (newWidth < 0.15f) {
+        newWidth = 0.15f;
     }
     EngineMupdf* e = annot->engine;
     auto a = annot->pdfannot;
@@ -1128,7 +1370,7 @@ void SetBorderWidth(Annotation* annot, int newWidth) {
         auto ctx = e->Ctx();
         ScopedCritSec cs(&e->docLock);
         fz_try(ctx) {
-            pdf_set_annot_border_width(ctx, a, (float)newWidth);
+            pdf_set_annot_border_width(ctx, a, newWidth);
             pdf_update_annot(ctx, a);
         }
         fz_catch(ctx) {
@@ -1137,6 +1379,38 @@ void SetBorderWidth(Annotation* annot, int newWidth) {
         }
     }
     MarkNotificationAsModified(e, annot);
+}
+
+void SetBorderWidth(Annotation* annot, int newWidth) {
+    SetBorderWidthFloatImpl(annot, (float)newWidth);
+}
+
+bool ClearFreeTextHairlineBorder(Annotation* annot) {
+    if (!annot || annot->type != AnnotationType::FreeText || !annot->engine || !annot->pdfannot) {
+        return false;
+    }
+    EngineMupdf* e = annot->engine;
+    float stored = 0;
+    {
+        auto ctx = e->Ctx();
+        ScopedCritSec cs(&e->docLock);
+        fz_try(ctx) {
+            stored = pdf_annot_border(ctx, annot->pdfannot);
+        }
+        fz_catch(ctx) {
+            fz_report_error(ctx);
+            return false;
+        }
+    }
+    if (!(stored > 0.f && stored < 0.5f)) {
+        return false;
+    }
+    SetBorderWidthFloatImpl(annot, 0);
+    return true;
+}
+
+void SetBorderWidthFloat(Annotation* annot, float newWidth) {
+    SetBorderWidthFloatImpl(annot, newWidth);
 }
 
 int Opacity(Annotation* annot) {
@@ -1196,7 +1470,7 @@ static TempStr GetAnnotationTextIconTemp() {
     str::RemoveCharsInPlace(s, " ");
     int idx = seqstrings::StrToIdxIS(gAnnotationTextIcons, s);
     if (idx < 0) {
-        return (char*)"Note";
+        return (char*)"Comment";
     }
     char* real = (char*)seqstrings::IdxToStr(gAnnotationTextIcons, idx);
     return real;
@@ -1252,6 +1526,7 @@ bool AnnotationCanBeResized(AnnotationType tp) {
         // TODO: for now don't allow resizing text annotation because it's just an icon
         // would have to figure out how to change the size of the icon
         case AnnotationType::Text:
+        case AnnotationType::Caret:
             return false;
     }
     return AnnotationCanBeMoved(tp);
@@ -1297,14 +1572,18 @@ TempStr MarkupTextTemp(Annotation* annot) {
     if (!engine) {
         return nullptr;
     }
-    PageTextUtf8 pt = engine->ExtractPageTextUtf8(annot->pageNo);
+    // Use the same cache as selection, including OCR text already produced by
+    // the user. GetTextForPageUtf8 extracts native text but never starts OCR.
+    PageTextUtf8 pt;
+    pt.text = (char*)engine->GetTextForPageUtf8(annot->pageNo, &pt.len, &pt.coords);
     if (!pt.text || pt.len <= 0 || !pt.coords) {
-        FreePageTextUtf8(&pt);
         return nullptr;
     }
     StrBuilder sb;
     /* Walk by UTF-8 codepoint — coords repeat per byte; including only some
      * bytes of a CJK character produces mojibake in the list/export. */
+    bool pendingSpace = false;
+    bool haveText = false;
     for (int i = 0; i < pt.len;) {
         int n = utf8RuneLen((const u8*)(pt.text + i));
         if (n < 1) {
@@ -1323,11 +1602,19 @@ TempStr MarkupTextTemp(Annotation* annot) {
             }
         }
         if (hit) {
+            if (pendingSpace && haveText) {
+                sb.Append(" ");
+            }
             sb.Append(pt.text + i, (size_t)n);
+            pendingSpace = false;
+            haveText = true;
+        } else if (pt.text[i] == '\n' || pt.text[i] == '\r' || pt.text[i] == ' ' || pt.text[i] == '\t') {
+            // Line separators have no glyph bounds, but selected lines must
+            // remain separated when presented as a single-line excerpt.
+            pendingSpace = true;
         }
         i += n;
     }
-    FreePageTextUtf8(&pt);
     TempStr res = sb.Get();
     if (str::IsEmptyOrWhiteSpace(res)) {
         return nullptr;
@@ -1441,7 +1728,7 @@ Annotation* EngineMupdfCreateAnnotation(EngineBase* engine, int pageNo, PointF p
                 }
                 int fontSize = args->textSize;
                 if (fontSize <= 0) {
-                    fontSize = 12;
+                    fontSize = 21;
                 }
                 int nCol = 3;
                 const float* fcol = black;

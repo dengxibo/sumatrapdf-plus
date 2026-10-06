@@ -4,8 +4,8 @@
 // AI printed-TOC recognition via an OpenAI-compatible vision API.
 //
 // This is a C++ port of the autoContents Python pipeline (mainprogress/):
-//  - stage A: per-page title/page extraction prompt + CSV repair + null-page
-//    fill (qwen_vl_extract.py)
+//  - stage A: per-page title/page extraction + CSV repair; missing pages stay
+//    null until the later import/calibration pass
 //  - stage B: per-page level determination with the first page as few-shot
 //    (determine_toc_levels.py) + level post-processing and normalization
 //    (content_postprocessor.py)
@@ -37,6 +37,7 @@
 #include "DisplayModel.h"
 #include "RenderCache.h"
 #include "TocCalib.h"
+#include "TocAiPrompts.h"
 
 #include "AiTocApi.h"
 
@@ -415,96 +416,7 @@ static int RomanToInt(const char* s) {
 // ---------------------------------------------------------------------------
 // prompts (verbatim ports from autoContents mainprogress/)
 
-// qwen_vl_extract.py PROMPT_TEXT
-static const char* kExtractPrompt =
-    "# 任务目标\n"
-    "分析提供的图片并提取目录信息。提取目标为每个目录项的标题和页码。\n"
-    "\n"
-    "# 输出格式要求\n"
-    "1. 数据格式：仅输出CSV格式数据，禁止包含任何其他文本、代码解释或说明。\n"
-    "2. 表头设置：必须包含表头 title,page_number。第一列为标题，第二列为页码。\n"
-    "3. 分隔符：严格使用半角逗号 `,` 作为列分隔符，禁止使用全角逗号 `，`。\n"
-    "\n"
-    "# 内容提取规则\n"
-    "1. 完整性与筛选：提取所有目录项目，不遗漏任何带有页码的条目。\n"
-    "2. "
-    "无页码条目判定：针对无页码条目需依据语义判断。若为篇、章级别的大标题，需推算并填补实际页码；若存在大量无页码的节、"
-    "子节等次级标题，则直接忽略。\n"
-    "3. 所见即所得：提取页面真实存在的信息，禁止自行推测或补充未显示的层级标题。例如页面以 4.5.1 "
-    "开头，绝对禁止自行补充第四章及4.5节的标题，仅提取当前可见的内容。\n"
-    "4. 忠于原文：严格保留原始标题的文字、数字形式及前缀，禁止增添、删减或修改。\n"
-    "   * 示例：图上为 `第7章 总结`，则提取为 `第7章 总结`。\n"
-    "   * 示例：图上为 `7章 不良案例`，则提取为 `7章 不良案例`，禁止修改为 `第7章 不良案例` 或 `7 不良案例`。\n"
-    "   * 示例：图上为 `01 花草篇`，则提取为 `01 花草篇`，禁止修改为 `花草篇`。\n"
-    "\n"
-    "5. 语言保留：严格保留原始文字（包括繁体中文、英文等），禁止进行翻译。\n"
-    "6. 符号替换：将带圈数字替换为常规阿拉伯数字。例如将 ① 替换为 1。\n"
-    "7. 标题页码分割：准确区分紧跟在标题后的页码，避免将页码提取为标题的一部分。\n"
-    "   * 示例：`1 绪论` 和 `第一章 绪论` 为合理标题。若出现 `第一章 绪论 / 1` 或 `第一章 绪论 1`，末尾的 `1` "
-    "应当作为页码提取，标题仅为 `第一章 绪论`。\n"
-    "8. 标点符号规范：包含中文的标题统一使用全角标点符号（如 `：` 和 `，`）。纯英文标题使用半角标点。\n"
-    "9. 剔除连接符：去除标题与页码之间或标题内部用于排版的引导点 `·` "
-    "或类似连接符。仅保留语义上确实作为省略号存在的符号。\n"
-    "   * 正确示例：`Part25 写给想成为动画作者的人,122`\n"
-    "   * 错误示例：`Part 25……写给想成为动画作者的人,122`\n"
-    "10. 标题完整性：保持章节编号与标题内容的完整关联，禁止因排版结构将其拆分为独立的两行。\n"
-    "    * 正确示例：`第1章 基本知识,1`\n"
-    "    * 错误示例：`第1章,null` 换行 `基本知识,1`\n"
-    "11. 排除页眉页脚：忽略分布在页面边缘的书籍名称、页眉或章节导航等非目录主体内容。\n"
-    "12. 页面上出现xx篇、xx章时，尽管它们没有页码，但仍然应提取，它们必然是目录的一部分。\n"
-    "\n"
-    "# 页码处理规则\n"
-    "1. "
-    "缺失页码推算：若篇、章等高级别条目缺失页码，需根据其下级首个条目的页码或相邻条目进行合理推算并填补。禁止出现null的"
-    "结果。\n"
-    "   * 示例：第1篇的页码丢失，但第1篇第1章的页码为2，则推测第1篇的页码为2。\n"
-    "\n"
-    "# 空格与排版规则\n"
-    "1. 纯中文目录：章节编号与具体标题之间仅保留1个半角空格。禁止在中文词组内部、数字与中文字符之间添加多余空格。\n"
-    "   * 正确示例：`第1章 自动控制概述`；`第2章 超前滞后校正与PID校正`\n"
-    "   * 错误示例：`第 1章 自动控制概述`；`第1 章自动控制概述`；`第2章 超前滞后校正与 PID校正`；`第2章 "
-    "超前滞后校正与PID 校正`；`第 1 章 自动控制概述`\n"
-    "2. 纯英文目录：遵循标准英语语法，单词、数字与符号之间保留常规空格。\n"
-    "3. 混合目录：中文部分执行中文空格规则，英文部分执行英文空格规则。";
-
-// qwen_vl_extract.py IMPORTANT_NOTE
-static const char* kExtractImportantNote =
-    "\n1. 忠于原文。图上为 `01 花草篇`，则提取为 `01 花草篇`，禁止修改为 `花草篇`。\n"
-    "2. 页面上出现xx篇、xx章时，尽管它们没有页码，但仍然应提取，它们必然是目录的一部分。\n";
-
-// determine_toc_levels.py PROMPT_TEXT
-static const char* kLevelPrompt =
-    "# 任务目标\n"
-    "请分析提供的图片以及对应的目录数据（标题和页码），判断每个目录项所属的层级（level）。\n"
-    "\n"
-    "# 输出格式要求\n"
-    "1. **必须且仅输出 CSV 格式数据**，包含表头 `title,page_number,level`。\n"
-    "2. 严禁输出 Markdown 代码块标记（如 ```csv），严禁输出任何解释性文字。\n"
-    "3. CSV 内容示例：\n"
-    "title,page_number,level\n"
-    "第一章 函数极限连续,1,1\n"
-    "第一节 函数,1,2\n"
-    "一、函数的概念,1,3\n"
-    "\n"
-    "# 层级判定规则\n"
-    "1. "
-    "视觉特征优先：应优先根据图片呈现的视觉特征（如颜色、字体、字号、缩进等）判定目录层级，也需要结合语义进行推断。\n"
-    "2. 除非是第一页目录，否则第一行的标题未必是第一层级的，它可能隶属于上一页的其他章节。\n"
-    "3. 规避层级判定错误：\n"
-    "   - 规避误区：对于形式不同（例如字号不同、字体不同、缩进不同、颜色不同等）的标题，层级一定是不同的。\n"
-    "   - 尊重常识：`篇`和`部分`一般是最高级；其次为`章`；然后是`节`等。\n"
-    "   - 节与子节的层级关系：例如 2.4（节）与 2.4.1（子节）绝对不可处于同一目录层级，子节的层级必须比节低一级。\n"
-    "4. "
-    "思考题、练习题等，应该是作为`章`的下一级，而不应该与`章`"
-    "处于在同一层级。但切记不要直接删掉这些页码为null的标题，这违背了第一条注意事项的要求。\n"
-    "\n"
-    "# 注意事项：\n"
-    "- 输出的 CSV 行数应与输入的 CSV "
-    "数据的标题数量严格一致，严禁省略。切记不要直接删掉这些页码为null的标题，你应该推断它们，而不是删除它们。\n"
-    "- level 列必须是整数。\n"
-    "- 部分情况下，识别的标题末尾会附带一个页码，如果遇到这种情况，请去掉那个页码。\n"
-    "- 部分情况下页码会出现null，此时请进行简要推断，例如将其与它附近的页码设置为一致。\n"
-    "- 一般来说，前言、推荐序、致谢、参考文献等，应该是第一层级。\n";
+// Printed-TOC semantics and output wrappers are shared with the web flow.
 
 // pdf_metadata_extractor.py fetch_toc_from_image prompt (f-string port)
 static TempStr BuildDetectPromptTemp(int startPage) {
@@ -1469,40 +1381,6 @@ static void ParseCsv2Rows(const char* csv, Vec<Row2>& rowsOut) {
     FreeCStrVec(lines);
 }
 
-// Port of fix_null_page_numbers: fill a missing page from the next row that
-// has one, otherwise from the previous row.
-static void FixNullPageNumbers(Vec<Row2>& rows) {
-    auto isValid = [](const char* p) {
-        if (!p) {
-            return false;
-        }
-        return !str::EqI(p, "") && !str::EqI(p, "null") && !str::EqI(p, "none");
-    };
-    int n = (int)rows.size();
-    for (int i = 0; i < n; i++) {
-        if (isValid(rows[i].page)) {
-            continue;
-        }
-        bool found = false;
-        for (int j = i + 1; j < n; j++) {
-            if (isValid(rows[j].page)) {
-                str::ReplaceWithCopy(&rows[i].page, rows[j].page);
-                found = true;
-                break;
-            }
-        }
-        if (found) {
-            continue;
-        }
-        for (int k = i - 1; k >= 0; k--) {
-            if (isValid(rows[k].page)) {
-                str::ReplaceWithCopy(&rows[i].page, rows[k].page);
-                break;
-            }
-        }
-    }
-}
-
 static char* BuildCsv2Text(Vec<Row2>& rows) {
     StrBuilder out;
     out.Append("title,page_number\n");
@@ -1542,21 +1420,18 @@ static void ExtractJobFn(void* ctx, int idx) {
     if (jc->canceled && jc->canceled(jc->cancelCtx)) {
         return;
     }
-    ChatPart parts[5] = {};
+    ChatPart parts[3] = {};
     parts[0].text = "当前页图片（需处理）：";
-    parts[1].text = kExtractPrompt;
+    parts[1].text = BuildPrintedTocPromptTemp(PrintedTocPromptFormat::ExtractCsv);
     parts[2].b64 = j->b64;
-    parts[3].text = kExtractPrompt;
-    parts[4].text = kExtractImportantNote;
     StrBuilder reply;
     char* err = nullptr;
     ApiCallStats stats;
-    if (VisionCallWithRetry(*jc->cfg, parts, 5, ValidateCsv2Reply, &j->fix, jc->canceled, jc->cancelCtx, reply, &err,
+    if (VisionCallWithRetry(*jc->cfg, parts, 3, ValidateCsv2Reply, &j->fix, jc->canceled, jc->cancelCtx, reply, &err,
                             &stats)) {
         Vec<Row2> rows;
         ParseCsv2Rows(j->fix.fixed.Get(), rows);
         if (rows.size() > 0) {
-            FixNullPageNumbers(rows);
             j->csvExtract = BuildCsv2Text(rows);
             j->extractOk = true;
             if (jc->dbg) {
@@ -1665,42 +1540,6 @@ static bool ParseLevelsCsv(const char* csv, Vec<ApiTocEntry>& out, char** errOut
     return true;
 }
 
-static int EntrySortRank(const ApiTocEntry& e) {
-    if (e.pageLabel) {
-        return 0; // roman / label first
-    }
-    if (e.pageNum > 0) {
-        return 1; // arabic
-    }
-    return 2; // no page
-}
-
-static int EntrySortNumber(const ApiTocEntry& e) {
-    if (e.pageLabel) {
-        return RomanToInt(e.pageLabel);
-    }
-    return e.pageNum;
-}
-
-// Stable insertion sort on the (is_roman, page) key, null pages last.
-static void StableSortEntries(Vec<ApiTocEntry>& entries) {
-    for (size_t i = 1; i < entries.size(); i++) {
-        ApiTocEntry key = entries[i];
-        size_t j = i;
-        while (j > 0) {
-            int r1 = EntrySortRank(entries[j - 1]);
-            int r2 = EntrySortRank(key);
-            bool move = (r1 > r2) || (r1 == r2 && EntrySortNumber(entries[j - 1]) > EntrySortNumber(key));
-            if (!move) {
-                break;
-            }
-            entries[j] = entries[j - 1];
-            j--;
-        }
-        entries[j] = key;
-    }
-}
-
 static void LevelsJobFn(void* ctx, int idx) {
     auto* lc = (StageJobCtx*)ctx;
     int jobIdx = idx + lc->offset;
@@ -1711,7 +1550,7 @@ static void LevelsJobFn(void* ctx, int idx) {
     bool isFirst = jobIdx == 0;
     ApiPageJob* first = (*lc->jobs)[0];
     StrBuilder input;
-    input.Append(kLevelPrompt);
+    input.Append(BuildPrintedTocPromptTemp(PrintedTocPromptFormat::LevelsCsv));
     input.Append("\n\n当前页提取的原始 CSV 数据如下：\n");
     input.Append(j->csvExtract ? j->csvExtract : "");
     StrBuilder firstResult;
@@ -1740,7 +1579,8 @@ static void LevelsJobFn(void* ctx, int idx) {
         char* parseErr = nullptr;
         Vec<ApiTocEntry> entries;
         if (ParseLevelsCsv(levelsCsv, entries, &parseErr)) {
-            StableSortEntries(entries);
+            // Keep visual reading order: a null-page parent must stay before
+            // its children rather than being sorted to the end of the page.
             for (size_t i = 0; i < entries.size(); i++) {
                 j->entries.Append(entries[i]);
                 if (entries[i].level > j->maxLevel) {

@@ -7,6 +7,9 @@
 #include "utils/WinUtil.h"
 #include "utils/Dpi.h"
 
+#include <uxtheme.h>
+#include <commctrl.h>
+
 #include "wingui/UIModels.h"
 #include "wingui/Layout.h"
 #include "wingui/WinGui.h"
@@ -31,6 +34,7 @@
 #include "FindWindow.h"
 #include "Translations.h"
 #include "Theme.h"
+#include "FloatingPopupStyle.h"
 
 #include "utils/Log.h"
 
@@ -39,6 +43,17 @@ constexpr UINT_PTR kFindEditSubclassId = 9101;
 static LRESULT CALLBACK FindEditSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR subclassId,
                                              DWORD_PTR refData) {
     MainWindow* win = (MainWindow*)refData;
+    if (win && msg == WM_KEYDOWN && wp == VK_ESCAPE) {
+        // Esc clears search and returns focus to the document.
+        if (GetWindowTextLengthW(hwnd) > 0) {
+            SetWindowTextW(hwnd, L"");
+        }
+        HWND dest = win->hwndCanvas ? win->hwndCanvas : win->hwndFrame;
+        if (dest) {
+            HwndSetFocus(dest);
+        }
+        return 0;
+    }
     if (win && msg == WM_CHAR) {
         if (wp == '\r' || wp == '\n') {
             win->hwndFindEdit = hwnd;
@@ -599,12 +614,1076 @@ void RecreateFindBar(MainWindow* win) {
     }
 }
 
-// "ShowFindBar" is the entry point used by FindFirst/Ctrl+F; it shows whichever
-// find UI the user has chosen (compact overlay or floating window)
+// --- permanent toolbar search box -------------------------------------------
+// One painted frame. The edit is the only child HWND; the count and icons are
+// drawn here and hit-tested separately. The old docked overlay is left in place.
+
+static const WCHAR* kToolbarFindClass = L"SumatraToolbarFind";
+
+enum class ToolbarFindPart {
+    None,
+    Prev,
+    Next,
+    Detail,
+    Clear,
+    Search
+};
+
+struct ToolbarFindState {
+    MainWindow* win = nullptr;
+    HWND hwnd = nullptr;
+    HWND edit = nullptr;
+    HWND tip = nullptr;
+    HBRUSH fillBrush = nullptr;
+    AutoFreeStr status;
+    COLORREF fill = 0;
+    COLORREF textCol = 0;
+    COLORREF mutedCol = 0;
+    // Toolbar button size. Icon slots use this so the field matches the row.
+    int iconSlot = 0;
+    bool suppress = false;
+    bool focused = false;
+    bool flash = false;
+    bool hasQuery = false;
+    bool showNav = false;
+    bool showDetail = false;
+    bool showStatus = false;
+    bool tracking = false;
+    // Set while the edit is repainted from the parent's WM_PAINT, so that
+    // repaint cannot re-enter and schedule another one.
+    bool repairingEdit = false;
+    ToolbarFindPart hot = ToolbarFindPart::None;
+    ToolbarFindPart pressed = ToolbarFindPart::None;
+    Rect rcPrev;
+    Rect rcNext;
+    Rect rcDetail;
+    Rect rcClear;
+    Rect rcSearch;
+    Rect rcStatus;
+};
+
+static ToolbarFindState* ToolbarFindGet(HWND hwnd) {
+    return (ToolbarFindState*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+}
+
+static ToolbarFindState* ToolbarFindGet(MainWindow* win) {
+    if (!win || !win->hwndToolbarFind) {
+        return nullptr;
+    }
+    return ToolbarFindGet(win->hwndToolbarFind);
+}
+
+static int TfS(HWND hwnd, int dip) {
+    return DpiScale(hwnd, dip);
+}
+
+static void ToolbarFindApplyColors(ToolbarFindState* st) {
+    st->fill = ThemeChromeBackgroundColor();
+    st->textCol = ThemeWindowTextColor();
+    st->mutedCol = ThemeWindowTextDisabledColor();
+    if (st->fillBrush) {
+        DeleteObject(st->fillBrush);
+    }
+    st->fillBrush = CreateSolidBrush(st->fill);
+}
+
+static void ToolbarFindSyncQueryFlag(ToolbarFindState* st) {
+    st->hasQuery = st->edit && GetWindowTextLengthW(st->edit) > 0;
+}
+
+static ToolbarFindPart ToolbarFindHit(ToolbarFindState* st, int x, int y) {
+    if (st->showNav && st->rcPrev.Contains(x, y)) {
+        return ToolbarFindPart::Prev;
+    }
+    if (st->showNav && st->rcNext.Contains(x, y)) {
+        return ToolbarFindPart::Next;
+    }
+    if (st->showDetail && st->rcDetail.Contains(x, y)) {
+        return ToolbarFindPart::Detail;
+    }
+    if (st->hasQuery && st->rcClear.Contains(x, y)) {
+        return ToolbarFindPart::Clear;
+    }
+    if (st->rcSearch.Contains(x, y)) {
+        return ToolbarFindPart::Search;
+    }
+    return ToolbarFindPart::None;
+}
+
+static const char* ToolbarFindTipText(ToolbarFindState* st, ToolbarFindPart part) {
+    switch (part) {
+        case ToolbarFindPart::Prev:
+            return _TRA("Find Previous");
+        case ToolbarFindPart::Next:
+            return _TRA("Find Next");
+        case ToolbarFindPart::Detail:
+            return _TRA("Detailed Search");
+        case ToolbarFindPart::Clear:
+            return _TRA("Clear search text");
+        case ToolbarFindPart::Search:
+            return st->hasQuery ? _TRA("Find Next") : _TRA("Find");
+        case ToolbarFindPart::None:
+            break;
+    }
+    return nullptr;
+}
+
+static void ToolbarFindHideTip(ToolbarFindState* st) {
+    if (!st->tip) {
+        return;
+    }
+    TOOLINFOW ti{};
+    ti.cbSize = sizeof(ti);
+    ti.hwnd = st->hwnd;
+    ti.uId = (UINT_PTR)st->hwnd;
+    SendMessageW(st->tip, TTM_TRACKACTIVATE, FALSE, (LPARAM)&ti);
+}
+
+static void ToolbarFindShowTip(ToolbarFindState* st, ToolbarFindPart part) {
+    const char* s = ToolbarFindTipText(st, part);
+    if (!st->tip || !s) {
+        ToolbarFindHideTip(st);
+        return;
+    }
+    TOOLINFOW ti{};
+    ti.cbSize = sizeof(ti);
+    ti.hwnd = st->hwnd;
+    ti.uId = (UINT_PTR)st->hwnd;
+    ti.lpszText = (WCHAR*)ToWStrTemp(s);
+    SendMessageW(st->tip, TTM_UPDATETIPTEXTW, 0, (LPARAM)&ti);
+    POINT pt{};
+    GetCursorPos(&pt);
+    pt.y += TfS(st->hwnd, 18);
+    SendMessageW(st->tip, TTM_TRACKPOSITION, 0, MAKELPARAM(pt.x, pt.y));
+    SendMessageW(st->tip, TTM_TRACKACTIVATE, TRUE, (LPARAM)&ti);
+}
+
+static void ToolbarFindEnsureTip(ToolbarFindState* st) {
+    if (st->tip) {
+        return;
+    }
+    st->tip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+                              CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, st->hwnd, nullptr,
+                              GetModuleHandle(nullptr), nullptr);
+    if (!st->tip) {
+        return;
+    }
+    TOOLINFOW ti{};
+    ti.cbSize = sizeof(ti);
+    ti.uFlags = TTF_TRACK | TTF_ABSOLUTE | TTF_IDISHWND | TTF_TRANSPARENT;
+    ti.hwnd = st->hwnd;
+    ti.uId = (UINT_PTR)st->hwnd;
+    ti.lpszText = (WCHAR*)L"";
+    SendMessageW(st->tip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
+}
+
+// Right-hand accessories. Previous/Next sit together. The ellipsis is a
+// lighter secondary hit. Clear and the magnifier stay the right-end pair.
+struct ToolbarFindCluster {
+    int search = 0;
+    int clear = 0;
+    int detail = 0;
+    int nav = 0;
+    int gapNavToDetail = 0;
+    int gapDetailToClear = 0;
+};
+
+static void ToolbarFindClusterMetrics(HWND hwnd, int slot, ToolbarFindCluster* m) {
+    m->search = slot;
+    m->clear = slot;
+    int nav = slot - DpiScale(hwnd, 6);
+    int minNav = DpiScale(hwnd, 22);
+    if (nav < minNav) {
+        nav = minNav;
+    }
+    if (nav > slot) {
+        nav = slot;
+    }
+    m->nav = nav;
+    int detail = DpiScale(hwnd, 26);
+    if (detail < DpiScale(hwnd, 24)) {
+        detail = DpiScale(hwnd, 24);
+    }
+    if (detail > slot) {
+        detail = slot;
+    }
+    m->detail = detail;
+    m->gapNavToDetail = DpiScale(hwnd, 6);
+    m->gapDetailToClear = DpiScale(hwnd, 4);
+}
+
+static int ToolbarFindIconSlot(ToolbarFindState* st, int fieldH) {
+    if (st->iconSlot > 0) {
+        return st->iconSlot;
+    }
+    return fieldH > 0 ? fieldH : 1;
+}
+
+static void ToolbarFindLayoutInner(ToolbarFindState* st) {
+    if (!st || !st->hwnd) {
+        return;
+    }
+    ToolbarFindSyncQueryFlag(st);
+    RECT crc{};
+    GetClientRect(st->hwnd, &crc);
+    int w = crc.right;
+    int h = crc.bottom;
+    if (w <= 0 || h <= 0) {
+        return;
+    }
+    // Same inset the page box uses, so this field sits in the toolbar row.
+    int edge = GetSystemMetrics(SM_CXEDGE);
+    if (edge < 1) {
+        edge = 1;
+    }
+    int slot = ToolbarFindIconSlot(st, h);
+    if (slot > h) {
+        slot = h;
+    }
+    if (slot < 1) {
+        slot = 1;
+    }
+
+    st->showNav = st->hasQuery;
+    st->showDetail = st->hasQuery;
+    st->showStatus = st->hasQuery;
+
+    HFONT font = st->edit ? GetWindowFont(st->edit) : nullptr;
+    int statusW = 0;
+    if (st->showStatus) {
+        // Wide enough for "103 / 1250". Never ellipsize the count.
+        statusW = HwndMeasureText(st->hwnd, "0000 / 0000", font).dx + edge * 2;
+        if (st->status.Get() && st->status.Get()[0]) {
+            int actual = HwndMeasureText(st->hwnd, st->status.Get(), font).dx + edge * 2;
+            if (actual > statusW) {
+                statusW = actual;
+            }
+        }
+    }
+
+    ToolbarFindCluster cluster;
+    ToolbarFindClusterMetrics(st->hwnd, slot, &cluster);
+    auto clusterW = [&](bool detail) -> int {
+        int dx = cluster.search; // magnifier, always
+        if (st->hasQuery) {
+            dx += cluster.clear;
+        }
+        if (detail) {
+            dx += cluster.gapDetailToClear + cluster.detail;
+        }
+        if (st->showNav) {
+            dx += cluster.gapNavToDetail + cluster.nav * 2;
+        }
+        return dx + statusW;
+    };
+
+    int minEdit = HwndMeasureText(st->hwnd, "0000", font).dx;
+    int right = clusterW(st->showDetail);
+    int editW = w - edge - right - edge;
+    if (st->hasQuery && editW < minEdit && st->showDetail) {
+        st->showDetail = false;
+        right = clusterW(false);
+        editW = w - edge - right - edge;
+    }
+    if (editW < 1) {
+        editW = 1;
+    }
+
+    // A single-line edit pins its text to the top. Size the control to the
+    // line and center that strip, the same way the page box does.
+    int textH = font ? HwndMeasureText(st->hwnd, "Page:", font).dy : 0;
+    int editH = textH > 0 ? textH : h - edge * 2;
+    if (editH > h - 2) {
+        editH = h - 2;
+    }
+    if (editH < 1) {
+        editH = 1;
+    }
+    int editY = (h - editH + 1) / 2;
+    if (st->edit) {
+        RECT cur{};
+        GetWindowRect(st->edit, &cur);
+        MapWindowPoints(nullptr, st->hwnd, (LPPOINT)&cur, 2);
+        int curW = cur.right - cur.left;
+        int curH = cur.bottom - cur.top;
+        if (cur.left != edge || cur.top != editY || curW != editW || curH != editH) {
+            MoveWindow(st->edit, edge, editY, editW, editH, TRUE);
+        }
+        // The cue sits on the edit's left edge. Give it a little air inside the field.
+        int textLeft = DpiScale(st->hwnd, 8);
+        SendMessageW(st->edit, EM_SETMARGINS, EC_LEFTMARGIN, MAKELONG(textLeft, 0));
+        // Keep the edit's square fill inside the field's round corners.
+        RECT fieldRc{};
+        GetClientRect(st->hwnd, &fieldRc);
+        int ellipse = DpiScale(st->hwnd, 8);
+        int fieldH = fieldRc.bottom - fieldRc.top;
+        if (fieldH > 4 && ellipse > fieldH - 2) {
+            ellipse = fieldH - 2;
+        }
+        HRGN rgn =
+            CreateRoundRectRgn(-edge, -editY, fieldRc.right - edge + 1, fieldRc.bottom - editY + 1, ellipse, ellipse);
+        if (rgn && !SetWindowRgn(st->edit, rgn, FALSE)) {
+            DeleteObject(rgn);
+        }
+    }
+
+    st->rcStatus = Rect();
+    st->rcPrev = Rect();
+    st->rcNext = Rect();
+    st->rcDetail = Rect();
+    st->rcClear = Rect();
+    st->rcSearch = Rect();
+    // Magnifier is the right anchor. Previous/Next are one tight pair.
+    // The ellipsis sits a little apart from them, then clear and the magnifier.
+    int x = w - edge - cluster.search;
+    st->rcSearch = Rect(x, 0, cluster.search, h);
+    if (st->hasQuery) {
+        x -= cluster.clear;
+        st->rcClear = Rect(x, 0, cluster.clear, h);
+    }
+    if (st->showDetail) {
+        x -= cluster.gapDetailToClear + cluster.detail;
+        st->rcDetail = Rect(x, 0, cluster.detail, h);
+    }
+    if (st->showNav) {
+        x -= cluster.gapNavToDetail + cluster.nav;
+        st->rcNext = Rect(x, 0, cluster.nav, h);
+        x -= cluster.nav;
+        st->rcPrev = Rect(x, 0, cluster.nav, h);
+    }
+    if (st->showStatus) {
+        x -= statusW;
+        st->rcStatus = Rect(x, 0, statusW, h);
+    }
+    InvalidateRect(st->hwnd, nullptr, FALSE);
+}
+
+static void ToolbarFindOnQueryChanged(ToolbarFindState* st) {
+    MainWindow* win = st->win;
+    if (!win || st->suppress) {
+        ToolbarFindLayoutInner(st);
+        return;
+    }
+    bool detailed = IsFindWindowVisible(win) && !IsFindWindowDocked(win);
+    if (detailed && win->hwndFindEdit && win->hwndFindEdit != st->edit) {
+        AutoFreeStr owned;
+        owned.SetCopy(HwndGetTextTemp(st->edit));
+        FindWindowSetSuppressTextChanged(win, true);
+        HwndSetText(win->hwndFindEdit, owned.Get());
+        FindWindowSetSuppressTextChanged(win, false);
+    } else {
+        win->hwndFindEdit = st->edit;
+    }
+    bool wasSearching = st->showNav;
+    OnFindBarTextChanged(win);
+    ToolbarFindLayoutInner(st);
+    // The match gutter appears only while a query is active. Resize the page
+    // once, when search starts or clears, so the marks do not cover the scrollbar.
+    if (wasSearching != st->showNav) {
+        win->UpdateCanvasSize();
+    }
+}
+
+// Three dots inside the field. Larger than a hairline so they read as a
+// button next to the clear mark, still lighter than a toolbar icon.
+static void ToolbarFindDrawEllipsis(ToolbarFindState* st, HDC hdc, const Rect& hit) {
+    if (hit.IsEmpty()) {
+        return;
+    }
+    int iconPx = 0;
+    if (st->win && st->win->hwndToolbar) {
+        HIMAGELIST himl = (HIMAGELIST)SendMessageW(st->win->hwndToolbar, TB_GETIMAGELIST, 0, 0);
+        int ih = 0;
+        if (himl) {
+            ImageList_GetIconSize(himl, &iconPx, &ih);
+        }
+    }
+    if (iconPx < 8) {
+        iconPx = DpiScale(st->hwnd, 20);
+    }
+    // Three grid units. Two was easy to miss beside the 14px clear and search marks.
+    int dot = (iconPx * 3 + 12) / 24;
+    if (dot < 3) {
+        dot = 3;
+    }
+    int gap = dot;
+    int total = dot * 3 + gap * 2;
+    int x = hit.x + (hit.dx - total) / 2;
+    int y = hit.y + (hit.dy - dot) / 2;
+    // The field's rounded fill uses GDI+ and leaves the DC in advanced mode.
+    // A GDI Ellipse then draws nothing, so the dots disappeared.
+    COLORREF col = st->textCol;
+    Gdiplus::Graphics g(hdc);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    Gdiplus::SolidBrush br(Gdiplus::Color(255, GetRValue(col), GetGValue(col), GetBValue(col)));
+    for (int i = 0; i < 3; i++) {
+        g.FillEllipse(&br, x, y, dot, dot);
+        x += dot + gap;
+    }
+}
+
+static void ToolbarFindDrawTbIcon(ToolbarFindState* st, HDC hdc, const Rect& hit, TbIcon icon, int drawPx = 0) {
+    if (hit.IsEmpty() || !st->win || !st->win->hwndToolbar) {
+        return;
+    }
+    // Same image list Detailed Find and the main toolbar use.
+    HIMAGELIST himl = (HIMAGELIST)SendMessageW(st->win->hwndToolbar, TB_GETIMAGELIST, 0, 0);
+    if (!himl) {
+        return;
+    }
+    int iw = 0;
+    int ih = 0;
+    ImageList_GetIconSize(himl, &iw, &ih);
+    int dw = iw;
+    int dh = ih;
+    if (drawPx > 0 && drawPx < iw) {
+        dw = drawPx;
+        dh = ih > 0 ? MulDiv(ih, drawPx, iw) : drawPx;
+    }
+    int x = hit.x + (hit.dx - dw) / 2;
+    int y = hit.y + (hit.dy - dh) / 2;
+    if (dw == iw && dh == ih) {
+        ImageList_Draw(himl, (int)icon, hdc, x, y, ILD_TRANSPARENT);
+        return;
+    }
+    HICON hicon = ImageList_GetIcon(himl, (int)icon, ILD_TRANSPARENT);
+    if (!hicon) {
+        return;
+    }
+    DrawIconEx(hdc, x, y, hicon, dw, dh, 0, nullptr, DI_NORMAL);
+    DestroyIcon(hicon);
+}
+
+// The system Edit class is CS_PARENTDC, so WS_CLIPCHILDREN does not keep this
+// window's fill off the child. A finished search (status flash) or Prev/Next
+// paints the field color over the keyword until the edit is painted again.
+static bool ToolbarFindEditClientRect(ToolbarFindState* st, RECT* rc) {
+    if (!st || !st->edit || !rc || !GetWindowRect(st->edit, rc)) {
+        return false;
+    }
+    MapWindowPoints(nullptr, st->hwnd, (LPPOINT)rc, 2);
+    return rc->right > rc->left && rc->bottom > rc->top;
+}
+
+static void ToolbarFindPaint(ToolbarFindState* st, HDC hdc) {
+    RECT rc{};
+    GetClientRect(st->hwnd, &rc);
+    RECT editRc{};
+    bool clipEdit = ToolbarFindEditClientRect(st, &editRc);
+    int savedDc = clipEdit ? SaveDC(hdc) : 0;
+    if (clipEdit) {
+        ExcludeClipRect(hdc, editRc.left, editRc.top, editRc.right, editRc.bottom);
+    }
+    // Windows text-box corners. The square corners stay toolbar-colored.
+    COLORREF chrome = ThemeChromeBackgroundColor();
+    HBRUSH chromeBr = CreateSolidBrush(chrome);
+    FillRect(hdc, &rc, chromeBr);
+    DeleteObject(chromeBr);
+    COLORREF border = AccentColor(chrome, st->focused ? 72 : 36);
+    int arc = DpiScale(st->hwnd, 8);
+    int fieldH = rc.bottom - rc.top;
+    if (fieldH > 4 && arc > fieldH - 2) {
+        arc = fieldH - 2;
+    }
+    Rect box(rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
+    FillFloatingPopupRoundedRect(hdc, box, arc, st->fill);
+    StrokeFloatingPopupRoundedRect(hdc, box, arc, border);
+
+    auto hover = [&](const Rect& hit, ToolbarFindPart part) {
+        if (hit.IsEmpty() || (st->hot != part && st->pressed != part)) {
+            return;
+        }
+        RECT hr{hit.x, hit.y, hit.Right(), hit.Bottom()};
+        COLORREF bg = AccentColor(st->fill, 18);
+        HBRUSH br = CreateSolidBrush(bg);
+        FillRect(hdc, &hr, br);
+        DeleteObject(br);
+    };
+    hover(st->rcPrev, ToolbarFindPart::Prev);
+    hover(st->rcNext, ToolbarFindPart::Next);
+    hover(st->rcDetail, ToolbarFindPart::Detail);
+    hover(st->rcClear, ToolbarFindPart::Clear);
+    hover(st->rcSearch, ToolbarFindPart::Search);
+
+    if (st->showStatus && !st->rcStatus.IsEmpty() && st->status.Get()) {
+        COLORREF col = st->flash ? st->textCol : st->mutedCol;
+        SetBkMode(hdc, TRANSPARENT);
+        SetTextColor(hdc, col);
+        HFONT font = st->edit ? GetWindowFont(st->edit) : nullptr;
+        HGDIOBJ oldFont = font ? SelectObject(hdc, font) : nullptr;
+        RECT tr{st->rcStatus.x, st->rcStatus.y, st->rcStatus.Right(), st->rcStatus.Bottom()};
+        DrawTextW(hdc, ToWStrTemp(st->status.Get()), -1, &tr, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        if (oldFont) {
+            SelectObject(hdc, oldFont);
+        }
+    }
+
+    ToolbarFindDrawTbIcon(st, hdc, st->rcPrev, TbIcon::ChevronUp);
+    ToolbarFindDrawTbIcon(st, hdc, st->rcNext, TbIcon::ChevronDown);
+    ToolbarFindDrawEllipsis(st, hdc, st->rcDetail);
+    // Clear and the magnifier sit inside the field, next to the match count,
+    // so they are smaller than the toolbar icons. The hit rect stays full size.
+    int innerIcon = DpiScale(st->hwnd, 14);
+    ToolbarFindDrawTbIcon(st, hdc, st->rcClear, TbIcon::Close, innerIcon);
+    ToolbarFindDrawTbIcon(st, hdc, st->rcSearch, TbIcon::Search, innerIcon);
+    if (savedDc) {
+        RestoreDC(hdc, savedDc);
+    }
+}
+
+static void ToolbarFindActivate(ToolbarFindState* st, ToolbarFindPart part) {
+    MainWindow* win = st->win;
+    if (!win) {
+        return;
+    }
+    if (!(IsFindWindowVisible(win) && !IsFindWindowDocked(win))) {
+        win->hwndFindEdit = st->edit;
+    }
+    auto keepEditFocus = [&]() {
+        if (st->edit) {
+            HwndSetFocus(st->edit);
+        }
+    };
+    switch (part) {
+        case ToolbarFindPart::Prev:
+            FindPrev(win);
+            keepEditFocus();
+            break;
+        case ToolbarFindPart::Next:
+        case ToolbarFindPart::Search:
+            if (st->hasQuery) {
+                FindNext(win);
+            }
+            keepEditFocus();
+            break;
+        case ToolbarFindPart::Detail:
+            ShowDetailedSearchWindow(win);
+            break;
+        case ToolbarFindPart::Clear:
+            if (st->edit) {
+                HwndSetText(st->edit, "");
+            }
+            keepEditFocus();
+            break;
+        case ToolbarFindPart::None:
+            break;
+    }
+}
+
+static void ToolbarFindSetHot(ToolbarFindState* st, ToolbarFindPart part) {
+    if (st->hot == part) {
+        return;
+    }
+    st->hot = part;
+    if (part == ToolbarFindPart::None) {
+        ToolbarFindHideTip(st);
+    } else {
+        ToolbarFindEnsureTip(st);
+        ToolbarFindShowTip(st, part);
+    }
+    InvalidateRect(st->hwnd, nullptr, FALSE);
+}
+
+static LRESULT CALLBACK ToolbarFindWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    ToolbarFindState* st = ToolbarFindGet(hwnd);
+    if (msg == WM_NCCREATE) {
+        auto* cs = (CREATESTRUCTW*)lp;
+        st = (ToolbarFindState*)cs->lpCreateParams;
+        st->hwnd = hwnd;
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)st);
+    }
+    if (!st) {
+        return DefWindowProcW(hwnd, msg, wp, lp);
+    }
+    switch (msg) {
+        case WM_ERASEBKGND:
+            return 1;
+        case WM_SIZE:
+            ToolbarFindLayoutInner(st);
+            return 0;
+        case WM_PAINT: {
+            PAINTSTRUCT ps{};
+            HDC hdc = BeginPaint(hwnd, &ps);
+            RECT editRc{};
+            RECT overlap{};
+            bool repaintEdit = ToolbarFindEditClientRect(st, &editRc) && IntersectRect(&overlap, &editRc, &ps.rcPaint);
+            ToolbarFindPaint(st, hdc);
+            EndPaint(hwnd, &ps);
+            // Paint the query after the parent fill. Otherwise the keyword stays
+            // blank until a later edit paint, such as moving the pointer onto the page.
+            if (repaintEdit && st->edit && !st->repairingEdit) {
+                st->repairingEdit = true;
+                RedrawWindow(st->edit, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
+                st->repairingEdit = false;
+            }
+            return 0;
+        }
+        case WM_CTLCOLOREDIT: {
+            HDC hdc = (HDC)wp;
+            SetTextColor(hdc, st->textCol);
+            SetBkColor(hdc, st->fill);
+            return (LRESULT)st->fillBrush;
+        }
+        case WM_COMMAND:
+            if ((HWND)lp == st->edit) {
+                int code = HIWORD(wp);
+                if (code == EN_CHANGE) {
+                    ToolbarFindOnQueryChanged(st);
+                } else if (code == EN_SETFOCUS || code == EN_KILLFOCUS) {
+                    st->focused = code == EN_SETFOCUS;
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                }
+            }
+            return 0;
+        case WM_SETFOCUS:
+            if (st->edit) {
+                HwndSetFocus(st->edit);
+            }
+            return 0;
+        case WM_MOUSEMOVE: {
+            if (!st->tracking) {
+                TRACKMOUSEEVENT tme{};
+                tme.cbSize = sizeof(tme);
+                tme.dwFlags = TME_LEAVE;
+                tme.hwndTrack = hwnd;
+                TrackMouseEvent(&tme);
+                st->tracking = true;
+            }
+            ToolbarFindSetHot(st, ToolbarFindHit(st, GET_X_LPARAM(lp), GET_Y_LPARAM(lp)));
+            return 0;
+        }
+        case WM_MOUSELEAVE:
+            st->tracking = false;
+            st->pressed = ToolbarFindPart::None;
+            ToolbarFindSetHot(st, ToolbarFindPart::None);
+            return 0;
+        case WM_LBUTTONDOWN:
+            st->pressed = ToolbarFindHit(st, GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
+            if (st->pressed != ToolbarFindPart::None) {
+                SetCapture(hwnd);
+                InvalidateRect(hwnd, nullptr, FALSE);
+            } else if (st->edit) {
+                HwndSetFocus(st->edit);
+            }
+            return 0;
+        case WM_LBUTTONUP: {
+            if (GetCapture() == hwnd) {
+                ReleaseCapture();
+            }
+            ToolbarFindPart was = st->pressed;
+            st->pressed = ToolbarFindPart::None;
+            ToolbarFindPart now = ToolbarFindHit(st, GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
+            InvalidateRect(hwnd, nullptr, FALSE);
+            if (was != ToolbarFindPart::None && was == now) {
+                ToolbarFindActivate(st, was);
+            }
+            return 0;
+        }
+        case WM_SETCURSOR: {
+            POINT pt{};
+            GetCursorPos(&pt);
+            ScreenToClient(hwnd, &pt);
+            if (ToolbarFindHit(st, pt.x, pt.y) != ToolbarFindPart::None) {
+                SetCursor(LoadCursor(nullptr, IDC_HAND));
+                return TRUE;
+            }
+            break;
+        }
+        case WM_DESTROY:
+            if (st->win) {
+                if (st->win->hwndFindEdit == st->edit) {
+                    st->win->hwndFindEdit = nullptr;
+                }
+                if (st->win->hwndToolbarFind == hwnd) {
+                    st->win->hwndToolbarFind = nullptr;
+                }
+            }
+            ToolbarFindHideTip(st);
+            if (st->tip) {
+                DestroyWindow(st->tip);
+                st->tip = nullptr;
+            }
+            return 0;
+        case WM_NCDESTROY:
+            if (st->fillBrush) {
+                DeleteObject(st->fillBrush);
+            }
+            SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+            delete st;
+            return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
+static void ToolbarFindRegister() {
+    static bool registered = false;
+    if (registered) {
+        return;
+    }
+    WNDCLASSEXW wc{};
+    wc.cbSize = sizeof(wc);
+    wc.lpfnWndProc = ToolbarFindWndProc;
+    wc.hInstance = GetModuleHandle(nullptr);
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.lpszClassName = kToolbarFindClass;
+    registered = RegisterClassExW(&wc) != 0 || GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
+}
+
+HWND ToolbarFindEdit(MainWindow* win) {
+    ToolbarFindState* st = ToolbarFindGet(win);
+    return st ? st->edit : nullptr;
+}
+
+void CreateToolbarFind(MainWindow* win) {
+    if (!win || !win->hwndToolbar || win->hwndToolbarFind) {
+        return;
+    }
+    ToolbarFindRegister();
+    auto* st = new ToolbarFindState();
+    st->win = win;
+    ToolbarFindApplyColors(st);
+    DWORD ex = WS_EX_CONTROLPARENT;
+    if (IsUIRtl()) {
+        ex |= WS_EX_LAYOUTRTL;
+    }
+    HWND hwnd = CreateWindowExW(ex, kToolbarFindClass, L"", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+                                0, 0, 10, 10, win->hwndToolbar, nullptr, GetModuleHandle(nullptr), st);
+    if (!hwnd) {
+        // WM_NCDESTROY already deletes st once creation reaches it.
+        return;
+    }
+    win->hwndToolbarFind = hwnd;
+    DWORD editEx = 0;
+    HWND edit = CreateWindowExW(editEx, WC_EDITW, L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_LEFT, 0, 0, 10, 10,
+                                hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+    st->edit = edit;
+    if (edit) {
+        SetWindowTheme(edit, L"", L"");
+        HFONT font = GetWindowFont(win->hwndToolbar);
+        if (font) {
+            SetWindowFont(edit, font, FALSE);
+        }
+        InstallFindEditKeyboardHandler(win, edit);
+    }
+    if (IsFindWindowVisible(win) && !IsFindWindowDocked(win) && win->hwndFindEdit) {
+        st->suppress = true;
+        HwndSetText(edit, HwndGetTextTemp(win->hwndFindEdit));
+        st->suppress = false;
+    } else if (edit) {
+        win->hwndFindEdit = edit;
+    }
+    ToolbarFindLayout(win);
+}
+
+// Right edge of the search field, in toolbar client pixels. When a vertical
+// scrollbar takes a column, that edge is the bar's inner side. Otherwise keep
+// a small gap off the window edge.
+static int ToolbarFindRightLimit(MainWindow* win, HWND toolbar, int tbW, int margin) {
+    int fallback = tbW - margin - DpiScale(toolbar, 12);
+    if (fallback < 1) {
+        fallback = tbW;
+    }
+    if (!win || !toolbar || tbW <= 0 || !win->hwndCanvas || !IsWindowVisible(win->hwndCanvas)) {
+        return fallback;
+    }
+    int limit = -1;
+    if (!ScrollbarsAreHidden() && !ScrollbarsUseOverlay()) {
+        SCROLLBARINFO sbi{};
+        sbi.cbSize = sizeof(sbi);
+        if (GetScrollBarInfo(win->hwndCanvas, OBJID_VSCROLL, &sbi) && (sbi.rgstate[0] & STATE_SYSTEM_INVISIBLE) == 0 &&
+            sbi.rcScrollBar.right > sbi.rcScrollBar.left) {
+            RECT canvasWnd{};
+            GetWindowRect(win->hwndCanvas, &canvasWnd);
+            int mid = (canvasWnd.left + canvasWnd.right) / 2;
+            // The bar sits on the right. Its inner edge is the left side.
+            if (sbi.rcScrollBar.left >= mid) {
+                POINT pt{sbi.rcScrollBar.left, sbi.rcScrollBar.top};
+                ScreenToClient(toolbar, &pt);
+                limit = pt.x;
+            }
+        }
+    } else if (ScrollbarsUseOverlay() && win->overlayScrollV && win->overlayScrollV->hwnd &&
+               IsWindowVisible(win->overlayScrollV->hwnd)) {
+        RECT sbRc{};
+        if (GetWindowRect(win->overlayScrollV->hwnd, &sbRc) && sbRc.right > sbRc.left) {
+            RECT canvasWnd{};
+            GetWindowRect(win->hwndCanvas, &canvasWnd);
+            int mid = (canvasWnd.left + canvasWnd.right) / 2;
+            if (sbRc.left >= mid) {
+                POINT pt{sbRc.left, sbRc.top};
+                ScreenToClient(toolbar, &pt);
+                limit = pt.x;
+            }
+        }
+    }
+    if (limit > 0 && limit < tbW) {
+        // Four device pixels short of the scrollbar's inner edge.
+        limit -= 4;
+        return limit > 0 ? limit : 1;
+    }
+    // Native bar not reported yet, but the canvas client already stops at it.
+    if (!ScrollbarsUseOverlay() && !ScrollbarsAreHidden()) {
+        RECT page{};
+        if (GetClientRect(win->hwndCanvas, &page) && page.right > page.left) {
+            MapWindowPoints(win->hwndCanvas, toolbar, (LPPOINT)&page, 2);
+            if (page.right > 0 && page.right < tbW) {
+                int right = page.right - 4;
+                return right > 0 ? right : 1;
+            }
+        }
+    }
+    return fallback;
+}
+
+void ToolbarFindLayout(MainWindow* win) {
+    if (!win || !win->hwndToolbar || !win->hwndToolbarFind) {
+        return;
+    }
+    RECT trc{};
+    GetClientRect(win->hwndToolbar, &trc);
+    int tbW = trc.right;
+    int tbH = trc.bottom;
+    HWND box = win->hwndToolbarFind;
+    ToolbarFindState* st = ToolbarFindGet(box);
+    int buttonsRight = 0;
+    RECT sample{};
+    bool gotButton = false;
+    int n = (int)SendMessageW(win->hwndToolbar, TB_BUTTONCOUNT, 0, 0);
+    for (int i = 0; i < n; i++) {
+        TBBUTTON btn{};
+        if (SendMessageW(win->hwndToolbar, TB_GETBUTTON, i, (LPARAM)&btn)) {
+            if (btn.fsState & TBSTATE_HIDDEN) {
+                continue;
+            }
+        }
+        RECT br{};
+        if (!SendMessageW(win->hwndToolbar, TB_GETITEMRECT, i, (LPARAM)&br)) {
+            continue;
+        }
+        if (br.right <= br.left) {
+            continue;
+        }
+        if (!gotButton) {
+            sample = br;
+            gotButton = true;
+        }
+        if (br.right > buttonsRight) {
+            buttonsRight = br.right;
+        }
+    }
+    int edge = GetSystemMetrics(SM_CXEDGE);
+    if (edge < 1) {
+        edge = 1;
+    }
+    int fieldH = gotButton ? (sample.bottom - sample.top) : tbH;
+    int y = gotButton ? sample.top : 0;
+    // Match the page box, whose rounded field is two pixels taller than the
+    // toolbar icon row and centered around it.
+    Rect pageField = WindowRect(win->hwndPageBg);
+    bool matchesPageBox = !pageField.IsEmpty();
+    if (matchesPageBox) {
+        fieldH = pageField.dy;
+        y = gotButton ? (sample.bottom - fieldH) / 2 : 0;
+    }
+    if (!matchesPageBox) {
+        if (y < 0) {
+            y = 0;
+        }
+        if (fieldH > tbH - y) {
+            fieldH = tbH - y;
+        }
+    }
+    int slot = gotButton ? (sample.right - sample.left) : fieldH;
+    if (st) {
+        st->iconSlot = slot;
+    }
+    int margin = sample.left > 0 ? sample.left : edge;
+    int rightLimit = ToolbarFindRightLimit(win, win->hwndToolbar, tbW, margin) - 6;
+    HFONT font = GetWindowFont(win->hwndToolbar);
+    int cue = HwndMeasureText(box, "Find in document...", font).dx;
+    int status = HwndMeasureText(box, "0000 / 0000", font).dx + edge * 2;
+    int queryMin = HwndMeasureText(box, "0000", font).dx;
+    ToolbarFindCluster cluster;
+    ToolbarFindClusterMetrics(box, slot, &cluster);
+    int fullRight = cluster.search + cluster.clear + cluster.gapDetailToClear + cluster.detail +
+                    cluster.gapNavToDetail + cluster.nav * 2 + status;
+    int minRight = cluster.search + cluster.clear + cluster.gapNavToDetail + cluster.nav * 2 + status;
+    // Cue and the full hit cluster share one width, so typing does not resize the field.
+    int preferred = edge * 2 + cue + edge + fullRight;
+    // Below this the count and prev/next/clear/magnifier would overlap the query.
+    int minShow = edge * 2 + queryMin + minRight;
+    int avail = rightLimit - buttonsRight - margin;
+    if (tbW <= 0 || tbH <= 0 || fieldH < 1 || avail < minShow) {
+        ShowWindow(box, SW_HIDE);
+        return;
+    }
+    int width = preferred;
+    if (width > avail) {
+        width = avail;
+    }
+    int x = rightLimit - width;
+    if (x < buttonsRight + margin) {
+        x = buttonsRight + margin;
+        width = rightLimit - x;
+    }
+    if (width < minShow) {
+        ShowWindow(box, SW_HIDE);
+        return;
+    }
+    ShowWindow(box, SW_SHOW);
+    SetWindowPos(box, HWND_TOP, x, y, width, fieldH, SWP_NOACTIVATE);
+}
+
+void ToolbarFindUpdateTheme(MainWindow* win) {
+    ToolbarFindState* st = ToolbarFindGet(win);
+    if (!st) {
+        return;
+    }
+    ToolbarFindApplyColors(st);
+    if (st->edit) {
+        SetWindowTheme(st->edit, L"", L"");
+        HFONT font = win->hwndToolbar ? GetWindowFont(win->hwndToolbar) : nullptr;
+        if (font) {
+            SetWindowFont(st->edit, font, FALSE);
+        }
+    }
+    ToolbarFindLayout(win);
+    InvalidateRect(st->hwnd, nullptr, TRUE);
+}
+
+void ToolbarFindSetStatus(MainWindow* win, const char* s) {
+    ToolbarFindState* st = ToolbarFindGet(win);
+    if (!st) {
+        return;
+    }
+    const char* next = s ? s : "";
+    const char* prev = st->status.Get();
+    if (str::Eq(prev, next)) {
+        return;
+    }
+    if (!st->hwnd) {
+        st->status.SetCopy(next);
+        return;
+    }
+    HFONT font = st->edit ? GetWindowFont(st->edit) : nullptr;
+    int edge = GetSystemMetrics(SM_CXEDGE);
+    if (edge < 1) {
+        edge = 1;
+    }
+    int slot = HwndMeasureText(st->hwnd, "0000 / 0000", font).dx + edge * 2;
+    auto textW = [&](const char* t) -> int {
+        if (!t || !t[0]) {
+            return 0;
+        }
+        return HwndMeasureText(st->hwnd, t, font).dx + edge * 2;
+    };
+    int oldW = textW(prev);
+    st->status.SetCopy(next);
+    int newW = textW(next);
+    // "... / 647" -> "198 / 647" stays inside the reserved count slot.
+    // Repaint that slot only, so the magnifier, arrows, and edit do not move.
+    if (st->showStatus && st->hasQuery && !st->rcStatus.IsEmpty() && oldW <= slot && newW <= slot) {
+        RECT rc{st->rcStatus.x, st->rcStatus.y, st->rcStatus.x + st->rcStatus.dx, st->rcStatus.y + st->rcStatus.dy};
+        InvalidateRect(st->hwnd, &rc, FALSE);
+        return;
+    }
+    ToolbarFindLayoutInner(st);
+}
+
+void ToolbarFindFlashStatus(MainWindow* win, bool flash) {
+    ToolbarFindState* st = ToolbarFindGet(win);
+    if (!st || st->flash == flash) {
+        return;
+    }
+    st->flash = flash;
+    InvalidateRect(st->hwnd, nullptr, FALSE);
+}
+
+TempStr ToolbarFindStatusText(MainWindow* win) {
+    ToolbarFindState* st = ToolbarFindGet(win);
+    if (!st || st->status.empty()) {
+        return nullptr;
+    }
+    return str::DupTemp(st->status.Get());
+}
+
+void ToolbarFindSetText(MainWindow* win, const char* s, bool suppress) {
+    ToolbarFindState* st = ToolbarFindGet(win);
+    if (!st || !st->edit) {
+        return;
+    }
+    if (suppress) {
+        st->suppress = true;
+    }
+    HwndSetText(st->edit, s ? s : "");
+    if (suppress) {
+        st->suppress = false;
+        ToolbarFindLayoutInner(st);
+    }
+}
+
+void ToolbarFindFocus(MainWindow* win) {
+    HWND ed = ToolbarFindEdit(win);
+    if (!ed) {
+        return;
+    }
+    if (win->hwndToolbarFind && !IsWindowVisible(win->hwndToolbarFind)) {
+        ShowWindow(win->hwndToolbarFind, SW_SHOW);
+    }
+    win->hwndFindEdit = ed;
+    HwndSetFocus(ed);
+    Edit_SetSel(ed, 0, -1);
+}
+
+void ToolbarFindCloseDetailed(MainWindow* win, bool focusToolbarEdit) {
+    if (!win) {
+        return;
+    }
+    AutoFreeStr text;
+    if (IsFindWindowVisible(win) && win->hwndFindEdit) {
+        text.SetCopy(HwndGetTextTemp(win->hwndFindEdit));
+    }
+    if (IsFindWindowVisible(win)) {
+        HideFindWindow(win, true);
+    }
+    if (text.Get()) {
+        ToolbarFindSetText(win, text.Get(), true);
+    }
+    HWND ed = ToolbarFindEdit(win);
+    if (ed) {
+        win->hwndFindEdit = ed;
+    }
+    if (focusToolbarEdit) {
+        ToolbarFindFocus(win);
+        return;
+    }
+    HWND dest = win->hwndCanvas ? win->hwndCanvas : win->hwndFrame;
+    if (dest) {
+        HwndSetFocus(dest);
+    }
+}
+
+// "ShowFindBar" is the entry point used by FindFirst/Ctrl+F.
+// SearchUIFloating false: focus the toolbar box.
+// SearchUIFloating true: open the existing floating window (Detailed Search).
+// The docked overlay is not shown from here.
 void ShowFindBar(MainWindow* win) {
-    // Both appearances are one FindWindowWnd. The compact appearance only
-    // changes its frame/layout and hides the result list.
-    ShowFindWindow(win);
+    if (!win) {
+        return;
+    }
+    // Ctrl+F stays in the toolbar field. Detailed Search is the list button.
+    if (IsFindWindowVisible(win) && !IsFindWindowDocked(win)) {
+        if (win->hwndFindEdit) {
+            FocusFindEditSelectAll(win);
+        }
+        RefreshFindSearchBlockedStatus(win);
+        return;
+    }
+    HWND ed = ToolbarFindEdit(win);
+    if (ed) {
+        win->hwndFindEdit = ed;
+    }
+    ToolbarFindFocus(win);
     RefreshFindSearchBlockedStatus(win);
 }
 
@@ -624,7 +1703,12 @@ void DestroyFindUI(MainWindow* win) {
     }
     DeleteFindWindow(win);
     DeleteFindBar(win);
-    win->hwndFindEdit = nullptr;
+    // Tab switch clears the search. The toolbar box stays; drop its query
+    // without starting another search.
+    HWND ed = ToolbarFindEdit(win);
+    win->hwndFindEdit = ed;
+    ToolbarFindSetText(win, "", true);
+    ToolbarFindSetStatus(win, "");
 }
 
 void HideFindBar(MainWindow* win, bool keepSearchState) {
@@ -654,7 +1738,16 @@ bool IsFindBarVisible(MainWindow* win) {
 }
 
 bool IsFindUIVisible(MainWindow* win) {
-    return IsFindWindowVisible(win);
+    if (!win) {
+        return false;
+    }
+    if (IsFindWindowVisible(win)) {
+        return true;
+    }
+    // The toolbar field is the find UI while it holds a query. Match highlights
+    // and the position gutter follow that, the same as the detailed window.
+    HWND ed = ToolbarFindEdit(win);
+    return ed && GetWindowTextLengthW(ed) > 0;
 }
 
 bool IsFindUIHwnd(MainWindow* win, HWND hwnd) {
@@ -668,6 +1761,9 @@ bool IsFindUIHwnd(MainWindow* win, HWND hwnd) {
             return true;
         }
         if (winHwnd && h == winHwnd) {
+            return true;
+        }
+        if (win->hwndToolbarFind && h == win->hwndToolbarFind) {
             return true;
         }
     }
@@ -692,6 +1788,11 @@ void FindBarResyncActiveEdit(MainWindow* win) {
     }
     if (IsFindWindowVisible(win)) {
         FindWindowResyncActiveEdit(win);
+        return;
+    }
+    HWND ed = ToolbarFindEdit(win);
+    if (ed) {
+        win->hwndFindEdit = ed;
         return;
     }
     if (win->findBar && win->findBar->edit) {
@@ -735,12 +1836,16 @@ void FindBarSetStatus(MainWindow* win, const char* s) {
     if (win->findWindow) {
         FindWindowSetStatusText(win, s);
     }
+    ToolbarFindSetStatus(win, s);
 }
 
 TempStr FindUIGetStatusText(MainWindow* win) {
     TempStr s = FindWindowGetStatusText(win);
     if (str::IsEmpty(s) && win->findBar && win->findBar->status) {
         s = HwndGetTextTemp(win->findBar->status->hwnd);
+    }
+    if (str::IsEmpty(s)) {
+        s = ToolbarFindStatusText(win);
     }
     return s;
 }
@@ -753,6 +1858,7 @@ void FindBarBeginStatusCompleteFlash(MainWindow* win) {
         win->findBar->FlashStatusText(true);
     }
     FindWindowFlashStatusText(win, true);
+    ToolbarFindFlashStatus(win, true);
     SetTimer(win->hwndFrame, kFindStatusCompleteFlashTimerId, kFindStatusCompleteFlashMs, nullptr);
 }
 
@@ -765,6 +1871,7 @@ void FindStatusCompleteFlashTimerFired(MainWindow* win) {
         win->findBar->FlashStatusText(false);
     }
     FindWindowFlashStatusText(win, false);
+    ToolbarFindFlashStatus(win, false);
 }
 
 void RefreshFindUIStatus(MainWindow* win) {

@@ -274,6 +274,16 @@ void HwndMakeVisible(HWND hwnd) {
     SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
 }
 
+void HwndSetOwner(HWND hwnd, HWND owner) {
+    if (!hwnd || !owner || !IsWindow(hwnd) || !IsWindow(owner)) {
+        return;
+    }
+    if (GetWindow(hwnd, GW_OWNER) == owner) {
+        return;
+    }
+    SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, (LONG_PTR)owner);
+}
+
 void MoveWindow(HWND hwnd, Rect rect) {
     MoveWindow(hwnd, rect.x, rect.y, rect.dx, rect.dy, TRUE);
 }
@@ -4458,7 +4468,103 @@ void SetCursorCached(LPWSTR cursorId) {
     SetCursor(c);
 }
 
+// Distance from the <-> hotspot to the farther tip of the drawn arrow.
+// The hotspot is the pointer; the tips sit to either side of it.
+static int gSizeWeReach = 0;
+static int gSizeWeReachCursorPx = 0;
+
+int SizeWeCursorReachPx() {
+    int cursorPx = GetSystemMetrics(SM_CXCURSOR);
+    if (cursorPx < 16) {
+        cursorPx = 32;
+    }
+    if (gSizeWeReach > 0 && gSizeWeReachCursorPx == cursorPx) {
+        return gSizeWeReach;
+    }
+    HCURSOR cur = GetCachedCursor(IDC_SIZEWE);
+    int fallback = cursorPx / 4;
+    if (!cur) {
+        return fallback;
+    }
+    ICONINFO info{};
+    if (!GetIconInfo(cur, &info)) {
+        return fallback;
+    }
+    int reach = fallback;
+    int side = cursorPx;
+    BITMAPINFO bi{};
+    bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
+    bi.bmiHeader.biWidth = side;
+    bi.bmiHeader.biHeight = -side;
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+    void* bits = nullptr;
+    HDC screen = GetDC(nullptr);
+    HBITMAP dib = screen ? CreateDIBSection(screen, &bi, DIB_RGB_COLORS, &bits, nullptr, 0) : nullptr;
+    HDC mem = dib ? CreateCompatibleDC(screen) : nullptr;
+    HGDIOBJ old = nullptr;
+    if (mem) {
+        old = SelectObject(mem, dib);
+    }
+    // Magenta background. Whatever DrawIconEx changes is part of the arrow.
+    if (mem && bits) {
+        RECT fill{0, 0, side, side};
+        HBRUSH mag = CreateSolidBrush(RGB(255, 0, 255));
+        FillRect(mem, &fill, mag);
+        DeleteObject(mag);
+        DrawIconEx(mem, 0, 0, cur, side, side, 0, nullptr, DI_NORMAL);
+        int hot = (int)info.xHotspot;
+        int best = 0;
+        u8* pix = (u8*)bits;
+        for (int y = 0; y < side; y++) {
+            for (int x = 0; x < side; x++) {
+                u8* p = pix + ((size_t)y * (size_t)side + (size_t)x) * 4;
+                if (p[0] > 250 && p[1] < 8 && p[2] > 250) {
+                    continue;
+                }
+                int dx = x - hot;
+                if (dx < 0) {
+                    dx = -dx;
+                }
+                if (dx > best) {
+                    best = dx;
+                }
+            }
+        }
+        if (best > 0) {
+            reach = best;
+        }
+    }
+    if (mem) {
+        if (old) {
+            SelectObject(mem, old);
+        }
+        DeleteDC(mem);
+    }
+    if (dib) {
+        DeleteObject(dib);
+    }
+    if (screen) {
+        ReleaseDC(nullptr, screen);
+    }
+    if (info.hbmMask) {
+        DeleteObject(info.hbmMask);
+    }
+    if (info.hbmColor) {
+        DeleteObject(info.hbmColor);
+    }
+    if (reach < 4) {
+        reach = fallback;
+    }
+    gSizeWeReach = reach;
+    gSizeWeReachCursorPx = cursorPx;
+    return reach;
+}
+
 void DeleteCachedCursors() {
+    gSizeWeReach = 0;
+    gSizeWeReachCursorPx = 0;
     for (int i = 0; i < dimof(knownCursorIds); i++) {
         HCURSOR cur = cachedCursors[i];
         if (cur && cachedCursorOwned[i]) {

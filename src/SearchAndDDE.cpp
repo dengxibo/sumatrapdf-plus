@@ -231,6 +231,8 @@ void OnFindBarTextChanged(MainWindow* win) {
         // The count worker owns a private TextSearch and checks its epoch after
         // every page, so don't make the UI wait for it. A find worker uses the
         // document TextSearch and must be joined before clearing that selection.
+        win->findStatusCurrentIndex = 0;
+        win->findPendingNavDelta = 0;
         AbortFinding(win, true, win->findThread != nullptr);
         StopFindStatusAnimation(win);
         ClearSearchResult(win);
@@ -247,8 +249,10 @@ void OnFindBarTextChanged(MainWindow* win) {
     if (win->findCountText && str::Eq(ToWStrTemp(s), win->findCountText)) {
         return;
     }
+    win->findStatusCurrentIndex = 0;
     win->findEnterPending = true;
     win->findPendingFromPage = 0;
+    win->findPendingNavDelta = 0;
     win->findCountValid = false;
     win->findCountPartial = false;
     FindBarSetStatus(win, "");
@@ -407,6 +411,7 @@ void CloseFindUI(MainWindow* win) {
     DestroyFindUI(win);
     win->findEnterPending = false;
     win->findPendingFromPage = 0;
+    win->findPendingNavDelta = 0;
     win->findCountValid = false;
     win->findCountPartial = false;
     str::FreePtr(&win->findCountText);
@@ -490,10 +495,11 @@ void FindNext(MainWindow* win) {
         if (TryNavigateCachedFindMatch(win, TextSearch::Direction::Forward)) {
             return;
         }
-        // The count worker owns text extraction until it finishes. Floating
-        // results navigate through their streamed list; the compact bar waits
-        // rather than starting a second, unsafe text-search worker.
+        // The count worker owns text extraction until it finishes. Remember
+        // the click and step once the current match is known. Do not spend
+        // the click on filling in the ordinal.
         if (win->findCountThread) {
+            win->findPendingNavDelta++;
             return;
         }
         FindTextOnThread(win, TextSearch::Direction::Forward);
@@ -515,6 +521,7 @@ void FindPrev(MainWindow* win) {
             return;
         }
         if (win->findCountThread) {
+            win->findPendingNavDelta--;
             return;
         }
         FindTextOnThread(win, TextSearch::Direction::Backward);
@@ -790,6 +797,11 @@ static bool CountCacheIsComplete(MainWindow* win) {
     return win && win->findCountValid && !win->findCountPartial;
 }
 
+// ShowMatchCount binds the initial hit, and that navigation calls ShowMatchCount.
+static bool gBindingInitialFindMatch = false;
+static void BindInitialActiveMatch(MainWindow* win);
+static void ApplyPendingFindNavigation(MainWindow* win);
+
 // update the find bar with "n / m" from the cache (or partial results while
 // the count thread is still running) and the current match
 static void ShowMatchCount(MainWindow* win) {
@@ -799,9 +811,17 @@ static void ShowMatchCount(MainWindow* win) {
     DisplayModel* dm = win->AsFixed();
     int n = 0;
     bool complete = CountCacheIsComplete(win);
+    LONG epoch = win->findCountEpoch;
+    int hinted = win->findStatusCurrentIndex;
     if (complete && dm && dm->textSearch) {
         u64 key = MatchKey(dm->textSearch->startPage, dm->textSearch->startGlyph);
         n = MatchIndexInCache(win, key);
+    }
+    if (complete && n < 1) {
+        int idx = FindCurrentMatchIndex(win);
+        if (idx >= 0) {
+            n = idx + 1;
+        }
     }
     if (complete && n < 1) {
         // The results list can already have the new query's current row while
@@ -809,12 +829,45 @@ static void ShowMatchCount(MainWindow* win) {
         // navigation synchronizes the document search state.
         n = FindWindowCurrentSelectionIndex(win);
     }
+    if (complete && n < 1 && hinted >= 1 && hinted <= (int)win->findCountPositions.size()) {
+        // Toolbar Next/Prev already stepped to this cached row. Keep that index
+        // when the document search cursor has not caught the cache key yet.
+        n = hinted;
+    }
+    // Hits can already be painted while the counter still says "... / total".
+    // Give that highlight the same initial match Detailed Find would use, so
+    // the number appears on its own. A Next/Prev click is not what resolves it.
+    bool userStepped = hinted >= 1 && hinted <= (int)win->findCountPositions.size();
+    if (complete && !gBindingInitialFindMatch && !userStepped && FindCurrentMatchIndex(win) < 0 &&
+        win->findCountPositions.size() > 0) {
+        BindInitialActiveMatch(win);
+        if (win->findCountEpoch != epoch) {
+            return;
+        }
+        if (win->findStatusCurrentIndex >= 1 && win->findStatusCurrentIndex <= (int)win->findCountPositions.size()) {
+            n = win->findStatusCurrentIndex;
+        }
+    }
+    if (complete && !gBindingInitialFindMatch && win->findPendingNavDelta != 0) {
+        ApplyPendingFindNavigation(win);
+        if (win->findCountEpoch != epoch) {
+            return;
+        }
+        if (win->findStatusCurrentIndex >= 1 && win->findStatusCurrentIndex <= (int)win->findCountPositions.size()) {
+            n = win->findStatusCurrentIndex;
+        }
+    }
 
+    if (win->findCountEpoch != epoch) {
+        return;
+    }
     if (complete) {
         StopFindStatusAnimation(win);
         int total = (int)win->findCountPositions.size();
         win->findStatusCurrentIndex = n;
-        if (n >= 1) {
+        if (total <= 0) {
+            FindBarSetStatus(win, "0 / 0");
+        } else if (n >= 1) {
             TempStr s = str::FormatTemp("%d / %d", n, total);
             FindBarSetStatus(win, s);
         } else {
@@ -831,8 +884,13 @@ static void ShowMatchCount(MainWindow* win) {
     if (total <= 0 && !countActive) {
         return;
     }
-    win->findStatusCurrentIndex = 0;
-    FindBarSetStatus(win, FindStatusAnimTextTemp(0, total, win->findStatusDotPhase));
+    int shown = 0;
+    int curIdx = FindCurrentMatchIndex(win);
+    if (curIdx >= 0) {
+        shown = curIdx + 1;
+    }
+    win->findStatusCurrentIndex = shown;
+    FindBarSetStatus(win, FindStatusAnimTextTemp(shown, total, win->findStatusDotPhase));
 }
 
 static bool WantFindSnippets() {
@@ -2066,7 +2124,7 @@ void OnEbookPageCountChanged(MainWindow* win) {
 
 // navigate to a match chosen from the floating results list and select it, so
 // Find Next/Prev and the n/m counter continue from there
-void GoToFindMatch(MainWindow* win, int startPage, int startGlyph, int endPage, int endGlyph) {
+void GoToFindMatch(MainWindow* win, int startPage, int startGlyph, int endPage, int endGlyph, bool addNavPt) {
     if (!win || !win->IsDocLoaded()) {
         return;
     }
@@ -2127,7 +2185,7 @@ void GoToFindMatch(MainWindow* win, int startPage, int startGlyph, int endPage, 
     // below calls SetText(), which clears ts->result whenever the matched text
     // differs from the last search text (e.g. a case-insensitive find where
     // "the" matched "The"), so ShowSearchResult() must run first
-    ShowSearchResult(win, &ts->result, true);
+    ShowSearchResult(win, &ts->result, addNavPt);
     // hand the selection to TextSearch as its "last result" so Find Next/Prev
     // continue from here; SetLastResult owns the findPage/findIndex/pageText
     // bookkeeping (so we don't poke internals or leave pageText null). The match's
@@ -2140,14 +2198,18 @@ void GoToFindMatch(MainWindow* win, int startPage, int startGlyph, int endPage, 
     FindWindowRefreshResults(win, false);
 }
 
-static bool GoToCachedMatchIndex(MainWindow* win, int idx) {
+static bool GoToCachedMatchIndex(MainWindow* win, int idx, bool addNavPt = true) {
     int n = (int)win->findCountPositions.size();
     if (idx < 0 || idx >= n) {
         return false;
     }
+    // Remember the row before navigation. ShowMatchCount uses it when the
+    // document cursor does not yet match the cache key, so the toolbar shows
+    // "38 / 99" instead of an unknown current hit.
+    win->findStatusCurrentIndex = idx + 1;
     if ((int)win->findMatches.size() == n) {
         const FindMatch& fm = win->findMatches[idx];
-        GoToFindMatch(win, fm.startPage, fm.startGlyph, fm.endPage, fm.endGlyph);
+        GoToFindMatch(win, fm.startPage, fm.startGlyph, fm.endPage, fm.endGlyph, addNavPt);
         return true;
     }
     u64 key = win->findCountPositions[idx];
@@ -2171,8 +2233,79 @@ static bool GoToCachedMatchIndex(MainWindow* win, int idx) {
     if (end.page <= 0) {
         return false;
     }
-    GoToFindMatch(win, page, glyph, end.page, ts.CodepointToGlyph(end.page, end.offset));
+    GoToFindMatch(win, page, glyph, end.page, ts.CodepointToGlyph(end.page, end.offset), addNavPt);
     return true;
+}
+
+// First cached hit at or after the page the reader is on. Wraps to the
+// first hit in the document when the current page is past the last one.
+// Same choice as the results list's FirstMatchFromCurrentPage.
+static int InitialCachedMatchIndex(MainWindow* win) {
+    int n = (int)win->findCountPositions.size();
+    if (n <= 0) {
+        return -1;
+    }
+    int page = win->ctrl && win->ctrl->CurrentPageNo() > 0 ? win->ctrl->CurrentPageNo() : 1;
+    int idx = FirstSortedIndexAtOrAfterPage(win->findCountPositions, page);
+    return idx >= 0 ? idx : 0;
+}
+
+static void BindInitialActiveMatch(MainWindow* win) {
+    if (gBindingInitialFindMatch || !CountCacheIsComplete(win)) {
+        return;
+    }
+    int n = (int)win->findCountPositions.size();
+    if (n == 0 || FindCurrentMatchIndex(win) >= 0) {
+        return;
+    }
+    // Next/Prev already named a row. Do not pull the reader back to the initial hit.
+    if (win->findStatusCurrentIndex >= 1 && win->findStatusCurrentIndex <= n) {
+        return;
+    }
+    int idx = -1;
+    int sel = FindWindowCurrentSelectionIndex(win);
+    if (sel >= 1 && sel <= n) {
+        idx = sel - 1;
+    } else {
+        idx = InitialCachedMatchIndex(win);
+    }
+    if (idx < 0) {
+        return;
+    }
+    gBindingInitialFindMatch = true;
+    // The hit is often already on screen. Select it so the counter and the
+    // highlight are the same match, without a history step or a forced page jump.
+    GoToCachedMatchIndex(win, idx, false);
+    gBindingInitialFindMatch = false;
+}
+
+static void ApplyPendingFindNavigation(MainWindow* win) {
+    int delta = win->findPendingNavDelta;
+    if (delta == 0 || !CountCacheIsComplete(win)) {
+        return;
+    }
+    // Cleared first: GoToCachedMatchIndex calls ShowMatchCount.
+    win->findPendingNavDelta = 0;
+    int n = (int)win->findCountPositions.size();
+    if (n <= 0) {
+        return;
+    }
+    int cur = FindCurrentMatchIndex(win);
+    if (cur < 0 && win->findStatusCurrentIndex >= 1 && win->findStatusCurrentIndex <= n) {
+        cur = win->findStatusCurrentIndex - 1;
+    }
+    if (cur < 0) {
+        cur = InitialCachedMatchIndex(win);
+    }
+    if (cur < 0) {
+        return;
+    }
+    int idx = cur + delta;
+    idx %= n;
+    if (idx < 0) {
+        idx += n;
+    }
+    GoToCachedMatchIndex(win, idx, true);
 }
 
 static bool NavigateFirstMatchFromPage(MainWindow* win, int startPage) {
@@ -2273,8 +2406,15 @@ static bool TryNavigateCachedFindMatch(MainWindow* win, TextSearch::Direction di
     }
     bool forward = direction == TextSearch::Direction::Forward;
     int cur = FindCurrentMatchIndex(win);
+    if (cur < 0 && win->findStatusCurrentIndex >= 1 && win->findStatusCurrentIndex <= n) {
+        // The counter already names a row, but the document cursor has not
+        // caught that key yet. Step from the row, don't land on it again.
+        cur = win->findStatusCurrentIndex - 1;
+    }
     int idx;
     if (cur < 0) {
+        // Nothing is current yet. This click still moves: it lands on the
+        // match Detailed Find would open from this page.
         int page = win->ctrl ? win->ctrl->CurrentPageNo() : 1;
         int from = FirstSortedIndexAtOrAfterPage(win->findCountPositions, page);
         if (forward) {
@@ -2602,7 +2742,7 @@ static void AppendPageRectsToScreen(DisplayModel* dm, const Rect& clipRc, const 
         if (!dm->ValidPageNo(pr.pageNo) || !dm->PageVisible(pr.pageNo)) {
             continue;
         }
-        RectF rf = ScaleHighlightBandRect(ToRectF(pr.rect), kFindHighlightBandRatio);
+        RectF rf = ScaleHighlightBandRect(ToRectF(pr.rect), HighlightBandRatio());
         Rect rc = dm->CvtToScreen(pr.pageNo, rf);
         rc = rc.Intersect(clipRc);
         if (!rc.IsEmpty()) {
@@ -2620,7 +2760,7 @@ static void AppendTextSelScreenRects(DisplayModel* dm, const Rect& clipRc, TextS
         if (!dm->PageVisible(pageNo)) {
             continue;
         }
-        RectF rf = ScaleHighlightBandRect(ToRectF(sel->rects[i]), kFindHighlightBandRatio);
+        RectF rf = ScaleHighlightBandRect(ToRectF(sel->rects[i]), HighlightBandRatio());
         Rect rc = dm->CvtToScreen(pageNo, rf);
         rc = rc.Intersect(clipRc);
         if (!rc.IsEmpty()) {

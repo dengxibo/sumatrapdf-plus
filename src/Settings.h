@@ -53,6 +53,10 @@ struct FixedPageUI {
     // uses the default opacity
     char* selectionColor;
     ParsedColor selectionColorParsed;
+    // height of the selection, find, and read-aloud highlight relative to
+    // the glyph band; 0.5-1.5, default 1.35; smaller values make the band
+    // thinner; out of range uses 1.35
+    float selectionHeightRatio;
     // top, right, bottom and left margin (in that order) between window
     // and document
     WindowMargin windowMargin;
@@ -182,8 +186,8 @@ struct Annotations {
     // text icon annotation color
     char* textIconColor;
     ParsedColor textIconColorParsed;
-    // type of text annotation icon: comment, help, insert, key, new
-    // paragraph, note, paragraph. If not set: note.
+    // type of text annotation icon: comment, caret, help, insert, key, new
+    // paragraph, note, paragraph. If not set: comment.
     char* textIconType;
     // default author for created annotations, use (none) to not add an
     // author at all. If not set will use Windows user name
@@ -534,8 +538,8 @@ struct GlobalPrefs {
     // if true, show rectangle/ellipse/line/ink quick annotation buttons on
     // the toolbar
     bool showAnnotToolbarButtons;
-    // if true, the find UI is a floating, movable window with a results
-    // list instead of the compact toolbar overlay
+    // if true, Ctrl+F opens the detailed search window; the toolbar search
+    // box is always shown
     bool searchUIFloating;
     // directory containing SumatraDict.* dictionary files. If empty,
     // {exedir}/dict is used
@@ -812,6 +816,8 @@ static const FieldInfo gFixedPageUIFields[] = {
     {offsetof(FixedPageUI, textColor), SettingType::Color, (intptr_t)"#000000", "文字颜色"},
     {offsetof(FixedPageUI, backgroundColor), SettingType::Color, (intptr_t)"#ffffff", "页面底色"},
     {offsetof(FixedPageUI, selectionColor), SettingType::Color, (intptr_t)"#99c1da", "选中高亮色"},
+    {offsetof(FixedPageUI, selectionHeightRatio), SettingType::Float, (intptr_t)"1.35",
+     "选区、查找、朗读高亮高度相对字高的比例，0.5–1.5，默认 1.35，越小越薄"},
     {offsetof(FixedPageUI, windowMargin), SettingType::Compact, (intptr_t)&gWindowMarginInfo, "页边距 上 右 下 左"},
     {offsetof(FixedPageUI, pageSpacing), SettingType::Compact, (intptr_t)&gSizeInfo, "页面间距 横 纵"},
     {offsetof(FixedPageUI, gradientColors), SettingType::ColorArray, 0, nullptr},
@@ -821,9 +827,9 @@ static const FieldInfo gFixedPageUIFields[] = {
     {offsetof(FixedPageUI, joinSplitPdfImages), SettingType::Bool, true, nullptr},
 };
 static const StructInfo gFixedPageUIInfo = {
-    sizeof(FixedPageUI), 10, gFixedPageUIFields,
-    "TextColor\0BackgroundColor\0SelectionColor\0WindowMargin\0PageSpacing\0GradientColors\0InvertColors\0WindowBgCol\0"
-    "FindMatchColor\0JoinSplitPdfImages"};
+    sizeof(FixedPageUI), 11, gFixedPageUIFields,
+    "TextColor\0BackgroundColor\0SelectionColor\0SelectionHeightRatio\0WindowMargin\0PageSpacing\0GradientColors\0Inver"
+    "tColors\0WindowBgCol\0FindMatchColor\0JoinSplitPdfImages"};
 
 static const FieldInfo gEBookUIFields[] = {
     {offsetof(EBookUI, fontSize), SettingType::Float, (intptr_t)"0",
@@ -886,7 +892,7 @@ static const FieldInfo gAnnotationsFields[] = {
     {offsetof(Annotations, freeTextColor), SettingType::Color, (intptr_t)"", "文本批注文字色"},
     {offsetof(Annotations, freeTextBackgroundColor), SettingType::Color, (intptr_t)"", "文本批注背景色"},
     {offsetof(Annotations, freeTextOpacity), SettingType::Int, 100, "批注不透明度 0-100"},
-    {offsetof(Annotations, freeTextSize), SettingType::Int, 12, "文本批注字号"},
+    {offsetof(Annotations, freeTextSize), SettingType::Int, 21, "文本批注字号"},
     {offsetof(Annotations, freeTextBorderWidth), SettingType::Int, 1, "批注边框粗细"},
     {offsetof(Annotations, textIconColor), SettingType::Color, (intptr_t)"", "批注图标颜色"},
     {offsetof(Annotations, textIconType), SettingType::String, (intptr_t)"", "批注图标类型"},
@@ -1098,8 +1104,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-36.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-36.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-38.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-38.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},
@@ -1129,7 +1135,8 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, showToolbar), SettingType::Bool, true, "显示顶部工具栏"},
     {offsetof(GlobalPrefs, showAnnotToolbarButtons), SettingType::Bool, true,
      "工具栏显示矩形/椭圆/直线/画笔快捷标注按钮"},
-    {offsetof(GlobalPrefs, searchUIFloating), SettingType::Bool, false, "true=悬浮搜索窗口"},
+    {offsetof(GlobalPrefs, searchUIFloating), SettingType::Bool, false,
+     "true=Ctrl+F 打开详细搜索窗口；工具栏搜索框始终显示"},
     {offsetof(GlobalPrefs, offlineDictionaryPath), SettingType::String, 0, "离线词典目录"},
     {offsetof(GlobalPrefs, enableDoubleClickWordLookup), SettingType::Bool, true, "双击查离线词典"},
     {offsetof(GlobalPrefs, autoOcrScanPages), SettingType::Bool, true,

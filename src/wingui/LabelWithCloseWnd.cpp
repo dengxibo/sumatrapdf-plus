@@ -86,6 +86,9 @@ static void DrawChromeIconButton(HDC hdc, HWND hwnd, const Rect& vr, TbIcon icon
             iconBg = AccentColor(bgCol, 10);
         }
         int pad = std::max(1, DpiScale(hwnd, 2));
+        if (pressed) {
+            pad = std::max(0, pad - 2);
+        }
         int radius = std::max(2, DpiScale(hwnd, 3) + pad);
         AutoDeleteBrush brush(CreateSolidBrush(iconBg));
         HRGN rgn =
@@ -102,6 +105,9 @@ static void DrawChromeIconButton(HDC hdc, HWND hwnd, const Rect& vr, TbIcon icon
         DeleteObject(rgn);
     }
     int iconSz = std::min(DpiScale(hwnd, kViewBtnIcon), std::min(vr.dx, vr.dy));
+    if (icon == TbIcon::SidebarFavorites) {
+        iconSz = std::max(1, iconSz - 1);
+    }
     Rect iconRc(vr.x + (vr.dx - iconSz) / 2, vr.y + (vr.dy - iconSz) / 2, iconSz, iconSz);
     COLORREF col = enabled ? iconCol : ThemeWindowTextDisabledColor();
     DrawSvgIcon(hdc, iconRc, icon, col, iconBg);
@@ -287,7 +293,7 @@ LRESULT LabelWithCloseWnd::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             secondAction.Call();
         } else if (action == 3 && thirdActionPos.Contains(cursorPos)) {
             thirdAction.Call();
-        } else if (action >= 11 && action <= 13) {
+        } else if (action >= 11 && action <= 15) {
             int idx = action - 11;
             if (idx < nViewButtons && viewBtns[idx].enabled && viewBtnPos[idx].Contains(cursorPos)) {
                 viewBtns[idx].onClick.Call();
@@ -394,8 +400,8 @@ void LabelWithCloseWnd::SetViewButtons(const LabelViewButton* buttons, int count
     if (count < 0) {
         count = 0;
     }
-    if (count > 3) {
-        count = 3;
+    if (count > 5) {
+        count = 5;
     }
     nViewButtons = count;
     for (int i = 0; i < count; i++) {
@@ -587,7 +593,7 @@ void LabelWithCloseWnd::Layout() {
         viewBtnPos[i] = Rect(left, viewY, viewDx, viewDy);
         left += viewDx + viewGap;
     }
-    for (int i = nViewButtons; i < 3; i++) {
+    for (int i = nViewButtons; i < 5; i++) {
         viewBtnPos[i] = {};
     }
     if (actionsTooltip) {

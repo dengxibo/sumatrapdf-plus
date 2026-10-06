@@ -417,11 +417,11 @@ static const char* gIconAnnotInk =
   <path d="M4 18 L8 14 L14 11 L20 5" />
 </svg>)";
 
-// tabler rubber-stamp, without the ground line (same stroke as other toolbar icons)
+// User-provided stamp outline.
 static const char* gIconAnnotStamp =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
-  <path d="M21 17.85h-18c0 -4.05 1.421 -4.05 3.79 -4.05c5.21 0 1.21 -4.59 1.21 -6.8a4 4 0 1 1 8 0c0 2.21 -4 6.8 1.21 6.8c2.369 0 3.79 0 3.79 4.05z" />
+  <rect x="0" y="0" width="24" height="24" stroke="none" fill="none"/>
+  <path d="M12 3.5 C9.9 3.5 8.3 5.1 8.3 7.1 C8.3 8.5 9 9.7 10 10.4 V12.7 C10 13.3 9.6 13.7 9 13.7 H6.8 C5.8 13.7 5 14.5 5 15.5 V18.5 H19 V15.5 C19 14.5 18.2 13.7 17.2 13.7 H15 C14.4 13.7 14 13.3 14 12.7 V10.4 C15 9.7 15.7 8.5 15.7 7.1 C15.7 5.1 14.1 3.5 12 3.5 Z" fill="none"/>
 </svg>)";
 
 // Compact four-corner expand icon. Reduce the filled path's opacity so its
@@ -544,6 +544,21 @@ static const char* gIconSidebarFavorites =
   <path d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873z" />
 </svg>)";
 
+// Pencil. Same 1px stroke as the other sidebar icons.
+static const char* gIconSidebarAnnotations =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <path d="M4 20h4l10.5 -10.5a1.5 1.5 0 0 0 -4 -4l-10.5 10.5v4" />
+  <path d="M13.5 6.5l4 4" />
+</svg>)";
+
+// User-supplied minimal robot AI glyph, using the theme foreground.
+static const char* gIconSidebarAi =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="64 64 896 896" fill="none" stroke="none">
+  <rect x="64" y="64" width="896" height="896" fill="none" stroke="none" />
+  <path d="M329.142857 347.428571a18.285714 18.285714 0 0 1 2.139429 36.443429L329.142857 384h-36.571428a91.428571 91.428571 0 0 0-91.337143 87.460571L201.142857 475.428571v182.857143a91.428571 91.428571 0 0 0 87.460572 91.337143L292.571429 749.714286h438.857142a91.428571 91.428571 0 0 0 91.337143-87.460572L822.857143 658.285714V475.428571a91.428571 91.428571 0 0 0-87.460572-91.337142L731.428571 384h-36.571428a18.285714 18.285714 0 0 1-2.139429-36.443429L694.857143 347.428571h36.571428a128 128 0 0 1 127.926858 123.611429L859.428571 475.428571v182.857143a128 128 0 0 1-123.611428 127.926857L731.428571 786.285714H292.571429a128 128 0 0 1-127.926858-123.611428L164.571429 658.285714V475.428571a128 128 0 0 1 123.611428-127.926857L292.571429 347.428571h36.571428z m54.857143 146.285715a36.571429 36.571429 0 1 1 0 73.142857 36.571429 36.571429 0 0 1 0-73.142857z m256 0a36.571429 36.571429 0 1 1 0 73.142857 36.571429 36.571429 0 0 1 0-73.142857z m44.745143-254.061715a18.285714 18.285714 0 0 1 8.173714 24.521143C664.941714 320.128 581.924571 384 512 384s-152.941714-63.853714-180.918857-119.826286a18.285714 18.285714 0 0 1 32.694857-16.347428C386.084571 292.443429 457.581714 347.428571 512 347.428571s125.915429-55.003429 148.224-99.602285a18.285714 18.285714 0 0 1 24.521143-8.173715z" fill="currentColor" />
+</svg>)";
+
 // Quill outline. Same 1px stroke as the stamp and the other annotation buttons.
 static const char* gIconAnnotSignature =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -613,6 +628,8 @@ static const char* gIcons[] = {
     gIconFavAdd,
     gIconFavRemove,
     gIconAnnotSignature,
+    gIconSidebarAi,
+    gIconSidebarAnnotations,
 };
 // clang-format on
 

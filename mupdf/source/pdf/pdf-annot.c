@@ -412,6 +412,17 @@ pdf_load_annots(fz_context *ctx, pdf_page *page)
 				widget->needs_new_local_ap = 1;
 			}
 		}
+		/* SumatraPDF: redraw text notes and carets with the current line icons.
+		 * Local only, so opening a file does not rewrite stored appearances. */
+		{
+			pdf_annot *annot;
+			for (annot = page->annots; annot; annot = annot->next)
+			{
+				enum pdf_annot_type kind = pdf_annot_type(ctx, annot);
+				if (kind == PDF_ANNOT_TEXT || kind == PDF_ANNOT_CARET)
+					annot->needs_new_local_ap = 1;
+			}
+		}
 	}
 
 	/* And actually update the page so that any annotations required
@@ -953,7 +964,6 @@ pdf_create_annot(fz_context *ctx, pdf_page *page, enum pdf_annot_type type)
 	static const float black[3] = { 0, 0, 0 };
 	static const float red[3] = { 1, 0, 0 };
 	static const float green[3] = { 0, 1, 0 };
-	static const float blue[3] = { 0, 0, 1 };
 	static const float yellow[3] = { 1, 1, 0 };
 	static const float magenta[3] = { 1, 0, 1 };
 
@@ -1013,9 +1023,9 @@ pdf_create_annot(fz_context *ctx, pdf_page *page, enum pdf_annot_type type)
 
 		case PDF_ANNOT_CARET:
 			{
-				fz_rect caret_rect = { 12, 12, 12+18, 12+15 };
+				fz_rect caret_rect = { 12, 12, 12+22, 12+22 };
 				pdf_set_annot_rect(ctx, annot, caret_rect);
-				pdf_set_annot_color(ctx, annot, 3, blue);
+				pdf_set_annot_color(ctx, annot, 3, yellow);
 			}
 			break;
 
@@ -1234,9 +1244,13 @@ pdf_annot_flags(fz_context *ctx, pdf_annot *annot)
 	fz_try(ctx)
 	{
 		flags = pdf_dict_get_int(ctx, annot->obj, PDF_NAME(F));
-		// Text annotations always behave as if NoRotate and NoZoom is set!
-		if (pdf_dict_get(ctx, annot->obj, PDF_NAME(Subtype)) == PDF_NAME(Text))
-			flags |= PDF_ANNOT_IS_NO_ROTATE | PDF_ANNOT_IS_NO_ZOOM;
+		/* Text notes and carets are fixed-size icons. NoRotate and NoZoom
+		 * keep the 22pt chip the same size as the page zooms. */
+		{
+			pdf_obj *subtype = pdf_dict_get(ctx, annot->obj, PDF_NAME(Subtype));
+			if (subtype == PDF_NAME(Text) || subtype == PDF_NAME(Caret))
+				flags |= PDF_ANNOT_IS_NO_ROTATE | PDF_ANNOT_IS_NO_ZOOM;
+		}
 	}
 	fz_always(ctx)
 		pdf_annot_pop_local_xref(ctx, annot);

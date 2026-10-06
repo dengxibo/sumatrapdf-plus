@@ -92,6 +92,14 @@ static bool IsHexColorToken(const char* p, const char* end, int* tokenLen) {
 }
 
 static void TrimInlineComment(char* begin, char* end) {
+    // "Key = # comment" is an empty value. A leading #rrggbb stays a color.
+    if (begin < end && *begin == '#') {
+        int tokenLen = 0;
+        if (!IsHexColorToken(begin, end, &tokenLen)) {
+            *begin = '\0';
+            return;
+        }
+    }
     for (char* p = begin + 1; p < end; p++) {
         if (*p != '#' || !str::IsWs(*(p - 1))) {
             continue;

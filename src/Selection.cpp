@@ -48,6 +48,17 @@ static bool HighlightSameTextLine(const RectF& a, const RectF& b) {
     return std::abs(centerA - centerB) < lineH * 0.45f;
 }
 
+float HighlightBandRatio() {
+    float ratio = kSelectionHighlightBandRatio;
+    if (gGlobalPrefs) {
+        ratio = gGlobalPrefs->fixedPageUI.selectionHeightRatio;
+    }
+    if (!(ratio >= 0.5f && ratio <= 1.5f)) {
+        return kSelectionHighlightBandRatio;
+    }
+    return ratio;
+}
+
 RectF ScaleHighlightBandRect(RectF r, float bandRatio) {
     if (r.IsEmpty() || bandRatio <= 0) {
         return r;
@@ -578,7 +589,7 @@ void PaintSelection(MainWindow* win, HDC hdc) {
                 }
                 NormalizeNearbyHighlightHeights(pageRects);
                 for (RectF& rf : pageRects) {
-                    rf = ScaleHighlightBandRect(rf, kSelectionHighlightBandRatio);
+                    rf = ScaleHighlightBandRect(rf, HighlightBandRatio());
                     Rect sr = dm->CvtToScreen(pageNo, rf);
                     if (!sr.IsEmpty()) {
                         rects.Append(sr);

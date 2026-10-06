@@ -182,9 +182,18 @@ Size Edit::GetIdealSize() {
 // https://docs.microsoft.com/en-us/windows/win32/controls/en-change
 bool Edit::OnCommand(WPARAM wparam, LPARAM lparam) {
     auto code = HIWORD(wparam);
-    if ((code == EN_CHANGE || code == EN_KILLFOCUS) && onTextChanged.IsValid()) {
+    if (code == EN_CHANGE && onTextChanged.IsValid()) {
         onTextChanged.Call();
         return true;
+    }
+    if (code == EN_KILLFOCUS) {
+        if (onTextChanged.IsValid()) {
+            onTextChanged.Call();
+        }
+        if (onLostFocus.IsValid()) {
+            onLostFocus.Call();
+        }
+        return onTextChanged.IsValid() || onLostFocus.IsValid();
     }
     return false;
 }

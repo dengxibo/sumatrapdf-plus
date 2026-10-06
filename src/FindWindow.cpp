@@ -33,6 +33,7 @@
 #include "CommandPalette.h" // DrawMaybeHighlightedText
 #include "Translations.h"
 #include "Theme.h"
+#include "FloatingPopupStyle.h"
 #include "DarkModeSubclass.h"
 
 #include "utils/Log.h"
@@ -118,6 +119,15 @@ struct FindWindowWnd : Wnd {
     int displayedSnippetBudget = -1;
     u32 displayedTextCacheGen = 0;
     bool hasPendingNavigation = false;
+    Rect closeRc;
+    bool closeHover = false;
+    bool closePressed = false;
+    int hoverResult = -1;
+    // Same overlay bar as the document canvas. The list's own bar is hidden
+    // while this is active, so the two styles cannot flash over each other.
+    OverlayScrollbar* resultsScroll = nullptr;
+    int chromeSeparatorY = -1;
+    int dragBottom = 0;
     int pendingStartPage = 0;
     int pendingStartGlyph = 0;
     int pendingEndPage = 0;
@@ -137,8 +147,12 @@ struct FindWindowWnd : Wnd {
     void RefreshNonClientChrome();
     void SyncDpi(bool force = false, int explicitDpi = 0);
     void FlashStatusText(bool flash);
-    void DrawEditUnderline();
+    void DrawEditUnderline(HDC hdc);
+    void DrawSearchChrome(HDC hdc);
+    void ApplySurfaceColors();
+    void InvalidateCloseButton();
     void SetDocked(bool dock);
+    void OnPaint(HDC hdc, PAINTSTRUCT* ps) override;
 
     void OnTextChanged();
     void DrawResultItem(ListBox::DrawItemEvent* ev);
@@ -233,8 +247,226 @@ static const char* FindWindowButtonTooltip(int cmd) {
     return nullptr;
 }
 
+constexpr UINT_PTR kFindResultsSubclassId = 0x46696E64;
+
+static COLORREF FindSurfaceBg(bool docked) {
+    if (docked) {
+        return ThemeWindowControlBackgroundColor();
+    }
+    // Warm / White / Darcula / Black tool-panel surface, not a fixed gray.
+    return FloatingToolPanelBg();
+}
+
+static COLORREF FindSurfaceText(bool docked) {
+    return docked ? ThemeWindowTextColor() : FloatingPopupTextColor();
+}
+
+static COLORREF FindSurfaceMuted(bool docked) {
+    return docked ? ThemeWindowTextDisabledColor() : FloatingPopupMutedTextColor();
+}
+
+static void InvalidateFindResultRow(HWND hwnd, int idx) {
+    if (!hwnd || idx < 0) {
+        return;
+    }
+    RECT ir{};
+    if (ListBox_GetItemRect(hwnd, idx, &ir) != LB_ERR) {
+        InvalidateRect(hwnd, &ir, FALSE);
+    }
+}
+
+static bool FindResultsHideNativeScroll() {
+    return ScrollbarsAreHidden() || ScrollbarsUseOverlay();
+}
+
+// List-box scroll info is in items. When the native bar is hidden, Windows
+// sometimes reports an empty range, so fall back to the top index.
+static void FindListScrollInfo(HWND hwnd, SCROLLINFO* si) {
+    si->cbSize = sizeof(*si);
+    si->fMask = SIF_POS | SIF_RANGE | SIF_PAGE;
+    si->nMin = 0;
+    si->nMax = 0;
+    si->nPage = 1;
+    si->nPos = 0;
+    int count = (int)SendMessageW(hwnd, LB_GETCOUNT, 0, 0);
+    if (count < 0) {
+        count = 0;
+    }
+    int itemH = (int)SendMessageW(hwnd, LB_GETITEMHEIGHT, 0, 0);
+    RECT rc{};
+    GetClientRect(hwnd, &rc);
+    int page = 1;
+    if (itemH > 0) {
+        page = std::max(1, (int)(rc.bottom - rc.top) / itemH);
+    }
+    int top = (int)SendMessageW(hwnd, LB_GETTOPINDEX, 0, 0);
+    if (top < 0) {
+        top = 0;
+    }
+    if (count > 0 && top > count - 1) {
+        top = count - 1;
+    }
+    si->nMin = 0;
+    si->nMax = std::max(0, count - 1);
+    si->nPage = (UINT)page;
+    si->nPos = top;
+}
+
+static void SyncFindResultsScrollbar(FindWindowWnd* w) {
+    if (!w || !w->results || !w->results->hwnd) {
+        return;
+    }
+    // ShowScrollBar posts a size back into this list. Don't re-enter.
+    static bool syncing = false;
+    if (syncing) {
+        return;
+    }
+    syncing = true;
+    HWND hwnd = w->results->hwnd;
+    bool hide = ScrollbarsAreHidden();
+    bool overlay = ScrollbarsUseOverlay() && !hide;
+    if (overlay || hide) {
+        ShowScrollBar(hwnd, SB_VERT, FALSE);
+    }
+
+    SCROLLINFO si{};
+    FindListScrollInfo(hwnd, &si);
+    int range = si.nMax - si.nMin + 1;
+    bool canScroll = range > 1 && (int)si.nPage < range;
+
+    if (overlay) {
+        if (!w->resultsScroll) {
+            w->resultsScroll = OverlayScrollbarCreate(hwnd, OverlayScrollbar::Type::Vert, ScrollbarsOverlayMode());
+        } else {
+            OverlayScrollbarSetMode(w->resultsScroll, ScrollbarsOverlayMode());
+        }
+        if (canScroll) {
+            OverlayScrollbarShow(w->resultsScroll, true);
+            OverlayScrollbarSetInfo(w->resultsScroll, &si, TRUE);
+            OverlayScrollbarUpdatePos(w->resultsScroll);
+        } else {
+            OverlayScrollbarShow(w->resultsScroll, false);
+        }
+    } else {
+        OverlayScrollbarShow(w->resultsScroll, false);
+        if (!hide && canScroll) {
+            if (UseDarkModeLib()) {
+                if (ThemeUsesDarkChrome()) {
+                    DarkMode::setDarkScrollBar(hwnd);
+                } else {
+                    SetWindowTheme(hwnd, nullptr, nullptr);
+                    SendMessageW(hwnd, WM_THEMECHANGED, 0, 0);
+                }
+            }
+            ShowScrollBar(hwnd, SB_VERT, TRUE);
+        } else {
+            ShowScrollBar(hwnd, SB_VERT, FALSE);
+        }
+    }
+    syncing = false;
+}
+
+static LRESULT CALLBACK FindResultsSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR ref) {
+    auto* w = (FindWindowWnd*)ref;
+    if (!w) {
+        return DefSubclassProc(hwnd, msg, wp, lp);
+    }
+    // The document canvas hides its window scrollbar and draws OverlayScrollbar.
+    // Swallow the list's non-client bar so it cannot flash a second style.
+    if (FindResultsHideNativeScroll()) {
+        if (msg == WM_NCCALCSIZE && wp) {
+            return 0;
+        }
+        if (msg == WM_NCPAINT) {
+            return 0;
+        }
+    }
+    if (msg == WM_VSCROLL || msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL || msg == WM_KEYDOWN) {
+        LRESULT r = DefSubclassProc(hwnd, msg, wp, lp);
+        SyncFindResultsScrollbar(w);
+        return r;
+    }
+    if (msg == WM_MOUSEMOVE || msg == WM_MOUSELEAVE) {
+        int idx = -1;
+        if (msg == WM_MOUSEMOVE) {
+            POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            LRESULT hit = SendMessageW(hwnd, LB_ITEMFROMPOINT, 0, MAKELPARAM(pt.x, pt.y));
+            if (HIWORD(hit) == 0) {
+                idx = (int)LOWORD(hit);
+            }
+            TRACKMOUSEEVENT tme{sizeof(tme), TME_LEAVE, hwnd, 0};
+            TrackMouseEvent(&tme);
+        }
+        if (idx != w->hoverResult) {
+            int old = w->hoverResult;
+            w->hoverResult = idx;
+            InvalidateFindResultRow(hwnd, old);
+            InvalidateFindResultRow(hwnd, idx);
+        }
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static void FindSnippetHighlightColors(COLORREF listBg, COLORREF* primary, COLORREF* secondary) {
+    ParsedColor* parsed = GetPrefsColor(gGlobalPrefs->fixedPageUI.findMatchColor);
+    COLORREF src = (parsed && parsed->parsedOk) ? parsed->col : ThemeWindowLinkColor();
+    if (ThemeUsesDarkChrome()) {
+        // Keep the match hue, but pull it toward the palette so Darcula / Black
+        // do not reuse the light-theme neon yellow.
+        int mix = ThemeUsesBlackChrome() ? 68 : 74;
+        *primary = BlendColor(listBg, src, mix);
+        *secondary = BlendColor(listBg, src, 40);
+    } else {
+        *primary = src;
+        *secondary = BlendColor(listBg, src, 48);
+    }
+}
+
+static LRESULT PaintFindPaletteToolbarItem(NMTBCUSTOMDRAW* cd, COLORREF bgCol) {
+    UINT itemState = cd->nmcd.uItemState;
+    COLORREF txtCol = FloatingPopupTextColor();
+    if (itemState & CDIS_DISABLED) {
+        txtCol = FloatingPopupMutedTextColor();
+    }
+    cd->clrText = txtCol;
+    cd->clrTextHighlight = txtCol;
+    cd->clrBtnFace = bgCol;
+    cd->clrBtnHighlight = bgCol;
+    cd->clrHighlightHotTrack = bgCol;
+    cd->nStringBkMode = TRANSPARENT;
+    cd->nHLStringBkMode = TRANSPARENT;
+
+    bool isSelected = (itemState & CDIS_SELECTED) != 0;
+    bool isHot = (itemState & CDIS_HOT) != 0;
+    cd->nmcd.uItemState &= ~(CDIS_CHECKED | CDIS_SELECTED);
+
+    HWND hwndToolbar = cd->nmcd.hdr.hwndFrom;
+    int cmd = (int)cd->nmcd.dwItemSpec;
+    TBBUTTONINFOW tbi{};
+    tbi.cbSize = sizeof(tbi);
+    tbi.dwMask = TBIF_STATE;
+    SendMessageW(hwndToolbar, TB_GETBUTTONINFOW, cmd, (LPARAM)&tbi);
+    bool isChecked = (tbi.fsState & TBSTATE_CHECKED) != 0;
+
+    COLORREF fill = bgCol;
+    if (isChecked || isSelected) {
+        fill = FloatingPopupCloseHoverBg(bgCol);
+    } else if (isHot) {
+        fill = FloatingPopupHoverBg(bgCol);
+    }
+    HBRUSH br = CreateSolidBrush(fill);
+    FillRect(cd->nmcd.hdc, &cd->nmcd.rc, br);
+    DeleteObject(br);
+    return TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND | TBCDRF_NOEDGES;
+}
+
 FindWindowWnd::~FindWindowWnd() {
     EnsureResultsListRedraw();
+    if (results && results->hwnd) {
+        RemoveWindowSubclass(results->hwnd, FindResultsSubclassProc, kFindResultsSubclassId);
+    }
+    OverlayScrollbarDestroy(resultsScroll);
+    resultsScroll = nullptr;
     delete edit;
     delete status;
     delete results; // also deletes its FindResultsModel
@@ -247,8 +479,10 @@ FindWindowWnd::~FindWindowWnd() {
 bool FindWindowWnd::Create(MainWindow* mainWin) {
     win = mainWin;
 
-    auto colBg = ThemeWindowControlBackgroundColor();
-    auto colTxt = ThemeWindowTextColor();
+    // Floating Detailed Search is a palette, not a captioned dialog. The red
+    // close was the system caption button (gray when the window was inactive).
+    auto colBg = FindSurfaceBg(false);
+    auto colTxt = FindSurfaceText(false);
 
     {
         CreateCustomArgs args;
@@ -257,9 +491,10 @@ bool FindWindowWnd::Create(MainWindow* mainWin) {
         // WS_CLIPCHILDREN neutralizes CS_PARENTDC of the standard controls
         // (their DCs get clipped to the control, not to this window), so e.g.
         // the results listbox can't paint its partially visible bottom row
-        // below itself onto this window
-        args.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_CLIPCHILDREN;
-        args.exStyle = WS_EX_TOOLWINDOW; // small caption, off the taskbar
+        // below itself onto this window. WS_THICKFRAME keeps resize; the
+        // non-client band is removed in WM_NCCALCSIZE.
+        args.style = WS_POPUP | WS_THICKFRAME | WS_CLIPCHILDREN;
+        args.exStyle = WS_EX_TOOLWINDOW; // off the taskbar, owned by the frame
         args.isRtl = IsUIRtl();
         CreateCustom(args);
     }
@@ -269,7 +504,6 @@ bool FindWindowWnd::Create(MainWindow* mainWin) {
     // owned by the frame so it groups/minimizes with it but isn't a child
     SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, (LONG_PTR)win->hwndFrame);
     SetColors(colTxt, colBg);
-    ApplyTitleBarTheme(hwnd);
 
     {
         Edit::CreateArgs args;
@@ -283,7 +517,7 @@ bool FindWindowWnd::Create(MainWindow* mainWin) {
         args.isRtl = IsUIRtl();
         edit = new Edit();
         edit->maxDx = DpiScale(hwnd, 1000);
-        edit->SetColors(colTxt, ThemeFindEditBackgroundColor());
+        edit->SetColors(colTxt, colBg);
         edit->Create(args);
         edit->onTextChanged = MkMethod0<FindWindowWnd, &FindWindowWnd::OnTextChanged>(this);
         InstallFindEditKeyboardHandler(win, edit->hwnd);
@@ -295,9 +529,9 @@ bool FindWindowWnd::Create(MainWindow* mainWin) {
         args.text = "";
         args.isRtl = IsUIRtl();
         status = new Static();
-        statusTxtCol = colTxt;
+        statusTxtCol = FindSurfaceMuted(false);
         statusBgCol = colBg;
-        status->SetColors(colTxt, colBg);
+        status->SetColors(statusTxtCol, colBg);
         status->Create(args);
         SetWindowStyle(status->hwnd, SS_CENTERIMAGE, true);
     }
@@ -317,10 +551,11 @@ bool FindWindowWnd::Create(MainWindow* mainWin) {
         SendMessageW(hwndBtns, CCM_SETBKCOLOR, 0, (LPARAM)colBg);
         SendMessageW(hwndBtns, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
 
-        int isz = RoundUp(DpiScale(hwnd, 16), 4);
-        himl = BuildStdToolbarImageList(isz);
+        int icon = RoundUp(DpiScale(hwnd, 16), 4);
+        int slot = std::max(icon, DpiScale(hwnd, 26));
+        himl = BuildStdToolbarImageList(icon);
         SendMessageW(hwndBtns, TB_SETIMAGELIST, 0, (LPARAM)himl);
-        SendMessageW(hwndBtns, TB_SETBUTTONSIZE, 0, MAKELONG(isz, isz));
+        SendMessageW(hwndBtns, TB_SETBUTTONSIZE, 0, MAKELONG(slot, slot));
 
         TBBUTTON b[6]{};
         b[0].iBitmap = (int)TbIcon::ChevronUp;
@@ -348,6 +583,8 @@ bool FindWindowWnd::Create(MainWindow* mainWin) {
         b[5].fsState = TBSTATE_ENABLED;
         b[5].fsStyle = BTNS_BUTTON;
         SendMessageW(hwndBtns, TB_ADDBUTTONS, 6, (LPARAM)&b);
+        // Find stays in the toolbar, so the floating window has no "back to toolbar" button.
+        SendMessageW(hwndBtns, TB_HIDEBUTTON, kFindWinPinCmdId, MAKELONG(TRUE, 0));
         SendMessageW(hwndBtns, TB_HIDEBUTTON, kFindWinCloseCmdId, MAKELONG(TRUE, 0));
         SendMessageW(hwndBtns, TB_AUTOSIZE, 0, 0);
     }
@@ -360,12 +597,14 @@ bool FindWindowWnd::Create(MainWindow* mainWin) {
         results->onDrawItem = MkMethod1<FindWindowWnd, ListBox::DrawItemEvent*, &FindWindowWnd::DrawResultItem>(this);
         results->onSelectionChanged = MkMethod0<FindWindowWnd, &FindWindowWnd::OnResultSelected>(this);
         results->onDoubleClick = MkMethod0<FindWindowWnd, &FindWindowWnd::OnResultSelected>(this);
+        args.itemHeightExtra = 6;
         results->SetColors(colTxt, colBg);
         results->Create(args);
         results->SetModel(new FindResultsModel(win));
-        if (UseDarkModeLib() && ThemeUsesDarkChrome()) {
-            DarkMode::setDarkScrollBar(results->hwnd);
-        }
+        SetWindowSubclass(results->hwnd, FindResultsSubclassProc, kFindResultsSubclassId, (DWORD_PTR)this);
+        SetWindowPos(results->hwnd, nullptr, 0, 0, 0, 0,
+                     SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        SyncFindResultsScrollbar(this);
     }
 
     lastDpi = DpiGetForMonitorOfHwnd(hwnd);
@@ -425,8 +664,11 @@ void FindWindowWnd::Layout() {
         return;
     }
     Rect rc = ClientRect(hwnd);
-    int pad = FindWindowDpiScale(this, 8);
+    int pad = FindWindowDpiScale(this, docked ? 8 : 18);
     int gap = FindWindowDpiScale(this, 6);
+    closeRc = Rect();
+    chromeSeparatorY = -1;
+    dragBottom = 0;
     int statusDx = FindWindowDpiScale(this, 64);
     if (status && status->hwnd) {
         const char* countSample = "99999 / 99999";
@@ -471,35 +713,42 @@ void FindWindowWnd::Layout() {
     }
     ShowWindow(results->hwnd, SW_SHOWNA);
 
+    int closeSz = FindWindowDpiScale(this, 16);
+    int closeGap = FindWindowDpiScale(this, 8);
+    int trail = closeSz + closeGap;
     int contentDx = std::max(0, rc.dx - 2 * pad);
-    // minimum width for [edit][status][toolbar] on one row without overlap
-    int singleRowDx = minEditDx + gap + statusDx + gap + tbW;
+    // minimum width for [edit][status][toolbar][close] on one row without overlap
+    int singleRowDx = minEditDx + gap + statusDx + gap + tbW + trail;
 
     int y = pad;
     int headerDy;
     if (contentDx >= singleRowDx) {
-        // wide: [edit][n/m][toolbar]
-        headerDy = std::max(editDy, tbH);
-        int tbX = pad + contentDx - tbW;
+        // wide: query, n/m, previous/next/options, close
+        headerDy = std::max(editDy, std::max(tbH, closeSz));
+        int tbX = pad + contentDx - trail - tbW;
         int statusX = tbX - gap - statusDx;
-        int editDx = statusX - gap - pad;
+        int editDx = std::max(minEditDx, statusX - gap - pad);
         MoveWindow(hwndBtns, tbX, y + (headerDy - tbH) / 2, tbW, tbH, TRUE);
         MoveWindow(status->hwnd, statusX, y + (headerDy - editDy) / 2, statusDx, editDy, TRUE);
         MoveWindow(edit->hwnd, pad, y + (headerDy - editDy) / 2, editDx, editDy, TRUE);
+        closeRc = Rect(pad + contentDx - closeSz, y + (headerDy - closeSz) / 2, closeSz, closeSz);
     } else {
-        // narrow: full-width edit, then [n/m][toolbar] (issue #5692)
+        // narrow: full-width edit, then [n/m][toolbar][close] (issue #5692)
         MoveWindow(edit->hwnd, pad, y, contentDx, editDy, TRUE);
         y += editDy + gap;
-        headerDy = editDy + gap + std::max(editDy, tbH);
-        int row2Dy = std::max(editDy, tbH);
-        int statusW = std::max(0, contentDx - gap - tbW);
+        int row2Dy = std::max(editDy, std::max(tbH, closeSz));
+        headerDy = editDy + gap + row2Dy;
+        int tbX = pad + contentDx - trail - tbW;
+        int statusW = std::max(0, tbX - gap - pad);
         MoveWindow(status->hwnd, pad, y + (row2Dy - editDy) / 2, statusW, editDy, TRUE);
-        int tbX = pad + contentDx - tbW;
         MoveWindow(hwndBtns, tbX, y + (row2Dy - tbH) / 2, tbW, tbH, TRUE);
+        closeRc = Rect(pad + contentDx - closeSz, y + (row2Dy - closeSz) / 2, closeSz, closeSz);
     }
 
     // the results list fills the rest of the window below the header
     int listTop = pad + headerDy + pad;
+    chromeSeparatorY = pad + headerDy + FindWindowDpiScale(this, 4);
+    dragBottom = listTop;
     int listDy = std::max(0, rc.dy - listTop - pad);
     RECT listNow{};
     GetWindowRect(results->hwnd, &listNow);
@@ -518,20 +767,20 @@ void FindWindowWnd::Layout() {
         uitask::Post(MkFunc0<RebuildSnippetsTaskData>(RebuildSnippetsTask, d), "RebuildFindSnippets");
     }
     lastSnippetGlyphBudget = newBudget;
+    SyncFindResultsScrollbar(this);
 }
 
-void FindWindowWnd::DrawEditUnderline() {
-    if (!edit || !edit->hwnd) {
+void FindWindowWnd::DrawEditUnderline(HDC hdc) {
+    if (!edit || !edit->hwnd || !hdc) {
         return;
     }
     RECT r{};
     GetWindowRect(edit->hwnd, &r);
     MapWindowPoints(nullptr, hwnd, (LPPOINT)&r, 2);
 
-    COLORREF bg = ThemeWindowControlBackgroundColor();
+    COLORREF bg = FindSurfaceBg(docked);
     COLORREF col =
         editHasFocus ? BlendColor(bg, ThemeWindowLinkColor(), 28) : AccentColor(bg, ThemeUsesDarkChrome() ? 30 : 22);
-    HDC hdc = GetDC(hwnd);
     HPEN pen = CreatePen(PS_SOLID, 1, col);
     HGDIOBJ old = SelectObject(hdc, pen);
     int y = r.bottom;
@@ -539,7 +788,73 @@ void FindWindowWnd::DrawEditUnderline() {
     LineTo(hdc, r.right, y);
     SelectObject(hdc, old);
     DeleteObject(pen);
-    ReleaseDC(hwnd, hdc);
+}
+
+void FindWindowWnd::InvalidateCloseButton() {
+    if (closeRc.IsEmpty()) {
+        return;
+    }
+    RECT r = ToRECT(closeRc);
+    InflateRect(&r, 2, 2);
+    InvalidateRect(hwnd, &r, FALSE);
+}
+
+void FindWindowWnd::DrawSearchChrome(HDC hdc) {
+    if (!hdc) {
+        return;
+    }
+    Rect rc = ClientRect(hwnd);
+    int radius = DpiScale(hwnd, kFloatingPopupCornerRadius);
+    StrokeFloatingPopupRoundedRect(hdc, rc, radius, FloatingToolPanelBorder());
+
+    // Focus lives on the query only. Unfocused, the header stays quiet.
+    if (edit && edit->hwnd && editHasFocus) {
+        RECT r{};
+        GetWindowRect(edit->hwnd, &r);
+        MapWindowPoints(nullptr, hwnd, (LPPOINT)&r, 2);
+        COLORREF col = BlendColor(FindSurfaceBg(false), ThemeWindowLinkColor(), ThemeUsesDarkChrome() ? 55 : 42);
+        HPEN pen = CreatePen(PS_SOLID, 1, col);
+        HGDIOBJ old = SelectObject(hdc, pen);
+        MoveToEx(hdc, r.left, r.bottom, nullptr);
+        LineTo(hdc, r.right, r.bottom);
+        SelectObject(hdc, old);
+        DeleteObject(pen);
+    }
+
+    if (chromeSeparatorY > 0) {
+        int inset = FindWindowDpiScale(this, 12);
+        HPEN pen = CreatePen(PS_SOLID, 1, FloatingToolPanelSeparator());
+        HGDIOBJ old = SelectObject(hdc, pen);
+        MoveToEx(hdc, inset, chromeSeparatorY, nullptr);
+        LineTo(hdc, std::max(inset, rc.dx - inset), chromeSeparatorY);
+        SelectObject(hdc, old);
+        DeleteObject(pen);
+    }
+
+    if (!closeRc.IsEmpty()) {
+        COLORREF bg = FindSurfaceBg(false);
+        DrawCloseButtonArgs cb;
+        cb.hdc = hdc;
+        cb.r = closeRc;
+        cb.isHover = closeHover || closePressed;
+        cb.colX = FloatingPopupMutedTextColor();
+        cb.colXHover = FloatingPopupTextColor();
+        COLORREF hoverBg = FloatingPopupCloseHoverBg(bg);
+        cb.colHoverBg = closePressed ? AccentColor(hoverBg, ThemeUsesDarkChrome() ? 8 : 6) : hoverBg;
+        DrawCloseButton(cb);
+    }
+}
+
+void FindWindowWnd::OnPaint(HDC hdc, PAINTSTRUCT* ps) {
+    HBRUSH br = BackgroundBrush();
+    if (br && ps) {
+        FillRect(hdc, &ps->rcPaint, br);
+    }
+    if (docked) {
+        DrawEditUnderline(hdc);
+    } else {
+        DrawSearchChrome(hdc);
+    }
 }
 
 void FindWindowWnd::EnsureResultsListRedraw() {
@@ -652,6 +967,7 @@ void FindWindowWnd::RefreshResults(bool allowNavigation) {
             OnResultSelected();
         }
     }
+    SyncFindResultsScrollbar(this);
 }
 
 void FindWindowWnd::DrawResultItem(ListBox::DrawItemEvent* ev) {
@@ -665,24 +981,18 @@ void FindWindowWnd::DrawResultItem(ListBox::DrawItemEvent* ev) {
     COLORREF colBg = IsSpecialColor(lb->bgColor) ? GetSysColor(COLOR_WINDOW) : lb->bgColor;
     COLORREF colText = IsSpecialColor(lb->textColor) ? GetSysColor(COLOR_WINDOWTEXT) : lb->textColor;
     int dpi = lastDpi > 0 ? lastDpi : EffectiveDpiForFindWindow(hwnd, 0);
-    // Dark chrome: a gray lift disappears on near-black rows. Tint with the
-    // theme link color (blue / Dracula purple / etc.) and a left accent bar.
+    // Keyword highlight is the strong mark. The current row is only a light tint.
     if (ev->selected) {
         if (ThemeUsesDarkChrome()) {
-            colBg = BlendColor(colBg, ThemeWindowLinkColor(), 36);
+            colBg = BlendColor(colBg, ThemeWindowLinkColor(), ThemeUsesBlackChrome() ? 16 : 14);
         } else {
-            colBg = AccentColor(colBg, 40);
+            colBg = AccentColor(colBg, 16);
         }
+    } else if (ev->itemIndex == hoverResult) {
+        colBg = FloatingPopupHoverBg(colBg);
     }
     SetBkColor(hdc, colBg);
     ExtTextOutW(hdc, 0, 0, ETO_OPAQUE, &rc, nullptr, 0, nullptr);
-    if (ev->selected && ThemeUsesDarkChrome()) {
-        RECT rcBar = rc;
-        rcBar.right = rcBar.left + MulDiv(3, dpi, 96);
-        SetBkColor(hdc, ThemeWindowLinkColor());
-        ExtTextOutW(hdc, 0, 0, ETO_OPAQUE, &rcBar, nullptr, 0, nullptr);
-        SetBkColor(hdc, colBg);
-    }
     SetBkMode(hdc, TRANSPARENT);
 
     HFONT oldFont = lb->font ? SelectFont(hdc, lb->font) : nullptr;
@@ -697,9 +1007,9 @@ void FindWindowWnd::DrawResultItem(ListBox::DrawItemEvent* ev) {
     TempStr pageStr = str::FormatTemp("%s", win->ctrl->GetPageLabeTemp(fm.startPage));
     WCHAR* pageW = ToWStrTemp(pageStr);
     SIZE pSz{};
-    GetTextExtentPoint32W(hdc, pageW, str::Leni(pageW), &pSz);
+    GetTextExtentPoint32W(hdc, L"99999", 5, &pSz);
     int pageGap = MulDiv(10, dpi, 96);
-    int pageColDx = std::max((int)pSz.cx, MulDiv(32, dpi, 96));
+    int pageColDx = std::max((int)pSz.cx, MulDiv(40, dpi, 96));
     RECT rcPage = rcText;
     rcPage.left = std::max(rcText.left, (LONG)(rcText.right - pageColDx));
 
@@ -719,7 +1029,11 @@ void FindWindowWnd::DrawResultItem(ListBox::DrawItemEvent* ev) {
         args.matchWholeWord = false;
         args.primaryHighlightStart = fm.snippetMatchStart;
         args.primaryHighlightEnd = fm.snippetMatchEnd;
-        args.secondaryHighlightColor = RGB(255, 176, 64);
+        COLORREF primaryHl = 0;
+        COLORREF secondaryHl = 0;
+        FindSnippetHighlightColors(colBg, &primaryHl, &secondaryHl);
+        args.highlightColor = primaryHl;
+        args.secondaryHighlightColor = secondaryHl;
         args.drawFmt = DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_LEFT | DT_END_ELLIPSIS;
         // clip snippet drawing so match highlights cannot bleed into the page
         // number column when the floating window is narrow (issue #5736);
@@ -735,7 +1049,7 @@ void FindWindowWnd::DrawResultItem(ListBox::DrawItemEvent* ev) {
     SetBkColor(hdc, colBg);
     ExtTextOutW(hdc, 0, 0, ETO_OPAQUE, &rcPage, nullptr, 0, nullptr);
     SetBkMode(hdc, TRANSPARENT);
-    SetTextColor(hdc, AccentColor(colText, 80));
+    SetTextColor(hdc, FindSurfaceMuted(docked));
     DrawTextW(hdc, pageW, -1, &rcPage, DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_RIGHT | DT_END_ELLIPSIS);
 
     if (oldFont) {
@@ -913,16 +1227,27 @@ void FindWindowWnd::SetDocked(bool dock) {
     if (docked) {
         style |= WS_BORDER;
     } else {
-        style |= WS_CAPTION | WS_SYSMENU | WS_THICKFRAME;
+        // Resize stays. The caption and its red close do not.
+        style |= WS_THICKFRAME;
     }
     SetWindowLongPtrW(hwnd, GWL_STYLE, style);
     SendMessageW(hwndBtns, TB_CHANGEBITMAP, kFindWinPinCmdId,
                  docked ? (LPARAM)TbIcon::ArrowsDiagonal : (LPARAM)TbIcon::ArrowsDiagonalMinimize);
+    // The pin only expands the docked overlay. Floating close is painted in the header.
+    SendMessageW(hwndBtns, TB_HIDEBUTTON, kFindWinPinCmdId, MAKELONG(docked ? FALSE : TRUE, 0));
     SendMessageW(hwndBtns, TB_HIDEBUTTON, kFindWinCloseCmdId, MAKELONG(docked ? FALSE : TRUE, 0));
+    RefreshToolbarDpi();
     SendMessageW(hwndBtns, TB_AUTOSIZE, 0, 0);
     SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    if (docked) {
+        SetWindowRgn(hwnd, nullptr, FALSE);
+    } else {
+        UpdateFloatingPopupWindowRgn(hwnd, kFloatingPopupCornerRadius, false);
+    }
+    ApplySurfaceColors();
     Layout();
     SendMessageW(hwnd, WM_SETREDRAW, TRUE, 0);
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME);
 }
 
 // re-apply theme colors after the user switches themes. The toolbar icons are
@@ -932,11 +1257,13 @@ void FindWindowWnd::RefreshToolbarDpi() {
     if (!hwndBtns) {
         return;
     }
-    int isz = RoundUp(MulDiv(16, lastDpi > 0 ? lastDpi : DpiGet(hwnd), 96), 4);
+    int dpi = lastDpi > 0 ? lastDpi : DpiGet(hwnd);
+    int icon = RoundUp(MulDiv(16, dpi, 96), 4);
+    int slot = docked ? icon : std::max(icon, MulDiv(26, dpi, 96));
     HIMAGELIST oldHiml = himl;
-    himl = BuildStdToolbarImageList(isz);
+    himl = BuildStdToolbarImageList(icon);
     SendMessageW(hwndBtns, TB_SETIMAGELIST, 0, (LPARAM)himl);
-    SendMessageW(hwndBtns, TB_SETBUTTONSIZE, 0, MAKELONG(isz, isz));
+    SendMessageW(hwndBtns, TB_SETBUTTONSIZE, 0, MAKELONG(slot, slot));
     SendMessageW(hwndBtns, TB_AUTOSIZE, 0, 0);
     if (oldHiml) {
         ImageList_Destroy(oldHiml);
@@ -944,6 +1271,10 @@ void FindWindowWnd::RefreshToolbarDpi() {
 }
 
 void FindWindowWnd::RefreshNonClientChrome() {
+    if (!docked) {
+        UpdateFloatingPopupWindowRgn(hwnd, kFloatingPopupCornerRadius, true);
+        return;
+    }
     int dpi = lastDpi > 0 ? lastDpi : DpiGet(hwnd);
     RECT rcClient{};
     GetClientRect(hwnd, &rcClient);
@@ -974,20 +1305,6 @@ void FindWindowWnd::RefreshNonClientChrome() {
     ApplyTitleBarTheme(hwnd);
 }
 
-static void RefreshFindWindowScrollBarTheme(FindWindowWnd* w) {
-    if (!w || !w->results || !w->results->hwnd) {
-        return;
-    }
-    HWND hlist = w->results->hwnd;
-    if (UseDarkModeLib() && ThemeUsesDarkChrome()) {
-        DarkMode::setDarkScrollBar(hlist);
-    } else {
-        SetWindowTheme(hlist, nullptr, nullptr);
-        SendMessageW(hlist, WM_THEMECHANGED, 0, 0);
-        RedrawWindow(hlist, nullptr, nullptr, RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW);
-    }
-}
-
 void FindWindowWnd::SyncDpi(bool force, int explicitDpi) {
     int dpi = EffectiveDpiForFindWindow(hwnd, explicitDpi);
     if (!force && dpi == lastDpi) {
@@ -1008,23 +1325,22 @@ void FindWindowWnd::SyncDpi(bool force, int explicitDpi) {
         results->UpdateItemHeightForDpi();
     }
     RefreshToolbarDpi();
-    ApplyTitleBarTheme(hwnd);
-    RefreshFindWindowScrollBarTheme(this);
     Layout();
     RedrawWindow(hwnd, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME);
 }
 
-void FindWindowWnd::UpdateTheme() {
-    auto colBg = ThemeWindowControlBackgroundColor();
-    auto colTxt = ThemeWindowTextColor();
-    statusTxtCol = colTxt;
+void FindWindowWnd::ApplySurfaceColors() {
+    COLORREF colBg = FindSurfaceBg(docked);
+    COLORREF colTxt = FindSurfaceText(docked);
+    statusTxtCol = docked ? colTxt : FindSurfaceMuted(false);
     statusBgCol = colBg;
     SetColors(colTxt, colBg);
     if (edit) {
-        edit->SetColors(colTxt, ThemeFindEditBackgroundColor());
+        COLORREF editBg = docked ? ThemeFindEditBackgroundColor() : FloatingPopupFieldBg();
+        edit->SetColors(colTxt, editBg);
     }
     if (status) {
-        status->SetColors(colTxt, colBg);
+        status->SetColors(statusTxtCol, colBg);
     }
     if (results) {
         results->SetColors(colTxt, colBg);
@@ -1032,10 +1348,16 @@ void FindWindowWnd::UpdateTheme() {
     if (hwndBtns) {
         SendMessageW(hwndBtns, CCM_SETBKCOLOR, 0, (LPARAM)colBg);
     }
+}
+
+void FindWindowWnd::UpdateTheme() {
+    ApplySurfaceColors();
     RefreshToolbarDpi();
-    ApplyTitleBarTheme(hwnd);
-    RefreshFindWindowScrollBarTheme(this);
-    RedrawWindow(hwnd, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
+    if (!docked) {
+        UpdateFloatingPopupWindowRgn(hwnd, kFloatingPopupCornerRadius, false);
+    }
+    SyncFindResultsScrollbar(this);
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME);
 }
 
 void FindWindowWnd::OnTextChanged() {
@@ -1046,14 +1368,131 @@ void FindWindowWnd::OnTextChanged() {
         win->hwndFindEdit = edit->hwnd;
     }
     OnFindBarTextChanged(win);
+    if (!docked && edit) {
+        ToolbarFindSetText(win, HwndGetTextTemp(edit->hwnd), true);
+    }
 }
 
 LRESULT FindWindowWnd::WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
-        case WM_PAINT: {
-            LRESULT res = WndProcDefault(h, msg, wp, lp);
-            DrawEditUnderline();
-            return res;
+        case WM_NCCALCSIZE:
+            if (!docked) {
+                // Client fills the window. WS_THICKFRAME stays for resizing,
+                // but it must not bring back a caption or a system border.
+                return 0;
+            }
+            break;
+        case WM_NCPAINT:
+            if (!docked) {
+                return 0;
+            }
+            break;
+        case WM_NCACTIVATE:
+            if (!docked) {
+                // -1 keeps DefWindowProc from painting inactive caption chrome.
+                return DefWindowProc(h, msg, wp, -1);
+            }
+            break;
+        case WM_NCHITTEST: {
+            if (docked) {
+                break;
+            }
+            POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            RECT wr{};
+            GetWindowRect(h, &wr);
+            int x = pt.x - wr.left;
+            int y = pt.y - wr.top;
+            int w = wr.right - wr.left;
+            int ht = wr.bottom - wr.top;
+            int b = FindWindowDpiScale(this, 6);
+            bool onLeft = x < b;
+            bool onRight = x >= w - b;
+            bool onTop = y < b;
+            bool onBottom = y >= ht - b;
+            if (onTop && onLeft) {
+                return HTTOPLEFT;
+            }
+            if (onTop && onRight) {
+                return HTTOPRIGHT;
+            }
+            if (onBottom && onLeft) {
+                return HTBOTTOMLEFT;
+            }
+            if (onBottom && onRight) {
+                return HTBOTTOMRIGHT;
+            }
+            if (onLeft) {
+                return HTLEFT;
+            }
+            if (onRight) {
+                return HTRIGHT;
+            }
+            if (onTop) {
+                return HTTOP;
+            }
+            if (onBottom) {
+                return HTBOTTOM;
+            }
+            POINT client = pt;
+            ScreenToClient(h, &client);
+            if (closeRc.Contains(client.x, client.y)) {
+                return HTCLIENT;
+            }
+            HWND child = ChildWindowFromPointEx(h, client, CWP_SKIPINVISIBLE | CWP_SKIPDISABLED);
+            if (child && child != h) {
+                return HTCLIENT;
+            }
+            if (dragBottom > 0 && client.y >= 0 && client.y < dragBottom) {
+                return HTCAPTION;
+            }
+            return HTCLIENT;
+        }
+        case WM_MOUSEMOVE: {
+            if (!docked && !closeRc.IsEmpty()) {
+                POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+                bool hot = closeRc.Contains(pt.x, pt.y);
+                if (hot != closeHover) {
+                    closeHover = hot;
+                    InvalidateCloseButton();
+                }
+                TRACKMOUSEEVENT tme{sizeof(tme), TME_LEAVE, h, 0};
+                TrackMouseEvent(&tme);
+            }
+            break;
+        }
+        case WM_MOUSELEAVE:
+            if (closeHover && !closePressed) {
+                closeHover = false;
+                InvalidateCloseButton();
+            }
+            return 0;
+        case WM_LBUTTONDOWN: {
+            POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            if (!docked && closeRc.Contains(pt.x, pt.y)) {
+                closePressed = true;
+                closeHover = true;
+                SetCapture(h);
+                InvalidateCloseButton();
+                return 0;
+            }
+            break;
+        }
+        case WM_LBUTTONUP: {
+            if (closePressed) {
+                POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+                bool inside = closeRc.Contains(pt.x, pt.y);
+                closePressed = false;
+                closeHover = inside;
+                if (GetCapture() == h) {
+                    ReleaseCapture();
+                }
+                InvalidateCloseButton();
+                if (inside && win) {
+                    ToolbarFindCloseDetailed(win, false);
+                }
+                return 0;
+            }
+            break;
         }
         case WM_ERASEBKGND: {
             // The floating find window is shown while the docked bar is hidden.
@@ -1074,6 +1513,10 @@ LRESULT FindWindowWnd::WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             resizedDuringMove = false;
             break;
         case WM_CAPTURECHANGED:
+            if (closePressed && hwnd != (HWND)lp) {
+                closePressed = false;
+                InvalidateCloseButton();
+            }
             if (hwnd != (HWND)lp) {
                 EnsureResultsListRedraw();
             }
@@ -1091,6 +1534,11 @@ LRESULT FindWindowWnd::WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             SyncDpi(true, dpi);
             return 0;
         }
+        case WM_WINDOWPOSCHANGED:
+            if (resultsScroll) {
+                OverlayScrollbarUpdatePos(resultsScroll);
+            }
+            break;
         case WM_MOVE: {
             int monDpi = DpiGetForMonitorOfHwnd(hwnd);
             if (monDpi > 0) {
@@ -1108,6 +1556,9 @@ LRESULT FindWindowWnd::WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             lastClientCx = cx;
             lastClientCy = cy;
             Layout();
+            if (!docked) {
+                UpdateFloatingPopupWindowRgn(h, kFloatingPopupCornerRadius, !inSizeMove);
+            }
             if (inSizeMove && clientSizeChanged) {
                 resizedDuringMove = true;
             }
@@ -1148,8 +1599,9 @@ LRESULT FindWindowWnd::WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_GETMINMAXINFO: {
             auto mmi = (MINMAXINFO*)lp;
-            int pad = FindWindowDpiScale(this, 8);
+            int pad = FindWindowDpiScale(this, docked ? 8 : 18);
             int gap = FindWindowDpiScale(this, 6);
+            int closeExtra = docked ? 0 : FindWindowDpiScale(this, 24);
             int editDy = edit ? edit->GetIdealSize().dy : FindWindowDpiScale(this, 22);
             int tbH = FindWindowDpiScale(this, 24);
             int tbW = DpiScale(h, 120);
@@ -1161,13 +1613,18 @@ LRESULT FindWindowWnd::WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             }
             int row2Dy = std::max(editDy, tbH);
             // narrow two-row header: edit, then status+toolbar
-            mmi->ptMinTrackSize.x = 2 * pad + std::max(tbW, FindWindowDpiScale(this, 160));
+            mmi->ptMinTrackSize.x = 2 * pad + std::max(tbW + closeExtra, FindWindowDpiScale(this, 160));
             mmi->ptMinTrackSize.y = 2 * pad + editDy + gap + row2Dy + pad + FindWindowDpiScale(this, 48);
             return 0;
         }
         case WM_CLOSE:
-            // the caption close button tears down the find UI (recreated on Ctrl+F)
-            HideFindBar(win);
+            // Detailed Search hides and keeps the query. The docked overlay still
+            // clears, because that form is the whole find UI.
+            if (!docked) {
+                ToolbarFindCloseDetailed(win, false);
+            } else {
+                HideFindBar(win);
+            }
             return 0;
         case WM_NOTIFY: {
             // the embedded toolbar paints a light button background in dark
@@ -1181,6 +1638,9 @@ LRESULT FindWindowWnd::WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                         FillRect(cd->nmcd.hdc, &cd->nmcd.rc, BackgroundBrush());
                         return CDRF_NOTIFYITEMDRAW;
                     case CDDS_ITEMPREPAINT:
+                        if (!docked) {
+                            return PaintFindPaletteToolbarItem(cd, FindSurfaceBg(false));
+                        }
                         return PrepaintFlatToolbarItem(cd, ThemeWindowControlBackgroundColor());
                 }
             }
@@ -1194,7 +1654,7 @@ LRESULT FindWindowWnd::OnNotify(int, NMHDR* nmh) {
     if (nmh->code == TTN_GETDISPINFOW) {
         auto di = (NMTTDISPINFOW*)nmh;
         int cmd = (int)nmh->idFrom;
-        const char* s = cmd == kFindWinPinCmdId ? (docked ? _TRA("Open in a window") : _TRA("Dock to toolbar"))
+        const char* s = cmd == kFindWinPinCmdId ? (docked ? _TRA("Detailed Search") : _TRA("Back to toolbar"))
                                                 : FindWindowButtonTooltip(cmd);
         if (s) {
             lstrcpynW(di->szText, ToWStrTemp(s), dimof(di->szText));
@@ -1233,7 +1693,11 @@ bool FindWindowWnd::PreTranslateMessage(MSG& msg) {
             }
             break;
         case VK_ESCAPE:
-            HideFindBar(win);
+            if (!docked) {
+                ToolbarFindCloseDetailed(win, false);
+            } else {
+                HideFindBar(win);
+            }
             return true;
         case VK_RETURN:
         case VK_F3: {
@@ -1267,7 +1731,16 @@ bool FindWindowWnd::OnCommand(WPARAM wparam, LPARAM) {
     int notification = HIWORD(wparam);
     if (notification == EN_SETFOCUS || notification == EN_KILLFOCUS) {
         editHasFocus = notification == EN_SETFOCUS;
-        InvalidateRect(hwnd, nullptr, FALSE);
+        if (!docked && edit && edit->hwnd) {
+            RECT r{};
+            GetWindowRect(edit->hwnd, &r);
+            MapWindowPoints(nullptr, hwnd, (LPPOINT)&r, 2);
+            r.top = r.bottom - 2;
+            r.bottom += 3;
+            InvalidateRect(hwnd, &r, FALSE);
+        } else {
+            InvalidateRect(hwnd, nullptr, FALSE);
+        }
     }
     int cmd = LOWORD(wparam);
     switch (cmd) {
@@ -1288,10 +1761,18 @@ bool FindWindowWnd::OnCommand(WPARAM wparam, LPARAM) {
             FindToggleMatchWholeWord(win);
             return true;
         case kFindWinPinCmdId:
+            if (!docked) {
+                ToolbarFindCloseDetailed(win, true);
+                return true;
+            }
             ToggleFloatingFindUI(win);
             return true;
         case kFindWinCloseCmdId:
-            HideFindBar(win);
+            if (!docked) {
+                ToolbarFindCloseDetailed(win, false);
+            } else {
+                HideFindBar(win);
+            }
             return true;
     }
     return false;
@@ -1390,7 +1871,8 @@ void FindWindowReposition(MainWindow* win) {
         return;
     }
     FindWindowWnd* w = win->findWindow;
-    w->SetDocked(!gGlobalPrefs->searchUIFloating);
+    // Don't re-apply SearchUIFloating here. ↗ can show Detailed Search while
+    // the setting stays false; a move must not turn that window into the overlay.
     // Only reposition; don't push the frame DPI onto a window the user may have
     // moved to another monitor (GetDpiForWindow can lag during cross-monitor drags).
     w->Layout();
@@ -1405,8 +1887,13 @@ void FindWindowActivateForShortcut(MainWindow* win) {
     if (!win) {
         return;
     }
+    // SearchUIFloating false: Ctrl+F always lands in the toolbar box.
+    if (!gGlobalPrefs || !gGlobalPrefs->searchUIFloating) {
+        HwndSendCommand(win->hwndFrame, CmdFindFirst);
+        return;
+    }
     HWND hwndFind = FindWindowHwnd(win);
-    bool visible = hwndFind && IsWindowVisible(hwndFind);
+    bool visible = hwndFind && IsWindowVisible(hwndFind) && !IsFindWindowDocked(win);
     if (!visible) {
         HwndSendCommand(win->hwndFrame, CmdFindFirst);
         return;
@@ -1427,7 +1914,7 @@ void FindWindowActivateForShortcut(MainWindow* win) {
     HwndSendCommand(win->hwndFrame, CmdFindFirst);
 }
 
-void ShowFindWindow(MainWindow* win) {
+static void ShowFindWindowImpl(MainWindow* win, bool forceDetailed) {
     if (!win->findWindow) {
         win->findWindow = CreateFindWindow(win);
     }
@@ -1435,7 +1922,18 @@ void ShowFindWindow(MainWindow* win) {
         return;
     }
     FindWindowWnd* w = win->findWindow;
-    w->SetDocked(!gGlobalPrefs->searchUIFloating);
+    bool docked = !forceDetailed && gGlobalPrefs && !gGlobalPrefs->searchUIFloating;
+    if (forceDetailed && w->edit) {
+        HWND tb = ToolbarFindEdit(win);
+        if (tb) {
+            AutoFreeStr owned;
+            owned.SetCopy(HwndGetTextTemp(tb));
+            w->suppressTextChanged = true;
+            HwndSetText(w->edit->hwnd, owned.Get() ? owned.Get() : "");
+            w->suppressTextChanged = false;
+        }
+    }
+    w->SetDocked(docked);
     win->hwndFindEdit = w->edit->hwnd; // make this the active find edit
     FindWindowSetMatchCaseChecked(win, win->findMatchCase);
     FindWindowSetMatchWholeWordChecked(win, win->findMatchWholeWord);
@@ -1470,6 +1968,14 @@ void ShowFindWindow(MainWindow* win) {
     }
 }
 
+void ShowFindWindow(MainWindow* win) {
+    ShowFindWindowImpl(win, false);
+}
+
+void ShowDetailedSearchWindow(MainWindow* win) {
+    ShowFindWindowImpl(win, true);
+}
+
 void HideFindWindow(MainWindow* win, bool keepSearchState) {
     if (!keepSearchState) {
         HideFindBar(win, false);
@@ -1481,6 +1987,7 @@ void HideFindWindow(MainWindow* win, bool keepSearchState) {
     bool wasVisible = IsWindowVisible(win->findWindow->hwnd);
     win->findWindow->SavePos();
     ShowWindow(win->findWindow->hwnd, SW_HIDE);
+    OverlayScrollbarHide(win->findWindow->resultsScroll);
     FindBarResyncActiveEdit(win);
     if (wasVisible) {
         win->UpdateCanvasSize();

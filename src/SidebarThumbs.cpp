@@ -31,6 +31,11 @@
 #include "SvgIcons.h"
 #include "Translations.h"
 #include "SidebarThumbs.h"
+#include "InlineTranslate.h"
+#include "EngineAll.h"
+#include "EbookAnnotations.h"
+#include "EditAnnotations.h"
+#include "EditEbookAnnotations.h"
 
 constexpr UINT_PTR kThumbRenderTimerId = 0x106;
 constexpr const WCHAR* kThumbsClass = L"SUMATRA_SIDEBAR_THUMBS";
@@ -72,6 +77,12 @@ SidebarView SidebarViewFromStr(const char* s) {
     if (str::EqI(s, "favorites")) {
         return SidebarView::Favorites;
     }
+    if (str::EqI(s, "ai")) {
+        return SidebarView::Ai;
+    }
+    if (str::EqI(s, "annotations")) {
+        return SidebarView::Annotations;
+    }
     return SidebarView::Bookmarks;
 }
 
@@ -81,6 +92,10 @@ const char* SidebarViewToStr(SidebarView view) {
             return "thumbnails";
         case SidebarView::Favorites:
             return "favorites";
+        case SidebarView::Ai:
+            return "ai";
+        case SidebarView::Annotations:
+            return "annotations";
         default:
             return "bookmarks";
     }
@@ -92,7 +107,7 @@ SidebarView CurrentSidebarView(MainWindow* win) {
         return SidebarView::Bookmarks;
     }
     int v = tab->sidebarView;
-    if (v < 0 || v > 2) {
+    if (v < 0 || v > (int)SidebarView::Annotations) {
         return SidebarView::Bookmarks;
     }
     return (SidebarView)v;
@@ -109,6 +124,18 @@ bool SidebarViewAvailable(MainWindow* win, SidebarView view) {
             return !win->AsChm() && win->ctrl->PageCount() > 0;
         case SidebarView::Favorites:
             return !gPluginMode && CanAccessDisk();
+        case SidebarView::Ai:
+            return gGlobalPrefs && gGlobalPrefs->enableAskAI && HasPermission(Perm::InternetAccess);
+        case SidebarView::Annotations: {
+            WindowTab* tab = win->CurrentTab();
+            if (!tab) {
+                return false;
+            }
+            if (EbookAnnotationsSupported(tab)) {
+                return true;
+            }
+            return EngineSupportsAnnotations(tab->GetEngine());
+        }
     }
     return false;
 }
@@ -558,6 +585,9 @@ static LRESULT CALLBACK WndProcSidebarThumbs(HWND hwnd, UINT msg, WPARAM wp, LPA
         return msg == WM_SETCURSOR ? TRUE : 0;
     }
     switch (msg) {
+        case WM_CONTEXTMENU:
+            // Do not forward thumbnail right-clicks to the shared TOC container.
+            return 0;
         case WM_ERASEBKGND:
             return 1;
         case WM_SIZE:
@@ -701,8 +731,8 @@ void SidebarThumbsSyncCurrentPage(MainWindow* win) {
     InvalidateRect(t->hwnd, nullptr, FALSE);
 }
 
-// The three header icons switch the column. Closing it is the X button.
-static void ShowSidebarView(MainWindow* win, SidebarView view) {
+// The header icons switch the column. Closing it is the X button.
+void ShowSidebarPage(MainWindow* win, SidebarView view) {
     if (!win || !win->IsDocLoaded()) {
         return;
     }
@@ -800,6 +830,11 @@ void BindSidebarFindEdit(MainWindow* win, SidebarView view) {
     if (!win || !win->tocFilterEdit) {
         return;
     }
+    // The AI and annotations pages have no title filter. Leave the bookmark query stored.
+    if (view == SidebarView::Ai || view == SidebarView::Annotations) {
+        win->sidebarFindBound = (int)view;
+        return;
+    }
     Edit* edit = win->tocFilterEdit;
     int next = (int)view;
     if (next < 0 || next > 2) {
@@ -837,15 +872,19 @@ void BindSidebarFindEdit(MainWindow* win, SidebarView view) {
 }
 
 static void OnSidebarBookmarks(MainWindow* win) {
-    ShowSidebarView(win, SidebarView::Bookmarks);
+    ShowSidebarPage(win, SidebarView::Bookmarks);
 }
 
 static void OnSidebarThumbnails(MainWindow* win) {
-    ShowSidebarView(win, SidebarView::Thumbnails);
+    ShowSidebarPage(win, SidebarView::Thumbnails);
 }
 
 static void OnSidebarFavorites(MainWindow* win) {
-    ShowSidebarView(win, SidebarView::Favorites);
+    ShowSidebarPage(win, SidebarView::Favorites);
+}
+
+static void OnSidebarAi(MainWindow* win) {
+    ShowSidebarPage(win, SidebarView::Ai);
 }
 
 static void OnFavAddCurrent(MainWindow* win) {
@@ -864,13 +903,25 @@ static void OnFavRemoveCurrent(MainWindow* win) {
     DelFavorite(win->ctrl->GetFilePath(), win->currPageNo);
 }
 
+static void OnSidebarAnnotations(MainWindow* win) {
+    WindowTab* tab = win ? win->CurrentTab() : nullptr;
+    if (!tab) {
+        return;
+    }
+    if (EbookAnnotationsSupported(tab)) {
+        ShowEditEbookAnnotationsWindow(tab, nullptr);
+        return;
+    }
+    ShowEditAnnotationsWindow(tab, nullptr);
+}
+
 void UpdateSidebarViewButtons(MainWindow* win) {
     if (!win || !win->tocLabelWithClose) {
         return;
     }
     SidebarView cur = CurrentSidebarView(win);
     bool shown = win->tocVisible;
-    LabelViewButton btns[3];
+    LabelViewButton btns[5];
     btns[0].icon = TbIcon::SidebarBookmarks;
     btns[0].tooltip = _TRN("Bookmarks");
     btns[0].selected = shown && cur == SidebarView::Bookmarks;
@@ -886,7 +937,21 @@ void UpdateSidebarViewButtons(MainWindow* win) {
     btns[2].selected = shown && cur == SidebarView::Favorites;
     btns[2].enabled = SidebarViewAvailable(win, SidebarView::Favorites);
     btns[2].onClick = MkFunc0(OnSidebarFavorites, win);
-    win->tocLabelWithClose->SetViewButtons(btns, 3);
+    btns[3].icon = TbIcon::SidebarAnnotations;
+    btns[3].tooltip = _TRN("Annotations");
+    btns[3].selected = shown && cur == SidebarView::Annotations;
+    btns[3].enabled = SidebarViewAvailable(win, SidebarView::Annotations);
+    btns[3].onClick = MkFunc0(OnSidebarAnnotations, win);
+    int nBtns = 4;
+    if (gGlobalPrefs && gGlobalPrefs->enableAskAI) {
+        btns[4].icon = TbIcon::SidebarAi;
+        btns[4].tooltip = _TRN("Ask AI");
+        btns[4].selected = shown && cur == SidebarView::Ai;
+        btns[4].enabled = SidebarViewAvailable(win, SidebarView::Ai);
+        btns[4].onClick = MkFunc0(OnSidebarAi, win);
+        nBtns = 5;
+    }
+    win->tocLabelWithClose->SetViewButtons(btns, nBtns);
     win->tocLabelWithClose->SetHeaderActionsVisible(shown && cur == SidebarView::Bookmarks);
     if (shown && cur == SidebarView::Favorites) {
         LabelViewButton right[2];
@@ -919,6 +984,25 @@ void ApplySidebarViewLayout(MainWindow* win) {
     bool bookmarks = win->tocVisible && view == SidebarView::Bookmarks;
     bool thumbs = win->tocVisible && view == SidebarView::Thumbnails;
     bool favs = win->tocVisible && view == SidebarView::Favorites;
+    bool ai = win->tocVisible && view == SidebarView::Ai;
+    bool annots = win->tocVisible && view == SidebarView::Annotations;
+    if (ai) {
+        EnsureAskAiSidebar(win);
+    }
+    // Show* lays the sidebar out again. The flag stops that from creating a second editor.
+    static bool creatingAnnotSidebar = false;
+    if (annots && tab && !creatingAnnotSidebar && !EditAnnotationsSidebarHwnd(tab) &&
+        !EbookAnnotationsSidebarHwnd(tab)) {
+        creatingAnnotSidebar = true;
+        if (EbookAnnotationsSupported(tab)) {
+            ShowEditEbookAnnotationsWindow(tab, nullptr, EditAnnotFocus::Default, false);
+        } else if (EngineSupportsAnnotations(tab->GetEngine())) {
+            ShowEditAnnotationsWindow(tab, nullptr, EditAnnotFocus::Default, false);
+        }
+        creatingAnnotSidebar = false;
+    }
+    SyncEditAnnotationsSidebar(win, annots);
+    SyncEbookAnnotationsSidebar(win, annots);
 
     if (win->tocFilterEdit && win->tocFilterEdit->hwnd) {
         ShowWindow(win->tocFilterEdit->hwnd, (bookmarks || thumbs || favs) ? SW_SHOW : SW_HIDE);
@@ -929,6 +1013,9 @@ void ApplySidebarViewLayout(MainWindow* win) {
     }
     if (win->hwndSidebarThumbs) {
         ShowWindow(win->hwndSidebarThumbs, thumbs ? SW_SHOW : SW_HIDE);
+    }
+    if (win->hwndAiSidebar) {
+        ShowWindow(win->hwndAiSidebar, ai ? SW_SHOW : SW_HIDE);
     }
     if (win->favTreeView && win->favTreeView->hwnd) {
         HWND parent = favs ? win->hwndTocBox : win->hwndFavBox;
@@ -942,6 +1029,12 @@ void ApplySidebarViewLayout(MainWindow* win) {
     }
     UpdateSidebarViewButtons(win);
     RelayoutTocContainer(win);
+    if (ai) {
+        LayoutAskAiSidebar(win);
+    }
+    if (ai) {
+        LayoutAskAiSidebar(win);
+    }
     if (thumbs && win->hwndSidebarThumbs) {
         InvalidateRect(win->hwndSidebarThumbs, nullptr, TRUE);
         SidebarThumbsSyncCurrentPage(win);

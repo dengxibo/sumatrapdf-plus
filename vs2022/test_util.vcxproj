@@ -930,6 +930,7 @@
     <ClCompile Include="..\src\PdfTocEditModel.cpp" />
     <ClCompile Include="..\src\SumatraConfig.cpp" />
     <ClCompile Include="..\src\SumatraUnitTests.cpp" />
+    <ClCompile Include="..\src\TocAiPrompts.cpp" />
     <ClCompile Include="..\src\common\arena.cpp" />
     <ClCompile Include="..\src\common\base.cpp" />
     <ClCompile Include="..\src\common\dir_scan.cpp" />

@@ -1949,8 +1949,10 @@ static Size PdfRotatePagesLayout(PdfRotatePagesDialog* dlg, int dpi) {
 
     Size textSize = HwndMeasureText(hwnd, "Xg", dlg->hFont);
     int rowH = textSize.dy + PdfRotatePx(8, dpi);
-    int btnW = PdfRotatePx(75, dpi);
-    int btnH = rowH;
+    Size applySize = ButtonGetIdealSize(dlg->hwndRotateBtn);
+    Size cancelSize = ButtonGetIdealSize(dlg->hwndCancelBtn);
+    int btnW = std::max(PdfRotatePx(75, dpi), std::max(applySize.dx, cancelSize.dx));
+    int btnH = std::max(applySize.dy, cancelSize.dy);
     int btnGap = PdfRotatePx(4, dpi);
 
     int x = pad;
@@ -2036,7 +2038,7 @@ static LRESULT PdfRotatePagesColorControl(PdfRotatePagesDialog* dlg, HDC dc, HWN
         text = ThemeWindowTextDisabledColor();
     }
     SetTextColor(dc, text);
-    SetBkColor(dc, edit ? ThemeWindowControlBackgroundColor() : ThemeWindowBackgroundColor());
+    SetBkColor(dc, edit ? ThemeWindowControlBackgroundColor() : AppDialogPanelBackgroundColor());
     return (LRESULT)(edit ? dlg->ctrlBrush : dlg->bgBrush);
 }
 
@@ -2046,7 +2048,7 @@ static LRESULT CALLBACK PdfRotatePagesDlgProc(HWND hwnd, UINT msg, WPARAM wp, LP
         CREATESTRUCTW* cs = (CREATESTRUCTW*)lp;
         dlg = (PdfRotatePagesDialog*)cs->lpCreateParams;
         dlg->hwnd = hwnd;
-        dlg->bgBrush = CreateSolidBrush(ThemeWindowBackgroundColor());
+        dlg->bgBrush = CreateSolidBrush(AppDialogPanelBackgroundColor());
         dlg->ctrlBrush = CreateSolidBrush(ThemeWindowControlBackgroundColor());
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)dlg);
         return 0;
@@ -2415,7 +2417,7 @@ static void PdfRotatePagesThemeRefreshCb(HWND hwnd, void* ctx) {
     }
     DeleteObject(dlg->bgBrush);
     DeleteObject(dlg->ctrlBrush);
-    dlg->bgBrush = CreateSolidBrush(ThemeWindowBackgroundColor());
+    dlg->bgBrush = CreateSolidBrush(AppDialogPanelBackgroundColor());
     dlg->ctrlBrush = CreateSolidBrush(ThemeWindowControlBackgroundColor());
     AppDialogApplyChrome(hwnd);
     RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);

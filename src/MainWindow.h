@@ -153,6 +153,8 @@ struct MainWindow {
     HWND hwndFindEdit = nullptr;
     FindBarWnd* findBar = nullptr;
     FindWindowWnd* findWindow = nullptr;
+    // Permanent toolbar search box (right side). Not the old docked overlay.
+    HWND hwndToolbarFind = nullptr;
     // Kept for compatibility with toolbar theming code; the floating bar owns
     // the actual edit control.
     HWND hwndFindLabel = nullptr;
@@ -169,6 +171,11 @@ struct MainWindow {
 
     LabelWithCloseWnd* tocLabelWithClose = nullptr;
     HWND hwndSidebarThumbs = nullptr;
+    HWND hwndAiSidebar = nullptr;
+    // Last non-AI sidebar width, and the AI page width. AI width is runtime only.
+    int plainSidebarDx = 0;
+    int aiSidebarDx = 0;
+    bool sidebarWidthIsAi = false;
     Edit* tocFilterEdit = nullptr;
     // Search text kept per sidebar view: 0 bookmarks, 1 thumbnails, 2 favorites.
     AutoFreeStr sidebarFindText[3];
@@ -271,6 +278,12 @@ struct MainWindow {
     Rect annotResizeBgRect;
     HBITMAP annotResizeShape = nullptr;
     Rect annotResizeShapeRect;
+    // Live move. The captured shape follows the cursor; the page is updated on mouse-up.
+    bool annotMovePreview = false;
+    bool annotMovePatternOn = false;
+    bool annotMovePreviewFailed = false;
+    Rect annotMoveDest;
+    Point annotMoveGrab;
 
     // Toolbar quick-annotation tool (CmdCreateAnnotSquare etc.; 0 = inactive)
     int annotCreateToolCmd = 0;
@@ -415,6 +428,9 @@ struct MainWindow {
     u32 findCountTextCacheGeneration = 0;
     // after a finished count: jump to the first document-order match on/after this page
     int findPendingFromPage = 0;
+    // Next/Prev clicks that arrived before the count cache could step. Applied
+    // once the current match is known, so a click is never only "fill in n".
+    int findPendingNavDelta = 0;
     void* findCountEngine = nullptr; // engine the cache was built for (compared, never deref'd)
     // (page<<32 | startOffset) of each match, in document order after the count finishes
     Vec<u64> findCountPositions;

@@ -963,7 +963,7 @@ static RectF ReadAloudSnapRectToLineMetrics(const RectF& horizontal, const ReadA
             rf.dy = capDy;
         }
     }
-    return ScaleHighlightBandRect(rf, kReadAloudHighlightBandRatio);
+    return ScaleHighlightBandRect(rf, HighlightBandRatio());
 }
 
 static void ReadAloudAppendWordLineRects(Vec<RectF>& lineRects, const Vec<RectF>& wordGlyphs,

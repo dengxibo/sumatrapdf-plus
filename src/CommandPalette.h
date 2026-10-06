@@ -26,6 +26,7 @@ struct DrawMaybeHighlightedTextArgs {
     int primaryHighlightStart = -1; // optional UTF-8 byte range rendered with the primary color
     int primaryHighlightEnd = -1;
     COLORREF secondaryHighlightColor = CLR_INVALID;
+    COLORREF highlightColor = CLR_INVALID; // CLR_INVALID keeps the document find-match color
 
     DrawMaybeHighlightedTextArgs(const StrVec& fw, Vec<u8>& hl) : filterWords(fw), highlighted(hl) {}
 };

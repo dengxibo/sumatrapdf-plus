@@ -5,6 +5,9 @@
 
 const int Inf = std::numeric_limits<int>::max();
 
+extern bool gEnableDebugLayout;
+extern bool gLayoutSuspendPaint;
+
 void PositionRB(const Rect& container, Rect& r);
 void MoveXY(Rect& r, int x, int y);
 

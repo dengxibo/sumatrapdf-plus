@@ -185,6 +185,8 @@ Point& UnmirrorRtl(HWND hwnd, Point& p);
 int MapWindowPoints(HWND, HWND, Point*, int);
 void HwndScreenToClient(HWND, Point&);
 void HwndMakeVisible(HWND);
+// Keep a top-level window above its owner so the main frame cannot cover it.
+void HwndSetOwner(HWND hwnd, HWND owner);
 
 bool IsMouseOverRect(HWND hwnd, const Rect& r);
 void CenterDialog(HWND hDlg, HWND hParent = nullptr);
@@ -354,6 +356,9 @@ void DivideRectV(const RECT& r, int x, int dx, RECT& r1, RECT& r2, RECT& r3);
 HCURSOR GetCachedCursor(LPWSTR id);
 void SetCursorCached(LPWSTR id);
 void DeleteCachedCursors();
+// How far the <-> glyph extends past its hotspot, in pixels. A click on
+// either tip of that arrow is this far from the pointer position.
+int SizeWeCursorReachPx();
 
 int GetMeasurementSystem();
 bool TrackMouseLeave(HWND);

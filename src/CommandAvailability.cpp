@@ -28,6 +28,7 @@
 #include "EbookFontConfig.h"
 #include "EbookFontMenu.h"
 #include "OcrService.h"
+#include "EbookAnnotations.h"
 
 // clang-format off
 
@@ -193,6 +194,7 @@ static UINT_PTR removeIfAnnotsNotSupported[] = {
     CmdShowAnnotations,
     CmdHideAnnotations,
     CmdToggleShowAnnotations,
+    CmdAddHandwrittenSignature,
     0,
 };
 
@@ -424,15 +426,24 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         if (!ctx.isDocLoaded || !ctx.isReflowableEbook) {
             return CommandVisibility::Hide;
         }
+        if (!SupportsEbookFontSizeChange(ctx.tab)) {
+            return CommandVisibility::Disable;
+        }
         return CanIncreaseEbookFontSize() ? CommandVisibility::Show : CommandVisibility::Disable;
     }
     if (origCmdId == CmdEbookFontSizeDecrease) {
         if (!ctx.isDocLoaded || !ctx.isReflowableEbook) {
             return CommandVisibility::Hide;
         }
+        if (!SupportsEbookFontSizeChange(ctx.tab)) {
+            return CommandVisibility::Disable;
+        }
         return CanDecreaseEbookFontSize() ? CommandVisibility::Show : CommandVisibility::Disable;
     }
     if (origCmdId == CmdEbookFontSizeReset) {
+        if (!SupportsEbookFontSizeChange(ctx.tab)) {
+            return CommandVisibility::Disable;
+        }
         return UsesNonDefaultEbookFontSize() ? CommandVisibility::Show : CommandVisibility::Disable;
     }
 
@@ -528,7 +539,11 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         if ((cmdId >= (int)CmdCreateAnnotFirst) && (cmdId <= (int)CmdCreateAnnotLast)) {
             return CommandVisibility::Hide;
         }
-        if (CmdIdInList(cmdId, removeIfAnnotsNotSupported)) {
+        // EPUB keeps the signature button. Stamps and ink already live in the
+        // ebook sidecar, and the pad commits into that same store.
+        bool ebookSignature = cmdId == CmdAddHandwrittenSignature && ctx.tab && ctx.win && !ctx.win->isFullScreen &&
+                              EbookAnnotationsSupported(ctx.tab);
+        if (!ebookSignature && CmdIdInList(cmdId, removeIfAnnotsNotSupported)) {
             return CommandVisibility::Hide;
         }
     }
