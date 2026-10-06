@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.38
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.38/SumatraPDF-Plus.exe
-Notes: Handwritten signatures from a photo or the pad; annotation resize follows the frame in dark themes; crop size text sits on the dialog.
-NotesZh: 手写签名可用照片或手写板；暗色下调整标注跟着外框走且不留残影；裁剪窗口的尺寸文字画在对话框上。
+Latest: 3.7.39
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.39/SumatraPDF-Plus.exe
+Notes: Shared PDF/EPUB annotation sidebar with manual EPUB saving; independent Ask AI model picker; shared Web/API TOC rules; themed dialogs and steadier dark menus.
+NotesZh: PDF/EPUB 标注侧栏统一，EPUB 改为手动保存；问问 AI 可独立选择模型；网页/API 目录识别共用核心规则；统一四主题对话框并优化暗色菜单。
