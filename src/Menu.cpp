@@ -2741,7 +2741,13 @@ void MenuCustomDrawMesureItem(HWND hwnd, MEASUREITEMSTRUCT* mis) {
     if (modi->hasSubMenu) {
         dx += DpiScale(hwnd, 16);
     }
-    mis->itemWidth = uint(dx + cxMenuCheckMark + (padX * 2));
+    if (ThemeUsesDarkChrome()) {
+        // Match PaintDarkMenuPopup's fixed check gutter and right inset.
+        // Native owner-draw measurement does not add our custom gutters.
+        mis->itemWidth = uint(dx + cxMenuCheckMark + DpiScale(hwnd, 12) + padX);
+    } else {
+        mis->itemWidth = uint(dx + cxMenuCheckMark + (padX * 2));
+    }
 }
 
 static void DrawMenuChevron(HWND hwnd, HDC hdc, const RECT& rcItem, COLORREF col) {
@@ -2895,14 +2901,12 @@ static bool PaintDarkMenuPopup(HWND hwnd, HDC targetDc) {
     DeleteObject(surface);
     int saved = SaveDC(dc);
     SetBkMode(dc, TRANSPARENT);
-    // Native popups use the system menu font; do not change typography.
-    NONCLIENTMETRICSW metrics{sizeof(metrics)};
-    SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0);
-    HFONT font = CreateFontIndirectW(&metrics.lfMenuFont);
+    // Use the same application menu font as WM_MEASUREITEM, including DPI.
+    HFONT font = GetAppMenuFontForHwnd(hwnd);
     SelectObject(dc, font);
     POINT cursor{};
     GetCursorPos(&cursor);
-    int gutter = GetSystemMetrics(SM_CXMENUCHECK) + DpiScale(hwnd, 12);
+    int gutter = GetMenuCheckMarkCx(hwnd) + DpiScale(hwnd, 12);
     int inset = DpiScale(hwnd, 8);
     for (int i = 0; i < count; i++) {
         RECT screenRow{};
@@ -2950,7 +2954,7 @@ static bool PaintDarkMenuPopup(HWND hwnd, HDC targetDc) {
         }
         RECT label = row;
         label.left += gutter;
-        label.right -= gutter;
+        label.right -= inset + (item.hSubMenu ? DpiScale(hwnd, 16) : 0);
         SetTextColor(dc, disabled ? colors.disabledText : colors.text);
         DrawTextW(dc, text, -1, &label, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
         if (shortcut) {
@@ -2979,7 +2983,7 @@ static bool PaintDarkMenuPopup(HWND hwnd, HDC targetDc) {
     FrameRect(dc, &bounds, border);
     DeleteObject(border);
     RestoreDC(dc, saved);
-    DeleteObject(font);
+    // GetAppMenuFontForHwnd returns a shared cached font, not an owned handle.
     // Menu-loop DCs can be client DCs; WM_PAINT uses the window DC. Match
     // their actual origin so hover updates do not shift the composed rows.
     POINT origin{};

@@ -179,9 +179,6 @@ static void UpdateEbookSaveStatus(EbookAnnotationsWindow* window) {
     window->buttonSaveStatus->SetIsEnabled(pending);
     HWND status = window->buttonSaveStatus->hwnd;
     RemoveWindowSubclass(status, AnnotationSecondaryButtonProc, 0xA120);
-    if (!pending) {
-        SetWindowSubclass(status, AnnotationSecondaryButtonProc, 0xA120, 1);
-    }
     InvalidateRect(status, nullptr, FALSE);
 }
 
@@ -257,9 +254,6 @@ static void ApplyEbookAnnotationsWindowTheme(EbookAnnotationsWindow* window, boo
     // Same push/combo chrome as PDF annotations and Options.
     AppDialogSyncWarmPushButtons(window->hwnd);
     RemoveWindowSubclass(window->buttonSaveCopy->hwnd, AnnotationSecondaryButtonProc, 0xA11D);
-    if (!ThemeUsesDarkChrome()) {
-        SetWindowSubclass(window->buttonSaveCopy->hwnd, AnnotationSecondaryButtonProc, 0xA11D, 0);
-    }
     if (window->inspectorPane && UseDarkModeLib()) {
         HWND pane = window->inspectorPane->hwnd;
         if (ThemeUsesDarkChrome()) {
@@ -1224,7 +1218,7 @@ static void CreateMainLayout(EbookAnnotationsWindow* window) {
     auto commands = AddAnnotationCommandBar(footer);
     window->buttonExport = AddAnnotationFooterAction(commands, parent, font, IsUIRtl(), _TRA("Export Notes"), false,
                                                      MkFunc0(ExportClicked, window));
-    window->buttonSaveStatus = AddAnnotationFooterAction(commands, parent, headFont, IsUIRtl(), _TRA("Saved"), false,
+    window->buttonSaveStatus = AddAnnotationFooterAction(commands, parent, font, IsUIRtl(), _TRA("Save"), false,
                                                          MkFunc0(RetrySaveClicked, window));
     window->buttonSaveCopy = AddAnnotationFooterAction(commands, parent, font, IsUIRtl(), _TRA("Save as…"), true,
                                                        MkFunc0(SaveCopyClicked, window));

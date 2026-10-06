@@ -1147,9 +1147,6 @@ static void ApplyEditAnnotationsWindowTheme(EditAnnotationsWindow* ew, bool inst
     AppDialogSyncWarmPushButtons(ew->hwnd);
     RemoveWindowSubclass(ew->dropDownColor->hwnd, AnnotationSecondaryButtonProc, 0xA11D);
     RemoveWindowSubclass(ew->buttonSaveToNewFile->hwnd, AnnotationSecondaryButtonProc, 0xA11D);
-    if (!ThemeUsesDarkChrome()) {
-        SetWindowSubclass(ew->buttonSaveToNewFile->hwnd, AnnotationSecondaryButtonProc, 0xA11D, 0);
-    }
 
     uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN;
     RedrawWindow(ew->hwnd, nullptr, nullptr, flags);
@@ -2913,7 +2910,7 @@ static void CreateMainLayout(EditAnnotationsWindow* ew) {
     auto commands = AddAnnotationCommandBar(footer);
     ew->buttonExport = AddAnnotationFooterAction(commands, parent, fnt, IsUIRtl(), _TRA("Export Notes"), false,
                                                  MkFunc0(ExportClicked, ew));
-    ew->buttonSaveToCurrentFile = AddAnnotationFooterAction(commands, parent, headFont, IsUIRtl(), _TRA("Save"), false,
+    ew->buttonSaveToCurrentFile = AddAnnotationFooterAction(commands, parent, fnt, IsUIRtl(), _TRA("Save"), false,
                                                             MkFunc0(ButtonSaveToCurrentPDFHandler, ew));
     ew->buttonSaveToNewFile = AddAnnotationFooterAction(commands, parent, fnt, IsUIRtl(), _TRA("Save as…"), false,
                                                         MkFunc0(ButtonSaveToNewFileHandler, ew));
