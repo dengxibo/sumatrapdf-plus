@@ -1566,7 +1566,7 @@ int APIENTRY WinMain(_In_ HINSTANCE /*hInstance*/, _In_opt_ HINSTANCE, _In_ LPST
     if (gIsDebugBuild) {
         if (!flags.logFile) {
             TempStr exeDir = path::GetDirTemp(GetSelfExePathTemp());
-            flags.logFile = path::JoinTemp(exeDir, "sumlog.txt");
+            flags.logFile = str::Dup(path::JoinTemp(exeDir, "sumlog.txt"));
             flags.log = true;
             logFileBecauseDebug = true;
         }

@@ -357,17 +357,76 @@ fz_html_target_rects(fz_context *ctx, fz_html *html, const char *id, int *pages,
 	return st.n;
 }
 
-static fz_html_flow *
-make_flow_bookmark(fz_context *ctx, fz_html_flow *flow, float y, fz_html_flow **candidate)
-{
-	while (flow)
-	{
-		*candidate = flow;
-		if (flow->y >= y)
-			return flow;
-		flow = flow->next;
-	}
-	return NULL;
+/* Locate a reading anchor without drawing/extracting every preceding page. */
+typedef struct {
+    int needle[80], prefix[80], len, matched, seen;
+    fz_html_flow *recent[80], *hit;
+} reflow_anchor_state;
+
+static int reflow_anchor_skip(int c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == 0xA0 || c == 0x3000 || c == 0xAD || c == 0x200B;
+}
+
+static void find_reflow_anchor_box(reflow_anchor_state* st, fz_html_box* box) {
+    for (; box && !st->hit; box = box->next) {
+        if (box->type == BOX_FLOW) {
+            fz_html_flow* flow;
+            for (flow = box->u.flow.head; flow && !st->hit; flow = flow->next) {
+                const char* p;
+                if (flow->type != FLOW_WORD || flow->box->style->visibility != V_VISIBLE) continue;
+                p = flow->content.text;
+                while (*p && !st->hit) {
+                    int c;
+                    p += fz_chartorune(&c, p);
+                    if (reflow_anchor_skip(c)) continue;
+                    st->recent[st->seen % st->len] = flow;
+                    st->seen++;
+                    while (st->matched && st->needle[st->matched] != c) st->matched = st->prefix[st->matched - 1];
+                    if (st->needle[st->matched] == c) st->matched++;
+                    if (st->matched == st->len) st->hit = st->recent[(st->seen - st->len) % st->len];
+                }
+            }
+        } else
+            find_reflow_anchor_box(st, box->down);
+    }
+}
+
+int fz_html_find_reflow_anchor(fz_context* ctx, fz_html* html, const char* text, int* page, fz_rect* rect) {
+    reflow_anchor_state st = {0};
+    target_rects_state rs = {0};
+    const char* p = text;
+    int i, j;
+    if (!html || !p || !page || !rect) return 0;
+    while (*p) {
+        int c;
+        p += fz_chartorune(&c, p);
+        if (reflow_anchor_skip(c)) continue;
+        if (st.len == 80) return 0;
+        st.needle[st.len++] = c;
+    }
+    if (st.len < 4) return 0;
+    for (i = 1, j = 0; i < st.len; i++) {
+        while (j && st.needle[i] != st.needle[j]) j = st.prefix[j - 1];
+        if (st.needle[i] == st.needle[j]) j++;
+        st.prefix[i] = j;
+    }
+    find_reflow_anchor_box(&st, html->tree.root);
+    if (!st.hit) return 0;
+    rs.html = html;
+    rs.pages = page;
+    rs.rects = rect;
+    rs.max = 1;
+    add_flow_rect(&rs, st.hit);
+    return rs.n;
+}
+
+static fz_html_flow* make_flow_bookmark(fz_context* ctx, fz_html_flow* flow, float y, fz_html_flow** candidate) {
+    while (flow) {
+        *candidate = flow;
+        if (flow->y >= y) return flow;
+        flow = flow->next;
+    }
+    return NULL;
 }
 
 static fz_html_flow *

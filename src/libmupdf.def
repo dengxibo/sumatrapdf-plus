@@ -977,6 +977,7 @@ EXPORTS
 	fz_reset_epub_html_font_set
 	fz_epub_chapter_for_path
 	fz_epub_fragment_rects
+	fz_epub_find_reflow_anchor
 	fz_font_is_bold
 	pdf_new_sanitize_filter
 	pdf_filter_page_contents

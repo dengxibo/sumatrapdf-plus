@@ -215,6 +215,7 @@ struct DisplayModel : DocController {
 
     void BuildPagesInfo();
     void EnsurePagesInfoForPage(int pageNo);
+    void EnsureReflowLayoutForPage(int pageNo);
     void OnMorePagesAvailable(bool updateUi = true, bool growAll = false);
     void OnMorePagesAvailablePreservingScroll(bool updateUi = true, bool growAll = false);
     void SyncPageCountWithEngine(bool updateUi = true);

@@ -36,6 +36,9 @@ WindowTab::WindowTab(MainWindow* win) {
 
 void WindowTab::SetFilePath(const char* path) {
     type = Type::Document;
+    if (!str::EqI(filePath, path)) {
+        str::FreePtr(&lastFontReloadAnchor);
+    }
     str::ReplaceWithCopy(&filePath, path);
 }
 
@@ -79,6 +82,7 @@ WindowTab::~WindowTab() {
     str::FreePtr(&frameTitle);
     str::FreePtr(&readAloudText);
     str::FreePtr(&fontReloadAnchor);
+    str::FreePtr(&lastFontReloadAnchor);
     if (readAloudHighlight) {
         ReadAloudHighlightFree(readAloudHighlight);
         delete readAloudHighlight;

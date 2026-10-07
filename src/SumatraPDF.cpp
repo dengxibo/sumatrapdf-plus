@@ -80,6 +80,7 @@
 #include "Screenshot.h"
 #include "ImageSaveCropResize.h"
 #include "StressTesting.h"
+#include "EpubPerfLog.h"
 #include "HomePage.h"
 #include "OverlayScrollbar.h"
 #include "SumatraDialogs.h"
@@ -640,7 +641,11 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
         return;
     }
     bool isForeground = TabIsForegroundForUi(tab);
-    dm->OnMorePagesAvailable(isForeground);
+    if (dm->hasPendingRestoreScroll) {
+        dm->OnMorePagesAvailable(isForeground);
+    } else {
+        dm->OnMorePagesAvailablePreservingScroll(isForeground);
+    }
     if (!isForeground) {
         return;
     }
@@ -1969,6 +1974,12 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         }
     }
 
+    bool restoreFontView =
+        tab->reloadForEbookFontChange && !tab->reloadOnFocus && IsValidZoom(tab->restoreZoomAfterFontReload);
+    if (restoreFontView) {
+        displayMode = tab->restoreDisplayModeAfterFontReload;
+    }
+
     // ToC items might hold a reference to an Engine, so make sure to
     // delete them before destroying the whole DisplayModel
     // (same for linkOnLastButtonDown)
@@ -2044,6 +2055,10 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
         // Hybrid FXL+reflow EPUBs (this 图解 OKR book): Fit Page letterboxes a
         // 1398×2000 cover in a landscape pane. Fit Width fills the reading area.
         zoomVirtual = kZoomFitWidth;
+    }
+    if (restoreFontView) {
+        zoomVirtual = tab->restoreZoomAfterFontReload;
+        rotation = tab->restoreRotationAfterFontReload;
     }
     if (win->AsFixed()) {
         win->AsFixed()->Relayout(zoomVirtual, rotation);
@@ -2183,7 +2198,13 @@ static void ReplaceDocumentInCurrentTab(LoadArgs* args, DocController* ctrl, Fil
 struct FontReloadScrollAnchor {
     ScrollState scroll;
     float inPageScrollRatio = -1.f;
+    float zoom = kInvalidZoom;
+    DisplayMode displayMode = DisplayMode::Automatic;
+    int rotation = 0;
 };
+
+static FontReloadScrollAnchor FontReloadScrollFromTab(WindowTab* tab);
+static void CaptureFontReloadAnchor(WindowTab* tab);
 
 static float CaptureInPageScrollRatio(DisplayModel* dm, int page) {
     if (!dm || !dm->ValidPageNo(page)) {
@@ -2204,6 +2225,12 @@ static FontReloadScrollAnchor CaptureFontReloadScroll(WindowTab* tab) {
     if (!dm) {
         return anchor;
     }
+    if (tab->holdPaintForFontReload && IsValidZoom(tab->restoreZoomAfterFontReload)) {
+        return FontReloadScrollFromTab(tab);
+    }
+    anchor.zoom = dm->GetZoomVirtual();
+    anchor.displayMode = dm->GetDisplayMode();
+    anchor.rotation = dm->rotation;
     anchor.scroll = dm->GetScrollState();
     if (!IsContinuous(dm->GetDisplayMode())) {
         int page = anchor.scroll.page;
@@ -2228,6 +2255,10 @@ static void SaveTabFontReloadScroll(WindowTab* tab, const FontReloadScrollAnchor
     if (!tab) {
         return;
     }
+    CaptureFontReloadAnchor(tab);
+    tab->restoreZoomAfterFontReload = anchor.zoom;
+    tab->restoreDisplayModeAfterFontReload = anchor.displayMode;
+    tab->restoreRotationAfterFontReload = anchor.rotation;
     if (anchor.scroll.page >= 1) {
         tab->restorePageAfterFontReload = anchor.scroll.page;
         tab->restoreScrollXAfterFontReload = anchor.scroll.x;
@@ -2251,6 +2282,9 @@ static FontReloadScrollAnchor FontReloadScrollFromTab(WindowTab* tab) {
     anchor.scroll = ScrollState(tab->restorePageAfterFontReload, tab->restoreScrollXAfterFontReload,
                                 tab->restoreScrollYAfterFontReload);
     anchor.inPageScrollRatio = tab->restoreInPageScrollRatioAfterFontReload;
+    anchor.zoom = tab->restoreZoomAfterFontReload;
+    anchor.displayMode = tab->restoreDisplayModeAfterFontReload;
+    anchor.rotation = tab->restoreRotationAfterFontReload;
     return anchor;
 }
 
@@ -2264,31 +2298,19 @@ static void ClearTabFontReloadScroll(WindowTab* tab) {
     tab->restoreScrollXAfterFontReload = -1;
     tab->restoreScrollYAfterFontReload = -1;
     tab->restoreInPageScrollRatioAfterFontReload = -1.f;
+    tab->restoreZoomAfterFontReload = kInvalidZoom;
+    tab->restoreDisplayModeAfterFontReload = DisplayMode::Automatic;
+    tab->restoreRotationAfterFontReload = 0;
     str::FreePtr(&tab->fontReloadAnchor);
     tab->fontReloadChapter = -1;
+    tab->fontReloadAnchorPage = 0;
+    tab->fontReloadAnchorRect = RectF();
     tab->holdPaintForFontReload = false;
 }
 
 static bool FontReloadSkipChar(WCHAR c) {
     return c == L' ' || c == L'\t' || c == L'\n' || c == L'\r' || c == 0x00A0 || c == 0x3000 || c == 0x00AD ||
            c == 0x200B;
-}
-
-static bool FontReloadStartsLine(const WCHAR* text, Rect* coords, int i) {
-    if (i <= 0) {
-        return true;
-    }
-    if (text[i] == L'\n' || text[i] == L'\r') {
-        return false;
-    }
-    if (text[i - 1] == L'\n' || text[i - 1] == L'\r') {
-        return true;
-    }
-    if (!coords) {
-        return false;
-    }
-    int h = coords[i - 1].dy > 0 ? coords[i - 1].dy : 8;
-    return coords[i].y - coords[i - 1].y > h / 2;
 }
 
 // Whitespace-stripped text of the first line that meets the viewport, plus
@@ -2307,18 +2329,11 @@ static char* CaptureViewportFirstLineUtf8(DisplayModel* dm, int* chapterOut) {
     if (!dm->ValidPageNo(page)) {
         return nullptr;
     }
-    int chapter = -1;
-    int chapterStart = 0;
-    if (EngineMupdfGetReflowPageChapter(dm->engine, page, &chapter, &chapterStart) && chapterOut) {
-        *chapterOut = chapter;
-    }
-
     WCHAR buf[80];
     int n = 0;
     int meaningful = 0;
     // CvtToScreen is already in canvas-window coordinates.
-    int viewTop = 0;
-    int viewBot = dm->viewPort.dy;
+    Rect viewport(Point(), dm->viewPort.Size());
     int lastPage = std::min(page + 1, dm->PageCount());
     for (int pageNo = page; pageNo <= lastPage && meaningful < 32; pageNo++) {
         int textLen = 0;
@@ -2327,41 +2342,35 @@ static char* CaptureViewportFirstLineUtf8(DisplayModel* dm, int* chapterOut) {
         if (!text || textLen <= 0 || !coords) {
             continue;
         }
-        int i = 0;
-        while (i < textLen && meaningful < 32) {
-            while (i < textLen && (text[i] == L'\n' || text[i] == L'\r')) {
-                i++;
-            }
-            if (i >= textLen) {
-                break;
-            }
-            int lineStart = i;
-            i++;
-            while (i < textLen && text[i] != L'\n' && text[i] != L'\r' && !FontReloadStartsLine(text, coords, i)) {
-                i++;
-            }
-            Rect line = coords[lineStart];
-            for (int g = lineStart + 1; g < i; g++) {
-                if (coords[g].dx != 0 || coords[g].dy != 0) {
-                    line = line.Union(coords[g]);
-                }
-            }
-            Rect screen = dm->CvtToScreen(pageNo, ToRectF(line));
-            if (screen.y + screen.dy <= viewTop + 1) {
+        for (int i = 0; i < textLen && meaningful < 32; i++) {
+            WCHAR c = text[i];
+            if (FontReloadSkipChar(c)) {
                 continue;
             }
-            if (n == 0 && screen.y >= viewBot) {
-                pageNo = lastPage;
-                break;
+            RectF glyph = ToRectF(coords[i]).Intersect(dm->PageMediaBox(pageNo));
+            if (glyph.IsEmpty()) {
+                continue;
             }
-            for (int g = lineStart; g < i && meaningful < 32 && n < (int)dimof(buf) - 1; g++) {
-                WCHAR c = text[g];
-                if (FontReloadSkipChar(c)) {
+            if (n == 0) {
+                // Text extraction can include glyphs clipped by the EPUB page.
+                // Pick an actually visible glyph, not a union spanning hidden
+                // lines or the blank gap between two pages.
+                Rect visible = dm->CvtToScreen(pageNo, glyph).Intersect(viewport);
+                if (visible.IsEmpty() || visible.dy <= 1) {
                     continue;
                 }
-                buf[n++] = c;
-                meaningful++;
+                int chapter = -1;
+                int chapterStart = 0;
+                if (chapterOut && EngineMupdfGetReflowPageChapter(dm->engine, pageNo, &chapter, &chapterStart)) {
+                    *chapterOut = chapter;
+                }
             }
+            buf[n++] = c;
+            meaningful++;
+        }
+        // Keep the anchor within its chapter, even at a chapter/page boundary.
+        if (meaningful >= 4) {
+            break;
         }
     }
     if (meaningful < 4) {
@@ -2375,6 +2384,19 @@ static void CaptureFontReloadAnchor(WindowTab* tab) {
     if (!tab || !str::IsEmpty(tab->fontReloadAnchor)) {
         return;
     }
+    DisplayModel* dm = tab->AsFixed();
+    if (dm && tab->lastFontReloadAnchor) {
+        ScrollState scroll = dm->GetScrollState();
+        if (scroll.page == tab->lastFontReloadPage && scroll.x == tab->lastFontReloadX &&
+            scroll.y == tab->lastFontReloadY && dm->GetZoomVirtual() == tab->lastFontReloadZoom &&
+            dm->GetDisplayMode() == tab->lastFontReloadDisplayMode) {
+            tab->fontReloadAnchor = str::Dup(tab->lastFontReloadAnchor);
+            tab->fontReloadChapter = tab->lastFontReloadChapter;
+            return;
+        }
+        // Navigation or a view change starts a new reading anchor.
+        str::FreePtr(&tab->lastFontReloadAnchor);
+    }
     int chapter = -1;
     char* anchor = CaptureViewportFirstLineUtf8(tab->AsFixed(), &chapter);
     if (!anchor) {
@@ -2382,13 +2404,101 @@ static void CaptureFontReloadAnchor(WindowTab* tab) {
     }
     tab->fontReloadAnchor = anchor;
     tab->fontReloadChapter = chapter;
+    logf("EpubFontAnchor captured chapter=%d page=%d viewY=%d text=%s\n", chapter, dm ? dm->CurrentPageNo() : 0,
+         dm ? dm->viewPort.y : 0, anchor);
 }
 
 // Scroll so the captured line sits at the top of the viewport. Returns false
 // when the chapter is not laid out yet and the caller should try again.
+struct FontReloadGlyph {
+    int page;
+    RectF rect;
+};
+
+static bool FindFontReloadAnchorGlyph(DisplayModel* dm, const char* anchor, int* page, RectF* rect) {
+    Vec<WCHAR> normalized;
+    Vec<FontReloadGlyph> glyphs;
+    int last = std::min(*page + 2, dm->engine->PageCount());
+    for (int candidate = *page; candidate <= last; candidate++) {
+        int len = 0;
+        Rect* coords = nullptr;
+        const WCHAR* text = dm->engine->GetTextForPage(candidate, &len, &coords);
+        if (!text || !coords) {
+            continue;
+        }
+        RectF media = dm->PageMediaBox(candidate);
+        for (int i = 0; i < len; i++) {
+            RectF glyph = ToRectF(coords[i]).Intersect(media);
+            if (FontReloadSkipChar(text[i]) || glyph.IsEmpty()) {
+                continue;
+            }
+            normalized.Append(text[i]);
+            glyphs.Append(FontReloadGlyph{candidate, glyph});
+        }
+    }
+    normalized.Append(0);
+    const WCHAR* hit = wcsstr(normalized.els, ToWStrTemp(anchor));
+    if (!hit) {
+        return false;
+    }
+    FontReloadGlyph glyph = glyphs[(int)(hit - normalized.els)];
+    *page = glyph.page;
+    *rect = glyph.rect;
+    return true;
+}
+
 static bool TryPlaceFontReloadAnchor(WindowTab* tab, DisplayModel* dm) {
     if (!tab || !dm || !dm->engine || str::IsEmpty(tab->fontReloadAnchor)) {
         return false;
+    }
+    if (tab->fontReloadChapter >= 0) {
+        if (tab->fontReloadAnchorPage == 0) {
+            int found = EngineMupdfFindReflowAnchor(dm->engine, tab->fontReloadChapter, tab->fontReloadAnchor,
+                                                    &tab->fontReloadAnchorPage, &tab->fontReloadAnchorRect);
+            if (found < 0) {
+                return false;
+            }
+            if (found == 0) {
+                // Unsupported text (e.g. image-only pages) keeps the existing
+                // structured-text fallback. Don't retry the HTML search.
+                tab->fontReloadAnchorPage = -1;
+            }
+        }
+        if (tab->fontReloadAnchorPage > 0) {
+            int pageNo = tab->fontReloadAnchorPage;
+            // The target is already counted by the engine. Reach it directly
+            // instead of holding the old frame through every UI layout batch.
+            // Leave enough laid-out canvas below the anchor for a full viewport.
+            // Otherwise GoToPage clamps the requested offset at the temporary
+            // end of the progressive layout and keeps that wrong offset later.
+            int layoutThrough =
+                IsContinuous(dm->GetDisplayMode()) ? std::min(pageNo + 2, dm->engine->PageCount()) : pageNo;
+            dm->EnsureReflowLayoutForPage(layoutThrough);
+            if (!dm->ValidPageNo(pageNo) || (dm->reflowLayoutValidUpto > 0 && pageNo > dm->reflowLayoutValidUpto)) {
+                return false;
+            }
+            // HTML flow coordinates can precede the actual glyph after a word
+            // has been split across lines/pages (notably Chinese text). Refine
+            // the fast chapter lookup using the located page and its neighbors;
+            // the phrase can cross a newly created page boundary.
+            FindFontReloadAnchorGlyph(dm, tab->fontReloadAnchor, &pageNo, &tab->fontReloadAnchorRect);
+            tab->fontReloadAnchorPage = pageNo;
+            if (IsContinuous(dm->GetDisplayMode())) {
+                dm->EnsureReflowLayoutForPage(std::min(pageNo + 2, dm->engine->PageCount()));
+            }
+            Point screen = dm->CvtToScreen(pageNo, tab->fontReloadAnchorRect.TL());
+            PageInfo* pi = dm->GetPageInfo(pageNo);
+            int scrollY = screen.y - (pi->pos.y - dm->viewPort.y);
+            if (!IsContinuous(dm->GetDisplayMode())) {
+                scrollY += pi->pos.y - dm->windowMargin.top;
+            }
+            dm->hasPendingRestoreScroll = false;
+            dm->fontReloadInPageRatio = -1.f;
+            dm->GoToPage(pageNo, std::max(0, scrollY), false, -1);
+            logf("EpubFontAnchor placed page=%d scrollY=%d viewY=%d text=%s\n", pageNo, scrollY, dm->viewPort.y,
+                 tab->fontReloadAnchor);
+            return true;
+        }
     }
     WCHAR* needle = ToWStrTemp(tab->fontReloadAnchor);
     int needleLen = needle ? (int)str::Len(needle) : 0;
@@ -2469,6 +2579,8 @@ static bool TryPlaceFontReloadAnchor(WindowTab* tab, DisplayModel* dm) {
         if (scrollY < 0) {
             scrollY = 0;
         }
+        dm->hasPendingRestoreScroll = false;
+        dm->fontReloadInPageRatio = -1.f;
         dm->GoToPage(pageNo, scrollY, false, -1);
         return true;
     }
@@ -2498,11 +2610,170 @@ static void FinishFontReloadPlacement(MainWindow* win, WindowTab* tab, DisplayMo
             return;
         }
     }
+    if (placed && dm && tab->fontReloadAnchor) {
+        str::ReplaceWithCopy(&tab->lastFontReloadAnchor, tab->fontReloadAnchor);
+        tab->lastFontReloadChapter = tab->fontReloadChapter;
+        ScrollState scroll = dm->GetScrollState();
+        tab->lastFontReloadPage = scroll.page;
+        tab->lastFontReloadX = scroll.x;
+        tab->lastFontReloadY = scroll.y;
+        tab->lastFontReloadZoom = dm->GetZoomVirtual();
+        tab->lastFontReloadDisplayMode = dm->GetDisplayMode();
+    }
     tab->holdPaintForFontReload = false;
     ClearTabFontReloadScroll(tab);
     if (dm && win && tab == win->CurrentTab()) {
         dm->RepaintDisplay();
     }
+}
+
+// Exercise the real reading model without creating a desktop window. This is
+// opt-in through the existing EPUB benchmark, and works on a locked desktop.
+bool RunEpubFontPositionRegression(const char* path) {
+    struct ModelCallback : DocControllerCallback {
+        void PageNoChanged(DocController*, int) override {}
+        void ZoomChanged(DocController*, float) override {}
+        void GotoLink(IPageDestination*) override {}
+        void Repaint() override {}
+        void UpdateScrollbars(Size) override {}
+        void RequestRendering(int, bool) override {}
+        bool IsRenderCached(int) override { return true; }
+        void CleanUp(DisplayModel*) override {}
+        void RenderThumbnail(DisplayModel*, Size, const OnBitmapRendered*) override {}
+        void FocusFrame(bool) override {}
+        void SaveDownload(const char*, const ByteSlice&) override {}
+    } callback;
+    float originalSize = gGlobalPrefs->eBookUI.fontSize;
+    defer {
+        gGlobalPrefs->eBookUI.fontSize = originalSize;
+    };
+    bool allPassed = true;
+    for (int scenario = 0; scenario < 6; scenario++) {
+        gGlobalPrefs->eBookUI.fontSize = 14;
+        EngineBase* engine = CreateEngineFromFile(path, nullptr, true);
+        if (!engine) {
+            return false;
+        }
+        EngineMupdfSetReflowLoadWhenForeground(engine, true);
+        DWORD waitStart = GetTickCount();
+        while (EngineIsProgressiveEbookLoading(engine) && GetTickCount() - waitStart < 120000) {
+            Sleep(1);
+        }
+        if (EngineIsProgressiveEbookLoading(engine)) {
+            SafeEngineRelease(&engine);
+            return false;
+        }
+        WindowTab tab(nullptr);
+        tab.ctrl = new DisplayModel(engine, &callback);
+        DisplayModel* dm = tab.AsFixed();
+        DisplayMode mode = scenario < 4 ? DisplayMode::Continuous : DisplayMode::SinglePage;
+        float zoom = scenario < 4 ? kZoomFitWidth : kZoomFitPage;
+        Size viewport(600, 850);
+        dm->SetInitialViewSettings(mode, 1, viewport, 120);
+        dm->Relayout(zoom, 0);
+        int samples[] = {18, 22, engine->PageCount() / 2, engine->PageCount() * 9 / 10, 18, 22};
+        int sample = std::min(samples[scenario], engine->PageCount());
+        dm->EnsureReflowLayoutForPage(std::min(sample + 2, engine->PageCount()));
+        int offset = scenario < 4 ? dm->GetPageInfo(sample)->pos.dy * 3 / 5 : 0;
+        dm->GoToPage(sample, offset, false, -1);
+        CaptureFontReloadAnchor(&tab);
+        if (!tab.fontReloadAnchor) {
+            return false;
+        }
+        AutoFreeStr expected(str::Dup(tab.fontReloadAnchor));
+        int sizes[] = {16, 14, 18, 12, 16, 14};
+        for (int step = 0; step < (int)dimof(sizes); step++) {
+            if (step == 3) {
+                int next = std::min(dm->CurrentPageNo() + 1, dm->PageCount());
+                dm->EnsureReflowLayoutForPage(std::min(next + 2, dm->engine->PageCount()));
+                dm->GoToPage(next, IsContinuous(mode) ? dm->GetPageInfo(next)->pos.dy / 3 : 0, false, -1);
+                CaptureFontReloadAnchor(&tab);
+                expected.Set(str::Dup(tab.fontReloadAnchor));
+            } else {
+                CaptureFontReloadAnchor(&tab);
+            }
+            bool capturedSame = str::Eq(expected, tab.fontReloadAnchor);
+            delete tab.ctrl;
+            tab.ctrl = nullptr;
+            gGlobalPrefs->eBookUI.fontSize = (float)sizes[step];
+            engine = CreateEngineFromFile(path, nullptr, true);
+            if (!engine) {
+                return false;
+            }
+            EngineMupdfSetReflowLoadWhenForeground(engine, true);
+            tab.ctrl = new DisplayModel(engine, &callback);
+            dm = tab.AsFixed();
+            dm->SetInitialViewSettings(mode, 1, viewport, 120);
+            dm->Relayout(zoom, 0);
+            tab.fontReloadAnchorPage = 0;
+            tab.holdPaintForFontReload = true;
+            waitStart = GetTickCount();
+            while (tab.holdPaintForFontReload && GetTickCount() - waitStart < 120000) {
+                if (dm->hasPendingRestoreScroll) {
+                    dm->OnMorePagesAvailable(true);
+                } else {
+                    dm->OnMorePagesAvailablePreservingScroll(true);
+                }
+                FinishFontReloadPlacement(nullptr, &tab, dm);
+                Sleep(1);
+            }
+            for (int phase = 0; phase < 2; phase++) {
+                if (phase == 1) {
+                    waitStart = GetTickCount();
+                    while (EngineIsProgressiveEbookLoading(engine) && GetTickCount() - waitStart < 120000) {
+                        dm->OnMorePagesAvailablePreservingScroll(true);
+                        Sleep(1);
+                    }
+                    dm->OnMorePagesAvailablePreservingScroll(true, true);
+                }
+                bool visible = false, atTop = false;
+                int screenY = -9999;
+                AutoFreeWStr needle(str::Dup(ToWStrTemp(expected)));
+                int firstPage = dm->FirstVisiblePageNo();
+                Vec<WCHAR> readingText;
+                Vec<Rect> screenGlyphs;
+                for (int pageNo = firstPage; pageNo <= std::min(firstPage + 2, dm->PageCount()); pageNo++) {
+                    int len = 0;
+                    Rect* coords = nullptr;
+                    const WCHAR* text = engine->GetTextForPage(pageNo, &len, &coords);
+                    if (!text || !coords) {
+                        continue;
+                    }
+                    for (int i = 0; i < len; i++) {
+                        RectF glyph = ToRectF(coords[i]).Intersect(dm->PageMediaBox(pageNo));
+                        if (!FontReloadSkipChar(text[i]) && !glyph.IsEmpty()) {
+                            readingText.Append(text[i]);
+                            screenGlyphs.Append(dm->CvtToScreen(pageNo, glyph));
+                        }
+                    }
+                }
+                readingText.Append(0);
+                const WCHAR* hit = wcsstr(readingText.els, needle);
+                if (hit) {
+                    Rect screen = screenGlyphs[(int)(hit - readingText.els)];
+                    visible = !screen.Intersect(Rect(Point(), dm->viewPort.Size())).IsEmpty();
+                    atTop = visible && screen.y >= -screen.dy && screen.y <= dm->windowMargin.top + screen.dy * 2 + 8;
+                    screenY = screen.y;
+                }
+                bool modeKept = dm->GetDisplayMode() == mode && dm->GetZoomVirtual() == zoom;
+                bool cacheKept = str::Eq(expected, tab.lastFontReloadAnchor);
+                bool passed = capturedSame && modeKept && cacheKept && visible && (!IsContinuous(mode) || atTop) &&
+                              !tab.holdPaintForFontReload && !dm->hasPendingRestoreScroll &&
+                              (phase == 0 || !EngineIsProgressiveEbookLoading(engine));
+                allPassed = allPassed && passed;
+                EpubPerfLogEmit("font_position",
+                                str::FormatTemp("\"scenario\":%d,\"step\":%d,\"phase\":%d,\"size\":%d,"
+                                                "\"page\":%d,\"screen_y\":%d,\"captured_same\":%s,"
+                                                "\"visible\":%s,\"at_top\":%s,\"mode_kept\":%s,"
+                                                "\"cache_kept\":%s,\"passed\":%s",
+                                                scenario, step, phase, sizes[step], dm->CurrentPageNo(), screenY,
+                                                capturedSame ? "true" : "false", visible ? "true" : "false",
+                                                atTop ? "true" : "false", modeKept ? "true" : "false",
+                                                cacheKept ? "true" : "false", passed ? "true" : "false"));
+            }
+        }
+    }
+    return allPassed;
 }
 
 static void ApplyFontReloadScroll(MainWindow* win, DisplayModel* dm, const FontReloadScrollAnchor& anchor) {
@@ -2636,6 +2907,8 @@ static void StartEbookFontAsyncReload(MainWindow* win, WindowTab* tab, const Fon
         gRenderCache->FreeForDisplayModel(dm);
     }
     CaptureFontReloadAnchor(tab);
+    tab->fontReloadAnchorPage = 0;
+    tab->fontReloadAnchorRect = RectF();
     // The new document opens at the cover. Hold the current frame until the
     // first visible line has been found again.
     tab->holdPaintForFontReload = true;
@@ -2674,8 +2947,8 @@ void ApplyTabReloadOnFocus(MainWindow* win, WindowTab* tab, bool autoRefresh) {
     if (tab->reloadForEbookFontChange) {
         FontReloadScrollAnchor anchor = FontReloadScrollFromTab(tab);
         bool fontSizeChange = tab->reloadForEbookFontSizeChange;
-        ClearTabFontReloadScroll(tab);
         if (tab != win->CurrentTab()) {
+            tab->reloadOnFocus = true;
             return;
         }
         if (fontSizeChange) {
@@ -6429,8 +6702,8 @@ SaveChoice ShouldSaveAnnotationsDialog(HWND hwndParent, const char* filePath, bo
     data.filePath = filePath;
     data.ebook = ebook;
 
-    HWND dlg = CreateDialogParamW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDD_DIALOG_SAVE_ANNOTATIONS),
-                                  hwndParent, SaveAnnotationsDialogProc, (LPARAM)&data);
+    HWND dlg = CreateDialogParamW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDD_DIALOG_SAVE_ANNOTATIONS), hwndParent,
+                                  SaveAnnotationsDialogProc, (LPARAM)&data);
     if (!dlg) {
         return SaveChoice::Cancel;
     }

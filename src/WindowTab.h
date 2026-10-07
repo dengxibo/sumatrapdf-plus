@@ -51,10 +51,24 @@ struct WindowTab {
     double restoreScrollXAfterFontReload = -1;
     double restoreScrollYAfterFontReload = -1;
     float restoreInPageScrollRatioAfterFontReload = -1.f;
+    float restoreZoomAfterFontReload = kInvalidZoom;
+    DisplayMode restoreDisplayModeAfterFontReload = DisplayMode::Automatic;
+    int restoreRotationAfterFontReload = 0;
     // First visible line (whitespace removed) and its spine chapter, so a font
     // reflow can return to that text instead of the old page number.
     char* fontReloadAnchor = nullptr;
     int fontReloadChapter = -1;
+    int fontReloadAnchorPage = 0;
+    RectF fontReloadAnchorRect;
+    // Reuse the same text across size changes while the reader stays at the
+    // restored view. Fit Page can move that text away from the page's first line.
+    char* lastFontReloadAnchor = nullptr;
+    int lastFontReloadChapter = -1;
+    int lastFontReloadPage = 0;
+    double lastFontReloadX = -1;
+    double lastFontReloadY = -1;
+    float lastFontReloadZoom = kInvalidZoom;
+    DisplayMode lastFontReloadDisplayMode = DisplayMode::Automatic;
     // Keep the previous frame on screen until that line is in place.
     bool holdPaintForFontReload = false;
     u32 lastDarkModeEpoch = 0;

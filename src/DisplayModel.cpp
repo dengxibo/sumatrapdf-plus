@@ -1099,6 +1099,21 @@ void DisplayModel::BuildPagesInfo() {
     // in non-continuous mode, GetPageInfo() will lazily load page sizes on demand
 }
 
+void DisplayModel::EnsureReflowLayoutForPage(int pageNo) {
+    if (totalViewPortSize.dy <= 0) {
+        return;
+    }
+    EnsurePagesInfoForPage(pageNo);
+    if (pageNo < 1 || pageNo > pagesInfoCount) {
+        return;
+    }
+    // Font reload already knows its reading anchor. Don't make that visible
+    // page wait for the background UI layout chain to walk the entire prefix.
+    if (LayoutReflowPagesUpto(this, pageNo)) {
+        ScheduleLayoutSyncChain(this);
+    }
+}
+
 void DisplayModel::EnsurePagesInfoForPage(int pageNo) {
     if (!engine || pageNo < 1 || !pagesInfo) {
         return;

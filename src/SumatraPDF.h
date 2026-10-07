@@ -15,6 +15,7 @@ constexpr int kFrameResizeHitTest = 5;
 
 extern bool gRedrawLog;
 extern bool gOcrAutoBench;
+bool RunEpubFontPositionRegression(const char* path);
 // automation hook: when set (env SUMATRA_COPY_BENCH=<path>), copy the
 // select-all text via the merged-copy path into this file and exit
 extern char* gCopyBenchOutPath;

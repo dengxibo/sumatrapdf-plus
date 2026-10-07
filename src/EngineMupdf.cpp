@@ -9,6 +9,8 @@ extern "C" {
 void fz_purge_stored_html(fz_context* ctx, void* doc);
 void fz_purge_stored_html_chapter(fz_context* ctx, void* doc, int chapter);
 void fz_reset_epub_html_font_set(fz_context* ctx, fz_document* doc);
+int fz_epub_find_reflow_anchor(fz_context* ctx, fz_document* doc, int chapter, const char* text, int* page,
+                               fz_rect* rect);
 void fz_htdoc_reparse_html(fz_context* ctx, fz_document* doc, fz_buffer* buf, float w, float h, float em);
 int fz_epub_chapter_for_path(fz_context* ctx, fz_document* doc, const char* path);
 const char* fz_epub_chapter_path(fz_context* ctx, fz_document* doc, int chapter);
@@ -12314,6 +12316,41 @@ Vec<IPageElement*> EngineMupdf::GetElements(int pageNo) {
 }
 
 // returns 1-based page number, or 0 if unresolved
+int EngineMupdfFindReflowAnchor(EngineBase* engine, int chapter, const char* text, int* pageOut, RectF* rectOut) {
+    EngineMupdf* e = AsEngineMupdf(engine);
+    if (!e || !str::EqI(e->defaultExt, ".epub") || chapter < 0 || !text || !pageOut || !rectOut) {
+        return 0;
+    }
+    int start, end;
+    if (!EngineMupdfGetReflowChapterPageRange(engine, chapter, &start, &end)) {
+        return EngineIsProgressiveEbookLoading(engine) ? -1 : 0;
+    }
+    if (!TryAcquireReflowUiDocLock(e)) {
+        NotifyEbookPagesLoadingProgress(e->FilePath(), false);
+        return -1;
+    }
+    defer {
+        ReleaseReflowUiDocLock(e);
+    };
+    fz_context* ctx = e->Ctx();
+    int found = 0;
+    int page = 0;
+    fz_rect rect = fz_empty_rect;
+    fz_var(found);
+    fz_try(ctx) {
+        found = fz_epub_find_reflow_anchor(ctx, e->_doc, chapter, text, &page, &rect);
+    }
+    fz_catch(ctx) {
+        fz_report_error(ctx);
+    }
+    if (!found || page < 0 || start + page > end) {
+        return 0;
+    }
+    *pageOut = start + page;
+    *rectOut = ToRectF(rect);
+    return 1;
+}
+
 static int ResolveMupdfLinkPageNo1(EngineMupdf* e, const char* uri, fz_link_dest* ldestOut) {
     if (!e || !uri) {
         return 0;

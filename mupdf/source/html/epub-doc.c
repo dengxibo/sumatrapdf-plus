@@ -1384,11 +1384,20 @@ fz_epub_fragment_rects(fz_context *ctx, fz_document *doc_, int chapter, const ch
 	return n;
 }
 
-static const char *epub_extensions[] =
-{
-	"epub",
-	NULL
-};
+int fz_epub_find_reflow_anchor(fz_context* ctx, fz_document* doc_, int chapter, const char* text, int* page,
+                               fz_rect* rect) {
+    epub_document* doc = as_epub_document(ctx, doc_);
+    fz_html* html;
+    int found = 0;
+    if (!doc || chapter < 0 || chapter >= doc->spine_len) return 0;
+    html = epub_get_laid_out_html(ctx, doc, doc->spine[chapter]);
+    fz_try(ctx) found = fz_html_find_reflow_anchor(ctx, html, text, page, rect);
+    fz_always(ctx) fz_drop_html(ctx, html);
+    fz_catch(ctx) fz_rethrow(ctx);
+    return found;
+}
+
+static const char* epub_extensions[] = {"epub", NULL};
 
 static const char *epub_mimetypes[] =
 {

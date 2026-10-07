@@ -312,6 +312,91 @@ static void BenchEpubPerfFragments(EngineBase* engine, TocItem* item, int* teste
     }
 }
 
+static bool BenchEpubAnchorSkip(WCHAR c) {
+    return c == L' ' || c == L'\t' || c == L'\n' || c == L'\r' || c == 0xA0 || c == 0x3000 || c == 0xAD || c == 0x200B;
+}
+
+// Opt-in diagnostic for the asynchronous reopen used by the font-size UI.
+// Measures opening, waiting for the reading chapter, locating text and rendering.
+static void BenchEpubFontChanges(const char* path, EngineBase* source) {
+    if (!GetEnvironmentVariableA("SUMATRA_EPUB_FONT_BENCH", nullptr, 0) || !gGlobalPrefs ||
+        !str::EqI(source->defaultExt, ".epub")) {
+        return;
+    }
+    float oldSize = gGlobalPrefs->eBookUI.fontSize;
+    defer {
+        gGlobalPrefs->eBookUI.fontSize = oldSize;
+    };
+    int samples[] = {source->PageCount() / 2, source->PageCount() * 9 / 10};
+    for (int sample : samples) {
+        int chapter, chapterStart;
+        if (!EngineMupdfGetReflowPageChapter(source, sample, &chapter, &chapterStart)) {
+            continue;
+        }
+        int len = 0;
+        const WCHAR* text = source->GetTextForPage(sample, &len, nullptr);
+        WCHAR needle[80]{};
+        int n = 0;
+        for (int i = 0; text && i < len && n < 32; i++) {
+            if (!BenchEpubAnchorSkip(text[i])) {
+                needle[n++] = text[i];
+            }
+        }
+        if (n < 4) {
+            continue;
+        }
+        AutoFreeStr anchor(str::Dup(ToUtf8Temp(needle)));
+        int sizes[] = {22, 14, 20};
+        for (int size : sizes) {
+            gGlobalPrefs->eBookUI.fontSize = (float)size;
+            auto start = TimeGet();
+            EngineBase* engine = CreateEngineFromFile(path, nullptr, true);
+            if (!engine) {
+                EpubPerfLogEmit("font_change", "\"error\":\"open failed\"");
+                continue;
+            }
+            defer {
+                SafeEngineRelease(&engine);
+            };
+            double openMs = TimeSinceInMs(start);
+            EngineMupdfSetReflowLoadWhenForeground(engine, true);
+            int found = -1, page = 0;
+            RectF rect;
+            while (found < 0 && TimeSinceInMs(start) < 120000) {
+                found = EngineMupdfFindReflowAnchor(engine, chapter, anchor, &page, &rect);
+                if (found < 0) {
+                    Sleep(1);
+                }
+            }
+            double locateMs = TimeSinceInMs(start);
+            bool verified = false, rendered = false;
+            if (found == 1) {
+                text = engine->GetTextForPage(page, &len, nullptr);
+                WCHAR* norm = AllocArray<WCHAR>((size_t)len + 1);
+                int m = 0;
+                for (int i = 0; text && i < len; i++) {
+                    if (!BenchEpubAnchorSkip(text[i])) {
+                        norm[m++] = text[i];
+                    }
+                }
+                norm[m] = 0;
+                verified = wcsstr(norm, needle) != nullptr;
+                free(norm);
+                RenderPageArgs args(page, 1.f, 0);
+                RenderedBitmap* bitmap = engine->RenderPage(args);
+                rendered = bitmap != nullptr;
+                delete bitmap;
+            }
+            EpubPerfLogEmit("font_change",
+                            str::FormatTemp("\"sample\":%d,\"chapter\":%d,\"font_size\":%d,\"page\":%d,"
+                                            "\"found\":%d,\"verified\":%s,"
+                                            "\"rendered\":%s,\"open_ms\":%.2f,\"locate_ms\":%.2f,\"ready_ms\":%.2f",
+                                            sample, chapter, size, page, found, verified ? "true" : "false",
+                                            rendered ? "true" : "false", openMs, locateMs, TimeSinceInMs(start)));
+        }
+    }
+}
+
 void BenchEpubPerf(const char* path) {
     if (!path || !file::Exists(path)) {
         logf("Error: EPUB perf bench file not found: %s\n", path ? path : "(null)");
@@ -338,6 +423,7 @@ void BenchEpubPerf(const char* path) {
     };
 
     double openMs = TimeSinceInMs(tOpen);
+    EngineMupdfSetReflowLoadWhenForeground(engine, true);
     while (EngineIsProgressiveEbookLoading(engine)) {
         Sleep(50);
     }
@@ -345,6 +431,12 @@ void BenchEpubPerf(const char* path) {
     TempStr openKv = str::FormatTemp("\"ms\":%.2f,\"pages\":%d", openMs, pages);
     EpubPerfLogEmit("open", openKv);
     logf("open: %.2f ms, pages=%d\n", openMs, pages);
+
+    if (GetEnvironmentVariableA("SUMATRA_EPUB_POSITION_BENCH", nullptr, 0)) {
+        bool passed = RunEpubFontPositionRegression(path);
+        EpubPerfLogEmit("font_position_summary", passed ? "\"passed\":true" : "\"passed\":false");
+        return;
+    }
 
     int scrollFrom = pages > 40 ? pages / 2 : 1;
     Vec<double> scrollMs;
@@ -362,6 +454,67 @@ void BenchEpubPerf(const char* path) {
         logf("scroll: from=%d p50=%.2f p95=%.2f ms\n", scrollFrom, p50, p95);
     }
 
+    if (str::EqI(engine->defaultExt, ".epub")) {
+        int samples[] = {1, pages / 2, pages * 9 / 10};
+        for (int sample : samples) {
+            if (sample < 1 || sample > pages) {
+                continue;
+            }
+            int chapter, chapterStart;
+            if (!EngineMupdfGetReflowPageChapter(engine, sample, &chapter, &chapterStart)) {
+                continue;
+            }
+            int textLen = 0;
+            Rect* coords = nullptr;
+            const WCHAR* text = engine->GetTextForPage(sample, &textLen, &coords);
+            WCHAR needle[80]{};
+            int n = 0;
+            for (int i = 0; text && i < textLen && n < 32; i++) {
+                WCHAR c = text[i];
+                if (c != L' ' && c != L'\t' && c != L'\n' && c != L'\r' && c != 0xA0 && c != 0x3000 && c != 0xAD &&
+                    c != 0x200B) {
+                    needle[n++] = c;
+                }
+            }
+            if (n < 4) {
+                continue;
+            }
+            int foundPage = 0;
+            RectF foundRect;
+            auto t = TimeGet();
+            int found = EngineMupdfFindReflowAnchor(engine, chapter, ToUtf8Temp(needle), &foundPage, &foundRect);
+            double ms = TimeSinceInMs(t);
+            t = TimeGet();
+            int scanPage = 0;
+            for (int pageNo = chapterStart; pageNo <= sample; pageNo++) {
+                text = engine->GetTextForPage(pageNo, &textLen, &coords);
+                WCHAR* norm = AllocArray<WCHAR>((size_t)textLen + 1);
+                int m = 0;
+                for (int i = 0; text && i < textLen; i++) {
+                    WCHAR c = text[i];
+                    if (c != L' ' && c != L'\t' && c != L'\n' && c != L'\r' && c != 0xA0 && c != 0x3000 && c != 0xAD &&
+                        c != 0x200B) {
+                        norm[m++] = c;
+                    }
+                }
+                norm[m] = 0;
+                bool hit = wcsstr(norm, needle) != nullptr;
+                free(norm);
+                if (hit) {
+                    scanPage = pageNo;
+                    break;
+                }
+            }
+            double scanMs = TimeSinceInMs(t);
+            EpubPerfLogEmit(
+                "reflow_anchor",
+                str::FormatTemp("\"sample\":%d,\"found\":%d,\"page\":%d,\"ms\":%.2f,\"scan_page\":%d,\"scan_ms\":%.2f",
+                                sample, found, foundPage, ms, scanPage, scanMs));
+            logf("reflow anchor: sample=%d found=%d page=%d %.2f ms; old scan page=%d %.2f ms\n", sample, found,
+                 foundPage, ms, scanPage, scanMs);
+        }
+    }
+
     if (engine->kind == kindEngineMupdf && EngineMupdfHasOutline(engine)) {
         TocTree* toc = engine->GetToc();
         if (toc && toc->root) {
@@ -370,6 +523,7 @@ void BenchEpubPerf(const char* path) {
         }
     }
 
+    BenchEpubFontChanges(path, engine);
     logf("EpubPerfSuite finished: %s\n", perfPath);
 }
 

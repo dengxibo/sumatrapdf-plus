@@ -2,7 +2,16 @@
 
 ## next
 
-## 3.7.40 (2026-10-07)
+## 3.7.40 (2026-10-08)
+
+- 调整电子书字号时保留当前缩放和显示模式（包括适合宽度／适合单页），恢复原阅读文字；连续调整及后台标签页延迟重载也保留原视图。
+  Preserve the current zoom and display mode, including Fit Width and Fit Single Page, when changing ebook font size, and restore the reading text across repeated changes and deferred background-tab reloads.
+
+- 优化大型 EPUB 调整字号后的阅读位置恢复：直接查找章节排版文本，避免从章首逐页提取文字；缓存定位结果并优先布局目标页。
+  Restore the reading position faster after EPUB font-size changes by searching chapter layout text directly, caching the result, and prioritizing the target page instead of extracting every preceding page.
+
+- 工具栏放大／缩小及字体＋／字体－改为大在前、小在后。
+  Put Zoom In and Font + before Zoom Out and Font − on the toolbar.
 
 - 优化四主题工具栏选中底色、图标及缓冲绘制，减少文档加载和按钮更新时闪烁。
   Refine toolbar selection backgrounds, icons, and buffered painting across all four themes to reduce flicker during document loading and button updates.

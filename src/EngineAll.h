@@ -112,6 +112,8 @@ bool EngineMupdfIsReflowableLoadingInProgress(EngineBase* engine);
 bool EngineMupdfIsReflowWarmActive(EngineBase* engine);
 bool EngineMupdfGetReflowPageChapter(EngineBase* engine, int pageNo, int* chapterOut, int* chapterStartPageOut);
 bool EngineMupdfGetReflowChapterPageRange(EngineBase* engine, int chapter, int* startPageOut, int* endPageOut);
+// 1 found, 0 unavailable/not found, -1 retry after progressive loading releases the document.
+int EngineMupdfFindReflowAnchor(EngineBase* engine, int chapter, const char* text, int* pageOut, RectF* rectOut);
 // Line rectangles (page coordinates) of element #fragmentId in the EPUB content document at
 // archive path docPath, from MuPDF's current layout. Returns false when docPath is not a spine
 // document. chapterPageOut is the first page of that document (0 if not counted yet).

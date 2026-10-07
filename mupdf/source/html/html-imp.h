@@ -697,4 +697,6 @@ typedef struct
 void
 fz_css_colstyle(col_style *cs, fz_css_match *match);
 
+int fz_html_find_reflow_anchor(fz_context* ctx, fz_html* html, const char* text, int* page, fz_rect* rect);
+
 #endif
