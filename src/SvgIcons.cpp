@@ -150,13 +150,15 @@ static const char* gIconRotateRight =
   <circle cx="11" cy="19.94" r="0.15"/>
 </svg>)";
 
+// Win11 Fluent speaker_2 (body + two waves), sized/weighted for the Tabler
+// toolbar row. Official path from @fluentui/svg-icons speaker_2_20_regular
+// (MIT). Same 24px grid / scale 1 / fill-opacity as neighbors.
+// https://github.com/microsoft/fluentui-system-icons
 static const char* gIconSpeak =
-    R"SPEAK(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="0.95" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
-  <g transform="translate(12 12) scale(0.96) translate(-12 -12)">
-    <path d="M15 8a5 5 0 0 1 0 8" />
-    <path d="M17.7 5a9 9 0 0 1 0 14" />
-    <path d="M6 15h-2a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h2l3.5 -4.5a.8 .8 0 0 1 1.5 .5v14a.8 .8 0 0 1 -1.5 .5l-3.5 -4.5" />
+    R"SPEAK(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <rect x="0" y="0" width="24" height="24" fill="none"/>
+  <g transform="translate(12 12) scale(1) translate(-10 -10)">
+    <path fill="currentColor" fill-opacity="0.82" d="M12 3a1 1 0 0 0-1.68-.73l-3.88 3.6A.5.5 0 0 1 6.1 6H3.5C2.67 6 2 6.67 2 7.5v5c0 .83.67 1.5 1.5 1.5h2.6a.5.5 0 0 1 .34.13l3.88 3.6a1 1 0 0 0 1.68-.74zM7.12 6.6 11 3v14l-3.88-3.6A1.5 1.5 0 0 0 6.1 13H3.5a.5.5 0 0 1-.5-.5v-5c0-.28.22-.5.5-.5h2.6c.38 0 .75-.14 1.02-.4m8.14-1.97a.5.5 0 0 1 .7.04 8 8 0 0 1 0 10.66.5.5 0 0 1-.74-.66 7 7 0 0 0 0-9.34.5.5 0 0 1 .04-.7m-1.18 8.3a.5.5 0 0 1-.18-.68 4.5 4.5 0 0 0 0-4.5.5.5 0 1 1 .86-.5 5.5 5.5 0 0 1 0 5.5.5.5 0 0 1-.68.18"/>
   </g>
 </svg>)SPEAK";
 
@@ -433,9 +435,10 @@ static const char* gIconFullscreen =
 </svg>)";
 
 // Matching 4-corner inward when already fullscreen (tabler arrows-minimize).
+// Background rect must be fill="none" so DrawSvgIcon can key transparency.
 static const char* gIconFullscreenExit =
     R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-  <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
+  <rect x="0" y="0" width="24" height="24" stroke="none" fill="none"/>
   <path d="M5 9l4 0l0 -4" />
   <path d="M3 3l6 6" />
   <path d="M5 15l4 0l0 4" />
@@ -447,15 +450,18 @@ static const char* gIconFullscreenExit =
 </svg>)";
 
 // https://github.com/tabler/tabler-icons/blob/master/icons/outline/scan.svg
+// Slightly scaled down so Active wells don't look overfilled next to neighbors.
 static const char* gIconOcr =
-    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    R"OCR(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="1.15" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
   <rect x="0" y="0" width="24" height="24" stroke="none"></rect>
-  <path d="M4 7v-1a2 2 0 0 1 2 -2h2" />
-  <path d="M4 17v1a2 2 0 0 0 2 2h2" />
-  <path d="M16 4h2a2 2 0 0 1 2 2v1" />
-  <path d="M16 20h2a2 2 0 0 0 2 -2v-1" />
-  <path d="M5 12l14 0" />
-</svg>)";
+  <g transform="translate(12 12) scale(0.92) translate(-12 -12)">
+    <path d="M4 7v-1a2 2 0 0 1 2 -2h2" />
+    <path d="M4 17v1a2 2 0 0 0 2 2h2" />
+    <path d="M16 4h2a2 2 0 0 1 2 2v1" />
+    <path d="M16 20h2a2 2 0 0 0 2 -2v-1" />
+    <path d="M5 12l14 0" />
+  </g>
+</svg>)OCR";
 
 // locate: user pin (1024 filled icon → 24 outline, same stroke as link/merge/close)
 static const char* gIconMapPin =

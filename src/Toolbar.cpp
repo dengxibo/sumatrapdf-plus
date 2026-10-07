@@ -135,8 +135,14 @@ static void UpdateToolbarButtonStateByIdx(HWND hwnd, int idx, bool set, BYTE fla
     TBBUTTONINFOW bi{};
     bi.cbSize = sizeof(bi);
     bi.dwMask = TBIF_BYINDEX | TBIF_STATE;
-    SendMessageW(hwnd, TB_GETBUTTONINFOW, idx, (LPARAM)&bi);
-    bi.fsState = set ? bi.fsState | flag : bi.fsState & ~flag;
+    if (SendMessageW(hwnd, TB_GETBUTTONINFOW, idx, (LPARAM)&bi) < 0) {
+        return;
+    }
+    BYTE state = set ? bi.fsState | flag : bi.fsState & ~flag;
+    if (state == bi.fsState) {
+        return;
+    }
+    bi.fsState = state;
     SendMessageW(hwnd, TB_SETBUTTONINFOW, idx, (LPARAM)&bi);
 }
 
@@ -190,7 +196,7 @@ void SetToolbarButtonCheckedState(MainWindow* win, int cmdId, bool isChecked) {
         if (SendMessageW(win->hwndToolbar, TB_GETITEMRECT, idx, (LPARAM)&rc)) {
             // BTNS_CHECK auto-toggles before WM_COMMAND, so state may already match isChecked;
             // always redraw so custom-draw styling updates while the mouse is still over the button.
-            RedrawWindow(win->hwndToolbar, &rc, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+            RedrawWindow(win->hwndToolbar, &rc, nullptr, RDW_INVALIDATE);
         }
     }
 }
@@ -809,8 +815,6 @@ static bool IsToolbarSeparatorAtIndex(HWND hwnd, int idx, TBBUTTON* outTb) {
 }
 
 static COLORREF ToolbarButtonFillColor(COLORREF bgCol, bool isChecked, bool isSelected, bool isHot) {
-    // Checked and pressed wells match the sidebar Favorites star: the same
-    // lightness step, so the dark-theme button reads as clearly.
     if (isChecked || (isSelected && ThemeUsesDarkChrome())) {
         if (ThemeUsesBlackChrome()) {
             return AccentColor(bgCol, 20, 42);
@@ -830,6 +834,92 @@ static COLORREF ToolbarButtonFillColor(COLORREF bgCol, bool isChecked, bool isSe
         return AccentColor(bgCol, -10);
     }
     return bgCol;
+}
+
+static void AddToolbarRoundRectPath(Gdiplus::GraphicsPath& path, float x, float y, float w, float h, float r) {
+    if (r * 2.f > w) {
+        r = w * 0.5f;
+    }
+    if (r * 2.f > h) {
+        r = h * 0.5f;
+    }
+    float d = r * 2.f;
+    path.AddArc(x, y, d, d, 180.f, 90.f);
+    path.AddArc(x + w - d, y, d, d, 270.f, 90.f);
+    path.AddArc(x + w - d, y + h - d, d, d, 0.f, 90.f);
+    path.AddArc(x, y + h - d, d, d, 90.f, 90.f);
+    path.CloseFigure();
+}
+
+static Gdiplus::Color ToolbarArgb(COLORREF col, BYTE alpha) {
+    return Gdiplus::Color(alpha, GetRValue(col), GetGValue(col), GetBValue(col));
+}
+
+// Icon / Active well content box. Dropdown chevrons stay outside this rect.
+static RECT ToolbarButtonIconSlot(HWND hwnd, const RECT& itemRc, bool isDropdown) {
+    RECT rc = itemRc;
+    if (isDropdown) {
+        rc.right = std::max(rc.left + 4, rc.right - DpiScale(hwnd, 13));
+    }
+    return rc;
+}
+
+static RECT ToolbarButtonWellRect(HWND hwnd, RECT slotRc) {
+    int insetX = DpiScale(hwnd, 2);
+    int insetY = DpiScale(hwnd, 2);
+    slotRc.left += insetX;
+    slotRc.right -= insetX;
+    slotRc.top += insetY;
+    slotRc.bottom -= insetY;
+    return slotRc;
+}
+
+// Rounded, inset wells so adjacent Active buttons stay visually separate.
+// Persistent Active gets a soft drop shadow; hover/press are flatter.
+static void PaintToolbarButtonWell(HDC hdc, HWND hwnd, const RECT& itemRc, const RECT& wellRc, COLORREF bgCol,
+                                   COLORREF fillCol, bool withShadow) {
+    HBRUSH bgBr = CreateSolidBrush(bgCol);
+    FillRect(hdc, &itemRc, bgBr);
+    DeleteObject(bgBr);
+    if (fillCol == bgCol) {
+        return;
+    }
+
+    float w = (float)(wellRc.right - wellRc.left);
+    float h = (float)(wellRc.bottom - wellRc.top);
+    if (w < 4.f || h < 4.f) {
+        return;
+    }
+
+    float x = (float)wellRc.left;
+    float y = (float)wellRc.top;
+    float radius = (float)DpiScale(hwnd, 5);
+
+    Gdiplus::Graphics g(hdc);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+
+    // Concentric soft halo (not a directional drop).
+    if (withShadow) {
+        float halo = (float)DpiScale(hwnd, 1);
+        Gdiplus::GraphicsPath outer;
+        AddToolbarRoundRectPath(outer, x - halo, y - halo, w + halo * 2.f, h + halo * 2.f, radius + halo);
+        BYTE shadowA = ThemeUsesDarkChrome() ? (BYTE)40 : (BYTE)20;
+        Gdiplus::SolidBrush sh(ToolbarArgb(RGB(0, 0, 0), shadowA));
+        g.FillPath(&sh, &outer);
+    }
+
+    Gdiplus::GraphicsPath path;
+    AddToolbarRoundRectPath(path, x, y, w, h, radius);
+    Gdiplus::SolidBrush br(ToolbarArgb(fillCol, 255));
+    g.FillPath(&br, &path);
+
+    if (withShadow) {
+        BYTE ringA = ThemeUsesDarkChrome() ? (BYTE)40 : (BYTE)22;
+        COLORREF ringCol = ThemeUsesDarkChrome() ? RGB(255, 255, 255) : RGB(48, 44, 36);
+        Gdiplus::Pen ring(ToolbarArgb(ringCol, ringA), 1.f);
+        g.DrawPath(&ring, &path);
+    }
 }
 
 [[maybe_unused]] static int FindBeforeFindSeparatorIdx() {
@@ -920,49 +1010,74 @@ LRESULT PrepaintFlatToolbarItem(NMTBCUSTOMDRAW* custDraw, COLORREF bgCol) {
     bool isDropdown = (tbi.fsStyle & BTNS_DROPDOWN) != 0;
 
     COLORREF fillCol = ToolbarButtonFillColor(bgCol, isChecked, isSelected, isHot);
-
     RECT itemRc = custDraw->nmcd.rc;
-    RECT fillRc = itemRc;
-    if (fillCol != bgCol) {
-        fillRc.top += 1;
-    }
-    // CHECK|DROPDOWN (OCR / Display Filter): pressed chrome only on the icon
-    // half — leave the ▾ arrow on the toolbar background so it does not look
-    // like one fused "shadow" block with the main button.
-    if (isDropdown && isChecked && fillCol != bgCol) {
-        HBRUSH bgBr = CreateSolidBrush(bgCol);
-        FillRect(custDraw->nmcd.hdc, &itemRc, bgBr);
-        DeleteObject(bgBr);
-        int ddDx = DpiScale(hwndToolbar, 13);
-        int mid = fillRc.right - ddDx;
-        if (mid > fillRc.left + 4) {
-            fillRc.right = mid;
-        }
-    }
+    // Well / hover wash sits in the icon slot only for split buttons.
+    RECT slotRc = ToolbarButtonIconSlot(hwndToolbar, itemRc, isDropdown && fillCol != bgCol);
+    RECT wellRc = ToolbarButtonWellRect(hwndToolbar, slotRc);
 
-    HBRUSH br = CreateSolidBrush(fillCol);
-    FillRect(custDraw->nmcd.hdc, &fillRc, br);
-    DeleteObject(br);
-
-    // Split dropdowns (OCR) get two native frames if we outline; fill is enough for "on".
-    // The edge is the same rim as the selected Favorites star.
-    if ((isChecked || isSelected) && !isDropdown && fillCol != bgCol) {
-        COLORREF borderCol;
-        if (ThemeUsesBlackChrome()) {
-            borderCol = AccentColor(bgCol, 20, 58);
-        } else {
-            borderCol = ThemeUsesDarkChrome() ? AccentColor(bgCol, 16, 48) : AccentColor(bgCol, 38);
-        }
-        HBRUSH borderBr = CreateSolidBrush(borderCol);
-        FrameRect(custDraw->nmcd.hdc, &fillRc, borderBr);
-        DeleteObject(borderBr);
-    }
+    bool withShadow = (isChecked || isSelected) && fillCol != bgCol;
+    PaintToolbarButtonWell(custDraw->nmcd.hdc, hwndToolbar, itemRc, wellRc, bgCol, fillCol, withShadow);
 
     return TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND | TBCDRF_NOEDGES | TBCDRF_NOOFFSET;
 }
 
 static LRESULT PrepaintToolbarItem(NMTBCUSTOMDRAW* custDraw) {
-    return PrepaintFlatToolbarItem(custDraw, ThemeChromeBackgroundColor()) | CDRF_NOTIFYPOSTPAINT;
+    // Skip the imagelist blit — we center the SVG in the well in post-paint.
+    return PrepaintFlatToolbarItem(custDraw, ThemeChromeBackgroundColor()) | CDRF_NOTIFYPOSTPAINT | CDRF_SKIPDEFAULT;
+}
+
+// Draw cached glyphs centered in the same slot/well the Active chrome uses.
+static void PostpaintToolbarButtonIcon(NMTBCUSTOMDRAW* draw) {
+    HWND toolbar = draw->nmcd.hdr.hwndFrom;
+    int cmdId = (int)draw->nmcd.dwItemSpec;
+    TBBUTTONINFOW info{};
+    info.cbSize = sizeof(info);
+    info.dwMask = TBIF_STATE | TBIF_STYLE | TBIF_IMAGE;
+    if (SendMessageW(toolbar, TB_GETBUTTONINFOW, cmdId, (LPARAM)&info) < 0) {
+        return;
+    }
+    if (info.iImage < 0 || info.iImage >= (int)TbIcon::kMax) {
+        return;
+    }
+
+    HIMAGELIST himl = (HIMAGELIST)SendMessageW(toolbar, TB_GETIMAGELIST, 0, 0);
+    int iconDx = 0, iconDy = 0;
+    if (himl) {
+        ImageList_GetIconSize(himl, &iconDx, &iconDy);
+    }
+    if (iconDx <= 0 || iconDy <= 0) {
+        return;
+    }
+
+    bool enabled = (info.fsState & TBSTATE_ENABLED) != 0;
+    bool checked = (info.fsState & TBSTATE_CHECKED) != 0;
+    bool pressed = (info.fsState & TBSTATE_PRESSED) != 0;
+    bool hot = (draw->nmcd.uItemState & CDIS_HOT) != 0;
+    if (!hot) {
+        POINT pt{};
+        GetCursorPos(&pt);
+        ScreenToClient(toolbar, &pt);
+        if (PtInRect(&draw->nmcd.rc, pt)) {
+            hot = true;
+        }
+    }
+
+    COLORREF bgCol = ThemeChromeBackgroundColor();
+    COLORREF fillCol = ToolbarButtonFillColor(bgCol, checked, pressed, hot);
+    bool isDropdown = (info.fsStyle & BTNS_DROPDOWN) != 0;
+    // Always keep the glyph in the icon half of a split button.
+    RECT slotRc = ToolbarButtonIconSlot(toolbar, draw->nmcd.rc, isDropdown);
+    RECT centerRc = (fillCol != bgCol) ? ToolbarButtonWellRect(toolbar, slotRc) : slotRc;
+
+    int x = centerRc.left + (RectDx(centerRc) - iconDx) / 2;
+    int y = centerRc.top + (RectDy(centerRc) - iconDy) / 2;
+    // SVG parsing and rasterization belong in SetToolbarIconsImageList, not WM_PAINT.
+    if (!enabled) {
+        himl = (HIMAGELIST)SendMessageW(toolbar, TB_GETDISABLEDIMAGELIST, 0, 0);
+    }
+    if (himl) {
+        ImageList_Draw(himl, info.iImage, draw->nmcd.hdc, x, y, ILD_TRANSPARENT);
+    }
 }
 
 static void PostpaintToolbarDropdown(NMTBCUSTOMDRAW* draw) {
@@ -983,7 +1098,6 @@ static void PostpaintToolbarDropdown(NMTBCUSTOMDRAW* draw) {
     }
     HBRUSH brush = CreateSolidBrush(bg);
     // The native split-button bevel can extend just left of the arrow gutter.
-    // Clear it too, keeping the chevron centered in its original hit area.
     RECT cover = arrow;
     cover.left = std::max(draw->nmcd.rc.left, cover.left - DpiScale(toolbar, 2));
     FillRect(draw->nmcd.hdc, &cover, brush);
@@ -1176,7 +1290,19 @@ static LRESULT CALLBACK ToolbarNotifyWndProc(HWND hWnd, UINT uMsg, WPARAM wParam
                     if (IsToolbarSeparatorDrawIndex(win, idx)) {
                         return PrepaintToolbarSeparatorItem(custDraw);
                     }
-                    return PrepaintToolbarItem(custDraw);
+                    TBBUTTONINFOW info{};
+                    info.cbSize = sizeof(info);
+                    info.dwMask = TBIF_IMAGE;
+                    SendMessageW(win->hwndToolbar, TB_GETBUTTONINFOW, custDraw->nmcd.dwItemSpec, (LPARAM)&info);
+                    if (info.iImage < 0) {
+                        // Text-only custom buttons still need the native text renderer.
+                        return PrepaintFlatToolbarItem(custDraw, ThemeChromeBackgroundColor()) | CDRF_NOTIFYPOSTPAINT;
+                    }
+                    LRESULT result = PrepaintToolbarItem(custDraw);
+                    // CDRF_SKIPDEFAULT can suppress ITEMPOSTPAINT; finish our content here.
+                    PostpaintToolbarButtonIcon(custDraw);
+                    PostpaintToolbarDropdown(custDraw);
+                    return result;
                 }
                 case CDDS_ITEMPOSTPAINT: {
                     int idx = (int)custDraw->nmcd.dwItemSpec;
@@ -1186,7 +1312,7 @@ static LRESULT CALLBACK ToolbarNotifyWndProc(HWND hWnd, UINT uMsg, WPARAM wParam
                     }
                     PostpaintToolbarDropdown(custDraw);
                     // Finish here: darkmodelib would otherwise paint its solid triangle over our chevron.
-                    return CDRF_DODEFAULT;
+                    return CDRF_SKIPDEFAULT;
                 }
                 case CDDS_POSTPAINT:
                     PaintToolbarSeparatorBackgrounds(win->hwndToolbar, custDraw->nmcd.hdc);
@@ -1374,15 +1500,8 @@ static bool ShowEbookFontSizeContextMenu(HWND hwnd, LPARAM lp) {
 
 static LRESULT CALLBACK WndProcToolbar(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     if (WM_ERASEBKGND == msg) {
-        // Default toolbar erase is pure white. Fill chrome here so Warm/Light
-        // startup and toolbar recreate never flash a white band.
-        HDC hdc = (HDC)wp;
-        RECT rect;
-        GetClientRect(hwnd, &rect);
-        COLORREF bgCol = ThemeChromeBackgroundColor();
-        HBRUSH bgBrush = CreateSolidBrush(bgCol);
-        FillRect(hdc, &rect, bgBrush);
-        DeleteObject(bgBrush);
+        // WM_PAINT presents the background and buttons together from a buffer.
+        // Erasing the visible DC first exposes an empty toolbar during loading.
         return 1;
     }
     if (msg == WM_WINDOWPOSCHANGED || msg == WM_SIZE) {
@@ -1391,14 +1510,31 @@ static LRESULT CALLBACK WndProcToolbar(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
             ToolbarFindLayout(win);
         }
     }
-    if (msg == WM_PAINT || msg == WM_PRINTCLIENT) {
+    if (msg == WM_PAINT) {
+        PAINTSTRUCT ps{};
+        HDC hdc = BeginPaint(hwnd, &ps);
+        RECT rc{};
+        GetClientRect(hwnd, &rc);
+        if (RectDx(rc) > 0 && RectDy(rc) > 0) {
+            DoubleBuffer buffer(hwnd, ToRect(rc));
+            HDC memDC = buffer.GetDC();
+            HBRUSH brush = CreateSolidBrush(ThemeChromeBackgroundColor());
+            FillRect(memDC, &rc, brush);
+            DeleteObject(brush);
+            // Print only the toolbar; the page/find children keep their own paint
+            // and are clipped out of the final blit by WS_CLIPCHILDREN.
+            CallWindowProc(DefWndProcToolbar, hwnd, WM_PRINTCLIENT, (WPARAM)memDC, PRF_CLIENT);
+            PaintToolbarGroupSeparatorLines(hwnd, memDC);
+            buffer.Flush(hdc, &ps.rcPaint);
+        }
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    if (msg == WM_PRINTCLIENT) {
         LRESULT res = CallWindowProc(DefWndProcToolbar, hwnd, msg, wp, lp);
-        HDC hdc = (msg == WM_PRINTCLIENT) ? (HDC)wp : GetDC(hwnd);
+        HDC hdc = (HDC)wp;
         if (hdc) {
             PaintToolbarGroupSeparatorLines(hwnd, hdc);
-            if (msg == WM_PAINT) {
-                ReleaseDC(hwnd, hdc);
-            }
         }
         return res;
     }
@@ -1962,12 +2098,21 @@ static void BlitPixmap(u8* dstSamples, ptrdiff_t dstStride, fz_pixmap* src, int 
     auto srcStride = src->stride;
     u8 r, g, b;
     UnpackColor(bgCol, r, g, b);
+    // MuPDF clears unused SVG pixels to a flat canvas color (usually white).
+    // Sample a corner so we key the real clear color, not only exact #FFFFFF.
+    u8 clearR = 255, clearG = 255, clearB = 255;
+    if (dx > 0 && dy > 0 && src->samples) {
+        clearR = src->samples[0];
+        clearG = src->samples[1];
+        clearB = src->samples[2];
+    }
     for (size_t y = 0; y < (size_t)dy; y++) {
         u8* s = src->samples + (srcStride * (size_t)y);
         size_t atY = y + (size_t)dstY;
         u8* d = dstSamples + (dstStride * atY) + ((size_t)dstX * dstN);
         for (int x = 0; x < dx; x++) {
-            bool isTransparent = (s[0] == r) && (s[1] == g) && (s[2] == b);
+            bool isTransparent = ((s[0] == r) && (s[1] == g) && (s[2] == b)) ||
+                                 ((s[0] == clearR) && (s[1] == clearG) && (s[2] == clearB));
             // note: we're swapping red and green channel because src is rgb
             // and we want bgr for Toolbar's IMAGELIST
             d[0] = s[2];
@@ -2328,8 +2473,6 @@ void CreateToolbar(MainWindow* win) {
         rc.left = rc.right = rc.top = rc.bottom = 0;
     }
 
-    ShowWindow(hwndToolbar, SW_SHOW);
-
     REBARBANDINFOW rbBand{};
     rbBand.cbSize = sizeof(REBARBANDINFOW);
     rbBand.fMask = RBBIM_STYLE | RBBIM_CHILD | RBBIM_CHILDSIZE;
@@ -2369,6 +2512,8 @@ void CreateToolbar(MainWindow* win) {
     UpdateAutoOcrToolbarButton(win);
     UpdateFullscreenToolbarButton(win);
     ConfigureToolbarColors(hwndToolbar);
+    // Publish the toolbar only after its child controls and button states are ready.
+    ShowWindow(hwndToolbar, SW_SHOW);
     InvalidateRect(hwndToolbar, nullptr, TRUE);
 }
 

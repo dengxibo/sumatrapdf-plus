@@ -2,6 +2,15 @@
 
 ## next
 
+## 3.7.40 (2026-10-07)
+
+- 优化四主题工具栏选中底色、图标及缓冲绘制，减少文档加载和按钮更新时闪烁。
+  Refine toolbar selection backgrounds, icons, and buffered painting across all four themes to reduce flicker during document loading and button updates.
+- 修复带软蒙版的彩色封面在夜间模式下变灰（#98）；改善暗色菜单裁切、对话框主题及主要语言翻译。
+  Fix colorful covers with soft masks turning gray in night mode (#98); improve dark-menu clipping, dialog theming, and major-language translations.
+- PDF 未保存提示打开时仍可切换工具栏主题。
+  Keep toolbar theme switching available while the unsaved-PDF prompt is open.
+
 - 全屏 / 演示模式下，鼠标移到右上角会出现退出按钮，单击即可退出（工具栏隐藏时）。仍可用 Esc、F11、`f`，或在右上角双击。
   In fullscreen / presentation with the toolbar hidden, move the mouse to the top-right corner to show an exit button (single-click). Esc, F11, `f`, or double-clicking that corner still work.
 

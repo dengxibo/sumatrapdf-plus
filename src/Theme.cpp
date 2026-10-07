@@ -267,8 +267,8 @@ void UpdateWindowCaptionTheme(HWND hwnd) {
     if (UseDarkModeLib()) {
         DarkMode::setDarkTitleBarEx(hwnd, ThemeUsesDarkChrome());
     }
-    dwm::SetWindowBorderColor(hwnd, ThemeUsesDarkChrome() ? ThemeChromeBackgroundColor()
-                                                          : (COLORREF)DWMWA_COLOR_DEFAULT);
+    dwm::SetWindowBorderColor(hwnd,
+                              ThemeUsesDarkChrome() ? ThemeChromeBackgroundColor() : (COLORREF)DWMWA_COLOR_DEFAULT);
 }
 
 bool IsDarkThemeSelected() {

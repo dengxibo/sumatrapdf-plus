@@ -1037,7 +1037,6 @@ static void StartEbookAnnotationDrag(MainWindow* win, EbookAnnotation* annotatio
 static void PumpAnnotationResizeRender(MainWindow* win);
 static void ClearAnnotResizePreview(MainWindow* win);
 
-
 // Top-right hotspot to leave fullscreen / presentation when the toolbar is hidden.
 // Slightly larger than the painted button so it is easy to hit with the mouse.
 constexpr int kFullscreenExitHotSize = 72;
@@ -1080,6 +1079,21 @@ static void UpdateFullscreenExitHot(MainWindow* win, Point pt) {
     InvalidateRect(win->hwndCanvas, &rc, FALSE);
 }
 
+static void AddFullscreenExitRoundRect(Gdiplus::GraphicsPath& path, float x, float y, float w, float h, float r) {
+    if (r * 2.f > w) {
+        r = w * 0.5f;
+    }
+    if (r * 2.f > h) {
+        r = h * 0.5f;
+    }
+    float d = r * 2.f;
+    path.AddArc(x, y, d, d, 180.f, 90.f);
+    path.AddArc(x + w - d, y, d, d, 270.f, 90.f);
+    path.AddArc(x + w - d, y + h - d, d, d, 0.f, 90.f);
+    path.AddArc(x, y + h - d, d, d, 90.f, 90.f);
+    path.CloseFigure();
+}
+
 static void DrawFullscreenExitAffordance(MainWindow* win, HDC hdc) {
     if (!win->fullscreenExitHot || !FullscreenNeedsMouseExit(win)) {
         return;
@@ -1088,20 +1102,68 @@ static void DrawFullscreenExitAffordance(MainWindow* win, HDC hdc) {
     if (btn.IsEmpty()) {
         return;
     }
-    COLORREF page = ThemeUsesDarkChrome() ? RGB(20, 20, 24) : RGB(245, 245, 245);
+    // Match toolbar chrome for all four themes. Draw with Gdiplus only — DrawSvgIcon
+    // leaves a keyed square on Warm/dark because MuPDF clears the SVG canvas to white.
+    COLORREF page = ThemeChromeBackgroundColor();
     COLORREF ink = ThemeWindowTextColor();
-    int dpi = DpiGet(win->hwndCanvas);
-    int rad = MulDiv(8, dpi, 96);
-    {
-        ScopedGdiObj<HBRUSH> fill(CreateSolidBrush(page));
-        ScopedGdiObj<HPEN> pen(CreatePen(PS_SOLID, 1, AccentColor(ink, ThemeUsesDarkChrome() ? -40 : 40)));
-        ScopedSelectObject selBr(hdc, fill);
-        ScopedSelectObject selPen(hdc, pen);
-        RoundRect(hdc, btn.x, btn.y, btn.x + btn.dx, btn.y + btn.dy, rad, rad);
+    COLORREF border;
+    if (ThemeUsesBlackChrome()) {
+        border = AccentColor(page, 48);
+    } else if (ThemeUsesDarkChrome()) {
+        border = AccentColor(page, 32);
+    } else if (ThemeUsesEyeCareChrome()) {
+        border = AccentColor(page, 28);
+    } else {
+        border = AccentColor(page, 36);
     }
-    int pad = MulDiv(7, dpi, 96);
-    Rect icon(btn.x + pad, btn.y + pad, btn.dx - pad * 2, btn.dy - pad * 2);
-    DrawSvgIcon(hdc, icon, TbIcon::FullscreenExit, ink, page);
+    int dpi = DpiGet(win->hwndCanvas);
+    float rad = (float)MulDiv(8, dpi, 96);
+    float x = (float)btn.x;
+    float y = (float)btn.y;
+    float w = (float)btn.dx;
+    float h = (float)btn.dy;
+
+    Gdiplus::Graphics g(hdc);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+
+    Gdiplus::GraphicsPath plate;
+    AddFullscreenExitRoundRect(plate, x + 0.5f, y + 0.5f, w - 1.f, h - 1.f, rad);
+    Gdiplus::SolidBrush fillBr(Gdiplus::Color(255, GetRValue(page), GetGValue(page), GetBValue(page)));
+    g.FillPath(&fillBr, &plate);
+    Gdiplus::Pen borderPen(Gdiplus::Color(255, GetRValue(border), GetGValue(border), GetBValue(border)), 1.f);
+    g.DrawPath(&borderPen, &plate);
+
+    // Tabler arrows-minimize geometry in a 24×24 box, centered in the plate.
+    float pad = (float)MulDiv(7, dpi, 96);
+    float ix = x + pad;
+    float iy = y + pad;
+    float iw = w - pad * 2.f;
+    float ih = h - pad * 2.f;
+    auto sx = [&](float v) { return ix + v * iw / 24.f; };
+    auto sy = [&](float v) { return iy + v * ih / 24.f; };
+    float stroke = std::max(1.f, (float)MulDiv(1, dpi, 96));
+    Gdiplus::Pen inkPen(Gdiplus::Color(255, GetRValue(ink), GetGValue(ink), GetBValue(ink)), stroke);
+    inkPen.SetStartCap(Gdiplus::LineCapRound);
+    inkPen.SetEndCap(Gdiplus::LineCapRound);
+    inkPen.SetLineJoin(Gdiplus::LineJoinRound);
+
+    // Top-left
+    g.DrawLine(&inkPen, sx(5), sy(9), sx(9), sy(9));
+    g.DrawLine(&inkPen, sx(9), sy(9), sx(9), sy(5));
+    g.DrawLine(&inkPen, sx(3), sy(3), sx(9), sy(9));
+    // Bottom-left
+    g.DrawLine(&inkPen, sx(5), sy(15), sx(9), sy(15));
+    g.DrawLine(&inkPen, sx(9), sy(15), sx(9), sy(19));
+    g.DrawLine(&inkPen, sx(3), sy(21), sx(9), sy(15));
+    // Top-right
+    g.DrawLine(&inkPen, sx(15), sy(9), sx(19), sy(9));
+    g.DrawLine(&inkPen, sx(15), sy(9), sx(15), sy(5));
+    g.DrawLine(&inkPen, sx(15), sy(9), sx(21), sy(3));
+    // Bottom-right
+    g.DrawLine(&inkPen, sx(15), sy(15), sx(19), sy(15));
+    g.DrawLine(&inkPen, sx(15), sy(15), sx(15), sy(19));
+    g.DrawLine(&inkPen, sx(15), sy(15), sx(21), sy(21));
 }
 
 // Single-click exits only via the painted button; double-click may use the whole hotspot.
