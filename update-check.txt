@@ -1,5 +1,5 @@
 [SumatraPDF]
-Latest: 3.7.39
-PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.39/SumatraPDF-Plus.exe
-Notes: Shared PDF/EPUB annotation sidebar with manual EPUB saving; independent Ask AI model picker; shared Web/API TOC rules; themed dialogs and steadier dark menus.
-NotesZh: PDF/EPUB 标注侧栏统一，EPUB 改为手动保存；问问 AI 可独立选择模型；网页/API 目录识别共用核心规则；统一四主题对话框并优化暗色菜单。
+Latest: 3.7.40
+PortableExe64: https://github.com/dengxibo/sumatrapdf-plus/releases/download/3.7.40/SumatraPDF-Plus.exe
+Notes: EPUB font changes preserve fit mode and reading text; faster anchor restoration; larger-size toolbar actions first; refined themed toolbar and fullscreen exit controls; fixed gray night-mode covers.
+NotesZh: EPUB 调整字号保留适应模式和阅读内容，优化文字定位；工具栏大在前、小在后；改善四主题工具栏及全屏退出按钮，修复夜间模式彩色封面变灰。
