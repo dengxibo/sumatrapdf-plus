@@ -43,10 +43,10 @@
 #include "Tabs.h"
 #include "HomePage.h"
 #include "Translations.h"
+#include "EbookFontMenu.h"
 #include "Toolbar.h"
 #include "EditAnnotations.h"
 #include "EbookAnnotations.h"
-#include "EbookFontMenu.h"
 #include "Accelerators.h"
 #include "ImageSaveCropResize.h"
 #include "Menu.h"
@@ -231,43 +231,6 @@ static MenuDef menuDefFile[] = {
     },
 };
 //] ACCESSKEY_GROUP File Menu
-
-MenuDef menuDefEbookLatinFonts[] = {
-    {
-        nullptr,
-        0,
-    },
-};
-
-MenuDef menuDefEbookCjkFonts[] = {
-    {
-        nullptr,
-        0,
-    },
-};
-
-MenuDef menuDefEbookReadingFont[] = {
-    {
-        _TRN("&Western Body Font"),
-        CmdPickEbookLatinFont,
-    },
-    {
-        _TRN("&CJK Body Font"),
-        CmdPickEbookCjkFont,
-    },
-    {
-        kMenuSeparator,
-        0,
-    },
-    {
-        _TRN("Reset Font Si&ze to Default"),
-        CmdEbookFontSizeReset,
-    },
-    {
-        nullptr,
-        0,
-    },
-};
 
 //[ ACCESSKEY_GROUP View Menu
 static MenuDef menuDefView[] = {
@@ -539,10 +502,6 @@ static MenuDef menuDefSettings[] = {
         (UINT_PTR)menuDefThemes,
     },
     {
-        _TRN("&Reading Font"),
-        (UINT_PTR)menuDefEbookReadingFont,
-    },
-    {
         _TRN("&Options..."),
         CmdOptions,
     },
@@ -693,21 +652,8 @@ static MenuDef menuDefMainSelection[] = {
 };
 //] ACCESSKEY_GROUP Menu (Selection)
 
-//[ ACCESSKEY_GROUP Read Aloud Menu
-// Placeholder only: real items are built in RebuildReadAloudMenu().
-static MenuDef menuDefReadAloud[] = {
-    {
-        _TRN("Start Reading From Top"),
-        CmdReadAloud,
-    },
-    {
-        nullptr,
-        0,
-    },
-};
-//] ACCESSKEY_GROUP Read Aloud Menu
-
 //[ ACCESSKEY_GROUP Menubar
+// Read Aloud stays on the canvas context menu and Settings; not a menubar top-level.
 static MenuDef menuDefMenubar[] = {
     {
         _TRN("&File"),
@@ -728,10 +674,6 @@ static MenuDef menuDefMenubar[] = {
     {
         _TRN("S&election"),
         (UINT_PTR)menuDefMainSelection,
-    },
-    {
-        _TRN("&Read Aloud"),
-        (UINT_PTR)menuDefReadAloud,
     },
     {
         _TRN("F&avorites"),
@@ -1374,14 +1316,6 @@ static void AppendCommandsToMenu(HMENU m, const Vec<CustomCommand*>& cmds, bool 
     }
 }
 
-static void AppendEbookLatinFontsToMenuWrapper(HMENU m) {
-    AppendEbookLatinFontsToMenu(m);
-}
-
-static void AppendEbookCjkFontsToMenuWrapper(HMENU m) {
-    AppendEbookCjkFontsToMenu(m);
-}
-
 static void AppendThemesToMenu(HMENU m) {
     Vec<CustomCommand*> cmds;
     GetCommandsWithOrigId(cmds, CmdSetTheme);
@@ -1692,13 +1626,6 @@ HMENU BuildMenuFromDef(MenuDef* menuDef, HMENU menu, BuildMenuCtx* ctx) {
     if (menuDef == menuDefThemes) {
         AppendThemesToMenu(menu);
     }
-    if (menuDef == menuDefEbookLatinFonts) {
-        AppendEbookLatinFontsToMenuWrapper(menu);
-    }
-    if (menuDef == menuDefEbookCjkFonts) {
-        AppendEbookCjkFontsToMenuWrapper(menu);
-    }
-
     bool addExternalViewersNext = false;
     while (true) {
         MenuDef md = menuDef[i];
@@ -3565,18 +3492,6 @@ HMENU BuildMenubarPopupMenu(MainWindow* win) {
     return BuildMenuFromDef(menuDefMenubar, CreatePopupMenu(), ctx);
 }
 
-static bool IsReadAloudMenubarSubmenu(MainWindow* win, HMENU m) {
-    if (!win || !win->menu || !m) {
-        return false;
-    }
-    for (int i = 0; menuDefMenubar[i].title; i++) {
-        if (menuDefMenubar[i].idOrSubmenu == (UINT_PTR)menuDefReadAloud) {
-            return GetSubMenu(win->menu, i) == m;
-        }
-    }
-    return false;
-}
-
 void MenuRefreshStateForWindow(MainWindow* win) {
     MenuUpdateStateForWindow(win);
 }
@@ -3608,8 +3523,6 @@ void UpdateAppMenu(MainWindow* win, HMENU m) {
         RebuildFavMenu(win, m);
     } else if (id == menuDefZoom[0].idOrSubmenu) {
         BuildMenuZoom(m);
-    } else if (IsReadAloudMenubarSubmenu(win, m)) {
-        RebuildReadAloudMenu(win, m, false);
     }
     MenuUpdateStateForWindow(win);
 }

@@ -1337,11 +1337,12 @@ static bool ConfirmPdfTocSignatureEdit(MainWindow* win, EngineBase* engine) {
     if (!tab || tab->acceptedPdfTocSignatureWarning || !EngineMupdfPdfHasSignatures(engine)) {
         return true;
     }
-    int res = MessageBoxW(win->hwndFrame,
-                          L"Editing the table of contents changes this PDF after it was digitally signed. The "
-                          L"existing signature will remain, but viewers will report that the document was modified. "
-                          L"Continue?",
-                          L"Digitally signed PDF", MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
+    int res = MessageBoxW(
+        win->hwndFrame,
+        ToWStrTemp(_TRA("Editing the table of contents changes this PDF after it was digitally signed. The "
+                        "existing signature will remain, but viewers will report that the document was modified. "
+                        "Continue?")),
+        ToWStrTemp(_TRA("Digitally signed PDF")), MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
     if (res != IDYES) {
         return false;
     }
@@ -1558,8 +1559,8 @@ static void ReloadPdfTocAfterEdit(MainWindow* win, const Vec<int>& selectedPath)
 }
 
 static void ShowPdfTocEditError(MainWindow* win, const char* error) {
-    TempWStr msg = ToWStrTemp(error ? error : "The PDF table of contents could not be modified.");
-    MessageBoxW(win->hwndFrame, msg, L"PDF table of contents", MB_OK | MB_ICONERROR);
+    TempWStr msg = ToWStrTemp(error ? error : _TRA("The PDF table of contents could not be modified."));
+    MessageBoxW(win->hwndFrame, msg, ToWStrTemp(_TRA("PDF table of contents")), MB_OK | MB_ICONERROR);
 }
 
 static bool ConfirmPdfTocDelete(MainWindow* win, int count, bool hasChildren, bool promoteChildren = false) {

@@ -1293,7 +1293,7 @@ static void OnSave(ImageEditWindow* ew) {
         // save as-is
         result = ew->srcBitmap->Clone(0, 0, ew->imgW, ew->imgH, ew->srcBitmap->GetPixelFormat());
         if (!result) {
-            MessageBoxWarning(ew->hwnd, "Failed to save image", "Save Image");
+            MessageBoxWarning(ew->hwnd, _TRA("Failed to save image"), _TRA("Save Image"));
             return;
         }
     } else if (ew->mode == ImageEditMode::Crop) {
@@ -1301,14 +1301,14 @@ static void OnSave(ImageEditWindow* ew) {
         Gdiplus::Rect srcRect(ew->cropX, ew->cropY, ew->cropW, ew->cropH);
         result = ew->srcBitmap->Clone(srcRect, ew->srcBitmap->GetPixelFormat());
         if (!result) {
-            MessageBoxWarning(ew->hwnd, "Failed to create cropped image", _TRA("Crop Image"));
+            MessageBoxWarning(ew->hwnd, _TRA("Failed to create cropped image"), _TRA("Crop Image"));
             return;
         }
     } else {
         // create resized bitmap
         result = new Bitmap(ew->newW, ew->newH, ew->srcBitmap->GetPixelFormat());
         if (!result) {
-            MessageBoxWarning(ew->hwnd, "Failed to create resized image", _TRA("Resize Image"));
+            MessageBoxWarning(ew->hwnd, _TRA("Failed to create resized image"), _TRA("Resize Image"));
             return;
         }
         Graphics g(result);
@@ -1326,7 +1326,7 @@ static void OnSave(ImageEditWindow* ew) {
     delete result;
 
     if (!saved) {
-        MessageBoxWarning(ew->hwnd, "Failed to save image", "Save Image");
+        MessageBoxWarning(ew->hwnd, _TRA("Failed to save image"), _TRA("Save Image"));
         return;
     }
     UpdateSaveButtonText(ew);
@@ -1366,7 +1366,7 @@ static void SwitchToSaveMode(ImageEditWindow* ew) {
     ew->cropH = ew->imgH;
     ew->newW = ew->imgW;
     ew->newH = ew->imgH;
-    SetWindowTextW(ew->hwnd, L"Save Image");
+    SetWindowTextW(ew->hwnd, _TRW("Save Image"));
     UpdateModeButtons(ew);
     UpdateSaveButtonText(ew);
     UpdateInfoLabel(ew);
@@ -1468,7 +1468,7 @@ static void SwitchToCropMode(ImageEditWindow* ew) {
     ew->cropY = 0;
     ew->cropW = ew->imgW;
     ew->cropH = ew->imgH;
-    SetWindowTextW(ew->hwnd, L"Crop Image");
+    SetWindowTextW(ew->hwnd, _TRW("Crop Image"));
     UpdateModeButtons(ew);
     UpdateSaveButtonText(ew);
     UpdateInfoLabel(ew);
@@ -1485,7 +1485,7 @@ static void SwitchToResizeMode(ImageEditWindow* ew) {
     ew->mode = ImageEditMode::Resize;
     ew->newW = ew->imgW;
     ew->newH = ew->imgH;
-    SetWindowTextW(ew->hwnd, L"Resize Image");
+    SetWindowTextW(ew->hwnd, _TRW("Resize Image"));
     UpdateModeButtons(ew);
     UpdateSaveButtonText(ew);
     UpdateInfoLabel(ew);
@@ -2185,11 +2185,11 @@ HWND ShowImageEditWindow(MainWindow* win, ImageEditMode mode, const char* filePa
         winH = maxH;
     }
 
-    const WCHAR* title = L"Save Image";
+    const WCHAR* title = _TRW("Save Image");
     if (mode == ImageEditMode::Crop) {
-        title = L"Crop Image";
+        title = _TRW("Crop Image");
     } else if (mode == ImageEditMode::Resize) {
-        title = L"Resize Image";
+        title = _TRW("Resize Image");
     }
     HWND hwnd = CreateWindowExW(0, kImageEditWinClassName, title, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, CW_USEDEFAULT,
                                 CW_USEDEFAULT, winW, winH, nullptr, nullptr, h, nullptr);

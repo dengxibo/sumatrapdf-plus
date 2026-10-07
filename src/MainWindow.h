@@ -339,6 +339,8 @@ struct MainWindow {
 
     bool isToolbarVisible = false;
     bool isFullScreen = false;
+    // Hover affordance for exiting fullscreen / presentation when the toolbar is hidden.
+    bool fullscreenExitHot = false;
     UiMenuDocKind uiMenuDocKind = UiMenuDocKind::None;
     PresentationMode presentation = PM_DISABLED;
     int windowStateBeforePresentation = 0;

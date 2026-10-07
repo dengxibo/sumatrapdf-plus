@@ -427,6 +427,27 @@ async function addTranslationsFromAI(pt: ParsedTranslations): Promise<void> {
   }
 }
 
+// Always ship these in translations-good.txt even when incomplete. The >180
+// skip threshold otherwise drops Japanese/German/etc. and menus fall back to English.
+const kMajorLangsAlwaysKeep = new Set([
+  "cn",
+  "tw",
+  "ja",
+  "kr",
+  "de",
+  "fr",
+  "es",
+  "it",
+  "pt",
+  "br",
+  "ru",
+  "uk",
+  "pl",
+  "nl",
+  "tr",
+  "vn",
+]);
+
 function generateGoodSubset(pt: ParsedTranslations): void {
   const { perLang, allStrings } = pt;
   const nStrings = allStrings.length;
@@ -438,7 +459,7 @@ function generateGoodSubset(pt: ParsedTranslations): void {
   for (const [lang, m] of perLang) {
     const nMissing = nStrings - m.size;
     let skipStr = "";
-    if (nMissing > 180) {
+    if (nMissing > 180 && !kMajorLangsAlwaysKeep.has(lang)) {
       skipStr = "  SKIP";
       langsToSkip.add(lang);
       notTranslated.push(lang);
@@ -447,6 +468,9 @@ function generateGoodSubset(pt: ParsedTranslations): void {
         fullyTranslated.push(lang);
       } else {
         goodLangs.push(lang);
+      }
+      if (nMissing > 180 && kMajorLangsAlwaysKeep.has(lang)) {
+        skipStr = "  KEEP (major)";
       }
     }
     if (nMissing > 0) {

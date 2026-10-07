@@ -42,22 +42,28 @@ extern "C" {
 // client body. Fill the page color and skip that default PREPAINT.
 constexpr UINT_PTR kEbookAnnotTrackbarBgNotifyId = 0xA11F;
 
+static COLORREF EbookAnnotTrackbarPanelColor() {
+    return ThemeUsesDarkChrome() ? ThemeWindowBackgroundColor() : ThemeWindowControlBackgroundColor();
+}
+
 static LRESULT CALLBACK EbookAnnotTrackbarBgNotifyProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id,
                                                        DWORD_PTR) {
     if (msg == WM_NCDESTROY) {
         RemoveWindowSubclass(hwnd, EbookAnnotTrackbarBgNotifyProc, id);
         return DefSubclassProc(hwnd, msg, wp, lp);
     }
-    if (msg == WM_NOTIFY && ThemeUsesDarkChrome()) {
+    if (msg == WM_NOTIFY) {
         auto* hdr = (NMHDR*)lp;
         if (hdr && hdr->code == NM_CUSTOMDRAW && hdr->hwndFrom) {
             WCHAR cls[64]{};
             if (GetClassNameW(hdr->hwndFrom, cls, dimof(cls)) > 0 && str::EqI(cls, TRACKBAR_CLASS)) {
                 auto* cd = (LPNMCUSTOMDRAW)lp;
                 if (cd->dwDrawStage == CDDS_PREPAINT) {
+                    SetWindowLongPtrW(hdr->hwndFrom, GWL_STYLE,
+                                      GetWindowLongPtrW(hdr->hwndFrom, GWL_STYLE) | TBS_TRANSPARENTBKGND);
                     RECT rc{};
                     GetClientRect(hdr->hwndFrom, &rc);
-                    ScopedGdiObj<HBRUSH> br(CreateSolidBrush(ThemeWindowBackgroundColor()));
+                    ScopedGdiObj<HBRUSH> br(CreateSolidBrush(EbookAnnotTrackbarPanelColor()));
                     FillRect(cd->hdc, &rc, br);
                     return CDRF_NOTIFYITEMDRAW | CDRF_SKIPDEFAULT;
                 }
@@ -104,7 +110,10 @@ struct EbookAnnotationsWindow : Wnd {
     Button* buttonExport = nullptr;
     Vec<EbookAnnotation*> annotations;
     StrVec annotationExcerpts;
-    int annotationTypeWidth = 0;
+    int annotationLocationWidth = 0;
+    int excerptPageCount = -1;
+    DWORD excerptRefreshTime = 0;
+    bool excerptLoading = true;
     EbookAnnotation* selected = nullptr;
     bool updatingControls = false;
     StrBuilder currCustomColor;
@@ -135,8 +144,7 @@ static void LayoutEbookAnnotationsToClient(EbookAnnotationsWindow* window) {
     }
     Rect client = ClientRect(window->hwnd);
     if (client.dx > 0 && client.dy > 0) {
-        LayoutToSize(window->mainLayout, {client.dx, client.dy});
-        if (window->inspectorPane) window->inspectorPane->RelayoutInner();
+        LayoutAnnotationSidebarControls(window->mainLayout, window->inspectorPane, {client.dx, client.dy});
     }
 }
 
@@ -238,32 +246,28 @@ static void ApplyEbookAnnotationsWindowTheme(EbookAnnotationsWindow* window, boo
             DarkMode::setDarkWndNotifySafe(window->hwnd);
             DarkMode::setWindowEraseBgSubclass(window->hwnd);
             DarkMode::setChildCtrlsSubclassAndTheme(window->hwnd);
-            RemoveWindowSubclass(window->hwnd, EbookAnnotTrackbarBgNotifyProc, kEbookAnnotTrackbarBgNotifyId);
-            SetWindowSubclass(window->hwnd, EbookAnnotTrackbarBgNotifyProc, kEbookAnnotTrackbarBgNotifyId, 0);
         } else if (installDarkMode) {
             DarkMode::setDarkWndNotifySafe(window->hwnd);
             DarkMode::setWindowEraseBgSubclass(window->hwnd);
-            RemoveWindowSubclass(window->hwnd, EbookAnnotTrackbarBgNotifyProc, kEbookAnnotTrackbarBgNotifyId);
         } else {
             DarkMode::setWindowCtlColorSubclass(window->hwnd);
             DarkMode::setChildCtrlsTheme(window->hwnd);
-            RemoveWindowSubclass(window->hwnd, EbookAnnotTrackbarBgNotifyProc, kEbookAnnotTrackbarBgNotifyId);
         }
     }
     UpdateWindowCaptionTheme(window->hwnd);
     // Same push/combo chrome as PDF annotations and Options.
     AppDialogSyncWarmPushButtons(window->hwnd);
     RemoveWindowSubclass(window->buttonSaveCopy->hwnd, AnnotationSecondaryButtonProc, 0xA11D);
-    if (window->inspectorPane && UseDarkModeLib()) {
+    if (window->inspectorPane) {
         HWND pane = window->inspectorPane->hwnd;
-        if (ThemeUsesDarkChrome()) {
+        if (UseDarkModeLib() && ThemeUsesDarkChrome()) {
             DarkMode::setWindowNotifyCustomDrawSubclass(pane);
             DarkMode::setWindowCtlColorSubclass(pane);
             DarkMode::setChildCtrlsSubclassAndTheme(pane);
-            SetWindowSubclass(pane, EbookAnnotTrackbarBgNotifyProc, kEbookAnnotTrackbarBgNotifyId, 0);
-        } else {
-            RemoveWindowSubclass(pane, EbookAnnotTrackbarBgNotifyProc, kEbookAnnotTrackbarBgNotifyId);
         }
+        // Light-White: same grey-band fix as PDF annotation Border trackbar.
+        RemoveWindowSubclass(pane, EbookAnnotTrackbarBgNotifyProc, kEbookAnnotTrackbarBgNotifyId);
+        SetWindowSubclass(pane, EbookAnnotTrackbarBgNotifyProc, kEbookAnnotTrackbarBgNotifyId, 0);
     }
 
     uint flags = RDW_ERASE | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN;
@@ -500,7 +504,6 @@ static void UpdateSelectedAnnotation(EbookAnnotationsWindow* window, EbookAnnota
 
     window->updatingControls = true;
     HideAnnotationControls(window);
-    RefreshAnnotationDetailPanel(window);
 
     TempStr note = str::ReplaceTemp(EbookAnnotationGetNote(annotation), "\r\n", "\n");
     note = str::ReplaceTemp(note, "\n", "\r\n");
@@ -509,10 +512,11 @@ static void UpdateSelectedAnnotation(EbookAnnotationsWindow* window, EbookAnnota
 
     const char* author = EbookAnnotationGetAuthor(annotation);
     window->staticHeading->SetParts(
-        str::FormatTemp("%s · §%d", AnnotationReadableNameTemp(EbookAnnotationGetType(annotation)),
+        str::FormatTemp("%s · §%d",
+                        trans::GetTranslation(AnnotationReadableNameTemp(EbookAnnotationGetType(annotation))),
                         EbookAnnotationGetChapter(annotation) + 1),
         nullptr);
-    window->staticHeading->SetIsVisible(true);
+    window->staticHeading->SetIsVisible(false);
     time_t date = EbookAnnotationGetModified(annotation);
     if (date <= 0) date = EbookAnnotationGetCreated(annotation);
     char buf[100]{};
@@ -638,23 +642,33 @@ static void UpdateSelectedAnnotation(EbookAnnotationsWindow* window, EbookAnnota
 
 static void CacheEbookAnnotationExcerpts(EbookAnnotationsWindow* window) {
     window->annotationExcerpts.Reset();
-    window->annotationTypeWidth = DpiScale(window->hwnd, 80);
+    window->annotationLocationWidth = DpiScale(window->hwnd, 22);
     HFONT font = (HFONT)SendMessageW(window->listBox->hwnd, WM_GETFONT, 0, 0);
     for (EbookAnnotation* annotation : window->annotations) {
-        AnnotationType type = EbookAnnotationGetType(annotation);
-        TempStr name = AnnotationReadableNameTemp(type);
-        window->annotationTypeWidth =
-            std::max(window->annotationTypeWidth, HwndMeasureText(window->listBox->hwnd, name, font).dx);
-        TempStr excerpt = nullptr;
-        const char* annotationText = EbookAnnotationGetText(annotation);
-        if (!str::IsEmptyOrWhiteSpace(annotationText)) {
-            excerpt = str::DupTemp(annotationText);
-        }
-        if (excerpt) {
-            str::NormalizeWSInPlace(excerpt);
-        }
+        int chapter = EbookAnnotationGetChapter(annotation);
+        const char* location = chapter >= 0 ? str::FormatTemp("§%d", chapter + 1) : "—";
+        window->annotationLocationWidth =
+            std::max(window->annotationLocationWidth, HwndMeasureText(window->listBox->hwnd, location, font).dx);
+        TempStr excerpt = EbookAnnotationExcerptTemp(window->tab, annotation);
+        if (excerpt) str::NormalizeWSInPlace(excerpt);
         window->annotationExcerpts.Append(excerpt ? excerpt : "");
     }
+}
+
+void RefreshEbookAnnotationExcerpts(WindowTab* tab, bool loading) {
+    auto window = tab ? tab->editEbookAnnotsWindow : nullptr;
+    auto dm = tab ? tab->AsFixed() : nullptr;
+    if (!window || !dm || window->updatingControls) return;
+    int pageCount = dm->PageCount();
+    bool finished = window->excerptLoading && !loading;
+    if (!finished && pageCount == window->excerptPageCount) return;
+    DWORD now = GetTickCount();
+    if (loading && window->excerptRefreshTime && now - window->excerptRefreshTime < 1500) return;
+    window->excerptPageCount = pageCount;
+    window->excerptRefreshTime = now;
+    window->excerptLoading = loading;
+    CacheEbookAnnotationExcerpts(window);
+    InvalidateRect(window->listBox->hwnd, nullptr, FALSE);
 }
 
 static const char* EbookAnnotationLocationTemp(EbookAnnotation* annotation) {
@@ -669,8 +683,8 @@ static void DrawEbookAnnotListItem(EbookAnnotationsWindow* window, ListBox::Draw
         ev->itemIndex < window->annotationExcerpts.Size() ? window->annotationExcerpts.At(ev->itemIndex) : "";
     DrawAnnotationSidebarRow(window->hwnd, window->listBox->hwnd, ev, ev->selected || annotation == window->selected,
                              true, EbookAnnotationGetColor(annotation), EbookAnnotationLocationTemp(annotation),
-                             AnnotationReadableNameTemp(EbookAnnotationGetType(annotation)), excerpt,
-                             window->annotationTypeWidth);
+                             trans::GetTranslation(AnnotationReadableNameTemp(EbookAnnotationGetType(annotation))),
+                             excerpt, window->annotationLocationWidth);
 }
 
 static void RebuildList(EbookAnnotationsWindow* window) {
@@ -684,7 +698,7 @@ static void RebuildList(EbookAnnotationsWindow* window) {
         EbookAnnotation* annotation = window->annotations.at(i);
         text.Reset();
         int pageNo = EbookAnnotationGetPageNo(window->tab, annotation);
-        TempStr name = AnnotationReadableNameTemp(EbookAnnotationGetType(annotation));
+        const char* name = trans::GetTranslation(AnnotationReadableNameTemp(EbookAnnotationGetType(annotation)));
         text.AppendFmt("%d  %s", pageNo, name);
         const char* excerpt = window->annotationExcerpts.At(i);
         if (!str::IsEmpty(excerpt)) {
@@ -1304,6 +1318,8 @@ void ShowEditEbookAnnotationsWindow(WindowTab* tab, EbookAnnotation* annotation,
     args.font = GetAppFontForDpi(parentDpi);
     window->CreateCustom(args);
     window->dpi = parentDpi > 0 ? parentDpi : DpiGet(window->hwnd);
+    // Same as PDF annotations: theme before the first visible paint.
+    window->SuspendRedraw();
     CreateMainLayout(window);
     tab->editEbookAnnotsWindow = window;
     window->selected = annotation;
@@ -1320,5 +1336,6 @@ void ShowEditEbookAnnotationsWindow(WindowTab* tab, EbookAnnotation* annotation,
         UpdateSelectedAnnotation(window, window->annotations.at(0), focus);
     }
     ApplyEbookAnnotationsWindowTheme(window, true);
+    window->ResumeRedraw();
     RevealEbookAnnotationsSidebar(tab, revealInSidebar);
 }

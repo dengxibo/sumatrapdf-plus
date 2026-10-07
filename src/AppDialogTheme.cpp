@@ -6,13 +6,17 @@
 #include "utils/WinUtil.h"
 #include "utils/Dpi.h"
 
+#include "utils/WinDynCalls.h"
+
 #include "Settings.h"
 #include "AppSettings.h"
 #include "Theme.h"
 #include "AppDialogTheme.h"
 #include "DarkModeSubclass.h"
+#include "resource.h"
 
 #include <uxtheme.h>
+#include <commctrl.h>
 
 // Windows 11 push buttons stay paper-white. On Light-Warm that reads as a bright
 // chip on the beige dialog; Light-White is already near white, so the same
@@ -415,6 +419,41 @@ static LRESULT CALLBACK WarmComboProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
 
+void AppDialogThemeScrollBar(HWND hwnd) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return;
+    }
+    // Same as InlineTranslate ApplyEditTheme(rich): theme only the scrollbar
+    // class so the list/edit face can stay on CTLCOLOR / blank theme.
+    if (DynSetWindowTheme) {
+        const WCHAR* scroll = ThemeUsesDarkChrome() ? L"DarkMode_Explorer::ScrollBar" : L"Explorer::ScrollBar";
+        DynSetWindowTheme(hwnd, nullptr, scroll);
+    }
+    if (UseDarkModeLib() && ThemeUsesDarkChrome()) {
+        DarkMode::setDarkScrollBar(hwnd);
+    }
+    SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+}
+
+static void ThemeWarmComboListScrollBar(HWND combo) {
+    COMBOBOXINFO info{};
+    info.cbSize = sizeof(info);
+    if (!GetComboBoxInfo(combo, &info) || !info.hwndList) {
+        return;
+    }
+    // Blank the list face so Warm CTLCOLOR cream shows through, then put back
+    // a themed scrollbar only (full Explorer theme would paint a white slab).
+    SetWindowTheme(info.hwndList, L" ", L" ");
+    AppDialogThemeScrollBar(info.hwndList);
+    LONG_PTR style = GetWindowLongPtrW(info.hwndList, GWL_STYLE);
+    if ((style & WS_VSCROLL) == 0) {
+        SetWindowLongPtrW(info.hwndList, GWL_STYLE, style | WS_VSCROLL);
+        SetWindowPos(info.hwndList, nullptr, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    }
+}
+
 static void InstallWarmCombo(HWND hwnd) {
     if (!IsDropDownList(hwnd)) {
         return;
@@ -424,16 +463,13 @@ static void InstallWarmCombo(HWND hwnd) {
         // the top so all controls on the page keep the same final painter.
         RemoveWindowSubclass(hwnd, WarmComboProc, kWarmComboSubclassId);
         SetWindowSubclass(hwnd, WarmComboProc, kWarmComboSubclassId, (DWORD_PTR)existing);
+        ThemeWarmComboListScrollBar(hwnd);
         InvalidateRect(hwnd, nullptr, TRUE);
         return;
     }
     // Configure the separate list window once. Changing its theme from
     // WM_CTLCOLORLISTBOX triggers another repaint and makes hovered rows flicker.
-    COMBOBOXINFO info{};
-    info.cbSize = sizeof(info);
-    if (GetComboBoxInfo(hwnd, &info) && info.hwndList) {
-        SetWindowTheme(info.hwndList, L" ", L" ");
-    }
+    ThemeWarmComboListScrollBar(hwnd);
     auto* st = AllocStruct<WarmComboState>();
     if (!SetWindowSubclass(hwnd, WarmComboProc, kWarmComboSubclassId, (DWORD_PTR)st)) {
         free(st);

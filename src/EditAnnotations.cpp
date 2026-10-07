@@ -25,6 +25,7 @@ extern "C" {
 #include "EngineAll.h"
 #include "EngineMupdf.h"
 #include "Translations.h"
+#include "AnnotationNotesExport.h"
 #include "SumatraConfig.h"
 #include "GlobalPrefs.h"
 #include "DisplayModel.h"
@@ -699,26 +700,33 @@ struct EditAnnotationsWindow;
 
 // Flex slot above the fixed save footer. No outer scrollbar: when the
 // inspector is tight, shrink the note editor instead.
-// DarkModeLib paints trackbar channel/thumb via NM_CUSTOMDRAW but the default
-// PREPAINT still floods the client with white. Fill the page color and skip
-// that default; item draw still reaches DarkMode through DefSubclassProc.
+// Trackbar PREPAINT floods the client with a system grey band (especially
+// obvious on Light-White). Fill the sidebar panel color and skip that flood;
+// channel/thumb still draw via item notifications (DarkMode or default).
 constexpr UINT_PTR kAnnotTrackbarBgNotifyId = 0xA11E;
+
+static COLORREF AnnotTrackbarPanelColor() {
+    return ThemeUsesDarkChrome() ? ThemeWindowBackgroundColor() : ThemeWindowControlBackgroundColor();
+}
 
 static LRESULT CALLBACK AnnotTrackbarBgNotifyProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR) {
     if (msg == WM_NCDESTROY) {
         RemoveWindowSubclass(hwnd, AnnotTrackbarBgNotifyProc, id);
         return DefSubclassProc(hwnd, msg, wp, lp);
     }
-    if (msg == WM_NOTIFY && ThemeUsesDarkChrome()) {
+    if (msg == WM_NOTIFY) {
         auto* hdr = (NMHDR*)lp;
         if (hdr && hdr->code == NM_CUSTOMDRAW && hdr->hwndFrom) {
             WCHAR cls[64]{};
             if (GetClassNameW(hdr->hwndFrom, cls, dimof(cls)) > 0 && str::EqI(cls, TRACKBAR_CLASS)) {
                 auto* cd = (LPNMCUSTOMDRAW)lp;
                 if (cd->dwDrawStage == CDDS_PREPAINT) {
+                    // Let the parent panel show through between channel and ticks.
+                    SetWindowLongPtrW(hdr->hwndFrom, GWL_STYLE,
+                                      GetWindowLongPtrW(hdr->hwndFrom, GWL_STYLE) | TBS_TRANSPARENTBKGND);
                     RECT rc{};
                     GetClientRect(hdr->hwndFrom, &rc);
-                    ScopedGdiObj<HBRUSH> br(CreateSolidBrush(ThemeWindowBackgroundColor()));
+                    ScopedGdiObj<HBRUSH> br(CreateSolidBrush(AnnotTrackbarPanelColor()));
                     FillRect(cd->hdc, &rc, br);
                     return CDRF_NOTIFYITEMDRAW | CDRF_SKIPDEFAULT;
                 }
@@ -798,7 +806,7 @@ struct EditAnnotationsWindow : Wnd {
     // those are
     Vec<Annotation*> annotations;
     StrVec annotationExcerpts;
-    int annotationTypeWidth = 0;
+    int annotationLocationWidth = 0;
 
     bool skipGoToPage = false;
     bool updatingControls = false;
@@ -1127,9 +1135,6 @@ static void ApplyEditAnnotationsWindowTheme(EditAnnotationsWindow* ew, bool inst
                 DarkMode::setWindowNotifyCustomDrawSubclass(ew->inspectorPane->hwnd);
                 DarkMode::setWindowCtlColorSubclass(ew->inspectorPane->hwnd);
                 DarkMode::setChildCtrlsSubclassAndTheme(ew->inspectorPane->hwnd);
-                // Outermost: fill trackbar client before DarkMode item draw.
-                RemoveWindowSubclass(ew->inspectorPane->hwnd, AnnotTrackbarBgNotifyProc, kAnnotTrackbarBgNotifyId);
-                SetWindowSubclass(ew->inspectorPane->hwnd, AnnotTrackbarBgNotifyProc, kAnnotTrackbarBgNotifyId, 0);
             }
         } else if (installDarkMode) {
             DarkMode::setDarkWndNotifySafe(ew->hwnd);
@@ -1139,8 +1144,11 @@ static void ApplyEditAnnotationsWindowTheme(EditAnnotationsWindow* ew, bool inst
             DarkMode::setChildCtrlsTheme(ew->hwnd);
         }
     }
-    if (ew->inspectorPane && ew->inspectorPane->hwnd && !ThemeUsesDarkChrome()) {
+    // Light-White (and Warm): kill the grey trackbar client band so only the
+    // thin channel shows, matching the Warm sidebar look.
+    if (ew->inspectorPane && ew->inspectorPane->hwnd) {
         RemoveWindowSubclass(ew->inspectorPane->hwnd, AnnotTrackbarBgNotifyProc, kAnnotTrackbarBgNotifyId);
+        SetWindowSubclass(ew->inspectorPane->hwnd, AnnotTrackbarBgNotifyProc, kAnnotTrackbarBgNotifyId, 0);
     }
     UpdateWindowCaptionTheme(ew->hwnd);
     // Warm + dark: custom push paint so Delete/Export/Save match Options chrome.
@@ -1213,40 +1221,41 @@ void ReopenEditAnnotationsWindowsAfterDpiMove(MainWindow* win) {
     }
 }
 
+static TempStr PdfAnnotationExcerptTemp(DisplayModel* dm, Annotation* annot) {
+    TempStr excerpt = MarkupTextTemp(annot);
+    if ((annot->type == AnnotationType::Square || annot->type == AnnotationType::Circle) && dm &&
+        dm->GetEngine() == annot->engine) {
+        // Use actual page text only, without initiating OCR or borrowing notes.
+        PageTextUtf8 text = annot->engine->ExtractPageTextUtf8(annot->pageNo);
+        bool hasText = !str::IsEmptyOrWhiteSpace(text.text);
+        FreePageTextUtf8(&text);
+        if (hasText) {
+            char* regionText = dm->GetTextInRegion(annot->pageNo, GetRect(annot), true);
+            excerpt = str::DupTemp(regionText);
+            str::Free(regionText);
+        }
+    }
+    if (str::IsEmptyOrWhiteSpace(excerpt) &&
+        (annot->type == AnnotationType::Ink || annot->type == AnnotationType::Line ||
+         annot->type == AnnotationType::Square || annot->type == AnnotationType::Circle)) {
+        RectF bounds = GetBounds(annot);
+        excerpt =
+            str::FormatTemp("x=%d y=%d dx=%d dy=%d", (int)bounds.x, (int)bounds.y, (int)bounds.dx, (int)bounds.dy);
+    }
+    return excerpt;
+}
+
 static void CacheAnnotationExcerpts(EditAnnotationsWindow* ew) {
     ew->annotationExcerpts.Reset();
-    ew->annotationTypeWidth = DpiScale(ew->hwnd, 80);
+    ew->annotationLocationWidth = DpiScale(ew->hwnd, 22);
     HFONT font = (HFONT)SendMessageW(ew->listBox->hwnd, WM_GETFONT, 0, 0);
-    DisplayModel* dm = ew->tab->win->AsFixed();
-    Vec<int> nativeTextPages;
-    Vec<int> emptyTextPages;
+    DisplayModel* dm = ew->tab->AsFixed();
     for (Annotation* annot : ew->annotations) {
-        TempStr name = AnnotationReadableNameTemp(annot->type);
-        ew->annotationTypeWidth = std::max(ew->annotationTypeWidth, HwndMeasureText(ew->listBox->hwnd, name, font).dx);
-        // MarkupTextTemp uses page text and QuadPoints, never annotation Contents.
-        TempStr excerpt = MarkupTextTemp(annot);
-        if ((annot->type == AnnotationType::Square || annot->type == AnnotationType::Circle) && dm &&
-            dm->GetEngine() == annot->engine) {
-            // Regional drawings need actual native page text. Do not initiate
-            // OCR or borrow nearby text/Contents when the region is an image.
-            // Check each page once per rebuild, outside the list paint path.
-            if (!nativeTextPages.Contains(annot->pageNo) && !emptyTextPages.Contains(annot->pageNo)) {
-                PageTextUtf8 text = annot->engine->ExtractPageTextUtf8(annot->pageNo);
-                bool hasText = !str::IsEmptyOrWhiteSpace(text.text);
-                FreePageTextUtf8(&text);
-                (hasText ? nativeTextPages : emptyTextPages).Append(annot->pageNo);
-            }
-            if (nativeTextPages.Contains(annot->pageNo)) {
-                // Reuse selection's overlap tolerance and reading-order/line
-                // merging. No expansion of the annotation's actual rectangle.
-                char* regionText = dm->GetTextInRegion(annot->pageNo, GetRect(annot), true);
-                excerpt = str::DupTemp(regionText);
-                str::Free(regionText);
-            }
-        }
-        if (excerpt) {
-            str::NormalizeWSInPlace(excerpt);
-        }
+        TempStr location = str::FormatTemp("%d", annot->pageNo);
+        ew->annotationLocationWidth =
+            std::max(ew->annotationLocationWidth, HwndMeasureText(ew->listBox->hwnd, location, font).dx);
+        TempStr excerpt = PdfAnnotationExcerptTemp(dm, annot);
+        if (excerpt) str::NormalizeWSInPlace(excerpt);
         ew->annotationExcerpts.Append(excerpt ? excerpt : "");
     }
 }
@@ -1262,7 +1271,7 @@ static void RebuildAnnotationsListBox(EditAnnotationsWindow* ew) {
         auto annot = ew->annotations.at(i);
         s.Reset();
         // Owner-draw reads the annotation. The string is the accessible fallback.
-        TempStr name = AnnotationReadableNameTemp(annot->type);
+        const char* name = trans::GetTranslation(AnnotationReadableNameTemp(annot->type));
         s.AppendFmt("%d  %s", annot->pageNo, name);
         const char* excerpt = ew->annotationExcerpts.At(i);
         if (!str::IsEmpty(excerpt)) {
@@ -1301,33 +1310,6 @@ static void AppendUtcDateTime(StrBuilder& s, time_t secs) {
     s.Append(buf);
 }
 
-static void AppendMarkdownBlockquote(StrBuilder& out, const char* text) {
-    if (str::IsEmpty(text)) {
-        return;
-    }
-    const u8* p = (const u8*)text;
-    bool lineStart = true;
-    while (*p) {
-        u8 c = *p++;
-        if (lineStart) {
-            out.Append("> ");
-            lineStart = false;
-        }
-        if (c == '\r') {
-            continue;
-        }
-        if (c == '\n') {
-            out.AppendChar('\n');
-            lineStart = true;
-            continue;
-        }
-        out.AppendChar((char)c);
-    }
-    if (!lineStart) {
-        out.AppendChar('\n');
-    }
-}
-
 static bool BuildPdfAnnotationsExport(WindowTab* tab, StrBuilder& out) {
     if (!tab || !EngineSupportsAnnotations(tab->GetEngine())) {
         return false;
@@ -1360,43 +1342,33 @@ static bool BuildPdfAnnotationsExport(WindowTab* tab, StrBuilder& out) {
 
     out.Append(UTF8_BOM);
     out.AppendFmt("# %s\n\n", tab->GetTabTitle());
-    out.AppendFmt("%s: %s\n", _TRA("Source"), tab->filePath);
+    out.Append("<details>\n");
+    out.AppendFmt("<summary>%s</summary>\n\n", _TRA("Source"));
+    out.AppendFmt("%s: %s\n\n", _TRA("Source"), tab->filePath);
     out.Append(_TRA("Exported:"));
     out.Append(" ");
     AppendUtcDateTime(out, time(nullptr));
-    out.Append("\n\n---\n\n");
+    out.Append("\n\n</details>\n\n");
 
+    int group = -1;
+    int number = 0;
     for (const PdfAnnotationSortItem& item : items) {
         Annotation* annotation = item.annotation;
-        TempStr typeName = AnnotationReadableNameTemp(Type(annotation));
-        out.AppendFmt("## %s %d — %s\n\n", _TRA("Page"), item.pageNo, typeName);
-
-        TempStr excerpt = MarkupTextTemp(annotation);
-        if (!str::IsEmpty(excerpt)) {
-            AppendMarkdownBlockquote(out, excerpt);
-            out.AppendChar('\n');
+        if (item.pageNo != group) {
+            group = item.pageNo;
+            number = 0;
+            out.AppendFmt("## %s %d\n\n", _TRA("Page"), group);
         }
-
+        const char* typeName = trans::GetTranslation(AnnotationReadableNameTemp(Type(annotation)));
+        TempStr excerpt = PdfAnnotationExcerptTemp(tab->AsFixed(), annotation);
         TempStr note = Contents(annotation);
-        if (!str::IsEmpty(note)) {
-            out.AppendFmt("**%s**\n\n", _TRA("Note:"));
-            out.Append(note);
-            out.Append("\n\n");
-        }
-
-        const char* author = Author(annotation);
-        if (!str::IsEmpty(author)) {
-            out.AppendFmt("%s: %s\n", _TRA("Author"), author);
-        }
-        time_t date = ModificationDate(annotation);
-        if (date > 0) {
-            out.Append(_TRA("Date:"));
-            out.Append(" ");
-            AppendUtcDateTime(out, date);
-            out.AppendChar('\n');
-        }
-        out.Append("\n---\n\n");
+        bool geometry = excerpt && str::StartsWith(excerpt, "x=") &&
+                        (annotation->type == AnnotationType::Square || annotation->type == AnnotationType::Circle ||
+                         annotation->type == AnnotationType::Line || annotation->type == AnnotationType::Ink);
+        AppendReadingNoteMarkdown(out, ++number, typeName, excerpt, note, Author(annotation),
+                                  ModificationDate(annotation), geometry);
     }
+
     return true;
 }
 
@@ -1695,10 +1667,7 @@ static void RelayoutEditAnnotations(EditAnnotationsWindow* ew) {
     if (rc.dx <= 0 || rc.dy <= 0) {
         return;
     }
-    LayoutToSize(ew->mainLayout, {rc.dx, rc.dy});
-    if (ew->inspectorPane) {
-        ew->inspectorPane->RelayoutInner();
-    }
+    LayoutAnnotationSidebarControls(ew->mainLayout, ew->inspectorPane, {rc.dx, rc.dy});
     // Collapsing inspector fields changes visibility via window styles. Erase
     // their old pixels as well as repainting the controls at their new positions.
     RedrawWindow(ew->hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
@@ -1776,7 +1745,7 @@ static TempStr AnnotationHeadingTemp(Annotation* annot) {
         return nullptr;
     }
     // Only the type name is emphasized; page and geometry follow in regular weight.
-    return AnnotationReadableNameTemp(annot->type);
+    return str::DupTemp(trans::GetTranslation(AnnotationReadableNameTemp(annot->type)));
 }
 
 static TempStr AnnotationBoundsTemp(Annotation* annot) {
@@ -2219,7 +2188,7 @@ static void UpdateUIForSelectedAnnotation(EditAnnotationsWindow* ew, Annotation*
         DoSaveEmbed(ew, annot);
 
         ew->staticHeading->SetParts(AnnotationHeadingTemp(annot), AnnotationBoundsTemp(annot));
-        ew->staticHeading->SetIsVisible(true);
+        ew->staticHeading->SetIsVisible(false);
         RefreshMetadataLine(ew, annot);
         SyncAnnotHeadingColumns(ew);
 
@@ -2462,7 +2431,8 @@ static void DrawAnnotListItem(EditAnnotationsWindow* ew, ListBox::DrawItemEvent*
     const char* excerpt = ev->itemIndex < ew->annotationExcerpts.Size() ? ew->annotationExcerpts.At(ev->itemIndex) : "";
     DrawAnnotationSidebarRow(ew->hwnd, ew->listBox->hwnd, ev, ev->selected || annot == ew->tab->selectedAnnotation,
                              color != 0, ColorRefFromPdfColor(color), str::FormatTemp("%d", annot->pageNo),
-                             AnnotationReadableNameTemp(annot->type), excerpt, ew->annotationTypeWidth);
+                             trans::GetTranslation(AnnotationReadableNameTemp(annot->type)), excerpt,
+                             ew->annotationLocationWidth);
 }
 
 static Static* CreateStatic(HWND parent, HFONT font, const char* s = nullptr) {
@@ -2984,6 +2954,9 @@ void ShowEditAnnotationsWindow(WindowTab* tab, Annotation* annot, EditAnnotFocus
     ew->CreateCustom(args);
     ew->dpi = parentDpi > 0 ? parentDpi : DpiGet(ew->hwnd);
 
+    // Build the full inspector off-screen, then show once themed. Otherwise
+    // Warm/Light startup paints WHITE_BRUSH then the cream panel.
+    ew->SuspendRedraw();
     CreateMainLayout(ew);
     ew->tab = tab;
     tab->editAnnotsWindow = ew;
@@ -2997,5 +2970,6 @@ void ShowEditAnnotationsWindow(WindowTab* tab, Annotation* annot, EditAnnotFocus
         SetSelectedAnnotation(tab, annot, isNew, focus);
     }
     ApplyEditAnnotationsWindowTheme(ew, true);
+    ew->ResumeRedraw();
     RevealAnnotationsSidebar(tab, revealInSidebar);
 }

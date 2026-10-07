@@ -64,6 +64,7 @@
 #include "HomePage.h"
 #include "Tabs.h"
 #include "Toolbar.h"
+#include "SvgIcons.h"
 #include "Translations.h"
 #include "OcrService.h"
 #include "PrintedTocOverlay.h"
@@ -1036,10 +1037,95 @@ static void StartEbookAnnotationDrag(MainWindow* win, EbookAnnotation* annotatio
 static void PumpAnnotationResizeRender(MainWindow* win);
 static void ClearAnnotResizePreview(MainWindow* win);
 
+
+// Top-right hotspot to leave fullscreen / presentation when the toolbar is hidden.
+// Slightly larger than the painted button so it is easy to hit with the mouse.
+constexpr int kFullscreenExitHotSize = 72;
+constexpr int kFullscreenExitBtnSize = 36;
+
+static bool FullscreenNeedsMouseExit(MainWindow* win) {
+    return win && (win->isFullScreen || win->presentation) && !win->isToolbarVisible;
+}
+
+static Rect GetFullscreenExitHotRect(MainWindow* win) {
+    Rect r = ClientRect(win->hwndCanvas);
+    int dpi = DpiGet(win->hwndCanvas);
+    int hot = MulDiv(kFullscreenExitHotSize, dpi, 96);
+    return Rect(r.dx - hot, 0, hot, hot);
+}
+
+static Rect GetFullscreenExitButtonRect(MainWindow* win) {
+    Rect hot = GetFullscreenExitHotRect(win);
+    int dpi = DpiGet(win->hwndCanvas);
+    int size = MulDiv(kFullscreenExitBtnSize, dpi, 96);
+    int margin = MulDiv(10, dpi, 96);
+    return Rect(hot.x + hot.dx - size - margin, margin, size, size);
+}
+
+static void UpdateFullscreenExitHot(MainWindow* win, Point pt) {
+    if (!FullscreenNeedsMouseExit(win)) {
+        if (win->fullscreenExitHot) {
+            win->fullscreenExitHot = false;
+            InvalidateRect(win->hwndCanvas, nullptr, FALSE);
+        }
+        return;
+    }
+    bool hot = GetFullscreenExitHotRect(win).Contains(pt);
+    if (hot == win->fullscreenExitHot) {
+        return;
+    }
+    win->fullscreenExitHot = hot;
+    Rect r = GetFullscreenExitHotRect(win);
+    RECT rc = ToRECT(r);
+    InvalidateRect(win->hwndCanvas, &rc, FALSE);
+}
+
+static void DrawFullscreenExitAffordance(MainWindow* win, HDC hdc) {
+    if (!win->fullscreenExitHot || !FullscreenNeedsMouseExit(win)) {
+        return;
+    }
+    Rect btn = GetFullscreenExitButtonRect(win);
+    if (btn.IsEmpty()) {
+        return;
+    }
+    COLORREF page = ThemeUsesDarkChrome() ? RGB(20, 20, 24) : RGB(245, 245, 245);
+    COLORREF ink = ThemeWindowTextColor();
+    int dpi = DpiGet(win->hwndCanvas);
+    int rad = MulDiv(8, dpi, 96);
+    {
+        ScopedGdiObj<HBRUSH> fill(CreateSolidBrush(page));
+        ScopedGdiObj<HPEN> pen(CreatePen(PS_SOLID, 1, AccentColor(ink, ThemeUsesDarkChrome() ? -40 : 40)));
+        ScopedSelectObject selBr(hdc, fill);
+        ScopedSelectObject selPen(hdc, pen);
+        RoundRect(hdc, btn.x, btn.y, btn.x + btn.dx, btn.y + btn.dy, rad, rad);
+    }
+    int pad = MulDiv(7, dpi, 96);
+    Rect icon(btn.x + pad, btn.y + pad, btn.dx - pad * 2, btn.dy - pad * 2);
+    DrawSvgIcon(hdc, icon, TbIcon::FullscreenExit, ink, page);
+}
+
+// Single-click exits only via the painted button; double-click may use the whole hotspot.
+static bool TryExitFullscreenByMouse(MainWindow* win, Point pt, bool wholeHotspot) {
+    if (!FullscreenNeedsMouseExit(win)) {
+        return false;
+    }
+    bool hit = wholeHotspot ? GetFullscreenExitHotRect(win).Contains(pt)
+                            : (win->fullscreenExitHot && GetFullscreenExitButtonRect(win).Contains(pt));
+    if (!hit) {
+        return false;
+    }
+    ExitFullScreen(win);
+    return true;
+}
+
 static void OnMouseMove(MainWindow* win, int x, int y, WPARAM) {
     DisplayModel* dm = win->AsFixed();
     // ReportIf(!dm); // can happen if reload fails, we delete DisplayModel
-    if (!dm) return;
+    if (!dm) {
+        return;
+    }
+
+    UpdateFullscreenExitHot(win, Point{x, y});
 
     if (HandwrittenSignatureOnMouseMove(win, x, y)) {
         return;
@@ -2335,13 +2421,18 @@ static void OnMouseLeftButtonDown(MainWindow* win, int x, int y, WPARAM key) {
         return;
     }
 
+    Point pt{x, y};
+    // Single-click the top-right exit control (shown on hover) to leave fullscreen.
+    if (TryExitFullscreenByMouse(win, pt, false)) {
+        return;
+    }
+
     HwndSetFocus(win->hwndFrame);
     DisplayModel* dm = win->AsFixed();
     ReportIf(!dm);
     if (HandwrittenSignatureOnMouseDown(win, x, y)) {
         return;
     }
-    Point pt{x, y};
 
     if (win->ocrRegionPending) {
         win->ocrRegionFromModifier = false;
@@ -2843,14 +2934,8 @@ static void OnMouseLeftButtonDblClk(MainWindow* win, int x, int y, WPARAM key) {
     // Double-click may load text on demand (same as single-click selection).
     bool isOverText = dm->IsOverText(mousePos, true);
 
-    if (isLeft && (win->presentation || win->isFullScreen)) {
-        // in fullscreen we allow to exit by tapping in upper right corner
-        constexpr int kCornerSize = 64;
-        Rect r = ClientRect(win->hwndCanvas);
-        if (!isOverText && (x >= (r.dx - kCornerSize)) && (y < kCornerSize)) {
-            ExitFullScreen(win);
-            return;
-        }
+    if (isLeft && TryExitFullscreenByMouse(win, mousePos, true)) {
+        return;
     }
 
     int elementPageNo = -1;
@@ -3612,15 +3697,18 @@ static void OnPaintDocument(MainWindow* win) {
     switch (win->presentation) {
         case PM_BLACK_SCREEN:
             FillRect(hdc, &ps.rcPaint, GetStockBrush(BLACK_BRUSH));
+            DrawFullscreenExitAffordance(win, hdc);
             break;
         case PM_WHITE_SCREEN:
             FillRect(hdc, &ps.rcPaint, GetStockBrush(WHITE_BRUSH));
+            DrawFullscreenExitAffordance(win, hdc);
             break;
         default: {
             bool shouldPaint = DrawDocument(win, win->buffer->GetDC(), &ps.rcPaint);
             if (!gNoFlickerRender || shouldPaint) {
                 win->buffer->Flush(hdc, &ps.rcPaint);
             }
+            DrawFullscreenExitAffordance(win, hdc);
         }
     }
 
@@ -3645,6 +3733,10 @@ static LRESULT OnSetCursorMouseNone(MainWindow* win, HWND hwnd) {
     if (!dm || !GetCursor() || pt.IsEmpty()) {
         win->DeleteToolTip();
         return FALSE;
+    }
+    if (win->fullscreenExitHot && GetFullscreenExitButtonRect(win).Contains(pt)) {
+        SetCursorCached(IDC_HAND);
+        return TRUE;
     }
     if (HandwrittenSignatureIsPlacing(win) || win->annotCreateToolCmd != 0 || win->ocrRegionPending) {
         SetCursorCached(IDC_CROSS);

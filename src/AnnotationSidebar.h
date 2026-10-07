@@ -79,10 +79,11 @@ struct AnnotHeadingLine : Wnd {
     }
 
     void SetParts(const char* titleText, const char* metaText) {
+        if (str::Eq(title, titleText) && str::Eq(meta, metaText)) return;
         str::ReplaceWithCopy(&title, titleText);
         str::ReplaceWithCopy(&meta, metaText);
         if (hwnd) {
-            InvalidateRect(hwnd, nullptr, TRUE);
+            InvalidateRect(hwnd, nullptr, FALSE);
         }
     }
 
@@ -149,7 +150,32 @@ struct AnnotHeadingLine : Wnd {
         return {w, h};
     }
 
-    void OnPaint(HDC hdc, PAINTSTRUCT*) override {
+    LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) override {
+        if (msg == WM_ERASEBKGND) return 1;
+        return Wnd::WndProc(hwnd, msg, wp, lp);
+    }
+
+    void OnPaint(HDC target, PAINTSTRUCT*) override {
+        RECT rc{};
+        GetClientRect(hwnd, &rc);
+        if (rc.right <= 0 || rc.bottom <= 0) return;
+        HDC memory = CreateCompatibleDC(target);
+        HBITMAP bitmap = CreateCompatibleBitmap(target, rc.right, rc.bottom);
+        if (!memory || !bitmap) {
+            if (memory) DeleteDC(memory);
+            if (bitmap) DeleteObject(bitmap);
+            PaintHeading(target);
+            return;
+        }
+        HGDIOBJ old = SelectObject(memory, bitmap);
+        PaintHeading(memory);
+        BitBlt(target, 0, 0, rc.right, rc.bottom, memory, 0, 0, SRCCOPY);
+        SelectObject(memory, old);
+        DeleteObject(bitmap);
+        DeleteDC(memory);
+    }
+
+    void PaintHeading(HDC hdc) {
         RECT rc{};
         GetClientRect(hwnd, &rc);
         COLORREF bg = bgColor != kColorUnset ? bgColor : ThemeWindowControlBackgroundColor();
@@ -204,28 +230,34 @@ struct AnnotHeadingLine : Wnd {
     }
 };
 
-// One quiet rule between the list, the inspector, and the save footer.
-struct AnnotHairline : Wnd {
-    void OnPaint(HDC hdc, PAINTSTRUCT*) override {
-        RECT rc{};
-        GetClientRect(hwnd, &rc);
-        ScopedGdiObj<HBRUSH> br(CreateSolidBrush(ThemeInspectorSeparatorColor()));
-        FillRect(hdc, &rc, br);
-    }
-
-    Size GetIdealSize() override {
-        int h = hwnd ? std::max(1, DpiScale(hwnd, 1)) : 1;
-        return {8, h};
-    }
-};
-
 struct AnnotSidebarList : ListBox {
     Func1<int> onDelete;
     int pressedAction = -1;
     int hotAction = -1;
     Tooltip deleteTooltip;
+    bool paintingBuffered = false;
+
+    void InvalidateAction(int idx) {
+        if (idx < 0) return;
+        RECT row{};
+        if (SendMessageW(hwnd, LB_GETITEMRECT, idx, (LPARAM)&row) == LB_ERR) return;
+        RECT action = ActionRect(hwnd, row);
+        InvalidateRect(hwnd, &action, FALSE);
+    }
+
+    LRESULT OnMessageReflect(UINT msg, WPARAM wp, LPARAM lp) override {
+        if (msg != WM_DRAWITEM || paintingBuffered) return ListBox::OnMessageReflect(msg, wp, lp);
+        auto item = (DRAWITEMSTRUCT*)lp;
+        InvalidateRect(hwnd, &item->rcItem, FALSE);
+        return TRUE;
+    }
 
     static RECT ActionRect(HWND hwnd, RECT row) {
+        // The native client width already excludes a visible scrollbar. Keep
+        // the same gutter when it is hidden so the action column never moves.
+        if (!(GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_VSCROLL)) {
+            row.right = std::max(row.left, row.right - GetSystemMetrics(SM_CXVSCROLL));
+        }
         row.left = std::max(row.left, row.right - DpiScale(hwnd, 26));
         return row;
     }
@@ -245,11 +277,62 @@ struct AnnotSidebarList : ListBox {
     }
 
     LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) override {
+        if (msg == WM_ERASEBKGND) return 1;
+        if (msg == WM_PAINT) {
+            RECT client{};
+            GetClientRect(hwnd, &client);
+            if (client.right > 0 && client.bottom > 0) {
+                HDC target = GetDC(hwnd);
+                HDC memory = CreateCompatibleDC(target);
+                HBITMAP bitmap = CreateCompatibleBitmap(target, client.right, client.bottom);
+                ReleaseDC(hwnd, target);
+                if (memory && bitmap) {
+                    PAINTSTRUCT paint{};
+                    target = BeginPaint(hwnd, &paint);
+                    HGDIOBJ old = SelectObject(memory, bitmap);
+                    COLORREF color =
+                        ThemeUsesDarkChrome() ? ThemeWindowBackgroundColor() : ThemeWindowControlBackgroundColor();
+                    ScopedGdiObj<HBRUSH> brush(CreateSolidBrush(color));
+                    FillRect(memory, &client, brush);
+                    paintingBuffered = true;
+                    int selection = GetCurrentSelection();
+                    int count = GetCount();
+                    for (int i = (int)SendMessageW(hwnd, LB_GETTOPINDEX, 0, 0); i >= 0 && i < count; i++) {
+                        DRAWITEMSTRUCT item{};
+                        item.CtlType = ODT_LISTBOX;
+                        item.hwndItem = hwnd;
+                        item.hDC = memory;
+                        item.itemID = i;
+                        item.itemAction = ODA_DRAWENTIRE;
+                        if (SendMessageW(hwnd, LB_GETITEMRECT, i, (LPARAM)&item.rcItem) == LB_ERR ||
+                            item.rcItem.top >= client.bottom)
+                            break;
+                        if (i == selection) {
+                            item.itemState = ODS_SELECTED;
+                            if (HwndIsFocused(hwnd)) item.itemState |= ODS_FOCUS;
+                        }
+                        ListBox::OnMessageReflect(WM_DRAWITEM, 0, (LPARAM)&item);
+                    }
+                    paintingBuffered = false;
+                    RECT& r = paint.rcPaint;
+                    BitBlt(target, r.left, r.top, r.right - r.left, r.bottom - r.top, memory, r.left, r.top, SRCCOPY);
+                    SelectObject(memory, old);
+                    DeleteObject(bitmap);
+                    DeleteDC(memory);
+                    EndPaint(hwnd, &paint);
+                    return 0;
+                }
+                if (bitmap) DeleteObject(bitmap);
+                if (memory) DeleteDC(memory);
+            }
+        }
         if (msg == WM_MOUSEMOVE || msg == WM_MOUSELEAVE) {
             int action = msg == WM_MOUSEMOVE ? ActionAt(lp) : -1;
             if (action != hotAction) {
+                int previous = hotAction;
                 hotAction = action;
-                InvalidateRect(hwnd, nullptr, FALSE);
+                InvalidateAction(previous);
+                InvalidateAction(action);
                 if (!deleteTooltip.hwnd) {
                     Tooltip::CreateArgs args;
                     args.parent = hwnd;
@@ -355,6 +438,22 @@ struct AnnotInspectorPane : Wnd {
     AnnotNoteEdit* note = nullptr;
     ILayout* inner = nullptr;
 
+    LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) override {
+        if (msg == WM_ERASEBKGND) {
+            // The default window class erases with white before WM_PAINT.
+            // Use the panel color even while startup document loading delays painting.
+            COLORREF bg = bgColor != kColorUnset ? bgColor
+                                                 : (ThemeUsesDarkChrome() ? ThemeWindowBackgroundColor()
+                                                                          : ThemeWindowControlBackgroundColor());
+            ScopedGdiObj<HBRUSH> brush(CreateSolidBrush(bg));
+            RECT rc{};
+            GetClientRect(hwnd, &rc);
+            FillRect((HDC)wp, &rc, brush);
+            return 1;
+        }
+        return Wnd::WndProc(hwnd, msg, wp, lp);
+    }
+
     Size GetIdealSize() override { return {8, 0}; }
 
     void SetBounds(Rect bounds) override {
@@ -407,7 +506,20 @@ inline void AnnotInspectorPane::RelayoutInner() {
         note->preferredHeight = std::max(kNoteMin, MulDiv(nextPx, 96, dpi));
         sz = pane->inner->Layout(c);
     }
+    bool suspended = gLayoutSuspendPaint;
+    gLayoutSuspendPaint = true;
     pane->inner->SetBounds(Rect{0, 0, w, std::max(h, sz.dy)});
+    gLayoutSuspendPaint = suspended;
+}
+
+inline void LayoutAnnotationSidebarControls(LayoutBase* layout, AnnotInspectorPane* pane, Size size) {
+    // Place the outer controls without painting or reentering the inspector
+    // layout through WM_SIZE. Place its children once, then repaint together.
+    bool suspended = gLayoutSuspendPaint;
+    gLayoutSuspendPaint = true;
+    LayoutToSize(layout, size);
+    gLayoutSuspendPaint = suspended;
+    if (pane) pane->RelayoutInner();
 }
 struct AnnotSizedButton : Button {
     int fixedDx = 0;
@@ -481,7 +593,8 @@ struct AnnotColorDropDown : DropDown {
         SetTextColor(dc, selected ? ThemeInspectorSelectedTextColor() : ThemeWindowTextColor());
         rc.left += dot + pad * 2;
         rc.right -= pad;
-        DrawTextW(dc, ToWStrTemp(value), -1, &rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        DrawTextW(dc, ToWStrTemp(trans::GetTranslation(value)), -1, &rc,
+                  DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
         return TRUE;
     }
 
@@ -492,7 +605,7 @@ struct AnnotColorDropDown : DropDown {
         HFONT font = GetWindowFont(hwnd);
         int textWidth = HwndMeasureText(hwnd, "Transparent", font).dx;
         for (int i = 0; i < items.Size(); i++) {
-            textWidth = std::max(textWidth, HwndMeasureText(hwnd, items.At(i), font).dx);
+            textWidth = std::max(textWidth, HwndMeasureText(hwnd, trans::GetTranslation(items.At(i)), font).dx);
         }
         size.dx = std::max(size.dx, textWidth + DpiScale(hwnd, 10 + 18 + 32));
         if (fixedDx > 0) {
@@ -782,20 +895,11 @@ inline AnnotationSidebarShell CreateAnnotationSidebarShell(HWND parent, HFONT fo
     list->SetModel(new ListBoxModelStrings());
     list->onSelectionChanged = select;
     list->SetColors(text, bg);
+    // Soft gap under the list — no drawn hairline (bookmarks/favorites use space only).
+    list->SetInsetsPt(0, 0, 8, 0);
     root->AddChild(list);
     shell.list = list;
 
-    auto addRule = [&](VBox* box, int top) {
-        auto rule = new AnnotHairline();
-        CreateCustomArgs args;
-        args.parent = parent;
-        args.style = WS_CHILD | WS_VISIBLE;
-        args.pos = {0, 0, 10, 4};
-        rule->CreateCustom(args);
-        rule->SetInsetsPt(top, 0, 4, 0);
-        box->AddChild(rule);
-    };
-    addRule(root, 8);
     auto pane = new AnnotInspectorPane();
     CreateCustomArgs paneArgs;
     paneArgs.parent = parent;
@@ -803,6 +907,10 @@ inline AnnotationSidebarShell CreateAnnotationSidebarShell(HWND parent, HFONT fo
     paneArgs.bgColor = bg;
     paneArgs.pos = {0, 0, 10, 10};
     pane->CreateCustom(paneArgs);
+    // Present the inspector's native labels, combos and trackbars together.
+    // Per-control buffering cannot hide intermediate erase/resize frames from
+    // sibling controls while the sidebar splitter changes their widths.
+    SetWindowLongPtrW(pane->hwnd, GWL_EXSTYLE, GetWindowLongPtrW(pane->hwnd, GWL_EXSTYLE) | WS_EX_COMPOSITED);
     auto inspector = new VBox();
     inspector->alignMain = MainAxisAlign::MainStart;
     inspector->alignCross = CrossAxisAlign::Stretch;
@@ -813,8 +921,8 @@ inline AnnotationSidebarShell CreateAnnotationSidebarShell(HWND parent, HFONT fo
     auto footer = new VBox();
     footer->alignMain = MainAxisAlign::MainStart;
     footer->alignCross = CrossAxisAlign::Stretch;
-    addRule(footer, 12);
-    root->AddChild(footer);
+    // Top padding instead of a separator rule above Save / Save As.
+    root->AddChild(new Padding(footer, DpiScaledInsets(parent, 12, 0, 0, 0)));
     shell.footer = footer;
     return shell;
 }
@@ -864,20 +972,17 @@ inline void LayoutAnnotationSidebar(HWND sidebar, LayoutBase* layout, ListBox* l
     if (liveDrag) {
         gLayoutSuspendPaint = true;
     }
-    LayoutToSize(layout, {dx, dy});
-    if (pane) {
-        pane->RelayoutInner();
-    }
+    LayoutAnnotationSidebarControls(layout, pane, {dx, dy});
     if (liveDrag) {
         gLayoutSuspendPaint = false;
         // RelayoutFrame's coalesced UPDATENOW paints this column once.
     } else {
-        InvalidateRect(sidebar, nullptr, false);
+        RedrawWindow(sidebar, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
     }
 }
 inline void DrawAnnotationSidebarRow(HWND sidebar, HWND list, ListBox::DrawItemEvent* ev, bool selected, bool hasColor,
                                      COLORREF c, const char* location, const char* typeName, const char* excerpt,
-                                     int typeWidth) {
+                                     int locationWidth) {
     RECT rc = ev->itemRect;
     RECT action = AnnotSidebarList::ActionRect(list, rc);
     COLORREF bg = ThemeUsesDarkChrome() ? ThemeWindowBackgroundColor() : ThemeWindowControlBackgroundColor();
@@ -893,12 +998,14 @@ inline void DrawAnnotationSidebarRow(HWND sidebar, HWND list, ListBox::DrawItemE
 
     int barW = std::max(2, DpiScale(sidebar, 2));
     if (hasColor) {
-        // Leave a gap at top/bottom so same-color rows do not read as one bar.
-        int padY = DpiScale(sidebar, 3);
+        HFONT rowFont = GetWindowFont(list);
+        // Font line height includes space above/below the visible glyphs.
+        int textHeight = std::max(1, HwndMeasureText(list, "Ag", rowFont).dy - DpiScale(list, 4));
+        int barHeight = std::min(textHeight, (int)(rc.bottom - rc.top));
         RECT bar = rc;
         bar.right = bar.left + barW;
-        bar.top += padY;
-        bar.bottom -= padY;
+        bar.top += (rc.bottom - rc.top - barHeight) / 2;
+        bar.bottom = bar.top + barHeight;
         if (bar.bottom > bar.top) {
             u8 r, g, b;
             UnpackColor(c, r, g, b);
@@ -928,18 +1035,18 @@ inline void DrawAnnotationSidebarRow(HWND sidebar, HWND list, ListBox::DrawItemE
     SetBkMode(ev->hdc, TRANSPARENT);
     SetTextColor(ev->hdc, text);
 
-    int pageW = DpiScale(sidebar, 36);
+    int pageW = locationWidth;
     RECT pageRc = rc;
     pageRc.left += barW + DpiScale(sidebar, 6);
     pageRc.right = pageRc.left + pageW;
     DrawTextW(ev->hdc, ToWStrTemp(location), -1, &pageRc, DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 
     RECT typeRc = rc;
-    typeRc.left = pageRc.right + DpiScale(sidebar, 12);
+    typeRc.left = pageRc.right + DpiScale(sidebar, 8);
     typeRc.right = action.left - DpiScale(sidebar, 4);
     RECT excerptRc = typeRc;
-    typeRc.right = std::min(typeRc.right, typeRc.left + typeWidth);
-    excerptRc.left = typeRc.right + DpiScale(sidebar, 10);
+    typeRc.right = std::min(typeRc.right, typeRc.left + HwndMeasureText(list, typeName, font).dx);
+    excerptRc.left = typeRc.right + DpiScale(sidebar, 6);
     DrawTextW(ev->hdc, ToWStrTemp(typeName), -1, &typeRc,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
     if (excerptRc.right > excerptRc.left && !str::IsEmpty(excerpt)) {
@@ -955,7 +1062,7 @@ inline void DrawAnnotationSidebarRow(HWND sidebar, HWND list, ListBox::DrawItemE
         ScopedGdiObj<HBRUSH> cue(CreateSolidBrush(ThemeInspectorSeparatorColor()));
         FillRect(ev->hdc, &focus, cue);
     }
-    if (selected || ev->hot || (ev->focused && HwndIsFocused(list))) {
+    {
         POINT cursor{};
         GetCursorPos(&cursor);
         ScreenToClient(list, &cursor);

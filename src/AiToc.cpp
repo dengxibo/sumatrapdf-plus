@@ -355,22 +355,13 @@ static void AiTocSetMultiBatchWaitCopy(AiTocDialog* dlg) {
     if (which > total) {
         which = total;
     }
-    const char* lang = trans::GetCurrentLangCode();
-    bool zh = lang && (str::EqI(lang, "cn") || str::EqI(lang, "tw"));
-    if (zh) {
-        SetWindowTextW(dlg->stateTitle, L"请复制这一批的 JSON");
-        SetWindowTextW(dlg->stateDesc, ToWStrTemp(str::FormatTemp("第 %d / %d 批已发送。复制这一批回复里的 JSON。\r\n"
-                                                                  "程序按顺序自己接上各批，不再让 AI 合并。",
-                                                                  which, total)));
-        SetWindowTextW(dlg->status, ToWStrTemp(str::FormatTemp("等待第 %d / %d 批 JSON…", which, total)));
-    } else {
-        SetWindowTextW(dlg->stateTitle, _TRW("Copy this batch's JSON"));
-        SetWindowTextW(dlg->stateDesc, ToWStrTemp(str::FormatTemp(
-                                           "Batch %d of %d has been sent. Copy the JSON in that reply.\r\n"
-                                           "The app joins the batches in order. The AI is not asked to merge them.",
-                                           which, total)));
-        SetWindowTextW(dlg->status, ToWStrTemp(str::FormatTemp("Waiting for batch %d of %d JSON…", which, total)));
-    }
+    SetWindowTextW(dlg->stateTitle, _TRW("Copy this batch's JSON"));
+    SetWindowTextW(dlg->stateDesc,
+                   ToWStrTemp(str::FormatTemp(
+                       _TRA("Batch %d of %d has been sent. Copy the JSON in that reply.\r\n"
+                            "The app joins the batches in order. The AI is not asked to merge them."),
+                       which, total)));
+    SetWindowTextW(dlg->status, ToWStrTemp(str::FormatTemp(_TRA("Waiting for batch %d of %d JSON…"), which, total)));
 }
 
 // Waiting page copy for the unified WaitingForAiClipboard state. The title /
@@ -1918,7 +1909,7 @@ static bool AiTocImportJson(AiTocDialog* dlg, const char* text) {
     if (roots.Size() == 0 || !dm || dm->GetEngine() != dlg->work->engine) {
         AiTocHideImportProgress(dlg);
         DeleteExtractedTocItems(roots);
-        MessageBoxWarning(dlg->hwnd, "The JSON contains no importable table-of-contents items.",
+        MessageBoxWarning(dlg->hwnd, _TRA("The JSON contains no importable table-of-contents items."),
                           _TRA("AI Recognize Table of Contents"));
         return false;
     }
@@ -1934,7 +1925,7 @@ static bool AiTocImportJson(AiTocDialog* dlg, const char* text) {
         }
         delete cb;
         AiTocHideImportProgress(dlg);
-        MessageBoxWarning(dlg->hwnd, "The JSON contains no importable table-of-contents items.",
+        MessageBoxWarning(dlg->hwnd, _TRA("The JSON contains no importable table-of-contents items."),
                           _TRA("AI Recognize Table of Contents"));
         return false;
     }
@@ -1967,7 +1958,7 @@ static bool AiTocImportBodyJson(AiTocDialog* dlg, const char* text) {
     if (!BuildBodyTocItems(*dlg->bodyScan, selections, roots)) {
         AiTocHideImportProgress(dlg);
         DeleteExtractedTocItems(roots);
-        MessageBoxWarning(dlg->hwnd, "The JSON contains no importable table-of-contents items.",
+        MessageBoxWarning(dlg->hwnd, _TRA("The JSON contains no importable table-of-contents items."),
                           _TRA("AI Recognize Table of Contents"));
         return false;
     }
@@ -1979,7 +1970,7 @@ static bool AiTocImportBodyJson(AiTocDialog* dlg, const char* text) {
     if (roots.Size() == 0 || !dm || dm->GetEngine() != engine) {
         AiTocHideImportProgress(dlg);
         DeleteExtractedTocItems(roots);
-        MessageBoxWarning(dlg->hwnd, "The JSON contains no importable table-of-contents items.",
+        MessageBoxWarning(dlg->hwnd, _TRA("The JSON contains no importable table-of-contents items."),
                           _TRA("AI Recognize Table of Contents"));
         return false;
     }
@@ -1992,7 +1983,7 @@ static bool AiTocImportBodyJson(AiTocDialog* dlg, const char* text) {
         }
         delete cb;
         AiTocHideImportProgress(dlg);
-        MessageBoxWarning(dlg->hwnd, "The JSON contains no importable table-of-contents items.",
+        MessageBoxWarning(dlg->hwnd, _TRA("The JSON contains no importable table-of-contents items."),
                           _TRA("AI Recognize Table of Contents"));
         return false;
     }
@@ -2163,14 +2154,8 @@ static void AiTocSendNextPrintedBatch(AiTocDialog* dlg) {
         EnableWindow(dlg->resend, FALSE);
     }
     AiTocSetState(dlg, AiTocUiState::SendingToAi);
-    const char* lang = trans::GetCurrentLangCode();
-    bool zh = lang && (str::EqI(lang, "cn") || str::EqI(lang, "tw"));
     int which = dlg->batchesGot + 1;
-    if (zh) {
-        SetWindowTextW(dlg->status, ToWStrTemp(str::FormatTemp("正在发送第 %d 批…", which)));
-    } else {
-        SetWindowTextW(dlg->status, ToWStrTemp(str::FormatTemp("Sending batch %d…", which)));
-    }
+    SetWindowTextW(dlg->status, ToWStrTemp(str::FormatTemp(_TRA("Sending batch %d…"), which)));
     auto* w = new AiTocNextBatchWork();
     w->owner = dlg->hwnd;
     w->dialogToken = dlg->token;

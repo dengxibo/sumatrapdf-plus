@@ -252,17 +252,23 @@ void UpdateWindowCaptionTheme(HWND hwnd) {
     if (!hwnd) {
         return;
     }
+    // DarkModeLib's setDarkTitleBarEx defaults DWMWA_BORDER_COLOR to system
+    // DEFAULT, which paints a bright 1px edge on dialogs in dark chrome.
+    // Match the frame: chrome background for dark / eye-care, else DEFAULT.
     if (ThemeUsesEyeCareChrome()) {
         if (UseDarkModeLib()) {
             DarkMode::setDarkTitleBarEx(hwnd, false);
         }
         dwm::SetWindowCaptionColors(hwnd, ThemeChromeBackgroundColor(), ThemeWindowTextColor());
+        dwm::SetWindowBorderColor(hwnd, ThemeChromeBackgroundColor());
         return;
     }
     dwm::ResetWindowCaptionColors(hwnd);
     if (UseDarkModeLib()) {
         DarkMode::setDarkTitleBarEx(hwnd, ThemeUsesDarkChrome());
     }
+    dwm::SetWindowBorderColor(hwnd, ThemeUsesDarkChrome() ? ThemeChromeBackgroundColor()
+                                                          : (COLORREF)DWMWA_COLOR_DEFAULT);
 }
 
 bool IsDarkThemeSelected() {
@@ -399,6 +405,10 @@ void SetThemeByIndex(int themeIdx) {
         DarkMode::setDlgBackgroundColor(ctrlBg);
         DarkMode::setLinkTextColor(ThemeWindowLinkColor());
         DarkMode::setEdgeColor(edgeCol);
+        // Keep dialog / popup DWM borders from falling back to a bright system edge.
+        DarkMode::setBorderColorConfig((ThemeUsesDarkChrome() || ThemeUsesEyeCareChrome())
+                                           ? ThemeChromeBackgroundColor()
+                                           : (COLORREF)DWMWA_COLOR_DEFAULT);
         DarkMode::updateThemeBrushesAndPens();
 
         DarkMode::setViewTextColor(ThemeUsesDarkChrome() ? ThemeReadingTextColor() : ThemeWindowTextColor());

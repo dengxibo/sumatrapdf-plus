@@ -1082,7 +1082,7 @@ const globalPrefs: Field[] = [
     ),
     "3.7",
   ),
-  setVersion(mkField("ScrollbarInSinglePage", Bool, false, "if true, we show scrollbar in single page mode"), "3.6"),
+  setVersion(mkField("ScrollbarInSinglePage", Bool, true, "if true, we show scrollbar in single page mode"), "3.6"),
   setVersion(mkField("SmoothScroll", Bool, false, "if true, implements smooth scrolling"), "3.6"),
   setVersion(
     mkField(

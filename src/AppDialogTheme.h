@@ -42,6 +42,11 @@ void AppDialogUseStandardControls(HWND hwnd);
 // Safe on other themes: it removes the custom paint when eye-care chrome is off.
 void AppDialogSyncWarmPushButtons(HWND hwnd);
 
+// Theme only the vertical scrollbar (Ask AI / InlineTranslate pattern). Keeps a
+// blank or custom list face for Warm cream CTLCOLOR while adapting White /
+// Warm / Dracula / Dark bars via Explorer::ScrollBar / DarkMode_Explorer::ScrollBar.
+void AppDialogThemeScrollBar(HWND hwnd);
+
 // For WM_CTLCOLOR*: sets text/bk colors and returns the brush to use, or null.
 HBRUSH AppDialogCtlColorBrush(UINT msg, WPARAM wp, LPARAM lp, HBRUSH bgBrush, HBRUSH ctrlBrush = nullptr,
                               HWND editHwnd = nullptr);

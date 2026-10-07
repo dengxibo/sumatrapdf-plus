@@ -740,6 +740,21 @@ LRESULT Wnd::WndProcDefault(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
             return 0;
         }
 
+        case WM_ERASEBKGND: {
+            // Class brush is WHITE_BRUSH. Fill with the themed color so Warm/Light
+            // sidebars (annotations inspector, etc.) do not flash white on show.
+            if (!IsSpecialColor(bgColor)) {
+                HBRUSH br = BackgroundBrush();
+                if (br) {
+                    RECT rc{};
+                    ::GetClientRect(hwnd, &rc);
+                    ::FillRect((HDC)wparam, &rc, br);
+                    return 1;
+                }
+            }
+            break;
+        }
+
         case WM_COMMAND: {
             // Subclassed controls (like ComboBox) receive WM_COMMAND from their
             // internal children. Don't handle it here — let the original wndproc

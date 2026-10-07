@@ -958,11 +958,47 @@ LRESULT PrepaintFlatToolbarItem(NMTBCUSTOMDRAW* custDraw, COLORREF bgCol) {
         DeleteObject(borderBr);
     }
 
-    return TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND | TBCDRF_NOEDGES;
+    return TBCDRF_USECDCOLORS | TBCDRF_NOBACKGROUND | TBCDRF_NOEDGES | TBCDRF_NOOFFSET;
 }
 
 static LRESULT PrepaintToolbarItem(NMTBCUSTOMDRAW* custDraw) {
-    return PrepaintFlatToolbarItem(custDraw, ThemeChromeBackgroundColor());
+    return PrepaintFlatToolbarItem(custDraw, ThemeChromeBackgroundColor()) | CDRF_NOTIFYPOSTPAINT;
+}
+
+static void PostpaintToolbarDropdown(NMTBCUSTOMDRAW* draw) {
+    HWND toolbar = draw->nmcd.hdr.hwndFrom;
+    TBBUTTONINFOW info{};
+    info.cbSize = sizeof(info);
+    info.dwMask = TBIF_STYLE | TBIF_STATE;
+    if (SendMessageW(toolbar, TB_GETBUTTONINFOW, draw->nmcd.dwItemSpec, (LPARAM)&info) < 0 ||
+        !(info.fsStyle & BTNS_DROPDOWN))
+        return;
+    RECT arrow = draw->nmcd.rc;
+    arrow.left = std::max(arrow.left, arrow.right - DpiScale(toolbar, 13));
+    COLORREF bg = ThemeChromeBackgroundColor();
+    bool checked = (info.fsState & TBSTATE_CHECKED) != 0;
+    if (!checked) {
+        bg = ToolbarButtonFillColor(bg, false, (info.fsState & TBSTATE_PRESSED) != 0,
+                                    (draw->nmcd.uItemState & CDIS_HOT) != 0);
+    }
+    HBRUSH brush = CreateSolidBrush(bg);
+    // The native split-button bevel can extend just left of the arrow gutter.
+    // Clear it too, keeping the chevron centered in its original hit area.
+    RECT cover = arrow;
+    cover.left = std::max(draw->nmcd.rc.left, cover.left - DpiScale(toolbar, 2));
+    FillRect(draw->nmcd.hdc, &cover, brush);
+    DeleteObject(brush);
+    COLORREF ink = (info.fsState & TBSTATE_ENABLED) ? ThemeWindowTextColor() : ThemeWindowTextDisabledColor();
+    Gdiplus::Graphics graphics(draw->nmcd.hdc);
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    Gdiplus::Pen pen(Gdiplus::Color(165, GetRValue(ink), GetGValue(ink), GetBValue(ink)), (float)DpiScale(toolbar, 1));
+    pen.SetStartCap(Gdiplus::LineCapRound);
+    pen.SetEndCap(Gdiplus::LineCapRound);
+    float x = (arrow.left + arrow.right) / 2.f;
+    float y = (arrow.top + arrow.bottom) / 2.f;
+    float half = (float)DpiScale(toolbar, 3);
+    graphics.DrawLine(&pen, x - half, y - half / 2.f, x, y + half / 2.f);
+    graphics.DrawLine(&pen, x, y + half / 2.f, x + half, y - half / 2.f);
 }
 
 static LRESULT PrepaintToolbarSeparatorItem(NMTBCUSTOMDRAW* custDraw) {
@@ -1148,11 +1184,13 @@ static LRESULT CALLBACK ToolbarNotifyWndProc(HWND hWnd, UINT uMsg, WPARAM wParam
                         PostpaintToolbarSeparatorItem(custDraw);
                         return CDRF_SKIPDEFAULT;
                     }
-                    break;
+                    PostpaintToolbarDropdown(custDraw);
+                    // Finish here: darkmodelib would otherwise paint its solid triangle over our chevron.
+                    return CDRF_DODEFAULT;
                 }
                 case CDDS_POSTPAINT:
                     PaintToolbarSeparatorBackgrounds(win->hwndToolbar, custDraw->nmcd.hdc);
-                    break;
+                    return CDRF_DODEFAULT;
             }
         }
     }
@@ -1335,6 +1373,18 @@ static bool ShowEbookFontSizeContextMenu(HWND hwnd, LPARAM lp) {
 }
 
 static LRESULT CALLBACK WndProcToolbar(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (WM_ERASEBKGND == msg) {
+        // Default toolbar erase is pure white. Fill chrome here so Warm/Light
+        // startup and toolbar recreate never flash a white band.
+        HDC hdc = (HDC)wp;
+        RECT rect;
+        GetClientRect(hwnd, &rect);
+        COLORREF bgCol = ThemeChromeBackgroundColor();
+        HBRUSH bgBrush = CreateSolidBrush(bgCol);
+        FillRect(hdc, &rect, bgBrush);
+        DeleteObject(bgBrush);
+        return 1;
+    }
     if (msg == WM_WINDOWPOSCHANGED || msg == WM_SIZE) {
         MainWindow* win = FindMainWindowByHwnd(hwnd);
         if (win) {
@@ -2187,6 +2237,13 @@ void CreateToolbar(MainWindow* win) {
     win->hwndToolbar = hwndToolbar;
     SendMessageW(hwndToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
 
+    // Install erase/paint hook before any child or button work so the first
+    // paint cannot use the toolbar's default white background.
+    if (!DefWndProcToolbar) {
+        DefWndProcToolbar = (WNDPROC)GetWindowLongPtr(win->hwndToolbar, GWLP_WNDPROC);
+    }
+    SetWindowLongPtr(win->hwndToolbar, GWLP_WNDPROC, (LONG_PTR)WndProcToolbar);
+
     // always disable themed toolbar rendering; custom draw handles button states
     SetWindowTheme(hwndToolbar, L"", L"");
     ConfigureToolbarColors(hwndToolbar);
@@ -2302,10 +2359,6 @@ void CreateToolbar(MainWindow* win) {
 
     CreatePageBox(win, font, iconSize);
     CreateToolbarFind(win);
-    if (!DefWndProcToolbar) {
-        DefWndProcToolbar = (WNDPROC)GetWindowLongPtr(win->hwndToolbar, GWLP_WNDPROC);
-    }
-    SetWindowLongPtr(win->hwndToolbar, GWLP_WNDPROC, (LONG_PTR)WndProcToolbar);
 
     UpdateToolbarPageText(win, -1);
     UpdateToolbarFindText(win);

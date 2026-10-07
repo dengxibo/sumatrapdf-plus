@@ -1012,7 +1012,8 @@ static void ToolbarFindDrawEllipsis(ToolbarFindState* st, HDC hdc, const Rect& h
     int y = hit.y + (hit.dy - dot) / 2;
     // The field's rounded fill uses GDI+ and leaves the DC in advanced mode.
     // A GDI Ellipse then draws nothing, so the dots disappeared.
-    COLORREF col = st->textCol;
+    bool active = st->hot == ToolbarFindPart::Detail || st->pressed == ToolbarFindPart::Detail;
+    COLORREF col = BlendColor(st->fill, st->textCol, active ? 80 : 60);
     Gdiplus::Graphics g(hdc);
     g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
     Gdiplus::SolidBrush br(Gdiplus::Color(255, GetRValue(col), GetGValue(col), GetBValue(col)));
@@ -1417,8 +1418,8 @@ static int ToolbarFindRightLimit(MainWindow* win, HWND toolbar, int tbW, int mar
         }
     }
     if (limit > 0 && limit < tbW) {
-        // Four device pixels short of the scrollbar's inner edge.
-        limit -= 4;
+        // Two device pixels short of the scrollbar's inner edge.
+        limit -= 2;
         return limit > 0 ? limit : 1;
     }
     // Native bar not reported yet, but the canvas client already stops at it.
@@ -1427,7 +1428,7 @@ static int ToolbarFindRightLimit(MainWindow* win, HWND toolbar, int tbW, int mar
         if (GetClientRect(win->hwndCanvas, &page) && page.right > page.left) {
             MapWindowPoints(win->hwndCanvas, toolbar, (LPPOINT)&page, 2);
             if (page.right > 0 && page.right < tbW) {
-                int right = page.right - 4;
+                int right = page.right - 2;
                 return right > 0 ? right : 1;
             }
         }
@@ -1498,7 +1499,7 @@ void ToolbarFindLayout(MainWindow* win) {
         st->iconSlot = slot;
     }
     int margin = sample.left > 0 ? sample.left : edge;
-    int rightLimit = ToolbarFindRightLimit(win, win->hwndToolbar, tbW, margin) - 6;
+    int rightLimit = ToolbarFindRightLimit(win, win->hwndToolbar, tbW, margin);
     HFONT font = GetWindowFont(win->hwndToolbar);
     int cue = HwndMeasureText(box, "Find in document...", font).dx;
     int status = HwndMeasureText(box, "0000 / 0000", font).dx + edge * 2;

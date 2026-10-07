@@ -2,6 +2,9 @@
 
 ## next
 
+- 全屏 / 演示模式下，鼠标移到右上角会出现退出按钮，单击即可退出（工具栏隐藏时）。仍可用 Esc、F11、`f`，或在右上角双击。
+  In fullscreen / presentation with the toolbar hidden, move the mouse to the top-right corner to show an exit button (single-click). Esc, F11, `f`, or double-clicking that corner still work.
+
 ## 3.7.39 (2026-10-07)
 
 - PDF / EPUB 标注编辑侧栏统一行内删除和固定底部操作栏；导出笔记靠左，保存及另存为靠右。EPUB 标注改为手动保存，关闭时提示未保存修改。

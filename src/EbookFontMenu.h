@@ -8,6 +8,15 @@
 struct WindowTab;
 
 void CreateEbookFontMenuCommands();
+// Collect bundled and installed ebook body-font families. Caller owns the
+// returned strings and must free them.
+void CollectEbookFontFamilies(Vec<char*>* latinFamilies, Vec<char*>* cjkFamilies);
+// Match closed-state height to a normal Options ComboBox (e.g. Default Layout).
+void LayoutEbookFontCombo(HWND combo, HWND heightRef);
+void InitEbookFontCombo(HWND combo);
+void EbookFontComboCommand(HWND combo, int notification);
+const char* EbookFontComboSelection(HWND combo);
+bool DrawEbookFontComboItem(DRAWITEMSTRUCT* item);
 void AppendEbookLatinFontsToMenu(HMENU menu);
 void AppendEbookCjkFontsToMenu(HMENU menu);
 void UpdateEbookFontMenuRadioState(HMENU menu);

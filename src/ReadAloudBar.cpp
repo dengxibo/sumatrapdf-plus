@@ -447,53 +447,9 @@ static void RabEnsureFonts(RabBar* bar) {
     }
 }
 
-static bool RabUtf8HasHan(const char* s) {
-    const u8* p = (const u8*)s;
-    if (!p) {
-        return false;
-    }
-    while (*p) {
-        u32 cp = 0;
-        int n = 1;
-        if (*p < 0x80) {
-            p++;
-            continue;
-        } else if ((*p & 0xE0) == 0xC0 && p[1]) {
-            cp = ((u32)(*p & 0x1F) << 6) | (p[1] & 0x3F);
-            n = 2;
-        } else if ((*p & 0xF0) == 0xE0 && p[1] && p[2]) {
-            cp = ((u32)(*p & 0x0F) << 12) | ((u32)(p[1] & 0x3F) << 6) | (p[2] & 0x3F);
-            n = 3;
-        } else if ((*p & 0xF8) == 0xF0 && p[1] && p[2] && p[3]) {
-            cp = ((u32)(*p & 0x07) << 18) | ((u32)(p[1] & 0x3F) << 12) | ((u32)(p[2] & 0x3F) << 6) | (p[3] & 0x3F);
-            n = 4;
-        } else {
-            p++;
-            continue;
-        }
-        if ((cp >= 0x3400 && cp <= 0x9FFF) || (cp >= 0xF900 && cp <= 0xFAFF)) {
-            return true;
-        }
-        p += n;
-    }
-    return false;
-}
-
 static void RabDrawLabel(RabBar* bar, HDC hdc, int i) {
-    const char* label = RabLabel(bar, i);
-    Rect r = bar->btn[i];
-    // Han glyphs fill the em box and sit above the optical center of Latin
-    // and Segoe MDL2 icons drawn in the same button. English "Follow" matches.
-    if (!RabIsIconBtn(bar, i) && RabUtf8HasHan(label)) {
-        TEXTMETRICW tm{};
-        GetTextMetricsW(hdc, &tm);
-        int dy = tm.tmHeight / 10;
-        if (dy < 1) {
-            dy = 1;
-        }
-        r.y += dy;
-    }
-    DrawCenteredText(hdc, r, label);
+    // DT_VCENTER already centers Han with Latin / MDL2 icons in this bar.
+    DrawCenteredText(hdc, bar->btn[i], RabLabel(bar, i));
 }
 
 static int RabTextDx(RabBar* bar, HDC hdc, int i, const char* s) {

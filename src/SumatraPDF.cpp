@@ -654,6 +654,7 @@ static void EbookPagesProgressUI(EbookPagesProgressTask* task) {
         EngineMupdfTryCompletePendingReflowNav(engine, win->linkHandler);
     }
     bool progressiveLoad = EngineIsProgressiveEbookLoading(engine);
+    RefreshEbookAnnotationExcerpts(tab, progressiveLoad);
     static DWORD gLastEbookProgressToolbarMs = 0;
     DWORD now = GetTickCount();
     if (!progressiveLoad || gLastEbookProgressToolbarMs == 0 ||
@@ -6035,7 +6036,9 @@ bool SaveAnnotationsToExistingFile(WindowTab* tab) {
     if (!ocr && !pdfCh) {
         return false;
     }
-    const char* path = engine->FilePath();
+    AutoFreeStr savedPath(str::Dup(engine->FilePath()));
+    const char* path = savedPath;
+    bool hadEditAnnotationsBeforeSave = tab->editAnnotsWindow != nullptr;
     tab->ignoreNextAutoReload = true;
     ShowErrorData data{tab, path};
     auto fn = MkFunc1(ShowSaveAnnotationError, &data);
@@ -6080,15 +6083,16 @@ bool SaveAnnotationsToExistingFile(WindowTab* tab) {
     }
     ShowSavedAnnotationsNotification(tab->win->hwndCanvas, path);
 
-    // have to re-open edit annotations window because the current has
-    // a reference to deleted Engine
-    bool hadEditAnnotations = CloseAndDeleteEditAnnotationsWindow(tab);
-    if (!replacedViaTemp) {
-        ReloadDocument(tab->win, false);
-    }
-    if (hadEditAnnotations) {
-        // TODO: improve by remembering which annotation was selected and restoring it after  we reload
-        ShowEditAnnotationsWindow(tab, nullptr);
+    if (replacedViaTemp) {
+        // The replacement path already opened a new engine.
+        if (hadEditAnnotationsBeforeSave && !tab->editAnnotsWindow) {
+            ShowEditAnnotationsWindow(tab, nullptr);
+        }
+    } else {
+        // In-place saving keeps this engine and its annotation objects alive.
+        // Reopening the whole PDF here blocks the UI and discards sidebar state.
+        NotifyAnnotationsChanged(tab->editAnnotsWindow);
+        ToolbarUpdateStateForWindow(tab->win, false);
     }
 
     return true;
@@ -6212,11 +6216,33 @@ enum class SaveChoice {
 
 struct SaveAnnotationsDialogData {
     const char* filePath;
+    bool ebook = false;
     Rect infoIcon;
     HFONT bodyFont = nullptr; // cached application font, same as annotation sidebar
     HFONT headingFont = nullptr;
     AppDialogBrushes brushes;
+    int resultId = IDCANCEL;
+    bool finished = false;
 };
+
+// Pseudo-modal save prompt: keep the frame enabled so the toolbar moon still
+// works (true DialogBox disables the owner). Other frame commands are blocked.
+static HWND gSaveAnnotationsPromptHwnd = nullptr;
+
+static bool SaveAnnotationsPromptIsOpen() {
+    return gSaveAnnotationsPromptHwnd && IsWindow(gSaveAnnotationsPromptHwnd);
+}
+
+static void FinishSaveAnnotationsDialog(HWND hwnd, int id) {
+    auto data = (SaveAnnotationsDialogData*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    if (data) {
+        data->resultId = id;
+        data->finished = true;
+    }
+    if (IsWindow(hwnd)) {
+        DestroyWindow(hwnd);
+    }
+}
 
 static void LayoutSaveAnnotationsDialog(HWND hwnd, SaveAnnotationsDialogData* data, int dpi) {
     DeleteObject(data->headingFont);
@@ -6231,42 +6257,64 @@ static void LayoutSaveAnnotationsDialog(HWND hwnd, SaveAnnotationsDialogData* da
                  (WPARAM)(data->headingFont ? data->headingFont : data->bodyFont), TRUE);
     SendMessageW(GetDlgItem(hwnd, IDC_SAVE_ANNOT_EXISTING), WM_SETFONT,
                  (WPARAM)(data->headingFont ? data->headingFont : data->bodyFont), TRUE);
-    int pad = MulDiv(12, dpi, 96), gap = MulDiv(8, dpi, 96);
+    int pad = MulDiv(20, dpi, 96), gap = MulDiv(8, dpi, 96);
+    int buttonGap = MulDiv(12, dpi, 96);
     const int ids[] = {IDC_SAVE_ANNOT_EXISTING, IDC_SAVE_ANNOT_NEW, IDC_SAVE_ANNOT_DISCARD, IDCANCEL};
     Size sizes[4]{};
     int contentWidth = 0, buttonHeight = 0;
     for (int i = 0; i < dimof(ids); i++) {
+        if (data->ebook && ids[i] == IDC_SAVE_ANNOT_NEW) {
+            continue;
+        }
         sizes[i] = ButtonGetIdealSize(GetDlgItem(hwnd, ids[i]));
+        sizes[i].dx = std::max(sizes[i].dx + MulDiv(12, dpi, 96), MulDiv(88, dpi, 96));
+        sizes[i].dy = std::max(sizes[i].dy, MulDiv(30, dpi, 96));
         contentWidth += sizes[i].dx;
         buttonHeight = std::max(buttonHeight, sizes[i].dy);
     }
-    contentWidth += gap * 3;
+    contentWidth += buttonGap * (data->ebook ? 2 : 3);
+    contentWidth = std::max(contentWidth, MulDiv(420, dpi, 96));
     HWND message = GetDlgItem(hwnd, IDC_SAVE_ANNOT_MESSAGE);
+    HWND question = GetDlgItem(hwnd, IDC_SAVE_ANNOT_QUESTION);
     HDC dc = GetDC(message);
     HGDIOBJ oldFont = SelectObject(dc, GetWindowFont(message));
     int iconSize = MulDiv(32, dpi, 96);
-    int textInset = iconSize + MulDiv(12, dpi, 96);
-    RECT textRect{0, 0, std::max(1, contentWidth - textInset), 0};
+    int iconGap = MulDiv(12, dpi, 96);
+    int textInset = iconSize + iconGap;
+    // MessageBox-style: icon + copy left-aligned. Centering a short prompt in a
+    // wide four-button dialog reads as a floating island; left flow matches the
+    // ebook "unsaved annotations" prompt and scales when the file name wraps.
+    int textW = std::max(1, contentWidth - textInset);
+    RECT textRect{0, 0, textW, 0};
     DrawTextW(dc, HwndGetTextWTemp(message), -1, &textRect, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX);
     SelectObject(dc, oldFont);
     ReleaseDC(message, dc);
     int messageHeight = std::max(RectDy(textRect), MulDiv(24, dpi, 96));
-    int questionHeight = HwndMeasureText(hwnd, _TRA("Save PDF changes?"), data->bodyFont).dy;
-    int buttonY = pad + messageHeight + gap + questionHeight + pad;
+    int questionHeight = HwndMeasureText(hwnd, HwndGetTextTemp(question), data->bodyFont).dy;
+    int textBlockH = messageHeight + gap + questionHeight;
+    // Icon sits with the first line, not floated in the middle of both lines.
+    int iconY = pad + std::max(0, (messageHeight - iconSize) / 2);
+    int buttonY = pad + textBlockH + pad;
     RECT client{}, window{};
     GetClientRect(hwnd, &client);
     GetWindowRect(hwnd, &window);
     SetWindowPos(hwnd, nullptr, 0, 0, contentWidth + pad * 2 + RectDx(window) - RectDx(client),
                  buttonY + buttonHeight + pad + RectDy(window) - RectDy(client),
                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-    data->infoIcon = Rect(pad, pad, iconSize, iconSize);
-    MoveWindow(message, pad + textInset, pad, contentWidth - textInset, messageHeight, TRUE);
-    MoveWindow(GetDlgItem(hwnd, IDC_SAVE_ANNOT_QUESTION), pad + textInset, pad + messageHeight + gap,
-               contentWidth - textInset, questionHeight, TRUE);
-    int x = pad;
+    data->infoIcon = Rect(pad, iconY, iconSize, iconSize);
+    MoveWindow(message, pad + textInset, pad, textW, messageHeight, TRUE);
+    MoveWindow(question, pad + textInset, pad + messageHeight + gap, textW, questionHeight, TRUE);
+    int buttonsWidth = buttonGap * (data->ebook ? 2 : 3);
+    for (const auto& size : sizes) {
+        buttonsWidth += size.dx;
+    }
+    int x = pad + (contentWidth - buttonsWidth) / 2;
     for (int i = 0; i < dimof(ids); i++) {
+        if (data->ebook && ids[i] == IDC_SAVE_ANNOT_NEW) {
+            continue;
+        }
         MoveWindow(GetDlgItem(hwnd, ids[i]), x, buttonY, sizes[i].dx, buttonHeight, TRUE);
-        x += sizes[i].dx + gap;
+        x += sizes[i].dx + buttonGap;
     }
 }
 
@@ -6274,6 +6322,7 @@ static void RefreshSaveAnnotationsDialogTheme(HWND hwnd, void* ctx) {
     auto data = (SaveAnnotationsDialogData*)ctx;
     data->brushes.Recreate();
     AppDialogApplyChrome(hwnd);
+    LayoutSaveAnnotationsDialog(hwnd, data, DpiGet(hwnd));
     RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
 }
 
@@ -6284,14 +6333,20 @@ static INT_PTR CALLBACK SaveAnnotationsDialogProc(HWND hwnd, UINT msg, WPARAM wp
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, lp);
         HwndSetRtl(hwnd, trans::IsCurrLangRtl());
         data->brushes.Create();
-        HwndSetText(hwnd, _TRA("Unsaved PDF changes"));
-        TempStr message = str::FormatTemp(_TRA("Unsaved PDF changes in '%s'"), path::GetBaseNameTemp(data->filePath));
+        HwndSetText(hwnd, data->ebook ? _TRA("Unsaved annotations") : _TRA("Unsaved PDF changes"));
+        TempStr message =
+            str::FormatTemp(data->ebook ? _TRA("Unsaved annotations in '%s'") : _TRA("Unsaved PDF changes in '%s'"),
+                            path::GetBaseNameTemp(data->filePath));
         HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_MESSAGE, message);
-        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_QUESTION, _TRA("Save PDF changes?"));
-        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_EXISTING, _TRA("&Save to existing PDF"));
+        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_QUESTION,
+                           data->ebook ? _TRA("Save annotations?") : _TRA("Save PDF changes?"));
+        HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_EXISTING, data->ebook ? _TRA("&Save") : _TRA("&Save to existing PDF"));
         HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_NEW, _TRA("Save to &new PDF"));
         HwndSetDlgItemText(hwnd, IDC_SAVE_ANNOT_DISCARD, _TRA("&Discard changes"));
         HwndSetDlgItemText(hwnd, IDCANCEL, _TRA("&Cancel"));
+        if (data->ebook) {
+            ShowWindow(GetDlgItem(hwnd, IDC_SAVE_ANNOT_NEW), SW_HIDE);
+        }
         LayoutSaveAnnotationsDialog(hwnd, data, DpiGet(hwnd));
         RegisterAppDialogForTheme(hwnd, RefreshSaveAnnotationsDialogTheme, data);
         AppDialogApplyChrome(hwnd);
@@ -6299,7 +6354,9 @@ static INT_PTR CALLBACK SaveAnnotationsDialogProc(HWND hwnd, UINT msg, WPARAM wp
         HwndSetFocus(GetDlgItem(hwnd, IDCANCEL));
         return FALSE;
     }
-    if (!data) return FALSE;
+    if (!data) {
+        return FALSE;
+    }
     // Use the sidebar's panel layer, not the options-dialog/document background.
     HBRUSH panel = ThemeUsesDarkChrome() ? data->brushes.background : data->brushes.control;
     if (msg == WM_CTLCOLORDLG || msg == WM_CTLCOLORSTATIC || msg == WM_CTLCOLORBTN) {
@@ -6344,29 +6401,108 @@ static INT_PTR CALLBACK SaveAnnotationsDialogProc(HWND hwnd, UINT msg, WPARAM wp
                 int id = LOWORD(wp);
                 if (id == IDC_SAVE_ANNOT_EXISTING || id == IDC_SAVE_ANNOT_NEW || id == IDC_SAVE_ANNOT_DISCARD ||
                     id == IDCANCEL) {
-                    EndDialog(hwnd, id);
+                    FinishSaveAnnotationsDialog(hwnd, id);
                     return TRUE;
                 }
             }
             break;
         case WM_CLOSE:
-            EndDialog(hwnd, IDCANCEL);
+            FinishSaveAnnotationsDialog(hwnd, IDCANCEL);
             return TRUE;
         case WM_DESTROY:
             UnregisterAppDialogForTheme(hwnd);
+            if (gSaveAnnotationsPromptHwnd == hwnd) {
+                gSaveAnnotationsPromptHwnd = nullptr;
+            }
             break;
     }
     return FALSE;
 }
 
-SaveChoice ShouldSaveAnnotationsDialog(HWND hwndParent, const char* filePath) {
+SaveChoice ShouldSaveAnnotationsDialog(HWND hwndParent, const char* filePath, bool ebook = false) {
+    // Nested prompt while one is already up: keep unsaved changes (Cancel).
+    if (SaveAnnotationsPromptIsOpen()) {
+        return SaveChoice::Cancel;
+    }
+
     SaveAnnotationsDialogData data{};
     data.filePath = filePath;
-    INT_PTR result = DialogBoxParamW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDD_DIALOG_SAVE_ANNOTATIONS),
-                                     hwndParent, SaveAnnotationsDialogProc, (LPARAM)&data);
+    data.ebook = ebook;
+
+    HWND dlg = CreateDialogParamW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDD_DIALOG_SAVE_ANNOTATIONS),
+                                  hwndParent, SaveAnnotationsDialogProc, (LPARAM)&data);
+    if (!dlg) {
+        return SaveChoice::Cancel;
+    }
+
+    gSaveAnnotationsPromptHwnd = dlg;
+    HWND prevModeless = GetCurrentModelessDialog();
+    SetCurrentModelessDialog(dlg);
+
+    // Leave the frame enabled so the toolbar moon still receives clicks.
+    // Disable other frame chrome so the document cannot be edited underneath.
+    // Track only windows we disable so we do not re-enable already-disabled ones.
+    MainWindow* win = FindMainWindowByHwnd(hwndParent);
+    HWND keepRoots[2] = {win ? win->hwndReBar : nullptr, win ? win->hwndToolbar : nullptr};
+    Vec<HWND> disabledChildren;
+    if (win && win->hwndFrame) {
+        struct EnumDisableCtx {
+            HWND* keepRoots;
+            Vec<HWND>* disabled;
+        } ctx{keepRoots, &disabledChildren};
+        EnumChildWindows(
+            win->hwndFrame,
+            [](HWND child, LPARAM lp) -> BOOL {
+                auto* e = (EnumDisableCtx*)lp;
+                for (int i = 0; i < 2; i++) {
+                    HWND root = e->keepRoots[i];
+                    if (root && (child == root || IsChild(root, child))) {
+                        return TRUE;
+                    }
+                }
+                if (IsWindowEnabled(child)) {
+                    EnableWindow(child, FALSE);
+                    e->disabled->Append(child);
+                }
+                return TRUE;
+            },
+            (LPARAM)&ctx);
+    }
+
+    ShowWindow(dlg, SW_SHOW);
+    SetForegroundWindow(dlg);
+
+    MSG msg{};
+    while (!data.finished && IsWindow(dlg)) {
+        BOOL gm = GetMessageW(&msg, nullptr, 0, 0);
+        if (gm <= 0) {
+            data.resultId = IDCANCEL;
+            data.finished = true;
+            break;
+        }
+        if (IsDialogMessageW(dlg, &msg)) {
+            continue;
+        }
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+        uitask::DrainQueue();
+    }
+
+    for (HWND child : disabledChildren) {
+        if (IsWindow(child)) {
+            EnableWindow(child, TRUE);
+        }
+    }
+
+    SetCurrentModelessDialog(prevModeless);
+    gSaveAnnotationsPromptHwnd = nullptr;
+    if (IsWindow(dlg)) {
+        DestroyWindow(dlg);
+    }
+
     DeleteObject(data.headingFont);
     data.brushes.Destroy();
-    switch (result) {
+    switch (data.resultId) {
         case IDC_SAVE_ANNOT_EXISTING:
             return SaveChoice::SaveExisting;
         case IDC_SAVE_ANNOT_NEW:
@@ -6397,12 +6533,10 @@ static bool MaybeSaveAnnotations(WindowTab* tab) {
         FlushEbookAnnotationEdits(tab);
         if (!EbookAnnotationsHasUnsavedChanges(tab)) return true;
         MainWindow* win = tab->win;
-        TempStr message = str::FormatTemp(_TRA("Unsaved annotations in '%s'"), path::GetBaseNameTemp(tab->filePath));
-        int choice = MessageBoxW(win->hwndFrame, ToWStrTemp(message), ToWStrTemp(_TRA("Unsaved annotations")),
-                                 MB_YESNOCANCEL | MB_ICONQUESTION);
+        auto choice = ShouldSaveAnnotationsDialog(win->hwndFrame, tab->filePath, true);
         if (!IsMainWindowValid(win)) return true;
-        if (choice == IDCANCEL || choice == 0) return false;
-        if (choice == IDYES && !EbookAnnotationsRetrySave(tab)) return false;
+        if (choice == SaveChoice::Cancel) return false;
+        if (choice == SaveChoice::SaveExisting && !EbookAnnotationsRetrySave(tab)) return false;
         tab->askedToSaveAnnotations = true;
         return true;
     }
@@ -7076,7 +7210,7 @@ static bool ConfirmSearchablePdfSignatureSave(MainWindow* win, EngineBase* engin
         win->hwndFrame,
         ToWStrTemp(_TRA("Saving this PDF will change it after it was digitally signed. The existing signature will "
                         "remain, but viewers will report that the document was modified. Continue?")),
-        L"Digitally signed PDF", MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
+        ToWStrTemp(_TRA("Digitally signed PDF")), MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
     if (res != IDYES) {
         return false;
     }
@@ -8619,6 +8753,9 @@ static void ShowOptionsDialog(HWND hwnd, int initialPage = 0) {
     AutoFreeStr themeBefore(str::Dup(gGlobalPrefs->theme));
     AutoFreeStr documentColorModeBefore(str::Dup(gGlobalPrefs->documentColorMode));
     AutoFreeStr treeFontNameBefore(str::Dup(gGlobalPrefs->treeFontName));
+    AutoFreeStr ebookLatinFontBefore(str::Dup(gGlobalPrefs->eBookUI.fontFamily));
+    AutoFreeStr ebookCjkFontBefore(str::Dup(gGlobalPrefs->eBookUI.cjkFontFamily));
+    float ebookFontSizeBefore = gGlobalPrefs->eBookUI.fontSize;
     int treeFontSizeBefore = gGlobalPrefs->treeFontSize;
     int tabFontSizeBefore = gGlobalPrefs->tabFontSize;
     int tabBarHeightBefore = gGlobalPrefs->tabBarHeight;
@@ -8660,6 +8797,13 @@ static void ShowOptionsDialog(HWND hwnd, int initialPage = 0) {
         SetPdfDocumentColorMode(str::EqI(gGlobalPrefs->documentColorMode, "original") ? PdfDocumentColorMode::Light
                                                                                       : PdfDocumentColorMode::Auto);
         UpdateDocumentColors();
+    }
+    bool ebookFontChanged = ebookFontSizeBefore != gGlobalPrefs->eBookUI.fontSize ||
+                            !EbookLatinFontFamiliesEquivalent(ebookLatinFontBefore, gGlobalPrefs->eBookUI.fontFamily) ||
+                            !EbookCjkFontFamiliesEquivalent(ebookCjkFontBefore, gGlobalPrefs->eBookUI.cjkFontFamily);
+    if (ebookFontChanged) {
+        ApplyEbookFontSettingsFromPrefs();
+        UpdateAfterEbookFontChange();
     }
     if (gGlobalPrefs->checkForUpdates != checkForUpdatesBefore) {
         RefreshAutomaticUpdateChecks();
@@ -9135,6 +9279,7 @@ void ExitFullScreen(MainWindow* win) {
     if (!win->isFullScreen && !win->presentation) {
         return;
     }
+    win->fullscreenExitHot = false;
 
     if (gGlobalPrefs->preventSleepInFullscreen) {
         SetThreadExecutionState(ES_CONTINUOUS);
@@ -11107,6 +11252,12 @@ static void TocItemToText(StrBuilder& s, TocItem* item, int level) {
 static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     int cmdId = LOWORD(wp);
     bool openAnnotationEdit = false;
+
+    // Save-annotations prompt: only the toolbar moon may act on the frame.
+    if (SaveAnnotationsPromptIsOpen() && cmdId != CmdToggleLightDarkTheme) {
+        SetForegroundWindow(gSaveAnnotationsPromptHwnd);
+        return 0;
+    }
 
     if (cmdId >= 0xF000) {
         // handle system menu messages for the Window menu (needed for Tabs in Titlebar)

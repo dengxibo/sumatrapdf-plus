@@ -38,6 +38,7 @@ bool EbookAnnotationsLastSaveFailed(WindowTab* tab);
 bool EbookAnnotationsRetrySave(WindowTab* tab);
 bool EbookAnnotationsHasUnsavedChanges(WindowTab* tab);
 const char* EbookAnnotationGetText(EbookAnnotation* annotation);
+TempStr EbookAnnotationExcerptTemp(WindowTab* tab, EbookAnnotation* annotation);
 const char* EbookAnnotationGetNote(EbookAnnotation* annotation);
 const char* EbookAnnotationGetIcon(EbookAnnotation* annotation);
 const char* EbookAnnotationGetAuthor(EbookAnnotation* annotation);

@@ -25,6 +25,7 @@
 #include "PdfDarkMode.h"
 #include "Theme.h"
 #include "Translations.h"
+#include "AnnotationNotesExport.h"
 #include "MainWindow.h"
 #include "Selection.h"
 #include "SumatraPDF.h"
@@ -1538,6 +1539,32 @@ const char* EbookAnnotationGetText(EbookAnnotation* annotation) {
     return annotation ? annotation->exact : nullptr;
 }
 
+TempStr EbookAnnotationExcerptTemp(WindowTab* tab, EbookAnnotation* annotation) {
+    if (!annotation) return nullptr;
+    AnnotationType type = EbookAnnotationGetType(annotation);
+    TempStr excerpt = str::DupTemp(EbookAnnotationGetText(annotation));
+    if (type == AnnotationType::Square || type == AnnotationType::Circle || type == AnnotationType::Line ||
+        type == AnnotationType::Ink) {
+        // Shape exact text is a reflow anchor, never the displayed excerpt.
+        excerpt = nullptr;
+        int pageNo = 0;
+        RectF bounds{};
+        auto dm = tab ? tab->AsFixed() : nullptr;
+        if (dm && EbookAnnotationGetPageBounds(tab, dm, annotation, &pageNo, &bounds)) {
+            if (type == AnnotationType::Square || type == AnnotationType::Circle) {
+                char* regionText = dm->GetTextInRegion(pageNo, bounds, true);
+                excerpt = str::DupTemp(regionText);
+                str::Free(regionText);
+            }
+            if (str::IsEmptyOrWhiteSpace(excerpt)) {
+                excerpt = str::FormatTemp("x=%d y=%d dx=%d dy=%d", (int)bounds.x, (int)bounds.y, (int)bounds.dx,
+                                          (int)bounds.dy);
+            }
+        }
+    }
+    return excerpt;
+}
+
 const char* EbookAnnotationGetNote(EbookAnnotation* annotation) {
     return annotation ? annotation->note : nullptr;
 }
@@ -1625,11 +1652,18 @@ bool EbookAnnotationSetAuthor(WindowTab* tab, EbookAnnotation* annotation, const
 
 bool EbookAnnotationSetNote(WindowTab* tab, EbookAnnotation* annotation, const char* note) {
     EbookAnnotations* annotations = EnsureEbookAnnotations(tab);
-    if (!annotations || annotations->items.Find(annotation) < 0) {
+    if (!annotations || !annotation || annotations->items.Find(annotation) < 0) {
         return false;
     }
+    // Saving and closing both flush the editor. An unchanged flush must not
+    // advance the modification time or make a saved document dirty again.
+    const char* oldNote = annotation->note ? annotation->note : "";
+    const char* newNote = note ? note : "";
+    TempStr normalizedOld = str::ReplaceTemp(oldNote, "\r\n", "\n");
+    TempStr normalizedNew = str::ReplaceTemp(newNote, "\r\n", "\n");
+    if (str::Eq(normalizedOld, normalizedNew)) return true;
     AutoFreeStr previous(annotation->note);
-    annotation->note = str::Dup(note);
+    annotation->note = str::Dup(normalizedNew);
     TouchEbookAnnotationModified(annotation);
     if (!SaveEbookAnnotations(annotations)) {
         str::Free(annotation->note);
@@ -1847,33 +1881,6 @@ struct EbookAnnotationSortItem {
     int sourceStart = 0;
 };
 
-static void AppendMarkdownBlockquote(StrBuilder& out, const char* text) {
-    if (str::IsEmpty(text)) {
-        return;
-    }
-    const u8* p = (const u8*)text;
-    bool lineStart = true;
-    while (*p) {
-        u8 c = *p++;
-        if (lineStart) {
-            out.Append("> ");
-            lineStart = false;
-        }
-        if (c == '\r') {
-            continue;
-        }
-        if (c == '\n') {
-            out.AppendChar('\n');
-            lineStart = true;
-            continue;
-        }
-        out.AppendChar((char)c);
-    }
-    if (!lineStart) {
-        out.AppendChar('\n');
-    }
-}
-
 static bool BuildEbookAnnotationsExport(WindowTab* tab, StrBuilder& out) {
     Vec<EbookAnnotation*> annotations;
     EbookAnnotationsGetAll(tab, annotations);
@@ -1890,6 +1897,9 @@ static bool BuildEbookAnnotationsExport(WindowTab* tab, StrBuilder& out) {
         items.Append(item);
     }
     std::sort(items.begin(), items.end(), [](const EbookAnnotationSortItem& a, const EbookAnnotationSortItem& b) {
+        int chapterA = EbookAnnotationGetChapter(a.annotation);
+        int chapterB = EbookAnnotationGetChapter(b.annotation);
+        if (chapterA != chapterB) return chapterA < chapterB;
         if (a.pageNo != b.pageNo) {
             return a.pageNo < b.pageNo;
         }
@@ -1898,49 +1908,36 @@ static bool BuildEbookAnnotationsExport(WindowTab* tab, StrBuilder& out) {
 
     out.Append(UTF8_BOM);
     out.AppendFmt("# %s\n\n", tab->GetTabTitle());
-    out.AppendFmt("%s: %s\n", _TRA("Source"), tab->filePath);
+    out.Append("<details>\n");
+    out.AppendFmt("<summary>%s</summary>\n\n", _TRA("Source"));
+    out.AppendFmt("%s: %s\n\n", _TRA("Source"), tab->filePath);
     out.Append(_TRA("Exported:"));
     out.Append(" ");
     AppendUtcDateTime(out, time(nullptr));
-    out.Append("\n\n---\n\n");
+    out.Append("\n\n</details>\n\n");
 
+    int group = -1;
+    int number = 0;
     for (const EbookAnnotationSortItem& item : items) {
         EbookAnnotation* annotation = item.annotation;
-        TempStr typeName = AnnotationReadableNameTemp(EbookAnnotationGetType(annotation));
-        out.AppendFmt("## %s %d — %s\n\n", _TRA("Page"), item.pageNo, typeName);
-
-        const char* text = EbookAnnotationGetText(annotation);
-        if (!str::IsEmpty(text)) {
-            AppendMarkdownBlockquote(out, text);
-            out.AppendChar('\n');
+        int chapter = EbookAnnotationGetChapter(annotation) + 1;
+        if (chapter != group) {
+            group = chapter;
+            number = 0;
+            out.AppendFmt("## §%d\n\n", chapter);
         }
-
+        const char* typeName = trans::GetTranslation(AnnotationReadableNameTemp(EbookAnnotationGetType(annotation)));
+        const char* excerpt = EbookAnnotationExcerptTemp(tab, annotation);
         const char* note = EbookAnnotationGetNote(annotation);
-        if (!str::IsEmpty(note)) {
-            out.AppendFmt("**%s**\n\n", _TRA("Note:"));
-            out.Append(note);
-            out.Append("\n\n");
-        }
-
-        const char* author = EbookAnnotationGetAuthor(annotation);
-        if (!str::IsEmpty(author)) {
-            out.Append(_TRA("Author:"));
-            out.Append(" ");
-            out.Append(author);
-            out.Append("\n");
-        }
         time_t date = EbookAnnotationGetModified(annotation);
-        if (date <= 0) {
-            date = EbookAnnotationGetCreated(annotation);
-        }
-        if (date > 0) {
-            out.Append(_TRA("Date:"));
-            out.Append(" ");
-            AppendUtcDateTime(out, date);
-            out.AppendChar('\n');
-        }
-        out.Append("\n---\n\n");
+        if (date <= 0) date = EbookAnnotationGetCreated(annotation);
+        bool geometry = excerpt && str::StartsWith(excerpt, "x=") &&
+                        (annotation->type == AnnotationType::Square || annotation->type == AnnotationType::Circle ||
+                         annotation->type == AnnotationType::Line || annotation->type == AnnotationType::Ink);
+        AppendReadingNoteMarkdown(out, ++number, typeName, excerpt, note, EbookAnnotationGetAuthor(annotation), date,
+                                  geometry, item.pageNo);
     }
+
     return true;
 }
 

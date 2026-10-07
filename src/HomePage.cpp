@@ -1799,7 +1799,7 @@ static void AppendHomeThumbActionLinks(MainWindow* win, FileState* fs, const Rec
     Rect pinRect = rcPin.Intersect(clip);
     if (!pinRect.IsEmpty()) {
         TempStr target = str::JoinTemp(kLinkHomePagePinFile, fs->filePath);
-        const char* tooltip = fs->isPinned ? "Unpin" : _TRA("&Pin Document");
+        const char* tooltip = fs->isPinned ? _TRA("Unpin Document") : _TRA("&Pin Document");
         win->staticLinks.Append(new StaticLink(pinRect, target, tooltip));
     }
 }
@@ -1813,7 +1813,7 @@ static void AppendHomeListItemLinks(MainWindow* win, ThumbnailLayout& item, cons
     Rect pinRect = item.rcListPin.Intersect(clip);
     if (!pinRect.IsEmpty()) {
         TempStr target = str::JoinTemp(kLinkHomePagePinFile, item.fs->filePath);
-        const char* tooltip = item.fs->isPinned ? "Unpin" : _TRA("&Pin Document");
+        const char* tooltip = item.fs->isPinned ? _TRA("Unpin Document") : _TRA("&Pin Document");
         win->staticLinks.Append(new StaticLink(pinRect, target, tooltip));
     }
     Rect rowRect = item.rcListRow.Intersect(clip);
@@ -1979,7 +1979,8 @@ void LayoutHomePage(HomePageLayout& l) {
     int iconPad = DpiScale(dpiHwnd, 1);
     int cellDx = rcIconSz.dx + iconPad * 2;
     int cellDy = rcIconSz.dy + iconPad * 2;
-    l.openDoc = new VirtWndText(l.hwnd, str::ReplaceTemp(_TRA("&Open..."), "&", ""), HomePageSearchFont(dpiHwnd));
+    l.openDoc =
+        new VirtWndText(l.hwnd, str::ReplaceTemp(_TRA("&Open..."), "&", ""), HomePageUiFont(dpiHwnd, 1, FW_NORMAL));
     l.openDoc->withUnderline = true;
     l.openDoc->isRtl = isRtl;
     Size openTextSize = l.openDoc->GetIdealSize(true);

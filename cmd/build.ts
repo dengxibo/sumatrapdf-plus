@@ -22,7 +22,7 @@ async function main() {
   // const t = `/t:SumatraPDF;test_util`;
   const outDirArg = process.argv.indexOf("--out-dir");
   const outDir = outDirArg >= 0 && process.argv[outDirArg + 1] ? process.argv[outDirArg + 1] : join("out", "dbg64");
-  const outputProperty = outDirArg >= 0 ? `;OutDir=${resolve(outDir)}${sep}` : "";
+  const outputProperty = outDirArg >= 0 ? `;OutDir=${resolve(outDir)}${sep};SumatraSeparateBuildIntermediate=true` : "";
   const p = `/p:Configuration=Debug;Platform=x64${outputProperty}`;
   await runLogged(msbuildPath, [sln, t, p, `/m`]);
 

@@ -28,6 +28,10 @@ static bool HasCjkScriptInName(const WCHAR* name) {
     return false;
 }
 
+bool FontFamilyNameHasCjkScript(const char* family) {
+    return HasCjkScriptInName(ToWStrTemp(family));
+}
+
 static bool WStrStartsWithI(const WCHAR* s, const WCHAR* prefix) {
     if (!s || !prefix) {
         return false;
@@ -160,6 +164,16 @@ static bool IsUiOrSpecialPurposeFontFamily(const WCHAR* faceName, const char* na
     return false;
 }
 
+// Windows CJK Extension B/G faces (MingLiU-ExtB, SimSun-ExtB, …) only cover
+// rare SIP ideographs — useless as ebook body fonts and they cannot preview 汉字.
+static bool IsCjkExtensionOnlyFontFamily(const char* name) {
+    if (!name || !name[0]) {
+        return false;
+    }
+    return str::EndsWithI(name, "ExtB") || str::EndsWithI(name, "ExtG") || str::FindI(name, "-ExtB") ||
+           str::FindI(name, "_ExtB") || str::FindI(name, "-ExtG") || str::FindI(name, "_ExtG");
+}
+
 static bool ShouldSkipFontFamily(const WCHAR* faceName, BYTE charset) {
     if (!faceName || !faceName[0]) {
         return true;
@@ -175,6 +189,9 @@ static bool ShouldSkipFontFamily(const WCHAR* faceName, BYTE charset) {
         return true;
     }
     if (IsUiOrSpecialPurposeFontFamily(faceName, name)) {
+        return true;
+    }
+    if (IsCjkExtensionOnlyFontFamily(name)) {
         return true;
     }
     return false;

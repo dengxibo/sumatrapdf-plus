@@ -226,7 +226,7 @@ SidebarDx = 0
 Scrollbars = windows
 
 ; if true, we show scrollbar in single page mode (introduced in version 3.6)
-ScrollbarInSinglePage = false
+ScrollbarInSinglePage = true
 
 ; if true, implements smooth scrolling (introduced in version 3.6)
 SmoothScroll = false

@@ -3285,6 +3285,7 @@ char* DisplayModel::GetTextInRegion(int pageNo, RectF region, bool mergeLines) c
         WStrBuilder lineText;
         Rect lineBox;
         bool lineOpen = false;
+        bool pendingSpace = false;
         auto flushLine = [&]() {
             if (lineOpen && lineText.size() > 0) {
                 rawLines.Append(ToUtf8Temp(lineText.Get()));
@@ -3292,13 +3293,20 @@ char* DisplayModel::GetTextInRegion(int pageNo, RectF region, bool mergeLines) c
             }
             lineText.Reset();
             lineOpen = false;
+            pendingSpace = false;
         };
         int idx = 0;
         for (const WCHAR* src = pageText; *src; src++, idx++) {
             if (*src != '\n') {
+                if (*src == L' ' || *src == L'\t') {
+                    if (lineOpen) pendingSpace = true;
+                    continue;
+                }
                 Rect rect = coords[idx];
                 Rect isect = regionI.Intersect(rect);
                 if (!isect.IsEmpty() && 1.0 * isect.dx * isect.dy / (rect.dx * rect.dy) >= 0.3) {
+                    if (pendingSpace) lineText.AppendChar(L' ');
+                    pendingSpace = false;
                     lineText.AppendChar(*src);
                     if (lineOpen) {
                         lineBox = lineBox.Union(rect);
@@ -3306,6 +3314,8 @@ char* DisplayModel::GetTextInRegion(int pageNo, RectF region, bool mergeLines) c
                         lineBox = rect;
                         lineOpen = true;
                     }
+                } else {
+                    pendingSpace = false;
                 }
             } else {
                 flushLine();

@@ -1104,8 +1104,8 @@ static const StructInfo gPointInfo = {sizeof(Point), 2, gPointFields, "X\0Y"};
 
 static const FieldInfo gGlobalPrefsFields[] = {
     {(size_t)-1, SettingType::Comment,
-     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-38.html",
-     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-38.html"},
+     (intptr_t)"For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-39.html",
+     "For documentation, see https://www.sumatrapdfreader.org/settings/settings3-7-39.html"},
     {(size_t)-1, SettingType::Comment, 0, nullptr},
     {offsetof(GlobalPrefs, checkForUpdates), SettingType::Bool, true, "是否每天自动检测新版本"},
     {offsetof(GlobalPrefs, customScreenDPI), SettingType::Int, 0, "自定义主屏幕 DPI；0=跟随系统"},
@@ -1171,7 +1171,7 @@ static const FieldInfo gGlobalPrefsFields[] = {
     {offsetof(GlobalPrefs, sidebarDx), SettingType::Int, 0, "侧边栏宽度，0=默认"},
     {offsetof(GlobalPrefs, scrollbars), SettingType::String, (intptr_t)"windows",
      "滚动条 windows/smart/overlay/hidden"},
-    {offsetof(GlobalPrefs, scrollbarInSinglePage), SettingType::Bool, false, "单页模式显示滚动条"},
+    {offsetof(GlobalPrefs, scrollbarInSinglePage), SettingType::Bool, true, "单页模式显示滚动条"},
     {offsetof(GlobalPrefs, smoothScroll), SettingType::Bool, false, "平滑滚动"},
     {offsetof(GlobalPrefs, fastScrollOverScrollbar), SettingType::Bool, false, "滚轮在滚动条区域时半页滚动"},
     {offsetof(GlobalPrefs, preventSleepInFullscreen), SettingType::Bool, true, "全屏/演示时阻止休眠"},

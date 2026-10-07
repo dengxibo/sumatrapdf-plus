@@ -14,6 +14,8 @@
 #include "AppSettings.h"
 
 #include "GlobalPrefs.h"
+#include "EbookFontConfig.h"
+#include "EbookFontMenu.h"
 #include "EbookInstalledFonts.h"
 
 #include "Annotation.h"
@@ -727,6 +729,9 @@ static void SetupZoomComboBox(HWND hDlg, UINT idComboBox, bool forChm, float cur
         TempStr customZoom = str::FormatTemp("%.0f%%", currZoom);
         SetDlgItemTextW(hDlg, idComboBox, ToWStrTemp(customZoom));
     }
+    // CBS_DROPDOWN selects the edit text after CB_SETCURSEL; clear so idle
+    // Options rows do not look "highlighted".
+    SendMessageW(hwnd, CB_SETEDITSEL, 0, MAKELPARAM(-1, 0));
     delete gCurrZoomLevels;
     gCurrZoomLevels = currZoomLevels;
 }
@@ -863,7 +868,8 @@ static const int gSettingsGeneralControls[] = {
     IDC_SETTINGS_PAGE_GENERAL, IDC_GROUP_UPDATE,          IDC_CHECK_FOR_UPDATES,
     IDC_GROUP_SESSION,         IDC_REMEMBER_OPENED_FILES, IDC_REMEMBER_STATE_PER_DOCUMENT,
     IDC_RESTORE_SESSION,       IDC_LAZY_LOADING,          IDC_REUSE_INSTANCE,
-    IDC_GROUP_FILE_CHANGES,    IDC_RELOAD_MODIFIED};
+    IDC_GROUP_FILE_CHANGES,    IDC_RELOAD_MODIFIED,       IDC_GROUP_ANNOT_AUTHOR,
+    IDC_DEFAULT_AUTHOR_LABEL,  IDC_DEFAULT_AUTHOR};
 static const int gSettingsInterfaceControls[] = {IDC_SETTINGS_PAGE_INTERFACE,
                                                  IDC_GROUP_APPEARANCE,
                                                  IDC_THEME_LABEL,
@@ -911,11 +917,15 @@ static const int gSettingsReadingControls[] = {IDC_SETTINGS_PAGE_READING,
                                                IDC_DICTIONARY_PATH_LABEL,
                                                IDC_DICTIONARY_PATH,
                                                IDC_DICTIONARY_BROWSE,
+                                               IDC_GROUP_EBOOK_FONTS,
+                                               IDC_EBOOK_LATIN_FONT_LABEL,
+                                               IDC_EBOOK_LATIN_FONT,
+                                               IDC_EBOOK_CJK_FONT_LABEL,
+                                               IDC_EBOOK_CJK_FONT,
+                                               IDC_EBOOK_FONT_SIZE_LABEL,
+                                               IDC_EBOOK_FONT_SIZE,
                                                IDC_GROUP_FULLSCREEN,
-                                               IDC_PREVENT_SLEEP_FULLSCREEN,
-                                               IDC_GROUP_ANNOT_AUTHOR,
-                                               IDC_DEFAULT_AUTHOR_LABEL,
-                                               IDC_DEFAULT_AUTHOR};
+                                               IDC_PREVENT_SLEEP_FULLSCREEN};
 static const int gSettingsReadAloudControls[] = {IDC_SETTINGS_PAGE_READ_ALOUD,
                                                  IDC_GROUP_RA_VOICE,
                                                  IDC_RA_VOICE_MODE_LABEL,
@@ -1051,10 +1061,11 @@ static void FitSettingsInterfaceLabels(HWND hDlg) {
 }
 
 static void FitSettingsReadingLabels(HWND hDlg) {
-    static const int labelIds[] = {IDC_DEFAULT_LAYOUT_LABEL, IDC_DEFAULT_ZOOM_LABEL, IDC_DICTIONARY_PATH_LABEL,
+    static const int labelIds[] = {IDC_DEFAULT_LAYOUT_LABEL,   IDC_DEFAULT_ZOOM_LABEL,   IDC_DICTIONARY_PATH_LABEL,
+                                   IDC_EBOOK_LATIN_FONT_LABEL, IDC_EBOOK_CJK_FONT_LABEL, IDC_EBOOK_FONT_SIZE_LABEL,
                                    IDC_DEFAULT_AUTHOR_LABEL};
-    static const int fieldIds[] = {IDC_DEFAULT_LAYOUT, IDC_DEFAULT_ZOOM, IDC_DICTIONARY_PATH, IDC_DICTIONARY_BROWSE,
-                                   IDC_DEFAULT_AUTHOR};
+    static const int fieldIds[] = {IDC_DEFAULT_LAYOUT,   IDC_DEFAULT_ZOOM,   IDC_DICTIONARY_PATH, IDC_DICTIONARY_BROWSE,
+                                   IDC_EBOOK_LATIN_FONT, IDC_EBOOK_CJK_FONT, IDC_EBOOK_FONT_SIZE, IDC_DEFAULT_AUTHOR};
     FitSettingsLabelColumn(hDlg, labelIds, dimof(labelIds), fieldIds, dimof(fieldIds), IDC_DEFAULT_LAYOUT);
 }
 
@@ -1768,6 +1779,73 @@ static void BrowseForDictionaryFolder(HWND hDlg) {
 }
 
 static AppDialogBrushes gSettingsDialogBrushes;
+static HWND gSettingsDialogHwnd = nullptr;
+static INT_PTR gSettingsDialogResult = IDCANCEL;
+static BOOL CALLBACK SoftenSettingsInputTheme(HWND hwnd, LPARAM);
+
+static void CloseSettingsDialog(HWND hDlg, INT_PTR result) {
+    gSettingsDialogResult = result;
+    if (hDlg && IsWindow(hDlg)) {
+        DestroyWindow(hDlg);
+    }
+}
+
+static void SyncSettingsThemeCombo(HWND hDlg) {
+    HWND themes = GetDlgItem(hDlg, IDC_THEME);
+    if (!themes || !gGlobalPrefs || !gGlobalPrefs->theme) {
+        return;
+    }
+    for (int i = 0; i < GetThemeCount(); i++) {
+        if (str::EqI(GetThemeName(i), gGlobalPrefs->theme)) {
+            CbSetCurrentSelection(themes, i);
+            return;
+        }
+    }
+}
+
+// CBS_DROPDOWN (not DROPDOWNLIST) selects edit text after theme/chrome refresh.
+static constexpr UINT kClearSettingsComboSelMsg = WM_APP + 0x51;
+
+static BOOL CALLBACK ClearSettingsComboEditSelProc(HWND hwnd, LPARAM) {
+    WCHAR cls[32]{};
+    if (GetClassNameW(hwnd, cls, dimof(cls)) <= 0 || !str::EqI(cls, L"ComboBox")) {
+        return TRUE;
+    }
+    // CBS_DROPDOWN=2, CBS_DROPDOWNLIST=3 — mask equals DROPDOWN only for editable.
+    if (((DWORD)GetWindowLongPtrW(hwnd, GWL_STYLE) & CBS_DROPDOWNLIST) != CBS_DROPDOWN) {
+        return TRUE;
+    }
+    SendMessageW(hwnd, CB_SETEDITSEL, 0, MAKELPARAM(-1, 0));
+    COMBOBOXINFO info{sizeof(info)};
+    if (GetComboBoxInfo(hwnd, &info) && info.hwndItem) {
+        SendMessageW(info.hwndItem, EM_SETSEL, (WPARAM)-1, 0);
+    }
+    return TRUE;
+}
+
+static void ClearSettingsComboEditSelections(HWND hDlg) {
+    if (hDlg && IsWindow(hDlg)) {
+        EnumChildWindows(hDlg, ClearSettingsComboEditSelProc, 0);
+    }
+}
+
+static void SettingsDialogThemeRefresh(HWND hwnd, void*) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return;
+    }
+    gSettingsDialogBrushes.Destroy();
+    gSettingsDialogBrushes.Create();
+    AppDialogApplyChrome(hwnd);
+    EnumChildWindows(hwnd, SoftenSettingsInputTheme, 0);
+    SyncSettingsThemeCombo(hwnd);
+    HWND heightRef = GetDlgItem(hwnd, IDC_DEFAULT_LAYOUT);
+    LayoutEbookFontCombo(GetDlgItem(hwnd, IDC_EBOOK_LATIN_FONT), heightRef);
+    LayoutEbookFontCombo(GetDlgItem(hwnd, IDC_EBOOK_CJK_FONT), heightRef);
+    ClearSettingsComboEditSelections(hwnd);
+    // Chrome/theme work can re-select edit text after this returns.
+    PostMessageW(hwnd, kClearSettingsComboSelMsg, 0, 0);
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+}
 static constexpr UINT_PTR kSettingsCategorySubclassId = 1;
 static int gSettingsCategoryHover = -1;
 
@@ -1967,6 +2045,12 @@ static BOOL CALLBACK SoftenSettingsInputTheme(HWND hwnd, LPARAM) {
     return TRUE;
 }
 
+static const char* SettingsCategoryLabel(const char* key, const char* fallback) {
+    // Separate navigation translations from shared page titles and AI role labels.
+    const char* label = trans::GetTranslation(key);
+    return str::Eq(label, key) ? trans::GetTranslation(fallback) : label;
+}
+
 static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPARAM lp) {
     GlobalPrefs* prefs;
 
@@ -1975,9 +2059,11 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
         case WM_INITDIALOG: {
             prefs = (GlobalPrefs*)lp;
             SetWindowLongPtr(hDlg, GWLP_USERDATA, (LONG_PTR)prefs);
+            gSettingsDialogHwnd = hDlg;
             gSettingsDialogBrushes.Create();
             AppDialogApplyChrome(hDlg);
             EnumChildWindows(hDlg, SoftenSettingsInputTheme, 0);
+            RegisterAppDialogForTheme(hDlg, SettingsDialogThemeRefresh, nullptr);
             {
                 HWND hwndCb = GetDlgItem(hDlg, IDC_DEFAULT_LAYOUT);
                 // Fill the page layouts into the select box
@@ -2036,6 +2122,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             SetDlgItemInt(hDlg, IDC_TREE_FONT_SIZE, prefs->treeFontSize, FALSE);
             SetDlgItemInt(hDlg, IDC_TAB_FONT_SIZE, prefs->tabFontSize, FALSE);
             SetDlgItemInt(hDlg, IDC_TAB_BAR_HEIGHT, prefs->tabBarHeight, FALSE);
+            SetDlgItemInt(hDlg, IDC_EBOOK_FONT_SIZE, (int)prefs->eBookUI.fontSize, FALSE);
             SetDlgItemInt(hDlg, IDC_CUSTOM_DPI, prefs->customScreenDPI, FALSE);
             HwndSetDlgItemText(hDlg, IDC_DICTIONARY_PATH, prefs->offlineDictionaryPath);
             HwndSetDlgItemText(hDlg, IDC_DEFAULT_AUTHOR, prefs->annotations.defaultAuthor);
@@ -2050,8 +2137,10 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Interface")));
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Reading")));
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Read Aloud")));
-            SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("OCR")));
-            SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("AI")));
+            SendMessageW(category, LB_ADDSTRING, 0,
+                         (LPARAM)ToWStrTemp(SettingsCategoryLabel(_TRN("OCR (settings navigation)"), _TRN("OCR"))));
+            SendMessageW(category, LB_ADDSTRING, 0,
+                         (LPARAM)ToWStrTemp(SettingsCategoryLabel(_TRN("AI (settings navigation)"), _TRN("AI"))));
             SendMessageW(category, LB_ADDSTRING, 0, (LPARAM)(WCHAR*)ToWStrTemp(_TRA("Advanced")));
             ListBox_SetCurSel(category, gSettingsInitialPage);
 
@@ -2113,6 +2202,46 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             CbSetCurrentSelection(treeFont, treeFontSelection);
             DeleteVecMembers(fontFamilies);
             DeleteVecMembers(cjkFontFamilies);
+
+            Vec<char*> ebookLatinFamilies;
+            Vec<char*> ebookCjkFamilies;
+            CollectEbookFontFamilies(&ebookLatinFamilies, &ebookCjkFamilies);
+            HWND ebookLatinFont = GetDlgItem(hDlg, IDC_EBOOK_LATIN_FONT);
+            HWND ebookCjkFont = GetDlgItem(hDlg, IDC_EBOOK_CJK_FONT);
+            int ebookLatinSelection = 0;
+            int ebookCjkSelection = 0;
+            bool ebookLatinFound = false;
+            bool ebookCjkFound = false;
+            for (int i = 0; i < ebookLatinFamilies.Size(); i++) {
+                char* family = ebookLatinFamilies[i];
+                CbAddString(ebookLatinFont, family);
+                if (EbookLatinFontFamiliesEquivalent(family, prefs->eBookUI.fontFamily)) {
+                    ebookLatinSelection = i;
+                    ebookLatinFound = true;
+                }
+            }
+            for (int i = 0; i < ebookCjkFamilies.Size(); i++) {
+                char* family = ebookCjkFamilies[i];
+                CbAddString(ebookCjkFont, family);
+                if (EbookCjkFontFamiliesEquivalent(family, prefs->eBookUI.cjkFontFamily)) {
+                    ebookCjkSelection = i;
+                    ebookCjkFound = true;
+                }
+            }
+            if (!ebookLatinFound && prefs->eBookUI.fontFamily) {
+                ebookLatinSelection = ebookLatinFamilies.Size();
+                CbAddString(ebookLatinFont, prefs->eBookUI.fontFamily);
+            }
+            if (!ebookCjkFound && prefs->eBookUI.cjkFontFamily) {
+                ebookCjkSelection = ebookCjkFamilies.Size();
+                CbAddString(ebookCjkFont, prefs->eBookUI.cjkFontFamily);
+            }
+            CbSetCurrentSelection(ebookLatinFont, ebookLatinSelection);
+            CbSetCurrentSelection(ebookCjkFont, ebookCjkSelection);
+            InitEbookFontCombo(ebookLatinFont);
+            InitEbookFontCombo(ebookCjkFont);
+            DeleteVecMembers(ebookLatinFamilies);
+            DeleteVecMembers(ebookCjkFamilies);
 
             HWND engineering = GetDlgItem(hDlg, IDC_ENGINEERING_ENHANCE);
             CbAddString(engineering, _TRA("Off"));
@@ -2195,6 +2324,10 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             HwndSetDlgItemText(hDlg, IDC_ENGINEERING_ENHANCE_LABEL, _TRA("Engineering drawing &enhancement:"));
             HwndSetDlgItemText(hDlg, IDC_ENABLE_ANTIALIAS, _TRA("Enable PDF &anti-aliasing"));
             HwndSetDlgItemText(hDlg, IDC_GROUP_DICTIONARY, _TRA("Dictionary"));
+            HwndSetDlgItemText(hDlg, IDC_GROUP_EBOOK_FONTS, _TRA("Ebook fonts"));
+            HwndSetDlgItemText(hDlg, IDC_EBOOK_LATIN_FONT_LABEL, _TRA("&Western body font:"));
+            HwndSetDlgItemText(hDlg, IDC_EBOOK_CJK_FONT_LABEL, _TRA("&CJK body font:"));
+            HwndSetDlgItemText(hDlg, IDC_EBOOK_FONT_SIZE_LABEL, _TRA("Si&ze (0 = auto, 6-26):"));
             HwndSetDlgItemText(hDlg, IDC_ENABLE_WORD_LOOKUP, _TRA("Look up words on &double-click"));
             HwndSetDlgItemText(hDlg, IDC_DICTIONARY_PATH_LABEL, _TRA("Offline dictionary:"));
             HwndSetDlgItemText(hDlg, IDC_DICTIONARY_BROWSE, _TRA("&Browse..."));
@@ -2314,16 +2447,40 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             FitSettingsReadAloudLabels(hDlg);
             FitSettingsOcrLabels(hDlg);
             FitSettingsAiLabels(hDlg);
+            // Closed ComboBox height is CB_SETITEMHEIGHT(-1), not the window rect.
+            {
+                HWND heightRef = GetDlgItem(hDlg, IDC_DEFAULT_LAYOUT);
+                LayoutEbookFontCombo(GetDlgItem(hDlg, IDC_EBOOK_LATIN_FONT), heightRef);
+                LayoutEbookFontCombo(GetDlgItem(hDlg, IDC_EBOOK_CJK_FONT), heightRef);
+            }
+            ClearSettingsComboEditSelections(hDlg);
             ShowSettingsPage(hDlg, gSettingsInitialPage);
             UpdateSettingsDependencies(hDlg);
             CenterDialog(hDlg);
             HwndSetFocus(category);
+            PostMessageW(hDlg, kClearSettingsComboSelMsg, 0, 0);
             return FALSE;
         }
             //] ACCESSKEY_GROUP Settings Dialog
 
+        case kClearSettingsComboSelMsg:
+            ClearSettingsComboEditSelections(hDlg);
+            return TRUE;
+
         case WM_MEASUREITEM: {
             MEASUREITEMSTRUCT* mis = (MEASUREITEMSTRUCT*)lp;
+            if (mis && (mis->CtlID == IDC_EBOOK_LATIN_FONT || mis->CtlID == IDC_EBOOK_CJK_FONT)) {
+                // Keep list rows a fixed, DPI-scaled preview height (closed face
+                // uses LayoutEbookFontCombo / CB_SETITEMHEIGHT -1 separately).
+                int listDy = DpiScale(hDlg, 28);
+                HWND layout = GetDlgItem(hDlg, IDC_DEFAULT_LAYOUT);
+                int editDy = layout ? (int)SendMessageW(layout, CB_GETITEMHEIGHT, (WPARAM)-1, 0) : 0;
+                if (editDy > 0 && listDy < editDy + DpiScale(hDlg, 8)) {
+                    listDy = editDy + DpiScale(hDlg, 8);
+                }
+                mis->itemHeight = (UINT)listDy;
+                return TRUE;
+            }
             if (mis && mis->CtlID == IDC_SETTINGS_CATEGORY) {
                 HFONT font = (HFONT)SendMessageW(hDlg, WM_GETFONT, 0, 0);
                 mis->itemHeight = (UINT)SettingsCategoryItemHeight(hDlg, font);
@@ -2334,6 +2491,7 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
 
         case WM_DRAWITEM: {
             DRAWITEMSTRUCT* dis = (DRAWITEMSTRUCT*)lp;
+            if (DrawEbookFontComboItem(dis)) return TRUE;
             if (dis && dis->CtlID == IDC_SETTINGS_CATEGORY) {
                 SettingsCategoryDrawItem(dis->hwndItem, dis);
                 return TRUE;
@@ -2357,16 +2515,41 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
             break;
         }
 
+        case WM_ACTIVATE:
+            SetCurrentModelessDialog(LOWORD(wp) == WA_INACTIVE ? nullptr : hDlg);
+            if (LOWORD(wp) != WA_INACTIVE) {
+                // Returning from the toolbar theme toggle can leave DROPDOWN
+                // edit text selected (blue / white inverse).
+                PostMessageW(hDlg, kClearSettingsComboSelMsg, 0, 0);
+            }
+            return FALSE;
+
+        case WM_CLOSE:
+            CloseSettingsDialog(hDlg, IDCANCEL);
+            return TRUE;
+
         case WM_DESTROY:
             ReadAloudSettingsPageDestroy();
             delete GetAiTocSettingsState(hDlg);
             RemovePropW(hDlg, kAiTocSettingsStateProp);
             gSettingsCategoryHover = -1;
             gSettingsDialogBrushes.Destroy();
+            UnregisterAppDialogForTheme(hDlg);
+            if (GetCurrentModelessDialog() == hDlg) {
+                SetCurrentModelessDialog(nullptr);
+            }
+            if (gSettingsDialogHwnd == hDlg) {
+                gSettingsDialogHwnd = nullptr;
+            }
             break;
 
         case WM_COMMAND:
             switch (LOWORD(wp)) {
+                case IDC_EBOOK_LATIN_FONT:
+                case IDC_EBOOK_CJK_FONT:
+                    EbookFontComboCommand((HWND)lp, HIWORD(wp));
+                    return TRUE;
+
                 case IDOK: {
                     prefs = (GlobalPrefs*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
                     BOOL treeSizeOk = FALSE;
@@ -2375,6 +2558,8 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     int tabFontSize = (int)GetDlgItemInt(hDlg, IDC_TAB_FONT_SIZE, &tabFontSizeOk, FALSE);
                     BOOL tabBarHeightOk = FALSE;
                     int tabBarHeight = (int)GetDlgItemInt(hDlg, IDC_TAB_BAR_HEIGHT, &tabBarHeightOk, FALSE);
+                    BOOL ebookFontSizeOk = FALSE;
+                    int ebookFontSize = (int)GetDlgItemInt(hDlg, IDC_EBOOK_FONT_SIZE, &ebookFontSizeOk, FALSE);
                     BOOL dpiOk = FALSE;
                     int customDpi = (int)GetDlgItemInt(hDlg, IDC_CUSTOM_DPI, &dpiOk, FALSE);
                     if (!treeSizeOk || (treeFontSize != 0 && (treeFontSize < 6 || treeFontSize > 72))) {
@@ -2393,6 +2578,13 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                         MessageBoxWarning(hDlg, _TRA("Tab bar height must be 0 (automatic) or between 16 and 128."),
                                           _TRA("Invalid value"));
                         HwndSetFocus(GetDlgItem(hDlg, IDC_TAB_BAR_HEIGHT));
+                        return TRUE;
+                    }
+                    if (!ebookFontSizeOk || (ebookFontSize != 0 && (ebookFontSize < kEbookFontSizeMinPt ||
+                                                                    ebookFontSize > kEbookFontSizeMaxPt))) {
+                        MessageBoxWarning(hDlg, _TRA("Ebook font size must be 0 (automatic) or between 6 and 26."),
+                                          _TRA("Invalid value"));
+                        HwndSetFocus(GetDlgItem(hDlg, IDC_EBOOK_FONT_SIZE));
                         return TRUE;
                     }
                     if (!dpiOk || (customDpi != 0 && (customDpi < 72 || customDpi > 600))) {
@@ -2465,12 +2657,25 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                     prefs->treeFontSize = treeFontSize;
                     prefs->tabFontSize = tabFontSize;
                     prefs->tabBarHeight = tabBarHeight;
+                    prefs->eBookUI.fontSize = (float)ebookFontSize;
                     prefs->customScreenDPI = customDpi;
 
                     int themeIdx = (int)SendDlgItemMessage(hDlg, IDC_THEME, CB_GETCURSEL, 0, 0);
                     const char* themeName = GetThemeName(themeIdx);
                     if (themeName) {
                         str::ReplaceWithCopy(&prefs->theme, themeName);
+                    }
+                    const char* ebookLatinFontName = EbookFontComboSelection(GetDlgItem(hDlg, IDC_EBOOK_LATIN_FONT));
+                    const char* ebookCjkFontName = EbookFontComboSelection(GetDlgItem(hDlg, IDC_EBOOK_CJK_FONT));
+                    const char* ebookLatinFont = NormalizeEbookLatinFontFamily(ebookLatinFontName);
+                    const char* ebookCjkFont = NormalizeEbookCjkFontFamily(ebookCjkFontName);
+                    if (!EbookLatinFontFamiliesEquivalent(prefs->eBookUI.fontFamily, ebookLatinFont)) {
+                        str::ReplaceWithCopy(&prefs->eBookUI.fontFamily, ebookLatinFont);
+                    }
+                    if (!EbookCjkFontFamiliesEquivalent(prefs->eBookUI.cjkFontFamily, ebookCjkFont)) {
+                        str::ReplaceWithCopy(&prefs->eBookUI.cjkFontFamily, ebookCjkFont);
+                        str::Free(prefs->eBookUI.cjkFontFile);
+                        prefs->eBookUI.cjkFontFile = nullptr;
                     }
                     int documentColorIdx = (int)SendDlgItemMessage(hDlg, IDC_DOCUMENT_COLOR, CB_GETCURSEL, 0, 0);
                     str::ReplaceWithCopy(&prefs->documentColorMode, documentColorIdx == 0 ? "original" : "theme");
@@ -2507,12 +2712,12 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
                         char* cmdLine = str::Dup(tmp);
                         str::ReplacePtr(&prefs->inverseSearchCmdLine, cmdLine);
                     }
-                    EndDialog(hDlg, IDOK);
+                    CloseSettingsDialog(hDlg, IDOK);
                     return TRUE;
                 }
 
                 case IDCANCEL:
-                    EndDialog(hDlg, IDCANCEL);
+                    CloseSettingsDialog(hDlg, IDCANCEL);
                     return TRUE;
 
                 case IDC_REMEMBER_OPENED_FILES: {
@@ -2651,8 +2856,8 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
 
                 case IDC_OPEN_ADVANCED_OPTIONS:
                     // Close first: saving the file can reload and replace gGlobalPrefs,
-                    // invalidating the pointer held by this modal dialog.
-                    EndDialog(hDlg, IDC_OPEN_ADVANCED_OPTIONS);
+                    // invalidating the pointer held by this dialog.
+                    CloseSettingsDialog(hDlg, IDC_OPEN_ADVANCED_OPTIONS);
                     return TRUE;
 
                 case IDC_DEFAULT_SHOW_TOC:
@@ -2676,9 +2881,47 @@ static INT_PTR CALLBACK Dialog_Settings_Proc(HWND hDlg, UINT msg, WPARAM wp, LPA
 
 INT_PTR Dialog_Settings(HWND hwnd, GlobalPrefs* prefs, int initialPage) {
     gSettingsInitialPage = initialPage;
-    INT_PTR res = CreateAppDialogBox(IDD_DIALOG_SETTINGS, hwnd, Dialog_Settings_Proc, (LPARAM)prefs);
+    if (gSettingsDialogHwnd && IsWindow(gSettingsDialogHwnd)) {
+        HwndToForeground(gSettingsDialogHwnd);
+        gSettingsInitialPage = 0;
+        return IDCANCEL;
+    }
+
+    gSettingsDialogResult = IDCANCEL;
+    // Modeless create + local pump: keep the owner enabled so the toolbar
+    // light/dark theme toggle stays clickable while Options is open.
+    HWND hDlg = CreateAppDialogModeless(IDD_DIALOG_SETTINGS, hwnd, Dialog_Settings_Proc, (LPARAM)prefs);
     gSettingsInitialPage = 0;
-    return res;
+    if (!hDlg) {
+        return IDCANCEL;
+    }
+    SetCurrentModelessDialog(hDlg);
+    ShowWindow(hDlg, SW_SHOW);
+    HwndSetFocus(hDlg);
+
+    MSG msg;
+    while (hDlg && IsWindow(hDlg)) {
+        BOOL ret = GetMessageW(&msg, nullptr, 0, 0);
+        if (ret == 0) {
+            PostQuitMessage((int)msg.wParam);
+            break;
+        }
+        if (ret == -1) {
+            break;
+        }
+        HWND dlg = GetCurrentModelessDialog();
+        if (dlg && IsDialogMessageW(dlg, &msg)) {
+            continue;
+        }
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+        uitask::DrainQueue();
+    }
+    if (GetCurrentModelessDialog() == hDlg) {
+        SetCurrentModelessDialog(nullptr);
+    }
+    gSettingsDialogHwnd = nullptr;
+    return gSettingsDialogResult;
 }
 
 #ifndef ID_APPLY_NOW

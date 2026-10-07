@@ -10,3 +10,6 @@ void CollectInstalledCjkFontFamilies(Vec<char*>* families);
 
 // Map GDI family names (often English) to Chinese menu labels. Returns family unchanged when unknown.
 const char* GetInstalledCjkFontMenuLabel(const char* family);
+
+// True when the display name already contains Han / kana / hangul characters.
+bool FontFamilyNameHasCjkScript(const char* family);

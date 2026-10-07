@@ -29,6 +29,589 @@
 #include "Translations.h"
 #include "EbookFontMenu.h"
 #include "EbookInstalledFonts.h"
+#include "resource.h"
+
+static constexpr UINT_PTR kEbookFontComboSubclass = 0xEF01;
+static const WCHAR* kFontComboState = L"SumatraEbookFontCombo";
+static const WCHAR* kPreviewNone = L"";
+static const WCHAR* kPreviewWestern = L"Quick fox";
+static const WCHAR* kPreviewCjk = L"\u6c38\u548c\u6625\u98ce\u660e\u6708"; // 永和春风明月
+
+struct EbookFontComboState {
+    StrVec families;
+    // Parallel to families. nullptr = unresolved; kPreviewNone = no sample; else static sample.
+    Vec<const WCHAR*> previews;
+    char* selected = nullptr;
+    int editItemDy = 0;
+    int listItemDy = 0;
+    bool isCjk = false;
+    bool filtering = false;
+    bool composing = false;
+    bool editing = false;
+    ~EbookFontComboState() { str::Free(selected); }
+};
+
+static EbookFontComboState* FontComboState(HWND combo) {
+    return (EbookFontComboState*)GetPropW(combo, kFontComboState);
+}
+
+static bool FontFaceCanDraw(HDC hdc, HFONT font, const WCHAR* text) {
+    if (!font || !text || !text[0]) {
+        return false;
+    }
+    HFONT old = (HFONT)SelectObject(hdc, font);
+    bool ok = true;
+    const WCHAR* p = text;
+    while (ok && *p) {
+        WORD glyphs[32];
+        int n = 0;
+        while (p[n] && n < dimof(glyphs)) {
+            n++;
+        }
+        DWORD got = GetGlyphIndicesW(hdc, p, n, glyphs, GGI_MARK_NONEXISTING_GLYPHS);
+        if (got == GDI_ERROR) {
+            ok = false;
+            break;
+        }
+        for (int i = 0; i < n; i++) {
+            if (glyphs[i] == 0xFFFF) {
+                ok = false;
+                break;
+            }
+        }
+        p += n;
+    }
+    SelectObject(hdc, old);
+    return ok;
+}
+
+static HFONT CreateFamilyFontForDpi(const char* family, int dpi) {
+    LOGFONTW lf{};
+    lf.lfHeight = -MulDiv(11, dpi, 96);
+    lf.lfQuality = CLEARTYPE_QUALITY;
+    lf.lfCharSet = DEFAULT_CHARSET;
+    TempWStr face = ToWStrTemp(family);
+    wcsncpy_s(lf.lfFaceName, face ? face : L"", _TRUNCATE);
+    return CreateFontIndirectW(&lf);
+}
+
+static const WCHAR* ResolveFontPreviewSample(HWND hwnd, bool isCjk, const char* family) {
+    if (!family) {
+        return kPreviewNone;
+    }
+    const WCHAR* sample = isCjk ? kPreviewCjk : kPreviewWestern;
+    HDC hdc = GetDC(hwnd);
+    if (!hdc) {
+        return kPreviewNone;
+    }
+    int dpi = DpiGetForHwnd(hwnd);
+    HFONT font = CreateFamilyFontForDpi(family, dpi);
+    const WCHAR* out = kPreviewNone;
+    if (font) {
+        if (FontFaceCanDraw(hdc, font, sample)) {
+            out = sample;
+        }
+        DeleteObject(font);
+    }
+    ReleaseDC(hwnd, hdc);
+    return out;
+}
+
+static const WCHAR* FontComboPreviewAt(EbookFontComboState* state, HWND combo, int familyIdx) {
+    if (!state || familyIdx < 0 || familyIdx >= state->families.Size()) {
+        return kPreviewNone;
+    }
+    while (state->previews.Size() < state->families.Size()) {
+        state->previews.Append(nullptr);
+    }
+    if (!state->previews[familyIdx]) {
+        state->previews[familyIdx] =
+            ResolveFontPreviewSample(combo, state->isCjk, state->families.At(familyIdx));
+    }
+    return state->previews[familyIdx] ? state->previews[familyIdx] : kPreviewNone;
+}
+
+static int FontComboFindFamilyIndex(EbookFontComboState* state, const char* family) {
+    if (!state || !family) {
+        return -1;
+    }
+    for (int i = 0; i < state->families.Size(); i++) {
+        if (str::EqI(state->families.At(i), family)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void FontComboApplyItemHeights(HWND combo, EbookFontComboState* state) {
+    if (!combo || !state) {
+        return;
+    }
+    if (state->editItemDy > 0) {
+        SendMessageW(combo, CB_SETITEMHEIGHT, (WPARAM)-1, state->editItemDy);
+    }
+    if (state->listItemDy > 0) {
+        SendMessageW(combo, CB_SETITEMHEIGHT, 0, state->listItemDy);
+    }
+}
+
+static void FontComboClearEditSelection(HWND combo) {
+    if (combo) {
+        SendMessageW(combo, CB_SETEDITSEL, 0, MAKELPARAM(-1, 0));
+    }
+}
+
+static void FontComboThemeListScrollbar(HWND combo) {
+    COMBOBOXINFO info{sizeof(info)};
+    if (!GetComboBoxInfo(combo, &info) || !info.hwndList) {
+        return;
+    }
+    // Reuse AppDialogThemeScrollBar (Ask AI / InlineTranslate scrollbar-only).
+    if (DynSetWindowTheme) {
+        DynSetWindowTheme(info.hwndList, L" ", L" ");
+    }
+    AppDialogThemeScrollBar(info.hwndList);
+    LONG_PTR style = GetWindowLongPtrW(info.hwndList, GWL_STYLE);
+    if ((style & WS_VSCROLL) == 0) {
+        SetWindowLongPtrW(info.hwndList, GWL_STYLE, style | WS_VSCROLL);
+        SetWindowPos(info.hwndList, nullptr, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    }
+    int count = (int)SendMessageW(combo, CB_GETCOUNT, 0, 0);
+    int minVis = (int)SendMessageW(combo, CB_GETMINVISIBLE, 0, 0);
+    if (minVis <= 0) {
+        minVis = 10;
+    }
+    ShowScrollBar(info.hwndList, SB_VERT, count > minVis);
+}
+
+static void FontComboFill(HWND combo, EbookFontComboState* state, const char* query) {
+    if (!combo || !state) {
+        return;
+    }
+    state->filtering = true;
+    SendMessageW(combo, WM_SETREDRAW, FALSE, 0);
+    SendMessageW(combo, CB_RESETCONTENT, 0, 0);
+    for (int i = 0; i < state->families.Size(); i++) {
+        const char* family = state->families.At(i);
+        if (!str::IsEmptyOrWhiteSpace(query) && !str::ContainsI(family, query)) {
+            continue;
+        }
+        int idx = (int)SendMessageW(combo, CB_ADDSTRING, 0, (LPARAM)ToWStrTemp(family));
+        if (idx >= 0) {
+            SendMessageW(combo, CB_SETITEMDATA, idx, (LPARAM)i);
+        }
+    }
+    FontComboApplyItemHeights(combo, state);
+    SendMessageW(combo, WM_SETREDRAW, TRUE, 0);
+    state->filtering = false;
+}
+
+static void FontComboRestoreCommitted(HWND combo, EbookFontComboState* state) {
+    if (!combo || !state || !state->selected) {
+        return;
+    }
+    FontComboFill(combo, state, nullptr);
+    state->filtering = true;
+    HwndSetText(combo, state->selected);
+    int idx = FontComboFindFamilyIndex(state, state->selected);
+    if (idx >= 0) {
+        for (int i = 0; i < (int)SendMessageW(combo, CB_GETCOUNT, 0, 0); i++) {
+            if ((int)SendMessageW(combo, CB_GETITEMDATA, i, 0) == idx) {
+                SendMessageW(combo, CB_SETCURSEL, i, 0);
+                break;
+            }
+        }
+    }
+    state->filtering = false;
+    state->editing = false;
+    FontComboClearEditSelection(combo);
+    InvalidateRect(combo, nullptr, FALSE);
+}
+
+static bool FontComboCommitExactText(HWND combo, EbookFontComboState* state) {
+    if (!combo || !state) {
+        return false;
+    }
+    const char* text = HwndGetTextTemp(combo);
+    int idx = FontComboFindFamilyIndex(state, text);
+    if (idx < 0) {
+        return false;
+    }
+    str::ReplaceWithCopy(&state->selected, state->families.At(idx));
+    state->editing = false;
+    FontComboFill(combo, state, nullptr);
+    state->filtering = true;
+    HwndSetText(combo, state->selected);
+    for (int i = 0; i < (int)SendMessageW(combo, CB_GETCOUNT, 0, 0); i++) {
+        if ((int)SendMessageW(combo, CB_GETITEMDATA, i, 0) == idx) {
+            SendMessageW(combo, CB_SETCURSEL, i, 0);
+            break;
+        }
+    }
+    state->filtering = false;
+    FontComboClearEditSelection(combo);
+    return true;
+}
+
+static void FontComboSelectCurrentInList(HWND combo, EbookFontComboState* state) {
+    if (!combo || !state || !state->selected) {
+        return;
+    }
+    int famIdx = FontComboFindFamilyIndex(state, state->selected);
+    if (famIdx < 0) {
+        return;
+    }
+    int count = (int)SendMessageW(combo, CB_GETCOUNT, 0, 0);
+    for (int i = 0; i < count; i++) {
+        if ((int)SendMessageW(combo, CB_GETITEMDATA, i, 0) == famIdx) {
+            SendMessageW(combo, CB_SETCURSEL, i, 0);
+            return;
+        }
+    }
+}
+
+static LRESULT CALLBACK FontComboProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR data) {
+    if (msg == WM_NCDESTROY) {
+        RemovePropW(hwnd, kFontComboState);
+        RemoveWindowSubclass(hwnd, FontComboProc, id);
+        delete (EbookFontComboState*)data;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+static LRESULT CALLBACK FontComboEditProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR) {
+    HWND combo = GetParent(hwnd);
+    auto state = FontComboState(combo);
+    if (state && msg == WM_IME_STARTCOMPOSITION) {
+        state->composing = true;
+    }
+    if (state && msg == WM_KEYDOWN) {
+        if (wp == VK_ESCAPE) {
+            FontComboRestoreCommitted(combo, state);
+            SendMessageW(combo, CB_SHOWDROPDOWN, FALSE, 0);
+            return 0;
+        }
+        if (wp == VK_RETURN) {
+            if (FontComboCommitExactText(combo, state)) {
+                SendMessageW(combo, CB_SHOWDROPDOWN, FALSE, 0);
+                return 0;
+            }
+            int sel = (int)SendMessageW(combo, CB_GETCURSEL, 0, 0);
+            if (sel >= 0) {
+                int famIdx = (int)SendMessageW(combo, CB_GETITEMDATA, sel, 0);
+                if (famIdx >= 0 && famIdx < state->families.Size()) {
+                    str::ReplaceWithCopy(&state->selected, state->families.At(famIdx));
+                    FontComboRestoreCommitted(combo, state);
+                    SendMessageW(combo, CB_SHOWDROPDOWN, FALSE, 0);
+                    return 0;
+                }
+            }
+            FontComboRestoreCommitted(combo, state);
+            SendMessageW(combo, CB_SHOWDROPDOWN, FALSE, 0);
+            return 0;
+        }
+    }
+    LRESULT result = DefSubclassProc(hwnd, msg, wp, lp);
+    if (state && msg == WM_IME_ENDCOMPOSITION) {
+        state->composing = false;
+        PostMessageW(GetParent(combo), WM_COMMAND, MAKEWPARAM(GetDlgCtrlID(combo), CBN_EDITCHANGE), (LPARAM)combo);
+    }
+    if (msg == WM_NCDESTROY) {
+        RemoveWindowSubclass(hwnd, FontComboEditProc, id);
+    }
+    return result;
+}
+
+void LayoutEbookFontCombo(HWND combo, HWND heightRef) {
+    if (!combo || !IsWindow(combo)) {
+        return;
+    }
+    // Closed height is CB_SETITEMHEIGHT(-1). Match the reference Options combo
+    // face exactly — no extra padding (that made these chips taller than peers).
+    HFONT font = GetWindowFont(combo);
+    int editDy = HwndMeasureText(combo, "Ag", font).dy + DpiScale(combo, 6);
+
+    HWND ref = heightRef && IsWindow(heightRef) ? heightRef : nullptr;
+    if (ref) {
+        COMBOBOXINFO refInfo{sizeof(refInfo)};
+        if (GetComboBoxInfo(ref, &refInfo)) {
+            int refFace = std::max(RectDy(refInfo.rcItem), RectDy(refInfo.rcButton));
+            if (refFace > 0) {
+                editDy = refFace;
+            }
+        } else {
+            int refItem = (int)SendMessageW(ref, CB_GETITEMHEIGHT, (WPARAM)-1, 0);
+            if (refItem > 0) {
+                editDy = refItem;
+            }
+        }
+    }
+
+    // Popup rows may be taller for font preview; closed face stays with peers.
+    int listDy = DpiScale(combo, 28);
+    if (listDy < editDy + DpiScale(combo, 6)) {
+        listDy = editDy + DpiScale(combo, 6);
+    }
+    SendMessageW(combo, CB_SETITEMHEIGHT, (WPARAM)-1, editDy);
+    SendMessageW(combo, CB_SETITEMHEIGHT, 0, listDy);
+    SendMessageW(combo, CB_SETMINVISIBLE, 10, 0);
+
+    COMBOBOXINFO info{sizeof(info)};
+    if (GetComboBoxInfo(combo, &info) && info.hwndItem) {
+        RECT rc = info.rcItem;
+        SetWindowPos(info.hwndItem, nullptr, rc.left, rc.top, RectDx(rc), RectDy(rc),
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    FontComboClearEditSelection(combo);
+    InvalidateRect(combo, nullptr, TRUE);
+
+    auto state = FontComboState(combo);
+    if (state) {
+        state->editItemDy = editDy;
+        state->listItemDy = listDy;
+    } else {
+        SetPropW(combo, L"SumatraEbookFontComboEditDy", (HANDLE)(INT_PTR)editDy);
+        SetPropW(combo, L"SumatraEbookFontComboListDy", (HANDLE)(INT_PTR)listDy);
+    }
+}
+
+void InitEbookFontCombo(HWND combo) {
+    auto state = new EbookFontComboState();
+    state->isCjk = GetDlgCtrlID(combo) == IDC_EBOOK_CJK_FONT;
+    state->editItemDy = (int)(INT_PTR)GetPropW(combo, L"SumatraEbookFontComboEditDy");
+    state->listItemDy = (int)(INT_PTR)GetPropW(combo, L"SumatraEbookFontComboListDy");
+    RemovePropW(combo, L"SumatraEbookFontComboEditDy");
+    RemovePropW(combo, L"SumatraEbookFontComboListDy");
+    if (state->editItemDy <= 0) {
+        state->editItemDy = (int)SendMessageW(combo, CB_GETITEMHEIGHT, (WPARAM)-1, 0);
+    }
+    if (state->listItemDy <= 0) {
+        state->listItemDy = DpiScale(combo, 28);
+    }
+    int count = (int)SendMessageW(combo, CB_GETCOUNT, 0, 0);
+    for (int i = 0; i < count; i++) {
+        int length = (int)SendMessageW(combo, CB_GETLBTEXTLEN, i, 0);
+        if (length < 0) {
+            continue;
+        }
+        WCHAR* name = AllocArray<WCHAR>(length + 1);
+        SendMessageW(combo, CB_GETLBTEXT, i, (LPARAM)name);
+        state->families.Append(ToUtf8Temp(name));
+        state->previews.Append(nullptr);
+        SendMessageW(combo, CB_SETITEMDATA, i, (LPARAM)(state->families.Size() - 1));
+        free(name);
+    }
+    state->selected = str::Dup(HwndGetTextTemp(combo));
+    FontComboApplyItemHeights(combo, state);
+    SetPropW(combo, kFontComboState, state);
+    SetWindowSubclass(combo, FontComboProc, kEbookFontComboSubclass, (DWORD_PTR)state);
+    COMBOBOXINFO info{sizeof(info)};
+    if (GetComboBoxInfo(combo, &info) && info.hwndItem) {
+        SetWindowSubclass(info.hwndItem, FontComboEditProc, kEbookFontComboSubclass, 0);
+    }
+    FontComboThemeListScrollbar(combo);
+    FontComboClearEditSelection(combo);
+}
+
+bool DrawEbookFontComboItem(DRAWITEMSTRUCT* item) {
+    if (!item || item->CtlType != ODT_COMBOBOX ||
+        (item->CtlID != IDC_EBOOK_LATIN_FONT && item->CtlID != IDC_EBOOK_CJK_FONT)) {
+        return false;
+    }
+    bool selected = (item->itemState & ODS_SELECTED) != 0;
+    bool editFace = (item->itemState & ODS_COMBOBOXEDIT) != 0;
+    COLORREF bg = selected ? ThemeInspectorSelectedBackgroundColor() : ThemeWindowControlBackgroundColor();
+    COLORREF fg = selected ? ThemeInspectorSelectedTextColor() : ThemeWindowTextColor();
+    AutoDeleteBrush brush(CreateSolidBrush(bg));
+    FillRect(item->hDC, &item->rcItem, brush);
+    if (item->itemID == (UINT)-1) {
+        return true;
+    }
+    int length = (int)SendMessageW(item->hwndItem, CB_GETLBTEXTLEN, item->itemID, 0);
+    if (length == CB_ERR) {
+        return true;
+    }
+    WCHAR* family = AllocArray<WCHAR>(length + 1);
+    defer {
+        free(family);
+    };
+    SendMessageW(item->hwndItem, CB_GETLBTEXT, item->itemID, (LPARAM)family);
+    auto state = FontComboState(item->hwndItem);
+    int famIdx = (int)item->itemData;
+    if (famIdx < 0 || !state || famIdx >= state->families.Size()) {
+        famIdx = state ? FontComboFindFamilyIndex(state, ToUtf8Temp(family)) : -1;
+    }
+    const WCHAR* preview = (!editFace && state) ? FontComboPreviewAt(state, item->hwndItem, famIdx) : kPreviewNone;
+
+    int saved = SaveDC(item->hDC);
+    IntersectClipRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);
+    SetBkMode(item->hDC, TRANSPARENT);
+    SetTextColor(item->hDC, fg);
+    SelectObject(item->hDC, GetWindowFont(item->hwndItem));
+    RECT label = item->rcItem;
+    int pad = DpiScale(item->hwndItem, 6);
+    label.left += pad;
+    label.right -= pad;
+
+    Gdiplus::Graphics graphics(item->hDC);
+    graphics.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
+    Gdiplus::Font* font = TryCreateBundledFont(family, 11.0f, Gdiplus::FontStyleRegular);
+    if (!font) {
+        font = new Gdiplus::Font(family, 11.0f, Gdiplus::FontStyleRegular, Gdiplus::UnitPoint);
+    }
+    // Two columns: [ name … ][gap][ preview ]. Never shrink preview type size.
+    int gap = DpiScale(item->hwndItem, 14);
+    int minNameDx = DpiScale(item->hwndItem, 64);
+    int previewDx = 0;
+    if (preview && preview[0] && font->GetLastStatus() == Gdiplus::Ok) {
+        int avail = RectDx(item->rcItem) - pad * 2;
+        int maxPreview = avail - minNameDx - gap;
+        if (maxPreview >= DpiScale(item->hwndItem, 40)) {
+            Gdiplus::RectF bounds;
+            graphics.MeasureString(preview, -1, font, Gdiplus::PointF(0, 0), &bounds);
+            int natural = (int)(bounds.Width + 0.99f);
+            // Prefer full preview; long names ellipsis first. Wide faces may still
+            // clip the preview after the name's minimum width is reserved.
+            previewDx = natural <= maxPreview ? natural : maxPreview;
+            label.right = item->rcItem.right - pad - previewDx - gap;
+        } else {
+            preview = kPreviewNone;
+        }
+    }
+    if (font->GetLastStatus() == Gdiplus::Ok) {
+        Gdiplus::SolidBrush ink(Gdiplus::Color(255, GetRValue(fg), GetGValue(fg), GetBValue(fg)));
+        Gdiplus::StringFormat format;
+        format.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+        format.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+        format.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+        Gdiplus::RectF rect((float)label.left, (float)label.top, (float)RectDx(label), (float)RectDy(label));
+        graphics.DrawString(family, -1, font, rect, &format, &ink);
+        if (preview && preview[0] && previewDx > 0) {
+            COLORREF previewFg = selected ? fg : AccentColor(fg, 32);
+            Gdiplus::SolidBrush previewInk(
+                Gdiplus::Color(255, GetRValue(previewFg), GetGValue(previewFg), GetBValue(previewFg)));
+            Gdiplus::StringFormat previewFmt;
+            previewFmt.SetAlignment(Gdiplus::StringAlignmentFar);
+            previewFmt.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+            previewFmt.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+            previewFmt.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+            Gdiplus::RectF previewRect((float)(item->rcItem.right - pad - previewDx), (float)item->rcItem.top,
+                                       (float)previewDx, (float)RectDy(item->rcItem));
+            graphics.DrawString(preview, -1, font, previewRect, &previewFmt, &previewInk);
+        }
+    } else {
+        DrawTextW(item->hDC, family, -1, &label, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+    }
+    delete font;
+    if ((item->itemState & ODS_FOCUS) && !(item->itemState & ODS_NOFOCUSRECT)) {
+        DrawFocusRect(item->hDC, &item->rcItem);
+    }
+    RestoreDC(item->hDC, saved);
+    return true;
+}
+
+void EbookFontComboCommand(HWND combo, int notification) {
+    auto state = FontComboState(combo);
+    if (!state || state->filtering || state->composing) {
+        return;
+    }
+    if (notification == CBN_SETFOCUS) {
+        state->editing = true;
+        return;
+    }
+    if (notification == CBN_KILLFOCUS) {
+        // List clicks / scrollbar drags can briefly move focus; ignore while open.
+        if (SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0)) {
+            return;
+        }
+        COMBOBOXINFO info{sizeof(info)};
+        HWND focus = GetFocus();
+        if (GetComboBoxInfo(combo, &info) &&
+            (focus == combo || focus == info.hwndItem || focus == info.hwndList)) {
+            return;
+        }
+        if (!FontComboCommitExactText(combo, state)) {
+            FontComboRestoreCommitted(combo, state);
+        }
+        return;
+    }
+    if (notification == CBN_CLOSEUP) {
+        const char* text = HwndGetTextTemp(combo);
+        if (FontComboFindFamilyIndex(state, text) < 0) {
+            state->filtering = true;
+            HwndSetText(combo, state->selected);
+            state->filtering = false;
+            FontComboFill(combo, state, nullptr);
+            FontComboSelectCurrentInList(combo, state);
+        }
+        FontComboClearEditSelection(combo);
+        return;
+    }
+    if (notification == CBN_DROPDOWN) {
+        FontComboThemeListScrollbar(combo);
+        const char* text = HwndGetTextTemp(combo);
+        if (str::IsEmptyOrWhiteSpace(text) || str::EqI(text, state->selected)) {
+            FontComboFill(combo, state, nullptr);
+            state->filtering = true;
+            HwndSetText(combo, state->selected);
+            state->filtering = false;
+            FontComboSelectCurrentInList(combo, state);
+        } else {
+            FontComboFill(combo, state, text);
+            state->filtering = true;
+            HwndSetText(combo, text);
+            state->filtering = false;
+        }
+        return;
+    }
+    if (notification == CBN_SELCHANGE || notification == CBN_SELENDOK) {
+        int index = (int)SendMessageW(combo, CB_GETCURSEL, 0, 0);
+        int famIdx = (int)SendMessageW(combo, CB_GETITEMDATA, index, 0);
+        if (famIdx >= 0 && famIdx < state->families.Size()) {
+            str::ReplaceWithCopy(&state->selected, state->families.At(famIdx));
+            state->editing = false;
+        } else {
+            int length = (int)SendMessageW(combo, CB_GETLBTEXTLEN, index, 0);
+            if (length >= 0) {
+                WCHAR* name = AllocArray<WCHAR>(length + 1);
+                SendMessageW(combo, CB_GETLBTEXT, index, (LPARAM)name);
+                str::ReplaceWithCopy(&state->selected, ToUtf8Temp(name));
+                free(name);
+                state->editing = false;
+            }
+        }
+        FontComboClearEditSelection(combo);
+        return;
+    }
+    if (notification != CBN_EDITCHANGE) {
+        return;
+    }
+    state->editing = true;
+    AutoFreeStr query(str::Dup(HwndGetTextTemp(combo)));
+    DWORD selection = (DWORD)SendMessageW(combo, CB_GETEDITSEL, 0, 0);
+    FontComboFill(combo, state, query);
+    state->filtering = true;
+    HwndSetText(combo, query);
+    SendMessageW(combo, CB_SHOWDROPDOWN, TRUE, 0);
+    SendMessageW(combo, CB_SETEDITSEL, 0, selection);
+    state->filtering = false;
+    FontComboThemeListScrollbar(combo);
+    InvalidateRect(combo, nullptr, FALSE);
+}
+
+const char* EbookFontComboSelection(HWND combo) {
+    auto state = FontComboState(combo);
+    const char* text = HwndGetTextTemp(combo);
+    if (state) {
+        int idx = FontComboFindFamilyIndex(state, text);
+        if (idx >= 0) {
+            return state->families.At(idx);
+        }
+        return state->selected;
+    }
+    return text;
+}
 
 int gFirstEbookLatinFontCmdId = 0;
 int gLastEbookLatinFontCmdId = 0;
@@ -228,6 +811,19 @@ void CreateEbookFontMenuCommands() {
     }
 }
 
+void CollectEbookFontFamilies(Vec<char*>* latinFamilies, Vec<char*>* cjkFamilies) {
+    if (!latinFamilies || !cjkFamilies) {
+        return;
+    }
+    CollectBundledFontFamilies(latinFamilies, cjkFamilies);
+    Vec<char*> latinInstalled;
+    Vec<char*> cjkInstalled;
+    CollectInstalledLatinFontFamilies(&latinInstalled);
+    CollectInstalledCjkFontFamilies(&cjkInstalled);
+    MergeInstalledFontFamilies(latinFamilies, &latinInstalled, false);
+    MergeInstalledFontFamilies(cjkFamilies, &cjkInstalled, true);
+}
+
 static void CheckFontMenuRadio(HMENU menu, int origCmdId, const char* currentFamily, int firstCmdId, int lastCmdId) {
     if (!menu || firstCmdId <= 0 || lastCmdId < firstCmdId) {
         return;
@@ -318,37 +914,6 @@ static void FontPickerFree(FontPickerWnd* p) {
     DeleteObject(p->ctrlBrush);
     p->uiFont = p->uiFontBold = nullptr;
     p->bgBrush = p->ctrlBrush = nullptr;
-}
-
-static bool FontFaceCanDraw(HDC hdc, HFONT font, const WCHAR* text) {
-    if (!font || !text || !text[0]) {
-        return false;
-    }
-    HFONT old = (HFONT)SelectObject(hdc, font);
-    WORD glyphs[8];
-    int n = (int)wcsnlen(text, 8);
-    DWORD got = GetGlyphIndicesW(hdc, text, n, glyphs, GGI_MARK_NONEXISTING_GLYPHS);
-    bool ok = got != GDI_ERROR;
-    if (ok) {
-        for (int i = 0; i < n; i++) {
-            if (glyphs[i] == 0xFFFF) {
-                ok = false;
-                break;
-            }
-        }
-    }
-    SelectObject(hdc, old);
-    return ok;
-}
-
-static HFONT CreateFamilyFont(const char* family, int dpi) {
-    LOGFONTW lf{};
-    lf.lfHeight = -MulDiv(11, dpi, 96);
-    lf.lfQuality = CLEARTYPE_QUALITY;
-    lf.lfCharSet = DEFAULT_CHARSET;
-    TempWStr face = ToWStrTemp(family);
-    wcsncpy_s(lf.lfFaceName, face ? face : L"", _TRUNCATE);
-    return CreateFontIndirectW(&lf);
 }
 
 static void FontPickerRebuildVisible(FontPickerWnd* p) {
@@ -649,7 +1214,7 @@ static void FontPickerPaintList(FontPickerWnd* p, HDC hdc) {
             }
             SetTextColor(hdc, text);
             const char* family = p->names[nameIdx];
-            HFONT face = CreateFamilyFont(family, p->dpi);
+            HFONT face = CreateFamilyFontForDpi(family, p->dpi);
             TempWStr ws = ToWStrTemp(family);
             HFONT use = FontFaceCanDraw(hdc, face, ws) ? face : p->uiFont;
             HFONT old = (HFONT)SelectObject(hdc, use);

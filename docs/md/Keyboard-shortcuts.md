@@ -87,6 +87,7 @@ You can [customize keyboard shortcuts](Customizing-keyboard-shortcuts.md). Also 
 - `F6` switch focus between bookmarks window and main window
 - `Ctrl + L`, `F5`, `Shift + F11`- Enter / exit presentation mode (minimal full screen mode)
 - `F11`, `Ctrl + Shift + L`, `f` Enter / Exit full screen mode
+- Full screen (toolbar hidden): move the mouse to the top-right corner for an exit button (click), or double-click that corner; `Esc` also exits
 - `ESC` exit full screen or presentation mode
 - mouse double click exit full screen or presentation mode
 - `i` toggle showing page info (**ver 3.6+** )

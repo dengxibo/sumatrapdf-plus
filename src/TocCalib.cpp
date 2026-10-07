@@ -6461,7 +6461,7 @@ static void TocCalibReportWriteError(MainWindow* win, char* err) {
     // instead of the generic "Could not write the PDF table of contents."
     TempWStr detail = err ? ToWStrTemp(err) : nullptr;
     const WCHAR* msg = (detail && detail[0]) ? detail : ToWStrTemp(_TRA("Could not write the PDF table of contents."));
-    MessageBoxW(win->hwndFrame, msg, L"PDF table of contents", MB_OK | MB_ICONERROR);
+    MessageBoxW(win->hwndFrame, msg, ToWStrTemp(_TRA("PDF table of contents")), MB_OK | MB_ICONERROR);
     str::Free(err);
 }
 
@@ -6963,11 +6963,6 @@ static void TocCalibDrawIconBtn(HDC hdc, HWND hwnd, const RECT& rc, TbIcon icon,
     DrawSvgIcon(hdc, Rect(rc.left + pad, rc.top + pad, dx, dy), icon, fg, bg);
 }
 
-static bool TocCalibUiZh() {
-    const char* lang = trans::GetCurrentLangCode();
-    return lang && (str::EqI(lang, "cn") || str::EqI(lang, "tw"));
-}
-
 static bool TocCalibDisplayOffset(const TocCalibRow* row, int* offOut) {
     if (!row || !row->item || !TocCalibHasPrinted(row->item->printedPage) || row->item->pageNo < 1) {
         return false;
@@ -7175,9 +7170,8 @@ void TocCalibDrawColumns(HDC hdc, HWND hwnd, const RECT& rcRow, TocItem* item, M
         pdfText = pdfBuf;
         pdfEmpty = false;
     }
-    bool zh = TocCalibUiZh();
     if (prEmpty) {
-        prText = zh ? L"\u5370\u5237" : L"Print";
+        prText = _TRW("Print");
     }
     if (pdfEmpty) {
         pdfText = L"PDF";
@@ -7792,8 +7786,7 @@ static void TocCalibBeginPageEdit(MainWindow* win, TocItem* item, const RECT& fi
     if (font) {
         SetWindowFont(h, font, TRUE);
     }
-    const WCHAR* cue = printed ? (TocCalibUiZh() ? L"\u5370\u5237\u9875\u7801" : L"Printed page")
-                               : (TocCalibUiZh() ? L"PDF \u9875\u7801" : L"PDF page");
+    const WCHAR* cue = printed ? _TRW("Printed page") : _TRW("PDF page");
     SendMessageW(h, EM_SETCUEBANNER, TRUE, (LPARAM)cue);
     TocCalibRow* row = TocCalibRowForTocItem(win, item);
     if (!row) {
@@ -8065,10 +8058,10 @@ const char* TocCalibRowControlTip(MainWindow* win, HWND hwnd, POINT pt) {
         return _TRA("Delete");
     }
     if (hit == TocCalibHit::PrintedField) {
-        return TocCalibUiZh() ? "印刷页码" : _TRA("Printed page");
+        return _TRA("Printed page");
     }
     if (hit == TocCalibHit::PdfField) {
-        return TocCalibUiZh() ? "PDF 页码" : _TRA("PDF page");
+        return _TRA("PDF page");
     }
     return nullptr;
 }

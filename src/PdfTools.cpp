@@ -193,7 +193,7 @@ static void PdfBakeDoIt(PdfBakeDialog* dlg) {
         StartLoadDocument(&args);
     } else {
         logf("PdfBakeDoIt: pdfbake_main failed with %d\n", res);
-        MessageBoxWarning(dlg->hwnd, "Failed to bake PDF file.", _TRA("Bake PDF"));
+        MessageBoxWarning(dlg->hwnd, _TRA("Failed to bake PDF file."), _TRA("Bake PDF"));
     }
 }
 
@@ -451,7 +451,7 @@ static void PdfExtractTextDoIt(PdfExtractTextDialog* dlg) {
         OpenPathInDefaultFileManager(destPath);
     } else {
         logf("PdfExtractTextDoIt: failed to extract text, isPdf: %d\n", (int)isPdf);
-        MessageBoxWarning(dlg->hwnd, "Failed to extract text.", _TRA("Extract Text"));
+        MessageBoxWarning(dlg->hwnd, _TRA("Failed to extract text."), _TRA("Extract Text"));
     }
 }
 
@@ -681,7 +681,7 @@ static void PdfCompressDoIt(PdfCompressDialog* dlg) {
         StartLoadDocument(&args);
     } else {
         logf("PdfCompressDoIt: pdfclean_main failed with %d\n", res);
-        MessageBoxWarning(dlg->hwnd, "Failed to compress PDF file.", _TRA("Compress PDF"));
+        MessageBoxWarning(dlg->hwnd, _TRA("Failed to compress PDF file."), _TRA("Compress PDF"));
     }
 }
 
@@ -892,7 +892,7 @@ static void PdfDecompressDoIt(PdfDecompressDialog* dlg) {
         StartLoadDocument(&args);
     } else {
         logf("PdfDecompressDoIt: pdfclean_main failed with %d\n", res);
-        MessageBoxWarning(dlg->hwnd, "Failed to decompress PDF file.", _TRA("Decompress PDF"));
+        MessageBoxWarning(dlg->hwnd, _TRA("Failed to decompress PDF file."), _TRA("Decompress PDF"));
     }
 }
 
@@ -2516,7 +2516,7 @@ static void PdfEncryptDoIt(PdfEncryptDialog* dlg) {
         StartLoadDocument(&args);
     } else {
         logf("PdfEncryptDoIt: pdfclean_main failed with %d\n", res);
-        MessageBoxWarning(dlg->hwnd, "Failed to encrypt PDF file.", _TRA("Encrypt PDF"));
+        MessageBoxWarning(dlg->hwnd, _TRA("Failed to encrypt PDF file."), _TRA("Encrypt PDF"));
     }
 }
 
@@ -2760,7 +2760,7 @@ static void PdfDecryptDoIt(PdfDecryptDialog* dlg) {
     } else {
         logf("PdfDecryptDoIt: pdfclean_main failed with %d, src: '%s', password len: %d\n", res, dlg->srcPath,
              (int)str::Len(dlg->password));
-        MessageBoxWarning(dlg->hwnd, "Failed to decrypt PDF file.", _TRA("Decrypt PDF"));
+        MessageBoxWarning(dlg->hwnd, _TRA("Failed to decrypt PDF file."), _TRA("Decrypt PDF"));
     }
 }
 

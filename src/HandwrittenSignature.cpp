@@ -537,23 +537,43 @@ static void MapLoadedIntoPad(SigPad* pad) {
     UpdateOkButton(pad);
 }
 
+static int PadButtonWidth(HWND btn, int minW) {
+    if (!btn) {
+        return minW;
+    }
+    Size ideal = ButtonGetIdealSize(btn);
+    return std::max(minW, ideal.dx);
+}
+
 static void LayoutPad(HWND hwnd, SigPad* pad) {
     RECT rc{};
     GetClientRect(hwnd, &rc);
     int margin = DpiScale(hwnd, 12);
     int btnH = DpiScale(hwnd, 26);
-    int btnW = DpiScale(hwnd, 76);
+    int minBtnW = DpiScale(hwnd, 72);
     int gap = DpiScale(hwnd, 8);
     int btnY = rc.bottom - margin - btnH;
     if (btnY < margin + 40) {
         btnY = margin + 40;
     }
+    int photoW = PadButtonWidth(pad->btnPhoto, minBtnW);
+    int clearW = PadButtonWidth(pad->btnClear, minBtnW);
+    int okW = PadButtonWidth(pad->btnOk, minBtnW);
+    int cancelW = PadButtonWidth(pad->btnCancel, minBtnW);
     int avail = rc.right - 2 * margin;
-    int need = 4 * btnW + 3 * gap;
+    int need = photoW + clearW + okW + cancelW + 3 * gap;
     if (need > avail && avail > 40) {
-        btnW = (avail - 3 * gap) / 4;
-        if (btnW < DpiScale(hwnd, 52)) {
-            btnW = DpiScale(hwnd, 52);
+        // Prefer shrinking Open Image; keep Cancel/OK readable for long locales.
+        int keep = clearW + okW + cancelW + 3 * gap;
+        int room = avail - keep;
+        if (room >= DpiScale(hwnd, 48)) {
+            photoW = room;
+        } else {
+            float scale = (float)avail / (float)need;
+            photoW = std::max(DpiScale(hwnd, 48), (int)(photoW * scale));
+            clearW = std::max(DpiScale(hwnd, 52), (int)(clearW * scale));
+            okW = std::max(DpiScale(hwnd, 52), (int)(okW * scale));
+            cancelW = std::max(DpiScale(hwnd, 60), (int)(cancelW * scale));
         }
     }
     pad->padRc.left = margin;
@@ -568,24 +588,19 @@ static void LayoutPad(HWND hwnd, SigPad* pad) {
     }
     pad->padW = pad->padRc.right - pad->padRc.left;
     pad->padH = pad->padRc.bottom - pad->padRc.top;
-    int x = rc.right - margin - btnW;
+    int x = rc.right - margin - cancelW;
     if (pad->btnCancel) {
-        SetWindowPos(pad->btnCancel, nullptr, x, btnY, btnW, btnH, SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(pad->btnCancel, nullptr, x, btnY, cancelW, btnH, SWP_NOZORDER | SWP_NOACTIVATE);
     }
-    x -= gap + btnW;
+    x -= gap + okW;
     if (pad->btnOk) {
-        SetWindowPos(pad->btnOk, nullptr, x, btnY, btnW, btnH, SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(pad->btnOk, nullptr, x, btnY, okW, btnH, SWP_NOZORDER | SWP_NOACTIVATE);
     }
-    x -= gap + btnW;
+    x -= gap + clearW;
     if (pad->btnClear) {
-        SetWindowPos(pad->btnClear, nullptr, x, btnY, btnW, btnH, SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(pad->btnClear, nullptr, x, btnY, clearW, btnH, SWP_NOZORDER | SWP_NOACTIVATE);
     }
     if (pad->btnPhoto) {
-        int photoW = btnW;
-        Size ideal = ButtonGetIdealSize(pad->btnPhoto);
-        if (ideal.dx > photoW) {
-            photoW = ideal.dx;
-        }
         int maxPhoto = x - gap - margin;
         if (maxPhoto > DpiScale(hwnd, 40) && photoW > maxPhoto) {
             photoW = maxPhoto;
@@ -1762,7 +1777,7 @@ static bool RunSignaturePad(HWND owner, MainWindow* mainWin, Vec<PointF>& pts, V
     } else {
         LoadSignatureFile(&pad);
     }
-    int width = DpiScale(owner, 520);
+    int width = DpiScale(owner, 580);
     int height = DpiScale(owner, 280);
     RECT orc{};
     GetWindowRect(owner, &orc);

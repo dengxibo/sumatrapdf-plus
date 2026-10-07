@@ -31155,11 +31155,12 @@ static bool ConfirmPdfTocSignatureExtract(MainWindow* win, EngineBase* engine) {
     if (!tab || tab->acceptedPdfTocSignatureWarning || !EngineMupdfPdfHasSignatures(engine)) {
         return true;
     }
-    int res = MessageBoxW(win->hwndFrame,
-                          L"Editing the table of contents changes this PDF after it was digitally signed. The "
-                          "existing signature will remain, but viewers will report that the document was modified. "
-                          "Continue?",
-                          L"Digitally signed PDF", MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
+    int res = MessageBoxW(
+        win->hwndFrame,
+        ToWStrTemp(_TRA("Editing the table of contents changes this PDF after it was digitally signed. The "
+                        "existing signature will remain, but viewers will report that the document was modified. "
+                        "Continue?")),
+        ToWStrTemp(_TRA("Digitally signed PDF")), MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
     if (res != IDYES) {
         return false;
     }
